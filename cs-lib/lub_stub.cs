@@ -1398,6 +1398,17 @@ namespace Lub
             return new List<string>();
         }
 
+        /// <summary>TakeTrace と同じに、前に呼んでから実行した行を返し、記録を空にする。
+        /// ただし、InspectPin で key に覚えた個体と同じ class の別の個体を this にして通っただけの行は返さない (別の class と static のメソッドの行は返す)。
+        /// key に覚えた個体が無ければ TakeTrace と同じ。
+        /// tcs VM の player だけ (Lua の player はいつも空)。
+        /// </summary>
+        [LubNoFail]
+        public static List<string> TakeTraceFor(string key)
+        {
+            return new List<string>();
+        }
+
         /// <summary>tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を空にする。
         /// 変換するソースは TakeTrace と同じ。
         /// Site は "file:line:col:代入先" (代入先は C# の書き方)、Text は値を短い文字にしたもの。
@@ -4688,11 +4699,14 @@ namespace Lub
     /// Draw はその frame の中の draw の番号 (0 始まり、何も描いていなければ -1)。
     /// Site は Draw を呼んだ所の並び (内側から 1 行に 1 つ、"file:line")。
     /// 並びを作るのは player で、Lua の player は Lua の source の行を返す (作れない player では空)。
+    /// Self は Site と同じ並びの、段ごとの this の個体の Id (InspectNode.Id と同じ書き方)。
+    /// this の無い段は空の行で、tcs VM の player の --trace で変換したソースの class の instance のメソッドの段だけが Id を持つ (ほかの player では空)。
     /// </summary>
     public class PickHit
     {
         public int Draw;
         public string Site = "";
+        public string Self = "";
     }
 
     /// <summary>Sys.TakeValues の 1 件。</summary>

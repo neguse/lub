@@ -410,7 +410,16 @@ void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
   *out = NULL;
   *out_count = 0;
   if (app->debug_hooks && app->debug_hooks->take_trace)
-    app->debug_hooks->take_trace(app, out, out_count);
+    app->debug_hooks->take_trace(app, (LubStr){"", 0}, out, out_count);
+}
+
+void lub_sys_take_trace_for(LubContext *ctx, LubStr key, const LubStr **out,
+                            int32_t *out_count) {
+  App *app = lub_api_app(ctx);
+  *out = NULL;
+  *out_count = 0;
+  if (app->debug_hooks && app->debug_hooks->take_trace)
+    app->debug_hooks->take_trace(app, key, out, out_count);
 }
 
 void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,

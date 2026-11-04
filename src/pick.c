@@ -70,6 +70,9 @@ typedef struct PickState {
   bool ready;
   int result_draw;
   char *result_site;
+  // pick_result が返す、result_site を分けた呼び出し元の並びと、段ごとの self の Id
+  char *out_site;
+  char *out_self;
   // 読み戻しが届くまでの draw の呼び出し元 (番号で引く)
   char **sites;
   int n_sites;
@@ -494,12 +497,50 @@ void pick_frame_end(App *app) {
     poll(p);
 }
 
-bool pick_result(App *app, int *draw, const char **site) {
+// player の書いた呼び出し元の並び (行ごとに "file:line"、self があれば続けて "\t" と Id) を、
+// 並びと段ごとの Id に分ける。どの行にも Id が無ければ、Id の並びは空
+static void split_sites(const char *raw, char **site, char **self) {
+  size_t n = strlen(raw);
+  *site = (char *)malloc(n + 1);
+  *self = (char *)malloc(n + 1);
+  if (!*site || !*self)
+    return;
+  size_t s = 0, d = 0;
+  bool any = false;
+  for (const char *line = raw; *line;) {
+    const char *end = strchr(line, '\n');
+    if (!end)
+      end = line + strlen(line);
+    const char *tab = memchr(line, '\t', (size_t)(end - line));
+    const char *cut = tab ? tab : end;
+    if (s)
+      (*site)[s++] = '\n';
+    if (line != raw)
+      (*self)[d++] = '\n';
+    memcpy(*site + s, line, (size_t)(cut - line));
+    s += (size_t)(cut - line);
+    if (tab) {
+      any = true;
+      memcpy(*self + d, tab + 1, (size_t)(end - tab - 1));
+      d += (size_t)(end - tab - 1);
+    }
+    line = *end ? end + 1 : end;
+  }
+  (*site)[s] = '\0';
+  (*self)[any ? d : 0] = '\0';
+}
+
+bool pick_result(App *app, int *draw, const char **site, const char **self) {
   PickState *p = app->pick;
   if (!p || !p->ready)
     return false;
   *draw = p->result_draw;
-  *site = p->result_site ? p->result_site : "";
+  free(p->out_site);
+  free(p->out_self);
+  p->out_site = p->out_self = NULL;
+  split_sites(p->result_site ? p->result_site : "", &p->out_site, &p->out_self);
+  *site = p->out_site ? p->out_site : "";
+  *self = p->out_self ? p->out_self : "";
   return true;
 }
 
@@ -511,6 +552,8 @@ void pick_shutdown(App *app) {
   free(p->draws);
   free_sites(p);
   free(p->result_site);
+  free(p->out_site);
+  free(p->out_self);
   if (g_backend)
     destroy_kept(p);
   free(p->kept_bufs);

@@ -2315,6 +2315,7 @@ struct VmLub_PickHit {
   uint64_t host_value;
   int32_t f_draw;
   void *f_site;
+  void *f_self;
 };
 struct VmLub_TraceValue {
   uint32_t type_id;
@@ -4056,6 +4057,7 @@ static const struct {
      offsetof(VmLub_Counters3d, f_manifold_counts)},
     {"Lub_PickHit", "draw", offsetof(VmLub_PickHit, f_draw)},
     {"Lub_PickHit", "site", offsetof(VmLub_PickHit, f_site)},
+    {"Lub_PickHit", "self", offsetof(VmLub_PickHit, f_self)},
     {"Lub_TraceValue", "site", offsetof(VmLub_TraceValue, f_site)},
     {"Lub_TraceValue", "text", offsetof(VmLub_TraceValue, f_text)},
     {"Lub_InspectNode", "path", offsetof(VmLub_InspectNode, f_path)},
@@ -7948,6 +7950,7 @@ static VmLub_PickHit *vm_lub_from_PickHit(const LubPickHit *source) {
   VmLub_PickHit *result = vm_lub_new(&vm_lub_types[17], sizeof(*result));
   result->f_draw = source->draw;
   result->f_site = vm_lub_string(source->site);
+  result->f_self = vm_lub_string(source->self);
   return result;
 }
 static VmLub_GltfMesh *vm_lub_from_GltfMesh(const LubGltfMesh *source) {
@@ -11409,6 +11412,22 @@ static TvmStatus vm_host_lub_sys_take_trace(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   const LubStr *result = {0};
   int32_t result_count = 0;
   lub_sys_take_trace(vm_lub_context, &result, &result_count);
+  r[0].p = vm_lub_string_list(&vm_lub_types[107], NULL, result, result_count);
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_sys_take_trace_for(TvmVm *vm, TvmSlot *a,
+                                                TvmSlot *r, void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  VM_LUB_ENTER();
+  void *p_key = a[0].p;
+  if (vm_lub_error)
+    VM_LUB_LEAVE(vm);
+  const LubStr *result = {0};
+  int32_t result_count = 0;
+  lub_sys_take_trace_for(vm_lub_context, vm_lub_str(p_key), &result,
+                         &result_count);
   r[0].p = vm_lub_string_list(&vm_lub_types[107], NULL, result, result_count);
   VM_LUB_LEAVE(vm);
 }
@@ -15688,6 +15707,7 @@ static const struct {
     {"lub.sys.actual_fps", "", "f", vm_host_lub_sys_actual_fps},
     {"lub.sys.seconds", "", "f", vm_host_lub_sys_seconds},
     {"lub.sys.take_trace", "", "o", vm_host_lub_sys_take_trace},
+    {"lub.sys.take_trace_for", "s", "o", vm_host_lub_sys_take_trace_for},
     {"lub.sys.take_values", "", "o", vm_host_lub_sys_take_values},
     {"lub.sys.inspect", "sii", "o", vm_host_lub_sys_inspect},
     {"lub.sys.inspect_pin", "ss", "", vm_host_lub_sys_inspect_pin},

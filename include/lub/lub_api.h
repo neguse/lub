@@ -2940,10 +2940,14 @@ typedef struct LubCounters3d {
 // Gfx.PickResult の結果。 Draw はその frame の中の draw の番号 (0 始まり、何
 // も描いていなければ -1)。 Site は Draw を呼んだ所の並び (内側から 1 行に 1
 // つ、"file:line")。並びを作るのは player で、Lua の player は Lua の source
-// の行を返す (作れない player では空)。
+// の行を返す (作れない player では空)。 Self は Site と同じ並びの、段ごとの
+// this の個体の Id (InspectNode.Id と同じ書き方)。 this の無い段は空の行
+// で、tcs VM の player の --trace で変換したソースの class の instance のメ
+// ソッドの段だけが Id を持つ (ほかの player では空)。
 typedef struct LubPickHit {
   int32_t draw;
   LubStr site;
+  LubStr self;
 } LubPickHit;
 
 // Sys.TakeValues の 1 件。
@@ -3503,6 +3507,14 @@ LUB_API float lub_sys_seconds(LubContext *ctx);
 // まっていない。
 LUB_API void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
                                 int32_t *out_count);
+
+// TakeTrace と同じに、前に呼んでから実行した行を返し、記録を空にする。ただ
+// し、InspectPin で key に覚えた個体と同じ class の別の個体を this にして通
+// っただけの行は返さない (別の class と static のメソッドの行は返す)。 key
+// に覚えた個体が無ければ TakeTrace と同じ。 tcs VM の player だけ (Lua の
+// player はいつも空)。
+LUB_API void lub_sys_take_trace_for(LubContext *ctx, LubStr key,
+                                    const LubStr **out, int32_t *out_count);
 
 // tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を
 // 空にする。変換するソースは TakeTrace と同じ。 Site は "file:line:col:代入
