@@ -4069,12 +4069,13 @@ static void push_LubCounters3d(lua_State *L, const LubCounters3d *v) {
 static void fill_LubPickHit(lua_State *L, const LubPickHit *v) {
   lgen_set_int(L, "draw", v->draw);
   lgen_set_str(L, "site", v->site);
+  lgen_set_str(L, "self", v->self);
   (void)L;
   (void)v;
 }
 
 static void push_LubPickHit(lua_State *L, const LubPickHit *v) {
-  lua_createtable(L, 0, 2);
+  lua_createtable(L, 0, 3);
   fill_LubPickHit(L, v);
 }
 
@@ -6183,6 +6184,18 @@ static int l_sys_take_trace(lua_State *L) {
   const LubStr *out = NULL;
   int32_t out_count = 0;
   lub_sys_take_trace(lgen_ctx(), &out, &out_count);
+  lgen_release(mark);
+  lgen_push_str_table(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_take_trace_for(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  const LubStr *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_take_trace_for(lgen_ctx(), key, &out, &out_count);
   lgen_release(mark);
   lgen_push_str_table(L, out, out_count);
   return 1;
@@ -10319,6 +10332,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "seconds");
   lua_pushcfunction(L, l_sys_take_trace);
   lua_setfield(L, -2, "take_trace");
+  lua_pushcfunction(L, l_sys_take_trace_for);
+  lua_setfield(L, -2, "take_trace_for");
   lua_pushcfunction(L, l_sys_take_values);
   lua_setfield(L, -2, "take_values");
   lua_pushcfunction(L, l_sys_inspect);

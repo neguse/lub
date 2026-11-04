@@ -1672,12 +1672,14 @@ void lub_gfx_pick(LubContext *ctx, LubHandle target, int32_t x, int32_t y) {
 
 LubStatus lub_gfx_pick_result(LubContext *ctx, LubPickHit *out) {
   int draw = -1;
-  const char *site = NULL;
-  if (!pick_result(lub_api_app(ctx), &draw, &site))
+  const char *site = NULL, *self = NULL;
+  if (!pick_result(lub_api_app(ctx), &draw, &site, &self))
     return LUB_NOT_FOUND;
   out->draw = draw;
   out->site.ptr = site;
   out->site.len = (int32_t)strlen(site);
+  out->self.ptr = self;
+  out->self.len = (int32_t)strlen(self);
   return LUB_OK;
 }
 

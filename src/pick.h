@@ -19,6 +19,7 @@ struct ResEntry;
 // pick が記録する draw の中 (lub_gfx_draw_items の中) で呼ぶので、player はその場の呼び出しの並びを書く。
 // out は cap バイトの領域で、NUL 終端の文字列を書く。
 // 1 行に 1 つ "file:line" を、内側 (draw を呼んだ所) から外側へ改行で区切って並べる。
+// その段に self の個体があれば、続けて "\t" と Id を書いてよい (PickHit.Self になる)。
 // 入りきらない分は切ってよい。
 // 何も書かなければ (out[0] が NUL のまま) Site は空になる。
 typedef void (*PickSitesFn)(void *user, char *out, size_t cap);
@@ -59,8 +60,10 @@ bool pick_take_image(struct App *app, BackendImage image);
 void pick_frame_end(struct App *app);
 
 // 結果が届いていれば true。
-// draw は frame の中の draw の番号 (0 始まり、無ければ -1)、site は呼び出し元 (改行区切り、内側から)。
-// site は次の pick_request まで有効
-bool pick_result(struct App *app, int *draw, const char **site);
+// draw は frame の中の draw の番号 (0 始まり、無ければ -1)、site は呼び出し元 (改行区切り、内側から)、
+// self は site と同じ並びの段ごとの self の Id (無い段は空の行。どの段にも無ければ空)。
+// site と self は次の pick_result か pick_request まで有効
+bool pick_result(struct App *app, int *draw, const char **site,
+                 const char **self);
 
 void pick_shutdown(struct App *app);

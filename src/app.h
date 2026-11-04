@@ -36,7 +36,9 @@ struct App;
 // 検査の口 (Sys.TakeTrace / TakeValues / Inspect* と Rewind の状態の控え)。
 // 結果の配列と文字列は次の同じ呼び出しまで有効。
 typedef struct LubDebugHooks {
-  void (*take_trace)(struct App *app, const LubStr **out, int32_t *count);
+  // key に覚えた個体と同じ class の別の個体だけが通った行を除く (key が空なら全部)
+  void (*take_trace)(struct App *app, LubStr key, const LubStr **out,
+                     int32_t *count);
   void (*take_values)(struct App *app, const LubTraceValue **out,
                       int32_t *count);
   void (*inspect)(struct App *app, LubStr path, int32_t offset, int32_t count,

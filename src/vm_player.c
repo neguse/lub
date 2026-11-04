@@ -441,13 +441,18 @@ static void trace_line(void *user, const char *file, uint32_t line) {
     g_trace_at[g_trace_n++] = arena_add(&g_trace_arena, key, (size_t)n);
 }
 
-static void hook_take_trace(App *app, const LubStr **out, int32_t *count) {
+static const char *cstr(LubStr s, char *buf, size_t cap);
+
+// key に覚えた個体 (tvm_inspect_pin) と同じ class の別の個体だけが通った行を除く (key が空なら全部)
+static void hook_take_trace(App *app, LubStr key, const LubStr **out,
+                            int32_t *count) {
   (void)app;
   arena_reset(&g_trace_arena);
   g_trace_n = 0;
   if (!vm_lub_vm)
     return;
-  tvm_trace_take_lines(vm_lub_vm, trace_line, NULL);
+  char k[64];
+  tvm_trace_take_lines_for(vm_lub_vm, cstr(key, k, sizeof k), trace_line, NULL);
   g_trace_strs =
       (LubStr *)grow(g_trace_strs, &g_trace_cap, g_trace_n, sizeof(LubStr));
   for (int32_t i = 0; i < g_trace_n && i < g_trace_cap; i++)
@@ -593,12 +598,15 @@ typedef struct SiteBuf {
   size_t cap, len;
 } SiteBuf;
 
-static void pick_site(void *user, const char *file, uint32_t line) {
+// self のある段は、続けて "\t" と self の Id を書く (pick.c が分ける)
+static void pick_site(void *user, const char *file, uint32_t line,
+                      const char *id) {
   SiteBuf *b = (SiteBuf *)user;
   if (b->len + 1 >= b->cap)
     return;
-  int n = SDL_snprintf(b->out + b->len, b->cap - b->len, "%s%s:%u",
-                       b->len ? "\n" : "", file, (unsigned)line);
+  int n = SDL_snprintf(b->out + b->len, b->cap - b->len, "%s%s:%u%s%s",
+                       b->len ? "\n" : "", file, (unsigned)line,
+                       id[0] ? "\t" : "", id);
   if (n > 0)
     b->len = b->len + (size_t)n < b->cap ? b->len + (size_t)n : b->cap - 1;
 }
@@ -609,7 +617,7 @@ static void vm_pick_sites(void *user, char *out, size_t cap) {
   if (cap)
     out[0] = '\0';
   if (vm_lub_vm)
-    tvm_stack(vm_lub_vm, pick_site, &b);
+    tvm_stack_self(vm_lub_vm, pick_site, &b);
 }
 
 static const LubDebugHooks g_debug_hooks = {
