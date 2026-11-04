@@ -4,9 +4,9 @@
 ゲームの動作を止めずにコード変更を即座に反映し、試行錯誤の速度を上げることを
 コアな価値に置く。
 
-runtime は C/C++ と既存ライブラリで組み、Lua を通して API を呼び出す。
-上位の script layer は C# (TinyC# サブセット) で書き、Lua に transpile して
-hot reload する。同じ C# を実 .NET で動かす経路もある。
+runtime は C/C++ と既存ライブラリで組む。
+上位の script layer は C# (TinyC# サブセット) で書き、tcs VM の bytecode (`.tcsb`) にして lub の player で動かし、hot reload する。
+同じ C# を Lua に transpile して動かす経路 (`--lua`) と、実 .NET で動かす経路もある。
 特定のアセット形式や GUI editor に依存せず、ゲームを構成する状態、描画、
 入力、物理、音、debug 情報をコードから制御できる環境を目指す。
 
@@ -14,8 +14,7 @@ hot reload する。同じ C# を実 .NET で動かす経路もある。
 native がプラットフォーム直接実装 (default — Windows: D3D12、
 Linux: Vulkan、macOS / iOS: Metal) と SDL3 GPU API (`sdlgpu`)、web が
 webgpu.h 直接実装。
-対応プラットフォームは Linux x86_64、Windows x86_64、macOS arm64、
-iOS arm64、WebAssembly/WebGPU。
+対応プラットフォームは Linux x86_64、Windows x86_64、macOS arm64、iOS arm64、Android arm64 (Meta Quest。tcs2c で C にしたゲームだけ。[docs/android.md](docs/android.md))、WebAssembly/WebGPU。
 
 ## ドキュメント
 
@@ -41,7 +40,7 @@ Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
 `third_party/slang/lib/` に無ければ GitHub release から自動取得する
 (`third_party/slang/{lib,bin}/` は gitignore 対象)。
 
-コンパイルする依存 (SDL3 / Lua / Box2D / Box3D / OpenXR (Linux) / TinyC# の runtime) は `third_party/` 配下の
+コンパイルする依存 (SDL3 / Lua / Box2D / Box3D / OpenXR (Linux / Android) / TinyC# の runtime) は `third_party/` 配下の
 git submodule なので、clone 後に一度 submodule を取得する:
 
 ```sh
@@ -110,8 +109,9 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
 `.slang` / PNG / `*.verts.lua` などの data ファイルも同様に保存で即反映。
 
 依存:
-- dotnet SDK。C# → Lua の transpiler(TinyC#、`third_party/tcs` submodule)を
-  lub が dotnet で動かす。
+- C# の変換は TinyC# (`third_party/tcs` submodule) が行う。
+  lub は実行ファイルの隣の `tcs/tcs` (`scripts/build-tcs-native.sh` が作る C の tcs) を最初に使い、無ければ PATH の dotnet SDK で `third_party/tcs` を動かす。
+  C の tcs を使うなら実行に dotnet は要らない (作るのには dotnet SDK が要る)。
 
 サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
 (`<Entry>.cs` + `<Entry>.csproj` + `data/`)。
@@ -185,7 +185,8 @@ lub は 5 つの GPU backend を持ち、同一 API で動く:
 - `d3d12` — Windows の既定。D3D12 直接実装
   (設計は [docs/d3d12-backend.md](docs/d3d12-backend.md))
 - `vulkan` — Linux の既定。Vulkan 直接実装 (`src/backend_vulkan.c`)。Windows でも
-  Vulkan SDK が見つかる build では選べる
+  Vulkan SDK が見つかる build では選べる。
+  `LUB_BACKEND=openxr` はこの backend で OpenXR の headset に描く (Linux / Android。Android の既定。[docs/manual/07-xr.md](docs/manual/07-xr.md))
 - `metal` — macOS / iOS の既定。Metal 直接実装
   (設計は [docs/metal-backend.md](docs/metal-backend.md))
 - `sdlgpu` — SDL3 GPU API 経由の実装 (Windows / Linux の代替 backend)
@@ -204,10 +205,10 @@ LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/Triangle01.csproj
 ## WASM playground (web)
 
 ブラウザ上で動く playground を `web/` 配下に同梱し、
-[lub.neguse.net](https://lub.neguse.net) で公開している。`.cs` は .NET wasm 化した
-TinyC# コンパイラでブラウザ内で Lua に compile され、native と
-同じ hot reload 経路で player に反映される。ガイド + API reference の
-docs サイト (`/docs`) も同じサイトに同居する。
+[lub.neguse.net](https://lub.neguse.net) で公開している。
+`.cs` はブラウザ内で tcs の wasm (tcs2c で C にした TinyC# コンパイラ) が tcs VM の bytecode に変換し、hot reload で player に反映される。
+補完と hover は .NET wasm の Roslyn が答える。
+ガイド + API reference の docs サイト (`/docs`) も同じサイトに同居する。
 
 ビルド手順・実行時アーキテクチャ・headless 検証・制約は
 [web/README.md](web/README.md) を参照。

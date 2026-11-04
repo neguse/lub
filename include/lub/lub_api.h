@@ -427,7 +427,7 @@ typedef struct LubPassOpts {
   float clear_depth; // 省略時 1.0。
   bool has_load;
   int32_t
-      load; // LubGfxLoadAction。`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。 LOAD は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。
+      load; // LubGfxLoadAction。`Gfx.LoadAction.Clear`(省略時)/ `Gfx.LoadAction.Load`。 Load は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。
 } LubPassOpts;
 
 // 描いた値と target の値の混ぜ方。色 (rgb) は Src × 描く値 (Op) Dst × target
@@ -448,10 +448,10 @@ typedef struct LubDrawOpts {
   bool has_blend;
   LubBlend blend; // 省略時は混ぜずに上書きする。
   bool has_cull;
-  int32_t cull; // LubGfxCull。`Gfx.NONE` / `BACK` / `FRONT`。
+  int32_t cull; // LubGfxCull。`Gfx.Cull.None` / `Back` / `Front`。
   bool has_primitive;
   int32_t
-      primitive; // LubGfxPrimitive。`Gfx.TRIANGLES` / `TRIANGLE_STRIP` / `LINES` / `LINE_STRIP` / `POINTS`。
+      primitive; // LubGfxPrimitive。`Gfx.Primitive.Triangles` / `TriangleStrip` / `Lines` / `LineStrip` / `Points`。
   bool has_depth;
   bool depth; // depth test の有効/無効。
   bool has_depth_write;
@@ -466,9 +466,10 @@ typedef struct LubDispatchOpts {
 // Gfx.UseTexture のオプション。
 typedef struct LubTextureOpts {
   bool has_filter;
-  int32_t filter; // LubGfxFilter。`Gfx.LINEAR` / `NEAREST`。省略時 LINEAR。
+  int32_t
+      filter; // LubGfxFilter。`Gfx.Filter.Linear` / `Nearest`。省略時 Linear。
   bool has_wrap;
-  int32_t wrap; // LubGfxWrap。`Gfx.REPEAT` / `CLAMP`。省略時 CLAMP。
+  int32_t wrap; // LubGfxWrap。`Gfx.Wrap.Repeat` / `Clamp`。省略時 Clamp。
   bool has_target;
   bool target; // render target として使う。
   bool has_storage;
@@ -3493,7 +3494,7 @@ LUB_API float lub_sys_actual_fps(LubContext *ctx);
 LUB_API float lub_sys_seconds(LubContext *ctx);
 
 // tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line")
-// を返し、記録を空にする。 tcs VM の player (lub_vm Game.csproj) は overlay
+// を返し、記録を空にする。 tcs VM の player (lub Game.csproj) は overlay
 // (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリ
 // を除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を
 // --trace で変換する。記録が無ければ空 (Lua の player はいつも空)。順番は決

@@ -3,7 +3,7 @@
 lub は、細部までこだわったゲーム体験を作るためのコード中心のゲームエンジン。
 最重要の価値は、ゲームを止めずに変更を反映し、トライアンドエラーを極限まで速くすること。
 
-- ゲームコードは C#(TinyC# サブセット)で書き、Lua に transpile されて runtime 上で動く
+- ゲームコードは C#(TinyC# サブセット)で書き、tcs VM の bytecode に変換されて runtime 上で動く
 - native(D3D12 / Vulkan / Metal / SDL3 GPU)と web(WASM + WebGPU)の両方で同じコードが動く
 - コード・アセットの変更は実行中のゲームに hot reload で即座に反映される
 
@@ -15,8 +15,8 @@ workflow をコードで組む。
 
 | レイヤ | 役割 |
 | --- | --- |
-| C runtime | window / GPU / audio / 物理 / IO。Lua に API を公開する |
-| Lua | tcs の出力と runtime の間の内部の層で、ゲームからは触らない。reload 時に data shape の変化へ追従しやすい |
+| C runtime | window / GPU / audio / 物理 / IO。tcs VM に API を公開する |
+| tcs VM | tcs の出力 (bytecode) を動かす内部の層で、ゲームからは触らない。`--lua` で選ぶ Lua の player では Lua がこの層になる |
 | C# (`Lub.*`) | runtime API の宣言(`cs-lib/lub_stub.cs`)。runtime primitive そのもの |
 | C# (`lubx`) | 宣言の上に C# で書かれた便利ライブラリ層(`cs-lib/lubx`) |
 

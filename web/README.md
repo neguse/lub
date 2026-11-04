@@ -1,10 +1,8 @@
 # lub playground (web)
 
-ブラウザで lub サンプルの C# ソースを編集 → client-only でその場コンパイル
-(.NET wasm 化した TinyC# コンパイラ)→ player iframe にホットリロードする
-プレイグラウンド。
+ブラウザで lub サンプルの C# ソースを編集 → client-only でその場コンパイル (tcs2c で C にした TinyC# コンパイラの wasm) → player iframe にホットリロードするプレイグラウンド。
 
-サーバ不要・完全静的。C#→Lua コンパイルもブラウザ内で完結する。
+サーバ不要・完全静的。C# から tcs VM の bytecode への変換もブラウザ内で完結する。
 
 ## WebXR
 
@@ -33,6 +31,9 @@ npm run fetch-slang          # postinstall でも走る
 #    要 dotnet SDK + wasm-tools workload + third_party/tcs submodule
 npm run gen-tcs -- --publish # tcs の .NET wasm bundle を web/tcs-wasm-assets/ に固める
 npm run gen-tcs-prebuilt     # cold 起動用 prebuilt snapshot(cs-lib / C# サンプル変更時も再生成)
+# 4. tcs の WebAssembly 版(web/tcs-selfhost-assets/)… 既定の変換に使う
+#    要 dotnet SDK + Emscripten(source ~/emsdk/emsdk_env.sh)+ third_party/tcs submodule
+npm run gen-tcs-selfhost
 ```
 
 playground の C# の変換は tcs の WebAssembly 版 (TinyC# で書いた tcs を tcs2c で C にし、emcc で wasm にしたもの。`playground/tcs-selfhost-worker.ts`) が行い、補完と hover は .NET wasm の Roslyn (`playground/tcs-worker.ts` の compile しない editor の session) が答える。
@@ -47,11 +48,13 @@ Assets のファイルサイズ上限内で静的配信できる。
 
 ## コンパイルの流れ
 
-- `playground/tcs-compiler.ts` / `tcs-worker.ts` … .NET wasm 化した TinyC#(tcs)を専用
-  worker の増分 session
-  (`SessionExports`)で動かし、変更 `.cs` のみ Update → registry apply する単一 entry Lua を返す。
-  補完・hover・診断も同じ session が非同期で提供する。warmup と編集の処理は
-  editor / player のスレッドを塞がない。
+- `playground/tcs-compiler.ts` … 変換と補完の API。
+  変換は既定で tcs の wasm (`tcs-selfhost-worker.ts`) の増分 session が専用 worker で行い、C# を tcs VM の bytecode にする。
+  変更 `.cs` のみ Update し、当てられる編集は差分 (batch) を、当てられない編集は作り直した bytecode を返す。
+  `?runtime=lua` なら registry apply する単一 entry Lua を返し、Lua の player で動かす。
+  `?compiler=dotnet` なら変換も .NET wasm (`tcs-worker.ts` の `SessionExports`) で行う。
+  補完と hover は .NET wasm の Roslyn (`tcs-worker.ts` の compile しない editor の session) が非同期で答える。
+  warmup と編集の処理は editor / player のスレッドを塞がない。
 - `playground/diagnostics.ts` … tcs の診断をパースしてエディタ内に表示。
 - `playground/samples.ts` … `.cs` をロードし、compile 後の `.lua` を scan してエディタに出す data files
   (slang 等)を解決。サンプル一覧の正は `CS_SAMPLES`。
@@ -122,7 +125,7 @@ npm run deploy            # build + wrangler deploy
 6. C# 増分編集が runtime の commit ACK(synced rev 表示)まで貫通する
 7. C# の診断がエディタ内に表示される
 8. C# 補完 / hover が返る(レイテンシ観測ログ付き)
-9. `tests/cs` の runtime テストを player で走らせ、PASS を確認する(事前に `scripts/cs-tests.sh` の `cs_tests_transpile` で `tests/cs/.lub/` に変換しておく)
+9. `tests/cs` の runtime テストを player で走らせ、PASS を確認する(既定は tcs VM の player で `tests/cs/.lub/all.tcsb` を動かし、`LUB_VERIFY_RUNTIME=lua` なら Lua の player。事前に `scripts/cs-tests.sh` の `cs_tests_transpile` と `cs_tests_vm_build` で `tests/cs/.lub/` に変換しておく)
 
 スクリーンショットは `/tmp/lub-verify/` に出力される。CI 利用時は dev server を
 別ジョブで立ち上げてから `LUB_URL=http://...` を指定すること。サブパス配信の確認は

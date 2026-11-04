@@ -1208,7 +1208,7 @@
                   "name": "Load",
                   "kind": "field",
                   "signature": "Gfx.LoadAction? Load",
-                  "doc": "`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。 LOAD は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。"
+                  "doc": "`Gfx.LoadAction.Clear`(省略時)/ `Gfx.LoadAction.Load`。 Load は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。"
                 }
               ]
             },
@@ -1282,13 +1282,13 @@
                   "name": "Cull",
                   "kind": "field",
                   "signature": "Gfx.Cull? Cull",
-                  "doc": "`Gfx.NONE` / `BACK` / `FRONT`。"
+                  "doc": "`Gfx.Cull.None` / `Back` / `Front`。"
                 },
                 {
                   "name": "Primitive",
                   "kind": "field",
                   "signature": "Gfx.Primitive? Primitive",
-                  "doc": "`Gfx.TRIANGLES` / `TRIANGLE_STRIP` / `LINES` / `LINE_STRIP` / `POINTS`。"
+                  "doc": "`Gfx.Primitive.Triangles` / `TriangleStrip` / `Lines` / `LineStrip` / `Points`。"
                 },
                 {
                   "name": "Depth",
@@ -1332,13 +1332,13 @@
                   "name": "Filter",
                   "kind": "field",
                   "signature": "Gfx.Filter? Filter",
-                  "doc": "`Gfx.LINEAR` / `NEAREST`。省略時 LINEAR。"
+                  "doc": "`Gfx.Filter.Linear` / `Nearest`。省略時 Linear。"
                 },
                 {
                   "name": "Wrap",
                   "kind": "field",
                   "signature": "Gfx.Wrap? Wrap",
-                  "doc": "`Gfx.REPEAT` / `CLAMP`。省略時 CLAMP。"
+                  "doc": "`Gfx.Wrap.Repeat` / `Clamp`。省略時 Clamp。"
                 },
                 {
                   "name": "Target",
@@ -2913,7 +2913,7 @@
                   "name": "TakeTrace",
                   "kind": "method",
                   "signature": "static List<string> TakeTrace()",
-                  "doc": "tcs の --trace で変換したソースが、前に呼んでから実行した行 (\"file:line\") を返し、記録を空にする。 tcs VM の player (lub_vm Game.csproj) は overlay (Lub=\"Overlay\") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub=\"Source\" の参照先のディレクトリの下の .cs) を --trace で変換する。記録が無ければ空 (Lua の player はいつも空)。順番は決まっていない。"
+                  "doc": "tcs の --trace で変換したソースが、前に呼んでから実行した行 (\"file:line\") を返し、記録を空にする。 tcs VM の player (lub Game.csproj) は overlay (Lub=\"Overlay\") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub=\"Source\" の参照先のディレクトリの下の .cs) を --trace で変換する。記録が無ければ空 (Lua の player はいつも空)。順番は決まっていない。"
                 },
                 {
                   "name": "TakeValues",

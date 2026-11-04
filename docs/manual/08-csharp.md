@@ -1,10 +1,9 @@
 # C# (TinyC#) で書く
 
-lub のゲームコードは C# で書く。使うのは
-[tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを Lua に
-transpile するコンパイラで、playground ではブラウザ内 (.NET の WASM 版)、
-native では lub が `third_party/tcs` を dotnet で動かす。
-dotnet が無い環境では、同じ compiler を lub の Lua で動かす (後述)。
+lub のゲームコードは C# で書く。
+使うのは [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (Lua にも変換できる) で、playground ではブラウザ内 (tcs2c で C にした tcs の WASM 版)、native では lub が `third_party/tcs` を dotnet で動かす。
+dotnet が無い環境では、tcs2c で C にした tcs (C の tcs) を使う。
+実行ファイルの隣に C の tcs があれば、dotnet があってもそちらを先に使う (後述)。
 tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、Lua、ブラウザのどれで動かしても同じ出力になる。
 
 「フル C# が動く」わけではない。TinyC# は C# 構文の DSL であり、
@@ -184,8 +183,8 @@ csproj は lub にとっては entry 指定 (basename = entry class、入力 = �
 同じソースを実 .NET で動かせる (.NET Hot Reload や本物のデバッガを使いたい
 とき)。`dotnet/Lub` が lub の C API の facade と host で、共有 library
 (`build-release-linux/liblub.so`、CMake の `lub_shared`) を P/Invoke する。
-雛形は `templates/game/` (`dotnet run` で .NET 実行、`lub Game.csproj` で
-tcs→Lua。入口は `App.Run(typeof(Game), args)`)。サンプルは runner で回す:
+雛形は `templates/game/` (`dotnet run` で .NET 実行、`lub Game.csproj` で tcs VM の player。入口は `App.Run(typeof(Game), args)`)。
+サンプルは runner で回す:
 
 ```
 dotnet run --project dotnet/SampleRunner -p:Sample=09_breakout -- --capture out.png
