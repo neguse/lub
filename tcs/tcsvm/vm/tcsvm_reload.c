@@ -536,7 +536,7 @@ static void reflect(Reload *rl) {
   for (uint32_t i = 0; i < vm->nretired; i++)
     TVM_TYPE(vm->retired[i]) = &nv->types[nv->string_type];
   swap_module(vm, nv);
-  vm->types_version++;
+  vm->types_version = tvm_next_types_version();
   /* 作り直した object があれば、それより前の状態の控えは戻せない */
   for (uint32_t i = 0; i < objs.n; i++)
     if (GC_HEADER(objs.p[i])->flags & TVM_GC_RELOADED) {

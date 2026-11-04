@@ -93,7 +93,7 @@ const char *tvm_string_data(const void *string, size_t *len);
 
 /* 型を名前で引く (class は IL の名前 "Eng_Opts"、List は "List<Eng_Opts>"、配列は "int[]"、要素の int / float / bool も同じ綴り)。
    無ければ NULL。型の表は読み込みと reload で作り直すので、host が型や offset を cache するなら tvm_types_version が
-   変わったら引き直す */
+   変わったら引き直す (版は VM をまたいで同じ値にならないので、VM を作り直したときも変わる) */
 typedef struct TcsType TvmTypeInfo;
 const TvmTypeInfo *tvm_type(TvmVm *vm, const char *name);
 uint32_t tvm_types_version(TvmVm *vm);

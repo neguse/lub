@@ -353,7 +353,7 @@ static bool layout(TvmVm *vm) {
   }
   /* C の struct の規則 (doc/object-model.md §5)。class の payload は VM の型の pointer の後から
      (header を tcs2c と揃えるのは M-4) */
-  vm->types_version++;
+  vm->types_version = tvm_next_types_version();
   /* C の module の class (tvm_host_type に結んだ --ref の class) は C の module の layout で、host_value を持たない
      (host_value は host の data class だけ。doc/object-model.md §3) */
   for (uint32_t i = 0; i < vm->ntypes; i++)

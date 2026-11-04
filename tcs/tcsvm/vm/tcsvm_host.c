@@ -152,6 +152,13 @@ const TvmTypeInfo *tvm_type(TvmVm *vm, const char *name) { return find_type(vm, 
 
 uint32_t tvm_types_version(TvmVm *vm) { return vm->types_version; }
 
+/* 型の表の版は、VM をまたいで同じ値を二度配らない。
+   host は版で型の cache を決めるので、VM を作り直したとき前の VM と同じ版になると、捨てた VM の型を使い続ける */
+uint32_t tvm_next_types_version(void) {
+  static uint32_t last;
+  return ++last;
+}
+
 int32_t tvm_type_field_offset(const TvmTypeInfo *t, const char *field) {
   if (!t || (t->tkind != TVM_T_CLASS && t->tkind != TVM_T_STRUCT))
     return -1;
