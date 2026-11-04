@@ -32,6 +32,7 @@
 #include <SDL3/SDL.h>
 #include <lub/lub_host.h>
 #include <lub/lub_vm.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -159,11 +160,35 @@ static bool bind_entry(void) {
   return true;
 }
 
+// 今 VM で走らせている callback (落ちたときに出す)。VM の外では NULL
+static const char *g_calling;
+
+static void crash_site(void *user, const char *file, uint32_t line) {
+  (void)user;
+  fprintf(stderr, "  at %s:%u\n", file, (unsigned)line);
+}
+
+// 落ちたとき (SIGSEGV など) に、走らせていた callback と C# の呼び出しの段を出してから、既定の処置で落ちる。
+// signal の中では本来呼べない関数も使うが、どのみち落ちる所なので、出せるだけ出す
+static void on_crash(int sig) {
+  fprintf(stderr, "lub: crashed (signal %d) %s%s\n", sig,
+          g_calling ? "in " : "outside the VM", g_calling ? g_calling : "");
+  if (vm_lub_vm && g_calling)
+    tvm_stack(vm_lub_vm, crash_site, NULL);
+  fflush(stderr);
+  signal(sig, SIG_DFL);
+  raise(sig);
+}
+
 static bool call_fn(int32_t fn, const char *what, const TvmSlot *args,
                     size_t nargs) {
   if (!vm_lub_vm || fn < 0)
     return true;
-  if (tvm_call(vm_lub_vm, fn, args, nargs, NULL, 0) != TVM_OK) {
+  const char *outer = g_calling;
+  g_calling = what;
+  TvmStatus st = tvm_call(vm_lub_vm, fn, args, nargs, NULL, 0);
+  g_calling = outer;
+  if (st != TVM_OK) {
     log_fault(what);
     return false;
   }
@@ -929,6 +954,9 @@ EMSCRIPTEN_KEEPALIVE void lub_vm_volume(float volume) {
 SDL_AppResult lub_vm_app_init(int argc, char **argv,
                               const LubVmConfig *config) {
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
+  signal(SIGSEGV, on_crash);
+  signal(SIGFPE, on_crash);
+  signal(SIGILL, on_crash);
   // 静的に link した拡張は、読み込む拡張より先に登録する
   for (int i = 0;
        config && i < config->nextensions && g_nextensions < MAX_EXTENSIONS; i++)
