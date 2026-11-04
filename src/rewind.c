@@ -17,6 +17,8 @@ typedef struct RewindState {
   int paused;          // 止めている位置 (古い方からの添字、-1 = 止めていない)
   bool replaying;      // 止めた frame のゲームの OnFrame の間
   uint32_t layout;     // 控えたときの player の layout_version
+  // 止めている間に控えを捨てた。次の frame の控えで止め直す
+  bool repause;
 } RewindState;
 
 static RewindState *state(App *app) {
@@ -45,15 +47,19 @@ static void drop_all(App *app, RewindState *r) {
   r->head = 0;
   r->paused = -1;
   r->replaying = false;
+  r->repause = false;
 }
 
-// player が控えを戻せなくなっていたら (reload が object を作り直した)、控えを捨てる
+// player が控えを戻せなくなっていたら (reload が object を作り直した)、控えを捨てる。
+// 止めていたなら、止めたままにする (次の frame で今の状態を控え直して止める)
 static void check_layout(App *app, RewindState *r) {
   const LubDebugHooks *h = app->debug_hooks;
   uint32_t now = h && h->layout_version ? h->layout_version(app) : 0;
   if (now != r->layout) {
+    bool paused = r->paused >= 0;
     drop_all(app, r);
     r->layout = now;
+    r->repause = paused;
   }
 }
 
@@ -166,8 +172,10 @@ void rewind_pause(App *app, int back) {
     r->paused = r->count - 1 - back;
     return;
   }
-  if (r->paused < 0)
+  if (r->paused < 0) {
+    r->repause = false;
     return;
+  }
   // 止めた位置の状態に戻し、それより後の控えを捨てる (その位置の控えも次の frame で取り直す)
   app->debug_hooks->snapshot_restore(app, frame_at(r, r->paused)->snapshot);
   for (int i = r->paused; i < r->count; ++i)
@@ -201,6 +209,12 @@ bool rewind_frame_begin(App *app, double *dt) {
   f->dt = *dt;
   capture_input(app, &f->input);
   r->count++;
+  if (r->repause) {
+    r->repause = false;
+    r->paused = r->count - 1;
+    r->replaying = true;
+    return true;
+  }
   return false;
 }
 
