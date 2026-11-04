@@ -1,6 +1,6 @@
 # tcs のセルフホスト設計
 
-> Status: 実装 (2026-10-31)。セルフホストの compiler は `SelfHost/` にあり、bootstrap の固定点と既存の test の全体での差分の一致を gate にした。lub の samples と tests/cs も同じ結果で動き、lub の native (dotnet なし) と web の playground から使える (§17.7)。
+> Status: 実装。compiler、CLI、C backend、tcs VM の backend は TinyC# で書いた 1 つの実装 (`SelfHost/`) で、.NET、Lua、C (tcs2c)、wasm で同じソースが動く (§18、§19)。gate は bootstrap の固定点 (`SelfHost/build.sh`、`SelfHost/native.sh`) と、Roslyn の受理の判定と .NET での実行を oracle にした比較 (§18.6)。lub は C にした tcs を起動して dotnet の無い環境でも変換でき、web の playground の変換は既定で tcs の wasm を使う (§19.3)。
 > 実装は §1〜§16 の提案と違う形を取った (IL を共有せず、Lua を直接出す)。実装した形と提案からの差は §17 にある。§1〜§16 は提案のときのまま残す
 >
 > Scope: tcs の compiler を TinyC# のサブセットで書き、tcs 自身で Lua / C に変換して動かす構成。
@@ -422,6 +422,8 @@ SelfHost/
 | CS8125 | tuple の要素の名前 (Item2 を別の位置に使う) |
 
 ### 17.7 lub での利用
+
+> 2026-10-31 時点の記録。ここに書いた lub の側の経路 (`lub tcsc`、`scripts/build-tcs-selfhost.sh`、`bin/tcs/selfhost`、`?compiler=selfhost`) は今の lub には無い。今の形は §19.3。
 
 lub の C# のプログラム (cs-lib、`lub_stub.cs` を `--ref` にした samples と tests/cs) をセルフホストの compiler で変換できるようにし、lub の上で参照実装の出力と同じに動くことを確かめた。
 
