@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 自作メソッドの out (`out var` / `out _` だけ)。Lua は multi-return、C はポインタ。
+// 自作メソッドの out (`out var` / `out _` と、宣言済みで lambda に capture されない局所変数)。Lua は multi-return、C はポインタ。
 // 期待値は同じ program を CoreCLR で実行した stdout
 public partial class DifferentialTests
 {
@@ -119,6 +119,41 @@ public partial class DifferentialTests
             "True,18\nFalse,6\nTrue,9\n10,11,12\n24,13\n4tag97"
                 + "1.5TrueTrueFalse\n1,100\nTruegv\nTrue,3\n0,0,True\n3\np39!p0!",
             output);
+    }
+
+    [CFact]
+    public void OutParameters_DeclaredLocal()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public struct V { public int X; }
+            public class P
+            {
+                static bool Try(int a, out int r) { r = a * 2; return a > 0; }
+                static void Two(out int a, out string b) { a = 1; b = "x"; }
+                static int Mid(out int a, int b) { a = b + 1; return b - 1; }
+                static void Make(int x, out V v) { v = new V(); v.X = x; }
+                public static void Main()
+                {
+                    int v = 5;
+                    Console.WriteLine(Try(3, out v) + "," + v);
+                    int w;
+                    if (!Try(-1, out w)) Console.WriteLine(w);
+                    string s = "old";
+                    Two(out var a, out s); Console.WriteLine(a + s);
+                    int x = 1;
+                    x = Mid(out x, x); Console.WriteLine(x);
+                    int t = 0;
+                    var n = 2;
+                    while (Try(n, out t)) { Console.WriteLine(t); n--; }
+                    Console.WriteLine(t);
+                    V st = new V(); st.X = 9;
+                    var copy = st;
+                    Make(4, out st); Console.WriteLine(st.X + "," + copy.X);
+                }
+            }
+            """, "P");
+        Assert.Equal("True,6\n-2\n1x\n0\n4\n2\n0\n4,9", output);
     }
 
     [CFact]
