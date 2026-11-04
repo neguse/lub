@@ -11,6 +11,7 @@ public static class Tool
     static int pausedScore = -1;
     static int reloads;
     static int reloadedAt = -1;
+    static float editedAt;
     static bool failed;
 
     static void Fail(string message)
@@ -133,12 +134,13 @@ public static class Tool
                 Fail("after resume: position " + Rewind.Position() + " score " + Game.Score);
             Rewind.Pause(0);
             Edit("public int Hp = 3;", "public int Hp = 3;\n    public int Mp;");
+            editedAt = Sys.Seconds();
         }
         else if (frame > 24 && reloadedAt < 0)
         {
             if (reloads > 0)
                 reloadedAt = frame;
-            else if (frame > 24 + 60 * 60)
+            else if (Sys.Seconds() - editedAt > 60)
                 Fail("the save that adds a field did not reload");
         }
         else if (reloadedAt > 0 && frame == reloadedAt + 2)
