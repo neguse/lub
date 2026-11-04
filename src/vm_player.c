@@ -1053,6 +1053,13 @@ SDL_AppResult lub_vm_app_iterate(void) {
     bool ok = on_frame(dt);
     lub_host_frame_end(g_ctx, ok);
   }
+  // App.Restart は frame の終わりに作り直す (VM の frame の中では作り直せない)
+  App *app = lub_api_app(g_ctx);
+  if (app->restart_requested) {
+    app->restart_requested = false;
+    if (vm_lub_vm)
+      restart("App.Restart was called");
+  }
   if (lub_host_quit_requested(g_ctx))
     return lub_host_exit_code(g_ctx) == 0 ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
   return SDL_APP_CONTINUE;

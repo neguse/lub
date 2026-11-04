@@ -2401,6 +2401,19 @@ public static unsafe partial class App
         }
     }
 
+    public static void Restart()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_app_restart(LubRuntime.Ctx);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
 }
 
 /// <summary>即時モード GPU API。 draw / dispatch には名前と値の組を Bindings で渡す。</summary>
@@ -11052,6 +11065,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_app_quit(void* ctx, int @code);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_app_restart(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_main_tex(void* ctx);

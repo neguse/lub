@@ -419,6 +419,16 @@ namespace Lub
         public static void Quit(int code = 0)
         {
         }
+
+        /// <summary>ゲームを作り直すよう求める。
+        /// この frame の終わりに `OnQuit` を呼んで VM を作り直し、`OnInit` から始める (hot reload が差分を当てられないときの作り直しと同じ)。
+        /// C# の変数 (static と instance) はすべて初期値に戻り、key で宣言した GPU の資源と音は残る。
+        /// 開発中の player (`lub <Entry>.csproj`、`lub --lua`、web) だけで効き、tcs2c の release build では何もしない。
+        /// </summary>
+        [LubNoFail]
+        public static void Restart()
+        {
+        }
     }
 
     /// <summary>即時モード GPU API。

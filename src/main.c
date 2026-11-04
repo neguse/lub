@@ -676,6 +676,15 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   }
   bool frame_ok = lua_ctx_call_frame(&g_app->lua, g_app->frame_dt);
   lub_host_frame_end(g_ctx, frame_ok);
+  // App.Restart は frame の終わりに作り直す
+  if (g_app->restart_requested) {
+    g_app->restart_requested = false;
+#ifndef __EMSCRIPTEN__
+    restart_entry("App.Restart was called", NULL);
+#else
+    lub_web_vm_lost(1, "App.Restart was called");
+#endif
+  }
   if (lub_host_quit_requested(g_ctx))
     return quit_result();
   return SDL_APP_CONTINUE;

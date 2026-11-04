@@ -106,6 +106,8 @@ typedef struct App {
   int fixed_w, fixed_h;
   bool quit_requested; // App.Quit と window の close が立てる
   int32_t exit_code;   // Quit の code (0 = 成功)
+  // App.Restart が立て、player が frame の終わりに作り直す
+  bool restart_requested;
   // updated once per second after backend end_frame/present.
   // --fixed-dt の間は壁時計に依らず、fixed dt の逆数 (1e-3 に丸め) を 1 秒分の frame ごとに更新する。
   double actual_fps;

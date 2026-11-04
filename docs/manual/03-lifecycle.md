@@ -146,6 +146,10 @@ runtime は古い VM の `OnQuit` を呼んで閉じ、その build の出力か
 - 出力の読み込みでエラーになったときは VM が無いまま待ち、tcs が次に出力を書くと
   (通る編集のたび)それから作り直す
 
+差分で移せる変更でも、最初からやり直したいとき (instance の field の初期化子を変えて生きている instance にも入れたいときなど) は、`App.Restart()` で同じ作り直しを求められる。
+呼んだ frame の終わりに作り直す。
+tcs2c の release build では何もしない。
+
 `lub --lua <Entry>.csproj` は deprecate する予定の Lua の player で動かし、差分は
 tcs の reload chunk(Lua)で当てる。
 
@@ -158,7 +162,7 @@ reload の意味論は 2 方式あり、環境で決まる。
 | 方式 | 差分を VM に適用 | 増分コンパイル + 差分適用 |
 | static 変数の値 | 保持される | 保持される |
 | クラスの形の変更 | field を移行(追加は初期化子、削除は破棄) | 自動で作り直し(restart) |
-| instance の field の初期化子の変更 | 生きている instance は今の値のまま(新しく作る instance から新しい初期化子) | 自動で作り直し(restart) |
+| instance の field の初期化子の変更 | 生きている instance は今の値のまま(新しく作る instance から新しい初期化子。全部に入れるなら `App.Restart()`) | 自動で作り直し(restart) |
 | static の初期化子の変更 | 自動で作り直し(restart) | 自動で作り直し(restart) |
 | 反映の速さ | 再 transpile 数百 ms〜数 s | 編集停止から 0.5 s 未満 |
 
