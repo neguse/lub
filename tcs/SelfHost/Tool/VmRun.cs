@@ -32,6 +32,8 @@ public sealed class VmUpdate
     public List<int> Module = new List<int>();
     public List<int> Batch = new List<int>();
     public List<string> Reasons = new List<string>();
+    // "batch" のとき、live に当てたが host に知らせたい変化 (ReloadRules.Notes)
+    public List<string> Notes = new List<string>();
     public List<string> Errors = new List<string>();
 
     public VmUpdate(string kind)
@@ -116,6 +118,7 @@ public sealed class VmSession
             r.Module = module;
             return r;
         }
+        var notes = ReloadRules.Notes(ReloadRules.TypesOf(_last), ReloadRules.TypesOf(next));
         var m = VmEmitter.EmitReload(_lastDesc!, next, _entry, _exports, RestartReasons(_last, next), out List<int> plan, out List<string> reasons,
             out VmDescription nextDesc);
         if (CFail.Failed) return Failed();
@@ -131,6 +134,7 @@ public sealed class VmSession
         var b = new VmUpdate("batch");
         b.Module = m;
         b.Batch = VmEmitter.Batch(m, plan);
+        b.Notes = notes;
         return b;
     }
 
@@ -243,7 +247,8 @@ public sealed class VmRun
 
     // ---- --watch (doc/vm-design.md §13.3): 入力が変わるたびに直前の build からの reload を作り、-o を書き直してから
     // 標準出力へ `@@tcs_<kind> <byte 数>` の行と本文を書く。kind は vm_batch (本文は batch の base64 の 1 行と改行。
-    // host は tvm_apply_batch で当てる) と restart_required (本文は改行終端の理由の行。host は -o を読み直す)。
+    // host は tvm_apply_batch で当てる)、restart_required (本文は改行終端の理由の行。host は -o を読み直す)、
+    // reload_notes (vm_batch の前に送る、live に当てたが知らせたい変化。本文は改行終端の行)。
     // 診断のある編集は stderr に書いて、次の編集を待つ。以後の差分は最後に書いた build から作る ----
 
     private string Stamp()
@@ -329,7 +334,17 @@ public sealed class VmRun
             foreach (var x in r.Reasons) body.Add(x + "\n");
             WatchRun.WriteHostMessage("restart_required", string.Join("", body));
         }
-        else WatchRun.WriteHostMessage("vm_batch", VBytes.Base64(r.Batch) + "\n");
+        else
+        {
+            // 知らせは当てる前に送る (host は次の OnReload で渡す)
+            if (r.Notes.Count > 0)
+            {
+                var notes = new List<string>();
+                foreach (var x in r.Notes) notes.Add(x + "\n");
+                WatchRun.WriteHostMessage("reload_notes", string.Join("", notes));
+            }
+            WatchRun.WriteHostMessage("vm_batch", VBytes.Base64(r.Batch) + "\n");
+        }
         return -1;
     }
 

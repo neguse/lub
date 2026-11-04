@@ -181,6 +181,23 @@ public class VmReloadTests
     }
 
     [Fact]
+    public void Session_NotesAChangedInstanceFieldInitializer()
+    {
+        if (!Backends.VmEnabled) return;
+        // 生きている instance は今の値を保つので、instance の field の初期化子の変更は restart にせず、host に知らせる
+        var session = new TinyCs.Vm.VmSession(null, ["Game.*"], []);
+        const string v1 = Header + "public class Tree { public int Hp = 40; } public static class Game { static Tree t = new Tree(); public static void Frame() { } public static void Report() { Console.WriteLine(t.Hp + \" \" + new Tree().Hp); } }";
+        const string v2 = Header + "public class Tree { public int Hp = 100; } public static class Game { static Tree t = new Tree(); public static void Frame() { } public static void Report() { Console.WriteLine(t.Hp + \" \" + new Tree().Hp); } }";
+        var first = session.Update([v1]);
+        var second = session.Update([v2]);
+        Assert.Equal("batch", second.Kind);
+        Assert.Equal(["instance field initializer changed: Tree.Hp"], second.Notes);
+        var (code, stdout, stderr) = Backends.RunVmBatch(first.Module!, second.Batch!, "Game", 3);
+        Assert.True(code == 0, stderr);
+        Assert.Equal("40 100", stdout);
+    }
+
+    [Fact]
     public void ChangedStaticInitializer_RequiresRestart()
     {
         if (!Backends.VmEnabled) return;
