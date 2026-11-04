@@ -425,7 +425,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | 修飾子 | 状態 | 備考 |
 |--------|:----:|------|
 | `ref` | **N/A** | ユーザー定義メソッドの宣言は TCS1001 `RefParameter`、`--ref` host メソッドへの `ref` 引数は TCS1001 `RefArgument`。ref の戻り値は TCS1001 `RefType` |
-| `out` | **Y** | 自作メソッドは `out var` / `out T x` / `out _` だけ渡せる (Lua は multi-return、C はポインタ)。前もって宣言した変数、field、配列の要素、out parameter を渡すのは TCS1001 (`OutArgumentNotDeclaration`)。delegate / lambda / constructor の out は TCS1001 (`OutParameter`)。`--ref` の host メソッドと BCL (`TryGetValue` / `TryParse`) は宣言済みの変数も受ける |
+| `out` | **Y** | 自作メソッドは `out var` / `out T x` / `out _` と、前もって宣言した局所変数 (lambda に capture されない物) を渡せる (Lua は multi-return、C はポインタ)。field、配列の要素、parameter、lambda に capture される局所変数を渡すのは TCS1001 (`OutArgumentNotDeclaration`。受け手には呼び出しが正常に終わってから書くので、呼び出しの中から見える受け手は C# と違って見える)。delegate / lambda / constructor の out は TCS1001 (`OutParameter`)。`--ref` の host メソッドと BCL (`TryGetValue` / `TryParse`) は宣言済みの変数も受ける |
 | `in` (C# 7.2) | **N/A** | ユーザー定義メソッドの宣言は TCS1001 `InParameter`、`--ref` host メソッドへの `in` 引数は TCS1001 `InArgument` |
 | `ref readonly` (C# 12) | **N/A** | TCS1001 `RefParameter` / `RefType` |
 | `params` | **-** | |

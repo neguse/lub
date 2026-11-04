@@ -161,8 +161,8 @@ public class MultiReturnTests
     }
 
     [Theory]
-    [InlineData("int v; Try(out v);")]
     [InlineData("Try(out _f);")]
+    [InlineData("int v = 0; System.Func<int> f = () => v; Try(out v);")]
     [InlineData("var a = new int[1]; Try(out a[0]);")]
     [InlineData("new P().M(out _f);")]
     public void UserMethodOutArgument_NotADeclaration_ReportsUnsupportedSyntax(string statement)

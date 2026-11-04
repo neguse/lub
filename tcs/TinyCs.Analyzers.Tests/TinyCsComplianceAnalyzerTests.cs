@@ -861,6 +861,7 @@ public partial class TinyCsComplianceAnalyzerTests
         var diagnostics = await AnalyzeAsync("""
             public class Parser
             {
+                static int field;
                 static bool Try(out int value) { value = 0; return false; }
                 public static void Run()
                 {
@@ -868,6 +869,7 @@ public partial class TinyCsComplianceAnalyzerTests
                     Try(out value);
                     Try(out var other);
                     Try(out _);
+                    Try(out field);
                 }
             }
             """);

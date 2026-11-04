@@ -291,14 +291,16 @@ public sealed class SemanticChecks
     {
         var m = call.Sym;
         if (m == null) return;
-        // 自作の method の out は `out var` / `out _` の新しい変数だけ受ける (既存の変数は別名になり、multi-return では呼び出しの中の書き込みが見えない)
+        // 自作の method の out は、`out var` / `out _` の新しい変数と、宣言済みで lambda に capture されない局所変数だけ受ける。
+        // multi-return は呼び出しが終わってから受け手に書くので、呼び出しの中から見える受け手 (field、配列の要素、parameter、capture された変数) は C# と違って見える
         if (m.Kind == SymKind.Method && m.Builtin == "" && m.Owner != null && !m.Owner.IsRef && call.List != null)
         {
             foreach (var a in call.List)
             {
                 if (!a.Has(Mods.Out) || a.A == null) continue;
                 var x = a.A;
-                bool ok = x.Kind == NodeKind.PatDecl || x.Kind == NodeKind.PatDiscard || (x.Kind == NodeKind.Name && x.Text == "_" && x.Local == null && x.Sym == null);
+                bool ok = x.Kind == NodeKind.PatDecl || x.Kind == NodeKind.PatDiscard || (x.Kind == NodeKind.Name && x.Text == "_" && x.Local == null && x.Sym == null)
+                    || (x.Kind == NodeKind.Name && x.Local != null && !x.Local.IsParam && !x.Local.Captured);
                 if (!ok) Report("OutArgumentNotDeclaration", a);
             }
         }
