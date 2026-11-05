@@ -514,6 +514,7 @@ public sealed class FunctionCompiler
     private void LineAt(IlPos? origin)
     {
         if (origin == null) return;
+        _f.At = origin;
         int line = origin.Line;
         if (_f.File == "")
         {
