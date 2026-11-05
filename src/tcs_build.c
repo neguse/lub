@@ -279,6 +279,62 @@ static void tcs_job_close(TcsPipeline *p) {
 
 #define TCS_ARGV_MAX 256
 
+#ifndef _WIN32
+// Linux / macOS では tcs を見張りの sh の下で動かす (Windows の Job Object の代わり)。
+// sh の標準入力は lub だけが書き込み口を持つ pipe で、lub がどう終わっても (signal でも SIGKILL でも) OS が閉じる。
+// 閉じたら sh が tcs に SIGTERM を送る (dotnet run は子の Transpiler に伝える)。
+// sh への SIGTERM (tcs_pipeline_stop) も tcs に伝え、tcs が自分で終われば sh も同じ終了コードで終わる。
+// 背後の list の標準入力は /dev/null になるので、pipe は fd 3 に写して見張りに渡す。
+static const char GUARD_SCRIPT[] =
+    "tcs=\n"
+    "trap 'kill $tcs 2>/dev/null' INT TERM HUP\n"
+    "exec 3<&0\n"
+    "\"$@\" 3<&- </dev/null &\n"
+    "tcs=$!\n"
+    "{ while read -r _; do :; done; kill $tcs 2>/dev/null; } <&3 &\n"
+    "guard=$!\n"
+    "wait $tcs\n"
+    "status=$?\n"
+    "kill $guard 2>/dev/null\n"
+    "exit $status\n";
+#endif
+
+// argv (NULL 終端) を tcs --watch として背後に張る。
+// stdout は frame の stream として受け、stderr (tcs のログと診断) は端末に出す。
+static bool spawn_watch(TcsPipeline *p, const char **argv) {
+#ifndef _WIN32
+  const char *guarded[TCS_ARGV_MAX + 4];
+  int n = 0;
+  guarded[n++] = "/bin/sh";
+  guarded[n++] = "-c";
+  guarded[n++] = GUARD_SCRIPT;
+  guarded[n++] = "lub-tcs-guard"; // $0
+  for (int i = 0; argv[i]; i++)
+    guarded[n++] = argv[i];
+  guarded[n] = NULL;
+  argv = guarded;
+#endif
+  SDL_PropertiesID props = SDL_CreateProperties();
+  SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER,
+                         (void *)argv);
+  SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER,
+                        SDL_PROCESS_STDIO_APP);
+#ifndef _WIN32
+  SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDIN_NUMBER,
+                        SDL_PROCESS_STDIO_APP);
+#endif
+  p->proc = SDL_CreateProcessWithProperties(props);
+  SDL_DestroyProperties(props);
+  if (!p->proc) {
+    SDL_Log("tcs spawn failed: %s", SDL_GetError());
+    return false;
+  }
+#ifdef _WIN32
+  p->job = tcs_job_adopt(p->proc);
+#endif
+  return true;
+}
+
 // entry (.csproj) の入力を argv[n] 以降に足し、次の空き位置を返す。
 // 入力は dir 以下の全 *.cs (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)、cs-lib の実装、--ref の stub。
 // 足せる入力が無ければ -1。
@@ -387,23 +443,8 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   argv[n++] = "--watch";
   argv[n++] = "--reload-chunks";
   argv[n] = NULL;
-
-  SDL_PropertiesID props = SDL_CreateProperties();
-  SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER,
-                         (void *)argv);
-  // stdout は reload chunk の stream として受ける。
-  // stderr (tcs のログと transpile エラー) は端末に出るよう継承する
-  SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER,
-                        SDL_PROCESS_STDIO_APP);
-  p->proc = SDL_CreateProcessWithProperties(props);
-  SDL_DestroyProperties(props);
-  if (!p->proc) {
-    SDL_Log("tcs spawn failed: %s", SDL_GetError());
+  if (!spawn_watch(p, argv))
     return false;
-  }
-#ifdef _WIN32
-  p->job = tcs_job_adopt(p->proc);
-#endif
 
   // 初回 transpile を待つ (dotnet run の cold start 込みで最大 120s)。
   // 既存出力がある場合も mtime 更新を待つ (stale をロードしない)。
@@ -452,21 +493,8 @@ bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs) {
     argv[n++] = args[i];
   argv[n++] = "--watch";
   argv[n] = NULL;
-  SDL_PropertiesID props = SDL_CreateProperties();
-  SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER,
-                         (void *)argv);
-  // stdout は frame の stream として受け、stderr (tcs のログと診断) は端末に出す
-  SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER,
-                        SDL_PROCESS_STDIO_APP);
-  p->proc = SDL_CreateProcessWithProperties(props);
-  SDL_DestroyProperties(props);
-  if (!p->proc) {
-    SDL_Log("tcs spawn failed: %s", SDL_GetError());
+  if (!spawn_watch(p, argv))
     return false;
-  }
-#ifdef _WIN32
-  p->job = tcs_job_adopt(p->proc);
-#endif
   p->enabled = true;
   return true;
 }
