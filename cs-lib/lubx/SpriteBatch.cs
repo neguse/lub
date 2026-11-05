@@ -28,6 +28,8 @@ public class SpriteBucket
 /// 毎フレーム begin() → sprite()/quad() を積む → pass 内で flush() の順で使う。
 /// 座標は論理解像度 (logicalW x logicalH) のピクセル、左上原点。
 /// アトラスごとに 1 draw にまとめられる。
+/// 重なりは呼んだ順ではなく、Begin の後にそのアトラスが初めて出た順 (同じアトラスの中は呼んだ順)。
+/// 違うアトラスを呼んだ順に重ねたいときは、重ねる層ごとに Begin から Flush までを分ける。
 /// </summary>
 public class SpriteBatch
 {
@@ -91,6 +93,7 @@ public class SpriteBatch
 
     private Dictionary<string, SpriteBucket> buckets =
         new Dictionary<string, SpriteBucket>();
+    // Begin の後に初めて出た順のアトラスの key (Flush が描く順)
     private List<string> order = new List<string>();
     private string key;
     private bool instanced;
@@ -126,6 +129,7 @@ public class SpriteBatch
             b.Verts.Clear();
             b.Ready = false;
         }
+        order.Clear();
         lastAtlas = null;
         lastVerts = null;
     }
@@ -141,13 +145,13 @@ public class SpriteBatch
         {
             b = new SpriteBucket(a);
             buckets[a.Key] = b;
-            order.Add(a.Key);
         }
         if (!b.Ready)
         {
             if (!a.Ensure())
                 return null;
             b.Ready = true;
+            order.Add(a.Key);
         }
         return b.Verts;
     }

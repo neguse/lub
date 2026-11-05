@@ -49,6 +49,22 @@ var floor = Assets.Shader("game_a/floor", vsPath, fsPath);
 同じ key の部品は同じ resource を共有するので、中身の違うものに同じ key を渡さない。
 `Sfx.Blip` / `Sfx.Noise` の音と `SpriteBatch.Rect` / `Disc` の atlas は、中身の決まった共通の key を使うので key を取らない。
 
+## SpriteBatch の重なり
+
+`SpriteBatch` は、`Begin` から `Flush` までに積んだ絵を atlas ごとに 1 draw にまとめて描く。
+そのため重なりは呼んだ順ではなく、`Begin` の後にその atlas が初めて出た順になる(同じ atlas の中は呼んだ順)。
+`Text` の文字も、その font の atlas の 1 つとして同じ扱いになる。
+違う atlas の絵を呼んだ順に重ねたいときは、重ねる層ごとに `Begin` から `Flush` までを分ける。
+
+```csharp
+batch.Begin();
+batch.Quad(bg, src, 0, 0, 320, 180);    // 背景の atlas
+batch.Flush();
+batch.Begin();
+batch.Quad(chara, src, 100, 80, 16, 16); // 背景の上に重ねる atlas
+batch.Flush();
+```
+
 ## 使い分けの目安
 
 - まず `lubx` で書き始める(`SpriteBatch`、`Text` など)
