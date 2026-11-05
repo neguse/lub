@@ -3225,10 +3225,17 @@ LUB_API LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y,
 LUB_API void lub_gfx_size(LubContext *ctx, int32_t *w, int32_t *h);
 
 // ----------------------------------------------------------------- input
-// フレームラッチ付きポーリング入力。 key は "space" / "a".."z" / "f1".."f12"
-// 等、button は SDL 準拠 1 始まり (省略時 1 = 左)。タッチ画面 (スマホの
-// web、iOS) の指は、1 本目がマウスの button 1 として届く。タップとドラッグは
-// MousePressed / MouseDown / MouseReleased と MousePos で読む。
+// フレームラッチ付きポーリング入力。 key は名前で指す (大文字と小文字は区別
+// しない)。文字と数字は "a".."z" / "0".."9"、ファンクションキーは
+// "f1".."f12"。矢印は "left" / "right" / "up" / "down" (別名 "arrowleft" /
+// "arrowright" / "arrowup" / "arrowdown")。ほかに "space" (別名
+// "spacebar")、"enter" (別名 "return")、"escape" (別名
+// "esc")、"tab"、"backspace"。これら以外の名前は SDL の scancode の名前
+// ("left shift"、"left ctrl"、"delete"、"home"、"pageup"、"keypad 1" など)
+// として引く。引けない名前の key は押されていない扱い (false) になる。 button
+// は SDL 準拠 1 始まり (省略時 1 = 左)。タッチ画面 (スマホの web、iOS) の指
+// は、1 本目がマウスの button 1 として届く。タップとドラッグは MousePressed /
+// MouseDown / MouseReleased と MousePos で読む。
 
 LUB_API bool lub_input_key_down(LubContext *ctx, LubStr key);
 
