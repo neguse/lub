@@ -859,6 +859,9 @@ public sealed class ModuleBuilder
             var def = _pending[_pendingHead];
             _pendingHead++;
             def.Compile!(def);
+            // 誤りに変換していた文の場所を付ける。他の診断と同じ形にして、host が行を示せるようにする
+            if (CFail.Failed && def.At != null)
+                CFail.Error = def.At.File + "(" + def.At.Line + "," + def.At.Col + "): error TCS1001: " + CFail.Error;
         }
     }
 

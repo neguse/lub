@@ -447,6 +447,8 @@ public sealed class FunctionDef
     public List<int> CodeLo = new List<int>();
     public List<int> CodeHi = new List<int>();
     public List<LinePc> Lines = new List<LinePc>();
+    // 最後に変換していた C# の位置 (関数を作れなかったときの誤りの場所)
+    public IlPos? At;
     public System.Action<FunctionDef>? Compile;
 
     public FunctionDef(string name)
