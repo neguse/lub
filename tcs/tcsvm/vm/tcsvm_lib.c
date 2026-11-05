@@ -510,8 +510,12 @@ static TvmStatus io_write(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)vm;
   (void)r;
   const TvmString *s = S(a[0]);
-  if (s)
+  if (s) {
     fwrite(STR_DATA(s), 1, (size_t)s->len, stdout);
+    /* Console.Write も行を書き終えたら flush する (Console.WriteLine と同じく行ごとに出す) */
+    if (memchr(STR_DATA(s), '\n', (size_t)s->len))
+      fflush(stdout);
+  }
   return TVM_OK;
 }
 

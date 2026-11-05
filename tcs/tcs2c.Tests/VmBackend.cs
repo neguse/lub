@@ -149,6 +149,33 @@ internal static partial class Backends
     public static string RunVm(string[] sources, string entryClass) =>
         RunVmProcess(sources, entryClass, []);
 
+    /// <summary>終わらない program を、stdout を pipe にした tcsvm で動かす。先頭の lines 行か timeout まで読み、止めて、読めた行を返す。</summary>
+    public static List<string> FirstVmLines(string source, string entryClass, int lines, TimeSpan timeout)
+    {
+        var dir = Directory.CreateTempSubdirectory("tcsvm-test-");
+        try
+        {
+            var path = Path.Combine(dir.FullName, "program.tcsb");
+            File.WriteAllBytes(path, SelfHostVm.Emit([source], entryClass));
+            using var process = System.Diagnostics.Process.Start(Start(VmExe.Value, [path]))
+                ?? throw new InvalidOperationException("cannot start tcsvm");
+            var read = new List<string>();
+            var reader = Task.Run(() =>
+            {
+                while (read.Count < lines && process.StandardOutput.ReadLine() is { } line) read.Add(line);
+            });
+            reader.Wait(timeout);
+            process.Kill(entireProcessTree: true);
+            // 止めると stdout が閉じ、reader は抜ける
+            reader.Wait();
+            return read;
+        }
+        finally
+        {
+            try { dir.Delete(recursive: true); } catch (IOException) { }
+        }
+    }
+
     /// <summary>lib 形: Setup → Frame×N (フレームの後で GC) → Report。</summary>
     public static string RunVmLib(string[] sources, string cls, int frames) =>
         RunVmProcess(sources, null, ["--lib", cls, frames.ToString(System.Globalization.CultureInfo.InvariantCulture)],
