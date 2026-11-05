@@ -200,7 +200,7 @@ public class Renderer3dOutline
 ///
 /// 既定で ON: 平行光源 + hemispheric ambient、shadow (PCF 3×3)、AgX tonemap。
 /// 作風は効果別のフィールドで調整する (`light` / `sky` / `shadow` / `exposure`)。
-/// offscreen と swapchain の y 反転差はここが吸収するので、利用側は気にしない。
+/// key の下に宣言する中の絵 (`<key>/ldr`、`<key>/hdr` など) は、ほかのテクスチャと同じく先頭の行が画面の上端で、そのまま SpriteBatch などで貼れる。
 ///
 /// `End()` 後の swapchain には `Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load })` で UI やテキストを重ね描きできる。
 /// </summary>
@@ -521,8 +521,9 @@ public class Renderer3d
 
         """;
 
-    // 全 offscreen ポストパス共通の flip quad (uv が source texture と同向)。
-    private static List<float> flipQuad = new List<float>
+    // target 全面を覆う quad (pos, uv)。
+    // clip y = +1 (target の先頭の行) が uv.y = 0 (source の先頭の行) なので、上下を変えずに写す。
+    private static List<float> fullQuad = new List<float>
     {
         -1, -1, 0, 1,
          1, -1, 1, 1,
@@ -539,7 +540,7 @@ public class Renderer3d
 
         LUB_TEXTURE2D(depth_tex);
         struct FsU {
-          float4 pp;    // m0, m5abs, A (m10), B (m11)
+          float4 pp;    // m0, m5, A (m10), B (m11)
           float4 ao_p;  // x = radius (view), y = strength, z = 1/w, w = 1/h
         };
         ConstantBuffer<FsU> f;
@@ -639,7 +640,7 @@ public class Renderer3d
         LUB_TEXTURE2D(bloom_tex);
         LUB_TEXTURE2D(depth_tex);
         struct FsU {
-          float4 pp;      // m0, m5abs, A, B (view 復元)
+          float4 pp;      // m0, m5, A, B (view 復元)
           float4 en;      // x = ao on, y = bloom strength, z = fog on, w = outline on
           float4 fog_col; // rgb, w = density
           float4 ol;      // rgb = outline color, w = depth threshold (view)
@@ -733,6 +734,33 @@ public class Renderer3d
 
         """;
 
+    // 画面への present 用。
+    // quad を target の中の範囲 dst (clip の左, 下, 右, 上) に置く。
+    private static string presentVs = """
+
+        struct Q {
+          float2 pos;
+          float2 uv;
+        };
+        StructuredBuffer<Q> verts;
+        struct PresentU {
+          float4 dst;
+        };
+        ConstantBuffer<PresentU> pr;
+        struct VSOut {
+          float2 uv : TEXCOORD0;
+          float4 pos : SV_Position;
+        };
+        [shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+          Q i = verts[vid];
+          VSOut o;
+          o.pos = float4(lerp(pr.dst.xy, pr.dst.zw, i.pos * 0.5f + 0.5f), 0.0f, 1.0f);
+          o.uv = i.uv;
+          return o;
+        }
+
+        """;
+
     private static string quadVs = """
 
         struct Q {
@@ -809,18 +837,6 @@ public class Renderer3d
 
         """;
 
-    // swapchain 向け present quad (clip y = -1 → uv.y = 0)。
-    // offscreen 側は proj.m[5] 反転で screen 向きに描かれているので、この 1 枚で向きが合う。
-    private static List<float> presentQuad = new List<float>
-    {
-        -1, -1, 0, 0,
-         1, -1, 1, 0,
-         1,  1, 1, 1,
-        -1, -1, 0, 0,
-         1,  1, 1, 1,
-        -1,  1, 0, 1,
-    };
-
     // --- 公開オプション -------------------------------------------------------
 
     /// <summary>平行光源。
@@ -882,7 +898,15 @@ public class Renderer3d
     /// </summary>
     public string? DebugView = null;
 
-    /// <summary>world → clip (y-flip なし)。
+    /// <summary>画面の中で描く範囲 (`Gfx.Size` と同じ px、左上が原点)。
+    /// null なら画面全体に描き、`End()` は先に画面を消す。
+    /// 指定すると `End()` は画面を消さずに範囲の中だけに描くので、範囲の外は `End()` の前後に自分で描く (消すなら前に pass を開く)。
+    /// `Begin()` が読み、カメラの縦横比は範囲の比、中の絵 (`<key>/ldr` など) は範囲の大きさになる。
+    /// `ViewProj` の clip も範囲の中の座標なので、`Camera3d.Project` には範囲の幅と高さを渡し、結果に範囲の左上を足す。
+    /// </summary>
+    public Rect? Viewport = null;
+
+    /// <summary>world → clip。
     /// スクリーン座標への投影 (HUD 追従等) 用。
     /// begin() が設定する。
     /// 利用側は読み取り専用。
@@ -895,7 +919,14 @@ public class Renderer3d
     private Mat4? proj = null;
     private Mat4? vp = null;
     private Vec3 eye = new Vec3(0, 0, 0);
-    private BufferRef? flipQuadBuf = null;
+    private BufferRef? quadBuf = null;
+    // Begin() が決めた描く範囲 (画面の px) と画面の大きさ
+    private int areaX = 0;
+    private int areaY = 0;
+    private int areaW = 0;
+    private int areaH = 0;
+    private int screenW = 0;
+    private int screenH = 0;
 
     public Renderer3d(string key)
     {
@@ -922,12 +953,28 @@ public class Renderer3d
         var near = cam.Near ?? 0.1f;
         var far = cam.Far ?? 100.0f;
         Gfx.Size(out var w, out var h);
-        var p = Mat4.PerspectiveLh(fov, (float)w / h, near, far);
+        screenW = w;
+        screenH = h;
+        var area = Viewport;
+        if (area != null)
+        {
+            // 画面の外にはみ出す分は削る
+            areaX = Math.Min(Math.Max(area.X, 0), w);
+            areaY = Math.Min(Math.Max(area.Y, 0), h);
+            areaW = Math.Max(Math.Min(area.X + area.W, w) - areaX, 0);
+            areaH = Math.Max(Math.Min(area.Y + area.H, h) - areaY, 0);
+        }
+        else
+        {
+            areaX = 0;
+            areaY = 0;
+            areaW = w;
+            areaH = h;
+        }
+        var p = Mat4.PerspectiveLh(fov, (float)Math.Max(areaW, 1) / Math.Max(areaH, 1), near, far);
         var v = Mat4.LookAtLh(cam.Eye, cam.Target, up);
         view = v;
         ViewProj = p * v;
-        // offscreen target は swapchain と違い y-flip されないので、clip y をあらかじめ反転して screen 向きで描く (present quad と対)。
-        p.M11 = -p.M11;
         proj = p;
         vp = p * v;
         eye = cam.Eye;
@@ -1044,12 +1091,12 @@ public class Renderer3d
             { Light.Dir.X * inv, Light.Dir.Y * inv, Light.Dir.Z * inv, 0.0f };
     }
 
-    // flip quad で target 全面に 1 パス描く。
+    // target 全面に 1 パス描く。
     private void Blit(TextureRef target, ShaderRef shader,
         Bindings bindings, Gfx.LoadAction? load = null,
         Blend? blend = null)
     {
-        var fq = flipQuadBuf;
+        var fq = quadBuf;
         if (fq == null)
             return;
         var opts = new PassOpts { Target = target };
@@ -1078,7 +1125,11 @@ public class Renderer3d
             return;
         var vp = this.vp.Value;
         var proj = this.proj.Value;
-        Gfx.Size(out var w, out var h);
+        // 中の絵は描く範囲の大きさ
+        int w = areaW;
+        int h = areaH;
+        if (w < 1 || h < 1)
+            return;
         var rtVer = w * 65536 + h;
 
         var litStatic = Gfx.UseShader(key + "/lit_s", litStaticVs, litFs, 1);
@@ -1090,8 +1141,8 @@ public class Renderer3d
         var brightSh = Gfx.UseShader(key + "/br", quadVs, brightFs, 1);
         var tentSh = Gfx.UseShader(key + "/tent", quadVs, blitTentFs, 1);
         var compSh = Gfx.UseShader(key + "/comp", quadVs, compositeFs, 1);
-        var fxaaSh = Gfx.UseShader(key + "/fxaa", quadVs, fxaaFs, 1);
-        var presentSh = Gfx.UseShader(key + "/pr", quadVs, presentFs, 1);
+        var fxaaSh = Gfx.UseShader(key + "/fxaa", presentVs, fxaaFs, 2);
+        var presentSh = Gfx.UseShader(key + "/pr", presentVs, presentFs, 2);
         if (litStatic == null || litSkinned == null || shStatic == null
             || shSkinned == null || tonemap == null || ssaoSh == null
             || brightSh == null || tentSh == null || compSh == null
@@ -1105,10 +1156,9 @@ public class Renderer3d
         var shadowMap = Gfx.UseTexture(key + "/sm", Shadow.Size, Shadow.Size,
             Gfx.PixelFormat.Depth32f, null, Shadow.Size,
             new TextureOpts { Target = true, Wrap = Gfx.Wrap.Clamp });
-        var quad = Gfx.UseBuffer(key + "/quad", Gfx.BufferType.Storage, presentQuad, 1);
-        flipQuadBuf = Gfx.UseBuffer(key + "/fquad", Gfx.BufferType.Storage, flipQuad, 1);
-        if (hdr == null || depth == null || shadowMap == null || quad == null
-            || flipQuadBuf == null)
+        var quad = Gfx.UseBuffer(key + "/quad", Gfx.BufferType.Storage, fullQuad, 2);
+        quadBuf = quad;
+        if (hdr == null || depth == null || shadowMap == null || quad == null)
             return;
 
         var lmvp = LightMvp();
@@ -1168,9 +1218,8 @@ public class Renderer3d
         }
         Gfx.EndPass();
 
-        // proj は m[5] を反転済みなので |m5| を渡す
         var projP = new List<float>
-            { proj.M00, Math.Abs(proj.M11), proj.M22, proj.M23 };
+            { proj.M00, proj.M11, proj.M22, proj.M23 };
 
         // SSAO (半解像度)
         TextureRef? aoTex = null;
@@ -1288,7 +1337,14 @@ public class Renderer3d
         passBindings.Set("grade", new Vec4(Exposure, Vignette, Dither ? 1.0f : 0.0f, h));
         Blit(ldr, tonemap, passBindings);
 
-        // FXAA (or 素通し) → swapchain
+        // FXAA (or 素通し) → swapchain の描く範囲
+        var dst = new Vec4((float)areaX / screenW * 2.0f - 1.0f,
+            1.0f - (float)(areaY + h) / screenH * 2.0f,
+            (float)(areaX + w) / screenW * 2.0f - 1.0f,
+            1.0f - (float)areaY / screenH * 2.0f);
+        var present = new PassOpts { Target = Gfx.MainTex };
+        if (Viewport != null)
+            present.Load = Gfx.LoadAction.Load;
         if (DebugView != null)
         {
             TextureRef? dbg = DebugView switch
@@ -1300,9 +1356,10 @@ public class Renderer3d
             };
             if (dbg != null)
             {
-                Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex });
+                Gfx.BeginPass(present);
                 var bindings = new Bindings();
                 bindings.Set("verts", quad);
+                bindings.Set("dst", dst);
                 bindings.Set("scene", dbg);
                 Gfx.Draw(6, bindings,
                     new DrawOpts { Shader = presentSh, Depth = false, Cull = Gfx.Cull.None });
@@ -1310,11 +1367,12 @@ public class Renderer3d
                 return;
             }
         }
-        Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex });
+        Gfx.BeginPass(present);
         if (Aa.Enabled)
         {
             var bindings = new Bindings();
             bindings.Set("verts", quad);
+            bindings.Set("dst", dst);
             bindings.Set("scene", ldr);
             bindings.Set("px", new Vec4(1.0f / w, 1.0f / h, 0.0f, 0.0f));
             Gfx.Draw(6, bindings, new DrawOpts { Shader = fxaaSh, Depth = false, Cull = Gfx.Cull.None });
@@ -1323,6 +1381,7 @@ public class Renderer3d
         {
             var bindings = new Bindings();
             bindings.Set("verts", quad);
+            bindings.Set("dst", dst);
             bindings.Set("scene", ldr);
             Gfx.Draw(6, bindings,
                 new DrawOpts { Shader = presentSh, Depth = false, Cull = Gfx.Cull.None });

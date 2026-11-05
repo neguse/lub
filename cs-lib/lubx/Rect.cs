@@ -5,8 +5,8 @@ using Lub;
 
 namespace Lubx;
 
-/// <summary>アトラス内の矩形 (px、左上原点)。
-/// SpriteBatch の src 指定に使う。
+/// <summary>矩形 (px、左上原点)。
+/// SpriteBatch の src 指定 (アトラスの中) と Renderer3d.Viewport (画面の中) に使う。
 /// </summary>
 public class Rect
 {
