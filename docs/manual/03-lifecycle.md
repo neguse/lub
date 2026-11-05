@@ -132,6 +132,7 @@ native では `lub <Entry>.csproj` で起動すると、runtime が `.cs` ソー
 差分(前の build からの差分)を実行中の VM に当てる。差分は method を差し替え、
 static 変数と instance の field を移行する。当てた後に entry の `OnReload()` があれば
 呼び、変換が通らなかった保存では `OnBuildFailed(string errors)` があれば呼ぶ。
+log には、差分を当てるたびに `lub: reloaded`、変換が通らなかった保存では `lub: reload failed: the build has errors, the running code is unchanged` を 1 行出す (変換エラーの中身は、その前に tcs が出す)。
 instance の field の初期化子を変えた差分では、`OnReload()` の後に `OnReloadNotes(string notes)` があれば呼ぶ。
 
 差分で移行できない変更は tcs が restart として知らせる(理由は log に出る)。

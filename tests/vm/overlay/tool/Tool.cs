@@ -3,6 +3,7 @@
 // ゲームの OnFrame の本文を書き換えると、ゲームの状態を保ったまま差分が当たり、ゲームと overlay の OnReload が呼ばれる。
 // instance の field の初期化子を変えた保存では、OnReload の後にゲームと overlay の OnReloadNotes に知らせが届き、生きている instance は今の値のまま。
 // compile error の保存では、ゲームと overlay の OnBuildFailed に診断が届き、ゲームは前のコードのまま動く。
+// player は差分を当てるたびに `lub: reloaded`、compile error の保存では `lub: reload failed: ...` を log に出す (../expect.txt)。
 using System;
 using Lub;
 

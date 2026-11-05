@@ -39,8 +39,20 @@ for test_dir in "$root"/tests/vm/*/; do
       fi
     fi
   elif (cd "$root" && GAME_CS="$dir/game/Game.cs" LUB_CS_LIB="$root/cs-lib" SDL_VIDEO_DRIVER="${SDL_VIDEO_DRIVER:-offscreen}" \
-    timeout 180 "$lub_vm" "$dir/game/Game.csproj"); then
-    echo "ok $name"
+    timeout 180 "$lub_vm" "$dir/game/Game.csproj") 2>&1 | tee "$dir/out.log"; then
+    # expect.txt があれば、その各行が出力に含まれること
+    missing=""
+    if [ -f "$dir/expect.txt" ]; then
+      while IFS= read -r want; do
+        grep -qF -- "$want" "$dir/out.log" || missing="$missing [$want]"
+      done <"$dir/expect.txt"
+    fi
+    if [ -n "$missing" ]; then
+      echo "FAILED $name: missing in the output:$missing"
+      status=1
+    else
+      echo "ok $name"
+    fi
   else
     echo "FAILED $name"
     status=1

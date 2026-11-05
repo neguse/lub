@@ -8,6 +8,7 @@
 //
 // .csproj を渡すと、入力 (src/vm_project.h) を集めて tcs vm --watch を背後に張り、保存のたびに差分を当てる。
 // 差分を当てた後に entry と overlay の OnReload() を呼び、compile error の保存では OnBuildFailed(string errors) を呼ぶ。
+// どちらも log に 1 行出す (`lub: reloaded` / `lub: reload failed: ...`)。
 // 差分に知らせ (tcs の reload_notes。生きている instance に入らない初期化子の変更など) があれば、OnReload の後に OnReloadNotes(string notes) を呼ぶ。
 // ProjectReference に Lub="Overlay" を付けた参照先の class は、ゲームに重ねる overlay にする。
 // overlay の callback は OnInit がゲームの後、OnEvent がゲームの前、OnFrame がゲームの後 (ゲームの上に描く)、OnQuit がゲームの前。
@@ -783,6 +784,7 @@ static void apply_vm_batch(const char *text, size_t len, const char *notes,
     restart("the reloaded module does not bind");
     return;
   }
+  SDL_Log("lub: reloaded");
   call_reload();
   if (notes)
     call_reload_notes(notes, notes_len);
@@ -812,8 +814,12 @@ static void poll_project(void) {
     else if (kind == TCS_FRAME_RESTART_REQUIRED) {
       SDL_Log("lub: reload needs a restart:\n%s", body);
       restart("restart required");
-    } else if (kind == TCS_FRAME_BUILD_FAILED)
+    } else if (kind == TCS_FRAME_BUILD_FAILED) {
+      // 診断は tcs が stderr に書く
+      SDL_Log("lub: reload failed: the build has errors, the running code is "
+              "unchanged");
       call_build_failed(body, len);
+    }
     SDL_free(body);
     body = NULL;
     SDL_free(g_notes);
