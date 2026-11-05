@@ -38,6 +38,7 @@ cs_runtime_tests=(
   TestViewLifetime
   TestRotationConvention
   TestRenderer3dOrientation
+  TestRenderer3dViewport
   TestMathValues
   TestDispatchAfterReadback
   TestReadbackOnQuit
@@ -84,7 +85,7 @@ cs_runtime_tests=(
 # runtime テストに付ける起動引数
 cs_test_args=(--readback-fixed-latency)
 # 描画を golden で見るもの (scripts/run-golden.sh)
-cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull)
+cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull TestRenderer3dViewportDraw)
 # 起動引数や env を付けて個別に走らせるもの (native-gate.sh / apple-gate.sh)。
 # TestGamepad は pad を用意できる web の verify (A9) だけが走らせる。
 # TestKeyMods は CapsLock を Ctrl にした key を流せる web の verify (A9) だけが走らせる。
