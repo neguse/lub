@@ -27,6 +27,7 @@ cs_runtime_tests=(
   TestPickFrame
   TestAtlas
   TestSpriteBatchAtlasUpdate
+  TestSpriteBatchOrder
   TestLubxFixedstepEdges
   TestLubxMeshReassert
   TestLubxGameHelpers
