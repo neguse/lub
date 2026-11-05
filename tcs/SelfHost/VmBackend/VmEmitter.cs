@@ -56,6 +56,12 @@ public static class VmEmitter
             foreach (var d in more) diagnostics.Add(d);
             return null;
         }
+        // IL にできなかった本文は null になり、VM は呼んだ側を "no IL body" としか言えないので、ここで理由と場所 (Lua の変換と同じ文) を出して止める
+        if (result.Export.InternalErrors.Count > 0)
+        {
+            foreach (var ie in result.Export.InternalErrors) diagnostics.Add("internal: " + ie);
+            return null;
+        }
         return result.Export;
     }
 

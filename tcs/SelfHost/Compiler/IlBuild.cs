@@ -2129,7 +2129,8 @@ public sealed class IlBuild
             case "List.RemoveAt":
                 return new IlCall("table.remove", Two(recv, new IlBin(IlBinOp.AddNum, args[0], new IlLit("1", null, null), null)), IlTypes.HasNilListElements(recvType), null);
             case "List.Clear":
-                return BuildListClear(recv);
+            case "Dict.Clear":
+                return BuildClear(recv);
             case "List.Sort":
                 return new IlCall("List.Sort", Prepend(recv, args), false, null);
             case "List.Contains":
@@ -2322,8 +2323,8 @@ public sealed class IlBuild
         return new IlCall("table.insert", Prepend(recv, args), IlTypes.HasNilListElements(listType), null);
     }
 
-    // List.Clear: 全ての key を nil に
-    private static IlExpr BuildListClear(IlExpr recv)
+    // List.Clear / Dictionary.Clear: 全ての key を nil に (C と VM の backend はこの形を runtime の clear にする)
+    private static IlExpr BuildClear(IlExpr recv)
     {
         var stats = new List<IlStat>();
         stats.Add(new IlLocal("__tcs_obj", recv, null, null));
