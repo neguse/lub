@@ -7,7 +7,7 @@ namespace TinyCs.Tests;
 // browser-wasm 相当の host (Assembly.Location が使えない) を想定した
 // Transpiler.References 注入口の契約テスト。runtime pack の DLL を
 // byte image として読み込み、ファイルパス経由なしで transpile できること。
-[Collection("TranspilerReferences")]
+[Collection(TranspilerReferencesCollection.Name)]
 public class ReferenceInjectionTests
 {
     private static MetadataReference FromBytes(string path) =>
@@ -56,4 +56,11 @@ public class ReferenceInjectionTests
             Transpiler.References = original;
         }
     }
+}
+
+// Transpiler.References は process で 1 つなので、差し替えている間は他の test (BclCatalogTests など) を並べて動かさない
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class TranspilerReferencesCollection
+{
+    public const string Name = "TranspilerReferences";
 }
