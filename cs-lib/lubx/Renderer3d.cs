@@ -200,7 +200,7 @@ public class Renderer3dOutline
 ///
 /// 既定で ON: 平行光源 + hemispheric ambient、shadow (PCF 3×3)、AgX tonemap。
 /// 作風は効果別のフィールドで調整する (`light` / `sky` / `shadow` / `exposure`)。
-/// offscreen と swapchain の y 反転差はここが吸収するので、利用側は気にしない。
+/// key の下に宣言する中の絵 (`<key>/ldr`、`<key>/hdr` など) は、ほかのテクスチャと同じく先頭の行が画面の上端で、そのまま SpriteBatch などで貼れる。
 ///
 /// `End()` 後の swapchain には `Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load })` で UI やテキストを重ね描きできる。
 /// </summary>
@@ -521,8 +521,9 @@ public class Renderer3d
 
         """;
 
-    // 全 offscreen ポストパス共通の flip quad (uv が source texture と同向)。
-    private static List<float> flipQuad = new List<float>
+    // target 全面を覆う quad (pos, uv)。
+    // clip y = +1 (target の先頭の行) が uv.y = 0 (source の先頭の行) なので、上下を変えずに写す。
+    private static List<float> fullQuad = new List<float>
     {
         -1, -1, 0, 1,
          1, -1, 1, 1,
@@ -539,7 +540,7 @@ public class Renderer3d
 
         LUB_TEXTURE2D(depth_tex);
         struct FsU {
-          float4 pp;    // m0, m5abs, A (m10), B (m11)
+          float4 pp;    // m0, m5, A (m10), B (m11)
           float4 ao_p;  // x = radius (view), y = strength, z = 1/w, w = 1/h
         };
         ConstantBuffer<FsU> f;
@@ -639,7 +640,7 @@ public class Renderer3d
         LUB_TEXTURE2D(bloom_tex);
         LUB_TEXTURE2D(depth_tex);
         struct FsU {
-          float4 pp;      // m0, m5abs, A, B (view 復元)
+          float4 pp;      // m0, m5, A, B (view 復元)
           float4 en;      // x = ao on, y = bloom strength, z = fog on, w = outline on
           float4 fog_col; // rgb, w = density
           float4 ol;      // rgb = outline color, w = depth threshold (view)
@@ -809,18 +810,6 @@ public class Renderer3d
 
         """;
 
-    // swapchain 向け present quad (clip y = -1 → uv.y = 0)。
-    // offscreen 側は proj.m[5] 反転で screen 向きに描かれているので、この 1 枚で向きが合う。
-    private static List<float> presentQuad = new List<float>
-    {
-        -1, -1, 0, 0,
-         1, -1, 1, 0,
-         1,  1, 1, 1,
-        -1, -1, 0, 0,
-         1,  1, 1, 1,
-        -1,  1, 0, 1,
-    };
-
     // --- 公開オプション -------------------------------------------------------
 
     /// <summary>平行光源。
@@ -882,7 +871,7 @@ public class Renderer3d
     /// </summary>
     public string? DebugView = null;
 
-    /// <summary>world → clip (y-flip なし)。
+    /// <summary>world → clip。
     /// スクリーン座標への投影 (HUD 追従等) 用。
     /// begin() が設定する。
     /// 利用側は読み取り専用。
@@ -895,7 +884,7 @@ public class Renderer3d
     private Mat4? proj = null;
     private Mat4? vp = null;
     private Vec3 eye = new Vec3(0, 0, 0);
-    private BufferRef? flipQuadBuf = null;
+    private BufferRef? quadBuf = null;
 
     public Renderer3d(string key)
     {
@@ -926,8 +915,6 @@ public class Renderer3d
         var v = Mat4.LookAtLh(cam.Eye, cam.Target, up);
         view = v;
         ViewProj = p * v;
-        // offscreen target は swapchain と違い y-flip されないので、clip y をあらかじめ反転して screen 向きで描く (present quad と対)。
-        p.M11 = -p.M11;
         proj = p;
         vp = p * v;
         eye = cam.Eye;
@@ -1044,12 +1031,12 @@ public class Renderer3d
             { Light.Dir.X * inv, Light.Dir.Y * inv, Light.Dir.Z * inv, 0.0f };
     }
 
-    // flip quad で target 全面に 1 パス描く。
+    // target 全面に 1 パス描く。
     private void Blit(TextureRef target, ShaderRef shader,
         Bindings bindings, Gfx.LoadAction? load = null,
         Blend? blend = null)
     {
-        var fq = flipQuadBuf;
+        var fq = quadBuf;
         if (fq == null)
             return;
         var opts = new PassOpts { Target = target };
@@ -1105,10 +1092,9 @@ public class Renderer3d
         var shadowMap = Gfx.UseTexture(key + "/sm", Shadow.Size, Shadow.Size,
             Gfx.PixelFormat.Depth32f, null, Shadow.Size,
             new TextureOpts { Target = true, Wrap = Gfx.Wrap.Clamp });
-        var quad = Gfx.UseBuffer(key + "/quad", Gfx.BufferType.Storage, presentQuad, 1);
-        flipQuadBuf = Gfx.UseBuffer(key + "/fquad", Gfx.BufferType.Storage, flipQuad, 1);
-        if (hdr == null || depth == null || shadowMap == null || quad == null
-            || flipQuadBuf == null)
+        var quad = Gfx.UseBuffer(key + "/quad", Gfx.BufferType.Storage, fullQuad, 2);
+        quadBuf = quad;
+        if (hdr == null || depth == null || shadowMap == null || quad == null)
             return;
 
         var lmvp = LightMvp();
@@ -1168,9 +1154,8 @@ public class Renderer3d
         }
         Gfx.EndPass();
 
-        // proj は m[5] を反転済みなので |m5| を渡す
         var projP = new List<float>
-            { proj.M00, Math.Abs(proj.M11), proj.M22, proj.M23 };
+            { proj.M00, proj.M11, proj.M22, proj.M23 };
 
         // SSAO (半解像度)
         TextureRef? aoTex = null;

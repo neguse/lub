@@ -37,6 +37,7 @@ cs_runtime_tests=(
   TestFont
   TestViewLifetime
   TestRotationConvention
+  TestRenderer3dOrientation
   TestMathValues
   TestDispatchAfterReadback
   TestReadbackOnQuit
