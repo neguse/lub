@@ -5,9 +5,11 @@
 #   3. docs/log/*.md are named YYYY-MM-DD-<slug>.md.
 #   4. docs/log/*.md carry a leading "> 記録:" banner.
 #   5. Current-state docs do not use ** (bold) emphasis.
+#   6. Every key name src/api_sys.c (scancode_from_name) accepts is listed
+#      in the Input doc of cs-lib/lub_stub.cs (the API reference).
 # Runs in the commit hook (scripts/pre-commit.sh) and in CI (the lint job
-# and scripts/native-gate.sh). Whether a doc's content matches the
-# implementation cannot be checked here; that stays a review concern.
+# and scripts/native-gate.sh). Apart from 6, whether a doc's content matches
+# the implementation cannot be checked here; that stays a review concern.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,7 +22,8 @@ Usage: scripts/docs-lint.sh
 
 Checks the mechanical part of the documentation policy (docs/README.md):
 index completeness, index link resolution, docs/log/ naming + banner,
-and no bold emphasis in current-state docs.
+no bold emphasis in current-state docs, and that the Input doc lists
+every key name the runtime accepts.
 EOF
     exit 0
     ;;
@@ -79,6 +82,17 @@ for f in "${current_docs[@]}"; do
     err "$f uses ** emphasis (line ${line%%:*}); current-state docs ban bold"
   fi
 done
+
+# 6. Key names: the source of truth is scancode_from_name in src/api_sys.c.
+#    The ranges ("a".."z", "0".."9", "f1".."f12") are written by hand.
+input_doc="$(awk '/<summary>フレームラッチ付きポーリング入力/,/public static class Input/' cs-lib/lub_stub.cs)"
+[[ -n "$input_doc" ]] || err "cs-lib/lub_stub.cs: the Input doc was not found"
+while IFS= read -r name; do
+  if ! grep -qF "\"$name\"" <<<"$input_doc"; then
+    err "key name \"$name\" (src/api_sys.c) is not listed in the Input doc of cs-lib/lub_stub.cs"
+  fi
+done < <(awk '/^static SDL_Scancode scancode_from_name/,/^}/' src/api_sys.c |
+  grep -o 'strcmp(key, "[^"]*")' | sed 's/^strcmp(key, "//; s/")$//')
 
 if [[ "$fail" -ne 0 ]]; then
   echo "docs-lint: policy is docs/README.md" >&2
