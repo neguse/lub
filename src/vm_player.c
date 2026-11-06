@@ -626,7 +626,7 @@ static void vm_pick_sites(void *user, char *out, size_t cap) {
 }
 
 // ---- 行ごとの負荷 (tvm_profile_*) ----
-// VM は文ごとに時計を読まない (時計の遅い環境では時計の時間が行の時間に化ける)。
+// VM は文ごとに時計を読まない (時計は VM の文 1 つより重く、時計の時間が行の時間に化ける)。
 // 別の thread が PROFILE_TICK_NS ごとに経った時間を知らせ、VM はそのとき実行していた行に足す。
 // 時計 (SDL の ns) は GC が止めた長さを測るのにだけ渡す。
 
@@ -733,12 +733,53 @@ static void hook_take_gc_pauses(App *app, const LubGcPause **out,
   *count = g_pause_n;
 }
 
+// 持ち越しの 1 件の文字列 (site と holder) は arena の中の位置で持ち、全部を足した後に引く
+static StrArena g_kept_arena;
+static size_t *g_kept_at;
+static LubKeptObject *g_kept;
+static int32_t g_kept_n, g_kept_cap, g_kept_at_cap;
+
+static void kept_object(void *user, const char *file, uint32_t line,
+                        const char *holder, uint32_t count, uint64_t bytes) {
+  (void)user;
+  char site[1100];
+  int n = SDL_snprintf(site, sizeof site, "%s:%u", file, (unsigned)line);
+  g_kept_at = (size_t *)grow(g_kept_at, &g_kept_at_cap, 2 * (g_kept_n + 1),
+                             sizeof(size_t));
+  g_kept = (LubKeptObject *)grow(g_kept, &g_kept_cap, g_kept_n + 1,
+                                 sizeof(LubKeptObject));
+  if (2 * (g_kept_n + 1) > g_kept_at_cap || g_kept_n >= g_kept_cap)
+    return;
+  g_kept_at[2 * g_kept_n] = arena_add(&g_kept_arena, site, (size_t)n);
+  g_kept_at[2 * g_kept_n + 1] =
+      arena_add(&g_kept_arena, holder, SDL_strlen(holder));
+  LubKeptObject *k = &g_kept[g_kept_n++];
+  k->count = count > INT32_MAX ? INT32_MAX : (int32_t)count;
+  k->bytes = bytes > INT32_MAX ? INT32_MAX : (int32_t)bytes;
+}
+
+static void hook_take_kept(App *app, const LubKeptObject **out,
+                           int32_t *count) {
+  (void)app;
+  arena_reset(&g_kept_arena);
+  g_kept_n = 0;
+  if (!vm_lub_vm)
+    return;
+  tvm_profile_take_kept(vm_lub_vm, g_game.cls, kept_object, NULL);
+  for (int32_t i = 0; i < g_kept_n; i++) {
+    g_kept[i].site = arena_str(&g_kept_arena, g_kept_at[2 * i]);
+    g_kept[i].holder = arena_str(&g_kept_arena, g_kept_at[2 * i + 1]);
+  }
+  *out = g_kept;
+  *count = g_kept_n;
+}
+
 static const LubDebugHooks g_debug_hooks = {
     hook_take_trace,       hook_take_values,    hook_inspect,
     hook_inspect_pin,      hook_inspect_pinned, hook_snapshot_take,
     hook_snapshot_restore, hook_snapshot_free,  hook_snapshot_number,
     hook_layout_version,   hook_profile_lines,  hook_take_profile,
-    hook_take_gc_pauses,
+    hook_take_gc_pauses,   hook_take_kept,
 };
 
 // overlay が Input.Grab で取っている種類の event か

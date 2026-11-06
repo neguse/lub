@@ -2992,6 +2992,19 @@ typedef struct LubGcPause {
   int32_t live_kb;
 } LubGcPause;
 
+// Sys.TakeKept の 1 件。Site は作った行 ("file:line")、Holder はそれを持つ
+// field ("型.field"。static は "class.field")。 Holder は、ゲームの状態の根
+// から一番近い、前からある物の field で、新しく作った物の中の物はその新しい
+// 物を持つ field、List と配列と Dictionary の中の物はその入れ物を持つ field
+// になる。 Count は物の数 (List の中身の配列なども 1 つと数える)、Bytes はそ
+// の byte (object の header を含む)。
+typedef struct LubKeptObject {
+  LubStr site;
+  LubStr holder;
+  int32_t count;
+  int32_t bytes;
+} LubKeptObject;
+
 // OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown
 // / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X /
 // Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は
@@ -3580,11 +3593,11 @@ LUB_API void lub_sys_inspect_history(LubContext *ctx, LubStr path,
                                      int32_t count, const float **out,
                                      int32_t *out_count);
 
-// tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile) と、GC の
-// 止まり (Sys.TakeGcPauses) を数え始める (true) か止める (false)。 tcs VM の
-// player だけが数え、ほかでは何もしない。数えている間は、別の thread が 0.25
-// ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環
-// 境では時間を数えない)。
+// tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止ま
+// り (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept) を数え始める (true) か止める
+// (false)。 tcs VM の player だけが数え、ほかでは何もしない。数えている間
+// は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた
+// 行に足す (thread の無い環境では時間を数えない)。
 LUB_API void lub_sys_profile_lines(LubContext *ctx, bool on);
 
 // 前に呼んでから、行ごとに足した負荷を返し、0 に戻す (ProfileLine)。数えてい
@@ -3596,6 +3609,16 @@ LUB_API void lub_sys_take_profile(LubContext *ctx, const LubProfileLine **out,
 // えていなければ空。
 LUB_API void lub_sys_take_gc_pauses(LubContext *ctx, const LubGcPause **out,
                                     int32_t *out_count);
+
+// frame の境目をまたいで持ち越す物 (KeptObject) を、作った行と、それを持つ
+// field ごとに返す。数えるのは、前の frame の境目の後に tcs の --trace で変
+// 換したソースの行で作られ、今ゲームの状態 (entry の class と --trace で変換
+// した class の static) から辿れる物で、一度返した物は次から返さない。 frame
+// の境目 (ゲームと overlay の OnFrame の後) で作った物を忘れるので、ゲームの
+// frame の分は overlay の OnFrame の中で取る。数えていなければ空。順番は決ま
+// っていない。
+LUB_API void lub_sys_take_kept(LubContext *ctx, const LubKeptObject **out,
+                               int32_t *out_count);
 
 // ---------------------------------------------------------------- rewind
 // overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。控え

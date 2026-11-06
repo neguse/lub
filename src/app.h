@@ -54,12 +54,13 @@ typedef struct LubDebugHooks {
                           float *out);
   // 控えを戻せなくなるたびに変わる数
   uint32_t (*layout_version)(struct App *app);
-  // 行ごとの負荷を数え始める・止める、前に取り出してからの行の負荷と GC の止まり
+  // 行ごとの負荷を数え始める・止める、前に取り出してからの行の負荷と GC の止まり、frame の境目をまたいで持ち越す物
   void (*profile_lines)(struct App *app, bool on);
   void (*take_profile)(struct App *app, const LubProfileLine **out,
                        int32_t *count);
   void (*take_gc_pauses)(struct App *app, const LubGcPause **out,
                          int32_t *count);
+  void (*take_kept)(struct App *app, const LubKeptObject **out, int32_t *count);
 } LubDebugHooks;
 
 typedef struct App {
