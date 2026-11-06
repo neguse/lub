@@ -621,11 +621,85 @@ static void vm_pick_sites(void *user, char *out, size_t cap) {
     tvm_stack_self(vm_lub_vm, pick_site, &b);
 }
 
+// ---- 行ごとの負荷 (tvm_profile_*。時計は SDL の ns) ----
+
+static uint64_t profile_clock(void) { return SDL_GetTicksNS(); }
+
+static void hook_profile_lines(App *app, bool on) {
+  (void)app;
+  if (vm_lub_vm)
+    tvm_profile_enable(vm_lub_vm, on ? profile_clock : NULL);
+}
+
+static StrArena g_profile_arena;
+static size_t *g_profile_at;
+static LubProfileLine *g_profile;
+static int32_t g_profile_n, g_profile_cap, g_profile_at_cap;
+
+static void profile_line(void *user, const char *file, uint32_t line,
+                         uint64_t ns, uint64_t bytes, uint32_t allocs) {
+  (void)user;
+  char site[1100];
+  int n = SDL_snprintf(site, sizeof site, "%s:%u", file, (unsigned)line);
+  g_profile_at = (size_t *)grow(g_profile_at, &g_profile_at_cap,
+                                g_profile_n + 1, sizeof(size_t));
+  g_profile = (LubProfileLine *)grow(g_profile, &g_profile_cap, g_profile_n + 1,
+                                     sizeof(LubProfileLine));
+  if (g_profile_n >= g_profile_at_cap || g_profile_n >= g_profile_cap)
+    return;
+  g_profile_at[g_profile_n] = arena_add(&g_profile_arena, site, (size_t)n);
+  LubProfileLine *p = &g_profile[g_profile_n++];
+  p->ms = (float)((double)ns / 1e6);
+  p->bytes = bytes > INT32_MAX ? INT32_MAX : (int32_t)bytes;
+  p->allocs = allocs > INT32_MAX ? INT32_MAX : (int32_t)allocs;
+}
+
+static void hook_take_profile(App *app, const LubProfileLine **out,
+                              int32_t *count) {
+  (void)app;
+  arena_reset(&g_profile_arena);
+  g_profile_n = 0;
+  if (!vm_lub_vm)
+    return;
+  tvm_profile_take_lines(vm_lub_vm, profile_line, NULL);
+  // 文字列は arena が全部を持った後に引く (arena は伸びると場所が変わる)
+  for (int32_t i = 0; i < g_profile_n; i++)
+    g_profile[i].site = arena_str(&g_profile_arena, g_profile_at[i]);
+  *out = g_profile;
+  *count = g_profile_n;
+}
+
+static LubGcPause *g_pauses;
+static int32_t g_pause_n, g_pause_cap;
+
+static void gc_pause(void *user, uint64_t ns, size_t live) {
+  (void)user;
+  g_pauses = (LubGcPause *)grow(g_pauses, &g_pause_cap, g_pause_n + 1,
+                                sizeof(LubGcPause));
+  if (g_pause_n >= g_pause_cap)
+    return;
+  g_pauses[g_pause_n].ms = (float)((double)ns / 1e6);
+  g_pauses[g_pause_n].live_kb = (int32_t)(live / 1024);
+  g_pause_n++;
+}
+
+static void hook_take_gc_pauses(App *app, const LubGcPause **out,
+                                int32_t *count) {
+  (void)app;
+  g_pause_n = 0;
+  if (!vm_lub_vm)
+    return;
+  tvm_profile_take_gc(vm_lub_vm, gc_pause, NULL);
+  *out = g_pauses;
+  *count = g_pause_n;
+}
+
 static const LubDebugHooks g_debug_hooks = {
     hook_take_trace,       hook_take_values,    hook_inspect,
     hook_inspect_pin,      hook_inspect_pinned, hook_snapshot_take,
     hook_snapshot_restore, hook_snapshot_free,  hook_snapshot_number,
-    hook_layout_version,
+    hook_layout_version,   hook_profile_lines,  hook_take_profile,
+    hook_take_gc_pauses,
 };
 
 // overlay が Input.Grab で取っている種類の event か

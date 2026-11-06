@@ -2973,6 +2973,25 @@ typedef struct LubInspectNode {
   bool cycle;
 } LubInspectNode;
 
+// Sys.TakeProfile の 1 件 (前に取り出してからの和)。 Site は "file:line"。Ms
+// はその行の CPU の時間で、--trace で変換していない関数と API の中の時間を含
+// み、--trace で変換した関数を呼んだ先の時間は含まない。 Bytes と Allocs は
+// その行の確保の byte (object の header を含む) と回数で、時間と同じく呼んだ
+// 先を含む。
+typedef struct LubProfileLine {
+  LubStr site;
+  float ms;
+  int32_t bytes;
+  int32_t allocs;
+} LubProfileLine;
+
+// Sys.TakeGcPauses の 1 件。Ms は GC が止めた時間 (行の時間には入らな
+// い)、LiveKb は回収の後に生きている KB。
+typedef struct LubGcPause {
+  float ms;
+  int32_t live_kb;
+} LubGcPause;
+
 // OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown
 // / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X /
 // Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は
@@ -3560,6 +3579,22 @@ LUB_API bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id);
 LUB_API void lub_sys_inspect_history(LubContext *ctx, LubStr path,
                                      int32_t count, const float **out,
                                      int32_t *out_count);
+
+// tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile) と、GC の
+// 止まり (Sys.TakeGcPauses) を数え始める (true) か止める (false)。 tcs VM の
+// player だけが数え、ほかでは何もしない。数えている間は、文ごとに時計を読む
+// 分だけ重くなる。
+LUB_API void lub_sys_profile_lines(LubContext *ctx, bool on);
+
+// 前に呼んでから、行ごとに足した負荷を返し、0 に戻す (ProfileLine)。数えてい
+// なければ空。順番は決まっていない。
+LUB_API void lub_sys_take_profile(LubContext *ctx, const LubProfileLine **out,
+                                  int32_t *out_count);
+
+// 前に呼んでから GC が止めた回を、古い順に返す (直近 64 回まで。GcPause)。数
+// えていなければ空。
+LUB_API void lub_sys_take_gc_pauses(LubContext *ctx, const LubGcPause **out,
+                                    int32_t *out_count);
 
 // ---------------------------------------------------------------- rewind
 // overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。控え

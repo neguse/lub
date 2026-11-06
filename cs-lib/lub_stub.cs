@@ -1466,6 +1466,32 @@ namespace Lub
         {
             return new List<float>();
         }
+
+        /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile) と、GC の止まり (Sys.TakeGcPauses) を数え始める (true) か止める (false)。
+        /// tcs VM の player だけが数え、ほかでは何もしない。数えている間は、文ごとに時計を読む分だけ重くなる。
+        /// </summary>
+        [LubNoFail]
+        public static void ProfileLines(bool on)
+        {
+        }
+
+        /// <summary>前に呼んでから、行ごとに足した負荷を返し、0 に戻す (ProfileLine)。
+        /// 数えていなければ空。順番は決まっていない。
+        /// </summary>
+        [LubNoFail]
+        public static List<ProfileLine> TakeProfile()
+        {
+            return new List<ProfileLine>();
+        }
+
+        /// <summary>前に呼んでから GC が止めた回を、古い順に返す (直近 64 回まで。GcPause)。
+        /// 数えていなければ空。
+        /// </summary>
+        [LubNoFail]
+        public static List<GcPause> TakeGcPauses()
+        {
+            return new List<GcPause>();
+        }
     }
 
     /// <summary>overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。
@@ -4737,6 +4763,26 @@ namespace Lub
         public string Id = "";
         public int Count;
         public bool Cycle;
+    }
+
+    /// <summary>Sys.TakeProfile の 1 件 (前に取り出してからの和)。
+    /// Site は "file:line"。Ms はその行の CPU の時間で、--trace で変換していない関数と API の中の時間を含み、--trace で変換した関数を呼んだ先の時間は含まない。
+    /// Bytes と Allocs はその行の確保の byte (object の header を含む) と回数で、時間と同じく呼んだ先を含む。
+    /// </summary>
+    public class ProfileLine
+    {
+        public string Site = "";
+        public float Ms;
+        public int Bytes;
+        public int Allocs;
+    }
+
+    /// <summary>Sys.TakeGcPauses の 1 件。Ms は GC が止めた時間 (行の時間には入らない)、LiveKb は回収の後に生きている KB。
+    /// </summary>
+    public class GcPause
+    {
+        public float Ms;
+        public int LiveKb;
     }
 
     /// <summary>

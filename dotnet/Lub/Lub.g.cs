@@ -2245,6 +2245,22 @@ public class InspectNode
     public bool Cycle;
 }
 
+/// <summary>Sys.TakeProfile の 1 件 (前に取り出してからの和)。 Site は "file:line"。Ms はその行の CPU の時間で、--trace で変換していない関数と API の中の時間を含み、--trace で変換した関数を呼んだ先の時間は含まない。 Bytes と Allocs はその行の確保の byte (object の header を含む) と回数で、時間と同じく呼んだ先を含む。</summary>
+public class ProfileLine
+{
+    public string Site;
+    public float Ms;
+    public int Bytes;
+    public int Allocs;
+}
+
+/// <summary>Sys.TakeGcPauses の 1 件。Ms は GC が止めた時間 (行の時間には入らない)、LiveKb は回収の後に生きている KB。</summary>
+public class GcPause
+{
+    public float Ms;
+    public int LiveKb;
+}
+
 /// <summary>OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
 public class EventData
 {
@@ -4503,6 +4519,54 @@ public static unsafe partial class Sys
             int o_out_n = 0;
             LubNative.lub_sys_inspect_history(LubRuntime.Ctx, a.Str(path), count, &o_out, &o_out_n);
             return LubRuntime.FloatList(o_out, o_out_n);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile) と、GC の止まり (Sys.TakeGcPauses) を数え始める (true) か止める (false)。 tcs VM の player だけが数え、ほかでは何もしない。数えている間は、文ごとに時計を読む分だけ重くなる。</summary>
+    public static void ProfileLines(bool on)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.lub_sys_profile_lines(LubRuntime.Ctx, (byte)(on ? 1 : 0));
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>前に呼んでから、行ごとに足した負荷を返し、0 に戻す (ProfileLine)。数えていなければ空。順番は決まっていない。</summary>
+    public static List<ProfileLine> TakeProfile()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubProfileLine* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_take_profile(LubRuntime.Ctx, &o_out, &o_out_n);
+            return LubRuntime.RecordList<ProfileLine, LubNative.LubProfileLine>(o_out, o_out_n, &LubNative.From_LubProfileLine);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>前に呼んでから GC が止めた回を、古い順に返す (直近 64 回まで。GcPause)。数えていなければ空。</summary>
+    public static List<GcPause> TakeGcPauses()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubGcPause* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_take_gc_pauses(LubRuntime.Ctx, &o_out, &o_out_n);
+            return LubRuntime.RecordList<GcPause, LubNative.LubGcPause>(o_out, o_out_n, &LubNative.From_LubGcPause);
         }
         finally
         {
@@ -11053,6 +11117,22 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubProfileLine
+    {
+        public LubStr @site;
+        public float @ms;
+        public int @bytes;
+        public int @allocs;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LubGcPause
+    {
+        public float @ms;
+        public int @live_kb;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubEventData
     {
         public int @kind;
@@ -11360,6 +11440,15 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_inspect_history(void* ctx, LubStr @path, int @count, float** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_profile_lines(void* ctx, byte @on);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_take_profile(void* ctx, LubProfileLine** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_take_gc_pauses(void* ctx, LubGcPause** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_rewind_record(void* ctx, int @frames);
@@ -17263,6 +17352,48 @@ internal static unsafe partial class LubNative
     {
         var o = new InspectNode();
         Fill_LubInspectNode(o, s);
+        return o;
+    }
+
+    internal static void To_LubProfileLine(ProfileLine o, LubRuntime.Arena a, LubProfileLine* s)
+    {
+        s->@site = a.Str(o.Site);
+        s->@ms = (float)o.Ms;
+        s->@bytes = o.Bytes;
+        s->@allocs = o.Allocs;
+    }
+
+    internal static void Fill_LubProfileLine(ProfileLine o, LubProfileLine* s)
+    {
+        o.Site = LubRuntime.Str(s->@site);
+        o.Ms = s->@ms;
+        o.Bytes = s->@bytes;
+        o.Allocs = s->@allocs;
+    }
+
+    internal static ProfileLine From_LubProfileLine(LubProfileLine* s)
+    {
+        var o = new ProfileLine();
+        Fill_LubProfileLine(o, s);
+        return o;
+    }
+
+    internal static void To_LubGcPause(GcPause o, LubRuntime.Arena a, LubGcPause* s)
+    {
+        s->@ms = (float)o.Ms;
+        s->@live_kb = o.LiveKb;
+    }
+
+    internal static void Fill_LubGcPause(GcPause o, LubGcPause* s)
+    {
+        o.Ms = s->@ms;
+        o.LiveKb = s->@live_kb;
+    }
+
+    internal static GcPause From_LubGcPause(LubGcPause* s)
+    {
+        var o = new GcPause();
+        Fill_LubGcPause(o, s);
         return o;
     }
 
