@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../tool/Tool.csproj" Lub="Overlay" />
+  </ItemGroup>
+</Project>

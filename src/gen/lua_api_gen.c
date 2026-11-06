@@ -267,6 +267,13 @@ static void fill_LubInspectNode(lua_State *L, const LubInspectNode *v);
 static void push_LubInspectNode(lua_State *L, const LubInspectNode *v);
 static void push_list_LubInspectNode(lua_State *L, const LubInspectNode *v,
                                      int32_t n);
+static void fill_LubProfileLine(lua_State *L, const LubProfileLine *v);
+static void push_LubProfileLine(lua_State *L, const LubProfileLine *v);
+static void push_list_LubProfileLine(lua_State *L, const LubProfileLine *v,
+                                     int32_t n);
+static void fill_LubGcPause(lua_State *L, const LubGcPause *v);
+static void push_LubGcPause(lua_State *L, const LubGcPause *v);
+static void push_list_LubGcPause(lua_State *L, const LubGcPause *v, int32_t n);
 static void fill_LubEventData(lua_State *L, const LubEventData *v);
 static void push_LubEventData(lua_State *L, const LubEventData *v);
 
@@ -4126,6 +4133,49 @@ static void push_list_LubInspectNode(lua_State *L, const LubInspectNode *v,
   }
 }
 
+static void fill_LubProfileLine(lua_State *L, const LubProfileLine *v) {
+  lgen_set_str(L, "site", v->site);
+  lgen_set_num(L, "ms", v->ms);
+  lgen_set_int(L, "bytes", v->bytes);
+  lgen_set_int(L, "allocs", v->allocs);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubProfileLine(lua_State *L, const LubProfileLine *v) {
+  lua_createtable(L, 0, 4);
+  fill_LubProfileLine(L, v);
+}
+
+static void push_list_LubProfileLine(lua_State *L, const LubProfileLine *v,
+                                     int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    push_LubProfileLine(L, &v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
+static void fill_LubGcPause(lua_State *L, const LubGcPause *v) {
+  lgen_set_num(L, "ms", v->ms);
+  lgen_set_int(L, "live_kb", v->live_kb);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubGcPause(lua_State *L, const LubGcPause *v) {
+  lua_createtable(L, 0, 2);
+  fill_LubGcPause(L, v);
+}
+
+static void push_list_LubGcPause(lua_State *L, const LubGcPause *v, int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    push_LubGcPause(L, &v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
 static void fill_LubEventData(lua_State *L, const LubEventData *v) {
   if (name_LubEventKind(v->kind)) {
     lua_pushstring(L, name_LubEventKind(v->kind));
@@ -6257,6 +6307,37 @@ static int l_sys_inspect_history(lua_State *L) {
   lub_sys_inspect_history(lgen_ctx(), path, count, &out, &out_count);
   lgen_release(mark);
   lgen_push_float_view(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_profile_lines(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  bool on = lua_toboolean(L, 1);
+  lub_sys_profile_lines(lgen_ctx(), on);
+  lgen_release(mark);
+  return 0;
+}
+
+static int l_sys_take_profile(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  const LubProfileLine *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_take_profile(lgen_ctx(), &out, &out_count);
+  lgen_release(mark);
+  push_list_LubProfileLine(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_take_gc_pauses(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  const LubGcPause *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_take_gc_pauses(lgen_ctx(), &out, &out_count);
+  lgen_release(mark);
+  push_list_LubGcPause(L, out, out_count);
   return 1;
 }
 
@@ -10344,6 +10425,12 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "inspect_pinned");
   lua_pushcfunction(L, l_sys_inspect_history);
   lua_setfield(L, -2, "inspect_history");
+  lua_pushcfunction(L, l_sys_profile_lines);
+  lua_setfield(L, -2, "profile_lines");
+  lua_pushcfunction(L, l_sys_take_profile);
+  lua_setfield(L, -2, "take_profile");
+  lua_pushcfunction(L, l_sys_take_gc_pauses);
+  lua_setfield(L, -2, "take_gc_pauses");
   lua_setfield(L, -2, "sys");
   lua_newtable(L); // lub.rewind
   lua_pushcfunction(L, l_rewind_record);
