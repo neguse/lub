@@ -232,6 +232,13 @@ void tvm_profile_take_lines(TvmVm *vm, TvmProfileLineFn fn, void *user);
 #define TVM_PROFILE_GCS 64
 typedef void (*TvmProfileGcFn)(void *user, uint64_t ns, size_t live);
 void tvm_profile_take_gc(TvmVm *vm, TvmProfileGcFn fn, void *user);
+/* frame の境目をまたいで持ち越す物: 前の tvm_frame_end の後に --trace の行で作られ、今 entry と --trace の class の static
+   から辿れる物を、作った行とそれを持つ field ("型.field"。static は "class.field") ごとに数える。
+   持つ field は、根から一番近い、前からある物の field (新しく作った物の中の物は、その新しい物を持つ field)。
+   一度数えた物は次から数えない。bytes は header を含む */
+typedef void (*TvmProfileKeptFn)(void *user, const char *file, uint32_t line, const char *holder, uint32_t count,
+                                 uint64_t bytes);
+void tvm_profile_take_kept(TvmVm *vm, const char *entry, TvmProfileKeptFn fn, void *user);
 
 /* 状態の控え: entry と --trace の class の static と、そこから辿れる object の中身 (string は写さない) */
 typedef struct TvmSnapshot TvmSnapshot;

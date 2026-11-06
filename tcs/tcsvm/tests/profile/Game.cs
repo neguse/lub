@@ -21,4 +21,40 @@ public static class Game
         for (int i = 0; i < 3000; i++)
             keep = new int[1000];
     }
+
+    // 持ち越し: static (kept、items、chain) か前からある object の field (held.item) に置いた物だけを数える
+    static Item? kept;
+    static Holder held = new Holder();
+    static System.Collections.Generic.List<Item> items = new System.Collections.Generic.List<Item>();
+    static Holder? chain;
+
+    public static void Keep()
+    {
+        var temp = new Item();
+        temp.v = 1;
+        kept = new Item();
+        held.item = new Item();
+        items.Add(new Item());
+        var h = new Holder();
+        h.item = new Item();
+        chain = h;
+    }
+
+    // 別の thread が時間を知らせ終えるまで回る
+    public static void Spin()
+    {
+        while (!Probe.Clock.Done())
+        {
+        }
+    }
+}
+
+public class Item
+{
+    public int v;
+}
+
+public class Holder
+{
+    public Item? item;
 }

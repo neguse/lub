@@ -11,10 +11,11 @@
 #define GC_MIN_LIMIT ((size_t)1 << 20)
 
 static void *alloc_with_header(TvmVm *vm, size_t size, uint8_t blob) {
-  if (vm->prof_clock)
-    tvm_profile_alloc(vm, size + sizeof(TvmGcHeader));
-  if (vm->heap) /* shared heap: tcs2c の runtime の nursery に置く (header は同じ形) */
+  if (vm->heap) { /* shared heap: tcs2c の runtime の nursery に置く (header は同じ形。持ち越しは数えない) */
+    if (vm->prof_clock)
+      tvm_profile_alloc(vm, NULL, size + sizeof(TvmGcHeader));
     return vm->heap->alloc(blob ? TVM_KIND_BLOB : TVM_KIND_OBJECT, size);
+  }
   TvmGcHeader *h = (TvmGcHeader *)calloc(1, sizeof(TvmGcHeader) + size);
   if (!h)
     return NULL;
@@ -23,6 +24,8 @@ static void *alloc_with_header(TvmVm *vm, size_t size, uint8_t blob) {
   h->next = vm->objects;
   vm->objects = h;
   vm->gc_debt += size + sizeof(TvmGcHeader);
+  if (vm->prof_clock)
+    tvm_profile_alloc(vm, h + 1, size + sizeof(TvmGcHeader));
   return h + 1;
 }
 
@@ -209,6 +212,7 @@ void tvm_frame_end(TvmVm *vm) {
       vm->heap->frame();
     return;
   }
+  tvm_profile_frame_end(vm);
   if (vm->gc_debt >= vm->gc_limit)
     tvm_gc_collect(vm);
 }
