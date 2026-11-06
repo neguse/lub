@@ -159,6 +159,14 @@ typedef struct TvmDebug {
   uint32_t ndirty;
   uint32_t nclasses;
   const char **classes; /* --trace のファイルの class */
+  /* 負荷 (tvm_profile_*): 行ごとの時間 (ns) と確保 (byte と回数)、足した印と足した行、今の行 + 1 (0 は行の外) */
+  uint64_t *prof_ns;
+  uint64_t *prof_bytes;
+  uint32_t *prof_allocs;
+  uint8_t *prof_hit;
+  uint32_t *prof_hits;
+  uint32_t nprof_hits;
+  uint32_t prof_cur;
 } TvmDebug;
 
 /* 状態の控え (tcsvm_debug.c) */
@@ -329,6 +337,15 @@ struct TvmVm {
   uint32_t layout_version;
   TvmPinned *pinned;
   uint32_t npinned, cappinned;
+  /* 負荷 (tcsvm_debug.c): 時計 (NULL なら数えない)、今の行に足し始めた時刻、interpreter の入れ子の深さ、GC の止まり */
+  TvmClockFn prof_clock;
+  uint64_t prof_last;
+  uint32_t prof_depth;
+  struct {
+    uint64_t ns;
+    size_t live;
+  } prof_gc[TVM_PROFILE_GCS];
+  uint32_t nprof_gc;
   char error[4096];
 };
 
@@ -343,6 +360,12 @@ void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p));
 void tvm_debug_forget(TvmVm *vm, void *p);
 /* --trace: 行 k を self で通った組を記録する (TRACE が呼ぶ) */
 void tvm_debug_pair(TvmVm *vm, uint32_t k, void *self);
+/* 負荷 (prof_clock があるときだけ呼ぶ): 行 k に着いた (TRACE)、interpreter に入る・出る、確保した、GC が止めた */
+void tvm_profile_line(TvmVm *vm, uint32_t k);
+void tvm_profile_enter(TvmVm *vm);
+void tvm_profile_leave(TvmVm *vm);
+void tvm_profile_alloc(TvmVm *vm, size_t bytes);
+void tvm_profile_gc(TvmVm *vm, uint64_t ns, size_t live);
 /* reload が object を作り直した: 控えの中身を捨てる (控えそのものは host が持つので残す) */
 void tvm_snapshots_invalidate(TvmVm *vm);
 const char *tvm_func_path(TvmVm *vm, const TvmProto *p);

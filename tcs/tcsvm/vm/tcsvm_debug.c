@@ -31,6 +31,11 @@ void tvm_debug_free(TvmDebug *d) {
   free(d->vals);
   free(d->dirty);
   free(d->classes);
+  free(d->prof_ns);
+  free(d->prof_bytes);
+  free(d->prof_allocs);
+  free(d->prof_hit);
+  free(d->prof_hits);
   free(d);
 }
 
@@ -57,6 +62,14 @@ bool tvm_debug_read(TvmVm *vm, TcsReader *r) {
   d->line_nums = (uint32_t *)calloc(n ? n : 1, sizeof(uint32_t));
   d->hit = (uint8_t *)calloc(n ? n : 1, 1);
   d->hits = (uint32_t *)calloc(n ? n : 1, sizeof(uint32_t));
+  d->prof_ns = (uint64_t *)calloc(n ? n : 1, sizeof(uint64_t));
+  d->prof_bytes = (uint64_t *)calloc(n ? n : 1, sizeof(uint64_t));
+  d->prof_allocs = (uint32_t *)calloc(n ? n : 1, sizeof(uint32_t));
+  d->prof_hit = (uint8_t *)calloc(n ? n : 1, 1);
+  d->prof_hits = (uint32_t *)calloc(n ? n : 1, sizeof(uint32_t));
+  if (!d->line_files || !d->line_nums || !d->hit || !d->hits || !d->prof_ns || !d->prof_bytes || !d->prof_allocs ||
+      !d->prof_hit || !d->prof_hits)
+    return false;
   for (uint32_t i = 0; i < n; i++) {
     d->line_files[i] = dstr(vm, tcs_rd_u32(r));
     d->line_nums[i] = tcs_rd_u32(r);
@@ -113,6 +126,99 @@ void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p)) {
       if (vm->static_info[s->statics[i].slot].kind == TVM_K_REF)
         mark(vm, s->statics[i].value.p);
   }
+}
+
+/* ---- 負荷 ---- */
+
+static void prof_add(TvmDebug *d, uint32_t k, uint64_t ns, uint64_t bytes, uint32_t allocs) {
+  if (k >= d->nlines)
+    return;
+  d->prof_ns[k] += ns;
+  d->prof_bytes[k] += bytes;
+  d->prof_allocs[k] += allocs;
+  if (!d->prof_hit[k]) {
+    d->prof_hit[k] = 1;
+    d->prof_hits[d->nprof_hits++] = k;
+  }
+}
+
+/* 今の行に、足し始めてから now までの時間を足し、now から足し始める */
+static void prof_flush(TvmVm *vm, uint64_t now) {
+  TvmDebug *d = vm->debug;
+  if (d && d->prof_cur)
+    prof_add(d, d->prof_cur - 1, now - vm->prof_last, 0, 0);
+  vm->prof_last = now;
+}
+
+void tvm_profile_enable(TvmVm *vm, TvmClockFn clock) {
+  vm->prof_clock = clock;
+  vm->prof_depth = 0;
+  if (vm->debug)
+    vm->debug->prof_cur = 0;
+  if (clock)
+    vm->prof_last = clock();
+}
+
+void tvm_profile_line(TvmVm *vm, uint32_t k) {
+  prof_flush(vm, vm->prof_clock());
+  vm->debug->prof_cur = k + 1;
+}
+
+/* host から一番外の呼び出しに入るときは行の外から数え始め、出るときに今の行に足して行の外に戻る
+   (呼び出しの外の時間をどの行にも付けない) */
+void tvm_profile_enter(TvmVm *vm) {
+  if (vm->prof_depth++ > 0)
+    return;
+  vm->prof_last = vm->prof_clock();
+  if (vm->debug)
+    vm->debug->prof_cur = 0;
+}
+
+void tvm_profile_leave(TvmVm *vm) {
+  if (vm->prof_depth == 0 || --vm->prof_depth > 0)
+    return;
+  prof_flush(vm, vm->prof_clock());
+  if (vm->debug)
+    vm->debug->prof_cur = 0;
+}
+
+void tvm_profile_alloc(TvmVm *vm, size_t bytes) {
+  TvmDebug *d = vm->debug;
+  if (d && d->prof_cur)
+    prof_add(d, d->prof_cur - 1, 0, bytes, 1);
+}
+
+/* GC が止めた時間は今の行に足さない (足し始めた時刻を止めた分だけ遅らせる) */
+void tvm_profile_gc(TvmVm *vm, uint64_t ns, size_t live) {
+  if (vm->nprof_gc == TVM_PROFILE_GCS) {
+    memmove(vm->prof_gc, vm->prof_gc + 1, sizeof(vm->prof_gc[0]) * (TVM_PROFILE_GCS - 1));
+    vm->nprof_gc--;
+  }
+  vm->prof_gc[vm->nprof_gc].ns = ns;
+  vm->prof_gc[vm->nprof_gc].live = live;
+  vm->nprof_gc++;
+  vm->prof_last += ns;
+}
+
+void tvm_profile_take_lines(TvmVm *vm, TvmProfileLineFn fn, void *user) {
+  TvmDebug *d = vm->debug;
+  if (!d)
+    return;
+  for (uint32_t i = 0; i < d->nprof_hits; i++) {
+    uint32_t k = d->prof_hits[i];
+    fn(user, d->line_files[k], d->line_nums[k], d->prof_ns[k], d->prof_bytes[k], d->prof_allocs[k]);
+    d->prof_ns[k] = 0;
+    d->prof_bytes[k] = 0;
+    d->prof_allocs[k] = 0;
+    d->prof_hit[k] = 0;
+  }
+  d->nprof_hits = 0;
+}
+
+void tvm_profile_take_gc(TvmVm *vm, TvmProfileGcFn fn, void *user) {
+  for (uint32_t i = 0; i < vm->nprof_gc; i++)
+    fn(user, vm->prof_gc[i].ns, vm->prof_gc[i].live);
+  vm->nprof_gc = 0;
 }
 
 /* ---- 行と値の取り出し ---- */

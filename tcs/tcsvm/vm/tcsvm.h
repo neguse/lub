@@ -216,6 +216,20 @@ void tvm_inspect_pin(TvmVm *vm, const char *key, const char *entry, const char *
 /* key で覚えた object がまだ回収されておらず、その id (TvmInspectNode.id) が id か */
 bool tvm_inspect_pinned(TvmVm *vm, const char *key, const char *id);
 
+/* 負荷: clock (ns を返す) を渡すと数え始め、NULL で止める。
+   --trace の行の印から次の印までの時間と、その間の確保を、その行に足す。
+   印の無い関数 (--trace の外の関数と host の関数) の中の時間と確保は、それを呼んだ行に付く。
+   GC の時間は行に足さず、止まりとして別に数える。host から呼んだ関数から戻った後は、次に呼ぶまでどの行にも足さない。 */
+typedef uint64_t (*TvmClockFn)(void);
+void tvm_profile_enable(TvmVm *vm, TvmClockFn clock);
+/* 前に取り出してから足した行を渡し、0 に戻す (順番は決まっていない。bytes は header を含む) */
+typedef void (*TvmProfileLineFn)(void *user, const char *file, uint32_t line, uint64_t ns, uint64_t bytes, uint32_t allocs);
+void tvm_profile_take_lines(TvmVm *vm, TvmProfileLineFn fn, void *user);
+/* 前に取り出してから GC が止めた回を古い順に渡して忘れる (直近 TVM_PROFILE_GCS 回まで。live は回収の後に生きている byte) */
+#define TVM_PROFILE_GCS 64
+typedef void (*TvmProfileGcFn)(void *user, uint64_t ns, size_t live);
+void tvm_profile_take_gc(TvmVm *vm, TvmProfileGcFn fn, void *user);
+
 /* 状態の控え: entry と --trace の class の static と、そこから辿れる object の中身 (string は写さない) */
 typedef struct TvmSnapshot TvmSnapshot;
 /* 控えて持つ (控えた object は回収しない)。失敗したら NULL */

@@ -45,8 +45,8 @@ static void print_line(const char *s, size_t n) {
 #define TVM_COMPUTED_GOTO 1
 #endif
 
-static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, const TvmSlot *args,
-                     TvmSlot *rets) {
+static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, const TvmSlot *args,
+                           TvmSlot *rets) {
   TvmSlot *const top0 = vm->top;
   TvmFrame *const base = vm->ftop;
   TvmSlot *R = top0;
@@ -804,6 +804,8 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     /* A は class の instance の method の self の register + 1 */
     if (OPA)
       tvm_debug_pair(vm, k, R[OPA - 1].p);
+    if (vm->prof_clock)
+      tvm_profile_line(vm, k);
     NEXT;
   }
   CASE(TVAL) {
@@ -823,6 +825,17 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
     }
   }
 #endif
+}
+
+/* 負荷を数えている間は、interpreter に入る・出るを知らせる (host からの一番外の呼び出しの外の時間を行に付けない) */
+static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, const TvmSlot *args, TvmSlot *rets) {
+  if (!vm->prof_clock)
+    return interpret(vm, proto, clo, args, rets);
+  tvm_profile_enter(vm);
+  TvmStatus st = interpret(vm, proto, clo, args, rets);
+  if (vm->prof_clock)
+    tvm_profile_leave(vm);
+  return st;
 }
 
 TvmStatus tvm_run(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets) {
