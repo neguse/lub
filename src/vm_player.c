@@ -235,10 +235,14 @@ static bool call_hook(const Hooks *h, int32_t fn, const char *what,
   return ok;
 }
 
+static void profile_stop(void);
+
 static void free_vm(void) {
   // Rewind の控えは VM の中にあるので、VM より先に捨てる
   if (g_ctx)
     rewind_drop(lub_api_app(g_ctx));
+  // 行ごとの負荷の時間を知らせる thread は VM を触るので、VM より先に止める
+  profile_stop();
   if (vm_lub_vm)
     tvm_free(vm_lub_vm);
   vm_lub_vm = NULL;
@@ -621,14 +625,49 @@ static void vm_pick_sites(void *user, char *out, size_t cap) {
     tvm_stack_self(vm_lub_vm, pick_site, &b);
 }
 
-// ---- 行ごとの負荷 (tvm_profile_*。時計は SDL の ns) ----
+// ---- 行ごとの負荷 (tvm_profile_*) ----
+// VM は文ごとに時計を読まない (時計の遅い環境では時計の時間が行の時間に化ける)。
+// 別の thread が PROFILE_TICK_NS ごとに経った時間を知らせ、VM はそのとき実行していた行に足す。
+// 時計 (SDL の ns) は GC が止めた長さを測るのにだけ渡す。
+
+#define PROFILE_TICK_NS 250000
 
 static uint64_t profile_clock(void) { return SDL_GetTicksNS(); }
 
+static SDL_Thread *g_profile_thread;
+static SDL_AtomicInt g_profile_run;
+
+static int SDLCALL profile_ticker(void *data) {
+  TvmVm *vm = (TvmVm *)data;
+  uint64_t last = SDL_GetTicksNS();
+  while (SDL_GetAtomicInt(&g_profile_run)) {
+    SDL_DelayNS(PROFILE_TICK_NS);
+    uint64_t now = SDL_GetTicksNS();
+    tvm_profile_tick(vm, now - last);
+    last = now;
+  }
+  return 0;
+}
+
+static void profile_stop(void) {
+  if (!g_profile_thread)
+    return;
+  SDL_SetAtomicInt(&g_profile_run, 0);
+  SDL_WaitThread(g_profile_thread, NULL);
+  g_profile_thread = NULL;
+}
+
 static void hook_profile_lines(App *app, bool on) {
   (void)app;
-  if (vm_lub_vm)
-    tvm_profile_enable(vm_lub_vm, on ? profile_clock : NULL);
+  profile_stop();
+  if (!vm_lub_vm)
+    return;
+  tvm_profile_enable(vm_lub_vm, on ? profile_clock : NULL);
+  if (!on)
+    return;
+  // thread を作れない環境 (thread の無い web) では時間を数えず、確保と GC の止まりだけを数える
+  SDL_SetAtomicInt(&g_profile_run, 1);
+  g_profile_thread = SDL_CreateThread(profile_ticker, "lub_profile", vm_lub_vm);
 }
 
 static StrArena g_profile_arena;

@@ -2974,10 +2974,10 @@ typedef struct LubInspectNode {
 } LubInspectNode;
 
 // Sys.TakeProfile の 1 件 (前に取り出してからの和)。 Site は "file:line"。Ms
-// はその行の CPU の時間で、--trace で変換していない関数と API の中の時間を含
-// み、--trace で変換した関数を呼んだ先の時間は含まない。 Bytes と Allocs は
-// その行の確保の byte (object の header を含む) と回数で、時間と同じく呼んだ
-// 先を含む。
+// はその行を実行していた時間の見積もり (0.25 ms ごとの知らせを足したもの)
+// で、--trace で変換していない関数と API の中の時間を含み、--trace で変換し
+// た関数を呼んだ先の時間は含まない。 Bytes と Allocs はその行の確保の byte
+// (object の header を含む) と回数で、時間と同じく呼んだ先を含む。
 typedef struct LubProfileLine {
   LubStr site;
   float ms;
@@ -3582,8 +3582,9 @@ LUB_API void lub_sys_inspect_history(LubContext *ctx, LubStr path,
 
 // tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile) と、GC の
 // 止まり (Sys.TakeGcPauses) を数え始める (true) か止める (false)。 tcs VM の
-// player だけが数え、ほかでは何もしない。数えている間は、文ごとに時計を読む
-// 分だけ重くなる。
+// player だけが数え、ほかでは何もしない。数えている間は、別の thread が 0.25
+// ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環
+// 境では時間を数えない)。
 LUB_API void lub_sys_profile_lines(LubContext *ctx, bool on);
 
 // 前に呼んでから、行ごとに足した負荷を返し、0 に戻す (ProfileLine)。数えてい

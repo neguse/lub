@@ -15,7 +15,7 @@ public static class Game
     public static void OnFrame(float dt)
     {
         Keep = new List<int> { 1, 2, 3 };
-        for (int i = 0; i < 20000; i++)
+        for (int i = 0; i < 200000; i++)
             sum += i;
         Big = new int[100000];
     }
