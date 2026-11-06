@@ -146,6 +146,19 @@ elif ! "$WORK/inspect_test" "$WORK/inspect.tcsb" > "$WORK/inspect.out" 2>&1 || !
 else
   echo "ok   inspect (大きな配列の一部)"
 fi
+# 行ごとの負荷 (tests/profile): --trace の行の時間と確保、GC の止まりを、test の時計で決まった値として取り出す
+PROF="$ROOT/tcsvm/tests/profile"
+if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/profile_test" "$PROF/profile_test.c" "${VM_SRC[@]}" \
+    "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
+    "$ROOT"/runtime/model/*.c -lm 2> "$WORK/profile_test.err"; then
+  echo "FAIL profile: build"; head -5 "$WORK/profile_test.err"; fail=1
+elif ! "$DOTNET" "$TCS2VM_DLL" --ref "$PROF/stub.cs" --export 'Game.*' --trace "$PROF/Game.cs" "$PROF/Game.cs" "$PROF/Lib.cs" -o "$WORK/profile.tcsb" 2> "$WORK/profile.emit.err"; then
+  echo "FAIL profile: $(cat "$WORK/profile.emit.err")"; fail=1
+elif ! "$WORK/profile_test" "$WORK/profile.tcsb" > "$WORK/profile.out" 2>&1 || ! cmp -s "$WORK/profile.out" "$PROF/expected.txt"; then
+  echo "FAIL profile"; diff "$PROF/expected.txt" "$WORK/profile.out" | head -10; fail=1
+else
+  echo "ok   profile (行ごとの負荷)"
+fi
 # mixed-mode の最小の試験 (doc/object-model.md M-4): tcs2c --lib の生成 C の関数が VM の object を読み書きする
 MIXED="$ROOT/tcsvm/tests/mixed"
 TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net10.0/tcs2c.dll"

@@ -11,6 +11,8 @@
 #define GC_MIN_LIMIT ((size_t)1 << 20)
 
 static void *alloc_with_header(TvmVm *vm, size_t size, uint8_t blob) {
+  if (vm->prof_clock)
+    tvm_profile_alloc(vm, size + sizeof(TvmGcHeader));
   if (vm->heap) /* shared heap: tcs2c の runtime の nursery に置く (header は同じ形) */
     return vm->heap->alloc(blob ? TVM_KIND_BLOB : TVM_KIND_OBJECT, size);
   TvmGcHeader *h = (TvmGcHeader *)calloc(1, sizeof(TvmGcHeader) + size);
@@ -169,6 +171,11 @@ static void mark_roots(TvmVm *vm) {
 void tvm_gc_collect(TvmVm *vm) {
   if (vm->heap)
     return; /* shared heap: 回収は tcs2c の runtime が frame の境界で行う */
+  uint64_t t0 = 0;
+  if (vm->prof_clock) {
+    tvm_profile_gc_begin(vm);
+    t0 = vm->prof_clock();
+  }
   mark_roots(vm);
   while (vm->nmark)
     scan(vm, vm->mark_stack[--vm->nmark]);
@@ -192,6 +199,8 @@ void tvm_gc_collect(TvmVm *vm) {
   vm->gc_debt = 0;
   vm->gc_limit = vm->gc_stress ? 0 : (live > GC_MIN_LIMIT ? live : GC_MIN_LIMIT);
   vm->gc_count++;
+  if (vm->prof_clock)
+    tvm_profile_gc(vm, vm->prof_clock() - t0, live);
 }
 
 void tvm_frame_end(TvmVm *vm) {
