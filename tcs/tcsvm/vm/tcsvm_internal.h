@@ -337,9 +337,10 @@ struct TvmVm {
   uint32_t layout_version;
   TvmPinned *pinned;
   uint32_t npinned, cappinned;
-  /* 負荷 (tcsvm_debug.c): 時計 (NULL なら数えない)、今の行に足し始めた時刻、interpreter の入れ子の深さ、GC の止まり */
+  /* 負荷 (tcsvm_debug.c): 時計 (NULL なら数えない)、知らされてまだ行に振り分けていない時間 (別の thread も足す)、
+     interpreter の入れ子の深さ、GC の止まり */
   TvmClockFn prof_clock;
-  uint64_t prof_last;
+  volatile uint64_t prof_pending;
   uint32_t prof_depth;
   struct {
     uint64_t ns;
@@ -360,11 +361,12 @@ void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p));
 void tvm_debug_forget(TvmVm *vm, void *p);
 /* --trace: 行 k を self で通った組を記録する (TRACE が呼ぶ) */
 void tvm_debug_pair(TvmVm *vm, uint32_t k, void *self);
-/* 負荷 (prof_clock があるときだけ呼ぶ): 行 k に着いた (TRACE)、interpreter に入る・出る、確保した、GC が止めた */
+/* 負荷 (prof_clock があるときだけ呼ぶ): 行 k に着いた (TRACE)、interpreter に入る・出る、確保した、GC が始まる・止めた */
 void tvm_profile_line(TvmVm *vm, uint32_t k);
 void tvm_profile_enter(TvmVm *vm);
 void tvm_profile_leave(TvmVm *vm);
 void tvm_profile_alloc(TvmVm *vm, size_t bytes);
+void tvm_profile_gc_begin(TvmVm *vm);
 void tvm_profile_gc(TvmVm *vm, uint64_t ns, size_t live);
 /* reload が object を作り直した: 控えの中身を捨てる (控えそのものは host が持つので残す) */
 void tvm_snapshots_invalidate(TvmVm *vm);

@@ -1,12 +1,10 @@
 two steps:
   Game.cs:8 ns=200 allocs=0 bytes=ok
-  Game.cs:9 ns=0 allocs=0 bytes=ok
   Game.cs:10 ns=14 allocs=0 bytes=ok
   Game.cs:11 ns=0 allocs=2 bytes=ok
   Game.cs:16 ns=40 allocs=0 bytes=ok
 taken again:
 churn:
-  Game.cs:21 ns=0 allocs=0 bytes=ok
   Game.cs:22 ns=0 allocs=3000 bytes=ok
 gc: stopped
 disabled:

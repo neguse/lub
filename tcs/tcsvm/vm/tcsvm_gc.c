@@ -171,7 +171,11 @@ static void mark_roots(TvmVm *vm) {
 void tvm_gc_collect(TvmVm *vm) {
   if (vm->heap)
     return; /* shared heap: 回収は tcs2c の runtime が frame の境界で行う */
-  uint64_t t0 = vm->prof_clock ? vm->prof_clock() : 0;
+  uint64_t t0 = 0;
+  if (vm->prof_clock) {
+    tvm_profile_gc_begin(vm);
+    t0 = vm->prof_clock();
+  }
   mark_roots(vm);
   while (vm->nmark)
     scan(vm, vm->mark_stack[--vm->nmark]);

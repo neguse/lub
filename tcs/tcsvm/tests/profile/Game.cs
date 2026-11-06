@@ -1,4 +1,4 @@
-// 行ごとの負荷のテスト (profile_test.c が呼ぶ)。時間は test の時計 (Probe.Clock.Advance) でだけ進む。
+// 行ごとの負荷のテスト (profile_test.c が呼ぶ)。時間は Probe.Clock.Advance が知らせる分だけ経つ。
 public static class Game
 {
     static int[]? keep;

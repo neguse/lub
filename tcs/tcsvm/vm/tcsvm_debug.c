@@ -130,6 +130,16 @@ void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p)) {
 
 /* ---- 負荷 ---- */
 
+/* 知らされた時間 (prof_pending) は tvm_profile_tick が別の thread からも足すので、不可分に読んで 0 にする */
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+static uint64_t pending_take(TvmVm *vm) { return (uint64_t)_InterlockedExchange64((volatile long long *)&vm->prof_pending, 0); }
+void tvm_profile_tick(TvmVm *vm, uint64_t ns) { _InterlockedExchangeAdd64((volatile long long *)&vm->prof_pending, (long long)ns); }
+#else
+static uint64_t pending_take(TvmVm *vm) { return __atomic_exchange_n(&vm->prof_pending, 0, __ATOMIC_RELAXED); }
+void tvm_profile_tick(TvmVm *vm, uint64_t ns) { __atomic_fetch_add(&vm->prof_pending, ns, __ATOMIC_RELAXED); }
+#endif
+
 static void prof_add(TvmDebug *d, uint32_t k, uint64_t ns, uint64_t bytes, uint32_t allocs) {
   if (k >= d->nlines)
     return;
@@ -142,12 +152,12 @@ static void prof_add(TvmDebug *d, uint32_t k, uint64_t ns, uint64_t bytes, uint3
   }
 }
 
-/* 今の行に、足し始めてから now までの時間を足し、now から足し始める */
-static void prof_flush(TvmVm *vm, uint64_t now) {
+/* 知らされた時間を今の行に足す (行の外なら捨てる) */
+static void prof_flush(TvmVm *vm) {
+  uint64_t ns = pending_take(vm);
   TvmDebug *d = vm->debug;
-  if (d && d->prof_cur)
-    prof_add(d, d->prof_cur - 1, now - vm->prof_last, 0, 0);
-  vm->prof_last = now;
+  if (ns && d && d->prof_cur)
+    prof_add(d, d->prof_cur - 1, ns, 0, 0);
 }
 
 void tvm_profile_enable(TvmVm *vm, TvmClockFn clock) {
@@ -155,21 +165,22 @@ void tvm_profile_enable(TvmVm *vm, TvmClockFn clock) {
   vm->prof_depth = 0;
   if (vm->debug)
     vm->debug->prof_cur = 0;
-  if (clock)
-    vm->prof_last = clock();
+  pending_take(vm);
 }
 
+/* 行が変わる前に、それまでに知らされた時間を前の行に足す (知らせが無ければ不可分の読み書きをしない) */
 void tvm_profile_line(TvmVm *vm, uint32_t k) {
-  prof_flush(vm, vm->prof_clock());
+  if (vm->prof_pending)
+    prof_flush(vm);
   vm->debug->prof_cur = k + 1;
 }
 
-/* host から一番外の呼び出しに入るときは行の外から数え始め、出るときに今の行に足して行の外に戻る
-   (呼び出しの外の時間をどの行にも付けない) */
+/* host から一番外の呼び出しに入るときは、それまでに知らされた時間を捨てて行の外から始め、
+   出るときに今の行に足して行の外に戻る (呼び出しの外の時間をどの行にも付けない) */
 void tvm_profile_enter(TvmVm *vm) {
   if (vm->prof_depth++ > 0)
     return;
-  vm->prof_last = vm->prof_clock();
+  pending_take(vm);
   if (vm->debug)
     vm->debug->prof_cur = 0;
 }
@@ -177,7 +188,7 @@ void tvm_profile_enter(TvmVm *vm) {
 void tvm_profile_leave(TvmVm *vm) {
   if (vm->prof_depth == 0 || --vm->prof_depth > 0)
     return;
-  prof_flush(vm, vm->prof_clock());
+  prof_flush(vm);
   if (vm->debug)
     vm->debug->prof_cur = 0;
 }
@@ -188,8 +199,11 @@ void tvm_profile_alloc(TvmVm *vm, size_t bytes) {
     prof_add(d, d->prof_cur - 1, 0, bytes, 1);
 }
 
-/* GC が止めた時間は今の行に足さない (足し始めた時刻を止めた分だけ遅らせる) */
+/* GC の前までの時間は今の行に足し、GC の間に知らされた時間は捨てる (GC の長さは時計で測って別に持つ) */
+void tvm_profile_gc_begin(TvmVm *vm) { prof_flush(vm); }
+
 void tvm_profile_gc(TvmVm *vm, uint64_t ns, size_t live) {
+  pending_take(vm);
   if (vm->nprof_gc == TVM_PROFILE_GCS) {
     memmove(vm->prof_gc, vm->prof_gc + 1, sizeof(vm->prof_gc[0]) * (TVM_PROFILE_GCS - 1));
     vm->nprof_gc--;
@@ -197,7 +211,6 @@ void tvm_profile_gc(TvmVm *vm, uint64_t ns, size_t live) {
   vm->prof_gc[vm->nprof_gc].ns = ns;
   vm->prof_gc[vm->nprof_gc].live = live;
   vm->nprof_gc++;
-  vm->prof_last += ns;
 }
 
 void tvm_profile_take_lines(TvmVm *vm, TvmProfileLineFn fn, void *user) {

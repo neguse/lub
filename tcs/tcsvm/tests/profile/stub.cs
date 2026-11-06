@@ -3,7 +3,7 @@ namespace Probe
 {
     public static class Clock
     {
-        // test の時計を ns だけ進める
+        // ns だけ時間が経ったことを VM に知らせる (tvm_profile_tick)
         public static void Advance(int ns) { }
     }
 }

@@ -1,7 +1,7 @@
-/* 行ごとの負荷 (tvm_profile_*) のテスト。時計は test が持ち、Game の Probe.Clock.Advance でだけ進む。
-   - 時間はその行に付き、--trace の印のある関数の中の時間はその関数の行に、印の無い関数 (Lib.cs) の中の時間は呼んだ行に付く
-   - tvm_call の外で進んだ時間はどの行にも付かない
-   - 確保はした行に付き、GC の止まりは別に数える
+/* 行ごとの負荷 (tvm_profile_*) のテスト。時間は、Game の Probe.Clock.Advance が tvm_profile_tick で知らせる分だけ経つ。
+   - 時間は知らせたときの行に付き、--trace の印のある関数の中の時間はその関数の行に、印の無い関数 (Lib.cs) の中の時間は呼んだ行に付く
+   - tvm_call の外で知らせた時間はどの行にも付かない
+   - 確保はした行に付き、GC の止まりは別に数える (GC の長さを測る時計は test の時計で、進まない)
    - 止めると数えない */
 #include "../../vm/tcsvm.h"
 
@@ -14,10 +14,9 @@ static uint64_t now;
 static uint64_t fake_clock(void) { return now; }
 
 static TvmStatus advance(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
-  (void)vm;
   (void)r;
   (void)user;
-  now += (uint64_t)a[0].i;
+  tvm_profile_tick(vm, (uint64_t)a[0].i);
   return TVM_OK;
 }
 
@@ -96,8 +95,8 @@ int main(int argc, char **argv) {
   tvm_profile_enable(vm, fake_clock);
   if (!call(vm, "Game.Step") || !call(vm, "Game.Step"))
     return 1;
-  /* 呼び出しの外で進んだ時間は付かない */
-  now += 1000;
+  /* 呼び出しの外で知らせた時間は付かない */
+  tvm_profile_tick(vm, 1000);
   tvm_profile_take_lines(vm, take, NULL);
   print("two steps");
   tvm_profile_take_lines(vm, take, NULL);
