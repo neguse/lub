@@ -1117,9 +1117,16 @@ public class Renderer3d
     // draw と pass ごとに Clear して使い回す。
     private readonly Bindings passBindings = new Bindings();
 
-    /// <summary>記録した draw 列を実行して swapchain まで出す (end は Lua キーワードのため End)。
+    /// <summary>記録した draw 列を実行して swapchain まで出し、draw 列を空にする (end は Lua キーワードのため End)。
     /// </summary>
     public void End()
+    {
+        Render();
+        // 描いた命令は次の frame に持ち越さない (持ち越すと、Rewind の控えがそれを生かし続ける)
+        draws = new List<Renderer3dDrawCmd>();
+    }
+
+    private void Render()
     {
         if (this.vp == null || this.proj == null)
             return;
