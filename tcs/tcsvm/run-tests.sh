@@ -133,6 +133,19 @@ elif ! "$WORK/trace_test" "$WORK/trace.tcsb" > "$WORK/trace.out" 2>&1 || ! cmp -
 else
   echo "ok   trace (行, self) の組"
 fi
+# 大きな配列の一部を見る (tests/inspect): tvm_inspect は頼まれた範囲の外の要素に手間をかけない
+INSPECT="$ROOT/tcsvm/tests/inspect"
+if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/inspect_test" "$INSPECT/inspect_test.c" "${VM_SRC[@]}" \
+    "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
+    "$ROOT"/runtime/model/*.c -lm 2> "$WORK/inspect_test.err"; then
+  echo "FAIL inspect: build"; head -5 "$WORK/inspect_test.err"; fail=1
+elif ! "$DOTNET" "$TCS2VM_DLL" --export 'Game.*' "$INSPECT/Game.cs" -o "$WORK/inspect.tcsb" 2> "$WORK/inspect.emit.err"; then
+  echo "FAIL inspect: $(cat "$WORK/inspect.emit.err")"; fail=1
+elif ! "$WORK/inspect_test" "$WORK/inspect.tcsb" > "$WORK/inspect.out" 2>&1 || ! cmp -s "$WORK/inspect.out" "$INSPECT/expected.txt"; then
+  echo "FAIL inspect"; diff "$INSPECT/expected.txt" "$WORK/inspect.out" | head -5; fail=1
+else
+  echo "ok   inspect (大きな配列の一部)"
+fi
 # mixed-mode の最小の試験 (doc/object-model.md M-4): tcs2c --lib の生成 C の関数が VM の object を読み書きする
 MIXED="$ROOT/tcsvm/tests/mixed"
 TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net10.0/tcs2c.dll"

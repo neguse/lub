@@ -538,6 +538,7 @@ typedef struct Child {
 typedef struct Children {
   Child *v;
   uint32_t n, cap;
+  uint32_t first; /* v[0] が子の何番目か (List と配列は頼まれた範囲だけ並べる) */
 } Children;
 
 static Child *child_add(Children *c) {
@@ -561,8 +562,10 @@ static int cmp_child(const void *a, const void *b) {
   return strcmp(x->name, y->name);
 }
 
-/* 値 l の子を out に並べる (null の field と関数は除く) */
-static void children_of(TvmVm *vm, const Loc *l, Children *out) {
+/* 値 l の子を out に並べる (null の field と関数は除く)。
+   List と配列は from 番目から count 個だけ並べる (要素の数に比例する手間をかけない)。ほかは全部並べる */
+static void children_of(TvmVm *vm, const Loc *l, uint32_t from, uint32_t count, Children *out) {
+  out->first = 0;
   if (l->kind == TVM_K_STRUCT) {
     if (l->type >= vm->ntypes)
       return;
@@ -604,13 +607,16 @@ static void children_of(TvmVm *vm, const Loc *l, Children *out) {
     return;
   case TVM_T_LIST:
   case TVM_T_ARRAY: {
-    int32_t n = t->tkind == TVM_T_LIST ? ((TvmList *)p)->count : ((TvmArray *)p)->len;
+    uint32_t n = (uint32_t)(t->tkind == TVM_T_LIST ? ((TvmList *)p)->count : ((TvmArray *)p)->len);
     const char *data = t->tkind == TVM_T_LIST ? ((TvmList *)p)->data : ARR_DATA(p);
-    for (int32_t i = 0; i < n; i++) {
+    uint32_t lo = from < n ? from : n;
+    uint32_t hi = count < n - lo ? lo + count : n;
+    out->first = lo;
+    for (uint32_t i = lo; i < hi; i++) {
       Child *c = child_add(out);
       if (!c)
         return;
-      snprintf(c->name, sizeof c->name, "[%d]", (int)i);
+      snprintf(c->name, sizeof c->name, "[%u]", (unsigned)i);
       Loc e = {t->elem_kind, t->elem_type, data + (size_t)i * t->elem_size, false};
       c->loc = e;
     }
@@ -664,9 +670,18 @@ static void class_children(TvmVm *vm, const char *cls, Children *out) {
   }
 }
 
+static void *loc_object(const Loc *l) { return l->kind == TVM_K_REF ? leaf_ref(l, 0, 0) : NULL; }
+
 static uint32_t count_children(TvmVm *vm, const Loc *l) {
+  /* List と配列は要素を並べずに数える */
+  void *p = loc_object(l);
+  const TvmType *t = p ? type_of(p) : NULL;
+  if (t && t->tkind == TVM_T_LIST)
+    return (uint32_t)((TvmList *)p)->count;
+  if (t && t->tkind == TVM_T_ARRAY)
+    return (uint32_t)((TvmArray *)p)->len;
   Children c = {0};
-  children_of(vm, l, &c);
+  children_of(vm, l, 0, UINT32_MAX, &c);
   free(c.v);
   return c.n;
 }
@@ -683,7 +698,21 @@ typedef struct Walk {
   uint32_t parent_offset; /* parent の payload の中の位置 */
 } Walk;
 
-static void *loc_object(const Loc *l) { return l->kind == TVM_K_REF ? leaf_ref(l, 0, 0) : NULL; }
+/* path の段 s (n 文字) が [数] なら、その数を *out に置く */
+static bool path_index(const char *s, size_t n, uint32_t *out) {
+  if (n < 3 || s[0] != '[' || s[n - 1] != ']')
+    return false;
+  uint64_t v = 0;
+  for (size_t i = 1; i + 1 < n; i++) {
+    if (s[i] < '0' || s[i] > '9' || v > UINT32_MAX)
+      return false;
+    v = v * 10 + (uint64_t)(s[i] - '0');
+  }
+  if (v >= UINT32_MAX)
+    return false;
+  *out = (uint32_t)v;
+  return true;
+}
 
 static bool walk_path(TvmVm *vm, const char *entry, const char *path, Walk *w) {
   memset(w, 0, sizeof *w);
@@ -731,7 +760,12 @@ static bool walk_path(TvmVm *vm, const char *entry, const char *path, Walk *w) {
       void *o = loc_object(&w->loc);
       if (o && w->nanc < 64)
         w->anc[w->nanc++] = o;
-      children_of(vm, &w->loc, &c);
+      /* List と配列の [i] は i 番目だけ並べる */
+      uint32_t at;
+      if (path_index(rest, n, &at))
+        children_of(vm, &w->loc, at, 1, &c);
+      else
+        children_of(vm, &w->loc, 0, UINT32_MAX, &c);
     }
     bool found = false;
     for (uint32_t i = 0; i < c.n && !found; i++)
@@ -818,9 +852,9 @@ int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path, int32_t offs
     void *o = loc_object(&w.loc);
     if (o && w.nanc < 64)
       w.anc[w.nanc++] = o;
-    children_of(vm, &w.loc, &c);
+    children_of(vm, &w.loc, (uint32_t)offset, count > 0 ? (uint32_t)count : 0, &c);
   }
-  for (uint32_t i = (uint32_t)offset; i < c.n && written < count; i++)
+  for (uint32_t i = (uint32_t)offset > c.first ? (uint32_t)offset - c.first : 0; i < c.n && written < count; i++)
     fill_node(vm, &out[written++], path, c.v[i].name, &c.v[i].loc, &w);
   free(c.v);
   return written;
