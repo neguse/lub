@@ -1,0 +1,5 @@
+Boxes - [1048576] count=1048576
+[1048574] - null count=0
+[1048575] Box Box{Hp=7} count=1
+Hp - 7 count=0
+fast
