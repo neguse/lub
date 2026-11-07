@@ -3200,3 +3200,11 @@
 - 検証: `tcsvm/tests/profile` (frame の境目の後に作り、static、前からある object の field、static の List、新しく作った object の field に置いた物が、作った行と持つ field ごとに 1 つずつ付き、置かなかった物と、一度数えた物と、frame の境目より前に作った物は付かない)、`bash tcsvm/run-tests.sh`。ASan/UBSan でも通る
 - 判断: 辿る根は状態の控え (`tvm_snapshot_take`) と同じ entry と --trace の class の static にした。ゲームの状態として持ち越す物を数え、同じ VM で動く道具の static が持つ物を数えないため。印の付いた物だけを表で引くので、前からある物は印を見るだけで済む
 - 残課題: --trace の外の class の static だけが持つ物は数えない
+
+### static から辿れる個体を一度に探す (tvm_inspect_instances) ✓ (2026-11-07)
+- `tvm_inspect_instances(vm, entry, max_depth, max_children, fn, user)` は、entry と --trace の class の static から幅優先で 1 回辿り、class の instance を見つけた順に 1 度ずつ、型の名前と `tvm_inspect` と同じ path と id で渡す
+- 辿った object に印 (`TVM_GC_SEEN`) を付けるので、同じ object は最初に見つけた path で 1 度だけ渡し、輪も辿り直さない。struct の値の中も辿る。深さは static field が 1 で max_depth まで、List と配列などの子は先頭の max_children 個まで
+- 検証: `tcsvm/tests/inspect` (2 つの static から辿れる object が 1 度だけ、輪、struct の中、深さの上限で止まること、2^20 要素の配列の先頭の上限個だけを見ること、id が `tvm_inspect` と同じこと)、`bash tcsvm/run-tests.sh`。ASan/UBSan でも通る
+- 判断: 節ごとに `tvm_inspect` を呼んで探すと、そのたびに path を根から読み直し、子ごとに値の文字を作るので、static から 8000 節ほど辿るだけで 1 回 10 ms かかっていた。探すだけなら値の文字は要らない
+- 残課題: なし
+

@@ -211,6 +211,13 @@ typedef struct TvmInspectNode {
    Dictionary は項目 (key の順)。null の field と関数は返さない。path が辿れなければ 0 */
 int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path, int32_t offset, int32_t count,
                     TvmInspectNode *out);
+/* entry と --trace の class の static から幅優先で辿り、class の instance を見つけた順に 1 度ずつ fn に渡す
+   (path は tvm_inspect の path、id は TvmInspectNode.id。同じ object は最初に見つけた path で 1 度だけ)。
+   深さ max_depth まで (static field が 1)、List と配列は先頭の max_children 個まで辿る。
+   節ごとに tvm_inspect で辿り直すより速い (path を根から読み直さず、値の文字を作らない) */
+typedef void (*TvmInstanceFn)(void *user, const char *type, const char *path, const char *id);
+void tvm_inspect_instances(TvmVm *vm, const char *entry, uint32_t max_depth, uint32_t max_children, TvmInstanceFn fn,
+                           void *user);
 /* path の節の object を key で弱く覚える (回収は止めない)。辿れないか object でなければ忘れる */
 void tvm_inspect_pin(TvmVm *vm, const char *key, const char *entry, const char *path);
 /* key で覚えた object がまだ回収されておらず、その id (TvmInspectNode.id) が id か */
