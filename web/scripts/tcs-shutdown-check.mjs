@@ -19,7 +19,7 @@ const page = `<!doctype html>
 <canvas id="canvas" width="64" height="64"></canvas>
 <script type="module">
 const adapter = await navigator.gpu.requestAdapter();
-const features = ["depth32float-stencil8", "float32-filterable"].filter((f) => adapter.features.has(f));
+const features = ["depth32float-stencil8", "float32-filterable", "timestamp-query"].filter((f) => adapter.features.has(f));
 window.Module = {
   canvas: document.getElementById("canvas"),
   preinitializedWebGPUDevice: await adapter.requestDevice({ requiredFeatures: features }),

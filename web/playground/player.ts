@@ -194,7 +194,11 @@ async function initWebGPU(): Promise<any> {
   const adapter = await (navigator as any).gpu.requestAdapter();
   if (!adapter) throw new Error("No WebGPU adapter");
   const wantedFeatures: string[] = [];
-  for (const f of ["depth32float-stencil8", "float32-filterable"]) {
+  for (const f of [
+    "depth32float-stencil8",
+    "float32-filterable",
+    "timestamp-query",
+  ]) {
     if (adapter.features?.has?.(f)) wantedFeatures.push(f);
   }
   return await adapter.requestDevice({ requiredFeatures: wantedFeatures });
