@@ -59,12 +59,13 @@ static void copy_str(char *dst, size_t cap, const char *src) {
 
 void gpu_time_pass_begin(App *app, const char *target) {
   g_cur = NULL;
-  if (!g_on || !app->in_frame || app->in_overlay || app->frame_index < g_from)
+  // 描き先の名前の無い pass は lub の中の pass (Gfx.Pick の描き直し)
+  if (!g_on || !app->in_frame || app->in_overlay || !target ||
+      app->frame_index < g_from)
     return;
   char site[sizeof(g_cur->site)] = "";
-  if (app->debug_hooks && app->debug_hooks->profile_site &&
-      !app->debug_hooks->profile_site(app, site, (int32_t)sizeof site))
-    return;
+  if (app->debug_hooks && app->debug_hooks->profile_site)
+    app->debug_hooks->profile_site(app, site, (int32_t)sizeof site);
   GpuFrame *f = &g_frames[app->frame_index % GPU_TIME_FRAMES];
   if (!f->used || f->frame != app->frame_index) {
     f->used = true;

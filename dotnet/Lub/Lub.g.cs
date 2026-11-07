@@ -2270,7 +2270,7 @@ public class KeptObject
     public int Bytes;
 }
 
-/// <summary>Sys.TakeGpuPasses の 1 件 (1 frame の 1 つの pass)。 Site は pass を始めた行 ("file:line"。tcs VM の player の外では空)、Target は描き先 (texture の key、MainTex は "main"、XR の眼は "xr0" / "xr1"、depth だけの pass は depth の key)。 Ms は pass の GPU の時間で、測れない backend (metal、webgpu、sdlgpu) と測れなかった pass では -1。Draws はその pass の draw の数。</summary>
+/// <summary>Sys.TakeGpuPasses の 1 件 (1 frame の 1 つの pass)。 Site は pass を始めた行 ("file:line"。tcs VM の player で、--trace で変換したソースの行から始めたときだけ。ほかは空)、Target は描き先 (texture の key、MainTex は "main"、XR の眼は "xr0" / "xr1"、depth だけの pass は depth の key)。 Ms は pass の GPU の時間で、測れない backend (metal、webgpu、sdlgpu) と測れなかった pass では -1。Draws はその pass の draw の数。</summary>
 public class GpuPass
 {
     public string Site;
@@ -4609,7 +4609,7 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>前に呼んでから GPU が終えた frame の pass (GpuPass) を、古い順に返す。 GPU の時間は、その frame を GPU が終えた後 (多くの backend で 2 frame 後) に届く。 tcs VM の player では --trace で変換したソースの行から始めた pass だけを数え (overlay と lub の中の pass は数えない)、ほかの host では全部の pass を数える。 frame の途中で数え始めたら、次の frame の pass から数える。数えていなければ空。</summary>
+    /// <summary>前に呼んでから GPU が終えた frame の pass (GpuPass) を、古い順に返す。 GPU の時間は、その frame を GPU が終えた後 (多くの backend で 2 frame 後) に届く。 Gfx.BeginPass で始めた pass を数え、overlay の中の pass は数えない。 frame の途中で数え始めたら、次の frame の pass から数える。数えていなければ空。</summary>
     public static List<GpuPass> TakeGpuPasses()
     {
         var a = LubRuntime.Arena.Begin();

@@ -13,7 +13,7 @@ struct App;
 // pass.c が pass の始まりと終わりを、draw を出す所が draw を知らせる。
 // 時刻を測れる backend は pass の前後に時刻を書き、その frame を GPU が終えた後に gpu_time_resolved で返す。
 // 測れない backend の pass は、frame の終わりに時間 -1 で出す。
-// debug hook (tcs VM の player) があれば、--trace の行から始めた pass だけを控える (overlay と lub の中の pass は除く)。
+// Gfx.BeginPass で始めた pass を控え (overlay の中の pass と lub の中の pass は除く)、debug hook (tcs VM の player) が今の --trace の行を返せばそれも控える。
 // frame の途中で数え始めたら、次の frame の pass から控える。
 
 // 1 frame で控える pass の数の上限。backend の時刻の番号は pass i の前が 2i、後が 2i + 1
@@ -24,7 +24,7 @@ struct App;
 
 void gpu_time_enable(struct App *app, bool on);
 bool gpu_time_enabled(void);
-// target は描き先の名前 (無ければ NULL)
+// target は描き先の名前 (Gfx.BeginPass の外で始めた pass は NULL で、控えない)
 void gpu_time_pass_begin(struct App *app, const char *target);
 void gpu_time_pass_end(struct App *app);
 void gpu_time_draw(struct App *app);
