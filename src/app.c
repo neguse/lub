@@ -2,6 +2,7 @@
 #include "api_internal.h"
 #include "backend.h"
 #include "gpu_stats.h"
+#include "gpu_time.h"
 #include "lua_api.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
@@ -304,6 +305,7 @@ static void app_on_shader_release(void *ctx, uintptr_t old_shader) {
 void app_frame_end(App *app, bool frame_ok) {
   bool capture_before_end_frame =
       g_backend && g_backend->capture_before_end_frame;
+  gpu_time_frame_end(app);
   if (capture_before_end_frame && capture_state_drain(&app->capture, app)) {
     app->capture_then_exit = true;
   }

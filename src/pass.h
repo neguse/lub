@@ -14,11 +14,15 @@ typedef struct PassState {
       current_color_fmts[SGL_MAX_COLOR_TARGETS]; // valid while in_pass
   bool current_has_depth;                        // valid while in_pass
   SglPixelFormat current_depth_fmt;              // valid when current_has_depth
+  const char
+      *label; // 次の pass の描き先の名前 (GPU の時間に付ける。begin で忘れる)
 } PassState;
 
 void pass_state_init(PassState *p);
 void pass_state_set_app(PassState *p, struct App *app);
 bool pass_state_in_pass(const PassState *p);
+// 次に始める pass の描き先の名前 (文字列は begin まで有効)
+void pass_state_label(PassState *p, const char *label);
 
 // Begin a pass with one color target (offscreen if target_image != 0, swapchain
 // otherwise). Used by the swapchain / XR pass in api_gfx.c. For MRT use

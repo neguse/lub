@@ -118,6 +118,7 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
 - capture: present 前に backbuffer を readback buffer へ copy して
   flush + wait(`capture_before_end_frame = true`)。end_frame は
   Present + Signal のみ行う。
+- pass の GPU の時間(`Sys.TakeGpuPasses`): 数えている frame は pass の前後に timestamp query を `EndQuery` で書き、command list を閉じる前(end_frame と capture)に slot の readback buffer へ `ResolveQueryData` する。begin_frame がその slot の fence を待った後に読み、`GetTimestampFrequency` で ns にして返す。
 
 ## Golden test
 

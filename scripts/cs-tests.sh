@@ -82,6 +82,7 @@ cs_runtime_tests=(
   TestBindingsDispatch
   TestBindingsMainTex
   TestUniformMatch
+  TestGpuPassTime
 )
 # runtime テストに付ける起動引数
 cs_test_args=(--readback-fixed-latency)

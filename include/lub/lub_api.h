@@ -3005,6 +3005,19 @@ typedef struct LubKeptObject {
   int32_t bytes;
 } LubKeptObject;
 
+// Sys.TakeGpuPasses の 1 件 (1 frame の 1 つの pass)。 Site は pass を始めた
+// 行 ("file:line"。tcs VM の player で、--trace で変換したソースの行から始め
+// たときだけ。ほかは空)、Target は描き先 (texture の key、MainTex は
+// "main"、XR の眼は "xr0" / "xr1"、depth だけの pass は depth の key)。 Ms は
+// pass の GPU の時間で、測れない backend (metal、webgpu、sdlgpu) と測れなか
+// った pass では -1。Draws はその pass の draw の数。
+typedef struct LubGpuPass {
+  LubStr site;
+  LubStr target;
+  float ms;
+  int32_t draws;
+} LubGpuPass;
+
 // OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown
 // / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X /
 // Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は
@@ -3594,10 +3607,11 @@ LUB_API void lub_sys_inspect_history(LubContext *ctx, LubStr path,
                                      int32_t *out_count);
 
 // tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止ま
-// り (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept) を数え始める (true) か止める
-// (false)。 tcs VM の player だけが数え、ほかでは何もしない。数えている間
-// は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた
-// 行に足す (thread の無い環境では時間を数えない)。
+// り (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept)、pass ごとの GPU の時間
+// (Sys.TakeGpuPasses) を数え始める (true) か止める (false)。行ごとの負荷、GC
+// の止まり、持ち越しは tcs VM の player だけが数え、GPU の pass はどの host
+// でも数える。数えている間は、別の thread が 0.25 ms ごとに経った時間を知ら
+// せ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。
 LUB_API void lub_sys_profile_lines(LubContext *ctx, bool on);
 
 // 前に呼んでから、行ごとに足した負荷を返し、0 に戻す (ProfileLine)。数えてい
@@ -3619,6 +3633,14 @@ LUB_API void lub_sys_take_gc_pauses(LubContext *ctx, const LubGcPause **out,
 // っていない。
 LUB_API void lub_sys_take_kept(LubContext *ctx, const LubKeptObject **out,
                                int32_t *out_count);
+
+// 前に呼んでから GPU が終えた frame の pass (GpuPass) を、古い順に返す。 GPU
+// の時間は、その frame を GPU が終えた後 (多くの backend で 2 frame 後) に届
+// く。 Gfx.BeginPass で始めた pass を数え、overlay の中の pass は数えない。
+// frame の途中で数え始めたら、次の frame の pass から数える。数えていなけれ
+// ば空。
+LUB_API void lub_sys_take_gpu_passes(LubContext *ctx, const LubGpuPass **out,
+                                     int32_t *out_count);
 
 // ---------------------------------------------------------------- rewind
 // overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。控え

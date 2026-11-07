@@ -1,6 +1,8 @@
-// 行ごとの負荷 (Sys.ProfileLines、Sys.TakeProfile、Sys.TakeGcPauses、Sys.TakeKept) の検査。
+// 行ごとの負荷 (Sys.ProfileLines、Sys.TakeProfile、Sys.TakeGcPauses、Sys.TakeKept、Sys.TakeGpuPasses) の検査。
 // ゲームの OnFrame は毎 frame、Game.cs:17 で List を作って Game.Keep に置き、Game.cs:19 で足し算を繰り返し、Game.cs:20 で大きな配列を作って Game.Big に置く (数 frame で GC が走る)。
-// 数え始めてから 4 frame の後に、その行に確保と時間が付き、GC の止まりが届き、その frame に作って static に置いた物が持ち越しとして届き、止めた後は何も届かないことを見る。
+// その後、Game.cs:24 で MainTex への pass を始めて draw を 2 つ出す。
+// 数え始めてから 4 frame の後に、その行に確保と時間が付き、GC の止まりが届き、その frame に作って static に置いた物が持ち越しとして届き、
+// GPU が終えた frame の pass が、始めた行、描き先、draw の数、GPU の時間 (この test が走る vulkan では測れる) 付きで届き、止めた後は行の負荷と持ち越しが届かないことを見る。
 using System;
 using Lub;
 
@@ -66,6 +68,20 @@ public static class Tool
                 Finish("FAIL the kept objects were not Game.cs:17 in Game.Keep and Game.cs:20 in Game.Big: " + kept, 1);
                 return;
             }
+            bool timed = false;
+            var gpu = "";
+            foreach (var g in Sys.TakeGpuPasses())
+            {
+                gpu += g.Site + " " + g.Target + " " + g.Ms + "ms " + g.Draws + " draws, ";
+                if (g.Site.EndsWith("Game.cs:24") && g.Target == "main" && g.Draws == 2 && g.Ms >= 0)
+                    timed = true;
+            }
+            if (!timed)
+            {
+                Finish("FAIL no timed GPU pass begun at Game.cs:24 into main with 2 draws: " + gpu, 1);
+                return;
+            }
+            Console.WriteLine("gpu passes: " + gpu);
             Sys.ProfileLines(false);
             return;
         }

@@ -21,6 +21,7 @@
 #include "app.h"
 #include "backend.h"
 #include "gpu_stats.h"
+#include "gpu_time.h"
 #include "stb_image_write.h"
 
 #include <SDL3/SDL.h>
@@ -205,6 +206,12 @@ struct FrameCtx {
   UINT srv_cap = 0;
   UINT srv_used = 0;
   TableCache tables;
+  // GPU の時刻 (gpu_time.h): この slot の frame、書いた番号の数と印、時刻を書くか、readback buffer へ写したか
+  uint64_t ts_frame = 0;
+  uint32_t ts_count = 0;
+  uint8_t ts_written[GPU_TIME_STAMPS] = {};
+  bool ts_on = false;
+  bool ts_resolved = false;
 };
 
 // --- resource wrappers -------------------------------------------------------
@@ -238,6 +245,11 @@ struct Dx12State {
   ComPtr<ID3D12Fence> fence;
   uint64_t fence_next = 1;
   HANDLE fence_event = nullptr;
+
+  // GPU の時刻の query (slot ごとに GPU_TIME_STAMPS 個) と、slot ごとの読み出し先。queue が時刻を持たなければ空
+  ComPtr<ID3D12QueryHeap> ts_heap;
+  ComPtr<ID3D12Resource> ts_readback[kFramesInFlight];
+  double ts_ns_per_tick = 0;
 
   FrameCtx frames[kFramesInFlight];
   int slot = 0;
@@ -789,6 +801,36 @@ bool dx_init(App *app) {
   g.cl->Close();
   g.recording = false;
 
+  UINT64 ts_freq = 0;
+  if (SUCCEEDED(g.queue->GetTimestampFrequency(&ts_freq)) && ts_freq) {
+    D3D12_QUERY_HEAP_DESC qh = {};
+    qh.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+    qh.Count = kFramesInFlight * GPU_TIME_STAMPS;
+    bool ok =
+        SUCCEEDED(g.device->CreateQueryHeap(&qh, IID_PPV_ARGS(&g.ts_heap)));
+    for (int i = 0; ok && i < kFramesInFlight; ++i) {
+      D3D12_HEAP_PROPERTIES hp = {};
+      hp.Type = D3D12_HEAP_TYPE_READBACK;
+      D3D12_RESOURCE_DESC1 rd = {};
+      rd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+      rd.Width = GPU_TIME_STAMPS * sizeof(uint64_t);
+      rd.Height = 1;
+      rd.DepthOrArraySize = 1;
+      rd.MipLevels = 1;
+      rd.SampleDesc.Count = 1;
+      rd.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+      ok = SUCCEEDED(g.device10->CreateCommittedResource3(
+          &hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_BARRIER_LAYOUT_UNDEFINED,
+          nullptr, nullptr, 0, nullptr, IID_PPV_ARGS(&g.ts_readback[i])));
+    }
+    if (ok) {
+      g.ts_ns_per_tick = 1e9 / (double)ts_freq;
+    } else {
+      SDL_Log("d3d12: timestamp query heap create failed; no GPU pass times");
+      g.ts_heap.Reset();
+    }
+  }
+
   if (!g.rtv_heap.init(g.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
                        kRtvHeapCap) ||
       !g.dsv_heap.init(g.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
@@ -849,6 +891,53 @@ void dx_shutdown(App *app) {
 
 // --- vtable: frame ----------------------------------------------------------
 
+// slot の前の frame の時刻を読んで返す (slot の fence を待った後に呼ぶ)
+static void dx_timestamps_read(int slot) {
+  FrameCtx &f = g.frames[slot];
+  if (!f.ts_count)
+    return;
+  uint64_t ns[GPU_TIME_STAMPS];
+  for (uint32_t i = 0; i < f.ts_count; i++)
+    ns[i] = GPU_TIME_NONE;
+  uint64_t *ticks = nullptr;
+  D3D12_RANGE range = {0, f.ts_count * sizeof(uint64_t)};
+  if (f.ts_resolved &&
+      SUCCEEDED(g.ts_readback[slot]->Map(0, &range, (void **)&ticks))) {
+    for (uint32_t i = 0; i < f.ts_count; i++)
+      if (f.ts_written[i])
+        ns[i] = (uint64_t)((double)ticks[i] * g.ts_ns_per_tick);
+    D3D12_RANGE none = {0, 0};
+    g.ts_readback[slot]->Unmap(0, &none);
+  }
+  gpu_time_resolved(f.ts_frame, ns, f.ts_count);
+  memset(f.ts_written, 0, f.ts_count);
+  f.ts_count = 0;
+}
+
+// 書いた時刻を slot の readback buffer へ写す (command list を閉じる前に呼ぶ)
+static void dx_timestamps_resolve() {
+  FrameCtx &f = g.frames[g.slot];
+  if (!f.ts_count || !g.recording)
+    return;
+  g.cl->ResolveQueryData(g.ts_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+                         (UINT)g.slot * GPU_TIME_STAMPS, f.ts_count,
+                         g.ts_readback[g.slot].Get(), 0);
+  f.ts_resolved = true;
+}
+
+bool dx_timestamp(App *app, uint32_t index) {
+  (void)app;
+  FrameCtx &f = g.frames[g.slot];
+  if (!g.ts_heap || !g.recording || !f.ts_on || index >= GPU_TIME_STAMPS)
+    return false;
+  g.cl->EndQuery(g.ts_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+                 (UINT)g.slot * GPU_TIME_STAMPS + index);
+  f.ts_written[index] = 1;
+  if (index + 1 > f.ts_count)
+    f.ts_count = index + 1;
+  return true;
+}
+
 void dx_begin_frame(App *app, int *out_w, int *out_h) {
   if (app->pending_resize) {
     app->pending_resize = false;
@@ -857,6 +946,10 @@ void dx_begin_frame(App *app, int *out_w, int *out_h) {
 
   FrameCtx &f = g.frames[g.slot];
   dx_wait_for_fence(f.fence_value);
+  dx_timestamps_read(g.slot);
+  f.ts_frame = app->frame_index;
+  f.ts_on = g.ts_heap && gpu_time_enabled();
+  f.ts_resolved = false;
   dx_drain_zombies();
   f.upload.reset();
   f.srv_used = 0;
@@ -878,6 +971,7 @@ void dx_begin_frame(App *app, int *out_w, int *out_h) {
 void dx_end_frame(App *app) {
   (void)app;
   if (g.recording) {
+    dx_timestamps_resolve();
     g.cl->Close();
     g.recording = false;
     ID3D12CommandList *lists[] = {g.cl.Get()};
@@ -2628,6 +2722,7 @@ bool dx_capture(App *app, const char *path) {
   dst.PlacedFootprint.Footprint.RowPitch = (UINT)row_pitch;
   g.cl->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
 
+  dx_timestamps_resolve();
   g.cl->Close();
   g.recording = false;
   g.submitted_before_present = true;
@@ -2698,4 +2793,8 @@ extern "C" const RenderBackend g_backend_d3d12 = {
     dx_capture,
     /*capture_before_end_frame=*/true,
     dx_swapchain_color_format,
+    /*cannot_block_on_gpu=*/false,
+    /*request_capture=*/nullptr,
+    /*binds_whole_buffers=*/false,
+    dx_timestamp,
 };

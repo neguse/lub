@@ -1467,8 +1467,8 @@ namespace Lub
             return new List<float>();
         }
 
-        /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止まり (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept) を数え始める (true) か止める (false)。
-        /// tcs VM の player だけが数え、ほかでは何もしない。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。
+        /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止まり (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept)、pass ごとの GPU の時間 (Sys.TakeGpuPasses) を数え始める (true) か止める (false)。
+        /// 行ごとの負荷、GC の止まり、持ち越しは tcs VM の player だけが数え、GPU の pass はどの host でも数える。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。
         /// </summary>
         [LubNoFail]
         public static void ProfileLines(bool on)
@@ -1502,6 +1502,17 @@ namespace Lub
         public static List<KeptObject> TakeKept()
         {
             return new List<KeptObject>();
+        }
+
+        /// <summary>前に呼んでから GPU が終えた frame の pass (GpuPass) を、古い順に返す。
+        /// GPU の時間は、その frame を GPU が終えた後 (多くの backend で 2 frame 後) に届く。
+        /// Gfx.BeginPass で始めた pass を数え、overlay の中の pass は数えない。
+        /// frame の途中で数え始めたら、次の frame の pass から数える。数えていなければ空。
+        /// </summary>
+        [LubNoFail]
+        public static List<GpuPass> TakeGpuPasses()
+        {
+            return new List<GpuPass>();
         }
     }
 
@@ -4806,6 +4817,18 @@ namespace Lub
         public string Holder = "";
         public int Count;
         public int Bytes;
+    }
+
+    /// <summary>Sys.TakeGpuPasses の 1 件 (1 frame の 1 つの pass)。
+    /// Site は pass を始めた行 ("file:line"。tcs VM の player で、--trace で変換したソースの行から始めたときだけ。ほかは空)、Target は描き先 (texture の key、MainTex は "main"、XR の眼は "xr0" / "xr1"、depth だけの pass は depth の key)。
+    /// Ms は pass の GPU の時間で、測れない backend (metal、webgpu、sdlgpu) と測れなかった pass では -1。Draws はその pass の draw の数。
+    /// </summary>
+    public class GpuPass
+    {
+        public string Site = "";
+        public string Target = "";
+        public float Ms;
+        public int Draws;
     }
 
     /// <summary>

@@ -61,6 +61,8 @@ typedef struct LubDebugHooks {
   void (*take_gc_pauses)(struct App *app, const LubGcPause **out,
                          int32_t *count);
   void (*take_kept)(struct App *app, const LubKeptObject **out, int32_t *count);
+  // 負荷を数えている間の今の --trace の行 ("file:line")。無ければ false
+  bool (*profile_site)(struct App *app, char *out, int32_t cap);
 } LubDebugHooks;
 
 typedef struct App {

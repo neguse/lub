@@ -307,6 +307,7 @@ set(LUB_SOURCES
   src/pick.c
   src/profile.c
   src/gpu_stats.c
+  src/gpu_time.c
   src/resources.c
   src/physics_box2d.c
   src/physics_box3d.c
