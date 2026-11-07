@@ -13,6 +13,7 @@
 #include "app.h"
 #include "backend.h"
 #include "gpu_stats.h"
+#include "gpu_time.h"
 #include "host_api.h"
 #include "stb_image_write.h"
 #include <SDL3/SDL.h>
@@ -257,6 +258,177 @@ static BackendBuffer mt_make_buffer(SglBufferType type, const void *data,
 static void mt_destroy_image(BackendImage h);
 static void mt_destroy_buffer(BackendBuffer h);
 
+// --- GPU の時刻 (gpu_time.h) --------------------------------------------------
+// Apple silicon は pass の境目でしか時刻を取れないので、pass を作るときに sampleBufferAttachments で頼む
+// (頂点の始まりと fragment の終わり)。frame ごとに MT_TS_FRAMES 組の sample を回し、組の中の k 番目に頼んだ pass は 2k と 2k + 1。
+// gpu_time の pass i がどの k かは of で引く。frame の最後の command buffer が終わった組を、後の begin_frame で読んで返す。
+
+#define MT_TS_FRAMES 4
+
+typedef struct MtTsFrame {
+  uint64_t frame;
+  uint32_t passes; // 時刻を頼んだ pass の数
+  int16_t of
+      [GPU_TIME_PASSES]; // gpu_time の pass i に頼んだ番号 (-1 は頼んでいない)
+  uint32_t count;        // gpu_time の時刻の番号の数
+  bool busy;             // command buffer の終わりを待っている
+} MtTsFrame;
+
+static id<MTLCounterSampleBuffer> g_ts_buf API_AVAILABLE(macos(11.0),
+                                                         ios(14.0));
+static MtTsFrame g_ts[MT_TS_FRAMES];
+static id<MTLCommandBuffer>
+    g_ts_cmd[MT_TS_FRAMES]; // 組の frame の最後の command buffer
+static MtTsFrame *g_ts_cur; // この frame の組 (測らなければ NULL)
+static int g_ts_last = -1;  // 直前に始めた pass に頼んだ番号
+// GPU の時刻を ns にする比 (init と読むときの CPU と GPU の時刻の組から求める)
+static MTLTimestamp g_ts_cpu0, g_ts_gpu0;
+
+static bool mt_ts_on(void) {
+  if (@available(macOS 11.0, iOS 14.0, *))
+    return g_ts_buf != nil;
+  return false;
+}
+
+static void mt_ts_init(void) {
+  if (@available(macOS 11.0, iOS 14.0, *)) {
+    if (![g_device
+            supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary])
+      return;
+    id<MTLCounterSet> set = nil;
+    for (id<MTLCounterSet> s in g_device.counterSets)
+      if ([s.name isEqualToString:MTLCommonCounterSetTimestamp])
+        set = s;
+    if (!set)
+      return;
+    MTLCounterSampleBufferDescriptor *sd =
+        [[MTLCounterSampleBufferDescriptor alloc] init];
+    sd.counterSet = set;
+    sd.sampleCount = MT_TS_FRAMES * GPU_TIME_STAMPS;
+    sd.storageMode = MTLStorageModeShared;
+    NSError *err = nil;
+    g_ts_buf = [g_device newCounterSampleBufferWithDescriptor:sd error:&err];
+    if (!g_ts_buf) {
+      SDL_Log("metal: counter sample buffer create failed; no GPU pass times");
+      return;
+    }
+    [g_device sampleTimestamps:&g_ts_cpu0 gpuTimestamp:&g_ts_gpu0];
+  }
+}
+
+static void mt_ts_shutdown(void) {
+  if (@available(macOS 11.0, iOS 14.0, *))
+    g_ts_buf = nil;
+  for (int r = 0; r < MT_TS_FRAMES; r++) {
+    g_ts_cmd[r] = nil;
+    g_ts[r].busy = false;
+  }
+  g_ts_cur = NULL;
+}
+
+// command buffer の終わった組を返し、この frame の組を決める
+static void mt_ts_begin_frame(App *app) {
+  if (!mt_ts_on())
+    return;
+  if (@available(macOS 11.0, iOS 14.0, *)) {
+    MTLTimestamp cpu = 0, gpu = 0;
+    [g_device sampleTimestamps:&cpu gpuTimestamp:&gpu];
+    double ns_per_tick =
+        gpu > g_ts_gpu0 ? (double)(cpu - g_ts_cpu0) / (double)(gpu - g_ts_gpu0)
+                        : 1.0;
+    for (int r = 0; r < MT_TS_FRAMES; r++) {
+      MtTsFrame *t = &g_ts[r];
+      if (!t->busy)
+        continue;
+      MTLCommandBufferStatus st = g_ts_cmd[r].status;
+      if (st != MTLCommandBufferStatusCompleted &&
+          st != MTLCommandBufferStatusError)
+        continue;
+      NSData *data =
+          st == MTLCommandBufferStatusCompleted
+              ? [g_ts_buf resolveCounterRange:NSMakeRange((NSUInteger)r *
+                                                              GPU_TIME_STAMPS,
+                                                          2 * t->passes)]
+              : nil;
+      const MTLCounterResultTimestamp *v =
+          data && data.length >=
+                      2 * t->passes * sizeof(MTLCounterResultTimestamp)
+              ? (const MTLCounterResultTimestamp *)data.bytes
+              : NULL;
+      uint64_t ns[GPU_TIME_STAMPS];
+      for (uint32_t i = 0; i < t->count; i++) {
+        int k = t->of[i / 2];
+        uint64_t tick = v && k >= 0 ? v[2 * k + (i & 1)].timestamp : 0;
+        ns[i] = tick && tick != MTLCounterErrorValue
+                    ? (uint64_t)((double)tick * ns_per_tick)
+                    : GPU_TIME_NONE;
+      }
+      gpu_time_resolved(t->frame, ns, t->count);
+      t->busy = false;
+      g_ts_cmd[r] = nil;
+    }
+  }
+  g_ts_cur = NULL;
+  g_ts_last = -1;
+  MtTsFrame *t = &g_ts[app->frame_index % MT_TS_FRAMES];
+  if (!gpu_time_enabled() || t->busy)
+    return;
+  t->frame = app->frame_index;
+  t->passes = 0;
+  t->count = 0;
+  for (int i = 0; i < GPU_TIME_PASSES; i++)
+    t->of[i] = -1;
+  g_ts_cur = t;
+}
+
+// pass の時刻を頼む (pass を作る前に、控える pass だけ)
+static void mt_ts_attach(App *app, MTLRenderPassDescriptor *rp) {
+  if (!g_ts_cur || g_ts_cur->passes >= GPU_TIME_PASSES ||
+      !gpu_time_wants_pass(app))
+    return;
+  if (@available(macOS 11.0, iOS 14.0, *)) {
+    NSUInteger base = (NSUInteger)(g_ts_cur - g_ts) * GPU_TIME_STAMPS;
+    uint32_t k = g_ts_cur->passes++;
+    MTLRenderPassSampleBufferAttachmentDescriptor *a =
+        rp.sampleBufferAttachments[0];
+    a.sampleBuffer = g_ts_buf;
+    a.startOfVertexSampleIndex = base + 2 * k;
+    a.endOfVertexSampleIndex = MTLCounterDontSample;
+    a.startOfFragmentSampleIndex = MTLCounterDontSample;
+    a.endOfFragmentSampleIndex = base + 2 * k + 1;
+    g_ts_last = (int)k;
+  }
+}
+
+// frame の最後の command buffer を組に覚える (commit の前)
+static void mt_ts_end_frame(void) {
+  MtTsFrame *t = g_ts_cur;
+  g_ts_cur = NULL;
+  if (!t || !t->passes || !g_cmd)
+    return;
+  g_ts_cmd[t - g_ts] = g_cmd;
+  t->busy = true;
+}
+
+static bool mt_timestamp(App *app, uint32_t index) {
+  (void)app;
+  MtTsFrame *t = g_ts_cur;
+  if (!t || index >= GPU_TIME_STAMPS)
+    return false;
+  uint32_t i = index / 2;
+  if (!(index & 1)) {
+    if (g_ts_last < 0)
+      return false;
+    t->of[i] = (int16_t)g_ts_last;
+    g_ts_last = -1;
+  } else if (t->of[i] < 0) {
+    return false;
+  }
+  if (index + 1 > t->count)
+    t->count = index + 1;
+  return true;
+}
+
 static bool mt_init(App *app) {
   @autoreleasepool {
     g_device = MTLCreateSystemDefaultDevice();
@@ -283,7 +455,9 @@ static bool mt_init(App *app) {
       app->fixed_w = app->cfg_w > 0 ? app->cfg_w : LUB_DEFAULT_WINDOW_W;
       app->fixed_h = app->cfg_h > 0 ? app->cfg_h : LUB_DEFAULT_WINDOW_H;
     }
-    SDL_Log("metal: device: %s", g_device.name.UTF8String);
+    mt_ts_init();
+    SDL_Log("metal: device: %s%s", g_device.name.UTF8String,
+            mt_ts_on() ? " (GPU pass times)" : "");
     static const uint8_t white[4] = {255, 255, 255, 255};
     static const uint8_t zeros[256] = {0};
     g_dummy_tex = mt_make_image(&(ImageDesc){
@@ -318,6 +492,7 @@ static void mt_shutdown(App *app) {
       [g_cmd commit];
       [g_cmd waitUntilCompleted];
     }
+    mt_ts_shutdown();
     if (g_depth)
       gpu_stats_destroy(GPU_STAT_TEXTURE,
                         gpu_stats_image_bytes(SGL_PF_DEPTH24_STENCIL8,
@@ -349,6 +524,7 @@ static void mt_shutdown(App *app) {
 
 static void mt_begin_frame(App *app, int *out_w, int *out_h) {
   @autoreleasepool {
+    mt_ts_begin_frame(app);
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(app->window, &w, &h);
     if (app->fixed_w > 0 && app->fixed_h > 0) {
@@ -393,6 +569,7 @@ static void mt_end_frame(App *app) {
     if (g_cmd) {
       if (g_drawable)
         [g_cmd presentDrawable:g_drawable];
+      mt_ts_end_frame();
       if (g_frame_chunks.count > 0) {
         NSArray<MtChunk *> *used = g_frame_chunks;
         g_frame_chunks = nil;
@@ -414,8 +591,8 @@ static void mt_end_frame(App *app) {
 }
 
 static void mt_begin_pass(App *app, const PassBeginDesc *d) {
-  (void)app;
   @autoreleasepool {
+    g_ts_last = -1;
     g_pass = nil;
     g_pip = nil;
     g_ibuf = nil;
@@ -478,6 +655,7 @@ static void mt_begin_pass(App *app, const PassBeginDesc *d) {
       g_pass_w = (int)first.width;
       g_pass_h = (int)first.height;
     }
+    mt_ts_attach(app, rp);
     g_pass = [g_cmd renderCommandEncoderWithDescriptor:rp];
     [g_pass setViewport:(MTLViewport){g_pass_x, g_pass_y, g_pass_w, g_pass_h,
                                       0.0, 1.0}];
@@ -1402,4 +1580,5 @@ const RenderBackend g_backend_metal = {
     .capture = mt_capture,
     .capture_before_end_frame = true,
     .swapchain_color_format = mt_swapchain_color_format,
+    .timestamp = mt_timestamp,
 };
