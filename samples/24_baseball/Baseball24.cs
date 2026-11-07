@@ -2009,7 +2009,7 @@ public static class Baseball24
             float size = Math.Min(28, 380 / Math.Max(1, mtext!.Width(eventText, 1.0f)) * mtext.Px);
             batch.Begin();
             batch.Rect(280, h - 64, 400, 44, Color.Rgb(0.04f, 0.10f, 0.15f, 0.93f * a));
-            batch.Rect(280, h - 64, 3, 44, Color.Rgb(eventCol.R, eventCol.G, eventCol.B, a));
+            batch.Rect(280, h - 64, 3, 44, Color.Rgb(eventCol.Value.R, eventCol.Value.G, eventCol.Value.B, a));
             HudText(eventText, w * 0.5f, h - 32, size,
                 Color.Rgb(cream.R, cream.G, cream.B, a), true);
             batch.Flush();
