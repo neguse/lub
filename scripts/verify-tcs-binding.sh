@@ -40,6 +40,20 @@ fi
 grep -qF 'lub-array-length' "$work/ArrayCount.err"
 echo 'tcs2c binding: a count past the end of the array faults'
 
+# struct の record の書き方と渡り方 (scripts/verify-vm-binding.sh と同じ stub、ゲーム、偽の C API)
+cat cs-lib/lub_stub.cs tests/c/struct_stub.cs > "$work/struct_stub.cs"
+mkdir -p "$work/struct/lub"
+dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"
+dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+  --ref "$work/struct_stub.cs" tests/c/struct_test.cs -o "$work/struct/game.c"
+dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub "$work/struct_stub.cs" \
+  --source tests/c/struct_test.cs -o "$work/struct/binding.c"
+cp tests/c/struct_test.c "$work/struct/test.c"
+printf '\nint main(void) { tcs_lib_init(); tcs_entry_StructGame_Main(); return 0; }\n' >> "$work/struct/test.c"
+"${CC:-cc}" -I"$work/struct" "${cflags[@]}" "$work/struct/test.c" -lm -o "$work/struct/test"
+[[ "$("$work/struct/test" | tr -d '\r')" == $'13 0.5 True 7 9\n0 False\nTrue 8 True -4 True 2\nFalse 0 False\nFalse 4' ]]
+echo 'tcs2c binding: struct records pass by value, as outs and as results, and as record fields'
+
 # tcs2c の生成 C の Math (生成 C に埋め込まれた tcs の runtime/math) が、tcs VM の経路と同じ結果になること。
 # 期待値は tests/cs/TestMathDeterminism.cs の表 (OS ごとに分けない 1 つ)。
 dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll tests/c/tcs_math.cs -o "$work/math_game.c"

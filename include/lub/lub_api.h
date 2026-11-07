@@ -17,6 +17,8 @@
 //     ゲームは key と int32 の handle だけ持つ。
 //   - 省略可能な field は has_x + x (実装が既定値を入れる)。省略可能な
 //     引数は pointer (NULL = 無し)。
+//   - stub の struct の record (C# の struct) は引数でも値で渡す。戻り値
+//     と out は他の record と同じく pointer に書く。
 //   - version と data を取る宣言 (use_* / snd) は、version が stored と
 //     一致すれば data を読まない。version を渡して data を NULL にした
 //     宣言は、一致すれば成功 (LUB_OK)、一致する resource が無ければ

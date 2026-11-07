@@ -8,6 +8,7 @@ namespace LubGen;
 // VM の object の layout は host の data class も tcs2c と同じ C の struct の規則 (tcs の doc/object-model.md §3、§5) なので、
 // record は C の struct の写し (VmLub_<型>) で読み書きする。読み込みと reload の後に vm_lub_verify が offset を VM の型の表と比べる。
 // 引数は C# の順に 1 つずつ渡り (tcs の vm-design §8.5)、out (&) は VM が値を受ける場所の pointer、rets は戻り値だけ。
+// struct の record は VM の中でも C API の struct と同じ layout の値なので、S{Lub_<型>} の塊を C API の struct としてそのまま読み書きする。
 // 変換の規則は tcs2c の接続コード (TcsBinding) と同じ。tcs2c が process を止める誤り (tcs_fault) は、その host の関数の fault にする。
 public static class VmBinding
 {
@@ -55,6 +56,7 @@ internal sealed class VmBindingGen
 
     private static string Opt(TypeRef type)
     {
+        if (type.Kind == LubTypeKind.Struct) return "VmLubOpt_" + type.Name;
         if (type.Kind == LubTypeKind.Double) return "VmLubOptF32";
         if (type.Kind == LubTypeKind.Bool) return "VmLubOptBool";
         return "VmLubOptI32";
@@ -72,6 +74,9 @@ internal sealed class VmBindingGen
             case LubTypeKind.Bool:
             case LubTypeKind.Enum:
                 return type.Nullable ? Opt(type) : Scalar(type);
+            case LubTypeKind.Struct:
+                // struct の record は VM の中でも C の layout の値 (C API の struct と同じ並び。vm_lub_verify が確かめる)
+                return type.Nullable ? Opt(type) : CHeader.TypeName(type.Name);
             case LubTypeKind.Handle:
             case LubTypeKind.View:
             case LubTypeKind.Record:
@@ -100,6 +105,7 @@ internal sealed class VmBindingGen
             case LubTypeKind.Record:
             case LubTypeKind.Native:
             case LubTypeKind.Keyed:
+            case LubTypeKind.Struct:
                 return Il(type.Name);
             case LubTypeKind.List:
                 return "List<" + VmTypeName(type.Elem!) + ">";
@@ -133,6 +139,7 @@ internal sealed class VmBindingGen
             case LubTypeKind.View:
                 return "LubView";
             case LubTypeKind.Record:
+            case LubTypeKind.Struct:
                 return "Lub" + type.Name;
             case LubTypeKind.List:
                 return "const " + NativeType(type.Elem!) + " *";
@@ -351,6 +358,15 @@ internal sealed class VmBindingGen
             if (IsObjectType(t)) Line("typedef struct " + Struct(t.Name) + " " + Struct(t.Name) + ";");
         }
         var checks = new List<string>();
+        // struct の record は VM の中でも C API の struct と同じ layout の値。T? は { bool has; T v; }
+        foreach (var t in model.Types)
+        {
+            if (t.Kind != "struct") continue;
+            var opt = "VmLubOpt_" + t.Name;
+            Line("typedef struct " + opt + " { bool has; " + CHeader.TypeName(t.Name) + " v; } " + opt + ";");
+            foreach (var f in t.Fields) checks.Add("{\"" + Il(t.Name) + "\", \"" + f.LuaName + "\", offsetof(" + CHeader.TypeName(t.Name) + ", " + f.LuaName + ")}");
+            OptChecks(Il(t.Name), opt, checks);
+        }
         foreach (var t in model.Types)
         {
             if (!IsObjectType(t)) continue;
@@ -418,7 +434,7 @@ internal sealed class VmBindingGen
             case LubTypeKind.List:
                 return ListFrom(type, value, "NULL", type.Nullable);
         }
-        if (type.IsScalar) return value;
+        if (type.IsScalar || type.Kind == LubTypeKind.Struct) return value;
         GenError.Report("unsupported return: " + type.ToString());
         return "";
     }
@@ -443,7 +459,7 @@ internal sealed class VmBindingGen
         if (type.Kind == LubTypeKind.String) return "vm_lub_str(" + value + ")";
         if (type.Kind == LubTypeKind.Handle) return "(" + value + " ? (int32_t)" + value + "->host_value : 0)";
         if (type.Kind == LubTypeKind.Keyed) return "vm_lub_key_load(" + value + " ? " + value + "->host_value : 0)";
-        if (type.IsScalar) return type.Nullable ? value + ".v" : value;
+        if (type.IsScalar || type.Kind == LubTypeKind.Struct) return type.Nullable ? value + ".v" : value;
         GenError.Report("unsupported field: " + type.ToString());
         return "";
     }
@@ -483,7 +499,7 @@ internal sealed class VmBindingGen
             var src = "source->f_" + field.LuaName;
             var dst = "result." + path;
             var has = HasPath("result.", path, field);
-            if (field.Type.IsScalar && field.Optional)
+            if ((field.Type.IsScalar || field.Type.Kind == LubTypeKind.Struct) && field.Optional)
                 Line("  if (" + src + ".has) { " + has + " = true; " + dst + " = " + src + ".v; }");
             else if (field.Bits)
                 Line("  " + (field.Optional ? has + " = " : "") + "vm_lub_bits(" + src + ", &" + dst + ");");
@@ -573,7 +589,7 @@ internal sealed class VmBindingGen
                 Line("  " + dst + " = vm_lub_array(" + TypeVar(VmTypeName(field.Type)) + ", " + field.ArrayLen + ");");
                 Line("  if (" + dst + ") memcpy(tvm_array_data(" + dst + "), " + src + ", sizeof(" + src + "));");
             }
-            else if (field.Type.IsScalar && field.Optional)
+            else if ((field.Type.IsScalar || field.Type.Kind == LubTypeKind.Struct) && field.Optional)
                 Line("  " + dst + " = (" + Opt(field.Type) + "){" + has + ", " + src + "};");
             else if (field.Bits)
                 Line("  " + dst + " = " + (field.Optional ? "!" + has + " ? NULL : " : "") + "vm_lub_bits_string(" + src + ");");
@@ -650,6 +666,7 @@ internal sealed class VmBindingGen
             if (type.Nullable) return "S{" + ScalarVmName(type) + "?}";
             return type.Kind == LubTypeKind.Double ? "f" : type.Kind == LubTypeKind.Bool ? "b" : "i";
         }
+        if (type.Kind == LubTypeKind.Struct) return "S{" + Il(type.Name) + (type.Nullable ? "?" : "") + "}";
         if (type.Kind == LubTypeKind.String) return "s";
         return "o";
     }
@@ -661,7 +678,8 @@ internal sealed class VmBindingGen
     // k 番目の引数 a[k] を C の値にする式
     private static string Unpack(TypeRef type, int k)
     {
-        if (type.IsScalar && type.Nullable) return "*(const " + Opt(type) + " *)a[" + k + "].p";
+        if ((type.IsScalar || type.Kind == LubTypeKind.Struct) && type.Nullable) return "*(const " + Opt(type) + " *)a[" + k + "].p";
+        if (type.Kind == LubTypeKind.Struct) return "*(const " + CHeader.TypeName(type.Name) + " *)a[" + k + "].p";
         if (type.Kind == LubTypeKind.Double) return "a[" + k + "].f";
         if (type.Kind == LubTypeKind.Bool) return "a[" + k + "].i != 0";
         if (type.IsScalar) return "a[" + k + "].i";
@@ -678,8 +696,18 @@ internal sealed class VmBindingGen
     }
 
     // k 番目の引数の out の場所 (VM が 0 で埋めて渡す)。scalar は C の値の pointer、参照は VM の object を置く slot
-    private static string OutPlace(TypeRef type, int k) =>
-        (type.IsScalar ? "(" + Scalar(type) + " *)" : "(void **)") + "a[" + k + "].p";
+    private static string OutPlace(TypeRef type, int k) => Place(type, "a[" + k + "].p");
+
+    // C API が VM の場所に直接書く out (null にならない scalar と struct の record)
+    private static bool Direct(TypeRef type) => !type.Nullable && (type.IsScalar || type.Kind == LubTypeKind.Struct);
+
+    // VM が渡す場所 p を C の型の pointer にする式 (scalar と struct の record は値の場所、他は VM の object を置く slot)
+    private static string Place(TypeRef type, string p) =>
+        (type.IsScalar ? "(" + Scalar(type) + " *)" : type.Kind == LubTypeKind.Struct ? "(" + CHeader.TypeName(type.Name) + " *)" : "(void **)") + p;
+
+    // 場所を 0 にする式
+    private static string Zero(TypeRef type) =>
+        type.IsScalar ? "0" : type.Kind == LubTypeKind.Struct ? "(" + CHeader.TypeName(type.Name) + "){0}" : "NULL";
 
     // 外部型の instance method。view の Get(int) は view の byte を読む
     private void Method(ApiType type, ApiFunction method, string hostName)
@@ -801,6 +829,7 @@ internal sealed class VmBindingGen
                 args.Add("(const float *)tvm_array_data(" + p + ")");
                 args.Add("tvm_array_len(" + p + ")");
             }
+            else if (type.Kind == LubTypeKind.Struct && !type.Nullable) args.Add(p);
             else if (type.IsScalar && type.Nullable) args.Add(p + ".has ? &" + p + ".v : NULL");
             else if (type.Kind == LubTypeKind.Func)
             {
@@ -817,22 +846,18 @@ internal sealed class VmBindingGen
         }
         // 入力の変換の誤り (配列の長さ、bit mask) は C API を呼ぶ前に止める
         Line("  if (vm_lub_error) VM_LUB_LEAVE(vm);");
-        // scalar の out は VM の場所に C API が直接書く。他は C の値で受け、VM の値にして場所に置く
+        // scalar と struct の record の out は VM の場所に C API が直接書く。他は C の値で受け、VM の値にして場所に置く
         for (int k = 0; k < function.Params.Count; k++)
         {
             var param = function.Params[k];
             if (!param.IsOut) continue;
-            if (!param.Type.IsScalar)
-            {
-                Output(param.Type, "n_" + param.LuaName, st);
-                continue;
-            }
-            if (param.Type.Nullable)
+            if (Direct(param.Type)) args.Add(OutPlace(param.Type, k));
+            else if (param.Type.IsScalar || param.Type.Kind == LubTypeKind.Struct)
             {
                 GenError.Report("unsupported out: " + param.Name + ": " + param.Type.ToString());
                 return;
             }
-            args.Add(OutPlace(param.Type, k));
+            else Output(param.Type, "n_" + param.LuaName, st);
         }
         var ret = function.Return;
         bool returned = ret.Kind != LubTypeKind.Void;
@@ -845,12 +870,20 @@ internal sealed class VmBindingGen
         bool has = !function.NoFail && ret.Nullable && (ret.IsScalar || (ret.Kind == LubTypeKind.Record && function.Maybe));
         // null になりうる scalar の戻り値は r[0].p の塊 ({ bool has; T v; }) で、C API が直接書く
         bool block = has && ret.IsScalar;
+        // struct の record の戻り値も r[0].p の塊で、C API の out に直接書かせる
+        bool structRet = ret.Kind == LubTypeKind.Struct;
+        if (structRet && ret.Nullable)
+        {
+            GenError.Report("unsupported return: " + ret.ToString());
+            return;
+        }
         if (byValue) Line("  " + NativeType(ret) + " result = {0};");
         else if (block)
         {
             Line("  " + Opt(ret) + " *result = r[0].p;");
             args.Add("&result->v");
         }
+        else if (structRet) args.Add(Place(ret, "r[0].p"));
         else if (returned) Output(new TypeRef(ret.Kind, ret.Name, false, ret.Elem, ret.FuncParams, ret.FuncReturn), "result", st);
         if (block) args.Add("&result->has");
         else if (has)
@@ -874,11 +907,12 @@ internal sealed class VmBindingGen
             Line("    fprintf(stderr, \"lub: " + hostName + " visitor: %s\\n\", vm_lub_visitor_text);");
             Line("    vm_lub_visitor_failed = vm_lub_visitor_outer;");
             if (block) Line("    *result = (" + Opt(ret) + "){0};");
+            else if (structRet) Line("    *" + Place(ret, "r[0].p") + " = " + Zero(ret) + ";");
             else if (returned) Line("    r[0].u = 0;");
             for (int k = 0; k < function.Params.Count; k++)
             {
                 var param = function.Params[k];
-                if (param.IsOut) Line("    *" + OutPlace(param.Type, k) + " = " + (param.Type.IsScalar ? "0" : "NULL") + ";");
+                if (param.IsOut) Line("    *" + OutPlace(param.Type, k) + " = " + Zero(param.Type) + ";");
             }
             Line("    VM_LUB_LEAVE(vm);");
             Line("  }");
@@ -891,14 +925,23 @@ internal sealed class VmBindingGen
             Line("  vm_lub_check(status);");
             Line("  if (vm_lub_error) VM_LUB_LEAVE(vm);");
         }
-        // 見つからない (LUB_NOT_FOUND) か値の無い結果は null。out はそのとき 0 / null のまま
+        // 見つからない (LUB_NOT_FOUND) か値の無い結果は null で、struct の record は 0 の値。scalar の out はそのとき C API が書いたまま
         string? missing = null;
         if (!function.NoFail)
         {
             if (returned && !ret.IsScalar) missing = "status == LUB_NOT_FOUND";
             if (has && !ret.IsScalar) missing = missing == null ? "!has" : missing + " || !has";
         }
-        if (returned && !block)
+        if (missing != null)
+        {
+            if (structRet) Line("  if (" + missing + ") *" + Place(ret, "r[0].p") + " = " + Zero(ret) + ";");
+            for (int k = 0; k < function.Params.Count; k++)
+            {
+                var param = function.Params[k];
+                if (param.IsOut && param.Type.Kind == LubTypeKind.Struct) Line("  if (" + missing + ") *" + OutPlace(param.Type, k) + " = " + Zero(param.Type) + ";");
+            }
+        }
+        if (returned && !block && !structRet)
         {
             var value = From(ret, "result");
             if (missing != null) value = "(" + missing + ") ? NULL : " + value;
@@ -907,7 +950,7 @@ internal sealed class VmBindingGen
         for (int k = 0; k < function.Params.Count; k++)
         {
             var param = function.Params[k];
-            if (!param.IsOut || param.Type.IsScalar) continue;
+            if (!param.IsOut || Direct(param.Type)) continue;
             var n = "n_" + param.LuaName;
             var value = From(param.Type, n);
             if (param.Type.Kind == LubTypeKind.Record && param.Type.Nullable) value = n + "_has ? " + value + " : NULL";

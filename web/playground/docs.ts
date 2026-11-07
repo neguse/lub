@@ -9,7 +9,7 @@ type Member = {
   doc: string;
 };
 type ApiType = {
-  kind: "class" | "typedef" | "abstract" | "enum";
+  kind: "class" | "struct" | "typedef" | "abstract" | "enum";
   path: string;
   name: string;
   module: string;

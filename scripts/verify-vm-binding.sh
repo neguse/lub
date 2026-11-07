@@ -35,3 +35,19 @@ for fault in 'EmptyMask:bit mask: empty hex string' 'LongMask:bit mask: more tha
   grep -qF "at BindingTest.$entry" "$work/$entry.err"
 done
 echo 'tcs VM binding: bad bit masks and a count past the end of the array fault with a C# trace'
+
+# struct の record の書き方と渡り方。tests/c/struct_stub.cs を stub の後ろに足した stub から header と接続コードを作る
+cat cs-lib/lub_stub.cs tests/c/struct_stub.cs > "$work/struct_stub.cs"
+mkdir -p "$work/struct/lub"
+dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"
+dotnet third_party/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll vm --ref "$work/struct_stub.cs" \
+  --export 'StructGame.*' tests/c/struct_test.cs -o "$work/struct/game.tcsb"
+dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll vm --stub "$work/struct_stub.cs" \
+  --source tests/c/struct_test.cs -o "$work/struct/binding.c"
+: > "$work/struct/game.c"
+cat tests/c/struct_test.c tests/c/vm_binding_driver.c > "$work/struct/test.c"
+"${CC:-cc}" -std=gnu11 -O1 -fwrapv -ffp-contract=off -I"$work/struct" -Iinclude -I"$vm" "$work/struct/test.c" \
+  "$vm"/tcsvm_{debug,gc,host,lib,load,reload,rt,run}.c "$rt"/sort/*.c "$rt"/fmt/*.c "$rt"/math/*.c "$rt"/utf8/*.c \
+  "$rt"/model/*.c -lm -o "$work/struct/test"
+[[ "$("$work/struct/test" "$work/struct/game.tcsb" StructGame.Main | tr -d '\r')" == $'13 0.5 True 7 9\n0 False\nTrue 8 True -4 True 2\nFalse 0 False\nFalse 4' ]]
+echo 'tcs VM binding: struct records pass by value, as outs and as results, and as record fields'

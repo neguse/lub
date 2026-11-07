@@ -28,6 +28,8 @@ public static class CHeader
         //     ゲームは key と int32 の handle だけ持つ。
         //   - 省略可能な field は has_x + x (実装が既定値を入れる)。省略可能な
         //     引数は pointer (NULL = 無し)。
+        //   - stub の struct の record (C# の struct) は引数でも値で渡す。戻り値
+        //     と out は他の record と同じく pointer に書く。
         //   - version と data を取る宣言 (use_* / snd) は、version が stored と
         //     一致すれば data を読まない。version を渡して data を NULL にした
         //     宣言は、一致すれば成功 (LUB_OK)、一致する resource が無ければ
@@ -244,6 +246,7 @@ public static class CHeader
                 line = "  LubView " + n + ";";
                 break;
             case LubTypeKind.Record:
+            case LubTypeKind.Struct:
                 if (f.Optional) sb.Write("  bool has_" + n + ";\n");
                 line = "  " + TypeName(tr.Name) + " " + n + ";";
                 break;
@@ -529,7 +532,7 @@ internal sealed class CHeaderGen
         var records = new List<ApiType>();
         foreach (var t in model.Types)
         {
-            if (t.Kind == "record") records.Add(t);
+            if (t.Kind == "record" || t.Kind == "struct") records.Add(t);
         }
         foreach (var t in records) byName[t.Name] = t;
         foreach (var t in records) Visit(t);
@@ -565,6 +568,7 @@ internal sealed class CHeaderGen
         switch (tr.Kind)
         {
             case LubTypeKind.Record:
+            case LubTypeKind.Struct:
                 r.Add(tr.Name);
                 break;
             case LubTypeKind.List:
@@ -694,6 +698,9 @@ internal sealed class CHeaderGen
             case LubTypeKind.Record:
                 o.Add("const " + CHeader.TypeName(tr.Name) + " *" + n);
                 return;
+            case LubTypeKind.Struct:
+                o.Add(CHeader.TypeName(tr.Name) + " " + n);
+                return;
             case LubTypeKind.List:
                 o.Add("const " + CHeader.ElemType(tr.Elem!) + " *" + n);
                 o.Add("int32_t " + n + "_count");
@@ -737,6 +744,7 @@ internal sealed class CHeaderGen
                 o.Add("LubView *" + n);
                 return;
             case LubTypeKind.Record:
+            case LubTypeKind.Struct:
                 o.Add(CHeader.TypeName(tr.Name) + " *" + n);
                 return;
             case LubTypeKind.List:
