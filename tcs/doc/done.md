@@ -3184,10 +3184,18 @@
 - 残課題: なし
 
 ### VM の行ごとの負荷 (tvm_profile) ✓ (2026-11-07)
-- `tvm_profile_enable` で数え始めると、--trace の行ごとに、確保 (byte と回数) と、`tvm_profile_tick` で知らされた時間を足す。時間は知らされたときに実行していた行に付く。印の無い関数 (--trace の外と host の関数) の中の時間と確保は、それを呼んだ行に付く。host から呼んだ一番外の呼び出しの外で知らされた時間は、どの行にも付けない
-- `tvm_profile_tick` は別の thread から呼んでよい (知らされた時間は 1 つの数に不可分に足し、行が変わるときに不可分に読んで 0 にする)。host が一定の間隔で呼ぶと、行ごとの時間の見積もりになる
+- `tvm_profile_enable` で数え始めると、--trace の行ごとに、確保 (byte と回数) と、`tvm_profile_tick` で知らされた時間を足す。時間は知らされたときに実行していた行に付く。印の無い関数 (--trace の外と host の関数) の中の時間と確保は、それを呼んだ行に付く。呼んだ先の --trace の関数から戻ると (VM の中の呼び出しも、host や runtime からの入れ子の呼び出しも)、呼んだときの行に戻る (`f(g())` の g から戻った後の f の中は、g の行でなく呼んだ行に付く)。host から呼んだ一番外の呼び出しの外で知らされた時間は、どの行にも付けない
+- `tvm_profile_tick` は別の thread から呼んでよい (知らされた時間は 1 つの数に不可分に足し、行が変わるときに不可分に覗き、たまっていれば不可分に読んで 0 にする)。host が一定の間隔で呼ぶと、行ごとの時間の見積もりになる
 - GC の止まりは、`tvm_profile_enable` に渡す時計で 1 回ごとの長さを測り、回収の後に生きている byte と一緒に別に持つ (直近 64 回)。GC の間に知らされた時間は行に足さない
 - 行ごとの数は TvmDebug に持つので、reload で行の表が替わると 0 から数え直す。止めている間は、TRACE、確保、interpreter の出入りで時計の有無を見るだけ
-- 検証: `tcsvm/tests/profile` (host の関数が `tvm_profile_tick` で知らせる時間と確保と GC の止まりが、決まった行に決まった値で付く)、`bash tcsvm/run-tests.sh`、`run-tests.sh`
-- 判断: 文ごとに時計を読む形をやめた。clocksource が HPET のマシンでは `clock_gettime` が 1 回 1.3 µs かかり、20000 回の足し算の行が 1 frame に 28 ms と出て、時計の時間が行の時間に化けた (ブラウザの時計も粗い)。知らせの時間で振り分ける形なら、ゲームの thread は文ごとに 1 つの数を読むだけで済む。行の時間はその行だけで、呼んだ先の --trace の行の時間を含めない
-- 残課題: `tvm_profile_tick` を別の thread から呼ぶことは test で確かめていない。GC の時間を行から外すことは、test の時計が進まないので確かめていない
+- 検証: `tcsvm/tests/profile` (host の関数が `tvm_profile_tick` で知らせる時間と確保と GC の止まりが、決まった行に決まった値で付く。別の thread から 200000 回知らせた時間が欠けずに付く。GC の間に読む時計が進み、そのたびに知らせても、GC の長さは時計の差になり、知らせた時間は行に付かない。--trace の関数から戻った後の印の無い関数の中の時間と確保、host の入れ子の呼び出しから戻った後の時間が、呼んだ行に付く)、`bash tcsvm/run-tests.sh`、`run-tests.sh`。profile の test は ASan/UBSan と TSan でも警告なしで通る
+- 判断: 文ごとに時計を読む形をやめた。時計は一番速い TSC の直接読み (rdtsc) でも 1 回 8 ns かかり、VM の文 1 つ (足し算だけの loop で 1 回り約 10 ns、文は 2 つ) より重いので、時計の時間が行の時間に化ける (`clock_gettime` は環境によってさらに重く、ブラウザの時計は粗い)。知らせの時間で振り分ける形なら、ゲームの thread は文ごとに 1 つの数を覗くだけで済み、時計の速さによらない。数えている間の重さは、足し算だけの loop で 7〜12%。呼んだときの行を frame に控えるので、数えていなくても呼び出し 1 回に約 1 ns 足される (呼び出しだけの loop で 1〜4%)。行の時間はその行だけで、呼んだ先の --trace の行の時間を含めない
+- 残課題: なし
+
+### VM の持ち越しの数え (tvm_profile_take_kept) ✓ (2026-11-07)
+- 数えている間に --trace の行で作った object に印を付け、作った行を表に覚える (表は `tvm_frame_end` で忘れる)。`tvm_profile_take_kept` は entry と --trace の class の static から幅優先で辿り、印の付いた物を、作った行とそれを持つ field ごとに数えて渡す。一度数えた物は印を消す
+- 持つ field は、根から一番近い、前からある物の field (`型.field`。static は `class.field`)。新しく作った物の中の物はその新しい物を持つ field に付け、List と配列と Dictionary の中の物は、その入れ物を持つ field に付ける
+- 回収された物の番地は表に残るが、同じ番地に --trace の行で作り直すと上書きされ、行の外で作り直すと印が付かないので数えない。shared heap では数えない
+- 検証: `tcsvm/tests/profile` (frame の境目の後に作り、static、前からある object の field、static の List、新しく作った object の field に置いた物が、作った行と持つ field ごとに 1 つずつ付き、置かなかった物と、一度数えた物と、frame の境目より前に作った物は付かない)、`bash tcsvm/run-tests.sh`。ASan/UBSan でも通る
+- 判断: 辿る根は状態の控え (`tvm_snapshot_take`) と同じ entry と --trace の class の static にした。ゲームの状態として持ち越す物を数え、同じ VM で動く道具の static が持つ物を数えないため。印の付いた物だけを表で引くので、前からある物は印を見るだけで済む
+- 残課題: --trace の外の class の static だけが持つ物は数えない

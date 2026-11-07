@@ -5,4 +5,12 @@ public static class Lib
     {
         Probe.Clock.Advance(7);
     }
+
+    static int[]? spent;
+
+    public static void Spend(int n)
+    {
+        Probe.Clock.Advance(9);
+        spent = new int[n];
+    }
 }

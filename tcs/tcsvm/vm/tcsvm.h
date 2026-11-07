@@ -218,7 +218,7 @@ bool tvm_inspect_pinned(TvmVm *vm, const char *key, const char *id);
 
 /* 負荷: clock (ns を返す時計。GC が止めた長さを測る) を渡すと数え始め、NULL で止める。
    数えている間、--trace の行ごとに、確保 (byte と回数) と、tvm_profile_tick で知らされた時間を足す。
-   時間は、知らされたときに実行していた行に付く (文ごとに時計を読むと、時計の遅い環境では時計の時間が行の時間に化けるので、時計は読まない)。
+   時間は、知らされたときに実行していた行に付く (時計は TSC を直接読んでも VM の文 1 つより重く、文ごとに読むと時計の時間が行の時間に化けるので、時計は読まない)。
    印の無い関数 (--trace の外の関数と host の関数) の中の時間と確保は、それを呼んだ行に付く。
    GC が止めた時間は行に足さず、止まりとして別に数える。host から呼んだ一番外の呼び出しの外で知らされた時間は、どの行にも付けない。 */
 typedef uint64_t (*TvmClockFn)(void);
@@ -232,6 +232,13 @@ void tvm_profile_take_lines(TvmVm *vm, TvmProfileLineFn fn, void *user);
 #define TVM_PROFILE_GCS 64
 typedef void (*TvmProfileGcFn)(void *user, uint64_t ns, size_t live);
 void tvm_profile_take_gc(TvmVm *vm, TvmProfileGcFn fn, void *user);
+/* frame の境目をまたいで持ち越す物: 前の tvm_frame_end の後に --trace の行で作られ、今 entry と --trace の class の static
+   から辿れる物を、作った行とそれを持つ field ("型.field"。static は "class.field") ごとに数える。
+   持つ field は、根から一番近い、前からある物の field (新しく作った物の中の物は、その新しい物を持つ field)。
+   一度数えた物は次から数えない。bytes は header を含む */
+typedef void (*TvmProfileKeptFn)(void *user, const char *file, uint32_t line, const char *holder, uint32_t count,
+                                 uint64_t bytes);
+void tvm_profile_take_kept(TvmVm *vm, const char *entry, TvmProfileKeptFn fn, void *user);
 
 /* 状態の控え: entry と --trace の class の static と、そこから辿れる object の中身 (string は写さない) */
 typedef struct TvmSnapshot TvmSnapshot;

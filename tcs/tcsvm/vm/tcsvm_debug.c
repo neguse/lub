@@ -36,6 +36,8 @@ void tvm_debug_free(TvmDebug *d) {
   free(d->prof_allocs);
   free(d->prof_hit);
   free(d->prof_hits);
+  free(d->prof_new);
+  free(d->prof_new_line);
   free(d);
 }
 
@@ -130,12 +132,15 @@ void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p)) {
 
 /* ---- 負荷 ---- */
 
-/* 知らされた時間 (prof_pending) は tvm_profile_tick が別の thread からも足すので、不可分に読んで 0 にする */
+/* 知らされた時間 (prof_pending) は tvm_profile_tick が別の thread からも足すので、どの読み書きも不可分にする */
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <intrin.h>
+/* 文ごとに覗くので、ロックの付く命令にしない (MSVC の volatile の 64 bit の読みは x64 と ARM64 で裂けない) */
+static uint64_t pending_peek(TvmVm *vm) { return vm->prof_pending; }
 static uint64_t pending_take(TvmVm *vm) { return (uint64_t)_InterlockedExchange64((volatile long long *)&vm->prof_pending, 0); }
 void tvm_profile_tick(TvmVm *vm, uint64_t ns) { _InterlockedExchangeAdd64((volatile long long *)&vm->prof_pending, (long long)ns); }
 #else
+static uint64_t pending_peek(TvmVm *vm) { return __atomic_load_n(&vm->prof_pending, __ATOMIC_RELAXED); }
 static uint64_t pending_take(TvmVm *vm) { return __atomic_exchange_n(&vm->prof_pending, 0, __ATOMIC_RELAXED); }
 void tvm_profile_tick(TvmVm *vm, uint64_t ns) { __atomic_fetch_add(&vm->prof_pending, ns, __ATOMIC_RELAXED); }
 #endif
@@ -166,17 +171,29 @@ void tvm_profile_enable(TvmVm *vm, TvmClockFn clock) {
   if (vm->debug)
     vm->debug->prof_cur = 0;
   pending_take(vm);
+  tvm_profile_frame_end(vm);
 }
 
 /* 行が変わる前に、それまでに知らされた時間を前の行に足す (知らせが無ければ不可分の読み書きをしない) */
 void tvm_profile_line(TvmVm *vm, uint32_t k) {
-  if (vm->prof_pending)
+  if (pending_peek(vm))
     prof_flush(vm);
   vm->debug->prof_cur = k + 1;
 }
 
+/* 呼んだ先から戻る: それまでに知らされた時間を呼んだ先の行に足し、呼んだときの行に戻す
+   (戻った後の --trace の外の関数の中の時間と確保を、呼んだ行に付ける) */
+void tvm_profile_return(TvmVm *vm, uint32_t line) {
+  TvmDebug *d = vm->debug;
+  if (!d || d->prof_cur == line)
+    return;
+  if (pending_peek(vm))
+    prof_flush(vm);
+  d->prof_cur = line;
+}
+
 /* host から一番外の呼び出しに入るときは、それまでに知らされた時間を捨てて行の外から始め、
-   出るときに今の行に足して行の外に戻る (呼び出しの外の時間をどの行にも付けない) */
+   出るときに今の行に足して行の外に戻る (呼び出しの外の時間をどの行にも付けない)。入れ子の呼び出しから出るときは、呼んだときの行に戻る */
 void tvm_profile_enter(TvmVm *vm) {
   if (vm->prof_depth++ > 0)
     return;
@@ -185,18 +202,88 @@ void tvm_profile_enter(TvmVm *vm) {
     vm->debug->prof_cur = 0;
 }
 
-void tvm_profile_leave(TvmVm *vm) {
-  if (vm->prof_depth == 0 || --vm->prof_depth > 0)
+void tvm_profile_leave(TvmVm *vm, uint32_t line) {
+  if (vm->prof_depth == 0)
     return;
+  if (--vm->prof_depth > 0) {
+    tvm_profile_return(vm, line);
+    return;
+  }
   prof_flush(vm);
   if (vm->debug)
     vm->debug->prof_cur = 0;
 }
 
-void tvm_profile_alloc(TvmVm *vm, size_t bytes) {
+static uint32_t new_hash(const void *p, uint32_t cap) { return (uint32_t)(((uintptr_t)p >> 4) * 2654435761u) & (cap - 1); }
+
+static bool new_grow(TvmDebug *d) {
+  uint32_t cap = d->capprof_new ? d->capprof_new * 2 : 1024;
+  void **keys = (void **)calloc(cap, sizeof(void *));
+  uint32_t *lines = (uint32_t *)malloc(cap * sizeof(uint32_t));
+  if (!keys || !lines) {
+    free(keys);
+    free(lines);
+    return false;
+  }
+  for (uint32_t i = 0; i < d->capprof_new; i++) {
+    if (!d->prof_new[i])
+      continue;
+    uint32_t h = new_hash(d->prof_new[i], cap);
+    while (keys[h])
+      h = (h + 1) & (cap - 1);
+    keys[h] = d->prof_new[i];
+    lines[h] = d->prof_new_line[i];
+  }
+  free(d->prof_new);
+  free(d->prof_new_line);
+  d->prof_new = keys;
+  d->prof_new_line = lines;
+  d->capprof_new = cap;
+  return true;
+}
+
+/* p を作った行 (frame の境目の後に作った物でなければ false) */
+static bool new_line(const TvmDebug *d, const void *p, uint32_t *line) {
+  if (!d->nprof_new)
+    return false;
+  uint32_t h = new_hash(p, d->capprof_new);
+  while (d->prof_new[h]) {
+    if (d->prof_new[h] == p) {
+      *line = d->prof_new_line[h];
+      return true;
+    }
+    h = (h + 1) & (d->capprof_new - 1);
+  }
+  return false;
+}
+
+/* 確保を今の行に足し、p (shared heap では NULL) を作った行を覚える。回収された物の番地は、同じ番地に作り直すと上書きされる */
+void tvm_profile_alloc(TvmVm *vm, void *p, size_t bytes) {
   TvmDebug *d = vm->debug;
-  if (d && d->prof_cur)
-    prof_add(d, d->prof_cur - 1, 0, bytes, 1);
+  if (!d || !d->prof_cur)
+    return;
+  uint32_t k = d->prof_cur - 1;
+  prof_add(d, k, 0, bytes, 1);
+  if (!p || ((d->nprof_new + 1) * 2 > d->capprof_new && !new_grow(d)))
+    return;
+  uint32_t h = new_hash(p, d->capprof_new);
+  while (d->prof_new[h] && d->prof_new[h] != p)
+    h = (h + 1) & (d->capprof_new - 1);
+  if (!d->prof_new[h]) {
+    d->prof_new[h] = p;
+    d->nprof_new++;
+  }
+  d->prof_new_line[h] = k;
+  GC_HEADER(p)->flags |= TVM_GC_NEW;
+}
+
+/* frame の境目: 作った物を忘れる (TVM_GC_NEW の印は、表に無ければ数えない) */
+void tvm_profile_frame_end(TvmVm *vm) {
+  TvmDebug *d = vm->debug;
+  if (!d || !d->nprof_new)
+    return;
+  memset(d->prof_new, 0, d->capprof_new * sizeof(void *));
+  d->nprof_new = 0;
 }
 
 /* GC の前までの時間は今の行に足し、GC の間に知らされた時間は捨てる (GC の長さは時計で測って別に持つ) */
@@ -1303,4 +1390,146 @@ bool tvm_snapshot_number(TvmVm *vm, const TvmSnapshot *s, const char *entry, con
   else
     return false;
   return true;
+}
+
+/* ---- 持ち越し (tvm_profile_take_kept) ---- */
+
+/* 持つ field: static は name だけ ("class.field")、object の field は型の名前と field の名前 */
+typedef struct KeptAt {
+  const char *name, *field;
+} KeptAt;
+
+typedef struct KeptRow {
+  uint32_t line;
+  KeptAt at;
+  uint32_t count;
+  uint64_t bytes;
+} KeptRow;
+
+/* 根から幅優先で辿る。objs は辿る順の列で、辿った印を消すのにも使う */
+typedef struct KeptWalk {
+  TvmVm *vm;
+  void **objs;
+  KeptAt *ats;
+  uint8_t *fresh;
+  uint32_t n, cap, cur;
+  KeptRow *rows;
+  uint32_t nrows, caprows;
+  bool failed;
+} KeptWalk;
+
+static void kept_add(KeptWalk *w, uint32_t line, KeptAt at, uint64_t bytes) {
+  for (uint32_t i = w->nrows; i-- > 0;) {
+    KeptRow *r = &w->rows[i];
+    if (r->line == line && r->at.name == at.name && r->at.field == at.field) {
+      r->count++;
+      r->bytes += bytes;
+      return;
+    }
+  }
+  if (w->nrows == w->caprows) {
+    uint32_t cap = w->caprows ? w->caprows * 2 : 16;
+    KeptRow *g = (KeptRow *)realloc(w->rows, cap * sizeof(KeptRow));
+    if (!g) {
+      w->failed = true;
+      return;
+    }
+    w->rows = g;
+    w->caprows = cap;
+  }
+  w->rows[w->nrows++] = (KeptRow){line, at, 1, bytes};
+}
+
+static void kept_visit(KeptWalk *w, void *p, KeptAt at) {
+  if (!p || w->failed)
+    return;
+  TvmGcHeader *h = GC_HEADER(p);
+  if (h->flags & (TVM_GC_STATIC | TVM_GC_SEEN))
+    return;
+  if (w->n == w->cap) {
+    uint32_t cap = w->cap ? w->cap * 2 : 256;
+    void **objs = (void **)realloc(w->objs, cap * sizeof(void *));
+    if (objs)
+      w->objs = objs;
+    KeptAt *ats = (KeptAt *)realloc(w->ats, cap * sizeof(KeptAt));
+    if (ats)
+      w->ats = ats;
+    uint8_t *fresh = (uint8_t *)realloc(w->fresh, cap);
+    if (fresh)
+      w->fresh = fresh;
+    if (!objs || !ats || !fresh) {
+      w->failed = true;
+      return;
+    }
+    w->cap = cap;
+  }
+  h->flags |= TVM_GC_SEEN;
+  uint32_t line;
+  bool fresh = (h->flags & TVM_GC_NEW) && new_line(w->vm->debug, p, &line);
+  h->flags &= (uint16_t)~TVM_GC_NEW;
+  if (fresh)
+    kept_add(w, line, at, h->size + sizeof(TvmGcHeader));
+  w->objs[w->n] = p;
+  w->ats[w->n] = at;
+  w->fresh[w->n] = fresh;
+  w->n++;
+}
+
+/* 辿っている object の slot の先を、持つ field を決めて辿る */
+static void kept_slot(void *ctx, void **slot) {
+  KeptWalk *w = (KeptWalk *)ctx;
+  void *p = w->objs[w->cur];
+  KeptAt at = w->ats[w->cur];
+  const TvmType *t = TVM_TYPE(p);
+  if (!w->fresh[w->cur] && t->tkind == TVM_T_CLASS) {
+    uint32_t off = (uint32_t)((char *)slot - (char *)p);
+    const TcsField *best = NULL;
+    for (uint32_t i = 0; i < t->nfields; i++)
+      if (t->fields[i].offset <= off && (!best || t->fields[i].offset > best->offset))
+        best = &t->fields[i];
+    if (best)
+      at = (KeptAt){t->name, best->name};
+  }
+  kept_visit(w, *slot, at);
+}
+
+void tvm_profile_take_kept(TvmVm *vm, const char *entry, TvmProfileKeptFn fn, void *user) {
+  TvmDebug *d = vm->debug;
+  if (!d || vm->heap)
+    return;
+  KeptWalk w = {0};
+  w.vm = vm;
+  const char *roots[256];
+  uint32_t nroots = root_classes(vm, entry, roots, 256);
+  for (uint32_t r = 0; r < nroots; r++)
+    for (uint32_t i = 0; i < vm->nstatic_fields; i++) {
+      const TvmStaticField *f = &vm->static_fields[i];
+      if (!static_of(f, roots[r]))
+        continue;
+      uint32_t leaves = kind_leaves(vm, f->kind, f->type);
+      for (uint32_t k = 0; k < leaves; k++)
+        if (vm->static_info[f->slot + k].kind == TVM_K_REF)
+          kept_visit(&w, vm->statics[f->slot + k].p, (KeptAt){f->name, NULL});
+    }
+  for (w.cur = 0; w.cur < w.n && !w.failed; w.cur++) {
+    TvmGcHeader *h = GC_HEADER(w.objs[w.cur]);
+    /* blob (List の要素、Dictionary の entry) は持ち主が中を辿る */
+    if (!GC_BLOB(h) && h->type)
+      tvm_object_refs(vm, w.objs[w.cur], kept_slot, &w);
+  }
+  for (uint32_t i = 0; i < w.n; i++)
+    GC_HEADER(w.objs[i])->flags &= (uint16_t)~TVM_GC_SEEN;
+  for (uint32_t i = 0; i < w.nrows; i++) {
+    const KeptRow *r = &w.rows[i];
+    char holder[256];
+    if (r->at.field)
+      snprintf(holder, sizeof holder, "%s.%s", r->at.name, r->at.field);
+    else
+      snprintf(holder, sizeof holder, "%s", r->at.name);
+    fn(user, d->line_files[r->line], d->line_nums[r->line], holder, r->count, r->bytes);
+  }
+  free(w.objs);
+  free(w.ats);
+  free(w.fresh);
+  free(w.rows);
 }

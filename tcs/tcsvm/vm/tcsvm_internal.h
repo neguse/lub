@@ -167,6 +167,10 @@ typedef struct TvmDebug {
   uint32_t *prof_hits;
   uint32_t nprof_hits;
   uint32_t prof_cur;
+  /* 前の frame の境目の後に --trace の行で作った object と、作った行 (pointer の開番地法、cap は 2 の冪) */
+  void **prof_new;
+  uint32_t *prof_new_line;
+  uint32_t nprof_new, capprof_new;
 } TvmDebug;
 
 /* 状態の控え (tcsvm_debug.c) */
@@ -223,6 +227,7 @@ typedef struct TvmFrame {
   const TvmProto *proto;
   const struct TvmClosure *clo; /* lambda の frame の自分の closure (LDCAP が読む) */
   uint32_t ret;                 /* 戻り値を書く caller の register */
+  uint32_t line;                /* 負荷を数えている間の、呼んだときの行 + 1 (戻ったらこの行に戻す) */
 } TvmFrame;
 
 /* heap の object の前に置く GC の header (doc/vm-design.md §10)。
@@ -252,6 +257,8 @@ typedef struct TvmGcHeader {
 #define TVM_GC_MARK 1u        /* 自前の GC の mark (TCS_GC_MARK と同じ値) */
 #define TVM_GC_STATIC 2u      /* 回収しない object (string の定数。TCS_GC_STATIC と同じ値) */
 #define TVM_GC_RELOADED 0x100u /* reload の移行で作り直した旧 object (tcs の flags と重ならない bit) */
+#define TVM_GC_NEW 0x200u      /* 負荷を数えている間に --trace の行で作った object (持ち越しを数える) */
+#define TVM_GC_SEEN 0x400u     /* 持ち越しを数える間に辿った印 */
 #define GC_BLOB(h) ((h)->kind == TVM_KIND_BLOB)
 
 #define GC_HEADER(p) ((TvmGcHeader *)(p) - 1)
@@ -363,9 +370,13 @@ void tvm_debug_forget(TvmVm *vm, void *p);
 void tvm_debug_pair(TvmVm *vm, uint32_t k, void *self);
 /* 負荷 (prof_clock があるときだけ呼ぶ): 行 k に着いた (TRACE)、interpreter に入る・出る、確保した、GC が始まる・止めた */
 void tvm_profile_line(TvmVm *vm, uint32_t k);
+/* 今の行 + 1 (数えていないか行の外なら 0)。呼ぶときに控え、戻ったら tvm_profile_return でこの行に戻す */
+static inline uint32_t tvm_profile_at(const TvmVm *vm) { return vm->prof_clock && vm->debug ? vm->debug->prof_cur : 0; }
+void tvm_profile_return(TvmVm *vm, uint32_t line);
 void tvm_profile_enter(TvmVm *vm);
-void tvm_profile_leave(TvmVm *vm);
-void tvm_profile_alloc(TvmVm *vm, size_t bytes);
+void tvm_profile_leave(TvmVm *vm, uint32_t line);
+void tvm_profile_alloc(TvmVm *vm, void *p, size_t bytes);
+void tvm_profile_frame_end(TvmVm *vm);
 void tvm_profile_gc_begin(TvmVm *vm);
 void tvm_profile_gc(TvmVm *vm, uint64_t ns, size_t live);
 /* reload が object を作り直した: 控えの中身を捨てる (控えそのものは host が持つので残す) */

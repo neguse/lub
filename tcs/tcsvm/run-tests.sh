@@ -150,7 +150,7 @@ fi
 PROF="$ROOT/tcsvm/tests/profile"
 if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/profile_test" "$PROF/profile_test.c" "${VM_SRC[@]}" \
     "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
-    "$ROOT"/runtime/model/*.c -lm 2> "$WORK/profile_test.err"; then
+    "$ROOT"/runtime/model/*.c -lm -pthread 2> "$WORK/profile_test.err"; then
   echo "FAIL profile: build"; head -5 "$WORK/profile_test.err"; fail=1
 elif ! "$DOTNET" "$TCS2VM_DLL" --ref "$PROF/stub.cs" --export 'Game.*' --trace "$PROF/Game.cs" "$PROF/Game.cs" "$PROF/Lib.cs" -o "$WORK/profile.tcsb" 2> "$WORK/profile.emit.err"; then
   echo "FAIL profile: $(cat "$WORK/profile.emit.err")"; fail=1
