@@ -2973,6 +2973,14 @@ typedef struct LubInspectNode {
   bool cycle;
 } LubInspectNode;
 
+// Sys.InspectInstances の 1 件。Type は class の名前、Path と Id は
+// InspectNode と同じ。
+typedef struct LubInspectInstance {
+  LubStr type;
+  LubStr path;
+  LubStr id;
+} LubInspectInstance;
+
 // Sys.TakeProfile の 1 件 (前に取り出してからの和)。 Site は "file:line"。Ms
 // はその行を実行していた時間の見積もり (0.25 ms ごとの知らせを足したもの)
 // で、--trace で変換していない関数と API の中の時間を含み、--trace で変換し
@@ -3589,6 +3597,17 @@ LUB_API void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
 LUB_API void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
                              int32_t count, const LubInspectNode **out,
                              int32_t *out_count);
+
+// tcs の --trace で変換した class の static から幅優先で 1 回辿り、class の
+// instance を見つけた順に 1 度ずつ返す (InspectInstance)。 Path と Id は
+// Sys.Inspect と同じ書き方で、同じ object は最初に見つけた path で 1 度だけ
+// 返す。深さは static field を 1 として maxDepth まで、List と配列などの子は
+// 先頭の maxChildren 個まで辿る。 Sys.Inspect を節ごとに呼んで探すより速い
+// (path を根から辿り直さず、値の文字を作らない)。
+LUB_API void lub_sys_inspect_instances(LubContext *ctx, int32_t max_depth,
+                                       int32_t max_children,
+                                       const LubInspectInstance **out,
+                                       int32_t *out_count);
 
 // path の節の object を key で弱く覚える (object の寿命は延ばさない)。path
 // が辿れないか object でなければ、key の記憶を消す。

@@ -1442,6 +1442,17 @@ namespace Lub
             return new List<InspectNode>();
         }
 
+        /// <summary>tcs の --trace で変換した class の static から幅優先で 1 回辿り、class の instance を見つけた順に 1 度ずつ返す (InspectInstance)。
+        /// Path と Id は Sys.Inspect と同じ書き方で、同じ object は最初に見つけた path で 1 度だけ返す。
+        /// 深さは static field を 1 として maxDepth まで、List と配列などの子は先頭の maxChildren 個まで辿る。
+        /// Sys.Inspect を節ごとに呼んで探すより速い (path を根から辿り直さず、値の文字を作らない)。
+        /// </summary>
+        [LubNoFail]
+        public static List<InspectInstance> InspectInstances(int maxDepth, int maxChildren)
+        {
+            return new List<InspectInstance>();
+        }
+
         /// <summary>path の節の object を key で弱く覚える (object の寿命は延ばさない)。path が辿れないか object でなければ、key の記憶を消す。
         /// </summary>
         [LubNoFail]
@@ -4785,6 +4796,15 @@ namespace Lub
         public string Id = "";
         public int Count;
         public bool Cycle;
+    }
+
+    /// <summary>Sys.InspectInstances の 1 件。Type は class の名前、Path と Id は InspectNode と同じ。
+    /// </summary>
+    public class InspectInstance
+    {
+        public string Type = "";
+        public string Path = "";
+        public string Id = "";
     }
 
     /// <summary>Sys.TakeProfile の 1 件 (前に取り出してからの和)。

@@ -63,6 +63,10 @@ typedef struct LubDebugHooks {
   void (*take_kept)(struct App *app, const LubKeptObject **out, int32_t *count);
   // 負荷を数えている間の今の --trace の行 ("file:line")。無ければ false
   bool (*profile_site)(struct App *app, char *out, int32_t cap);
+  // static から辿れる class の個体 (Sys.InspectInstances)
+  void (*inspect_instances)(struct App *app, int32_t max_depth,
+                            int32_t max_children,
+                            const LubInspectInstance **out, int32_t *n);
 } LubDebugHooks;
 
 typedef struct App {

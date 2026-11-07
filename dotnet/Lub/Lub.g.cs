@@ -2245,6 +2245,14 @@ public class InspectNode
     public bool Cycle;
 }
 
+/// <summary>Sys.InspectInstances の 1 件。Type は class の名前、Path と Id は InspectNode と同じ。</summary>
+public class InspectInstance
+{
+    public string Type;
+    public string Path;
+    public string Id;
+}
+
 /// <summary>Sys.TakeProfile の 1 件 (前に取り出してからの和)。 Site は "file:line"。Ms はその行を実行していた時間の見積もり (0.25 ms ごとの知らせを足したもの) で、--trace で変換していない関数と API の中の時間を含み、--trace で変換した関数を呼んだ先の時間は含まない。 Bytes と Allocs はその行の確保の byte (object の header を含む) と回数で、時間と同じく呼んだ先を含む。</summary>
 public class ProfileLine
 {
@@ -4491,6 +4499,23 @@ public static unsafe partial class Sys
             int o_out_n = 0;
             LubNative.lub_sys_inspect(LubRuntime.Ctx, a.Str(path), offset, count, &o_out, &o_out_n);
             return LubRuntime.RecordList<InspectNode, LubNative.LubInspectNode>(o_out, o_out_n, &LubNative.From_LubInspectNode);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>tcs の --trace で変換した class の static から幅優先で 1 回辿り、class の instance を見つけた順に 1 度ずつ返す (InspectInstance)。 Path と Id は Sys.Inspect と同じ書き方で、同じ object は最初に見つけた path で 1 度だけ返す。深さは static field を 1 として maxDepth まで、List と配列などの子は先頭の maxChildren 個まで辿る。 Sys.Inspect を節ごとに呼んで探すより速い (path を根から辿り直さず、値の文字を作らない)。</summary>
+    public static List<InspectInstance> InspectInstances(int maxDepth, int maxChildren)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubInspectInstance* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_inspect_instances(LubRuntime.Ctx, maxDepth, maxChildren, &o_out, &o_out_n);
+            return LubRuntime.RecordList<InspectInstance, LubNative.LubInspectInstance>(o_out, o_out_n, &LubNative.From_LubInspectInstance);
         }
         finally
         {
@@ -11169,6 +11194,14 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubInspectInstance
+    {
+        public LubStr @type;
+        public LubStr @path;
+        public LubStr @id;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubProfileLine
     {
         public LubStr @site;
@@ -11501,6 +11534,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_inspect(void* ctx, LubStr @path, int @offset, int @count, LubInspectNode** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_inspect_instances(void* ctx, int @max_depth, int @max_children, LubInspectInstance** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_inspect_pin(void* ctx, LubStr @key, LubStr @path);
@@ -17428,6 +17464,27 @@ internal static unsafe partial class LubNative
     {
         var o = new InspectNode();
         Fill_LubInspectNode(o, s);
+        return o;
+    }
+
+    internal static void To_LubInspectInstance(InspectInstance o, LubRuntime.Arena a, LubInspectInstance* s)
+    {
+        s->@type = a.Str(o.Type);
+        s->@path = a.Str(o.Path);
+        s->@id = a.Str(o.Id);
+    }
+
+    internal static void Fill_LubInspectInstance(InspectInstance o, LubInspectInstance* s)
+    {
+        o.Type = LubRuntime.Str(s->@type);
+        o.Path = LubRuntime.Str(s->@path);
+        o.Id = LubRuntime.Str(s->@id);
+    }
+
+    internal static InspectInstance From_LubInspectInstance(LubInspectInstance* s)
+    {
+        var o = new InspectInstance();
+        Fill_LubInspectInstance(o, s);
         return o;
     }
 
