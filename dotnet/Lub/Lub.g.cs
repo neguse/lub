@@ -2218,7 +2218,7 @@ public class Counters3d
     public List<int> ManifoldCounts = new List<int>();
 }
 
-/// <summary>Gfx.PickResult の結果。 Draw はその frame の中の draw の番号 (0 始まり、何も描いていなければ -1)。 Site は Draw を呼んだ所の並び (内側から 1 行に 1 つ、"file:line")。並びを作るのは player で、Lua の player は Lua の source の行を返す (作れない player では空)。 Self は Site と同じ並びの、段ごとの this の個体の Id (InspectNode.Id と同じ書き方)。 this の無い段は空の行で、tcs VM の player の --trace で変換したソースの class の instance のメソッドの段だけが Id を持つ (ほかの player では空)。</summary>
+/// <summary>Gfx.PickResult の結果。 Draw はその frame の中の draw の番号 (0 始まり、何も描いていなければ -1)。 Site は Draw を呼んだ所の並び (内側から 1 行に 1 つ、"file:line")。並びを作るのは player で、作れない player では空。 Self は Site と同じ並びの、段ごとの this の個体の Id (InspectNode.Id と同じ書き方)。 this の無い段は空の行で、tcs VM の player の --trace で変換したソースの class の instance のメソッドの段だけが Id を持つ (ほかの player では空)。</summary>
 public class PickHit
 {
     public int Draw;
@@ -4438,7 +4438,7 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 tcs VM の player (lub Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。記録が無ければ空 (Lua の player はいつも空)。順番は決まっていない。</summary>
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 tcs VM の player (lub Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。記録が無ければ空。順番は決まっていない。</summary>
     public static List<string> TakeTrace()
     {
         var a = LubRuntime.Arena.Begin();
@@ -4455,7 +4455,7 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>TakeTrace と同じに、前に呼んでから実行した行を返し、記録を空にする。ただし、InspectPin で key に覚えた個体と同じ class の別の個体を this にして通っただけの行は返さない (別の class と static のメソッドの行は返す)。 key に覚えた個体が無ければ TakeTrace と同じ。 tcs VM の player だけ (Lua の player はいつも空)。</summary>
+    /// <summary>TakeTrace と同じに、前に呼んでから実行した行を返し、記録を空にする。ただし、InspectPin で key に覚えた個体と同じ class の別の個体を this にして通っただけの行は返さない (別の class と static のメソッドの行は返す)。 key に覚えた個体が無ければ TakeTrace と同じ。 tcs VM の player だけ (ほかの player ではいつも空)。</summary>
     public static List<string> TakeTraceFor(string key)
     {
         var a = LubRuntime.Arena.Begin();

@@ -1,7 +1,7 @@
 #pragma once
 // SDF tree -> triangle mesh (design: docs/log/2026-07-04-sdf-tree-design.md)。
 // 木は C API (include/lub/lub_api.h の LubSdfNodeDesc 配列) で受け、ここで評価用の SdfNode に変換して surface nets で mesh にする。
-// Lua には触らない (Lua binding は src/gen/lua_api_gen.c)。
+// VM には触らない (tcs VM の host の関数は src/gen/vm_api_gen.c)。
 //
 // n = cell count of the longest axis; bounds are derived from a conservative
 // per-node AABB with a one-cell margin, cells stay cubic. bone ノードがあれば頂点ごとに最寄り 2 部位の joints / weights (softmax、blend 幅 skin_k) と bones (name + pivot) も焼く。

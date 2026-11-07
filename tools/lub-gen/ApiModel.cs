@@ -4,7 +4,7 @@ using TcsSelf;
 namespace LubGen;
 
 // cs-lib/lub_stub.cs から読んだ API 面。
-// 名前は C# 名 (中立表記) と、tcs の名前の規則で導いた Lua 側の名前を両方持つ。
+// 名前は C# 名 (中立表記) と、tcs の名前の規則で導いた snake_case の名前 (LuaName。C の名前、tcs VM の host の名前、API docs が使う) を両方持つ。
 // C の名前と型は CHeader が規則で導く。
 
 public enum LubTypeKind
@@ -156,7 +156,7 @@ public sealed class ApiParam
     // [LubArray(n)] の n (無ければ -1)
     public int ArrayLen;
     public ConstVal Default;
-    // [LubCount]: 直前の配列の引数から使う要素の数 (C と .NET は配列と一緒に渡し、Lua は別の引数で受ける)
+    // [LubCount]: 直前の配列の引数から使う要素の数 (C と .NET は配列と一緒に渡し、tcs VM と tcs2c の host の関数は別の引数で受ける)
     public bool IsCount;
 
     public ApiParam(string name, string luaName, TypeRef type, bool optional, bool isOut, int arrayLen, ConstVal dflt)
@@ -233,17 +233,15 @@ public sealed class ApiEnum
     public string LuaPath;
     public List<ApiEnumMember> Members;
     public string Doc;
-    public bool LuaString;
     public int Line;
 
-    public ApiEnum(string name, string ns, string luaPath, List<ApiEnumMember> members, string doc, bool luaString, int line)
+    public ApiEnum(string name, string ns, string luaPath, List<ApiEnumMember> members, string doc, int line)
     {
         Name = name;
         Namespace = ns;
         LuaPath = luaPath;
         Members = members;
         Doc = doc;
-        LuaString = luaString;
         Line = line;
     }
 }
@@ -314,7 +312,7 @@ public sealed class ApiNamespace
         Line = line;
     }
 
-    /// <summary>Lua の global の table (lub / lubx)。</summary>
+    /// <summary>host の名前の根 (lub / lubx)。</summary>
     public string LuaRoot => LuaPath.Split('.')[0];
 }
 
@@ -389,7 +387,7 @@ public static class GenError
 public static class ApiModelLoader
 {
     /// <summary>stub の型が全部入る C# の namespace。
-    /// namespace 直下の enum (EventKind) は Lua パス `lub` の root の段に置く。
+    /// namespace 直下の enum (EventKind) はパス `lub` の root の段に置く。
     /// </summary>
     public const string RootNamespace = "Lub";
 
@@ -530,8 +528,7 @@ public static class ApiModelLoader
             int v = m.ConstVal == null ? 0 : m.ConstVal.I;
             members.Add(new ApiEnumMember(m.Name, LuaNames.HostConst(m.Name), v, Doc(m.Decl!)));
         }
-        return new ApiEnum(e.Name, ns, IlExporter.RefTypePath(e), members, Doc(e.Decl),
-            HasAttr(e.Decl, "LubLuaString"), Line(e.Decl));
+        return new ApiEnum(e.Name, ns, IlExporter.RefTypePath(e), members, Doc(e.Decl), Line(e.Decl));
     }
 
     private static ApiType LoadType(TypeDeclSym t)

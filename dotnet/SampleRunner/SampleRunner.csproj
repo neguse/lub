@@ -28,6 +28,6 @@
     <ProjectReference Include="../Lub/Lub.csproj" />
     <ProjectReference Include="../../third_party/tcs/TinySystem/TinySystem.csproj" />
   </ItemGroup>
-  <!-- Math / MathF を TinySystem.Math (tcs2c / Lua と同じ実装) にする -->
+  <!-- Math / MathF を TinySystem.Math (tcs VM / tcs2c と同じ実装) にする -->
   <Import Project="../../third_party/tcs/TinySystem/TinySystem.props" />
 </Project>

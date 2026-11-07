@@ -287,8 +287,8 @@ using slang::VariableLayoutReflection;
 namespace {
 
 // Lazy global session, reused across compiles. Never released: a ComPtr here
-// would release it from a static destructor inside exit() (Lua os.exit
-// included), calling into libslang while the process tears down. The process
+// would release it from a static destructor inside exit(), calling into
+// libslang while the process tears down. The process
 // exit reclaims it.
 struct GlobalSlangCtx {
   IGlobalSession *g = nullptr;

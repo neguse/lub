@@ -92,14 +92,11 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
 
 ## iOS の app
 
-- app は `src/main.c` と `lub_objs` をリンクした bundle。ゲーム側の CMake が
+- app は `src/main.c` と tcs VM の player (`lub_vm_player`) をリンクした bundle。ゲーム側の CMake が
   lub を `add_subdirectory` して作る(例: neguse/saikyo の `ios/`)。iOS では
-  SDL3 を static にし、Lua は `LUA_USE_IOS`、miniaudio は Objective-C で
-  compile する。
-- script の指定が無い起動では、実行ファイルの隣(bundle の resource の
-  場所)の `.tcsb`(`lub export ios` の snapshot の bytecode。`--lua` で export したときは `game.lua`)を動かす。iOS では cwd を bundle にするので、
-  `samples/boot.lua`、`third_party/lume/lume.lua`、ゲームのデータ、
-  `cache/shader/` を dev と同じ相対パスで bundle に置く。
+  SDL3 を static にし、miniaudio は Objective-C で compile する。
+- script の指定が無い起動では、実行ファイルの隣(bundle の resource の場所)の `.tcsb`(`lub export ios` の snapshot の bytecode)を動かす。
+  iOS では cwd を bundle にするので、ゲームのデータと `cache/shader/` を dev と同じ相対パスで bundle に置く。
 - SDL は 3.4 以降が要る。iOS 27 は UIScene life cycle を使わない app を
   起動直後に止め、SDL がそれを使うのは 3.4.0 から。
 - 音は AVAudioSession の ambient(消音スイッチに従い、他の app の音と
@@ -130,8 +127,8 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
 - iOS: Ninja で player の app(`lub.app`、bundle id `dev.neguse.lub`)を
   simulator 向けに build する(Xcode generator は configure の機能検査ごとに
   xcodebuild を起こして遅い。Info.plist は CMake の変数で書いてあるので、
-  実機向けに Xcode generator で build しても同じ bundle になる)。その app に boot.lua、
-  lume、`tests/cs/` の test を Mac で tcs が変換した Lua とデータ、Mac の player が埋めた shader cache を入れて simulator で動かす。描画テストは capture を Linux の golden と許容差で比べる。
+  実機向けに Xcode generator で build しても同じ bundle になる)。その app に
+  `tests/cs/` の test を Mac で tcs が変換した bytecode とデータ、Mac の player が埋めた shader cache を入れて simulator で動かす。描画テストは capture を Linux の golden と許容差で比べる。
   simctl は app の終了 code を返さないので、終了 code で合否が決まるテストは env `LUB_EXIT_FILE` で渡した file に runtime が書いた終了 code で判定する。app が自分で終わったか (signal や watchdog で止められていないか) は
   SpringBoard の log の `Process exited` で見る。失敗したときは console の出力、
   終わり方、app と system の log、crash report を出す。

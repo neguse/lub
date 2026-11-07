@@ -1,12 +1,11 @@
 // lub core API の参照専用 stub (--ref)。
-// Lua 出力には含めない。
-// C# 側の記述が API 面の正で、tcs が名前を規則で Lua の snake_case に写す (Gfx.BeginPass → lub.gfx.begin_pass、enum メンバ Rgba8 → lub.gfx.RGBA8)。
-// 実行時は lub runtime の生成 binding (src/gen/lua_api_gen.c) が同じ面を lub table (lub.gfx / lub.input / ...) に組み立てる。
+// 変換の出力には含めない。
+// C# 側の記述が API 面の正で、tcs が名前を規則で snake_case に写す (Gfx.BeginPass → lub.gfx.begin_pass、enum メンバ Rgba8 → RGBA8)。
+// 実行時は tcs VM の host の関数 (src/gen/vm_api_gen.c、生成物) が同じ名前で C API (include/lub/lub_api.h) を呼ぶ。
 // core の型は namespace Lub にあり、ゲーム側は `using Lub;` で `Gfx.BeginPass(...)` と書く。
 // 末尾の namespace Lubx は、lubx (cs-lib/lubx) が使う C の実装 (src/lubx/) の面で、core API ではない (Lubx.Vorbis.Decode → lubx.vorbis.decode)。
-// out 引数は Lua multi-return を宣言順に受ける。
 // API reference (web/gen/lub-api-docs.json) はこの stub の doc comment から生成する。
-// TCS1001 (out パラメータ) は --ref 型の multi-return 契約そのものなのでこの stub に限り抑制する (transpile/check 経路は元々 --ref 扱いで無警告)。
+// TCS1001 (out パラメータ) は --ref 型の out 引数の契約そのものなのでこの stub に限り抑制する (check の経路は元々 --ref 扱いで無警告)。
 #pragma warning disable TCS1001
 
 using System;
@@ -15,7 +14,7 @@ using System.Collections.Generic;
 namespace Lub
 {
     // ------------------------------------------------------------- 記述の語彙 tools/lub-gen がこの stub を記述として読むときの注釈。
-    // 面の生成 (header / Lua binding / facade / API docs) はこの語彙から導く。
+    // 面の生成 (header / tcs VM の host の関数 / tcs2c の接続コード / facade / API docs) はこの語彙から導く。
 
     /// <summary>runtime 所有の resource への不透明な参照。
     /// ゲームは key と version だけを持ち、所有 pointer は持たない。
@@ -33,23 +32,8 @@ namespace Lub
     {
     }
 
-    /// <summary>面ごとの名前の上書き。
-    /// 規則で導けない名前の例外的な逃げ道で、grep できるようにここに集める。
-    /// 今は使っていない。
-    /// </summary>
-    [AttributeUsage(AttributeTargets.All)]
-    public sealed class LubLuaNameAttribute : Attribute
-    {
-        public string Name { get; }
-
-        public LubLuaNameAttribute(string name)
-        {
-            Name = name;
-        }
-    }
-
     /// <summary>key で参照する runtime の resource (readback queue)。
-    /// Lua 面は sentinel table、C は key の文字列で受ける。
+    /// C は key の文字列で受ける。
     /// </summary>
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class LubKeyedAttribute : Attribute
@@ -94,23 +78,15 @@ namespace Lub
     {
     }
 
-    /// <summary>Lua 面では小文字の文字列で持つ enum (`"revolute"`)。
-    /// C# と C は整数の enum。
-    /// </summary>
-    [AttributeUsage(AttributeTargets.Enum)]
-    public sealed class LubLuaStringAttribute : Attribute
-    {
-    }
-
     /// <summary>64 bit の bit mask。
-    /// C# と Lua 面は 1〜16 桁の hex 文字列 (0x 付きも可。空と 17 桁以上は error)、C は uint64_t。
+    /// C# 面は 1〜16 桁の hex 文字列 (0x 付きも可。空と 17 桁以上は error)、C は uint64_t。
     /// </summary>
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class LubBitsAttribute : Attribute
     {
     }
 
-    /// <summary>Lua / C# 面だけにある関数 (C の対応物は無い)。
+    /// <summary>C# 面だけにある関数 (C の対応物は無い)。
     /// </summary>
     [AttributeUsage(AttributeTargets.Method)]
     public sealed class LubNoCAttribute : Attribute
@@ -119,7 +95,7 @@ namespace Lub
 
     // ---------------------------------------------------------------- handles
 
-    /// <summary>host ごとに持ち方が違う型 (Lua は userdata、tcs2c は GC の配列、.NET は managed の配列)。
+    /// <summary>host ごとに持ち方が違う型 (tcs VM と tcs2c は GC が辿る配列、.NET は managed の配列)。
     /// </summary>
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class LubNativeAttribute : Attribute
@@ -356,7 +332,7 @@ namespace Lub
     // -------------------------------------------------------------------- Lub
     // lub の runtime API。
     // ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。
-    // Lua 側は `lub.gfx.begin_pass`。
+    // host の名前は `lub.gfx.begin_pass`。
 
     public static class Xr
     {
@@ -385,7 +361,6 @@ namespace Lub
     }
     /// <summary>OnEvent に届く event の種類。
     /// </summary>
-    [LubLuaString]
     public enum EventKind
     {
         Quit = 1, KeyDown = 2, KeyUp = 3, MouseButtonDown = 4, MouseButtonUp = 5,
@@ -423,7 +398,7 @@ namespace Lub
         /// <summary>ゲームを作り直すよう求める。
         /// この frame の終わりに `OnQuit` を呼んで VM を作り直し、`OnInit` から始める (hot reload が差分を当てられないときの作り直しと同じ)。
         /// C# の変数 (static と instance) はすべて初期値に戻り、key で宣言した GPU の資源と音は残る。
-        /// 開発中の player (`lub <Entry>.csproj`、`lub --lua`、web) だけで効き、tcs2c の release build では何もしない。
+        /// 開発中の player (`lub <Entry>.csproj`、web) だけで効き、tcs2c の release build では何もしない。
         /// </summary>
         [LubNoFail]
         public static void Restart()
@@ -492,7 +467,6 @@ namespace Lub
 
         /// <summary>ReadTexture の結果。
         /// </summary>
-        [LubLuaString]
         public enum ReadbackStatus { Processing = 0, Ready = 1, Error = 2, Dropped = 3 }
 
         public static void BeginPass(PassOpts opts)
@@ -931,7 +905,6 @@ namespace Lub
     {
         /// <summary>Load* の状態。
         /// </summary>
-        [LubLuaString]
         public enum Status { Pending = 0, Ready = 1, Error = 2 }
 
         /// <summary>テキストファイルを読む (シェーダソースなど)。
@@ -1395,7 +1368,7 @@ namespace Lub
 
         /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。
         /// tcs VM の player (lub Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。
-        /// 記録が無ければ空 (Lua の player はいつも空)。
+        /// 記録が無ければ空。
         /// 順番は決まっていない。
         /// </summary>
         [LubNoFail]
@@ -1407,7 +1380,7 @@ namespace Lub
         /// <summary>TakeTrace と同じに、前に呼んでから実行した行を返し、記録を空にする。
         /// ただし、InspectPin で key に覚えた個体と同じ class の別の個体を this にして通っただけの行は返さない (別の class と static のメソッドの行は返す)。
         /// key に覚えた個体が無ければ TakeTrace と同じ。
-        /// tcs VM の player だけ (Lua の player はいつも空)。
+        /// tcs VM の player だけ (ほかの player ではいつも空)。
         /// </summary>
         [LubNoFail]
         public static List<string> TakeTraceFor(string key)
@@ -1622,7 +1595,6 @@ namespace Lub
 
         /// <summary>shape の種類 (ShapeView.Kind)。
         /// </summary>
-        [LubLuaString]
         public enum ShapeKind
         {
             Box = 1, Circle = 2, Capsule = 3, Segment = 4, Polygon = 5,
@@ -1631,7 +1603,6 @@ namespace Lub
 
         /// <summary>joint の種類 (JointDesc.Type)。
         /// </summary>
-        [LubLuaString]
         public enum JointType
         {
             Distance = 1, Filter = 2, Motor = 3, Mouse = 4, Prismatic = 5,
@@ -1640,12 +1611,10 @@ namespace Lub
 
         /// <summary>contact / sensor event の種類。
         /// </summary>
-        [LubLuaString]
         public enum EventKind { Begin = 0, End = 1, Hit = 2 }
 
         /// <summary>ShapeCast の proxy の種類。
         /// </summary>
-        [LubLuaString]
         public enum ProxyKind
         {
             Box = 1, Circle = 2, Capsule = 3, Segment = 4, Polygon = 5,
@@ -2065,7 +2034,6 @@ namespace Lub
 
         /// <summary>shape の種類 (ShapeView3d.Kind)。
         /// </summary>
-        [LubLuaString]
         public enum ShapeKind
         {
             Sphere = 1, Box = 2, Capsule = 3, Cylinder = 4, Cone = 5, Hull = 6,
@@ -2074,7 +2042,6 @@ namespace Lub
 
         /// <summary>joint の種類 (JointDesc3d.Type)。
         /// </summary>
-        [LubLuaString]
         public enum JointType
         {
             Distance = 1, Filter = 2, Motor = 3, Parallel = 4, Prismatic = 5,
@@ -2083,7 +2050,6 @@ namespace Lub
 
         /// <summary>contact / sensor event の種類。
         /// </summary>
-        [LubLuaString]
         public enum EventKind { Begin = 0, End = 1, Hit = 2 }
 
         /// <summary>key で引く (無ければ null)。
@@ -4763,7 +4729,7 @@ namespace Lub
     /// <summary>Gfx.PickResult の結果。
     /// Draw はその frame の中の draw の番号 (0 始まり、何も描いていなければ -1)。
     /// Site は Draw を呼んだ所の並び (内側から 1 行に 1 つ、"file:line")。
-    /// 並びを作るのは player で、Lua の player は Lua の source の行を返す (作れない player では空)。
+    /// 並びを作るのは player で、作れない player では空。
     /// Self は Site と同じ並びの、段ごとの this の個体の Id (InspectNode.Id と同じ書き方)。
     /// this の無い段は空の行で、tcs VM の player の --trace で変換したソースの class の instance のメソッドの段だけが Id を持つ (ほかの player では空)。
     /// </summary>

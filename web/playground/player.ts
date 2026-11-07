@@ -271,11 +271,10 @@ async function startWasm() {
     preinitializedWebGPUDevice: device,
     print: (t: string) => relayLog(t, "log"),
     printErr: (t: string) => relayLog(t, "err"),
-    // emscripten resolves auxiliary files (lub.wasm, lub.data) via
-    // Module.locateFile. The default resolver makes them relative to the
-    // HTML document, which on this page is player.html — so it tries
-    // lub.data instead of wasm/vm/lub.data. Override to always pull
-    // from <base>wasm/vm/.
+    // emscripten resolves auxiliary files (lub.wasm) via Module.locateFile.
+    // The default resolver makes them relative to the HTML document, which
+    // on this page is player.html — so it tries lub.wasm instead of
+    // wasm/vm/lub.wasm. Override to always pull from <base>wasm/vm/.
     locateFile: (path: string) => import.meta.env.BASE_URL + wasmDir + path,
     preRun: [],
     arguments: [
@@ -295,46 +294,32 @@ async function startWasm() {
       for (const [k, v] of extraEnv) ENV[k] = v;
     });
   }
-  // Defer the asset + editor-file overlay until AFTER emscripten's data-file
-  // package has been unpacked. Otherwise `FS_createDataFile` from the
-  // bundle throws "File exists" when its preRun runs after ours.
-  //
-  // Strategy: gate main() on an "editor-files-overlayed" run dependency,
-  // then in our preRun add a separate hook that resolves the dependency
-  // only once the bundled `datafile_lub.data` dependency has cleared and
-  // the assets have arrived. Editor files go last so they win over the
-  // fetched copies. We monkey-patch Module.removeRunDependency so we can
-  // react to the bundle's completion without polling.
+  // Overlay the fetched assets and the editor files before main().
+  // The assets may still be in flight when preRun runs, so main() waits on
+  // an "editor_overlay" run dependency that is removed once they are
+  // written. Editor files go last so they win over the fetched copies.
   const DEP = "editor_overlay";
   moduleConfig.preRun.push(function () {
     const M: any = moduleConfig;
     M.addRunDependency(DEP);
-    const origRemove = M.removeRunDependency;
-    M.removeRunDependency = function (id: string) {
-      origRemove.call(M, id);
-      // tcs VM の player (wasm/vm/) の data file package は datafile_vm/lub.data
-      if (!id.startsWith("datafile_") || !id.endsWith("lub.data")) return;
-      // restore the original to avoid re-firing for spurious removals
-      M.removeRunDependency = origRemove;
-      assets
-        .then((fetched) => {
-          const FS = M.FS ?? (window as any).FS;
-          for (const [p, b] of fetched) writeFileEnsureDir(FS, p, b);
-          const files = Object.entries(pendingFiles || {});
-          for (const [p, c] of files) writeFileEnsureDir(FS, fsPath(p), c);
-          console.log(
-            "[player] postPreload overlayed",
-            fetched.length,
-            "assets and",
-            files.length,
-            "editor files",
-          );
-        })
-        .catch((e: any) => {
-          console.error("[player] overlay threw:", e?.message ?? String(e));
-        })
-        .finally(() => origRemove.call(M, DEP));
-    };
+    assets
+      .then((fetched) => {
+        const FS = M.FS ?? (window as any).FS;
+        for (const [p, b] of fetched) writeFileEnsureDir(FS, p, b);
+        const files = Object.entries(pendingFiles || {});
+        for (const [p, c] of files) writeFileEnsureDir(FS, fsPath(p), c);
+        console.log(
+          "[player] postPreload overlayed",
+          fetched.length,
+          "assets and",
+          files.length,
+          "editor files",
+        );
+      })
+      .catch((e: any) => {
+        console.error("[player] overlay threw:", e?.message ?? String(e));
+      })
+      .finally(() => M.removeRunDependency(DEP));
   });
   window.Module = moduleConfig;
   const s = document.createElement("script");

@@ -1,6 +1,6 @@
 #pragma once
 // phys2d / phys3d の core が共有する小物: handle table、配列 view の scratch、hash、文字列。
-// Lua には触らない。
+// VM には触らない。
 #include "lub/lub_api.h"
 #include <SDL3/SDL.h>
 #include <stdbool.h>

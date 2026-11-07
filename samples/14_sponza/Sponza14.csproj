@@ -8,7 +8,7 @@
     <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
     <OutputType>Library</OutputType>
-    <!-- 生成物はチェック専用 (実行は Lua 側)。.lub を compile 対象から外す -->
+    <!-- .lub は lub の生成物の置き場。compile 対象から外す -->
     <DefaultItemExcludes>$(DefaultItemExcludes);.lub/**</DefaultItemExcludes>
   </PropertyGroup>
 

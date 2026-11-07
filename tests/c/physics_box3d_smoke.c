@@ -101,7 +101,7 @@ int main(void) {
   LubHandle ground = lub_phys3d_find_body(ctx, w, S("ground"));
   check(ground != 0 && lub_phys3d_pose(ctx, ground, &gpose) == LUB_OK,
         "ground pose");
-  // Box3D の近似 cos / sin で作った四元数と一致する (旧 Lua binding と同じ)
+  // Box3D の近似 cos / sin で作った四元数と一致する
   b3Quat expect = b3MakeQuatFromAxisAngle(b3Vec3_axisY, 0.5f);
   if (!(fabsf(gpose.qy - expect.v.y) < 1e-6f &&
         fabsf(gpose.qw - expect.s) < 1e-6f)) {

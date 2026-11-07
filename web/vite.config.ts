@@ -143,7 +143,7 @@ export default defineConfig({
           });
         // tcs VM の player
         mkdirSync("dist/wasm/vm", { recursive: true });
-        for (const f of ["lub.js", "lub.wasm", "lub.data"])
+        for (const f of ["lub.js", "lub.wasm"])
           cpSync(`../build/wasm/vm/${f}`, `dist/wasm/vm/${f}`);
       },
     },

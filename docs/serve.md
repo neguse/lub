@@ -22,7 +22,7 @@ lub のゲームコンテンツを別リポで管理したい。ネイティブ�
         └── cube.vs.slang
 ```
 
-ゲームのリポは lub をビルドしない。lub リポでビルドした `lub` を使い、C# → Lua の transpile は lub が実行時に行う(dotnet SDK が要る。無ければセルフホストの compiler を使う。`docs/manual/08-csharp.md`)。
+ゲームのリポは lub をビルドしない。lub リポでビルドした `lub` を使い、C# から tcs VM の bytecode への変換は lub が実行時に行う(dotnet SDK が要る。無ければセルフホストの compiler を使う。`docs/manual/08-csharp.md`)。
 
 lub は実行ファイルの 1 階層上の `third_party/tcs` と `cs-lib` を探す(cwd 直下も見る)。
 別の配置にするときは、環境変数 `LUB_TCS`(tcs の起動コマンド。例: `dotnet run --project <lub>/third_party/tcs/Transpiler/Transpiler.csproj --`)と
@@ -41,10 +41,9 @@ lub は実行ファイルの 1 階層上の `third_party/tcs` と `cs-lib` を�
 # → .cs や .slang を編集 → 自動リロード
 ```
 
-ゲームは web の tcs VM の player で動かす(`--lua` を付けたときだけ、deprecate する予定の Lua の player)。
-WASM 成果物 (tcs VM の player は `build/wasm/vm/lub.{js,wasm,data}`、Lua の player は `build/wasm/lub.{js,wasm,data}`) と slang-wasm (`web/public/slang/`) は
-実行ファイルの位置から自動検出される。別の場所に置く場合は `--wasm-dir`(`vm/` の親)/
-`--slang-dir` で指定する。
+ゲームは web の tcs VM の player で動かす。
+WASM 成果物 (`build/wasm/vm/lub.{js,wasm}`) と slang-wasm (`web/public/slang/`) は実行ファイルの位置から自動検出される。
+別の場所に置く場合は `--wasm-dir`(`vm/` の親)/ `--slang-dir` で指定する。
 
 ## アーキテクチャ
 
@@ -53,7 +52,7 @@ lub --serve Game.csproj
   │
   ├─ HTTP server (localhost:PORT)
   │   GET /              → HTML (全画面 canvas + SSE クライアント JS)
-  │   GET /wasm/lub.*    → WASM 成果物 (lub.js, lub.wasm, lub.data)
+  │   GET /wasm/lub.*    → WASM 成果物 (lub.js, lub.wasm)
   │   GET /slang/*       → slang-wasm
   │   GET /files/<path>  → ゲームのファイル (中身そのまま)
   │   GET /events        → SSE ストリーム
@@ -62,10 +61,9 @@ lub --serve Game.csproj
   ├─ tcs pipeline (src/tcs_build.c)
   │   tcs vm を watch 起動: 入力の一覧 (src/vm_project.c) の .cs を監視 + 変換 → .lub/Game.tcsb
   │   以後の build ごとの差分と compile error を tcs の標準出力から受ける
-  │   (--lua: tcs を watch 起動 → .lub/Game.lua、以後の reload chunk)
   │
   └─ file_watch
-      ディレクトリ全体を監視 (起動後に足したファイルと .slang, data/, .lub/ の下を含む。.cs / .csproj、生成 Lua、. で始まる名前は除く。.cs は tcs が担当)
+      ディレクトリ全体を監視 (起動後に足したファイルと .slang, data/, .lub/ の下を含む。.cs / .csproj、bytecode (.lub/Game.tcsb)、. で始まる名前は除く。.cs は tcs が担当)
 ```
 
 ## ファイル同期プロトコル (SSE)
@@ -77,7 +75,7 @@ SSE エンドポイント `/events` で `EventSource` を使う。
 ブラウザの MEMFS の `/` を、`lub --serve` を起動した cwd とみなす。
 ゲームのファイルは cwd からの相対 path に置くので、ゲームは native と同じ path で読める(`templates/game` で起動すれば `data/cube.vs.slang`、リポジトリ root から `samples/03_texture/Texture03.csproj` を渡せば `samples/03_texture/data/...`)。
 cwd の外にあるゲームは、ゲームのディレクトリを `/` に置く。
-起動の entry は bytecode の path(`.lub/Game.tcsb` など。`--lua` では生成 Lua の `.lub/Game.lua`)。
+起動の entry は bytecode の path(`.lub/Game.tcsb` など)。
 
 ### メッセージ形式
 
@@ -89,7 +87,7 @@ cwd の外にあるゲームは、ゲームのディレクトリを `/` に置�
 
 ```
 event: files
-data: {"files":[".lub/Game.lua","data/cube.vs.slang","data/cube.verts.lua"]}
+data: {"files":[".lub/Game.tcsb","data/cube.vs.slang","data/cube.verts.lua"]}
 ```
 
 ### ブラウザ側
@@ -114,23 +112,11 @@ event: build_failed
 data: "<compile error>"
 ```
 
-`--lua` の Lua の player では、tcs の reload chunk (前の build からの差分) を 1 つずつ別のイベントで送る。
-data は chunk の Lua を JSON 文字列にしたもの。
-ページは chunk を MEMFS に書いて `lub_queue_reload_chunk_file` に渡し、runtime が届いた順に実行中の VM へ当てる。
-runtime が起動する前に届いた chunk は、ページが溜めて起動後に順に渡す。
-接続が切れて再接続したときは、切れている間の chunk が届いていないので、ページを読み直して最新の出力から起動し直す。
-reload chunk で更新する entry (`.lub/Game.lua`) は、`files` で届いても読み直さない。
+接続が切れて再接続したときは、切れている間の差分が届いていないので、ページを読み直して最新の出力から起動し直す。
 
-```
-event: reload
-data: "<reload chunk の Lua>"
-```
-
-chunk で移行できない変更では、tcs が reload chunk の代わりに restart を知らせる。
+差分で移行できない変更では、tcs が差分の代わりに restart を知らせる。
 その build の出力は書き終わっているので、ページは理由を console と status に出して読み直し、最新の出力から起動し直す。
-runtime が VM を失ったとき(出力を読み込めなかった、reload chunk の適用が失敗した)も、runtime が `window.lubVmLost` でページに知らせ、ページは最新の出力から起動し直す。
-chunk の失敗は出力が既に新しいので今すぐ読み直し、出力そのものが読み込めなかったときは次の `reload` か `restart` が届いてから読み直す。
-native の `lub Game.csproj` は同じ状況で出力から Lua VM を作り直す。
+native の `lub Game.csproj` は同じ状況で出力から VM を作り直す。
 data は改行終端の理由の行を JSON 文字列にしたもの。
 
 ```
@@ -141,7 +127,7 @@ data: "<理由の行>"
 ### 変更検知フロー
 
 1. ファイル監視がディレクトリ全体を 250ms ごとに走査し、変更を見つけたら 50ms ごとに走査して変更が止まるのを待つ
-2. .cs の変更は tcs の watch が transpile し、reload chunk を `reload` イベントで送る。生成された .lub/Game.lua は .lub/ の下でただ 1 つファイル監視の外で、ページを読み直したときに初回の `files` に入り、その時点の中身が初期状態になる
+2. .cs の変更は tcs vm の watch が変換し、差分を `batch` イベントで送る。bytecode の .lub/Game.tcsb は .lub/ の下でただ 1 つファイル監視の外で、ページを読み直したときに初回の `files` に入り、その時点の中身が初期状態になる
 3. .slang, data/ 等はファイルの名前を `files` イベントで送り、ブラウザが `/files/` で中身を取る。起動後に足したファイルも同じで、消したファイルは監視から外れ、ブラウザの MEMFS には残る
 4. ファイル監視は変更のあった回に監視中の全ファイルの名前を 1 メッセージで送る
 
@@ -152,7 +138,7 @@ POSIX ソケット(Windows では `src/sock_compat.h` が Winsock に写す)で�
 配信するもの:
 - `/` → 埋め込み HTML (全画面 canvas + EventSource JS + lub.wasm ローダー)
 - `/host.js` → ゲームディレクトリの `host.js` (無ければ空スクリプト)
-- `/wasm/*` → lub の WASM ビルド成果物 (lub.js, lub.wasm, lub.data)
+- `/wasm/*` → tcs VM の player の WASM ビルド成果物 (lub.js, lub.wasm)
 - `/slang/*` → slang-wasm (`--slang-dir`)
 - `/files/*` → ゲームのファイル (`files` イベントで知らせたものだけ)
 - `/events` → SSE
@@ -182,7 +168,7 @@ while running:
   accept new HTTP connections
   handle HTTP requests
   data_watch_tick()          # .slang, data/ 等の監視
-                             # (.cs → .lub/Game.lua は tcs の watch プロセスが書く)
+                             # (.cs → .lub/Game.tcsb は tcs vm の watch プロセスが書く)
   if changes:
     send SSE to all connected clients
   sleep or poll

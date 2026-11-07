@@ -1,4 +1,4 @@
-// tcs の Lua 出力が呼ぶ global の tcs_rt を player が登録していること。
+// player が持つ tcs の runtime の書式と並べ替え。
 // float の既定の文字列化と int の書式は .NET の ToString と同じ文字列、string の Sort は .NET の ordinal の順になる。
 using System;
 using System.Collections.Generic;

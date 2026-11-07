@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# lub <Entry>.csproj が起動した tcs --watch が、lub の終了後に残らないことを見る。
-# player は 2 通り: tcs VM の player (既定、tcs vm --watch) と Lua の player (--lua、tcs --watch)。
-# tcs の起動も 2 通り: 1 process で動く形 (release の一式の Transpiler と同じ) と、Transpiler を子に持つ dotnet run。
+# lub <Entry>.csproj (tcs VM の player) が起動した tcs vm --watch が、lub の終了後に残らないことを見る。
+# tcs の起動は 2 通り: 1 process で動く形 (release の一式の Transpiler と同じ) と、Transpiler を子に持つ dotnet run。
 # 終わり方も 2 通り: capture の後の正常終了と、強制終了 (Windows は TerminateProcess、Linux / macOS は SIGKILL)。
 # process は command line に入る entry class の名前で探す。
 # 使い方: scripts/test-tcs-process-cleanup.sh [lub binary]
@@ -52,9 +51,9 @@ os_pid() {
 
 failed=0
 
-# $1 = player (vm | lua), $2 = tcs の起動 (direct | dotnet-run), $3 = 終わり方 (exit | kill)
+# $1 = tcs の起動 (direct | dotnet-run), $2 = 終わり方 (exit | kill)
 run_case() {
-  local player="$1" launcher="$2" how="$3" token pid dir out
+  local launcher="$1" how="$2" token pid dir out
   token="TcsCleanup$RANDOM$RANDOM"
   dir="$work/$token"
   mkdir -p "$dir"
@@ -76,11 +75,9 @@ public static class $token
 CS
   # 強制終了の場合は lub が自分で終わらないよう capture を付けない
   local args=()
-  [[ $player == lua ]] && args=(--lua)
-  [[ $how == exit ]] && args+=(--capture "$dir/out.png" --capture-frame 5 --fixed-dt 0.0166666666666667)
+  [[ $how == exit ]] && args=(--capture "$dir/out.png" --capture-frame 5 --fixed-dt 0.0166666666666667)
   # tcs が最初に書く出力 (これが現れたら tcs は動いている)
   out="$dir/.lub/$token.tcsb"
-  [[ $player == lua ]] && out="$dir/.lub/$token.lua"
   if [[ $launcher == direct ]]; then
     LUB_TCS="dotnet $tcs_dll" "$binary" "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
   else
@@ -97,7 +94,7 @@ CS
     done
     if [[ ! -e "$out" ]] || ! kill -0 "$pid" 2>/dev/null; then
       cat "$dir/log"
-      echo "FAIL $player $launcher $how: lub ended before tcs wrote its output" >&2
+      echo "FAIL $launcher $how: lub ended before tcs wrote its output" >&2
       failed=1
       return
     fi
@@ -111,7 +108,7 @@ CS
     done
     if kill -0 "$pid" 2>/dev/null; then
       cat "$dir/log"
-      echo "FAIL $player $launcher $how: lub did not exit" >&2
+      echo "FAIL $launcher $how: lub did not exit" >&2
       kill "$pid" 2>/dev/null || true
       failed=1
     fi
@@ -125,20 +122,18 @@ CS
     sleep 0.5
   done
   if [[ -z "$left" ]]; then
-    echo "PASS $player $launcher $how"
+    echo "PASS $launcher $how"
   else
-    echo "FAIL $player $launcher $how: still running after lub ended:"
+    echo "FAIL $launcher $how: still running after lub ended:"
     echo "$left" | cut -c1-200 | sed 's/^/    /'
     echo "$left" | while read -r leftover _; do force_kill "$leftover" 2>/dev/null || true; done
     failed=1
   fi
 }
 
-for player in vm lua; do
-  for launcher in direct dotnet-run; do
-    run_case "$player" "$launcher" exit
-    run_case "$player" "$launcher" kill
-  done
+for launcher in direct dotnet-run; do
+  run_case "$launcher" exit
+  run_case "$launcher" kill
 done
 
 exit "$failed"

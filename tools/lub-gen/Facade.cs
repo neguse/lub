@@ -4,7 +4,7 @@ namespace LubGen;
 
 /// <summary>stub から .NET 実行の facade (dotnet/Lub/Lub.g.cs) を導く。
 /// stub と同じ C# の面 (class / enum / static メソッド) を持ち、中身は C API (CHeader が導いた形) への詰め替えと P/Invoke。
-/// Lua binding (LuaBinding) と同じ規則を C# で書いたもので、土台 (arena、例外、callback の箱、host) は手書きの dotnet/Lub/LubRuntime.cs にある。
+/// tcs VM の host の関数 (VmBinding) と同じ規則を C# で書いたもので、土台 (arena、例外、callback の箱、host) は手書きの dotnet/Lub/LubRuntime.cs にある。
 /// </summary>
 public static class Facade
 {
@@ -1053,7 +1053,7 @@ internal sealed class FacadeGen
                     break;
                 case LubTypeKind.List:
                 {
-                    // 無い配列 (NULL) は Lua と同じく null にする (空 list にしない。ゲームは有無で分岐する)
+                    // 無い配列 (NULL) は null にする (空 list にしない。ゲームは有無で分岐する)
                     var elem = tr.Elem!;
                     if (elem.Kind == LubTypeKind.Array)
                         sb.Write("        " + v + " = s->@" + n + " == null ? null! : LubRuntime.FloatRowList(s->@" + n + ", s->@" + n + "_count, " + (f.ArrayLen >= 0 ? f.ArrayLen.ToString() : "") + ");\n");

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cs-lib/lub_stub.cs (API の記述) から生成物を作る。
 #   include/lub/lub_api.h        C API の header
-#   src/gen/lua_api_gen.c        Lua binding
+#   src/gen/vm_api_gen.c         tcs VM の host の関数
 #   web/gen/lub-api-docs.json    API reference のデータ (web/scripts/gen-api-docs.mjs が読む)
 #   dotnet/Lub/Lub.g.cs          .NET 実行の facade (P/Invoke)
 #   dotnet/Lub/Lubx.g.cs         namespace Lubx (lubx が使う C の実装) の .NET 実行の facade
@@ -17,7 +17,6 @@ dotnet build tools/lub-gen -nologo -v q -o "$tmp/lub-gen" > /dev/null
 gen=(dotnet "$tmp/lub-gen/lub-gen.dll")
 "${gen[@]}" check
 "${gen[@]}" header -o "$tmp/lub_api.h"
-"${gen[@]}" lua -o "$tmp/lua_api_gen.c"
 "${gen[@]}" vm -o "$tmp/vm_api_gen.c"
 "${gen[@]}" docs -o "$tmp/lub-api-docs.json"
 "${gen[@]}" facade -o "$tmp/Lub.g.cs"
@@ -25,12 +24,12 @@ gen=(dotnet "$tmp/lub-gen/lub-gen.dll")
 # checkin 済みの生成物は scripts/format.sh と同じ整形を通した形にする。
 # formatter は 1 回で不動点にならないことがある (CJK の comment の折り返し等) ので、変わらなくなるまで回す。
 for _ in 1 2 3 4; do
-  cp "$tmp/lub_api.h" "$tmp/h.prev"; cp "$tmp/lua_api_gen.c" "$tmp/c.prev"; cp "$tmp/vm_api_gen.c" "$tmp/v.prev"
-  clang-format --style=file:.clang-format -i "$tmp/lub_api.h" "$tmp/lua_api_gen.c" "$tmp/vm_api_gen.c"
-  cmp -s "$tmp/lub_api.h" "$tmp/h.prev" && cmp -s "$tmp/lua_api_gen.c" "$tmp/c.prev" && cmp -s "$tmp/vm_api_gen.c" "$tmp/v.prev" && break
+  cp "$tmp/lub_api.h" "$tmp/h.prev"; cp "$tmp/vm_api_gen.c" "$tmp/v.prev"
+  clang-format --style=file:.clang-format -i "$tmp/lub_api.h" "$tmp/vm_api_gen.c"
+  cmp -s "$tmp/lub_api.h" "$tmp/h.prev" && cmp -s "$tmp/vm_api_gen.c" "$tmp/v.prev" && break
 done
 status=0
-for pair in "lub_api.h:include/lub/lub_api.h" "lua_api_gen.c:src/gen/lua_api_gen.c" "vm_api_gen.c:src/gen/vm_api_gen.c" "lub-api-docs.json:web/gen/lub-api-docs.json" "Lub.g.cs:dotnet/Lub/Lub.g.cs" "Lubx.g.cs:dotnet/Lub/Lubx.g.cs"; do
+for pair in "lub_api.h:include/lub/lub_api.h" "vm_api_gen.c:src/gen/vm_api_gen.c" "lub-api-docs.json:web/gen/lub-api-docs.json" "Lub.g.cs:dotnet/Lub/Lub.g.cs" "Lubx.g.cs:dotnet/Lub/Lubx.g.cs"; do
   src="$tmp/${pair%%:*}"
   dst="${pair#*:}"
   if [ "$check" = 1 ]; then

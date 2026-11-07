@@ -12,7 +12,6 @@
 #include "audio.h"
 #include "capture.h"
 #include "digest.h"
-#include "lua_api.h"
 #include "lub/lub_api.h"
 #include "pass.h"
 #include "physics_box2d.h"
@@ -89,7 +88,6 @@ typedef struct App {
   WGPUTextureView wgpu_swapchain_view;
 #endif // __EMSCRIPTEN__
 
-  LuaCtx lua;
   PassState pass;
   ProfileState profile;
   ResTable res;
@@ -211,14 +209,6 @@ typedef struct App {
   SDL_GPUTextureFormat gpu_depth_fmt;
 #endif // __EMSCRIPTEN__
 
-  // Entry .lua hot-reload state. main.c populates entry_path /
-  // entry_module_name after app_init; app_frame_begin polls mtime each
-  // frame and calls lume.hotswap when it changes (except for a tcs
-  // --reload-chunks entry, which app_queue_reload_chunk updates instead).
-  char entry_path[256];        // e.g. "samples/01_triangle/.lub/Triangle01.lua"
-  char entry_module_name[128]; // e.g. "Triangle01"
-  int64_t entry_mtime_cache;   // last observed mtime in ns; 0 means "unknown /
-                               // first poll"
   // VM を作り直した後の OnInit の間だけ true。
   // backend の後なので、App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
   bool entry_restarting;
@@ -237,13 +227,10 @@ typedef struct App {
   // NULL なら PickHit.Site は空。
   void (*pick_sites)(void *user, char *out, size_t cap);
   void *pick_sites_user;
-  // reload chunk の適用が失敗した (本文の error、または guard の assert)。
-  // VM は途中まで当たった状態なので、main.c が出力から作り直す (web はページを読み直す)。
-  bool reload_chunk_failed;
 } App;
 
 bool app_init(App *app);
-bool app_backend_init(App *app); // call after lua onInit has run; returns false
+bool app_backend_init(App *app); // call after OnInit has run; returns false
                                  // on backend init failure
 void app_frame_begin(App *app, int *out_w, int *out_h);
 // frame_ok は OnFrame が error なく終わったか (resource_frame を進めるか)。
@@ -255,15 +242,5 @@ void app_shutdown(App *app);
 
 // Returns mtime of `path` in nanoseconds since epoch (sub-second precision;
 // SDL_GetPathInfo on Windows). Returns 0 if the file does not exist or stat
-// fails. Used by the entry-Lua mtime poll (app_frame_begin, main.c) and the
-// lub_io_* file cache.
+// fails. Used by the lub_io_* file cache.
 int64_t app_file_mtime_ns(const char *path);
-
-// tcs の reload chunk を積む (内容は複製する)。
-// 届いた順に、次の frame の頭で実行中の VM に当てる。
-// native は main.c が tcs のパイプから、web は lub_queue_reload_chunk_file (serve の SSE) から積む。
-void app_queue_reload_chunk(const char *lua, size_t len);
-
-// まだ当てていない reload chunk を捨てる。
-// VM を作り直すとき (tcs の restart_required) は、それまでの chunk が前の build 向けになる。
-void app_drop_reload_chunks(void);

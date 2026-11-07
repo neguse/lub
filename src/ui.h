@@ -10,11 +10,10 @@
 // - C API (include/lub/lub_api.h の lub_ui_*): begin_window / end_window /
 //   text / button / checkbox / slider_float / ... と render。render は
 //   begin_pass 中に呼ぶこと (draw と同じ内部機構で draw list を発行する)。
-//   Lua binding は src/gen/lua_api_gen.c。
+//   tcs VM の host の関数は src/gen/vm_api_gen.c。
 // - 位置づけは debug/dev UI。
 //   ゲーム本編の UI は従来通り自前描画で。
 struct App;
-struct lua_State;
 
 #ifdef __cplusplus
 extern "C" {

@@ -16,7 +16,7 @@ workflow をコードで組む。
 | レイヤ | 役割 |
 | --- | --- |
 | C runtime | window / GPU / audio / 物理 / IO。tcs VM に API を公開する |
-| tcs VM | tcs の出力 (bytecode) を動かす内部の層で、ゲームからは触らない。`--lua` で選ぶ Lua の player では Lua がこの層になる |
+| tcs VM | tcs の出力 (bytecode) を動かす内部の層で、ゲームからは触らない |
 | C# (`Lub.*`) | runtime API の宣言(`cs-lib/lub_stub.cs`)。runtime primitive そのもの |
 | C# (`lubx`) | 宣言の上に C# で書かれた便利ライブラリ層(`cs-lib/lubx`) |
 

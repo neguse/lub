@@ -49,7 +49,6 @@ for source in [
     'third_party/libtess2/LICENSE.txt',
     'third_party/stb/LICENSE',
     'third_party/miniaudio/LICENSE',
-    'third_party/lume/LICENSE',
     'third_party/slang/LICENSE',
     'third_party/slang/THIRD_PARTY_NOTICES.txt',
     'third_party/tcs/THIRD_PARTY_LICENSES.md',
@@ -57,7 +56,6 @@ for source in [
     add(source, (root / source).read_text(encoding='utf-8'))
 
 for source in [
-    'third_party/lua/lua.h',
     'third_party/cgltf/cgltf.h',
     'third_party/SDL/src/events/imKStoUCS.c',
     'third_party/SDL/src/filesystem/unix/SDL_sysfilesystem.c',

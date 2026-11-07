@@ -20,7 +20,7 @@
 // hot reload: <Entry>.batch (tcs vm --watch の vm_batch。module と計画) が現れたら当てて消す。
 // 当てられない差分 (restart) と <Entry>.tcsb の書き直しは、OnQuit の後に新しい VM を作って OnInit から始める。
 // <Entry>.rev (playground が置く build の revision) があれば、読み込みと batch の後に
-// `@@tcs_commit {"revision":N,"ok":...}` を出す (Lua の player の commit ACK と同じ形)。
+// `@@tcs_commit {"revision":N,"ok":...}` を出す (playground の commit ACK)。
 // 当てた revision 以下の batch (ACK の再送) は当てずに ACK だけ返す。
 // `lub export <os> <entry> -o <dir>` は、画面も GPU も使わずに起動して OnInit の後に OnExport を 1 回呼び、
 // その OS の player が動かす snapshot を dir に書く (backend_export.c)。
@@ -317,7 +317,7 @@ static bool load_module(void) {
 }
 
 // OnQuit (古い VM) の後に新しい VM を OnInit から始める。
-// 物理の world はゲームの状態なので捨て、key で宣言する資源は残す (Lua の player の restart と同じ)。
+// 物理の world はゲームの状態なので捨て、key で宣言する資源は残す。
 static void restart(const char *why) {
   SDL_Log("lub: %s, starting the VM again from %s", why, g_module);
   call_quit();
@@ -1287,7 +1287,7 @@ SDL_AppResult lub_vm_app_iterate(void) {
     if (ok && !strcmp(export_os(), "web")) {
       char start[320];
       SDL_snprintf(start, sizeof(start), "%s.tcsb", g_game.cls);
-      ok = export_write_web_page(export_out_dir(), g_game.cls, true, start);
+      ok = export_write_web_page(export_out_dir(), g_game.cls, start);
     }
     if (ok)
       SDL_Log("export: wrote %s", export_out_dir());
@@ -1340,7 +1340,7 @@ void lub_vm_app_quit(SDL_AppResult result) {
   lub_host_destroy(g_ctx);
   g_ctx = NULL;
   // SDL の main は AppIterate が返した成功 / 失敗で終わる。
-  // OnQuit の中の Quit と 1 以外の code はそれに載らないので、ここで返す (Lua の player と同じ)
+  // OnQuit の中の Quit と 1 以外の code はそれに載らないので、ここで返す
   if (code != 0 || result == SDL_APP_FAILURE) {
     SDL_Quit();
     exit(code);

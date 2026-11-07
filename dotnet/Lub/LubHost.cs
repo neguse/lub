@@ -185,7 +185,7 @@ public static unsafe partial class App
 
     // ゲームの例外は callback の境界で止めて log し、処置を entry の OnError に聞く (無ければ Log)。
     // OnError 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。
-    // Lua の player と同じ。
+    // tcs VM の player と同じ。
     // f が最後まで走ったら true。
     private static bool Guard(Action? f, string what, Func<string, ErrorAction>? onError)
     {

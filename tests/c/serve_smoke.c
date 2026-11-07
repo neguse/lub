@@ -143,7 +143,7 @@ static bool test_sse_connect(ServeState *s, int port) {
   // 名前だけを cwd 基準の path で送る (中身は /files/ で取る)
   if (!strstr(buf, "\"files\":[") ||
       !strstr(buf, "\"samples/03_texture/data/03_tex.png\"") ||
-      !strstr(buf, "\"samples/03_texture/.lub/Texture03.lua\"")) {
+      !strstr(buf, "\"samples/03_texture/.lub/Texture03.tcsb\"")) {
     SDL_Log("FAIL: SSE: missing file names. Got: %.500s", buf);
     return false;
   }
@@ -242,7 +242,7 @@ static bool test_close_keeps_neighbor(ServeState *s, int port) {
 static bool test_web_path(void) {
   const char *cases[][3] = {
       {"samples/g/", "\\data\\x.png", "samples/g/data/x.png"},
-      {"samples/g/", "\\.lub\\Game.lua", "samples/g/.lub/Game.lua"},
+      {"samples/g/", "\\.lub\\Game.tcsb", "samples/g/.lub/Game.tcsb"},
       {"", "/data/x.png", "data/x.png"},
   };
   for (size_t i = 0; i < SDL_arraysize(cases); i++) {
@@ -276,7 +276,7 @@ static bool sse_next_event(ServeState *s, int fd, char *buf, size_t cap) {
 }
 
 // 起動後に足したファイルと .lub/ の下を知らせ、/files/ で配る。
-// 生成 Lua は reload chunk で届くので更新の files に入れず、書きかけの tmp も入れない。
+// bytecode は tcs vm の差分で届くので更新の files に入れず、書きかけの tmp も入れない。
 static bool test_watch_added(ServeState *s, int port) {
   const char *data = "samples/03_texture/data/serve_smoke_added.txt";
   const char *lub = "samples/03_texture/.lub/serve_smoke_added.txt";
@@ -307,7 +307,8 @@ static bool test_watch_added(ServeState *s, int port) {
               buf);
       goto done;
     }
-    if (strstr(buf, "Texture03.lua") || strstr(buf, ".serve_smoke_added.tmp")) {
+    if (strstr(buf, "Texture03.tcsb") ||
+        strstr(buf, ".serve_smoke_added.tmp")) {
       SDL_Log("FAIL: watch: update has the entry or a tmp file. Got: %.300s",
               buf);
       goto done;
@@ -340,23 +341,24 @@ done:
   return ok;
 }
 
-// tcs VM の serve: 入口は .lub/<Entry>.tcsb で、tcs vm の差分は batch、compile error は build_failed のイベントで送る。
-// fake の tcs (scripts/test-serve-smoke.sh) は vm のとき -o の出力を書き、少し待ってから vm_batch と build_failed の frame を出す。
-static bool test_vm(const char *entry, const char *wasm_dir,
-                    const char *slang_dir) {
+// tcs の frame: tcs vm の差分は batch、compile error は build_failed のイベントで送り、知らない種類の frame は本文の byte 数ごと読み飛ばす。
+// fake の tcs (scripts/test-serve-smoke.sh) は --smoke-frames を受けると、-o の出力を書いて少し待ってから、知らない種類の frame、vm_batch、build_failed を 1 回の write で出す。
+// 知らない frame の本文は frame の見出しに見える行と UTF-8 の多 byte 文字を持つので、本文を byte 数どおりに飛ばさないと、そこから偽の batch が出る。
+static bool test_frames(const char *entry, const char *wasm_dir,
+                        const char *slang_dir) {
   const char *out = "samples/03_texture/.lub/Texture03.tcsb";
-  const char *args[] = {"-o", out};
+  const char *args[] = {"-o", out, "--smoke-frames"};
   ServeState s;
   int port = 18081;
   bool ok = false;
   SDL_RemovePath(out);
-  if (!serve_start_vm(&s, entry, args, 2, wasm_dir, slang_dir, port)) {
-    SDL_Log("FAIL: vm: serve_start_vm failed");
+  if (!serve_start_vm(&s, entry, args, 3, wasm_dir, slang_dir, port)) {
+    SDL_Log("FAIL: frames: serve_start_vm failed");
     return false;
   }
   int fd = nb_connect(port);
   if (fd < 0) {
-    SDL_Log("FAIL: vm: connect failed");
+    SDL_Log("FAIL: frames: connect failed");
     goto done;
   }
   const char *req = "GET /events HTTP/1.1\r\nHost: localhost\r\n\r\n";
@@ -374,20 +376,22 @@ static bool test_vm(const char *entry, const char *wasm_dir,
     SDL_Delay(10);
   }
   sock_close(fd);
-  if (!strstr(buf, "\"samples/03_texture/.lub/Texture03.tcsb\"")) {
-    SDL_Log("FAIL: vm: the files event lacks the bytecode. Got: %.500s", buf);
-    goto done;
-  }
   if (!strstr(buf, "event: batch\ndata: \"QUJDREVG\"")) {
-    SDL_Log("FAIL: vm: missing the batch event. Got: %.500s", buf);
+    SDL_Log("FAIL: frames: missing the batch event. Got: %.500s", buf);
     goto done;
   }
   if (!strstr(buf, "event: build_failed\ndata: \"oops!\"")) {
-    SDL_Log("FAIL: vm: missing the build_failed event. Got: %.500s", buf);
+    SDL_Log("FAIL: frames: missing the build_failed event. Got: %.500s", buf);
+    goto done;
+  }
+  if (strstr(buf, "WRONG") || strstr(buf, "future_kind")) {
+    SDL_Log(
+        "FAIL: frames: the unknown frame leaked into the events. Got: %.500s",
+        buf);
     goto done;
   }
   ok = true;
-  SDL_Log("PASS: vm: bytecode, batch and build_failed");
+  SDL_Log("PASS: frames: batch, build_failed, and an unknown frame skipped");
 done:
   serve_stop(&s);
   SDL_RemovePath(out);
@@ -409,10 +413,16 @@ int main(int argc, char *argv[]) {
   const char *wasm_dir = "build/wasm";
   const char *slang_dir = "web/public/slang";
 
+  // tcs vm が -o に書く bytecode (fake の tcs が書く)。
+  // lub --serve では vm_project_open が .lub/ を作ってから serve_start_vm を呼ぶ
+  const char *out = "samples/03_texture/.lub/Texture03.tcsb";
+  const char *args[] = {"-o", out};
   ServeState s;
   int port = 18080;
-  if (!serve_start(&s, entry, wasm_dir, slang_dir, port)) {
-    SDL_Log("FAIL: serve_start failed");
+  SDL_CreateDirectory("samples/03_texture/.lub");
+  SDL_RemovePath(out);
+  if (!serve_start_vm(&s, entry, args, 2, wasm_dir, slang_dir, port)) {
+    SDL_Log("FAIL: serve_start_vm failed");
     return 1;
   }
 
@@ -435,7 +445,8 @@ int main(int argc, char *argv[]) {
     failures++;
 
   serve_stop(&s);
-  if (!test_vm(entry, wasm_dir, slang_dir))
+  SDL_RemovePath(out);
+  if (!test_frames(entry, wasm_dir, slang_dir))
     failures++;
 
   if (failures > 0) {

@@ -70,8 +70,7 @@ public static class Sdf19
     static float tAccum = 0.0f;
     // treeDirty = コードからツリーを再構築 (reload 時)、meshDirty = 再評価 (SdfPanel での編集時)。
     // パネル編集はツリー (data) に直接乗るので、リロードするまで生きる。
-    // reload 検知は経路で異なる: native watch (lume.hotswap) は chunk 再実行でフラグが初期値 true へ戻る。
-    // web playground (module mode) は static を保持するため、hot apply 後に呼ばれる OnReload() で明示的に立てる。
+    // reload は static を保持するため、差分を当てた後に呼ばれる OnReload() で明示的に立てる。
     static SdfNode? tree = null;
     static bool treeDirty = true;
     static bool meshDirty = true;

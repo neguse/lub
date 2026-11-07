@@ -85,7 +85,7 @@ shader compile は C 側 (`src/shader.cpp`) の `EM_JS` shim から `window.slan
 エラーは `'\x02' + msg` 形式で Slang diagnostic として err_buf に届く。
 
 MEMFS sync: runtime の `Io` は MEMFS にあるファイルだけを読み、自分では取りに行かない。
-iframe 側は Emscripten の data file package (`lub.data`) をマウントした後、main() の前に、サンプルが読み得るファイル(`sample-assets.json` に載る `samples/<name>/**` と `samples/data/**`。`.cs` / `.csproj` は除く)を全部 fetch して `FS.writeFile` で置き、その上にエディタ内容を書く (`player.ts` の `postPreload` hook)。
+iframe 側は main() の前に、サンプルが読み得るファイル(`sample-assets.json` に載る `samples/<name>/**` と `samples/data/**`。`.cs` / `.csproj` は除く)を全部 fetch して `FS.writeFile` で置き、その上にエディタ内容を書く (`player.ts` の preRun。置き終わるまで run dependency で main() を待たせる)。
 `sample-assets.json` は dev では vite のミドルウェアが要求ごとに作り、build では `dist/` に書き出す (`vite.config.ts`)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は次フレームの
 `stat()` で mtime 違いを検知して reload する (native と同じ hot-reload コード)。
 

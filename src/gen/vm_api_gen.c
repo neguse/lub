@@ -40,7 +40,7 @@ static void vm_lub_fail_text(const char *message) {
 }
 /* callback の中の VM の fault (trace は tvm_error) */
 static void vm_lub_fail_vm(void) { vm_lub_fail_text(tvm_error(vm_lub_vm)); }
-/* query の visitor の fault。Lua の player と同じく、query は fault にせず null を返す (message は log に出す) */
+/* query の visitor の fault。query は fault にせず null を返す (message は log に出す) */
 static bool vm_lub_visitor_failed;
 static char vm_lub_visitor_text[1024];
 static void vm_lub_visitor_fail(void) {
@@ -78,7 +78,7 @@ static void *vm_lub_held_get(VmLubHeld *held, int i) {
              ? tvm_handle_get(vm_lub_vm, held->h[i])
              : NULL;
 }
-/* fault は callback ごとに 1 回だけ log に出し、既定の値で続ける (Lua の player と同じ) */
+/* fault は callback ごとに 1 回だけ log に出し、既定の値で続ける */
 static void vm_lub_held_fault(VmLubHeld *held, int i) {
   if (held->logged[i])
     return;

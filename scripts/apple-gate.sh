@@ -260,9 +260,7 @@ else
     fi
   done
   app=build-ios/lub.app
-  mkdir -p "$app/samples" "$app/third_party/lume" "$app/tests/cs/.lub"
-  cp samples/boot.lua "$app/samples/"
-  cp third_party/lume/lume.lua "$app/third_party/lume/"
+  mkdir -p "$app/tests/cs/.lub"
   cp tests/cs/.lub/all.tcsb "$app/tests/cs/.lub/"
   cp -R tests/cs/data "$app/tests/cs/"
   rm -rf "$app/cache"

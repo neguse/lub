@@ -1,9 +1,8 @@
 // export_web.c — `lub export web` の page: snapshot と web の player を全部埋め込んだ index.html を snapshot に書く。
 // 外の file を読めない所 (claude.ai の artifact) でも、この 1 枚で動く。
 //
-// 埋め込むのは player (lub.js / lub.wasm / lub.data) と snapshot の file をつないで zlib で縮めて base64 にしたものと、その目録。
-// page の loader が DecompressionStream で展開し、snapshot を MEMFS に書いて、player に渡した引数 (game.lua か <Entry>.tcsb) で起動する。
-// player は Lua の player (wasm/) か tcs VM の player (wasm/vm/)。
+// 埋め込むのは tcs VM の player (wasm/vm/ の lub.js / lub.wasm) と snapshot の file をつないで zlib で縮めて base64 にしたものと、その目録。
+// page の loader が DecompressionStream で展開し、snapshot を MEMFS に書いて、player に渡した引数 (<Entry>.tcsb) で起動する。
 #include "backend.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
@@ -14,7 +13,7 @@
 unsigned char *stbi_zlib_compress(unsigned char *data, int data_len,
                                   int *out_len, int quality);
 
-static const char *const k_player_files[] = {"lub.js", "lub.wasm", "lub.data"};
+static const char *const k_player_files[] = {"lub.js", "lub.wasm"};
 
 typedef struct Buf {
   char *p;
@@ -49,15 +48,15 @@ static bool has_player(const char *dir) {
   return true;
 }
 
-// web の player のディレクトリ: 実行ファイルの隣の wasm/<sub> (release) か、lub root の build/wasm/<sub> (実行ファイルが build-*/ にある dev の build)。
-static bool find_player(const char *sub, char *out, size_t cap) {
+// web の player のディレクトリ: 実行ファイルの隣の wasm/vm (release) か、lub root の build/wasm/vm (実行ファイルが build-*/ にある dev の build)。
+static bool find_player(char *out, size_t cap) {
   const char *base = SDL_GetBasePath();
   if (!base)
     return false;
-  SDL_snprintf(out, cap, "%swasm%s", base, sub);
+  SDL_snprintf(out, cap, "%swasm/vm", base);
   if (has_player(out))
     return true;
-  SDL_snprintf(out, cap, "%s../build/wasm%s", base, sub);
+  SDL_snprintf(out, cap, "%s../build/wasm/vm", base);
   return has_player(out);
 }
 
@@ -108,7 +107,6 @@ static bool base64(Buf *out, const unsigned char *in, size_t n) {
 
 // page の loader。
 // player が要る WebGPU の device を先に作って渡す (web/playground/player.ts と同じ)。
-// samples/boot.lua は player の lub.data が持つので、snapshot からは書かない (書くと lub.data の展開と衝突する)。
 static const char k_loader_head[] =
     "(async () => {\n"
     "  const status = document.getElementById(\"status\");\n"
@@ -163,14 +161,12 @@ static const char k_loader_tail[] =
     "  }\n"
     "})();\n";
 
-bool export_write_web_page(const char *out_dir, const char *title, bool vm,
+bool export_write_web_page(const char *out_dir, const char *title,
                            const char *start) {
   char player[1100];
-  const char *sub = vm ? "/vm" : "";
-  if (!find_player(sub, player, sizeof(player))) {
-    SDL_Log("export: the web player (lub.js, lub.wasm, lub.data) is neither "
-            "in wasm%s/ next to lub nor in build/wasm%s/ of the lub checkout",
-            sub, sub);
+  if (!find_player(player, sizeof(player))) {
+    SDL_Log("export: the web player (lub.js, lub.wasm) is neither in wasm/vm/ "
+            "next to lub nor in build/wasm/vm/ of the lub checkout");
     return false;
   }
   if (strpbrk(start, "\"\\<")) {
@@ -197,8 +193,7 @@ bool export_write_web_page(const char *out_dir, const char *title, bool vm,
     char path[1200], name[1100];
     SDL_PathInfo info;
     SDL_snprintf(path, sizeof(path), "%s/%s", out_dir, paths[i]);
-    if (!SDL_GetPathInfo(path, &info) || info.type != SDL_PATHTYPE_FILE ||
-        strcmp(paths[i], "samples/boot.lua") == 0)
+    if (!SDL_GetPathInfo(path, &info) || info.type != SDL_PATHTYPE_FILE)
       continue;
     SDL_snprintf(name, sizeof(name), "game/%s", paths[i]);
     ok = add_file(&data, &index, name, path);

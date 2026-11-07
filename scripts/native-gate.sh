@@ -258,7 +258,7 @@ run_runtime_tests() {
 }
 vm_test_argv() { printf '%s\n' "$native_binary" tests/cs/.lub/all.tcsb --entry "$1"; }
 
-# dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、Transpiler を一度だけ build し、以後は run-cs-sample.sh と cs_tests_transpile が LUB_TCS_DLL の prebuilt DLL を直接実行する。
+# dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、Transpiler を一度だけ build し、以後は run-cs-sample.sh と scripts/cs-tests.sh が LUB_TCS_DLL の prebuilt DLL を直接実行する。
 cs_dotnet_pid=""
 if [[ $cs_available -eq 1 ]]; then
   cs_dotnet_log="$(mktemp)"
@@ -272,7 +272,7 @@ if [[ $cs_available -eq 1 ]]; then
       exit 1
     fi
     export LUB_TCS_DLL="$repo_root/$tcs_dll"
-    # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (header / Lua binding / API docs / facade) が記述と一致していることの確認。
+    # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (header / tcs VM の host の関数 / API docs / facade) が記述と一致していることの確認。
     # 差分が出たら scripts/gen-api.sh で再生成する。
     run scripts/gen-api.sh --check
     # .NET 実行の facade + host
@@ -282,9 +282,8 @@ if [[ $cs_available -eq 1 ]]; then
     # shellcheck source=scripts/cs-tests.sh
     source scripts/cs-tests.sh
     run cs_tests_vm_build
-    # Lua の player だけを見るもの (export の Lua、scripts/test-profile-alloc.sh) と web の export の gate (CI の lub-linux) が使う tests/cs/.lub/<Entry>.lua。
-    # tcs check と同じく警告で失敗するので、tests/cs の警告もここで見る
-    run cs_tests_transpile "${cs_all_tests[@]}"
+    # tcs vm は警告で止まらないので、tests/cs の警告は tcs check で見る
+    run cs_tests_check
     cs_pool "transpile" cs_transpile
     # サンプルの csproj は build しない: 同じソースを .NET 実行 (SampleRunner) が capture の前に実 .NET で compile し、TinyC# の範囲は tcs の check が見る。
     # 雛形 (cp -r して使う) は他で compile しないので、同じ API で build できること
@@ -393,32 +392,21 @@ if [[ $cs_available -eq 1 ]]; then
     tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
-  # lub export は GPU も display も使わず、OnExport で使った shader を export 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ file と Lua (Lua の player) か bytecode (tcs VM の player) を同じ相対 path に写す。
+  # lub export は GPU も display も使わず、OnExport で使った shader を export 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ file と bytecode (<Entry>.tcsb) を同じ相対 path に写す。
   # linux の snapshot は、その中で player を起動するとリポジトリから動かしたときと同じ絵を描く (web は scripts/web-export-gate.sh)。
   export_dir="$(mktemp -d)"
   native_abs="$(realpath "$native_binary")"
   for t in TestVertexPull TestDepthSample; do
     run_timed env -u DISPLAY -u WAYLAND_DISPLAY "$native_binary" export linux \
-      "tests/cs/.lub/$t.lua" -o "$export_dir/linux-$t"
+      tests/cs/.lub/all.tcsb --entry "$t" -o "$export_dir/linux-$t"
     run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
-      "tests/cs/.lub/$t.lua" --capture "$export_dir/$t-repo.png" \
+      tests/cs/.lub/all.tcsb --entry "$t" --capture "$export_dir/$t-repo.png" \
       --capture-frame 5 --fixed-dt 0.0166666666666667
     (cd "$export_dir/linux-$t" && run_timed env LUB_BACKEND=sdlgpu \
-      "$OLDPWD/scripts/run-headless.sh" "$native_abs" game.lua \
+      "$OLDPWD/scripts/run-headless.sh" "$native_abs" "$t.tcsb" \
       --capture "$export_dir/$t-snapshot.png" --capture-frame 5 \
       --fixed-dt 0.0166666666666667)
     cmp "$export_dir/$t-repo.png" "$export_dir/$t-snapshot.png"
-    # 同じことを tcs VM の player で: snapshot の bytecode は <Entry>.tcsb
-    run_timed env -u DISPLAY -u WAYLAND_DISPLAY "$native_binary" export linux \
-      tests/cs/.lub/all.tcsb --entry "$t" -o "$export_dir/vm-linux-$t"
-    run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
-      tests/cs/.lub/all.tcsb --entry "$t" --capture "$export_dir/$t-vm-repo.png" \
-      --capture-frame 5 --fixed-dt 0.0166666666666667
-    (cd "$export_dir/vm-linux-$t" && run_timed env LUB_BACKEND=sdlgpu \
-      "$OLDPWD/scripts/run-headless.sh" "$native_abs" "$t.tcsb" \
-      --capture "$export_dir/$t-vm-snapshot.png" --capture-frame 5 \
-      --fixed-dt 0.0166666666666667)
-    cmp "$export_dir/$t-vm-repo.png" "$export_dir/$t-vm-snapshot.png"
   done
   rm -r "$export_dir"
 
@@ -446,10 +434,8 @@ if [[ $cs_available -eq 1 ]]; then
   echo
   echo "==> C# sample gate (${#cs_dirs[@]} samples)"
   cs_pool "capture (tcs VM / .NET digest)" cs_capture 1
-  run_timed scripts/test-cs-hot-reload.sh "$native_binary"
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"
   run_timed scripts/test-lub-check.sh "$native_binary"
-  run_timed scripts/test-profile-alloc.sh "$native_binary"
   run_timed scripts/test-bindings-digest.sh "$native_binary"
   # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、overlay、hot reload、OnBuildFailed、--trace と検査の口、Rewind)
   run_timed env LUB_VM="$native_binary" scripts/vm-project-test.sh
@@ -457,11 +443,8 @@ else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
 fi
-# tcs の標準出力の frame (restart_required と知らない種類)。
+# --serve の HTTP / SSE と接続の片づけ、tcs の標準出力の frame (知らない種類を読み飛ばす)。
 # fake の tcs を使うので dotnet は要らない
-run_timed scripts/test-tcs-restart.sh "$native_binary"
-
-# --serve の HTTP / SSE と接続の片づけ (fake の tcs を使うので dotnet は要らない)
 run_timed bash scripts/build-release.sh --target lub_serve_smoke --no-configure
 run_timed scripts/test-serve-smoke.sh ./build-release-linux/lub_serve_smoke
 

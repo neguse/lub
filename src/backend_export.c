@@ -4,7 +4,7 @@
 // to out_dir: a directory a player runs the game from. use_shader compiles
 // every shader for each target the players of the export OS use, so the
 // generation cache (cache/shader/) holds what a player without Slang needs.
-// The files the game reads and the Lua it loads are copied to the same
+// The files the game reads and the bytecode it runs are copied to the same
 // relative paths. Resources get handles and nothing else; draws, dispatches,
 // captures and readbacks do nothing.
 #include "app.h"

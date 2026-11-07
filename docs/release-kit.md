@@ -7,12 +7,11 @@ C# で書いたゲームを、web の page 1 枚にする道具一式。page は
 | path | 中身 |
 | --- | --- |
 | `bin/lub` | lub 本体 (Slang 込み)。共有 library は同じディレクトリから読む |
-| `bin/wasm/` | web の player (`lub export web` が page に埋め込む。`vm/` が tcs VM の player で既定、直下が `--lua` の Lua の player) |
-| `bin/tcs/` | C# を Lua にする tcs (tcs2c で C にした実行ファイル。.NET は要らない)。`tcs c` で C にもできる。`lub-gen tcs` は `tcs c` の C に lub の API の接続コードを作る (同じく C にした実行ファイル) |
+| `bin/wasm/vm/` | web の tcs VM の player (`lub export web` が page に埋め込む) |
+| `bin/tcs/` | C# を tcs VM の bytecode にする tcs (tcs2c で C にした実行ファイル。.NET は要らない)。`tcs c` で C にもできる。`lub-gen tcs` は `tcs c` の C に lub の API の接続コードを作る (同じく C にした実行ファイル) |
 | `cs-lib/` | API の stub (`lub_stub.cs`) と、ゲームが使う C# の library (`lubx`) |
 | `manual/` | 利用者向けのガイドと、tcs で使える C# の一覧 (`tcs-support-matrix.md`) |
 | `templates/game/` | ゲームの雛形 |
-| `samples/boot.lua`、`third_party/lume/` | runtime が起動時に読む Lua |
 | `COMMIT` | この一式を作った lub の commit |
 
 ## 用意
@@ -43,7 +42,7 @@ tar xf lub-linux-x64.tar.gz
 | `manual/07-xr.md` | XR |
 | `manual/09-renderer3d-shader.md` | Renderer3d の shader を差し替えるときの頂点と uniform の約束、export のしかた |
 
-未対応の構文と API は、tcs が error (TCS1001 / TCS1002) にして Lua を書かない。error の行に出る名前を `manual/tcs-support-matrix.md` で引く。
+未対応の構文と API は、tcs が error (TCS1001 / TCS1002) にして出力を書かない。error の行に出る名前を `manual/tcs-support-matrix.md` で引く。
 
 ## サンプルとフォント
 

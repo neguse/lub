@@ -1,4 +1,4 @@
-// Host bridge: a generic, game-agnostic message channel between game Lua and
+// Host bridge: a generic, game-agnostic message channel between the game and
 // the page hosting the WASM build. lub itself has no networking; features
 // like WebTransport/fetch live in the hosting page's JS and talk to the game
 // through this bridge.
@@ -14,7 +14,7 @@
 //
 // C API (include/lub/lub_api.h): lub_host_available / lub_host_send /
 // lub_host_poll。
-// Lua / C# 面は cs-lib/lub_stub.cs の Host から生成する。
+// C# 面は cs-lib/lub_stub.cs の Host から生成する。
 //
 // Native builds have no hosting page: available() is false, send drops,
 // poll returns false.

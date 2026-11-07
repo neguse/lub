@@ -6,11 +6,11 @@
 
 runtime は C/C++ と既存ライブラリで組む。
 上位の script layer は C# (TinyC# サブセット) で書き、tcs VM の bytecode (`.tcsb`) にして lub の player で動かし、hot reload する。
-同じ C# を Lua に transpile して動かす経路 (`--lua`) と、実 .NET で動かす経路もある。
+同じ C# を tcs2c で C にしてゲームごとの player に link する経路と、実 .NET で動かす経路もある。
 特定のアセット形式や GUI editor に依存せず、ゲームを構成する状態、描画、
 入力、物理、音、debug 情報をコードから制御できる環境を目指す。
 
-現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend は
+現時点の実装は SDL3 + Slang + tcs VM を基盤にし、GPU backend は
 native がプラットフォーム直接実装 (default — Windows: D3D12、
 Linux: Vulkan、macOS / iOS: Metal) と SDL3 GPU API (`sdlgpu`)、web が
 webgpu.h 直接実装。
@@ -40,7 +40,7 @@ Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
 `third_party/slang/lib/` に無ければ GitHub release から自動取得する
 (`third_party/slang/{lib,bin}/` は gitignore 対象)。
 
-コンパイルする依存 (SDL3 / Lua / Box2D / Box3D / OpenXR (Linux / Android) / TinyC# の runtime) は `third_party/` 配下の
+コンパイルする依存 (SDL3 / Box2D / Box3D / OpenXR (Linux / Android) / TinyC# の runtime) は `third_party/` 配下の
 git submodule なので、clone 後に一度 submodule を取得する:
 
 ```sh
@@ -88,7 +88,7 @@ CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.ex
 例外は `.clang-format` の `ReflowComments: false` だけで、日本語のコメントを和欧の境目で折り返させないためのもの。コメントは 1 文を 1 行に書く。
 
 - C/C++/Slang — `clang-format` (LLVM default にコメントの折り返しだけを止めたもの、Slang は HLSL 扱い)
-- Lua — `stylua` (`web/` で `npm install` 後に利用可)
+- Lua の table の data (`*.verts.lua`) — `stylua` (`web/` で `npm install` 後に利用可)
 - C# — `dotnet format whitespace` (dotnet SDK 付属)
 - Web TS — `prettier` (`web/` で `npm install` 後に利用可)
 
@@ -115,7 +115,7 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
 
 サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
 (`<Entry>.cs` + `<Entry>.csproj` + `data/`)。
-ゲームの書き方(ライフサイクル、座標系、描画モデル、C#→Lua の注意点)は
+ゲームの書き方(ライフサイクル、座標系、描画モデル、TinyC# の注意点)は
 [lub.neguse.net/docs](https://lub.neguse.net/docs) のガイドを参照。
 
 Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
@@ -223,10 +223,10 @@ lub を別リポのゲームから使うための Web 開発モード。native �
 ./build/lub --serve mygame/Game.csproj   # http://localhost:8080 (--port N で変更)
 ```
 
-雛形は `templates/game/` (C#、tcs→Lua と .NET 実行の両方で動く) を `cp -r` して使う。詳細は [docs/serve.md](docs/serve.md)。
+雛形は `templates/game/` (C#、tcs VM の player と .NET 実行の両方で動く) を `cp -r` して使う。詳細は [docs/serve.md](docs/serve.md)。
 
 ## ライセンス
 
 - lub 本体(C ランタイム / web playground / samples / `cs-lib`)は MIT(`LICENSE`)。
-- バンドル/リンクする第三者依存(SDL3 / Lua / Slang 等)は
+- バンドル/リンクする第三者依存(SDL3 / Slang / TinyC# の runtime 等)は
   `THIRD_PARTY_LICENSES.md` を参照。

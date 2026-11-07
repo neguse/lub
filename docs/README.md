@@ -41,7 +41,7 @@ commit フックと CI で確認する。
 - [design.md](design.md) — lub の why / to-be / 設計原則
 - [roadmap.md](roadmap.md) — phase ごとの達成目標と状態
 - [manual/](manual/) — 利用者向けガイド(web の `/docs.html` に描画される)
-- [api-glue.md](api-glue.md) — 多言語 (Lua/C#) binding の構成
+- [api-glue.md](api-glue.md) — API 面 (C# stub、C、tcs VM、.NET) の binding の構成
 - [serve.md](serve.md) — `--serve` Web 開発モード
 - [d3d12-backend.md](d3d12-backend.md) — D3D12 backend の構成
 - [metal-backend.md](metal-backend.md) — Metal backend (macOS / iOS) の構成と shader cache

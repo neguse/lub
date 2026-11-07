@@ -2,7 +2,7 @@
 // TTF glyph utilities: pure functions from font bytes to pixels / mesh /
 // metrics. No caching, no resource handles — atlas management and layout
 // live outside the runtime core (lubx). All rasterization and tessellation
-// is CPU-side and deterministic across platforms. C API は include/lub/lub_api.h (lub_font_*)、Lua binding は src/gen/lua_api_gen.c。
+// is CPU-side and deterministic across platforms. C API は include/lub/lub_api.h (lub_font_*)、tcs VM の host の関数は src/gen/vm_api_gen.c。
 #include "surfacenets.h"
 #include <stdbool.h>
 #include <stddef.h>

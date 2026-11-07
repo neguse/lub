@@ -8,7 +8,7 @@ Android の player は Meta Quest で動く VR の app で、tcs2c で C にし�
 - app は SDL の `SDLActivity` をそのまま Activity にした APK で、SDL の Java (`third_party/SDL/android-project`) を入れる。
 - SDLActivity は `libSDL3.so` と `libmain.so` を読み込み、`libmain.so` の `SDL_main` を呼ぶ。
 - `libmain.so` は `src/tcs_host.c` とゲームの C (`LUB_TCS_GAME` と `LUB_TCS_BINDING`) と `lub_objs` で、CMake の `lub` の target が Android ではこの共有 library になる。
-- Android の lub は tcs2c のゲームだけを動かす (Lua の player と .NET 実行は無い)。
+- Android の lub は tcs2c のゲームだけを動かす (tcs VM の player と .NET 実行は無い)。
 - 既定の backend は `openxr`。
 - OpenXR の loader は `third_party/openxr` の Khronos の loader を APK に入れ、runtime は Quest の system が持つものを runtime broker で探す。
 - loader には SDL の Activity と Java VM を渡す (`XR_KHR_loader_init_android` と `XR_KHR_android_create_instance`、`src/xr.c`)。
@@ -54,4 +54,4 @@ log は `adb logcat -s SDL SDL/APP` で見る。
 
 - 実機の検証は手で行う。
   CI は Android の build を持たず、Quest の実機での動作は自動で確かめていない。
-- スマートフォンの画面 (Vulkan の surface) に描く player、タッチ入力、Android の Lua の player は無い。
+- スマートフォンの画面 (Vulkan の surface) に描く player、タッチ入力、Android の tcs VM の player は無い。

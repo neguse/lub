@@ -32,7 +32,7 @@ runtime 需要を見て入れ替えてよい。
 達成したいこと:
 
 - native release パッケージ: transpiler / watch / dev server に依存しない
-  単体実行物(exe + コンパイル済み Lua + assets)を 1 コマンドで作れる。
+  単体実行物(exe + コンパイル済みの bytecode + assets)を 1 コマンドで作れる。
 - 配信先(第一候補 itch.io)の実環境で WebGPU が動くことを最初に検証する。
 - ngs を製品品質にする: hiscore 永続化、fullscreen、起動・終了・エラー時の挙動。
 - 配信するゲーム本体を lub リポジトリに置き続けるか、別リポジトリへ分けるかを
