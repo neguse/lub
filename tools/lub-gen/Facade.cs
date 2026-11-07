@@ -70,11 +70,12 @@ internal sealed class FacadeGen
         sb.Write(LubHead);
         foreach (var t in model.Types)
         {
-            if (t.Kind != "record" && t.Kind != "native") EmitOpaque(t);
+            if (t.Kind != "record" && t.Kind != "native" && t.Kind != "struct") EmitOpaque(t);
         }
         foreach (var t in model.Types)
         {
             if (t.Kind == "record") EmitRecord(t);
+            if (t.Kind == "struct") EmitStructRecord(t);
         }
         EmitApi("lub");
         EmitNative();
@@ -259,6 +260,21 @@ internal sealed class FacadeGen
         sb.Write("}\n\n");
     }
 
+    // struct の record: C API の struct と同じ並びの値で、P/Invoke にそのまま渡る (bool は C と同じ 1 byte にする)
+    private void EmitStructRecord(ApiType t)
+    {
+        sb.Write(Doc(t.Doc).Replace("    ///", "///"));
+        sb.Write("[StructLayout(LayoutKind.Sequential)]\n");
+        sb.Write("public " + t.Declaration + " " + t.Name + "\n{\n");
+        foreach (var f in t.Fields)
+        {
+            sb.Write(Doc(f.Doc));
+            if (f.Type.Kind == LubTypeKind.Bool) sb.Write("    [" + (f.Accessor != "" ? "field: " : "") + "MarshalAs(UnmanagedType.U1)]\n");
+            sb.Write("    public " + (f.Readonly ? "readonly " : "") + Cs(f.Type) + " " + f.Name + (f.Accessor != "" ? " { get; " + f.Accessor + "; }\n" : ";\n"));
+        }
+        sb.Write("}\n\n");
+    }
+
     // -------------------------------------------------------------- api
 
     private void EmitApi(string luaRoot)
@@ -419,6 +435,7 @@ internal sealed class FacadeGen
             if (!hasRet) notFound.Write(i3 + "    return;\n");
             else if (r.Nullable) notFound.Write(i3 + "    return null;\n");
             else if (r.Kind == LubTypeKind.Bool) notFound.Write(i3 + "    return false;\n");
+            else if (r.Kind == LubTypeKind.Struct) notFound.Write(i3 + "    return default;\n");
             else notFound.Write(i3 + "    throw new LubException(\"" + ns.Name + "." + f.Name + ": not found\");\n");
             notFound.Write(i3 + "}\n");
             b.Write(notFound.ToString());
@@ -482,6 +499,9 @@ internal sealed class FacadeGen
                     o.Add(n + ".Ptr");
                     o.Add(n + ".Length");
                 }
+                return;
+            case LubTypeKind.Struct:
+                o.Add(n);
                 return;
             case LubTypeKind.Record:
                 b.Write(ind + "LubNative." + C(tr.Name) + "* " + v + " = null;\n");
@@ -583,6 +603,10 @@ internal sealed class FacadeGen
                 b.Write(ind + "LubNative." + C(tr.Name) + " " + v + " = default;\n");
                 o.Add("&" + v);
                 return;
+            case LubTypeKind.Struct:
+                b.Write(ind + tr.Name + " " + v + " = default;\n");
+                o.Add("out " + v);
+                return;
             case LubTypeKind.List:
                 b.Write(ind + NElemQualified(tr.Elem!) + "* " + v + " = null;\n" + ind + "int " + v + "_n = 0;\n");
                 o.Add("&" + v);
@@ -623,6 +647,8 @@ internal sealed class FacadeGen
                 return "LubRuntime.View(" + v + ")";
             case LubTypeKind.Record:
                 return has != null ? "(" + guard + "LubNative.From_" + C(tr.Name) + "(&" + v + "))" : "LubNative.From_" + C(tr.Name) + "(&" + v + ")";
+            case LubTypeKind.Struct:
+                return v;
             case LubTypeKind.List:
                 return ListFromNative(tr, v, v + "_n");
         }
@@ -801,6 +827,10 @@ internal sealed class FacadeGen
                     if (f.Optional) sb.Write("        public bool @has_" + n + ";\n");
                     sb.Write("        public " + C(tr.Name) + " @" + n + ";\n");
                     break;
+                case LubTypeKind.Struct:
+                    if (f.Optional) sb.Write("        public bool @has_" + n + ";\n");
+                    sb.Write("        public " + tr.Name + " @" + n + ";\n");
+                    break;
                 case LubTypeKind.List:
                 {
                     var elem = tr.Elem!;
@@ -897,6 +927,9 @@ internal sealed class FacadeGen
             case LubTypeKind.Record:
                 o.Add(C(tr.Name) + "* " + n);
                 return;
+            case LubTypeKind.Struct:
+                o.Add(tr.Name + " " + n);
+                return;
             case LubTypeKind.List:
             case LubTypeKind.Array:
                 o.Add(NElem(tr.Elem!) + "* " + n);
@@ -932,6 +965,9 @@ internal sealed class FacadeGen
                 return;
             case LubTypeKind.Record:
                 o.Add(C(tr.Name) + "* " + n);
+                return;
+            case LubTypeKind.Struct:
+                o.Add("out " + tr.Name + " " + n);
                 return;
             case LubTypeKind.List:
                 o.Add(NElem(tr.Elem!) + "** " + n);
@@ -993,6 +1029,10 @@ internal sealed class FacadeGen
                     if (f.Optional) sb.Write("        s->@has_" + n + " = " + v + " != null;\n        if (" + v + " != null) To_" + C(tr.Name) + "(" + v + ", a, &s->@" + n + ");\n");
                     else sb.Write("        if (" + v + " != null) To_" + C(tr.Name) + "(" + v + ", a, &s->@" + n + ");\n");
                     break;
+                case LubTypeKind.Struct:
+                    if (f.Optional) sb.Write("        s->@has_" + n + " = " + v + ".HasValue;\n        s->@" + n + " = " + v + " ?? default;\n");
+                    else sb.Write("        s->@" + n + " = " + v + ";\n");
+                    break;
                 case LubTypeKind.List:
                 {
                     var elem = tr.Elem!;
@@ -1050,6 +1090,9 @@ internal sealed class FacadeGen
                 case LubTypeKind.Record:
                     if (f.Optional) sb.Write("        " + v + " = s->@has_" + n + " ? From_" + C(tr.Name) + "(&s->@" + n + ") : null;\n");
                     else sb.Write("        " + v + " = From_" + C(tr.Name) + "(&s->@" + n + ");\n");
+                    break;
+                case LubTypeKind.Struct:
+                    sb.Write(f.Optional ? "        " + v + " = s->@has_" + n + " ? s->@" + n + " : null;\n" : "        " + v + " = s->@" + n + ";\n");
                     break;
                 case LubTypeKind.List:
                 {

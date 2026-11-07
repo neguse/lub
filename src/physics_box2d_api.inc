@@ -850,25 +850,19 @@ LubStatus lub_phys2d_center(LubContext *ctx, LubHandle body, LubVec2d *out) {
   return p2_center(ctx, body, &out->x, &out->y);
 }
 
-LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body,
-                                 const LubVec2d *p, LubVec2d *out) {
-  if (!p)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_world_point: point required");
-  return p2_world_point(ctx, body, p->x, p->y, &out->x, &out->y);
+LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body, LubVec2d p,
+                                 LubVec2d *out) {
+  return p2_world_point(ctx, body, p.x, p.y, &out->x, &out->y);
 }
 
-LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body,
-                                 const LubVec2d *p, LubVec2d *out) {
-  if (!p)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_local_point: point required");
-  return p2_local_point(ctx, body, p->x, p->y, &out->x, &out->y);
+LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body, LubVec2d p,
+                                 LubVec2d *out) {
+  return p2_local_point(ctx, body, p.x, p.y, &out->x, &out->y);
 }
 
-LubStatus lub_phys2d_velocity_at(LubContext *ctx, LubHandle body,
-                                 const LubVec2d *p, LubVec2d *out) {
-  if (!p)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_velocity_at: point required");
-  return p2_velocity_at(ctx, body, p->x, p->y, &out->x, &out->y);
+LubStatus lub_phys2d_velocity_at(LubContext *ctx, LubHandle body, LubVec2d p,
+                                 LubVec2d *out) {
+  return p2_velocity_at(ctx, body, p.x, p.y, &out->x, &out->y);
 }
 
 LubStatus lub_phys2d_body_shapes(LubContext *ctx, LubHandle body,
@@ -949,11 +943,8 @@ static void ray_from(const LubRaycastDesc *q, P2Ray *r) {
 }
 
 LubStatus lub_phys2d_shape_test_point(LubContext *ctx, LubHandle shape,
-                                      const LubVec2d *p, bool *out) {
-  if (!p)
-    return lub_api_fail(lub_api_app(ctx),
-                        "phys2d_shape_test_point: point required");
-  return p2_shape_test_point(ctx, shape, p->x, p->y, out);
+                                      LubVec2d p, bool *out) {
+  return p2_shape_test_point(ctx, shape, p.x, p.y, out);
 }
 
 LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
@@ -980,11 +971,8 @@ LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
 }
 
 LubStatus lub_phys2d_shape_closest_point(LubContext *ctx, LubHandle shape,
-                                         const LubVec2d *p, LubVec2d *out) {
-  if (!p)
-    return lub_api_fail(lub_api_app(ctx),
-                        "phys2d_shape_closest_point: point required");
-  return p2_shape_closest_point(ctx, shape, p->x, p->y, &out->x, &out->y);
+                                         LubVec2d p, LubVec2d *out) {
+  return p2_shape_closest_point(ctx, shape, p.x, p.y, &out->x, &out->y);
 }
 
 LubStatus lub_phys2d_shape_aabb(LubContext *ctx, LubHandle shape,
@@ -1599,40 +1587,27 @@ static bool opt_wake(const LubCommandOpts *o) {
   return o && o->has_wake ? o->wake : true;
 }
 
-LubStatus lub_phys2d_add_force(LubContext *ctx, LubHandle body,
-                               const LubVec2d *force, const LubCommandOpts *o) {
-  if (!force)
-    return lub_api_fail(lub_api_app(ctx), "phys2d_add_force: force required");
+LubStatus lub_phys2d_add_force(LubContext *ctx, LubHandle body, LubVec2d force,
+                               const LubCommandOpts *o) {
   const LubVec2d *point = o && o->has_point ? &o->point : NULL;
-  return p2_add_force(ctx, body, force->x, force->y, point, opt_wake(o));
+  return p2_add_force(ctx, body, force.x, force.y, point, opt_wake(o));
 }
 
 LubStatus lub_phys2d_add_force_center(LubContext *ctx, LubHandle body,
-                                      const LubVec2d *force,
-                                      const LubCommandOpts *o) {
-  if (!force)
-    return lub_api_fail(lub_api_app(ctx),
-                        "phys2d_add_force_center: force required");
-  return p2_add_force_center(ctx, body, force->x, force->y, opt_wake(o));
+                                      LubVec2d force, const LubCommandOpts *o) {
+  return p2_add_force_center(ctx, body, force.x, force.y, opt_wake(o));
 }
 
 LubStatus lub_phys2d_add_impulse(LubContext *ctx, LubHandle body,
-                                 const LubVec2d *impulse,
-                                 const LubCommandOpts *o) {
-  if (!impulse)
-    return lub_api_fail(lub_api_app(ctx),
-                        "phys2d_add_impulse: impulse required");
+                                 LubVec2d impulse, const LubCommandOpts *o) {
   const LubVec2d *point = o && o->has_point ? &o->point : NULL;
-  return p2_add_impulse(ctx, body, impulse->x, impulse->y, point, opt_wake(o));
+  return p2_add_impulse(ctx, body, impulse.x, impulse.y, point, opt_wake(o));
 }
 
 LubStatus lub_phys2d_add_impulse_center(LubContext *ctx, LubHandle body,
-                                        const LubVec2d *impulse,
+                                        LubVec2d impulse,
                                         const LubCommandOpts *o) {
-  if (!impulse)
-    return lub_api_fail(lub_api_app(ctx),
-                        "phys2d_add_impulse_center: impulse required");
-  return p2_add_impulse_center(ctx, body, impulse->x, impulse->y, opt_wake(o));
+  return p2_add_impulse_center(ctx, body, impulse.x, impulse.y, opt_wake(o));
 }
 
 LubStatus lub_phys2d_add_torque(LubContext *ctx, LubHandle body, float torque,

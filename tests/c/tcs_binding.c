@@ -103,6 +103,12 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count, LubBindings *bindings,
                        const LubDrawOpts *opts, int32_t instances) {
   (void)ctx;
   assert(count == 3 && opts->has_depth && !opts->depth);
+  assert(opts->has_blend && opts->blend.src == LUB_GFX_BLEND_FACTOR_SRC_ALPHA);
+  assert(opts->blend.dst == LUB_GFX_BLEND_FACTOR_ONE &&
+         opts->blend.op == LUB_GFX_BLEND_OP_ADD);
+  assert(opts->blend.src_alpha == LUB_GFX_BLEND_FACTOR_ONE &&
+         opts->blend.dst_alpha == LUB_GFX_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA &&
+         opts->blend.op_alpha == LUB_GFX_BLEND_OP_MAX);
   assert(instances == 1);
   assert(bindings->seen == 7);
   return LUB_OK;
@@ -226,7 +232,37 @@ LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
   (void)ctx;
   (void)key;
   assert(opts->has_substeps && opts->substeps == 4 && !opts->callbacks.filter);
+  assert(!opts->has_gravity ||
+         (opts->gravity.x == .5f && opts->gravity.y == -9.5f));
   *out = 50;
+  return LUB_OK;
+}
+LubHandle lub_phys2d_find_body(LubContext *ctx, LubHandle world, LubStr key) {
+  (void)ctx;
+  assert(world == 50 && key.len == 1);
+  return 60;
+}
+// 値で来た点を写して返す (WorldPoint は (2x, y + 10)、LocalPoint はその逆)
+LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body, LubVec2d p,
+                                 LubVec2d *out) {
+  (void)ctx;
+  assert(body == 60);
+  *out = (LubVec2d){p.x * 2, p.y + 10};
+  return LUB_OK;
+}
+LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body, LubVec2d p,
+                                 LubVec2d *out) {
+  (void)ctx;
+  assert(body == 60);
+  *out = (LubVec2d){p.x / 2, p.y - 10};
+  return LUB_OK;
+}
+LubStatus lub_phys2d_mass(LubContext *ctx, LubHandle body, LubMassData *out) {
+  (void)ctx;
+  assert(body == 60);
+  memset(out, 0, sizeof(*out));
+  out->center = (LubVec2d){1.25f, -0.5f};
+  out->local_center = (LubVec2d){0, 4};
   return LUB_OK;
 }
 LubHandle lub_phys2d_find_joint(LubContext *ctx, LubHandle world, LubStr key) {

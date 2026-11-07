@@ -1,5 +1,5 @@
 // よく使う Blend の組。
-// 共有の値なので書き換えない (書き換えると、その組を使う描画がすべて変わる)。
+// Blend は値 (struct) なので、組を変数に写して field を書き換えても、組そのものは変わらない。
 namespace Lub;
 
 public static class Blends

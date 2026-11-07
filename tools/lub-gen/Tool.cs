@@ -286,7 +286,75 @@ public static class Checks
                 else seen[pairs[i]] = names[i];
             }
         }
+        StructRecords(model, problems);
         return problems;
+    }
+
+    // struct の record は C の layout の値で渡るので、field は int / float / bool / enum と、それだけでできた struct の record に限る。
+    // 使えるのは関数の引数と out と戻り値 (null を許さない)、record の field (null を許す)、struct の record の field。
+    private static void StructRecords(ApiModel model, List<string> problems)
+    {
+        foreach (var t in model.Types)
+        {
+            if (t.Kind != "struct")
+            {
+                foreach (var f in t.Fields) StructUse(model, f.Type, t.Name + "." + f.Name, true, problems);
+                continue;
+            }
+            if (t.PositionalParams.Count > 0)
+                problems.Add(t.Name + ": a struct record cannot have positional parameters (tcs cannot call the constructor of a --ref struct); declare fields or { get; init; } properties");
+            else if (t.Fields.Count == 0) problems.Add(t.Name + ": a struct record needs at least one field");
+            if (t.Methods.Count > 0) problems.Add(t.Name + ": a struct record cannot have methods");
+            foreach (var f in t.Fields)
+            {
+                string where = t.Name + "." + f.Name;
+                if (!f.Type.IsBlittable || f.ArrayLen >= 0 || f.Bits)
+                    problems.Add(where + ": a struct record field must be int, float, bool, an enum or a struct record made of them (got " + f.Type.ToString() + ")");
+                else StructUse(model, f.Type, where, false, problems);
+                if (f.Accessor == "get") problems.Add(where + ": a struct record property needs init or set");
+            }
+        }
+        foreach (var ns in model.Namespaces)
+        {
+            foreach (var f in ns.Functions)
+            {
+                string where = ns.Name + "." + f.Name;
+                foreach (var p in f.Params) StructUse(model, p.Type, where + " " + p.Name, false, problems);
+                StructUse(model, f.Return, where + " return", false, problems);
+            }
+            foreach (var f in ns.StaticFields)
+            {
+                if (HasStruct(f.Type)) problems.Add(ns.Name + "." + f.Name + ": a static value cannot be a struct record");
+            }
+        }
+    }
+
+    private static void StructUse(ApiModel model, TypeRef t, string where, bool nullableOk, List<string> problems)
+    {
+        if (t.Kind == LubTypeKind.Struct)
+        {
+            var st = model.FindType(t.Name);
+            if (st == null || st.Kind != "struct") problems.Add(where + ": " + t.Name + " is not a top-level struct record of the stub");
+            if (t.Nullable && !nullableOk) problems.Add(where + ": a nullable struct record (" + t.ToString() + ") can only be a field of a class record");
+            return;
+        }
+        if ((t.Elem != null && HasStruct(t.Elem)) || (t.FuncParams != null && HasStruct(t)))
+            problems.Add(where + ": a struct record cannot be in a List, an array or a callback (" + t.ToString() + ")");
+    }
+
+    private static bool HasStruct(TypeRef t)
+    {
+        if (t.Kind == LubTypeKind.Struct) return true;
+        if (t.Elem != null && HasStruct(t.Elem)) return true;
+        if (t.FuncReturn != null && HasStruct(t.FuncReturn)) return true;
+        if (t.FuncParams != null)
+        {
+            foreach (var p in t.FuncParams)
+            {
+                if (HasStruct(p)) return true;
+            }
+        }
+        return false;
     }
 }
 
@@ -379,6 +447,8 @@ public static class ModelJson
         Str(o, "Doc", f.Doc);
         Len(o, "ArrayLen", f.ArrayLen);
         Flag(o, "Bits", f.Bits);
+        if (f.Accessor != "") Str(o, "Accessor", f.Accessor);
+        Flag(o, "Readonly", f.Readonly);
         return o;
     }
 
@@ -446,6 +516,7 @@ public static class ModelJson
             var o = JValue.Obj();
             Str(o, "Name", t.Name);
             Str(o, "Kind", t.Kind);
+            if (t.Declaration != "") Str(o, "Declaration", t.Declaration);
             var fs = JValue.Arr();
             foreach (var f in t.Fields) fs.Add(Field(f));
             o.Set("Fields", fs);

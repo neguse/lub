@@ -94,11 +94,12 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull TestR
 # TestKeyMods は CapsLock を Ctrl にした key を流せる web の verify (A9) だけが走らせる。
 # TestSaveDir は保存先を一時ディレクトリにして native gate が走らせる (ユーザーのデータの場所に書かないため)。
 # TestBindingsDigest は digest を scripts/test-bindings-digest.sh が比べる。
+# TestBlendValue は native gate が tcs VM の player と .NET 実行で走らせ、digest を比べる。
 # TestXrCapture は XR セッションが要るので、偽の session を入れられる web の verify (A9) だけが走らせる。
 # TestUnboundStorage は fragment shader から storage texture に書き、native の backend では確かめていないので、web の verify (A9) だけが走らせる。
 # TestDrawStateReuse は backend の bind の使い回しを見るので、native gate が vulkan で、apple gate が metal で、CI の windows job が d3d12 で、web の verify (A9) が webgpu で走らせる。
 # TestUnboundAfterBound は apple gate が metal で、web の verify (A9) が webgpu で走らせる。
-cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestKeyMods TestSaveDir TestXrCapture TestDrawStateReuse TestBindingsDigest TestUnboundAfterBound TestUnboundStorage)
+cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestKeyMods TestSaveDir TestXrCapture TestDrawStateReuse TestBindingsDigest TestBlendValue TestUnboundAfterBound TestUnboundStorage)
 
 # tests/cs の入力: tests/cs の *.cs 全部と cs-lib の実装ソース。
 cs_tests_sources() {

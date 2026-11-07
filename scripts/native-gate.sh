@@ -415,6 +415,24 @@ if [[ $cs_available -eq 1 ]]; then
   run_timed dotnet build dotnet/SampleRunner -p:Test=TestMathDeterminism -nologo -v q
   run_timed env LUB_BACKEND=sdlgpu LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
     scripts/run-headless.sh ./dotnet/SampleRunner/bin/TestMathDeterminism/lub-sample-TestMathDeterminism
+  # Blend は値の struct の record。
+  # tcs VM の player と .NET 実行の両方で TestBlendValue が通り、frame ごとの digest (draw の Blend を含む) が一致すること
+  blend_vm_log="$(mktemp)"
+  blend_dn_log="$(mktemp)"
+  cleanup_files+=("$blend_vm_log" "$blend_dn_log")
+  run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" tests/cs/.lub/all.tcsb --entry TestBlendValue \
+    "${cs_test_args[@]}" --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "$blend_vm_log"
+  run_timed dotnet build dotnet/SampleRunner -p:Test=TestBlendValue -nologo -v q
+  run_timed env LUB_BACKEND=sdlgpu LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
+    scripts/run-headless.sh ./dotnet/SampleRunner/bin/TestBlendValue/lub-sample-TestBlendValue \
+    "${cs_test_args[@]}" --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "$blend_dn_log"
+  grep -q '^PASS' "$blend_vm_log"
+  grep -q '^PASS' "$blend_dn_log"
+  grep '^digest ' "$blend_vm_log" >"$blend_vm_log.digest"
+  grep '^digest ' "$blend_dn_log" >"$blend_dn_log.digest"
+  cleanup_files+=("$blend_vm_log.digest" "$blend_dn_log.digest")
+  [[ -s "$blend_vm_log.digest" ]]
+  run cmp "$blend_vm_log.digest" "$blend_dn_log.digest"
 else
   echo
   echo "==> C# runtime tests skipped (dotnet or third_party/tcs missing)"

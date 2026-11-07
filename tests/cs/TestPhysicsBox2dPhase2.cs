@@ -99,8 +99,8 @@ public static class TestPhysicsBox2dPhase2
             || !Near(worldInfo.FixedDt, 1.0f / 60.0f)
             || worldInfo.Substeps != 4
             || worldInfo.MaxSteps != 1
-            || !Near(worldInfo.Gravity.X, 0)
-            || !Near(worldInfo.Gravity.Y, 0)
+            || !Near(worldInfo.Gravity.Value.X, 0)
+            || !Near(worldInfo.Gravity.Value.Y, 0)
             || worldInfo.Continuous != true
             || worldInfo.Sleep != true)
         {

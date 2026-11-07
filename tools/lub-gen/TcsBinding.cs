@@ -42,6 +42,9 @@ internal sealed class TcsBindingGen
     // list の要素として渡す / 受け取る record (配列との詰め替えを別に生成する)
     private HashSet<string> inputLists = new HashSet<string>();
     private HashSet<string> outputLists = new HashSet<string>();
+    // struct の record (tcs2c の値の struct と C API の struct を field ごとに写す)
+    private HashSet<string> structInputs = new HashSet<string>();
+    private HashSet<string> structOutputs = new HashSet<string>();
 
     public TcsBindingGen(ApiModel model, ExportResult game, string? entryName)
     {
@@ -66,6 +69,7 @@ internal sealed class TcsBindingGen
 
     private static string Opt(TypeRef type)
     {
+        if (type.Kind == LubTypeKind.Struct) return "TcsOpt_S_" + Il(type.Name);
         if (type.Kind == LubTypeKind.Double) return "TcsOptF32";
         if (type.Kind == LubTypeKind.Bool) return "TcsOptBool";
         return "TcsOptI32";
@@ -82,6 +86,8 @@ internal sealed class TcsBindingGen
             case LubTypeKind.Bool:
             case LubTypeKind.Enum:
                 return type.Nullable ? Opt(type) : Scalar(type);
+            case LubTypeKind.Struct:
+                return type.Nullable ? Opt(type) : "Tcs_" + Il(type.Name);
             case LubTypeKind.String:
                 return "TcsString *";
             case LubTypeKind.Handle:
@@ -111,6 +117,7 @@ internal sealed class TcsBindingGen
             case LubTypeKind.View:
                 return "LubView";
             case LubTypeKind.Record:
+            case LubTypeKind.Struct:
                 return "Lub" + type.Name;
             case LubTypeKind.List:
                 return "const " + NativeType(type.Elem!) + " *";
@@ -142,6 +149,12 @@ internal sealed class TcsBindingGen
         {
             if (type.Elem!.Kind == LubTypeKind.Record) (isOutput ? outputLists : inputLists).Add(type.Elem.Name);
             Record(type.Elem, isOutput);
+            return;
+        }
+        if (type.Kind == LubTypeKind.Struct)
+        {
+            if (!(isOutput ? structOutputs : structInputs).Add(type.Name)) return;
+            foreach (var f in model.FindType(type.Name)!.Fields) Record(f.Type, isOutput);
             return;
         }
         if (type.Kind != LubTypeKind.Record || !(isOutput ? outputs : inputs).Add(type.Name)) return;
@@ -222,6 +235,10 @@ internal sealed class TcsBindingGen
             if (type.Kind == "handle") Handle(type);
             if (type.Kind == "view") View(type);
         }
+        foreach (var name in structInputs) Line("static Lub" + name + " tcs_lub_to_" + name + "(Tcs_" + Il(name) + " source);");
+        foreach (var name in structOutputs) Line("static Tcs_" + Il(name) + " tcs_lub_from_" + name + "(const Lub" + name + " *source);");
+        foreach (var name in structInputs) StructInput(model.FindType(name)!);
+        foreach (var name in structOutputs) StructOutput(model.FindType(name)!);
         foreach (var name in inputs) Line("static Lub" + name + " tcs_lub_to_" + name + "(Tcs_" + Il(name) + " *source);");
         foreach (var name in outputs) Line("static Tcs_" + Il(name) + " *tcs_lub_from_" + name + "(const Lub" + name + " *source);");
         foreach (var name in inputLists) Line("static Lub" + name + " *tcs_lub_to_" + name + "_list(TcsList *source, int32_t *count);");
@@ -428,6 +445,7 @@ internal sealed class TcsBindingGen
             case LubTypeKind.View:
                 return "tcs_lub_view_" + type.Name + "(" + value + ")";
             case LubTypeKind.Record:
+            case LubTypeKind.Struct:
                 return "tcs_lub_from_" + type.Name + "(&" + value + ")";
             case LubTypeKind.List:
                 return ListFrom(type, value, "NULL", type.Nullable);
@@ -460,12 +478,30 @@ internal sealed class TcsBindingGen
         if (type.Kind == LubTypeKind.String) return "tcs_lub_str(" + value + ")";
         if (type.Kind == LubTypeKind.Handle) return "(" + value + " ? (int32_t)" + value + "->host_value : 0)";
         if (type.IsScalar) return type.Nullable ? value + ".v" : value;
+        if (type.Kind == LubTypeKind.Struct) return "tcs_lub_to_" + type.Name + "(" + value + (type.Nullable ? ".v" : "") + ")";
         GenError.Report("unsupported field: " + type.ToString());
         return "";
     }
 
     private static string HasPath(string prefix, string path, ApiField field) =>
         prefix + Text.DropEnd(path, Text.Len(field.LuaName)) + "has_" + field.LuaName;
+
+    // struct の record: tcs2c の値の struct (field は f_<名前>) と C API の struct を field ごとに写す
+    private void StructInput(ApiType type)
+    {
+        Line("static Lub" + type.Name + " tcs_lub_to_" + type.Name + "(Tcs_" + Il(type.Name) + " source) {");
+        Line("  Lub" + type.Name + " result;");
+        foreach (var f in type.Fields) Line("  result." + f.LuaName + " = " + To(f.Type, "source.f_" + f.LuaName) + ";");
+        Line("  return result;\n}");
+    }
+
+    private void StructOutput(ApiType type)
+    {
+        Line("static Tcs_" + Il(type.Name) + " tcs_lub_from_" + type.Name + "(const Lub" + type.Name + " *source) {");
+        Line("  Tcs_" + Il(type.Name) + " result;");
+        foreach (var f in type.Fields) Line("  result.f_" + f.LuaName + " = " + From(f.Type, "source->" + f.LuaName) + ";");
+        Line("  return result;\n}");
+    }
 
     private void InputRecord(ApiType type)
     {
@@ -480,6 +516,8 @@ internal sealed class TcsBindingGen
             var has = HasPath("result.", path, field);
             if (field.Type.IsScalar && field.Optional)
                 Line("  if (" + src + ".has) { " + has + " = true; " + dst + " = " + src + ".v; }");
+            else if (field.Type.Kind == LubTypeKind.Struct && field.Optional)
+                Line("  if (" + src + ".has) { " + has + " = true; " + dst + " = " + To(field.Type, src) + "; }");
             else if (field.Bits)
                 Line("  " + (field.Optional ? has + " = " : "") + "tcs_lub_bits(" + src + ", &" + dst + ");");
             else if (field.Type.Kind == LubTypeKind.Array)
@@ -565,6 +603,8 @@ internal sealed class TcsBindingGen
             }
             else if (field.Type.IsScalar && field.Optional)
                 Line("  " + dst + " = (" + Opt(field.Type) + "){" + has + ", " + src + "};");
+            else if (field.Type.Kind == LubTypeKind.Struct && field.Optional)
+                Line("  " + dst + " = (" + Opt(field.Type) + "){" + has + ", " + From(field.Type, src) + "};");
             else if (field.Bits)
                 Line("  " + dst + " = " + (field.Optional ? "!" + has + " ? NULL : " : "") + "tcs_lub_bits_string(" + src + ");");
             else if (field.Type.Kind == LubTypeKind.Record && field.Optional)
@@ -738,7 +778,8 @@ internal sealed class TcsBindingGen
             if (nativeName != null)
                 Line("  while (status == LUB_BINDINGS_FULL) { " + nativeName + " = tcs_lub_bindings_grow(" + nativeParam + "); status = " + call + "; }");
             Line("  tcs_lub_check(status);");
-            if (returned && !ret.IsScalar) Line("  if (status == LUB_NOT_FOUND) return NULL;");
+            if (returned && ret.Kind == LubTypeKind.Struct) Line("  if (status == LUB_NOT_FOUND) return (" + TcsType(ret) + "){0};");
+            else if (returned && !ret.IsScalar) Line("  if (status == LUB_NOT_FOUND) return NULL;");
             if (has && !ret.IsScalar) Line("  if (!has) return NULL;");
         }
         foreach (var param in function.Params)

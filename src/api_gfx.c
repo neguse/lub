@@ -1541,6 +1541,21 @@ static LubStatus to_blend(App *app, const LubBlend *b, SglBlend *out) {
   return LUB_OK;
 }
 
+// draw の混ぜ方 (有無と式)。
+static void digest_blend(App *app, const LubDrawOpts *d) {
+  bool has = d && d->has_blend;
+  digest_i32(app, has);
+  if (!has)
+    return;
+  const LubBlend *b = &d->blend;
+  digest_i32(app, b->src);
+  digest_i32(app, b->dst);
+  digest_i32(app, b->op);
+  digest_i32(app, b->src_alpha);
+  digest_i32(app, b->dst_alpha);
+  digest_i32(app, b->op_alpha);
+}
+
 LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
                              const LubBinding *bindings, int32_t bindings_count,
                              const LubDrawOpts *d, int32_t instances) {
@@ -1549,6 +1564,7 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
     digest_tag(app, "draw");
     digest_i32(app, count);
     digest_i32(app, d ? d->shader : 0);
+    digest_blend(app, d);
     digest_bindings(app, bindings, bindings_count);
   }
   if (!require_backend(app, "draw"))

@@ -23,6 +23,8 @@ public enum LubTypeKind
     Array,
     Func,
     Native,
+    // struct の record (C の layout の値で渡る)
+    Struct,
 }
 
 /// <summary>stub の型。
@@ -55,6 +57,9 @@ public sealed class TypeRef
     public TypeRef AsNullable() => new TypeRef(Kind, Name, true, Elem, FuncParams, FuncReturn);
 
     public bool IsScalar => Kind == LubTypeKind.Int || Kind == LubTypeKind.Double || Kind == LubTypeKind.Bool || Kind == LubTypeKind.Enum;
+
+    // struct の record の field に置ける型 (int / float / bool / enum と、それだけでできた struct の record)
+    public bool IsBlittable => !Nullable && (IsScalar || Kind == LubTypeKind.Struct);
 
     public override string ToString()
     {
@@ -256,6 +261,10 @@ public sealed class ApiField
     // [LubArray(n)] の n (無ければ -1)
     public int ArrayLen;
     public bool Bits;
+    // struct の record の property の書き方 ("init" / "set")。field なら ""
+    public string Accessor = "";
+    // struct の record の readonly の field (readonly struct の field)
+    public bool Readonly;
 
     public ApiField(string name, string luaName, TypeRef type, bool optional, string doc, int arrayLen, bool bits)
     {
@@ -316,7 +325,7 @@ public sealed class ApiNamespace
     public string LuaRoot => LuaPath.Split('.')[0];
 }
 
-/// <summary>Kind: handle (runtime 所有の不透明参照) / view (frame 有効のバイト列) / keyed (key で参照する resource) / record (option table や戻り値の平らな構造)。
+/// <summary>Kind: handle (runtime 所有の不透明参照) / view (frame 有効のバイト列) / keyed (key で参照する resource) / record (option table や戻り値の平らな構造) / struct (値で渡る record)。
 /// </summary>
 public sealed class ApiType
 {
@@ -326,6 +335,10 @@ public sealed class ApiType
     public List<ApiFunction> Methods;
     public string Doc;
     public int Line;
+    // struct の record の宣言の形 ("struct" / "record struct" / "readonly record struct" など。facade が同じ形で書く)
+    public string Declaration = "";
+    // positional な record の parameter (struct の record では lub-gen check が断る)
+    public List<string> PositionalParams = new List<string>();
 
     public ApiType(string name, string kind, List<ApiField> fields, List<ApiFunction> methods, string doc, int line)
     {
@@ -445,7 +458,7 @@ public static class ApiModelLoader
         }
         foreach (var t in members)
         {
-            if (IsClass(t) && !t.IsStatic && !t.Name.EndsWith("Attribute")) types.Add(LoadType(t));
+            if ((IsClass(t) && !t.IsStatic && !t.Name.EndsWith("Attribute")) || t.IsStruct) types.Add(LoadType(t));
         }
         return new ApiModel(namespaces, types);
     }
@@ -539,11 +552,19 @@ public static class ApiModelLoader
         else if (tk == LubTypeKind.View) kind = "view";
         else if (tk == LubTypeKind.Keyed) kind = "keyed";
         else if (tk == LubTypeKind.Native) kind = "native";
+        if (t.IsStruct) kind = "struct";
         var fields = new List<ApiField>();
         var methods = new List<ApiFunction>();
         foreach (var m in t.Members)
         {
-            if (m.Kind == SymKind.Field && !m.IsStatic && IsPublic(FieldDecl(m))) fields.Add(LoadField(m));
+            if (m.Kind == SymKind.Field && !m.IsStatic && IsPublic(FieldDecl(m)))
+            {
+                var field = LoadField(m);
+                field.Readonly = t.IsStruct && m.IsReadonly;
+                fields.Add(field);
+            }
+            // struct の record の auto property (readonly record struct の { get; init; }) は field と同じく値の並びに入る
+            if (t.IsStruct && m.Kind == SymKind.Property && !m.IsStatic && IsPublic(m.Decl)) fields.Add(LoadProperty(m));
         }
         foreach (var m in t.Members)
         {
@@ -551,7 +572,16 @@ public static class ApiModelLoader
         }
         // 継承は TinyC# の外 (stub も同じ)。共通の field は各 class に書き、受け渡す部分は field に持つ
         if (t.BaseClass != null) GenError.Report(t.Name + ": a stub class must not have a base class (" + t.BaseClass.Name + ")");
-        return new ApiType(t.Name, kind, fields, methods, Doc(t.Decl), Line(t.Decl));
+        var type = new ApiType(t.Name, kind, fields, methods, Doc(t.Decl), Line(t.Decl));
+        if (t.IsStruct)
+        {
+            type.Declaration = (t.Decl.Has(Mods.Readonly) ? "readonly " : "") + (t.IsRecord ? "record struct" : "struct");
+            if (t.RecordParams != null)
+            {
+                foreach (var p in t.RecordParams) type.PositionalParams.Add(p.Name);
+            }
+        }
+        return type;
     }
 
     private static ApiFunction LoadFunction(Symbol m)
@@ -575,6 +605,15 @@ public static class ApiModelLoader
         }
         return new ApiFunction(m.Name, LuaNames.HostMember(m.Name), Resolve(m.Type), ps, Doc(decl),
             HasAttr(decl, "LubNoFail"), HasAttr(decl, "LubMaybe"), HasAttr(decl, "LubNoC"));
+    }
+
+    private static ApiField LoadProperty(Symbol p)
+    {
+        var decl = p.Decl!;
+        var field = new ApiField(p.Name, LuaNames.HostMember(p.Name), Resolve(p.Type), p.Type.Annotated || p.Type.Kind == TypeKind.Nullable,
+            Doc(decl), ArrayLen(decl), HasAttr(decl, "LubBits"));
+        field.Accessor = p.IsInit ? "init" : p.HasSetter ? "set" : "get";
+        return field;
     }
 
     private static ApiField LoadField(Symbol f)
@@ -660,6 +699,8 @@ public static class ApiModelLoader
             }
             case TypeKind.Class:
                 return new TypeRef(TypeKindOf(t.Decl!), t.Decl!.Name, nullable, null, null, null);
+            case TypeKind.Struct:
+                return new TypeRef(LubTypeKind.Struct, t.Decl!.Name, nullable, null, null, null);
         }
         GenError.Report("unsupported stub type: " + t.Name);
         return TypeRef.VoidType;

@@ -12,6 +12,7 @@ namespace LubGen;
 //   (宣言順の namespace が先に取る)。どの namespace からも辿れない型は root の
 //   Lub に置く。
 // - signature は C# の形。
+// - 型の kind は class で、struct の record は struct。
 public static class Docs
 {
     private const string RootModule = ApiModelLoader.RootNamespace;
@@ -45,7 +46,7 @@ public static class Docs
             foreach (var t in model.Types)
             {
                 if (owner[t.Name] != ns.Name) continue;
-                types.Add(DocType("class", t.Name, t.Name, path, stubPath + "#L" + t.Line, t.Doc, TypeMembers(t), false));
+                types.Add(DocType(t.Kind == "struct" ? "struct" : "class", t.Name, t.Name, path, stubPath + "#L" + t.Line, t.Doc, TypeMembers(t), false));
             }
             modules.Add(JValue.Obj().Set("module", JValue.Str(path)).Set("package", JValue.Str("lub")).Set("name", JValue.Str(ns.Name))
                 .Set("file", JValue.Str(file)).Set("types", types));
@@ -56,7 +57,7 @@ public static class Docs
     }
 
     private static bool Traced(LubTypeKind k) =>
-        k == LubTypeKind.Record || k == LubTypeKind.Handle || k == LubTypeKind.View || k == LubTypeKind.Keyed;
+        k == LubTypeKind.Record || k == LubTypeKind.Struct || k == LubTypeKind.Handle || k == LubTypeKind.View || k == LubTypeKind.Keyed;
 
     // 型がどの namespace の module に載るか。
     // 宣言順の namespace から関数の引数 / 戻り値 / field を辿って最初に届いた namespace。

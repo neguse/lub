@@ -13,8 +13,8 @@ dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.
 cp tests/c/tcs_binding.c "$work/test.c"
 printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_Main(); return 0; }\n' >> "$work/test.c"
 "${CC:-cc}" "${cflags[@]}" "$work/test.c" -lm -o "$work/test"
-[[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\nTrue\nTrue\n9\n4\nTrue\n48000\n6\nb\nTrue\n2\n8\nTrue\nTrue\n10\n3\n2.5\nTrue\nTrue\n11\nTrue\n2\n1\n0000000000000abc\n7\n12.5 -3\nTrue image 7\nFalse True\n0.5 1 1.5' ]]
-echo 'tcs2c binding: main target, handles, Bindings, array and list uniforms, voice options, nullable XR views, byte views, record results, record lists, list results, maybe results, view methods, nullable scalar results, nullable record outs, scalar and string outs, optional record fields, bit masks and callbacks passed'
+[[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\nTrue\nTrue\n9\n4\nTrue\n48000\n6\nb\nTrue\n2\n8\nTrue\nTrue\n10\n3\n3 8 1.5 -2\n1.25 -0.5 4\n2.5\nTrue\nTrue\n11\nTrue\n2\n1\n0000000000000abc\n7\n12.5 -3\nTrue image 7\nFalse True\n0.5 1 1.5' ]]
+echo 'tcs2c binding: main target, handles, Bindings, array and list uniforms, voice options, nullable XR views, byte views, record results, record lists, list results, maybe results, view methods, nullable scalar results, nullable record outs, scalar and string outs, struct records by value and in record fields, optional record fields, bit masks and callbacks passed'
 
 # bit mask の文字列は空と 17 桁以上が error (tcs VM と .NET の binding と同じ規則)。
 for mask_case in 'EmptyMask:empty hex string' 'LongMask:more than 16 hex digits'; do
@@ -39,6 +39,20 @@ if "$work/ArrayCount" 2> "$work/ArrayCount.err"; then
 fi
 grep -qF 'lub-array-length' "$work/ArrayCount.err"
 echo 'tcs2c binding: a count past the end of the array faults'
+
+# struct の record の書き方と渡り方 (scripts/verify-vm-binding.sh と同じ stub、ゲーム、偽の C API)
+cat cs-lib/lub_stub.cs tests/c/struct_stub.cs > "$work/struct_stub.cs"
+mkdir -p "$work/struct/lub"
+dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"
+dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+  --ref "$work/struct_stub.cs" tests/c/struct_test.cs -o "$work/struct/game.c"
+dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub "$work/struct_stub.cs" \
+  --source tests/c/struct_test.cs -o "$work/struct/binding.c"
+cp tests/c/struct_test.c "$work/struct/test.c"
+printf '\nint main(void) { tcs_lib_init(); tcs_entry_StructGame_Main(); return 0; }\n' >> "$work/struct/test.c"
+"${CC:-cc}" -I"$work/struct" "${cflags[@]}" "$work/struct/test.c" -lm -o "$work/struct/test"
+[[ "$("$work/struct/test" | tr -d '\r')" == $'13 0.5 True 7 9\n0 False\nTrue 8 True -4 True 2\nFalse 0 False\nFalse 4' ]]
+echo 'tcs2c binding: struct records pass by value, as outs and as results, and as record fields'
 
 # tcs2c の生成 C の Math (生成 C に埋め込まれた tcs の runtime/math) が、tcs VM の経路と同じ結果になること。
 # 期待値は tests/cs/TestMathDeterminism.cs の表 (OS ごとに分けない 1 つ)。

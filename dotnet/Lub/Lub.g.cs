@@ -132,8 +132,9 @@ public class PassOpts
     public Lub.Gfx.LoadAction? Load;
 }
 
-/// <summary>描いた値と target の値の混ぜ方。色 (rgb) は Src × 描く値 (Op) Dst × target の値、alpha は SrcAlpha / DstAlpha / OpAlpha で別に計算する。よく使う組は Blends (Alpha / Additive / Multiply) にある。</summary>
-public class Blend
+/// <summary>描いた値と target の値の混ぜ方。色 (rgb) は Src × 描く値 (Op) Dst × target の値、alpha は SrcAlpha / DstAlpha / OpAlpha で別に計算する。よく使う組は Blends (Alpha / Additive / Multiply) にある。値の struct なので、代入や引数で渡すと写しになり、写しの field を書き換えても元の組 (Blends.Alpha など) は変わらない。</summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct Blend
 {
     public Lub.Gfx.BlendFactor Src;
     public Lub.Gfx.BlendFactor Dst;
@@ -352,8 +353,9 @@ public class AudioInfo
     public int Snds;
 }
 
-/// <summary>2D 物理の座標 wire format。</summary>
-public class Vec2d
+/// <summary>2D 物理の座標 wire format。値の struct で、引数でも戻り値でも写しになる。</summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct Vec2d
 {
     public float X;
     public float Y;
@@ -5237,14 +5239,14 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d o_out = default;
-            var st = LubNative.lub_phys2d_joint_force(LubRuntime.Ctx, joint.H, &o_out);
+            Vec2d o_out = default;
+            var st = LubNative.lub_phys2d_joint_force(LubRuntime.Ctx, joint.H, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.JointForce: not found");
+                return default;
             }
             LubRuntime.Check(st);
-            return LubNative.From_LubVec2d(&o_out);
+            return o_out;
         }
         finally
         {
@@ -5600,14 +5602,14 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d o_out = default;
-            var st = LubNative.lub_phys2d_center(LubRuntime.Ctx, body.H, &o_out);
+            Vec2d o_out = default;
+            var st = LubNative.lub_phys2d_center(LubRuntime.Ctx, body.H, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.Center: not found");
+                return default;
             }
             LubRuntime.Check(st);
-            return LubNative.From_LubVec2d(&o_out);
+            return o_out;
         }
         finally
         {
@@ -5620,20 +5622,14 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d* _local_point = null;
-            if (localPoint != null)
-            {
-                _local_point = a.Alloc<LubNative.LubVec2d>(1);
-                LubNative.To_LubVec2d(localPoint, a, _local_point);
-            }
-            LubNative.LubVec2d o_out = default;
-            var st = LubNative.lub_phys2d_world_point(LubRuntime.Ctx, body.H, _local_point, &o_out);
+            Vec2d o_out = default;
+            var st = LubNative.lub_phys2d_world_point(LubRuntime.Ctx, body.H, localPoint, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.WorldPoint: not found");
+                return default;
             }
             LubRuntime.Check(st);
-            return LubNative.From_LubVec2d(&o_out);
+            return o_out;
         }
         finally
         {
@@ -5646,20 +5642,14 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d* _world_point = null;
-            if (worldPoint != null)
-            {
-                _world_point = a.Alloc<LubNative.LubVec2d>(1);
-                LubNative.To_LubVec2d(worldPoint, a, _world_point);
-            }
-            LubNative.LubVec2d o_out = default;
-            var st = LubNative.lub_phys2d_local_point(LubRuntime.Ctx, body.H, _world_point, &o_out);
+            Vec2d o_out = default;
+            var st = LubNative.lub_phys2d_local_point(LubRuntime.Ctx, body.H, worldPoint, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.LocalPoint: not found");
+                return default;
             }
             LubRuntime.Check(st);
-            return LubNative.From_LubVec2d(&o_out);
+            return o_out;
         }
         finally
         {
@@ -5672,20 +5662,14 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d* _world_point = null;
-            if (worldPoint != null)
-            {
-                _world_point = a.Alloc<LubNative.LubVec2d>(1);
-                LubNative.To_LubVec2d(worldPoint, a, _world_point);
-            }
-            LubNative.LubVec2d o_out = default;
-            var st = LubNative.lub_phys2d_velocity_at(LubRuntime.Ctx, body.H, _world_point, &o_out);
+            Vec2d o_out = default;
+            var st = LubNative.lub_phys2d_velocity_at(LubRuntime.Ctx, body.H, worldPoint, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.VelocityAt: not found");
+                return default;
             }
             LubRuntime.Check(st);
-            return LubNative.From_LubVec2d(&o_out);
+            return o_out;
         }
         finally
         {
@@ -5761,14 +5745,8 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d* _point = null;
-            if (point != null)
-            {
-                _point = a.Alloc<LubNative.LubVec2d>(1);
-                LubNative.To_LubVec2d(point, a, _point);
-            }
             bool o_out = default;
-            var st = LubNative.lub_phys2d_shape_test_point(LubRuntime.Ctx, shape.H, _point, &o_out);
+            var st = LubNative.lub_phys2d_shape_test_point(LubRuntime.Ctx, shape.H, point, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return false;
@@ -5814,20 +5792,14 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d* _point = null;
-            if (point != null)
-            {
-                _point = a.Alloc<LubNative.LubVec2d>(1);
-                LubNative.To_LubVec2d(point, a, _point);
-            }
-            LubNative.LubVec2d o_out = default;
-            var st = LubNative.lub_phys2d_shape_closest_point(LubRuntime.Ctx, shape.H, _point, &o_out);
+            Vec2d o_out = default;
+            var st = LubNative.lub_phys2d_shape_closest_point(LubRuntime.Ctx, shape.H, point, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.ShapeClosestPoint: not found");
+                return default;
             }
             LubRuntime.Check(st);
-            return LubNative.From_LubVec2d(&o_out);
+            return o_out;
         }
         finally
         {
@@ -6305,19 +6277,13 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d* _force = null;
-            if (force != null)
-            {
-                _force = a.Alloc<LubNative.LubVec2d>(1);
-                LubNative.To_LubVec2d(force, a, _force);
-            }
             LubNative.LubCommandOpts* _opts = null;
             if (opts != null)
             {
                 _opts = a.Alloc<LubNative.LubCommandOpts>(1);
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
-            var st = LubNative.lub_phys2d_add_force(LubRuntime.Ctx, body.H, _force, _opts);
+            var st = LubNative.lub_phys2d_add_force(LubRuntime.Ctx, body.H, force, _opts);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return;
@@ -6335,19 +6301,13 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d* _force = null;
-            if (force != null)
-            {
-                _force = a.Alloc<LubNative.LubVec2d>(1);
-                LubNative.To_LubVec2d(force, a, _force);
-            }
             LubNative.LubCommandOpts* _opts = null;
             if (opts != null)
             {
                 _opts = a.Alloc<LubNative.LubCommandOpts>(1);
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
-            var st = LubNative.lub_phys2d_add_force_center(LubRuntime.Ctx, body.H, _force, _opts);
+            var st = LubNative.lub_phys2d_add_force_center(LubRuntime.Ctx, body.H, force, _opts);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return;
@@ -6365,19 +6325,13 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d* _impulse = null;
-            if (impulse != null)
-            {
-                _impulse = a.Alloc<LubNative.LubVec2d>(1);
-                LubNative.To_LubVec2d(impulse, a, _impulse);
-            }
             LubNative.LubCommandOpts* _opts = null;
             if (opts != null)
             {
                 _opts = a.Alloc<LubNative.LubCommandOpts>(1);
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
-            var st = LubNative.lub_phys2d_add_impulse(LubRuntime.Ctx, body.H, _impulse, _opts);
+            var st = LubNative.lub_phys2d_add_impulse(LubRuntime.Ctx, body.H, impulse, _opts);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return;
@@ -6395,19 +6349,13 @@ public static unsafe partial class Phys2d
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.LubVec2d* _impulse = null;
-            if (impulse != null)
-            {
-                _impulse = a.Alloc<LubNative.LubVec2d>(1);
-                LubNative.To_LubVec2d(impulse, a, _impulse);
-            }
             LubNative.LubCommandOpts* _opts = null;
             if (opts != null)
             {
                 _opts = a.Alloc<LubNative.LubCommandOpts>(1);
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
-            var st = LubNative.lub_phys2d_add_impulse_center(LubRuntime.Ctx, body.H, _impulse, _opts);
+            var st = LubNative.lub_phys2d_add_impulse_center(LubRuntime.Ctx, body.H, impulse, _opts);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return;
@@ -8499,22 +8447,11 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct LubBlend
-    {
-        public int @src;
-        public int @dst;
-        public int @op;
-        public int @src_alpha;
-        public int @dst_alpha;
-        public int @op_alpha;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
     internal struct LubDrawOpts
     {
         public int @shader;
         public bool @has_blend;
-        public LubBlend @blend;
+        public Blend @blend;
         public bool @has_cull;
         public int @cull;
         public bool @has_primitive;
@@ -8739,13 +8676,6 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct LubVec2d
-    {
-        public float @x;
-        public float @y;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
     internal struct LubInitialState
     {
         public bool @has_x;
@@ -8853,7 +8783,7 @@ internal static unsafe partial class LubNative
         public bool @has_version;
         public int @version;
         public bool @has_gravity;
-        public LubVec2d @gravity;
+        public Vec2d @gravity;
         public bool @has_fixed_dt;
         public float @fixed_dt;
         public bool @has_substeps;
@@ -9175,7 +9105,7 @@ internal static unsafe partial class LubNative
         public bool @has_max_torque;
         public float @max_torque;
         public bool @has_linear_offset;
-        public LubVec2d @linear_offset;
+        public Vec2d @linear_offset;
         public bool @has_angular_offset;
         public float @angular_offset;
         public bool @has_correction_factor;
@@ -9194,7 +9124,7 @@ internal static unsafe partial class LubNative
         public bool @has_angle;
         public float @angle;
         public bool @has_linear_offset;
-        public LubVec2d @linear_offset;
+        public Vec2d @linear_offset;
         public bool @has_angular_offset;
         public float @angular_offset;
     }
@@ -9209,15 +9139,15 @@ internal static unsafe partial class LubNative
         public int @body_a;
         public int @body_b;
         public bool @has_anchor_a;
-        public LubVec2d @anchor_a;
+        public Vec2d @anchor_a;
         public bool @has_anchor_b;
-        public LubVec2d @anchor_b;
+        public Vec2d @anchor_b;
         public bool @has_local_anchor_a;
-        public LubVec2d @local_anchor_a;
+        public Vec2d @local_anchor_a;
         public bool @has_local_anchor_b;
-        public LubVec2d @local_anchor_b;
+        public Vec2d @local_anchor_b;
         public bool @has_local_axis_a;
-        public LubVec2d @local_axis_a;
+        public Vec2d @local_axis_a;
         public bool @has_reference_angle;
         public float @reference_angle;
         public bool @has_collide_connected;
@@ -9237,7 +9167,7 @@ internal static unsafe partial class LubNative
         public bool @has_target_translation;
         public float @target_translation;
         public bool @has_linear_offset;
-        public LubVec2d @linear_offset;
+        public Vec2d @linear_offset;
         public bool @has_angular_offset;
         public float @angular_offset;
         public bool @has_hertz;
@@ -9259,7 +9189,7 @@ internal static unsafe partial class LubNative
         public bool @has_motor;
         public LubJointMotorDesc @motor;
         public bool @has_target;
-        public LubVec2d @target;
+        public Vec2d @target;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -9268,7 +9198,7 @@ internal static unsafe partial class LubNative
         public bool @has_wake;
         public bool @wake;
         public bool @has_point;
-        public LubVec2d @point;
+        public Vec2d @point;
         public bool @has_time_step;
         public float @time_step;
     }
@@ -9303,7 +9233,7 @@ internal static unsafe partial class LubNative
         public bool @has_inertia;
         public float @inertia;
         public bool @has_local_center;
-        public LubVec2d @local_center;
+        public Vec2d @local_center;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -9513,8 +9443,8 @@ internal static unsafe partial class LubNative
     {
         public float @mass;
         public float @inertia;
-        public LubVec2d @center;
-        public LubVec2d @local_center;
+        public Vec2d @center;
+        public Vec2d @local_center;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -9592,7 +9522,7 @@ internal static unsafe partial class LubNative
         public int @pending_commands;
         public LubWorldCallbackInfo @callbacks;
         public bool @has_gravity;
-        public LubVec2d @gravity;
+        public Vec2d @gravity;
         public bool @has_sleep;
         public bool @sleep;
         public bool @has_continuous;
@@ -9644,16 +9574,16 @@ internal static unsafe partial class LubNative
         public LubStr @b;
         public bool @valid;
         public bool @collide_connected;
-        public LubVec2d @force;
+        public Vec2d @force;
         public float @torque;
         public float @linear_separation;
         public float @angular_separation;
         public bool @has_local_anchor_a;
-        public LubVec2d @local_anchor_a;
+        public Vec2d @local_anchor_a;
         public bool @has_local_anchor_b;
-        public LubVec2d @local_anchor_b;
+        public Vec2d @local_anchor_b;
         public bool @has_local_axis_a;
-        public LubVec2d @local_axis_a;
+        public Vec2d @local_axis_a;
         public bool @has_reference_angle;
         public float @reference_angle;
     }
@@ -11644,7 +11574,7 @@ internal static unsafe partial class LubNative
     internal static extern int lub_phys2d_joint_info(void* ctx, int @joint, LubJointInfo* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_joint_force(void* ctx, int @joint, LubVec2d* @out);
+    internal static extern int lub_phys2d_joint_force(void* ctx, int @joint, out Vec2d @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_phys2d_joint_torque(void* ctx, int @joint, float* @out);
@@ -11695,16 +11625,16 @@ internal static unsafe partial class LubNative
     internal static extern int lub_phys2d_mass(void* ctx, int @body, LubMassData* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_center(void* ctx, int @body, LubVec2d* @out);
+    internal static extern int lub_phys2d_center(void* ctx, int @body, out Vec2d @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_world_point(void* ctx, int @body, LubVec2d* @local_point, LubVec2d* @out);
+    internal static extern int lub_phys2d_world_point(void* ctx, int @body, Vec2d @local_point, out Vec2d @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_local_point(void* ctx, int @body, LubVec2d* @world_point, LubVec2d* @out);
+    internal static extern int lub_phys2d_local_point(void* ctx, int @body, Vec2d @world_point, out Vec2d @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_velocity_at(void* ctx, int @body, LubVec2d* @world_point, LubVec2d* @out);
+    internal static extern int lub_phys2d_velocity_at(void* ctx, int @body, Vec2d @world_point, out Vec2d @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_phys2d_body_shapes(void* ctx, int @body, LubShapeView** @out, int* @out_count);
@@ -11716,13 +11646,13 @@ internal static unsafe partial class LubNative
     internal static extern int lub_phys2d_body_contacts(void* ctx, int @body, LubContactData** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_shape_test_point(void* ctx, int @shape, LubVec2d* @point, bool* @out);
+    internal static extern int lub_phys2d_shape_test_point(void* ctx, int @shape, Vec2d @point, bool* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_phys2d_shape_raycast(void* ctx, int @shape, LubRaycastDesc* @query, LubShapeRayHit* @out, bool* has);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_shape_closest_point(void* ctx, int @shape, LubVec2d* @point, LubVec2d* @out);
+    internal static extern int lub_phys2d_shape_closest_point(void* ctx, int @shape, Vec2d @point, out Vec2d @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_phys2d_shape_aabb(void* ctx, int @shape, LubAabb* @out);
@@ -11782,16 +11712,16 @@ internal static unsafe partial class LubNative
     internal static extern int lub_phys2d_counters(void* ctx, int @world, LubCounters* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_add_force(void* ctx, int @body, LubVec2d* @force, LubCommandOpts* @opts);
+    internal static extern int lub_phys2d_add_force(void* ctx, int @body, Vec2d @force, LubCommandOpts* @opts);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_add_force_center(void* ctx, int @body, LubVec2d* @force, LubCommandOpts* @opts);
+    internal static extern int lub_phys2d_add_force_center(void* ctx, int @body, Vec2d @force, LubCommandOpts* @opts);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_add_impulse(void* ctx, int @body, LubVec2d* @impulse, LubCommandOpts* @opts);
+    internal static extern int lub_phys2d_add_impulse(void* ctx, int @body, Vec2d @impulse, LubCommandOpts* @opts);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_phys2d_add_impulse_center(void* ctx, int @body, LubVec2d* @impulse, LubCommandOpts* @opts);
+    internal static extern int lub_phys2d_add_impulse_center(void* ctx, int @body, Vec2d @impulse, LubCommandOpts* @opts);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_phys2d_add_torque(void* ctx, int @body, float @torque, LubCommandOpts* @opts);
@@ -12074,38 +12004,11 @@ internal static unsafe partial class LubNative
         return o;
     }
 
-    internal static void To_LubBlend(Blend o, LubRuntime.Arena a, LubBlend* s)
-    {
-        s->@src = (int)o.Src;
-        s->@dst = (int)o.Dst;
-        s->@op = (int)o.Op;
-        s->@src_alpha = (int)o.SrcAlpha;
-        s->@dst_alpha = (int)o.DstAlpha;
-        s->@op_alpha = (int)o.OpAlpha;
-    }
-
-    internal static void Fill_LubBlend(Blend o, LubBlend* s)
-    {
-        o.Src = (Lub.Gfx.BlendFactor)s->@src;
-        o.Dst = (Lub.Gfx.BlendFactor)s->@dst;
-        o.Op = (Lub.Gfx.BlendOp)s->@op;
-        o.SrcAlpha = (Lub.Gfx.BlendFactor)s->@src_alpha;
-        o.DstAlpha = (Lub.Gfx.BlendFactor)s->@dst_alpha;
-        o.OpAlpha = (Lub.Gfx.BlendOp)s->@op_alpha;
-    }
-
-    internal static Blend From_LubBlend(LubBlend* s)
-    {
-        var o = new Blend();
-        Fill_LubBlend(o, s);
-        return o;
-    }
-
     internal static void To_LubDrawOpts(DrawOpts o, LubRuntime.Arena a, LubDrawOpts* s)
     {
         s->@shader = o.Shader?.H ?? 0;
-        s->@has_blend = o.Blend != null;
-        if (o.Blend != null) To_LubBlend(o.Blend, a, &s->@blend);
+        s->@has_blend = o.Blend.HasValue;
+        s->@blend = o.Blend ?? default;
         s->@has_cull = o.Cull.HasValue;
         s->@cull = (int)(o.Cull ?? default);
         s->@has_primitive = o.Primitive.HasValue;
@@ -12119,7 +12022,7 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubDrawOpts(DrawOpts o, LubDrawOpts* s)
     {
         o.Shader = H_ShaderRef(s->@shader)!;
-        o.Blend = s->@has_blend ? From_LubBlend(&s->@blend) : null;
+        o.Blend = s->@has_blend ? s->@blend : null;
         o.Cull = s->@has_cull ? (Lub.Gfx.Cull)s->@cull : null;
         o.Primitive = s->@has_primitive ? (Lub.Gfx.Primitive)s->@primitive : null;
         o.Depth = s->@has_depth ? s->@depth : null;
@@ -12595,25 +12498,6 @@ internal static unsafe partial class LubNative
         return o;
     }
 
-    internal static void To_LubVec2d(Vec2d o, LubRuntime.Arena a, LubVec2d* s)
-    {
-        s->@x = (float)o.X;
-        s->@y = (float)o.Y;
-    }
-
-    internal static void Fill_LubVec2d(Vec2d o, LubVec2d* s)
-    {
-        o.X = s->@x;
-        o.Y = s->@y;
-    }
-
-    internal static Vec2d From_LubVec2d(LubVec2d* s)
-    {
-        var o = new Vec2d();
-        Fill_LubVec2d(o, s);
-        return o;
-    }
-
     internal static void To_LubInitialState(InitialState o, LubRuntime.Arena a, LubInitialState* s)
     {
         s->@has_x = o.X.HasValue;
@@ -12826,8 +12710,8 @@ internal static unsafe partial class LubNative
     {
         s->@has_version = o.Version.HasValue;
         s->@version = (o.Version ?? default);
-        s->@has_gravity = o.Gravity != null;
-        if (o.Gravity != null) To_LubVec2d(o.Gravity, a, &s->@gravity);
+        s->@has_gravity = o.Gravity.HasValue;
+        s->@gravity = o.Gravity ?? default;
         s->@has_fixed_dt = o.FixedDt.HasValue;
         s->@fixed_dt = (float)(o.FixedDt ?? default);
         s->@has_substeps = o.Substeps.HasValue;
@@ -12847,7 +12731,7 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubWorldOpts(WorldOpts o, LubWorldOpts* s)
     {
         o.Version = s->@has_version ? s->@version : null;
-        o.Gravity = s->@has_gravity ? From_LubVec2d(&s->@gravity) : null;
+        o.Gravity = s->@has_gravity ? s->@gravity : null;
         o.FixedDt = s->@has_fixed_dt ? s->@fixed_dt : null;
         o.Substeps = s->@has_substeps ? s->@substeps : null;
         o.MaxSteps = s->@has_max_steps ? s->@max_steps : null;
@@ -13413,8 +13297,8 @@ internal static unsafe partial class LubNative
         s->@max_force = (float)(o.MaxForce ?? default);
         s->@has_max_torque = o.MaxTorque.HasValue;
         s->@max_torque = (float)(o.MaxTorque ?? default);
-        s->@has_linear_offset = o.LinearOffset != null;
-        if (o.LinearOffset != null) To_LubVec2d(o.LinearOffset, a, &s->@linear_offset);
+        s->@has_linear_offset = o.LinearOffset.HasValue;
+        s->@linear_offset = o.LinearOffset ?? default;
         s->@has_angular_offset = o.AngularOffset.HasValue;
         s->@angular_offset = (float)(o.AngularOffset ?? default);
         s->@has_correction_factor = o.CorrectionFactor.HasValue;
@@ -13427,7 +13311,7 @@ internal static unsafe partial class LubNative
         o.Speed = s->@has_speed ? s->@speed : null;
         o.MaxForce = s->@has_max_force ? s->@max_force : null;
         o.MaxTorque = s->@has_max_torque ? s->@max_torque : null;
-        o.LinearOffset = s->@has_linear_offset ? From_LubVec2d(&s->@linear_offset) : null;
+        o.LinearOffset = s->@has_linear_offset ? s->@linear_offset : null;
         o.AngularOffset = s->@has_angular_offset ? s->@angular_offset : null;
         o.CorrectionFactor = s->@has_correction_factor ? s->@correction_factor : null;
     }
@@ -13449,8 +13333,8 @@ internal static unsafe partial class LubNative
         s->@translation = (float)(o.Translation ?? default);
         s->@has_angle = o.Angle.HasValue;
         s->@angle = (float)(o.Angle ?? default);
-        s->@has_linear_offset = o.LinearOffset != null;
-        if (o.LinearOffset != null) To_LubVec2d(o.LinearOffset, a, &s->@linear_offset);
+        s->@has_linear_offset = o.LinearOffset.HasValue;
+        s->@linear_offset = o.LinearOffset ?? default;
         s->@has_angular_offset = o.AngularOffset.HasValue;
         s->@angular_offset = (float)(o.AngularOffset ?? default);
     }
@@ -13461,7 +13345,7 @@ internal static unsafe partial class LubNative
         o.Y = s->@has_y ? s->@y : null;
         o.Translation = s->@has_translation ? s->@translation : null;
         o.Angle = s->@has_angle ? s->@angle : null;
-        o.LinearOffset = s->@has_linear_offset ? From_LubVec2d(&s->@linear_offset) : null;
+        o.LinearOffset = s->@has_linear_offset ? s->@linear_offset : null;
         o.AngularOffset = s->@has_angular_offset ? s->@angular_offset : null;
     }
 
@@ -13480,16 +13364,16 @@ internal static unsafe partial class LubNative
         s->@type = (int)(o.Type ?? default);
         s->@body_a = o.BodyA?.H ?? 0;
         s->@body_b = o.BodyB?.H ?? 0;
-        s->@has_anchor_a = o.AnchorA != null;
-        if (o.AnchorA != null) To_LubVec2d(o.AnchorA, a, &s->@anchor_a);
-        s->@has_anchor_b = o.AnchorB != null;
-        if (o.AnchorB != null) To_LubVec2d(o.AnchorB, a, &s->@anchor_b);
-        s->@has_local_anchor_a = o.LocalAnchorA != null;
-        if (o.LocalAnchorA != null) To_LubVec2d(o.LocalAnchorA, a, &s->@local_anchor_a);
-        s->@has_local_anchor_b = o.LocalAnchorB != null;
-        if (o.LocalAnchorB != null) To_LubVec2d(o.LocalAnchorB, a, &s->@local_anchor_b);
-        s->@has_local_axis_a = o.LocalAxisA != null;
-        if (o.LocalAxisA != null) To_LubVec2d(o.LocalAxisA, a, &s->@local_axis_a);
+        s->@has_anchor_a = o.AnchorA.HasValue;
+        s->@anchor_a = o.AnchorA ?? default;
+        s->@has_anchor_b = o.AnchorB.HasValue;
+        s->@anchor_b = o.AnchorB ?? default;
+        s->@has_local_anchor_a = o.LocalAnchorA.HasValue;
+        s->@local_anchor_a = o.LocalAnchorA ?? default;
+        s->@has_local_anchor_b = o.LocalAnchorB.HasValue;
+        s->@local_anchor_b = o.LocalAnchorB ?? default;
+        s->@has_local_axis_a = o.LocalAxisA.HasValue;
+        s->@local_axis_a = o.LocalAxisA ?? default;
         s->@has_reference_angle = o.ReferenceAngle.HasValue;
         s->@reference_angle = (float)(o.ReferenceAngle ?? default);
         s->@has_collide_connected = o.CollideConnected.HasValue;
@@ -13508,8 +13392,8 @@ internal static unsafe partial class LubNative
         s->@target_angle = (float)(o.TargetAngle ?? default);
         s->@has_target_translation = o.TargetTranslation.HasValue;
         s->@target_translation = (float)(o.TargetTranslation ?? default);
-        s->@has_linear_offset = o.LinearOffset != null;
-        if (o.LinearOffset != null) To_LubVec2d(o.LinearOffset, a, &s->@linear_offset);
+        s->@has_linear_offset = o.LinearOffset.HasValue;
+        s->@linear_offset = o.LinearOffset ?? default;
         s->@has_angular_offset = o.AngularOffset.HasValue;
         s->@angular_offset = (float)(o.AngularOffset ?? default);
         s->@has_hertz = o.Hertz.HasValue;
@@ -13530,8 +13414,8 @@ internal static unsafe partial class LubNative
         if (o.Limit != null) To_LubJointLimitDesc(o.Limit, a, &s->@limit);
         s->@has_motor = o.Motor != null;
         if (o.Motor != null) To_LubJointMotorDesc(o.Motor, a, &s->@motor);
-        s->@has_target = o.Target != null;
-        if (o.Target != null) To_LubVec2d(o.Target, a, &s->@target);
+        s->@has_target = o.Target.HasValue;
+        s->@target = o.Target ?? default;
     }
 
     internal static void Fill_LubJointDesc(JointDesc o, LubJointDesc* s)
@@ -13540,11 +13424,11 @@ internal static unsafe partial class LubNative
         o.Type = s->@has_type ? (Lub.Phys2d.JointType)s->@type : null;
         o.BodyA = H_BodyRef(s->@body_a);
         o.BodyB = H_BodyRef(s->@body_b);
-        o.AnchorA = s->@has_anchor_a ? From_LubVec2d(&s->@anchor_a) : null;
-        o.AnchorB = s->@has_anchor_b ? From_LubVec2d(&s->@anchor_b) : null;
-        o.LocalAnchorA = s->@has_local_anchor_a ? From_LubVec2d(&s->@local_anchor_a) : null;
-        o.LocalAnchorB = s->@has_local_anchor_b ? From_LubVec2d(&s->@local_anchor_b) : null;
-        o.LocalAxisA = s->@has_local_axis_a ? From_LubVec2d(&s->@local_axis_a) : null;
+        o.AnchorA = s->@has_anchor_a ? s->@anchor_a : null;
+        o.AnchorB = s->@has_anchor_b ? s->@anchor_b : null;
+        o.LocalAnchorA = s->@has_local_anchor_a ? s->@local_anchor_a : null;
+        o.LocalAnchorB = s->@has_local_anchor_b ? s->@local_anchor_b : null;
+        o.LocalAxisA = s->@has_local_axis_a ? s->@local_axis_a : null;
         o.ReferenceAngle = s->@has_reference_angle ? s->@reference_angle : null;
         o.CollideConnected = s->@has_collide_connected ? s->@collide_connected : null;
         o.Length = s->@has_length ? s->@length : null;
@@ -13554,7 +13438,7 @@ internal static unsafe partial class LubNative
         o.Upper = s->@has_upper ? s->@upper : null;
         o.TargetAngle = s->@has_target_angle ? s->@target_angle : null;
         o.TargetTranslation = s->@has_target_translation ? s->@target_translation : null;
-        o.LinearOffset = s->@has_linear_offset ? From_LubVec2d(&s->@linear_offset) : null;
+        o.LinearOffset = s->@has_linear_offset ? s->@linear_offset : null;
         o.AngularOffset = s->@has_angular_offset ? s->@angular_offset : null;
         o.Hertz = s->@has_hertz ? s->@hertz : null;
         o.DampingRatio = s->@has_damping_ratio ? s->@damping_ratio : null;
@@ -13565,7 +13449,7 @@ internal static unsafe partial class LubNative
         o.Spring = s->@has_spring ? From_LubJointSpringDesc(&s->@spring) : null;
         o.Limit = s->@has_limit ? From_LubJointLimitDesc(&s->@limit) : null;
         o.Motor = s->@has_motor ? From_LubJointMotorDesc(&s->@motor) : null;
-        o.Target = s->@has_target ? From_LubVec2d(&s->@target) : null;
+        o.Target = s->@has_target ? s->@target : null;
     }
 
     internal static JointDesc From_LubJointDesc(LubJointDesc* s)
@@ -13579,8 +13463,8 @@ internal static unsafe partial class LubNative
     {
         s->@has_wake = o.Wake.HasValue;
         s->@wake = (o.Wake ?? default);
-        s->@has_point = o.Point != null;
-        if (o.Point != null) To_LubVec2d(o.Point, a, &s->@point);
+        s->@has_point = o.Point.HasValue;
+        s->@point = o.Point ?? default;
         s->@has_time_step = o.TimeStep.HasValue;
         s->@time_step = (float)(o.TimeStep ?? default);
     }
@@ -13588,7 +13472,7 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubCommandOpts(CommandOpts o, LubCommandOpts* s)
     {
         o.Wake = s->@has_wake ? s->@wake : null;
-        o.Point = s->@has_point ? From_LubVec2d(&s->@point) : null;
+        o.Point = s->@has_point ? s->@point : null;
         o.TimeStep = s->@has_time_step ? s->@time_step : null;
     }
 
@@ -13653,15 +13537,15 @@ internal static unsafe partial class LubNative
         s->@mass = (float)(o.Mass ?? default);
         s->@has_inertia = o.Inertia.HasValue;
         s->@inertia = (float)(o.Inertia ?? default);
-        s->@has_local_center = o.LocalCenter != null;
-        if (o.LocalCenter != null) To_LubVec2d(o.LocalCenter, a, &s->@local_center);
+        s->@has_local_center = o.LocalCenter.HasValue;
+        s->@local_center = o.LocalCenter ?? default;
     }
 
     internal static void Fill_LubMassDataDesc(MassDataDesc o, LubMassDataDesc* s)
     {
         o.Mass = s->@has_mass ? s->@mass : null;
         o.Inertia = s->@has_inertia ? s->@inertia : null;
-        o.LocalCenter = s->@has_local_center ? From_LubVec2d(&s->@local_center) : null;
+        o.LocalCenter = s->@has_local_center ? s->@local_center : null;
     }
 
     internal static MassDataDesc From_LubMassDataDesc(LubMassDataDesc* s)
@@ -14066,16 +13950,16 @@ internal static unsafe partial class LubNative
     {
         s->@mass = (float)o.Mass;
         s->@inertia = (float)o.Inertia;
-        if (o.Center != null) To_LubVec2d(o.Center, a, &s->@center);
-        if (o.LocalCenter != null) To_LubVec2d(o.LocalCenter, a, &s->@local_center);
+        s->@center = o.Center;
+        s->@local_center = o.LocalCenter;
     }
 
     internal static void Fill_LubMassData(MassData o, LubMassData* s)
     {
         o.Mass = s->@mass;
         o.Inertia = s->@inertia;
-        o.Center = From_LubVec2d(&s->@center);
-        o.LocalCenter = From_LubVec2d(&s->@local_center);
+        o.Center = s->@center;
+        o.LocalCenter = s->@local_center;
     }
 
     internal static MassData From_LubMassData(LubMassData* s)
@@ -14231,8 +14115,8 @@ internal static unsafe partial class LubNative
         s->@accumulator = (float)o.Accumulator;
         s->@pending_commands = o.PendingCommands;
         if (o.Callbacks != null) To_LubWorldCallbackInfo(o.Callbacks, a, &s->@callbacks);
-        s->@has_gravity = o.Gravity != null;
-        if (o.Gravity != null) To_LubVec2d(o.Gravity, a, &s->@gravity);
+        s->@has_gravity = o.Gravity.HasValue;
+        s->@gravity = o.Gravity ?? default;
         s->@has_sleep = o.Sleep.HasValue;
         s->@sleep = (o.Sleep ?? default);
         s->@has_continuous = o.Continuous.HasValue;
@@ -14263,7 +14147,7 @@ internal static unsafe partial class LubNative
         o.Accumulator = s->@accumulator;
         o.PendingCommands = s->@pending_commands;
         o.Callbacks = From_LubWorldCallbackInfo(&s->@callbacks);
-        o.Gravity = s->@has_gravity ? From_LubVec2d(&s->@gravity) : null;
+        o.Gravity = s->@has_gravity ? s->@gravity : null;
         o.Sleep = s->@has_sleep ? s->@sleep : null;
         o.Continuous = s->@has_continuous ? s->@continuous : null;
         o.WarmStarting = s->@has_warm_starting ? s->@warm_starting : null;
@@ -14350,16 +14234,16 @@ internal static unsafe partial class LubNative
         s->@b = a.Str(o.B);
         s->@valid = o.Valid;
         s->@collide_connected = o.CollideConnected;
-        if (o.Force != null) To_LubVec2d(o.Force, a, &s->@force);
+        s->@force = o.Force;
         s->@torque = (float)o.Torque;
         s->@linear_separation = (float)o.LinearSeparation;
         s->@angular_separation = (float)o.AngularSeparation;
-        s->@has_local_anchor_a = o.LocalAnchorA != null;
-        if (o.LocalAnchorA != null) To_LubVec2d(o.LocalAnchorA, a, &s->@local_anchor_a);
-        s->@has_local_anchor_b = o.LocalAnchorB != null;
-        if (o.LocalAnchorB != null) To_LubVec2d(o.LocalAnchorB, a, &s->@local_anchor_b);
-        s->@has_local_axis_a = o.LocalAxisA != null;
-        if (o.LocalAxisA != null) To_LubVec2d(o.LocalAxisA, a, &s->@local_axis_a);
+        s->@has_local_anchor_a = o.LocalAnchorA.HasValue;
+        s->@local_anchor_a = o.LocalAnchorA ?? default;
+        s->@has_local_anchor_b = o.LocalAnchorB.HasValue;
+        s->@local_anchor_b = o.LocalAnchorB ?? default;
+        s->@has_local_axis_a = o.LocalAxisA.HasValue;
+        s->@local_axis_a = o.LocalAxisA ?? default;
         s->@has_reference_angle = o.ReferenceAngle.HasValue;
         s->@reference_angle = (float)(o.ReferenceAngle ?? default);
     }
@@ -14372,13 +14256,13 @@ internal static unsafe partial class LubNative
         o.B = LubRuntime.Str(s->@b);
         o.Valid = s->@valid;
         o.CollideConnected = s->@collide_connected;
-        o.Force = From_LubVec2d(&s->@force);
+        o.Force = s->@force;
         o.Torque = s->@torque;
         o.LinearSeparation = s->@linear_separation;
         o.AngularSeparation = s->@angular_separation;
-        o.LocalAnchorA = s->@has_local_anchor_a ? From_LubVec2d(&s->@local_anchor_a) : null;
-        o.LocalAnchorB = s->@has_local_anchor_b ? From_LubVec2d(&s->@local_anchor_b) : null;
-        o.LocalAxisA = s->@has_local_axis_a ? From_LubVec2d(&s->@local_axis_a) : null;
+        o.LocalAnchorA = s->@has_local_anchor_a ? s->@local_anchor_a : null;
+        o.LocalAnchorB = s->@has_local_anchor_b ? s->@local_anchor_b : null;
+        o.LocalAxisA = s->@has_local_axis_a ? s->@local_axis_a : null;
         o.ReferenceAngle = s->@has_reference_angle ? s->@reference_angle : null;
     }
 

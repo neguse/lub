@@ -1,5 +1,5 @@
 // frame ごとの digest。
-// C API 呼び出しの構造 (関数名、key、個数、handle、version) を FNV-1a で畳み、frame の終わりに stdout へ出す (--digest)。
+// C API 呼び出しの構造 (関数名、key、個数、handle、version、draw の Blend) を FNV-1a で畳み、frame の終わりに stdout へ出す (--digest)。
 // 実行形 (tcs VM の player / .NET 実行) の間で同じゲームが同じ列を出すことを CI が突き合わせる。
 // float の値は混ぜない (実行形の間で float の差を許す)。
 #pragma once

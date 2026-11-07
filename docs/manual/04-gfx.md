@@ -140,6 +140,7 @@ struct VSOut { float4 col : COLOR0; float4 pos : SV_Position; };
 - `opts`(`DrawOpts`)の既定値は blend なし (上書き) / cull=`Gfx.Cull.Back` / primitive=`Gfx.Primitive.Triangles` / depth=true。
 - `Blend` は混ぜ方の式で、色 (rgb) と alpha それぞれに係数 2 つ (`Src` / `Dst`) と演算 (`Op`) を持つ。
   よく使う組は `Blends.Alpha` / `Additive` / `Multiply` にある。
+  `Blend` は値 (struct) なので、`var b = Blends.Alpha;` の `b` の field を書き換えても `Blends.Alpha` は変わらない。
   alpha の係数には `Zero` / `One` と Alpha の付くものだけを使え、`Min` / `Max` の係数は `One` にする (どの backend でも同じ結果になる組だけを受け付ける)。
 
 ```csharp
