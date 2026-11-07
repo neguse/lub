@@ -14,7 +14,13 @@ class BindingTest
         Gfx.BindingsSetTexture(bindings, "image", texture);
         Gfx.BindingsSetFloatArray(bindings, "color", new float[] { 1, 2, 3, 4 });
         Gfx.BindingsSetFloats(bindings, "scale", new List<float> { 5, 6 });
-        Gfx.Draw(3, bindings, new DrawOpts { Depth = false });
+        // struct の record は値で渡り、record の field の Blend? は has と値になる
+        var blend = new Blend
+        {
+            Src = Gfx.BlendFactor.SrcAlpha, Dst = Gfx.BlendFactor.OneMinusSrcAlpha, Op = Gfx.BlendOp.Add,
+            SrcAlpha = Gfx.BlendFactor.One, DstAlpha = Gfx.BlendFactor.OneMinusSrcAlpha, OpAlpha = Gfx.BlendOp.Max,
+        };
+        Gfx.Draw(3, bindings, new DrawOpts { Depth = false, Blend = blend with { Dst = Gfx.BlendFactor.One } });
         var view = Xr.View(0, .05f, 500);
         Console.WriteLine(view.Width);
         Console.WriteLine(view.ViewProjection[15]);
@@ -41,7 +47,13 @@ class BindingTest
         var glyph = Font.Glyph(bytes, 66, 12);
         Console.WriteLine(glyph.Bytes.Get(1));
         Console.WriteLine(glyph.W);
-        var world = Phys2d.World("world", new WorldOpts { Substeps = 4 })!;
+        var world = Phys2d.World("world", new WorldOpts { Substeps = 4, Gravity = new Vec2d { X = 0.5f, Y = -9.5f } })!;
+        var body = Phys2d.FindBody(world, "b")!;
+        var point = Phys2d.WorldPoint(body, new Vec2d { X = 1.5f, Y = -2 });
+        var back = Phys2d.LocalPoint(body, point);
+        Console.WriteLine(point.X + " " + point.Y + " " + back.X + " " + back.Y);
+        var mass = Phys2d.Mass(body)!;
+        Console.WriteLine(mass.Center.X + " " + mass.Center.Y + " " + mass.LocalCenter.Y);
         var angle = Phys2d.JointAngle(Phys2d.FindJoint(world, "j")!);
         Console.WriteLine(angle != null ? angle.Value : -1f);
         Console.WriteLine(Phys2d.JointAngle(Phys2d.FindJoint(world, "none")!) == null);

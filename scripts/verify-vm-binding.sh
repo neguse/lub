@@ -20,7 +20,7 @@ rt=third_party/tcs/runtime
 "${CC:-cc}" -std=gnu11 -O1 -fwrapv -ffp-contract=off -Iinclude -I"$vm" -I"$work" "$work/test.c" \
   "$vm"/tcsvm_{debug,gc,host,lib,load,reload,rt,run}.c "$rt"/sort/*.c "$rt"/fmt/*.c "$rt"/math/*.c "$rt"/utf8/*.c \
   "$rt"/model/*.c -lm -o "$work/test"
-[[ "$("$work/test" "$work/game.tcsb" BindingTest.Main | tr -d '\r')" == $'0\n7\n123\n1\nTrue\nTrue\n9\n4\nTrue\n48000\n6\nb\nTrue\n2\n8\nTrue\nTrue\n10\n3\n2.5\nTrue\nTrue\n11\nTrue\n2\n1\n0000000000000abc\n7\n12.5 -3\nTrue image 7\nFalse True\n0.5 1 1.5' ]]
+[[ "$("$work/test" "$work/game.tcsb" BindingTest.Main | tr -d '\r')" == $'0\n7\n123\n1\nTrue\nTrue\n9\n4\nTrue\n48000\n6\nb\nTrue\n2\n8\nTrue\nTrue\n10\n3\n3 8 1.5 -2\n1.25 -0.5 4\n2.5\nTrue\nTrue\n11\nTrue\n2\n1\n0000000000000abc\n7\n12.5 -3\nTrue image 7\nFalse True\n0.5 1 1.5' ]]
 echo 'tcs VM binding: the same results as the tcs2c binding'
 
 # 入力の誤りは C API を呼ぶ前に、C# の trace の付いた VM の fault になる

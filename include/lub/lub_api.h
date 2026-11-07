@@ -424,7 +424,9 @@ typedef struct LubPassOpts {
 
 // 描いた値と target の値の混ぜ方。色 (rgb) は Src × 描く値 (Op) Dst × target
 // の値、alpha は SrcAlpha / DstAlpha / OpAlpha で別に計算する。よく使う組は
-// Blends (Alpha / Additive / Multiply) にある。
+// Blends (Alpha / Additive / Multiply) にある。値の struct なので、代入や引
+// 数で渡すと写しになり、写しの field を書き換えても元の組 (Blends.Alpha など)
+// は変わらない。
 typedef struct LubBlend {
   int32_t src;       // LubGfxBlendFactor
   int32_t dst;       // LubGfxBlendFactor
@@ -666,7 +668,7 @@ typedef struct LubAudioInfo {
   int32_t snds;
 } LubAudioInfo;
 
-// 2D 物理の座標 wire format。
+// 2D 物理の座標 wire format。値の struct で、引数でも戻り値でも写しになる。
 typedef struct LubVec2d {
   float x;
   float y;
@@ -3823,16 +3825,13 @@ LUB_API LubStatus lub_phys2d_center(LubContext *ctx, LubHandle body,
                                     LubVec2d *out);
 
 LUB_API LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body,
-                                         const LubVec2d *local_point,
-                                         LubVec2d *out);
+                                         LubVec2d local_point, LubVec2d *out);
 
 LUB_API LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body,
-                                         const LubVec2d *world_point,
-                                         LubVec2d *out);
+                                         LubVec2d world_point, LubVec2d *out);
 
 LUB_API LubStatus lub_phys2d_velocity_at(LubContext *ctx, LubHandle body,
-                                         const LubVec2d *world_point,
-                                         LubVec2d *out);
+                                         LubVec2d world_point, LubVec2d *out);
 
 LUB_API LubStatus lub_phys2d_body_shapes(LubContext *ctx, LubHandle body,
                                          const LubShapeView **out,
@@ -3847,7 +3846,7 @@ LUB_API LubStatus lub_phys2d_body_contacts(LubContext *ctx, LubHandle body,
                                            int32_t *out_count);
 
 LUB_API LubStatus lub_phys2d_shape_test_point(LubContext *ctx, LubHandle shape,
-                                              const LubVec2d *point, bool *out);
+                                              LubVec2d point, bool *out);
 
 LUB_API LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
                                            const LubRaycastDesc *query,
@@ -3855,8 +3854,7 @@ LUB_API LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
 
 LUB_API LubStatus lub_phys2d_shape_closest_point(LubContext *ctx,
                                                  LubHandle shape,
-                                                 const LubVec2d *point,
-                                                 LubVec2d *out);
+                                                 LubVec2d point, LubVec2d *out);
 
 LUB_API LubStatus lub_phys2d_shape_aabb(LubContext *ctx, LubHandle shape,
                                         LubAabb *out);
@@ -3949,19 +3947,19 @@ LUB_API LubStatus lub_phys2d_counters(LubContext *ctx, LubHandle world,
                                       LubCounters *out);
 
 LUB_API LubStatus lub_phys2d_add_force(LubContext *ctx, LubHandle body,
-                                       const LubVec2d *force,
+                                       LubVec2d force,
                                        const LubCommandOpts *opts);
 
 LUB_API LubStatus lub_phys2d_add_force_center(LubContext *ctx, LubHandle body,
-                                              const LubVec2d *force,
+                                              LubVec2d force,
                                               const LubCommandOpts *opts);
 
 LUB_API LubStatus lub_phys2d_add_impulse(LubContext *ctx, LubHandle body,
-                                         const LubVec2d *impulse,
+                                         LubVec2d impulse,
                                          const LubCommandOpts *opts);
 
 LUB_API LubStatus lub_phys2d_add_impulse_center(LubContext *ctx, LubHandle body,
-                                                const LubVec2d *impulse,
+                                                LubVec2d impulse,
                                                 const LubCommandOpts *opts);
 
 LUB_API LubStatus lub_phys2d_add_torque(LubContext *ctx, LubHandle body,

@@ -105,6 +105,14 @@ host の関数の引数は C# の順に 1 つずつ渡り、戻り値は 1 つ�
 null になりうる int / float / bool は C の layout の塊 (`{ bool has; T v; }`) で渡る。
 out の引数は VM が値を受ける場所の pointer で渡る。int / float / bool の out はその pointer を C API の out にそのまま渡し、string や record などの out は C API が返した値を VM の object にしてその場所に置く。
 native の拡張が登録する host の関数も同じ形で、out は `&` を付けた項にする (`tests/vm/extension` の `ext.greet` は params が `s&s`、rets が `b`)。
+stub の struct の record は C API の struct と同じ layout の塊 (`S{Lub_Blend}`) で渡る。
+C API は struct の record を引数では値で受け (`LubVec2d point`)、戻り値と out は他の record と同じく pointer に書く。
+host の関数は引数の塊を `*(const LubVec2d *)a[k].p` で読み、戻り値と out は VM が渡す塊をそのまま C API の out の pointer に渡す。
+class の record の field の struct の record は object の中に値で置かれ、`T?` は `{ bool has; T v; }` になる。
+読み込みと reload の後に、struct の record の field の offset も C の struct と突き合わせる。
+tcs2c の接続コードは tcs2c の値の struct と C API の struct を field ごとに写し、.NET の facade は `[StructLayout(LayoutKind.Sequential)]` の struct をそのまま P/Invoke に渡す (out と戻り値は `out`)。
+struct の record は関数の引数と out と戻り値では null にできず、`T?` は class の record の field にだけ置ける。
+List、配列、callback の引数にも置けない (`lub-gen check` が止める)。
 tcs2c が process を止める誤り (配列の長さ、bit mask) は、その呼び出しの VM の fault (C# の trace 付き) になる。
 callback の fault は、その callback の class (entry か overlay) の `OnError` に message (C# の trace 付き) を渡し、`ErrorAction` で処置を決める。
 query の visitor (`Phys2d.RaycastAll` など) の fault は、query を fault にせず null を返す (message は log に出す)。
@@ -148,6 +156,9 @@ golden (`scripts/run-golden.sh`) も tcs VM の player で撮る。
 1. `cs-lib/lub_stub.cs` の `Lub` の下に PascalCase で宣言 + doc comment。
    stub の class も継承を持たない (TinyC# と同じ。`lub-gen` が止める)。
    共通の field は各 class に書き、別の型として受け渡す部分は field に持つ (`GltfMesh.Mesh` を `Io.InterleavePn` に渡すなど)
+   変えずに使い回す小さな値 (`Blend`、`Vec2d`) は `struct` (`record struct`、`readonly record struct` も) で書ける。
+   struct の record の field は int / float / bool / enum と、それだけでできた struct の record に限る (`lub-gen check` が止める)。
+   positional な parameter は持てないので、field か `{ get; init; }` の property で書く。
 2. `scripts/gen-api.sh` で header / tcs VM の host の関数 / API docs / facade を再生成
 3. C runtime に `include/lub/lub_api.h` の関数を実装(`src/`)
 4. 実装ライブラリの機能なら `cs-lib/` に TinyC# で実装する

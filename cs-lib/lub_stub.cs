@@ -213,8 +213,9 @@ namespace Lub
     /// <summary>描いた値と target の値の混ぜ方。
     /// 色 (rgb) は Src × 描く値 (Op) Dst × target の値、alpha は SrcAlpha / DstAlpha / OpAlpha で別に計算する。
     /// よく使う組は Blends (Alpha / Additive / Multiply) にある。
+    /// 値の struct なので、代入や引数で渡すと写しになり、写しの field を書き換えても元の組 (Blends.Alpha など) は変わらない。
     /// </summary>
-    public class Blend
+    public struct Blend
     {
         public Lub.Gfx.BlendFactor Src;
         public Lub.Gfx.BlendFactor Dst;
@@ -2686,8 +2687,9 @@ namespace Lub
     // ----------------------------------------------------------------- Phys2d
 
     /// <summary>2D 物理の座標 wire format。
+    /// 値の struct で、引数でも戻り値でも写しになる。
     /// </summary>
-    public class Vec2d
+    public struct Vec2d
     {
         public float X;
         public float Y;
@@ -3330,8 +3332,8 @@ namespace Lub
     {
         public float Mass;
         public float Inertia;
-        public Vec2d Center = new Vec2d();
-        public Vec2d LocalCenter = new Vec2d();
+        public Vec2d Center;
+        public Vec2d LocalCenter;
     }
 
     public class Aabb
@@ -3443,7 +3445,7 @@ namespace Lub
         public string B = "";
         public bool Valid;
         public bool CollideConnected;
-        public Vec2d Force = new Vec2d();
+        public Vec2d Force;
         public float Torque;
         public float LinearSeparation;
         public float AngularSeparation;
