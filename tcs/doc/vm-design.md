@@ -327,13 +327,31 @@ tcs2c と同じくこれを読み替える。
 
 ### 8.5 host 関数
 
-- `CALLN` は host が登録した native 関数を呼ぶ。native の型は
-  `TvmStatus fn(TvmCtx *ctx, TvmSlot *args)` で、結果は `args` から書く
-- module は使う host 関数を名前と引数型の hash で import し、読み込み時に
-  host の登録表と照合する。名前が無い、または hash が違えば読み込みエラー
-  (stub と runtime の食い違いを実行前に止める)
-- host から VM の関数を呼ぶのは `tvm_call` (callback を含む)。native の中から
-  VM に戻る入れ子を許し、入れ子の深さを VM が数える (§10.3)
+- host の関数は runtime の関数と同じ `CALLR a, b, #c` で呼ぶ。
+  host の型は `TvmStatus fn(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user)`。
+- module は使う host の関数を名前で import し、読み込み時に host の登録表 (`tvm_host`) と照合する。
+  名前が無いか、呼び出しの形が登録と合わなければ読み込みエラーにする (stub と runtime の食い違いを実行前に止める)。
+- register の中では値型は葉のまま持つ (`a` からは引数の葉、`b` からは戻り値の葉と out の葉が並び、VM の中の呼び出しと同じ形)。
+  host の境界でだけ、struct を C の layout (doc/object-model.md §5) の塊に写す。
+- 登録は、C# の引数の順に並べた項の列と、戻り値の項で書く (書き方は `tcsvm.h`)。
+  項は 1 葉の値 (`i` `f` `b` `s` `o`)、struct の値 `S{型}` (型は IL の型の名前で、`T?` は `S{Eng_Vec2?}`)、前に `&` を付けた out のどれか。
+- 値の struct は、VM が引数の葉を一時の塊に詰めて `args[k].p` に渡す。
+  host は C の struct として読む (`*(const Vec2 *)args[k].p`) ので、C の API を包む host は struct をそのまま値で渡せる。
+- out は、VM が 0 で埋めた場所を `args[k].p` に渡し、host が pointer の先に書く。
+  int / float / bool / 参照の out の場所は結果の register そのもの (slot の先頭の `int32_t` / `float` / 1 byte の `bool` / `void *`) で、host が書いた参照は frame の register にあるので GC の root になる。
+  struct の out の場所は一時の塊で、host から戻ったら VM が結果の register (out の葉) に写す。
+  `rets` は戻り値だけで、out の値は入らない。
+- struct の戻り値は、host が `rets[0].p` の塊に書き、VM が戻り値の葉に写す。
+- 塊にできる struct の field は int / float / bool / enum と、それだけでできた struct (`T?` は `{ bool has; T v; }`) だけ。
+  参照の field を持つ struct は、塊に置いた参照が GC から見えないので、読み込みで断る。
+- 写し方 (項ごとの葉の register、塊の offset、領域の大きさ) は、読み込みで module の型の表から作る (`tcsvm_host.c` の `tvm_host_plans`)。
+  検査は CALLR ごとに、register の葉の種類を struct の葉と照らす。
+  `S` も `&` も無い関数は、register をそのまま `args` / `rets` に渡す。
+- 一時の領域 (host に渡す引数の列、戻り値の slot、塊) は VM の stack の今の frame の後ろに取る。
+  host が `tvm_invoke` で VM に戻ると、入れ子の frame はその後ろから積むので、入れ子で呼ばれた host の関数の塊とは重ならない。
+- host から VM の関数を呼ぶのは `tvm_call` / `tvm_invoke` (callback を含む)。
+  host の関数の中から VM に戻る入れ子を許し、入れ子の深さを VM が数える (§10.3)。
+- `ref` / `in` の引数は C# のサブセットに無い (TCS1001) ので、`&` は out だけに使う。
 
 ## 9. module 形式と読み込み
 
@@ -565,17 +583,19 @@ const char *tvm_string_data(const void *string, size_t *len);
 
 - host の関数の名前は IL の host の名前 (`--ref` の stub の `Eng.Gfx.Begin` は `eng.gfx.begin`、static の値
   `Gfx.MainTex` は引数の無い `eng.gfx.main_tex`)。enum の定数は module に literal で入る
-- params / rets は葉の種類の列 (`i` int と enum、`f` float、`b` bool、`s` string、`o` ほかの参照)。struct は葉に
-  展開する。module が使う host の関数が無いか、呼び出しの形が合わなければ読み込みエラー
+- params は C# の引数の順の項、rets は戻り値の項で書く (`i` int と enum、`f` float、`b` bool、`s` string、`o` ほかの参照、`S{型}` struct の値、params の `&` は out)。
+  struct と out は C の layout の塊と pointer で渡る (§8.5)。
+  module が使う host の関数が無いか、struct の型が module に無いか塊にできないか、呼び出しの形が合わなければ読み込みエラーにする。
+- `--ref` の stub の struct (`record struct` / `readonly record struct` を含む) は module の型の表に入り、VM の中ではほかの struct と同じ値型になる。
+  object initializer の `new Vec2 { X = 1 }` は、0 の値に field を入れる。
 - stub の data class (record) の object は型記述子の layout を持ち、host は field の offset を名前で引いて読み書きする
   (doc/object-model.md §5)。型の名前は IL の名前 (`Eng_Opts`)、field は IL の名前 (`title`)
 - 回収は interpreter の地点とフレーム境界だけなので、host の関数の中と、host が object を作って `tvm_call` に渡す
   までの間は回収されない
 - `tvm_find` は関数表の番号を返し、reload は番号を保たないので、host は reload の後に引き直す
-- 検査: `tcsvm/tests/host/` (host_test.c が stub の面を登録して Game を呼ぶ。`tcsvm/run-tests.sh`)
-
-未実装: host の関数の out 引数 (Lua の multi-return)、host への callback (delegate を host が呼ぶ)、frame を跨いで
-host が VM の object を持つ handle (`tvm_hold`)。
+- 検査: `tcsvm/tests/host/` (`tcsvm/run-tests.sh`)。
+  host_test.c が stub の面を登録して Game を呼ぶ。
+  struct の値と戻り値、scalar と struct の out、入れ子の struct、`T?`、host から VM に戻る入れ子、登録が module と合わないときの読み込みの拒否 (Reject.cs) を見る。
 
 ### 13.2 lub への feature request
 
@@ -584,13 +604,11 @@ tcs からは lub を変えない (CLAUDE.md の参考リポジトリの扱い)�
 
 | 項目 | 内容 |
 |---|---|
-| binding の生成 | `lub-gen vm`: `cs-lib/lub_stub.cs` から、関数ごとに `tvm_host` の登録と、VM の値から C API の引数を作る glue を生成する (`lub-gen lua` / `lub-gen tcs` と同じ記述から)。record の引数 (`ConfigOpts` 等) は `tvm_field_offset` で引いた offset から C の struct に写す (offset は読み込みの後に 1 回引いて持つ)。List / 配列の引数は要素の葉を読む API を tcs に足す (下の残り) |
+| binding の生成 | `lub-gen vm`: `cs-lib/lub_stub.cs` から、関数ごとに `tvm_host` の登録と、VM の値から C API の引数を作る glue を生成する (`lub-gen lua` / `lub-gen tcs` と同じ記述から)。record の引数 (`ConfigOpts` 等) は `tvm_field_offset` で引いた offset から C の struct に写す (offset は読み込みの後に 1 回引いて持つ)。List / 配列の引数は `tvm_list_data` / `tvm_array_data` で要素を読む |
 | host | `src/vm_host.c`: `tcs_host.c` と同じ entry 契約 (OnInit / OnEvent / OnFrame / OnQuit、Quit の扱い) を VM で行う。`EventData` は `tvm_object_new` で作って `tvm_call` に渡す。フレームごとに `tvm_frame_end` |
 | reload の導線 | `lub Game.csproj` の watch が `tcs2vm --watch --ref cs-lib/lub_stub.cs --export 'Game.*'` の stream を読み、フレーム境界で `tvm_apply_batch`、reload の後に entry を `tvm_find` で引き直す。`restart_required` は -o を読み直す |
 | web | player の wasm に tcsvm を入れる。playground の worker は `VmSession` (tcsvm/Emitter。`tcs2vm --watch` と同じ増分 session) の結果を ArrayBuffer (transferable) で送り、player が `tvm_apply_batch` し、ACK で「synced rev N」を出す。tcs 側は済み: WasmCompiler の `VmExports.Open(request)` / `Update(epoch, path, content)` が module / batch を base64 で返す (`WasmCompiler/vm-smoke.mjs` が実ブラウザで確かめる)。lub の gen-tcs が新しい publish を取り込むこと |
 | 検証 | native gate の frame digest 比較 (`--digest`) に VM を加える (tcs→Lua、.NET、VM の 3 つが一致) |
-
-tcs 側に残る前提: host の関数の out 引数、callback、List / 配列の要素を host が読む API、handle (`tvm_hold`)。
 
 ### 13.3 watch の stream
 

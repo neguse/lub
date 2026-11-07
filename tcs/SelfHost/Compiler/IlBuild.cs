@@ -1700,16 +1700,17 @@ public sealed class IlBuild
         if (value == null || outs.Count == 0) return null;
         // 値の無いものは文の位置だけ
         if (call.Sym!.Type.Kind == TypeKind.Void) return null;
-        return new IlIife(RetMultiAssign(outs, value), null);
+        return new IlIife(RetMultiAssign(outs, value, call.Sym!.Type), null);
     }
 
-    private static List<IlStat> RetMultiAssign(List<IlExpr> outs, IlExpr value)
+    // 戻り値の local は型を持つ (C と VM は host の関数の戻り値をこの型の変数で受ける)
+    private static List<IlStat> RetMultiAssign(List<IlExpr> outs, IlExpr value, TypeSym ret)
     {
         var targets = new List<IlExpr>();
         targets.Add(new IlVar("__tcs_ret", null));
         foreach (var o in outs) targets.Add(o);
         var stats = new List<IlStat>();
-        stats.Add(new IlLocal("__tcs_ret", null, null, null));
+        stats.Add(new IlLocal("__tcs_ret", null, IlTypes.Display(ret), null));
         stats.Add(new IlMultiAssign(targets, One(value), false, null));
         stats.Add(new IlReturn(new IlVar("__tcs_ret", null), null));
         return stats;
@@ -1725,7 +1726,7 @@ public sealed class IlBuild
             acc.Add(new IlMultiAssign(outs, One(value), false, origin));
             return true;
         }
-        acc.Add(new IlCallStat(new IlIife(RetMultiAssign(outs, value), null), origin));
+        acc.Add(new IlCallStat(new IlIife(RetMultiAssign(outs, value, call.Sym!.Type), null), origin));
         return true;
     }
 

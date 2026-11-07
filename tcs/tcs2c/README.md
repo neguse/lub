@@ -236,9 +236,13 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
   user subclass が同じシグネチャで再宣言 (override / 隠蔽) していれば、
   実行時型で user 実装と host 関数を振り分ける (シグネチャの違う同名は飛ばして
   祖先の実装を探す)。`base.M(...)` は振り分けず host 関数を直接呼ぶ
-- `out` parameter は pointer 渡し (`TcsString **`、`int32_t *`)。戻り値のある
-  out 呼び出しと同名 overload は拒否。`out _` は呼び出し側の一時変数
-- nullable スカラ (`int?`) は `TcsOptI32` 等の **値渡し** (box しない)
+- C# の `T` は C の `T`、`out T` は宣言の位置の `T *` (`TcsString **`、`int32_t *`、`Tcs_Vec2 *`) で、戻り値はそのまま C の戻り値。
+  戻り値と out の両方を持つ呼び出し (`bool Try(int x, out float y)`) は、戻り値を受けて out を pointer の先から読む。
+  同名 overload は拒否する。
+  `out _` は呼び出し側の一時変数を渡す。
+- `--ref` の stub の struct (`record struct` / `readonly record struct` を含む) は生成 C の struct (`Tcs_<型>`) の値で渡し、値で返す。
+  `new Vec2 { X = 1 }` は 0 の値に field を入れる。
+- nullable (`int?`、struct の `T?`) は `TcsOptI32` / `TcsOpt_S_<型>` 等の **値渡し** (box しない)
 - 外部データ class は `Dictionary` の key にできる。同一性は `host_value`
   (同じ handle の別 wrapper で引ける。`host_value` が 0 の object は pointer
   同一性)。`==` は pointer 比較のまま
@@ -258,6 +262,6 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
   `tcs_lib_heap_bytes()` / `tcs_lib_heap_objects()` は旧世代 + nursery の
   managed heap 統計 (process のメモリではない)
 - 検証: `bash tcs2c/verify-host.sh` (typed options / enum / nullable 既定値 /
-  out string / scalar entry 引数 / 条件アクセス / runtime services)、
+  out string / struct の値と戻り値と out / 戻り値のある out / scalar entry 引数 / 条件アクセス / runtime services)、
   `bash tcs2c/verify-gc.sh` (host ループでの root 保持 / 循環 garbage の回収 /
   heap の有界性)

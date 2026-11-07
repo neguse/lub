@@ -95,8 +95,8 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
       (`FuzzDifferentialTests`)
 - [ ] V3: host 連携。済み (done.md): `tvm_host` (host の関数表)、host が VM の object と string を読み書きする API、
       `tcs2vm --ref` (stub の関数・値・record)、`tcs2vm --watch` の stream と `tvm_apply_batch`、lub への feature request
-      (vm-design §13.2)。残り:
-  - [ ] host の関数の out 引数、host への callback、List / 配列の要素を host が読む API、handle (`tvm_hold`)
+      (vm-design §13.2)。
+      host の関数の struct と out (C の layout の塊と pointer、vm-design §8.5)、host への callback (`tvm_invoke`)、List / 配列の要素を host が読む API、handle (`tvm_hold`) も済み。残り:
   - [ ] lub 側 (`lub-gen vm`、`vm_host.c`、watch の導線) は lub の作業 (feature request)
 - [ ] V4: hot reload。済み (done.md、object-model M-3): `tvm_apply` (共有の計画と walker、layout を変える移行、
       static、closure の付け替え、initializer と OnReload)、`tcs2vm --reload-from`、`tcsvm --reload`、

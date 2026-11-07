@@ -28,6 +28,29 @@ public static class Game
         Console.WriteLine((int)(float)quad);
     }
 
+    // struct と out を C の layout の塊で host に渡す
+    public static void Structs()
+    {
+        var a = new Vec2 { X = 1, Y = 2 };
+        var b = new Vec2 { X = 3, Y = 4 };
+        Console.WriteLine(Phys.Dot(a, b));
+        var box = new Box2 { Min = a, Max = b, Solid = true, Layer = Layer.Front };
+        var c = Phys.Center(box);
+        Console.WriteLine(c.X + " " + c.Y);
+        Phys.Size(box, out var size, out var solid);
+        Console.WriteLine(size.X + " " + size.Y + " " + solid);
+        bool found = Phys.Pick(7, out Hit hit);
+        bool missing = Phys.Pick(-1, out Hit none);
+        Console.WriteLine(found + " " + hit.Id + " " + hit.T + " " + missing + " " + none.Id + " " + none.T);
+        Hit? near = Phys.Cast(a, 10);
+        Hit? far = Phys.Cast(b, 1);
+        Console.WriteLine(near.HasValue + " " + near.Value.Id + " " + near.Value.T + " " + far.HasValue);
+        Console.WriteLine(Phys.Score(near, 1) + " " + Phys.Score(far, 1) + " " + Phys.Score(null, 2));
+        // 中の Center の塊が外の Apply の塊を上書きすると、Apply が足す v が (4, 8) に化ける
+        var moved = Phys.Apply(v => Phys.Center(new Box2 { Min = new Vec2 { X = v.X * 4, Y = v.Y * 4 } }), a);
+        Console.WriteLine(moved.X + " " + moved.Y);
+    }
+
     public static void OnEvent(Ev e)
     {
         seen.Add(e.Kind + ":" + e.X);

@@ -13,16 +13,45 @@ static char *dup(const char *s) {
   return p;
 }
 
+/* 種類の列の 1 項 (tcsvm.h): 前に & (out) を付けてよい i f b s o か S{型の名前}。読めたら次の位置、読めなければ NULL */
+static const char *host_token(const char *p, char *kind, bool *byref, const char **name, size_t *len) {
+  *byref = *p == '&';
+  if (*byref)
+    p++;
+  *name = NULL;
+  *len = 0;
+  if (*p && strchr("ifbso", *p)) {
+    *kind = *p;
+    return p + 1;
+  }
+  if (p[0] != 'S' || p[1] != '{')
+    return NULL;
+  const char *end = strchr(p + 2, '}');
+  if (!end || end == p + 2)
+    return NULL;
+  *kind = 'S';
+  *name = p + 2;
+  *len = (size_t)(end - (p + 2));
+  return end + 1;
+}
+
 int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets, TvmHostFn fn, void *user) {
   /* 読み込んだ後に足すと、module が持つ host の関数の pointer がずれる */
   if (vm->nfuncs || !name || !params || !rets || !fn)
     return 0;
-  for (const char *p = params; *p; p++)
-    if (!strchr("ifbso", *p))
+  char kind;
+  bool byref;
+  const char *tname;
+  size_t tlen;
+  for (const char *p = params; *p;)
+    if (!(p = host_token(p, &kind, &byref, &tname, &tlen)))
       return 0;
-  for (const char *p = rets; *p; p++)
-    if (!strchr("ifbso", *p))
+  /* 戻り値は 1 つだけで、& は付かない (out は & の引数) */
+  if (*rets) {
+    const char *p = host_token(rets, &kind, &byref, &tname, &tlen);
+    if (!p || byref || *p)
       return 0;
+  }
   if (vm->nhosts == vm->caphosts) {
     uint32_t cap = vm->caphosts ? vm->caphosts * 2 : 32;
     TvmIntrinsic *h = (TvmIntrinsic *)realloc(vm->hosts, cap * sizeof(TvmIntrinsic));
@@ -49,6 +78,195 @@ int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets, 
 }
 
 TvmStatus tvm_host_fault(TvmVm *vm, const char *message) { return tvm_fault_msg(vm, message); }
+
+/* ---- struct と out の写し (doc/vm-design.md §8.5) ----
+   register の葉を、型の表の layout (doc/object-model.md §5) の C の struct の塊に写す。
+   塊にする struct の葉は int / float / bool だけ (参照は塊の中で GC から見えない)。 */
+
+/* S{name} の型: 型の表の struct で、葉に参照が無いもの */
+static const TvmType *plan_struct(TvmVm *vm, const TvmIntrinsic *in, const char *name, size_t len) {
+  for (uint32_t i = 0; i < vm->ntypes; i++) {
+    const TvmType *t = &vm->types[i];
+    if (strlen(t->name) != len || memcmp(t->name, name, len) != 0)
+      continue;
+    if (t->tkind != TVM_T_STRUCT) {
+      tvm_set_error(vm, "host %s: %s is not a struct", in->name, t->name);
+      return NULL;
+    }
+    for (uint32_t k = 0; k < t->nleaves; k++)
+      if (t->leaves[k].kind == TVM_K_REF) {
+        tvm_set_error(vm,
+                      "host %s: struct %s has a reference field (only int, float, bool, enum and structs of them cross "
+                      "as a block)",
+                      in->name, t->name);
+        return NULL;
+      }
+    return t;
+  }
+  tvm_set_error(vm, "host %s: no struct type %.*s in the module", in->name, (int)len, name);
+  return NULL;
+}
+
+/* *p の 1 項を解いて進める。葉の register は値なら *in_at、out なら *out_at から、struct の塊は *block から (どれも進める) */
+static bool plan_arg(TvmVm *vm, const TvmIntrinsic *in, const char **p, TvmHostArg *x, uint32_t *in_at,
+                     uint32_t *out_at, uint32_t *block) {
+  const char *name;
+  size_t len;
+  *p = host_token(*p, &x->kind, &x->byref, &name, &len);
+  uint32_t *at = x->byref ? out_at : in_at;
+  x->st = NULL;
+  x->reg = *at;
+  x->block = 0;
+  if (x->kind != 'S') {
+    *at += 1;
+    return true;
+  }
+  if (!(x->st = plan_struct(vm, in, name, len)))
+    return false;
+  *at += x->st->nleaves;
+  x->block = *block;
+  *block += (x->st->size + 7u) / 8u * 8u;
+  return true;
+}
+
+void tvm_host_plans_free(TvmHostPlan **plans, uint32_t n) {
+  if (!plans)
+    return;
+  for (uint32_t i = 0; i < n; i++)
+    if (plans[i]) {
+      free(plans[i]->args);
+      free(plans[i]);
+    }
+  free(plans);
+}
+
+bool tvm_host_plans(TvmVm *vm) {
+  vm->host_plans = (TvmHostPlan **)calloc(vm->nintrinsics ? vm->nintrinsics : 1, sizeof(TvmHostPlan *));
+  if (!vm->host_plans) {
+    tvm_set_error(vm, "out of memory");
+    return false;
+  }
+  for (uint32_t i = 0; i < vm->nintrinsics; i++) {
+    const TvmIntrinsic *in = vm->intrinsics[i];
+    /* 葉の種類の文字だけの関数は register をそのまま渡す (S と & の無い列) */
+    if (!in->host || !(strchr(in->params, 'S') || strchr(in->params, '&') || strchr(in->rets, 'S')))
+      continue;
+    TvmHostPlan *plan = (TvmHostPlan *)calloc(1, sizeof(TvmHostPlan));
+    uint32_t n = 0;
+    char kind;
+    bool byref;
+    const char *name;
+    size_t len;
+    for (const char *p = in->params; *p; n++)
+      p = host_token(p, &kind, &byref, &name, &len);
+    if (plan)
+      plan->args = (TvmHostArg *)calloc(n ? n : 1, sizeof(TvmHostArg));
+    if (!plan || !plan->args) {
+      free(plan);
+      tvm_set_error(vm, "out of memory");
+      return false;
+    }
+    vm->host_plans[i] = plan;
+    plan->nargs = n;
+    /* 結果の register: 戻り値の葉、続けて out の葉 (C# の宣言の順)。値の引数の register は a から */
+    uint32_t in_at = 0, out_at = 0, block = 0;
+    const char *r = in->rets;
+    if (*r && !plan_arg(vm, in, &r, &plan->ret, &out_at, &out_at, &block))
+      return false;
+    const char *p = in->params;
+    for (uint32_t k = 0; k < n; k++)
+      if (!plan_arg(vm, in, &p, &plan->args[k], &in_at, &out_at, &block))
+        return false;
+    plan->nslots = n + 1 + block / 8u;
+  }
+  return true;
+}
+
+static void pack(const TvmType *st, const TvmSlot *r, char *block) {
+  for (uint32_t k = 0; k < st->nleaves; k++) {
+    char *q = block + st->leaves[k].offset;
+    switch (st->leaves[k].kind) {
+    case TVM_K_I32:
+      memcpy(q, &r[k].i, 4);
+      break;
+    case TVM_K_F32:
+      memcpy(q, &r[k].f, 4);
+      break;
+    default: /* bool は 1 byte */
+      *(uint8_t *)q = r[k].i != 0;
+      break;
+    }
+  }
+}
+
+static void unpack(const TvmType *st, const char *block, TvmSlot *r) {
+  for (uint32_t k = 0; k < st->nleaves; k++) {
+    const char *q = block + st->leaves[k].offset;
+    r[k].u = 0;
+    switch (st->leaves[k].kind) {
+    case TVM_K_I32:
+      memcpy(&r[k].i, q, 4);
+      break;
+    case TVM_K_F32:
+      memcpy(&r[k].f, q, 4);
+      break;
+    default:
+      r[k].i = *(const uint8_t *)q != 0;
+      break;
+    }
+  }
+}
+
+TvmStatus tvm_host_call(TvmVm *vm, const TvmIntrinsic *in, const TvmHostPlan *plan, TvmSlot *ra, TvmSlot *rb) {
+  /* 呼び出しの間の領域は VM の stack の今の frame の後ろ (CALLR の SAVE が vm->top に置いた所)。
+     host が tvm_invoke で VM に戻ると、入れ子の frame はこの領域の後ろから積むので、入れ子の host の関数の塊とは重ならない。 */
+  TvmSlot *base = vm->top;
+  if ((size_t)(vm->stack_end - base) < plan->nslots)
+    return tvm_fault_msg(vm, "stack overflow");
+  TvmSlot *args = base, *ret = base + plan->nargs;
+  char *blocks = (char *)(ret + 1);
+  memset(base, 0, sizeof(TvmSlot) * plan->nslots);
+  for (uint32_t k = 0; k < plan->nargs; k++) {
+    const TvmHostArg *x = &plan->args[k];
+    TvmSlot *r = (x->byref ? rb : ra) + x->reg;
+    if (x->st) {
+      /* out の struct は 0 の塊、値の struct は葉を写した塊 */
+      if (!x->byref)
+        pack(x->st, r, blocks + x->block);
+      args[k].p = blocks + x->block;
+    } else if (x->byref) {
+      /* out の scalar は結果の register そのもの (int32_t / float / bool / 参照は slot の先頭)。
+         参照は frame の register なので、host が書いた後に VM に戻っても GC の root になる。 */
+      r->u = 0;
+      args[k].p = r;
+    } else {
+      args[k] = *r;
+    }
+  }
+  TvmSlot *rets = rb;
+  if (plan->ret.st) {
+    ret->p = blocks + plan->ret.block;
+    rets = ret;
+  }
+  vm->top = base + plan->nslots;
+  TvmStatus st = in->host(vm, args, rets, in->user);
+  vm->top = base;
+  if (st != TVM_OK)
+    return st;
+  /* 塊を結果の register に戻す。bool の out は 0 / 1 に揃える */
+  if (plan->ret.st)
+    unpack(plan->ret.st, blocks + plan->ret.block, rb);
+  for (uint32_t k = 0; k < plan->nargs; k++) {
+    const TvmHostArg *x = &plan->args[k];
+    if (!x->byref)
+      continue;
+    if (x->st)
+      unpack(x->st, blocks + x->block, rb + x->reg);
+    else if (x->kind == 'b')
+      rb[x->reg].i = *(const uint8_t *)&rb[x->reg] != 0;
+  }
+  return TVM_OK;
+}
 
 static const TvmType *find_type(TvmVm *vm, const char *name) {
   for (uint32_t i = 0; i < vm->ntypes; i++)

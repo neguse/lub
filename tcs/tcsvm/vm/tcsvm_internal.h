@@ -36,6 +36,7 @@ typedef struct TvmStaticField {
 } TvmStaticField;
 
 typedef struct TvmIntrinsic TvmIntrinsic;
+typedef struct TvmHostPlan TvmHostPlan;
 
 /* interface の method の呼び出し先の名前と関数型 (CALLI の #c) */
 typedef struct TvmSelector {
@@ -289,6 +290,8 @@ struct TvmVm {
   TvmSelector *selectors;
   uint32_t nintrinsics;
   const TvmIntrinsic **intrinsics; /* module の runtime 関数の番号 → tvm_intrinsics か host の関数 */
+  /* intrinsics と同じ番号の、struct か out を写す host の関数の呼び方 (module の型で解く。写さない関数は NULL) */
+  TvmHostPlan **host_plans;
   /* host の関数 (tvm_host。名前と種類の列は複製して持つ) */
   TvmIntrinsic *hosts;
   uint32_t nhosts, caphosts;
@@ -426,7 +429,8 @@ const TvmType *tvm_type_of(TvmVm *vm, const void *o);
 
 /* runtime の関数 (CALLR)。params / rets は種類の列:
    i int、f float、b bool、s string、o 任意の ref、L List、A 配列、D Dictionary、F closure、
-   e arg0 (List / 配列) の要素 (1 葉)、k arg0 (Dictionary) の key、r arg0 と同じ型 */
+   e arg0 (List / 配列) の要素 (1 葉)、k arg0 (Dictionary) の key、r arg0 と同じ型。
+   host の関数 (tvm_host) の列は tcsvm.h の書き方 (i f b s o、S{型}、前に & の out) */
 typedef TvmStatus (*TvmIntrinsicFn)(TvmVm *vm, TvmSlot *args, TvmSlot *rets);
 struct TvmIntrinsic {
   const char *name;
@@ -436,6 +440,29 @@ struct TvmIntrinsic {
   TvmHostFn host; /* host の関数 (tvm_host)。fn の代わりに user を付けて呼ぶ */
   void *user;
 };
+/* host の関数の 1 つの引数か戻り値 (tvm_host の種類の列の 1 項を module の型で解いたもの。doc/vm-design.md §8.5) */
+typedef struct TvmHostArg {
+  char kind;         /* 'i' 'f' 'b' 's' 'o'、struct は 'S' */
+  bool byref;        /* '&' (out): 引数の slot は値の場所を指す。呼び出しの後、値は CALLR の結果の register にある */
+  const TvmType *st; /* struct の型 ('S'。葉は int / float / bool だけ) */
+  uint32_t reg;      /* 葉の先頭の register (値の引数は CALLR の a から、戻り値と out は b から) */
+  uint32_t block;    /* struct の塊の場所 (塊の領域の先頭からの byte。8 に揃える) */
+} TvmHostArg;
+
+/* struct か out を持つ host の関数の呼び方。
+   呼び出しの間、VM の stack の今の frame の後ろに nslots の slot を取り、host に渡す引数の列 (nargs)、戻り値の slot (1)、struct の塊を並べる (入れ子の呼び出しはその後ろから積む)。 */
+struct TvmHostPlan {
+  uint32_t nargs;
+  TvmHostArg *args;
+  TvmHostArg ret; /* kind が 0 なら戻り値なし */
+  uint32_t nslots;
+};
+/* 読み込み (layout の後): module が呼ぶ host の関数の呼び方を module の型で作る。合わなければ理由を tvm_error に置いて false */
+bool tvm_host_plans(TvmVm *vm);
+void tvm_host_plans_free(TvmHostPlan **plans, uint32_t n);
+/* CALLR: plan で引数を写して host の関数を呼ぶ。ra / rb は CALLR の a / b の register */
+TvmStatus tvm_host_call(TvmVm *vm, const TvmIntrinsic *in, const TvmHostPlan *plan, TvmSlot *ra, TvmSlot *rb);
+
 extern const TvmIntrinsic tvm_intrinsics[];
 extern const size_t tvm_nintrinsics;
 TvmStatus tvm_fault_msg(TvmVm *vm, const char *what);

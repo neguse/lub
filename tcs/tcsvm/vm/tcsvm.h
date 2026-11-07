@@ -73,12 +73,23 @@ void tvm_heap_refs(void *payload, TvmSlotFn fn);
 TvmStatus tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size);
 
 /* ---- host (doc/vm-design.md §8.5、§13) ----
-   host の関数は tvm_load の前に名前で登録する。名前は IL の host の名前 (--ref の stub の `Eng.Gfx.Begin` なら
-   "eng.gfx.begin"、static の値 `Gfx.MainTex` は引数の無い "eng.gfx.main_tex")。params / rets は葉の種類の列:
-   i int (enum を含む)、f float、b bool、s string、o ほかの参照 (host の data class の object、List など)。
-   struct の値は葉に展開する。module が使う host の関数が無いか、呼び出しの形が合わなければ読み込みエラー。
-   host の関数は args の値を読み、rets に書く。失敗は tvm_host_fault の戻り値を返す (C# の trace が付く)。
-   host の関数の中では回収は起きない (回収は interpreter の地点とフレーム境界だけ)。 */
+   host の関数は tvm_load の前に名前で登録する。
+   名前は IL の host の名前 (--ref の stub の `Eng.Gfx.Begin` なら "eng.gfx.begin"、static の値 `Gfx.MainTex` は引数の無い "eng.gfx.main_tex")。
+   params は C# の引数の順に並べた項の列、rets は戻り値の項 (void なら "") で、項は次のどれか:
+     i int (enum を含む)、f float、b bool、s string、o ほかの参照 (host の data class の object、List、delegate など)
+     S{型}  struct の値 (型は IL の型の名前で tvm_type と同じ綴り。stub の `Eng.Vec2` は "Eng_Vec2"、`Eng.Vec2?` は "Eng_Vec2?"、`int?` は "int?")
+     &項    params だけに書ける out の引数 ("&i"、"&S{Eng_Vec2}" など)
+   S{型} の struct の field は int / float / bool / enum と、それだけでできた struct に限る。
+   書き方が誤りなら tvm_host は 0 を返す。
+   args[k] は params の k 番目の項で、i / f / b / s / o は値、S{型} は C の layout (doc/object-model.md §5) の塊を指す pointer になる。
+   host は塊を C の struct として読む (`*(const Vec2 *)args[k].p`)。
+   &項の args[k].p は host が値を書く場所を指す (int32_t *、float *、bool * (1 byte)、参照の slot の void **、S{型} は塊)。
+   out の場所は 0 で始まり、host が戻ると VM が C# の out の変数に入れる。
+   rets は戻り値だけで、i / f / b / s / o は rets[0] に値を書き、S{型} は rets[0].p の塊に書く。
+   塊と out の場所は呼び出しの間だけ有効で、host の関数が tvm_invoke で VM に戻り、入れ子で host の関数が呼ばれても残る。
+   module が使う host の関数が無いか、S{型} が module の struct でないか参照の field を持つか、呼び出しの形が登録と合わなければ読み込みエラーにする。
+   失敗は tvm_host_fault の戻り値を返す (C# の trace が付く)。
+   host の関数の中では、tvm_invoke などで VM に戻らない限り回収は起きない (回収は interpreter の地点とフレーム境界だけ)。 */
 typedef TvmStatus (*TvmHostFn)(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user);
 int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets, TvmHostFn fn, void *user);
 TvmStatus tvm_host_fault(TvmVm *vm, const char *message);

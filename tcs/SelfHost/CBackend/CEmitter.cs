@@ -7421,6 +7421,7 @@ public sealed class CEmitter
     // object initializer (new Options { X = ... }) で作る外部 data class
     private string RenderObjectInitializer(IlTable table, CType type)
     {
+        if (type.Kind == CTypeKind.StructVal) return RenderStructInitializer(table, type);
         if (type.Kind != CTypeKind.Ref)
         {
             CFail.Report("object initializer of non-class type: " + type.Display());
@@ -7450,7 +7451,29 @@ public sealed class CEmitter
         return "({ " + string.Join("", text) + name + "; })";
     }
 
-    // out parameter 付きの foreign 呼び出し: (a, b) = api.poll(args)
+    // object initializer (new Vec2 { X = ... }) で作る --ref の struct の値: 0 の値に、書いた順に field を入れる
+    private string RenderStructInitializer(IlTable table, CType type)
+    {
+        var name = Temp("value");
+        var text = new List<string>();
+        text.Add(type.CName + " " + name + " = {0}; ");
+        foreach (var entry in table.Entries)
+        {
+            string? key = entry.NameKey;
+            if (key == null)
+            {
+                CFail.Report("object initializer entry needs a member name");
+                return "";
+            }
+            var fieldType = _facts.StructField(type.Name!, key);
+            CheckAssignable(fieldType, entry.Value, "initializer of " + type.Name + "." + key);
+            text.Add(name + "." + Names.Field(key) + " = " + RenderCoerced(entry.Value, fieldType) + "; ");
+        }
+        return "({ " + string.Join("", text) + name + "; })";
+    }
+
+    // out parameter 付きの foreign 呼び出し: (a, b) = api.poll(args)、戻り値があれば (ret, a, b) = api.try(args)。
+    // out は変数の pointer で渡す (C# の T は C の T、out T は T *)
     private bool EmitForeignMultiAssign(IlMultiAssign multi)
     {
         ExForeignMethod? method = null;
@@ -7469,11 +7492,8 @@ public sealed class CEmitter
             }
         }
         if (method == null || callArgs == null) return false;
-        if (!CType.Same(_facts.MapType(method.ReturnType), CType.Void))
-        {
-            CFail.Report("foreign out calls with a return value are not supported");
-            return true;
-        }
+        var returnType = _facts.MapType(method.ReturnType);
+        int results = CType.Same(returnType, CType.Void) ? 0 : 1;
         var inputs = new List<ParameterFact>();
         int outCount = 0;
         foreach (var p in method.Parameters)
@@ -7482,11 +7502,11 @@ public sealed class CEmitter
             else inputs.Add(new ParameterFact(p.Name, _facts.MapType(p.Type), p.Default));
         }
         var args = CompleteArguments(inputs, callArgs, method.Name);
-        RequireArity(method.Name, multi.Targets.Count, outCount);
-        if (multi.Targets.Count != outCount) return true;
+        RequireArity(method.Name, multi.Targets.Count, results + outCount);
+        if (multi.Targets.Count != results + outCount) return true;
         var values = new List<string>();
         int input = 0;
-        int output = 0;
+        int output = results;
         foreach (var parameter in method.Parameters)
         {
             var type = _facts.MapType(parameter.Type);
@@ -7525,7 +7545,27 @@ public sealed class CEmitter
                 values.Add(value);
             }
         }
-        Line(HostName(method.Name) + "(" + string.Join(", ", values) + ");");
+        string hostCall = HostName(method.Name) + "(" + string.Join(", ", values) + ")";
+        if (results == 0)
+        {
+            Line(hostCall + ";");
+            return true;
+        }
+        if (!(multi.Targets[0] is IlVar retTarget))
+        {
+            CFail.Report("foreign return target must be a local");
+            return true;
+        }
+        if (retTarget.Name == "_" && TryResolve(retTarget.Name) == null)
+        {
+            Line(hostCall + ";");
+            return true;
+        }
+        Variable ret = multi.Declare && TryResolve(retTarget.Name) == null
+            ? DeclareLocal(retTarget.Name, returnType) : Resolve(retTarget.Name);
+        RequireType(returnType, ret.Type, method.Name);
+        Line(ret.Boxed ? "(*" + ret.CName + ") = " + hostCall + ";" : ret.CName + " = " + hostCall + ";");
+        if (ret.Boxed && NeedsBarrier(returnType)) Line("tcs_wb(" + ret.CName + ");");
         return true;
     }
 
