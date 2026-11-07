@@ -138,6 +138,7 @@ instance の field の初期化子を変えた差分では、`OnReload()` の後
 差分で移行できない変更は tcs が restart として知らせる(理由は log に出る)。
 runtime は古い VM の `OnQuit` を呼んで閉じ、その build の出力から VM を作り直して
 `OnInit` から始める。
+log には、作り直した VM の `OnInit` の前に `lub: restarted` を 1 行出す (下の `App.Restart()` の作り直しでも同じ)。
 
 - C# の変数(static と instance)はすべて初期値に戻る。物理の world も body ごと捨てる
 - key で宣言する GPU の資源と音は残り、新しい VM が同じ key で宣言すると引き継ぐ。
