@@ -473,7 +473,7 @@ public static class Sprites13
         DrawSprites(b, a);
         Profiler.EndScope("sprites.draw");
         Profiler.BeginScope("sprites.hud");
-        DrawHud(b, a, wr, fps);
+        DrawHud(b, a, wr.Value, fps);
         Profiler.EndScope("sprites.hud");
         Profiler.BeginScope("batch.flush");
         b.Flush(Blends.Alpha);

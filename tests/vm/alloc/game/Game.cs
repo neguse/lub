@@ -27,5 +27,10 @@ public static class Game
         sb.Rect(4, 0, 4, 4, Tint);
         sb.Flush();
         Gfx.EndPass();
+        Spin = Quat.Identity();
+        Area = new Rect(0, 0, 8, 8);
     }
+
+    public static Quat Spin;
+    public static Rect Area;
 }
