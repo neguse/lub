@@ -10,6 +10,14 @@ namespace Ed
         public Transform Parent;
     }
 
+    // VM の host の ABI の塊で境界を越える struct (field は scalar と、それだけの struct)
+    public struct Span
+    {
+        public float Lo;
+        public float Hi;
+        public bool Open;
+    }
+
     // X-4: content の class がこの interface を実装し、C の module が呼ぶ
     public interface ITool
     {
@@ -90,6 +98,27 @@ namespace Ed
         // content の型の object も object として持てる (reload で張り替わる)
         public static void Keep(object o) { kept = o; }
         public static object Kept() => kept;
+
+        // struct の値と戻り値、out と T? (VM は C の layout の塊と pointer で渡す)
+        public static float Width(Span s) => s.Hi - s.Lo;
+        public static Span Widen(Span s, float d) => new Span { Lo = s.Lo - d, Hi = s.Hi + d, Open = !s.Open };
+        public static bool Find(int key, out string name, out Span span)
+        {
+            if (key <= 0)
+            {
+                name = "";
+                span = default;
+                return false;
+            }
+            name = "span" + key;
+            span = new Span { Lo = key, Hi = key * 2, Open = true };
+            return true;
+        }
+        public static int? Half(int x)
+        {
+            if (x % 2 != 0) return null;
+            return x / 2;
+        }
 
         public static void OnTick(System.Action<int> f) { onTick = f; }
         public static void Decorate(System.Func<string, string> f) { decorate = f; }

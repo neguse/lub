@@ -1,4 +1,4 @@
-registered 26 editor functions
+registered 30 editor functions
 [editor] content v1 ready
 [editor] tick 10 total 10
 [editor] <tick10>
@@ -23,4 +23,5 @@ host end: hp=8 mana=3
 [editor] c classifies transform L5, tool sword, other
 [editor] vm classifies True 7 False True False True False
 [editor] c delegates in runtime 9,5,3,1,1 even@1 removed=3
-[editor] logged 21, last=c delegates in runtime 9,5,3,1,1 even@1 removed=3
+[editor] c structs width=3 open=True True span4 8 False True False half=3 False
+[editor] logged 22, last=c structs width=3 open=True True span4 8 False True False half=3 False

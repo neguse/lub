@@ -73,6 +73,12 @@ public static class Game
         var even = xs.FindIndex(Editor.IsEven());
         var removed = xs.RemoveAll(Editor.IsEven());
         Editor.Log("c delegates in runtime " + string.Join(",", xs) + " even@" + even + " removed=" + removed);
+        // C の module の struct の値と戻り値、out と T?
+        var span = Editor.Widen(new Span { Lo = 1, Hi = 3 }, 0.5f);
+        var found = Editor.Find(4, out var spanName, out var found4);
+        var missing = Editor.Find(-1, out var noName, out var none);
+        Editor.Log("c structs width=" + Editor.Width(span) + " open=" + span.Open + " " + found + " " + spanName + " " + found4.Hi
+            + " " + missing + " " + (noName == "") + " " + none.Open + " half=" + Editor.Half(6).Value + " " + Editor.Half(7).HasValue);
         Editor.Log("logged " + Editor.Logged() + ", last=" + Editor.Last());
     }
 }

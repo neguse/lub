@@ -289,7 +289,10 @@ reload の計画、walker、class の payload の形) はこのための土台�
   VM の object でない delegate に会うと関数型の sig ("i:i" など) の invoke で呼ぶ。List.Sort / FindIndex / RemoveAll などの
   runtime の関数も、C の delegate は要素の種類から作った sig の invoke で呼ぶ (`tvm_call_delegate`)。
   `Predicate<T>` / `Comparison<T>` は両側で `Func<T, bool>` / `Func<T, T, int>` と同じ関数型
-- 引数と戻り値は int / float / bool / string / class / object / delegate。out、struct、List / Dictionary は境界で呼べない
+- 引数と戻り値は int / float / bool / string / class / object / delegate と、塊にできる struct (field が int / float / bool / enum と、それだけでできた struct。`T?` も) で、out の引数も渡る。
+  glue は VM の host の ABI (vm-design §8.5) の `S{型}` と `&` の項で登録し、VM が渡す塊を C の module の struct の値に読み、out は VM が渡す場所を C の関数の `T *` に渡す。
+  VM の module はこの module の source を `--ref` に取るので、struct は両側で同じ IL の名前と layout (§5) になる。
+- 参照の field を持つ struct、List / Dictionary、interface の method の out は境界で呼べない (glue は登録せず、生成 C に理由の comment を書く)
 
 ### 10.6 容器の形
 
