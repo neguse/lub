@@ -168,7 +168,7 @@ GPU からの読み戻しは `Gfx.Readback(key)` の queue に `Gfx.ReadTexture`
 要求の次の frame のゲームの draw(overlay の draw は除く)を記録し、その frame の終わりに、同じ vertex shader と depth の設定で 1 画素だけを流し直して読み戻す。
 結果は `Gfx.PickResult()` が返す `PickHit` で、まだ届いていなければ null。
 `Draw` はその frame の中の draw の番号(0 始まり、何も描いていなければ -1)、`Site` は draw を呼んだ所の並び(内側から 1 行に 1 つ、`file:line`)。
-`Site` を作るのは player で、Lua の player では生成した Lua の source と行になる。
+`Site` を作るのは player で、tcs VM の player では VM の呼び出しの並び(C# のソースの行)になる。
 記録した draw が使う buffer と texture をその frame の中で書き換えたり作り直したりしても、描いた時の中身で引く。
 fragment shader の `discard` と透明は見ないので、透明な部分の後ろの draw は拾えない。
 流し直しの shader を実行中に compile するので、slang を持たない player(web)では `Draw` が -1 になる。
@@ -197,7 +197,6 @@ foreach (var batch in batches)
   それより大きいデータは分けて渡す。
 - `float[]` と数を渡す `FrameBufferArray` と `UseBufferArray` は、.NET と C では配列を要素ごとに読まない。
   大きいデータでは `List<float>` より速い。
-  Lua では `List<float>` と同じ速さで、配列を確保し直さずに使い回せる。
 - `UseBuffer` を毎フレーム違う大きさで宣言しても、容量の範囲で再利用するので作り直しの費用はほとんどかからない。
 
 ## テクスチャの宣言

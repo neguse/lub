@@ -8,7 +8,7 @@ using System;
 using Lub;
 using Lubx;
 
-// data を運ぶ型は readonly record struct にする (Lua は copy の地点ごとに table を作るが、readonly なら copy を省ける)。
+// data を運ぶ型は readonly record struct にする (readonly なら copy を省ける)。
 public readonly record struct Pipe(float X, float GapY);
 
 public static class Game

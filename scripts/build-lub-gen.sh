@@ -68,7 +68,7 @@ same() {
     fail=1
   fi
 }
-for verb in header lua docs facade facade-lubx model; do
+for verb in header docs facade facade-lubx model; do
   "$native" "$verb" -o "$work/native.$verb"
   "${dotnet_gen[@]}" "$verb" -o "$work/dotnet.$verb"
   same "$work/native.$verb" "$work/dotnet.$verb" "lub-gen $verb"

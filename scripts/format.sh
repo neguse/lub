@@ -3,7 +3,7 @@
 # The only config is .clang-format, which keeps LLVM style but turns off comment reflow (Japanese comments would otherwise be broken at odd ASCII/Japanese boundaries).
 #
 #   clang-format     : C/C++/Objective-C and Slang-as-HLSL (LLVM default)
-#   stylua           : Lua                     - `npm --prefix web install`
+#   stylua           : Lua の table の data (*.verts.lua) - `npm --prefix web install`
 #   prettier         : Web TS/MJS/JSON/HTML    - `npm --prefix web install`
 #   dotnet format    : C# (whitespace)         - dotnet SDK 付属
 #

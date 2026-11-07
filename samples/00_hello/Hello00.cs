@@ -7,7 +7,7 @@ public static class Hello00
 {
     public static void OnInit()
     {
-        Console.WriteLine("[lua] onInit");
+        Console.WriteLine("[hello] onInit");
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         App.Config(new ConfigOpts { Backend = backend });
         Console.WriteLine("config called");
@@ -31,6 +31,6 @@ public static class Hello00
 
     public static void OnQuit()
     {
-        Console.WriteLine("[lua] onQuit");
+        Console.WriteLine("[hello] onQuit");
     }
 }

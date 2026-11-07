@@ -95,11 +95,9 @@ jobs:
           cp -r "$kit/lub/templates/game" "$kit/mygame"
           cd "$kit/mygame"
           ../lub/bin/lub export web Game.csproj -o out
-          ../lub/bin/tcs/tcs --snapshot --entry Game Game.cs $(find ../lub/cs-lib -name '*.cs' ! -name lub_stub.cs) --ref ../lub/cs-lib/lub_stub.cs -o snapshot.lua
           test -s ../lub/manual/tcs-support-matrix.md
           test -s ../lub/COMMIT
           test -s out/index.html
-          test -s snapshot.lua
           # dotnet を PATH から外しても、一式の tcs で同じ雛形を check できること
           PATH=/usr/bin:/bin ../lub/bin/lub check Game.csproj
           # 一式の lub-gen も dotnet なしで stub を読み、雛形の接続コードを作れること (入力は tcs c と同じく、ゲームの後に cs-lib の実装)
@@ -146,7 +144,7 @@ jobs:
       - name: Install tools
         run: brew install bash ninja ccache
 
-      # tests/cs の test は C# なので、app に入れる Lua を tcs で作る。
+      # tests/cs の test は C# なので、app に入れる bytecode を tcs で作る。
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x

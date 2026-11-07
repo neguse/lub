@@ -16,7 +16,7 @@ printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_Main(); return 
 [[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\nTrue\nTrue\n9\n4\nTrue\n48000\n6\nb\nTrue\n2\n8\nTrue\nTrue\n10\n3\n2.5\nTrue\nTrue\n11\nTrue\n2\n1\n0000000000000abc\n7' ]]
 echo 'tcs2c binding: main target, handles, Bindings, array and list uniforms, voice options, nullable XR views, byte views, record results, record lists, list results, maybe results, view methods, nullable scalar results, nullable record outs, optional record fields, bit masks and callbacks passed'
 
-# bit mask の文字列は空と 17 桁以上が error (Lua と .NET の binding と同じ規則)。
+# bit mask の文字列は空と 17 桁以上が error (tcs VM と .NET の binding と同じ規則)。
 for mask_case in 'EmptyMask:empty hex string' 'LongMask:more than 16 hex digits'; do
   entry=${mask_case%%:*}
   cp tests/c/tcs_binding.c "$work/$entry.c"
@@ -40,7 +40,7 @@ fi
 grep -qF 'lub-array-length' "$work/ArrayCount.err"
 echo 'tcs2c binding: a count past the end of the array faults'
 
-# tcs2c の生成 C の Math (生成 C に埋め込まれた tcs の runtime/math) が、Lua の経路と同じ結果になること。
+# tcs2c の生成 C の Math (生成 C に埋め込まれた tcs の runtime/math) が、tcs VM の経路と同じ結果になること。
 # 期待値は tests/cs/TestMathDeterminism.cs の表 (OS ごとに分けない 1 つ)。
 dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll tests/c/tcs_math.cs -o "$work/math_game.c"
 "${CC:-cc}" "${cflags[@]}" -fno-fast-math "$work/math_game.c" -lm -o "$work/math"

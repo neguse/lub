@@ -3,7 +3,7 @@
 
 - json_escape: 1 byte は最長 6 byte (\\u00XX) に膨らむ。
 - append_json_string: 予約 len + n*6 + 4 (',' + '"' + 6n + '"' + NUL)。
-- serve_tick の reload/restart: cap = body_len*6 + 64 に "event: restart\\ndata: \"" + 6*body + "\"\\n\\n" + NUL。
+- serve_tick の tcs の frame (restart / batch / build_failed): cap = body_len*6 + 64 に "event: <名前>\\ndata: \"" + 6*body + "\"\\n\\n" + NUL。
 - handle_index: cap = page_len + entry_len*4 + 64 に、{{ENTRY}} (9 byte) を k 回 entry に置き換えた page + NUL。
   k は実際のテンプレートで数える。
 """
@@ -27,7 +27,8 @@ need = 1 + 1 + 6 * n + 1 + 1          # ',' '"' escaped '"' NUL
 ok &= prove("append_json_string reserve", [n], n >= 0, length + need <= length + n * 6 + 4)
 
 body = Int("body_len")
-hdr = len('event: restart\ndata: "')  # reload より長い方
+# serve_tick が送る event の名前のうち最も長いもの
+hdr = max(len('event: ' + e + '\ndata: "') for e in ("restart", "batch", "build_failed"))
 ok &= prove("serve_tick sse frame cap", [body], body >= 0, hdr + 6 * body + 3 + 1 <= body * 6 + 64)
 
 repo = pathlib.Path(__file__).resolve().parents[2]

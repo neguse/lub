@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# C# (TinyC#) サンプルの check / build ヘルパー (主に CI・gate 用)。
+# C# (TinyC#) サンプルの check / 変換ヘルパー (主に CI・gate 用)。
 # 対話実行は lub CLI が第一級で対応している:
-#   ./build/lub samples/<name>/<Entry>.csproj   # transpile + watch + hot reload
-#   ./build/lub samples/<name>/<Entry>.cs       # 同上 (単一ファイル指定)
+#   ./build/lub samples/<name>/<Entry>.csproj   # tcs vm --watch + hot reload
 #
 # 使い方:
-#   scripts/run-cs-sample.sh <sample> --check   # tcs check (診断のみ)
-#   scripts/run-cs-sample.sh <sample> --build   # transpile (check と同じく警告があれば失敗)
-#     出力は lub CLI と同じ samples/<sample>/.lub/<Entry>.lua
+#   scripts/run-cs-sample.sh <sample> --check   # tcs check (診断のみ。警告があれば失敗)
 #   scripts/run-cs-sample.sh <sample> --vm      # tcs vm で tcs VM の bytecode にする (samples/<sample>/.lub/<Entry>.tcsb。lub で動かす)
 #
 # entry class は <Entry>.csproj の basename (無ければ唯一の .cs の basename)。
@@ -16,8 +13,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-NAME="${1:?usage: run-cs-sample.sh <sample> --check|--build|--vm}"
-MODE="${2:?usage: run-cs-sample.sh <sample> --check|--build|--vm}"
+NAME="${1:?usage: run-cs-sample.sh <sample> --check|--vm}"
+MODE="${2:?usage: run-cs-sample.sh <sample> --check|--vm}"
 
 DIR="samples/$NAME"
 if [[ ! -d "$DIR" ]]; then
@@ -62,18 +59,13 @@ case "$MODE" in
 --check)
     exec "${TCS[@]}" check "${CS_FILES[@]}" --ref cs-lib/lub_stub.cs
     ;;
---build)
-    mkdir -p "$DIR/.lub"
-    exec "${TCS[@]}" "${CS_FILES[@]}" --ref cs-lib/lub_stub.cs --warnaserror \
-        -o "$DIR/.lub/$ENTRY_CLASS.lua" --entry "$ENTRY_CLASS"
-    ;;
 --vm)
     mkdir -p "$DIR/.lub"
     exec "${TCS[@]}" vm "${CS_FILES[@]}" --ref cs-lib/lub_stub.cs --export "$ENTRY_CLASS.*" \
         -o "$DIR/.lub/$ENTRY_CLASS.tcsb"
     ;;
 *)
-    echo "unknown mode: $MODE (--check | --build | --vm)" >&2
+    echo "unknown mode: $MODE (--check | --vm)" >&2
     exit 2
     ;;
 esac

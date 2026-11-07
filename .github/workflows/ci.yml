@@ -111,8 +111,8 @@ jobs:
   # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は mesa の version に依存し、runner の mesa はローカル生成の golden と一致しない。
   # CI の視覚 golden gate は windows job (WARP)、lavapipe golden はローカル pre-push の gate。
   # mesa を container 等で pin できたら有効化する。
-  # 形式検査 (tests/formal): hot reload と --serve の契約を TLC (Java) と z3 で検査する。
-  # 実装の主張を書いた spec なので、契約を変えたら spec も直す。
+  # 形式検査 (tests/formal): --serve の接続の片づけを全列挙で、バッファの上限を z3 で検査する。
+  # 実装の主張を書いた検査なので、契約を変えたら検査も直す。
   formal:
     needs: changes
     if: needs.changes.outputs.web_only != 'true'
@@ -120,11 +120,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
 
       - name: z3
         run: python3 -m pip install --user z3-solver==5.3.1.0
@@ -676,7 +671,6 @@ jobs:
           path: |
             build/wasm-tcs/lub.js
             build/wasm-tcs/lub.wasm
-            build/wasm-tcs/lub.data
 
       # サブパス配信 (https://host/lub/) の確認用。
       # base を付けた build を先に作って dist-sub に退避し、通常の build (base /) を dist に作る。
@@ -933,7 +927,7 @@ jobs:
         run: |
           chmod +x build-release-linux/lub
           mkdir -p build/wasm/vm
-          cp web/dist/wasm/vm/lub.js web/dist/wasm/vm/lub.wasm web/dist/wasm/vm/lub.data build/wasm/vm/
+          cp web/dist/wasm/vm/lub.js web/dist/wasm/vm/lub.wasm build/wasm/vm/
           bash scripts/web-export-gate.sh build-release-linux/lub
 
       # page が tcs2c の player を外すとき (Module._lub_tcs_shutdown) に OnQuit が一度だけ動いて止まること。

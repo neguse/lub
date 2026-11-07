@@ -26,13 +26,13 @@ endif()
 # Compiled dependencies are pinned as git submodules under third_party/ so
 # their sources live at stable in-tree paths. Run
 #   git submodule update --init
-# after cloning. Pinned versions: SDL release-3.4.16, Lua v5.5.0 (github
-# mirror), Box2D v3.1.1, Box3D v0.1.0 (alpha).
+# after cloning. Pinned versions: SDL release-3.4.16, Box2D v3.1.1, Box3D
+# v0.1.0 (alpha).
 if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL/CMakeLists.txt)
   message(FATAL_ERROR "Submodules are missing. Run: git submodule update --init")
 endif()
 
-# runtime は共有 library (lub_shared) にもなるので、静的に link する全部を PIC で作る (SDL / lua / box2d / box3d / tess2 / lub 本体)。
+# runtime は共有 library (lub_shared) にもなるので、静的に link する全部を PIC で作る (SDL / box2d / box3d / tess2 / lub 本体)。
 if(NOT LUB_WASM)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
@@ -68,37 +68,13 @@ add_subdirectory(third_party/box2d)
 # so only the library builds here.
 add_subdirectory(third_party/box3d)
 
-# Lua は素の Makefile なので、ソースを集めて static lib を作る。
-# github mirror は tarball と違い src/ を持たず、ソースが repo 直下にある。
-# ltests.c は tarball に含まれないテスト計装なので除外する。
-set(lua_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lua)
-file(GLOB LUA_SRC CONFIGURE_DEPENDS ${lua_SOURCE_DIR}/*.c)
-list(REMOVE_ITEM LUA_SRC
-  ${lua_SOURCE_DIR}/lua.c
-  ${lua_SOURCE_DIR}/onelua.c
-  ${lua_SOURCE_DIR}/ltests.c
-)
-add_library(lua_static STATIC ${LUA_SRC})
-target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR})
-# Lua の数値は int32 + float (C API の面と C# の int / float に揃える)。
-# lua.h を include する側も同じ定義を見る必要があるので PUBLIC。
-target_compile_definitions(lua_static PUBLIC LUA_32BITS)
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-  # iOS has no system(); Lua's os.execute reports "no shell" instead.
-  target_compile_definitions(lua_static PRIVATE LUA_USE_IOS)
-endif()
-
-# TinyC# の Math の超越関数 (tcs の runtime/math) と float の文字列化 (runtime/fmt)。
-# tcs の Lua 出力が呼ぶ global の tcs_math、tcs_rt (string の順序も持つ)、tcs_utf8 を lua_api.c が VM に登録する (tcs2c の生成 C は同じ実装を自分で持つ)。
+# TinyC# の Math の超越関数 (tcs の runtime/math)、float の文字列化 (runtime/fmt)、UTF-8 (runtime/utf8)。
+# tcs VM が使う (tcs2c の生成 C は同じ実装を自分で持つ)。
 # 結果が変わらないよう、積和の融合と fast-math を止めて build する。
 file(GLOB TCS_MATH_SRC CONFIGURE_DEPENDS third_party/tcs/runtime/math/*.c)
 add_library(tcs_runtime STATIC ${TCS_MATH_SRC}
-  third_party/tcs/runtime/lua/tcs_math_lua.c
   third_party/tcs/runtime/fmt/f2s.c
-  third_party/tcs/runtime/lua/tcs_rt_lua.c
-  third_party/tcs/runtime/utf8/tcs_utf8.c
-  third_party/tcs/runtime/lua/tcs_utf8_lua.c)
-target_link_libraries(tcs_runtime PRIVATE lua_static)
+  third_party/tcs/runtime/utf8/tcs_utf8.c)
 if(MSVC)
   target_compile_options(tcs_runtime PRIVATE /fp:precise)
 else()
@@ -292,7 +268,6 @@ set(LUB_SOURCES
   src/app.c
   src/api_xr.c
   src/host_api.c
-  src/lua_api.c
   src/api_core.c
   src/api_gfx.c
   src/api_bindings.c
@@ -311,8 +286,6 @@ set(LUB_SOURCES
   src/resources.c
   src/physics_box2d.c
   src/physics_box3d.c
-  src/gen/lua_api_gen.c
-  src/lua_gen_support.c
   src/shader.cpp
   src/pipeline.c
   src/capture.c
@@ -339,7 +312,7 @@ if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/backend_sdlgpu.c)
   # export の backend (`lub export`、GPU を使わない)
   list(APPEND LUB_SOURCES src/backend_export.c src/export_web.c)
-  # tcs (TinyC#) pipeline: .cs entry の transpile + watch 駆動 (native のみ)
+  # tcs (TinyC#) の子プロセス: tcs vm --watch の frame と tcs check (native のみ)
   list(APPEND LUB_SOURCES src/tcs_build.c)
   # HTTP + SSE dev server for `lub --serve Game.csproj`.
   list(APPEND LUB_SOURCES src/serve.c)
@@ -396,13 +369,15 @@ if(LUB_TCS_GAME)
   target_compile_options(lub PRIVATE -ffp-contract=off -fwrapv -fexcess-precision=standard)
 elseif(ANDROID)
   message(FATAL_ERROR "The Android player runs a tcs2c game: set LUB_TCS_GAME and LUB_TCS_BINDING")
-else()
+elseif(NOT LUB_WASM)
   add_executable(lub src/main.c)
 endif()
-target_link_libraries(lub PRIVATE lub_objs)
+if(TARGET lub)
+  target_link_libraries(lub PRIVATE lub_objs)
+endif()
 
 # tcs VM の player (src/vm_player.c): tcs vm が作った .tcsb を tcs VM で動かす。
-# VM と、その runtime のうち tcs_runtime (Lua の player の分) に無いもの (書式、並べ替え、型の表)。
+# VM と、その runtime のうち tcs_runtime に無いもの (書式、並べ替え、型の表)。
 file(GLOB TCSVM_SRC CONFIGURE_DEPENDS third_party/tcs/tcsvm/vm/*.c)
 list(FILTER TCSVM_SRC EXCLUDE REGEX "tcsvm_main\\.c$")
 add_library(tcsvm_lib STATIC ${TCSVM_SRC}
@@ -417,8 +392,8 @@ if(MSVC)
 else()
   target_compile_options(tcsvm_lib PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
-# tcs VM の player の実行物の web の設定 (web の lub_vm と、lub を add_subdirectory した自前の player が使う)。
-# 出力は <dir>/lub.{js,wasm,data}。
+# web の player の実行物の設定 (web の lub_vm、tcs2c の web の lub、lub を add_subdirectory した自前の player が使う)。
+# 出力は <dir>/lub.{js,wasm}。
 function(lub_vm_player_link_options target dir)
   # LUB_WASM は lub の scope の変数なので、add_subdirectory した側からも見える EMSCRIPTEN で見る
   if(NOT EMSCRIPTEN)
@@ -426,17 +401,19 @@ function(lub_vm_player_link_options target dir)
   endif()
   set_target_properties(${target} PROPERTIES SUFFIX ".js" OUTPUT_NAME lub
     RUNTIME_OUTPUT_DIRECTORY "${dir}")
+  # SHELL: は複数の token の flag を 1 つにまとめ、CMake が分けたり重複として落としたりしないようにする。
   target_link_options(${target} PRIVATE
     --use-port=emdawnwebgpu
+    # save/<名前>/ の保存 (src/api_io.c) が IndexedDB に同期する
     -lidbfs.js
     -sALLOW_MEMORY_GROWTH=1
     -sASSERTIONS=1
     -sSTACK_SIZE=1048576
-    "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV']"
-    "SHELL:--preload-file ${LUB_ROOT_DIR}/samples/boot.lua@/samples/boot.lua"
+    # ENV: player.ts (dev/test) が preRun で env var を注入する (?env= 転写)。
+    # addRunDependency / removeRunDependency: player.ts が取ってきた file を置き終わるまで main() を待たせる
+    "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV','addRunDependency','removeRunDependency']"
   )
 endfunction()
-set(LUB_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" CACHE INTERNAL "lub の checkout")
 # library: 自前の player (自分の main と静的に link した native の拡張) も同じものを link する (include/lub/lub_vm.h)
 add_library(lub_vm_player STATIC src/vm_player.c)
 if(NOT LUB_WASM)
@@ -445,17 +422,16 @@ endif()
 target_link_libraries(lub_vm_player PUBLIC lub_objs tcsvm_lib)
 target_include_directories(lub_vm_player PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(LUB_WASM)
-  # web の VM の player は、まだ Lua の player (lub) と別の実行物
+  # web の tcs VM の player (src/vm_main.c)
   add_executable(lub_vm src/vm_main.c)
   target_link_libraries(lub_vm PRIVATE lub_vm_player)
 elseif(NOT LUB_TCS_GAME)
-  # native の lub は、既定で tcs VM の player でゲームを動かす (--lua か .lua の entry は Lua の player。src/main.c)
+  # native の lub は tcs VM の player でゲームを動かす (src/main.c)
   target_link_libraries(lub PRIVATE lub_vm_player)
-  target_compile_definitions(lub PRIVATE LUB_HAS_VM=1)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # iOS の player は app bundle。
-  # game.lua やデータは bundle の中に置く (docs/metal-backend.md)。
+  # .tcsb やデータは bundle の中に置く (docs/metal-backend.md)。
   # Info.plist は CMake の変数で書くので、Xcode と Ninja のどちらの generator でも同じ bundle になる。
   set_target_properties(lub PROPERTIES
     MACOSX_BUNDLE TRUE
@@ -500,7 +476,6 @@ endif()
 
 target_link_libraries(lub_objs PUBLIC
   SDL3::SDL3
-  lua_static
   tcs_runtime
   box2d
   box3d
@@ -510,9 +485,9 @@ if(LUB_HAS_SLANG)
   target_link_libraries(lub_objs PUBLIC slang)
 endif()
 if(UNIX AND NOT LUB_WASM)
-  # libdl required by Lua dynamic loading, libm by Lua math (Linux/Mac).
-  # Under emscripten the libc already provides both equivalents.
-  target_link_libraries(lub_objs PUBLIC m dl)
+  # libm for the C math functions (Linux/Mac).
+  # Under emscripten the libc already provides it.
+  target_link_libraries(lub_objs PUBLIC m)
 endif()
 if(WIN32)
   # Winsock for the --serve HTTP/SSE server (src/sock_compat.h).
@@ -588,60 +563,42 @@ if(WIN32)
 endif()
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   foreach(t lub_objs lub)
-    target_compile_options(${t} PRIVATE
-      $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
-      $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
-    )
+    if(TARGET ${t})
+      target_compile_options(${t} PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
+      )
+    endif()
   endforeach()
   # miniaudio 本体の警告はこちらで直せないので実装 TU だけ抑制する。
   set_source_files_properties(src/miniaudio_impl.c PROPERTIES COMPILE_OPTIONS "-w")
 endif()
 
 
-# Emscripten link flags: WebGPU, plus samples/boot.lua and the lume tree
-# preloaded as virtual FS. No ASYNCIFY: nothing waits inside a frame on web (shader compile
-# calls slang-wasm synchronously, GPU results are waited for at the frame
-# boundary).
+# Emscripten: WebGPU. No ASYNCIFY: nothing waits inside a frame on web (shader
+# compile calls slang-wasm synchronously, GPU results are waited for at the
+# frame boundary).
 #
 # WebGPU is wired up through the `emdawnwebgpu` emscripten port (Dawn's
 # Chrome/Node-compatible WGPU header set). The header `webgpu/webgpu.h` is
 # referenced from backend_webgpu.c; the port supplies both the
-# header at compile time and the JS glue at link time. -sUSE_WEBGPU=1
-# alone is no longer enough on Emscripten >= 3.1.61.
+# header at compile time and the JS glue at link time (lub_vm_player_link_options).
+# -sUSE_WEBGPU=1 alone is no longer enough on Emscripten >= 3.1.61.
 if(LUB_WASM)
-  set_target_properties(lub PROPERTIES SUFFIX ".js")
-  # --- emdawnwebgpu port ---
-  # Provides webgpu/webgpu.h for backend_webgpu.c. Plain
-  # -sUSE_WEBGPU=1 is no longer sufficient on emscripten >= 3.1.61. The port
-  # is auto-fetched against the active emsdk's manifest, so the header ABI
-  # can shift if the SDK is upgraded.
+  # The port is auto-fetched against the active emsdk's manifest, so the
+  # header ABI can shift if the SDK is upgraded.
   #
   # Tested with: emsdk 5.0.2 (emcc 5.0.2 / dc80f645ee70178c11666de0c3860d9e064d50e4).
   # If you upgrade emsdk and wgpu* calls suddenly stop compiling or
   # render-paths regress, revert to this SDK version or update backend_webgpu.c
   # to track the newer Dawn ABI.
   target_compile_options(lub_objs PUBLIC --use-port=emdawnwebgpu)
-  # SHELL: keeps multi-token flags (`--preload-file PATH`) as one logical
-  # unit so CMake doesn't dedupe / split them. Without SHELL the second
-  # `--preload-file` got dropped during CMake's list deduplication and only
-  # the first preload path was preserved.
-  target_link_options(lub PRIVATE
-    --use-port=emdawnwebgpu
-    # save/<名前>/ の保存 (src/api_io.c) が IndexedDB に同期する
-    -lidbfs.js
-    -sALLOW_MEMORY_GROWTH=1
-    -sASSERTIONS=1
-    -sSTACK_SIZE=1048576
-    # ENV: player.ts (dev/test) が preRun で env var を注入する (?env= 転写)
-    "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV']"
-    "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/samples/boot.lua@/samples/boot.lua"
-    "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lume@/lume"
-  )
-  set_property(TARGET lub APPEND PROPERTY LINK_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/samples/boot.lua"
-  )
-  # tcs VM の player は vm/lub.{js,wasm,data} (playground は ?runtime=vm で読む。同じ名前で page の起動の手順を共有する)
+  # tcs VM の player は vm/lub.{js,wasm} (playground、serve、export が読む)
   lub_vm_player_link_options(lub_vm "${CMAKE_CURRENT_BINARY_DIR}/vm")
+  # tcs2c の web の player (scripts/web-tcs-host-build.sh) は build の dir の lub.{js,wasm}
+  if(TARGET lub)
+    lub_vm_player_link_options(lub "${CMAKE_CURRENT_BINARY_DIR}")
+  endif()
 endif()
 
 # C-side smoke tests (native only — spawn は wasm に存在しない).
@@ -687,11 +644,10 @@ if(NOT LUB_WASM)
   )
   target_link_libraries(lub_physics_box2d_smoke PRIVATE
     SDL3::SDL3
-    lua_static
     box2d
   )
   if(UNIX AND NOT APPLE)
-    target_link_libraries(lub_physics_box2d_smoke PRIVATE m dl)
+    target_link_libraries(lub_physics_box2d_smoke PRIVATE m)
   endif()
   target_include_directories(lub_physics_box2d_smoke PRIVATE src include)
 
@@ -703,11 +659,10 @@ if(NOT LUB_WASM)
   )
   target_link_libraries(lub_physics_box3d_smoke PRIVATE
     SDL3::SDL3
-    lua_static
     box3d
   )
   if(UNIX AND NOT APPLE)
-    target_link_libraries(lub_physics_box3d_smoke PRIVATE m dl)
+    target_link_libraries(lub_physics_box3d_smoke PRIVATE m)
   endif()
   target_include_directories(lub_physics_box3d_smoke PRIVATE src include)
 

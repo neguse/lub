@@ -173,14 +173,12 @@ static bool send_sse_headers(int fd) {
 
 // ---- data file watcher ------------------------------------------------------
 
-// 生成 Lua (.lub/<Entry>.lua) か tcs VM の bytecode (.lub/<Entry>.tcsb) の disk の path とブラウザでの path。
-// 更新は tcs の reload chunk か差分で届くので data watch には入れず、別に持つ。
-static void entry_lua_paths(const ServeState *s, char *disk, size_t disk_cap,
-                            char *web, size_t web_cap) {
-  const char *ext = s->vm ? "tcsb" : "lua";
-  SDL_snprintf(disk, disk_cap, "%s/.lub/%s.%s", s->game_dir, s->entry_name,
-               ext);
-  SDL_snprintf(web, web_cap, "%s.lub/%s.%s", s->web_dir, s->entry_name, ext);
+// tcs VM の bytecode (.lub/<Entry>.tcsb) の disk の path とブラウザでの path。
+// 更新は tcs vm の差分で届くので data watch には入れず、別に持つ。
+static void entry_paths(const ServeState *s, char *disk, size_t disk_cap,
+                        char *web, size_t web_cap) {
+  SDL_snprintf(disk, disk_cap, "%s/.lub/%s.tcsb", s->game_dir, s->entry_name);
+  SDL_snprintf(web, web_cap, "%s.lub/%s.tcsb", s->web_dir, s->entry_name);
 }
 
 static void watch_add(ServeDataWatch *w, const char *full_path,
@@ -241,7 +239,7 @@ static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
     SDL_EnumerateDirectory(full, watch_enum_cb, userdata);
   } else if (info.type == SDL_PATHTYPE_FILE) {
     size_t n = strlen(fname);
-    // C# のソースは tcs が読む (ブラウザには生成 Lua を送る)
+    // C# のソースは tcs が読む (ブラウザには bytecode を送る)
     if (n > 3 && SDL_strcasecmp(fname + n - 3, ".cs") == 0)
       return SDL_ENUM_CONTINUE;
     if (n > 7 && SDL_strcasecmp(fname + n - 7, ".csproj") == 0)
@@ -257,7 +255,7 @@ static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
 
 static void data_watch_walk(ServeState *s) {
   char disk[1024], web[768];
-  entry_lua_paths(s, disk, sizeof(disk), web, sizeof(web));
+  entry_paths(s, disk, sizeof(disk), web, sizeof(web));
   WatchEnumCtx ctx = {&s->data_watch, s->game_dir, strlen(s->game_dir),
                       s->web_dir, web};
   SDL_EnumerateDirectory(s->game_dir, watch_enum_cb, &ctx);
@@ -343,16 +341,16 @@ static bool append_json_string(char **buf, size_t *len, size_t *cap,
 
 // `files` イベント: 監視中の全ファイルの名前 (ブラウザでの path) の配列。
 // 中身はブラウザが /files/ で取りにくる。
-static char *build_sse_message(ServeState *s, bool include_lua) {
+static char *build_sse_message(ServeState *s, bool include_entry) {
   size_t cap = 4096, len = 0;
   char *buf = (char *)malloc(cap);
   if (!buf)
     return NULL;
   len += (size_t)SDL_snprintf(buf, cap, "event: files\ndata: {\"files\":[");
   bool first = true;
-  if (include_lua) {
+  if (include_entry) {
     char disk[1024], web[768];
-    entry_lua_paths(s, disk, sizeof(disk), web, sizeof(web));
+    entry_paths(s, disk, sizeof(disk), web, sizeof(web));
     if (!append_json_string(&buf, &len, &cap, web, false)) {
       free(buf);
       return NULL;
@@ -406,9 +404,9 @@ static int conn_index_by_fd(const ServeState *s, int fd) {
 // ---- HTTP request handling --------------------------------------------------
 
 static void handle_index(ServeState *s, int fd) {
-  // {{ENTRY}} は生成 Lua のブラウザでの path (JS の文字列リテラルの中身)
+  // {{ENTRY}} は bytecode のブラウザでの path (JS の文字列リテラルの中身)
   char disk[1024], web[768], entry[768 * 6 + 1];
-  entry_lua_paths(s, disk, sizeof(disk), web, sizeof(web));
+  entry_paths(s, disk, sizeof(disk), web, sizeof(web));
   json_escape(web, strlen(web), entry, sizeof(entry));
   size_t page_len = strlen(SERVE_PAGE_HTML);
   size_t entry_len = strlen(entry);
@@ -473,15 +471,16 @@ static bool url_decode(const char *in, char *out, size_t cap) {
 }
 
 // GET /files/<path>: ゲームのファイルを中身のまま配る。
-// 配るのは SSE で知らせた名前 (data watch と生成 Lua) だけで、それ以外の path は 404。
+// 配るのは SSE で知らせた名前 (data watch と bytecode) だけで、それ以外の path は 404。
 static void handle_file(ServeState *s, int fd, const char *url_path) {
   char web_path[512];
   const char *disk_path = NULL;
-  char lua_disk[1024], lua_web[768];
+  char entry_disk[1024], entry_web[768];
   if (url_decode(url_path, web_path, sizeof(web_path))) {
-    entry_lua_paths(s, lua_disk, sizeof(lua_disk), lua_web, sizeof(lua_web));
-    if (strcmp(web_path, lua_web) == 0)
-      disk_path = lua_disk;
+    entry_paths(s, entry_disk, sizeof(entry_disk), entry_web,
+                sizeof(entry_web));
+    if (strcmp(web_path, entry_web) == 0)
+      disk_path = entry_disk;
     for (int i = 0; !disk_path && i < s->data_watch.count; i++)
       if (strcmp(web_path, s->data_watch.entries[i].web_path) == 0)
         disk_path = s->data_watch.entries[i].path;
@@ -599,8 +598,13 @@ static void web_dir_of(const char *game_dir, char *out, size_t cap) {
   SDL_free(cwd);
 }
 
-static void serve_init(ServeState *s, const char *entry_path,
-                       const char *wasm_dir, const char *slang_dir, int port) {
+static bool serve_listen(ServeState *s, int port);
+
+bool serve_start_vm(ServeState *s, const char *entry_path,
+                    const char *const *args, int nargs, const char *wasm_dir,
+                    const char *slang_dir, int port) {
+  if (!s || !entry_path)
+    return false;
   SDL_zerop(s);
   s->port = port;
   SDL_strlcpy(s->entry_path, entry_path, sizeof(s->entry_path));
@@ -609,35 +613,8 @@ static void serve_init(ServeState *s, const char *entry_path,
   web_dir_of(s->game_dir, s->web_dir, sizeof(s->web_dir));
   SDL_strlcpy(s->wasm_dir, wasm_dir, sizeof(s->wasm_dir));
   SDL_strlcpy(s->slang_dir, slang_dir, sizeof(s->slang_dir));
-}
-
-static bool serve_listen(ServeState *s, int port);
-
-bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
-                 const char *slang_dir, int port) {
-  if (!s || !entry_path)
-    return false;
-  serve_init(s, entry_path, wasm_dir, slang_dir, port);
-
-  // tcs pipeline (initial transpile + .cs watch)。
-  // 生成 Lua は .lub/<Entry>.lua で、SSE の接続時の files イベントで知らせる。
-  char out_lua[768];
-  if (!tcs_pipeline_start(&s->tcs, entry_path, out_lua, sizeof(out_lua))) {
-    SDL_Log("[serve] tcs pipeline start failed");
-    return false;
-  }
-  return serve_listen(s, port);
-}
-
-bool serve_start_vm(ServeState *s, const char *entry_path,
-                    const char *const *args, int nargs, const char *wasm_dir,
-                    const char *slang_dir, int port) {
-  if (!s || !entry_path)
-    return false;
-  serve_init(s, entry_path, wasm_dir, slang_dir, port);
-  s->vm = true;
   char disk[1024], web[768];
-  entry_lua_paths(s, disk, sizeof(disk), web, sizeof(web));
+  entry_paths(s, disk, sizeof(disk), web, sizeof(web));
   SDL_PathInfo info;
   Sint64 before = SDL_GetPathInfo(disk, &info) ? (Sint64)info.modify_time : -1;
   if (!tcs_vm_pipeline_start(&s->tcs, args, nargs)) {
@@ -771,7 +748,6 @@ bool serve_tick(ServeState *s) {
   }
 
   // tcs の frame は 1 つずつ SSE のイベントで送る (data は本文の JSON 文字列)。
-  // reload chunk は reload イベントで、当てるのはブラウザ側の runtime (lub_queue_reload_chunk_file)。
   // tcs VM の差分 (base64) は batch イベントで、ページが <Entry>.batch に書き、player が当てる。
   // compile error は build_failed イベントで、ページが player の OnBuildFailed に渡す。
   // restart_required は restart イベントで、ページが理由を出して読み直し、書き終わっている出力から起動し直す。
@@ -786,8 +762,7 @@ bool serve_tick(ServeState *s) {
     }
     const char *event = kind == TCS_FRAME_RESTART_REQUIRED ? "restart"
                         : kind == TCS_FRAME_VM_BATCH       ? "batch"
-                        : kind == TCS_FRAME_BUILD_FAILED   ? "build_failed"
-                                                           : "reload";
+                                                           : "build_failed";
     if (kind == TCS_FRAME_RESTART_REQUIRED)
       SDL_Log("[serve] tcs: restart required, reloading the page:\n%s", body);
     size_t cap = body_len * 6 + 64; // json_escape の最悪 (\u00XX) + 枠
@@ -802,7 +777,7 @@ bool serve_tick(ServeState *s) {
     SDL_free(body);
   }
 
-  // Tick data watch (.lub/<Entry>.lua の更新は上の tcs の frame で届く)
+  // Tick data watch (.lub/<Entry>.tcsb の更新は上の tcs の frame で届く)
   if (data_watch_tick(s)) {
     SDL_Log("[serve] data files changed, sending update (%d files)",
             s->data_watch.count);

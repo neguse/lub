@@ -1,11 +1,10 @@
 // host API (include/lub/lub_host.h)。
-// player (src/main.c)、.NET 実行の host、tcs2c 実行の host (src/tcs_host.c) が同じ関数で runtime を回す。
+// tcs VM の player (src/vm_player.c)、.NET 実行の host、tcs2c 実行の host (src/tcs_host.c) が同じ関数で runtime を回す。
 // frame の骨格 (dt、profile、begin / end、入力 latch の clear) はここが唯一の実装。
 #include "host_api.h"
 #include "api_internal.h"
 #include "backend.h"
 #include "capture.h"
-#include "lua_api.h"
 #include "pick.h"
 #include "profile.h"
 #include "ui.h"
@@ -125,7 +124,7 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
   // 環境変数 SDL_ASSERT が優先。
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
 #ifdef __EMSCRIPTEN__
-  // Lua の player も tcs VM の player も、ここを通ってから SDL を立てる
+  // web の tcs VM の player は、ここを通ってから SDL を立てる
   lub_web_fix_modifier_codes();
 #endif
 #ifdef SDL_PLATFORM_ANDROID
@@ -171,12 +170,6 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
                 opts->capture_frame);
       }
     }
-  }
-  if (!lua_ctx_init(&app->lua, app)) {
-    app_shutdown(app);
-    free(app);
-    SDL_Quit();
-    return NULL;
   }
   gamepads_init(app);
   return lub_api_ctx(app);
@@ -443,7 +436,6 @@ void lub_host_destroy(LubContext *ctx) {
   profile_report_at_exit(&app->profile);
   ui_shutdown();
   app_shutdown(app);
-  lua_ctx_shutdown(&app->lua);
   gamepads_close(app);
   free(app);
   SDL_Quit();

@@ -7,7 +7,6 @@ namespace LubGen;
 //   lub-gen check                     記述の検査 (名前の規則・衝突・予約語)
 //   lub-gen model [-o out.json]       API model を JSON で出す
 //   lub-gen header [-o file]          C API の header (include/lub/lub_api.h)
-//   lub-gen lua [-o file]             Lua binding (src/gen/lua_api_gen.c)
 //   lub-gen docs [-o file]            API reference のデータ (web/gen/lub-api-docs.json)
 //   lub-gen facade [-o file]          .NET 実行の facade (dotnet/Lub/Lub.g.cs)
 //   lub-gen facade-lubx [-o file]     namespace Lubx の .NET 実行の facade (dotnet/Lub/Lubx.g.cs)
@@ -139,8 +138,6 @@ public static class Tool
                 return Emit(outPath, Json.Write(ModelJson.Of(model), false));
             case "header":
                 return Emit(outPath, CHeader.Generate(model));
-            case "lua":
-                return Emit(outPath, LuaBinding.Generate(model));
             case "docs":
                 return Emit(outPath, Docs.Generate(model, stubPath));
             case "facade":
@@ -258,27 +255,11 @@ public static class Checks
                 }
             }
             foreach (var f in ns.StaticFields) Claim(ns.Name, f.LuaName, f.Name, seen, problems);
-            // Lua の定数は namespace 直下に平らに置くので、別 enum の同名メンバは同じ値のときだけ共有できる (Blend.None / Cull.None、DontCare)
-            // [LubLuaString] の enum は Lua 面の値が小文字の文字列
-            var constValues = new Dictionary<string, string>();
             foreach (var e in ns.Enums)
             {
                 var values = new HashSet<int>();
                 foreach (var m in e.Members)
                 {
-                    // 値は種類を前に付けて比べる (文字列と数は等しくない)
-                    string value = e.LuaString ? "s" + m.LuaName.ToLower() : "i" + m.Value;
-                    string? prevValue;
-                    if (constValues.TryGetValue(m.LuaName, out prevValue))
-                    {
-                        if (prevValue != value)
-                            problems.Add(ns.Name + "." + e.Name + "." + m.Name + ": Lua '" + m.LuaName + "' already has value " + Text.From(prevValue!, 1));
-                    }
-                    else
-                    {
-                        constValues[m.LuaName] = value;
-                        Claim(ns.Name, m.LuaName, e.Name + "." + m.Name, seen, problems);
-                    }
                     if (!values.Add(m.Value)) problems.Add(ns.Name + "." + e.Name + ": duplicate value " + m.Value);
                 }
             }
@@ -419,7 +400,6 @@ public static class ModelJson
         }
         o.Set("Members", ms);
         Str(o, "Doc", e.Doc);
-        Flag(o, "LuaString", e.LuaString);
         Int(o, "Line", e.Line);
         return o;
     }

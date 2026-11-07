@@ -19,7 +19,7 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 - `if` / `for` / `foreach` / `while` / `switch` 式(パターンマッチング)
 - ラムダ、コレクション初期化子、string interpolation
 - ジェネリクス(自分で書く class とメソッドも)
-- `List<T>` / `Dictionary<K,V>`(Lua table に対応)
+- `List<T>` / `Dictionary<K,V>`
 - LINQ メソッドチェーン(`using TinySystem.Linq;` で使う。下の「LINQ と data を運ぶ struct」を参照)
 - 演算子オーバーロード(二項 `+ - * / %` と単項 `-`。`lub.Math` の
   Vec/Mat がこれで書かれている)、整数ビット演算子
@@ -36,15 +36,15 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 ## 診断に出ない注意点
 
 - lub API(`cs-lib/lub_stub.cs` のような型チェック専用 stub)の呼び出しでは
-  デフォルト引数値が展開されない(省略した引数は Lua の nil になる)。
+  デフォルト引数値が展開されない。
   stub 側は `float? x = null` + `x ?? 既定値` で書く。自分で書いた
   TinyC# メソッドの既定引数は通常どおり効く
 
 境界を踏むとコンパイル時に `TCS1001`(未対応構文)/ `TCS1002`(未対応 API)/
-`TCS1003`(Lua table に置けない null 保存)の診断が出る。playground では
+`TCS1003`(配列と Dictionary への null 保存)の診断が出る。playground では
 ログパネルに表示される。
-`TCS1001` と `TCS1002` はエラーで、Lua を出さずに止まる(hot reload では直前の版が動き続ける)。
-`TCS1003` は警告として出るが、Lua 出力の正しさに関わるので放置しない。
+`TCS1001` と `TCS1002` はエラーで、出力を書かずに止まる(hot reload では直前の版が動き続ける)。
+`TCS1003` は警告として出るが、`lub check` と `tcs check` は警告でも失敗するので放置しない。
 
 ## 文字列と文字
 
@@ -86,7 +86,7 @@ tcs は csproj の global using を読まないので、csproj の `<Using>` で
 `First` / `Last` / `Take` / `Skip` / `ToList` / `Count()` / `ToDictionary` は無いので、添字、`new List<T>(source)`、loop で書く。
 
 data を運ぶ struct は `readonly record struct` にする。
-Lua は copy の地点ごとに table を作るが、`readonly` なら copy を省ける。
+`readonly` なら copy を省ける。
 
 ```csharp
 using System.Collections.Generic;
@@ -109,7 +109,7 @@ runtime API は namespace `Lub` の static class(`Gfx` / `Input` / `App` /
 `Io` / `Phys2d` / ...)にある。`using Lub;` を置くと `Gfx.BeginPass(...)`
 と書ける。lubx の型(`SpriteBatch` など)は namespace `Lubx` にあり、`using Lubx;` で使う
 (`lub Game.csproj` は cs-lib を自動で足す。tcs2c で web 版を作るときは入力に自分で足す。手順は `docs/api-glue.md`)。名前は通常の C# 命名(PascalCase、enum は `Gfx.PixelFormat.Rgba8`)
-で、Lua 側の snake_case(`lub.gfx.begin_pass`、`lub.gfx.RGBA8`)には tcs が
+で、tcs VM の host の関数の名前(`lub.gfx.begin_pass`)には tcs が
 規則で写す。entry callback は `OnInit` / `OnEvent` / `OnFrame` / `OnQuit` / `OnError` / `OnExport`:
 
 ```csharp
@@ -135,20 +135,20 @@ public static class Main
 ```
 
 型定義は `cs-lib/lub_stub.cs`(参照専用 stub)にある。IDE で書くときは
-これを参照に加えると補完と型チェックが効く。Lua 側の multi-return
+これを参照に加えると補完と型チェックが効く。複数の結果を返す API
 (`Io.LoadText` など) は `out` 引数で受ける。環境変数は
 `Environment.GetEnvironmentVariable`、数値の parse は `int.Parse` /
 `float.Parse`、文字列の codepoint 走査は `s.EnumerateRunes()` と、実 .NET
-でも通る書き方をする(Lua 標準ライブラリを直接呼ぶ stub は無い)。
+でも通る書き方をする。
 
 サンプルは `samples/<name>/<Entry>.cs` + `<Entry>.csproj` (例:
 `samples/09_breakout/Breakout09.cs` + `Breakout09.csproj`)。native での実行:
 
 ```
-lub samples/09_breakout/Breakout09.csproj         # transpile + watch + hot reload
+lub samples/09_breakout/Breakout09.csproj         # 変換 + watch + hot reload
 lub check samples/09_breakout/Breakout09.csproj   # 検査だけ (窓を開かず、ゲームを走らせない)
-scripts/run-cs-sample.sh 09_breakout --check      # 診断のみ
-scripts/run-cs-sample.sh 09_breakout --build      # transpile (警告があれば失敗)
+scripts/run-cs-sample.sh 09_breakout --check      # 診断のみ (警告があれば失敗)
+scripts/run-cs-sample.sh 09_breakout --vm         # bytecode にする (samples/09_breakout/.lub/Breakout09.tcsb)
 ```
 
 `lub check <entry>.csproj` は `lub <entry>.csproj` と同じ入力 (entry のディレクトリの `*.cs` + cs-lib の実装 + stub) を tcs の `check` に渡す。
@@ -158,7 +158,7 @@ scripts/run-cs-sample.sh 09_breakout --build      # transpile (警告があれ�
 ### dotnet の無い環境 (C の tcs)
 
 tcs は compiler も CLI も TinyC# 自身で書いてあり、tcs2c で C にした実行ファイル (C の tcs) にできる。
-C の tcs は dotnet の tcs と同じ実装で、変換の結果も hot reload の reload chunk も同じになる。
+C の tcs は dotnet の tcs と同じ実装で、変換の結果も hot reload の差分も同じになる。
 lub は実行ファイルの隣の `tcs/tcs` を最初に使う。
 release の一式は `bin/tcs/` に入っていて、dotnet は要らない。
 
@@ -194,4 +194,4 @@ dotnet run --project dotnet/SampleRunner -p:Sample=09_breakout -- --capture out.
 引数は `--backend` (player では環境変数 `LUB_BACKEND`) と、player と同じ `--fixed-dt` / `--capture` / `--capture-frame` / `--digest` / `--readback-fixed-latency`。
 `Bytes` (view) は `AsSpan()` で読め、frame を跨いで持つと例外になる。
 数値は C# の `float` のまま .NET で計算する(BCL の
-double 演算は `(float)` で丸める)ので、Lua 側の f32 と同じ精度になる。
+double 演算は `(float)` で丸める)ので、tcs VM の f32 と同じ精度になる。

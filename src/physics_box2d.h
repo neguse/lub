@@ -1,6 +1,6 @@
 #pragma once
 // Box2D の即時モード層の状態。
-// API は include/lub/lub_api.h の lub_phys2d_*、Lua 面は src/gen/lua_api_gen.c (生成物)。
+// API は include/lub/lub_api.h の lub_phys2d_*、tcs VM の面は src/gen/vm_api_gen.c (生成物)。
 #include "phys_common.h"
 #include <stdbool.h>
 #include <stdint.h>

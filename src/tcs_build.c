@@ -1,7 +1,7 @@
-// tcs (TinyC#) pipeline: .csproj entry の transpile + watch を lub が駆動する。
-// 起動時に tcs を --watch で spawn し、初回出力 (.lub/<Base>.lua) を待って entry にする。
-// 以後の .cs 保存は tcs --watch が再変換し、実行中の VM へ当てる reload chunk (または VM の作り直しを求める restart_required) を標準出力へ順に書く。
-// lub 側は子プロセスの lifecycle と、その stream からの frame の切り出しを持つ (当てるのは main.c / app.c、serve は SSE で送る)。
+// tcs (TinyC#) の子プロセス: lub が tcs を起動する。
+// tcs vm --watch を背後に張ると、.cs の保存ごとに tcs が変換し直し、実行中の VM へ当てる差分 (または VM の作り直しを求める restart_required、compile error) を標準出力へ順に書く。
+// lub 側は子プロセスの lifecycle と、その stream からの frame の切り出しを持つ (当てるのは src/vm_player.c、serve は SSE で送る)。
+// tcs check は .csproj の入力を集めて起動し、終わるまで待つ。
 #include "tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -373,8 +373,7 @@ static int append_inputs(const char *dir, const char **argv, int n, char *stub,
   }
 
   // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律追加する。
-  // stub は宣言のみ (--ref) だが、実装モジュールは transpile 対象。
-  // input に入れることで tcs --watch の監視対象にもなる (hot reload)。
+  // stub は宣言のみ (--ref) だが、実装モジュールは検査の対象。
   if (has_cs_lib) {
     int lib_count = 0;
     char **lib = SDL_GlobDirectory(cs_lib, NULL, 0, &lib_count);
@@ -406,76 +405,6 @@ static int append_inputs(const char *dir, const char **argv, int n, char *stub,
   return n;
 }
 
-bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
-                        size_t out_lua_sz) {
-  if (!p || !cs_path)
-    return false;
-  SDL_zerop(p);
-
-  // entry class = csproj basename。
-  // csproj は MSBuild として評価しない (IDE の型チェック・補完用の実ファイルで、lub は名前しか読まない)。
-  char base[256];
-  path_basename_noext(cs_path, base, sizeof(base));
-  char dir[512];
-  path_dirname(cs_path, dir, sizeof(dir));
-  char lub_dir[640];
-  SDL_snprintf(lub_dir, sizeof(lub_dir), "%s/.lub", dir);
-  SDL_CreateDirectory(lub_dir);
-  SDL_snprintf(out_lua, out_lua_sz, "%s/%s.lua", lub_dir, base);
-
-  char storage[16][512];
-  const char *argv[TCS_ARGV_MAX];
-  int n = resolve_tcs_cmd(storage, 16, argv);
-  if (n == 0) {
-    SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
-            "(git submodule update --init third_party/tcs)");
-    return false;
-  }
-
-  char stub[960] = "";
-  n = append_inputs(dir, argv, n, stub, sizeof(stub));
-  if (n < 0)
-    return false;
-  argv[n++] = "-o";
-  argv[n++] = out_lua;
-  argv[n++] = "--entry";
-  argv[n++] = base;
-  argv[n++] = "--watch";
-  argv[n++] = "--reload-chunks";
-  argv[n] = NULL;
-  if (!spawn_watch(p, argv))
-    return false;
-
-  // 初回 transpile を待つ (dotnet run の cold start 込みで最大 120s)。
-  // 既存出力がある場合も mtime 更新を待つ (stale をロードしない)。
-  int64_t before = 0;
-  SDL_PathInfo info;
-  if (SDL_GetPathInfo(out_lua, &info))
-    before = (int64_t)info.modify_time;
-  SDL_Log("tcs: transpiling %s ...", cs_path);
-  for (int waited = 0; waited < 120000; waited += 100) {
-    if (SDL_GetPathInfo(out_lua, &info) && (int64_t)info.modify_time != before)
-      break;
-    int exit_code = 0;
-    if (SDL_WaitProcess(p->proc, false, &exit_code)) {
-      SDL_Log("tcs exited before producing output (exit=%d)", exit_code);
-      tcs_job_close(p);
-      SDL_DestroyProcess(p->proc);
-      p->proc = NULL;
-      return false;
-    }
-    SDL_Delay(100);
-  }
-  if (!SDL_GetPathInfo(out_lua, &info) || (int64_t)info.modify_time == before) {
-    SDL_Log("tcs: timeout waiting for %s", out_lua);
-    tcs_pipeline_stop(p);
-    return false;
-  }
-  SDL_Log("tcs: %s ready (watching)", out_lua);
-  p->enabled = true;
-  return true;
-}
-
 bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs) {
   if (!p)
     return false;
@@ -493,10 +422,7 @@ bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs) {
     argv[n++] = args[i];
   argv[n++] = "--watch";
   argv[n] = NULL;
-  if (!spawn_watch(p, argv))
-    return false;
-  p->enabled = true;
-  return true;
+  return spawn_watch(p, argv);
 }
 
 bool tcs_pipeline_alive(TcsPipeline *p) {
@@ -585,7 +511,7 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
         cap *= 2;
       char *grown = (char *)SDL_realloc(p->buf, cap);
       if (!grown) {
-        SDL_Log("tcs: reload chunk stream dropped: out of memory");
+        SDL_Log("tcs: frame stream dropped: out of memory");
         return false;
       }
       p->buf = grown;
@@ -612,9 +538,7 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
     if (p->len < head + body)
       return false;
     bool known = true;
-    if (kind_is(name, name_len, "reload_chunk"))
-      *kind = TCS_FRAME_RELOAD_CHUNK;
-    else if (kind_is(name, name_len, "restart_required"))
+    if (kind_is(name, name_len, "restart_required"))
       *kind = TCS_FRAME_RESTART_REQUIRED;
     else if (kind_is(name, name_len, "vm_batch"))
       *kind = TCS_FRAME_VM_BATCH;
@@ -659,7 +583,6 @@ void tcs_pipeline_stop(TcsPipeline *p) {
   tcs_job_close(p);
   SDL_DestroyProcess(p->proc);
   p->proc = NULL;
-  p->enabled = false;
   SDL_free(p->buf);
   p->buf = NULL;
   p->len = p->cap = 0;

@@ -109,7 +109,6 @@ LUB_API const char *lub_last_error(LubContext *ctx);
 // 現在の frame 番号 (LubView.frame と比較する)。
 LUB_API int32_t lub_frame_index(LubContext *ctx);
 // OnEvent に届く event の種類。
-// Lua 面では小文字の文字列 ("quit" 等)。
 typedef enum LubEventKind {
   LUB_EVENT_KIND_QUIT = 1,
   LUB_EVENT_KIND_KEY_DOWN = 2,
@@ -219,7 +218,6 @@ typedef enum LubGfxWrap {
 } LubGfxWrap;
 
 // ReadTexture の結果。
-// Lua 面では小文字の文字列 ("processing" 等)。
 typedef enum LubGfxReadbackStatus {
   LUB_GFX_READBACK_STATUS_PROCESSING = 0,
   LUB_GFX_READBACK_STATUS_READY = 1,
@@ -258,7 +256,6 @@ typedef enum LubInputPadButton {
 } LubInputPadButton;
 
 // Load* の状態。
-// Lua 面では小文字の文字列 ("pending" 等)。
 typedef enum LubIoStatus {
   LUB_IO_STATUS_PENDING = 0,
   LUB_IO_STATUS_READY = 1,
@@ -330,7 +327,6 @@ typedef enum LubPhys2dBodyType {
 } LubPhys2dBodyType;
 
 // shape の種類 (ShapeView.Kind)。
-// Lua 面では小文字の文字列 ("box" 等)。
 typedef enum LubPhys2dShapeKind {
   LUB_PHYS2D_SHAPE_KIND_BOX = 1,
   LUB_PHYS2D_SHAPE_KIND_CIRCLE = 2,
@@ -341,7 +337,6 @@ typedef enum LubPhys2dShapeKind {
 } LubPhys2dShapeKind;
 
 // joint の種類 (JointDesc.Type)。
-// Lua 面では小文字の文字列 ("distance" 等)。
 typedef enum LubPhys2dJointType {
   LUB_PHYS2D_JOINT_TYPE_DISTANCE = 1,
   LUB_PHYS2D_JOINT_TYPE_FILTER = 2,
@@ -354,7 +349,6 @@ typedef enum LubPhys2dJointType {
 } LubPhys2dJointType;
 
 // contact / sensor event の種類。
-// Lua 面では小文字の文字列 ("begin" 等)。
 typedef enum LubPhys2dEventKind {
   LUB_PHYS2D_EVENT_KIND_BEGIN = 0,
   LUB_PHYS2D_EVENT_KIND_END = 1,
@@ -362,7 +356,6 @@ typedef enum LubPhys2dEventKind {
 } LubPhys2dEventKind;
 
 // ShapeCast の proxy の種類。
-// Lua 面では小文字の文字列 ("box" 等)。
 typedef enum LubPhys2dProxyKind {
   LUB_PHYS2D_PROXY_KIND_BOX = 1,
   LUB_PHYS2D_PROXY_KIND_CIRCLE = 2,
@@ -378,7 +371,6 @@ typedef enum LubPhys3dBodyType {
 } LubPhys3dBodyType;
 
 // shape の種類 (ShapeView3d.Kind)。
-// Lua 面では小文字の文字列 ("sphere" 等)。
 typedef enum LubPhys3dShapeKind {
   LUB_PHYS3D_SHAPE_KIND_SPHERE = 1,
   LUB_PHYS3D_SHAPE_KIND_BOX = 2,
@@ -392,7 +384,6 @@ typedef enum LubPhys3dShapeKind {
 } LubPhys3dShapeKind;
 
 // joint の種類 (JointDesc3d.Type)。
-// Lua 面では小文字の文字列 ("distance" 等)。
 typedef enum LubPhys3dJointType {
   LUB_PHYS3D_JOINT_TYPE_DISTANCE = 1,
   LUB_PHYS3D_JOINT_TYPE_FILTER = 2,
@@ -406,7 +397,6 @@ typedef enum LubPhys3dJointType {
 } LubPhys3dJointType;
 
 // contact / sensor event の種類。
-// Lua 面では小文字の文字列 ("begin" 等)。
 typedef enum LubPhys3dEventKind {
   LUB_PHYS3D_EVENT_KIND_BEGIN = 0,
   LUB_PHYS3D_EVENT_KIND_END = 1,
@@ -714,9 +704,9 @@ typedef struct LubShapeView {
   bool has_kind;
   int32_t kind; // LubPhys2dShapeKind
   bool has_category_bits;
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
   bool has_mask_bits;
-  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits; // bit mask (C# 面は hex 文字列)
   bool has_group;
   int32_t group;
   bool valid;
@@ -847,9 +837,9 @@ typedef struct LubBodyDesc {
 // / MaskBits は 64 bit の hex 文字列。
 typedef struct LubFilterDesc {
   bool has_category_bits;
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
   bool has_mask_bits;
-  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits; // bit mask (C# 面は hex 文字列)
   bool has_group;
   int32_t group;
 } LubFilterDesc;
@@ -1426,8 +1416,8 @@ typedef struct LubAabb {
 } LubAabb;
 
 typedef struct LubFilterInfo {
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
-  uint64_t mask_bits;     // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
+  uint64_t mask_bits;     // bit mask (C# 面は hex 文字列)
   int32_t group;
 } LubFilterInfo;
 
@@ -1444,9 +1434,9 @@ typedef struct LubShapeInfo {
   bool has_kind;
   int32_t kind; // LubPhys2dShapeKind
   bool has_category_bits;
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
   bool has_mask_bits;
-  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits; // bit mask (C# 面は hex 文字列)
   bool has_group;
   int32_t group;
   bool valid;
@@ -1598,9 +1588,9 @@ typedef struct LubRayHit {
   bool has_kind;
   int32_t kind; // LubPhys2dShapeKind
   bool has_category_bits;
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
   bool has_mask_bits;
-  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits; // bit mask (C# 面は hex 文字列)
   bool has_group;
   int32_t group;
   bool valid;
@@ -1644,9 +1634,9 @@ typedef struct LubMoverPlane {
   bool has_kind;
   int32_t kind; // LubPhys2dShapeKind
   bool has_category_bits;
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
   bool has_mask_bits;
-  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits; // bit mask (C# 面は hex 文字列)
   bool has_group;
   int32_t group;
   bool valid;
@@ -1769,9 +1759,9 @@ typedef struct LubShapeView3d {
   bool has_kind;
   int32_t kind; // LubPhys3dShapeKind
   bool has_category_bits;
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
   bool has_mask_bits;
-  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits; // bit mask (C# 面は hex 文字列)
   bool has_group;
   int32_t group;
   bool valid;
@@ -1865,9 +1855,9 @@ typedef struct LubBodyDesc3d {
 
 typedef struct LubFilterDesc3d {
   bool has_category_bits;
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
   bool has_mask_bits;
-  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits; // bit mask (C# 面は hex 文字列)
   bool has_group;
   int32_t group;
 } LubFilterDesc3d;
@@ -2651,9 +2641,9 @@ typedef struct LubShapeInfo3d {
   bool has_kind;
   int32_t kind; // LubPhys3dShapeKind
   bool has_category_bits;
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
   bool has_mask_bits;
-  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits; // bit mask (C# 面は hex 文字列)
   bool has_group;
   int32_t group;
   bool valid;
@@ -2818,9 +2808,9 @@ typedef struct LubRayHit3d {
   bool has_kind;
   int32_t kind; // LubPhys3dShapeKind
   bool has_category_bits;
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
   bool has_mask_bits;
-  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits; // bit mask (C# 面は hex 文字列)
   bool has_group;
   int32_t group;
   bool valid;
@@ -2870,9 +2860,9 @@ typedef struct LubMoverPlane3d {
   bool has_kind;
   int32_t kind; // LubPhys3dShapeKind
   bool has_category_bits;
-  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t category_bits; // bit mask (C# 面は hex 文字列)
   bool has_mask_bits;
-  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits; // bit mask (C# 面は hex 文字列)
   bool has_group;
   int32_t group;
   bool valid;
@@ -2939,11 +2929,11 @@ typedef struct LubCounters3d {
 
 // Gfx.PickResult の結果。 Draw はその frame の中の draw の番号 (0 始まり、何
 // も描いていなければ -1)。 Site は Draw を呼んだ所の並び (内側から 1 行に 1
-// つ、"file:line")。並びを作るのは player で、Lua の player は Lua の source
-// の行を返す (作れない player では空)。 Self は Site と同じ並びの、段ごとの
-// this の個体の Id (InspectNode.Id と同じ書き方)。 this の無い段は空の行
-// で、tcs VM の player の --trace で変換したソースの class の instance のメ
-// ソッドの段だけが Id を持つ (ほかの player では空)。
+// つ、"file:line")。並びを作るのは player で、作れない player では空。 Self
+// は Site と同じ並びの、段ごとの this の個体の Id (InspectNode.Id と同じ書き
+// 方)。 this の無い段は空の行で、tcs VM の player の --trace で変換したソー
+// スの class の instance のメソッドの段だけが Id を持つ (ほかの player では
+// 空)。
 typedef struct LubPickHit {
   int32_t draw;
   LubStr site;
@@ -3563,16 +3553,15 @@ LUB_API float lub_sys_seconds(LubContext *ctx);
 // を返し、記録を空にする。 tcs VM の player (lub Game.csproj) は overlay
 // (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリ
 // を除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を
-// --trace で変換する。記録が無ければ空 (Lua の player はいつも空)。順番は決
-// まっていない。
+// --trace で変換する。記録が無ければ空。順番は決まっていない。
 LUB_API void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
                                 int32_t *out_count);
 
 // TakeTrace と同じに、前に呼んでから実行した行を返し、記録を空にする。ただ
 // し、InspectPin で key に覚えた個体と同じ class の別の個体を this にして通
 // っただけの行は返さない (別の class と static のメソッドの行は返す)。 key
-// に覚えた個体が無ければ TakeTrace と同じ。 tcs VM の player だけ (Lua の
-// player はいつも空)。
+// に覚えた個体が無ければ TakeTrace と同じ。 tcs VM の player だけ (ほかの
+// player ではいつも空)。
 LUB_API void lub_sys_take_trace_for(LubContext *ctx, LubStr key,
                                     const LubStr **out, int32_t *out_count);
 

@@ -2,7 +2,7 @@
 // 同じ frame の中で同じ API を呼び直しても、前の呼び出しの view は前の中身のまま読める。
 // 次の frame に持ち越した Bytes は、中身を読むと stale の error になる。
 // Length は作った時の長さを持つ field で、読んでも error にならない。
-// 数値配列は .NET と tcs VM の player が List に写して返すので、持ち越しても読める (stale を見るのは Lua の player だけなので、ここでは見ない)。
+// 数値配列は .NET と tcs VM の player が List に写して返すので、持ち越しても読める。
 // (Lua 版は stale の bytes に tostring と数値配列に get(0) も試していたが、C# の面に無いので移していない。)
 using System;
 using System.Collections.Generic;

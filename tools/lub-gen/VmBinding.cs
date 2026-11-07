@@ -598,7 +598,7 @@ internal sealed class VmBindingGen
     private void Handle(ApiType type)
     {
         Line("static " + Struct(type.Name) + " *vm_lub_handle_" + type.Name + "(LubHandle handle) {");
-        // Lua の binding と同じく、無効な handle (0) は null
+        // 無効な handle (0) は null
         Line("  if (!handle) return NULL;");
         Line("  " + Struct(type.Name) + " *result = vm_lub_new(" + TypeVar(Il(type.Name)) + ", sizeof(*result));");
         Line("  result->host_value = (uint32_t)handle;");
@@ -801,7 +801,7 @@ internal sealed class VmBindingGen
             }
             else
             {
-                // null を受けない handle は Lua の binding と同じく誤り
+                // null を受けない handle は誤り
                 if (type.Kind == LubTypeKind.Handle && !type.Nullable && !(param.Optional && !param.HasDefault))
                     Line("  if (!" + p + ") { vm_lub_fail(\"" + hostName + ": " + param.Name + " is null\"); VM_LUB_LEAVE(vm); }");
                 args.Add(To(type, p));
@@ -843,7 +843,7 @@ internal sealed class VmBindingGen
         if (visits) Line("  bool vm_lub_visitor_outer = vm_lub_visitor_failed; vm_lub_visitor_failed = false;");
         if (function.NoFail) Line("  " + (byValue ? "result = " : "") + call + ";");
         else Line("  LubStatus status = " + call + ";");
-        // visitor が失敗した query は null (Lua の player の nil, error と同じ)
+        // visitor が失敗した query は null
         if (visits)
         {
             Line("  if (vm_lub_visitor_failed) {");
@@ -897,7 +897,7 @@ internal sealed class VmBindingGen
     private void Callback(string function, ApiParam param) =>
         Trampoline(CallbackName(function, param), param.Type, param.Name, "", "vm_lub_visitor_failed", "user", "vm_lub_visitor_fail()");
 
-    // callback の既定の値 (呼べないか失敗したとき。Lua の binding と同じ)
+    // callback の既定の値 (呼べないか失敗したとき)
     private static string CallbackDefault(TypeRef ret) =>
         ret.Kind == LubTypeKind.Bool ? "true" : ret.Kind == LubTypeKind.Double ? "1.0f" : ret.Kind == LubTypeKind.Int ? "1" : "";
 
@@ -996,7 +996,7 @@ internal sealed class VmBindingGen
         }
         /* callback の中の VM の fault (trace は tvm_error) */
         static void vm_lub_fail_vm(void) { vm_lub_fail_text(tvm_error(vm_lub_vm)); }
-        /* query の visitor の fault。Lua の player と同じく、query は fault にせず null を返す (message は log に出す) */
+        /* query の visitor の fault。query は fault にせず null を返す (message は log に出す) */
         static bool vm_lub_visitor_failed;
         static char vm_lub_visitor_text[1024];
         static void vm_lub_visitor_fail(void) {
@@ -1022,7 +1022,7 @@ internal sealed class VmBindingGen
         static void *vm_lub_held_get(VmLubHeld *held, int i) {
           return held->vm == vm_lub_vm && vm_lub_vm && held->h[i] ? tvm_handle_get(vm_lub_vm, held->h[i]) : NULL;
         }
-        /* fault は callback ごとに 1 回だけ log に出し、既定の値で続ける (Lua の player と同じ) */
+        /* fault は callback ごとに 1 回だけ log に出し、既定の値で続ける */
         static void vm_lub_held_fault(VmLubHeld *held, int i) {
           if (held->logged[i]) return;
           held->logged[i] = true;

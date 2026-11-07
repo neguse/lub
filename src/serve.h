@@ -46,19 +46,14 @@ typedef struct ServeState {
 
   char wasm_dir[768];
   char slang_dir[768];
-  // tcs VM の player で動かすか (entry は .lub/<Entry>.tcsb、更新は tcs vm の差分)
-  bool vm;
 } ServeState;
 
-// entry_path は .csproj (entry class = basename、入力 = 同 dir 以下の *.cs)。
-// tcs が transpile + watch し、生成 Lua (.lub/<Entry>.lua) と data file の名前を SSE でブラウザへ知らせる。
-// 中身は GET /files/<path> で配る。
-bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
-                 const char *slang_dir, int port);
-// tcs VM の player で動かす serve。
+// ブラウザの tcs VM の player (wasm_dir) で動かす serve。
+// entry_path は .csproj (entry class = basename)。
 // args は tcs vm --watch の引数 (src/vm_project.c の vm_project_args) で、出力は <dir の>.lub/<Entry>.tcsb。
 // 最初の build を待ってから listen する。
-// 差分は batch イベント (base64)、compile error は build_failed イベントで送る。
+// bytecode と data file の名前を SSE でブラウザへ知らせ、中身は GET /files/<path> で配る。
+// 差分は batch イベント (base64)、compile error は build_failed イベント、移行できない変更は restart イベントで送る。
 bool serve_start_vm(ServeState *s, const char *entry_path,
                     const char *const *args, int nargs, const char *wasm_dir,
                     const char *slang_dir, int port);

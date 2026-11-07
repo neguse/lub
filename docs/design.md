@@ -15,34 +15,28 @@ lub は GUI editor や特定 asset pipeline を中心に据えず、開発者が
 - ゲームをコード中心に組み立てられる。
 - 実行中のゲームを止めずに、コードや asset の変更を即座に反映できる。
 - runtime 基盤は C/C++ と既存ライブラリを再利用し、移植性と native integration を保つ。
-- ゲームは C# (TinyC#) だけで書く。Lua は tcs の出力と runtime の間の内部の層で、利用者にも開発者にも開かない。
+- ゲームは C# (TinyC#) だけで書く。tcs の出力 (tcs VM の bytecode) と runtime の間の層は内部の面で、利用者にも開発者にも開かない。
 - 3D graphics を標準の描画基盤として持ち、2D game もその上で自然に扱える。
 - core API は最小の固い primitive に絞る。
 - core API の外側は C# の実装ライブラリ (`cs-lib/`) と app code が担う。lubx は C のライブラリが要るところだけ C の実装 (`src/lubx/`、stub の `namespace Lubx`) を持つ。
 
-内部の層に Lua を使う理由として、reload 時に data shape の変化へ追従しやすいことを重視する。
+実行の層 (tcs VM) は、reload 時に data shape の変化へ追従しやすいことを重視する (設計は tcs の `doc/vm-design.md`)。
 C# はその性質を活かしたまま、より書きやすい script authoring を提供するために使う。
 
-script authoring layer は TinyC#
-([tcs](https://github.com/neguse/tcs)、C# サブセット → Lua transpiler)。
-全サンプルを C# で提供する (一覧の正は `web/playground/samples.ts` の
-CS_SAMPLES)。web playground と native CLI
-(`lub <sample>/<Entry>.csproj`) は同じ DX (build + watch + hotswap) を持ち、
-player・Lua API 面 (生成 binding)・hot reload セマンティクスを共有する。
-csproj は IDE 用の実プロジェクトでもあり、lub は basename (= entry class)
-しか読まない。
+script authoring layer は TinyC# ([tcs](https://github.com/neguse/tcs)、C# サブセットの compiler)。
+全サンプルを C# で提供する (一覧の正は `web/playground/samples.ts` の CS_SAMPLES)。
+web playground と native CLI (`lub <sample>/<Entry>.csproj`) は同じ DX (build + watch + hotswap) を持ち、player (tcs VM)・API 面 (生成した host の関数)・hot reload セマンティクスを共有する。
+csproj は IDE 用の実プロジェクトでもあり、lub は basename (= entry class) と、印を付けた参照しか読まない。
 
-C# のゲームは lub の player (既定は tcs VM の player、`--lua` で tcs→Lua の player。どちらも hotswap で動かす dev の経路) と .NET 実行 (実 .NET が `dotnet/Lub` の facade から共有 library の C API を P/Invoke で叩く経路、host は `App.Run(typeof(Game), args)`) で動く。
+C# のゲームは 3 つの経路で動く。
+lub の player は tcs VM の player (tcs vm が作った bytecode を tcs VM で動かす、native と web。hotswap で動かす dev の経路で、`lub export` の snapshot もこれで動かす)。
+tcs2c は tcs2c で C にしたゲームを lub と静的に link する経路 (Android の player など)。
+.NET 実行は実 .NET が `dotnet/Lub` の facade から共有 library の C API を P/Invoke で叩く経路で、host は `App.Run(typeof(Game), args)`。
 同じソースがどれでも通ることが契約で、CI は各サンプルをそれぞれ headless に回し、frame ごとの digest (C API 呼び出しの構造の hash) を突き合わせる。
 数値は両方 f32 で、Math の超越関数も同じ実装 (次の段落) なので絵も揃い、手元の gate では capture 同士を byte 比較する。CI の契約は digest だけ。
 golden 画像 (`tests/golden/<name>_<backend>.png`) は tcs VM の player で撮る。
 
-tcs VM の player (tcs vm が作った bytecode を tcs VM で動かす) を、tcs→Lua の player に代わる dev の経路にする。
-native の `lub` は既定でこの player を使い、tcs→Lua の player は `--lua` で選ぶ。
-tcs→Lua の player は deprecate する予定で、2 つの player の挙動が違うときは tcs VM の player (と .NET 実行) を正とする。
-例えば、前の frame の view の Length や、List に写して返す数値配列は、Lua の player だけが読むと error にするが、検査はこれを見ない。
-
-ゲームの論理の計算は OS をまたいで決定的にする。数値は f32 で、四則演算と sqrt / floor / fmod などは IEEE-754 で結果が決まる。結果が実装で変わる超越関数 (sin / cos / tan / atan2 / exp / log / pow) は tcs が 1 つの実装 (`third_party/tcs/runtime/math`、三角関数系と log10 は CORE-MATH、exp / log / log2 / pow は musl の Arm 由来) を持つ。tcs2c の生成 C はそれを埋め込み、tcs の Lua 出力は lub が VM に登録する `tcs_math` を呼び、.NET 実行は TinySystem.Math (同じ手順の C# 版) を呼ぶ。.NET の project は tcs の `TinySystem.props` を Import して、`Math` / `MathF` を TinySystem.Math にする。C のソースは FMA への融合などで結果が変わらないようにコンパイルを固定する。CI は決まった入力列の結果の hash を、Windows / Linux / macOS / iOS / web と tcs2c と .NET の経路で 1 つの期待値と比べる (`tests/cs/TestMathDeterminism.cs`。iOS は release の workflow で走る)。
+ゲームの論理の計算は OS をまたいで決定的にする。数値は f32 で、四則演算と sqrt / floor / fmod などは IEEE-754 で結果が決まる。結果が実装で変わる超越関数 (sin / cos / tan / atan2 / exp / log / pow) は tcs が 1 つの実装 (`third_party/tcs/runtime/math`、三角関数系と log10 は CORE-MATH、exp / log / log2 / pow は musl の Arm 由来) を持つ。tcs2c の生成 C はそれを埋め込み、tcs VM は lub が link する同じ実装 (CMake の `tcs_runtime`) を呼び、.NET 実行は TinySystem.Math (同じ手順の C# 版) を呼ぶ。.NET の project は tcs の `TinySystem.props` を Import して、`Math` / `MathF` を TinySystem.Math にする。C のソースは FMA への融合などで結果が変わらないようにコンパイルを固定する。CI は決まった入力列の結果の hash を、Windows / Linux / macOS / iOS / web と tcs2c と .NET の経路で 1 つの期待値と比べる (`tests/cs/TestMathDeterminism.cs`。iOS は release の workflow で走る)。
 
 ## Non-Goals
 
@@ -84,27 +78,24 @@ runtime invariant、resource lifetime、backend abstraction、hot reload、diagn
 ### Script API 面
 
 - 公式面は C# の stub (`cs-lib/lub_stub.cs` の namespace `Lub`、`Gfx` / `Input` / `Phys2d` / ...)。
-- `lub` table の namespace (`lub.gfx` / `lub.input` / ...) は、生成した Lua binding (`src/gen/lua_api_gen.c`) が作り tcs の出力が見る内部の面。名前は tcs と lub の間の取り決めで、両方を同じ変更の中で揃えて変える。
+- host の関数の名前 (`lub.gfx.begin_pass` / `lub.input.key_down` / ...) は、生成した tcs VM の host の関数 (`src/gen/vm_api_gen.c`) が登録し tcs の出力 (bytecode) が呼ぶ内部の面。名前は tcs の名前の規則と lub の間の取り決めで、両方を同じ変更の中で揃えて変える。
 
 API の細かいシグネチャや binding の制約は、この文書ではなく記述側に置く。
-一次情報は `cs-lib/lub_stub.cs`(C# の stub が API の記述)で、C API の
-header(`include/lub/lub_api.h`)と Lua binding(`src/gen/lua_api_gen.c`)は
-`tools/lub-gen` がそこから生成する(`scripts/gen-api.sh`)。
-Lua の数値は `LUA_32BITS`(整数 32 bit、実数 float)で、C API の面
-(int32_t / float)と C# の int / float に揃える。64 bit の値は面に出さない。
+一次情報は `cs-lib/lub_stub.cs`(C# の stub が API の記述)で、C API の header(`include/lub/lub_api.h`)と tcs VM の host の関数(`src/gen/vm_api_gen.c`)は `tools/lub-gen` がそこから生成する(`scripts/gen-api.sh`)。
+C API の数値は int32_t / float で、C# の int / float に揃える。64 bit の値は面に出さない。
 
 ## Runtime Shape
 
 ```mermaid
 flowchart TB
     app["application layer"]
-    lua["core API (C# stub、内部は Lua binding)"]
+    api["core API (C# stub、内部は tcs VM の host の関数)"]
     runtime["runtime core"]
     backend["backend boundary"]
     libs["native libraries"]
 
-    app --> lua
-    lua --> runtime
+    app --> api
+    api --> runtime
     runtime --> backend
     runtime --> libs
 ```
@@ -126,6 +117,6 @@ log、capture、resource dump、runtime state dump のような情報取得は�
   (`docs/metal-backend.md`)。backend 構成の整理方針は
   `docs/log/2026-07-07-backend-consolidation.md`。
 - iOS の player は shader compiler と transpiler を持たない。
-  生成済みの bytecode (`.tcsb`。`--lua` で export したときは Lua) と shader cache を同梱した app として動く (`docs/metal-backend.md`)。
+  生成済みの bytecode (`.tcsb`) と shader cache を同梱した app として動く (`docs/metal-backend.md`)。
 - swapchain capture (`--capture`) は native と web(golden 用)の両方にある。ゲームが任意の render target を読むのは `Gfx.Readback()`。
 - SDL GPU path は combined image sampler 周辺に制約がある。

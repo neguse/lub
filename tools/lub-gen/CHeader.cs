@@ -228,7 +228,7 @@ public static class CHeader
                 if (f.Bits)
                 {
                     if (f.Optional) sb.Write("  bool has_" + n + ";\n");
-                    line = "  uint64_t " + n + "; // bit mask (Lua 面は hex 文字列)";
+                    line = "  uint64_t " + n + "; // bit mask (C# 面は hex 文字列)";
                     if (f.Doc != "") line += "。" + f.Doc;
                     doc = "";
                 }
@@ -497,7 +497,6 @@ internal sealed class CHeaderGen
             foreach (var e in ns.Enums)
             {
                 CHeader.Comment(sb, e.Doc);
-                if (e.LuaString) CHeader.Comment(sb, "Lua 面では小文字の文字列 (\"" + e.Members[0].LuaName.ToLower() + "\" 等)。");
                 sb.Write("typedef enum " + CHeader.EnumName(ns.Name + "." + e.Name) + " {\n");
                 foreach (var m in e.Members)
                 {

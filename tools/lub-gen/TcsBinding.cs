@@ -838,7 +838,7 @@ internal sealed class TcsBindingGen
         """;
 
     // [LubBits] の 64 bit mask は C# 面では hex 文字列 (出すときは 16 桁)。
-    // 読む規則は Lua (src/lua_gen_support.c の parse_bits) と同じで、null は値なし、1〜16 桁の hex (0x 付きも可) を読み、空と 17 桁以上は error。
+    // 読む規則は tcs VM の host の関数 (VmBinding) と同じで、null は値なし、1〜16 桁の hex (0x 付きも可) を読み、空と 17 桁以上は error。
     private const string BitsHelpers = """
         #include <inttypes.h>
         static _Noreturn void tcs_lub_bits_fault(const char *what, TcsString *text) {

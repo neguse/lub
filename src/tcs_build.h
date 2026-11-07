@@ -1,5 +1,5 @@
 #pragma once
-// tcs (TinyC#) pipeline: .cs entry の transpile + watch を lub が駆動する。
+// tcs (TinyC#) の子プロセス: tcs vm --watch の frame の stream と tcs check。
 // 実装は tcs_build.c。
 #include <SDL3/SDL.h>
 #include <stdbool.h>
@@ -8,23 +8,15 @@ typedef struct TcsPipeline {
   SDL_Process *
       proc; // tcs --watch (Linux / macOS では tcs を見張る sh)。終わるときに止める
   void *job; // Windows の Job Object (HANDLE)。tcs とその子が入っている
-  bool enabled;
-  // tcs の標準出力 (reload chunk の stream) のうち、まだ切り出していない分
+  // tcs の標準出力 (frame の stream) のうち、まだ切り出していない分
   char *buf;
   size_t len, cap;
 } TcsPipeline;
 
-// cs_path (.csproj。entry class = basename、入力 = 同 dir 以下の全 *.cs) を transpile して <dir>/.lub/<Base>.lua を生成し、tcs --watch を背後に張る。
-// 成功時 out_lua に出力パスを書き true。
-// 初回 transpile 完了 (dotnet cold start 込み) まで block する。
-bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
-                        size_t out_lua_sz);
 typedef enum TcsFrameKind {
-  // 本文は実行中の VM に当てる Lua chunk
-  TCS_FRAME_RELOAD_CHUNK,
-  // chunk では移行できない変更。
+  // 差分では移行できない変更。
   // 本文は改行終端の理由の行で、その build の出力は書き終わっている。
-  // 以後の chunk はその出力から起動した VM 向け
+  // 以後の差分はその出力から起動した VM 向け
   TCS_FRAME_RESTART_REQUIRED,
   // tcs vm --watch の差分。
   // 本文は tvm_apply_batch に渡す batch の base64 の 1 行と改行
@@ -50,7 +42,7 @@ bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs);
 // tcs がまだ動いているか。
 bool tcs_pipeline_alive(TcsPipeline *p);
 
-// cs_path (.csproj) を tcs_pipeline_start と同じ入力で tcs check に渡し、終わるまで待つ。
+// cs_path (.csproj。入力 = 同 dir 以下の全 *.cs と cs-lib の実装、--ref は cs-lib/lub_stub.cs) を tcs check に渡し、終わるまで待つ。
 // tcs の診断は stdout / stderr にそのまま出る。
 // 診断が無ければ true。
 bool tcs_check(const char *cs_path);

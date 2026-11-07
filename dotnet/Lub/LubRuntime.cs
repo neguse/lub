@@ -205,7 +205,7 @@ internal static unsafe class LubRuntime
         });
     }
 
-    // message は lub_last_error のまま (Lua の経路の error と同じ文字列)。
+    // message は lub_last_error のまま (tcs VM の player の error と同じ文字列)。
     internal static void Check(int status)
     {
         if (status == LubNative.LUB_OK) return;
@@ -222,7 +222,7 @@ internal static unsafe class LubRuntime
     internal static string? StrOrNull(LubNative.LubStr s) => s.ptr == null ? null : Str(s);
 
     // 64 bit の bit mask。
-    // Lua 面 (src/lua_gen_support.c の parse_bits) と同じ規則で、null は値なし、1〜16 桁の hex (0x 付きも可) を読み、空と 17 桁以上は error。
+    // tcs VM と tcs2c の binding と同じ規則で、null は値なし、1〜16 桁の hex (0x 付きも可) を読み、空と 17 桁以上は error。
     internal static ulong Bits(string? s)
     {
         if (s == null) return 0;

@@ -16,7 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- cs-lib の実装ソース (lub.Math、lubx) は tcs→Lua と同じく compile に含める -->
+    <!-- cs-lib の実装ソース (lub.Math、lubx) は tcs VM の player と同じく compile に含める -->
     <Compile Include="$(LubRoot)/cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(LubRoot)/cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
     <ProjectReference Include="$(LubRoot)/dotnet/Lub/Lub.csproj" />
@@ -35,6 +35,6 @@
           CopyToOutputDirectory="PreserveNewest" Link="lub.dll" />
   </ItemGroup>
   <!-- Math / MathF を TinySystem.Math にし、.NET 実行でも Math の超越関数を
-       tcs2c / Lua と bit 単位で同じ結果にする -->
+       tcs VM / tcs2c と bit 単位で同じ結果にする -->
   <Import Project="$(LubRoot)/third_party/tcs/TinySystem/TinySystem.props" />
 </Project>

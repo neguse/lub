@@ -1,5 +1,5 @@
 // Gfx の Bindings: 名前ごとの handle か float の列を 1 つの block に持ち、draw に渡す。
-// block の確保は host (Lua の userdata、tcs2c の GC の配列) が持つので、ここは確保も解放もしない。
+// block の確保は host (tcs VM と tcs2c は GC の配列、.NET 実行は managed の配列) が持つので、ここは確保も解放もしない。
 // 足りないときは何も変えずに LUB_BINDINGS_FULL を返し、host が大きい block に写してやり直す。
 // host の GC は block を動かすことがあるので、中の pointer は self と比べて入口で直す。
 // 名前の解決と handle の検査は draw のたびに lub_gfx_draw_items が行う。

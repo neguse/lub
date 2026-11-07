@@ -1,77 +1,41 @@
 #define SDL_MAIN_USE_CALLBACKS 1
-#include "api_internal.h"
-#include "app.h"
-#include "host_api.h"
-#include "lua_api.h"
 #include "path_util.h"
-#include "pick.h"
+#include "serve.h"
+#include "tcs_build.h"
+#include "vm_project.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <lub/lub_vm.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef LUB_HAS_VM
-#include "vm_project.h"
-#include <lub/lub_vm.h>
-#endif
-#ifndef __EMSCRIPTEN__
-#include "backend.h"
-#include "serve.h"
-#include "tcs_build.h"
 #ifdef _WIN32
 #include <direct.h>
 #define chdir _chdir
 #else
 #include <unistd.h>
 #endif
-#else
-#include <emscripten.h>
-#endif
 
-#ifdef __EMSCRIPTEN__
-// runtime が VM を失ったことをページに伝える (serve のページは window.lubVmLost で読み直す)。
-// restart_now は出力が既に新しい (reload chunk が失敗した) とき。
-// 0 なら出力そのものが読み込めないので、ページは次の build を待って読み直す。
-// EM_JS bodies are JavaScript; keep clang-format away from them (same guard as src/host.c).
-// clang-format off
-EM_JS(void, lub_web_vm_lost, (int restart_now, const char *reason), {
-  if (typeof window !== 'undefined' && typeof window.lubVmLost === 'function')
-    window.lubVmLost(restart_now !== 0, UTF8ToString(reason));
-});
-// clang-format on
-#endif
-
-// player の runtime。
-// frame の骨格は host API (src/host_api.c) が持ち、ここは entry の解決と Lua の呼び出しだけ。
-// ゲームのコードは既定で tcs VM の player (src/vm_player.c) が動かし、Lua で動かすのは --lua か .lua の entry のとき
-// (Lua の player は deprecate の予定。docs/design.md)。
-// check はどちらでも同じ。--serve は --lua が無ければ web の tcs VM の player で動かす。
-static LubContext *g_ctx;
-static App *g_app;
-#ifndef __EMSCRIPTEN__
-static TcsPipeline g_tcs;
-#endif
-
-#ifndef __EMSCRIPTEN__
+// lub の実行ファイルの入口。
+// ゲームは tcs VM の player (src/vm_player.c) が動かし、ここは起動の形を振り分けるだけ。
+// `lub check <entry>.csproj` は窓も VM も作らずに tcs check の結果を終了コードにする。
+// `--serve` は窓を作らず、web の tcs VM の player にゲームを配る (src/serve.c)。
 static bool g_serve_mode = false;
 static ServeState g_serve;
-#endif
-static bool g_export_mode = false;
-#ifdef LUB_HAS_VM
-static bool g_vm_mode = false;
-static bool g_lua_requested = false; // --lua
-#ifndef __EMSCRIPTEN__
-// --serve を tcs VM で動かすときの入力 (tcs vm --watch の入力の一覧を探し直す)
+// --serve の入力 (tcs vm --watch の入力の一覧を探し直す)
 static VmProject g_serve_project;
-static bool g_serve_vm;
 static uint64_t g_serve_next_scan;
-#endif
 
-// tcs VM の player で動かすか: --lua も .lua の entry も無く、entry が .csproj か .tcsb か sample の名前のとき。
-// sample の名前 (samples/<name>/) は、その中の .csproj にする。
-// 引数が無ければ、実行ファイルの隣 (app bundle では resource の場所) の .tcsb (lub export の snapshot) をそこを cwd にして動かす。
-// --lua は argv から外す。
-// VM で動かすときは、*argv を VM の player に渡す引数にする。
+static bool has_extension(const char *path, const char *ext) {
+  size_t n = SDL_strlen(path), m = SDL_strlen(ext);
+  return n >= m && SDL_strcasecmp(path + n - m, ext) == 0;
+}
+
+// tcs VM の player に渡す entry を決める。
+// entry が sample の名前 (samples/<name>/) なら、その中の .csproj にする。
+// entry が無ければ、実行ファイルの隣 (app bundle では resource の場所) の .tcsb (lub export の snapshot) をそこを cwd にして動かす。
+// *argv を VM の player に渡す引数にする。
+// 動かす entry が無ければ false。
 static char g_vm_entry[1024];
 static char *g_vm_argv[64];
 static SDL_EnumerationResult SDLCALL find_tcsb(void *out, const char *dir,
@@ -84,30 +48,14 @@ static SDL_EnumerationResult SDLCALL find_tcsb(void *out, const char *dir,
   }
   return SDL_ENUM_CONTINUE;
 }
-static bool choose_vm(int *argc, char ***argvp) {
+static bool resolve_entry(int *argc, char ***argvp) {
   char **argv = *argvp;
-  bool lua = false;
-  int n = 1;
-  for (int i = 1; i < *argc; ++i) {
-    if (strcmp(argv[i], "--lua") == 0)
-      lua = true;
-    else
-      argv[n++] = argv[i];
-  }
-  *argc = n;
-  argv[n] = NULL;
-  g_lua_requested = lua;
-  if (lua)
-    return false;
-  if (n >= 2 && strcmp(argv[1], "check") == 0)
-    return false;
+  int n = *argc;
   int first = 1;
   if (n >= 2 && strcmp(argv[1], "export") == 0)
     first = 3;
   int entry = -1;
   for (int i = first; i < n; ++i) {
-    if (strcmp(argv[i], "--serve") == 0)
-      return false;
     // 値を取る option は値ごと飛ばす
     if ((strcmp(argv[i], "--capture") == 0 ||
          strcmp(argv[i], "--capture-frame") == 0 ||
@@ -122,7 +70,6 @@ static bool choose_vm(int *argc, char ***argvp) {
       entry = i;
   }
   if (entry < 0) {
-#ifndef __EMSCRIPTEN__
     // entry の無い起動 (配った snapshot): 実行ファイルの隣の .tcsb
     const char *base = SDL_GetBasePath();
     if (first != 1 || !base || n + 2 > (int)SDL_arraysize(g_vm_argv))
@@ -139,155 +86,31 @@ static bool choose_vm(int *argc, char ***argvp) {
     *argvp = g_vm_argv;
     *argc = n + 1;
     return true;
-#else
-    return false;
-#endif
   }
-  const char *path = argv[entry];
-  size_t len = SDL_strlen(path);
-  if (len >= 4 && SDL_strcasecmp(path + len - 4, ".lua") == 0)
-    return false;
-  if ((len >= 7 && SDL_strcasecmp(path + len - 7, ".csproj") == 0) ||
-      (len >= 5 && SDL_strcasecmp(path + len - 5, ".tcsb") == 0))
-    return true;
   // sample の名前
-  if (strchr(path, '/') || strchr(path, '\\'))
-    return false;
+  const char *path = argv[entry];
+  if (has_extension(path, ".csproj") || has_extension(path, ".tcsb") ||
+      strchr(path, '/') || strchr(path, '\\'))
+    return true;
   char dir[512];
   SDL_snprintf(dir, sizeof(dir), "samples/%s", path);
   int count = 0;
   char **found = SDL_GlobDirectory(dir, "*.csproj", 0, &count);
-  bool ok = found && count > 0;
-  if (ok) {
+  if (found && count > 0) {
     SDL_snprintf(g_vm_entry, sizeof(g_vm_entry), "%s/%s", dir, found[0]);
     argv[entry] = g_vm_entry;
   }
   SDL_free(found);
-  return ok;
-}
-#endif
-
-#ifdef __EMSCRIPTEN__
-// lub serve のページが SSE の reload イベント (tcs の reload chunk) を積む口。
-// chunk は大きいので、ページが FS に書いたファイルのパスで受ける (ccall の文字列引数は stack に載る)。
-EMSCRIPTEN_KEEPALIVE void lub_queue_reload_chunk_file(const char *path) {
-  size_t len = 0;
-  char *lua = (char *)SDL_LoadFile(path, &len);
-  if (!lua) {
-    SDL_Log("reload chunk unreadable: %s", SDL_GetError());
-    return;
-  }
-  app_queue_reload_chunk(lua, len);
-  SDL_free(lua);
-  SDL_RemovePath(path);
-}
-#endif
-
-// Quit の code が 0 なら成功、それ以外は失敗で抜ける。
-static SDL_AppResult quit_result(void) {
-  return lub_host_exit_code(g_ctx) == 0 ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+  return true;
 }
 
-static bool has_extension(const char *path, const char *ext) {
-  size_t n = SDL_strlen(path), m = SDL_strlen(ext);
-  return n >= m && SDL_strcasecmp(path + n - m, ext) == 0;
-}
-
-#ifndef __EMSCRIPTEN__
-// パッケージの起動: script 指定が無く、実行ファイルの隣 (app bundle では resource の場所) に game.lua があれば、そこを cwd にしてそれを動かす。
-// boot.lua やデータの相対パスは dev と同じく cwd 基準で解決される。
-static const char *packaged_entry(void) {
-  const char *base = SDL_GetBasePath();
-  char path[1024];
-  if (!base)
-    return NULL;
-  SDL_snprintf(path, sizeof(path), "%sgame.lua", base);
-  if (!SDL_GetPathInfo(path, NULL) || chdir(base) != 0)
-    return NULL;
-  return "game.lua";
-}
-
-// 出力 (entry_path) から Lua VM を作り直し、OnQuit (古い VM) の後に OnInit から始める。
-// 物理の world はゲームの状態なので捨てる。
-// GPU や音などの key で宣言する資源は残り、新しい VM が同じ key で宣言し直したものを引き継ぐ。
-// OnInit は backend の後に走る。
-// why は log に出す理由 (tcs の restart_required、VM が無い間の出力の書き直し、reload chunk の失敗)。
-// reasons は restart_required の本文で、他は NULL。
-static int64_t g_dead_entry_mtime; // VM が無くなったときの出力の mtime
-
-static void restart_entry(const char *why, const char *reasons) {
-  if (reasons)
-    SDL_Log("tcs: %s, starting the Lua VM again from %s:\n%s", why,
-            g_app->entry_path, reasons);
-  else
-    SDL_Log("tcs: %s, starting the Lua VM again from %s", why,
-            g_app->entry_path);
-  app_drop_reload_chunks();
-  lua_ctx_call_quit(&g_app->lua);
-  phys2d_state_shutdown(&g_app->phys);
-  phys2d_state_init(&g_app->phys);
-  phys3d_state_shutdown(&g_app->phys3);
-  phys3d_state_init(&g_app->phys3);
-  lua_ctx_shutdown(&g_app->lua);
-  char dir[512];
-  path_dirname(g_app->entry_path, dir, sizeof(dir));
-  // 読み込めなかったときに待つ対象は、読み込みに使った出力の mtime。
-  // 失敗した後に読むと、その間に書かれた次の出力を待つ対象にしてしまい、VM が戻らない。
-  int64_t loading_mtime = app_file_mtime_ns(g_app->entry_path);
-  bool loaded = lua_ctx_init(&g_app->lua, g_app);
-  if (loaded) {
-    lua_ctx_add_package_dir(&g_app->lua, dir);
-    loaded = lua_ctx_load_entry(&g_app->lua, g_app->entry_module_name);
-  }
-  if (!loaded) {
-    // VM が無いまま。
-    // tcs は成功した build ごとに出力全体を書くので、それを待つ
-    g_dead_entry_mtime = loading_mtime;
-    SDL_Log("tcs: the Lua VM is not running until %s is rebuilt",
-            g_app->entry_path);
-    return;
-  }
-  g_app->entry_restarting = true;
-  lua_ctx_call_init(&g_app->lua);
-  g_app->entry_restarting = false;
-}
-
-static SDL_EnumerationResult SDLCALL found_entry(void *found, const char *dir,
-                                                 const char *name) {
-  (void)dir;
-  (void)name;
-  *(bool *)found = true;
-  return SDL_ENUM_SUCCESS;
-}
-
-// `lub export <os> <entry> -o <dir>`: snapshot を空の dir に書く (backend_export.c)。
-// 前の export の残りが混ざらないよう、空でない dir は断る。
-static bool parse_export(int argc, char *argv[], const char **entry) {
-  const char *os = NULL, *out = NULL;
-  *entry = NULL;
-  for (int i = 2; i < argc; ++i) {
-    if (strcmp(argv[i], "-o") == 0 && i + 1 < argc)
-      out = argv[++i];
-    else if (!os)
-      os = argv[i];
-    else if (!*entry)
-      *entry = argv[i];
-    else
-      os = NULL; // 余分な引数は usage を出す
-  }
-  if (!os || !*entry || !out) {
-    SDL_Log("usage: lub export <web|linux|windows|macos|ios|android> <entry> "
-            "-o <dir>");
-    return false;
-  }
-  bool found = false;
-  if (SDL_GetPathInfo(out, NULL))
-    SDL_EnumerateDirectory(out, found_entry, &found);
-  if (found) {
-    SDL_Log("export: %s is not empty", out);
-    return false;
-  }
-  return export_begin(os, out);
+static void print_usage(void) {
+  SDL_Log("usage: lub <Entry>.csproj|<Entry>.tcsb|<sample> [--entry CLASS] "
+          "[--fixed-dt S] [--capture PNG] [--capture-frame N] [--digest]\n"
+          "       lub check <Entry>.csproj\n"
+          "       lub --serve <Entry>.csproj [--port N]\n"
+          "       lub export <web|linux|windows|macos|ios|android> <entry> "
+          "-o <dir>");
 }
 
 // iOS の app は cwd が "/" で始まる。
@@ -299,7 +122,81 @@ static void enter_bundle(void) {
     SDL_Log("chdir to %s failed", base);
 #endif
 }
-#endif
+
+// `lub --serve <entry>.csproj`: 窓も GPU も使わず、tcs vm --watch の出力をブラウザの tcs VM の player に配る。
+static SDL_AppResult start_serve(int argc, char *argv[]) {
+  if (!SDL_Init(0)) {
+    SDL_Log("SDL_Init failed: %s", SDL_GetError());
+    return SDL_APP_FAILURE;
+  }
+
+  const char *script = NULL;
+  const char *wasm_dir = NULL;
+  const char *slang_dir = NULL;
+  int port = 8080;
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--serve") == 0)
+      continue;
+    if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+      port = atoi(argv[++i]);
+    } else if (strcmp(argv[i], "--wasm-dir") == 0 && i + 1 < argc) {
+      wasm_dir = argv[++i];
+    } else if (strcmp(argv[i], "--slang-dir") == 0 && i + 1 < argc) {
+      slang_dir = argv[++i];
+    } else {
+      script = argv[i];
+    }
+  }
+  if (!script || !has_extension(script, ".csproj")) {
+    SDL_Log("FATAL: --serve requires a .csproj path");
+    return SDL_APP_FAILURE;
+  }
+
+  // Auto-detect wasm_dir and slang_dir from executable path if not specified
+  const char *base_path = SDL_GetBasePath();
+  char auto_wasm[768] = {0};
+  char auto_slang[768] = {0};
+  if (base_path) {
+    // base_path is e.g. "/path/to/lub/build/" — strip trailing slash copy
+    char bp_copy[768];
+    SDL_strlcpy(bp_copy, base_path, sizeof(bp_copy));
+    size_t blen = strlen(bp_copy);
+    if (blen > 0 && bp_copy[blen - 1] == '/')
+      bp_copy[blen - 1] = '\0';
+    char lub_root[768];
+    path_dirname(bp_copy, lub_root, sizeof(lub_root));
+    if (!wasm_dir) {
+      SDL_snprintf(auto_wasm, sizeof(auto_wasm), "%s/build/wasm", lub_root);
+      wasm_dir = auto_wasm;
+    }
+    if (!slang_dir) {
+      SDL_snprintf(auto_slang, sizeof(auto_slang), "%s/web/public/slang",
+                   lub_root);
+      slang_dir = auto_slang;
+    }
+  }
+  if (!wasm_dir) {
+    SDL_Log("FATAL: --wasm-dir required (could not auto-detect)");
+    return SDL_APP_FAILURE;
+  }
+  if (!slang_dir) {
+    SDL_Log("FATAL: --slang-dir required (could not auto-detect)");
+    return SDL_APP_FAILURE;
+  }
+
+  // web の tcs VM の player は wasm の dir の vm/
+  char vm_wasm[800];
+  SDL_snprintf(vm_wasm, sizeof(vm_wasm), "%s/vm", wasm_dir);
+  if (!vm_project_open(&g_serve_project, script))
+    return SDL_APP_FAILURE;
+  vm_project_scan(&g_serve_project);
+  const char *args[256];
+  int n = vm_project_args(&g_serve_project, args, 256);
+  if (!serve_start_vm(&g_serve, script, args, n, vm_wasm, slang_dir, port))
+    return SDL_APP_FAILURE;
+  g_serve_mode = true;
+  return SDL_APP_CONTINUE;
+}
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   (void)appstate;
@@ -310,15 +207,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   // 環境変数 SDL_ASSERT があれば hint よりそちらが優先される (SDL_GetHint は env を先に見る) ので、利用者の設定はそのまま効く。
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
 
-#ifndef __EMSCRIPTEN__
   enter_bundle();
-#endif
-#ifdef LUB_HAS_VM
-  g_vm_mode = choose_vm(&argc, &argv);
-  if (g_vm_mode)
-    return lub_vm_app_init(argc, argv, NULL);
-#endif
-#ifndef __EMSCRIPTEN__
   // `lub check <entry>`: 窓も VM も作らず、tcs の結果を終了コードにする
   if (argc > 1 && strcmp(argv[1], "check") == 0) {
     if (argc != 3 || !has_extension(argv[2], ".csproj")) {
@@ -327,377 +216,44 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     }
     return tcs_check(argv[2]) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
   }
-  // Pre-scan for --serve before SDL_Init (serve mode skips video)
-  bool want_serve = false;
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--serve") == 0) {
-      want_serve = true;
-      break;
-    }
+    if (strcmp(argv[i], "--serve") == 0)
+      return start_serve(argc, argv);
   }
-
-  if (want_serve) {
-    // Serve mode: headless, no window/GPU
-    if (!SDL_Init(0)) {
-      SDL_Log("SDL_Init failed: %s", SDL_GetError());
-      return SDL_APP_FAILURE;
-    }
-
-    const char *script = NULL;
-    const char *wasm_dir = NULL;
-    const char *slang_dir = NULL;
-    int port = 8080;
-    for (int i = 1; i < argc; i++) {
-      if (strcmp(argv[i], "--serve") == 0)
-        continue;
-      if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
-        port = atoi(argv[++i]);
-      } else if (strcmp(argv[i], "--wasm-dir") == 0 && i + 1 < argc) {
-        wasm_dir = argv[++i];
-      } else if (strcmp(argv[i], "--slang-dir") == 0 && i + 1 < argc) {
-        slang_dir = argv[++i];
-      } else {
-        script = argv[i];
-      }
-    }
-    if (!script || !has_extension(script, ".csproj")) {
-      SDL_Log("FATAL: --serve requires a .csproj path");
-      return SDL_APP_FAILURE;
-    }
-
-    // Auto-detect wasm_dir and slang_dir from executable path if not specified
-    const char *base_path = SDL_GetBasePath();
-    char auto_wasm[768] = {0};
-    char auto_slang[768] = {0};
-    if (base_path) {
-      // base_path is e.g. "/path/to/lub/build/" — strip trailing slash copy
-      char bp_copy[768];
-      SDL_strlcpy(bp_copy, base_path, sizeof(bp_copy));
-      size_t blen = strlen(bp_copy);
-      if (blen > 0 && bp_copy[blen - 1] == '/')
-        bp_copy[blen - 1] = '\0';
-      char lub_root[768];
-      path_dirname(bp_copy, lub_root, sizeof(lub_root));
-      if (!wasm_dir) {
-        SDL_snprintf(auto_wasm, sizeof(auto_wasm), "%s/build/wasm", lub_root);
-        wasm_dir = auto_wasm;
-      }
-      if (!slang_dir) {
-        SDL_snprintf(auto_slang, sizeof(auto_slang), "%s/web/public/slang",
-                     lub_root);
-        slang_dir = auto_slang;
-      }
-    }
-    if (!wasm_dir) {
-      SDL_Log("FATAL: --wasm-dir required (could not auto-detect)");
-      return SDL_APP_FAILURE;
-    }
-    if (!slang_dir) {
-      SDL_Log("FATAL: --slang-dir required (could not auto-detect)");
-      return SDL_APP_FAILURE;
-    }
-
-#ifdef LUB_HAS_VM
-    if (!g_lua_requested) {
-      // web の tcs VM の player は wasm の dir の vm/
-      char vm_wasm[800];
-      SDL_snprintf(vm_wasm, sizeof(vm_wasm), "%s/vm", wasm_dir);
-      if (!vm_project_open(&g_serve_project, script))
-        return SDL_APP_FAILURE;
-      vm_project_scan(&g_serve_project);
-      const char *args[256];
-      int n = vm_project_args(&g_serve_project, args, 256);
-      g_serve_vm = true;
-      if (!serve_start_vm(&g_serve, script, args, n, vm_wasm, slang_dir, port))
-        return SDL_APP_FAILURE;
-      g_serve_mode = true;
-      return SDL_APP_CONTINUE;
-    }
-#endif
-    if (!serve_start(&g_serve, script, wasm_dir, slang_dir, port)) {
-      return SDL_APP_FAILURE;
-    }
-    g_serve_mode = true;
-    return SDL_APP_CONTINUE;
-  }
-#endif // !__EMSCRIPTEN__
-
-  const char *script = NULL;
-  LubHostOpts opts;
-  memset(&opts, 0, sizeof(opts));
-  opts.capture_frame = 30;
-#ifndef __EMSCRIPTEN__
-  g_export_mode = argc > 1 && strcmp(argv[1], "export") == 0;
-  if (g_export_mode && !parse_export(argc, argv, &script))
-    return SDL_APP_FAILURE;
-#endif
-  for (int i = 1; i < argc && !g_export_mode; ++i) {
-    if (strcmp(argv[i], "--capture") == 0 && i + 1 < argc) {
-      opts.capture_path = lub_str_c(argv[++i]);
-    } else if (strcmp(argv[i], "--capture-frame") == 0 && i + 1 < argc) {
-      opts.capture_frame = (int32_t)strtoul(argv[++i], NULL, 10);
-    } else if (strcmp(argv[i], "--digest") == 0) {
-      opts.digest = true;
-    } else if (strcmp(argv[i], "--readback-fixed-latency") == 0) {
-      opts.readback_fixed_latency = true;
-    } else if (strcmp(argv[i], "--fixed-dt") == 0) {
-      if (i + 1 >= argc) {
-        SDL_Log("FATAL: --fixed-dt requires a value in (0, 0.25] seconds");
-        return SDL_APP_FAILURE;
-      }
-      const char *value = argv[++i];
-      char *end = NULL;
-      double fixed_dt = SDL_strtod(value, &end);
-      if (end == value || *end != '\0' || SDL_isnan(fixed_dt) ||
-          SDL_isinf(fixed_dt) || fixed_dt <= 0.0 || fixed_dt > 0.25) {
-        SDL_Log("FATAL: invalid --fixed-dt '%s' (expected a finite value in "
-                "(0, 0.25] seconds)",
-                value);
-        return SDL_APP_FAILURE;
-      }
-      opts.fixed_dt = (float)fixed_dt;
-    } else {
-      script = argv[i];
-    }
-  }
-
-  // Normal mode: window + GPU. Parse test-clock arguments first so invalid
-  // values fail without creating a window or partially initializing App.
-  g_ctx = lub_host_create(&opts);
-  if (!g_ctx)
-    return SDL_APP_FAILURE;
-  g_app = lub_api_app(g_ctx);
-  // Gfx.Pick の PickHit.Site は Lua の source と行
-  pick_set_sites(g_app, lua_ctx_pick_sites, &g_app->lua);
-#ifndef __EMSCRIPTEN__
-  if (!script)
-    script = packaged_entry();
-#endif
-  const char *entry_path = script ? script : "00_hello";
-
-  char modbuf[256] = {0};
-
-#ifndef __EMSCRIPTEN__
-  // .csproj entry: tcs で transpile + watch し、以降は生成 .lua の直パス entry と同じ扱いにする (更新は tcs の reload chunk で当てる)。
-  char cs_out[768];
-  if (has_extension(entry_path, ".csproj")) {
-    if (!tcs_pipeline_start(&g_tcs, entry_path, cs_out, sizeof(cs_out)))
-      return SDL_APP_FAILURE;
-    if (g_export_mode)
-      tcs_pipeline_stop(&g_tcs);
-    entry_path = cs_out;
-  }
-#endif
-  if (has_extension(entry_path, ".lua")) {
-    // 任意パスの .lua entry。
-    // tcs 等の transpiler 出力を staging なしで直接ロードする。
-    // module 名は basename、実パスを mtime poll 対象にする。
-    path_basename_noext(entry_path, modbuf, sizeof(modbuf));
-    SDL_strlcpy(g_app->entry_module_name, modbuf,
-                sizeof(g_app->entry_module_name));
-    SDL_snprintf(g_app->entry_path, sizeof(g_app->entry_path), "%s",
-                 entry_path);
-    g_app->entry_mtime_cache = 0;
-    char dir[512];
-    path_dirname(entry_path, dir, sizeof(dir));
-    lua_ctx_add_package_dir(&g_app->lua, dir);
-  } else {
-    const char *raw = entry_path;
-    const char *base = strrchr(raw, '/');
-    base = base ? base + 1 : raw;
-    size_t n = strlen(base);
-    if (n >= 4 && strcmp(base + n - 4, ".lua") == 0)
-      n -= 4;
-    if (n >= sizeof(modbuf))
-      n = sizeof(modbuf) - 1;
-    memcpy(modbuf, base, n);
-    modbuf[n] = '\0';
-
-    SDL_strlcpy(g_app->entry_module_name, modbuf,
-                sizeof(g_app->entry_module_name));
-    char sample_dir[512];
-    SDL_snprintf(sample_dir, sizeof(sample_dir), "samples/%s", modbuf);
-    SDL_snprintf(g_app->entry_path, sizeof(g_app->entry_path), "%s/.lub/%s.lua",
-                 sample_dir, modbuf);
-    g_app->entry_mtime_cache = 0;
-    lua_ctx_add_package_path(&g_app->lua, sample_dir);
-  }
-
-  if (!lua_ctx_load_entry(&g_app->lua, modbuf)) {
-#ifdef __EMSCRIPTEN__
-    lub_web_vm_lost(0, "the entry failed to load");
-#endif
+  if (!resolve_entry(&argc, &argv)) {
+    print_usage();
     return SDL_APP_FAILURE;
   }
-  bool init_ok = lua_ctx_call_init(&g_app->lua);
-#ifndef __EMSCRIPTEN__
-  if (g_export_mode && !init_ok)
-    return SDL_APP_FAILURE;
-#endif
-  (void)init_ok;
-  if (g_app->quit_requested)
-    return quit_result();
-  if (lub_host_start(g_ctx) != LUB_OK)
-    return SDL_APP_FAILURE;
-  return SDL_APP_CONTINUE;
+  return lub_vm_app_init(argc, argv, NULL);
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   (void)appstate;
-#ifdef LUB_HAS_VM
-  if (g_vm_mode)
-    return lub_vm_app_event(event);
-#endif
-#ifndef __EMSCRIPTEN__
-  if (g_serve_mode) {
-    if (event->type == SDL_EVENT_QUIT)
-      return SDL_APP_SUCCESS;
-    return SDL_APP_CONTINUE;
-  }
-#endif
-  LubEventData ev;
-  if (!lub_host_translate_event(g_app, event, &ev))
-    return SDL_APP_CONTINUE;
-  if (ev.kind == LUB_EVENT_KIND_QUIT)
-    return SDL_APP_SUCCESS;
-  lua_ctx_call_event(&g_app->lua, &ev);
-  return SDL_APP_CONTINUE;
+  if (g_serve_mode)
+    return event->type == SDL_EVENT_QUIT ? SDL_APP_SUCCESS : SDL_APP_CONTINUE;
+  return lub_vm_app_event(event);
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
-#ifdef LUB_HAS_VM
-  if (g_vm_mode)
-    return lub_vm_app_iterate();
-#endif
-#ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
-#ifdef LUB_HAS_VM
     // file を足すか消すと、tcs vm --watch がその一覧から変換し直す
-    if (g_serve_vm && SDL_GetTicks() >= g_serve_next_scan) {
+    if (SDL_GetTicks() >= g_serve_next_scan) {
       vm_project_scan(&g_serve_project);
       g_serve_next_scan = SDL_GetTicks() + 300;
     }
-#endif
-    if (!serve_tick(&g_serve))
-      return SDL_APP_SUCCESS;
-    return SDL_APP_CONTINUE;
+    return serve_tick(&g_serve) ? SDL_APP_CONTINUE : SDL_APP_SUCCESS;
   }
-  TcsFrameKind kind;
-  char *body;
-  size_t body_len;
-  while (tcs_pipeline_next_frame(&g_tcs, &kind, &body, &body_len)) {
-    if (kind == TCS_FRAME_RESTART_REQUIRED)
-      restart_entry("restart required", body);
-    else if (kind == TCS_FRAME_RELOAD_CHUNK)
-      app_queue_reload_chunk(body, body_len);
-    SDL_free(body);
-  }
-  if (g_tcs.enabled && !g_app->lua.L) {
-    int64_t now = app_file_mtime_ns(g_app->entry_path);
-    if (now && now != g_dead_entry_mtime)
-      restart_entry("the output was rebuilt", NULL);
-  }
-  if (g_app->reload_chunk_failed) {
-    // 途中まで当たった VM を捨て、chunk より先に書かれている出力から作り直す
-    g_app->reload_chunk_failed = false;
-    restart_entry("a reload chunk failed", NULL);
-  }
-#else
-  if (g_app->reload_chunk_failed) {
-    g_app->reload_chunk_failed = false;
-    lub_web_vm_lost(1, "a reload chunk failed");
-  }
-#endif
-#ifndef __EMSCRIPTEN__
-  if (g_export_mode) {
-    // OnInit の後、最初の frame の代わりに OnExport を 1 回呼んで終わる
-    float dt = 0.0f;
-    bool ok = lub_host_frame_begin(g_ctx, &dt);
-    if (ok) {
-      ok = lua_ctx_call_export(&g_app->lua);
-      lub_host_frame_end(g_ctx, ok);
-    }
-    ok = ok && !export_failed() && lub_host_exit_code(g_ctx) == 0;
-    if (ok && strcmp(export_os(), "web") == 0)
-      ok = export_write_web_page(export_out_dir(), g_app->entry_module_name,
-                                 false, "game.lua");
-    if (ok)
-      SDL_Log("export: wrote %s", export_out_dir());
-    else
-      SDL_Log("export: failed");
-    return ok ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
-  }
-#endif
-  // OnEvent や VM の作り直しの中の Quit / Abort は frame の外で立つ
-  if (lub_host_quit_requested(g_ctx))
-    return quit_result();
-  float dt = 0.0f;
-  if (!lub_host_frame_begin(g_ctx, &dt)) {
-    // web は rAF が次の呼び出しを決めるので待たない
-#ifndef __EMSCRIPTEN__
-    SDL_Delay(16);
-#endif
-    return SDL_APP_CONTINUE;
-  }
-  bool frame_ok = lua_ctx_call_frame(&g_app->lua, g_app->frame_dt);
-  lub_host_frame_end(g_ctx, frame_ok);
-  // App.Restart は frame の終わりに作り直す
-  if (g_app->restart_requested) {
-    g_app->restart_requested = false;
-#ifndef __EMSCRIPTEN__
-    restart_entry("App.Restart was called", NULL);
-#else
-    lub_web_vm_lost(1, "App.Restart was called");
-#endif
-  }
-  if (lub_host_quit_requested(g_ctx))
-    return quit_result();
-  return SDL_APP_CONTINUE;
+  return lub_vm_app_iterate();
 }
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate;
-#ifdef LUB_HAS_VM
-  if (g_vm_mode) {
-    lub_vm_app_quit(result);
-    return;
-  }
-#endif
-#ifndef __EMSCRIPTEN__
   if (g_serve_mode) {
     serve_stop(&g_serve);
-#ifdef LUB_HAS_VM
-    if (g_serve_vm)
-      vm_project_close(&g_serve_project);
-#endif
+    vm_project_close(&g_serve_project);
     SDL_Quit();
     return;
   }
-#endif
-  if (!g_ctx) {
-    SDL_Quit();
-    return;
-  }
-  lua_ctx_call_quit(&g_app->lua);
-#ifndef __EMSCRIPTEN__
-  tcs_pipeline_stop(&g_tcs);
-#endif
-  int32_t code = lub_host_exit_code(g_ctx);
-  if (result == SDL_APP_FAILURE && !g_app->quit_requested) {
-    // 起動の失敗など、Quit を経ない失敗も終了状態の file に失敗として残す。
-    code = 1;
-    lub_app_quit(g_ctx, code);
-  }
-  lub_host_destroy(g_ctx);
-  g_ctx = NULL;
-  g_app = NULL;
-#ifndef __EMSCRIPTEN__
-  // SDL の main は AppIterate が返した成功 / 失敗で終わる。
-  // OnQuit の中の Quit と 1 以外の code はそれに載らないので、ここで返す。
-  if (code != 0 || result == SDL_APP_FAILURE) {
-    SDL_Quit();
-    exit(code);
-  }
-#endif
+  lub_vm_app_quit(result);
 }

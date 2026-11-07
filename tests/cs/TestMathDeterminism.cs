@@ -1,7 +1,7 @@
 // Math.* の結果が OS をまたいでビット単位で同じことを検査する。
 // 決まった入力列の結果の bit 列を関数ごとに hash し、期待値と比べる。
 // 期待値は 1 つで、OS ごとに分けない。
-// TinySystem に無い Asin / Acos / Atan は tcs が変換できないので Lua の経路では見ない。
+// TinySystem に無い Asin / Acos / Atan は tcs が変換できないので見ない。
 // tcs2c の経路は tests/c/tcs_math.cs が同じ入力列と hash で C# の Math を計算し、scripts/verify-tcs-binding.sh がこの表と比べる。
 // .NET の経路は scripts/native-gate.sh が dotnet/SampleRunner (-p:Test=TestMathDeterminism) でこのテストを動かす。
 using System;

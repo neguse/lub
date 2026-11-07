@@ -96,7 +96,7 @@ static ShaderTargetBackend shader_target_for_backend(void) {
 
 #ifndef __EMSCRIPTEN__
 // export では、その OS の player が使う残りの target でも compile して生成キャッシュに入れる (出力は使わない)。
-// export ではどの compile の失敗も export の失敗にする (UI の shader の失敗は Lua の error にならない)。
+// export ではどの compile の失敗も export の失敗にする (UI の shader の失敗はゲームの error にならない)。
 static bool export_other_targets(const char *vs, const char *fs, const char *cs,
                                  char *err, size_t err_size) {
   if (!export_active())
@@ -1476,7 +1476,7 @@ static LubStatus check_frame_range(App *app, const char *fn,
   return LUB_OK;
 }
 
-// bindings の並びは実行形で違う (Lua の table は順不同) ので、項目ごとの hash の和で順序に依らない値にする。
+// bindings の並びは実行形で違いうるので、項目ごとの hash の和で順序に依らない値にする。
 static void digest_bindings(App *app, const LubBinding *bindings,
                             int32_t bindings_count) {
   digest_i32(app, bindings_count);
