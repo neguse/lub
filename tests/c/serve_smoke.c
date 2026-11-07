@@ -413,11 +413,13 @@ int main(int argc, char *argv[]) {
   const char *wasm_dir = "build/wasm";
   const char *slang_dir = "web/public/slang";
 
-  // tcs vm が -o に書く bytecode (fake の tcs が書く)
+  // tcs vm が -o に書く bytecode (fake の tcs が書く)。
+  // lub --serve では vm_project_open が .lub/ を作ってから serve_start_vm を呼ぶ
   const char *out = "samples/03_texture/.lub/Texture03.tcsb";
   const char *args[] = {"-o", out};
   ServeState s;
   int port = 18080;
+  SDL_CreateDirectory("samples/03_texture/.lub");
   SDL_RemovePath(out);
   if (!serve_start_vm(&s, entry, args, 2, wasm_dir, slang_dir, port)) {
     SDL_Log("FAIL: serve_start_vm failed");
