@@ -101,6 +101,10 @@ lub samples/09_breakout/.lub/Breakout09.tcsb --entry Breakout09
 API は `lub-gen vm` が stub の全部の関数を tcs VM の host の関数 (`tvm_host`) にした `src/gen/vm_api_gen.c` で、
 player はゲームを選ばない。変換の規則は tcs2c の接続コードと同じで、record は VM の object の layout を写した C の struct
 (`VmLub_<型>`) で読み書きする。layout は読み込みと reload の後に VM の型の表と突き合わせる。
+host の関数の引数は C# の順に 1 つずつ渡り、戻り値は 1 つだけ返す (tcs の `doc/vm-design.md` §8.5)。
+null になりうる int / float / bool は C の layout の塊 (`{ bool has; T v; }`) で渡る。
+out の引数は VM が値を受ける場所の pointer で渡る。int / float / bool の out はその pointer を C API の out にそのまま渡し、string や record などの out は C API が返した値を VM の object にしてその場所に置く。
+native の拡張が登録する host の関数も同じ形で、out は `&` を付けた項にする (`tests/vm/extension` の `ext.greet` は params が `s&s`、rets が `b`)。
 tcs2c が process を止める誤り (配列の長さ、bit mask) は、その呼び出しの VM の fault (C# の trace 付き) になる。
 callback の fault は、その callback の class (entry か overlay) の `OnError` に message (C# の trace 付き) を渡し、`ErrorAction` で処置を決める。
 query の visitor (`Phys2d.RaycastAll` など) の fault は、query を fault にせず null を返す (message は log に出す)。

@@ -15,12 +15,25 @@ LubHandle lub_gfx_main_tex(LubContext *ctx) {
 bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
                            int32_t *version) {
   (void)ctx;
-  (void)key;
   if (handle < 0)
     return false;
   assert(handle == 42);
+  *key = (LubStr){"image", 5};
   *version = 7;
   return true;
+}
+void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
+  (void)ctx;
+  *x = 12.5f;
+  *y = -3;
+}
+void lub_ui_color_edit3(LubContext *ctx, LubStr label, float r, float g,
+                        float b, float *new_r, float *new_g, float *new_b) {
+  (void)ctx;
+  assert(label.len == 1 && label.ptr[0] == 'c');
+  *new_r = r * 2;
+  *new_g = g * 2;
+  *new_b = b * 2;
 }
 LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
                               int32_t format, const int32_t *data,
