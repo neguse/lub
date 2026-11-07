@@ -267,6 +267,11 @@ static void fill_LubInspectNode(lua_State *L, const LubInspectNode *v);
 static void push_LubInspectNode(lua_State *L, const LubInspectNode *v);
 static void push_list_LubInspectNode(lua_State *L, const LubInspectNode *v,
                                      int32_t n);
+static void fill_LubInspectInstance(lua_State *L, const LubInspectInstance *v);
+static void push_LubInspectInstance(lua_State *L, const LubInspectInstance *v);
+static void push_list_LubInspectInstance(lua_State *L,
+                                         const LubInspectInstance *v,
+                                         int32_t n);
 static void fill_LubProfileLine(lua_State *L, const LubProfileLine *v);
 static void push_LubProfileLine(lua_State *L, const LubProfileLine *v);
 static void push_list_LubProfileLine(lua_State *L, const LubProfileLine *v,
@@ -4140,6 +4145,29 @@ static void push_list_LubInspectNode(lua_State *L, const LubInspectNode *v,
   }
 }
 
+static void fill_LubInspectInstance(lua_State *L, const LubInspectInstance *v) {
+  lgen_set_str(L, "type", v->type);
+  lgen_set_str(L, "path", v->path);
+  lgen_set_str(L, "id", v->id);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubInspectInstance(lua_State *L, const LubInspectInstance *v) {
+  lua_createtable(L, 0, 3);
+  fill_LubInspectInstance(L, v);
+}
+
+static void push_list_LubInspectInstance(lua_State *L,
+                                         const LubInspectInstance *v,
+                                         int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    push_LubInspectInstance(L, &v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
 static void fill_LubProfileLine(lua_State *L, const LubProfileLine *v) {
   lgen_set_str(L, "site", v->site);
   lgen_set_num(L, "ms", v->ms);
@@ -6325,6 +6353,20 @@ static int l_sys_inspect(lua_State *L) {
   lub_sys_inspect(lgen_ctx(), path, offset, count, &out, &out_count);
   lgen_release(mark);
   push_list_LubInspectNode(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_inspect_instances(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t max_depth = (int32_t)luaL_checkinteger(L, 1);
+  int32_t max_children = (int32_t)luaL_checkinteger(L, 2);
+  const LubInspectInstance *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_inspect_instances(lgen_ctx(), max_depth, max_children, &out,
+                            &out_count);
+  lgen_release(mark);
+  push_list_LubInspectInstance(L, out, out_count);
   return 1;
 }
 
@@ -10493,6 +10535,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "take_values");
   lua_pushcfunction(L, l_sys_inspect);
   lua_setfield(L, -2, "inspect");
+  lua_pushcfunction(L, l_sys_inspect_instances);
+  lua_setfield(L, -2, "inspect_instances");
   lua_pushcfunction(L, l_sys_inspect_pin);
   lua_setfield(L, -2, "inspect_pin");
   lua_pushcfunction(L, l_sys_inspect_pinned);

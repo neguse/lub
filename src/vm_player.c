@@ -784,12 +784,55 @@ static bool hook_profile_site(App *app, char *out, int32_t cap) {
   return true;
 }
 
+// 個体の 3 つの文字列 (type、path、id) は arena の中の位置で持ち、全部を足した後に引く
+static StrArena g_inst_arena;
+static size_t *g_inst_at;
+static LubInspectInstance *g_inst;
+static int32_t g_inst_n, g_inst_cap, g_inst_at_cap;
+
+static void inspect_instance(void *user, const char *type, const char *path,
+                             const char *id) {
+  (void)user;
+  g_inst_at = (size_t *)grow(g_inst_at, &g_inst_at_cap, 3 * (g_inst_n + 1),
+                             sizeof(size_t));
+  g_inst = (LubInspectInstance *)grow(g_inst, &g_inst_cap, g_inst_n + 1,
+                                      sizeof(LubInspectInstance));
+  if (3 * (g_inst_n + 1) > g_inst_at_cap || g_inst_n >= g_inst_cap)
+    return;
+  g_inst_at[3 * g_inst_n] = arena_add(&g_inst_arena, type, SDL_strlen(type));
+  g_inst_at[3 * g_inst_n + 1] =
+      arena_add(&g_inst_arena, path, SDL_strlen(path));
+  g_inst_at[3 * g_inst_n + 2] = arena_add(&g_inst_arena, id, SDL_strlen(id));
+  g_inst_n++;
+}
+
+static void hook_inspect_instances(App *app, int32_t max_depth,
+                                   int32_t max_children,
+                                   const LubInspectInstance **out,
+                                   int32_t *count) {
+  (void)app;
+  arena_reset(&g_inst_arena);
+  g_inst_n = 0;
+  if (!vm_lub_vm)
+    return;
+  tvm_inspect_instances(vm_lub_vm, g_game.cls, (uint32_t)max_depth,
+                        (uint32_t)max_children, inspect_instance, NULL);
+  for (int32_t i = 0; i < g_inst_n; i++) {
+    g_inst[i].type = arena_str(&g_inst_arena, g_inst_at[3 * i]);
+    g_inst[i].path = arena_str(&g_inst_arena, g_inst_at[3 * i + 1]);
+    g_inst[i].id = arena_str(&g_inst_arena, g_inst_at[3 * i + 2]);
+  }
+  *out = g_inst;
+  *count = g_inst_n;
+}
+
 static const LubDebugHooks g_debug_hooks = {
-    hook_take_trace,       hook_take_values,    hook_inspect,
-    hook_inspect_pin,      hook_inspect_pinned, hook_snapshot_take,
-    hook_snapshot_restore, hook_snapshot_free,  hook_snapshot_number,
-    hook_layout_version,   hook_profile_lines,  hook_take_profile,
-    hook_take_gc_pauses,   hook_take_kept,      hook_profile_site,
+    hook_take_trace,        hook_take_values,    hook_inspect,
+    hook_inspect_pin,       hook_inspect_pinned, hook_snapshot_take,
+    hook_snapshot_restore,  hook_snapshot_free,  hook_snapshot_number,
+    hook_layout_version,    hook_profile_lines,  hook_take_profile,
+    hook_take_gc_pauses,    hook_take_kept,      hook_profile_site,
+    hook_inspect_instances,
 };
 
 // overlay が Input.Grab で取っている種類の event か

@@ -1,6 +1,7 @@
 // 個体ごとの検査の口 (tcs VM の player の overlay から)。
 //   - Sys.TakeTraceFor は、覚えた個体 (Sys.InspectPin) と同じ class の別の個体を this にして通っただけの行を返さない (別の class と static の行は返す)
 //   - Gfx.PickResult の Self は、Site と同じ並びの段ごとの this の個体の Id (static の段は空の行)
+//   - Sys.InspectInstances は static から辿れる個体を、Sys.Inspect と同じ path と Id で 1 度ずつ返す
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -39,6 +40,14 @@ public static class Tool
             foreach (var n in Sys.Inspect("Game", 0, 10))
                 if (n.Name == "Left")
                     left = n.Id;
+            var found = "";
+            foreach (var i in Sys.InspectInstances(8, 1000))
+                found += i.Type + " " + i.Path + (i.Id == left ? " (left)" : "") + ", ";
+            if (found != "Crate Game.Left (left), Crate Game.Right, ")
+            {
+                Fail("InspectInstances: " + found);
+                return;
+            }
             Sys.InspectPin("left", "Game.Left");
             Sys.TakeTraceFor("left");
             Gfx.Size(out var w, out var h);

@@ -442,6 +442,19 @@ void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
     app->debug_hooks->inspect(app, path, offset, count, out, out_count);
 }
 
+void lub_sys_inspect_instances(LubContext *ctx, int32_t max_depth,
+                               int32_t max_children,
+                               const LubInspectInstance **out,
+                               int32_t *out_count) {
+  App *app = lub_api_app(ctx);
+  *out = NULL;
+  *out_count = 0;
+  if (app->debug_hooks && app->debug_hooks->inspect_instances &&
+      max_depth > 0 && max_children > 0)
+    app->debug_hooks->inspect_instances(app, max_depth, max_children, out,
+                                        out_count);
+}
+
 void lub_sys_profile_lines(LubContext *ctx, bool on) {
   App *app = lub_api_app(ctx);
   gpu_time_enable(app, on);
