@@ -1,0 +1,2 @@
+shaders_created=2 shaders_destroyed
+pipelines_created=1 pipelines_destroyed

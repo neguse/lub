@@ -48,6 +48,7 @@ var floor = Assets.Shader("game_a/floor", vsPath, fsPath);
 
 同じ key の部品は同じ resource を共有するので、中身の違うものに同じ key を渡さない。
 `Sfx.Blip` / `Sfx.Noise` の音と `SpriteBatch.Rect` / `Disc` の atlas は、中身の決まった共通の key を使うので key を取らない。
+`SpriteBatch` の shader も中身が決まっているので、key によらずすべての `SpriteBatch` で 1 つ(`lubx/sprite/instanced`)を共有する。
 
 ## SpriteBatch の重なり
 
