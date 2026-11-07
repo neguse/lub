@@ -130,9 +130,9 @@ player は library (`lub_vm_player`、`include/lub/lub_vm.h`) で、`lub` の ma
 自前の player は、lub を CMake の `add_subdirectory` で取り込み、自分の main (`include/lub/lub_vm_main.h` の `LUB_VM_MAIN`) で native の拡張を静的に link する (web で native の拡張を使うのはこの形だけ)。
 web の実行物の設定は `lub_vm_player_link_options(<target> <出力のディレクトリ>)` が付ける。
 `scripts/vm-project-test.sh` が `tests/vm/` の project で確かめる。
-native gate は全サンプルで、tcs VM の player の digest と capture が tcs→Lua と一致することを確かめる。
-`tests/cs` の runtime テストも、tcs VM の player で走らせる (`tests/cs/.lub/all.tcsb` を `--entry` で選ぶ)。
-golden (`scripts/run-golden.sh --vm`) も tcs VM の player で撮り、tcs→Lua と同じ golden と比べる。
+native gate は全サンプルで、tcs VM の player の digest と capture が .NET 実行と一致することを確かめる。
+`tests/cs` の runtime テストは tcs VM の player で走らせる (`tests/cs/.lub/all.tcsb` を `--entry` で選ぶ)。
+golden (`scripts/run-golden.sh`) も tcs VM の player で撮る。
 
 ## 各層の対応
 

@@ -1,7 +1,7 @@
 # tests/cs の runtime テストの一覧と変換。
 # scripts/native-gate.sh、apple-gate.sh、run-golden.sh と CI が source する。
 # 各 test は tests/cs/<Entry>.csproj の entry で、入力は tests/cs の *.cs 全部と cs-lib の実装ソース (lub CLI と同じ規約)。
-# cs_tests_transpile が tests/cs/.lub/<Entry>.lua に変換し、それを lub で動かす。
+# cs_tests_vm_build が tests/cs 全体を tests/cs/.lub/all.tcsb にし、lub (tcs VM の player) で --entry <Entry> を選んで動かす。
 # shellcheck shell=bash
 
 # 終了コードで合否が決まるもの。

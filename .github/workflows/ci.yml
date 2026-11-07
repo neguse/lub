@@ -262,13 +262,13 @@ jobs:
       - name: Build
         run: cmake --build build-release
 
-      # tests/cs の runtime テストとサンプルの C# は起動前に tcs で transpile するので dotnet が要る。
+      # tests/cs の runtime テストとサンプルの C# は起動前に tcs vm で bytecode にするので dotnet が要る。
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
       # 後の step (golden のサンプルの変換) も同じ Transpiler.dll を使う (repo root からの相対 path)
-      - name: Transpile tests/cs
+      - name: Build tests/cs (tcs VM bytecode)
         shell: bash
         run: |
           # msvc-dev-cmd が設定する Platform=x64 で既定の出力先が bin/x64/Release に変わるので、出力先を明示する。
@@ -277,7 +277,7 @@ jobs:
           test -f "$LUB_TCS_DLL"
           echo "LUB_TCS_DLL=$LUB_TCS_DLL" >> "$GITHUB_ENV"
           source scripts/cs-tests.sh
-          cs_tests_transpile "${cs_all_tests[@]}"
+          cs_tests_vm_build
 
       - name: tcs process cleanup
         shell: bash
@@ -289,7 +289,7 @@ jobs:
         shell: bash
         run: |
           ls -1 build-release/D3D12
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestIndexedDraw.lua \
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestIndexedDraw \
             --capture "$RUNNER_TEMP/info.png" --capture-frame 1 --fixed-dt 0.0166666666666667 2>&1 \
             | grep -E '^d3d12:'
 
@@ -327,62 +327,62 @@ jobs:
       # math.* と ^ が Linux / macOS / iOS / web と同じ結果になること (期待値は 1 つ)。
       - name: Math determinism
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestMathDeterminism.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestMathDeterminism --readback-fixed-latency
 
       # 1 フレームの中で宣言し直した texture を、draw が記録した順に読むこと。
       - name: Texture recording order
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestTextureRecordingOrder.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestTextureRecordingOrder --readback-fixed-latency
 
       # texture と sampler を別に宣言した shader が他の backend と同じ組で描け、共有した sampler は shader compile の error になること。
       - name: Separate sampler
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestSeparateSampler.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestSeparateSampler --readback-fixed-latency
 
       # 1 フレームの中で宣言し直した buffer を、draw が記録した順に読むこと。
       - name: Buffer recording order
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestBufferRecordingOrder.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestBufferRecordingOrder --readback-fixed-latency
 
       # float[] の先頭 count 個から宣言した buffer。
       - name: Buffer array
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestBufferArray.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestBufferArray --readback-fixed-latency
 
       # 大きさを変えて宣言し直した buffer の、shader から見える数と内容。
       - name: Buffer capacity
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestBufferCapacity.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestBufferCapacity --readback-fixed-latency
 
       # FrameBuffer の範囲を draw / dispatch が記録した順に自分のデータで読むこと。
       - name: Frame buffer
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/TestFrameBuffer.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestFrameBuffer --readback-fixed-latency
 
       - name: Frame buffer errors
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestFrameBufferErrors.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestFrameBufferErrors --readback-fixed-latency
 
       - name: Frame buffer limit
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestFrameBufferLimit.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestFrameBufferLimit --readback-fixed-latency
 
       # compute が読み書きする storage buffer / texture が、前の dispatch の内容を保つこと。
       - name: Storage preserve
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestStoragePreserve.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestStoragePreserve --readback-fixed-latency
 
       # storage texture の形式が shader の宣言どおりで、形式の違う dispatch が error になること。
       - name: Storage format
         shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestStorageFormat.lua --readback-fixed-latency
+        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestStorageFormat --readback-fixed-latency
 
       # readback の届く frame が他の backend と同じで、保証しないモードでは GPU を待たないこと。
       - name: Readback latency
         shell: bash
         run: |
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestReadbackFixedLatency.lua
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/TestReadbackNoWait.lua
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
 
       # 1 フレームに draw と dispatch が多くても、各 draw が自分の texture、sampler、uniform で描くこと。
       # debug layer を有効にし、validation の error でも落とす。
@@ -390,7 +390,7 @@ jobs:
         shell: bash
         run: |
           log="${RUNNER_TEMP}/many_draws.log"
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/TestManyDraws.lua --readback-fixed-latency 2>&1 | tee "$log"
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestManyDraws --readback-fixed-latency 2>&1 | tee "$log"
           if ! grep -q 'd3d12: debug layer messages: on' "$log"; then
             echo "::error::the D3D12 debug layer did not load"
             exit 1
@@ -406,7 +406,7 @@ jobs:
         shell: bash
         run: |
           log="${RUNNER_TEMP}/draw_state_reuse.log"
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/TestDrawStateReuse.lua --readback-fixed-latency 2>&1 | tee "$log"
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestDrawStateReuse --readback-fixed-latency 2>&1 | tee "$log"
           if grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
             echo "::error::the D3D12 debug layer reported errors"
             exit 1
@@ -417,7 +417,7 @@ jobs:
         shell: bash
         run: |
           log="${RUNNER_TEMP}/gpu_pass_time.log"
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/TestGpuPassTime.lua --readback-fixed-latency 2>&1 | tee "$log"
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestGpuPassTime --readback-fixed-latency 2>&1 | tee "$log"
           if ! grep -q 'gpu pass time: timed' "$log"; then
             echo "::error::d3d12 did not time the GPU passes"
             exit 1
@@ -435,7 +435,7 @@ jobs:
           failed=()
           for t in "${cs_runtime_tests[@]}"; do
             log="${RUNNER_TEMP}/runtime_$t.log"
-            if ! LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe "tests/cs/.lub/$t.lua" "${cs_test_args[@]}" >"$log" 2>&1; then
+            if ! LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry "$t" "${cs_test_args[@]}" >"$log" 2>&1; then
               echo "::error::$t failed"
               cat "$log"
               failed+=("$t")
@@ -454,11 +454,12 @@ jobs:
           out="$RUNNER_TEMP/export"
           lub="$PWD/build-release/lub.exe"
           capture=(--capture-frame 5 --fixed-dt 0.0166666666666667)
+          # snapshot の bytecode は <Entry>.tcsb
           for t in TestVertexPull TestDepthSample; do
-            "$lub" export windows "tests/cs/.lub/$t.lua" -o "$out/$t"
-            LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 "$lub" "tests/cs/.lub/$t.lua" \
+            "$lub" export windows tests/cs/.lub/all.tcsb --entry "$t" -o "$out/$t"
+            LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 "$lub" tests/cs/.lub/all.tcsb --entry "$t" \
               --capture "$out/$t-repo.png" "${capture[@]}"
-            (cd "$out/$t" && LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 "$lub" game.lua \
+            (cd "$out/$t" && LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 "$lub" "$t.tcsb" \
               --capture "$out/$t-snapshot.png" "${capture[@]}")
             cmp "$out/$t-repo.png" "$out/$t-snapshot.png"
           done
@@ -473,14 +474,14 @@ jobs:
           mkdir -p "$TMPDIR"
           scripts/run-golden.sh
 
-      # .NET 実行: 共有 library (lub.dll、cmake --build が作る) を facade から P/Invoke で叩き、tcs→Lua と frame digest が一致することを 1 サンプルで確かめる (capture の比較は手元の native gate だけ)。
-      - name: .NET run (00_hello, digest vs tcs→Lua)
+      # .NET 実行: 共有 library (lub.dll、cmake --build が作る) を facade から P/Invoke で叩き、tcs VM の player と frame digest が一致することを 1 サンプルで確かめる (capture の比較は手元の native gate だけ)。
+      - name: .NET run (00_hello, digest vs tcs VM)
         shell: bash
         run: |
           export LUB_D3D12_WARP=1
           export LUB_NATIVE_LIB="$(cygpath -m "$PWD/build-release/lub.dll")"
-          scripts/run-cs-sample.sh 00_hello --build
-          ./build-release/lub.exe samples/00_hello/.lub/Hello00.lua --capture "$RUNNER_TEMP/cs.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/cs.digest"
+          scripts/run-cs-sample.sh 00_hello --vm
+          ./build-release/lub.exe samples/00_hello/.lub/Hello00.tcsb --entry Hello00 --capture "$RUNNER_TEMP/cs.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/cs.digest"
           dotnet build dotnet/SampleRunner -p:Sample=00_hello -nologo -v q
           ./dotnet/SampleRunner/bin/00_hello/lub-sample-00_hello.exe --capture "$RUNNER_TEMP/dn.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "$RUNNER_TEMP/dn.log" | grep '^digest ' > "$RUNNER_TEMP/dn.digest"
           grep -E '^d3d12:' "$RUNNER_TEMP/dn.log" || true
