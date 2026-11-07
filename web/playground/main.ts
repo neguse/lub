@@ -3,7 +3,6 @@ import {
   setFiles,
   getFiles,
   setPlaygroundDiagnostics,
-  setVirtualFile,
   setCsLanguageProvider,
   jumpTo,
 } from "./editor";
@@ -11,8 +10,7 @@ import { parseTcsDiagnostic } from "./diagnostics";
 import type { PlaygroundDiagnostic } from "./diagnostics";
 import { SAMPLE_NAMES, loadSampleSource, discoverDataFiles } from "./samples";
 import { openTcsSession, preloadTcsRuntime } from "./tcs-compiler";
-import { useDotnetCompiler, useVmRuntime } from "./compiler-mode";
-import type { TcsSession, TcsOpenResult } from "./tcs-compiler";
+import type { TcsSession } from "./tcs-compiler";
 
 let playerIframe: HTMLIFrameElement | null = null;
 // restart() が作ってから playerReady を受けるまでの iframe。
@@ -22,32 +20,30 @@ const PLAYER_BOOT_TIMEOUT_MS = 15000;
 let currentSample = "01_triangle";
 let mainClass = "";
 let entryKey = "";
-let lastLua: string | null = null;
-// tcs VM (`?runtime=vm`): lastLua は module の base64、vmRevision は player に渡した build の revision (commit ACK の照合)
+// 新しい player に渡す tcs VM の module (.tcsb の base64)
+let lastModule: string | null = null;
+// player に渡した build の revision (commit ACK の照合)
 let vmRevision = 0;
-// tcs VM: hot reload の後は lastLua (module) が古い。新しい player を起こす前に session から受け取る
-let lastLuaStale = false;
+// hot reload の後は lastModule が古い。新しい player を起こす前に session から受け取る
+let lastModuleStale = false;
 
-async function refreshVmModule() {
-  if (!useVmRuntime || !lastLuaStale || !tcsSession) return;
-  const module = await tcsSession.linkSnapshot();
-  if (module != null) {
-    lastLua = module;
-    lastLuaStale = false;
-  }
+async function refreshModule() {
+  if (!lastModuleStale || !tcsSession) return;
+  lastModule = await tcsSession.module();
+  lastModuleStale = false;
 }
 let syncTimer: number | null = null;
 const pendingSyncPaths = new Set<string>();
 let syncInFlight = false;
 
-// C# は増分 session (tcs SessionExports)。
+// C# は tcs の wasm の増分 session。
 // sample 切替で開き直す。
 let tcsSession: TcsSession | null = null;
-// prebuilt 起動後の background open 中 (この間の C# 編集は queue して待つ)
+// session を開いている間 (この間の C# 編集は queue して待つ)
 let tcsOpening = false;
-// live player が最後に受け取った snapshot の session。
-// registry は revision の順序で hot apply を受けるので、別の session (revision が 1 に戻る) の snapshot と、live-safe でない変更の後の snapshot は fresh player で受ける。
-// null = session の snapshot をまだ受けていない (prebuilt 起動、起動失敗、live-safe でない変更の後)。
+// live player が最後に受け取った module の session。
+// batch は同じ session の直前の build からの差分なので、別の session (revision が 1 に戻る) の build と、live-safe でない変更の後の build は fresh player で受ける。
+// null = session の module をまだ受けていない (起動失敗、live-safe でない変更の後)。
 let playerSession: TcsSession | null = null;
 // sample 切替の世代。
 // async 完了時に古い世代の結果を捨てる。
@@ -153,8 +149,7 @@ function playerSrc(): string {
       argv.map((a) => `&argv=${encodeURIComponent(a)}`).join("") +
       `&env=${encodeURIComponent("LUB_GOLDEN=1")}`;
   }
-  extra += useVmRuntime ? "&runtime=vm" : "&runtime=lua";
-  // dev / test: page の ?playerEnv=K=V を player の ?env= に写す (LUB_PROFILE で Lua と tcs VM の frame の時間を比べるなど)
+  // dev / test: page の ?playerEnv=K=V を player の ?env= に写す (LUB_PROFILE で frame の時間を測るなど)
   if (import.meta.env.DEV || import.meta.env.MODE === "test")
     for (const kv of new URLSearchParams(location.search).getAll("playerEnv"))
       extra += `&env=${encodeURIComponent(kv)}`;
@@ -194,7 +189,7 @@ window.addEventListener("message", (e) => {
   }
 });
 
-/** registry の commit ACK。待っている revision だけ状態を進める。 */
+/** player の commit ACK。待っている revision だけ状態を進める。 */
 function handleTcsCommitAck(json: string) {
   let ack: {
     revision: number;
@@ -251,40 +246,21 @@ function isSourceFile(path: string): boolean {
 /** エディタ上のソース一式を compiler へ渡す形({ "Foo.cs": content })にする。 */
 function collectSources(ext: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [p, f] of getFiles())
-    if (p.endsWith(ext) && !f.virtual) out[p] = f.content;
+  for (const [p, f] of getFiles()) if (p.endsWith(ext)) out[p] = f.content;
   return out;
 }
 
-/** 生成 Lua 仮想タブのキー(native の samples/<name>/.lub/<name>.lua の鏡写し)。 */
-/** 生成物のタブ。tcs VM の module は bytecode なので大きさだけ出す。 */
-function showGenerated(text: string) {
-  setVirtualFile(
-    genLuaTabPath(),
-    useVmRuntime
-      ? `-- tcs VM module (.tcsb): ${Math.floor((text.length * 3) / 4)} bytes, revision ${vmRevision}\n`
-      : text,
-  );
-}
-
-/** player に渡す entry (Lua: 生成 Lua、tcs VM: module と revision) */
+/** player に渡す entry (module と revision) */
 function entryFiles(): Record<string, string> {
-  if (!useVmRuntime) return { [entryKey]: lastLua! };
   return {
     [entryKey.replace(/\.tcsb$/, ".rev")]: String(vmRevision),
-    [entryKey]: lastLua!,
+    [entryKey]: lastModule!,
   };
 }
 
-/** player の起動の引数 (tcs VM だけ。Lua の player は sample の名前から entry を引く) */
-function playerArgv(): string[] | undefined {
-  return useVmRuntime
-    ? ["samples/" + entryKey, "--entry", mainClass]
-    : undefined;
-}
-
-function genLuaTabPath(): string {
-  return `.lub/${currentSample}.lua`;
+/** player の起動の引数 */
+function playerArgv(): string[] {
+  return ["samples/" + entryKey, "--entry", mainClass];
 }
 
 /** compile 結果の行群を位置付き診断へパースして squiggle に反映する(全置換)。 */
@@ -312,16 +288,16 @@ function makeCsProvider(session: TcsSession) {
   };
 }
 
-/** 現在のソースを compile して完全な Lua を返す。失敗時は null(ログにエラー)。 */
+/** 現在のソースを compile して module を返す。失敗時は null(ログにエラー)。 */
 async function compileCurrent(): Promise<string | null> {
   const gen = loadGen;
   const sources = collectSources(".cs");
   let succeeded = false;
   tcsOpening = true;
   try {
-    const lua = await compileCurrentInner(sources);
-    succeeded = lua !== null;
-    return lua;
+    const module = await compileCurrentInner(sources);
+    succeeded = module !== null;
+    return module;
   } catch (error) {
     if (gen === loadGen) {
       addLog("C# compiler failed: " + error, "err");
@@ -349,7 +325,7 @@ async function compileCurrentInner(
   const gen = loadGen;
   $status.textContent = "compiling…";
   // 増分 session を開く (cold path)。
-  // 以後の編集は syncDirtyNow の update + linkSnapshot が warm に処理する。
+  // 以後の編集は syncDirtyNow の update が warm に処理する。
   tcsSession = null;
   setCsLanguageProvider(null);
   const res = await openTcsSession(sources, mainClass);
@@ -366,17 +342,13 @@ async function compileCurrentInner(
     return null;
   }
   applyCompileDiagnostics(res.warnings, parseTcsDiagnostic);
-  const lua = await res.session.linkSnapshot();
+  const module = await res.session.module();
   if (gen !== loadGen) return null;
-  if (lua == null) {
-    $status.textContent = "compile error";
-    return null;
-  }
   tcsSession = res.session;
   vmRevision = 1;
   setCsLanguageProvider(makeCsProvider(res.session));
   $status.textContent = "compiled";
-  return lua;
+  return module;
 }
 
 /** サンプルをロード → compile → data file 解決 → エディタ反映 → player 起動。 */
@@ -397,13 +369,6 @@ async function loadCompileRunInner(name: string, gen: number) {
   void preloadTcsRuntime().catch((error) =>
     console.warn("[tcs] preload failed:", error),
   );
-  // prebuilt (.NET の tcs で前もって変換したもの) は .NET の wasm で変換するときの cold 起動のためだけに使う (Lua の player だけ)
-  const prebuilt =
-    !useDotnetCompiler || useVmRuntime
-      ? Promise.resolve(null)
-      : fetch(`${import.meta.env.BASE_URL}tcs-prebuilt/${name}.lua`).catch(
-          () => null,
-        );
   $status.textContent = `loading ${name}…`;
   $log.innerHTML = "";
   setPlaygroundDiagnostics([]);
@@ -415,110 +380,44 @@ async function loadCompileRunInner(name: string, gen: number) {
   setCsLanguageProvider(null);
   tcsOpening = true;
   playerSession = null;
-  lastLua = null;
+  lastModule = null;
   const src = await loadSampleSource(name);
   if (gen !== loadGen) return;
   mainClass = src.mainClass;
-  entryKey = useVmRuntime
-    ? src.entryKey.replace(/\.lua$/, ".tcsb")
-    : src.entryKey;
+  entryKey = src.entryKey;
   // まずソース (.cs) だけエディタに出してから compile(エラーでもソースは見える)。
   setFiles(src.files);
 
-  // C# は build 時生成の prebuilt snapshot があれば先に player を起動し、.NET (Roslyn) session は背景で温める (cold start から compile を外す)。
-  // 編集はエディタソース基準なので、prebuilt が古くても最初の編集で authoritative な snapshot に置き換わる。
-  let lua: string | null = null;
-  let warmAfterBoot = false;
-  {
-    const pre = await prebuilt;
-    if (gen !== loadGen) return;
-    if (pre?.ok) {
-      lua = await pre.text();
-      if (gen !== loadGen) return;
-      warmAfterBoot = true;
-    }
-  }
-  if (lua == null) {
-    lua = await compileCurrent();
-    if (gen !== loadGen) return;
-    if (lua == null) return; // compile 失敗: ソースは出ているので直して再 compile できる
-  }
-  lastLua = lua;
-  lastLuaStale = false;
+  const module = await compileCurrent();
+  if (gen !== loadGen) return;
+  if (module == null) return; // compile 失敗: ソースは出ているので直して再 compile できる
+  lastModule = module;
+  lastModuleStale = false;
 
-  // worker で Open を始め、data / player の読み込みと重ねる。
-  // 元ソースを基準にし、準備中の編集も Update で restart 判定する。
-  const opening = warmAfterBoot
-    ? openTcsSession(
-        Object.fromEntries([...src.files].map(([p, f]) => [p, f.initial])),
-        mainClass,
-      )
-    : null;
-  void opening?.catch(() => {}); // boot を待つ間の rejection も捕捉する
   const dataFiles = await discoverDataFiles(
     name,
-    useVmRuntime ? Object.values(collectSources(".cs")).join("\n") : lua,
+    Object.values(collectSources(".cs")).join("\n"),
   );
   if (gen !== loadGen) return;
-  // エディタ表示 = ソース (.cs) + data files + 生成 Lua(read-only)。
+  // エディタ表示 = ソース (.cs) + data files。
   const all = new Map(getFiles());
   for (const [k, v] of dataFiles) all.set(k, v);
   setFiles(all);
-  showGenerated(lua);
 
-  // session の取り込みは player の起動と並行する。
   // player が起動しなくても補完 / hover と編集 (fresh player の起動) は使える。
-  const booted = restart();
-  if (opening) void warmTcsSession(gen, opening);
-  await booted;
+  await restart();
 }
 
-/** prebuilt 起動後に増分 session を背景で開く。
- * Open は worker で実行し、完了時に queue された編集を flush する。 */
-async function warmTcsSession(gen: number, opening: Promise<TcsOpenResult>) {
-  addLog("C# incremental compiler warming in background…");
-  try {
-    const res = await opening;
-    if (gen !== loadGen) return; // sample 切替済み: 結果を捨てる
-    for (const w of res.warnings) addLog(w, "warn");
-    if (!res.ok || !res.session) {
-      applyCompileDiagnostics(
-        [...res.errors, ...res.warnings],
-        parseTcsDiagnostic,
-      );
-      addLog("C# compile error (session open):", "err");
-      for (const line of res.errors) if (line.trim()) addLog(line, "err");
-      return;
-    }
-    tcsSession = res.session;
-    // prebuilt は fresh session の revision 1 と同じ snapshot なので、prebuilt で起動した player はこの session の hot apply を受けられる。
-    playerSession = res.session;
-    setCsLanguageProvider(makeCsProvider(res.session));
-    addLog("C# incremental compiler ready");
-    if (pendingSyncPaths.size > 0) void syncDirtyNow();
-  } catch (error) {
-    if (gen === loadGen) addLog("C# compiler warmup failed: " + error, "err");
-  } finally {
-    if (gen === loadGen) {
-      tcsOpening = false;
-      if (!tcsSession && pendingSyncPaths.size > 0) {
-        syncTimer = window.setTimeout(syncDirtyNow, 0);
-      }
-    }
-  }
-}
-
-/** player iframe を作り直し、コンパイル済み Lua + data files を送る。 */
+/** player iframe を作り直し、module + data files を送る。 */
 async function restart() {
   const gen = loadGen;
   if (!entryKey) return;
-  await refreshVmModule();
-  if (lastLua == null) {
-    const lua = await compileCurrent();
-    if (lua == null) return;
-    lastLua = lua;
-    lastLuaStale = false;
-    showGenerated(lua);
+  await refreshModule();
+  if (lastModule == null) {
+    const module = await compileCurrent();
+    if (module == null) return;
+    lastModule = module;
+    lastModuleStale = false;
   }
   $status.textContent = "restarting…";
   clearPendingAck();
@@ -550,8 +449,7 @@ async function restart() {
   }
 
   const all: Record<string, string> = entryFiles();
-  for (const [p, f] of getFiles())
-    if (!isSourceFile(p) && !f.virtual) all[p] = f.content; // data files
+  for (const [p, f] of getFiles()) if (!isSourceFile(p)) all[p] = f.content; // data files
   playerIframe.contentWindow!.postMessage(
     {
       type: "setFiles",
@@ -619,12 +517,12 @@ function waitForAckFrom(
   });
 }
 
-/** requiresRestart 編集の二相 handoff。hidden player を lastLua で
+/** requiresRestart 編集の二相 handoff。hidden player を lastModule で
  * 起動し、runtime の初回 commit ACK を確認してから表示を swap する。
  * 失敗時は旧 player に触れず false を返す。 */
 async function restartTwoPhase(): Promise<boolean> {
-  await refreshVmModule();
-  if (!entryKey || lastLua == null) return false;
+  await refreshModule();
+  if (!entryKey || lastModule == null) return false;
   const gen = loadGen;
   $status.textContent = "restarting (two-phase)…";
   const fresh = document.createElement("iframe");
@@ -636,8 +534,7 @@ async function restartTwoPhase(): Promise<boolean> {
     if (!(await waitForMsgFrom(fresh, "playerReady", 15000))) return false;
     if (gen !== loadGen) return false;
     const all: Record<string, string> = entryFiles();
-    for (const [p, f] of getFiles())
-      if (!isSourceFile(p) && !f.virtual) all[p] = f.content;
+    for (const [p, f] of getFiles()) if (!isSourceFile(p)) all[p] = f.content;
     const ackP = waitForAckFrom(fresh, 30000);
     fresh.contentWindow!.postMessage(
       {
@@ -664,7 +561,7 @@ async function restartTwoPhase(): Promise<boolean> {
   }
 }
 
-/** session の snapshot (lastLua) を fresh player で受ける。二相 handoff が
+/** session の module (lastModule) を fresh player で受ける。二相 handoff が
  * 失敗したら旧 player を残し、編集は pending のまま次の同期で再試行する。 */
 async function swapToFreshPlayer(gen: number, snapshot: Map<string, string>) {
   const ok = await restartTwoPhase();
@@ -685,7 +582,7 @@ function markSynced(snapshot: Map<string, string>) {
   }
 }
 
-/** debounce 後の同期: .cs 編集なら再 compile して Lua を、data 編集ならその場で sync。 */
+/** debounce 後の同期: .cs 編集なら再 compile して player に当て、data 編集ならその場で sync。 */
 async function syncDirtyNow() {
   const gen = loadGen;
   if (syncTimer) clearTimeout(syncTimer);
@@ -727,18 +624,17 @@ async function syncDirtyNow() {
 
     if (sourceChanged) {
       if (!tcsSession && tcsOpening) {
-        // session を background で開いている最中。
-        // 編集は pending のまま残し、open 完了時 (warmTcsSession) に flush される (latest-wins)。
+        // session を開いている最中。
+        // 編集は pending のまま残し、開いた後の player の起動か、開けなかったときの再試行で送る (latest-wins)。
         $status.textContent = "compiler warming…";
         return;
       }
       if (tcsSession) {
         const session = tcsSession;
-        // warm path: 変更 .cs だけ増分 Update → bridge snapshot を再 link。
-        // live-safe なら hotswap + commit ACK 待ち、そうでなければ fresh player を snapshot で起動する。
+        // warm path: 変更 .cs だけ増分 Update する。
+        // live-safe なら batch を送って commit ACK を待ち、そうでなければ fresh player を新しい module で起動する。
         $status.textContent = "compiling…";
-        // 別 session の snapshot (revision が 1 に戻る) は既存 registry に hot apply できない。
-        // prebuilt 起動なら warm 完了時に引き継ぎ済み。
+        // 別 session の batch (revision が 1 に戻る) は今の player に当てられない。
         let requiresRestart = playerSession !== session;
         for (const [p, f] of changed) {
           if (!isSourceFile(p)) continue;
@@ -761,40 +657,29 @@ async function syncDirtyNow() {
         }
         // 全 update 成功: 前回の squiggle を消す(warm path は warnings を返さない)
         setPlaygroundDiagnostics([]);
-        if (useVmRuntime && !requiresRestart) {
-          // tcs VM: batch だけを player に送る (module は新しい player を起こすときに受け取る)
-          vmRevision = ackRevision;
-          lastLuaStale = true;
-          files[entryKey.replace(/\.tcsb$/, ".rev")] = String(ackRevision);
-          files[entryKey.replace(/\.tcsb$/, ".batch")] = session.vmBatch!();
-        } else {
-          const lua = await session.linkSnapshot();
+        if (requiresRestart) {
+          const module = await session.module();
           if (gen !== loadGen) return;
-          if (lua == null) {
-            $status.textContent = "compile error";
-            return;
-          }
-          lastLua = lua;
-          lastLuaStale = false;
-          showGenerated(lua);
-          if (useVmRuntime) vmRevision = ackRevision;
-          if (requiresRestart) {
-            // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK を確認してから表示を swap する。
-            // 失敗時は旧 player を残す。
-            await swapToFreshPlayer(gen, snapshot);
-            return;
-          }
-          files[entryKey] = lua;
+          lastModule = module;
+          lastModuleStale = false;
+          vmRevision = ackRevision;
+          // 二相 handoff: hidden player を module で起動し、初回 commit ACK を確認してから表示を swap する。
+          // 失敗時は旧 player を残す。
+          await swapToFreshPlayer(gen, snapshot);
+          return;
         }
+        // batch だけを player に送る (module は新しい player を起こすときに受け取る)
+        vmRevision = ackRevision;
+        lastModuleStale = true;
+        files[entryKey.replace(/\.tcsb$/, ".rev")] = String(ackRevision);
+        files[entryKey.replace(/\.tcsb$/, ".batch")] = session.batch();
       } else {
-        const lua = await compileCurrent();
+        const module = await compileCurrent();
         if (gen !== loadGen) return;
-        if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
-        lastLua = lua;
-        lastLuaStale = false;
-        showGenerated(lua);
-        // 新 session の revision は 1 に戻るので、既存 registry へ hot apply すると同一/古い revision として捨てられる。
-        // fresh player で受け取る。
+        if (module == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
+        lastModule = module;
+        lastModuleStale = false;
+        // 新 session の batch は今の player の build に当てられないので、fresh player で受け取る。
         await swapToFreshPlayer(gen, snapshot);
         return;
       }
@@ -868,9 +753,9 @@ function scheduleAckRetry() {
 }
 
 // ログ中の file:line(:col) / file(line,col) をクリックジャンプ可能にする。
-// tcs エラー・Lua runtime traceback の 2 形をカバーする。
+// tcs の診断 (file(line,col)) と、tcs VM の実行時の誤りの trace (file:line) の 2 形をカバーする。
 const LOG_LINK_RE =
-  /((?:[\w.-]+\/)*[\w.-]+\.(?:cs|lua|slang))(?::(\d+)(?::(\d+))?|\((\d+),(\d+)\))/g;
+  /((?:[\w.-]+\/)*[\w.-]+\.(?:cs|slang))(?::(\d+)(?::(\d+))?|\((\d+),(\d+)\))/g;
 
 /** ログ中のパスをエディタのタブキーへ解決する。解決不能なら null。 */
 function resolveLogPath(raw: string): string | null {
@@ -880,11 +765,7 @@ function resolveLogPath(raw: string): string | null {
     raw.replace(/^\//, ""),
     raw.replace(/^\/?(?:sample|samples)\//, ""),
   ];
-  for (const c of candidates) {
-    if (files.has(c)) return c;
-    // entry Lua(<name>/.lub/<name>.lua)は生成 Lua タブへ
-    if (c === entryKey && files.has(genLuaTabPath())) return genLuaTabPath();
-  }
+  for (const c of candidates) if (files.has(c)) return c;
   return null;
 }
 

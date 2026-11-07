@@ -1,6 +1,7 @@
 // Frontend startup/queue regression tests. Compiler and player are controlled
 // fixtures; bench-tcs separately verifies the real wasm compiler.
-// 偽の compiler は Lua の player の session (prebuilt の Lua、linkSnapshot) を真似るので、?runtime=lua で開く。
+// 偽の compiler は tcs VM の session (module と batch) を真似る。
+// module と batch は base64 の代わりに revision とソースの text を持ち、偽の player がそこから revision を読んで commit ACK を返す。
 import assert from "node:assert/strict";
 import { launchChromium, closeAfter } from "./lib/browser.mjs";
 
@@ -12,8 +13,6 @@ try {
     "cold-edit",
     "cold-failure",
     "cold-failure-queued",
-    "warm-failure-queued",
-    "warm-edit",
     "warm-recovery",
     "restart-failure",
     "player-missing",
@@ -43,23 +42,13 @@ try {
               if (${JSON.stringify(mode)} === "warm-recovery" && ++updates === 2) throw new Error("injected update failure");
               source=content; return {ok:true,revision:++revision,errors:[],requiresRestart:${JSON.stringify(mode)} === "restart-failure" && ++updates === 2,restartReasons:[]};
             },
-            async linkSnapshot() { return "-- fixture revision=" + revision + "\\n" + source; },
+            batch() { return "fixture revision=" + revision + "\\n" + source; },
+            async module() { return "fixture revision=" + revision + "\\n" + source; },
             async complete() { return []; },
             async hover() { return {found:false}; }
           }};
         }
       `,
-      }),
-    );
-    await page.route("**/tcs-prebuilt/*.lua", (route) =>
-      route.fulfill({
-        status:
-          mode.startsWith("warm-") ||
-          mode === "restart-failure" ||
-          mode === "player-missing"
-            ? 200
-            : 404,
-        body: "-- fixture prebuilt",
       }),
     );
     let playerCount = 0;
@@ -81,7 +70,7 @@ try {
       </script>`,
       });
     });
-    await page.goto(base + "?runtime=lua");
+    await page.goto(base);
     await page.waitForFunction(() => window.__startupOpens === 1);
     if (mode === "player-missing") {
       // player が起動しなくても session は入り (補完 / hover が使える)、起動待ちの編集は次の入力で player の起動からやり直して届く。

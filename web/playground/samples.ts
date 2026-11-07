@@ -68,7 +68,7 @@ const CS_SAMPLES: Record<string, string> = {
   "26_renderer3d": "RendererDemo26",
 };
 
-// Samples whose Lua builds shader paths dynamically (so the load_text scan
+// Samples whose C# builds shader paths dynamically (so the Io.LoadText scan
 // below can't see them) list their editable data files explicitly. This only
 // picks what the editor shows; the player preloads every sample file itself.
 const EXTRA_FILES: Record<string, string[]> = {
@@ -138,9 +138,9 @@ const EXTRA_FILES: Record<string, string[]> = {
 export type SampleSource = {
   /** エディタに出す編集対象 (.cs)。data files は compile 後に追加する。 */
   files: Map<string, EditorFile>;
-  /** --entry のクラス名 (compile と `return <Main>` に使う)。 */
+  /** entry のクラス名 (compile と player の --entry に使う)。 */
   mainClass: string;
-  /** player に渡す entry (サンプル名) と lua のキー。 */
+  /** player に渡す module (.tcsb) のキー (samples/ 相対)。 */
   entryKey: string;
 };
 
@@ -152,7 +152,7 @@ async function fetchText(url: string): Promise<string> {
 
 /**
  * `.cs` ソースをロードする。各 playground サンプルは単一 `<EntryClass>.cs`。
- * data files(slang 等)は compile 後の Lua を scan して別途取得する(discoverDataFiles)。
+ * data files(slang 等)は C# のソースを scan して別途取得する(discoverDataFiles)。
  */
 export async function loadSampleSource(name: string): Promise<SampleSource> {
   const entryClass = CS_SAMPLES[name];
@@ -166,7 +166,7 @@ export async function loadSampleSource(name: string): Promise<SampleSource> {
   return {
     files,
     mainClass: entryClass,
-    entryKey: `${name}/.lub/${name}.lua`,
+    entryKey: `${name}/.lub/${name}.tcsb`,
   };
 }
 
@@ -175,9 +175,9 @@ export async function loadSampleSource(name: string): Promise<SampleSource> {
 // files over the binary copies it preloaded.
 const BINARY_RE = /\.(ttf|otf|png|jpg|glb|gltf|wav|ogg|mp3)$/i;
 
-// 生成 Lua の load_text("...") と、C# の Io.LoadText("...", ...) (tcs VM のときはソースを探す) の path
-function scanLuaReferences(src: string): string[] {
-  const re = /(?:load_(?:text|floats)|Load(?:Text|Floats))\(\s*"([^"]+)"/g;
+// C# の Io.LoadText("...", ...) / Io.LoadFloats("...", ...) の path
+function scanDataReferences(src: string): string[] {
+  const re = /Load(?:Text|Floats)\(\s*"([^"]+)"/g;
   const out: string[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(src)))
@@ -186,14 +186,14 @@ function scanLuaReferences(src: string): string[] {
 }
 
 /**
- * compile 済み Lua (tcs VM のときは C# のソース) を scan してエディタに出す data files(slang 等)を取得する。
+ * C# のソースを scan してエディタに出す data files(slang 等)を取得する。
  * 返り値のキーは player 側の `samples/` 相対(`<name>/data/...`)。
  */
 export async function discoverDataFiles(
   name: string,
-  luaText: string,
+  csSource: string,
 ): Promise<Map<string, EditorFile>> {
-  const refs = scanLuaReferences(luaText);
+  const refs = scanDataReferences(csSource);
   for (const extra of EXTRA_FILES[name] || []) {
     const full = extra.startsWith("samples/")
       ? extra
@@ -215,7 +215,7 @@ export async function discoverDataFiles(
         files.set(storeKey, { content: t, dirty: false, initial: t });
       }
     } catch {
-      /* skip: Lua errors at runtime if it actually reads this path */
+      /* skip: the runtime reports missing if it actually reads this path */
     }
   }
   return files;

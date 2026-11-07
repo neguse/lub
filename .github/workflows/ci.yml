@@ -9,8 +9,7 @@
 #
 # 速度は cache が本体:
 #   - ccache (linux native build / emcc wasm build)
-#   - tcs wasm assets / prebuilt snapshot (content key: tcs submodule SHA +
-#     cs-lib / samples の C# ソース)
+#   - tcs wasm assets (content key: tcs submodule SHA)
 #   - slang prebuilt、playwright browsers、npm
 # master push が cache を温め、PR はそれを読む (actions/cache の branch scope)。
 name: ci
@@ -195,7 +194,7 @@ jobs:
           mkdir -p "$TMPDIR"
           bash scripts/native-gate.sh --require-cs --skip-golden
 
-      # web-export が page を書くのに使う lub と、その共有 library、テストの Lua と bytecode。
+      # web-export が page を書くのに使う lub と、その共有 library、テストの bytecode。
       # 共有 library は RUNPATH (build の絶対 path) で探すので、同じ path に置き戻す。
       - name: Upload lub for web-export
         uses: actions/upload-artifact@v4
@@ -205,11 +204,6 @@ jobs:
             build-release-linux/lub
             build-release-linux/third_party/SDL/libSDL3.so.0
             build-release-linux/third_party/openxr/src/loader/libopenxr_loader.so.1
-            tests/cs/.lub/TestVertexPull.lua
-            tests/cs/.lub/TestDepthSample.lua
-            tests/cs/.lub/TestUiRender.lua
-            tests/cs/.lub/TestDupBinding.lua
-            tests/cs/.lub/TestWindowSize.lua
             tests/cs/.lub/all.tcsb
 
       - name: Upload golden failure artifacts
@@ -627,20 +621,13 @@ jobs:
         working-directory: web
         run: npm ci
 
-      # tcs wasm assets / prebuilt snapshot は入力が tcs submodule と cs-lib / samples の C# ソースだけなので content key で cache し、触らない PR では dotnet workload ごとスキップする。
+      # tcs wasm assets は入力が tcs submodule だけなので content key で cache し、触らない PR では dotnet workload ごとスキップする。
       - name: Cache tcs wasm assets
         id: tcs-wasm-cache
         uses: actions/cache@v4
         with:
           path: web/tcs-wasm-assets
           key: tcs-wasm-${{ steps.tcs.outputs.sha }}-${{ hashFiles('web/scripts/gen-tcs-assets.mjs') }}
-
-      - name: Cache tcs prebuilt snapshots
-        id: tcs-prebuilt-cache
-        uses: actions/cache@v4
-        with:
-          path: web/tcs-prebuilt
-          key: tcs-prebuilt-${{ steps.tcs.outputs.sha }}-${{ hashFiles('cs-lib/**/*.cs', 'samples/**/*.cs', 'samples/**/*.csproj', 'web/scripts/gen-tcs-prebuilt.mjs') }}
 
       # tcs2c の web の player (下の Build tcs2c web player) にも使うので、cache が当たっても入れる。
       - uses: actions/setup-dotnet@v4
@@ -655,11 +642,6 @@ jobs:
         if: steps.tcs-wasm-cache.outputs.cache-hit != 'true'
         working-directory: web
         run: npm run gen-tcs -- --publish
-
-      - name: Generate tcs prebuilt snapshots
-        if: steps.tcs-prebuilt-cache.outputs.cache-hit != 'true'
-        working-directory: web
-        run: npm run gen-tcs-prebuilt
 
       # playground の C# の変換 (tcs2c で C にした tcs を emcc で wasm にしたもの)。入力は tcs の submodule だけ
       - name: Cache tcs selfhost wasm
@@ -746,7 +728,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # A9 (shard 1) は tests/cs の test を native の tcs で変換した Lua を流す。
+      # A9 (shard 1) は tests/cs の test を native の tcs で変換した bytecode を流す。
       - name: Init tcs submodule (A9)
         if: matrix.shard == 1
         run: git submodule update --init third_party/tcs
@@ -756,14 +738,13 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Transpile tests/cs (A9)
+      - name: Build tests/cs bytecode (A9)
         if: matrix.shard == 1
         shell: bash
         run: |
           dotnet build third_party/tcs/Transpiler -c Release -nologo -v q
           export LUB_TCS_DLL="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
           source scripts/cs-tests.sh
-          cs_tests_transpile "${cs_all_tests[@]}"
           cs_tests_vm_build
 
       - uses: actions/setup-node@v4
@@ -952,7 +933,6 @@ jobs:
         run: |
           chmod +x build-release-linux/lub
           mkdir -p build/wasm/vm
-          cp web/dist/wasm/lub.js web/dist/wasm/lub.wasm web/dist/wasm/lub.data build/wasm/
           cp web/dist/wasm/vm/lub.js web/dist/wasm/vm/lub.wasm web/dist/wasm/vm/lub.data build/wasm/vm/
           bash scripts/web-export-gate.sh build-release-linux/lub
 

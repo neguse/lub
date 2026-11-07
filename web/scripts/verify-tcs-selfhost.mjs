@@ -1,5 +1,5 @@
-// verify-tcs-selfhost.mjs — playground を tcs の WebAssembly 版 (既定の変換) で動かして確かめる。
-//   S1. 全サンプル: tcs の WebAssembly 版で変換し、player が起動して canvas に何か描く。生成 Lua のタブが bridge snapshot
+// verify-tcs-selfhost.mjs — playground を、C# を変換する tcs の WebAssembly 版と一緒に動かして確かめる。
+//   S1. 全サンプル: tcs の WebAssembly 版で変換し、player が起動して canvas に何か描く
 //   S2. C# の編集: 01_triangle の ClearColor を赤に書き換え、hot reload (または作り直し) の後の背景が赤くなる
 // dev server (npm run dev) と、npm run gen-tcs-selfhost のアセットが要る。
 //   LUB_URL=http://localhost:5173/ node scripts/verify-tcs-selfhost.mjs
@@ -76,16 +76,6 @@ async function shot(name) {
   return nonBlackRatio(file);
 }
 
-async function generatedLua() {
-  return page.evaluate(() => {
-    const hook = window.__lubTest;
-    const p = hook
-      .listFiles()
-      .find((f) => f.endsWith(".lua") && f.includes(".lub"));
-    return p ? hook.getContent(p) : null;
-  });
-}
-
 let failures = 0;
 const check = (label, ok, detail) => {
   console.log(
@@ -101,12 +91,11 @@ for (const name of samples) {
     });
     await page.reload({ waitUntil: "load" });
     await waitRunning(name, 180000);
-    const lua = await generatedLua();
     const c = await shot(name);
     check(
       `S1 ${name}`,
-      lua != null && lua.includes("module snapshot rev") && c.nonBlack > 0.005,
-      `nonBlack ${c.nonBlack.toFixed(3)}, snapshot lua ${lua ? lua.includes("module snapshot rev") : "missing"}`,
+      c.nonBlack > 0.005,
+      `nonBlack ${c.nonBlack.toFixed(3)}`,
     );
   } catch (e) {
     check(`S1 ${name}`, false, e.message);

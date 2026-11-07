@@ -34,14 +34,14 @@ public static class WarmupProbe {
       const coldMs = performance.now() - start;
       if (!opened.ok) throw new Error(opened.errors.join("\n"));
       const session = opened.session;
-      const snapshot = await session.linkSnapshot();
+      const snapshot = await session.module();
       const t1 = performance.now();
       const edit = await session.update(
         file,
         source.replace("return count;", "return count + 2;"),
       );
       const updateMs = performance.now() - t1;
-      const editedSnapshot = await session.linkSnapshot();
+      const editedSnapshot = await session.module();
       const invalid = await session.update(
         file,
         source.replace("return count;", "return Missing;"),
@@ -68,7 +68,7 @@ public static class WarmupProbe {
         switchMs,
         maxGapMs,
         ticks,
-        snapshot: snapshot?.includes("WarmupProbe"),
+        snapshot: snapshot.length > 0,
         snapshotChanged: snapshot !== editedSnapshot,
         edit,
         invalid,
@@ -85,7 +85,7 @@ public static class WarmupProbe {
   assert.deepEqual(pageErrors, []);
   assert.ok(
     result.snapshot && result.snapshotChanged,
-    "linked output reflects the edit",
+    "the module reflects the edit",
   );
   assert.ok(
     result.edit.ok && result.edit.fastPath,
