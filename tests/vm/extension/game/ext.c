@@ -12,7 +12,7 @@ static TvmStatus add(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   return TVM_OK;
 }
 
-// bool Greet(string name, out string? text): 戻り値の葉の後に out の葉
+// bool Greet(string name, out string? text): text は VM が渡す場所 (args[1].p) に書き、rets は戻り値だけ
 static TvmStatus greet(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   (void)user;
   size_t len = 0;
@@ -22,7 +22,7 @@ static TvmStatus greet(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   char text[128];
   int n = snprintf(text, sizeof text, "hello %.*s", (int)len, name);
   rets[0].i = 1;
-  rets[1].p = api->string_new(vm, text, (size_t)n);
+  *(void **)args[1].p = api->string_new(vm, text, (size_t)n);
   return TVM_OK;
 }
 
@@ -32,5 +32,5 @@ LUB_VM_EXTENSION_EXPORT bool lub_vm_extension(const LubVmExtensionApi *a,
     return false;
   api = a;
   return a->host(vm, "ext.add", "ii", "i", add, NULL) &&
-         a->host(vm, "ext.greet", "s", "bs", greet, NULL);
+         a->host(vm, "ext.greet", "s&s", "b", greet, NULL);
 }

@@ -7,6 +7,7 @@ namespace LubGen;
 // 登録するのは stub の全部の関数 (player はゲームを選ばない)。--source を渡したときだけ、そのゲームが使う関数に絞る (テスト用)。
 // VM の object の layout は host の data class も tcs2c と同じ C の struct の規則 (tcs の doc/object-model.md §3、§5) なので、
 // record は C の struct の写し (VmLub_<型>) で読み書きする。読み込みと reload の後に vm_lub_verify が offset を VM の型の表と比べる。
+// 引数は C# の順に 1 つずつ渡り (tcs の vm-design §8.5)、out (&) は VM が値を受ける場所の pointer、rets は戻り値だけ。
 // 変換の規則は tcs2c の接続コード (TcsBinding) と同じ。tcs2c が process を止める誤り (tcs_fault) は、その host の関数の fault にする。
 public static class VmBinding
 {
@@ -280,10 +281,9 @@ internal sealed class VmBindingGen
                 var fn = "vm_host_" + name;
                 Line("static TvmStatus " + fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {");
                 Line("  (void)a; (void)user; VM_LUB_ENTER();");
-                var leaves = new List<string>();
-                Pack(value.Type, From(value.Type, name + "(vm_lub_context)"), 0, leaves);
+                PackReturn(value.Type, From(value.Type, name + "(vm_lub_context)"));
                 Line("  VM_LUB_LEAVE(vm);\n}");
-                registrations.Add("{\"" + hostName + "\", \"\", \"" + string.Join("", leaves) + "\", " + fn + "}");
+                registrations.Add("{\"" + hostName + "\", \"\", \"" + Token(value.Type) + "\", " + fn + "}");
             }
         }
         if (GenError.Failed) return "";
@@ -371,6 +371,10 @@ internal sealed class VmBindingGen
             }
             Line("};");
         }
+        // null になりうる scalar の塊 (引数と戻り値の S{int?}、record の field)
+        OptChecks("int", "VmLubOptI32", checks);
+        OptChecks("float", "VmLubOptF32", checks);
+        OptChecks("bool", "VmLubOptBool", checks);
         Line("_Static_assert(offsetof(VmLub_Bindings, host_value) == 8, \"the VM puts host_value 8 bytes into the payload\");");
         Line("/* module が持つ型だけ、VM の型の表の offset と C の struct が同じことを確かめる (読み込みと reload の後) */");
         Line("static const struct { const char *type, *field; size_t offset; } vm_lub_layout[] = {");
@@ -388,6 +392,13 @@ internal sealed class VmBindingGen
         Line("    }");
         Line("  }");
         Line("  return 1;\n}");
+    }
+
+    // VM の T? ({ bool HasValue; T Value; }) と C の写しの field
+    private static void OptChecks(string scalar, string cType, List<string> checks)
+    {
+        checks.Add("{\"" + scalar + "?\", \"HasValue\", offsetof(" + cType + ", has)}");
+        checks.Add("{\"" + scalar + "?\", \"Value\", offsetof(" + cType + ", v)}");
     }
 
     // ---- 値の変換 ----
@@ -629,48 +640,46 @@ internal sealed class VmBindingGen
 
     // ---- host の関数 ----
 
-    // 引数の葉の文字 (tvm_host の params / rets)
-    private static string Leaves(TypeRef type)
+    // 引数か戻り値の 1 項 (tvm_host の params / rets。tcs の tcsvm.h)。
+    // null になりうる scalar は VM の struct ({ bool has; T v; }) なので、C の layout の塊 S{int?} で渡る
+    private static string Token(TypeRef type)
     {
         if (type.Kind == LubTypeKind.Void) return "";
         if (type.IsScalar)
         {
-            string c = type.Kind == LubTypeKind.Double ? "f" : type.Kind == LubTypeKind.Bool ? "b" : "i";
-            return type.Nullable ? "b" + c : c;
+            if (type.Nullable) return "S{" + ScalarVmName(type) + "?}";
+            return type.Kind == LubTypeKind.Double ? "f" : type.Kind == LubTypeKind.Bool ? "b" : "i";
         }
         if (type.Kind == LubTypeKind.String) return "s";
         return "o";
     }
 
-    // 引数の葉 a[at...] を C の値にする式
-    private static string Unpack(TypeRef type, int at)
+    // scalar の VM の型の名前 (enum は int)
+    private static string ScalarVmName(TypeRef type) =>
+        type.Kind == LubTypeKind.Double ? "float" : type.Kind == LubTypeKind.Bool ? "bool" : "int";
+
+    // k 番目の引数 a[k] を C の値にする式
+    private static string Unpack(TypeRef type, int k)
     {
-        if (type.IsScalar && type.Nullable)
-        {
-            string v = type.Kind == LubTypeKind.Double ? "a[" + (at + 1) + "].f" : type.Kind == LubTypeKind.Bool ? "a[" + (at + 1) + "].i != 0" : "a[" + (at + 1) + "].i";
-            return "(" + Opt(type) + "){a[" + at + "].i != 0, " + v + "}";
-        }
-        if (type.Kind == LubTypeKind.Double) return "a[" + at + "].f";
-        if (type.Kind == LubTypeKind.Bool) return "a[" + at + "].i != 0";
-        if (type.IsScalar) return "a[" + at + "].i";
-        return "a[" + at + "].p";
+        if (type.IsScalar && type.Nullable) return "*(const " + Opt(type) + " *)a[" + k + "].p";
+        if (type.Kind == LubTypeKind.Double) return "a[" + k + "].f";
+        if (type.Kind == LubTypeKind.Bool) return "a[" + k + "].i != 0";
+        if (type.IsScalar) return "a[" + k + "].i";
+        return "a[" + k + "].p";
     }
 
-    // 値を戻り値の葉 r[at...] に書く
-    private void Pack(TypeRef type, string value, int at, List<string> leaves)
+    // 値を戻り値 r[0] に書く (塊の戻り値は r[0].p の先)
+    private void PackReturn(TypeRef type, string value)
     {
-        leaves.Add(Leaves(type));
-        if (type.IsScalar && type.Nullable)
-        {
-            Line("  { " + Opt(type) + " v = " + value + "; r[" + at + "].i = v.has; r[" + (at + 1) + "]." + (type.Kind == LubTypeKind.Double ? "f" : "i") + " = v.v; }");
-            return;
-        }
-        if (type.Kind == LubTypeKind.Double) Line("  r[" + at + "].f = " + value + ";");
-        else if (type.IsScalar) Line("  r[" + at + "].i = " + value + ";");
-        else Line("  r[" + at + "].p = " + value + ";");
+        if (type.IsScalar && type.Nullable) Line("  *(" + Opt(type) + " *)r[0].p = " + value + ";");
+        else if (type.Kind == LubTypeKind.Double) Line("  r[0].f = " + value + ";");
+        else if (type.IsScalar) Line("  r[0].i = " + value + ";");
+        else Line("  r[0].p = " + value + ";");
     }
 
-    private static int LeafCount(TypeRef type) => Text.Len(Leaves(type));
+    // k 番目の引数の out の場所 (VM が 0 で埋めて渡す)。scalar は C の値の pointer、参照は VM の object を置く slot
+    private static string OutPlace(TypeRef type, int k) =>
+        (type.IsScalar ? "(" + Scalar(type) + " *)" : "(void **)") + "a[" + k + "].p";
 
     // 外部型の instance method。view の Get(int) は view の byte を読む
     private void Method(ApiType type, ApiFunction method, string hostName)
@@ -693,7 +702,7 @@ internal sealed class VmBindingGen
         else GenError.Report("unsupported method: " + type.Name + "." + method.Name);
     }
 
-    // C の out は変数 n_<name> に受ける。list は pointer と n_<name>_count の 2 つ。null になりうる record は has で受ける
+    // C の値で受ける out は変数 n_<name> に受ける。list は pointer と n_<name>_count の 2 つ。null になりうる record は has で受ける
     private void Output(TypeRef type, string n, CallState st)
     {
         Line("  " + NativeType(type) + " " + n + " = {0};");
@@ -719,14 +728,13 @@ internal sealed class VmBindingGen
         var fn = "vm_host_" + name;
         Line("static TvmStatus " + fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {");
         Line("  (void)a; (void)r; (void)user; VM_LUB_ENTER();");
-        var paramLeaves = new List<string>();
-        int at = 0;
-        foreach (var p in function.Params)
+        // 引数は C# の順に 1 つずつ a[k] に来る。out (&) の a[k].p は VM が値を受ける場所
+        var tokens = new List<string>();
+        for (int k = 0; k < function.Params.Count; k++)
         {
-            if (p.IsOut) continue;
-            Line("  " + VmType(p.Type) + " p_" + p.LuaName + " = " + Unpack(p.Type, at) + ";");
-            paramLeaves.Add(Leaves(p.Type));
-            at += LeafCount(p.Type);
+            var p = function.Params[k];
+            tokens.Add((p.IsOut ? "&" : "") + Token(p.Type));
+            if (!p.IsOut) Line("  " + VmType(p.Type) + " p_" + p.LuaName + " = " + Unpack(p.Type, k) + ";");
         }
         var st = new CallState();
         var args = st.Args;
@@ -809,9 +817,22 @@ internal sealed class VmBindingGen
         }
         // 入力の変換の誤り (配列の長さ、bit mask) は C API を呼ぶ前に止める
         Line("  if (vm_lub_error) VM_LUB_LEAVE(vm);");
-        foreach (var param in function.Params)
+        // scalar の out は VM の場所に C API が直接書く。他は C の値で受け、VM の値にして場所に置く
+        for (int k = 0; k < function.Params.Count; k++)
         {
-            if (param.IsOut) Output(param.Type, "n_" + param.LuaName, st);
+            var param = function.Params[k];
+            if (!param.IsOut) continue;
+            if (!param.Type.IsScalar)
+            {
+                Output(param.Type, "n_" + param.LuaName, st);
+                continue;
+            }
+            if (param.Type.Nullable)
+            {
+                GenError.Report("unsupported out: " + param.Name + ": " + param.Type.ToString());
+                return;
+            }
+            args.Add(OutPlace(param.Type, k));
         }
         var ret = function.Return;
         bool returned = ret.Kind != LubTypeKind.Void;
@@ -821,35 +842,44 @@ internal sealed class VmBindingGen
             GenError.Report("nullable NoFail return: " + ret.ToString());
             return;
         }
-        if (byValue) Line("  " + NativeType(ret) + " result = {0};");
-        else if (returned) Output(new TypeRef(ret.Kind, ret.Name, false, ret.Elem, ret.FuncParams, ret.FuncReturn), "result", st);
         bool has = !function.NoFail && ret.Nullable && (ret.IsScalar || (ret.Kind == LubTypeKind.Record && function.Maybe));
-        if (has)
+        // null になりうる scalar の戻り値は r[0].p の塊 ({ bool has; T v; }) で、C API が直接書く
+        bool block = has && ret.IsScalar;
+        if (byValue) Line("  " + NativeType(ret) + " result = {0};");
+        else if (block)
+        {
+            Line("  " + Opt(ret) + " *result = r[0].p;");
+            args.Add("&result->v");
+        }
+        else if (returned) Output(new TypeRef(ret.Kind, ret.Name, false, ret.Elem, ret.FuncParams, ret.FuncReturn), "result", st);
+        if (block) args.Add("&result->has");
+        else if (has)
         {
             Line("  bool has = false;");
             args.Add("&has");
         }
         var call = name + "(" + string.Join(", ", args) + ")";
-        // 戻り値と out の葉 (戻り値、out の順)
-        var retLeaves = new List<string>();
-        int retAt = 0;
         bool visits = false;
-        int nleaves = returned ? LeafCount(ret) : 0;
         foreach (var param in function.Params)
         {
             if (param.Type.Kind == LubTypeKind.Func) visits = true;
-            if (param.IsOut) nleaves += LeafCount(param.Type);
         }
         if (visits) Line("  bool vm_lub_visitor_outer = vm_lub_visitor_failed; vm_lub_visitor_failed = false;");
         if (function.NoFail) Line("  " + (byValue ? "result = " : "") + call + ";");
         else Line("  LubStatus status = " + call + ";");
-        // visitor が失敗した query は null
+        // visitor が失敗した query は null (戻り値と out は 0)
         if (visits)
         {
             Line("  if (vm_lub_visitor_failed) {");
             Line("    fprintf(stderr, \"lub: " + hostName + " visitor: %s\\n\", vm_lub_visitor_text);");
             Line("    vm_lub_visitor_failed = vm_lub_visitor_outer;");
-            if (nleaves > 0) Line("    for (int i = 0; i < " + nleaves + "; i++) r[i].u = 0;");
+            if (block) Line("    *result = (" + Opt(ret) + "){0};");
+            else if (returned) Line("    r[0].u = 0;");
+            for (int k = 0; k < function.Params.Count; k++)
+            {
+                var param = function.Params[k];
+                if (param.IsOut) Line("    *" + OutPlace(param.Type, k) + " = " + (param.Type.IsScalar ? "0" : "NULL") + ";");
+            }
             Line("    VM_LUB_LEAVE(vm);");
             Line("  }");
             Line("  vm_lub_visitor_failed = vm_lub_visitor_outer;");
@@ -868,27 +898,24 @@ internal sealed class VmBindingGen
             if (returned && !ret.IsScalar) missing = "status == LUB_NOT_FOUND";
             if (has && !ret.IsScalar) missing = missing == null ? "!has" : missing + " || !has";
         }
-        if (returned)
+        if (returned && !block)
         {
-            string value;
-            if (has && ret.IsScalar) value = "(" + Opt(ret) + "){has, result}";
-            else value = From(ret, "result");
+            var value = From(ret, "result");
             if (missing != null) value = "(" + missing + ") ? NULL : " + value;
-            Pack(ret, value, retAt, retLeaves);
-            retAt += LeafCount(ret);
+            PackReturn(ret, value);
         }
-        foreach (var param in function.Params)
+        for (int k = 0; k < function.Params.Count; k++)
         {
-            if (!param.IsOut) continue;
+            var param = function.Params[k];
+            if (!param.IsOut || param.Type.IsScalar) continue;
             var n = "n_" + param.LuaName;
             var value = From(param.Type, n);
             if (param.Type.Kind == LubTypeKind.Record && param.Type.Nullable) value = n + "_has ? " + value + " : NULL";
-            if (missing != null && !param.Type.IsScalar) value = "(" + missing + ") ? NULL : " + value;
-            Pack(param.Type, value, retAt, retLeaves);
-            retAt += LeafCount(param.Type);
+            if (missing != null) value = "(" + missing + ") ? NULL : " + value;
+            Line("  *" + OutPlace(param.Type, k) + " = " + value + ";");
         }
         Line("  VM_LUB_LEAVE(vm);\n}");
-        registrations.Add("{\"" + hostName + "\", \"" + string.Join("", paramLeaves) + "\", \"" + string.Join("", retLeaves) + "\", " + fn + "}");
+        registrations.Add("{\"" + hostName + "\", \"" + string.Join("", tokens) + "\", \"" + Token(ret) + "\", " + fn + "}");
     }
 
     // Func 引数は C の関数 pointer + user (VM の closure) に写す。C API が呼び出しの間だけ呼ぶ
