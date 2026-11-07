@@ -1,4 +1,4 @@
-// .NET / Roslyn はこの worker に常駐し、すべての session 操作を順に実行する。
+// .NET / Roslyn はこの worker に常駐し、補完 / hover / 整形の editor の session の要求を順に実行する。
 import type { TcsRequest } from "./tcs-compiler";
 
 const ASSET_BASE = import.meta.env.BASE_URL + "tcs-wasm/";
@@ -132,15 +132,6 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
       switch (method) {
         case "initialize":
           break;
-        case "open":
-          result = exports.SessionExports.Open(
-            JSON.stringify({
-              files: { ...IMPL_SOURCES, ...args[0] },
-              refs: { "lub_stub.cs": await ensureStub() },
-              entryClass: args[1],
-            }),
-          );
-          break;
         case "openEditor":
           result = exports.SessionExports.OpenEditor(
             JSON.stringify({
@@ -152,12 +143,6 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
           break;
         case "updateText":
           result = exports.SessionExports.UpdateText(...args);
-          break;
-        case "update":
-          result = exports.SessionExports.Update(...args);
-          break;
-        case "linkSnapshot":
-          result = exports.SessionExports.LinkSnapshot(...args);
           break;
         case "complete":
           result = exports.SessionExports.Complete(...args);

@@ -17,10 +17,10 @@
 //   5. Put every file the sample may read into MEMFS before main(): the
 //      runtime's Io only looks at MEMFS and never fetches.
 //
-// The C side polls the entry Lua's mtime each frame (see the src/app.c
-// hot-reload path) and Io's file cache checks mtime on read (src/api_io.c),
-// so syncFiles just rewrites the file content and the C side picks it up
-// next frame.
+// The C side looks for the entry's .batch and polls the module's mtime each
+// frame (see src/vm_player.c) and Io's file cache checks mtime on read
+// (src/api_io.c), so syncFiles just rewrites the file content and the C side
+// picks it up next frame.
 
 import { initSlang } from "./slang-bridge";
 
@@ -105,9 +105,8 @@ window.addEventListener("error", (e) => {
   relayLog("[error] " + msg, "err");
 });
 
-// tcs VM の player (既定。?runtime=lua なら Lua の player): wasm/vm/lub.js。module (.tcsb) と reload の batch (.batch) は base64 で届く
-const vmRuntime = _q.get("runtime") !== "lua";
-const wasmDir = vmRuntime ? "wasm/vm/" : "wasm/";
+// tcs VM の player: wasm/vm/lub.js。module (.tcsb) と reload の batch (.batch) は base64 で届く
+const wasmDir = "wasm/vm/";
 
 function decodeBinary(path: string, content: string | Uint8Array) {
   if (typeof content !== "string") return content;
@@ -213,7 +212,7 @@ let wasmStarted = false;
 const pendingSyncBatches: Record<string, string>[] = [];
 
 // 編集ファイルは samples/ 相対で届く。
-// "/" 始まりは MEMFS の絶対パスとしてそのまま置く (verify の A9 が tests/cs の test を変換した Lua と、その load_text が参照する兄弟ファイルを流し込む経路)。
+// "/" 始まりは MEMFS の絶対パスとしてそのまま置く (verify の A9 が tests/cs の bytecode と、test が読むファイルを流し込む経路)。
 function fsPath(p: string): string {
   if (p.startsWith("/")) return p.slice(1);
   return p.startsWith("samples/") ? p : "samples/" + p;
@@ -275,8 +274,8 @@ async function startWasm() {
     // emscripten resolves auxiliary files (lub.wasm, lub.data) via
     // Module.locateFile. The default resolver makes them relative to the
     // HTML document, which on this page is player.html — so it tries
-    // lub.data instead of wasm/lub.data. Override to always pull
-    // from <base>wasm/.
+    // lub.data instead of wasm/vm/lub.data. Override to always pull
+    // from <base>wasm/vm/.
     locateFile: (path: string) => import.meta.env.BASE_URL + wasmDir + path,
     preRun: [],
     arguments: [
@@ -313,7 +312,7 @@ async function startWasm() {
     const origRemove = M.removeRunDependency;
     M.removeRunDependency = function (id: string) {
       origRemove.call(M, id);
-      // Lua の player は datafile_lub.data、tcs VM の player (wasm/vm/) は datafile_vm/lub.data
+      // tcs VM の player (wasm/vm/) の data file package は datafile_vm/lub.data
       if (!id.startsWith("datafile_") || !id.endsWith("lub.data")) return;
       // restore the original to avoid re-firing for spurious removals
       M.removeRunDependency = origRemove;

@@ -1,17 +1,12 @@
 // tcs の WebAssembly 版 (TinyC# で書いた tcs を tcs2c で C にし、emcc で wasm にしたもの) を動かす worker。
-// .NET / Roslyn の worker (tcs-worker.ts) と同じ要求 (open / update / linkSnapshot / complete / hover) を受け、
-// open / update / linkSnapshot は同じ増分 session (同じ応答と bridge snapshot) を返す。補完と hover は返さない。
+// C# を tcs VM の bytecode にする増分 session の要求 (vmopen / vmupdate / vmmodule / vmconfig / vmremove) を受ける。
 // アセットは npm run gen-tcs-selfhost が tcs-selfhost-assets/ に作る。
 import type { TcsRequest } from "./tcs-compiler";
 
 const ASSET_BASE = import.meta.env.BASE_URL + "tcs-selfhost/";
 const STUB_URL = import.meta.env.BASE_URL + "cs-lib/lub_stub.cs";
-const TOOL_FILES = [
-  "runtime/tinysystem.lua",
-  "runtime/module_registry.lua",
-  "lib/TinySystem/Linq.cs",
-  "lib/TinySystem/ValueTuple.cs",
-];
+// tcs と一緒に配る library (VM の session が読む)
+const TOOL_FILES = ["lib/TinySystem/Linq.cs", "lib/TinySystem/ValueTuple.cs"];
 const IMPL_GLOB = import.meta.glob("../../cs-lib/**/*.cs", {
   query: "?raw",
   import: "default",
@@ -24,13 +19,6 @@ for (const [path, src] of Object.entries(IMPL_GLOB)) {
 }
 
 type Tcs = {
-  open(
-    entry: string,
-    files: Record<string, string>,
-    refs: Record<string, string>,
-  ): { ok: boolean; epoch: number; errors: string[]; warnings: string[] };
-  update(epoch: number, path: string, text: string): any;
-  link(epoch: number): string;
   vmOpen(
     entry: string,
     files: Record<string, string>,
@@ -76,16 +64,6 @@ async function handle(
   switch (method) {
     case "initialize":
       return undefined;
-    case "open": {
-      const files: Record<string, string> = { ...IMPL_SOURCES, ...args[0] };
-      return JSON.stringify(tcs.open(args[1], files, { "lub_stub.cs": stub }));
-    }
-    case "update": {
-      const [epoch, path, content] = args;
-      return JSON.stringify(tcs.update(epoch, path, content));
-    }
-    case "linkSnapshot":
-      return tcs.link(args[0]);
     case "vmopen": {
       const files: Record<string, string> = { ...IMPL_SOURCES, ...args[0] };
       return JSON.stringify(
@@ -100,10 +78,6 @@ async function handle(
       return JSON.stringify(tcs.vmUpdate(args[0], args[1]));
     case "vmmodule":
       return tcs.vmModule();
-    case "complete":
-      return JSON.stringify({ ok: true, items: [] });
-    case "hover":
-      return JSON.stringify({ ok: true, found: false, start: 0, end: 0 });
   }
   return undefined;
 }

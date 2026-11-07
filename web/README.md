@@ -21,24 +21,22 @@ XR レイヤーへ転送する。XR セッション中は SDL の更新も XR �
 `npm run dev` / `build` の前に用意する:
 
 ```bash
-# 1. lub player wasm(build/wasm/lub.{js,wasm,data}) … リポジトリルートで C ビルド
+# 1. lub player wasm(tcs VM の player、build/wasm/vm/lub.{js,wasm,data}) … リポジトリルートで C ビルド
 source ~/emsdk/emsdk_env.sh             # emcc / emcmake を PATH に
 emcmake cmake -S . -B build/wasm        # WGPU + emdawnwebgpu port が configure される
-cmake --build build/wasm -j             # lub.{js,wasm,data} が生成
+cmake --build build/wasm -j             # vm/lub.{js,wasm,data} が生成
 # 2. slang-wasm(web/public/slang/…) … シェーダコンパイラ
 npm run fetch-slang          # postinstall でも走る
-# 3. TinyC# コンパイラ wasm 一式(web/tcs-wasm-assets/ と web/tcs-prebuilt/)
+# 3. 補完と hover の .NET wasm 一式(web/tcs-wasm-assets/)
 #    要 dotnet SDK + wasm-tools workload + third_party/tcs submodule
 npm run gen-tcs -- --publish # tcs の .NET wasm bundle を web/tcs-wasm-assets/ に固める
-npm run gen-tcs-prebuilt     # cold 起動用 prebuilt snapshot(cs-lib / C# サンプル変更時も再生成)
-# 4. tcs の WebAssembly 版(web/tcs-selfhost-assets/)… 既定の変換に使う
+# 4. tcs の WebAssembly 版(web/tcs-selfhost-assets/)… C# の変換に使う
 #    要 dotnet SDK + Emscripten(source ~/emsdk/emsdk_env.sh)+ third_party/tcs submodule
 npm run gen-tcs-selfhost
 ```
 
 playground の C# の変換は tcs の WebAssembly 版 (TinyC# で書いた tcs を tcs2c で C にし、emcc で wasm にしたもの。`playground/tcs-selfhost-worker.ts`) が行い、補完と hover は .NET wasm の Roslyn (`playground/tcs-worker.ts` の compile しない editor の session) が答える。
 変換の wasm は `npm run gen-tcs-selfhost` が `web/tcs-selfhost-assets/` に作る (要 dotnet SDK と Emscripten。`source ~/emsdk/emsdk_env.sh`)。
-`?compiler=dotnet` を付けると、変換も .NET wasm で行う (同じ tcs の実装を .NET で動かしたもの。`tcs-prebuilt/` の cold 起動を使う)。
 
 `gen-tcs -- --publish` は AOT を有効にし、ブラウザでの最初のコンパイルを速める。
 通常の .NET wasm よりビルド時間とダウンロード量は増える。25MiB を超える native
@@ -49,19 +47,17 @@ Assets のファイルサイズ上限内で静的配信できる。
 ## コンパイルの流れ
 
 - `playground/tcs-compiler.ts` … 変換と補完の API。
-  変換は既定で tcs の wasm (`tcs-selfhost-worker.ts`) の増分 session が専用 worker で行い、C# を tcs VM の bytecode にする。
+  変換は tcs の wasm (`tcs-selfhost-worker.ts`) の増分 session が専用 worker で行い、C# を tcs VM の bytecode にする。
   変更 `.cs` のみ Update し、当てられる編集は差分 (batch) を、当てられない編集は作り直した bytecode を返す。
-  `?runtime=lua` なら registry apply する単一 entry Lua を返し、Lua の player で動かす。
-  `?compiler=dotnet` なら変換も .NET wasm (`tcs-worker.ts` の `SessionExports`) で行う。
   補完と hover は .NET wasm の Roslyn (`tcs-worker.ts` の compile しない editor の session) が非同期で答える。
   warmup と編集の処理は editor / player のスレッドを塞がない。
 - `playground/diagnostics.ts` … tcs の診断をパースしてエディタ内に表示。
-- `playground/samples.ts` … `.cs` をロードし、compile 後の `.lua` を scan してエディタに出す data files
-  (slang 等)を解決。サンプル一覧の正は `CS_SAMPLES`。
-- `playground/main.ts` … boot とサンプル切替で compile→player 起動、ソース編集を debounce→
-  再 compile→`syncFiles`。data(slang)編集は compile 不要で直接 sync。
-  .NET の読み込みはソースの取得と同時に始め、prebuilt があれば session の準備と
-  data / player の起動を並行する。準備中の編集は完了後に反映し、サンプル切替後の古い結果は捨てる。
+- `playground/samples.ts` … `.cs` をロードし、その `Io.LoadText` / `Io.LoadFloats` の path を scan してエディタに出す data files (slang 等)を解決。
+  サンプル一覧の正は `CS_SAMPLES`。
+- `playground/main.ts` … boot とサンプル切替で compile→player 起動、ソース編集を debounce→再 compile→`syncFiles`。
+  data(slang)編集は compile 不要で直接 sync。
+  tcs の wasm の読み込みはソースの取得と同時に始める。
+  準備中の編集は完了後に反映し、サンプル切替後の古い結果は捨てる。
 
 ## 実行時アーキテクチャ
 
@@ -105,8 +101,7 @@ npm run verify-tcs-recovery # 実 Wasm の通信失敗からの復帰と、Worke
 npm run verify-tcs-selfhost # tcs の WebAssembly 版で全サンプルの描画と C# の編集を検証 (gen-tcs-selfhost のアセットが要る)
 npm run golden            # web golden(native と同 curation を wasm --capture 経路で byte 比較)
 npm run gen-api           # docs サイト用 API reference JSON を再生成(dev/build にも組み込み済)
-npm run gen-tcs -- --publish  # TinyC# コンパイラ wasm を再生成(tcs 変更時)
-npm run gen-tcs-prebuilt  # C# prebuilt snapshot を再生成(cs-lib / C# サンプル変更時)
+npm run gen-tcs -- --publish  # 補完と hover の .NET wasm を再生成(tcs 変更時)
 npm run gen-tcs-selfhost  # tcs の WebAssembly 版 (playground の変換) を再生成(tcs 変更時)
 npm run format            # prettier(format:check は CI 用)
 npm run deploy            # build + wrangler deploy
@@ -125,7 +120,7 @@ npm run deploy            # build + wrangler deploy
 6. C# 増分編集が runtime の commit ACK(synced rev 表示)まで貫通する
 7. C# の診断がエディタ内に表示される
 8. C# 補完 / hover が返る(レイテンシ観測ログ付き)
-9. `tests/cs` の runtime テストを player で走らせ、PASS を確認する(既定は tcs VM の player で `tests/cs/.lub/all.tcsb` を動かし、`LUB_VERIFY_RUNTIME=lua` なら Lua の player。事前に `scripts/cs-tests.sh` の `cs_tests_transpile` と `cs_tests_vm_build` で `tests/cs/.lub/` に変換しておく)
+9. `tests/cs` の runtime テストを tcs VM の player で走らせ、PASS を確認する(`tests/cs/.lub/all.tcsb` を動かす。事前に `scripts/cs-tests.sh` の `cs_tests_vm_build` で作っておく)
 
 スクリーンショットは `/tmp/lub-verify/` に出力される。CI 利用時は dev server を
 別ジョブで立ち上げてから `LUB_URL=http://...` を指定すること。サブパス配信の確認は

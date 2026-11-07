@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # lub export web の検査。
-# tests/cs のテストを web に export し、生成キャッシュが WGSL だけを持ち、読んだ file がそのまま入ること、書いた page 1 枚 (slang を持たない web の player 入り) を chromium で開くとテストが PASS を出すことを見る。
-# 同じことを Lua の player (テストの Lua) と tcs VM の player (tests/cs/.lub/all.tcsb) の両方で見る。
-# lub の実行ファイルの隣か build/wasm (Lua) と build/wasm/vm (tcs VM) に web の player が要り、テストの Lua と bytecode (tests/cs/.lub/) と web/node_modules (playwright) を先に用意しておく。
+# tests/cs のテストを web に export し、生成キャッシュが WGSL だけを持ち、読んだ file がそのまま入ること、書いた page 1 枚 (slang を持たない web の tcs VM の player 入り) を chromium で開くとテストが PASS を出すことを見る。
+# lub の実行ファイルの隣の wasm/vm か build/wasm/vm に web の tcs VM の player が要り、テストの bytecode (tests/cs/.lub/all.tcsb) と web/node_modules (playwright) を先に用意しておく。
 #
 # Usage: scripts/web-export-gate.sh <lub>
 set -euo pipefail
@@ -11,36 +10,24 @@ lub="${1:?usage: scripts/web-export-gate.sh <lub>}"
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
 
-check_mode() {
-  local mode="$1" dir="$out/$1" t
-  for t in TestVertexPull TestDepthSample TestUiRender TestDupBinding TestWindowSize; do
-    if [[ $mode == lua ]]; then
-      echo "==> $lub export web tests/cs/.lub/$t.lua"
-      env -u DISPLAY -u WAYLAND_DISPLAY "$lub" export web "tests/cs/.lub/$t.lua" -o "$dir/$t"
-    else
-      echo "==> $lub export web tests/cs/.lub/all.tcsb --entry $t"
-      env -u DISPLAY -u WAYLAND_DISPLAY "$lub" export web tests/cs/.lub/all.tcsb --entry "$t" -o "$dir/$t"
-    fi
-  done
-  for f in tests/cs/data/test_depth_sample{,_read}.{vs,fs}.slang; do
-    cmp "$f" "$dir/TestDepthSample/$f"
-  done
-  # TestVertexPull 1 つ、TestDepthSample 2 つ、TestUiRender (runtime の UI) 1 つ
-  local wgsl other
-  wgsl="$(grep -la '@fragment' "$dir"/Test{VertexPull,DepthSample,UiRender}/cache/shader/*.lubshader | wc -l)"
-  if [[ $wgsl -lt 4 ]]; then
-    echo "export web ($mode): expected the WGSL of 4 shaders in the shader cache, got $wgsl" >&2
-    exit 1
-  fi
-  other="$(grep -La '@fragment' "$dir"/*/cache/shader/*.lubshader || true)"
-  if [[ -n $other ]]; then
-    echo "export web ($mode): shader cache entries that are not WGSL: $other" >&2
-    exit 1
-  fi
-  # PASS で終わるテストだけを page で開く (他の 2 つは golden で合否を見る)
-  (cd web && node scripts/export-page-check.mjs "$dir/TestUiRender/index.html" \
-    "$dir/TestDupBinding/index.html" "$dir/TestWindowSize/index.html")
-}
-
-check_mode lua
-check_mode vm
+for t in TestVertexPull TestDepthSample TestUiRender TestDupBinding TestWindowSize; do
+  echo "==> $lub export web tests/cs/.lub/all.tcsb --entry $t"
+  env -u DISPLAY -u WAYLAND_DISPLAY "$lub" export web tests/cs/.lub/all.tcsb --entry "$t" -o "$out/$t"
+done
+for f in tests/cs/data/test_depth_sample{,_read}.{vs,fs}.slang; do
+  cmp "$f" "$out/TestDepthSample/$f"
+done
+# TestVertexPull 1 つ、TestDepthSample 2 つ、TestUiRender (runtime の UI) 1 つ
+wgsl="$(grep -la '@fragment' "$out"/Test{VertexPull,DepthSample,UiRender}/cache/shader/*.lubshader | wc -l)"
+if [[ $wgsl -lt 4 ]]; then
+  echo "export web: expected the WGSL of 4 shaders in the shader cache, got $wgsl" >&2
+  exit 1
+fi
+other="$(grep -La '@fragment' "$out"/*/cache/shader/*.lubshader || true)"
+if [[ -n $other ]]; then
+  echo "export web: shader cache entries that are not WGSL: $other" >&2
+  exit 1
+fi
+# PASS で終わるテストだけを page で開く (他の 2 つは golden で合否を見る)
+(cd web && node scripts/export-page-check.mjs "$out/TestUiRender/index.html" \
+  "$out/TestDupBinding/index.html" "$out/TestWindowSize/index.html")

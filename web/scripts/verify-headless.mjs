@@ -11,7 +11,7 @@
 //   A2b. Shader revert. Restore the original .fs.slang content and assert it
 //        syncs even though the tab's dirty bit turns off.
 //   A3.  C# source edit. Patch the `ClearColor` literal in the Triangle01.cs
-//        tab; the in-browser TinyC# session regenerates the .lua and syncs it.
+//        tab; the in-browser TinyC# session recompiles it and syncs the change.
 //        Wait for the commit ACK, assert the background is no longer dark blue.
 //   A4.  Verts edit. Shrink the triangle in the .verts.lua tab, wait, assert
 //        the pixel footprint of the drawn shape shrank.
@@ -19,7 +19,7 @@
 //        dropdown, wait for the iframe to relaunch + compile, screenshot
 //        and assert the canvas isn't uniformly black.
 //   A6.  C# incremental edit reaches the runtime commit ACK.
-//   A7.  C# diagnostics show in the editor and clear on fix; generated Lua tab.
+//   A7.  C# diagnostics show in the editor and clear on fix.
 //   A8.  C# completion / hover on the warm session.
 //   A9.  tests/cs runtime tests on the web player.
 //
@@ -372,7 +372,7 @@ if (RUN_EDIT)
   }
 
 // ===== Test A3: C# source edit (ClearColor) ===============================
-// Playground は .cs を編集し、ブラウザ内の TinyC# session で .lua を生成して player に sync する。
+// Playground は .cs を編集し、ブラウザ内の TinyC# session で tcs VM の bytecode を作り直して player に sync する。
 // ここでは Triangle01.cs の ClearColor リテラルを赤に書き換え、再コンパイル → hot-reload で背景が赤くなることを確認する。
 // 初回編集は session の cold open(.NET wasm 起動)が乗るので commit ACK (#status "synced rev N")を待つ。
 
@@ -402,7 +402,7 @@ if (RUN_EDIT)
       { timeout: 120000, polling: 100 },
     );
     await page.waitForTimeout(DEBOUNCE_WAIT_MS + 1000);
-    const shot03 = await takeShot("03_lua_edit.png");
+    const shot03 = await takeShot("03_cs_edit.png");
     const c3 = classify(shot03);
     console.log("[verify] A3 buckets", c3);
     // Background should now be red-ish. The greenish triangle from A2 should
@@ -690,8 +690,8 @@ for (const sample of a5Samples) {
 
 // ---------------------------------------------------------------------------
 // A6. C# incremental edit → commit ACK。
-// 実編集が「増分 compile → snapshot hotswap → runtime commit ACK (@@tcs_commit → #status "synced rev N")」まで貫通することを判定する。
-// session/prebuilt 化で「compiler が動いていないのに前の絵で PASS」する偽陽性をここで塞ぐ。
+// 実編集が「増分 compile → batch の hot reload → runtime commit ACK (@@tcs_commit → #status "synced rev N")」まで貫通することを判定する。
+// 「compiler が動いていないのに前の絵で PASS」する偽陽性をここで塞ぐ。
 if (RUN_CS_SESSION)
   try {
     console.log("[verify] A6 C# incremental edit → commit ACK");
@@ -729,7 +729,6 @@ if (RUN_CS_SESSION)
 // ---------------------------------------------------------------------------
 // A7. 診断のエディタ内表示。
 // 故意のコンパイルエラーが __lubTest.getDiagnostics() に該当ファイル + error severity で載り、修正で消えることを warm 増分 path で確認する。
-// 生成 Lua 仮想タブの存在もここで見る。
 
 async function waitForDiagnostics(file, want, timeoutMs) {
   // want: 'error' = file に error 診断がある / 'none' = file の診断が無い
@@ -767,13 +766,6 @@ if (RUN_CS_SESSION)
     await selectTabAndReplace("Flappy17.cs", flappySrc);
     await waitForDiagnostics("Flappy17.cs", "none", 15000);
     check("A7 C# fix clears diagnostics", true);
-    // 生成 Lua 仮想タブが出ていること
-    const files = await page.evaluate(() => window.__lubTest.listFiles());
-    check(
-      "A7 generated Lua tab present",
-      files.includes(".lub/17_flappy.lua"),
-      JSON.stringify(files),
-    );
   } catch (e) {
     console.error("[verify] A7 (C#) threw", e.message);
     await logCsSessionState("A7");
@@ -859,9 +851,10 @@ if (RUN_CS_SESSION)
   }
 
 // ===== Test A9: tests/cs runtime tests on the web player ==================
-// tests/cs の runtime テストのうち web でも動くものを、native の tcs が変換した bytecode (既定) か Lua のまま player に直接流し込み (main.ts の C# 経路は通さない)、PASS 行が出て validation error も FAIL 行も無いことを見る。
-// entry は wasm 側の bare-name 解決に合わせて samples/<name>/.lub/<name>.lua に置き、load_text / load_floats / load_bytes が参照する兄弟ファイルは cwd (/) 相対の同じパス (tests/cs/data/...) に置く (player.ts の fsPath)。
-// 期待するエラーも log に出るので、Lua の error の行は失敗にしない (期待していないエラーは test が FAIL 行を出す)。
+// tests/cs の runtime テストのうち web でも動くものを、native の tcs が変換した bytecode のまま player に直接流し込み (main.ts の C# 経路は通さない)、PASS 行が出て validation error も FAIL 行も無いことを見る。
+// bytecode は tests/cs 全体で 1 つ (tests/cs/.lub/all.tcsb、scripts/cs-tests.sh の cs_tests_vm_build が作る) で、test の entry は --entry で選ぶ。
+// Io.LoadText / LoadFloats / LoadBytes が読むファイルは cwd (/) 相対の同じパス (tests/cs/data/...) に置く (player.ts の fsPath)。
+// 期待するエラーも log に出るので、error の行は失敗にしない (期待していないエラーは test が FAIL 行を出す)。
 // native の runner (scripts/cs-tests.sh の cs_test_args) と同じく readback の届く frame を固定する。
 const A9_TESTS = [
   "TestIoMissing",
@@ -999,39 +992,38 @@ const A9_INIT = {
   TestKeyMods: mockRemappedCtrl,
   TestXrCapture: mockXr,
 };
-// 既定は tcs VM の player で、tests/cs 全体の bytecode (tests/cs/.lub/all.tcsb、scripts/cs-tests.sh の cs_tests_vm_build が作る) を --entry で選ぶ。
-// LUB_VERIFY_RUNTIME=lua なら Lua の player で、test ごとの Lua を流す。
-// どちらでも、test が読む file は test の Lua から拾う。
-const A9_VM = process.env.LUB_VERIFY_RUNTIME !== "lua";
 const A9_TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000);
 const A9_FAIL_RE = /\[webgpu-validation\]|^FAIL /;
 
-async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
-  const lua = fs.readFileSync(
-    path.resolve("..", "tests", "cs", ".lub", `${name}.lua`),
-    "utf8",
-  );
-  const files = A9_VM
-    ? {
-        "/tests/cs/.lub/all.tcsb": fs
-          .readFileSync(path.resolve("..", "tests", "cs", ".lub", "all.tcsb"))
-          .toString("base64"),
-      }
-    : { [`${name}/.lub/${name}.lua`]: lua };
-  // tests/cs は全部で 1 つの program なので、他の test の参照も載っている。
-  // 実行中に作る file (tests/cs/.lub/...) のように無いものは渡さない。
-  // load_bytes で読むもの (音など) は binary のまま渡す。
-  const re = /load_(text|floats|bytes)\(\s*"([^"]+)"\s*\)/g;
-  let m;
-  while ((m = re.exec(lua))) {
-    const rel = m[2];
-    const abs = path.resolve("..", rel);
-    if (!("/" + rel in files) && fs.existsSync(abs))
-      files["/" + rel] =
-        m[1] === "bytes"
-          ? new Uint8Array(fs.readFileSync(abs))
-          : fs.readFileSync(abs, "utf8");
+// test が読むファイル。
+// tests/cs は全部で 1 つの program なので、どの test にも tests/cs の C# の全部が読み得るファイルを渡す。
+// path は C# の文字列リテラル (const の値も含む) から拾い、実行中に作るファイル (tests/cs/.lub/...) のように無いものは渡さない。
+// 中身は bytes のまま渡す (text のファイルも MEMFS には同じ内容が入る)。
+function csTestDataFiles() {
+  const dir = path.resolve("..", "tests", "cs");
+  const files = {};
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith(".cs")) continue;
+    const src = fs.readFileSync(path.join(dir, name), "utf8");
+    for (const m of src.matchAll(/"((?:[\w.-]+\/)+[\w.-]+)"/g)) {
+      const abs = path.resolve("..", m[1]);
+      if (
+        !("/" + m[1] in files) &&
+        fs.statSync(abs, { throwIfNoEntry: false })?.isFile()
+      )
+        files["/" + m[1]] = new Uint8Array(fs.readFileSync(abs));
+    }
   }
+  return files;
+}
+
+async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
+  const files = {
+    ...csTestDataFiles(),
+    "/tests/cs/.lub/all.tcsb": fs
+      .readFileSync(path.resolve("..", "tests", "cs", ".lub", "all.tcsb"))
+      .toString("base64"),
+  };
   const p = await ctx.newPage();
   if (init) await p.addInitScript(init);
   await p.addInitScript(() => {
@@ -1053,7 +1045,7 @@ async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
   p.on("console", (msg) => consoleLines.push(msg.text()));
   p.on("pageerror", (e) => consoleLines.push("[pageerror] " + e.message));
   await p.goto(
-    `${URL}player.html?w=64&h=64&argv=--readback-fixed-latency&runtime=${A9_VM ? "vm" : "lua"}${query}`,
+    `${URL}player.html?w=64&h=64&argv=--readback-fixed-latency${query}`,
     {
       waitUntil: "load",
     },
@@ -1067,11 +1059,11 @@ async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
     });
   });
   await p.evaluate(
-    ({ files, name, vm }) => {
-      const argv = vm ? ["tests/cs/.lub/all.tcsb", "--entry", name] : undefined;
+    ({ files, name }) => {
+      const argv = ["tests/cs/.lub/all.tcsb", "--entry", name];
       window.postMessage({ type: "setFiles", files, entry: name, argv }, "*");
     },
-    { files, name, vm: A9_VM },
+    { files, name },
   );
   const okLine = "PASS";
   const collect = async () => {

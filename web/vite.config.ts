@@ -9,12 +9,12 @@ import {
 } from "node:fs";
 import { resolve, extname, sep, basename } from "node:path";
 
-// dotnet build (bin/obj) と生成 Lua (.lub) は配信物に含めない
+// dotnet build (bin/obj) と変換の出力 (.lub) は配信物に含めない
 const ARTIFACT_DIRS = new Set(["bin", "obj", ".lub"]);
 
 // player が起動前に MEMFS へ置くファイルの目録 (sample-assets.json)。
 // runtime の Io は MEMFS にあるファイルしか読まないので、サンプルが読み得る samples/<name>/** と samples/data/** を全部載せる。
-// .cs / .csproj は playground が compile して Lua で渡すので載せない。
+// .cs / .csproj は playground が compile して tcs VM の bytecode で渡すので載せない。
 function listAssets(dir: string, rel: string, out: string[]) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name.startsWith(".") || ARTIFACT_DIRS.has(e.name)) continue;
@@ -118,7 +118,6 @@ export default defineConfig({
         serveDir(base + "samples", resolve(__dirname, "../samples"));
         serveDir(base + "cs-lib", resolve(__dirname, "../cs-lib"));
         serveDir(base + "tcs-wasm", resolve(__dirname, "tcs-wasm-assets"));
-        serveDir(base + "tcs-prebuilt", resolve(__dirname, "tcs-prebuilt"));
         serveDir(
           base + "tcs-selfhost",
           resolve(__dirname, "tcs-selfhost-assets"),
@@ -138,23 +137,14 @@ export default defineConfig({
         });
         if (existsSync("tcs-wasm-assets"))
           cpSync("tcs-wasm-assets", "dist/tcs-wasm", { recursive: true });
-        if (existsSync("tcs-prebuilt"))
-          cpSync("tcs-prebuilt", "dist/tcs-prebuilt", { recursive: true });
         if (existsSync("tcs-selfhost-assets"))
           cpSync("tcs-selfhost-assets", "dist/tcs-selfhost", {
             recursive: true,
           });
-        mkdirSync("dist/wasm", { recursive: true });
-        const wasmFiles = ["lub.js", "lub.wasm", "lub.data"];
-        for (const f of wasmFiles) {
-          cpSync(`../build/wasm/${f}`, `dist/wasm/${f}`);
-        }
-        // tcs VM の player (?runtime=vm)。build してあれば一緒に配る
-        if (existsSync("../build/wasm/vm/lub.wasm")) {
-          mkdirSync("dist/wasm/vm", { recursive: true });
-          for (const f of wasmFiles)
-            cpSync(`../build/wasm/vm/${f}`, `dist/wasm/vm/${f}`);
-        }
+        // tcs VM の player
+        mkdirSync("dist/wasm/vm", { recursive: true });
+        for (const f of ["lub.js", "lub.wasm", "lub.data"])
+          cpSync(`../build/wasm/vm/${f}`, `dist/wasm/vm/${f}`);
       },
     },
   ],

@@ -1,6 +1,6 @@
 import { EditorView, basicSetup } from "codemirror";
 import { StreamLanguage } from "@codemirror/language";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment } from "@codemirror/state";
 import {
   setDiagnostics as cmSetDiagnostics,
   lintGutter,
@@ -23,8 +23,6 @@ export type EditorFile = {
   content: string;
   dirty: boolean;
   initial: string;
-  /** 生成物などエディタ専用の read-only 表示タブ。sync/restart の対象外。 */
-  virtual?: boolean;
 };
 
 let view: EditorView | null = null;
@@ -36,13 +34,6 @@ let diagsByPath = new Map<string, PlaygroundDiagnostic[]>();
 
 // アクティブタブの拡張子に応じて言語を差し替えるための Compartment。
 const langComp = new Compartment();
-// 仮想タブ(生成 Lua)を read-only にするための Compartment。
-// EditorState.readOnly はコマンドを弾くだけで DOM 入力は通るため、EditorView.editable(contenteditable)も同時に切り替える。
-const readOnlyComp = new Compartment();
-
-function readOnlyExt(readOnly: boolean) {
-  return [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];
-}
 
 // C# の補完/hover provider。
 // main.ts が tcs 常駐 session の warm/cold に合わせて登録・解除する。
@@ -137,7 +128,7 @@ function csToolsExt(path: string | null) {
   return [autocompletion({ override: [csCompletionSource] }), csHoverTooltip];
 }
 
-// langFor is the picker for .cs vs .slang vs .lua highlight modes.
+// langFor is the picker for .cs vs .slang vs .lua (data such as .verts.lua) highlight modes.
 function langFor(path: string | null) {
   if (path?.endsWith(".cs")) return StreamLanguage.define(csharp);
   if (path?.endsWith(".slang")) return StreamLanguage.define(clike);
@@ -154,7 +145,6 @@ function rebuildTabs() {
       "tab" +
       (path === activePath ? " active" : "") +
       (f.dirty ? " dirty" : "") +
-      (f.virtual ? " virtual" : "") +
       (diags?.some((d) => d.severity === "error")
         ? " diag-err"
         : diags?.length
@@ -230,7 +220,6 @@ export function attachEditor(
       numberScrubber(),
       lintGutter(),
       langComp.of(langFor(activePath)),
-      readOnlyComp.of(readOnlyExt(false)),
       csToolsComp.of(csToolsExt(activePath)),
       EditorView.theme({
         "&": { height: "100%" },
@@ -314,7 +303,6 @@ export function setFiles(newFiles: Map<string, EditorFile>) {
         changes: { from: 0, to: view.state.doc.length, insert: f.content },
         effects: [
           langComp.reconfigure(langFor(activePath)),
-          readOnlyComp.reconfigure(readOnlyExt(!!f.virtual)),
           csToolsComp.reconfigure(csToolsExt(activePath)),
         ],
       });
@@ -329,33 +317,6 @@ export function getFiles(): Map<string, EditorFile> {
   return files;
 }
 
-/**
- * 仮想 read-only タブの作成/更新(生成 Lua の表示用)。dirty/sync を汚さない。
- * 表示中のタブなら内容を即時反映する。
- */
-export function setVirtualFile(path: string, content: string) {
-  const existing = files.get(path);
-  if (existing) {
-    existing.content = content;
-    existing.initial = content;
-    existing.dirty = false;
-    if (path === activePath && view) {
-      suppressChange = true;
-      try {
-        view.dispatch({
-          changes: { from: 0, to: view.state.doc.length, insert: content },
-        });
-      } finally {
-        suppressChange = false;
-      }
-      applyDiagnosticsToView();
-    }
-  } else {
-    files.set(path, { content, dirty: false, initial: content, virtual: true });
-  }
-  rebuildTabs();
-}
-
 export function selectTab(path: string) {
   const f = files.get(path);
   if (!f || !view) return;
@@ -366,7 +327,6 @@ export function selectTab(path: string) {
       changes: { from: 0, to: view.state.doc.length, insert: f.content },
       effects: [
         langComp.reconfigure(langFor(path)),
-        readOnlyComp.reconfigure(readOnlyExt(!!f.virtual)),
         csToolsComp.reconfigure(csToolsExt(path)),
       ],
     });
