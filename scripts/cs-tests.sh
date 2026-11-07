@@ -75,6 +75,7 @@ cs_runtime_tests=(
   TestTcsRuntime
   TestLinq
   TestWindowSize
+  TestOutParams
   TestBindingsImmediate
   TestBindingsShaderSwap
   TestBindingsRecreate

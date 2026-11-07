@@ -64,6 +64,13 @@ class BindingTest
         Console.WriteLine(bits);
         var array = new float[] { 1, 2, 3, 4 };
         Console.WriteLine(Gfx.UseBufferArray("array", Gfx.BufferType.Storage, array, 3)!.Version);
+        // out の引数は各 out の場所に、その out の値が入る
+        Input.MousePos(out var mouseX, out var mouseY);
+        Console.WriteLine(mouseX + " " + mouseY);
+        Console.WriteLine(Gfx.ResourceInfo(42, out var key, out var version) + " " + key + " " + version);
+        Console.WriteLine(Gfx.ResourceInfo(-1, out var staleKey, out _) + " " + (staleKey == null));
+        Ui.ColorEdit3("c", .25f, .5f, .75f, out var newR, out var newG, out var newB);
+        Console.WriteLine(newR + " " + newG + " " + newB);
     }
 
     // count が配列を超える。
