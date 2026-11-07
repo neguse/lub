@@ -1075,6 +1075,138 @@ int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path, int32_t offs
   return written;
 }
 
+/* ---- 個体を探す (tvm_inspect_instances) ---- */
+
+/* 辿る節: path (paths の中の位置)、値、深さ */
+typedef struct InstNode {
+  size_t path;
+  Loc loc;
+  uint32_t depth;
+} InstNode;
+
+typedef struct InstWalk {
+  TvmVm *vm;
+  char *paths; /* NUL で区切った path */
+  size_t npaths, cappaths;
+  InstNode *q;
+  uint32_t nq, capq;
+  void **seen; /* 印を付けた object (最後に印を消す) */
+  uint32_t nseen, capseen;
+  uint32_t max_depth;
+  TvmInstanceFn fn;
+  void *user;
+  bool failed;
+} InstWalk;
+
+static bool grow_to(void **p, uint32_t *cap, uint32_t need, size_t size) {
+  if (need <= *cap)
+    return true;
+  uint32_t c = *cap ? *cap * 2 : 256;
+  while (c < need)
+    c *= 2;
+  void *g = realloc(*p, (size_t)c * size);
+  if (!g)
+    return false;
+  *p = g;
+  *cap = c;
+  return true;
+}
+
+/* parent の path に name を足した path を置き、その位置を返す (失敗は SIZE_MAX) */
+static size_t inst_path(InstWalk *w, size_t parent, const char *name) {
+  size_t pl = parent == SIZE_MAX ? 0 : strlen(w->paths + parent);
+  size_t nl = strlen(name);
+  size_t need = w->npaths + pl + nl + 1;
+  if (need > w->cappaths) {
+    size_t c = w->cappaths ? w->cappaths * 2 : 4096;
+    while (c < need)
+      c *= 2;
+    char *g = (char *)realloc(w->paths, c);
+    if (!g)
+      return SIZE_MAX;
+    w->paths = g;
+    w->cappaths = c;
+  }
+  size_t at = w->npaths;
+  if (pl)
+    memcpy(w->paths + at, w->paths + parent, pl);
+  memcpy(w->paths + at + pl, name, nl + 1);
+  w->npaths = need;
+  return at;
+}
+
+/* 値 l を見つけた: class の instance なら渡し、まだ辿っていなければ辿る節に足す */
+static void inst_visit(InstWalk *w, size_t parent, const char *name, const Loc *l, uint32_t depth) {
+  if (w->failed || (l->kind != TVM_K_REF && l->kind != TVM_K_STRUCT))
+    return;
+  void *o = loc_object(l);
+  if (l->kind == TVM_K_REF) {
+    if (!o)
+      return;
+    TvmGcHeader *h = GC_HEADER(o);
+    if (h->flags & (TVM_GC_STATIC | TVM_GC_SEEN))
+      return;
+    if (!grow_to((void **)&w->seen, &w->capseen, w->nseen + 1, sizeof(void *))) {
+      w->failed = true;
+      return;
+    }
+    h->flags |= TVM_GC_SEEN;
+    w->seen[w->nseen++] = o;
+  }
+  size_t path = inst_path(w, parent, name);
+  if (path == SIZE_MAX) {
+    w->failed = true;
+    return;
+  }
+  const TvmType *t = o ? type_of(o) : NULL;
+  if (t && t->tkind == TVM_T_CLASS) {
+    char id[32];
+    snprintf(id, sizeof id, "%p", o);
+    w->fn(w->user, t->name, w->paths + path, id);
+  }
+  if (depth >= w->max_depth)
+    return;
+  if (!grow_to((void **)&w->q, &w->capq, w->nq + 1, sizeof(InstNode))) {
+    w->failed = true;
+    return;
+  }
+  w->q[w->nq++] = (InstNode){path, *l, depth};
+}
+
+void tvm_inspect_instances(TvmVm *vm, const char *entry, uint32_t max_depth, uint32_t max_children, TvmInstanceFn fn,
+                           void *user) {
+  InstWalk w = {0};
+  w.vm = vm;
+  w.max_depth = max_depth;
+  w.fn = fn;
+  w.user = user;
+  const char *roots[256];
+  uint32_t nroots = root_classes(vm, entry, roots, 256);
+  Children c = {0};
+  for (uint32_t r = 0; r < nroots && !w.failed; r++) {
+    size_t root = inst_path(&w, SIZE_MAX, roots[r]);
+    if (root == SIZE_MAX)
+      break;
+    c.n = 0;
+    class_children(vm, roots[r], &c);
+    for (uint32_t i = 0; i < c.n; i++)
+      inst_visit(&w, root, c.v[i].name, &c.v[i].loc, 1);
+  }
+  for (uint32_t at = 0; at < w.nq && !w.failed; at++) {
+    InstNode node = w.q[at];
+    c.n = 0;
+    children_of(vm, &node.loc, 0, max_children, &c);
+    for (uint32_t i = 0; i < c.n && i < max_children; i++)
+      inst_visit(&w, node.path, c.v[i].name, &c.v[i].loc, node.depth + 1);
+  }
+  for (uint32_t i = 0; i < w.nseen; i++)
+    GC_HEADER(w.seen[i])->flags &= (uint16_t)~TVM_GC_SEEN;
+  free(c.v);
+  free(w.paths);
+  free(w.q);
+  free(w.seen);
+}
+
 /* ---- 弱く覚える object ---- */
 
 void tvm_inspect_pin(TvmVm *vm, const char *key, const char *entry, const char *path) {

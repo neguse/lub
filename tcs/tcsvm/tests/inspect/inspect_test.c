@@ -1,5 +1,7 @@
 /* 大きな配列 (Game.Boxes、2^20 要素) の一部を tvm_inspect で見るテスト。
-   子の数、終わり近くの範囲、要素の中の field が正しいことと、頼んだ範囲の外の要素に手間をかけないこと (繰り返しても速いこと) を確かめる。 */
+   子の数、終わり近くの範囲、要素の中の field が正しいことと、頼んだ範囲の外の要素に手間をかけないこと (繰り返しても速いこと) を確かめる。
+   tvm_inspect_instances が static から幅優先で辿った class の個体を、見つけた順に 1 度ずつ、tvm_inspect と同じ path と id で渡すこと、
+   輪を辿り直さず、struct の中も辿り、深さと子の数の上限で止まることも確かめる。 */
 #include "../../vm/tcsvm.h"
 
 #include <stdio.h>
@@ -13,6 +15,15 @@ static double now_ms(void) {
   struct timespec ts;
   timespec_get(&ts, TIME_UTC);
   return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
+}
+
+static char solo_id[64];
+
+static void instance(void *user, const char *type, const char *path, const char *id) {
+  (void)user;
+  printf("  %s %s\n", type, path);
+  if (strcmp(path, "Game.Solo") == 0)
+    snprintf(solo_id, sizeof solo_id, "%s", id);
 }
 
 static void print(const TvmInspectNode *n) {
@@ -63,6 +74,14 @@ int main(int argc, char **argv) {
     printf("fast\n");
   else
     printf("slow: %.0f ms\n", ms);
+  /* 深さ 3 (static field が 1)、子は先頭の 1000 個まで (Boxes の終わりの Box は辿らない) */
+  printf("instances:\n");
+  tvm_inspect_instances(vm, "Game", 3, 1000, instance, NULL);
+  TvmInspectNode game[8];
+  int32_t n = tvm_inspect(vm, "Game", "Game", 0, 8, game);
+  for (int32_t i = 0; i < n; i++)
+    if (strcmp(game[i].path, "Game.Solo") == 0)
+      printf("same id: %s\n", strcmp(game[i].id, solo_id) == 0 && solo_id[0] ? "yes" : "no");
   tvm_free(vm);
   free(bytes);
   return 0;
