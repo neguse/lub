@@ -23,6 +23,8 @@ public static class Game
         sb.Begin();
         text.Draw(sb, "abcdefghij", 0, 20, Tint);
         text.Draw(sb, "klmnopqrst", 0, 40, Tint);
+        sb.Rect(0, 0, 4, 4, Tint);
+        sb.Rect(4, 0, 4, 4, Tint);
         sb.Flush();
         Gfx.EndPass();
     }

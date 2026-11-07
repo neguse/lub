@@ -138,6 +138,9 @@ public class SpriteBatch
     private Atlas? lastAtlas;
     private List<float>? lastVerts;
     private static Color white = Color.Rgb(1.0f, 1.0f, 1.0f, 1.0f);
+    // 単色の矩形と円の atlas の中の範囲 (呼ぶたびに作らない)
+    private static readonly Rect whiteSrc = new Rect(0, 0, 4, 4);
+    private static readonly Rect discSrc = new Rect(0, 0, 64, 64);
 
     private List<float>? BucketFor(Atlas a)
     {
@@ -352,7 +355,7 @@ public class SpriteBatch
     public void Rect(float x, float y, float w, float h,
         Color? tint = null)
     {
-        Quad(EnsureWhiteAtlas(), new Rect(0, 0, 4, 4), x, y, w, h, tint);
+        Quad(EnsureWhiteAtlas(), whiteSrc, x, y, w, h, tint);
     }
 
     /// <summary>単色の円 (ソフトエッジの disc)。
@@ -360,7 +363,7 @@ public class SpriteBatch
     /// </summary>
     public void Disc(float cx, float cy, float r, Color? tint = null)
     {
-        Sprite(EnsureDiscAtlas(), new Rect(0, 0, 64, 64), cx, cy,
+        Sprite(EnsureDiscAtlas(), discSrc, cx, cy,
             r * 2.0f, r * 2.0f, 0.0f, tint);
     }
 

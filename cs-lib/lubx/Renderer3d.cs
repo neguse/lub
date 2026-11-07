@@ -75,13 +75,13 @@ public class Renderer3dDrawCmd
 {
     public Mesh3d Mesh;
     public Mat4 Model;
-    public List<float> Tint;
+    public Color Tint;
     public Blend? Blend;
     public List<float>? Bones;
     public ShaderRef? Shader;
     public Dictionary<string, TextureRef>? Textures;
 
-    public Renderer3dDrawCmd(Mesh3d mesh, Mat4 model, List<float> tint,
+    public Renderer3dDrawCmd(Mesh3d mesh, Mat4 model, Color tint,
         Blend? blend, List<float>? bones, ShaderRef? shader,
         Dictionary<string, TextureRef>? textures)
     {
@@ -989,7 +989,7 @@ public class Renderer3d
     {
         if (mesh == null || !mesh.Ready())
             return;
-        var tint = new List<float> { 1.0f, 1.0f, 1.0f, 1.0f };
+        var tint = Color.Rgb(1.0f, 1.0f, 1.0f, 1.0f);
         Blend? blend = null;
         List<float>? bones = null;
         ShaderRef? shader = null;
@@ -998,10 +998,7 @@ public class Renderer3d
         {
             var t = opts.Tint;
             if (t != null)
-            {
-                var c = t.Value;
-                tint = new List<float> { c.R, c.G, c.B, c.A };
-            }
+                tint = t.Value;
             blend = opts.Blend;
             bones = opts.Bones;
             shader = opts.Shader;
@@ -1072,7 +1069,12 @@ public class Renderer3d
         bindings.Set("mvp", vp * d.Model);
         bindings.Set("model", d.Model);
         bindings.Set("light_mvp", lmvp);
-        bindings.Set("tint", d.Tint);
+        // binding は draw の時点の中身を読むので、draw ごとの値は同じ List を書き換えて渡す
+        tintTable[0] = d.Tint.R;
+        tintTable[1] = d.Tint.G;
+        tintTable[2] = d.Tint.B;
+        tintTable[3] = d.Tint.A;
+        bindings.Set("tint", tintTable);
         bindings.Set("light_dir", LightDirTable());
         bindings.Set("light_col", new Vec4(Light.Color.R * Light.Intensity,
             Light.Color.G * Light.Intensity,
@@ -1085,13 +1087,18 @@ public class Renderer3d
             bindings.Set("bones", d.Bones ?? IdentityBones());
     }
 
+    private readonly List<float> tintTable = new List<float> { 1.0f, 1.0f, 1.0f, 1.0f };
+    private readonly List<float> lightDirTable = new List<float> { 0.0f, 0.0f, 0.0f, 0.0f };
+
     private List<float> LightDirTable()
     {
         var len = (float)Math.Sqrt(Light.Dir.X * Light.Dir.X
             + Light.Dir.Y * Light.Dir.Y + Light.Dir.Z * Light.Dir.Z);
         var inv = len > 1e-6f ? 1.0f / len : 1.0f;
-        return new List<float>
-            { Light.Dir.X * inv, Light.Dir.Y * inv, Light.Dir.Z * inv, 0.0f };
+        lightDirTable[0] = Light.Dir.X * inv;
+        lightDirTable[1] = Light.Dir.Y * inv;
+        lightDirTable[2] = Light.Dir.Z * inv;
+        return lightDirTable;
     }
 
     // target 全面に 1 パス描く。

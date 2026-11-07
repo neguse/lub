@@ -15,6 +15,9 @@ namespace Lubx;
 public class Mesh3d
 {
     private string key;
+    // UseBuffer の key (毎 frame の Ready で作り直さない)
+    private string vbKey;
+    private string ibKey;
     // rebuild() が組んだ interleaved 頂点と index。
     // ready() の再主張と、sweep 後の作り直しに使う。
     // interleave の戻りは frame の終わりまでの view なので table に写して持つ。
@@ -30,6 +33,8 @@ public class Mesh3d
     public Mesh3d(string key)
     {
         this.key = key;
+        vbKey = key + "/vb";
+        ibKey = key + "/ib";
     }
 
     /// <summary>メッシュを差し替える (初回含む)。
@@ -40,7 +45,7 @@ public class Mesh3d
         this.Data = data;
         Skinned = data.Bones != null;
         var view = Skinned ? Io.InterleavePncmw(data) : Io.InterleavePncm(data);
-        Vb = Gfx.UseBuffer(key + "/vb", Gfx.BufferType.Storage, view);
+        Vb = Gfx.UseBuffer(vbKey, Gfx.BufferType.Storage, view);
         var v = new List<float>();
         for (int i = 0; i < view.Count; i++)
         {
@@ -53,7 +58,7 @@ public class Mesh3d
         {
             idx.Add(i);
         }
-        Ib = Gfx.UseBuffer(key + "/ib", Gfx.BufferType.Index, idx);
+        Ib = Gfx.UseBuffer(ibKey, Gfx.BufferType.Index, idx);
         verts = v;
         indices = idx;
         IndexCount = data.IndexCount;
@@ -70,8 +75,8 @@ public class Mesh3d
         {
             return false;
         }
-        Vb = Gfx.UseBuffer(key + "/vb", Gfx.BufferType.Storage, verts, Vb.Version);
-        Ib = Gfx.UseBuffer(key + "/ib", Gfx.BufferType.Index, indices, Ib.Version);
+        Vb = Gfx.UseBuffer(vbKey, Gfx.BufferType.Storage, verts, Vb.Version);
+        Ib = Gfx.UseBuffer(ibKey, Gfx.BufferType.Index, indices, Ib.Version);
         return Vb != null && Ib != null;
     }
 }
