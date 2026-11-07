@@ -998,7 +998,10 @@ public class Renderer3d
         {
             var t = opts.Tint;
             if (t != null)
-                tint = new List<float> { t.R, t.G, t.B, t.A };
+            {
+                var c = t.Value;
+                tint = new List<float> { c.R, c.G, c.B, c.A };
+            }
             blend = opts.Blend;
             bones = opts.Bones;
             shader = opts.Shader;

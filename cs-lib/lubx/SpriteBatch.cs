@@ -159,7 +159,7 @@ public class SpriteBatch
     private Color ColorOrWhite(Color? c)
     {
         if (c != null)
-            return c;
+            return c.Value;
         return Color.Rgb(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
