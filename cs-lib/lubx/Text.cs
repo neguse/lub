@@ -109,10 +109,23 @@ public class Text
         return b!;
     }
 
-    private static void EachCodepoint(string s, Action<int> f)
+    // 前の文字 → 次の文字 → kerning (font の単位)。glyph と同じく初めて出た組だけ font から引く
+    // (font の data は frame 有効の view なので持てず、引くたびに読み直すと確保になる)
+    private readonly Dictionary<int, Dictionary<int, float>> kerns = new Dictionary<int, Dictionary<int, float>>();
+
+    private float Kern(int prev, int cp)
     {
-        foreach (var r in s.EnumerateRunes())
-            f(r.Value);
+        if (!kerns.TryGetValue(prev, out var row))
+        {
+            row = new Dictionary<int, float>();
+            kerns[prev] = row;
+        }
+        if (!row.TryGetValue(cp, out var k))
+        {
+            k = Font.Kern(Ttf(), prev, cp);
+            row[cp] = k;
+        }
+        return k;
     }
 
     private TextGlyph? EnsureGlyph(int cp)
@@ -195,21 +208,17 @@ public class Text
     {
         var sum = 0.0f;
         var prev = -1;
-        Bytes? ttf = null;
-        EachCodepoint(s, cp =>
+        foreach (var r in s.EnumerateRunes())
         {
+            var cp = r.Value;
             var g = EnsureGlyph(cp);
             if (g == null)
-                return;
+                continue;
             if (prev >= 0)
-            {
-                if (ttf == null)
-                    ttf = Ttf();
-                sum += Font.Kern(ttf, prev, cp) * Px;
-            }
+                sum += Kern(prev, cp) * Px;
             sum += g.Advance;
             prev = cp;
-        });
+        }
         return sum * (scale ?? 1.0f);
     }
 
@@ -223,25 +232,21 @@ public class Text
         float sc = scale ?? 1.0f;
         var pen = x;
         var prev = -1;
-        Bytes? ttf = null;
-        EachCodepoint(s, cp =>
+        foreach (var r in s.EnumerateRunes())
         {
+            var cp = r.Value;
             var g = EnsureGlyph(cp);
             if (g == null)
-                return;
+                continue;
             if (prev >= 0)
-            {
-                if (ttf == null)
-                    ttf = Ttf();
-                pen += Font.Kern(ttf, prev, cp) * Px * sc;
-            }
+                pen += Kern(prev, cp) * Px * sc;
             if (g.W > 0)
                 batch.Quad(pages[g.Page].Atlas, g.Src,
                     pen + g.Xoff * sc, y + g.Yoff * sc, g.W * sc, g.H * sc,
                     tint);
             pen += g.Advance * sc;
             prev = cp;
-        });
+        }
     }
 
     /// <summary>codepoint 1 文字を、kerning を足さずに描く。
