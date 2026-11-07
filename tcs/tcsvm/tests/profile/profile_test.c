@@ -5,6 +5,7 @@
      GC の長さは時計で測った 1000 ns で、GC の間に知らされた時間はどの行にも付かない)
    - 持ち越し: 前の frame の境目の後に --trace の行で作り、entry と --trace の class の static から辿れる物を、作った行と持つ field ごとに数える
    - 別の thread から知らせた時間も欠けずに付く
+   - 呼んだ先の --trace の関数から戻った後 (VM の中の呼び出しと、host からの入れ子の呼び出し) の時間と確保は、呼んだ行に付く
    - 止めると数えない */
 #include "../../vm/tcsvm.h"
 
@@ -51,6 +52,16 @@ static void *ticker(void *arg) {
     tvm_profile_tick(vm, 1);
   atomic_store(&done, 1);
   return NULL;
+}
+
+static TvmStatus around_fn(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
+  (void)a;
+  (void)r;
+  (void)user;
+  TvmSlot ret[1];
+  TvmStatus st = tvm_call(vm, tvm_find(vm, "Game.Mark"), NULL, 0, ret, 1);
+  tvm_profile_tick(vm, 5);
+  return st;
 }
 
 static uint64_t thread_ns;
@@ -168,7 +179,8 @@ int main(int argc, char **argv) {
   TvmVm *vm = tvm_new(&config);
   the_vm = vm;
   if (!tvm_host(vm, "probe.clock.advance", "i", "", advance, NULL) ||
-      !tvm_host(vm, "probe.clock.done", "", "b", done_fn, NULL))
+      !tvm_host(vm, "probe.clock.done", "", "b", done_fn, NULL) ||
+      !tvm_host(vm, "probe.clock.around", "", "", around_fn, NULL))
     return 1;
   if (tvm_load(vm, bytes, (size_t)size) != TVM_OK) {
     fprintf(stderr, "%s\n", tvm_error(vm));
@@ -218,6 +230,15 @@ int main(int argc, char **argv) {
   pthread_join(th, NULL);
   tvm_profile_take_lines(vm, sum_ns, NULL);
   printf("thread: %s\n", thread_ns == THREAD_TICKS ? "all ticks" : "lost ticks");
+  /* 呼んだ先から戻った後 */
+  if (!call(vm, "Game.Nest"))
+    return 1;
+  tvm_profile_take_lines(vm, take, NULL);
+  print("nested");
+  if (!call(vm, "Game.Around"))
+    return 1;
+  tvm_profile_take_lines(vm, take, NULL);
+  print("around");
   /* 止めると数えない */
   tvm_profile_enable(vm, NULL);
   if (!call(vm, "Game.Step"))

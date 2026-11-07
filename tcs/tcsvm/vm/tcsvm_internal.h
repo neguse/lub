@@ -227,6 +227,7 @@ typedef struct TvmFrame {
   const TvmProto *proto;
   const struct TvmClosure *clo; /* lambda の frame の自分の closure (LDCAP が読む) */
   uint32_t ret;                 /* 戻り値を書く caller の register */
+  uint32_t line;                /* 負荷を数えている間の、呼んだときの行 + 1 (戻ったらこの行に戻す) */
 } TvmFrame;
 
 /* heap の object の前に置く GC の header (doc/vm-design.md §10)。
@@ -369,8 +370,11 @@ void tvm_debug_forget(TvmVm *vm, void *p);
 void tvm_debug_pair(TvmVm *vm, uint32_t k, void *self);
 /* 負荷 (prof_clock があるときだけ呼ぶ): 行 k に着いた (TRACE)、interpreter に入る・出る、確保した、GC が始まる・止めた */
 void tvm_profile_line(TvmVm *vm, uint32_t k);
+/* 今の行 + 1 (数えていないか行の外なら 0)。呼ぶときに控え、戻ったら tvm_profile_return でこの行に戻す */
+static inline uint32_t tvm_profile_at(const TvmVm *vm) { return vm->prof_clock && vm->debug ? vm->debug->prof_cur : 0; }
+void tvm_profile_return(TvmVm *vm, uint32_t line);
 void tvm_profile_enter(TvmVm *vm);
-void tvm_profile_leave(TvmVm *vm);
+void tvm_profile_leave(TvmVm *vm, uint32_t line);
 void tvm_profile_alloc(TvmVm *vm, void *p, size_t bytes);
 void tvm_profile_frame_end(TvmVm *vm);
 void tvm_profile_gc_begin(TvmVm *vm);

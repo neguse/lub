@@ -181,8 +181,19 @@ void tvm_profile_line(TvmVm *vm, uint32_t k) {
   vm->debug->prof_cur = k + 1;
 }
 
+/* 呼んだ先から戻る: それまでに知らされた時間を呼んだ先の行に足し、呼んだときの行に戻す
+   (戻った後の --trace の外の関数の中の時間と確保を、呼んだ行に付ける) */
+void tvm_profile_return(TvmVm *vm, uint32_t line) {
+  TvmDebug *d = vm->debug;
+  if (!d || d->prof_cur == line)
+    return;
+  if (pending_peek(vm))
+    prof_flush(vm);
+  d->prof_cur = line;
+}
+
 /* host から一番外の呼び出しに入るときは、それまでに知らされた時間を捨てて行の外から始め、
-   出るときに今の行に足して行の外に戻る (呼び出しの外の時間をどの行にも付けない) */
+   出るときに今の行に足して行の外に戻る (呼び出しの外の時間をどの行にも付けない)。入れ子の呼び出しから出るときは、呼んだときの行に戻る */
 void tvm_profile_enter(TvmVm *vm) {
   if (vm->prof_depth++ > 0)
     return;
@@ -191,9 +202,13 @@ void tvm_profile_enter(TvmVm *vm) {
     vm->debug->prof_cur = 0;
 }
 
-void tvm_profile_leave(TvmVm *vm) {
-  if (vm->prof_depth == 0 || --vm->prof_depth > 0)
+void tvm_profile_leave(TvmVm *vm, uint32_t line) {
+  if (vm->prof_depth == 0)
     return;
+  if (--vm->prof_depth > 0) {
+    tvm_profile_return(vm, line);
+    return;
+  }
   prof_flush(vm);
   if (vm->debug)
     vm->debug->prof_cur = 0;

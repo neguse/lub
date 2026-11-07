@@ -47,6 +47,23 @@ public static class Game
         {
         }
     }
+
+    // 呼んだ先の --trace の関数 (Mark) から戻った後の時間と確保は、呼んだ行に付く
+    public static void Nest()
+    {
+        Lib.Spend(Mark());
+    }
+
+    // host が Mark を入れ子で呼び、戻った後に時間を知らせる
+    public static void Around()
+    {
+        Probe.Clock.Around();
+    }
+
+    public static int Mark()
+    {
+        return 100;
+    }
 }
 
 public class Item

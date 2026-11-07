@@ -7,5 +7,7 @@ namespace Probe
         public static void Advance(int ns) { }
         // 別の thread が時間を知らせ終えたか
         public static bool Done() { return true; }
+        // Game.Mark を入れ子で呼び、戻った後に 5 ns 経ったことを知らせる
+        public static void Around() { }
     }
 }

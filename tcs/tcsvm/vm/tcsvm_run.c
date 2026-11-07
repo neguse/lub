@@ -626,6 +626,7 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     ci->proto = proto;
     ci->clo = clo;
     ci->ret = OPB;
+    ci->line = tvm_profile_at(vm);
     ci++;
     R = nR;
     proto = g;
@@ -659,6 +660,7 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     ci->proto = proto;
     ci->clo = clo;
     ci->ret = OPB;
+    ci->line = tvm_profile_at(vm);
     ci++;
     R = nR;
     proto = g;
@@ -697,6 +699,7 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     ci->proto = proto;
     ci->clo = clo;
     ci->ret = OPB;
+    ci->line = tvm_profile_at(vm);
     ci++;
     R = nR;
     proto = g;
@@ -715,6 +718,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     TvmSlot *dst = ci->R + ci->ret;
     for (uint32_t k = 0; k < n; k++)
       dst[k] = R[OPA + k];
+    if (vm->prof_clock)
+      tvm_profile_return(vm, ci->line);
     R = ci->R;
     pc = ci->pc;
     proto = ci->proto;
@@ -725,6 +730,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     if (ci == base)
       LEAVE(TVM_OK);
     ci--;
+    if (vm->prof_clock)
+      tvm_profile_return(vm, ci->line);
     R = ci->R;
     pc = ci->pc;
     proto = ci->proto;
@@ -831,10 +838,11 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
 static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, const TvmSlot *args, TvmSlot *rets) {
   if (!vm->prof_clock)
     return interpret(vm, proto, clo, args, rets);
+  uint32_t line = tvm_profile_at(vm);
   tvm_profile_enter(vm);
   TvmStatus st = interpret(vm, proto, clo, args, rets);
   if (vm->prof_clock)
-    tvm_profile_leave(vm);
+    tvm_profile_leave(vm, line);
   return st;
 }
 
