@@ -83,14 +83,13 @@ sys.exit("no iPhone simulator is available")
 
 run bash scripts/build-release.sh --build-dir "$build"
 
-# tests/cs の test は C# なので、tcs で tests/cs/.lub/<Entry>.lua に変換してから動かす。
-# iOS の app には tests/cs 全体の tcs VM の bytecode (tests/cs/.lub/all.tcsb) を入れ、--entry で test を選ぶ。
+# tests/cs の test は C# なので、tcs vm で tests/cs 全体を 1 つの bytecode (tests/cs/.lub/all.tcsb) にしてから、--entry で test を選んで動かす。
+# iOS の app にも同じ bytecode を入れる。
 run dotnet build third_party/tcs/Transpiler -c Release -nologo
 LUB_TCS_DLL="$repo_root/third_party/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
 export LUB_TCS_DLL
 # shellcheck source=scripts/cs-tests.sh
 source scripts/cs-tests.sh
-run cs_tests_transpile "${cs_all_tests[@]}"
 run cs_tests_vm_build
 
 if [[ $part != ios ]]; then
@@ -100,13 +99,13 @@ if [[ $part != ios ]]; then
     run "./$build/$smoke"
   done
 
-  run "./$build/lub" tests/cs/.lub/TestFixedDt.lua --fixed-dt 0.0125
-  run "./$build/lub" tests/cs/.lub/TestFixedDt.lua --fixed-dt 0.0166666666666667
+  run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestFixedDt --fixed-dt 0.0125
+  run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestFixedDt --fixed-dt 0.0166666666666667
 
   echo
   echo "==> C# runtime tests (${#cs_runtime_tests[@]})"
   for cs_test in "${cs_runtime_tests[@]}"; do
-    if "./$build/lub" "tests/cs/.lub/$cs_test.lua" "${cs_test_args[@]}" >"$work/test.log" 2>&1; then
+    if "./$build/lub" tests/cs/.lub/all.tcsb --entry "$cs_test" "${cs_test_args[@]}" >"$work/test.log" 2>&1; then
       echo "PASS $cs_test"
     else
       echo "FAIL $cs_test"
@@ -115,12 +114,12 @@ if [[ $part != ios ]]; then
     fi
   done
   # 束縛しなかった slot に前の draw の texture と storage buffer が残らないこと。
-  run "./$build/lub" tests/cs/.lub/TestUnboundAfterBound.lua "${cs_test_args[@]}"
+  run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestUnboundAfterBound "${cs_test_args[@]}"
   # encoder に設定済みの pipeline、buffer、texture を設定し直さなくても、各 draw が自分の状態で描くこと。
-  run "./$build/lub" tests/cs/.lub/TestDrawStateReuse.lua "${cs_test_args[@]}"
+  run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestDrawStateReuse "${cs_test_args[@]}"
   # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
-  run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackFixedLatency.lua
-  run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/TestReadbackNoWait.lua
+  run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
+  run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
   run scripts/test-tcs-process-cleanup.sh "./$build/lub"
 
   run env BINARY="./$build/lub" scripts/run-golden.sh
@@ -131,18 +130,19 @@ if [[ $part != ios ]]; then
   # shader is missing.
   run bash scripts/build-release.sh --build-dir "$player" -DLUB_NO_SLANG=ON
   player_bin="$PWD/$player/lub"
+  # snapshot の bytecode は <Entry>.tcsb
   for cached in TestVertexPull TestDepthSample; do
-    run "./$build/lub" export macos "tests/cs/.lub/$cached.lua" -o "$work/export-$cached"
-    run "./$build/lub" "tests/cs/.lub/$cached.lua" \
+    run "./$build/lub" export macos tests/cs/.lub/all.tcsb --entry "$cached" -o "$work/export-$cached"
+    run "./$build/lub" tests/cs/.lub/all.tcsb --entry "$cached" \
       --capture "$work/$cached-slang.png" "${capture[@]}"
-    (cd "$work/export-$cached" && run "$player_bin" game.lua \
+    (cd "$work/export-$cached" && run "$player_bin" "$cached.tcsb" \
       --capture "$work/$cached-cache.png" "${capture[@]}")
     run cmp "$work/$cached-slang.png" "$work/$cached-cache.png"
   done
   rm -r "$work/export-TestVertexPull/cache"
   echo
   echo "==> a missing shader is reported by its cache key"
-  (cd "$work/export-TestVertexPull" && "$player_bin" game.lua \
+  (cd "$work/export-TestVertexPull" && "$player_bin" TestVertexPull.tcsb \
     --capture "$work/miss.png" --capture-frame 2 --fixed-dt 0.0166666666666667) \
     >"$work/miss.log" 2>&1 || true
   if ! grep -q "this player has no shader compiler" "$work/miss.log"; then

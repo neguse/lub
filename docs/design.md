@@ -35,7 +35,7 @@ csproj は IDE 用の実プロジェクトでもあり、lub は basename (= ent
 C# のゲームは lub の player (既定は tcs VM の player、`--lua` で tcs→Lua の player。どちらも hotswap で動かす dev の経路) と .NET 実行 (実 .NET が `dotnet/Lub` の facade から共有 library の C API を P/Invoke で叩く経路、host は `App.Run(typeof(Game), args)`) で動く。
 同じソースがどれでも通ることが契約で、CI は各サンプルをそれぞれ headless に回し、frame ごとの digest (C API 呼び出しの構造の hash) を突き合わせる。
 数値は両方 f32 で、Math の超越関数も同じ実装 (次の段落) なので絵も揃い、手元の gate では capture 同士を byte 比較する。CI の契約は digest だけ。
-golden 画像は tcs→Lua の分 (`tests/golden/<name>_<backend>.png`) だけを持つ。
+golden 画像 (`tests/golden/<name>_<backend>.png`) は tcs VM の player で撮る。
 
 tcs VM の player (tcs vm が作った bytecode を tcs VM で動かす) を、tcs→Lua の player に代わる dev の経路にする。
 native の `lub` は既定でこの player を使い、tcs→Lua の player は `--lua` で選ぶ。

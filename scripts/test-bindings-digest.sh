@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # TestBindingsDigest を毎回 new / 使い回し / Clear し直しで走らせ、frame ごとの digest (C API 呼び出しの構造) が一致することを見る。
-# tests/cs/.lub/TestBindingsDigest.lua を先に変換しておく (scripts/cs-tests.sh)。
+# tests/cs/.lub/all.tcsb を先に作っておく (scripts/cs-tests.sh の cs_tests_vm_build)。
 # 使い方: scripts/test-bindings-digest.sh [lub binary]
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -9,7 +9,7 @@ dir="$(mktemp -d)"
 trap 'rm -rf "$dir"' EXIT
 
 for mode in new reuse clear; do
-  LUB_TEST_BINDINGS_MODE="$mode" scripts/run-headless.sh "$binary" tests/cs/.lub/TestBindingsDigest.lua \
+  LUB_TEST_BINDINGS_MODE="$mode" scripts/run-headless.sh "$binary" tests/cs/.lub/all.tcsb --entry TestBindingsDigest \
     --fixed-dt 0.0166666666666667 --digest >"$dir/$mode.log" 2>&1 || { cat "$dir/$mode.log"; echo "FAIL: $mode exited non-zero" >&2; exit 1; }
   grep '^digest ' "$dir/$mode.log" >"$dir/$mode.digest"
   [[ -s "$dir/$mode.digest" ]] || { cat "$dir/$mode.log"; echo "FAIL: $mode printed no digest" >&2; exit 1; }

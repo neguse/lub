@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Native regression gate: docs lint, Release build, C smoke tests,
 # C# runtime tests (tests/cs), visual goldens (lavapipe), the C# sample gate
-# (tcs→Lua と .NET 実行を同じ条件で走らせ、digest と capture が一致すること)、ngs scenario golden。
+# (tcs VM の player と .NET 実行を同じ条件で走らせ、digest と capture が一致すること)、ngs scenario golden。
 # Single source of truth shared by the CI linux job (.github/workflows/ci.yml)
 # and the manual full gate (scripts/pre-push.sh).
 set -euo pipefail
@@ -120,8 +120,9 @@ cs_entry_class() {
 cs_transpile() {
   local cs_dir="$1" cs_name
   cs_name="$(basename "$cs_dir")"
-  # --build は tcs check と同じく警告で失敗する (check と変換を 1 回の compile で)
-  run scripts/run-cs-sample.sh "$cs_name" --build
+  # tcs check は警告でも失敗する。tcs vm は警告で止まらないので、check を別に回す
+  run scripts/run-cs-sample.sh "$cs_name" --check
+  run scripts/run-cs-sample.sh "$cs_name" --vm
 }
 
 cs_capture() {
@@ -129,26 +130,28 @@ cs_capture() {
   local dn_png dn_digest
   cs_name="$(basename "$cs_dir")"
   cs_class="$(cs_entry_class "$cs_dir")"
-  cs_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_cs.png"
-  cs_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_cs.digest"
+  cs_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_vm.png"
+  cs_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_vm.digest"
   rm -f "$cs_png" "$cs_digest"
   # 視覚 golden は scripts/run-golden.sh (curation と frame はそちら)。
-  # ここは .NET 実行と突き合わせる材料 (digest と capture)。
+  # ここは tcs VM の player (lub の既定、src/vm_player.c) と .NET 実行を突き合わせる材料 (digest と capture)。
   # CI (--skip-golden) は digest 比較の範囲 (30 frame) で足りる。
+  # bytecode (.lub/<Entry>.tcsb) は dotnet 相の cs_transpile が作ってある。
   cs_frame=240
   [[ $skip_golden -eq 1 ]] && cs_frame=30
   run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
     scripts/run-headless.sh "$native_binary" \
-    "$cs_dir/.lub/$cs_class.lua" --capture "$cs_png" --capture-frame "$cs_frame" \
+    "$cs_dir/.lub/$cs_class.tcsb" --entry "$cs_class" --capture "$cs_png" --capture-frame "$cs_frame" \
     --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "${cs_digest}.log"
   grep '^digest ' "${cs_digest}.log" > "$cs_digest" || true
   # error の log は stderr に出る (xvfb-run が stdout に混ぜるとは限らない) ので、両方の経路で 2>&1 して log に入れる。
-  if grep -q "lua error" "${cs_digest}.log"; then
-    echo "tcs→Lua run of ${cs_name} logged errors" >&2
+  if grep -qE "lub: (error|cannot)" "${cs_digest}.log"; then
+    echo "tcs VM run of ${cs_name} logged errors" >&2
     return 1
   fi
 
-  # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs→Lua と一致することを確かめる。
+  # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs VM と一致することを確かめる。
+  # host の関数 (lub-gen vm) と facade の詰め替えの違いはここに出る。
   # 数値は両方 f32 で、Math も同じ実装なので絵も揃う。
   # capture の一致は golden と同じく手元の gate でだけ見る。
   # SampleRunner の出力は Sample ごとに別 dir なので build は capture の直前。
@@ -167,33 +170,11 @@ cs_capture() {
     return 1
   fi
   # digest は最初の 30 frame (CI の capture 長)。
-  # facade の詰め替えの違いはここに出る。
   run cmp <(head -30 "$cs_digest") <(head -30 "$dn_digest")
   if [[ $skip_golden -eq 1 ]]; then
     echo "==> .NET capture cmp skipped (--skip-golden): ${cs_name}"
   else
     run cmp "$cs_png" "$dn_png"
-  fi
-
-  # tcs VM の player (lub の既定、src/vm_player.c): 同じソースを tcs vm で bytecode にし、digest と capture が tcs→Lua と一致することを確かめる。
-  # host の関数 (lub-gen vm) の詰め替えの違いはここに出る。
-  local vm_png vm_digest
-  run scripts/run-cs-sample.sh "$cs_name" --vm
-  vm_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_vm.png"
-  vm_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_vm.digest"
-  rm -f "$vm_png" "$vm_digest"
-  run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
-    scripts/run-headless.sh "$native_binary" \
-    "$cs_dir/.lub/$cs_class.tcsb" --entry "$cs_class" --capture "$vm_png" --capture-frame "$cs_frame" \
-    --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "${vm_digest}.log"
-  grep '^digest ' "${vm_digest}.log" > "$vm_digest" || true
-  if grep -qE "lub: (error|cannot)" "${vm_digest}.log"; then
-    echo "tcs VM run of ${cs_name} logged errors" >&2
-    return 1
-  fi
-  run cmp <(head -30 "$cs_digest") <(head -30 "$vm_digest")
-  if [[ $skip_golden -eq 0 ]]; then
-    run cmp "$cs_png" "$vm_png"
   fi
 }
 
@@ -275,7 +256,6 @@ run_runtime_tests() {
     exit 1
   fi
 }
-lua_test_argv() { printf '%s\n' "$native_binary" "tests/cs/.lub/$1.lua"; }
 vm_test_argv() { printf '%s\n' "$native_binary" tests/cs/.lub/all.tcsb --entry "$1"; }
 
 # dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、Transpiler を一度だけ build し、以後は run-cs-sample.sh と cs_tests_transpile が LUB_TCS_DLL の prebuilt DLL を直接実行する。
@@ -298,12 +278,13 @@ if [[ $cs_available -eq 1 ]]; then
     # .NET 実行の facade + host
     run dotnet build dotnet/Lub -nologo -v q
     run dotnet run --project tests/dotnet/Bindings -c Release
-    # tests/cs の runtime テストを tests/cs/.lub/<Entry>.lua に変換する
+    # tests/cs を tcs vm で 1 つの bytecode (tests/cs/.lub/all.tcsb) にする。test は --entry で選ぶ
     # shellcheck source=scripts/cs-tests.sh
     source scripts/cs-tests.sh
-    run cs_tests_transpile "${cs_all_tests[@]}"
-    # 同じ tests/cs を tcs vm で 1 つの bytecode にする (tcs VM の player で走らせる分)
     run cs_tests_vm_build
+    # Lua の player だけを見るもの (export の Lua、scripts/test-profile-alloc.sh) と web の export の gate (CI の lub-linux) が使う tests/cs/.lub/<Entry>.lua。
+    # tcs check と同じく警告で失敗するので、tests/cs の警告もここで見る
+    run cs_tests_transpile "${cs_all_tests[@]}"
     cs_pool "transpile" cs_transpile
     # サンプルの csproj は build しない: 同じソースを .NET 実行 (SampleRunner) が capture の前に実 .NET で compile し、TinyC# の範囲は tcs の check が見る。
     # 雛形 (cp -r して使う) は他で compile しないので、同じ API で build できること
@@ -353,14 +334,14 @@ fi
 if [[ $cs_available -eq 1 ]]; then
   # shellcheck source=scripts/cs-tests.sh
   source scripts/cs-tests.sh
-  run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/TestFixedDt.lua \
+  run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/all.tcsb --entry TestFixedDt \
     --fixed-dt 0.0125
-  run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/TestFixedDt.lua \
+  run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/all.tcsb --entry TestFixedDt \
     --fixed-dt 0.0166666666666667
   # save/<名前>/ は $XDG_DATA_HOME/<名前>/ に入る
   save_home="$(mktemp -d)"
   run_timed env XDG_DATA_HOME="$save_home" scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestSaveDir.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestSaveDir "${cs_test_args[@]}"
   saved="$(cat "$save_home/lub-test/scores.txt")"
   rm -rf "$save_home"
   if [[ $saved != saved ]]; then
@@ -374,45 +355,45 @@ if [[ $cs_available -eq 1 ]]; then
     run_timed env LUB_BACKEND=sdlgpu \
       LUB_READBACK_CAPTURE_TEST_OUT="$readback_capture_png" \
       LUB_READBACK_CAPTURE_TEST_NO_LOAD="$no_load" \
-      scripts/run-headless.sh "$native_binary" tests/cs/.lub/TestReadbackCapture.lua "${cs_test_args[@]}" \
+      scripts/run-headless.sh "$native_binary" tests/cs/.lub/all.tcsb --entry TestReadbackCapture "${cs_test_args[@]}" \
       --capture "$readback_capture_png" --capture-frame 5 \
       --fixed-dt 0.0166666666666667
   done
   # runtime テストは既定で sdlgpu を通る。
   # descriptor set と pipeline の bind を使い回す Vulkan backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestManyDraws.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestManyDraws "${cs_test_args[@]}"
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestDrawStateReuse.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestDrawStateReuse "${cs_test_args[@]}"
   # handle を保ったまま実体を作り直しても、使い回した descriptor set が前の実体を読まないこと。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestBufferRecordingOrder.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestBufferRecordingOrder "${cs_test_args[@]}"
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestBufferArray.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestBufferArray "${cs_test_args[@]}"
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestBufferCapacity.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestBufferCapacity "${cs_test_args[@]}"
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestFrameBuffer.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestFrameBuffer "${cs_test_args[@]}"
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestFrameBufferErrors.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestFrameBufferErrors "${cs_test_args[@]}"
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestFrameBufferLimit.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestFrameBufferLimit "${cs_test_args[@]}"
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestTextureRecordingOrder.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestTextureRecordingOrder "${cs_test_args[@]}"
   # vulkan backend は texture の束縛を別に組むので、texture と sampler を別に宣言する shader はこちらでも描く。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestSeparateSampler.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestSeparateSampler "${cs_test_args[@]}"
   # compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestStoragePreserve.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestStoragePreserve "${cs_test_args[@]}"
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestStorageFormat.lua "${cs_test_args[@]}"
+    tests/cs/.lub/all.tcsb --entry TestStorageFormat "${cs_test_args[@]}"
   # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestReadbackFixedLatency.lua
+    tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/TestReadbackNoWait.lua
-  # lub export は GPU も display も使わず、OnExport で使った shader を export 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ file と Lua を同じ相対 path に写す。
+    tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
+  # lub export は GPU も display も使わず、OnExport で使った shader を export 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ file と Lua (Lua の player) か bytecode (tcs VM の player) を同じ相対 path に写す。
   # linux の snapshot は、その中で player を起動するとリポジトリから動かしたときと同じ絵を描く (web は scripts/web-export-gate.sh)。
   export_dir="$(mktemp -d)"
   native_abs="$(realpath "$native_binary")"
@@ -441,8 +422,8 @@ if [[ $cs_available -eq 1 ]]; then
   done
   rm -r "$export_dir"
 
-  run_runtime_tests "C# runtime tests" lua_test_argv
-  # .NET 実行の Math (TinySystem.props で TinySystem.Math になる) が、tcs→Lua と同じ期待値 (tests/cs/TestMathDeterminism.cs の表) を返すこと
+  run_runtime_tests "C# runtime tests" vm_test_argv
+  # .NET 実行の Math (TinySystem.props で TinySystem.Math になる) が、tcs VM と同じ期待値 (tests/cs/TestMathDeterminism.cs の表) を返すこと
   run_timed dotnet build dotnet/SampleRunner -p:Test=TestMathDeterminism -nologo -v q
   run_timed env LUB_BACKEND=sdlgpu LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
     scripts/run-headless.sh ./dotnet/SampleRunner/bin/TestMathDeterminism/lub-sample-TestMathDeterminism
@@ -459,18 +440,12 @@ else
 fi
 
 # C# gate の残り: capture を回す。
-# 先に runtime テストを tcs VM の player でも走らせる。
 # capture は lavapipe の実レンダリングで CPU 飽和 (llvmpipe が 1 プロセスでコア数分の render thread を立てる) ため、多重化しても縮まない。
 # 直列で回す。
 if [[ $cs_available -eq 1 ]]; then
   echo
   echo "==> C# sample gate (${#cs_dirs[@]} samples)"
-  run_runtime_tests "C# runtime tests (tcs VM)" vm_test_argv
-  # 同じ golden を tcs VM の player でも撮って比べる (2 つの player の絵は同じ)
-  if [[ $skip_golden -eq 0 ]]; then
-    run_timed env BINARY="$native_binary" scripts/run-golden.sh --vm
-  fi
-  cs_pool "capture (+.NET / tcs VM digest)" cs_capture 1
+  cs_pool "capture (tcs VM / .NET digest)" cs_capture 1
   run_timed scripts/test-cs-hot-reload.sh "$native_binary"
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"
   run_timed scripts/test-lub-check.sh "$native_binary"
