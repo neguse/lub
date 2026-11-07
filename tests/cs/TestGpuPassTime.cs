@@ -1,6 +1,6 @@
 // Sys.ProfileLines で数えている間の、pass ごとの GPU の時間と draw の数 (Sys.TakeGpuPasses)。
 // 毎 frame、MainTex へ draw を 2 つ出す pass を描き、数え始めてから 6 frame 後に、描き先 main、draw 2 つの pass が届くことを見る。
-// 時間は、測れる backend (vulkan、d3d12) では 0 以上、測れない backend では -1 で、どちらだったかを "gpu pass time: timed" / "untimed" と出す (CI は d3d12 で timed を確かめる)。
+// 時間は、測れる backend (vulkan、d3d12、timestamp-query のある webgpu) では 0 以上、測れない backend では -1 で、どちらだったかを "gpu pass time: timed" / "untimed" と出す (CI は d3d12 と web で timed を確かめる)。
 using System;
 using Lub;
 
@@ -56,7 +56,7 @@ public static class TestGpuPassTime
             return;
         }
         Console.WriteLine("gpu pass time: " + (timed > 0 ? "timed" : "untimed") + " (" + got + ")");
-        App.Quit(0);
+        Check.Pass();
     }
 
     public static ErrorAction OnError(string message) { return Check.OnError(message); }

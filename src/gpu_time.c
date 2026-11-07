@@ -4,8 +4,8 @@
 #include <SDL3/SDL.h>
 #include <string.h>
 
-// 時刻を待つ frame の数 (backend の frames in flight より多く)。届かないまま回ってきた frame は捨てる
-#define GPU_TIME_FRAMES 4
+// 時刻を待つ frame の数 (backend の frames in flight と非同期の読み出しの遅れより多く)。届かないまま回ってきた frame の pass は時間 -1 で出す
+#define GPU_TIME_FRAMES 8
 // 取り出されるまで持つ pass の数 (超えた分は捨てる)
 #define GPU_TIME_KEEP 4096
 
@@ -57,17 +57,27 @@ static void copy_str(char *dst, size_t cap, const char *src) {
   SDL_strlcpy(dst, src ? src : "", cap);
 }
 
+// 描き先の名前の無い pass は lub の中の pass (Gfx.Pick の描き直し)
+static bool wants(App *app, const char *target) {
+  return g_on && app->in_frame && !app->in_overlay && target &&
+         app->frame_index >= g_from;
+}
+
+bool gpu_time_wants_pass(App *app) { return wants(app, app->pass.label); }
+
+static void flush(GpuFrame *f, const uint64_t *ns, uint32_t count);
+
 void gpu_time_pass_begin(App *app, const char *target) {
   g_cur = NULL;
-  // 描き先の名前の無い pass は lub の中の pass (Gfx.Pick の描き直し)
-  if (!g_on || !app->in_frame || app->in_overlay || !target ||
-      app->frame_index < g_from)
+  if (!wants(app, target))
     return;
   char site[sizeof(g_cur->site)] = "";
   if (app->debug_hooks && app->debug_hooks->profile_site)
     app->debug_hooks->profile_site(app, site, (int32_t)sizeof site);
   GpuFrame *f = &g_frames[app->frame_index % GPU_TIME_FRAMES];
-  if (!f->used || f->frame != app->frame_index) {
+  if (f->used && f->frame != app->frame_index)
+    flush(f, NULL, 0);
+  if (!f->used) {
     f->used = true;
     f->waiting = false;
     f->frame = app->frame_index;

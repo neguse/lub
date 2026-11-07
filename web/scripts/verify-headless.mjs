@@ -898,8 +898,11 @@ const A9_TESTS = [
   "TestGamepad",
   "TestKeyMods",
   "TestVorbis",
+  "TestGpuPassTime",
 ];
 // これらのテストは使い終えた GPUBuffer / GPUTexture を消すので、destroy が 1 度も呼ばれなければ (release だけで JS の GC 任せなら) 失敗にする。
+// pass の GPU の時間を timestamp-query で測ること (CI の Chromium の swiftshader は timestamp-query を持つ)
+const A9_TIMED_TESTS = new Set(["TestGpuPassTime"]);
 const A9_DESTROY_TESTS = new Set([
   "TestTextureRecordingOrder",
   "TestBufferRecordingOrder",
@@ -1098,6 +1101,11 @@ async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
     !(destroyed.buffer > 0 && destroyed.texture > 0)
   )
     errors.push(`no destroy: ${JSON.stringify(destroyed)}`);
+  if (
+    A9_TIMED_TESTS.has(name) &&
+    !all.some((l) => l.includes("gpu pass time: timed"))
+  )
+    errors.push("the GPU pass times were not measured");
   return {
     ok: all.some((l) => l.trim() === okLine),
     errors,

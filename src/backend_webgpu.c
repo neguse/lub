@@ -11,6 +11,7 @@
 #include "app.h"
 #include "backend.h"
 #include "gpu_stats.h"
+#include "gpu_time.h"
 #include "shader.h"
 #include "webxr.h"
 
@@ -698,6 +699,167 @@ static void wg_configure_surface(App *app, uint32_t w, uint32_t h) {
 
 // ---- init / shutdown -------------------------------------------------------
 
+// ---- GPU の時刻 (gpu_time.h) ------------------------------------------------
+// pass の時刻は pass を作るときに timestampWrites で頼む。frame ごとに WG_TS_FRAMES 組の query を回し、
+// 組の中の k 番目に頼んだ pass は 2k と 2k + 1 に書く。gpu_time の pass i がどの k かは of で引く。
+// 読み出しの map は非同期なので、終わった組を後の begin_frame で読んで返す。
+
+#define WG_TS_FRAMES 4
+#define WG_TS_BYTES ((uint64_t)GPU_TIME_STAMPS * sizeof(uint64_t))
+
+typedef struct WgTsFrame {
+  uint64_t frame;
+  uint32_t passes; // 時刻を頼んだ pass の数
+  int16_t of
+      [GPU_TIME_PASSES]; // gpu_time の pass i に頼んだ番号 (-1 は頼んでいない)
+  uint32_t count;        // gpu_time の時刻の番号の数
+  WGPUBuffer read;       // MapRead
+  bool busy;             // 写して map を待っている (読むまで使わない)
+  bool mapped, failed;
+} WgTsFrame;
+
+static WGPUQuerySet g_ts_set;
+static WGPUBuffer g_ts_resolve;
+static WgTsFrame g_ts[WG_TS_FRAMES];
+static WgTsFrame *g_ts_cur; // この frame の組 (測らなければ NULL)
+static int g_ts_last = -1;  // 直前に始めた pass に頼んだ番号
+
+static void wg_ts_shutdown(void) {
+  for (int r = 0; r < WG_TS_FRAMES; r++) {
+    if (g_ts[r].read)
+      wgpuBufferRelease(g_ts[r].read);
+    memset(&g_ts[r], 0, sizeof(g_ts[r]));
+  }
+  if (g_ts_resolve)
+    wgpuBufferRelease(g_ts_resolve);
+  if (g_ts_set)
+    wgpuQuerySetRelease(g_ts_set);
+  g_ts_resolve = NULL;
+  g_ts_set = NULL;
+  g_ts_cur = NULL;
+}
+
+// device が timestamp-query を持てば (JS が device を作るときに頼む) query と読み出し先を作る
+static void wg_ts_init(void) {
+  if (!wgpuDeviceHasFeature(g_dev, WGPUFeatureName_TimestampQuery))
+    return;
+  WGPUQuerySetDescriptor qd = {
+      .type = WGPUQueryType_Timestamp,
+      .count = WG_TS_FRAMES * GPU_TIME_STAMPS,
+  };
+  g_ts_set = wgpuDeviceCreateQuerySet(g_dev, &qd);
+  WGPUBufferDescriptor rd = {
+      .usage = WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc,
+      .size = WG_TS_FRAMES * WG_TS_BYTES,
+  };
+  g_ts_resolve = g_ts_set ? wgpuDeviceCreateBuffer(g_dev, &rd) : NULL;
+  bool ok = g_ts_set && g_ts_resolve;
+  for (int r = 0; ok && r < WG_TS_FRAMES; r++) {
+    WGPUBufferDescriptor bd = {
+        .usage = WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst,
+        .size = WG_TS_BYTES,
+    };
+    g_ts[r].read = wgpuDeviceCreateBuffer(g_dev, &bd);
+    ok = g_ts[r].read != NULL;
+  }
+  if (!ok) {
+    SDL_Log("[webgpu] timestamp query create failed; no GPU pass times");
+    wg_ts_shutdown();
+  }
+}
+
+static void wg_ts_mapped(WGPUMapAsyncStatus status, WGPUStringView message,
+                         void *userdata1, void *userdata2) {
+  (void)message;
+  (void)userdata2;
+  WgTsFrame *t = (WgTsFrame *)userdata1;
+  if (status == WGPUMapAsyncStatus_Success)
+    t->mapped = true;
+  else
+    t->failed = true;
+}
+
+// map の終わった組を返し、この frame の組を決める
+static void wg_ts_begin_frame(App *app) {
+  for (int r = 0; r < WG_TS_FRAMES; r++) {
+    WgTsFrame *t = &g_ts[r];
+    if (!t->busy || !(t->mapped || t->failed))
+      continue;
+    const uint64_t *v = t->mapped
+                            ? (const uint64_t *)wgpuBufferGetConstMappedRange(
+                                  t->read, 0, 2 * t->passes * sizeof(uint64_t))
+                            : NULL;
+    uint64_t ns[GPU_TIME_STAMPS];
+    for (uint32_t i = 0; i < t->count; i++) {
+      int k = t->of[i / 2];
+      ns[i] = v && k >= 0 ? v[2 * k + (i & 1)] : GPU_TIME_NONE;
+    }
+    if (t->mapped)
+      wgpuBufferUnmap(t->read);
+    gpu_time_resolved(t->frame, ns, t->count);
+    t->busy = t->mapped = t->failed = false;
+  }
+  g_ts_cur = NULL;
+  g_ts_last = -1;
+  WgTsFrame *t = &g_ts[app->frame_index % WG_TS_FRAMES];
+  if (!g_ts_set || !gpu_time_enabled() || t->busy)
+    return;
+  t->frame = app->frame_index;
+  t->passes = 0;
+  t->count = 0;
+  for (int i = 0; i < GPU_TIME_PASSES; i++)
+    t->of[i] = -1;
+  g_ts_cur = t;
+}
+
+// 書いた時刻を組の読み出し先へ写す (submit の前)
+static void wg_ts_resolve(void) {
+  WgTsFrame *t = g_ts_cur;
+  if (!t || !t->passes || !g_enc)
+    return;
+  uint32_t r = (uint32_t)(t - g_ts);
+  wgpuCommandEncoderResolveQuerySet(g_enc, g_ts_set, r * GPU_TIME_STAMPS,
+                                    2 * t->passes, g_ts_resolve,
+                                    r * WG_TS_BYTES);
+  wgpuCommandEncoderCopyBufferToBuffer(g_enc, g_ts_resolve, r * WG_TS_BYTES,
+                                       t->read, 0,
+                                       2 * t->passes * sizeof(uint64_t));
+}
+
+// submit の後に読み出し先の map を始める
+static void wg_ts_map(void) {
+  WgTsFrame *t = g_ts_cur;
+  g_ts_cur = NULL;
+  if (!t || !t->passes)
+    return;
+  t->busy = true;
+  WGPUBufferMapCallbackInfo cb = WGPU_BUFFER_MAP_CALLBACK_INFO_INIT;
+  cb.mode = WGPUCallbackMode_AllowSpontaneous;
+  cb.callback = wg_ts_mapped;
+  cb.userdata1 = t;
+  wgpuBufferMapAsync(t->read, WGPUMapMode_Read, 0,
+                     2 * t->passes * sizeof(uint64_t), cb);
+}
+
+static bool wg_timestamp(App *app, uint32_t index) {
+  (void)app;
+  WgTsFrame *t = g_ts_cur;
+  if (!t || index >= GPU_TIME_STAMPS)
+    return false;
+  uint32_t i = index / 2;
+  if (!(index & 1)) {
+    if (g_ts_last < 0)
+      return false;
+    t->of[i] = (int16_t)g_ts_last;
+    g_ts_last = -1;
+  } else if (t->of[i] < 0) {
+    return false;
+  }
+  if (index + 1 > t->count)
+    t->count = index + 1;
+  return true;
+}
+
 static bool wg_init(App *app) {
   app->wgpu_device = emscripten_webgpu_get_device();
   if (!app->wgpu_device) {
@@ -761,11 +923,14 @@ static bool wg_init(App *app) {
     return false;
   }
 
-  SDL_Log("[webgpu] backend init OK: %dx%d", cw, ch);
+  wg_ts_init();
+  SDL_Log("[webgpu] backend init OK: %dx%d%s", cw, ch,
+          g_ts_set ? " (GPU pass times)" : "");
   return true;
 }
 
 static void wg_shutdown(App *app) {
+  wg_ts_shutdown();
   wg_destroy_image((BackendImage)g_dummy_tex);
   wg_destroy_buffer((BackendBuffer)g_dummy_sbuf);
   g_dummy_tex = NULL;
@@ -840,6 +1005,7 @@ static void wg_submit_enc(void) {
 }
 
 static void wg_begin_frame(App *app, int *out_w, int *out_h) {
+  wg_ts_begin_frame(app);
   lubwebxr_begin();
   g_xr_drawn[0] = g_xr_drawn[1] = false;
   g_xr_copied = false;
@@ -971,7 +1137,9 @@ static void wg_end_frame(App *app) {
   // Submit the command buffer.
   if (g_enc) {
     wg_copy_xr_eyes(app);
+    wg_ts_resolve();
     wg_submit_enc();
+    wg_ts_map();
     lubwebxr_present(g_xr_drawn[0] && g_xr_drawn[1]);
   }
 
@@ -1645,6 +1813,7 @@ static void wg_update_image(BackendImage h, const void *data, size_t bytes) {
 // ---- pass begin / end ------------------------------------------------------
 
 static void wg_begin_pass(App *app, const PassBeginDesc *d) {
+  g_ts_last = -1;
   if (!g_enc)
     return;
 
@@ -1717,6 +1886,19 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
     rpd.depthStencilAttachment = &depth_att;
   }
 
+  WGPUPassTimestampWrites tsw;
+  if (g_ts_cur && g_ts_cur->passes < GPU_TIME_PASSES &&
+      gpu_time_wants_pass(app)) {
+    uint32_t base = (uint32_t)(g_ts_cur - g_ts) * GPU_TIME_STAMPS;
+    uint32_t k = g_ts_cur->passes++;
+    tsw = (WGPUPassTimestampWrites){
+        .querySet = g_ts_set,
+        .beginningOfPassWriteIndex = base + 2 * k,
+        .endOfPassWriteIndex = base + 2 * k + 1,
+    };
+    rpd.timestampWrites = &tsw;
+    g_ts_last = (int)k;
+  }
   g_rpass = wgpuCommandEncoderBeginRenderPass(g_enc, &rpd);
 
   // Set viewport to match target.
@@ -2367,6 +2549,7 @@ const RenderBackend g_backend_webgpu = {
     .swapchain_color_format = wg_swapchain_color_format,
     .cannot_block_on_gpu = true,
     .request_capture = wg_capture,
+    .timestamp = wg_timestamp,
 };
 
 #else

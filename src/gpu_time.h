@@ -24,6 +24,8 @@ struct App;
 
 void gpu_time_enable(struct App *app, bool on);
 bool gpu_time_enabled(void);
+// 始める pass を控えるか (backend の begin_pass の中で呼ぶ。pass を作るときに時刻を頼む backend が使う)
+bool gpu_time_wants_pass(struct App *app);
 // target は描き先の名前 (Gfx.BeginPass の外で始めた pass は NULL で、控えない)
 void gpu_time_pass_begin(struct App *app, const char *target);
 void gpu_time_pass_end(struct App *app);
