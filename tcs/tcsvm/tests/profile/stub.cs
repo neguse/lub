@@ -9,5 +9,7 @@ namespace Probe
         public static bool Done() { return true; }
         // Game.Mark を入れ子で呼び、戻った後に 5 ns 経ったことを知らせる
         public static void Around() { }
+        // 今の行 (tvm_profile_site) を控える
+        public static void Where() { }
     }
 }

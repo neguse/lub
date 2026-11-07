@@ -64,6 +64,12 @@ public static class Game
     {
         return 100;
     }
+
+    // host の関数の中から、それを呼んだ行を引く
+    public static void Where()
+    {
+        Probe.Clock.Where();
+    }
 }
 
 public class Item
