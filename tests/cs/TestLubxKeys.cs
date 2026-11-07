@@ -1,5 +1,6 @@
 // lubx の部品は key を最初の引数に取り、resource をその key か key + "/名前" に宣言する。
 // 1 つのアプリで同じ部品を 2 つのパスで使っても衝突せず、同じパスなら同じ resource を指すことを見る。
+// SpriteBatch の shader だけは中身が定数なので、パスによらず 1 つ (lubx/sprite/instanced) を共有する。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -56,7 +57,7 @@ public class TestLubxKeysGame
     public int Live()
     {
         int n = 0;
-        foreach (var name in new List<string> { "/shader", "/batch/instanced", "/mesh_text/shader", "/ren/lit_s" })
+        foreach (var name in new List<string> { "/shader", "/mesh_text/shader", "/ren/lit_s" })
             n += Gfx.LookupShader(Root + name) != null ? 1 : 0;
         foreach (var name in new List<string> { "/batch/quad", "/mesh/vb", "/mesh/ib", "/mesh_text/v:65", "/ren/quad" })
             n += Gfx.LookupBuffer(Root + name) != null ? 1 : 0;
@@ -69,7 +70,7 @@ public class TestLubxKeysGame
 public static class TestLubxKeys
 {
     const int sweepFrames = 2;
-    const int allResources = 13;
+    const int allResources = 12;
     const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
     const string vsPath = "tests/cs/data/test_dup_binding.vs.slang";
     const string fsPathA = "tests/cs/data/test_dup_binding.fs.slang";
@@ -108,6 +109,8 @@ public static class TestLubxKeys
             b.Declare(vsPath);
             Check.That(a.Live() == allResources, "game_a declares everything under its path: " + a.Live());
             Check.That(b.Live() == allResources, "game_b declares everything under its path: " + b.Live());
+            Check.That(Gfx.LookupShader("lubx/sprite/instanced") != null && Gfx.LookupShader("game_a/batch/instanced") == null,
+                "the sprite batches of both paths must share one shader");
         }
         else if (frame == 2)
         {

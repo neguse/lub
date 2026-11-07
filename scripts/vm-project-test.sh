@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、overlay、hot reload、OnBuildFailed、検査の口、native の拡張) の検査。
 # test は file を書き換えるので、tests/vm/<name>/ を一時ディレクトリに写して動かす。
+# tests/vm/<name>/env があれば、その行 (NAME=VALUE) を環境に足して動かす。
 # env: LUB_VM (lub の実行ファイル。既定は build-release-linux/lub)、LUB_TCS (tcs の起動コマンド。無ければ lub が探す)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,11 +18,13 @@ for test_dir in "$root"/tests/vm/*/; do
     src="$(dirname "$ref")/$(basename "$stem" | tr '[:upper:]' '[:lower:]').c"
     [ -f "$src" ] && "${CC:-cc}" -shared -fPIC -O2 -I"$root/include" -I"$root/third_party/tcs/tcsvm/vm" "$src" -o "$stem.so"
   done
+  test_env=()
+  [ -f "$dir/env" ] && mapfile -t test_env <"$dir/env"
   echo "==> vm project: $name"
   if [ -f "$dir/expect-crash.txt" ]; then
     # 落ちることを検査する test: 0 以外で終わり、expect-crash.txt の各行が出力に含まれること
     out="$dir/out.log"
-    if (cd "$root" && GAME_CS="$dir/game/Game.cs" LUB_CS_LIB="$root/cs-lib" SDL_VIDEO_DRIVER="${SDL_VIDEO_DRIVER:-offscreen}" \
+    if (cd "$root" && env "${test_env[@]}" GAME_CS="$dir/game/Game.cs" LUB_CS_LIB="$root/cs-lib" SDL_VIDEO_DRIVER="${SDL_VIDEO_DRIVER:-offscreen}" \
       timeout 180 "$lub_vm" "$dir/game/Game.csproj") >"$out" 2>&1; then
       echo "FAILED $name: did not crash"
       status=1
@@ -38,7 +41,7 @@ for test_dir in "$root"/tests/vm/*/; do
         echo "ok $name"
       fi
     fi
-  elif (cd "$root" && GAME_CS="$dir/game/Game.cs" LUB_CS_LIB="$root/cs-lib" SDL_VIDEO_DRIVER="${SDL_VIDEO_DRIVER:-offscreen}" \
+  elif (cd "$root" && env "${test_env[@]}" GAME_CS="$dir/game/Game.cs" LUB_CS_LIB="$root/cs-lib" SDL_VIDEO_DRIVER="${SDL_VIDEO_DRIVER:-offscreen}" \
     timeout 180 "$lub_vm" "$dir/game/Game.csproj") 2>&1 | tee "$dir/out.log"; then
     # expect.txt があれば、その各行が出力に含まれること
     missing=""

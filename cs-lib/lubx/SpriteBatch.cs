@@ -101,8 +101,9 @@ public class SpriteBatch
     private BufferRef? quadBuf = null;
     private List<float>? quadData = null;
 
-    /// <summary>key の下に shader と buffer を宣言する。
+    /// <summary>key の下に buffer を宣言する。
     /// 中身は定数なので、同じ key の SpriteBatch は resource を共有する。
+    /// shader は key によらず、すべての SpriteBatch で 1 つを共有する。
     /// instanced 省略で true。
     /// </summary>
     public SpriteBatch(string key, int logicalW, int logicalH,
@@ -116,7 +117,8 @@ public class SpriteBatch
 
     public bool Ensure()
     {
-        shader = Gfx.UseShader(key + (instanced ? "/instanced" : "/legacy"),
+        // shader の source は定数なので、batch の key ごとに作らない (作るたびに compile の間だけ止まる)
+        shader = Gfx.UseShader(instanced ? "lubx/sprite/instanced" : "lubx/sprite/legacy",
             instanced ? instancedVs : legacyVs, fs, 1);
         return shader != null;
     }
