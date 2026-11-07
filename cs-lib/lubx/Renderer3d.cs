@@ -955,9 +955,9 @@ public class Renderer3d
         Gfx.Size(out var w, out var h);
         screenW = w;
         screenH = h;
-        var area = Viewport;
-        if (area != null)
+        if (Viewport != null)
         {
+            var area = Viewport.Value;
             // 画面の外にはみ出す分は削る
             areaX = Math.Min(Math.Max(area.X, 0), w);
             areaY = Math.Min(Math.Max(area.Y, 0), h);

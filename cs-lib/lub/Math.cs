@@ -311,12 +311,12 @@ public struct Vec4
 /// 演算子: a * b (回転の合成)、q * v (Vec3 の回転 = rotateVec3)。
 /// 角度は全てラジアン。
 /// </summary>
-public class Quat
+public readonly struct Quat
 {
-    public float X;
-    public float Y;
-    public float Z;
-    public float W;
+    public readonly float X;
+    public readonly float Y;
+    public readonly float Z;
+    public readonly float W;
 
     public Quat(float x, float y, float z, float w)
     {
@@ -936,10 +936,10 @@ public struct Mat4
 /// <summary>始点と方向を持つ半直線。
 /// Dir は正規化して持つ。
 /// </summary>
-public class Ray
+public readonly struct Ray
 {
-    public Vec3 Origin;
-    public Vec3 Dir;
+    public readonly Vec3 Origin;
+    public readonly Vec3 Dir;
 
     public Ray(Vec3 origin, Vec3 dir)
     {

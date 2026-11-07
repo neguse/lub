@@ -8,12 +8,12 @@ namespace Lubx;
 /// <summary>矩形 (px、左上原点)。
 /// SpriteBatch の src 指定 (アトラスの中) と Renderer3d.Viewport (画面の中) に使う。
 /// </summary>
-public class Rect
+public readonly struct Rect
 {
-    public int X;
-    public int Y;
-    public int W;
-    public int H;
+    public readonly int X;
+    public readonly int Y;
+    public readonly int W;
+    public readonly int H;
 
     public Rect(int x, int y, int w, int h)
     {
