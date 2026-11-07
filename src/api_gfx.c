@@ -3,6 +3,7 @@
 #include "api_internal.h"
 #include "backend.h"
 #include "enums.h"
+#include "gpu_time.h"
 #include "host_api.h"
 #include "pass.h"
 #include "pick.h"
@@ -1125,6 +1126,7 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
   uintptr_t depth_image = 0;
   SglPixelFormat depth_fmt = SGL_PF_DEPTH24_STENCIL8;
   int depth_w = 0, depth_h = 0;
+  const char *depth_key = NULL;
   if (d->depth_target != 0) {
     ResEntry *de = entry_from_handle(app, d->depth_target, RES_TEXTURE,
                                      "begin_pass", "depth_target");
@@ -1137,6 +1139,7 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
                           de->key);
     depth_image = de->u.tex.h;
     depth_fmt = de->u.tex.fmt;
+    depth_key = de->key;
     depth_w = de->u.tex.w;
     depth_h = de->u.tex.h_;
   }
@@ -1163,6 +1166,8 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
                                "is active; draw into Xr.View().Target");
     const float *c = d->clear_color[0];
     pick_begin_pass(app, xr_eye >= 0 ? xr_eye : -1);
+    pass_state_label(&app->pass,
+                     xr_eye < 0 ? "main" : (xr_eye == 0 ? "xr0" : "xr1"));
     pass_state_begin(&app->pass, 0, SGL_PF_RGBA8, 0, 0, c[0], c[1], c[2], c[3],
                      load, xr_eye);
     return LUB_OK;
@@ -1177,6 +1182,7 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
   SglPixelFormat fmts[SGL_MAX_COLOR_TARGETS] = {0};
   float clears[SGL_MAX_COLOR_TARGETS][4];
   int tw = depth_w, th = depth_h;
+  const char *label = depth_key;
   for (int i = 0; i < d->n_targets; ++i) {
     if (d->targets[i] == LUB_GFX_MAIN_TEX ||
         lub_gfx_xr_eye_of(d->targets[i]) >= 0)
@@ -1196,6 +1202,8 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
     }
     targets[i] = te->u.tex.h;
     fmts[i] = te->u.tex.fmt;
+    if (i == 0)
+      label = te->key;
     memcpy(clears[i], d->clear_color[i], sizeof(clears[i]));
   }
   if (d->n_targets > 0 && depth_image && (depth_w != tw || depth_h != th))
@@ -1209,6 +1217,7 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
     clears[0][2] = 0;
     clears[0][3] = 1;
   }
+  pass_state_label(&app->pass, label);
   pass_state_begin_ex(&app->pass, d->n_targets, targets, fmts, tw, th,
                       (const float (*)[4])clears, depth_image, depth_fmt,
                       clear_depth, load);
@@ -1655,8 +1664,10 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
                           (size_t)size * sizeof(float));
     }
   }
-  if (!skip_draw)
+  if (!skip_draw) {
     g_backend->draw(0, count, instances);
+    gpu_time_draw(app);
+  }
   return LUB_OK;
 }
 

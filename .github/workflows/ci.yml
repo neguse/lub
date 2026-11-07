@@ -412,6 +412,21 @@ jobs:
             exit 1
           fi
 
+      # pass ごとの GPU の時間を timestamp query で測れること (Sys.TakeGpuPasses)。
+      - name: GPU pass time (debug layer)
+        shell: bash
+        run: |
+          log="${RUNNER_TEMP}/gpu_pass_time.log"
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/TestGpuPassTime.lua --readback-fixed-latency 2>&1 | tee "$log"
+          if ! grep -q 'gpu pass time: timed' "$log"; then
+            echo "::error::d3d12 did not time the GPU passes"
+            exit 1
+          fi
+          if grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
+            echo "::error::the D3D12 debug layer reported errors"
+            exit 1
+          fi
+
       # runtime テストは linux job では sdlgpu で走るので、d3d12 でも全部を debug layer 付きで走らせ、validation の error でも落とす。
       - name: Runtime tests (d3d12, debug layer)
         shell: bash

@@ -35,6 +35,7 @@
 #include "app.h"
 #include "backend.h"
 #include "gpu_stats.h"
+#include "gpu_time.h"
 #include "stb_image_write.h"
 #if defined(LUB_HAS_OPENXR)
 #include "xr.h"
@@ -138,6 +139,11 @@ typedef struct FrameCtx {
   int desc_pool_cur;
   SetCacheEntry *set_cache; // open addressing
   size_t set_cache_cap, set_cache_count;
+  // GPU の時刻 (gpu_time.h): この slot の frame、書いた番号の数と印、frame の頭で query を reset したか
+  uint64_t ts_frame;
+  uint32_t ts_count;
+  uint8_t ts_written[GPU_TIME_STAMPS];
+  bool ts_reset;
 } FrameCtx;
 
 // --- resource wrappers -------------------------------------------------------
@@ -224,6 +230,11 @@ typedef struct VkbState {
   VkSemaphore timeline;
   uint64_t fence_next;
   uint64_t last_submit_value;
+
+  // GPU の時刻の query (slot ごとに GPU_TIME_STAMPS 個)。queue が時刻を持たなければ NULL
+  VkQueryPool ts_pool;
+  double ts_period; // ns / tick
+  uint64_t ts_mask; // 有効な bit
 
   FrameCtx frames[KFRAMES_IN_FLIGHT];
   int slot;
@@ -1419,6 +1430,19 @@ static bool vkb_pick_device(void) {
   g.ub_align = props.limits.minUniformBufferOffsetAlignment;
   if (g.ub_align < 16)
     g.ub_align = 16;
+  {
+    VkQueueFamilyProperties qs[32];
+    uint32_t nq = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(g.phys, &nq, NULL);
+    if (nq > 32)
+      nq = 32;
+    vkGetPhysicalDeviceQueueFamilyProperties(g.phys, &nq, qs);
+    uint32_t bits = g.qfam < nq ? qs[g.qfam].timestampValidBits : 0;
+    g.ts_mask = bits >= 64 ? UINT64_MAX
+                : bits     ? (((uint64_t)1 << bits) - 1)
+                           : 0;
+    g.ts_period = props.limits.timestampPeriod;
+  }
   g.sb_align = props.limits.minStorageBufferOffsetAlignment;
   if (g.sb_align < 4)
     g.sb_align = 4;
@@ -1629,6 +1653,17 @@ static bool vkb_init(App *app) {
       return false;
     }
   }
+  if (g.ts_mask && g.ts_period > 0) {
+    VkQueryPoolCreateInfo qci = {
+        .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+        .queryType = VK_QUERY_TYPE_TIMESTAMP,
+        .queryCount = KFRAMES_IN_FLIGHT * GPU_TIME_STAMPS,
+    };
+    if (vkCreateQueryPool(g.device, &qci, NULL, &g.ts_pool) != VK_SUCCESS) {
+      SDL_Log("vk: timestamp query pool create failed; no GPU pass times");
+      g.ts_pool = VK_NULL_HANDLE;
+    }
+  }
   {
     VkCommandPoolCreateInfo pci = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -1748,6 +1783,8 @@ static void vkb_shutdown(App *app) {
     vkDestroySwapchainKHR(g.device, g.swapchain, NULL);
   if (g.timeline)
     vkDestroySemaphore(g.device, g.timeline, NULL);
+  if (g.ts_pool)
+    vkDestroyQueryPool(g.device, g.ts_pool, NULL);
 #if defined(LUB_HAS_OPENXR)
   if (g.xr)
     lubxr_shutdown();
@@ -1775,6 +1812,44 @@ static void vkb_shutdown(App *app) {
 // --- vtable: frame
 // -----------------------------------------------------------------
 
+// slot の前の frame の時刻を読んで返す (slot の fence を待った後に呼ぶ)
+static void vkb_timestamps_resolve(int slot) {
+  FrameCtx *f = &g.frames[slot];
+  if (!f->ts_count)
+    return;
+  uint64_t raw[GPU_TIME_STAMPS][2];
+  uint64_t ns[GPU_TIME_STAMPS];
+  // 書かなかった番号は reset のままで、availability が 0 (VK_NOT_READY でも書いた分は読める)
+  VkResult r = vkGetQueryPoolResults(
+      g.device, g.ts_pool, (uint32_t)slot * GPU_TIME_STAMPS, f->ts_count,
+      sizeof raw, raw, sizeof raw[0],
+      VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+  for (uint32_t i = 0; i < f->ts_count; i++)
+    ns[i] =
+        (r == VK_SUCCESS || r == VK_NOT_READY) && f->ts_written[i] && raw[i][1]
+            ? (uint64_t)((double)(raw[i][0] & g.ts_mask) * g.ts_period)
+            : GPU_TIME_NONE;
+  gpu_time_resolved(f->ts_frame, ns, f->ts_count);
+  memset(f->ts_written, 0, f->ts_count);
+  f->ts_count = 0;
+}
+
+static bool vkb_timestamp(App *app, uint32_t index) {
+  (void)app;
+  FrameCtx *f = &g.frames[g.slot];
+  if (!g.ts_pool || !g.recording || !f->ts_reset || index >= GPU_TIME_STAMPS)
+    return false;
+  // 前は前の command が始まる所、後は pass の command が終わった所
+  vkCmdWriteTimestamp(f->cmd,
+                      (index & 1) ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
+                                  : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                      g.ts_pool, (uint32_t)g.slot * GPU_TIME_STAMPS + index);
+  f->ts_written[index] = 1;
+  if (index + 1 > f->ts_count)
+    f->ts_count = index + 1;
+  return true;
+}
+
 static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
   if (!g.xr && (app->pending_resize || g.need_recreate)) {
     app->pending_resize = false;
@@ -1785,6 +1860,7 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
 
   FrameCtx *f = &g.frames[g.slot];
   vkb_wait_for_fence(f->fence_value);
+  vkb_timestamps_resolve(g.slot);
   vkb_drain_zombies();
   vkb_arena_reset(&f->arena);
   // Pools past the last one this slot's previous frame allocated from sat
@@ -1804,6 +1880,11 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
   };
   vkBeginCommandBuffer(f->cmd, &bi);
   g.recording = true;
+  f->ts_frame = app->frame_index;
+  f->ts_reset = g.ts_pool && gpu_time_enabled();
+  if (f->ts_reset)
+    vkCmdResetQueryPool(f->cmd, g.ts_pool, (uint32_t)g.slot * GPU_TIME_STAMPS,
+                        GPU_TIME_STAMPS);
   g.acquire_waited = false;
   g.have_acquired = false;
   g.submitted_before_present = false;
@@ -3855,4 +3936,8 @@ const RenderBackend g_backend_vulkan = {
     vkb_capture,
     /*capture_before_end_frame=*/true,
     vkb_swapchain_color_format,
+    /*cannot_block_on_gpu=*/false,
+    /*request_capture=*/NULL,
+    /*binds_whole_buffers=*/false,
+    vkb_timestamp,
 };

@@ -278,6 +278,9 @@ static void fill_LubKeptObject(lua_State *L, const LubKeptObject *v);
 static void push_LubKeptObject(lua_State *L, const LubKeptObject *v);
 static void push_list_LubKeptObject(lua_State *L, const LubKeptObject *v,
                                     int32_t n);
+static void fill_LubGpuPass(lua_State *L, const LubGpuPass *v);
+static void push_LubGpuPass(lua_State *L, const LubGpuPass *v);
+static void push_list_LubGpuPass(lua_State *L, const LubGpuPass *v, int32_t n);
 static void fill_LubEventData(lua_State *L, const LubEventData *v);
 static void push_LubEventData(lua_State *L, const LubEventData *v);
 
@@ -4203,6 +4206,28 @@ static void push_list_LubKeptObject(lua_State *L, const LubKeptObject *v,
   }
 }
 
+static void fill_LubGpuPass(lua_State *L, const LubGpuPass *v) {
+  lgen_set_str(L, "site", v->site);
+  lgen_set_str(L, "target", v->target);
+  lgen_set_num(L, "ms", v->ms);
+  lgen_set_int(L, "draws", v->draws);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubGpuPass(lua_State *L, const LubGpuPass *v) {
+  lua_createtable(L, 0, 4);
+  fill_LubGpuPass(L, v);
+}
+
+static void push_list_LubGpuPass(lua_State *L, const LubGpuPass *v, int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    push_LubGpuPass(L, &v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
 static void fill_LubEventData(lua_State *L, const LubEventData *v) {
   if (name_LubEventKind(v->kind)) {
     lua_pushstring(L, name_LubEventKind(v->kind));
@@ -6376,6 +6401,17 @@ static int l_sys_take_kept(lua_State *L) {
   lub_sys_take_kept(lgen_ctx(), &out, &out_count);
   lgen_release(mark);
   push_list_LubKeptObject(L, out, out_count);
+  return 1;
+}
+
+static int l_sys_take_gpu_passes(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  const LubGpuPass *out = NULL;
+  int32_t out_count = 0;
+  lub_sys_take_gpu_passes(lgen_ctx(), &out, &out_count);
+  lgen_release(mark);
+  push_list_LubGpuPass(L, out, out_count);
   return 1;
 }
 
@@ -10471,6 +10507,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "take_gc_pauses");
   lua_pushcfunction(L, l_sys_take_kept);
   lua_setfield(L, -2, "take_kept");
+  lua_pushcfunction(L, l_sys_take_gpu_passes);
+  lua_setfield(L, -2, "take_gpu_passes");
   lua_setfield(L, -2, "sys");
   lua_newtable(L); // lub.rewind
   lua_pushcfunction(L, l_rewind_record);

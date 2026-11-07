@@ -1,5 +1,6 @@
 #include "pass.h"
 #include "backend.h"
+#include "gpu_time.h"
 #include <SDL3/SDL.h>
 #include <string.h>
 
@@ -17,6 +18,8 @@ void pass_state_init(PassState *p) {
 void pass_state_set_app(PassState *p, struct App *app) { p->app = app; }
 
 bool pass_state_in_pass(const PassState *p) { return p->in_pass; }
+
+void pass_state_label(PassState *p, const char *label) { p->label = label; }
 
 void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
                       int target_w, int target_h, float r, float g, float b,
@@ -42,6 +45,8 @@ void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
       .xr_eye = target_image ? -1 : xr_eye,
   };
   g_backend->begin_pass(p->app, &d);
+  gpu_time_pass_begin(p->app, p->label);
+  p->label = NULL;
   p->in_pass = true;
   p->current_n_color_targets = 1;
   p->current_color_fmts[0] = use_fmt;
@@ -84,6 +89,8 @@ void pass_state_begin_ex(PassState *p, int n_targets, const uintptr_t *targets,
     d.clear[i][3] = clears[i][3];
   }
   g_backend->begin_pass(p->app, &d);
+  gpu_time_pass_begin(p->app, p->label);
+  p->label = NULL;
   p->in_pass = true;
   p->current_n_color_targets = n_targets;
   for (int i = 0; i < n_targets; ++i) {
@@ -98,6 +105,7 @@ void pass_state_end(PassState *p) {
     SDL_Log("end_pass called without matching begin_pass");
     return;
   }
+  gpu_time_pass_end(p->app);
   g_backend->end_pass(p->app);
   p->in_pass = false;
 }

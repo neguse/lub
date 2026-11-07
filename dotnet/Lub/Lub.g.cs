@@ -2270,6 +2270,15 @@ public class KeptObject
     public int Bytes;
 }
 
+/// <summary>Sys.TakeGpuPasses の 1 件 (1 frame の 1 つの pass)。 Site は pass を始めた行 ("file:line"。tcs VM の player の外では空)、Target は描き先 (texture の key、MainTex は "main"、XR の眼は "xr0" / "xr1"、depth だけの pass は depth の key)。 Ms は pass の GPU の時間で、測れない backend (metal、webgpu、sdlgpu) と測れなかった pass では -1。Draws はその pass の draw の数。</summary>
+public class GpuPass
+{
+    public string Site;
+    public string Target;
+    public float Ms;
+    public int Draws;
+}
+
 /// <summary>OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
 public class EventData
 {
@@ -4535,7 +4544,7 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止まり (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept) を数え始める (true) か止める (false)。 tcs VM の player だけが数え、ほかでは何もしない。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。</summary>
+    /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止まり (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept)、pass ごとの GPU の時間 (Sys.TakeGpuPasses) を数え始める (true) か止める (false)。行ごとの負荷、GC の止まり、持ち越しは tcs VM の player だけが数え、GPU の pass はどの host でも数える。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。</summary>
     public static void ProfileLines(bool on)
     {
         var a = LubRuntime.Arena.Begin();
@@ -4593,6 +4602,23 @@ public static unsafe partial class Sys
             int o_out_n = 0;
             LubNative.lub_sys_take_kept(LubRuntime.Ctx, &o_out, &o_out_n);
             return LubRuntime.RecordList<KeptObject, LubNative.LubKeptObject>(o_out, o_out_n, &LubNative.From_LubKeptObject);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>前に呼んでから GPU が終えた frame の pass (GpuPass) を、古い順に返す。 GPU の時間は、その frame を GPU が終えた後 (多くの backend で 2 frame 後) に届く。 tcs VM の player では --trace で変換したソースの行から始めた pass だけを数え (overlay と lub の中の pass は数えない)、ほかの host では全部の pass を数える。 frame の途中で数え始めたら、次の frame の pass から数える。数えていなければ空。</summary>
+    public static List<GpuPass> TakeGpuPasses()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubGpuPass* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_take_gpu_passes(LubRuntime.Ctx, &o_out, &o_out_n);
+            return LubRuntime.RecordList<GpuPass, LubNative.LubGpuPass>(o_out, o_out_n, &LubNative.From_LubGpuPass);
         }
         finally
         {
@@ -11168,6 +11194,15 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubGpuPass
+    {
+        public LubStr @site;
+        public LubStr @target;
+        public float @ms;
+        public int @draws;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubEventData
     {
         public int @kind;
@@ -11487,6 +11522,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_take_kept(void* ctx, LubKeptObject** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_take_gpu_passes(void* ctx, LubGpuPass** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_rewind_record(void* ctx, int @frames);
@@ -17455,6 +17493,29 @@ internal static unsafe partial class LubNative
     {
         var o = new KeptObject();
         Fill_LubKeptObject(o, s);
+        return o;
+    }
+
+    internal static void To_LubGpuPass(GpuPass o, LubRuntime.Arena a, LubGpuPass* s)
+    {
+        s->@site = a.Str(o.Site);
+        s->@target = a.Str(o.Target);
+        s->@ms = (float)o.Ms;
+        s->@draws = o.Draws;
+    }
+
+    internal static void Fill_LubGpuPass(GpuPass o, LubGpuPass* s)
+    {
+        o.Site = LubRuntime.Str(s->@site);
+        o.Target = LubRuntime.Str(s->@target);
+        o.Ms = s->@ms;
+        o.Draws = s->@draws;
+    }
+
+    internal static GpuPass From_LubGpuPass(LubGpuPass* s)
+    {
+        var o = new GpuPass();
+        Fill_LubGpuPass(o, s);
         return o;
     }
 

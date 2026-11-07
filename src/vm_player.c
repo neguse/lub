@@ -774,12 +774,22 @@ static void hook_take_kept(App *app, const LubKeptObject **out,
   *count = g_kept_n;
 }
 
+static bool hook_profile_site(App *app, char *out, int32_t cap) {
+  (void)app;
+  const char *file;
+  uint32_t line;
+  if (!vm_lub_vm || !tvm_profile_site(vm_lub_vm, &file, &line))
+    return false;
+  SDL_snprintf(out, (size_t)cap, "%s:%u", file, (unsigned)line);
+  return true;
+}
+
 static const LubDebugHooks g_debug_hooks = {
     hook_take_trace,       hook_take_values,    hook_inspect,
     hook_inspect_pin,      hook_inspect_pinned, hook_snapshot_take,
     hook_snapshot_restore, hook_snapshot_free,  hook_snapshot_number,
     hook_layout_version,   hook_profile_lines,  hook_take_profile,
-    hook_take_gc_pauses,   hook_take_kept,
+    hook_take_gc_pauses,   hook_take_kept,      hook_profile_site,
 };
 
 // overlay が Input.Grab で取っている種類の event か

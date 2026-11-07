@@ -1,6 +1,7 @@
 // core (config / quit)、input、sys、profiler の C API。
 #include "api_internal.h"
 #include "backend.h"
+#include "gpu_time.h"
 #include "host_api.h"
 #include "profile.h"
 #include "rewind.h"
@@ -443,8 +444,15 @@ void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
 
 void lub_sys_profile_lines(LubContext *ctx, bool on) {
   App *app = lub_api_app(ctx);
+  gpu_time_enable(app, on);
   if (app->debug_hooks && app->debug_hooks->profile_lines)
     app->debug_hooks->profile_lines(app, on);
+}
+
+void lub_sys_take_gpu_passes(LubContext *ctx, const LubGpuPass **out,
+                             int32_t *out_count) {
+  (void)ctx;
+  gpu_time_take(out, out_count);
 }
 
 void lub_sys_take_profile(LubContext *ctx, const LubProfileLine **out,

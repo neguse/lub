@@ -4,6 +4,7 @@ extern "C" {
 #include "api_internal.h"
 #include "app.h"
 #include "backend.h"
+#include "gpu_time.h"
 #include "pass.h"
 #include "pipeline.h"
 #include "shader.h"
@@ -339,6 +340,7 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
       g_backend->apply_bindings(&bind);
       g_backend->draw((int)(list_idx_base + cmd.IdxOffset), (int)cmd.ElemCount,
                       1);
+      gpu_time_draw(app);
     }
     list_idx_base += (size_t)dl->IdxBuffer.Size;
   }

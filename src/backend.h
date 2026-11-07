@@ -238,6 +238,9 @@ typedef struct RenderBackend {
   // The backend binds only whole buffers, so a buffer's capacity is what the
   // shader sees and must equal the declared size.
   bool binds_whole_buffers;
+  // GPU の時刻を、この frame の index 番目として書く (gpu_time.h)。書けたら true。
+  // 測れない backend は NULL。書いた時刻は、その frame を GPU が終えた後に gpu_time_resolved で返す
+  bool (*timestamp)(struct App *app, uint32_t index);
 } RenderBackend;
 
 extern const RenderBackend *g_backend;
