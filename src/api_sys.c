@@ -465,6 +465,15 @@ void lub_sys_take_gc_pauses(LubContext *ctx, const LubGcPause **out,
     app->debug_hooks->take_gc_pauses(app, out, out_count);
 }
 
+void lub_sys_take_kept(LubContext *ctx, const LubKeptObject **out,
+                       int32_t *out_count) {
+  App *app = lub_api_app(ctx);
+  *out = NULL;
+  *out_count = 0;
+  if (app->debug_hooks && app->debug_hooks->take_kept)
+    app->debug_hooks->take_kept(app, out, out_count);
+}
+
 void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path) {
   App *app = lub_api_app(ctx);
   if (app->debug_hooks && app->debug_hooks->inspect_pin)

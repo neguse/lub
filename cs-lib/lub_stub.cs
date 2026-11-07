@@ -1467,7 +1467,7 @@ namespace Lub
             return new List<float>();
         }
 
-        /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile) と、GC の止まり (Sys.TakeGcPauses) を数え始める (true) か止める (false)。
+        /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止まり (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept) を数え始める (true) か止める (false)。
         /// tcs VM の player だけが数え、ほかでは何もしない。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。
         /// </summary>
         [LubNoFail]
@@ -1491,6 +1491,17 @@ namespace Lub
         public static List<GcPause> TakeGcPauses()
         {
             return new List<GcPause>();
+        }
+
+        /// <summary>frame の境目をまたいで持ち越す物 (KeptObject) を、作った行と、それを持つ field ごとに返す。
+        /// 数えるのは、前の frame の境目の後に tcs の --trace で変換したソースの行で作られ、今ゲームの状態 (entry の class と --trace で変換した class の static) から辿れる物で、一度返した物は次から返さない。
+        /// frame の境目 (ゲームと overlay の OnFrame の後) で作った物を忘れるので、ゲームの frame の分は overlay の OnFrame の中で取る。
+        /// 数えていなければ空。順番は決まっていない。
+        /// </summary>
+        [LubNoFail]
+        public static List<KeptObject> TakeKept()
+        {
+            return new List<KeptObject>();
         }
     }
 
@@ -4783,6 +4794,18 @@ namespace Lub
     {
         public float Ms;
         public int LiveKb;
+    }
+
+    /// <summary>Sys.TakeKept の 1 件。Site は作った行 ("file:line")、Holder はそれを持つ field ("型.field"。static は "class.field")。
+    /// Holder は、ゲームの状態の根から一番近い、前からある物の field で、新しく作った物の中の物はその新しい物を持つ field、List と配列と Dictionary の中の物はその入れ物を持つ field になる。
+    /// Count は物の数 (List の中身の配列なども 1 つと数える)、Bytes はその byte (object の header を含む)。
+    /// </summary>
+    public class KeptObject
+    {
+        public string Site = "";
+        public string Holder = "";
+        public int Count;
+        public int Bytes;
     }
 
     /// <summary>

@@ -122,7 +122,7 @@ playground は既定でこの player (`build/wasm/vm/lub.js`) を使い、変換
 その差分に `@@tcs_reload_notes` の frame (生きている instance に入らない instance の field の初期化子の変更など) が先に届いていれば、`OnReload` の後に `OnReloadNotes(notes)` に渡す。
 compile error は `@@tcs_build_failed` の frame で届き、`OnBuildFailed(errors)` に渡す。
 `Lub="Overlay"` の参照先の class は overlay として、`OnInit` はゲームの後、`OnEvent` はゲームの前、`OnFrame` はゲームの後、`OnQuit` はゲームの前に呼ぶ (`.tcsb` から動かすときは `--overlay CLASS`)。
-overlay があると、overlay の参照先を除いたソースのディレクトリを `tcs vm --trace` にし、`Sys.TakeTrace` / `TakeTraceFor` / `TakeValues` / `Inspect*`、`Rewind`、`Gfx.Pick` の呼び出し元と段ごとの this の個体、`Sys.ProfileLines` / `TakeProfile` / `TakeGcPauses` の行ごとの負荷と GC の止まりを VM から読む (tcs の `tcsvm.h` の検査の口)。
+overlay があると、overlay の参照先を除いたソースのディレクトリを `tcs vm --trace` にし、`Sys.TakeTrace` / `TakeTraceFor` / `TakeValues` / `Inspect*`、`Rewind`、`Gfx.Pick` の呼び出し元と段ごとの this の個体、`Sys.ProfileLines` / `TakeProfile` / `TakeGcPauses` / `TakeKept` の行ごとの負荷と GC の止まりと持ち越しを VM から読む (tcs の `tcsvm.h` の検査の口)。
 Lua の player はこれらの口を持たず、空を返す。
 ゲームのソースのディレクトリの `X.ref.cs` の隣に native の library (`X.so` / `X.dylib` / `X.dll`、無ければ `libX.*`) を置くと、`lub` はそれを native の拡張として読み、VM を作るたびに `lub_vm_extension` を呼んで、`X.ref.cs` の関数を VM の host の関数として登録させる (`include/lub/lub_vm_extension.h`。拡張は lub の symbol を使わず、渡した表の関数だけを使う)。
 `.tcsb` から動かすときは `--extension LIB` で渡す。

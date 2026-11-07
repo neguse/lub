@@ -2261,6 +2261,15 @@ public class GcPause
     public int LiveKb;
 }
 
+/// <summary>Sys.TakeKept の 1 件。Site は作った行 ("file:line")、Holder はそれを持つ field ("型.field"。static は "class.field")。 Holder は、ゲームの状態の根から一番近い、前からある物の field で、新しく作った物の中の物はその新しい物を持つ field、List と配列と Dictionary の中の物はその入れ物を持つ field になる。 Count は物の数 (List の中身の配列なども 1 つと数える)、Bytes はその byte (object の header を含む)。</summary>
+public class KeptObject
+{
+    public string Site;
+    public string Holder;
+    public int Count;
+    public int Bytes;
+}
+
 /// <summary>OnEvent に 1 件ずつ届く入力 event。 Kind ごとに使う field が決まる: KeyDown / KeyUp は Key (scancode)、MouseButtonDown / MouseButtonUp は Button と X / Y、MouseMotion は X / Y と Dx / Dy、MouseWheel は Dx / Dy、WindowResize は X / Y (pixel size)。</summary>
 public class EventData
 {
@@ -4526,7 +4535,7 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile) と、GC の止まり (Sys.TakeGcPauses) を数え始める (true) か止める (false)。 tcs VM の player だけが数え、ほかでは何もしない。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。</summary>
+    /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止まり (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept) を数え始める (true) か止める (false)。 tcs VM の player だけが数え、ほかでは何もしない。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。</summary>
     public static void ProfileLines(bool on)
     {
         var a = LubRuntime.Arena.Begin();
@@ -4567,6 +4576,23 @@ public static unsafe partial class Sys
             int o_out_n = 0;
             LubNative.lub_sys_take_gc_pauses(LubRuntime.Ctx, &o_out, &o_out_n);
             return LubRuntime.RecordList<GcPause, LubNative.LubGcPause>(o_out, o_out_n, &LubNative.From_LubGcPause);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>frame の境目をまたいで持ち越す物 (KeptObject) を、作った行と、それを持つ field ごとに返す。数えるのは、前の frame の境目の後に tcs の --trace で変換したソースの行で作られ、今ゲームの状態 (entry の class と --trace で変換した class の static) から辿れる物で、一度返した物は次から返さない。 frame の境目 (ゲームと overlay の OnFrame の後) で作った物を忘れるので、ゲームの frame の分は overlay の OnFrame の中で取る。数えていなければ空。順番は決まっていない。</summary>
+    public static List<KeptObject> TakeKept()
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubKeptObject* o_out = null;
+            int o_out_n = 0;
+            LubNative.lub_sys_take_kept(LubRuntime.Ctx, &o_out, &o_out_n);
+            return LubRuntime.RecordList<KeptObject, LubNative.LubKeptObject>(o_out, o_out_n, &LubNative.From_LubKeptObject);
         }
         finally
         {
@@ -11133,6 +11159,15 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubKeptObject
+    {
+        public LubStr @site;
+        public LubStr @holder;
+        public int @count;
+        public int @bytes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubEventData
     {
         public int @kind;
@@ -11449,6 +11484,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_take_gc_pauses(void* ctx, LubGcPause** @out, int* @out_count);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_sys_take_kept(void* ctx, LubKeptObject** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_rewind_record(void* ctx, int @frames);
@@ -17394,6 +17432,29 @@ internal static unsafe partial class LubNative
     {
         var o = new GcPause();
         Fill_LubGcPause(o, s);
+        return o;
+    }
+
+    internal static void To_LubKeptObject(KeptObject o, LubRuntime.Arena a, LubKeptObject* s)
+    {
+        s->@site = a.Str(o.Site);
+        s->@holder = a.Str(o.Holder);
+        s->@count = o.Count;
+        s->@bytes = o.Bytes;
+    }
+
+    internal static void Fill_LubKeptObject(KeptObject o, LubKeptObject* s)
+    {
+        o.Site = LubRuntime.Str(s->@site);
+        o.Holder = LubRuntime.Str(s->@holder);
+        o.Count = s->@count;
+        o.Bytes = s->@bytes;
+    }
+
+    internal static KeptObject From_LubKeptObject(LubKeptObject* s)
+    {
+        var o = new KeptObject();
+        Fill_LubKeptObject(o, s);
         return o;
     }
 
