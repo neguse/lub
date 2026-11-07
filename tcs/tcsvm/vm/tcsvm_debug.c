@@ -300,6 +300,15 @@ void tvm_profile_gc(TvmVm *vm, uint64_t ns, size_t live) {
   vm->nprof_gc++;
 }
 
+bool tvm_profile_site(TvmVm *vm, const char **file, uint32_t *line) {
+  TvmDebug *d = vm->debug;
+  if (!vm->prof_clock || !d || !d->prof_cur || d->prof_cur > d->nlines)
+    return false;
+  *file = d->line_files[d->prof_cur - 1];
+  *line = d->line_nums[d->prof_cur - 1];
+  return true;
+}
+
 void tvm_profile_take_lines(TvmVm *vm, TvmProfileLineFn fn, void *user) {
   TvmDebug *d = vm->debug;
   if (!d)

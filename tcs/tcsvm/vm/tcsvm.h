@@ -239,6 +239,8 @@ void tvm_profile_take_gc(TvmVm *vm, TvmProfileGcFn fn, void *user);
 typedef void (*TvmProfileKeptFn)(void *user, const char *file, uint32_t line, const char *holder, uint32_t count,
                                  uint64_t bytes);
 void tvm_profile_take_kept(TvmVm *vm, const char *entry, TvmProfileKeptFn fn, void *user);
+/* 数えている間の今の --trace の行 (host の関数の中では、それを呼んだ行)。数えていないか行の外なら false */
+bool tvm_profile_site(TvmVm *vm, const char **file, uint32_t *line);
 
 /* 状態の控え: entry と --trace の class の static と、そこから辿れる object の中身 (string は写さない) */
 typedef struct TvmSnapshot TvmSnapshot;
