@@ -101,7 +101,8 @@ run_case "$ROOT/Transpiler.Tests/DigestKernels/spawn_churn.cs" SpawnChurn
 run_case "$ROOT/Transpiler.Tests/DigestKernels/particles.cs" Particles
 run_case "$ROOT/Transpiler.Tests/DigestKernels/particles_struct.cs" ParticlesStruct
 
-# host 連携 (tests/host): host_test.c が stub.cs の面を host の関数として登録し、Game の entry を呼ぶ
+# host 連携 (tests/host): host_test.c が stub.cs の面を host の関数として登録し、Game の entry を呼ぶ。
+# Reject.cs の module では、登録が module の struct と合わないときの読み込みの拒否を見る。
 HOST="$ROOT/tcsvm/tests/host"
 VM_SRC=()
 for f in "$ROOT"/tcsvm/vm/*.c; do [ "$(basename "$f")" = tcsvm_main.c ] || VM_SRC+=("$f"); done
@@ -109,12 +110,13 @@ if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/host_test" "$HOST/h
     "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
     "$ROOT"/runtime/model/*.c -lm 2> "$WORK/host_test.err"; then
   echo "FAIL host: build"; head -5 "$WORK/host_test.err"; fail=1
-elif ! "$DOTNET" "$TCS2VM_DLL" --ref "$HOST/stub.cs" --export 'Game.*' "$HOST/Game.cs" -o "$WORK/host.tcsb" 2> "$WORK/host.emit.err"; then
+elif ! "$DOTNET" "$TCS2VM_DLL" --ref "$HOST/stub.cs" --export 'Game.*' "$HOST/Game.cs" -o "$WORK/host.tcsb" 2> "$WORK/host.emit.err" \
+    || ! "$DOTNET" "$TCS2VM_DLL" --ref "$HOST/stub.cs" --export 'Reject.*' "$HOST/Reject.cs" -o "$WORK/reject.tcsb" 2>> "$WORK/host.emit.err"; then
   echo "FAIL host: $(cat "$WORK/host.emit.err")"; fail=1
 else
   host_ok=1
   for mode in "" --gc-stress; do
-    if ! "$WORK/host_test" "$WORK/host.tcsb" $mode > "$WORK/host.out" 2> "$WORK/host.err" || ! cmp -s "$WORK/host.out" "$HOST/expected.txt"; then
+    if ! "$WORK/host_test" "$WORK/host.tcsb" "$WORK/reject.tcsb" $mode > "$WORK/host.out" 2> "$WORK/host.err" || ! cmp -s "$WORK/host.out" "$HOST/expected.txt"; then
       echo "FAIL host${mode:+ ($mode)}"; diff "$HOST/expected.txt" "$WORK/host.out" | head -5; cat "$WORK/host.err"; fail=1; host_ok=0
     fi
   done

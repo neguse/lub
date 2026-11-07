@@ -7421,6 +7421,7 @@ public sealed class CEmitter
     // object initializer (new Options { X = ... }) で作る外部 data class
     private string RenderObjectInitializer(IlTable table, CType type)
     {
+        if (type.Kind == CTypeKind.StructVal) return RenderStructInitializer(table, type);
         if (type.Kind != CTypeKind.Ref)
         {
             CFail.Report("object initializer of non-class type: " + type.Display());
@@ -7450,7 +7451,29 @@ public sealed class CEmitter
         return "({ " + string.Join("", text) + name + "; })";
     }
 
-    // out parameter 付きの foreign 呼び出し: (a, b) = api.poll(args)
+    // object initializer (new Vec2 { X = ... }) で作る --ref の struct の値: 0 の値に、書いた順に field を入れる
+    private string RenderStructInitializer(IlTable table, CType type)
+    {
+        var name = Temp("value");
+        var text = new List<string>();
+        text.Add(type.CName + " " + name + " = {0}; ");
+        foreach (var entry in table.Entries)
+        {
+            string? key = entry.NameKey;
+            if (key == null)
+            {
+                CFail.Report("object initializer entry needs a member name");
+                return "";
+            }
+            var fieldType = _facts.StructField(type.Name!, key);
+            CheckAssignable(fieldType, entry.Value, "initializer of " + type.Name + "." + key);
+            text.Add(name + "." + Names.Field(key) + " = " + RenderCoerced(entry.Value, fieldType) + "; ");
+        }
+        return "({ " + string.Join("", text) + name + "; })";
+    }
+
+    // out parameter 付きの foreign 呼び出し: (a, b) = api.poll(args)、戻り値があれば (ret, a, b) = api.try(args)。
+    // out は変数の pointer で渡す (C# の T は C の T、out T は T *)
     private bool EmitForeignMultiAssign(IlMultiAssign multi)
     {
         ExForeignMethod? method = null;
@@ -7469,11 +7492,8 @@ public sealed class CEmitter
             }
         }
         if (method == null || callArgs == null) return false;
-        if (!CType.Same(_facts.MapType(method.ReturnType), CType.Void))
-        {
-            CFail.Report("foreign out calls with a return value are not supported");
-            return true;
-        }
+        var returnType = _facts.MapType(method.ReturnType);
+        int results = CType.Same(returnType, CType.Void) ? 0 : 1;
         var inputs = new List<ParameterFact>();
         int outCount = 0;
         foreach (var p in method.Parameters)
@@ -7482,11 +7502,11 @@ public sealed class CEmitter
             else inputs.Add(new ParameterFact(p.Name, _facts.MapType(p.Type), p.Default));
         }
         var args = CompleteArguments(inputs, callArgs, method.Name);
-        RequireArity(method.Name, multi.Targets.Count, outCount);
-        if (multi.Targets.Count != outCount) return true;
+        RequireArity(method.Name, multi.Targets.Count, results + outCount);
+        if (multi.Targets.Count != results + outCount) return true;
         var values = new List<string>();
         int input = 0;
-        int output = 0;
+        int output = results;
         foreach (var parameter in method.Parameters)
         {
             var type = _facts.MapType(parameter.Type);
@@ -7525,7 +7545,27 @@ public sealed class CEmitter
                 values.Add(value);
             }
         }
-        Line(HostName(method.Name) + "(" + string.Join(", ", values) + ");");
+        string hostCall = HostName(method.Name) + "(" + string.Join(", ", values) + ")";
+        if (results == 0)
+        {
+            Line(hostCall + ";");
+            return true;
+        }
+        if (!(multi.Targets[0] is IlVar retTarget))
+        {
+            CFail.Report("foreign return target must be a local");
+            return true;
+        }
+        if (retTarget.Name == "_" && TryResolve(retTarget.Name) == null)
+        {
+            Line(hostCall + ";");
+            return true;
+        }
+        Variable ret = multi.Declare && TryResolve(retTarget.Name) == null
+            ? DeclareLocal(retTarget.Name, returnType) : Resolve(retTarget.Name);
+        RequireType(returnType, ret.Type, method.Name);
+        Line(ret.Boxed ? "(*" + ret.CName + ") = " + hostCall + ";" : ret.CName + " = " + hostCall + ";");
+        if (ret.Boxed && NeedsBarrier(returnType)) Line("tcs_wb(" + ret.CName + ");");
         return true;
     }
 
@@ -7681,7 +7721,8 @@ public sealed class CEmitter
     // この module の source を --ref に取って compile し、同じ名前 (IlExport.HostSurface) で呼ぶ。
     // heap と GC は 1 つ (shared heap、doc/object-model.md §10.4)。境界を越える値は int / float / bool / enum、string
     // (写さない。§10.6)、class と object (そのまま。型の番号も合わせる)、delegate と interface (§10.5)。
-    // 呼べない形 (out、struct、List / Dictionary) の method は登録しない (C の comment に理由)。
+    // 塊にできる struct (field が int / float / bool / enum とそれだけの struct) と `T?` は VM の host の ABI の `S{型}` で、out は `&` の項で渡る (doc/vm-design.md §8.5)。
+    // 呼べない形 (参照の field を持つ struct、List / Dictionary、interface の method の out) の method は登録しない (C の comment に理由)。
 
     public List<ExHostFunction>? VmHostSurface;
 
@@ -7705,13 +7746,17 @@ public sealed class CEmitter
         return false;
     }
 
-    // 登録できない理由 (登録できるなら null)
-    private string? VmhWhy(MethodFact fact)
+    // 登録できない理由 (登録できるなら null)。interface の method は dispatcher を呼ぶので out を持てない
+    private string? VmhWhy(MethodFact fact, bool iface)
     {
-        if (fact.OutParameters.Count > 0) return "out";
+        if (iface && fact.OutParameters.Count > 0) return "out";
         foreach (var bad in fact.Parameters)
         {
             if (Letter(bad.Type, false) == null) return "parameter " + bad.Name + ": " + bad.Type.Display();
+        }
+        foreach (var bad in fact.OutParameters)
+        {
+            if (bad.Type.Kind == CTypeKind.Closure || Letter(bad.Type, false) == null) return "out " + bad.Name + ": " + bad.Type.Display();
         }
         if (!CType.Same(fact.ReturnType, CType.Void) && Letter(fact.ReturnType, true) == null) return "return " + fact.ReturnType.Display();
         return null;
@@ -7743,29 +7788,30 @@ public sealed class CEmitter
             bool iface = cls != null && cls.IsInterface;
             if (cls == null || !VmhHasMethod(cls, h.Method, iface)) continue;
             var fact = _facts.Method(cls.Name, h.Method);
-            string? why = VmhWhy(fact);
+            string? why = VmhWhy(fact, iface);
             if (why != null)
             {
                 Line("/* " + h.Name + ": not a VM host function (" + why + ") */");
                 continue;
             }
             var fn = "tcs_vmh_" + registered.Count;
-            var letters = new List<string>();
-            foreach (var p in fact.Parameters) letters.Add(Letter(p.Type, false)!);
-            var ps = (iface ? "o" : "") + string.Join("", letters);
             int at = iface ? 1 : 0;
-            string rs = CType.Same(fact.ReturnType, CType.Void) ? "" : Letter(fact.ReturnType, true)!;
-            Line("static TvmStatus");
-            Line(fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user)");
-            Line("{");
-            _indent++;
-            Line("(void)vm; (void)a; (void)r; (void)user;");
-            Line("tcs_gc_call_depth++;");
+            // 項は C# の宣言の順 (out は & を付ける)。C の関数は値の引数の後ろに out の `T *` を並べる
+            var tokens = new List<string>();
             var argParts = new List<string>();
-            for (int j = 0; j < fact.Parameters.Count; j++)
+            var outParts = new List<string>();
+            foreach (var name in fact.Metadata.Parameters)
             {
-                var p = fact.Parameters[j];
-                string k = (j + at).ToString();
+                string k = (at + tokens.Count).ToString();
+                var o = VmhParam(fact.OutParameters, name);
+                if (o != null)
+                {
+                    tokens.Add("&" + Letter(o.Type, false)!);
+                    outParts.Add("(" + o.Type.CName + " *)a[" + k + "].p");
+                    continue;
+                }
+                var p = VmhParam(fact.Parameters, name)!;
+                tokens.Add(Letter(p.Type, false)!);
                 switch (p.Type.Kind)
                 {
                     case CTypeKind.I32: argParts.Add("a[" + k + "].i"); break;
@@ -7773,9 +7819,23 @@ public sealed class CEmitter
                     case CTypeKind.Bool: argParts.Add("a[" + k + "].i != 0"); break;
                     case CTypeKind.String: argParts.Add("tcs_vmh_str_in(a[" + k + "].p)"); break;
                     case CTypeKind.Closure: argParts.Add(VmhWrapper(p.Type) + "(a[" + k + "].p)"); break;
+                    // struct と T? は VM が C の layout の塊を指す pointer で渡す
+                    case CTypeKind.StructVal:
+                    case CTypeKind.Nullable:
+                        argParts.Add("*(const " + p.Type.CName + " *)a[" + k + "].p");
+                        break;
                     default: argParts.Add("(" + p.Type.CName + ")a[" + k + "].p"); break;
                 }
             }
+            foreach (var o in outParts) argParts.Add(o);
+            var ps = (iface ? "o" : "") + string.Join("", tokens);
+            string rs = CType.Same(fact.ReturnType, CType.Void) ? "" : Letter(fact.ReturnType, true)!;
+            Line("static TvmStatus");
+            Line(fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user)");
+            Line("{");
+            _indent++;
+            Line("(void)vm; (void)a; (void)r; (void)user;");
+            Line("tcs_gc_call_depth++;");
             string args = string.Join(", ", argParts);
             string call = iface
                 ? Names.Dispatch(cls.Name, h.Method) + "((" + Names.Class(cls.Name) + " *)tcs_nonnull(a[0].p)" + (args != "" ? ", " + args : "") + ")"
@@ -7792,6 +7852,11 @@ public sealed class CEmitter
                     Line("r[0].p = " + call + ";");
                     break;
                 case CTypeKind.Closure: Line("r[0].p = " + call + ";"); break;
+                // struct と T? の戻り値は VM が渡す塊に書く
+                case CTypeKind.StructVal:
+                case CTypeKind.Nullable:
+                    Line("*(" + fact.ReturnType.CName + " *)r[0].p = " + call + ";");
+                    break;
                 default:
                     Line("r[0].p = " + call + "; /* TcsString は VM の string と同じ byte 並び */");
                     break;
@@ -8122,6 +8187,58 @@ public sealed class CEmitter
             case CTypeKind.Ref: return !_facts.IsDeclaredExternal(t.Name!) ? "o" : null;
             case CTypeKind.Object: return "o";
             case CTypeKind.Closure: return VmhCallable(t) ? "o" : null;
+            case CTypeKind.StructVal:
+            case CTypeKind.Nullable:
+                return VmhBlittable(t, 0) ? "S{" + VmhStructName(t) + "}" : null;
+        }
+        return null;
+    }
+
+    // VM の型の表の名前 (VM の module はこの module の source を --ref に取るので、struct は同じ IL の名前。T? は後ろに ?)
+    private static string VmhStructName(CType t)
+    {
+        if (t.Kind != CTypeKind.Nullable) return t.Name!;
+        switch (t.Element!.Kind)
+        {
+            case CTypeKind.I32: return "int?";
+            case CTypeKind.F32: return "float?";
+            case CTypeKind.Bool: return "bool?";
+        }
+        string inner = t.Element.Name!;
+        return inner + "?";
+    }
+
+    // VM が C の layout の塊で渡せる値: field が int / float / bool / enum と、それだけでできた struct (T? も)
+    private bool VmhBlittable(CType t, int depth)
+    {
+        if (depth > 32) return false;
+        switch (t.Kind)
+        {
+            case CTypeKind.I32:
+            case CTypeKind.F32:
+            case CTypeKind.Bool:
+                return true;
+            case CTypeKind.Nullable:
+                return VmhBlittable(t.Element!, depth + 1);
+            case CTypeKind.StructVal:
+            {
+                ExStruct? st;
+                if (!_facts.Structs.TryGetValue(t.Name!, out st)) return false;
+                foreach (var f in st.Fields)
+                {
+                    if (!f.IsStatic && !VmhBlittable(_facts.MapType(f.Type), depth + 1)) return false;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static ParameterFact? VmhParam(List<ParameterFact> list, string name)
+    {
+        foreach (var p in list)
+        {
+            if (p.Name == name) return p;
         }
         return null;
     }

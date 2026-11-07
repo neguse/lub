@@ -80,6 +80,7 @@ void tvm_free(TvmVm *vm) {
   }
   free(vm->funcs);
   free(vm->selectors);
+  tvm_host_plans_free(vm->host_plans, vm->nintrinsics);
   free(vm->intrinsics);
   for (uint32_t i = 0; i < vm->nhosts; i++) {
     free((char *)vm->hosts[i].name);
@@ -518,6 +519,16 @@ static bool spec_ok(Verify *v, uint32_t r, char spec, uint16_t arg0type, bool ou
   default:
     return vfail(v, "bad runtime function spec");
   }
+}
+
+/* host の関数の 1 項 (tcsvm_host.c の plan) の葉が register の種類と合う。struct は葉ごと */
+static bool host_arg_ok(Verify *v, const TvmHostArg *x, uint32_t r, bool out) {
+  if (!x->st)
+    return spec_ok(v, r, x->kind, TVM_NO_TYPE, out);
+  for (uint32_t k = 0; k < x->st->nleaves; k++)
+    if (!reg(v, r + k, x->st->leaves[k].kind))
+      return false;
+  return true;
 }
 
 static const TvmType *reg_type(Verify *v, uint32_t r, uint8_t tkind) {
@@ -1008,6 +1019,22 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
         return vfail(&v, "runtime function %u out of range", c);
       const TvmIntrinsic *in = vm->intrinsics[c];
       uint16_t arg0 = a < f->nregs ? f->regs[a].type : TVM_NO_TYPE;
+      const TvmHostPlan *plan = vm->host_plans[c];
+      if (plan) {
+        /* struct か out を写す host の関数: 値の引数の葉は a から、戻り値と out の葉は b から */
+        for (uint32_t k = 0; k < plan->nargs; k++) {
+          const TvmHostArg *x = &plan->args[k];
+          if (!host_arg_ok(&v, x, (x->byref ? b : a) + x->reg, x->byref))
+            return x->st ? vfail(&v, "argument %u of %s: the call does not pass the leaves of struct %s", k, in->name,
+                                 x->st->name)
+                         : vfail(&v, "argument %u of %s", k, in->name);
+        }
+        if (plan->ret.kind && !host_arg_ok(&v, &plan->ret, b, true))
+          return plan->ret.st ? vfail(&v, "result of %s: the call does not take the leaves of struct %s", in->name,
+                                      plan->ret.st->name)
+                              : vfail(&v, "result of %s", in->name);
+        break;
+      }
       for (uint32_t k = 0; in->params[k]; k++)
         if (!spec_ok(&v, a + k, in->params[k], arg0, false))
           return vfail(&v, "argument %u of %s", k, in->name);
@@ -1161,7 +1188,7 @@ TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
 
 TvmStatus tvm_load_module(TvmVm *vm, const uint8_t *bytes, size_t size) {
   Reader r = {bytes, bytes + size, false};
-  if (!parse(vm, &r) || !layout(vm))
+  if (!parse(vm, &r) || !layout(vm) || !tvm_host_plans(vm))
     return TVM_LOAD_ERROR;
   for (uint32_t i = 0; i < vm->nstatics; i++)
     if (!info_ok(vm, &vm->static_info[i])) {

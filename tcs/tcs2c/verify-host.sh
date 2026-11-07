@@ -18,8 +18,8 @@ compiler="$script_dir/bin/Debug/net10.0/tcs2c.dll"
   "$script_dir/tests/foreign.cs" -o "$work_dir/foreign.c"
 "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
   -I "$work_dir" "$script_dir/tests/foreign-host.c" -o "$work_dir/host"
-[[ "$("$work_dir/host" | tr -d '\r')" == $'4\n207\n101:101\n10\n2\ntopic\npayload\n0.5\n4\n21:False:True:1' ]]
-echo 'host: typed options, foreign instance methods, enums, nullable defaults, out strings and scalar entry arguments passed'
+[[ "$("$work_dir/host" | tr -d '\r')" == $'4\n207\n101:101\n10\n2\ntopic\npayload\n11\n2 3\n2 2 True\nTrue 14 0.25 False 0 0\n4\nTrue 1 2.5 False\n11 -1 -2\n0.5\n4\n21:False:True:1' ]]
+echo 'host: typed options, foreign instance methods, enums, nullable defaults, out strings, struct values and outs, and scalar entry arguments passed'
 
 "$dotnet_cmd" "$compiler" "$script_dir/tests/conditional-access.cs" -o "$work_dir/conditional.c"
 "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \

@@ -23,6 +23,27 @@ public class Foreign
         bodies[Api.Body(2)] = 20;
         bodies[Api.Body(2)] = 21;
     }
+    // struct は C の struct の値、out は変数の pointer、struct の戻り値は値で host に渡る
+    public static void Structs()
+    {
+        var a = new Vec2 { X = 1, Y = 2 };
+        var b = new Vec2 { X = 3, Y = 4 };
+        Console.WriteLine(Phys.Dot(a, b));
+        var box = new Box2 { Min = a, Max = b, Solid = true, Layer = Layer.Front };
+        var c = Phys.Center(box);
+        Console.WriteLine(c.X + " " + c.Y);
+        Phys.Size(box, out var size, out var solid);
+        Console.WriteLine(size.X + " " + size.Y + " " + solid);
+        bool found = Phys.Pick(7, out Hit hit);
+        bool missing = Phys.Pick(-1, out Hit none);
+        Console.WriteLine(found + " " + hit.Id + " " + hit.T + " " + missing + " " + none.Id + " " + none.T);
+        if (Phys.Probe(8, out float y) && !Phys.Probe(2, out _)) Console.WriteLine(y);
+        Hit? near = Phys.Cast(a, 10);
+        Hit? far = Phys.Cast(b, 1);
+        Console.WriteLine(near.HasValue + " " + near.Value.Id + " " + near.Value.T + " " + far.HasValue);
+        Console.WriteLine(Phys.Score(near, 1) + " " + Phys.Score(far, 1) + " " + Phys.Score(null, 2));
+    }
+
     public static void Frame(float dt)
     {
         Console.WriteLine(dt);

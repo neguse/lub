@@ -502,6 +502,7 @@ static void swap_module(TvmVm *a, TvmVm *b) {
   SWAP(TvmSelector *, selectors);
   SWAP(uint32_t, nintrinsics);
   SWAP(const TvmIntrinsic **, intrinsics);
+  SWAP(TvmHostPlan **, host_plans);
   SWAP(TvmDebug *, debug);
 }
 

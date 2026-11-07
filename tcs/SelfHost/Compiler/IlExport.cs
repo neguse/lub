@@ -300,6 +300,25 @@ public sealed class IlExporter
         {
             var t = _pending[k];
             k++;
+            if (t.IsStruct)
+            {
+                // host の struct は field の layout だけ (C の struct の値として host と受け渡す。doc/object-model.md §5)
+                var st = new ExStruct();
+                st.Name = GlobalName(t);
+                foreach (var f in CollectFields(t, false))
+                {
+                    if (!f.IsStatic) st.Fields.Add(f);
+                }
+                st.LayoutHash = LayoutHash(st.Fields);
+                st.IsRecord = t.DeclKind == DeclKinds.RecordStruct;
+                st.DisplayName = IlTypes.Display(t.SelfType());
+                result.Structs.Add(st);
+                foreach (var m in t.Members)
+                {
+                    if (m.Kind == SymKind.Field || m.Kind == SymKind.Property) ForeignType(m.Type, result, enums);
+                }
+                continue;
+            }
             if (t.DeclKind != DeclKinds.Class) continue;
             // host の data class は field の layout だけ (本文は host が持つ。--ref の本文は束縛しないので IL にしない)
             var cls = new ExClass();
@@ -631,7 +650,7 @@ public sealed class IlExporter
         if (t.IsRecord && decl.A != null && decl.A.List != null && t.RecordParams != null)
         {
             for (int i = 0; i < decl.A.List.Count && i < t.RecordParams.Count; i++)
-                fields.Add(new ExField(decl.A.List[i].Text, IlTypes.Display(t.RecordParams[i].Type), false, null, null));
+                fields.Add(new ExField(RecordFieldName(t, decl.A.List[i].Text), IlTypes.Display(t.RecordParams[i].Type), false, null, null));
         }
         if (decl.List == null) return fields;
         foreach (var m in decl.List)
@@ -683,6 +702,17 @@ public sealed class IlExporter
     private static string FieldName(TypeDeclSym t, Symbol sym)
     {
         return t.IsRef ? sym.LuaName : sym.Name;
+    }
+
+    // positional な record の parameter の field (--ref の型は property の host の名前)
+    private static string RecordFieldName(TypeDeclSym t, string name)
+    {
+        if (!t.IsRef) return name;
+        foreach (var m in t.Members)
+        {
+            if (m.Kind == SymKind.Property && m.Name == name) return m.LuaName;
+        }
+        return name;
     }
 
     // 初期化子の hash (hot reload が既存の static の初期化子の変更を restart と判定する)。定数は値で、それ以外は字面で決める

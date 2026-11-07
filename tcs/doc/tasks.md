@@ -95,8 +95,8 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
       (`FuzzDifferentialTests`)
 - [ ] V3: host 連携。済み (done.md): `tvm_host` (host の関数表)、host が VM の object と string を読み書きする API、
       `tcs2vm --ref` (stub の関数・値・record)、`tcs2vm --watch` の stream と `tvm_apply_batch`、lub への feature request
-      (vm-design §13.2)。残り:
-  - [ ] host の関数の out 引数、host への callback、List / 配列の要素を host が読む API、handle (`tvm_hold`)
+      (vm-design §13.2)。
+      host の関数の struct と out (C の layout の塊と pointer、vm-design §8.5)、host への callback (`tvm_invoke`)、List / 配列の要素を host が読む API、handle (`tvm_hold`) も済み。残り:
   - [ ] lub 側 (`lub-gen vm`、`vm_host.c`、watch の導線) は lub の作業 (feature request)
 - [ ] V4: hot reload。済み (done.md、object-model M-3): `tvm_apply` (共有の計画と walker、layout を変える移行、
       static、closure の付け替え、initializer と OnReload)、`tcs2vm --reload-from`、`tcsvm --reload`、
@@ -107,7 +107,8 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
         hot-reload の D6 (release の reload を採るか) の決定待ち)
 - [ ] module 単位の混在 (object-model §10): X-1 (境界の自動化、`tcs2c --lib --vm-host`) と X-3 の 1 段目 (`tvm_hold`) は済み。
       X-2 (shared heap)、X-3、X-4 (delegate と interface を両方向に呼ぶ) も済み。string も写さずに渡し、型の番号も合わせた。C の delegate を VM の
-      runtime の関数 (List.Sort など) にも渡せる。残り: List / Dictionary を境界で渡す
+      runtime の関数 (List.Sort など) にも渡せる。
+      塊にできる struct と out の引数も渡る (VM の host の ABI)。残り: List / Dictionary を境界で渡す
 - [ ] object model の M-4 の残り (object-model §9。X-2 と同じ作業)
 - [ ] lub への feature request (Dictionary の仕様、support-matrix §18): TinySystem.props が .NET の project で
       `Dictionary` / `HashSet` を TinySystem の実装 (挿入順) にするので、game の Dictionary は BCL の Dictionary と別の型になる。

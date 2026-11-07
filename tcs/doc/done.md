@@ -3208,3 +3208,22 @@
 - 判断: 節ごとに `tvm_inspect` を呼んで探すと、そのたびに path を根から読み直し、子ごとに値の文字を作るので、static から 8000 節ほど辿るだけで 1 回 10 ms かかっていた。探すだけなら値の文字は要らない
 - 残課題: なし
 
+
+### host の関数の struct と out を C の layout の塊と pointer で渡す ✓ (2026-11-08)
+- `tvm_host` の params は C# の引数の順の項、rets は戻り値の項にした。項は `i` `f` `b` `s` `o`、struct の値 `S{型}` (型は IL の型の名前で `tvm_type` と同じ綴り。`T?` は `S{Eng_Vec2?}`、`int?` は `S{int?}`)、前に `&` を付けた out
+- 値の struct は VM が葉を C の layout (object-model §5) の一時の塊に詰めて `args[k].p` に渡す。out は 0 で埋めた場所を渡し、int / float / bool / 参照は結果の register そのもの、struct は塊で、host が戻ったら結果の register に写す。struct の戻り値は `rets[0].p` の塊。`rets` は戻り値だけになった
+- 写し方は読み込みで module の型の表から作る (`tvm_host_plans`)。module に無い型、struct でない型、参照の field を持つ struct、葉の形の合わない呼び出しは理由付きの読み込みエラー。`S` も `&` も無い関数は register をそのまま渡す
+- 一時の領域は VM の stack の今の frame の後ろに取り、host の呼び出しの間 `vm->top` を進める。host が `tvm_invoke` で VM に戻って入れ子で host の関数が呼ばれても塊は重ならない
+- compiler: `IlExport` が `--ref` の struct (record struct を含む) を field の layout だけの `ExStruct` として出す。VM と tcs2c は `new Vec2 { X = 1 }` を 0 の値に field を入れる値にする。VM の emitter は host の呼び出しが使う struct の型を型の表に入れる
+- tcs2c: `--ref` の host の関数は `T` を `T`、`out T` を宣言の位置の `T *` で受け、struct は `Tcs_<型>` の値。戻り値と out の両方を持つ呼び出しも出す (戻り値を受ける IL の local に型を付けた)
+- 検証: `tcsvm/tests/host` (struct の値と戻り値、scalar と struct の out、入れ子の struct、bool と enum の field、`readonly record struct`、`T?`、host から VM に戻る入れ子、登録の誤りと読み込みの拒否を Reject.cs で)、`tcs2c/verify-host.sh`、`run-tests.sh`。host の test は ASan/UBSan でも通る。直す前は VM が TCS1001 (`type 'Eng.Vec2' is not in the VM yet`)、tcs2c が `unsupported IL type` で止まった
+- 判断: scalar の out の場所は一時の塊でなく結果の register にした。host が書いた参照が、host が VM に戻って回収が走っても frame の root から見え、写し戻しも要らない。塊にできる struct を葉が int / float / bool のものに限ったのは、塊の中の参照を GC が辿らないため
+- 残課題: VM の中の呼び出しと delegate (`tvm_invoke`) の葉の並びは変えていない。`--ref` の struct の positional な constructor と instance method は無い
+
+### module 単位の混在の境界で struct と out を渡す ✓ (2026-11-08)
+- `tcs2c --lib --vm-host` の glue が、塊にできる struct (field が int / float / bool / enum とそれだけの struct) と `T?` の引数と戻り値、out の引数を持つ公開 static method も VM の host の関数として登録する。項は VM の host の ABI の `S{型}` と `&` で、型の名前は VM の module が `--ref` で見る IL の名前 (`Ed_Span`、`int?`)
+- glue は VM が渡す塊を `*(const Tcs_Ed_Span *)a[k].p` で値にし、out は VM が渡す場所を C の関数の末尾の `T *` に渡し、struct と `T?` の戻り値は `r[0].p` の塊に書く
+- 参照の field を持つ struct、List / Dictionary、interface の method の out は登録せず、生成 C に理由の comment を書く
+- 検証: `tcsvm/tests/modules` (C の module の struct の値と戻り値、out の string と struct、`int?` の戻り値を content (VM) が呼ぶ。reload の前後の module が同じ関数を呼ぶ。通常と tcs2c の GC stress)。ASan/UBSan でも通る。直す前は glue が `not a VM host function (parameter s: struct Ed_Span)` / `(out)` / `(return i32?)` で登録せず、VM の読み込みが `unknown runtime function ed.editor.widen` で止まった
+- 判断: C の module の struct の layout は tcs2c の生成 struct で、VM の塊の layout (§5) と同じなので、写さずに C の struct として読む
+- 残課題: なし

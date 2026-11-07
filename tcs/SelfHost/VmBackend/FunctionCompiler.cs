@@ -1447,6 +1447,7 @@ public sealed class FunctionCompiler
         {
             var host = _m.Parse(t.ObjectType);
             if (host.Tag == VT.Class) return host; // host の data class の record
+            if (host.Tag == VT.Struct) return host; // --ref の struct
         }
         if (t.ElementType == null)
         {
@@ -3189,7 +3190,8 @@ public sealed class FunctionCompiler
     }
 
     /// <summary>host の関数 (doc/vm-design.md §8.5): runtime の関数と同じ CALLR で、名前は host が tvm_host で登録したもの。
-    /// 引数と戻り値は葉に展開する (struct は葉の並び、class / string / List は ref)。</summary>
+    /// register では引数と戻り値を葉に展開する (struct は葉の並び、class / string / List は ref)。
+    /// VM が呼ぶときに struct を C の layout の塊に写すので、struct の型は module の型の表に入れる。</summary>
     private Val HostCall(string name, ExForeignMethod m, List<IlExpr> args, Val? dest)
     {
         foreach (var p in m.Parameters)
@@ -3209,8 +3211,8 @@ public sealed class FunctionCompiler
         return dest == null ? rv : Store2(dest, rv);
     }
 
-    /// <summary>host の関数の out (doc/vm-design.md §8.5): `[戻り値?, out...] = host(in...)`。host は戻り値の葉と
-    /// out の葉を順に rets に書く。結果は rets の型の葉が並ぶ値。</summary>
+    /// <summary>host の関数の out (doc/vm-design.md §8.5): `[戻り値?, out...] = host(in...)`。
+    /// 結果の register は戻り値の葉と out の葉の並び (host は out を pointer で受け、VM が呼び出しの後にこの register へ書く)。</summary>
     private Val HostCallOuts(string name, ExForeignMethod m, List<IlExpr> args)
     {
         return HostCallLeaves(name, m, args, HostOutTypes(m));
@@ -3250,6 +3252,14 @@ public sealed class FunctionCompiler
                 return BadVal();
             }
             all.Add(dflt);
+        }
+        foreach (var t in types)
+        {
+            if (t.IsAggregate) _m.TypeIndex(t);
+        }
+        foreach (var t in rets)
+        {
+            if (t.IsAggregate) _m.TypeIndex(t);
         }
         var block = Block(LeafTypes(types));
         var at = block;
@@ -3522,6 +3532,7 @@ public sealed class FunctionCompiler
 
     private Val Table(IlTable t, VType type, Val? dest)
     {
+        if (type.Tag == VT.Struct && t.ObjectType != null) return StructTable(t, type, dest);
         var d = dest != null ? dest : Temp(type);
         if (type.Tag == VT.Dict)
         {
@@ -3590,6 +3601,26 @@ public sealed class FunctionCompiler
         }
         CFail.Report(_f.Name + ": table of " + type.Display());
         return BadVal();
+    }
+
+    // --ref の struct の object initializer: 0 の値に、書いた順に名前の field を入れる (右辺は代入先を読めるので一時の値に作る)
+    private Val StructTable(IlTable t, VType type, Val? dest)
+    {
+        var tmp = Temp(type);
+        EmitZero(tmp);
+        var leaves = _m.Leaves(type);
+        foreach (var e in t.Entries)
+        {
+            if (e.NameKey == null)
+            {
+                CFail.Report(_f.Name + ": struct initializer entry without a name");
+                return BadVal();
+            }
+            var ft = _m.FieldType(type, e.NameKey);
+            var n = _m.Leaves(ft).Count;
+            ExprAs(e.Value, ft, new Val(ft, P5Regs.Slice(tmp.Regs, LeafIndex(leaves, e.NameKey), n)));
+        }
+        return dest == null ? tmp : Store2(dest, tmp);
     }
 
     // ---- TinySystem の関数 (il-spec §13): runtime の関数 (CALLR) か専用の命令 ----

@@ -321,7 +321,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `&` `\|` `^` (ビット演算) | **Y** | `&` `\|` `~` (二項) | 整数と enum のみ。C# `^` は Lua 二項 `~`。bool operand は TCS1001 未対応 (Lua native が boolean を拒否し、and/or は非短絡の C# `&` `\|` と意味論が変わるため) |
 | `..` (Range, C# 8) | **-** | | |
 | `^x` (Index from end, C# 8) | **-** | | |
-| `new T { ... }` (初期化子) | **Y** | List/Dict、class (IIFE + field 代入)、`--ref` 型 (plain table)。ネストした初期化子 (`Child = { A = 1 }` / `Items = { a, b }`) は C# と同じく既存 member への代入 / Add | |
+| `new T { ... }` (初期化子) | **Y** | List/Dict、class (IIFE + field 代入)、`--ref` 型 (Lua は plain table。tcs VM と C は、class なら host の data class の object、struct なら 0 の値に field を入れた値)。ネストした初期化子 (`Child = { A = 1 }` / `Items = { a, b }`) は C# と同じく既存 member への代入 / Add | |
 | `new(args)` (ターゲット型, C# 9) | **Y** | 初期化子含む | |
 | `x!` (null 許容抑制, C# 8) | **Y** | 型チェック専用、Lua へは透過 | |
 | `stackalloc` | **N/A** | | |

@@ -54,10 +54,59 @@ void tcs_host_api_poll(TcsString **topic, TcsString **payload)
     *payload = tcs_string_new((const unsigned char *)"payload", 7);
 }
 
+/* struct は生成 C の struct (Tcs_<型>) の値、out は pointer、T? は TcsOpt_S_<型> の値 */
+float tcs_host_phys_dot(Tcs_Vec2 a, Tcs_Vec2 b)
+{
+    return a.f_x * b.f_x + a.f_y * b.f_y;
+}
+
+Tcs_Vec2 tcs_host_phys_center(Tcs_Box2 b)
+{
+    return (Tcs_Vec2){(b.f_min.f_x + b.f_max.f_x) / 2, (b.f_min.f_y + b.f_max.f_y) / 2};
+}
+
+void tcs_host_phys_size(Tcs_Box2 b, Tcs_Vec2 *size, bool *solid)
+{
+    float sign = b.f_layer == 5 ? 1.0f : -1.0f;
+    size->f_x = (b.f_max.f_x - b.f_min.f_x) * sign;
+    size->f_y = (b.f_max.f_y - b.f_min.f_y) * sign;
+    *solid = b.f_solid;
+}
+
+bool tcs_host_phys_pick(int32_t id, Tcs_Hit *hit)
+{
+    if (id <= 0) return false;
+    hit->f_id = id * 2;
+    hit->f_t = 0.25f;
+    return true;
+}
+
+bool tcs_host_phys_probe(int32_t x, float *y)
+{
+    *y = (float)x * 0.5f;
+    return x > 5;
+}
+
+TcsOpt_S_Hit tcs_host_phys_cast(Tcs_Vec2 from, float limit)
+{
+    TcsOpt_S_Hit r = {0};
+    if (from.f_x * from.f_x + from.f_y * from.f_y > limit * limit) return r;
+    r.has = true;
+    r.v.f_id = (int32_t)from.f_x;
+    r.v.f_t = from.f_y + 0.5f;
+    return r;
+}
+
+int32_t tcs_host_phys_score(TcsOpt_S_Hit h, int32_t bias)
+{
+    return h.has ? h.v.f_id * 10 + bias : -bias;
+}
+
 int main(void)
 {
     tcs_lib_init();
     tcs_entry_Foreign_Init();
+    tcs_entry_Foreign_Structs();
     tcs_lib_collect();
     if (tcs_lib_heap_bytes() == 0) return 1;
     if (tcs_s_Foreign_resource->host_value != 99) return 1;

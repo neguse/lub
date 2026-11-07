@@ -587,10 +587,13 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     SAFEPOINT();
     SAVE();
     const TvmIntrinsic *in = vm->intrinsics[OPC];
-    TvmStatus st = in->host ? in->host(vm, &RA, &RB, in->user) : in->fn(vm, &RA, &RB);
+    /* host の関数で struct か out を持つものは、引数を C の layout の塊に写して呼ぶ (tvm_host_call) */
+    TvmStatus st = !in->host                ? in->fn(vm, &RA, &RB)
+                   : vm->host_plans[OPC] ? tvm_host_call(vm, in, vm->host_plans[OPC], &RA, &RB)
+                                         : in->host(vm, &RA, &RB, in->user);
     if (st != TVM_OK)
       FAULT(NULL);
-    if (vm->heap) /* container を変える runtime の関数 (List / Dictionary / 配列の引数) */
+    if (vm->heap && !in->host) /* container を変える runtime の関数 (List / Dictionary / 配列の引数) */
       for (uint32_t k = 0; in->params[k]; k++)
         if (strchr("LDAr", in->params[k]))
           WB(R[OPA + k].p);
