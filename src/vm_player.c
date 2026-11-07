@@ -19,6 +19,8 @@
 // OnFrame(float) は必須、OnInit / OnEvent(EventData) / OnQuit は任意。
 // hot reload: <Entry>.batch (tcs vm --watch の vm_batch。module と計画) が現れたら当てて消す。
 // 当てられない差分 (restart) と <Entry>.tcsb の書き直しは、OnQuit の後に新しい VM を作って OnInit から始める。
+// App.Restart も frame の終わりに同じ作り直しをする。
+// 作り直すたびに log に 1 行出す (`lub: restarted`)。
 // <Entry>.rev (playground が置く build の revision) があれば、読み込みと batch の後に
 // `@@tcs_commit {"revision":N,"ok":...}` を出す (playground の commit ACK)。
 // 当てた revision 以下の batch (ACK の再送) は当てずに ACK だけ返す。
@@ -318,6 +320,7 @@ static bool load_module(void) {
 
 // OnQuit (古い VM) の後に新しい VM を OnInit から始める。
 // 物理の world はゲームの状態なので捨て、key で宣言する資源は残す。
+// 新しい VM を作れたら、OnInit の前に log に 1 行出す (`lub: restarted`)。
 static void restart(const char *why) {
   SDL_Log("lub: %s, starting the VM again from %s", why, g_module);
   call_quit();
@@ -332,6 +335,7 @@ static void restart(const char *why) {
     ack(read_revision(), false, "the module failed to load", 0);
     return;
   }
+  SDL_Log("lub: restarted");
   app->entry_restarting = true;
   call_init();
   app->entry_restarting = false;
