@@ -8,8 +8,6 @@ public sealed class IlContext
     public readonly IlBuild B;
     // IL を C backend に渡す経路は引数の copy 地点を残す (C は値渡しで copy が要らない)
     public bool KeepsArgumentCopies;
-    // C backend に IL を渡す経路 (タプルを単相化した struct の値で返すので multi-return にしない)
-    public bool ForCBackend;
     // 組み立て中の型
     public TypeDeclSym? CurrentDecl;
     // generic な型の instance の member は型引数の既定値を self から読む

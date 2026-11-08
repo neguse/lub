@@ -158,7 +158,7 @@ public sealed class ExHostFunction
     }
 }
 
-// 束縛済みの compilation から export を作る。IL は C の経路の設定 (ForCBackend、引数の copy を残す) で組み立てる
+// 束縛済みの compilation から export を作る。IL は引数の copy を残す設定で組み立てる
 public sealed class IlExporter
 {
     private readonly Compilation _c;
@@ -172,7 +172,6 @@ public sealed class IlExporter
     public IlExporter(Compilation c)
     {
         _c = c;
-        Ctx.ForCBackend = true;
         Ctx.KeepsArgumentCopies = true;
     }
 
@@ -215,7 +214,7 @@ public sealed class IlExporter
             foreach (var t in enums)
             {
                 var info = new ExEnum();
-                info.Name = t.LuaName;
+                info.Name = t.IlName;
                 info.DisplayName = IlTypes.Display(t.SelfType());
                 foreach (var m in t.Members)
                 {
@@ -265,7 +264,7 @@ public sealed class IlExporter
 
     // user のコードが使う host の method / static の値 / enum / data class。C は host の関数を extern で宣言する
     private readonly Dictionary<string, int> _methodKeys = new Dictionary<string, int>();
-    // 同じ host の method の 2 回目からの使用は書き出し直さない (owner の番号と host の名前 (LuaName) → 最初に見た symbol)
+    // 同じ host の method の 2 回目からの使用は書き出し直さない (owner の番号と host の名前 (IlName) → 最初に見た symbol)
     private readonly Dictionary<string, Symbol> _methodSeen = new Dictionary<string, Symbol>();
     private readonly List<string> _methodSignatures = new List<string>();
     private readonly Dictionary<string, int> _valueKeys = new Dictionary<string, int>();
@@ -408,7 +407,7 @@ public sealed class IlExporter
             ForeignType(sym.Type, result, enums);
             if (sym.IsStatic && !sym.Owner.IsEnum && sym.Kind == SymKind.Field)
             {
-                var key = RefTypePath(sym.Owner) + "." + sym.LuaName;
+                var key = RefTypePath(sym.Owner) + "." + sym.IlName;
                 AddValue(result, new ExForeignValue(key, IlTypes.Display(sym.Type), false, 0));
             }
             else ForeignType(sym.Owner.SelfType(), result, enums);
@@ -419,7 +418,7 @@ public sealed class IlExporter
         bool interfaceMethod = !sym.IsStatic && sym.Owner.DeclKind == DeclKinds.Interface;
         if (sym.Kind != SymKind.Method || !sym.IsStatic && sym.Owner.DeclKind != DeclKinds.Class && !interfaceMethod) return true;
         // 書き出した method の 2 回目からの使用 (型も書き出し済み)
-        string seenKey = sym.Owner.Order + ":" + sym.LuaName;
+        string seenKey = sym.Owner.Order + ":" + sym.IlName;
         Symbol? seen;
         if (_methodSeen.TryGetValue(seenKey, out seen) && seen == sym) return true;
         ForeignType(sym.Type, result, enums);
@@ -427,7 +426,7 @@ public sealed class IlExporter
         {
             foreach (var p in sym.Params) ForeignType(p.Type, result, enums);
         }
-        var methodKey = RefTypePath(sym.Owner) + "." + sym.LuaName;
+        var methodKey = RefTypePath(sym.Owner) + "." + sym.IlName;
         var signature = sym.Owner.FullName + "." + Declarer.Signature(sym);
         int at;
         if (!_methodKeys.TryGetValue(methodKey, out at)) at = -1;
@@ -502,7 +501,7 @@ public sealed class IlExporter
             {
                 if (m.Kind != SymKind.EnumMember) continue;
                 int value = m.ConstVal != null ? m.ConstVal.I : 0;
-                var key = RefTypePath(d) + "." + m.LuaName;
+                var key = RefTypePath(d) + "." + m.IlName;
                 AddValue(result, new ExForeignValue(key, display, true, value));
                 info.MemberNames.Add(LuaNames.HostConst(m.Name));
                 info.MemberValues.Add(value);
@@ -573,7 +572,7 @@ public sealed class IlExporter
                 {
                     if (m.Kind != SymKind.Method || m.Decl == null || m.Decl.Kind != NodeKind.Method) continue;
                     if (iface ? m.IsStatic : !m.IsStatic || !m.Decl.Has(Mods.Public)) continue;
-                    result.HostFunctions.Add(new ExHostFunction(RefTypePath(t) + "." + m.LuaName, IlTypes.Display(t.SelfType()), m.Name));
+                    result.HostFunctions.Add(new ExHostFunction(RefTypePath(t) + "." + m.IlName, IlTypes.Display(t.SelfType()), m.Name));
                 }
             }
             HostSurfaceTypes(n, result);
@@ -723,7 +722,7 @@ public sealed class IlExporter
     // --ref (host) の型の class は field の名前も host の規則
     private static string FieldName(TypeDeclSym t, Symbol sym)
     {
-        return t.IsRef ? sym.LuaName : sym.Name;
+        return t.IsRef ? sym.IlName : sym.Name;
     }
 
     // positional な record の parameter の field (--ref の型は property の host の名前)
@@ -732,7 +731,7 @@ public sealed class IlExporter
         if (!t.IsRef) return name;
         foreach (var m in t.Members)
         {
-            if (m.Kind == SymKind.Property && m.Name == name) return m.LuaName;
+            if (m.Kind == SymKind.Property && m.Name == name) return m.IlName;
         }
         return name;
     }
@@ -846,9 +845,9 @@ public sealed class IlExporter
     private ExClass ExportClass(TypeDeclSym t)
     {
         var info = new ExClass();
-        info.Name = t.LuaName;
+        info.Name = t.IlName;
         info.File = t.Decl.File.Path;
-        info.BaseName = t.BaseClass != null ? t.BaseClass.LuaName : null;
+        info.BaseName = t.BaseClass != null ? t.BaseClass.IlName : null;
         info.Fields = CollectFields(t, true);
         info.LayoutHash = LayoutHash(info.Fields);
         info.Methods = CollectMethods(t);
@@ -865,7 +864,7 @@ public sealed class IlExporter
     private ExStruct ExportStruct(TypeDeclSym t)
     {
         var info = new ExStruct();
-        info.Name = t.LuaName;
+        info.Name = t.IlName;
         var all = CollectFields(t, true);
         foreach (var f in all)
         {
@@ -884,7 +883,7 @@ public sealed class IlExporter
     private ExClass ExportInterface(TypeDeclSym t)
     {
         var info = new ExClass();
-        info.Name = t.LuaName;
+        info.Name = t.IlName;
         info.IsInterface = true;
         info.LayoutHash = "0";
         info.DisplayName = IlTypes.Display(t.SelfType());

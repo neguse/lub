@@ -205,20 +205,20 @@ Dictionary と HashSet と Queue の残りの演算、String / Math / Random / T
 
 ### 7.3 IL の形の読み替え
 
-IL のノードのいくつかは、literal をテキストで持つ、添字の写し方の印を持つ、List の操作を名前の呼び出しで書く、といった形をとる (il-reference)。VmEmitter は C backend と同じくこれを型付きの命令に読み替える。
+IL のノードのいくつかは、添字の写し方の印を持つ、List の操作を名前の呼び出しで書く、といった形をとる (il-reference)。VmEmitter は C backend と同じくこれを型付きの命令に読み替える。
 
 | IL | VM での扱い |
 |---|---|
-| `IlLit.LuaText` (literal のテキスト: `nil`、`true` / `false`、数、引用符付きの文字列) | 式の静的型で型付きの定数 (`LDK` の bit、string の定数、`LDNULL`) に読み直す |
+| `IlLit` (literal の値: Null、Bool、Int、Float、String) | 型付きの定数 (`LDK` の bit、string の定数、`LDNULL`) にする。float の位置の Int は float の値にする |
 | `IlIndex.PlusOne` / `Unchecked` | 添字は 0 始まりのまま読み、印は見ない。範囲は命令が必ず検査する |
-| `IlLen.NilElements`、`IlCall("table.insert" / "table.remove")` | List の長さと List の命令 (`LIST_LEN`、`LIST_ADD_*`、`LIST_REMOVE_AT`)。`table.remove` の添字は 1 を引いて読む |
+| `IlLen`、`IlCall("List.Add" / "List.RemoveAt")` | List の長さと List の命令 (`LIST_LEN`、`LIST_ADD_*`、`LIST_REMOVE_AT`) |
 | `IlIife` | 結果の register と終わりの label を持つ block として inline に展開する。関数は作らない |
 | `IlTernary` | 分岐と結果の register |
 | `IlMultiAssign` (分解、out 引数の戻り) | 結果の register の列 (§8.2) |
-| `IlIsLuaType` (プリミティブの型 test) | box の型の検査 (`ISTYPE`)。値型の受け手は値の有無か常に真 |
-| `IlForPairs` | List / Dictionary の Clear の形 (全部の key に `nil` を入れる) だけが来る。`LIST_CLEAR` と runtime の clear にする |
+| `IlIsPrimType` (プリミティブの型 test) | box の型の検査 (`ISTYPE`)。値型の受け手は値の有無か常に真 |
+| `IlForPairs` | List / Dictionary の Clear の形 (全部の key に null を入れる) だけが来る。`LIST_CLEAR` と runtime の clear にする |
 | `IlForeachDict` | entry の列を番号で辿る命令列 (`DICT_USED`、`DICT_LIVE`、`DICT_LDK`) |
-| `IlStructCopy` | 葉の `MOV` か、heap との間の葉の load / store。`Copiers` は読まない (特殊化済み) |
+| `IlStructCopy` | 葉の `MOV` か、heap との間の葉の load / store |
 
 ## 8. 呼び出し規約
 

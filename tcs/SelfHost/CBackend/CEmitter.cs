@@ -131,7 +131,7 @@ public sealed class CEmitter
             if (cur == ancestor) return true;
             foreach (var i in _classes[cur].Interfaces)
             {
-                if (_facts.LuaTypeName(i) == ancestor) return true;
+                if (_facts.IlTypeName(i) == ancestor) return true;
             }
             cur = _classes[cur].BaseName;
         }
@@ -1174,124 +1174,28 @@ public sealed class CEmitter
 
     private static CType TypeOfLiteral(IlLit literal)
     {
-        var text = literal.LuaText;
-        if (text == "true" || text == "false") return CType.Bool;
-        if (text == "nil") return CType.Null;
-        if (text.StartsWith("\"")) return CType.String;
-        return literal.Type == "float" || IsFloatText(text) ? CType.F32 : CType.I32;
+        if (literal.Kind == IlLitKind.Bool) return CType.Bool;
+        if (literal.Kind == IlLitKind.Null) return CType.Null;
+        if (literal.Kind == IlLitKind.String) return CType.String;
+        return literal.Kind == IlLitKind.Float ? CType.F32 : CType.I32;
     }
 
     private string RenderLiteral(IlLit literal)
     {
-        var text = literal.LuaText;
-        if (text == "true" || text == "false") return text;
-        if (text == "nil") return "NULL";
-        if (text.StartsWith("\"")) return RenderStringLiteral(text);
-        if (literal.Type == "float" || IsFloatText(text))
-        {
-            // NaN と ±∞ は語のテキスト (IlLiterals.NonFiniteText)
-            if (IlLiterals.TryNonFiniteBits(text, out int special)) return Constants.F32Bits(special);
-            float value;
-            if (!float.TryParse(text, out value))
-            {
-                CFail.Report("invalid f32 literal: " + text);
-                return "0";
-            }
-            return Constants.F32(value);
-        }
-        bool hex = text.StartsWith("0x") || text.StartsWith("0X");
-        bool parsed = hex ? TryParseHex32(Strings.From(text, 2), out int integer) : int.TryParse(text, out integer);
-        if (!parsed)
-        {
-            CFail.Report("invalid i32 literal: " + text);
-            return "0";
-        }
-        return Constants.I32(integer);
+        if (literal.Kind == IlLitKind.Bool) return literal.I != 0 ? "true" : "false";
+        if (literal.Kind == IlLitKind.Null) return "NULL";
+        if (literal.Kind == IlLitKind.String) return InternStringLiteral(Utf8List(literal.S));
+        if (literal.Kind == IlLitKind.Float) return Constants.F32(literal.F);
+        return Constants.I32(literal.I);
     }
 
-    // 16 進の数字列 (8 桁まで) を 32 bit の並びとして読む (上位の bit が立つと負の int)
-    private static bool TryParseHex32(string digits, out int value)
-    {
-        value = 0;
-        var u = new Utf8Bytes(digits);
-        if (u.Length == 0 || u.Length > 8) return false;
-        for (int i = 0; i < u.Length; i++)
-        {
-            int c = u[i];
-            int d;
-            if (c >= '0' && c <= '9') d = c - '0';
-            else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
-            else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
-            else return false;
-            value = value << 4 | d;
-        }
-        return true;
-    }
-
-    private string RenderStringLiteral(string luaText) => InternStringLiteral(DecodeLuaString(luaText));
-
-    // IL の文字列の literal (IlLiterals.QuoteString の形) を UTF-8 の byte の列に戻す (\xHH は U+00HH の文字として UTF-8 にする。C# 版と同じ)
-    private static List<int> DecodeLuaString(string text)
+    // 文字列の UTF-8 の byte の列
+    private static List<int> Utf8List(string text)
     {
         var u = new Utf8Bytes(text);
-        var decoded = new List<int>();
-        if (u.Length < 2 || u[0] != '"' || u[u.Length - 1] != '"')
-        {
-            CFail.Report("invalid Lua string literal: " + text);
-            return decoded;
-        }
-        for (int i = 1; i < u.Length - 1; i++)
-        {
-            int ch = u[i];
-            if (ch != '\\')
-            {
-                decoded.Add(ch);
-                continue;
-            }
-            if (++i >= u.Length - 1)
-            {
-                CFail.Report("invalid Lua string escape: " + text);
-                return decoded;
-            }
-            int e = u[i];
-            if (e == '\\') decoded.Add('\\');
-            else if (e == '"') decoded.Add('"');
-            else if (e == 'n') decoded.Add('\n');
-            else if (e == 'r') decoded.Add('\r');
-            else if (e == 't') decoded.Add('\t');
-            else if (e == 'x' && i + 2 < u.Length - 1 && HexDigit(u[i + 1]) >= 0 && HexDigit(u[i + 2]) >= 0)
-            {
-                int value = HexDigit(u[i + 1]) * 16 + HexDigit(u[i + 2]);
-                if (value < 0x80) decoded.Add(value);
-                else
-                {
-                    decoded.Add(0xC0 | value >> 6);
-                    decoded.Add(0x80 | value & 0x3F);
-                }
-                i += 2;
-            }
-            else
-            {
-                CFail.Report("unsupported Lua string escape: \\" + u.Slice(i, 1).ToString());
-                return decoded;
-            }
-        }
-        return decoded;
-    }
-
-    private static int HexDigit(int c)
-    {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        return -1;
-    }
-
-    // 16 進 literal (0x...) の E は桁であって指数ではない
-    private static bool IsFloatText(string text)
-    {
-        if (text.StartsWith("0x") || text.StartsWith("0X")) return false;
-        return text.Contains(".") || text.Contains("e") || text.Contains("E");
+        var bytes = new List<int>();
+        for (int i = 0; i < u.Length; i++) bytes.Add(u[i]);
+        return bytes;
     }
 
     private static CType NumericJoin(CType left, CType right, string where)
@@ -1413,7 +1317,7 @@ public sealed class CEmitter
     {
         switch (expr)
         {
-            case IlLit literal: return literal.LuaText.StartsWith("\"");
+            case IlLit literal: return literal.Kind == IlLitKind.String;
             case IlVar: return false;
             case IlParen paren: return Effectful(paren.E);
             case IlNumericConvert convert: return Effectful(convert.Value);
@@ -1498,7 +1402,6 @@ public sealed class CEmitter
             case IlBin: return "IlBin";
             case IlUn: return "IlUn";
             case IlParen: return "IlParen";
-            case IlValues: return "IlValues";
             case IlTernary: return "IlTernary";
             case IlCall: return "IlCall";
             case IlDynCall: return "IlDynCall";
@@ -1511,7 +1414,7 @@ public sealed class CEmitter
             case IlNumericConvert: return "IlNumericConvert";
             case IlRefCast: return "IlRefCast";
             case IlIsType: return "IlIsType";
-            case IlIsLuaType: return "IlIsLuaType";
+            case IlIsPrimType: return "IlIsPrimType";
             case IlIife: return "IlIife";
             case IlClosure: return "IlClosure";
             case IlMethodGroup: return "IlMethodGroup";
@@ -1858,7 +1761,7 @@ public sealed class CEmitter
         var left = RenderExpr(binary.L);
         var right = RenderExpr(binary.R);
 
-        // T? と null / T? / T の ==/!= (IL の nil 比較の残りを lifted 等価で受ける)
+        // T? と null / T? / T の ==/!= (IL の null 比較の残りを lifted 等価で受ける)
         if ((binary.Op == IlBinOp.Eq || binary.Op == IlBinOp.Ne)
             && (leftType.Kind == CTypeKind.Nullable || rightType.Kind == CTypeKind.Nullable))
             return RenderNullableEquality(binary, leftType, rightType);
@@ -2094,8 +1997,8 @@ public sealed class CEmitter
     {
         var foreign = ForeignMethod(call.Callee);
         if (foreign != null) return RenderForeignIlCall(foreign, call.Args);
-        // object / interface どうしの参照の比較 (IL の rawequal)。C の == は参照の比較なので IlBin の Eq と同じに書く
-        if (call.Callee == "rawequal")
+        // object / interface どうしの参照の比較 (IL の __tcs_refeq)。C の == は参照の比較なので IlBin の Eq と同じに書く
+        if (call.Callee == "__tcs_refeq")
             return RenderExpr(new IlBin(IlBinOp.Eq, call.Args[0], call.Args[1], null));
         var type = TypeOfCall(call);
         string callee = call.Callee;
@@ -2122,14 +2025,14 @@ public sealed class CEmitter
                 "tcs_checked_" + Strings.From(callee, ContractFacts.Len("__tcs_c")), type, values);
         }
         if (callee == "__tcs_cneg") return "tcs_checked_neg(" + RenderExpr(call.Args[0]) + ")";
-        if (callee == "print") return RenderPrint(call);
-        if (callee == "io.write")
+        if (callee == "__tcs_writeline") return RenderPrint(call);
+        if (callee == "__tcs_write")
         {
             var values = new List<TypedValue>();
             values.Add(new TypedValue(CType.String, RenderToString(UnwrapFstr(call.Args[0]))));
             return RenderOrderedCall("tcs_write_string", CType.Void, values);
         }
-        if (callee == "tostring") return RenderToString(call.Args[0]);
+        if (callee == "__tcs_str") return RenderToString(call.Args[0]);
         if (callee == "Dict.ContainsKey") return RenderDictSimple(call, "tcs_dict_contains");
         if (callee == "Dict.Remove") return RenderDictSimple(call, "tcs_dict_remove");
         if (callee == "Dict.Count")
@@ -2138,7 +2041,7 @@ public sealed class CEmitter
         // (f32 は shortest round-trip) に写す
         if (callee == "__tcs_fstr" || callee == "__tcs_bstr") return RenderToString(call.Args[0]);
         if (callee == "__tcs_nstr") return RenderNullableToString(call.Args[0]);
-        if (callee == "table.insert") return RenderListAdd(call);
+        if (callee == "List.Add") return RenderListAdd(call);
         if (IsIntrinsicCallee(call.Callee)) return RenderIntrinsic(call);
         return RenderUserCall(call);
     }
@@ -2147,7 +2050,7 @@ public sealed class CEmitter
     {
         var foreign = ForeignMethod(call.Callee);
         if (foreign != null) return TypeOfForeignIlCall(foreign, call.Args);
-        if (call.Callee == "rawequal")
+        if (call.Callee == "__tcs_refeq")
         {
             RequireArity(call.Callee, call.Args.Count, 2);
             if (CFail.Failed) return CType.Bool;
@@ -2170,14 +2073,14 @@ public sealed class CEmitter
             return CType.I32;
         }
         // Console.Write (改行なし)
-        if (call.Callee == "io.write")
+        if (call.Callee == "__tcs_write")
         {
             RequireArity("Console.Write", call.Args.Count, 1);
             if (CFail.Failed) return CType.Void;
             RenderToStringType(UnwrapFstr(call.Args[0]));
             return CType.Void;
         }
-        if (call.Callee == "print")
+        if (call.Callee == "__tcs_writeline")
         {
             if (call.Args.Count == 0) return CType.Void;
             RequireArity(call.Callee, call.Args.Count, 1);
@@ -2224,7 +2127,7 @@ public sealed class CEmitter
             RequireNullable(call.Args[0], "__tcs_nstr");
             return CType.String;
         }
-        if (call.Callee == "tostring" || call.Callee == "__tcs_fstr" || call.Callee == "__tcs_bstr")
+        if (call.Callee == "__tcs_str" || call.Callee == "__tcs_fstr" || call.Callee == "__tcs_bstr")
         {
             RequireArity(call.Callee, call.Args.Count, 1);
             if (CFail.Failed) return CType.String;
@@ -2234,7 +2137,7 @@ public sealed class CEmitter
                 CFail.Report("tostring does not support " + argument.Display());
             return CType.String;
         }
-        if (call.Callee == "table.insert")
+        if (call.Callee == "List.Add")
         {
             RequireArity(call.Callee, call.Args.Count, 2);
             if (CFail.Failed) return CType.Void;
@@ -2331,7 +2234,7 @@ public sealed class CEmitter
         var listType = TypeOf(receiver);
         if (listType.Kind != CTypeKind.List)
         {
-            CFail.Report("table.insert receiver is not a List");
+            CFail.Report("List.Add receiver is not a List");
             return CType.List(CType.Void);
         }
         if (listType.Element == null)
@@ -2388,7 +2291,7 @@ public sealed class CEmitter
         if (call.Callee is IlField field && field.Recv is IlVar recv
             && (recv.Name == "MathF" || recv.Name == "Math")
             && !_classes.ContainsKey(recv.Name) && TryResolve(recv.Name) == null)
-            return new IlCall("Math." + (field.Name == "Ceiling" ? "Ceil" : field.Name), call.Args, false, null);
+            return new IlCall("Math." + (field.Name == "Ceiling" ? "Ceil" : field.Name), call.Args, null);
         return null;
     }
 
@@ -2707,7 +2610,7 @@ public sealed class CEmitter
     }
 
     // List.Clear / Dictionary.Clear の IL の形 (IIFE: local t = recv; IlForPairs で
-    // 全ての key に nil を入れる) を認識して runtime 呼びにする
+    // 全ての key に null を入れる) を認識して runtime 呼びにする
     private bool TryEmitClearIife(IlIife iife)
     {
         if (iife.Stats.Count != 2) return false;
@@ -2720,7 +2623,7 @@ public sealed class CEmitter
         if (!(pairs.Body.Stats[0] is IlAssign assign)) return false;
         if (!(assign.Target is IlIndex targetIndex) || targetIndex.PlusOne) return false;
         if (!(targetIndex.Recv is IlVar target)) return false;
-        if (!(assign.Value is IlLit nilLit) || nilLit.LuaText != "nil") return false;
+        if (!IsNilLiteral(assign.Value)) return false;
         if (coll.Name != tmp || target.Name != tmp)
             return false;
         var type = TypeOf(recv);
@@ -2872,7 +2775,7 @@ public sealed class CEmitter
 
     private int _comparatorSerial;
 
-    private static bool IsNilLiteral(IlExpr expr) => expr is IlLit lit && lit.LuaText == "nil";
+    private static bool IsNilLiteral(IlExpr expr) => IlLiterals.IsNull(expr);
 
     // 戻り値は長さの関数 (Len)、at に要素の関数 (At)
     private static string SeqFns(CType seq, out string at)
@@ -3912,7 +3815,7 @@ public sealed class CEmitter
         if (_intrinsicPrefixes == null)
         {
             var set = new HashSet<string>();
-            foreach (var w in "String. Math. List. TcsQueue. TcsHashSet. string. math. Random. Char.".Split(' ')) set.Add(w);
+            foreach (var w in "String. Math. List. TcsQueue. TcsHashSet. Random. Char.".Split(' ')) set.Add(w);
             _intrinsicPrefixes = set;
         }
         return _intrinsicPrefixes;
@@ -3923,7 +3826,7 @@ public sealed class CEmitter
         if (_intrinsicNames == null)
         {
             var set = new HashSet<string>();
-            foreach (var w in "tonumber os.getenv table.remove __tcs_trunc __tcs_char Dict.Keys Dict.Values".Split(' ')) set.Add(w);
+            foreach (var w in "__tcs_fparse __tcs_iparse __tcs_getenv __tcs_fmod __tcs_cstr __tcs_upper __tcs_lower __tcs_format List.RemoveAt __tcs_trunc __tcs_char Dict.Keys Dict.Values".Split(' ')) set.Add(w);
             _intrinsicNames = set;
         }
         return _intrinsicNames;
@@ -3953,7 +3856,7 @@ public sealed class CEmitter
 
     private CType TypeOfIntrinsic(IlCall rawCall)
     {
-        var call = new IlCall(NormalizeCallee(rawCall.Callee), rawCall.Args, rawCall.NilElements, rawCall.Origin);
+        var call = new IlCall(NormalizeCallee(rawCall.Callee), rawCall.Args, rawCall.Origin);
         var args = call.Args;
         if (call.Callee.StartsWith("Random."))
             return TypeOfRandomOp(call);
@@ -3968,7 +3871,8 @@ public sealed class CEmitter
             if (call.Callee == "Char.ConvertFromUtf32") return CType.String;
             return CType.Bool;
         }
-        if (call.Callee.StartsWith("List."))
+        // List.RemoveAt は下の switch (取り除いた要素を値にする)
+        if (call.Callee.StartsWith("List.") && call.Callee != "List.RemoveAt")
             return TypeOfListOp(call);
         if (call.Callee.StartsWith("TcsQueue."))
             return TypeOfQueueOp(call);
@@ -3986,56 +3890,47 @@ public sealed class CEmitter
                 if (CFail.Failed) return CType.Void;
                 RequireType(CType.I32, TypeOf(args[0]), "(char) cast");
                 return CType.I32;
-            case "tonumber":
+            case "__tcs_fparse":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
-                RequireType(CType.String, TypeOf(args[0]), "tonumber");
+                RequireType(CType.String, TypeOf(args[0]), "float.Parse");
                 return CType.F32;
-            case "math.tointeger":
-            {
+            case "__tcs_iparse":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
-                IlCall? inner = null;
-                if (args[0] is IlCall first && first.Callee == "tonumber" && first.Args.Count == 1) inner = first;
-                if (inner == null)
-                {
-                    CFail.Report("math.tointeger is only supported on tonumber()");
-                    return CType.Void;
-                }
-                RequireType(CType.String, TypeOf(inner.Args[0]), "int.Parse");
+                RequireType(CType.String, TypeOf(args[0]), "int.Parse");
                 return CType.I32;
-            }
-            case "math.fmod":
+            case "__tcs_fmod":
                 RequireArity(call.Callee, args.Count, 2);
                 if (CFail.Failed) return CType.Void;
                 NumericJoin(TypeOf(args[0]), TypeOf(args[1]), "fmod");
                 return CType.F32;
-            case "os.getenv":
+            case "__tcs_getenv":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
-                RequireType(CType.String, TypeOf(args[0]), "os.getenv");
+                RequireType(CType.String, TypeOf(args[0]), "Environment.GetEnvironmentVariable");
                 return CType.String;
-            case "string.char":
+            case "__tcs_cstr":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
-                RequireType(CType.I32, TypeOf(args[0]), "string.char");
+                RequireType(CType.I32, TypeOf(args[0]), "char to string");
                 return CType.String;
-            case "string.upper":
-            case "string.lower":
+            case "__tcs_upper":
+            case "__tcs_lower":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
                 RequireType(CType.String, TypeOf(args[0]), call.Callee);
                 return CType.String;
-            case "string.format":
+            case "__tcs_format":
                 if (args.Count == 0)
                 {
-                    CFail.Report("string.format: missing format");
+                    CFail.Report("__tcs_format: missing format");
                     return CType.Void;
                 }
-                RequireType(CType.String, TypeOf(args[0]), "string.format");
+                RequireType(CType.String, TypeOf(args[0]), "__tcs_format");
                 for (var i = 1; i < args.Count; i++) FormatArgKind(TypeOf(args[i]));
                 return CType.String;
-            case "table.remove":
+            case "List.RemoveAt":
                 RequireArity(call.Callee, args.Count, 2);
                 if (CFail.Failed) return CType.Void;
                 RequireType(CType.I32, TypeOf(args[1]), "RemoveAt index");
@@ -4062,7 +3957,7 @@ public sealed class CEmitter
 
     private string RenderIntrinsic(IlCall rawCall)
     {
-        var call = new IlCall(NormalizeCallee(rawCall.Callee), rawCall.Args, rawCall.NilElements, rawCall.Origin);
+        var call = new IlCall(NormalizeCallee(rawCall.Callee), rawCall.Args, rawCall.Origin);
         var type = TypeOfIntrinsic(call);
         // 型付けが誤りを記録したら引数を見ない (C# 版は例外で抜けた)
         if (CFail.Failed) return "";
@@ -4091,7 +3986,7 @@ public sealed class CEmitter
             }
             return $"{fn}({RenderExpr(args[0])})";
         }
-        if (call.Callee.StartsWith("List."))
+        if (call.Callee.StartsWith("List.") && call.Callee != "List.RemoveAt")
             return RenderListOp(call);
         if (call.Callee.StartsWith("TcsQueue."))
             return RenderQueueOp(call);
@@ -4104,35 +3999,35 @@ public sealed class CEmitter
                 return $"tcs_trunc_f32({RenderExpr(args[0])})";
             case "__tcs_char":
                 return $"tcs_char_cast({RenderExpr(args[0])})";
-            case "tonumber":
+            case "__tcs_fparse":
                 return $"tcs_parse_f32_or_fault({RenderExpr(args[0])})";
-            case "math.tointeger":
-                return $"tcs_parse_i32_or_fault({RenderExpr(((IlCall)args[0]).Args[0])})";
-            case "math.fmod":
+            case "__tcs_iparse":
+                return $"tcs_parse_i32_or_fault({RenderExpr(args[0])})";
+            case "__tcs_fmod":
             {
                 var values = new List<TypedValue>();
                 values.Add(new TypedValue(CType.F32, RenderExpr(args[0])));
                 values.Add(new TypedValue(CType.F32, RenderExpr(args[1])));
                 return RenderOrderedCall("fmodf", type, values);
             }
-            case "os.getenv":
+            case "__tcs_getenv":
                 return $"tcs_getenv({RenderExpr(args[0])})";
-            case "string.char":
+            case "__tcs_cstr":
                 return $"tcs_string_from_byte({RenderExpr(args[0])})";
-            case "string.upper":
+            case "__tcs_upper":
                 return $"tcs_string_map_case({RenderExpr(args[0])}, 1)";
-            case "string.lower":
+            case "__tcs_lower":
                 return $"tcs_string_map_case({RenderExpr(args[0])}, 0)";
-            case "string.format":
+            case "__tcs_format":
                 return RenderFormat(call);
-            case "table.remove":
+            case "List.RemoveAt":
             {
                 var list = Temp("list");
                 var at = Temp("index");
                 var removed = Temp("removed");
                 var elem = type.CName;
                 return $"({{ TcsList *{list} = {RenderExpr(args[0])}; " +
-                    $"int32_t {at} = ({RenderExpr(args[1])}) - INT32_C(1); " +
+                    $"int32_t {at} = {RenderExpr(args[1])}; " +
                     $"{elem} {removed} = *({elem} *)tcs_list_at({list}, {at}); " +
                     $"tcs_list_remove_at({list}, {at}); {removed}; }})";
             }
@@ -4160,7 +4055,7 @@ public sealed class CEmitter
         return type;
     }
 
-    // ---- string.format ----
+    // ---- __tcs_format (printf の書式) ----
     private static string FormatArgKind(CType type)
     {
         switch (type.Kind)
@@ -4170,7 +4065,7 @@ public sealed class CEmitter
             case CTypeKind.Bool: return "TCS_FMT_BOOL";
             case CTypeKind.String: return "TCS_FMT_STR";
         }
-        CFail.Report($"string.format does not support {type.Display()}");
+        CFail.Report($"__tcs_format does not support {type.Display()}");
         return "";
     }
 
@@ -4207,19 +4102,19 @@ public sealed class CEmitter
         var ok = false;
         var kind = "";
         var digits = "";
-        if (spec is IlLit lit)
+        if (spec is IlLit lit && lit.Kind == IlLitKind.String)
         {
-            var u = new Utf8Bytes(lit.LuaText);
+            var u = new Utf8Bytes(lit.S);
             var n = u.Length;
-            if (n >= 3 && u[0] == '"' && u[n - 1] == '"' && ContractFacts.IndexOfByte(letters, u[1]) >= 0 && n - 3 <= 9)
+            if (n >= 1 && ContractFacts.IndexOfByte(letters, u[0]) >= 0 && n - 1 <= 9)
             {
                 ok = true;
-                for (var i = 2; i < n - 1; i++)
+                for (var i = 1; i < n; i++)
                 {
                     if (u[i] < '0' || u[i] > '9') ok = false;
                 }
-                kind = u.Slice(1, 1).ToString();
-                digits = u.Slice(2, n - 3).ToString();
+                kind = u.Slice(0, 1).ToString();
+                digits = u.Slice(1, n - 1).ToString();
             }
         }
         if (!ok)
@@ -4387,7 +4282,7 @@ public sealed class CEmitter
             case "FormatEnum": return RenderFormatEnum(call);
             case "JoinEnum":
             {
-                var table = EnumTable(((IlLit)args[2]).LuaText);
+                var table = EnumTable(((IlLit)args[2]).S);
                 var sequence = TypeOf(args[1]);
                 var sep = Temp("sep");
                 var seq = Temp("enum_values");
@@ -4886,7 +4781,7 @@ public sealed class CEmitter
 
     private string RenderFormatEnum(IlCall call)
     {
-        var table = EnumTable(((IlLit)call.Args[1]).LuaText);
+        var table = EnumTable(((IlLit)call.Args[1]).S);
         var type = TypeOf(call.Args[0]);
         if (type.Kind != CTypeKind.Nullable) return EnumFormatText(RenderExpr(call.Args[0]), table);
         var temp = Temp("opt");
@@ -4897,12 +4792,12 @@ public sealed class CEmitter
             $"{temp}.has ? {formatted} : {empty}; }})";
     }
 
-    private EnumTableInfo EnumTable(string luaText)
+    private EnumTableInfo EnumTable(string specText)
     {
         EnumTableInfo? existing;
-        if (_enumTables.TryGetValue(luaText, out existing)) return existing;
+        if (_enumTables.TryGetValue(specText, out existing)) return existing;
         // spec は UTF-8 の byte の列のまま読む (',' と ':' は多 byte の文字の中に現れないので、C# 版の文字の分割と同じ)
-        var spec = DecodeLuaString(luaText);
+        var spec = Utf8List(specText);
         var flags = spec.Count > 0 && spec[0] == '*';
         var entryNames = new List<List<int>>();
         var entryValues = new List<int>();
@@ -4920,14 +4815,14 @@ public sealed class CEmitter
                 }
                 if (colon < 0)
                 {
-                    CFail.Report($"invalid enum format spec: {luaText}");
+                    CFail.Report($"invalid enum format spec: {specText}");
                 }
                 else
                 {
                     var name = new List<int>();
                     for (var j = segmentStart; j < colon; j++) name.Add(spec[j]);
                     entryNames.Add(name);
-                    entryValues.Add(EnumSpecValue(spec, colon + 1, i, luaText));
+                    entryValues.Add(EnumSpecValue(spec, colon + 1, i, specText));
                 }
             }
             segmentStart = i + 1;
@@ -4947,13 +4842,13 @@ public sealed class CEmitter
         _literalDecls.Add($"static const int32_t {values}[] = {{ " +
             $"{valueList} }};");
         var table = new EnumTableInfo(names, values, entryValues.Count, flags);
-        _enumTables[luaText] = table;
+        _enumTables[specText] = table;
         return table;
     }
 
     // spec の byte [start, end) の 10 進の整数 (先頭の符号を許す。C# 版の int.Parse(NumberStyles.AllowLeadingSign))。
     // 負の側で積むので int.MinValue も溢れない
-    private static int EnumSpecValue(List<int> spec, int start, int end, string luaText)
+    private static int EnumSpecValue(List<int> spec, int start, int end, string specText)
     {
         var negative = false;
         var i = start;
@@ -4964,7 +4859,7 @@ public sealed class CEmitter
         }
         if (i >= end)
         {
-            CFail.Report($"invalid enum format spec: {luaText}");
+            CFail.Report($"invalid enum format spec: {specText}");
             return 0;
         }
         var value = 0;
@@ -4973,7 +4868,7 @@ public sealed class CEmitter
             var c = spec[i];
             if (c < '0' || c > '9')
             {
-                CFail.Report($"invalid enum format spec: {luaText}");
+                CFail.Report($"invalid enum format spec: {specText}");
                 return 0;
             }
             value = value * 10 - (c - '0');

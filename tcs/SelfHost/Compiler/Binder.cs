@@ -631,12 +631,12 @@ public sealed class Binder
         // 予約語 (LuaNames.IsReserved) と、型の global 名 (IL は型を名前で参照する) を避ける。
         // 改名した名前はファイルの他の識別子と重ならないものにする
         string ln = l.Name;
-        if (LuaNames.IsReserved(ln) || _c.TypeLuaNames.Contains(ln))
+        if (LuaNames.IsReserved(ln) || _c.TypeIlNames.Contains(ln))
         {
             ln = ln + "_";
-            while (LuaNames.IsReserved(ln) || _c.TypeLuaNames.Contains(ln) || at.File.Identifiers.Contains(ln)) ln = ln + "_";
+            while (LuaNames.IsReserved(ln) || _c.TypeIlNames.Contains(ln) || at.File.Identifiers.Contains(ln)) ln = ln + "_";
         }
-        l.LuaName = ln;
+        l.IlName = ln;
         l.Depth = _depth;
         _locals!.Vars[l.Name] = l;
     }

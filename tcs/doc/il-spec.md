@@ -32,7 +32,7 @@ module / class / record class / enum / interface / method / field。
 `V`（struct / record struct）/ `T?`（Nullable、T は i32 /
 f32 / bool / enum / V）/ `T[]` / `List<T>` / `Queue<T>` / `HashSet<T>` / `Dictionary<K,V>` /
 関数型（closure）/ enum (= i32) / char (= i32 の code unit。文字列化は
-`string.char(c)` で 1 byte。literal は ASCII のみ、T251)。
+`IlCall("__tcs_cstr", [c])` で 1 byte。literal は ASCII のみ、T251)。
 
 - tcs VM と C は generic を閉じた型ごとに単相化した IL を読む。IL ノードはすべて単型（examples 決定 3）
 - null は ref・string・List・Queue・HashSet・Dict・関数型の値。i32 / f32 / bool / V は
@@ -140,7 +140,7 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   copy せずに渡すため、呼び出し側では copy できない）。copy constructor
   (`new List<T>(source)`) は新しい List に要素の copy を入れる（IL は末尾引数に
   `S.__copy` 参照を付け、要素を値で写す backend は読まなくてよい）
-- static method の method group (IlMethodGroup) の struct parameter も、lambda と同じく受ける側で copy する。readonly struct と `T?` の parameter は copy しない (IlMethodGroup の CopyTypes が parameter ごとに copy の要否を持つ)。tcs VM の method group は関数を直接指す closure で struct を葉の register の値で渡し、C は値渡しの thunk なので、どちらも copy を足さない
+- static method の method group (IlMethodGroup) の struct parameter も、lambda と同じく受ける側で copy する。readonly struct と `T?` の parameter は copy しない。tcs VM の method group は関数を直接指す closure で struct を葉の register の値で渡し、C は値渡しの thunk なので、どちらも copy を足さない
 - out parameter は呼び出しごとの新しい変数で、呼び出しの正常な完了で値が渡る。自作メソッドの受け手は `out var` / `out _` と、呼び出しの中から見えない局所変数 (lambda に capture されない物) だけなので (TCS1001)、out を別名で観測する手段は無い。IL は method の out parameter を `ExMethod.OutParameters` に並べ (本文は parameter に代入する)、呼び出しを `IlMultiAssign` (受け手は [戻り値, out...]、値は out を除いた引数の呼び出し) で表す。tcs VM は戻り値の後ろの register で、C はポインタで写す
 - struct 配列の要素は互いに独立した place。連続メモリ配置は backend 表現の
   自由であり IL の意味論ではない
@@ -223,7 +223,7 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
   `G`、`G0`、`R` は全部の桁。精度 p の `G` は有効数字 p 桁に丸めて、指数 X が X < p なら固定小数、それ以外は `d.dddE+XX` で書く（末尾の 0 は書かない）。`E`、`F`、`N` の形は f32 と同じで、`E` と `G` の丸めのちょうど中間は絶対値の大きい方へ。
   `D` は符号を除いて p 桁以上。`X` は 32 bit の 2 の補数の 16 進で p 桁以上。`T?` の値なしは空文字列。
   runtime/fmt の同じ実装が文字列を作る。
-  それ以外の書式は printf の書式に写す（`string.format`）
+  それ以外の書式は printf の書式に写す（`IlCall("__tcs_format", [fmt, v])`）
 - enum (と enum の `T?`) の文字列化は `IlCall("String.FormatEnum", [v, spec])`。spec は string literal で、`名前:値` を `,` で並べる。`[Flags]` (と書式 "F") は先頭に `*` を付けて全 member を .NET の EnumInfo と同じ並び (値の符号なし昇順) で持ち、それ以外は値ごとに .NET が選ぶ名前を 1 つ持つ。値は実行時の 32 bit の 2 の補数 (uint の 0x80000000 は int.MinValue)。`T?` の値なしは空文字列
 - List.Sort の結果と比較関数の呼び出し列 (回数・順・引数) は .NET の introsort (dotnet/runtime の ArraySortHelper<T>。比較なしの float は NaN を先頭に寄せてから残りを並べる) と同じで、同値の要素の並びも一致する。
   比較関数が不整合で走査が区間の外に出る位置で、.NET は例外、tcs は fault になる

@@ -76,7 +76,7 @@ public sealed class IlBuild
         {
             var dl = d.Local;
             // discard (`out var _`) は型を持たない
-            acc.Add(new IlLocal(dl != null ? dl.LuaName : "_", null, dl != null && d.Text != "_" ? IlTypes.Display(dl.Type) : null, origin));
+            acc.Add(new IlLocal(dl != null ? dl.IlName : "_", null, dl != null && d.Text != "_" ? IlTypes.Display(dl.Type) : null, origin));
         }
     }
 
@@ -88,7 +88,6 @@ public sealed class IlBuild
         {
             case NodeKind.Return:
             {
-                if (stmt.A != null && IsInMultiReturnMethod()) return BuildTupleReturnInto(stmt.A, origin, acc);
                 IlExpr? value = null;
                 if (stmt.A != null)
                 {
@@ -111,7 +110,7 @@ public sealed class IlBuild
                         if (init == null) return false;
                         init = WrapStructCopy(v.A, init);
                     }
-                    var name = v.Local != null ? v.Local.LuaName : v.Text;
+                    var name = v.Local != null ? v.Local.IlName : v.Text;
                     var declaredType = v.Local != null ? IlTypes.Display(LocalDisplayType(stmt, v.Local.Type)) : null;
                     // 初期化子の条件式は文にする (return の位置と同じ方針)
                     if (init is IlTernary lt)
@@ -173,7 +172,7 @@ public sealed class IlBuild
                 var cond = BuildExpr(stmt.A!);
                 var body = BuildBlock(stmt.B!);
                 if (cond == null || body == null) return false;
-                acc.Add(new IlWhile(cond, body, null, false, origin));
+                acc.Add(new IlWhile(cond, body, null, origin));
                 return true;
             }
             case NodeKind.Block:
@@ -343,7 +342,6 @@ public sealed class IlBuild
     // method の式本体は void でも return の文にする (void の method なら backend は式を評価して捨ててから戻る)。値の copy は void でない本体だけ
     public bool BuildReturnInto(Node expr, List<IlStat> acc)
     {
-        if (IsInMultiReturnMethod()) return BuildTupleReturnInto(expr, Origin(expr), acc);
         AddPreDecls(expr, acc);
         var sym = Ctx.CurrentFunction;
         var built = BuildExpr(expr);
@@ -371,14 +369,6 @@ public sealed class IlBuild
                     return true;
                 }
                 if (IsUserOutMethod(expr.Sym)) return BuildUserOutStatInto(expr, expr.Sym!, origin, acc);
-                // multi-return の method の文の位置の呼び出しは値を詰めない
-                if (expr.Sym != null && IsMultiReturnMethod(expr.Sym))
-                {
-                    var tupleCall = BuildInvocationCall(expr);
-                    if (tupleCall == null) return false;
-                    acc.Add(new IlCallStat(tupleCall, origin));
-                    return true;
-                }
                 if (BuildDictAddStatInto(expr, origin, acc)) return true;
                 if (IsRefOutCall(expr)) return BuildRefMultiReturnStatInto(expr, origin, acc);
                 var call = BuildExpr(expr);
@@ -410,7 +400,7 @@ public sealed class IlBuild
         if (t == null || t.Kind == TypeKind.Null || t.Kind == TypeKind.Error) t = src.Type;
         if (t == null) return built;
         if (IlTypes.IsNullableValueType(t) && IlTypes.IsMutableStruct(t.Elem))
-            return new IlStructCopy(built, TypeName(t.Elem), true, StructCopiers(t.Elem, false), null);
+            return new IlStructCopy(built, TypeName(t.Elem), true, null);
         return CopyIfMutableStruct(t, built);
     }
 
@@ -678,7 +668,7 @@ public sealed class IlBuild
                 // int? → float? は値があるときだけ変換する
                 if (IlTypes.UnwrapNullable(conv.Type!).Kind != TypeKind.Float) return inner;
                 if (IsFloatConverted(inner) || promoted) return inner;
-                if (!IlTypes.IsNullableValueType(NaturalType(conv.A!))) return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", null, null));
+                if (!IlTypes.IsNullableValueType(NaturalType(conv.A!))) return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", false, null));
                 return new IlLiftedUn(IlUnOp.ToFloat, inner, null);
             }
             case ConvKind.IntToFloat:
@@ -693,7 +683,7 @@ public sealed class IlBuild
                     return ApplyNullableConversion(conv, FloatLit(f));
                 }
                 // int → float? は数の変換の後に T? へ包む
-                return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", null, null));
+                return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", false, null));
             }
         }
         return Unported("conversion " + conv.Info, conv);
@@ -713,39 +703,13 @@ public sealed class IlBuild
     {
         while (built is IlParen paren) built = paren.E;
         if (built is IlNumericConvert nc && nc.TargetType == "float") return true;
-        if (built is IlLit lit && lit.Type == "float") return true;
+        if (built is IlLit lit && lit.Kind == IlLitKind.Float) return true;
         if (built is IlLiftedUn lu && lu.Op == IlUnOp.ToFloat) return true;
         return false;
     }
 
-    // f32 の literal。負の数は括弧で包む (`a - -1.0` の連結で `--` にしない)
-    public static IlExpr FloatLit(float value)
-    {
-        var nonFinite = IlLiterals.NonFiniteText(value);
-        if (nonFinite != null)
-        {
-            var special = new IlLit(nonFinite, "float", null);
-            if (value < 0) return new IlParen(special, null);
-            return special;
-        }
-        var text = value.ToString();
-        if (!text.Contains(".") && !text.Contains("E")) text = text + ".0";
-        var lit = new IlLit(text, "float", null);
-        if (value < 0) return new IlParen(lit, null);
-        return lit;
-    }
-
-    public static IlExpr LitFromConst(string text, bool isFloat)
-    {
-        if (text == "-2147483648") return IntMinValueIl();
-        return new IlLit(text, isFloat ? "float" : null, null);
-    }
-
-    // int.MinValue は i32 の literal (2147483648 の符号の反転) では書けないので、式で書く
-    private static IlExpr IntMinValueIl()
-    {
-        return new IlParen(new IlBin(IlBinOp.Sub, new IlUn(IlUnOp.Neg, new IlLit("2147483647", null, null), null), new IlLit("1", null, null), null), null);
-    }
+    // f32 の literal
+    public static IlExpr FloatLit(float value) => IlLiterals.Float(value);
 
     private IlExpr? BuildLiteral(Node lit)
     {
@@ -753,51 +717,18 @@ public sealed class IlBuild
         {
             case NodeKind.IntLit:
             case NodeKind.FloatLit:
-                return new IlLit(ConvertNumericLiteral(lit), lit.Kind == NodeKind.FloatLit ? "float" : null, null);
+                if (lit.Const == null) return Unported("literal without a value", lit);
+                return lit.Kind == NodeKind.FloatLit ? IlLiterals.Float(lit.Const.F) : IlLiterals.Int(lit.Const.I);
             case NodeKind.StringLit:
-                return new IlLit(IlLiterals.QuoteString(lit.Text), null, null);
+                return IlLiterals.Str(lit.Text);
             case NodeKind.CharLit:
-                return new IlLit("" + lit.Value, null, null);
+                return IlLiterals.Int(lit.Value);
             case NodeKind.BoolLit:
-                return new IlLit(lit.Value != 0 ? "true" : "false", null, null);
+                return IlLiterals.Bool(lit.Value != 0);
             case NodeKind.NullLit:
-                return new IlLit("nil", null, null);
+                return IlLiterals.Null();
         }
         return Unported("literal", lit);
-    }
-
-    // 数の literal の字面: 桁区切りと接尾辞を外す。2 進は 10 進に、16 進は区切りだけ外す。float の literal は小数点も指数も無ければ ".0" を付ける
-    private static string ConvertNumericLiteral(Node lit)
-    {
-        var text = lit.File.Slice(lit.Pos, lit.End);
-        if (text.StartsWith("0b") || text.StartsWith("0B")) return "" + (lit.Const != null ? lit.Const.I : 0);
-        // 16 進の字面は数字に f / d を含むので、suffix は u / l だけを除く (0xFFu)
-        if (text.StartsWith("0x") || text.StartsWith("0X")) return StripIntegerSuffix(text).Replace("_", "");
-        var result = StripNumericSuffix(text).Replace("_", "");
-        if (lit.Kind == NodeKind.FloatLit && !result.Contains(".") && !result.Contains("e") && !result.Contains("E"))
-            result = result + ".0";
-        return result;
-    }
-
-    private static string StripIntegerSuffix(string text)
-    {
-        var u = new TinySystem.Text.Utf8Bytes(text);
-        int n = u.Length;
-        while (n > 0 && (u[n - 1] == 'u' || u[n - 1] == 'U' || u[n - 1] == 'l' || u[n - 1] == 'L')) n--;
-        return u.Slice(0, n).ToString();
-    }
-
-    private static string StripNumericSuffix(string text)
-    {
-        var u = new TinySystem.Text.Utf8Bytes(text);
-        int n = u.Length;
-        while (n > 0)
-        {
-            int c = u[n - 1];
-            if (c == 'f' || c == 'F' || c == 'd' || c == 'D' || c == 'm' || c == 'M' || c == 'u' || c == 'U' || c == 'l' || c == 'L') n--;
-            else break;
-        }
-        return u.Slice(0, n).ToString();
     }
 
     // 補間の文字列 (揃えは literal だけ)
@@ -810,7 +741,7 @@ public sealed class IlBuild
             {
                 if (content.Kind == NodeKind.StringLit)
                 {
-                    parts.Add(new IlLit(IlLiterals.QuoteString(content.Text), null, null));
+                    parts.Add(IlLiterals.Str(content.Text));
                     continue;
                 }
                 var inner = BuildExpr(content.A!);
@@ -826,19 +757,19 @@ public sealed class IlBuild
                     var enumName = WrapEnumFormat(holeType, inner, format);
                     if (enumName is IlCall ec && ec.Callee == "String.FormatEnum") rendered = enumName;
                     if (rendered == null) rendered = WrapNumberFormat(holeType, inner, format);
-                    if (rendered == null) rendered = new IlCall("string.format", Two(new IlLit(IlLiterals.QuoteString(ConvertFormatSpecifier(format)), null, null), inner), false, null);
+                    if (rendered == null) rendered = new IlCall("__tcs_format", Two(IlLiterals.Str(ConvertFormatSpecifier(format)), inner), null);
                 }
                 else rendered = WrapFloatToString(content.A!, inner);
                 if (rendered == null) return null;
                 if (content.B != null)
                 {
                     if (!content.B.HasConst || content.B.Const == null || content.B.Const.Kind != ConstKind.Int) return null;
-                    rendered = new IlCall("string.format", Two(new IlLit(IlLiterals.QuoteString("%" + content.B.Const.I + "s"), null, null), rendered), false, null);
+                    rendered = new IlCall("__tcs_format", Two(IlLiterals.Str("%" + content.B.Const.I + "s"), rendered), null);
                 }
                 parts.Add(rendered);
             }
         }
-        if (parts.Count == 0) return new IlLit("\"\"", null, null);
+        if (parts.Count == 0) return IlLiterals.Str("");
         var result = parts[0];
         for (int i = 1; i < parts.Count; i++) result = new IlBin(IlBinOp.Concat, result, parts[i], null);
         // `..` の連接は atomic でない (IlLen / IlField が先頭の要素にだけ結合する) ので、受け手の位置でも安全なよう括弧で閉じる
@@ -876,7 +807,7 @@ public sealed class IlBuild
             for (int i = 1; i < n; i++) digits = digits * 10 + (u[i] - '0');
             spec = kindText + digits;
         }
-        return new IlCall(isFloat ? "String.FormatFloat" : "String.FormatInt", Two(value, new IlLit(IlLiterals.QuoteString(spec), null, null)), false, null);
+        return new IlCall(isFloat ? "String.FormatFloat" : "String.FormatInt", Two(value, IlLiterals.Str(spec)), null);
     }
 
     private static bool AllZeros(string s)
@@ -1031,7 +962,7 @@ public sealed class IlBuild
             && !IsConditionalCore(whenNotNull))
             whenNotNull = new IlNullableWrap(whenNotNull, IlTypes.Display(resultType), null);
         var ca = new IlVar("__tcs_ca", null);
-        IlExpr cond = nullableValue ? new IlNullableHasValue(ca, null) : new IlBin(IlBinOp.Ne, ca, new IlLit("nil", null, null), null);
+        IlExpr cond = nullableValue ? new IlNullableHasValue(ca, null) : new IlBin(IlBinOp.Ne, ca, IlLiterals.Null(), null);
         var thenStats = new List<IlStat>();
         if (nullableValue) thenStats.Add(new IlLocal(objName, new IlNullableValue(ca, null), null, null));
         thenStats.Add(new IlReturn(whenNotNull, null));
@@ -1078,7 +1009,7 @@ public sealed class IlBuild
         var recvNode = binding.A!;
         // struct の custom property は受け手を copy した値で読む (`S?` の .Value は copy)
         if (root == binding && binding.Kind == NodeKind.Member && binding.Sym != null && binding.Sym.Kind == SymKind.Property && IsCustomProperty(binding.Sym) && IlTypes.IsUserStruct(receiverType))
-            return new IlCall(TypeRef(binding.Sym.Owner!) + ".get_" + N(binding.Sym), One(ConditionalStructReceiver(obj, receiverType)), false, null);
+            return new IlCall(TypeRef(binding.Sym.Owner!) + ".get_" + N(binding.Sym), One(ConditionalStructReceiver(obj, receiverType)), null);
         var savedType = recvNode.Type;
         recvNode.Type = receiverType;
         var outerSub = _subNode;
@@ -1101,52 +1032,12 @@ public sealed class IlBuild
     private IlExpr ConditionalStructReceiver(IlExpr obj, TypeSym type)
     {
         if (!IlTypes.IsMutableStruct(type)) return obj;
-        return new IlStructCopy(obj, TypeName(type), false, StructCopiers(type, false), null);
+        return new IlStructCopy(obj, TypeName(type), false, null);
     }
 
-    // ---- タプルと分解。タプルの値は struct (TinySystem/ValueTuple.cs)。
-    // タプルを返す method を multi-return にする形は ForCBackend でない IlContext のときだけで、IlExporter は使わない
+    // ---- タプルと分解。タプルの値は struct (TinySystem/ValueTuple.cs)
 
     private int _deconstructTemp;
-
-    // multi-return の method。戻り値の宣言がタプルの method だけ。実装する interface の method の戻り値もタプルであること
-    public bool IsMultiReturnMethod(Symbol m)
-    {
-        if (Ctx.ForCBackend || m.Kind != SymKind.Method || m.Builtin != "" || m.Owner == null || m.Owner.IsRef) return false;
-        if (m.Type.Kind != TypeKind.Tuple || m.HasOut || m.Decl == null || m.Decl.Kind != NodeKind.Method) return false;
-        foreach (var iface in IlTypes.AllInterfaces(m.Owner))
-        {
-            foreach (var member in iface.Decl!.Members)
-            {
-                if (member.Name != m.Name) continue;
-                if (member.Kind != SymKind.Method) return false;
-                if (!SameParamTypes(m, member, iface)) continue;
-                if (member.Type.Kind != TypeKind.Tuple) return false;
-            }
-        }
-        return true;
-    }
-
-    private static bool SameParamTypes(Symbol impl, Symbol iface, TypeSym ifaceType)
-    {
-        if (impl.ParamCount != iface.ParamCount) return false;
-        for (int i = 0; i < impl.ParamCount; i++)
-        {
-            if (!TypeSym.Same(impl.Params![i].Type, iface.Params![i].Type.Subst(ifaceType.Args, null))) return false;
-        }
-        return true;
-    }
-
-    // return の位置が multi-return の method の本体の中 (lambda の中ではない) か
-    private bool IsInMultiReturnMethod()
-    {
-        return Ctx.CurrentLambdaVoid == 0 && Ctx.CurrentFunction != null && IsMultiReturnMethod(Ctx.CurrentFunction);
-    }
-
-    private static IlExpr PackTuple(Symbol m, IlExpr call)
-    {
-        return new IlCall("__tcs_tuple" + m.Type.Args!.Count, One(call), false, null);
-    }
 
     private static Node WithoutParens(Node e)
     {
@@ -1172,51 +1063,7 @@ public sealed class IlBuild
                 entries.Add(new IlTableEntry(null, WrapStructCopy(el, value), "Item" + (i + 1)));
             }
         }
-        return new IlTable(entries, null, null, false, null, false, null);
-    }
-
-    // `return (a, b)` / `return F()` は値のまま返し、それ以外は local から要素を並べる
-    private bool BuildTupleReturnInto(Node value, IlPos? origin, List<IlStat> acc)
-    {
-        var core = WithoutParens(StripConv(value));
-        if (core.Kind == NodeKind.Tuple)
-        {
-            var items = new List<IlExpr>();
-            if (core.List != null)
-            {
-                foreach (var a in core.List)
-                {
-                    var el = TupleElementNode(a);
-                    var item = BuildExpr(el);
-                    if (item == null) return false;
-                    items.Add(WrapStructCopy(el, item));
-                }
-            }
-            acc.Add(new IlReturn(new IlValues(items, null), origin));
-            return true;
-        }
-        if (core.Kind == NodeKind.Call && core.Sym != null && IsMultiReturnMethod(core.Sym))
-        {
-            var forwarded = BuildInvocationCall(core);
-            if (forwarded == null) return false;
-            acc.Add(new IlReturn(forwarded, origin));
-            return true;
-        }
-        var built = BuildExpr(value);
-        if (built == null) return false;
-        var tuple = NaturalType(value);
-        bool fresh = IsFreshStructIl(built) || IsFreshStructValue(value);
-        var fields = new List<IlExpr>();
-        for (int i = 0; i < tuple.Args!.Count; i++)
-        {
-            IlExpr field = new IlField(new IlVar("__tcs_ret", null), "Item" + (i + 1), null);
-            fields.Add(fresh ? field : CopyIfMutableStruct(tuple.Args[i], field));
-        }
-        var stats = new List<IlStat>();
-        stats.Add(new IlLocal("__tcs_ret", built, null, null));
-        stats.Add(new IlReturn(new IlValues(fields, null), null));
-        acc.Add(new IlDo(new IlBlock(stats), origin));
-        return true;
+        return new IlTable(entries, null, null, false, null, null);
     }
 
     // ---- 分解。C# の順: 左辺の受け手と添字 → 右辺 → 左から順に代入 ----
@@ -1228,7 +1075,7 @@ public sealed class IlBuild
         {
             case NodeKind.PatDecl:
                 if (t.Local == null) return null;
-                return DTarget.Declared(t.Local.LuaName, t.Local.Type);
+                return DTarget.Declared(t.Local.IlName, t.Local.Type);
             case NodeKind.PatDiscard:
                 return DTarget.Discard();
             case NodeKind.DeconstructAssign:
@@ -1330,7 +1177,7 @@ public sealed class IlBuild
         foreach (var i in target.Items)
         {
             if (i.Kind == DTarget.KDeclared) names.Add(i.Name);
-            else if (i.Kind == DTarget.KPlace) names.Add(i.Place!.Local!.LuaName);
+            else if (i.Kind == DTarget.KPlace) names.Add(i.Place!.Local!.IlName);
             else names.Add("_");
         }
         if (!declare)
@@ -1343,20 +1190,6 @@ public sealed class IlBuild
         }
         var targets = new List<IlExpr>();
         foreach (var n in names) targets.Add(new IlVar(n, null));
-        if (rhs.Kind == NodeKind.Call && rhs.Sym != null && IsMultiReturnMethod(rhs.Sym))
-        {
-            var elements = NaturalType(rhs).Args!;
-            if (elements.Count != target.Items.Count) return -1;
-            for (int i = 0; i < elements.Count; i++)
-            {
-                var tt = target.Items[i].Type;
-                if (tt != null && !TypeSym.Same(elements[i], tt)) return -1;
-            }
-            var built = BuildInvocationCall(rhs);
-            if (built == null) return 0;
-            acc.Add(new IlMultiAssign(targets, One(built), declare, origin));
-            return 1;
-        }
         if (rhs.Kind == NodeKind.Tuple && rhs.List != null && rhs.List.Count == targets.Count)
         {
             foreach (var a in rhs.List)
@@ -1456,19 +1289,6 @@ public sealed class IlBuild
                 return true;
             }
             var type = NaturalType(rhs);
-            if (rhs.Kind == NodeKind.Call && rhs.Sym != null && IsMultiReturnMethod(rhs.Sym))
-            {
-                var multi = BuildInvocationCall(rhs);
-                if (multi == null) return false;
-                var temps = new List<IlExpr>();
-                foreach (var _ in target.Items) temps.Add(new IlVar(NewDeconstructTemp(), null));
-                stats.Add(new IlMultiAssign(temps, One(multi), true, null));
-                for (int i = 0; i < temps.Count; i++)
-                {
-                    if (!BindValue(target.Items[i], temps[i], type.Args![i], stats, assigns)) return false;
-                }
-                return true;
-            }
             var built = BuildExpr(rhs);
             if (built == null) return false;
             return BindValue(target, built, type, stats, assigns);
@@ -1526,7 +1346,7 @@ public sealed class IlBuild
     {
         if (target == null || source == null || TypeSym.Same(source, target)) return value;
         var inner = IlTypes.IsNullableValueType(target) ? target.Elem : target;
-        if (inner.Kind == TypeKind.Float && IlTypes.IsIntegralSource(source)) value = new IlNumericConvert(value, "float", null, null);
+        if (inner.Kind == TypeKind.Float && IlTypes.IsIntegralSource(source)) value = new IlNumericConvert(value, "float", false, null);
         if (IlTypes.IsNullableValueType(target) && !IlTypes.IsNullableValueType(source)) return new IlNullableWrap(value, IlTypes.Display(inner), null);
         return value;
     }
@@ -1551,7 +1371,7 @@ public sealed class IlBuild
         foreach (var nm in loop.List!)
         {
             if (nm.Text == "_" && nm.Local == null) items.Add(DTarget.Discard());
-            else if (nm.Local != null) items.Add(DTarget.Declared(nm.Local.LuaName, nm.Local.Type));
+            else if (nm.Local != null) items.Add(DTarget.Declared(nm.Local.IlName, nm.Local.Type));
             else return false;
         }
         var target = DTarget.Nested(items);
@@ -1569,7 +1389,7 @@ public sealed class IlBuild
         AddAssigns(assigns, stats);
         foreach (var s in stats) all.Add(s);
         foreach (var s in body.Stats) all.Add(s);
-        acc.Add(new IlForeachList(item, collection, new IlBlock(all), false, Origin(loop)));
+        acc.Add(new IlForeachList(item, collection, new IlBlock(all), Origin(loop)));
         return true;
     }
 
@@ -1590,7 +1410,7 @@ public sealed class IlBuild
             else args.Add(WrapStructCopy(operands[i], built[i]));
         }
         foreach (var a in OperatorTypeArgDefaults(op, operands)) args.Add(a);
-        return new IlCall(TypeRef(op.Owner) + "." + name, args, false, null);
+        return new IlCall(TypeRef(op.Owner) + "." + name, args, null);
     }
 
     // generic な型の演算子は static な method と同じく型引数の既定値を末尾に受ける。型引数は自分の型の operand から
@@ -1633,9 +1453,9 @@ public sealed class IlBuild
     private static string OutArgumentName(Node arg)
     {
         var e = StripConv(arg.A!);
-        if (e.Kind == NodeKind.PatDecl) return e.Local != null ? e.Local.LuaName : "_";
+        if (e.Kind == NodeKind.PatDecl) return e.Local != null ? e.Local.IlName : "_";
         if (e.Kind == NodeKind.PatDiscard) return "_";
-        if (e.Kind == NodeKind.Name) return e.Local != null ? e.Local.LuaName : e.Text;
+        if (e.Kind == NodeKind.Name) return e.Local != null ? e.Local.IlName : e.Text;
         return "_";
     }
 
@@ -1705,7 +1525,7 @@ public sealed class IlBuild
                 }
             }
         }
-        if (m.IsStatic) return new IlCall(TypeRef(m.Owner!) + "." + N(m), callArgs, false, null);
+        if (m.IsStatic) return new IlCall(TypeRef(m.Owner!) + "." + N(m), callArgs, null);
         var recv = BuildExpr(call.A!.A!);
         return recv == null ? null : new IlInvoke(recv, N(m), callArgs, null);
     }
@@ -1747,90 +1567,6 @@ public sealed class IlBuild
         return true;
     }
 
-    // out を持つ method の本体: out は本体の local で、値は return が戻り値の後ろに並べて返す。IIFE と closure の return は式の中なので対象外
-    public IlBlock? BuildOutMethodBody(Node method)
-    {
-        var outVars = new List<IlExpr>();
-        var stats = new List<IlStat>();
-        if (method.List != null)
-        {
-            foreach (var p in method.List)
-            {
-                if (!p.Has(Mods.Out)) continue;
-                var name = IlNames.ParamName(p);
-                stats.Add(new IlLocal(name, null, null, null));
-                outVars.Add(new IlVar(name, null));
-            }
-        }
-        bool returnsVoid = method.Sym != null && method.Sym.Type.Kind == TypeKind.Void;
-        if (method.B != null)
-        {
-            if (method.B.List != null && !BuildStatsInto(method.B.List, stats)) return null;
-        }
-        else if (method.C != null)
-        {
-            var expr = method.C;
-            AddPreDecls(expr, stats);
-            if (returnsVoid)
-            {
-                if (!BuildExprStatInto(expr, expr, stats)) return null;
-            }
-            else
-            {
-                var value = BuildExpr(expr);
-                if (value == null) return null;
-                AddReturnStat(stats, WrapStructCopy(expr, value), Origin(expr));
-            }
-        }
-        else return null;
-        var body = ReturnOuts(stats, outVars);
-        if (returnsVoid && (body.Count == 0 || !(body[body.Count - 1] is IlReturn)))
-            body.Add(new IlReturn(new IlValues(outVars, null), null));
-        return new IlBlock(body);
-    }
-
-    private static List<IlStat> ReturnOuts(List<IlStat> stats, List<IlExpr> outs)
-    {
-        var r = new List<IlStat>();
-        foreach (var stat in stats) r.Add(ReturnOutsStat(stat, outs));
-        return r;
-    }
-
-    private static IlBlock ReturnOutsBlock(IlBlock b, List<IlExpr> outs)
-    {
-        return new IlBlock(ReturnOuts(b.Stats, outs));
-    }
-
-    private static IlStat ReturnOutsStat(IlStat stat, List<IlExpr> outs)
-    {
-        switch (stat)
-        {
-            case IlReturn ret:
-            {
-                var items = new List<IlExpr>();
-                if (ret.Value != null) items.Add(ret.Value);
-                foreach (var o in outs) items.Add(o);
-                return ret with { Value = new IlValues(items, null) };
-            }
-            case IlIf c:
-            {
-                var arms = new List<IlArm>();
-                foreach (var a in c.Arms) arms.Add(new IlArm(a.Cond, ReturnOutsBlock(a.Body, outs)));
-                return c with { Arms = arms, Else = c.Else != null ? ReturnOutsBlock(c.Else, outs) : null };
-            }
-            case IlWhile x1: return x1 with { Body = ReturnOutsBlock(x1.Body, outs) };
-            case IlRepeat x2: return x2 with { Body = ReturnOutsBlock(x2.Body, outs) };
-            case IlNumericFor x3: return x3 with { Body = ReturnOutsBlock(x3.Body, outs) };
-            case IlForeachList x4: return x4 with { Body = ReturnOutsBlock(x4.Body, outs) };
-            case IlForeachDict x5: return x5 with { Body = ReturnOutsBlock(x5.Body, outs) };
-            case IlForeachRunes x6: return x6 with { Body = ReturnOutsBlock(x6.Body, outs) };
-            case IlForPairs x7: return x7 with { Body = ReturnOutsBlock(x7.Body, outs) };
-            case IlDo x8: return x8 with { Body = ReturnOutsBlock(x8.Body, outs) };
-            case IlBreakScope x9: return x9 with { Body = ReturnOutsBlock(x9.Body, outs) };
-        }
-        return stat;
-    }
-
     // record / struct の with: 複製の上に member を書く。struct の with は値の copy (入れ子の struct も写す) の上に書く
     private IlExpr? BuildWithExpr(Node withExpr)
     {
@@ -1857,11 +1593,6 @@ public sealed class IlBuild
         var m = call.Sym;
         if (IsUserOutMethod(m)) return BuildUserOutExpr(call, m!);
         if (IsRefOutCall(call)) return BuildRefMultiReturnExpr(call);
-        if (m != null && IsMultiReturnMethod(m))
-        {
-            var packed = BuildInvocationCall(call);
-            return packed == null ? null : PackTuple(m, packed);
-        }
         return BuildInvocationCall(call);
     }
 
@@ -1869,7 +1600,7 @@ public sealed class IlBuild
     {
         if (call.Info == CallKind.Nameof)
         {
-            if (call.HasConst && call.Const != null) return new IlLit(IlLiterals.QuoteString(call.Const.S), null, null);
+            if (call.HasConst && call.Const != null) return IlLiterals.Str(call.Const.S);
             return Unported("nameof", call);
         }
         var m = call.Sym;
@@ -1915,9 +1646,9 @@ public sealed class IlBuild
                 var all = new List<IlExpr>();
                 all.Add(WrapStructCopy(callee.A, extRecv));
                 foreach (var a in args) all.Add(a);
-                return new IlCall(TypeRef(m.Owner!) + "." + N(m), all, false, null);
+                return new IlCall(TypeRef(m.Owner!) + "." + N(m), all, null);
             }
-            return new IlCall(TypeRef(m.Owner!) + "." + N(m), args, false, null);
+            return new IlCall(TypeRef(m.Owner!) + "." + N(m), args, null);
         }
         if (callee.Kind == NodeKind.Member)
         {
@@ -1925,7 +1656,7 @@ public sealed class IlBuild
             if (m.IsStatic)
             {
                 // 拡張メソッドを static の形で呼ぶ (`Agg.Total(xs, f)`): 型の関数の静的な呼び出し
-                if (m.IsExtension && m.Owner != null) return new IlCall(TypeRef(m.Owner) + "." + N(m), args, false, null);
+                if (m.IsExtension && m.Owner != null) return new IlCall(TypeRef(m.Owner) + "." + N(m), args, null);
                 var recv = BuildExpr(recvNode);
                 if (recv == null) return null;
                 return new IlDynCall(new IlField(recv, N(m), null), args, null);
@@ -1938,19 +1669,19 @@ public sealed class IlBuild
                 var all = new List<IlExpr>();
                 all.Add(StructReceiverArg(recvNode, r));
                 foreach (var a in args) all.Add(a);
-                return new IlCall(TypeRef(m.Owner!) + "." + N(m), all, false, null);
+                return new IlCall(TypeRef(m.Owner!) + "." + N(m), all, null);
             }
             return new IlInvoke(r, N(m), args, null);
         }
         if (callee.Kind == NodeKind.Name)
         {
-            if (m.IsStatic) return new IlCall(TypeRef(m.Owner!) + "." + N(m), args, false, null);
+            if (m.IsStatic) return new IlCall(TypeRef(m.Owner!) + "." + N(m), args, null);
             if (IlTypes.IsUserStruct(m.Owner!.SelfType()))
             {
                 var all = new List<IlExpr>();
                 all.Add(new IlVar("self", null));
                 foreach (var a in args) all.Add(a);
-                return new IlCall(TypeRef(m.Owner) + "." + N(m), all, false, null);
+                return new IlCall(TypeRef(m.Owner) + "." + N(m), all, null);
             }
             return new IlInvoke(new IlVar("self", null), N(m), args, null);
         }
@@ -2004,7 +1735,7 @@ public sealed class IlBuild
             IlExpr? built = null;
             if (p.Default != null) built = ContainsTypeParam(p.Type) ? DefaultIl(p.Type.Subst(ClassTypeArgsOf(call, m), call.TypeArgs)) : BuildExpr(p.Default);
             if (built != null) filled.Add(built);
-            else if (typeArgDefaults.Count > 0) filled.Add(new IlLit("nil", null, null));
+            else if (typeArgDefaults.Count > 0) filled.Add(IlLiterals.Null());
             else return args;
         }
         foreach (var t in typeArgDefaults) filled.Add(t);
@@ -2053,14 +1784,14 @@ public sealed class IlBuild
         Node? recvNode = callee.Kind == NodeKind.Member && callee.A != null && callee.A.Info != RefKind.Type ? callee.A : null;
         TypeSym? recvType = recvNode != null ? recvNode.Type : null;
         if (callee.Kind == NodeKind.Member && IsFacadeReceiver(callee.A))
-            return new IlCall(callee.A!.Type!.Name + "." + callee.Text, args, false, null);
+            return new IlCall(callee.A!.Type!.Name + "." + callee.Text, args, null);
         if (id == "Int.TryParse" || id == "Float.TryParse") return BuildNumericTryParse(call, id == "Int.TryParse" ? "Int" : "Float");
         if (id == "Dict.TryGetValue" && recvNode != null) return BuildDictTryGetValue(call, recvNode, m);
         // int / float の CompareTo (同じ型): -1 / 0 / 1 を返す intrinsic
         if (id == "Math.CompareTo" && recvNode != null)
         {
             var cmpRecv = BuildExpr(recvNode);
-            return cmpRecv == null ? null : new IlCall("Math.CompareTo", Prepend(cmpRecv, args), false, null);
+            return cmpRecv == null ? null : new IlCall("Math.CompareTo", Prepend(cmpRecv, args), null);
         }
         switch (id)
         {
@@ -2073,13 +1804,13 @@ public sealed class IlBuild
                     var src = call.List![i].A!;
                     printArgs.Add(StringifyForPrint(src, args[i]));
                 }
-                return new IlCall(id == "Console.Write" ? "io.write" : "print", printArgs, false, null);
+                return new IlCall(id == "Console.Write" ? "__tcs_write" : "__tcs_writeline", printArgs, null);
             }
             case "Environment.GetEnvironmentVariable":
-                return new IlCall("os.getenv", args, false, null);
+                return new IlCall("__tcs_getenv", args, null);
             case "String.IsNullOrEmpty":
             case "String.CompareOrdinal":
-                return new IlCall("String." + callee.Text, args, false, null);
+                return new IlCall("String." + callee.Text, args, null);
             case "String.Join":
             case "String.JoinAny":
             case "String.JoinArgs":
@@ -2094,24 +1825,24 @@ public sealed class IlBuild
                         var ja = new List<IlExpr>();
                         ja.Add(args[0]);
                         ja.Add(args[1]);
-                        ja.Add(new IlLit(IlLiterals.QuoteString(joinSpec), null, null));
-                        return new IlCall("String.JoinEnum", ja, false, null);
+                        ja.Add(IlLiterals.Str(joinSpec));
+                        return new IlCall("String.JoinEnum", ja, null);
                     }
                 }
-                return new IlCall("String.Join", args, false, null);
+                return new IlCall("String.Join", args, null);
             }
             case "Int.Parse":
-                return new IlCall("math.tointeger", One(new IlCall("tonumber", args, false, null)), false, null);
+                return new IlCall("__tcs_iparse", args, null);
             case "Float.Parse":
-                return new IlNumericConvert(new IlCall("tonumber", args, false, null), "float", null, null);
+                return new IlCall("__tcs_fparse", args, null);
             case "Char.ToUpper":
             case "Char.ToLower":
             case "Char.ConvertFromUtf32":
-                return new IlCall("Char." + callee.Text, args, false, null);
+                return new IlCall("Char." + callee.Text, args, null);
             // TinySystem.Text の static の形 (Runes.RuneCount(s))
             case "Runes.RuneCountStatic":
             case "Runes.RuneSubstringStatic":
-                return new IlCall("TinySystem.Utf8." + callee.Text, args, false, null);
+                return new IlCall("TinySystem.Utf8." + callee.Text, args, null);
             case "Math.Abs":
             case "Math.Min":
             case "Math.Max":
@@ -2119,18 +1850,18 @@ public sealed class IlBuild
             case "Math.Clamp":
             case "Math.Pow":
             case "Math.Sign":
-                return new IlCall(id, args, false, null);
+                return new IlCall(id, args, null);
             case "Math.Ceiling":
-                return new IlCall("Math.Ceil", args, false, null);
+                return new IlCall("Math.Ceil", args, null);
         }
         if (id.StartsWith("Math.") && callee.Kind == NodeKind.Member && IsFacadeReceiver(callee.A))
-            return new IlCall("TinySystem.Math." + callee.Text, args, false, null);
+            return new IlCall("TinySystem.Math." + callee.Text, args, null);
         // TinySystem の facade の static (TinySystem.Random.Seed、TinySystem.List.Contains)
-        if (id == "Random.Seed") return new IlCall("TinySystem.Random." + callee.Text, args, false, null);
+        if (id == "Random.Seed") return new IlCall("TinySystem.Random." + callee.Text, args, null);
         // char の static な method
-        if (id.StartsWith("Char.") && m.IsStatic) return new IlCall("Char." + callee.Text, args, false, null);
+        if (id.StartsWith("Char.") && m.IsStatic) return new IlCall("Char." + callee.Text, args, null);
         if (id.StartsWith("Math.") && callee.Kind == NodeKind.Member)
-            return new IlCall("Math." + (callee.Text == "Ceiling" ? "Ceil" : callee.Text), args, false, null);
+            return new IlCall("Math." + (callee.Text == "Ceiling" ? "Ceil" : callee.Text), args, null);
         if (recvNode == null) return Unported("builtin static " + id, call);
         var recv = BuildExpr(recvNode);
         if (recv == null) return null;
@@ -2141,46 +1872,46 @@ public sealed class IlBuild
             case "Runes.RuneSubstring":
             case "Utf8.Slice":
             case "Utf8.ToString":
-                return new IlCall("TinySystem.Utf8." + callee.Text, Prepend(recv, args), false, null);
+                return new IlCall("TinySystem.Utf8." + callee.Text, Prepend(recv, args), null);
             case "List.Add":
                 return ListAdd(recvType!, recv, args);
             case "List.RemoveAt":
-                return new IlCall("table.remove", Two(recv, new IlBin(IlBinOp.AddNum, args[0], new IlLit("1", null, null), null)), IlTypes.HasNilListElements(recvType), null);
+                return new IlCall("List.RemoveAt", Two(recv, args[0]), null);
             case "List.Clear":
             case "Dict.Clear":
                 return BuildClear(recv);
             case "List.Sort":
-                return new IlCall("List.Sort", Prepend(recv, args), false, null);
+                return new IlCall("List.Sort", Prepend(recv, args), null);
             case "List.Contains":
             case "List.IndexOf":
             case "List.Remove":
-                return new IlCall("List." + callee.Text, Prepend(recv, WithStructElementOps(recvType, callee.Text, args)), false, null);
+                return new IlCall("List." + callee.Text, Prepend(recv, WithStructElementOps(recvType, callee.Text, args)), null);
             case "List.FindIndex":
             case "List.RemoveAll":
             case "List.Insert":
-                return new IlCall("List." + callee.Text, Prepend(recv, args), false, null);
+                return new IlCall("List." + callee.Text, Prepend(recv, args), null);
             case "List.GetRange":
             {
                 var ga = Prepend(recv, args);
                 foreach (var c in ListElementCopier(recvType)) ga.Add(c);
-                return new IlCall("List.GetRange", ga, false, null);
+                return new IlCall("List.GetRange", ga, null);
             }
             case "Queue.Contains":
-                return new IlCall("TcsQueue.Contains", Prepend(recv, WithStructElementOps(recvType, "Contains", args)), false, null);
+                return new IlCall("TcsQueue.Contains", Prepend(recv, WithStructElementOps(recvType, "Contains", args)), null);
             case "Dict.ContainsKey":
             case "Dict.Remove":
-                return new IlCall("Dict." + callee.Text, Two(recv, DictKey(recvType, call.List![0].A, args[0])), false, null);
+                return new IlCall("Dict." + callee.Text, Two(recv, args[0]), null);
             case "Queue.Enqueue":
             case "Queue.Dequeue":
             case "Queue.Clear":
-                return new IlCall("TcsQueue." + callee.Text, Prepend(recv, args), false, null);
+                return new IlCall("TcsQueue." + callee.Text, Prepend(recv, args), null);
             case "Queue.Peek":
-                return CopyIfMutableStruct(recvType!.Elem, new IlCall("TcsQueue.Peek", One(recv), false, null));
+                return CopyIfMutableStruct(recvType!.Elem, new IlCall("TcsQueue.Peek", One(recv), null));
             case "HashSet.Add":
             case "HashSet.Remove":
             case "HashSet.Contains":
             case "HashSet.Clear":
-                return new IlCall("TcsHashSet." + callee.Text, Prepend(recv, args), false, null);
+                return new IlCall("TcsHashSet." + callee.Text, Prepend(recv, args), null);
             case "String.Contains":
             case "String.ContainsChar":
             case "String.Replace":
@@ -2188,12 +1919,12 @@ public sealed class IlBuild
             case "String.Split":
             case "String.SplitChar":
             case "String.SplitWhite":
-                return new IlCall("String." + callee.Text, Prepend(recv, WrapCharArgs(call, args)), false, null);
+                return new IlCall("String." + callee.Text, Prepend(recv, WrapCharArgs(call, args)), null);
             case "String.StartsWith":
             case "String.EndsWith":
             case "String.StartsWithChar":
             case "String.EndsWithChar":
-                return new IlCall("String." + callee.Text, Two(recv, WrapCharArgs(call, args)[0]), false, null);
+                return new IlCall("String." + callee.Text, Two(recv, WrapCharArgs(call, args)[0]), null);
             // TinySystem.Random の instance の method
             case "Random.Next":
             case "Random.NextFloat":
@@ -2211,13 +1942,13 @@ public sealed class IlBuild
                 return new IlIife(stats, null);
             }
             case "String.Trim":
-                return new IlCall("String.Trim", One(recv), false, null);
+                return new IlCall("String.Trim", One(recv), null);
             case "String.ToUpper":
-                return new IlCall("string.upper", One(recv), false, null);
+                return new IlCall("__tcs_upper", One(recv), null);
             case "String.ToLower":
-                return new IlCall("string.lower", One(recv), false, null);
+                return new IlCall("__tcs_lower", One(recv), null);
             case "String.ToString":
-                return new IlCall("tostring", One(recv), false, null);
+                return new IlCall("__tcs_str", One(recv), null);
             case "Int.ToString":
             case "Float.ToString":
             case "Bool.ToString":
@@ -2255,7 +1986,7 @@ public sealed class IlBuild
         var r = new List<IlExpr>();
         for (int i = 0; i < args.Count; i++)
         {
-            if (call.List != null && i < call.List.Count && IlTypes.IsChar(NaturalType(call.List[i].A!))) r.Add(new IlCall("string.char", One(args[i]), false, null));
+            if (call.List != null && i < call.List.Count && IlTypes.IsChar(NaturalType(call.List[i].A!))) r.Add(new IlCall("__tcs_cstr", One(args[i]), null));
             else r.Add(args[i]);
         }
         return r;
@@ -2265,9 +1996,9 @@ public sealed class IlBuild
     private static IlExpr? OutTarget(Node arg)
     {
         var a = arg.A!;
-        if (a.Kind == NodeKind.PatDecl) return new IlVar(a.Local != null ? a.Local.LuaName : a.Text, null);
+        if (a.Kind == NodeKind.PatDecl) return new IlVar(a.Local != null ? a.Local.IlName : a.Text, null);
         if (a.Kind == NodeKind.PatDiscard) return new IlVar("_", null);
-        if (a.Kind == NodeKind.Name) return new IlVar(a.Local != null ? a.Local.LuaName : a.Text, null);
+        if (a.Kind == NodeKind.Name) return new IlVar(a.Local != null ? a.Local.IlName : a.Text, null);
         return null;
     }
 
@@ -2284,7 +2015,7 @@ public sealed class IlBuild
         if (target == null) return null;
         var stats = new List<IlStat>();
         var targets = Two(new IlVar("__tcs_found", null), new IlVar("__tcs_v", null));
-        stats.Add(new IlMultiAssign(targets, One(new IlCall("Math.TryParse" + kind, Two(text, new IlLit(kind == "Float" ? "0.0" : "0", null, null)), false, null)), true, null));
+        stats.Add(new IlMultiAssign(targets, One(new IlCall("Math.TryParse" + kind, Two(text, kind == "Float" ? IlLiterals.Float(0f) : IlLiterals.Int(0)), null)), true, null));
         stats.Add(new IlAssign(target, new IlVar("__tcs_v", null), null));
         stats.Add(new IlReturn(new IlVar("__tcs_found", null), null));
         return new IlIife(stats, null);
@@ -2309,9 +2040,9 @@ public sealed class IlBuild
         var targets = Two(new IlVar("__tcs_found", null), new IlVar("__tcs_v", null));
         var getArgs = new List<IlExpr>();
         getArgs.Add(recv);
-        getArgs.Add(DictKey(dictType, keyArg.A, key));
+        getArgs.Add(key);
         getArgs.Add(defaultValue);
-        stats.Add(new IlMultiAssign(targets, One(new IlCall("Dict.TryGet", getArgs, false, null)), true, null));
+        stats.Add(new IlMultiAssign(targets, One(new IlCall("Dict.TryGet", getArgs, null)), true, null));
         // out への書き出しは格納した値の copy
         stats.Add(new IlAssign(target, CopyIfMutableStruct(valueType, new IlVar("__tcs_v", null)), null));
         stats.Add(new IlReturn(new IlVar("__tcs_found", null), null));
@@ -2327,18 +2058,17 @@ public sealed class IlBuild
         var en = WrapEnumToString(t, value);
         if (en != null) return en;
         if (IsStringifiedByValue(t)) return StringifyByValue(t, value);
-        if (IlTypes.IsFloating(t)) return new IlCall("__tcs_fstr", One(value), false, null);
-        if (IlTypes.IsChar(t)) return new IlCall("string.char", One(value), false, null);
+        if (IlTypes.IsFloating(t)) return new IlCall("__tcs_fstr", One(value), null);
+        if (IlTypes.IsChar(t)) return new IlCall("__tcs_cstr", One(value), null);
         if (IlTypes.IsRune(t)) return RuneToString(value);
-        if (t.Kind == TypeKind.Bool) return new IlCall("__tcs_bstr", One(value), false, null);
+        if (t.Kind == TypeKind.Bool) return new IlCall("__tcs_bstr", One(value), null);
         return value;
     }
 
-    // List.Add の IL。型引数の要素の List は値型の List かもしれないので runtime の List.Add を通す
+    // List.Add の IL
     private static IlCall ListAdd(TypeSym listType, IlExpr recv, List<IlExpr> args)
     {
-        if (listType.Elem.Kind == TypeKind.TypeParam) return new IlCall("List.Add", Prepend(recv, args), false, null);
-        return new IlCall("table.insert", Prepend(recv, args), IlTypes.HasNilListElements(listType), null);
+        return new IlCall("List.Add", Prepend(recv, args), null);
     }
 
     // List.Clear / Dictionary.Clear: 全ての key を nil に (C と VM の backend はこの形を runtime の clear にする)
@@ -2346,7 +2076,7 @@ public sealed class IlBuild
     {
         var stats = new List<IlStat>();
         stats.Add(new IlLocal("__tcs_obj", recv, null, null));
-        var body = new IlBlock(One(new IlAssign(new IlIndex(new IlVar("__tcs_obj", null), new IlVar("k", null), false, false, false, false, null), new IlLit("nil", null, null), null)));
+        var body = new IlBlock(One(new IlAssign(new IlIndex(new IlVar("__tcs_obj", null), new IlVar("k", null), false, false, null), IlLiterals.Null(), null)));
         stats.Add(new IlForPairs("k", null, new IlVar("__tcs_obj", null), body, null));
         return new IlIife(stats, null);
     }
@@ -2390,9 +2120,9 @@ public sealed class IlBuild
                 if (source == null) return null;
                 var cargs = One(source);
                 foreach (var c in ListElementCopier(t)) cargs.Add(c);
-                return new IlCall("List.Copy", cargs, false, null);
+                return new IlCall("List.Copy", cargs, null);
             }
-            if (init == null) return new IlTable(new List<IlTableEntry>(), IlTypes.Display(t.Elem), null, false, null, false, null);
+            if (init == null) return new IlTable(new List<IlTableEntry>(), IlTypes.Display(t.Elem), null, false, null, null);
             var items = new List<IlTableEntry>();
             if (init.List != null)
             {
@@ -2403,7 +2133,7 @@ public sealed class IlBuild
                     items.Add(new IlTableEntry(null, WrapStructCopy(e, built), null));
                 }
             }
-            return new IlTable(items, IlTypes.Display(t.Elem), null, false, null, IlTypes.HasNilListElements(t), null);
+            return new IlTable(items, IlTypes.Display(t.Elem), null, false, null, null);
         }
         if (IlTypes.IsQueue(t)) return new IlNewQueue(IlTypes.Display(t), null);
         if (IlTypes.IsHashSet(t))
@@ -2419,7 +2149,7 @@ public sealed class IlBuild
                 {
                     var built = BuildExpr(e);
                     if (built == null) return null;
-                    stats.Add(new IlCallStat(new IlCall("TcsHashSet.Add", Two(new IlVar("__tcs_set", null), built), false, null), null));
+                    stats.Add(new IlCallStat(new IlCall("TcsHashSet.Add", Two(new IlVar("__tcs_set", null), built), null), null));
                 }
             }
             stats.Add(new IlReturn(new IlVar("__tcs_set", null), null));
@@ -2427,7 +2157,7 @@ public sealed class IlBuild
         }
         if (IlTypes.IsDict(t))
         {
-            if (init == null) return new IlTable(new List<IlTableEntry>(), IlTypes.Display(t.Arg(1)), IlTypes.Display(t.Arg(0)), false, null, false, null);
+            if (init == null) return new IlTable(new List<IlTableEntry>(), IlTypes.Display(t.Arg(1)), IlTypes.Display(t.Arg(0)), false, null, null);
             var entries = new List<IlTableEntry>();
             if (init.List != null)
             {
@@ -2449,16 +2179,16 @@ public sealed class IlBuild
                     var key = BuildExpr(keyNode);
                     var value = BuildExpr(valueNode);
                     if (key == null || value == null) return null;
-                    entries.Add(new IlTableEntry(DictKey(t, keyNode, key), WrapStructCopy(valueNode, value), null));
+                    entries.Add(new IlTableEntry(key, WrapStructCopy(valueNode, value), null));
                 }
             }
-            return new IlTable(entries, IlTypes.Display(t.Arg(1)), IlTypes.Display(t.Arg(0)), false, null, false, null);
+            return new IlTable(entries, IlTypes.Display(t.Arg(1)), IlTypes.Display(t.Arg(0)), false, null, null);
         }
         // `new T()` (T : new()) は受け取った既定値の記述子から新しい値を作る
         if (t.Kind == TypeKind.TypeParam)
         {
             var passed = TypeArgDefaultIl(t);
-            if (passed != null) return new IlCall("__tcs_nt", One(passed), false, null);
+            if (passed != null) return new IlCall("__tcs_nt", One(passed), null);
             return Unported("new T()", creation);
         }
         if (t.Decl != null && t.Decl.IsRef)
@@ -2479,7 +2209,7 @@ public sealed class IlBuild
                     uargs.Add(b);
                 }
             }
-            return new IlCall(uargs.Count == 0 ? "TinySystem.Utf8.Default" : "TinySystem.Utf8.New", uargs, false, null);
+            return new IlCall(uargs.Count == 0 ? "TinySystem.Utf8.Default" : "TinySystem.Utf8.New", uargs, null);
         }
         // facade の型 (TinySystem.Random) は user の型と同じ名前でもぶつからないよう修飾する
         if (t.Kind == TypeKind.Random)
@@ -2520,7 +2250,7 @@ public sealed class IlBuild
                 IlExpr? d = null;
                 if (p.Default != null) d = ContainsTypeParam(p.Type) ? DefaultIl(p.Type.Subst(t.Args, null)) : BuildExpr(p.Default);
                 if (d != null) args.Add(d);
-                else args.Add(new IlLit("nil", null, null));
+                else args.Add(IlLiterals.Null());
             }
         }
         // generic な型の new / ctor は型引数の既定値を受ける
@@ -2534,7 +2264,7 @@ public sealed class IlBuild
         }
         var ctorName = ctor != null && ctor.Kind == SymKind.Ctor && ctor.Decl != null && ctor.Decl.Kind == NodeKind.Ctor ? IlNames.CtorName(ctor) : "ctor";
         IlExpr made;
-        if (IlTypes.IsUserStruct(t) && hasCtorArgs) made = new IlCall(TypeName(t) + "." + ctorName, args, false, null);
+        if (IlTypes.IsUserStruct(t) && hasCtorArgs) made = new IlCall(TypeName(t) + "." + ctorName, args, null);
         else made = new IlNewObj(TypeName(t), args, ctorName == "ctor" ? "new" : ctorName, null);
         if (init != null) return BuildObjectInitializerExpr(made, init, t);
         return made;
@@ -2597,7 +2327,7 @@ public sealed class IlBuild
     private IlExpr? BuildRefTypeTable(Node? init, string type)
     {
         var entries = new List<IlTableEntry>();
-        if (init == null || init.List == null) return new IlTable(entries, null, null, false, type, false, null);
+        if (init == null || init.List == null) return new IlTable(entries, null, null, false, type, null);
         foreach (var e in init.List)
         {
             if (e.Kind != NodeKind.MemberInit || e.A == null || e.A.Kind == NodeKind.ObjectInit || e.A.Kind == NodeKind.CollectionInit) return null;
@@ -2605,7 +2335,7 @@ public sealed class IlBuild
             if (value == null) return null;
             entries.Add(new IlTableEntry(null, WrapStructCopy(e.A, value), e.Sym != null ? N(e.Sym) : e.Text));
         }
-        return new IlTable(entries, null, null, false, type, false, null);
+        return new IlTable(entries, null, null, false, type, null);
     }
 
     // 要素を写す List の操作 (copy constructor、GetRange) に渡す、変更できる struct の要素の型別の __copy
@@ -2633,7 +2363,7 @@ public sealed class IlBuild
             IlExpr? d = elem.Kind == TypeKind.TypeParam ? TypeArgDefaultValue(elem) : DefaultIl(elem);
             return new IlNewArray(elemText!, len, d, null);
         }
-        return new IlTable(new List<IlTableEntry>(), elemText, null, true, null, false, null);
+        return new IlTable(new List<IlTableEntry>(), elemText, null, true, null, null);
     }
 
     private IlExpr? BuildArrayItems(Node init, string? elementType)
@@ -2648,7 +2378,7 @@ public sealed class IlBuild
                 items.Add(new IlTableEntry(null, WrapStructCopy(e, built), null));
             }
         }
-        return new IlTable(items, elementType, null, true, null, false, null);
+        return new IlTable(items, elementType, null, true, null, null);
     }
 
     // ---- 単項演算 ----
@@ -2674,8 +2404,8 @@ public sealed class IlBuild
             if (op == "~") return new IlLiftedUn(IlUnOp.BitNot, operand, null);
             return null;
         }
-        if (op == "-" && u.HasConst && u.Const != null && u.Const.Kind == ConstKind.Int && u.Const.I == -2147483647 - 1) return IntMinValueIl();
-        if (op == "-" && _checked && u.Type != null && u.Type.Kind == TypeKind.Int) return new IlCall("__tcs_cneg", One(operand), false, null);
+        if (op == "-" && u.HasConst && u.Const != null && u.Const.Kind == ConstKind.Int && u.Const.I == -2147483647 - 1) return IlLiterals.Int(-2147483647 - 1);
+        if (op == "-" && _checked && u.Type != null && u.Type.Kind == TypeKind.Int) return new IlCall("__tcs_cneg", One(operand), null);
         if (op == "-") return new IlUn(IlUnOp.Neg, operand, null);
         if (op == "!") return new IlUn(IlUnOp.Not, operand, null);
         if (op == "~") return new IlUn(IlUnOp.BitNot, operand, null);
@@ -2693,21 +2423,21 @@ public sealed class IlBuild
         if (src.Kind == NodeKind.Conv && src.A != null && (src.Info == ConvKind.Identity || src.Info == ConvKind.IntToFloat || src.Info == ConvKind.NullableIntToFloat)) src = src.A;
         var srcType = src.Type;
         // (int)'a' などの定数の cast は畳む
-        if (cast.HasConst && cast.Const != null && cast.Const.Kind == ConstKind.Int && IlTypes.IsChar(srcType)) return new IlLit("" + cast.Const.I, null, null);
+        if (cast.HasConst && cast.Const != null && cast.Const.Kind == ConstKind.Int && IlTypes.IsChar(srcType)) return IlLiterals.Int(cast.Const.I);
         if (IlTypes.IsChar(target) && srcType != null && (IlTypes.IsFloating(srcType) || IlTypes.IsIntegralSource(srcType) || srcType.Kind == TypeKind.Enum) && !IlTypes.IsChar(srcType))
         {
             var c = BuildExpr(src);
             if (c == null) return null;
-            if (IlTypes.IsFloating(srcType)) c = new IlCall("__tcs_trunc", One(c), false, null);
+            if (IlTypes.IsFloating(srcType)) c = new IlCall("__tcs_trunc", One(c), null);
             // 範囲が分かっている元 (byte、0..255 の定数) は検査を省く
             bool small = srcType.Kind == TypeKind.Byte || (cast.HasConst && cast.Const != null && cast.Const.Kind == ConstKind.Int && cast.Const.I >= 0 && cast.Const.I <= 255)
                 || (src.HasConst && src.Const != null && src.Const.Kind == ConstKind.Float && src.Const.F > -1 && src.Const.F < 256);
-            return small ? c : Ex(new IlCall("__tcs_char", One(c), false, null));
+            return small ? c : Ex(new IlCall("__tcs_char", One(c), null));
         }
         if (IlTypes.IsIntegral(target) && IlTypes.IsFloating(srcType))
         {
             var f = BuildExpr(src);
-            return f == null ? null : new IlCall("__tcs_trunc", One(f), false, null);
+            return f == null ? null : new IlCall("__tcs_trunc", One(f), null);
         }
         var value = BuildExpr(src);
         if (value == null) return null;
@@ -2716,11 +2446,11 @@ public sealed class IlBuild
         {
             bool runtimeTest = (srcType.IsReferenceLike || srcType.Kind == TypeKind.TypeParam) && srcType.Kind != TypeKind.Null;
             if (runtimeTest)
-                return new IlNumericConvert(value, target.Kind == TypeKind.Int ? "int" : "float", target.Kind == TypeKind.Int ? "integer" : "float", null);
+                return new IlNumericConvert(value, target.Kind == TypeKind.Int ? "int" : "float", true, null);
             bool toInt = target.Kind == TypeKind.Int;
             // T? は特別な型ではないので変換が残る
             if (!toInt && IlTypes.IsFloating(srcType) && !IlTypes.IsNullableValueType(srcType)) return value;
-            return new IlNumericConvert(value, toInt ? "int" : "float", null, null);
+            return new IlNumericConvert(value, toInt ? "int" : "float", false, null);
         }
         // (float?)x で x が int?: 値があるときだけ変換する
         if (target.Kind == TypeKind.Nullable && target.Elem.Kind == TypeKind.Float && srcType.Kind == TypeKind.Nullable && IlTypes.IsIntegralSource(srcType.Elem))
@@ -2732,36 +2462,10 @@ public sealed class IlBuild
         // 元の型は名前の付いた型 (object、interface、class など。型引数と配列を除く。Roslyn の INamedTypeSymbol)
         bool namedSource = srcType.Kind != TypeKind.TypeParam && srcType.Kind != TypeKind.Array && srcType.Kind != TypeKind.Null;
         if (target.Kind == TypeKind.Class && target.Decl != null && namedSource && !TypeSym.Same(target, srcType) && !(srcType.Decl != null && IsDerivedFrom(srcType.Decl, target.Decl)))
-            return new IlCast(value, CheckTypeName(target), TypeRef(target.Decl), null);
-        bool refTest = (IsReferenceType(srcType) || srcType.Kind == TypeKind.TypeParam) && !IsImplicitReference(srcType, target);
+            return new IlCast(value, CheckTypeName(target), null);
         if (!IsReferenceType(target) && target.Kind != TypeKind.Bool && target.Kind != TypeKind.Nullable) return value;
-        string? check = null;
-        IlExpr? checkArg = null;
-        if (refTest)
-        {
-            if (target.Kind == TypeKind.String)
-            {
-                check = "__tcs_tcast";
-                checkArg = new IlLit("\"string\"", null, null);
-            }
-            else if (target.Kind == TypeKind.Bool)
-            {
-                check = "__tcs_vcast";
-                checkArg = new IlLit("\"boolean\"", null, null);
-            }
-            else if (target.Kind == TypeKind.Interface)
-            {
-                check = "__tcs_icast";
-                checkArg = new IlLit(IlLiterals.QuoteString(TypeName(target)), null, null);
-            }
-            else if (target.Kind == TypeKind.Class && target.Decl != null)
-            {
-                check = "__tcs_cast";
-                checkArg = new IlVar(TypeRef(target.Decl), null);
-            }
-        }
         // cast の型の `?` の注釈は #nullable enable の文脈だけで残る
-        return new IlRefCast(value, IlTypes.Display(cast.File.NullableEnabled ? target : target.WithoutAnnotation()), check, checkArg, null);
+        return new IlRefCast(value, IlTypes.Display(cast.File.NullableEnabled ? target : target.WithoutAnnotation()), null);
     }
 
     private static bool IsDerivedFrom(TypeDeclSym source, TypeDeclSym target)
@@ -2771,24 +2475,6 @@ public sealed class IlBuild
         {
             if (cur == target) return true;
             cur = cur.BaseClass;
-        }
-        return false;
-    }
-
-    // 暗黙の参照の変換があるか (同じ型、object へ、基底の class へ、実装する interface へ、null から)
-    private static bool IsImplicitReference(TypeSym from, TypeSym to)
-    {
-        if (TypeSym.Same(from, to) || to.Kind == TypeKind.Object || from.Kind == TypeKind.Null) return true;
-        if (from.Decl != null && to.Decl != null)
-        {
-            if (IsDerivedFrom(from.Decl, to.Decl)) return true;
-            if (to.Decl.IsInterface)
-            {
-                foreach (var i in IlTypes.AllInterfaces(from.Decl))
-                {
-                    if (i.Decl == to.Decl) return true;
-                }
-            }
         }
         return false;
     }
@@ -2805,7 +2491,7 @@ public sealed class IlBuild
         {
             var check = BuildTypeCheck(input, inputType, target, null);
             if (check == null) return null;
-            return new IlTernary(check, new IlRefCast(input, IlTypes.Display(target), null, null, null), new IlLit("nil", null, null), null);
+            return new IlTernary(check, new IlRefCast(input, IlTypes.Display(target), null), IlLiterals.Null(), null);
         });
     }
 
@@ -2818,9 +2504,9 @@ public sealed class IlBuild
         var index = BuildExpr(ea.List![0]);
         if (recv == null || index == null) return null;
         var rt = ea.A!.Type;
-        if (IlTypes.IsUtf8Bytes(rt)) return new IlCall("TinySystem.Utf8.At", Two(recv, index), false, null);
+        if (IlTypes.IsUtf8Bytes(rt)) return new IlCall("TinySystem.Utf8.At", Two(recv, index), null);
         bool plusOne = IlTypes.IsList(rt) || IlTypes.IsArray(rt);
-        return new IlIndex(recv, DictKey(rt, ea.List![0], index), plusOne, IlTypes.HasNilableElements(rt), IlTypes.HasBoolElements(rt), IlTypes.HasNilListElements(rt), null);
+        return new IlIndex(recv, index, plusOne, IlTypes.HasNilableElements(rt), null);
     }
 
     // ---- Nullable<T> (il-spec §3 / §13) ----
@@ -2879,8 +2565,8 @@ public sealed class IlBuild
     private static IlExpr StepValue(Node operand, IlExpr read, bool increment)
     {
         if (IlTypes.IsNullableValueType(NaturalType(operand)))
-            return new IlLiftedBin(increment ? IlLiftedOp.Add : IlLiftedOp.Sub, read, new IlNullableWrap(new IlLit("1", null, null), "int", null), null);
-        return new IlBin(increment ? IlBinOp.AddNum : IlBinOp.Sub, read, new IlLit("1", null, null), null);
+            return new IlLiftedBin(increment ? IlLiftedOp.Add : IlLiftedOp.Sub, read, new IlNullableWrap(IlLiterals.Int(1), "int", null), null);
+        return new IlBin(increment ? IlBinOp.AddNum : IlBinOp.Sub, read, IlLiterals.Int(1), null);
     }
 
     // null との比較 / ?? / lifted の二項演算。当てはまらなければ null (通常の経路へ)
@@ -2943,7 +2629,7 @@ public sealed class IlBuild
         var valueArg = call.List[1].A!;
         var value = BuildExpr(valueArg);
         if (recv == null || key == null || value == null) return false;
-        acc.Add(new IlAssign(new IlIndex(recv, DictKey(NaturalType(callee.A), call.List![0].A, key), false, false, false, false, null), WrapStructCopy(valueArg, value), origin));
+        acc.Add(new IlAssign(new IlIndex(recv, key, false, false, null), WrapStructCopy(valueArg, value), origin));
         return true;
     }
 
@@ -3055,11 +2741,11 @@ public sealed class IlBuild
             var lifted = LiftedOpFor(op == "~" ? "^" : op, IlTypes.UnwrapNullable(type));
             if (lifted != null) return new IlLiftedBin(lifted.Value, read, right, null);
         }
-        if (op == "/" && IlTypes.IsIntegral(type)) return new IlCall("__tcs_idiv", Two(read, right), false, null);
-        if (op == "%" && IlTypes.IsIntegral(type)) return new IlCall("__tcs_irem", Two(read, right), false, null);
-        if (op == "%" && IlTypes.IsFloating(type)) return new IlCall("math.fmod", Two(read, right), false, null);
+        if (op == "/" && IlTypes.IsIntegral(type)) return new IlCall("__tcs_idiv", Two(read, right), null);
+        if (op == "%" && IlTypes.IsIntegral(type)) return new IlCall("__tcs_irem", Two(read, right), null);
+        if (op == "%" && IlTypes.IsFloating(type)) return new IlCall("__tcs_fmod", Two(read, right), null);
         if (op == "..")
-            return new IlBin(IlBinOp.Concat, new IlParen(new IlBin(IlBinOp.Or, read, new IlLit("\"\"", null, null), null), null), WrapConcatOperand(assign.B!, right), null);
+            return new IlBin(IlBinOp.Concat, new IlParen(new IlBin(IlBinOp.Or, read, IlLiterals.Str(""), null), null), WrapConcatOperand(assign.B!, right), null);
         switch (op)
         {
             case "+": return new IlBin(IlBinOp.AddNum, read, right, null);
@@ -3214,8 +2900,8 @@ public sealed class IlBuild
             bool plusOne = rt.Kind == TypeKind.List || rt.Kind == TypeKind.Array;
             var setup = new List<IlStat>();
             setup.Add(new IlLocal("__tcs_obj", recv, null, null));
-            setup.Add(new IlLocal("__tcs_idx", DictKey(rt, indexNode, index), null, null));
-            return new LoweredTarget(setup, new IlIndex(new IlVar("__tcs_obj", null), new IlVar("__tcs_idx", null), plusOne, IlTypes.HasNilableElements(rt), IlTypes.HasBoolElements(rt), IlTypes.HasNilListElements(rt), null));
+            setup.Add(new IlLocal("__tcs_idx", index, null, null));
+            return new LoweredTarget(setup, new IlIndex(new IlVar("__tcs_obj", null), new IlVar("__tcs_idx", null), plusOne, IlTypes.HasNilableElements(rt), null));
         }
         return null;
     }
@@ -3262,7 +2948,7 @@ public sealed class IlBuild
                 if (index == null) return null;
                 setup.Add(new IlLocal("__tcs_idx", index, null, null));
                 var at = NaturalType(p.A!);
-                return new IlIndex(new IlVar("__tcs_obj", null), new IlVar("__tcs_idx", null), true, IlTypes.HasNilableElements(at), false, IlTypes.HasNilListElements(at), null);
+                return new IlIndex(new IlVar("__tcs_obj", null), new IlVar("__tcs_idx", null), true, IlTypes.HasNilableElements(at), null);
             }
         }
         return null;
@@ -3301,7 +2987,7 @@ public sealed class IlBuild
 
     private static IlExpr PropGet(IlExpr recv, string name, bool isStatic, string? structOwner, List<IlExpr> staticArgs)
     {
-        if (structOwner != null) return new IlCall(structOwner + ".get_" + name, One(recv), false, null);
+        if (structOwner != null) return new IlCall(structOwner + ".get_" + name, One(recv), null);
         if (isStatic) return new IlDynCall(new IlField(recv, "get_" + name, null), staticArgs, null);
         return new IlInvoke(recv, "get_" + name, new List<IlExpr>(), null);
     }
@@ -3313,7 +2999,7 @@ public sealed class IlBuild
 
     private static IlExpr PropSet(IlExpr recv, string name, bool isStatic, IlExpr value, string? structOwner, List<IlExpr> staticArgs)
     {
-        if (structOwner != null) return new IlCall(structOwner + ".set_" + name, Two(recv, value), false, null);
+        if (structOwner != null) return new IlCall(structOwner + ".set_" + name, Two(recv, value), null);
         if (isStatic)
         {
             var args = new List<IlExpr>();
@@ -3408,7 +3094,7 @@ public sealed class IlBuild
     private static IlExpr IsNullIl(IlExpr e, TypeSym? type)
     {
         if (IlTypes.IsNullableValueType(type)) return new IlUn(IlUnOp.Not, new IlNullableHasValue(e, null), null);
-        return new IlBin(IlBinOp.Eq, e, new IlLit("nil", null, null), null);
+        return new IlBin(IlBinOp.Eq, e, IlLiterals.Null(), null);
     }
 
     // 受け手 / 添字を temp に固定してから右辺を評価し、代入後の place を値として返す IIFE
@@ -3569,7 +3255,7 @@ public sealed class IlBuild
         {
             var idx = FixSlot(path.Index, "__tcs_idx", assign, stats);
             var bt = NaturalType(path.Base);
-            root = idx != null ? new IlIndex(root, idx, true, IlTypes.HasNilableElements(bt), false, IlTypes.HasNilListElements(bt), null) : null;
+            root = idx != null ? new IlIndex(root, idx, true, IlTypes.HasNilableElements(bt), null) : null;
         }
         var right = BuildExpr(assign.B!);
         var recv = root == null ? null : RebuildSlot(ma.A!, path.Stop, root);
@@ -3791,7 +3477,7 @@ public sealed class IlBuild
         if (storage != null && storage.Kind == TypeKind.TypeParam)
         {
             var passed = TypeArgDefaultIl(storage);
-            if (passed != null && !IsFreshStructIl(value)) return new IlCall("__tcs_tc", Two(passed, value), false, null);
+            if (passed != null && !IsFreshStructIl(value)) return new IlCall("__tcs_tc", Two(passed, value), null);
         }
         return value;
     }
@@ -3833,11 +3519,11 @@ public sealed class IlBuild
                     if (init == null) return false;
                 }
                 // 宣言型を載せる (`for (float y = -1; ...)` は初期値からは int に見える)
-                var name = v.Local != null ? v.Local.LuaName : v.Text;
+                var name = v.Local != null ? v.Local.IlName : v.Text;
                 loop.Add(new IlLocal(name, init, v.Local != null ? IlTypes.Display(v.Local.Type) : null, origin));
             }
         }
-        IlExpr cond = new IlLit("true", null, null);
+        IlExpr cond = IlLiterals.Bool(true);
         if (forStmt.A != null)
         {
             var built = BuildExpr(forStmt.A);
@@ -3854,8 +3540,7 @@ public sealed class IlBuild
                 if (!BuildExprStatInto(inc, forStmt, trailer)) return false;
             }
         }
-        bool scopeBody = forStmt.Count2 > 0 && ContainsDirectContinue(forStmt.B!);
-        loop.Add(new IlWhile(cond, body, new IlBlock(trailer), scopeBody, origin));
+        loop.Add(new IlWhile(cond, body, new IlBlock(trailer), origin));
         if (loop != acc) acc.Add(new IlDo(new IlBlock(loop), origin));
         return true;
     }
@@ -3888,10 +3573,10 @@ public sealed class IlBuild
         var body = BuildBlock(forStmt.B!);
         if (start == null || end == null || body == null) return null;
         IlExpr? limit = null;
-        if (condNode.Text == "<") limit = new IlBin(IlBinOp.Sub, end, new IlLit("1", null, null), null);
+        if (condNode.Text == "<") limit = new IlBin(IlBinOp.Sub, end, IlLiterals.Int(1), null);
         else if (condNode.Text == "<=") limit = end;
         if (limit == null) return null;
-        var name = decl.Local != null ? decl.Local.LuaName : varName;
+        var name = decl.Local != null ? decl.Local.IlName : varName;
         return new IlNumericFor(name, start, limit, body, null);
     }
 
@@ -3956,14 +3641,6 @@ public sealed class IlBuild
         return AnyChild(n, c => ContainsIdentifier(c, name));
     }
 
-    // この loop 自身を対象とする continue の有無 (入れ子の loop の中の continue は降りない)
-    private static bool ContainsDirectContinue(Node stmt)
-    {
-        if (stmt.Kind == NodeKind.Continue) return true;
-        if (stmt.Kind == NodeKind.For || stmt.Kind == NodeKind.While || stmt.Kind == NodeKind.DoWhile || stmt.Kind == NodeKind.Foreach) return false;
-        return AnyChild(stmt, c => ContainsDirectContinue(c));
-    }
-
     private static bool AnyChild(Node n, System.Func<Node, bool> f)
     {
         if (n.A != null && f(n.A)) return true;
@@ -4014,7 +3691,7 @@ public sealed class IlBuild
         var names = new List<string>();
         foreach (var d in outs)
         {
-            var n = d.Local != null ? d.Local.LuaName : "_";
+            var n = d.Local != null ? d.Local.IlName : "_";
             if (!names.Contains(n))
             {
                 names.Add(n);
@@ -4023,7 +3700,7 @@ public sealed class IlBuild
         }
         foreach (var d in pats)
         {
-            var n = d.Local!.LuaName;
+            var n = d.Local!.IlName;
             if (!names.Contains(n))
             {
                 names.Add(n);
@@ -4104,7 +3781,7 @@ public sealed class IlBuild
     {
         var origin = Origin(f);
         if (f.Count > 0) return BuildForeachDeconstructInto(f, acc);
-        var varName = f.Local != null ? f.Local.LuaName : f.Text;
+        var varName = f.Local != null ? f.Local.IlName : f.Text;
         var collNode = f.B!;
         var runesRecv = TryGetEnumerateRunesReceiver(collNode);
         if (runesRecv != null)
@@ -4122,21 +3799,12 @@ public sealed class IlBuild
         // Dictionary の本体だけ IlForeachDict (KeyValuePair) で反復する。Keys / Values は runtime が配列を返すので List の反復
         if (IlTypes.IsDict(collType))
         {
-            // float の key は NaN の置き換えを戻す
-            if (IlTypes.IsFloating(collType.Arg(0)))
-            {
-                var key = new IlField(new IlVar(varName, null), "Key", null);
-                var withKey = new List<IlStat>();
-                withKey.Add(new IlAssign(key, new IlCall("Dict.FloatKeyOut", One(key), false, null), null));
-                foreach (var st in body.Stats) withKey.Add(st);
-                body = new IlBlock(withKey);
-            }
             acc.Add(new IlForeachDict(varName, coll, body, origin));
             return true;
         }
         // Queue / HashSet は今の要素の写しを反復する
-        if (IlTypes.IsQueue(collType)) coll = new IlCall("TcsQueue.ToList", One(coll), false, null);
-        if (IlTypes.IsHashSet(collType)) coll = new IlCall("TcsHashSet.ToList", One(coll), false, null);
+        if (IlTypes.IsQueue(collType)) coll = new IlCall("TcsQueue.ToList", One(coll), null);
+        if (IlTypes.IsHashSet(collType)) coll = new IlCall("TcsHashSet.ToList", One(coll), null);
         // 反復の変数は要素の copy (struct の要素への変更を元へ残さない)
         var iterVar = new IlVar(varName, null);
         var copied = CopyIfMutableStruct(f.Local != null ? f.Local.Type : null, iterVar);
@@ -4147,7 +3815,7 @@ public sealed class IlBuild
             foreach (var st in body.Stats) stats.Add(st);
             body = new IlBlock(stats);
         }
-        acc.Add(new IlForeachList(varName, coll, body, !IlTypes.IsArray(collType) && !IlTypes.IsDictCollection(collType), origin));
+        acc.Add(new IlForeachList(varName, coll, body, origin));
         return true;
     }
 
@@ -4194,13 +3862,14 @@ public sealed class IlBuild
         return null;
     }
 
-    private static string? LuaTypeNameFor(TypeSym? patternType)
+    // プリミティブの型 test の型 (それ以外の型は null)
+    private static IlIsPrimType? PrimTypeTest(IlExpr expr, TypeSym? patternType)
     {
         if (patternType == null) return null;
         var t = IlTypes.UnwrapNullable(patternType);
-        if (t.Kind == TypeKind.String) return "string";
-        if (t.Kind == TypeKind.Bool) return "boolean";
-        if (t.Kind == TypeKind.Enum || IlTypes.IsIntegral(t) || IlTypes.IsFloating(t)) return "number";
+        if (t.Kind == TypeKind.String) return new IlIsPrimType(expr, IlPrimType.String, null);
+        if (t.Kind == TypeKind.Bool) return new IlIsPrimType(expr, IlPrimType.Bool, null);
+        if (t.Kind == TypeKind.Enum || IlTypes.IsIntegral(t) || IlTypes.IsFloating(t)) return new IlIsPrimType(expr, IlPrimType.Number, null);
         return null;
     }
 
@@ -4215,14 +3884,14 @@ public sealed class IlBuild
         // 値型の入力 (T / T?) を同じ値型 T で照合するのは値の有無だけ (数と bool と enum も)
         if (patternType != null && patternType.IsValueType && inputType != null)
         {
-            if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => new IlLit("true", null, null));
+            if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => IlLiterals.Bool(true));
             if (IlTypes.IsNullableValueType(inputType) && TypeSym.Same(inputType.Elem, patternType)) return new IlNullableHasValue(expr, null);
         }
-        var luaType = LuaTypeNameFor(patternType);
-        if (luaType != null) return new IlIsLuaType(expr, luaType, null);
+        var primTest = PrimTypeTest(expr, patternType);
+        if (primTest != null) return primTest;
         if (IsStructuralType(patternType))
         {
-            if (inputType != null && TypeSym.Same(inputType, patternType!)) return new IlBin(IlBinOp.Ne, expr, new IlLit("nil", null, null), null);
+            if (inputType != null && TypeSym.Same(inputType, patternType!)) return new IlBin(IlBinOp.Ne, expr, IlLiterals.Null(), null);
             return null;
         }
         if (patternType != null && patternType.Kind == TypeKind.Interface) return new IlIsType(expr, CheckTypeName(patternType), true, null);
@@ -4299,13 +3968,13 @@ public sealed class IlBuild
             }
             case NodeKind.PatDiscard:
             case NodeKind.PatVar:
-                return new IlLit("true", null, null);
+                return IlLiterals.Bool(true);
             case NodeKind.PatType:
                 return BuildTypeCheck(governing, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
             case NodeKind.PatDecl:
             {
                 if (IsStructDesignation(pattern, inputType))
-                    return BuildStructDeclarationIs(new IlVar(pattern.Local!.LuaName, null), governing, inputType!, pattern.Type!);
+                    return BuildStructDeclarationIs(new IlVar(pattern.Local!.IlName, null), governing, inputType!, pattern.Type!);
                 return BuildTypeCheck(governing, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
             }
             case NodeKind.PatProp:
@@ -4403,12 +4072,12 @@ public sealed class IlBuild
             if (check == null) return null;
             conditions.Add(check);
         }
-        else if (nullCheck) conditions.Add(new IlBin(IlBinOp.Ne, input, new IlLit("nil", null, null), null));
+        else if (nullCheck) conditions.Add(new IlBin(IlBinOp.Ne, input, IlLiterals.Null(), null));
         // 型の検査を通った後なので、member は検査した型として読む
         IlExpr recv = input;
         if (nullableValue) recv = new IlNullableValue(input, null);
         else if (patternType != null && patternType.IsReferenceLike && subpatterns.Count > 0 && (inputType == null || !TypeSym.Same(inputType, patternType)))
-            recv = new IlRefCast(input, IlTypes.Display(patternType), null, null, null);
+            recv = new IlRefCast(input, IlTypes.Display(patternType), null);
         foreach (var sub in subpatterns)
         {
             var sym = sub.Sym;
@@ -4420,7 +4089,7 @@ public sealed class IlBuild
             if (cond == null) return null;
             conditions.Add(cond);
         }
-        if (conditions.Count == 0) return new IlLit("true", null, null);
+        if (conditions.Count == 0) return IlLiterals.Bool(true);
         var result = conditions[0];
         for (int i = 1; i < conditions.Count; i++) result = new IlBin(IlBinOp.And, result, conditions[i], null);
         return result;
@@ -4437,7 +4106,7 @@ public sealed class IlBuild
     {
         IlExpr value = IlTypes.IsNullableValueType(inputType) ? Ex(new IlNullableValue(input, null)) : input;
         if (!IlTypes.IsMutableStruct(declType)) return value;
-        return new IlStructCopy(value, TypeName(declType), false, StructCopiers(declType, false), null);
+        return new IlStructCopy(value, TypeName(declType), false, null);
     }
 
     // `x is S v` (x: S / S?): 値があれば copy を束縛して true
@@ -4447,17 +4116,17 @@ public sealed class IlBuild
         {
             var stats = new List<IlStat>();
             stats.Add(new IlAssign(target, DesignationValue(expr, inputType, declType), null));
-            stats.Add(new IlReturn(new IlLit("true", null, null), null));
+            stats.Add(new IlReturn(IlLiterals.Bool(true), null));
             return new IlIife(stats, null);
         }
         return BindPatternInput(expr, input =>
         {
             var inner = new List<IlStat>();
             inner.Add(new IlAssign(target, DesignationValue(input, inputType, declType), null));
-            inner.Add(new IlReturn(new IlLit("true", null, null), null));
+            inner.Add(new IlReturn(IlLiterals.Bool(true), null));
             var stats = new List<IlStat>();
             stats.Add(new IlIf(Arm(new IlNullableHasValue(input, null), new IlBlock(inner)), null, null));
-            stats.Add(new IlReturn(new IlLit("false", null, null), null));
+            stats.Add(new IlReturn(IlLiterals.Bool(false), null));
             return new IlIife(stats, null);
         })!;
     }
@@ -4465,7 +4134,7 @@ public sealed class IlBuild
     // switch の designation の前宣言 (class は入力をそのまま束縛し、struct は型だけ宣言する)
     private IlLocal SwitchDesignationLocal(Node dp, TypeSym? inputType, IlExpr sw)
     {
-        var name = dp.Local!.LuaName;
+        var name = dp.Local!.IlName;
         if (IsStructDesignation(dp, inputType)) return new IlLocal(name, null, IlTypes.Display(dp.Type!), null);
         return new IlLocal(name, sw, dp.Type != null ? IlTypes.Display(dp.Type) : null, null);
     }
@@ -4478,7 +4147,7 @@ public sealed class IlBuild
         var pattern = isNode.B!;
         if (pattern.Kind == NodeKind.PatDecl && pattern.Local != null)
         {
-            var name = pattern.Local.LuaName;
+            var name = pattern.Local.IlName;
             if (IsStructDesignation(pattern, inputType)) return BuildStructDeclarationIs(new IlVar(name, null), expr, inputType, pattern.Type!);
             var check = BuildTypeCheck(new IlVar(name, null), inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
             if (check == null) return null;
@@ -4534,7 +4203,7 @@ public sealed class IlBuild
         }
         if (arms.Count == 0 && elseBlock == null) return null;
         if (arms.Count > 0) stats.Add(new IlIf(arms, elseBlock, null));
-        else stats.Add(new IlIf(Arm(new IlLit("true", null, null), elseBlock!), null, null));
+        else stats.Add(new IlIf(Arm(IlLiterals.Bool(true), elseBlock!), null, null));
         return new IlIife(stats, null);
     }
 
@@ -4590,7 +4259,7 @@ public sealed class IlBuild
                 if (constantLabel && pat.Kind == NodeKind.PatType) one = BuildTypeCheck(sw, inputType, pat.Type, FormatTypeReference(pat.A!, pat.Type));
                 else if (constantLabel)
                 {
-                    if (IsNullLiteral(pat.A!) && IlTypes.IsNullableValueType(inputType)) one = new IlBin(IlBinOp.Eq, sw, new IlLit("nil", null, null), null);
+                    if (IsNullLiteral(pat.A!) && IlTypes.IsNullableValueType(inputType)) one = new IlBin(IlBinOp.Eq, sw, IlLiterals.Null(), null);
                     else
                     {
                         var v = BuildExpr(pat.A!);
@@ -4694,7 +4363,7 @@ public sealed class IlBuild
         {
             foreach (var p in lambda.List)
             {
-                var name = p.Local != null ? p.Local.LuaName : p.Text;
+                var name = p.Local != null ? p.Local.IlName : p.Text;
                 paramList.Add(name);
                 var t = p.Local != null ? p.Local.Type : null;
                 var c = CopyIfMutableStruct(t, new IlVar(name, null));
@@ -4718,7 +4387,7 @@ public sealed class IlBuild
                 CollectIsDesignations(lambda.A, lambda.A, designations);
                 foreach (var d in designations)
                 {
-                    if (!locals.Contains(d.Local!.LuaName)) locals.Add(d.Local.LuaName);
+                    if (!locals.Contains(d.Local!.IlName)) locals.Add(d.Local.IlName);
                 }
                 if (copies.Count == 0) result = new IlClosure(paramList, null, body, locals, null);
                 else
@@ -4745,34 +4414,24 @@ public sealed class IlBuild
     // ---- 名前と member ----
 
     // const (enum の member を除く) は値を inline する
-    public string? ConstLiteral(Symbol? sym)
+    public IlExpr? ConstLiteral(Symbol? sym)
     {
         if (sym == null || !sym.IsConst || sym.Kind == SymKind.EnumMember || sym.ConstVal == null) return null;
-        return ConstText(sym.ConstVal, sym.Type);
-    }
-
-    public static string ConstText(ConstValue c, TypeSym t)
-    {
-        switch (c.Kind)
-        {
-            case ConstKind.Null: return "nil";
-            case ConstKind.Bool: return c.B ? "true" : "false";
-            case ConstKind.String: return IlLiterals.QuoteString(c.S);
-            case ConstKind.Int: return "" + c.I;
-            case ConstKind.Float: return IlLiterals.FormatDoubleOfFloat(c.F);
-        }
-        return "nil";
+        var c = sym.ConstVal;
+        // float の const の整数の値は float の literal
+        if (c.Kind == ConstKind.Int && (sym.Type.Kind == TypeKind.Float || sym.Type.Kind == TypeKind.Double)) return IlLiterals.Float((float)c.I);
+        return IlLiterals.Of(c);
     }
 
     private IlExpr? BuildIdentifier(Node id)
     {
         var sym = id.Sym;
         var constLit = ConstLiteral(sym);
-        if (constLit != null) return LitFromConst(constLit, sym != null && (sym.Type.Kind == TypeKind.Float || sym.Type.Kind == TypeKind.Double));
+        if (constLit != null) return constLit;
         switch (id.Info)
         {
             case RefKind.Local:
-                return new IlVar(id.Local!.LuaName, null);
+                return new IlVar(id.Local!.IlName, null);
             case RefKind.MethodGroup:
             {
                 var m = id.Sym;
@@ -4786,7 +4445,7 @@ public sealed class IlBuild
                 if (s.Kind == SymKind.Property && IsCustomProperty(s))
                 {
                     if (s.IsStatic) return new IlDynCall(new IlField(new IlVar(TypeRef(s.Owner!), null), "get_" + N(s), null), StaticAccessorArgs(s, null), null);
-                    if (IlTypes.IsUserStruct(s.Owner!.SelfType())) return new IlCall(TypeRef(s.Owner) + ".get_" + N(s), One(new IlVar("self", null)), false, null);
+                    if (IlTypes.IsUserStruct(s.Owner!.SelfType())) return new IlCall(TypeRef(s.Owner) + ".get_" + N(s), One(new IlVar("self", null)), null);
                     return new IlInvoke(new IlVar("self", null), "get_" + N(s), new List<IlExpr>(), null);
                 }
                 if (!s.IsStatic) return new IlField(new IlVar("self", null), N(s), null);
@@ -4805,7 +4464,7 @@ public sealed class IlBuild
     private IlExpr EnumMemberIl(Symbol sym)
     {
         // namespace にも型にも属さない --ref の enum は enum 自身の名前の path
-        if (sym.Owner != null && sym.Owner.IsRef && sym.Owner.LuaName == "") return new IlField(new IlVar(LuaNames.HostPathSegment(sym.Owner.Name), null), N(sym), null);
+        if (sym.Owner != null && sym.Owner.IsRef && sym.Owner.IlName == "") return new IlField(new IlVar(LuaNames.HostPathSegment(sym.Owner.Name), null), N(sym), null);
         return new IlField(new IlVar(TypeRef(sym.Owner!), null), N(sym), null);
     }
 
@@ -4821,7 +4480,7 @@ public sealed class IlBuild
         if (ma.Info == RefKind.Namespace) return new IlVar(ma.Text, null);
         if (sym == null) return Unported("member without symbol", ma);
         var constLit = ConstLiteral(sym);
-        if (constLit != null) return LitFromConst(constLit, sym.Type.Kind == TypeKind.Float || sym.Type.Kind == TypeKind.Double);
+        if (constLit != null) return constLit;
         if (sym.Kind == SymKind.EnumMember) return EnumMemberIl(sym);
         if (sym.Builtin != "") return BuildBuiltinMember(ma, sym);
         if (ma.Info == RefKind.MethodGroup)
@@ -4836,7 +4495,7 @@ public sealed class IlBuild
             if (IsCustomProperty(sym))
             {
                 if (sym.IsStatic) return new IlDynCall(new IlField(new IlVar(TypeRef(sym.Owner!), null), "get_" + N(sym), null), StaticAccessorArgs(sym, ma.A), null);
-                if (IlTypes.IsUserStruct(ma.A!.Type)) return new IlCall(TypeRef(sym.Owner!) + ".get_" + N(sym), One(StructReceiverArg(ma.A, obj)), false, null);
+                if (IlTypes.IsUserStruct(ma.A!.Type)) return new IlCall(TypeRef(sym.Owner!) + ".get_" + N(sym), One(StructReceiverArg(ma.A, obj)), null);
                 return new IlInvoke(obj, "get_" + N(sym), new List<IlExpr>(), null);
             }
             return new IlField(obj, N(sym), null);
@@ -4858,17 +4517,16 @@ public sealed class IlBuild
         switch (id)
         {
             // System.Math の const は double の値を inline する
-            case "Math.PI": return new IlLit("3.141592653589793", "float", null);
-            case "Math.E": return new IlLit("2.718281828459045", "float", null);
+            case "Math.PI": return IlLiterals.Float(3.141592653589793f);
+            case "Math.E": return IlLiterals.Float(2.718281828459045f);
             case "String.Empty": return new IlField(new IlVar("String", null), "Empty", null);
             case "Random.Shared": return new IlField(new IlVar("TinySystem.Random", null), "Shared", null);
-            // float の定数は double の値の表記
-            case "Float.MaxValue": return new IlLit("3.4028234663852886E+38", "float", null);
-            case "Float.MinValue": return new IlLit("-3.4028234663852886E+38", "float", null);
-            case "Float.PositiveInfinity": return new IlLit(IlLiterals.PositiveInfinityText, "float", null);
-            case "Float.NegativeInfinity": return new IlParen(new IlLit(IlLiterals.NegativeInfinityText, "float", null), null);
-            case "Float.NaN": return new IlLit(IlLiterals.NaNText, "float", null);
-            case "Float.Epsilon": return new IlLit("1.401298464324817E-45", "float", null);
+            case "Float.MaxValue": return IlLiterals.Float(float.MaxValue);
+            case "Float.MinValue": return IlLiterals.Float(float.MinValue);
+            case "Float.PositiveInfinity": return IlLiterals.Float(float.PositiveInfinity);
+            case "Float.NegativeInfinity": return IlLiterals.Float(float.NegativeInfinity);
+            case "Float.NaN": return IlLiterals.Float(float.NaN);
+            case "Float.Epsilon": return IlLiterals.Float(float.Epsilon);
         }
         var obj = BuildExpr(ma.A!);
         if (obj == null) return null;
@@ -4876,41 +4534,20 @@ public sealed class IlBuild
         {
             case "Nullable.HasValue": return new IlNullableHasValue(obj, null);
             case "Nullable.Value": return new IlNullableValue(obj, null);
-            case "Queue.Count": return new IlCall("TcsQueue.Count", One(obj), false, null);
-            case "HashSet.Count": return new IlCall("TcsHashSet.Count", One(obj), false, null);
-            case "Dict.Count": return new IlCall("Dict.Count", One(obj), false, null);
-            case "List.Count": return new IlLen(obj, IlTypes.HasNilListElements(recvType), null);
-            case "Dict.Keys": return DictKeys(recvType!, obj);
-            case "Dict.Values": return new IlCall("Dict.Values", One(obj), false, null);
-            case "Array.Length": return new IlLen(obj, false, null);
+            case "Queue.Count": return new IlCall("TcsQueue.Count", One(obj), null);
+            case "HashSet.Count": return new IlCall("TcsHashSet.Count", One(obj), null);
+            case "Dict.Count": return new IlCall("Dict.Count", One(obj), null);
+            case "List.Count": return new IlLen(obj, null);
+            case "Dict.Keys": return new IlCall("Dict.Keys", One(obj), null);
+            case "Dict.Values": return new IlCall("Dict.Values", One(obj), null);
+            case "Array.Length": return new IlLen(obj, null);
             case "Rune.Value": return obj;
             case "Utf8.Length": return new IlField(obj, "Length", null);
             case "KVP.Key": return new IlField(obj, "Key", null);
             case "KVP.Value": return new IlField(obj, "Value", null);
         }
-        if (IlTypes.IsDictCollection(recvType) && sym.Name == "Count") return new IlLen(obj, false, null);
+        if (IlTypes.IsDictCollection(recvType) && sym.Name == "Count") return new IlLen(obj, null);
         return Unported("builtin member " + id, ma);
-    }
-
-    // Dictionary の Keys (float の key は NaN の置換を戻す)
-    private IlExpr DictKeys(TypeSym dictType, IlExpr dict)
-    {
-        if (dictType.Args != null && IlTypes.IsFloating(dictType.Args[0])) return new IlCall("Dict.FloatKeys", One(dict), false, null);
-        return new IlCall("Dict.Keys", One(dict), false, null);
-    }
-
-    // Dictionary の key (float は NaN を置き換える)
-    // float の key は NaN を sentinel に置き換える。NaN でない定数の key は sentinel にならないので素通しする
-    private IlExpr DictKey(TypeSym? dictType, Node? keyNode, IlExpr key)
-    {
-        if (dictType == null || dictType.Kind != TypeKind.Dict || !IlTypes.IsFloating(dictType.Args![0])) return key;
-        // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)
-#pragma warning disable CS1718
-        if (keyNode != null && keyNode.HasConst && keyNode.Const != null && keyNode.Const.Kind != ConstKind.Null
-            && !(keyNode.Const.Kind == ConstKind.Float && keyNode.Const.F != keyNode.Const.F))
-            return key;
-#pragma warning restore CS1718
-        return new IlCall("Dict.FloatKey", One(key), false, null);
     }
 
     // 自動実装の property (accessor のどれにも本体が無い)
@@ -4974,10 +4611,10 @@ public sealed class IlBuild
         return r;
     }
 
-    // symbol の IL の member 名。--ref の型の member は host の名前 (LuaName)、user の型の method は overload の名前
+    // symbol の IL の member 名。--ref の型の member は host の名前 (IlName)、user の型の method は overload の名前
     public string N(Symbol sym)
     {
-        if (sym.Owner != null && sym.Owner.IsRef) return sym.LuaName;
+        if (sym.Owner != null && sym.Owner.IsRef) return sym.IlName;
         if (sym.Kind == SymKind.Method) return IlNames.MethodName(sym);
         return sym.Name;
     }
@@ -4985,7 +4622,7 @@ public sealed class IlBuild
     // static の参照の型の名前 (--ref の型は host の path)
     public string TypeRef(TypeDeclSym t)
     {
-        return t.LuaName;
+        return t.IlName;
     }
 
     // 型の検査 (IlIsType) と cast (IlCast) の型名。--ref の型は host の名前 (`ed.transform`) ではなく C# の global の名前 (`Ed_Transform`。export の class の名前と同じ)
@@ -4998,7 +4635,7 @@ public sealed class IlBuild
     public string TypeName(TypeSym t)
     {
         if (t.Kind == TypeKind.Tuple) return "System_ValueTuple" + t.Args!.Count;
-        if (t.Decl != null) return t.Decl.LuaName;
+        if (t.Decl != null) return t.Decl.IlName;
         return t.Name;
     }
 
@@ -5007,11 +4644,6 @@ public sealed class IlBuild
     // struct の parameter は値渡し。runtime (LINQ / Sort など) は要素を copy せずに渡すので、受ける側で copy する (il-spec §10)
     private IlExpr MethodGroup(Symbol method, List<TypeSym>? typeArgs)
     {
-        var copyTypes = new List<string?>();
-        if (method.Params != null)
-        {
-            foreach (var p in method.Params) copyTypes.Add(!p.IsOut && IlTypes.IsMutableStruct(p.Type) ? Copier(p.Type, false) : null);
-        }
         var typeArgDefaults = new List<IlExpr>();
         if ((method.IsStatic) && IlTypes.PassesTypeArgDefaults(method.Owner))
         {
@@ -5021,8 +4653,7 @@ public sealed class IlBuild
         {
             foreach (var a in typeArgs) typeArgDefaults.Add(TypeArgDefaultValue(a));
         }
-        bool multiReturn = IsMultiReturnMethod(method);
-        if (typeArgDefaults.Count == 0 && !multiReturn) return new IlMethodGroup(TypeRef(method.Owner!), N(method), copyTypes, null);
+        if (typeArgDefaults.Count == 0) return new IlMethodGroup(TypeRef(method.Owner!), N(method), null);
         var parameters = new List<string>();
         var args = new List<IlExpr>();
         int n = method.ParamCount;
@@ -5030,12 +4661,12 @@ public sealed class IlBuild
         {
             var pn = "__tcs_a" + i;
             parameters.Add(pn);
-            args.Add(copyTypes[i] != null ? CopyIfMutableStruct(method.Params![i].Type, new IlVar(pn, null)) : Ex(new IlVar(pn, null)));
+            var param = method.Params![i];
+            args.Add(!param.IsOut && IlTypes.IsMutableStruct(param.Type) ? CopyIfMutableStruct(param.Type, new IlVar(pn, null)) : Ex(new IlVar(pn, null)));
         }
         foreach (var t in typeArgDefaults) args.Add(t);
-        IlExpr groupCall = new IlCall(TypeRef(method.Owner!) + "." + N(method), args, false, null);
-        // delegate の呼び出し側は multi-return を知らないので 1 つの値にして返す
-        return new IlClosure(parameters, null, multiReturn ? PackTuple(method, groupCall) : groupCall, new List<string>(), null);
+        IlExpr groupCall = new IlCall(TypeRef(method.Owner!) + "." + N(method), args, null);
+        return new IlClosure(parameters, null, groupCall, new List<string>(), null);
     }
 
     // ---- 二項演算 ----
@@ -5180,31 +4811,31 @@ public sealed class IlBuild
         // record struct の ==/!= は合成の値の等価へ
         if ((op == "==" || op == "!=") && lt.Decl != null && lt.Decl.IsRecord && IlTypes.IsUserStruct(lt))
         {
-            var eqCall = new IlCall(TypeName(lt) + ".op_Equality", Two(left, right), false, null);
+            var eqCall = new IlCall(TypeName(lt) + ".op_Equality", Two(left, right), null);
             if (op == "==") return eqCall;
             return new IlParen(new IlUn(IlUnOp.Not, eqCall, null), null);
         }
-        // object / interface / 型引数どうしの ==/!= は C# では参照の比較なので、record の値の等価にしない rawequal にする
+        // object / interface / 型引数どうしの ==/!= は C# では参照の比較なので、record の値の等価にせず __tcs_refeq にする
         if ((op == "==" || op == "!=") && IsReferenceEquality(lt, rt))
         {
-            var refEq = new IlCall("rawequal", Two(left, right), false, null);
+            var refEq = new IlCall("__tcs_refeq", Two(left, right), null);
             if (op == "==") return refEq;
             return new IlParen(new IlUn(IlUnOp.Not, refEq, null), null);
         }
         var nullableBin = TryBuildNullableBinary(bin, left, right);
         if (nullableBin != null) return nullableBin;
-        if (op == "/" && IlTypes.IsIntegral(resultType)) return new IlCall("__tcs_idiv", Two(left, right), false, null);
+        if (op == "/" && IlTypes.IsIntegral(resultType)) return new IlCall("__tcs_idiv", Two(left, right), null);
         if (op == "%")
         {
-            if (IlTypes.IsIntegral(resultType)) return new IlCall("__tcs_irem", Two(left, right), false, null);
-            if (IlTypes.IsFloating(resultType)) return new IlCall("math.fmod", Two(left, right), false, null);
+            if (IlTypes.IsIntegral(resultType)) return new IlCall("__tcs_irem", Two(left, right), null);
+            if (IlTypes.IsFloating(resultType)) return new IlCall("__tcs_fmod", Two(left, right), null);
         }
         bool isConcat = op == "+" && (lt.Kind == TypeKind.String || rt.Kind == TypeKind.String || resultType.Kind == TypeKind.String);
         if (isConcat) return new IlBin(IlBinOp.Concat, WrapConcatOperand(bin.A, left), WrapConcatOperand(bin.B, right), null);
         if (_checked && resultType.Kind == TypeKind.Int && (op == "+" || op == "-" || op == "*"))
         {
             var callee = op == "+" ? "__tcs_cadd" : op == "-" ? "__tcs_csub" : "__tcs_cmul";
-            return new IlCall(callee, Two(left, right), false, null);
+            return new IlCall(callee, Two(left, right), null);
         }
         bool boolOperand = lt.Kind == TypeKind.Bool || rt.Kind == TypeKind.Bool;
         switch (op)
@@ -5262,11 +4893,11 @@ public sealed class IlBuild
         var en = WrapEnumToString(t, built);
         if (en != null) return en;
         if (IsStringifiedByValue(t)) return StringifyByValue(t, built);
-        if (IlTypes.IsFloating(t)) return new IlCall("__tcs_fstr", One(built), false, null);
-        if (IlTypes.IsChar(t)) return new IlCall("string.char", One(built), false, null);
+        if (IlTypes.IsFloating(t)) return new IlCall("__tcs_fstr", One(built), null);
+        if (IlTypes.IsChar(t)) return new IlCall("__tcs_cstr", One(built), null);
         if (IlTypes.IsRune(t)) return RuneToString(built);
-        if (t.Kind == TypeKind.Bool) return new IlCall("__tcs_bstr", One(built), false, null);
-        return new IlCall("tostring", One(built), false, null);
+        if (t.Kind == TypeKind.Bool) return new IlCall("__tcs_bstr", One(built), null);
+        return new IlCall("__tcs_str", One(built), null);
     }
 
     // 文字列の連結 (`+` / `+=`) の operand を文字列にする: int 以外の値型と ToString の override はここで文字列化し、
@@ -5279,13 +4910,13 @@ public sealed class IlBuild
         var en = WrapEnumToString(type, rendered);
         if (en != null) return en;
         if (IsStringifiedByValue(type)) return StringifyByValue(type, rendered);
-        if (IlTypes.IsFloating(type)) return new IlCall("__tcs_fstr", One(rendered), false, null);
-        if (IlTypes.IsChar(type)) return new IlCall("string.char", One(rendered), false, null);
+        if (IlTypes.IsFloating(type)) return new IlCall("__tcs_fstr", One(rendered), null);
+        if (IlTypes.IsChar(type)) return new IlCall("__tcs_cstr", One(rendered), null);
         if (IlTypes.IsRune(type)) return RuneToString(rendered);
         if (IlTypes.UnwrapNullable(type).Kind == TypeKind.Bool)
         {
-            if (IlTypes.IsNullableValueType(type)) return new IlCall("__tcs_nstr", One(rendered), false, null);
-            return new IlCall("__tcs_bstr", One(rendered), false, null);
+            if (IlTypes.IsNullableValueType(type)) return new IlCall("__tcs_nstr", One(rendered), null);
+            return new IlCall("__tcs_bstr", One(rendered), null);
         }
         if (type.Kind != TypeKind.String) return rendered;
         var unwrapped = expr;
@@ -5293,7 +4924,7 @@ public sealed class IlBuild
         bool literalLike = unwrapped.Kind == NodeKind.StringLit || unwrapped.Kind == NodeKind.InterpString
             || (unwrapped.Kind == NodeKind.Binary && unwrapped.Text == "+") || (unwrapped.HasConst && unwrapped.Kind != NodeKind.Name && unwrapped.Kind != NodeKind.Member);
         if (literalLike) return rendered;
-        return new IlParen(new IlBin(IlBinOp.Or, rendered, new IlLit("\"\"", null, null), null), null);
+        return new IlParen(new IlBin(IlBinOp.Or, rendered, IlLiterals.Str(""), null), null);
     }
 
     // ToString を override した型の値の文字列化: 直接呼ぶ (null と、ToString が返した null は空文字列)
@@ -5312,24 +4943,24 @@ public sealed class IlBuild
         }
         if (method == null) return null;
         if (IlTypes.IsUserStruct(t))
-            return EmptyIfNull(new IlCall(TypeRef(t.Decl) + "." + N(method), One(WrapStructCopy(src, built)), false, null));
+            return EmptyIfNull(new IlCall(TypeRef(t.Decl) + "." + N(method), One(WrapStructCopy(src, built)), null));
         var value = new IlVar("__tcs_v", null);
         var stats = new List<IlStat>();
         stats.Add(new IlLocal("__tcs_v", built, null, null));
-        stats.Add(new IlReturn(EmptyIfNull(new IlTernary(new IlBin(IlBinOp.Ne, value, new IlLit("nil", null, null), null),
-            new IlInvoke(value, N(method), new List<IlExpr>(), null), new IlLit("\"\"", null, null), null)), null));
+        stats.Add(new IlReturn(EmptyIfNull(new IlTernary(new IlBin(IlBinOp.Ne, value, IlLiterals.Null(), null),
+            new IlInvoke(value, N(method), new List<IlExpr>(), null), IlLiterals.Str(""), null)), null));
         return new IlIife(stats, null);
     }
 
     private static IlExpr EmptyIfNull(IlExpr text)
     {
-        return new IlParen(new IlBin(IlBinOp.Or, text, new IlLit("\"\"", null, null), null), null);
+        return new IlParen(new IlBin(IlBinOp.Or, text, IlLiterals.Str(""), null), null);
     }
 
     // Rune の値は codepoint の整数そのもの
     private static IlExpr RuneToString(IlExpr rune)
     {
-        return new IlCall("Char.ConvertFromUtf32", One(rune), false, null);
+        return new IlCall("Char.ConvertFromUtf32", One(rune), null);
     }
 
     // 文字列化が値で決まる型 (T?、object、型引数)
@@ -5343,9 +4974,9 @@ public sealed class IlBuild
         if (t.Kind == TypeKind.TypeParam)
         {
             var passed = TypeArgDefaultIl(t);
-            if (passed != null) return new IlCall("__tcs_tstr", Two(passed, value), false, null);
+            if (passed != null) return new IlCall("__tcs_tstr", Two(passed, value), null);
         }
-        return new IlCall("__tcs_nstr", One(value), false, null);
+        return new IlCall("__tcs_nstr", One(value), null);
     }
 
     // enum の値の文字列化 (ToString / 連結 / 補間 / Console.WriteLine)。.NET の Enum.ToString と同じく、定義された値は member の名前、
@@ -5359,7 +4990,7 @@ public sealed class IlBuild
     {
         var spec = EnumFormatSpec(IlTypes.UnwrapNullable(t), flags);
         if (spec == null) return null;
-        return new IlCall("String.FormatEnum", Two(value, new IlLit(IlLiterals.QuoteString(spec), null, null)), false, null);
+        return new IlCall("String.FormatEnum", Two(value, IlLiterals.Str(spec)), null);
     }
 
     // enum の書式 (`e.ToString("G")` と補間の `{e:G}`)。G は名前、F は名前の組み合わせ、D は数。それ以外は null
@@ -5367,7 +4998,7 @@ public sealed class IlBuild
     {
         if (format == "G" || format == "g") return WrapEnumToStringFlags(t, value, false);
         if (format == "F" || format == "f") return WrapEnumToStringFlags(t, value, true);
-        if (format == "D" || format == "d") return new IlCall("tostring", One(value), false, null);
+        if (format == "D" || format == "d") return new IlCall("__tcs_str", One(value), null);
         return null;
     }
 
@@ -5622,33 +5253,32 @@ public sealed class IlBuild
         if (t != null && t.Kind == TypeKind.TypeParam)
         {
             var passed = TypeArgDefaultIl(t);
-            if (passed != null) return new IlCall("__tcs_dv", One(passed), false, null);
+            if (passed != null) return new IlCall("__tcs_dv", One(passed), null);
         }
-        if (IlTypes.IsUtf8Bytes(t)) return new IlCall("TinySystem.Utf8.Default", new List<IlExpr>(), false, null);
+        if (IlTypes.IsUtf8Bytes(t)) return new IlCall("TinySystem.Utf8.Default", new List<IlExpr>(), null);
         if (IlTypes.IsUserStruct(t)) return new IlNewObj(TypeName(t!), StructTypeArgDefaults(t!), "new", null);
-        return new IlLit(DefaultLiteral(t), null, null);
+        return DefaultLiteral(t);
     }
 
     // literal で書ける default 値 (数、bool、enum。それ以外は null)。source の struct、Utf8Bytes、渡された型引数の既定値は DefaultIl が先に扱う
-    public static string DefaultLiteral(TypeSym? type)
+    public static IlLit DefaultLiteral(TypeSym? type)
     {
-        if (type == null) return "nil";
+        if (type == null) return IlLiterals.Null();
         // enum の default は member の値に依らず 0 (C#: default(E) == 0)
-        if (type.Kind == TypeKind.Enum) return "0";
+        if (type.Kind == TypeKind.Enum) return IlLiterals.Int(0);
         switch (type.Kind)
         {
-            case TypeKind.Bool: return "false";
-            case TypeKind.Char: return "0";
+            case TypeKind.Bool: return IlLiterals.Bool(false);
+            case TypeKind.Char:
             case TypeKind.Int:
             case TypeKind.Long:
             case TypeKind.UInt:
-                return "0";
-            // float の既定値は float の literal
+                return IlLiterals.Int(0);
             case TypeKind.Float:
             case TypeKind.Double:
-                return "0.0";
+                return IlLiterals.Float(0f);
         }
-        return "nil";
+        return IlLiterals.Null();
     }
 
     // generic な struct の zero 値 (`S.new`) に渡す型引数の既定値
@@ -5676,11 +5306,11 @@ public sealed class IlBuild
             if (passed != null) return passed;
         }
         if (NeedsTypeArgDescriptor(t))
-            return new IlStructDescriptor(TypeName(t), StructTypeArgDefaults(t), StructCopiers(t, false), HasToStringOverride(t), null);
+            return new IlStructDescriptor(TypeName(t), StructTypeArgDefaults(t), HasToStringOverride(t), null);
         if (t.Kind == TypeKind.Enum)
         {
             var spec = EnumFormatSpec(t, false);
-            if (spec != null) return new IlCall("__tcs_etd", One(new IlLit(IlLiterals.QuoteString(spec), null, null)), false, null);
+            if (spec != null) return new IlCall("__tcs_etd", One(IlLiterals.Str(spec)), null);
         }
         return DefaultIl(t);
     }
@@ -5705,36 +5335,10 @@ public sealed class IlBuild
 
     // ---- struct の copy ----
 
-    // generic な struct の __copy に渡す型引数の copier (`, M.__copy` の形)
-    public string StructCopiers(TypeSym t, bool inCopy)
-    {
-        var args = t.Kind == TypeKind.Tuple ? t.Args : (t.Kind == TypeKind.Struct && t.Decl != null && t.Decl.TypeParams.Count > 0 ? t.Args : null);
-        if (args == null) return "";
-        var copiers = new List<string>();
-        foreach (var a in args) copiers.Add(Copier(a, inCopy));
-        while (copiers.Count > 0 && copiers[copiers.Count - 1] == "nil") copiers.RemoveAt(copiers.Count - 1);
-        var parts = new List<string>();
-        foreach (var c in copiers) parts.Add(", " + c);
-        return string.Join("", parts);
-    }
-
-    // 型の値を写す関数 (式のテキスト)。写さなくてよい型は nil
-    private string Copier(TypeSym t, bool inCopy)
-    {
-        if (t.Kind == TypeKind.TypeParam && inCopy) return "__tcs_cc_" + t.Name;
-        if (IlTypes.IsMutableStruct(t))
-        {
-            var inner = StructCopiers(t, inCopy);
-            if (inner != "") return "function(v) return " + TypeName(t) + ".__copy(v" + inner + ") end";
-            return TypeName(t) + ".__copy";
-        }
-        return "nil";
-    }
-
     // 元の式を持たない値 (分解の成分 / foreach の変数 / lambda の parameter) の copy
     private IlExpr CopyIfMutableStruct(TypeSym? t, IlExpr value)
     {
-        if (IlTypes.IsMutableStruct(t)) return new IlStructCopy(value, TypeName(t!), false, StructCopiers(t!, false), null);
+        if (IlTypes.IsMutableStruct(t)) return new IlStructCopy(value, TypeName(t!), false, null);
         return value;
     }
 
@@ -5749,9 +5353,9 @@ public sealed class IlBuild
             case IlTable:
                 return true;
             case IlLit lit:
-                return lit.LuaText == "nil";
+                return lit.Kind == IlLitKind.Null;
             case IlCall call:
-                return call.Callee == "__tcs_dv" || call.Callee == "__tcs_nt" || call.Callee == "__tcs_tc" || call.Callee.StartsWith("__tcs_tuple");
+                return call.Callee == "__tcs_dv" || call.Callee == "__tcs_nt" || call.Callee == "__tcs_tc";
             case IlNullableWrap wrap:
                 return IsFreshStructIl(wrap.E);
             case IlParen paren:
@@ -5861,7 +5465,6 @@ public sealed class IlBuild
             case IlBin x6: return x6 with { Origin = origin };
             case IlUn x7: return x7 with { Origin = origin };
             case IlParen x8: return x8 with { Origin = origin };
-            case IlValues x9: return x9 with { Origin = origin };
             case IlTernary x10: return x10 with { Origin = origin };
             case IlCall x11: return x11 with { Origin = origin };
             case IlDynCall x12: return x12 with { Origin = origin };
@@ -5874,7 +5477,7 @@ public sealed class IlBuild
             case IlNumericConvert x19: return x19 with { Origin = origin };
             case IlRefCast x20: return x20 with { Origin = origin };
             case IlIsType x21: return x21 with { Origin = origin };
-            case IlIsLuaType x22: return x22 with { Origin = origin };
+            case IlIsPrimType x22: return x22 with { Origin = origin };
             case IlIife x23: return x23 with { Origin = origin };
             case IlClosure x24: return x24 with { Origin = origin };
             case IlMethodGroup x25: return x25 with { Origin = origin };

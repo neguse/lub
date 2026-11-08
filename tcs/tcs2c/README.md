@@ -29,7 +29,7 @@ gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
 IL 契約 (`IlExport`) に載る TinyC# は原則すべて C へ落とす。意味論の正本は
 il-spec と .NET の実行で、`tcs2c.Tests` が同じ source の C、tcs VM、.NET の stdout 一致を要求する。
 
-- 型: `int` / `float` / `bool` / `string` (immutable byte 列、literal は static object) / `char` (整数 code unit。IL の `string.char` / `Char.*` intrinsic) / enum (整数定数。`ToString`・連結・補間は .NET と同じ member の名前で、member に無い値は数) / class 参照 / データ struct (C 値型) / `T[]` (inline 要素の固定長配列) / `List<T>` (growable buffer) / `Dictionary<int|string, V>` (chained hash) / `Action` `Func` (closure = lifted 関数 + 捕捉 cell)
+- 型: `int` / `float` / `bool` / `string` (immutable byte 列、literal は static object) / `char` (整数 code unit。IL の `__tcs_cstr` / `Char.*` intrinsic) / enum (整数定数。`ToString`・連結・補間は .NET と同じ member の名前で、member に無い値は数) / class 参照 / データ struct (C 値型) / `T[]` (inline 要素の固定長配列) / `List<T>` (growable buffer) / `Dictionary<int|string, V>` (chained hash) / `Action` `Func` (closure = lifted 関数 + 捕捉 cell)
 - class: `is T` / is-pattern、static field / property、auto property
   initializer、interface の実装、明示 downcast (`IlCast`: 実行時型が合わなければ fault)。
   継承 (基底 class、`virtual` / `override` / `base`) は TinyC# の対象外 (TCS1001)
@@ -46,7 +46,7 @@ il-spec と .NET の実行で、`tcs2c.Tests` が同じ source の C、tcs VM、
   string は内容、record は再帰、struct は memberwise、object / interface の
   field は実行時の型で比べる `tcs_eq_object`)、`with` (実行時型の layout で shallow copy)、分解代入、
   List.Contains / IndexOf / Remove も構造等価
-- 式・文: 数値演算 (i32 は wrap。int の `/` と `%` は C# と同じく 0 方向に切り捨て (`7 / 2` は 3、`-7 % 2` は -1)、除数 0 と `int.MinValue / -1` は fault。f32 は strict で、片方が float の `/` は f32 の除算。`(int)f` は 0 方向 truncation)、文字列連結・補間 (IL の `string.format` を runtime/fmt が文字列にする: `%d %s %f %e %g %x %c`、幅・精度・`-`/`0` flag)、三項・`??`・switch 式、while / do-while / for / foreach (List / array / Dictionary / `EnumerateRunes`)、break / continue、IIFE (GNU statement expression)
+- 式・文: 数値演算 (i32 は wrap。int の `/` と `%` は C# と同じく 0 方向に切り捨て (`7 / 2` は 3、`-7 % 2` は -1)、除数 0 と `int.MinValue / -1` は fault。f32 は strict で、片方が float の `/` は f32 の除算。`(int)f` は 0 方向 truncation)、文字列連結・補間 (IL の `__tcs_format` を runtime/fmt が文字列にする: `%d %s %f %e %g %x %c`、幅・精度・`-`/`0` flag)、三項・`??`・switch 式、while / do-while / for / foreach (List / array / Dictionary / `EnumerateRunes`)、break / continue、IIFE (GNU statement expression)
 - runtime 表面 (tcs VM と同じ意味論):
   - List: Add / Count / index / Remove / RemoveAt / Clear / Contains / IndexOf /
     Sort (自然順・comparison) / Where / Select / Any / All / First / Last /
@@ -65,9 +65,9 @@ il-spec と .NET の実行で、`tcs2c.Tests` が同じ source の C、tcs VM、
 - fault: null / bounds / 0 除算 / key-not-found / 空列 First 等は
   `tcs_fault(kind)` で stderr へ出して exit 1 (il-spec §12)
 
-明示エラー (未対応): `object` 型の local、`StringBuilder`、int / float 以外の `CompareTo`、`IlIsLuaType` (object の値の型 test。`o is string` など)。
+明示エラー (未対応): `object` 型の local、`StringBuilder`、int / float 以外の `CompareTo`、`IlIsPrimType` (object の値の型 test。`o is string` など)。
 
-`Console.WriteLine` / `Write` (IL の `print` / `io.write`) は stdout へ書く。digest kernel 回帰用だけは `--digest-f32` を付け、各 f32 の bit 列を FNV-1a へ直接投入する。
+`Console.WriteLine` / `Write` (IL の `__tcs_writeline` / `__tcs_write`) は stdout へ書く。digest kernel 回帰用だけは `--digest-f32` を付け、各 f32 の bit 列を FNV-1a へ直接投入する。
 
 ```sh
 TCS_ROOT=../tcs bash tcs2c/verify-digests.sh
@@ -183,7 +183,7 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
   出しは実装 class への dispatch (`tcs_dispatch_<Iface>_<m>`)。cast は `tcs_is_<Iface>` (実装 class の type tag 集合) で検査
 - **配列 literal** (`new T[] { ... }`、入れ子 / 空も) は固定長 `TcsArray`。
   ctor / method / foreign 呼び出しは末尾の省略可能引数を IL の
-  `ParameterDefaults` で補う。float literal / const は `IlLit.Type` で F32 を
+  `ParameterDefaults` で補う。float literal / const は `IlLit.Kind` (Float) で F32 を
   保つ (`2f` が整数に化けない)
 - **static field の初期化順**: 定数でない initializer を持つ class は C# と
   同じく最初のアクセスで初期化する (`tcs_sinit_<Class>`、accessor

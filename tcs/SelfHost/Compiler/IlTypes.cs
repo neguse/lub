@@ -138,27 +138,10 @@ public static class IlTypes
         return null;
     }
 
-    // List / 配列の要素が false でありうる (bool、型引数、object)
-    public static bool HasBoolElements(TypeSym? t)
-    {
-        var e = ElementOf(t);
-        if (e == null) return false;
-        if (e.Kind == TypeKind.Nullable) e = e.Elem;
-        return e.Kind == TypeKind.TypeParam || e.Kind == TypeKind.Bool || e.Kind == TypeKind.Object;
-    }
-
     // 要素の default が null の配列 (`new T[n]` の要素が null になりうる。TCS1003)
     public static bool HasNilableElements(TypeSym? t)
     {
         if (t == null || t.Kind != TypeKind.Array) return false;
-        var e = t.Elem;
-        return !e.IsValueType || e.Kind == TypeKind.TypeParam || e.Kind == TypeKind.Nullable;
-    }
-
-    // 要素が null になりうる List
-    public static bool HasNilListElements(TypeSym? t)
-    {
-        if (t == null || t.Kind != TypeKind.List) return false;
         var e = t.Elem;
         return !e.IsValueType || e.Kind == TypeKind.TypeParam || e.Kind == TypeKind.Nullable;
     }

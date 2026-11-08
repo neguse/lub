@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// local の束縛 (local 変数 / parameter / foreach の変数 / pattern の designation / lambda の parameter) の IL の名前 (LuaName)。
+// local の束縛 (local 変数 / parameter / foreach の変数 / pattern の designation / lambda の parameter) の IL の名前 (IlName)。
 // 予約語 (LuaNames.IsReserved)、型の名前、IL の callee が素の名前で参照する global と同じ名前は
 // `x` → `x_` に写し、写した先が同じ member の中の識別子か型の名前なら `_` を足す。同じ member の同じ名前は同じ名前に写す
 public static class LocalNames
@@ -42,10 +42,10 @@ public static class LocalNames
             names.Add(t.Name);
             if (t.IsRef)
             {
-                var path = t.LuaName;
+                var path = t.IlName;
                 if (path != "") names.Add(path.Split('.')[0]);
             }
-            else names.Add(t.LuaName);
+            else names.Add(t.IlName);
         }
         return names;
     }
@@ -137,7 +137,7 @@ public static class LocalNames
         foreach (var d in decls)
         {
             var l = d.Local!;
-            l.LuaName = l.Name;
+            l.IlName = l.Name;
             if (!IsCandidate(l.Name, typeNames)) continue;
             if (taken == null)
             {
@@ -147,7 +147,7 @@ public static class LocalNames
             int k = chosenFrom.IndexOf(l.Name);
             if (k >= 0)
             {
-                l.LuaName = chosenTo[k];
+                l.IlName = chosenTo[k];
                 continue;
             }
             var name = l.Name + "_";
@@ -155,7 +155,7 @@ public static class LocalNames
             chosenFrom.Add(l.Name);
             chosenTo.Add(name);
             taken.Add(name);
-            l.LuaName = name;
+            l.IlName = name;
         }
         // pattern の designation は switch や if の前に前宣言するので、同じ member の中で同じ名前の designation
         // (`case A x: ... case B x:`) は別の名前にする (C backend は名前で local を引く。T283)
@@ -164,9 +164,9 @@ public static class LocalNames
         {
             if (d.Kind != NodeKind.PatDecl && d.Kind != NodeKind.PatVar) continue;
             var l = d.Local!;
-            if (!patternNames.Contains(l.LuaName))
+            if (!patternNames.Contains(l.IlName))
             {
-                patternNames.Add(l.LuaName);
+                patternNames.Add(l.IlName);
                 continue;
             }
             if (taken == null)
@@ -175,15 +175,15 @@ public static class LocalNames
                 CollectIdentifiers(scope, taken);
             }
             int n = 2;
-            var name = l.LuaName + "_" + n;
+            var name = l.IlName + "_" + n;
             while (taken.Contains(name) || typeNames.Contains(name) || patternNames.Contains(name))
             {
                 n++;
-                name = l.LuaName + "_" + n;
+                name = l.IlName + "_" + n;
             }
             taken.Add(name);
             patternNames.Add(name);
-            l.LuaName = name;
+            l.IlName = name;
         }
     }
 

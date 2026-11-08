@@ -105,11 +105,51 @@ public sealed class BigDec
     }
 }
 
-// IL の literal のテキスト (IlLit.LuaText の形。VM と C の backend が読む)。
+// IL の literal (IlLit) の作り方と、診断 (--dump-il、--trace) のための表示。
 // float の値の表記は整数の演算だけで決めるので、tcs を .NET、C、wasm のどれで動かしても同じ文字列になる
 public static class IlLiterals
 {
-    // 文字列の literal (引用符で囲み、backslash、引用符、改行、復帰、tab と制御文字を escape する)
+    public static IlLit Null() => new IlLit(IlLitKind.Null, 0, 0f, "", null);
+
+    public static IlLit Bool(bool value) => new IlLit(IlLitKind.Bool, value ? 1 : 0, 0f, "", null);
+
+    public static IlLit Int(int value) => new IlLit(IlLitKind.Int, value, 0f, "", null);
+
+    public static IlLit Float(float value) => new IlLit(IlLitKind.Float, 0, value, "", null);
+
+    public static IlLit Str(string value) => new IlLit(IlLitKind.String, 0, 0f, value, null);
+
+    // binder の定数の literal
+    public static IlLit Of(ConstValue c)
+    {
+        switch (c.Kind)
+        {
+            case ConstKind.Bool: return Bool(c.B);
+            case ConstKind.String: return Str(c.S);
+            case ConstKind.Int: return Int(c.I);
+            case ConstKind.Float: return Float(c.F);
+        }
+        return Null();
+    }
+
+    public static bool IsNull(IlExpr? e) => e is IlLit l && l.Kind == IlLitKind.Null;
+
+    public static bool IsString(IlExpr? e) => e is IlLit l && l.Kind == IlLitKind.String;
+
+    // 診断のための表示 (null、true / false、10 進の数、引用符で囲んで escape した文字列)
+    public static string Display(IlLit lit)
+    {
+        switch (lit.Kind)
+        {
+            case IlLitKind.Bool: return lit.I != 0 ? "true" : "false";
+            case IlLitKind.Int: return "" + lit.I;
+            case IlLitKind.Float: return FormatDoubleOfFloat(lit.F);
+            case IlLitKind.String: return QuoteString(lit.S);
+        }
+        return "null";
+    }
+
+    // 文字列を引用符で囲み、backslash、引用符、改行、復帰、tab と制御文字を escape する
     public static string QuoteString(string value)
     {
         var u = new Utf8Bytes(value);
@@ -125,7 +165,7 @@ public static class IlLiterals
             else if (c == '\n') esc = "\\n";
             else if (c == '\r') esc = "\\r";
             else if (c == '\t') esc = "\\t";
-            // 制御文字は 2 桁固定の \xXX (VM と C の backend は \x の後を 2 桁で読むので後の文字と混ざらない)
+            // 制御文字は 2 桁固定の \xXX
             else if (c < 32 || c == 127) esc = "\\x" + Hex2(c);
             if (esc != null)
             {
@@ -146,32 +186,16 @@ public static class IlLiterals
         return d.Slice(c / 16, 1).ToString() + d.Slice(c % 16, 1).ToString();
     }
 
-    // f32 の NaN と ±∞ の literal のテキスト。10 進では書けないので、.NET の float.ToString() と同じ語で書く
-    public const string NaNText = "NaN";
-    public const string PositiveInfinityText = "Infinity";
-    public const string NegativeInfinityText = "-Infinity";
-
-    // x が NaN か ±∞ ならその literal のテキスト、有限なら null
-    public static string? NonFiniteText(float x)
+    // x が NaN か ±∞ なら .NET の float.ToString() と同じ語、有限なら null
+    private static string? NonFiniteText(float x)
     {
         // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)
 #pragma warning disable CS1718
-        if (x != x) return NaNText;
+        if (x != x) return "NaN";
 #pragma warning restore CS1718
-        if (x > 3.4028235e38f) return PositiveInfinityText;
-        if (x < -3.4028235e38f) return NegativeInfinityText;
+        if (x > 3.4028235e38f) return "Infinity";
+        if (x < -3.4028235e38f) return "-Infinity";
         return null;
-    }
-
-    // NaN と ±∞ の literal のテキストなら、その binary32 の bit の並び (int に入れた 32 bit) を返す
-    public static bool TryNonFiniteBits(string text, out int bits)
-    {
-        bits = 0;
-        if (text == NaNText) bits = 0x7fc00000;
-        else if (text == PositiveInfinityText) bits = 0x7f800000;
-        else if (text == NegativeInfinityText) bits = int.MinValue | 0x7f800000;
-        else return false;
-        return true;
     }
 
     // C# の float の定数を double にして、.NET の double.ToString("R") (往復できる最短の表記) で書く。

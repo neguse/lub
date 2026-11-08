@@ -52,11 +52,6 @@ public static class IlNodes
             var n = nIlParen;
             if (n.E != null) r.Add(n.E);
         }
-        else if (node is IlValues nIlValues)
-        {
-            var n = nIlValues;
-            foreach (var x in n.Items) r.Add(x);
-        }
         else if (node is IlTernary nIlTernary)
         {
             var n = nIlTernary;
@@ -120,16 +115,15 @@ public static class IlNodes
         {
             var n = nIlRefCast;
             if (n.Value != null) r.Add(n.Value);
-            if (n.LuaCheckArg != null) r.Add(n.LuaCheckArg);
         }
         else if (node is IlIsType nIlIsType)
         {
             var n = nIlIsType;
             if (n.E != null) r.Add(n.E);
         }
-        else if (node is IlIsLuaType nIlIsLuaType)
+        else if (node is IlIsPrimType nIlIsPrimType)
         {
-            var n = nIlIsLuaType;
+            var n = nIlIsPrimType;
             if (n.E != null) r.Add(n.E);
         }
         else if (node is IlIife nIlIife)
@@ -318,7 +312,6 @@ public static class IlNodes
         if (node is IlBin) return "IlBin";
         if (node is IlUn) return "IlUn";
         if (node is IlParen) return "IlParen";
-        if (node is IlValues) return "IlValues";
         if (node is IlTernary) return "IlTernary";
         if (node is IlCall) return "IlCall";
         if (node is IlDynCall) return "IlDynCall";
@@ -332,7 +325,7 @@ public static class IlNodes
         if (node is IlNumericConvert) return "IlNumericConvert";
         if (node is IlRefCast) return "IlRefCast";
         if (node is IlIsType) return "IlIsType";
-        if (node is IlIsLuaType) return "IlIsLuaType";
+        if (node is IlIsPrimType) return "IlIsPrimType";
         if (node is IlIife) return "IlIife";
         if (node is IlClosure) return "IlClosure";
         if (node is IlMethodGroup) return "IlMethodGroup";
@@ -375,7 +368,7 @@ public static class IlNodes
         if (node is IlLit nIlLit)
         {
             var n = nIlLit;
-            return "IlLit(" + Str(n.LuaText) + ", " + Str(n.Type) + ")";
+            return "IlLit(" + IlLitKindName(n.Kind) + ", " + IlLiterals.Display(n) + ")";
         }
         if (node is IlVar nIlVar)
         {
@@ -390,12 +383,12 @@ public static class IlNodes
         if (node is IlIndex nIlIndex)
         {
             var n = nIlIndex;
-            return "IlIndex(" + Dump(n.Recv) + ", " + Dump(n.Idx) + ", " + (n.PlusOne ? "True" : "False") + ", " + (n.Unchecked ? "True" : "False") + ", " + (n.BoolElements ? "True" : "False") + ", " + (n.NilElements ? "True" : "False") + ")";
+            return "IlIndex(" + Dump(n.Recv) + ", " + Dump(n.Idx) + ", " + (n.PlusOne ? "True" : "False") + ", " + (n.Unchecked ? "True" : "False") + ")";
         }
         if (node is IlLen nIlLen)
         {
             var n = nIlLen;
-            return "IlLen(" + Dump(n.E) + ", " + (n.NilElements ? "True" : "False") + ")";
+            return "IlLen(" + Dump(n.E) + ")";
         }
         if (node is IlBin nIlBin)
         {
@@ -412,11 +405,6 @@ public static class IlNodes
             var n = nIlParen;
             return "IlParen(" + Dump(n.E) + ")";
         }
-        if (node is IlValues nIlValues)
-        {
-            var n = nIlValues;
-            return "IlValues(" + Nodes(n.Items) + ")";
-        }
         if (node is IlTernary nIlTernary)
         {
             var n = nIlTernary;
@@ -425,7 +413,7 @@ public static class IlNodes
         if (node is IlCall nIlCall)
         {
             var n = nIlCall;
-            return "IlCall(" + Str(n.Callee) + ", " + Nodes(n.Args) + ", " + (n.NilElements ? "True" : "False") + ")";
+            return "IlCall(" + Str(n.Callee) + ", " + Nodes(n.Args) + ")";
         }
         if (node is IlDynCall nIlDynCall)
         {
@@ -450,7 +438,7 @@ public static class IlNodes
         if (node is IlTable nIlTable)
         {
             var n = nIlTable;
-            return "IlTable(" + Nodes(n.Entries) + ", " + Str(n.ElementType) + ", " + Str(n.KeyType) + ", " + (n.IsArray ? "True" : "False") + ", " + Str(n.ObjectType) + ", " + (n.NilElements ? "True" : "False") + ")";
+            return "IlTable(" + Nodes(n.Entries) + ", " + Str(n.ElementType) + ", " + Str(n.KeyType) + ", " + (n.IsArray ? "True" : "False") + ", " + Str(n.ObjectType) + ")";
         }
         if (node is IlNewArray nIlNewArray)
         {
@@ -470,22 +458,22 @@ public static class IlNodes
         if (node is IlNumericConvert nIlNumericConvert)
         {
             var n = nIlNumericConvert;
-            return "IlNumericConvert(" + Dump(n.Value) + ", " + Str(n.TargetType) + ", " + Str(n.LuaCheck) + ")";
+            return "IlNumericConvert(" + Dump(n.Value) + ", " + Str(n.TargetType) + ", " + (n.Unbox ? "True" : "False") + ")";
         }
         if (node is IlRefCast nIlRefCast)
         {
             var n = nIlRefCast;
-            return "IlRefCast(" + Dump(n.Value) + ", " + Str(n.TargetType) + ", " + Str(n.LuaCheck) + ", " + Dump(n.LuaCheckArg) + ")";
+            return "IlRefCast(" + Dump(n.Value) + ", " + Str(n.TargetType) + ")";
         }
         if (node is IlIsType nIlIsType)
         {
             var n = nIlIsType;
             return "IlIsType(" + Dump(n.E) + ", " + Str(n.TypeRef) + ", " + (n.IsInterface ? "True" : "False") + ")";
         }
-        if (node is IlIsLuaType nIlIsLuaType)
+        if (node is IlIsPrimType nIlIsPrimType)
         {
-            var n = nIlIsLuaType;
-            return "IlIsLuaType(" + Dump(n.E) + ", " + Str(n.LuaType) + ")";
+            var n = nIlIsPrimType;
+            return "IlIsPrimType(" + Dump(n.E) + ", " + IlPrimTypeName(n.Type) + ")";
         }
         if (node is IlIife nIlIife)
         {
@@ -500,12 +488,12 @@ public static class IlNodes
         if (node is IlMethodGroup nIlMethodGroup)
         {
             var n = nIlMethodGroup;
-            return "IlMethodGroup(" + Str(n.TypeRef) + ", " + Str(n.Method) + ", " + NullableStrs(n.CopyTypes) + ")";
+            return "IlMethodGroup(" + Str(n.TypeRef) + ", " + Str(n.Method) + ")";
         }
         if (node is IlStructCopy nIlStructCopy)
         {
             var n = nIlStructCopy;
-            return "IlStructCopy(" + Dump(n.E) + ", " + Str(n.TypeName) + ", " + (n.Nullable ? "True" : "False") + ", " + Str(n.Copiers) + ")";
+            return "IlStructCopy(" + Dump(n.E) + ", " + Str(n.TypeName) + ", " + (n.Nullable ? "True" : "False") + ")";
         }
         if (node is IlNullableWrap nIlNullableWrap)
         {
@@ -540,12 +528,12 @@ public static class IlNodes
         if (node is IlCast nIlCast)
         {
             var n = nIlCast;
-            return "IlCast(" + Dump(n.E) + ", " + Str(n.TypeRef) + ", " + Str(n.LuaRef) + ")";
+            return "IlCast(" + Dump(n.E) + ", " + Str(n.TypeRef) + ")";
         }
         if (node is IlStructDescriptor nIlStructDescriptor)
         {
             var n = nIlStructDescriptor;
-            return "IlStructDescriptor(" + Str(n.TypeName) + ", " + Nodes(n.NewArgs) + ", " + Str(n.Copiers) + ", " + (n.HasToString ? "True" : "False") + ")";
+            return "IlStructDescriptor(" + Str(n.TypeName) + ", " + Nodes(n.NewArgs) + ", " + (n.HasToString ? "True" : "False") + ")";
         }
         if (node is IlWith nIlWith)
         {
@@ -582,7 +570,7 @@ public static class IlNodes
         if (node is IlWhile nIlWhile)
         {
             var n = nIlWhile;
-            return "IlWhile(" + Dump(n.Cond) + ", " + Dump(n.Body) + ", " + Dump(n.Trailer) + ", " + (n.ScopeBody ? "True" : "False") + ")";
+            return "IlWhile(" + Dump(n.Cond) + ", " + Dump(n.Body) + ", " + Dump(n.Trailer) + ")";
         }
         if (node is IlRepeat nIlRepeat)
         {
@@ -597,7 +585,7 @@ public static class IlNodes
         if (node is IlForeachList nIlForeachList)
         {
             var n = nIlForeachList;
-            return "IlForeachList(" + Str(n.Var) + ", " + Dump(n.Coll) + ", " + Dump(n.Body) + ", " + (n.Counted ? "True" : "False") + ")";
+            return "IlForeachList(" + Str(n.Var) + ", " + Dump(n.Coll) + ", " + Dump(n.Body) + ")";
         }
         if (node is IlForeachDict nIlForeachDict)
         {
@@ -699,6 +687,16 @@ public static class IlNodes
         return "[" + string.Join(", ", parts) + "]";
     }
 
+    public static string IlLitKindName(IlLitKind v)
+    {
+        if (v == IlLitKind.Null) return "Null";
+        if (v == IlLitKind.Bool) return "Bool";
+        if (v == IlLitKind.Int) return "Int";
+        if (v == IlLitKind.Float) return "Float";
+        if (v == IlLitKind.String) return "String";
+        return "" + (int)v;
+    }
+
     public static string IlBinOpName(IlBinOp v)
     {
         if (v == IlBinOp.AddNum) return "AddNum";
@@ -729,6 +727,16 @@ public static class IlNodes
         if (v == IlUnOp.Not) return "Not";
         if (v == IlUnOp.BitNot) return "BitNot";
         if (v == IlUnOp.ToFloat) return "ToFloat";
+        return "" + (int)v;
+    }
+
+    public static string IlPrimTypeName(IlPrimType v)
+    {
+        if (v == IlPrimType.Number) return "Number";
+        if (v == IlPrimType.Int) return "Int";
+        if (v == IlPrimType.Float) return "Float";
+        if (v == IlPrimType.Bool) return "Bool";
+        if (v == IlPrimType.String) return "String";
         return "" + (int)v;
     }
 
