@@ -8,7 +8,7 @@ public class StructStaticFieldTests
     [Fact]
     public void StructStaticField_IsNotDiagnosed()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public struct S { public int V; public static int X = 1; public const int K = 5; }
             public record struct RS(int a) { public static readonly int Y = 2; }
             public struct T { public int V; public static int Count { get; set; } = 3; }
@@ -26,7 +26,7 @@ public class StructStaticFieldTests
     [Fact]
     public void GenericStructStaticField_IsBuildBlockingError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public struct S<T> { public T V; public static int X = 1; }
             """]);
 

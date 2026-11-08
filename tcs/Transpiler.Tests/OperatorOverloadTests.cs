@@ -247,7 +247,7 @@ public class OperatorOverloadTests
     public void EqualityOperators_ReportUnsupportedSyntax()
     {
         // 通常 class の operator == / != はスコープ外 (record __eq のみ対応)。
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Id
             {
                 public int Value;
@@ -267,7 +267,7 @@ public class OperatorOverloadTests
     [Fact]
     public void ConversionOperator_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Meters
             {
                 public float Value;
@@ -284,7 +284,7 @@ public class OperatorOverloadTests
     [Fact]
     public void SupportedOperators_ProduceNoWarnings()
     {
-        var result = Transpiler.TranspileWithDiagnostics([Vec2Source]);
+        var result = Checker.Check([Vec2Source]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.DoesNotContain(result.Warnings, w => w.Contains("OperatorDeclaration"));
     }
@@ -427,7 +427,7 @@ public class OperatorOverloadTests
     [Fact]
     public void InterfaceStaticAbstractOperator_IsDiagnosed()
     {
-        var result = Transpiler.TranspileWithDiagnostics([InterfaceOperatorSource]);
+        var result = Checker.Check([InterfaceOperatorSource]);
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains("TCS1001")
             && e.Contains("InterfaceOperatorDeclaration"));

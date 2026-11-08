@@ -74,7 +74,7 @@ public class SelfHostDefiniteAssignmentTests
     public void MatchesReference(string body)
     {
         var source = Template.Replace("BODY", body);
-        var reference = Transpiler.TranspileWithDiagnostics([source]);
+        var reference = Checker.Check([source]);
         bool referenceReports = reference.Errors.Any(e => e.Contains("CS0165"));
         var self = TcsSelf.Compiler.Compile(["input.cs"], [source], [], [], "");
         bool selfReports = self.Diagnostics.Any(d => d.Contains("CS0165"));

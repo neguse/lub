@@ -93,8 +93,7 @@ internal sealed record SpecExpansion(
 internal sealed record SpecClassificationResult(
     SpecClassification Category,
     string? Reason = null,
-    string? Details = null,
-    string? Lua = null);
+    string? Details = null);
 
 internal sealed record ClassifiedSpecExample(
     SpecExample Example,

@@ -43,7 +43,7 @@ public class EntryClassTests
     [Fact]
     public void EntryClass_NotFound_ReportsError()
     {
-        var result = Transpiler.TranspileWithDiagnostics([AppSource],
+        var result = Checker.Check([AppSource],
             entryClass: "Missing");
 
         Assert.False(result.Success);
@@ -60,7 +60,7 @@ public class EntryClassTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics([AppSource], null,
+        var result = Checker.Check([AppSource], null,
             [refSource], entryClass: "Host");
 
         Assert.False(result.Success);
@@ -156,7 +156,7 @@ public class EntryClassTests
     [Fact]
     public void EntryClass_Interface_ReportsError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public interface IApp
             {
                 void Run();
@@ -175,7 +175,7 @@ public class EntryClassTests
     [Fact]
     public void EntryClass_AmbiguousSimpleName_ReportsError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             namespace Alpha
             {
                 public static class App

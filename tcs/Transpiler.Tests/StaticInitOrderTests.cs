@@ -12,7 +12,7 @@ public class StaticInitOrderTests
     [Fact]
     public void DeferredInitializerDiagnosticsAreReported()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Test
             {
                 public static int A = 1;

@@ -113,7 +113,7 @@ public class HostBclExtensionTests
                 }
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics([source]);
+        var result = Checker.Check([source]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.Empty(result.Warnings);
     }

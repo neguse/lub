@@ -107,7 +107,7 @@ public class IlOnlyPathTests
     [Fact]
     public void Lock_IsError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Gate { }
             public class T
             {

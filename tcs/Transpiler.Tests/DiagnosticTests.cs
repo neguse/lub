@@ -2,7 +2,7 @@ namespace TinyCs.Tests;
 
 public class DiagnosticTests
 {
-    private static void AssertUnsupportedError(TranspileResult result, string kind)
+    private static void AssertUnsupportedError(CheckResult result, string kind)
     {
         Assert.False(result.Success);
         Assert.Contains(result.Errors,
@@ -12,7 +12,7 @@ public class DiagnosticTests
     [Fact]
     public void CompileError_ReportsWithLocation()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static int Test()
@@ -86,7 +86,7 @@ public class DiagnosticTests
     [Fact]
     public void RecordPositionalParameter_BesideKeywordField_KeywordIsTheOnlyError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public record Repro(int end_)
             {
                 public int end;
@@ -114,7 +114,7 @@ public class DiagnosticTests
     [Fact]
     public void MultipleFiles_CompileError()
     {
-        var result = Transpiler.TranspileWithDiagnostics([
+        var result = Checker.Check([
             "public class A { public int X; }",
             """
             public class B
@@ -140,7 +140,7 @@ public class DiagnosticTests
     public void OrdinaryErrors_WithTinyCsExceptionIds_AreRejected(
         string source, string diagnosticId)
     {
-        var result = Transpiler.TranspileWithDiagnostics([source]);
+        var result = Checker.Check([source]);
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors,
@@ -150,7 +150,7 @@ public class DiagnosticTests
     [Fact]
     public void NestedTypeError_IsNotHiddenByOuterEnumConversion()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System;
 
             public enum State { Idle }
@@ -176,7 +176,7 @@ public class DiagnosticTests
     [Fact]
     public void EnumInteger_NonEqualityOperator_IsRejected()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public enum State { Idle }
             public class T
             {
@@ -194,7 +194,7 @@ public class DiagnosticTests
     [InlineData("public enum E { A = 65 } public class T { public static char Test() { char value = E.A; return value; } }")]
     public void EnumCharConversion_IsRejected(string source)
     {
-        var result = Transpiler.TranspileWithDiagnostics([source]);
+        var result = Checker.Check([source]);
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors,
@@ -205,7 +205,7 @@ public class DiagnosticTests
     public void DataStruct_NoDiagnostic()
     {
         // field のみのデータ struct はサブセット内
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public struct Vec2
             {
                 public int X;
@@ -222,13 +222,13 @@ public class DiagnosticTests
     [Fact]
     public void RecordStruct_IsClean_IndexerReportsWarning()
     {
-        var clean = Transpiler.TranspileWithDiagnostics(["""
+        var clean = Checker.Check(["""
             public readonly record struct Vec2(int X, int Y);
             """]);
         Assert.DoesNotContain(clean.Warnings,
             w => w.Contains("RecordStruct") || w.Contains("StructMember"));
 
-        var withIndexer = Transpiler.TranspileWithDiagnostics(["""
+        var withIndexer = Checker.Check(["""
             public record struct Vec2(int X, int Y)
             {
                 public int this[int i] { get { return X; } }
@@ -240,7 +240,7 @@ public class DiagnosticTests
     [Fact]
     public void UnsupportedThrowStatement_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static void Test()
@@ -256,7 +256,7 @@ public class DiagnosticTests
     [Fact]
     public void UnsupportedTryStatement_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static int Test()
@@ -279,7 +279,7 @@ public class DiagnosticTests
     [Fact]
     public void UnsupportedNestedSyntaxes_ReportWarnings()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static int Test()
@@ -303,7 +303,7 @@ public class DiagnosticTests
     [Fact]
     public void UnsupportedUsingStatement_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Disposable : System.IDisposable
             {
                 public void Dispose() {}
@@ -326,7 +326,7 @@ public class DiagnosticTests
     [Fact]
     public void UnsupportedUsingDeclaration_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Disposable : System.IDisposable
             {
                 public void Dispose() {}
@@ -347,7 +347,7 @@ public class DiagnosticTests
     [Fact]
     public void UnsupportedLocalFunction_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static int Test()
@@ -364,7 +364,7 @@ public class DiagnosticTests
     [Fact]
     public void UnsupportedPattern_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static bool Test(int[] values)
@@ -445,7 +445,7 @@ public class DiagnosticTests
                 public static string Run() => nameof("ok");
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics([source]);
+        var result = Checker.Check([source]);
 
         Assert.True(result.Success);
         Assert.DoesNotContain(result.Warnings,
@@ -456,7 +456,7 @@ public class DiagnosticTests
     [Fact]
     public void UnsupportedBclApi_ReportsError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System.IO;
 
             public class T
@@ -477,7 +477,7 @@ public class DiagnosticTests
     [Fact]
     public void FullyQualifiedSupportedApi_HasNoUnsupportedApiWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static int Test()
@@ -495,7 +495,7 @@ public class DiagnosticTests
     [Fact]
     public void FullyQualifiedUnsupportedApi_ReportsSingleMemberError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static string Test()
@@ -514,7 +514,7 @@ public class DiagnosticTests
     [Fact]
     public void UnsupportedCoreLibraryMembers_ReportErrors()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System;
             using System.Collections.Generic;
             using System.Linq;
@@ -551,7 +551,7 @@ public class DiagnosticTests
     [Fact]
     public void UnsupportedCollectionNulls_ReportWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System.Collections.Generic;
 
             public class T
@@ -627,7 +627,7 @@ public class DiagnosticTests
     [Fact]
     public void SizedArraysWithNilDefault_ReportCollectionNullWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics([ArrayNullSource]);
+        var result = Checker.Check([ArrayNullSource]);
 
         var collectionNulls = result.Warnings
             .Where(w => w.Contains("TCS1003"))

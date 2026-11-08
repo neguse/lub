@@ -79,7 +79,7 @@ public class NestedTypeTests
     [InlineData("public class G<T> { public class M { public class Deep { } } }")]
     public void TypeInGenericType_IsRejected(string source)
     {
-        var result = Transpiler.TranspileWithDiagnostics([source]);
+        var result = Checker.Check([source]);
         Assert.Contains(result.Errors, e => e.Contains("TCS1001") && e.Contains("NestedTypeInGenericType"));
     }
 
@@ -91,7 +91,7 @@ public class NestedTypeTests
     [InlineData("public class O { public delegate void D(); }", "DelegateDeclaration")]
     public void NestedDeclaration_FollowsTheSameRules(string source, string rule)
     {
-        var result = Transpiler.TranspileWithDiagnostics([source]);
+        var result = Checker.Check([source]);
         Assert.Contains(result.Errors, e => e.Contains(rule));
     }
 }

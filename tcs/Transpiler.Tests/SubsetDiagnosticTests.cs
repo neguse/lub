@@ -4,7 +4,7 @@ namespace TinyCs.Tests;
 // interface member / delegate / decimal / Console allowlist)
 public class SubsetDiagnosticTests
 {
-    private static void AssertUnsupportedError(TranspileResult result, string kind)
+    private static void AssertUnsupportedError(CheckResult result, string kind)
     {
         Assert.False(result.Success);
         Assert.Contains(result.Errors,
@@ -14,7 +14,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void DeconstructionAssignmentTarget_IsNotFlaggedAsTuple()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public record Point(int X, int Y);
             public class T
             {
@@ -38,7 +38,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void MultiDimensionalArray_IsUnsupported()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             int[,] b = new int[5, 2];
             b[1, 1] = 3;
             System.Console.WriteLine(b[1, 1]);
@@ -55,7 +55,7 @@ public class SubsetDiagnosticTests
     [InlineData("float.Abs(x) > 0f", "float.Abs")]
     public void NumericStaticMethod_IsUnsupportedApi(string expr, string api)
     {
-        var result = Transpiler.TranspileWithDiagnostics([$$"""
+        var result = Checker.Check([$$"""
             public static class P
             {
                 public static bool F(float x) => {{expr}};
@@ -86,7 +86,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void JaggedArray_IsNotMultiDimensional()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             int[][] b = new int[2][];
             b[0] = new int[3];
             System.Console.WriteLine(b[0].Length);
@@ -99,7 +99,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void TopLevelArgsReference_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             System.Console.WriteLine(args.Length);
             """]);
 
@@ -109,7 +109,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void LambdaParameterNamedArgs_IsNotFlagged()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             System.Func<string[], int> f = args => args.Length;
             System.Console.WriteLine(f(new[] { "a" }));
             """]);
@@ -122,7 +122,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void ConditionalAttribute_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 [System.Diagnostics.Conditional("DEBUG")]
@@ -138,7 +138,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void OtherAttributes_AreNotFlagged()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 [System.Obsolete("old")]
@@ -154,7 +154,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void InterfaceDefaultMemberAndExplicitImplementation_ReportWarnings()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public interface IA
             {
                 int P { get { return 10; } }
@@ -174,7 +174,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void PlainInterfaceContract_IsNotFlagged()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public interface IShape
             {
                 int Area();
@@ -197,7 +197,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void ConsoleMembersOutsideWriteLineAndWrite_ReportErrors()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static void Test()
@@ -221,7 +221,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void ParamsParameter_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static int F(params int[] xs) => xs.Length;
@@ -236,7 +236,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void PlainArrayParameter_IsNotFlagged()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static int F(int[] xs) => xs.Length;
@@ -284,7 +284,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void StaticConstructor_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 static T() { }
@@ -301,7 +301,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void CompareOrdinalValue_OutsideZeroComparison_IsUnsupported()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public static class T
             {
                 public static int Diff(string a, string b) => string.CompareOrdinal(a, b);
@@ -319,7 +319,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void CompareOrdinalWithRange_IsUnsupportedApi()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public static class T
             {
                 public static bool Less(string a, string b) =>
@@ -336,7 +336,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void CheckedOperationOtherThanIntArithmetic_IsUnsupported()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public static class T
             {
                 public static int Inc(int a) => checked(a++);
@@ -355,7 +355,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void CheckedStatement_IsUnsupported()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public static class T
             {
                 public static int F(int a) { checked { return a + 1; } }
@@ -369,7 +369,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void StaticFieldOfGenericType_IsUnsupported()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Counter<T>
             {
                 public static int Made;
@@ -389,7 +389,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void StaticMethodOverloads_AreSupported()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static void F() { }
@@ -405,7 +405,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void OverloadMixingStaticAndInstance_IsSupported()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static void F() { }
@@ -421,7 +421,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void ImplementingSameNameFromTwoInterfaces_IsMethodOverload()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public interface IA { void F(int a); }
             public interface IB { void F(string s); }
             public class T : IA, IB
@@ -438,7 +438,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void OverloadNameCollidingWithMember_IsMethodOverload()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static void F() { }
@@ -455,7 +455,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void CallingHostOverload_IsMethodOverload()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public static class T
             {
                 public static void Test() { Host.Log.Info("a"); }
@@ -481,7 +481,7 @@ public class SubsetDiagnosticTests
     [InlineData("Host.Log.Hidden(\"s\");", false)]
     public void CallingHostOverload_ReducedExtensionBaseAndPrivate(string statement, bool flagged)
     {
-        var result = Transpiler.TranspileWithDiagnostics([$$"""
+        var result = Checker.Check([$$"""
             using Host;
             public static class T
             {
@@ -521,7 +521,7 @@ public class SubsetDiagnosticTests
     [InlineData("int F(System.Collections.Generic.IReadOnlyList<int> l) => l.Count;", "System.Collections.Generic.IReadOnlyCollection<T>.Count")]
     public void UnlistedBclType_IsUnsupportedApi(string member, string api)
     {
-        var result = Transpiler.TranspileWithDiagnostics([$$"""
+        var result = Checker.Check([$$"""
             public class T
             {
                 static int X;
@@ -536,7 +536,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void ListedTypesAndAttributes_AreNotUnsupportedApi()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System;
             using System.Collections.Generic;
             [AttributeUsage(AttributeTargets.Class)]
@@ -568,7 +568,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void AssemblyAttributes_AreNotUnsupportedApi()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             [assembly: System.Reflection.AssemblyVersion("1.0")]
             public static class T { public static int F() => 1; }
             """]);
@@ -579,7 +579,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void DistinctMethodNames_AreNotFlaggedAsOverloads()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static void F() { }
@@ -596,7 +596,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void InterfaceConstField_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public interface IX
             {
                 const int A = 1;
@@ -614,7 +614,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void SystemRandom_ReportsError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static float Test()
@@ -632,7 +632,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void ConsoleWriteLine_IsNotFlagged()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static void Test()
@@ -650,7 +650,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void DelegateAndEventDeclarations_ReportWarnings()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public delegate void Handler(int x);
 
             public class T
@@ -668,7 +668,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void ActionAndFuncFields_AreNotFlaggedAsDelegates()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public System.Action? OnDone;
@@ -686,7 +686,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void DecimalTypeAndLiteral_ReportWarnings()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static decimal Test()
@@ -704,7 +704,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void DoubleAndLongTypesAndDoubleLiteral_ReportWarnings()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public double Field;
@@ -727,7 +727,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void FloatLiteral_DoesNotReportDoubleLiteral()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static float Test()
@@ -746,7 +746,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void FloatAndDoubleLiterals_AreNotFlaggedAsDecimal()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static double Test()
@@ -765,7 +765,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void InterfaceTypeTest_OfClass_NoDiagnostic()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public interface IShape { }
             public class Circle : IShape { }
             public class T
@@ -788,7 +788,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void InterfaceTypeTest_OfRefInterface_IsRejected()
     {
-        var result = Transpiler.TranspileWithDiagnostics(
+        var result = Checker.Check(
             ["""
             public class T
             {
@@ -804,7 +804,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void RefTypeTestsAndCasts_HaveRefNames()
     {
-        var result = Transpiler.TranspileWithDiagnostics(
+        var result = Checker.Check(
             ["""
             public class T
             {
@@ -824,7 +824,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void ClassTypeTest_NoWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Animal { }
             public class T
             {
@@ -840,7 +840,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void LoneSurrogateLiteral_ReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static string Test() { return "bad\uD800end"; }
@@ -852,7 +852,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void PairedSurrogateLiteral_NoWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static string Test() { return "ok\U0001F600end"; }
@@ -867,7 +867,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void InstanceMethodGroupAndAlignment_ReportErrors()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System;
             public class T
             {
@@ -891,7 +891,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void ConditionalInvocation_IsNotMethodGroup()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public struct V { public int X; public int Sum() { return X; } }
             public class T
             {
@@ -944,7 +944,7 @@ public class SubsetDiagnosticTests
     {
         var type = kind == "CallerLineNumber" ? "int" : "string";
         var dflt = kind == "CallerLineNumber" ? "0" : "\"\"";
-        var result = Transpiler.TranspileWithDiagnostics([$$"""
+        var result = Checker.Check([$$"""
             using System.Runtime.CompilerServices;
 
             public static class CallerInfoRepro
@@ -965,7 +965,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void OtherAttributes_AreNotFlaggedAsCallerInfo()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public static class Plain
             {
                 [System.Obsolete("old")]
@@ -990,7 +990,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void TypeTestWithoutRuntimeType_IsRejected()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System;
             public class T
             {
@@ -1010,7 +1010,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void TypeTest_OfSameMetadataStruct_IsNotRejected()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System.Collections.Generic;
             public class T
             {
@@ -1023,7 +1023,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void TypeTest_OfGenericReferenceType_IsRejected()
     {
-        var result = Transpiler.TranspileWithDiagnostics(
+        var result = Checker.Check(
             ["""
             public class T
             {
@@ -1037,7 +1037,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void TypeTest_OfSourceDelegate_IsRejected()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public delegate void D();
             public class T
             {
@@ -1050,7 +1050,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void MalformedFormatSpecifier_IsRejected()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static string A(int x) { return $@"{x:F\"" .. os.execute([[id]])) --}"; }
@@ -1066,7 +1066,7 @@ public class SubsetDiagnosticTests
     public void UIntOutsideInt32_IsRejected()
     {
         // uint は i32 と同じ表現。2^31 以上の定数と、結果が 0〜2^31-1 を出うる演算を止める
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public enum U : uint { A = 1, Hi = 0x80000000 }
             public static class T
             {
@@ -1088,7 +1088,7 @@ public class SubsetDiagnosticTests
     public void UnsupportedFormatSpecifier_IsRejected()
     {
         // 独自の書式と、Lua / C が .NET と同じ文字列にできない書式は黙って別の文字列にせず止める
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public enum E { A }
             public class T
             {

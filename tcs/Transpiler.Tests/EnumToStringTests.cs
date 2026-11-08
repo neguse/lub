@@ -68,7 +68,7 @@ public class EnumToStringTests
     [Fact]
     public void UnsupportedFormat_ReportsUnsupportedApi()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public enum Color { Red, Green }
             public static class P
             {

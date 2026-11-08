@@ -335,7 +335,7 @@ public class ConstructorTableTests
     [Fact]
     public void ThisConstructorInitializer_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class C
             {
                 public int X;

@@ -149,6 +149,7 @@ public static class Cli
     private static int BeginCheck(List<string> args)
     {
         var o = new CliOptions();
+        o.Check = true;
         for (int i = 1; i < args.Count; i++)
         {
             string a = args[i];
@@ -360,6 +361,7 @@ public static class Cli
     public static Session NewSession(CliOptions o, List<string> sources, List<string> refSources)
     {
         var session = new Session(o.EntryClass);
+        session.CheckOnly = o.Check;
         session.InstanceRegistry = o.InstanceRegistry;
         session.Module = o.Module;
         session.TracePrefixes = o.TracePrefixes;
@@ -490,6 +492,8 @@ public sealed class CliOptions
     public bool ReloadChunks;
     public bool WarningsAsErrors;
     public List<string> TracePrefixes = new List<string>();
+    // tcs check (Lua を出さず、IL を組み立てて検査する)
+    public bool Check;
 }
 
 // Step で進める仕事 (CheckRun、OnceRun、WatchRun、SnapshotRun。Step の戻りは終了コード、続けるなら -1)

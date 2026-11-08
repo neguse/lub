@@ -6,7 +6,7 @@ namespace TinyCs.Tests;
 // - verbatim 識別子 (@float 等) は ValueText (@ なし) で emit する
 public class LuaIdentifierTests
 {
-    private static void AssertLuaKeywordError(TranspileResult result,
+    private static void AssertLuaKeywordError(CheckResult result,
         string keyword)
     {
         Assert.False(result.Success);
@@ -18,7 +18,7 @@ public class LuaIdentifierTests
     [Fact]
     public void MethodNamedLuaKeyword_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Turn
             {
                 public void end() { }
@@ -31,7 +31,7 @@ public class LuaIdentifierTests
     [Fact]
     public void FieldNamedLuaKeyword_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Loop
             {
                 public int until;
@@ -83,7 +83,7 @@ public class LuaIdentifierTests
     [Fact]
     public void RecordPositionalParameterNamedLuaKeyword_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public record Span(int until);
             """]);
 
@@ -93,7 +93,7 @@ public class LuaIdentifierTests
     [Fact]
     public void EnumMemberNamedLuaKeyword_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public enum Token
             {
                 nil,
@@ -106,7 +106,7 @@ public class LuaIdentifierTests
     [Fact]
     public void ClassNamedLuaKeyword_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class local
             {
                 public int X;
@@ -173,7 +173,7 @@ public class LuaIdentifierTests
     [Fact]
     public void VerbatimLuaKeywordMethod_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Turn
             {
                 public int @end() => 1;
@@ -186,7 +186,7 @@ public class LuaIdentifierTests
     [Fact]
     public void NonKeywordIdentifiers_HaveNoLuaKeywordWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Game
             {
                 public int endFrame;
@@ -253,7 +253,7 @@ public class LuaIdentifierTests
     // `self` は Lua method receiver として emit 側が予約する。宣言すると
     // receiver を壊すため TCS1001 (generated temp の `__tcs_` は `__` で始まる
     // 識別子の規則、IdentifierDiagnosticTests)。
-    private static void AssertReservedIdentifierError(TranspileResult result,
+    private static void AssertReservedIdentifierError(CheckResult result,
         string name)
     {
         Assert.False(result.Success);
@@ -265,7 +265,7 @@ public class LuaIdentifierTests
     [Fact]
     public void LocalNamedSelf_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Counter
             {
                 public int Value = 5;
@@ -284,7 +284,7 @@ public class LuaIdentifierTests
     [Fact]
     public void ParameterNamedSelf_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Mixer
             {
                 public int Blend(int self) => self;
@@ -297,7 +297,7 @@ public class LuaIdentifierTests
     [Fact]
     public void ClassNamedSelf_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class self
             {
                 public int X;
@@ -346,11 +346,10 @@ public class LuaIdentifierTests
     // Random) と同名の型は、namespace の中でも simple name で global に emit
     // され runtime の table を上書きする。以後の BCL 呼び出しが nil になる
     // ため、build を止める error にする (#21)
-    private static void AssertRuntimeGlobalError(TranspileResult result,
+    private static void AssertRuntimeGlobalError(CheckResult result,
         string name)
     {
         Assert.False(result.Success);
-        Assert.Equal("", result.Lua);
         Assert.Contains(result.Errors, e =>
             e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
             && e.Contains($"RuntimeGlobalIdentifier({name})"));
@@ -359,7 +358,7 @@ public class LuaIdentifierTests
     [Fact]
     public void ClassNamedMath_IsBuildBlockingError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Math
             {
                 public static int Twice(int x) => x * 2;
@@ -372,7 +371,7 @@ public class LuaIdentifierTests
     [Fact]
     public void TypesNamedLikeRuntimeGlobals_InNamespace_AreErrors()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             namespace Game
             {
                 public class Dict { }
@@ -396,7 +395,7 @@ public class LuaIdentifierTests
         // member 名 (`self.Math`) や enum member (`E.List`) も対象外。
         // `Random` は生成コードが素の名で参照しない (facade は
         // `TinySystem.Random.*`) ので user 型として使える
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             namespace Game
             {
                 public interface Dict { }

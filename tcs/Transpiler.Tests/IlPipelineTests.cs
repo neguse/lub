@@ -9,7 +9,7 @@ public class IlPipelineTests
     [Fact]
     public void ArithmeticControlFlowBody_GoesThroughIl()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static int Compute(int n)

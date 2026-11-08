@@ -238,7 +238,7 @@ public class StructSemanticsTests
     [Fact]
     public void StructIndexer_ReportsDiagnostic()
     {
-        var result = Transpiler.TranspileWithDiagnostics([Vec.Replace(
+        var result = Checker.Check([Vec.Replace(
             "public float Y;",
             "public float Y; public int this[int i] { get { return 1; } }")]);
         Assert.Contains(result.Errors,

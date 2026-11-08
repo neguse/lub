@@ -84,7 +84,7 @@ public class TupleTests
     [Fact]
     public void UserDeconstructMethod_IsNotCalled_StopsBuild()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class C
             {
                 public void Deconstruct(out int a, out int b) { a = 1; b = 2; }

@@ -181,7 +181,7 @@ public class LinqSemanticTests
     [Fact]
     public void SystemLinq_IsUnsupportedApi()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System.Collections.Generic;
             using System.Linq;
             public static class T
@@ -196,7 +196,7 @@ public class LinqSemanticTests
     [Fact]
     public void QueryExpression_IsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public static class T
@@ -251,7 +251,7 @@ public class LinqSemanticTests
     [Fact]
     public void UserTinySystemLinq_InNestedNamespace_ReplacesBundledLibrary()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public static class T

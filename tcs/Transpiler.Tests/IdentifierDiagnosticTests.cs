@@ -91,7 +91,7 @@ public class IdentifierDiagnosticTests
     [Fact]
     public void LocalWithGeneratedTempPrefix_IsError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Holder
             {
                 public int Get()
@@ -150,7 +150,7 @@ public class IdentifierDiagnosticTests
                 public static int Test() => new Game.Core.Player().Get_Hp(1, 2);
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics([source]);
+        var result = Checker.Check([source]);
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);
@@ -161,7 +161,7 @@ public class IdentifierDiagnosticTests
     [Fact]
     public void RefStubIdentifiers_AreNotDiagnosed()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public static class P
             {
                 public static int Test() => Host_Api.__Get() + Host_Api.ctor;

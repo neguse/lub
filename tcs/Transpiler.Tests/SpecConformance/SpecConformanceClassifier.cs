@@ -33,21 +33,21 @@ internal sealed partial class SpecConformanceClassifier
         global using System.Threading.Tasks;
         """;
 
-    private readonly Func<string[], TranspileResult> _transpile;
+    private readonly Func<string[], CheckResult> _check;
 
-    public SpecConformanceClassifier() : this(TranspileWithRoslynOracle)
+    public SpecConformanceClassifier() : this(CheckWithRoslynOracle)
     {
     }
 
-    internal SpecConformanceClassifier(Func<string[], TranspileResult> transpile)
-        => _transpile = transpile;
+    internal SpecConformanceClassifier(Func<string[], CheckResult> check)
+        => _check = check;
 
     public SpecClassificationResult Classify(SpecExample example,
         SpecExpansion expansion) => ClassifyCore(example, expansion);
 
-    // Roslyn は C# として正しいかの判定 (受理の oracle) にだけ使い、変換は tcs の compiler が行う。
+    // Roslyn は C# として正しいかの判定 (受理の oracle) にだけ使い、検査は tcs の compiler (tcs check と同じ) が行う。
     // Roslyn が拒否した例は Roslyn の誤り (CSxxxx) で分類し、受理した例を tcs が C# の誤りで拒否したら compiler の不具合
-    private static TranspileResult TranspileWithRoslynOracle(string[] sources)
+    private static CheckResult CheckWithRoslynOracle(string[] sources)
     {
         var trees = sources.Select(s => CSharpSyntaxTree.ParseText(s))
             .Append(CSharpSyntaxTree.ParseText(ImplicitUsingsSource))
@@ -66,8 +66,8 @@ internal sealed partial class SpecConformanceClassifier
             })
             .ToList();
         if (roslynErrors.Count > 0)
-            return new TranspileResult { Errors = roslynErrors };
-        var result = Transpiler.TranspileWithDiagnostics(sources, referenceSources: [ImplicitUsingsSource]);
+            return new CheckResult { Errors = roslynErrors };
+        var result = Checker.Check(sources, referenceSources: [ImplicitUsingsSource]);
         var csErrors = result.Errors.Where(e => CompilerErrorRegex().IsMatch(e) && !TinyCsDiagnosticRegex().IsMatch(e)).ToList();
         if (csErrors.Count > 0)
             throw new InvalidOperationException("tcs rejected C# that Roslyn accepts:\n" + string.Join("\n", csErrors));
@@ -85,7 +85,7 @@ internal sealed partial class SpecConformanceClassifier
         {
             var sources = expansion.Sources.Select(source => source.Code)
                 .ToArray();
-            var result = _transpile(sources);
+            var result = _check(sources);
             var expectedErrors = example.Annotation.ExpectedErrors;
 
             if (result.Errors.Count > 0)
@@ -117,13 +117,9 @@ internal sealed partial class SpecConformanceClassifier
                 return new SpecClassificationResult(SpecClassification.Diag,
                     Details: string.Join("\n", result.Warnings));
 
-            if (string.IsNullOrEmpty(result.Lua))
-                return new SpecClassificationResult(SpecClassification.Bug,
-                    Details: "TranspileWithDiagnostics returned empty Lua.");
-
             return new SpecClassificationResult(expansion.IsExecutable
                 ? SpecClassification.InRun
-                : SpecClassification.InCompile, Lua: result.Lua);
+                : SpecClassification.InCompile);
         }
         catch (Exception exception)
         {

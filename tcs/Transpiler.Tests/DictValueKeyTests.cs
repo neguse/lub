@@ -69,7 +69,7 @@ public class DictValueKeyTests
     [Fact]
     public void ReferenceAndPrimitiveKeys_AreNotDiagnosed()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class C { }

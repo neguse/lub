@@ -107,7 +107,7 @@ public class BclAllowlistExtensionTests
     [Fact]
     public void NewMembers_PassCheckWithoutTcs1002()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System;
             public class T
             {
@@ -124,7 +124,7 @@ public class BclAllowlistExtensionTests
     [Fact]
     public void StillUnsupportedMathMembers_ReportTcs1002()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System;
             public class T
             {

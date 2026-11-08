@@ -227,7 +227,7 @@ public class IncrementExpressionTests
     [Fact]
     public void ExpressionIncrement_IsNotDiagnosed()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static void F(int x) { }

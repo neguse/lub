@@ -17,7 +17,7 @@ internal sealed class FuzzRunner
     public FuzzOutcome RunOne(string source,
         Func<string, string>? mutateVm = null)
     {
-        var result = Transpiler.TranspileWithDiagnostics([source]);
+        var result = Checker.Check([source]);
         if (result.Errors.Count > 0)
             return new FuzzOutcome(false,
                 "generator produced invalid C#:\n"

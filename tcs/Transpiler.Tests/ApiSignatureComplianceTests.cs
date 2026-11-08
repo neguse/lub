@@ -47,7 +47,7 @@ public class ApiSignatureComplianceTests
     public void UnimplementedOverload_ReportsTcs1002(string statement,
         string expectedApiName)
     {
-        var result = Transpiler.TranspileWithDiagnostics([Wrap(statement)]);
+        var result = Checker.Check([Wrap(statement)]);
 
         Assert.Single(result.Errors, e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi)
             && e.Contains(expectedApiName));
@@ -66,7 +66,7 @@ public class ApiSignatureComplianceTests
     [InlineData("var n = new int[] { 1 }.Length;")]
     public void ImplementedOverload_PassesWithoutTcs1002(string statement)
     {
-        var result = Transpiler.TranspileWithDiagnostics([Wrap(statement)]);
+        var result = Checker.Check([Wrap(statement)]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
     }

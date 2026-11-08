@@ -55,6 +55,8 @@ public sealed class Session
     public bool Module;
     // Lua の代わりに tcs2c への入力 (型の metadata と本文の IL) を作る
     public bool ExportOnly;
+    // 検査だけ (tcs check と analyzer): Lua も IL も返さず、IL を組み立てて、組み立てられない本文、entry class の誤り、組み立ての内部の誤りを診断にする
+    public bool CheckOnly;
     // ExportOnly で、generic を閉じた copy に単相化してから書き出す (C backend)
     public bool Specialize;
     // 増分 session: ファイルごとの module の Lua と型の記録を CompileResult.Modules に出す (EmitProgram の代わり)
@@ -510,6 +512,10 @@ public sealed class Session
                     }
                 }
             }
+            else if (CheckOnly)
+            {
+                if (CheckIl(c, result)) c.Diags.ErrorCount++;
+            }
             else if (ModuleArtifacts)
             {
                 // library を先に、次に user のファイル (Lua の出力と同じ順)
@@ -566,6 +572,41 @@ public sealed class Session
         if (KeepDeclarations) Declarations = c;
         _c = null;
         _declarer = null;
+    }
+
+    // IL の書き出しと同じ組み立てを回し、その誤りを結果の診断に足す。誤りがあれば true。
+    // 組み立てられない本文と式 (TCS1001) はファイルと位置の順、次に entry class の誤り、組み立ての内部の誤り
+    private bool CheckIl(Compilation c, CompileResult result)
+    {
+        var exporter = new IlExporter(c);
+        var export = exporter.Export();
+        var nodes = new List<Node>();
+        foreach (var n in exporter.UnsupportedBodies)
+        {
+            if (!nodes.Contains(n)) nodes.Add(n);
+        }
+        // 挿入の整列 (同じ位置は記録した順)
+        for (int i = 1; i < nodes.Count; i++)
+        {
+            var x = nodes[i];
+            int j = i - 1;
+            while (j >= 0 && (nodes[j].File.Id > x.File.Id || nodes[j].File.Id == x.File.Id && nodes[j].Pos > x.Pos))
+            {
+                nodes[j + 1] = nodes[j];
+                j--;
+            }
+            nodes[j + 1] = x;
+        }
+        var errors = new List<string>();
+        foreach (var n in nodes)
+        {
+            var d = new Diagnostic("TCS1001", "unsupported syntax: " + n.Kind, n.File, n.Pos, true).ToString();
+            if (!errors.Contains(d)) errors.Add(d);
+        }
+        if (_entry != "") EntryClass.Resolve(c, _entry, errors);
+        foreach (var ie in export.InternalErrors) errors.Add("internal: " + ie);
+        foreach (var e in errors) result.Diagnostics.Add(e);
+        return errors.Count > 0;
     }
 
     // 宣言する namespace と using する namespace

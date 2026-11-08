@@ -41,7 +41,7 @@ public class CompareToComplianceTests
     [InlineData("var r = \"a\".CompareTo(\"b\");", "string.CompareTo")]
     public void UnhandledForm_ReportsTcs1002(string statement, string expectedApiName)
     {
-        var result = Transpiler.TranspileWithDiagnostics([Wrap(statement)]);
+        var result = Checker.Check([Wrap(statement)]);
 
         Assert.Contains(result.Errors, e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi)
             && e.Contains(expectedApiName));
@@ -50,7 +50,7 @@ public class CompareToComplianceTests
     [Fact]
     public void GenericComparableReceiver_ReportsTcs1002()
     {
-        var result = Transpiler.TranspileWithDiagnostics([Wrap("")]);
+        var result = Checker.Check([Wrap("")]);
 
         Assert.Single(result.Errors, e => e.Contains(TinyCsDiagnosticIds.UnsupportedApi)
             && e.Contains("System.IComparable<T>.CompareTo"));
@@ -64,7 +64,7 @@ public class CompareToComplianceTests
                 + new Mine().CompareTo(new Mine());
             """).Replace("public int Cmp(T other) => Value.CompareTo(other);", "")
             .Replace("where T : IComparable<T>", "").Replace("IComparable<int> boxed = i;", "");
-        var result = Transpiler.TranspileWithDiagnostics([source]);
+        var result = Checker.Check([source]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
     }

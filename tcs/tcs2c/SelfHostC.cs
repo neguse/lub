@@ -29,6 +29,9 @@ internal static class SelfHostC
             .Where(d => !d.Contains(": warning ") && !d.StartsWith("warning ", StringComparison.Ordinal)).ToList();
         if (result.Export == null || errors.Count > 0)
             throw new InvalidOperationException("TinyC# diagnostics:\n" + string.Join("\n", errors.Count > 0 ? errors : ["export failed"]));
+        // IL にできなかった本文と式 (`tcs c` の CRun と同じく止める)
+        if (result.Export.InternalErrors.Count > 0)
+            throw new InvalidOperationException("TinyC# diagnostics:\n" + string.Join("\n", result.Export.InternalErrors.Select(e => "internal: " + e)));
         lock (Gate)
         {
             TcsC.CFail.Error = "";

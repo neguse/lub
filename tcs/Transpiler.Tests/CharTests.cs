@@ -61,7 +61,7 @@ public class CharTests
     [Fact]
     public void NonAsciiCharLiteral_ReportsDiagnostic()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static char Test() => 'é';
