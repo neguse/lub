@@ -23,9 +23,9 @@ public partial class DifferentialTests
     [Fact]
     public void ReservedIdentifiers_BothBackendsStopWithDiagnostic()
     {
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([IdentifierProgram], "P"),
+                     () => Backends.EmitVm([IdentifierProgram], "P"),
                      () => Backends.EmitC([IdentifierProgram], "P"),
                  })
         {
@@ -60,9 +60,7 @@ public partial class DifferentialTests
                 }
             }
             """;
-        var lua = Backends.RunLua([program], "P");
-        Assert.Equal("5:4:1", lua);
-        Assert.Equal(lua, Backends.RunC([program], "P"));
+        Assert.Equal("5:4:1", Backends.AssertParity(program, "P"));
         var c = Backends.EmitC([program], "P", lib: true);
         Assert.Contains("tcs_entry_P_Main", c);
         Assert.Contains("AddHp", c);

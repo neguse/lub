@@ -9,8 +9,8 @@ register VM で実行する。設計は `doc/vm-design.md`。dev 実行系とし
 | `Emitter/` | `tcs2vm` (.NET)。`tcs vm` を動かす入口 (IL → `.tcsb` の本体は TinyC# の `SelfHost/VmBackend/`、CLI は `SelfHost/Tool/VmRun.cs`)。C にした tcs の `tcs vm` も同じ `.tcsb` を出す。`--dump-il` で IL の診断用テキスト |
 | `vm/` | VM (C11)。`tcsvm.h` が API、`tcsvm_ops.h` が命令の一覧、`tcsvm_load.c` が読み込みと検査、`tcsvm_run.c` が interpreter、`tcsvm_rt.c` が string / List / Dictionary / Sort、`tcsvm_gc.c` が GC、`tcsvm_reload.c` が hot reload (`tvm_apply`)、`tcsvm_main.c` が CLI |
 | `gen-ops.py` | `tcsvm_ops.h` から `SelfHost/VmBackend/Op.cs` を作る |
-| `tests/` | 差分テストの入力。各ファイルの `Main` を Lua と VM で走らせて比べる |
-| `run-tests.sh` | 差分テスト (`tests/`、`samples/` の 6 本、digest kernel)。`run-tests.sh` (root) から呼ばれる |
+| `tests/` | テストの入力。各ファイルの `Main` を VM で走らせ、`tests/expected/` の stdout と比べる (C backend が動かせる入力は C の stdout とも) |
+| `run-tests.sh` | テスト (`tests/`、`samples/` の 6 本、digest kernel の固定の digest)。`run-tests.sh` (root) から呼ばれる |
 | `fuzz-loader.py` | `.tcsb` を変異させて loader と verifier の頑健さを見る |
 
 ## 使い方

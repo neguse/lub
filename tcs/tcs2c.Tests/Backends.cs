@@ -9,13 +9,15 @@ using TinyCs.Tcs2c;
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// 2 backend の実行ハーネス。同じ TinyC# source を tcs2c→C→gcc と
-/// tcs→Lua→lua32 で実行し、stdout を突き合わせる。GC はフレーム境界
-/// (lib 出荷形の tcs_lib_gc) でだけ走るので、GC の意味論は lib 形で
-/// Setup / Frame×N / Report を回す AssertParityLib で検証する。C 側は
+/// 実行系の差分ハーネス。同じ TinyC# source を tcs2c→C→gcc、tcs VM (VmBackend.cs)、実 .NET で実行し、stdout を突き合わせる。
+/// C の stdout を基準に、C の GC stress と VM (通常 + GC stress) が同じ出力で、実 .NET (TinySystem.props と同じ構成) とも
+/// 一致することを要求する。.NET が意図して違う結果を出す program (System.Random の列、範囲外の (char) が止まらない、
+/// UTF-16 に入らない byte 列) は AssertBackendParity / AssertBackendFaultParity で .NET を外し、期待の stdout を呼び出し側が持つ。
+/// GC はフレーム境界 (lib 出荷形の tcs_lib_gc) でだけ走るので、GC の意味論は lib 形で
+/// Setup / Frame×N / Report を回す AssertParityLib で検証する。C 側の
 /// GC stress (-DTCS_GC_STRESS=1: 毎境界で旧世代 full GC + 256 byte の
-/// nursery chunk) でも同じ出力であることを要求する — root / ライトバリア
-/// の漏れは、生きている object が回収 / 上書きされて出力が変わる形で現れる。
+/// nursery chunk) では、root / ライトバリアの漏れは、生きている object が回収 / 上書きされて出力が変わる形で現れる。
+/// RunLua は Lua backend 自身の挙動を見るテストだけが使う。
 /// </summary>
 internal static partial class Backends
 {
@@ -150,15 +152,6 @@ internal static partial class Backends
         }
     }
 
-    private static string LibCalls(string cls, int frames) =>
-        $"{cls}.Setup()\n" +
-        $"for _ = 1, {frames} do {cls}.Frame() end\n" +
-        $"{cls}.Report()\n";
-
-    /// <summary>lib 形の host と同じ順で Setup / Frame×N / Report を呼ぶ。</summary>
-    public static string RunLuaLib(string[] sources, string cls, int frames) =>
-        RunLuaScript(sources, LibCalls(cls, frames));
-
     /// <summary>--lib の C を host (別 translation unit) から呼ぶ:
     /// tcs_lib_init → Setup → (Frame → tcs_lib_gc)×N → Report。</summary>
     public static string RunCLib(string[] sources, string cls, int frames,
@@ -216,44 +209,59 @@ internal static partial class Backends
         }
     }
 
-    /// <summary>C (通常 + GC stress) と Lua の stdout 一致を要求する。</summary>
+    /// <summary>C (通常 + GC stress)、VM、実 .NET の stdout 一致を要求し、その stdout を返す。</summary>
     public static string AssertParity(string[] sources, string entryClass)
     {
-        var lua = RunLua(sources, entryClass);
-        var c = RunC(sources, entryClass);
-        Assert.Equal(lua, c);
-        var stressed = RunC(sources, entryClass, stress: true);
-        Assert.Equal(lua, stressed);
-        if (VmEnabled) Assert.Equal(lua, RunVm(sources, entryClass));
-        return lua;
+        var c = AssertBackendParity(sources, entryClass);
+        Assert.Equal(RunDotnet(sources, entryClass), c);
+        return c;
     }
 
     public static string AssertParity(string source, string entryClass) =>
         AssertParity([source], entryClass);
 
-    /// <summary>Lua と C (通常 + GC stress) がともに fault で止まり、fault までの
+    /// <summary>C (通常 + GC stress) と VM の stdout 一致を要求し、C の stdout を返す。.NET を外すのは、
+    /// .NET が意図して違う結果を出す program だけ (期待の stdout は呼び出し側が持つ)。</summary>
+    public static string AssertBackendParity(string[] sources, string entryClass)
+    {
+        var c = RunC(sources, entryClass);
+        Assert.Equal(c, RunC(sources, entryClass, stress: true));
+        if (VmEnabled) Assert.Equal(c, RunVm(sources, entryClass));
+        return c;
+    }
+
+    public static string AssertBackendParity(string source, string entryClass) =>
+        AssertBackendParity([source], entryClass);
+
+    /// <summary>C (通常 + GC stress) と VM が fault で止まり、実 .NET が例外で止まり、そこまでの
     /// stdout が一致することを要求する (il-spec §12)。その stdout を返す。</summary>
     public static string AssertFaultParity(string source, string entryClass)
     {
-        var lua = FaultedStdout(() => RunLua([source], entryClass));
-        Assert.Equal(lua, FaultedStdout(() => RunC([source], entryClass)));
-        Assert.Equal(lua, FaultedStdout(() => RunC([source], entryClass, stress: true)));
-        if (VmEnabled) Assert.Equal(lua, FaultedStdout(() => RunVm([source], entryClass)));
-        return lua;
+        var c = AssertBackendFaultParity(source, entryClass);
+        Assert.Equal(FaultedStdoutDotnet(source, entryClass), c);
+        return c;
     }
 
-    /// <summary>同じ source を実 .NET で実行した stdout (Console.Out は process で 1 つなので順に動かす)。</summary>
-    public static string RunDotnet(string source, string entryClass, bool tinySystemCollections = false)
+    /// <summary>C (通常 + GC stress) と VM がともに fault で止まり、fault までの stdout が一致することを要求する。
+    /// .NET を外すのは、.NET が止まらない fault (tcs が C# より狭く定める値) だけ。</summary>
+    public static string AssertBackendFaultParity(string source, string entryClass)
     {
-        // tinySystemCollections: TinySystem.props と同じく、Dictionary / HashSet を TinySystem の実装 (挿入順) にする
-        SyntaxTree[] trees = tinySystemCollections
-            ? [CSharpSyntaxTree.ParseText(source),
-                CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(ProjectRoot, "TinySystem", "Collections.cs")))]
-            : [CSharpSyntaxTree.ParseText(source)];
+        var c = FaultedStdout(() => RunC([source], entryClass));
+        Assert.Equal(c, FaultedStdout(() => RunC([source], entryClass, stress: true)));
+        if (VmEnabled) Assert.Equal(c, FaultedStdout(() => RunVm([source], entryClass)));
+        return c;
+    }
+
+    /// <summary>同じ source を実 .NET で実行した stdout (Console.Out は process で 1 つなので順に動かす)。
+    /// TinySystem.props と同じ構成で compile する: Math / MathF は TinySystem.Math (超越関数が runtime/math と bit 一致)、
+    /// TinySystem.Linq は source、Dictionary / HashSet は TinySystem の実装 (挿入順)。string の既定の比較は
+    /// test の process の InvariantGlobalization (tcs2c.Tests.csproj) で ordinal。frames を渡すと lib 形
+    /// (Setup → Frame×frames → Report) で呼ぶ。</summary>
+    public static string RunDotnet(string[] sources, string entryClass, int? frames = null)
+    {
         var compilation = CSharpCompilation.Create("TcsDotnetRun",
-            trees,
-            ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
-                .Select(path => MetadataReference.CreateFromFile(path)),
+            [.. sources.Select(s => CSharpSyntaxTree.ParseText(s)), .. DotnetLibrary.Value],
+            DotnetReferences.Value,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         using var image = new MemoryStream();
         var emitted = compilation.Emit(image);
@@ -262,7 +270,7 @@ internal static partial class Backends
                 string.Join("\n", emitted.Diagnostics));
         image.Position = 0;
         var context = new AssemblyLoadContext(null, isCollectible: true);
-        var main = context.LoadFromStream(image).GetType(entryClass)!.GetMethod("Main")!;
+        var type = context.LoadFromStream(image).GetType(entryClass)!;
         lock (DotnetConsole)
         {
             var saved = Console.Out;
@@ -270,7 +278,16 @@ internal static partial class Backends
             Console.SetOut(writer);
             try
             {
-                main.Invoke(null, null);
+                if (frames is { } n)
+                {
+                    type.GetMethod("Setup")!.Invoke(null, null);
+                    for (var i = 0; i < n; i++) type.GetMethod("Frame")!.Invoke(null, null);
+                    type.GetMethod("Report")!.Invoke(null, null);
+                }
+                else
+                {
+                    type.GetMethod("Main")!.Invoke(null, null);
+                }
             }
             catch (TargetInvocationException thrown)
             {
@@ -285,39 +302,24 @@ internal static partial class Backends
         }
     }
 
+    public static string RunDotnet(string source, string entryClass) => RunDotnet([source], entryClass);
+
+    // TinySystem.props が .NET の project に入れるもの
+    private static readonly Lazy<SyntaxTree[]> DotnetLibrary = new(() =>
+    [
+        CSharpSyntaxTree.ParseText("global using Math = TinySystem.Math;\nglobal using MathF = TinySystem.Math;\n"),
+        CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(ProjectRoot, "TinySystem", "Collections.cs"))),
+        CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(ProjectRoot, "TinySystem", "Linq.cs"))),
+    ]);
+
+    private static readonly Lazy<MetadataReference[]> DotnetReferences = new(() =>
+        [.. ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+            .Select(path => MetadataReference.CreateFromFile(path))]);
+
     private static readonly object DotnetConsole = new();
 
-    /// <summary>列挙の順に依る program (support-matrix §18: Dictionary / HashSet は挿入順): C (通常 + GC stress)、VM、
-    /// TinySystem の Dictionary で動かした .NET の stdout が一致することを要求する。Lua は順序が未規定なので外す。</summary>
-    public static string AssertOrderedParity(string source, string entryClass)
-    {
-        var c = RunC([source], entryClass);
-        Assert.Equal(c, RunC([source], entryClass, stress: true));
-        if (VmEnabled) Assert.Equal(c, RunVm([source], entryClass));
-        Assert.Equal(RunDotnet(source, entryClass, tinySystemCollections: true), c);
-        return c;
-    }
-
-    /// <summary>AssertParity に加えて実 .NET の stdout とも一致を要求する。</summary>
-    public static string AssertAllPathsAgree(string source, string entryClass)
-    {
-        var output = AssertParity(source, entryClass);
-        Assert.Equal(RunDotnet(source, entryClass), output);
-        return output;
-    }
-
-    /// <summary>AssertFaultParity に加えて実 .NET も例外で止まり、そこまでの stdout が一致することを要求する。</summary>
-    public static string AssertFaultOnAllPaths(string source, string entryClass)
-    {
-        var output = AssertFaultParity(source, entryClass);
-        Assert.Equal(FaultedStdout(() => RunDotnet(source, entryClass)), output);
-        return output;
-    }
-
-    public static string FaultedStdoutC(string source, string entryClass) => FaultedStdout(() => RunC([source], entryClass));
-    public static string FaultedStdoutVm(string source, string entryClass) => FaultedStdout(() => RunVm([source], entryClass));
-    public static string FaultedStdoutDotnet(string source, string entryClass) =>
-        FaultedStdout(() => RunDotnet(source, entryClass, tinySystemCollections: true));
+    private static string FaultedStdoutDotnet(string source, string entryClass) =>
+        FaultedStdout(() => RunDotnet(source, entryClass));
 
     private static string FaultedStdout(Func<string> run)
     {
@@ -343,15 +345,15 @@ internal static partial class Backends
         return error;
     }
 
-    /// <summary>lib 形 (フレーム境界 GC あり) で C (通常 + stress) と Lua の
-    /// stdout 一致を要求する。</summary>
+    /// <summary>lib 形 (フレーム境界 GC あり) で C (通常 + stress)、VM、実 .NET (同じ順に
+    /// Setup / Frame×N / Report を呼ぶ) の stdout 一致を要求し、その stdout を返す。</summary>
     public static string AssertParityLib(string source, string cls, int frames)
     {
-        var lua = RunLuaLib([source], cls, frames);
-        Assert.Equal(lua, RunCLib([source], cls, frames));
-        Assert.Equal(lua, RunCLib([source], cls, frames, stress: true));
-        if (VmEnabled) Assert.Equal(lua, RunVmLib([source], cls, frames));
-        return lua;
+        var c = RunCLib([source], cls, frames);
+        Assert.Equal(c, RunCLib([source], cls, frames, stress: true));
+        if (VmEnabled) Assert.Equal(c, RunVmLib([source], cls, frames));
+        Assert.Equal(RunDotnet([source], cls, frames), c);
+        return c;
     }
 
     private static string Number(string text) => string.Join("\n",

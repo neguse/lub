@@ -5,7 +5,7 @@ namespace TinyCs.Tcs2c.Tests;
 // を回し、各 root (static / host hold) と各 container 種別 / ライトバリア
 // 経路で保持した object がフレームを跨いで生きること、到達不能な garbage が
 // 境界で解放されて heap が有界に保たれることを、stress (毎境界で旧世代 full
-// GC + 256 byte nursery chunk) でも Lua と同じ stdout を要求して検証する。
+// GC + 256 byte nursery chunk) でも VM と .NET と同じ stdout を要求して検証する。
 public class GcTests
 {
     [CFact]
@@ -480,6 +480,6 @@ public class GcTests
         Assert.Contains("TCS_GC_STATIC", c);
         Assert.DoesNotContain("tcs_string_new((const unsigned char *)\"\\x65", c);
         Assert.Equal("35\nTrue", Backends.CompileAndRunC(c, stress: true));
-        Assert.Equal("35\nTrue", Backends.RunLua([source], "Program"));
+        Assert.Equal("35\nTrue", Backends.RunVm([source], "Program"));
     }
 }

@@ -196,9 +196,9 @@ public partial class DifferentialTests
                 }
             }
             """;
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([program], "P"),
+                     () => Backends.EmitVm([program], "P"),
                      () => Backends.EmitC([program], "P"),
                  })
         {

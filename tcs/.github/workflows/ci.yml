@@ -41,7 +41,7 @@ jobs:
         with:
           global-json-file: global.json
 
-      # digest 相互一致 (dev=lua32 / release=tcs2c→C) が fail ゲート。
+      # digest 相互一致 (vm=tcsvm / release=tcs2c→C) が fail ゲート。
       # 実行時間は step summary へのレポートのみ (runner の絶対時間は不安定)
       - name: Run 2-backend bench
         run: bash perf/bench-2backend.sh | tee bench-results.csv

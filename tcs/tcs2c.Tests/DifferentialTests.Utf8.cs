@@ -27,7 +27,7 @@ public partial class DifferentialTests
     [CFact]
     public void Utf8_RuneCountAndSubstring_AgreeOnEveryRange()
     {
-        var output = Backends.AssertAllPathsAgree(Utf8Program(Utf8Corpus + """
+        var output = Backends.AssertParity(Utf8Program(Utf8Corpus + """
             foreach (var s in corpus)
             {
                 int n = s.RuneCount();
@@ -46,7 +46,7 @@ public partial class DifferentialTests
     [CFact]
     public void Utf8Bytes_LengthIndexSliceToString_AgreeOnEveryRange()
     {
-        var output = Backends.AssertAllPathsAgree(Utf8Program(Utf8Corpus + """
+        var output = Backends.AssertParity(Utf8Program(Utf8Corpus + """
             foreach (var s in corpus)
             {
                 var u = new Utf8Bytes(s);
@@ -70,7 +70,7 @@ public partial class DifferentialTests
     [CFact]
     public void Utf8Bytes_FlowsThroughLocalsFieldsListsAndStructs()
     {
-        var output = Backends.AssertAllPathsAgree(Utf8Program("""
+        var output = Backends.AssertParity(Utf8Program("""
             var h = new Holder();
             h.Bytes = new Utf8Bytes("日本");
             int first = h.Bytes[0];
@@ -104,7 +104,7 @@ public partial class DifferentialTests
     [CFact]
     public void Utf8Bytes_DefaultIsAnEmptyViewEverywhere()
     {
-        var output = Backends.AssertAllPathsAgree(Utf8Program("""
+        var output = Backends.AssertParity(Utf8Program("""
             Utf8Bytes local = default;
             var d = new Dictionary<string, Utf8Bytes>();
             d.TryGetValue("none", out var missing);
@@ -128,7 +128,7 @@ public partial class DifferentialTests
     [InlineData("new Box<Utf8Bytes>().Value.Slice(1, 0).Length")]
     public void Utf8Bytes_DefaultIsOutOfRange(string call)
     {
-        Assert.Equal("before", Backends.AssertFaultOnAllPaths(Utf8Program($$"""
+        Assert.Equal("before", Backends.AssertFaultParity(Utf8Program($$"""
             Console.WriteLine("before");
             Console.WriteLine({{call}});
             """), "P"));
@@ -137,7 +137,7 @@ public partial class DifferentialTests
     [CFact]
     public void Utf8Bytes_NullableFollowsStructNullable()
     {
-        var output = Backends.AssertAllPathsAgree(Utf8Program("""
+        var output = Backends.AssertParity(Utf8Program("""
             var h = new Holder();
             Utf8Bytes? none = h.Maybe;
             Console.WriteLine((none == null) + ":" + none.HasValue);
@@ -187,7 +187,7 @@ public partial class DifferentialTests
     [InlineData("Nothing().RuneSubstring(0, 0)")]
     public void Utf8_OutOfRangeAndNull_FaultAfterPrecedingOutput(string call)
     {
-        Assert.Equal("before", Backends.AssertFaultOnAllPaths($$"""
+        Assert.Equal("before", Backends.AssertFaultParity($$"""
             using System;
             using TinySystem.Text;
             public class P
@@ -224,7 +224,7 @@ public partial class DifferentialTests
     {
         var ex = Assert.Throws<InvalidOperationException>(() => Backends.EmitC([Utf8Program(statement)], "P"));
         Assert.Contains(expected, ex.Message);
-        ex = Assert.Throws<InvalidOperationException>(() => Backends.RunLua([Utf8Program(statement)], "P"));
+        ex = Assert.Throws<InvalidOperationException>(() => Backends.EmitVm([Utf8Program(statement)], "P"));
         Assert.Contains(expected, ex.Message);
     }
 
@@ -232,7 +232,7 @@ public partial class DifferentialTests
     [CFact]
     public void TrimAndSplit_WhiteSpaceMatchesDotnetForEveryRune()
     {
-        var output = Backends.AssertAllPathsAgree("""
+        var output = Backends.AssertParity("""
             using System;
             public class P
             {
@@ -260,7 +260,7 @@ public partial class DifferentialTests
     [CFact]
     public void TrimAndSplit_MixedTextAgrees()
     {
-        var output = Backends.AssertAllPathsAgree("""
+        var output = Backends.AssertParity("""
             using System;
             public class P
             {
@@ -307,9 +307,9 @@ public partial class DifferentialTests
     public void ByteNarrowing_BothBackendsStop(string statement)
     {
         var program = ByteProgram(statement);
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([program], "P"),
+                     () => Backends.EmitVm([program], "P"),
                      () => Backends.EmitC([program], "P"),
                  })
             Assert.Contains("error TCS1001: unsupported syntax: ByteNarrowing",
@@ -325,9 +325,9 @@ public partial class DifferentialTests
     {
         var program = "using TinySystem.Text;\n" + declaration
             + "\nclass P { static void Main() { } }";
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([program], "P"),
+                     () => Backends.EmitVm([program], "P"),
                      () => Backends.EmitC([program], "P"),
                  })
             Assert.Contains($"error TCS1001: unsupported syntax: {diagnostic}",
@@ -344,13 +344,15 @@ public partial class DifferentialTests
             class P { static void Main() { var l = new List<W>(); l.Contains(default); } }
             """;
         Assert.Contains("error TCS1002",
-            Assert.Throws<InvalidOperationException>(() => Backends.RunLua([program], "P")).Message);
+            Assert.Throws<InvalidOperationException>(() => Backends.EmitVm([program], "P")).Message);
+        Assert.Contains("error TCS1002",
+            Assert.Throws<InvalidOperationException>(() => Backends.EmitC([program], "P")).Message);
     }
 
     [CFact]
     public void Byte_ReadingAndInRangeConstants_Agree()
     {
-        var output = Backends.AssertAllPathsAgree(ByteProgram("""
+        var output = Backends.AssertParity(ByteProgram("""
             const int K = 7;
             byte a = 200;
             byte b = (byte)201;
@@ -400,7 +402,7 @@ public partial class DifferentialTests
     public void EnumerateRunes_BrokenBytes_ReadsLikeEncodingUtf8(params int[] bytes)
     {
         var concat = string.Concat(bytes.Select(b => $" + (char)Id({b})"));
-        var output = Backends.AssertParity($$"""
+        var output = Backends.AssertBackendParity($$"""
             using System;
             using TinySystem.Text;
             public class P

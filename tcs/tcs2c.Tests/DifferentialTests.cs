@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 言語機能 / runtime 表面ごとの 2 backend differential。各 program は
-// Main の stdout を C (通常 + GC stress) と Lua で突き合わせる。
+// 言語機能 / runtime 表面ごとの実行系の differential。各 program は
+// Main の stdout を C (通常 + GC stress)、VM、実 .NET で突き合わせる (Backends.AssertParity)。
 public partial class DifferentialTests
 {
     [CFact]

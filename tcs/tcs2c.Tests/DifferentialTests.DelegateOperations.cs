@@ -31,8 +31,8 @@ public partial class DifferentialTests
                 }
             }
             """;
-        var lua = Transpiler.TranspileWithDiagnostics([program]);
-        Assert.Contains(lua.Errors, e => e.Contains(id) && e.Contains(rule));
+        var vm = Assert.Throws<InvalidOperationException>(() => Backends.EmitVm([program], "P"));
+        Assert.Contains(vm.Message.Split('\n'), e => e.Contains(id) && e.Contains(rule));
         var c = IlExport.Export([program]);
         Assert.Contains(c.Diagnostics, d => d.Contains(id) && d.Contains(rule));
     }

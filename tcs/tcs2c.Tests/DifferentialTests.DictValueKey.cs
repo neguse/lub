@@ -37,9 +37,9 @@ public partial class DifferentialTests
     [Fact]
     public void Dict_ValueEqualityKey_BothBackendsStopWithDiagnostic()
     {
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([DictValueKeyProgram], "P"),
+                     () => Backends.EmitVm([DictValueKeyProgram], "P"),
                      () => Backends.EmitC([DictValueKeyProgram], "P"),
                  })
         {

@@ -40,7 +40,6 @@ public partial class DifferentialTests
             }
             """;
         var output = Backends.AssertParity(source, "P");
-        Assert.Equal(Backends.RunDotnet(source, "P"), output);
         Assert.Equal("""
             False
             True

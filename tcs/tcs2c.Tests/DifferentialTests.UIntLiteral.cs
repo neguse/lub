@@ -22,7 +22,6 @@ public partial class DifferentialTests
                 }
             }
             """;
-        var output = Backends.AssertParity(source, "P");
-        Assert.Equal(Backends.RunDotnet(source, "P"), output);
+        Backends.AssertParity(source, "P");
     }
 }

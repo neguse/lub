@@ -30,7 +30,7 @@ public partial class DifferentialTests
     [CFact]
     public void Casts_Matching()
     {
-        var output = Backends.AssertAllPathsAgree(CastProgram("""
+        var output = Backends.AssertParity(CastProgram("""
             Console.WriteLine(((I)O(new A())).M());
             I i = new A();
             Console.WriteLine(((J)i).N());
@@ -81,7 +81,7 @@ public partial class DifferentialTests
     [InlineData("J x = ToJ(new B());")]
     public void Casts_MismatchFaults(string body)
     {
-        Backends.AssertFaultOnAllPaths(CastProgram(body + "\nConsole.WriteLine(\"after\");"), "P");
+        Backends.AssertFaultParity(CastProgram(body + "\nConsole.WriteLine(\"after\");"), "P");
     }
 
     [CTheory]
@@ -107,9 +107,9 @@ public partial class DifferentialTests
     [InlineData("var l = new List<object> { E.Q };", "ValueBoxing(E)")]
     public void Casts_Unverifiable_BothBackendsStopWithDiagnostic(string body, string syntaxName)
     {
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([CastProgram(body)], "P"),
+                     () => Backends.EmitVm([CastProgram(body)], "P"),
                      () => Backends.EmitC([CastProgram(body)], "P"),
                  })
         {
@@ -129,9 +129,9 @@ public partial class DifferentialTests
                 public static void Main() { }
             }
             """;
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([program], "P"),
+                     () => Backends.EmitVm([program], "P"),
                      () => Backends.EmitC([program], "P"),
                  })
         {
@@ -145,7 +145,7 @@ public partial class DifferentialTests
     [CFact]
     public void Casts_StringifiedValuesStayAllowed()
     {
-        var output = Backends.AssertAllPathsAgree(CastProgram("""
+        var output = Backends.AssertParity(CastProgram("""
             char c = 'a';
             E e = E.Q;
             byte b = 2;

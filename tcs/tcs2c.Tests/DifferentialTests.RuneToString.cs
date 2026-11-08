@@ -97,6 +97,7 @@ public partial class DifferentialTests
                  {
                      () => Backends.RunLua([program], "P"),
                      () => Backends.RunC([program], "P"),
+                     () => Backends.RunVm([program], "P"),
                  })
             Assert.Contains("ConvertFromUtf32: not a Unicode scalar value",
                 Assert.Throws<InvalidOperationException>(run).Message);
@@ -121,9 +122,9 @@ public partial class DifferentialTests
                 }
             }
             """;
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([program], "P"),
+                     () => Backends.EmitVm([program], "P"),
                      () => Backends.EmitC([program], "P"),
                  })
             Assert.Contains($"error TCS1001: unsupported syntax: {rule}",

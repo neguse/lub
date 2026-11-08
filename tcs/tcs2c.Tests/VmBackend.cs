@@ -3,8 +3,8 @@ using TinyCs.Vm;
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// 3 本目の実行系: tcs VM (doc/vm-design.md)。IL → tcs2vm → .tcsb → tcsvm。
-/// AssertParity / AssertFaultParity / AssertParityLib が Lua と同じ stdout を要求する。
+/// tcs VM の実行系 (doc/vm-design.md)。IL → tcs2vm → .tcsb → tcsvm。
+/// AssertParity / AssertFaultParity / AssertParityLib が C と同じ stdout を要求する。
 /// GC stress (nursery を極小にして毎フレーム全回収) でも同じ出力であることを要求する。
 /// TCSVM_PARITY=0 で外せる。
 /// </summary>
@@ -148,6 +148,9 @@ internal static partial class Backends
 
     public static string RunVm(string[] sources, string entryClass) =>
         RunVmProcess(sources, entryClass, []);
+
+    /// <summary>.tcsb を作るだけで動かさない。TinyC# の診断は InvalidOperationException。</summary>
+    public static byte[] EmitVm(string[] sources, string? entryClass) => SelfHostVm.Emit(sources, entryClass);
 
     /// <summary>終わらない program を、stdout を pipe にした tcsvm で動かす。先頭の lines 行か timeout まで読み、止めて、読めた行を返す。</summary>
     public static List<string> FirstVmLines(string source, string entryClass, int lines, TimeSpan timeout)
