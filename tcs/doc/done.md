@@ -1191,7 +1191,7 @@
 - 合格基準「本文が Lua にも C にも言及せず読める」を満たし、backend 義務は付録 A/B に分離。il-design §8 の未決 6 件中 3 件 (具体形 / 例外 / interop 境界) を決着、残 3 件 + 新規 3 件を il-spec 付録 C に同期
 - 検証: 文書のみの変更。規範の根拠事実は T210 の実測 (probe 2 本の Lua/.NET 突き合わせ) に依拠
 - 判断: string を UTF-8 バイト列で規範化 (出荷ターゲット表現を正に置き、.NET 実行側を既知差とする — 逆だと release backend が UTF-16 を背負う)。f32→i32 変換不能と INT_MIN/-1 は fault として決定的に定義 (C# 側が unspecified / 例外なので矛盾しない)。数学関数の規範は「同一プラットフォーム内一致」に留め、プラットフォーム間ビット一致は要求しない (spike の libm 排除方針と整合)
-- 残課題: gpt-5.6 second opinion review、M2 (T217) でシリアライズ形式と luo 向け入力契約
+- 残課題: gpt-5.6 second opinion review、M2 (T217) でシリアライズ形式と旧 AOT の C backend 向け入力契約
 
 ### T211 補遺: gpt-5.6 反証レビューの反映 ✓ (2026-07-18)
 - 反証限定・load-bearing 6 決定に絞った second opinion (Codex 14分)。反証 4 / 生存 2 (fault 決定性、capture 脱糖)
@@ -1236,7 +1236,7 @@
 - samples 実測 37/37 bodies (100%、ctor/accessor 込み) が IL 経由、legacy 0。M1 の完了条件 (全テスト green・増分コンパイル session 両立・fuzz/differential/conformance ゲート不変) を充足
 - 検証: 全テスト 676 green、deep fuzz 100 seeds 全一致 (生成プログラムの IL 経路を実 .NET と行単位比較)、コミット時 pre-commit 全ゲート
 - 判断: legacy visitor のコード削除は見送り — fallback は診断構文・method group 参照等の残構文が使い、挙動不変の保険としても機能する。縮退は T224 (P2)、IIFE statement 化は T225 (P2) として M1 契約から分離
-- 残課題: T224/T225、M2 (T217) で luo 向け入力契約 (program 構造の IL 化を含む)
+- 残課題: T224/T225、M2 (T217) で旧 AOT の C backend 向け入力契約 (program 構造の IL 化を含む)
 
 ### IL 経路への continue scope 修正の写像 ✓ (2026-07-18)
 - origin 側 19d35c4 (一般 for lowering の continue goto が local スコープへ飛ぶ問題の legacy 修正) を rebase で取り込み、IL emitter (IlWhile) にも同条件 (incrementor あり + 直下 continue) の do..end 囲いを写像。IlWhile に ScopeBody を追加
@@ -1279,13 +1279,13 @@
 - 判断: double/long の診断化 (il-design §4 の完全なサブセット外化) は分離 — T216 の完了条件 (32bit ビルドで全ゲート green + differential f32 比較) は満たしており、ソース資産の一括 f32 リテラル移行は独立タスクとして需要と合わせて判断する (tasks.md T226 起票)
 
 ### T215: digest harness — spike 3 kernel の f32 FNV digest ゲート ✓ (2026-07-18)
-- ../luo/spike/CONTRACT.md と同一仕様 (LCG / 演算列 / FNV-1a) の 3 kernel を TinyC# で記述 (Transpiler.Tests/DigestKernels/、particles は M5 まで class SoA 形)。lua32 実行の出力 f32 を bit 列で FNV し、期待値を恒常ゲート化 (DigestHarnessTests、+約 2.5 秒)
-- 実測 digest: sprite_update e8814b32 / spawn_churn 4e5bf016 / particles 8bf97e09。CONTRACT へ追記済みで、luo spike の全変種 (interp/aot-hash/aot-slot/native) はこれと一致すべき — 2 backend 一致検証の tcs 側正本
+- 旧 AOT の repo の spike/CONTRACT.md と同一仕様 (LCG / 演算列 / FNV-1a) の 3 kernel を TinyC# で記述 (Transpiler.Tests/DigestKernels/、particles は M5 まで class SoA 形)。lua32 実行の出力 f32 を bit 列で FNV し、期待値を恒常ゲート化 (DigestHarnessTests、+約 2.5 秒)
+- 実測 digest: sprite_update e8814b32 / spawn_churn 4e5bf016 / particles 8bf97e09。CONTRACT へ追記済みで、旧 AOT の spike の全変種 (interp/aot-hash/aot-slot/native) はこれと一致すべき — 2 backend 一致検証の tcs 側正本
 - 検証: 3/3 green。spawn_churn の CONTRACT 未規定分 (初期空・spawn→update 順・ring 順序) は解釈を明文化
 - 副次発見: nested class は Lua 出力に emit されず実行時 nil (診断もなし)。要診断化 — T227 起票
 
 ### T217: [M2] IL 入力契約 — IlExport API + リファレンス文書 ✓ (2026-07-18)
-- `IlExport.Export(sources)` を公開: class metadata (fields/型/static、auto property 込み)、migration metadata の layout hash (il-spec §14 — instance field の名前:型列 FNV、static 変更で不変・改名で変化)、method body の IL (未対応は null)。luo は assembly 参照で直接消費
+- `IlExport.Export(sources)` を公開: class metadata (fields/型/static、auto property 込み)、migration metadata の layout hash (il-spec §14 — instance field の名前:型列 FNV、static 変更で不変・改名で変化)、method body の IL (未対応は null)。旧 AOT の repo は assembly 参照で直接消費
 - `doc/il-reference.md` を新設: 全 IL ノードのカタログ (意味論は il-spec 参照、Lua render は参考情報)、API、C backend の義務、digest 検証の接続 (DigestKernels ↔ spike CONTRACT)
 - 検証: IlExportTests 3 本 green (metadata/IL body 形/layout hash 性質/未対応 null)
 - 判断: シリアライズ形式は定義しない (il-spec §1 の v0 決定どおり in-memory)。class 骨格 (ctor/accessor/field initializer) の IL 本文は T224 で拡張
@@ -1295,17 +1295,17 @@
 - 検証: SubsetDiagnosticTests 追加 1 本 green、run-tests 全ゲート green (conformance baseline 影響なし)
 
 ### T212: [spike] AOT 性能上界の PC 測定 ✓ (2026-07-18)
-- ../luo/spike/ に CONTRACT 準拠の 3 kernel × 5 変種 (native/aot-hash/aot-slot/interp/jit-off) を実装 (実装は Codex 委任、検証・適用・突き合わせは当方)。全変種 digest 一致 + tcs TinyC#→Lua とも 3 kernel bit 一致 — 「手書き C と transpiler 出力が同じ計算」の初実証で、digest harness (T215) が backend 間契約として実働
+- 旧 AOT の repo の spike/ に CONTRACT 準拠の 3 kernel × 5 変種 (native/aot-hash/aot-slot/interp/jit-off) を実装 (実装は Codex 委任、検証・適用・突き合わせは当方)。全変種 digest 一致 + tcs TinyC#→Lua とも 3 kernel bit 一致 — 「手書き C と transpiler 出力が同じ計算」の初実証で、digest harness (T215) が backend 間契約として実働
 - 実測 (PC): aot-slot/native = 16.8x (sprite N=1024)、interp/native ≈ 19-36x。aot-slot は interp と大差なし — boxed TValue 表現自体がボトルネック
 - 合否解釈: 「aot-* のみ予算落ち、native は通る」側 → **release-lowering は IL-native 表現 (struct / 連続配列) を採る** (il-design §8 の spike 待ち 2 項が決着: release class 表現 = native、Lua 側 struct 配列表現の需要は M5 実装時に再実測)
 - spawn_churn の CONTRACT 未規定分は spike 実装解釈 (開始時充填) に統一し、tcs kernel を追随 (digest 9274159d で一致確認)
-- 残課題: 実機 (Playdate) 測定は SDK 導入後。luo コミット済み (未 push)
+- 残課題: 実機 (Playdate) 測定は SDK 導入後。旧 AOT の repo にコミット済み (未 push)
 
 ### T218 第一マイルストーン: luoc IL→C backend 骨格 ✓ (2026-07-18)
-- ../luo/luoc/ (net10.0 console、Transpiler を ProjectReference) が IlExport.Export を消費して C を生成。class=calloc struct、配列=型付き連続バッファ (spike 合否解釈の IL-native 表現)、strict f32 bit literal、null/bounds/除算 fault、未対応ノードは名前付きエラー (実装は Codex 委任、適用と受入検証は当方)
+- 旧 AOT の repo の luoc/ (net10.0 console、Transpiler を ProjectReference) が IlExport.Export を消費して C を生成。class=calloc struct、配列=型付き連続バッファ (spike 合否解釈の IL-native 表現)、strict f32 bit literal、null/bounds/除算 fault、未対応ノードは名前付きエラー (実装は Codex 委任、適用と受入検証は当方)
 - 受入: digest kernel 3 種の C 変換を指定 flags (gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard) でビルド・実行し、digest が Lua backend と 3/3 一致 (e8814b32 / 9274159d / 8bf97e09) — **M3 の核である 2 backend digest 一致が初成立**
 - 判断: IlExport v0 に無い宣言情報 (method 型、配列要素型/長さ、field initializer) は暫定で Roslyn 再解析により補完 → 契約拡充を T228 起票。式・制御フローは IL のみから生成
-- 残課題: T218 本体の全域化 (tasks.md 更新済み)、luo コミット済み (未 push)
+- 残課題: T218 本体の全域化 (tasks.md 更新済み)、旧 AOT の repo にコミット済み (未 push)
 
 ### T228: IlExport 契約拡充 ✓ (2026-07-18)
 - IlNewArray (要素型 + 長さ、il-spec §11 の固定長配列) を IL に追加 (Lua render は legacy 互換の {})。IlTable に要素型 metadata。IlMethodInfo に ReturnType/ParameterTypes、IlFieldInfo に Init (initializer の IL)。il-reference 更新
@@ -1411,9 +1411,9 @@
 - 検証: run-tests 全ゲート green (並列実行込み)。縮小結果が無意味な断片だったのは「空 baseline への縮小」の帰結で、生成器の問題ではない
 
 ### luoc / spike の tcs 取り込み ✓ (2026-07-18)
-- git subtree (履歴保持) で ../luo から luoc/ と spike/ を取り込み。ProjectReference をリポジトリ内参照へ、slnx に luoc を追加、doc/spike-ceiling.md を移管し全参照を付け替え (done.md の歴史記述は当時のまま)
+- git subtree (履歴保持) で旧 AOT の repo から luoc/ と spike/ を取り込み。ProjectReference をリポジトリ内参照へ、slnx に luoc を追加、doc/spike-ceiling.md を移管し全参照を付け替え (done.md の歴史記述は当時のまま)
 - run-tests に luoc digest ゲートを常設 (cc 存在時) — **2 backend 一致が毎コミット・CI で守られる**ようになった (従来は手動)。ファイルサイズ規約の適用で CEmitter を 6 ファイルへ分割
-- 判断: 対称 2 backend は同一リポジトリが正 (契約ロックステップの解消、ゲート統合、bisect)。../luo は旧 AOT 方向のアーカイブとして以後変更しない (CLAUDE.md 記載)
+- 判断: 対称 2 backend は同一リポジトリが正 (契約ロックステップの解消、ゲート統合、bisect)。旧 AOT の repo はアーカイブとして以後変更しない (CLAUDE.md 記載)
 
 ### spike の名称整理 → perf/ ✓ (2026-07-18)
 - 合否決着済みの「spike」を恒久名 perf/ へ改称 (既存 bench/ = wasm E2E スクリプト群との衝突回避)。暫定正本だった spike-ceiling.md を解体し、恒久内容 (KPI floor / 変種 / 決着済み合否 / 実機残り) を perf/README.md へ、参照を全付け替え (done.md の歴史は当時のまま)
@@ -1423,7 +1423,7 @@
 - Playdate SDK 3.1.0 + arm-none-eabi toolchain (Arch pacman) を導入し、perf 全変種 (native / aot-hash / aot-slot / interp) を 1 つの .pdx で実行する `perf/playdate/` ハーネスを追加。デバイス (Cortex-M7) とシミュレータ (host .so) の両ビルドが green
 - 前提リファクタ: common.c を core.c (OS 非依存: LCG/frand/digest) とホスト CLI 部へ分離、native.c/aot.c に dispatch 関数 (`PERF_NO_MAIN` で main をガード)、aot.c は hash/slot を別 TU で 2 回コンパイル。ホストの digest 回帰 (全 kernel × 3 C 変種) は results-pc.md と bit 一致
 - Playdate 対応の要点: pd_api.h の独自 `lua_State` (void*) と本物の Lua ヘッダが衝突するため interp 実行を別 TU (interp_runner.c) へ分離。bench.lua は CMake で hex 埋め込み、os.clock/io.write を pd タイマー/console へ差し替え。newlib setjmp が引き込む ARM unwinder には空 exidx を defsym、`-nostartfiles` で欠ける `_init/_fini` は空 stub、malloc は SDK setup.c が pd realloc へ接続
-- 残っていた spike 識別子・参照 (perf/*.c/h, CMake, run.sh, CONTRACT/results, root CMakeLists, Transpiler.Tests コメントの ../luo/spike stale パス) を perf 系へ全置換。CLAUDE.md に「spike 名称禁止」を明文化
+- 残っていた spike 識別子・参照 (perf/*.c/h, CMake, run.sh, CONTRACT/results, root CMakeLists, Transpiler.Tests コメントの旧 AOT の repo の spike の stale パス) を perf 系へ全置換。CLAUDE.md に「spike 名称禁止」を明文化
 - 検証: ホスト perf 再ビルド + 各変種実行で digest 一致 (e8814b32/d4a095ee/0040a0c1/9274159d/8bf97e09)、デバイスビルドで tcs_perf_DEVICE.pdx (pdex.bin 165KB) 生成、`file` で ARM EABI5 確認。実機実行は未 (デバイス未接続)
 - 残課題: 実機での実行・results-playdate.md への記録。update 長時間ブロックが watchdog に当たる場合はフレーム分割が必要 (README に記載)
 
@@ -1442,7 +1442,7 @@
 
 ### luoc → tcs2c 改名 ✓ (2026-07-18)
 - IL→C release backend の luoc を tcs2c へ一括改名 (ディレクトリ / csproj / namespace TinyCs.Tcs2c / Tcs2cException / CLI usage / slnx / run-tests / verify-digests / bench-2backend / ドキュメント参照。done.md の歴史は当時のまま)
-- 判断: luoc は旧 luo リポジトリ由来で実体 (tcs IL → C) と乖離。tcs2c は安直だが「tcs 全体のリブランディングが控えている前提で tcs 系に暫定統一」というユーザー判断
+- 判断: luoc は旧 AOT の repo 由来で実体 (tcs IL → C) と乖離。tcs2c は安直だが「tcs 全体のリブランディングが控えている前提で tcs 系に暫定統一」というユーザー判断
 - 検証: verify-digests.sh 3/3 green (改名後の再ビルド込み)、luoc の残存参照ゼロ (grep、done.md 除く)
 
 ### bench 結果の workflow artifact 化 ✓ (2026-07-18)
