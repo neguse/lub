@@ -186,10 +186,10 @@ public class XrView
     public int Width;
     public int Height;
     /// <summary>LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。</summary>
-    public float[] Position;
-    public float[] Orientation;
+    public float[] Position = new float[3];
+    public float[] Orientation = new float[4];
     /// <summary>右手系、メートル、前方 -Z。行優先の projection * view、深度 [0,1]。</summary>
-    public float[] ViewProjection;
+    public float[] ViewProjection = new float[16];
 }
 
 public class XrInput
@@ -206,10 +206,10 @@ public class XrInput
     /// <summary>Aim (指す向き) と Grip (握った所) の位置と姿勢が取れたか。取れない frame (手が見えない、session が無い) は false で、値は 0。</summary>
     public bool PoseValid;
     /// <summary>LOCAL 空間の位置 (メートル) と姿勢 (xyzw)。 Aim は -Z が指す向き。</summary>
-    public float[] AimPosition;
-    public float[] AimOrientation;
-    public float[] GripPosition;
-    public float[] GripOrientation;
+    public float[] AimPosition = new float[3];
+    public float[] AimOrientation = new float[4];
+    public float[] GripPosition = new float[3];
+    public float[] GripOrientation = new float[4];
 }
 
 /// <summary>App.Config のオプション (OnInit 内でのみ有効)。</summary>
@@ -252,7 +252,7 @@ public class MeshData
 /// <summary>SdfMesh の bone (skinning 部位)。 X / Y / Z は pivot。</summary>
 public class SdfBone
 {
-    public string Name;
+    public string Name = "";
     public float X;
     public float Y;
     public float Z;
@@ -262,8 +262,8 @@ public class SdfBone
 public class SdfNodeDesc
 {
     public Lub.Mesh.SdfOp Op;
-    public int A;
-    public int B;
+    public int A = -1;
+    public int B = -1;
     public List<float> Params = new List<float>();
     public string? Name;
 }
@@ -288,7 +288,7 @@ public class GltfMaterial
 public class GltfPrimitive
 {
     /// <summary>頂点と index (MeshData を受ける関数にはこれを渡す)。</summary>
-    public MeshData Mesh;
+    public MeshData Mesh = new MeshData();
     public int MaterialIndex;
     public GltfMaterial? Material;
 }
@@ -297,7 +297,7 @@ public class GltfPrimitive
 public class GltfMesh
 {
     /// <summary>頂点と index (MeshData を受ける関数にはこれを渡す)。</summary>
-    public MeshData Mesh;
+    public MeshData Mesh = new MeshData();
     public List<GltfPrimitive> Primitives = new List<GltfPrimitive>();
     public GltfMaterial? Material;
 }
@@ -318,7 +318,7 @@ public class GlyphBitmap
 public class GlyphMesh
 {
     /// <summary>頂点と index (MeshData を受ける関数にはこれを渡す)。</summary>
-    public MeshData Mesh;
+    public MeshData Mesh = new MeshData();
     public float Advance;
 }
 
@@ -376,8 +376,8 @@ public class InitialState
 /// <summary>event / query / callback が返す shape の識別。 material は MaterialName (宣言時の名前) と UserMaterialId (整数) に分かれる。 filter は live な shape のときだけ入る。</summary>
 public class ShapeView
 {
-    public string Body;
-    public string Shape;
+    public string Body = "";
+    public string Shape = "";
     public string? Tag;
     public string? Chain;
     public bool? Segment;
@@ -418,8 +418,8 @@ public class ManifoldPoint
 /// <summary>PreSolve callback が受ける接触。</summary>
 public class PreSolveContact
 {
-    public ShapeView A;
-    public ShapeView B;
+    public ShapeView A = new ShapeView();
+    public ShapeView B = new ShapeView();
     public float Nx;
     public float Ny;
     public float RollingImpulse;
@@ -933,15 +933,15 @@ public class Aabb
 
 public class FilterInfo
 {
-    public string CategoryBits;
-    public string MaskBits;
+    public string CategoryBits = "";
+    public string MaskBits = "";
     public int Group;
 }
 
 public class ShapeInfo
 {
-    public string Body;
-    public string Shape;
+    public string Body = "";
+    public string Shape = "";
     public string? Tag;
     public string? Chain;
     public bool? Segment;
@@ -960,8 +960,8 @@ public class ShapeInfo
     public bool Contact;
     public bool PreSolve;
     public bool Hit;
-    public FilterInfo Filter;
-    public Aabb Aabb;
+    public FilterInfo Filter = new FilterInfo();
+    public Aabb Aabb = new Aabb();
 }
 
 public class WorldCallbackInfo
@@ -974,7 +974,7 @@ public class WorldCallbackInfo
 
 public class WorldInfo
 {
-    public string Key;
+    public string Key = "";
     public bool Valid;
     public int Version;
     public int Generation;
@@ -985,7 +985,7 @@ public class WorldInfo
     public int MaxSteps;
     public float Accumulator;
     public int PendingCommands;
-    public WorldCallbackInfo Callbacks;
+    public WorldCallbackInfo Callbacks = new WorldCallbackInfo();
     public Vec2d? Gravity;
     public bool? Sleep;
     public bool? Continuous;
@@ -1013,19 +1013,19 @@ public class StepInfo
 
 public class JointView
 {
-    public string Joint;
+    public string Joint = "";
     public Lub.Phys2d.JointType Type;
-    public string A;
-    public string B;
+    public string A = "";
+    public string B = "";
     public bool Valid;
 }
 
 public class JointInfo
 {
-    public string Joint;
+    public string Joint = "";
     public Lub.Phys2d.JointType Type;
-    public string A;
-    public string B;
+    public string A = "";
+    public string B = "";
     public bool Valid;
     public bool CollideConnected;
     public Vec2d Force;
@@ -1041,8 +1041,8 @@ public class JointInfo
 /// <summary>body に今触れている contact。</summary>
 public class ContactData
 {
-    public ShapeView A;
-    public ShapeView B;
+    public ShapeView A = new ShapeView();
+    public ShapeView B = new ShapeView();
     public float Nx;
     public float Ny;
     public int PointCount;
@@ -1054,8 +1054,8 @@ public class ContactData
 /// <summary>contact イベントの端点 (2D/3D 共通)。</summary>
 public class ContactEvent
 {
-    public ShapeView A;
-    public ShapeView B;
+    public ShapeView A = new ShapeView();
+    public ShapeView B = new ShapeView();
     public float Nx;
     public float Ny;
     public int PointCount;
@@ -1066,13 +1066,13 @@ public class ContactEvent
 
 public class SensorEvent
 {
-    public ShapeView Sensor;
-    public ShapeView Visitor;
+    public ShapeView Sensor = new ShapeView();
+    public ShapeView Visitor = new ShapeView();
 }
 
 public class BodyEvent
 {
-    public string Body;
+    public string Body = "";
     public bool Valid;
     public float X;
     public float Y;
@@ -1082,8 +1082,8 @@ public class BodyEvent
 
 public class RayHit
 {
-    public string Body;
-    public string Shape;
+    public string Body = "";
+    public string Shape = "";
     public string? Tag;
     public string? Chain;
     public bool? Segment;
@@ -1123,8 +1123,8 @@ public class MoverCast
 
 public class MoverPlane
 {
-    public string Body;
-    public string Shape;
+    public string Body = "";
+    public string Shape = "";
     public string? Tag;
     public string? Chain;
     public bool? Segment;
@@ -1231,8 +1231,8 @@ public class MotionLocks3d
 /// <summary>event / query / callback が返す shape の識別 (3D)。</summary>
 public class ShapeView3d
 {
-    public string Body;
-    public string Shape;
+    public string Body = "";
+    public string Shape = "";
     public string? Tag;
     public string? MaterialName;
     public int? MaterialId;
@@ -1246,8 +1246,8 @@ public class ShapeView3d
 /// <summary>PreSolve callback が受ける接触 (3D は点と法線が 1 つ)。</summary>
 public class PreSolveContact3d
 {
-    public ShapeView3d A;
-    public ShapeView3d B;
+    public ShapeView3d A = new ShapeView3d();
+    public ShapeView3d B = new ShapeView3d();
     public float X;
     public float Y;
     public float Z;
@@ -1397,8 +1397,8 @@ public class CapsuleDesc3d
     /// <summary>world の callback の PreSolve の対象にする。</summary>
     public bool? PreSolve;
     public FilterDesc3d? Filter;
-    public Vec3d A;
-    public Vec3d B;
+    public Vec3d A = new Vec3d();
+    public Vec3d B = new Vec3d();
     public float R;
 }
 
@@ -1595,8 +1595,8 @@ public class CompoundBox3d
 
 public class CompoundCapsule3d
 {
-    public Vec3d A;
-    public Vec3d B;
+    public Vec3d A = new Vec3d();
+    public Vec3d B = new Vec3d();
     public float R;
 }
 
@@ -1809,8 +1809,8 @@ public class ShapeEventsDesc3d
 
 public class MoverDesc3d
 {
-    public Vec3d A;
-    public Vec3d B;
+    public Vec3d A = new Vec3d();
+    public Vec3d B = new Vec3d();
     public float R;
     public float? Dx;
     public float? Dy;
@@ -1860,8 +1860,8 @@ public class BoxProxy3d
 
 public class CapsuleProxy3d
 {
-    public Vec3d A;
-    public Vec3d B;
+    public Vec3d A = new Vec3d();
+    public Vec3d B = new Vec3d();
     public float R;
 }
 
@@ -1924,9 +1924,9 @@ public class Inertia3d
 public class MassData3d
 {
     public float Mass;
-    public Vec3d Center;
-    public Vec3d LocalCenter;
-    public Inertia3d Inertia;
+    public Vec3d Center = new Vec3d();
+    public Vec3d LocalCenter = new Vec3d();
+    public Inertia3d Inertia = new Inertia3d();
 }
 
 public class Aabb3d
@@ -1941,8 +1941,8 @@ public class Aabb3d
 
 public class ShapeInfo3d
 {
-    public string Body;
-    public string Shape;
+    public string Body = "";
+    public string Shape = "";
     public string? Tag;
     public string? MaterialName;
     public int? MaterialId;
@@ -1959,13 +1959,13 @@ public class ShapeInfo3d
     public bool Contact;
     public bool PreSolve;
     public bool Hit;
-    public FilterInfo Filter;
-    public Aabb3d Aabb;
+    public FilterInfo Filter = new FilterInfo();
+    public Aabb3d Aabb = new Aabb3d();
 }
 
 public class WorldInfo3d
 {
-    public string Key;
+    public string Key = "";
     public bool Valid;
     public int Version;
     public int Generation;
@@ -2016,33 +2016,33 @@ public class Frame3d
 /// <summary>3D joint の識別 (BodyJoints / JointEvents)。</summary>
 public class JointView3d
 {
-    public string Joint;
+    public string Joint = "";
     public Lub.Phys3d.JointType Type;
-    public string A;
-    public string B;
+    public string A = "";
+    public string B = "";
     public bool Valid;
 }
 
 public class JointInfo3d
 {
-    public string Joint;
+    public string Joint = "";
     public Lub.Phys3d.JointType Type;
-    public string A;
-    public string B;
+    public string A = "";
+    public string B = "";
     public bool Valid;
     public bool CollideConnected;
-    public Vec3d Force;
-    public Vec3d Torque;
+    public Vec3d Force = new Vec3d();
+    public Vec3d Torque = new Vec3d();
     public float LinearSeparation;
     public float AngularSeparation;
-    public Frame3d LocalFrameA;
-    public Frame3d LocalFrameB;
+    public Frame3d LocalFrameA = new Frame3d();
+    public Frame3d LocalFrameB = new Frame3d();
 }
 
 public class ContactData3d
 {
-    public ShapeView3d A;
-    public ShapeView3d B;
+    public ShapeView3d A = new ShapeView3d();
+    public ShapeView3d B = new ShapeView3d();
     public float Nx;
     public float Ny;
     public float Nz;
@@ -2057,8 +2057,8 @@ public class ContactData3d
 /// <summary>3D の contact event (Contacts)。</summary>
 public class ContactEvent3d
 {
-    public ShapeView3d A;
-    public ShapeView3d B;
+    public ShapeView3d A = new ShapeView3d();
+    public ShapeView3d B = new ShapeView3d();
     public float Nx;
     public float Ny;
     public float Nz;
@@ -2072,13 +2072,13 @@ public class ContactEvent3d
 /// <summary>3D の sensor event (Sensors)。</summary>
 public class SensorEvent3d
 {
-    public ShapeView3d Sensor;
-    public ShapeView3d Visitor;
+    public ShapeView3d Sensor = new ShapeView3d();
+    public ShapeView3d Visitor = new ShapeView3d();
 }
 
 public class BodyEvent3d
 {
-    public string Body;
+    public string Body = "";
     public bool Valid;
     public float X;
     public float Y;
@@ -2092,17 +2092,17 @@ public class BodyEvent3d
 
 public class JointEvent3d
 {
-    public string Joint;
+    public string Joint = "";
     public Lub.Phys3d.JointType Type;
-    public string A;
-    public string B;
+    public string A = "";
+    public string B = "";
     public bool Valid;
 }
 
 public class RayHit3d
 {
-    public string Body;
-    public string Shape;
+    public string Body = "";
+    public string Shape = "";
     public string? Tag;
     public string? MaterialName;
     public int? MaterialId;
@@ -2149,8 +2149,8 @@ public class MoverCast3d
 
 public class MoverPlane3d
 {
-    public string Body;
-    public string Shape;
+    public string Body = "";
+    public string Shape = "";
     public string? Tag;
     public string? MaterialName;
     public int? MaterialId;
@@ -2224,25 +2224,25 @@ public class Counters3d
 public class PickHit
 {
     public int Draw;
-    public string Site;
-    public string Self;
+    public string Site = "";
+    public string Self = "";
 }
 
 /// <summary>Sys.TakeValues の 1 件。</summary>
 public class TraceValue
 {
-    public string Site;
-    public string Text;
+    public string Site = "";
+    public string Text = "";
 }
 
 /// <summary>Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は class の instance ならその class の名前、それ以外は空。 Count は子の数 (0 なら開けない)。Cycle は祖先と同じ object で、開けない。 Id は object の番地の文字列で、object が生きている間は変わらず、別の object とは違う (string と値型は空)。回収の後は別の object に再利用され得るので、覚えておくなら Sys.InspectPin と合わせて使う。</summary>
 public class InspectNode
 {
-    public string Path;
-    public string Name;
-    public string Text;
-    public string Type;
-    public string Id;
+    public string Path = "";
+    public string Name = "";
+    public string Text = "";
+    public string Type = "";
+    public string Id = "";
     public int Count;
     public bool Cycle;
 }
@@ -2250,15 +2250,15 @@ public class InspectNode
 /// <summary>Sys.InspectInstances の 1 件。Type は class の名前、Path と Id は InspectNode と同じ。</summary>
 public class InspectInstance
 {
-    public string Type;
-    public string Path;
-    public string Id;
+    public string Type = "";
+    public string Path = "";
+    public string Id = "";
 }
 
 /// <summary>Sys.TakeProfile の 1 件 (前に取り出してからの和)。 Site は "file:line"。Ms はその行を実行していた時間の見積もり (0.25 ms ごとの知らせを足したもの) で、--trace で変換していない関数と API の中の時間を含み、--trace で変換した関数を呼んだ先の時間は含まない。 Bytes と Allocs はその行の確保の byte (object の header を含む) と回数で、時間と同じく呼んだ先を含む。</summary>
 public class ProfileLine
 {
-    public string Site;
+    public string Site = "";
     public float Ms;
     public int Bytes;
     public int Allocs;
@@ -2274,8 +2274,8 @@ public class GcPause
 /// <summary>Sys.TakeKept の 1 件。Site は作った行 ("file:line")、Holder はそれを持つ field ("型.field"。static は "class.field")。 Holder は、ゲームの状態の根から一番近い、前からある物の field で、新しく作った物の中の物はその新しい物を持つ field、List と配列と Dictionary の中の物はその入れ物を持つ field になる。 Count は物の数 (List の中身の配列なども 1 つと数える)、Bytes はその byte (object の header を含む)。</summary>
 public class KeptObject
 {
-    public string Site;
-    public string Holder;
+    public string Site = "";
+    public string Holder = "";
     public int Count;
     public int Bytes;
 }
@@ -2283,8 +2283,8 @@ public class KeptObject
 /// <summary>Sys.TakeGpuPasses の 1 件 (1 frame の 1 つの pass)。 Site は pass を始めた行 ("file:line"。tcs VM の player で、--trace で変換したソースの行から始めたときだけ。ほかは空)、Target は描き先 (texture の key、MainTex は "main"、XR の眼は "xr0" / "xr1"、depth だけの pass は depth の key)。 Ms は pass の GPU の時間で、測れない backend (metal、webgpu、sdlgpu) と測れなかった pass では -1。Draws はその pass の draw の数。</summary>
 public class GpuPass
 {
-    public string Site;
-    public string Target;
+    public string Site = "";
+    public string Target = "";
     public float Ms;
     public int Draws;
 }
@@ -3534,7 +3534,7 @@ public static unsafe partial class Io
                 return;
             }
             LubRuntime.Check(st);
-            data = LubRuntime.FloatList(o_data, o_data_n);
+            data = (o_data == null ? null : LubRuntime.FloatList(o_data, o_data_n));
             version = o_version;
             status = (Lub.Io.Status)o_status;
             error = LubRuntime.StrOrNull(o_error);

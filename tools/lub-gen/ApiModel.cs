@@ -265,6 +265,8 @@ public sealed class ApiField
     public string Accessor = "";
     // struct の record の readonly の field (readonly struct の field)
     public bool Readonly;
+    // stub に書いた初期化子の式 (`A = -1` の `-1`)。無ければ ""
+    public string Init = "";
 
     public ApiField(string name, string luaName, TypeRef type, bool optional, string doc, int arrayLen, bool bits)
     {
@@ -620,8 +622,11 @@ public static class ApiModelLoader
     {
         var decl = FieldDecl(f)!;
         bool optional = f.Type.Annotated || f.Type.Kind == TypeKind.Nullable;
-        return new ApiField(f.Name, LuaNames.HostMember(f.Name), Resolve(f.Type), optional, Doc(decl), ArrayLen(decl),
+        var field = new ApiField(f.Name, LuaNames.HostMember(f.Name), Resolve(f.Type), optional, Doc(decl), ArrayLen(decl),
             HasAttr(decl, "LubBits"));
+        var init = f.Decl != null && f.Decl.Kind == NodeKind.VarDeclarator ? f.Decl.A : null;
+        if (init != null) field.Init = Text.Trim(init.File.Slice(init.Pos, init.End));
+        return field;
     }
 
     private static int Line(Node n) => n.File.LineOf(n.Pos);

@@ -254,7 +254,10 @@ internal sealed class FacadeGen
         foreach (var f in t.Fields)
         {
             sb.Write(Doc(f.Doc));
-            string init = f.Type.Kind == LubTypeKind.List && !f.Type.Nullable ? " = new " + Cs(f.Type) + "()" : "";
+            // 初期化子は stub のものをそのまま写す (VM と tcs2c の経路は stub の class をそのまま使うので、new の初期値を揃える)。
+            // handle は facade では native の番号からしか作らないので、初期化子を写さない (呼ぶ側が必ず入れる field)
+            string init = f.Init != "" && f.Type.Kind != LubTypeKind.Handle ? " = " + f.Init
+                : f.Type.Kind == LubTypeKind.List && !f.Type.Nullable ? " = new " + Cs(f.Type) + "()" : "";
             sb.Write("    public " + Cs(f.Type) + " " + f.Name + init + ";\n");
         }
         sb.Write("}\n\n");
@@ -650,7 +653,8 @@ internal sealed class FacadeGen
             case LubTypeKind.Struct:
                 return v;
             case LubTypeKind.List:
-                return ListFromNative(tr, v, v + "_n");
+                // nullable の List は C の NULL を null のまま返す (未取得の Io.LoadFloats は空の List と区別する)
+                return tr.Nullable ? "(" + v + " == null ? null : " + ListFromNative(tr, v, v + "_n") + ")" : ListFromNative(tr, v, v + "_n");
         }
         GenError.Report("unsupported out / return type " + tr.ToString());
         return "";
