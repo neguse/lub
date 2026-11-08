@@ -3114,8 +3114,9 @@ LUB_API LubStatus lub_gfx_use_buffer_array(LubContext *ctx, LubStr key,
                                            const int32_t *version,
                                            LubHandle *out);
 
-// 整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。 version
-// の規約は UseBuffer と同じ。
+// 整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。 STORAGE
+// は値を int のまま詰め、shader は `StructuredBuffer<int>` (または `<uint>`)
+// で読む。 version の規約は UseBuffer と同じ。
 LUB_API LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key,
                                           int32_t type, const int32_t *data,
                                           int32_t data_count,
@@ -3163,7 +3164,9 @@ LUB_API LubStatus lub_gfx_frame_buffer_array(LubContext *ctx, int32_t type,
                                              int32_t data_count,
                                              LubHandle *out);
 
-// 整数列を渡す FrameBuffer (INDEX の index 列や整数の STORAGE)。
+// 整数列を渡す FrameBuffer (INDEX の index 列や整数の STORAGE)。 STORAGE は
+// 値を int のまま詰め、shader は `StructuredBuffer<int>` (または `<uint>`)
+// で読む。
 LUB_API LubStatus lub_gfx_frame_buffer_ints(LubContext *ctx, int32_t type,
                                             const int32_t *data,
                                             int32_t data_count, LubHandle *out);

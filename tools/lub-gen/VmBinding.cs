@@ -156,7 +156,7 @@ internal sealed class VmBindingGen
 
     private void AddFields(ApiType type, string prefix, List<FieldPath> r)
     {
-        foreach (var field in type.Fields) r.Add(new FieldPath(field, prefix + field.LuaName));
+        foreach (var field in type.Fields) r.Add(new FieldPath(field, prefix + field.HostName));
     }
 
     private void Record(TypeRef type, bool isOutput)
@@ -211,7 +211,7 @@ internal sealed class VmBindingGen
 
     // 外部の型の instance method の IL の名前 ("lub.bytes.get")
     private static string MethodHostName(ApiType type, ApiFunction method) =>
-        ApiModelLoader.RootNamespace.ToLower() + "." + type.Name.ToLower() + "." + method.LuaName;
+        ApiModelLoader.RootNamespace.ToLower() + "." + type.Name.ToLower() + "." + method.HostName;
 
     public string Run()
     {
@@ -221,7 +221,7 @@ internal sealed class VmBindingGen
         {
             foreach (var f in ns.Functions)
             {
-                if (!Wanted(ns.LuaPath + "." + f.LuaName)) continue;
+                if (!Wanted(ns.HostPath + "." + f.HostName)) continue;
                 if (f.NoC && !IsKeyedMaker(f)) continue;
                 functionNs.Add(ns);
                 functions.Add(f);
@@ -282,9 +282,9 @@ internal sealed class VmBindingGen
         {
             foreach (var value in ns.StaticFields)
             {
-                var hostName = ns.LuaPath + "." + value.LuaName;
+                var hostName = ns.HostPath + "." + value.HostName;
                 if (!WantedValue(hostName)) continue;
-                var name = CHeader.FunctionName(ns, value.LuaName);
+                var name = CHeader.FunctionName(ns, value.HostName);
                 var fn = "vm_host_" + name;
                 Line("static TvmStatus " + fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {");
                 Line("  (void)a; (void)user; VM_LUB_ENTER();");
@@ -335,7 +335,7 @@ internal sealed class VmBindingGen
 
     private void KeyedMaker(ApiNamespace ns, ApiFunction f)
     {
-        var fn = "vm_host_" + CHeader.FunctionName(ns, f.LuaName);
+        var fn = "vm_host_" + CHeader.FunctionName(ns, f.HostName);
         Line("static TvmStatus " + fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {");
         Line("  (void)user; VM_LUB_ENTER();");
         Line("  if (!a[0].p) { vm_lub_fail(\"null reference\"); VM_LUB_LEAVE(vm); }");
@@ -343,7 +343,7 @@ internal sealed class VmBindingGen
         Line("  result->host_value = vm_lub_key_store(vm_lub_str(a[0].p));");
         Line("  r[0].p = result;");
         Line("  VM_LUB_LEAVE(vm);\n}");
-        registrations.Add("{\"" + ns.LuaPath + "." + f.LuaName + "\", \"s\", \"o\", " + fn + "}");
+        registrations.Add("{\"" + ns.HostPath + "." + f.HostName + "\", \"s\", \"o\", " + fn + "}");
     }
 
     // ---- C の struct の写し ----
@@ -364,7 +364,7 @@ internal sealed class VmBindingGen
             if (t.Kind != "struct") continue;
             var opt = "VmLubOpt_" + t.Name;
             Line("typedef struct " + opt + " { bool has; " + CHeader.TypeName(t.Name) + " v; } " + opt + ";");
-            foreach (var f in t.Fields) checks.Add("{\"" + Il(t.Name) + "\", \"" + f.LuaName + "\", offsetof(" + CHeader.TypeName(t.Name) + ", " + f.LuaName + ")}");
+            foreach (var f in t.Fields) checks.Add("{\"" + Il(t.Name) + "\", \"" + f.HostName + "\", offsetof(" + CHeader.TypeName(t.Name) + ", " + f.HostName + ")}");
             OptChecks(Il(t.Name), opt, checks);
         }
         foreach (var t in model.Types)
@@ -376,8 +376,8 @@ internal sealed class VmBindingGen
             Line("  uint64_t host_value;");
             foreach (var fp in Fields(t))
             {
-                Line("  " + VmType(fp.Field.Type) + " f_" + fp.Field.LuaName + ";");
-                checks.Add("{\"" + Il(t.Name) + "\", \"" + fp.Field.LuaName + "\", offsetof(" + Struct(t.Name) + ", f_" + fp.Field.LuaName + ")}");
+                Line("  " + VmType(fp.Field.Type) + " f_" + fp.Field.HostName + ";");
+                checks.Add("{\"" + Il(t.Name) + "\", \"" + fp.Field.HostName + "\", offsetof(" + Struct(t.Name) + ", f_" + fp.Field.HostName + ")}");
             }
             // stub の private field (Bindings の blob)
             if (t.Kind == "native")
@@ -465,7 +465,7 @@ internal sealed class VmBindingGen
     }
 
     private static string HasPath(string prefix, string path, ApiField field) =>
-        prefix + Text.DropEnd(path, Text.Len(field.LuaName)) + "has_" + field.LuaName;
+        prefix + Text.DropEnd(path, Text.Len(field.HostName)) + "has_" + field.HostName;
 
     private static int FuncFieldIndex(ApiType type, ApiField field)
     {
@@ -478,7 +478,7 @@ internal sealed class VmBindingGen
         return -1;
     }
 
-    private static string FieldCallbackName(ApiType type, ApiField field) => "vm_lub_" + type.Name + "_" + field.LuaName;
+    private static string FieldCallbackName(ApiType type, ApiField field) => "vm_lub_" + type.Name + "_" + field.HostName;
 
     private void InputRecord(ApiType type)
     {
@@ -496,7 +496,7 @@ internal sealed class VmBindingGen
         {
             var field = fp.Field;
             var path = fp.Path;
-            var src = "source->f_" + field.LuaName;
+            var src = "source->f_" + field.HostName;
             var dst = "result." + path;
             var has = HasPath("result.", path, field);
             if ((field.Type.IsScalar || field.Type.Kind == LubTypeKind.Struct) && field.Optional)
@@ -580,7 +580,7 @@ internal sealed class VmBindingGen
         {
             var field = fp.Field;
             var path = fp.Path;
-            var dst = "result->f_" + field.LuaName;
+            var dst = "result->f_" + field.HostName;
             var src = "source->" + path;
             var has = HasPath("source->", path, field);
             if (field.Type.Kind == LubTypeKind.Array)
@@ -747,8 +747,8 @@ internal sealed class VmBindingGen
 
     private void Function(ApiNamespace ns, ApiFunction function)
     {
-        var name = CHeader.FunctionName(ns, function.LuaName);
-        var hostName = ns.LuaPath + "." + function.LuaName;
+        var name = CHeader.FunctionName(ns, function.HostName);
+        var hostName = ns.HostPath + "." + function.HostName;
         foreach (var param in function.Params)
         {
             if (param.Type.Kind == LubTypeKind.Func) Callback(name, param);
@@ -762,7 +762,7 @@ internal sealed class VmBindingGen
         {
             var p = function.Params[k];
             tokens.Add((p.IsOut ? "&" : "") + Token(p.Type));
-            if (!p.IsOut) Line("  " + VmType(p.Type) + " p_" + p.LuaName + " = " + Unpack(p.Type, k) + ";");
+            if (!p.IsOut) Line("  " + VmType(p.Type) + " p_" + p.HostName + " = " + Unpack(p.Type, k) + ";");
         }
         var st = new CallState();
         var args = st.Args;
@@ -772,8 +772,8 @@ internal sealed class VmBindingGen
         foreach (var param in function.Params)
         {
             if (param.IsOut || param.IsCount) continue;
-            var p = "p_" + param.LuaName;
-            var n = "n_" + param.LuaName;
+            var p = "p_" + param.HostName;
+            var n = "n_" + param.HostName;
             var type = param.Type;
             ApiParam? countParam = null;
             int index = function.Params.IndexOf(param);
@@ -787,7 +787,7 @@ internal sealed class VmBindingGen
             }
             if (type.Kind == LubTypeKind.Array && type.Elem!.Kind == LubTypeKind.Double && countParam != null)
             {
-                var count = "p_" + countParam.LuaName;
+                var count = "p_" + countParam.HostName;
                 Line("  if (" + p + " && (uint32_t)" + count + " > (uint32_t)tvm_array_len(" + p + ")) { vm_lub_fail(\"" + hostName + ": count is out of range for the array\"); VM_LUB_LEAVE(vm); }");
                 args.Add(p + " ? (const float *)tvm_array_data(" + p + ") : NULL");
                 args.Add(count);
@@ -857,7 +857,7 @@ internal sealed class VmBindingGen
                 GenError.Report("unsupported out: " + param.Name + ": " + param.Type.ToString());
                 return;
             }
-            else Output(param.Type, "n_" + param.LuaName, st);
+            else Output(param.Type, "n_" + param.HostName, st);
         }
         var ret = function.Return;
         bool returned = ret.Kind != LubTypeKind.Void;
@@ -951,7 +951,7 @@ internal sealed class VmBindingGen
         {
             var param = function.Params[k];
             if (!param.IsOut || Direct(param.Type)) continue;
-            var n = "n_" + param.LuaName;
+            var n = "n_" + param.HostName;
             var value = From(param.Type, n);
             if (param.Type.Kind == LubTypeKind.Record && param.Type.Nullable) value = n + "_has ? " + value + " : NULL";
             if (missing != null) value = "(" + missing + ") ? NULL : " + value;
@@ -962,7 +962,7 @@ internal sealed class VmBindingGen
     }
 
     // Func 引数は C の関数 pointer + user (VM の closure) に写す。C API が呼び出しの間だけ呼ぶ
-    private static string CallbackName(string function, ApiParam param) => "vm_lub_" + function + "_" + param.LuaName;
+    private static string CallbackName(string function, ApiParam param) => "vm_lub_" + function + "_" + param.HostName;
 
     private void Callback(string function, ApiParam param) =>
         Trampoline(CallbackName(function, param), param.Type, param.Name, "", "vm_lub_visitor_failed", "user", "vm_lub_visitor_fail()");

@@ -876,6 +876,7 @@ const A9_TESTS = [
   "TestComputeUniformBlock",
   "TestStoragePreserve",
   "TestStorageFormat",
+  "TestReadStorageTexture",
   "TestBindingsImmediate",
   "TestBindingsShaderSwap",
   "TestBindingsRecreate",

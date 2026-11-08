@@ -163,11 +163,11 @@ public static class CHeader
 
     public static string EnumMember(ApiEnum e, ApiEnumMember m) =>
         e.Namespace == ApiModelLoader.RootNamespace
-            ? "LUB_" + LuaNames.HostConst(e.Name) + "_" + m.LuaName
-            : "LUB_" + LuaNames.HostConst(e.Namespace) + "_" + LuaNames.HostConst(e.Name) + "_" + m.LuaName;
+            ? "LUB_" + LuaNames.HostConst(e.Name) + "_" + m.HostName
+            : "LUB_" + LuaNames.HostConst(e.Namespace) + "_" + LuaNames.HostConst(e.Name) + "_" + m.HostName;
 
     // lub.gfx.begin_pass → lub_gfx_begin_pass、lubx.vorbis.decode → lubx_vorbis_decode。
-    public static string FunctionName(ApiNamespace ns, string luaName) => ns.LuaPath.Replace(".", "_") + "_" + luaName;
+    public static string FunctionName(ApiNamespace ns, string hostName) => ns.HostPath.Replace(".", "_") + "_" + hostName;
 
     public static string Generate(ApiModel model)
     {
@@ -208,7 +208,7 @@ public static class CHeader
 
     private static void EmitField(Out sb, ApiField f)
     {
-        var n = f.LuaName;
+        var n = f.HostName;
         var tr = f.Type;
         var doc = f.Doc != "" ? " // " + f.Doc : "";
         string line;
@@ -520,7 +520,7 @@ internal sealed class CHeaderGen
             {
                 if (c.Value.Kind != ValueKind.Int) continue;
                 CHeader.Comment(sb, c.Doc);
-                sb.Write("#define LUB_" + LuaNames.HostConst(ns.Name) + "_" + c.LuaName + " " + c.Value.I + "\n\n");
+                sb.Write("#define LUB_" + LuaNames.HostConst(ns.Name) + "_" + c.HostName + " " + c.Value.I + "\n\n");
             }
         }
     }
@@ -585,7 +585,7 @@ internal sealed class CHeaderGen
 
     private void EmitNamespaceFunctions(ApiNamespace ns)
     {
-        string label = ns.LuaPath == "lub" ? "core" : ns.LuaRoot == "lub" ? Text.From(ns.LuaPath, Text.Len("lub.")) : ns.LuaPath;
+        string label = ns.HostPath == "lub" ? "core" : ns.HostRoot == "lub" ? Text.From(ns.HostPath, Text.Len("lub.")) : ns.HostPath;
         int dashes = 70 - CHeader.Utf16Length(label);
         if (dashes < 1) dashes = 1;
         sb.Write("// " + Text.Repeat("-", dashes) + " " + label + "\n");
@@ -594,7 +594,7 @@ internal sealed class CHeaderGen
         foreach (var f in ns.StaticFields)
         {
             CHeader.Comment(sb, f.Doc);
-            sb.Write("LUB_API " + ReturnCType(f.Type) + " " + CHeader.FunctionName(ns, f.LuaName) + "(LubContext *ctx);\n\n");
+            sb.Write("LUB_API " + ReturnCType(f.Type) + " " + CHeader.FunctionName(ns, f.HostName) + "(LubContext *ctx);\n\n");
         }
         foreach (var f in ns.Functions)
         {
@@ -642,8 +642,8 @@ internal sealed class CHeaderGen
         foreach (var p in f.Params)
         {
             if (!p.IsOut) continue;
-            OutParam(p.Type, p.LuaName, args);
-            if (p.Type.Kind == LubTypeKind.Record && p.Type.Nullable) args.Add("bool *has_" + p.LuaName);
+            OutParam(p.Type, p.HostName, args);
+            if (p.Type.Kind == LubTypeKind.Record && p.Type.Nullable) args.Add("bool *has_" + p.HostName);
         }
         string ret;
         var r = f.Return;
@@ -667,12 +667,12 @@ internal sealed class CHeaderGen
                 if (r.Nullable && (r.IsScalar || (r.Kind == LubTypeKind.Record && f.Maybe))) args.Add("bool *has");
             }
         }
-        return CHeader.Wrap("LUB_API " + ret + " " + CHeader.FunctionName(ns, f.LuaName) + "(", string.Join(", ", args) + ");");
+        return CHeader.Wrap("LUB_API " + ret + " " + CHeader.FunctionName(ns, f.HostName) + "(", string.Join(", ", args) + ");");
     }
 
     private static void InParam(ApiNamespace ns, ApiFunction f, ApiParam p, List<string> o)
     {
-        var n = p.LuaName;
+        var n = p.HostName;
         var tr = p.Type;
         switch (tr.Kind)
         {

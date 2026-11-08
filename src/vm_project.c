@@ -16,12 +16,14 @@ static bool str_ends_with(const char *s, const char *suffix) {
 
 // 区切りを '/' に揃え、"." と ".." の段を畳む。
 // 先頭の ".." は畳めないので残す。
+// UNC (\\server\share) の先頭の 2 つの区切りは "//" のまま残す。
 static void path_normalize(const char *in, char *out, size_t outsz) {
   char buf[1024];
   SDL_strlcpy(buf, in, sizeof(buf));
   for (char *c = buf; *c; c++)
     if (*c == '\\')
       *c = '/';
+  bool unc = buf[0] == '/' && buf[1] == '/' && buf[2] != '/';
   bool absolute = buf[0] == '/';
   const char *seg[128];
   int n = 0;
@@ -40,7 +42,7 @@ static void path_normalize(const char *in, char *out, size_t outsz) {
   size_t len = 0;
   out[0] = '\0';
   if (absolute)
-    len = SDL_strlcpy(out, "/", outsz);
+    len = SDL_strlcpy(out, unc ? "//" : "/", outsz);
   for (int i = 0; i < n && len < outsz; i++)
     len += SDL_snprintf(out + len, outsz - len, "%s%s", i ? "/" : "", seg[i]);
   if (n == 0 && !absolute)
@@ -60,22 +62,103 @@ static void path_absolute(const char *in, char *out, size_t outsz) {
   path_normalize(joined, out, outsz);
 }
 
-// tag (要素名の直後から '>' の手前まで) から属性 name の値を out に書く。
+static bool xml_space(char c) {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+// 属性値の文字参照 (&amp; &lt; &gt; &quot; &apos; &#N; &#xN;) を復号して out に書く。
+// 復号できない '&' はそのまま残す。
+static bool xml_decode(const char *in, size_t len, char *out, size_t outsz) {
+  static const struct {
+    const char *name;
+    char c;
+  } named[] = {{"amp;", '&'},
+               {"lt;", '<'},
+               {"gt;", '>'},
+               {"quot;", '"'},
+               {"apos;", '\''}};
+  size_t o = 0;
+  for (size_t i = 0; i < len;) {
+    char utf8[4];
+    size_t n = 1;
+    utf8[0] = in[i];
+    size_t used = 1;
+    if (in[i] == '&') {
+      const char *semi = NULL;
+      for (size_t k = i + 1; k < len && !semi; k++)
+        if (in[k] == ';')
+          semi = in + k;
+      size_t ref_len = semi ? (size_t)(semi - (in + i)) + 1 : 0;
+      for (size_t k = 0; semi && k < SDL_arraysize(named); k++) {
+        size_t nl = SDL_strlen(named[k].name);
+        if (ref_len == nl + 1 &&
+            SDL_strncmp(in + i + 1, named[k].name, nl) == 0) {
+          utf8[0] = named[k].c;
+          used = ref_len;
+          break;
+        }
+      }
+      if (semi && used == 1 && ref_len > 3 && in[i + 1] == '#') {
+        bool hex = in[i + 2] == 'x' || in[i + 2] == 'X';
+        Uint32 cp = 0;
+        bool digits = true;
+        for (size_t k = i + (hex ? 3 : 2); k < i + ref_len - 1 && digits; k++) {
+          char c = in[k];
+          int d = c >= '0' && c <= '9'          ? c - '0'
+                  : hex && c >= 'a' && c <= 'f' ? c - 'a' + 10
+                  : hex && c >= 'A' && c <= 'F' ? c - 'A' + 10
+                                                : -1;
+          digits = d >= 0 && cp <= 0x10FFFF;
+          cp = cp * (hex ? 16 : 10) + (Uint32)(d < 0 ? 0 : d);
+        }
+        if (digits && cp > 0 && cp <= 0x10FFFF) {
+          used = ref_len;
+          if (cp < 0x80) {
+            utf8[0] = (char)cp;
+          } else if (cp < 0x800) {
+            utf8[0] = (char)(0xC0 | (cp >> 6));
+            utf8[1] = (char)(0x80 | (cp & 0x3F));
+            n = 2;
+          } else if (cp < 0x10000) {
+            utf8[0] = (char)(0xE0 | (cp >> 12));
+            utf8[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+            utf8[2] = (char)(0x80 | (cp & 0x3F));
+            n = 3;
+          } else {
+            utf8[0] = (char)(0xF0 | (cp >> 18));
+            utf8[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+            utf8[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+            utf8[3] = (char)(0x80 | (cp & 0x3F));
+            n = 4;
+          }
+        }
+      }
+    }
+    if (o + n >= outsz)
+      return false;
+    SDL_memcpy(out + o, utf8, n);
+    o += n;
+    i += used;
+  }
+  out[o] = '\0';
+  return true;
+}
+
+// tag (要素名の直後から '>' の手前まで) から属性 name の値を復号して out に書く。
+// '=' の前後には改行を含む XML の空白を置ける。
 static bool xml_attr(const char *tag, size_t len, const char *name, char *out,
                      size_t outsz) {
   size_t name_len = SDL_strlen(name);
   for (size_t i = 1; i + name_len < len; i++) {
-    char before = tag[i - 1];
-    if ((before != ' ' && before != '\t' && before != '\r' && before != '\n') ||
-        SDL_strncmp(tag + i, name, name_len) != 0)
+    if (!xml_space(tag[i - 1]) || SDL_strncmp(tag + i, name, name_len) != 0)
       continue;
     size_t j = i + name_len;
-    while (j < len && (tag[j] == ' ' || tag[j] == '\t'))
+    while (j < len && xml_space(tag[j]))
       j++;
     if (j >= len || tag[j] != '=')
       continue;
     j++;
-    while (j < len && (tag[j] == ' ' || tag[j] == '\t'))
+    while (j < len && xml_space(tag[j]))
       j++;
     if (j >= len || (tag[j] != '"' && tag[j] != '\''))
       continue;
@@ -83,11 +166,9 @@ static bool xml_attr(const char *tag, size_t len, const char *name, char *out,
     size_t start = j;
     while (j < len && tag[j] != quote)
       j++;
-    if (j >= len || j - start >= outsz)
+    if (j >= len)
       return false;
-    SDL_memcpy(out, tag + start, j - start);
-    out[j - start] = '\0';
-    return true;
+    return xml_decode(tag + start, j - start, out, outsz);
   }
   return false;
 }
@@ -243,7 +324,21 @@ static void text_add(TextBuf *b, const char *s) {
   b->p[b->len] = '\0';
 }
 
-// dir の下の *.cs を、*.ref.cs は refs に、それ以外は inputs に足す
+// b に s の行があるか
+static bool text_has(const TextBuf *b, const char *s) {
+  size_t n = SDL_strlen(s);
+  for (const char *line = b->p; line && *line;) {
+    const char *nl = SDL_strchr(line, '\n');
+    size_t len = nl ? (size_t)(nl - line) : SDL_strlen(line);
+    if (len == n && SDL_memcmp(line, s, n) == 0)
+      return true;
+    line = nl ? nl + 1 : NULL;
+  }
+  return false;
+}
+
+// dir の下の *.cs を、*.ref.cs は refs に、それ以外は inputs に足す。
+// 参照先のディレクトリが別のディレクトリの下にあると同じ file が 2 度見つかるので、足すのは 1 回だけ (dir は絶対 path に揃えてあり、同じ file は同じ文字列になる)
 static void scan_dir(const char *dir, TextBuf *inputs, TextBuf *refs,
                      bool skip_stub) {
   int count = 0;
@@ -255,7 +350,9 @@ static void scan_dir(const char *dir, TextBuf *inputs, TextBuf *refs,
     base = base ? base + 1 : found[i];
     if (skip_stub && SDL_strcmp(base, "lub_stub.cs") == 0)
       continue;
-    text_add(str_ends_with(found[i], ".ref.cs") ? refs : inputs, full);
+    TextBuf *to = str_ends_with(found[i], ".ref.cs") ? refs : inputs;
+    if (!text_has(to, full))
+      text_add(to, full);
   }
   tcs_free_sources(found, count);
 }

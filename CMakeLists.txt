@@ -636,6 +636,15 @@ if(NOT LUB_WASM)
   target_link_libraries(lub_tcs_resolve_smoke PRIVATE SDL3::SDL3)
   target_include_directories(lub_tcs_resolve_smoke PRIVATE src)
 
+  # vm_project.c は test が取り込む (static な関数を直接呼ぶ)
+  add_executable(lub_vm_project_smoke
+    tests/c/vm_project_smoke.c
+    src/tcs_build.c
+    src/path_util.c
+  )
+  target_link_libraries(lub_vm_project_smoke PRIVATE SDL3::SDL3)
+  target_include_directories(lub_vm_project_smoke PRIVATE src)
+
   add_executable(lub_physics_box2d_smoke
     tests/c/physics_box2d_smoke.c
     src/physics_box2d.c

@@ -3,7 +3,6 @@
 // 次の frame に持ち越した Bytes は、中身を読むと stale の error になる。
 // Length は作った時の長さを持つ field で、読んでも error にならない。
 // 数値配列は .NET と tcs VM の player が List に写して返すので、持ち越しても読める。
-// (Lua 版は stale の bytes に tostring と数値配列に get(0) も試していたが、C# の面に無いので移していない。)
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -11,7 +10,7 @@ using Lub;
 public static class TestViewLifetime
 {
     const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
-    // Lua 版の cp("い") / cp("ほ")
+    // "い" と "ほ" の code point
     const int cpI = 0x3044;
     const int cpHo = 0x307B;
 

@@ -37,10 +37,9 @@ public readonly struct Color
     /// </summary>
     public static Color Hex(int rgb, float? a = null)
     {
-        // tcs は bitwise 演算・整数除算未対応なので floor で分解する
-        float r = (float)System.Math.Floor(rgb / 65536.0f) % 256 / 255.0f;
-        float g = (float)System.Math.Floor(rgb / 256.0f) % 256 / 255.0f;
-        float b = rgb % 256 / 255.0f;
+        float r = ((rgb >> 16) & 0xFF) / 255.0f;
+        float g = ((rgb >> 8) & 0xFF) / 255.0f;
+        float b = (rgb & 0xFF) / 255.0f;
         return new Color(r, g, b, a ?? 1.0f);
     }
 }

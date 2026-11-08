@@ -106,23 +106,17 @@ static bool save_segments_ok(const char *s) {
 }
 
 // path が save/ で始まるなら、保存の場所の path を out に書く。
-// dir なら save/<名前> (保存の場所そのもの) も引ける
-static SavePath save_resolve(const char *path, bool dir, char *out,
-                             size_t cap) {
+static SavePath save_resolve(const char *path, char *out, size_t cap) {
   if (strncmp(path, "save/", 5) != 0)
     return SAVE_NONE;
   const char *name = path + 5;
   const char *slash = strchr(name, '/');
-  size_t name_len = slash ? (size_t)(slash - name) : strlen(name);
-  if ((!slash && !dir) || !save_segment_ok(name, name_len))
+  if (!slash || !save_segment_ok(name, (size_t)(slash - name)))
     return SAVE_INVALID;
-  const char *rest = slash ? slash + 1 : name + name_len;
-  for (const char *seg = rest; slash;) {
+  const char *rest = slash + 1;
+  for (const char *seg = rest;;) {
     const char *end = strchr(seg, '/');
     size_t seg_len = end ? (size_t)(end - seg) : strlen(seg);
-    // ディレクトリは末尾の '/' を許す
-    if (dir && !end && seg_len == 0)
-      break;
     if (!save_segment_ok(seg, seg_len))
       return SAVE_INVALID;
     if (!end)
@@ -142,6 +136,7 @@ static SavePath save_resolve(const char *path, bool dir, char *out,
     return SAVE_UNAVAILABLE;
   int n = SDL_snprintf(out, cap, "/%s", path);
 #else
+  size_t name_len = (size_t)(slash - name);
   char app_name[256];
   if (name_len >= sizeof(app_name))
     return SAVE_INVALID;
@@ -517,7 +512,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
     return NULL;
   }
   char save_file[1024];
-  SavePath save = save_resolve(path, false, save_file, sizeof(save_file));
+  SavePath save = save_resolve(path, save_file, sizeof(save_file));
   if (save == SAVE_INVALID) {
     io_result(r, LUB_IO_STATUS_ERROR, 0, "invalid save path");
     return NULL;
@@ -669,7 +664,7 @@ LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text) {
     return lub_api_fail(app, "io.save_text: invalid path");
   if (text.len < 0 || (text.len > 0 && !text.ptr))
     return lub_api_fail(app, "io.save_text: invalid text");
-  SavePath save = save_resolve(key, false, file, sizeof(file));
+  SavePath save = save_resolve(key, file, sizeof(file));
   if (save == SAVE_INVALID)
     return lub_api_fail(app,
                         "io.save_text: invalid save path (save/<name>/<file>)");

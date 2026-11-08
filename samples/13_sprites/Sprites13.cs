@@ -1,21 +1,11 @@
 // lub の samples/13_sprites の entry。
 // 実行: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload) 実行手順とスコア行 (SPRITES13_SCORE) の扱いは docs/sprites-bench.md。
-// tcs 制約による置換: 数値 parse → ParseDec (10 進 leading parse、out は extern stub 専用なので結果は class で返す)、tick % n == 0 → EveryN (floor)、整数化は Math.Floor (対象値は常に非負)。
 
 using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
 using TinySystem.Text;
-
-/// <summary>ParseDec の結果 (tcs では自作関数の out が使えないため class 返し)。
-/// </summary>
-public class ParsedDec13
-{
-    public bool Ok = false;
-    public float Value = 0.0f;
-    public int IntPart = 0;
-}
 
 public class BenchSprite13
 {
@@ -138,11 +128,12 @@ public static class Sprites13
 
     // 読めたかどうかを返すので手書き。
     // 先頭の [+-]?digits[.digits] を読み、後続の文字は無視する。
-    // ok=false は数字ゼロ個 (parse 失敗)。
+    // 数字が 1 つも無ければ false (parse 失敗)。
     // 10 進のみ (hex/指数は無し)。
-    static ParsedDec13 ParseDec(string s)
+    static bool ParseDec(string s, out float value, out int intPart)
     {
-        var res = new ParsedDec13();
+        value = 0.0f;
+        intPart = 0;
         var bytes = new Utf8Bytes(s);
         int n = bytes.Length;
         int i = 0;
@@ -188,11 +179,10 @@ public static class Sprites13
             }
         }
         if (!any)
-            return res;
-        res.Value = sign * v;
-        res.IntPart = sign * ip;
-        res.Ok = true;
-        return res;
+            return false;
+        value = sign * v;
+        intPart = sign * ip;
+        return true;
     }
 
     static float EnvFloat(string name, float fallback)
@@ -200,8 +190,7 @@ public static class Sprites13
         var s = Environment.GetEnvironmentVariable(name);
         if (s == null)
             return fallback;
-        var p = ParseDec(s);
-        return p.Ok ? p.Value : fallback;
+        return ParseDec(s, out var value, out _) ? value : fallback;
     }
 
     static int EnvInt(string name, int fallback)
@@ -209,8 +198,7 @@ public static class Sprites13
         var s = Environment.GetEnvironmentVariable(name);
         if (s == null)
             return fallback;
-        var p = ParseDec(s);
-        return p.Ok ? p.IntPart : fallback;
+        return ParseDec(s, out _, out var intPart) ? intPart : fallback;
     }
 
     static bool EnvBool(string name, bool fallback)
@@ -236,13 +224,6 @@ public static class Sprites13
             Rand01() * (float)Math.PI * 2.0f, Rand01() * (float)Math.PI * 2.0f,
             Rand01() * 120.0f + 80.0f,
             (int)Math.Floor(Rand01() * spriteRects.Count)));
-    }
-
-    // tick % n == 0 相当 (整数剰余は使わない)。
-    // v >= 0 前提。
-    static bool EveryN(int v, int n)
-    {
-        return (float)Math.Floor(v / (float)n) * n == v;
     }
 
     static void UpdateSprites(float fps)
@@ -272,12 +253,12 @@ public static class Sprites13
                 spawn = true;
                 timeMultiply = timeMultiply + 0.7f * tickDt;
             }
-            else if (fps > targetFps * 0.5f && EveryN(tick, 2))
+            else if (fps > targetFps * 0.5f && tick % 2 == 0)
             {
                 spawn = true;
                 timeMultiply = timeMultiply + 0.2f * tickDt;
             }
-            else if (fps > targetFps * 0.25f && EveryN(tick, 4))
+            else if (fps > targetFps * 0.25f && tick % 4 == 0)
             {
                 spawn = true;
                 timeMultiply = timeMultiply - 0.3f * tickDt;

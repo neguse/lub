@@ -4,7 +4,7 @@ using TcsSelf;
 namespace LubGen;
 
 // cs-lib/lub_stub.cs から読んだ API 面。
-// 名前は C# 名 (中立表記) と、tcs の名前の規則で導いた snake_case の名前 (LuaName。C の名前、tcs VM の host の名前、API docs が使う) を両方持つ。
+// 名前は C# 名 (中立表記) と、tcs の名前の規則で導いた snake_case の名前 (HostName。C の名前、tcs VM の host の名前、API docs が使う) を両方持つ。
 // C の名前と型は CHeader が規則で導く。
 
 public enum LubTypeKind
@@ -154,7 +154,7 @@ public sealed class ConstVal
 public sealed class ApiParam
 {
     public string Name;
-    public string LuaName;
+    public string HostName;
     public TypeRef Type;
     public bool Optional;
     public bool IsOut;
@@ -164,10 +164,10 @@ public sealed class ApiParam
     // [LubCount]: 直前の配列の引数から使う要素の数 (C と .NET は配列と一緒に渡し、tcs VM と tcs2c の host の関数は別の引数で受ける)
     public bool IsCount;
 
-    public ApiParam(string name, string luaName, TypeRef type, bool optional, bool isOut, int arrayLen, ConstVal dflt)
+    public ApiParam(string name, string hostName, TypeRef type, bool optional, bool isOut, int arrayLen, ConstVal dflt)
     {
         Name = name;
-        LuaName = luaName;
+        HostName = hostName;
         Type = type;
         Optional = optional;
         IsOut = isOut;
@@ -194,7 +194,7 @@ public sealed class ApiParam
 public sealed class ApiFunction
 {
     public string Name;
-    public string LuaName;
+    public string HostName;
     public TypeRef Return;
     public List<ApiParam> Params;
     public string Doc;
@@ -202,10 +202,10 @@ public sealed class ApiFunction
     public bool Maybe;
     public bool NoC;
 
-    public ApiFunction(string name, string luaName, TypeRef ret, List<ApiParam> ps, string doc, bool noFail, bool maybe, bool noC)
+    public ApiFunction(string name, string hostName, TypeRef ret, List<ApiParam> ps, string doc, bool noFail, bool maybe, bool noC)
     {
         Name = name;
-        LuaName = luaName;
+        HostName = hostName;
         Return = ret;
         Params = ps;
         Doc = doc;
@@ -218,14 +218,14 @@ public sealed class ApiFunction
 public sealed class ApiEnumMember
 {
     public string Name;
-    public string LuaName;
+    public string HostName;
     public int Value;
     public string Doc;
 
-    public ApiEnumMember(string name, string luaName, int value, string doc)
+    public ApiEnumMember(string name, string hostName, int value, string doc)
     {
         Name = name;
-        LuaName = luaName;
+        HostName = hostName;
         Value = value;
         Doc = doc;
     }
@@ -235,16 +235,16 @@ public sealed class ApiEnum
 {
     public string Name;
     public string Namespace;
-    public string LuaPath;
+    public string HostPath;
     public List<ApiEnumMember> Members;
     public string Doc;
     public int Line;
 
-    public ApiEnum(string name, string ns, string luaPath, List<ApiEnumMember> members, string doc, int line)
+    public ApiEnum(string name, string ns, string hostPath, List<ApiEnumMember> members, string doc, int line)
     {
         Name = name;
         Namespace = ns;
-        LuaPath = luaPath;
+        HostPath = hostPath;
         Members = members;
         Doc = doc;
         Line = line;
@@ -254,7 +254,7 @@ public sealed class ApiEnum
 public sealed class ApiField
 {
     public string Name;
-    public string LuaName;
+    public string HostName;
     public TypeRef Type;
     public bool Optional;
     public string Doc;
@@ -265,11 +265,13 @@ public sealed class ApiField
     public string Accessor = "";
     // struct の record の readonly の field (readonly struct の field)
     public bool Readonly;
+    // stub に書いた初期化子の式 (`A = -1` の `-1`)。無ければ ""
+    public string Init = "";
 
-    public ApiField(string name, string luaName, TypeRef type, bool optional, string doc, int arrayLen, bool bits)
+    public ApiField(string name, string hostName, TypeRef type, bool optional, string doc, int arrayLen, bool bits)
     {
         Name = name;
-        LuaName = luaName;
+        HostName = hostName;
         Type = type;
         Optional = optional;
         Doc = doc;
@@ -281,14 +283,14 @@ public sealed class ApiField
 public sealed class ApiConst
 {
     public string Name;
-    public string LuaName;
+    public string HostName;
     public ConstVal Value;
     public string Doc;
 
-    public ApiConst(string name, string luaName, ConstVal value, string doc)
+    public ApiConst(string name, string hostName, ConstVal value, string doc)
     {
         Name = name;
-        LuaName = luaName;
+        HostName = hostName;
         Value = value;
         Doc = doc;
     }
@@ -300,7 +302,7 @@ public sealed class ApiConst
 public sealed class ApiNamespace
 {
     public string Name;
-    public string LuaPath;
+    public string HostPath;
     public List<ApiFunction> Functions;
     public List<ApiEnum> Enums;
     public List<ApiField> StaticFields;
@@ -308,11 +310,11 @@ public sealed class ApiNamespace
     public string Doc;
     public int Line;
 
-    public ApiNamespace(string name, string luaPath, List<ApiFunction> functions, List<ApiEnum> enums,
+    public ApiNamespace(string name, string hostPath, List<ApiFunction> functions, List<ApiEnum> enums,
         List<ApiField> staticFields, List<ApiConst> consts, string doc, int line)
     {
         Name = name;
-        LuaPath = luaPath;
+        HostPath = hostPath;
         Functions = functions;
         Enums = enums;
         StaticFields = staticFields;
@@ -322,7 +324,7 @@ public sealed class ApiNamespace
     }
 
     /// <summary>host の名前の根 (lub / lubx)。</summary>
-    public string LuaRoot => LuaPath.Split('.')[0];
+    public string HostRoot => HostPath.Split('.')[0];
 }
 
 /// <summary>Kind: handle (runtime 所有の不透明参照) / view (frame 有効のバイト列) / keyed (key で参照する resource) / record (option table や戻り値の平らな構造) / struct (値で渡る record)。
@@ -481,7 +483,7 @@ public static class ApiModelLoader
 
     private static ApiNamespace LoadNamespace(TypeDeclSym cls)
     {
-        var luaPath = IlExporter.RefTypePath(cls);
+        var hostPath = IlExporter.RefTypePath(cls);
         var functions = new List<ApiFunction>();
         var fields = new List<ApiField>();
         var consts = new List<ApiConst>();
@@ -510,7 +512,7 @@ public static class ApiModelLoader
                 consts.Add(new ApiConst(m.Name, LuaNames.HostConst(m.Name), ConstVal.FromConst(value), Doc(FieldDecl(m)!)));
             }
         }
-        return new ApiNamespace(cls.Name, luaPath, functions, enums, fields, consts, Doc(cls.Decl), Line(cls.Decl));
+        return new ApiNamespace(cls.Name, hostPath, functions, enums, fields, consts, Doc(cls.Decl), Line(cls.Decl));
     }
 
     // field の symbol の宣言 (Symbol.Decl は宣言子なので、その外側の field の宣言)
@@ -620,8 +622,11 @@ public static class ApiModelLoader
     {
         var decl = FieldDecl(f)!;
         bool optional = f.Type.Annotated || f.Type.Kind == TypeKind.Nullable;
-        return new ApiField(f.Name, LuaNames.HostMember(f.Name), Resolve(f.Type), optional, Doc(decl), ArrayLen(decl),
+        var field = new ApiField(f.Name, LuaNames.HostMember(f.Name), Resolve(f.Type), optional, Doc(decl), ArrayLen(decl),
             HasAttr(decl, "LubBits"));
+        var init = f.Decl != null && f.Decl.Kind == NodeKind.VarDeclarator ? f.Decl.A : null;
+        if (init != null) field.Init = Text.Trim(init.File.Slice(init.Pos, init.End));
+        return field;
     }
 
     private static int Line(Node n) => n.File.LineOf(n.Pos);

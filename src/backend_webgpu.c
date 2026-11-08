@@ -1219,14 +1219,15 @@ static BackendImage wg_make_image(const ImageDesc *d) {
 
   WGPUTextureFormat wfmt = sgl_to_wgpu_fmt(d->fmt);
 
+  bool is_depth = (d->fmt == SGL_PF_DEPTH16 || d->fmt == SGL_PF_DEPTH32F ||
+                   d->fmt == SGL_PF_DEPTH24_STENCIL8);
   WGPUTextureUsage usage = WGPUTextureUsage_TextureBinding;
-  if (d->render_target) {
-    bool is_depth = (d->fmt == SGL_PF_DEPTH16 || d->fmt == SGL_PF_DEPTH32F ||
-                     d->fmt == SGL_PF_DEPTH24_STENCIL8);
+  // 深度でない texture は render target でなくても (storage だけでも) Gfx.ReadTexture が読み戻す。
+  // CopySrc が無いと読み戻しの CopyTextureToBuffer がその frame の command buffer ごと invalid にする
+  if (!is_depth)
+    usage |= WGPUTextureUsage_CopySrc;
+  if (d->render_target)
     usage |= WGPUTextureUsage_RenderAttachment;
-    if (!is_depth)
-      usage |= WGPUTextureUsage_CopySrc;
-  }
   if (d->storage)
     usage |= WGPUTextureUsage_StorageBinding;
   if (!d->render_target && !d->storage)
@@ -1303,8 +1304,6 @@ static BackendImage wg_make_image(const ImageDesc *d) {
 
   // Color attachment view
   if (d->render_target) {
-    bool is_depth = (d->fmt == SGL_PF_DEPTH16 || d->fmt == SGL_PF_DEPTH32F ||
-                     d->fmt == SGL_PF_DEPTH24_STENCIL8);
     if (is_depth) {
       wi->depth_att = wgpuTextureCreateView(wi->tex, NULL);
       gpu_stats_create(GPU_STAT_VIEW, 0);

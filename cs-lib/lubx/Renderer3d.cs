@@ -8,7 +8,6 @@
 // - Mat4.m (List<float>) は直渡し。
 //   bones は Bones.pack() の返す List<float>
 //   で、mesh が null のときは identityBones() (ダミー resolve の lambda)。
-// - sz.w >> 1 等の bit shift は tcs 未対応なので Math.Floor(x / 2.0)。
 // - use_texture / use_buffer / mesh.vb の null は早期 return / continue で
 //   ガードする (cs-lib 慣例)。
 // - viewProj は public フィールド (書くのは begin() だけ、利用側は
@@ -64,7 +63,15 @@ public class Camera
     /// </summary>
     public float? Fov;
 
+    /// <summary>近い側の clip 面までの距離。
+    /// 省略時 0.1。
+    /// </summary>
     public float? Near;
+
+    /// <summary>遠い側の clip 面までの距離。
+    /// 省略時 100。
+    /// これより遠い物は描かれない (遠くの背景を置くときは大きくする)。
+    /// </summary>
     public float? Far;
 }
 
@@ -1240,8 +1247,8 @@ public class Renderer3d
         TextureRef? aoTex = null;
         if (Ssao.Enabled)
         {
-            int aw = (int)Math.Floor(w / 2.0f);
-            int ah = (int)Math.Floor(h / 2.0f);
+            int aw = w / 2;
+            int ah = h / 2;
             aoTex = Gfx.UseTexture(key + "/ao", aw, ah, Gfx.PixelFormat.R8, null, rtVer,
                 new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
             if (aoTex != null)
@@ -1266,8 +1273,8 @@ public class Renderer3d
             int bh = h;
             for (int li = 0; li < levels; li++)
             {
-                bw = (int)Math.Floor(bw / 2.0f);
-                bh = (int)Math.Floor(bh / 2.0f);
+                bw = bw / 2;
+                bh = bh / 2;
                 if (bw < 8 || bh < 8)
                     break;
                 var t = Gfx.UseTexture(key + "/bl" + li, bw, bh, Gfx.PixelFormat.Rgba16f,

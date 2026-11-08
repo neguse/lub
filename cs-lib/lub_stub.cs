@@ -521,6 +521,7 @@ namespace Lub
         }
 
         /// <summary>整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。
+        /// STORAGE は値を int のまま詰め、shader は `StructuredBuffer&lt;int&gt;` (または `&lt;uint&gt;`) で読む。
         /// version の規約は UseBuffer と同じ。
         /// </summary>
         public static BufferRef? UseBufferInts(string key, BufferType type, List<int>? data,
@@ -580,6 +581,7 @@ namespace Lub
         }
 
         /// <summary>整数列を渡す FrameBuffer (INDEX の index 列や整数の STORAGE)。
+        /// STORAGE は値を int のまま詰め、shader は `StructuredBuffer&lt;int&gt;` (または `&lt;uint&gt;`) で読む。
         /// </summary>
         public static FrameRange FrameBufferInts(BufferType type, List<int> data)
         {

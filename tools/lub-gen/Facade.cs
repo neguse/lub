@@ -93,7 +93,7 @@ internal sealed class FacadeGen
 
     private static string C(string csName) => "Lub" + csName;
 
-    private static string NativeFn(ApiNamespace ns, string luaName) => CHeader.FunctionName(ns, luaName);
+    private static string NativeFn(ApiNamespace ns, string hostName) => CHeader.FunctionName(ns, hostName);
 
     private string EnumCs(TypeRef tr)
     {
@@ -254,7 +254,10 @@ internal sealed class FacadeGen
         foreach (var f in t.Fields)
         {
             sb.Write(Doc(f.Doc));
-            string init = f.Type.Kind == LubTypeKind.List && !f.Type.Nullable ? " = new " + Cs(f.Type) + "()" : "";
+            // 初期化子は stub のものをそのまま写す (VM と tcs2c の経路は stub の class をそのまま使うので、new の初期値を揃える)。
+            // handle は facade では native の番号からしか作らないので、初期化子を写さない (呼ぶ側が必ず入れる field)
+            string init = f.Init != "" && f.Type.Kind != LubTypeKind.Handle ? " = " + f.Init
+                : f.Type.Kind == LubTypeKind.List && !f.Type.Nullable ? " = new " + Cs(f.Type) + "()" : "";
             sb.Write("    public " + Cs(f.Type) + " " + f.Name + init + ";\n");
         }
         sb.Write("}\n\n");
@@ -277,12 +280,12 @@ internal sealed class FacadeGen
 
     // -------------------------------------------------------------- api
 
-    private void EmitApi(string luaRoot)
+    private void EmitApi(string hostRoot)
     {
         // stub と同じく namespace Lub (または Lubx) 直下に置く (root の enum は namespace 直下、各 static class は partial: App は手書きの LubHost.cs の Run と合わさる)
         foreach (var ns in model.Namespaces)
         {
-            if (ns.LuaRoot != luaRoot) continue;
+            if (ns.HostRoot != hostRoot) continue;
             bool root = ns.Name == ApiModelLoader.RootNamespace;
             string ind = root ? "" : "    ";
             if (!root)
@@ -302,7 +305,7 @@ internal sealed class FacadeGen
             foreach (var f in ns.StaticFields)
             {
                 if (f.Doc != "") sb.Write(ind + "/// <summary>" + f.Doc + "</summary>\n");
-                string call = "LubNative." + NativeFn(ns, f.LuaName) + "(LubRuntime.Ctx)";
+                string call = "LubNative." + NativeFn(ns, f.HostName) + "(LubRuntime.Ctx)";
                 sb.Write(ind + "public static " + Cs(f.Type) + " " + f.Name + " => " + FromDirect(f.Type, call) + ";\n\n");
             }
             foreach (var f in ns.Functions) EmitFunction(ns, f, ind);
@@ -379,15 +382,15 @@ internal sealed class FacadeGen
         foreach (var p in f.Params)
         {
             if (!p.IsOut) continue;
-            OutArg(p.Type, p.LuaName, b, i3, args);
+            OutArg(p.Type, p.HostName, b, i3, args);
             if (p.Type.Kind == LubTypeKind.Record && p.Type.Nullable)
             {
-                b.Write(i3 + "bool has_" + p.LuaName + " = false;\n");
-                args.Add("&has_" + p.LuaName);
+                b.Write(i3 + "bool has_" + p.HostName + " = false;\n");
+                args.Add("&has_" + p.HostName);
             }
         }
         var r = f.Return;
-        string fn = "LubNative." + NativeFn(ns, f.LuaName);
+        string fn = "LubNative." + NativeFn(ns, f.HostName);
         if (HasNativeParam(f)) fn += "_items";
         string retExpr;
         if (f.NoFail)
@@ -442,7 +445,7 @@ internal sealed class FacadeGen
             b.Write(i3 + "LubRuntime.Check(st);\n");
             foreach (var p in f.Params)
             {
-                if (p.IsOut) post.Write(OutAssign(p, i3, p.Type.Kind == LubTypeKind.Record && p.Type.Nullable ? "has_" + p.LuaName : null));
+                if (p.IsOut) post.Write(OutAssign(p, i3, p.Type.Kind == LubTypeKind.Record && p.Type.Nullable ? "has_" + p.HostName : null));
             }
             retExpr = hasRet ? OutValue(r, "out", has) : "";
         }
@@ -460,7 +463,7 @@ internal sealed class FacadeGen
         if (p.IsCount) return;
         string n = p.Name;
         var tr = p.Type;
-        string v = "_" + p.LuaName;
+        string v = "_" + p.HostName;
         switch (tr.Kind)
         {
             case LubTypeKind.Int:
@@ -650,7 +653,8 @@ internal sealed class FacadeGen
             case LubTypeKind.Struct:
                 return v;
             case LubTypeKind.List:
-                return ListFromNative(tr, v, v + "_n");
+                // nullable の List は C の NULL を null のまま返す (未取得の Io.LoadFloats は空の List と区別する)
+                return tr.Nullable ? "(" + v + " == null ? null : " + ListFromNative(tr, v, v + "_n") + ")" : ListFromNative(tr, v, v + "_n");
         }
         GenError.Report("unsupported out / return type " + tr.ToString());
         return "";
@@ -680,7 +684,7 @@ internal sealed class FacadeGen
         return "";
     }
 
-    private string OutAssign(ApiParam p, string ind, string? has) => ind + p.Name + " = " + OutValue(p.Type, p.LuaName, has) + ";\n";
+    private string OutAssign(ApiParam p, string ind, string? has) => ind + p.Name + " = " + OutValue(p.Type, p.HostName, has) + ";\n";
 
     // ----------------------------------------------------------- native
 
@@ -696,7 +700,7 @@ internal sealed class FacadeGen
         foreach (var ns in model.Namespaces)
         {
             foreach (var f in ns.StaticFields)
-                sb.Write("    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]\n    internal static extern " + NReturn(f.Type) + " " + NativeFn(ns, f.LuaName) + "(void* ctx);\n\n");
+                sb.Write("    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]\n    internal static extern " + NReturn(f.Type) + " " + NativeFn(ns, f.HostName) + "(void* ctx);\n\n");
             foreach (var f in ns.Functions)
             {
                 if (!f.NoC) EmitExtern(ns, f);
@@ -795,7 +799,7 @@ internal sealed class FacadeGen
         }
         foreach (var f in t.Fields)
         {
-            string n = f.LuaName;
+            string n = f.HostName;
             var tr = f.Type;
             switch (tr.Kind)
             {
@@ -872,8 +876,8 @@ internal sealed class FacadeGen
         foreach (var p in f.Params)
         {
             if (!p.IsOut) continue;
-            NOutParam(p.Type, p.LuaName, args);
-            if (p.Type.Kind == LubTypeKind.Record && p.Type.Nullable) args.Add("bool* has_" + p.LuaName);
+            NOutParam(p.Type, p.HostName, args);
+            if (p.Type.Kind == LubTypeKind.Record && p.Type.Nullable) args.Add("bool* has_" + p.HostName);
         }
         string ret;
         var r = f.Return;
@@ -896,12 +900,12 @@ internal sealed class FacadeGen
             }
         }
         sb.Write("    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]\n");
-        sb.Write("    internal static extern " + ret + " " + NativeFn(ns, f.LuaName) + "(" + string.Join(", ", args) + ");\n\n");
+        sb.Write("    internal static extern " + ret + " " + NativeFn(ns, f.HostName) + "(" + string.Join(", ", args) + ");\n\n");
     }
 
     private void NInParam(ApiFunction f, ApiParam p, List<string> o)
     {
-        string n = "@" + p.LuaName;
+        string n = "@" + p.HostName;
         var tr = p.Type;
         switch (tr.Kind)
         {
@@ -993,7 +997,7 @@ internal sealed class FacadeGen
         }
         foreach (var f in t.Fields)
         {
-            string n = f.LuaName;
+            string n = f.HostName;
             var tr = f.Type;
             string v = "o." + f.Name;
             switch (tr.Kind)
@@ -1059,7 +1063,7 @@ internal sealed class FacadeGen
         sb.Write("    internal static void Fill_" + c + "(" + t.Name + " o, " + c + "* s)\n    {\n");
         foreach (var f in t.Fields)
         {
-            string n = f.LuaName;
+            string n = f.HostName;
             var tr = f.Type;
             string v = "o." + f.Name;
             switch (tr.Kind)
@@ -1137,7 +1141,7 @@ internal sealed class FacadeGen
     {
         string c = C(t.Name);
         var funcs = Funcs(t);
-        for (int i = 0; i < funcs.Count; i++) EmitTrampoline(c + "_" + funcs[i].LuaName, funcs[i].Type, i);
+        for (int i = 0; i < funcs.Count; i++) EmitTrampoline(c + "_" + funcs[i].HostName, funcs[i].Type, i);
     }
 
     // C から呼ばれる static 関数。

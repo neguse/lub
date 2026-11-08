@@ -218,16 +218,17 @@ public static class GameExport
 
 public static class Checks
 {
-    private static void Claim(string ns, string lua, string csharp, Dictionary<string, string> seen, List<string> problems)
+    private static void Claim(string ns, string host, string csharp, Dictionary<string, string> seen, List<string> problems)
     {
         string? prev;
-        if (seen.TryGetValue(lua, out prev))
+        if (seen.TryGetValue(host, out prev))
         {
-            if (prev != csharp) problems.Add(ns + ": '" + prev + "' and '" + csharp + "' both map to Lua '" + lua + "'");
+            if (prev != csharp) problems.Add(ns + ": '" + prev + "' and '" + csharp + "' both map to the host name '" + host + "'");
         }
-        else seen[lua] = csharp;
-        if (lua.EndsWith("_") && LuaNames.IsLuaKeyword(Text.DropEnd(lua, 1)))
-            problems.Add(ns + "." + csharp + ": maps to a Lua keyword ('" + Text.DropEnd(lua, 1) + "'); rename the member");
+        else seen[host] = csharp;
+        // tcs は host の名前が Lua の予約語になると末尾に `_` を足す (C の名前と合わなくなるので、そうなる member を止める)
+        if (host.EndsWith("_") && LuaNames.IsLuaKeyword(Text.DropEnd(host, 1)))
+            problems.Add(ns + "." + csharp + ": maps to a Lua keyword ('" + Text.DropEnd(host, 1) + "'); rename the member");
         if (!Text.HasLower(csharp)) problems.Add(ns + "." + csharp + ": all-caps name; use PascalCase");
     }
 
@@ -236,13 +237,13 @@ public static class Checks
         var problems = new List<string>();
         foreach (var ns in model.Namespaces)
         {
-            // overload は同じ Lua 名 1 つに落ちる (C# 名が同じなら衝突ではない)
+            // overload は同じ host の名前 1 つに落ちる (C# 名が同じなら衝突ではない)
             var seen = new Dictionary<string, string>();
             var csNames = new HashSet<string>();
             foreach (var f in ns.Functions)
             {
                 if (!csNames.Add(f.Name)) problems.Add(ns.Name + "." + f.Name + ": overload (C の名前が衝突する); rename one of them");
-                Claim(ns.Name, f.LuaName, f.Name, seen, problems);
+                Claim(ns.Name, f.HostName, f.Name, seen, problems);
                 bool sawOptional = false;
                 foreach (var p in f.Params)
                 {
@@ -254,7 +255,7 @@ public static class Checks
                         problems.Add(ns.Name + "." + f.Name + ": required parameter '" + p.Name + "' after an optional one");
                 }
             }
-            foreach (var f in ns.StaticFields) Claim(ns.Name, f.LuaName, f.Name, seen, problems);
+            foreach (var f in ns.StaticFields) Claim(ns.Name, f.HostName, f.Name, seen, problems);
             foreach (var e in ns.Enums)
             {
                 var values = new HashSet<int>();
@@ -271,18 +272,18 @@ public static class Checks
             var names = new List<string>();
             foreach (var f in t.Fields)
             {
-                pairs.Add(f.LuaName);
+                pairs.Add(f.HostName);
                 names.Add(f.Name);
             }
             foreach (var m in t.Methods)
             {
-                pairs.Add(m.LuaName);
+                pairs.Add(m.HostName);
                 names.Add(m.Name);
             }
             for (int i = 0; i < pairs.Count; i++)
             {
                 string? prev;
-                if (seen.TryGetValue(pairs[i], out prev)) problems.Add(t.Name + ": '" + prev + "' and '" + names[i] + "' both map to Lua '" + pairs[i] + "'");
+                if (seen.TryGetValue(pairs[i], out prev)) problems.Add(t.Name + ": '" + prev + "' and '" + names[i] + "' both map to the host name '" + pairs[i] + "'");
                 else seen[pairs[i]] = names[i];
             }
         }
@@ -411,14 +412,14 @@ public static class ModelJson
     {
         var o = JValue.Obj();
         Str(o, "Name", f.Name);
-        Str(o, "LuaName", f.LuaName);
+        Str(o, "HostName", f.HostName);
         o.Set("Return", Type(f.Return));
         var ps = JValue.Arr();
         foreach (var p in f.Params)
         {
             var po = JValue.Obj();
             Str(po, "Name", p.Name);
-            Str(po, "LuaName", p.LuaName);
+            Str(po, "HostName", p.HostName);
             po.Set("Type", Type(p.Type));
             Flag(po, "Optional", p.Optional);
             Flag(po, "IsOut", p.IsOut);
@@ -441,7 +442,7 @@ public static class ModelJson
     {
         var o = JValue.Obj();
         Str(o, "Name", f.Name);
-        Str(o, "LuaName", f.LuaName);
+        Str(o, "HostName", f.HostName);
         o.Set("Type", Type(f.Type));
         Flag(o, "Optional", f.Optional);
         Str(o, "Doc", f.Doc);
@@ -457,13 +458,13 @@ public static class ModelJson
         var o = JValue.Obj();
         Str(o, "Name", e.Name);
         Str(o, "Namespace", e.Namespace);
-        Str(o, "LuaPath", e.LuaPath);
+        Str(o, "HostPath", e.HostPath);
         var ms = JValue.Arr();
         foreach (var m in e.Members)
         {
             var mo = JValue.Obj();
             Str(mo, "Name", m.Name);
-            Str(mo, "LuaName", m.LuaName);
+            Str(mo, "HostName", m.HostName);
             Int(mo, "Value", m.Value);
             Str(mo, "Doc", m.Doc);
             ms.Add(mo);
@@ -482,7 +483,7 @@ public static class ModelJson
         {
             var o = JValue.Obj();
             Str(o, "Name", n.Name);
-            Str(o, "LuaPath", n.LuaPath);
+            Str(o, "HostPath", n.HostPath);
             var fs = JValue.Arr();
             foreach (var f in n.Functions) fs.Add(Function(f));
             o.Set("Functions", fs);
@@ -497,7 +498,7 @@ public static class ModelJson
             {
                 var co = JValue.Obj();
                 Str(co, "Name", c.Name);
-                Str(co, "LuaName", c.LuaName);
+                Str(co, "HostName", c.HostName);
                 var v = Value(c.Value);
                 if (v != null) co.Set("Value", v);
                 Str(co, "Doc", c.Doc);
@@ -506,7 +507,7 @@ public static class ModelJson
             o.Set("Consts", cs);
             Str(o, "Doc", n.Doc);
             Int(o, "Line", n.Line);
-            Str(o, "LuaRoot", n.LuaRoot);
+            Str(o, "HostRoot", n.HostRoot);
             nss.Add(o);
         }
         root.Set("Namespaces", nss);

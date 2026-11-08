@@ -66,6 +66,13 @@ VS→FS の varying には 2 つの規約がある:
   `SV_Position` は location 採番の対象外なので、この順序はどの backend
   でも同じ意味になる。
 
+web (WGSL) でだけ値が変わる書き方がある:
+
+- ベクトルの式に付けた単項の `-` は、Slang の WGSL への変換で括弧を失うことがある。
+  `float3 tau = a + b;` の `exp(-tau)` が `exp(0 - a + b)` として動き、native では正しい値になるので web でだけ結果が変わる。
+  ベクトルの式を打ち消すときは `exp(tau * -1.0)` のように `-1.0` を掛けて書く。
+  スカラーの単項の `-`(`exp(-x / h)` など)はそのままでよい。
+
 ## pass と draw
 
 ```csharp
@@ -233,6 +240,10 @@ struct FSIn { float2 uv : TEXCOORD0; };
   テクスチャ名で始まる名前にする。
 - 1 つの sampler を複数のテクスチャで共有する形、組になるテクスチャの無い
   sampler を使う形、テクスチャの配列は shader compile の error になる。
+- 1 つの shader が宣言できるのは、テクスチャ 8 枚、`StructuredBuffer` /
+  `RWStructuredBuffer` 4 つ、`RWTexture2D` 4 枚まで。
+  vertex と fragment の宣言は合わせて数える。
+  超えた宣言は、上限と超えた変数の名前を出す shader compile の error になる。
 
 ## 定型: ready になるまでスキップ
 

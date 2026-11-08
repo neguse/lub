@@ -66,6 +66,11 @@ batch.Quad(chara, src, 100, 80, 16, 16); // 背景の上に重ねる atlas
 batch.Flush();
 ```
 
+## Renderer3d のカメラ
+
+`Renderer3d.Begin` に渡す `Camera` の `Fov`、`Near`、`Far` は、省くと 60 度、0.1、100 になる。
+カメラから `Far` より遠い物は描かれないので、遠くの背景(太陽や星など)を置くときは `Far` を大きくする。
+
 ## 使い分けの目安
 
 - まず `lubx` で書き始める(`SpriteBatch`、`Text` など)

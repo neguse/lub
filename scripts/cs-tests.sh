@@ -54,6 +54,7 @@ cs_runtime_tests=(
   TestInstanceCountZero
   TestSweptRefError
   TestShaderKeyConflict
+  TestShaderLimits
   TestBufferKeyConflict
   TestSpriteBatchLimit
   TestDupBinding
@@ -61,6 +62,7 @@ cs_runtime_tests=(
   TestManyDraws
   TestBufferRecordingOrder
   TestBufferArray
+  TestBufferInts
   TestBufferCapacity
   TestFrameBuffer
   TestFrameBufferErrors
@@ -70,6 +72,7 @@ cs_runtime_tests=(
   TestComputeUniformBlock
   TestStoragePreserve
   TestStorageFormat
+  TestReadStorageTexture
   TestXrInactive
   TestMathDeterminism
   TestTcsRuntime

@@ -2,7 +2,6 @@
 // version が一致する宣言では data を変換せず、null でも通る。
 // version を渡して data を省いた宣言は、その version の resource が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返す。
 // version を省いたときは data が要る。
-// (Lua 版は不正な値 "not an array" を渡して「読まれたかどうか」を検出していたが、型の違う値は C# では渡せないので移していない。)
 using System;
 using System.Collections.Generic;
 using Lub;
