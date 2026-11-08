@@ -143,7 +143,7 @@ public class LuaIdentifierTests
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class Matcher
             {
-                public int Read(object value)
+                public int Read(int? value)
                 {
                     if (value is int function) return function;
                     return 0;

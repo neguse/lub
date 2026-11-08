@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// Dictionary<float, V> の NaN key。.NET の EqualityComparer<float>.Default は
-// NaN 同士を等しい key とみなす。Lua の期待値は同じ program を CoreCLR で実行
-// した stdout。C backend は float の key を対応外として生成前に止める
+// Dictionary<float, V> はサブセット外 (TCS1001 UnsupportedDictionaryKey(float))。.NET の EqualityComparer<float>.Default は
+// NaN 同士を等しい key とみなすが、Lua の table は NaN を key にできない。HashSet<float> (UnsupportedHashSetElement(float)) と同じく
+// 作る地点 (new Dictionary<float, V>()、target-typed new()) で止める
 public partial class DifferentialTests
 {
     private const string DictNanKeyProgram = """
@@ -48,18 +48,20 @@ public partial class DifferentialTests
         """;
 
     [Fact]
-    public void Dict_NaNKey_Lua_MatchesDotnet()
+    public void Dict_FloatKey_BothBackendsStopWithDiagnostic()
     {
-        Assert.Equal("2,2,1\n12,12\n1,15\n1,2\n1,0,1\n5:1\n2,1,1,b\n3,1\n1\n1,2",
-            Backends.RunLua([DictNanKeyProgram], "P"));
-    }
-
-    [Fact]
-    public void Dict_FloatKey_C_StopsWithDiagnostic()
-    {
-        var ex = Assert.Throws<Tcs2cException>(
-            () => Backends.EmitC([DictNanKeyProgram], "P"));
-        Assert.Contains("Dictionary key type not supported", ex.Message);
+        foreach (var run in new Func<object>[]
+                 {
+                     () => Backends.EmitVm([DictNanKeyProgram], "P"),
+                     () => Backends.EmitC([DictNanKeyProgram], "P"),
+                 })
+        {
+            var ex = Assert.Throws<InvalidOperationException>(run);
+            // 作る地点 (new と initializer) ごとに 1 つ。型の宣言だけの `Dictionary<float, int> maybe = d;` (33 行) は作らない
+            foreach (var at in new[] { "(10,21)", "(25,24)", "(26,25)", "(30,25)", "(35,21)" })
+                Assert.Contains($"{at}: error TCS1001: unsupported syntax: UnsupportedDictionaryKey(float)", ex.Message);
+            Assert.Equal(5, ex.Message.Split("UnsupportedDictionaryKey(float)").Length - 1);
+        }
     }
 
     // float 以外の静的型の key に入った NaN は対象外 (Lua table に置けず止まる)。

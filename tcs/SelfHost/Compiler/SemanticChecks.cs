@@ -237,6 +237,7 @@ public sealed class SemanticChecks
                 break;
             case NodeKind.Is:
                 CheckTypeTestPattern(n.B, n.A!.Type);
+                CheckBoxedValuePattern(n.B, n.A!.Type, null);
                 break;
             case NodeKind.As:
                 CheckTypeTest(n.A!.Type, n.Type, n);
@@ -246,7 +247,11 @@ public sealed class SemanticChecks
             case NodeKind.SwitchExpr:
                 if (n.List != null)
                 {
-                    foreach (var arm in n.List) CheckTypeTestPattern(arm.A, n.A!.Type);
+                    foreach (var arm in n.List)
+                    {
+                        CheckTypeTestPattern(arm.A, n.A!.Type);
+                        CheckBoxedValuePattern(arm.A, n.A!.Type, null);
+                    }
                 }
                 break;
             case NodeKind.Switch:
@@ -257,7 +262,9 @@ public sealed class SemanticChecks
                         if (section.List == null) continue;
                         foreach (var label in section.List)
                         {
-                            if (label.Kind == NodeKind.CaseLabel) CheckTypeTestPattern(label.A, n.A!.Type);
+                            if (label.Kind != NodeKind.CaseLabel) continue;
+                            CheckTypeTestPattern(label.A, n.A!.Type);
+                            CheckBoxedValuePattern(label.A, n.A!.Type, null);
                         }
                     }
                 }
@@ -587,6 +594,61 @@ public sealed class SemanticChecks
         return t.Kind == TypeKind.Object || t.Kind == TypeKind.Interface;
     }
 
+    // ---- object に入った数と bool の pattern ----
+
+    // object に入った数 (int / float) の型の test と、object に入った数と bool の値を pattern で読む形 (`o is int`、`o is int x`、`o is 5`、
+    // `b is bool z`、`b is true`、`o is bool and true`)。IL は object の int と float を見分けず (どちらも number)、C backend は持たず、
+    // VM は値を取り出せない。値は cast (`(int)o`) で取り出す。`o is bool` と string の pattern は対象外。
+    // boxed は、`and` の左が object の値を bool と確かめた後の右側で、その型
+    private void CheckBoxedValuePattern(Node? p, TypeSym? input, TypeSym? boxed)
+    {
+        if (p == null || input == null) return;
+        bool fromObject = input.Kind == TypeKind.Object;
+        switch (p.Kind)
+        {
+            case NodeKind.PatType:
+                if (fromObject && IsNumberType(p.Type)) Report("BoxedValuePattern(" + p.Type!.FullDisplay() + ")", p);
+                return;
+            case NodeKind.PatDecl:
+                if (fromObject && (IsNumberType(p.Type) || IsBoolType(p.Type))) Report("BoxedValuePattern(" + p.Type!.FullDisplay() + ")", p);
+                else if (boxed != null) Report("BoxedValuePattern(" + boxed.FullDisplay() + ")", p);
+                return;
+            case NodeKind.PatProp:
+                if (fromObject && (IsNumberType(p.Type) || (IsBoolType(p.Type) && (p.Text != "" || (p.List != null && p.List.Count > 0)))))
+                    Report("BoxedValuePattern(" + p.Type!.FullDisplay() + ")", p);
+                return;
+            case NodeKind.PatConst:
+                if (fromObject && p.A != null && (IsNumberType(p.A.Type) || IsBoolType(p.A.Type))) Report("BoxedValuePattern(" + p.A.Type!.FullDisplay() + ")", p);
+                else if (boxed != null) Report("BoxedValuePattern(" + boxed.FullDisplay() + ")", p);
+                return;
+            case NodeKind.PatVar:
+            case NodeKind.PatRel:
+                if (boxed != null) Report("BoxedValuePattern(" + boxed.FullDisplay() + ")", p);
+                return;
+            case NodeKind.PatAnd:
+            {
+                CheckBoxedValuePattern(p.A, input, boxed);
+                bool typeTest = p.A != null && (p.A.Kind == NodeKind.PatType || p.A.Kind == NodeKind.PatDecl);
+                // 数の型の test は左で報告済み。bool は右の pattern が値を読むときに報告する
+                var narrowed = boxed;
+                if (narrowed == null && fromObject && typeTest && IsBoolType(p.A!.Type)) narrowed = p.A.Type;
+                CheckBoxedValuePattern(p.B, typeTest ? p.A!.Type : input, narrowed);
+                return;
+            }
+            case NodeKind.PatOr:
+                CheckBoxedValuePattern(p.A, input, boxed);
+                CheckBoxedValuePattern(p.B, input, boxed);
+                return;
+            case NodeKind.PatNot:
+                CheckBoxedValuePattern(p.A, input, boxed);
+                return;
+        }
+    }
+
+    private static bool IsNumberType(TypeSym? t) => t != null && t.IsNumeric;
+
+    private static bool IsBoolType(TypeSym? t) => t != null && t.Kind == TypeKind.Bool;
+
     // ---- interface の型の検査 ----
 
     private void CheckTypeTestPattern(Node? p, TypeSym? input)
@@ -802,7 +864,11 @@ public sealed class SemanticChecks
             if (HasValueEquality(e) || e.Kind == TypeKind.Float || e.Kind == TypeKind.Double) Report("UnsupportedHashSetElement(" + e.FullDisplay() + ")", creation);
             return;
         }
-        if (t.Kind == TypeKind.Dict && HasValueEquality(t.Arg(0))) Report("ValueEqualityDictionaryKey(" + t.Arg(0).FullDisplay() + ")", creation);
+        if (t.Kind != TypeKind.Dict) return;
+        var k = t.Arg(0);
+        if (HasValueEquality(k)) Report("ValueEqualityDictionaryKey(" + k.FullDisplay() + ")", creation);
+        // float の key は HashSet<float> の要素と同じく対応外 (C backend は持たず、VM は NaN の key と列挙を持たない)
+        else if (k.Kind == TypeKind.Float || k.Kind == TypeKind.Double) Report("UnsupportedDictionaryKey(" + k.FullDisplay() + ")", creation);
     }
 
     private static bool HasValueEquality(TypeSym t)
