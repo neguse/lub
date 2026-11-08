@@ -57,4 +57,34 @@ public partial class DifferentialTests
             9:9:12:7:3:4:2
             """.ReplaceLineEndings("\n"), output);
     }
+
+    // 増分の先が loop の変数でない for は増分を捨てない (#421)
+    [CFact]
+    public void For_IncrementorTargetsOtherVariable()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public static class P
+            {
+                public static void Main()
+                {
+                    int j = 0;
+                    for (int i = 0; i < 2; j++)
+                    {
+                        Console.WriteLine(i + "," + j);
+                        if (j == 2) break;
+                    }
+                    int k = 0;
+                    for (int i = 0; i < 2; k += 1)
+                    {
+                        if (k == 3) break;
+                    }
+                    int sum = 0;
+                    for (int i = 0; i < 4; i++) sum += i;
+                    Console.WriteLine("j=" + j + ",k=" + k + ",sum=" + sum);
+                }
+            }
+            """, "P");
+        Assert.Equal("0,0\n0,1\n0,2\nj=2,k=3,sum=6", output);
+    }
 }

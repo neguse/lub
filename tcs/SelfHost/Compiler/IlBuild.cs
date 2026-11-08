@@ -3861,6 +3861,9 @@ public sealed class IlBuild
         bool isIncByOne = (inc.Kind == NodeKind.PostIncDec && inc.Text == "++")
             || (inc.Kind == NodeKind.Assign && inc.Text == "+=" && StripConv(inc.B!).Kind == NodeKind.IntLit && SourceText(StripConv(inc.B!)) == "1");
         if (!isIncByOne) return null;
+        // 増分の先が loop の変数でなければ (`for (int i = 0; i < n; j++)`) 一般の for
+        var incTarget = StripConv(inc.A!);
+        if (incTarget.Kind != NodeKind.Name || incTarget.Text != varName || incTarget.Local != decl.Local) return null;
         if (!IsLoopInvariantBound(condNode.B!)) return null;
         if (IsAssignedWithin(forStmt.B!, varName)) return null;
         if (IsCapturedByLambdaWithin(forStmt.B!, varName)) return null;
