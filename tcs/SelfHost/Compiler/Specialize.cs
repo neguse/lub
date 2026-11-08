@@ -729,6 +729,14 @@ public sealed class Specializer
     {
         if (n == null) return null;
         var m = n.Mirror;
+        // nameof は束縛した名前の文字列にする (generic な method の雛形は最後に消すので、名前を引き直せない)
+        if (n.Kind == NodeKind.Call && m != null && m.Info == CallKind.Nameof && m.HasConst && m.Const != null && m.Const.Kind == ConstKind.String)
+        {
+            var lit = new Node(NodeKind.StringLit, n.File, n.Pos);
+            lit.End = n.End;
+            lit.Text = m.Const.S;
+            return lit;
+        }
         // 型引数の参照
         if (n.Kind == NodeKind.TypeName && n.A == null && n.List == null && m != null && m.Type != null && m.Type.Kind == TypeKind.TypeParam)
         {
