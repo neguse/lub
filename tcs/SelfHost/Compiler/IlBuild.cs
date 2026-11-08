@@ -4212,17 +4212,18 @@ public sealed class IlBuild
     // 型の照合。struct の入力 (S / S?) を同じ struct の型で照合するのは値の有無だけ
     private IlExpr? BuildTypeCheck(IlExpr expr, TypeSym? inputType, TypeSym? patternType, string? typeRef)
     {
+        // 値型の入力 (T / T?) を同じ値型 T で照合するのは値の有無だけ (数と bool と enum も)
+        if (patternType != null && patternType.IsValueType && inputType != null)
+        {
+            if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => new IlLit("true", null, null));
+            if (IlTypes.IsNullableValueType(inputType) && TypeSym.Same(inputType.Elem, patternType)) return new IlNullableHasValue(expr, null);
+        }
         var luaType = LuaTypeNameFor(patternType);
         if (luaType != null) return new IlIsLuaType(expr, luaType, null);
         if (IsStructuralType(patternType))
         {
             if (inputType != null && TypeSym.Same(inputType, patternType!)) return new IlBin(IlBinOp.Ne, expr, new IlLit("nil", null, null), null);
             return null;
-        }
-        if (patternType != null && patternType.IsValueType && inputType != null)
-        {
-            if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => new IlLit("true", null, null));
-            if (IlTypes.IsNullableValueType(inputType) && TypeSym.Same(inputType.Elem, patternType)) return new IlNullableHasValue(expr, null);
         }
         if (patternType != null && patternType.Kind == TypeKind.Interface) return new IlIsType(expr, CheckTypeName(patternType), true, null);
         // --ref の class (tcs check と C は TCS1001 で止め、tcs VM は型の表で判定する、object-model §10.6) は cast と同じ IL の型名で指す
@@ -4425,10 +4426,11 @@ public sealed class IlBuild
         return result;
     }
 
-    // 入力 S / S? に当てた struct S の宣言のパターン
+    // 入力 S / S? に当てた struct S の宣言のパターンと、入力 T? に当てた値型 T の宣言のパターン (値を取り出して束縛する)
     private static bool IsStructDesignation(Node dp, TypeSym? inputType)
     {
-        return dp.Type != null && IlTypes.IsUserStruct(dp.Type) && inputType != null && TypeSym.Same(IlTypes.UnwrapNullable(inputType), dp.Type);
+        if (dp.Type == null || inputType == null || !TypeSym.Same(IlTypes.UnwrapNullable(inputType), dp.Type)) return false;
+        return IlTypes.IsUserStruct(dp.Type) || dp.Type.IsValueType && IlTypes.IsNullableValueType(inputType);
     }
 
     private IlExpr DesignationValue(IlExpr input, TypeSym inputType, TypeSym declType)
