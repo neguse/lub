@@ -1174,124 +1174,28 @@ public sealed class CEmitter
 
     private static CType TypeOfLiteral(IlLit literal)
     {
-        var text = literal.LuaText;
-        if (text == "true" || text == "false") return CType.Bool;
-        if (text == "nil") return CType.Null;
-        if (text.StartsWith("\"")) return CType.String;
-        return literal.Type == "float" || IsFloatText(text) ? CType.F32 : CType.I32;
+        if (literal.Kind == IlLitKind.Bool) return CType.Bool;
+        if (literal.Kind == IlLitKind.Null) return CType.Null;
+        if (literal.Kind == IlLitKind.String) return CType.String;
+        return literal.Kind == IlLitKind.Float ? CType.F32 : CType.I32;
     }
 
     private string RenderLiteral(IlLit literal)
     {
-        var text = literal.LuaText;
-        if (text == "true" || text == "false") return text;
-        if (text == "nil") return "NULL";
-        if (text.StartsWith("\"")) return RenderStringLiteral(text);
-        if (literal.Type == "float" || IsFloatText(text))
-        {
-            // NaN と ±∞ は語のテキスト (IlLiterals.NonFiniteText)
-            if (IlLiterals.TryNonFiniteBits(text, out int special)) return Constants.F32Bits(special);
-            float value;
-            if (!float.TryParse(text, out value))
-            {
-                CFail.Report("invalid f32 literal: " + text);
-                return "0";
-            }
-            return Constants.F32(value);
-        }
-        bool hex = text.StartsWith("0x") || text.StartsWith("0X");
-        bool parsed = hex ? TryParseHex32(Strings.From(text, 2), out int integer) : int.TryParse(text, out integer);
-        if (!parsed)
-        {
-            CFail.Report("invalid i32 literal: " + text);
-            return "0";
-        }
-        return Constants.I32(integer);
+        if (literal.Kind == IlLitKind.Bool) return literal.I != 0 ? "true" : "false";
+        if (literal.Kind == IlLitKind.Null) return "NULL";
+        if (literal.Kind == IlLitKind.String) return InternStringLiteral(Utf8List(literal.S));
+        if (literal.Kind == IlLitKind.Float) return Constants.F32(literal.F);
+        return Constants.I32(literal.I);
     }
 
-    // 16 進の数字列 (8 桁まで) を 32 bit の並びとして読む (上位の bit が立つと負の int)
-    private static bool TryParseHex32(string digits, out int value)
-    {
-        value = 0;
-        var u = new Utf8Bytes(digits);
-        if (u.Length == 0 || u.Length > 8) return false;
-        for (int i = 0; i < u.Length; i++)
-        {
-            int c = u[i];
-            int d;
-            if (c >= '0' && c <= '9') d = c - '0';
-            else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
-            else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
-            else return false;
-            value = value << 4 | d;
-        }
-        return true;
-    }
-
-    private string RenderStringLiteral(string luaText) => InternStringLiteral(DecodeLuaString(luaText));
-
-    // IL の文字列の literal (IlLiterals.QuoteString の形) を UTF-8 の byte の列に戻す (\xHH は U+00HH の文字として UTF-8 にする。C# 版と同じ)
-    private static List<int> DecodeLuaString(string text)
+    // 文字列の UTF-8 の byte の列
+    private static List<int> Utf8List(string text)
     {
         var u = new Utf8Bytes(text);
-        var decoded = new List<int>();
-        if (u.Length < 2 || u[0] != '"' || u[u.Length - 1] != '"')
-        {
-            CFail.Report("invalid Lua string literal: " + text);
-            return decoded;
-        }
-        for (int i = 1; i < u.Length - 1; i++)
-        {
-            int ch = u[i];
-            if (ch != '\\')
-            {
-                decoded.Add(ch);
-                continue;
-            }
-            if (++i >= u.Length - 1)
-            {
-                CFail.Report("invalid Lua string escape: " + text);
-                return decoded;
-            }
-            int e = u[i];
-            if (e == '\\') decoded.Add('\\');
-            else if (e == '"') decoded.Add('"');
-            else if (e == 'n') decoded.Add('\n');
-            else if (e == 'r') decoded.Add('\r');
-            else if (e == 't') decoded.Add('\t');
-            else if (e == 'x' && i + 2 < u.Length - 1 && HexDigit(u[i + 1]) >= 0 && HexDigit(u[i + 2]) >= 0)
-            {
-                int value = HexDigit(u[i + 1]) * 16 + HexDigit(u[i + 2]);
-                if (value < 0x80) decoded.Add(value);
-                else
-                {
-                    decoded.Add(0xC0 | value >> 6);
-                    decoded.Add(0x80 | value & 0x3F);
-                }
-                i += 2;
-            }
-            else
-            {
-                CFail.Report("unsupported Lua string escape: \\" + u.Slice(i, 1).ToString());
-                return decoded;
-            }
-        }
-        return decoded;
-    }
-
-    private static int HexDigit(int c)
-    {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        return -1;
-    }
-
-    // 16 進 literal (0x...) の E は桁であって指数ではない
-    private static bool IsFloatText(string text)
-    {
-        if (text.StartsWith("0x") || text.StartsWith("0X")) return false;
-        return text.Contains(".") || text.Contains("e") || text.Contains("E");
+        var bytes = new List<int>();
+        for (int i = 0; i < u.Length; i++) bytes.Add(u[i]);
+        return bytes;
     }
 
     private static CType NumericJoin(CType left, CType right, string where)
@@ -1413,7 +1317,7 @@ public sealed class CEmitter
     {
         switch (expr)
         {
-            case IlLit literal: return literal.LuaText.StartsWith("\"");
+            case IlLit literal: return literal.Kind == IlLitKind.String;
             case IlVar: return false;
             case IlParen paren: return Effectful(paren.E);
             case IlNumericConvert convert: return Effectful(convert.Value);
@@ -2720,7 +2624,7 @@ public sealed class CEmitter
         if (!(pairs.Body.Stats[0] is IlAssign assign)) return false;
         if (!(assign.Target is IlIndex targetIndex) || targetIndex.PlusOne) return false;
         if (!(targetIndex.Recv is IlVar target)) return false;
-        if (!(assign.Value is IlLit nilLit) || nilLit.LuaText != "nil") return false;
+        if (!IsNilLiteral(assign.Value)) return false;
         if (coll.Name != tmp || target.Name != tmp)
             return false;
         var type = TypeOf(recv);
@@ -2872,7 +2776,7 @@ public sealed class CEmitter
 
     private int _comparatorSerial;
 
-    private static bool IsNilLiteral(IlExpr expr) => expr is IlLit lit && lit.LuaText == "nil";
+    private static bool IsNilLiteral(IlExpr expr) => IlLiterals.IsNull(expr);
 
     // 戻り値は長さの関数 (Len)、at に要素の関数 (At)
     private static string SeqFns(CType seq, out string at)
@@ -4207,19 +4111,19 @@ public sealed class CEmitter
         var ok = false;
         var kind = "";
         var digits = "";
-        if (spec is IlLit lit)
+        if (spec is IlLit lit && lit.Kind == IlLitKind.String)
         {
-            var u = new Utf8Bytes(lit.LuaText);
+            var u = new Utf8Bytes(lit.S);
             var n = u.Length;
-            if (n >= 3 && u[0] == '"' && u[n - 1] == '"' && ContractFacts.IndexOfByte(letters, u[1]) >= 0 && n - 3 <= 9)
+            if (n >= 1 && ContractFacts.IndexOfByte(letters, u[0]) >= 0 && n - 1 <= 9)
             {
                 ok = true;
-                for (var i = 2; i < n - 1; i++)
+                for (var i = 1; i < n; i++)
                 {
                     if (u[i] < '0' || u[i] > '9') ok = false;
                 }
-                kind = u.Slice(1, 1).ToString();
-                digits = u.Slice(2, n - 3).ToString();
+                kind = u.Slice(0, 1).ToString();
+                digits = u.Slice(1, n - 1).ToString();
             }
         }
         if (!ok)
@@ -4387,7 +4291,7 @@ public sealed class CEmitter
             case "FormatEnum": return RenderFormatEnum(call);
             case "JoinEnum":
             {
-                var table = EnumTable(((IlLit)args[2]).LuaText);
+                var table = EnumTable(((IlLit)args[2]).S);
                 var sequence = TypeOf(args[1]);
                 var sep = Temp("sep");
                 var seq = Temp("enum_values");
@@ -4886,7 +4790,7 @@ public sealed class CEmitter
 
     private string RenderFormatEnum(IlCall call)
     {
-        var table = EnumTable(((IlLit)call.Args[1]).LuaText);
+        var table = EnumTable(((IlLit)call.Args[1]).S);
         var type = TypeOf(call.Args[0]);
         if (type.Kind != CTypeKind.Nullable) return EnumFormatText(RenderExpr(call.Args[0]), table);
         var temp = Temp("opt");
@@ -4897,12 +4801,12 @@ public sealed class CEmitter
             $"{temp}.has ? {formatted} : {empty}; }})";
     }
 
-    private EnumTableInfo EnumTable(string luaText)
+    private EnumTableInfo EnumTable(string specText)
     {
         EnumTableInfo? existing;
-        if (_enumTables.TryGetValue(luaText, out existing)) return existing;
+        if (_enumTables.TryGetValue(specText, out existing)) return existing;
         // spec は UTF-8 の byte の列のまま読む (',' と ':' は多 byte の文字の中に現れないので、C# 版の文字の分割と同じ)
-        var spec = DecodeLuaString(luaText);
+        var spec = Utf8List(specText);
         var flags = spec.Count > 0 && spec[0] == '*';
         var entryNames = new List<List<int>>();
         var entryValues = new List<int>();
@@ -4920,14 +4824,14 @@ public sealed class CEmitter
                 }
                 if (colon < 0)
                 {
-                    CFail.Report($"invalid enum format spec: {luaText}");
+                    CFail.Report($"invalid enum format spec: {specText}");
                 }
                 else
                 {
                     var name = new List<int>();
                     for (var j = segmentStart; j < colon; j++) name.Add(spec[j]);
                     entryNames.Add(name);
-                    entryValues.Add(EnumSpecValue(spec, colon + 1, i, luaText));
+                    entryValues.Add(EnumSpecValue(spec, colon + 1, i, specText));
                 }
             }
             segmentStart = i + 1;
@@ -4947,13 +4851,13 @@ public sealed class CEmitter
         _literalDecls.Add($"static const int32_t {values}[] = {{ " +
             $"{valueList} }};");
         var table = new EnumTableInfo(names, values, entryValues.Count, flags);
-        _enumTables[luaText] = table;
+        _enumTables[specText] = table;
         return table;
     }
 
     // spec の byte [start, end) の 10 進の整数 (先頭の符号を許す。C# 版の int.Parse(NumberStyles.AllowLeadingSign))。
     // 負の側で積むので int.MinValue も溢れない
-    private static int EnumSpecValue(List<int> spec, int start, int end, string luaText)
+    private static int EnumSpecValue(List<int> spec, int start, int end, string specText)
     {
         var negative = false;
         var i = start;
@@ -4964,7 +4868,7 @@ public sealed class CEmitter
         }
         if (i >= end)
         {
-            CFail.Report($"invalid enum format spec: {luaText}");
+            CFail.Report($"invalid enum format spec: {specText}");
             return 0;
         }
         var value = 0;
@@ -4973,7 +4877,7 @@ public sealed class CEmitter
             var c = spec[i];
             if (c < '0' || c > '9')
             {
-                CFail.Report($"invalid enum format spec: {luaText}");
+                CFail.Report($"invalid enum format spec: {specText}");
                 return 0;
             }
             value = value * 10 - (c - '0');

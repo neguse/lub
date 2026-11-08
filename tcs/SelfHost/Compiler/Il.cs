@@ -35,8 +35,19 @@ public interface IlStat
 
 // ---- 式 ----
 
-// literal のテキスト (IlLiterals の表記: nil / true / false、数、引用符で囲んだ文字列。数値と文字列の escape は解決済み)
-public record IlLit(string LuaText, string? Type, IlPos? Origin) : IlExpr;
+// literal の種類
+public enum IlLitKind
+{
+    Null,
+    Bool,
+    Int,
+    Float,
+    String,
+}
+
+// literal の値。Kind で読む member が決まる: Bool と Int は I (bool は 0 / 1、char は code unit、uint は同じ 32 bit の int)、
+// Float は F (NaN と ±∞ も値のまま)、String は S (escape の無い値そのもの)。作り方と表示は IlLiterals
+public record IlLit(IlLitKind Kind, int I, float F, string S, IlPos? Origin) : IlExpr;
 
 // local / parameter / 型名の参照
 public record IlVar(string Name, IlPos? Origin) : IlExpr;

@@ -13,7 +13,8 @@ public class IlGameCoreTests
             """]);
         var value = Assert.IsType<IlLit>(Assert.IsType<IlReturn>(
             program.Classes.Single().Methods.Single().Body!.Stats.Single()).Value);
-        Assert.Equal("float", value.Type);
+        Assert.Equal(IlLitKind.Float, value.Kind);
+        Assert.Equal(4294967295f, value.F);
     }
 
     [Fact]
@@ -44,7 +45,11 @@ public class IlGameCoreTests
             }
             """]);
         var cls = program.Classes.Single();
-        Assert.Equal("2.0", Assert.IsType<IlLit>(cls.Ctors[0].ParameterDefaults[0]).LuaText);
-        Assert.Equal("3", Assert.IsType<IlLit>(cls.Methods[0].ParameterDefaults[0]).LuaText);
+        var x = Assert.IsType<IlLit>(cls.Ctors[0].ParameterDefaults[0]);
+        Assert.Equal(IlLitKind.Float, x.Kind);
+        Assert.Equal(2f, x.F);
+        var value = Assert.IsType<IlLit>(cls.Methods[0].ParameterDefaults[0]);
+        Assert.Equal(IlLitKind.Int, value.Kind);
+        Assert.Equal(3, value.I);
     }
 }

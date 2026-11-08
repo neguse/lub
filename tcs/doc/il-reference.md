@@ -54,7 +54,7 @@ var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (S
 
 | ノード | 意味 |
 |---|---|
-| IlLit(LuaText, Type) | 変換済みリテラルのテキスト。数は 10 進 (float は Type が `float` で、`7.0` / `1e-10` の形)、文字列は escape した引用符つきの形、bool は `true` / `false`、null は `nil`、char は code unit の数。int.MinValue は literal でなく `(-2147483647 - 1)` の式 (IlParen と IlBin)。backend は Type とテキストから型付きの定数に読み直す |
+| IlLit(Kind, I, F, S) | literal の値。Kind (`IlLitKind`: Null / Bool / Int / Float / String) が読む member を決める: Bool と Int は I (bool は 0 / 1、char は code unit、uint は同じ 32 bit の int、int.MinValue もそのまま)、Float は F (f32 の値。NaN と ±∞ も値のまま)、String は S (escape の無い値)。作り方と診断の表示は `IlLiterals` |
 | IlVar(Name) | local / parameter / 型名参照 |
 | IlField(Recv, Name) | field place 読み (il-spec §10)。static は `IlField(IlVar(型名), name)`、enum の member も同じ形 (C は i32 定数へ畳む、T241) |
 | IlIndex(Recv, Idx, PlusOne, Unchecked, BoolElements, NilElements) | 要素 place。PlusOne が真なら List / 配列の 0 始まりの添字、偽なら Dictionary の key。Unchecked / BoolElements / NilElements は tcs VM と C が読まない |

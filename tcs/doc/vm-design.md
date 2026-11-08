@@ -205,11 +205,11 @@ Dictionary と HashSet と Queue の残りの演算、String / Math / Random / T
 
 ### 7.3 IL の形の読み替え
 
-IL のノードのいくつかは、literal をテキストで持つ、添字の写し方の印を持つ、List の操作を名前の呼び出しで書く、といった形をとる (il-reference)。VmEmitter は C backend と同じくこれを型付きの命令に読み替える。
+IL のノードのいくつかは、添字の写し方の印を持つ、List の操作を名前の呼び出しで書く、といった形をとる (il-reference)。VmEmitter は C backend と同じくこれを型付きの命令に読み替える。
 
 | IL | VM での扱い |
 |---|---|
-| `IlLit.LuaText` (literal のテキスト: `nil`、`true` / `false`、数、引用符付きの文字列) | 式の静的型で型付きの定数 (`LDK` の bit、string の定数、`LDNULL`) に読み直す |
+| `IlLit` (literal の値: Null、Bool、Int、Float、String) | 型付きの定数 (`LDK` の bit、string の定数、`LDNULL`) にする。float の位置の Int は float の値にする |
 | `IlIndex.PlusOne` / `Unchecked` | 添字は 0 始まりのまま読み、印は見ない。範囲は命令が必ず検査する |
 | `IlLen.NilElements`、`IlCall("table.insert" / "table.remove")` | List の長さと List の命令 (`LIST_LEN`、`LIST_ADD_*`、`LIST_REMOVE_AT`)。`table.remove` の添字は 1 を引いて読む |
 | `IlIife` | 結果の register と終わりの label を持つ block として inline に展開する。関数は作らない |

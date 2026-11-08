@@ -701,7 +701,7 @@ public sealed class FunctionCompiler
         if (e is IlIndex ix)
         {
             string recv = TraceLabel(ix.Recv);
-            string idx = ix.Idx is IlLit lit ? lit.LuaText : TraceLabel(ix.Idx);
+            string idx = ix.Idx is IlLit lit ? IlLiterals.Display(lit) : TraceLabel(ix.Idx);
             return recv == "" || idx == "" ? "" : recv + "[" + idx + "]";
         }
         if (e is IlParen p) return TraceLabel(p.E);
@@ -870,13 +870,13 @@ public sealed class FunctionCompiler
     }
 
     // C# 版の `IlForPairs { VVar: null, Body.Stats: [IlAssign { Target: IlIndex { Recv: IlVar cv, Idx: IlVar ck },
-    // Value: IlLit { LuaText: "nil" } }] } fp when fp.Coll is IlVar cv2 && cv2.Name == cv.Name && ck.Name == fp.KVar`
+    // Value: IlLit { Kind: IlLitKind.Null } }] } fp when fp.Coll is IlVar cv2 && cv2.Name == cv.Name && ck.Name == fp.KVar`
     private static bool P1IsClear(IlForPairs fp)
     {
         if (fp.VVar != null) return false;
         if (fp.Body.Stats.Count != 1) return false;
         if (fp.Body.Stats[0] is IlAssign a && a.Target is IlIndex ti && ti.Recv is IlVar cv && ti.Idx is IlVar ck
-            && a.Value is IlLit nl && nl.LuaText == "nil")
+            && IlLiterals.IsNull(a.Value))
             return fp.Coll is IlVar cv2 && cv2.Name == cv.Name && ck.Name == fp.KVar;
         return false;
     }
@@ -1494,14 +1494,11 @@ public sealed class FunctionCompiler
 
     private static VType LitType(IlLit lit)
     {
-        if (lit.Type == "float") return VType.Float;
-        if (lit.Type == "int" || lit.Type == "char") return VType.Int;
-        var t = lit.LuaText;
-        if (t == "true" || t == "false") return VType.Bool;
-        if (t == "nil") return VType.Null;
-        if (t.StartsWith("\"") || t.StartsWith("'")) return VType.String;
-        if (t.StartsWith("0x") || t.StartsWith("0X")) return VType.Int;
-        return t.Contains(".") || t.Contains("e") || t.Contains("E") ? VType.Float : VType.Int;
+        if (lit.Kind == IlLitKind.Float) return VType.Float;
+        if (lit.Kind == IlLitKind.Int) return VType.Int;
+        if (lit.Kind == IlLitKind.Bool) return VType.Bool;
+        if (lit.Kind == IlLitKind.String) return VType.String;
+        return VType.Null;
     }
 
     private VType BinType(IlBin b)
@@ -1640,13 +1637,13 @@ public sealed class FunctionCompiler
     {
         while (e is IlParen p) e = p.E;
         Val v;
-        if (e is IlLit nl0 && nl0.LuaText == "nil" && to.Tag == VT.Nullable)
+        if (IlLiterals.IsNull(e) && to.Tag == VT.Nullable)
         {
             v = dest != null ? dest : Temp(to);
             EmitZero(v);
             return v;
         }
-        if (e is IlLit nl1 && nl1.LuaText == "nil")
+        if (IlLiterals.IsNull(e))
         {
             if (!to.IsRef)
             {
@@ -1780,7 +1777,7 @@ public sealed class FunctionCompiler
                 return BadVal();
             }
             var d = dest != null ? dest : Temp(type);
-            if (type.Tag == VT.String) EmitImm(Op.LDSTR, d.Reg, _m.Const(LuaString(lit.LuaText)));
+            if (type.Tag == VT.String) EmitImm(Op.LDSTR, d.Reg, _m.Const(VBytes.Utf8(lit.S)));
             else EmitImm(Op.LDK, d.Reg, LitBits(lit, type));
             return d;
         }
@@ -2125,82 +2122,12 @@ public sealed class FunctionCompiler
         return BadVal();
     }
 
-    /// <summary>IL の string literal のテキスト (IlLiterals.QuoteString の形: `"a\"b\n"`、`\xHH`。10 進の `\ddd` も読む)。octet 列に戻す。</summary>
-    private static List<int> LuaString(string text)
-    {
-        // C# 版は escape でない文字を UTF-16 で貯めて UTF-8 にする。ここでは文字列が UTF-8 なので byte をそのまま写す
-        var u = new Utf8Bytes(text);
-        var bytes = new List<int>();
-        if (u.Length < 2 || u[0] != '"' || u[u.Length - 1] != '"')
-        {
-            CFail.Report("string literal " + text + " is not in the VM yet");
-            return bytes;
-        }
-        for (var i = 1; i < u.Length - 1; i++)
-        {
-            int ch = u[i];
-            if (ch != '\\')
-            {
-                bytes.Add(ch);
-                continue;
-            }
-            i++;
-            int n = u[i];
-            if (n == 'n') bytes.Add(10);
-            else if (n == 't') bytes.Add(9);
-            else if (n == 'r') bytes.Add(13);
-            else if (n == 'a') bytes.Add(7);
-            else if (n == 'b') bytes.Add(8);
-            else if (n == 'f') bytes.Add(12);
-            else if (n == 'v') bytes.Add(11);
-            else if (n == '\\') bytes.Add(92);
-            else if (n == '"') bytes.Add(34);
-            else if (n == '\'') bytes.Add(39);
-            else if (n == 'x')
-            {
-                int hi = i + 1 < u.Length ? P2Regs.HexDigit(u[i + 1]) : -1;
-                int lo = i + 2 < u.Length ? P2Regs.HexDigit(u[i + 2]) : -1;
-                if (hi < 0 || lo < 0)
-                {
-                    CFail.Report("string escape \\x is not in the VM yet");
-                    return bytes;
-                }
-                bytes.Add(hi * 16 + lo);
-                i += 2;
-            }
-            else if (n >= '0' && n <= '9')
-            {
-                var j = i;
-                while (j < i + 3 && j < u.Length - 1 && u[j] >= '0' && u[j] <= '9') j++;
-                int value = 0;
-                for (var k = i; k < j; k++) value = value * 10 + (u[k] - '0');
-                bytes.Add(value & 255);
-                i = j - 1;
-            }
-            else
-            {
-                CFail.Report("string escape \\" + u.Slice(i, 1).ToString() + " is not in the VM yet");
-                return bytes;
-            }
-        }
-        return bytes;
-    }
-
+    // literal の値の 32 bit (type は式の静的型。float の位置の整数の literal は float の値にする)
     private static int LitBits(IlLit lit, VType type)
     {
-        var t = lit.LuaText;
-        if (VType.Same(type, VType.Bool)) return t == "true" ? 1 : 0;
         if (VType.Same(type, VType.Float))
-        {
-            // NaN と ±∞ は語のテキスト (IlLiterals.NonFiniteText)
-            if (IlLiterals.TryNonFiniteBits(t, out int special)) return special;
-            // IL の f32 literal は 10 進の text。.NET の float.Parse は最近接への丸め (il-spec §6)
-            var f = float.Parse(t);
-            return TcsC.Constants.FloatBits(f);
-        }
-        if (t.StartsWith("0x") || t.StartsWith("0X"))
-            return P2Regs.ParseHex(Strings.From(t, 2));
-        return int.Parse(t);
+            return TcsC.Constants.FloatBits(lit.Kind == IlLitKind.Float ? lit.F : (float)lit.I);
+        return lit.I;
     }
 
     private Val Bin(IlBin b, Val? dest)
@@ -2579,9 +2506,9 @@ public sealed class FunctionCompiler
             Cond(nu.E, !jumpIf, target);
             return;
         }
-        if (cond is IlLit lit && (lit.LuaText == "true" || lit.LuaText == "false"))
+        if (cond is IlLit lit && lit.Kind == IlLitKind.Bool)
         {
-            if ((lit.LuaText == "true") == jumpIf) Jump(Op.JMP, target);
+            if ((lit.I != 0) == jumpIf) Jump(Op.JMP, target);
             return;
         }
         if (cond is IlBin conj && conj.Op == IlBinOp.And && VType.Same(TypeOf(conj.L), VType.Bool))
@@ -4033,8 +3960,8 @@ public sealed class FunctionCompiler
         if (callee == "string.format" && c.Args.Count >= 1)
         {
             var a0 = c.Args[0];
-            if (a0 is IlLit fmtLit && fmtLit.LuaText.StartsWith("\""))
-                return Format(LuaString(fmtLit.LuaText), P4Lists.ExprsFrom(c.Args, 1), dest);
+            if (a0 is IlLit fmtLit && fmtLit.Kind == IlLitKind.String)
+                return Format(VBytes.Utf8(fmtLit.S), P4Lists.ExprsFrom(c.Args, 1), dest);
         }
         if (callee == "string.char")
         {
@@ -5291,8 +5218,7 @@ public static class P2Regs
         return r;
     }
 
-    // IlLit { LuaText: "nil" }
-    public static bool IsNil(IlExpr? e) => e is IlLit l && l.LuaText == "nil";
+    public static bool IsNil(IlExpr? e) => IlLiterals.IsNull(e);
 
     // PrimT { Kind: Kind.I32 or Kind.F32 }
     public static bool IsNumber(VType t) => t.Tag == VT.Prim && (t.PKind == Kind.I32 || t.PKind == Kind.F32);

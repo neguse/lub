@@ -375,7 +375,7 @@ public static class IlNodes
         if (node is IlLit nIlLit)
         {
             var n = nIlLit;
-            return "IlLit(" + Str(n.LuaText) + ", " + Str(n.Type) + ")";
+            return "IlLit(" + IlLitKindName(n.Kind) + ", " + IlLiterals.Display(n) + ")";
         }
         if (node is IlVar nIlVar)
         {
@@ -697,6 +697,16 @@ public static class IlNodes
         var parts = new List<string>();
         foreach (var x in items) parts.Add("(" + Str(x.Name) + ", " + Dump(x.Value) + ")");
         return "[" + string.Join(", ", parts) + "]";
+    }
+
+    public static string IlLitKindName(IlLitKind v)
+    {
+        if (v == IlLitKind.Null) return "Null";
+        if (v == IlLitKind.Bool) return "Bool";
+        if (v == IlLitKind.Int) return "Int";
+        if (v == IlLitKind.Float) return "Float";
+        if (v == IlLitKind.String) return "String";
+        return "" + (int)v;
     }
 
     public static string IlBinOpName(IlBinOp v)

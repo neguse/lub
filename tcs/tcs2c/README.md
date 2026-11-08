@@ -183,7 +183,7 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
   出しは実装 class への dispatch (`tcs_dispatch_<Iface>_<m>`)。cast は `tcs_is_<Iface>` (実装 class の type tag 集合) で検査
 - **配列 literal** (`new T[] { ... }`、入れ子 / 空も) は固定長 `TcsArray`。
   ctor / method / foreign 呼び出しは末尾の省略可能引数を IL の
-  `ParameterDefaults` で補う。float literal / const は `IlLit.Type` で F32 を
+  `ParameterDefaults` で補う。float literal / const は `IlLit.Kind` (Float) で F32 を
   保つ (`2f` が整数に化けない)
 - **static field の初期化順**: 定数でない initializer を持つ class は C# と
   同じく最初のアクセスで初期化する (`tcs_sinit_<Class>`、accessor

@@ -57,6 +57,8 @@ def dump_expr(typ, f):
         return f'({v} ? "True" : "False")'
     if b == 'int':
         return f'("" + {v})'
+    if b == 'float':
+        return f'IlLiterals.FormatDoubleOfFloat({v})'
     if b in enums:
         return f'{b}Name({v})'
     if b in ('List<IlExpr>', 'List<IlStat>', 'List<IlTableEntry>'):
@@ -119,7 +121,10 @@ for name, fields in records:
     lines.append(f'        if (node is {name} n{name})')
     lines.append('        {')
     lines.append(f'            var n = n{name};')
-    if name == 'IlBlock':
+    if name == 'IlLit':
+        # literal は種類と値の表示 (IlLiterals.Display) だけを書く
+        lines.append('            return "IlLit(" + IlLitKindName(n.Kind) + ", " + IlLiterals.Display(n) + ")";')
+    elif name == 'IlBlock':
         lines.append('            var stats = new List<string>();')
         lines.append('            foreach (var s in n.Stats) stats.Add(Dump(s));')
         lines.append('            return "{ " + string.Join("; ", stats) + " }";')
