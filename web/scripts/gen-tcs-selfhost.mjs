@@ -1,5 +1,5 @@
 // gen-tcs-selfhost.mjs — tcs の WebAssembly 版 (tcs2c で C にした tcs を emcc で wasm にしたもの) を playground 用のアセットに固める。
-// 出力: web/tcs-selfhost-assets/ (tcs.mjs、tcs-core.mjs、runtime/*.lua、lib/TinySystem/*.cs)。
+// 出力: web/tcs-selfhost-assets/ (tcs.mjs、tcs-core.mjs、lib/TinySystem/*.cs)。
 // vite.config.ts が /tcs-selfhost として配る。playground は C# の変換にこれを使う (playground/tcs-selfhost-worker.ts)。
 //   node web/scripts/gen-tcs-selfhost.mjs
 // third_party/tcs の SelfHost/Web/build.sh を走らせる (dotnet SDK と Emscripten が要る)。
