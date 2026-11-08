@@ -388,6 +388,14 @@ public sealed class IlBuild
             }
             case NodeKind.Assign:
                 return BuildAssignInto(expr, origin, acc);
+            // `new W();`: constructor の副作用のために作り、値は捨てる
+            case NodeKind.New:
+            {
+                var created = BuildExpr(expr);
+                if (created == null) return false;
+                acc.Add(new IlCallStat(created, origin));
+                return true;
+            }
         }
         return UnportedStat("expression statement", expr);
     }

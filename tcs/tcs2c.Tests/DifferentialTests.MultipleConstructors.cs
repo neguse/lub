@@ -129,4 +129,35 @@ public partial class DifferentialTests
             Assert.Contains("error TCS1001: unsupported syntax: ThisConstructorInitializer", ex.Message);
         }
     }
+
+    // 式文の `new W();` は constructor の副作用のために作って値を捨てる (#444)
+    [CFact]
+    public void NewAsStatement_RunsConstructor()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using System.Collections.Generic;
+            public class W
+            {
+                public static int Count;
+                public int Tag;
+                public W() { Count++; Console.WriteLine("made"); }
+                public W(int tag) { Tag = tag; Count += tag; }
+            }
+            public struct S { public int N; public S(int n) { N = n; W.Count += n; } }
+            public static class Game
+            {
+                public static void Main()
+                {
+                    new W();
+                    new W(10);
+                    new W { Tag = 3 };
+                    new S(100);
+                    new List<int>();
+                    Console.WriteLine(W.Count);
+                }
+            }
+            """, "Game");
+        Assert.Equal("made\nmade\n112", output);
+    }
 }
