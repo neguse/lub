@@ -1,15 +1,13 @@
 # C# (TinyC#) で書く
 
 lub のゲームコードは C# で書く。
-使うのは [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (Lua にも変換できる) で、playground ではブラウザ内 (tcs2c で C にした tcs の WASM 版)、native では lub が `third_party/tcs` を dotnet で動かす。
+使うのは [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (C にも変換できる) で、playground ではブラウザ内 (tcs2c で C にした tcs の WASM 版)、native では lub が `third_party/tcs` を dotnet で動かす。
 dotnet が無い環境では、tcs2c で C にした tcs (C の tcs) を使う。
 実行ファイルの隣に C の tcs があれば、dotnet があってもそちらを先に使う (後述)。
-tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、Lua、ブラウザのどれで動かしても同じ出力になる。
+tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、C の tcs、ブラウザのどれで動かしても同じ出力になる。
 
-「フル C# が動く」わけではない。TinyC# は C# 構文の DSL であり、
-モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン /
-nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さな核だけを
-サポートする。
+「フル C# が動く」わけではない。
+TinyC# は C# 構文の DSL であり、モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン / nullable 型チェック) を保ちつつ、コンパクトで予測しやすい小さな核だけをサポートする。
 
 ## 使える主なもの
 
@@ -32,13 +30,6 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
   `1.5f` のように `f` を付ける。`Math.Sin` など double を返す BCL は
   `(float)` cast で受ける)
 - LINQ クエリ構文(`from x in y select`)
-
-## 診断に出ない注意点
-
-- lub API(`cs-lib/lub_stub.cs` のような型チェック専用 stub)の呼び出しでは
-  デフォルト引数値が展開されない。
-  stub 側は `float? x = null` + `x ?? 既定値` で書く。自分で書いた
-  TinyC# メソッドの既定引数は通常どおり効く
 
 境界を踏むとコンパイル時に `TCS1001`(未対応構文)/ `TCS1002`(未対応 API)/
 `TCS1003`(配列と Dictionary への null 保存)の診断が出る。playground では

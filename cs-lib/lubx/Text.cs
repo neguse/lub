@@ -1,7 +1,5 @@
 // 実装ライブラリ lubx の Text。
-// pixels は 0-based 添字 (dst) で List<int> に書く (tcs の indexer が +1 して Lua の 1-based に写る)。
 // glyph bitmap (gb.Bytes) は view なので Get(src) で byte 走査する。
-// デフォルト引数値は nullable + ?? で受ける (tcs は call site 展開しない)。
 using System;
 using System.Collections.Generic;
 using Lub;

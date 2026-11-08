@@ -1,6 +1,4 @@
 // 実装ライブラリ lubx の MeshText。
-// gm.Positions / gm.Indices は 0-based で添字する (tcs の indexer が +1 して Lua の 1-based に写る)。
-// char は C# 予約語で、@char は tcs が宣言をそのまま `function MeshText:@char` と emit して不正 Lua になるため Char にしている。
 using System.Collections.Generic;
 using Lub;
 

@@ -14,7 +14,6 @@
 // - 演出: 投打を固定構図で見せ、打球後は守備と走塁を同じ画面に収める
 //
 // boneSlot 表 + 手詰めの packBones は cs-lib の Bones.pack (mesh.bones 順の resolve callback) に置き換え、乱数は Math.random でなく決定的な Rand。
-// cs-lib のクラスは生成 Lua でサンプルより後に定義されるため static 初期化子では参照できず、reloaded ブロックで遅延生成する (Iroha21 と同じ扱い)。
 
 using System;
 using System.Collections.Generic;

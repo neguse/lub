@@ -2,8 +2,6 @@
 // 実行: lub samples/23_crane_game/CraneGame23.csproj (transpile + watch + hot reload)
 //
 // 型と tcs 制約:
-// - Renderer3d / Mesh3d は static 初期化子でなく onFrame からの build() で
-//   遅延生成する (cs-lib クラスは load 順の都合で static 初期化子から呼べない)。
 // - 整数剰余 % は Mod() (floor 分解) で代替、switch は if 連鎖。
 // - Phys3d の body/world 取得は null ガード。
 //

@@ -17,7 +17,6 @@
 //
 // 力士は class Rikishi、screenPos の戻りは class ScreenPos、Phys3d の desc 匿名構造体は lub_stub の desc class。
 // end() は End()、char() は Char()。
-// Renderer3d / Mesh3d / MeshText は cs-lib の load 順の都合で static 初期化子から呼べないため onFrame で遅延生成する。
 // 整数 % は tcs 未対応なので imod (Math.Floor 分解) で書く。
 
 using System;
@@ -176,7 +175,6 @@ public static class Tonton22
     static FixedStep? step = null;
     static WorldRef3d? world = null;
     static int renderFrame = 0;
-    // TinyC# の module static 初期化時点では Vec3 global が未登録なので、最初の tick / render で遅延生成する。
     static Vec3? renderEye = null;
 
     // render ごとに取る実入力。

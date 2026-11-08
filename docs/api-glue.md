@@ -77,11 +77,9 @@ C# の名前が中立表記で、tcs VM の host の関数と C の名前は規�
 | tcs VM の host の関数 | `lub.gfx.begin_pass`, `lub.phys2d.world` | 先頭を小文字にし、大文字の前に `_` を入れて小文字化。namespace は全小文字 |
 | C | `lub_gfx_begin_pass`, `LUB_GFX_PIXEL_FORMAT_RGBA8` | `lub_` + namespace + snake_case。enum は `LUB_` + namespace + enum 名 + メンバの全大文字 |
 
-写像は tcs の emit が行う(tcs `doc/support-matrix.md` の「Lua 出力の
-名前規則」)。C# 側は `cs-lib/lub_stub.cs` の namespace `Lub` に static class
-(`Gfx`, `Input`, `App`, ...)と enum を置き、ゲームは
-`using Lub;` で `Gfx.BeginPass(...)` と書く。entry callback は
-`OnInit` / `OnEvent` / `OnFrame` / `OnQuit` で、player も bytecode から同じ名前で引く。
+写像は tcs が行う(tcs `doc/support-matrix.md` の名前規則の節)。
+C# 側は `cs-lib/lub_stub.cs` の namespace `Lub` に static class(`Gfx`, `Input`, `App`, ...)と enum を置き、ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。
+entry callback は `OnInit` / `OnEvent` / `OnFrame` / `OnQuit` で、player も bytecode から同じ名前で引く。
 
 ## tcs VM 実行
 

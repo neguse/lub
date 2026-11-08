@@ -1,7 +1,7 @@
 // lub の samples/18_coin_pusher の entry。
 // 実行: lub samples/18_coin_pusher/CoinPusher18.csproj (transpile + watch + hot reload) Phys3d の即時モード API で shelf/tray/pusher/coin を毎フレーム宣言し、step 後の pose を Renderer3d (lit + shadow + bloom) で描く。
 // tcs 制約による置換:
-// typedef Coin → class Coin、匿名 {coin, body, index} → class LiveCoin、整数除算・剰余 → FloorDiv/Mod (float 経由、対象は非負)、Mesh3d/Renderer3d は static 初期化子で作れないため onInit で作る。
+// typedef Coin → class Coin、匿名 {coin, body, index} → class LiveCoin、整数除算・剰余 → FloorDiv/Mod (float 経由、対象は非負)。
 
 using System;
 using System.Collections.Generic;

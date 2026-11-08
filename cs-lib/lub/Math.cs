@@ -1,5 +1,5 @@
 // lub の数学ライブラリ。
-// 可変 struct + operator オーバーロード (tcs が Lua metamethod に写像) で演算子面を出す。
+// 可変 struct + operator オーバーロードで演算子面を出す。
 // スカラー倍は (v * s) / (s * v) の両 overload を明示定義する。
 // モジュール名は System.Math と衝突するため class Math は作らず、Vec2 / Vec3 / Vec4 / Quat / Mat4 / MathUtil をフラットに置く。
 // Phys2d/Phys3d の wire 型 (Vec2d / Vec3d / Quat3d) とは wire() / fromWire() で明示変換する。

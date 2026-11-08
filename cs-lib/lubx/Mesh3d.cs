@@ -52,7 +52,7 @@ public class Mesh3d
             v.Add(view[i]);
         }
         // use_buffer は List<float> を取るので indices を詰め替える。
-        // Lua 上は同じ整数値の array table になり、wire data は変わらない。
+        // INDEX の float 列は runtime が uint32 に写すので、GPU の index は元の整数と同じになる。
         var idx = new List<float>();
         foreach (var i in data.Indices)
         {

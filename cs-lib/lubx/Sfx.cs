@@ -1,5 +1,5 @@
 // 実装ライブラリ lubx の Sfx。
-// 波形は List<float>.Add で積む (TinyC# の List は最初から Lua array table)。
+// 波形は List<float>.Add で積む。
 // 切り捨ては値が非負なので Math.Floor、i % 16 == 0 は整数剰余を避けて (i & 15) == 0。
 using System;
 using System.Collections.Generic;
