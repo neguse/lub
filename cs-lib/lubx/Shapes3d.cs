@@ -1,6 +1,5 @@
 // 実装ライブラリ lubx の Shapes3d。
 // MeshData は stub (cs-lib/lub_stub.cs) の MeshData class の object initializer で構築。
-// Std.int(len / k) は整数除算を避けて Math.Floor(len / k.0)、(i + 1) % sides の剰余は wrap 分岐 (i は 0..sides-1) で書く。
 
 using System;
 using System.Collections.Generic;
@@ -20,7 +19,7 @@ public static class Shapes3d
     {
         // 頂点色は白 (interleave 既定は 0.8 グレー)。
         // draw 側の tint がそのまま albedo になるように。
-        int n = (int)Math.Floor(positions.Count / 3.0f);
+        int n = positions.Count / 3;
         var colors = new List<float>();
         for (int i = 0; i < n * 3; i++)
             colors.Add(1.0f);
@@ -41,7 +40,7 @@ public static class Shapes3d
     /// </summary>
     public static MeshData FromInterleaved(List<float> v)
     {
-        int n = (int)Math.Floor(v.Count / (float)Shapes.Stride);
+        int n = v.Count / Shapes.Stride;
         var pos = new List<float>();
         var nrm = new List<float>();
         var col = new List<float>();
@@ -91,7 +90,7 @@ public static class Shapes3d
         };
         foreach (var f in faces)
         {
-            int baseIdx = (int)Math.Floor(pos.Count / 3.0f);
+            int baseIdx = pos.Count / 3;
             for (int i = 0; i < 4; i++)
             {
                 float su = (i == 1 || i == 2) ? 1.0f : -1.0f;
@@ -135,7 +134,7 @@ public static class Shapes3d
         for (int i = 0; i < sides; i++)
         {
             int b0 = i * 2;
-            int i1 = i + 1 == sides ? 0 : i + 1;
+            int i1 = (i + 1) % sides;
             int b1 = i1 * 2;
             foreach (var idx in new List<int> { b0, b0 + 1, b1 + 1, b0, b1 + 1, b1 })
                 indices.Add(idx);
@@ -144,7 +143,7 @@ public static class Shapes3d
         {
             float ny = side == 0 ? 1.0f : -1.0f;
             float y = ny * 0.5f;
-            int center = (int)Math.Floor(pos.Count / 3.0f);
+            int center = pos.Count / 3;
             pos.Add(0.0f);
             pos.Add(y);
             pos.Add(0.0f);
@@ -163,7 +162,7 @@ public static class Shapes3d
             }
             for (int i = 0; i < sides; i++)
             {
-                int i1 = i + 1 == sides ? 0 : i + 1;
+                int i1 = (i + 1) % sides;
                 int r0 = center + 1 + i;
                 int r1 = center + 1 + i1;
                 if (ny > 0)

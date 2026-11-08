@@ -1,6 +1,5 @@
 // 実装ライブラリ lubx の Sdf。
 // typed な木 (op / params / 子参照) を持ち、Sdf.Mesh で C API の平らな node 配列 (Lub.Mesh.SdfMesh の SdfNodeDesc) に落とす。
-// paint の bit 演算 (rgb >> 16 & 0xFF) は tcs 未対応なので Color.hex と同じ Math.Floor 分解で書く。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -149,9 +148,9 @@ public class SdfNode
         float? roughness = null) =>
         Unary(Lub.Mesh.SdfOp.Paint, new List<float>
         {
-            (float)Math.Floor(rgb / 65536.0f) % 256 / 255.0f,
-            (float)Math.Floor(rgb / 256.0f) % 256 / 255.0f,
-            rgb % 256 / 255.0f,
+            ((rgb >> 16) & 0xFF) / 255.0f,
+            ((rgb >> 8) & 0xFF) / 255.0f,
+            (rgb & 0xFF) / 255.0f,
             metallic ?? 0.0f,
             roughness ?? 0.8f,
         }, this);

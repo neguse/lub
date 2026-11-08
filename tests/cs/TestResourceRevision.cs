@@ -1,8 +1,6 @@
 // Use* の version 規約:
 //   * 省略 = 「内容が変わった」宣言。runtime が新しい実効 version を発行する
 //   * ref.Version の再主張 = stored と一致して upload を skip する
-//   * 実効 version は entry の hot reload を跨いで巻き戻らない
-//     (hot reload を跨ぐ検査は Lua の module 差し替えが要るので C# では移していない)
 using System;
 using System.Collections.Generic;
 using Lub;

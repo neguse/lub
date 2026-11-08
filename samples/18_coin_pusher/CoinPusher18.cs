@@ -1,7 +1,5 @@
 // lub の samples/18_coin_pusher の entry。
 // 実行: lub samples/18_coin_pusher/CoinPusher18.csproj (transpile + watch + hot reload) Phys3d の即時モード API で shelf/tray/pusher/coin を毎フレーム宣言し、step 後の pose を Renderer3d (lit + shadow + bloom) で描く。
-// tcs 制約による置換:
-// typedef Coin → class Coin、匿名 {coin, body, index} → class LiveCoin、整数除算・剰余 → FloorDiv/Mod (float 経由、対象は非負)。
 
 using System;
 using System.Collections.Generic;
@@ -118,17 +116,6 @@ public static class CoinPusher18
     {
     }
 
-    // tcs は整数除算・剰余を出せないので float 経由で書く (v, n は非負前提)。
-    static int FloorDiv(int v, int n)
-    {
-        return (int)Math.Floor(v / (float)n);
-    }
-
-    static int Mod(int v, int n)
-    {
-        return v - (int)Math.Floor(v / (float)n) * n;
-    }
-
     // 空の台では最初の数分間なにも起きないので、起動時に台を埋めておく。
     // 決定論のため配置は固定の擬似乱数。
     static void PrefillTable()
@@ -141,9 +128,9 @@ public static class CoinPusher18
             n = n + 1;
             c.Active = true;
             c.Gen = c.Gen + 1;
-            c.SpawnX = -1.2f + Mod(i, 5) * 0.6f + Mod(i * 137, 23) * 0.01f;
-            c.SpawnY = 0.75f + FloorDiv(i, 5) * 0.12f;
-            c.SpawnZ = -1.15f + FloorDiv(i, 5) * 0.28f;
+            c.SpawnX = -1.2f + (i % 5) * 0.6f + (i * 137 % 23) * 0.01f;
+            c.SpawnY = 0.75f + (i / 5) * 0.12f;
+            c.SpawnZ = -1.15f + (i / 5) * 0.28f;
         }
         // tray はカーペット状に敷き詰める (3 列 x 6 枚 + 前縁ぎわ 4 枚)。
         // 密度があるほど 1 回の落下が前縁まで伝わり、序盤から払い出しが出る。
@@ -153,9 +140,9 @@ public static class CoinPusher18
             n = n + 1;
             c.Active = true;
             c.Gen = c.Gen + 1;
-            c.SpawnX = -1.1f + Mod(i, 6) * 0.44f + Mod(i * 251, 17) * 0.01f;
-            c.SpawnY = 0.25f + FloorDiv(i, 6) * 0.02f;
-            c.SpawnZ = -0.42f + FloorDiv(i, 6) * 0.36f + Mod(i * 89, 13) * 0.01f;
+            c.SpawnX = -1.1f + (i % 6) * 0.44f + (i * 251 % 17) * 0.01f;
+            c.SpawnY = 0.25f + (i / 6) * 0.02f;
+            c.SpawnZ = -0.42f + (i / 6) * 0.36f + (i * 89 % 13) * 0.01f;
         }
         for (int i = 0; i < 4; i++)
         {
@@ -163,7 +150,7 @@ public static class CoinPusher18
             n = n + 1;
             c.Active = true;
             c.Gen = c.Gen + 1;
-            c.SpawnX = -0.85f + i * 0.57f + Mod(i * 173, 11) * 0.01f;
+            c.SpawnX = -0.85f + i * 0.57f + (i * 173 % 11) * 0.01f;
             c.SpawnY = 0.22f;
             c.SpawnZ = 0.34f;
         }
@@ -395,11 +382,11 @@ public static class CoinPusher18
 
         // 定期自動投入。
         // デモ (と golden capture) が自走し、数枚に 1 枚の大型ボーナスコイン (5 点) が短期目標になる。
-        if (Mod(frame, autoInterval) == 10)
+        if (frame % autoInterval == 10)
         {
             autoCount = autoCount + 1;
-            int value = Mod(autoCount, bonusEvery) == 0 ? 5 : 1;
-            SpawnCoin(-1.0f + Mod(frame * 7919, 2000) / 1000.0f, value);
+            int value = autoCount % bonusEvery == 0 ? 5 : 1;
+            SpawnCoin(-1.0f + (frame * 7919 % 2000) / 1000.0f, value);
         }
 
         var live = DeclareCoins(nextWorld);
@@ -463,10 +450,10 @@ public static class CoinPusher18
     // 上段 = 10 点コイン (大)、下段 = 1 点コイン (小)。
     static void DrawScoreCoins(Renderer3d rn, Mesh3d cyl)
     {
-        int tens = FloorDiv(score, 10);
+        int tens = score / 10;
         if (tens > 13)
             tens = 13;
-        int units = Mod(score, 10);
+        int units = score % 10;
         for (int i = 0; i < tens; i++)
         {
             rn.Draw(cyl, StaticModel(-1.25f + i * 0.21f, -0.62f, 1.08f, 0.14f, 0.05f, 0.14f),

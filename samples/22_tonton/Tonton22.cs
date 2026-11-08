@@ -17,7 +17,6 @@
 //
 // 力士は class Rikishi、screenPos の戻りは class ScreenPos、Phys3d の desc 匿名構造体は lub_stub の desc class。
 // end() は End()、char() は Char()。
-// 整数 % は tcs 未対応なので imod (Math.Floor 分解) で書く。
 
 using System;
 using System.Collections.Generic;
@@ -204,14 +203,6 @@ public static class Tonton22
 
     public static void OnQuit()
     {
-    }
-
-    /// <summary>整数剰余 (tcs は % 未対応)。
-    /// a, b > 0 前提。
-    /// </summary>
-    static int Imod(int a, int b)
-    {
-        return a - (int)Math.Floor((float)a / (float)b) * b;
     }
 
     // --- SDF だるま力士 ----------------------------------------------------- bone 付き SDF ツリーからメッシュ化。
@@ -796,10 +787,10 @@ public static class Tonton22
         // 自動トントン: 決定論の擬似乱数で縁寄りを叩き続ける (勝負中のみ)
         if (auto)
         {
-            if (state != stFight || Imod(frame, 24) != 12)
+            if (state != stFight || frame % 24 != 12)
                 return;
-            float aa = Imod(frame * 7919, 628) / 100.0f;
-            float rr = dohyoR * (0.45f + Imod(frame * 337, 50) / 100.0f);
+            float aa = frame * 7919 % 628 / 100.0f;
+            float rr = dohyoR * (0.45f + frame * 337 % 50 / 100.0f);
             TapAt(dohyo, (float)Math.Cos(aa) * rr, (float)Math.Sin(aa) * rr);
             return;
         }

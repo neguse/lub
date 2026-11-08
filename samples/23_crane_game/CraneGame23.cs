@@ -1,8 +1,8 @@
 // lub の samples/23_crane_game の entry。
 // 実行: lub samples/23_crane_game/CraneGame23.csproj (transpile + watch + hot reload)
 //
-// 型と tcs 制約:
-// - 整数剰余 % は Mod() (floor 分解) で代替、switch は if 連鎖。
+// 書き方:
+// - switch は if 連鎖。
 // - Phys3d の body/world 取得は null ガード。
 //
 // 3D クレーンゲーム (2 本爪プライズ機)。
@@ -182,13 +182,6 @@ public static class CraneGame23
 
     public static void OnQuit()
     {
-    }
-
-    /// <summary>非負 int の剰余 (tcs は % を使わない規約なので floor 分解)。
-    /// </summary>
-    static int Mod(int a, int n)
-    {
-        return (int)(a - (float)Math.Floor((float)a / n) * n);
     }
 
     // --- SDF モデル ------------------------------------------------------- クマ (約 30cm)。
@@ -722,13 +715,13 @@ public static class CraneGame23
                     int targetIndex = 0;
                     for (int k = 0; k < bears.Count; k++)
                     {
-                        int idx = Mod(autoIndex + k, bears.Count);
+                        int idx = (autoIndex + k) % bears.Count;
                         var b = bears[idx];
                         if (b.Respawn == 0)
                         {
                             target = b;
                             targetIndex = idx;
-                            autoIndex = Mod(autoIndex + k + 1, bears.Count);
+                            autoIndex = (autoIndex + k + 1) % bears.Count;
                             break;
                         }
                     }
@@ -860,10 +853,10 @@ public static class CraneGame23
                     // 補充: フィールド奥へ落とす。
                     // 位置は決定論的にずらす
                     b.Gen++;
-                    b.X = -0.02f - Mod(b.Gen * 53, 13) * 0.012f;
+                    b.X = -0.02f - b.Gen * 53 % 13 * 0.012f;
                     b.Y = 0.35f;
-                    b.Z = -0.15f + Mod(b.Gen * 31, 11) * 0.02f;
-                    b.Yaw = -Mod(b.Gen * 137, 63) * 0.1f;
+                    b.Z = -0.15f + b.Gen * 31 % 11 * 0.02f;
+                    b.Yaw = -(b.Gen * 137 % 63) * 0.1f;
                 }
             }
         }
