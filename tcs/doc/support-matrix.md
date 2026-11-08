@@ -584,7 +584,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `Guid` | **-** | | |
 | `DateTime` | **-** | | |
 | `TimeSpan` | **-** | | |
-| `Random` | **Y** | 後述 | |
+| `Random` | **Y** | `TinySystem.Random` (§15) | `using System;` だけで見える `Random` は System.Random で TCS1002 |
 | `StringComparison` | **-** | | |
 | `Type` | **N/A** | | リフレクション。型を書くのは可、member は TCS1002 |
 | `Attribute` | **N/A** | | 自作の属性の基底に書くのは可、member は TCS1002 |
@@ -696,9 +696,12 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 
 ## 15. Random メンバー
 
+`Random` は `TinySystem.Random` として使う (`using TinySystem;` か `TinySystem.Random` と完全修飾)。
+`using System;` だけで見える `Random` は System.Random と見なし、TCS1002 (`use TinySystem.Random`) になる。
+
 | メンバー | 状態 | 備考 |
 |---------|:----:|------|
-| `new Random()` / `new Random(seed)` | **Y** | System.Random と同じ形。tcs VM と C は同じ xoshiro256** の列を作り、seed 固定時は bit 一致し、`Random.Seed(seed)` 後の `Shared` とも一致 (il-spec §13)。seed 未指定は時刻などから作る seed で予測できるので、敵対的な用途には向かない。instance は GC object |
+| `new Random()` / `new Random(seed)` | **Y** | `TinySystem.Random` (System.Random と同じ形)。tcs VM と C は同じ xoshiro256** の列を作り、seed 固定時は bit 一致し、`Random.Seed(seed)` 後の `Shared` とも一致 (il-spec §13)。seed 未指定は時刻などから作る seed で予測できるので、敵対的な用途には向かない。instance は GC object |
 | `Random.Shared` (static) | **Y** | |
 | `Random.Seed(seed)` | **Y** | `Shared` の列の固定 (tcs 独自。System.Random に無い) |
 | `r.Next()` / `r.Next(max)` / `r.Next(min, max)` | **Y** | .NET 標準 API (上限は exclusive。空の範囲 `Next(0)` / `Next(n, n)` は下限を返す) |
