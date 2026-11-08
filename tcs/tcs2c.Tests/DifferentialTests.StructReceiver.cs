@@ -65,4 +65,47 @@ public partial class DifferentialTests
             """, "P");
         Assert.Equal("3\n3,1\n4", output);
     }
+
+    // auto-property の先の struct の field、readonly field は C# の「値」なので、method は copy を書き換える (#74 #414)
+    [CFact]
+    public void StructReceiver_AutoPropertyAndReadonlyFieldMutateCopy()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public struct S { public int Value; public void Increment() { Value++; } }
+            public struct Outer { public S Inner; public readonly S RoInner; public Outer(int v) { Inner = new S(); RoInner = new S { Value = v }; RoInner.Increment(); } }
+            public class Holder
+            {
+                public Outer Value { get; set; }
+                public readonly S Counter = new S { Value = 1 };
+                public static readonly S Shared = new S { Value = 1 };
+                public S Mutable;
+                public readonly Outer RoOuter = new Outer(1);
+                public void Bump() { Counter.Increment(); }
+                public Holder() { Counter.Increment(); }
+            }
+            public static class P
+            {
+                public static void Main()
+                {
+                    var h = new Holder { Value = new Outer { Inner = new S { Value = 1 } } };
+                    h.Value.Inner.Increment();
+                    Console.WriteLine(h.Value.Inner.Value);
+                    h.Counter.Increment();
+                    h.Bump();
+                    Console.WriteLine(h.Counter.Value);
+                    Holder.Shared.Increment();
+                    Console.WriteLine(Holder.Shared.Value);
+                    h.RoOuter.Inner.Increment();
+                    Console.WriteLine(h.RoOuter.Inner.Value + "," + h.RoOuter.RoInner.Value);
+                    h.Mutable.Increment();
+                    Console.WriteLine(h.Mutable.Value);
+                    var o = new Outer(5);
+                    o.Inner.Increment(); o.RoInner.Increment();
+                    Console.WriteLine(o.Inner.Value + "," + o.RoInner.Value);
+                }
+            }
+            """, "P");
+        Assert.Equal("1\n2\n1\n0,2\n1\n1,6", output);
+    }
 }

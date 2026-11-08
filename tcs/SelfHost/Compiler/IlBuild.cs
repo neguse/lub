@@ -5761,20 +5761,32 @@ public sealed class IlBuild
         return WrapStructCopy(recvSyntax, recv);
     }
 
-    private static bool IsStructVariableReceiver(Node e)
+    private bool IsStructVariableReceiver(Node e)
     {
         switch (e.Kind)
         {
             case NodeKind.This: return true;
-            case NodeKind.Name: return e.Info == RefKind.Local || e.Info == RefKind.Field;
-            // `x?.F` / `x?[i]` の binding は x が参照型なら変数 (`T?` の x は値の copy)
-            case NodeKind.Member: return e.Sym != null && e.Sym.Kind == SymKind.Field && (e.Value != 1 || IsReferenceType(NaturalType(e.A!)));
+            case NodeKind.Name: return e.Info == RefKind.Local || e.Info == RefKind.Field && IsWritableField(e.Sym);
+            // `x?.F` / `x?[i]` の binding は x が参照型なら変数 (`T?` の x は値の copy)。
+            // struct の field は、持ち主の struct が変数のときだけ変数 (property の結果の field は値)
+            case NodeKind.Member:
+                if (e.Sym == null || e.Sym.Kind != SymKind.Field || !IsWritableField(e.Sym)) return false;
+                if (e.Value == 1) return IsReferenceType(NaturalType(e.A!));
+                return e.Sym.IsStatic || !NaturalType(e.A!).IsValueType || IsStructVariableReceiver(e.A!);
             case NodeKind.Index: return (e.A!.Type == null || e.A.Type.Kind == TypeKind.Array) && (e.Value != 1 || IsReferenceType(NaturalType(e.A)));
             case NodeKind.Paren:
             case NodeKind.Conv:
                 return IsStructVariableReceiver(e.A!);
         }
         return false;
+    }
+
+    // readonly な field は、宣言した型の constructor (static なら static constructor) の外では値 (C# の防御的 copy)
+    private bool IsWritableField(Symbol? f)
+    {
+        if (f == null || !f.IsReadonly) return true;
+        var fn = Ctx.CurrentFunction;
+        return fn != null && fn.Kind == SymKind.Ctor && fn.Owner == f.Owner && fn.IsStatic == f.IsStatic;
     }
 
     // ---- 小道具 ----
