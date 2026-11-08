@@ -2964,10 +2964,11 @@ public sealed class IlBuild
                 acc.Add(new IlIf(Arm(at.Cond, thenB), elseB, origin));
                 return true;
             }
+            // 一致しないとき値なしの形 (`x = a?.b` の a が null) は、if を代入にすると前の値が残るので IIFE のまま
             if (value is IlIife ai && target is IlVar)
             {
                 var shape = TryGetValueChainShape(ai);
-                if (shape != null)
+                if (shape != null && shape.Complete)
                 {
                     foreach (var st in shape.Setup) acc.Add(IlTree.WithOrigin(st, origin));
                     if (shape.Chain != null) acc.Add(IlTree.WithOrigin(SwitchChainAsAssigns(shape.Chain, target), origin));
