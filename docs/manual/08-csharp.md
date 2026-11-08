@@ -1,13 +1,12 @@
 # C# (TinyC#) で書く
 
 lub のゲームコードは C# で書く。
-使うのは [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (C にも変換できる) で、playground ではブラウザ内 (tcs2c で C にした tcs の WASM 版)、native では lub が `third_party/tcs` を dotnet で動かす。
+使うのは [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (release 向けに C にも変換できる) で、playground ではブラウザ内 (tcs2c で C にした tcs の WASM 版)、native では lub が `third_party/tcs` を dotnet で動かす。
 dotnet が無い環境では、tcs2c で C にした tcs (C の tcs) を使う。
 実行ファイルの隣に C の tcs があれば、dotnet があってもそちらを先に使う (後述)。
 tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、C の tcs、ブラウザのどれで動かしても同じ出力になる。
 
-「フル C# が動く」わけではない。
-TinyC# は C# 構文の DSL であり、モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン / nullable 型チェック) を保ちつつ、コンパクトで予測しやすい小さな核だけをサポートする。
+「フル C# が動く」わけではない。TinyC# は C# 構文の DSL であり、モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン / nullable 型チェック) を保ちつつ、tcs VM と C に素直に落ちる小さな核だけをサポートする。
 
 ## 使える主なもの
 
