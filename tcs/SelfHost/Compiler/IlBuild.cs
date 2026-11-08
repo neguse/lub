@@ -4144,10 +4144,16 @@ public sealed class IlBuild
 
     private int _patternTempDepth;
 
-    // 入力の値を 1 回だけ計算して照合する。読み直すと値や副作用が変わりうる入力は temp に評価してから照合する
+    // 入力の値を 1 回だけ計算して照合する。読み直すと値や副作用が変わりうる入力は temp に評価してから照合する。
+    // field の読みは、照合の途中の getter や演算子が field を書き換えうるので、照合が呼び出しを含むなら temp に置く
     private IlExpr? BindPatternInput(IlExpr input, System.Func<IlExpr, IlExpr?> build)
     {
-        if (IlTree.IsCallFree(input)) return build(input);
+        if (input is IlLit || input is IlVar) return build(input);
+        if (IlTree.IsCallFree(input))
+        {
+            var direct = build(input);
+            if (direct == null || IlTree.IsCallFree(direct)) return direct;
+        }
         var name = "__tcs_pat" + _patternTempDepth;
         _patternTempDepth++;
         var applied = build(new IlVar(name, null));

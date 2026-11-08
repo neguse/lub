@@ -176,4 +176,34 @@ public partial class DifferentialTests
             """, "P");
         Assert.Equal("A\nA\nB\nzero\nbig4\nD5\nbig6\nzero\nbig4\nbig5\nbig6\n2\nloop9\nloop9\nearly9\ngt3", output);
     }
+
+    // field を入力にした照合は、途中の getter が field を差し替えても最初に読んだ object を照合する (#88)
+    [CFact]
+    public void PropertyPattern_FieldInputReadOnce()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public class Box
+            {
+                public int Value;
+                public int Reset { get { P.Current = new Box { Value = 9 }; return 1; } }
+            }
+            public class Holder { public Box Item; }
+            public static class P
+            {
+                public static Box Current;
+                public static void Main()
+                {
+                    Current = new Box { Value = 2 };
+                    Console.WriteLine(Current is { Reset: 1, Value: 2 });
+                    Console.WriteLine(Current.Value);
+                    var h = new Holder { Item = new Box { Value = 3 } };
+                    Current = h.Item;
+                    Console.WriteLine(h.Item is { Value: 3 } or { Value: 4 });
+                    Console.WriteLine(Current is { Value: 3, Reset: 1 } ? Current.Value : -1);
+                }
+            }
+            """, "P");
+        Assert.Equal("True\n9\nTrue\n9", output);
+    }
 }
