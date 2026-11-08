@@ -72,6 +72,7 @@ cs_runtime_tests=(
   TestComputeUniformBlock
   TestStoragePreserve
   TestStorageFormat
+  TestReadStorageTexture
   TestXrInactive
   TestMathDeterminism
   TestTcsRuntime
