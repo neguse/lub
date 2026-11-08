@@ -308,7 +308,7 @@ public class StringTests
             {
                 public static string Show() { object o = new R(1); return "x" + o; }
             }
-            """, "S.Show()", dotnet: false));
+            """, "S.Show()"));
         Assert.Contains("ToString of this value is not supported", ex.Message);
     }
 

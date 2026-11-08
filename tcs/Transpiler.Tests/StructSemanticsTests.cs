@@ -26,7 +26,7 @@ public class StructSemanticsTests
                     return $"{a.X}|{b.X}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("1|99", result);
     }
 
@@ -49,7 +49,7 @@ public class StructSemanticsTests
                     return $"{a.X}|{b.X}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("1|11", result);
     }
 
@@ -68,7 +68,7 @@ public class StructSemanticsTests
                     return $"{h.Pos.X}|{h.Pos.Y}";
                 }
             }
-            """, "Holder.Test()", dotnet: false);
+            """, "Holder.Test()");
         Assert.Equal("0|0", result);
     }
 
@@ -88,7 +88,7 @@ public class StructSemanticsTests
                     return $"{arr[0].X}|{p.X}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("5|42", result);
     }
 
@@ -118,7 +118,7 @@ public class StructSemanticsTests
                     return $"{c.N}|{c.Twice()}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("2|4", result);
     }
 
@@ -139,7 +139,7 @@ public class StructSemanticsTests
                     return list[0].N;
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("0", result);
     }
 
@@ -158,7 +158,7 @@ public class StructSemanticsTests
                     return arr[0].N;
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("1", result);
     }
 
@@ -182,7 +182,7 @@ public class StructSemanticsTests
                     return $"{a.X}|{a.Y}|{b.X}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("42|1|0", result);
     }
 
@@ -204,7 +204,7 @@ public class StructSemanticsTests
                     return p.V;
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("7", result);
     }
 
@@ -230,7 +230,7 @@ public class StructSemanticsTests
                     return $"{b.Raw}|{b.Doubled}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("21|42", result);
     }
 
@@ -270,7 +270,7 @@ public class StructSemanticsTests
                     return $"{a.I.V}|{b.I.V}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("1|99", result);
     }
 
@@ -290,7 +290,7 @@ public class StructSemanticsTests
                     return $"{p.A}|{p.B}|{z.A}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("3|sx|0", result);
     }
 
@@ -309,7 +309,7 @@ public class StructSemanticsTests
                     return $"{a == b}|{a == c}|{a != c}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("True|False|True", result);
     }
 
@@ -327,7 +327,7 @@ public class StructSemanticsTests
                     return $"{a.A}|{c.A}|{c.B}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("1|9|x", result);
     }
 
@@ -346,7 +346,7 @@ public class StructSemanticsTests
                     return $"{a.A}|{b.A}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("1|5", result);
     }
 
@@ -373,7 +373,7 @@ public class StructSemanticsTests
                     return $"{a == b}|{a == c}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("True|False", result);
     }
 
@@ -436,7 +436,7 @@ public class StructSemanticsTests
                     return $"{a.X}|{b.X}|{b.Plus(5)}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("1|11|16", result);
     }
 
@@ -454,7 +454,7 @@ public class StructSemanticsTests
                     return $"{a.X + a.Y}|{a == b}";
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("5|True", result);
     }
 

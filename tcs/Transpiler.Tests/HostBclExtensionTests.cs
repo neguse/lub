@@ -23,7 +23,7 @@ public class HostBclExtensionTests
                     return v + ":" + missing;
                 }
             }
-            """, "T.Test()", dotnet: false);
+            """, "T.Test()");
         Assert.Equal("from-env:none", result);
     }
 
@@ -66,7 +66,7 @@ public class HostBclExtensionTests
                     return (a + 1) + ":" + (b * 2) + ":" + (c * 4) + ":" + (a / 5);
                 }
             }
-            """, "T.Test()", dotnet: false); // 5.0 と 5 の表記差 (既知)
+            """, "T.Test()");
         Assert.Equal("43:5:5:8", result);
     }
 
@@ -92,8 +92,7 @@ public class HostBclExtensionTests
                     return n;
                 }
             }
-            """, "T.Sum(\"a\\u00e9\") + \",\" + T.Count(\"\\u3042\\u3044z\")",
-            dotnet: false);
+            """, "T.Sum(\"a\\u00e9\") + \",\" + T.Count(\"\\u3042\\u3044z\")");
         Assert.Equal("330,3", result);
     }
 
