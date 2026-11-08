@@ -64,18 +64,18 @@ var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (S
 | IlParen(E) | 括弧 (評価順は §4 で規定済み — 表示用) |
 | IlValues(Items) | 多値。IlExporter は作らず、tcs VM と C は読まない |
 | IlTernary(Cond, T, F) | 条件式。tcs VM は分岐と結果の register、C は `?:` |
-| IlCall(Callee, Args, NilElements) | 解決済み callee 名の呼び出し。callee は "Class.Method" / intrinsic 名 (§13: print, Math.*, String.*, List.*, Dict.*, Char.*, TinySystem.*, table.insert (List.Add), table.remove (RemoveAt。2 番目の引数は 1 始まりの位置で、IL は添字に 1 を足した式を渡す), string.format, string.byte / string.char (char ↔ 1 byte string), \_\_tcs_idiv, \_\_tcs_irem, \_\_tcs_fstr / \_\_tcs_bstr / \_\_tcs_nstr (文字列化) など)。NilElements は tcs VM と C が読まない |
+| IlCall(Callee, Args, NilElements) | 解決済み callee 名の呼び出し。callee は "Class.Method" / intrinsic 名 (§13: Math.*, String.*, List.* (List.Add、List.RemoveAt は 0 始まりの添字), Dict.*, Char.*, TinySystem.*, \_\_tcs_writeline / \_\_tcs_write (Console.WriteLine / Write), \_\_tcs_getenv, \_\_tcs_iparse / \_\_tcs_fparse (int.Parse / float.Parse), \_\_tcs_format (printf の書式), \_\_tcs_cstr (char → 1 byte string), \_\_tcs_upper / \_\_tcs_lower, \_\_tcs_fmod (f32 の %), \_\_tcs_refeq (参照の比較), \_\_tcs_idiv, \_\_tcs_irem, \_\_tcs_str / \_\_tcs_fstr / \_\_tcs_bstr / \_\_tcs_nstr (文字列化) など)。NilElements は tcs VM と C が読まない |
 | IlDynCall(Callee, Args) | 式 callee の呼び出し (delegate 変数等) |
 | IlInvoke(Recv, Method, Args) | インスタンスメソッド (interface の呼び出しは実行時型で解決 §9) |
 | IlNewObj(TypeName, Args, Ctor) | class 生成 (§9: default 初期化→ctor)。Ctor は constructor の名前 (既定は `new`)。struct は引数の無い zero 値 |
 | IlTable(Entries, ElementType, KeyType, IsArray, ObjectType, NilElements) | List / 配列 / Dictionary の literal と object initializer の項の並び。entry = 配列項 / Key つきの項 / NameKey つきの項 (`name = v`)。ElementType は配列 / List の要素型、KeyType は Dictionary の key の型、IsArray は配列、ObjectType は NameKey の項で作る型 (`--ref` の data class か struct)。NilElements は tcs VM と C が読まない |
 | IlNewArray(ElementType, Length, Default) | 固定長配列生成 (§11)。Default は要素の default 値 (値型は IL、struct は IlNewObj の zero 値、参照型は null)。tcs VM と C は zero 初期化で、Default を読まない |
 | IlNewQueue(Type) / IlNewHashSet(Type) | 空の Queue / HashSet の生成。Type は型の表示名 |
-| IlNumericConvert(Value, TargetType, LuaCheck) | 数の変換 (TargetType は int / float)。object の値からなら unbox で、実行時の型が違えば fault。LuaCheck は tcs VM と C が読まない (TargetType から検査を作る) |
-| IlRefCast(Value, TargetType, LuaCheck, LuaCheckArg) | 参照の値の cast。tcs VM と C は TargetType から実行時の型の検査を作り、LuaCheck と LuaCheckArg を読まない |
+| IlNumericConvert(Value, TargetType, Unbox) | 数の変換 (TargetType は int / float)。object の値からなら unbox で、実行時の型が違えば fault。Unbox はその印で、tcs VM と C は読まない (Value の型と TargetType から検査を作る) |
+| IlRefCast(Value, TargetType) | 参照の値の cast。tcs VM と C は TargetType から実行時の型の検査を作る |
 | IlStructCopy(E, TypeName, Nullable, Copiers) | 値型の copy 地点 (§10)。Nullable は E が struct の T? (値があるときだけ中を copy)。tcs VM は register の move か heap との間の葉の load / store、C は素の値代入で、Copiers は読まない |
 | IlIsType(E, TypeRef, IsInterface) | class 型 test (T またはその派生、null 偽 §9)。IsInterface なら実装の test |
-| IlIsLuaType(E, LuaType) | object の中の値の型 test。LuaType は `string` / `boolean` / `integer` / `float` / `number` (int か float)。tcs VM は box の型を見る。C は未対応 (emit error) |
+| IlIsPrimType(E, Type) | object の中の値のプリミティブの型 test。Type (`IlPrimType`) は String / Bool / Int / Float / Number (int か float)。tcs VM は box の型を見る。C は未対応 (emit error) |
 | IlIife(Stats) | 式位置の逐次実行 (switch 式・?. 等の lowering 産物)。tcs VM は結果の register を持つ block に、C は GNU statement expression に展開する |
 | IlClosure(Params, Body / ExprBody, PatternLocals) | closure。capture は変数単位 (§7)。PatternLocals は式本体の中の is-pattern の変数 |
 | IlMethodGroup(TypeRef, Method, CopyTypes) | static method の method group (delegate への変換)。CopyTypes は parameter ごとの struct の copy の要否 (copy 不要なら null、§10)。tcs VM は関数を指す closure、C は値渡しの thunk で、どちらも CopyTypes を読まない |
@@ -86,7 +86,7 @@ var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (S
 | IlNullableValue(E) | .Value (値なしは fault) |
 | IlNullableGetOrDefault(E, Default) | `??` / GetValueOrDefault。Default は T か T?、値なしのときだけ評価 |
 | IlLiftedBin(Op, L, R) / IlLiftedUn(Op, E) | lifted 演算子 (il-spec §3)。op は IlLiftedOp (DivInt / RemInt を含む) |
-| IlCast(E, TypeRef, LuaRef) | user class / record への明示 downcast。upcast と同型は IL に現れない (透過)。実行時型が TypeRef 系でなければ fault。LuaRef は tcs VM と C が読まない |
+| IlCast(E, TypeRef) | user class / record への明示 downcast。upcast と同型は IL に現れない (透過)。実行時型が TypeRef 系でなければ fault |
 
 ### 文 (IlStat) — Origin (IlPos。C# のファイル、行、列) を持つ。`tcs vm --trace` と VM の行の情報が使い、意味論には関わらない
 

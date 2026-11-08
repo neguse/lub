@@ -131,7 +131,7 @@ public sealed class CEmitter
             if (cur == ancestor) return true;
             foreach (var i in _classes[cur].Interfaces)
             {
-                if (_facts.LuaTypeName(i) == ancestor) return true;
+                if (_facts.IlTypeName(i) == ancestor) return true;
             }
             cur = _classes[cur].BaseName;
         }
@@ -1415,7 +1415,7 @@ public sealed class CEmitter
             case IlNumericConvert: return "IlNumericConvert";
             case IlRefCast: return "IlRefCast";
             case IlIsType: return "IlIsType";
-            case IlIsLuaType: return "IlIsLuaType";
+            case IlIsPrimType: return "IlIsPrimType";
             case IlIife: return "IlIife";
             case IlClosure: return "IlClosure";
             case IlMethodGroup: return "IlMethodGroup";
@@ -1998,8 +1998,8 @@ public sealed class CEmitter
     {
         var foreign = ForeignMethod(call.Callee);
         if (foreign != null) return RenderForeignIlCall(foreign, call.Args);
-        // object / interface どうしの参照の比較 (IL の rawequal)。C の == は参照の比較なので IlBin の Eq と同じに書く
-        if (call.Callee == "rawequal")
+        // object / interface どうしの参照の比較 (IL の __tcs_refeq)。C の == は参照の比較なので IlBin の Eq と同じに書く
+        if (call.Callee == "__tcs_refeq")
             return RenderExpr(new IlBin(IlBinOp.Eq, call.Args[0], call.Args[1], null));
         var type = TypeOfCall(call);
         string callee = call.Callee;
@@ -2026,14 +2026,14 @@ public sealed class CEmitter
                 "tcs_checked_" + Strings.From(callee, ContractFacts.Len("__tcs_c")), type, values);
         }
         if (callee == "__tcs_cneg") return "tcs_checked_neg(" + RenderExpr(call.Args[0]) + ")";
-        if (callee == "print") return RenderPrint(call);
-        if (callee == "io.write")
+        if (callee == "__tcs_writeline") return RenderPrint(call);
+        if (callee == "__tcs_write")
         {
             var values = new List<TypedValue>();
             values.Add(new TypedValue(CType.String, RenderToString(UnwrapFstr(call.Args[0]))));
             return RenderOrderedCall("tcs_write_string", CType.Void, values);
         }
-        if (callee == "tostring") return RenderToString(call.Args[0]);
+        if (callee == "__tcs_str") return RenderToString(call.Args[0]);
         if (callee == "Dict.ContainsKey") return RenderDictSimple(call, "tcs_dict_contains");
         if (callee == "Dict.Remove") return RenderDictSimple(call, "tcs_dict_remove");
         if (callee == "Dict.Count")
@@ -2042,7 +2042,7 @@ public sealed class CEmitter
         // (f32 は shortest round-trip) に写す
         if (callee == "__tcs_fstr" || callee == "__tcs_bstr") return RenderToString(call.Args[0]);
         if (callee == "__tcs_nstr") return RenderNullableToString(call.Args[0]);
-        if (callee == "table.insert") return RenderListAdd(call);
+        if (callee == "List.Add") return RenderListAdd(call);
         if (IsIntrinsicCallee(call.Callee)) return RenderIntrinsic(call);
         return RenderUserCall(call);
     }
@@ -2051,7 +2051,7 @@ public sealed class CEmitter
     {
         var foreign = ForeignMethod(call.Callee);
         if (foreign != null) return TypeOfForeignIlCall(foreign, call.Args);
-        if (call.Callee == "rawequal")
+        if (call.Callee == "__tcs_refeq")
         {
             RequireArity(call.Callee, call.Args.Count, 2);
             if (CFail.Failed) return CType.Bool;
@@ -2074,14 +2074,14 @@ public sealed class CEmitter
             return CType.I32;
         }
         // Console.Write (改行なし)
-        if (call.Callee == "io.write")
+        if (call.Callee == "__tcs_write")
         {
             RequireArity("Console.Write", call.Args.Count, 1);
             if (CFail.Failed) return CType.Void;
             RenderToStringType(UnwrapFstr(call.Args[0]));
             return CType.Void;
         }
-        if (call.Callee == "print")
+        if (call.Callee == "__tcs_writeline")
         {
             if (call.Args.Count == 0) return CType.Void;
             RequireArity(call.Callee, call.Args.Count, 1);
@@ -2128,7 +2128,7 @@ public sealed class CEmitter
             RequireNullable(call.Args[0], "__tcs_nstr");
             return CType.String;
         }
-        if (call.Callee == "tostring" || call.Callee == "__tcs_fstr" || call.Callee == "__tcs_bstr")
+        if (call.Callee == "__tcs_str" || call.Callee == "__tcs_fstr" || call.Callee == "__tcs_bstr")
         {
             RequireArity(call.Callee, call.Args.Count, 1);
             if (CFail.Failed) return CType.String;
@@ -2138,7 +2138,7 @@ public sealed class CEmitter
                 CFail.Report("tostring does not support " + argument.Display());
             return CType.String;
         }
-        if (call.Callee == "table.insert")
+        if (call.Callee == "List.Add")
         {
             RequireArity(call.Callee, call.Args.Count, 2);
             if (CFail.Failed) return CType.Void;
@@ -2235,7 +2235,7 @@ public sealed class CEmitter
         var listType = TypeOf(receiver);
         if (listType.Kind != CTypeKind.List)
         {
-            CFail.Report("table.insert receiver is not a List");
+            CFail.Report("List.Add receiver is not a List");
             return CType.List(CType.Void);
         }
         if (listType.Element == null)
@@ -3816,7 +3816,7 @@ public sealed class CEmitter
         if (_intrinsicPrefixes == null)
         {
             var set = new HashSet<string>();
-            foreach (var w in "String. Math. List. TcsQueue. TcsHashSet. string. math. Random. Char.".Split(' ')) set.Add(w);
+            foreach (var w in "String. Math. List. TcsQueue. TcsHashSet. Random. Char.".Split(' ')) set.Add(w);
             _intrinsicPrefixes = set;
         }
         return _intrinsicPrefixes;
@@ -3827,7 +3827,7 @@ public sealed class CEmitter
         if (_intrinsicNames == null)
         {
             var set = new HashSet<string>();
-            foreach (var w in "tonumber os.getenv table.remove __tcs_trunc __tcs_char Dict.Keys Dict.Values".Split(' ')) set.Add(w);
+            foreach (var w in "__tcs_fparse __tcs_iparse __tcs_getenv __tcs_fmod __tcs_cstr __tcs_upper __tcs_lower __tcs_format List.RemoveAt __tcs_trunc __tcs_char Dict.Keys Dict.Values".Split(' ')) set.Add(w);
             _intrinsicNames = set;
         }
         return _intrinsicNames;
@@ -3872,7 +3872,8 @@ public sealed class CEmitter
             if (call.Callee == "Char.ConvertFromUtf32") return CType.String;
             return CType.Bool;
         }
-        if (call.Callee.StartsWith("List."))
+        // List.RemoveAt は下の switch (取り除いた要素を値にする)
+        if (call.Callee.StartsWith("List.") && call.Callee != "List.RemoveAt")
             return TypeOfListOp(call);
         if (call.Callee.StartsWith("TcsQueue."))
             return TypeOfQueueOp(call);
@@ -3890,56 +3891,47 @@ public sealed class CEmitter
                 if (CFail.Failed) return CType.Void;
                 RequireType(CType.I32, TypeOf(args[0]), "(char) cast");
                 return CType.I32;
-            case "tonumber":
+            case "__tcs_fparse":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
-                RequireType(CType.String, TypeOf(args[0]), "tonumber");
+                RequireType(CType.String, TypeOf(args[0]), "float.Parse");
                 return CType.F32;
-            case "math.tointeger":
-            {
+            case "__tcs_iparse":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
-                IlCall? inner = null;
-                if (args[0] is IlCall first && first.Callee == "tonumber" && first.Args.Count == 1) inner = first;
-                if (inner == null)
-                {
-                    CFail.Report("math.tointeger is only supported on tonumber()");
-                    return CType.Void;
-                }
-                RequireType(CType.String, TypeOf(inner.Args[0]), "int.Parse");
+                RequireType(CType.String, TypeOf(args[0]), "int.Parse");
                 return CType.I32;
-            }
-            case "math.fmod":
+            case "__tcs_fmod":
                 RequireArity(call.Callee, args.Count, 2);
                 if (CFail.Failed) return CType.Void;
                 NumericJoin(TypeOf(args[0]), TypeOf(args[1]), "fmod");
                 return CType.F32;
-            case "os.getenv":
+            case "__tcs_getenv":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
-                RequireType(CType.String, TypeOf(args[0]), "os.getenv");
+                RequireType(CType.String, TypeOf(args[0]), "Environment.GetEnvironmentVariable");
                 return CType.String;
-            case "string.char":
+            case "__tcs_cstr":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
-                RequireType(CType.I32, TypeOf(args[0]), "string.char");
+                RequireType(CType.I32, TypeOf(args[0]), "char to string");
                 return CType.String;
-            case "string.upper":
-            case "string.lower":
+            case "__tcs_upper":
+            case "__tcs_lower":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
                 RequireType(CType.String, TypeOf(args[0]), call.Callee);
                 return CType.String;
-            case "string.format":
+            case "__tcs_format":
                 if (args.Count == 0)
                 {
-                    CFail.Report("string.format: missing format");
+                    CFail.Report("__tcs_format: missing format");
                     return CType.Void;
                 }
-                RequireType(CType.String, TypeOf(args[0]), "string.format");
+                RequireType(CType.String, TypeOf(args[0]), "__tcs_format");
                 for (var i = 1; i < args.Count; i++) FormatArgKind(TypeOf(args[i]));
                 return CType.String;
-            case "table.remove":
+            case "List.RemoveAt":
                 RequireArity(call.Callee, args.Count, 2);
                 if (CFail.Failed) return CType.Void;
                 RequireType(CType.I32, TypeOf(args[1]), "RemoveAt index");
@@ -3995,7 +3987,7 @@ public sealed class CEmitter
             }
             return $"{fn}({RenderExpr(args[0])})";
         }
-        if (call.Callee.StartsWith("List."))
+        if (call.Callee.StartsWith("List.") && call.Callee != "List.RemoveAt")
             return RenderListOp(call);
         if (call.Callee.StartsWith("TcsQueue."))
             return RenderQueueOp(call);
@@ -4008,35 +4000,35 @@ public sealed class CEmitter
                 return $"tcs_trunc_f32({RenderExpr(args[0])})";
             case "__tcs_char":
                 return $"tcs_char_cast({RenderExpr(args[0])})";
-            case "tonumber":
+            case "__tcs_fparse":
                 return $"tcs_parse_f32_or_fault({RenderExpr(args[0])})";
-            case "math.tointeger":
-                return $"tcs_parse_i32_or_fault({RenderExpr(((IlCall)args[0]).Args[0])})";
-            case "math.fmod":
+            case "__tcs_iparse":
+                return $"tcs_parse_i32_or_fault({RenderExpr(args[0])})";
+            case "__tcs_fmod":
             {
                 var values = new List<TypedValue>();
                 values.Add(new TypedValue(CType.F32, RenderExpr(args[0])));
                 values.Add(new TypedValue(CType.F32, RenderExpr(args[1])));
                 return RenderOrderedCall("fmodf", type, values);
             }
-            case "os.getenv":
+            case "__tcs_getenv":
                 return $"tcs_getenv({RenderExpr(args[0])})";
-            case "string.char":
+            case "__tcs_cstr":
                 return $"tcs_string_from_byte({RenderExpr(args[0])})";
-            case "string.upper":
+            case "__tcs_upper":
                 return $"tcs_string_map_case({RenderExpr(args[0])}, 1)";
-            case "string.lower":
+            case "__tcs_lower":
                 return $"tcs_string_map_case({RenderExpr(args[0])}, 0)";
-            case "string.format":
+            case "__tcs_format":
                 return RenderFormat(call);
-            case "table.remove":
+            case "List.RemoveAt":
             {
                 var list = Temp("list");
                 var at = Temp("index");
                 var removed = Temp("removed");
                 var elem = type.CName;
                 return $"({{ TcsList *{list} = {RenderExpr(args[0])}; " +
-                    $"int32_t {at} = ({RenderExpr(args[1])}) - INT32_C(1); " +
+                    $"int32_t {at} = {RenderExpr(args[1])}; " +
                     $"{elem} {removed} = *({elem} *)tcs_list_at({list}, {at}); " +
                     $"tcs_list_remove_at({list}, {at}); {removed}; }})";
             }
@@ -4064,7 +4056,7 @@ public sealed class CEmitter
         return type;
     }
 
-    // ---- string.format ----
+    // ---- __tcs_format (printf の書式) ----
     private static string FormatArgKind(CType type)
     {
         switch (type.Kind)
@@ -4074,7 +4066,7 @@ public sealed class CEmitter
             case CTypeKind.Bool: return "TCS_FMT_BOOL";
             case CTypeKind.String: return "TCS_FMT_STR";
         }
-        CFail.Report($"string.format does not support {type.Display()}");
+        CFail.Report($"__tcs_format does not support {type.Display()}");
         return "";
     }
 

@@ -120,16 +120,15 @@ public static class IlNodes
         {
             var n = nIlRefCast;
             if (n.Value != null) r.Add(n.Value);
-            if (n.LuaCheckArg != null) r.Add(n.LuaCheckArg);
         }
         else if (node is IlIsType nIlIsType)
         {
             var n = nIlIsType;
             if (n.E != null) r.Add(n.E);
         }
-        else if (node is IlIsLuaType nIlIsLuaType)
+        else if (node is IlIsPrimType nIlIsPrimType)
         {
-            var n = nIlIsLuaType;
+            var n = nIlIsPrimType;
             if (n.E != null) r.Add(n.E);
         }
         else if (node is IlIife nIlIife)
@@ -332,7 +331,7 @@ public static class IlNodes
         if (node is IlNumericConvert) return "IlNumericConvert";
         if (node is IlRefCast) return "IlRefCast";
         if (node is IlIsType) return "IlIsType";
-        if (node is IlIsLuaType) return "IlIsLuaType";
+        if (node is IlIsPrimType) return "IlIsPrimType";
         if (node is IlIife) return "IlIife";
         if (node is IlClosure) return "IlClosure";
         if (node is IlMethodGroup) return "IlMethodGroup";
@@ -470,22 +469,22 @@ public static class IlNodes
         if (node is IlNumericConvert nIlNumericConvert)
         {
             var n = nIlNumericConvert;
-            return "IlNumericConvert(" + Dump(n.Value) + ", " + Str(n.TargetType) + ", " + Str(n.LuaCheck) + ")";
+            return "IlNumericConvert(" + Dump(n.Value) + ", " + Str(n.TargetType) + ", " + (n.Unbox ? "True" : "False") + ")";
         }
         if (node is IlRefCast nIlRefCast)
         {
             var n = nIlRefCast;
-            return "IlRefCast(" + Dump(n.Value) + ", " + Str(n.TargetType) + ", " + Str(n.LuaCheck) + ", " + Dump(n.LuaCheckArg) + ")";
+            return "IlRefCast(" + Dump(n.Value) + ", " + Str(n.TargetType) + ")";
         }
         if (node is IlIsType nIlIsType)
         {
             var n = nIlIsType;
             return "IlIsType(" + Dump(n.E) + ", " + Str(n.TypeRef) + ", " + (n.IsInterface ? "True" : "False") + ")";
         }
-        if (node is IlIsLuaType nIlIsLuaType)
+        if (node is IlIsPrimType nIlIsPrimType)
         {
-            var n = nIlIsLuaType;
-            return "IlIsLuaType(" + Dump(n.E) + ", " + Str(n.LuaType) + ")";
+            var n = nIlIsPrimType;
+            return "IlIsPrimType(" + Dump(n.E) + ", " + IlPrimTypeName(n.Type) + ")";
         }
         if (node is IlIife nIlIife)
         {
@@ -540,7 +539,7 @@ public static class IlNodes
         if (node is IlCast nIlCast)
         {
             var n = nIlCast;
-            return "IlCast(" + Dump(n.E) + ", " + Str(n.TypeRef) + ", " + Str(n.LuaRef) + ")";
+            return "IlCast(" + Dump(n.E) + ", " + Str(n.TypeRef) + ")";
         }
         if (node is IlStructDescriptor nIlStructDescriptor)
         {
@@ -739,6 +738,16 @@ public static class IlNodes
         if (v == IlUnOp.Not) return "Not";
         if (v == IlUnOp.BitNot) return "BitNot";
         if (v == IlUnOp.ToFloat) return "ToFloat";
+        return "" + (int)v;
+    }
+
+    public static string IlPrimTypeName(IlPrimType v)
+    {
+        if (v == IlPrimType.Number) return "Number";
+        if (v == IlPrimType.Int) return "Int";
+        if (v == IlPrimType.Float) return "Float";
+        if (v == IlPrimType.Bool) return "Bool";
+        if (v == IlPrimType.String) return "String";
         return "" + (int)v;
     }
 

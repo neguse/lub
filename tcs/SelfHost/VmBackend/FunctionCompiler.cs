@@ -223,11 +223,11 @@ public sealed class FunctionCompiler
             _patternFound = _m.ParseTypeRef(t.TypeRef);
             return;
         }
-        if (n is IlIsLuaType lt && lt.E is IlVar lv && lv.Name == name)
+        if (n is IlIsPrimType lt && lt.E is IlVar lv && lv.Name == name)
         {
-            if (lt.LuaType == "string") _patternFound = VType.String;
-            else if (lt.LuaType == "boolean") _patternFound = VType.Bool;
-            else if (lt.LuaType == "float") _patternFound = VType.Float;
+            if (lt.Type == IlPrimType.String) _patternFound = VType.String;
+            else if (lt.Type == IlPrimType.Bool) _patternFound = VType.Bool;
+            else if (lt.Type == IlPrimType.Float) _patternFound = VType.Float;
             else _patternFound = VType.Int;
             return;
         }
@@ -599,11 +599,11 @@ public sealed class FunctionCompiler
         for (int k = 0; k < leaves.Count; k++) Emit(Pick(Op.STF_I32, leaves[k].Kind), cell, v.Regs[k], k);
     }
 
-    // object / interface どうしの参照の比較 (IL の rawequal。record の値の等価と分けるため IL は rawequal で書く)。
+    // object / interface どうしの参照の比較 (IL の __tcs_refeq。record の値の等価と分けるため IL は __tcs_refeq で書く)。
     // VM の == は参照の比較なので、Eq の二項演算として読む (無ければ null)
     private static IlExpr? RefEq(IlExpr e)
     {
-        if (e is IlCall c && c.Callee == "rawequal" && c.Args.Count == 2) return new IlBin(IlBinOp.Eq, c.Args[0], c.Args[1], null);
+        if (e is IlCall c && c.Callee == "__tcs_refeq" && c.Args.Count == 2) return new IlBin(IlBinOp.Eq, c.Args[0], c.Args[1], null);
         return null;
     }
 
@@ -1434,7 +1434,7 @@ public sealed class FunctionCompiler
         if (e is IlStructCopy sc) return TypeOf(sc.E);
         if (e is IlTernary tern) return TernaryType(TypeOf(tern.T), TypeOf(tern.F));
         if (e is IlIife iife) return IifeType(iife);
-        if (e is IlIsType || e is IlIsLuaType || e is IlNullableHasValue) return VType.Bool;
+        if (e is IlIsType || e is IlIsPrimType || e is IlNullableHasValue) return VType.Bool;
         if (e is IlCast cast) return _m.ParseTypeRef(cast.TypeRef);
         if (e is IlRefCast rc) return _m.Parse(rc.TargetType);
         if (e is IlNullableWrap w) return VType.OfNullable(_m.Parse(w.Type));
@@ -1528,8 +1528,8 @@ public sealed class FunctionCompiler
         if (callee == "__tcs_irem" || callee == "__tcs_idiv" || callee == "__tcs_trunc" || callee == "__tcs_cadd"
             || callee == "__tcs_csub" || callee == "__tcs_cmul" || callee == "__tcs_cneg" || callee == "Math.CompareTo"
             || callee == "Dict.Count") return VType.Int;
-        if (callee == "tostring" || callee == "__tcs_fstr" || callee == "__tcs_bstr" || callee == "__tcs_nstr") return VType.String;
-        if (callee == "print" || callee == "table.insert") return VType.Void;
+        if (callee == "__tcs_str" || callee == "__tcs_fstr" || callee == "__tcs_bstr" || callee == "__tcs_nstr") return VType.String;
+        if (callee == "__tcs_writeline" || callee == "List.Add") return VType.Void;
         if (callee == "List.Sort" && c.Args.Count == 2) return VType.Void;
         if (callee == "Dict.ContainsKey") return VType.Bool;
         if (callee.EndsWith(".op_Equality")) return VType.Bool;
@@ -1963,7 +1963,7 @@ public sealed class FunctionCompiler
             return d;
         }
         if (e is IlIife pi && pi.Stats.Count == 2 && pi.Stats[0] is IlAssign pa && pa.Target is IlVar pv
-            && pi.Stats[1] is IlReturn pr && pr.Value is IlIsLuaType pt && pt.E is IlVar tv
+            && pi.Stats[1] is IlReturn pr && pr.Value is IlIsPrimType pt && pt.E is IlVar tv
             && pv.Name == tv.Name && TypeOf(pa.Value).Tag == VT.Nullable)
         {
             var plv = Lookup(pv.Name);
@@ -1994,7 +1994,7 @@ public sealed class FunctionCompiler
             Emit(Op.ISTYPE, d.Reg, v.Reg, _m.TypeIndex(_m.ParseTypeRef(it.TypeRef)));
             return d;
         }
-        if (e is IlIsLuaType vlt && (TypeOf(vlt.E).Tag == VT.Nullable || TypeOf(vlt.E).Tag == VT.Prim))
+        if (e is IlIsPrimType vlt && (TypeOf(vlt.E).Tag == VT.Nullable || TypeOf(vlt.E).Tag == VT.Prim))
         {
             // 値型の `x is int` (x が int? なら値の有無、int なら常に true)
             var v = Expr(vlt.E, null, false);
@@ -2003,7 +2003,7 @@ public sealed class FunctionCompiler
             else EmitImm(Op.LDK, d.Reg, 1);
             return d;
         }
-        if (e is IlIsLuaType ln && ln.LuaType == "number")
+        if (e is IlIsPrimType ln && ln.Type == IlPrimType.Number)
         {
             // object の `is int` / `is float` は IL では number (int と float の箱のどちらか)
             var v = Expr(ln.E, null, false);
@@ -2015,20 +2015,14 @@ public sealed class FunctionCompiler
             Mark(end);
             return d;
         }
-        if (e is IlIsLuaType lt)
+        if (e is IlIsPrimType lt)
         {
             var v = Expr(lt.E, null, false);
             var d = dest != null ? dest : Temp(VType.Bool);
-            VType? target = null;
-            if (lt.LuaType == "string") target = VType.String;
-            else if (lt.LuaType == "boolean") target = VType.OfBox(Kind.Bool);
-            else if (lt.LuaType == "integer") target = VType.OfBox(Kind.I32);
-            else if (lt.LuaType == "float") target = VType.OfBox(Kind.F32);
-            if (target == null)
-            {
-                CFail.Report(_f.Name + ": type test " + lt.LuaType + " is not in the VM yet");
-                return BadVal();
-            }
+            VType target = VType.String;
+            if (lt.Type == IlPrimType.Bool) target = VType.OfBox(Kind.Bool);
+            else if (lt.Type == IlPrimType.Int) target = VType.OfBox(Kind.I32);
+            else if (lt.Type == IlPrimType.Float) target = VType.OfBox(Kind.F32);
             Emit(Op.ISTYPE, d.Reg, v.Reg, _m.TypeIndex(target));
             return d;
         }
@@ -2337,7 +2331,7 @@ public sealed class FunctionCompiler
     private Val ToStr(IlExpr e)
     {
         while (e is IlParen p) e = p.E;
-        if (e is IlCall c && (c.Callee == "tostring" || c.Callee == "__tcs_fstr" || c.Callee == "__tcs_bstr" || c.Callee == "__tcs_nstr")
+        if (e is IlCall c && (c.Callee == "__tcs_str" || c.Callee == "__tcs_fstr" || c.Callee == "__tcs_bstr" || c.Callee == "__tcs_nstr")
             && c.Args.Count == 1) e = c.Args[0];
         var t = TypeOf(e);
         if (t.Tag == VT.String || t.Tag == VT.Null) return ExprAs(e, VType.String, null);
@@ -2696,19 +2690,19 @@ public sealed class FunctionCompiler
             Emit(VType.Same(t, VType.Float) ? Op.CMP_F32 : Op.CMP_I32, d.Reg, l.Reg, r.Reg);
             return d;
         }
-        if (c.Callee == "tostring" || c.Callee == "__tcs_fstr" || c.Callee == "__tcs_bstr" || c.Callee == "__tcs_nstr")
+        if (c.Callee == "__tcs_str" || c.Callee == "__tcs_fstr" || c.Callee == "__tcs_bstr" || c.Callee == "__tcs_nstr")
         {
             var s = ToStr(c);
             if (dest == null) return s;
             Store(dest, s);
             return dest;
         }
-        if (c.Callee == "print")
+        if (c.Callee == "__tcs_writeline")
         {
             Print(c);
             return new Val(VType.Void, new List<int>());
         }
-        if (c.Callee == "table.insert")
+        if (c.Callee == "List.Add")
         {
             if (c.Args.Count != 2)
             {
@@ -2718,7 +2712,7 @@ public sealed class FunctionCompiler
             var lt = TypeOf(c.Args[0]);
             if (lt.Tag != VT.List)
             {
-                CFail.Report(_f.Name + ": table.insert on non-List");
+                CFail.Report(_f.Name + ": List.Add on non-List");
                 return BadVal();
             }
             var list = Expr(c.Args[0], null, false);
@@ -2906,7 +2900,7 @@ public sealed class FunctionCompiler
         for (int i = 0; i < names.Count; i++)
         {
             if (!VType.Same(implTypes[i], ft.Params[i]))
-                args.Add(new IlRefCast(new IlVar(names[i], null), impl.ParameterTypes[i], null, null, null));
+                args.Add(new IlRefCast(new IlVar(names[i], null), impl.ParameterTypes[i], null));
             else
                 args.Add(new IlVar(names[i], null));
         }
@@ -3671,18 +3665,18 @@ public sealed class FunctionCompiler
             return new LibCall("char." + Strings.From(name, 5).ToLower(), P4Lists.Types1(I), P4Lists.Types1(VType.Bool));
         if (name == "Char.ToUpper" || name == "Char.ToLower")
             return new LibCall("char." + Strings.From(name, 5).ToLower(), P4Lists.Types1(I), P4Lists.Types1(I));
-        if (name == "string.upper") return new LibCall("string.toupper", P4Lists.Types1(S), P4Lists.Types1(S));
-        if (name == "string.lower") return new LibCall("string.tolower", P4Lists.Types1(S), P4Lists.Types1(S));
+        if (name == "__tcs_upper") return new LibCall("string.toupper", P4Lists.Types1(S), P4Lists.Types1(S));
+        if (name == "__tcs_lower") return new LibCall("string.tolower", P4Lists.Types1(S), P4Lists.Types1(S));
         if (name == "String.JoinEnum" && n >= 3)
         {
             var el = LibPlanArg(c, 1);
             if (el.Tag == VT.List) return new LibCall("string.joinenum", P4Lists.Types3(S, el, S), P4Lists.Types1(S));
         }
-        if (name == "tonumber") return new LibCall("float.parse", P4Lists.Types1(S), P4Lists.Types1(F));
-        if (name == "__vm_intparse") return new LibCall("int.parse", P4Lists.Types1(S), P4Lists.Types1(I));
+        if (name == "__tcs_fparse") return new LibCall("float.parse", P4Lists.Types1(S), P4Lists.Types1(F));
+        if (name == "__tcs_iparse") return new LibCall("int.parse", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "__tcs_char") return new LibCall("char.cast", P4Lists.Types1(I), P4Lists.Types1(I));
-        if (name == "io.write") return new LibCall("io.write", P4Lists.Types1(S), none);
-        if (name == "os.getenv") return new LibCall("os.getenv", P4Lists.Types1(S), P4Lists.Types1(S));
+        if (name == "__tcs_write") return new LibCall("io.write", P4Lists.Types1(S), none);
+        if (name == "__tcs_getenv") return new LibCall("os.getenv", P4Lists.Types1(S), P4Lists.Types1(S));
         if (name == "TinySystem.Utf8.RuneCount") return new LibCall("utf8.runecount", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "TinySystem.Utf8.RuneSubstring") return new LibCall("utf8.runesubstring", P4Lists.Types3(S, I, I), P4Lists.Types1(S));
         if (name == "TinySystem.Utf8.At") return new LibCall("utf8.at", P4Lists.Types2(VType.Utf8(), I), P4Lists.Types1(I));
@@ -3743,8 +3737,8 @@ public sealed class FunctionCompiler
     private VType? LibraryType(IlCall c)
     {
         var callee = c.Callee;
-        if (callee == "string.char" || callee == "string.format") return VType.String;
-        if (callee == "math.tointeger") return VType.Int;
+        if (callee == "__tcs_cstr" || callee == "__tcs_format") return VType.String;
+        if (callee == "__tcs_iparse") return VType.Int;
         if (callee == "TinySystem.Random.Seed" || callee == "TcsQueue.Enqueue" || callee == "TcsQueue.Clear" || callee == "TcsHashSet.Clear")
             return VType.Void;
         if (callee == "TcsQueue.Dequeue" || callee == "TcsQueue.Peek")
@@ -3761,8 +3755,8 @@ public sealed class FunctionCompiler
             var hs = TypeOf(c.Args[0]);
             if (hs.Tag == VT.Dict) return VType.OfList(hs.Key!);
         }
-        if (callee == "math.fmod") return VType.Float;
-        if (callee == "List.Insert" || callee == "table.remove" || callee == "Dict.Remove") return callee == "Dict.Remove" ? VType.Bool : VType.Void;
+        if (callee == "__tcs_fmod") return VType.Float;
+        if (callee == "List.Insert" || callee == "List.RemoveAt" || callee == "Dict.Remove") return callee == "Dict.Remove" ? VType.Bool : VType.Void;
         if (callee == "TinySystem.Utf8.New" || callee == "TinySystem.Utf8.Default") return VType.Utf8();
         if (callee == "Dict.Keys")
         {
@@ -3942,35 +3936,26 @@ public sealed class FunctionCompiler
                 return d;
             }
         }
-        if (callee == "io.write" && c.Args.Count == 1)
+        if (callee == "__tcs_write" && c.Args.Count == 1)
         {
             var sv = ToStr(c.Args[0]);
             Emit(Op.CALLR, sv.Reg, 0, _m.Intrinsic("io.write"));
             return new Val(VType.Void, new List<int>());
         }
-        if (callee == "math.tointeger" && c.Args.Count == 1)
-        {
-            var a0 = c.Args[0];
-            if (a0 is IlCall tn && tn.Callee == "tonumber" && tn.Args.Count == 1)
-            {
-                // int.Parse (IL は math.tointeger(tonumber(s)) の呼び出しの形。tcs2c の tcs_parse_i32_or_fault と同じ)
-                return Library(new IlCall("__vm_intparse", tn.Args, false, null), dest);
-            }
-        }
-        if (callee == "string.format" && c.Args.Count >= 1)
+        if (callee == "__tcs_format" && c.Args.Count >= 1)
         {
             var a0 = c.Args[0];
             if (a0 is IlLit fmtLit && fmtLit.Kind == IlLitKind.String)
                 return Format(VBytes.Utf8(fmtLit.S), P4Lists.ExprsFrom(c.Args, 1), dest);
         }
-        if (callee == "string.char")
+        if (callee == "__tcs_cstr")
         {
             var v = ExprAs(c.Args[0], VType.Int);
             var d = dest ?? Temp(VType.String);
             Emit(Op.CHR, d.Reg, v.Reg);
             return d;
         }
-        if (callee == "math.fmod")
+        if (callee == "__tcs_fmod")
         {
             var l = ExprAs(c.Args[0], VType.Float);
             var r = ExprAs(c.Args[1], VType.Float);
@@ -3991,14 +3976,11 @@ public sealed class FunctionCompiler
                 return new Val(VType.Void, new List<int>());
             }
         }
-        if (callee == "table.remove" && c.Args.Count == 2 && TypeOf(c.Args[0]).Tag == VT.List)
+        if (callee == "List.RemoveAt" && c.Args.Count == 2 && TypeOf(c.Args[0]).Tag == VT.List)
         {
             var list = Expr(c.Args[0]);
-            // IL の table.remove(t, i) の i は 1 始まり (IL は C# の添字に +1 した式を渡す)
             var at = ExprAs(c.Args[1], VType.Int);
-            var i0 = Temp(VType.Int);
-            Emit(Op.ADDI_I32, i0.Reg, at.Reg, 0xFFFF);
-            Emit(Op.LIST_REMOVE_AT, list.Reg, i0.Reg);
+            Emit(Op.LIST_REMOVE_AT, list.Reg, at.Reg);
             return new Val(VType.Void, new List<int>());
         }
         if (callee == "Dict.Remove")
@@ -5101,7 +5083,7 @@ public sealed class FunctionCompiler
             return;
         }
         var arg = c.Args[0];
-        if (arg is IlCall conv && (conv.Callee == "__tcs_fstr" || conv.Callee == "__tcs_bstr" || conv.Callee == "tostring"))
+        if (arg is IlCall conv && (conv.Callee == "__tcs_fstr" || conv.Callee == "__tcs_bstr" || conv.Callee == "__tcs_str"))
             arg = conv.Args[0];
         var t = TypeOf(arg);
         if (t.Tag != VT.Prim)

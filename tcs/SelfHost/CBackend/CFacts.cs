@@ -312,7 +312,7 @@ public sealed class ContractFacts
         if (text.StartsWith("List<") && text.EndsWith(">")) return CType.List(MapType(Sub(text, 5, n - 1)));
 
         // user の型の表示名 (`@float` の class) は、同じ綴りの組み込みの型 (float) より user の class と struct を先に引く
-        string aliased = LuaTypeName(text);
+        string aliased = IlTypeName(text);
         if (aliased != text)
         {
             if (Classes.ContainsKey(aliased)) return CType.Ref(aliased);
@@ -360,7 +360,7 @@ public sealed class ContractFacts
     }
 
     // C# の表示名を IL の型名へ写す (別の namespace の同じ名前の型は修飾名)
-    public string LuaTypeName(string displayName)
+    public string IlTypeName(string displayName)
     {
         string? name;
         if (_typeAliases.TryGetValue(displayName, out name)) return name;

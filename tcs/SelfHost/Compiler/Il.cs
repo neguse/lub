@@ -135,18 +135,27 @@ public record IlNewQueue(string Type, IlPos? Origin) : IlExpr;
 public record IlNewHashSet(string Type, IlPos? Origin) : IlExpr;
 
 // 数の変換 (TargetType は int / float)。object / 型引数の値からなら unbox で、実行時の型が違えば fault。
-// LuaCheck はその unbox の印 (integer / float) で、VM と C の backend は読まず TargetType から検査を作る
-public record IlNumericConvert(IlExpr Value, string TargetType, string? LuaCheck, IlPos? Origin) : IlExpr;
+// Unbox は object / 型引数の値からの変換の印 (実行時の型の検査で fault しうる)。VM と C の backend は読まず Value の型から決める
+public record IlNumericConvert(IlExpr Value, string TargetType, bool Unbox, IlPos? Origin) : IlExpr;
 
-// 参照の値の cast。VM と C の backend は TargetType から実行時の型の検査を作る。
-// LuaCheck と LuaCheckArg (検査する runtime の関数の名前と、その第 2 引数) は backend が読まない (LuaCheckArg は IlNodes の子として辿る)
-public record IlRefCast(IlExpr Value, string TargetType, string? LuaCheck, IlExpr? LuaCheckArg, IlPos? Origin) : IlExpr;
+// 参照の値の cast。VM と C の backend は TargetType から実行時の型の検査を作る
+public record IlRefCast(IlExpr Value, string TargetType, IlPos? Origin) : IlExpr;
 
 // class の型 test: T またはその派生 (il-spec §9)
 public record IlIsType(IlExpr E, string TypeRef, bool IsInterface, IlPos? Origin) : IlExpr;
 
-// プリミティブの型 test。LuaType は number (int / float / enum) / string / boolean
-public record IlIsLuaType(IlExpr E, string LuaType, IlPos? Origin) : IlExpr;
+// プリミティブの型 test の型。Number は int と float (と enum) のどちら
+public enum IlPrimType
+{
+    Number,
+    Int,
+    Float,
+    Bool,
+    String,
+}
+
+// object の中の値のプリミティブの型 test
+public record IlIsPrimType(IlExpr E, IlPrimType Type, IlPos? Origin) : IlExpr;
 
 // 式の位置での逐次実行: 文の列を順に実行し、return の値が式の値 (C は GNU の statement expression)。中の文は local / 代入 / 呼び出し / return / if / for-pairs に限る
 public record IlIife(List<IlStat> Stats, IlPos? Origin) : IlExpr;
@@ -209,7 +218,7 @@ public record IlLiftedBin(IlLiftedOp Op, IlExpr L, IlExpr R, IlPos? Origin) : Il
 public record IlLiftedUn(IlUnOp Op, IlExpr E, IlPos? Origin) : IlExpr;
 
 // class の参照の明示の downcast `(T)e` (il-spec §9)
-public record IlCast(IlExpr E, string TypeRef, string LuaRef, IlPos? Origin) : IlExpr;
+public record IlCast(IlExpr E, string TypeRef, IlPos? Origin) : IlExpr;
 
 // struct を入れた型引数の既定値として渡す、zero 値と copy の作り方。HasToString は ToString の override を文字列化に使う。
 // 型引数の既定値の隠れ引数は単相化しない IL にだけ現れ、VM と C の backend は読まない (C は IlStructDescriptor を誤りにする)

@@ -1,11 +1,9 @@
 namespace TinyCs.Tests;
 
-// Lua 標準ライブラリを C# 側の stub (os / utf8 / string) で直接呼ぶ
-// 代わりに、同じ C# が実 .NET でも通る BCL API を allowlist に足す。
-//   Environment.GetEnvironmentVariable → os.getenv
-//   int.Parse / float.Parse            → math.tointeger(tonumber) / tonumber
-//   foreach (var r in s.EnumerateRunes()) + r.Value → tcs_utf8.codes
-//   s[i] / (int)s[i] / (int)'a'        → string.sub / string.byte
+// 実 .NET でも通る BCL API を allowlist に足す。IL では
+//   Environment.GetEnvironmentVariable → __tcs_getenv
+//   int.Parse / float.Parse            → __tcs_iparse / __tcs_fparse
+//   foreach (var r in s.EnumerateRunes()) + r.Value → IlForeachRunes
 public class HostBclExtensionTests
 {
     [Fact]

@@ -11,7 +11,7 @@ public static class IlNames
     public static string MethodName(Symbol m)
     {
         if (m.Kind != SymKind.Method) return m.Name;
-        if (m.Owner != null && m.Owner.IsRef) return m.LuaName;
+        if (m.Owner != null && m.Owner.IsRef) return m.IlName;
         var implemented = ImplementedInterfaceMethod(m);
         // --ref の interface の method は C# の名前 (host の名前ではない。tcs check は RefInterfaceImplementation で止め、tcs VM と C は C# の名前で呼ぶ)
         if (implemented != null) return implemented.Owner != null && implemented.Owner.IsRef ? implemented.Name : MethodName(implemented);
@@ -138,7 +138,7 @@ public static class IlNames
     // parameter の名前 (LocalNames が付けた local の名前)
     public static string ParamName(Node p)
     {
-        return p.Local != null ? p.Local.LuaName : p.Text;
+        return p.Local != null ? p.Local.IlName : p.Text;
     }
 
     // 型の token: 表示の文字列 (入れ子の型は外側の型の名前も含む) の `[]` を `_arr`、`?` を `_opt` にし、英数字以外の連続を `_` 1 つにする

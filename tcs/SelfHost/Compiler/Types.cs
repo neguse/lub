@@ -432,7 +432,7 @@ public sealed class Symbol
     // method の型引数の名前
     public List<string>? TypeParams;
     // IL での名前 (method は overload を区別した名前、--ref の型の member は host の名前、local は改名した名前)
-    public string LuaName;
+    public string IlName;
     public bool IsConst;
     public ConstValue? ConstVal;
     // property: accessor の有無と、本体の無い自動実装か
@@ -460,7 +460,7 @@ public sealed class Symbol
         Kind = kind;
         Name = name;
         Type = type;
-        LuaName = name;
+        IlName = name;
     }
 
     public int ParamCount => Params == null ? 0 : Params.Count;
@@ -503,7 +503,7 @@ public sealed class TypeDeclSym
     public string FullName;
     public string Namespace;
     // IL の型の名前 (A.B.C → A_B_C。--ref の型は host の path)
-    public string LuaName;
+    public string IlName;
     public int DeclKind;
     public Node Decl;
     public TypeDeclSym? Outer;
@@ -538,7 +538,7 @@ public sealed class TypeDeclSym
         Name = name;
         FullName = fullName;
         Namespace = ns;
-        LuaName = fullName.Replace(".", "_");
+        IlName = fullName.Replace(".", "_");
         DeclKind = declKind;
         Decl = decl;
     }
@@ -614,7 +614,7 @@ public sealed class LocalSym
 {
     public string Name;
     public TypeSym Type;
-    public string LuaName;
+    public string IlName;
     public bool IsParam;
     public bool IsOut;
     public bool IsConst;
@@ -629,7 +629,7 @@ public sealed class LocalSym
     {
         Name = name;
         Type = type;
-        LuaName = name;
+        IlName = name;
     }
 }
 

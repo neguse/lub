@@ -76,7 +76,7 @@ public static class IlTree
             case IlNumericConvert n: r.Add(n.Value); break;
             case IlRefCast rc: r.Add(rc.Value); break;
             case IlIsType it: r.Add(it.E); break;
-            case IlIsLuaType ilt: r.Add(ilt.E); break;
+            case IlIsPrimType ipt: r.Add(ipt.E); break;
             case IlStructCopy s: r.Add(s.E); break;
             case IlCast ca: r.Add(ca.E); break;
             case IlNullableWrap w: r.Add(w.E); break;
@@ -115,7 +115,7 @@ public static class IlTree
             case IlNumericConvert n: return n with { Value = k[0] };
             case IlRefCast rc: return rc with { Value = k[0] };
             case IlIsType it: return it with { E = k[0] };
-            case IlIsLuaType ilt: return ilt with { E = k[0] };
+            case IlIsPrimType ipt: return ipt with { E = k[0] };
             case IlStructCopy s: return s with { E = k[0] };
             case IlCast ca: return ca with { E = k[0] };
             case IlNullableWrap w: return w with { E = k[0] };
@@ -176,15 +176,15 @@ public static class IlTree
             case IlStructCopy sc:
                 return IsCallFree(sc.E);
             case IlNumericConvert n:
-                return n.LuaCheck == null && IsCallFree(n.Value);
+                return !n.Unbox && IsCallFree(n.Value);
             case IlNullableWrap w:
                 return IsCallFree(w.E);
             case IlNullableHasValue h:
                 return IsCallFree(h.E);
             case IlIsType it:
                 return IsCallFree(it.E);
-            case IlIsLuaType ilt:
-                return IsCallFree(ilt.E);
+            case IlIsPrimType ipt:
+                return IsCallFree(ipt.E);
             case IlNewQueue:
             case IlNewHashSet:
                 return true;
@@ -217,7 +217,7 @@ public static class IlTree
     // 値がプリミティブ (class の instance ではない) と IL の形から言える式。IlVar / field などは型が分からないので false
     private static bool IsPrimitive(IlExpr e)
     {
-        if (e is IlLit || e is IlLen || e is IlIsType || e is IlIsLuaType || e is IlNullableHasValue || e is IlNumericConvert) return true;
+        if (e is IlLit || e is IlLen || e is IlIsType || e is IlIsPrimType || e is IlNullableHasValue || e is IlNumericConvert) return true;
         if (e is IlParen p) return IsPrimitive(p.E);
         bool logical = false;
         if (e is IlBin lb && (lb.Op == IlBinOp.And || lb.Op == IlBinOp.Or)) logical = true;
@@ -236,16 +236,13 @@ public static class IlTree
         return false;
     }
 
+    // 副作用の無い intrinsic (標準出力に書く __tcs_write / __tcs_writeline と、環境変数を読む __tcs_getenv を除く)
     private static bool IsPureCallee(string callee)
     {
+        if (callee == "__tcs_write" || callee == "__tcs_writeline" || callee == "__tcs_getenv") return false;
         return callee.StartsWith("__tcs_")
-            || callee.StartsWith("math.")
-            || callee.StartsWith(LocalNames.MathModuleGlobal + ".")
-            || callee.StartsWith("string.")
             || callee.StartsWith("Math.")
-            || callee.StartsWith("String.")
-            || callee == "tostring"
-            || callee == "tonumber";
+            || callee.StartsWith("String.");
     }
 
     private static List<IlExpr> From(List<IlExpr> items, int start)

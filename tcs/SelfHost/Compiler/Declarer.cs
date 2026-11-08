@@ -67,7 +67,7 @@ public sealed class Compilation
     // static class の拡張メソッド (名前ごと)
     public Dictionary<string, List<Symbol>> Extensions = new Dictionary<string, List<Symbol>>();
     // 型の global 名 (IL で型を指す名前。局所変数の名前がこれを覆い隠さないようにする)
-    public HashSet<string> TypeLuaNames = new HashSet<string>();
+    public HashSet<string> TypeIlNames = new HashSet<string>();
 
     public void Error(string code, string message, Node at)
     {
@@ -119,7 +119,7 @@ public sealed class Declarer
         }
         foreach (var t in _c.Types) DeclareHeader(t);
         foreach (var t in _c.Types) DeclareMembers(t);
-        foreach (var t in _c.Types) AssignLuaNames(t);
+        foreach (var t in _c.Types) AssignIlNames(t);
         CheckStructCycles();
     }
 
@@ -241,7 +241,7 @@ public sealed class Declarer
         }
         if (n.Has(Mods.Partial)) _c.Error("TCS1001", "unsupported syntax: PartialTypeDeclaration", n);
         _c.TypesByFullName[full] = t;
-        _c.TypeLuaNames.Add(t.LuaName);
+        _c.TypeIlNames.Add(t.IlName);
         _c.Types.Add(t);
         if (outer != null) outer.Nested.Add(t);
         var scope = new TypeScope(n.File, ns, usings);
@@ -1166,9 +1166,9 @@ public sealed class Declarer
         return result;
     }
 
-    // ---- IL の名前 (LuaName) ----
+    // ---- IL の名前 (IlName) ----
 
-    private void AssignLuaNames(TypeDeclSym t)
+    private void AssignIlNames(TypeDeclSym t)
     {
         // 同じ名前の method が複数あれば signature で区別する
         foreach (var m in t.Members)
@@ -1180,14 +1180,14 @@ public sealed class Declarer
             {
                 if (o.Kind == SymKind.Method) methods++;
             }
-            m.LuaName = methods > 1 ? m.Name + "__" + Signature(m) : LuaNames.Member(m.Name);
+            m.IlName = methods > 1 ? m.Name + "__" + Signature(m) : LuaNames.Member(m.Name);
         }
         // constructor (struct の new は既定値を作る関数なので、constructor は ctor)
         string ctorBase = t.IsStruct ? "ctor" : "new";
-        if (t.Ctors.Count == 1) t.Ctors[0].LuaName = ctorBase;
+        if (t.Ctors.Count == 1) t.Ctors[0].IlName = ctorBase;
         else
         {
-            foreach (var c in t.Ctors) c.LuaName = ctorBase + "__" + Signature(c);
+            foreach (var c in t.Ctors) c.IlName = ctorBase + "__" + Signature(c);
         }
         if (t.IsStruct)
         {
@@ -1206,7 +1206,7 @@ public sealed class Declarer
         }
         foreach (var m in t.Members)
         {
-            if (m.Kind == SymKind.Field || m.Kind == SymKind.Property || m.Kind == SymKind.EnumMember) m.LuaName = m.Name;
+            if (m.Kind == SymKind.Field || m.Kind == SymKind.Property || m.Kind == SymKind.EnumMember) m.IlName = m.Name;
         }
         if (t.IsRef) AssignHostNames(t);
     }
@@ -1216,11 +1216,11 @@ public sealed class Declarer
     // member は snake_case (BeginPass → begin_pass)、enum の member は UPPER_SNAKE (Rgba8 → RGBA8)
     private static void AssignHostNames(TypeDeclSym t)
     {
-        t.LuaName = HostPath(t);
+        t.IlName = HostPath(t);
         foreach (var m in t.Members)
         {
-            if (m.Kind == SymKind.EnumMember) m.LuaName = LuaNames.HostConst(m.Name);
-            else m.LuaName = LuaNames.HostMember(m.Name);
+            if (m.Kind == SymKind.EnumMember) m.IlName = LuaNames.HostConst(m.Name);
+            else m.IlName = LuaNames.HostMember(m.Name);
         }
     }
 
@@ -1272,7 +1272,7 @@ public sealed class Declarer
                     return string.Join("_", parts);
                 }
         }
-        string name = t.Decl != null ? t.Decl.LuaName : t.Name;
+        string name = t.Decl != null ? t.Decl.IlName : t.Name;
         if (t.Args != null && t.Args.Count > 0)
         {
             var parts = new List<string>();
