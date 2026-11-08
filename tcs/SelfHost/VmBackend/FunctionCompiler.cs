@@ -220,7 +220,7 @@ public sealed class FunctionCompiler
         if (_patternFound != null) return;
         if (n is IlIsType t && t.E is IlVar v && v.Name == name)
         {
-            _patternFound = _m.Parse(t.TypeRef);
+            _patternFound = _m.ParseTypeRef(t.TypeRef);
             return;
         }
         if (n is IlIsLuaType lt && lt.E is IlVar lv && lv.Name == name)
@@ -1392,7 +1392,7 @@ public sealed class FunctionCompiler
             CFail.Report($"{_f.Name}: call of non-delegate");
             return VType.Int;
         }
-        if (e is IlNewObj n) return _m.Parse(n.TypeName);
+        if (e is IlNewObj n) return _m.ParseTypeRef(n.TypeName);
         if (e is IlNewQueue q) return _m.Parse(q.Type);
         if (e is IlNewHashSet h) return _m.Parse(h.Type);
         if (e is IlNewArray a) return VType.OfArray(_m.Parse(a.ElementType));
@@ -1402,7 +1402,7 @@ public sealed class FunctionCompiler
         if (e is IlTernary tern) return TernaryType(TypeOf(tern.T), TypeOf(tern.F));
         if (e is IlIife iife) return IifeType(iife);
         if (e is IlIsType || e is IlIsLuaType || e is IlNullableHasValue) return VType.Bool;
-        if (e is IlCast cast) return _m.Parse(cast.TypeRef);
+        if (e is IlCast cast) return _m.ParseTypeRef(cast.TypeRef);
         if (e is IlRefCast rc) return _m.Parse(rc.TargetType);
         if (e is IlNullableWrap w) return VType.OfNullable(_m.Parse(w.Type));
         if (e is IlNullableValue nv)
@@ -1961,7 +1961,7 @@ public sealed class FunctionCompiler
                 EmitImm(Op.LDK, d.Reg, 0); // 値型は class / interface ではない (TCS1001 が外す形の残り)
                 return d;
             }
-            Emit(Op.ISTYPE, d.Reg, v.Reg, _m.TypeIndex(_m.Parse(it.TypeRef)));
+            Emit(Op.ISTYPE, d.Reg, v.Reg, _m.TypeIndex(_m.ParseTypeRef(it.TypeRef)));
             return d;
         }
         if (e is IlIsLuaType vlt && (TypeOf(vlt.E).Tag == VT.Nullable || TypeOf(vlt.E).Tag == VT.Prim))
@@ -2004,7 +2004,7 @@ public sealed class FunctionCompiler
         }
         if (e is IlCast ct)
         {
-            var to = _m.Parse(ct.TypeRef);
+            var to = _m.ParseTypeRef(ct.TypeRef);
             var v = Expr(ct.E, null, false);
             var d = dest != null ? dest : Temp(to);
             Emit(Op.CAST, d.Reg, v.Reg, _m.TypeIndex(to));
@@ -3425,7 +3425,7 @@ public sealed class FunctionCompiler
 
     private Val NewObj(IlNewObj n, Val? dest)
     {
-        var type = _m.Parse(n.TypeName);
+        var type = _m.ParseTypeRef(n.TypeName);
         if (type.Tag == VT.Random)
         {
             var rd = dest != null ? dest : Temp(type);

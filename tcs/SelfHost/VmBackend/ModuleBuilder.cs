@@ -243,6 +243,17 @@ public sealed class ModuleBuilder
 
     public bool IsEnum(string name) => _enums.ContainsKey(Canon(name));
 
+    /// <summary>IlNewObj / IlIsType / IlCast の型の名前。IL はここに user の型の名前を表示名でなく書くので
+    /// (`@float` の class は `float`)、同じ綴りの組み込みの型より user の class と struct を先に引く。</summary>
+    public VType ParseTypeRef(string name)
+    {
+        string n = Canon(name);
+        ExClass? cls;
+        if (Classes.TryGetValue(n, out cls)) return cls.IsInterface ? VType.OfIface(n) : VType.OfClass(n);
+        if (Structs.ContainsKey(n)) return VType.OfStruct(n);
+        return Parse(name);
+    }
+
     public int EnumValue(string enumName, string member)
     {
         var e = _enums[Canon(enumName)];
@@ -320,8 +331,9 @@ public sealed class ModuleBuilder
         }
         if (type == "int" || type == "uint" || type == "char" || type == "byte" || type == "sbyte" || type == "short" || type == "ushort") return VType.Int;
         if (type == "object") return VType.Object;
-        if (type == "TinySystem.Text.Utf8Bytes" || type == "Utf8Bytes") return VType.Utf8();
-        if (type == "TinySystem.Random" || type == "Random") return VType.Random();
+        // TinySystem の facade。修飾の無い名前は、同じ名前の user の型が無いときだけ (user の型が隠す。C backend と同じ)
+        if (type == "TinySystem.Text.Utf8Bytes" || (type == "Utf8Bytes" && !IsTypeName("Utf8Bytes"))) return VType.Utf8();
+        if (type == "TinySystem.Random" || (type == "Random" && !IsTypeName("Random"))) return VType.Random();
         if (type == "float") return VType.Float;
         if (type == "bool") return VType.Bool;
         if (type == "void") return VType.Void;
@@ -391,7 +403,8 @@ public sealed class ModuleBuilder
 
     public List<Leaf> Leaves(VType t)
     {
-        string key = t.Display();
+        // 表示名では引かない (user の class `@float` と float、user の class Random と TinySystem.Random は同じ表示名)
+        string key = t.Ident();
         List<Leaf>? cached;
         if (_leaves.TryGetValue(key, out cached)) return cached;
         var list = new List<Leaf>();
@@ -450,7 +463,7 @@ public sealed class ModuleBuilder
     public List<Leaf> ObjectLeaves(VType t)
     {
         if (t.Tag == VT.Cell) return Leaves(t.Inner!);
-        string key = t.Display();
+        string key = t.Ident();
         List<Leaf>? cached;
         if (_objectLeaves.TryGetValue(key, out cached)) return cached;
         var list = new List<Leaf>();
