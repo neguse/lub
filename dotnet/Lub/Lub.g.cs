@@ -2702,7 +2702,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。 version の規約は UseBuffer と同じ。</summary>
+    /// <summary>整数列から宣言する UseBuffer (INDEX の index 列や整数の STORAGE)。 STORAGE は値を int のまま詰め、shader は `StructuredBuffer<int>` (または `<uint>`) で読む。 version の規約は UseBuffer と同じ。</summary>
     public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int>? data, int? version = null)
     {
         var a = LubRuntime.Arena.Begin();
@@ -2853,7 +2853,7 @@ public static unsafe partial class Gfx
         }
     }
 
-    /// <summary>整数列を渡す FrameBuffer (INDEX の index 列や整数の STORAGE)。</summary>
+    /// <summary>整数列を渡す FrameBuffer (INDEX の index 列や整数の STORAGE)。 STORAGE は値を int のまま詰め、shader は `StructuredBuffer<int>` (または `<uint>`) で読む。</summary>
     public static FrameRange FrameBufferInts(Lub.Gfx.BufferType type, List<int> data)
     {
         var a = LubRuntime.Arena.Begin();

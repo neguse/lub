@@ -469,8 +469,8 @@ LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key, int32_t type,
     digest_use_buffer(app, "use_buffer_ints", key, type, data_count, version);
   if (data_count <= 0)
     return lub_api_fail(app, "use_buffer_ints: empty data");
-  if (type == SGL_BUFFER_INDEX) {
-    // index は u32。
+  if (type == SGL_BUFFER_INDEX || type == SGL_BUFFER_STORAGE) {
+    // index は u32、STORAGE は shader の StructuredBuffer<int> / <uint> が読む。
     // int32 の bit 列をそのまま使う
     return use_buffer_impl(app, key, type, data,
                            data_count * (int32_t)sizeof(uint32_t), version,
@@ -635,7 +635,8 @@ LubStatus lub_gfx_frame_buffer_ints(LubContext *ctx, int32_t type,
   const char *fn = "frame_buffer_ints";
   if (frame_buffer_check(app, fn, type, data, data_count) != LUB_OK)
     return LUB_ERROR;
-  if (type == SGL_BUFFER_INDEX)
+  // index は u32、STORAGE は shader の StructuredBuffer<int> / <uint> が読むので、int32 の bit 列をそのまま使う
+  if (type == SGL_BUFFER_INDEX || type == SGL_BUFFER_STORAGE)
     return frame_buffer_store(app, fn, type, data, data_count, out);
   float *f = (float *)malloc(sizeof(float) * (size_t)data_count);
   if (!f)
