@@ -871,7 +871,7 @@ LINQ は `TinySystem.Linq.Enumerable` (`TinySystem/Linq.cs`) の `List<T>` の�
 tcs のサブセットの C# で書いてあり、tcs は user のコードと一緒に IL にして tcs VM / C で動かし、.NET の project は `TinySystem/TinySystem.props` で同じファイルをコンパイルするので、3 経路が同じ実装で動く。
 意味の正本はそのファイルと doc comment。`System.Linq` は namespace ごと TCS1002 (`using System.Linq;` と並べると、受け手が `List<T>` の TinySystem.Linq が選ばれ、TinySystem.Linq に無い overload は TCS1002)。
 すべて即時評価で、列を返す演算は新しい `List<T>` を返す。callback は各要素にちょうど 1 回、先頭から順に呼び、走査は呼び出した時点の Count まで。メソッドチェーンだけで、クエリ構文 (`from x in ...`) は対象外。
-毎フレームの一時の `List<T>` は作ってよい (C で要素あたり約 8 ns)。struct の要素は `readonly record struct` にする (lambda の parameter の copy が省ける。§2 の `struct` の行)。
+毎フレームの一時の `List<T>` は作ってよい (int の Where は要素あたり C で約 5 ns、tcs VM で約 30 ns。q.md Q18)。struct の要素を `readonly record struct` にすると IL は lambda の parameter の copy を省くが、測った範囲では tcs VM と C の時間は変わらない。
 
 ### 対応済み
 

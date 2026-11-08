@@ -3,6 +3,7 @@ begin w=3 scale=1 title=t
 <a.txt> 9 True 3.5
 42 v7 16 3 20x 4 9
 3 2 12
+True False True 3
 8
 11
 2 3

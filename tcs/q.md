@@ -33,7 +33,7 @@
   3. 位置パターン `Hit(var d)` / `is (0, 0)` は対象外のまま (基準 4、5)。型 test と property パターン、分解 `var (x, y) = p` で書け、Deconstruct の語彙を足さない
   4. list パターンは対象外のまま (基準 4)。Count と添字で書ける
 - tcs2c が switch で絞った変数の member を解決できない件は、決定とは独立した不具合として修正する (T264)
-- 性能 (2026-10-17、DU 200 万件を生成して分岐): C は record class 0.066 s / struct + enum 0.017 s / class + tag 0.072 s で、確保 1 個あたり約 25 ns。k 件/フレームの DU は record class でよく、熱い data は readonly record struct + enum で書く
+- 性能 (2026-11-08 に測り直した。PC、tcs c は gcc -O2。DU 200 万件を List に作って分岐する。interface に入れた record class / readonly record struct + enum / class + enum の tag): C は 0.09 s / 0.04 s / 0.09 s、tcs VM は 0.20 s / 0.12 s / 0.18 s で、C の確保 1 個あたり約 25 ns。k 件/フレームの DU は record class でよく、熱い data は readonly record struct + enum で書く
 - record class は DU の case を運べる唯一の値なので、サブセットに残す
 
 
@@ -48,7 +48,7 @@
 - Dictionary に置かない演算: Select (Dictionary を返すと意味が mapValues になり、C# の Select と異なる。基準 2)、Sum (float の加算順で結果が変わる。基準 1)、OrderBy / First / MinBy など順序が結果に現れる演算
 - Keys / Values は copy の `List<T>` のまま残す (列挙の順は挿入順)。Dictionary から List の LINQ へはここを経由する (`d.Values.Where(..).OrderBy(..)`)。dotnet 側では `Dictionary<K,V>.KeyCollection` / `ValueCollection` を receiver とする overload を TinySystem に足す。key の順が要る場合は `Keys.OrderBy(k => k)` と書く。配列は引き続き対象外
 - 参照型 (class instance) の key: tcs VM は同一性で引き、列挙は挿入順で .NET と同じ。C backend は外部 handle 以外の参照 key を生成の前に止める (`Dictionary key type not supported`)。`tcs check` は通すので、C だけが断る。TCS1001 に揃えるかは未決
-- 性能 (2026-10-17、PC、tcs2c gcc -O2、2000 フレーム × 1000 要素): Where と foreach + if は C で 0.019 / 0.002 s (要素あたり約 8 ns)。struct 要素の Where は readonly record struct 0.019 s、readonly なし 0.023 s (述語引数と foreach 変数の copy)。「毎フレームの一時 list は作ってよい」「data を運ぶ struct は `readonly record struct` を既定にする」の 2 つを前提として書く
+- 性能 (2026-11-08 に測り直した。PC、tcs c は gcc -O2、2 万フレーム × 1000 要素): int の Where は C で 0.09 s、tcs VM で 0.58 s (要素あたり約 5 ns と約 30 ns)、foreach + if は C で 0.04 s、tcs VM で 0.35 s。4 field の record struct の要素の Where と foreach + if は、readonly の有無で C (0.16 s) も tcs VM (1.3〜1.4 s) も変わらない (IL は readonly の copy を省くが、時間には出ない)。「毎フレームの一時 list は作ってよい」を前提として書く。「data を運ぶ struct は `readonly record struct` を既定にする」は値を変えない data の書き方の既定で、速さの根拠は無い
 - 遅延評価との比較 (2026-10-20、同条件): Where → Select → Sum の chain は C で即時 0.002 s / closure iterator の遅延 0.008 s / loop 1 本に融合 0.002 s。遅延は段ごとに要素あたり呼び出しが増えて 4 倍遅い。遅延が勝つのは `Where(q).FirstOrDefault()` のような chain 途中の早期終了だけで、述語版の FirstOrDefault / Any / Count は即時でも途中で抜ける。早期終了が profile に出たら、即時のまま emitter で chain を 1 本の loop に融合する
 - 実装の形 (2026-10-25 改訂): TinySystem.Linq は tcs サブセットの C# で書き、.NET はそのまま実行し、tcs VM / C は user のコードと同じく source を変換して実行する。意味論の正本はその C# と doc comment で、il-spec §13 の intrinsic から LINQ を外す。runtime に LINQ を手書きで持たない。backend ごとの手書きの実装を突き合わせる形では、callback が受け手を変えたときなどの差が直すたびに見つかって収束しない。`System.Linq` を namespace ごと TCS1002 にすること、fuzz の「即時評価の既知差異の隔離」の撤去は従来どおり。`Linq.cs` は TinySystem.dll に入れず、.NET の project は `TinySystem/TinySystem.props` で source をコンパイルする。lub の雛形は props の Import と `using TinySystem.Linq;` (lub へは feature request)
 - 前提の確認 (2026-10-25): user 定義の generic 拡張メソッドで Where / Select / Any / Count / Sum / FirstOrDefault / 安定 sort の OrderBy を書き、callback が受け手に Add する場合も含めて .NET / C の stdout が一致した。サブセットに足りないもの: overload (TCS1001 MethodOverload。Sum / Min / Max / OrderBy の型別の版)、string の ordinal 比較 (`string.CompareOrdinal` は TCS1002)、int の Sum の checked (`checked(expr)` は透過)
