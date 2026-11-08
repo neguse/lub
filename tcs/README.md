@@ -160,6 +160,8 @@ dotnet run --project Transpiler -- check samples/hello.cs
 dotnet run --project Transpiler -- check game.cs --ref engine-stub.cs
 ```
 
+`tcs check` は Lua を出さず、束縛と準拠の検査の後に tcs VM と C の backend が読む IL を組み立てる。IL にできない本文と式も TCS1001 (`unsupported syntax: <構文の種類>`) と `internal:` の理由で止める。
+
 ### 複数ファイル
 
 ```bash

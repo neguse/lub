@@ -202,7 +202,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void ReservedIdentifiers_StayRejected()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Holder
             {
                 public int Get(int self)

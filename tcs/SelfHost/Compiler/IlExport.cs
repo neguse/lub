@@ -166,6 +166,8 @@ public sealed class IlExporter
     private readonly List<int> _emitted = new List<int>();
     // struct の型 (表示の名前) → instance の field の (名前, 型)。layout の hash で struct の中へ展開する
     private readonly Dictionary<string, List<ExField>> _structLayouts = new Dictionary<string, List<ExField>>();
+    // IL にできなかった本文と式 (文の並びの block、式の本文、初期化子、既定値、base の引数、top-level の文)。tcs check が TCS1001 にする
+    public readonly List<Node> UnsupportedBodies = new List<Node>();
 
     public IlExporter(Compilation c)
     {
@@ -252,7 +254,7 @@ public sealed class IlExporter
         if (topLevelUnit != null)
         {
             Enter(null, null, topLevelUnit, false);
-            result.TopLevel = Stats(topLevel);
+            result.TopLevel = TopLevelStats(topLevel);
         }
         ExportForeign(result);
         foreach (var ie in Ctx.InternalErrors) result.InternalErrors.Add(ie);
@@ -610,18 +612,38 @@ public sealed class IlExporter
         Ctx.B.ScopeRoots.Add(unitOrMember);
     }
 
-    private IlBlock? Stats(List<Node>? statements)
+    // 文の並びの本文 (block)
+    private IlBlock? Block(Node block)
     {
-        if (statements == null) return null;
         var acc = new List<IlStat>();
-        if (!Ctx.B.BuildStatsInto(statements, acc)) return null;
+        if (!Ctx.B.BuildStatsInto(block.List, acc))
+        {
+            UnsupportedBodies.Add(block);
+            return null;
+        }
         return new IlBlock(acc);
+    }
+
+    // top-level の文は 1 つずつ組み立て、IL にできない文をそれぞれ記録する
+    private IlBlock? TopLevelStats(List<Node> statements)
+    {
+        var acc = new List<IlStat>();
+        bool built = true;
+        foreach (var st in statements)
+        {
+            if (Ctx.B.BuildStatInto(st, acc)) continue;
+            UnsupportedBodies.Add(st);
+            built = false;
+        }
+        return built ? new IlBlock(acc) : null;
     }
 
     private IlExpr? Expr(Node? e)
     {
         if (e == null) return null;
-        return Ctx.B.BuildExpr(e);
+        var built = Ctx.B.BuildExpr(e);
+        if (built == null) UnsupportedBodies.Add(e);
+        return built;
     }
 
     // accessor の式の本文: get は値の return (条件式を文に直さない)、set は文の位置の式
@@ -635,7 +657,9 @@ public sealed class IlExporter
             acc.Add(new IlReturn(Ctx.B.WrapStructCopy(expr, built), null));
             return new IlBlock(acc);
         }
-        return Ctx.B.BuildExprStatInto(expr, expr, acc) ? new IlBlock(acc) : null;
+        if (Ctx.B.BuildExprStatInto(expr, expr, acc)) return new IlBlock(acc);
+        UnsupportedBodies.Add(expr);
+        return null;
     }
 
     // ---- field ----
@@ -1018,7 +1042,7 @@ public sealed class IlExporter
                 }
                 x.ReturnType = isGet ? type : "void";
                 Enter(t, isGet ? m.Sym : null, acc, !isStatic);
-                if (acc.A != null) x.Body = Stats(acc.A.List != null ? acc.A.List : new List<Node>());
+                if (acc.A != null) x.Body = Block(acc.A);
                 else if (acc.B != null) x.Body = AccessorExpr(acc.B, isGet);
                 methods.Add(x);
             }
@@ -1055,7 +1079,7 @@ public sealed class IlExporter
                 foreach (var p in m.Sym.Params) x.ParameterTypes.Add(IlTypes.Display(p.Type));
             }
             Enter(t, m.Sym, m, false);
-            if (m.B != null) x.Body = Stats(m.B.List != null ? m.B.List : new List<Node>());
+            if (m.B != null) x.Body = Block(m.B);
             else if (m.C != null) x.Body = AccessorExpr(m.C, true);
             methods.Add(x);
         }
@@ -1102,7 +1126,7 @@ public sealed class IlExporter
 
     private IlBlock? MethodBody(Node m, Symbol? sym)
     {
-        if (m.B != null) return Stats(m.B.List != null ? m.B.List : new List<Node>());
+        if (m.B != null) return Block(m.B);
         if (m.C == null) return null;
         bool hasOut = false;
         if (m.List != null)
@@ -1114,8 +1138,9 @@ public sealed class IlExporter
         }
         if (hasOut && sym != null && sym.Type.Kind == TypeKind.Void) return AccessorExpr(m.C, false);
         var acc = new List<IlStat>();
-        if (!Ctx.B.BuildReturnInto(m.C, acc)) return null;
-        return new IlBlock(acc);
+        if (Ctx.B.BuildReturnInto(m.C, acc)) return new IlBlock(acc);
+        UnsupportedBodies.Add(m.C);
+        return null;
     }
 
     private List<ExCtor> BuildCtors(TypeDeclSym t)
@@ -1156,7 +1181,9 @@ public sealed class IlExporter
                 foreach (var p in m.Sym.Params) ctor.ParameterTypes.Add(IlTypes.Display(p.Type));
             }
             Enter(t, m.Sym, m, true);
-            if (m.B != null) ctor.Body = Stats(m.B.List != null ? m.B.List : new List<Node>());
+            if (m.B != null) ctor.Body = Block(m.B);
+            // 式の本文 (`C(int x) => X = x;`) は文の位置の式
+            else if (m.C != null) ctor.Body = AccessorExpr(m.C, false);
             if (m.D != null && m.D.Text == "base" && m.D.List != null)
             {
                 var args = new List<IlExpr>();

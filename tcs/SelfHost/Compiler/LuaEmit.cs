@@ -161,39 +161,8 @@ public sealed class LuaEmit
         var lua = Finish();
         if (entry != "")
         {
-            TypeDeclSym? found = null;
-            if (C.TypesByFullName.TryGetValue(entry, out var byFull)) found = byFull;
-            if (found == null)
-            {
-                var candidates = new List<TypeDeclSym>();
-                foreach (var t in C.Types)
-                {
-                    if (t.Name == entry) candidates.Add(t);
-                }
-                if (candidates.Count > 1)
-                {
-                    var names = new List<string>();
-                    foreach (var t in candidates) names.Add(t.FullName);
-                    Errors.Add("entry class is ambiguous: " + entry + " (" + string.Join(", ", names) + ")");
-                    return lua;
-                }
-                if (candidates.Count == 1) found = candidates[0];
-            }
-            if (found == null)
-            {
-                Errors.Add("entry class not found: " + entry);
-                return lua;
-            }
-            if (found.IsRef)
-            {
-                Errors.Add("entry class is reference-only (--ref): " + entry);
-                return lua;
-            }
-            if (found.DeclKind != DeclKinds.Class && found.DeclKind != DeclKinds.RecordClass)
-            {
-                Errors.Add("entry class must be a class or record class: " + found.FullName);
-                return lua;
-            }
+            var found = EntryClass.Resolve(C, entry, Errors);
+            if (found == null) return lua;
             lua = lua + "return " + TypeName(found) + "\n";
         }
         return lua;

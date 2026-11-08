@@ -66,6 +66,14 @@ public sealed class CRun
             if (errors.Count == 0) errors.Add("export failed");
             return Cli.CError("TinyC# diagnostics:\n" + string.Join("\n", errors));
         }
+        // IL にできなかった本文と式は null になり、C は呼んだ側で "no IL body" と止まるか、初期化子を既定値にしてしまうので、
+        // ここで理由と場所 (tcs vm と tcs check と同じ文) を出して止める
+        if (result.Export.InternalErrors.Count > 0)
+        {
+            var internals = new List<string>();
+            foreach (var ie in result.Export.InternalErrors) internals.Add("internal: " + ie);
+            return Cli.CError("TinyC# diagnostics:\n" + string.Join("\n", internals));
+        }
         var runtime = new Dictionary<string, string>();
         foreach (var name in CEmitter.RuntimeFileNames())
         {

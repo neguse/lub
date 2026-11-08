@@ -172,7 +172,7 @@ public class BitwiseOperatorTests
     {
         // Lua の & は boolean に適用できず、and/or への写像は短絡評価で
         // C# の非短絡 & | と副作用意味論が変わるため未対応 (error) にする
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static bool Test(bool a, bool b) => a & b;

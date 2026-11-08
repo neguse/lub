@@ -167,7 +167,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         List<string> diagnostics;
         lock (Gate)
         {
-            var session = new TcsSelf.Session("");
+            var session = new TcsSelf.Session("") { CheckOnly = true };
             // compiler の診断の path は tree の番号 (path の括弧と重ならない)
             for (int i = 0; i < trees.Count; i++)
                 session.Add("tree" + i + ".cs", trees[i].GetText().ToString(), 0);

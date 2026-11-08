@@ -116,7 +116,7 @@ public class InheritanceDiagnosticTests
                 }
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics([source]);
+        var result = Checker.Check([source]);
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);
@@ -128,7 +128,7 @@ public class InheritanceDiagnosticTests
     [Fact]
     public void RefStubInheritance_IsNotDiagnosed()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public static class P
             {
                 public static int Test() => Host.Make().Size + Host.Make().Extra;

@@ -71,6 +71,34 @@ public class CliRuntimeTests
         Assert.Empty(result.Stderr);
     }
 
+    // `as` の先が class の式は準拠の検査を通るが IL にできない。check は IL を組み立てて TCS1001 と理由で止め、
+    // tcs c も同じ理由で止める (初期化子を既定値にした C を書かない)
+    [Fact]
+    public void Cli_CheckAndC_StopOnExpressionsTheIlBuilderCannotBuild()
+    {
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("app.cs", """
+            public class Foo { }
+            public static class P
+            {
+                static object o = new Foo();
+                static Foo? f = o as Foo;
+                public static void Main() { System.Console.WriteLine(f == null); }
+            }
+            """);
+        var outputPath = Path.Combine(Path.GetDirectoryName(inputPath)!, "app.c");
+
+        var check = RunCli("check", inputPath);
+        var c = RunCli("c", "--entry", "P", inputPath, "-o", outputPath);
+
+        Assert.Equal(1, check.ExitCode);
+        Assert.Contains($"{inputPath}(5,21): error TCS1001: unsupported syntax: As", check.Stderr);
+        Assert.Contains($"internal: IlBuild: as (As at {inputPath}:5)", check.Stderr);
+        Assert.Equal(1, c.ExitCode);
+        Assert.Contains($"internal: IlBuild: as (As at {inputPath}:5)", c.Stderr);
+        Assert.False(File.Exists(outputPath));
+    }
+
     [Fact]
     public void Cli_Check_FullyQualifiedApisUseMemberDiagnosticsOnly()
     {

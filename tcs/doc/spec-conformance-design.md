@@ -70,8 +70,8 @@ sweep は例ごとに次のいずれか 1 つへ確定させる。**どの例も
 
 | 分類 | 条件 | 検証内容 |
 |---|---|---|
-| IN-RUN | tcs check pass かつ実行系 template | transpile + Lua 5.5 実行。オラクルと出力一致 |
-| IN-COMPILE | tcs check pass かつ lib 系 template | transpile が完走し構文的に valid な Lua を出す |
+| IN-RUN | tcs check pass かつ実行系 template | tcs VM で実行。オラクルと出力一致 |
+| IN-COMPILE | tcs check pass かつ lib 系 template | tcs check (IL の組み立てまで) が通る |
 | DIAG | TCS1001/1002/1003 診断 | 診断が出ること自体が正 (サブセット境界の証拠) |
 | CSERR | 注釈が expectedErrors | Roslyn がコンパイルエラーを出すことのみ確認 |
 | UNEXTRACTED | annotation が抽出対象外 (pseudo-code 等) | 集計のみ |

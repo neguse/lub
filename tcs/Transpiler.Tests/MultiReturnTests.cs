@@ -169,7 +169,7 @@ public class MultiReturnTests
     [InlineData("new P().M(out _f);")]
     public void UserMethodOutArgument_NotADeclaration_ReportsUnsupportedSyntax(string statement)
     {
-        var result = Transpiler.TranspileWithDiagnostics([$$"""
+        var result = Checker.Check([$$"""
             public class P
             {
                 static int _f;
@@ -188,7 +188,7 @@ public class MultiReturnTests
     [Fact]
     public void UserMethodOutArgument_ForwardingOutParameter_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class P
             {
                 static void A(out int v) { v = 1; }
@@ -205,7 +205,7 @@ public class MultiReturnTests
     [InlineData("public class C { public C(out int v) { v = 1; } }")]
     public void OutParameter_OutsideMethodDeclaration_ReportsUnsupportedSyntax(string declaration)
     {
-        var result = Transpiler.TranspileWithDiagnostics([declaration]);
+        var result = Checker.Check([declaration]);
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e =>
@@ -217,7 +217,7 @@ public class MultiReturnTests
     [Fact]
     public void OutArgument_ExistingLocal_StaysAllowedForNonUserMethods()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System.Collections.Generic;
             public static class Game
             {
@@ -238,7 +238,7 @@ public class MultiReturnTests
     [Fact]
     public void UserMethodRefParameter_ReportsUnsupportedSyntax()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public static class Counter
             {
                 public static void Bump(ref int value)
@@ -278,7 +278,7 @@ public class MultiReturnTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics([source], null, [stub]);
+        var result = Checker.Check([source], null, [stub]);
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e =>
@@ -300,7 +300,7 @@ public class MultiReturnTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics([source], null,
+        var result = Checker.Check([source], null,
             [IoStub]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
