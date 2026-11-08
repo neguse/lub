@@ -834,8 +834,8 @@ static int32_t tcs_char_to_lower(int32_t c) { return tcs_char_is_upper(c) ? c + 
 static void
 tcs_write_string(TcsString *value)
 {
-    if (value == NULL) { fputs("nil", stdout); return; }
-    if (value->length != 0) fwrite(value->data, 1, value->length, stdout);
+    /* null の string は何も書かない */
+    if (value != NULL && value->length != 0) fwrite(value->data, 1, value->length, stdout);
 }
 
 static TcsString *

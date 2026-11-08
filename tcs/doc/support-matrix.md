@@ -563,7 +563,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `String` | **P** | 後述の個別メンバー表参照 | |
 | `Math` | **Y** | 後述の個別メンバー表参照 | |
 | `MathF` | **-** | | float 版 Math。TCS1002 (System.Math の float overload を使う) |
-| `Console` | **Y** | `WriteLine` と 1 引数の `Write` (文字列化は WriteLine と同じ) | object の引数は中の値で文字列にする (`__tcs_nstr`。値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない)。null の string を `WriteLine` に直接渡すと、tcs VM と .NET は空行、C は `nil` を書く (§27) |
+| `Console` | **Y** | `WriteLine` と 1 引数の `Write` (文字列化は WriteLine と同じ) | object の引数は中の値で文字列にする (`__tcs_nstr`。値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない)。null の string は空文字列として書く (`WriteLine` なら空行) |
 | `int` / `float` の `Parse(string)` | **Y** | | 不正な文字列は fault (.NET は FormatException) |
 | `int` / `float` の `TryParse(string, out v)` | **Y** | IL は `Math.TryParseInt` / `Math.TryParseFloat` | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
 | `int` / `float` の `ToString(format)` | **Y** | `String.FormatInt` / `String.FormatFloat` | 定数の標準の書式だけ (補間の書式と同じ: float は `G` / `E` / `F` / `N` / `R`、int は加えて `D` / `X`、小文字と 9 桁までの精度も)。空の書式は書式なしと同じ。他の書式と定数でない書式は TCS1002 |
@@ -1020,7 +1020,6 @@ C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収でき
 次は仕様の差ではなく、tcs VM か C が .NET と違う結果を出す不具合。
 
 - 網羅しない switch 式で一致する arm が無いと、tcs VM と C は fault せずに結果の型の既定値で続く (int なら 0)。.NET は SwitchExpressionException (§4)
-- null の string を `Console.WriteLine` に直接渡すと、C は `nil` を書く。tcs VM と .NET は空行 (§12)
 - `--ref` の型の user operator (`a + b`) は `tcs check` を通るが、`tcs vm` と `tcs c` は型の誤りで止まる
 - user の class を key にした Dictionary は、C backend だけが emit で止まる (§18)
 
