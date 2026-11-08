@@ -166,4 +166,36 @@ public partial class DifferentialTests
             }
             """, "P");
     }
+
+    // getter と setter を別々の interface が求めても、auto-property は両方の accessor を持つ (#432)
+    [CFact]
+    public void InterfaceProperty_AccessorsSplitAcrossInterfaces()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public interface IRead { int Value { get; } }
+            public interface IWrite { int Value { set; } }
+            public interface IBoth : IRead, IWrite { }
+            public class Cell : IBoth { public int Value { get; set; } }
+            public class Other : IWrite, IRead { public int Value { get; set; } }
+            public static class P
+            {
+                public static void Main()
+                {
+                    Cell c = new Cell { Value = 2 };
+                    IRead r = c;
+                    IWrite w = c;
+                    Console.WriteLine(r.Value);
+                    w.Value = 7;
+                    Console.WriteLine(r.Value);
+                    var o = new Other();
+                    IWrite ow = o;
+                    IRead orr = o;
+                    ow.Value = 5;
+                    Console.WriteLine(orr.Value);
+                }
+            }
+            """, "P");
+        Assert.Equal("2\n7\n5", output);
+    }
 }
