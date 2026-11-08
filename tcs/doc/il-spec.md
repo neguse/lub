@@ -140,7 +140,7 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   copy せずに渡すため、呼び出し側では copy できない）。copy constructor
   (`new List<T>(source)`) は新しい List に要素の copy を入れる（IL は末尾引数に
   `S.__copy` 参照を付け、要素を値で写す backend は読まなくてよい）
-- static method の method group (IlMethodGroup) の struct parameter も、lambda と同じく受ける側で copy する。readonly struct と `T?` の parameter は copy しない (IlMethodGroup の CopyTypes が parameter ごとに copy の要否を持つ)。tcs VM の method group は関数を直接指す closure で struct を葉の register の値で渡し、C は値渡しの thunk なので、どちらも copy を足さない
+- static method の method group (IlMethodGroup) の struct parameter も、lambda と同じく受ける側で copy する。readonly struct と `T?` の parameter は copy しない。tcs VM の method group は関数を直接指す closure で struct を葉の register の値で渡し、C は値渡しの thunk なので、どちらも copy を足さない
 - out parameter は呼び出しごとの新しい変数で、呼び出しの正常な完了で値が渡る。自作メソッドの受け手は `out var` / `out _` と、呼び出しの中から見えない局所変数 (lambda に capture されない物) だけなので (TCS1001)、out を別名で観測する手段は無い。IL は method の out parameter を `ExMethod.OutParameters` に並べ (本文は parameter に代入する)、呼び出しを `IlMultiAssign` (受け手は [戻り値, out...]、値は out を除いた引数の呼び出し) で表す。tcs VM は戻り値の後ろの register で、C はポインタで写す
 - struct 配列の要素は互いに独立した place。連続メモリ配置は backend 表現の
   自由であり IL の意味論ではない

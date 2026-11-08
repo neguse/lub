@@ -1402,7 +1402,6 @@ public sealed class CEmitter
             case IlBin: return "IlBin";
             case IlUn: return "IlUn";
             case IlParen: return "IlParen";
-            case IlValues: return "IlValues";
             case IlTernary: return "IlTernary";
             case IlCall: return "IlCall";
             case IlDynCall: return "IlDynCall";
@@ -1762,7 +1761,7 @@ public sealed class CEmitter
         var left = RenderExpr(binary.L);
         var right = RenderExpr(binary.R);
 
-        // T? と null / T? / T の ==/!= (IL の nil 比較の残りを lifted 等価で受ける)
+        // T? と null / T? / T の ==/!= (IL の null 比較の残りを lifted 等価で受ける)
         if ((binary.Op == IlBinOp.Eq || binary.Op == IlBinOp.Ne)
             && (leftType.Kind == CTypeKind.Nullable || rightType.Kind == CTypeKind.Nullable))
             return RenderNullableEquality(binary, leftType, rightType);
@@ -2292,7 +2291,7 @@ public sealed class CEmitter
         if (call.Callee is IlField field && field.Recv is IlVar recv
             && (recv.Name == "MathF" || recv.Name == "Math")
             && !_classes.ContainsKey(recv.Name) && TryResolve(recv.Name) == null)
-            return new IlCall("Math." + (field.Name == "Ceiling" ? "Ceil" : field.Name), call.Args, false, null);
+            return new IlCall("Math." + (field.Name == "Ceiling" ? "Ceil" : field.Name), call.Args, null);
         return null;
     }
 
@@ -2611,7 +2610,7 @@ public sealed class CEmitter
     }
 
     // List.Clear / Dictionary.Clear の IL の形 (IIFE: local t = recv; IlForPairs で
-    // 全ての key に nil を入れる) を認識して runtime 呼びにする
+    // 全ての key に null を入れる) を認識して runtime 呼びにする
     private bool TryEmitClearIife(IlIife iife)
     {
         if (iife.Stats.Count != 2) return false;
@@ -3857,7 +3856,7 @@ public sealed class CEmitter
 
     private CType TypeOfIntrinsic(IlCall rawCall)
     {
-        var call = new IlCall(NormalizeCallee(rawCall.Callee), rawCall.Args, rawCall.NilElements, rawCall.Origin);
+        var call = new IlCall(NormalizeCallee(rawCall.Callee), rawCall.Args, rawCall.Origin);
         var args = call.Args;
         if (call.Callee.StartsWith("Random."))
             return TypeOfRandomOp(call);
@@ -3958,7 +3957,7 @@ public sealed class CEmitter
 
     private string RenderIntrinsic(IlCall rawCall)
     {
-        var call = new IlCall(NormalizeCallee(rawCall.Callee), rawCall.Args, rawCall.NilElements, rawCall.Origin);
+        var call = new IlCall(NormalizeCallee(rawCall.Callee), rawCall.Args, rawCall.Origin);
         var type = TypeOfIntrinsic(call);
         // 型付けが誤りを記録したら引数を見ない (C# 版は例外で抜けた)
         if (CFail.Failed) return "";

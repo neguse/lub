@@ -158,7 +158,7 @@ public sealed class ExHostFunction
     }
 }
 
-// 束縛済みの compilation から export を作る。IL は C の経路の設定 (ForCBackend、引数の copy を残す) で組み立てる
+// 束縛済みの compilation から export を作る。IL は引数の copy を残す設定で組み立てる
 public sealed class IlExporter
 {
     private readonly Compilation _c;
@@ -172,7 +172,6 @@ public sealed class IlExporter
     public IlExporter(Compilation c)
     {
         _c = c;
-        Ctx.ForCBackend = true;
         Ctx.KeepsArgumentCopies = true;
     }
 

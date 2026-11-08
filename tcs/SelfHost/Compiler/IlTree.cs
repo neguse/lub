@@ -48,9 +48,6 @@ public static class IlTree
                 break;
             case IlUn u: r.Add(u.E); break;
             case IlParen p: r.Add(p.E); break;
-            case IlValues v:
-                foreach (var x in v.Items) r.Add(x);
-                break;
             case IlCall c:
                 foreach (var x in c.Args) r.Add(x);
                 break;
@@ -105,7 +102,6 @@ public static class IlTree
             case IlBin b: return b with { L = k[0], R = k[1] };
             case IlUn u: return u with { E = k[0] };
             case IlParen p: return p with { E = k[0] };
-            case IlValues v: return v with { Items = From(k, 0) };
             case IlCall c: return c with { Args = From(k, 0) };
             case IlDynCall d: return d with { Callee = k[0], Args = From(k, 1) };
             case IlInvoke iv: return iv with { Recv = k[0], Args = From(k, 1) };

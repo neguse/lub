@@ -56,11 +56,11 @@ public record IlVar(string Name, IlPos? Origin) : IlExpr;
 public record IlField(IlExpr Recv, string Name, IlPos? Origin) : IlExpr;
 
 // 要素の place: recv[idx]。PlusOne は List / 配列の添字 (idx は C# の 0 始まりのまま。範囲外は fault)、false は Dictionary の key。
-// Unchecked (要素が null になりうる配列)、BoolElements (要素が false になりうる)、NilElements (List の要素が null になりうる) は VM と C の backend が読まない
-public record IlIndex(IlExpr Recv, IlExpr Idx, bool PlusOne, bool Unchecked, bool BoolElements, bool NilElements, IlPos? Origin) : IlExpr;
+// Unchecked (要素が null になりうる配列) は VM と C の backend が読まない (builder が式を読み直してよいかの判断に使う)
+public record IlIndex(IlExpr Recv, IlExpr Idx, bool PlusOne, bool Unchecked, IlPos? Origin) : IlExpr;
 
-// 長さ (List.Count / string.Length / array.Length)。NilElements (List の要素が null になりうる) は VM と C の backend が読まない
-public record IlLen(IlExpr E, bool NilElements, IlPos? Origin) : IlExpr;
+// 長さ (List.Count / string.Length / array.Length)
+public record IlLen(IlExpr E, IlPos? Origin) : IlExpr;
 
 public enum IlBinOp
 {
@@ -99,16 +99,12 @@ public record IlUn(IlUnOp Op, IlExpr E, IlPos? Origin) : IlExpr;
 
 public record IlParen(IlExpr E, IlPos? Origin) : IlExpr;
 
-// return の複数の値 (タプルを返す method と out を持つ method の本体)。IL を組み立てる経路 (IlExporter) は作らず、VM と C の backend も読まない
-public record IlValues(List<IlExpr> Items, IlPos? Origin) : IlExpr;
-
 // 条件式 (cond ? t : f)
 public record IlTernary(IlExpr Cond, IlExpr T, IlExpr F, IlPos? Origin) : IlExpr;
 
 // 解決済みの callee 名での呼び出し: Callee(args)。
-// callee は "print" / "Math.Min" / "__tcs_idiv" / "table.insert" など。
-// NilElements (table.insert / table.remove の受け手の List の要素が null になりうる) は VM と C の backend が読まない
-public record IlCall(string Callee, List<IlExpr> Args, bool NilElements, IlPos? Origin) : IlExpr;
+// callee は "Math.Min" / "List.Add" / "__tcs_idiv" / "__tcs_writeline" など (doc/il-reference.md)
+public record IlCall(string Callee, List<IlExpr> Args, IlPos? Origin) : IlExpr;
 
 // 式の callee の呼び出し: callee(args)
 public record IlDynCall(IlExpr Callee, List<IlExpr> Args, IlPos? Origin) : IlExpr;
@@ -123,8 +119,8 @@ public record IlNewObj(string TypeName, List<IlExpr> Args, string Ctor, IlPos? O
 public record IlTableEntry(IlExpr? Key, IlExpr Value, string? NameKey);
 
 // table の構築 (List / Dictionary の literal、参照型の option の table)。
-// ElementType は配列 / List の literal の要素型 (C backend 用)。NilElements (List の要素が null になりうる) は VM と C の backend が読まない
-public record IlTable(List<IlTableEntry> Entries, string? ElementType, string? KeyType, bool IsArray, string? ObjectType, bool NilElements, IlPos? Origin) : IlExpr;
+// ElementType は配列 / List の literal の要素型 (C backend 用)
+public record IlTable(List<IlTableEntry> Entries, string? ElementType, string? KeyType, bool IsArray, string? ObjectType, IlPos? Origin) : IlExpr;
 
 // 固定長配列 `new T[n]`。要素は T の default 値 (Default: 値型はその IL、struct は IlNewObj の zero 値、参照型は null)
 public record IlNewArray(string ElementType, IlExpr Length, IlExpr? Default, IlPos? Origin) : IlExpr;
@@ -163,15 +159,12 @@ public record IlIife(List<IlStat> Stats, IlPos? Origin) : IlExpr;
 // closure。ExprBody か Body のどちらか。PatternLocals は式本体の中の is-pattern の designation を関数の冒頭で宣言する
 public record IlClosure(List<string> Params, IlBlock? Body, IlExpr? ExprBody, List<string> PatternLocals, IlPos? Origin) : IlExpr;
 
-// static method の method group (delegate への変換)。
-// CopyTypes は parameter ごとの struct の copy 関数の名前で、copy の要らない parameter は null (il-spec §10)。
-// VM と C の backend は読まない (どちらも struct を値で渡す)
-public record IlMethodGroup(string TypeRef, string Method, List<string?> CopyTypes, IlPos? Origin) : IlExpr;
+// static method の method group (delegate への変換)
+public record IlMethodGroup(string TypeRef, string Method, IlPos? Origin) : IlExpr;
 
 // struct の値の copy 地点 (il-spec §10)。
-// Nullable は E が struct の T? で、値があるときだけ中の struct を copy する。
-// Copiers は generic な struct の型引数の値を写す関数の並び (`, M.__copy` の形)。単相化した IL では空で、VM と C の backend は読まない
-public record IlStructCopy(IlExpr E, string TypeName, bool Nullable, string Copiers, IlPos? Origin) : IlExpr;
+// Nullable は E が struct の T? で、値があるときだけ中の struct を copy する
+public record IlStructCopy(IlExpr E, string TypeName, bool Nullable, IlPos? Origin) : IlExpr;
 
 // ---- Nullable<T> (il-spec §3 / §13)。VM は値の有無の register と値の register、C は { has, v } の構造体 ----
 
@@ -220,9 +213,9 @@ public record IlLiftedUn(IlUnOp Op, IlExpr E, IlPos? Origin) : IlExpr;
 // class の参照の明示の downcast `(T)e` (il-spec §9)
 public record IlCast(IlExpr E, string TypeRef, IlPos? Origin) : IlExpr;
 
-// struct を入れた型引数の既定値として渡す、zero 値と copy の作り方。HasToString は ToString の override を文字列化に使う。
+// struct を入れた型引数の既定値として渡す zero 値の作り方。HasToString は ToString の override を文字列化に使う。
 // 型引数の既定値の隠れ引数は単相化しない IL にだけ現れ、VM と C の backend は読まない (C は IlStructDescriptor を誤りにする)
-public record IlStructDescriptor(string TypeName, List<IlExpr> NewArgs, string Copiers, bool HasToString, IlPos? Origin) : IlExpr;
+public record IlStructDescriptor(string TypeName, List<IlExpr> NewArgs, bool HasToString, IlPos? Origin) : IlExpr;
 
 // with 式の上書きの項
 public record IlOverride(string Name, IlExpr Value);
@@ -246,9 +239,8 @@ public record IlArm(IlExpr Cond, IlBlock Body);
 
 public record IlIf(List<IlArm> Arms, IlBlock? Else, IlPos? Origin) : IlStat;
 
-// while。Trailer は for の脱糖の増分 (continue label の後)。
-// ScopeBody は本体と label を 1 つの scope で囲う印 (continue が後の local の scope へ飛び込まないように)。VM と C の backend は読まない
-public record IlWhile(IlExpr Cond, IlBlock Body, IlBlock? Trailer, bool ScopeBody, IlPos? Origin) : IlStat;
+// while。Trailer は for の脱糖の増分 (continue label の後)
+public record IlWhile(IlExpr Cond, IlBlock Body, IlBlock? Trailer, IlPos? Origin) : IlStat;
 
 // do-while (本体の後で Cond を評価し、真なら繰り返す)
 public record IlRepeat(IlBlock Body, IlExpr Cond, IlPos? Origin) : IlStat;
@@ -256,8 +248,8 @@ public record IlRepeat(IlBlock Body, IlExpr Cond, IlPos? Origin) : IlStat;
 // 数の for (Var = Start から Limit まで 1 ずつ増やす。Limit は 1 回だけ評価する)。制御変数が捕捉されず範囲が変わらないと分かるときだけ builder が作る
 public record IlNumericFor(string Var, IlExpr Start, IlExpr Limit, IlBlock Body, IlPos? Origin) : IlStat;
 
-// foreach (List / 配列)。Counted は要素が null になりうる列で、長さまで数える
-public record IlForeachList(string Var, IlExpr Coll, IlBlock Body, bool Counted, IlPos? Origin) : IlStat;
+// foreach (List / 配列)
+public record IlForeachList(string Var, IlExpr Coll, IlBlock Body, IlPos? Origin) : IlStat;
 
 // foreach (Dictionary)。反復変数は KeyValuePair
 public record IlForeachDict(string Var, IlExpr Coll, IlBlock Body, IlPos? Origin) : IlStat;
@@ -281,5 +273,5 @@ public record IlBreakScope(IlBlock Body, IlPos? Origin) : IlStat;
 public record IlMultiAssign(List<IlExpr> Targets, List<IlExpr> Values, bool Declare, IlPos? Origin) : IlStat;
 
 // key のループ: Coll の key (と値) を KVar (と VVar) に入れて回す。
-// builder が作るのは List.Clear / Dictionary.Clear の形 (全ての key に nil を入れる) だけで、VM と C の backend はこれを runtime の clear にする
+// builder が作るのは List.Clear / Dictionary.Clear の形 (全ての key に null を入れる) だけで、VM と C の backend はこれを runtime の clear にする
 public record IlForPairs(string KVar, string? VVar, IlExpr Coll, IlBlock Body, IlPos? Origin) : IlStat;

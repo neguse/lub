@@ -838,7 +838,7 @@ public sealed class FunctionCompiler
         }
         else if (s is IlForPairs fp && P1IsClear(fp))
         {
-            // List.Clear / Dictionary.Clear の lowering (全部の key に nil を入れる)
+            // List.Clear / Dictionary.Clear の lowering (全部の key に null を入れる)
             var ct = TypeOf(fp.Coll);
             var coll = Expr(fp.Coll);
             if (ct.Tag == VT.List) Emit(Op.LIST_CLEAR, coll.Reg);
@@ -1523,7 +1523,7 @@ public sealed class FunctionCompiler
     {
         var callee = c.Callee;
         if (callee.StartsWith("TinySystem.Dict.") || callee.StartsWith("TinySystem.Math."))
-            return CallType(new IlCall(Strings.From(callee, ContractFacts.Len("TinySystem.")), c.Args, c.NilElements, c.Origin));
+            return CallType(new IlCall(Strings.From(callee, ContractFacts.Len("TinySystem.")), c.Args, c.Origin));
         if (callee == "List.Remove") return VType.Bool;
         if (callee == "__tcs_irem" || callee == "__tcs_idiv" || callee == "__tcs_trunc" || callee == "__tcs_cadd"
             || callee == "__tcs_csub" || callee == "__tcs_cmul" || callee == "__tcs_cneg" || callee == "Math.CompareTo"
@@ -2645,7 +2645,7 @@ public sealed class FunctionCompiler
     {
         // TinySystem.Dict.X / TinySystem.Math.X は Dict.X / Math.X と同じ
         if (c.Callee.StartsWith("TinySystem.Dict.") || c.Callee.StartsWith("TinySystem.Math."))
-            return Call(new IlCall(Strings.From(c.Callee, Strings.ByteLength("TinySystem.")), c.Args, c.NilElements, c.Origin), dest, discard);
+            return Call(new IlCall(Strings.From(c.Callee, Strings.ByteLength("TinySystem.")), c.Args, c.Origin), dest, discard);
         if (c.Callee == "__tcs_irem" || c.Callee == "__tcs_idiv" || c.Callee == "__tcs_cadd" || c.Callee == "__tcs_csub"
             || c.Callee == "__tcs_cmul")
         {
@@ -3244,7 +3244,7 @@ public sealed class FunctionCompiler
         if (srClass != null)
         {
             if (_m.IsStruct(srClass))
-                return StructCall(new IlCall(srClass + "." + srMethod!.Name, dc.Args, false, null), srClass, srMethod!, null, dest);
+                return StructCall(new IlCall(srClass + "." + srMethod!.Name, dc.Args, null), srClass, srMethod!, null, dest);
             return EmitCall(Op.CALL, RequestMethod(srClass, srMethod!), null, srMethod!, dc.Args, dest);
         }
         var ft = TypeOf(dc.Callee);
@@ -3800,7 +3800,7 @@ public sealed class FunctionCompiler
                 var end = new Label();
                 Jump(Op.JF, none, nv.Regs[0]);
                 var inner = CopyToTemp(new Val(fnt.Inner!, P4Lists.RegsFrom(nv.Regs, 1)));
-                Scoped(inner, x => Library(new IlCall(c.Callee, P4Lists.ReplaceArg(c.Args, 0, x), false, null), d));
+                Scoped(inner, x => Library(new IlCall(c.Callee, P4Lists.ReplaceArg(c.Args, 0, x), null), d));
                 Jump(Op.JMP, end);
                 Mark(none);
                 EmitImm(Op.LDSTR, d.Reg, _m.Const(new List<int>()));
@@ -3833,7 +3833,7 @@ public sealed class FunctionCompiler
                 Jump(Op.JMP, top);
                 Mark(exit);
                 if (lname == "List.Copy") return dest == null ? list : Store2(dest, list);
-                return Scoped(list, x => Library(new IlCall(c.Callee, P4Lists.ReplaceArg(c.Args, ai, x), false, null), dest));
+                return Scoped(list, x => Library(new IlCall(c.Callee, P4Lists.ReplaceArg(c.Args, ai, x), null), dest));
             }
         }
         if (lname == "List.Contains" || lname == "List.IndexOf" || lname == "TcsQueue.Contains")
@@ -3848,7 +3848,7 @@ public sealed class FunctionCompiler
             {
                 // struct の要素の Remove: 値の等価で番号を探し、あれば RemoveAt
                 var list = CopyToTemp(Expr(c.Args[0]));
-                var at = Scoped(list, x => StructFind(new IlCall(c.Callee, P4Lists.ReplaceArg(c.Args, 0, x), c.NilElements, c.Origin), rlt, true, null));
+                var at = Scoped(list, x => StructFind(new IlCall(c.Callee, P4Lists.ReplaceArg(c.Args, 0, x), c.Origin), rlt, true, null));
                 var d = dest ?? Temp(VType.Bool);
                 var none = new Label();
                 var end = new Label();
@@ -3918,11 +3918,11 @@ public sealed class FunctionCompiler
             return new Val(VType.Void, new List<int>());
         }
         if (callee == "TcsQueue.ToList" && TypeOf(c.Args[0]).Tag == VT.List)
-            return Library(new IlCall("List.Copy", P4Lists.Exprs1(c.Args[0]), false, null), dest);
+            return Library(new IlCall("List.Copy", P4Lists.Exprs1(c.Args[0]), null), dest);
         if (callee == "TcsQueue.Contains")
-            return Library(new IlCall("List.Contains", P4Lists.Exprs2(c.Args[0], c.Args[1]), false, null), dest);
+            return Library(new IlCall("List.Contains", P4Lists.Exprs2(c.Args[0], c.Args[1]), null), dest);
         if (callee == "TcsHashSet.ToList")
-            return Library(new IlCall("Dict.Keys", P4Lists.Exprs1(c.Args[0]), false, null), dest);
+            return Library(new IlCall("Dict.Keys", P4Lists.Exprs1(c.Args[0]), null), dest);
         if (callee == "TcsHashSet.Add" || callee == "TcsHashSet.Remove" || callee == "TcsHashSet.Contains")
         {
             var st = TypeOf(c.Args[0]);
@@ -4577,7 +4577,7 @@ public sealed class FunctionCompiler
     {
         if (e is IlDynCall dc && dc.Callee is IlField f && f.Recv is IlVar owner && Lookup(owner.Name) == null
             && _m.ClassInfo(owner.Name) != null)
-            return new IlCall(owner.Name + "." + f.Name, dc.Args, false, dc.Origin);
+            return new IlCall(owner.Name + "." + f.Name, dc.Args, dc.Origin);
         return e;
     }
 
@@ -4588,7 +4588,7 @@ public sealed class FunctionCompiler
         if (e is IlInvoke inv)
         {
             var rt = TypeOf(inv.Recv);
-            if (rt.Tag == VT.Class) return OutCall(new IlCall(rt.Name + "." + inv.Method, P5Exprs.Prepend(inv.Recv, inv.Args), false, null));
+            if (rt.Tag == VT.Class) return OutCall(new IlCall(rt.Name + "." + inv.Method, P5Exprs.Prepend(inv.Recv, inv.Args), null));
         }
         return null;
     }
@@ -4611,12 +4611,12 @@ public sealed class FunctionCompiler
             var ict = TypeOf(inv.Recv);
             if (ict.Tag == VT.Class)
             {
-                var iinfo = OutCall(new IlCall(ict.Name + "." + inv.Method, P5Exprs.Prepend(inv.Recv, inv.Args), false, null));
+                var iinfo = OutCall(new IlCall(ict.Name + "." + inv.Method, P5Exprs.Prepend(inv.Recv, inv.Args), null));
                 if (iinfo != null)
                 {
                     // instance method の out (receiver を先頭の引数にして同じ経路)
                     var nv = new List<IlExpr>();
-                    nv.Add(new IlCall(ict.Name + "." + inv.Method, P5Exprs.Prepend(inv.Recv, inv.Args), false, null));
+                    nv.Add(new IlCall(ict.Name + "." + inv.Method, P5Exprs.Prepend(inv.Recv, inv.Args), null));
                     ma = new IlMultiAssign(ma.Targets, nv, ma.Declare, ma.Origin);
                 }
             }
