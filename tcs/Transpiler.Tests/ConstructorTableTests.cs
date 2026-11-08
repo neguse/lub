@@ -1,10 +1,13 @@
 namespace TinyCs.Tests;
 
-// instance / struct 生成は 1 つのテーブルコンストラクタで作る。畳みは
+// Lua backend の instance / struct 生成は 1 つのテーブルコンストラクタで作る。畳みは
 // 「他の評価と順序を入れ替えても観測できない」ものに限り、それ以外は
-// C# の評価順 (field initializer → ctor 本文) のまま
+// C# の評価順 (field initializer → ctor 本文) のまま。Run は Lua の出力を走らせ、
+// RunVm は同じ program の C# の評価順を tcs VM で見る
 public class ConstructorTableTests
 {
+    private static string RunVm(string source, string mainBody) => TestHelper.CompileAndRunVmMain(source, mainBody);
+
     private static string Run(string source, string luaExpr)
     {
         var lua = Transpiler.Transpile([source]);
@@ -24,6 +27,7 @@ public class ConstructorTableTests
         Assert.Equal("1 2 3", Run(source,
             "(function() local v = V.new(1, 2, 3) "
             + "return v.X .. ' ' .. v.Y .. ' ' .. v.Z end)()"));
+        Assert.Equal("1 2 3", RunVm(source, "var v = new V(1, 2, 3); System.Console.WriteLine(v.X + \" \" + v.Y + \" \" + v.Z);"));
         // 既定値 → 本来の値の二重代入が消えている (最適化の固定)
         Assert.DoesNotContain("self.X", Transpiler.Transpile([source]));
     }
@@ -43,6 +47,7 @@ public class ConstructorTableTests
         Assert.Equal("2 1 9", Run(source,
             "(function() local w = W.new(9) "
             + "return Counter.N .. ' ' .. w.A .. ' ' .. w.B end)()"));
+        Assert.Equal("2 1 9", RunVm(source, "var w = new W(9); System.Console.WriteLine(Counter.N + \" \" + w.A + \" \" + w.B);"));
     }
 
     [Fact]
@@ -59,6 +64,7 @@ public class ConstructorTableTests
             }
             """;
         Assert.Equal("abcctor", Run(source, "(function() W.new() return Log.S end)()"));
+        Assert.Equal("abcctor", RunVm(source, "var w = new W(); System.Console.WriteLine(Log.S);"));
     }
 
     [Fact]
@@ -75,6 +81,7 @@ public class ConstructorTableTests
         // Seen = X は field を読むので畳まれず、X = p より前に実行される
         Assert.Equal("7 3", Run(source,
             "(function() local w = W.new(3) return w.Seen .. ' ' .. w.X end)()"));
+        Assert.Equal("7 3", RunVm(source, "var w = new W(3); System.Console.WriteLine(w.Seen + \" \" + w.X);"));
     }
 
     [Fact]
@@ -90,6 +97,7 @@ public class ConstructorTableTests
         Assert.Equal("4 5 4", Run(source,
             "(function() local w = W.new(4) "
             + "return w.X .. ' ' .. w.Y .. ' ' .. w.Z end)()"));
+        Assert.Equal("4 5 4", RunVm(source, "var w = new W(4); System.Console.WriteLine(w.X + \" \" + w.Y + \" \" + w.Z);"));
     }
 
     [Fact]
@@ -105,6 +113,7 @@ public class ConstructorTableTests
             """;
         Assert.Equal("5 8", Run(source,
             "(function() local w = W.new(8) return Probe.Seen .. ' ' .. w.X end)()"));
+        Assert.Equal("5 8", RunVm(source, "var w = new W(8); System.Console.WriteLine(Probe.Seen + \" \" + w.X);"));
     }
 
     [Fact]
@@ -121,6 +130,7 @@ public class ConstructorTableTests
             """;
         Assert.Equal("2 6", Run(source,
             "(function() local w = W.new(6) return w.Seen .. ' ' .. w.X end)()"));
+        Assert.Equal("2 6", RunVm(source, "var w = new W(6); System.Console.WriteLine(w.Seen + \" \" + w.X);"));
     }
 
     [Fact]
@@ -134,6 +144,7 @@ public class ConstructorTableTests
             }
             """;
         Assert.Equal("5", Run(source, "W.new(5).X"));
+        Assert.Equal("5", TestHelper.CompileAndRunVm(source, "new W(5).X"));
     }
 
     [Fact]
@@ -147,6 +158,7 @@ public class ConstructorTableTests
             }
             """;
         Assert.Equal("3.0", Run(source, "W.new(3).D"));
+        Assert.Equal("3", TestHelper.CompileAndRunVm(source, "new W(3).D"));
     }
 
     [Fact]
@@ -182,6 +194,7 @@ public class ConstructorTableTests
             "(function() local l = {} local w = W.new(l) "
             + "return tostring(w.Flag) .. ' ' .. tostring(w.Name) .. ' ' .. w.D .. ' ' .. w.N"
             + " .. ' ' .. tostring(w.Items == l) end)()"));
+        Assert.Equal("False True 0 4 True", RunVm(source, "var l = new List<int>(); var w = new W(l); System.Console.WriteLine(w.Flag + \" \" + (w.Name == null) + \" \" + w.D + \" \" + w.N + \" \" + (w.Items == l));"));
     }
 
     [Fact]
@@ -190,6 +203,7 @@ public class ConstructorTableTests
         const string source = "public record Pt(int X, int Y);";
         Assert.Equal("3 4", Run(source,
             "(function() local p = Pt.new(3, 4) return p.X .. ' ' .. p.Y end)()"));
+        Assert.Equal("3 4", RunVm(source, "var p = new Pt(3, 4); System.Console.WriteLine(p.X + \" \" + p.Y);"));
     }
 
     [Fact]
@@ -203,6 +217,7 @@ public class ConstructorTableTests
             "(function() local s = S.new() local c = S.__copy(s) "
             + "c.Inner.V = 7 return s.A .. ' ' .. s.Inner.V .. ' ' .. tostring(s.Name)"
             + " .. ' ' .. c.Inner.V .. ' ' .. (c.A + 1) end)()"));
+        Assert.Equal("0 0 True 7 1", RunVm(source, "var s = new S(); var c = s; c.Inner.V = 7; System.Console.WriteLine(s.A + \" \" + s.Inner.V + \" \" + (s.Name == null) + \" \" + c.Inner.V + \" \" + (c.A + 1));"));
     }
 
     [Fact]
@@ -245,6 +260,7 @@ public class ConstructorTableTests
             """;
         Assert.Equal("5 2", Run(source,
             "(function() local d = D.new(5) return d.M.a .. ' ' .. d.M.b end)()"));
+        Assert.Equal("5 2", RunVm(source, "var d = new D(5); System.Console.WriteLine(d.M[\"a\"] + \" \" + d.M[\"b\"]);"));
         Assert.DoesNotContain("self.M", Transpiler.Transpile([source]));
     }
 
@@ -271,6 +287,7 @@ public class ConstructorTableTests
             """;
         Assert.Equal("initopneg", Run(source,
             "(function() W.new(V.new(), V.new()) return Log.S end)()"));
+        Assert.Equal("initopneg", RunVm(source, "var w = new W(new V(), new V()); System.Console.WriteLine(Log.S);"));
     }
 
     // --ref の host 型も operator は metamethod 経由で host code が走る
@@ -311,6 +328,7 @@ public class ConstructorTableTests
         Assert.Equal("1.5 true", Run(source,
             "(function() local w = W.new(1, 3.5, false) "
             + "return w.D .. ' ' .. tostring(w.B) end)()"));
+        Assert.Equal("1.5 True", RunVm(source, "var w = new W(1, 3.5f, false); System.Console.WriteLine(w.D + \" \" + w.B);"));
         Assert.DoesNotContain("self.D", Transpiler.Transpile([source]));
     }
 
@@ -359,5 +377,6 @@ public class ConstructorTableTests
             """;
         Assert.Equal("5", Run(source, "C.new().X"));
         Assert.Equal("2", Run(source, "C.new__int(2).X"));
+        Assert.Equal("5,2", TestHelper.CompileAndRunVm(source, "new C().X + \",\" + new C(2).X"));
     }
 }

@@ -26,7 +26,7 @@ public class LuaLocalRenameTests
             w => w.Contains("LuaKeywordIdentifier"));
         Assert.Contains("local local_ = 1", result.Lua);
         Assert.Contains("return local_", result.Lua);
-        Assert.Equal("1", TestHelper.TranspileAndRun("""
+        Assert.Equal("1", TestHelper.CompileAndRunVmTopLevel("""
             var r = Runner.Run();
 
             public class Runner
@@ -43,7 +43,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void ParameterNamedEnd_RunsAcrossDefaultsAndReferences()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             var timer = new Timer();
             var r = timer.Wait(4) + timer.Wait() + Timer.Add(2, 3);
 
@@ -60,7 +60,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void ForEachVariableNamedUntil_Runs()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             using System.Collections.Generic;
 
             var values = new List<int> { 1, 2, 3 };
@@ -76,7 +76,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void ClosureCapturingKeywordLocal_RunsConsistently()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             using System;
 
             var local = 10;
@@ -92,7 +92,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void KeywordLocalDoesNotCollideWithUserUnderscoreName()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             var local_ = 100;
             var local = 1;
             var local__ = 1000;
@@ -105,7 +105,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void KeywordLocalDoesNotCaptureSameNamedMemberReference()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             var r = new Box().Get();
 
             public class Box
@@ -126,7 +126,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void PatternDesignationNamedNil_Runs()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             int? value = 5;
             var r = 0;
             if (value is int nil) r += nil;
@@ -139,7 +139,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void KeywordLocalInExpressionBodiedAndBlockBodies_Runs()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             var r = new Walker().Sum(3);
 
             public class Walker
@@ -222,7 +222,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void ParameterNamedLikeOperatorOwnerType_Runs()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVm("""
             public class V {
                 public int X;
                 public V(int x) { X = x; }
@@ -246,7 +246,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void LocalNamedLikeType_ConstructorAndStaticMemberStillResolve()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVm("""
             public class W {
                 public static int Base = 10;
                 public int X;
@@ -293,7 +293,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void ParameterNamedLikeQualifiedOperatorOwner_Runs()
     {
-        Assert.Equal("13", TestHelper.TranspileAndRun(
+        Assert.Equal("13", TestHelper.CompileAndRunVm(
             QualifiedOperatorSource, "Runner.One()"));
     }
 
@@ -301,7 +301,7 @@ public class LuaLocalRenameTests
     [Fact]
     public void QualifiedAliasParameters_ReceiveDistinctReplacementNames()
     {
-        Assert.Equal("33", TestHelper.TranspileAndRun(
+        Assert.Equal("33", TestHelper.CompileAndRunVm(
             QualifiedOperatorSource, "Runner.Parameters()"));
     }
 
@@ -325,7 +325,7 @@ public class LuaLocalRenameTests
                 + "public static int Sum(V a, int A_V)").Replace(
             "public static int One()",
             "public static string Name() => A.V.Name(7); public static int One()");
-        Assert.Equal("A_V", TestHelper.TranspileAndRun(source, "Runner.Name()"));
+        Assert.Equal("A_V", TestHelper.CompileAndRunVm(source, "Runner.Name()"));
     }
 
 }

@@ -23,7 +23,7 @@ internal sealed partial class SpecConformanceClassifier
     // 公式 template の csproj は ImplicitUsings=enable であり、"-without-using"
     // template の例は SDK の暗黙 global using を前提にしている。compliance 解析と
     // emit の対象外になるよう referenceSources として補う。
-    private const string ImplicitUsingsSource = """
+    internal const string ImplicitUsingsSource = """
         global using System;
         global using System.Collections.Generic;
         global using System.IO;

@@ -7,7 +7,7 @@ public class Phase14to19Tests
     [Fact]
     public void PropertyPattern_SingleProperty()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -17,14 +17,14 @@ public class Phase14to19Tests
                     return p is { X: > 0 };
                 }
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void PropertyPattern_MultipleProperties()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -34,14 +34,14 @@ public class Phase14to19Tests
                     return p is { X: > 0, Y: > 0 };
                 }
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("false", result);
+            """, "T.Test()");
+        Assert.Equal("False", result);
     }
 
     [Fact]
     public void PropertyPattern_InSwitchExpression()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -65,7 +65,7 @@ public class Phase14to19Tests
     [Fact]
     public void With_SingleField()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -83,7 +83,7 @@ public class Phase14to19Tests
     [Fact]
     public void With_OriginalUnchanged()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -101,7 +101,7 @@ public class Phase14to19Tests
     [Fact]
     public void With_MultipleFields()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -121,7 +121,7 @@ public class Phase14to19Tests
     [Fact]
     public void Deconstruct_Record()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -141,7 +141,7 @@ public class Phase14to19Tests
     [Fact]
     public void With_SideEffectReceiver_EvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -166,7 +166,7 @@ public class Phase14to19Tests
     [Fact]
     public void With_CopyDoesNotMutateSource_AndKeepsType()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y)
             {
                 public int Sum() => X + Y;
@@ -189,7 +189,7 @@ public class Phase14to19Tests
     [Fact]
     public void Deconstruct_SideEffectRhs_EvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Pair(int X, int Y);
             public class T
             {
@@ -214,7 +214,7 @@ public class Phase14to19Tests
     [Fact]
     public void Deconstruct_WithDiscard_EvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Pair(int X, int Y);
             public class T
             {
@@ -239,7 +239,7 @@ public class Phase14to19Tests
     [Fact]
     public void Deconstruct_AssignmentToExistingVariables()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Pair(int X, int Y);
             public class T
             {
@@ -268,7 +268,7 @@ public class Phase14to19Tests
     [Fact]
     public void RecordEquals_SameValues()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -279,14 +279,14 @@ public class Phase14to19Tests
                     return p1 == p2;
                 }
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void RecordEquals_DifferentValues()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -297,8 +297,8 @@ public class Phase14to19Tests
                     return p1 == p2;
                 }
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("false", result);
+            """, "T.Test()");
+        Assert.Equal("False", result);
     }
 
     // ===== T89: Extension methods =====
@@ -306,7 +306,7 @@ public class Phase14to19Tests
     [Fact]
     public void ExtensionMethod_Basic()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public static class StringExt
             {
                 public static string Shout(this string s)
@@ -328,7 +328,7 @@ public class Phase14to19Tests
     [Fact]
     public void ExtensionMethod_WithArgs()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public static class IntExt
             {
                 public static int Add(this int x, int y)
@@ -353,7 +353,7 @@ public class Phase14to19Tests
     [Fact]
     public void Dict_IndexerInitializer()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -376,7 +376,7 @@ public class Phase14to19Tests
     [Fact]
     public void StringInterpolation_FormatF2()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -392,7 +392,7 @@ public class Phase14to19Tests
     [Fact]
     public void StringInterpolation_FormatD3()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -410,7 +410,7 @@ public class Phase14to19Tests
     [Fact]
     public void Ternary_StillWorks()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -492,7 +492,4 @@ public class Phase14to19Tests
         }
         Assert.True(found);
     }
-
-    private static string TranspileAndRunWithRuntime(string csharpSource, string luaExpr) =>
-        TestHelper.TranspileAndRunWithRuntime(csharpSource, luaExpr);
 }

@@ -9,19 +9,16 @@ internal sealed record SpecExecutionOutcome(bool Executed, bool Passed,
     bool KnownDifference, string? Details);
 
 /// <summary>
-/// InRun 分類の例のうち expectedOutput / ignoreOutput 付きを Lua 5.5 で実行し、
-/// 仕様が明記する出力と照合する (C1)。inferOutput の dotnet オラクル照合は C2。
+/// InRun 分類の例を tcs VM (tcs2vm → tcsvm、通常と GC stress) で実行し、仕様が明記する出力 (expectedOutput、C1) か
+/// 実 .NET の出力 (dotnet オラクル、C2) と照合する。
 /// </summary>
-internal sealed class SpecLuaExecutor
+internal sealed class SpecVmExecutor
 {
-    private readonly string _runtimePath;
     private readonly IReadOnlyDictionary<string, string> _knownDifferences;
     private readonly SpecDotnetExecutor _dotnet = new();
 
-    public SpecLuaExecutor(string repoRoot)
+    public SpecVmExecutor(string repoRoot)
     {
-        _runtimePath = Path.Combine(repoRoot, "runtime", "tinysystem.lua")
-            .Replace("\\", "/");
         _knownDifferences = LoadKnownDifferences(Path.Combine(repoRoot,
             "Transpiler.Tests", "SpecConformance", "known-differences.json"));
     }
@@ -29,8 +26,7 @@ internal sealed class SpecLuaExecutor
     // 出力契約 (expectedOutput / ignoreOutput) が無い InRun 例は dotnet
     // differential (C2) がオラクルになるため、全 InRun が実行対象。
     public static bool IsEligible(ClassifiedSpecExample item) =>
-        item.Result.Category == SpecClassification.InRun &&
-        item.Result.Lua is not null;
+        item.Result.Category == SpecClassification.InRun;
 
     public SpecExecutionOutcome Execute(ClassifiedSpecExample item, string id,
         IReadOnlyList<SpecSourceFile> sources)
@@ -55,19 +51,11 @@ internal sealed class SpecLuaExecutor
             expectedLines = SplitOutput(dotnetRun.Output);
         }
 
-        var entry = FindEntryInvocation(sources);
-        var script = $"local TinySystem = dofile(\"{_runtimePath}\")\n" +
-                     "List = TinySystem.List\n" +
-                     "Dict = TinySystem.Dict\n" +
-                     "Math = TinySystem.Math\n" +
-                     "String = TinySystem.String\n" +
-                     "Random = TinySystem.Random\n" +
-                     $"{item.Result.Lua}\n{entry}";
-
         string stdout;
         try
         {
-            stdout = TestHelper.RunLua(script);
+            stdout = VmCorpus.RunPrograms([.. sources.Select(s => s.Code)], FindEntryClass(sources),
+                [SpecConformanceClassifier.ImplicitUsingsSource]);
         }
         catch (Exception exception)
         {
@@ -75,7 +63,7 @@ internal sealed class SpecLuaExecutor
                 return new SpecExecutionOutcome(true, true, true,
                     exception.Message);
             return new SpecExecutionOutcome(true, false, false,
-                $"Lua execution failed: {exception.Message}");
+                $"VM execution failed: {exception.Message}");
         }
 
         if (expectedLines is null)
@@ -103,17 +91,16 @@ internal sealed class SpecLuaExecutor
         return [.. lines];
     }
 
-    // 実行の起点: top-level statements はチャンク実行だけで済む。それ以外は
-    // static Main を持つ型を探し、namespace 込みの emitted 名で明示的に呼ぶ
-    // (tcs は Main を自動実行しない — q.md Q3)。
-    internal static string FindEntryInvocation(
+    // 実行の起点: top-level statements の program は null (VM の TopLevel.Main)。それ以外は static Main を持つ型の IL の名前
+    // (namespace と外側の型を `_` でつなぐ。`N2.Test` は `N2_Test`)。
+    internal static string? FindEntryClass(
         IReadOnlyList<SpecSourceFile> sources)
     {
         foreach (var source in sources)
         {
             var root = CSharpSyntaxTree.ParseText(source.Code).GetRoot();
             if (root.DescendantNodes().OfType<GlobalStatementSyntax>().Any())
-                return "";
+                return null;
 
             var main = root.DescendantNodes()
                 .OfType<MethodDeclarationSyntax>()
@@ -123,24 +110,19 @@ internal sealed class SpecLuaExecutor
             if (main is null)
                 continue;
 
-            // tcs は namespace の中の型を namespace 修飾名の flat global で出す
-            // (`N2.Test` → `N2_Test`)。entry は外側の型にその前置きを付ける
             var parts = new List<string>();
-            var namespaces = new List<string>();
             var node = main.Parent;
             while (node is not null)
             {
                 if (node is TypeDeclarationSyntax type)
                     parts.Insert(0, type.Identifier.ValueText);
                 else if (node is BaseNamespaceDeclarationSyntax ns)
-                    namespaces.Insert(0, ns.Name.ToString().Replace('.', '_'));
+                    parts.Insert(0, ns.Name.ToString().Replace('.', '_'));
                 node = node.Parent;
             }
-            if (namespaces.Count > 0)
-                parts[0] = string.Join("_", namespaces) + "_" + parts[0];
-            return string.Join(".", parts) + ".Main()";
+            return string.Join("_", parts);
         }
-        return "";
+        return null;
     }
 
     private static IReadOnlyDictionary<string, string> LoadKnownDifferences(

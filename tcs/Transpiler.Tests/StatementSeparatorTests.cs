@@ -9,7 +9,7 @@ public class StatementSeparatorTests
     [Fact]
     public void ListClear_AfterIndexerLocal_RunsAsSeparateStatement()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             using System.Collections.Generic;
 
             var buckets = new Dictionary<string, List<int>>();
@@ -25,7 +25,7 @@ public class StatementSeparatorTests
     [Fact]
     public void ConditionalAccessStatement_AfterIndexerLocal_RunsAsSeparateStatement()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             using System.Collections.Generic;
 
             var list = new List<Counter> { new Counter() };
@@ -46,7 +46,7 @@ public class StatementSeparatorTests
     [Fact]
     public void ListClear_AfterCallStatement_RunsAsSeparateStatement()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             using System.Collections.Generic;
 
             var log = new List<int>();
@@ -61,7 +61,7 @@ public class StatementSeparatorTests
     [Fact]
     public void ConditionalAccessStatement_InsideLambdaBlock_AfterIndexerLocal()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             using System;
             using System.Collections.Generic;
 

@@ -7,7 +7,7 @@ public class SwitchTests
     [Fact]
     public void SwitchStatement_BracedCaseInsideLoop_DoesNotBreakLoop()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -33,7 +33,7 @@ public class SwitchTests
     [Fact]
     public void SwitchStatement_ConditionalEarlyBreak_ExitsSwitchOnly()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -64,7 +64,7 @@ public class SwitchTests
     [Fact]
     public void SwitchStatement_BreakInNestedLoop_BindsToLoop()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -96,7 +96,7 @@ public class SwitchTests
     [Fact]
     public void SwitchStatement_ContinueInsideSwitch_ContinuesOuterLoop()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -124,7 +124,7 @@ public class SwitchTests
     [Fact]
     public void SwitchStatement_Basic()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -154,7 +154,7 @@ public class SwitchTests
     [Fact]
     public void SwitchStatement_Default()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -179,7 +179,7 @@ public class SwitchTests
     [Fact]
     public void SwitchStatement_WithEnum()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public enum Dir { Up = 0, Down = 1, Left = 2, Right = 3 }
             public class T
             {
@@ -204,7 +204,7 @@ public class SwitchTests
     [Fact]
     public void SwitchExpression_Basic()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -228,7 +228,7 @@ public class SwitchTests
     [Fact]
     public void SwitchExpression_WithEnum()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public enum State { Idle = 0, Running = 1, Done = 2 }
             public class T
             {
@@ -254,7 +254,7 @@ public class SwitchTests
     [Fact]
     public void SwitchExpression_GoverningExpression_EvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Calls;
@@ -284,7 +284,7 @@ public class SwitchTests
     [Fact]
     public void SwitchStatement_GoverningExpression_EvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Calls;
@@ -318,7 +318,7 @@ public class SwitchTests
     [Fact]
     public void SwitchStatement_PatternAndConstantLabels_Mixed()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Classify(int x)
@@ -347,7 +347,7 @@ public class SwitchTests
     [Fact]
     public void SwitchStatement_DeclarationPatternWithWhen_BindsAndMatches()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Shape { }
             public class Circle
             {
@@ -383,7 +383,7 @@ public class SwitchTests
     [Fact]
     public void SwitchExpression_BareTypePatternArm_MatchesByType()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVmTopLevel("""
             object a = new Circle();
             object b = new Square();
             var total = Sorter.Classify(a) * 10 + Sorter.Classify(b);

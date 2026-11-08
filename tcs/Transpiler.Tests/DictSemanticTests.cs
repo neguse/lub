@@ -5,7 +5,7 @@ public class DictSemanticTests
     [Fact]
     public void Dict_Count()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -22,7 +22,7 @@ public class DictSemanticTests
     [Fact]
     public void Dict_Remove()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -40,7 +40,7 @@ public class DictSemanticTests
     [Fact]
     public void Dict_Keys()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -59,7 +59,7 @@ public class DictSemanticTests
     [Fact]
     public void Dict_Values()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -78,7 +78,7 @@ public class DictSemanticTests
     [Fact]
     public void Dict_TryGetValue_Found_AssignsOutVar()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -97,7 +97,7 @@ public class DictSemanticTests
     [Fact]
     public void Dict_TryGetValue_Missing_AssignsDefaultToOutVar()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -116,7 +116,7 @@ public class DictSemanticTests
     [Fact]
     public void Dict_TryGetValue_IfCondition_OutVarVisibleInThen()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -138,7 +138,7 @@ public class DictSemanticTests
     [Fact]
     public void Dict_TryGetValue_ExistingOutVariable()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {

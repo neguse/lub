@@ -31,7 +31,7 @@ public class OperatorOverloadTests
     [Fact]
     public void BinaryAdd_SingleOverload()
     {
-        var result = TestHelper.TranspileAndRun(Vec2Source + """
+        var result = TestHelper.CompileAndRunVm(Vec2Source + """
             public class T
             {
                 public static float Test()
@@ -41,13 +41,13 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("1122.0", result);
+        Assert.Equal("1122", result);
     }
 
     [Fact]
     public void BinarySubtract_SingleOverload()
     {
-        var result = TestHelper.TranspileAndRun(Vec2Source + """
+        var result = TestHelper.CompileAndRunVm(Vec2Source + """
             public class T
             {
                 public static float Test()
@@ -57,13 +57,13 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("918.0", result);
+        Assert.Equal("918", result);
     }
 
     [Fact]
     public void UnaryMinus()
     {
-        var result = TestHelper.TranspileAndRun(Vec2Source + """
+        var result = TestHelper.CompileAndRunVm(Vec2Source + """
             public class T
             {
                 public static float Test()
@@ -73,7 +73,7 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("-296.0", result);
+        Assert.Equal("-296", result);
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class OperatorOverloadTests
     {
         // Vec2*Vec2 / Vec2*float / float*Vec2 が同じ __mul に共存し、
         // 実行時の operand 型で正しい overload に分岐する。
-        var result = TestHelper.TranspileAndRun(Vec2Source + """
+        var result = TestHelper.CompileAndRunVm(Vec2Source + """
             public class T
             {
                 public static float Test()
@@ -93,13 +93,13 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("573.0", result);
+        Assert.Equal("573", result);
     }
 
     [Fact]
     public void DivideOverloads_DispatchOnOperandTypes()
     {
-        var result = TestHelper.TranspileAndRun(Vec2Source + """
+        var result = TestHelper.CompileAndRunVm(Vec2Source + """
             public class T
             {
                 public static float Test()
@@ -110,13 +110,13 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("10.0", result);
+        Assert.Equal("10", result);
     }
 
     [Fact]
     public void Modulo_SingleOverload()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Wrap
             {
                 public int Value;
@@ -143,7 +143,7 @@ public class OperatorOverloadTests
     [Fact]
     public void CompoundAssignment_UsesOperatorOverload()
     {
-        var result = TestHelper.TranspileAndRun(Vec2Source + """
+        var result = TestHelper.CompileAndRunVm(Vec2Source + """
             public class T
             {
                 public static float Test()
@@ -155,13 +155,13 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("2244.0", result);
+        Assert.Equal("2244", result);
     }
 
     [Fact]
     public void ChainedExpression_MixesOverloadsAndPrecedence()
     {
-        var result = TestHelper.TranspileAndRun(Vec2Source + """
+        var result = TestHelper.CompileAndRunVm(Vec2Source + """
             public class T
             {
                 public static float Test()
@@ -173,13 +173,13 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("608.0", result);
+        Assert.Equal("608", result);
     }
 
     [Fact]
     public void OperatorWithStatementBody()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Acc
             {
                 public int Total;
@@ -207,7 +207,7 @@ public class OperatorOverloadTests
     [Fact]
     public void RecordClass_OperatorOverload()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(float X, float Y)
             {
                 public static Point operator +(Point a, Point b) => new Point(a.X + b.X, a.Y + b.Y);
@@ -222,13 +222,13 @@ public class OperatorOverloadTests
                 }
             }
             """, "T.Test()");
-        Assert.Equal("1122.0", result);
+        Assert.Equal("1122", result);
     }
 
     [Fact]
     public void InstanceMembersAndOperators_Coexist()
     {
-        var result = TestHelper.TranspileAndRun(Vec2Source + """
+        var result = TestHelper.CompileAndRunVm(Vec2Source + """
             public class T
             {
                 public static float Test()
@@ -240,7 +240,7 @@ public class OperatorOverloadTests
                 private static float Dot(Vec2 a, Vec2 b) => a.X * b.X + a.Y * b.Y;
             }
             """, "T.Test()");
-        Assert.Equal("25.0", result);
+        Assert.Equal("25", result);
     }
 
     [Fact]
@@ -305,7 +305,7 @@ public class OperatorOverloadTests
     [Fact]
     public void CompoundAssignment_OnFieldAndProperty_UsesOperator()
     {
-        var result = TestHelper.TranspileAndRun(OperatorClassSource + """
+        var result = TestHelper.CompileAndRunVm(OperatorClassSource + """
             public class Holder
             {
                 public V Pos = new V(1);
@@ -334,7 +334,7 @@ public class OperatorOverloadTests
     [Fact]
     public void Overloads_AreChosenByStaticOperandType_NotRuntimeType()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public interface IHasX { int X { get; } }
             public class V : IHasX
             {
@@ -362,7 +362,7 @@ public class OperatorOverloadTests
     [Fact]
     public void Operators_WithPrimitiveResultOrOperand_CallOperator()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using TinySystem.Text;
             public class V
             {
@@ -390,7 +390,7 @@ public class OperatorOverloadTests
     [Fact]
     public void EqualityOnOperatorClass_StaysReferenceIdentity()
     {
-        var result = TestHelper.TranspileAndRun(OperatorClassSource + """
+        var result = TestHelper.CompileAndRunVm(OperatorClassSource + """
             public class T
             {
                 static string B(bool v) => v ? "T" : "F";

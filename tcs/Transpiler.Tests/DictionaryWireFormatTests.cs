@@ -128,7 +128,7 @@ public class DictionaryWireFormatTests
     {
         // Count が table 内のメタデータではなく pairs 走査で数えられること
         // (bookkeeping があると --ref 側の素 table 契約が壊れる)
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
 
             public class T
@@ -151,7 +151,7 @@ public class DictionaryWireFormatTests
     [Fact]
     public void HeterogeneousDictionary_ForeachSeesOnlyUserEntries()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
 
             public class T

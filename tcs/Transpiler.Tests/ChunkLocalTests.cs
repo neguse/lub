@@ -40,9 +40,9 @@ public class ChunkLocalTests
                     (int)Math.Sqrt(16.0f);
             }
             """;
-        Assert.Equal("3:7:42:2:3:4", TestHelper.TranspileAndRun(NoRound, "T.Test()"));
+        Assert.Equal("3:7:42:2:3:4", TestHelper.CompileAndRunVm(NoRound, "T.Test()"));
         Assert.Equal("3:7:42:2:3:4:2:4",
-            TestHelper.TranspileAndRunWithRuntime(Source, "T.Test()"));
+            TestHelper.CompileAndRunVm(Source, "T.Test()"));
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class ChunkLocalTests
         var lua = Transpiler.Transpile(Source);
         Assert.Matches(@"(?m)^local Counter, V, Kind, T$", lua);
         Assert.Contains("Counter = {}; _ENV.Counter = Counter", lua);
-        Assert.Equal("5", TestHelper.TranspileAndRun(Source, "T.Test()"));
+        Assert.Equal("5", TestHelper.CompileAndRunVm(Source, "T.Test()"));
 
         // host (別 chunk) は global 経由で同じ table を引ける
         var viaGlobal = TestHelper.RunLua(lua + "\nprint(_G.Counter.Total, _G.T.Test(), _G.Counter.Total)");
@@ -89,7 +89,7 @@ public class ChunkLocalTests
         var lua = Transpiler.Transpile(Source);
         // A の method は後方宣言の B を upvalue で引く (global 参照を残さない)
         Assert.Matches(@"(?m)^local A, B$", lua);
-        Assert.Equal("7", TestHelper.TranspileAndRun(Source, "A.Test()"));
+        Assert.Equal("7", TestHelper.CompileAndRunVm(Source, "A.Test()"));
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class ChunkLocalTests
         Assert.Contains("C0 = {}; _ENV.C0 = C0", lua);
         Assert.Contains("\nC149 = {}\n", lua);
         // 200 local 上限 (chunk 直下) に収まる
-        Assert.Equal("149", TestHelper.TranspileAndRun(source, "T.Test()"));
+        Assert.Equal("149", TestHelper.CompileAndRunVm(source, "T.Test()"));
     }
 
     [Fact]
@@ -228,7 +228,7 @@ public class ChunkLocalTests
                 }
             }
             """;
-        Assert.Equal("7:AB:2:7", TestHelper.TranspileAndRunWithRuntime(Source, "T.Test()"));
+        Assert.Equal("7:AB:2:7", TestHelper.CompileAndRunVm(Source, "T.Test()"));
     }
 
     [Fact]
@@ -247,7 +247,7 @@ public class ChunkLocalTests
                 }
             }
             """;
-        Assert.Equal("1:1", TestHelper.TranspileAndRunWithRuntime(Source, "T.Test()"));
+        Assert.Equal("1:1", TestHelper.CompileAndRunVm(Source, "T.Test()"));
     }
 
     [Fact]
@@ -264,7 +264,7 @@ public class ChunkLocalTests
                 }
             }
             """;
-        Assert.Equal("98", TestHelper.TranspileAndRunWithRuntime(Source, "T.Test()"));
+        Assert.Equal("98", TestHelper.CompileAndRunVm(Source, "T.Test()"));
     }
 
     [Fact]
@@ -276,7 +276,7 @@ public class ChunkLocalTests
                 public static string Test() => "-- tcs:type-locals";
             }
             """;
-        Assert.Equal("-- tcs:type-locals", TestHelper.TranspileAndRun(Source, "T.Test()"));
+        Assert.Equal("-- tcs:type-locals", TestHelper.CompileAndRunVm(Source, "T.Test()"));
     }
 
     [Fact]
@@ -289,6 +289,6 @@ public class ChunkLocalTests
                     nameof(math) + ":" + nameof(end) + ":" + (math + end);
             }
             """;
-        Assert.Equal("math:end:3", TestHelper.TranspileAndRun(Source, "T.Test(1, 2)"));
+        Assert.Equal("math:end:3", TestHelper.CompileAndRunVm(Source, "T.Test(1, 2)"));
     }
 }

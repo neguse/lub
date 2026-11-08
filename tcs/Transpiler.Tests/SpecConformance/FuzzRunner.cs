@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace TinyCs.Tests.SpecConformance;
 
 internal sealed record FuzzOutcome(bool Ok, string Details)
@@ -8,21 +6,16 @@ internal sealed record FuzzOutcome(bool Ok, string Details)
 }
 
 /// <summary>
-/// 生成プログラムを tcs → Lua と実 .NET の両方で実行して突き合わせる (C4)。
-/// 失敗時は文単位の greedy 縮小で最小再現を作る。
+/// 生成プログラムを tcs VM (tcs2vm → tcsvm、通常と GC stress) と実 .NET の両方で実行し、stdout の行が一致することを要求する (C4)。
+/// C backend は tcs2c.Tests の FuzzDifferentialTests が同じ生成器で見る。失敗時は文単位の greedy 縮小で最小再現を作る。
 /// </summary>
 internal sealed class FuzzRunner
 {
-    private readonly string _runtimePath;
     private readonly SpecDotnetExecutor _dotnet = new();
 
-    public FuzzRunner(string repoRoot) =>
-        _runtimePath = Path.Combine(repoRoot, "runtime", "tinysystem.lua")
-            .Replace("\\", "/");
-
-    /// <param name="mutateLua">検出網の自己検証用: 生成 Lua への故障注入</param>
+    /// <param name="mutateVm">検出網の自己検証用: VM に渡す C# への故障注入 (.NET には元の source を渡す)</param>
     public FuzzOutcome RunOne(string source,
-        Func<string, string>? mutateLua = null)
+        Func<string, string>? mutateVm = null)
     {
         var result = Transpiler.TranspileWithDiagnostics([source]);
         if (result.Errors.Count > 0)
@@ -34,22 +27,14 @@ internal sealed class FuzzRunner
                 "generator produced diagnosed subset violation:\n"
                 + string.Join("\n", result.Warnings));
 
-        var lua = mutateLua is null ? result.Lua : mutateLua(result.Lua);
-        var script = $"local TinySystem = dofile(\"{_runtimePath}\")\n" +
-                     "List = TinySystem.List\n" +
-                     "Dict = TinySystem.Dict\n" +
-                     "Math = TinySystem.Math\n" +
-                     "String = TinySystem.String\n" +
-                     "Random = TinySystem.Random\n" +
-                     $"{lua}\nProgram.Main()";
-        string luaOut;
+        string vmOut;
         try
         {
-            luaOut = TestHelper.RunLua(script);
+            vmOut = VmCorpus.RunProgram(mutateVm is null ? source : mutateVm(source), "Program");
         }
         catch (Exception e)
         {
-            return new FuzzOutcome(false, $"lua execution failed: {e.Message}");
+            return new FuzzOutcome(false, $"vm execution failed: {e.Message}");
         }
         var dotnetRun = _dotnet.Run(
             [new SpecSourceFile("Program.cs", source)], "TcsFuzz");
@@ -57,14 +42,11 @@ internal sealed class FuzzRunner
             return new FuzzOutcome(false,
                 $"dotnet execution failed: {dotnetRun.Error}");
 
-        var luaLines = SplitLines(luaOut);
+        var vmLines = SplitLines(vmOut);
         var dotnetLines = SplitLines(dotnetRun.Output);
-        if (luaLines.Length != dotnetLines.Length)
-            return Mismatch(dotnetLines, luaLines);
-        for (var index = 0; index < luaLines.Length; index++)
-            if (!LinesAgree(dotnetLines[index], luaLines[index]))
-                return Mismatch(dotnetLines, luaLines);
-        return FuzzOutcome.Pass;
+        return vmLines.SequenceEqual(dotnetLines, StringComparer.Ordinal)
+            ? FuzzOutcome.Pass
+            : Mismatch(dotnetLines, vmLines);
     }
 
     /// <summary>
@@ -72,7 +54,7 @@ internal sealed class FuzzRunner
     /// 最小再現ソースを返す。
     /// </summary>
     public string Reduce(IReadOnlyList<string> statements,
-        Func<string, string>? mutateLua = null,
+        Func<string, string>? mutateVm = null,
         IReadOnlyList<string>? helpers = null,
         IReadOnlyList<string>? types = null)
     {
@@ -89,7 +71,7 @@ internal sealed class FuzzRunner
                 var candidate = currentStatements
                     .Where((_, i) => i != index).ToList();
                 if (StillFailsSameWay(FuzzGenerator.Assemble(candidate,
-                        currentHelpers, currentTypes), mutateLua))
+                        currentHelpers, currentTypes), mutateVm))
                 {
                     currentStatements = candidate;
                     shrunk = true;
@@ -100,7 +82,7 @@ internal sealed class FuzzRunner
                 var candidate = currentHelpers
                     .Where((_, i) => i != index).ToList();
                 if (StillFailsSameWay(FuzzGenerator.Assemble(currentStatements,
-                        candidate, currentTypes), mutateLua))
+                        candidate, currentTypes), mutateVm))
                 {
                     currentHelpers = candidate;
                     shrunk = true;
@@ -111,7 +93,7 @@ internal sealed class FuzzRunner
                 var candidate = currentTypes
                     .Where((_, i) => i != index).ToList();
                 if (StillFailsSameWay(FuzzGenerator.Assemble(currentStatements,
-                        currentHelpers, candidate), mutateLua))
+                        currentHelpers, candidate), mutateVm))
                 {
                     currentTypes = candidate;
                     shrunk = true;
@@ -125,29 +107,18 @@ internal sealed class FuzzRunner
     // 使用中の変数/helper を消すと C# として不正になる。その候補を採用すると
     // semantic bug の再現が compile error へすり替わるため除外する
     private bool StillFailsSameWay(string source,
-        Func<string, string>? mutateLua)
+        Func<string, string>? mutateVm)
     {
-        var outcome = RunOne(source, mutateLua);
+        var outcome = RunOne(source, mutateVm);
         return !outcome.Ok && !outcome.Details.StartsWith(
             "generator produced invalid C#", StringComparison.Ordinal);
     }
 
     private static FuzzOutcome Mismatch(string[] dotnetLines,
-        string[] luaLines) => new(false,
+        string[] vmLines) => new(false,
         "output mismatch\n" +
         $"dotnet: {string.Join(" | ", dotnetLines)}\n" +
-        $"lua:    {string.Join(" | ", luaLines)}");
-
-    private static bool LinesAgree(string dotnetLine, string luaLine)
-    {
-        if (dotnetLine == luaLine)
-            return true;
-        return double.TryParse(dotnetLine, NumberStyles.Float,
-                CultureInfo.InvariantCulture, out var a)
-            && double.TryParse(luaLine, NumberStyles.Float,
-                CultureInfo.InvariantCulture, out var b)
-            && a.Equals(b);
-    }
+        $"vm:     {string.Join(" | ", vmLines)}");
 
     private static string[] SplitLines(string output)
     {

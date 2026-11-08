@@ -18,7 +18,7 @@ public class StructCopyNullableValueTests
         """;
 
     private static string Run(string source) =>
-        TestHelper.TranspileAndRunWithRuntime(S + source, "T.Test()");
+        TestHelper.CompileAndRunVm(S + source, "T.Test()");
 
     [Fact]
     public void DeclarationAndAssignment_CopyInnerValue()

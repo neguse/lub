@@ -9,7 +9,7 @@ public class CharTests
     [Fact]
     public void Char_IsIntegerCodeUnit_AcrossTheSurface()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             using System.Collections.Generic;
             public class T
@@ -74,7 +74,7 @@ public class CharTests
     [Fact]
     public void CharArithmetic_WrapsLikeInt_AndFormats()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()

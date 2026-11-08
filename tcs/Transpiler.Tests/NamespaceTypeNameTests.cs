@@ -19,7 +19,7 @@ public class NamespaceTypeNameTests
     [Fact]
     public void SameNameInTwoNamespaces_KeepsBothTypes()
     {
-        Assert.Equal("12", TestHelper.TranspileAndRun(TwoColors, "NsRepro.Test()"));
+        Assert.Equal("12", TestHelper.CompileAndRunVm(TwoColors, "NsRepro.Test()"));
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public class NamespaceTypeNameTests
         var lua = Transpiler.Transpile(source);
         Assert.Contains("Game_Gfx_Color = {}", lua);
         Assert.DoesNotContain("\nColor = {}", lua);
-        Assert.Equal("3", TestHelper.TranspileAndRun(source, "P.Test()"));
+        Assert.Equal("3", TestHelper.CompileAndRunVm(source, "P.Test()"));
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class NamespaceTypeNameTests
         var lua = Transpiler.Transpile(source);
         Assert.Contains("\nColor = {}", lua);
         Assert.Contains("A_Color = {}", lua);
-        Assert.Equal("12", TestHelper.TranspileAndRun(source, "P.Test()"));
+        Assert.Equal("12", TestHelper.CompileAndRunVm(source, "P.Test()"));
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class NamespaceTypeNameTests
                 public static int Test() => new Game.Gfx.Color().V * 10 + new Ui.Color().V;
             }
             """;
-        Assert.Equal("34", TestHelper.TranspileAndRun(source, "P.Test()"));
+        Assert.Equal("34", TestHelper.CompileAndRunVm(source, "P.Test()"));
         Assert.Contains("Game_Gfx_Color = {}", Transpiler.Transpile(source));
     }
 
@@ -112,7 +112,7 @@ public class NamespaceTypeNameTests
             }
             """;
         // 12 + 1200 + 3 + 6 + 9
-        Assert.Equal("1230", TestHelper.TranspileAndRun(source, "P.Test()"));
+        Assert.Equal("1230", TestHelper.CompileAndRunVm(source, "P.Test()"));
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class NamespaceTypeNameTests
                 }
             }
             """;
-        Assert.Equal("313", TestHelper.TranspileAndRun(source, "P.Test()"));
+        Assert.Equal("313", TestHelper.CompileAndRunVm(source, "P.Test()"));
     }
 
     [Fact]
@@ -324,6 +324,6 @@ public class NamespaceTypeNameTests
             public static class Game { public static int Run() { return @event.C.F(); } }
             """;
         Assert.Contains("event_C = {}", Transpiler.Transpile(source));
-        Assert.Equal("7", TestHelper.TranspileAndRun(source, "Game.Run()"));
+        Assert.Equal("7", TestHelper.CompileAndRunVm(source, "Game.Run()"));
     }
 }

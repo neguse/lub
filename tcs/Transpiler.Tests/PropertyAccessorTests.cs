@@ -20,7 +20,7 @@ public class PropertyAccessorTests
     [Fact]
     public void CustomProperty_ReadWrite_UsesAccessors()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime(TempClass + """
+        var result = TestHelper.CompileAndRunVm(TempClass + """
             public class T
             {
                 public static string Test()
@@ -38,7 +38,7 @@ public class PropertyAccessorTests
     [Fact]
     public void CustomProperty_CompoundAssignment_ReadsAndWritesViaAccessors()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime(TempClass + """
+        var result = TestHelper.CompileAndRunVm(TempClass + """
             public class T
             {
                 public static string Test()
@@ -56,7 +56,7 @@ public class PropertyAccessorTests
     [Fact]
     public void ExpressionBodiedProperty_ReadsViaGetter()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Box
             {
                 public int N;
@@ -79,7 +79,7 @@ public class PropertyAccessorTests
     [Fact]
     public void CustomProperty_SideEffectReceiverCompound_ReceiverOnce()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime(TempClass + """
+        var result = TestHelper.CompileAndRunVm(TempClass + """
             public class T
             {
                 public static int Calls;
@@ -106,7 +106,7 @@ public class PropertyAccessorTests
     [Fact]
     public void CustomProperty_ObjectInitializer_UsesSetter()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime(TempClass + """
+        var result = TestHelper.CompileAndRunVm(TempClass + """
             public class T
             {
                 public static int Test()
@@ -122,7 +122,7 @@ public class PropertyAccessorTests
     [Fact]
     public void CustomProperty_ImplicitThisAccess_UsesAccessors()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Counter
             {
                 public int Raw;
@@ -155,7 +155,7 @@ public class PropertyAccessorTests
     [Fact]
     public void CustomProperty_ConditionalAccess_UsesGetter()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime(TempClass + """
+        var result = TestHelper.CompileAndRunVm(TempClass + """
             public class T
             {
                 public static string Test()
@@ -175,7 +175,7 @@ public class PropertyAccessorTests
     [Fact]
     public void CustomProperty_PropertyPattern_UsesGetter()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime(TempClass + """
+        var result = TestHelper.CompileAndRunVm(TempClass + """
             public class T
             {
                 public static string Test()
@@ -195,7 +195,7 @@ public class PropertyAccessorTests
     [Fact]
     public void StaticAutoProperty_InitializerAndWrites_OnClassTable()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Game
             {
                 public static int Score { get; set; } = 10;
@@ -217,7 +217,7 @@ public class PropertyAccessorTests
     [Fact]
     public void StaticCustomProperty_AccessorsOnClassTable()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Game
             {
                 public static int Raw;
@@ -252,7 +252,7 @@ public class PropertyAccessorTests
     [Fact]
     public void AutoProperty_StaysRawField()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Mixed
             {
                 public int Auto { get; set; }

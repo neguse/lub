@@ -5,7 +5,7 @@ public class InterfaceTests
     [Fact]
     public void Interface_ClassImplementation()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public interface IGreeter
             {
                 string Greet(string name);
@@ -33,7 +33,7 @@ public class InterfaceTests
     [Fact]
     public void Interface_MultipleInterfaces()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public interface IMovable
             {
                 int Speed { get; }

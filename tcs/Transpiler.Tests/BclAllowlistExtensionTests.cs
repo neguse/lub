@@ -8,7 +8,7 @@ public class BclAllowlistExtensionTests
     public void Math_Round_UsesBankersRounding()
     {
         // C# Math.Round は MidpointRounding.ToEven (偶数丸め)
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public class T
             {
@@ -23,7 +23,7 @@ public class BclAllowlistExtensionTests
     [Fact]
     public void Math_Round_WithDigits()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public class T
             {
@@ -36,7 +36,7 @@ public class BclAllowlistExtensionTests
     [Fact]
     public void Math_Sign()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public class T
             {
@@ -50,20 +50,20 @@ public class BclAllowlistExtensionTests
     [Fact]
     public void Math_Tan()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public class T
             {
                 public static bool Test() => Math.Abs(Math.Tan(Math.PI / 4) - 1.0f) < 1e-9f;
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void Math_Log_NaturalAndBase()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public class T
             {
@@ -71,27 +71,27 @@ public class BclAllowlistExtensionTests
                     Math.Abs(Math.Log(Math.Exp(1.0f)) - 1.0f) < 1e-6f
                     && Math.Abs(Math.Log(8.0f, 2.0f) - 3.0f) < 1e-6f; // f32 精度
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void Math_Exp()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public class T
             {
                 public static bool Test() => Math.Abs(Math.Exp(1.0f) - 2.718281828f) < 1e-6f;
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void String_IsNullOrEmpty()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -140,7 +140,7 @@ public class BclAllowlistExtensionTests
     [Fact]
     public void TinySystemFacade_NewMathAndStringMembers()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test() =>
@@ -152,7 +152,7 @@ public class BclAllowlistExtensionTests
                     && TinySystem.String.IsNullOrEmpty("")
                     && !TinySystem.String.IsNullOrEmpty("x");
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 }

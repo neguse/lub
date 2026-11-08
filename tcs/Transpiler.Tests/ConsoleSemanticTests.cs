@@ -5,7 +5,7 @@ public class ConsoleSemanticTests
     [Fact]
     public void Console_WriteLine_String()
     {
-        var lua = Transpiler.Transpile("""
+        var result = TestHelper.CompileAndRunVmMain("""
             using System;
             public class T
             {
@@ -14,16 +14,14 @@ public class ConsoleSemanticTests
                     Console.WriteLine("hello");
                 }
             }
-            """);
-        var script = $"{lua}\nT.Test()";
-        var result = TestHelper.RunLua(script).Trim();
+            """, "T.Test();");
         Assert.Equal("hello", result);
     }
 
     [Fact]
     public void Console_WriteLine_Int()
     {
-        var lua = Transpiler.Transpile("""
+        var result = TestHelper.CompileAndRunVmMain("""
             using System;
             public class T
             {
@@ -32,9 +30,7 @@ public class ConsoleSemanticTests
                     Console.WriteLine(42);
                 }
             }
-            """);
-        var script = $"{lua}\nT.Test()";
-        var result = TestHelper.RunLua(script).Trim();
+            """, "T.Test();");
         Assert.Equal("42", result);
     }
 
@@ -42,7 +38,7 @@ public class ConsoleSemanticTests
     [Fact]
     public void Console_WriteLine_Object()
     {
-        var lua = Transpiler.Transpile("""
+        var result = TestHelper.CompileAndRunVmMain("""
             using System;
             public class T
             {
@@ -56,9 +52,7 @@ public class ConsoleSemanticTests
                     Console.WriteLine(i);
                 }
             }
-            """);
-        var script = $"{lua}\nT.Test()";
-        var result = TestHelper.RunLua(script).Trim();
+            """, "T.Test();");
         Assert.Equal("1000000\n\n7", result.ReplaceLineEndings("\n"));
     }
 }

@@ -9,7 +9,7 @@ public class GameScriptTests
     [Fact]
     public void Entity_WithProperties()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVmMain("""
             public class Entity
             {
                 public int X;
@@ -31,21 +31,15 @@ public class GameScriptTests
                     if (this.HP < 0) { this.HP = 0; }
                 }
             }
-            """, """
-            (function()
-              local e = Entity.new(10, 20, 100)
-              e:TakeDamage(30)
-              e:TakeDamage(80)
-              return e:IsAlive() and "alive" or "dead"
-            end)()
-            """);
+            """, "var e = new Entity(10, 20, 100); e.TakeDamage(30); e.TakeDamage(80); System.Console.WriteLine(e.IsAlive() ? \"alive\" : \"dead\");");
         Assert.Equal("dead", result);
     }
 
+    // enum と int の暗黙の変換を書く (C# では compile error、tcs は受ける) ので .NET とは比べない
     [Fact]
     public void StateMachine()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVmMain("""
             public enum State { Idle, Walking, Attacking, Dead }
 
             public class Character
@@ -68,20 +62,7 @@ public class GameScriptTests
 
                 public int GetState() { return this.CurrentState; }
             }
-            """, """
-            (function()
-              local c = Character.new()
-              c:Update(1)
-              local s1 = c:GetState()
-              c:Update(2)
-              local s2 = c:GetState()
-              c:Update(99)
-              local s3 = c:GetState()
-              c:Update(1)
-              local s4 = c:GetState()
-              return s1 .. "," .. s2 .. "," .. s3 .. "," .. s4
-            end)()
-            """);
+            """, "var c = new Character(); c.Update(1); var s1 = c.GetState(); c.Update(2); var s2 = c.GetState(); c.Update(99); var s3 = c.GetState(); c.Update(1); var s4 = c.GetState(); System.Console.WriteLine(s1 + \",\" + s2 + \",\" + s3 + \",\" + s4);", dotnet: false);
         // Walking=1, Attacking=2, Dead=3, Dead=3 (no transition from Dead)
         Assert.Equal("1,2,3,3", result);
     }
@@ -89,7 +70,7 @@ public class GameScriptTests
     [Fact]
     public void CollisionDetection()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVmMain("""
             public class Vec2
             {
                 public float X;
@@ -108,22 +89,14 @@ public class GameScriptTests
                     return distSq <= radiusSum * radiusSum;
                 }
             }
-            """, """
-            (function()
-              local a = Vec2.new(0, 0)
-              local b = Vec2.new(3, 4)
-              local hit = Collision.CircleOverlap(a, 3.0, b, 3.0)
-              local miss = Collision.CircleOverlap(a, 1.0, b, 1.0)
-              return tostring(hit) .. "," .. tostring(miss)
-            end)()
-            """);
-        Assert.Equal("true,false", result);
+            """, "var a = new Vec2(0, 0); var b = new Vec2(3, 4); var hit = Collision.CircleOverlap(a, 3.0f, b, 3.0f); var miss = Collision.CircleOverlap(a, 1.0f, b, 1.0f); System.Console.WriteLine(hit + \",\" + miss);");
+        Assert.Equal("True,False", result);
     }
 
     [Fact]
     public void ForLoop_Accumulation()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Inventory
             {
                 public static int TotalValue(int count)
@@ -145,7 +118,7 @@ public class GameScriptTests
     [Fact]
     public void LambdaCallback()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
 
             public class EventSystem

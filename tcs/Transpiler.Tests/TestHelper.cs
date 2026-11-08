@@ -7,6 +7,7 @@ public static class TestHelper
     private static readonly TimeSpan LuaProcessTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LuaVersionTimeout = TimeSpan.FromSeconds(5);
     private static readonly string ProjectRoot = FindProjectRoot();
+    internal static string ProjectRootPath => ProjectRoot;
     private static readonly string LuaPath = FindLua();
     internal static string LuaExecutablePath => LuaPath;
     public static string LuaVersion => GetLuaVersion(LuaPath);
@@ -114,7 +115,31 @@ public static class TestHelper
     }
 
     /// <summary>
-    /// Transpile C# source with runtime loaded, wrap with a Lua expression to evaluate, run in Lua VM.
+    /// C# の program に `Console.WriteLine(csharpExpr)` の entry を足して tcs VM で走らせ、stdout を返す (VmCorpus.Run)。
+    /// TCS_DIFFERENTIAL=1 なら実 .NET の stdout とも一致を要求する。dotnet: false は .NET と意図して違う program (理由は呼び出し側に書く)。
+    /// </summary>
+    public static string CompileAndRunVm(string csharpSource, string csharpExpr, bool dotnet = true) =>
+        VmCorpus.Run(csharpSource, csharpExpr, dotnet);
+
+    /// <summary>複数の file の program の CompileAndRunVm。</summary>
+    public static string CompileAndRunVm(string[] csharpSources, string csharpExpr, bool dotnet = true) =>
+        VmCorpus.Run(csharpSources, csharpExpr, dotnet);
+
+    /// <summary>本文が mainBody の entry (`TcsEntry.Main`) を足して tcs VM で走らせる。本文が `Console.WriteLine` で結果を書く。</summary>
+    public static string CompileAndRunVmMain(string csharpSource, string mainBody, bool dotnet = true) =>
+        VmCorpus.RunMain(csharpSource, mainBody, dotnet);
+
+    /// <summary>program 全体を tcs VM で走らせた stdout。entryClass は static Main を持つ class (null なら top-level 文)。
+    /// TCS_DIFFERENTIAL=1 なら実 .NET の stdout とも一致を要求する。</summary>
+    public static string CompileAndRunVmProgram(string[] sources, string? entryClass = null, bool dotnet = true) =>
+        VmCorpus.RunWhole(sources, entryClass, dotnet);
+
+    /// <summary>top-level 文の program: 最後の top-level 文の後で `Console.WriteLine(csharpExpr)` を走らせる (式は top-level の local を読める)。</summary>
+    public static string CompileAndRunVmTopLevel(string csharpSource, string csharpExpr, bool dotnet = true) =>
+        VmCorpus.RunTopLevel(csharpSource, csharpExpr, dotnet);
+
+    /// <summary>
+    /// Lua backend: C# を runtime 付きの Lua にし、Lua の式 luaExpr を print した stdout を返す。Lua の出力と Lua の runtime を見るテストだけが使う。
     /// </summary>
     public static string TranspileAndRunWithRuntime(string csharpSource,
         string luaExpr, TimeSpan? timeout = null)
@@ -129,28 +154,17 @@ public static class TestHelper
                      "Random = TinySystem.Random\n" +
                      "Char = TinySystem.Char\n" +
                      $"{lua}\nprint({luaExpr})";
-        var result = RunLua(script, timeout).Trim();
-        SpecConformance.CorpusDifferential.Check(csharpSource, luaExpr, result);
-        return result;
+        return RunLua(script, timeout).Trim();
     }
 
     /// <summary>
-    /// Transpile C# source, wrap with a Lua expression to evaluate, run in Lua VM, return stdout.
-    /// luaExpr は emit された Lua の名前で書く (user の member は C# の識別子のまま、
-    /// Lua の予約語だけ `end_`)。
+    /// Lua backend: C# を Lua にし、Lua の式 luaExpr を print した stdout を返す。Lua の出力を見るテストだけが使う。
+    /// luaExpr は emit された Lua の名前で書く (user の member は C# の識別子のまま、Lua の予約語だけ `end_`)。
     /// </summary>
-    /// <param name="differential">false で dotnet differential を対象外にする
-    /// (文字列長 UTF-16 vs byte など既知の意味論差を検証するテスト専用)</param>
-    public static string TranspileAndRun(string csharpSource, string luaExpr,
-        bool differential = true)
+    public static string TranspileAndRun(string csharpSource, string luaExpr)
     {
         var lua = Transpiler.Transpile(csharpSource);
-        var script = $"{lua}\nprint({luaExpr})";
-        var result = RunLua(script).Trim();
-        if (differential)
-            SpecConformance.CorpusDifferential.Check(csharpSource, luaExpr,
-                result);
-        return result;
+        return RunLua($"{lua}\nprint({luaExpr})").Trim();
     }
 
     /// <summary>

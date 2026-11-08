@@ -12,7 +12,7 @@ public class HostBclExtensionTests
     public void Environment_GetEnvironmentVariable_MapsToOsGetenv()
     {
         Environment.SetEnvironmentVariable("TCS_HOST_BCL_TEST", "from-env");
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public static class T
             {
@@ -23,7 +23,7 @@ public class HostBclExtensionTests
                     return v + ":" + missing;
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("from-env:none", result);
     }
 
@@ -32,7 +32,7 @@ public class HostBclExtensionTests
     {
         // (found, value or 0) の multi-return。IL 経路 (IIFE + multi-assign) と
         // legacy 経路の両方が runtime の Math.TryParseInt / TryParseFloat を使う
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public static class T
             {
                 public static string Test()
@@ -55,7 +55,7 @@ public class HostBclExtensionTests
     [Fact]
     public void Parse_IntAndDouble()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public static class T
             {
                 public static string Test()
@@ -66,14 +66,14 @@ public class HostBclExtensionTests
                     return (a + 1) + ":" + (b * 2) + ":" + (c * 4) + ":" + (a / 5);
                 }
             }
-            """, "T.Test()", differential: false); // 5.0 と 5 の表記差 (既知)
+            """, "T.Test()", dotnet: false); // 5.0 と 5 の表記差 (既知)
         Assert.Equal("43:5:5:8", result);
     }
 
     [Fact]
     public void EnumerateRunes_IteratesCodepoints()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Text;
             public static class T
             {
@@ -92,8 +92,8 @@ public class HostBclExtensionTests
                     return n;
                 }
             }
-            """, "T.Sum('a\\u{e9}') .. ',' .. T.Count('\\u{3042}\\u{3044}z')",
-            differential: false);
+            """, "T.Sum(\"a\\u00e9\") + \",\" + T.Count(\"\\u3042\\u3044z\")",
+            dotnet: false);
         Assert.Equal("330,3", result);
     }
 

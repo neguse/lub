@@ -99,17 +99,17 @@ public class FuzzTests
         }
     }
 
-    // 検出網の自己検証 (design doc §17 C4 gate): 生成 Lua へ故障を注入し、
+    // 検出網の自己検証 (design doc §17 C4 gate): VM に渡す program へ故障を注入し、
     // differential が必ず検出することを確認する
-    private static string InjectFault(string lua) => lua.Replace(
-        "function Program.Main()",
-        "function Program.Main()\n  print(\"FAULT\")",
+    private static string InjectFault(string source) => source.ReplaceLineEndings("\n").Replace(
+        "    public static void Main()\n    {",
+        "    public static void Main()\n    {\n        System.Console.WriteLine(\"FAULT\");",
         StringComparison.Ordinal);
 
     [Fact]
-    public void Runner_DetectsInjectedLuaFault()
+    public void Runner_DetectsInjectedVmFault()
     {
-        var runner = new FuzzRunner(SpecConformanceSweep.FindRepoRoot());
+        var runner = new FuzzRunner();
         var source = new FuzzGenerator(7).Generate();
 
         var healthy = runner.RunOne(source);
@@ -123,7 +123,7 @@ public class FuzzTests
     [Fact]
     public void Reducer_ShrinksFailingProgramToMinimum()
     {
-        var runner = new FuzzRunner(SpecConformanceSweep.FindRepoRoot());
+        var runner = new FuzzRunner();
         var generator = new FuzzGenerator(7);
         generator.Generate();
         var statements = generator.LastStatements;
@@ -142,8 +142,7 @@ public class FuzzTests
     [FuzzFact]
     public void FuzzSweep_GeneratedProgramsMatchDotnet()
     {
-        var repoRoot = SpecConformanceSweep.FindRepoRoot();
-        var runner = new FuzzRunner(repoRoot);
+        var runner = new FuzzRunner();
         var baseSeed = int.TryParse(
             Environment.GetEnvironmentVariable("TCS_FUZZ_SEED"), out var seed)
             ? seed : 1000;

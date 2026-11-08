@@ -6,7 +6,7 @@ public class SampleE2ETests
     public void Sample_Hello_TranspilesAndRuns()
     {
         var result = RunSample("samples/hello.cs",
-            """Hello.Greet("TinyC#") .. "," .. tostring(Hello.Add(2, 3))""");
+            "Hello.Greet(\"TinyC#\") + \",\" + Hello.Add(2, 3)");
 
         Assert.Equal("Hello, TinyC#!,5", result);
     }
@@ -94,9 +94,9 @@ public class SampleE2ETests
         Assert.Equal("describe-frame", output[1]);
     }
 
-    private static string RunSample(string relativePath, string luaExpr)
+    private static string RunSample(string relativePath, string expr)
     {
         var source = File.ReadAllText(TestHelper.FindProjectFile(relativePath));
-        return TestHelper.TranspileAndRunWithRuntime(source, luaExpr);
+        return TestHelper.CompileAndRunVm(source, expr);
     }
 }

@@ -50,7 +50,7 @@ public class DiagnosticTests
     [Fact]
     public void MembersDifferingOnlyInCase_Coexist()
     {
-        var result = TestHelper.TranspileAndRun("""
+        const string source = """
             public class Repro
             {
                 public int flash;
@@ -63,8 +63,10 @@ public class DiagnosticTests
                     return r.flash;
                 }
             }
-            """, "Repro.Test() .. ',' .. type(Repro.new().flash) .. ',' .. type(Repro.Flash)");
+            """;
+        var result = TestHelper.TranspileAndRun(source, "Repro.Test() .. ',' .. type(Repro.new().flash) .. ',' .. type(Repro.Flash)");
         Assert.Equal("2,number,function", result);
+        Assert.Equal("2", TestHelper.CompileAndRunVm(source, "Repro.Test()"));
     }
 
     [Fact]
@@ -416,42 +418,39 @@ public class DiagnosticTests
     [Fact]
     public void NameOfExpressions_AreConstantStrings()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        const string source = """
             public class NameDemo
             {
                 public static string Simple(int value) => nameof(value);
                 public static string MemberName() => nameof(System.Math.E);
                 public static string TypeName() => nameof(System.DateTime);
             }
-            """], ["nameof.cs"]);
+            """;
+        var result = Transpiler.TranspileWithDiagnostics([source], ["nameof.cs"]);
 
         Assert.True(result.Success);
         Assert.Empty(result.Warnings);
         Assert.DoesNotContain("nameof(", result.Lua);
         Assert.DoesNotContain("unsupported", result.Lua);
-        Assert.Equal("value|E|DateTime", TestHelper.RunLua($$"""
-            {{result.Lua}}
-            print(tostring(NameDemo.Simple(1)) .. "|" ..
-                tostring(NameDemo.MemberName()) .. "|" ..
-                tostring(NameDemo.TypeName()))
-            """).Trim());
+        Assert.Equal("value|E|DateTime", TestHelper.CompileAndRunVm(source,
+            "NameDemo.Simple(1) + \"|\" + NameDemo.MemberName() + \"|\" + NameDemo.TypeName()"));
     }
     [Fact]
     public void UserMethodNamedNameof_IsNotNameOfExpression()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        const string source = """
             public class NameDemo
             {
                 public static string nameof(string value) => value;
                 public static string Run() => nameof("ok");
             }
-            """]);
+            """;
+        var result = Transpiler.TranspileWithDiagnostics([source]);
 
         Assert.True(result.Success);
         Assert.DoesNotContain(result.Warnings,
             warning => warning.Contains(TinyCsDiagnosticIds.UnsupportedSyntax));
-        Assert.Equal("ok", TestHelper.RunLua(
-            $"{result.Lua}\nprint(NameDemo.Run())").Trim());
+        Assert.Equal("ok", TestHelper.CompileAndRunVm(source, "NameDemo.Run()"));
     }
 
     [Fact]

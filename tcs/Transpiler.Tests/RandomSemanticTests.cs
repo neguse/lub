@@ -22,7 +22,7 @@ public class RandomSemanticTests
     [Fact]
     public void Random_NextFloat_InRange()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -31,14 +31,14 @@ public class RandomSemanticTests
                     return f >= 0.0f && f < 1.0f;
                 }
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void Random_Next_InRange()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -47,14 +47,14 @@ public class RandomSemanticTests
                     return n >= 0 && n < 10;
                 }
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void Random_Range_InRange()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -63,14 +63,14 @@ public class RandomSemanticTests
                     return n >= 5 && n <= 10;
                 }
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void Random_Seed_MakesSequenceDeterministic()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -94,7 +94,7 @@ public class RandomSemanticTests
     [Fact]
     public void Random_Instance_MatchesSharedStream()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Seq(TinySystem.Random r)

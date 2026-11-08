@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <!-- in-process の .NET オラクル (SpecDotnetExecutor / CorpusDifferential) を TinySystem.props と同じく string の既定の比較が ordinal の .NET で動かす -->
+    <!-- in-process の .NET オラクル (SpecDotnetExecutor / VmCorpus) を TinySystem.props と同じく string の既定の比較が ordinal の .NET で動かす -->
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 

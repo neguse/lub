@@ -14,7 +14,7 @@ public class StructSemanticsTests
     [Fact]
     public void Assignment_Copies()
     {
-        var result = TestHelper.TranspileAndRun(Vec + """
+        var result = TestHelper.CompileAndRunVm(Vec + """
             public class T
             {
                 public static string Test()
@@ -26,14 +26,14 @@ public class StructSemanticsTests
                     return $"{a.X}|{b.X}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("1|99", result);
     }
 
     [Fact]
     public void ArgumentAndReturn_Copy()
     {
-        var result = TestHelper.TranspileAndRun(Vec + """
+        var result = TestHelper.CompileAndRunVm(Vec + """
             public class T
             {
                 static Vec2 Bump(Vec2 v)
@@ -49,7 +49,7 @@ public class StructSemanticsTests
                     return $"{a.X}|{b.X}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("1|11", result);
     }
 
@@ -58,7 +58,7 @@ public class StructSemanticsTests
     [Fact]
     public void ClassField_DefaultsToZeroedStruct()
     {
-        var result = TestHelper.TranspileAndRun(Vec + """
+        var result = TestHelper.CompileAndRunVm(Vec + """
             public class Holder
             {
                 public Vec2 Pos;
@@ -68,14 +68,14 @@ public class StructSemanticsTests
                     return $"{h.Pos.X}|{h.Pos.Y}";
                 }
             }
-            """, "Holder.Test()", differential: false);
+            """, "Holder.Test()", dotnet: false);
         Assert.Equal("0|0", result);
     }
 
     [Fact]
     public void ArrayElement_InPlaceWrite_AndReadCopies()
     {
-        var result = TestHelper.TranspileAndRun(Vec + """
+        var result = TestHelper.CompileAndRunVm(Vec + """
             public class T
             {
                 public static string Test()
@@ -88,7 +88,7 @@ public class StructSemanticsTests
                     return $"{arr[0].X}|{p.X}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("5|42", result);
     }
 
@@ -107,7 +107,7 @@ public class StructSemanticsTests
     [Fact]
     public void StructMethod_MutatesReceiverVariable()
     {
-        var result = TestHelper.TranspileAndRun(Counter + """
+        var result = TestHelper.CompileAndRunVm(Counter + """
             public class T
             {
                 public static string Test()
@@ -118,7 +118,7 @@ public class StructSemanticsTests
                     return $"{c.N}|{c.Twice()}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("2|4", result);
     }
 
@@ -126,7 +126,7 @@ public class StructSemanticsTests
     [Fact]
     public void StructMethod_OnListIndexer_MutatesCopyOnly()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             """ + Counter + """
             public class T
@@ -139,7 +139,7 @@ public class StructSemanticsTests
                     return list[0].N;
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("0", result);
     }
 
@@ -147,7 +147,7 @@ public class StructSemanticsTests
     [Fact]
     public void StructMethod_OnArrayElement_MutatesInPlace()
     {
-        var result = TestHelper.TranspileAndRun(Counter + """
+        var result = TestHelper.CompileAndRunVm(Counter + """
             public class T
             {
                 public static int Test()
@@ -158,7 +158,7 @@ public class StructSemanticsTests
                     return arr[0].N;
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("1", result);
     }
 
@@ -166,7 +166,7 @@ public class StructSemanticsTests
     [Fact]
     public void StructCtor_InitializesFields_AndNewStaysZero()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public struct V
             {
                 public int X;
@@ -182,14 +182,14 @@ public class StructSemanticsTests
                     return $"{a.X}|{a.Y}|{b.X}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("42|1|0", result);
     }
 
     [Fact]
     public void StructAutoProperty_ReadWriteAndCompound()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public struct P
             {
                 public int V { get; set; }
@@ -204,14 +204,14 @@ public class StructSemanticsTests
                     return p.V;
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("7", result);
     }
 
     [Fact]
     public void StructCustomProperty_UsesAccessors()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public struct B
             {
                 public int Raw;
@@ -230,7 +230,7 @@ public class StructSemanticsTests
                     return $"{b.Raw}|{b.Doubled}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("21|42", result);
     }
 
@@ -250,7 +250,7 @@ public class StructSemanticsTests
     [Fact]
     public void NestedStruct_CopyIsDeep()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public struct Inner
             {
                 public int V;
@@ -270,7 +270,7 @@ public class StructSemanticsTests
                     return $"{a.I.V}|{b.I.V}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("1|99", result);
     }
 
@@ -279,7 +279,7 @@ public class StructSemanticsTests
     [Fact]
     public void RecordStruct_PositionalCreate_AndNewIsZero()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record struct Pair(int A, string B);
             public class T
             {
@@ -290,14 +290,14 @@ public class StructSemanticsTests
                     return $"{p.A}|{p.B}|{z.A}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("3|sx|0", result);
     }
 
     [Fact]
     public void RecordStruct_ValueEquality()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record struct Pair(int A, string B);
             public class T
             {
@@ -309,14 +309,14 @@ public class StructSemanticsTests
                     return $"{a == b}|{a == c}|{a != c}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("True|False|True", result);
     }
 
     [Fact]
     public void RecordStruct_With_CopiesAndOverrides()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record struct Pair(int A, string B);
             public class T
             {
@@ -327,14 +327,14 @@ public class StructSemanticsTests
                     return $"{a.A}|{c.A}|{c.B}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("1|9|x", result);
     }
 
     [Fact]
     public void RecordStruct_AssignmentCopies()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record struct Pair(int A, string B);
             public class T
             {
@@ -346,7 +346,7 @@ public class StructSemanticsTests
                     return $"{a.A}|{b.A}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("1|5", result);
     }
 
@@ -354,7 +354,7 @@ public class StructSemanticsTests
     [Fact]
     public void RecordStruct_NestedStructValueEquality()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public struct Inner
             {
                 public int V;
@@ -373,7 +373,7 @@ public class StructSemanticsTests
                     return $"{a == b}|{a == c}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("True|False", result);
     }
 
@@ -419,7 +419,7 @@ public class StructSemanticsTests
     [Fact]
     public void ReadonlyStruct_ValueFlowStaysCorrect()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public readonly struct R
             {
                 public readonly int X;
@@ -436,14 +436,14 @@ public class StructSemanticsTests
                     return $"{a.X}|{b.X}|{b.Plus(5)}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("1|11|16", result);
     }
 
     [Fact]
     public void ReadonlyRecordStruct_CreateReadEquality()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public readonly record struct Rp(int X, int Y);
             public class T
             {
@@ -454,7 +454,7 @@ public class StructSemanticsTests
                     return $"{a.X + a.Y}|{a == b}";
                 }
             }
-            """, "T.Test()", differential: false);
+            """, "T.Test()", dotnet: false);
         Assert.Equal("5|True", result);
     }
 
@@ -462,7 +462,7 @@ public class StructSemanticsTests
     [Fact]
     public void NewStructArray_ElementsAreZeroValues()
     {
-        var result = TestHelper.TranspileAndRun(Vec + """
+        var result = TestHelper.CompileAndRunVm(Vec + """
             public class T
             {
                 public static string Test()
@@ -484,7 +484,7 @@ public class StructSemanticsTests
     [Fact]
     public void ListOfStruct_ContainsIndexOfRemove_UseValueEquality()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public struct Vec2 { public float X; public float Y; }
             public record struct Pt(int X, int Y);

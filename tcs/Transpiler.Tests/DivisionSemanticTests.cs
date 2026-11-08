@@ -7,7 +7,7 @@ public class DivisionSemanticTests
     [Fact]
     public void IntDivision_TruncatesTowardZero()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -28,7 +28,7 @@ public class DivisionSemanticTests
     [Fact]
     public void FloatToIntCast_TruncatesTowardZero()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -49,7 +49,7 @@ public class DivisionSemanticTests
     [Fact]
     public void IntRemainder_TakesSignOfDividend()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -68,7 +68,7 @@ public class DivisionSemanticTests
     [Fact]
     public void FloatDivision_KeepsIeeeSemantics()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -87,7 +87,7 @@ public class DivisionSemanticTests
     [Fact]
     public void FloatRemainder_TruncatedLikeCsharp()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -104,7 +104,7 @@ public class DivisionSemanticTests
     [Fact]
     public void CompoundDivideAndModulo_UseIntegerSemantics()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -124,7 +124,7 @@ public class DivisionSemanticTests
     public void IntDivisionByZero_RaisesRuntimeError()
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            TestHelper.TranspileAndRunWithRuntime("""
+            TestHelper.CompileAndRunVm("""
                 public class T
                 {
                     public static int Test()
@@ -135,6 +135,6 @@ public class DivisionSemanticTests
                     }
                 }
                 """, "T.Test()"));
-        Assert.Contains("Lua exited", ex.Message);
+        Assert.Contains("fault: division by zero", ex.Message);
     }
 }
