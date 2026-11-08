@@ -146,6 +146,22 @@ public class MultiReturnTests
             && e.Contains("OutArgumentNotDeclaration"));
     }
 
+    // 同じ局所変数を 2 つの out に渡すと、呼び出しの中で parameter が別名になる (#413)
+    [Fact]
+    public void UserMethodOutArgument_SameLocalTwice_ReportsUnsupportedSyntax()
+    {
+        var result = Checker.Check(["""
+            public class P
+            {
+                static void Set(out int a, out int b) { a = 1; b = 2; }
+                public static void Run() { int x; int y; Set(out x, out y); Set(out x, out x); }
+            }
+            """]);
+
+        Assert.False(result.Success);
+        Assert.Single(result.Errors, e => e.Contains("OutArgumentDuplicate"));
+    }
+
     [Fact]
     public void UserMethodOutArgument_ForwardingOutParameter_ReportsUnsupportedSyntax()
     {

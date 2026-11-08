@@ -300,8 +300,10 @@ public sealed class SemanticChecks
         if (m == null) return;
         // 自作の method の out は、`out var` / `out _` の新しい変数と、宣言済みで lambda に capture されない局所変数だけ受ける。
         // multi-return は呼び出しが終わってから受け手に書くので、呼び出しの中から見える受け手 (field、配列の要素、parameter、capture された変数) は C# と違って見える
+        // 同じ局所変数を 2 つの out に渡すと、呼び出しの中では 2 つの parameter が別名になるので受けない
         if (m.Kind == SymKind.Method && m.Builtin == "" && m.Owner != null && !m.Owner.IsRef && call.List != null)
         {
+            var outLocals = new List<LocalSym>();
             foreach (var a in call.List)
             {
                 if (!a.Has(Mods.Out) || a.A == null) continue;
@@ -309,6 +311,11 @@ public sealed class SemanticChecks
                 bool ok = x.Kind == NodeKind.PatDecl || x.Kind == NodeKind.PatDiscard || (x.Kind == NodeKind.Name && x.Text == "_" && x.Local == null && x.Sym == null)
                     || (x.Kind == NodeKind.Name && x.Local != null && !x.Local.IsParam && !x.Local.Captured);
                 if (!ok) Report("OutArgumentNotDeclaration", a);
+                else if (x.Kind == NodeKind.Name && x.Local != null)
+                {
+                    if (outLocals.Contains(x.Local)) Report("OutArgumentDuplicate", a);
+                    else outLocals.Add(x.Local);
+                }
             }
         }
         // Rune? の `?.ToString()` はサブセットの外
