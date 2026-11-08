@@ -1189,6 +1189,8 @@ public sealed class CEmitter
         if (text.StartsWith("\"")) return RenderStringLiteral(text);
         if (literal.Type == "float" || IsFloatText(text))
         {
+            // NaN と ±∞ は語のテキスト (IlLiterals.NonFiniteText)
+            if (IlLiterals.TryNonFiniteBits(text, out int special)) return Constants.F32Bits(special);
             float value;
             if (!float.TryParse(text, out value))
             {

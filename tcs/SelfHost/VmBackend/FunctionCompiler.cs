@@ -2192,6 +2192,8 @@ public sealed class FunctionCompiler
         if (VType.Same(type, VType.Bool)) return t == "true" ? 1 : 0;
         if (VType.Same(type, VType.Float))
         {
+            // NaN と ±∞ は語のテキスト (IlLiterals.NonFiniteText)
+            if (IlLiterals.TryNonFiniteBits(t, out int special)) return special;
             // IL の f32 literal は 10 進の text。.NET の float.Parse は最近接への丸め (il-spec §6)
             var f = float.Parse(t);
             return TcsC.Constants.FloatBits(f);

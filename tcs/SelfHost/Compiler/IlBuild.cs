@@ -721,6 +721,13 @@ public sealed class IlBuild
     // f32 の literal。負の数は括弧で包む (`a - -1.0` の連結で `--` にしない)
     public static IlExpr FloatLit(float value)
     {
+        var nonFinite = IlLiterals.NonFiniteText(value);
+        if (nonFinite != null)
+        {
+            var special = new IlLit(nonFinite, "float", null);
+            if (value < 0) return new IlParen(special, null);
+            return special;
+        }
         var text = value.ToString();
         if (!text.Contains(".") && !text.Contains("E")) text = text + ".0";
         var lit = new IlLit(text, "float", null);
@@ -4856,9 +4863,9 @@ public sealed class IlBuild
             // float の定数は double の値の表記
             case "Float.MaxValue": return new IlLit("3.4028234663852886E+38", "float", null);
             case "Float.MinValue": return new IlLit("-3.4028234663852886E+38", "float", null);
-            case "Float.PositiveInfinity": return new IlLit("math.huge", "float", null);
-            case "Float.NegativeInfinity": return new IlLit("(-math.huge)", "float", null);
-            case "Float.NaN": return new IlLit("(0/0)", "float", null);
+            case "Float.PositiveInfinity": return new IlLit(IlLiterals.PositiveInfinityText, "float", null);
+            case "Float.NegativeInfinity": return new IlParen(new IlLit(IlLiterals.NegativeInfinityText, "float", null), null);
+            case "Float.NaN": return new IlLit(IlLiterals.NaNText, "float", null);
             case "Float.Epsilon": return new IlLit("1.401298464324817E-45", "float", null);
         }
         var obj = BuildExpr(ma.A!);

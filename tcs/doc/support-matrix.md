@@ -568,7 +568,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `int` / `float` の `TryParse(string, out v)` | **Y** | IL は `Math.TryParseInt` / `Math.TryParseFloat` | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
 | `int` / `float` の `ToString(format)` | **Y** | `String.FormatInt` / `String.FormatFloat` | 定数の標準の書式だけ (補間の書式と同じ: float は `G` / `E` / `F` / `N` / `R`、int は加えて `D` / `X`、小文字と 9 桁までの精度も)。空の書式は書式なしと同じ。他の書式と定数でない書式は TCS1002 |
 | `int` / `float` の `CompareTo(同じ型)` | **Y** | IL は `Math.CompareTo(a, b)` | -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0 (Single.CompareTo と同じ)。それ以外の CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<T>` 経由と generic の `T`、差を返す `char`、`string`) は TCS1002 |
-| 数値と bool の他の static method (`float.IsNaN`、`float.IsInfinity`、`int.Max`、`float.Abs`、`bool.Parse` など) | **-** | | TCS1002。NaN は `x != x`、最大と絶対値は `Math.Max` / `Math.Abs` で書く。定数 (`int.MaxValue` など) は使える。`float.NaN`、`float.PositiveInfinity`、`float.NegativeInfinity` は `tcs check` を通るが、`tcs vm` は IL の literal を読めずに落ち、`tcs c` は `invalid f32 literal` で止まる (`0f / z` のように演算で作った値は動く。§27) |
+| 数値と bool の他の static method (`float.IsNaN`、`float.IsInfinity`、`int.Max`、`float.Abs`、`bool.Parse` など) | **-** | | TCS1002。NaN は `x != x`、最大と絶対値は `Math.Max` / `Math.Abs` で書く。定数 (`int.MaxValue`、`float.NaN`、`float.PositiveInfinity`、`float.NegativeInfinity` など) は使える |
 | `Convert` | **-** | | |
 | `Environment` | **P** | `GetEnvironmentVariable(s)` (無ければ null) | 他メンバーは未対応 |
 | `Array` | **-** | | List で代替。`Array.Sort` などの member (配列の `Length` 以外) は TCS1002 |
@@ -1020,7 +1020,6 @@ C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収でき
 次は仕様の差ではなく、tcs VM か C が .NET と違う結果を出す不具合。
 
 - 網羅しない switch 式で一致する arm が無いと、tcs VM と C は fault せずに結果の型の既定値で続く (int なら 0)。.NET は SwitchExpressionException (§4)
-- `float.NaN`、`float.PositiveInfinity`、`float.NegativeInfinity` を書いた program は、`tcs vm` が IL の literal (`(0/0)`、`math.huge`) を読めずに落ち、`tcs c` が `invalid f32 literal` で止まる (§12)
 - null の string を `Console.WriteLine` に直接渡すと、C は `nil` を書く。tcs VM と .NET は空行 (§12)
 - `--ref` の型の user operator (`a + b`) は `tcs check` を通るが、`tcs vm` と `tcs c` は型の誤りで止まる
 - user の class を key にした Dictionary は、C backend だけが emit で止まる (§18)

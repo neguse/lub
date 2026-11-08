@@ -270,7 +270,10 @@ public static class Constants
         return "INT32_C(" + value + ")";
     }
 
-    public static string F32(float value) => "tcs_f32(UINT32_C(0x" + Hex8(FloatBits(value)) + "))";
+    public static string F32(float value) => F32Bits(FloatBits(value));
+
+    // binary32 の bit の並び (FloatBits の形) の f32 の定数
+    public static string F32Bits(int bits) => "tcs_f32(UINT32_C(0x" + Hex8(bits) + "))";
 
     // binary32 の bit の並び (int に入れた 32 bit。負の数は上位の bit が立つ)。2 倍と 1/2 倍は丸めないので、指数と仮数を正確に取り出せる。
     // 23 bit の後ろに残りがあれば最も近い偶数へ丸める (float が binary32 の .NET、C、wasm では残りは 0)
