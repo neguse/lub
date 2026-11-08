@@ -168,6 +168,21 @@ public static class Cli
     }
 
     // 旧 tcs2c の誤りの形 (`tcs2c: ...`)
+    // 出力の path が入力 (a か b) のどれかと同じファイルなら、その誤りの文。違えば ""
+    public static string InputClash(string output, List<string> a, List<string> b)
+    {
+        if (output == "") return "";
+        foreach (var p in a)
+        {
+            if (p == output || TcsHost.SameFile(p, output)) return "output " + output + " is the input file " + p + " (not overwritten)";
+        }
+        foreach (var p in b)
+        {
+            if (p == output || TcsHost.SameFile(p, output)) return "output " + output + " is the input file " + p + " (not overwritten)";
+        }
+        return "";
+    }
+
     public static int CError(string message)
     {
         TcsHost.WriteErr("tcs2c: " + message + "\n");

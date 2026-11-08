@@ -32,6 +32,47 @@ public static class TcsHost
     public static string Arg(int index) => _args[index];
     public static bool FileExists(string path) => File.Exists(path);
 
+    // 両方が既存のファイルで、link を全部たどった絶対 path が同じか (Windows と macOS は大文字小文字を区別しない)
+    public static bool SameFile(string a, string b)
+    {
+        try
+        {
+            if (!File.Exists(a) || !File.Exists(b)) return false;
+            var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            return string.Equals(ResolvedPath(a, 0), ResolvedPath(b, 0), comparison);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
+            or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    // path の各要素の symbolic link をたどった絶対 path
+    private static string ResolvedPath(string path, int depth)
+    {
+        if (depth > 40) throw new IOException("too many levels of symbolic links: " + path);
+        var full = Path.GetFullPath(path);
+        var root = Path.GetPathRoot(full) ?? "";
+        var current = root;
+        var parts = full.Substring(root.Length).Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            var next = Path.Combine(current, part);
+            FileSystemInfo info = Directory.Exists(next) ? new DirectoryInfo(next) : new FileInfo(next);
+            if (info.LinkTarget != null)
+            {
+                var target = Path.IsPathRooted(info.LinkTarget) ? info.LinkTarget : Path.Combine(current, info.LinkTarget);
+                next = ResolvedPath(target, depth + 1);
+            }
+            current = next;
+        }
+        return Path.TrimEndingDirectorySeparator(current);
+    }
+
     public static string ReadFile(string path)
     {
         try { return File.ReadAllText(path); }

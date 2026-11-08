@@ -120,6 +120,30 @@ bool tcs_host_tcshost_file_exists(TcsString *path)
     return ok != 0;
 }
 
+/* 2 つの path が同じ既存のファイルを指すか: POSIX は device と inode、Windows は volume と file index (link と綴りの違いも同じファイル) */
+bool tcs_host_tcshost_same_file(TcsString *a, TcsString *b)
+{
+    char *na = host_cstring(a);
+    char *nb = host_cstring(b);
+    int same = 0;
+#ifdef _WIN32
+    HANDLE ha = CreateFileA(na, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE hb = CreateFileA(nb, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    BY_HANDLE_FILE_INFORMATION ia, ib;
+    if (ha != INVALID_HANDLE_VALUE && hb != INVALID_HANDLE_VALUE && GetFileInformationByHandle(ha, &ia) && GetFileInformationByHandle(hb, &ib))
+        same = ia.dwVolumeSerialNumber == ib.dwVolumeSerialNumber && ia.nFileIndexHigh == ib.nFileIndexHigh && ia.nFileIndexLow == ib.nFileIndexLow;
+    if (ha != INVALID_HANDLE_VALUE) CloseHandle(ha);
+    if (hb != INVALID_HANDLE_VALUE) CloseHandle(hb);
+#else
+    struct stat sa, sb;
+    if (stat(na, &sa) == 0 && stat(nb, &sb) == 0)
+        same = sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
+#endif
+    free(na);
+    free(nb);
+    return same != 0;
+}
+
 TcsString *tcs_host_tcshost_read_file(TcsString *path)
 {
     char *name = host_cstring(path);

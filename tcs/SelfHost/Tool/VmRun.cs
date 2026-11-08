@@ -190,8 +190,29 @@ public sealed class VmRun
         return 1;
     }
 
+    // 出力の path が入力 (入力、--ref、--reload-from、--inputs-from) のどれかと同じファイルなら、その誤りの文
+    private string InputClash(string output)
+    {
+        var inputs = new List<string>();
+        foreach (var p in _o.Refs) inputs.Add(p);
+        foreach (var p in _o.ReloadFrom) inputs.Add(p);
+        if (_o.InputsFrom != "") inputs.Add(_o.InputsFrom);
+        return Cli.InputClash(output, _o.Inputs, inputs);
+    }
+
+    // 書く前に入力を上書きしないかを確かめる (何も書かずに止める)
+    private string OutputsClash()
+    {
+        string clash = InputClash(_o.Output);
+        if (clash == "") clash = InputClash(_o.PlanOut);
+        if (clash == "") clash = InputClash(_o.BatchOut);
+        return clash;
+    }
+
     private int WriteBytes(string path, List<int> bytes)
     {
+        string clash = InputClash(path);
+        if (clash != "") return VError(clash);
         string failure = TcsHost.WriteBinaryAtomic(path, VBytes.ToByteString(bytes));
         if (failure != "") return VError(failure);
         return 0;
@@ -205,12 +226,16 @@ public sealed class VmRun
         {
             if (_o.Output == "") return VError("-o is required");
             ReadInputList();
+            string watchClash = OutputsClash();
+            if (watchClash != "") return VError(watchClash);
             var watched = ReadAll(_o.Inputs);
             if (watched == null) return VError("could not find file: " + MissingFile(_o.Inputs));
             return StartWatch(watched);
         }
         var sources = ReadAll(_o.Inputs);
         if (sources == null) return VError("could not find file: " + MissingFile(_o.Inputs));
+        string clash = _o.Dump ? "" : OutputsClash();
+        if (clash != "") return VError(clash);
         var refs = ReadAll(_o.Refs);
         if (refs == null) return VError("could not find file: " + MissingFile(_o.Refs));
         var diags = new List<string>();

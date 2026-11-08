@@ -104,6 +104,13 @@ bool tcs_host_tcshost_file_exists(TcsString *path)
     return false;
 }
 
+bool tcs_host_tcshost_same_file(TcsString *a, TcsString *b)
+{
+    (void)a;
+    (void)b;
+    return false;
+}
+
 TcsString *tcs_host_tcshost_read_file(TcsString *path)
 {
     (void)path;
