@@ -75,18 +75,17 @@ class Toolchain:
     def __init__(self):
         self.cc = os.environ.get("CC", "gcc")
         self.dotnet = os.environ.get("DOTNET") or shutil.which("dotnet") or str(Path.home() / ".dotnet" / "dotnet")
-        self.lua32 = os.environ.get("LUA32", str(ROOT / "deps" / "lua" / "lua32"))
         self.tcsvm = os.environ.get("TCSVM", str(ROOT / "build" / "tcsvm" / "tcsvm"))
         self.tcs_dll = ROOT / "Transpiler" / "bin" / "Release" / "net10.0" / "Transpiler.dll"
         self._tcs_ready = False
         self._native_ready = False
 
     def ensure_native(self):
-        """lua32 と tcsvm (root の CMake)"""
+        """tcsvm (root の CMake)"""
         if self._native_ready:
             return
         run_quiet(["cmake", "-B", str(ROOT / "build"), "-DCMAKE_BUILD_TYPE=Release", "-S", str(ROOT)])
-        run_quiet(["cmake", "--build", str(ROOT / "build"), "--parallel"])
+        run_quiet(["cmake", "--build", str(ROOT / "build"), "--target", "tcsvm", "--parallel"])
         self._native_ready = True
 
     def ensure_tcs(self):
@@ -135,22 +134,6 @@ class TcsImpl(Impl):
 
     def available(self):
         return self.tc.has(self.tc.dotnet)
-
-
-class TcsLua(TcsImpl):
-    id = "tcs-lua"
-    label = "TinyC# → Lua (lua32)"
-
-    def version(self):
-        return first_line([self.tc.lua32, "-v"])
-
-    def build(self, prog, work):
-        self.tc.ensure_native()
-        out = work / (prog["entry"] + ".lua")
-        self.tc.tcs(self.source(prog), "-o", out)
-        with open(out, "a") as f:
-            f.write("\n%s.Main()\n" % prog["entry"])
-        return [self.tc.lua32, str(out)]
 
 
 class TcsVm(TcsImpl):
@@ -326,20 +309,7 @@ class RefPython(RefImpl):
         return ["python3", "-I", str(self.source(prog))]
 
 
-class RefLua(RefImpl):
-    id = "lua"
-    label = "Lua 5.5 手書き (lua32)"
-    ext = ".lua"
-
-    def version(self):
-        return first_line([self.tc.lua32, "-v"])
-
-    def build(self, prog, work):
-        self.tc.ensure_native()
-        return [self.tc.lua32, str(self.source(prog))]
-
-
-IMPLS = [RefC, TcsC, RefRust, RefGo, RefJava, TcsDotnet, RefJs, TcsVm, TcsLua, RefLua, RefPython]
+IMPLS = [RefC, TcsC, RefRust, RefGo, RefJava, TcsDotnet, RefJs, TcsVm, RefPython]
 
 NUM = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 

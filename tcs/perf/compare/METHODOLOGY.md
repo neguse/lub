@@ -9,8 +9,7 @@ tcs の経路 (1 つの `<Entry>.cs` から作る):
 
 | id | 経路 |
 |---|---|
-| `tcs-lua` | tcs → Lua → `deps/lua/lua32` (Lua 5.5、LUA_32BITS)。開発と lub の hot reload の経路 |
-| `tcs-vm` | `tcs vm` → `.tcsb` → `build/tcsvm/tcsvm` |
+| `tcs-vm` | `tcs vm` → `.tcsb` → `build/tcsvm/tcsvm`。開発と hot reload の経路 |
 | `tcs-c` | `tcs c` → C → gcc -O2。release の経路 |
 | `tcs-dotnet` | 同じソースを .NET (Release、JIT) で動かす。`TinySystem.props` で Math と Dictionary は tcs と同じ実装 |
 
@@ -23,7 +22,6 @@ tcs の経路 (1 つの `<Entry>.cs` から作る):
 | `go` | Go、go build |
 | `java` | Java、javac と java (HotSpot、flag の調整なし) |
 | `js` | JavaScript、Node.js |
-| `lua` | Lua 5.5 を手で書いたもの。tcs-lua と同じ lua32 で動かす (tcs が出す Lua と人が書く Lua の差を見る) |
 | `python` | Python 3 (CPython) |
 
 C# の手書きの版は置かない。TinyC# は C# のサブセットで、`tcs-dotnet` がそのまま C# と .NET の行になる。
@@ -94,7 +92,7 @@ Benchmarks Game 由来のものは、その 1 スレッドの版と同じ手順�
 ```bash
 python3 perf/compare/run.py --check            # 出力の一致だけ (数十秒)
 python3 perf/compare/run.py --pin 2            # 本番 (1 時間ほど。Python が大半)
-python3 perf/compare/run.py -p fib,nbody -i c,tcs-c,tcs-lua --runs 3
+python3 perf/compare/run.py -p fib,nbody -i c,tcs-c,tcs-vm --runs 3
 python3 perf/compare/report.py perf/compare/results/<file>.json
 ```
 

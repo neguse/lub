@@ -3,8 +3,8 @@
 
 tcs のソース (SelfHost/Compiler、CBackend、VmBackend、Tool。約 4 万行) を入力にして、
 C にした tcs (tcs c で自分を C にしたもの) と .NET の tcs で次を測る:
-  lua   tcs → Lua (tcs <files> -o out.lua)
-  c     tcs → C   (tcs c --lib <files> -o out.c)
+  vm    tcs → tcs VM の .tcsb (tcs vm --export TcsSelf.Cli.* <files> -o out.tcsb)
+  c     tcs → C               (tcs c --lib <files> -o out.c)
 指標:
   time_s        wall の時間の median (揺れるので報告だけ)
   instructions  C の tcs の実行した命令の数 (valgrind cachegrind。ほぼ決定的なのでゲートに使う)
@@ -73,8 +73,6 @@ class Tcs:
         self.dll = self.tree / "Transpiler" / "bin" / "Release" / "net10.0" / "Transpiler.dll"
         # tcs と一緒に配るファイル (build.sh と同じ配置)。C の tcs は実行ファイルの dir から読む
         (w / "runtime").mkdir(exist_ok=True)
-        for f in ("tinysystem.lua", "module_registry.lua"):
-            shutil.copy(self.tree / "runtime" / f, w / "runtime" / f)
         for d in ("core", "math", "fmt", "model", "utf8"):
             (w / "runtime" / d).mkdir(exist_ok=True)
             for f in list((self.tree / "runtime" / d).glob("*.c")) + list((self.tree / "runtime" / d).glob("*.h")):
@@ -90,8 +88,12 @@ class Tcs:
 
     def argv(self, host, task, inputs, out):
         cmd = [self.exe] if host == "native" else [dotnet(), str(self.dll)]
-        if task == "c":
+        if task == "vm":
+            cmd += ["vm", "--export", "TcsSelf.Cli.*"]
+        elif task == "c":
             cmd += ["c", "--lib"]
+        else:
+            raise SystemExit("unknown task: " + task)
         return cmd + inputs + ["-o", str(out)]
 
 
@@ -134,7 +136,7 @@ def main():
     ap.add_argument("--runs", type=int, default=5)
     ap.add_argument("--threshold", type=float, default=3.0, help="決定的な指標がこの %% を超えて増えたら失敗")
     ap.add_argument("--no-cachegrind", action="store_true")
-    ap.add_argument("--tasks", default="lua,c")
+    ap.add_argument("--tasks", default="vm,c")
     ap.add_argument("--hosts", default="native,dotnet")
     ap.add_argument("-o", "--out", help="結果の JSON")
     args = ap.parse_args()
