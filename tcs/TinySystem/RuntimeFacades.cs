@@ -5,7 +5,7 @@ namespace TinySystem;
 // 検証でき、tcs の dotnet differential が facade parity を検証できる。
 
 /// <summary>System.Random と同じ形 (instance + `Random.Shared`)。tcs の
-/// 2 backend (C / VM) は同じ PRNG (Lua 5.5 の math.random と同じ xoshiro256**) なので、同じ
+/// 2 backend (C / VM) は同じ PRNG (xoshiro256**、il-spec §13) なので、同じ
 /// seed なら `new Random(seed)` も `Random.Seed(seed)` 後の `Shared` も列が
 /// bit 一致する。dotnet 側は System.Random に委譲するので列は異なる
 /// (乱数は dotnet differential の対象外)。</summary>

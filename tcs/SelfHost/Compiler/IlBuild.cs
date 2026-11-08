@@ -2,9 +2,8 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// 束縛済みの木 → IL。参照実装の LuaEmitter.IlBuild.* (Roslyn の構文と SemanticModel から IL を作る) の規則を、
-// セルフホストの束縛の結果 (Node の Type / Sym / Info と Conv の node) から作る形で写したもの。
-// 意味の決定 (整数の除算、連結、+1、facade の解決) はここで済ませ、未対応の構文は null を返す
+// 束縛済みの木 → IL。束縛の結果 (Node の Type / Sym / Info と Conv の node) から IL を作る。
+// 意味の決定 (整数の除算、連結、添字、facade の解決) はここで済ませ、未対応の構文は null を返す
 public sealed class IlBuild
 {
     private readonly IlContext Ctx;
@@ -341,7 +340,7 @@ public sealed class IlBuild
     }
 
     // 式本体 (=>) の値は return 文の値と同じ copy 地点 (il-spec §10)。void の本体は式文なので copy しない
-    // method の式本体は void でも return の文にする (Lua は値の無い return と同じ)。値の copy は void でない本体だけ
+    // method の式本体は void でも return の文にする (void の method なら backend は式を評価して捨ててから戻る)。値の copy は void でない本体だけ
     public bool BuildReturnInto(Node expr, List<IlStat> acc)
     {
         if (IsInMultiReturnMethod()) return BuildTupleReturnInto(expr, Origin(expr), acc);
@@ -692,7 +691,7 @@ public sealed class IlBuild
         return Unported("conversion " + conv.Info, conv);
     }
 
-    // 組み込みの float の算術 (+ - * / %) の operand は Lua / C とも演算が integer を float へ変換するので明示の変換を省く (BuildBinary が印を付ける)
+    // 組み込みの float の算術 (+ - * / %) の operand は VM と C の演算が int を float に揃えるので明示の変換を省く (BuildBinary が印を付ける)
     private bool IsPromotedArithmeticOperand(Node conv)
     {
         return conv == _promotedOperand;
@@ -727,7 +726,7 @@ public sealed class IlBuild
         return new IlLit(text, isFloat ? "float" : null, null);
     }
 
-    // int.MinValue は literal で書くと Lua が float にするので、式で書く
+    // int.MinValue は i32 の literal (2147483648 の符号の反転) では書けないので、式で書く
     private static IlExpr IntMinValueIl()
     {
         return new IlParen(new IlBin(IlBinOp.Sub, new IlUn(IlUnOp.Neg, new IlLit("2147483647", null, null), null), new IlLit("1", null, null), null), null);
@@ -752,7 +751,7 @@ public sealed class IlBuild
         return Unported("literal", lit);
     }
 
-    // 数の literal の字面: 桁区切りと接尾辞を外す。2 進は 10 進に、16 進は区切りだけ外す。float の literal は Lua でも float として出す
+    // 数の literal の字面: 桁区切りと接尾辞を外す。2 進は 10 進に、16 進は区切りだけ外す。float の literal は小数点も指数も無ければ ".0" を付ける
     private static string ConvertNumericLiteral(Node lit)
     {
         var text = lit.File.Slice(lit.Pos, lit.End);
@@ -875,7 +874,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // C# の書式指定を Lua の string.format の指定に
+    // C# の書式指定を string.format の指定 (printf の形。runtime/fmt が読む) に
     private static string ConvertFormatSpecifier(string fmt)
     {
         if (fmt == "") return "%s";
@@ -995,7 +994,7 @@ public sealed class IlBuild
         return result;
     }
 
-    // BuildConditionalCore が作った IIFE (`local __tcs_ca = ...; if __tcs_ca ~= nil then ... end`)
+    // BuildConditionalCore が作った IIFE (`__tcs_ca = ...; if (__tcs_ca != nil) ...`)
     private static bool IsConditionalCore(IlExpr e)
     {
         if (!(e is IlIife iife) || iife.Stats.Count == 0) return false;
@@ -1091,7 +1090,7 @@ public sealed class IlBuild
     }
 
     // ---- タプルと分解 (参照実装の Tuples)。タプルの値は struct (TinySystem/ValueTuple.cs)。
-    // Lua はタプルを返す method を multi-return にし、値として保持する位置でだけ table にする
+    // タプルを返す method を multi-return にする形は ForCBackend でない IlContext のときだけで、IlExporter は使わない
 
     private int _deconstructTemp;
 
@@ -1561,7 +1560,7 @@ public sealed class IlBuild
     // ---- user の演算子 ----
 
     // user の演算子は呼び出しの場所で選ばれた overload の static 関数を直接呼ぶ (`V.__mul_2(a, b)`)。
-    // --ref の型の演算子は実装が host にあるので Lua の演算子 (metamethod) に任せる。struct の引数は呼び出しと同じく copy して渡す
+    // --ref の型の演算子は実装が host にあるので呼び出しにしない (IL の演算のまま残る)。struct の引数は呼び出しと同じく copy して渡す
     private IlExpr? TryBuildUserOperatorCall(Node expr, List<Node> operands, List<IlExpr> built)
     {
         var op = expr.Sym;
@@ -1596,7 +1595,7 @@ public sealed class IlBuild
 
     // ---- out 引数 ----
 
-    // 自作の method の out: Lua は multi-return、C はポインタ (IlMultiAssign を C の emitter が写す)。受け手の順は parameter の順で、先頭が戻り値
+    // 自作の method の out: 呼び出しは IlMultiAssign (VM は out の値を戻り値の後ろに並べて返し、C はポインタで写す)。受け手の順は parameter の順で、先頭が戻り値
     private static bool IsUserOutMethod(Symbol? m)
     {
         return m != null && m.Kind == SymKind.Method && m.HasOut && m.Builtin == "" && m.Owner != null && !m.Owner.IsRef;
@@ -1664,7 +1663,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // --ref の host の method の out (受け手の member の形の呼び出し): Lua の multi-return
+    // --ref の host の method の out (受け手の member の形の呼び出し): 自作の method と同じく IlMultiAssign (受け手は戻り値、out の順)
     private static bool IsRefOutCall(Node call)
     {
         var m = call.Sym;
@@ -1917,7 +1916,7 @@ public sealed class IlBuild
             }
             var r = BuildExpr(recvNode);
             if (r == null) return null;
-            // struct は metatable が無いので自由関数を静的に呼ぶ
+            // struct の instance member は自由関数で、静的に呼ぶ (il-spec §10)
             if (IlTypes.IsUserStruct(recvNode.Type))
             {
                 var all = new List<IlExpr>();
@@ -2913,7 +2912,7 @@ public sealed class IlBuild
         return new IlNullableWrap(e, IlTypes.Display(t), null);
     }
 
-    // Dictionary.Add は Lua では代入の形
+    // 文の位置の Dictionary.Add は key への代入 (IlAssign と IlIndex) にする。key が既にあっても上書きし、.NET の ArgumentException に当たる fault は無い
     private bool BuildDictAddStatInto(Node call, IlPos? origin, List<IlStat> acc)
     {
         if (call.Sym == null || call.Sym.Builtin != "Dict.Add" || call.Count != 2) return false;
@@ -2983,7 +2982,7 @@ public sealed class IlBuild
         var read = BuildExpr(left);
         var right = BuildExpr(assign.B!);
         if (read == null || right == null) return false;
-        // `x op= a ⊕ b` は x = x op (a ⊕ b)。Lua の演算子の優先順位に依らず右辺を 1 項として括る
+        // `x op= a ⊕ b` は x = x op (a ⊕ b)。演算子の優先順位に依らず右辺を 1 項として括る
         if (right is IlBin || right is IlLiftedBin || right is IlTernary) right = new IlParen(right, null);
         IlExpr? applied;
         if (WritesLocalReadBy(left, assign.B!))
@@ -2997,7 +2996,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // 複合代入の Lua の演算子。string の += は `..`。bool の &= / |= / ^= は対象外 (null)
+    // 複合代入の演算子の綴り (`..` は連結、`~` は xor)。string の += は `..`。bool の &= / |= / ^= は対象外 (null)
     private static string? CompoundOperator(Node assign)
     {
         var lt = NaturalType(assign.A!);
@@ -4100,7 +4099,7 @@ public sealed class IlBuild
         var body = BuildBlock(f.C!);
         if (coll == null || body == null) return false;
         var collType = NaturalType(collNode);
-        // Dictionary の本体だけ pairs (KeyValuePair) で反復する。Keys / Values は runtime が配列を返すので List の反復
+        // Dictionary の本体だけ IlForeachDict (KeyValuePair) で反復する。Keys / Values は runtime が配列を返すので List の反復
         if (IlTypes.IsDict(collType))
         {
             // float の key は NaN の置き換えを戻す
@@ -4160,7 +4159,7 @@ public sealed class IlBuild
         return new IlIife(stats, null);
     }
 
-    // 型の参照: source に宣言した型は Lua の名前、それ以外は書いた名前。名前だけで表せない型は null
+    // 型の参照: source に宣言した型は IL の型の名前、それ以外は書いた名前。名前だけで表せない型は null
     private string? FormatTypeReference(Node typeNode, TypeSym? t)
     {
         if (t != null && t.Decl != null && !t.Decl.IsRef) return TypeName(t);
@@ -4200,7 +4199,7 @@ public sealed class IlBuild
             if (IlTypes.IsNullableValueType(inputType) && TypeSym.Same(inputType.Elem, patternType)) return new IlNullableHasValue(expr, null);
         }
         if (patternType != null && patternType.Kind == TypeKind.Interface) return new IlIsType(expr, CheckTypeName(patternType), true, null);
-        // --ref の class (Lua は止める。tcs VM は型の表で判定する、object-model §10.6) は cast と同じ IL の型名で指す
+        // --ref の class (tcs check と C は TCS1001 で止め、tcs VM は型の表で判定する、object-model §10.6) は cast と同じ IL の型名で指す
         if (patternType != null && patternType.Kind == TypeKind.Class && patternType.Decl != null && patternType.Decl.IsRef) return new IlIsType(expr, CheckTypeName(patternType), false, null);
         if (typeRef == null) return null;
         return new IlIsType(expr, typeRef, false, null);
@@ -4947,7 +4946,7 @@ public sealed class IlBuild
         return r;
     }
 
-    // symbol の Lua の member 名。--ref の型の member は host の名前、user の型の method は overload の名前
+    // symbol の IL の member 名。--ref の型の member は host の名前 (LuaName)、user の型の method は overload の名前
     public string N(Symbol sym)
     {
         if (sym.Owner != null && sym.Owner.IsRef) return sym.LuaName;
@@ -5017,7 +5016,7 @@ public sealed class IlBuild
     {
         var op = bin.Text;
         if (op == "is" || op == "as") return Unported("is / as", bin);
-        // float の算術の operand の int → float の変換は省く (Lua / C の演算が変換する)
+        // float の算術の operand の int → float の変換は省く (VM と C の演算が int を float に揃える)
         bool arithmetic = op == "+" || op == "-" || op == "*" || op == "/" || op == "%";
         bool builtinOp = bin.Sym == null || bin.Sym.Builtin != "";
         if (arithmetic && builtinOp)
@@ -5117,7 +5116,7 @@ public sealed class IlBuild
     }
 
     // == が参照の比較になり、しかも実行時の値が record でありうる組み合わせ (片方が record の静的型なら record の等価)。
-    // null の literal との比較は Lua の == でも __eq を呼ばないので含めない
+    // null の literal との比較は値の等価でも参照の比較でも同じ結果なので含めない
     private static bool IsReferenceEquality(TypeSym lt, TypeSym rt)
     {
         if (lt.Kind == TypeKind.Null || rt.Kind == TypeKind.Null) return false;
@@ -5144,7 +5143,7 @@ public sealed class IlBuild
             built.Add(right);
             var userOp = TryBuildUserOperatorCall(bin, operands, built);
             if (userOp != null) return userOp;
-            // --ref の型の演算子は実装が host にあるので Lua の演算子 (metamethod) に任せる
+            // --ref の型の演算子は実装が host にあるので、呼び出しにせず IL の演算のまま残す
             if (!(bin.Sym.Owner != null && bin.Sym.Owner.IsRef)) return Unported("user operator", bin);
         }
         var lt = bin.A!.Type!;
@@ -5157,7 +5156,7 @@ public sealed class IlBuild
             if (op == "==") return eqCall;
             return new IlParen(new IlUn(IlUnOp.Not, eqCall, null), null);
         }
-        // object / interface / 型引数どうしの ==/!= は C# では参照の比較。Lua の == は record の __eq を呼んでしまうので rawequal にする
+        // object / interface / 型引数どうしの ==/!= は C# では参照の比較なので、record の値の等価にしない rawequal にする
         if ((op == "==" || op == "!=") && IsReferenceEquality(lt, rt))
         {
             var refEq = new IlCall("rawequal", Two(left, right), false, null);
@@ -5242,7 +5241,8 @@ public sealed class IlBuild
         return new IlCall("tostring", One(built), false, null);
     }
 
-    // 文字列の連結 (`+` / `+=`) の operand を Lua の `..` が受ける形にする
+    // 文字列の連結 (`+` / `+=`) の operand を文字列にする: int 以外の値型と ToString の override はここで文字列化し、
+    // null になりうる string は空文字列にする (int は連結 (IlBinOp.Concat) が 10 進にする)
     private IlExpr WrapConcatOperand(Node expr, IlExpr rendered)
     {
         var type = NaturalType(expr);
@@ -5615,7 +5615,7 @@ public sealed class IlBuild
             case TypeKind.Long:
             case TypeKind.UInt:
                 return "0";
-            // float は Lua でも float (integer の 0 は int と混ぜた演算が integer のまま進み、f32 へ丸まらない)
+            // float の既定値は float の literal
             case TypeKind.Float:
             case TypeKind.Double:
                 return "0.0";
@@ -5690,7 +5690,7 @@ public sealed class IlBuild
         return string.Join("", parts);
     }
 
-    // 型の値を写す関数 (Lua の式)。写さなくてよい型は nil
+    // 型の値を写す関数 (式のテキスト)。写さなくてよい型は nil
     private string Copier(TypeSym t, bool inCopy)
     {
         if (t.Kind == TypeKind.TypeParam && inCopy) return "__tcs_cc_" + t.Name;

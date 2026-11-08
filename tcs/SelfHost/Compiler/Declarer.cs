@@ -66,7 +66,7 @@ public sealed class Compilation
     // 型宣言ごとの型解決の文脈
     // static class の拡張メソッド (名前ごと)
     public Dictionary<string, List<Symbol>> Extensions = new Dictionary<string, List<Symbol>>();
-    // 型の Lua の global 名 (局所変数の名前がこれを覆い隠さないようにする)
+    // 型の global 名 (IL で型を指す名前。局所変数の名前がこれを覆い隠さないようにする)
     public HashSet<string> TypeLuaNames = new HashSet<string>();
 
     public void Error(string code, string message, Node at)
@@ -219,7 +219,7 @@ public sealed class Declarer
         string full;
         if (outer != null) full = outer.FullName + "." + n.Text;
         else full = ns == "" ? n.Text : ns + "." + n.Text;
-        // System.ValueTuple (TinySystem/ValueTuple.cs) は型引数の数ごとに別の型で、Lua の global も分ける (System_ValueTuple2 など)
+        // System.ValueTuple (TinySystem/ValueTuple.cs) は型引数の数ごとに別の型で、IL の型の名前も分ける (System_ValueTuple2 など)
         if (n.File.IsLibrary && full == "System.ValueTuple" && n.List2 != null) full = full + n.List2.Count;
         var t = new TypeDeclSym(n.Text, full, ns, n.Value, n);
         n.TypeDecl = t;
@@ -284,7 +284,7 @@ public sealed class Declarer
         {
             foreach (var b in n.List3)
             {
-                // --ref の属性の宣言 (: Attribute)。属性は名前の解決にだけ使い、Lua を出さない
+                // --ref の属性の宣言 (: Attribute)。属性は名前の解決にだけ使い、IL を出さない
                 if (t.IsRef && b.Kind == NodeKind.TypeName && b.Text == "Attribute" && (b.A == null || b.A.Text == "System"))
                 {
                     t.IsAttribute = true;
@@ -1166,7 +1166,7 @@ public sealed class Declarer
         return result;
     }
 
-    // ---- Lua の名前 ----
+    // ---- IL の名前 (LuaName) ----
 
     private void AssignLuaNames(TypeDeclSym t)
     {
@@ -1211,7 +1211,7 @@ public sealed class Declarer
         if (t.IsRef) AssignHostNames(t);
     }
 
-    // --ref の型 (host) の名前は host の規則で写す (参照実装の LuaNaming と同じ):
+    // --ref の型 (host) の名前は host の規則で写す:
     // 型は namespace と入れ子の型を全小文字で . でつなぐ (Lub.Gfx → lub.gfx)。enum は入っている型か namespace の下に平らに置く。
     // member は snake_case (BeginPass → begin_pass)、enum の member は UPPER_SNAKE (Rgba8 → RGBA8)
     private static void AssignHostNames(TypeDeclSym t)
@@ -1340,7 +1340,7 @@ public static class LuaNames
 
     private static HashSet<string>? _reserved;
 
-    // Lua の予約語と、生成コードが参照する global の名前
+    // local の改名 (LocalNames と Binder の pattern の変数) が避ける名前
     public static bool IsReserved(string name)
     {
         if (_reserved == null)

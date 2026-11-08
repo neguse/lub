@@ -214,8 +214,7 @@ public static class Enumerable
     }
 
     // MinBy / MaxBy は key の最小 / 最大の要素 (key の等しい要素は先に出た方)。key は各要素に 1 回
-    // だけ求め、比べ方は OrderBy と同じ。空の列は fault (System.Linq は参照型の要素なら null を返すが、
-    // tcs の Lua の出力は型を消したので値型と区別できなかった)
+    // だけ求め、比べ方は OrderBy と同じ。空の列は要素の型に依らず fault (System.Linq は参照型の要素なら null を返す)
 
     public static T MinBy<T>(this List<T> list, Func<T, int> key) =>
         list[Best(list.Count, i => key(list[i]), (a, b) => a.CompareTo(b) < 0)];

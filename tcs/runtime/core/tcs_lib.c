@@ -34,8 +34,8 @@ tcs_format_arg_string(const TcsFormatArg *arg)
     }
 }
 
-/* Lua の string.format: flags [-+ #0]、幅・精度は 2 桁まで。
-   %d は整数、%f/%e/%g は double 昇格、%s は tostring、%c は byte */
+/* IL の string.format: flags [-+ #0]、幅・精度は 2 桁まで。
+   %d は整数、%f/%e/%g は double 昇格、%s は文字列化、%c は byte */
 static TcsString *
 tcs_string_format(TcsString *format, size_t argc, const TcsFormatArg *argv)
 {
@@ -105,7 +105,7 @@ tcs_string_format(TcsString *format, size_t argc, const TcsFormatArg *argv)
     return result;
 }
 
-/* ---- Math (TinySystem.Math の Lua 意味論) ---- */
+/* ---- Math (TinySystem.Math。tcs VM と同じ意味) ---- */
 static int32_t
 tcs_trunc_f32(float value)
 {
@@ -128,7 +128,7 @@ tcs_math_log(float x, float base, int has_base)
     return tcs_logf(x) / tcs_logf(base);
 }
 
-/* Lua の ^ (luai_numpow) と同じく、指数 2 は乗算 */
+/* 指数 2 は乗算 (tcs VM と同じ) */
 static float
 tcs_math_pow(float x, float y)
 {
@@ -653,9 +653,8 @@ tcs_dict_clear(TcsDict *dict)
     dict->count = 0;
 }
 
-/* ---- Random: Lua 5.5 lmathlib の xoshiro256** を LUA_32BITS 構成
-   (lua_Integer / lua_Unsigned = 32bit、lua_Number = float、FIGS = 24)
-   のまま移植する。seed 固定時は tcs VM と同じ列になる ---- */
+/* ---- Random: xoshiro256** (il-spec §13)。整数は 32 bit の演算で範囲に写し、
+   float は上位 24 bit から作る。seed 固定時は tcs VM と同じ列になる ---- */
 /* TinySystem.Random の instance。GC object (pointer slot なし) で、
    Shared は static 1 個 (heap 外なので GC は触らない) */
 typedef struct TcsRandom { uint64_t s[4]; } TcsRandom;
@@ -686,7 +685,7 @@ tcs_rand_next(TcsRandom *r)
     return res;
 }
 
-/* math.randomseed(n1, n2): state = { n1, 0xff, n2, 0 }、先頭 16 値を捨てる */
+/* seed (n1, n2): state = { n1, 0xff, n2, 0 }、先頭 16 値を捨てる */
 static void
 tcs_rand_seed(TcsRandom *r, uint32_t n1, uint32_t n2)
 {
@@ -732,7 +731,7 @@ tcs_random_new_auto(void)
     return tcs_random_new(tcs_rand_auto_seed());
 }
 
-/* math.random(): 上位 24 bit から [0, 1) の float */
+/* 上位 24 bit から [0, 1) の float */
 static float
 tcs_rand_float(TcsRandom *r)
 {
@@ -756,7 +755,7 @@ tcs_rand_project(TcsRandom *r, uint32_t ran, uint32_t n)
     return ran;
 }
 
-/* math.random(low, up): [low, up] の整数 (32bit 演算) */
+/* [low, up] の整数 (32bit 演算。空の範囲は fault) */
 static int32_t
 tcs_rand_range(TcsRandom *r, int32_t low, int32_t up)
 {
@@ -792,7 +791,7 @@ tcs_char_cast(int32_t value)
     return value;
 }
 
-/* Lua の Char.ConvertFromUtf32 と同じ。範囲外は同じ文言で fault */
+/* char.ConvertFromUtf32 (tcs VM と同じ。範囲外は同じ文言で fault) */
 static TcsString *
 tcs_string_from_codepoint(int32_t code)
 {

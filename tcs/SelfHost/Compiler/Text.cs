@@ -10,7 +10,7 @@ public sealed class SourceFile
     public string Path;
     public string Text;
     public Utf8Bytes Bytes;
-    // 宣言だけを読むファイル (--ref)。Lua を出さない
+    // 宣言だけを読むファイル (--ref)。IL を出さない
     public bool IsRef;
     // tcs と一緒に配る library (TinySystem/Linq.cs)。使うときだけ出力に含める
     public bool IsLibrary;

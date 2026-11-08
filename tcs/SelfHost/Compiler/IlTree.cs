@@ -208,7 +208,7 @@ public static class IlTree
         return false;
     }
 
-    // user の演算子は Lua の metamethod (__add など) になり任意のコードを呼ぶ
+    // + - * / % は operand がプリミティブと言えなければ演算子の overload (--ref の型の host の演算子) で、任意のコードを呼びうる
     private static bool IsOverloadableOp(IlBinOp op)
     {
         return op == IlBinOp.AddNum || op == IlBinOp.Sub || op == IlBinOp.Mul || op == IlBinOp.DivNum || op == IlBinOp.RemNum;

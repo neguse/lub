@@ -495,7 +495,7 @@ public sealed class Parser
             Advance();
             while (true)
             {
-                // variance (in / out) は interface の型引数だけに書ける。Lua は型を消すので出力には影響しない
+                // variance (in / out) は interface の型引数だけに書ける。読み捨て、束縛にも IL にも使わない
                 int vpos = Cur.Pos;
                 if (AcceptKw("in") || AcceptKw("out"))
                 {

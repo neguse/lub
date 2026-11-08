@@ -628,7 +628,7 @@ public sealed class Binder
             if (s.IsLambda) break;
             s = s.Parent;
         }
-        // Lua の予約語と、型の global 名 (生成コードは型を名前で参照する) を避ける。
+        // 予約語 (LuaNames.IsReserved) と、型の global 名 (IL は型を名前で参照する) を避ける。
         // 改名した名前はファイルの他の識別子と重ならないものにする
         string ln = l.Name;
         if (LuaNames.IsReserved(ln) || _c.TypeLuaNames.Contains(ln))
@@ -1510,7 +1510,7 @@ public sealed class Binder
             if (from.Decl != null && to.Decl != null && from.Decl.Implements(to.Decl)) return ConvKind.Identity;
             return -1;
         }
-        // host (--ref) の data class の派生から基底へ (Lua では同じ table)
+        // host (--ref) の data class の派生から基底へ (IL では同じ値のまま)
         if (from.Decl != null && to.Decl != null && from.Decl.BaseClass != null && from.Decl.DerivesFrom(to.Decl)) return ConvKind.Identity;
         if (from.Kind == TypeKind.Tuple && to.Kind == TypeKind.Tuple && from.Args!.Count == to.Args!.Count)
         {
@@ -1717,7 +1717,7 @@ public sealed class Binder
         e.Type = target ? expected! : t;
     }
 
-    // tuple の要素の symbol (名前でも ItemN でも引ける。Lua の field は ItemN)
+    // tuple の要素の symbol (名前でも ItemN でも引ける。IL の field は ItemN)
     private static Symbol? TupleElement(TypeSym t, string name)
     {
         for (int i = 0; i < t.Args!.Count; i++)
@@ -1843,7 +1843,7 @@ public sealed class Binder
         else
         {
             if (last == 'd' || last == 'D' || last == 'm' || last == 'M') digits = u.Slice(0, u.Length - 1).ToString();
-            // decimal は Lua の数 (2 進の浮動小数点) で表せない
+            // decimal と double の literal は止める (tcs の数は i32 と f32)
             if (last == 'm' || last == 'M') Error("TCS1001", "unsupported syntax: DecimalLiteral", e);
             else Error("TCS1001", "unsupported syntax: DoubleLiteral (write a float literal with the f suffix)", e);
         }
@@ -2063,7 +2063,7 @@ public sealed class Binder
             e.Type = TypeSym.MethodGroupType;
             return;
         }
-        // top-level の文の args (コマンドラインの引数は Lua / C に写していない)
+        // top-level の文の args (コマンドラインの引数は VM / C に写していない)
         if (_type == null && name == "args" && e.List == null)
         {
             Error("TCS1001", "unsupported syntax: TopLevelArgs", e);
@@ -3581,7 +3581,7 @@ public sealed class Binder
             Error("CS0123", "No overload for '" + cands[0].Name + "' matches delegate '" + del.Display() + "'", e);
             return e;
         }
-        // TinySystem.Text の method は Lua / C の関数の値を持たない
+        // TinySystem.Text の method は intrinsic で、関数の値を持たない
         if (found.Builtin != "" && (found.Builtin.StartsWith("Runes.") || found.Builtin.StartsWith("Utf8Bytes.") || found.BuiltinOwner == "Utf8Bytes"))
             Error("TCS1001", "unsupported syntax: TextApiMethodGroup", e);
         else if (found.Builtin != "") Unsupported("method group of a library method", e);
@@ -4418,7 +4418,7 @@ public sealed class Binder
             case "^":
                 if (lt.Kind == TypeKind.Bool && rt.Kind == TypeKind.Bool)
                 {
-                    // 短絡しない bool の & | ^ は Lua / C に写していない (and / or は短絡する)
+                    // 短絡しない bool の & | ^ は VM / C に写していない (and / or は短絡する)
                     Error("TCS1001", "unsupported syntax: expression: " + (op == "&" ? "BitwiseAndExpression" : op == "|" ? "BitwiseOrExpression" : "ExclusiveOrExpression"), e);
                     e.Type = TypeSym.BoolType;
                     return;
@@ -5304,7 +5304,7 @@ public sealed class Binder
     private void CheckTypeTest(TypeSym input, TypeSym t, Node at)
     {
         if (input.IsError || t.IsError) return;
-        // delegate の型は実行時の型の表現を持たない (Lua の function、C の closure)
+        // delegate の型は実行時の型の表現を持たない (VM と C の closure は delegate の型を持たない)
         if (t.Kind == TypeKind.Delegate || t.Decl != null && t.Decl.Decl.Has(Mods.Delegate))
         {
             Error("TCS1001", "unsupported syntax: TypeTestWithoutRuntimeType", at);

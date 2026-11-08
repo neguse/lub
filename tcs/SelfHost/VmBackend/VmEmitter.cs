@@ -15,7 +15,7 @@ public sealed class VmDescription
 
 public static class VmEmitter
 {
-    /// <summary>VM で止める診断。`--ref` の interface の実装 (RefInterfaceImplementation) は Lua の名前の写し方の制約なので、
+    /// <summary>VM で止める診断。`--ref` の interface の実装 (RefInterfaceImplementation) は host の名前の写し方 (snake_case) の制約なので、
     /// C# の名前で呼ぶ VM と tcs2c の module の混在 (X-4) では止めない。`--ref` の class / interface への型 test と cast
     /// も、VM は型の表で判定できるので止めない (object-model §10.6)。</summary>
     public static List<string> Diagnostics(List<string> diagnostics)
@@ -56,7 +56,7 @@ public static class VmEmitter
             foreach (var d in more) diagnostics.Add(d);
             return null;
         }
-        // IL にできなかった本文は null になり、VM は呼んだ側を "no IL body" としか言えないので、ここで理由と場所 (Lua の変換と同じ文) を出して止める
+        // IL にできなかった本文は null になり、VM は呼んだ側を "no IL body" としか言えないので、ここで理由と場所を出して止める
         if (result.Export.InternalErrors.Count > 0)
         {
             foreach (var ie in result.Export.InternalErrors) diagnostics.Add("internal: " + ie);
@@ -101,7 +101,7 @@ public static class VmEmitter
     }
 
     /// <summary>reload (doc/object-model.md §6): 旧版と新版を同じ entry / exports で作り、新版の module を返す (plan に計画、
-    /// reasons に restart の理由)。計画の byte 列は自分の string 表を前に持つ。restart の理由は Lua の reload と同じ規則
+    /// reasons に restart の理由)。計画の byte 列は自分の string 表を前に持つ。restart の理由は ReloadRules の規則
     /// (ReloadRules。呼ぶ側が求めて restart に渡す)。新版には、足した (と型を変えた) instance field の initializer と、足した static の initializer
     /// (`型.&lt;reload-static&gt;`) を関数として足す。</summary>
     public static List<int> EmitReload(ExportResult oldProgram, ExportResult newProgram, string entryClass, List<string> exports,

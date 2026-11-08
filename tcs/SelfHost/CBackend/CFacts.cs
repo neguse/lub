@@ -339,7 +339,7 @@ public sealed class ContractFacts
             case "System.Byte":
                 return CType.I32;
         }
-        // enum は整数の定数 (Lua と同じ。tostring も整数の表記)
+        // enum は整数の定数 (C の型は i32。文字列化は IL の String.FormatEnum)
         if (_enums.ContainsKey(text)) return CType.I32;
         // TinySystem.Random の instance (user の class Random は別物)
         if (text == "TinySystem.Random") return CType.Random;

@@ -159,7 +159,7 @@ public sealed class Node
     public int Pos;
     public int End;
     public string Text = "";
-    // ?. の鎖の中で、この受け手を評価済みの値を持つ Lua の名前 (emitter が使う)
+    // ?. の鎖の中で、この受け手を評価済みの値を持つ local の名前
     public string? CondRecv;
     public int Value;
     public int Flags;

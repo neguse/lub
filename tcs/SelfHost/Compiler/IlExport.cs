@@ -3,8 +3,8 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// IL→C backend (tcs2c) への入力。参照実装の IlExport (Transpiler/IlExport.cs) の契約を写したもの。
-// 検査済みのプログラムの型ごとの metadata と、method の本文の IL を、Lua を経由せずに渡す
+// IL を読む backend (tcs c と tcs vm) への入力。
+// 検査済みのプログラムの型ごとの metadata と、method の本文の IL を渡す
 
 public sealed class ExField
 {
@@ -180,7 +180,7 @@ public sealed class IlExporter
     {
         var result = new ExportResult();
         HostSurface(result);
-        // library は user の型より先 (Lua の出力と同じ)
+        // library は user の型より先
         for (int i = 0; i < _c.Files.Count; i++)
         {
             if (_c.Files[i].IsLibrary) _emitted.Add(i);
@@ -189,7 +189,7 @@ public sealed class IlExporter
         {
             if (!_c.Files[i].IsLibrary && !_c.Files[i].IsRef) _emitted.Add(i);
         }
-        // Lua の出力と同じ名前で IL を出す (予約語の local の改名)
+        // IL の local の名前を決める (予約語と同じ名前の local の改名、LocalNames)
         var reserved = LocalNames.ReservedTypeNames(_c);
         foreach (var i in _emitted) LocalNames.AssignUnit(_c.Units[i], reserved);
 
@@ -207,7 +207,7 @@ public sealed class IlExporter
         }
         foreach (var t in structDecls) result.Structs.Add(ExportStruct(t));
 
-        // enum の定数の表 (Lua の VisitEnum と同じ値と名前)
+        // enum の定数の表 (値と名前)
         foreach (var i in _emitted)
         {
             var enums = new List<TypeDeclSym>();
@@ -265,7 +265,7 @@ public sealed class IlExporter
 
     // user のコードが使う host の method / static の値 / enum / data class。C は host の関数を extern で宣言する
     private readonly Dictionary<string, int> _methodKeys = new Dictionary<string, int>();
-    // 同じ host の method の 2 回目からの使用は書き出し直さない (owner の番号と Lua の名前 → 最初に見た symbol)
+    // 同じ host の method の 2 回目からの使用は書き出し直さない (owner の番号と host の名前 (LuaName) → 最初に見た symbol)
     private readonly Dictionary<string, Symbol> _methodSeen = new Dictionary<string, Symbol>();
     private readonly List<string> _methodSignatures = new List<string>();
     private readonly Dictionary<string, int> _valueKeys = new Dictionary<string, int>();
@@ -523,7 +523,7 @@ public sealed class IlExporter
     // 型の global の名前 (namespace と外側の型を _ でつなぐ)。host の型も C の側ではこの名前で表す
     private static string GlobalName(TypeDeclSym t) => t.FullName.Replace(".", "_");
 
-    // host の型の Lua の path (参照実装の LuaNaming.RefTypePath)。enum は入っている型か namespace の下 (global の enum は自分の名前)
+    // host の型の path (namespace と入れ子の型を host の名前の規則で . でつなぐ)。enum は入っている型か namespace の下 (global の enum は自分の名前)
     public static string RefTypePath(TypeDeclSym t)
     {
         var parts = new List<string>();
@@ -664,7 +664,7 @@ public sealed class IlExporter
 
     // ---- field ----
 
-    // instance / static の field と自動実装の property。positional な record は parameter が先頭 (Lua の VisitRecord と同じ順)
+    // instance / static の field と自動実装の property。positional な record は parameter が先頭
     private List<ExField> CollectFields(TypeDeclSym t, bool withInitializers)
     {
         var fields = new List<ExField>();
@@ -720,7 +720,7 @@ public sealed class IlExporter
         return (p.B == null || p.B.A == null && p.B.B == null) && (p.C == null || p.C.A == null && p.C.B == null);
     }
 
-    // --ref (host) の型の class は field の名前も host の規則 (Lua の出力と同じ)
+    // --ref (host) の型の class は field の名前も host の規則
     private static string FieldName(TypeDeclSym t, Symbol sym)
     {
         return t.IsRef ? sym.LuaName : sym.Name;
@@ -1060,7 +1060,7 @@ public sealed class IlExporter
             x.Body = AccessorExpr(m.B.B, true);
             methods.Add(x);
         }
-        // user の演算子は Lua の出力と同じ名前 (`__add`、overload は `__mul_1` …) の static な method
+        // user の演算子は IL の名前 (`__add`、overload は `__mul_1` …) の static な method
         foreach (var m in decl.List)
         {
             if (m.Kind != NodeKind.OperatorDecl) continue;

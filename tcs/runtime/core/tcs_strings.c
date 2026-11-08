@@ -21,7 +21,7 @@ tcs_string_map_case(TcsString *s, int upper)
 }
 
 /* plain find: s の offset from 以降で sub が現れる最初の位置 (byte、
-   無ければ -1)。空 sub は from 自身 (Lua の string.find と同じ) */
+   無ければ -1)。空 sub は from 自身 */
 static int64_t
 tcs_string_find(TcsString *s, TcsString *sub, size_t from)
 {
@@ -393,7 +393,7 @@ tcs_string_join_enum(TcsString *sep, const int32_t *data, size_t count,
     return result;
 }
 
-/* tonumber: 10 進 (前後空白可)。失敗は Lua の nil → 後続で fault */
+/* int.Parse の 10 進 (前後空白可)。失敗は false を返し、呼んだ側が fault にする */
 static bool
 tcs_parse_i32(TcsString *s, int32_t *out)
 {
