@@ -4957,23 +4957,28 @@ public sealed class FunctionCompiler
         while (recvExpr is IlParen pp) recvExpr = pp.E;
         Place? place = null;
         if (IsVariable(recvExpr)) place = PlaceOf(recvExpr);
-        Val selfVal;
-        if (place != null) selfVal = LoadPlace(place, null);
-        else selfVal = ExprAs(call.Args[0], selfType);
+        // place の受け手は C# では参照で渡るので、self の値は引数を評価した後に読む (引数が要素を書き換えても、その後の値に呼ぶ)
+        Val? selfVal = null;
+        if (place == null) selfVal = ExprAs(call.Args[0], selfType);
         var allT = new List<VType>();
         allT.Add(selfType);
         for (var i = 1; i < call.Args.Count; i++) allT.Add(inTypes[i - 1]);
         var block = Block(LeafTypes(allT));
         var at = block;
+        var selfSlot = new Val(selfType, P5Regs.Range(block, _m.Leaves(selfType).Count));
         for (var i = 0; i < allT.Count; i++)
         {
             var t = allT[i];
             var n = _m.Leaves(t).Count;
             var slot = new Val(t, P5Regs.Range(at, n));
-            if (i == 0) Store(slot, selfVal);
+            if (i == 0)
+            {
+                if (selfVal != null) Store(slot, selfVal);
+            }
             else ExprAs(call.Args[i], t, slot);
             at += n;
         }
+        if (place != null) LoadPlace(place, selfSlot);
         var withSelf = new List<VType>();
         foreach (var x in rets) withSelf.Add(x);
         withSelf.Add(selfType);

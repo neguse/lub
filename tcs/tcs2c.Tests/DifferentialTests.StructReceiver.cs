@@ -108,4 +108,36 @@ public partial class DifferentialTests
             """, "P");
         Assert.Equal("1\n2\n1\n0,2\n1\n1,6", output);
     }
+
+    // 変数の受け手は参照で渡るので、引数が要素を書き換えたら、書き換えた後の要素に呼ぶ (#431)
+    [CFact]
+    public void StructReceiver_ArgumentRewritesElement()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public struct S { public int N; public int M; public void Add(int n) { N += n; } }
+            public static class P
+            {
+                static S[] values;
+                static S held;
+                static int Replace() { values[0] = new S { N = 100, M = 200 }; return 7; }
+                static int Touch() { values[0].N = 50; values[0].M = 60; return 3; }
+                static int ReplaceStatic() { held = new S { N = 10, M = 20 }; return 1; }
+                public static void Main()
+                {
+                    values = new S[] { new S { N = 1, M = 2 } };
+                    values[0].Add(Replace());
+                    Console.WriteLine(values[0].N + ":" + values[0].M);
+                    values[0].Add(Touch());
+                    Console.WriteLine(values[0].N + ":" + values[0].M);
+                    held.Add(ReplaceStatic());
+                    Console.WriteLine(held.N + ":" + held.M);
+                    var s = new S { N = 1 };
+                    s.Add(s.N + 1);
+                    Console.WriteLine(s.N);
+                }
+            }
+            """, "P");
+        Assert.Equal("107:200\n53:60\n11:20\n3", output);
+    }
 }
