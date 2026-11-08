@@ -49,7 +49,7 @@ public sealed class Compliance
         _diags.Error("TCS1001", "unsupported syntax: " + name, at.File, at.Pos);
     }
 
-    // 出力の段でだけ分かる診断 (参照実装は型の出力で報告する)。他に誤りが無いときだけ報告する
+    // 出力の段でだけ分かる診断 (型の出力の段で報告する)。他に誤りが無いときだけ報告する
     public List<Diagnostic> Deferred = new List<Diagnostic>();
 
     private void ReportDeferred(string name, Node at)
@@ -144,7 +144,7 @@ public sealed class Compliance
         if (isStruct && m.Kind == NodeKind.Ctor && !m.Has(Mods.Static) && m.Count == 0) Report("StructMember(ConstructorDeclaration)", m);
         // interface の field は止める
         if (owner.Value == DeclKinds.Interface && m.Kind == NodeKind.Field) Report("InterfaceField", m);
-        // record class の本体に書けるのは method、演算子、static な field と auto property、型だけ (参照実装の VisitRecord)
+        // record class の本体に書けるのは method、演算子、static な field と auto property、型だけ
         if (owner.Value == DeclKinds.RecordClass && !IsRecordClassMember(m)) ReportDeferred("member: " + RoslynMemberKind(m), m);
         Attributes(m.D);
         switch (m.Kind)

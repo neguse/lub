@@ -293,7 +293,7 @@ public sealed class Declarer
                 var bt = ResolveType(b, scope);
                 if (t.IsRef && bt.Decl != null && !bt.Decl.IsInterface && !bt.Decl.IsEnum && t.BaseClass == null)
                 {
-                    // --ref の host の data class の継承 (参照実装も host の宣言は診断しない)
+                    // --ref の host の data class の継承 (host の宣言は診断しない)
                     t.BaseClass = bt.Decl;
                     continue;
                 }
@@ -967,7 +967,7 @@ public sealed class Declarer
                             }
                             list.Add(s);
                         }
-                        // --ref の host の宣言は診断しない (参照実装と同じ)
+                        // --ref の host の宣言は診断しない
                         // override / virtual / abstract は構文の準拠検査 (Compliance) が報告する
                         var sameName = t.Lookup(s.Name);
                         if (sameName != null)

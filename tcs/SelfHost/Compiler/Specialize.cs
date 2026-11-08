@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// C backend のための generic の単相化 (参照実装の IlSpecialization)。閉じた generic の型 (`Box<int>`、タプル) と
+// tcs VM と C の backend のための generic の単相化。閉じた generic の型 (`Box<int>`、タプル) と
 // generic な method の閉じた呼び出しごとに、型引数を置き換えた copy (`TcsClosed0_Box`) を作り、参照をその名前に書き換える。
 // copy の中に新しい閉じた型が現れるので、増えなくなるまで束縛し直す (最大 128 回)。最後に generic の雛形を消す。
 // 書き換えは束縛していない木 (B) の上で行う。各回は B の複製を束縛し、複製の node から元の node へ (Orig) 束縛の結果を写す (Mirror)

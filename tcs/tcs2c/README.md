@@ -30,13 +30,12 @@ IL 契約 (`IlExport`) に載る TinyC# は原則すべて C へ落とす。意�
 il-spec と .NET の実行で、`tcs2c.Tests` が同じ source の C、tcs VM、.NET の stdout 一致を要求する。
 
 - 型: `int` / `float` / `bool` / `string` (immutable byte 列、literal は static object) / `char` (整数 code unit。IL の `string.char` / `Char.*` intrinsic) / enum (整数定数。`ToString`・連結・補間は .NET と同じ member の名前で、member に無い値は数) / class 参照 / データ struct (C 値型) / `T[]` (inline 要素の固定長配列) / `List<T>` (growable buffer) / `Dictionary<int|string, V>` (chained hash) / `Action` `Func` (closure = lifted 関数 + 捕捉 cell)
-- class: 継承 (prefix layout)、virtual dispatch (type id switch)、`base.M`、
-  ctor 連鎖、`is T` / is-pattern、static field / property、auto property
-  initializer、upcast、明示 downcast (`IlCast`: 実行時型が合わなければ fault)
-- user-defined operator (`+ - * / %`、単項 `-`): IL の時点で Roslyn が選んだ
+- class: `is T` / is-pattern、static field / property、auto property
+  initializer、interface の実装、明示 downcast (`IlCast`: 実行時型が合わなければ fault)。
+  継承 (基底 class、`virtual` / `override` / `base`) は TinyC# の対象外 (TCS1001)
+- user-defined operator (`+ - * / %`、単項 `-`): compiler の束縛が選んだ
   overload の static method への `IlCall` (同じ operator の overload は
-  `__mul_1` `__mul_2` … の別関数)。virtual と
-  同名で別シグネチャの method は override ではなく別 method として扱う
+  `__mul_1` `__mul_2` … の別関数)
 - struct / record struct: 素の C 値型 (配列 / List / field に inline、代入 =
   値 copy)。instance method / property accessor は `Tcs_S *self` で格納場所を
   直接指す (変数 receiver はコピーゼロ、rvalue receiver は C# と同じく一時値)、
@@ -44,8 +43,8 @@ il-spec と .NET の実行で、`tcs2c.Tests` が同じ source の C、tcs VM、
   `==` / with、List.Contains / IndexOf / Remove の memberwise 等価、
   `new S[n]` / `default(S)` の zero 値
 - record class: positional ctor、`==` / `!=` の構造等価 (型ごとの比較関数、
-  継承は実行時型へ dispatch、string は内容、record は再帰、struct は
-  memberwise)、`with` (実行時型の layout で shallow copy)、分解代入、
+  string は内容、record は再帰、struct は memberwise、object / interface の
+  field は実行時の型で比べる `tcs_eq_object`)、`with` (実行時型の layout で shallow copy)、分解代入、
   List.Contains / IndexOf / Remove も構造等価
 - 式・文: 数値演算 (i32 は wrap。int の `/` と `%` は C# と同じく 0 方向に切り捨て (`7 / 2` は 3、`-7 % 2` は -1)、除数 0 と `int.MinValue / -1` は fault。f32 は strict で、片方が float の `/` は f32 の除算。`(int)f` は 0 方向 truncation)、文字列連結・補間 (IL の `string.format` を runtime/fmt が文字列にする: `%d %s %f %e %g %x %c`、幅・精度・`-`/`0` flag)、三項・`??`・switch 式、while / do-while / for / foreach (List / array / Dictionary / `EnumerateRunes`)、break / continue、IIFE (GNU statement expression)
 - runtime 表面 (tcs VM と同じ意味論):
@@ -161,7 +160,7 @@ garbage 解放と heap の有界性、host の hold / release)、GC の有界全
 
 型と初期化情報は T228 契約 (`IlMethodInfo.ReturnType` / `ParameterTypes`、
 `IlFieldInfo.Init`、`IlNewArray.ElementType` / `Length`、`IlTable.ElementType`) だけ
-から読む。第一 milestone の `SourceFacts` / Roslyn 再解析 bridge は廃止した。
+から読む。
 
 現契約には constructor 本文と local の宣言型が無い。そのためこの slice は、
 initializer 付き local の型を IL から推論し、引数付き `IlNewObj` は引数を宣言順の
@@ -178,12 +177,10 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 - **generic class の単相化**: top-level の generic class は IL export の前に
   使用型ごとの閉じた class (`TcsClosed{n}_{Name}`) へ展開する
   (`SelfHost/Compiler/Specialize.cs`。tcs2c の CLI は常時 on)。instance ごとに field / static
-  を別に持ち、制約付き基底・配列・factory lambda は具体型のまま。abstract
-  method は dispatcher に参加する (本体は `tcs_fault("abstract-method")`)。
+  を別に持ち、制約付き基底・配列・factory lambda は具体型のまま。
   入れ子 / partial / open な generic は対象外、上限は 256 class / 128 回
 - **interface**: `ExClass.IsInterface`。interface 型の receiver への呼び
-  出しは実装 class への dispatch (`tcs_dispatch_<Iface>_<m>`、基底 class の
-  実装も対象)。cast は `tcs_is_<Iface>` (実装 class の type tag 集合) で検査
+  出しは実装 class への dispatch (`tcs_dispatch_<Iface>_<m>`)。cast は `tcs_is_<Iface>` (実装 class の type tag 集合) で検査
 - **配列 literal** (`new T[] { ... }`、入れ子 / 空も) は固定長 `TcsArray`。
   ctor / method / foreign 呼び出しは末尾の省略可能引数を IL の
   `ParameterDefaults` で補う。float literal / const は `IlLit.Type` で F32 を
@@ -218,9 +215,7 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
   定数は整数 literal に畳む
 - 外部データ class の instance method は `tcs_host_<class>_<method>(self, args...)`
   (受け手が null なら fault。基底 class の宣言も受け手の chain から引く)。
-  user subclass が同じシグネチャで再宣言 (override / 隠蔽) していれば、
-  実行時型で user 実装と host 関数を振り分ける (シグネチャの違う同名は飛ばして
-  祖先の実装を探す)。`base.M(...)` は振り分けず host 関数を直接呼ぶ
+  user の class が外部データ class を継承するのは TCS1001 (`ClassInheritance`)
 - C# の `T` は C の `T`、`out T` は宣言の位置の `T *` (`TcsString **`、`int32_t *`、`Tcs_Vec2 *`) で、戻り値はそのまま C の戻り値。
   戻り値と out の両方を持つ呼び出し (`bool Try(int x, out float y)`) は、戻り値を受けて out を pointer の先から読む。
   同名 overload は拒否する。

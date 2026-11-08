@@ -13,7 +13,7 @@ public sealed class IlBuild
         Ctx = ctx;
     }
 
-    // 写していない形。比較 (参照実装との出力の一致) で見えるよう内部の誤りに記録する
+    // 写していない形。内部の誤りに記録する (tcs check と変換が場所と理由を出して止まる)
     private IlExpr? Unported(string what, Node at)
     {
         Ctx.Internal("IlBuild: " + what + " (" + at.Kind + " at " + at.File.Path + ":" + at.File.LineOf(at.Pos) + ")");
@@ -642,12 +642,12 @@ public sealed class IlBuild
         return Unported("expression", expr);
     }
 
-    // 暗黙と明示の変換 (Binder の Conv)。参照実装の ApplyNumericConversion / ApplyNullableConversion
+    // 暗黙と明示の変換 (Binder の Conv)。数の変換と nullable の変換
     private IlExpr? BuildConversion(Node conv)
     {
         bool promoted = conv == _promotedOperand;
         _promotedOperand = null;
-        // 数の変換は括弧の中の式に掛ける (Roslyn は括弧の中の式にも変換先の型を付け、参照実装は内側で変換する)
+        // 数の変換は括弧の中の式に掛ける (Roslyn も括弧の中の式に変換先の型を付ける)
         if ((conv.Info == ConvKind.IntToFloat || conv.Info == ConvKind.NullableIntToFloat) && conv.A!.Kind == NodeKind.Paren && !promoted)
         {
             var innerConv = new Node(NodeKind.Conv, conv.File, conv.Pos);
@@ -953,7 +953,7 @@ public sealed class IlBuild
 
     // ---- ?. (il-spec §3) ----
     // セルフホストの木の ?. は鎖の各 node に CondChain、最も外の node に CondTop、`?.` / `?[` の位置に Value = 1 を持つ。
-    // 参照実装の ConditionalAccess の入れ子 (Expression = 最初の ?. の受け手、WhenNotNull = その上の鎖。鎖の中の次の ?. は入れ子) に対応づけて組み立てる
+    // Roslyn の ConditionalAccess の入れ子 (Expression = 最初の ?. の受け手、WhenNotNull = その上の鎖。鎖の中の次の ?. は入れ子) の形に組み立てる
 
     private Node? _subNode;
     private IlExpr? _subIl;
@@ -1104,7 +1104,7 @@ public sealed class IlBuild
         return new IlStructCopy(obj, TypeName(type), false, StructCopiers(type, false), null);
     }
 
-    // ---- タプルと分解 (参照実装の Tuples)。タプルの値は struct (TinySystem/ValueTuple.cs)。
+    // ---- タプルと分解。タプルの値は struct (TinySystem/ValueTuple.cs)。
     // タプルを返す method を multi-return にする形は ForCBackend でない IlContext のときだけで、IlExporter は使わない
 
     private int _deconstructTemp;
@@ -2689,7 +2689,7 @@ public sealed class IlBuild
     {
         var target = cast.Type!;
         var src = cast.B!;
-        // 暗黙に変換できる cast は binder が式を変換先へ変換している。参照実装と同じく元の式と型から組み立てる
+        // 暗黙に変換できる cast は binder が式を変換先へ変換している。元の式と型から組み立てる
         if (src.Kind == NodeKind.Conv && src.A != null && (src.Info == ConvKind.Identity || src.Info == ConvKind.IntToFloat || src.Info == ConvKind.NullableIntToFloat)) src = src.A;
         var srcType = src.Type;
         // (int)'a' などの定数の cast は畳む
@@ -2718,7 +2718,7 @@ public sealed class IlBuild
             if (runtimeTest)
                 return new IlNumericConvert(value, target.Kind == TypeKind.Int ? "int" : "float", target.Kind == TypeKind.Int ? "integer" : "float", null);
             bool toInt = target.Kind == TypeKind.Int;
-            // T? は特別な型ではないので変換が残る (参照実装の NumericCastIl)
+            // T? は特別な型ではないので変換が残る
             if (!toInt && IlTypes.IsFloating(srcType) && !IlTypes.IsNullableValueType(srcType)) return value;
             return new IlNumericConvert(value, toInt ? "int" : "float", null, null);
         }
@@ -2729,7 +2729,7 @@ public sealed class IlBuild
         if (target.Kind == TypeKind.Nullable && srcType.Kind != TypeKind.Nullable && srcType.Kind != TypeKind.Null)
             return new IlNullableWrap(value, IlTypes.Display(srcType), null);
         // user の class への downcast は IlCast (C backend の実行時の検査点。upcast と同じ型は透過)
-        // 元の型は名前の付いた型 (object、interface、class など。型引数と配列を除く。参照実装の INamedTypeSymbol)
+        // 元の型は名前の付いた型 (object、interface、class など。型引数と配列を除く。Roslyn の INamedTypeSymbol)
         bool namedSource = srcType.Kind != TypeKind.TypeParam && srcType.Kind != TypeKind.Array && srcType.Kind != TypeKind.Null;
         if (target.Kind == TypeKind.Class && target.Decl != null && namedSource && !TypeSym.Same(target, srcType) && !(srcType.Decl != null && IsDerivedFrom(srcType.Decl, target.Decl)))
             return new IlCast(value, CheckTypeName(target), TypeRef(target.Decl), null);
@@ -3093,7 +3093,7 @@ public sealed class IlBuild
         return false;
     }
 
-    // ---- 代入先の格納場所 (参照実装の AssignTarget / Lowered) ----
+    // ---- 代入先の格納場所 ----
 
     // 参照型か (Roslyn の IsReferenceType。型引数は制約に依らず参照型としない)
     private static bool IsReferenceType(TypeSym? t)
@@ -3504,7 +3504,7 @@ public sealed class IlBuild
         return assigned;
     }
 
-    // 値型の place の struct の field を辿った起点 (参照実装の StructSlotPath)。辿れなければ null
+    // 値型の place の struct の field を辿った起点。辿れなければ null
     private static StructSlot? StructSlotPath(Node place)
     {
         while (true)
@@ -4057,7 +4057,7 @@ public sealed class IlBuild
     }
 
     // out の宣言形の引数 (この文の直下。入れ子の文と lambda には入らない)
-    // 参照実装は out の引数の最も近い文で決めるので、式本体の lambda の中の out var もこの文の前に宣言する
+    // out の引数の最も近い文で決めるので、式本体の lambda の中の out var もこの文の前に宣言する
     private void CollectOutDecls(Node n, Node stmt, List<Node> into)
     {
         if (n != stmt && IsStatementKind(n.Kind)) return;
@@ -4070,7 +4070,7 @@ public sealed class IlBuild
     }
 
     // is-pattern の designation (pattern の根の宣言だけ。入れ子の文と lambda には入らない)
-    // scope 自身は数えない (参照実装の DescendantNodes。elseif の条件そのものが is のときはその designation を前宣言しない)
+    // scope 自身は数えない (elseif の条件そのものが is のときはその designation を前宣言しない)
     private void CollectIsDesignations(Node n, Node scope, List<Node> into)
     {
         if (n != scope && (IsStatementKind(n.Kind) || n.Kind == NodeKind.Lambda)) return;
