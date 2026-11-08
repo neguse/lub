@@ -7,11 +7,7 @@
 
 ## 1. なぜ今決めるか
 
-VM と tcs2c (release) の性能差は 11〜29 倍ある (vm-design §17.3)。手元の機械や実機で dev 実行するとき、
-「編集した module だけ VM、残りは AOT」の mixed-mode (il-design §5) が効く。そのためには両方が
-同じ heap の object を読み書きできなければならない。また hot reload の移行 (vm-design §12.2)、
-tcs2c の reload (hot-reload-design §3 の L2 の copy migration)、snapshot / restore (同 §3 の S) は、
-どれも「型記述子に従って heap を辿り、object を詰め直す」同じ仕事をする。
+VM は多くのプログラムで tcs2c (release) より 1 桁以上遅い (比較ベンチ `perf/compare/`)。手元の機械や実機で dev 実行するとき、「編集した module だけ VM、残りは AOT」の mixed-mode (il-design §5) が効く。そのためには両方が同じ heap の object を読み書きできなければならない。また hot reload の移行 (vm-design §12.2)、tcs2c の reload (hot-reload-design §3 の L2 の copy migration)、snapshot / restore (同 §3 の S) は、どれも「型記述子に従って heap を辿り、object を詰め直す」同じ仕事をする。
 
 どちらの実装も若いうちに、型記述子・layout の規則・reload の計画・walker を 1 つに揃えて契約にする。
 hot-reload-design §10 の規則 4 (runtime を片側だけに作らない) の通り、C の実装は `runtime/` に 1 つ置き、
@@ -121,10 +117,7 @@ loader が求める。葉は命令の operand の都合で、型記述子には�
 
 ## 6. reload の計画
 
-`ReloadPlan.Compute` (`SelfHost/VmBackend/ReloadPlan.cs`、hot-reload-design §9 の Planner の計画の部分)
-が旧版と新版の型記述子から作り、VM の `tvm_apply` と tcs2c の migrator が同じ構造で受ける。restart の理由は
-Lua の reload と同じ規則 (`ReloadRules`、`SelfHost/Tool/ReloadRules.cs`) で決める。C の reader は `runtime/model/tcs_walk.h` の
-`tcs_plan_read`。byte 列 (v1、前に自分の string 表を置く):
+`ReloadPlan.Compute` (`SelfHost/VmBackend/ReloadPlan.cs`、hot-reload-design §9 の Planner の計画の部分) が旧版と新版の型記述子から作り、VM の `tvm_apply` と tcs2c の migrator が同じ構造で受ける。restart の理由は `ReloadRules` (`SelfHost/Tool/ReloadRules.cs`) の規則で決める。C の reader は `runtime/model/tcs_walk.h` の `tcs_plan_read`。byte 列 (v1、前に自分の string 表を置く):
 
 ```text
 u32 restart の理由の数、理由ごとに: u32 文字列
@@ -142,9 +135,7 @@ u32 static の変化の数、static ごとに: u32 型の名前、u32 field の�
 - 旧版にだけある field は DISCARDED で、新しい field の列に載らないことで表す
 - 型が変わった field は RESET (新しい型の 0 の値。hot-reload §5.2)
 - restart の理由が 1 つでもあれば、計画は適用されない (host は restart の導線へ)
-- VM の initializer は関数の番号、tcs2c は生成 C の関数の番号 (表で引く)。initializer は引数を取らず field の
-  値を返す関数で (C# の field initializer は this を読めない)、ADDED と RESET の両方に付く (Lua の reload と同じく、
-  型の変わった field も initializer があればその値になる)
+- VM の initializer は関数の番号、tcs2c は生成 C の関数の番号 (表で引く)。initializer は引数を取らず field の値を返す関数で (C# の field initializer は this を読めない)、ADDED と RESET の両方に付く (型の変わった field も initializer があればその値になる)
 - 型は名前で対応させる。field は名前で対応させ、種類と型の名前が同じなら RETAINED。struct の形が変わると、
   その struct を field に持つ型 (cell、`T?`、KeyValuePair を含む) も RELAYOUT になる
 - static は「型.field」の名前で対応させる。`.tcsb` は static の slot の種類表の後に static の field の表
@@ -163,10 +154,7 @@ u32 static の変化の数、static ごとに: u32 型の名前、u32 field の�
 4. ADDED / RESET の field の initializer を、作り直した instance ごとに走らせる。足した static の initializer
 5. hook: OnReload を持つ型の生きている instance ごとに `OnReload()`、次に entry の型の static の `OnReload()`
 
-initializer は新版の関数なので、型と heap が新版で揃った 3 の後に走らせる。そのため hot-reload §7 の
-「評価してから反映」と違い、initializer の fault は hook の fault と同じ警告になり (field は 0 の値のまま)、
-反映は巻き戻さない。旧版の heap のまま新版の関数を走らせると、`is` と cast が旧版の型と合わないため。
-tcs2c の migrator も同じ順にする
+initializer は新版の関数なので、型と heap が新版で揃った 3 の後に走らせる (hot-reload §7)。旧版の heap のまま新版の関数を走らせると、`is` と cast が旧版の型と合わないため。initializer の fault は hook の fault と同じ警告になり (field は 0 の値のまま)、反映は巻き戻さない。tcs2c の migrator も同じ順にする
 
 ## 7. heap の walker
 
@@ -193,8 +181,7 @@ void tcs_migrate_value(const TcsPlan *plan, const TcsType *oldtypes, const TcsTy
   張り替える)、tcs2c の copy migration (hot-reload §3 の L2)、snapshot (S、書き出しと読み戻し)
 - root の列挙は呼ぶ側が渡す (VM は static と handle、tcs2c は生成側の static の表と hold)。walker は root の
   場所を sink の `ref` に渡すだけ
-- 移行は 2 段 (hot-reload §7): 評価 (新しい object を作って side table に置く、失敗したら捨てる) と、
-  反映 (walker で全部の参照を張り替える)。反映の段に失敗の経路を作らない
+- 移行は段に分ける (hot-reload §7): 検査 (状態を変えない。止まれば旧版のまま続く) と、反映 (layout の変わる object を作り直し、walker で全部の参照を張り替える)。反映の段に失敗の経路を作らない
 
 ## 8. 検査
 
@@ -211,7 +198,7 @@ void tcs_migrate_value(const TcsPlan *plan, const TcsType *oldtypes, const TcsTy
 |---|---|---|
 | M-1 | 型記述子の byte 列の C# の writer と C の parser / layout (§4、§5) を `Transpiler/Backend/` と `runtime/model/` に置き、VM がそれを使う。VM の layout を C の規則にする | VM の差分テストが通る (済み。VM の loader が往復の検査を兼ねる) |
 | M-2 | tcs2c が同じ byte 列を生成 C に置き、offset の一致を検査する | tcs2c.Tests が検査付きで通る (済み: `tcs_type_table` と `TCS_VERIFY_TYPES` の `tcs_verify_types`。tcs2c.Tests は全部の program をこの検査付きで build する) |
-| M-3 | walker (§7) と reload の計画 (§6)。VM の `tvm_apply` (vm-design V4) をこの上に作る | hot reload の semantic テストと T235 が VM で通る (済み: `tcs2c.Tests` の `VmReloadTests` が T235 の scenario 20 本を C# の driver で VM に当て、Lua と同じ不変量を GC stress でも確かめる。relayout は class、List / 配列 / Dictionary の struct 値、struct の static まで) |
+| M-3 | walker (§7) と reload の計画 (§6)。VM の `tvm_apply` (vm-design V4) をこの上に作る | hot reload の semantic テストと T235 が VM で通る (済み: `tcs2c.Tests` の `VmReloadTests` が T235 の scenario 20 本を C# の driver で VM に当て、reload の不変量 (retained の保持、added の initializer、identity、method の差し替え、static、OnReload 1 回) を GC stress でも確かめる。relayout は class、List / 配列 / Dictionary の struct 値、struct の static まで) |
 | M-4 | header (§3) と GC を共有し、VM の object を tcs2c と同じ形にする | VM の object を tcs2c の生成 C の関数が読める (mixed-mode の最小の test。1 段目は済み: class の payload と field の offset が同じになり、`tcsvm/tests/mixed` で tcs2c の生成 C の関数が VM の class の object の int / float / bool / 参照の field を読み書きする。残り: header の struct を 1 つにする、type_id の番号、string / List / Dictionary / closure の容器の形、GC と write barrier) |
 | M-5 | (§10 で置き換え) tcs2c の copy migration と snapshot を walker の上に作る | release の reload (hot-reload の D6) は採らない方針。tcs2c 側の walker は §10 の X-3 (C の module の root が VM の reload に参加する) と S (snapshot) で使う |
 
@@ -279,9 +266,7 @@ reload の計画、walker、class の payload の形) はこのための土台�
   (`{ trampoline, cells[0] = VM の closure }`) に包む。trampoline は `tvm_invoke` で VM の closure を呼び、引数と戻り値を
   写す (string は写さない)。C の module はこの closure を static などに持てる (cells[0] は shared heap の root から辿られ、
   reload では closure が新版の lambda を指す)
-- interface: VM の class が C の module の interface を実装でき、C の dispatcher は object が VM の object (kind FOREIGN)
-  なら `tvm_invoke_method` で method を名前で呼ぶ (reload の後は新版の本文が走る)。`--ref` の interface の実装
-  (RefInterfaceImplementation) は Lua の名前の写し方の制約なので、VM の emitter は止めない
+- interface: VM の class が C の module の interface を実装でき、C の dispatcher は object が VM の object (kind FOREIGN) なら `tvm_invoke_method` で method を名前で呼ぶ (reload の後は新版の本文が走る)。`--ref` の interface を user の型で実装する形 (TCS1001 の RefInterfaceImplementation) は `tcs check` と `tcs c` では止めるが、`tcs vm` は止めない (`VmEmitter.Diagnostics`)
 - VM の中から `--ref` の interface の method を呼ぶ: VM はその interface を `HostIfaceT` (参照) で持ち、method は C の module
   の dispatcher を host の関数 (`ed.itool.use`、受け手は先頭の引数) として呼ぶ。dispatcher は C の object なら C の実装、
   VM の object なら VM へ戻る
@@ -310,8 +295,7 @@ reload の計画、walker、class の payload の形) はこのための土台�
 - interface: VM の class の型の表は、実装する `--ref` の interface も持つ (表では object の種類の型で、名前で引く)。
   C の module の interface の判定 (`tcs_is_*`) は、VM の object なら `tvm_implements` で VM の型の表を引く。VM の
   型の test は、C の object なら glue が `tvm_host_iface` で登録した C の判定を呼ぶ
-- `--ref` の generic でない class / interface への型 test と cast は Lua では止める (TCS1001 `RefTypeTest` など。
-  host の値の型を見分けられない) が、VM の emitter は止めない
+- `--ref` の generic でない class / interface への型 test と cast (TCS1001 の `RefTypeTest`、`RefCast`、`RefInterfaceTypeTest`) は `tcs check` と `tcs c` では止めるが、`tcs vm` は型の表で判定するので止めない
 - List / Dictionary / closure は両側で形が違い、境界では渡せない (§10.5)
 - List を渡す案 (未着手): VM の List を shared heap では tcs2c の List そのもの (kind LIST、`TcsList` の形、header に
   要素の参照の layout) として作り、VM の List の型は header の type_id から引く (VM の型なら `TVM_TYPE_ID_VM` + 番号で

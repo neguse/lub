@@ -222,8 +222,6 @@ Clang AST → TypeRegistry → ModuleSpec（既存IR）
 - LuaCatsGen の実装パターン（TinyCSharpGen のテンプレート）
 - xUnit テストの書き方
 - deps/ の submodule 管理
-- Lua 5.5 の組み込みパターン
-- ホットリロード（`lib/hotreload.lua` + `lume.hotswap`）
 
 ### lubs から学ぶこと
 

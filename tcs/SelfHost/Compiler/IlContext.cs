@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// IL の組み立ての文脈。IL を使う側 (IlExporter と Lua の出力) が型と member に入るたびに設定し、IlBuild が読む
+// IL の組み立ての文脈。IL を使う側 (IlExporter) が型と member に入るたびに設定し、IlBuild が読む
 public sealed class IlContext
 {
     public readonly IlBuild B;

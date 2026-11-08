@@ -13,7 +13,7 @@ public static class IlNames
         if (m.Kind != SymKind.Method) return m.Name;
         if (m.Owner != null && m.Owner.IsRef) return m.LuaName;
         var implemented = ImplementedInterfaceMethod(m);
-        // --ref の interface の method は C# の名前 (host の名前ではない。Lua では RefInterfaceImplementation で止まり、tcs VM と C は C# の名前で呼ぶ)
+        // --ref の interface の method は C# の名前 (host の名前ではない。tcs check は RefInterfaceImplementation で止め、tcs VM と C は C# の名前で呼ぶ)
         if (implemented != null) return implemented.Owner != null && implemented.Owner.IsRef ? implemented.Name : MethodName(implemented);
         var owner = m.Owner;
         if (owner == null) return m.Name;
@@ -100,7 +100,7 @@ public static class IlNames
         return string.Join("", parts);
     }
 
-    // 演算子の名前の元 (+ - * / % の 2 項と単項の -。綴りは Lua の metamethod と同じ)。それ以外は null
+    // 演算子の名前の元 (+ - * / % の 2 項と単項の -)。それ以外は null
     private static string? BaseOperatorName(Node op)
     {
         int arity = op.List != null ? op.List.Count : 0;

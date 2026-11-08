@@ -169,7 +169,7 @@ public static class ReloadPlan
             var fields = new List<FieldPlan>();
             foreach (var nf in n.Fields)
             {
-                // ADDED と RESET は initializer があればそれを、無ければ 0 の値 (Lua の reload chunk と同じ)
+                // ADDED と RESET は initializer があればそれを、無ければ 0 の値
                 int f;
                 int init = initializers != null && initializers.TryGetValue(name + "\n" + nf.Name, out f) ? f + 1 : 0;
                 int at = -1;

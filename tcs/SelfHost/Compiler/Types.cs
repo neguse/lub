@@ -31,7 +31,7 @@ public enum TypeKind
     HashSet,
     Queue,
     KeyValuePair,
-    // Dictionary の Keys / Values (Args = K, V)。Lua は List の写し
+    // Dictionary の Keys / Values (Args = K, V)。runtime は要素の写しを返す
     KeyCollection,
     ValueCollection,
     Array,
@@ -178,7 +178,7 @@ public sealed class TypeSym
 
     public bool IsNumeric => Kind == TypeKind.Int || Kind == TypeKind.Float || Kind == TypeKind.Char || Kind == TypeKind.Byte || Kind == TypeKind.UInt || Kind == TypeKind.Short || Kind == TypeKind.Double || Kind == TypeKind.Long;
 
-    // Lua で整数の値
+    // 整数の型
     public bool IsIntegral => Kind == TypeKind.Int || Kind == TypeKind.Char || Kind == TypeKind.Byte || Kind == TypeKind.UInt || Kind == TypeKind.Short || Kind == TypeKind.Long;
 
     public bool IsValueType
@@ -431,7 +431,7 @@ public sealed class Symbol
     public Node? Decl;
     // method の型引数の名前
     public List<string>? TypeParams;
-    // Lua での名前 (method の overload を区別した名前)
+    // IL での名前 (method は overload を区別した名前、--ref の型の member は host の名前、local は改名した名前)
     public string LuaName;
     public bool IsConst;
     public ConstValue? ConstVal;
@@ -502,7 +502,7 @@ public sealed class TypeDeclSym
     // namespace と外側の型を . でつないだ名前
     public string FullName;
     public string Namespace;
-    // Lua の global 名 (A.B.C → A_B_C)
+    // IL の型の名前 (A.B.C → A_B_C。--ref の型は host の path)
     public string LuaName;
     public int DeclKind;
     public Node Decl;

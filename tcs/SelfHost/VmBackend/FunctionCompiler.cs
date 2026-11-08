@@ -599,7 +599,7 @@ public sealed class FunctionCompiler
         for (int k = 0; k < leaves.Count; k++) Emit(Pick(Op.STF_I32, leaves[k].Kind), cell, v.Regs[k], k);
     }
 
-    // object / interface どうしの参照の比較 (IL の rawequal。Lua の == は record の __eq を呼ぶので IL は rawequal で書く)。
+    // object / interface どうしの参照の比較 (IL の rawequal。record の値の等価と分けるため IL は rawequal で書く)。
     // VM の == は参照の比較なので、Eq の二項演算として読む (無ければ null)
     private static IlExpr? RefEq(IlExpr e)
     {
@@ -652,7 +652,7 @@ public sealed class FunctionCompiler
     private int _traceSelf;
 
     // --trace: 文の頭で行を通った印を置く (class の instance の method なら self も付け、VM が (行, self) の組で記録する)。
-    // builder が 1 つの文を同じ Origin の文の列に分けたときは、列の先頭でだけ置く (Lua の --trace と同じ)
+    // builder が 1 つの文を同じ Origin の文の列に分けたときは、列の先頭でだけ置く
     private void TraceStat(IlStat s)
     {
         var origin = s.Origin;
@@ -935,7 +935,7 @@ public sealed class FunctionCompiler
         return b;
     }
 
-    /// <summary>Lua の numeric for (`for v = start, limit`)。limit は 1 回だけ評価し、
+    /// <summary>数の for (IlNumericFor: v を start から limit まで 1 ずつ増やす)。limit は 1 回だけ評価し、
     /// v が本文で書き換えられるときは隠れた counter を回す (il-reference: IlNumericFor)。</summary>
     private void NumericFor(IlNumericFor nf)
     {
@@ -973,7 +973,7 @@ public sealed class FunctionCompiler
     }
 
     /// <summary>foreach (List / 配列)。反復変数は反復ごとに新しい (il-spec §7)。
-    /// 長さは反復ごとに読み直す (Lua の ipairs と同じく、本文が足した要素も回る)。</summary>
+    /// 長さは反復ごとに読み直す (本文が足した要素も回る)。</summary>
     private void ForeachList(IlForeachList fl)
     {
         _scopes.Add(new Dictionary<string, Var>());
@@ -1476,7 +1476,7 @@ public sealed class FunctionCompiler
         var op = b.Op;
         if (op == IlBinOp.Eq || op == IlBinOp.Ne || op == IlBinOp.Lt || op == IlBinOp.Le || op == IlBinOp.Gt || op == IlBinOp.Ge)
             return VType.Bool;
-        // Lua の `a or b` は、ref の値なら null の合体 (IL の `??` の名残り)
+        // IL の `a or b` は、ref の値なら null の合体 (`??`)
         if (op == IlBinOp.And || op == IlBinOp.Or)
         {
             var l = TypeOf(b.L);
@@ -1939,7 +1939,7 @@ public sealed class FunctionCompiler
             var plv = Lookup(pv.Name);
             if (plv == null || plv.Type.Tag != VT.Nullable)
             {
-                // `n is int x` で n が int?: 値があるときだけ x に入れ、結果は値の有無 (Lua は x に nil を入れて型を見る)
+                // `n is int x` で n が int?: 値があるときだけ x に入れ、結果は値の有無
                 var nv0 = Expr(pa.Value, null, false);
                 var d = dest != null ? dest : Temp(VType.Bool);
                 var skip = new Label();
@@ -2092,7 +2092,7 @@ public sealed class FunctionCompiler
         return BadVal();
     }
 
-    /// <summary>IL の string literal は Lua の literal の text (`"a\"b\n"`、10 進の `\ddd`)。octet 列に戻す。</summary>
+    /// <summary>IL の string literal のテキスト (IlLiterals.QuoteString の形: `"a\"b\n"`、`\xHH`。10 進の `\ddd` も読む)。octet 列に戻す。</summary>
     private static List<int> LuaString(string text)
     {
         // C# 版は escape でない文字を UTF-16 で貯めて UTF-8 にする。ここでは文字列が UTF-8 なので byte をそのまま写す
@@ -2259,7 +2259,7 @@ public sealed class FunctionCompiler
     }
 
     /// <summary>文字列化 (il-spec §13): int は 10 進、float は runtime/fmt、bool は True / False、string の null は空文字列。</summary>
-    /// <summary>Lua の string.format (il-spec §13): 書式の literal を compile 時に文字列の部分と変換に分け、変換ごとに
+    /// <summary>IL の string.format (il-spec §13): 書式の literal を compile 時に文字列の部分と変換に分け、変換ごとに
     /// runtime の fmt.i / fmt.f / fmt.s (変換 1 つの spec と値) を呼んで連結する。意味は tcs2c の tcs_string_format と同じ。</summary>
     private Val Format(List<int> format, List<IlExpr> args, Val? dest)
     {
@@ -3990,7 +3990,7 @@ public sealed class FunctionCompiler
             var a0 = c.Args[0];
             if (a0 is IlCall tn && tn.Callee == "tonumber" && tn.Args.Count == 1)
             {
-                // int.Parse (IL は Lua の math.tointeger(tonumber(s)) の形。tcs2c の tcs_parse_i32_or_fault と同じ)
+                // int.Parse (IL は math.tointeger(tonumber(s)) の呼び出しの形。tcs2c の tcs_parse_i32_or_fault と同じ)
                 return Library(new IlCall("__vm_intparse", tn.Args, false, null), dest);
             }
         }
@@ -4031,7 +4031,7 @@ public sealed class FunctionCompiler
         if (callee == "table.remove" && c.Args.Count == 2 && TypeOf(c.Args[0]).Tag == VT.List)
         {
             var list = Expr(c.Args[0]);
-            // Lua の table.remove(t, i) の i は 1 始まり (IL は +1 した式を渡す)
+            // IL の table.remove(t, i) の i は 1 始まり (IL は C# の添字に +1 した式を渡す)
             var at = ExprAs(c.Args[1], VType.Int);
             var i0 = Temp(VType.Int);
             Emit(Op.ADDI_I32, i0.Reg, at.Reg, 0xFFFF);

@@ -197,7 +197,7 @@ public sealed class Specializer
         members.Add(list);
     }
 
-    // library を先に、次に user のファイル (Lua の出力と同じ順)
+    // library を先に、次に user のファイル (IlExporter と同じ順)
     private List<int> EmittedOrder()
     {
         var r = new List<int>();

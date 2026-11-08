@@ -67,7 +67,7 @@ public sealed class SemanticChecks
             if (i.Decl != null && i.Decl.IsRef) Report("RefInterfaceImplementation(" + i.FullDisplay() + ")", BaseTypeNode(t, i.Decl));
         }
         if (!t.IsInterface && !t.IsEnum) CheckInterfaceMembers(t);
-        // record の値の等価は field の比較で、Utf8Bytes では .NET (byte[] の参照) と Lua (table の同一性) が揃わない
+        // Utf8Bytes の field を持つ record は止める (.NET の record の値の等価は Utf8Bytes の中の byte[] を参照で比べる)
         if (t.IsRecord && HasUtf8BytesField(t.SelfType())) Report("Utf8BytesInRecord", t.Decl);
         foreach (var m in t.Members)
         {
@@ -332,14 +332,14 @@ public sealed class SemanticChecks
                 : values != null && values.Kind == TypeKind.ValueCollection ? values.Arg(1) : IlTypes.ElementOf(values);
             if (elem != null && !IsStringifiable(elem)) Report("UnsupportedToString(" + elem.FullDisplay() + ")", call.List[1].A!);
         }
-        // List の要素の等価は .NET が field の比較、Lua が table の同一性で、Utf8Bytes を含む値では揃わない
+        // Utf8Bytes を含む要素の List の Contains / IndexOf / Remove は止める (.NET の等価は Utf8Bytes の中の byte[] を参照で比べる)
         if ((m.Builtin == "List.Contains" || m.Builtin == "List.IndexOf" || m.Builtin == "List.Remove") && call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null)
         {
             var lt = call.A.A.Type;
             if (lt != null && lt.Kind == TypeKind.List && ContainsUtf8Bytes(lt.Elem))
                 _c.Error("TCS1002", "unsupported API: System.Collections.Generic.List<T>." + m.Name, call.A);
         }
-        // interface の制約を持つ型引数に struct を入れる (Lua の generic なコードは interface の method を `x:M()` で呼ぶが、struct の member は自由関数)
+        // interface の制約を持つ型引数に struct を入れる呼び出しは止める
         if (m.Kind == SymKind.Method && m.Builtin == "" && m.TypeParams != null && call.TypeArgs != null && m.TypeParamConstraints != null)
         {
             for (int i = 0; i < call.TypeArgs.Count && i < m.TypeParamConstraints.Count; i++)
@@ -380,8 +380,7 @@ public sealed class SemanticChecks
 
     // ---- collection の null (TCS1003) ----
 
-    // Lua の table は nil を値として持てない。Dictionary の値の null は key を消し、配列の null 要素と長さで作った配列の
-    // nil の既定値は Length (# の長さ) を変える。参照実装の AnalyzeUnsupportedCollectionNulls と同じ地点で警告する
+    // Dictionary の値の null、配列の null の要素、長さで作った配列のうち要素の既定値が null のものを警告する (TCS1003)
     private void CheckCollectionNull(Node n)
     {
         const string dictMessage = "Dictionary<K,V> cannot store null values because nil removes keys";
@@ -519,7 +518,7 @@ public sealed class SemanticChecks
 
     // ---- struct の boxing ----
 
-    // struct を object / interface に入れる。Lua の struct は型を持たない table で、`is` と interface 経由の呼び出しが効かない
+    // struct を object / interface に入れる変換は止める (ToString を override した struct を文字列にする位置は除く)
     private void CheckBoxing(Node conv)
     {
         var src = conv.A!.Type;
@@ -530,7 +529,7 @@ public sealed class SemanticChecks
             if (!(!IlTypes.IsNullableValueType(src) && IlBuild.HasToStringOverride(src) && IsStringified(conv))) Report("StructBoxing", conv.A);
             return;
         }
-        // int / float / bool 以外の値型 (char、byte、enum など) を object に入れると、Lua では型を失う
+        // int / float / bool 以外の値型 (char、byte、enum など) を object に入れる変換は止める (文字列にする位置は除く)
         var u = IlTypes.UnwrapNullable(src);
         if (!u.IsValueType || u.Kind == TypeKind.Int || u.Kind == TypeKind.Float || u.Kind == TypeKind.Bool) return;
         if (IsStringified(conv)) return;
@@ -692,12 +691,12 @@ public sealed class SemanticChecks
         bool refInput = input != null && (input.Kind == TypeKind.Class || input.Kind == TypeKind.Interface || input.Kind == TypeKind.Object || input.Kind == TypeKind.String
             || input.Kind == TypeKind.TypeParam && IsClassConstrained(input));
         bool generic = type.Decl != null && type.Decl.TypeParams.Count > 0;
-        // --ref の generic でない interface は別の名前 (Lua は止める。tcs VM は型の表で判定する、object-model §10.6)
+        // --ref の generic でない interface は別の名前 (tcs check と tcs c は止め、tcs VM は型の表で判定する、object-model §10.6)
         if (refInput && !generic && type.Decl != null && type.Decl.IsRef) Report("RefInterfaceTypeTest(" + type.FullDisplay() + ")", at);
         else if (!refInput || generic || type.Decl == null) Report("InterfaceTypeTest", at);
     }
 
-    // --ref の generic でない class (と cast の interface) への型 test と cast。Lua は host の値の型を見分けられないので止める。
+    // --ref の generic でない class (と cast の interface) への型 test と cast。tcs check と tcs c は止め、tcs VM は型の表で判定する。
     // 値を実行時に調べる (参照型か型引数の入力で、暗黙の変換が無い) ときだけ
     private void CheckRefTypeTest(TypeSym? input, TypeSym? type, Node at, bool cast)
     {
@@ -754,7 +753,7 @@ public sealed class SemanticChecks
         return e.Type != null && e.Type.Kind == TypeKind.Delegate || (e.Kind == NodeKind.Conv && e.A != null && e.A.Type != null && e.A.Type.Kind == TypeKind.Delegate);
     }
 
-    // generic な class への型の検査 / cast (Lua は型引数を消すので確かめられない)
+    // generic な class への型の検査 / cast は止める
     // 値を実行時に調べる (参照型か型引数の入力で、暗黙の変換が無い) ときだけ
     private void CheckGenericTypeTest(TypeSym? input, TypeSym? type, Node at, string name)
     {
@@ -853,7 +852,7 @@ public sealed class SemanticChecks
 
     // ---- 値で比べる key ----
 
-    // 値で比べる key の Dictionary と HashSet (Lua の table は table の同一性で引く)
+    // 値で比べる key (struct、タプル、record など) と float の key の Dictionary と HashSet は止める
     private void CheckDictionaryKey(Node creation)
     {
         var t = creation.Type;

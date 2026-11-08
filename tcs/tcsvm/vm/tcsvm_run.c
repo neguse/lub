@@ -34,7 +34,7 @@ static TvmStatus fault(TvmVm *vm, TvmFrame *base, TvmFrame *ci, const TvmProto *
   return TVM_FAULT;
 }
 
-/* Console.WriteLine。Lua の print と同じく行ごとに flush する (stdout が file や pipe でも行が溜まらない) */
+/* Console.WriteLine。行ごとに flush する (stdout が file や pipe でも行が溜まらない) */
 static void print_line(const char *s, size_t n) {
   fwrite(s, 1, n, stdout);
   fputc('\n', stdout);

@@ -1,16 +1,15 @@
 # tcsvm — IL から直接 bytecode を出す dev 実行系
 
-TinyC# の IL (`IlExport`) を bytecode (`.tcsb`) にし、型付きの
-register VM で実行する。設計は `doc/vm-design.md`。dev 実行系として採ることは決定済み
-(同書 §18 D-V1)。いまは V1 と V2 の一部 (同書 §17.3、§17.4)。
+TinyC# の IL (`IlExport`) を bytecode (`.tcsb`) にし、型付きの register VM で実行する。tcs の dev 実行系 (開発と hot reload) で、release は C (`tcs c`)。
+設計は `doc/vm-design.md`、hot reload の契約は `doc/hot-reload-design.md`、C backend と共有する型記述子と reload の計画は `doc/object-model.md`。
 
 | 場所 | 中身 |
 |---|---|
 | `Emitter/` | `tcs2vm` (.NET)。`tcs vm` を動かす入口 (IL → `.tcsb` の本体は TinyC# の `SelfHost/VmBackend/`、CLI は `SelfHost/Tool/VmRun.cs`)。C にした tcs の `tcs vm` も同じ `.tcsb` を出す。`--dump-il` で IL の診断用テキスト |
-| `vm/` | VM (C11)。`tcsvm.h` が API、`tcsvm_ops.h` が命令の一覧、`tcsvm_load.c` が読み込みと検査、`tcsvm_run.c` が interpreter、`tcsvm_rt.c` が string / List / Dictionary / Sort、`tcsvm_gc.c` が GC、`tcsvm_reload.c` が hot reload (`tvm_apply`)、`tcsvm_main.c` が CLI |
+| `vm/` | VM (C11)。`tcsvm.h` が API、`tcsvm_ops.h` が命令の一覧、`tcsvm_load.c` が読み込みと検査、`tcsvm_run.c` が interpreter、`tcsvm_rt.c` が string / List / Dictionary / Sort、`tcsvm_lib.c` が runtime の関数 (`CALLR`)、`tcsvm_host.c` が host の関数と host 向けの API、`tcsvm_gc.c` が GC、`tcsvm_reload.c` が hot reload (`tvm_apply`)、`tcsvm_debug.c` が `--trace` の記録と検査の口、`tcsvm_main.c` が CLI |
 | `gen-ops.py` | `tcsvm_ops.h` から `SelfHost/VmBackend/Op.cs` を作る |
 | `tests/` | テストの入力。各ファイルの `Main` を VM で走らせ、`tests/expected/` の stdout と比べる (C backend が動かせる入力は C の stdout とも) |
-| `run-tests.sh` | テスト (`tests/`、`samples/` の 6 本、digest kernel の固定の digest)。`run-tests.sh` (root) から呼ばれる |
+| `run-tests.sh` | テスト (`tests/`、`samples/` の 6 本、digest kernel の固定の digest、`tests/` の下の host / trace / inspect / profile / mixed / modules / watch の試験)。`run-tests.sh` (root) から呼ばれる |
 | `fuzz-loader.py` | `.tcsb` を変異させて loader と verifier の頑健さを見る |
 
 ## 使い方
@@ -35,24 +34,18 @@ dotnet run --project tcsvm/Emitter -- --export 'Game.*' --reload-from v1.cs --pl
 build/tcsvm/tcsvm --lib Game 4 --reload 2 v2.tcsb v2.plan v1.tcsb
 ```
 
-restart が要る差分 (static の initializer の変更、型の削除、生きている lambda を消した等) は終了コード 3 で、
-理由を stderr に書く。テストは `tcs2c.Tests` の `VmReloadTests`。
+restart が要る差分 (static の initializer の変更、型の削除、生きている lambda を消した等) は終了コード 3 で、理由を stderr に書く。
+`tcs vm --watch` は編集ごとに reload の batch を標準出力に流し、`--reload-batch K BATCH` で当てられる (`doc/vm-design.md` §13.3)。
+テストは `tcs2c.Tests` の `VmReloadTests` と `VmReloadCaseTests`、`tcsvm/tests/host/watch_test.py`。
 
-## いまの範囲
+## 範囲
 
-int / float / bool / enum / string、class (field、instance method、constructor と field の
-initializer)、struct (local と配列要素と static)、配列、`List<T>`、`Dictionary<K, V>`
-(key は int / enum / string)、lambda と method group (捕捉は cell、il-spec §7)、
-`List.Sort` (比較の closure を runtime から入れ子で呼ぶ)、TinySystem.Linq、static field と
-static method、if / while / do-while / for / foreach / break / continue / `?:` / `??`、
-checked 演算、`Console.WriteLine`、fault と C# の行の trace。
-範囲外の IL は `tcs2vm` が `... is not in the VM yet` で止める。
+VM は C backend と同じ IL を受け、C と .NET との stdout の一致を差分のゲートで確かめる (`doc/vm-design.md` §16)。
+VM が受けない IL は `tcs2vm` が `... is not in the VM yet` で止める。
 
-関数は entry と static initializer から到達するものだけを作る (TinySystem.Linq の特殊化を
-全部は作らない)。GC は動かさない mark-sweep で、確保の地点 (frame を保存してから) とフレーム境界で
-回収する (`--gc-stress` は毎回回収して root の漏れを出力の違いで見つける)。型記述子、layout、
-heap の walker、reload の計画は tcs2c と共有する (`doc/object-model.md`)。
-残りの範囲 (文字列の書式の一部、host 呼び出しなど) は `doc/tasks.md` の VM トラック。
+関数は entry、`--export` で選んだ関数、static initializer から到達するものだけを作る (TinySystem.Linq の特殊化を全部は作らない)。
+GC は動かさない mark-sweep で、確保の地点 (frame を保存してから) とフレーム境界で回収する (`--gc-stress` は毎回回収して root の漏れを出力の違いで見つける)。
+型記述子、layout、heap の walker、reload の計画は C backend と共有する (`doc/object-model.md`)。
 
 ## 読み込みの検査
 

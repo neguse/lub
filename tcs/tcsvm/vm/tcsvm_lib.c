@@ -82,7 +82,7 @@ static TvmStatus fmt_int(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return st;
 }
 
-/* Lua の string.format の変換 1 つ (emitter が書式の literal を分けて呼ぶ。runtime/fmt/printf.c) */
+/* IL の string.format の変換 1 つ (emitter が書式の literal を分けて呼ぶ。runtime/fmt/printf.c) */
 static TvmStatus printf_one(TvmVm *vm, TvmSlot *r, const TvmString *spec, int kind, int32_t i, float f,
                             const TvmString *s) {
   size_t slen = s ? (size_t)s->len : 0;
@@ -740,7 +740,7 @@ static TvmStatus m_atan2(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 
 static TvmStatus m_pow(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)vm;
-  /* 指数 2 は乗算 (Lua の ^ と tcs2c と同じ) */
+  /* 指数 2 は乗算 (tcs2c と同じ) */
   r[0].f = a[1].f == 2.0f ? a[0].f * a[0].f : tcs_powf(a[0].f, a[1].f);
   return TVM_OK;
 }
@@ -759,7 +759,7 @@ static TvmStatus m_logb(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* Math.Round: 中間は偶数へ。0 に丸めた結果は x の符号 (Lua の Math.Round と同じ) */
+/* Math.Round: 中間は偶数へ。0 に丸めた結果は x の符号 (.NET と tcs2c と同じ) */
 static float round_even(float x, int32_t digits, int has_digits) {
   float scale = 1.0f;
   for (int32_t i = 0; i < digits; i++)
@@ -933,7 +933,7 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   }
   int32_t removed = l->count - free_at;
   if (removed < 0) {
-    /* 述語が List を縮めた: Lua / tcs2c と同じく数だけを返す (.NET は数えなおすが、どの経路も詰めない) */
+    /* 述語が List を縮めた: tcs2c と同じく数だけを返す (.NET は数えなおす。VM と tcs2c は詰めない) */
     r[0].i = removed;
     return TVM_OK;
   }
@@ -1131,7 +1131,7 @@ static TvmStatus str_joinenum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return st;
 }
 
-/* ---- Random (il-spec §13): Lua 5.5 の math.random (xoshiro256**、LUA_32BITS 構成) と同じ列。
+/* ---- Random (il-spec §13): xoshiro256** (整数は 32 bit の演算、float は上位 24 bit)。
    tcs2c の tcs_rand_* と同じ手順。instance は 8 個の int の葉 (64 bit × 4) を持つ object ---- */
 
 #include <time.h>

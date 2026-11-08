@@ -1228,7 +1228,7 @@ public sealed class CEmitter
 
     private string RenderStringLiteral(string luaText) => InternStringLiteral(DecodeLuaString(luaText));
 
-    // Lua の文字列の literal を UTF-8 の byte の列に戻す (\xHH は U+00HH の文字として UTF-8 にする。C# 版と同じ)
+    // IL の文字列の literal (IlLiterals.QuoteString の形) を UTF-8 の byte の列に戻す (\xHH は U+00HH の文字として UTF-8 にする。C# 版と同じ)
     private static List<int> DecodeLuaString(string text)
     {
         var u = new Utf8Bytes(text);
@@ -1461,7 +1461,7 @@ public sealed class CEmitter
         return null;
     }
 
-    // Lua の local 再宣言 (shadow) と同じく後勝ちで束縛を差し替える。C 側は都度別名 (v_..._serial) を発行するため衝突しない
+    // IL の同じ名前の local の再宣言は後勝ちで束縛を差し替える。C 側は都度別名 (v_..._serial) を発行するため衝突しない
     private void AddVariable(string name, Variable variable)
     {
         var scope = _scopes[_scopes.Count - 1];
@@ -1575,7 +1575,7 @@ public sealed class CEmitter
             case IlNewQueue queue: return RenderNewQueue(queue);
             case IlNewHashSet set: return RenderNewHashSet(set);
             case IlIsType typeTest: return RenderIsType(typeTest);
-            // C の struct 値代入がそのまま copy (il-spec §10 は Lua 側の都合)
+            // C の struct 値代入がそのまま copy なので、IL の copy 地点 (il-spec §10) は式をそのまま書く
             case IlStructCopy copy: return RenderExpr(copy.E);
             case IlCast cast: return RenderCast(cast);
             case IlNumericConvert convert: return RenderNumericConvert(convert);
@@ -1861,7 +1861,7 @@ public sealed class CEmitter
             && (leftType.Kind == CTypeKind.Nullable || rightType.Kind == CTypeKind.Nullable))
             return RenderNullableEquality(binary, leftType, rightType);
 
-        // record の ==/!= は構造等価 (Lua の __eq と同じ)
+        // record の ==/!= は構造等価
         if (binary.Op == IlBinOp.Eq || binary.Op == IlBinOp.Ne)
         {
             var recordType = RecordEqualityType(leftType, rightType);
@@ -2020,7 +2020,7 @@ public sealed class CEmitter
                 }
                 return CType.String;
             case IlBinOp.DivNum:
-                // Lua の / は常に float 除算 (i32 同士でも)
+                // IL の DivNum は float の除算 (整数の除算は __tcs_idiv)
                 NumericJoin(left, right, "division");
                 return CType.F32;
             case IlBinOp.Eq:
@@ -2132,8 +2132,8 @@ public sealed class CEmitter
         if (callee == "Dict.Remove") return RenderDictSimple(call, "tcs_dict_remove");
         if (callee == "Dict.Count")
             return "tcs_dict_count(" + RenderExpr(call.Args[0]) + ")";
-        // Lua backend の f32 shortest round-trip helper。C 側の
-        // to-string は元々 shortest round-trip なので同一経路で良い
+        // f32 と bool の文字列化 (__tcs_fstr / __tcs_bstr) は C の to-string
+        // (f32 は shortest round-trip) に写す
         if (callee == "__tcs_fstr" || callee == "__tcs_bstr") return RenderToString(call.Args[0]);
         if (callee == "__tcs_nstr") return RenderNullableToString(call.Args[0]);
         if (callee == "table.insert") return RenderListAdd(call);
@@ -2264,7 +2264,7 @@ public sealed class CEmitter
         return ValidateMethodCall(fact, null, call.Args);
     }
 
-    // digest は f32 bit を直接食うため、Lua 向け整形 (__tcs_fstr) を剥がして
+    // digest は f32 bit を直接食うため、IL の f32 の文字列化 (__tcs_fstr) を剥がして
     // 元の f32 を見る。通常 print は整形済み文字列のままで良いが、C 側の
     // f32 印字は元々 shortest round-trip なので剥がして直接印字する (同値)
     private static IlExpr UnwrapFstr(IlExpr expr)
@@ -2704,8 +2704,8 @@ public sealed class CEmitter
         Line("}");
     }
 
-    // List.Clear / Dictionary.Clear の Lua 形 (IIFE: local t = recv;
-    // for k in pairs(t) do t[k] = nil end) を認識して runtime 呼びにする
+    // List.Clear / Dictionary.Clear の IL の形 (IIFE: local t = recv; IlForPairs で
+    // 全ての key に nil を入れる) を認識して runtime 呼びにする
     private bool TryEmitClearIife(IlIife iife)
     {
         if (iife.Stats.Count != 2) return false;
@@ -2791,8 +2791,7 @@ public sealed class CEmitter
         Line(target == null ? "continue;" : "goto " + target + ";");
     }
 
-    // Dictionary の foreach。反復順は Lua (pairs) と一致しない — どちらも
-    // 挿入順 (support-matrix §18)。
+    // Dictionary の foreach。反復順は挿入順 (support-matrix §18)。
     // bucket と node の二重の for なので、break は外側の for の後へ goto で抜ける
     private void EmitForeachDict(IlForeachDict loop)
     {
@@ -3227,7 +3226,7 @@ public sealed class CEmitter
             case "Count":
                 RequireArity(call.Callee, call.Args.Count, 1);
                 return CType.I32;
-            // struct 要素では Lua 向けの op_Equality 参照が 3 番目に付く
+            // struct 要素では IL が op_Equality の参照を 3 番目に付ける
             case "Contains":
                 RequireArity(call.Callee, call.Args.Count, elem.Kind == CTypeKind.StructVal ? 3 : 2);
                 if (CFail.Failed) return CType.Void;
@@ -3298,7 +3297,7 @@ public sealed class CEmitter
         var elem = seq.Element!;
         switch (name)
         {
-            // 変更可能な struct 要素では Lua 向けの `S.__copy` 参照が 2 番目に付く
+            // 変更可能な struct 要素では IL が `S.__copy` の参照を 2 番目に付ける
             // (C は要素を値で写すので読まない)
             case "Copy":
                 if (args.Count != 1 && args.Count != 2)
@@ -3307,7 +3306,7 @@ public sealed class CEmitter
                     return CType.Void;
                 }
                 return CType.List(elem);
-            // struct 要素では Lua 向けの op_Equality 参照が 3 番目に付く
+            // struct 要素では IL が op_Equality の参照を 3 番目に付ける
             // (C は要素型から memberwise 比較を生成するので読まない)
             case "Contains":
                 RequireArity(call.Callee, args.Count, elem.Kind == CTypeKind.StructVal ? 3 : 2);
@@ -3330,7 +3329,7 @@ public sealed class CEmitter
                 RequireType(CType.I32, TypeOf(args[1]), "Insert index");
                 if (!IsClosureValue(args[2])) CheckAssignable(elem, args[2], call.Callee);
                 return CType.Void;
-            // 変更可能な struct 要素では Lua 向けの `S.__copy` 参照が末尾に付く
+            // 変更可能な struct 要素では IL が `S.__copy` の参照を末尾に付ける
             case "GetRange":
                 if (args.Count != 3 && args.Count != 4)
                 {
@@ -3863,7 +3862,7 @@ public sealed class CEmitter
     }
 
     // 分解代入 `(a, b) = (x, y)` / `var (a, b) = r`: 右辺を全部評価してから
-    // 左から代入 (Lua の多重代入と同じ)
+    // 左から代入
     private void EmitPairwiseMultiAssign(IlMultiAssign multi)
     {
         var tempNames = new List<string>();
@@ -3899,8 +3898,8 @@ public sealed class CEmitter
     // ---- Intrinsics ----
 
     // ==== CEmitter.Intrinsics ====
-    // TinySystem runtime 表面 (String / Math / Dict.Keys / Values) と Lua 標準
-    // 関数 (string.* / math.* / tonumber / os.getenv / table.remove) の IlCall
+    // TinySystem runtime 表面 (String / Math / Dict.Keys / Values) と IL の callee の
+    // 名前 (string.* / math.* / tonumber / os.getenv / table.remove) の IlCall
     // を C runtime (CRuntime.Strings / Lib) へ写す。List.* は CEmitter.Linq。
 
     private static HashSet<string>? _intrinsicPrefixes;
@@ -4553,8 +4552,8 @@ public sealed class CEmitter
         }
     }
 
-    // ---- Random (TinySystem.Random: instance + Shared。Lua 5.5 の
-    // math.random と同じ xoshiro256** を runtime の TcsRandom が持つ) ----
+    // ---- Random (TinySystem.Random: instance + Shared。il-spec §13 の
+    // xoshiro256** を runtime の TcsRandom が持つ。seed 固定時は tcs VM と同じ列) ----
     private bool IsRandomTypeName(string name) =>
         name == "TinySystem.Random"
         || (name == "Random" && !_classes.ContainsKey("Random"));
@@ -4641,8 +4640,8 @@ public sealed class CEmitter
                 return $"({{ {head}tcs_rand_float({r}); }})";
             case "Next":
             {
-                // Lua facade: Next() = random(0, 2147483646)、Next(max) =
-                // Next(0, max)、Next(min, max) = random(min, max - 1) (空の範囲は min)
+                // Next() = tcs_rand_range(0, 2147483646)、Next(max) =
+                // Next(0, max)、Next(min, max) = tcs_rand_range(min, max - 1) (空の範囲は min)
                 if (args.Count == 0)
                     return $"({{ {head}tcs_rand_range({r}, 0, INT32_C(2147483646)); }})";
                 if (args.Count == 1)
@@ -4854,7 +4853,7 @@ public sealed class CEmitter
     // ==== CEmitter.EnumNames ====
     // enum の文字列化 `String.FormatEnum(v, spec)` (il-spec §13)。spec ごとに名前
     // (string literal) と値の file-scope 表を 1 組だけ作り、runtime の
-    // tcs_enum_format が Lua の String.FormatEnum と同じ規則で引く
+    // tcs_enum_format が String.FormatEnum の規則 (il-spec §13) で引く
 
     private readonly Dictionary<string, EnumTableInfo> _enumTables = new Dictionary<string, EnumTableInfo>();
 
@@ -6215,7 +6214,7 @@ public sealed class CEmitter
         }
     }
 
-    // zero 値 → field initializer → 本文 (Lua の S.ctor と同順)。self は
+    // zero 値 → field initializer → 本文 (il-spec §10)。self は
     // local の値を指すので本文の field 書きはそのまま結果に残る
     private void EmitStructCtor(ExStruct st, ExCtor ctor)
     {
@@ -6456,9 +6455,8 @@ public sealed class CEmitter
     }
 
     // ==== tcs2c/CEmitter.Records.cs ====
-    // record class: 構造等価 (==/!=) と with 式。Lua backend は __eq metamethod
-    // と shallow copy IIFE で、C は record 型ごとの比較関数と runtime layout
-    // (実行時型) での copy で同じ意味論にする。
+    // record class: 構造等価 (==/!=) と with 式。C は record 型ごとの比較関数と
+    // runtime layout (実行時型) での copy にする。
 
     private bool IsRecordClass(string name)
     {
@@ -6606,8 +6604,8 @@ public sealed class CEmitter
 
     // ==== tcs2c/CEmitter.Construct.cs ====
 
-    // Lua backend の Class.new と同順で構築する:
-    // base init → type_id (setmetatable 相当) → 自 class field init → ctor body。
+    // 構築の順:
+    // base init → type_id → 自 class field init → ctor body。
     // 確保は最派生の tcs_new_C が layout (sizeof(Tcs_C) + pointer map) で 1 回
     // 行い、tcs_init_C(object, ...) が base の init を prefix 互換の upcast で
     // 連鎖呼びする (base 側で sizeof(Base) を確保すると派生 field が溢れる)

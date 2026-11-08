@@ -1,4 +1,4 @@
-/* Lua の string.format の変換 1 つ (tcs_fmt.h)。tcs2c の生成 C と VM が同じものを使う。 */
+/* IL の string.format の変換 1 つ (tcs_fmt.h)。tcs2c の生成 C と VM が同じものを使う。 */
 #include "tcs_fmt.h"
 
 #include <stdio.h>

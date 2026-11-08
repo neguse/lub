@@ -15,7 +15,7 @@ public sealed class Compliance
     private static readonly List<string> ReservedClassKeys = SplitWords("new ctor");
     // runtime が _G に置く名前 (ReservedRuntimeGlobals)
     public static readonly List<string> RuntimeGlobals = SplitWords("TinySystem List Dict Math String TcsQueue TcsHashSet");
-    // Lua の予約語 (LuaKeywords)
+    // member の名前に使えない語 (LuaKeywords)
     private static readonly List<string> LuaKeywords = SplitWords("and break do else elseif end false for function global goto if in local nil not or repeat return then true until while");
     private static readonly List<string> CallerInfoNames = SplitWords("CallerArgumentExpression CallerMemberName CallerLineNumber CallerFilePath");
 
@@ -142,7 +142,7 @@ public sealed class Compliance
             if (inherit != "") Report(inherit, m);
         }
         if (isStruct && m.Kind == NodeKind.Ctor && !m.Has(Mods.Static) && m.Count == 0) Report("StructMember(ConstructorDeclaration)", m);
-        // interface は型の検査だけで Lua の出力を持たない
+        // interface の field は止める
         if (owner.Value == DeclKinds.Interface && m.Kind == NodeKind.Field) Report("InterfaceField", m);
         // record class の本体に書けるのは method、演算子、static な field と auto property、型だけ (参照実装の VisitRecord)
         if (owner.Value == DeclKinds.RecordClass && !IsRecordClassMember(m)) ReportDeferred("member: " + RoslynMemberKind(m), m);
@@ -162,7 +162,7 @@ public sealed class Compliance
                 return;
             case NodeKind.Property:
                 MemberName(m.Text, m);
-                // interface の実装付きの member は Lua に出ない
+                // interface の実装付きの member (既定の実装) は止める
                 if (owner.Value == DeclKinds.Interface && (!IsAutoAccessor(m.B) || !IsAutoAccessor(m.C) || m.D != null && m.D.Kind != NodeKind.Attribute))
                     Report("InterfaceDefaultMember", m);
                 if (m.Has(Mods.Static) && inGeneric && IsAutoAccessor(m.B) && IsAutoAccessor(m.C)) Report("GenericStaticField", m);
@@ -234,7 +234,7 @@ public sealed class Compliance
         return "";
     }
 
-    // 演算子の overload は 2 引数の + - * / % と 1 引数の - だけ (Lua の metamethod)
+    // 演算子の overload は 2 引数の + - * / % と 1 引数の - だけ
     private static bool IsSupportedOperator(string op, int arity)
     {
         if (arity == 2) return op == "+" || op == "-" || op == "*" || op == "/" || op == "%";
@@ -314,7 +314,7 @@ public sealed class Compliance
         else if (IsUnsafeLuaIdentifier(name)) Report(UnsafeLuaIdentifierName(name), at);
     }
 
-    // local、parameter、foreach の変数、pattern の変数 (Lua の予約語は emitter が別名にする)
+    // local、parameter、foreach の変数、pattern の変数 (予約語と同じ名前は LocalNames が改名する)
     private void LocalName(string name, Node at)
     {
         if (name == "") return;

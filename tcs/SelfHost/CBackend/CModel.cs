@@ -273,7 +273,7 @@ public static class Constants
     public static string F32(float value) => "tcs_f32(UINT32_C(0x" + Hex8(FloatBits(value)) + "))";
 
     // binary32 の bit の並び (int に入れた 32 bit。負の数は上位の bit が立つ)。2 倍と 1/2 倍は丸めないので、指数と仮数を正確に取り出せる。
-    // Lua の backend では float が double なので、23 bit の後ろの残りで最も近い偶数へ丸める (.NET と C では残りは 0)
+    // 23 bit の後ろに残りがあれば最も近い偶数へ丸める (float が binary32 の .NET、C、wasm では残りは 0)
     public static int FloatBits(float value)
     {
         // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)

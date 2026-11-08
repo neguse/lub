@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// BCL と TinySystem の member。Builtin の id は Emitter が Lua の形に写す。
+// BCL と TinySystem の member。Builtin の id は IlBuild が IL の呼び出しに写す。
 // 型の parameter は受け手の型引数 (TypeParam の Index)、method の型引数は IsMethodParam の TypeParam で書く。
 public static class Builtins
 {
@@ -228,7 +228,7 @@ public static class Builtins
         Add(d, "string.static", P(P(Method("Join", "String.Join", S, true), "separator", S), "values", TypeSym.ArrayOf(S)));
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", TypeSym.ListOf(M(0))));
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", TypeSym.ArrayOf(M(0))));
-        // Dictionary の Keys / Values (.NET の Join(string, IEnumerable<T>)。Lua と C は List に写した値を渡す)
+        // Dictionary の Keys / Values (.NET の Join(string, IEnumerable<T>)。IL は List に写した値を渡す)
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", Collection(TypeKind.KeyCollection, M(0), M(1))));
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", Collection(TypeKind.ValueCollection, M(0), M(1))));
         var join3 = P(P(P(Method("Join", "String.JoinArgs", S, true), "separator", S), "a", S), "b", S);
@@ -274,7 +274,7 @@ public static class Builtins
         Add(d, "Rune", Method("ToString", "Rune.ToString", S, false));
         Add(d, "Runes", P(Method("RuneCount", "Runes.RuneCountStatic", I, true), "s", S));
         Add(d, "Runes", P(P(P(Method("RuneSubstring", "Runes.RuneSubstringStatic", S, true), "s", S), "start", I), "count", I));
-        // Random (System.Random と TinySystem.Random。Lua は runtime の Random)
+        // Random (System.Random と TinySystem.Random。VM と C は runtime の Random)
         var RT = TypeSym.RandomType;
         Add(d, "Random", Method("Next", "Random.Next", I, false));
         Add(d, "Random", P(Method("Next", "Random.Next", I, false), "max", I));
@@ -372,7 +372,7 @@ public static class Builtins
             case TypeKind.Utf8Bytes: return "Utf8Bytes";
             case TypeKind.Nullable: return "Nullable";
             case TypeKind.Rune: return "Rune";
-            // TinySystem の facade (TinySystem.String / List / Dict / Math) は自分の表 (Lua は facade を呼ぶ)
+            // TinySystem の facade (TinySystem.String / List / Dict / Math) は自分の表
             case TypeKind.StaticRef: return t.Name;
             case TypeKind.Random: return isStatic ? "Random.static" : "Random";
             case TypeKind.TypeParam: return isStatic ? null : "TypeParam";

@@ -2,8 +2,8 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// 型の判定 (参照実装の LuaEmitter.Helpers / Structs の判定を、セルフホストの TypeSym で写したもの)。
-// タプルは参照実装と同じく、library の System.ValueTuple<...> (TinySystem/ValueTuple.cs) の generic な可変 struct として扱う
+// 型の判定 (TypeSym の上で)。
+// タプルは library の System.ValueTuple<...> (TinySystem/ValueTuple.cs) の generic な可変 struct として扱う
 public static class IlTypes
 {
     public static TypeSym UnwrapNullable(TypeSym t)
@@ -147,7 +147,7 @@ public static class IlTypes
         return e.Kind == TypeKind.TypeParam || e.Kind == TypeKind.Bool || e.Kind == TypeKind.Object;
     }
 
-    // 要素の default が nil の配列 (`new T[n]` が穴を持つ。TCS1003)
+    // 要素の default が null の配列 (`new T[n]` の要素が null になりうる。TCS1003)
     public static bool HasNilableElements(TypeSym? t)
     {
         if (t == null || t.Kind != TypeKind.Array) return false;

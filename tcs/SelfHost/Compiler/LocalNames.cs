@@ -2,8 +2,8 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// local の束縛 (local 変数 / parameter / foreach の変数 / pattern の designation / lambda の parameter) の Lua の名前
-// (参照実装の LuaLocalRenamer)。Lua の予約語、型の名前、生成コードが素の名前で参照する global と同じ名前は
+// local の束縛 (local 変数 / parameter / foreach の変数 / pattern の designation / lambda の parameter) の IL の名前 (LuaName)。
+// 予約語 (LuaNames.IsReserved)、型の名前、IL の callee が素の名前で参照する global と同じ名前は
 // `x` → `x_` に写し、写した先が同じ member の中の識別子か型の名前なら `_` を足す。同じ member の同じ名前は同じ名前に写す
 public static class LocalNames
 {

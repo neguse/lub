@@ -29,11 +29,7 @@ gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
 IL 契約 (`IlExport`) に載る TinyC# は原則すべて C へ落とす。意味論の正本は
 il-spec と .NET の実行で、`tcs2c.Tests` が同じ source の C、tcs VM、.NET の stdout 一致を要求する。
 
-- 型: `int` / `float` / `bool` / `string` (immutable byte 列、literal は static
-  object) / `char` (整数 code unit。`string.char` / `Char.*` intrinsic) / enum (整数定数、`ToString` も
-  整数表記) / class 参照 / データ struct (C 値型) / `T[]` (inline 要素の固定長
-  配列) / `List<T>` (growable buffer) / `Dictionary<int|string, V>` (chained
-  hash) / `Action` `Func` (closure = lifted 関数 + 捕捉 cell)
+- 型: `int` / `float` / `bool` / `string` (immutable byte 列、literal は static object) / `char` (整数 code unit。IL の `string.char` / `Char.*` intrinsic) / enum (整数定数。`ToString`・連結・補間は .NET と同じ member の名前で、member に無い値は数) / class 参照 / データ struct (C 値型) / `T[]` (inline 要素の固定長配列) / `List<T>` (growable buffer) / `Dictionary<int|string, V>` (chained hash) / `Action` `Func` (closure = lifted 関数 + 捕捉 cell)
 - class: 継承 (prefix layout)、virtual dispatch (type id switch)、`base.M`、
   ctor 連鎖、`is T` / is-pattern、static field / property、auto property
   initializer、upcast、明示 downcast (`IlCast`: 実行時型が合わなければ fault)
@@ -51,11 +47,7 @@ il-spec と .NET の実行で、`tcs2c.Tests` が同じ source の C、tcs VM、
   継承は実行時型へ dispatch、string は内容、record は再帰、struct は
   memberwise)、`with` (実行時型の layout で shallow copy)、分解代入、
   List.Contains / IndexOf / Remove も構造等価
-- 式・文: 数値演算 (i32 wrap、f32 strict、`/` は float の除算、
-  `(int)f` は 0 方向 truncation)、文字列連結・補間 (`string.format`:
-  `%d %s %f %e %g %x %c`、幅・精度・`-`/`0` flag)、三項・`??`・switch 式、
-  while / do-while / for / foreach (List / array / Dictionary /
-  `EnumerateRunes`)、break / continue、IIFE (GNU statement expression)
+- 式・文: 数値演算 (i32 は wrap。int の `/` と `%` は C# と同じく 0 方向に切り捨て (`7 / 2` は 3、`-7 % 2` は -1)、除数 0 と `int.MinValue / -1` は fault。f32 は strict で、片方が float の `/` は f32 の除算。`(int)f` は 0 方向 truncation)、文字列連結・補間 (IL の `string.format` を runtime/fmt が文字列にする: `%d %s %f %e %g %x %c`、幅・精度・`-`/`0` flag)、三項・`??`・switch 式、while / do-while / for / foreach (List / array / Dictionary / `EnumerateRunes`)、break / continue、IIFE (GNU statement expression)
 - runtime 表面 (tcs VM と同じ意味論):
   - List: Add / Count / index / Remove / RemoveAt / Clear / Contains / IndexOf /
     Sort (自然順・comparison) / Where / Select / Any / All / First / Last /
@@ -69,20 +61,14 @@ il-spec と .NET の実行で、`tcs2c.Tests` が同じ source の C、tcs VM、
   - TinySystem.Text: RuneCount / RuneSubstring / Utf8Bytes
   - Math (`Math` / `MathF`): Min / Max / Abs / Sign / Clamp / Floor / Ceiling /
     Round / Sqrt / Sin / Cos / Tan / Atan2 / Pow / Exp / Log / PI
-  - Random: `new Random()` / `new Random(seed)` (GC object) / `Random.Shared` /
-    Seed、instance の Next / Next(max) / Next(min, max) / NextFloat / NextSingle
-    / Range
-    (Lua 5.5 の xoshiro256** を i32 の構成のまま移植。seed 固定時に
-    tcs VM と bit 一致)
+  - Random: `new Random()` / `new Random(seed)` (GC object) / `Random.Shared` / Seed、instance の Next / Next(max) / Next(min, max) / NextFloat / NextSingle / Range (xoshiro256** の 32 bit の手順。il-spec §13。seed 固定時に tcs VM と bit 一致)
   - Console.WriteLine / Write、`Environment.GetEnvironmentVariable`
 - fault: null / bounds / 0 除算 / key-not-found / 空列 First 等は
   `tcs_fault(kind)` で stderr へ出して exit 1 (il-spec §12)
 
-明示エラー (未対応): `object` 型の local、
-`StringBuilder`、int / float 以外の `CompareTo`、`IlIsLuaType`。
+明示エラー (未対応): `object` 型の local、`StringBuilder`、int / float 以外の `CompareTo`、`IlIsLuaType` (object の値の型 test。`o is string` など)。
 
-通常の `print` は stdout へ値を出す。digest kernel 回帰用だけは
-`--digest-f32` を付け、各 f32 の bit 列を FNV-1a へ直接投入する。
+`Console.WriteLine` / `Write` (IL の `print` / `io.write`) は stdout へ書く。digest kernel 回帰用だけは `--digest-f32` を付け、各 f32 の bit 列を FNV-1a へ直接投入する。
 
 ```sh
 TCS_ROOT=../tcs bash tcs2c/verify-digests.sh

@@ -22,11 +22,7 @@
 
 ### Phase 1 — M1: 挙動不変の内部再編 ✓ (T214a-c 完、done.md 参照)
 
-- [x] T224 完 (2026-07-18): IlExport 契約完備、fallback 構文の整理
-      (static method group IL 化 / instance method group・定数式 alignment
-      診断化 / lock・using 等は既存診断)。legacy visitor は T250
-      (2026-10-02) で廃止 — IL 経路が唯一の Lua 生成経路で、IL 化できない
-      本文は TCS1001 + 実行時 error の stub
+- [x] T224 完 (2026-07-18): IlExport 契約完備、fallback 構文の整理 (static method group IL 化 / instance method group・定数式 alignment 診断化 / lock・using 等は既存診断)。IL にできない本文は TCS1001
 
 
 ### Phase 3 — 価値の刈り取り
@@ -47,11 +43,8 @@
         要素、List の struct 値等価
       - T247 完 (2026-10-02): `T?` の `?.` / `??=` を明示 nullable ノードへ
       - T248 完 (2026-10-02): Random を System.Random 形 (instance / Shared) に
-      - T249 完 (2026-10-02): シフトの C# 意味論 (Lua)、compound 右辺の括り、
-        int.MinValue literal
-      - T250 完 (2026-10-02): legacy visitor 廃止 (IL が唯一の Lua 生成経路、
-        未対応本文は TCS1001 + stub)。nameof / 拡張メソッド / 入れ子
-        initializer / discard / 式位置の代入 / switch 早期 break を IL 化
+      - T249 完 (2026-10-02): シフトの C# 意味論、compound 右辺の括り、int.MinValue literal
+      - T250 完 (2026-10-02): 未対応本文は TCS1001。nameof / 拡張メソッド / 入れ子 initializer / discard / 式位置の代入 / switch 早期 break を IL 化
       - T251 完 (2026-10-02): char を整数 code unit に (両 backend、Char.*)
       - T252 完 (2026-10-02): GC をフレーム同期の世代別 (nursery bump +
         境界で精密 copy 昇格 + 旧世代 mark-sweep、ライトバリア) に置き換え、
@@ -62,37 +55,16 @@
         host が run-tests のゲート
 - T219b 完 (done.md 参照): struct / record struct の値セマンティクス
   対応一式。設計方針の正本は support-matrix / CLAUDE.md / il-spec §10
-- [ ] **T220** (P1、ゲート解除 2026-07-18): hot reload の実装。ユーザー判断で
-      「cold reload 安全弁止まり」を却下し、il-design §6 の CLOS 流 eager
-      migration を実装対象とする。検証面は同一 VM 内で 2 版を transpile して
-      reload するセマンティックテストで立てる (lub 側導線は待たない)。段階:
-      - [x] (a) layout hash の struct 推移展開 (IlExport — struct 内部変更が
-            owner class の hash へ伝播。T219b の struct 型 field 解禁に先行)
-      - [x] (b) reload runtime: weak registry + metadata diff 適用
-            (added=initializer / discarded=破棄 / retained 保持、in-place で
-            identity 維持)、OnReload フック、reload は frame 境界
-      - [x] (c) struct 値の再直列化 migration (owner walk 経由、il-design §6)
-      - [x] 実導線: `--watch --reload-chunks` が rebuild ごとに reload chunk を
-            標準出力へ順に書き、ホスト (lub) が実行中 VM で順に実行する
-      - 残: List/Dict 内 struct 値の再直列化と record class
-        の migration は需要待ち。record struct の IlExport (layout hash /
-        migration) は T246 で対応。reload を使う build は
-        `--instance-registry` (`Transpile(instanceRegistry: true)`) が必要
 
 ---
 
 ## VM トラック (`doc/vm-design.md`)
 
-V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.3)。VM を dev 実行系に
-採ることは決定 (D-V1、2026-11-01)。次の順で進める:
+V1 (核と verifier) は済み (done.md)。残りは次の通り:
 
 - [ ] V0: C backend の型推論 (`SelfHost/CBackend` の `ContractFacts` / `TypeOf`) を C の名前に依らない形にし、
       VM backend (`SelfHost/VmBackend`) と共有する。sort / PRNG / dict の algorithm を `runtime/` の C に出す
-- [x] V2: IL の全面と GC (done.md の V2 の各段)。GC は動かさない mark-sweep (確保の地点とフレーム境界)、interface /
-      型 test / cast / record、struct の member と `List<struct>` / Dictionary の struct 値、nullable / out / tuple /
-      IIFE、文字列の書式と TinySystem の関数、Queue / HashSet、top-level 文。検査: tcs2c.Tests の差分 (548 / 549、
-      残る 1 件は locale の環境)、Transpiler.Tests の corpus (`VmDifferential`、434 件)、C4 fuzz の 3 系統の比較
-      (`FuzzDifferentialTests`)
+- [x] V2: IL の全面と GC (done.md の V2 の各段)。GC は動かさない mark-sweep (確保の地点とフレーム境界)、interface / 型 test / cast / record、struct の member と `List<struct>` / Dictionary の struct 値、nullable / out / tuple / IIFE、文字列の書式と TinySystem の関数、Queue / HashSet、top-level 文。検査: tcs2c.Tests の差分 (C、VM、.NET の stdout の一致)、Transpiler.Tests の semantic テスト (`VmCorpus`。`TCS_DIFFERENTIAL=1` で .NET とも比べる)、C4 fuzz の比較 (`FuzzDifferentialTests`。C、VM、.NET)
 - [ ] V3: host 連携。済み (done.md): `tvm_host` (host の関数表)、host が VM の object と string を読み書きする API、
       `tcs2vm --ref` (stub の関数・値・record)、`tcs2vm --watch` の stream と `tvm_apply_batch`、lub への feature request
       (vm-design §13.2)。
@@ -119,7 +91,6 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
 - [ ] V5: web。済み (tcs 側): 増分 session `VmSession` (`tcs2vm --watch` も使う)、WasmCompiler の JSExport
       `VmExports.Open` / `Update` (実ブラウザの smoke `WasmCompiler/vm-smoke.mjs`、`TCS_WASM_SMOKE=1 bash run-tests.sh`)。
       残り: player と playground の worker は lub の作業 (vm-design §13.2)
-- [ ] V6: Lua の撤去の判断 (vm-design §18 D-V9 に材料と推奨。推奨はまだ撤去しない。利用者の決定待ち)
 
 ---
 
@@ -131,15 +102,13 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
 
 ## Dictionary トラック (q.md Q18)
 
-- [ ] **T259** (P1): Dictionary の TinySystem 演算 — Where (→ dict) / Any / All / Count(述語) / RemoveAll (in place) / Clear を `(k, v)` の 2 引数 lambda で。`TinySystem.Dict` の拡張メソッド、allowlist、`runtime/tinysystem.lua` の Dict、tcs2c の emit、conformance test、support-matrix §18 (列挙順未規定の明記を含む)
-- [ ] **T260** (P1): `foreach (var (k, v) in dict)` (ForEachVariableStatement) を Dictionary の受け手に限って対応。Lua は `for k, v in pairs`、tcs2c は既存の dict foreach と同じ走査
-- [ ] **T262** (P2): `runtime/lua/tcs_lua.c` が `TCS_LUA_SEED` を読み、あるときだけ固定 seed で `lua_newstate` する。Transpiler.Tests の TestHelper と tcs2c.Tests の Backends が設定する。差分ゲートの sort と fuzz の dict 列挙除外はそのまま
+- [ ] **T259** (P1): Dictionary の TinySystem 演算 — Where (→ dict) / Any / All / Count(述語) / RemoveAll (in place) / Clear を `(k, v)` の 2 引数 lambda で。`TinySystem.Dict` の拡張メソッド、allowlist、VM backend と C backend の実装、conformance test、support-matrix §18
+- [ ] **T260** (P1): `foreach (var (k, v) in dict)` (ForEachVariableStatement) を Dictionary の受け手に限って対応。tcs VM と C は既存の dict foreach と同じ走査
 
 ---
 
 ## DU / パターンマッチ (q.md Q19)
 
-- [ ] **T263** (P1): struct → interface / object の変換を TCS1001 (analyzer / check / transpiler 共通の facts)。Lua で黙って false になる経路を塞ぐ
 - [ ] **T264** (P1): tcs2c が `switch` 文 / 式で絞ったパターン変数の member を解決できない (`unknown field: IShape.S`) を修正
 - [ ] **T265** (P2): interface 型の入力の switch 式 / 文の網羅性を準拠 error に (default / `_` なしで実装型を覆っていないとき)
 
@@ -148,20 +117,6 @@ V1 (核と verifier、perf の判断) は試作済み (done.md、vm-design §17.
 ## 選定基準の適用 (q.md Q20)
 
 - [ ] **T266** (P1): `CompilationDiagnosticPolicy` の緩和 (CS0266 / CS0029 / CS0019 の enum↔int、CS0535 の field-backed interface facade) を撤去し、sample とテストを普通の C# として通る形に直す
-
----
-
-## 継承撤去の後片付け (q.md Q15)
-
-- [ ] **T258** (P2): `__tcs_is` の metatable 連鎖歩きを `getmetatable(x) == T` の直接比較に (継承が無いので連鎖は無い。分岐の重い loop で約 20%、q.md Q19 の bench)
-
----
-
-## セルフホスト (doc/self-hosting-design.md §17)
-
-## 単一の実装へ移す (doc/self-hosting-design.md §18)
-
-
 
 ---
 

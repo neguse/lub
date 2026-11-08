@@ -1,8 +1,6 @@
 # perf — 性能実測ハーネス
 
-tcs の実行系 (VM dev / C release) の性能と数値一致を実測する恒久ハーネス。
-旧称「AOT 性能上界 spike」— 2026-07-18 の PC 実測で合否は決着済みで、
-以後は性能回帰の測定基盤・実機測定の受け皿として維持する。
+tcs の実行系 (tcs VM の dev / C の release) の性能と数値一致を実測するハーネス。性能回帰の測定と実機測定の受け皿にする。
 
 ## 構成
 
@@ -23,7 +21,6 @@ tcs の実行系 (VM dev / C release) の性能と数値一致を実測する恒
 - `selfbench/` — tcs 自身 (compiler) の速さの回帰。tcs のソースを C の tcs と .NET の tcs で
   tcs VM の .tcsb と C に変換する時間、命令の数 (cachegrind)、managed heap の最大、出力の大きさを測る。
   PR では base と交互に測り、命令の数と heap の最大が 3% を超えて増えたら失敗する (selfbench job)
-- `results-pc.md` — PC 実測記録 (2026-07-18。当時の Lua の変種と並べた表)
 - `playdate/` — Playdate 実機/シミュレータ用ハーネス。native の変種を
   update 1 回 1 job で実行し、CSV を console log と
   `Data/dev.neguse.tcs.perf/results.csv` (シミュレータでは
@@ -35,13 +32,6 @@ tcs の実行系 (VM dev / C release) の性能と数値一致を実測する恒
 - workload: 2D sprite 更新、400x240、50Hz、スクリプト予算 10ms/frame
 - 数値モデルは全ターゲット i32 + f32。digest 一致を全変種・
   全環境で要求 (f32 決定性のため -ffp-contract=off、libm は kernel から排除)
-
-## 決着済みの合否解釈 (2026-07-18 PC 実測)
-
-aot-slot/native ≈ 17x、interp/native ≈ 19-36x — aot-slot は interp と
-大差なく、boxed TValue 表現自体がボトルネック。
-→ **release-lowering は IL-native 表現 (struct / 連続配列) を採る** (確定。
-tcs2c はこの方針で実装済み)。数値表は `results-pc.md`。
 
 ## Playdate ビルド
 
@@ -62,7 +52,4 @@ cmake --build build-sim
 
 ## 残り
 
-- 実機 (Playdate) 測定: `tcs_perf_DEVICE.pdx` を実機で実行し、
-  N=1024 が予算 10ms 内かを確認して結果を results-playdate.md に記録する
-  (2026-07-18: デバイスビルドと、シミュレータでの全 job 完走 +
-  全 digest の results-pc.md 一致まで確認済み。実機実行のみ未)
+- 実機 (Playdate) 測定: `tcs_perf_DEVICE.pdx` を実機で実行し、N=1024 が予算 10ms 内かを確かめて結果を `results-playdate.md` に記録する (実機での実行は未測定)
