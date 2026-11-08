@@ -301,6 +301,8 @@ run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-conf
 run_timed ./build-release-linux/lub_tcs_sources_smoke
 run_timed bash scripts/build-release.sh --target lub_tcs_resolve_smoke --no-configure
 run_timed ./build-release-linux/lub_tcs_resolve_smoke
+run_timed bash scripts/build-release.sh --target lub_vm_project_smoke --no-configure
+run_timed ./build-release-linux/lub_vm_project_smoke
 run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
 run_timed ./build-release-linux/lub_physics_box2d_smoke
 run_timed bash scripts/build-release.sh --target lub_surfacenets_smoke --no-configure
