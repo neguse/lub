@@ -64,7 +64,15 @@ public class Camera
     /// </summary>
     public float? Fov;
 
+    /// <summary>近い側の clip 面までの距離。
+    /// 省略時 0.1。
+    /// </summary>
     public float? Near;
+
+    /// <summary>遠い側の clip 面までの距離。
+    /// 省略時 100。
+    /// これより遠い物は描かれない (遠くの背景を置くときは大きくする)。
+    /// </summary>
     public float? Far;
 }
 
