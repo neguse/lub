@@ -66,6 +66,13 @@ VS→FS の varying には 2 つの規約がある:
   `SV_Position` は location 採番の対象外なので、この順序はどの backend
   でも同じ意味になる。
 
+web (WGSL) でだけ値が変わる書き方がある:
+
+- ベクトルの式に付けた単項の `-` は、Slang の WGSL への変換で括弧を失うことがある。
+  `float3 tau = a + b;` の `exp(-tau)` が `exp(0 - a + b)` として動き、native では正しい値になるので web でだけ結果が変わる。
+  ベクトルの式を打ち消すときは `exp(tau * -1.0)` のように `-1.0` を掛けて書く。
+  スカラーの単項の `-`(`exp(-x / h)` など)はそのままでよい。
+
 ## pass と draw
 
 ```csharp
