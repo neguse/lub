@@ -605,7 +605,7 @@ public sealed class IlExporter
     {
         Ctx.CurrentDecl = type;
         Ctx.CurrentFunction = function;
-        // 参照実装の export は型引数の既定値を常に変数 (constructor と method の引数) から読む。onSelf は使わない
+        // export は型引数の既定値を常に変数 (constructor と method の引数) から読む。onSelf は使わない
         Ctx.TypeArgDefaultsOnSelf = false;
         Ctx.CurrentLambdaVoid = 0;
         Ctx.B.ScopeRoots.Clear();

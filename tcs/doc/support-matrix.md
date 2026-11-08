@@ -150,7 +150,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |----|:----:|------|
 | `class` | **Y** | 基底 class は持てない (継承は対象外、§8)。interface の実装は可。`override string ToString()` は書ける (下の `override` の行)。Equals / GetHashCode の override は TCS1001 `OverrideMember` (値の比較は record / record struct で書く)。ToString を override していない class の値の文字列化 (`ToString()`・連結・補間・`Console.WriteLine`・`string.Join` の要素) は TCS1001 `UnsupportedToString(T)` (C# は型名を書く) |
 | `struct` | **Y** | 値意味論 (il-spec §10)。tcs VM は register では葉の field ごとの register、heap (class の field、配列 / List の要素、static) では C と同じ inline の配置で持ち、C backend は素の C struct。instance member は静的自由関数 (C backend は `Tcs_S *self` のアドレス渡し)。static field、static auto property、static method、custom な static property、演算子は class と同じ規則で書ける (generic な struct の static field は `GenericStaticField`)。List.Contains / IndexOf / Remove は memberwise 等価。copy constructor `new List<T>(source)` と LINQ の lambda parameter、static method の method group の parameter、式本体 (`=>`) の lambda と method の戻り値、`?.` 呼び出しの引数、user operator の operand、式位置の代入の値、switch 式の arm の値、struct の `T?` の値 (値があれば中の struct) も値 copy。override は `ToString` だけ (Equals / GetHashCode は TCS1001 `OverrideMember`)。const は使用箇所で値に畳む。object / interface への変換 (boxing。`object o = s`、`Console.WriteLine(s)`、`(object)s`、struct の `T?` も) は TCS1001 `StructBoxing`。`foreach (IShape s in structs)` も。interface の制約を持つ型引数 (`where T : IShape`) に struct を入れるのも TCS1001 `StructInterfaceConstraint(S)`。data を運ぶ struct は `readonly record struct` を既定にする (IL は readonly な struct の copy を省く) |
-| `record` / `record class` | **Y** | positional record。IL 契約に IsRecord で収載し、C backend は型ごとの構造等価関数と実行時 layout の with copy を持つ。record の継承 (`record D(...) : B(...)`) は対象外 (§8)。==/!= は実行時型の一致と、各 positional field の値等価 (struct field は memberwise、struct の `T?` field は値の有無と中の値、float / `float?` field と generic な record の型 parameter の field は float.Equals で NaN 同士も等しい。型 parameter に struct を入れた field は memberwise。C# の合成 Equals と同じ)。static field (const / static readonly 込み) と static auto property は class と同じく pre-zero して型をまたぐ初期化順で初期化する。Equals / GetHashCode 呼びと override は対象外 (override は TCS1001)。文字列化は `ToString` を override すれば書け、しなければ TCS1001 `UnsupportedToString(T)` (C# は member の一覧を書く)。C# の `(T)x` downcast は IlCast で C 側 fault 対象 |
+| `record` / `record class` | **Y** | positional record。IL 契約に IsRecord で収載し、C backend は型ごとの構造等価関数と実行時 layout の with copy を持つ。record の継承 (`record D(...) : B(...)`) は対象外 (§8)。==/!= は実行時型の一致と、各 positional field の値等価 (struct field は memberwise、struct の `T?` field は値の有無と中の値、float / `float?` field と generic な record の型 parameter の field は float.Equals で NaN 同士も等しい。型 parameter に struct を入れた field は memberwise。object / interface の field は中の値の実行時の型で比べ、record なら値等価、string と数は値、他の class は参照。C# の合成 Equals と同じ)。static field (const / static readonly 込み) と static auto property は class と同じく pre-zero して型をまたぐ初期化順で初期化する。Equals / GetHashCode 呼びと override は対象外 (override は TCS1001)。文字列化は `ToString` を override すれば書け、しなければ TCS1001 `UnsupportedToString(T)` (C# は member の一覧を書く)。C# の `(T)x` downcast は IlCast で C 側 fault 対象 |
 | `record struct` | **Y** | positional ctor と合成 `op_Equality`。値等価 ==/!= (field ごとの比較は record class と同じく EqualityComparer\<T\>.Default、struct の List 検索の ValueType.Equals も同じ) と with 式。readonly (record) struct は copy 全省略。IL 契約 (IlStructInfo) と C backend、hot reload の migration も struct と同じ |
 | `interface` | **Y** | 値を作らない型。実装する interface の一覧は class / record の実行時の型が持つ (il-spec §2)。class の `is I` / `as I` / 型 switch は §型パターンの行。property は実装の形 (自動 property、custom、式本体、record の positional) によらず interface 経由なら `get_X` / `set_X` を呼ぶ。継承した interface の member も派生した interface の型から呼べる。実装のない property は C# と同じ CS0535 で、field では実装できない |
 | `enum` | **Y** | initializer 無しの field / auto property / `default(E)` の既定値は member 値に依らず 0。member の値は基底型 (byte / sbyte / short / ushort / int / uint) の定数を実行時の 32 bit の 2 の補数に写す (uint の 0x80000000 は int.MinValue)。文字列化 (`ToString()`・文字列連結・補間・`Console.WriteLine`、`E?` も) は Enum.ToString と同じく member 名、`[Flags]` は名前の `", "` 連結、表せない値は数値 (`String.FormatEnum`、名前の表は文字列化する地点にだけ出す。`--ref` の enum は stub の名前)。書式は `ToString("G" / "F" / "D")` と補間の `{e:G}` / `{e:F}` (名前 / 名前の組み合わせ) と `{e:D}` (数値)。`ToString` の他の書式 (`"X"` 等、定数でない書式) は TCS1002、補間の他の書式は TCS1001 `UnsupportedFormatSpecifier`。generic の `T` に入れた enum (単相化した IL の `String.FormatEnum`) と `string.Join` に渡した enum の List / 配列 (`String.JoinEnum`) も member 名。`object` に入れた enum は数値のまま (実行時の値が enum の型を持たない) |
@@ -362,7 +362,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | パターン | C# ver | 状態 | 備考 |
 |---------|--------|:----:|------|
 | 定数パターン `is 42`, `is null` | 7 | **Y** | 入力が object で定数が数か bool のもの (`o is 5`、`o is true`) は TCS1001 `BoxedValuePattern(T)` (型パターンの行) |
-| 型パターン `is MyClass` | 7 | **Y** | struct `S` / `S?` の入力を同じ struct 型で照合するのは値の有無だけ。object / interface / 型引数からの List / Dictionary / Queue / HashSet / 配列 / generic な型 / 型引数 `T` / enum / char / byte への型 test は TCS1001 `UnverifiableTypeTest`。実行時表現の無い型 (delegate、`object`、metadata の class、`--ref` の generic な型) への型 test は TCS1001 `TypeTestWithoutRuntimeType`。interface への `is` / `as` / 型 switch は class と record の値を判定する (tcs VM は実行時の型の表、C は型 id の switch)。interface の継承も辿る。次は TCS1001 `InterfaceTypeTest`: 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`。struct は `StructBoxing` で interface に入らない)、generic な interface、metadata と `--ref` の interface。`--ref` の generic でない class / interface への型 test と cast は、`tcs check` と `tcs c` では TCS1001 `RefTypeTest` / `RefCast` / `RefInterfaceTypeTest` で、`tcs vm` は止めずに型の表で判定する (C の module と混ぜるときは型の番号を合わせる、object-model §10.6。`--ref` の interface への型 test は `tcs vm` も変換で止まる)。object の入力の数 (int / float) への型 test (`o is int`、`o is int or float`、`int =>` の arm) と、object に入った数と bool の値を読む pattern (宣言パターン `o is int x` / `b is bool z`、数と bool の定数パターン、`and` で型の test に続く pattern) は TCS1001 `BoxedValuePattern(T)`。IL は object の int と float を見分けず、C backend はこれらを持たない。値は cast (`(int)o`) で取り出す。object の `is bool` と string の pattern、`T?` の入力の pattern は対象外 |
+| 型パターン `is MyClass` | 7 | **Y** | 値型 `T` / `T?` の入力 (struct、数、bool、enum) を同じ型 `T` で照合するのは値の有無だけ (`m is int y` は値があれば中の値を y に入れる)。object / interface / 型引数からの List / Dictionary / Queue / HashSet / 配列 / generic な型 / 型引数 `T` / enum / char / byte への型 test は TCS1001 `UnverifiableTypeTest`。実行時表現の無い型 (delegate、`object`、metadata の class、`--ref` の generic な型) への型 test は TCS1001 `TypeTestWithoutRuntimeType`。interface への `is` / `as` / 型 switch は class と record の値を判定する (tcs VM は実行時の型の表、C は型 id の switch)。interface の継承も辿る。次は TCS1001 `InterfaceTypeTest`: 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`。struct は `StructBoxing` で interface に入らない)、generic な interface、metadata と `--ref` の interface。`--ref` の generic でない class / interface への型 test と cast は、`tcs check` と `tcs c` では TCS1001 `RefTypeTest` / `RefCast` / `RefInterfaceTypeTest` で、`tcs vm` は止めずに型の表で判定する (C の module と混ぜるときは型の番号を合わせる、object-model §10.6。`--ref` の interface への型 test は `tcs vm` も変換で止まる)。object の入力の数 (int / float) への型 test (`o is int`、`o is int or float`、`int =>` の arm) と、object に入った数と bool の値を読む pattern (宣言パターン `o is int x` / `b is bool z`、数と bool の定数パターン、`and` で型の test に続く pattern) は TCS1001 `BoxedValuePattern(T)`。IL は object の int と float を見分けず、C backend はこれらを持たない。値は cast (`(int)o`) で取り出す。object の `is bool` と string の pattern、`T?` の入力の pattern は対象外 |
 | `not` パターン `is not null` | 9 | **Y** | |
 | 破棄パターン `_` | 7 | **Y** | `_ when 条件` は条件付きの arm |
 | 宣言パターン `is int i` | 7 | **Y** | if / ternary / 複合条件 / lambda / switch で束縛。struct は入力 (`S?` は中の値) の copy を束縛。入力が object で型が数か bool のもの (`o is int i`) は TCS1001 `BoxedValuePattern(T)` (型パターンの行) |
@@ -563,12 +563,12 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `String` | **P** | 後述の個別メンバー表参照 | |
 | `Math` | **Y** | 後述の個別メンバー表参照 | |
 | `MathF` | **-** | | float 版 Math。TCS1002 (System.Math の float overload を使う) |
-| `Console` | **Y** | `WriteLine` と 1 引数の `Write` (文字列化は WriteLine と同じ) | object の引数は中の値で文字列にする (`__tcs_nstr`。値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない)。null の string を `WriteLine` に直接渡すと、tcs VM と .NET は空行、C は `nil` を書く (§27) |
+| `Console` | **Y** | `WriteLine` と 1 引数の `Write` (文字列化は WriteLine と同じ) | object の引数は中の値で文字列にする (`__tcs_nstr`。値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない)。null の string は空文字列として書く (`WriteLine` なら空行) |
 | `int` / `float` の `Parse(string)` | **Y** | | 不正な文字列は fault (.NET は FormatException) |
 | `int` / `float` の `TryParse(string, out v)` | **Y** | IL は `Math.TryParseInt` / `Math.TryParseFloat` | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
 | `int` / `float` の `ToString(format)` | **Y** | `String.FormatInt` / `String.FormatFloat` | 定数の標準の書式だけ (補間の書式と同じ: float は `G` / `E` / `F` / `N` / `R`、int は加えて `D` / `X`、小文字と 9 桁までの精度も)。空の書式は書式なしと同じ。他の書式と定数でない書式は TCS1002 |
 | `int` / `float` の `CompareTo(同じ型)` | **Y** | IL は `Math.CompareTo(a, b)` | -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0 (Single.CompareTo と同じ)。それ以外の CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<T>` 経由と generic の `T`、差を返す `char`、`string`) は TCS1002 |
-| 数値と bool の他の static method (`float.IsNaN`、`float.IsInfinity`、`int.Max`、`float.Abs`、`bool.Parse` など) | **-** | | TCS1002。NaN は `x != x`、最大と絶対値は `Math.Max` / `Math.Abs` で書く。定数 (`int.MaxValue` など) は使える。`float.NaN`、`float.PositiveInfinity`、`float.NegativeInfinity` は `tcs check` を通るが、`tcs vm` は IL の literal を読めずに落ち、`tcs c` は `invalid f32 literal` で止まる (`0f / z` のように演算で作った値は動く。§27) |
+| 数値と bool の他の static method (`float.IsNaN`、`float.IsInfinity`、`int.Max`、`float.Abs`、`bool.Parse` など) | **-** | | TCS1002。NaN は `x != x`、最大と絶対値は `Math.Max` / `Math.Abs` で書く。定数 (`int.MaxValue`、`float.NaN`、`float.PositiveInfinity`、`float.NegativeInfinity` など) は使える |
 | `Convert` | **-** | | |
 | `Environment` | **P** | `GetEnvironmentVariable(s)` (無ければ null) | 他メンバーは未対応 |
 | `Array` | **-** | | List で代替。`Array.Sort` などの member (配列の `Length` 以外) は TCS1002 |
@@ -584,7 +584,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `Guid` | **-** | | |
 | `DateTime` | **-** | | |
 | `TimeSpan` | **-** | | |
-| `Random` | **Y** | 後述 | |
+| `Random` | **Y** | `TinySystem.Random` (§15) | `using System;` だけで見える `Random` は System.Random で TCS1002 |
 | `StringComparison` | **-** | | |
 | `Type` | **N/A** | | リフレクション。型を書くのは可、member は TCS1002 |
 | `Attribute` | **N/A** | | 自作の属性の基底に書くのは可、member は TCS1002 |
@@ -696,9 +696,12 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 
 ## 15. Random メンバー
 
+`Random` は `TinySystem.Random` として使う (`using TinySystem;` か `TinySystem.Random` と完全修飾)。
+`using System;` だけで見える `Random` は System.Random と見なし、TCS1002 (`use TinySystem.Random`) になる。
+
 | メンバー | 状態 | 備考 |
 |---------|:----:|------|
-| `new Random()` / `new Random(seed)` | **Y** | System.Random と同じ形。tcs VM と C は同じ xoshiro256** の列を作り、seed 固定時は bit 一致し、`Random.Seed(seed)` 後の `Shared` とも一致 (il-spec §13)。seed 未指定は時刻などから作る seed で予測できるので、敵対的な用途には向かない。instance は GC object |
+| `new Random()` / `new Random(seed)` | **Y** | `TinySystem.Random` (System.Random と同じ形)。tcs VM と C は同じ xoshiro256** の列を作り、seed 固定時は bit 一致し、`Random.Seed(seed)` 後の `Shared` とも一致 (il-spec §13)。seed 未指定は時刻などから作る seed で予測できるので、敵対的な用途には向かない。instance は GC object |
 | `Random.Shared` (static) | **Y** | |
 | `Random.Seed(seed)` | **Y** | `Shared` の列の固定 (tcs 独自。System.Random に無い) |
 | `r.Next()` / `r.Next(max)` / `r.Next(min, max)` | **Y** | .NET 標準 API (上限は exclusive。空の範囲 `Next(0)` / `Next(n, n)` は下限を返す) |
@@ -868,7 +871,7 @@ LINQ は `TinySystem.Linq.Enumerable` (`TinySystem/Linq.cs`) の `List<T>` の�
 tcs のサブセットの C# で書いてあり、tcs は user のコードと一緒に IL にして tcs VM / C で動かし、.NET の project は `TinySystem/TinySystem.props` で同じファイルをコンパイルするので、3 経路が同じ実装で動く。
 意味の正本はそのファイルと doc comment。`System.Linq` は namespace ごと TCS1002 (`using System.Linq;` と並べると、受け手が `List<T>` の TinySystem.Linq が選ばれ、TinySystem.Linq に無い overload は TCS1002)。
 すべて即時評価で、列を返す演算は新しい `List<T>` を返す。callback は各要素にちょうど 1 回、先頭から順に呼び、走査は呼び出した時点の Count まで。メソッドチェーンだけで、クエリ構文 (`from x in ...`) は対象外。
-毎フレームの一時の `List<T>` は作ってよい (C で要素あたり約 8 ns)。struct の要素は `readonly record struct` にする (lambda の parameter の copy が省ける。§2 の `struct` の行)。
+毎フレームの一時の `List<T>` は作ってよい (int の Where は要素あたり C で約 5 ns、tcs VM で約 30 ns。q.md Q18)。struct の要素を `readonly record struct` にすると IL は lambda の parameter の copy を省くが、測った範囲では tcs VM と C の時間は変わらない。
 
 ### 対応済み
 
@@ -1020,8 +1023,6 @@ C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収でき
 次は仕様の差ではなく、tcs VM か C が .NET と違う結果を出す不具合。
 
 - 網羅しない switch 式で一致する arm が無いと、tcs VM と C は fault せずに結果の型の既定値で続く (int なら 0)。.NET は SwitchExpressionException (§4)
-- `float.NaN`、`float.PositiveInfinity`、`float.NegativeInfinity` を書いた program は、`tcs vm` が IL の literal (`(0/0)`、`math.huge`) を読めずに落ち、`tcs c` が `invalid f32 literal` で止まる (§12)
-- null の string を `Console.WriteLine` に直接渡すと、C は `nil` を書く。tcs VM と .NET は空行 (§12)
 - `--ref` の型の user operator (`a + b`) は `tcs check` を通るが、`tcs vm` と `tcs c` は型の誤りで止まる
 - user の class を key にした Dictionary は、C backend だけが emit で止まる (§18)
 

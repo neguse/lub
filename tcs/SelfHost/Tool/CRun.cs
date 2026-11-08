@@ -38,6 +38,9 @@ public sealed class CRun
             {
                 if (!TcsHost.FileExists(p)) return Cli.CError("could not find file: " + p);
             }
+            // 入力を出力で上書きしない (何も書かずに止める)
+            string clash = Cli.InputClash(_o.Output, _o.Inputs, _o.References);
+            if (clash != "") return Cli.CError(clash);
             var session = new Session("");
             session.ExportOnly = true;
             session.Specialize = true;

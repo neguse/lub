@@ -558,7 +558,7 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
   CASE(UNBOX_I32) UNBOX(i)
   CASE(UNBOX_F32) UNBOX(f)
   CASE(UNBOX_B) UNBOX(i)
-  CASE(EQ_REC) RA.i = tvm_record_eq(vm, (const TvmObject *)RB.p, (const TvmObject *)RC.p); NEXT;
+  CASE(EQ_REC) RA.i = tvm_object_eq(vm, (const TvmObject *)RB.p, (const TvmObject *)RC.p); NEXT;
   CASE(CLONE) {
     const TvmObject *o = (const TvmObject *)RB.p;
     NONNULL(o);

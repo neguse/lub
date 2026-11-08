@@ -11,7 +11,7 @@
   エントリポイントの完了または fault (§12)、interop 境界 (§15) を通過する値
 - backend は観測等価を保つ任意の変形を行ってよい。ただし §6 の f32 制約は
   観測等価の定義に含まれる（禁止事項は変形で導入できない）
-- v0 の正規形は in-memory モデル（`SelfHost/Compiler/Il.cs` の object）。テキスト表記は診断用で非規範 (`tcs vm --dump-il`)。シリアライズ形式は M2 (T217) で決定
+- v0 の正規形は in-memory モデル（`SelfHost/Compiler/Il.cs` の object）。テキスト表記は診断用で非規範 (`tcs vm --dump-il`)。シリアライズ形式は決めていない (付録 C)
 
 ## 2. プログラム構造
 
@@ -29,7 +29,7 @@ module / class / record class / enum / interface / method / field。
 ## 3. 型
 
 `i32` / `f32` / `bool` / `string` / `ref C`（class / record class）/
-`V`（struct / record struct、M5 で有効化）/ `T?`（Nullable、T は i32 /
+`V`（struct / record struct）/ `T?`（Nullable、T は i32 /
 f32 / bool / enum / V）/ `T[]` / `List<T>` / `Queue<T>` / `HashSet<T>` / `Dictionary<K,V>` /
 関数型（closure）/ enum (= i32) / char (= i32 の code unit。文字列化は
 `string.char(c)` で 1 byte。literal は ASCII のみ、T251)。
@@ -38,7 +38,7 @@ f32 / bool / enum / V）/ `T[]` / `List<T>` / `Queue<T>` / `HashSet<T>` / `Dicti
 - null は ref・string・List・Queue・HashSet・Dict・関数型の値。i32 / f32 / bool / V は
   非 null
 - `T?` は「値なし」を持つ独立した型（T244）で、IL は明示ノードで操作する: `IlNullableWrap` (T → T?)、`IlNullableHasValue`、`IlNullableValue` (値なしは fault §12)、`IlNullableGetOrDefault` (`??` / GetValueOrDefault。既定値は値なしのときだけ評価)、`IlLiftedBin` / `IlLiftedUn` (lifted 演算子: 片方でも値なしなら値なし、比較は false、Eq / Ne は両方値なしで等しい、`bool?` の `&` `|` は三値論理)。`x?.M` は receiver を local に 1 回評価する IIFE で、`T?` receiver は `IlNullableHasValue` で分岐し `IlNullableValue` (copy) に対して member を参照する。結果が非 nullable 値型なら `IlNullableWrap` で `T?` に揃える (値なし側は IIFE の fall-through = 値なし)。`??=` も `T?` では `not IlNullableHasValue` で判定する (T247)。式位置の `a ??= b` の値は代入後の a で、a が `T?` なら式の型 `T` に合わせて `IlNullableValue` で中の値を取り出す (代入後は必ず値がある)。意味論の規範は C# §12.4.8 で、dotnet differential がそれを検証する。文字列化 (`__tcs_nstr`) は値なしを空文字列にする (C# の `string.Concat(null)` / 補間と同じ)。backend 表現は tcs VM が register では `bool has` と T の葉、heap では `{ bool has; T v; }`、C が `{ bool has; T v; }`。配列の要素と Dictionary の値に値なし (null) を入れる形は TCS1003 で止める (§11)。List の要素は値なしを持てる
-- double / long はサブセット外（M4 で診断化。il-design §4）
+- double / long はサブセット外（TCS1001。il-design §4）
 
 ## 4. 評価モデル
 
@@ -255,7 +255,7 @@ tcs VM の hot reload は layout hash、field 列 (名前で対応させる)、i
 - 境界面 = class の public メンバー（method・field・lowering 済み accessor）
 - 外部コードとの相互作用は境界面の呼び出し・読み書きのみが規約内。
   インスタンス表現への直接操作は規約外（backend は表現を自由に選べる）
-- release 実行では境界面のうち到達可能な export のみが保証対象（M3 で精密化）
+- release 実行では境界面のうち到達可能な export のみが保証対象
 
 ## 付録 A: tcs VM の義務（dev-lowering）
 
@@ -282,5 +282,5 @@ tcs VM の hot reload は layout hash、field 列 (名前で対応させる)、i
 
 - relaxed-fp (§6) の粒度を module 単位まで細分するか（mixed-mode ABI と
   絡むため v0 は出荷ビルド単位のみ）
-- シリアライズ形式（M2 / T217）
+- シリアライズ形式
 - mixed-mode の module 境界 ABI（il-design §5）

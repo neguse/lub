@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace TcsSelf;
 
 // .NET の ArraySortHelper<TKey, TValue> と同じ introsort (key と並びを一緒に並べる) と二分探索。
-// enum の名前の表を参照実装 (.NET の EnumInfo) と同じ並びにするのに使う。key は符号なしで比べる
+// enum の名前の表を .NET の EnumInfo と同じ並びにするのに使う。key は符号なしで比べる
 public static class EnumSort
 {
     public static void IntrospectiveSort(List<int> keys, List<int> values)

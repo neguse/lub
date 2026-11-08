@@ -39,7 +39,7 @@ public static class IlTypes
         return false;
     }
 
-    // 整数の元 (char を含む)。参照実装の IsIntegralSource
+    // 整数の元 (char を含む)
     public static bool IsIntegralSource(TypeSym? t)
     {
         if (t == null) return false;
@@ -107,7 +107,7 @@ public static class IlTypes
         return t != null && t.Kind == TypeKind.Tuple;
     }
 
-    // 値型か (参照実装の ITypeSymbol.IsValueType)。型引数は値型ではない
+    // 値型か (Roslyn の ITypeSymbol.IsValueType と同じ)。型引数は値型ではない
     public static bool IsValueType(TypeSym t)
     {
         return t.IsValueType;

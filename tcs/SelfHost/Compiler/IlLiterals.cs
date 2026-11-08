@@ -146,16 +146,40 @@ public static class IlLiterals
         return d.Slice(c / 16, 1).ToString() + d.Slice(c % 16, 1).ToString();
     }
 
-    // C# の float の定数を double にして、.NET の double.ToString("R") (往復できる最短の表記) で書く。
-    // 小数点も指数も無ければ ".0" を付ける。NaN と無限は `(0/0)`、`math.huge`、`(-math.huge)` と書く (VM と C の backend はこの表記を読めない)
-    public static string FormatDoubleOfFloat(float x)
+    // f32 の NaN と ±∞ の literal のテキスト。10 進では書けないので、.NET の float.ToString() と同じ語で書く
+    public const string NaNText = "NaN";
+    public const string PositiveInfinityText = "Infinity";
+    public const string NegativeInfinityText = "-Infinity";
+
+    // x が NaN か ±∞ ならその literal のテキスト、有限なら null
+    public static string? NonFiniteText(float x)
     {
         // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)
 #pragma warning disable CS1718
-        if (x != x) return "(0/0)";
+        if (x != x) return NaNText;
 #pragma warning restore CS1718
-        if (x > 3.4028235e38f) return "math.huge";
-        if (x < -3.4028235e38f) return "(-math.huge)";
+        if (x > 3.4028235e38f) return PositiveInfinityText;
+        if (x < -3.4028235e38f) return NegativeInfinityText;
+        return null;
+    }
+
+    // NaN と ±∞ の literal のテキストなら、その binary32 の bit の並び (int に入れた 32 bit) を返す
+    public static bool TryNonFiniteBits(string text, out int bits)
+    {
+        bits = 0;
+        if (text == NaNText) bits = 0x7fc00000;
+        else if (text == PositiveInfinityText) bits = 0x7f800000;
+        else if (text == NegativeInfinityText) bits = int.MinValue | 0x7f800000;
+        else return false;
+        return true;
+    }
+
+    // C# の float の定数を double にして、.NET の double.ToString("R") (往復できる最短の表記) で書く。
+    // 小数点も指数も無ければ ".0" を付ける。NaN と無限は NonFiniteText の語で書く
+    public static string FormatDoubleOfFloat(float x)
+    {
+        var nonFinite = NonFiniteText(x);
+        if (nonFinite != null) return nonFinite;
         var text = RoundTripDoubleText(x);
         if (text.Contains(".") || text.Contains("E") || text.Contains("e")) return text;
         return text + ".0";

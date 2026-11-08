@@ -1062,7 +1062,7 @@
     "category": "InRun"
   },
   "expressions.md:NameofExpressions": {
-    "category": "Bug"
+    "category": "InRun"
   },
   "expressions.md:NullCoalescingGenerics": {
     "category": "Diag"

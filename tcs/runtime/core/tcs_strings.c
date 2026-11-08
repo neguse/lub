@@ -450,11 +450,11 @@ tcs_parse_f32_or_fault(TcsString *s)
     return value;
 }
 
-/* int.TryParse / float.TryParse: (found, value or fallback) */
+/* int.TryParse / float.TryParse: (found, value or fallback)。null の string は失敗 (Parse は null の fault) */
 static bool
 tcs_try_parse_i32(TcsString *s, int32_t *out, int32_t fallback)
 {
-    if (tcs_parse_i32(s, out)) return true;
+    if (s != NULL && tcs_parse_i32(s, out)) return true;
     *out = fallback;
     return false;
 }
@@ -462,7 +462,7 @@ tcs_try_parse_i32(TcsString *s, int32_t *out, int32_t fallback)
 static bool
 tcs_try_parse_f32(TcsString *s, float *out, float fallback)
 {
-    if (tcs_parse_f32(s, out)) return true;
+    if (s != NULL && tcs_parse_f32(s, out)) return true;
     *out = fallback;
     return false;
 }

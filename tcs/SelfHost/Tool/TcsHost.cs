@@ -7,6 +7,8 @@ public static class TcsHost
     public static int ArgCount() { return 0; }
     public static string Arg(int index) { return ""; }
     public static bool FileExists(string path) { return false; }
+    // 2 つの path が同じ既存のファイルを指すか (link と、大文字小文字を区別しない file system の綴りの違いも)
+    public static bool SameFile(string a, string b) { return false; }
     // ファイルの内容 (UTF-8)。読めなければ ""
     public static string ReadFile(string path) { return ""; }
     // 一時ファイルに書いてから置き換える。失敗したら理由を返す (成功は "")

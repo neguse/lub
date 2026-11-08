@@ -1475,7 +1475,7 @@ public sealed class Binder
         }
         int num = NumericImplicit(from, to);
         if (num >= 0) return num;
-        // 参照実装の緩和 (CompilationDiagnosticPolicy): enum と整数 (char を除く) の暗黙の変換
+        // tcs の緩和: enum と整数 (char を除く) の暗黙の変換
         if (from.Kind == TypeKind.Enum && to.IsIntegral && to.Kind != TypeKind.Char) return ConvKind.Identity;
         if (to.Kind == TypeKind.Enum && from.IsIntegral && from.Kind != TypeKind.Char) return ConvKind.Identity;
         if (to.Kind == TypeKind.Nullable)
@@ -2190,7 +2190,7 @@ public sealed class Binder
         {
             e.Info = RefKind.EnumMember;
             e.Type = first.Type;
-            // host (--ref) の enum の値は host が持つ (数でないこともある)。定数に畳まず、名前で参照する (参照実装と同じ)
+            // host (--ref) の enum の値は host が持つ (数でないこともある)。定数に畳まず、名前で参照する
             if (!owner.IsRef)
             {
                 e.HasConst = true;
@@ -4734,7 +4734,7 @@ public sealed class Binder
             return;
         }
         if (lt.Kind == TypeKind.Enum && e.B!.HasConst && e.B.Const!.Kind == ConstKind.Int && e.B.Const.I == 0) return;
-        // 参照実装の緩和: enum と整数の == / !=
+        // tcs の緩和: enum と整数の == / !=
         if (lt.Kind == TypeKind.Enum && rt.IsIntegral && rt.Kind != TypeKind.Char || rt.Kind == TypeKind.Enum && lt.IsIntegral && lt.Kind != TypeKind.Char) return;
         // 参照の比較
         if (lt.IsReferenceLike && rt.IsReferenceLike)

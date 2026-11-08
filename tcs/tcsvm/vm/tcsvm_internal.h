@@ -414,6 +414,8 @@ bool tvm_list_insert0(TvmVm *vm, TvmList *list, int32_t at);
 void tvm_list_remove_at(TvmList *list, int32_t at);
 bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const void *b);
 bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b);
+/* 参照の値の等価 (EqualityComparer<object>.Default): 実行時の型で string と box は中の値、record は field ごと、他は同一性 */
+bool tvm_object_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b);
 bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t);
 /* class の object に型を付ける (header の型記述子と、header と payload の type_id。tcs2c の型の test が読む) */
 static inline void tvm_class_init(const TvmVm *vm, TvmObject *o, const TvmType *t) {

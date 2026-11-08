@@ -98,6 +98,43 @@ public class CliRuntimeTests
         Assert.False(File.Exists(temp.PathFor("out.tcsb")));
     }
 
+    // -o が入力と同じファイルを指すなら、何も書かずに exit 1 (#459)
+    [Fact]
+    public void Cli_OutputSameAsInput_RefusesAndKeepsInput()
+    {
+        using var temp = TempDir.Create();
+        var input = temp.Write("input.cs", ValidSource);
+        var stub = temp.Write("stub.cs", "public static class H { public static int F() { return 0; } }");
+        var other = temp.PathFor("..") + Path.DirectorySeparatorChar + Path.GetFileName(Path.GetDirectoryName(input)) + Path.DirectorySeparatorChar + "input.cs";
+
+        var c = RunCli("c", input, "-o", input);
+        Assert.Equal(1, c.ExitCode);
+        Assert.Contains("is the input file", c.Stderr);
+        var cDotted = RunCli("c", input, "-o", other);
+        Assert.Equal(1, cDotted.ExitCode);
+        var cRef = RunCli("c", input, "--ref", stub, "-o", stub);
+        Assert.Equal(1, cRef.ExitCode);
+        var vm = RunCli("vm", "--entry", "T", input, "-o", input);
+        Assert.Equal(1, vm.ExitCode);
+        Assert.Contains("is the input file", vm.Stderr);
+        var vmRef = RunCli("vm", "--entry", "T", input, "--ref", stub, "-o", stub);
+        Assert.Equal(1, vmRef.ExitCode);
+
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+        {
+            var link = temp.PathFor("link.cs");
+            File.CreateSymbolicLink(link, input);
+            var cLink = RunCli("c", link, "-o", input);
+            Assert.Equal(1, cLink.ExitCode);
+            var vmLink = RunCli("vm", "--entry", "T", input, "-o", link);
+            Assert.Equal(1, vmLink.ExitCode);
+        }
+
+        Assert.Equal(ValidSource, File.ReadAllText(input));
+        Assert.Equal("public static class H { public static int F() { return 0; } }", File.ReadAllText(stub));
+        Assert.Equal(0, RunCli("c", input, "-o", temp.PathFor("out.c")).ExitCode);
+    }
+
     [Fact]
     public void Cli_Check_ValidCode_ReturnsSuccess()
     {

@@ -279,24 +279,26 @@ bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const v
         return false;
     return true;
   }
-  default: {
-    const TvmObject *x = *(const TvmObject *const *)a, *y = *(const TvmObject *const *)b;
-    if (x == y)
-      return true;
-    if (!x || !y)
-      return false;
-    const TvmType *tx = tvm_type_of(vm, x);
-    if (!tx || tx != tvm_type_of(vm, y))
-      return false;
-    if (tx->tkind == TVM_T_STRING)
-      return tvm_str_eq((const TvmString *)x, (const TvmString *)y);
-    if (tx->tkind == TVM_T_BOX)
-      return tvm_value_eq(vm, tx->elem_kind, TVM_NO_TYPE, &((const TvmBox *)x)->value, &((const TvmBox *)y)->value);
-    if (tx->tkind == TVM_T_CLASS && (tx->flags & TVM_CLASS_RECORD))
-      return tvm_record_eq(vm, x, y);
+  default:
+    return tvm_object_eq(vm, *(const TvmObject *const *)a, *(const TvmObject *const *)b);
+  }
+}
+
+bool tvm_object_eq(TvmVm *vm, const TvmObject *x, const TvmObject *y) {
+  if (x == y)
+    return true;
+  if (!x || !y)
     return false;
-  }
-  }
+  const TvmType *tx = tvm_type_of(vm, x);
+  if (!tx || tx != tvm_type_of(vm, y))
+    return false;
+  if (tx->tkind == TVM_T_STRING)
+    return tvm_str_eq((const TvmString *)x, (const TvmString *)y);
+  if (tx->tkind == TVM_T_BOX)
+    return tvm_value_eq(vm, tx->elem_kind, TVM_NO_TYPE, &((const TvmBox *)x)->value, &((const TvmBox *)y)->value);
+  if (tx->tkind == TVM_T_CLASS && (tx->flags & TVM_CLASS_RECORD))
+    return tvm_record_eq(vm, x, y);
+  return false;
 }
 
 bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b) {

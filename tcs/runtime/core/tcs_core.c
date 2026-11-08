@@ -336,8 +336,9 @@ tcs_string_bool(bool value)
 static TcsString *
 tcs_string_tostring(TcsString *value)
 {
-    static const unsigned char nil_text[] = "nil";
-    return value == NULL ? tcs_string_new(nil_text, 3) : value;
+    /* null の string は空文字列 (.NET の補間と Console と同じ) */
+    static const unsigned char empty_text[] = "";
+    return value == NULL ? tcs_string_new(empty_text, 0) : value;
 }
 
 static void
@@ -370,11 +371,8 @@ tcs_print_bool(bool value)
 static void
 tcs_print_string(TcsString *value)
 {
-    if (value == NULL) {
-        fputs("nil\n", stdout);
-        return;
-    }
-    if (value->length != 0) fwrite(value->data, 1, value->length, stdout);
+    /* null の string は空行 */
+    if (value != NULL && value->length != 0) fwrite(value->data, 1, value->length, stdout);
     fputc('\n', stdout);
 }
 

@@ -23,6 +23,10 @@ public static class Game
             + " " + sq.Length + " " + sq[3]);
         var ring = Gfx.Ring(2);
         Console.WriteLine(ring.Kind + " " + ring.R + " " + ring.Area());
+        // host が作った --ref の class の object への型 test と cast (tcs vm は型の表で判定する。tcs check と tcs c は TCS1001)
+        object any = ring;
+        object handle = tex;
+        Console.WriteLine((any is Circle) + " " + (any is Tex) + " " + (handle is Tex) + " " + ((Circle)any).Kind);
         // (T)T?
         float? quad = ring.R * 4;
         Console.WriteLine((int)(float)quad);

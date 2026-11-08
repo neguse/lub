@@ -83,23 +83,45 @@ TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind, int3
     break;
   }
   case 's': {
-    char *copy;
+    /* snprintf の %s は NUL で止まるので、NUL を含む string も slen の byte のまま自分で幅を埋める */
+    size_t k = 1, width = 0, precision = slen, len, pad;
+    int left = 0;
     if (kind != TCS_PRINTF_STR) {
       *error = "string expected";
       return -1;
     }
-    copy = (char *)malloc(slen + 1);
-    if (!copy) {
-      *error = "out of memory";
+    while (k < n && (spec[k] == '-' || spec[k] == '+' || spec[k] == ' ' || spec[k] == '#' || spec[k] == '0')) {
+      if (spec[k] == '-')
+        left = 1;
+      k++;
+    }
+    while (k < n && spec[k] >= '0' && spec[k] <= '9')
+      width = width * 10 + (size_t)(spec[k++] - '0');
+    if (k < n && spec[k] == '.') {
+      k++;
+      precision = 0;
+      while (k < n && spec[k] >= '0' && spec[k] <= '9')
+        precision = precision * 10 + (size_t)(spec[k++] - '0');
+    }
+    if (k != n) {
+      *error = "invalid format string";
       return -1;
     }
-    memcpy(copy, s, slen);
-    copy[slen] = '\0';
-    fmt[n] = 's';
-    fmt[n + 1] = '\0';
-    written = snprintf(out, TCS_PRINTF_MAX(slen), fmt, copy);
-    free(copy);
-    break;
+    len = slen < precision ? slen : precision;
+    pad = width > len ? width - len : 0;
+    /* out は TCS_PRINTF_MAX(slen) byte */
+    if (pad > TCS_PRINTF_MAX(0))
+      pad = TCS_PRINTF_MAX(0);
+    if (left) {
+      if (len != 0)
+        memcpy(out, s, len);
+      memset(out + len, ' ', pad);
+    } else {
+      memset(out, ' ', pad);
+      if (len != 0)
+        memcpy(out + pad, s, len);
+    }
+    return (long)(len + pad);
   }
   default:
     *error = "invalid conversion to 'format'";

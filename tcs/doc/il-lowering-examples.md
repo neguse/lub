@@ -57,7 +57,7 @@ static float Program_Area(TcsObj *shape) {
 
 - **パターンは IL に無い**。type test（`is`）・cast・比較・if 連鎖へ lower する
 - **式位置の制御フロー（switch 式、`?.`、`??`、`?:`）は IL に無い**。temp + 文へ statement 化する。前に文を置けない位置では式の位置の逐次実行 (IlIife) か条件式 (IlTernary) が残る。tcs VM は IlIife を結果の register を持つ block に、C は GNU statement expression に展開する (closure は作らない)
-- **IL 演算ノードは型解決済みで単型**（i32 加算 / f32 加算 / 文字列連結は別ノード）。overload 解決・暗黙変換の挿入は compiler の束縛の層で完了している
+- **IL 演算ノードは型解決済みで単型**。数の演算は operand の型で決まり (i32 と f32 の加算は同じ `AddNum` で、backend が operand の型で i32 か f32 の演算を選ぶ)、文字列連結は別ノード (`Concat`)。overload 解決・暗黙変換の挿入は compiler の束縛の層で完了している
 - 対象式は 1 回評価、arm は宣言順に判定（C# の順序保存）
 - discard arm の無い非網羅 switch 式は、else 節を `switch-no-match` fault へ
   lower する（C# の SwitchExpressionException 相当。temp 未代入の穴を残さない

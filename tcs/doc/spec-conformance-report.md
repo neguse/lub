@@ -13,7 +13,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | delegates.md | 0 | 0 | 7 | 0 | 0 | 0 | 7 |
 | documentation-comments.md | 0 | 16 | 10 | 2 | 2 | 0 | 30 |
 | enums.md | 1 | 2 | 1 | 2 | 0 | 0 | 6 |
-| expressions.md | 7 | 10 | 53 | 19 | 2 | 2 | 93 |
+| expressions.md | 8 | 10 | 53 | 19 | 2 | 1 | 93 |
 | interfaces.md | 0 | 7 | 29 | 7 | 0 | 0 | 43 |
 | lexical-structure.md | 6 | 14 | 1 | 1 | 1 | 0 | 23 |
 | namespaces.md | 0 | 12 | 6 | 10 | 7 | 0 | 35 |
@@ -23,7 +23,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | types.md | 1 | 2 | 17 | 2 | 4 | 0 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 33 | 102 | 337 | 119 | 49 | 2 | 642 |
+| **Total** | 34 | 102 | 337 | 119 | 49 | 1 | 642 |
 
 ## Unextracted reasons
 
@@ -38,7 +38,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 
 ## Execution (C1: expectedOutput / ignoreOutput)
 
-Executed 35 InRun examples with an output contract; passed 33 (0 via known-differences allowlist). Failures are reclassified as Bug below.
+Executed 35 InRun examples with an output contract; passed 34 (0 via known-differences allowlist). Failures are reclassified as Bug below.
 
 ## Unexpected extraction details
 
@@ -78,4 +78,3 @@ Executed 35 InRun examples with an output contract; passed 33 (0 via known-diffe
 ## Bugs
 
 - `expressions.md:ExtensionMethodInvocations2`: VM execution failed: tcsvm exited with 1:<br>tcsvm: N2_Test.Main takes 1 argument slots and returns 0 (given 0 and room for 0)<br><br>stdout:<br>
-- `expressions.md:NameofExpressions`: VM execution failed: TinyC# diagnostics:<br>internal: specialized: (31,29): error CS1061: 'Program' does not contain a definition for 'GenericMethod'

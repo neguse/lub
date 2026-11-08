@@ -295,7 +295,7 @@ reload の計画、walker、class の payload の形) はこのための土台�
 - interface: VM の class の型の表は、実装する `--ref` の interface も持つ (表では object の種類の型で、名前で引く)。
   C の module の interface の判定 (`tcs_is_*`) は、VM の object なら `tvm_implements` で VM の型の表を引く。VM の
   型の test は、C の object なら glue が `tvm_host_iface` で登録した C の判定を呼ぶ
-- `--ref` の generic でない class / interface への型 test と cast (TCS1001 の `RefTypeTest`、`RefCast`、`RefInterfaceTypeTest`) は `tcs check` と `tcs c` では止めるが、`tcs vm` は型の表で判定するので止めない
+- `--ref` の generic でない class / interface への型 test と cast (TCS1001 の `RefTypeTest`、`RefCast`、`RefInterfaceTypeTest`) は `tcs check` と `tcs c` では止めるが、`tcs vm` は型の表で判定するので止めない (`tcsvm/tests/host` が、host が作った object への `is` と cast を host の上で確かめる。`as` は `tcs vm` も変換で止まる)
 - List / Dictionary / closure は両側で形が違い、境界では渡せない (§10.5)
 - List を渡す案 (未着手): VM の List を shared heap では tcs2c の List そのもの (kind LIST、`TcsList` の形、header に
   要素の参照の layout) として作り、VM の List の型は header の type_id から引く (VM の型なら `TVM_TYPE_ID_VM` + 番号で

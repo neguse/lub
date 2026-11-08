@@ -261,7 +261,7 @@ public sealed class Session
                 }
             }
         }
-        // library は user が namespace を using するときだけ読み、user が同じ namespace を宣言するなら読まない (参照実装と同じ)
+        // library は user が namespace を using するときだけ読み、user が同じ namespace を宣言するなら読まない
         foreach (var f in _files)
         {
             if (f.Role != 2) continue;
