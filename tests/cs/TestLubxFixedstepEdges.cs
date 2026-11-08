@@ -28,6 +28,12 @@ public static class TestLubxFixedstepEdges
         Check.That(!step.KeyPressed("space"), "tick " + ticks + ": key_pressed(space) must stay false");
         Check.That(!step.MousePressed(1), "tick " + ticks + ": mouse_pressed(1) must stay false");
         Check.That(!step.KeyReleased("r"), "tick " + ticks + ": key_released(r) must stay false");
+        // 最初の走査の外の名前 (ファンクションキー、別名、SDL の名前、大文字) も聞ける
+        foreach (var key in new string[] { "f1", "f12", "return", "esc", "left shift", "keypad 1", "R" })
+        {
+            Check.That(!step.KeyPressed(key), "tick " + ticks + ": key_pressed(" + key + ") must stay false");
+            Check.That(!step.KeyReleased(key), "tick " + ticks + ": key_released(" + key + ") must stay false");
+        }
     }
 
     public static void OnFrame(float dt)

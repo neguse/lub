@@ -1,5 +1,5 @@
 // 実装ライブラリ lubx の FixedStep。
-// pending 集合は SCAN_KEYS と平行な bool の List で持つ。
+// pending 集合は keys と平行な bool の List で持つ。
 
 using System;
 using System.Collections.Generic;
@@ -24,8 +24,8 @@ public class FixedStep
     private float accumulator = 0;
     private bool stopped = false;
 
-    // lub.Input が公開する全キー名 (Key 定数 + a..z + 0..9)。
-    // キー名を足したらここにも足す。
+    // 最初から毎フレーム走査する key の名前。
+    // ここに無い名前 (f1..f12、別名、SDL の scancode の名前) は、KeyPressed / KeyReleased で初めて聞かれたときに keys に足す。
     // TODO: runtime が timestamp 付き入力 event を公開したら、この走査を
     // event 消費に置き換える (公開 API は変えない)。
     private static string[] scanKeys = new string[]
@@ -37,9 +37,13 @@ public class FixedStep
         "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
     };
 
+    // 走査する key の名前。
+    // scanKeys で始め、聞かれた名前を足していく。
+    private List<string> keys = new List<string>();
+
     // tick 粒度 edge の保留分。
     // 次の tick が消費するまでフレームを跨いで持ち越す。
-    // 要素数は constructor で scanKeys と同じ数 (mouse は index 0 を使わない 4) に揃えて埋める。
+    // 要素数は keys と同じ数 (mouse は index 0 を使わない 4) に揃える。
     private List<bool> pendingKeyPressed = new List<bool>();
     private List<bool> pendingKeyReleased = new List<bool>();
     private List<bool> pendingMousePressed = new List<bool>();
@@ -54,6 +58,7 @@ public class FixedStep
         this.maxCatchUp = maxCatchUp ?? 8;
         for (int i = 0; i < scanKeys.Length; i++)
         {
+            keys.Add(scanKeys[i]);
             pendingKeyPressed.Add(false);
             pendingKeyReleased.Add(false);
         }
@@ -100,20 +105,21 @@ public class FixedStep
 
     /// <summary>前回の tick 以降にキーが押されたか。
     /// tick callback 内で読む。
+    /// key の名前は Input.KeyPressed と同じものを受ける (大文字と小文字は区別しない)。
+    /// space、enter、escape、tab、backspace、矢印、a..z、0..9 以外の名前は、初めて聞かれたフレームから edge を持ち越す。
     /// </summary>
     public bool KeyPressed(string key)
     {
-        int i = KeyIndex(key);
-        return i >= 0 && pendingKeyPressed[i];
+        return pendingKeyPressed[KeyIndex(key)];
     }
 
     /// <summary>前回の tick 以降にキーが離されたか。
     /// tick callback 内で読む。
+    /// key の名前は KeyPressed と同じ。
     /// </summary>
     public bool KeyReleased(string key)
     {
-        int i = KeyIndex(key);
-        return i >= 0 && pendingKeyReleased[i];
+        return pendingKeyReleased[KeyIndex(key)];
     }
 
     /// <summary>前回の tick 以降にボタンが押されたか (1=左 2=中 3=右、省略 = 左)。
@@ -140,29 +146,35 @@ public class FixedStep
         return Math.Min(accumulator / TickDt, 1.0f);
     }
 
-    private static int KeyIndex(string key)
+    // key の名前の keys の中の位置。
+    // 無ければ足し、このフレームに runtime がラッチした edge をそのまま保留分にする (次のフレームからは LatchEdges が拾う)。
+    // 書き方の違う同じ key ("R" と "r"、"esc" と "escape") は別の行になるが、どちらも Input が同じ key として引く
+    private int KeyIndex(string key)
     {
-        for (int i = 0; i < scanKeys.Length; i++)
+        for (int i = 0; i < keys.Count; i++)
         {
-            if (scanKeys[i] == key)
+            if (keys[i] == key)
             {
                 return i;
             }
         }
-        return -1;
+        keys.Add(key);
+        pendingKeyPressed.Add(Input.KeyPressed(key));
+        pendingKeyReleased.Add(Input.KeyReleased(key));
+        return keys.Count - 1;
     }
 
     // edge は runtime がフレームラッチしたものを毎フレーム吸い上げる。
     // tick 0 回のフレームでも失わないための持ち越しがここ。
     private void LatchEdges()
     {
-        for (int i = 0; i < scanKeys.Length; i++)
+        for (int i = 0; i < keys.Count; i++)
         {
-            if (Input.KeyPressed(scanKeys[i]))
+            if (Input.KeyPressed(keys[i]))
             {
                 pendingKeyPressed[i] = true;
             }
-            if (Input.KeyReleased(scanKeys[i]))
+            if (Input.KeyReleased(keys[i]))
             {
                 pendingKeyReleased[i] = true;
             }
