@@ -212,9 +212,7 @@ Clang AST → TypeRegistry → ModuleSpec（既存IR）
 ## 参考リポジトリ（読み取り専用）
 
 - `../lub` — tcs を使うゲームエンジン。ゲームは C# で書き、tcs を git submodule として取り込み、既定では tcs VM の player (C# → `.tcsb`) で動かす。readonly で、lub 側に変更が必要な場合は feature request を出す
-- `../luo` — 旧 AOT 方向のアーカイブ。IL→C backend (tcs2c) と性能ハーネス (perf) は 2026-07-18 に tcs へ取り込み済みで、以後 luo 側は変更しない
 - `../lub3d` — 参考実装。直接対応先とは限らない
-- `../lubs` — Lua linter（開発ワークフローの参考）
 
 ### lub3d から学ぶこと
 
@@ -222,14 +220,6 @@ Clang AST → TypeRegistry → ModuleSpec（既存IR）
 - LuaCatsGen の実装パターン（TinyCSharpGen のテンプレート）
 - xUnit テストの書き方
 - deps/ の submodule 管理
-
-### lubs から学ぶこと
-
-- doc/ ディレクトリによるタスク管理
-- done.md の完了ログ形式
-- run-tests.sh のテスト実行パターン
-- .githooks/pre-commit の品質ゲート
-- コードメトリクス管理（ファイルサイズ、複雑度）
 
 ## 既知の制約・注意事項
 
