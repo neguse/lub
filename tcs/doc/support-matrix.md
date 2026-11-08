@@ -367,11 +367,11 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 
 | パターン | C# ver | 状態 | Lua マッピング | 備考 |
 |---------|--------|:----:|--------------|------|
-| 定数パターン `is 42`, `is null` | 7 | **Y** | `== 42`, `== nil` | |
-| 型パターン `is MyClass` | 7 | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定 | struct `S` / `S?` の入力を同じ struct 型で照合するのは値の有無だけ。object / interface / 型引数からの、Lua が見分けられない型 (List / Dictionary / Queue / HashSet / 配列 / generic な型 / 型引数 `T` / enum / char / byte) への型 test は TCS1001 `UnverifiableTypeTest`。実行時表現の無い型 (delegate、`object`、metadata の class、`--ref` の generic な型) への型 test は TCS1001 `TypeTestWithoutRuntimeType`。interface への `is` / `as` / 型 switch は class と record の値を判定する (`__tcs_implements(x, "I")`、C は型 id の switch)。interface の継承も辿る。次は TCS1001 `InterfaceTypeTest`: 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`。struct は `StructBoxing` で interface に入らない)、generic な interface、metadata と `--ref` の interface。`--ref` の generic でない class / interface への型 test と cast は Lua では TCS1001 `RefTypeTest` / `RefCast` / `RefInterfaceTypeTest` で、tcs VM は型の表で判定する (C の module と混ぜるときは型の番号を合わせる、object-model §10.6) |
+| 定数パターン `is 42`, `is null` | 7 | **Y** | `== 42`, `== nil` | 入力が object で定数が数か bool のもの (`o is 5`、`o is true`) は TCS1001 `BoxedValuePattern(T)` (型パターンの行) |
+| 型パターン `is MyClass` | 7 | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定 | struct `S` / `S?` の入力を同じ struct 型で照合するのは値の有無だけ。object / interface / 型引数からの、Lua が見分けられない型 (List / Dictionary / Queue / HashSet / 配列 / generic な型 / 型引数 `T` / enum / char / byte) への型 test は TCS1001 `UnverifiableTypeTest`。実行時表現の無い型 (delegate、`object`、metadata の class、`--ref` の generic な型) への型 test は TCS1001 `TypeTestWithoutRuntimeType`。interface への `is` / `as` / 型 switch は class と record の値を判定する (`__tcs_implements(x, "I")`、C は型 id の switch)。interface の継承も辿る。次は TCS1001 `InterfaceTypeTest`: 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`。struct は `StructBoxing` で interface に入らない)、generic な interface、metadata と `--ref` の interface。`--ref` の generic でない class / interface への型 test と cast は Lua では TCS1001 `RefTypeTest` / `RefCast` / `RefInterfaceTypeTest` で、tcs VM は型の表で判定する (C の module と混ぜるときは型の番号を合わせる、object-model §10.6)。object の入力の数 (int / float) への型 test (`o is int`、`o is int or float`、`int =>` の arm) と、object に入った数と bool の値を読む pattern (宣言パターン `o is int x` / `b is bool z`、数と bool の定数パターン、`and` で型の test に続く pattern) は TCS1001 `BoxedValuePattern(T)`。IL は object の int と float を見分けず、C backend はこれらを持たない。値は cast (`(int)o`) で取り出す。object の `is bool` と string の pattern、`T?` の入力の pattern は対象外 |
 | `not` パターン `is not null` | 9 | **Y** | `~= nil` | |
 | 破棄パターン `_` | 7 | **Y** | switch 式の default | `_ when 条件` は条件付きの arm |
-| 宣言パターン `is int i` | 7 | **Y** | 型判定 + local 束縛 | if / ternary / 複合条件 / lambda / switch で束縛。struct は入力 (`S?` は中の値) の copy を束縛 |
+| 宣言パターン `is int i` | 7 | **Y** | 型判定 + local 束縛 | if / ternary / 複合条件 / lambda / switch で束縛。struct は入力 (`S?` は中の値) の copy を束縛。入力が object で型が数か bool のもの (`o is int i`) は TCS1001 `BoxedValuePattern(T)` (型パターンの行) |
 | `var` パターン `is var v` | 7 | **-** | | |
 | プロパティパターン `is { Name: "x" }` | 8 | **Y** | null 判定 + property 比較展開 | 型を書かない `{ }` も null を除く。`o is I { W: 1 }` のように型を書くと、型の検査の後に member をその型として読む。`T?` は値の有無を見て中の値の member を読む (`p is Pt { X: 2 }` のように型を書いたときも同じ) |
 | 位置パターン `is (1, 2)` | 8 | **-** | | |
@@ -845,14 +845,10 @@ host 側はユーザーエントリだけを持つ table をそのまま受け�
 Dictionary / List も透過)。`Count` / `Keys` / `Values` は保存メタデータでは
 なく pairs 走査で都度計算される。
 
-`Dictionary<float, V>` の NaN key は .NET (`EqualityComparer<float>.Default`) と
-同じく 1 つの key として扱う。Lua table は NaN を key にできないので、table 上は
-文字列 `"NaN"` の key に置き (`Dict.FloatKey`)、`Keys` と foreach で NaN に戻す。
-host が raw table を読むときはこの key が見える。判定は呼び出し地点の静的な
-key 型で行うので、key 型が型 parameter の dict (`Dictionary<K, V>` を受ける
-generic method に K = float で渡したもの) と `object` などの key に入れた NaN は
-対象外 (Lua table に置けず `table index is NaN` で止まる)。C backend は float の
-key を対応外として生成前に止める (`Dictionary key type not supported`)。
+float と double の key の Dictionary は対応外。
+.NET (`EqualityComparer<float>.Default`) は NaN どうしを同じ key とみなすが、Lua table は NaN を key にできず、C backend は float の key を持たず、VM は NaN の key と列挙を持たない。
+HashSet の float の要素 (`UnsupportedHashSetElement(float)`) と同じく、作る地点 (`new Dictionary<float, V>()`、target-typed `new()`) を TCS1001 `UnsupportedDictionaryKey(float)` とし、transpiler は build を止める (analyzer は warning)。
+key 型が型 parameter の dict (generic method の中で作るもの) は対象外。
 
 値で比べる key (struct / record struct / struct の `T?` / record class) の
 Dictionary は対応外。.NET (`EqualityComparer<K>.Default`) は等しい値の key を

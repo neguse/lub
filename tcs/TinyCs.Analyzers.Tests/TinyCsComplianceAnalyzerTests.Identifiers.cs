@@ -59,7 +59,7 @@ public partial class TinyCsComplianceAnalyzerTests
                 {
                     var local = end;
                     foreach (var until in items) local += until;
-                    object boxed = local;
+                    int? boxed = local;
                     if (boxed is int nil) local += nil;
                     return local;
                 }

@@ -127,7 +127,7 @@ public class LuaLocalRenameTests
     public void PatternDesignationNamedNil_Runs()
     {
         var output = TestHelper.TranspileAndRun("""
-            object value = 5;
+            int? value = 5;
             var r = 0;
             if (value is int nil) r += nil;
             r += value switch { int function when function > 0 => function, _ => 0 };
