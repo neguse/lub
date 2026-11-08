@@ -1,5 +1,5 @@
 // FrameBuffer の 1 回の上限は 128 MiB で、上限までは描け、超えると error で止まること。
-// Lua の table と写しで 700 MiB ほど使うので、web の A9 では走らせない。
+// 128 MiB の float の配列と、それを写した FrameBuffer を持つので、web の A9 では走らせない。
 using System;
 using Lub;
 

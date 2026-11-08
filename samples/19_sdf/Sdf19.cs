@@ -64,7 +64,7 @@ public static class Sdf19
         });
     }
 
-    // --- メッシュ化 ---------------------------------------------------------- mesh / ren は onInit で生成 (cs-lib クラスは static 初期化子で作らない)。
+    // --- メッシュ化 ---------------------------------------------------------- mesh / ren は onInit で生成。
     static Mesh3d? mesh = null;
     static Renderer3d? ren = null;
     static float tAccum = 0.0f;

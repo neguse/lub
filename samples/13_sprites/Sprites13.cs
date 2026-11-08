@@ -1,7 +1,6 @@
 // lub の samples/13_sprites の entry。
 // 実行: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload) 実行手順とスコア行 (SPRITES13_SCORE) の扱いは docs/sprites-bench.md。
 // tcs 制約による置換: 数値 parse → ParseDec (10 進 leading parse、out は extern stub 専用なので結果は class で返す)、tick % n == 0 → EveryN (floor)、整数化は Math.Floor (対象値は常に非負)。
-// spriteRects/whiteRect は static 初期化子で作れない (Lua 出力は sample → cs-lib の順なので Rect が未定義) ため onInit で作る。
 
 using System;
 using System.Collections.Generic;

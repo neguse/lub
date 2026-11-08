@@ -13,7 +13,6 @@
 //   ガードする (cs-lib 慣例)。
 // - viewProj は public フィールド (書くのは begin() だけ、利用側は
 //   読み取り専用扱い)。litUniforms は End() で narrow 済みの vp を引数で受ける。
-// end は Lua キーワードで、tcs が宣言をそのまま `function Renderer3d:end` と emit して不正 Lua になるため End にしている (MeshText の Char と同じ扱い)。
 
 using System;
 using System.Collections.Generic;
@@ -979,7 +978,6 @@ public class Renderer3d
         vp = p * v;
         eye = cam.Eye;
         // draws を空にする。
-        // List.Clear() は tcs が `(function() ... end)()` を emit し、直前の代入文と連結されて関数呼び出しに誤解釈される (Lua の文区切り曖昧性) ため使わない。
         draws = new List<Renderer3dDrawCmd>();
     }
 
@@ -1127,7 +1125,7 @@ public class Renderer3d
     // draw と pass ごとに Clear して使い回す。
     private readonly Bindings passBindings = new Bindings();
 
-    /// <summary>記録した draw 列を実行して swapchain まで出し、draw 列を空にする (end は Lua キーワードのため End)。
+    /// <summary>記録した draw 列を実行して swapchain まで出し、draw 列を空にする。
     /// </summary>
     public void End()
     {

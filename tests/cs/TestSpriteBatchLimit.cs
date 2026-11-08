@@ -1,6 +1,6 @@
 // FrameBuffer の上限を超える bucket の Flush は、黙って描かずに error で止まること。
 // 次のフレームは普通に描ける。
-// Lua の table で 1 GiB ほど使うので、web の A9 では走らせない。
+// FrameBuffer の上限 (128 MiB) を超える頂点を List<float> に積むので、web の A9 では走らせない。
 using System;
 using Lub;
 using Lubx;

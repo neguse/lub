@@ -1,6 +1,5 @@
 // 実装ライブラリ lubx の Shapes3d。
-// List<float>/List<int> はそのまま Lua array table。
-// MeshData は stub (cs-lib/lub_stub.cs) の MeshData class の object initializer で構築 (--ref 型は plain table に落ちる)。
+// MeshData は stub (cs-lib/lub_stub.cs) の MeshData class の object initializer で構築。
 // Std.int(len / k) は整数除算を避けて Math.Floor(len / k.0)、(i + 1) % sides の剰余は wrap 分岐 (i は 0..sides-1) で書く。
 
 using System;

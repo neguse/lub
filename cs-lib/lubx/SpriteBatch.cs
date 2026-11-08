@@ -1,7 +1,6 @@
 // 実装ライブラリ lubx の SpriteBatch。
 // バケットは class SpriteBucket、フィールドは ShaderRef / BufferRef の型付き。
-// 頂点は List<float>.Add の逐次追加 (そのまま Lua array table)。
-// デフォルト引数値は nullable + ?? で受ける (tcs は call site 展開しない)。
+// 頂点は List<float>.Add の逐次追加。
 
 using System;
 using System.Collections.Generic;
@@ -176,7 +175,6 @@ public class SpriteBatch
             c.R, c.G, c.B, c.A);
     }
 
-    // Add の逐次追加は Lua 上では array table への同順 append になる。
     private void PushInstanceColor(List<float> verts, float cx, float cy,
         float w, float h, float cr, float sr, float u0, float v0,
         float u1, float v1, float r, float g, float b, float alpha)

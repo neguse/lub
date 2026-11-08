@@ -6,7 +6,6 @@
 // ポーズは時刻からの決定的アニメ (乱数なし)。
 //
 // options は Camera / Draw3dOpts / Renderer3dFog / Renderer3dOutline の class で渡す。
-// Renderer3d や Mesh3d は static 初期化子でなく onFrame からの build() で遅延生成する (cs-lib クラスは load 順の都合で static 初期化子から呼べない)。
 
 using System;
 using System.Collections.Generic;

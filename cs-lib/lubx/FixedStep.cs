@@ -1,7 +1,5 @@
 // 実装ライブラリ lubx の FixedStep。
 // pending 集合は SCAN_KEYS と平行な bool の List で持つ。
-// bool[] だと tcs が `new bool[n]` を空 table に写し、Lua 側で Length が 0 になって clear_pending が走らない (neguse/tcs#20)。
-// List なら Lua / .NET のどちらでも Count が要素数になる。
 
 using System;
 using System.Collections.Generic;
@@ -49,7 +47,6 @@ public class FixedStep
 
     /// <summary>hz: tick の周波数 (正の値、省略 = 60)。
     /// maxCatchUp: 1 回の frame() で走る tick 数の上限 (1 以上、省略 = 8)。
-    /// tcs は default 値を Lua 側へ出さないので nullable + ?? で受ける (Rand と同じ)。
     /// </summary>
     public FixedStep(float? hz = null, int? maxCatchUp = null)
     {

@@ -1,7 +1,7 @@
 // 実装ライブラリ lubx の Shapes。
-// 頂点は List<float> (そのまま Lua array table) に push する。
+// 頂点は List<float> に push する。
 // push 先の引数名は out が C# の予約語のため dst。
-// Int / Int の除算は C# では切り捨てになるので、実数除算にしたい所は (float) キャスト (tcs は型消去で Lua 出力は素の `/` のまま) で書く。
+// Int / Int の除算は C# では切り捨てになるので、実数除算にしたい所は (float) キャストで書く。
 
 using System;
 using System.Collections.Generic;
@@ -98,7 +98,6 @@ public static class Shapes
 
     /// <summary>UV 球。
     /// rings/segs のデフォルトと頂点順は固定 (rings=12, segs=24)。
-    /// 省略時は Lua の nil が null に落ちるので nullable + ?? で受ける。
     /// </summary>
     public static void Sphere(List<float> dst, float cx, float cy, float cz,
         float r, List<float> col, int? rings = null, int? segs = null)

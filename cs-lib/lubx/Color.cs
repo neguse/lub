@@ -1,7 +1,6 @@
 // 実装ライブラリ lubx の Color。
 // static factory (rgb / hex) + 読み取り専用の public フィールド。
-// 毎 frame 大量に作るので、確保の要らない値型 (readonly struct。Lua でも copy の地点で table を作らない) にする。
-// a はデフォルト引数でなく nullable + ?? で受ける (tcs はデフォルト引数値を呼び出し側に埋めないが、Lua の省略引数 = nil が null に落ちるのを利用)。
+// 毎 frame 大量に作るので、確保の要らない値型 (readonly struct) にする。
 
 using Lub;
 

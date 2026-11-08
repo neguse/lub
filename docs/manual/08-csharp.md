@@ -30,13 +30,6 @@ tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、C �
   `(float)` cast で受ける)
 - LINQ クエリ構文(`from x in y select`)
 
-## 診断に出ない注意点
-
-- lub API(`cs-lib/lub_stub.cs` のような型チェック専用 stub)の呼び出しでは
-  デフォルト引数値が展開されない。
-  stub 側は `float? x = null` + `x ?? 既定値` で書く。自分で書いた
-  TinyC# メソッドの既定引数は通常どおり効く
-
 境界を踏むとコンパイル時に `TCS1001`(未対応構文)/ `TCS1002`(未対応 API)/
 `TCS1003`(配列と Dictionary への null 保存)の診断が出る。playground では
 ログパネルに表示される。
