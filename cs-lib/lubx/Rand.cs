@@ -43,7 +43,17 @@ public class Rand
     /// </summary>
     public int Between(int min, int max)
     {
-        return min + NextInt(max - min + 1);
+        int width = max - min + 1;
+        if (width > 0 || max < min)
+            return min + NextInt(width);
+        // 幅 (max - min + 1) が int に収まらない。
+        // max - min を 32bit の符号なしの値と見て上位と下位の 16bit に分け、[0, 1) の乱数の 16bit (k / 65536) と幅の積の floor を整数で求める。
+        // 足し算は 32bit で wrap するが、真の値は min 以上 max 以下なので結果も同じ値になる
+        int k = (int)(NextFloat() * 65536.0f);
+        int d = max - min;
+        int hi = (d >> 16) & 0xFFFF;
+        int lo = d & 0xFFFF;
+        return min + k * hi + (((k * (lo + 1)) >> 16) & 0xFFFF);
     }
 
     /// <summary>[min, max) の一様乱数。

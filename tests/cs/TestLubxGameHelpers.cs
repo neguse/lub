@@ -76,6 +76,20 @@ public static class TestLubxGameHelpers
         Check.That(seen[0] && seen[1] && seen[2] && seen[3], "between must reach both ends");
         Check.That(a.Between(5, 5) == 5, "between(5, 5) must be 5");
         Check.That(a.Between(-2, -1) <= -1, "between must accept negative ranges");
+        // 幅が int に収まらない範囲
+        var wide = new Rand(1);
+        bool low = false, high = false;
+        for (int i = 0; i < 2000; i++)
+        {
+            int full = wide.Between(int.MinValue, int.MaxValue);
+            low = low || full < -1000000000;
+            high = high || full > 1000000000;
+            int x = wide.Between(0, int.MaxValue);
+            Check.That(x >= 0, "between(0, int.MaxValue) out of range: " + x);
+            int y = wide.Between(-1000000000, 1500000000);
+            Check.That(y >= -1000000000 && y <= 1500000000, "between(-1e9, 1.5e9) out of range: " + y);
+        }
+        Check.That(low && high, "between(int.MinValue, int.MaxValue) must reach both sides");
     }
 
     // ゲームの床のマス選び: 画面の点 -> レイ -> 床 (y = 0) との交点
