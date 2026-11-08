@@ -5,7 +5,7 @@ public class SmokeTests
     [Fact]
     public void StaticMethod_ReturnsLiteral()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Foo
             {
                 public static int Bar() { return 42; }
@@ -18,7 +18,7 @@ public class SmokeTests
     [Fact]
     public void StaticMethod_Addition()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Calc
             {
                 public static int Add(int a, int b) { return a + b; }
@@ -31,7 +31,7 @@ public class SmokeTests
     [Fact]
     public void IfElse_TrueBranch()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Logic
             {
                 public static int Check(int x)
@@ -48,7 +48,7 @@ public class SmokeTests
     [Fact]
     public void IfElse_FalseBranch()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Logic
             {
                 public static int Check(int x)
@@ -65,21 +65,21 @@ public class SmokeTests
     [Fact]
     public void BooleanLiterals()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class B
             {
                 public static bool T() { return true; }
                 public static bool F() { return false; }
             }
             """,
-            "tostring(B.T()) .. ',' .. tostring(B.F())");
-        Assert.Equal("true,false", result);
+            "B.T() + \",\" + B.F()");
+        Assert.Equal("True,False", result);
     }
 
     [Fact]
     public void LocalVariable()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Calc
             {
                 public static int Double(int x)
@@ -96,7 +96,7 @@ public class SmokeTests
     [Fact]
     public void WhileLoop()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Loop
             {
                 public static int Sum(int n)
@@ -119,7 +119,7 @@ public class SmokeTests
     [Fact]
     public void LogicalOperators()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Logic
             {
                 public static bool And(bool a, bool b) { return a && b; }
@@ -127,28 +127,28 @@ public class SmokeTests
                 public static bool Not(bool a) { return !a; }
             }
             """,
-            "tostring(Logic.And(true, false)) .. ',' .. tostring(Logic.Or(true, false)) .. ',' .. tostring(Logic.Not(true))");
-        Assert.Equal("false,true,false", result);
+            "Logic.And(true, false) + \",\" + Logic.Or(true, false) + \",\" + Logic.Not(true)");
+        Assert.Equal("False,True,False", result);
     }
 
     [Fact]
     public void ComparisonOperators()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Cmp
             {
                 public static bool Eq(int a, int b) { return a == b; }
                 public static bool Neq(int a, int b) { return a != b; }
             }
             """,
-            "tostring(Cmp.Eq(1, 1)) .. ',' .. tostring(Cmp.Neq(1, 2))");
-        Assert.Equal("true,true", result);
+            "Cmp.Eq(1, 1) + \",\" + Cmp.Neq(1, 2)");
+        Assert.Equal("True,True", result);
     }
 
     [Fact]
     public void ElseIf()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Grade
             {
                 public static string Eval(int score)

@@ -5,7 +5,7 @@ public class ActionSemanticTests
     [Fact]
     public void Action_NoArgs_Invoke()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public class T
             {
@@ -24,7 +24,7 @@ public class ActionSemanticTests
     [Fact]
     public void Action_WithArg_Callback()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public class T
             {

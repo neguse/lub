@@ -5,7 +5,7 @@ public class StringSplitSemanticTests
     [Fact]
     public void String_Split_Comma()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -22,7 +22,7 @@ public class StringSplitSemanticTests
     [Fact]
     public void String_Split_Content()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()

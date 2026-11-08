@@ -8,7 +8,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void BitwiseAnd()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 5 & 3;
@@ -20,7 +20,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void BitwiseOr()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 5 | 2;
@@ -33,7 +33,7 @@ public class BitwiseOperatorTests
     public void BitwiseXor()
     {
         // C# の ^ は Lua 5.5 の二項 ~ (Lua の ^ は冪乗)
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 5 ^ 3;
@@ -45,7 +45,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void BitwiseNot()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => ~5;
@@ -57,7 +57,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void ShiftLeft()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 1 << 4;
@@ -69,7 +69,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void ShiftRight()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 256 >> 4;
@@ -82,7 +82,7 @@ public class BitwiseOperatorTests
     public void Precedence_MatchesCSharp()
     {
         // C#: & が | より強い → 1 | (2 & 3) = 3。Lua も同じ相対順位
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 1 | 2 & 3;
@@ -95,7 +95,7 @@ public class BitwiseOperatorTests
     public void ShiftWithAdditiveOperand()
     {
         // C#: 加算がシフトより強い → 1 << (2 + 1) = 8
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test(int n) => 1 << n + 1;
@@ -107,7 +107,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void CompoundAssignments()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -128,7 +128,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void MaskCheck_InCondition()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -145,7 +145,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void FlagsEnum_BitwiseOps()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public enum Layer
             {
                 None = 0,
@@ -188,7 +188,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void Shift_NegativeRightShiftIsArithmetic_AndCountIsMasked()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -217,7 +217,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void IntMinValue_LiteralStaysInteger()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public const int Floor = -2147483648;
@@ -238,7 +238,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void CompoundAssignment_RightOperandIsOneTerm()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()

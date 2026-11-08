@@ -7,8 +7,8 @@ namespace TinyCs.Tests;
 // TestHelper は同じ source を .NET でも実行して結果を比べる
 public class LinqSemanticTests
 {
-    private static string Run(string body, string luaExpr = "T.Test()") =>
-        TestHelper.TranspileAndRunWithRuntime($$"""
+    private static string Run(string body, string expr = "T.Test()") =>
+        TestHelper.CompileAndRunVm($$"""
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
@@ -19,7 +19,7 @@ public class LinqSemanticTests
             {
             {{body}}
             }
-            """, luaExpr);
+            """, expr);
 
     [Fact]
     public void Library_CompilesAndStaysInsideSubset()
@@ -42,7 +42,7 @@ public class LinqSemanticTests
     [Fact]
     public void WhereSelectAnyAllCount()
     {
-        Assert.Equal("2|20,40|true|false|true|3", Run("""
+        Assert.Equal("2|20,40|True|False|True|3", Run("""
                 public static string Test()
                 {
                     var list = new List<int> { 1, 2, 3, 4 };
@@ -52,13 +52,13 @@ public class LinqSemanticTests
                         + list.Any(x => x > 3) + "|" + list.All(x => x > 3) + "|"
                         + list.Any() + "|" + list.Count(x => x > 1);
                 }
-            """, "string.lower(T.Test())"));
+            """, "T.Test()"));
     }
 
     [Fact]
     public void FirstOrDefault_ReturnsDefaultOfElementType()
     {
-        Assert.Equal("2|0|0|false|null|0|0", Run("""
+        Assert.Equal("2|0|0|False|null|0|0", Run("""
                 public static string Test()
                 {
                     var ints = new List<int> { 1, 2, 3 };
@@ -70,7 +70,7 @@ public class LinqSemanticTests
                     return ints.FirstOrDefault(x => x > 1) + "|" + none + "|" + empty + "|"
                         + flag + "|" + (name == null ? "null" : name) + "|" + v.A + "|" + v.B;
                 }
-            """, "string.lower(T.Test())"));
+            """, "T.Test()"));
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class LinqSemanticTests
             "new List<V>().Min(v => v.A)" })
         {
             var ex = Assert.Throws<InvalidOperationException>(() =>
-                TestHelper.TranspileAndRunWithRuntime($$"""
+                TestHelper.CompileAndRunVm($$"""
                     using System.Collections.Generic;
                     using TinySystem.Linq;
                     public readonly record struct V(int A);

@@ -1,11 +1,12 @@
 namespace TinyCs.Tests;
 
+// 前半の 4 本は enum と int の暗黙の変換を書く。C# では compile error で、tcs は受けるので、.NET とは比べない (dotnet: false)
 public class EnumTests
 {
     [Fact]
     public void BasicEnum()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public enum Direction { Up, Down, Left, Right }
 
             public class Nav
@@ -13,14 +14,14 @@ public class EnumTests
                 public static int GetDir() { return Direction.Right; }
             }
             """,
-            "Nav.GetDir()");
+            "Nav.GetDir()", dotnet: false);
         Assert.Equal("3", result);
     }
 
     [Fact]
     public void EnumWithExplicitValues()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public enum Status { Idle = 0, Walking = 10, Running = 20 }
 
             public class Game
@@ -33,14 +34,14 @@ public class EnumTests
                 }
             }
             """,
-            "Game.Speed(10)");
+            "Game.Speed(10)", dotnet: false);
         Assert.Equal("10", result);
     }
 
     [Fact]
     public void EnumComparison()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVmMain("""
             public enum State { Idle, Active, Done }
 
             public class Machine
@@ -57,20 +58,14 @@ public class EnumTests
                     return this.Current == State.Active;
                 }
             }
-            """, """
-            (function()
-              local m = Machine.new()
-              m:Activate()
-              return tostring(m:IsActive())
-            end)()
-            """);
-        Assert.Equal("true", result);
+            """, "var m = new Machine(); m.Activate(); System.Console.WriteLine(m.IsActive());", dotnet: false);
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void IntegerToEnum_AndNotEquals_AreAllowed()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public enum State { Idle, Active, Done }
 
             public class T
@@ -81,16 +76,16 @@ public class EnumTests
                     return state != 0;
                 }
             }
-            """, "tostring(T.Test())");
+            """, "T.Test()", dotnet: false);
 
-        Assert.Equal("true", result);
+        Assert.Equal("True", result);
     }
 
     // #14: initializer 無しの enum 型 field / property の既定値は 0 (default(E))
     [Fact]
     public void EnumField_DefaultIsZero()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public enum State { Idle, Run }
             public class Actor
             {
@@ -107,16 +102,16 @@ public class EnumTests
                         && a.P == State.Idle && default(State) == State.Idle;
                 }
             }
-            """, "tostring(T.Test())");
+            """, "T.Test()");
 
-        Assert.Equal("true", result);
+        Assert.Equal("True", result);
     }
 
     // enum の default は member 値に依らず 0 (C# 意味論)
     [Fact]
     public void EnumField_DefaultIsZero_EvenWithoutZeroMember()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public enum Level { Low = 1, High = 2 }
             public class Holder { public Level L; }
             public static class T
@@ -131,7 +126,7 @@ public class EnumTests
     [Fact]
     public void StructEnumMember_ZeroInitialized()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public enum Dir { Up, Down }
             public struct Cell { public Dir D; public int N; }
             public class Grid { public Cell C; }
@@ -144,8 +139,8 @@ public class EnumTests
                     return g.C.D == Dir.Up && c.D == Dir.Up;
                 }
             }
-            """, "tostring(T.Test())");
+            """, "T.Test()");
 
-        Assert.Equal("true", result);
+        Assert.Equal("True", result);
     }
 }

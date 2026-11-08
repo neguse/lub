@@ -5,7 +5,7 @@ public class NullableValueTypeTests
     [Fact]
     public void NullableInt_AssignNull()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -22,7 +22,7 @@ public class NullableValueTypeTests
     [Fact]
     public void NullableInt_AssignValue()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -39,7 +39,7 @@ public class NullableValueTypeTests
     [Fact]
     public void NullableInt_HasValue_True()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -49,14 +49,14 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "tostring(T.Test())");
-        Assert.Equal("true", result);
+            "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void NullableInt_HasValue_False()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -66,14 +66,14 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "tostring(T.Test())");
-        Assert.Equal("false", result);
+            "T.Test()");
+        Assert.Equal("False", result);
     }
 
     [Fact]
     public void NullableInt_Value()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -90,7 +90,7 @@ public class NullableValueTypeTests
     [Fact]
     public void NullableInt_GetValueOrDefault()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -107,7 +107,7 @@ public class NullableValueTypeTests
     [Fact]
     public void NullableInt_GetValueOrDefault_WithValue()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -124,7 +124,7 @@ public class NullableValueTypeTests
     [Fact]
     public void NullableBool_GetValueOrDefault()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -134,8 +134,8 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "tostring(T.Test())");
-        Assert.Equal("false", result);
+            "T.Test()");
+        Assert.Equal("False", result);
     }
 
     // Lua の `or` は false も fallback してしまうため、bool? の ?? は
@@ -143,7 +143,7 @@ public class NullableValueTypeTests
     [Fact]
     public void NullableBool_Coalesce_FalseIsNotFallback()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -163,7 +163,7 @@ public class NullableValueTypeTests
     [Fact]
     public void Coalesce_RightHandSide_EvaluatedOnlyWhenNull()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Calls;
@@ -191,7 +191,7 @@ public class NullableValueTypeTests
     [Fact]
     public void GetValueOrDefault_ExplicitFallback_UsedOnlyWhenNull()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -213,7 +213,7 @@ public class NullableValueTypeTests
     [Fact]
     public void GetValueOrDefault_FallbackArgument_AlwaysEvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Calls;
@@ -242,7 +242,7 @@ public class NullableValueTypeTests
     [Fact]
     public void Lifted_ArithmeticAndComparison()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public static class T
             {
                 public static string Show(int? v) => v.HasValue ? "v=" + v.Value.ToString() : "none";
@@ -279,7 +279,7 @@ public class NullableValueTypeTests
     [Fact]
     public void Lifted_BoolThreeValuedAndFloat()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public static class T
             {
                 public static string Test()
@@ -301,7 +301,7 @@ public class NullableValueTypeTests
     [Fact]
     public void Value_OnNull_Faults()
     {
-        var lua = Transpiler.Transpile("""
+        var ex = Assert.Throws<InvalidOperationException>(() => TestHelper.CompileAndRunVm("""
             public static class T
             {
                 public static int Test()
@@ -310,9 +310,7 @@ public class NullableValueTypeTests
                     return n.Value;
                 }
             }
-            """);
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            TestHelper.RunLua(lua + "\nprint(T.Test())"));
+            """, "T.Test()"));
         Assert.Contains("Nullable object must have a value", ex.Message);
     }
 
@@ -322,7 +320,7 @@ public class NullableValueTypeTests
     [Fact]
     public void ConditionalAccess_OnNullableStruct_AndCoalesceAssign()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using TinySystem.Text;
             using System;
             using System.Collections.Generic;

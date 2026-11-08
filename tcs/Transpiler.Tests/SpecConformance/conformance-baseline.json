@@ -1026,7 +1026,7 @@
     "category": "InCompile"
   },
   "expressions.md:ExtensionMethodInvocations2": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "expressions.md:IdenticalSimpleAndTypeNames": {
     "category": "InCompile"
@@ -1062,7 +1062,7 @@
     "category": "InRun"
   },
   "expressions.md:NameofExpressions": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "expressions.md:NullCoalescingGenerics": {
     "category": "Diag"

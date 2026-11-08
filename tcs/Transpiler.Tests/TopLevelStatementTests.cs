@@ -5,14 +5,12 @@ public class TopLevelStatementTests
     [Fact]
     public void TopLevelStatement_ConsoleWriteLine()
     {
-        var lua = Transpiler.Transpile("""
+        var result = TestHelper.CompileAndRunVmProgram(["""
             using System;
 
             var answer = 40 + 2;
             Console.WriteLine(answer);
-            """);
-
-        var result = TestHelper.RunLua(lua).Trim();
+            """]);
 
         Assert.Equal("42", result);
     }
@@ -20,7 +18,7 @@ public class TopLevelStatementTests
     [Fact]
     public void TopLevelStatement_CanUseClassDeclaredLater()
     {
-        var lua = Transpiler.Transpile("""
+        var result = TestHelper.CompileAndRunVmProgram(["""
             using System;
 
             var player = new Player("Rex");
@@ -35,9 +33,7 @@ public class TopLevelStatementTests
                     Name = name;
                 }
             }
-            """);
-
-        var result = TestHelper.RunLua(lua).Trim();
+            """]);
 
         Assert.Equal("Rex", result);
     }
@@ -45,7 +41,7 @@ public class TopLevelStatementTests
     [Fact]
     public void TopLevelStatement_CanUseClassFromAnotherFile()
     {
-        var lua = Transpiler.Transpile([
+        var result = TestHelper.CompileAndRunVmProgram([
             """
             using System;
 
@@ -64,8 +60,6 @@ public class TopLevelStatementTests
             }
             """
         ]);
-
-        var result = TestHelper.RunLua(lua).Trim();
 
         Assert.Equal("Mina", result);
     }

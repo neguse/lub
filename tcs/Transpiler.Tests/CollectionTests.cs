@@ -1,27 +1,14 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// Tests for List/Dictionary/LINQ transpilation that maps to runtime library.
-/// These tests require runtime/tinysystem.lua to be loaded.
+/// List / Dictionary / LINQ / 配列の runtime 表面の semantic テスト (tcs VM で走らせる)。
 /// </summary>
 public class CollectionTests
 {
-    private static string TranspileAndRunWithRuntime(string csharpSource, string luaExpr)
-    {
-        var lua = Transpiler.Transpile(csharpSource);
-        var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");
-        var script = $"local TinySystem = dofile(\"{runtimePath}\")\n" +
-                     "List = TinySystem.List\n" +
-                     "Dict = TinySystem.Dict\n" +
-                     "Math = TinySystem.Math\n" +
-                     $"{lua}\nprint({luaExpr})";
-        return TestHelper.RunLua(script).Trim();
-    }
-
     [Fact]
     public void List_NewEmpty()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -39,7 +26,7 @@ public class CollectionTests
     [Fact]
     public void List_NewWithInitializer()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -57,7 +44,7 @@ public class CollectionTests
     [Fact]
     public void List_Add()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -78,7 +65,7 @@ public class CollectionTests
     [Fact]
     public void List_Indexer()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -96,7 +83,7 @@ public class CollectionTests
     [Fact]
     public void List_Where()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -116,7 +103,7 @@ public class CollectionTests
     [Fact]
     public void List_Select()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -137,7 +124,7 @@ public class CollectionTests
     [Fact]
     public void List_WhereSelectChain()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -158,7 +145,7 @@ public class CollectionTests
     [Fact]
     public void List_Any()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -170,14 +157,14 @@ public class CollectionTests
                 }
             }
             """,
-            "tostring(T.Test())");
-        Assert.Equal("true", result);
+            "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void List_FirstOrDefault()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -196,7 +183,7 @@ public class CollectionTests
     [Fact]
     public void Dict_NewAndAccess()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -214,7 +201,7 @@ public class CollectionTests
     [Fact]
     public void Dict_Add()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -233,7 +220,7 @@ public class CollectionTests
     [Fact]
     public void Dict_ContainsKey()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -244,14 +231,14 @@ public class CollectionTests
                 }
             }
             """,
-            "tostring(T.Test())");
-        Assert.Equal("true", result);
+            "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void List_Sum()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -270,7 +257,7 @@ public class CollectionTests
     [Fact]
     public void List_OrderBy()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -292,7 +279,7 @@ public class CollectionTests
     [Fact]
     public void Array_Explicit()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -308,7 +295,7 @@ public class CollectionTests
     [Fact]
     public void Array_Implicit()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -324,7 +311,7 @@ public class CollectionTests
     [Fact]
     public void Array_Empty()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()

@@ -5,7 +5,7 @@ public class StringTests
     [Fact]
     public void StringLiteral()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Hello() { return "world"; }
@@ -18,7 +18,7 @@ public class StringTests
     [Fact]
     public void StringInterpolation()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Greet(string name, int age)
@@ -27,7 +27,7 @@ public class StringTests
                 }
             }
             """,
-            "S.Greet('Alice', 30)");
+            "S.Greet(\"Alice\", 30)");
         Assert.Equal("Hello Alice, age 30", result);
     }
 
@@ -36,7 +36,7 @@ public class StringTests
     [Fact]
     public void InterpolationLengthBindsWholeString()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using TinySystem.Text;
             public class S
             {
@@ -53,7 +53,7 @@ public class StringTests
     [Fact]
     public void InterpolationLengthInArithmetic()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using TinySystem.Text;
             public class S
             {
@@ -70,7 +70,7 @@ public class StringTests
     [Fact]
     public void EmptyInterpolationIsEmptyString()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Tag(string s)
@@ -79,14 +79,14 @@ public class StringTests
                 }
             }
             """,
-            "S.Tag('x')");
+            "S.Tag(\"x\")");
         Assert.Equal("x", result);
     }
 
     [Fact]
     public void ConcatTreatsNullOperandAsEmptyString()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Wrap(string? s)
@@ -95,14 +95,14 @@ public class StringTests
                 }
             }
             """,
-            "S.Wrap(nil)");
+            "S.Wrap(null)");
         Assert.Equal("><", result);
     }
 
     [Fact]
     public void CompoundConcatTreatsNullAsEmptyString()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Append(string? head, string? tail)
@@ -114,14 +114,14 @@ public class StringTests
                 }
             }
             """,
-            "S.Append(nil, nil)");
+            "S.Append(null, null)");
         Assert.Equal("-", result);
     }
 
     [Fact]
     public void HexEscapesKeepCsharpSemanticsInLua()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using TinySystem.Text;
             public class S
             {
@@ -143,7 +143,7 @@ public class StringTests
     [Fact]
     public void InterpolationAlignmentCaseAndEscapedBraces()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Test()
@@ -160,7 +160,7 @@ public class StringTests
     [Fact]
     public void NullLiteral()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static bool IsNull(string? s)
@@ -169,8 +169,8 @@ public class StringTests
                 }
             }
             """,
-            "tostring(S.IsNull(nil))");
-        Assert.Equal("true", result);
+            "S.IsNull(null)");
+        Assert.Equal("True", result);
     }
 
     // #22: bool operand の `+` は ToString / 補間と同じ tostring で文字列化する
@@ -178,20 +178,20 @@ public class StringTests
     [Fact]
     public void ConcatBoolOperand()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Show(bool b) { return "b=" + b; }
             }
             """,
-            "S.Show(true) .. ',' .. S.Show(false)");
+            "S.Show(true) + \",\" + S.Show(false)");
         Assert.Equal("b=True,b=False", result);
     }
 
     [Fact]
     public void ConcatBoolLeftOperandAndChain()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Show(bool b, int n)
@@ -207,7 +207,7 @@ public class StringTests
     [Fact]
     public void ConcatBoolMatchesToString()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static bool Same(bool b)
@@ -217,14 +217,14 @@ public class StringTests
                 }
             }
             """,
-            "tostring(S.Same(true) and S.Same(false))");
-        Assert.Equal("true", result);
+            "S.Same(true) && S.Same(false)");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void CompoundConcatBoolOperand()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Show(bool b)
@@ -244,13 +244,13 @@ public class StringTests
     [Fact]
     public void ConcatNullableBoolOperand()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Show(bool? b) { return "b=" + b; }
             }
             """,
-            "S.Show(true) .. ',' .. S.Show(false) .. ',' .. S.Show(nil)");
+            "S.Show(true) + \",\" + S.Show(false) + \",\" + S.Show(null)");
         Assert.Equal("b=True,b=False,b=", result);
     }
 
@@ -258,7 +258,7 @@ public class StringTests
     [Fact]
     public void ConcatObjectOperand()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Show()
@@ -280,7 +280,7 @@ public class StringTests
     [Fact]
     public void InterpolateAndToStringObject()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class S
             {
                 public static string Show()
@@ -302,13 +302,13 @@ public class StringTests
     [Fact]
     public void ObjectHoldingRecord_ToStringFaults()
     {
-        var ex = Assert.Throws<InvalidOperationException>(() => TestHelper.TranspileAndRun("""
+        var ex = Assert.Throws<InvalidOperationException>(() => TestHelper.CompileAndRunVm("""
             public record R(int A);
             public static class S
             {
                 public static string Show() { object o = new R(1); return "x" + o; }
             }
-            """, "S.Show()", differential: false));
+            """, "S.Show()"));
         Assert.Contains("ToString of this value is not supported", ex.Message);
     }
 
@@ -316,7 +316,7 @@ public class StringTests
     [Fact]
     public void BoolToStringAsWholeResult()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public static class S
             {
                 public static string Show() { bool b = true; return b.ToString(); }

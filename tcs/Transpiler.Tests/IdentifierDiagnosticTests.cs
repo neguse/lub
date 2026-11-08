@@ -129,7 +129,7 @@ public class IdentifierDiagnosticTests
     [Fact]
     public void UnderscoreMembersAndLocals_AreNotDiagnosed()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        const string source = """
             namespace Game.Core
             {
                 public enum Kind { Big_Value, _small }
@@ -149,11 +149,12 @@ public class IdentifierDiagnosticTests
             {
                 public static int Test() => new Game.Core.Player().Get_Hp(1, 2);
             }
-            """]);
+            """;
+        var result = Transpiler.TranspileWithDiagnostics([source]);
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);
-        Assert.Equal("14", TestHelper.RunLua(result.Lua + "\nprint(P.Test())").Trim());
+        Assert.Equal("14", TestHelper.CompileAndRunVm(source, "P.Test()"));
     }
 
     // --ref の型は host の宣言で、診断の対象にしない

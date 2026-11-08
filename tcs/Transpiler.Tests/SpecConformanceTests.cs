@@ -414,30 +414,6 @@ public class SpecConformanceTests
             "class C { }", sourceLine),
         new SpecClassificationResult(SpecClassification.InCompile));
 
-    [Theory]
-    [InlineData("S.Hello()", "S.Hello()")]
-    [InlineData("tostring(S.IsNull(nil))", "S.IsNull(null)")]
-    [InlineData("S.Greet('Alice', 30)", "S.Greet(\"Alice\", 30)")]
-    [InlineData("(function() return 1 end)()", null)]
-    [InlineData("tostring(a) .. ',' .. tostring(b)", null)]
-    [InlineData("#S.Items()", null)]
-    [InlineData("S.F(1) and S.G(2)", null)]
-    public void CorpusDifferential_TranslatesOnlyCsharpCompatibleExpressions(
-        string luaExpr, string? expected) =>
-        Assert.Equal(expected, CorpusDifferential.TranslateExpression(luaExpr));
-
-    [Theory]
-    [InlineData(null, "nil")]
-    [InlineData(true, "true")]
-    [InlineData(42, "42")]
-    [InlineData("text", "text")]
-    [InlineData(3.0d, "3.0")]
-    [InlineData(0.5d, "0.5")]
-    [InlineData(1e15d, "1e+15")]
-    public void CorpusDifferential_FormatsValuesLikeLua(object? value,
-        string expected) =>
-        Assert.Equal(expected, CorpusDifferential.FormatLikeLua(value));
-
     [Fact]
     public void DotnetExecutor_CapturesConsoleOutput()
     {
@@ -493,22 +469,22 @@ public class SpecConformanceTests
                 new SpecExpansion(sources, IsExecutable: true)));
         Assert.Equal(SpecClassification.InRun, classified.Result.Category);
 
-        var outcome = new SpecLuaExecutor(SpecConformanceSweep.FindRepoRoot())
+        var outcome = new SpecVmExecutor(SpecConformanceSweep.FindRepoRoot())
             .Execute(classified, "fixture.md:DotnetOracle", sources);
 
         Assert.True(outcome.Passed, outcome.Details ?? "");
     }
 
     [Fact]
-    public void Executor_FindsEntryInvocationForStaticMain()
+    public void Executor_FindsEntryClassForStaticMain()
     {
-        Assert.Equal("Hello.Main()", SpecLuaExecutor.FindEntryInvocation(
+        Assert.Equal("Hello", SpecVmExecutor.FindEntryClass(
             [new SpecSourceFile("a.cs",
                 "class Hello { static void Main() { } }")]));
-        Assert.Equal("A_B_Program.Main()", SpecLuaExecutor.FindEntryInvocation(
+        Assert.Equal("A_B_Program", SpecVmExecutor.FindEntryClass(
             [new SpecSourceFile("a.cs",
                 "namespace A.B { class Program { static void Main() { } } }")]));
-        Assert.Equal("", SpecLuaExecutor.FindEntryInvocation(
+        Assert.Null(SpecVmExecutor.FindEntryClass(
             [new SpecSourceFile("a.cs",
                 "System.Console.WriteLine(1);")]));
     }
@@ -543,7 +519,7 @@ public class SpecConformanceTests
                 new SpecExpansion(sources, IsExecutable: true)));
         Assert.Equal(SpecClassification.InRun, classified.Result.Category);
 
-        var executor = new SpecLuaExecutor(SpecConformanceSweep.FindRepoRoot());
+        var executor = new SpecVmExecutor(SpecConformanceSweep.FindRepoRoot());
         var outcome = executor.Execute(classified, "fixture.md:ExecFixture",
             sources);
 
@@ -576,7 +552,7 @@ public class SpecConformanceTests
             new SpecConformanceClassifier().Classify(example,
                 new SpecExpansion(sources, IsExecutable: true)));
 
-        var outcome = new SpecLuaExecutor(SpecConformanceSweep.FindRepoRoot())
+        var outcome = new SpecVmExecutor(SpecConformanceSweep.FindRepoRoot())
             .Execute(classified, "fixture.md:ExecMismatch", sources);
 
         Assert.True(outcome.Executed);

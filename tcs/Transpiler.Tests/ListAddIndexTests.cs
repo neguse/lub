@@ -2,13 +2,13 @@ namespace TinyCs.Tests;
 
 /// <summary>
 /// List.Add の文位置 lowering (#24): `table.insert(t, v)` ではなく
-/// `t[#t + 1] = v` を出力する。値意味論は TranspileAndRun で、出力形は
+/// `t[#t + 1] = v` を出力する。値意味論は CompileAndRunVm (tcs VM) で、Lua の出力形は
 /// table.insert の有無だけで検査する (完全一致は持たない)。
 /// </summary>
 public class ListAddIndexTests
 {
-    private static string Run(string cs, string luaExpr) =>
-        TestHelper.TranspileAndRunWithRuntime(cs, luaExpr);
+    private static string Run(string cs, string expr) =>
+        TestHelper.CompileAndRunVm(cs, expr);
 
     [Fact]
     public void Add_AsStatement_UsesIndexAssign()

@@ -5,7 +5,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditional_PropertyAccess_NotNull()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Obj
             {
                 public int Value = 42;
@@ -27,7 +27,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditional_PropertyAccess_Null()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Obj
             {
                 public int Value = 42;
@@ -49,7 +49,7 @@ public class NullConditionalTests
     [Fact]
     public void IsPattern_NotNull()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -59,14 +59,14 @@ public class NullConditionalTests
                 }
             }
             """,
-            "tostring(T.Test())");
-        Assert.Equal("true", result);
+            "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void IsPattern_Null()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -76,14 +76,14 @@ public class NullConditionalTests
                 }
             }
             """,
-            "tostring(T.Test())");
-        Assert.Equal("true", result);
+            "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void CoalesceAssignment_WhenNull_Assigns()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -101,7 +101,7 @@ public class NullConditionalTests
     [Fact]
     public void CoalesceAssignment_WhenNotNull_Skips()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -119,7 +119,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditionalIndexer_List_NotNull()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -138,7 +138,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditionalIndexer_List_Null()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -157,7 +157,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditionalIndexer_Dict_NotNull()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -176,7 +176,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditionalStringMethod_UsesRuntimeMapping()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -186,15 +186,15 @@ public class NullConditionalTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "T.Test()");
 
-        Assert.Equal("true", result);
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void NullConditionalStringMethod_NullPropagates()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using TinySystem.Text;
             public class T
             {
@@ -213,7 +213,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditionalListMethod_UsesRuntimeMapping()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -224,15 +224,15 @@ public class NullConditionalTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "T.Test()");
 
-        Assert.Equal("true", result);
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void NullConditionalDictMethod_UsesRuntimeMapping()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -243,15 +243,15 @@ public class NullConditionalTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "T.Test()");
 
-        Assert.Equal("true", result);
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void CoalesceAssignment_WithObjectCreation()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Obj
             {
                 public int Value;
@@ -276,7 +276,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditional_ReceiverWithSideEffect_EvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Box
             {
                 public int Value = 7;
@@ -306,7 +306,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditional_NullReceiver_DoesNotEvaluateArguments()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Box
             {
                 public int Twice(int x) => x * 2;
@@ -343,7 +343,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditional_ElementAccess_ReceiverOnceAndIndexLazy()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
 
             public class T
@@ -381,7 +381,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditional_Chain_EvaluatesEachLinkOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Box
             {
                 public Box Inner;
@@ -406,7 +406,7 @@ public class NullConditionalTests
     [Fact]
     public void NullConditional_MethodChainReceiver_EvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Node
             {
                 public int Hits;

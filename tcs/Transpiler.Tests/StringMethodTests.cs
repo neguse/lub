@@ -1,25 +1,14 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// Tests for string method transpilation.
-/// Requires runtime/tinysystem.lua for String helper functions.
+/// string の method の semantic テスト (tcs VM で走らせる)。
 /// </summary>
 public class StringMethodTests
 {
-    private static string TranspileAndRunWithRuntime(string csharpSource, string luaExpr)
-    {
-        var lua = Transpiler.Transpile(csharpSource);
-        var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");
-        var script = $"local TinySystem = dofile(\"{runtimePath}\")\n" +
-                     "String = TinySystem.String\n" +
-                     $"{lua}\nprint({luaExpr})";
-        return TestHelper.RunLua(script).Trim();
-    }
-
     [Fact]
     public void String_Length()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using TinySystem.Text;
             public class T
             {
@@ -37,7 +26,7 @@ public class StringMethodTests
     [Fact]
     public void String_Contains()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -47,14 +36,14 @@ public class StringMethodTests
                 }
             }
             """,
-            "tostring(T.Test())");
-        Assert.Equal("true", result);
+            "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void String_Replace()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -71,7 +60,7 @@ public class StringMethodTests
     [Fact]
     public void String_StartsWith()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -81,14 +70,14 @@ public class StringMethodTests
                 }
             }
             """,
-            "tostring(T.Test())");
-        Assert.Equal("true", result);
+            "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void String_EndsWith()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -98,14 +87,14 @@ public class StringMethodTests
                 }
             }
             """,
-            "tostring(T.Test())");
-        Assert.Equal("true", result);
+            "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void String_Trim()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -151,7 +140,7 @@ public class StringMethodTests
     [Fact]
     public void String_Substring()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using TinySystem.Text;
             public class T
             {
@@ -169,7 +158,7 @@ public class StringMethodTests
     [Fact]
     public void String_SubstringWithLength()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using TinySystem.Text;
             public class T
             {
@@ -187,7 +176,7 @@ public class StringMethodTests
     [Fact]
     public void String_Join_List()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
 
             public class T
@@ -206,7 +195,7 @@ public class StringMethodTests
     [Fact]
     public void String_Join_Params()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -222,7 +211,7 @@ public class StringMethodTests
     [Fact]
     public void String_ToUpperLower()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -239,7 +228,7 @@ public class StringMethodTests
     [Fact]
     public void Int_ToString()
     {
-        var result = TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()

@@ -5,7 +5,7 @@ public class TernaryTests
     [Fact]
     public void Ternary_TrueBranch()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Max(int a, int b)
@@ -21,7 +21,7 @@ public class TernaryTests
     [Fact]
     public void Ternary_FalseBranch()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Max(int a, int b)
@@ -38,7 +38,7 @@ public class TernaryTests
     public void Ternary_FalsyTrueValue()
     {
         // true 側が 0 (Lua では falsy) でも `and/or` に落とさず if 文で選ぶ
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Pick(bool cond)
@@ -52,12 +52,12 @@ public class TernaryTests
     }
 
     // ---- 式位置の条件式は temp local + if 文に下ろす (#25)。値意味論は
-    // TranspileAndRun (dotnet differential 込み)、出力形は IIFE の有無だけ検査 ----
+    // CompileAndRunVm (dotnet differential 込み)、Lua の出力形は IIFE の有無だけ検査 ----
 
     private const string Iife = "end)()";
 
-    private static string Run(string cs, string luaExpr) =>
-        TestHelper.TranspileAndRunWithRuntime(cs, luaExpr);
+    private static string Run(string cs, string expr) =>
+        TestHelper.CompileAndRunVm(cs, expr);
 
     [Fact]
     public void Ternary_ParenthesizedReturn_NoClosure()
@@ -201,13 +201,13 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("false", Run(cs, "T.And(nil)"));
-        Assert.Equal("true", Run(cs, "T.And(List.new({5}))"));
-        Assert.Equal("true", Run(cs, "T.Or(nil)"));
-        Assert.Equal("false", Run(cs, "T.Or(List.new({5}))"));
+        Assert.Equal("False", Run(cs, "T.And(null)"));
+        Assert.Equal("True", Run(cs, "T.And(new System.Collections.Generic.List<int> { 5 })"));
+        Assert.Equal("True", Run(cs, "T.Or(null)"));
+        Assert.Equal("False", Run(cs, "T.Or(new System.Collections.Generic.List<int> { 5 })"));
         Assert.Equal("1", Run(cs, "T.Chain(\"abc\", true)"));
         Assert.Equal("0", Run(cs, "T.Chain(\"abc\", false)"));
-        Assert.Equal("0", Run(cs, "T.Chain(nil, true)"));
+        Assert.Equal("0", Run(cs, "T.Chain(null, true)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -359,7 +359,7 @@ public class TernaryTests
             }
             """;
         Assert.Equal("431", Run(cs, "T.Test(\"abc\", true)"));
-        Assert.Equal("247", Run(cs, "T.Test(nil, false)"));
+        Assert.Equal("247", Run(cs, "T.Test(null, false)"));
         Assert.Equal("547", Run(cs, "T.Test(\"abc\", false)"));
     }
 
@@ -443,9 +443,9 @@ public class TernaryTests
             }
             """;
         Assert.Equal("1a2", Run(cs, "T.Test(\"1a\", \"2\", true)"));
-        Assert.Equal("mx2", Run(cs, "T.Test(nil, \"2\", true)"));
-        Assert.Equal("mmxy", Run(cs, "T.Test(nil, nil, true)"));
-        Assert.Equal("mmxz", Run(cs, "T.Test(nil, nil, false)"));
+        Assert.Equal("mx2", Run(cs, "T.Test(null, \"2\", true)"));
+        Assert.Equal("mmxy", Run(cs, "T.Test(null, null, true)"));
+        Assert.Equal("mmxz", Run(cs, "T.Test(null, null, false)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
@@ -500,7 +500,7 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("5", Run(cs, "T.Test(nil)"));
+        Assert.Equal("5", Run(cs, "T.Test(null)"));
     }
 
     [Fact]
@@ -521,7 +521,7 @@ public class TernaryTests
                 }
             }
             """;
-        Assert.Equal("70", Run(cs, "T.new():Test()"));
+        Assert.Equal("70", Run(cs, "new T().Test()"));
     }
 
     [Fact]

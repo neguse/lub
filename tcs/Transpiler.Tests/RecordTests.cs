@@ -5,7 +5,7 @@ public class RecordTests
     [Fact]
     public void Record_Positional_Create()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Point(int X, int Y);
             public class T
             {
@@ -22,7 +22,7 @@ public class RecordTests
     [Fact]
     public void Record_Positional_MultipleInstances()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public record Vec2(int X, int Y);
             public class T
             {

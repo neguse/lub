@@ -7,7 +7,7 @@ public class GenericDefaultTests
     [Fact]
     public void GenericMethodGroup_PassesTypeArgumentDefault()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             using System.Collections.Generic;
             public static class G

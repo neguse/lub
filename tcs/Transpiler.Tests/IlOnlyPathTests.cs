@@ -7,7 +7,7 @@ public class IlOnlyPathTests
     [Fact]
     public void ElseIf_WithIsPatternDesignation_NestsIntoElse()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Circle { public int R; }
             public class Rect { public int W; public int H; }
             public class T
@@ -34,7 +34,7 @@ public class IlOnlyPathTests
     [Fact]
     public void DiscardAndAssignmentExpressions_Evaluate()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Calls;
@@ -61,7 +61,7 @@ public class IlOnlyPathTests
     [Fact]
     public void ConditionalAccess_ListClearAndFirstOrDefault()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -85,7 +85,7 @@ public class IlOnlyPathTests
     [Fact]
     public void ExtensionMethod_OnStructReceiver_UsesCopy()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public struct Vec { public int X; }
             public static class VecExt
             {
@@ -127,7 +127,7 @@ public class IlOnlyPathTests
     [Fact]
     public void Switch_EarlyBreakInsideLoop_WithContinue()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()

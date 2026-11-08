@@ -5,7 +5,7 @@ public class TinySystemFacadeTests
     [Fact]
     public void RandomFacade_DoesNotResolveToGameRandom()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Random
             {
                 public int Next() => -1;
@@ -19,14 +19,14 @@ public class TinySystemFacadeTests
                         && new TinySystem.Random(3).Next(1) == 0;
                 }
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void RandomFacade_CompilesWithoutStub()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -36,15 +36,15 @@ public class TinySystemFacadeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "T.Test()");
 
-        Assert.Equal("true", result);
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void MathFacade_MapsToRuntimeGlobal()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -54,15 +54,15 @@ public class TinySystemFacadeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "T.Test()");
 
-        Assert.Equal("true", result);
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void StringFacade_MapsToRuntimeGlobal()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -79,7 +79,7 @@ public class TinySystemFacadeTests
     [Fact]
     public void ListFacade_MapsToRuntimeGlobal()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -89,15 +89,17 @@ public class TinySystemFacadeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "T.Test()");
 
-        Assert.Equal("true", result);
+        Assert.Equal("True", result);
     }
 
+    // TinySystem.Dict は BCL の Dictionary を受けるので、TinySystem.props が入れる Collections.cs の Dictionary では
+    // .NET の型推論が通らない (CS0411)。.NET とは比べない
     [Fact]
     public void DictFacade_MapsToRuntimeGlobal()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -110,8 +112,8 @@ public class TinySystemFacadeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "T.Test()", dotnet: false);
 
-        Assert.Equal("true", result);
+        Assert.Equal("True", result);
     }
 }

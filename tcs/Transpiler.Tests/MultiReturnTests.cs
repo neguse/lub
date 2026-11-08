@@ -120,7 +120,7 @@ public class MultiReturnTests
     [Fact]
     public void UserMethodOutParameter_ReturnsThroughLuaMultiReturn()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        const string source = """
             public static class Parser
             {
                 public static bool TryParse(string text, out int value)
@@ -135,29 +135,31 @@ public class MultiReturnTests
                     return value;
                 }
             }
-            """]);
+            """;
+        var result = Transpiler.TranspileWithDiagnostics([source]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.Contains("return true, value", result.Lua);
-        Assert.Equal("42", TestHelper.RunLua($"{result.Lua}\nprint(Parser.Run())").Trim());
+        Assert.Equal("42", TestHelper.CompileAndRunVm(source, "Parser.Run()"));
     }
 
     // 条件の位置は closure を作らず文に下ろす
     [Fact]
     public void UserMethodOutCall_InCondition_DoesNotAllocateClosure()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        const string source = """
             public static class P
             {
                 static bool Try(out int v) { v = 1; return true; }
                 public static int Run() { if (Try(out var v)) return v; return 0; }
             }
-            """]);
+            """;
+        var result = Transpiler.TranspileWithDiagnostics([source]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
         var run = result.Lua[result.Lua.IndexOf("function P.Run", StringComparison.Ordinal)..];
         Assert.DoesNotContain("(function()", run);
-        Assert.Equal("1", TestHelper.RunLua($"{result.Lua}\nprint(P.Run())").Trim());
+        Assert.Equal("1", TestHelper.CompileAndRunVm(source, "P.Run()"));
     }
 
     [Theory]

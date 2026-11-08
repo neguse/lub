@@ -5,7 +5,7 @@ public class ForLoopTests
     [Fact]
     public void SimpleFor_Sum()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Loop
             {
                 public static int Sum(int n)
@@ -26,7 +26,7 @@ public class ForLoopTests
     [Fact]
     public void SimpleFor_StartFromOne()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Loop
             {
                 public static int Sum(int n)
@@ -47,7 +47,7 @@ public class ForLoopTests
     [Fact]
     public void For_WithBreak()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Loop
             {
                 public static int FirstOver(int limit)
@@ -67,7 +67,7 @@ public class ForLoopTests
     [Fact]
     public void For_Nested()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Loop
             {
                 public static int Multiply(int rows, int cols)
@@ -93,7 +93,7 @@ public class ForLoopTests
     [Fact]
     public void Continue_ForLoop()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -114,7 +114,7 @@ public class ForLoopTests
     [Fact]
     public void Continue_WhileLoop()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -140,7 +140,7 @@ public class ForLoopTests
         // 一般 for lowering は continue label の後に incrementor が続くため、
         // label が block 末尾に来ない。continue より後で宣言した local がある場合、
         // goto が local スコープへ飛び込む形になり Lua が load を拒否する回帰の検証
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Limit = 5;
@@ -163,7 +163,7 @@ public class ForLoopTests
     [Fact]
     public void Continue_ForEach()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -188,7 +188,7 @@ public class ForLoopTests
     [Fact]
     public void GeneralFor_PostDecrementIncrementor()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -209,7 +209,7 @@ public class ForLoopTests
     [Fact]
     public void GeneralFor_AddAssignmentIncrementor()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -230,7 +230,7 @@ public class ForLoopTests
     [Fact]
     public void GeneralFor_MultipleIncrementors()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -251,7 +251,7 @@ public class ForLoopTests
     [Fact]
     public void GeneralFor_AssignmentInitializers()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -277,7 +277,7 @@ public class ForLoopTests
     [Fact]
     public void DoWhile_Basic()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -299,7 +299,7 @@ public class ForLoopTests
     [Fact]
     public void For_BoundVariableMutatedInBody_ReevaluatedEachIteration()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -321,7 +321,7 @@ public class ForLoopTests
     [Fact]
     public void For_MethodCallBound_EvaluatedEachIteration()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Calls;
@@ -349,7 +349,7 @@ public class ForLoopTests
     [Fact]
     public void For_ListCountBound_TracksShrinkingList()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
 
             public class T
@@ -373,7 +373,7 @@ public class ForLoopTests
     [Fact]
     public void For_LoopVariableAssignedInBody_AffectsIteration()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -394,7 +394,7 @@ public class ForLoopTests
     [Fact]
     public void For_StableLocalBound_StillWorks()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -415,7 +415,7 @@ public class ForLoopTests
     [Fact]
     public void DoWhile_ExecutesAtLeastOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -438,7 +438,7 @@ public class ForLoopTests
     [Fact]
     public void CapturedForVariable_SharedAcrossIterations()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             using System.Collections.Generic;
             public class T
@@ -465,7 +465,7 @@ public class ForLoopTests
     [Fact]
     public void CapturedForeachVariable_FreshPerIteration()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             using System.Collections.Generic;
             public class T

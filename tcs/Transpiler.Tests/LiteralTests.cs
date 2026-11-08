@@ -6,7 +6,7 @@ public class LiteralTests
     [Fact]
     public void HexLiteral_0xFF()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 0xFF;
@@ -18,7 +18,7 @@ public class LiteralTests
     [Fact]
     public void HexLiteral_0x1A()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 0x1A;
@@ -31,7 +31,7 @@ public class LiteralTests
     [Fact]
     public void DigitSeparator_Int()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 1_000_000;
@@ -43,7 +43,7 @@ public class LiteralTests
     [Fact]
     public void DigitSeparator_Hex()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 0xFF_FF;
@@ -56,7 +56,7 @@ public class LiteralTests
     [Fact]
     public void CharLiteral_Basic()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -73,7 +73,7 @@ public class LiteralTests
     [Fact]
     public void VerbatimString_Backslash()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test() => @"C:\Users\test";
@@ -86,7 +86,7 @@ public class LiteralTests
     [Fact]
     public void RawString_Simple()
     {
-        var result = TestHelper.TranspileAndRun(""""
+        var result = TestHelper.CompileAndRunVm(""""
             public class T
             {
                 public static string Test() => """hello world""";
@@ -99,7 +99,7 @@ public class LiteralTests
     [Fact]
     public void BinaryLiteral_0b1010()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 0b1010;
@@ -111,7 +111,7 @@ public class LiteralTests
     [Fact]
     public void BinaryLiteral_WithSeparator()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test() => 0b1111_0000;
@@ -124,7 +124,7 @@ public class LiteralTests
     [Fact]
     public void Default_Int()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test()
@@ -140,7 +140,7 @@ public class LiteralTests
     [Fact]
     public void Default_Bool()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test()
@@ -149,14 +149,14 @@ public class LiteralTests
                     return b;
                 }
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("false", result);
+            """, "T.Test()");
+        Assert.Equal("False", result);
     }
 
     [Fact]
     public void DefaultT_String()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()

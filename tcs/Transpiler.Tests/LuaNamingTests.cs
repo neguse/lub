@@ -37,7 +37,7 @@ public class LuaNamingTests
     [Fact]
     public void UserMembers_EmitCSharpNames()
     {
-        var result = TestHelper.TranspileAndRun("""
+        const string source = """
             public class Player
             {
                 public int Hp = 3;
@@ -57,15 +57,17 @@ public class LuaNamingTests
                     return p.XMLValue + Player.Twice(1);
                 }
             }
-            """,
+            """;
+        var result = TestHelper.TranspileAndRun(source,
             "Game.Run() .. ',' .. Player.new().Hp .. ',' .. Player.new().maxHp .. ',' .. Player.Twice(2)");
         Assert.Equal("27,3,10,4", result);
+        Assert.Equal("27,3,10,4", TestHelper.CompileAndRunVm(source, "Game.Run() + \",\" + new Player().Hp + \",\" + new Player().maxHp + \",\" + Player.Twice(2)"));
     }
 
     [Fact]
     public void CustomProperty_AccessorsKeepPropertyName()
     {
-        var result = TestHelper.TranspileAndRun("""
+        const string source = """
             public class Box
             {
                 private int _w;
@@ -75,30 +77,34 @@ public class LuaNamingTests
                     set { _w = value * 2; }
                 }
             }
-            """,
+            """;
+        var result = TestHelper.TranspileAndRun(source,
             "(function() local b = Box.new() b:set_Width(4) return b:get_Width() .. ',' .. b._w end)()");
         Assert.Equal("8,8", result);
+        Assert.Equal("8", TestHelper.CompileAndRunVmMain(source, "var b = new Box(); b.Width = 4; System.Console.WriteLine(b.Width);"));
     }
 
     [Fact]
     public void EnumMembers_EmitCSharpNames()
     {
-        var result = TestHelper.TranspileAndRun("""
+        const string source = """
             public enum Direction { Up, Down, LeftSide, RIGHT }
 
             public class Nav
             {
                 public static int GetDir() { return (int)Direction.LeftSide; }
             }
-            """,
+            """;
+        var result = TestHelper.TranspileAndRun(source,
             "Nav.GetDir() .. ',' .. Direction.LeftSide .. ',' .. Direction.RIGHT");
         Assert.Equal("2,2,3", result);
+        Assert.Equal("2,2,3", TestHelper.CompileAndRunVm(source, "Nav.GetDir() + \",\" + (int)Direction.LeftSide + \",\" + (int)Direction.RIGHT"));
     }
 
     [Fact]
     public void Record_PositionalFieldsKeepCSharpNames()
     {
-        var result = TestHelper.TranspileAndRun("""
+        const string source = """
             public record Point(int PosX, int posY);
 
             public static class Geo
@@ -111,9 +117,11 @@ public class LuaNamingTests
                     return p.PosX + q.posY + a + b;
                 }
             }
-            """,
+            """;
+        var result = TestHelper.TranspileAndRun(source,
             "Geo.Sum() .. ',' .. Point.new(3, 4).PosX .. ',' .. Point.new(3, 4).posY");
         Assert.Equal("12,3,4", result);
+        Assert.Equal("12,3,4", TestHelper.CompileAndRunVm(source, "Geo.Sum() + \",\" + new Point(3, 4).PosX + \",\" + new Point(3, 4).posY"));
     }
 
     // IL の名前 (tcs2c の C 名の元) も C# の識別子のまま
@@ -250,15 +258,17 @@ public class LuaNamingTests
     [Fact]
     public void ConstField_IsInlined()
     {
-        var result = TestHelper.TranspileAndRun("""
+        const string source = """
             public static class Limits
             {
                 public const int MaxHp = 99;
                 public const string Name = "hero";
                 public static string Describe() { return Name + ":" + MaxHp; }
             }
-            """,
+            """;
+        var result = TestHelper.TranspileAndRun(source,
             "Limits.Describe()");
         Assert.Equal("hero:99", result);
+        Assert.Equal("hero:99", TestHelper.CompileAndRunVm(source, "Limits.Describe()"));
     }
 }

@@ -13,7 +13,7 @@ public class StructCopyValueTests
         """;
 
     private static string Run(string source) =>
-        TestHelper.TranspileAndRunWithRuntime(S + source, "T.Test()");
+        TestHelper.CompileAndRunVm(S + source, "T.Test()");
 
     [Fact]
     public void ConditionalAccessCall_CopiesArguments()

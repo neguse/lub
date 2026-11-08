@@ -5,7 +5,7 @@ public class LambdaTests
     [Fact]
     public void SimpleLambda_Expression()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
 
             public class Fn
@@ -28,7 +28,7 @@ public class LambdaTests
     [Fact]
     public void ParenthesizedLambda()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
 
             public class Fn
@@ -51,7 +51,7 @@ public class LambdaTests
     [Fact]
     public void Lambda_AsVariable()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
 
             public class Fn
@@ -72,7 +72,7 @@ public class LambdaTests
     {
         // delegate 型 field / auto property を `obj.F()` / `Cls.F()` / 非修飾
         // `F()` で直接呼ぶ (IL 経路: IlDynCall(IlField))
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public class Btn
             {

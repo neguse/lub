@@ -8,7 +8,7 @@ public class IncrementExpressionTests
     [Fact]
     public void PrefixInCondition_UpdatesAndYieldsNewValue()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Test(int n)
@@ -25,7 +25,7 @@ public class IncrementExpressionTests
     [Fact]
     public void PostfixAsArgumentAndIndex_YieldsOldValue()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Twice(int x) => x * 2;
@@ -50,7 +50,7 @@ public class IncrementExpressionTests
     [Fact]
     public void InAssignmentRhsAndReturn_PrefixAndPostfixDiffer()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Counter;
@@ -76,7 +76,7 @@ public class IncrementExpressionTests
     [Fact]
     public void FieldAndCustomProperty_AccessorsRunOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Box
             {
                 public int N;
@@ -111,7 +111,7 @@ public class IncrementExpressionTests
     [Fact]
     public void SideEffectReceiverAndIndex_EvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
 
             public class Box { public int X = 10; }
@@ -141,7 +141,7 @@ public class IncrementExpressionTests
     [Fact]
     public void NullableOperand_LiftedInExpression()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -163,7 +163,7 @@ public class IncrementExpressionTests
     [Fact]
     public void LocalLeftOperand_ReadBeforeRightSideEffect()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int SF = 1;
@@ -199,7 +199,7 @@ public class IncrementExpressionTests
     [Fact]
     public void IndexedAssignment_IndexEvaluatedBeforeRhs()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
 
             public class T
@@ -249,7 +249,7 @@ public class IncrementExpressionTests
     [Fact]
     public void GetterReceiver_EvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Box { public int N; }
             public class T
             {
@@ -277,7 +277,7 @@ public class IncrementExpressionTests
     [Fact]
     public void CustomPropertyAssignAsExpression_UsesAccessors()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Box
             {
                 int _p = 4;
@@ -311,7 +311,7 @@ public class IncrementExpressionTests
     [Fact]
     public void GetterThroughStructField_EvaluatedOnceAndWritesInPlace()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public struct In { public int N; }
             public struct S
             {

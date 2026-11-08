@@ -5,7 +5,7 @@ public class ListSemanticTests
     [Fact]
     public void List_Remove()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -23,7 +23,7 @@ public class ListSemanticTests
     [Fact]
     public void List_RemoveAt()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -41,7 +41,7 @@ public class ListSemanticTests
     [Fact]
     public void List_Clear()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -59,7 +59,7 @@ public class ListSemanticTests
     [Fact]
     public void List_Contains()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -70,14 +70,14 @@ public class ListSemanticTests
                     return list.Contains(2);
                 }
             }
-            """, "tostring(T.Test())");
-        Assert.Equal("true", result);
+            """, "T.Test()");
+        Assert.Equal("True", result);
     }
 
     [Fact]
     public void List_IndexOf()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public class T
@@ -95,7 +95,7 @@ public class ListSemanticTests
     [Fact]
     public void List_Sort()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -116,7 +116,7 @@ public class ListSemanticTests
     [Fact]
     public void List_Sort_StringOrdinal()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -135,7 +135,7 @@ public class ListSemanticTests
     [Fact]
     public void List_Sort_Comparison()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {

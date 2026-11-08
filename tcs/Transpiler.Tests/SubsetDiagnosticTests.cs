@@ -68,7 +68,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void NumericParseAndTryParse_AreSupported()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public static class P
             {
                 public static string F()
@@ -911,7 +911,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void StaticMethodGroup_NoWarning_AndWorks()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             using System.Collections.Generic;
             using TinySystem.Linq;
@@ -1107,7 +1107,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void InterpolationAlignment_UsesConstantValueNotSyntaxText()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()

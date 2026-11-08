@@ -8,7 +8,7 @@ public class TypePatternTests
     [Fact]
     public void IsInt_OnNullable_MatchesOnlyValues()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -28,7 +28,7 @@ public class TypePatternTests
     [Fact]
     public void IsBoolAndString_MatchByLuaType()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -51,7 +51,7 @@ public class TypePatternTests
     [Fact]
     public void SwitchExpression_ValueTypeArm_DoesNotMatchNull()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static int Classify(int? n) => n switch
@@ -71,7 +71,7 @@ public class TypePatternTests
     [Fact]
     public void IsPattern_InTernary_BindsDesignation()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -90,7 +90,7 @@ public class TypePatternTests
     [Fact]
     public void IsPattern_InCompoundCondition_BindsDesignation()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Shape { }
             public class Circle
             {
@@ -114,7 +114,7 @@ public class TypePatternTests
     [Fact]
     public void IsPattern_InLambda_BindsDesignation()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             using TinySystem.Linq;
 
@@ -143,7 +143,7 @@ public class TypePatternTests
     [Fact]
     public void ClassPattern_StillUsesMetatable()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Shape { }
             public class Circle { }
             public class T
@@ -164,7 +164,7 @@ public class TypePatternTests
     [Fact]
     public void IsUnrelatedOrNull_False()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Animal { }
             public class Rock { }
             public class T
@@ -183,7 +183,7 @@ public class TypePatternTests
     [Fact]
     public void ParenthesizedPattern_BindsDesignation()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System;
             public class Sq { public int W = 2; }
             public class T

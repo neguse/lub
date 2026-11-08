@@ -95,7 +95,7 @@ public class InheritanceDiagnosticTests
     [Fact]
     public void InterfaceImplementation_IsNotDiagnosed()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        const string source = """
             public interface IShape { int Area(); }
             public interface ISquare : IShape { int Side(); }
             public sealed class Sq : ISquare
@@ -115,11 +115,12 @@ public class InheritanceDiagnosticTests
                     return a.Area() + b.Area();
                 }
             }
-            """]);
+            """;
+        var result = Transpiler.TranspileWithDiagnostics([source]);
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);
-        Assert.Equal("13", TestHelper.RunLua(result.Lua + "\nprint(P.Test())").Trim());
+        Assert.Equal("13", TestHelper.CompileAndRunVm(source, "P.Test()"));
     }
 
     // --ref の型は host の宣言 (lub の `sealed class LubHandleAttribute :

@@ -55,7 +55,6 @@ echo "Running dotnet tests (with spec conformance + differential)..."
 TCS_SPEC_CONFORMANCE=1 \
 TCS_SPEC_REPORT="$SCRIPT_DIR/doc/spec-conformance-report.md" \
 TCS_DIFFERENTIAL=1 \
-TCS_VM_DIFFERENTIAL=1 \
 TCS_FUZZ=1 \
   dotnet test "$SCRIPT_DIR" --verbosity minimal
 

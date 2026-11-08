@@ -8,12 +8,12 @@ public class StringEdgeContractTests
         Assert.Throws<ArgumentException>(() => "abc".Replace("", "x"));
 
         var error = Assert.Throws<InvalidOperationException>(() =>
-            TestHelper.TranspileAndRunWithRuntime("""
+            TestHelper.CompileAndRunVm("""
                 public class T
                 {
                     public static string Test() => "abc".Replace("", "x");
                 }
-                """, "T.Test()", TimeSpan.FromSeconds(3)));
+                """, "T.Test()"));
 
         Assert.Contains("oldValue", error.Message);
     }
@@ -21,14 +21,14 @@ public class StringEdgeContractTests
     [Fact]
     public void String_EndsWith_EmptySuffixMatchesDotNet()
     {
-        var expected = "hello".EndsWith("").ToString().ToLowerInvariant();
+        var expected = "hello".EndsWith("").ToString();
 
-        var actual = TestHelper.TranspileAndRunWithRuntime("""
+        var actual = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static bool Test() => "hello".EndsWith("");
             }
-            """, "tostring(T.Test())");
+            """, "T.Test()");
 
         Assert.Equal(expected, actual);
     }
@@ -42,7 +42,7 @@ public class StringEdgeContractTests
         var expected = $"{expectedParts.Length}|{expectedParts[0]}|" +
             $"{expectedEmptyParts.Length}|{expectedEmptyParts[0]}";
 
-        var actual = TestHelper.TranspileAndRunWithRuntime("""
+        var actual = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -65,7 +65,7 @@ public class StringEdgeContractTests
         var expectedParts = input.Split();
         var expected = $"{expectedParts.Length}|{string.Join("|", expectedParts)}";
 
-        var actual = TestHelper.TranspileAndRunWithRuntime("""
+        var actual = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -87,7 +87,7 @@ public class StringEdgeContractTests
         var expectedParts = "".Split();
         var expected = $"{expectedParts.Length}|{expectedParts[0]}";
 
-        var actual = TestHelper.TranspileAndRunWithRuntime("""
+        var actual = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -108,7 +108,7 @@ public class StringEdgeContractTests
         var expectedParts = input.Split((string?)null);
         var expected = $"{expectedParts.Length}|{expectedParts[0]}";
 
-        var actual = TestHelper.TranspileAndRunWithRuntime("""
+        var actual = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -128,7 +128,7 @@ public class StringEdgeContractTests
         var expected = string.Join("", "", "a", "") + "|" +
             string.Join(",", Array.Empty<string>());
 
-        var actual = TestHelper.TranspileAndRunWithRuntime("""
+        var actual = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -157,7 +157,7 @@ public class StringEdgeContractTests
         if (empty.ToLower().Length == 0) expected++;
         if (empty.ToString().Length == 0) expected++;
 
-        var actual = TestHelper.TranspileAndRunWithRuntime("""
+        var actual = TestHelper.CompileAndRunVm("""
             using TinySystem.Text;
             public class T
             {

@@ -5,7 +5,7 @@ public class ClassTests
     [Fact]
     public void Constructor_NoArgs()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Counter
             {
                 public int Count = 0;
@@ -13,14 +13,14 @@ public class ClassTests
                 public int GetCount() { return this.Count; }
             }
             """,
-            "Counter.new():GetCount()");
+            "new Counter().GetCount()");
         Assert.Equal("0", result);
     }
 
     [Fact]
     public void Constructor_WithArgs()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Point
             {
                 public int X;
@@ -35,14 +35,14 @@ public class ClassTests
                 public int Sum() { return this.X + this.Y; }
             }
             """,
-            "Point.new(3, 4):Sum()");
+            "new Point(3, 4).Sum()");
         Assert.Equal("7", result);
     }
 
     [Fact]
     public void InstanceMethod_ModifiesState()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVmMain("""
             public class Counter
             {
                 public int Count = 0;
@@ -54,22 +54,14 @@ public class ClassTests
 
                 public int GetCount() { return this.Count; }
             }
-            """, """
-            (function()
-              local c = Counter.new()
-              c:Increment()
-              c:Increment()
-              c:Increment()
-              return c:GetCount()
-            end)()
-            """);
+            """, "var c = new Counter(); c.Increment(); c.Increment(); c.Increment(); System.Console.WriteLine(c.GetCount());");
         Assert.Equal("3", result);
     }
 
     [Fact]
     public void AutoProperty_AsField()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Item
             {
                 public string Name { get; set; }
@@ -87,14 +79,14 @@ public class ClassTests
                 }
             }
             """,
-            "Item.new('sword', 100):Describe()");
+            "new Item(\"sword\", 100).Describe()");
         Assert.Equal("sword", result);
     }
 
     [Fact]
     public void FieldInitializer()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Config
             {
                 public int MaxHP = 100;
@@ -103,54 +95,44 @@ public class ClassTests
                 public int Total() { return this.MaxHP + this.Speed; }
             }
             """,
-            "Config.new():Total()");
+            "new Config().Total()");
         Assert.Equal("105", result);
     }
 
     [Fact]
     public void InstanceField_DefaultValues()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVmMain("""
             public class Defaults
             {
                 public int Count;
                 public bool Enabled;
                 public string Name;
             }
-            """, """
-            (function()
-              local d = Defaults.new()
-              return tostring(d.Count) .. "," .. tostring(d.Enabled) .. "," .. tostring(d.Name == nil)
-            end)()
-            """);
+            """, "var d = new Defaults(); System.Console.WriteLine(d.Count + \",\" + d.Enabled + \",\" + (d.Name == null));");
 
-        Assert.Equal("0,false,true", result);
+        Assert.Equal("0,False,True", result);
     }
 
     [Fact]
     public void AutoProperty_DefaultValues()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVmMain("""
             public class Defaults
             {
                 public int Count { get; set; }
                 public bool Enabled { get; set; }
                 public string Name { get; set; }
             }
-            """, """
-            (function()
-              local d = Defaults.new()
-              return tostring(d.Count) .. "," .. tostring(d.Enabled) .. "," .. tostring(d.Name == nil)
-            end)()
-            """);
+            """, "var d = new Defaults(); System.Console.WriteLine(d.Count + \",\" + d.Enabled + \",\" + (d.Name == null));");
 
-        Assert.Equal("0,false,true", result);
+        Assert.Equal("0,False,True", result);
     }
 
     [Fact]
     public void ExpressionBodiedMethod()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Calc
             {
                 public static int Square(int x) => x * x;
@@ -163,7 +145,7 @@ public class ClassTests
     [Fact]
     public void MultipleClasses()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Vec2
             {
                 public int X;
@@ -180,9 +162,7 @@ public class ClassTests
                     return dx * dx + dy * dy;
                 }
             }
-            """, """
-            Physics.Distance(Vec2.new(1, 2), Vec2.new(4, 6))
-            """);
+            """, "Physics.Distance(new Vec2(1, 2), new Vec2(4, 6))");
         Assert.Equal("25", result);
     }
 
@@ -191,7 +171,7 @@ public class ClassTests
     [Fact]
     public void StaticField_DefaultValue()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Game
             {
                 private static int counter;
@@ -206,7 +186,7 @@ public class ClassTests
     [Fact]
     public void StaticField_WithInitializer()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Game
             {
                 private static int counter = 42;
@@ -221,7 +201,7 @@ public class ClassTests
     [Fact]
     public void StaticField_ReadWrite()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVmMain("""
             public class Game
             {
                 private static float timer;
@@ -233,16 +213,14 @@ public class ClassTests
 
                 public static float GetTimer() { return timer; }
             }
-            """, """
-            (function() Game.Update(1.5); Game.Update(2.5); return Game.GetTimer() end)()
-            """);
-        Assert.Equal("4.0", result);
+            """, "Game.Update(1.5f); Game.Update(2.5f); System.Console.WriteLine(Game.GetTimer());");
+        Assert.Equal("4", result);
     }
 
     [Fact]
     public void StaticField_Const()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Config
             {
                 public const int MaxHP = 100;
@@ -258,7 +236,7 @@ public class ClassTests
     [Fact]
     public void StaticField_MixedWithInstanceFields()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVmMain("""
             public class Entity
             {
                 private static int nextId;
@@ -272,16 +250,14 @@ public class ClassTests
                     Name = name;
                 }
             }
-            """, """
-            (function() local a = Entity.new("Alice"); local b = Entity.new("Bob"); return tostring(a.Id) .. "," .. tostring(b.Id) end)()
-            """);
+            """, "var a = new Entity(\"Alice\"); var b = new Entity(\"Bob\"); System.Console.WriteLine(a.Id + \",\" + b.Id);");
         Assert.Equal("1,2", result);
     }
 
     [Fact]
     public void OptionalParameters_FillDefaultsWhenOmitted()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public T(int seed = 7)
@@ -307,7 +283,7 @@ public class ClassTests
     {
         // C# は static field を default 値で事前初期化してから initializer を
         // 宣言順に実行する (循環参照でも nil にならない)
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 static int a = b + 1;
@@ -325,7 +301,7 @@ public class ClassTests
     [Fact]
     public void StaticFieldInitializer_CallsOwnConstructor()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class V
             {
                 public static V Zero = new V(1, 2);
@@ -345,7 +321,7 @@ public class ClassTests
     [Fact]
     public void StaticFieldInitializer_CallsOwnStaticMethod()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 static int n = Compute();
@@ -360,7 +336,7 @@ public class ClassTests
     [Fact]
     public void StaticFieldInitializers_RunInDeclarationOrder()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 static int a = 5;

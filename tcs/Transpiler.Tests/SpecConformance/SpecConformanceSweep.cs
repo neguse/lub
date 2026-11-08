@@ -99,13 +99,13 @@ internal sealed class SpecConformanceSweep
         return new SpecSweepResult(examples, classified, difference, execution);
     }
 
-    // InRun のうち出力契約を持つ例を Lua 実行し、失敗は Bug へ再分類する
+    // InRun の例を tcs VM で実行し、失敗は Bug へ再分類する
     // (baseline / Bug ゲートに乗せるため)。
     private SpecExecutionStats ExecuteEligible(
         List<ClassifiedSpecExample> classified,
         IReadOnlyList<SpecExpansion> expansions)
     {
-        var executor = new SpecLuaExecutor(_repoRoot);
+        var executor = new SpecVmExecutor(_repoRoot);
         var ids = ResolveIds(classified);
         var executed = 0;
         var passed = 0;
@@ -113,7 +113,7 @@ internal sealed class SpecConformanceSweep
         for (var index = 0; index < classified.Count; index++)
         {
             var (item, id) = ids[index];
-            if (!SpecLuaExecutor.IsEligible(item))
+            if (!SpecVmExecutor.IsEligible(item))
                 continue;
             var outcome = executor.Execute(item, id,
                 expansions[index].Sources);

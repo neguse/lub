@@ -32,7 +32,7 @@ public class IlPipelineTests
     [Fact]
     public void IlEmittedBody_RunsWithSameSemantics()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -77,7 +77,7 @@ public class IlPipelineTests
     [Fact]
     public void ListAndInterpolation_GoThroughIl()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -110,7 +110,7 @@ public class IlPipelineTests
             }
             """]);
         Assert.DoesNotContain("(function()", lua);
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -140,7 +140,7 @@ public class IlPipelineTests
             }
             """]);
         Assert.DoesNotContain("(function()", lua);
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -175,7 +175,7 @@ public class IlPipelineTests
             }
             """]);
         Assert.DoesNotContain("(function()", lua);
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {
@@ -212,7 +212,7 @@ public class IlPipelineTests
             }
             """]);
         Assert.DoesNotContain("(function()", lua);
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
             {

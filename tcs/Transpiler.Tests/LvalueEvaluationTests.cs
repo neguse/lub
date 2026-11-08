@@ -9,7 +9,7 @@ public class LvalueEvaluationTests
     [Fact]
     public void CompoundAssignment_ElementAccess_ReceiverAndIndexOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
 
             public class T
@@ -44,7 +44,7 @@ public class LvalueEvaluationTests
     [Fact]
     public void CompoundAssignment_MemberAccess_ReceiverOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Box
             {
                 public int X = 10;
@@ -74,7 +74,7 @@ public class LvalueEvaluationTests
     [Fact]
     public void StringCompoundAssignment_Concatenates()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class T
             {
                 public static string Test()
@@ -92,7 +92,7 @@ public class LvalueEvaluationTests
     [Fact]
     public void CoalesceAssignment_MemberAccess_ReceiverOnceAndRhsLazy()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Box
             {
                 public string Label;
@@ -130,7 +130,7 @@ public class LvalueEvaluationTests
     [Fact]
     public void Increment_ElementAccess_ReceiverAndIndexOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
 
             public class T
@@ -165,7 +165,7 @@ public class LvalueEvaluationTests
     [Fact]
     public void ListClear_SideEffectReceiver_EvaluatedOnce()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
 
             public class T

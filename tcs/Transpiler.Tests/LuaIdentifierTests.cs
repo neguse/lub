@@ -229,7 +229,7 @@ public class LuaIdentifierTests
     [Fact]
     public void VerbatimIdentifiers_RunWithCsharpSemantics()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             var calc = new Calc();
             var result = calc.Add(5);
             var direct = calc.@float;
@@ -310,7 +310,7 @@ public class LuaIdentifierTests
     [Fact]
     public void ContinueLabel_DoesNotCollideWithUserVariable()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             var _continue_1 = 10;
             var sum = 0;
             for (var i = 0; i < 3; i++)
@@ -326,7 +326,7 @@ public class LuaIdentifierTests
     [Fact]
     public void VerbatimTypeName_EmitsValueTextInPatterns()
     {
-        var output = TestHelper.TranspileAndRun("""
+        var output = TestHelper.CompileAndRunVmTopLevel("""
             object s = new @float();
             var isFloat = s is @float f;
             var viaSwitch = s switch

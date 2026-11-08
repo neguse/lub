@@ -22,7 +22,7 @@ public class ObjectInitializerTests
             }
             """;
 
-        var result = TestHelper.TranspileAndRun(source, "Test.Run()");
+        var result = TestHelper.CompileAndRunVm(source, "Test.Run()");
 
         Assert.Equal("7", result);
     }
@@ -51,7 +51,7 @@ public class ObjectInitializerTests
             }
             """;
 
-        var result = TestHelper.TranspileAndRun(source, "Test.Run()");
+        var result = TestHelper.CompileAndRunVm(source, "Test.Run()");
 
         Assert.Equal("42", result);
     }
@@ -145,7 +145,7 @@ public class ObjectInitializerTests
     [Fact]
     public void ObjectInitializer_NestedInitializer_AssignsIntoExistingMembers()
     {
-        var result = TestHelper.TranspileAndRunWithRuntime("""
+        var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public struct Pos { public int X; public int Y; }
             public class Inner
