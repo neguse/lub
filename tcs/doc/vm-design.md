@@ -191,7 +191,7 @@ field の参照 (`@Particle.Vel.X`) は bytecode では型の葉の番号で、�
 | bool | `NOT_B`, `AND_B`, `OR_B`, `NE_B`, `EQ_B` | il-spec §4 |
 | 変換 | `I2F`, `F2I` (0 方向、NaN と範囲外は fault), `CHR` (1 byte の string。0〜255 の外は fault) | il-spec §5, il-reference |
 | 比較 / 分岐 | `EQ/LT/LE_I32`, `EQ/LT/LE_F32` (IEEE), `EQ_STR` (内容), `EQ_REF` (identity), `JMP`, `JT/JF`, `JNULL/JNN`, 比較と分岐の融合形 `JT_LT_I32` / `JF_LT_I32` 等 | il-spec §4, §6, §11 |
-| object | `NEW` (class か cell), `NNULL` (instance method の呼び出しの前の null の fault), `LDF_*` / `STF_*`, `LDS` / `STS` (static), `EQ_REC` (record の等価), `CLONE` (record の `with`) | il-spec §9, §10 |
+| object | `NEW` (class か cell), `NNULL` (instance method の呼び出しの前の null の fault), `LDF_*` / `STF_*`, `LDS` / `STS` (static), `EQ_REC` (record と、struct の object / interface の葉の実行時の型の値の等価), `CLONE` (record の `with`) | il-spec §9, §10 |
 | 配列 / List | `NEWARR`, `ARR_LEN`, `LDE_*` / `STE_*` (範囲検査), struct の要素の葉の `LDEF_*` / `STEF_*`, `NEWLIST`, `LIST_LEN`, `LIST_LD_*` / `LIST_ST_*`, `LIST_LDF_*` / `LIST_STF_*`, `LIST_ADD_*`, `LIST_PUSH0`, `LIST_INSERT0`, `LIST_REMOVE_AT`, `LIST_CLEAR`, `LIST_SORT` | il-spec §11, §12 |
 | Dictionary | `NEWDICT`, `DICT_LEN`, `DICT_FIND` (無い key は fault), `DICT_INS`, `DICT_LDV_*` / `DICT_STV_*`, 走査の `DICT_USED` / `DICT_LIVE` / `DICT_LDK`, `DICT_HAS`, `DICT_REMOVE` | il-spec §11 |
 | 型 | `ISTYPE`, `CAST` (失敗は fault), `ASCAST`, `BOX_*`, `UNBOX_*` | il-spec §2, §9 |

@@ -155,7 +155,7 @@
   X(UNBOX_I32)  /* a = (int) b (box の型 #c でなければ fault) */                 \
   X(UNBOX_F32)                                                                 \
   X(UNBOX_B)                                                                   \
-  X(EQ_REC)     /* a = b == c (record: field ごとの等価) */                     \
+  X(EQ_REC)     /* a = b == c (実行時の型の値の等価。record は field ごと) */      \
   X(CLONE)      /* a = b の shallow copy (record の with) */                    \
   X(CHR)        /* a = 1 byte の string (b は 0..255) */                        \
   X(CALLR)      /* runtime の関数 #c を a.. の引数で呼ぶ。戻り値は b.. */         \

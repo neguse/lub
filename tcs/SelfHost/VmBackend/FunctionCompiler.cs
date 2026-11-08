@@ -2893,8 +2893,9 @@ public sealed class FunctionCompiler
             }
             var cmpType = lt.Tag == VT.Class || lt.Tag == VT.Iface || lt.Tag == VT.Object || lt.Tag == VT.Box ? VType.Object : lt;
             Op op = Compare(IlBinOp.Eq, cmpType, out bool swap0, out bool negate0);
+            // record と object / interface の葉は実行時の型の値の等価 (EqualityComparer<T>.Default。中の値が record なら field ごと)
             if (lt.Tag == VT.Class && _m.Classes[lt.Name].IsRecord) op = Op.EQ_REC;
-            if (lt.Tag == VT.Object || lt.Tag == VT.Iface || lt.Tag == VT.Box) op = Op.EQ_REF;
+            if (lt.Tag == VT.Object || lt.Tag == VT.Iface || lt.Tag == VT.Box) op = Op.EQ_REC;
             Emit(op, eq.Reg, l.Regs[k], r.Regs[k]);
             Jump(Op.JF, no, eq.Reg);
         }

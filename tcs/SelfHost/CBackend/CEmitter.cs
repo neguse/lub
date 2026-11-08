@@ -6504,11 +6504,72 @@ public sealed class CEmitter
             return $"{Names.RecordEq(type.Name!)}({left}, {right})";
         if (type.Kind == CTypeKind.StructVal) return $"{Names.StructEq(type.Name!)}(&{left}, &{right})";
         if (type.Kind == CTypeKind.Nullable) return NullableEqualExpr(type, left, right, true);
+        // object と interface の field は実行時の型で比べる (中の値が record なら値等価)
+        if (IsRuntimeEqualityType(type)) return $"{ObjectEqualName}({left}, {right})";
         return $"({left} == {right})";
+    }
+
+    private const string ObjectEqualName = "tcs_eq_object";
+
+    private bool IsRuntimeEqualityType(CType type)
+    {
+        return type.Kind == CTypeKind.Object || type.Kind == CTypeKind.Ref && IsInterface(type.Name!);
+    }
+
+    // record と struct の field に object か interface の型があるか (tcs_eq_object が要るか)
+    private bool NeedsObjectEquality()
+    {
+        foreach (var st in _program.Structs)
+        {
+            foreach (var f in st.Fields)
+            {
+                if (IsRuntimeEqualityType(_facts.MapType(f.Type))) return true;
+            }
+        }
+        foreach (var cls in _program.Classes)
+        {
+            if (!cls.IsRecord) continue;
+            foreach (var field in cls.Fields)
+            {
+                if (!field.IsStatic && IsRuntimeEqualityType(_facts.Field(cls.Name, field.Name).Type)) return true;
+            }
+        }
+        return false;
+    }
+
+    // object の値の等価 (EqualityComparer<object>.Default): 実行時の型が同じで、string と box は中の値、record は値等価、他の class は参照
+    private void EmitObjectEquality()
+    {
+        Line("static bool");
+        Line($"{ObjectEqualName}(void *a, void *b)");
+        Line("{");
+        _indent++;
+        Line("uint32_t type_id;");
+        Line("if (a == b) return true;");
+        Line("if (a == NULL || b == NULL) return false;");
+        Line("type_id = TCS_GC_HEADER(a)->type_id;");
+        Line("if (type_id != TCS_GC_HEADER(b)->type_id) return false;");
+        Line("switch (type_id) {");
+        Line("case TCS_TYPE_STRING: return tcs_string_equal((TcsString *)a, (TcsString *)b);");
+        Line("case TCS_TYPE_BOX_I32: return ((TcsBox *)a)->value.i == ((TcsBox *)b)->value.i;");
+        Line("case TCS_TYPE_BOX_F32: return tcs_float_equals(((TcsBox *)a)->value.f, ((TcsBox *)b)->value.f);");
+        Line("case TCS_TYPE_BOX_BOOL: return ((TcsBox *)a)->value.b == ((TcsBox *)b)->value.b;");
+        foreach (var cls in _program.Classes)
+        {
+            if (!cls.IsRecord || cls.IsInterface) continue;
+            Line($"case {Names.TypeId(cls.Name)}: return {Names.RecordEq(cls.Name)}(" +
+                $"({Names.Class(cls.Name)} *)a, ({Names.Class(cls.Name)} *)b);");
+        }
+        Line("default: return false;");
+        Line("}");
+        _indent--;
+        Line("}");
+        Line();
     }
 
     private void EmitRecordEquality()
     {
+        if (NeedsObjectEquality()) EmitObjectEquality();
         // データ struct は memberwise (C# の ValueType.Equals と同じ)
         foreach (var st in _program.Structs)
         {
