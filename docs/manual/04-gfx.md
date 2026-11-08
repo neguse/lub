@@ -233,6 +233,10 @@ struct FSIn { float2 uv : TEXCOORD0; };
   テクスチャ名で始まる名前にする。
 - 1 つの sampler を複数のテクスチャで共有する形、組になるテクスチャの無い
   sampler を使う形、テクスチャの配列は shader compile の error になる。
+- 1 つの shader が宣言できるのは、テクスチャ 8 枚、`StructuredBuffer` /
+  `RWStructuredBuffer` 4 つ、`RWTexture2D` 4 枚まで。
+  vertex と fragment の宣言は合わせて数える。
+  超えた宣言は、上限と超えた変数の名前を出す shader compile の error になる。
 
 ## 定型: ready になるまでスキップ
 

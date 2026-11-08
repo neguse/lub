@@ -245,6 +245,27 @@ static const char kStorageFormatUnknown[] =
     "r32f, "
     "rgba16f, rgba32f), or use float4 (rgba32f) or float (r32f) without it";
 
+// lub が 1 つの shader に結ぶ数の上限 (shader.h の SGL_MAX_*) を超えた宣言の error。
+// vertex と fragment の分は 1 つの表に入るので、上限は 2 つの stage の合計。
+static bool resource_limit_error(const char *what, int max,
+                                 SglShaderStage stage, const char *name,
+                                 char *err, size_t errsz) {
+  if (err && errsz)
+    snprintf(err, errsz,
+             "too many %s: a shader binds at most %d %s%s; %s shader variable "
+             "'%s' is past the limit",
+             what, max, what,
+             stage == SGL_STAGE_COMPUTE
+                 ? ""
+                 : " (vertex and fragment stages together)",
+             stage_label(stage), name && *name ? name : "?");
+  return false;
+}
+
+static const char kLimitTextures[] = "textures";
+static const char kLimitStorageBufs[] = "storage buffers";
+static const char kLimitStorageTextures[] = "storage textures";
+
 // WGSL target. The wasm build compiles in the page with slang-wasm (the
 // EM_JS bridge below); native builds compile with Slang to export a
 // web package. Both hand Slang's raw WGSL and reflection JSON for one entry
@@ -795,9 +816,12 @@ bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
       }
     }
     if (is_structured_buf) {
-      if (out->storage_buf_count < SGL_MAX_STORAGE_BUFS &&
-          !refl_sbuf_exists(out, stage, (int)p->getBindingIndex(),
-                            p->getName())) {
+      bool known_sbuf =
+          refl_sbuf_exists(out, stage, (int)p->getBindingIndex(), p->getName());
+      if (!known_sbuf && out->storage_buf_count >= SGL_MAX_STORAGE_BUFS)
+        return resource_limit_error(kLimitStorageBufs, SGL_MAX_STORAGE_BUFS,
+                                    stage, p->getName(), err, errsz);
+      if (!known_sbuf) {
         ShaderStorageBuf *sb = &out->storage_bufs[out->storage_buf_count++];
         copy_name(sb->name, sizeof(sb->name), p->getName());
         sb->slot = (int)p->getBindingIndex();
@@ -854,10 +878,21 @@ bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
              shape == SLANG_TEXTURE_3D || shape == SLANG_TEXTURE_CUBE) &&
             acc != SLANG_RESOURCE_ACCESS_READ;
       }
+      bool seen = storage_tex
+                      ? refl_stex_exists(out, stage, (int)p->getBindingIndex(),
+                                         p->getName())
+                      : refl_tex_exists(out, stage, (int)p->getBindingIndex(),
+                                        p->getName());
+      if (!seen && storage_tex &&
+          out->storage_tex_count >= SGL_MAX_STORAGE_TEXTURES)
+        return resource_limit_error(kLimitStorageTextures,
+                                    SGL_MAX_STORAGE_TEXTURES, stage,
+                                    p->getName(), err, errsz);
+      if (!seen && !storage_tex && out->tex_count >= SGL_MAX_TEXTURES)
+        return resource_limit_error(kLimitTextures, SGL_MAX_TEXTURES, stage,
+                                    p->getName(), err, errsz);
       if (storage_tex) {
-        if (out->storage_tex_count < SGL_MAX_STORAGE_TEXTURES &&
-            !refl_stex_exists(out, stage, (int)p->getBindingIndex(),
-                              p->getName())) {
+        if (!seen) {
           ShaderStorageTexture *st =
               &out->storage_texs[out->storage_tex_count++];
           copy_name(st->name, sizeof(st->name), p->getName());
@@ -882,9 +917,7 @@ bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
           }
           st->readonly = false;
         }
-      } else if (out->tex_count < SGL_MAX_TEXTURES &&
-                 !refl_tex_exists(out, stage, (int)p->getBindingIndex(),
-                                  p->getName())) {
+      } else if (!seen) {
         ShaderTexture *tx = &out->texs[out->tex_count++];
         copy_name(tx->name, sizeof(tx->name), p->getName());
         tx->img_slot = (int)p->getBindingIndex();
@@ -1518,6 +1551,31 @@ static void remap_stage_for_sdlgpu(ShaderReflection *stage) {
   }
 }
 
+// 1 つの stage の reflection を dst に足しても上限 (SGL_MAX_*) に収まるか。
+// 収まらなければ、溢れた最初の宣言を名指す error を書く。
+static bool merge_fits(const ShaderReflection *dst, const ShaderReflection *src,
+                       char *err, size_t errsz) {
+  if (dst->tex_count + src->tex_count > SGL_MAX_TEXTURES) {
+    const ShaderTexture *t = &src->texs[SGL_MAX_TEXTURES - dst->tex_count];
+    return resource_limit_error(kLimitTextures, SGL_MAX_TEXTURES, t->stage,
+                                t->name, err, errsz);
+  }
+  if (dst->storage_buf_count + src->storage_buf_count > SGL_MAX_STORAGE_BUFS) {
+    const ShaderStorageBuf *b =
+        &src->storage_bufs[SGL_MAX_STORAGE_BUFS - dst->storage_buf_count];
+    return resource_limit_error(kLimitStorageBufs, SGL_MAX_STORAGE_BUFS,
+                                b->stage, b->name, err, errsz);
+  }
+  if (dst->storage_tex_count + src->storage_tex_count >
+      SGL_MAX_STORAGE_TEXTURES) {
+    const ShaderStorageTexture *t =
+        &src->storage_texs[SGL_MAX_STORAGE_TEXTURES - dst->storage_tex_count];
+    return resource_limit_error(kLimitStorageTextures, SGL_MAX_STORAGE_TEXTURES,
+                                t->stage, t->name, err, errsz);
+  }
+  return true;
+}
+
 static void merge_stage_reflection(ShaderReflection *dst,
                                    const ShaderReflection *src,
                                    ShaderTargetBackend target) {
@@ -1914,6 +1972,11 @@ static bool compile_graphics(const char *vs_src, const char *fs_src,
   }
 
   merge_stage_reflection(out_refl, &vs_refl, target);
+  if (!merge_fits(out_refl, &fs_refl, err_buf, err_buf_size)) {
+    shader_blob_free(out_vs);
+    shader_blob_free(out_fs);
+    return false;
+  }
   merge_stage_reflection(out_refl, &fs_refl, target);
 
   if (target == SHADER_TARGET_SDLGPU) {
@@ -2495,7 +2558,9 @@ bool process_global_parameter(const json &p, ShaderReflection *out,
       if (sbuf_slot_exists(out, stage, slot))
         return true;
       if (out->storage_buf_count >= SGL_MAX_STORAGE_BUFS)
-        return true;
+        return resource_limit_error(
+            kLimitStorageBufs, SGL_MAX_STORAGE_BUFS, stage,
+            p.value("name", std::string("")).c_str(), err, errsz);
       ShaderStorageBuf *sb = &out->storage_bufs[out->storage_buf_count++];
       copy_name_capped(sb->name, sizeof(sb->name),
                        p.value("name", std::string("")));
@@ -2513,7 +2578,9 @@ bool process_global_parameter(const json &p, ShaderReflection *out,
       if (stex_slot_exists(out, stage, slot))
         return true;
       if (out->storage_tex_count >= SGL_MAX_STORAGE_TEXTURES)
-        return true;
+        return resource_limit_error(
+            kLimitStorageTextures, SGL_MAX_STORAGE_TEXTURES, stage,
+            p.value("name", std::string("")).c_str(), err, errsz);
       ShaderStorageTexture *st = &out->storage_texs[out->storage_tex_count++];
       copy_name_capped(st->name, sizeof(st->name),
                        p.value("name", std::string("")));
@@ -2535,7 +2602,9 @@ bool process_global_parameter(const json &p, ShaderReflection *out,
     if (tex_slot_exists(out, stage, slot))
       return true;
     if (out->tex_count >= SGL_MAX_TEXTURES)
-      return true;
+      return resource_limit_error(kLimitTextures, SGL_MAX_TEXTURES, stage,
+                                  p.value("name", std::string("")).c_str(), err,
+                                  errsz);
     ShaderTexture *tx = &out->texs[out->tex_count++];
     copy_name_capped(tx->name, sizeof(tx->name),
                      p.value("name", std::string("")));
@@ -3087,6 +3156,11 @@ bool wgsl_compile_graphics(WgslStageCompiler cc, const char *vs_src,
     return false;
   }
   wgsl_merge_stage_reflection(out_refl, &vs_refl);
+  if (!merge_fits(out_refl, &fs_refl, err_buf, err_buf_size)) {
+    shader_blob_free(out_vs);
+    shader_blob_free(out_fs);
+    return false;
+  }
   wgsl_merge_stage_reflection(out_refl, &fs_refl);
   patch_wgsl_bindings_from_reflection(out_vs, SGL_STAGE_VERTEX, out_refl);
   patch_wgsl_bindings_from_reflection(out_fs, SGL_STAGE_FRAGMENT, out_refl);

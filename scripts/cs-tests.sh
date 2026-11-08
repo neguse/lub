@@ -54,6 +54,7 @@ cs_runtime_tests=(
   TestInstanceCountZero
   TestSweptRefError
   TestShaderKeyConflict
+  TestShaderLimits
   TestBufferKeyConflict
   TestSpriteBatchLimit
   TestDupBinding
