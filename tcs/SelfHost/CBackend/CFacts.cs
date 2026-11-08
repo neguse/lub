@@ -311,7 +311,14 @@ public sealed class ContractFacts
         if (text.StartsWith(genericList) && text.EndsWith(">")) return CType.List(MapType(Sub(text, Len(genericList), n - 1)));
         if (text.StartsWith("List<") && text.EndsWith(">")) return CType.List(MapType(Sub(text, 5, n - 1)));
 
-        text = LuaTypeName(text);
+        // user の型の表示名 (`@float` の class) は、同じ綴りの組み込みの型 (float) より user の class と struct を先に引く
+        string aliased = LuaTypeName(text);
+        if (aliased != text)
+        {
+            if (Classes.ContainsKey(aliased)) return CType.Ref(aliased);
+            if (Structs.ContainsKey(aliased)) return CType.Struct(aliased);
+        }
+        text = aliased;
         switch (text)
         {
             case "void": return CType.Void;

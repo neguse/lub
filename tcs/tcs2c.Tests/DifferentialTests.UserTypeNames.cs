@@ -71,11 +71,11 @@ public partial class DifferentialTests
         Assert.Equal("True,1,0,0,1.5", output);
     }
 
-    // @float を変数、引数、戻り値、List の要素の型にする形。C backend は表示名の `@float` を float に読むので VM と .NET で見る
+    // @float を変数、引数、戻り値、List の要素の型にする形 (#440。C backend は表示名の `@float` を float に読んでいた)
     [CFact]
-    public void UserClassNamedFloat_AsDeclaredType_VmMatchesDotnet()
+    public void UserClassNamedFloat_AsDeclaredType()
     {
-        const string source = """
+        var output = Backends.AssertParity("""
             using System.Collections.Generic;
             public class @float { public int N = 4; }
             public static class P
@@ -92,8 +92,7 @@ public partial class DifferentialTests
                     System.Console.WriteLine(Read(a) + "," + list[1].N + "," + n + "," + g);
                 }
             }
-            """;
-        Assert.Equal("7,4,7,2.5", Backends.RunDotnet(source, "P"));
-        Assert.Equal("7,4,7,2.5", Backends.RunVm([source], "P"));
+            """, "P");
+        Assert.Equal("7,4,7,2.5", output);
     }
 }
