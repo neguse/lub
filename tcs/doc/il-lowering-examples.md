@@ -42,23 +42,7 @@ func Program.Area(shape: ref object) -> f32 {
 }
 ```
 
-IL→Lua（statement 化。現行の IIFE 方式は廃止）:
-
-```lua
-function Program.Area(shape)
-  local t0 = shape
-  local result
-  if TCS.is(t0, Circle) and t0.Radius > 10.0 then
-    result = -1.0
-  elseif TCS.is(t0, Circle) then
-    local c = t0
-    result = (3.14 * c.Radius) * c.Radius
-  ...
-  return result
-end
-```
-
-IL→C（object model は perf 実測で native 表現に決着。その概形）:
+IL→C（概形）:
 
 ```c
 static float Program_Area(TcsObj *shape) {
@@ -72,21 +56,14 @@ static float Program_Area(TcsObj *shape) {
 決定:
 
 - **パターンは IL に無い**。type test（`is`）・cast・比較・if 連鎖へ lower する
-- **式位置の制御フロー（switch 式、`?.`、`??`、`?:`）は IL に無い**。
-  temp + 文へ statement 化する。現行 Lua 出力の IIFE
-  （`(function() ... end)()`）は評価のたびに closure を割り当てており、
-  statement 化はこれを除去する（性能 floor にも効く）
-- **IL 演算ノードは型解決済みで単型**（i32 加算 / f32 加算 / 文字列連結は
-  別ノード）。overload 解決・暗黙変換の挿入は Roslyn 層で完了している
+- **式位置の制御フロー（switch 式、`?.`、`??`、`?:`）は IL に無い**。temp + 文へ statement 化する。前に文を置けない位置では式の位置の逐次実行 (IlIife) か条件式 (IlTernary) が残る。tcs VM は IlIife を結果の register を持つ block に、C は GNU statement expression に展開する (closure は作らない)
+- **IL 演算ノードは型解決済みで単型**（i32 加算 / f32 加算 / 文字列連結は別ノード）。overload 解決・暗黙変換の挿入は compiler の束縛の層で完了している
 - 対象式は 1 回評価、arm は宣言順に判定（C# の順序保存）
 - discard arm の無い非網羅 switch 式は、else 節を `switch-no-match` fault へ
   lower する（C# の SwitchExpressionException 相当。temp 未代入の穴を残さない
   — gpt-5.6 反証レビューの指摘）
 
-実測で見つけた現行バグ: 型 test が `getmetatable(x) == T` の完全一致のため、
-派生インスタンスへの `is Base` が C# `true` / 現行出力 `false`（→ T222）。
-IL の `is` は「T またはその派生」を規範とし、Lua backend は metatable chain を
-辿る helper を義務とする。
+IL の `is` は「T またはその派生、T を実装する class」を規範とする (il-spec §9、T222)。
 
 ## E2: ループ変数を捕捉する closure
 
@@ -96,8 +73,7 @@ for (int i = 0; i < 3; i++) { fs.Add(() => Console.WriteLine(i)); }
 foreach (var f in fs) f();   // C# は 3,3,3（for 変数はループ全体で 1 個）
 ```
 
-実測: 実 .NET は `3 3 3`、現行 Lua 出力は numeric for へ変換するため
-`0 1 2`（Lua の numeric for は反復ごとに新しい変数）。意味論バグ（→ T221）。
+tcs VM と C も `3 3 3` を出す (T221)。
 
 IL — closure は**値ではなく変数を捕捉**する。変数は identity を持つ実体で、
 寿命は scope 構造が定める。ループは IL に来る前に while + block へ脱糖済み:
@@ -112,30 +88,16 @@ IL — closure は**値ではなく変数を捕捉**する。変数は identity 
 }
 ```
 
-IL→Lua（local が 1 個なので全 closure が同一 upvalue を共有し、C# と一致）:
-
-```lua
-do
-  local i = 0
-  while i < 3 do
-    List.Add(fs, function() return print(i) end)
-    i = i + 1
-  end
-end
-```
-
-IL→C: closure = { 関数ポインタ, 環境 }。捕捉されて脱出する変数は
-heap cell へ box し、共有はセル共有で表現する。
+IL→C: closure = { 関数ポインタ, 環境 }。捕捉されて脱出する変数は heap cell へ box し、共有はセル共有で表現する。tcs VM も捕捉する変数を cell に置き、closure は関数と捕捉の列を持つ。
 
 決定:
 
 - **capture は変数単位**（by variable）。「for 変数はループ全体で 1 個、
   foreach の反復変数は反復ごと」は脱糖後の scope 構造として IL に現れる
 - **ループ構文は IL に無い**。while + block のみ（il-spec §8）
-- Lua の numeric for は「制御変数が捕捉されていない」場合に限り backend が
-  使ってよい最適化（観測等価の範囲）
+- 数値 for (IlNumericFor) は、制御変数が捕捉されず範囲が変わらないと builder が示せたときだけ IL に現れる。backend はこれを素の数値 for にしてよい（観測等価の範囲）
 
-## E3: struct 配列の更新（particles 型 kernel、M5 先行検討）
+## E3: struct 配列の更新（particles 型 kernel）
 
 ```csharp
 struct Particle { public float X; public float VX; }
@@ -155,10 +117,8 @@ store p.X, 99.0f                                          // p のみ変更
 ```
 
 IL→C: native struct / 連続配列へ直写（`ps[i].X += ps[i].VX * dt;`）。
-IL→Lua: 表現候補は table of tables（copy は clone helper）か userdata 連続
-バッファ。選択は `perf/` の particles kernel 実測で
-決める（T212 / T219）。IL 意味論は表現非依存に「要素は独立した place、
-copy 地点で値が分離する」とだけ定める。
+IL→tcs VM: 配列の要素は C と同じ inline の連続配置で (object-model §5)、`ps[i].X` は要素の field の位置への load / store になる。copy は葉の register への load。
+IL 意味論は表現非依存に「要素は独立した place、copy 地点で値が分離する」とだけ定める。
 
 決定:
 
@@ -182,16 +142,14 @@ call Console.WriteLine(concat("x=", i32_to_str(x), ", area=", f32_to_str(call Pr
 決定:
 
 - 補間は concat + to_str intrinsic へ lower
-- **数値→文字列は intrinsic として規範定義**する（i32 = 10 進、f32 =
-  shortest round-trip 10 進）。Lua の `tostring`（`%.14g` 系）は f32 で
-  規範と一致しないため、Lua backend は fmt helper を義務とする
+- **数値→文字列は intrinsic として規範定義**する（i32 = 10 進、f32 = shortest round-trip 10 進）。tcs VM と C は runtime/fmt の同じ実装で文字列にする (il-spec §13)
 
 ## 決定まとめ（il-spec へ反映）
 
 | # | 決定 | 由来 |
 |---|---|---|
 | 1 | パターン・switch 式・`?.` `??` `?:`・補間・ループ構文・property は IL に無い（構築時 lower） | E1 E2 E4 |
-| 2 | 式位置の制御フローは temp + 文へ statement 化、IIFE 廃止 | E1 |
+| 2 | 式位置の制御フローは temp + 文へ statement 化。残る IlIife は backend が block に展開する (closure にしない) | E1 |
 | 3 | IL 演算ノードは型解決済み・単型 | E1 |
 | 4 | `is` は継承込み。null は常に偽 | E1（バグ T222） |
 | 5 | capture は変数単位。変数は identity を持ち scope が寿命を定める | E2（バグ T221） |
@@ -199,8 +157,3 @@ call Console.WriteLine(concat("x=", i32_to_str(x), ", area=", f32_to_str(call Pr
 | 7 | 値型は place / load / store + copy 地点列挙。メモリ配置は backend 自由 | E3 |
 | 8 | 数値→文字列を含む runtime 表面は intrinsic として規範定義 | E4 |
 | 9 | 非網羅 switch 式の no-match は fault。f32 リテラルは IL が bit 値で保持（二重丸め禁止） | 反証レビュー |
-
-現行実装についての副次的発見: emitter は bound tree（IOperation）ではなく
-syntax tree + SemanticModel を走査している（il-design.md の記述を実態へ修正
-済み）。IL builder も syntax + SemanticModel 走査を維持してよい — IL 化の
-価値は IL 側にあり、builder の入力表現は二次的で、現行走査コードは資産。

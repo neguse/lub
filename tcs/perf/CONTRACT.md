@@ -65,8 +65,7 @@ PC 測定の実装仕様 (背景・KPI floor は `perf/README.md`)。native の�
 - 実行時間: kernel×変種ごとに 7 回実行し median、ms/frame で出力
 - 出力形式 (1 行 1 結果): `kernel,variant,N,ms_per_frame,digest`
 - 実行ごとの digest の一致を harness が検証し、不一致は exit 1
-- 成果物: `perf/` 以下に CMakeLists.txt + C ソース +
-  `run.sh` (ビルド→実行→表形式サマリ)。`perf/results-pc.md` は Lua の変種と並べた測定の記録
+- 成果物: `perf/` 以下に CMakeLists.txt + C ソース + `run.sh` (ビルド→実行→表形式サマリ)
 
 ## tcs 側の digest
 

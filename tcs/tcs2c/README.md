@@ -69,17 +69,12 @@ il-spec と .NET の実行で、`tcs2c.Tests` が同じ source の C、tcs VM、
   - TinySystem.Text: RuneCount / RuneSubstring / Utf8Bytes
   - Math (`Math` / `MathF`): Min / Max / Abs / Sign / Clamp / Floor / Ceiling /
     Round / Sqrt / Sin / Cos / Tan / Atan2 / Pow / Exp / Log / PI
-  - Random: `new Random()` / `new Random(seed)` (GC object) / `Random.Shared` /
-    Seed、instance の Next / Next(max) / Next(min, max) / NextFloat / NextSingle
-    / Range
-    (Lua 5.5 の xoshiro256** を i32 の構成のまま移植。seed 固定時に
-    tcs VM と bit 一致)
+  - Random: `new Random()` / `new Random(seed)` (GC object) / `Random.Shared` / Seed、instance の Next / Next(max) / Next(min, max) / NextFloat / NextSingle / Range (xoshiro256** の 32 bit の手順。il-spec §13。seed 固定時に tcs VM と bit 一致)
   - Console.WriteLine / Write、`Environment.GetEnvironmentVariable`
 - fault: null / bounds / 0 除算 / key-not-found / 空列 First 等は
   `tcs_fault(kind)` で stderr へ出して exit 1 (il-spec §12)
 
-明示エラー (未対応): `object` 型の local、
-`StringBuilder`、int / float 以外の `CompareTo`、`IlIsLuaType`。
+明示エラー (未対応): `object` 型の local、`StringBuilder`、int / float 以外の `CompareTo`、`IlIsLuaType` (object の値の型 test。`o is string` など)。
 
 通常の `print` は stdout へ値を出す。digest kernel 回帰用だけは
 `--digest-f32` を付け、各 f32 の bit 列を FNV-1a へ直接投入する。

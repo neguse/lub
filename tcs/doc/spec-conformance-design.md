@@ -47,8 +47,7 @@ dotnet/csharpstandard を shallow clone して確認した値。
 ### 3.1 目標
 
 - 仕様例 651 個の全数を分類し、**BUG 分類（crash / 診断なしの誤出力）ゼロ**を恒常ゲート化する
-- 既存セマンティックテスト corpus（`TranspileAndRun` 326 箇所）の手書き期待値を
-  dotnet differential で裏取りし、allowlist 外の出力差ゼロを恒常ゲート化する
+- 既存セマンティックテスト corpus（`CompileAndRunVm` 系）の手書き期待値を dotnet differential で裏取りし、allowlist 外の出力差ゼロを恒常ゲート化する
 - 既知の意味論差（bool 表記・数値書式・文字列長など）を「実行可能な allowlist」として
   一元管理し、support-matrix の既知差異記述と対にする
 - サブセット内 AST 生成 fuzz で silent wrong-code の検出網を常設する（max スコープ）
@@ -60,7 +59,7 @@ dotnet/csharpstandard を shallow clone して確認した値。
   サブセット拡張の需要シグナルとして記録するに留める
 - ExampleTester の完全互換（unsafe / externAlias / executionArgs 等サブセット外の
   annotation 機構）
-- dotnet と Lua の完全な意味論一致。既知差異は allowlist + 文書化が正解
+- dotnet と tcs (tcs VM と C) の完全な意味論一致。既知差異は allowlist + 文書化が正解
 - csharpstandard 上流への追随自動化（pin した commit を手動 bump する）
 
 ## 4. 分類モデル
@@ -75,7 +74,7 @@ sweep は例ごとに次のいずれか 1 つへ確定させる。**どの例も
 | DIAG | TCS1001/1002/1003 診断 | 診断が出ること自体が正 (サブセット境界の証拠) |
 | CSERR | 注釈が expectedErrors | Roslyn がコンパイルエラーを出すことのみ確認 |
 | UNEXTRACTED | annotation が抽出対象外 (pseudo-code 等) | 集計のみ |
-| **BUG** | crash / 診断なしで出力不一致 / invalid Lua | **ゲート失敗** |
+| **BUG** | crash / 診断なしで出力不一致 / tcs VM での実行の失敗 | **ゲート失敗** |
 
 オラクル優先順: `expectedOutput`（仕様明記）> dotnet 実行出力（differential）。
 `inferOutput` の例も dotnet 実行で再取得する（上流 CI の取得値と同じ意味論）。
@@ -89,7 +88,7 @@ deps/csharpstandard (submodule, pin)
   → 分類パイプライン:
       Roslyn compile ──error──→ CSERR 照合
       tcs check ──diagnostic──→ DIAG
-      └─pass→ transpile → Lua 5.5 実行
+      └─pass→ tcs VM で実行 (tcs2vm → tcsvm、通常と GC stress)
                  ├─ オラクル比較 (Normalizer + allowlist)
                  └─ dotnet 実行 (in-memory compile + AssemblyLoadContext)
   → conformance-baseline.json 照合 + 章別レポート生成
@@ -125,14 +124,13 @@ deps/csharpstandard (submodule, pin)
 
 ### C1: 仕様オラクル実行 — 規模: 小
 
-- IN-RUN のうち `expectedOutput` 付きを Lua 実行し比較。Normalizer 第 1 版
+- IN-RUN のうち `expectedOutput` 付きを tcs VM で実行し比較。Normalizer 第 1 版
 - gate: BUG 分類ゼロ（見つかった BUG は個別タスク起票して修正後に達成）
 
 ### C2: dotnet differential — 規模: 中
 
 - in-memory dotnet 実行機構 + `inferOutput` / 出力注釈なし IN-RUN 例への適用
-- 既存 `TranspileAndRun` corpus への differential モード追加
-  （TestHelper 拡張。Lua 前提期待値・`--ref` 前提のテストは opt-out を明示）
+- 既存の semantic テスト (`CompileAndRunVm` 系) への differential モード追加（`TCS_DIFFERENTIAL=1`。.NET と意図して違う program は `dotnet: false` で opt-out を明示）
 - known-differences.json と support-matrix の相互リンク整備
 - gate: 仕様例 + 既存 corpus の全 differential が allowlist 外差異ゼロ
 
@@ -149,8 +147,7 @@ deps/csharpstandard (submodule, pin)
   プログラム生成器。seed 固定・再現可能。数値は整数中心、浮動小数は正規化前提
 - 生成文法は段階拡張中 — 現状は式 / 文 / string 全 API / static helper。
   残段階は tasks.md の Conformance / fuzz トラック参照
-- 生成 → tcs check → pass のみ dotnet / Lua differential → 差異発見時に
-  自動縮小（reducer）して最小再現を保存
+- 生成 → tcs check → pass のみ dotnet / tcs VM differential (C backend は tcs2c.Tests の FuzzDifferentialTests が同じ生成器で見る) → 差異発見時に自動縮小（reducer）して最小再現を保存
 - nightly 運用（実行時間 budget を決めて打ち切り）
 - gate: 既知バグ（T138-T153 で修正済みのクラス）を意図的に再導入した変異で
   検出できることを確認してから常設
