@@ -1038,7 +1038,7 @@ C# と Lua 出力の意味論差のうち、正規化 (bool 表記) で吸収で
 
 ## 28. Lua 出力の名前規則
 
-名前は表を持たず規則で写す (`SelfHost/Compiler/Declarer.cs` の `LuaNames` と `LuaEmitUtil.cs` の `LuaNaming`)。user の型 (入力の tree に宣言された型) の
+名前は表を持たず規則で写す (`SelfHost/Compiler/Declarer.cs` の `LuaNames` と `IlNames.cs`)。user の型 (入力の tree に宣言された型) の
 member は C# の識別子をそのまま Lua / IL / C の名前にし、`--ref` の型 (host) の member だけ
 host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (`Player`) は写さない。
 

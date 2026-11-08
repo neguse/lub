@@ -126,12 +126,12 @@ public static class VmCorpus
         Log("match", expr);
     }
 
-    // TinySystem.props が .NET の project に入れるもの (Linq.cs は Transpiler.LibraryTrees)
+    // TinySystem.props が .NET の project に入れるもの (Linq.cs は TcsLibrary.LibraryTrees)
     private static readonly Lazy<SyntaxTree[]> DotnetLibrary = new(() =>
     [
         CSharpSyntaxTree.ParseText("global using Math = TinySystem.Math;\nglobal using MathF = TinySystem.Math;\n"),
         CSharpSyntaxTree.ParseText(File.ReadAllText(TestHelper.FindProjectFile("TinySystem/Collections.cs"))),
-        .. Transpiler.LibraryTrees.Where(t => t.FilePath != Transpiler.ValueTupleLibraryPath),
+        .. TcsLibrary.LibraryTrees.Where(t => t.FilePath != TcsLibrary.ValueTupleLibraryPath),
     ]);
 
     /// <summary>実 .NET で entry を走らせた stdout。entryClass が null なら top-level 文の program。</summary>
@@ -139,7 +139,7 @@ public static class VmCorpus
     {
         var compilation = CSharpCompilation.Create("TcsVmCorpus",
             [.. programs.Select(p => CSharpSyntaxTree.ParseText(p)), .. DotnetLibrary.Value],
-            Transpiler.References,
+            TcsLibrary.References,
             new CSharpCompilationOptions(entryClass == null ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary,
                 concurrentBuild: false));
         using var image = new MemoryStream();

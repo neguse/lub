@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TinySystem.Text;
 
 namespace TcsSelf;
 
@@ -104,10 +105,48 @@ public sealed class BigDec
     }
 }
 
-// float の値の Lua の表記 (参照実装の LuaEmitter の FormatLuaNumber と FloatLit)。
+// IL の literal のテキスト (IlLit.LuaText の形。C と VM の backend も同じ形を読む)。
+// float の値の表記は参照実装の LuaEmitter の FormatLuaNumber と FloatLit と同じで、
 // 整数の演算だけで決めるので、Lua (LUA_32BITS を含む)、C、.NET のどこでも同じ文字列になる
-public static class LuaFloat
+public static class IlLiterals
 {
+    // 文字列の literal (引用符で囲み、backslash、引用符、改行、復帰、tab と制御文字を escape する)
+    public static string QuoteString(string value)
+    {
+        var u = new Utf8Bytes(value);
+        var parts = new List<string>();
+        parts.Add("\"");
+        int run = 0;
+        for (int i = 0; i < u.Length; i++)
+        {
+            int c = u[i];
+            string? esc = null;
+            if (c == '\\') esc = "\\\\";
+            else if (c == '"') esc = "\\\"";
+            else if (c == '\n') esc = "\\n";
+            else if (c == '\r') esc = "\\r";
+            else if (c == '\t') esc = "\\t";
+            // 制御文字は 2 桁固定の \xXX (Lua は \x を 2 桁で読むので後の文字と混ざらない)
+            else if (c < 32 || c == 127) esc = "\\x" + Hex2(c);
+            if (esc != null)
+            {
+                if (i > run) parts.Add(u.Slice(run, i - run).ToString());
+                parts.Add(esc);
+                run = i + 1;
+            }
+        }
+        if (run < u.Length) parts.Add(u.Slice(run, u.Length - run).ToString());
+        parts.Add("\"");
+        return string.Join("", parts);
+    }
+
+    private static string Hex2(int c)
+    {
+        var digits = "0123456789ABCDEF";
+        var d = new Utf8Bytes(digits);
+        return d.Slice(c / 16, 1).ToString() + d.Slice(c % 16, 1).ToString();
+    }
+
     // C# の float の定数を double にして、.NET の double.ToString("R") (往復できる最短の表記) で書く。
     // 小数点も指数も無ければ ".0" を付ける。NaN と無限は Lua の式
     public static string FormatDoubleOfFloat(float x)

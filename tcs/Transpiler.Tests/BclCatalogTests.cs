@@ -20,7 +20,7 @@ public class BclCatalogTests
         "System.Linq.Expressions", "System.Net.Sockets",
     ];
 
-    // 型の名前だけを集める参照アセンブリ (compiler の参照 Transpiler.References に無いもの)
+    // 型の名前だけを集める参照アセンブリ (compiler の参照 TcsLibrary.References に無いもの)
     private static readonly string[] CatalogOnlyAssemblies =
     [
         "System.Threading.Thread.dll", "System.Linq.Expressions.dll", "System.Net.Sockets.dll", "System.Net.Primitives.dll",
@@ -62,7 +62,7 @@ public class BclCatalogTests
         var extra = CatalogOnlyAssemblies.Select(name => (MetadataReference)MetadataReference.CreateFromStream(
             typeof(BclCatalogTests).Assembly.GetManifestResourceStream("catalog/" + name)
             ?? throw new InvalidOperationException("missing resource: catalog/" + name)));
-        var compilation = CSharpCompilation.Create("BclCatalog", [], Transpiler.References.Concat(extra));
+        var compilation = CSharpCompilation.Create("BclCatalog", [], TcsLibrary.References.Concat(extra));
         var types = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var ns in Namespaces)
         {

@@ -22,7 +22,7 @@ internal static class SelfHostC
             session.Add("", source, 0);
         foreach (var source in referenceSources ?? [])
             session.Add("", source, 1);
-        foreach (var (path, text) in Transpiler.LibrarySourcesFor())
+        foreach (var (path, text) in TcsLibrary.LibrarySourcesFor())
             session.Add(path, text, 2);
         var result = session.Compile();
         var errors = result.Diagnostics

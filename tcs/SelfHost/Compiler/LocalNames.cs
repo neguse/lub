@@ -13,6 +13,10 @@ public static class LocalNames
     // runtime の global (Compliance.RuntimeGlobals と Cli.RuntimeGlobalAliases)
     private static readonly string[] RuntimeGlobalsList = "TinySystem List Dict Math String TcsQueue TcsHashSet".Split(' ');
 
+    // runtime の math と UTF-8 の module の global (生成コードが素の名前で引く)
+    public const string MathModuleGlobal = "tcs_math";
+    public const string Utf8ModuleGlobal = "tcs_utf8";
+
     private static HashSet<string>? _globals;
 
     private static bool IsGlobal(string name)
@@ -22,11 +26,28 @@ public static class LocalNames
             var g = new HashSet<string>();
             foreach (var x in EmittedGlobalsList) g.Add(x);
             foreach (var x in RuntimeGlobalsList) g.Add(x);
-            g.Add(LuaGen.MathModuleGlobal);
-            g.Add(LuaGen.Utf8ModuleGlobal);
+            g.Add(MathModuleGlobal);
+            g.Add(Utf8ModuleGlobal);
             _globals = g;
         }
         return _globals.Contains(name);
+    }
+
+    // local の改名を避ける型の名前 (simple 名、global 名、--ref の型の path の先頭)
+    public static HashSet<string> ReservedTypeNames(Compilation c)
+    {
+        var names = new HashSet<string>();
+        foreach (var t in c.Types)
+        {
+            names.Add(t.Name);
+            if (t.IsRef)
+            {
+                var path = t.LuaName;
+                if (path != "") names.Add(path.Split('.')[0]);
+            }
+            else names.Add(t.LuaName);
+        }
+        return names;
     }
 
     public static bool IsCandidate(string name, HashSet<string> typeNames)

@@ -255,4 +255,74 @@ public static class IlTypes
         }
         return t.Name;
     }
+
+    // 値を構成する member (field と自動実装の property。positional な property を含む)。
+    // 基底の record から同名の member を継承する positional parameter は property にならない
+    public static List<ValueMember> ValueMembers(TypeSym? t)
+    {
+        var r = new List<ValueMember>();
+        if (t == null) return r;
+        if (t.Kind == TypeKind.Tuple)
+        {
+            for (int i = 0; i < t.Args!.Count; i++) r.Add(new ValueMember("Item" + (i + 1), t.Args[i]));
+            return r;
+        }
+        if (t.Decl == null) return r;
+        bool generic = t.Args != null && t.Args.Count > 0;
+        foreach (var m in t.Decl.Members)
+        {
+            if (m.IsStatic || m.IsConst) continue;
+            if (m.Kind == SymKind.Field || (m.Kind == SymKind.Property && m.IsAuto))
+            {
+                if (m.Kind == SymKind.Property && t.Decl.BaseClass != null && t.Decl.BaseClass.Lookup(m.Name) != null) continue;
+                r.Add(new ValueMember(m.Name, generic ? m.Type.Subst(t.Args, null) : m.Type));
+            }
+        }
+        return r;
+    }
+
+    // Roslyn の AllInterfaces と同じ順 (基底の型から、宣言の逆順に基底の interface を後置で集めて、最後に反転する)
+    public static List<TypeSym> AllInterfaces(TypeDeclSym t)
+    {
+        var result = new List<TypeSym>();
+        var visited = new List<TypeDeclSym>();
+        TypeDeclSym? cur = t;
+        while (cur != null)
+        {
+            for (int i = cur.Interfaces.Count - 1; i >= 0; i--) AddAllInterfaces(cur.Interfaces[i], visited, result);
+            cur = cur.BaseClass;
+        }
+        var reversed = new List<TypeSym>();
+        for (int i = result.Count - 1; i >= 0; i--) reversed.Add(result[i]);
+        return reversed;
+    }
+
+    private static void AddAllInterfaces(TypeSym iface, List<TypeDeclSym> visited, List<TypeSym> result)
+    {
+        if (iface.Decl == null || visited.Contains(iface.Decl)) return;
+        visited.Add(iface.Decl);
+        var bases = iface.Decl.Interfaces;
+        for (int i = bases.Count - 1; i >= 0; i--) AddAllInterfaces(bases[i], visited, result);
+        result.Add(iface);
+    }
+
+    // 型引数の既定値を受ける型 (source の generic な class / struct)
+    public static bool PassesTypeArgDefaults(TypeDeclSym? t)
+    {
+        if (t == null || t.TypeParams.Count == 0) return false;
+        return t.DeclKind == DeclKinds.Class || t.DeclKind == DeclKinds.Struct || t.DeclKind == DeclKinds.RecordClass || t.DeclKind == DeclKinds.RecordStruct;
+    }
+}
+
+// struct の値を構成する member (名前と型)
+public sealed class ValueMember
+{
+    public string Name;
+    public TypeSym Type;
+
+    public ValueMember(string name, TypeSym type)
+    {
+        Name = name;
+        Type = type;
+    }
 }

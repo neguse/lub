@@ -52,9 +52,6 @@ public sealed class LuaGen
     public const string LowerTempPrefix = "__tcs_t";
     public int LowerTempCount;
 
-    public const string MathModuleGlobal = "tcs_math";
-    public const string Utf8ModuleGlobal = "tcs_utf8";
-
     public string Text()
     {
         return string.Join("", Chunks);
@@ -140,42 +137,6 @@ public sealed class LuaGen
         return string.Join("", parts);
     }
 
-    public static string EscapeLuaString(string value)
-    {
-        var u = new Utf8Bytes(value);
-        var parts = new List<string>();
-        parts.Add("\"");
-        int run = 0;
-        for (int i = 0; i < u.Length; i++)
-        {
-            int c = u[i];
-            string? esc = null;
-            if (c == '\\') esc = "\\\\";
-            else if (c == '"') esc = "\\\"";
-            else if (c == '\n') esc = "\\n";
-            else if (c == '\r') esc = "\\r";
-            else if (c == '\t') esc = "\\t";
-            // 制御文字は 2 桁固定の \xXX (Lua は \x を 2 桁で読むので後の文字と混ざらない)
-            else if (c < 32 || c == 127) esc = "\\x" + Hex2(c);
-            if (esc != null)
-            {
-                if (i > run) parts.Add(u.Slice(run, i - run).ToString());
-                parts.Add(esc);
-                run = i + 1;
-            }
-        }
-        if (run < u.Length) parts.Add(u.Slice(run, u.Length - run).ToString());
-        parts.Add("\"");
-        return string.Join("", parts);
-    }
-
-    private static string Hex2(int c)
-    {
-        var digits = "0123456789ABCDEF";
-        var d = new Utf8Bytes(digits);
-        return d.Slice(c / 16, 1).ToString() + d.Slice(c % 16, 1).ToString();
-    }
-
     // emit の内部の誤り (IL の形が想定外)。compile の結果に診断として出す
     public List<string> InternalErrors = new List<string>();
 
@@ -241,7 +202,7 @@ public sealed class LuaGen
     {
         if (!TraceFunction) return;
         var key = NormalizeTracePath(origin.File) + ":" + origin.Line;
-        AppendLine("__tcs_at = " + EscapeLuaString(key) + "; __tcs_trace[__tcs_at] = true");
+        AppendLine("__tcs_at = " + IlLiterals.QuoteString(key) + "; __tcs_trace[__tcs_at] = true");
         // 文そのものも source map に載せる (trace の行が位置を使った)
         SetSource(origin);
     }
@@ -291,32 +252,6 @@ public sealed class LuaGen
         return r;
     }
 
-    // Origin だけを差し替えた文
-    public static IlStat WithOrigin(IlStat s, IlPos? origin)
-    {
-        switch (s)
-        {
-            case IlLocal x1: return x1 with { Origin = origin };
-            case IlAssign x2: return x2 with { Origin = origin };
-            case IlCallStat x3: return x3 with { Origin = origin };
-            case IlIf x4: return x4 with { Origin = origin };
-            case IlWhile x5: return x5 with { Origin = origin };
-            case IlRepeat x6: return x6 with { Origin = origin };
-            case IlNumericFor x7: return x7 with { Origin = origin };
-            case IlForeachList x8: return x8 with { Origin = origin };
-            case IlForeachDict x9: return x9 with { Origin = origin };
-            case IlForeachRunes x10: return x10 with { Origin = origin };
-            case IlBreak x11: return x11 with { Origin = origin };
-            case IlContinue x12: return x12 with { Origin = origin };
-            case IlReturn x13: return x13 with { Origin = origin };
-            case IlDo x14: return x14 with { Origin = origin };
-            case IlBreakScope x15: return x15 with { Origin = origin };
-            case IlMultiAssign x16: return x16 with { Origin = origin };
-            case IlForPairs x17: return x17 with { Origin = origin };
-        }
-        return s;
-    }
-
     // =====================================================================
     // lowering: 式の位置の条件式 / `??` (右辺が呼び出しを含む) を文に下ろす。
     // Lua では式として書けないため、IIFE (評価ごとに closure を作る) ではなく temp の local と if 文にする。
@@ -339,129 +274,13 @@ public sealed class LuaGen
         return LowerTempPrefix + LowerTempCount;
     }
 
-    public static List<IlExpr> Children(IlExpr e)
-    {
-        var r = new List<IlExpr>();
-        switch (e)
-        {
-            case IlField f: r.Add(f.Recv); break;
-            case IlIndex i:
-                r.Add(i.Recv);
-                r.Add(i.Idx);
-                break;
-            case IlLen l: r.Add(l.E); break;
-            case IlBin b:
-                r.Add(b.L);
-                r.Add(b.R);
-                break;
-            case IlUn u: r.Add(u.E); break;
-            case IlParen p: r.Add(p.E); break;
-            case IlValues v:
-                foreach (var x in v.Items) r.Add(x);
-                break;
-            case IlCall c:
-                foreach (var x in c.Args) r.Add(x);
-                break;
-            case IlDynCall d:
-                r.Add(d.Callee);
-                foreach (var x in d.Args) r.Add(x);
-                break;
-            case IlInvoke iv:
-                r.Add(iv.Recv);
-                foreach (var x in iv.Args) r.Add(x);
-                break;
-            case IlNewObj o:
-                foreach (var x in o.Args) r.Add(x);
-                break;
-            case IlTable t:
-                foreach (var en in t.Entries)
-                {
-                    if (en.Key != null) r.Add(en.Key);
-                    r.Add(en.Value);
-                }
-                break;
-            case IlNewArray na: r.Add(na.Length); break;
-            case IlNumericConvert n: r.Add(n.Value); break;
-            case IlRefCast rc: r.Add(rc.Value); break;
-            case IlIsType it: r.Add(it.E); break;
-            case IlIsLuaType ilt: r.Add(ilt.E); break;
-            case IlStructCopy s: r.Add(s.E); break;
-            case IlCast ca: r.Add(ca.E); break;
-            case IlNullableWrap w: r.Add(w.E); break;
-            case IlNullableHasValue h: r.Add(h.E); break;
-            case IlNullableValue nv: r.Add(nv.E); break;
-            case IlNullableGetOrDefault g:
-                r.Add(g.E);
-                r.Add(g.Default);
-                break;
-            case IlLiftedBin lb:
-                r.Add(lb.L);
-                r.Add(lb.R);
-                break;
-            case IlLiftedUn lu: r.Add(lu.E); break;
-        }
-        return r;
-    }
-
-    public static IlExpr WithChildren(IlExpr e, List<IlExpr> k)
-    {
-        switch (e)
-        {
-            case IlField f: return f with { Recv = k[0] };
-            case IlIndex i: return i with { Recv = k[0], Idx = k[1] };
-            case IlLen l: return l with { E = k[0] };
-            case IlBin b: return b with { L = k[0], R = k[1] };
-            case IlUn u: return u with { E = k[0] };
-            case IlParen p: return p with { E = k[0] };
-            case IlValues v: return v with { Items = ExprsFrom(k, 0) };
-            case IlCall c: return c with { Args = ExprsFrom(k, 0) };
-            case IlDynCall d: return d with { Callee = k[0], Args = ExprsFrom(k, 1) };
-            case IlInvoke iv: return iv with { Recv = k[0], Args = ExprsFrom(k, 1) };
-            case IlNewObj o: return o with { Args = ExprsFrom(k, 0) };
-            case IlTable t: return t with { Entries = RebuildEntries(t.Entries, k) };
-            case IlNewArray na: return na with { Length = k[0] };
-            case IlNumericConvert n: return n with { Value = k[0] };
-            case IlRefCast rc: return rc with { Value = k[0] };
-            case IlIsType it: return it with { E = k[0] };
-            case IlIsLuaType ilt: return ilt with { E = k[0] };
-            case IlStructCopy s: return s with { E = k[0] };
-            case IlCast ca: return ca with { E = k[0] };
-            case IlNullableWrap w: return w with { E = k[0] };
-            case IlNullableHasValue h: return h with { E = k[0] };
-            case IlNullableValue nv: return nv with { E = k[0] };
-            case IlNullableGetOrDefault g: return g with { E = k[0], Default = k[1] };
-            case IlLiftedBin lb: return lb with { L = k[0], R = k[1] };
-            case IlLiftedUn lu: return lu with { E = k[0] };
-        }
-        return e;
-    }
-
-    private static List<IlTableEntry> RebuildEntries(List<IlTableEntry> entries, List<IlExpr> k)
-    {
-        int i = 0;
-        var result = new List<IlTableEntry>();
-        foreach (var en in entries)
-        {
-            IlExpr? key = null;
-            if (en.Key != null)
-            {
-                key = k[i];
-                i++;
-            }
-            var value = k[i];
-            i++;
-            result.Add(en with { Key = key, Value = value });
-        }
-        return result;
-    }
-
     // 文に下ろす必要がある式 (IIFE を避けたいもの)
     private static bool Needs(IlExpr e)
     {
         if (e is IlTernary) return true;
         if (e is IlIife iife && IsMultiReturnCallIife(iife)) return true;
         if (e is IlNullableGetOrDefault g) return !CannotFault(g.Default) || Needs(g.E) || Needs(g.Default);
-        foreach (var k in Children(e))
+        foreach (var k in IlTree.Children(e))
         {
             if (Needs(k)) return true;
         }
@@ -486,7 +305,7 @@ public sealed class LuaGen
     {
         if (e is IlLit || e is IlClosure) return true;
         if (e is IlVar v && v.Name.StartsWith(LowerTempPrefix)) return true;
-        return IsCallFree(e) && IsCallFree(later);
+        return IlTree.IsCallFree(e) && IlTree.IsCallFree(later);
     }
 
     private IlExpr Lower(IlExpr e, List<IlStat> pre)
@@ -537,7 +356,7 @@ public sealed class LuaGen
             pre.Add(new IlIf(Arm1(isNil, body), null, null));
             return new IlVar(tmp, null);
         }
-        var kids = Children(e);
+        var kids = IlTree.Children(e);
         int last = -1;
         for (int i = 0; i < kids.Count; i++)
         {
@@ -568,7 +387,7 @@ public sealed class LuaGen
             }
             lowered[i] = li;
         }
-        return WithChildren(e, lowered);
+        return IlTree.WithChildren(e, lowered);
     }
 
     private List<IlExpr> LowerSeq(List<IlExpr> items, List<IlStat> pre)
@@ -617,7 +436,7 @@ public sealed class LuaGen
         }
         if (hasLocal) stats = Stats1(new IlDo(new IlBlock(stats), null));
         var result = new List<IlStat>();
-        foreach (var s in stats) result.Add(WithOrigin(s, original.Origin));
+        foreach (var s in stats) result.Add(IlTree.WithOrigin(s, original.Origin));
         return result;
     }
 
@@ -677,7 +496,7 @@ public sealed class LuaGen
                 pre.Add(new IlIf(Arm1(new IlUn(IlUnOp.Not, new IlParen(cond, null), null), brk), null, null));
                 // --trace: 条件を評価する前に毎回 while の行へ戻す
                 IlStat head = pre.Count > 1 ? new IlDo(new IlBlock(pre), null) : pre[0];
-                head = WithOrigin(head, TraceFunction ? stat.Origin : null);
+                head = IlTree.WithOrigin(head, TraceFunction ? stat.Origin : null);
                 var body = Stats1(head);
                 foreach (var s in w.Body.Stats) body.Add(s);
                 return Stats1(new IlWhile(new IlLit("true", null, null), new IlBlock(body), w.Trailer, w.ScopeBody, stat.Origin));
@@ -755,7 +574,7 @@ public sealed class LuaGen
         // self.a.b の受け手 self.a は値の評価で差し替わりうるので固定する
         bool direct = assign.Target is IlVar
             || (assign.Target is IlField sf && sf.Recv is IlVar sv && sv.Name == "self")
-            || (assign.Target is IlField && IsSimpleReceiverPath(assign.Target) && IsCallFree(assign.Value));
+            || (assign.Target is IlField && IsSimpleReceiverPath(assign.Target) && IlTree.IsCallFree(assign.Value));
         if (direct)
         {
             var target = assign.Target;
@@ -956,7 +775,7 @@ public sealed class LuaGen
             case IlForeachRunes feRunes:
             {
                 int label = PushContinueLabel();
-                AppendLine("for _, " + feRunes.Var + " in " + Utf8ModuleGlobal + ".codes(" + RenderIl(feRunes.Str) + ") do");
+                AppendLine("for _, " + feRunes.Var + " in " + LocalNames.Utf8ModuleGlobal + ".codes(" + RenderIl(feRunes.Str) + ") do");
                 Indent++;
                 EmitLoopBody(feRunes.Body, label, false);
                 Indent--;
@@ -1020,10 +839,10 @@ public sealed class LuaGen
         var recv = RenderIl(ix.Recv);
         var idx = RenderIl(ix.Idx);
         var value = RenderIl(assign.Value);
-        if (!IsCallFree(ix.Recv) || !IsCallFree(ix.Idx))
+        if (!IlTree.IsCallFree(ix.Recv) || !IlTree.IsCallFree(ix.Idx))
             return (ix.NilElements ? "__tcs_lset" : "__tcs_set") + "(" + recv + ", " + idx + ", " + value + ")";
         // 要素が null になりうる List は nil の slot が範囲内かもしれないので長さと比べる
-        if (!IsCallFree(assign.Value))
+        if (!IlTree.IsCallFree(assign.Value))
         {
             var fault = ix.NilElements ? "__tcs_lchk(__tcs_r, __tcs_i)" : "__tcs_oob()";
             return "do local __tcs_r, __tcs_i = " + recv + ", " + idx + " local __tcs_v = " + value + " "
@@ -1266,7 +1085,7 @@ public sealed class LuaGen
                 if (refCast.LuaCheck != null) return refCast.LuaCheck + "(" + RenderIl(refCast.Value) + ", " + RenderIl(refCast.LuaCheckArg!) + ")";
                 return RenderIl(refCast.Value);
             case IlIsType isType:
-                if (isType.IsInterface) return "__tcs_implements(" + RenderIl(isType.E) + ", " + EscapeLuaString(isType.TypeRef) + ")";
+                if (isType.IsInterface) return "__tcs_implements(" + RenderIl(isType.E) + ", " + IlLiterals.QuoteString(isType.TypeRef) + ")";
                 return "__tcs_is(" + RenderIl(isType.E) + ", " + isType.TypeRef + ")";
             case IlStructCopy copy:
                 if (copy.Nullable)
@@ -1318,7 +1137,7 @@ public sealed class LuaGen
     {
         if (ix.PlusOne && !ix.Unchecked)
         {
-            bool free = IsCallFree(ix.Recv) && IsCallFree(ix.Idx);
+            bool free = IlTree.IsCallFree(ix.Recv) && IlTree.IsCallFree(ix.Idx);
             if (ix.NilElements)
             {
                 if (free) return "(" + RenderIl(ix.Recv) + "[" + RenderIl(ix.Idx) + " + 1] or __tcs_lget(" + RenderIl(ix.Recv) + ", " + RenderIl(ix.Idx) + "))";
@@ -1351,7 +1170,7 @@ public sealed class LuaGen
         if (call.Callee == "Math.Ceil" && call.Args.Count == 1)
             return "(-(-(" + RenderIl(call.Args[0]) + ") // 1))";
         // float の key の NaN の置換は、読み直しても値が変わらない key なら inline (sentinel は runtime の Dict.FloatKey と同じ "NaN")
-        if (call.Callee == "Dict.FloatKey" && call.Args.Count == 1 && IsCallFree(call.Args[0]))
+        if (call.Callee == "Dict.FloatKey" && call.Args.Count == 1 && IlTree.IsCallFree(call.Args[0]))
         {
             var k = RenderIl(call.Args[0]);
             return "(" + k + " ~= " + RenderIl(call.Args[0]) + " and \"NaN\" or " + RenderIl(call.Args[0]) + ")";
@@ -1378,7 +1197,7 @@ public sealed class LuaGen
     // int → float は `* 1.0` (LUA_32BITS は integer を f32 へ丸める。+ 0.0 だと float の -0 が +0 になる)。float → int は __tcs_trunc
     private string RenderIlNumericConvert(IlNumericConvert convert)
     {
-        if (convert.LuaCheck != null) return "__tcs_ncast(" + RenderIl(convert.Value) + ", " + EscapeLuaString(convert.LuaCheck) + ")";
+        if (convert.LuaCheck != null) return "__tcs_ncast(" + RenderIl(convert.Value) + ", " + IlLiterals.QuoteString(convert.LuaCheck) + ")";
         if (convert.TargetType == "float")
         {
             // float.Parse: 不正な文字列の nil を保ったまま float にする
@@ -1523,7 +1342,7 @@ public sealed class LuaGen
         if (!IsSimpleReceiverPath(recv)) return null;
         var t = RenderIl(recv);
         var value = RenderIl(call.Args[1]);
-        bool free = IsCallFree(call.Args[1]);
+        bool free = IlTree.IsCallFree(call.Args[1]);
         if (!call.NilElements)
         {
             if (free) return t + "[#" + t + " + 1] = " + value;
@@ -1537,67 +1356,6 @@ public sealed class LuaGen
     {
         if (e is IlVar) return true;
         if (e is IlField f) return IsSimpleReceiverPath(f.Recv);
-        return false;
-    }
-
-    // 呼び出しを含まない式 (順序を入れ替えて観測できる副作用が無い)。runtime の helper / math / string は純粋なので許す
-    public static bool IsCallFree(IlExpr e)
-    {
-        switch (e)
-        {
-            case IlLit:
-            case IlVar:
-            case IlClosure:
-            case IlMethodGroup:
-                return true;
-            case IlField f:
-                return IsCallFree(f.Recv);
-            // List / 配列の要素の読み出しは範囲外で fault するので順序を入れ替えない
-            case IlIndex ix:
-                return (!ix.PlusOne || ix.Unchecked) && IsCallFree(ix.Recv) && IsCallFree(ix.Idx);
-            case IlLen len:
-                return IsCallFree(len.E);
-            case IlBin bin:
-                return IsCallFree(bin.L) && IsCallFree(bin.R)
-                    && (!IsOverloadableOp(bin.Op) || (IsPrimitive(bin.L) && IsPrimitive(bin.R)));
-            case IlUn un:
-                return IsCallFree(un.E) && (un.Op != IlUnOp.Neg || IsPrimitive(un.E));
-            case IlParen p:
-                return IsCallFree(p.E);
-            case IlTernary t:
-                return IsCallFree(t.Cond) && IsCallFree(t.T) && IsCallFree(t.F);
-            case IlStructCopy sc:
-                return IsCallFree(sc.E);
-            case IlNumericConvert n:
-                return n.LuaCheck == null && IsCallFree(n.Value);
-            case IlNullableWrap w:
-                return IsCallFree(w.E);
-            case IlNullableHasValue h:
-                return IsCallFree(h.E);
-            case IlIsType it:
-                return IsCallFree(it.E);
-            case IlIsLuaType ilt:
-                return IsCallFree(ilt.E);
-            case IlNewQueue:
-            case IlNewHashSet:
-                return true;
-            case IlNewArray na:
-                return IsCallFree(na.Length) && (na.Default == null || na.Default is IlLit || na.Default is IlNewObj);
-            case IlTable tbl:
-                foreach (var en in tbl.Entries)
-                {
-                    if (en.Key != null && !IsCallFree(en.Key)) return false;
-                    if (!IsCallFree(en.Value)) return false;
-                }
-                return true;
-            case IlCall c:
-                if (!IsPureCallee(c.Callee)) return false;
-                foreach (var a in c.Args)
-                {
-                    if (!IsCallFree(a)) return false;
-                }
-                return true;
-        }
         return false;
     }
 
@@ -1623,53 +1381,12 @@ public sealed class LuaGen
             case "Math.Max": return "__tcs_max";
             case "Math.Abs": return "math.abs";
             case "Math.Sqrt": return "math.sqrt";
-            case "Math.Sin": return MathModuleGlobal + ".sin";
-            case "Math.Cos": return MathModuleGlobal + ".cos";
-            case "Math.Tan": return MathModuleGlobal + ".tan";
-            case "Math.Exp": return MathModuleGlobal + ".exp";
-            case "Math.Atan2": return MathModuleGlobal + ".atan2";
+            case "Math.Sin": return LocalNames.MathModuleGlobal + ".sin";
+            case "Math.Cos": return LocalNames.MathModuleGlobal + ".cos";
+            case "Math.Tan": return LocalNames.MathModuleGlobal + ".tan";
+            case "Math.Exp": return LocalNames.MathModuleGlobal + ".exp";
+            case "Math.Atan2": return LocalNames.MathModuleGlobal + ".atan2";
         }
-        if (callee == "Math.Log" && argCount == 1) return MathModuleGlobal + ".log";
+        if (callee == "Math.Log" && argCount == 1) return LocalNames.MathModuleGlobal + ".log";
         return callee;
-    }
-
-    // user の演算子は Lua の metamethod (__add など) になり任意のコードを呼ぶ
-    private static bool IsOverloadableOp(IlBinOp op)
-    {
-        return op == IlBinOp.AddNum || op == IlBinOp.Sub || op == IlBinOp.Mul || op == IlBinOp.DivNum || op == IlBinOp.RemNum;
-    }
-
-    // 値がプリミティブ (class の instance ではない) と IL の形から言える式。IlVar / field などは型が分からないので false
-    private static bool IsPrimitive(IlExpr e)
-    {
-        if (e is IlLit || e is IlLen || e is IlIsType || e is IlIsLuaType || e is IlNullableHasValue || e is IlNumericConvert) return true;
-        if (e is IlParen p) return IsPrimitive(p.E);
-        bool logical = false;
-        if (e is IlBin lb && (lb.Op == IlBinOp.And || lb.Op == IlBinOp.Or)) logical = true;
-        if (e is IlUn nu && nu.Op == IlUnOp.Neg) logical = true;
-        if (logical)
-        {
-            foreach (var k in Children(e))
-            {
-                if (!IsPrimitive(k)) return false;
-            }
-            return true;
-        }
-        if (e is IlBin b && IsOverloadableOp(b.Op)) return IsPrimitive(b.L) && IsPrimitive(b.R);
-        if (e is IlBin || e is IlUn) return true;
-        if (e is IlTernary t) return IsPrimitive(t.T) && IsPrimitive(t.F);
-        return false;
-    }
-
-    private static bool IsPureCallee(string callee)
-    {
-        return callee.StartsWith("__tcs_")
-            || callee.StartsWith("math.")
-            || callee.StartsWith(MathModuleGlobal + ".")
-            || callee.StartsWith("string.")
-            || callee.StartsWith("Math.")
-            || callee.StartsWith("String.")
-            || callee == "tostring"
-            || callee == "tonumber";
-    }
-}
+    }}

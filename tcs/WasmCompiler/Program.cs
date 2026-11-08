@@ -100,8 +100,9 @@ public sealed partial class CompileJsonContext : JsonSerializerContext;
 
 public static partial class CompilerExports
 {
-    private static bool _initialized;
+    private static bool _referencesInjected;
     private static string? _runtimeLua;
+    private static string? _registryLua;
 
     private static Stream Res(string name) =>
         typeof(CompilerExports).Assembly.GetManifestResourceStream(name)
@@ -110,13 +111,13 @@ public static partial class CompilerExports
     private static MetadataReference Ref(string name) =>
         MetadataReference.CreateFromStream(Res(name));
 
-    internal static void EnsureInit()
+    // Roslyn の compilation (補完と hover) が読む参照アセンブリ。Assembly.Location が空の host なので、
+    // 埋め込んだ参照アセンブリを byte image で注入する。
+    internal static void EnsureReferences()
     {
-        if (_initialized)
+        if (_referencesInjected)
             return;
-        // Assembly.Location が空の host なので、埋め込んだ参照アセンブリを
-        // byte image で Transpiler へ注入する。
-        Transpiler.References =
+        TcsLibrary.References =
         [
             Ref("refs/System.Runtime.dll"),
             Ref("refs/System.Collections.dll"),
@@ -124,14 +125,20 @@ public static partial class CompilerExports
             Ref("refs/System.Console.dll"),
             Ref("refs/TinySystem.dll"),
         ];
-        using var reader = new StreamReader(Res("runtime/tinysystem.lua"));
-        _runtimeLua = reader.ReadToEnd();
-        using var regReader = new StreamReader(Res("runtime/module_registry.lua"));
-        _registryLua = regReader.ReadToEnd();
-        _initialized = true;
+        _referencesInjected = true;
     }
 
-    private static string? _registryLua;
+    // Lua の変換と bridge snapshot が埋め込む runtime の Lua
+    internal static void EnsureLuaRuntime()
+    {
+        if (_runtimeLua != null)
+            return;
+        using var registry = new StreamReader(Res("runtime/module_registry.lua"));
+        _registryLua = registry.ReadToEnd();
+        using var runtime = new StreamReader(Res("runtime/tinysystem.lua"));
+        _runtimeLua = runtime.ReadToEnd();
+    }
+
     internal static string RuntimeLua => _runtimeLua!;
     internal static string RegistryLua => _registryLua!;
 
@@ -140,7 +147,7 @@ public static partial class CompilerExports
     {
         try
         {
-            EnsureInit();
+            EnsureLuaRuntime();
             var req = JsonSerializer.Deserialize(
                           requestJson, CompileJsonContext.Default.CompileRequest)
                       ?? throw new InvalidOperationException("empty request");
@@ -189,7 +196,8 @@ public static partial class SessionExports
     {
         try
         {
-            CompilerExports.EnsureInit();
+            CompilerExports.EnsureReferences();
+            CompilerExports.EnsureLuaRuntime();
             var req = JsonSerializer.Deserialize(
                           requestJson, CompileJsonContext.Default.CompileRequest)
                       ?? throw new InvalidOperationException("empty request");
@@ -226,7 +234,7 @@ public static partial class SessionExports
     {
         try
         {
-            CompilerExports.EnsureInit();
+            CompilerExports.EnsureReferences();
             var req = JsonSerializer.Deserialize(
                           requestJson, CompileJsonContext.Default.CompileRequest)
                       ?? throw new InvalidOperationException("empty request");

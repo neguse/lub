@@ -5,7 +5,7 @@ using Xunit;
 namespace TinyCs.Tests;
 
 // browser-wasm 相当の host (Assembly.Location が使えない) を想定した
-// Transpiler.References 注入口の契約テスト。runtime pack の DLL を
+// TcsLibrary.References 注入口の契約テスト。runtime pack の DLL を
 // byte image として読み込み、ファイルパス経由なしで transpile できること。
 [Collection(TranspilerReferencesCollection.Name)]
 public class ReferenceInjectionTests
@@ -19,10 +19,10 @@ public class ReferenceInjectionTests
     {
         var runtimeDir =
             Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-        var original = Transpiler.References;
+        var original = TcsLibrary.References;
         try
         {
-            Transpiler.References =
+            TcsLibrary.References =
             [
                 FromBytes(typeof(object).Assembly.Location),
                 FromBytes(Path.Combine(runtimeDir, "System.Runtime.dll")),
@@ -53,12 +53,12 @@ public class ReferenceInjectionTests
         }
         finally
         {
-            Transpiler.References = original;
+            TcsLibrary.References = original;
         }
     }
 }
 
-// Transpiler.References は process で 1 つなので、差し替えている間は他の test (BclCatalogTests など) を並べて動かさない
+// TcsLibrary.References は process で 1 つなので、差し替えている間は他の test (BclCatalogTests など) を並べて動かさない
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class TranspilerReferencesCollection
 {

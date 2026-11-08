@@ -158,11 +158,11 @@ public sealed class ExHostFunction
     }
 }
 
-// 束縛済みの compilation から export を作る。IL は C の経路の設定 (ForCBackend、引数の copy を残す) の LuaEmit で組み立てる
+// 束縛済みの compilation から export を作る。IL は C の経路の設定 (ForCBackend、引数の copy を残す) で組み立てる
 public sealed class IlExporter
 {
     private readonly Compilation _c;
-    private readonly LuaEmit E;
+    private readonly IlContext Ctx = new IlContext();
     private readonly List<int> _emitted = new List<int>();
     // struct の型 (表示の名前) → instance の field の (名前, 型)。layout の hash で struct の中へ展開する
     private readonly Dictionary<string, List<ExField>> _structLayouts = new Dictionary<string, List<ExField>>();
@@ -170,9 +170,8 @@ public sealed class IlExporter
     public IlExporter(Compilation c)
     {
         _c = c;
-        E = new LuaEmit(c);
-        E.ForCBackend = true;
-        E.KeepsArgumentCopies = true;
+        Ctx.ForCBackend = true;
+        Ctx.KeepsArgumentCopies = true;
     }
 
     public ExportResult Export()
@@ -189,7 +188,8 @@ public sealed class IlExporter
             if (!_c.Files[i].IsLibrary && !_c.Files[i].IsRef) _emitted.Add(i);
         }
         // Lua の出力と同じ名前で IL を出す (予約語の local の改名)
-        foreach (var i in _emitted) LocalNames.AssignUnit(_c.Units[i], E.ReservedTypeNames());
+        var reserved = LocalNames.ReservedTypeNames(_c);
+        foreach (var i in _emitted) LocalNames.AssignUnit(_c.Units[i], reserved);
 
         // struct / record struct の契約。layout は owner の layout hash へ推移的に展開するので先に全ての struct を集める
         var structDecls = new List<TypeDeclSym>();
@@ -213,7 +213,7 @@ public sealed class IlExporter
             foreach (var t in enums)
             {
                 var info = new ExEnum();
-                info.Name = E.TypeName(t);
+                info.Name = t.LuaName;
                 info.DisplayName = IlTypes.Display(t.SelfType());
                 foreach (var m in t.Members)
                 {
@@ -251,12 +251,11 @@ public sealed class IlExporter
         }
         if (topLevelUnit != null)
         {
-            Enter(topLevelUnit, null, null, topLevelUnit, false);
+            Enter(null, null, topLevelUnit, false);
             result.TopLevel = Stats(topLevel);
         }
         ExportForeign(result);
-        foreach (var ie in E.G.InternalErrors) result.InternalErrors.Add(ie);
-        foreach (var er in E.Errors) result.InternalErrors.Add(er);
+        foreach (var ie in Ctx.InternalErrors) result.InternalErrors.Add(ie);
         return result;
     }
 
@@ -327,7 +326,7 @@ public sealed class IlExporter
             cls.Fields = CollectFields(t, true);
             cls.LayoutHash = LayoutHash(cls.Fields);
             cls.IsExternal = true;
-            foreach (var x in LuaEmit.AllInterfaces(t)) cls.Interfaces.Add(IlTypes.Display(x));
+            foreach (var x in IlTypes.AllInterfaces(t)) cls.Interfaces.Add(IlTypes.Display(x));
             cls.DisplayName = IlTypes.Display(t.SelfType());
             result.Classes.Add(cls);
             if (t.BaseClass != null) ForeignType(t.BaseClass.SelfType(), result, enums);
@@ -447,7 +446,7 @@ public sealed class IlExporter
                 IlExpr? dflt = null;
                 if (decl != null && decl.List != null && i < decl.List.Count && decl.List[i].B != null && decl.List[i].B!.Type != null)
                 {
-                    Enter(decl, sym.Owner, null, decl, false);
+                    Enter(sym.Owner, null, decl, false);
                     dflt = Expr(decl.List[i].B);
                 }
                 fm.Parameters.Add(new ExForeignParameter(p.Name, IlTypes.Display(p.Type), p.IsOut, dflt));
@@ -600,30 +599,29 @@ public sealed class IlExporter
 
     // ---- IL の組み立ての文脈 ----
 
-    private void Enter(Node scopeRoot, TypeDeclSym? type, Symbol? function, Node unitOrMember, bool onSelf)
+    private void Enter(TypeDeclSym? type, Symbol? function, Node unitOrMember, bool onSelf)
     {
-        E.CurrentDecl = type;
-        E.CurrentFile = scopeRoot.File;
-        E.CurrentFunction = function;
+        Ctx.CurrentDecl = type;
+        Ctx.CurrentFunction = function;
         // 参照実装の export は型引数の既定値を常に変数 (constructor と method の引数) から読む。onSelf は使わない
-        E.TypeArgDefaultsOnSelf = false;
-        E.CurrentLambdaVoid = 0;
-        E.B.ScopeRoots.Clear();
-        E.B.ScopeRoots.Add(unitOrMember);
+        Ctx.TypeArgDefaultsOnSelf = false;
+        Ctx.CurrentLambdaVoid = 0;
+        Ctx.B.ScopeRoots.Clear();
+        Ctx.B.ScopeRoots.Add(unitOrMember);
     }
 
     private IlBlock? Stats(List<Node>? statements)
     {
         if (statements == null) return null;
         var acc = new List<IlStat>();
-        if (!E.B.BuildStatsInto(statements, acc)) return null;
+        if (!Ctx.B.BuildStatsInto(statements, acc)) return null;
         return new IlBlock(acc);
     }
 
     private IlExpr? Expr(Node? e)
     {
         if (e == null) return null;
-        return E.B.BuildExpr(e);
+        return Ctx.B.BuildExpr(e);
     }
 
     // accessor の式の本文: get は値の return (条件式を文に直さない)、set は文の位置の式
@@ -634,10 +632,10 @@ public sealed class IlExporter
         {
             var built = Expr(expr);
             if (built == null) return null;
-            acc.Add(new IlReturn(E.B.WrapStructCopy(expr, built), null));
+            acc.Add(new IlReturn(Ctx.B.WrapStructCopy(expr, built), null));
             return new IlBlock(acc);
         }
-        return E.B.BuildExprStatInto(expr, expr, acc) ? new IlBlock(acc) : null;
+        return Ctx.B.BuildExprStatInto(expr, expr, acc) ? new IlBlock(acc) : null;
     }
 
     // ---- field ----
@@ -667,7 +665,7 @@ public sealed class IlExporter
                     if (withInitializers && v.A != null && v.A.Type != null)
                     {
                         // instance の初期化子は constructor の中で走るので、型引数の既定値は constructor の引数から読む
-                        Enter(m, t, null, m, false);
+                        Enter(t, null, m, false);
                         init = Expr(v.A);
                     }
                     fields.Add(new ExField(sym != null ? FieldName(t, sym) : v.Text, sym != null ? IlTypes.Display(sym.Type) : "?", isStatic, init, v.A != null ? InitializerHash(v.A, m.Has(Mods.Const)) : null));
@@ -680,7 +678,7 @@ public sealed class IlExporter
                 IlExpr? init = null;
                 if (withInitializers && m.D != null && m.D.Type != null)
                 {
-                    Enter(m, t, null, m, false);
+                    Enter(t, null, m, false);
                     init = Expr(m.D);
                 }
                 var initNode = m.D;
@@ -824,15 +822,15 @@ public sealed class IlExporter
     private ExClass ExportClass(TypeDeclSym t)
     {
         var info = new ExClass();
-        info.Name = E.TypeName(t);
+        info.Name = t.LuaName;
         info.File = t.Decl.File.Path;
-        info.BaseName = t.BaseClass != null ? E.TypeName(t.BaseClass) : null;
+        info.BaseName = t.BaseClass != null ? t.BaseClass.LuaName : null;
         info.Fields = CollectFields(t, true);
         info.LayoutHash = LayoutHash(info.Fields);
         info.Methods = CollectMethods(t);
         info.Ctors = BuildCtors(t);
         info.IsRecord = t.DeclKind == DeclKinds.RecordClass;
-        foreach (var i in LuaEmit.AllInterfaces(t)) info.Interfaces.Add(IlTypes.Display(i));
+        foreach (var i in IlTypes.AllInterfaces(t)) info.Interfaces.Add(IlTypes.Display(i));
         // record は IEquatable<自分> を実装する (C# が合成する)
         if (info.IsRecord) info.Interfaces.Add("System.IEquatable<" + IlTypes.Display(t.SelfType()) + ">");
         info.DisplayName = IlTypes.Display(t.SelfType());
@@ -843,7 +841,7 @@ public sealed class IlExporter
     private ExStruct ExportStruct(TypeDeclSym t)
     {
         var info = new ExStruct();
-        info.Name = E.TypeName(t);
+        info.Name = t.LuaName;
         var all = CollectFields(t, true);
         foreach (var f in all)
         {
@@ -862,13 +860,13 @@ public sealed class IlExporter
     private ExClass ExportInterface(TypeDeclSym t)
     {
         var info = new ExClass();
-        info.Name = E.TypeName(t);
+        info.Name = t.LuaName;
         info.IsInterface = true;
         info.LayoutHash = "0";
         info.DisplayName = IlTypes.Display(t.SelfType());
         var owners = new List<TypeDeclSym>();
         owners.Add(t);
-        foreach (var i in LuaEmit.AllInterfaces(t))
+        foreach (var i in IlTypes.AllInterfaces(t))
         {
             if (i.Decl != null) owners.Add(i.Decl);
         }
@@ -922,7 +920,7 @@ public sealed class IlExporter
         {
             var decl = member.Decl;
             var m = new ExMethod();
-            m.Name = LuaEmit.MethodName(member);
+            m.Name = IlNames.MethodName(member);
             m.IsStatic = member.IsStatic;
             m.ReturnType = IlTypes.Display(member.Type);
             m.IsAbstract = member.IsStatic ? decl.B == null && decl.C == null : true;
@@ -935,7 +933,7 @@ public sealed class IlExporter
                     if (member.Params[i].IsOut) m.OutParameters.Add(member.Params[i].Name);
                 }
             }
-            Enter(decl, member.Owner, member, decl, !member.IsStatic);
+            Enter(member.Owner, member, decl, !member.IsStatic);
             m.ParameterDefaults = ParameterDefaults(decl);
             r.Add(m);
         }
@@ -950,11 +948,6 @@ public sealed class IlExporter
         return r;
     }
 
-    private static string ParamName(Node p)
-    {
-        return p.Local != null ? p.Local.LuaName : p.Text;
-    }
-
     private List<ExMethod> CollectMethods(TypeDeclSym t)
     {
         var methods = new List<ExMethod>();
@@ -963,7 +956,7 @@ public sealed class IlExporter
         if (!t.IsInterface && !t.IsStruct)
         {
             var done = new List<string>();
-            foreach (var i in LuaEmit.AllInterfaces(t))
+            foreach (var i in IlTypes.AllInterfaces(t))
             {
                 foreach (var p in i.Decl!.Members)
                 {
@@ -1024,7 +1017,7 @@ public sealed class IlExporter
                     x.ParameterTypes.Add(type);
                 }
                 x.ReturnType = isGet ? type : "void";
-                Enter(acc, t, isGet ? m.Sym : null, acc, !isStatic);
+                Enter(t, isGet ? m.Sym : null, acc, !isStatic);
                 if (acc.A != null) x.Body = Stats(acc.A.List != null ? acc.A.List : new List<Node>());
                 else if (acc.B != null) x.Body = AccessorExpr(acc.B, isGet);
                 methods.Add(x);
@@ -1039,7 +1032,7 @@ public sealed class IlExporter
             x.Name = "get_" + m.Text;
             x.IsStatic = isStatic;
             x.ReturnType = m.Sym != null ? IlTypes.Display(m.Sym.Type) : "?";
-            Enter(m.B, t, m.Sym, m.B, !isStatic);
+            Enter(t, m.Sym, m.B, !isStatic);
             x.Body = AccessorExpr(m.B.B, true);
             methods.Add(x);
         }
@@ -1047,21 +1040,21 @@ public sealed class IlExporter
         foreach (var m in decl.List)
         {
             if (m.Kind != NodeKind.OperatorDecl) continue;
-            var meta = LuaEmit.OperatorLuaName(m);
+            var meta = IlNames.OperatorName(m);
             if (meta == null) continue;
             var x = new ExMethod();
             x.Name = meta;
             x.IsStatic = true;
             if (m.List != null)
             {
-                foreach (var p in m.List) x.Parameters.Add(ParamName(p));
+                foreach (var p in m.List) x.Parameters.Add(IlNames.ParamName(p));
             }
             x.ReturnType = m.Sym != null ? IlTypes.Display(m.Sym.Type) : "?";
             if (m.Sym != null && m.Sym.Params != null)
             {
                 foreach (var p in m.Sym.Params) x.ParameterTypes.Add(IlTypes.Display(p.Type));
             }
-            Enter(m, t, m.Sym, m, false);
+            Enter(t, m.Sym, m, false);
             if (m.B != null) x.Body = Stats(m.B.List != null ? m.B.List : new List<Node>());
             else if (m.C != null) x.Body = AccessorExpr(m.C, true);
             methods.Add(x);
@@ -1071,14 +1064,14 @@ public sealed class IlExporter
             if (m.Kind != NodeKind.Method) continue;
             var sym = m.Sym;
             var x = new ExMethod();
-            x.Name = sym != null ? LuaEmit.MethodName(sym) : m.Text;
+            x.Name = sym != null ? IlNames.MethodName(sym) : m.Text;
             x.IsStatic = m.Has(Mods.Static);
             if (m.List != null)
             {
                 foreach (var p in m.List)
                 {
-                    x.Parameters.Add(ParamName(p));
-                    if (p.Has(Mods.Out)) x.OutParameters.Add(ParamName(p));
+                    x.Parameters.Add(IlNames.ParamName(p));
+                    if (p.Has(Mods.Out)) x.OutParameters.Add(IlNames.ParamName(p));
                 }
             }
             x.ReturnType = sym != null ? IlTypes.Display(sym.Type) : "void";
@@ -1087,7 +1080,7 @@ public sealed class IlExporter
                 foreach (var p in sym.Params) x.ParameterTypes.Add(IlTypes.Display(p.Type));
             }
             x.IsAbstract = m.Has(Mods.Abstract) || t.IsInterface && m.B == null && m.C == null;
-            Enter(m, t, sym, m, !x.IsStatic);
+            Enter(t, sym, m, !x.IsStatic);
             x.Body = MethodBody(m, sym);
             x.ParameterDefaults = ParameterDefaults(m);
             methods.Add(x);
@@ -1121,7 +1114,7 @@ public sealed class IlExporter
         }
         if (hasOut && sym != null && sym.Type.Kind == TypeKind.Void) return AccessorExpr(m.C, false);
         var acc = new List<IlStat>();
-        if (!E.B.BuildReturnInto(m.C, acc)) return null;
+        if (!Ctx.B.BuildReturnInto(m.C, acc)) return null;
         return new IlBlock(acc);
     }
 
@@ -1142,7 +1135,7 @@ public sealed class IlExporter
                 body.Add(new IlAssign(new IlField(new IlVar("self", null), p.Text, null), new IlVar(p.Text, null), null));
             }
             ctor.Body = new IlBlock(body);
-            Enter(decl.A, t, null, decl, false);
+            Enter(t, null, decl, false);
             foreach (var p in decl.A.List) ctor.ParameterDefaults.Add(p.B != null ? Expr(p.B) : null);
             ctor.Name = t.IsStruct ? "ctor" : "new";
             r.Add(ctor);
@@ -1156,13 +1149,13 @@ public sealed class IlExporter
             var ctor = new ExCtor();
             if (m.List != null)
             {
-                foreach (var p in m.List) ctor.Parameters.Add(ParamName(p));
+                foreach (var p in m.List) ctor.Parameters.Add(IlNames.ParamName(p));
             }
             if (m.Sym != null && m.Sym.Params != null)
             {
                 foreach (var p in m.Sym.Params) ctor.ParameterTypes.Add(IlTypes.Display(p.Type));
             }
-            Enter(m, t, m.Sym, m, true);
+            Enter(t, m.Sym, m, true);
             if (m.B != null) ctor.Body = Stats(m.B.List != null ? m.B.List : new List<Node>());
             if (m.D != null && m.D.Text == "base" && m.D.List != null)
             {
@@ -1177,7 +1170,7 @@ public sealed class IlExporter
                 if (ok) ctor.BaseArgs = args;
             }
             ctor.ParameterDefaults = ParameterDefaults(m);
-            ctor.Name = m.Sym != null ? E.CtorName(m.Sym) : "new";
+            ctor.Name = m.Sym != null ? IlNames.CtorName(m.Sym) : "new";
             r.Add(ctor);
         }
         return r;

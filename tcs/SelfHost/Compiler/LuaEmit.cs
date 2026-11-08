@@ -66,19 +66,6 @@ public sealed class PendingStaticInit
     }
 }
 
-// struct の値を構成する member (名前と型)
-public sealed class ValueMember
-{
-    public string Name;
-    public TypeSym Type;
-
-    public ValueMember(string name, TypeSym type)
-    {
-        Name = name;
-        Type = type;
-    }
-}
-
 // field / 自動実装の property の初期化子 (名前、初期化子の式、型)
 public sealed class FieldInit
 {
@@ -102,12 +89,10 @@ public sealed class LuaEmit
 {
     public readonly Compilation C;
     public readonly LuaGen G = new LuaGen();
-    public IlBuild B;
+    // IL の組み立ての文脈 (Lua の出力は引数の copy を呼ばれた側の入口で作り、タプルを返す method を multi-return にする)
+    public readonly IlContext Il = new IlContext();
+    public readonly IlBuild B;
     public bool InstanceRegistry;
-    // IL を C backend に渡す経路は引数の copy 地点を残す (C は値渡しで copy が要らない)
-    public bool KeepsArgumentCopies;
-    // C backend に IL を渡す経路 (タプルを単相化した struct の値で返すので multi-return にしない)
-    public bool ForCBackend;
     public List<string> TracePrefixes = new List<string>();
     public int TypeLocalBudget;
     public bool CacheTypeLocals = true;
@@ -122,16 +107,9 @@ public sealed class LuaEmit
     private HashSet<string> _emittedTypeNames = new HashSet<string>();
     private EmittedTypeInfo? _currentType;
     private List<PendingStaticInit> _pendingStaticInits = new List<PendingStaticInit>();
-    // emit 中の型と関数の文脈
-    public TypeDeclSym? CurrentDecl;
+    // emit 中のファイル (型と関数の文脈は Il)
     public SourceFile? CurrentFile;
     public Node? CurrentUnit;
-    // generic な型の instance の member は型引数の既定値を self から読む
-    public bool TypeArgDefaultsOnSelf;
-    // emit 中の method (式本体が void かを見る)
-    public Symbol? CurrentFunction;
-    // 組み立て中の lambda の戻りが void か (0 = lambda の外、1 = void、2 = 値)
-    public int CurrentLambdaVoid;
 
     // chunk 直下の local は 200 個が上限。prelude の helper と利用者の top-level の文の local の余地を残した型の数の上限
     public const int MaxTypeLocals = 100;
@@ -139,7 +117,9 @@ public sealed class LuaEmit
     public LuaEmit(Compilation c)
     {
         C = c;
-        B = new IlBuild(this);
+        B = Il.B;
+        // IL の組み立てと Lua の描画の内部の誤りを起きた順に 1 つの表に並べる
+        G.InternalErrors = Il.InternalErrors;
     }
 
     public void Internal(string message)
@@ -281,11 +261,26 @@ public sealed class LuaEmit
         lines.Add("return {\n");
         foreach (var key in entries)
         {
-            if (Strings.IsLuaName(key)) lines.Add("  " + key + " = " + byKey[key] + ",\n");
+            if (IsLuaName(key)) lines.Add("  " + key + " = " + byKey[key] + ",\n");
             else lines.Add("  [\"" + key + "\"] = " + byKey[key] + ",\n");
         }
         lines.Add("}\n");
         return string.Join("", lines);
+    }
+
+    // Lua の名前として書けるか (英字か _ で始まり、英数字と _ だけ)
+    private static bool IsLuaName(string s)
+    {
+        var u = new TinySystem.Text.Utf8Bytes(s);
+        if (u.Length == 0) return false;
+        for (int i = 0; i < u.Length; i++)
+        {
+            int c = u[i];
+            if (c == '_') continue;
+            if (!Strings.IsAsciiLetterOrDigit(c)) return false;
+            if (i == 0 && c >= '0' && c <= '9') return false;
+        }
+        return true;
     }
 
     // emit する tree の群に対する既定の budget。top-level の文の local は chunk 直下に出るので、その分 (過大評価で可) を差し引く
@@ -345,18 +340,7 @@ public sealed class LuaEmit
 
     public void SetSource(Node node)
     {
-        G.SetSource(Origin(node));
-    }
-
-    // 構文の位置 (同じ node には同じ IlPos)
-    public IlPos Origin(Node node)
-    {
-        if (node.IlOrigin == null)
-        {
-            node.IlOrigin = new IlPos(node.File.Path, node.File.LineOf(node.Pos));
-            node.IlOrigin.Col = node.File.ColumnOf(node.Pos);
-        }
-        return node.IlOrigin;
+        G.SetSource(IlBuild.Origin(node));
     }
 
     // ---- --trace ----
@@ -397,38 +381,20 @@ public sealed class LuaEmit
     {
         if (TracePrefixes.Count == 0 || kind == "enum") return;
         if (symbol == null || !IsTracedPath(symbol.Decl.File.Path)) return;
-        AppendLine("__tcs_trace_classes[" + LuaGen.EscapeLuaString(name) + "] = " + name);
+        AppendLine("__tcs_trace_classes[" + IlLiterals.QuoteString(name) + "] = " + name);
     }
 
     // ---- unit と member ----
 
-    // local の改名を避ける型の名前 (simple 名、global 名、--ref の型の path の先頭)
     private HashSet<string>? _reservedTypeNames;
     private HashSet<Node> _renamedUnits = new HashSet<Node>();
-
-    public HashSet<string> ReservedTypeNames()
-    {
-        if (_reservedTypeNames != null) return _reservedTypeNames;
-        var names = new HashSet<string>();
-        foreach (var t in C.Types)
-        {
-            names.Add(t.Name);
-            if (t.IsRef)
-            {
-                var path = t.LuaName;
-                if (path != "") names.Add(path.Split('.')[0]);
-            }
-            else names.Add(t.LuaName);
-        }
-        _reservedTypeNames = names;
-        return names;
-    }
 
     private void Visit(Node unit, bool emitNonGlobalMembers, bool emitGlobalStatements)
     {
         CurrentFile = unit.File;
         CurrentUnit = unit;
-        if (_renamedUnits.Add(unit)) LocalNames.AssignUnit(unit, ReservedTypeNames());
+        if (_reservedTypeNames == null) _reservedTypeNames = LocalNames.ReservedTypeNames(C);
+        if (_renamedUnits.Add(unit)) LocalNames.AssignUnit(unit, _reservedTypeNames);
         if (!_headerEmitted)
         {
             _typeLocalsChunk = LuaPrelude.Emit(G, InstanceRegistry, TracePrefixes.Count > 0, TypeLocalBudget > 0);
@@ -445,7 +411,7 @@ public sealed class LuaEmit
         {
             // top-level の文は実行時に static を触りうるので、実行前に static を初期化する
             FlushStaticInitializers();
-            CurrentDecl = null;
+            Il.CurrentDecl = null;
             B.ScopeRoots.Clear();
             B.ScopeRoots.Add(unit);
             foreach (var global in unit.List2) VisitGlobalStatement(global);
@@ -545,16 +511,6 @@ public sealed class LuaEmit
         return field.Has(Mods.Static) || field.Has(Mods.Const);
     }
 
-    // 自動実装の property (accessor のどれにも本体が無い)
-    public static bool IsAutoProperty(Node prop)
-    {
-        if (prop.B == null && prop.C == null) return false;
-        if (prop.B != null && (prop.B.A != null || prop.B.B != null)) return false;
-        if (prop.C != null && (prop.C.A != null || prop.C.B != null)) return false;
-        // 式本体の property (`int P => e;`) は B に式を持つ get
-        return true;
-    }
-
     // 式本体の property (`int P => e;`)
     private static bool IsExpressionBodiedProperty(Node prop)
     {
@@ -582,7 +538,7 @@ public sealed class LuaEmit
                     break;
                 }
                 case NodeKind.Property:
-                    if (IsAutoProperty(member))
+                    if (IlBuild.IsAutoProperty(member))
                     {
                         var target = member.Has(Mods.Static) ? statics : instance;
                         var t = member.Sym != null ? member.Sym.Type : TypeSym.ErrorType;
@@ -600,7 +556,7 @@ public sealed class LuaEmit
     {
         SetSource(cls);
         var symbol = cls.TypeDecl!;
-        CurrentDecl = symbol;
+        Il.CurrentDecl = symbol;
         var name = TypeName(symbol);
         var info = BeginType(name, "class", symbol);
         AppendLine(name + ".__index = " + name);
@@ -634,7 +590,7 @@ public sealed class LuaEmit
                         break;
                     case NodeKind.Property:
                         if (IsExpressionBodiedProperty(member)) VisitExpressionBodiedProperty(name, member, false);
-                        else if (!IsAutoProperty(member)) VisitCustomProperty(name, member, false);
+                        else if (!IlBuild.IsAutoProperty(member)) VisitCustomProperty(name, member, false);
                         break;
                     case NodeKind.OperatorDecl:
                         operators.Add(member);
@@ -645,7 +601,7 @@ public sealed class LuaEmit
         EmitOperators(name, operators);
         DeferStaticFieldInitializers(name, info, staticFieldInits);
         _currentType = null;
-        CurrentDecl = null;
+        Il.CurrentDecl = null;
     }
 
     // ---- struct / record struct ----
@@ -656,7 +612,7 @@ public sealed class LuaEmit
     {
         SetSource(decl);
         var symbol = decl.TypeDecl!;
-        CurrentDecl = symbol;
+        Il.CurrentDecl = symbol;
         var name = TypeName(symbol);
         var info = BeginStructType(name, symbol);
         var statics = EmitStructStaticPreZero(name, info, decl);
@@ -667,7 +623,7 @@ public sealed class LuaEmit
         EmitStructMembers(name, decl);
         DeferStaticFieldInitializers(name, info, statics);
         _currentType = null;
-        CurrentDecl = null;
+        Il.CurrentDecl = null;
     }
 
     private EmittedTypeInfo BeginStructType(string name, TypeDeclSym symbol)
@@ -675,7 +631,7 @@ public sealed class LuaEmit
         var info = BeginType(name, "struct", symbol);
         // struct の値を作る member の名前と型 (`new` が作る field の集合)。型は Lua の default では区別できない
         var shape = new List<string>();
-        foreach (var m in ValueMembers(symbol.SelfType())) shape.Add(m.Name + ":" + m.Type.FullDisplay());
+        foreach (var m in IlTypes.ValueMembers(symbol.SelfType())) shape.Add(m.Name + ":" + m.Type.FullDisplay());
         info.InstanceShape = string.Join("\n", shape);
         AppendLine("");
         return info;
@@ -699,7 +655,7 @@ public sealed class LuaEmit
                         statics.Add(new FieldInit(v.Text, v.A, t));
                     }
                 }
-                else if (member.Kind == NodeKind.Property && IsAutoProperty(member))
+                else if (member.Kind == NodeKind.Property && IlBuild.IsAutoProperty(member))
                 {
                     var t = member.Sym != null ? member.Sym.Type : TypeSym.ErrorType;
                     statics.Add(new FieldInit(member.Text, member.D, t));
@@ -715,7 +671,7 @@ public sealed class LuaEmit
     {
         SetSource(decl);
         var symbol = decl.TypeDecl!;
-        CurrentDecl = symbol;
+        Il.CurrentDecl = symbol;
         var name = TypeName(symbol);
         var info = BeginStructType(name, symbol);
         var statics = EmitStructStaticPreZero(name, info, decl);
@@ -748,7 +704,7 @@ public sealed class LuaEmit
         EmitStructMembers(name, decl);
         DeferStaticFieldInitializers(name, info, statics);
         _currentType = null;
-        CurrentDecl = null;
+        Il.CurrentDecl = null;
     }
 
     // 値の等価 (memberwise)。record struct の == / != と、struct の要素の List.Contains / IndexOf / Remove が使う
@@ -774,7 +730,7 @@ public sealed class LuaEmit
         G.Indent++;
         var zero = new List<string>();
         foreach (var h in hidden) zero.Add(h + " = " + h);
-        foreach (var m in ValueMembers(symbol.SelfType())) zero.Add(m.Name + " = " + GetDefaultValueForType(m.Type));
+        foreach (var m in IlTypes.ValueMembers(symbol.SelfType())) zero.Add(m.Name + " = " + GetDefaultValueForType(m.Type));
         AppendLine("return {" + string.Join(", ", zero) + "}");
         G.Indent--;
         AppendLine("end");
@@ -803,7 +759,7 @@ public sealed class LuaEmit
                     break;
                 case NodeKind.Property:
                     if (IsExpressionBodiedProperty(member)) VisitExpressionBodiedProperty(name, member, true);
-                    else if (!IsAutoProperty(member) && (member.B != null || member.C != null)) VisitCustomProperty(name, member, true);
+                    else if (!IlBuild.IsAutoProperty(member) && (member.B != null || member.C != null)) VisitCustomProperty(name, member, true);
                     break;
             }
         }
@@ -847,9 +803,9 @@ public sealed class LuaEmit
     {
         SetSource(ctor);
         var ctorParams = new List<string>();
-        foreach (var p in ctor.List!) ctorParams.Add(ParamLuaName(p));
+        foreach (var p in ctor.List!) ctorParams.Add(IlNames.ParamName(p));
         var hidden = TypeTypeArgDefaultParams(decl.TypeDecl!);
-        var ctorName = ctor.Sym != null ? CtorName(ctor.Sym) : "ctor";
+        var ctorName = ctor.Sym != null ? IlNames.CtorName(ctor.Sym) : "ctor";
         AddDefinitionKey(ctorName);
         var all = new List<string>();
         foreach (var p in ctorParams) all.Add(p);
@@ -879,7 +835,7 @@ public sealed class LuaEmit
         var selfType = symbol.SelfType();
         // generic な struct は型引数の値を写す関数を受ける (StructCopiers)
         var copierParts = new List<string>();
-        if (PassesTypeArgDefaults(symbol))
+        if (IlTypes.PassesTypeArgDefaults(symbol))
         {
             foreach (var tp in symbol.TypeParams) copierParts.Add(", __tcs_cc_" + tp);
         }
@@ -888,7 +844,7 @@ public sealed class LuaEmit
         G.Indent++;
         var copied = new List<string>();
         foreach (var h in TypeTypeArgDefaultParams(symbol)) copied.Add(h + " = s." + h);
-        foreach (var m in ValueMembers(selfType))
+        foreach (var m in IlTypes.ValueMembers(selfType))
         {
             if (m.Type.Kind == TypeKind.TypeParam)
             {
@@ -904,18 +860,12 @@ public sealed class LuaEmit
         AppendLine("end");
         AppendLine("");
         // 型引数に入れたときの記述子 (可変な struct と ToString を持つ struct)。hot reload で差し替わる関数を引くので closure
-        if (copierParams == "" && NeedsTypeArgDescriptor(selfType))
+        if (copierParams == "" && IlBuild.NeedsTypeArgDescriptor(selfType))
         {
             AddDefinitionKey("__tcs_td");
             AppendLine(name + ".__tcs_td = {__tcs_td = true, n = function() return " + name + ".new() end, c = function(v) return " + name + ".__copy(v) end" + DescriptorToString(name, selfType) + "}");
             AppendLine("");
         }
-    }
-
-    // 型引数に入れたとき、既定値の値では足りない struct: 可変 (copy の作り方が要る) か、ToString の override を持つ
-    public static bool NeedsTypeArgDescriptor(TypeSym t)
-    {
-        return IlTypes.IsMutableStruct(t) || (IlTypes.IsUserStruct(t) && IlBuild.HasToStringOverride(t));
     }
 
     private static string DescriptorToString(string name, TypeSym t)
@@ -924,35 +874,10 @@ public sealed class LuaEmit
         return ", s = function(v) return " + name + ".ToString(v) or \"\" end";
     }
 
-    // 値を構成する member (field と自動実装の property。positional な property を含む)。
-    // 基底の record から同名の member を継承する positional parameter は property にならない
-    public static List<ValueMember> ValueMembers(TypeSym? t)
-    {
-        var r = new List<ValueMember>();
-        if (t == null) return r;
-        if (t.Kind == TypeKind.Tuple)
-        {
-            for (int i = 0; i < t.Args!.Count; i++) r.Add(new ValueMember("Item" + (i + 1), t.Args[i]));
-            return r;
-        }
-        if (t.Decl == null) return r;
-        bool generic = t.Args != null && t.Args.Count > 0;
-        foreach (var m in t.Decl.Members)
-        {
-            if (m.IsStatic || m.IsConst) continue;
-            if (m.Kind == SymKind.Field || (m.Kind == SymKind.Property && m.IsAuto))
-            {
-                if (m.Kind == SymKind.Property && t.Decl.BaseClass != null && t.Decl.BaseClass.Lookup(m.Name) != null) continue;
-                r.Add(new ValueMember(m.Name, generic ? m.Type.Subst(t.Args, null) : m.Type));
-            }
-        }
-        return r;
-    }
-
     public static List<string> ValueEqualityParts(TypeSym t, string a, string b)
     {
         var r = new List<string>();
-        foreach (var m in ValueMembers(t))
+        foreach (var m in IlTypes.ValueMembers(t))
         {
             foreach (var p in MemberEqualityParts(m.Type, a + "." + m.Name, b + "." + m.Name)) r.Add(p);
         }
@@ -988,7 +913,7 @@ public sealed class LuaEmit
     public static List<string> TypeTypeArgDefaultParams(TypeDeclSym t)
     {
         var r = new List<string>();
-        if (!PassesTypeArgDefaults(t)) return r;
+        if (!IlTypes.PassesTypeArgDefaults(t)) return r;
         foreach (var tp in t.TypeParams) r.Add("__tcs_dc_" + tp);
         return r;
     }
@@ -1000,7 +925,7 @@ public sealed class LuaEmit
     {
         SetSource(decl);
         var symbol = decl.TypeDecl!;
-        CurrentDecl = symbol;
+        Il.CurrentDecl = symbol;
         var name = TypeName(symbol);
         if (symbol.BaseClass != null) Internal("record base not ported");
         var info = BeginType(name, "record", symbol);
@@ -1062,7 +987,7 @@ public sealed class LuaEmit
                         staticFieldInits.Add(new FieldInit(v.Text, v.A, t));
                     }
                 }
-                else if (member.Kind == NodeKind.Property && member.Has(Mods.Static) && IsAutoProperty(member))
+                else if (member.Kind == NodeKind.Property && member.Has(Mods.Static) && IlBuild.IsAutoProperty(member))
                 {
                     var t = member.Sym != null ? member.Sym.Type : TypeSym.ErrorType;
                     staticFieldInits.Add(new FieldInit(member.Text, member.D, t));
@@ -1088,7 +1013,7 @@ public sealed class LuaEmit
                         if (!IsStaticField(member)) Internal("record instance field not ported");
                         break;
                     case NodeKind.Property:
-                        if (!(member.Has(Mods.Static) && IsAutoProperty(member))) Internal("record property not ported");
+                        if (!(member.Has(Mods.Static) && IlBuild.IsAutoProperty(member))) Internal("record property not ported");
                         break;
                 }
             }
@@ -1096,14 +1021,14 @@ public sealed class LuaEmit
         EmitOperators(name, operators);
         DeferStaticFieldInitializers(name, info, staticFieldInits);
         _currentType = null;
-        CurrentDecl = null;
+        Il.CurrentDecl = null;
     }
 
     // record の __eq の各 member の比較 (record の値の member は positional な property だけ)
     private static List<string> ValueEqualityPartsShallow(TypeSym t)
     {
         var r = new List<string>();
-        foreach (var m in ValueMembers(t))
+        foreach (var m in IlTypes.ValueMembers(t))
         {
             foreach (var p in MemberEqualityParts(m.Type, "a." + m.Name, "b." + m.Name)) r.Add(p);
         }
@@ -1116,7 +1041,7 @@ public sealed class LuaEmit
     {
         foreach (var op in operators)
         {
-            var luaName = OperatorLuaName(op);
+            var luaName = IlNames.OperatorName(op);
             if (luaName != null) EmitOperatorFunction(className, luaName, op);
         }
     }
@@ -1129,7 +1054,7 @@ public sealed class LuaEmit
         var paramNames = new List<string>();
         if (op.List != null)
         {
-            foreach (var p in op.List) paramNames.Add(ParamLuaName(p));
+            foreach (var p in op.List) paramNames.Add(IlNames.ParamName(p));
         }
         var owner = op.Sym != null ? op.Sym.Owner : null;
         if (owner != null)
@@ -1138,62 +1063,27 @@ public sealed class LuaEmit
         }
         B.ScopeRoots.Clear();
         B.ScopeRoots.Add(op);
-        CurrentFunction = op.Sym;
+        Il.CurrentFunction = op.Sym;
         AppendLine("function " + className + "." + luaName + "(" + string.Join(", ", paramNames) + ")");
         G.Indent++;
         BeginTraceFunction();
         EmitParameterEntryCopies(op);
-        var outerOnSelf = TypeArgDefaultsOnSelf;
-        TypeArgDefaultsOnSelf = false;
+        var outerOnSelf = Il.TypeArgDefaultsOnSelf;
+        Il.TypeArgDefaultsOnSelf = false;
         if (op.B != null) EmitStatsViaIl(op.B);
         else if (op.C != null) EmitReturnViaIl(op.C);
-        TypeArgDefaultsOnSelf = outerOnSelf;
+        Il.TypeArgDefaultsOnSelf = outerOnSelf;
         EndTraceFunction();
         G.Indent--;
         AppendLine("end");
         AppendLine("");
-        CurrentFunction = null;
-    }
-
-    // 演算子の metamethod の名前 (+ - * / % の 2 項と単項の -)。それ以外は null
-    public static string? OperatorMetamethod(Node op)
-    {
-        int arity = op.List != null ? op.List.Count : 0;
-        if (arity == 2)
-        {
-            switch (op.Text)
-            {
-                case "+": return "__add";
-                case "-": return "__sub";
-                case "*": return "__mul";
-                case "/": return "__div";
-                case "%": return "__mod";
-            }
-        }
-        if (arity == 1 && op.Text == "-") return "__unm";
-        return null;
-    }
-
-    // 演算子の Lua の名前。同じ型に同じ metamethod の演算子が複数あれば宣言の順に `_1` `_2` … を付ける
-    public static string? OperatorLuaName(Node op)
-    {
-        var mm = OperatorMetamethod(op);
-        if (mm == null) return null;
-        var owner = op.Sym != null ? op.Sym.Owner : null;
-        if (owner == null || owner.Decl.List == null) return mm;
-        var overloads = new List<Node>();
-        foreach (var m in owner.Decl.List)
-        {
-            if (m.Kind == NodeKind.OperatorDecl && OperatorMetamethod(m) == mm) overloads.Add(m);
-        }
-        if (overloads.Count == 1) return mm;
-        return mm + "_" + (overloads.IndexOf(op) + 1);
+        Il.CurrentFunction = null;
     }
 
     // `is I` / `as I` が引く、実装する interface の名前の集合
     private void EmitImplementedInterfaces(string name, EmittedTypeInfo info, TypeDeclSym symbol)
     {
-        var all = AllInterfaces(symbol);
+        var all = IlTypes.AllInterfaces(symbol);
         // interface の property を自動実装の property で実装するなら accessor を足す (interface 経由の読み書きは accessor を呼ぶ)
         if (!symbol.IsInterface && !symbol.IsStruct)
         {
@@ -1223,7 +1113,7 @@ public sealed class LuaEmit
         {
             var d = i.Decl!;
             if (d.TypeParams.Count > 0 || d.IsRef) continue;
-            names.Add("[" + LuaGen.EscapeLuaString(d.LuaName) + "] = true");
+            names.Add("[" + IlLiterals.QuoteString(d.LuaName) + "] = true");
         }
         if (names.Count == 0) return;
         AppendLine(name + ".__interfaces = {" + string.Join(", ", names) + "}");
@@ -1238,31 +1128,6 @@ public sealed class LuaEmit
             if (m.Kind == SymKind.Property && m.Name == name && !m.IsStatic) return m;
         }
         return null;
-    }
-
-    // Roslyn の AllInterfaces と同じ順 (基底の型から、宣言の逆順に基底の interface を後置で集めて、最後に反転する)
-    public static List<TypeSym> AllInterfaces(TypeDeclSym t)
-    {
-        var result = new List<TypeSym>();
-        var visited = new List<TypeDeclSym>();
-        TypeDeclSym? cur = t;
-        while (cur != null)
-        {
-            for (int i = cur.Interfaces.Count - 1; i >= 0; i--) AddAllInterfaces(cur.Interfaces[i], visited, result);
-            cur = cur.BaseClass;
-        }
-        var reversed = new List<TypeSym>();
-        for (int i = result.Count - 1; i >= 0; i--) reversed.Add(result[i]);
-        return reversed;
-    }
-
-    private static void AddAllInterfaces(TypeSym iface, List<TypeDeclSym> visited, List<TypeSym> result)
-    {
-        if (iface.Decl == null || visited.Contains(iface.Decl)) return;
-        visited.Add(iface.Decl);
-        var bases = iface.Decl.Interfaces;
-        for (int i = bases.Count - 1; i >= 0; i--) AddAllInterfaces(bases[i], visited, result);
-        result.Add(iface);
     }
 
     // ---- static ----
@@ -1289,7 +1154,7 @@ public sealed class LuaEmit
         if (IlTypes.IsUserStruct(type))
         {
             var entries = StructTypeArgEntries(type);
-            foreach (var m in ValueMembers(type)) entries.Add(m.Name + " = " + StaticDefaultLua(m.Type));
+            foreach (var m in IlTypes.ValueMembers(type)) entries.Add(m.Name + " = " + StaticDefaultLua(m.Type));
             return "{" + string.Join(", ", entries) + "}";
         }
         return GetDefaultValueForType(type);
@@ -1305,13 +1170,13 @@ public sealed class LuaEmit
             names = new List<string>();
             for (int i = 0; i < type.Args!.Count; i++) names.Add("T" + (i + 1));
         }
-        else if (type.Decl != null && PassesTypeArgDefaults(type.Decl) && type.Args != null) names = type.Decl.TypeParams;
+        else if (type.Decl != null && IlTypes.PassesTypeArgDefaults(type.Decl) && type.Args != null) names = type.Decl.TypeParams;
         if (names == null) return r;
         for (int i = 0; i < names.Count; i++)
         {
             var a = type.Args![i];
             string value;
-            if (NeedsTypeArgDescriptor(a))
+            if (IlBuild.NeedsTypeArgDescriptor(a))
                 value = G.RenderStructDescriptor(new IlStructDescriptor(B.TypeName(a), B.StructTypeArgDefaults(a), B.StructCopiers(a, false), IlBuild.HasToStringOverride(a), null), true);
             else value = StaticDefaultLua(a);
             r.Add("__tcs_dc_" + names[i] + " = " + value);
@@ -1334,22 +1199,7 @@ public sealed class LuaEmit
             return B.TypeName(type) + ".new(" + string.Join(", ", args) + ")";
         }
         if (type.Kind == TypeKind.Utf8Bytes) return "TinySystem.Utf8.Default()";
-        // enum の default は member の値に依らず 0 (C#: default(E) == 0)
-        if (type.Kind == TypeKind.Enum) return "0";
-        switch (type.Kind)
-        {
-            case TypeKind.Bool: return "false";
-            case TypeKind.Char: return "0";
-            case TypeKind.Int:
-            case TypeKind.Long:
-            case TypeKind.UInt:
-                return "0";
-            // float は Lua でも float (integer の 0 は int と混ぜた演算が integer のまま進み、f32 へ丸まらない)
-            case TypeKind.Float:
-            case TypeKind.Double:
-                return "0.0";
-        }
-        return "nil";
+        return IlBuild.DefaultLiteral(type);
     }
 
     private void DeferStaticFieldInitializers(string name, EmittedTypeInfo info, List<FieldInit> staticFieldInits)
@@ -1420,13 +1270,13 @@ public sealed class LuaEmit
         var ctorParams = new List<string>();
         if (ctor != null && ctor.List != null)
         {
-            foreach (var p in ctor.List) ctorParams.Add(ParamLuaName(p));
+            foreach (var p in ctor.List) ctorParams.Add(IlNames.ParamName(p));
         }
-        var ctorName = ctor != null && ctor.Sym != null ? CtorName(ctor.Sym) : "new";
+        var ctorName = ctor != null && ctor.Sym != null ? IlNames.CtorName(ctor.Sym) : "new";
         AddDefinitionKey(ctorName);
         // generic な class の instance は型引数の既定値を self に持つ
         var typeArgParams = new List<string>();
-        if (PassesTypeArgDefaults(classSymbol))
+        if (IlTypes.PassesTypeArgDefaults(classSymbol))
         {
             foreach (var tp in classSymbol.TypeParams) typeArgParams.Add("__tcs_dc_" + tp);
         }
@@ -1610,23 +1460,16 @@ public sealed class LuaEmit
             if (parameter.B == null) continue;
             var value = RenderExprViaIl(parameter.B, false);
             if (value == "nil") continue;
-            var pn = ParamLuaName(parameter);
+            var pn = IlNames.ParamName(parameter);
             AppendLine("if " + pn + " == nil then " + pn + " = " + value + " end");
         }
-    }
-
-    // 型引数の既定値を受ける型 (source の generic な class / struct)
-    public static bool PassesTypeArgDefaults(TypeDeclSym? t)
-    {
-        if (t == null || t.TypeParams.Count == 0) return false;
-        return t.DeclKind == DeclKinds.Class || t.DeclKind == DeclKinds.Struct || t.DeclKind == DeclKinds.RecordClass || t.DeclKind == DeclKinds.RecordStruct;
     }
 
     // 宣言の側の隠れ引数 (型の型引数 (ctor と static の member)、method の型引数の順)
     public static List<string> TypeArgDefaultParams(Symbol method)
     {
         var r = new List<string>();
-        if ((method.Kind == SymKind.Ctor || method.IsStatic) && PassesTypeArgDefaults(method.Owner))
+        if ((method.Kind == SymKind.Ctor || method.IsStatic) && IlTypes.PassesTypeArgDefaults(method.Owner))
         {
             foreach (var tp in method.Owner!.TypeParams) r.Add("__tcs_dc_" + tp);
         }
@@ -1637,14 +1480,14 @@ public sealed class LuaEmit
         return r;
     }
 
-    public static string ParamLuaName(Node p)
-    {
-        return p.Local != null ? p.Local.LuaName : p.Text;
-    }
-
     private void EmitParameterEntryCopies(Node fn)
     {
-        B.EmitParameterEntryCopies(fn);
+        if (fn.List == null) return;
+        foreach (var p in fn.List)
+        {
+            var copy = B.ParameterEntryCopy(fn, p);
+            if (copy != null) AppendLine(IlNames.ParamName(p) + " = " + G.RenderIl(copy));
+        }
     }
 
     // ---- method / property ----
@@ -1654,8 +1497,8 @@ public sealed class LuaEmit
     {
         SetSource(method);
         var declared = method.Sym;
-        var methodName = declared != null ? MethodName(declared) : method.Text;
-        CurrentFunction = declared;
+        var methodName = declared != null ? IlNames.MethodName(declared) : method.Text;
+        Il.CurrentFunction = declared;
         bool isStatic = method.Has(Mods.Static);
         bool hasOut = false;
         var paramNames = new List<string>();
@@ -1664,15 +1507,15 @@ public sealed class LuaEmit
             foreach (var p in method.List)
             {
                 if (p.Has(Mods.Out)) hasOut = true;
-                else paramNames.Add(ParamLuaName(p));
+                else paramNames.Add(IlNames.ParamName(p));
             }
         }
         if (declared != null)
         {
             foreach (var hp in TypeArgDefaultParams(declared)) paramNames.Add(hp);
         }
-        var outerOnSelf = TypeArgDefaultsOnSelf;
-        TypeArgDefaultsOnSelf = !isStatic;
+        var outerOnSelf = Il.TypeArgDefaultsOnSelf;
+        Il.TypeArgDefaultsOnSelf = !isStatic;
         var sep = isStatic || explicitSelf ? "." : ":";
         if (explicitSelf && !isStatic) paramNames.Insert(0, "self");
         AddDefinitionKey(methodName);
@@ -1703,84 +1546,8 @@ public sealed class LuaEmit
         G.Indent--;
         AppendLine("end");
         AppendLine("");
-        TypeArgDefaultsOnSelf = outerOnSelf;
-        CurrentFunction = null;
-    }
-
-    // user の型の method の Lua の名前 (参照実装の LuaNaming.MethodName)。同じ型に同名の method が複数あるときだけ
-    // parameter の型を `__` でつないで付ける。interface の method を実装する method は interface の method の名前
-    public static string MethodName(Symbol m)
-    {
-        if (m.Kind != SymKind.Method) return m.Name;
-        if (m.Owner != null && m.Owner.IsRef) return m.LuaName;
-        var implemented = ImplementedInterfaceMethod(m);
-        // --ref の interface の method は C# の名前 (host の名前ではない。Lua では RefInterfaceImplementation で止まり、tcs VM と C は C# の名前で呼ぶ)
-        if (implemented != null) return implemented.Owner != null && implemented.Owner.IsRef ? implemented.Name : MethodName(implemented);
-        var owner = m.Owner;
-        if (owner == null) return m.Name;
-        int same = 0;
-        foreach (var x in owner.Members)
-        {
-            if (x.Kind == SymKind.Method && x.Name == m.Name) same++;
-        }
-        if (same < 2) return m.Name;
-        var parts = new List<string>();
-        parts.Add(m.Name);
-        if (m.Params != null)
-        {
-            foreach (var p in m.Params)
-            {
-                parts.Add("__");
-                if (p.IsOut) parts.Add("out_");
-                parts.Add(LuaNaming.TypeToken(p.Type));
-            }
-        }
-        return string.Join("", parts);
-    }
-
-    // instance method が実装する interface の method (宣言の型の interface から)
-    private static Symbol? ImplementedInterfaceMethod(Symbol m)
-    {
-        if (m.IsStatic || m.Owner == null || m.Owner.IsInterface) return null;
-        var ifaces = new List<TypeSym>();
-        CollectAllInterfaces(m.Owner, ifaces);
-        foreach (var iface in ifaces)
-        {
-            var decl = iface.Decl!;
-            foreach (var cand in decl.Members)
-            {
-                if (cand.Kind != SymKind.Method || cand.Name != m.Name) continue;
-                if (SameSignature(m, cand, iface)) return cand;
-            }
-        }
-        return null;
-    }
-
-    public static void CollectAllInterfaces(TypeDeclSym t, List<TypeSym> into)
-    {
-        foreach (var i in t.Interfaces)
-        {
-            if (i.Decl == null) continue;
-            bool seen = false;
-            foreach (var x in into)
-            {
-                if (x.Decl == i.Decl) seen = true;
-            }
-            if (seen) continue;
-            into.Add(i);
-            CollectAllInterfaces(i.Decl, into);
-        }
-    }
-
-    private static bool SameSignature(Symbol impl, Symbol iface, TypeSym ifaceType)
-    {
-        if (impl.ParamCount != iface.ParamCount) return false;
-        for (int i = 0; i < impl.ParamCount; i++)
-        {
-            var it = iface.Params![i].Type.Subst(ifaceType.Args, null);
-            if (!TypeSym.Same(impl.Params![i].Type, it)) return false;
-        }
-        return true;
+        Il.TypeArgDefaultsOnSelf = outerOnSelf;
+        Il.CurrentFunction = null;
     }
 
     private void EmitStatsViaIl(Node block)
@@ -1815,8 +1582,8 @@ public sealed class LuaEmit
         var sep = isStatic || explicitSelf ? "." : ":";
         var hidden = new List<string>();
         if (isStatic && prop.Sym != null && prop.Sym.Owner != null) hidden = TypeTypeArgDefaultParams(prop.Sym.Owner);
-        var outerOnSelf = TypeArgDefaultsOnSelf;
-        TypeArgDefaultsOnSelf = !isStatic;
+        var outerOnSelf = Il.TypeArgDefaultsOnSelf;
+        Il.TypeArgDefaultsOnSelf = !isStatic;
         // accessor は書いた順
         var accessors = new List<Node>();
         if (prop.B != null) accessors.Add(prop.B);
@@ -1836,7 +1603,7 @@ public sealed class LuaEmit
             AddDefinitionKey(prefix + propName);
             B.ScopeRoots.Clear();
             B.ScopeRoots.Add(accessor);
-            CurrentFunction = isGet ? prop.Sym : null;
+            Il.CurrentFunction = isGet ? prop.Sym : null;
             AppendLine("function " + className + sep + prefix + propName + "(" + string.Join(", ", ps) + ")");
             G.Indent++;
             BeginTraceFunction();
@@ -1850,9 +1617,9 @@ public sealed class LuaEmit
             G.Indent--;
             AppendLine("end");
             AppendLine("");
-            CurrentFunction = null;
+            Il.CurrentFunction = null;
         }
-        TypeArgDefaultsOnSelf = outerOnSelf;
+        Il.TypeArgDefaultsOnSelf = outerOnSelf;
     }
 
     // 式本体の property (int D => expr;) は get だけの accessor
@@ -1884,26 +1651,6 @@ public sealed class LuaEmit
         }
         AppendLine("");
         _currentType = null;
-    }
-
-    // ---- constructor の名前 ----
-
-    // user の型の constructor の Lua 名。class は `new`、struct は `ctor`。constructor が複数ある型は、
-    // 引数のあるものに method の overload と同じ規則で parameter の型を付ける (`new__int__float`)
-    public string CtorName(Symbol ctor)
-    {
-        var owner = ctor.Owner!;
-        var name = owner.IsStruct ? "ctor" : "new";
-        int explicitCtors = 0;
-        foreach (var c in owner.Ctors)
-        {
-            if (c.Decl != null && c.Decl.Kind == NodeKind.Ctor) explicitCtors++;
-        }
-        if (explicitCtors < 2 || ctor.ParamCount == 0) return name;
-        var parts = new List<string>();
-        parts.Add(name);
-        foreach (var p in ctor.Params!) parts.Add("__" + LuaNaming.TypeToken(p.Type));
-        return string.Join("", parts);
     }
 
     // ---- 仕上げ ----

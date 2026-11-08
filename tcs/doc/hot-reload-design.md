@@ -318,7 +318,7 @@ index で既に解決しており、chunk backend (UC1) の driver も同じ方�
 現実装は chunk backend の先行実装で、以下が本設計に未達 (実装 GO 後に解消):
 
 - ReloadPlanner 未分離。restart の規則は `ReloadRules` の 1 つで、chunk backend
-  (`ReloadRules`、`SelfHost/Tool/Reload.cs`。IlExport の metadata) と module backend
+  (`ReloadRules`、`SelfHost/Tool/ReloadRules.cs`。IlExport の metadata) と module backend
   (`IncrementalCompilationSession.ClassifyRestart`、emitter の記録) がそれぞれの
   metadata を写して判定する。§6 の struct restart detector はどちらにも無い。
   規則は次の表 (chunk = `tcs --watch --reload-chunks`、module = web の増分 session)
