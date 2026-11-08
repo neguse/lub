@@ -886,10 +886,11 @@ static bool on_frame(float dt) {
   args[0].f = dt;
   if (g_tool.frame >= 0 && vm_lub_vm) {
     // overlay はゲームの後に描き、ゲームの OnFrame が失敗した frame でも動く。
-    // 失敗で開いたままの pass は閉じてから渡す
+    // 失敗で開いたままの pass は閉じてから渡す。
+    // どちらかが失敗した frame は失敗した frame (resource の sweep までの frame に数えない)
     if (pass_state_in_pass(&app->pass))
       pass_state_end(&app->pass);
-    call_hook(&g_tool, g_tool.frame, "overlay OnFrame", args, 1);
+    ok = call_hook(&g_tool, g_tool.frame, "overlay OnFrame", args, 1) && ok;
   }
   if (vm_lub_vm)
     tvm_frame_end(vm_lub_vm);
