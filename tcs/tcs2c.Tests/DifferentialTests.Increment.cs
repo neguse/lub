@@ -230,4 +230,37 @@ public partial class DifferentialTests
             + "0:1,0,0,3|0,0,0,0|2\n0:0,0,0,1|0,0,0,0|1",
             output.ReplaceLineEndings("\n").TrimEnd());
     }
+
+    // 式の位置の custom property の ++ / -- は、getter が受け手の field を差し替えても最初に読んだ受け手に書く (#418)
+    [CFact]
+    public void IncrementExpression_CustomPropertyReceiverReadOnce()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public class Box
+            {
+                public int Raw;
+                public int Value
+                {
+                    get { P.Current = new Box { Raw = 100 }; return Raw; }
+                    set { Raw = value; }
+                }
+            }
+            public static class P
+            {
+                public static Box Current;
+                public static void Main()
+                {
+                    Current = new Box { Raw = 10 };
+                    Box old = Current;
+                    Console.WriteLine(Current.Value++);
+                    Console.WriteLine(old.Raw + "," + Current.Raw);
+                    old = Current;
+                    Console.WriteLine(--Current.Value);
+                    Console.WriteLine(old.Raw + "," + Current.Raw);
+                }
+            }
+            """, "P");
+        Assert.Equal("10\n11,100\n99\n99,100", output);
+    }
 }

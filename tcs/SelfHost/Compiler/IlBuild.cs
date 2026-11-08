@@ -906,7 +906,7 @@ public sealed class IlBuild
     {
         var stats = new List<IlStat>();
         IlExpr read;
-        var prop = BuildPropTarget(operand, false);
+        var prop = BuildPropTarget(operand, true);
         if (prop != null)
         {
             foreach (var st in prop.Setup) stats.Add(st);
