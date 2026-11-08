@@ -266,6 +266,31 @@ static const char kLimitTextures[] = "textures";
 static const char kLimitStorageBufs[] = "storage buffers";
 static const char kLimitStorageTextures[] = "storage textures";
 
+// 1 つの stage の reflection を dst に足しても上限 (SGL_MAX_*) に収まるか。
+// 収まらなければ、溢れた最初の宣言を名指す error を書く。
+static bool merge_fits(const ShaderReflection *dst, const ShaderReflection *src,
+                       char *err, size_t errsz) {
+  if (dst->tex_count + src->tex_count > SGL_MAX_TEXTURES) {
+    const ShaderTexture *t = &src->texs[SGL_MAX_TEXTURES - dst->tex_count];
+    return resource_limit_error(kLimitTextures, SGL_MAX_TEXTURES, t->stage,
+                                t->name, err, errsz);
+  }
+  if (dst->storage_buf_count + src->storage_buf_count > SGL_MAX_STORAGE_BUFS) {
+    const ShaderStorageBuf *b =
+        &src->storage_bufs[SGL_MAX_STORAGE_BUFS - dst->storage_buf_count];
+    return resource_limit_error(kLimitStorageBufs, SGL_MAX_STORAGE_BUFS,
+                                b->stage, b->name, err, errsz);
+  }
+  if (dst->storage_tex_count + src->storage_tex_count >
+      SGL_MAX_STORAGE_TEXTURES) {
+    const ShaderStorageTexture *t =
+        &src->storage_texs[SGL_MAX_STORAGE_TEXTURES - dst->storage_tex_count];
+    return resource_limit_error(kLimitStorageTextures, SGL_MAX_STORAGE_TEXTURES,
+                                t->stage, t->name, err, errsz);
+  }
+  return true;
+}
+
 // WGSL target. The wasm build compiles in the page with slang-wasm (the
 // EM_JS bridge below); native builds compile with Slang to export a
 // web package. Both hand Slang's raw WGSL and reflection JSON for one entry
@@ -1549,31 +1574,6 @@ static void remap_stage_for_sdlgpu(ShaderReflection *stage) {
     stage->storage_bufs[i].slot =
         stage->storage_bufs[i].readonly ? ro_sbuf++ : rw_sbuf++;
   }
-}
-
-// 1 つの stage の reflection を dst に足しても上限 (SGL_MAX_*) に収まるか。
-// 収まらなければ、溢れた最初の宣言を名指す error を書く。
-static bool merge_fits(const ShaderReflection *dst, const ShaderReflection *src,
-                       char *err, size_t errsz) {
-  if (dst->tex_count + src->tex_count > SGL_MAX_TEXTURES) {
-    const ShaderTexture *t = &src->texs[SGL_MAX_TEXTURES - dst->tex_count];
-    return resource_limit_error(kLimitTextures, SGL_MAX_TEXTURES, t->stage,
-                                t->name, err, errsz);
-  }
-  if (dst->storage_buf_count + src->storage_buf_count > SGL_MAX_STORAGE_BUFS) {
-    const ShaderStorageBuf *b =
-        &src->storage_bufs[SGL_MAX_STORAGE_BUFS - dst->storage_buf_count];
-    return resource_limit_error(kLimitStorageBufs, SGL_MAX_STORAGE_BUFS,
-                                b->stage, b->name, err, errsz);
-  }
-  if (dst->storage_tex_count + src->storage_tex_count >
-      SGL_MAX_STORAGE_TEXTURES) {
-    const ShaderStorageTexture *t =
-        &src->storage_texs[SGL_MAX_STORAGE_TEXTURES - dst->storage_tex_count];
-    return resource_limit_error(kLimitStorageTextures, SGL_MAX_STORAGE_TEXTURES,
-                                t->stage, t->name, err, errsz);
-  }
-  return true;
 }
 
 static void merge_stage_reflection(ShaderReflection *dst,
