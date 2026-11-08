@@ -1,16 +1,14 @@
 namespace TinyCs.Tests;
 
-// --ref 型を通した host table へのアクセス規約を固定する。
-// - instance method は colon call (`obj:method(...)`) で emit される
-//   (lub の userdata method は self を第1引数に取るのでこの規約と一致する)
-// - field 読みは `obj.field` の透過アクセス (onEvent の event table など)
+// --ref 型 (host) へのアクセスの IL の形を固定する (C と VM の host 関数の名前の元)。
+// - static の呼び出しは namespace と入れ子の型を含めた小文字パスの foreign 関数
+// - instance method は receiver の型を持つ foreign 関数
+// - field 読みは host の object の field の読み
 public class RefTypeAccessTests
 {
-    // namespace の中の参照専用型も、namespace を含めた小文字パスで引く
-    // (Lub.Gfx → lub.gfx)。namespace 直下の enum は namespace の下に平らに
-    // 置き (Lub.EventKind.Quit → lub.QUIT)、入れ子 enum は親の型の下に置く
+    // namespace の中の参照専用型も、namespace を含めた小文字パスで引く (Lub.Gfx → lub.gfx)
     [Fact]
-    public void NamespacedRefTypes_UseNamespaceInLuaPath()
+    public void NamespacedRefTypes_UseNamespaceInForeignNames()
     {
         var refSource = """
             namespace Lub
@@ -36,21 +34,11 @@ public class RefTypeAccessTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [refSource]);
+        var result = IlExport.Export([source], referenceSources: [refSource]);
 
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        var script = $$"""
-            quitted = 0
-            lub = {
-              QUIT = 1000,
-              gfx = { RGBA8 = 100, size = function() return 10 end },
-              app = { quit = function() quitted = 1 end },
-            }
-            {{result.Lua}}
-            print(Game.Run() + quitted)
-            """;
-        Assert.Equal("1111", TestHelper.RunLua(script).Trim());
+        Assert.Empty(result.Diagnostics);
+        Assert.Equal(["lub.app.quit", "lub.gfx.size"],
+            result.ForeignMethods.Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal));
     }
 
     // namespace を写したパスの区切りが Lua の予約語になるときは、member と同じ
@@ -58,27 +46,21 @@ public class RefTypeAccessTests
     [Fact]
     public void RefPathSegmentThatIsLuaKeyword_GetsUnderscoreSuffix()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = IlExport.Export(["""
             using End;
             public static class Game { public static int Run() { return Api.Get(); } }
-            """], null,
+            """], referenceSources:
             ["namespace End { public static class Api { public static int Get() { return 0; } } }"]);
 
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        var script = $$"""
-            end_ = { api = { get = function() return 5 end } }
-            {{result.Lua}}
-            print(Game.Run())
-            """;
-        Assert.Equal("5", TestHelper.RunLua(script).Trim());
+        Assert.Empty(result.Diagnostics);
+        Assert.Equal("end_.api.get", Assert.Single(result.ForeignMethods).Name);
     }
 
-    // --ref パスの先頭 (namespace 由来の hostapi など) と同名のローカルは、
-    // global の host table を隠さないよう改名する
+    // --ref パスの先頭 (namespace 由来の hostapi など) と同名のローカルも書ける
     [Fact]
-    public void LocalNamedLikeRefPathRoot_DoesNotShadowHostTable()
+    public void LocalNamedLikeRefPathRoot_IsAccepted()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using HostApi;
             public static class Game
             {
@@ -88,16 +70,11 @@ public class RefTypeAccessTests
             ["namespace HostApi { public static class Screen { public static int Get() { return 0; } } }"]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        var script = $$"""
-            hostapi = { screen = { get = function() return 10 end } }
-            {{result.Lua}}
-            print(Game.Run())
-            """;
-        Assert.Equal("11", TestHelper.RunLua(script).Trim());
+        Assert.Empty(result.Warnings);
     }
 
     [Fact]
-    public void RefTypeInstanceMethod_EmitsColonCall()
+    public void RefTypeInstanceMethod_HasReceiver()
     {
         var refSource = """
             public class Readback
@@ -127,25 +104,17 @@ public class RefTypeAccessTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [refSource]);
+        var result = IlExport.Export([source], referenceSources: [refSource]);
 
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-
-        var script = $$"""
-            local rb = {}
-            function rb:status() return self == rb and "self-ok" or "self-ng" end
-            gfx = { readback = function() return rb end }
-            {{result.Lua}}
-            print(Game.Run())
-            """;
-        var output = TestHelper.RunLua(script).Trim();
-
-        Assert.Equal("self-ok", output);
+        Assert.Empty(result.Diagnostics);
+        var status = result.ForeignMethods.Single(m => m.Receiver == "Readback");
+        Assert.EndsWith(".status", status.Name);
+        Assert.Equal("string", status.ReturnType);
+        Assert.Null(result.ForeignMethods.Single(m => m.Name == "gfx.readback").Receiver);
     }
 
     [Fact]
-    public void RefTypeField_ReadsHostTableFieldTransparently()
+    public void RefTypeField_ReadIsAccepted()
     {
         var refSource = """
             public class EventData
@@ -164,17 +133,12 @@ public class RefTypeAccessTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [refSource]);
+        var result = Checker.Check([source], null, [refSource]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-
-        var script = $$"""
-            {{result.Lua}}
-            print(Game.Describe({ type = "key_down", keycode = 32 }))
-            """;
-        var output = TestHelper.RunLua(script).Trim();
-
-        Assert.Equal("key_down:32", output);
+        Assert.Empty(result.Warnings);
+        var export = IlExport.Export([source], referenceSources: [refSource]);
+        Assert.Empty(export.Diagnostics);
+        Assert.True(export.Classes.Single(c => c.Name == "EventData").IsExternal);
     }
 }

@@ -1,34 +1,12 @@
 namespace TinyCs.Tests;
 
-// 入れ子の型の名前の写像と、generic な型の中の型の診断。3 経路の実行結果は tcs2c.Tests の NestedTypes
+// 入れ子の型の名前の写像と、generic な型の中の型の診断。C、VM、.NET の実行結果は tcs2c.Tests の NestedTypes
 public class NestedTypeTests
 {
-    private const string Source = """
-        public class Outer
-        {
-            public static int Value() { return 1; }
-            public class Inner
-            {
-                public static int Value() { return 10; }
-                public static int Read() { return Value(); }
-            }
-            public struct Part
-            {
-                public int V;
-                public int Value() { return V + 100; }
-            }
-            public static int Run()
-            {
-                var p = new Part();
-                return Value() + Inner.Read() + p.Value();
-            }
-        }
-        """;
-
     [Fact]
     public void GlobalName_JoinsOuterTypes()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        const string source = """
             namespace Game
             {
                 public class Outer
@@ -37,38 +15,12 @@ public class NestedTypeTests
                     public enum Kind { A = 2 }
                 }
             }
-            """]);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Equal("3:2", TestHelper.RunLua(
-            $"{result.Lua}\nprint(Game_Outer_Inner_Deep.V .. \":\" .. Game_Outer_Kind.A)").Trim());
-    }
-
-    // 本文の編集の差し替えは、その method を直接持つ型の範囲だけを替える
-    [Theory]
-    [InlineData("return 10;", "return 20;", "111", "121")]
-    [InlineData("return V + 100;", "return V + 200;", "111", "211")]
-    [InlineData("return 1;", "return 2;", "111", "112")]
-    public void BodyEdit_ReplacesTheMethodOfTheOwningType(string before, string after,
-        string expectedBefore, string expectedAfter)
-    {
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([("a.cs", Source)]);
-        string Run() => TestHelper.RunLua(
-            string.Join("", session.Artifacts.Select(a => a.Lua)) + "\nprint(Outer.Run())").Trim();
-        Assert.Equal(expectedBefore, Run());
-        var result = session.Update("a.cs", Source.Replace(before, after));
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Equal(expectedAfter, Run());
-    }
-
-    [Fact]
-    public void Snapshot_RegistersNestedTypeUnderItsGlobalName()
-    {
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([("a.cs", Source)]);
-        var output = StaticInitOrderTests.RunSnapshot(StaticInitOrderTests.Snapshot(session),
-            """print(reg.types["a.cs#Outer_Inner"].Read())""");
-        Assert.Equal(["10"], output);
+            """;
+        var export = IlExport.Export([source]);
+        Assert.Empty(export.Diagnostics);
+        Assert.Contains(export.Classes, c => c.Name == "Game_Outer_Inner_Deep");
+        Assert.Contains(export.EnumTypes, e => e.Name == "Game_Outer_Kind");
+        Assert.Equal("3:2", TestHelper.CompileAndRunVm(source, "Game.Outer.Inner.Deep.V + \":\" + (int)Game.Outer.Kind.A"));
     }
 
     [Theory]

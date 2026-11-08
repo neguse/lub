@@ -1,6 +1,6 @@
 // tcs の Dictionary / HashSet の仕様 (support-matrix §18: 列挙は挿入順) を .NET で動かすときの実装。
 // TinySystem.props がこの file を .NET の project に source で入れ、BCL の System.Collections.Generic.Dictionary /
-// HashSet を同じ名前のこの型で隠す (source の型が参照の型より優先。CS0436 は props が抑える)。tcs の変換 (Lua / C / VM)
+// HashSet を同じ名前のこの型で隠す (source の型が参照の型より優先。CS0436 は props が抑える)。tcs の変換 (C / VM)
 // はこの file を使わない (それぞれの runtime が同じ仕様を持つ)。
 //
 // 仕様:

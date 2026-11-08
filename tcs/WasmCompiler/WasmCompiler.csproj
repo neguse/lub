@@ -37,10 +37,5 @@
     <PackageReference Include="CSharpier.Core" Version="1.2.6" />
   </ItemGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="../runtime/tinysystem.lua" LogicalName="runtime/tinysystem.lua" />
-    <EmbeddedResource Include="../runtime/module_registry.lua" LogicalName="runtime/module_registry.lua" />
-  </ItemGroup>
-
   <Import Project="../Transpiler/EmbedReferences.targets" />
 </Project>

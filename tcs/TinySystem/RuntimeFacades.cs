@@ -3,10 +3,9 @@ namespace TinySystem;
 // dotnet 側 facade は System 相当へ委譲する (CLAUDE.md「dotnet側では System
 // 名前空間の型に委譲」)。ユーザーがゲームロジックを dotnet 単体テストで
 // 検証でき、tcs の dotnet differential が facade parity を検証できる。
-// Lua 側実装は runtime/tinysystem.lua が正本。
 
 /// <summary>System.Random と同じ形 (instance + `Random.Shared`)。tcs の
-/// 2 backend (Lua / C) は同じ PRNG (Lua 5.5 の xoshiro256**) なので、同じ
+/// 2 backend (C / VM) は同じ PRNG (Lua 5.5 の math.random と同じ xoshiro256**) なので、同じ
 /// seed なら `new Random(seed)` も `Random.Seed(seed)` 後の `Shared` も列が
 /// bit 一致する。dotnet 側は System.Random に委譲するので列は異なる
 /// (乱数は dotnet differential の対象外)。</summary>
@@ -20,8 +19,7 @@ public sealed class Random
     /// <summary>共有 instance (System.Random.Shared 相当)。</summary>
     public static Random Shared { get; private set; } = new();
 
-    /// <summary>共有 instance の列を seed で固定する (Lua 側は
-    /// math.randomseed)。</summary>
+    /// <summary>共有 instance の列を seed で固定する。</summary>
     public static void Seed(int seed) => Shared = new Random(seed);
 
     public int Next() => _impl.Next();
@@ -29,7 +27,7 @@ public sealed class Random
     public int Next(int min, int max) => _impl.Next(min, max);
     public float NextFloat() => _impl.NextSingle();
     public float NextSingle() => _impl.NextSingle();
-    /// <summary>[min, max] の整数 (両端含む。Lua の math.random(m, n) と同じ)。</summary>
+    /// <summary>[min, max] の整数 (両端含む)。</summary>
     public int Range(int min, int max) => (int)_impl.NextInt64(min, (long)max + 1);
 }
 
@@ -53,12 +51,12 @@ public static class Math
     // TinySystem.Math にしても、Math.Ceiling がそのまま通る)
     public static float Ceiling(float x) => global::System.MathF.Ceiling(x);
     public static float Sqrt(float x) => global::System.MathF.Sqrt(x);
-    // 超越関数は TcsMath (runtime/math と同じ実装) で、tcs2c / Lua の経路と
+    // 超越関数は TcsMath (runtime/math と同じ実装) で、tcs の C と VM の経路と
     // bit 単位で同じ結果を返す
     public static float Sin(float x) => TcsMath.Sin(x);
     public static float Cos(float x) => TcsMath.Cos(x);
     public static float Atan2(float y, float x) => TcsMath.Atan2(y, x);
-    // Lua の ^ と tcs2c と同じく、指数 2 は乗算
+    // tcs の C と VM と同じく、指数 2 は乗算
     public static float Pow(float x, float y) => y == 2.0f ? x * x : TcsMath.Pow(x, y);
     public static float Round(float x) => global::System.MathF.Round(x);
     public static float Round(float x, int digits) =>
@@ -138,7 +136,7 @@ public static class List
 
 public static class Dict
 {
-    // Lua runtime の Add は table 代入 (duplicate key は上書き)。
+    // tcs の Add は代入 (duplicate key は上書き)。
     // parity のため Dictionary.Add の throw ではなく indexer 代入へ委譲する
     public static void Add<TKey, TValue>(
         global::System.Collections.Generic.Dictionary<TKey, TValue> dict,

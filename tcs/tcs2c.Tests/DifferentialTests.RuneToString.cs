@@ -95,7 +95,6 @@ public partial class DifferentialTests
         Assert.Equal("before", Backends.AssertFaultParity(program, "P"));
         foreach (var run in new Func<string>[]
                  {
-                     () => Backends.RunLua([program], "P"),
                      () => Backends.RunC([program], "P"),
                      () => Backends.RunVm([program], "P"),
                  })

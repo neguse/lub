@@ -2864,7 +2864,7 @@ public sealed class CEmitter
     // ---- Lists ----
 
     // ==== CEmitter.Lists.cs ====
-    // List.* (runtime/tinysystem.lua の List 表面) を要素型ごとの inline loop に展開する。
+    // List.* (TinySystem の List 表面) を要素型ごとの inline loop に展開する。
     // closure は呼び出し側の要素型で型付けし (IlClosure は引数型を持たない)、戻り型は本体から
     // 推論する。Sort は runtime の introsort + call site ごとの lifted 比較関数。
     // LINQ は TinySystem/Linq.cs を user のコードとして変換するのでここには無い

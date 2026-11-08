@@ -5,33 +5,10 @@ namespace TcsSelf;
 public sealed class CompileResult
 {
     public bool Ok;
-    // runtime の前置きを含まない Lua (host が前置きの後ろにつなぐ)
-    public string Lua = "";
     public List<string> Diagnostics = new List<string>();
     public int ErrorCount;
-    // Lua の行 → C# の位置 (行は compiler の出力の 1 行目から数える)
-    public List<SourceMapEntry> SourceMap = new List<SourceMapEntry>();
-    // 出力した型 (hot reload と --module が使う)
-    public List<EmittedTypeInfo> EmittedTypes = new List<EmittedTypeInfo>();
-    // tcs2c への入力 (Session.ExportOnly のとき)
+    // tcs c と tcs vm への入力 (Session.ExportOnly のとき)
     public ExportResult? Export;
-    // 増分 session の module (Session.ModuleArtifacts のとき)
-    public List<ModuleOutput> Modules = new List<ModuleOutput>();
-}
-
-// 1 ファイルの module の出力。Chunks をつないだものが trim しない Lua で、型の記録の範囲は Chunks の番号
-public sealed class ModuleOutput
-{
-    public string Path;
-    public List<string> Chunks;
-    public List<EmittedTypeInfo> Types;
-
-    public ModuleOutput(string path, List<string> chunks, List<EmittedTypeInfo> types)
-    {
-        Path = path;
-        Chunks = chunks;
-        Types = types;
-    }
 }
 
 // セルフホストの compiler の入口
@@ -49,24 +26,5 @@ public static class Compiler
         var result = new List<string>();
         foreach (var d in diags.Items) result.Add(d.ToString());
         return result;
-    }
-
-    // paths / texts を Lua にする。refPaths / refTexts は型検査だけに使う宣言 (--ref)。entry は最後に return する型
-    public static CompileResult Compile(List<string> paths, List<string> texts, List<string> refPaths, List<string> refTexts, string entry)
-    {
-        return CompileWithLibraries(paths, texts, refPaths, refTexts, new List<string>(), new List<string>(), entry);
-    }
-
-    // libPaths / libTexts は tcs と一緒に配る library (TinySystem/Linq.cs)。user が library の namespace を
-    // using するときだけ出力に含め、user が同じ namespace を宣言するなら読まない (参照実装と同じ)。
-    // 1 回きりの compile も増分の Session と同じ段 (parse、組み立て、宣言、束縛、出力) を通る
-    public static CompileResult CompileWithLibraries(List<string> paths, List<string> texts, List<string> refPaths, List<string> refTexts,
-        List<string> libPaths, List<string> libTexts, string entry)
-    {
-        var session = new Session(entry);
-        for (int i = 0; i < paths.Count; i++) session.SetSource(paths[i], texts[i]);
-        for (int i = 0; i < refPaths.Count; i++) session.SetReference(refPaths[i], refTexts[i]);
-        for (int i = 0; i < libPaths.Count; i++) session.SetLibrary(libPaths[i], libTexts[i]);
-        return session.Compile();
     }
 }

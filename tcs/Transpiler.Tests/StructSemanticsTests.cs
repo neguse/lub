@@ -379,43 +379,6 @@ public class StructSemanticsTests
 
     // ---- readonly struct の copy 省略 ----
 
-    // 不変なら alias しても観測不能 — copy 地点の型別 __copy を全省略する
-    [Fact]
-    public void ReadonlyStruct_ElidesCopies_MutableKeepsThem()
-    {
-        const string readonlySrc = """
-            public readonly struct R
-            {
-                public readonly int X;
-                public R(int x) { X = x; }
-            }
-            public class T
-            {
-                static int Take(R r) { return r.X; }
-                public static int Test()
-                {
-                    var a = new R(3);
-                    var b = a;
-                    return Take(b) + a.X;
-                }
-            }
-            """;
-        // copy 呼び出しは R.__copy(。定義 (function R.__copy(s)) が常に 1 回、可変な struct は
-        // 型引数に入れたときの記述子 (R.__tcs_td) にももう 1 回出るため、呼び出しサイトの有無は出現数で判定する
-        static int CountCopies(string lua) =>
-            System.Text.RegularExpressions.Regex.Matches(lua,
-                System.Text.RegularExpressions.Regex.Escape("R.__copy("))
-                .Count;
-        Assert.Equal(1, CountCopies(Transpiler.Transpile(readonlySrc)));
-
-        var mutableLua = Transpiler.Transpile(
-            readonlySrc.Replace("public readonly struct R",
-                "public struct R").Replace("public readonly int X",
-                "public int X"));
-        Assert.True(CountCopies(mutableLua) > 2,
-            "mutable struct should keep copy sites");
-    }
-
     [Fact]
     public void ReadonlyStruct_ValueFlowStaysCorrect()
     {

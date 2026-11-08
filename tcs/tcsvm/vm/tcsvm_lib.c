@@ -1,5 +1,5 @@
 /* tcs VM の runtime の関数 (CALLR)。TinySystem の面 (il-spec §13) の C 実装で、意味は tcs2c の runtime と
-   runtime/tinysystem.lua と同じ。文字列化・数学関数・UTF-8 は runtime/fmt・runtime/math・runtime/utf8 の
+   同じ。文字列化・数学関数・UTF-8 は runtime/fmt・runtime/math・runtime/utf8 の
    同じ C を呼ぶ。引数と戻り値の種類の文字は tcsvm_internal.h の TvmIntrinsic を見よ。 */
 #include "tcsvm_internal.h"
 
@@ -275,7 +275,7 @@ static TvmStatus str_empty(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 }
 
 /* .NET の ordinal (UTF-16 の code unit の順)。UTF-8 の byte の順と違うのは U+10000 以上と U+E000-U+FFFF の間だけ
-   (runtime/lua/tcs_rt_lua.c の tcs_rt_compare_utf16 と同じ) */
+   (tcs2c の runtime と同じ) */
 static int compare_utf16(const unsigned char *a, size_t la, const unsigned char *b, size_t lb) {
   size_t n = la < lb ? la : lb;
   for (size_t i = 0; i < n; i++) {
@@ -1081,7 +1081,7 @@ static TvmStatus dict_clear(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
     r[0].i = (expr);                                                           \
     return TVM_OK;                                                             \
   }
-/* char は 1 byte の code unit (tinysystem.lua の Char と同じ ASCII の判定) */
+/* char は 1 byte の code unit (tcs2c の runtime の Char と同じ ASCII の判定) */
 CHAR_PRED(ch_digit, c >= 48 && c <= 57)
 CHAR_PRED(ch_upper, c >= 65 && c <= 90)
 CHAR_PRED(ch_lower, c >= 97 && c <= 122)

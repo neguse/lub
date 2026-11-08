@@ -3,20 +3,18 @@ using System.Collections.Generic;
 namespace TcsSelf;
 
 // hot reload で live に当てられない編集の規則 (doc/hot-reload-design.md §11 の規則表)。
-// IL の metadata (VM の reload と Lua の reload chunk) と module registry (増分 session の型の記録) が、それぞれの記録をこの形に写して同じ規則で判定する
+// VM の reload が IL の metadata の型をこの形に写して判定する
 public sealed class ReloadStatic
 {
     public string Name;
     public string Type;
     public string? InitHash;
-    public bool Pure;
 
-    public ReloadStatic(string name, string type, string? initHash, bool pure)
+    public ReloadStatic(string name, string type, string? initHash)
     {
         Name = name;
         Type = type;
         InitHash = initHash;
-        Pure = pure;
     }
 }
 
@@ -26,7 +24,6 @@ public sealed class ReloadType
     // class | record | struct | enum
     public string Kind;
     public string BaseName = "";
-    public string InstanceShape = "";
     public List<ReloadStatic> Statics = new List<ReloadStatic>();
     // instance の field (Notes が初期化子の変更を見る。restart の判定には使わない)
     public List<ReloadStatic> InstanceFields = new List<ReloadStatic>();
@@ -42,10 +39,9 @@ public sealed class ReloadType
 
 public static class ReloadRules
 {
-    // 戻り値は restart の理由で、空なら live。migratesInstances は reload chunk: instance の field を registry で移し、
-    // 新しい static の初期化子を chunk の中で評価するので、instance の形の変更と副作用のある static の追加を restart にしない。
-    // module registry (false) は既存の instance を移さず、transaction の中で副作用のある初期化子を実行しないので、どちらも restart にする
-    public static List<string> RestartReasons(List<ReloadType> v1, List<ReloadType> v2, bool migratesInstances)
+    // 戻り値は restart の理由で、空なら live。生きている instance の field は reload が移し、新しい static の初期化子は reload が評価するので、
+    // instance の形の変更と static の追加は restart にしない
+    public static List<string> RestartReasons(List<ReloadType> v1, List<ReloadType> v2)
     {
         var reasons = new List<string>();
         var next = new Dictionary<string, ReloadType>();
@@ -64,8 +60,7 @@ public static class ReloadRules
                 continue;
             }
             if (old.BaseName != t.BaseName) reasons.Add("base changed: " + t.Name);
-            if (!migratesInstances && old.InstanceShape != t.InstanceShape) reasons.Add("instance shape changed: " + t.Name);
-            StaticReasons(old, t, migratesInstances, reasons);
+            StaticReasons(old, t, reasons);
             EnumReasons(old, t, reasons);
         }
         return reasons;
@@ -73,7 +68,7 @@ public static class ReloadRules
 
     // 既存の static は今の値を保つので、初期化子の変更は反映されない。型の変更も restart (保った値は旧い型のまま)。
     // const も static と同じ (使う側には埋め込まれるが、それを使う static の初期化子は評価し直さない)
-    private static void StaticReasons(ReloadType old, ReloadType t, bool migratesInstances, List<string> reasons)
+    private static void StaticReasons(ReloadType old, ReloadType t, List<string> reasons)
     {
         var oldStatics = new Dictionary<string, ReloadStatic>();
         foreach (var s in old.Statics) oldStatics[s.Name] = s;
@@ -84,10 +79,6 @@ public static class ReloadRules
             {
                 if (os.Type != s.Type) reasons.Add("static type changed: " + t.Name + "." + s.Name);
                 else if (os.InitHash != s.InitHash) reasons.Add("static initializer changed: " + t.Name + "." + s.Name);
-            }
-            else if (!migratesInstances && !s.Pure)
-            {
-                reasons.Add("impure new static: " + t.Name + "." + s.Name);
             }
         }
     }
@@ -128,7 +119,7 @@ public static class ReloadRules
         }
     }
 
-    // reload chunk: IL の metadata の型 (--ref の class は host の table、interface は Lua を出さないので除く)
+    // IL の metadata の型 (--ref の class は host の型、interface は状態を持たないので除く)
     public static List<ReloadType> TypesOf(ExportResult export)
     {
         var types = new List<ReloadType>();
@@ -139,15 +130,15 @@ public static class ReloadRules
             t.BaseName = c.BaseName != null ? c.BaseName : "";
             foreach (var f in c.Fields)
             {
-                if (f.IsStatic) t.Statics.Add(new ReloadStatic(f.Name, f.Type, f.InitHash, true));
-                else t.InstanceFields.Add(new ReloadStatic(f.Name, f.Type, f.InitHash, true));
+                if (f.IsStatic) t.Statics.Add(new ReloadStatic(f.Name, f.Type, f.InitHash));
+                else t.InstanceFields.Add(new ReloadStatic(f.Name, f.Type, f.InitHash));
             }
             types.Add(t);
         }
         foreach (var s in export.Structs)
         {
             var t = new ReloadType(s.Name, "struct");
-            foreach (var f in s.StaticFields) t.Statics.Add(new ReloadStatic(f.Name, f.Type, f.InitHash, true));
+            foreach (var f in s.StaticFields) t.Statics.Add(new ReloadStatic(f.Name, f.Type, f.InitHash));
             types.Add(t);
         }
         foreach (var e in export.EnumTypes)

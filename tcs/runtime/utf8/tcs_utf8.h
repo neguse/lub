@@ -1,4 +1,4 @@
-/* TinyC# の文字列 (UTF-8) の操作。tcs2c の生成 C と Lua の module (runtime/lua) が同じ実装を使い、
+/* TinyC# の文字列 (UTF-8) の操作。tcs2c の生成 C と tcs VM が同じ実装を使い、
    .NET の TinySystem.Text (TinySystem/Utf8.cs) が同じ結果を返す。
    壊れた byte 列は .NET の Encoding.UTF8 と同じ位置で U+FFFD 1 文字に読む。 */
 #ifndef TCS_UTF8_H

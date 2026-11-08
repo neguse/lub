@@ -57,7 +57,7 @@ public class ObjectInitializerTests
     }
 
     [Fact]
-    public void ObjectInitializer_OnRefType_EmitsTableLiteral()
+    public void ObjectInitializer_OnRefType_IsHostData()
     {
         var refSource = """
             public class Opts
@@ -81,26 +81,16 @@ public class ObjectInitializerTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics(
-            [source], null, [refSource]);
-
+        var result = Checker.Check([source], null, [refSource]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.DoesNotContain("Opts", result.Lua);
-
-        var script = $$"""
-            local captured = nil
-            host = { send = function(opts) captured = opts end }
-            {{result.Lua}}
-            Game.Run()
-            print(captured.x .. "," .. captured.color[2] .. "," .. #captured.color)
-            """;
-        var output = TestHelper.RunLua(script).Trim();
-
-        Assert.Equal("5,1.0,2", output);
+        // --ref の class は host の型で、IL の class として書き出さない
+        var export = IlExport.Export([source], referenceSources: [refSource]);
+        Assert.Empty(export.Diagnostics);
+        Assert.All(export.Classes.Where(c => c.Name == "Opts"), c => Assert.True(c.IsExternal));
     }
 
     [Fact]
-    public void ObjectInitializer_OnRefType_WithoutInitializer_EmitsEmptyTable()
+    public void ObjectInitializer_OnRefType_WithoutInitializer_IsHostData()
     {
         var refSource = """
             public class Opts
@@ -123,21 +113,12 @@ public class ObjectInitializerTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics(
-            [source], null, [refSource]);
-
+        var result = Checker.Check([source], null, [refSource]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
-
-        var script = $$"""
-            local captured = nil
-            host = { send = function(opts) captured = opts end }
-            {{result.Lua}}
-            Game.Run()
-            print(type(captured) .. "," .. tostring(next(captured)))
-            """;
-        var output = TestHelper.RunLua(script).Trim();
-
-        Assert.Equal("table,nil", output);
+        // --ref の class は host の型で、IL の class として書き出さない
+        var export = IlExport.Export([source], referenceSources: [refSource]);
+        Assert.Empty(export.Diagnostics);
+        Assert.All(export.Classes.Where(c => c.Name == "Opts"), c => Assert.True(c.IsExternal));
     }
 
     // 入れ子の initializer は C# と同じく既存 member への代入 / Add (new は

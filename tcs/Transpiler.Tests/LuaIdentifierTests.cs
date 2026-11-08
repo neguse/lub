@@ -1,9 +1,9 @@
 namespace TinyCs.Tests;
 
-// C# では合法でも Lua 出力を壊す識別子の扱い:
+// Lua 5.5 の予約語などと重なる識別子の扱い:
 // - Lua 5.5 予約語 (end, repeat, ...) と同名の member 宣言は TCS1001 で拒否する
-//   (ローカル束縛は LuaLocalRenamer が `end_` に写す — LuaLocalRenameTests)
-// - verbatim 識別子 (@float 等) は ValueText (@ なし) で emit する
+// - ローカル束縛 (local、引数、foreach、pattern の変数) は診断しない (VM での実行は LuaLocalRenameTests)
+// - verbatim 識別子 (@float 等) は C# の意味で動く
 public class LuaIdentifierTests
 {
     private static void AssertLuaKeywordError(CheckResult result,
@@ -41,7 +41,7 @@ public class LuaIdentifierTests
         AssertLuaKeywordError(result, "until");
     }
 
-    private static void AssertNoLuaKeywordWarning(TranspileResult result)
+    private static void AssertNoLuaKeywordWarning(CheckResult result)
     {
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.DoesNotContain(result.Warnings,
@@ -49,9 +49,9 @@ public class LuaIdentifierTests
     }
 
     [Fact]
-    public void LocalNamedLuaKeyword_IsRenamedWithoutWarning()
+    public void LocalNamedLuaKeyword_HasNoDiagnostic()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Runner
             {
                 public int Run()
@@ -63,13 +63,12 @@ public class LuaIdentifierTests
             """]);
 
         AssertNoLuaKeywordWarning(result);
-        Assert.Contains("local repeat_ = 3", result.Lua);
     }
 
     [Fact]
-    public void ParameterNamedLuaKeyword_IsRenamedWithoutWarning()
+    public void ParameterNamedLuaKeyword_HasNoDiagnostic()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Timer
             {
                 public int Wait(int then) => then;
@@ -77,7 +76,6 @@ public class LuaIdentifierTests
             """]);
 
         AssertNoLuaKeywordWarning(result);
-        Assert.Contains("Wait(then_)", result.Lua);
     }
 
     [Fact]
@@ -117,9 +115,9 @@ public class LuaIdentifierTests
     }
 
     [Fact]
-    public void ForEachVariableNamedLuaKeyword_IsRenamedWithoutWarning()
+    public void ForEachVariableNamedLuaKeyword_HasNoDiagnostic()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             using System.Collections.Generic;
 
             public class Walker
@@ -134,13 +132,12 @@ public class LuaIdentifierTests
             """]);
 
         AssertNoLuaKeywordWarning(result);
-        Assert.Contains("elseif_", result.Lua);
     }
 
     [Fact]
-    public void PatternDesignationNamedLuaKeyword_IsRenamedWithoutWarning()
+    public void PatternDesignationNamedLuaKeyword_HasNoDiagnostic()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Matcher
             {
                 public int Read(int? value)
@@ -152,13 +149,12 @@ public class LuaIdentifierTests
             """]);
 
         AssertNoLuaKeywordWarning(result);
-        Assert.Contains("function_", result.Lua);
     }
 
     [Fact]
-    public void VerbatimLuaKeywordParameter_IsRenamedWithoutWarning()
+    public void VerbatimLuaKeywordParameter_HasNoDiagnostic()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Turn
             {
                 public int Wait(int @end) => @end;
@@ -166,8 +162,6 @@ public class LuaIdentifierTests
             """]);
 
         AssertNoLuaKeywordWarning(result);
-        Assert.Contains("Wait(end_)", result.Lua);
-        Assert.DoesNotContain("@", result.Lua);
     }
 
     [Fact]
@@ -205,9 +199,9 @@ public class LuaIdentifierTests
     }
 
     [Fact]
-    public void VerbatimIdentifiers_EmitWithoutAtSign()
+    public void VerbatimIdentifiers_HaveNoDiagnostic()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Calc
             {
                 public int @float = 2;
@@ -223,7 +217,6 @@ public class LuaIdentifierTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.DoesNotContain(result.Warnings,
             w => w.Contains("LuaKeywordIdentifier"));
-        Assert.DoesNotContain("@", result.Lua);
     }
 
     [Fact]
@@ -342,10 +335,8 @@ public class LuaIdentifierTests
         Assert.Equal("2", output);
     }
 
-    // runtime が _G に置く名前 (TinySystem / List / Dict / Math / String /
-    // Random) と同名の型は、namespace の中でも simple name で global に emit
-    // され runtime の table を上書きする。以後の BCL 呼び出しが nil になる
-    // ため、build を止める error にする (#21)
+    // Lua の runtime が _G に置いた名前 (TinySystem / List / Dict / Math / String など) と同名の型は、
+    // Lua の出力では runtime の table を上書きしたので、build を止める error にしている (#21)
     private static void AssertRuntimeGlobalError(CheckResult result,
         string name)
     {
@@ -391,10 +382,7 @@ public class LuaIdentifierTests
     [Fact]
     public void NonGlobalTypeNamesAndInterfaces_HaveNoRuntimeGlobalError()
     {
-        // interface は Lua 出力を持たないので global を上書きしない。
-        // member 名 (`self.Math`) や enum member (`E.List`) も対象外。
-        // `Random` は生成コードが素の名で参照しない (facade は
-        // `TinySystem.Random.*`) ので user 型として使える
+        // interface、member 名 (`self.Math`)、enum member (`E.List`)、`Random` は対象外
         var result = Checker.Check(["""
             namespace Game
             {
@@ -415,34 +403,13 @@ public class LuaIdentifierTests
             w => w.Contains("RuntimeGlobalIdentifier"));
     }
 
-    // 診断の集合と runtime の global は同じ配列から作る。予約名は prelude /
-    // module snapshot が `_G.<name>` に置く名前の部分集合で、runtime の
-    // module table も全 alias を定義していること
+    // 予約する型の名前の集合 (Compliance.RuntimeGlobals) を固定する。どの名前の型も error
     [Fact]
-    public void RuntimeGlobals_MatchReservedTypeNames()
+    public void RuntimeGlobals_AreTheReservedTypeNames()
     {
-        var runtime = LuaRuntime.LoadTinySystemSource();
-        foreach (var name in LuaRuntime.RuntimeGlobalAliases)
-            Assert.Contains($"TinySystem.{name} = {name}", runtime);
-        Assert.All(TcsSelf.Compliance.RuntimeGlobals, n =>
-            Assert.True(n == "TinySystem"
-                || LuaRuntime.RuntimeGlobalAliases.Contains(n), n));
-
-        var prelude = LuaRuntime.CreateEmbeddedPrelude(runtime);
-        var snapshot = ModuleLinker.LinkSnapshot([], 0, null, runtime,
-            LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath));
-        foreach (var chunk in new[] { prelude, snapshot })
-        {
-            var globals = System.Text.RegularExpressions.Regex
-                .Matches(chunk, @"_G\.(\w+) = ")
-                .Select(m => m.Groups[1].Value)
-                .Where(n => !n.StartsWith("__tcs_", StringComparison.Ordinal))
-                .ToArray();
-            Assert.NotEmpty(globals);
-            Assert.All(TcsSelf.Compliance.RuntimeGlobals, n =>
-                Assert.Contains(n, globals));
-            foreach (var name in LuaRuntime.RuntimeGlobalAliases)
-                Assert.Contains($"_G.{name} = TinySystem.{name}", chunk);
-        }
+        string[] names = ["TinySystem", "List", "Dict", "Math", "String", "TcsQueue", "TcsHashSet"];
+        Assert.Equal(names, TcsSelf.Compliance.RuntimeGlobals);
+        foreach (var name in names)
+            AssertRuntimeGlobalError(Checker.Check([$"public class {name} {{ }}"]), name);
     }
 }

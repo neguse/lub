@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
 // SessionExports 向け補完/hover クエリ (SemanticQueries) の検証。
-// - speculative fork (ForkWithContent) が session 状態を変えないこと
+// - speculative fork (ForkWithContent) が session のテキストを変えないこと
 // - allowlist フィルタ (「補完に出る = tcs で書ける」) が効くこと
 public class SemanticQueriesTests
 {
@@ -15,15 +15,10 @@ public class SemanticQueriesTests
         }
         """;
 
-    private static IncrementalCompilationSession Open(string source)
-    {
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([("game/Player.cs", source)]);
-        return session;
-    }
+    private static EditorSession Open(string source) => new([("game/Player.cs", source)]);
 
     private static List<CompletionItem> CompleteAt(
-        IncrementalCompilationSession session, string path, string content,
+        EditorSession session, string path, string content,
         string marker)
     {
         var offset = content.IndexOf(marker, StringComparison.Ordinal);
@@ -34,28 +29,14 @@ public class SemanticQueriesTests
             fork.Value.Compilation, fork.Value.Tree, offset + marker.Length);
     }
 
-    // 補完と hover だけの session (EditorSession、compile しない) は、compile する session と同じ答えを返す
+    // session に無い path は fork できない。他のファイルのテキストは SetText で今のものに保つ
     [Fact]
-    public void EditorSession_MatchesCompilingSession()
+    public void EditorSession_KnowsOnlyItsFiles()
     {
-        var content = GameSource.Replace(
-            "Health = Health - amount;",
-            "Health = Health - amount; this.");
-        var offset = content.IndexOf("amount; this.", StringComparison.Ordinal) + "amount; this.".Length;
-        var compiling = Open(GameSource).ForkWithContent("game/Player.cs", content)!.Value;
-        var editor = new EditorSession([("game/Player.cs", GameSource)]);
-        var fork = editor.ForkWithContent("game/Player.cs", content)!.Value;
-        Assert.Equal(
-            SemanticQueries.Complete(compiling.Compilation, compiling.Tree, offset).Select(i => i.Label + ":" + i.Kind),
-            SemanticQueries.Complete(fork.Compilation, fork.Tree, offset).Select(i => i.Label + ":" + i.Kind));
-        var hoverAt = GameSource.IndexOf("Health;", StringComparison.Ordinal);
-        Assert.Equal(
-            SemanticQueries.Hover(compiling.Compilation, compiling.Tree, hoverAt)?.Display,
-            SemanticQueries.Hover(fork.Compilation, fork.Tree, hoverAt)?.Display);
-        Assert.Null(editor.ForkWithContent("game/Other.cs", content));
-        // 他のファイルのテキストは SetText で今のものに保つ
-        Assert.True(editor.SetText("game/Player.cs", content));
-        Assert.False(editor.SetText("game/Other.cs", content));
+        var editor = Open(GameSource);
+        Assert.Null(editor.ForkWithContent("game/Other.cs", GameSource));
+        Assert.True(editor.SetText("game/Player.cs", GameSource));
+        Assert.False(editor.SetText("game/Other.cs", GameSource));
     }
 
     // ------------------------------------------------------------------
@@ -200,25 +181,21 @@ public class SemanticQueriesTests
     [Fact]
     public void ForkDoesNotMutateSessionState()
     {
-        var session = Open(GameSource);
-        var revBefore = session.Revision;
-        var luaBefore = string.Join("", session.Artifacts.Select(a => a.Lua));
+        const string gameFile = "public static class Game { public static int Hp() { return Player.Spawn().Health; } }";
+        var session = new EditorSession([("game/Player.cs", GameSource), ("game/Game.cs", gameFile)]);
 
-        // 壊れた speculative 内容でクエリしても session は不変
+        // 壊れた speculative 内容でクエリしても session のテキストは変わらない
         var broken = GameSource.Replace(
             "Health = Health - amount;", "Health = thisIsUndefined.");
         var items = CompleteAt(session, "game/Player.cs", broken,
             "thisIsUndefined.");
         _ = items; // 空でもよい (バインド不能 receiver)
 
-        Assert.Equal(revBefore, session.Revision);
-        Assert.Equal(luaBefore,
-            string.Join("", session.Artifacts.Select(a => a.Lua)));
-
-        // fork 後も通常の Update が正しく動く
-        var r = session.Update("game/Player.cs", GameSource.Replace(
-            "Health = Health - amount;", "Health = Health - amount * 2;"));
-        Assert.True(r.Success);
+        // 別のファイルの fork は Player.cs の元のテキストを使う
+        var other = session.ForkWithContent("game/Game.cs", gameFile)!.Value;
+        var player = other.Compilation.SyntaxTrees.Single(t => t.FilePath == "game/Player.cs");
+        Assert.Equal(GameSource, player.ToString());
+        Assert.DoesNotContain(other.Compilation.GetDiagnostics(), d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
     }
 
     [Fact]

@@ -1,9 +1,7 @@
 namespace TinyCs.Tests;
 
-// method body の syntax→IL→Lua 経路。ストラングラー方式のため
-// 「IL 対応構文だけの method は IL 経由で emit される」ことと
-// 「未対応構文を含む method は legacy へ fallback して従来出力になる」ことを
-// 両方ロックする。挙動不変そのものは既存 corpus + differential が守る。
+// method body の syntax→IL 経路。IL にできる本文は VM で C# と同じに動き、IL にできない本文は TCS1001 で止まる。
+// 挙動そのものは既存 corpus + differential が守る。
 public class IlPipelineTests
 {
     [Fact]
@@ -56,8 +54,8 @@ public class IlPipelineTests
     [Fact]
     public void UnsupportedConstructBody_IsError()
     {
-        // instance method group は IL 未対応 → TCS1001 で止まり Lua を返さない
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        // instance method group は IL 未対応 → TCS1001 で止まる
+        var result = Checker.Check(["""
             using System;
             public class T
             {
@@ -71,7 +69,6 @@ public class IlPipelineTests
             }
             """]);
         Assert.False(result.Success);
-        Assert.Equal("", result.Lua);
         Assert.Single(result.Errors, e => e.Contains("InstanceMethodGroup"));
     }
     [Fact]
@@ -95,21 +92,10 @@ public class IlPipelineTests
         Assert.Equal("3:13:1", result);
     }
 
-    // local 初期化 / return 位置の条件式は IIFE でなく if 文へ
+    // local 初期化 / return 位置の条件式
     [Fact]
     public void Ternary_InLocalAndReturn_IsStatementized()
     {
-        var lua = Transpiler.Transpile(["""
-            public class T
-            {
-                public static int Pick(bool c)
-                {
-                    var x = c ? 10 : 20;
-                    return x > 15 ? 1 : 0;
-                }
-            }
-            """]);
-        Assert.DoesNotContain("(function()", lua);
         var result = TestHelper.CompileAndRunVm("""
             public class T
             {
@@ -123,23 +109,10 @@ public class IlPipelineTests
         Assert.Equal("y?", result);
     }
 
-    // statement 位置の switch 式も IIFE を出さない
+    // statement 位置の switch 式
     [Fact]
     public void SwitchExpr_InStatementPositions_IsStatementized()
     {
-        var lua = Transpiler.Transpile(["""
-            public class T
-            {
-                public static string Grade(int n)
-                {
-                    var g = n switch { > 80 => "A", > 50 => "B", _ => "C" };
-                    return g;
-                }
-                public static string Direct(int n) =>
-                    n switch { 0 => "zero", _ => "other" };
-            }
-            """]);
-        Assert.DoesNotContain("(function()", lua);
         var result = TestHelper.CompileAndRunVm("""
             public class T
             {
@@ -155,26 +128,10 @@ public class IlPipelineTests
         Assert.Equal("ABC", result);
     }
 
-    // ?. / ?? / TryGetValue の IIFE も statement 位置では出さない
+    // statement 位置の ?. / ?? / TryGetValue
     [Fact]
     public void CondAccessAndCoalesce_InStatementPositions_AreStatementized()
     {
-        var lua = Transpiler.Transpile(["""
-            using System.Collections.Generic;
-            public class P { public int V; public int Get() { return V; } }
-            public class T
-            {
-                public static int Test(P? p, bool? f, Dictionary<string, int> d)
-                {
-                    var a = p?.Get();
-                    bool b = f ?? true;
-                    int v;
-                    var found = d.TryGetValue("k", out v);
-                    return found && b ? v : (a ?? 0);
-                }
-            }
-            """]);
-        Assert.DoesNotContain("(function()", lua);
         var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T
@@ -195,23 +152,10 @@ public class IlPipelineTests
         Assert.Equal("True:7:False:0:True", result);
     }
 
-    // root if 条件の TryGetValue 等も IIFE を出さない
+    // if の条件の TryGetValue
     [Fact]
     public void IfCondition_TryGetValue_IsHoisted()
     {
-        var lua = Transpiler.Transpile(["""
-            using System.Collections.Generic;
-            public class T
-            {
-                public static int Test(Dictionary<string, int> d)
-                {
-                    int v;
-                    if (d.TryGetValue("k", out v)) { return v; }
-                    return -1;
-                }
-            }
-            """]);
-        Assert.DoesNotContain("(function()", lua);
         var result = TestHelper.CompileAndRunVm("""
             using System.Collections.Generic;
             public class T

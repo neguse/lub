@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// セルフホストの増分の session (SelfHost/Compiler/Session.cs)。編集の後の結果が 1 から compile した結果と同じで、
+/// セルフホストの増分の session (SelfHost/Compiler/Session.cs)。編集の後の結果 (IL) が 1 から compile した結果と同じで、
 /// parse し直すのは内容が変わったファイルだけ。compile は Step に分かれる。
 /// </summary>
 public class SelfHostSessionTests
@@ -20,42 +20,51 @@ public class SelfHostSessionTests
         }
         """;
 
+    private static TcsSelf.Session NewSession() => new("") { ExportOnly = true };
+
+    // IL の診断用テキスト (tcs vm --dump-il と同じ)
+    private static string Il(TcsSelf.CompileResult result)
+    {
+        Assert.True(result.Ok, string.Join("\n", result.Diagnostics));
+        return TcsSelf.VmRun.IlProgramText(result.Export!);
+    }
+
     private static string Fresh(params (string Path, string Text)[] files)
     {
-        var result = TcsSelf.Compiler.Compile(files.Select(f => f.Path).ToList(), files.Select(f => f.Text).ToList(), [], [], "");
-        Assert.True(result.Ok, string.Join("\n", result.Diagnostics));
-        return result.Lua;
+        var session = NewSession();
+        foreach (var (path, text) in files) session.SetSource(path, text);
+        return Il(session.Compile());
     }
 
     [Fact]
     public void Edit_ReparsesOnlyChangedFile_AndMatchesFreshCompile()
     {
-        var session = new TcsSelf.Session("");
+        var session = NewSession();
         session.SetSource("a.cs", A);
         session.SetSource("b.cs", B);
         var first = session.Compile();
         Assert.True(first.Ok, string.Join("\n", first.Diagnostics));
         Assert.Equal(2, session.ParsedFiles);
-        Assert.Equal(Fresh(("a.cs", A), ("b.cs", B)), first.Lua);
+        Assert.Equal(Fresh(("a.cs", A), ("b.cs", B)), Il(first));
 
         // 本体の編集: a.cs だけ parse し直す
         var a2 = A.Replace("=> 1;", "=> 5;");
         session.SetSource("a.cs", a2);
         var second = session.Compile();
         Assert.Equal(1, session.ParsedFiles);
-        Assert.Equal(Fresh(("a.cs", a2), ("b.cs", B)), second.Lua);
+        Assert.Equal(Fresh(("a.cs", a2), ("b.cs", B)), Il(second));
 
         // 変わっていなければ parse しない
         var third = session.Compile();
         Assert.Equal(0, session.ParsedFiles);
-        Assert.Equal(second.Lua, third.Lua);
+        Assert.Equal(Il(second), Il(third));
         Assert.Equal(3, session.Revision);
     }
 
     [Fact]
     public void ShapeEdit_RebindsDependents()
     {
-        var session = new TcsSelf.Session("");
+        var session = NewSession();
         session.SetSource("a.cs", A);
         session.SetSource("b.cs", B);
         Assert.True(session.Compile().Ok);
@@ -74,20 +83,20 @@ public class SelfHostSessionTests
     [Fact]
     public void RemoveFile_DropsItsDeclarations()
     {
-        var session = new TcsSelf.Session("");
+        var session = NewSession();
         session.SetSource("a.cs", A);
         session.SetSource("b.cs", B);
         Assert.True(session.Compile().Ok);
         Assert.True(session.Remove("b.cs"));
         var result = session.Compile();
         Assert.True(result.Ok);
-        Assert.Equal(Fresh(("a.cs", A)), result.Lua);
+        Assert.Equal(Fresh(("a.cs", A)), Il(result));
     }
 
     [Fact]
     public void Step_SplitsCompileIntoUnits()
     {
-        var session = new TcsSelf.Session("");
+        var session = NewSession();
         session.SetSource("a.cs", A);
         session.SetSource("b.cs", B);
         session.Start();
@@ -107,13 +116,13 @@ public class SelfHostSessionTests
         while (!session.Step())
         {
         }
-        Assert.Equal(Fresh(("a.cs", A.Replace("=> 1;", "=> 7;")), ("b.cs", B.Replace("* 2", "* 3"))), session.Result.Lua);
+        Assert.Equal(Fresh(("a.cs", A.Replace("=> 1;", "=> 7;")), ("b.cs", B.Replace("* 2", "* 3"))), Il(session.Result));
     }
 
     [Fact]
     public void ParseErrors_StayWithTheFileUntilItChanges()
     {
-        var session = new TcsSelf.Session("");
+        var session = NewSession();
         session.SetSource("a.cs", A);
         session.SetSource("bad.cs", "public static class Bad { public static int F( }");
         var broken = session.Compile();

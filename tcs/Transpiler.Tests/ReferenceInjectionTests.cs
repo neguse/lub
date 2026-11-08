@@ -6,7 +6,7 @@ namespace TinyCs.Tests;
 
 // browser-wasm 相当の host (Assembly.Location が使えない) を想定した
 // TcsLibrary.References 注入口の契約テスト。runtime pack の DLL を
-// byte image として読み込み、ファイルパス経由なしで transpile できること。
+// byte image として読み込み、ファイルパス経由なしで補完の session (EditorSession) の compilation が組めること。
 [Collection(TranspilerReferencesCollection.Name)]
 public class ReferenceInjectionTests
 {
@@ -15,7 +15,7 @@ public class ReferenceInjectionTests
             new MemoryStream(File.ReadAllBytes(path)));
 
     [Fact]
-    public void ByteImageReferences_TranspileSucceeds()
+    public void ByteImageReferences_EditorCompilationSucceeds()
     {
         var runtimeDir =
             Path.GetDirectoryName(typeof(object).Assembly.Location)!;
@@ -31,25 +31,23 @@ public class ReferenceInjectionTests
                 FromBytes(Path.Combine(runtimeDir, "System.Console.dll")),
                 FromBytes(typeof(global::TinySystem.Random).Assembly.Location),
             ];
-            var result = Transpiler.TranspileWithDiagnostics(
-                [
-                    """
-                    using System.Collections.Generic;
-                    public static class Hello
+            const string source = """
+                using System.Collections.Generic;
+                public static class Hello
+                {
+                    public static int Sum()
                     {
-                        public static int Sum()
-                        {
-                            var xs = new List<int> { 1, 2, 3 };
-                            var total = 0;
-                            foreach (var x in xs) total += x;
-                            return total;
-                        }
+                        var xs = new List<int> { 1, 2, 3 };
+                        var total = 0;
+                        foreach (var x in xs) total += x;
+                        return total;
                     }
-                    """
-                ],
-                entryClass: "Hello");
-            Assert.True(result.Success, string.Join("\n", result.Errors));
-            Assert.Contains("return Hello", result.Lua);
+                }
+                """;
+            var fork = new EditorSession([("Hello.cs", source)]).ForkWithContent("Hello.cs", source)!.Value;
+            var errors = fork.Compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+            Assert.True(errors.Count == 0, string.Join("\n", errors));
+            Assert.Equal(TcsLibrary.References, fork.Compilation.References);
         }
         finally
         {

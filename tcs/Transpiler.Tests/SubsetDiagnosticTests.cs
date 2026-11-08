@@ -34,7 +34,7 @@ public class SubsetDiagnosticTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("Tuple"));
     }
 
-    // 多次元配列は Lua / C のどちらにも写していない (以前は診断なしで通り、Lua で範囲外の error になった)
+    // 多次元配列は C と VM のどちらにも写していない (以前は診断なしで通り、Lua で範囲外の error になった)
     [Fact]
     public void MultiDimensionalArray_IsUnsupported()
     {
@@ -250,12 +250,12 @@ public class SubsetDiagnosticTests
             w => w.Contains("ParamsParameter"));
     }
 
-    // 名前付き引数は位置渡しに落ちて別の意味で動くので error (Lua を返さない)。
+    // 名前付き引数は位置渡しに落ちて別の意味で動くので error。
     // 同じ build の他の未対応も error で並ぶ (#19)
     [Fact]
     public void NamedArgument_IsBuildBlockingError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static void F(int x, int y = -1) { }
@@ -270,7 +270,6 @@ public class SubsetDiagnosticTests
             """]);
 
         Assert.False(result.Success);
-        Assert.Equal("", result.Lua);
         // 名前付き引数 1 つにつき 1 件 (y: / x:)
         var named = result.Errors.Where(e => e.Contains(
             "error TCS1001: unsupported syntax: NamedArgument")).ToList();

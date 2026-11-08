@@ -1,15 +1,17 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// セルフホストの compiler (SelfHost/) が参照実装と同じく拒否する検査 (準拠検査、フロー解析) と、
-/// 拒否してはならない形。参照実装との比較は SelfHostDifferential (TCS_SELFHOST_DIFF=1) が母集団の全体で行い、
-/// ここでは検査ごとの代表を固定する。
+/// セルフホストの compiler (SelfHost/) が C# と同じく拒否する検査 (準拠検査、フロー解析) と、
+/// 拒否してはならない形。検査ごとの代表を固定する。
 /// </summary>
 public class SelfHostDiagnosticsTests
 {
     private static List<string> Errors(string source)
     {
-        var result = TcsSelf.Compiler.Compile(["input.cs"], [source], [], [], "");
+        // 束縛と準拠の検査だけ (IL を組み立てない session の既定の mode)
+        var session = new TcsSelf.Session("");
+        session.Add("input.cs", source, 0);
+        var result = session.Compile();
         return result.Diagnostics.Where(d => d.Contains(" error ") || d.Contains(" warning TCS")).ToList();
     }
 

@@ -17,13 +17,13 @@ public class ComplianceParityTests
     }
 
     [Fact]
-    public void Transpile_PartialTypeAndLockFailWithoutOutput()
+    public void BuildC_PartialTypeAndLockFailWithoutOutput()
     {
         var result = RunCli(PartialLockSource, check: false);
 
         Assert.Equal(1, result.ExitCode);
         Assert.Empty(result.Stdout);
-        Assert.Equal("", result.Lua);
+        Assert.Null(result.Output);
         Assert.Equal(5, CountDiagnostics(result.Stderr,
             TinyCsDiagnosticIds.UnsupportedSyntax));
     }
@@ -40,43 +40,26 @@ public class ComplianceParityTests
         Assert.Equal(0, CountDiagnostics(result.Stderr,
             TinyCsDiagnosticIds.UnsupportedApi));
     }
-    [Fact]
-    public void Transpile_NameOfFoldsToConstantStrings()
-    {
-        var result = RunCli(NameOfSource, check: false);
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Empty(result.Stdout);
-        Assert.Equal(0, CountDiagnostics(result.Stderr,
-            TinyCsDiagnosticIds.UnsupportedSyntax));
-        Assert.DoesNotContain("nameof(", result.Lua);
-        Assert.DoesNotContain("unsupported: NameOfExpression", result.Lua);
-        Assert.Equal("value|E|DateTime", TestHelper.RunLua($$"""
-            {{result.Lua}}
-            print(tostring(NameDemo.Simple(1)) .. "|" ..
-                tostring(NameDemo.MemberName()) .. "|" ..
-                tostring(NameDemo.TypeName()))
-            """).Trim());
+    [Fact]
+    public void NameOf_FoldsToConstantStrings()
+    {
+        Assert.Equal("value|E|DateTime", TestHelper.CompileAndRunVm(NameOfSource,
+            "NameDemo.Simple(1) + \"|\" + NameDemo.MemberName() + \"|\" + NameDemo.TypeName()"));
     }
+
     [Fact]
     public void UserMethodNamedNameof_RemainsOrdinaryInvocation()
     {
         var check = RunCli(UserNameofSource, check: true);
-        var transpile = RunCli(UserNameofSource, check: false);
 
         Assert.Equal(0, check.ExitCode);
         Assert.Empty(check.Stdout);
         Assert.Empty(check.Stderr);
-        Assert.Equal(0, transpile.ExitCode);
-        Assert.Empty(transpile.Stdout);
-        Assert.Equal(0, CountDiagnostics(transpile.Stderr,
-            TinyCsDiagnosticIds.UnsupportedSyntax));
-        Assert.Equal("ok", TestHelper.RunLua(
-            $"{transpile.Lua}\nprint(NameDemo.Run())").Trim());
+        Assert.Equal("ok", TestHelper.CompileAndRunVm(UserNameofSource, "NameDemo.Run()"));
     }
 
-    // #19: 名前付き引数は check でも build でも error。build は Lua を書かず
-    // exit 1 (watch / lub の経路が誤った Lua を掴まない)
+    // #19: 名前付き引数は check でも build でも error。build (tcs c) は出力を書かずに exit 1
     [Fact]
     public void Check_NamedArgumentReportsError()
     {
@@ -98,17 +81,16 @@ public class ComplianceParityTests
     }
 
     [Fact]
-    public void Transpile_NamedArgumentFailsWithoutOutput()
+    public void BuildC_NamedArgumentFailsWithoutOutput()
     {
         var result = RunCli(NamedArgumentSource, check: false);
 
         Assert.Equal(1, result.ExitCode);
         Assert.Empty(result.Stdout);
-        Assert.Equal("", result.Lua);
+        Assert.Null(result.Output);
         Assert.Equal(3, CountDiagnostics(result.Stderr,
             TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.Contains("NamedArgument", result.Stderr);
-        Assert.DoesNotContain("Wrote ", result.Stderr);
     }
 
     [Fact]
@@ -123,18 +105,18 @@ public class ComplianceParityTests
     }
 
     [Fact]
-    public void Transpile_LuaKeywordMemberIsErrorWithoutOutput()
+    public void BuildC_LuaKeywordMemberIsErrorWithoutOutput()
     {
         var result = RunCli(KeywordMemberSource, check: false);
 
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("error TCS1001: unsupported syntax: LuaKeywordIdentifier(end)",
             result.Stderr);
-        Assert.DoesNotContain("end_", result.Stderr);
-        Assert.Equal("", result.Lua);
+        Assert.Null(result.Output);
     }
 
-    private static (int ExitCode, string Stdout, string Stderr, string Lua)
+    // check なら tcs check、そうでなければ tcs c で output.c に書く (書かなければ Output は null)
+    private static (int ExitCode, string Stdout, string Stderr, string? Output)
         RunCli(string source, bool check)
     {
         var tempDirectory = Path.Combine(Path.GetTempPath(),
@@ -143,17 +125,17 @@ public class ComplianceParityTests
         try
         {
             var inputPath = Path.Combine(tempDirectory, "input.cs");
-            var outputPath = Path.Combine(tempDirectory, "output.lua");
+            var outputPath = Path.Combine(tempDirectory, "output.c");
             File.WriteAllText(inputPath, source);
             var args = check
                 ? new List<string> { "check", inputPath }
-                : [inputPath, "-o", outputPath, "--no-runtime"];
+                : ["c", inputPath, "-o", outputPath];
             var (exitCode, stdoutText, stderrText) =
                 ConsoleCapture.Run(() => Program.Main([.. args]));
-            var lua = File.Exists(outputPath)
+            var output = File.Exists(outputPath)
                 ? File.ReadAllText(outputPath)
-                : "";
-            return (exitCode, stdoutText, stderrText, lua);
+                : null;
+            return (exitCode, stdoutText, stderrText, output);
         }
         finally
         {

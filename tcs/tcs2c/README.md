@@ -16,9 +16,9 @@ gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
 
 `-lm` は Math (sqrtf / floorf 等) を使う入力に必要。
 
-結果が IEEE-754 で決まらない Math (Sin / Cos / Tan / Exp / Atan2 / Pow / Log) は、生成 C に埋め込んだ `runtime/math` の実装 (`tcs_sinf` など、static) を呼ぶ。Lua の `tcs_math` module と .NET の `TinySystem.Math` も同じ実装なので、どの backend とプラットフォームでも bit 単位で同じ結果になる。この実装は上の strict f32 の build flag (積和を融合しない) を前提にする。Pow の指数 2 は Lua の `^` と同じく乗算にする。
+結果が IEEE-754 で決まらない Math (Sin / Cos / Tan / Exp / Atan2 / Pow / Log) は、生成 C に埋め込んだ `runtime/math` の実装 (`tcs_sinf` など、static) を呼ぶ。tcs VM と .NET の `TinySystem.Math` も同じ実装なので、どの backend とプラットフォームでも bit 単位で同じ結果になる。この実装は上の strict f32 の build flag (積和を融合しない) を前提にする。Pow の指数 2 は乗算にする。
 
-`TinySystem.Text` (`RuneCount` / `RuneSubstring` / `Utf8Bytes`) は、生成 C に埋め込んだ `runtime/utf8` の実装を呼ぶ。Lua の `tcs_utf8` module と同じ実装で、.NET の `TinySystem.Text` と同じ結果を返す。
+`TinySystem.Text` (`RuneCount` / `RuneSubstring` / `Utf8Bytes`) は、生成 C に埋め込んだ `runtime/utf8` の実装を呼ぶ。tcs VM と同じ実装で、.NET の `TinySystem.Text` と同じ結果を返す。
 
 単一の `static void Main()` があれば生成 executable の entry にする。複数ある
 場合は `--entry CLASS` で選ぶ。class library sample のように `Main` が無い入力も
@@ -27,7 +27,7 @@ gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
 ## 対応面
 
 IL 契約 (`IlExport`) に載る TinyC# は原則すべて C へ落とす。意味論の正本は
-Lua backend (dev) で、`tcs2c.Tests` が同じ source の stdout 一致を要求する。
+il-spec と .NET の実行で、`tcs2c.Tests` が同じ source の C、tcs VM、.NET の stdout 一致を要求する。
 
 - 型: `int` / `float` / `bool` / `string` (immutable byte 列、literal は static
   object) / `char` (整数 code unit。`string.char` / `Char.*` intrinsic) / enum (整数定数、`ToString` も
@@ -38,8 +38,8 @@ Lua backend (dev) で、`tcs2c.Tests` が同じ source の stdout 一致を要�
   ctor 連鎖、`is T` / is-pattern、static field / property、auto property
   initializer、upcast、明示 downcast (`IlCast`: 実行時型が合わなければ fault)
 - user-defined operator (`+ - * / %`、単項 `-`): IL の時点で Roslyn が選んだ
-  overload の static method への `IlCall` (同じ operator の overload は Lua 出力と
-  同じ `__mul_1` `__mul_2` … の別関数)。virtual と
+  overload の static method への `IlCall` (同じ operator の overload は
+  `__mul_1` `__mul_2` … の別関数)。virtual と
   同名で別シグネチャの method は override ではなく別 method として扱う
 - struct / record struct: 素の C 値型 (配列 / List / field に inline、代入 =
   値 copy)。instance method / property accessor は `Tcs_S *self` で格納場所を
@@ -51,12 +51,12 @@ Lua backend (dev) で、`tcs2c.Tests` が同じ source の stdout 一致を要�
   継承は実行時型へ dispatch、string は内容、record は再帰、struct は
   memberwise)、`with` (実行時型の layout で shallow copy)、分解代入、
   List.Contains / IndexOf / Remove も構造等価
-- 式・文: 数値演算 (i32 wrap、f32 strict、`/` は Lua と同じ float 除算、
+- 式・文: 数値演算 (i32 wrap、f32 strict、`/` は float の除算、
   `(int)f` は 0 方向 truncation)、文字列連結・補間 (`string.format`:
   `%d %s %f %e %g %x %c`、幅・精度・`-`/`0` flag)、三項・`??`・switch 式、
   while / do-while / for / foreach (List / array / Dictionary /
   `EnumerateRunes`)、break / continue、IIFE (GNU statement expression)
-- runtime 表面 (`runtime/tinysystem.lua` と同じ意味論):
+- runtime 表面 (tcs VM と同じ意味論):
   - List: Add / Count / index / Remove / RemoveAt / Clear / Contains / IndexOf /
     Sort (自然順・comparison) / Where / Select / Any / All / First / Last /
     FirstOrDefault / LastOrDefault / Count(pred) / Sum / Min / Max / OrderBy /
@@ -72,15 +72,14 @@ Lua backend (dev) で、`tcs2c.Tests` が同じ source の stdout 一致を要�
   - Random: `new Random()` / `new Random(seed)` (GC object) / `Random.Shared` /
     Seed、instance の Next / Next(max) / Next(min, max) / NextFloat / NextSingle
     / Range
-    (Lua 5.5 の xoshiro256** を LUA_32BITS 構成のまま移植。seed 固定時に
-    Lua backend と bit 一致)
+    (Lua 5.5 の xoshiro256** を i32 の構成のまま移植。seed 固定時に
+    tcs VM と bit 一致)
   - Console.WriteLine / Write、`Environment.GetEnvironmentVariable`
 - fault: null / bounds / 0 除算 / key-not-found / 空列 First 等は
   `tcs_fault(kind)` で stderr へ出して exit 1 (il-spec §12)
 
 明示エラー (未対応): `object` 型の local、
-`StringBuilder`、int / float 以外の `CompareTo`、Lua 固有の `IlIsLuaType`。Lua backend 側の既知差異は
-参照型要素の `new T[n]` (要素 nil / `.Length` 0) のみ (support-matrix 参照)。
+`StringBuilder`、int / float 以外の `CompareTo`、`IlIsLuaType`。
 
 通常の `print` は stdout へ値を出す。digest kernel 回帰用だけは
 `--digest-f32` を付け、各 f32 の bit 列を FNV-1a へ直接投入する。
@@ -137,7 +136,7 @@ TCS_ROOT=../tcs bash tcs2c/verify-digests.sh
   chunk の再利用で死んだ参照が速やかに壊れる)。root / バリア漏れは生きて
   いる object が回収 / 上書きされて出力が変わる形で現れるので、
   `tcs2c.Tests` は lib 形で Setup / Frame×N / Report を回し C (通常 +
-  stress) と Lua の stdout 一致を要求する
+  stress) と tcs VM の stdout 一致を要求する
 - **有界全列挙** (`tcs2c.Tests/GcEnumeration.c`): 本物の runtime を arena
   (`-Dmalloc=` 等で差し替え) + snapshot / restore に載せ、mutator の op
   (new / static・hold root 代入 / field store / `List<Node>` Add・RemoveAt /
@@ -166,8 +165,8 @@ runtime は単一 thread 前提。GC の統計 (`tcs_gc_frames` / `tcs_gc_collec
 dotnet test tcs2c.Tests        # C compiler (gcc / cc / clang) が無ければ skip
 ```
 
-`tcs2c.Tests` は同じ TinyC# source を tcs2c→C→cc と tcs→Lua→lua32 で実行し
-stdout を突き合わせる 2 backend differential (GC stress 込み) と、GC 固有の
+`tcs2c.Tests` は同じ TinyC# source を tcs2c→C→cc、tcs VM、.NET で実行し
+stdout を突き合わせる differential (GC stress 込み) と、GC 固有の
 テスト (lib 形でフレームを跨ぐ各 root / ライトバリア経路の保持、境界での
 garbage 解放と heap の有界性、host の hold / release)、GC の有界全列挙
 (`GcEnumerationTests`、上記) を持つ。
@@ -218,14 +217,14 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
   型 test も同じ構造型 id を比べる
 - 検証: `bash tcs2c/verify-game-core.sh` (配列 / 省略引数 / 数値 / 文字列 /
   generic / static 初期化)、`bash tcs2c/verify-object-values.sh` (object の
-  root 保持 / interface dispatch / 不正 cast)。期待出力は Lua backend と同じ
+  root 保持 / interface dispatch / 不正 cast)。期待出力は .NET と同じ
   (`4.2949673E+09` 等)
 
 ## host 境界 (`--ref` / `--lib`)
 
 `--ref STUB.cs` は入力が使う static method / static field / enum 定数 /
 データ class を stub から取り込む (本体はコンパイルしない)。生成 C は
-`extern` の `tcs_host_<lua path を _ 連結>` を宣言し、host がそれを実装する
+`extern` の `tcs_host_<host の path を _ 連結>` を宣言し、host がそれを実装する
 (`tests/foreign-host.c` のように生成 C を include して内部 ABI を直接使って
 良い)。
 

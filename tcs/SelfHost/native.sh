@@ -26,7 +26,6 @@ dotnet build "$ROOT/tcsvm/Emitter/tcs2vm.csproj" -c Release -v q -nologo >/dev/n
 DOTNET_TCS=(dotnet "$ROOT/Transpiler/bin/Release/net10.0/Transpiler.dll")
 TCS2C=(dotnet "$ROOT/tcs2c/bin/Release/net10.0/tcs2c.dll")
 TCS2VM=(dotnet "$ROOT/tcsvm/Emitter/bin/Release/net10.0/tcs2vm.dll")
-cp "$ROOT/runtime/tinysystem.lua" "$ROOT/runtime/module_registry.lua" "$OUT/runtime/"
 # tcs c が生成 C に埋め込む runtime の C
 for d in core math fmt model utf8; do
   mkdir -p "$OUT/runtime/$d"

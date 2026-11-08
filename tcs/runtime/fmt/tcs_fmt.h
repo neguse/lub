@@ -1,6 +1,6 @@
 /* TinyC# の数値の文字列化。
    .NET の float.ToString() と float.ToString(format)、int.ToString(format) (InvariantCulture) と同じ文字列を返す。
-   tcs2c の生成 C と Lua の module (runtime/lua) が使う。 */
+   tcs2c の生成 C と tcs VM が使う。 */
 #ifndef TCS_FMT_H
 #define TCS_FMT_H
 

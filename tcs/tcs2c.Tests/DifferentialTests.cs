@@ -179,7 +179,7 @@ public partial class DifferentialTests
                     Console.WriteLine((int)(Math.PI * 1000f));
                     Console.WriteLine((int)2.7f + ":" + (int)-2.7f + ":" + (int)(7f / 2f));
                     Console.WriteLine(7 / 2 + ":" + -7 / 2 + ":" + 7 % 3 + ":" + -7 % 3 + ":" + 7.5f % 2f);
-                    // 負数の >> は Lua が論理シフト (support-matrix の既知差異) なので正数のみ
+                    // 正数の >> (負数の >> は DifferentialTests.Language と tcsvm/tests/IntOps)
                     Console.WriteLine((5 << 2) + ":" + (16 >> 2) + ":" + (6 & 3) + ":" + (6 | 3) + ":" + (6 ^ 3) + ":" + ~5);
                     int big = 2147483647;
                     Console.WriteLine(big + 1);

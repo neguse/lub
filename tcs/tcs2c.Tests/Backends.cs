@@ -17,7 +17,6 @@ namespace TinyCs.Tcs2c.Tests;
 /// Setup / Frame×N / Report を回す AssertParityLib で検証する。C 側の
 /// GC stress (-DTCS_GC_STRESS=1: 毎境界で旧世代 full GC + 256 byte の
 /// nursery chunk) では、root / ライトバリアの漏れは、生きている object が回収 / 上書きされて出力が変わる形で現れる。
-/// RunLua は Lua backend 自身の挙動を見るテストだけが使う。
 /// </summary>
 internal static partial class Backends
 {
@@ -25,10 +24,6 @@ internal static partial class Backends
     private static readonly TimeSpan RunTimeout = TimeSpan.FromSeconds(60);
     public static readonly string ProjectRoot = FindProjectRoot();
     public static readonly string? CCompiler = FindCCompiler();
-    public static readonly string LuaPath = Path.Combine(ProjectRoot, "deps", "lua",
-        OperatingSystem.IsWindows() ? "lua32.exe" : "lua32");
-    public static readonly string Lua64Path = Path.Combine(ProjectRoot, "deps", "lua",
-        OperatingSystem.IsWindows() ? "lua.exe" : "lua");
 
     public static readonly string[] StrictFlags =
         ["-O2", "-ffp-contract=off", "-fwrapv", "-fexcess-precision=standard",
@@ -124,34 +119,6 @@ internal static partial class Backends
         }
     }
 
-    /// <summary>tcs → Lua → lua32 (LUA_32BITS)。entryClass.Main() を呼ぶ。
-    /// luaBefore は Main の前に実行する Lua。</summary>
-    public static string RunLua(string[] sources, string entryClass, string luaBefore = "",
-        string? luaPath = null)
-    {
-        var calls = $"{luaBefore}\n{entryClass}.Main()\n";
-        return RunLuaScript(sources, calls, luaPath);
-    }
-
-    // Lua の script を実行し、RunLuaScript と同じ正規化をした stdout を返す
-    private static string RunLuaText(string script)
-    {
-        var dir = Directory.CreateTempSubdirectory("tcs2c-selfhost-");
-        try
-        {
-            var path = Path.Combine(dir.FullName, "program.lua");
-            File.WriteAllText(path, script);
-            var run = Run(Start(LuaPath, [path]), RunTimeout);
-            if (run.ExitCode != 0)
-                throw new InvalidOperationException($"Lua exited with {run.ExitCode}:\n{run.Stderr}");
-            return run.Stdout.Replace("\r\n", "\n").TrimEnd('\n');
-        }
-        finally
-        {
-            try { dir.Delete(recursive: true); } catch (IOException) { }
-        }
-    }
-
     /// <summary>--lib の C を host (別 translation unit) から呼ぶ:
     /// tcs_lib_init → Setup → (Frame → tcs_lib_gc)×N → Report。</summary>
     public static string RunCLib(string[] sources, string cls, int frames,
@@ -179,34 +146,6 @@ internal static partial class Backends
             }
             """;
         return CompileAndRunC(c, stress, extraCSource: host);
-    }
-
-    private static string RunLuaScript(string[] sources, string calls, string? luaPath = null)
-    {
-        var lua = Transpiler.Transpile(sources);
-        // TranspileAndRunWithRuntime と同じ runtime 束縛 (List / Dict / ... は
-        // runtime/tinysystem.lua の table)
-        var runtimePath = Path.Combine(ProjectRoot, "runtime", "tinysystem.lua")
-            .Replace("\\", "/");
-        var script = $"local TinySystem = dofile(\"{runtimePath}\")\n" +
-            string.Concat(TinyCs.LuaRuntime.RuntimeGlobalAliases.Select(n => $"{n} = TinySystem.{n}\n")) +
-            $"{lua}\n{calls}";
-        var dir = Directory.CreateTempSubdirectory("tcs2c-lua-");
-        try
-        {
-            var path = Path.Combine(dir.FullName, "program.lua");
-            File.WriteAllText(path, script);
-            var run = Run(Start(luaPath ?? LuaPath, [path]), RunTimeout);
-            if (run.ExitCode != 0)
-                throw Exited(
-                    $"Lua exited with {run.ExitCode}:\n{run.Stderr}\n--- lua ---\n{script}",
-                    run.Stdout);
-            return run.Stdout.Replace("\r\n", "\n").TrimEnd('\n');
-        }
-        finally
-        {
-            try { dir.Delete(recursive: true); } catch (IOException) { }
-        }
     }
 
     /// <summary>C (通常 + GC stress)、VM、実 .NET の stdout 一致を要求し、その stdout を返す。</summary>

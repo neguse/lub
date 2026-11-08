@@ -25,7 +25,7 @@ public class MultiReturnTests
         """;
 
     [Fact]
-    public void RefMethodOutArgs_AssignsLuaMultiReturn()
+    public void RefMethodOutArgs_AreAccepted()
     {
         var source = """
             public static class Game
@@ -39,25 +39,14 @@ public class MultiReturnTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [IoStub]);
+        var result = Checker.Check([source], null, [IoStub]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-
-        var script = $$"""
-            io = { load_text = function(path)
-              return "hello:" .. path, 3, "ready"
-            end }
-            {{result.Lua}}
-            print(Game.Run())
-            """;
-        var output = TestHelper.RunLua(script).Trim();
-
-        Assert.Equal("hello:data.txt,3,ready", output);
+        Assert.Empty(result.Warnings);
     }
 
     [Fact]
-    public void RefMethodOutArgs_NonVoidReturn_UsableInCondition()
+    public void RefMethodOutArgs_NonVoidReturn_AcceptedInCondition()
     {
         var source = """
             public static class Game
@@ -73,23 +62,14 @@ public class MultiReturnTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [IoStub]);
+        var result = Checker.Check([source], null, [IoStub]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-
-        var script = $$"""
-            host = { try_read = function() return true, 42 end }
-            {{result.Lua}}
-            print(Game.Run())
-            """;
-        var output = TestHelper.RunLua(script).Trim();
-
-        Assert.Equal("ok:42", output);
+        Assert.Empty(result.Warnings);
     }
 
     [Fact]
-    public void RefMethodOutArgs_DiscardMapsToUnderscore()
+    public void RefMethodOutArgs_DiscardIsAccepted()
     {
         var source = """
             public static class Game
@@ -102,23 +82,14 @@ public class MultiReturnTests
             }
             """;
 
-        var result = Transpiler.TranspileWithDiagnostics([source], null,
-            [IoStub]);
+        var result = Checker.Check([source], null, [IoStub]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-
-        var script = $$"""
-            io = { load_text = function() return "t", 7, "s" end }
-            {{result.Lua}}
-            print(Game.Run())
-            """;
-        var output = TestHelper.RunLua(script).Trim();
-
-        Assert.Equal("7", output);
+        Assert.Empty(result.Warnings);
     }
 
     [Fact]
-    public void UserMethodOutParameter_ReturnsThroughLuaMultiReturn()
+    public void UserMethodOutParameter_ReturnsTheValue()
     {
         const string source = """
             public static class Parser
@@ -136,16 +107,11 @@ public class MultiReturnTests
                 }
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics([source]);
-
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains("return true, value", result.Lua);
         Assert.Equal("42", TestHelper.CompileAndRunVm(source, "Parser.Run()"));
     }
 
-    // 条件の位置は closure を作らず文に下ろす
     [Fact]
-    public void UserMethodOutCall_InCondition_DoesNotAllocateClosure()
+    public void UserMethodOutCall_InCondition_Runs()
     {
         const string source = """
             public static class P
@@ -154,11 +120,6 @@ public class MultiReturnTests
                 public static int Run() { if (Try(out var v)) return v; return 0; }
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics([source]);
-
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        var run = result.Lua[result.Lua.IndexOf("function P.Run", StringComparison.Ordinal)..];
-        Assert.DoesNotContain("(function()", run);
         Assert.Equal("1", TestHelper.CompileAndRunVm(source, "P.Run()"));
     }
 

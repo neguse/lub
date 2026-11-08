@@ -2,15 +2,14 @@ using System.Text;
 
 namespace TinyCs.Tests.SpecConformance;
 
-/// <summary>StateCs / AssertsCs は同じ状態と不変量の C# 版 (VM の reload 用。tcs2c.Tests の VmReloadTests)。
+/// <summary>StateCs は v1 の状態を作る文、AssertsCs は reload の後の不変量 (tcs2c.Tests の VmReloadTests が tcs VM の reload に当てる)。
 /// C# の文で、static class Driver の P1, P2 (instance) と B1, B2 (identity の控え) を使い、
-/// 不変量は Ck(条件, 名前) で書く。消えた field と static は新版のコードから参照できないので C# 版には無い。</summary>
-public sealed record FuzzReloadScenario(
-    string V1, string V2, string StateLua, string AssertsLua, string StateCs = "", string AssertsCs = "");
+/// 不変量は Ck(条件, 名前) で書く。消えた field と static は新版のコードから参照できないので不変量に無い。</summary>
+public sealed record FuzzReloadScenario(string V1, string V2, string StateCs, string AssertsCs);
 
 /// <summary>
 /// hot reload fuzz の seed 決定的シナリオ生成器。単一 class
-/// (+ 任意で struct 型 field) の v1/v2 ペアと、状態構築 Lua・不変量検証 Lua
+/// (+ 任意で struct 型 field) の v1/v2 ペアと、状態構築・不変量検証の C# の文
 /// を生成する。期待値は生成時に計算する (値は小さく保ち wrap を踏まない)。
 /// 検出網の自己検証のため、毎シナリオ必ず「method body 変更」と
 /// 「added field」を含む。record class / 継承は migration 未対応のため
@@ -99,148 +98,71 @@ internal sealed class FuzzReloadGenerator(int seed)
 
         // ---- state / asserts ----
         var instances = _rng.Next(1, 3);
-        var state = new StringBuilder();
-        var asserts = new StringBuilder();
         var stateCs = new StringBuilder();
         var assertsCs = new StringBuilder();
         var staticAssign = 7000 + _rng.Next(1000);
         if (statics[0].Retained)
-        {
-            state.AppendLine($"RC0.St0 = {staticAssign}");
             stateCs.AppendLine($"RC0.St0 = {staticAssign};");
-        }
 
         for (var k = 1; k <= instances; k++)
         {
-            state.AppendLine($"local p{k} = RC0.new()");
-            state.AppendLine($"local before{k} = p{k}");
-            asserts.AppendLine($"assert(p{k} == before{k}, \"identity {k}\")");
             stateCs.AppendLine($"P{k} = new RC0(); B{k} = P{k};");
             assertsCs.AppendLine($"Ck(P{k} == B{k}, \"identity {k}\");");
             var live = new Dictionary<string, int>();
             foreach (var (f, i) in fields.Select((f, i) => (f, i)))
             {
-                if (f.Type != "int") continue;
-                if (f.Retained)
-                {
-                    var value = 1000 * k + i;
-                    live[f.Name] = value;
-                    state.AppendLine($"p{k}.{f.Name} = {value}");
-                    asserts.AppendLine($"assert(p{k}.{f.Name} == {value}, " +
-                        $"\"retained {f.Name} {k}\")");
-                    stateCs.AppendLine($"P{k}.{f.Name} = {value};");
-                    assertsCs.AppendLine($"Ck(P{k}.{f.Name} == {value}, \"retained {f.Name} {k}\");");
-                }
-                else
-                {
-                    asserts.AppendLine($"assert(p{k}.{f.Name} == nil, " +
-                        $"\"dropped {f.Name} {k}\")");
-                }
+                if (f.Type != "int" || !f.Retained) continue;
+                var value = 1000 * k + i;
+                live[f.Name] = value;
+                stateCs.AppendLine($"P{k}.{f.Name} = {value};");
+                assertsCs.AppendLine($"Ck(P{k}.{f.Name} == {value}, \"retained {f.Name} {k}\");");
             }
-            foreach (var f in fields.Where(f => f.Type == "string"))
+            foreach (var f in fields.Where(f => f.Type == "string" && f.Retained))
             {
-                if (f.Retained)
-                {
-                    state.AppendLine($"p{k}.{f.Name} = \"live{k}\"");
-                    asserts.AppendLine($"assert(p{k}.{f.Name} == \"live{k}\", " +
-                        $"\"retained string {k}\")");
-                    stateCs.AppendLine($"P{k}.{f.Name} = \"live{k}\";");
-                    assertsCs.AppendLine($"Ck(P{k}.{f.Name} == \"live{k}\", \"retained string {k}\");");
-                }
-                else
-                {
-                    asserts.AppendLine($"assert(p{k}.{f.Name} == nil, " +
-                        $"\"dropped string {k}\")");
-                }
+                stateCs.AppendLine($"P{k}.{f.Name} = \"live{k}\";");
+                assertsCs.AppendLine($"Ck(P{k}.{f.Name} == \"live{k}\", \"retained string {k}\");");
             }
             foreach (var (name, type, init) in added)
-            {
-                asserts.AppendLine($"assert(p{k}.{name} == {init}, " +
-                    $"\"added {name} {k}\")");
                 assertsCs.AppendLine($"Ck(P{k}.{name} == {init}, \"added {name} {k}\");");
-            }
             if (hasStruct)
             {
                 foreach (var (f, j) in structFields.Select((f, j) => (f, j)))
                 {
-                    if (f.Retained)
-                    {
-                        var value = 2000 * k + j;
-                        state.AppendLine($"p{k}.Pos.{f.Name} = {value}");
-                        asserts.AppendLine(
-                            $"assert(p{k}.Pos.{f.Name} == {value}, " +
-                            $"\"struct retained {f.Name} {k}\")");
-                        stateCs.AppendLine($"P{k}.Pos.{f.Name} = {value};");
-                        assertsCs.AppendLine($"Ck(P{k}.Pos.{f.Name} == {value}, \"struct retained {f.Name} {k}\");");
-                    }
-                    else
-                    {
-                        asserts.AppendLine(
-                            $"assert(p{k}.Pos.{f.Name} == nil, " +
-                            $"\"struct dropped {f.Name} {k}\")");
-                    }
+                    if (!f.Retained) continue;
+                    var value = 2000 * k + j;
+                    stateCs.AppendLine($"P{k}.Pos.{f.Name} = {value};");
+                    assertsCs.AppendLine($"Ck(P{k}.Pos.{f.Name} == {value}, \"struct retained {f.Name} {k}\");");
                 }
                 foreach (var name in structAdded)
-                {
-                    asserts.AppendLine($"assert(p{k}.Pos.{name} == 0, " +
-                        $"\"struct added {name} {k}\")");
                     assertsCs.AppendLine($"Ck(P{k}.Pos.{name} == 0, \"struct added {name} {k}\");");
-                }
             }
             if (hook)
-            {
-                asserts.AppendLine($"assert(p{k}.R == 1, \"hook once {k}\")");
                 assertsCs.AppendLine($"Ck(P{k}.R == 1, \"hook once {k}\");");
-            }
 
             // method swap: v2 body の期待値 (hook は R のみ触るので干渉しない)
             var fieldValue = live.TryGetValue(m0V2Field, out var lv)
                 ? lv
                 : int.Parse(added.First(a => a.Name == m0V2Field).Init);
-            asserts.AppendLine($"assert(p{k}:M0() == {fieldValue * a2 + b2}, " +
-                $"\"method swap {k}\")");
             assertsCs.AppendLine($"Ck(P{k}.M0() == {fieldValue * a2 + b2}, \"method swap {k}\");");
         }
 
         if (statics[0].Retained)
-        {
-            asserts.AppendLine($"assert(RC0.St0 == {staticAssign}, " +
-                "\"retained static\")");
             assertsCs.AppendLine($"Ck(RC0.St0 == {staticAssign}, \"retained static\");");
-        }
-        else
-            asserts.AppendLine("assert(RC0.St0 == nil, \"dropped static\")");
         if (addedStatic != default)
-        {
-            asserts.AppendLine($"assert(RC0.{addedStatic.Item1} == " +
-                $"{addedStatic.Item2}, \"added static\")");
             assertsCs.AppendLine($"Ck(RC0.{addedStatic.Item1} == {addedStatic.Item2}, \"added static\");");
-        }
         if (hasStaticMethod)
-        {
-            asserts.AppendLine($"assert(RC0.SM() == {smV2}, " +
-                "\"static method swap\")");
             assertsCs.AppendLine($"Ck(RC0.SM() == {smV2}, \"static method swap\");");
-        }
 
         // reload 後の新規構築は v2 shape
-        asserts.AppendLine("local q = RC0.new()");
         assertsCs.AppendLine("var q = new RC0();");
         foreach (var (name, _, init) in added)
-        {
-            asserts.AppendLine($"assert(q.{name} == {init}, \"new added\")");
             assertsCs.AppendLine($"Ck(q.{name} == {init}, \"new added\");");
-        }
         var qField = retainedInts.Any(f => f.Name == m0V2Field)
             ? int.Parse(fields.First(f => f.Name == m0V2Field).V1Init)
             : int.Parse(added.First(a => a.Name == m0V2Field).Init);
-        asserts.AppendLine($"assert(q:M0() == {qField * a2 + b2}, " +
-            "\"new instance method\")");
-        asserts.AppendLine("print(\"ok\")");
         assertsCs.AppendLine($"Ck(q.M0() == {qField * a2 + b2}, \"new instance method\");");
 
-        return new FuzzReloadScenario(v1, v2, state.ToString(),
-            asserts.ToString(), stateCs.ToString(), assertsCs.ToString());
+        return new FuzzReloadScenario(v1, v2, stateCs.ToString(), assertsCs.ToString());
     }
 
     private static string BuildSource(

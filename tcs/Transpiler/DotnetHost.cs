@@ -1,6 +1,6 @@
 using System.Text;
 
-// tcs の host (SelfHost/Tool) の OS の関数の .NET の実装 (C は SelfHost/Native/host.c、Lua は SelfHost/Host/tcsc.lua)
+// tcs の host (SelfHost/Tool) の OS の関数の .NET の実装 (C は SelfHost/Native/host.c、wasm は SelfHost/Web/tcs_web.c)
 public static class TcsHost
 {
     private static string[] _args = [];
@@ -38,9 +38,6 @@ public static class TcsHost
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return ""; }
     }
 
-    // browser (playground の .NET wasm) に stdin は無い
-    public static string ReadStdin() => OperatingSystem.IsBrowser() ? "" : Console.In.ReadToEnd();
-
     public static string WriteFileAtomic(string path, string text)
     {
         try
@@ -55,7 +52,7 @@ public static class TcsHost
         }
     }
 
-    // 1 文字が 1 byte (0〜255) の文字列を Latin-1 で byte にして書く (C と Lua の host の文字列は byte 列そのもの)
+    // 1 文字が 1 byte (0〜255) の文字列を Latin-1 で byte にして書く (C の host の文字列は byte 列そのもの)
     public static string WriteBinaryAtomic(string path, string bytes)
     {
         try
@@ -73,35 +70,6 @@ public static class TcsHost
     public static void WriteOut(string text) => Console.Out.Write(text);
     public static void WriteErr(string text) => Console.Error.Write(text);
     public static void FlushOut() => Console.Out.Flush();
-    public static string Env(string name) => Environment.GetEnvironmentVariable(name) ?? "";
-
-    public static string PathKey(string path)
-    {
-        try
-        {
-            var full = Path.GetFullPath(path);
-            return OperatingSystem.IsWindows() ? full.ToLowerInvariant() : full;
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return path;
-        }
-    }
-
-    public static string FileIdentity(string path)
-    {
-        if (!(OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())) return "-";
-        try
-        {
-            var id = TinyCs.FileIdentityReader.Get(Path.GetFullPath(path));
-            return id is { } v ? $"{v.Volume}:{v.FileIdLow}:{v.FileIdHigh}" : "";
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
-            or NotSupportedException)
-        {
-            return "-";
-        }
-    }
 
     public static string FileStamp(string path)
     {
@@ -129,7 +97,6 @@ public static class TcsHost
         return File.Exists(path) ? File.ReadAllText(path) : "";
     }
 
-    public static string Clock() => DateTime.Now.ToString("HH:mm:ss");
     public static void Sleep(int milliseconds) => Thread.Sleep(milliseconds);
     public static void SetExitCode(int code) => _exitCode = code;
     public static void SetDone() => _done = true;

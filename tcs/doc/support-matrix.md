@@ -987,20 +987,17 @@ C の正本は `runtime/utf8` で、Lua は `tcs_utf8` module (host が登録す
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
 | C# コンパイルエラー報告 | **Y** | ソース位置付き |
-| 未対応構文の診断 | **Y** | TCS1001 / analyzer と transpiler/check で共有 (`struct` / `record struct` / `partial` 型 / `lock` / `nameof` など) |
-| 未対応で build を止める | **Y** | TCS1001 / TCS1002 は transpiler が error にし、Lua を書かず exit 1 (watch / 増分 session も commit しない)。TCS1003 は warning で、`tcs check` と `--warnaserror` の変換だけが exit 1 にする。analyzer は warning のまま (`.editorconfig` で上書き可能) |
-| 未対応 BCL API の診断 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
-| collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
+| 未対応構文の診断 | **Y** | TCS1001 / analyzer と `tcs check` / `tcs vm` / `tcs c` で共有 (`struct` / `record struct` / `partial` 型 / `lock` / `nameof` など) |
+| 未対応で build を止める | **Y** | TCS1001 / TCS1002 は error で、`tcs vm` / `tcs c` は出力を書かず exit 1 (`tcs vm --watch` と増分 session も最後に通った build を保つ)。TCS1003 は warning で、`tcs check` だけが exit 1 にする。analyzer は warning のまま (`.editorconfig` で上書き可能) |
+| 未対応 BCL API の診断 | **Y** | TCS1002 / analyzer と `tcs check` / `tcs vm` / `tcs c` で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
+| collection null 保存の警告 | **Y** | TCS1003 / analyzer と `tcs check` で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |
-| namespace 解決 | **Y** | namespace の中の型は修飾名 (§ namespace ブロック行)。`--entry` は `A.Color` / simple 名 (一意なら) で引ける (`--snapshot` 時は `A_Color` も可) |
-| CLI | **Y** | `tcs a.cs b.cs [-o out.lua]`, `tcs check a.cs`, `--help`, `--version` |
+| namespace 解決 | **Y** | namespace の中の型は修飾名 (§ namespace ブロック行)。entry class は `A.Color` / simple 名 (一意なら) で引ける (`tcs vm --entry` / `tcs c --entry` は IL 名 `A_Color`) |
+| CLI | **Y** | `tcs check a.cs b.cs [--ref stub.cs]`, `tcs vm ... -o out.tcsb`, `tcs c ... -o out.c`, `--help`, `--version`。subcommand の無い呼び出しは usage と exit 1 |
 | CI gate | **Y** | GitHub Actions で `run-tests.sh` / sample `tcs check` / analyzer demo / analyzer pack |
-| ソースマップ | **Y** | `--sourcemap` で `.lua.map` 出力 |
-| 実行 trace | **Y** | `--trace <path-prefix>` で対象ファイルの文の直前に `__tcs_at` (関数 local の現在行) と `__tcs_trace["<file>:<line>"] = true` (global) を出し、対象ファイルの型 table を `__tcs_trace_classes` (global) に登録する。reload chunk も同じ。host 契約は README |
-| Lua stack trace SourceMap 注釈 | **Y** | `--map-stacktrace out.lua.map [trace.txt]` |
-| watch モード | **Y** | `--watch` でファイル監視 |
-| Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |
-| 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + runtime/tinysystem.lua |
+| 実行 trace | **Y** | `tcs vm --trace <path-prefix>` で対象ファイルの文と代入を記録する (prefix は path の segment 単位。README) |
+| watch モード | **Y** | `tcs vm --watch` でファイル監視、reload の batch か restart を標準出力に書く (README) |
+| 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + `tcs c` が埋め込む runtime の C |
 | Lua と生成コードの予約と重なる識別子 | **Y** | Lua の予約語、`__` 始まり、非 ASCII、`new` / `ctor`、型名と namespace 名の `_` は error (§28)。analyzer / `tcs check` は TCS1001 `LuaKeywordIdentifier(end)` / `DoubleUnderscoreIdentifier(__x)` 等 |
 
 ## 25. 許容される C# エラー (TinyC# 固有)
@@ -1014,35 +1011,31 @@ C の正本は `runtime/utf8` で、Lua は `tcs_utf8` module (host が登録す
 
 ## 26. 数値型マッピング
 
-| C# 型 | Lua 型 | 備考 |
+| C# 型 | IL の型 (tcs VM / C) | 備考 |
 |-------|-------|------|
-| int, uint, byte | number (integer) | i32 (il-spec §3)。uint は 0〜2^31-1、byte は 0〜255 を受ける (§1.1) |
-| float | number (float) | f32。サフィックス除去 |
+| int, uint, byte | i32 | il-spec §3。uint は 0〜2^31-1、byte は 0〜255 を受ける (§1.1) |
+| float | f32 | サフィックス除去 |
 | long, double | (なし) | TCS1001 `LongType` / `DoubleType` (§1.1) |
-| enum 値 | number (integer) | 整数定数 |
-| bool | boolean | |
+| enum 値 | i32 | 整数定数 |
+| bool | bool | |
 | string | string | UTF-8 前提 |
-| null | nil | |
-| class instance | table | metatable 付き |
+| null | null | |
+| class instance | object の参照 | |
 
 ## 27. 既知の意味論差 (実行可能な正本)
 
-C# と Lua 出力の意味論差のうち、正規化 (bool 表記) で吸収できない
+C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収できない
 例別の受容差異は `Transpiler.Tests/SpecConformance/known-differences.json` に理由付きで
-登録し、spec conformance sweep が実行時に参照する。代表例:
+登録し、spec conformance sweep が実行時に参照する (いまは空)。
 
-- string の参照等価: Lua の string は intern される値のため、別インスタンス比較で
-  C# (false) と異なり true になる
-- 数値表示: Lua は integer/float を区別し `4` / `4.0`、C# double は `4`。
-  differential は数値等価で比較する
-
-## 28. Lua 出力の名前規則
+## 28. 名前規則
 
 名前は表を持たず規則で写す (`SelfHost/Compiler/Declarer.cs` の `LuaNames` と `IlNames.cs`)。user の型 (入力の tree に宣言された型) の
-member は C# の識別子をそのまま Lua / IL / C の名前にし、`--ref` の型 (host) の member だけ
+member は C# の識別子をそのまま IL / C の名前にし、`--ref` の型 (host) の member だけ
 host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (`Player`) は写さない。
+`--ref` の型の path は host の関数の名前 (IL の foreign 関数、C の `tcs_host_<path を _ 連結>`) になる。
 
-| C# | Lua | 規則 |
+| C# | IL の名前 | 規則 |
 |----|-----|------|
 | user の field / property / method `BeginPass`, `hp`, `_maxHp`, `XMLValue` | `BeginPass`, `hp`, `_maxHp`, `XMLValue` | C# の識別子のまま。IL の名前 (tcs2c の C 名 `tcs_entry_<Class>_<Method>` の元) も同じ |
 | user の enum メンバ `BigValue`, `RGBA8` | `BigValue`, `RGBA8` | C# の識別子のまま |
@@ -1063,11 +1056,10 @@ host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (
 | `const` field (enum メンバ以外) | 値を inline | C# の意味論どおり |
 | BCL / TinySystem のメンバ (`List.Add`, `Math.Min`) | runtime の名前のまま | source に宣言の無い symbol は写さない |
 
-user の member は C# の識別子のまま Lua の名前になるので、同じ型の中で Lua の名前が衝突することは無い。overload に型を付けた名前が他の member と同じ綴りになる場合 (`F(int)` の `F__int` と method `F__int`) は MethodOverload (TCS1001)。
+user の member は C# の識別子のまま IL の名前になるので、同じ型の中で名前が衝突することは無い。overload に型を付けた名前が他の member と同じ綴りになる場合 (`F(int)` の `F__int` と method `F__int`) は MethodOverload (TCS1001)。
 
 user の宣言の識別子が Lua と生成コードの予約と重なる綴りも、build を止める TCS1001
-(transpiler / 増分 session は Lua を出さない error、`tcs check` は exit 1、analyzer は
-warning、tcs2c も IL の前に止まる) にする。`--ref` の型は対象外。
+(`tcs check` は exit 1、`tcs vm` / `tcs c` は IL の前に止まる、analyzer は warning) にする。`--ref` の型は対象外。
 
 | 識別子 | 診断 | 理由 |
 |----|-----|------|

@@ -2,7 +2,7 @@
    tcs2c が SelfHost/Compiler と SelfHost/Tool を C にした tcs.c を include し、SelfHost/Tool/TcsHost.cs の宣言 (tcs2c の --ref) を実装する。
    CLI の本体は SelfHost/Tool/Cli.cs で、host は Cli.Start を 1 回、TcsHost.SetDone まで Cli.Step を呼ぶ。
    entry から戻るたびに tcs2c の GC の frame の境界になる。
-   tcs と一緒に配るファイル (runtime/*.lua、lib/TinySystem/*.cs) は環境変数 TCS_HOME の dir か、実行ファイルの dir から読む。
+   tcs と一緒に配るファイル (lib/TinySystem/*.cs、tcs c が埋め込む runtime/ の C) は環境変数 TCS_HOME の dir か、実行ファイルの dir から読む。
    compile: cc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard -I <tcs.c の dir> host.c -o tcs -lm
    TcsHost を使う別の TinyC# の program も同じ host で動かせる: TCS_HOST_SOURCE に生成した C の file 名、
    TCS_HOST_START と TCS_HOST_STEP に entry の関数 (tcs2c --lib の tcs_entry_<Class>_<method>) を渡す (lub-gen が使う) */
@@ -125,15 +125,6 @@ TcsString *tcs_host_tcshost_read_file(TcsString *path)
     char *name = host_cstring(path);
     TcsString *text = host_read_path(name);
     free(name);
-    return text;
-}
-
-TcsString *tcs_host_tcshost_read_stdin(void)
-{
-    size_t length;
-    char *buf = host_read_all(stdin, &length);
-    TcsString *text = host_string(buf, length);
-    free(buf);
     return text;
 }
 
@@ -322,57 +313,6 @@ void tcs_host_tcshost_flush_out(void)
     fflush(stdout);
 }
 
-TcsString *tcs_host_tcshost_env(TcsString *name)
-{
-    char *key = host_cstring(name);
-    const char *value = getenv(key);
-    free(key);
-    return host_cstr(value != NULL ? value : "");
-}
-
-TcsString *tcs_host_tcshost_path_key(TcsString *path)
-{
-    char *name = host_cstring(path);
-    char *full = host_full_path(name);
-    free(name);
-#ifdef _WIN32
-    for (char *p = full; *p; p++)
-        if (*p >= 'A' && *p <= 'Z') *p = (char)(*p - 'A' + 'a');
-#endif
-    TcsString *key = host_cstr(full);
-    free(full);
-    return key;
-}
-
-TcsString *tcs_host_tcshost_file_identity(TcsString *path)
-{
-#ifdef _WIN32
-    /* volume の番号とファイルの番号 (hard link や junction を通しても同じ値)。.NET の FileIdentityReader と同じ情報 */
-    char *wname = host_cstring(path);
-    HANDLE h = CreateFileA(wname, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
-                           FILE_FLAG_BACKUP_SEMANTICS, NULL);
-    free(wname);
-    if (h == INVALID_HANDLE_VALUE) return host_string("", 0);
-    BY_HANDLE_FILE_INFORMATION info;
-    int got = GetFileInformationByHandle(h, &info) != 0;
-    CloseHandle(h);
-    if (!got) return host_cstr("-");
-    char wbuf[64];
-    snprintf(wbuf, sizeof wbuf, "%lu:%lu:%lu", (unsigned long)info.dwVolumeSerialNumber,
-             (unsigned long)info.nFileIndexLow, (unsigned long)info.nFileIndexHigh);
-    return host_cstr(wbuf);
-#else
-    char *name = host_cstring(path);
-    struct stat st;
-    int ok = stat(name, &st) == 0;
-    free(name);
-    if (!ok) return host_string("", 0);
-    char buf[64];
-    snprintf(buf, sizeof buf, "%llu:%llu:0", (unsigned long long)st.st_dev, (unsigned long long)st.st_ino);
-    return host_cstr(buf);
-#endif
-}
-
 TcsString *tcs_host_tcshost_file_stamp(TcsString *path)
 {
 #ifdef _WIN32
@@ -451,15 +391,6 @@ TcsString *tcs_host_tcshost_tool_file(TcsString *name)
     TcsString *text = host_read_path(full);
     free(full);
     return text;
-}
-
-TcsString *tcs_host_tcshost_clock(void)
-{
-    time_t now = time(NULL);
-    struct tm *t = localtime(&now);
-    char buf[16];
-    snprintf(buf, sizeof buf, "%02d:%02d:%02d", t->tm_hour, t->tm_min, t->tm_sec);
-    return host_cstr(buf);
 }
 
 void tcs_host_tcshost_sleep(int32_t milliseconds)

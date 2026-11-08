@@ -8,7 +8,7 @@ using System.Collections.Generic;
 
 /// <summary>
 /// <c>List&lt;T&gt;</c> の LINQ。System.Linq と同じ名前の演算を即時評価で持ち、列を返す演算は新しい
-/// <c>List&lt;T&gt;</c> を返す。tcs はこのファイルを user のコードと一緒に Lua / C に変換し、.NET は
+/// <c>List&lt;T&gt;</c> を返す。tcs はこのファイルを user のコードと一緒に C / VM の IL に変換し、.NET は
 /// そのまま実行するので、3 つの経路が同じ実装で動く (q.md Q18)。namespace を TinySystem と分けるのは、
 /// <c>using System;</c> と並べても Math / String / Random が曖昧にならないようにするため。
 /// <para>共通の契約: callback は各要素にちょうど 1 回、先頭から順に呼ぶ。走査するのは呼び出した
@@ -215,7 +215,7 @@ public static class Enumerable
 
     // MinBy / MaxBy は key の最小 / 最大の要素 (key の等しい要素は先に出た方)。key は各要素に 1 回
     // だけ求め、比べ方は OrderBy と同じ。空の列は fault (System.Linq は参照型の要素なら null を返すが、
-    // Lua は型を消すので値型と区別できない)
+    // tcs の Lua の出力は型を消したので値型と区別できなかった)
 
     public static T MinBy<T>(this List<T> list, Func<T, int> key) =>
         list[Best(list.Count, i => key(list[i]), (a, b) => a.CompareTo(b) < 0)];
@@ -293,7 +293,7 @@ public static class Enumerable
     }
 
     // Dictionary の Keys / Values も受け手にする (q.md Q18)。順序は挿入順 (§18。TinySystem/Collections.cs) で、List に写して
-    // List の版に渡す (Lua / C の Keys / Values はもともと List の写し)
+    // List の版に渡す (C / VM の Keys / Values も List の写し)
 
     public static List<TKey> Where<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, bool> predicate)
         where TKey : notnull => new List<TKey>(keys).Where(predicate);

@@ -64,16 +64,4 @@ public partial class DifferentialTests
         Assert.Equal(StringOrderExpected.ReplaceLineEndings("\n"),
             Backends.AssertParity(StringOrderProgram, "P"));
     }
-
-    // Lua の `<` は strcoll なので collate locale で順序が変わる。
-    // runtime の順序は locale に依らない
-    [Fact]
-    public void StringOrder_Lua_IgnoresCollateLocale()
-    {
-        var output = Backends.RunLua([StringOrderProgram], "P", """
-            assert(os.setlocale("en_US.UTF-8", "collate"), "no en_US.UTF-8 locale")
-            assert("a" < "B", "the collate locale does not change string <")
-            """);
-        Assert.Equal(StringOrderExpected.ReplaceLineEndings("\n"), output);
-    }
 }

@@ -3,7 +3,7 @@ using System.Text;
 namespace TinySystem.Text;
 
 // tcs の文字列は UTF-8。.NET の string だけが UTF-16 なので、文字と byte の位置はここで揃える。
-// tcs2c と Lua は runtime/utf8 の同じ手順の C を呼ぶ (結果の一致は tcs2c.Tests の DifferentialTests.Utf8)。
+// tcs の C と VM は runtime/utf8 の同じ手順の C を呼ぶ (結果の一致は tcs2c.Tests の DifferentialTests.Utf8)。
 
 /// <summary>string の文字 (Unicode scalar value、<c>EnumerateRunes</c> の 1 個) 単位の操作。どれも文字数に比例する時間がかかる。</summary>
 public static class Runes
@@ -44,7 +44,7 @@ public static class Runes
 }
 
 /// <summary>string の UTF-8 の byte 列の読み取り専用の view。添字は O(1)、Slice は byte を複製しない。
-/// .NET は作るときに 1 度だけ byte[] に変換し、tcs2c と Lua は文字列をそのまま指す。
+/// .NET は作るときに 1 度だけ byte[] に変換し、tcs の C と VM は文字列をそのまま指す。
 /// <c>default</c> は長さ 0 の view。</summary>
 public readonly struct Utf8Bytes
 {

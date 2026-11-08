@@ -1,9 +1,7 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// List.Add の文位置 lowering (#24): `table.insert(t, v)` ではなく
-/// `t[#t + 1] = v` を出力する。値意味論は CompileAndRunVm (tcs VM) で、Lua の出力形は
-/// table.insert の有無だけで検査する (完全一致は持たない)。
+/// List.Add の文位置と式位置 (#24)。receiver と引数の評価の順と値の意味を CompileAndRunVm (tcs VM と .NET) で確かめる。
 /// </summary>
 public class ListAddIndexTests
 {
@@ -28,7 +26,6 @@ public class ListAddIndexTests
             }
             """;
         Assert.Equal("303", Run(cs, "T.Test()"));
-        Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -50,7 +47,6 @@ public class ListAddIndexTests
             }
             """;
         Assert.Equal("2", Run(cs, "T.Test()"));
-        Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -73,7 +69,6 @@ public class ListAddIndexTests
             }
             """;
         Assert.Equal("3", Run(cs, "T.Test()"));
-        Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -99,7 +94,6 @@ public class ListAddIndexTests
             }
             """;
         Assert.Equal("23", Run(cs, "T.Test()"));
-        Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -141,7 +135,6 @@ public class ListAddIndexTests
             }
             """;
         Assert.Equal("22", Run(cs, "T.Test()"));
-        Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -166,7 +159,6 @@ public class ListAddIndexTests
             }
             """;
         Assert.Equal("33", Run(cs, "T.Test()"));
-        Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -190,7 +182,6 @@ public class ListAddIndexTests
             }
             """;
         Assert.Equal("824", Run(cs, "T.Test()"));
-        Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -237,7 +228,6 @@ public class ListAddIndexTests
             }
             """;
         Assert.Equal("12", Run(cs, "T.Test()"));
-        Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -261,6 +251,5 @@ public class ListAddIndexTests
             }
             """;
         Assert.Equal("20", Run(cs, "T.Test()"));
-        Assert.DoesNotContain("table.insert", Transpiler.Transpile(cs));
     }
 }

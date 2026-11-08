@@ -70,9 +70,9 @@ public partial class DifferentialTests
     }
 
     [CFact]
-    public void IntFormat_Int32BoundsPassOn64BitLua()
+    public void IntFormat_Int32Bounds()
     {
-        var output = Backends.RunLua(["""
+        var output = Backends.AssertParity(["""
             using System;
             public static class P
             {
@@ -83,7 +83,7 @@ public partial class DifferentialTests
                     Console.WriteLine($"{u:D}|{u:X}|{u:N0}|{m:D}|{m:X}|{m:N0}");
                 }
             }
-            """], "P", luaPath: Backends.Lua64Path);
+            """], "P");
         Assert.Equal("2147483647|7FFFFFFF|2,147,483,647|-2147483648|80000000|-2,147,483,648", output);
     }
 

@@ -1,9 +1,9 @@
 namespace TinyCs.Tests;
 
 // 値で比べる key (struct / record struct / struct の T? / record class) の
-// Dictionary はサブセット外。.NET は等しい値の key を同じ key とみなすが、Lua
-// table は table の同一性で引くので ContainsKey / 索引が黙って外れる。C backend
-// も受け付けないので、transpiler は Lua を出さない error、check は exit 1 (#185)
+// Dictionary はサブセット外。.NET は等しい値の key を同じ key とみなすが、Lua の
+// table は table の同一性で引いたので ContainsKey / 索引が黙って外れた。C backend
+// も受け付けないので、build を止める error、check は exit 1 (#185)
 [Collection(ConsoleCollection.Name)]
 public class DictValueKeyTests
 {
@@ -29,7 +29,7 @@ public class DictValueKeyTests
     [Fact]
     public void Transpile_ValueEqualityKeyIsBuildBlockingError()
     {
-        var result = Transpiler.TranspileWithDiagnostics([Source]);
+        var result = Checker.Check([Source]);
 
         Assert.Equal(4, result.Errors.Count);
         Assert.All(result.Errors, e => Assert.Contains(
@@ -41,7 +41,6 @@ public class DictValueKeyTests
         Assert.EndsWith("ValueEqualityDictionaryKey(S?)", result.Errors[2]);
         Assert.StartsWith("(13,17)", result.Errors[3]);
         Assert.EndsWith("ValueEqualityDictionaryKey(S)", result.Errors[3]);
-        Assert.Empty(result.Lua);
     }
 
     [Fact]

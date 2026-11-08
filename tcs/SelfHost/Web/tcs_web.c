@@ -1,7 +1,7 @@
 /* tcs の WebAssembly の host (Emscripten)。
    tcs2c が SelfHost/Compiler と SelfHost/Tool を C にした tcs.c を include し、SelfHost/Tool/TcsHost.cs の宣言を実装する。
    JS (tcs.mjs) は要求を引数に並べて tcs_web_call を呼び、Playground.Call が TcsHost.WriteOut で書いた応答を受け取る。
-   ファイルは無く、tcs と一緒に配るファイル (runtime/*.lua、lib/TinySystem/*.cs) は JS が tcs_web_tool_file で先に渡す。 */
+   ファイルは無く、tcs と一緒に配るファイル (lib/TinySystem/*.cs) は JS が tcs_web_tool_file で先に渡す。 */
 #include "tcs.c"
 
 #include <emscripten.h>
@@ -110,11 +110,6 @@ TcsString *tcs_host_tcshost_read_file(TcsString *path)
     return host_string("", 0);
 }
 
-TcsString *tcs_host_tcshost_read_stdin(void)
-{
-    return host_string("", 0);
-}
-
 TcsString *tcs_host_tcshost_write_file_atomic(TcsString *path, TcsString *text)
 {
     (void)path;
@@ -152,23 +147,6 @@ void tcs_host_tcshost_flush_out(void)
 {
 }
 
-TcsString *tcs_host_tcshost_env(TcsString *name)
-{
-    (void)name;
-    return host_string("", 0);
-}
-
-TcsString *tcs_host_tcshost_path_key(TcsString *path)
-{
-    return path;
-}
-
-TcsString *tcs_host_tcshost_file_identity(TcsString *path)
-{
-    (void)path;
-    return host_string("-", 1);
-}
-
 TcsString *tcs_host_tcshost_file_stamp(TcsString *path)
 {
     (void)path;
@@ -183,11 +161,6 @@ TcsString *tcs_host_tcshost_tool_file(TcsString *name)
             return host_string(host_tool_texts[i].data, host_tool_texts[i].length);
     }
     return host_string("", 0);
-}
-
-TcsString *tcs_host_tcshost_clock(void)
-{
-    return host_string("00:00:00", 8);
 }
 
 void tcs_host_tcshost_sleep(int32_t milliseconds)

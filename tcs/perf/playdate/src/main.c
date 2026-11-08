@@ -9,18 +9,12 @@
 #include "pd_log.h"
 #include "pd_shim.h"
 
-/* interp_runner.c (pd_api.h と lua.h の型衝突のため別 TU) */
-void perf_interp_run(const char *kernel_name, unsigned count);
-
 typedef enum Variant {
-    VARIANT_NATIVE,
-    VARIANT_AOT_HASH,
-    VARIANT_AOT_SLOT,
-    VARIANT_INTERP
+    VARIANT_NATIVE
 } Variant;
 
 static const char *const VARIANT_NAMES[] = {
-    "native", "aot-hash", "aot-slot", "interp"
+    "native"
 };
 
 typedef struct Job {
@@ -40,9 +34,6 @@ typedef struct Job {
 
 static const Job JOBS[] = {
     JOB_KERNELS(VARIANT_NATIVE),
-    JOB_KERNELS(VARIANT_AOT_SLOT),
-    JOB_KERNELS(VARIANT_AOT_HASH),
-    JOB_KERNELS(VARIANT_INTERP),
 };
 
 enum { JOB_COUNT = sizeof(JOBS) / sizeof(JOBS[0]) };
@@ -59,18 +50,7 @@ run_c_job(const Job *job)
     workload.name = job->kernel_name;
     workload.count = job->count;
 
-    switch (job->variant) {
-    case VARIANT_AOT_HASH:
-        result = perf_aot_hash_dispatch(&workload);
-        break;
-    case VARIANT_AOT_SLOT:
-        result = perf_aot_slot_dispatch(&workload);
-        break;
-    case VARIANT_NATIVE:
-    default:
-        result = perf_native_dispatch(&workload);
-        break;
-    }
+    result = perf_native_dispatch(&workload);
 
     perf_pd_log("%s,%s,%u,%.9f,%08x",
         job->kernel_name, VARIANT_NAMES[job->variant], job->count,
@@ -88,12 +68,7 @@ update(void *userdata)
         const Job *job = &JOBS[next_job];
 
         pd->system->resetElapsedTime();
-        if (job->variant == VARIANT_INTERP) {
-            perf_interp_run(job->kernel_name, job->count);
-        }
-        else {
-            run_c_job(job);
-        }
+        run_c_job(job);
         next_job++;
         if (next_job == JOB_COUNT) {
             perf_pd_log("perf: done (%d jobs)", JOB_COUNT);

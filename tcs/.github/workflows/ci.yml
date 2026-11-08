@@ -15,6 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # deps/csharpstandard (spec conformance の C# の仕様の例)
           submodules: recursive
           persist-credentials: false
 
@@ -33,7 +34,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           persist-credentials: false
 
       - name: Setup .NET
@@ -63,7 +63,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           persist-credentials: false
 
       - name: Setup .NET
@@ -108,7 +107,7 @@ jobs:
           path: selfbench.json
 
   # tcs2c で C にした tcs (SelfHost/native.sh) を 3 OS で作り、.NET の tcs と同じ出力を出すことを確かめる。
-  # 作った tcs と一緒に配るファイル (runtime/、lib/) を成果物にする
+  # 作った tcs と一緒に配るファイル (tcs c が埋め込む runtime/ の C、lib/) を成果物にする
   native:
     strategy:
       fail-fast: false

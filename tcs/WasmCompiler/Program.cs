@@ -1,6 +1,6 @@
-// browser-wasm 上で tcs Transpiler を JS へ公開する entry。
-// JS 側は dotnet.create() → getAssemblyExports("WasmCompiler") →
-// CompilerExports.Compile(requestJson) を呼ぶ。
+// browser-wasm 上で tcs の .NET の道具を JS へ公開する entry。
+// JS 側は dotnet.create() → getAssemblyExports("WasmCompiler") → SessionExports (補完、hover、整形) と
+// VmExports (tcs VM の増分 session) を呼ぶ。
 using System.Reflection;
 using System.Runtime.InteropServices.JavaScript;
 using System.Text.Json;
@@ -13,28 +13,14 @@ await Task.Delay(Timeout.Infinite);
 
 public sealed class CompileRequest
 {
-    /// <summary>transpile 対象 (path -> source)。</summary>
+    /// <summary>入力 (path -> source)。</summary>
     public Dictionary<string, string> Files { get; set; } = [];
 
-    /// <summary>型チェック専用の参照ソース (--ref 相当、Lua 出力なし)。</summary>
+    /// <summary>型チェック専用の参照ソース (--ref 相当)。</summary>
     public Dictionary<string, string>? Refs { get; set; }
-
-    /// <summary>--entry 相当。出力末尾に `return <Class>` を足す。</summary>
-    public string? EntryClass { get; set; }
 }
 
-public sealed class CompileResponse
-{
-    public bool Ok { get; set; }
-
-    /// <summary>成功時のみ。TinySystem runtime prelude 込みの完全な Lua。</summary>
-    public string? Lua { get; set; }
-
-    public List<string> Errors { get; set; } = [];
-    public List<string> Warnings { get; set; } = [];
-}
-
-/// <summary>SessionExports.Open の応答。</summary>
+/// <summary>SessionExports.OpenEditor の応答。</summary>
 public sealed class SessionOpenResponse
 {
     public bool Ok { get; set; }
@@ -42,25 +28,6 @@ public sealed class SessionOpenResponse
     public List<string> Warnings { get; set; } = [];
     public int Epoch { get; set; }
     public int Revision { get; set; }
-}
-
-/// <summary>SessionExports.Update の応答 (design doc §13)。</summary>
-public sealed class SessionUpdateResponse
-{
-    public bool Ok { get; set; }
-    public bool FastPath { get; set; }
-    public bool RequiresRestart { get; set; }
-    public List<string> RestartReasons { get; set; } = [];
-    public List<string> Errors { get; set; } = [];
-    public int Epoch { get; set; }
-    public int Revision { get; set; }
-    public long ParseUpdateMs { get; set; }
-    public long DiagnosticsMs { get; set; }
-    public long ComplianceMs { get; set; }
-    public long EmitMs { get; set; }
-    public int ParsedTreeCount { get; set; }
-    public int EmittedModuleCount { get; set; }
-    public int ArtifactBytes { get; set; }
 }
 
 /// <summary>SessionExports.Complete の応答 (T230)。</summary>
@@ -91,9 +58,7 @@ public sealed class HoverResponse
     PropertyNameCaseInsensitive = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(CompileRequest))]
-[JsonSerializable(typeof(CompileResponse))]
 [JsonSerializable(typeof(SessionOpenResponse))]
-[JsonSerializable(typeof(SessionUpdateResponse))]
 [JsonSerializable(typeof(CompleteResponse))]
 [JsonSerializable(typeof(HoverResponse))]
 public sealed partial class CompileJsonContext : JsonSerializerContext;
@@ -101,8 +66,6 @@ public sealed partial class CompileJsonContext : JsonSerializerContext;
 public static partial class CompilerExports
 {
     private static bool _referencesInjected;
-    private static string? _runtimeLua;
-    private static string? _registryLua;
 
     private static Stream Res(string name) =>
         typeof(CompilerExports).Assembly.GetManifestResourceStream(name)
@@ -127,106 +90,17 @@ public static partial class CompilerExports
         ];
         _referencesInjected = true;
     }
-
-    // Lua の変換と bridge snapshot が埋め込む runtime の Lua
-    internal static void EnsureLuaRuntime()
-    {
-        if (_runtimeLua != null)
-            return;
-        using var registry = new StreamReader(Res("runtime/module_registry.lua"));
-        _registryLua = registry.ReadToEnd();
-        using var runtime = new StreamReader(Res("runtime/tinysystem.lua"));
-        _runtimeLua = runtime.ReadToEnd();
-    }
-
-    internal static string RuntimeLua => _runtimeLua!;
-    internal static string RegistryLua => _registryLua!;
-
-    [JSExport]
-    public static string Compile(string requestJson)
-    {
-        try
-        {
-            EnsureLuaRuntime();
-            var req = JsonSerializer.Deserialize(
-                          requestJson, CompileJsonContext.Default.CompileRequest)
-                      ?? throw new InvalidOperationException("empty request");
-            var files = req.Files.ToArray();
-            var refs = req.Refs?.Values.ToArray();
-            var result = Transpiler.TranspileWithDiagnostics(
-                [.. files.Select(kv => kv.Value)],
-                [.. files.Select(kv => kv.Key)],
-                refs, req.EntryClass);
-            string? lua = null;
-            if (result.Success)
-                lua = LuaRuntime.CreateEmbeddedPrelude(_runtimeLua!) + result.Lua;
-            return JsonSerializer.Serialize(new CompileResponse
-            {
-                Ok = result.Success,
-                Lua = lua,
-                Errors = result.Errors,
-                Warnings = result.Warnings,
-            }, CompileJsonContext.Default.CompileResponse);
-        }
-        catch (Exception ex)
-        {
-            return JsonSerializer.Serialize(new CompileResponse
-            {
-                Ok = false,
-                Errors = [ex.ToString()],
-            }, CompileJsonContext.Default.CompileResponse);
-        }
-    }
 }
 
-// module mode の stateful session API (design doc §13)。single session 固定。
-// Open のたびに projectEpoch を発行し、全 response が epoch を echo する。
+// 補完と hover の stateful session API。single session 固定。
+// OpenEditor のたびに projectEpoch を発行し、全 response が epoch を echo する。
 // host は現在の epoch と一致しない response を破棄する (sample/言語切替の
 // in-flight response が新 project へ届く事故の防止)。
 public static partial class SessionExports
 {
-    private static IncrementalCompilationSession? _session;
     // 補完と hover だけの session (OpenEditor。compile しない)
     private static EditorSession? _editor;
     private static int _epoch;
-    private static string? _entryClass;
-
-    [JSExport]
-    public static string Open(string requestJson)
-    {
-        try
-        {
-            CompilerExports.EnsureReferences();
-            CompilerExports.EnsureLuaRuntime();
-            var req = JsonSerializer.Deserialize(
-                          requestJson, CompileJsonContext.Default.CompileRequest)
-                      ?? throw new InvalidOperationException("empty request");
-            _epoch++;
-            _entryClass = req.EntryClass;
-            _editor = null;
-            _session = new IncrementalCompilationSession(
-                req.Refs?.Values.ToArray());
-            _session.OpenProject([.. req.Files.Select(kv => (kv.Key, kv.Value))]);
-            var (errors, warnings) = _session.CollectDiagnostics();
-            return JsonSerializer.Serialize(new SessionOpenResponse
-            {
-                Ok = errors.Count == 0,
-                Errors = errors,
-                Warnings = warnings,
-                Epoch = _epoch,
-                Revision = _session.Revision,
-            }, CompileJsonContext.Default.SessionOpenResponse);
-        }
-        catch (Exception ex)
-        {
-            return JsonSerializer.Serialize(new SessionOpenResponse
-            {
-                Ok = false,
-                Errors = [ex.ToString()],
-                Epoch = _epoch,
-            }, CompileJsonContext.Default.SessionOpenResponse);
-        }
-    }
 
     // 補完と hover だけの session を開く。変換は別の compiler (tcs の wasm) が行い、ここは Roslyn の問い合わせだけに答える
     [JSExport]
@@ -239,8 +113,6 @@ public static partial class SessionExports
                           requestJson, CompileJsonContext.Default.CompileRequest)
                       ?? throw new InvalidOperationException("empty request");
             _epoch++;
-            _entryClass = req.EntryClass;
-            _session = null;
             _editor = new EditorSession([.. req.Files.Select(kv => (kv.Key, kv.Value))],
                 req.Refs?.Values.ToArray());
             return JsonSerializer.Serialize(new SessionOpenResponse
@@ -280,46 +152,6 @@ public static partial class SessionExports
         catch (Exception)
         {
             return content;
-        }
-    }
-
-    [JSExport]
-    public static string Update(int epoch, string path, string content)
-    {
-        try
-        {
-            var session = _session
-                ?? throw new InvalidOperationException("SessionExports.Open first");
-            if (epoch != _epoch)
-                throw new InvalidOperationException(
-                    $"stale epoch {epoch} (current {_epoch})");
-            var r = session.Update(path, content);
-            return JsonSerializer.Serialize(new SessionUpdateResponse
-            {
-                Ok = r.Success,
-                FastPath = r.FastPath,
-                RequiresRestart = r.RequiresRestart,
-                RestartReasons = r.RestartReasons,
-                Errors = r.Errors,
-                Epoch = _epoch,
-                Revision = session.Revision,
-                ParseUpdateMs = r.ParseUpdateMs,
-                DiagnosticsMs = r.DiagnosticsMs,
-                ComplianceMs = r.ComplianceMs,
-                EmitMs = r.EmitMs,
-                ParsedTreeCount = r.ParsedTreeCount,
-                EmittedModuleCount = r.EmittedModuleCount,
-                ArtifactBytes = r.ChangedArtifacts.Sum(a => a.Lua.Length),
-            }, CompileJsonContext.Default.SessionUpdateResponse);
-        }
-        catch (Exception ex)
-        {
-            return JsonSerializer.Serialize(new SessionUpdateResponse
-            {
-                Ok = false,
-                Errors = [ex.ToString()],
-                Epoch = _epoch,
-            }, CompileJsonContext.Default.SessionUpdateResponse);
         }
     }
 
@@ -386,34 +218,12 @@ public static partial class SessionExports
         Microsoft.CodeAnalysis.SyntaxTree Tree) ForkOrThrow(
         int epoch, string path, string content)
     {
-        if (_session == null && _editor == null)
-            throw new InvalidOperationException("SessionExports.Open first");
+        if (_editor == null)
+            throw new InvalidOperationException("SessionExports.OpenEditor first");
         if (epoch != _epoch)
             throw new InvalidOperationException(
                 $"stale epoch {epoch} (current {_epoch})");
-        var fork = _session != null ? _session.ForkWithContent(path, content) : _editor!.ForkWithContent(path, content);
+        var fork = _editor.ForkWithContent(path, content);
         return fork ?? throw new ArgumentException($"unknown module: {path}");
-    }
-
-    // bridge snapshot (§14.2)。JSON escape を避けるため raw Lua 文字列を返す。
-    // 失敗時は "--@@tcs_error: " 始まりの 1 行を返す (JS 側は prefix 判定)。
-    [JSExport]
-    public static string LinkSnapshot(int epoch)
-    {
-        try
-        {
-            var session = _session
-                ?? throw new InvalidOperationException("SessionExports.Open first");
-            if (epoch != _epoch)
-                throw new InvalidOperationException(
-                    $"stale epoch {epoch} (current {_epoch})");
-            return ModuleLinker.LinkSnapshot(session.Artifacts, session.Revision,
-                _entryClass, CompilerExports.RuntimeLua,
-                CompilerExports.RegistryLua, emitAck: true);
-        }
-        catch (Exception ex)
-        {
-            return "--@@tcs_error: " + ex.Message.Replace("\n", " ");
-        }
     }
 }

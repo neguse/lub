@@ -2,12 +2,11 @@ using System.Text;
 
 namespace TinyCs.Tests;
 
-// 型 table の chunk-local cache と Math 直接呼び出し (perf)。出力の形と、
-// cache が global 公開・宣言順・200 local 上限・hot reload を壊さないこと
+// Math の呼び出し、型の前方参照、多数の型と top-level の local、生成コードの名前と同名のローカル (tcs VM と .NET)
 public class ChunkLocalTests
 {
     [Fact]
-    public void MathMembers_CallLuaBuiltinsDirectly_WithoutRuntime()
+    public void MathMembers_Run()
     {
         const string Source = """
             using System;
@@ -20,16 +19,7 @@ public class ChunkLocalTests
                     (int)Math.Round(3.5f);
             }
             """;
-        var lua = Transpiler.Transpile(Source);
-        Assert.Contains("math.sqrt(", lua);
-        Assert.DoesNotContain("Math.Sqrt(", lua);
-        Assert.DoesNotContain("Math.Floor(", lua);
-        Assert.DoesNotContain("Math.Min(", lua);
-        // Round は banker's rounding の wrapper が必要なので直接呼ばない
-        Assert.Contains("Math.Round(", lua);
-
-        // runtime (Math wrapper) を持たない chunk でも直接呼ぶ分は動く。
-        // Round だけ runtime の wrapper を要するので別 run で確認する
+        // Round は banker's rounding。Round を含まない式と含む式を別に確かめる
         const string NoRound = """
             using System;
             public class T
@@ -46,33 +36,7 @@ public class ChunkLocalTests
     }
 
     [Fact]
-    public void TypeTables_AreChunkLocalAndStillGlobal()
-    {
-        const string Source = """
-            public class Counter
-            {
-                public static int Total = 0;
-                public static void Add(int n) { Total += n; }
-            }
-            public struct V { public int X; }
-            public enum Kind { A, B }
-            public class T
-            {
-                public static int Test() { Counter.Add(5); return Counter.Total; }
-            }
-            """;
-        var lua = Transpiler.Transpile(Source);
-        Assert.Matches(@"(?m)^local Counter, V, Kind, T$", lua);
-        Assert.Contains("Counter = {}; _ENV.Counter = Counter", lua);
-        Assert.Equal("5", TestHelper.CompileAndRunVm(Source, "T.Test()"));
-
-        // host (別 chunk) は global 経由で同じ table を引ける
-        var viaGlobal = TestHelper.RunLua(lua + "\nprint(_G.Counter.Total, _G.T.Test(), _G.Counter.Total)");
-        Assert.Equal("0\t5\t5", viaGlobal.Trim());
-    }
-
-    [Fact]
-    public void TypeTables_ForwardReferenceAcrossDeclarationOrder()
+    public void TypeReferences_ForwardAcrossDeclarationOrder()
     {
         const string Source = """
             public class A
@@ -86,29 +50,22 @@ public class ChunkLocalTests
                 public static B Make() { return new B(); }
             }
             """;
-        var lua = Transpiler.Transpile(Source);
-        // A の method は後方宣言の B を upvalue で引く (global 参照を残さない)
-        Assert.Matches(@"(?m)^local A, B$", lua);
         Assert.Equal("7", TestHelper.CompileAndRunVm(Source, "A.Test()"));
     }
 
     [Fact]
-    public void TypeTables_BeyondBudget_FallBackToGlobals()
+    public void ManyClasses_Run()
     {
         var sb = new StringBuilder();
         for (var i = 0; i < 150; i++)
             sb.Append($"public class C{i} {{ public static int V() {{ return {i}; }} }}\n");
         sb.Append("public class T { public static int Test() { return C0.V() + C149.V(); } }\n");
         var source = sb.ToString();
-        var lua = Transpiler.Transpile(source);
-        Assert.Contains("C0 = {}; _ENV.C0 = C0", lua);
-        Assert.Contains("\nC149 = {}\n", lua);
-        // 200 local 上限 (chunk 直下) に収まる
         Assert.Equal("149", TestHelper.CompileAndRunVm(source, "T.Test()"));
     }
 
     [Fact]
-    public void TypeTables_TopLevelLocalsReduceBudget()
+    public void ManyTopLevelLocalsAndClasses_Run()
     {
         var sb = new StringBuilder();
         for (var i = 0; i < 90; i++)
@@ -116,98 +73,10 @@ public class ChunkLocalTests
         sb.Append("System.Console.WriteLine(v89);\n");
         for (var i = 0; i < 150; i++)
             sb.Append($"public class C{i} {{ }}\n");
-        // 実行すると chunk 直下の local は 35 (prelude) + 90 + cache 分
-        var lua = Transpiler.Transpile(sb.ToString());
-        Assert.Equal("89", TestHelper.RunLua(lua).Trim());
+        Assert.Equal("89", TestHelper.CompileAndRunVmProgram([sb.ToString()]));
     }
 
-    [Fact]
-    public void TypeTables_NotCached_WhenDisabled()
-    {
-        var lua = Transpiler.Transpile(["public class T { }"], cacheTypeLocals: false);
-        Assert.DoesNotContain("_ENV.", lua);
-        Assert.DoesNotContain("tcs:type-locals", lua);
-    }
-
-    // reload は v1 chunk と別 chunk で走る (TestHelper.ComposeReload)。v1 の
-    // closure は chunk-local 経由で旧 table を引き続けるので、reload 後の
-    // 型 table は class / struct / enum とも旧 identity でなければならない
-    [Fact]
-    public void Reload_V1CachedChunk_KeepsClassIdentityAndStatics()
-    {
-        const string V1 = """
-            public class Config { public static int Speed = 3; }
-            public class Player
-            {
-                public int Move() { return Config.Speed; }
-            }
-            """;
-        const string V2 = """
-            public class Config { public static int Speed = 3; }
-            public class Player
-            {
-                public int Move() { return Config.Speed * 2; }
-            }
-            """;
-        var script = TestHelper.ComposeReload(V1,
-            "local p = Player.new()\nlocal cls, cfg = Player, Config\nConfig.Speed = 10",
-            V2,
-            """
-            assert(Player == cls and Config == cfg, "identity")
-            assert(p:Move() == 20, "v1 instance sees v2 body and live static")
-            Config.Speed = 4
-            assert(p:Move() == 8, "v2 body resolves the original Config")
-            print("ok")
-            """);
-        Assert.Equal("ok", TestHelper.RunLua(script).Trim());
-    }
-
-    // enum member の追加は旧 table の中身を v2 で置き換える (値の変更は restart)
-    [Fact]
-    public void Reload_EnumMemberAdded_KeepsTableIdentity()
-    {
-        const string V1 = "public enum Kind { A, B }";
-        const string V2 = "public enum Kind { A, B, C }";
-        var script = TestHelper.ComposeReload(V1, "local kind = Kind", V2,
-            """
-            assert(Kind == kind, "enum table identity")
-            assert(kind.C == 2, "v2 member through the v1 table")
-            print("ok")
-            """);
-        Assert.Equal("ok", TestHelper.RunLua(script).Trim());
-    }
-
-    [Fact]
-    public void Reload_V1CachedChunk_UsesV2StructLayout()
-    {
-        const string V1 = """
-            using System;
-            public struct V { public int X; public V(int x) { X = x; } }
-            public class Maker { public static Func<V> Make = () => new V(1); }
-            """;
-        const string V2 = """
-            using System;
-            public struct V
-            {
-                public int X; public int Y;
-                public V(int x) { X = x; Y = 7; }
-            }
-            public class Maker
-            {
-                public static Func<V> Make = () => new V(1);
-                public static int Get() => Make().X * 100 + Make().Y;
-            }
-            """;
-        var script = TestHelper.ComposeReload(V1, "local v = V", V2,
-            """
-            assert(V == v, "struct table identity")
-            assert(Maker.Get() == 107, "v1 closure builds the v2 layout")
-            print("ok")
-            """);
-        Assert.Equal("ok", TestHelper.RunLua(script).Trim());
-    }
-
-    // emit が素の global で呼ぶ Lua 標準 table と同名のローカルは写す
+    // 生成コードが使う名前 (Lua の標準 table、tcs_math、tcs_utf8 など) と同名のローカル
     [Fact]
     public void LocalsNamedLikeLuaStdGlobals_DoNotShadowEmittedCalls()
     {

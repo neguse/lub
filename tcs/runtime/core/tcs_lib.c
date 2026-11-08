@@ -159,8 +159,8 @@ tcs_math_max(float a, float b)
     return signbit(b) ? a : b;
 }
 
-/* C# Math.Round (banker's)。digits 付きは runtime の Lua 実装を
-   float 演算のまま写す。0 に丸めた結果は x の符号を持つ */
+/* C# Math.Round (banker's)。digits 付きは
+   float 演算のまま丸める。0 に丸めた結果は x の符号を持つ */
 static float
 tcs_math_round(float x, int32_t digits, int has_digits)
 {
@@ -655,7 +655,7 @@ tcs_dict_clear(TcsDict *dict)
 
 /* ---- Random: Lua 5.5 lmathlib の xoshiro256** を LUA_32BITS 構成
    (lua_Integer / lua_Unsigned = 32bit、lua_Number = float、FIGS = 24)
-   のまま移植する。seed 固定時は Lua backend と同じ列になる ---- */
+   のまま移植する。seed 固定時は tcs VM と同じ列になる ---- */
 /* TinySystem.Random の instance。GC object (pointer slot なし) で、
    Shared は static 1 個 (heap 外なので GC は触らない) */
 typedef struct TcsRandom { uint64_t s[4]; } TcsRandom;
@@ -775,7 +775,7 @@ tcs_rand_below(TcsRandom *r, int32_t min, int32_t max)
     return tcs_rand_range(r, min, max == min ? min : max - 1);
 }
 
-/* ---- char (整数 code unit、ASCII 判定 / 変換。Lua runtime の Char と同じ表) ---- */
+/* ---- char (整数 code unit、ASCII 判定 / 変換。tcs VM の Char と同じ表) ---- */
 static TcsString *
 tcs_string_from_byte(int32_t code)
 {

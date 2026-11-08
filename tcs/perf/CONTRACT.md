@@ -1,18 +1,14 @@
 # perf 実装契約 (T212 PC 測定)
 
-PC 測定の実装仕様 (背景・KPI floor は `perf/README.md`)。全変種で bit 一致する digest を
-出すため、演算列・定数・乱数を厳密にここで固定する。
+PC 測定の実装仕様 (背景・KPI floor は `perf/README.md`)。native の変種と tcs の C と VM の経路
+(`Transpiler.Tests/DigestKernels/`) で bit 一致する digest を出すため、演算列・定数・乱数を厳密にここで固定する。
 
 ## 共通
 
 - f32 演算のみ。libm 禁止。C は `-O2 -ffp-contract=off -fwrapv`、float 演算は
   すべて `float` 型 (excess precision 排除: `-fexcess-precision=standard`)
-- Lua 実行は LUA_32BITS ビルド (`deps/lua/lua32`。CMake 変数
-  `PERF_LUA32` で上書き可)。aot-hash / aot-slot の C 実装は同じ
-  LUA_32BITS 構成の liblua を embed する (`deps/lua` のソースから
-  perf の CMake で LUA_32BITS 付きビルド)
 - 乱数: LCG。`state = (state * 1103515245 + 12345) & 0x3FFFFFFF`、
-  戻り値はその state。C は uint32_t で計算して & 後に int32 へ (Lua の
+  戻り値はその state。C は uint32_t で計算して & 後に int32 へ (i32 の
   整数 wrap + `&` と bit 一致)。初期 seed = 12345
 - `frand(lo, hi)`: `lo + (lcg() % 1000) * (1/1000.0f) * (hi - lo)`
   (演算順そのまま。% は非負なので floor/trunc 差なし)
@@ -21,8 +17,7 @@ PC 測定の実装仕様 (背景・KPI floor は `perf/README.md`)。全変種�
 ## digest (FNV-1a 32bit)
 
 - `h = 2166136261; h = (h ~ byte) * 16777619` を u32 wrap で
-- f32 値は IEEE754 bit 列 4 byte (little endian) を byte 順に投入。
-  Lua 側は `string.pack("<f", v)`
+- f32 値は IEEE754 bit 列 4 byte (little endian) を byte 順に投入
 - 各 kernel の「digest 対象」列を全変種で同順に投入
 
 ## kernel 1: sprite_update
@@ -44,7 +39,7 @@ PC 測定の実装仕様 (背景・KPI floor は `perf/README.md`)。全変種�
 - entity: x, y, vx, vy (f32)。生成時 x=frand(0,400), y=frand(0,240),
   vx=frand(-30,30), vy=frand(-30,30)
 - 毎フレーム: 生存全体に sprite_update と同じ移動+反射 (frame 無し)
-- naive 変種: 生成のたび新 allocation (Lua: 新 table / native: malloc+free)。
+- naive 変種: 生成のたび新 allocation (native: malloc+free)。
   pool 変種: 事前確保スロットの再利用
 - digest 対象: 最終生存体を生成順に x, y, vx, vy
 
@@ -63,33 +58,21 @@ PC 測定の実装仕様 (背景・KPI floor は `perf/README.md`)。全変種�
 
 ## 変種
 
-- interp: 上記を素の Lua (sequence table / naive は table 生成)。
-  sprite/particle は record 的 table `{x=..,y=..}` (hash access) で書く
-- aot-hash: C から Lua C API で同じ table 構造を操作
-  (lua_getfield/lua_setfield 相当。文字列 key は事前 intern した
-  lua_pushstring + lua_rawget でよい)
-- aot-slot: C から Lua table の配列部 slot (lua_rawgeti/lua_rawseti、
-  1..4 番 slot = x,y,vx,vy) を操作
 - native: 素の C struct 配列
-- jit-off: luajit があれば `-joff` で interp と同じ Lua を実行 (無ければ skip)
 
 ## 測定・出力
 
 - 実行時間: kernel×変種ごとに 7 回実行し median、ms/frame で出力
 - 出力形式 (1 行 1 結果): `kernel,variant,N,ms_per_frame,digest`
-- 全変種の digest 一致を harness が検証し、不一致は exit 1
-- 成果物: `perf/` 以下に CMakeLists.txt + C ソース + lua ソース +
-  `run.sh` (ビルド→実行→表形式サマリ)。結果は `perf/results-pc.md` へ
-  (実測値表 + aot-slot/native 比 + 合否解釈のどちらに落ちたか)
+- 実行ごとの digest の一致を harness が検証し、不一致は exit 1
+- 成果物: `perf/` 以下に CMakeLists.txt + C ソース +
+  `run.sh` (ビルド→実行→表形式サマリ)。`perf/results-pc.md` は Lua の変種と並べた測定の記録
 
-## tcs 側実測 digest (T215 harness、lua32 実行)
+## tcs 側の digest
 
-TinyC# → Lua (tcs transpiler) 経由の digest。perf 変種はこれと一致すべき:
+tcs の C と VM の経路の digest (`tcs2c.Tests` の SampleParityTests、`tcsvm/run-tests.sh`、`tcs2c/verify-digests.sh`)。native の変種はこれと一致すべき:
 
-- sprite_update (N=256): `e8814b32` — perf 全変種と一致確認済み
+- sprite_update (N=256): `e8814b32` — native と一致
 - spawn_churn: `9274159d` — 同上 (解釈統一: 開始時に n 体充填、毎フレーム
   spawn 32 で最古を上書き → 生存全体を最古→最新順に更新)
 - particles (N=4096): `8bf97e09` — 同上
-
-3 kernel すべてで native C / aot-hash / aot-slot / interp / jit-off /
-TinyC#→Lua (tcs) の 6 実装が bit 一致 (2026-07-18 PC 実測)。

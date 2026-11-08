@@ -1,16 +1,16 @@
 namespace TinyCs.Tests;
 
 // Lua 予約語 (local / end / nil ...) と同名のローカル束縛は、宣言と全参照
-// (closure 内含む) を安全な名前 (`local_`、衝突時は `_` を足す) に写して emit する。
+// (closure 内含む) を IL では安全な名前 (`local_`、衝突時は `_` を足す) に写す。診断はせず、VM で C# と同じに動く。
 // 予約語と同名の member は宣言で error になる。self は予約のままで、
 // ここでは扱わない (ReservedIdentifier として拒否される。`__` で始まる名前は
 // DoubleUnderscoreIdentifier の error)。
 public class LuaLocalRenameTests
 {
     [Fact]
-    public void LocalNamedLocal_RunsAndEmitsSafeName()
+    public void LocalNamedLocal_RunsWithoutDiagnostic()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class Runner
             {
                 public static int Run()
@@ -24,8 +24,6 @@ public class LuaLocalRenameTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.DoesNotContain(result.Warnings,
             w => w.Contains("LuaKeywordIdentifier"));
-        Assert.Contains("local local_ = 1", result.Lua);
-        Assert.Contains("return local_", result.Lua);
         Assert.Equal("1", TestHelper.CompileAndRunVmTopLevel("""
             var r = Runner.Run();
 
@@ -157,48 +155,6 @@ public class LuaLocalRenameTests
         Assert.Equal("3", output);
     }
 
-    // incremental session の fast path (body edit → EmitSingleMethod の splice)
-    // でも写した tree の method を emit し、full emit と byte 一致する
-    [Fact]
-    public void KeywordLocal_SurvivesIncrementalSpliceEmit()
-    {
-        const string fileA = """
-            public class Counter
-            {
-                public int Value;
-                public void Add(int end) { var local = end; Value = Value + local; }
-                public static int Magic() { return 10; }
-            }
-            """;
-        const string fileB = """
-            public class Game
-            {
-                public static int Play()
-                {
-                    var c = new Counter();
-                    c.Add(Counter.Magic());
-                    return c.Value;
-                }
-            }
-            """;
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([("game/Counter.cs", fileA), ("game/Game.cs", fileB)]);
-        var edited = fileA.Replace("Value = Value + local;",
-            "var until = 1; Value = Value + local + until;");
-        var result = session.Update("game/Counter.cs", edited);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.True(result.FastPath);
-        var spliced = session.Artifacts.Single(a => a.ModuleId == "game/Counter.cs").Lua;
-
-        var fresh = new IncrementalCompilationSession();
-        fresh.OpenProject([("game/Counter.cs", edited), ("game/Game.cs", fileB)]);
-        var full = fresh.Artifacts.Single(a => a.ModuleId == "game/Counter.cs").Lua;
-        Assert.Equal(full, spliced);
-        Assert.Contains("local until_ = 1", spliced);
-        var lua = string.Join("", session.Artifacts.Select(a => a.Lua));
-        Assert.Equal("11", TestHelper.RunLua($"{lua}\nprint(Game.Play())").Trim());
-    }
-
     [Fact]
     public void ReservedIdentifiers_StayRejected()
     {
@@ -327,5 +283,4 @@ public class LuaLocalRenameTests
             "public static string Name() => A.V.Name(7); public static int One()");
         Assert.Equal("A_V", TestHelper.CompileAndRunVm(source, "Runner.Name()"));
     }
-
 }

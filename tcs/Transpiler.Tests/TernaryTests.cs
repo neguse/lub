@@ -37,7 +37,7 @@ public class TernaryTests
     [Fact]
     public void Ternary_FalsyTrueValue()
     {
-        // true 側が 0 (Lua では falsy) でも `and/or` に落とさず if 文で選ぶ
+        // true 側が 0 でも true 側を選ぶ
         var result = TestHelper.CompileAndRunVm("""
             public class T
             {
@@ -51,10 +51,7 @@ public class TernaryTests
         Assert.Equal("0", result);
     }
 
-    // ---- 式位置の条件式は temp local + if 文に下ろす (#25)。値意味論は
-    // CompileAndRunVm (dotnet differential 込み)、Lua の出力形は IIFE の有無だけ検査 ----
-
-    private const string Iife = "end)()";
+    // ---- 式位置の条件式 (#25)。値意味論は CompileAndRunVm (dotnet differential 込み) ----
 
     private static string Run(string cs, string expr) =>
         TestHelper.CompileAndRunVm(cs, expr);
@@ -69,7 +66,6 @@ public class TernaryTests
             }
             """;
         Assert.Equal("5", Run(cs, "T.Pick(false, 3, 5)"));
-        Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -85,7 +81,6 @@ public class TernaryTests
         Assert.Equal("16", Run(cs, "T.Mid(false, 10)"));
         Assert.Equal("13", Run(cs, "T.Two(true, true)"));
         Assert.Equal("24", Run(cs, "T.Two(false, false)"));
-        Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -111,7 +106,6 @@ public class TernaryTests
         Assert.Equal("3", Run(cs, "T.InLocal(25)"));
         Assert.Equal("2", Run(cs, "T.InLocal(15)"));
         Assert.Equal("1", Run(cs, "T.InLocal(5)"));
-        Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -136,7 +130,6 @@ public class TernaryTests
         Assert.Equal("42", Run(cs, "T.Args(false)"));
         Assert.Equal("10", Run(cs, "T.Receiver(false)"));
         Assert.Equal("<yes>", Run(cs, "T.Interp(true)"));
-        Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -208,7 +201,6 @@ public class TernaryTests
         Assert.Equal("1", Run(cs, "T.Chain(\"abc\", true)"));
         Assert.Equal("0", Run(cs, "T.Chain(\"abc\", false)"));
         Assert.Equal("0", Run(cs, "T.Chain(null, true)"));
-        Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -257,7 +249,6 @@ public class TernaryTests
         Assert.Equal("10", Run(cs, "T.DoWhile(true)"));
         Assert.Equal("6", Run(cs, "T.DoWhile(false)"));
         Assert.Equal("60", Run(cs, "T.ForeachColl(false)"));
-        Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -279,7 +270,6 @@ public class TernaryTests
         Assert.Equal("2", Run(cs, "T.Test(5, false)"));
         Assert.Equal("3", Run(cs, "T.Test(0, true)"));
         Assert.Equal("4", Run(cs, "T.Test(1, true)"));
-        Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -311,7 +301,6 @@ public class TernaryTests
         Assert.Equal("12", Run(cs, "T.Test(false)"));
         Assert.Equal("1", Run(cs, "T.Outer(true)"));
         Assert.Equal("3", Run(cs, "T.Outer(false)"));
-        Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -407,7 +396,7 @@ public class TernaryTests
     [Fact]
     public void Ternary_ManyInOneBody_TempsStayScoped()
     {
-        // Lua の local 上限 (200) を temp で踏まないこと
+        // 条件式の temp を多く使う本文も動く
         var body = string.Join("\n", Enumerable.Range(0, 230)
             .Select(i => $"        sum += (i % 2 == 0 ? {i} : 1) * 2;"));
         var cs = $$"""
@@ -422,7 +411,6 @@ public class TernaryTests
             }
             """;
         Assert.Equal("460", Run(cs, "T.Test(1)"));
-        Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
     [Fact]
@@ -446,7 +434,6 @@ public class TernaryTests
         Assert.Equal("mx2", Run(cs, "T.Test(null, \"2\", true)"));
         Assert.Equal("mmxy", Run(cs, "T.Test(null, null, true)"));
         Assert.Equal("mmxz", Run(cs, "T.Test(null, null, false)"));
-        Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
 
     [Fact]
