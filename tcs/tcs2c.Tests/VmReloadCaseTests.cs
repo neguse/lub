@@ -156,6 +156,27 @@ public class VmReloadCaseTests
         Assert.Equal("3 0 5 0 1", Reload(v1, v2));
     }
 
+    // heap の object が struct を持たなくても、static の struct の値は field の名前で組み直す (#451)
+    [Fact]
+    public void StructStaticOfStructType_IsRelaidOutWithoutHeapHolder()
+    {
+        if (!Backends.VmEnabled) return;
+        var v1 = """
+            public struct Vec2 { public float X; public float Y; }
+            public static class Holder { public static Vec2 Pos; }
+            """ + Game("Holder.Pos.X = 3; Holder.Pos.Y = 4;", "");
+        var renamed = """
+            public struct Vec2 { public float X; public float Z; }
+            public static class Holder { public static Vec2 Pos; }
+            """ + Game("", "Console.WriteLine($\"{Holder.Pos.X} {Holder.Pos.Z}\");");
+        Assert.Equal("3 0", Reload(v1, renamed));
+        var added = """
+            public struct Vec2 { public float X; public float Y; public int N; }
+            public static class Holder { public static Vec2 Pos; }
+            """ + Game("", "Console.WriteLine($\"{Holder.Pos.X} {Holder.Pos.Y} {Holder.Pos.N}\");");
+        Assert.Equal("3 4 0", Reload(v1, added));
+    }
+
     // record struct の positional parameter (field) も組み直す
     [Fact]
     public void RecordStructField_IsRelaidOut()

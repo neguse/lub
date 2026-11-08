@@ -922,6 +922,8 @@ public sealed class ModuleBuilder
     /// <summary>reload の計画の入力: 型記述子の表と static の (型、field)。</summary>
     public List<TypeTableEntry> Describe(out List<StaticKey> statics)
     {
+        // Write と同じく static の field の struct の型を表に足す (heap の object が持たない struct も、reload の計画で field の名前で移す)
+        foreach (var s in _staticFields) FieldInfo(s.Type);
         var entries = new List<TypeTableEntry>();
         for (int i = 0; i < _types.Count; i++) entries.Add(TypeEntry(_types[i]));
         statics = new List<StaticKey>();
