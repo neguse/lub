@@ -979,18 +979,19 @@ public sealed class IlExporter
         // interface の property を自動実装の property か field で実装する: accessor を足す (interface 経由の読み書き)
         if (!t.IsInterface && !t.IsStruct)
         {
+            // 済みの accessor は "get_X" / "set_X" で数える (getter と setter を別々の interface が求めることがある)
             var done = new List<string>();
             foreach (var i in IlTypes.AllInterfaces(t))
             {
                 foreach (var p in i.Decl!.Members)
                 {
-                    if (p.Kind != SymKind.Property || done.Contains(p.Name)) continue;
+                    if (p.Kind != SymKind.Property) continue;
                     var impl = ImplementingMember(t, p.Name);
                     if (impl == null || IlBuild.IsCustomProperty(impl)) continue;
-                    done.Add(p.Name);
                     var type = IlTypes.Display(impl.Type);
-                    if (p.HasGetter)
+                    if (p.HasGetter && !done.Contains("get_" + p.Name))
                     {
+                        done.Add("get_" + p.Name);
                         var g = new ExMethod();
                         g.Name = "get_" + p.Name;
                         g.ReturnType = type;
@@ -999,8 +1000,9 @@ public sealed class IlExporter
                         g.Body = new IlBlock(body);
                         methods.Add(g);
                     }
-                    if (p.HasSetter || p.IsInit)
+                    if ((p.HasSetter || p.IsInit) && !done.Contains("set_" + p.Name))
                     {
+                        done.Add("set_" + p.Name);
                         var s = new ExMethod();
                         s.Name = "set_" + p.Name;
                         s.Parameters.Add("value");

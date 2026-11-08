@@ -128,4 +128,43 @@ public partial class DifferentialTests
             7
             """.ReplaceLineEndings("\n"), output);
     }
+
+    // `?.` / `?[]` の結果を既存の local に代入すると、受け手が null なら値なしになる (#435)
+    [CFact]
+    public void ConditionalAccess_ReassignLocalToNull()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using System.Collections.Generic;
+            public class C { public int N = 5; public string Name = "c"; public int Get() { return N + 1; } }
+            public static class P
+            {
+                public static void Main()
+                {
+                    List<int> values = new List<int> { 7 };
+                    int? n = values?[0];
+                    Console.WriteLine(n.HasValue);
+                    values = null;
+                    n = values?[0];
+                    Console.WriteLine(n.HasValue + "," + n.GetValueOrDefault(42));
+                    C c = new C();
+                    int? f = c?.N;
+                    int? g = c?.Get();
+                    string s = c?.Name;
+                    c = null;
+                    f = c?.N;
+                    g = c?.Get();
+                    s = c?.Name;
+                    Console.WriteLine(f.HasValue + "," + g.HasValue + "," + (s == null));
+                    var items = new List<C> { new C(), null, new C() };
+                    foreach (var it in items)
+                    {
+                        int? m = it?.N;
+                        Console.WriteLine(m.HasValue);
+                    }
+                }
+            }
+            """, "P");
+        Assert.Equal("True\nFalse,42\nFalse,False,True\nTrue\nFalse\nTrue", output);
+    }
 }

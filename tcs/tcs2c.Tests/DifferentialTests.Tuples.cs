@@ -235,4 +235,27 @@ public partial class DifferentialTests
             """;
         Backends.AssertParityLib(source, "P", 5);
     }
+
+    // 右辺の変数の成分へ分解しても、右辺は代入の前の値を読む (#417)
+    [CFact]
+    public void Deconstruct_IntoComponentsOfSource()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public static class P
+            {
+                public static void Main()
+                {
+                    (int A, int B) t = (1, 2);
+                    (t.B, t.A) = t;
+                    Console.WriteLine(t.A + "," + t.B);
+                    (int A, int B) u = (3, 4);
+                    int x;
+                    ((u.B, u.A), x) = (u, 7);
+                    Console.WriteLine(u.A + "," + u.B + "," + x);
+                }
+            }
+            """, "P");
+        Assert.Equal("2,1\n4,3,7", output);
+    }
 }

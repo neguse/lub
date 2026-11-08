@@ -148,7 +148,8 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   `IlCall("S.M", [receiver, args...])`。receiver が C# の「変数」(local /
   parameter / field / 配列要素 / this) なら place をそのまま渡し、変異は
   その場に残る。rvalue (property / List indexer / 呼び出し結果) は copy を
-  渡し、変異は捨てられる (C# と同じ)。backend は place のアドレス渡し
+  渡し、変異は捨てられる (C# と同じ)。rvalue の struct の field (auto-property を含む
+  property の結果の `.Inner`) と、宣言した型の constructor の外の readonly field も値で、copy を渡す。backend は place のアドレス渡し
   (C: `Tcs_S *self`) で copy を省いてよい
 - explicit ctor は `IlCall("S.ctor", args)` (複数あれば `S.ctor__float` の形): zero 値 → field initializer →
   本文の順。`new S()` は ctor を通らない zero 値 (IlNewObj、initializer も

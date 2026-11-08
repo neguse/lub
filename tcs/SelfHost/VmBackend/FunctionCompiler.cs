@@ -1077,9 +1077,12 @@ public sealed class FunctionCompiler
             var vr = Lookup(v.Name);
             if (vr != null)
             {
-                if (vr.K == VarKind.Reg)
-                    // 結果を local へ直接書く (式の最後の命令だけが dest を書くので、右辺が local を読んでもよい)
+                // 結果を local へ直接書く。with / 初期化子 / `??` などは dest を書いてから残りを評価するので、
+                // 最後の命令だけが dest を書く形でない右辺が local を読むなら temp を経る
+                if (vr.K == VarKind.Reg && (WritesDestLast(value) || !MayRead(value, v.Name)))
                     ExprAs(value, vr.Type, vr.Val!);
+                else if (vr.K == VarKind.Reg)
+                    Store(vr.Val!, ExprAs(value, vr.Type, null));
                 else
                     WriteVar(vr, ExprAs(value, vr.Type, null));
                 return;
@@ -1103,6 +1106,36 @@ public sealed class FunctionCompiler
         var place = PlaceOf(tgt);
         var val = ExprAs(value, place.Type, null);
         StorePlace(place, val);
+    }
+
+    // 子を temp に評価してから最後の命令だけで dest を書く式 (dest を子に渡さない)
+    private static bool WritesDestLast(IlExpr e)
+    {
+        switch (e)
+        {
+            case IlLit:
+            case IlVar:
+            case IlField:
+            case IlIndex:
+            case IlLen:
+            case IlUn:
+            case IlNumericConvert:
+                return true;
+            case IlBin b:
+                return b.Op != IlBinOp.And && b.Op != IlBinOp.Or;
+        }
+        return false;
+    }
+
+    // node (IL の式か文) の中に変数 name の出現があるか。名前で数えるので保守的
+    private static bool MayRead(object node, string name)
+    {
+        if (node is IlVar x) return x.Name == name;
+        foreach (var c in IlNodes.Children(node))
+        {
+            if (MayRead(c, name)) return true;
+        }
+        return false;
     }
 
     private void WriteVar(Var v, Val val)
@@ -4957,23 +4990,28 @@ public sealed class FunctionCompiler
         while (recvExpr is IlParen pp) recvExpr = pp.E;
         Place? place = null;
         if (IsVariable(recvExpr)) place = PlaceOf(recvExpr);
-        Val selfVal;
-        if (place != null) selfVal = LoadPlace(place, null);
-        else selfVal = ExprAs(call.Args[0], selfType);
+        // place の受け手は C# では参照で渡るので、self の値は引数を評価した後に読む (引数が要素を書き換えても、その後の値に呼ぶ)
+        Val? selfVal = null;
+        if (place == null) selfVal = ExprAs(call.Args[0], selfType);
         var allT = new List<VType>();
         allT.Add(selfType);
         for (var i = 1; i < call.Args.Count; i++) allT.Add(inTypes[i - 1]);
         var block = Block(LeafTypes(allT));
         var at = block;
+        var selfSlot = new Val(selfType, P5Regs.Range(block, _m.Leaves(selfType).Count));
         for (var i = 0; i < allT.Count; i++)
         {
             var t = allT[i];
             var n = _m.Leaves(t).Count;
             var slot = new Val(t, P5Regs.Range(at, n));
-            if (i == 0) Store(slot, selfVal);
+            if (i == 0)
+            {
+                if (selfVal != null) Store(slot, selfVal);
+            }
             else ExprAs(call.Args[i], t, slot);
             at += n;
         }
+        if (place != null) LoadPlace(place, selfSlot);
         var withSelf = new List<VType>();
         foreach (var x in rets) withSelf.Add(x);
         withSelf.Add(selfType);

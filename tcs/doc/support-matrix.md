@@ -419,7 +419,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 修飾子 | 状態 | 備考 |
 |--------|:----:|------|
 | `ref` | **N/A** | ユーザー定義メソッドの宣言は TCS1001 `RefParameter`、`--ref` host メソッドへの `ref` 引数は TCS1001 `RefArgument`。ref の戻り値は TCS1001 `RefType` |
-| `out` | **Y** | 自作メソッドは `out var` / `out T x` / `out _` と、前もって宣言した局所変数 (lambda に capture されない物) を渡せる (tcs VM は戻り値の後ろの register で返し、C はポインタで写す)。field、配列の要素、parameter、lambda に capture される局所変数を渡すのは TCS1001 (`OutArgumentNotDeclaration`。受け手には呼び出しが正常に終わってから書くので、呼び出しの中から見える受け手は C# と違って見える)。delegate / lambda / constructor の out は TCS1001 (`OutParameter`)。`--ref` の host メソッドと BCL (`TryGetValue` / `TryParse`) は宣言済みの変数も受ける |
+| `out` | **Y** | 自作メソッドは `out var` / `out T x` / `out _` と、前もって宣言した局所変数 (lambda に capture されない物) を渡せる (tcs VM は戻り値の後ろの register で返し、C はポインタで写す)。field、配列の要素、parameter、lambda に capture される局所変数を渡すのは TCS1001 (`OutArgumentNotDeclaration`。受け手には呼び出しが正常に終わってから書くので、呼び出しの中から見える受け手は C# と違って見える)。同じ局所変数を 1 つの呼び出しの 2 つの out に渡すのも TCS1001 (`OutArgumentDuplicate`。呼び出しの中で parameter が別名になる)。delegate / lambda / constructor の out は TCS1001 (`OutParameter`)。`--ref` の host メソッドと BCL (`TryGetValue` / `TryParse`) は宣言済みの変数も受ける |
 | `in` (C# 7.2) | **N/A** | ユーザー定義メソッドの宣言は TCS1001 `InParameter`、`--ref` host メソッドへの `in` 引数は TCS1001 `InArgument` |
 | `ref readonly` (C# 12) | **N/A** | TCS1001 `RefParameter` / `RefType` |
 | `params` | **-** | |

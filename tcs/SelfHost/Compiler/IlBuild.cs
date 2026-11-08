@@ -388,6 +388,14 @@ public sealed class IlBuild
             }
             case NodeKind.Assign:
                 return BuildAssignInto(expr, origin, acc);
+            // `new W();`: constructor の副作用のために作り、値は捨てる
+            case NodeKind.New:
+            {
+                var created = BuildExpr(expr);
+                if (created == null) return false;
+                acc.Add(new IlCallStat(created, origin));
+                return true;
+            }
         }
         return UnportedStat("expression statement", expr);
     }
@@ -906,7 +914,7 @@ public sealed class IlBuild
     {
         var stats = new List<IlStat>();
         IlExpr read;
-        var prop = BuildPropTarget(operand, false);
+        var prop = BuildPropTarget(operand, true);
         if (prop != null)
         {
             foreach (var st in prop.Setup) stats.Add(st);
@@ -1485,10 +1493,11 @@ public sealed class IlBuild
         var members = DeconstructMembers(type, target.Items.Count);
         if (members == null || members.Count != target.Items.Count) return false;
         var holder = value;
-        if (!(value is IlVar))
+        // 分解の temp でない値 (user の変数を含む) は temp に置く。代入先が右辺の変数の成分でも、右辺は代入の前の値を読む
+        if (!(value is IlVar v && v.Name.StartsWith("__tcs_d")))
         {
             var temp = NewDeconstructTemp();
-            stats.Add(new IlLocal(temp, value, type != null ? IlTypes.Display(type) : null, null));
+            stats.Add(new IlLocal(temp, (value is IlVar) ? CopyIfMutableStruct(type, value) : value, type != null ? IlTypes.Display(type) : null, null));
             holder = new IlVar(temp, null);
         }
         for (int i = 0; i < members.Count; i++)
@@ -2963,10 +2972,11 @@ public sealed class IlBuild
                 acc.Add(new IlIf(Arm(at.Cond, thenB), elseB, origin));
                 return true;
             }
+            // 一致しないとき値なしの形 (`x = a?.b` の a が null) は、if を代入にすると前の値が残るので IIFE のまま
             if (value is IlIife ai && target is IlVar)
             {
                 var shape = TryGetValueChainShape(ai);
-                if (shape != null)
+                if (shape != null && shape.Complete)
                 {
                     foreach (var st in shape.Setup) acc.Add(IlTree.WithOrigin(st, origin));
                     if (shape.Chain != null) acc.Add(IlTree.WithOrigin(SwitchChainAsAssigns(shape.Chain, target), origin));
@@ -3860,6 +3870,9 @@ public sealed class IlBuild
         bool isIncByOne = (inc.Kind == NodeKind.PostIncDec && inc.Text == "++")
             || (inc.Kind == NodeKind.Assign && inc.Text == "+=" && StripConv(inc.B!).Kind == NodeKind.IntLit && SourceText(StripConv(inc.B!)) == "1");
         if (!isIncByOne) return null;
+        // 増分の先が loop の変数でなければ (`for (int i = 0; i < n; j++)`) 一般の for
+        var incTarget = StripConv(inc.A!);
+        if (incTarget.Kind != NodeKind.Name || incTarget.Text != varName || incTarget.Local != decl.Local) return null;
         if (!IsLoopInvariantBound(condNode.B!)) return null;
         if (IsAssignedWithin(forStmt.B!, varName)) return null;
         if (IsCapturedByLambdaWithin(forStmt.B!, varName)) return null;
@@ -4144,10 +4157,16 @@ public sealed class IlBuild
 
     private int _patternTempDepth;
 
-    // 入力の値を 1 回だけ計算して照合する。読み直すと値や副作用が変わりうる入力は temp に評価してから照合する
+    // 入力の値を 1 回だけ計算して照合する。読み直すと値や副作用が変わりうる入力は temp に評価してから照合する。
+    // field の読みは、照合の途中の getter や演算子が field を書き換えうるので、照合が呼び出しを含むなら temp に置く
     private IlExpr? BindPatternInput(IlExpr input, System.Func<IlExpr, IlExpr?> build)
     {
-        if (IlTree.IsCallFree(input)) return build(input);
+        if (input is IlLit || input is IlVar) return build(input);
+        if (IlTree.IsCallFree(input))
+        {
+            var direct = build(input);
+            if (direct == null || IlTree.IsCallFree(direct)) return direct;
+        }
         var name = "__tcs_pat" + _patternTempDepth;
         _patternTempDepth++;
         var applied = build(new IlVar(name, null));
@@ -5761,20 +5780,32 @@ public sealed class IlBuild
         return WrapStructCopy(recvSyntax, recv);
     }
 
-    private static bool IsStructVariableReceiver(Node e)
+    private bool IsStructVariableReceiver(Node e)
     {
         switch (e.Kind)
         {
             case NodeKind.This: return true;
-            case NodeKind.Name: return e.Info == RefKind.Local || e.Info == RefKind.Field;
-            // `x?.F` / `x?[i]` の binding は x が参照型なら変数 (`T?` の x は値の copy)
-            case NodeKind.Member: return e.Sym != null && e.Sym.Kind == SymKind.Field && (e.Value != 1 || IsReferenceType(NaturalType(e.A!)));
+            case NodeKind.Name: return e.Info == RefKind.Local || e.Info == RefKind.Field && IsWritableField(e.Sym);
+            // `x?.F` / `x?[i]` の binding は x が参照型なら変数 (`T?` の x は値の copy)。
+            // struct の field は、持ち主の struct が変数のときだけ変数 (property の結果の field は値)
+            case NodeKind.Member:
+                if (e.Sym == null || e.Sym.Kind != SymKind.Field || !IsWritableField(e.Sym)) return false;
+                if (e.Value == 1) return IsReferenceType(NaturalType(e.A!));
+                return e.Sym.IsStatic || !NaturalType(e.A!).IsValueType || IsStructVariableReceiver(e.A!);
             case NodeKind.Index: return (e.A!.Type == null || e.A.Type.Kind == TypeKind.Array) && (e.Value != 1 || IsReferenceType(NaturalType(e.A)));
             case NodeKind.Paren:
             case NodeKind.Conv:
                 return IsStructVariableReceiver(e.A!);
         }
         return false;
+    }
+
+    // readonly な field は、宣言した型の constructor (static なら static constructor) の外では値 (C# の防御的 copy)
+    private bool IsWritableField(Symbol? f)
+    {
+        if (f == null || !f.IsReadonly) return true;
+        var fn = Ctx.CurrentFunction;
+        return fn != null && fn.Kind == SymKind.Ctor && fn.Owner == f.Owner && fn.IsStatic == f.IsStatic;
     }
 
     // ---- 小道具 ----
