@@ -1485,10 +1485,11 @@ public sealed class IlBuild
         var members = DeconstructMembers(type, target.Items.Count);
         if (members == null || members.Count != target.Items.Count) return false;
         var holder = value;
-        if (!(value is IlVar))
+        // 分解の temp でない値 (user の変数を含む) は temp に置く。代入先が右辺の変数の成分でも、右辺は代入の前の値を読む
+        if (!(value is IlVar v && v.Name.StartsWith("__tcs_d")))
         {
             var temp = NewDeconstructTemp();
-            stats.Add(new IlLocal(temp, value, type != null ? IlTypes.Display(type) : null, null));
+            stats.Add(new IlLocal(temp, (value is IlVar) ? CopyIfMutableStruct(type, value) : value, type != null ? IlTypes.Display(type) : null, null));
             holder = new IlVar(temp, null);
         }
         for (int i = 0; i < members.Count; i++)
