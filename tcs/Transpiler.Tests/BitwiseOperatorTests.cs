@@ -1,8 +1,7 @@
 namespace TinyCs.Tests;
 
-// 整数ビット演算子の Lua 5.5 native 演算子 (& | ~ ~) への写像と、シフトの
-// C# 意味論 helper (__tcs_shl / __tcs_shr: count & 31、>> は算術) を固定する。
-// 幅は LUA_32BITS 構成の Lua (lua32) を数値基準とする (support-matrix 参照)。
+// 整数ビット演算子とシフトの C# 意味論 (count & 31、>> は算術) を固定する。
+// 幅は i32 (support-matrix 参照)。
 public class BitwiseOperatorTests
 {
     [Fact]
@@ -212,8 +211,7 @@ public class BitwiseOperatorTests
         Assert.Equal("-4|-1|2|-4|-2147483648|-1|-256|12|-1|-4", result);
     }
 
-    // `-2147483648` / int.MinValue は lua32 で literal 2147483648 が float に
-    // なるため式形で出す。整数のまま演算・表示されること (実 .NET と一致)
+    // `-2147483648` / int.MinValue が整数のまま演算・表示されること (実 .NET と一致)
     [Fact]
     public void IntMinValue_LiteralStaysInteger()
     {

@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// セルフホストの確実な代入 (CS0165) が参照実装 (Roslyn) と同じ判定になるか。
+/// セルフホストの確実な代入 (CS0165) が Roslyn と同じ判定になるか。
 /// 同じ本体を両方に通し、CS0165 の有無を比べる (条件式の真偽ごとの状態、loop、switch、lambda、到達できない場所)。
 /// </summary>
 public class SelfHostDefiniteAssignmentTests
@@ -62,7 +62,7 @@ public class SelfHostDefiniteAssignmentTests
     [InlineData("int x; switch (k) { case 1: return; default: return; } Use(x);")]
     [InlineData("int x; int y = k switch { 1 => x = 1, _ => x = 2 }; Use(x);")]
     [InlineData("int x; int y = k switch { 1 => x = 1, _ => 2 }; Use(x);")]
-    [InlineData("int x; string? s = null; int n = s?.Length ?? (x = 1); Use(x);")]
+    [InlineData("int x; int[]? a = null; int n = a?.Length ?? (x = 1); Use(x);")]
     [InlineData("int x; if (c is true) x = 1; else x = 2; Use(x);")]
     [InlineData("int x; switch (1) { case 1: x = 1; break; } Use(x);")]
     [InlineData("int x; switch (2) { case 1: x = 1; break; } Use(x);")]
@@ -74,11 +74,13 @@ public class SelfHostDefiniteAssignmentTests
     public void MatchesReference(string body)
     {
         var source = Template.Replace("BODY", body);
-        var reference = Checker.Check([source]);
-        bool referenceReports = reference.Errors.Any(e => e.Contains("CS0165"));
-        var self = TcsSelf.Compiler.Compile(["input.cs"], [source], [], [], "");
-        bool selfReports = self.Diagnostics.Any(d => d.Contains("CS0165"));
+        var roslyn = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("t",
+            [Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source)], TcsLibrary.References,
+            new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
+        bool referenceReports = roslyn.GetDiagnostics().Any(d => d.Id == "CS0165");
+        var self = Checker.Check([source]);
+        bool selfReports = self.Errors.Any(e => e.Contains("CS0165"));
         Assert.True(referenceReports == selfReports,
-            $"reference CS0165={referenceReports}, self-host CS0165={selfReports}\n{string.Join("\n", self.Diagnostics)}");
+            $"Roslyn CS0165={referenceReports}, self-host CS0165={selfReports}\n{string.Join("\n", self.Errors)}");
     }
 }

@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // Dictionary<float, V> はサブセット外 (TCS1001 UnsupportedDictionaryKey(float))。.NET の EqualityComparer<float>.Default は
-// NaN 同士を等しい key とみなすが、Lua の table は NaN を key にできない。HashSet<float> (UnsupportedHashSetElement(float)) と同じく
+// NaN 同士を等しい key とみなす (Lua の table は NaN を key にできなかった)。HashSet<float> (UnsupportedHashSetElement(float)) と同じく
 // 作る地点 (new Dictionary<float, V>()、target-typed new()) で止める
 public partial class DifferentialTests
 {
@@ -62,28 +62,5 @@ public partial class DifferentialTests
                 Assert.Contains($"{at}: error TCS1001: unsupported syntax: UnsupportedDictionaryKey(float)", ex.Message);
             Assert.Equal(5, ex.Message.Split("UnsupportedDictionaryKey(float)").Length - 1);
         }
-    }
-
-    // float 以外の静的型の key に入った NaN は対象外 (Lua table に置けず止まる)。
-    // 文字列 "NaN" の key と取り違えて黙って 1 つにしない (CoreCLR は 2)
-    [Fact]
-    public void Dict_ObjectKeyNaN_IsNotMergedWithStringKey()
-    {
-        var ex = Assert.Throws<InvalidOperationException>(() => Backends.RunLua(["""
-            using System;
-            using System.Collections.Generic;
-            using TinySystem.Linq;
-            public class P
-            {
-                public static void Main()
-                {
-                    var objs = new Dictionary<object, int>();
-                    objs["NaN"] = 1;
-                    objs[float.NaN] = 1;
-                    Console.WriteLine(objs.Count);
-                }
-            }
-            """], "P"));
-        Assert.Contains("table index is NaN", ex.Message);
     }
 }

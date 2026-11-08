@@ -2,8 +2,7 @@ namespace TinyCs.Tests;
 
 // user の型が `--ref` (host) の interface を実装すると、interface 経由の呼び出しは
 // host の名前 (`h:do_thing()`)、実装は C# の名前 (`Impl:DoThing`) になって届かない
-// (q.md Q16)。build を止める TCS1001 で、transpiler は Lua を出さない error、check
-// は exit 1。user の interface の実装はそのまま書ける
+// (q.md Q16)。build を止める TCS1001 で、check は exit 1。user の interface の実装はそのまま書ける
 [Collection(ConsoleCollection.Name)]
 public class RefInterfaceDiagnosticTests
 {
@@ -42,11 +41,10 @@ public class RefInterfaceDiagnosticTests
     [Fact]
     public void Transpile_RefInterfaceImplementationIsBuildBlockingError()
     {
-        var result = Transpiler.TranspileWithDiagnostics([Source],
+        var result = Checker.Check([Source],
             referenceSources: [HostStub]);
 
         Assert.Equal(Expected, result.Errors);
-        Assert.Empty(result.Lua);
     }
 
     [Fact]
@@ -71,19 +69,6 @@ public class RefInterfaceDiagnosticTests
         }
     }
 
-    [Fact]
-    public void IncrementalSession_RefInterfaceImplementationIsError()
-    {
-        var session = new IncrementalCompilationSession([HostStub]);
-        session.OpenProject([("game/A.cs", Source)]);
-        var (errors, _) = session.CollectDiagnostics();
-
-        Assert.Contains(errors, e => e.Contains(
-            "error TCS1001: unsupported syntax: RefInterfaceImplementation(IHostHook)"));
-        Assert.Equal(0, session.Revision);
-        Assert.Empty(session.Artifacts);
-    }
-
     // C backend も同じ診断を出す (tcs2c は Diagnostics があれば IL を使わずに止まる)
     [Fact]
     public void IlExport_RefInterfaceImplementationIsError()
@@ -100,7 +85,7 @@ public class RefInterfaceDiagnosticTests
     [Fact]
     public void UserInterface_IsNotDiagnosed()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public interface IHook { int DoThing(int v); }
             public class Impl : IHook { public int DoThing(int v) => v * 2; }
             public static class P
@@ -116,7 +101,5 @@ public class RefInterfaceDiagnosticTests
 
         Assert.Empty(result.Errors);
         Assert.Empty(result.Warnings);
-        Assert.Equal("10", TestHelper.RunLua(
-            "host = { run = function(h) end }\n" + result.Lua + "\nprint(P.Test())").Trim());
     }
 }

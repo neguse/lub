@@ -1,6 +1,5 @@
 namespace TinyCs.Tests;
 
-[Collection(ConsoleCollection.Name)]
 public class EntryClassTests
 {
     private const string AppSource = """
@@ -14,30 +13,11 @@ public class EntryClassTests
         """;
 
     [Fact]
-    public void EntryClass_AppendsModuleReturn_RequireReturnsClassTable()
+    public void EntryClass_Resolves()
     {
-        var result = Transpiler.TranspileWithDiagnostics([AppSource],
-            entryClass: "App");
+        var result = Checker.Check([AppSource], entryClass: "App");
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-
-        var luaPath = Path.Combine(Path.GetTempPath(),
-            $"tcs_entry_{Guid.NewGuid():N}.lua");
-        try
-        {
-            File.WriteAllText(luaPath, result.Lua);
-            var script = $"""
-                local m = dofile("{luaPath}")
-                print(m.Ping())
-                """;
-            var output = TestHelper.RunLua(script).Trim();
-
-            Assert.Equal("pong", output);
-        }
-        finally
-        {
-            File.Delete(luaPath);
-        }
     }
 
     [Fact]
@@ -68,40 +48,8 @@ public class EntryClassTests
             e => e.Contains("reference-only") && e.Contains("Host"));
     }
 
-    [Fact]
-    public void Cli_EntryOption_EmitsModuleReturn()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(),
-            $"tcs_entry_cli_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var inputPath = Path.Combine(tempDir, "app.cs");
-            File.WriteAllText(inputPath, AppSource);
-            var outputPath = Path.Combine(tempDir, "app.lua");
-
-            var (exitCode, _, _) = ConsoleCapture.Run(
-                () => Program.Main([inputPath, "-o", outputPath,
-                    "--entry", "App", "--no-runtime"]));
-
-            Assert.Equal(0, exitCode);
-            var script = $"""
-                local m = dofile("{outputPath}")
-                print(m.Ping())
-                """;
-            var output = TestHelper.RunLua(script).Trim();
-
-            Assert.Equal("pong", output);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    // --entry は emitter の実 Lua 名 (namespace 透過の simple 名) を
-    // return する。namespaced 指定・一意な simple 指定の両方が動き、
-    // interface / 曖昧な simple 名は exit 1。
+    // entry は namespaced 指定・一意な simple 指定の両方で引け、
+    // interface / 曖昧な simple 名は誤り。
     private const string NamespacedSource = """
         namespace Game
         {
@@ -115,42 +63,20 @@ public class EntryClassTests
         }
         """;
 
-    private static string RunEntryModule(string lua, string call)
-    {
-        var luaPath = Path.Combine(Path.GetTempPath(),
-            $"tcs_entry_{Guid.NewGuid():N}.lua");
-        try
-        {
-            File.WriteAllText(luaPath, lua);
-            return TestHelper.RunLua($"""
-                local m = dofile("{luaPath}")
-                print({call})
-                """).Trim();
-        }
-        finally
-        {
-            File.Delete(luaPath);
-        }
-    }
-
     [Fact]
-    public void EntryClass_NamespaceQualified_ReturnsEmittedTable()
+    public void EntryClass_NamespaceQualified_Resolves()
     {
-        var result = Transpiler.TranspileWithDiagnostics([NamespacedSource],
-            entryClass: "Game.App");
+        var result = Checker.Check([NamespacedSource], entryClass: "Game.App");
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Equal("pong", RunEntryModule(result.Lua, "m.Ping()"));
     }
 
     [Fact]
     public void EntryClass_UniqueSimpleNameInNamespace_Resolves()
     {
-        var result = Transpiler.TranspileWithDiagnostics([NamespacedSource],
-            entryClass: "App");
+        var result = Checker.Check([NamespacedSource], entryClass: "App");
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Equal("pong", RunEntryModule(result.Lua, "m.Ping()"));
     }
 
     [Fact]

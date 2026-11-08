@@ -1,6 +1,6 @@
 # tcsvm — IL から直接 bytecode を出す dev 実行系
 
-TinyC# の IL (`IlExport`) を Lua を経ずに bytecode (`.tcsb`) にし、型付きの
+TinyC# の IL (`IlExport`) を bytecode (`.tcsb`) にし、型付きの
 register VM で実行する。設計は `doc/vm-design.md`。dev 実行系として採ることは決定済み
 (同書 §18 D-V1)。いまは V1 と V2 の一部 (同書 §17.3、§17.4)。
 
@@ -22,7 +22,7 @@ build/tcsvm/tcsvm out.tcsb
 ```
 
 `--entry Class` は `Main` を持つ class が複数あるときに選ぶ。性能の比較は
-`perf/bench-2backend.sh` (dev = lua32、vm、release = tcs2c の 3 列)。
+`perf/bench-2backend.sh` (vm、release = tcs2c の 2 列)。
 
 ## hot reload
 

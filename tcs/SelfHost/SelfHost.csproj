@@ -1,14 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- セルフホストの compiler を .NET の library として build する (3 経路の一致の検査と、
-       Transpiler.Tests の差分の検査が使う)。ソースは tcs のサブセットで、同じファイルを
-       tcs が Lua に、tcs2c が C に変換する -->
+  <!-- セルフホストの compiler を .NET の library として build する (.NET の tcs とテストが使う)。
+       ソースは tcs のサブセットで、同じファイルを tcs2c が C に変換する -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
     <RootNamespace>TcsSelf</RootNamespace>
-    <!-- float の文字列化を culture に依らない形にする (Lua / C と同じ) -->
+    <!-- float の文字列化を culture に依らない形にする (C と VM と同じ) -->
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 

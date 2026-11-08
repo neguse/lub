@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace TinyCs.Tests;
 
 [Collection(ConsoleCollection.Name)]
@@ -11,8 +9,9 @@ public class CliRuntimeTests
         var result = RunCli("--help");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("Usage: tcs", result.Stdout);
-        Assert.Contains("--map-stacktrace", result.Stdout);
+        Assert.Contains("Usage: tcs check", result.Stdout);
+        Assert.Contains("tcs vm", result.Stdout);
+        Assert.Contains("tcs c", result.Stdout);
         Assert.Empty(result.Stderr);
     }
 
@@ -26,35 +25,81 @@ public class CliRuntimeTests
         Assert.Empty(result.Stderr);
     }
 
+    // subcommand の無い呼び出しは usage を stderr に書いて exit 1 (入力のファイルを渡しても変換しない)
+    [Theory]
+    [InlineData]
+    [InlineData("input.cs")]
+    [InlineData("input.cs", "-o", "out.lua")]
+    [InlineData("--unknown")]
+    public void Cli_WithoutSubcommand_PrintsUsageAndFails(params string[] args)
+    {
+        var result = RunCli(args);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Contains("Usage: tcs check", result.Stderr);
+    }
+
     [Fact]
     public void Cli_UnknownOption_ReturnsError()
     {
-        var result = RunCli("--unknown");
-
-        Assert.Equal(1, result.ExitCode);
-        Assert.Contains("unknown option: --unknown", result.Stderr);
+        Assert.Contains("unknown option for check: --unknown", RunCli("check", "--unknown").Stderr);
+        var c = RunCli("c", "--unknown");
+        Assert.Equal(1, c.ExitCode);
+        Assert.Contains("tcs2c: unknown option: --unknown", c.Stderr);
     }
 
     [Fact]
     public void Cli_OutputOptionMissingValue_ReturnsError()
     {
-        var result = RunCli("input.cs", "-o", "--watch");
-
-        Assert.Equal(1, result.ExitCode);
-        Assert.Contains("missing value for -o", result.Stderr);
+        var c = RunCli("c", "input.cs", "-o");
+        Assert.Equal(1, c.ExitCode);
+        Assert.Contains("tcs2c: missing value for -o", c.Stderr);
+        var vm = RunCli("vm", "input.cs", "-o");
+        Assert.Equal(1, vm.ExitCode);
+        Assert.Contains("tcs2vm: missing value for -o", vm.Stderr);
+        var trace = RunCli("vm", "input.cs", "--trace");
+        Assert.Equal(1, trace.ExitCode);
+        Assert.Contains("tcs2vm: missing value for --trace", trace.Stderr);
     }
 
     [Fact]
     public void Cli_RefOptionMissingValue_ReturnsError()
     {
-        var result = RunCli("input.cs", "--ref");
+        var result = RunCli("check", "input.cs", "--ref");
 
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("missing value for --ref", result.Stderr);
     }
 
     [Fact]
-    public void Cli_Check_ValidCode_ReturnsSuccessWithoutLuaOutput()
+    public void Cli_MissingInputFile_ReturnsError()
+    {
+        using var temp = TempDir.Create();
+        var missing = temp.PathFor("missing.cs");
+        var input = temp.Write("input.cs", ValidSource);
+
+        var check = RunCli("check", missing);
+        Assert.Equal(1, check.ExitCode);
+        Assert.Contains("file not found: " + missing, check.Stderr);
+        var checkRef = RunCli("check", input, "--ref", missing);
+        Assert.Equal(1, checkRef.ExitCode);
+        Assert.Contains("ref file not found: " + missing, checkRef.Stderr);
+        var c = RunCli("c", missing, "-o", temp.PathFor("out.c"));
+        Assert.Equal(1, c.ExitCode);
+        Assert.Contains("tcs2c: could not find file: " + missing, c.Stderr);
+        var vm = RunCli("vm", missing, "-o", temp.PathFor("out.tcsb"));
+        Assert.Equal(1, vm.ExitCode);
+        Assert.Contains("tcs2vm: could not find file: " + missing, vm.Stderr);
+        var vmRef = RunCli("vm", input, "--ref", missing, "-o", temp.PathFor("out.tcsb"));
+        Assert.Equal(1, vmRef.ExitCode);
+        Assert.Contains("tcs2vm: could not find file: " + missing, vmRef.Stderr);
+        Assert.False(File.Exists(temp.PathFor("out.c")));
+        Assert.False(File.Exists(temp.PathFor("out.tcsb")));
+    }
+
+    [Fact]
+    public void Cli_Check_ValidCode_ReturnsSuccess()
     {
         using var temp = TempDir.Create();
         var inputPath = temp.Write("app.cs", """
@@ -209,7 +254,7 @@ public class CliRuntimeTests
         Assert.Contains("Dictionary<K,V>", result.Stderr);
     }
 
-    // 名前は C# の識別子のまま Lua に出るので、tcs は命名の流儀を判定しない
+    // 名前は C# の識別子のまま IL に出るので、tcs は命名の流儀を判定しない
     [Fact]
     public void Cli_Check_DoesNotJudgeNamingStyle()
     {
@@ -234,8 +279,9 @@ public class CliRuntimeTests
         Assert.Empty(result.Stderr);
     }
 
+    // 警告 (TCS1003) だけでも check は exit 1。tcs c は警告では止めずに書く
     [Fact]
-    public void Cli_WarnAsError_FailsOnWarningsWithoutWritingOutput()
+    public void Cli_Check_FailsOnWarnings_CStillWrites()
     {
         using var temp = TempDir.Create();
         var inputPath = temp.Write("app.cs", """
@@ -248,320 +294,17 @@ public class CliRuntimeTests
                 }
             }
             """);
-        var outputPath = temp.PathFor("app.lua");
+        var outputPath = temp.PathFor("app.c");
 
-        var plain = RunCli(inputPath, "-o", outputPath);
-        Assert.Equal(0, plain.ExitCode);
-        Assert.Contains("TCS1003", plain.Stderr);
-        File.Delete(outputPath);
+        var check = RunCli("check", inputPath);
+        Assert.Equal(1, check.ExitCode);
+        Assert.Contains("TCS1003", check.Stderr);
+        Assert.Equal(0, CountDiagnostics(check.Stderr, "TCS1003"));
+        Assert.Equal(1, CountDiagnostics(check.Stderr, "TCS1003", "warning"));
 
-        var strict = RunCli(inputPath, "-o", outputPath, "--warnaserror");
-        Assert.Equal(1, strict.ExitCode);
-        Assert.Contains("TCS1003", strict.Stderr);
-        Assert.False(File.Exists(outputPath));
-    }
-
-    [Fact]
-    public void Cli_WarnAsError_WritesOutputWithoutWarnings()
-    {
-        using var temp = TempDir.Create();
-        var inputPath = temp.Write("app.cs", """
-            public class T
-            {
-                public static int Test() { return 3; }
-            }
-            """);
-        var outputPath = temp.PathFor("app.lua");
-
-        var result = RunCli(inputPath, "-o", outputPath, "--warnaserror");
-
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("3", TestHelper.RunLua($"{File.ReadAllText(outputPath)}\nprint(T.Test())").Trim());
-    }
-
-    [Fact]
-    public void Cli_EmbedsRuntimeByDefault()
-    {
-        using var temp = TempDir.Create();
-        var inputPath = temp.Write("app.cs", """
-            using System.Collections.Generic;
-
-            public class T
-            {
-                public static int Test()
-                {
-                    var values = new List<int> { 1, 2 };
-                    values.Add(3);
-                    return values.Count;
-                }
-            }
-            """);
-        var outputPath = temp.PathFor("app.lua");
-
-        var exitCode = Program.Main([inputPath, "-o", outputPath]);
-
-        Assert.Equal(0, exitCode);
-        var lua = File.ReadAllText(outputPath);
-        Assert.Contains("TinyC# embedded runtime prelude", lua);
-        Assert.Equal("3", TestHelper.RunLua($"{lua}\nprint(T.Test())").Trim());
-    }
-
-    [Fact]
-    public void Cli_NoRuntimeOmitsEmbeddedRuntime()
-    {
-        using var temp = TempDir.Create();
-        var inputPath = temp.Write("app.cs", """
-            public class T
-            {
-                public static int Test() => 42;
-            }
-            """);
-        var outputPath = temp.PathFor("app.lua");
-
-        var exitCode = Program.Main([inputPath, "-o", outputPath, "--no-runtime"]);
-
-        Assert.Equal(0, exitCode);
-        var lua = File.ReadAllText(outputPath);
-        Assert.DoesNotContain("TinyC# embedded runtime prelude", lua);
-        Assert.Equal("42", TestHelper.RunLua($"{lua}\nprint(T.Test())").Trim());
-    }
-
-    [Fact]
-    public void Cli_SourceMapLinesIncludeRuntimePreludeOffset()
-    {
-        using var temp = TempDir.Create();
-        var inputPath = temp.Write("app.cs", """
-            public class T
-            {
-                public static int Test() => 7;
-            }
-            """);
-        var outputPath = temp.PathFor("app.lua");
-
-        var exitCode = Program.Main([inputPath, "-o", outputPath, "--sourcemap"]);
-
-        Assert.Equal(0, exitCode);
-        var luaLines = File.ReadAllLines(outputPath);
-        var classLine = Array.FindIndex(luaLines, line => line.Contains("T = {}")) + 1;
-        Assert.True(classLine > 1);
-
-        using var json = JsonDocument.Parse(File.ReadAllText(outputPath + ".map"));
-        var mappings = json.RootElement.GetProperty("mappings");
-        Assert.True(mappings.TryGetProperty(classLine.ToString(), out var entry));
-        Assert.Equal(inputPath, entry.GetProperty("file").GetString());
-        Assert.Equal(1, entry.GetProperty("line").GetInt32());
-    }
-
-    [Theory]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    [InlineData(false, true)]
-    public void Cli_StdoutSourceMapLinesIncludePreludeOffset(
-        bool includeRuntime, bool userPrelude)
-    {
-        using var temp = TempDir.Create();
-        var inputPath = temp.Write("app.cs", """
-            public class T
-            {
-                public static int Test() => 7;
-            }
-            """);
-        var args = new List<string> { inputPath, "--sourcemap" };
-        if (!includeRuntime) args.Add("--no-runtime");
-        if (userPrelude)
-        {
-            var preludePath = temp.Write("shim.lua", "-- shim line 1\nlocal _ = 0\n");
-            args.Add("--prelude");
-            args.Add(preludePath);
-        }
-
-        var result = RunCli(args.ToArray());
-
-        Assert.Equal(0, result.ExitCode);
-        var luaLines = result.Stdout.Replace("\r\n", "\n").Split('\n');
-        var classLine = Array.FindIndex(luaLines, line => line.Contains("T = {}")) + 1;
-        Assert.True(classLine > 0);
-
-        var marker = "--- sourcemap ---";
-        var markerIndex = result.Stderr.IndexOf(marker, StringComparison.Ordinal);
-        Assert.True(markerIndex >= 0);
-        using var json = JsonDocument.Parse(
-            result.Stderr[(markerIndex + marker.Length)..]);
-        var mappings = json.RootElement.GetProperty("mappings");
-        Assert.True(mappings.TryGetProperty(classLine.ToString(), out var entry));
-        Assert.Equal(inputPath, entry.GetProperty("file").GetString());
-        Assert.Equal(1, entry.GetProperty("line").GetInt32());
-    }
-
-    [Theory]
-    [InlineData("input", false)]
-    [InlineData("ref", false)]
-    [InlineData("prelude", false)]
-    [InlineData("input", true)]
-    [InlineData("ref", true)]
-    [InlineData("prelude", true)]
-    public void Cli_OutputPathCollision_DoesNotModifyProtectedFile(
-        string protectedRole, bool sourceMap)
-    {
-        using var temp = TempDir.Create();
-        var mapSuffix = sourceMap ? ".map" : "";
-        var inputPath = temp.Write(
-            protectedRole == "input" ? $"input.cs{mapSuffix}" : "input.cs",
-            ValidSource);
-        var refPath = temp.Write(
-            protectedRole == "ref" ? $"ref.cs{mapSuffix}" : "ref.cs",
-            ValidRefSource);
-        var preludePath = temp.Write(
-            protectedRole == "prelude" ? $"prelude.lua{mapSuffix}" : "prelude.lua",
-            "-- user prelude\n");
-        var protectedPath = protectedRole switch
-        {
-            "input" => inputPath,
-            "ref" => refPath,
-            "prelude" => preludePath,
-            _ => throw new ArgumentOutOfRangeException(nameof(protectedRole))
-        };
-        var outputPath = sourceMap
-            ? protectedPath[..^".map".Length]
-            : protectedPath;
-
-        File.SetLastWriteTimeUtc(protectedPath,
-            new DateTime(2001, 2, 3, 4, 5, 6, DateTimeKind.Utc));
-        var originalContent = File.ReadAllText(protectedPath);
-        var originalWriteTime = File.GetLastWriteTimeUtc(protectedPath);
-
-        var args = new List<string>
-        {
-            inputPath,
-            "--ref", refPath,
-            "--prelude", preludePath,
-            "-o", outputPath,
-            "--no-runtime"
-        };
-        if (sourceMap) args.Add("--sourcemap");
-
-        var result = RunCli(args.ToArray());
-
-        Assert.Equal(1, result.ExitCode);
-        Assert.Empty(result.Stdout);
-        Assert.Contains("conflicts with", result.Stderr);
-        Assert.Contains(protectedRole, result.Stderr);
-        Assert.Equal(originalContent, File.ReadAllText(protectedPath));
-        Assert.Equal(originalWriteTime, File.GetLastWriteTimeUtc(protectedPath));
-        if (sourceMap)
-            Assert.False(File.Exists(outputPath));
-    }
-
-    [Fact]
-    public void Cli_OutputPathCollision_NormalizesDotSegments()
-    {
-        using var temp = TempDir.Create();
-        var inputPath = temp.Write("input.cs", ValidSource);
-        var subDir = temp.PathFor("sub");
-        Directory.CreateDirectory(subDir);
-        var outputPath = Path.Combine(subDir, "..", "input.cs");
-        var originalContent = File.ReadAllText(inputPath);
-
-        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
-
-        Assert.Equal(1, result.ExitCode);
-        Assert.Contains("conflicts with input", result.Stderr);
-        Assert.Equal(originalContent, File.ReadAllText(inputPath));
-    }
-
-    [Fact]
-    public void Cli_OutputPathCollision_UsesPlatformCaseSensitivity()
-    {
-        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()
-            && !OperatingSystem.IsMacOS()) return;
-
-        using var temp = TempDir.Create();
-        var inputPath = temp.Write("CaseSensitive.cs", ValidSource);
-        var outputPath = temp.PathFor("casesensitive.cs");
-        var originalContent = File.ReadAllText(inputPath);
-        var aliasesOnFileSystem = File.Exists(outputPath);
-
-        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
-
-        if (OperatingSystem.IsWindows() || aliasesOnFileSystem)
-        {
-            Assert.Equal(1, result.ExitCode);
-            Assert.Contains("conflicts with input", result.Stderr);
-            Assert.Equal(originalContent, File.ReadAllText(inputPath));
-        }
-        else
-        {
-            Assert.Equal(0, result.ExitCode);
-            Assert.Equal(originalContent, File.ReadAllText(inputPath));
-            Assert.True(File.Exists(outputPath));
-        }
-    }
-
-    [Theory]
-    [InlineData("symbolic", "input", false)]
-    [InlineData("hard", "input", false)]
-    [InlineData("symbolic", "ref", true)]
-    [InlineData("hard", "ref", true)]
-    public void Cli_OutputFileAliasCollision_DoesNotModifyProtectedFile(
-        string linkKind, string protectedRole, bool sourceMap)
-    {
-        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()
-            && !OperatingSystem.IsMacOS()) return;
-        if (linkKind == "symbolic" && OperatingSystem.IsWindows()) return;
-
-        using var temp = TempDir.Create();
-        var inputPath = temp.Write("input.cs", ValidSource);
-        var refPath = temp.Write("ref.cs", ValidRefSource);
-        var protectedPath = protectedRole == "input" ? inputPath : refPath;
-        var outputPath = temp.PathFor("output.lua");
-        var writePath = sourceMap ? outputPath + ".map" : outputPath;
-
-        if (linkKind == "symbolic")
-            File.CreateSymbolicLink(writePath, protectedPath);
-        else
-            FileLinkTestHelper.CreateHardLink(writePath, protectedPath);
-
-        File.SetLastWriteTimeUtc(protectedPath,
-            new DateTime(2001, 2, 3, 4, 5, 6, DateTimeKind.Utc));
-        var originalContent = File.ReadAllText(protectedPath);
-        var originalWriteTime = File.GetLastWriteTimeUtc(protectedPath);
-
-        var args = new List<string>
-        {
-            inputPath, "--ref", refPath, "-o", outputPath, "--no-runtime"
-        };
-        if (sourceMap) args.Add("--sourcemap");
-
-        var result = RunCli(args.ToArray());
-
-        Assert.Equal(1, result.ExitCode);
-        Assert.Contains($"conflicts with {protectedRole}", result.Stderr);
-        Assert.Equal(originalContent, File.ReadAllText(protectedPath));
-        Assert.Equal(originalWriteTime, File.GetLastWriteTimeUtc(protectedPath));
-        if (sourceMap)
-            Assert.False(File.Exists(outputPath));
-    }
-
-    [Fact]
-    public void Cli_OutputPathCollision_ResolvesParentDirectorySymbolicLink()
-    {
-        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) return;
-
-        using var temp = TempDir.Create();
-        var realDir = temp.PathFor("real");
-        Directory.CreateDirectory(realDir);
-        var inputPath = Path.Combine(realDir, "input.cs");
-        File.WriteAllText(inputPath, ValidSource);
-        var aliasDir = temp.PathFor("alias");
-        Directory.CreateSymbolicLink(aliasDir, realDir);
-        var outputPath = Path.Combine(aliasDir, "input.cs");
-        var originalContent = File.ReadAllText(inputPath);
-
-        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
-
-        Assert.Equal(1, result.ExitCode);
-        Assert.Contains("conflicts with input", result.Stderr);
-        Assert.Equal(originalContent, File.ReadAllText(inputPath));
+        var c = RunCli("c", inputPath, "-o", outputPath);
+        Assert.Equal(0, c.ExitCode);
+        Assert.True(File.Exists(outputPath));
     }
 
     [Fact]
@@ -571,13 +314,13 @@ public class CliRuntimeTests
 
         using var temp = TempDir.Create();
         var inputPath = temp.Write("input.cs", ValidSource);
-        var outputPath = temp.Write("output.lua", "old output\n");
+        var outputPath = temp.Write("output.c", "old output\n");
         var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite
                    | UnixFileMode.UserExecute | UnixFileMode.GroupRead
                    | UnixFileMode.OtherRead;
         File.SetUnixFileMode(outputPath, mode);
 
-        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
+        var result = RunCli("c", inputPath, "-o", outputPath);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(mode, File.GetUnixFileMode(outputPath));
@@ -590,12 +333,12 @@ public class CliRuntimeTests
 
         using var temp = TempDir.Create();
         var inputPath = temp.Write("input.cs", ValidSource);
-        var outputPath = temp.Write("output.lua", "do not overwrite\n");
+        var outputPath = temp.Write("output.c", "do not overwrite\n");
         var readOnlyMode = UnixFileMode.UserRead | UnixFileMode.GroupRead
                            | UnixFileMode.OtherRead;
         File.SetUnixFileMode(outputPath, readOnlyMode);
 
-        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
+        var result = RunCli("c", inputPath, "-o", outputPath);
 
         Assert.Equal(1, result.ExitCode);
         Assert.Equal("do not overwrite\n", File.ReadAllText(outputPath));
@@ -613,46 +356,19 @@ public class CliRuntimeTests
 
         using var temp = TempDir.Create();
         var inputPath = temp.Write("input.cs", ValidSource);
-        var targetPath = temp.Write("target.lua", "keep target\n");
-        var outputPath = temp.PathFor("output.lua");
+        var targetPath = temp.Write("target.c", "keep target\n");
+        var outputPath = temp.PathFor("output.c");
         if (linkKind == "symbolic")
             File.CreateSymbolicLink(outputPath, targetPath);
         else
             FileLinkTestHelper.CreateHardLink(outputPath, targetPath);
 
-        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
+        var result = RunCli("c", inputPath, "-o", outputPath);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("keep target\n", File.ReadAllText(targetPath));
         Assert.Null(new FileInfo(outputPath).LinkTarget);
-        Assert.Contains("Generated by TinyC#", File.ReadAllText(outputPath));
-    }
-
-    [Fact]
-    public void Cli_MapStackTrace_AnnotatesLuaLines()
-    {
-        using var temp = TempDir.Create();
-        var mapPath = temp.Write("app.lua.map", """
-            {
-              "version": 1,
-              "mappings": {
-                "42": {"file": "app.cs", "line": 9}
-              }
-            }
-            """);
-        var tracePath = temp.Write("trace.txt", """
-            app.lua:42: attempt to call a nil value
-            stack traceback:
-                app.lua:43: in function 'T.Test'
-            """);
-
-        var (exitCode, output, _) = ConsoleCapture.Run(
-            () => Program.Main(["--map-stacktrace", mapPath, tracePath]));
-        Assert.Equal(0, exitCode);
-        Assert.Contains("app.lua:42: attempt to call a nil value  --> app.cs:9",
-            output);
-        Assert.Contains("app.lua:43: in function 'T.Test'  --> app.cs:9",
-            output);
+        Assert.Contains("T_Test", File.ReadAllText(outputPath));
     }
 
     private static (int ExitCode, string Stdout, string Stderr) RunCli(
@@ -668,14 +384,6 @@ public class CliRuntimeTests
         public static class T
         {
             public static int Test() => 42;
-        }
-        """;
-
-    private const string ValidRefSource = """
-        namespace Host;
-        public static class Api
-        {
-            public static int Value() => default;
         }
         """;
 

@@ -25,6 +25,7 @@ public sealed class SessionFile
 // 増分の compile の session。ファイルを足し、差し替え、外してから compile する。
 // parse は内容が変わったファイルだけをやり直し、宣言、束縛、出力は parse した木の複製で毎回やり直す (束縛は木を書き換える)。
 // compile は Step に分かれる: 変わったファイルの parse を 1 つずつ、準拠検査と木の組み立て、宣言、束縛、出力。
+// 出力は mode で決まる: ExportOnly は IL、CheckOnly は IL の組み立ての検査、どちらでもなければ束縛と準拠の診断だけ。
 // host は Step を繰り返し呼び、Step の間で他の仕事 (新しい編集の受け取り、tcs2c の GC の frame の境界) をはさめる
 public sealed class Session
 {
@@ -45,22 +46,12 @@ public sealed class Session
     public int ParsedFiles;
     // 何回 compile を終えたか
     public int Revision;
-    // hot reload 用の weak な instance の表 (`__tcs_instances`) を出す
-    public bool InstanceRegistry;
-    // --trace: path がこの prefix に segment 単位で一致するファイルの文に実行の記録を出す
-    public List<string> TracePrefixes = new List<string>();
-    // 型を chunk の local に置く (false なら global を引く)
-    public bool CacheTypeLocals = true;
-    // --module: 定義した型の table を返す
-    public bool Module;
-    // Lua の代わりに tcs2c への入力 (型の metadata と本文の IL) を作る
+    // tcs c と tcs vm への入力 (型の metadata と本文の IL) を作る
     public bool ExportOnly;
-    // 検査だけ (tcs check と analyzer): Lua も IL も返さず、IL を組み立てて、組み立てられない本文、entry class の誤り、組み立ての内部の誤りを診断にする
+    // 検査だけ (tcs check と analyzer): IL を返さず、IL を組み立てて、組み立てられない本文、entry class の誤り、組み立ての内部の誤りを診断にする
     public bool CheckOnly;
-    // ExportOnly で、generic を閉じた copy に単相化してから書き出す (C backend)
+    // ExportOnly で、generic を閉じた copy に単相化してから書き出す (C backend と VM)
     public bool Specialize;
-    // 増分 session: ファイルごとの module の Lua と型の記録を CompileResult.Modules に出す (EmitProgram の代わり)
-    public bool ModuleArtifacts;
     // 束縛を終えた宣言 (型と member の symbol、構文の木) を Declarations に残す。API の記述を読む道具 (lub-gen) が使う
     public bool KeepDeclarations;
     public Compilation? Declarations;
@@ -515,54 +506,6 @@ public sealed class Session
             else if (CheckOnly)
             {
                 if (CheckIl(c, result)) c.Diags.ErrorCount++;
-            }
-            else if (ModuleArtifacts)
-            {
-                // library を先に、次に user のファイル (Lua の出力と同じ順)
-                var emitted = new List<int>();
-                for (int i = 0; i < c.Files.Count; i++)
-                {
-                    if (c.Files[i].IsLibrary) emitted.Add(i);
-                }
-                for (int i = 0; i < c.Files.Count; i++)
-                {
-                    if (!c.Files[i].IsLibrary && !c.Files[i].IsRef) emitted.Add(i);
-                }
-                // static の初期化子の依存は他の module の method の本文にも及ぶので、全体で求める
-                var deps = new StaticInitDeps(c, emitted).DependenciesByName();
-                bool failed = false;
-                foreach (var i in emitted)
-                {
-                    var le = new LuaEmit(c);
-                    le.InstanceRegistry = InstanceRegistry;
-                    le.TracePrefixes = TracePrefixes;
-                    le.CacheTypeLocals = false;
-                    le.EmitModule(i);
-                    foreach (var t in le.EmittedTypes)
-                    {
-                        List<string>? d;
-                        if (deps.TryGetValue(t.Name, out d)) t.InitDependencies = d;
-                    }
-                    result.Modules.Add(new ModuleOutput(c.Files[i].Path, le.G.Chunks, le.EmittedTypes));
-                    foreach (var err in le.Errors) result.Diagnostics.Add(err);
-                    foreach (var ie in le.G.InternalErrors) result.Diagnostics.Add("internal: " + ie);
-                    if (le.Errors.Count > 0 || le.G.InternalErrors.Count > 0) failed = true;
-                }
-                if (failed) c.Diags.ErrorCount++;
-            }
-            else
-            {
-                var le = new LuaEmit(c);
-                le.InstanceRegistry = InstanceRegistry;
-                le.TracePrefixes = TracePrefixes;
-                le.CacheTypeLocals = CacheTypeLocals;
-                result.Lua = le.EmitProgram(_entry);
-                if (Module && le.Errors.Count == 0) result.Lua = result.Lua + le.ModuleReturn();
-                result.SourceMap = le.G.SourceMap;
-                result.EmittedTypes = le.EmittedTypes;
-                foreach (var err in le.Errors) result.Diagnostics.Add(err);
-                foreach (var ie in le.G.InternalErrors) result.Diagnostics.Add("internal: " + ie);
-                if (le.Errors.Count > 0 || le.G.InternalErrors.Count > 0) c.Diags.ErrorCount++;
             }
         }
         foreach (var diag in c.Diags.Ordered()) result.Diagnostics.Add(diag.ToString());

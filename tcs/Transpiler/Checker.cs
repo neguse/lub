@@ -1,6 +1,6 @@
 namespace TinyCs;
 
-/// <summary>`tcs check` と同じ検査の結果。Lua も IL も返さない。</summary>
+/// <summary>`tcs check` と同じ検査の結果。IL を返さない。</summary>
 public sealed class CheckResult
 {
     public List<string> Errors { get; init; } = [];

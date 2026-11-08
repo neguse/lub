@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace TinyCs.Tests;
 
-// TinySystem.Linq (TinySystem/Linq.cs) を user のコードと一緒に Lua へ変換して動かす。
+// TinySystem.Linq (TinySystem/Linq.cs) を user のコードと一緒に tcs VM で動かす。
 // TestHelper は同じ source を .NET でも実行して結果を比べる
 public class LinqSemanticTests
 {
@@ -207,27 +207,12 @@ public class LinqSemanticTests
         Assert.Contains(result.Errors, e => e.Contains("TCS1001") && e.Contains("QueryExpression"));
     }
 
-    // --module の table は user の型だけを返す (library の型は返さない)
-    [Fact]
-    public void Module_DoesNotExportLibraryTypes()
-    {
-        var result = Transpiler.TranspileWithDiagnostics(["""
-            using System.Collections.Generic;
-            using TinySystem.Linq;
-            public static class T
-            {
-                public static int Count(List<int> xs) => xs.Count(x => x > 1);
-            }
-            """], module: true);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.EndsWith("return {\n  T = T,\n}\n", result.Lua);
-    }
-
     // user が渡した TinySystem.Linq (手元の版) は同梱の library より優先する
+    // .NET は同梱の Linq と同じ名前の型を重ねて持てないので VM だけで見る
     [Fact]
     public void UserTinySystemLinq_ReplacesBundledLibrary()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var output = TestHelper.CompileAndRunVm(["""
             using System.Collections.Generic;
             using TinySystem.Linq;
             public static class T
@@ -242,9 +227,8 @@ public class LinqSemanticTests
             {
                 public static int Count<T>(this List<T> source, Func<T, bool> predicate) => 42;
             }
-            """]);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.DoesNotContain("OrderByDescending", result.Lua);
+            """], "T.Count(new System.Collections.Generic.List<int> { 1, 2, 3 })", dotnet: false);
+        Assert.Equal("42", output);
     }
 
     // 入れ子の namespace で書いた手元の版も同じ

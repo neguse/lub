@@ -337,13 +337,12 @@ public class StructCopyPointTests
     }
 
     // module mode は module ごとの define chunk と static initializer の chunk に分かれる。
-    // どの chunk で変換しても struct の parameter を copy する
+    // 別のファイルの method group でも struct の parameter を copy する
     [Fact]
-    public void MethodGroup_CopiesAcrossModules()
+    public void MethodGroup_CopiesAcrossFiles()
     {
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([
-            ("a.cs", """
+        var output = TestHelper.CompileAndRunVm([
+            """
                 using System;
                 using System.Collections.Generic;
                 using TinySystem.Linq;
@@ -360,19 +359,17 @@ public class StructCopyPointTests
                         return xs[0].N;
                     }
                 }
-                """),
-            ("b.cs", """
+                """,
+            """
                 using System;
                 public struct S { public int N; }
                 public class B
                 {
                     public static bool Bump(S s) { s.N += 1000; return true; }
                 }
-                """),
-        ]);
-        var output = StaticInitOrderTests.RunSnapshot(StaticInitOrderTests.Snapshot(session),
-            """print(reg.types["a.cs#A"].Run())""");
-        Assert.Equal(["1"], output);
+                """,
+        ], "A.Run()");
+        Assert.Equal("1", output);
     }
 
     // 式本体 (=>) の lambda と method も block 本体の return と同じく struct を copy して返す

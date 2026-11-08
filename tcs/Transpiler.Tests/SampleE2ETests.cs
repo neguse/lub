@@ -52,46 +52,24 @@ public class SampleE2ETests
     }
 
     [Fact]
-    public void Sample_HostApiRef_TranspilesAndRuns()
+    public void Sample_HostApiRef_ChecksAndCallsTheHost()
     {
         var source = File.ReadAllText(TestHelper.FindProjectFile(
             "samples/host_api_game.cs"));
         var refSource = File.ReadAllText(TestHelper.FindProjectFile(
             "samples/host_api_stub.cs"));
-        var result = Transpiler.TranspileWithDiagnostics(
-            [source], null, [refSource]);
+        var result = Checker.Check([source], null, [refSource]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.DoesNotContain("Screen = {}", result.Lua);
-        Assert.DoesNotContain("Time = {}", result.Lua);
-        Assert.DoesNotContain("Log = {}", result.Lua);
-
-        var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");
-        var script = $$"""
-            local TinySystem = dofile("{{runtimePath}}")
-            String = TinySystem.String
-            LastLog = ""
-            hostapi = {
-              screen = {
-                width = function() return 1280 end,
-                height = function() return 720 end
-              },
-              time = {
-                delta_seconds = function() return 0.16 end
-              },
-              log = {
-                info = function(message) LastLog = message end
-              }
-            }
-            {{result.Lua}}
-            print(HostApiSample.DescribeFrame())
-            print(LastLog)
-            """;
-        var output = TestHelper.RunLua(script).Trim()
-            .Split('\n', StringSplitOptions.TrimEntries);
-
-        Assert.Equal("screen=1280x720 dt=0.16", output[0]);
-        Assert.Equal("describe-frame", output[1]);
+        Assert.Empty(result.Warnings);
+        // stub の型は IL の class にせず、host の関数として呼ぶ
+        var export = IlExport.Export([source], referenceSources: [refSource]);
+        Assert.Empty(export.Diagnostics);
+        Assert.All(export.Classes.Where(c => c.Name.StartsWith("HostApi_", StringComparison.Ordinal)), c => Assert.True(c.IsExternal, c.Name));
+        var names = export.ForeignMethods.Select(m => m.Name).ToList();
+        Assert.Contains("hostapi.screen.width", names);
+        Assert.Contains("hostapi.time.delta_seconds", names);
+        Assert.Contains("hostapi.log.info", names);
     }
 
     private static string RunSample(string relativePath, string expr)

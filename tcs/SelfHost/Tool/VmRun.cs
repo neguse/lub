@@ -138,9 +138,9 @@ public sealed class VmSession
         return b;
     }
 
-    /// <summary>live に当てられない編集の理由 (Lua の reload と同じ規則)。</summary>
+    /// <summary>live に当てられない編集の理由 (ReloadRules)。</summary>
     public static List<string> RestartReasons(ExportResult oldProgram, ExportResult newProgram) =>
-        ReloadRules.RestartReasons(ReloadRules.TypesOf(oldProgram), ReloadRules.TypesOf(newProgram), true);
+        ReloadRules.RestartReasons(ReloadRules.TypesOf(oldProgram), ReloadRules.TypesOf(newProgram));
 
     private static VmUpdate Failed()
     {

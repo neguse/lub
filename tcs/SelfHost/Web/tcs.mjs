@@ -1,14 +1,10 @@
-// tcs の WebAssembly 版の JS の入口 (playground の増分 session)。
-//   const tcs = await createTcs({ toolFiles });   // toolFiles: { "runtime/tinysystem.lua": text, "runtime/module_registry.lua": text, "lib/TinySystem/Linq.cs": text, "lib/TinySystem/ValueTuple.cs": text }
-//   tcs.open(entry, files, refs)  → {ok, errors, warnings, epoch, revision}   (files と refs は { path: text })
-//   tcs.update(epoch, path, text) → {ok, fastPath, requiresRestart, restartReasons, errors, epoch, revision, ...}
-//   tcs.link(epoch)               → bridge snapshot の Lua (失敗は "--@@tcs_error: " で始まる)
-//   tcs.vmOpen(entry, files, refs) → {ok, kind, module, batch, restartReasons, errors, revision}   (tcs VM の .tcsb。module と batch は base64)
+// tcs の WebAssembly 版の JS の入口 (playground の tcs VM の増分 session)。
+//   const tcs = await createTcs({ toolFiles });   // toolFiles: { "lib/TinySystem/Linq.cs": text, "lib/TinySystem/ValueTuple.cs": text }
+//   tcs.vmOpen(entry, files, refs) → {ok, kind, module, batch, restartReasons, errors, revision}   (files と refs は { path: text }。tcs VM の .tcsb。module と batch は base64)
 //   tcs.vmUpdate(path, text)       → 同じ形 (kind は batch / restart / error。batch の応答は module を持たない)
 //   tcs.vmModule()                 → 最後に通った build の module (base64)
 //   tcs.vmConfig(exports, traces)  → 次の vmOpen が entry の他に作る関数 (C.M / C.*) と --trace の path の先頭
 //   tcs.vmRemove(path)             → vmUpdate と同じ形 (file を session から外す)
-// 応答の形は .NET の WasmCompiler の SessionExports と同じ。
 import createCore from "./tcs-core.mjs";
 
 export async function createTcs({ toolFiles }) {
@@ -38,16 +34,6 @@ export async function createTcs({ toolFiles }) {
   };
   const pairs = (map) => Object.entries(map ?? {}).flat();
   return {
-    open(entry, files, refs) {
-      const r = Object.entries(refs ?? {});
-      return JSON.parse(call(["open", entry, r.length, ...r.flat(), ...pairs(files)]));
-    },
-    update(epoch, path, text) {
-      return JSON.parse(call(["update", epoch, path, text]));
-    },
-    link(epoch) {
-      return call(["link", epoch]);
-    },
     vmOpen(entry, files, refs) {
       const r = Object.entries(refs ?? {});
       return JSON.parse(call(["vmopen", entry, r.length, ...r.flat(), ...pairs(files)]));

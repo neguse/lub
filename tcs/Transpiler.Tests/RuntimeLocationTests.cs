@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace TinyCs.Tests;
 
-// runtime の Lua は生成物に埋め込まれてホストで実行されるので、バイナリの隣からだけ読む。
+// tcs c が生成 C に埋め込む runtime の C は、バイナリの隣 (runtime/) からだけ読む。
 // 作業ディレクトリとその祖先、バイナリの祖先に置かれたものは読まない
 public class RuntimeLocationTests : IDisposable
 {
@@ -17,25 +17,35 @@ public class RuntimeLocationTests : IDisposable
         _bin = Directory.CreateDirectory(Path.Combine(_root, "bin")).FullName;
         _work = Directory.CreateDirectory(Path.Combine(_root, "work")).FullName;
 
-        // _root は作業ディレクトリとバイナリの両方の祖先
-        var planted = Directory.CreateDirectory(Path.Combine(_root, "runtime")).FullName;
-        foreach (var name in new[] { "tinysystem.lua", "module_registry.lua" })
-            File.WriteAllText(Path.Combine(planted, name), $"{Marker}()\n");
-
         var built = Path.GetDirectoryName(typeof(Program).Assembly.Location)!;
         foreach (var file in Directory.GetFiles(built))
             if (Path.GetExtension(file) == ".dll" || Path.GetFileName(file).StartsWith("Transpiler."))
                 File.Copy(file, Path.Combine(_bin, Path.GetFileName(file)));
-        Directory.CreateDirectory(Path.Combine(_bin, "runtime"));
-        foreach (var file in Directory.GetFiles(Path.Combine(built, "runtime")))
-            File.Copy(file, Path.Combine(_bin, "runtime", Path.GetFileName(file)));
+        CopyTree(Path.Combine(built, "runtime"), Path.Combine(_bin, "runtime"));
+
+        // _root は作業ディレクトリとバイナリの両方の祖先。同じ名前の runtime のファイルを marker にして置く
+        foreach (var file in Directory.GetFiles(Path.Combine(_bin, "runtime"), "*", SearchOption.AllDirectories))
+        {
+            var planted = Path.Combine(_root, Path.GetRelativePath(_bin, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(planted)!);
+            File.WriteAllText(planted, $"{Marker}\n");
+        }
 
         File.WriteAllText(Path.Combine(_work, "Game.cs"), """
             public static class Game
             {
-                public static int OnFrame() { return 1; }
+                public static void Main() { System.Console.WriteLine(1); }
             }
             """);
+    }
+
+    private static void CopyTree(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var file in Directory.GetFiles(from))
+            File.Copy(file, Path.Combine(to, Path.GetFileName(file)));
+        foreach (var dir in Directory.GetDirectories(from))
+            CopyTree(dir, Path.Combine(to, Path.GetFileName(dir)));
     }
 
     public void Dispose()
@@ -65,31 +75,23 @@ public class RuntimeLocationTests : IDisposable
         return (proc.ExitCode, stderr.Result);
     }
 
-    [Theory]
-    [InlineData("--snapshot")]
-    [InlineData("--entry")]
-    public void CopiedBinary_UsesTheRuntimeNextToIt(string mode)
+    [Fact]
+    public void CopiedBinary_UsesTheRuntimeNextToIt()
     {
-        var output = Path.Combine(_work, "game.lua");
-        var (exitCode, stderr) = mode == "--snapshot"
-            ? RunTcs("--snapshot", "--entry", "Game", "Game.cs", "-o", output)
-            : RunTcs("--entry", "Game", "Game.cs", "-o", output);
+        var output = Path.Combine(_work, "game.c");
+        var (exitCode, stderr) = RunTcs("c", "--entry", "Game", "Game.cs", "-o", output);
 
         Assert.True(exitCode == 0, stderr);
         Assert.DoesNotContain(Marker, File.ReadAllText(output));
     }
 
-    [Theory]
-    [InlineData("--snapshot")]
-    [InlineData("--entry")]
-    public void BinaryWithoutRuntime_FailsInsteadOfSearching(string mode)
+    [Fact]
+    public void BinaryWithoutRuntime_FailsInsteadOfSearching()
     {
         Directory.Delete(Path.Combine(_bin, "runtime"), true);
 
-        var output = Path.Combine(_work, "game.lua");
-        var (exitCode, stderr) = mode == "--snapshot"
-            ? RunTcs("--snapshot", "--entry", "Game", "Game.cs", "-o", output)
-            : RunTcs("--entry", "Game", "Game.cs", "-o", output);
+        var output = Path.Combine(_work, "game.c");
+        var (exitCode, stderr) = RunTcs("c", "--entry", "Game", "Game.cs", "-o", output);
 
         Assert.NotEqual(0, exitCode);
         Assert.Contains("runtime file not found", stderr);

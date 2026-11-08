@@ -1,16 +1,16 @@
 # TinyC# (tcs)
 
 C# サブセットのコンパイラ。ゲームスクリプティング向け。
-出力は Lua 5.5 のソース、tcs VM の bytecode (`tcs vm`、VM は `tcsvm/`)、C のソース (`tcs c`、`tcs2c/`) の 3 つ。
+出力は tcs VM の bytecode (`tcs vm`、VM は `tcsvm/`。開発と hot reload の実行系) と C のソース (`tcs c`、`tcs2c/`。release の実行系) の 2 つ。
 
-compiler は TinyC# で書いたセルフホストの実装 1 つ (`SelfHost/`) で、.NET、Lua、C (tcs2c で C にした tcs)、wasm のどれでも同じ実装が動く。
-字句解析から型チェックと準拠検査までを compiler が行い、Lua の出力はテーブル + メタテーブルの OOP で、型消去で動作する。
+compiler は TinyC# で書いたセルフホストの実装 1 つ (`SelfHost/`) で、.NET、C (tcs2c で C にした tcs)、wasm のどれでも同じ実装が動く。
+字句解析から型チェックと準拠検査、IL の組み立てまでを compiler が行い、tcs VM と C の backend は同じ IL を読む。
 Roslyn は compiler の外の道具 (IDE の Roslyn Analyzer、playground の補完と hover、検証の oracle) にだけ使う。
 
 ## 必要なもの
 
 - .NET 10 SDK (版は `global.json` で固定。導入は `dotnet-install.sh --jsonfile global.json` を推奨 — distro package は workload と版がずれるため混ぜない)
-- CMake 3.12+ (Lua ビルド用)
+- CMake 3.12+ (tcsvm のビルド用)
 - C コンパイラ (MSVC / GCC / Clang)
 
 ## セットアップ
@@ -26,21 +26,18 @@ cd tcs
 git submodule update --init --recursive
 ```
 
-`deps/lua` は Lua 5.5 ソースの git submodule として固定する。
-更新する場合は submodule commit を明示的に進め、`deps/lua/lua -v` が `Lua 5.5` で始まることを `run-tests` で確認する。
+`deps/csharpstandard` は C# の仕様の例 (spec conformance のテストの入力) の git submodule。
 
-## Lua 5.5 のビルド
+## tcsvm のビルド
 
 CMake でクロスプラットフォームビルド:
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
+cmake --build build --config Release --target tcsvm
 ```
 
-Windows (MSVC) の場合も同じ。Visual Studio の Developer Command Prompt か PowerShell で実行する。
-CMake は Linux / Windows / macOS / iOS-family / Emscripten / BSD / generic Unix で Lua の compile definitions と system libs を分岐する。
-ビルド成果物は `deps/lua/lua` (Unix) または `deps/lua/lua.exe` (Windows) に出力される。
+ビルド成果物は `build/tcsvm/tcsvm` に出力される。
 
 ## テスト実行
 
@@ -58,8 +55,6 @@ Windows (PowerShell):
 .\run-tests.ps1
 ```
 
-Lua が未ビルド、CMake 入力より古い、または `Lua 5.5` ではない場合は自動で `cmake` を呼んでビルドしてからテストを実行する。
-テスト時は `deps/lua/lua -v` が `Lua 5.5` で始まることも検証する。
 `run-tests` は `dotnet test` に加え、代表 sample の `tcs check`、Rider helper script、analyzer-demo build の expected diagnostics、analyzer nupkg の PackageReference consumer と `.editorconfig` severity override を検査する。
 GitHub Actions (`.github/workflows/ci.yml`) でも同じ gate を実行する。
 
@@ -74,194 +69,103 @@ CLI publish:
 dotnet publish Transpiler/Transpiler.csproj -c Release -o publish/tcs
 ```
 
-publish 出力には `runtime/tinysystem.lua` と `runtime/module_registry.lua` が `runtime/` 配下に同梱される。
-CLI の出力はこの runtime を読み込んで埋め込むため、publish ディレクトリ単体で変換できる。
-runtime はバイナリの隣だけから読み、無ければ変換は失敗する。
+publish 出力には `tcs c` が生成 C に埋め込む runtime の C (`runtime/core`、`math`、`fmt`、`model`、`utf8`) が `runtime/` 配下に同梱される。
+同梱の library (`TinySystem/Linq.cs` など) は CLI に埋め込まれるので、publish ディレクトリ単体で変換できる。
+runtime はバイナリの隣だけから読み、無ければ `tcs c` は失敗する。
 
 ## 使い方
 
-### 基本: C# → Lua 変換
+### コマンド
 
 ```bash
 # ヘルプ / バージョン
 dotnet run --project Transpiler -- --help
 dotnet run --project Transpiler -- --version
 
-# stdout に出力
-dotnet run --project Transpiler -- samples/hello.cs
+# 準拠チェック
+dotnet run --project Transpiler -- check samples/hello.cs
 
-# ファイルに出力
-dotnet run --project Transpiler -- samples/hello.cs -o out.lua
+# tcs VM の bytecode (.tcsb) にして VM で動かす (entry は static Main を持つ class)
+dotnet run --project Transpiler -- vm --entry Game game.cs -o game.tcsb
+build/tcsvm/tcsvm game.tcsb
+
+# C にする
+dotnet run --project Transpiler -- c --entry Game game.cs -o game.c
 ```
 
-`-o`の出力と`--sourcemap`のmapは、input / `--ref` / `--prelude`と
-同じパスにはできない。Windows / Linux / macOSではsymlinkやhardlink等で
-同じ実体を指す場合も含め、衝突時は書き込み前にエラーとなり、入力を変更しない。
-衝突しない既存の出力linkはlink先へ書かず、出力entryを通常ファイルへ置換する。
-既存出力が書き込み不可なら従来どおりエラーにし、Linux / macOSでは置換前の
-Unix permission bitsを維持する。
+subcommand (`check` / `vm` / `c`) の無い呼び出しは usage を stderr に書いて exit 1 になる。
+`tcs vm` の option (`--export`、`--watch`、`--reload-from`、`--trace`、`--dump-il` など) は `tcs vm --help` と [`tcsvm/README.md`](tcsvm/README.md)、`tcs c` の option (`--lib`、`--digest-f32`、`--vm-host` など) は `tcs c --help` と [`tcs2c/README.md`](tcs2c/README.md)。
 
-CLI 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込む。
-`List` / `Dict` / `Math` / `String` / `Random` は生成物だけで利用できる。
-エンジン側で runtime を供給する場合は `--no-runtime` を付ける。
-
-`Math` の超越関数 (Sin / Cos / Tan / Exp / Log / Atan2 / Pow) は、Lua の `math.*` ではなく global の `tcs_math` を呼ぶ (tcs2c と .NET と bit 単位で同じ結果にするため)。生成 Lua を動かす host は、`runtime/lua/tcs_math_lua.c` と `runtime/math/*.c` を build して VM に登録する (`luaL_requiref(L, "tcs_math", luaopen_tcs_math, 1)`)。このリポジトリの `deps/lua/lua` / `lua32` (CMake) は登録済み。
-
-float の文字列化 (連結・補間 (書式つきも)・ToString・Console.WriteLine) と string の順序 (Sort / OrderBy / Min / Max) は global の `tcs_rt` を呼ぶ (.NET の `float.ToString()` と同じ文字列にし、Lua の `<` は locale で変わるので .NET の ordinal と同じ順序にするため)。host は `runtime/lua/tcs_rt_lua.c` と `runtime/fmt/f2s.c` を build して VM に登録する (`luaL_requiref(L, "tcs_rt", luaopen_tcs_rt, 1)`)。`deps/lua/lua` / `lua32` は登録済み。
-
-`TinySystem.Text` (`RuneCount` / `RuneSubstring` / `Utf8Bytes`) と `EnumerateRunes` は global の `tcs_utf8` を呼ぶ (tcs2c と同じ実装で、.NET と同じ結果にするため)。host は `runtime/lua/tcs_utf8_lua.c` と `runtime/utf8/*.c` を build して VM に登録する (`luaL_requiref(L, "tcs_utf8", luaopen_tcs_utf8, 1)`)。`deps/lua/lua` / `lua32` は登録済み。
-
-```bash
-dotnet run --project Transpiler -- samples/hello.cs -o out.lua --no-runtime
-```
-
-`--entry <Class>` を付けると出力末尾に emitted 名の `return` を追記し、
-`require` / `dofile` が class table を返す Lua module として使える
-(host が module の callback を呼ぶ engine 組み込み向け)。
-指定は metadata 名 (`Game.App`) と一意な simple 名 (`App`) の両方を解決し、
-interface / `--ref` 型 / 曖昧な simple 名はエラーになる。
-`--module` を付けると出力末尾に定義した型 (`--ref` を除く) の table を返す
-`return { Counter = Counter, ... }` を追記し、ライブラリを
-`local m = require("lib")` で読む Lua module として使える (`--entry` /
-`--snapshot` とは併用しない)。key は C# の simple 名で、namespace の中の型も
-`m.Color` で引ける (simple 名が出力内で重複するときだけ Lua の global 名)。
-
-namespace の中の型は Lua では namespace 修飾名の global になり
-(`Game.Gfx.Color` → `Game_Gfx_Color`)、入れ子の型は外側の型の名前をつなぎ
-(`Outer.Inner` → `Outer_Inner`)、どちらでもない型は simple 名の
-global になる。
-`--prelude <shim.lua>` は任意のユーザー Lua (host API を tcs stub の形に
-橋渡しする shim など) を出力の先頭に前置する。
-
-output / source map のパスが入力・`--ref`・`--prelude` と同じ実体
-(symlink / hardlink 含む) になる場合は、書き込み前にエラーにして
-入力破壊を防ぐ (watch の各 rebuild でも再検証)。
-
-```bash
-dotnet run --project Transpiler -- game.cs -o game.lua --entry Game --prelude engine-shim.lua
-```
+`Math` の超越関数 (Sin / Cos / Tan / Exp / Log / Atan2 / Pow) は `runtime/math` の C 実装で、tcs VM、C、.NET (`TinySystem/TinySystem.props`) で bit 単位で同じ結果になる。
+float の文字列化は `runtime/fmt`、`TinySystem.Text` (`RuneCount` / `RuneSubstring` / `Utf8Bytes`) と `EnumerateRunes` は `runtime/utf8` の実装で、.NET と同じ結果を返す。
 
 ### 準拠チェック
 
-Lua を出力せず、C# compile error と TinyC# 準拠診断だけを返す。
+出力を書かず、C# compile error と TinyC# 準拠診断だけを返す。
 警告またはエラーがあれば exit 1、問題がなければ exit 0。
-未対応の構文 (TCS1001) と API (TCS1002) は error で、build (`-o` / `--watch` / 増分 session) も Lua を書かずに exit 1 になる。TCS1003 は warning で、build は止めない (`--warnaserror` で止められる)。
+未対応の構文 (TCS1001) と API (TCS1002) は error で、`tcs vm` / `tcs c` (`--watch` と増分 session も) も出力を書かずに失敗する。TCS1003 は warning で、`tcs vm` / `tcs c` は止めない。
 BCL の型は既定で通さない。[support-matrix](doc/support-matrix.md) の一覧に無い型は TCS1002 になる。
 TinyC#固有の例外はenumと数値整数 (`char`を除く) の変換・等値比較だけで、同じC#エラーIDの通常の型不一致は失敗する。
-user の型の member 名は C# の識別子のまま Lua / IL の名前になる (`OnFrame` → `OnFrame`、
+user の型の member 名は C# の識別子のまま IL の名前になる (`OnFrame` → `OnFrame`、
 enum メンバ `BigValue` → `BigValue`)。`--ref` 型
 (host) の member だけ host の wire format に写す (`BeginPass` → `begin_pass`、enum
 メンバ `DontCare` → `DONT_CARE`、static アクセス `Lub.Gfx` → `lub.gfx`) ので、host の
 wire format が snake_case でも C# 側は C# の通常の名前で書ける (規則は
-`doc/support-matrix.md` の「Lua 出力の名前規則」)。Lua の予約語と同名の member、`__` で始まる識別子、非 ASCII の識別子、`new` / `ctor` と同名の member、型名と namespace 名の `_` は TCS1001。名前は C# の識別子のまま Lua に出るので、tcs は命名の流儀 (PascalCase / camelCase) を検査しない。
+`doc/support-matrix.md` の「名前規則」)。Lua の予約語と同名の member、`__` で始まる識別子、非 ASCII の識別子、`new` / `ctor` と同名の member、型名と namespace 名の `_` は TCS1001。名前は C# の識別子のまま IL に出るので、tcs は命名の流儀 (PascalCase / camelCase) を検査しない。
 
 ```bash
 dotnet run --project Transpiler -- check samples/hello.cs
 dotnet run --project Transpiler -- check game.cs --ref engine-stub.cs
 ```
 
-`tcs check` は Lua を出さず、束縛と準拠の検査の後に tcs VM と C の backend が読む IL を組み立てる。IL にできない本文と式も TCS1001 (`unsupported syntax: <構文の種類>`) と `internal:` の理由で止める。
+`tcs check` は束縛と準拠の検査の後に tcs VM と C の backend が読む IL を組み立てる。IL にできない本文と式も TCS1001 (`unsupported syntax: <構文の種類>`) と `internal:` の理由で止める。
 
 ### 複数ファイル
 
 ```bash
-dotnet run --project Transpiler -- src/Player.cs src/Enemy.cs src/Game.cs -o game.lua
+dotnet run --project Transpiler -- check src/Player.cs src/Enemy.cs src/Game.cs
+dotnet run --project Transpiler -- vm --entry Game src/Player.cs src/Enemy.cs src/Game.cs -o game.tcsb
 ```
 
 同一 Compilation でコンパイルするので、ファイル間のクラス参照が解決される。
 
 ### 参照専用 stub / facade
 
-Lua に出力しない型チェック専用ファイルは `--ref` で渡す。
+IL に出さない型チェック専用ファイルは `--ref` で渡す。
 外部エンジン API や host 提供 API の最小 stub を置く用途。
 
 ```bash
-dotnet run --project Transpiler -- game.cs --ref engine-stub.cs -o game.lua
+dotnet run --project Transpiler -- check game.cs --ref engine-stub.cs
+dotnet run --project Transpiler -- vm --entry Game game.cs --ref engine-stub.cs -o game.tcsb
 ```
 
-stub の型は namespace と入れ子の型名を全小文字で `.` 結合した Lua の
-パスで呼ぶ (`namespace HostApi { static class Screen }` の `Screen.Width()` は
-`hostapi.screen.width()`)。
+stub の型の呼び出しは host の関数になる。名前は namespace と入れ子の型名を全小文字で `.` 結合したパス
+(`namespace HostApi { static class Screen }` の `Screen.Width()` は `hostapi.screen.width`)。
+C の host 関数の名前と VM への登録は `tcs2c/README.md` と `tcsvm/README.md`。
 
 この repo では engine 固有名に依存しない例として、
 `samples/host_api_game.cs` と `samples/host_api_stub.cs` を用意している。
 
 ```bash
-dotnet run --project Transpiler -- samples/host_api_game.cs --ref samples/host_api_stub.cs -o host_api_game.lua
+dotnet run --project Transpiler -- check samples/host_api_game.cs --ref samples/host_api_stub.cs
 ```
 
-### ソースマップ
+### 実行 trace と watch (`tcs vm --trace`、`tcs vm --watch`)
 
-```bash
-dotnet run --project Transpiler -- game.cs -o game.lua --sourcemap
-```
+`tcs vm --trace <path-prefix>` は、入力 path (`/` 区切りに正規化) が prefix のどれかに path の segment 単位で一致するファイルの文と代入を、VM が記録できる形で module に入れる (prefix は繰り返して指定できる。`samples/game` は `samples/game/Game.cs` に一致し、`samples/gameover/Over.cs` には一致しない)。
 
-`game.lua.map` が生成される。Lua 行番号 → C# ファイル:行番号 の JSON マッピング。
-runtime prelude を埋め込む通常出力でも、map の Lua 行番号は生成された `.lua` ファイル上の行番号に合わせて offset 済み。
-
-`.lua.map` の形式:
-
-```json
-{
-  "version": 1,
-  "mappings": {
-    "42": {"file": "game.cs", "line": 12}
-  }
-}
-```
-
-Lua runtime error の stack trace は SourceMap で注釈できる:
-
-```bash
-deps/lua/lua game.lua 2> trace.txt
-dotnet run --project Transpiler -- --map-stacktrace game.lua.map trace.txt
-```
-
-`trace.txt` を省略した場合は stdin から読む。SourceMap の exact 行が無い場合は直前の mapping を使う。
-
-### 実行 trace (`--trace`)
-
-```bash
-dotnet run --project Transpiler -- samples/game.cs -o game.lua --trace samples/game.cs
-```
-
-ゲームを動かしながら、どの C# の行を実行したかと、host API を呼んだときの C# の呼び出し元を知るための開発用の道具。
-入力 path (`/` 区切りに正規化) が `--trace` の prefix のどれかに path の segment 単位で一致するファイルの文だけが対象で、prefix は繰り返して指定できる。prefix はファイルの path そのものか directory で、directory はその下のファイルに一致する (`samples/game` は `samples/game/Game.cs` に一致し、`samples/gameover/Over.cs` には一致しない)。prefix と入力 path の先頭の `./` と、prefix の末尾の `/` は比べる前に外す (`./` はすべての入力に一致する)。
-対象の文の直前に `__tcs_at = "<file>:<line>"; __tcs_trace[__tcs_at] = true` が入る (`<file>` は入力に与えた path、`<line>` は C# の 1 始まりの行)。1 つの文につき 1 回で、生成コードで複数の Lua 文に分かれる文 (pattern の変数の前宣言など) も最初に 1 回だけ入る。
-`else if` と `while` / `do` ... `while` の条件は、評価するたびにその条件の行で同じ記録をしてから評価する (反復ごとに戻る)。
-`--trace` を付けなければ出力は変わらない。`--snapshot` とは併用できない。
-
-host との契約:
-
-- `__tcs_trace` は global の table で、出力と reload chunk は `__tcs_trace = __tcs_trace or {}` で既存のものを使う。host は key `"<file>:<line>"` を読み、消すときは table を置き換えず in place で key を消す (frame ごとに消せば、その frame で実行した行の集合になる)。
-- `__tcs_at` は対象の文を持つ Lua 関数 (method / ctor / accessor / operator / block 本体の lambda) ごとの local で、関数本体の先頭で宣言される。host は各 Lua frame の `__tcs_at` という名前の local (`lua_getlocal` / `debug.getlocal`) を読むと、その frame の現在の C# 行が分かり、並べると C# の呼び出し元の列になる。
-- `__tcs_trace_classes` は global の table で、対象ファイルの型 table (class / record / struct。enum は状態を持たないので入らない) を Lua 名の key で持つ (`__tcs_trace_classes["Game"] = Game`)。型 table を作った直後に登録し、出力と reload chunk は `__tcs_trace_classes = __tcs_trace_classes or {}` で既存のものを使う。host はここから static field を辿って game の状態を snapshot / restore する。reload chunk は型 table の identity を保つので、登録済みの型は同じ table のまま、chunk が足した型は新しく登録される。
-- `return f(x)` は Lua の tail call で、その frame は stack に残らない。式本体の lambda、IIFE に畳まれた文、top-level 文、ctor 先頭の field 代入 (table constructor に畳まれる) には trace が入らない。host は `__tcs_at` の無い frame を飛ばす。
-
-### watch モード
-
-```bash
-dotnet run --project Transpiler -- src/*.cs -o out.lua --watch
-```
-
-`src/*.cs` は shell が展開する例。shell が glob 展開しない環境ではファイルを個別に渡す。
-ファイル変更を検知して自動で再トランスパイルする。`Ctrl+C` で停止。
-
-実行中の VM の状態を保ったまま変更を当てるホスト (lub など) は `--reload-chunks` を付ける。
-以後の rebuild ごとに、`-o` の出力を書いた後に、前の build から今回の build への reload chunk を標準出力へ `@@tcs_reload_chunk <UTF-8 の byte 数>` の行と本文の組で順に書く (ログは標準エラー)。
-初回の出力を読んだ VM で、届いた chunk を届いた順にすべて実行すると、method の差し替えと field・static の移行が行われる (instance と static の値は保持)。
-出力と chunk は VM の build 番号 (`__tcs_build`) を書き、chunk は自分の元の build の VM にだけ当たる (既に含む VM では何もせず、途中が抜けた VM では何も変えずに失敗する)。
-chunk で移行できない変更 (既存 static の initializer と型、const の値、base class、型の削除・種類の変更、enum member の削除・値の変更) では chunk を書かず、出力を書いた後に `@@tcs_restart_required <UTF-8 の byte 数>` の行と理由の行 (1 行 1 理由、改行終端) を書く。ホストは出力を読み直して VM を起動し直す。以後の chunk はその build からの差分になる。
-chunk の規則は `doc/hot-reload-design.md`。`--instance-registry` を含意する。
-`--trace` を付けたときは、reload chunk の v2 定義にも出力と同じ trace が (同じ入力 path の key で) 入る。
+`tcs vm --watch -o out.tcsb` は入力 (と `--inputs-from` の一覧) を見張り、最初に通った build を `-o` に書く。
+以後の編集ごとに `-o` を書き直してから、前の build からの reload を標準出力へ `@@tcs_<kind> <UTF-8 の byte 数>` の行と本文の組で書く (kind は `vm_batch`、`restart_required`、`reload_notes`、`build_failed`)。
+live に当てられない変更 (既存 static の initializer と型、const の値、型の削除・種類の変更、enum member の削除・値の変更) は `restart_required` と理由の行になる。
+規則は `doc/hot-reload-design.md`、VM の reload は `doc/vm-design.md` の §12 と §13.3。
 
 ### tcs analyzer PoC
 
 Rider などの C# IDE 上で tcs 非準拠コードを警告するための Roslyn Analyzer PoC。
 現時点では struct の indexer、`partial` 型, `lock`, `nameof`, `try/catch`, `throw`, local function, list pattern, 名前付き引数, runtime の global と同名の型 (`class Math` 等), caller info 属性 (`[CallerMemberName]` 等)、未対応 BCL API / 未対応 core library member、配列と Dictionary への null 保存を `TCS1001` / `TCS1002` / `TCS1003` として報告する。
-analyzer だけが、.NET で動かすと .NET の実装が動く `System.Math` / `System.MathF` の超越関数を `TCS1004` として報告する。TinySystem を参照する project は `TinySystem/TinySystem.props` を Import すると、`Math` / `MathF` が `TinySystem.Math` (tcs2c / Lua と同じ実装) になる。
-props は `InvariantGlobalization` も有効にし、string の既定の比較 (Sort / OrderBy / Min / Max) を tcs2c / Lua と同じ ordinal にする。
-TCS1001 / TCS1002 / TCS1003 は、analyzer が tcs の compiler (`SelfHost/Compiler`、`tcs check` と同じ実装) を project のソースで動かして出す。規則は compiler の 1 か所にあり、analyzer と `tcs check` と transpiler の判定は同じになる (transpiler では TCS1001 / TCS1002 は error だが、analyzer では warning。severity は `.editorconfig` で上げられる)。
+analyzer だけが、.NET で動かすと .NET の実装が動く `System.Math` / `System.MathF` の超越関数を `TCS1004` として報告する。TinySystem を参照する project は `TinySystem/TinySystem.props` を Import すると、`Math` / `MathF` が `TinySystem.Math` (tcs の C と VM と同じ実装) になる。
+props は `InvariantGlobalization` も有効にし、string の既定の比較 (Sort / OrderBy / Min / Max) を tcs の C と VM と同じ ordinal にする。
+TCS1001 / TCS1002 / TCS1003 は、analyzer が tcs の compiler (`SelfHost/Compiler`、`tcs check` と同じ実装) を project のソースで動かして出す。規則は compiler の 1 か所にあり、analyzer と `tcs check` と `tcs vm` / `tcs c` の判定は同じになる (`tcs check` などでは TCS1001 / TCS1002 は error だが、analyzer では warning。severity は `.editorconfig` で上げられる)。
 `--ref` の stub (host の API の宣言) は、AdditionalFiles か Compile の項目に `TinyCsRef="true"` を付けて analyzer に渡す (Roslyn の型の検査にも stub を使うなら Compile)。
 
 ```xml
@@ -272,8 +176,6 @@ TCS1001 / TCS1002 / TCS1003 は、analyzer が tcs の compiler (`SelfHost/Compi
        <CompilerVisibleItemMetadata Include="Compile" MetadataName="TinyCsRef" /> -->
 </ItemGroup>
 ```
-変換に `--warnaserror` を付けると、`tcs check` と同じく警告が 1 つでもあれば出力を書かずに失敗する (check と変換を 1 回の compile で済ませる)。
-
 ```bash
 dotnet test TinyCs.Analyzers.Tests
 dotnet build samples/analyzer-demo/analyzer-demo.csproj
@@ -353,34 +255,31 @@ List\<T\>, Queue\<T\>, HashSet\<T\>, Dictionary\<K,V\>, LINQ (`using TinySystem.
 
 ```
 tcs/
-  SelfHost/            # tcs の本体 (TinyC# で書いた compiler、C と tcs VM の backend、CLI、C / Lua / wasm の host)
+  SelfHost/            # tcs の本体 (TinyC# で書いた compiler、C と tcs VM の backend、CLI、C / wasm の host)
   Transpiler/          # .NET の host と CLI の入口 (CLI の本体は SelfHost/Tool)
   Transpiler.Tests/    # xUnit テスト
   tcsvm/               # tcs VM (`tcs vm` が作る .tcsb を動かす register VM)
   tcs2c/               # tcs c (C backend) を .NET で動かす入口と、C の出力のテスト用のスクリプト
-  tcs2c.Tests/         # C backend と Lua の stdout の差分テスト
+  tcs2c.Tests/         # C backend、tcs VM、.NET の stdout の差分テスト
   WasmCompiler/        # tcs を .NET の wasm でブラウザに公開する入口
   TinyCs.Analyzers/    # Roslyn Analyzer PoC
   TinyCs.Analyzers.Tests/
   Shared/              # 診断の id
   TinySystem/          # C# 側の型定義/facade (コンパイル・補完用)
   runtime/
-    tinysystem.lua     # Lua ランタイムライブラリ (List/Dict/String/Math)
     core/              # tcs c の C runtime (GC を含む)
     model/             # tcs VM と tcs2c が共有する型記述子
     sort/              # List.Sort の C 実装 (tcs VM が使う)
-    math/              # Math の超越関数の C 実装 (tcs2c が埋め込み、Lua の module が使う)
+    math/              # Math の超越関数の C 実装 (tcs2c が埋め込み、tcs VM が link する)
     fmt/               # float の文字列化の C 実装 (同上)
     utf8/              # 文字列の操作の C 実装 (同上)
-    lua/               # tcs_math / tcs_rt / tcs_utf8 の Lua module と、それを登録した lua / lua32
   perf/                # 性能実測ハーネス
-  bench/               # 実ブラウザの計測スクリプト
   deps/
-    lua/               # Lua 5.5 ソース (git submodule)
+    csharpstandard/    # C# の仕様 (spec conformance の例、git submodule)
   samples/             # サンプル C# コード
   doc/
     support-matrix.md  # サポートマトリクス
-  CMakeLists.txt       # Lua クロスプラットフォームビルド
+  CMakeLists.txt       # tcsvm のクロスプラットフォームビルド
 ```
 
 ## ライセンス

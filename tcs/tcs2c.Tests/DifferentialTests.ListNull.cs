@@ -1,7 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// List に null を入れても Count と順序は C# と同じ。Lua は長さを field `n` に持ち、添字の範囲を
-// 長さと比べる。期待値は同じ program を CoreCLR で実行した stdout
+// List に null を入れても Count と順序は C# と同じ。期待値は同じ program を CoreCLR で実行した stdout
 public partial class DifferentialTests
 {
     private const string ListNullProgram = """
@@ -188,29 +187,5 @@ public partial class DifferentialTests
             }
             """, "P");
         Assert.Equal("2\nTrue\n2\nyx\n3\n3\nab\n4", output);
-    }
-
-    // 長さを field に持たない host の table も List として読める
-    [Fact]
-    public void ListNull_HostTableWithoutCountReadsAsList()
-    {
-        var output = Backends.RunLua(["""
-            using System;
-            using System.Collections.Generic;
-            public static class P
-            {
-                public static List<int> FromHost;
-                public static void Main()
-                {
-                    var l = FromHost;
-                    Console.WriteLine(l.Count);
-                    foreach (var v in l) Console.WriteLine(v);
-                    l.Add(7);
-                    l.RemoveAt(0);
-                    Console.WriteLine(l.Count + "," + l[1]);
-                }
-            }
-            """], "P", "P.FromHost = {10, 20}");
-        Assert.Equal("2\n10\n20\n2,7", output.Replace("\r\n", "\n").TrimEnd('\n'));
     }
 }

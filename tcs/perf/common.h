@@ -49,7 +49,5 @@ void perf_print_result(const PerfWorkload *workload, const char *variant,
     double elapsed_seconds, uint32_t digest);
 
 PerfRunResult perf_native_dispatch(const PerfWorkload *workload);
-PerfRunResult perf_aot_hash_dispatch(const PerfWorkload *workload);
-PerfRunResult perf_aot_slot_dispatch(const PerfWorkload *workload);
 
 #endif

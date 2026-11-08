@@ -1,9 +1,8 @@
 namespace TinyCs.Tests;
 
-// namespace の中の型は常に namespace 修飾名 (`A_Color`) の global、namespace
-// に属さない型は simple 名の global にする。型の Lua 名が他の型の有無に
-// 左右されない。宣言・参照・IlExport・hot reload・snapshot・--entry/--module
-// で同じ名前を使う。
+// namespace の中の型は常に namespace 修飾名 (`A_Color`) の IL 名、namespace
+// に属さない型は simple 名にする。型の IL 名が他の型の有無に
+// 左右されない。宣言・参照・IlExport・hot reload の型の対応で同じ名前を使う。
 public class NamespaceTypeNameTests
 {
     private const string TwoColors = """
@@ -16,21 +15,17 @@ public class NamespaceTypeNameTests
         }
         """;
 
+    private static string[] ClassNames(string source)
+    {
+        var export = IlExport.Export([source]);
+        Assert.Empty(export.Diagnostics);
+        return [.. export.Classes.Select(c => c.Name).OrderBy(n => n, StringComparer.Ordinal)];
+    }
+
     [Fact]
     public void SameNameInTwoNamespaces_KeepsBothTypes()
     {
         Assert.Equal("12", TestHelper.CompileAndRunVm(TwoColors, "NsRepro.Test()"));
-    }
-
-    [Fact]
-    public void CollidingTypes_GetNamespaceQualifiedLuaNames()
-    {
-        var lua = Transpiler.Transpile(TwoColors);
-        Assert.Contains("A_Color = {}", lua);
-        Assert.Contains("B_Color = {}", lua);
-        Assert.DoesNotContain("\nColor = {}", lua);
-        // 一意な型は simple 名のまま
-        Assert.Contains("NsRepro = {}", lua);
     }
 
     [Fact]
@@ -40,9 +35,7 @@ public class NamespaceTypeNameTests
             namespace Game.Gfx { public class Color { public int V = 3; } }
             public static class P { public static int Test() => new Game.Gfx.Color().V; }
             """;
-        var lua = Transpiler.Transpile(source);
-        Assert.Contains("Game_Gfx_Color = {}", lua);
-        Assert.DoesNotContain("\nColor = {}", lua);
+        Assert.Equal(["Game_Gfx_Color", "P"], ClassNames(source));
         Assert.Equal("3", TestHelper.CompileAndRunVm(source, "P.Test()"));
     }
 
@@ -54,9 +47,7 @@ public class NamespaceTypeNameTests
             namespace A { public class Color { public int V = 2; } }
             public static class P { public static int Test() => new Color().V * 10 + new A.Color().V; }
             """;
-        var lua = Transpiler.Transpile(source);
-        Assert.Contains("\nColor = {}", lua);
-        Assert.Contains("A_Color = {}", lua);
+        Assert.Equal(["A_Color", "Color", "P"], ClassNames(source));
         Assert.Equal("12", TestHelper.CompileAndRunVm(source, "P.Test()"));
     }
 
@@ -72,7 +63,7 @@ public class NamespaceTypeNameTests
             }
             """;
         Assert.Equal("34", TestHelper.CompileAndRunVm(source, "P.Test()"));
-        Assert.Contains("Game_Gfx_Color = {}", Transpiler.Transpile(source));
+        Assert.Equal(["Game_Gfx_Color", "P", "Ui_Color"], ClassNames(source));
     }
 
     [Fact]
@@ -142,36 +133,12 @@ public class NamespaceTypeNameTests
     }
 
     [Fact]
-    public void EntryClass_ReturnsQualifiedTable()
+    public void EntryClass_QualifiedName_Resolves()
     {
-        var result = Transpiler.TranspileWithDiagnostics([TwoColors.Replace(
+        var result = Checker.Check([TwoColors.Replace(
             "public int V = 1;", "public int V = 1; public static int Ping() => 7;")],
             entryClass: "A.Color");
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.EndsWith("return A_Color\n", result.Lua);
-    }
-
-    [Fact]
-    public void ModuleMode_ExportsQualifiedKeys()
-    {
-        var result = Transpiler.TranspileWithDiagnostics([TwoColors], module: true);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains("A_Color = A_Color", result.Lua);
-        Assert.Contains("B_Color = B_Color", result.Lua);
-    }
-
-    // raw Lua の require 先からは C# の simple 名で引ける (simple 名が出力内で
-    // 重複するときだけ修飾名の key)
-    [Fact]
-    public void ModuleMode_UniqueNamespacedType_ExportsSimpleKey()
-    {
-        var result = Transpiler.TranspileWithDiagnostics(["""
-            namespace Game.Gfx { public class Color { public int V = 3; } }
-            public class Plain { public int V = 4; }
-            """], module: true);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains("Color = Game_Gfx_Color", result.Lua);
-        Assert.Contains("Plain = Plain", result.Lua);
     }
 
     [Fact]
@@ -187,132 +154,21 @@ public class NamespaceTypeNameTests
             result.Classes.Single(c => c.Name == "NsRepro").DisplayName);
     }
 
+    // 型の IL 名は他ファイルの型に左右されないので、同名型を足しても既存の
+    // 型は改名されない (reload の restart の理由にならない)
     [Fact]
-    public void HotReload_MigratesInstancesOfBothTypes()
+    public void AddingSameNamedTypeKeepsTheOtherTypeName()
     {
-        const string V1 = """
-            namespace A { public class Color { public int V = 1; } }
-            namespace B { public class Color { public int V = 2; public int Old = 5; } }
-            """;
-        const string V2 = """
-            namespace A { public class Color { public int V = 1; public int Extra = 11; } }
-            namespace B { public class Color { public int V = 2; public int Added = 22; } }
-            """;
-        var script = TestHelper.ComposeReload(V1,
-            """
-            local a = A_Color.new()
-            local b = B_Color.new()
-            local ca, cb = A_Color, B_Color
-            """,
-            V2,
-            """
-            assert(A_Color == ca and B_Color == cb, "class identity")
-            assert(a.Extra == 11, "A.Color added field")
-            assert(b.Added == 22 and b.Old == nil, "B.Color migrated")
-            print("ok")
-            """);
-        Assert.Equal("ok", TestHelper.RunLua(script).Trim());
-    }
-
-    [Fact]
-    public void HotReload_ReserializesNamespacedStructField()
-    {
-        const string V1 = """
-            namespace A { public struct Vec { public int X; } }
-            public class Holder { public A.Vec Pos; }
-            """;
-        const string V2 = """
-            namespace A { public struct Vec { public int X; public int Y; } }
-            public class Holder { public A.Vec Pos; }
-            """;
-        var script = TestHelper.ComposeReload(V1,
-            """
-            local h = Holder.new()
-            h.Pos.X = 4
-            """,
-            V2,
-            """
-            assert(h.Pos.X == 4, "retained struct field")
-            assert(h.Pos.Y == 0, "added struct field gets default")
-            print("ok")
-            """);
-        Assert.Equal("ok", TestHelper.RunLua(script).Trim());
-    }
-
-    [Fact]
-    public void Snapshot_RegistersQualifiedTypeIdsAndResolvesNamespacedEntry()
-    {
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([("ns.cs", TwoColors.Replace(
-            "public int V = 1;", "public int V = 1; public static int Ping() => 7;"))]);
-        var snapshot = ModuleLinker.LinkSnapshot(session.Artifacts, session.Revision,
-            "A.Color", LuaRuntime.LoadTinySystemSource(),
-            LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath));
-        var path = Path.GetTempFileName().Replace("\\", "/");
-        try
-        {
-            File.WriteAllText(path, snapshot);
-            var output = TestHelper.RunLua($"""
-                local w = dofile("{path}")
-                local reg = _G.__tcs_module_runtime.registry
-                print(w.Ping(), reg.types["ns.cs#A_Color"] ~= nil,
-                    reg.types["ns.cs#B_Color"] ~= nil)
-                """).Trim();
-            Assert.Equal("7\ttrue\ttrue", output);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
-    }
-
-    [Fact]
-    public void Snapshot_AmbiguousSimpleEntry_Throws()
-    {
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([("ns.cs", TwoColors)]);
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            ModuleLinker.LinkSnapshot(session.Artifacts, session.Revision,
-                "Color", LuaRuntime.LoadTinySystemSource(),
-                LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath)));
-        Assert.Contains("ambiguous", ex.Message);
-    }
-
-    // 型の Lua 名は他ファイルの型に左右されないので、同名型を足しても既存の
-    // 型は改名されない (restart 境界にならない)
-    [Fact]
-    public void Incremental_AddingSameNamedTypeKeepsTheOtherModuleName()
-    {
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([
-            ("a.cs", "namespace A { public class Color { public int V = 1; } }"),
-            ("b.cs", "namespace B { public class Shade { public int V = 2; } }")]);
-        Assert.Equal(["A_Color"], session.Artifacts[0].Types.Select(t => t.Name));
-
-        var result = session.Update("b.cs",
-            "namespace B { public class Color { public int V = 2; } }");
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Equal(["A_Color"], session.Artifacts[0].Types.Select(t => t.Name));
-        Assert.Equal(["B_Color"], session.Artifacts[1].Types.Select(t => t.Name));
-        Assert.DoesNotContain(result.RestartReasons, r => r.Contains("A_Color"));
-    }
-
-    // fast path の method 差し替えも full emit と同じ Lua 型名で探す。simple 名
-    // で探すと global の Color と A.Color を取り違える
-    [Fact]
-    public void Incremental_BodyEditInQualifiedType_SplicesThatTypeOnly()
-    {
-        const string source = """
-            public class Color { public static int F() { return 1; } }
-            namespace A { public class Color { public static int F() { return 2; } } }
-            """;
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([("c.cs", source)]);
-        var result = session.Update("c.cs", source.Replace("return 2;", "return 3;"));
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.True(result.FastPath);
-        var lua = session.Artifacts.Single().Lua;
-        Assert.Equal("1\t3", TestHelper.RunLua($"{lua}\nprint(Color.F(), A_Color.F())").Trim());
+        const string a = "namespace A { public class Color { public int V = 1; } }";
+        var before = IlExport.Export([a, "namespace B { public class Shade { public int V = 2; } }"]);
+        var after = IlExport.Export([a, "namespace B { public class Color { public int V = 2; } }"]);
+        Assert.Empty(before.Diagnostics);
+        Assert.Empty(after.Diagnostics);
+        Assert.Contains(before.Classes, c => c.Name == "A_Color");
+        Assert.Contains(after.Classes, c => c.Name == "A_Color");
+        Assert.Contains(after.Classes, c => c.Name == "B_Color");
+        var reasons = TcsSelf.ReloadRules.RestartReasons(TcsSelf.ReloadRules.TypesOf(before), TcsSelf.ReloadRules.TypesOf(after));
+        Assert.DoesNotContain(reasons, r => r.Contains("A_Color"));
     }
 
     // C# のキーワードを `@` で逃がした namespace は、`@` を除いた名前で修飾する
@@ -323,7 +179,7 @@ public class NamespaceTypeNameTests
             namespace @event { public class C { public static int F() { return 7; } } }
             public static class Game { public static int Run() { return @event.C.F(); } }
             """;
-        Assert.Contains("event_C = {}", Transpiler.Transpile(source));
+        Assert.Contains("event_C", ClassNames(source));
         Assert.Equal("7", TestHelper.CompileAndRunVm(source, "Game.Run()"));
     }
 }

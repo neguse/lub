@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// Lua 出力の名前規則 (LuaNaming)。user の型の member は C# の識別子のまま、
-// 参照専用型 (--ref、host) は snake_case / UPPER_SNAKE に写し、小文字パスで参照する。
+// 名前規則 (LuaNames)。user の型の member は C# の識別子のまま、
+// 参照専用型 (--ref、host) は snake_case / UPPER_SNAKE に写し、小文字パスで参照する (IL の foreign の名前、C の host 関数の名前の元)。
 public class LuaNamingTests
 {
     [Theory]
@@ -58,9 +58,6 @@ public class LuaNamingTests
                 }
             }
             """;
-        var result = TestHelper.TranspileAndRun(source,
-            "Game.Run() .. ',' .. Player.new().Hp .. ',' .. Player.new().maxHp .. ',' .. Player.Twice(2)");
-        Assert.Equal("27,3,10,4", result);
         Assert.Equal("27,3,10,4", TestHelper.CompileAndRunVm(source, "Game.Run() + \",\" + new Player().Hp + \",\" + new Player().maxHp + \",\" + Player.Twice(2)"));
     }
 
@@ -78,9 +75,6 @@ public class LuaNamingTests
                 }
             }
             """;
-        var result = TestHelper.TranspileAndRun(source,
-            "(function() local b = Box.new() b:set_Width(4) return b:get_Width() .. ',' .. b._w end)()");
-        Assert.Equal("8,8", result);
         Assert.Equal("8", TestHelper.CompileAndRunVmMain(source, "var b = new Box(); b.Width = 4; System.Console.WriteLine(b.Width);"));
     }
 
@@ -95,9 +89,6 @@ public class LuaNamingTests
                 public static int GetDir() { return (int)Direction.LeftSide; }
             }
             """;
-        var result = TestHelper.TranspileAndRun(source,
-            "Nav.GetDir() .. ',' .. Direction.LeftSide .. ',' .. Direction.RIGHT");
-        Assert.Equal("2,2,3", result);
         Assert.Equal("2,2,3", TestHelper.CompileAndRunVm(source, "Nav.GetDir() + \",\" + (int)Direction.LeftSide + \",\" + (int)Direction.RIGHT"));
     }
 
@@ -118,9 +109,6 @@ public class LuaNamingTests
                 }
             }
             """;
-        var result = TestHelper.TranspileAndRun(source,
-            "Geo.Sum() .. ',' .. Point.new(3, 4).PosX .. ',' .. Point.new(3, 4).posY");
-        Assert.Equal("12,3,4", result);
         Assert.Equal("12,3,4", TestHelper.CompileAndRunVm(source, "Geo.Sum() + \",\" + new Point(3, 4).PosX + \",\" + new Point(3, 4).posY"));
     }
 
@@ -184,22 +172,6 @@ public class LuaNamingTests
         }
         """;
 
-    private const string LubRuntime = """
-        lub = { gfx = { RGBA8 = 1, DEPTH24_STENCIL8 = 10, DONT_CARE = 3 } }
-        lub.gfx.main_tex = { version = 7 }
-        local calls = {}
-        lub.config = function(opts) calls[#calls + 1] = "config:" .. tostring(opts.width) end
-        lub.gfx.begin_pass = function(opts)
-          calls[#calls + 1] = "pass:" .. tostring(opts.target.version)
-            .. ":" .. table.concat(opts.clear_color, "/") .. ":" .. tostring(opts.load)
-        end
-        lub.gfx.readback = function()
-          return { read_texture = function(self, tex) return tex.version * 2 end }
-        end
-        lub.gfx.size = function() return 320, 240 end
-        function calls_text() return table.concat(calls, ";") end
-        """;
-
     // --ref の型は host の wire format (snake_case) のまま。user の型 (Game) の
     // member は C# の名前
     [Fact]
@@ -227,13 +199,17 @@ public class LuaNamingTests
                 }
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics([source], null, [LubStub]);
+        var result = Checker.Check([source], null, [LubStub]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.Empty(result.Warnings);
-
-        var script = $"{LubRuntime}\n{result.Lua}\nprint(Game.Run() .. '|' .. calls_text())";
-        var output = TestHelper.RunLua(script).Trim();
-        Assert.Equal("14,320,240,10,pending|config:640;pass:7:0.5/1.0:3", output);
+        var export = IlExport.Export([source], referenceSources: [LubStub]);
+        Assert.Empty(export.Diagnostics);
+        var names = export.ForeignMethods.Select(m => m.Name).ToList();
+        Assert.Contains("lub.config", names);
+        Assert.Contains("lub.gfx.begin_pass", names);
+        Assert.Contains("lub.gfx.readback", names);
+        Assert.Contains("lub.gfx.size", names);
+        Assert.EndsWith(".read_texture", export.ForeignMethods.Single(m => m.Receiver == "Readback").Name);
     }
 
     [Fact]
@@ -249,10 +225,9 @@ public class LuaNamingTests
                 }
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics([source], null, [LubStub]);
+        var result = Checker.Check([source], null, [LubStub]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        var script = $"{LubRuntime}\n{result.Lua}\nprint(Game.Run())";
-        Assert.Equal("8", TestHelper.RunLua(script).Trim());
+        Assert.Empty(result.Warnings);
     }
 
     [Fact]
@@ -266,9 +241,6 @@ public class LuaNamingTests
                 public static string Describe() { return Name + ":" + MaxHp; }
             }
             """;
-        var result = TestHelper.TranspileAndRun(source,
-            "Limits.Describe()");
-        Assert.Equal("hero:99", result);
         Assert.Equal("hero:99", TestHelper.CompileAndRunVm(source, "Limits.Describe()"));
     }
 }

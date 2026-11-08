@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// char は 1 byte の code unit なので、(char)x の x が 0〜255 の外なら fault する (Lua と C は同じ文言)。
+// char は 1 byte の code unit なので、(char)x の x が 0〜255 の外なら fault する (C は使い方を添えた文言)。
 // CoreCLR は UTF-16 の code unit を作って止まらないので、ここだけ意図して違う (codepoint は char.ConvertFromUtf32)。.NET は比べない
 public partial class DifferentialTests
 {
@@ -30,12 +30,7 @@ public partial class DifferentialTests
             }
             """;
         Assert.Equal("before", Backends.AssertBackendFaultParity(program, "P"));
-        foreach (var run in new Func<string>[]
-                 {
-                     () => Backends.RunLua([program], "P"),
-                     () => Backends.RunC([program], "P"),
-                 })
-            Assert.Contains(CharRangeMessage, Assert.Throws<InvalidOperationException>(run).Message);
+        Assert.Contains(CharRangeMessage, Assert.Throws<InvalidOperationException>(() => Backends.RunC([program], "P")).Message);
     }
 
     [CFact]

@@ -117,9 +117,9 @@ public class MultiFileTests
     // ===== Reference sources (--ref) =====
 
     [Fact]
-    public void Ref_TypeCheckOnly_NoLuaOutput()
+    public void Ref_TypeCheckOnly_NotExported()
     {
-        // Reference source provides type info but no Lua output
+        // Reference source provides type info but is not exported (calls go to the host)
         var refSource = """
             namespace Engine;
             public static class Gfx
@@ -138,13 +138,12 @@ public class MultiFileTests
                 }
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics(
-            [mainSource], null, [refSource]);
-        Assert.True(result.Success);
-        // Only main source generates Lua — ref source does NOT
-        Assert.Contains("T", result.Lua);
-        Assert.DoesNotContain("Gfx = {}", result.Lua);
-        Assert.DoesNotContain("Gfx.__index", result.Lua);
+        var result = IlExport.Export([mainSource], referenceSources: [refSource]);
+        Assert.Empty(result.Diagnostics);
+        Assert.Contains(result.Classes, c => c.Name == "T");
+        Assert.DoesNotContain(result.Classes, c => c.Name.Contains("Gfx"));
+        Assert.Equal(["engine.gfx.height", "engine.gfx.width"],
+            result.ForeignMethods.Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -162,13 +161,11 @@ public class MultiFileTests
                 }
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics(
-            [mainSource], null, [refSource]);
-        Assert.True(result.Success);
         // Enum value should resolve correctly
-        Assert.Contains("loadaction.CLEAR", result.Lua);
-        // But enum definition should NOT be emitted (from ref source)
-        Assert.DoesNotContain("LoadAction = {", result.Lua);
+        var output = VmCorpus.RunPrograms([mainSource,
+            "public static class TcsEntry { public static void Main() { System.Console.WriteLine(T.Test()); } }"],
+            "TcsEntry", refs: [refSource]);
+        Assert.Equal("1", output);
     }
 
     [Fact]

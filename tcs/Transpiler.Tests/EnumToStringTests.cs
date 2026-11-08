@@ -1,67 +1,24 @@
 namespace TinyCs.Tests;
 
-// enum の文字列化 (#133)。名前の表は文字列化する地点にだけ出し、--ref の host
-// enum も stub の member 名を出す。.NET との一致は tcs2c.Tests の
+// enum の文字列化 (#133)。--ref の host enum も stub の member 名を出す。.NET との一致は tcs2c.Tests の
 // DifferentialTests.EnumToString
 public class EnumToStringTests
 {
     [Fact]
-    public void NameTable_IsEmittedOnlyWhereStringified()
-    {
-        var lua = Transpiler.Transpile("""
-            public enum Color { Red, Green }
-            public enum Dir { Up, Down }
-            public static class P
-            {
-                public static int Turn(Dir d) => d == Dir.Up ? 1 : 0;
-                public static string Test() => "c=" + Color.Green;
-            }
-            """);
-
-        Assert.Contains("\"Red:0,Green:1\"", lua);
-        Assert.DoesNotContain("Up:", lua);
-    }
-
-    [Fact]
     public void ReferenceEnum_UsesStubMemberNames()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var output = VmCorpus.RunPrograms([
+            """
             public static class P
             {
                 public static string Test() => Host.Mode.On + "|" + (Host.Mode)5;
             }
-            """], referenceSources: ["""
+            """,
+            "public static class TcsEntry { public static void Main() { System.Console.WriteLine(P.Test()); } }",
+        ], "TcsEntry", refs: ["""
             namespace Host { public enum Mode { Off = 0, On = 3 } }
             """]);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-
-        var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");
-        Assert.Equal("On|5", TestHelper.RunLua(
-            $"local TinySystem = dofile(\"{runtimePath}\")\nString = TinySystem.String\n"
-            + "host = { OFF = 0, ON = 3 }\n"
-            + $"{result.Lua}\nprint(P.Test())").Trim());
-    }
-
-    // host が enum を数でない Lua の値で持つとき (lub の [LubLuaString] 等) は
-    // その値を出す (Flags でも bit 演算に渡さない)
-    [Fact]
-    public void ReferenceEnumWithNonNumberValue_PrintsLuaValue()
-    {
-        var result = Transpiler.TranspileWithDiagnostics(["""
-            public static class P
-            {
-                public static string Test() => "" + Host.Mode.B;
-            }
-            """], referenceSources: ["""
-            namespace Host { [System.Flags] public enum Mode { A = 1, B = 2 } }
-            """]);
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-
-        var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");
-        Assert.Equal("b", TestHelper.RunLua(
-            $"local TinySystem = dofile(\"{runtimePath}\")\nString = TinySystem.String\n"
-            + "host = { A = \"a\", B = \"b\" }\n"
-            + $"{result.Lua}\nprint(P.Test())").Trim());
+        Assert.Equal("On|5", output);
     }
 
     // 書式は "G" / "F" / "D" の定数だけ。X 等と定数でない書式は TCS1002

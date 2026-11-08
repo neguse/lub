@@ -2,10 +2,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LUA_BIN="$SCRIPT_DIR/deps/lua/lua"
-# M4 (T216): テストの数値モデル正本は LUA_32BITS (lua32)。cmake は両方を併産する
-LUA32_BIN="$SCRIPT_DIR/deps/lua/lua32"
-BUILD_DIR="$SCRIPT_DIR/build"
 TEMP_DIRS=()
 
 cleanup_temp_dirs() {
@@ -14,39 +10,6 @@ cleanup_temp_dirs() {
   fi
 }
 trap cleanup_temp_dirs EXIT
-
-build_lua() {
-  echo "Building Lua 5.5..."
-  cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -S "$SCRIPT_DIR" >/dev/null 2>&1
-
-  local jobs="${TCS_JOBS:-}"
-  if [ -z "$jobs" ]; then
-    if command -v nproc >/dev/null 2>&1; then
-      jobs="$(nproc)"
-    elif command -v sysctl >/dev/null 2>&1; then
-      jobs="$(sysctl -n hw.ncpu)"
-    else
-      jobs="2"
-    fi
-  fi
-
-  cmake --build "$BUILD_DIR" --parallel "$jobs" >/dev/null 2>&1
-  echo "Lua built."
-}
-
-# lua / lua32 は deps/lua だけでなく runtime/ の C も link するので、入力をここで列挙せず、毎回 build して鮮度の判断を CMake の依存追跡に任せる
-build_lua
-
-LUA_VERSION="$("$LUA_BIN" -v 2>&1)"
-if [[ "$LUA_VERSION" != Lua\ 5.5* ]]; then
-  echo "Lua binary version mismatch, rebuilding: $LUA_VERSION" >&2
-  build_lua
-  LUA_VERSION="$("$LUA_BIN" -v 2>&1)"
-  if [[ "$LUA_VERSION" != Lua\ 5.5* ]]; then
-    echo "Error: expected Lua 5.5, got: $LUA_VERSION" >&2
-    exit 1
-  fi
-fi
 
 # Run dotnet tests (spec conformance sweep と corpus differential 込み。
 # 章別レポートも再生成される — 挙動変更は report/baseline の diff として現れる)

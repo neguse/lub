@@ -12,7 +12,7 @@ namespace TinyCs.Analyzers;
 /// TinyC# の準拠の診断。TCS1001〜1003 は tcs の compiler (SelfHost/Compiler、`tcs check` と同じ実装) を
 /// compilation のソースで動かして出す。規則は compiler の 1 か所にあり、analyzer は位置を Roslyn の Location に写すだけ。
 /// TCS1004 (System.Math の超越関数が .NET の実装で動く) は .NET で実行するときだけの話なので、analyzer が Roslyn で見る。
-/// `--ref` の stub (lub の `lub_stub.cs` など) は、AdditionalFiles か Compile の項目に `TinyCsRef="true"` を付けて渡す
+/// `--ref` の stub (host の API の宣言) は、AdditionalFiles か Compile の項目に `TinyCsRef="true"` を付けて渡す
 /// (`<CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="TinyCsRef" />`、Compile なら Include="Compile" も要る)。
 /// Compile の stub は Roslyn が型の検査に使い、compiler は宣言だけを読む (診断は出さない)。
 /// </summary>
@@ -44,12 +44,12 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         "TinyCSharp",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "Reports null values that cannot be represented in Lua collection tables.");
+        description: "Reports null values stored where the TinyC# subset does not allow them (arrays and Dictionary values).");
 
     private static readonly DiagnosticDescriptor DotnetMathRule = new(
         TinyCsDiagnosticIds.DotnetMath,
         "System.Math transcendental runs the .NET implementation",
-        "'{0}' runs the .NET implementation and can differ from tcs2c / Lua; call TinySystem.Math (TinySystem.props maps Math to it)",
+        "'{0}' runs the .NET implementation and can differ from tcs c / tcs vm; call TinySystem.Math (TinySystem.props maps Math to it)",
         "TinyCSharp",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,

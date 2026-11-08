@@ -1,4 +1,4 @@
-/* TinyC# の Math の超越関数。tcs2c の生成 C、Lua の module (runtime/lua)、
+/* TinyC# の Math の超越関数。tcs2c の生成 C、tcs VM、
    .NET の TinySystem.Math (同じアルゴリズムの C# 版) が同じ結果を bit 単位で返す。
    三角関数系と log10 は CORE-MATH (正しく丸める)、exp / log / log2 / pow は
    musl の Arm 由来の実装を元にしている。

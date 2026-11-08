@@ -5,39 +5,6 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference `
 }
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$BuildDir = Join-Path $ScriptDir "build"
-$luaExe = Join-Path $ScriptDir "deps\lua\lua.exe"
-# M4 (T216): LUA_32BITS 変種も併産・鮮度確認する
-$lua32Exe = Join-Path $ScriptDir "deps\lua\lua32.exe"
-
-function Build-Lua {
-    Write-Host "Building Lua 5.5..."
-    cmake -B $BuildDir -DCMAKE_BUILD_TYPE=Release -S $ScriptDir 2>&1 | Out-Null
-    cmake --build $BuildDir --config Release 2>&1 | Out-Null
-    Write-Host "Lua built."
-}
-
-function Test-LuaBuildNeeded {
-    if (-not (Test-Path $luaExe) -or -not (Test-Path $lua32Exe)) {
-        return $true
-    }
-
-    $luaTime = (Get-Item $luaExe).LastWriteTimeUtc
-    $inputs = @(
-        (Join-Path $ScriptDir "CMakeLists.txt"),
-        (Join-Path $ScriptDir "deps\lua\luaconf.h"),
-        (Join-Path $ScriptDir "deps\lua\lua.c")
-    )
-
-    foreach ($input in $inputs) {
-        if ((Test-Path $input) -and
-            (Get-Item $input).LastWriteTimeUtc -gt $luaTime) {
-            return $true
-        }
-    }
-
-    return $false
-}
 
 function Assert-ExpectedDiagnosticTexts {
     param(
@@ -61,22 +28,6 @@ function Assert-ExpectedDiagnosticTexts {
             Write-Error "$Label did not contain expected diagnostic text: $needle"
             exit 1
         }
-    }
-}
-
-# Build Lua if missing or stale against the local build inputs
-if (Test-LuaBuildNeeded) {
-    Build-Lua
-}
-
-$luaVersion = (& $luaExe -v 2>&1) -join "`n"
-if (-not $luaVersion.StartsWith("Lua 5.5")) {
-    Write-Warning "Lua binary version mismatch, rebuilding: $luaVersion"
-    Build-Lua
-    $luaVersion = (& $luaExe -v 2>&1) -join "`n"
-    if (-not $luaVersion.StartsWith("Lua 5.5")) {
-        Write-Error "Expected Lua 5.5, got: $luaVersion"
-        exit 1
     }
 }
 

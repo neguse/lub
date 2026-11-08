@@ -2,8 +2,8 @@ using System.Numerics;
 
 namespace TinySystem;
 
-// Math の超越関数の .NET 実装。runtime/math (C) と同じ手順を写し、tcs2c と
-// Lua の経路と bit 単位で同じ結果を返す。float / double の演算は IEEE-754 で、
+// Math の超越関数の .NET 実装。runtime/math (C) と同じ手順を写し、tcs の C と
+// VM の経路と bit 単位で同じ結果を返す。float / double の演算は IEEE-754 で、
 // RyuJIT は積和を融合しない。.NET の Math / MathF の超越関数は使わない。
 internal static partial class TcsMath
 {

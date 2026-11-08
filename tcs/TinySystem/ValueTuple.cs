@@ -1,5 +1,5 @@
 // tcs が user のコードと一緒にコンパイルする System.ValueTuple。タプルの構文は Roslyn がこの宣言に結び付くので、
-// Lua は struct の table、C は単相化した struct になる。.NET は BCL の ValueTuple を使い、このファイルを読まない。
+// C と VM は単相化した struct になる。.NET は BCL の ValueTuple を使い、このファイルを読まない。
 namespace System
 {
     public struct ValueTuple<T1, T2>

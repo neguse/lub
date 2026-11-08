@@ -2,7 +2,7 @@ namespace TinyCs.Tests;
 
 public class TupleTests
 {
-    private static TranspileResult Run(string body) => Transpiler.TranspileWithDiagnostics([$$"""
+    private static CheckResult Run(string body) => Checker.Check([$$"""
         using System;
         using System.Collections.Generic;
         public struct S { public int N; }
@@ -15,33 +15,6 @@ public class TupleTests
             }
         }
         """]);
-
-    private static string FunctionBody(string lua, string name)
-    {
-        var start = lua.IndexOf($"function {name}", StringComparison.Ordinal);
-        var end = lua.IndexOf("\nend", start, StringComparison.Ordinal);
-        return lua[start..end];
-    }
-
-    // 分解は multi-return で受け、struct の table を作らない
-    [Fact]
-    public void ReturnThenDeconstruct_DoesNotAllocate()
-    {
-        var result = Run("var (a, b) = Two(); Console.WriteLine(a + b);");
-
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains("return 1, 2", FunctionBody(result.Lua, "P.Two"));
-        Assert.Contains("local a, b = P.Two()", FunctionBody(result.Lua, "P.Run"));
-    }
-
-    [Fact]
-    public void Swap_DoesNotAllocate()
-    {
-        var result = Run("int a = 1, b = 2; (a, b) = (b, a); Console.WriteLine(a);");
-
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Contains("a, b = b, a", FunctionBody(result.Lua, "P.Run"));
-    }
 
     [Theory]
     [InlineData("var t = (1, 2); Console.WriteLine(t == (1, 2));", "TupleEquality")]
@@ -95,32 +68,30 @@ public class TupleTests
         Assert.False(result.Success);
     }
 
+    // 同梱の ValueTuple は tuple の構文があるときだけ読む
     [Fact]
-    public void WithoutTuple_LibraryIsNotEmitted()
+    public void WithoutTuple_LibraryIsNotLoaded()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["public class P { public static int Run() { return 1; } }"]);
-
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.DoesNotContain("ValueTuple", result.Lua);
+        var without = IlExport.Export(["public class P { public static int Run() { return 1; } }"]);
+        Assert.Empty(without.Diagnostics);
+        Assert.DoesNotContain(without.Structs, st => st.Name.Contains("ValueTuple"));
+        var with = IlExport.Export(["public class P { public static int Run() { var (a, b) = (1, 2); return a + b; } }"]);
+        Assert.Empty(with.Diagnostics);
+        Assert.Contains(with.Structs, st => st.Name.Contains("ValueTuple"));
     }
 
     [Fact]
-    public void IncrementalSession_TupleAcrossModules()
+    public void TupleAcrossFiles_Runs()
     {
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([
-            ("A.cs", "public static class A { public static (int x, string y) Two() { return (1, \"a\"); } }"),
-            ("B.cs", """
+        var output = TestHelper.CompileAndRunVm([
+            "public static class A { public static (int x, string y) Two() { return (1, \"a\"); } }",
+            """
                 public static class B
                 {
                     public static string Run() { var t = A.Two(); var (n, s) = A.Two(); return t.y + (t.x + n) + s; }
                 }
-                """),
-        ]);
-
-        Assert.Equal(["TinySystem/ValueTuple.cs", "A.cs", "B.cs"], session.Artifacts.Select(a => a.ModuleId));
-        // module の chunk は別々に読み込まれ、prelude の local を chunk ごとに持つ
-        var lua = string.Join("", session.Artifacts.Select(a => $"do\n{a.Lua}\nend\n"));
-        Assert.Equal("a2a", TestHelper.RunLua($"{lua}\nprint(B.Run())").Trim());
+                """,
+        ], "B.Run()");
+        Assert.Equal("a2a", output);
     }
 }

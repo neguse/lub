@@ -36,14 +36,13 @@ public class DiagnosticTests
     public void LuaKeywordMember_BesideUnderscoreName_IsTheOnlyError(string members,
         string keyword)
     {
-        var result = Transpiler.TranspileWithDiagnostics(
+        var result = Checker.Check(
             [$"public class Repro {{ {members} }}"], ["Repro.cs"]);
         Assert.False(result.Success);
         var error = Assert.Single(result.Errors);
         Assert.StartsWith("Repro.cs(1,", error);
         Assert.Contains($"error TCS1001: unsupported syntax: LuaKeywordIdentifier({keyword})",
             error);
-        Assert.Equal("", result.Lua);
     }
 
     // 大文字小文字だけ違う member は別の Lua 名 (`flash` と `Flash`) で共存する
@@ -64,15 +63,13 @@ public class DiagnosticTests
                 }
             }
             """;
-        var result = TestHelper.TranspileAndRun(source, "Repro.Test() .. ',' .. type(Repro.new().flash) .. ',' .. type(Repro.Flash)");
-        Assert.Equal("2,number,function", result);
-        Assert.Equal("2", TestHelper.CompileAndRunVm(source, "Repro.Test()"));
+        Assert.Equal("2,0", TestHelper.CompileAndRunVm(source, "Repro.Test() + \",\" + new Repro().flash"));
     }
 
     [Fact]
     public void SameNameInstanceOverload_IsSupported()
     {
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.CompileAndRunVm("""
             public class Repro
             {
                 public int Flash() { return 1; }
@@ -100,7 +97,7 @@ public class DiagnosticTests
     [Fact]
     public void ValidCode_NoErrors()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public class T
             {
                 public static int Test() { return 42; }
@@ -108,7 +105,6 @@ public class DiagnosticTests
             """]);
         Assert.True(result.Success);
         Assert.Empty(result.Errors);
-        Assert.NotEmpty(result.Lua);
     }
 
     [Fact]
@@ -380,7 +376,7 @@ public class DiagnosticTests
     [Fact]
     public void PartialTypesAndLock_AreErrors()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             public partial class PartialClass
             {
                 public static int First() => 1;
@@ -406,7 +402,6 @@ public class DiagnosticTests
             """]);
 
         Assert.False(result.Success);
-        Assert.Equal("", result.Lua);
         Assert.Equal(5, result.Errors.Count);
         Assert.Equal(4, result.Errors.Count(
             error => error.Contains("PartialTypeDeclaration")));
@@ -426,12 +421,10 @@ public class DiagnosticTests
                 public static string TypeName() => nameof(System.DateTime);
             }
             """;
-        var result = Transpiler.TranspileWithDiagnostics([source], ["nameof.cs"]);
+        var result = Checker.Check([source], ["nameof.cs"]);
 
         Assert.True(result.Success);
         Assert.Empty(result.Warnings);
-        Assert.DoesNotContain("nameof(", result.Lua);
-        Assert.DoesNotContain("unsupported", result.Lua);
         Assert.Equal("value|E|DateTime", TestHelper.CompileAndRunVm(source,
             "NameDemo.Simple(1) + \"|\" + NameDemo.MemberName() + \"|\" + NameDemo.TypeName()"));
     }

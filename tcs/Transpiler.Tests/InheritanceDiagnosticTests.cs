@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
 // class / record の継承は TinyC# の対象外 (q.md Q15)。基底 class の宣言と、
-// 継承があって初めて意味を持つ member は build を止める TCS1001 で、transpiler
-// は Lua を出さない error、check は exit 1。interface の実装はそのまま書ける
+// 継承があって初めて意味を持つ member は build を止める TCS1001 で、
+// check は exit 1。interface の実装はそのまま書ける
 [Collection(ConsoleCollection.Name)]
 public class InheritanceDiagnosticTests
 {
@@ -47,10 +47,9 @@ public class InheritanceDiagnosticTests
     [Fact]
     public void Transpile_InheritanceIsBuildBlockingError()
     {
-        var result = Transpiler.TranspileWithDiagnostics([Source]);
+        var result = Checker.Check([Source]);
 
         Assert.Equal(Expected, result.Errors);
-        Assert.Empty(result.Lua);
     }
 
     [Fact]
@@ -71,23 +70,6 @@ public class InheritanceDiagnosticTests
         {
             dir.Delete(recursive: true);
         }
-    }
-
-    // 増分 session (playground / watch) も Lua を出さずに止まる
-    [Fact]
-    public void IncrementalSession_InheritanceIsError()
-    {
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([("game/A.cs", """
-            public class B { }
-            public class D : B { }
-            """)]);
-        var (errors, _) = session.CollectDiagnostics();
-
-        Assert.Contains(errors, e => e.Contains(
-            "error TCS1001: unsupported syntax: ClassInheritance(B)"));
-        Assert.Equal(0, session.Revision);
-        Assert.Empty(session.Artifacts);
     }
 
     // interface の実装 (class / record / struct)、sealed class、interface の

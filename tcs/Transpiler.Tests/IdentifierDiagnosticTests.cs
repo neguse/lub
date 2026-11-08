@@ -1,9 +1,9 @@
 namespace TinyCs.Tests;
 
-// user の宣言の識別子は C# の綴りのまま Lua / IL の名前になる (q.md Q16)。Lua と
+// user の宣言の識別子は C# の綴りのまま IL の名前になる (q.md Q16)。Lua と
 // 生成コードの予約と重なる綴り (`__` で始まる、非 ASCII、class table の key
 // `new` / `ctor`、型名と namespace 名の `_`) は build を止める TCS1001 で、
-// transpiler は Lua を出さない error、check は exit 1。--ref の型は対象外
+// check は exit 1。--ref の型は対象外
 [Collection(ConsoleCollection.Name)]
 public class IdentifierDiagnosticTests
 {
@@ -45,10 +45,9 @@ public class IdentifierDiagnosticTests
     [Fact]
     public void Transpile_ReservedIdentifiersAreBuildBlockingErrors()
     {
-        var result = Transpiler.TranspileWithDiagnostics([Source]);
+        var result = Checker.Check([Source]);
 
         Assert.Equal(Expected, result.Errors);
-        Assert.Empty(result.Lua);
     }
 
     [Fact]
@@ -69,22 +68,6 @@ public class IdentifierDiagnosticTests
         {
             dir.Delete(recursive: true);
         }
-    }
-
-    // 増分 session (playground / watch) も Lua を出さずに止まる
-    [Fact]
-    public void IncrementalSession_ReservedIdentifierIsError()
-    {
-        var session = new IncrementalCompilationSession();
-        session.OpenProject([("game/A.cs", """
-            public class G { public int __hp; }
-            """)]);
-        var (errors, _) = session.CollectDiagnostics();
-
-        Assert.Contains(errors, e => e.Contains(
-            "error TCS1001: unsupported syntax: DoubleUnderscoreIdentifier(__hp)"));
-        Assert.Equal(0, session.Revision);
-        Assert.Empty(session.Artifacts);
     }
 
     // generated temp (`__tcs_*`) と同じ綴りの local も `__` の規則で止まる
@@ -112,7 +95,7 @@ public class IdentifierDiagnosticTests
     [Fact]
     public void LocalNamedLikeOldInitializerTemp_IsError()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var result = Checker.Check(["""
             var __init = 5;
             var p = new Point { X = __init };
             public class Point { public int X; }
@@ -121,7 +104,6 @@ public class IdentifierDiagnosticTests
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains(
             "error TCS1001: unsupported syntax: DoubleUnderscoreIdentifier(__init)"));
-        Assert.Empty(result.Lua);
     }
 
     // member 名と local 名の `_`、1 つの `_` で始まる名前、namespace の `.` 区切り、
