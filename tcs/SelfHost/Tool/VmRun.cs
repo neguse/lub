@@ -289,7 +289,7 @@ public sealed class VmRun
         TcsHost.WriteErr("tcs2vm: " + string.Join("\n", errors) + "\n");
         var body = new List<string>();
         foreach (var e in errors) body.Add(e.Replace("\n", " ") + "\n");
-        WatchRun.WriteHostMessage("build_failed", string.Join("", body));
+        HostMessage.Write("build_failed", string.Join("", body));
     }
 
     private int StartWatch(List<string> sources)
@@ -332,7 +332,7 @@ public sealed class VmRun
         {
             var body = new List<string>();
             foreach (var x in r.Reasons) body.Add(x + "\n");
-            WatchRun.WriteHostMessage("restart_required", string.Join("", body));
+            HostMessage.Write("restart_required", string.Join("", body));
         }
         else
         {
@@ -341,9 +341,9 @@ public sealed class VmRun
             {
                 var notes = new List<string>();
                 foreach (var x in r.Notes) notes.Add(x + "\n");
-                WatchRun.WriteHostMessage("reload_notes", string.Join("", notes));
+                HostMessage.Write("reload_notes", string.Join("", notes));
             }
-            WatchRun.WriteHostMessage("vm_batch", VBytes.Base64(r.Batch) + "\n");
+            HostMessage.Write("vm_batch", VBytes.Base64(r.Batch) + "\n");
         }
         return -1;
     }

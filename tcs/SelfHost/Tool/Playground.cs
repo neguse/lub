@@ -42,7 +42,7 @@ public static class Playground
     {
         _epoch++;
         _entry = n > 1 ? TcsHost.Arg(1) : "";
-        int refCount = n > 2 ? SourceMapText.ParseInt(TcsHost.Arg(2)) : 0;
+        int refCount = n > 2 ? ToolText.ParseInt(TcsHost.Arg(2)) : 0;
         var refs = new List<string>();
         int i = 3;
         for (int k = 0; k < refCount && i + 1 < n; k++)
@@ -76,7 +76,7 @@ public static class Playground
         string failure = "";
         if (session == null) failure = "open the session first";
         else if (n < 4) failure = "update needs <epoch> <path> <text>";
-        else if (SourceMapText.ParseInt(TcsHost.Arg(1)) != _epoch) failure = "stale epoch " + TcsHost.Arg(1) + " (current " + _epoch + ")";
+        else if (ToolText.ParseInt(TcsHost.Arg(1)) != _epoch) failure = "stale epoch " + TcsHost.Arg(1) + " (current " + _epoch + ")";
         else if (!session.Has(TcsHost.Arg(2))) failure = "unknown module: " + TcsHost.Arg(2);
         if (failure != "" || session == null)
         {
@@ -100,7 +100,7 @@ public static class Playground
             TcsHost.WriteOut("--@@tcs_error: open the session first");
             return;
         }
-        if (n < 2 || SourceMapText.ParseInt(TcsHost.Arg(1)) != _epoch)
+        if (n < 2 || ToolText.ParseInt(TcsHost.Arg(1)) != _epoch)
         {
             TcsHost.WriteOut("--@@tcs_error: stale epoch " + (n > 1 ? TcsHost.Arg(1) : "") + " (current " + _epoch + ")");
             return;
@@ -130,14 +130,14 @@ public static class Playground
         _vmExtraExports = new List<string>();
         _vmTraces = new List<string>();
         int i = 1;
-        int exports = i < n ? SourceMapText.ParseInt(TcsHost.Arg(i)) : 0;
+        int exports = i < n ? ToolText.ParseInt(TcsHost.Arg(i)) : 0;
         i++;
         for (int k = 0; k < exports && i < n; k++)
         {
             _vmExtraExports.Add(TcsHost.Arg(i));
             i++;
         }
-        int traces = i < n ? SourceMapText.ParseInt(TcsHost.Arg(i)) : 0;
+        int traces = i < n ? ToolText.ParseInt(TcsHost.Arg(i)) : 0;
         i++;
         for (int k = 0; k < traces && i < n; k++)
         {
@@ -166,7 +166,7 @@ public static class Playground
     private static void VmOpen(int n)
     {
         string entry = n > 1 ? TcsHost.Arg(1) : "";
-        int refCount = n > 2 ? SourceMapText.ParseInt(TcsHost.Arg(2)) : 0;
+        int refCount = n > 2 ? ToolText.ParseInt(TcsHost.Arg(2)) : 0;
         var refs = new List<string>();
         int i = 3;
         for (int k = 0; k < refCount && i + 1 < n; k++)
@@ -229,7 +229,7 @@ public static class Playground
 
     private static string Json(string s)
     {
-        return "\"" + SourceMapText.JsonEscape(s) + "\"";
+        return "\"" + ToolText.JsonEscape(s) + "\"";
     }
 
     private static string JsonList(List<string> items)

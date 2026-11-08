@@ -891,7 +891,8 @@ public sealed class WatchRun
         if (!_planned) return;
         if (_restartReasons.Count == 0 && _chunk != "")
         {
-            WriteHostMessage("reload_chunk", GuardReloadChunk(_chunk, _runningBuild, _build));
+            // kind は reload_chunk (本文は当てる Lua の chunk) と restart_required (本文は改行で終わる理由の行)
+            HostMessage.Write("reload_chunk", GuardReloadChunk(_chunk, _runningBuild, _build));
             Log("Sent reload chunk " + _runningBuild + " -> " + _build);
             Advance();
             return;
@@ -901,7 +902,7 @@ public sealed class WatchRun
         foreach (var r in _restartReasons) TcsHost.WriteErr("  " + r + "\n");
         var body = new List<string>();
         foreach (var r in _restartReasons) body.Add(r + "\n");
-        WriteHostMessage("restart_required", string.Join("", body));
+        HostMessage.Write("restart_required", string.Join("", body));
     }
 
     private void Advance()
@@ -909,15 +910,6 @@ public sealed class WatchRun
         _runningBuild = _build;
         _runningExport = _newExport;
         _hasRunning = true;
-    }
-
-    // host への message は標準出力へ、`@@tcs_<kind> <UTF-8 の byte 数>` の行と本文の組で順に書く。
-    // kind は reload_chunk (本文は当てる Lua の chunk) と restart_required (本文は改行で終わる理由の行)
-    public static void WriteHostMessage(string kind, string text)
-    {
-        TcsHost.WriteOut("@@tcs_" + kind + " " + Strings.ByteLength(text) + "\n");
-        TcsHost.WriteOut(text);
-        TcsHost.FlushOut();
     }
 
     // build from → to を当てる chunk。VM の build の番号 (出力と chunk が __tcs_build に書く) が from のときだけ当て、

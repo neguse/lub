@@ -182,7 +182,7 @@ public sealed class StaticInitDeps
         {
             if (!InProject(t) || t.IsInterface) continue;
             bool implements = false;
-            foreach (var i in LuaEmit.AllInterfaces(t))
+            foreach (var i in IlTypes.AllInterfaces(t))
             {
                 if (i.Decl == ifaceMethod.Owner) implements = true;
             }

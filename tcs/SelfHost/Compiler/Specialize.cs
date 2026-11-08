@@ -552,7 +552,7 @@ public sealed class Specializer
             if (owner.IsInterface)
             {
                 _ifaceKeys.Add(Key(owner.SelfType()));
-                _ifaceMethods.Add(LuaEmit.MethodName(method));
+                _ifaceMethods.Add(IlNames.MethodName(method));
                 _ifaceArgs.Add(ArgsKey(m.TypeArgs));
                 _ifaceNames.Add(name);
                 _ifaceTypeArgs.Add(m.TypeArgs);
@@ -576,7 +576,7 @@ public sealed class Specializer
             for (int k = 0; k < _ifaceKeys.Count; k++)
             {
                 TypeSym? iface = null;
-                foreach (var i in LuaEmit.AllInterfaces(type))
+                foreach (var i in IlTypes.AllInterfaces(type))
                 {
                     if (Key(i) == _ifaceKeys[k]) iface = i;
                 }
@@ -584,10 +584,10 @@ public sealed class Specializer
                 Symbol? impl = null;
                 foreach (var m in type.Members)
                 {
-                    if (m.Kind == SymKind.Method && m.TypeParams != null && LuaEmit.MethodName(m) == _ifaceMethods[k]) impl = m;
+                    if (m.Kind == SymKind.Method && m.TypeParams != null && IlNames.MethodName(m) == _ifaceMethods[k]) impl = m;
                 }
                 if (impl == null || impl.Decl == null || impl.Decl.Orig == null || OuterTypeDecl(impl.Decl.Orig) != decl) continue;
-                var implKey = Key(type.SelfType()) + "::" + LuaEmit.MethodName(impl) + "<" + _ifaceArgs[k] + ">";
+                var implKey = Key(type.SelfType()) + "::" + IlNames.MethodName(impl) + "<" + _ifaceArgs[k] + ">";
                 if (_names.ContainsKey(implKey)) continue;
                 _names[implKey] = _ifaceNames[k];
                 methods.Add(impl.Decl.Orig);
@@ -620,11 +620,11 @@ public sealed class Specializer
     private static Symbol InterfaceMethod(Symbol m)
     {
         if (m.IsStatic || m.Owner == null || m.Owner.IsInterface) return m;
-        foreach (var iface in LuaEmit.AllInterfaces(m.Owner))
+        foreach (var iface in IlTypes.AllInterfaces(m.Owner))
         {
             foreach (var cand in iface.Decl!.Members)
             {
-                if (cand.Kind == SymKind.Method && cand.TypeParams != null && cand.Name == m.Name && LuaEmit.MethodName(cand) == LuaEmit.MethodName(m)) return cand;
+                if (cand.Kind == SymKind.Method && cand.TypeParams != null && cand.Name == m.Name && IlNames.MethodName(cand) == IlNames.MethodName(m)) return cand;
             }
         }
         return m;
@@ -640,7 +640,7 @@ public sealed class Specializer
             if (x.Kind == SymKind.Method && x.Name == m.Name) same++;
         }
         if (same < 2) return null;
-        return LuaEmit.MethodName(m);
+        return IlNames.MethodName(m);
     }
 
     private static List<string> TypeParamNames(Node decl)
@@ -694,7 +694,7 @@ public sealed class Specializer
 
     private static string MethodKey(TypeSym owner, Symbol m, List<TypeSym> args)
     {
-        return Key(owner) + "::" + LuaEmit.MethodName(m) + "<" + ArgsKey(args) + ">";
+        return Key(owner) + "::" + IlNames.MethodName(m) + "<" + ArgsKey(args) + ">";
     }
 
     private static bool ContainsParameter(TypeSym t)
@@ -820,7 +820,7 @@ public sealed class Specializer
                         if (closed == null && sym.Owner != null)
                         {
                             // 実装する型の閉じた method (interface の method の名前と同じ)
-                            var implKey = Key(sym.Owner.SelfType()) + "::" + LuaEmit.MethodName(sym) + "<" + ArgsKey(targs) + ">";
+                            var implKey = Key(sym.Owner.SelfType()) + "::" + IlNames.MethodName(sym) + "<" + ArgsKey(targs) + ">";
                             _names.TryGetValue(implKey, out closed);
                         }
                     }

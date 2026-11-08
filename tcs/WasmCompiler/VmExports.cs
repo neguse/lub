@@ -54,7 +54,6 @@ public static partial class VmExports
     {
         try
         {
-            CompilerExports.EnsureInit();
             var req = JsonSerializer.Deserialize(requestJson, VmJsonContext.Default.VmOpenRequest)
                       ?? throw new InvalidOperationException("empty request");
             _epoch++;

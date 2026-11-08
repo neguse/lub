@@ -553,7 +553,8 @@ SelfHost/
   Tool/            CLI の本体 (TinyC#)
     Cli.cs         引数の解釈、check、1 回の変換、--watch (reload chunk と restart の判定、host への message)、--map-stacktrace
     Modules.cs     module の artifact、bridge snapshot (--snapshot と playground)、増分 session (ModuleSession)
-    Reload.cs      reload chunk の組み立てと、live に当てられない変更の規則 (ReloadRules)
+    Reload.cs      reload chunk の組み立て
+    ReloadRules.cs live に当てられない変更の規則 (VM の reload と共有)
     SourceMapText.cs  source map の JSON の読み書きと stack trace の注釈
     TcsHost.cs     host の関数の宣言 (--ref の stub。ファイル、標準入出力、環境変数、時刻、待つ、終了コード)
   Native/host.c    C の host (tcs2c の --lib の出力を include し、TcsHost を実装して Cli.Start と Cli.Step を呼ぶ)

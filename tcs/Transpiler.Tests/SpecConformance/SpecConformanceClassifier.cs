@@ -51,7 +51,7 @@ internal sealed partial class SpecConformanceClassifier
     {
         var trees = sources.Select(s => CSharpSyntaxTree.ParseText(s))
             .Append(CSharpSyntaxTree.ParseText(ImplicitUsingsSource))
-            .Concat(Transpiler.LibraryTrees.Where(t => t.FilePath != Transpiler.ValueTupleLibraryPath))
+            .Concat(TcsLibrary.LibraryTrees.Where(t => t.FilePath != TcsLibrary.ValueTupleLibraryPath))
             .ToArray();
         var hasTopLevel = trees.Any(t => t.GetCompilationUnitRoot().Members
             .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.GlobalStatementSyntax>().Any());

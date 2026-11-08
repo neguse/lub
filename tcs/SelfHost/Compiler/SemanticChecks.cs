@@ -78,7 +78,7 @@ public sealed class SemanticChecks
     // interface の member を実装しているか (CS0535)
     private void CheckInterfaceMembers(TypeDeclSym t)
     {
-        foreach (var iface in LuaEmit.AllInterfaces(t))
+        foreach (var iface in IlTypes.AllInterfaces(t))
         {
             var d = iface.Decl!;
             if (d.IsRef) continue;
@@ -122,11 +122,11 @@ public sealed class SemanticChecks
     // overload は名前に parameter の型を付けて別の key にする。その名前が同じ型の他の member と同じ綴りになる宣言は止める
     private static bool IsCollidingOverload(TypeDeclSym t, Symbol m)
     {
-        var name = LuaEmit.MethodName(m);
+        var name = IlNames.MethodName(m);
         foreach (var other in t.Members)
         {
             if (other == m) continue;
-            var otherName = other.Kind == SymKind.Method && other.Decl != null && other.Decl.Kind == NodeKind.Method ? LuaEmit.MethodName(other) : other.Name;
+            var otherName = other.Kind == SymKind.Method && other.Decl != null && other.Decl.Kind == NodeKind.Method ? IlNames.MethodName(other) : other.Name;
             if (otherName == name) return true;
         }
         return false;
@@ -844,7 +844,7 @@ public sealed class SemanticChecks
 
     private static bool HasUtf8BytesField(TypeSym t)
     {
-        foreach (var m in LuaEmit.ValueMembers(t))
+        foreach (var m in IlTypes.ValueMembers(t))
         {
             if (ContainsUtf8Bytes(m.Type)) return true;
         }

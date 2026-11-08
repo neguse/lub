@@ -19,7 +19,7 @@ public static class IlExport
             session.Add(sourcePaths != null && i < sourcePaths.Length ? sourcePaths[i] : "", csharpSources[i], 0);
         foreach (var source in referenceSources ?? [])
             session.Add("", source, 1);
-        foreach (var (path, text) in Transpiler.LibrarySourcesFor())
+        foreach (var (path, text) in TcsLibrary.LibrarySourcesFor())
             session.Add(path, text, 2);
         var result = session.Compile();
         var errors = result.Diagnostics.Where(d => !d.Contains(": warning ") && !d.StartsWith("warning ", StringComparison.Ordinal)).ToList();

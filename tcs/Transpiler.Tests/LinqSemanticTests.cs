@@ -24,15 +24,15 @@ public class LinqSemanticTests
     [Fact]
     public void Library_CompilesAndStaysInsideSubset()
     {
-        var compilation = CSharpCompilation.Create("Library", Transpiler.LibraryTrees,
-            Transpiler.References,
+        var compilation = CSharpCompilation.Create("Library", TcsLibrary.LibraryTrees,
+            TcsLibrary.References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         Assert.Empty(compilation.GetDiagnostics()
             .Where(d => d.Severity >= DiagnosticSeverity.Warning));
         // Linq を user のソースとして tcs の compiler にかけても準拠の診断が出ない。ValueTuple は tcs だけが読む宣言
         // (arity の overload を library にだけ許す) なので library のまま渡す
         var session = new TcsSelf.Session("");
-        foreach (var tree in Transpiler.LibraryTrees)
+        foreach (var tree in TcsLibrary.LibraryTrees)
             session.Add(tree.FilePath, tree.GetText().ToString(),
                 tree.FilePath.EndsWith("ValueTuple.cs", StringComparison.Ordinal) ? 2 : 0);
         var unsupported = session.Compile().Diagnostics.Where(d => d.Contains(" TCS")).ToList();
