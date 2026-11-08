@@ -25,9 +25,9 @@ public partial class DifferentialTests
     [Fact]
     public void Inheritance_BothBackendsStopWithDiagnostic()
     {
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([InheritanceProgram], "P"),
+                     () => Backends.EmitVm([InheritanceProgram], "P"),
                      () => Backends.EmitC([InheritanceProgram], "P"),
                  })
         {

@@ -5,11 +5,11 @@ namespace TinyCs.Tcs2c.Tests;
 public partial class DifferentialTests
 {
     // 空の排他範囲 (Next(0) / Next(n, n)) は .NET と同じく下限を返す。
-    // 3 行目は Lua / C が同じ列を引き続けることだけを見る
+    // 3 行目は合意 PRNG の列 (il-spec §13) を引き続けた値で、.NET の System.Random とは違う
     [CFact]
     public void Random_EmptyExclusiveRangeReturnsLowerBound()
     {
-        var output = Backends.AssertParity("""
+        var output = Backends.AssertBackendParity("""
             using System;
             using Random = TinySystem.Random;
             public class P
@@ -23,7 +23,7 @@ public partial class DifferentialTests
                 }
             }
             """, "P");
-        Assert.StartsWith("0:5:-5:0:0:5\n0:5:-5:-2147483648\n", output);
+        Assert.Equal("0:5:-5:0:0:5\n0:5:-5:-2147483648\n262", output);
     }
 
     // OrderBy / OrderByDescending は安定 sort (同じ key の要素は元の順)

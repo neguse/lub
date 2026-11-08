@@ -177,9 +177,9 @@ public partial class DifferentialTests
     public void OverrideOtherThanToString_BothBackendsStopWithDiagnostic(string declaration)
     {
         var program = declaration + "\npublic static class P { public static void Main() { } }";
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([program], "P"),
+                     () => Backends.EmitVm([program], "P"),
                      () => Backends.EmitC([program], "P"),
                  })
         {
@@ -205,9 +205,9 @@ public partial class DifferentialTests
             public struct S { public override string ToString() => "s"; }
             public static class P { public static void Main() { {{statement}} } }
             """;
-        foreach (var run in new Func<string>[]
+        foreach (var run in new Func<object>[]
                  {
-                     () => Backends.RunLua([program], "P"),
+                     () => Backends.EmitVm([program], "P"),
                      () => Backends.EmitC([program], "P"),
                  })
         {

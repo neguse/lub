@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// samples/*.cs を 2 backend で実行し stdout 一致を要求する (Lua 側の期待は
-// Transpiler.Tests/SampleE2ETests と同じ)。entry は wrapper class で与える
+// samples/*.cs を C と VM で実行し、stdout が期待の文字列 (Transpiler.Tests/SampleE2ETests と同じ) と
+// 一致することを要求する。entry は wrapper class で与える
 public class SampleParityTests
 {
     private static string Entry(string expr) =>
@@ -16,7 +16,7 @@ public class SampleParityTests
     [InlineData("samples/entity.cs", "EntitySample.Run()", "Slime:enemy@6,2 HP=13")]
     [InlineData("samples/statemachine.cs", "StateMachineSample.Run()", "open,open,locked,closed")]
     [InlineData("samples/collision.cs", "CollisionSample.Run()", "hit,miss,hit")]
-    public void Sample_MatchesLuaAndExpected(string sample, string expr, string expected)
+    public void Sample_MatchesExpected(string sample, string expr, string expected)
     {
         var output = Backends.AssertParity(
             [Backends.Sample(sample), Entry(expr)], "TcsEntry");
@@ -24,15 +24,16 @@ public class SampleParityTests
     }
 
     [CFact]
-    public void DigestKernels_StillMatchLuaDigests()
+    public void DigestKernels_MatchFixedDigests()
     {
-        // verify-digests.sh と同じ 3 kernel。Lua 側 digest は run-tests の
-        // 既存ゲートが守るので、ここでは C 側 (GC 込み) の値を固定する
+        // verify-digests.sh と tcsvm/run-tests.sh と同じ固定の digest。ここでは C 側 (GC 込み) の値を見る。
+        // particles_struct は particles と同じ演算列なので同じ digest
         var expected = new Dictionary<string, (string Entry, string Digest)>
         {
             ["sprite_update"] = ("SpriteUpdate", "e8814b32"),
             ["spawn_churn"] = ("SpawnChurn", "9274159d"),
             ["particles"] = ("Particles", "8bf97e09"),
+            ["particles_struct"] = ("ParticlesStruct", "8bf97e09"),
         };
         foreach (var (kernel, (entry, digest)) in expected)
         {

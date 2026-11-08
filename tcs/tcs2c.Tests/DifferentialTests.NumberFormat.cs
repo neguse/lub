@@ -64,7 +64,7 @@ public partial class DifferentialTests
             }
             """;
         Assert.Contains("UIntRange",
-            Assert.Throws<InvalidOperationException>(() => Backends.RunLua([program], "P")).Message);
+            Assert.Throws<InvalidOperationException>(() => Backends.EmitVm([program], "P")).Message);
         Assert.Contains("UIntRange",
             Assert.Throws<InvalidOperationException>(() => Backends.EmitC([program], "P")).Message);
     }

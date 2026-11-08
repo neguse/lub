@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# PC 上で同一 TinyC# kernel を 2 backend で実行して比較する:
-#   dev     = tcs transpiler → Lua → lua32 (LUA_32BITS)
+# PC 上で同一 TinyC# kernel を 3 つの実行系で実行して比較する:
+#   dev     = tcs transpiler → Lua → lua32 (LUA_32BITS)。実行時間の列だけで、出力は比べない
 #   release = tcs → IL → tcs2c → C → cc -O2
 #   vm      = tcs → IL → tcs2vm → .tcsb → tcsvm (doc/vm-design.md の V1)
-# digest の相互一致が fail ゲート (数値意味論の一致)。実行時間はレポートのみ
+# vm の stdout の digest と release の digest の一致が fail ゲート (数値意味論の一致)。実行時間はレポートのみ
 # (CI runner の絶対時間はぶれるため閾値ゲートにしない)。
 # 環境変数: PERF_BENCH_RUNS (default 7) / PERF_BENCH_FRAMES (default 5000)
 
@@ -43,7 +43,7 @@ TCS2VM_DLL="$ROOT/tcsvm/Emitter/bin/Debug/net10.0/tcs2vm.dll"
 TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net10.0/tcs2c.dll"
 
 # bench 用コピー: frames を増やしてループ支配にする (digest 期待値は固定せず
-# 両 backend の相互一致で検証する)
+# vm と release の相互一致で検証する)
 sed "s/int n = 256;/int n = 1024;/; s/int frames = 1000;/int frames = $FRAMES;/" \
   "$ROOT/Transpiler.Tests/DigestKernels/sprite_update.cs" > "$WORK/sprite_update.cs"
 for k in spawn_churn particles particles_struct; do
@@ -94,44 +94,34 @@ for i in "${!kernels[@]}"; do
   k=${kernels[$i]}
   e=${entries[$i]}
 
+  # dev (Lua) は実行時間だけを測る
   "$DOTNET" "$TR_DLL" "$WORK/$k.cs" -o "$WORK/$k.lua" >/dev/null
   printf '\n%s.Main()\n' "$e" >> "$WORK/$k.lua"
-  "$LUA32" "$WORK/$k.lua" > "$WORK/$k.dev.out"
-  dev_digest=$(fnv_digest "$WORK/$k.dev.out")
   dev_s=$(time_runs "$LUA32" "$WORK/$k.lua")
   dev_ms=$(python3 -c "print('%.6f' % ((float('$dev_s') - float('$lua_base')) * 1000.0 / $FRAMES))")
 
-  # vm backend。stdout が dev と byte で一致することを要求する
+  # vm backend
   "$DOTNET" "$TCS2VM_DLL" --entry "$e" "$WORK/$k.cs" -o "$WORK/$k.tcsb"
   "$TCSVM" "$WORK/$k.tcsb" > "$WORK/$k.vm.out"
-  if ! cmp -s "$WORK/$k.dev.out" "$WORK/$k.vm.out"; then
-    echo "VM OUTPUT MISMATCH $k" >&2
-    exit 1
-  fi
+  vm_digest=$(fnv_digest "$WORK/$k.vm.out")
   vm_s=$(time_runs "$TCSVM" "$WORK/$k.tcsb")
   vm_ms=$(python3 -c "print('%.6f' % ((float('$vm_s') - float('$vm_base')) * 1000.0 / $FRAMES))")
   vm_ratio=$(python3 -c "print('%.2fx' % (float('$vm_ms') / float('$dev_ms')))")
 
-  # release backend。tcs2c 未対応 kernel (struct 系) は dev のみレポート
-  if "$DOTNET" "$TCS2C_DLL" --digest-f32 --entry "$e" \
-      "$WORK/$k.cs" -o "$WORK/$k.c" 2> "$WORK/$k.tcs2c.err"; then
-    "$CC_CMD" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
-      "$WORK/$k.c" -o "$WORK/$k.bin"
-    rel_digest=$("$WORK/$k.bin")
-    if [ "$dev_digest" != "$rel_digest" ]; then
-      echo "DIGEST MISMATCH $k: dev=$dev_digest release=$rel_digest" >&2
-      exit 1
-    fi
-    rel_s=$(time_runs "$WORK/$k.bin")
-    rel_ms=$(python3 -c "print('%.6f' % (float('$rel_s') * 1000.0 / $FRAMES))")
-    ratio=$(python3 -c "print('%.1fx' % (float('$dev_ms') / float('$rel_ms')))")
-  else
-    rel_ms="-"
-    ratio="-"
-    echo "note: $k は tcs2c 未対応のため dev のみ ($(head -1 "$WORK/$k.tcs2c.err"))" >&2
+  # release backend。digest が vm と一致することを要求する
+  "$DOTNET" "$TCS2C_DLL" --digest-f32 --entry "$e" "$WORK/$k.cs" -o "$WORK/$k.c"
+  "$CC_CMD" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
+    "$WORK/$k.c" -o "$WORK/$k.bin"
+  rel_digest=$("$WORK/$k.bin")
+  if [ "$vm_digest" != "$rel_digest" ]; then
+    echo "DIGEST MISMATCH $k: vm=$vm_digest release=$rel_digest" >&2
+    exit 1
   fi
+  rel_s=$(time_runs "$WORK/$k.bin")
+  rel_ms=$(python3 -c "print('%.6f' % (float('$rel_s') * 1000.0 / $FRAMES))")
+  ratio=$(python3 -c "print('%.1fx' % (float('$dev_ms') / float('$rel_ms')))")
 
-  rows+=( "$k,$dev_ms,$vm_ms,$rel_ms,$ratio,$vm_ratio,$dev_digest" )
+  rows+=( "$k,$dev_ms,$vm_ms,$rel_ms,$ratio,$vm_ratio,$vm_digest" )
 done
 
 echo "kernel,dev_ms_per_frame,vm_ms_per_frame,release_ms_per_frame,dev/release,vm/dev,digest"

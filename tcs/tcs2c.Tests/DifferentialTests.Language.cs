@@ -126,12 +126,12 @@ public partial class DifferentialTests
     }
 
     [CFact]
-    public void Random_SeededSequencesMatchLua()
+    public void Random_SeededSequencesAreFixed()
     {
-        // Lua 5.5 の xoshiro256** (LUA_32BITS 構成) を C に移植した合意 PRNG。
-        // seed 固定で Next / Next(max) / Next(min, max) / Range / NextFloat が
-        // bit 一致する
-        Backends.AssertParity("""
+        // 合意 PRNG は Lua 5.5 の math.random (xoshiro256**、LUA_32BITS 構成。il-spec §13) で、C と VM は同じ実装を持つ。
+        // seed 固定の Next / Next(max) / Next(min, max) / Range / NextFloat / NextSingle の列を値で固定する。
+        // new Random(seed) の instance は Random.Seed(seed) の後の Shared と同じ列。.NET の System.Random の列とは違う
+        var output = Backends.AssertBackendParity("""
             using TinySystem;
             public class P
             {
@@ -154,9 +154,25 @@ public partial class DifferentialTests
                     System.Console.WriteLine(Random.Shared.Next(1 << 30) + ":" + Random.Shared.Next(3) + ":" + Random.Shared.Range(0, 0) + ":" + Random.Shared.Next(2147483647));
                     Random.Seed(12345);
                     System.Console.WriteLine(Random.Shared.Next(100));
+                    var r = new Random(42);
+                    s = "";
+                    for (int i = 0; i < 4; i++) s += r.Next() + "," + r.Next(10) + "," + r.Range(1, 6) + "," + r.NextSingle() + ";";
+                    System.Console.WriteLine(s);
+                    Random.Seed(42);
+                    System.Console.WriteLine(Random.Shared.Next() + "," + Random.Shared.Next(10) + "," + Random.Shared.Range(1, 6) + "," + Random.Shared.NextSingle());
                 }
             }
             """, "P");
+        Assert.Equal("""
+            14,90,94,18,39,57,
+            -5,4,-3,-5,5,2,
+            0.37742037,0.7141701,0.88928,0.10865617,
+            1204,346;1880,79;1157,543;1952,117;
+            204462076:2:0:1806848289
+            14
+            1711437541,1,4,0.7935893;797463477,6,2,0.27455693;901818626,7,1,0.04261762;468598590,7,1,0.92687833;
+            1711437541,1,4,0.7935893
+            """.ReplaceLineEndings("\n"), output);
     }
 
     // struct / record struct の member (il-spec §10): 明示 ctor + field
@@ -401,11 +417,11 @@ public partial class DifferentialTests
 
     // Random instance (new Random / new Random(seed)) と Shared: seed 固定で
     // instance と Shared の列が一致、List / class field に保持した instance
-    // (GC object)、null 比較、Shared の identity
+    // (GC object)、null 比較、Shared の identity。列は合意 PRNG (il-spec §13) の値で固定する
     [CFact]
     public void Random_InstancesMatchSharedStream()
     {
-        Backends.AssertParity("""
+        var output = Backends.AssertBackendParity("""
             using System.Collections.Generic;
             using TinySystem;
             public class G { public Random R = new Random(99); public int Roll() => R.Next(6); }
@@ -440,6 +456,17 @@ public partial class DifferentialTests
                 }
             }
             """, "P");
+        Assert.Equal("""
+            14,90,94,18,39,|14,90,94,18,39,|True
+            True
+            0.3880809:0.3880809:-1:-1:19:19
+            True
+            29:45
+            True
+            5:4:5
+            204462076:204462076:0.8559233
+            True:1
+            """.ReplaceLineEndings("\n"), output);
     }
 
     // シフトの C# 意味論 (負数 >> は算術、count は 31 でマスク) を両 backend で

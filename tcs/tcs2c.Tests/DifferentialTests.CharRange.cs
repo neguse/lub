@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// char は 1 byte の code unit なので、(char)x の x が 0〜255 の外なら Lua / C とも同じ文言で fault する。
-// CoreCLR は UTF-16 の code unit を作るので、ここだけ意図して違う (codepoint は char.ConvertFromUtf32)
+// char は 1 byte の code unit なので、(char)x の x が 0〜255 の外なら fault する (Lua と C は同じ文言)。
+// CoreCLR は UTF-16 の code unit を作って止まらないので、ここだけ意図して違う (codepoint は char.ConvertFromUtf32)。.NET は比べない
 public partial class DifferentialTests
 {
     private const string CharRangeMessage =
@@ -29,7 +29,7 @@ public partial class DifferentialTests
                 }
             }
             """;
-        Assert.Equal("before", Backends.AssertFaultParity(program, "P"));
+        Assert.Equal("before", Backends.AssertBackendFaultParity(program, "P"));
         foreach (var run in new Func<string>[]
                  {
                      () => Backends.RunLua([program], "P"),
@@ -66,7 +66,7 @@ public partial class DifferentialTests
     [CFact]
     public void CharIncrement_OutOfByteRange_FaultsWhenStringified()
     {
-        Assert.Equal("255", Backends.AssertFaultParity("""
+        Assert.Equal("255", Backends.AssertBackendFaultParity("""
             using System;
             public static class P
             {

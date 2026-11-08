@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // Dictionary / HashSet の列挙は挿入順 (support-matrix §18)。C / VM / .NET (TinySystem の Dictionary) が同じ順で列挙し、
-// Dictionary の foreach の途中の追加は全部の経路で止まる。Lua は順序が未規定なので外す
+// Dictionary の foreach の途中の追加は全部の経路で止まる
 public partial class DifferentialTests
 {
     private const string DictOrderProgram = """
@@ -50,7 +50,7 @@ public partial class DifferentialTests
     [CFact]
     public void DictOrder_InsertionOrderOnCVmAndDotnet()
     {
-        var output = Backends.AssertOrderedParity(DictOrderProgram, "P");
+        var output = Backends.AssertParity(DictOrderProgram, "P");
         Assert.StartsWith("b=20 c=3 d=4 a=5 \nb,c,d,a,k1,k2,k4,", output);
         Assert.Contains("\n5 9 1 3 \n", output);
     }
@@ -75,8 +75,6 @@ public partial class DifferentialTests
                 }
             }
             """;
-        Assert.Equal("1", Backends.FaultedStdoutC(program, "P"));
-        if (Backends.VmEnabled) Assert.Equal("1", Backends.FaultedStdoutVm(program, "P"));
-        Assert.Equal("1", Backends.FaultedStdoutDotnet(program, "P"));
+        Assert.Equal("1", Backends.AssertFaultParity(program, "P"));
     }
 }

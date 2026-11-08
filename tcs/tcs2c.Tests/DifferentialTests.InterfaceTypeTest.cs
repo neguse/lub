@@ -178,8 +178,8 @@ public partial class DifferentialTests
                 }
             }
             """;
-        var lua = Transpiler.TranspileWithDiagnostics([program]);
-        Assert.Contains(lua.Errors, e => e.Contains("TCS1001") && e.Contains("InterfaceTypeTest"));
+        var vm = Assert.Throws<InvalidOperationException>(() => Backends.EmitVm([program], "P"));
+        Assert.Contains(vm.Message.Split('\n'), e => e.Contains("TCS1001") && e.Contains("InterfaceTypeTest"));
         var c = IlExport.Export([program]);
         Assert.Contains(c.Diagnostics, d => d.Contains("TCS1001") && d.Contains("InterfaceTypeTest"));
     }

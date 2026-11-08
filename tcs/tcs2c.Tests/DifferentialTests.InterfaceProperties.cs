@@ -44,7 +44,7 @@ public partial class DifferentialTests
     [CFact]
     public void InterfaceProperty_ReadAndWrite()
     {
-        var output = Backends.AssertAllPathsAgree(InterfacePropertyTypes + """
+        var output = Backends.AssertParity(InterfacePropertyTypes + """
 
             public static class P
             {
@@ -91,7 +91,7 @@ public partial class DifferentialTests
     [CFact]
     public void InterfaceProperty_Patterns()
     {
-        var output = Backends.AssertAllPathsAgree(InterfacePropertyTypes + """
+        var output = Backends.AssertParity(InterfacePropertyTypes + """
 
             public static class P
             {
@@ -111,7 +111,7 @@ public partial class DifferentialTests
     [CFact]
     public void InterfaceProperty_InheritedInterfaceMembers()
     {
-        var output = Backends.AssertAllPathsAgree(InterfacePropertyTypes + """
+        var output = Backends.AssertParity(InterfacePropertyTypes + """
 
             public static class P
             {
@@ -133,7 +133,7 @@ public partial class DifferentialTests
     [CFact]
     public void InterfaceProperty_DelegateCall()
     {
-        var output = Backends.AssertAllPathsAgree(InterfacePropertyTypes + """
+        var output = Backends.AssertParity(InterfacePropertyTypes + """
 
             public static class P
             {
@@ -154,7 +154,7 @@ public partial class DifferentialTests
     [CFact]
     public void InterfaceProperty_NullReceiverFaults()
     {
-        Backends.AssertFaultOnAllPaths(InterfacePropertyTypes + """
+        Backends.AssertFaultParity(InterfacePropertyTypes + """
 
             public static class P
             {
