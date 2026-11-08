@@ -4,13 +4,13 @@
 # 出力は SelfHost/out/web/ (git に入れない):
 #   tcs-core.mjs    wasm を埋め込んだ 1 つの ES module
 #   tcs.mjs         JS の入口 (createTcs)
-#   runtime/、lib/  tcs と一緒に配るファイル (JS が createTcs の toolFiles で渡す)
+#   lib/            tcs と一緒に配るファイル (JS が createTcs の toolFiles で渡す)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="$ROOT/SelfHost/out/web"
 command -v emcc >/dev/null || { echo "emcc not found (source ~/emsdk/emsdk_env.sh)" >&2; exit 1; }
 rm -rf "$OUT"
-mkdir -p "$OUT/runtime" "$OUT/lib/TinySystem"
+mkdir -p "$OUT/lib/TinySystem"
 dotnet build "$ROOT/tcs2c" -c Release -v q -nologo >/dev/null
 cd "$ROOT"
 SRC=(SelfHost/Compiler/*.cs SelfHost/CBackend/*.cs SelfHost/VmBackend/*.cs)
@@ -26,6 +26,5 @@ emcc -O2 -ffp-contract=off -fwrapv -I "$OUT" SelfHost/Web/tcs_web.c \
   -o "$OUT/tcs-core.mjs"
 rm -f "$OUT/tcs.c"
 cp SelfHost/Web/tcs.mjs "$OUT/"
-cp runtime/tinysystem.lua runtime/module_registry.lua "$OUT/runtime/"
 cp TinySystem/Linq.cs TinySystem/ValueTuple.cs "$OUT/lib/TinySystem/"
 echo "web: $OUT"

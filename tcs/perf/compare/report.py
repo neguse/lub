@@ -207,7 +207,6 @@ NOTES = [
     "JS は float32 に揃えるため、float の演算をすべて Math.fround に通している。その分 float の多いプログラムで遅い",
     "C との差が 10% 未満の倍率は揺れの範囲で、同着とみなす (表の範囲の列が組ごとの値の幅)",
     "起動から終了までの倍率では、.NET、Java、Node.js に 30〜50 ms の起動と JIT の立ち上がりが入る。1 回あたりの倍率はそれを除いたもの",
-    "tcs-lua と手書きの Lua は同じ lua32 で動く。その差が tcs の出す Lua の重さ (配列の範囲の検査、0 始まりの添字の変換、struct の copy など)",
 ]
 
 
@@ -230,7 +229,7 @@ def page(data, by, fragment=False):
            '<p class="meta">%s ・ tcs %s ・ %s (%s コア) ・ %s</p>' % (
                html.escape(data["date"]), html.escape(data["tcs_commit"]), html.escape(m["cpu"]), m["cores"],
                html.escape(m["os"])),
-           "<p>同じ TinyC# のプログラムを tcs の各経路 (Lua、tcs VM、C、.NET) で動かし、同じアルゴリズムを"
+           "<p>同じ TinyC# のプログラムを tcs の各経路 (tcs VM、C、.NET) で動かし、同じアルゴリズムを"
            "各言語で素直に書いたものと比べた。値は C (gcc -O2) を 1 とした実行時間の倍率で、log 軸。小さいほど速い。"
            "どの実装も出力が一致することを確かめてから測っている。"
            "1 回あたりは起動と JIT の立ち上がりを除いた計算の速さ、起動から終了まではプロセス 1 つの体感の速さ。</p>",

@@ -82,7 +82,7 @@ if command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; then
   bash "$SCRIPT_DIR/tcs2c/verify-game-core.sh"
   bash "$SCRIPT_DIR/tcs2c/verify-object-values.sh"
   bash "$SCRIPT_DIR/tcs2c/verify-host.sh"
-  # tcs2c で C にした tcs が .NET と Lua の経路と同じ Lua を出す (.NET と Lua の経路は dotnet test も見る)
+  # tcs を C にした tcs が自分を同じ C にする (固定点) ことと、.NET の tcs と同じ .tcsb と check の診断を出すこと
   bash "$SCRIPT_DIR/SelfHost/build.sh"
   echo "Running tcsvm differential tests..."
   bash "$SCRIPT_DIR/tcsvm/run-tests.sh"

@@ -61,6 +61,28 @@ public class VmReloadTests
             AssertScenario(seed);
     }
 
+    // TCS_FUZZ=1 のときの sweep (run-tests.sh と run-fuzz.sh)。seed は TCS_FUZZ_SEED (既定 1000) から TCS_FUZZ_COUNT (既定 20) 個
+    [Fact]
+    public void FuzzReloadSweep_ScenariosSatisfyInvariants()
+    {
+        if (!Backends.VmEnabled || Environment.GetEnvironmentVariable("TCS_FUZZ") != "1") return;
+        var baseSeed = int.TryParse(Environment.GetEnvironmentVariable("TCS_FUZZ_SEED"), out var s) ? s : 1000;
+        var count = int.TryParse(Environment.GetEnvironmentVariable("TCS_FUZZ_COUNT"), out var n) ? n : 20;
+        var failures = new List<string>();
+        for (var seed = baseSeed; seed < baseSeed + count; seed++)
+        {
+            try
+            {
+                AssertScenario(seed);
+            }
+            catch (Exception e)
+            {
+                failures.Add(e.Message);
+            }
+        }
+        Assert.True(failures.Count == 0, $"{failures.Count}/{count} seeds failed\n" + string.Join("\n====\n", failures));
+    }
+
     private static (int Code, string Stdout, string Stderr) Reload(string v1, string v2, int frames = 1) =>
         Backends.RunVmReload([v1], [v2], "Game", frames);
 

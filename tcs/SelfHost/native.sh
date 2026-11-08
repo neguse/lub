@@ -1,8 +1,9 @@
 #!/bin/bash
 # tcs2c で tcs (SelfHost/Compiler、SelfHost/CBackend、SelfHost/VmBackend、SelfHost/Tool) を C にし、ネイティブの tcs を作る。
 # 出力は SelfHost/out/native/ (tcs と一緒に配るファイル runtime/ と lib/ も置く。git に入れない)。
-# 作った tcs が .NET の tcs と同じ出力を出すことを確かめる: samples の変換、check の終了コード、--snapshot、tcs 自身の変換。
-# C の出力 (tcs c) も比べ、ネイティブの tcs が自分の C (tcs.c) を同じに作れること (固定点) を確かめる。
+# 作った tcs が .NET の tcs と同じ出力を出すことを確かめる: samples と tcs 自身の check の診断と終了コード、
+# samples の C (tcs c)、samples と tcs 自身の tcs VM の .tcsb (tcs vm)、reload の batch (tcs vm --reload-from)。
+# ネイティブの tcs が自分の C (tcs.c) を同じに作れること (固定点) も確かめる。
 # CC で C compiler を選ぶ (既定は cc。GNU C の文の式を使うので MSVC の cl は使えない。Windows は clang)。
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -62,76 +63,66 @@ same() {
   fi
 }
 
-# samples の変換 (.NET の tcs が変換できるものだけ比べる)
-for f in samples/*.cs; do
-  name="$(basename "$f" .cs)"
-  [ "$name" = host_api_stub ] && continue
+# check の診断と終了コードを比べる (stdout と stderr と終了コードを 1 つのファイルに)
+check_same() {
+  local name="$1"
+  shift
+  set +e
+  "${DOTNET_TCS[@]}" check "$@" >"$OUT/check/$name.check.dotnet.txt" 2>&1
+  echo "exit $?" >>"$OUT/check/$name.check.dotnet.txt"
+  "$NATIVE" check "$@" >"$OUT/check/$name.check.native.txt" 2>&1
+  echo "exit $?" >>"$OUT/check/$name.check.native.txt"
+  set -e
+  same "$OUT/check/$name.check.dotnet.txt" "$OUT/check/$name.check.native.txt" "tcs check $name"
+}
+
+# samples: check、C (tcs c)、tcs VM の .tcsb (tcs vm。entry の class の static method を export する)
+for pair in hello:Hello game:Battle inventory:Game entity:EntitySample statemachine:StateMachineSample collision:CollisionSample host_api_game:HostApiSample; do
+  name="${pair%%:*}"
+  cls="${pair##*:}"
+  f="samples/$name.cs"
   refs=()
   [ "$name" = host_api_game ] && refs=(--ref samples/host_api_stub.cs)
-  if "${DOTNET_TCS[@]}" "$f" ${refs[@]+"${refs[@]}"} -o "$OUT/check/$name.dotnet.lua" 2>/dev/null; then
-    "$NATIVE" "$f" ${refs[@]+"${refs[@]}"} -o "$OUT/check/$name.native.lua" 2>/dev/null
-    same "$OUT/check/$name.dotnet.lua" "$OUT/check/$name.native.lua" "$f"
-  fi
+  check_same "$name" "$f" ${refs[@]+"${refs[@]}"}
+  "${TCS2C[@]}" "$f" ${refs[@]+"${refs[@]}"} -o "$OUT/check/$name.tcs2c.c" 2>/dev/null
+  "$NATIVE" c "$f" ${refs[@]+"${refs[@]}"} -o "$OUT/check/$name.native.c" 2>/dev/null
+  same "$OUT/check/$name.tcs2c.c" "$OUT/check/$name.native.c" "tcs c $f"
+  "${TCS2VM[@]}" --export "$cls.*" "$f" ${refs[@]+"${refs[@]}"} -o "$OUT/check/$name.dotnet.tcsb" 2>/dev/null
+  "$NATIVE" vm --export "$cls.*" "$f" ${refs[@]+"${refs[@]}"} -o "$OUT/check/$name.native.tcsb" 2>/dev/null
+  same "$OUT/check/$name.dotnet.tcsb" "$OUT/check/$name.native.tcsb" "tcs vm $f"
 done
 
-# check の終了コードと診断
-mkdir -p SelfHost/out/native/check && printf 'public class Bad { public static int F() { try { return 1; } finally { } } }\n' > SelfHost/out/native/check/Bad.cs
-set +e
-"${DOTNET_TCS[@]}" check SelfHost/out/native/check/Bad.cs >"$OUT/check/bad.dotnet.txt" 2>&1
-dotnet_code=$?
-"$NATIVE" check SelfHost/out/native/check/Bad.cs >"$OUT/check/bad.native.txt" 2>&1
-native_code=$?
-set -e
-if [ "$dotnet_code" = "$native_code" ] && [ "$native_code" != 0 ]; then
-  echo "  same: check exit code $native_code"
-else
-  echo "  DIFFERENT: check exit code (dotnet $dotnet_code, native $native_code)" >&2
-  fail=1
-fi
-same "$OUT/check/bad.dotnet.txt" "$OUT/check/bad.native.txt" "check diagnostics"
+# check の誤りの診断
+printf 'public class Bad { public static int F() { try { return 1; } finally { } } }\n' > SelfHost/out/native/check/Bad.cs
+check_same bad SelfHost/out/native/check/Bad.cs
 
-# module の snapshot
-"${DOTNET_TCS[@]}" --snapshot --entry Battle samples/game.cs -o "$OUT/check/snap.dotnet.lua" 2>/dev/null
-"$NATIVE" --snapshot --entry Battle samples/game.cs -o "$OUT/check/snap.native.lua" 2>/dev/null
-same "$OUT/check/snap.dotnet.lua" "$OUT/check/snap.native.lua" "--snapshot"
-
-# tcs 自身
-"${DOTNET_TCS[@]}" "${ARGS[@]}" -o "$OUT/check/self.dotnet.lua" 2>/dev/null
+# tcs 自身の check
 start=$(date +%s)
-"$NATIVE" "${ARGS[@]}" -o "$OUT/check/self.native.lua" 2>/dev/null
-echo "  tcs itself: $(( $(date +%s) - start )) s"
-same "$OUT/check/self.dotnet.lua" "$OUT/check/self.native.lua" "tcs itself"
+check_same self "${ARGS[@]}"
+echo "  tcs check itself: $(( $(date +%s) - start )) s"
 
-# 出力が入力と同じファイル (hard link) を指すときは書かずに止める (ファイルの同一性。Windows は volume とファイルの番号)
-cp samples/hello.cs "$OUT/check/guard.cs"
-rm -f "$OUT/check/guard_link.cs"
-if ln "$OUT/check/guard.cs" "$OUT/check/guard_link.cs" 2>/dev/null; then
-  set +e
-  "$NATIVE" "$OUT/check/guard.cs" -o "$OUT/check/guard_link.cs" >"$OUT/check/guard.txt" 2>&1
-  guard_code=$?
-  set -e
-  if [ "$guard_code" = 1 ] && grep -q "conflicts with input" "$OUT/check/guard.txt" && cmp -s samples/hello.cs "$OUT/check/guard.cs"; then
-    echo "  same: output to a hard link of the input is refused"
-  else
-    echo "  DIFFERENT: output to a hard link of the input was not refused (exit $guard_code)" >&2
-    cat "$OUT/check/guard.txt" >&2
-    fail=1
-  fi
-fi
+# tcs 自身の .tcsb (CLI の入口から届く関数)
+"${TCS2VM[@]}" --export 'TcsSelf.Cli.*' "${ARGS[@]}" -o "$OUT/check/self.dotnet.tcsb" 2>/dev/null
+start=$(date +%s)
+"$NATIVE" vm --export 'TcsSelf.Cli.*' "${ARGS[@]}" -o "$OUT/check/self.native.tcsb" 2>/dev/null
+echo "  tcs vm itself: $(( $(date +%s) - start )) s"
+same "$OUT/check/self.dotnet.tcsb" "$OUT/check/self.native.tcsb" "tcs vm itself"
 
-# C の出力 (tcs c)。samples と、tcs 自身 (tcs2c が作った tcs.c と同じなら固定点)
-for name in hello game collision; do
-  "${TCS2C[@]}" "samples/$name.cs" -o "$OUT/check/$name.tcs2c.c" 2>/dev/null
-  "$NATIVE" c "samples/$name.cs" -o "$OUT/check/$name.native.c" 2>/dev/null
-  same "$OUT/check/$name.tcs2c.c" "$OUT/check/$name.native.c" "tcs c samples/$name.cs"
-done
-# tcs VM の .tcsb (tcs vm)。.NET の tcs2vm と同じ byte 列
+# tcs VM の .tcsb。digest の kernel (entry は Main)
 for k in particles:Particles spawn_churn:SpawnChurn sprite_update:SpriteUpdate; do
   file="Transpiler.Tests/DigestKernels/${k%%:*}.cs"
   "${TCS2VM[@]}" --entry "${k##*:}" "$file" -o "$OUT/check/${k%%:*}.dotnet.tcsb" 2>/dev/null
   "$NATIVE" vm --entry "${k##*:}" "$file" -o "$OUT/check/${k%%:*}.native.tcsb" 2>/dev/null
   same "$OUT/check/${k%%:*}.dotnet.tcsb" "$OUT/check/${k%%:*}.native.tcsb" "tcs vm $file"
 done
+
+# reload の module と batch (tcs vm --reload-from)
+HOST_TESTS=tcsvm/tests/host
+"${TCS2VM[@]}" --export 'Game.*' --reload-from "$HOST_TESTS/ReloadV1.cs.txt" "$HOST_TESTS/ReloadV2.cs.txt" \
+  -o "$OUT/check/reload.dotnet.tcsb" --batch "$OUT/check/reload.dotnet.batch" 2>/dev/null
+"$NATIVE" vm --export 'Game.*' --reload-from "$HOST_TESTS/ReloadV1.cs.txt" "$HOST_TESTS/ReloadV2.cs.txt" \
+  -o "$OUT/check/reload.native.tcsb" --batch "$OUT/check/reload.native.batch" 2>/dev/null
+same "$OUT/check/reload.dotnet.batch" "$OUT/check/reload.native.batch" "tcs vm --reload-from (batch)"
 
 start=$(date +%s)
 "$NATIVE" c --lib "${ARGS[@]}" -o "$OUT/check/self.native.c" 2>/dev/null
