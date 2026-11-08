@@ -36,7 +36,7 @@ public static class Docs
         var modules = JValue.Arr();
         foreach (var ns in model.Namespaces)
         {
-            string parent = ns.LuaRoot == "lub" ? RootModule : ApiModelLoader.LubxNamespace;
+            string parent = ns.HostRoot == "lub" ? RootModule : ApiModelLoader.LubxNamespace;
             string path = ns.Name == RootModule ? RootModule : parent + "." + ns.Name;
             string file = stubPath + "#L" + ns.Line;
             var types = JValue.Arr();

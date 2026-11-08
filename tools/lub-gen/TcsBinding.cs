@@ -134,7 +134,7 @@ internal sealed class TcsBindingGen
 
     private void AddFields(ApiType type, string prefix, List<FieldPath> r)
     {
-        foreach (var field in type.Fields) r.Add(new FieldPath(field, prefix + field.LuaName));
+        foreach (var field in type.Fields) r.Add(new FieldPath(field, prefix + field.HostName));
     }
 
     private void Record(TypeRef type, bool isOutput)
@@ -188,7 +188,7 @@ internal sealed class TcsBindingGen
         {
             foreach (var f in ns.Functions)
             {
-                if (!calls.Contains(ns.LuaPath + "." + f.LuaName)) continue;
+                if (!calls.Contains(ns.HostPath + "." + f.HostName)) continue;
                 functionNs.Add(ns);
                 functions.Add(f);
             }
@@ -255,7 +255,7 @@ internal sealed class TcsBindingGen
                 ExForeignMethod? foreign = null;
                 foreach (var m in game.ForeignMethods)
                 {
-                    if (m.Receiver == Il(type.Name) && m.Name.EndsWith("." + method.LuaName))
+                    if (m.Receiver == Il(type.Name) && m.Name.EndsWith("." + method.HostName))
                     {
                         foreign = m;
                         break;
@@ -278,8 +278,8 @@ internal sealed class TcsBindingGen
         {
             foreach (var value in ns.StaticFields)
             {
-                if (!values.Contains(ns.LuaPath + "." + value.LuaName)) continue;
-                var name = CHeader.FunctionName(ns, value.LuaName);
+                if (!values.Contains(ns.HostPath + "." + value.HostName)) continue;
+                var name = CHeader.FunctionName(ns, value.HostName);
                 Line(TcsType(value.Type) + " tcs_host_" + name + "(void) { return " + From(value.Type, name + "(tcs_lub_context)") + "; }");
             }
         }
@@ -484,14 +484,14 @@ internal sealed class TcsBindingGen
     }
 
     private static string HasPath(string prefix, string path, ApiField field) =>
-        prefix + Text.DropEnd(path, Text.Len(field.LuaName)) + "has_" + field.LuaName;
+        prefix + Text.DropEnd(path, Text.Len(field.HostName)) + "has_" + field.HostName;
 
     // struct の record: tcs2c の値の struct (field は f_<名前>) と C API の struct を field ごとに写す
     private void StructInput(ApiType type)
     {
         Line("static Lub" + type.Name + " tcs_lub_to_" + type.Name + "(Tcs_" + Il(type.Name) + " source) {");
         Line("  Lub" + type.Name + " result;");
-        foreach (var f in type.Fields) Line("  result." + f.LuaName + " = " + To(f.Type, "source.f_" + f.LuaName) + ";");
+        foreach (var f in type.Fields) Line("  result." + f.HostName + " = " + To(f.Type, "source.f_" + f.HostName) + ";");
         Line("  return result;\n}");
     }
 
@@ -499,7 +499,7 @@ internal sealed class TcsBindingGen
     {
         Line("static Tcs_" + Il(type.Name) + " tcs_lub_from_" + type.Name + "(const Lub" + type.Name + " *source) {");
         Line("  Tcs_" + Il(type.Name) + " result;");
-        foreach (var f in type.Fields) Line("  result.f_" + f.LuaName + " = " + From(f.Type, "source->" + f.LuaName) + ";");
+        foreach (var f in type.Fields) Line("  result.f_" + f.HostName + " = " + From(f.Type, "source->" + f.HostName) + ";");
         Line("  return result;\n}");
     }
 
@@ -511,7 +511,7 @@ internal sealed class TcsBindingGen
         {
             var field = fp.Field;
             var path = fp.Path;
-            var src = "source->f_" + field.LuaName;
+            var src = "source->f_" + field.HostName;
             var dst = "result." + path;
             var has = HasPath("result.", path, field);
             if (field.Type.IsScalar && field.Optional)
@@ -593,7 +593,7 @@ internal sealed class TcsBindingGen
         {
             var field = fp.Field;
             var path = fp.Path;
-            var dst = "result->f_" + field.LuaName;
+            var dst = "result->f_" + field.HostName;
             var src = "source->" + path;
             var has = HasPath("source->", path, field);
             if (field.Type.Kind == LubTypeKind.Array)
@@ -667,13 +667,13 @@ internal sealed class TcsBindingGen
 
     private void Function(ApiNamespace ns, ApiFunction function)
     {
-        var name = CHeader.FunctionName(ns, function.LuaName);
+        var name = CHeader.FunctionName(ns, function.HostName);
         foreach (var param in function.Params)
         {
             if (param.Type.Kind == LubTypeKind.Func) Callback(name, param);
         }
         var signature = new List<string>();
-        foreach (var p in function.Params) signature.Add(TcsType(p.Type) + (p.IsOut ? " *" : " ") + "p_" + p.LuaName);
+        foreach (var p in function.Params) signature.Add(TcsType(p.Type) + (p.IsOut ? " *" : " ") + "p_" + p.HostName);
         Line(TcsType(function.Return) + " tcs_host_" + name + "(" + (function.Params.Count == 0 ? "void" : string.Join(", ", signature)) + ") {");
         var st = new CallState();
         var args = st.Args;
@@ -683,8 +683,8 @@ internal sealed class TcsBindingGen
         foreach (var param in function.Params)
         {
             if (param.IsOut || param.IsCount) continue;
-            var p = "p_" + param.LuaName;
-            var n = "n_" + param.LuaName;
+            var p = "p_" + param.HostName;
+            var n = "n_" + param.HostName;
             var type = param.Type;
             // 配列の後ろの [LubCount] の引数 (配列の先頭の count 個を使う)
             ApiParam? countParam = null;
@@ -699,7 +699,7 @@ internal sealed class TcsBindingGen
             }
             if (type.Kind == LubTypeKind.Array && type.Elem!.Kind == LubTypeKind.Double && countParam != null)
             {
-                var count = "p_" + countParam.LuaName;
+                var count = "p_" + countParam.HostName;
                 Line("  if (" + p + " && (uint32_t)" + count + " > (uint32_t)tcs_array_length(" + p + ")) tcs_fault(\"lub-array-length\");");
                 args.Add(p + " ? (const float *)" + p + "->data : NULL");
                 args.Add(count);
@@ -750,7 +750,7 @@ internal sealed class TcsBindingGen
         }
         foreach (var param in function.Params)
         {
-            if (param.IsOut) Output(param.Type, "n_" + param.LuaName, st);
+            if (param.IsOut) Output(param.Type, "n_" + param.HostName, st);
         }
         var ret = function.Return;
         bool returned = ret.Kind != LubTypeKind.Void;
@@ -785,10 +785,10 @@ internal sealed class TcsBindingGen
         foreach (var param in function.Params)
         {
             if (!param.IsOut) continue;
-            var n = "n_" + param.LuaName;
+            var n = "n_" + param.HostName;
             var value = From(param.Type, n);
             if (param.Type.Kind == LubTypeKind.Record && param.Type.Nullable) value = n + "_has ? " + value + " : NULL";
-            Line("  *p_" + param.LuaName + " = " + value + ";");
+            Line("  *p_" + param.HostName + " = " + value + ";");
         }
         if (has && ret.IsScalar) Line("  return (" + Opt(ret) + "){has, result};");
         else if (returned) Line("  return " + From(ret, "result") + ";");
@@ -797,7 +797,7 @@ internal sealed class TcsBindingGen
 
     // Func 引数は C の関数 pointer + user に写す。
     // user は tcs の closure で、C API が呼び出しの間だけ呼ぶ (frame の途中なので GC は走らない)
-    private static string CallbackName(string function, ApiParam param) => "tcs_lub_" + function + "_" + param.LuaName;
+    private static string CallbackName(string function, ApiParam param) => "tcs_lub_" + function + "_" + param.HostName;
 
     private void Callback(string function, ApiParam param)
     {
