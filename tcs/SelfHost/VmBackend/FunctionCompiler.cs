@@ -1077,9 +1077,12 @@ public sealed class FunctionCompiler
             var vr = Lookup(v.Name);
             if (vr != null)
             {
-                if (vr.K == VarKind.Reg)
-                    // 結果を local へ直接書く (式の最後の命令だけが dest を書くので、右辺が local を読んでもよい)
+                // 結果を local へ直接書く。with / 初期化子 / `??` などは dest を書いてから残りを評価するので、
+                // 最後の命令だけが dest を書く形でない右辺が local を読むなら temp を経る
+                if (vr.K == VarKind.Reg && (WritesDestLast(value) || !MayRead(value, v.Name)))
                     ExprAs(value, vr.Type, vr.Val!);
+                else if (vr.K == VarKind.Reg)
+                    Store(vr.Val!, ExprAs(value, vr.Type, null));
                 else
                     WriteVar(vr, ExprAs(value, vr.Type, null));
                 return;
@@ -1103,6 +1106,36 @@ public sealed class FunctionCompiler
         var place = PlaceOf(tgt);
         var val = ExprAs(value, place.Type, null);
         StorePlace(place, val);
+    }
+
+    // 子を temp に評価してから最後の命令だけで dest を書く式 (dest を子に渡さない)
+    private static bool WritesDestLast(IlExpr e)
+    {
+        switch (e)
+        {
+            case IlLit:
+            case IlVar:
+            case IlField:
+            case IlIndex:
+            case IlLen:
+            case IlUn:
+            case IlNumericConvert:
+                return true;
+            case IlBin b:
+                return b.Op != IlBinOp.And && b.Op != IlBinOp.Or;
+        }
+        return false;
+    }
+
+    // node (IL の式か文) の中に変数 name の出現があるか。名前で数えるので保守的
+    private static bool MayRead(object node, string name)
+    {
+        if (node is IlVar x) return x.Name == name;
+        foreach (var c in IlNodes.Children(node))
+        {
+            if (MayRead(c, name)) return true;
+        }
+        return false;
     }
 
     private void WriteVar(Var v, Val val)

@@ -270,4 +270,47 @@ public partial class DifferentialTests
             """, "P");
         Assert.Equal("2,2|2,12|2,3|2,22,22", output.ReplaceLineEndings("\n"));
     }
+
+    // 代入先の local を右辺の with / 初期化子 / `??` が読んでも、右辺が終わるまで local は前の値 (#433)
+    [CFact]
+    public void AssignLocal_RightSideReadsTargetBeforeConstruction()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using System.Collections.Generic;
+            public record R(int X, int Y);
+            public static class P
+            {
+                static int Param(int[] a) { a = new int[] { a[1], a[0] }; return a[0] * 10 + a[1]; }
+                public static void Main()
+                {
+                    var r = new R(1, 3);
+                    r = r with { X = 2, Y = r.X };
+                    Console.WriteLine(r.X + ":" + r.Y);
+                    int[] values = new int[] { 3, 7 };
+                    values = new int[] { values[1], values[0] };
+                    Console.WriteLine(values[0] + ":" + values[1]);
+                    var list = new List<int> { 3, 7 };
+                    list = new List<int> { list[1], list[0], list.Count };
+                    Console.WriteLine(list[0] + ":" + list[1] + ":" + list[2]);
+                    var dict = new Dictionary<int, int> { { 1, 2 } };
+                    dict = new Dictionary<int, int> { { 5, dict.Count } };
+                    Console.WriteLine(dict[5]);
+                    bool c = true;
+                    values = c ? new int[] { values[1] } : null;
+                    Console.WriteLine(values[0]);
+                    Console.WriteLine(Param(new int[] { 5, 6 }));
+                    string s = "a";
+                    string n = null;
+                    s = n ?? s + "b";
+                    Console.WriteLine(s);
+                    int i = 1;
+                    i = i + 1;
+                    i = -i;
+                    Console.WriteLine(i);
+                }
+            }
+            """, "P");
+        Assert.Equal("2:1\n7:3\n7:3:2\n1\n3\n65\nab\n-2", output);
+    }
 }
