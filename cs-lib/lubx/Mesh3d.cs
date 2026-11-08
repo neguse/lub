@@ -20,7 +20,6 @@ public class Mesh3d
     private string ibKey;
     // rebuild() が組んだ interleaved 頂点と index。
     // ready() の再主張と、sweep 後の作り直しに使う。
-    // interleave の戻りは frame の終わりまでの view なので table に写して持つ。
     private List<float>? verts = null;
     private List<float>? indices = null;
 
@@ -44,13 +43,8 @@ public class Mesh3d
     {
         this.Data = data;
         Skinned = data.Bones != null;
-        var view = Skinned ? Io.InterleavePncmw(data) : Io.InterleavePncm(data);
-        Vb = Gfx.UseBuffer(vbKey, Gfx.BufferType.Storage, view);
-        var v = new List<float>();
-        for (int i = 0; i < view.Count; i++)
-        {
-            v.Add(view[i]);
-        }
+        var v = Skinned ? Io.InterleavePncmw(data) : Io.InterleavePncm(data);
+        Vb = Gfx.UseBuffer(vbKey, Gfx.BufferType.Storage, v);
         // use_buffer は List<float> を取るので indices を詰め替える。
         // INDEX の float 列は runtime が uint32 に写すので、GPU の index は元の整数と同じになる。
         var idx = new List<float>();
