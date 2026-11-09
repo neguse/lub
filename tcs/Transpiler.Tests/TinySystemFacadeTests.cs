@@ -1,0 +1,119 @@
+namespace TinyCs.Tests;
+
+public class TinySystemFacadeTests
+{
+    [Fact]
+    public void RandomFacade_DoesNotResolveToGameRandom()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class Random
+            {
+                public int Next() => -1;
+            }
+            public class T
+            {
+                public static bool Test()
+                {
+                    return new Random().Next() == -1
+                        && TinySystem.Random.Shared.Next(1) == 0
+                        && new TinySystem.Random(3).Next(1) == 0;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("True", result);
+    }
+
+    [Fact]
+    public void RandomFacade_CompilesWithoutStub()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                public static bool Test()
+                {
+                    var f = TinySystem.Random.Shared.NextFloat();
+                    return f >= 0.0f && f < 1.0f;
+                }
+            }
+            """,
+            "T.Test()");
+
+        Assert.Equal("True", result);
+    }
+
+    [Fact]
+    public void MathFacade_MapsToRuntimeGlobal()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                public static bool Test()
+                {
+                    return TinySystem.Math.Clamp(12, 0, 10) == 10
+                        && TinySystem.Math.PI > 3.14f;
+                }
+            }
+            """,
+            "T.Test()");
+
+        Assert.Equal("True", result);
+    }
+
+    [Fact]
+    public void StringFacade_MapsToRuntimeGlobal()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                public static string Test()
+                {
+                    return TinySystem.String.Replace("hello world", "world", "lua");
+                }
+            }
+            """,
+            "T.Test()");
+
+        Assert.Equal("hello lua", result);
+    }
+
+    [Fact]
+    public void ListFacade_MapsToRuntimeGlobal()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                public static bool Test()
+                {
+                    var list = new System.Collections.Generic.List<int> { 1, 2, 3 };
+                    return TinySystem.List.Contains(list, 2);
+                }
+            }
+            """,
+            "T.Test()");
+
+        Assert.Equal("True", result);
+    }
+
+    // TinySystem.Dict は BCL の Dictionary を受けるので、TinySystem.props が入れる Collections.cs の Dictionary では
+    // .NET の型推論が通らない (CS0411)。.NET とは比べない
+    [Fact]
+    public void DictFacade_MapsToRuntimeGlobal()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                public static bool Test()
+                {
+                    var dict = new System.Collections.Generic.Dictionary<string, int>
+                    {
+                        { "a", 1 }
+                    };
+                    return TinySystem.Dict.ContainsKey(dict, "a");
+                }
+            }
+            """,
+            "T.Test()", dotnet: false);
+
+        Assert.Equal("True", result);
+    }
+}

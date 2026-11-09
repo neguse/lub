@@ -13,3 +13,7 @@
 [submodule "third_party/openxr"]
 	path = third_party/openxr
 	url = https://github.com/KhronosGroup/OpenXR-SDK.git
+[submodule "tcs/deps/csharpstandard"]
+	path = tcs/deps/csharpstandard
+	url = https://github.com/dotnet/csharpstandard.git
+	branch = draft-v12

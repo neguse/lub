@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- セルフホストの compiler を .NET の library として build する (.NET の tcs とテストが使う)。
+       ソースは tcs のサブセットで、同じファイルを tcs2c が C に変換する -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TcsSelf</RootNamespace>
+    <!-- float の文字列化を culture に依らない形にする (C と VM と同じ) -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="out/**" />
+    <!-- tcs の host (CLI など) は OS の関数 (TcsHost) を host ごとに持つので、compiler の library には入れない。
+         .NET では Transpiler が Transpiler/DotnetHost.cs と一緒に build する -->
+    <Compile Remove="Tool/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../TinySystem/TinySystem.csproj" />
+  </ItemGroup>
+
+</Project>

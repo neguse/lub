@@ -1,0 +1,326 @@
+namespace TinyCs.Tests;
+
+/// <summary>
+/// List / Dictionary / LINQ / 配列の runtime 表面の semantic テスト (tcs VM で走らせる)。
+/// </summary>
+public class CollectionTests
+{
+    [Fact]
+    public void List_NewEmpty()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int>();
+                    return list.Count;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("0", result);
+    }
+
+    [Fact]
+    public void List_NewWithInitializer()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 10, 20, 30 };
+                    return list.Count;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("3", result);
+    }
+
+    [Fact]
+    public void List_Add()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int>();
+                    list.Add(1);
+                    list.Add(2);
+                    list.Add(3);
+                    return list.Count;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("3", result);
+    }
+
+    [Fact]
+    public void List_Indexer()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 10, 20, 30 };
+                    return list[1];
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("20", result);
+    }
+
+    [Fact]
+    public void List_Where()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 1, 2, 3, 4, 5 };
+                    var evens = list.Where(x => x % 2 == 0);
+                    return evens.Count;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("2", result);
+    }
+
+    [Fact]
+    public void List_Select()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 1, 2, 3 };
+                    var doubled = list.Select(x => x * 2);
+                    return doubled[0] + doubled[1] + doubled[2];
+                }
+            }
+            """,
+            "T.Test()");
+        // 2 + 4 + 6 = 12
+        Assert.Equal("12", result);
+    }
+
+    [Fact]
+    public void List_WhereSelectChain()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 1, 2, 3, 4, 5 };
+                    var result = list.Where(x => x > 2).Select(x => x * 10);
+                    return result[0] + result[1] + result[2];
+                }
+            }
+            """,
+            "T.Test()");
+        // 30 + 40 + 50 = 120
+        Assert.Equal("120", result);
+    }
+
+    [Fact]
+    public void List_Any()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public class T
+            {
+                public static bool Test()
+                {
+                    var list = new List<int> { 1, 2, 3 };
+                    return list.Any(x => x > 2);
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("True", result);
+    }
+
+    [Fact]
+    public void List_FirstOrDefault()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 10, 20, 30 };
+                    return list.FirstOrDefault();
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("10", result);
+    }
+
+    [Fact]
+    public void Dict_NewAndAccess()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static int Test()
+                {
+                    var dict = new Dictionary<string, int> { { "a", 1 }, { "b", 2 } };
+                    return dict["a"] + dict["b"];
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("3", result);
+    }
+
+    [Fact]
+    public void Dict_Add()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static int Test()
+                {
+                    var dict = new Dictionary<string, int>();
+                    dict.Add("x", 42);
+                    return dict["x"];
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("42", result);
+    }
+
+    [Fact]
+    public void Dict_ContainsKey()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static bool Test()
+                {
+                    var dict = new Dictionary<string, int> { { "key", 1 } };
+                    return dict.ContainsKey("key");
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("True", result);
+    }
+
+    [Fact]
+    public void List_Sum()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 1, 2, 3, 4, 5 };
+                    return list.Sum();
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("15", result);
+    }
+
+    [Fact]
+    public void List_OrderBy()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Collections.Generic;
+            using TinySystem.Linq;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 3, 1, 2 };
+                    var sorted = list.OrderBy(x => x);
+                    return sorted[0] * 100 + sorted[1] * 10 + sorted[2];
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("123", result);
+    }
+
+    // ===== Array creation =====
+
+    [Fact]
+    public void Array_Explicit()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int[] arr = new int[] { 10, 20, 30 };
+                    return arr[0] + arr[2];
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("40", result);
+    }
+
+    [Fact]
+    public void Array_Implicit()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                public static string Test()
+                {
+                    var names = new[] { "Alice", "Bob" };
+                    return names[0] + "+" + names[1];
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("Alice+Bob", result);
+    }
+
+    [Fact]
+    public void Array_Empty()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int[] arr = new int[] {};
+                    return arr.Length;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("0", result);
+    }
+}

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NuGetAudit>false</NuGetAudit>
+    <TcsRoot Condition="'$(TcsRoot)' == ''">..</TcsRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+    <ProjectReference Include="$(TcsRoot)/Transpiler/Transpiler.csproj"
+                      GlobalPropertiesToRemove="TcsRoot" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="tcs2c.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,44 @@
+using System;
+using System.Collections.Generic;
+
+public struct Pt { public int Z; public int X; public int Y; }
+
+public class Enemy
+{
+    public int Mana = 7;
+    public int Hp;
+    public string Name;
+    public Pt Pos;
+    public List<int> Log = new List<int>();
+    public Enemy(string name, int hp) { Name = name; Hp = hp; }
+    public string Show() => $"{Name}:{Hp}/{Mana}@{Pos.X},{Pos.Y},{Pos.Z} log={Log.Count}";
+    public void OnReload() { Log.Add(Hp); }
+}
+
+public static class Game
+{
+    static List<Enemy> enemies = new List<Enemy>();
+    static List<Pt> path = new List<Pt>();
+    static int frame;
+    static Func<int, int> step;
+    static string banner = "hello v2";
+
+    public static void Setup()
+    {
+        enemies.Add(new Enemy("a", 10));
+        enemies.Add(new Enemy("b", 20));
+        int k = 3;
+        step = x => x + k;
+    }
+
+    public static void Frame()
+    {
+        frame++;
+        foreach (var e in enemies) { e.Hp = step(e.Hp); e.Pos.X += 1; e.Pos.Z -= 1; }
+        path.Add(new Pt { X = frame, Y = frame * 2, Z = 9 });
+        var last = path[0];
+        Console.WriteLine($"v2 frame {frame}: {enemies[0].Show()} {enemies[1].Show()} path={path.Count} first={last.X},{last.Y},{last.Z} {banner}");
+    }
+
+    public static void Report() { Console.WriteLine("v2 report"); }
+}

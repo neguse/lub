@@ -37,12 +37,14 @@ git_files() {
         # Working tree + index vs HEAD; deletions have nothing to format.
         git diff -z --name-only --diff-filter=d HEAD -- "$@" \
             ':!:third_party/**' \
+            ':!:tcs/**' \
             ':!:web/dist/**' \
             ':!:web/public/**' \
             ':!:web/node_modules/**'
     else
         git ls-files -z -- "$@" \
             ':!:third_party/**' \
+            ':!:tcs/**' \
             ':!:web/dist/**' \
             ':!:web/public/**' \
             ':!:web/node_modules/**'

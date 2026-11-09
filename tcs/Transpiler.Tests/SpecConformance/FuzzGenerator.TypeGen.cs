@@ -1,0 +1,478 @@
+namespace TinyCs.Tests.SpecConformance;
+
+/// <summary>
+/// FuzzGenerator の型生成部: class (field / auto property / instance method)
+/// と positional record。継承は対象外 (q.md Q15) なので、型判定は object の
+/// 変数に 2 つの class のどちらかを入れて probe する。ctor は生成しない
+/// (初期化は field initializer と object
+/// initializer)。record の positional prop は init-only なので書き込みは
+/// with 式の再代入のみ。
+/// </summary>
+internal sealed partial class FuzzGenerator
+{
+    private sealed class ClassInfo
+    {
+        public required string Name;
+        // object の変数にこの class の代わりに入りうる別の class
+        public ClassInfo? Alt;
+        public readonly List<(string Name, string Type)> Fields = [];
+        public readonly List<string> IntProps = [];
+        public readonly List<(string Name, string Ret, string[] Params)>
+            Methods = [];
+    }
+
+    private sealed record RecordInfo(string Name,
+        IReadOnlyList<(string Name, string Type)> Params);
+
+    // struct。member は int のみ — string member は zero 値が null で
+    // 出力時の nil/"" 差 (既知差異) を踏むため生成しない
+    private sealed record StructTypeInfo(string Name, bool IsRecord,
+        bool IsReadonly, IReadOnlyList<string> IntMembers,
+        string? MethodName, bool HasCtor);
+
+    private readonly List<ClassInfo> _classes = [];
+    private readonly List<RecordInfo> _records = [];
+    private readonly List<StructTypeInfo> _structTypes = [];
+    private readonly List<(string Name, ClassInfo Type)> _objVars = [];
+    // object 型の変数と、入りうる 2 つの class (型判定の probe)
+    private readonly List<(string Name, ClassInfo Type)> _anyVars = [];
+    private readonly List<(string Name, RecordInfo Type)> _recordVars = [];
+    private readonly List<(string Name, StructTypeInfo Type)> _structVars = [];
+    private int _classCount;
+    private int _recordCount;
+    private int _structCount;
+    private int _memberCount;
+
+    private void ResetTypes()
+    {
+        _classes.Clear();
+        _records.Clear();
+        _structTypes.Clear();
+        _classCount = 0;
+        _recordCount = 0;
+        _structCount = 0;
+        _memberCount = 0;
+    }
+
+    private void GenerateTypes(List<string> sink)
+    {
+        if (_rng.Next(2) == 0)
+        {
+            var first = GenerateClass(out var firstText);
+            sink.Add(firstText);
+            if (_rng.Next(2) == 0)
+            {
+                first.Alt = GenerateClass(out var altText);
+                sink.Add(altText);
+            }
+        }
+        if (_rng.Next(3) == 0)
+            sink.Add(GenerateRecord());
+        if (_rng.Next(2) == 0)
+            sink.Add(GenerateStructType());
+    }
+
+    private string GenerateStructType()
+    {
+        if (_rng.Next(2) == 0)
+        {
+            var name = $"FR{_structCount++}";
+            var ro = _rng.Next(2) == 0;
+            var members = Enumerable.Range(0, _rng.Next(1, 3))
+                .Select(_ => $"X{_memberCount++}").ToList();
+            _structTypes.Add(new StructTypeInfo(name, IsRecord: true, ro,
+                members, null, HasCtor: true));
+            return $"public {(ro ? "readonly " : "")}record struct {name}("
+                + string.Join(", ", members.Select(m => $"int {m}")) + ");";
+        }
+
+        var sname = $"FS{_structCount++}";
+        var fields = Enumerable.Range(0, _rng.Next(1, 3))
+            .Select(_ => $"f{_memberCount++}").ToList();
+        var lines = fields
+            .Select(f => $"public int {f};").ToList();
+        var hasCtor = _rng.Next(2) == 0;
+        if (hasCtor)
+        {
+            var p = $"p{_paramCount++}";
+            lines.Add($"public {sname}(int {p}) {{ {fields[0]} = {p}; }}");
+        }
+        string? methodName = null;
+        if (_rng.Next(2) == 0)
+        {
+            methodName = $"M{_memberCount++}";
+            var p = $"p{_paramCount++}";
+            // this を変異させて返す — receiver 規則 (変数/rvalue) を踏む
+            lines.Add($"public int {methodName}(int {p}) " +
+                $"{{ {fields[0]} += {p}; return {fields[0]}; }}");
+        }
+        _structTypes.Add(new StructTypeInfo(sname, IsRecord: false,
+            IsReadonly: false, fields, methodName, hasCtor));
+        return $"public struct {sname}\n{{\n"
+            + string.Join("\n", lines.Select(l => "    " + l)) + "\n}";
+    }
+
+    private ClassInfo GenerateClass(out string text)
+    {
+        var info = new ClassInfo { Name = $"C{_classCount++}" };
+        _classes.Add(info);
+        var lines = new List<string>();
+        // is-designation probe 用に int field を必ず 1 つ以上持つ
+        var intFields = _rng.Next(1, 3);
+        foreach (var _ in Enumerable.Range(0, intFields))
+        {
+            var f = $"f{_memberCount++}";
+            info.Fields.Add((f, "int"));
+            lines.Add($"public int {f} = {NextInt32()};");
+        }
+        if (_rng.Next(2) == 0)
+        {
+            var f = $"f{_memberCount++}";
+            info.Fields.Add((f, "string"));
+            lines.Add($"public string {f} = \"s{_rng.Next(100)}\";");
+        }
+        if (_rng.Next(2) == 0)
+        {
+            var p = $"P{_memberCount++}";
+            info.Fields.Add((p, "int"));
+            info.IntProps.Add(p);
+            lines.Add($"public int {p} {{ get; set; }} = {_rng.Next(-99, 100)};");
+        }
+
+        var methodName = $"M{_memberCount++}";
+        var ret = PickType();
+        var paramTypes = Enumerable.Range(0, _rng.Next(0, 3))
+            .Select(_ => PickType()).ToArray();
+        info.Methods.Add((methodName, ret, paramTypes));
+        lines.Add(BuildMethodText(info, "", methodName, ret, paramTypes));
+
+        text = $"public class {info.Name}\n{{\n"
+            + string.Join("\n", lines.SelectMany(l => l.Split('\n'))
+                .Select(l => "    " + l))
+            + "\n}";
+        return info;
+    }
+
+    private string BuildMethodText(ClassInfo owner, string modifier,
+        string name, string ret, string[] paramTypes)
+    {
+        ResetScope();
+        foreach (var (fieldName, fieldType) in owner.Fields)
+            VarsOf(fieldType).Add(fieldName);
+        var parameters = new List<string>();
+        foreach (var paramType in paramTypes)
+        {
+            var p = $"p{_paramCount++}";
+            VarsOf(paramType).Add(p);
+            parameters.Add($"{paramType} {p}");
+        }
+        var body = new List<string>();
+        if (_intVars.Count == 0)
+            body.Add(DeclareInt());
+        if (_boolVars.Count == 0)
+            body.Add(DeclareBool());
+        if (_stringVars.Count == 0)
+            body.Add(DeclareString());
+        if (_rng.Next(2) == 0)
+            body.Add(Statement(1));
+        body.Add($"return {ExprOf(ret, 2)};");
+        return $"public {modifier}{ret} {name}("
+            + string.Join(", ", parameters) + ")\n{\n"
+            + string.Join("\n", body.SelectMany(s => s.Split('\n'))
+                .Select(l => "    " + l))
+            + "\n}";
+    }
+
+    private string GenerateRecord()
+    {
+        var name = $"R{_recordCount++}";
+        var parameters = new List<(string Name, string Type)>
+        {
+            ($"X{_memberCount++}", "int"),
+        };
+        foreach (var _ in Enumerable.Range(0, _rng.Next(0, 3)))
+            parameters.Add(($"X{_memberCount++}",
+                _rng.Next(2) == 0 ? "int" : "string"));
+        var info = new RecordInfo(name, parameters);
+        _records.Add(info);
+        return $"public record {name}("
+            + string.Join(", ", parameters.Select(p => $"{p.Type} {p.Name}"))
+            + ");";
+    }
+
+    // Main 冒頭のインスタンス宣言。object の変数へ実行時条件で 2 つの class
+    // のどちらかを入れる形が is の実プローブになる
+    private void DeclareObjects(List<string> body)
+    {
+        if (_classes.Count > 0)
+        {
+            foreach (var _ in Enumerable.Range(0, _rng.Next(1, 3)))
+            {
+                var cls = _classes[_rng.Next(_classes.Count)];
+                var o = NextVar();
+                if (cls.Alt != null && _rng.Next(2) == 0)
+                {
+                    body.Add($"object {o} = ({BoolExpr(0)} " +
+                        $"? new {cls.Alt.Name}() : new {cls.Name}());");
+                    _anyVars.Add((o, cls));
+                    continue;
+                }
+                if (_rng.Next(2) == 0)
+                {
+                    var target = PickIntMember(cls);
+                    body.Add($"var {o} = new {cls.Name} " +
+                        $"{{ {target} = {IntExpr(1)} }};");
+                }
+                else
+                {
+                    body.Add($"var {o} = new {cls.Name}();");
+                }
+                _objVars.Add((o, cls));
+            }
+        }
+        if (_records.Count > 0)
+        {
+            foreach (var _ in Enumerable.Range(0, _rng.Next(1, 3)))
+            {
+                var rec = _records[_rng.Next(_records.Count)];
+                var r = NextVar();
+                var args = rec.Params.Select(p => ExprOf(p.Type, 1));
+                body.Add($"var {r} = new {rec.Name}({string.Join(", ", args)});");
+                _recordVars.Add((r, rec));
+            }
+        }
+        if (_structTypes.Count > 0)
+        {
+            foreach (var _ in Enumerable.Range(0, _rng.Next(1, 3)))
+            {
+                var st = _structTypes[_rng.Next(_structTypes.Count)];
+                var v = NextVar();
+                if (st.IsRecord)
+                {
+                    var args = _rng.Next(4) == 0
+                        ? ""
+                        : string.Join(", ",
+                            st.IntMembers.Select(_ => IntExpr(1)));
+                    body.Add($"var {v} = new {st.Name}({args});");
+                }
+                else if (st.HasCtor && _rng.Next(2) == 0)
+                {
+                    body.Add($"var {v} = new {st.Name}({IntExpr(1)});");
+                }
+                else if (_rng.Next(2) == 0)
+                {
+                    body.Add($"var {v} = new {st.Name} " +
+                        $"{{ {st.IntMembers[0]} = {IntExpr(1)} }};");
+                }
+                else
+                {
+                    body.Add($"var {v} = new {st.Name}();");
+                }
+                _structVars.Add((v, st));
+                // 代入 copy のプローブ: 片方の変異がもう片方に漏れたら検出される
+                if (_rng.Next(2) == 0)
+                {
+                    var w = NextVar();
+                    body.Add($"var {w} = {v};");
+                    _structVars.Add((w, st));
+                }
+            }
+        }
+    }
+
+    private string PickIntMember(ClassInfo cls)
+    {
+        var ints = cls.Fields.Where(f => f.Type == "int").ToList();
+        return ints[_rng.Next(ints.Count)].Name;
+    }
+
+    private void ObjTailPrints(List<string> body)
+    {
+        foreach (var (name, cls) in _objVars)
+            foreach (var (field, _) in cls.Fields)
+                body.Add($"Console.WriteLine({name}.{field});");
+        foreach (var (name, rec) in _recordVars)
+            foreach (var (param, _) in rec.Params)
+                body.Add($"Console.WriteLine({name}.{param});");
+        foreach (var (name, st) in _structVars)
+            foreach (var member in st.IntMembers)
+                body.Add($"Console.WriteLine({name}.{member});");
+    }
+
+    private string? ObjMemberRead(string type)
+    {
+        var candidates = new List<string>();
+        foreach (var (name, cls) in _objVars)
+            foreach (var (field, fieldType) in cls.Fields)
+                if (fieldType == type)
+                    candidates.Add($"{name}.{field}");
+        foreach (var (name, rec) in _recordVars)
+            foreach (var (param, paramType) in rec.Params)
+                if (paramType == type)
+                    candidates.Add($"{name}.{param}");
+        if (type == "int")
+            foreach (var (name, st) in _structVars)
+                foreach (var member in st.IntMembers)
+                    candidates.Add($"{name}.{member}");
+        return candidates.Count == 0
+            ? null
+            : candidates[_rng.Next(candidates.Count)];
+    }
+
+    // struct 変数への文: field 書き込み / method 呼び (this 変異) /
+    // 変数間の再コピー / record の with 再代入
+    private string StructStatement()
+    {
+        if (_structVars.Count == 0)
+            return SimpleAssign();
+        var (name, st) = _structVars[_rng.Next(_structVars.Count)];
+        if (st.IsRecord)
+        {
+            if (_rng.Next(3) == 0)
+            {
+                var sameType = _structVars
+                    .Where(v => v.Type == st).ToList();
+                var src = sameType[_rng.Next(sameType.Count)].Name;
+                return $"{name} = {src};";
+            }
+            var member = st.IntMembers[_rng.Next(st.IntMembers.Count)];
+            // readonly は positional set 不可 — with 再代入のみ
+            if (st.IsReadonly || _rng.Next(2) == 0)
+                return $"{name} = {name} with {{ {member} = {IntExpr(1)} }};";
+            return $"{name}.{member} = {IntExpr(1)};";
+        }
+        var roll = _rng.Next(4);
+        if (roll == 0 && st.MethodName != null)
+            return $"Console.WriteLine({name}.{st.MethodName}({IntExpr(0)}));";
+        if (roll == 1)
+        {
+            var sameType = _structVars.Where(v => v.Type == st).ToList();
+            var src = sameType[_rng.Next(sameType.Count)].Name;
+            return $"{name} = {src};";
+        }
+        var field = st.IntMembers[_rng.Next(st.IntMembers.Count)];
+        return _rng.Next(2) == 0
+            ? $"{name}.{field} = {IntExpr(2)};"
+            : $"{name}.{field} += {IntExpr(1)};";
+    }
+
+    private string StructCallOrElse(int depth, Func<string> fallback)
+    {
+        var candidates = _structVars
+            .Where(v => !v.Type.IsRecord && v.Type.MethodName != null)
+            .ToList();
+        if (candidates.Count == 0 || depth <= 0)
+            return fallback();
+        var (name, st) = candidates[_rng.Next(candidates.Count)];
+        return $"{name}.{st.MethodName}({IntExpr(Math.Min(depth - 1, 1))})";
+    }
+
+    private string StructEqualityOrElse(Func<string> fallback) =>
+        ValueEqualityOrElse(
+            [.. _structVars.Where(v => v.Type.IsRecord)
+                .Select(v => (v.Name, v.Type.Name))], fallback);
+
+    private string ObjCallOrElse(string returnType, int depth,
+        Func<string> fallback)
+    {
+        var candidates = _objVars
+            .SelectMany(o => o.Type.Methods
+                .Where(m => m.Ret == returnType)
+                .Select(m => (o.Name, Method: m)))
+            .ToList();
+        if (candidates.Count == 0 || depth <= 0)
+            return fallback();
+        var (name, method) = candidates[_rng.Next(candidates.Count)];
+        var args = method.Params
+            .Select(t => ExprOf(t, Math.Min(depth - 1, 1)));
+        return $"{name}.{method.Name}({string.Join(", ", args)})";
+    }
+
+    private string IsTypeCheckOrElse(Func<string> fallback)
+    {
+        if (_anyVars.Count == 0)
+            return fallback();
+        var (name, cls) = _anyVars[_rng.Next(_anyVars.Count)];
+        var probe = _rng.Next(2) == 0 ? cls.Alt! : cls;
+        return $"({name} is {probe.Name})";
+    }
+
+    private string IsDesignationOrElse(int depth, Func<string> fallback)
+    {
+        if (_anyVars.Count == 0)
+            return fallback();
+        var (name, cls) = _anyVars[_rng.Next(_anyVars.Count)];
+        var probe = _rng.Next(2) == 0 ? cls.Alt! : cls;
+        var field = probe.Fields.First(f => f.Type == "int").Name;
+        var x = NextVar();
+        return $"({name} is {probe.Name} {x} " +
+            $"? {x}.{field} : {IntExpr(depth - 1)})";
+    }
+
+    // 同型の変数ペアから値等価式を作る (record class / record struct 共用)
+    private string ValueEqualityOrElse(
+        IReadOnlyList<(string Name, string TypeKey)> vars,
+        Func<string> fallback)
+    {
+        var groups = vars.GroupBy(v => v.TypeKey)
+            .Where(g => g.Count() >= 2).ToList();
+        if (groups.Count == 0)
+            return fallback();
+        var pair = groups[_rng.Next(groups.Count)].ToList();
+        var left = pair[_rng.Next(pair.Count)].Name;
+        var right = pair[_rng.Next(pair.Count)].Name;
+        var op = _rng.Next(2) == 0 ? "==" : "!=";
+        return $"({left} {op} {right})";
+    }
+
+    private string RecordEqualityOrElse(Func<string> fallback) =>
+        ValueEqualityOrElse(
+            [.. _recordVars.Select(r => (r.Name, r.Type.Name))], fallback);
+
+    private string PropertyPatternOrElse(Func<string> fallback)
+    {
+        if (_recordVars.Count > 0 && _rng.Next(2) == 0)
+        {
+            var (name, rec) = _recordVars[_rng.Next(_recordVars.Count)];
+            var member = rec.Params.First(p => p.Type == "int").Name;
+            return $"({name} is {rec.Name} {{ {member}: > {_rng.Next(-99, 100)} }})";
+        }
+        var candidates = _objVars
+            .Where(o => o.Type.IntProps.Count > 0)
+            .ToList();
+        if (candidates.Count == 0)
+            return fallback();
+        var (objName, cls) = candidates[_rng.Next(candidates.Count)];
+        var prop = cls.IntProps[_rng.Next(cls.IntProps.Count)];
+        return $"({objName} is {cls.Name} {{ {prop}: <= {_rng.Next(-99, 100)} }})";
+    }
+
+    private string ObjStatement()
+    {
+        var writable = new List<(string Obj, string Member)>();
+        foreach (var (name, cls) in _objVars)
+            foreach (var (field, fieldType) in cls.Fields)
+                if (fieldType == "int")
+                    writable.Add((name, field));
+        var hasMethods = _objVars.Any(o => o.Type.Methods.Any());
+        if (writable.Count == 0 && !hasMethods)
+            return SimpleAssign();
+        if (writable.Count > 0 && (_rng.Next(2) == 0 || !hasMethods))
+        {
+            var (obj, member) = writable[_rng.Next(writable.Count)];
+            return _rng.Next(2) == 0
+                ? $"{obj}.{member} = {IntExpr(2)};"
+                : $"{obj}.{member} += {IntExpr(1)};";
+        }
+        return $"Console.WriteLine({ObjCallOrElse(PickType(), 2, IntAtom)});";
+    }
+
+    private string RecordWithAssign()
+    {
+        if (_recordVars.Count == 0)
+            return SimpleAssign();
+        var (name, rec) = _recordVars[_rng.Next(_recordVars.Count)];
+        var (param, paramType) = rec.Params[_rng.Next(rec.Params.Count)];
+        return $"{name} = {name} with {{ {param} = {ExprOf(paramType, 1)} }};";
+    }
+}

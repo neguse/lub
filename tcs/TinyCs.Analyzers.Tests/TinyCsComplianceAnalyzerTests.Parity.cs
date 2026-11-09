@@ -1,0 +1,190 @@
+using System.Collections.Immutable;
+using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Xunit;
+
+namespace TinyCs.Analyzers.Tests;
+
+// 意味を見る TCS1001 の規則は、analyzer と transpiler / `tcs check` が同じ位置に同じ名前で出す
+public partial class TinyCsComplianceAnalyzerTests
+{
+    [Theory]
+    [InlineData("""
+        System.Console.WriteLine(args.Length);
+        """)]
+    [InlineData("""
+        public static class T
+        {
+            [System.Diagnostics.Conditional("DEBUG")]
+            public static void Log() { }
+        }
+        """)]
+    [InlineData("""
+        public class T
+        {
+            public int F() => 1;
+            public System.Func<int> G() => F;
+        }
+        """)]
+    [InlineData("""
+        public static class T
+        {
+            public static string F(int w) => $"{1,w}";
+        }
+        """)]
+    [InlineData("""
+        public interface IShape { }
+        public static class T
+        {
+            public static bool F<V>(V o) => o is IShape;
+        }
+        """)]
+    [InlineData("""
+        using System.Collections.Generic;
+        public readonly record struct K(int A);
+        public static class T
+        {
+            public static Dictionary<K, int> F() => new();
+        }
+        """)]
+    [InlineData("""
+        public class B { }
+        public class D : B { }
+        """)]
+    [InlineData("""
+        public interface IA { void F(int a); }
+        public interface IB { void F(string s); }
+        public class T : IA, IB
+        {
+            public void F(int a) { }
+            public void F(string s) { }
+        }
+        """)]
+    [InlineData("""
+        using System.Collections.Generic;
+        public interface IShape { int Area(); }
+        public struct Sq : IShape { public int S; public int Area() => S * S; }
+        public readonly record struct P(int X);
+        public static class T
+        {
+            public static void F(List<object> xs)
+            {
+                object o = new Sq();
+                IShape s = new Sq();
+                xs.Add(new P(1));
+                var c = (object)new P(2);
+                P? n = null;
+                object m = n;
+            }
+        }
+        """)]
+    [InlineData("""
+        using System.Collections.Generic;
+        public record R(int A);
+        public struct M { public int X; }
+        public static class T
+        {
+            public static string F(R r, M m, List<int> xs) =>
+                r.ToString() + r + $"{m}" + m.ToString() + string.Join(",", new List<R>()) + $"{xs}";
+        }
+        """)]
+    // 生成されたコードも transpiler は変換するので、analyzer も診断する
+    [InlineData("""
+        using System.Collections.Generic;
+        public readonly record struct K(int A);
+        [System.CodeDom.Compiler.GeneratedCode("gen", "1")]
+        public class T
+        {
+            public Dictionary<K, int> F() => new();
+            public void Run() { try { } finally { } }
+        }
+        """)]
+    [InlineData("""
+        using System;
+        public delegate void D();
+        public class C
+        {
+            public static bool M(object o) => o is Func<int> || o is Action a || o is D;
+            public static string F(int x) => $"{x:F\" .. y}{x:R\" .. y}";
+        }
+        """)]
+    [InlineData("""
+        using System;
+        public class C
+        {
+            static void G() { }
+            public static bool M(Func<int> a, Func<int> b, Action c)
+            {
+                c += G;
+                c = c - G;
+                return a == b || a != null;
+            }
+        }
+        """)]
+    [InlineData("""
+        public class G<T> { public class Inner { } }
+        public class O { public class Fine { } public struct Part { public class Deep { } } }
+        """)]
+    [InlineData("""
+        public interface I { }
+        public interface IG<T> { }
+        public struct S : I { }
+        public class C : I
+        {
+            public static bool M(object o, S s) => o is I || o is IG<int> || s is I;
+            public static object A(object o) => o as I;
+            public static object B(S s) => s as I;
+            public static string D(object o) => o switch { I => "i", IG<int> => "g", _ => "" };
+        }
+        """)]
+    [InlineData("""
+        public enum E { A }
+        public static class T
+        {
+            public static string F(float f, int i, E e, object o, float? n) =>
+                $"{f:F2}{f:0.00}{i:X4}{i:C}{f:P0}{e:G}{e:X}{o:F1}{n:N1}{"s":Z}";
+        }
+        """)]
+    [InlineData("""
+        public enum U : uint { A = 1, Hi = 0x80000000 }
+        public static class T
+        {
+            public static uint A() { return 3000000000u; }
+            public static int C() { return unchecked((int)0xFFFFFFFF); }
+            public static int C2() { return -2147483648; }
+            public static uint D(uint d) { return d * 2u + (d - 1u) + ~d + (d << 1); }
+            public static void E(uint d) { d++; --d; d += 1u; d <<= 1; d &= 3u; d >>= 1; }
+        }
+        """)]
+    public async Task SemanticRules_MatchTranspilerDiagnostics(string source)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source,
+            CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
+        var compilation = CSharpCompilation.Create("TinyCsParity",
+            [tree, LinqTree.Value.WithRootAndOptions(LinqTree.Value.GetRoot(), tree.Options)],
+            GetReferences(), new CSharpCompilationOptions(OutputKind.ConsoleApplication));
+        var analyzer = (await compilation
+                .WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(new TinyCsComplianceAnalyzer()))
+                .GetAnalyzerDiagnosticsAsync())
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+                && d.Location.SourceTree == tree)
+            .Select(d => $"{d.Location.GetLineSpan().StartLinePosition.Line + 1}," +
+                $"{d.Location.GetLineSpan().StartLinePosition.Character + 1}: " +
+                Regex.Match(d.GetMessage(), "'(.*)'").Groups[1].Value)
+            .Order().ToList();
+        // tcs check と同じ compiler (SelfHost/Compiler) の診断。analyzer はこれを Roslyn の位置に写す
+        var session = new TcsSelf.Session("");
+        session.Add("parity.cs", source, 0);
+        session.Add("TinySystem/Linq.cs", LinqTree.Value.GetText().ToString(), 2);
+        var transpiler = session.Compile().Diagnostics
+            .Select(line => Regex.Match(line, @"\((\d+,\d+)\): error TCS1001: unsupported syntax: (.*)$"))
+            .Where(m => m.Success)
+            .Select(m => $"{m.Groups[1].Value}: {m.Groups[2].Value}")
+            .Order().ToList();
+
+        Assert.NotEmpty(transpiler);
+        Assert.Equal(transpiler, analyzer);
+    }
+}

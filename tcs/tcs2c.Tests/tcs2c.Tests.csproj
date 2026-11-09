@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <NuGetAudit>false</NuGetAudit>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Transpiler.Tests\SpecConformance\FuzzReloadGenerator.cs" Link="FuzzReloadGenerator.cs" />
+    <Compile Include="..\Transpiler.Tests\SpecConformance\FuzzGenerator*.cs" LinkBase="FuzzGenerator" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Transpiler\Transpiler.csproj" />
+    <ProjectReference Include="..\tcs2c\tcs2c.csproj" />
+    <ProjectReference Include="..\tcsvm\Emitter\tcs2vm.csproj" />
+    <ProjectReference Include="..\TinySystem\TinySystem.csproj" />
+    <ProjectReference Include="..\SelfHost\SelfHost.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- セルフホストの compiler の差分の検査 (TCS_SELFHOST_DIFF=1) を Transpiler.Tests と共有する -->
+  </ItemGroup>
+
+</Project>

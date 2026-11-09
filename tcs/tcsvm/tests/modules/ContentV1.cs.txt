@@ -1,0 +1,82 @@
+// module 単位の混在の試験の「reload する側」(tcs VM)。Ed.Editor は C (tcs2c) の module の関数
+using Ed;
+
+public class Enemy
+{
+    public int Hp;
+    public Transform At = new Transform();
+}
+
+public class Sword : ITool
+{
+    public int Power = 3;
+    public string Name() => "sword";
+    public int Use(int x) => x * Power;
+}
+
+public static class Game
+{
+    static Enemy e;
+
+    public static Enemy Setup()
+    {
+        e = new Enemy { Hp = 10 };
+        e.At.Y = 1;
+        // VM の object を C だけが持つ (VM の側からは参照しない)
+        Editor.Select(new Transform { X = 42, Y = 4 });
+        Editor.Attach(e.At, Editor.Spawn(9));
+        Editor.Keep(e);
+        Editor.Register(new Sword());
+        var total = 0;
+        Editor.OnTick(n => { total += n; Editor.Log("tick " + n + " total " + total); });
+        Editor.Decorate(s => "<" + s + ">");
+        Editor.Log("content v1 ready");
+        return e;
+    }
+
+    public static void Frame()
+    {
+        Editor.Log(Editor.Tick(e.Hp));
+        Editor.Nudge(e.At, 0.5f);
+        Editor.Log("v1 " + Editor.Describe(e.At) + " hp=" + e.Hp);
+    }
+
+    public static void Report()
+    {
+        var kept = (Enemy)Editor.Kept();
+        Editor.Log("selected X=" + Editor.Selected().X + " parent X=" + e.At.Parent.X + " L" + e.At.Parent.Layer
+            + " kept hp=" + kept.Hp + " same=" + (kept == e));
+        Editor.Log("tools " + Editor.RunTools(5));
+        // VM の中から --ref の interface の method を呼ぶ (C の Ruler も VM の Sword も)
+        var total = 0;
+        for (var i = 0; i < Editor.ToolCount(); i++) total += Editor.ToolAt(i).Use(2);
+        Editor.Log("vm sees tools " + total + " first=" + Editor.ToolAt(0).Name());
+        var scale = Editor.Scaler(3);
+        var shout = Editor.Shout();
+        Editor.Log("c delegates " + scale(7) + " " + shout("hey"));
+        // C の module の string を VM がそのまま使う (写さない): 比較、Dictionary の key、型の検査
+        var name = Editor.ToolAt(0).Name();
+        var seen = new System.Collections.Generic.Dictionary<string, int> { ["ruler"] = 1 };
+        object boxed = name;
+        Editor.Log("c string eq=" + (name == "ruler") + " key=" + seen.ContainsKey(name) + " is=" + (boxed is string)
+            + " concat=" + (name + "s") + " " + name.ToUpper());
+        // 型の番号: C が VM の object を、VM が C の object を型で調べる
+        Editor.Log("c classifies " + Editor.Classify(new Transform { Layer = 5 }) + ", " + Editor.Classify(new Sword())
+            + ", " + Editor.Classify(e));
+        object spawned = Editor.Spawn(2), ruler = Editor.ToolAt(0), sword = new Sword();
+        Editor.Log("vm classifies " + (spawned is Transform) + " " + ((Transform)spawned).Layer + " " + (spawned is ITool)
+            + " " + (ruler is ITool) + " " + (ruler is Transform) + " " + (sword is ITool) + " " + ((object)e is ITool));
+        var xs = new System.Collections.Generic.List<int> { 3, 1, 4, 1, 5, 9, 2, 6 };
+        xs.Sort(Editor.Descending());
+        var even = xs.FindIndex(Editor.IsEven());
+        var removed = xs.RemoveAll(Editor.IsEven());
+        Editor.Log("c delegates in runtime " + string.Join(",", xs) + " even@" + even + " removed=" + removed);
+        // C の module の struct の値と戻り値、out と T?
+        var span = Editor.Widen(new Span { Lo = 1, Hi = 3 }, 0.5f);
+        var found = Editor.Find(4, out var spanName, out var found4);
+        var missing = Editor.Find(-1, out var noName, out var none);
+        Editor.Log("c structs width=" + Editor.Width(span) + " open=" + span.Open + " " + found + " " + spanName + " " + found4.Hi
+            + " " + missing + " " + (noName == "") + " " + none.Open + " half=" + Editor.Half(6).Value + " " + Editor.Half(7).HasValue);
+        Editor.Log("logged " + Editor.Logged() + ", last=" + Editor.Last());
+    }
+}

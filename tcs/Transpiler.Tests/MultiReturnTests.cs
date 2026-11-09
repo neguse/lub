@@ -1,0 +1,287 @@
+namespace TinyCs.Tests;
+
+public class MultiReturnTests
+{
+    private const string IoStub = """
+        public static class Io
+        {
+            public static void load_text(string path, out string text,
+                out int version, out string status)
+            {
+                text = "";
+                version = 0;
+                status = "";
+            }
+        }
+
+        public static class Host
+        {
+            public static bool try_read(out int value)
+            {
+                value = 0;
+                return false;
+            }
+        }
+        """;
+
+    [Fact]
+    public void RefMethodOutArgs_AreAccepted()
+    {
+        var source = """
+            public static class Game
+            {
+                public static string Run()
+                {
+                    Io.load_text("data.txt", out var text, out var version,
+                        out var status);
+                    return text + "," + version + "," + status;
+                }
+            }
+            """;
+
+        var result = Checker.Check([source], null, [IoStub]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void RefMethodOutArgs_NonVoidReturn_AcceptedInCondition()
+    {
+        var source = """
+            public static class Game
+            {
+                public static string Run()
+                {
+                    if (Host.try_read(out var value))
+                    {
+                        return "ok:" + value;
+                    }
+                    return "none";
+                }
+            }
+            """;
+
+        var result = Checker.Check([source], null, [IoStub]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void RefMethodOutArgs_DiscardIsAccepted()
+    {
+        var source = """
+            public static class Game
+            {
+                public static int Run()
+                {
+                    Io.load_text("x", out _, out var version, out _);
+                    return version;
+                }
+            }
+            """;
+
+        var result = Checker.Check([source], null, [IoStub]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void UserMethodOutParameter_ReturnsTheValue()
+    {
+        const string source = """
+            public static class Parser
+            {
+                public static bool TryParse(string text, out int value)
+                {
+                    value = 42;
+                    return true;
+                }
+
+                public static int Run()
+                {
+                    Parser.TryParse("42", out var value);
+                    return value;
+                }
+            }
+            """;
+        Assert.Equal("42", TestHelper.CompileAndRunVm(source, "Parser.Run()"));
+    }
+
+    [Fact]
+    public void UserMethodOutCall_InCondition_Runs()
+    {
+        const string source = """
+            public static class P
+            {
+                static bool Try(out int v) { v = 1; return true; }
+                public static int Run() { if (Try(out var v)) return v; return 0; }
+            }
+            """;
+        Assert.Equal("1", TestHelper.CompileAndRunVm(source, "P.Run()"));
+    }
+
+    [Theory]
+    [InlineData("Try(out _f);")]
+    [InlineData("int v = 0; System.Func<int> f = () => v; Try(out v);")]
+    [InlineData("var a = new int[1]; Try(out a[0]);")]
+    [InlineData("new P().M(out _f);")]
+    public void UserMethodOutArgument_NotADeclaration_ReportsUnsupportedSyntax(string statement)
+    {
+        var result = Checker.Check([$$"""
+            public class P
+            {
+                static int _f;
+                static bool Try(out int v) { v = 1; return true; }
+                void M(out int v) { v = 1; }
+                public static void Run() { {{statement}} }
+            }
+            """]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains("OutArgumentNotDeclaration"));
+    }
+
+    // 同じ局所変数を 2 つの out に渡すと、呼び出しの中で parameter が別名になる (#413)
+    [Fact]
+    public void UserMethodOutArgument_SameLocalTwice_ReportsUnsupportedSyntax()
+    {
+        var result = Checker.Check(["""
+            public class P
+            {
+                static void Set(out int a, out int b) { a = 1; b = 2; }
+                public static void Run() { int x; int y; Set(out x, out y); Set(out x, out x); }
+            }
+            """]);
+
+        Assert.False(result.Success);
+        Assert.Single(result.Errors, e => e.Contains("OutArgumentDuplicate"));
+    }
+
+    [Fact]
+    public void UserMethodOutArgument_ForwardingOutParameter_ReportsUnsupportedSyntax()
+    {
+        var result = Checker.Check(["""
+            public class P
+            {
+                static void A(out int v) { v = 1; }
+                static void B(out int v) { A(out v); }
+            }
+            """]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("OutArgumentNotDeclaration"));
+    }
+
+    [Theory]
+    [InlineData("public delegate void D(out int v);")]
+    [InlineData("public class C { public C(out int v) { v = 1; } }")]
+    public void OutParameter_OutsideMethodDeclaration_ReportsUnsupportedSyntax(string declaration)
+    {
+        var result = Checker.Check([declaration]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains("OutParameter"));
+    }
+
+    // host の --ref メソッドと BCL の TryGetValue は宣言済みの変数を受ける
+    [Fact]
+    public void OutArgument_ExistingLocal_StaysAllowedForNonUserMethods()
+    {
+        var result = Checker.Check(["""
+            using System.Collections.Generic;
+            public static class Game
+            {
+                public static string Run()
+                {
+                    int value;
+                    Host.try_read(out value);
+                    var d = new Dictionary<string, int>();
+                    d.TryGetValue("k", out value);
+                    return "" + value;
+                }
+            }
+            """], null, [IoStub]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+    }
+
+    [Fact]
+    public void UserMethodRefParameter_ReportsUnsupportedSyntax()
+    {
+        var result = Checker.Check(["""
+            public static class Counter
+            {
+                public static void Bump(ref int value)
+                {
+                    value = value + 1;
+                }
+            }
+            """]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains("RefParameter"));
+    }
+
+    // host の宣言は診断しないので、呼び出しの ref / in で止める
+    [Theory]
+    [InlineData("Io.bump(ref n);", "RefArgument")]
+    [InlineData("Io.read(in n);", "InArgument")]
+    public void HostRefAndInArguments_ReportUnsupportedSyntax(string call, string rule)
+    {
+        var source = $$"""
+            public static class Game
+            {
+                public static void Run()
+                {
+                    int n = 1;
+                    {{call}}
+                }
+            }
+            """;
+        var stub = """
+            public static class Io
+            {
+                public static extern void bump(ref int value);
+                public static extern void read(in int value);
+            }
+            """;
+
+        var result = Checker.Check([source], null, [stub]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}: unsupported syntax: {rule}"));
+        Assert.DoesNotContain(result.Errors, e => e.Contains("expression:"));
+    }
+
+    [Fact]
+    public void RefStubOutParameter_DoesNotWarn()
+    {
+        var source = """
+            public static class Game
+            {
+                public static int Run()
+                {
+                    Io.load_text("x", out _, out var version, out _);
+                    return version;
+                }
+            }
+            """;
+
+        var result = Checker.Check([source], null,
+            [IoStub]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.DoesNotContain(result.Warnings, w =>
+            w.Contains("OutParameter") || w.Contains("RefParameter"));
+    }
+}

@@ -1,0 +1,15 @@
+Boxes - [1048576] count=1048576
+[1048574] - null count=0
+[1048575] Box Box{Hp=7} count=1
+Hp - 7 count=0
+fast
+instances:
+  Box Game.Solo
+  Node Game.Ring
+  Node Game.Chain
+  Box Game.Pair[1]
+  Node Game.Ring.Next
+  Box Game.At.B
+  Node Game.Chain.Next
+  Node Game.Chain.Next.Next
+same id: yes

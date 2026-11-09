@@ -1,0 +1,1142 @@
+using System.Collections.Immutable;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Xunit;
+
+namespace TinyCs.Analyzers.Tests;
+
+public partial class TinyCsComplianceAnalyzerTests
+{
+    [Fact]
+    public async Task SupportedSubset_HasNoDiagnostics()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Player
+            {
+                public int X { get; set; }
+
+                public static int Move(int x)
+                {
+                    if (x > 0) return x + 1;
+                    return 0;
+                }
+            }
+            """);
+
+        Assert.Empty(diagnostics);
+    }
+
+    [Fact]
+    public async Task LuaKeywordMember_ReportsKeywordMemberOnly()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Repro
+            {
+                public int end_;
+                public void end() { end_ = 1; }
+                public int flash;
+                public void Flash() { flash = 1; }
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Contains("LuaKeywordIdentifier(end)", diagnostic.GetMessage());
+        Assert.Equal(3, diagnostic.Location.GetLineSpan().StartLinePosition.Line);
+    }
+
+    [Fact]
+    public async Task StructDeclaration_InstanceMembersClean_StaticReports()
+    {
+        // method / property / ctor は許可、indexer は拒否
+        var clean = await AnalyzeAsync("""
+            public struct Vec2
+            {
+                public int X;
+                public Vec2(int x) { X = x; }
+                public int Twice() { return X * 2; }
+                public int P { get; set; }
+            }
+            """);
+        Assert.Empty(clean);
+
+        var withIndexer = await AnalyzeAsync("""
+            public struct Vec2
+            {
+                public int X;
+                public int this[int i] { get { return X; } }
+            }
+            """);
+        var diagnostic = Assert.Single(withIndexer);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Contains("StructMember", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public async Task RecordStruct_IsClean_IndexerReports()
+    {
+        // record struct は対応済み。member は struct と同じ規則
+        var clean = await AnalyzeAsync("""
+            public readonly record struct Vec2(int X, int Y);
+            """);
+        Assert.Empty(clean);
+
+        var withIndexer = await AnalyzeAsync("""
+            public record struct Vec2(int X, int Y)
+            {
+                public int this[int i] { get { return X; } }
+            }
+            """);
+        var diagnostic = Assert.Single(withIndexer);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Contains("StructMember", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public async Task NamedArgument_ReportsUnsupportedSyntax()
+    {
+        // transpiler は build を止める error、analyzer は warning のまま
+        // (.editorconfig で severity を上げられる)
+        var diagnostics = await AnalyzeAsync("""
+            public class T
+            {
+                public static int F(int x, int y = -1) => x;
+                public static int Test() => F(y: 2, x: 1);
+            }
+            """);
+
+        Assert.Equal(2, diagnostics.Count);
+        Assert.All(diagnostics, d =>
+        {
+            Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, d.Id);
+            Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+            Assert.Contains("NamedArgument", d.GetMessage());
+        });
+    }
+
+    [Fact]
+    public async Task TypeNamedLikeRuntimeGlobal_ReportsUnsupportedSyntax()
+    {
+        // namespace の中でも simple name で emit され runtime の table を
+        // 上書きする (#21)。transpiler では build を止める error
+        var math = await AnalyzeAsync("""
+            public class Math
+            {
+                public static int Twice(int x) => x * 2;
+            }
+            """);
+        var diagnostic = Assert.Single(math);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Contains("RuntimeGlobalIdentifier(Math)", diagnostic.GetMessage());
+
+        var dict = await AnalyzeAsync("""
+            namespace Game
+            {
+                public class Dict { }
+            }
+            """);
+        Assert.Contains("RuntimeGlobalIdentifier(Dict)",
+            Assert.Single(dict).GetMessage());
+
+        var clean = await AnalyzeAsync("""
+            namespace Game
+            {
+                public class MathUtil
+                {
+                    public static int Twice(int x) => System.Math.Abs(x) * 2;
+                }
+            }
+            """);
+        Assert.Empty(clean);
+    }
+
+    [Theory]
+    [InlineData("CallerArgumentExpression(\"value\")", "CallerArgumentExpression")]
+    [InlineData("CallerMemberName", "CallerMemberName")]
+    [InlineData("CallerLineNumber", "CallerLineNumber")]
+    [InlineData("System.Runtime.CompilerServices.CallerFilePathAttribute",
+        "CallerFilePath")]
+    public async Task CallerInfoAttribute_ReportsUnsupportedSyntax(
+        string attribute, string kind)
+    {
+        // caller info は呼び出し側で埋まる値を tcs が再現しない (#17)
+        var type = kind == "CallerLineNumber" ? "int" : "string";
+        var dflt = kind == "CallerLineNumber" ? "0" : "\"\"";
+        var diagnostics = await AnalyzeAsync($$"""
+            using System.Runtime.CompilerServices;
+
+            public static class CallerInfoRepro
+            {
+                public static {{type}} Where(int value,
+                    [{{attribute}}] {{type}} text = {{dflt}}) => text;
+
+                public static {{type}} Test() => Where(1 + 2);
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains($"CallerInfoAttribute({kind})", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public async Task DoubleAndLongTypesAndDoubleLiterals_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class NumericTypes
+            {
+                public double Field;
+                public long Signed;
+                public ulong Unsigned;
+
+                public static double Run(long value, ulong other)
+                {
+                    double result = 1.5;
+                    float supported = 2.5f;
+                    return result + value + other + supported;
+                }
+            }
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Equal(8, syntaxDiagnostics.Length);
+        Assert.Equal(3, syntaxDiagnostics.Count(
+            d => d.GetMessage().Contains("DoubleType")));
+        Assert.Equal(4, syntaxDiagnostics.Count(
+            d => d.GetMessage().Contains("LongType")));
+        Assert.Single(syntaxDiagnostics,
+            d => d.GetMessage().Contains("DoubleLiteral"));
+        Assert.DoesNotContain(syntaxDiagnostics,
+            d => d.Location.SourceTree?.GetText()
+                .ToString(d.Location.SourceSpan) == "2.5f");
+    }
+
+    [Fact]
+    public async Task PartialTypesAndLock_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public partial class PartialClass
+            {
+                public static int First() => 1;
+            }
+            public partial class PartialClass
+            {
+                public static int Second() => 2;
+            }
+            public partial record PartialRecord;
+            public partial interface IPartial { }
+
+            public class RegularClass
+            {
+                public static void Run()
+                {
+                    lock (new object())
+                    {
+                    }
+                }
+            }
+
+            public record RegularRecord;
+            public interface IRegular { }
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Equal(5, syntaxDiagnostics.Length);
+        Assert.Equal(4, syntaxDiagnostics.Count(
+            d => d.GetMessage().Contains("PartialTypeDeclaration")));
+        Assert.Single(syntaxDiagnostics,
+            d => d.GetMessage().Contains("LockStatement"));
+    }
+
+    [Fact]
+    public async Task PartialStructs_KeepExistingSingleDiagnostic()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public partial struct PartialStruct { }
+            public readonly partial record struct PartialRecordStruct(int Value);
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        // record struct 解禁後は partial record struct も
+        // PartialTypeDeclaration の 1 診断のみ
+        Assert.Equal(2, syntaxDiagnostics.Length);
+        Assert.All(syntaxDiagnostics,
+            d => Assert.Contains("PartialTypeDeclaration", d.GetMessage()));
+        Assert.DoesNotContain(syntaxDiagnostics,
+            d => d.GetMessage().Contains("StructDeclaration')")); // 二重報告なし
+    }
+
+    // nameof は定数式として対応 (T250): 診断なし
+    [Fact]
+    public async Task NameOfExpressions_AreSupported()
+    {
+        const string source = """
+            public class NameDemo
+            {
+                public static string Simple(int value) => nameof(value);
+                public static string MemberName() => nameof(System.Math.E);
+                public static string TypeName() => nameof(System.DateTime);
+            }
+            """;
+        var diagnostics = await AnalyzeAsync(source);
+
+        Assert.Empty(diagnostics);
+    }
+    [Fact]
+    public async Task UserMethodNamedNameof_IsNotNameOfExpression()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class NameDemo
+            {
+                public static string nameof(string value) => value;
+                public static string Run() => nameof("ok");
+            }
+            """);
+
+        Assert.DoesNotContain(diagnostics,
+            d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax);
+    }
+
+    [Fact]
+    public async Task UnsupportedStatements_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Demo
+            {
+                public static int Run()
+                {
+                    int Local() => 1;
+                    try
+                    {
+                        return Local();
+                    }
+                    catch
+                    {
+                        throw;
+                    }
+                }
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("LocalFunctionStatement"));
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("TryStatement"));
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("ThrowStatement"));
+    }
+
+    [Fact]
+    public async Task StaticAndInstanceOverloads_AreAllowed()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Ops
+            {
+                public static int Twice(int x) => x * 2;
+                public static float Twice(float x) => x * 2;
+            }
+            public class Demo
+            {
+                public void Run() { }
+                public void Run(int n) { }
+            }
+            """);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("MethodOverload"));
+    }
+
+    [Fact]
+    public async Task OverloadNameCollision_ReportsMethodOverload()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public interface IA { void F(int a); }
+            public interface IB { void F(string s); }
+            public class T : IA, IB
+            {
+                public void F(int a) { }
+                public void F(string s) { }
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("MethodOverload"));
+    }
+
+    [Fact]
+    public async Task MultiDimensionalArray_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Demo
+            {
+                public static int F()
+                {
+                    int[,] b = new int[5, 2];
+                    return b[1, 1];
+                }
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("MultiDimensionalArray"));
+    }
+
+    [Fact]
+    public async Task FloatIsNaN_ReportsUnsupportedApi()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Demo
+            {
+                public static bool F(float x) => float.IsNaN(x);
+                public static int G(string s) => int.Parse(s);
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi
+            && d.GetMessage().Contains("float.IsNaN"));
+        Assert.DoesNotContain(diagnostics, d => d.GetMessage().Contains("int.Parse"));
+    }
+
+    [Fact]
+    public async Task QueryExpression_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.Collections.Generic;
+            using System.Linq;
+            public static class Demo
+            {
+                public static IEnumerable<int> Q(List<int> xs) => from x in xs select x;
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("QueryExpression"));
+    }
+
+    [Fact]
+    public async Task AssemblyAttributes_AreNotUnsupportedApi()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            [assembly: System.Reflection.AssemblyVersion("1.0")]
+            [module: System.CLSCompliant(false)]
+            public static class Demo { }
+            """);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi);
+    }
+
+    [Fact]
+    public async Task CompareOrdinalValue_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Demo
+            {
+                public static int Diff(string a, string b) => string.CompareOrdinal(a, b);
+                public static bool Less(string a, string b) => string.CompareOrdinal(a, b) < 0;
+            }
+            """);
+
+        var values = diagnostics.Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("CompareOrdinalValue")).ToList();
+        var single = Assert.Single(values);
+        Assert.Equal(2, single.Location.GetLineSpan().StartLinePosition.Line);
+        Assert.DoesNotContain(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi);
+    }
+
+    [Fact]
+    public async Task CheckedOperation_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Demo
+            {
+                public static int Add(int a, int b) => checked(a + b);
+                public static int Inc(int a) => checked(a++);
+            }
+            """);
+
+        var single = Assert.Single(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("CheckedOperation"));
+        Assert.Equal(3, single.Location.GetLineSpan().StartLinePosition.Line);
+    }
+
+    [Fact]
+    public async Task ListPattern_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Demo
+            {
+                public static bool Run(int[] values)
+                {
+                    return values is [1, 2];
+                }
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Contains("ListPattern", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public async Task UnlistedBclTypeMention_ReportsUnsupportedApi()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public static class Demo
+            {
+                public static System.Text.StringBuilder? F() => null;
+                public static void G(System.Collections.Generic.IEnumerable<int> xs) { }
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi);
+        Assert.Contains("System.Text.StringBuilder", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public async Task UnsupportedBclApi_ReportsUnsupportedApi()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.IO;
+
+            public class Demo
+            {
+                public static string Load(string path)
+                {
+                    return File.ReadAllText(path);
+                }
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedApi, diagnostic.Id);
+        Assert.Contains("System.IO.File.ReadAllText", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public async Task FullyQualifiedApis_ReportOnlyUnsupportedMember()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Demo
+            {
+                public static int Supported() => System.Math.Min(3, 7);
+
+                public static string Unsupported() =>
+                    System.IO.File.ReadAllText("save.dat");
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics,
+            value => value.Id == TinyCsDiagnosticIds.UnsupportedApi);
+        Assert.Contains("System.IO.File.ReadAllText", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public async Task DiagnosticSeverity_CanBeOverridden()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.IO;
+
+            public class Demo
+            {
+                public static string Load(string path)
+                {
+                    return File.ReadAllText(path);
+                }
+            }
+            """,
+            new Dictionary<string, ReportDiagnostic>
+            {
+                [TinyCsDiagnosticIds.UnsupportedApi] = ReportDiagnostic.Error,
+            });
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedApi, diagnostic.Id);
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+    }
+
+    [Fact]
+    public async Task UnsupportedCoreLibraryMembers_ReportUnsupportedApi()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System;
+            using System.Collections.Generic;
+            using System.Linq;
+
+            public class Demo
+            {
+                public static float Run()
+                {
+                    var values = new List<int> { 1 };
+                    values.Reverse();
+                    var one = values.Single();
+                    var capacity = values.Capacity;
+                    var empty = string.Empty;
+                    return (float)(Math.Cbrt(one) + Math.E + capacity + empty.Length);
+                }
+            }
+            """);
+
+        var apiDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedApi)
+            .ToArray();
+
+        Assert.Equal(7, apiDiagnostics.Length);
+        Assert.Contains(apiDiagnostics,
+            d => d.GetMessage().Contains("List<T>.Reverse"));
+        Assert.Contains(apiDiagnostics,
+            d => d.GetMessage().Contains("System.Linq.Enumerable.Single"));
+        Assert.Contains(apiDiagnostics,
+            d => d.GetMessage().Contains("System.Math.Cbrt"));
+        Assert.Contains(apiDiagnostics,
+            d => d.GetMessage().Contains("List<T>.Capacity"));
+        Assert.Contains(apiDiagnostics,
+            d => d.GetMessage().Contains("string.Empty"));
+        Assert.Contains(apiDiagnostics,
+            d => d.GetMessage().Contains("System.Math.E"));
+    }
+
+    [Fact]
+    public async Task CollectionNulls_ReportUnsupportedCollectionNull()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.Collections.Generic;
+
+            public class Demo
+            {
+                public static void Run()
+                {
+                    var list = new List<string> { null };
+                    list.Add(default);
+                    list[0] = null;
+
+                    var dict = new Dictionary<string, string>
+                    {
+                        { "a", null }
+                    };
+                    dict["b"] = default;
+                }
+            }
+            """);
+
+        var collectionNulls = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedCollectionNull)
+            .ToArray();
+
+        Assert.Equal(2, collectionNulls.Length);
+        Assert.All(collectionNulls,
+            d => Assert.Contains("null storage", d.GetMessage()));
+        Assert.All(collectionNulls,
+            d => Assert.Contains("Dictionary<K,V>", d.GetMessage()));
+    }
+
+    [Fact]
+    public async Task NullOutsideCollections_HasNoCollectionNullDiagnostic()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Demo
+            {
+                public static bool Run()
+                {
+                    string value = null;
+                    return value == null;
+                }
+            }
+            """);
+
+        Assert.DoesNotContain(diagnostics,
+            d => d.Id == TinyCsDiagnosticIds.UnsupportedCollectionNull);
+    }
+
+    // #20: 要素の default が nil になる `new T[n]`、初期化子の null 要素、
+    // `a[i] = null` は TCS1003。値型要素の配列と、int? / object へ変換される
+    // `default(int)` は対象外
+    // (transpiler 側の DiagnosticTests.ArrayNullSource と同じ source)
+    [Fact]
+    public async Task ArrayNulls_ReportUnsupportedCollectionNull()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.Collections.Generic;
+            public class Foo { public int V; }
+            public struct S { public int X; }
+            public enum E { A = 3 }
+            public class Pool<T> { public T[] Items = new T[2]; }
+            public class Box<T> where T : struct { public T[] Make(int n) => new T[n]; }
+            public class Bag<T>
+            {
+                public T[] Make(T x) => new T[] { x, default, x };
+                public void Clear(T[] a) { a[0] = default; }
+                public void Push(List<T> l) { l.Add(default); }
+            }
+            public class Demo
+            {
+                public static void Run()
+                {
+                    var strings = new string[3];
+                    var foos = new Foo[2];
+                    var maybe = new int?[2];
+                    var jagged = new int[2][];
+                    var withNull = new string[] { "a", null };
+                    var implicitNull = new[] { "a", (string)null };
+                    strings[0] = null;
+
+                    var ints = new int[3];
+                    var structs = new S[2];
+                    var enums = new E[2];
+                    var chars = new char[2];
+                    var flags = new bool[2];
+                    var fine = new string[] { "a", "b" };
+                    fine[0] = "c";
+                    var inner = new int[][] { new int[2], new int[3] };
+                    var liftedZero = new int?[] { default(int) };
+                    var boxedZero = new object[] { default(int) };
+                    var list = new List<string>();
+                }
+            }
+            """);
+
+        var collectionNulls = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedCollectionNull)
+            .ToArray();
+
+        Assert.Equal(11, collectionNulls.Length);
+        Assert.DoesNotContain(diagnostics,
+            d => d.Id != TinyCsDiagnosticIds.UnsupportedCollectionNull);
+        Assert.All(collectionNulls,
+            d => Assert.Contains("Lua sequence tables", d.GetMessage()));
+        Assert.Contains(collectionNulls,
+            d => d.GetMessage().Contains("int[][] created by size"));
+        Assert.Equal(3, collectionNulls.Count(
+            d => d.GetMessage().Contains("string[] cannot store null elements")));
+        Assert.Equal(2, collectionNulls.Count(
+            d => d.GetMessage().Contains("T[] created by size")));
+        Assert.Equal(2, collectionNulls.Count(
+            d => d.GetMessage().Contains("T[] cannot store null elements")));
+        Assert.DoesNotContain(collectionNulls,
+            d => d.GetMessage().Contains("List<T>"));
+    }
+
+    [Fact]
+    public async Task SupportedOperatorOverloads_HaveNoDiagnostics()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Vec2
+            {
+                public float X;
+                public float Y;
+
+                public Vec2(float x, float y)
+                {
+                    X = x;
+                    Y = y;
+                }
+
+                public static Vec2 operator +(Vec2 a, Vec2 b) => new Vec2(a.X + b.X, a.Y + b.Y);
+                public static Vec2 operator -(Vec2 a, Vec2 b) => new Vec2(a.X - b.X, a.Y - b.Y);
+                public static Vec2 operator -(Vec2 a) => new Vec2(-a.X, -a.Y);
+                public static Vec2 operator *(Vec2 a, float s) => new Vec2(a.X * s, a.Y * s);
+                public static Vec2 operator *(float s, Vec2 a) => new Vec2(s * a.X, s * a.Y);
+                public static Vec2 operator /(Vec2 a, float s) => new Vec2(a.X / s, a.Y / s);
+                public static Vec2 operator %(Vec2 a, Vec2 b) => new Vec2(a.X % b.X, a.Y % b.Y);
+            }
+            """);
+
+        Assert.Empty(diagnostics);
+    }
+
+    [Fact]
+    public async Task UnsupportedOperatorOverloads_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Id
+            {
+                public int Value;
+
+                public static bool operator ==(Id a, Id b) => a.Value == b.Value;
+                public static bool operator !=(Id a, Id b) => a.Value != b.Value;
+                public static implicit operator int(Id a) => a.Value;
+                public override bool Equals(object o) => false;
+                public override int GetHashCode() => 0;
+            }
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        // Equals / GetHashCode の override も TCS1001 (継承は対象外、q.md Q15)
+        Assert.Equal(5, syntaxDiagnostics.Length);
+        Assert.Equal(2, syntaxDiagnostics.Count(
+            d => d.GetMessage().Contains("'OverrideMember'")));
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("OperatorDeclaration(==)"));
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("OperatorDeclaration(!=)"));
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("ConversionOperatorDeclaration"));
+    }
+
+    [Fact]
+    public async Task RefParameter_ReportsUnsupportedSyntax_OutParameterDoesNot()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Parser
+            {
+                public static bool TryParse(string text, out int value)
+                {
+                    value = 0;
+                    return false;
+                }
+
+                public static void Bump(ref int value)
+                {
+                    value = value + 1;
+                }
+            }
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Single(syntaxDiagnostics);
+        Assert.Contains("RefParameter", syntaxDiagnostics[0].GetMessage());
+    }
+
+    [Fact]
+    public async Task Tuples_OnlyUnsupportedUsesReport()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.Collections.Generic;
+            public class P
+            {
+                (int x, string y) held = (1, "a");
+                static (int, int) Two() { return (1, 2); }
+                public static void Run()
+                {
+                    var (a, b) = Two();
+                    (a, b) = (b, a);
+                    var t = (a, b);
+                    t.Item1 = t.Item2;
+                    var list = new List<(int, int)>();
+                    list.Add(t);
+                    foreach (var (c, d) in list) a = c + d;
+                }
+            }
+            """);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id is TinyCsDiagnosticIds.UnsupportedSyntax
+            or TinyCsDiagnosticIds.UnsupportedApi);
+    }
+
+    [Theory]
+    [InlineData("var t = (1, 2); var e = t == (1, 2);", "TupleEquality")]
+    [InlineData("var t = (1, 2); var e = t is (1, 2);", "TuplePattern")]
+    [InlineData("var t = (1, 2); (float, float) f = t;", "TupleConversion")]
+    [InlineData("var t = (1, 2, 3, 4, 5, 6, 7, 8);", "TupleArity")]
+    [InlineData("var t = new System.ValueTuple<int, int>(1, 2);", "ValueTupleName")]
+    public async Task Tuples_UnsupportedUses_Report(string body, string name)
+    {
+        var diagnostics = await AnalyzeAsync($$"""
+            public class P { public static void Run() { {{body}} } }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains(name));
+    }
+
+    [Fact]
+    public async Task OutArgumentNotDeclaration_ReportsUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Parser
+            {
+                static int field;
+                static bool Try(out int value) { value = 0; return false; }
+                public static void Run()
+                {
+                    int value;
+                    Try(out value);
+                    Try(out var other);
+                    Try(out _);
+                    Try(out field);
+                }
+            }
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Single(syntaxDiagnostics);
+        Assert.Contains("OutArgumentNotDeclaration", syntaxDiagnostics[0].GetMessage());
+    }
+
+    [Fact]
+    public async Task InAndRefReturnAndRefLocal_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public struct V { public float X; }
+            public class C
+            {
+                public static float A(in V v) { return v.X; }
+                public static ref V B(V[] a) { return ref a[0]; }
+                public static void D() { var v = new V(); ref V r = ref v; }
+            }
+            """);
+
+        var messages = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .Select(d => d.GetMessage()).ToArray();
+        Assert.Single(messages, m => m.Contains("'InParameter'"));
+        Assert.Equal(2, messages.Count(m => m.Contains("'RefType'")));
+    }
+
+    [Fact]
+    public async Task UnverifiableCastsAndValueBoxing_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.Collections.Generic;
+            public enum E { P }
+            public class C
+            {
+                public static T Get<T>(object o) { return (T)o; }
+                public static List<int> L(object o) { return (List<int>)o; }
+                public static bool Is(object o) { return o is List<int>; }
+                public static object Box() { return E.P; }
+                public static string Text() { return "x" + E.P; }
+                public static C Ok(object o) { return (C)o; }
+            }
+            """);
+
+        var messages = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .Select(d => d.GetMessage()).ToArray();
+        Assert.Single(messages, m => m.Contains("'UnverifiableCast(T)'"));
+        Assert.Single(messages, m => m.Contains("'UnverifiableCast(System.Collections.Generic.List<int>)'"));
+        Assert.Single(messages, m => m.Contains("'UnverifiableTypeTest(System.Collections.Generic.List<int>)'"));
+        Assert.Single(messages, m => m.Contains("'ValueBoxing(E)'"));
+        Assert.Equal(4, messages.Length);
+    }
+
+    // transpiler check 側 ApiSignatureComplianceTests と同じケースで
+    [Theory]
+    [InlineData("var n = s.Length;", "string.Length (use s.RuneCount()")]
+    [InlineData("var n = s?.Length;", "string.Length (use s.RuneCount()")]
+    [InlineData("var c = s[0];", "string.this[] (use new Utf8Bytes(s)[i]")]
+    [InlineData("var t = s.Substring(1, 1);", "string.Substring (use s.RuneSubstring(")]
+    [InlineData("var i = s.IndexOf('a');", "string.IndexOf (use Contains or Split")]
+    [InlineData("foreach (char c in s) { }", "string.GetEnumerator (foreach over a string: use s.EnumerateRunes()")]
+    public async Task Utf16StringApis_ReportUnsupportedApiWithReplacement(string statement, string message)
+    {
+        var diagnostics = await AnalyzeAsync($$"""
+            public static class T
+            {
+                public static void F(string s)
+                {
+                    {{statement}}
+                }
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi
+            && d.GetMessage().Contains(message));
+    }
+
+    [Theory]
+    [InlineData("int x = 5; byte b = (byte)x;", true)]
+    [InlineData("byte b = 1; b++;", true)]
+    [InlineData("byte b = 1; --b;", true)]
+    [InlineData("byte b = 1; b += 1;", true)]
+    [InlineData("byte b = (byte)200; byte c = 1; int d = b + c;", false)]
+    public async Task ByteNarrowing_MatchesTranspilerRule(string statement, bool reported)
+    {
+        var diagnostics = await AnalyzeAsync($$"""
+            public static class T
+            {
+                public static void F()
+                {
+                    {{statement}}
+                }
+            }
+            """);
+
+        Assert.Equal(reported, diagnostics.Any(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax
+            && d.GetMessage().Contains("ByteNarrowing")));
+    }
+
+    // Analyzer が同じ TCS1002 判定になることを固定する。
+    private static string WrapApiStatement(string statement) => $$"""
+        using System;
+        using System.Collections.Generic;
+        using System.Linq;
+        using TinySystem.Linq;
+
+        public class Api
+        {
+            public static void Run()
+            {
+                var list = new List<int> { 1, 2, 3 };
+                var names = new List<string> { "a", "b" };
+                var dict = new Dictionary<string, int> { { "a", 1 } };
+                var s = "a,b";
+                {{statement}}
+            }
+        }
+        """;
+
+    [Theory]
+    [InlineData("list.Select((x, i) => x + i);", "System.Linq.Enumerable.Select")]
+    [InlineData("list.OrderBy(x => x, Comparer<int>.Default);", "System.Linq.Enumerable.OrderBy")]
+    [InlineData("list.FirstOrDefault(-1);", "System.Linq.Enumerable.FirstOrDefault")]
+    [InlineData("names.ToDictionary(x => x, StringComparer.Ordinal);", "System.Linq.Enumerable.ToDictionary")]
+    [InlineData("s.Contains(\"a\", StringComparison.Ordinal);", "string.Contains")]
+    [InlineData("s.StartsWith(\"a\", StringComparison.Ordinal);", "string.StartsWith")]
+    [InlineData("s.Split(\",\", StringSplitOptions.None);", "string.Split")]
+    [InlineData("s.Split(',', ';');", "string.Split")]
+    [InlineData("var c = new List<int>(4);", "List<T>")]
+    [InlineData("var c = new Dictionary<string, int>(4);", "Dictionary<TKey, TValue>")]
+    [InlineData("dict.Remove(\"a\", out var removed);", "Dictionary<TKey, TValue>.Remove")]
+    [InlineData("list.Sort(Comparer<int>.Default);", "List<T>.Sort")]
+    [InlineData("Math.Round(1.55f, MidpointRounding.AwayFromZero);", "System.Math.Round")]
+    [InlineData("string.Join('-', \"a\", \"b\");", "string.Join")]
+    [InlineData("Array.Sort(new int[] { 2, 1 });", "System.Array.Sort")]
+    [InlineData("var e = Array.Empty<int>();", "System.Array.Empty")]
+    [InlineData("var c = new int[] { 1 }.Clone();", "System.Array.Clone")]
+    [InlineData("var r = new int[] { 1 }.Rank;", "System.Array.Rank")]
+    [InlineData("var d = new SortedDictionary<string, int>();", "SortedDictionary<TKey, TValue>")]
+    public async Task UnimplementedOverload_ReportsTcs1002(string statement,
+        string expectedApiName)
+    {
+        var diagnostics = await AnalyzeAsync(WrapApiStatement(statement));
+
+        Assert.Single(diagnostics, d => d.Id == TinyCsDiagnosticIds.UnsupportedApi
+            && d.GetMessage().Contains(expectedApiName));
+    }
+
+    [Theory]
+    [InlineData("list.Sort(); list.Sort((a, b) => b - a);")]
+    [InlineData("dict.TryGetValue(\"a\", out var value);")]
+    [InlineData("var r = Math.Round(1.234f, 2) + Math.Log(8.0f, 2.0f);")]
+    [InlineData("var parts = s.Split(\",\"); var all = s.Split();")]
+    [InlineData("var p = s.Split(','); var b = s.Contains('a') && char.IsDigit('0');")]
+    [InlineData("var j = string.Join(\",\", names) + string.Join(\",\", \"x\", \"y\");")]
+    [InlineData("var f = list.FirstOrDefault() + list.Count(x => x > 1) + list.Min() + list.Sum();")]
+    [InlineData("var any = list.Any() || list.Any(x => x > 2);")]
+    [InlineData("list[0] = list[1]; dict[\"a\"] = dict[\"a\"] + 1;")]
+    [InlineData("var n = new int[] { 1 }.Length;")]
+    public async Task ImplementedOverload_PassesWithoutTcs1002(string statement)
+    {
+        var diagnostics = await AnalyzeAsync(WrapApiStatement(statement));
+
+        Assert.DoesNotContain(diagnostics,
+            d => d.Id == TinyCsDiagnosticIds.UnsupportedApi);
+    }
+
+    private static async Task<IReadOnlyList<Diagnostic>> AnalyzeAsync(
+        string source,
+        IDictionary<string, ReportDiagnostic>? specificDiagnosticOptions = null,
+        IEnumerable<MetadataReference>? extraReferences = null,
+        IEnumerable<string>? refStubs = null)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source,
+            CSharpParseOptions.Default.WithLanguageVersion(
+                LanguageVersion.Preview));
+        var options = new CSharpCompilationOptions(
+            OutputKind.DynamicallyLinkedLibrary);
+        if (specificDiagnosticOptions != null)
+            options = options.WithSpecificDiagnosticOptions(
+                specificDiagnosticOptions);
+
+        // TinySystem.props で project に入る TinySystem/Linq.cs も一緒にコンパイルする
+        var compilation = CSharpCompilation.Create(
+            "TinyCsAnalyzerTests",
+            [tree, LinqTree.Value.WithRootAndOptions(LinqTree.Value.GetRoot(), tree.Options)],
+            GetReferences().Concat(extraReferences ?? []),
+            options);
+
+        var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(
+            new TinyCsComplianceAnalyzer());
+        // `--ref` の stub は AdditionalFiles の TinyCsRef="true" (CompilerVisibleItemMetadata) で渡す
+        var stubs = (refStubs ?? []).Select((text, i) => (AdditionalText)new StubFile($"stub{i}.cs", text))
+            .ToImmutableArray();
+        var analyzerOptions = new AnalyzerOptions(stubs, new StubOptions(stubs));
+        var diagnostics = await compilation.WithAnalyzers(analyzers, analyzerOptions)
+            .GetAnalyzerDiagnosticsAsync();
+
+        return diagnostics
+            .OrderBy(d => d.Location.GetLineSpan().StartLinePosition.Line)
+            .ThenBy(d => d.Location.GetLineSpan().StartLinePosition.Character)
+            .ToArray();
+    }
+
+    private static readonly Lazy<SyntaxTree> LinqTree = new(() =>
+    {
+        var dir = AppContext.BaseDirectory;
+        while (!File.Exists(Path.Combine(dir, "tcs.slnx")))
+            dir = Path.GetDirectoryName(dir)
+                ?? throw new InvalidOperationException("tcs.slnx not found");
+        var path = Path.Combine(dir, "TinySystem", "Linq.cs");
+        return CSharpSyntaxTree.ParseText(File.ReadAllText(path), path: path);
+    });
+
+    private static IReadOnlyList<MetadataReference> GetReferences()
+    {
+        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        var assemblyNames = new[]
+        {
+            "System.Runtime.dll",
+            "System.Collections.dll",
+            "System.Linq.dll",
+            "System.Console.dll",
+            "System.IO.FileSystem.dll",
+        };
+
+        return new[]
+            {
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            }
+            .Concat(assemblyNames
+                .Select(name => Path.Combine(runtimeDir, name))
+                .Where(File.Exists)
+                .Select(path => MetadataReference.CreateFromFile(path)))
+            .ToArray();
+    }
+
+    private sealed class StubFile(string path, string text) : AdditionalText
+    {
+        public override string Path => path;
+
+        public override Microsoft.CodeAnalysis.Text.SourceText GetText(CancellationToken cancellationToken = default) =>
+            Microsoft.CodeAnalysis.Text.SourceText.From(text);
+    }
+
+    private sealed class StubOptions(ImmutableArray<AdditionalText> stubs) : AnalyzerConfigOptionsProvider
+    {
+        public override AnalyzerConfigOptions GlobalOptions => Values.Empty;
+
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => Values.Empty;
+
+        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) =>
+            stubs.Contains(textFile) ? Values.Ref : Values.Empty;
+    }
+
+    private sealed class Values(Dictionary<string, string> values) : AnalyzerConfigOptions
+    {
+        public static readonly Values Empty = new([]);
+        public static readonly Values Ref = new(new() { ["build_metadata.AdditionalFiles.TinyCsRef"] = "true" });
+
+        public override bool TryGetValue(string key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? value) =>
+            values.TryGetValue(key, out value);
+    }
+}

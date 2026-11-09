@@ -1,0 +1,118 @@
+namespace TinyCs.Tests;
+
+// 実 .NET でも通る BCL API を allowlist に足す。IL では
+//   Environment.GetEnvironmentVariable → __tcs_getenv
+//   int.Parse / float.Parse            → __tcs_iparse / __tcs_fparse
+//   foreach (var r in s.EnumerateRunes()) + r.Value → IlForeachRunes
+public class HostBclExtensionTests
+{
+    [Fact]
+    public void Environment_GetEnvironmentVariable_MapsToOsGetenv()
+    {
+        Environment.SetEnvironmentVariable("TCS_HOST_BCL_TEST", "from-env");
+        var result = TestHelper.CompileAndRunVm("""
+            using System;
+            public static class T
+            {
+                public static string Test()
+                {
+                    var v = Environment.GetEnvironmentVariable("TCS_HOST_BCL_TEST") ?? "none";
+                    var missing = Environment.GetEnvironmentVariable("TCS_HOST_BCL_MISSING") ?? "none";
+                    return v + ":" + missing;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("from-env:none", result);
+    }
+
+    [Fact]
+    public void TryParse_IntAndFloat_OutVarAndExistingLocal()
+    {
+        // (found, value or 0) の multi-return。IL 経路 (IIFE + multi-assign) と
+        // legacy 経路の両方が runtime の Math.TryParseInt / TryParseFloat を使う
+        var result = TestHelper.CompileAndRunVm("""
+            public static class T
+            {
+                public static string Test()
+                {
+                    var s = 0;
+                    if (int.TryParse("42", out var a)) s += a;
+                    if (!int.TryParse("4x2", out var b)) s += 1000 + b;
+                    int c;
+                    var okc = int.TryParse(" 7 ", out c);
+                    s += okc ? c : -1;
+                    if (float.TryParse("1.5", out var f)) s += (int)(f * 2f);
+                    if (!float.TryParse("abc", out var g)) s += 100 + (int)g;
+                    return s.ToString();
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("1152", result);
+    }
+
+    [Fact]
+    public void Parse_IntAndDouble()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public static class T
+            {
+                public static string Test()
+                {
+                    int a = int.Parse("42");
+                    float b = float.Parse("2.5");
+                    float c = float.Parse("1.25");
+                    return (a + 1) + ":" + (b * 2) + ":" + (c * 4) + ":" + (a / 5);
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("43:5:5:8", result);
+    }
+
+    [Fact]
+    public void EnumerateRunes_IteratesCodepoints()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            using System.Text;
+            public static class T
+            {
+                public static int Sum(string s)
+                {
+                    var sum = 0;
+                    foreach (var r in s.EnumerateRunes())
+                        sum += r.Value;
+                    return sum;
+                }
+                public static int Count(string s)
+                {
+                    var n = 0;
+                    foreach (Rune r in s.EnumerateRunes())
+                        n++;
+                    return n;
+                }
+            }
+            """, "T.Sum(\"a\\u00e9\") + \",\" + T.Count(\"\\u3042\\u3044z\")");
+        Assert.Equal("330,3", result);
+    }
+
+    [Fact]
+    public void HostBclApis_AreNotFlaggedAsUnsupported()
+    {
+        var source = """
+            using System;
+            using System.Text;
+            public static class T
+            {
+                public static int Test(string s)
+                {
+                    var v = Environment.GetEnvironmentVariable("X");
+                    var n = int.Parse("1") + (int)float.Parse("2");
+                    foreach (var r in s.EnumerateRunes()) n += r.Value;
+                    return n;
+                }
+            }
+            """;
+        var result = Checker.Check([source]);
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Empty(result.Warnings);
+    }
+}

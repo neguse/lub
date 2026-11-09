@@ -1,0 +1,352 @@
+namespace TinyCs.Tests;
+
+public class ClassTests
+{
+    [Fact]
+    public void Constructor_NoArgs()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class Counter
+            {
+                public int Count = 0;
+
+                public int GetCount() { return this.Count; }
+            }
+            """,
+            "new Counter().GetCount()");
+        Assert.Equal("0", result);
+    }
+
+    [Fact]
+    public void Constructor_WithArgs()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class Point
+            {
+                public int X;
+                public int Y;
+
+                public Point(int x, int y)
+                {
+                    this.X = x;
+                    this.Y = y;
+                }
+
+                public int Sum() { return this.X + this.Y; }
+            }
+            """,
+            "new Point(3, 4).Sum()");
+        Assert.Equal("7", result);
+    }
+
+    [Fact]
+    public void InstanceMethod_ModifiesState()
+    {
+        var result = TestHelper.CompileAndRunVmMain("""
+            public class Counter
+            {
+                public int Count = 0;
+
+                public void Increment()
+                {
+                    this.Count = this.Count + 1;
+                }
+
+                public int GetCount() { return this.Count; }
+            }
+            """, "var c = new Counter(); c.Increment(); c.Increment(); c.Increment(); System.Console.WriteLine(c.GetCount());");
+        Assert.Equal("3", result);
+    }
+
+    [Fact]
+    public void AutoProperty_AsField()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class Item
+            {
+                public string Name { get; set; }
+                public int Value { get; set; }
+
+                public Item(string name, int value)
+                {
+                    this.Name = name;
+                    this.Value = value;
+                }
+
+                public string Describe()
+                {
+                    return this.Name;
+                }
+            }
+            """,
+            "new Item(\"sword\", 100).Describe()");
+        Assert.Equal("sword", result);
+    }
+
+    [Fact]
+    public void FieldInitializer()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class Config
+            {
+                public int MaxHP = 100;
+                public int Speed = 5;
+
+                public int Total() { return this.MaxHP + this.Speed; }
+            }
+            """,
+            "new Config().Total()");
+        Assert.Equal("105", result);
+    }
+
+    [Fact]
+    public void InstanceField_DefaultValues()
+    {
+        var result = TestHelper.CompileAndRunVmMain("""
+            public class Defaults
+            {
+                public int Count;
+                public bool Enabled;
+                public string Name;
+            }
+            """, "var d = new Defaults(); System.Console.WriteLine(d.Count + \",\" + d.Enabled + \",\" + (d.Name == null));");
+
+        Assert.Equal("0,False,True", result);
+    }
+
+    [Fact]
+    public void AutoProperty_DefaultValues()
+    {
+        var result = TestHelper.CompileAndRunVmMain("""
+            public class Defaults
+            {
+                public int Count { get; set; }
+                public bool Enabled { get; set; }
+                public string Name { get; set; }
+            }
+            """, "var d = new Defaults(); System.Console.WriteLine(d.Count + \",\" + d.Enabled + \",\" + (d.Name == null));");
+
+        Assert.Equal("0,False,True", result);
+    }
+
+    [Fact]
+    public void ExpressionBodiedMethod()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class Calc
+            {
+                public static int Square(int x) => x * x;
+            }
+            """,
+            "Calc.Square(7)");
+        Assert.Equal("49", result);
+    }
+
+    [Fact]
+    public void MultipleClasses()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class Vec2
+            {
+                public int X;
+                public int Y;
+                public Vec2(int x, int y) { this.X = x; this.Y = y; }
+            }
+
+            public class Physics
+            {
+                public static int Distance(Vec2 a, Vec2 b)
+                {
+                    var dx = a.X - b.X;
+                    var dy = a.Y - b.Y;
+                    return dx * dx + dy * dy;
+                }
+            }
+            """, "Physics.Distance(new Vec2(1, 2), new Vec2(4, 6))");
+        Assert.Equal("25", result);
+    }
+
+    // ===== Static fields =====
+
+    [Fact]
+    public void StaticField_DefaultValue()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class Game
+            {
+                private static int counter;
+
+                public static int GetCounter() { return counter; }
+            }
+            """,
+            "Game.GetCounter()");
+        Assert.Equal("0", result);
+    }
+
+    [Fact]
+    public void StaticField_WithInitializer()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class Game
+            {
+                private static int counter = 42;
+
+                public static int GetCounter() { return counter; }
+            }
+            """,
+            "Game.GetCounter()");
+        Assert.Equal("42", result);
+    }
+
+    [Fact]
+    public void StaticField_ReadWrite()
+    {
+        var result = TestHelper.CompileAndRunVmMain("""
+            public class Game
+            {
+                private static float timer;
+
+                public static void Update(float dt)
+                {
+                    timer = timer + dt;
+                }
+
+                public static float GetTimer() { return timer; }
+            }
+            """, "Game.Update(1.5f); Game.Update(2.5f); System.Console.WriteLine(Game.GetTimer());");
+        Assert.Equal("4", result);
+    }
+
+    [Fact]
+    public void StaticField_Const()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class Config
+            {
+                public const int MaxHP = 100;
+                public const float Speed = 5.5f;
+
+                public static float GetMaxSpeed() { return Speed; }
+            }
+            """,
+            "Config.MaxHP + Config.GetMaxSpeed()");
+        Assert.Equal("105.5", result);
+    }
+
+    [Fact]
+    public void StaticField_MixedWithInstanceFields()
+    {
+        var result = TestHelper.CompileAndRunVmMain("""
+            public class Entity
+            {
+                private static int nextId;
+                public int Id;
+                public string Name;
+
+                public Entity(string name)
+                {
+                    nextId = nextId + 1;
+                    Id = nextId;
+                    Name = name;
+                }
+            }
+            """, "var a = new Entity(\"Alice\"); var b = new Entity(\"Bob\"); System.Console.WriteLine(a.Id + \",\" + b.Id);");
+        Assert.Equal("1,2", result);
+    }
+
+    [Fact]
+    public void OptionalParameters_FillDefaultsWhenOmitted()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                public T(int seed = 7)
+                {
+                    Seed = seed;
+                }
+
+                public int Seed;
+
+                public static string F(int x, int y = -1, string tag = "none")
+                    => x + "," + y + "," + tag;
+
+                public static string Test()
+                    => F(5) + "|" + F(1, 2, "yes") + "|" + new T().Seed;
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("5,-1,none|1,2,yes|7", result);
+    }
+
+    [Fact]
+    public void StaticFieldInitializers_SeeDefaultValuesOfLaterFields()
+    {
+        // C# は static field を default 値で事前初期化してから initializer を
+        // 宣言順に実行する (循環参照でも nil にならない)
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                static int a = b + 1;
+                static int b = a + 1;
+
+                public static string Test() => a + "," + b;
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("1,2", result);
+    }
+
+    // static initializer は同クラスの constructor / method の後に実行する
+    // (neguse/tcs#15: `static V Zero = new V(1, 2)` が `V.new` 未定義で落ちた)
+    [Fact]
+    public void StaticFieldInitializer_CallsOwnConstructor()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class V
+            {
+                public static V Zero = new V(1, 2);
+                public int X;
+                public int Y;
+                public V(int x, int y) { X = x; Y = y; }
+            }
+            public static class StaticInitRepro
+            {
+                public static int Test() => V.Zero.X + V.Zero.Y * 10;
+            }
+            """,
+            "StaticInitRepro.Test()");
+        Assert.Equal("21", result);
+    }
+
+    [Fact]
+    public void StaticFieldInitializer_CallsOwnStaticMethod()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                static int n = Compute();
+                static int Compute() { return 7; }
+                public static int Test() => n;
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("7", result);
+    }
+
+    [Fact]
+    public void StaticFieldInitializers_RunInDeclarationOrder()
+    {
+        var result = TestHelper.CompileAndRunVm("""
+            public class T
+            {
+                static int a = 5;
+                static int b = a * 2;
+                static int c = Twice(b) + a;
+                static int Twice(int v) { return v * 2; }
+                public static string Test() => a + "," + b + "," + c;
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("5,10,25", result);
+    }
+}

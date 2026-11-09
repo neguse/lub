@@ -1,0 +1,169 @@
+using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+
+namespace TinyCs.Tests.SpecConformance;
+
+internal sealed partial class SpecConformanceClassifier
+{
+    // 分類は analyzer と同じ視点で行う: フル BCL 参照でコンパイルし、サブセット外は
+    // compile error でなく TCS1001/1002/1003 診断として観測する。transpiler 既定の
+    // 最小参照だと template の using (System.IO 等) 自体が CS0234 になり、
+    // サブセット外 API の例がすべて分類不能になる。
+    internal static readonly Lazy<MetadataReference[]> FullReferences = new(() =>
+        (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? "")
+        .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+        .Where(path => path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        .Append(typeof(global::TinySystem.Random).Assembly.Location)
+        .GroupBy(Path.GetFileNameWithoutExtension, StringComparer.OrdinalIgnoreCase)
+        .Select(group => (MetadataReference)MetadataReference.CreateFromFile(
+            group.First()))
+        .ToArray());
+
+    // 公式 template の csproj は ImplicitUsings=enable であり、"-without-using"
+    // template の例は SDK の暗黙 global using を前提にしている。compliance 解析と
+    // emit の対象外になるよう referenceSources として補う。
+    internal const string ImplicitUsingsSource = """
+        global using System;
+        global using System.Collections.Generic;
+        global using System.IO;
+        global using System.Linq;
+        global using System.Net.Http;
+        global using System.Threading;
+        global using System.Threading.Tasks;
+        """;
+
+    private readonly Func<string[], CheckResult> _check;
+
+    public SpecConformanceClassifier() : this(CheckWithRoslynOracle)
+    {
+    }
+
+    internal SpecConformanceClassifier(Func<string[], CheckResult> check)
+        => _check = check;
+
+    public SpecClassificationResult Classify(SpecExample example,
+        SpecExpansion expansion) => ClassifyCore(example, expansion);
+
+    // Roslyn は C# として正しいかの判定 (受理の oracle) にだけ使い、検査は tcs の compiler (tcs check と同じ) が行う。
+    // Roslyn が拒否した例は Roslyn の誤り (CSxxxx) で分類し、受理した例を tcs が C# の誤りで拒否したら compiler の不具合
+    private static CheckResult CheckWithRoslynOracle(string[] sources)
+    {
+        var trees = sources.Select(s => CSharpSyntaxTree.ParseText(s))
+            .Append(CSharpSyntaxTree.ParseText(ImplicitUsingsSource))
+            .Concat(TcsLibrary.LibraryTrees.Where(t => t.FilePath != TcsLibrary.ValueTupleLibraryPath))
+            .ToArray();
+        var hasTopLevel = trees.Any(t => t.GetCompilationUnitRoot().Members
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.GlobalStatementSyntax>().Any());
+        var compilation = CSharpCompilation.Create("SpecOracle", trees, FullReferences.Value,
+            new CSharpCompilationOptions(hasTopLevel ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary));
+        var roslynErrors = compilation.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d =>
+            {
+                var span = d.Location.GetLineSpan();
+                return $"{span.Path}({span.StartLinePosition.Line + 1},{span.StartLinePosition.Character + 1}): error {d.Id}: {d.GetMessage()}";
+            })
+            .ToList();
+        if (roslynErrors.Count > 0)
+            return new CheckResult { Errors = roslynErrors };
+        var result = Checker.Check(sources, referenceSources: [ImplicitUsingsSource]);
+        var csErrors = result.Errors.Where(e => CompilerErrorRegex().IsMatch(e) && !TinyCsDiagnosticRegex().IsMatch(e)).ToList();
+        if (csErrors.Count > 0)
+            throw new InvalidOperationException("tcs rejected C# that Roslyn accepts:\n" + string.Join("\n", csErrors));
+        return result;
+    }
+
+    private SpecClassificationResult ClassifyCore(SpecExample example,
+        SpecExpansion expansion)
+    {
+        if (expansion.UnextractedReason is not null)
+            return new SpecClassificationResult(SpecClassification.Unextracted,
+                expansion.UnextractedReason, expansion.Details);
+
+        try
+        {
+            var sources = expansion.Sources.Select(source => source.Code)
+                .ToArray();
+            var result = _check(sources);
+            var expectedErrors = example.Annotation.ExpectedErrors;
+
+            if (result.Errors.Count > 0)
+            {
+                // build を止める TinyC# 診断 (error TCS1001) は C# compile error
+                // ではなくサブセット外の報告なので Diag に数える
+                if (expectedErrors is null
+                    && result.Errors.All(error =>
+                        TinyCsDiagnosticRegex().IsMatch(error)))
+                    return new SpecClassificationResult(SpecClassification.Diag,
+                        Details: string.Join("\n",
+                            result.Errors.Concat(result.Warnings)));
+                if (expectedErrors is null)
+                    return Unextracted("unexpected-compile-error",
+                        result.Errors);
+                if (!ContainsAllExpectedErrors(result.Errors, expectedErrors,
+                        out var missing))
+                    return Unextracted("expected-error-mismatch",
+                        result.Errors, $"missing: {string.Join(", ", missing)}");
+                return new SpecClassificationResult(SpecClassification.CsErr,
+                    Details: string.Join("\n", result.Errors));
+            }
+
+            if (expectedErrors is not null)
+                return Unextracted("expected-error-not-raised", []);
+
+            if (result.Warnings.Any(warning =>
+                    TinyCsDiagnosticRegex().IsMatch(warning)))
+                return new SpecClassificationResult(SpecClassification.Diag,
+                    Details: string.Join("\n", result.Warnings));
+
+            return new SpecClassificationResult(expansion.IsExecutable
+                ? SpecClassification.InRun
+                : SpecClassification.InCompile);
+        }
+        catch (Exception exception)
+        {
+            return new SpecClassificationResult(SpecClassification.Bug,
+                Details: $"{exception.GetType().Name}: {exception.Message}");
+        }
+    }
+
+    private static SpecClassificationResult Unextracted(string reason,
+        IReadOnlyCollection<string> errors, string? prefix = null)
+    {
+        var details = string.Join("\n", errors);
+        if (prefix is not null)
+            details = details.Length == 0 ? prefix : $"{prefix}\n{details}";
+        return new SpecClassificationResult(SpecClassification.Unextracted,
+            reason, details.Length == 0 ? null : details);
+    }
+
+    private static bool ContainsAllExpectedErrors(
+        IEnumerable<string> errors, IEnumerable<string> expectedErrors,
+        out List<string> missing)
+    {
+        var actualCounts = errors
+            .SelectMany(error => CompilerErrorRegex().Matches(error)
+                .Select(match => match.Value))
+            .GroupBy(code => code, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(),
+                StringComparer.Ordinal);
+        missing = [];
+        foreach (var expected in expectedErrors)
+        {
+            if (actualCounts.TryGetValue(expected, out var count) && count > 0)
+            {
+                actualCounts[expected] = count - 1;
+                continue;
+            }
+            missing.Add(expected);
+        }
+        return missing.Count == 0;
+    }
+
+    [GeneratedRegex(@"\bCS\d{4}\b", RegexOptions.CultureInvariant)]
+    private static partial Regex CompilerErrorRegex();
+
+    [GeneratedRegex(@"\bTCS100[123]\b", RegexOptions.CultureInvariant)]
+    private static partial Regex TinyCsDiagnosticRegex();
+}
