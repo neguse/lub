@@ -26,8 +26,8 @@
     <Compile Include="../../cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../../cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
     <ProjectReference Include="../Lub/Lub.csproj" />
-    <ProjectReference Include="../../third_party/tcs/TinySystem/TinySystem.csproj" />
+    <ProjectReference Include="$(TcsRoot)/TinySystem/TinySystem.csproj" />
   </ItemGroup>
   <!-- Math / MathF を TinySystem.Math (tcs VM / tcs2c と同じ実装) にする -->
-  <Import Project="../../third_party/tcs/TinySystem/TinySystem.props" />
+  <Import Project="$(TcsRoot)/TinySystem/TinySystem.props" />
 </Project>
