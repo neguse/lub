@@ -12,7 +12,6 @@
     <RootNamespace>LubGen</RootNamespace>
     <AssemblyName>lub-gen</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <TcsRoot Condition="'$(TcsRoot)' == ''">../../third_party/tcs</TcsRoot>
   </PropertyGroup>
 
   <ItemGroup>

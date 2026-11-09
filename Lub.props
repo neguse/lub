@@ -1,0 +1,6 @@
+<Project>
+  <!-- lub の中の tcs の場所。tcs を指す csproj と props は、この file を読んで $(TcsRoot) を使う -->
+  <PropertyGroup>
+    <TcsRoot Condition="'$(TcsRoot)' == ''">$(MSBuildThisFileDirectory)third_party/tcs</TcsRoot>
+  </PropertyGroup>
+</Project>
