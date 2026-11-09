@@ -21,7 +21,7 @@ Runs the native regression gate:
   docs lint, Release build, C smoke tests, C# runtime tests (tests/cs),
   visual goldens (lavapipe), and the C# sample gate.
 
---require-cs makes a missing C# toolchain (dotnet / third_party/tcs) an
+--require-cs makes a missing C# toolchain (dotnet / tcs) an
 error instead of a skip; CI passes it so the gate cannot silently narrow.
 --skip-golden skips the visual golden byte-compares. lavapipe output is
 mesa-version-dependent (filtering LSB differences), so the compare only
@@ -82,15 +82,15 @@ trap cleanup EXIT INT TERM
 
 run scripts/docs-lint.sh
 
-# ---- C# (tcs) サンプル gate -------------------------------------------- dotnet と third_party/tcs submodule があるときだけ、.cs entry を持つ全サンプルを check + build し、.NET 実行と digest / capture を比較する。
+# ---- C# (tcs) サンプル gate -------------------------------------------- dotnet と tcs/ があるときだけ、.cs entry を持つ全サンプルを check + build し、.NET 実行と digest / capture を比較する。
 # 無い環境では skip (C# 対応は optional toolchain)。
 # CI は --require-cs で skip を fail に変える。
 cs_available=0
 if command -v dotnet >/dev/null 2>&1 \
-  && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
+  && [[ -f tcs/Transpiler/Transpiler.csproj ]]; then
   cs_available=1
 elif [[ $require_cs -eq 1 ]]; then
-  echo "C# sample gate required (--require-cs) but dotnet or third_party/tcs is missing" >&2
+  echo "C# sample gate required (--require-cs) but dotnet or tcs is missing" >&2
   exit 1
 fi
 
@@ -264,11 +264,11 @@ if [[ $cs_available -eq 1 ]]; then
   cs_dotnet_log="$(mktemp)"
   cleanup_files+=("$cs_dotnet_log")
   (
-    run dotnet build third_party/tcs/Transpiler -c Release -nologo
+    run dotnet build tcs/Transpiler -c Release -nologo
     # 直前の build の出力 (bin/Release/<framework>/)。RID 付きの古い出力 (bin/Release/<framework>/<rid>/) は拾わない
-    tcs_dll="$(find third_party/tcs/Transpiler/bin/Release -maxdepth 2 -name Transpiler.dll -print -quit)"
+    tcs_dll="$(find tcs/Transpiler/bin/Release -maxdepth 2 -name Transpiler.dll -print -quit)"
     if [[ -z "$tcs_dll" ]]; then
-      echo "Transpiler.dll not found under third_party/tcs/Transpiler/bin/Release" >&2
+      echo "Transpiler.dll not found under tcs/Transpiler/bin/Release" >&2
       exit 1
     fi
     export LUB_TCS_DLL="$repo_root/$tcs_dll"
@@ -437,7 +437,7 @@ if [[ $cs_available -eq 1 ]]; then
   run cmp "$blend_vm_log.digest" "$blend_dn_log.digest"
 else
   echo
-  echo "==> C# runtime tests skipped (dotnet or third_party/tcs missing)"
+  echo "==> C# runtime tests skipped (dotnet or tcs missing)"
 fi
 
 if [[ $skip_golden -eq 0 ]]; then
@@ -461,7 +461,7 @@ if [[ $cs_available -eq 1 ]]; then
   run_timed env LUB_VM="$native_binary" scripts/vm-project-test.sh
 else
   echo
-  echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
+  echo "==> C# sample gate skipped (dotnet or tcs missing)"
 fi
 # --serve の HTTP / SSE と接続の片づけ、tcs の標準出力の frame (知らない種類を読み飛ばす)。
 # fake の tcs を使うので dotnet は要らない

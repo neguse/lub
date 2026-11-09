@@ -4,9 +4,9 @@ cd "$(dirname "$0")/.."
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 cflags=(-std=gnu11 -O2 -fwrapv -ffp-contract=off -fexcess-precision=standard -Iinclude -Ithird_party/SDL/include -I"$work")
-dotnet build third_party/tcs/tcs2c/tcs2c.csproj -c Release
+dotnet build tcs/tcs2c/tcs2c.csproj -c Release
 dotnet build tools/lub-gen/lub-gen.csproj -c Release
-dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs tests/c/tcs_binding.cs -o "$work/game.c"
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_binding.cs -o "$work/binding.c"
@@ -44,7 +44,7 @@ echo 'tcs2c binding: a count past the end of the array faults'
 cat cs-lib/lub_stub.cs tests/c/struct_stub.cs > "$work/struct_stub.cs"
 mkdir -p "$work/struct/lub"
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"
-dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
   --ref "$work/struct_stub.cs" tests/c/struct_test.cs -o "$work/struct/game.c"
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub "$work/struct_stub.cs" \
   --source tests/c/struct_test.cs -o "$work/struct/binding.c"
@@ -56,7 +56,7 @@ echo 'tcs2c binding: struct records pass by value, as outs and as results, and a
 
 # tcs2c の生成 C の Math (生成 C に埋め込まれた tcs の runtime/math) が、tcs VM の経路と同じ結果になること。
 # 期待値は tests/cs/TestMathDeterminism.cs の表 (OS ごとに分けない 1 つ)。
-dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll tests/c/tcs_math.cs -o "$work/math_game.c"
+dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll tests/c/tcs_math.cs -o "$work/math_game.c"
 "${CC:-cc}" "${cflags[@]}" -fno-fast-math "$work/math_game.c" -lm -o "$work/math"
 "$work/math" | tr -d '\r' > "$work/math.out"
 sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p' tests/cs/TestMathDeterminism.cs > "$work/math.expected"
@@ -72,7 +72,7 @@ echo "tcs2c math: $(wc -l < "$work/math.out") functions match tests/cs/TestMathD
 lubx=(cs-lib/lub/*.cs cs-lib/lubx/*.cs)
 lubx_sources=()
 for source in "${lubx[@]}"; do lubx_sources+=(--source "$source"); done
-dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs "${lubx[@]}" -o "$work/lubx_game.c"
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   "${lubx_sources[@]}" -o "$work/lubx_binding.c"
@@ -86,7 +86,7 @@ echo "tcs2c binding: cs-lib (${#lubx[@]} files) generated and compiled"
 host_sources=(samples/13_sprites/Sprites13.cs "${lubx[@]}")
 host_args=()
 for source in "${host_sources[@]}"; do host_args+=(--source "$source"); done
-dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs "${host_sources[@]}" -o "$work/host_game.c"
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   "${host_args[@]}" -o "$work/host_binding.c"
@@ -104,7 +104,7 @@ echo "tcs host: entry class Sprites13 without OnQuit compiled and linked cleanly
 # Quit を受けたら残りの event は渡さず、その frame は回さない。
 # ゲームは受け取った EventData を List に持ち越すので、毎 frame の境界で旧世代まで GC する TCS_GC_STRESS でも同じ出力になること。
 # frame を始められない周回 (偽の frame_begin が frame 1 で一度 false を返す) では、次の周回の前に 16ms 待つこと。
-dotnet third_party/tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs tests/c/tcs_event.cs -o "$work/event_game.c"
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_event.cs -o "$work/event_binding.c"

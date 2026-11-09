@@ -39,7 +39,7 @@ Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
 `third_party/slang/lib/` に無ければ GitHub release から自動取得する
 (`third_party/slang/{lib,bin}/` は gitignore 対象)。
 
-コンパイルする依存 (SDL3 / Box2D / Box3D / OpenXR (Linux / Android) / TinyC# の runtime) は `third_party/` 配下の
+コンパイルする依存 (SDL3 / Box2D / Box3D / OpenXR (Linux / Android)) は `third_party/` 配下の
 git submodule なので、clone 後に一度 submodule を取得する:
 
 ```sh
@@ -108,8 +108,8 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
 `.slang` / PNG / `*.verts.lua` などの data ファイルも同様に保存で即反映。
 
 依存:
-- C# の変換は TinyC# (`third_party/tcs` submodule) が行う。
-  lub は実行ファイルの隣の `tcs/tcs` (`scripts/build-tcs-native.sh` が作る C の tcs) を最初に使い、無ければ PATH の dotnet SDK で `third_party/tcs` を動かす。
+- C# の変換は TinyC# (`tcs/`) が行う。
+  lub は実行ファイルの隣の `tcs/tcs` (`scripts/build-tcs-native.sh` が作る C の tcs) を最初に使い、無ければ PATH の dotnet SDK で `tcs/` の compiler を動かす。
   C の tcs を使うなら実行に dotnet は要らない (作るのには dotnet SDK が要る)。
 
 サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く

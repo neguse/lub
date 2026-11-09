@@ -24,8 +24,8 @@ lub のゲームコンテンツを別リポで管理したい。ネイティブ�
 
 ゲームのリポは lub をビルドしない。lub リポでビルドした `lub` を使い、C# から tcs VM の bytecode への変換は lub が実行時に行う(dotnet SDK が要る。無ければセルフホストの compiler を使う。`docs/manual/08-csharp.md`)。
 
-lub は実行ファイルの 1 階層上の `third_party/tcs` と `cs-lib` を探す(cwd 直下も見る)。
-別の配置にするときは、環境変数 `LUB_TCS`(tcs の起動コマンド。例: `dotnet run --project <lub>/third_party/tcs/Transpiler/Transpiler.csproj --`)と
+lub は実行ファイルの 1 階層上の `tcs` と `cs-lib` を探す(cwd 直下も見る)。
+別の配置にするときは、環境変数 `LUB_TCS`(tcs の起動コマンド。例: `dotnet run --project <lub>/tcs/Transpiler/Transpiler.csproj --`)と
 `LUB_CS_LIB`(`cs-lib` ディレクトリ)で指す。
 
 ## 使い方

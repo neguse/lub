@@ -6,17 +6,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
-dotnet build third_party/tcs/Transpiler/Transpiler.csproj -c Release -nologo -v q
+dotnet build tcs/Transpiler/Transpiler.csproj -c Release -nologo -v q
 dotnet build tools/lub-gen/lub-gen.csproj -c Release -nologo -v q
-dotnet third_party/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll vm --ref cs-lib/lub_stub.cs \
+dotnet tcs/Transpiler/bin/Release/net10.0/Transpiler.dll vm --ref cs-lib/lub_stub.cs \
   --export 'BindingTest.*' tests/c/tcs_binding.cs -o "$work/game.tcsb"
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll vm --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_binding.cs -o "$work/binding.c"
 # tests/c/tcs_binding.c は tcs2c の game.c も include するので、空にする
 : > "$work/game.c"
 cat tests/c/tcs_binding.c tests/c/vm_binding_driver.c > "$work/test.c"
-vm=third_party/tcs/tcsvm/vm
-rt=third_party/tcs/runtime
+vm=tcs/tcsvm/vm
+rt=tcs/runtime
 "${CC:-cc}" -std=gnu11 -O1 -fwrapv -ffp-contract=off -Iinclude -I"$vm" -I"$work" "$work/test.c" \
   "$vm"/tcsvm_{debug,gc,host,lib,load,reload,rt,run}.c "$rt"/sort/*.c "$rt"/fmt/*.c "$rt"/math/*.c "$rt"/utf8/*.c \
   "$rt"/model/*.c -lm -o "$work/test"
@@ -40,7 +40,7 @@ echo 'tcs VM binding: bad bit masks and a count past the end of the array fault 
 cat cs-lib/lub_stub.cs tests/c/struct_stub.cs > "$work/struct_stub.cs"
 mkdir -p "$work/struct/lub"
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"
-dotnet third_party/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll vm --ref "$work/struct_stub.cs" \
+dotnet tcs/Transpiler/bin/Release/net10.0/Transpiler.dll vm --ref "$work/struct_stub.cs" \
   --export 'StructGame.*' tests/c/struct_test.cs -o "$work/struct/game.tcsb"
 dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll vm --stub "$work/struct_stub.cs" \
   --source tests/c/struct_test.cs -o "$work/struct/binding.c"

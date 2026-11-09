@@ -1,7 +1,7 @@
 # C# (TinyC#) で書く
 
 lub のゲームコードは C# で書く。
-使うのは [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (release 向けに C にも変換できる) で、playground ではブラウザ内 (tcs2c で C にした tcs の WASM 版)、native では lub が `third_party/tcs` を dotnet で動かす。
+使うのは [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (release 向けに C にも変換できる) で、playground ではブラウザ内 (tcs2c で C にした tcs の WASM 版)、native では lub が `tcs` を dotnet で動かす。
 dotnet が無い環境では、tcs2c で C にした tcs (C の tcs) を使う。
 実行ファイルの隣に C の tcs があれば、dotnet があってもそちらを先に使う (後述)。
 tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、C の tcs、ブラウザのどれで動かしても同じ出力になる。
@@ -153,7 +153,7 @@ lub は実行ファイルの隣の `tcs/tcs` を最初に使う。
 release の一式は `bin/tcs/` に入っていて、dotnet は要らない。
 
 手元の build では `scripts/build-tcs-native.sh <build-dir>` が `<build-dir>/tcs` に作る (作るのに dotnet SDK と C compiler が要る)。
-`tcs/tcs` が無いときは、PATH に dotnet があれば `third_party/tcs` を `dotnet run` で動かし、無ければ `third_party/tcs/SelfHost/out/native/tcs` (tcs の `SelfHost/native.sh` の出力) を使う。
+`tcs/tcs` が無いときは、PATH に dotnet があれば `tcs` を `dotnet run` で動かし、無ければ `tcs/SelfHost/out/native/tcs` (tcs の `SelfHost/native.sh` の出力) を使う。
 
 playground の変換も、同じ C の tcs を wasm にしたもの (worker で動かす) が行う。
 補完と hover は .NET wasm の Roslyn が答える (`web/README.md`)。

@@ -9,7 +9,7 @@
 #
 # 速度は cache が本体:
 #   - ccache (linux native build / emcc wasm build)
-#   - tcs wasm assets (content key: tcs submodule SHA)
+#   - tcs wasm assets (content key: tcs/ の tree の hash)
 #   - slang prebuilt、playwright browsers、npm
 # master push が cache を温め、PR はそれを読む (actions/cache の branch scope)。
 name: ci
@@ -261,7 +261,7 @@ jobs:
         shell: bash
         run: |
           # msvc-dev-cmd が設定する Platform=x64 で既定の出力先が bin/x64/Release に変わるので、出力先を明示する。
-          dotnet build third_party/tcs/Transpiler -c Release -nologo -v q -o build-tcs
+          dotnet build tcs/Transpiler -c Release -nologo -v q -o build-tcs
           export LUB_TCS_DLL=build-tcs/Transpiler.dll
           test -f "$LUB_TCS_DLL"
           echo "LUB_TCS_DLL=$LUB_TCS_DLL" >> "$GITHUB_ENV"
@@ -561,9 +561,9 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Resolve tcs submodule revision (cache key)
+      - name: Resolve tcs tree hash (cache key)
         id: tcs
-        run: echo "sha=$(git -C third_party/tcs rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "sha=$(git rev-parse HEAD:tcs)" >> "$GITHUB_OUTPUT"
 
       # emsdk は固定パス (~/emsdk) に置く。
       # setup-emsdk action は毎 run ランダムな temp パスに展開するため、コンパイラパスが変わって ccache が全ミスしていた (実測 hit 0.4%)。
@@ -616,7 +616,7 @@ jobs:
         working-directory: web
         run: npm ci
 
-      # tcs wasm assets は入力が tcs submodule だけなので content key で cache し、触らない PR では dotnet workload ごとスキップする。
+      # tcs wasm assets は入力が tcs/ だけなので content key で cache し、触らない PR では dotnet workload ごとスキップする。
       - name: Cache tcs wasm assets
         id: tcs-wasm-cache
         uses: actions/cache@v4
@@ -638,7 +638,7 @@ jobs:
         working-directory: web
         run: npm run gen-tcs -- --publish
 
-      # playground の C# の変換 (tcs2c で C にした tcs を emcc で wasm にしたもの)。入力は tcs の submodule だけ
+      # playground の C# の変換 (tcs2c で C にした tcs を emcc で wasm にしたもの)。入力は tcs/ だけ
       - name: Cache tcs selfhost wasm
         id: tcs-selfhost-cache
         uses: actions/cache@v4
@@ -723,10 +723,6 @@ jobs:
       - uses: actions/checkout@v4
 
       # A9 (shard 1) は tests/cs の test を native の tcs で変換した bytecode を流す。
-      - name: Init tcs submodule (A9)
-        if: matrix.shard == 1
-        run: git submodule update --init third_party/tcs
-
       - uses: actions/setup-dotnet@v4
         if: matrix.shard == 1
         with:
@@ -736,8 +732,8 @@ jobs:
         if: matrix.shard == 1
         shell: bash
         run: |
-          dotnet build third_party/tcs/Transpiler -c Release -nologo -v q
-          export LUB_TCS_DLL="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
+          dotnet build tcs/Transpiler -c Release -nologo -v q
+          export LUB_TCS_DLL="$(find tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
           source scripts/cs-tests.sh
           cs_tests_vm_build
 

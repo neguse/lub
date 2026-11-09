@@ -3,7 +3,7 @@
 // public/ に置くと vite が「public アセットの import」を拒否するため、vite.config.ts の serveDir が /tcs-wasm として配信する (build は closeBundle で copy)。
 //   node web/scripts/gen-tcs-assets.mjs [--publish]
 //
-// publish 出力 (third_party/tcs/WasmCompiler/bin/Release/.../wwwroot) をコピーする。
+// publish 出力 (tcs/WasmCompiler/bin/Release/.../wwwroot) をコピーする。
 // 出力が無い、または --publish 指定時は dotnet publish を実行する (要 dotnet SDK + wasm-tools workload)。
 import {
   readdirSync,
@@ -23,7 +23,7 @@ import { execFileSync } from "node:child_process";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, "..");
 const REPO = join(WEB, "..");
-const TCS = join(REPO, "third_party", "tcs");
+const TCS = join(REPO, "tcs");
 const PUBLISH = join(
   TCS,
   "WasmCompiler",
@@ -36,9 +36,7 @@ const PUBLISH = join(
 const OUT = join(WEB, "tcs-wasm-assets");
 
 if (!existsSync(join(TCS, "WasmCompiler", "WasmCompiler.csproj"))) {
-  console.error(
-    "third_party/tcs submodule が無い: git submodule update --init third_party/tcs",
-  );
+  console.error("tcs/WasmCompiler/WasmCompiler.csproj が無い");
   process.exit(1);
 }
 

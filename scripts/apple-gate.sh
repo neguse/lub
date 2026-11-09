@@ -7,8 +7,8 @@
 # (.github/workflows/release.yml) and manual runs on a Mac.
 #
 # Needs bash 4+ (run-golden.sh uses mapfile / wait -n; macOS ships 3.2, so
-# `brew install bash`), CMake, Ninja, python3, and dotnet with the
-# third_party/tcs submodule (the tests and the golden samples are C#). The iOS
+# `brew install bash`), CMake, Ninja, python3, and dotnet
+# (the tests and the golden samples are C#). The iOS
 # step needs Xcode.
 set -euo pipefail
 
@@ -85,8 +85,8 @@ run bash scripts/build-release.sh --build-dir "$build"
 
 # tests/cs の test は C# なので、tcs vm で tests/cs 全体を 1 つの bytecode (tests/cs/.lub/all.tcsb) にしてから、--entry で test を選んで動かす。
 # iOS の app にも同じ bytecode を入れる。
-run dotnet build third_party/tcs/Transpiler -c Release -nologo
-LUB_TCS_DLL="$repo_root/third_party/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
+run dotnet build tcs/Transpiler -c Release -nologo
+LUB_TCS_DLL="$repo_root/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
 export LUB_TCS_DLL
 # shellcheck source=scripts/cs-tests.sh
 source scripts/cs-tests.sh

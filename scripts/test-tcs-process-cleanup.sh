@@ -19,7 +19,7 @@ esac
 
 # LUB_TCS は空白で区切られる。
 # Windows では dotnet に渡す path を MSYS の形にしない
-dotnet build third_party/tcs/Transpiler -c Release -nologo -v q -o "$work/tcs"
+dotnet build tcs/Transpiler -c Release -nologo -v q -o "$work/tcs"
 tcs_dll="$work/tcs/Transpiler.dll"
 [[ $windows -eq 1 ]] && tcs_dll="$(cygpath -m "$tcs_dll")"
 
@@ -81,7 +81,7 @@ CS
   if [[ $launcher == direct ]]; then
     LUB_TCS="dotnet $tcs_dll" "$binary" "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
   else
-    # LUB_TCS が無ければ lub は cwd の third_party/tcs を dotnet run で起動する
+    # LUB_TCS が無ければ lub は cwd の tcs を dotnet run で起動する
     env -u LUB_TCS "$binary" "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
   fi
   pid=$!

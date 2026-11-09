@@ -28,10 +28,10 @@ cmake --build build/wasm -j             # vm/lub.{js,wasm,data} が生成
 # 2. slang-wasm(web/public/slang/…) … シェーダコンパイラ
 npm run fetch-slang          # postinstall でも走る
 # 3. 補完と hover の .NET wasm 一式(web/tcs-wasm-assets/)
-#    要 dotnet SDK + wasm-tools workload + third_party/tcs submodule
+#    要 dotnet SDK + wasm-tools workload
 npm run gen-tcs -- --publish # tcs の .NET wasm bundle を web/tcs-wasm-assets/ に固める
 # 4. tcs の WebAssembly 版(web/tcs-selfhost-assets/)… C# の変換に使う
-#    要 dotnet SDK + Emscripten(source ~/emsdk/emsdk_env.sh)+ third_party/tcs submodule
+#    要 dotnet SDK + Emscripten(source ~/emsdk/emsdk_env.sh)
 npm run gen-tcs-selfhost
 ```
 

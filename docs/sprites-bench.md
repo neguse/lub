@@ -13,7 +13,7 @@ workload contract, not elapsed wall-clock time.
 Automation should run these commands with a 2-hour process timeout.
 
 The benchmark entry is a C# project, so the dotnet SDK must be in `PATH`
-(lub runs the TinyC# transpiler from `third_party/tcs` with it).
+(lub runs the TinyC# transpiler from `tcs` with it).
 
 ## Windows
 

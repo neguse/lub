@@ -9,7 +9,7 @@
 #
 # entry class は <Entry>.csproj の basename (無ければ唯一の .cs の basename)。
 # 入力は同ディレクトリ以下の *.cs 全部 (bin / obj / 隠しディレクトリを除く) + cs-lib 実装ソース (lub CLI と同じ規約)。
-# 要件: dotnet SDK + third_party/tcs submodule
+# 要件: dotnet SDK
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,9 +21,8 @@ if [[ ! -d "$DIR" ]]; then
     echo "sample not found: $DIR" >&2
     exit 1
 fi
-if [[ ! -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
-    echo "third_party/tcs submodule not initialized:" >&2
-    echo "  git submodule update --init third_party/tcs" >&2
+if [[ ! -f tcs/Transpiler/Transpiler.csproj ]]; then
+    echo "tcs/Transpiler/Transpiler.csproj not found (run from the repo root)" >&2
     exit 1
 fi
 
@@ -52,7 +51,7 @@ mapfile -t -O "${#CS_FILES[@]}" CS_FILES \
 if [[ -n "${LUB_TCS_DLL:-}" ]]; then
     TCS=(dotnet "$LUB_TCS_DLL")
 else
-    TCS=(dotnet run --project third_party/tcs/Transpiler --)
+    TCS=(dotnet run --project tcs/Transpiler --)
 fi
 
 case "$MODE" in

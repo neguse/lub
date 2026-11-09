@@ -169,7 +169,7 @@ golden (`scripts/run-golden.sh`) も tcs VM の player で撮る。
 | `cs-lib/` | 実装ライブラリ |
 | `web/playground/tcs-worker.ts` | playground が stub を fetch し `--ref` 相当で渡す |
 | `scripts/run-cs-sample.sh` | CLI 外での check / bytecode への変換 |
-| `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`facade-lubx`(`dotnet/Lub/Lubx.g.cs`)、`docs`(`web/gen/lub-api-docs.json`)、`tcs`(tcs2c 実行の接続コード)、`vm`(`src/gen/vm_api_gen.c`、tcs VM の host の関数)。まとめて `scripts/gen-api.sh`。本体は TinyC# で、stub とゲームは tcs の compiler(`third_party/tcs/SelfHost/Compiler`)で読む。.NET では `tools/lub-gen/lub-gen.csproj`(`host/Program.cs` が入口)、C では `scripts/build-lub-gen.sh` が tcs の compiler と一緒に `tcs c` で C にした `<build-dir>/tcs/lub-gen`(dotnet は要らない)。どちらも同じ出力を出す |
+| `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`facade-lubx`(`dotnet/Lub/Lubx.g.cs`)、`docs`(`web/gen/lub-api-docs.json`)、`tcs`(tcs2c 実行の接続コード)、`vm`(`src/gen/vm_api_gen.c`、tcs VM の host の関数)。まとめて `scripts/gen-api.sh`。本体は TinyC# で、stub とゲームは tcs の compiler(`tcs/SelfHost/Compiler`)で読む。.NET では `tools/lub-gen/lub-gen.csproj`(`host/Program.cs` が入口)、C では `scripts/build-lub-gen.sh` が tcs の compiler と一緒に `tcs c` で C にした `<build-dir>/tcs/lub-gen`(dotnet は要らない)。どちらも同じ出力を出す |
 
 ## cs-lib 実装モジュールの供給規約
 

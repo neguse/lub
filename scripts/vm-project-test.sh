@@ -16,7 +16,7 @@ for test_dir in "$root"/tests/vm/*/; do
     [ -e "$ref" ] || continue
     stem="${ref%.ref.cs}"
     src="$(dirname "$ref")/$(basename "$stem" | tr '[:upper:]' '[:lower:]').c"
-    [ -f "$src" ] && "${CC:-cc}" -shared -fPIC -O2 -I"$root/include" -I"$root/third_party/tcs/tcsvm/vm" "$src" -o "$stem.so"
+    [ -f "$src" ] && "${CC:-cc}" -shared -fPIC -O2 -I"$root/include" -I"$root/tcs/tcsvm/vm" "$src" -o "$stem.so"
   done
   test_env=()
   [ -f "$dir/env" ] && mapfile -t test_env <"$dir/env"
