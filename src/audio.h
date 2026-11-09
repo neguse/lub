@@ -1,6 +1,6 @@
 // lub audio: raw-PCM snd registry + voice pool, mixed by our own sampler.
 // miniaudio は device 出力 (と pure な decode utility) としてだけ使う。
-// core の resource 契約は raw PCM のみ: snd を生むのは audio_snd_from_pcm だけで、file format は知らない (docs/roadmap.md Planned Areas)。
+// core の resource 契約は raw PCM のみ: snd を生むのは audio_snd_from_pcm だけで、file format は知らない。
 //
 // Voice は2種類の寿命ポリシーを持つ:
 //   - oneshot (audio_play): サンプル末尾で自動解放。パラメータは発火時固定。

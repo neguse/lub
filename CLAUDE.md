@@ -7,7 +7,7 @@ native (DX12 / Vulkan / Metal 直接実装 + SDL3 GPU) と web (WASM + WebGPU) �
 
 memory に状態を溜めない。現在地は常に以下を読む:
 
-- `docs/roadmap.md` — Phase の定義と進捗
+- GitHub の issue — これからやること。やったことは PR の本文に書く(リポの中に作業の一覧や完了の記録は置かない)
 - `docs/design.md` — 設計方針
 - `docs/api-glue.md` — API 面 (C# stub、C、tcs VM、.NET) の binding の構成と実装ライブラリの供給方針
 - `docs/serve.md` — `lub --serve`(HTTP + SSE で web ホットリロード)。外部リポからゲームを書くテンプレートは `templates/game/`(C# の csproj。tcs VM の player と .NET 実行)

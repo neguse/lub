@@ -24,7 +24,6 @@ webgpu.h 直接実装。
 - [lub.neguse.net](https://lub.neguse.net): ブラウザで動く playground。
 - [docs/README.md](docs/README.md): ドキュメント索引と方針。
 - [docs/design.md](docs/design.md): lub の why / to-be / 設計原則。
-- [docs/roadmap.md](docs/roadmap.md): phase ごとの達成目標と状態。
 - [docs/serve.md](docs/serve.md): 外部リポのゲームを web で開発する `--serve` モード。
 - [docs/profile.md](docs/profile.md): Release 計測と汎用 CPU profiler。
 

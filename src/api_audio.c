@@ -1,5 +1,5 @@
 // audio の C API。
-// raw PCM だけを受ける core 契約 (docs/roadmap.md)。
+// raw PCM だけを受ける core 契約。
 // snd は key で宣言し、宣言が途切れたら sweep する。
 // decode は png_load と同格の純関数 utility で snd handle を作らない。
 #include "api_internal.h"
