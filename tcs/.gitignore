@@ -1,0 +1,20 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+.idea/
+*.swp
+*~
+
+# ローカルエージェント設定 (agmsg が生成、マシン固有)
+.codex/
+
+# CMake build directory
+build/
+
+# Playdate build artifacts (perf/playdate)
+perf/playdate/build*/
+perf/playdate/Source/pdex.*
+perf/playdate/*.pdx/
+perf/playdate/*.log

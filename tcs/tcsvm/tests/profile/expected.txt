@@ -1,0 +1,25 @@
+two steps:
+  Game.cs:8 ns=200 allocs=0 bytes=ok
+  Game.cs:10 ns=14 allocs=0 bytes=ok
+  Game.cs:11 ns=0 allocs=2 bytes=ok
+  Game.cs:16 ns=40 allocs=0 bytes=ok
+taken again:
+churn:
+  Game.cs:22 ns=0 allocs=3000 bytes=ok
+gc: stopped 1000 ns each
+kept:
+  Game.cs:35 Game.kept count=1 bytes=ok
+  Game.cs:36 Holder.item count=1 bytes=ok
+  Game.cs:37 Game.items count=1 bytes=ok
+  Game.cs:38 Game.chain count=1 bytes=ok
+  Game.cs:39 Game.chain count=1 bytes=ok
+kept taken again:
+kept after frame end:
+thread: all ticks
+nested:
+  Game.cs:54 ns=9 allocs=1 bytes=ok
+around:
+  Game.cs:60 ns=5 allocs=0 bytes=ok
+where: Game.cs:71
+disabled:
+where disabled: none

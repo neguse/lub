@@ -1,0 +1,15 @@
+// profile_test.c が登録する host の関数
+namespace Probe
+{
+    public static class Clock
+    {
+        // ns だけ時間が経ったことを VM に知らせる (tvm_profile_tick)
+        public static void Advance(int ns) { }
+        // 別の thread が時間を知らせ終えたか
+        public static bool Done() { return true; }
+        // Game.Mark を入れ子で呼び、戻った後に 5 ns 経ったことを知らせる
+        public static void Around() { }
+        // 今の行 (tvm_profile_site) を控える
+        public static void Where() { }
+    }
+}

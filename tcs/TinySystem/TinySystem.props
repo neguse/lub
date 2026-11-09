@@ -1,0 +1,26 @@
+<Project>
+  <!-- TinySystem を参照する project が Import する。コードの Math / MathF を
+       TinySystem.Math に向け、.NET で動かしても超越関数 (Sin / Pow など) が
+       tcs の C と VM と bit 単位で同じ結果を返すようにする (TCS1004) -->
+  <ItemGroup>
+    <Using Include="TinySystem.Math" Alias="Math" />
+    <Using Include="TinySystem.Math" Alias="MathF" />
+  </ItemGroup>
+  <!-- TinySystem.Linq (List<T> の LINQ) は source で配る。tcs が C / VM の IL に変換するのと同じ
+       ファイルを .NET でもコンパイルする -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Linq.cs" Link="TinySystem\Linq.cs" Visible="false" />
+  </ItemGroup>
+  <!-- Dictionary / HashSet を tcs の仕様 (列挙は挿入順。support-matrix §18) の実装にする。source の型が BCL の同じ名前の
+       型を隠す (CS0436 は抑える) -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Collections.cs" Link="TinySystem\Collections.cs" Visible="false" />
+  </ItemGroup>
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+  <!-- string の既定の比較 (List.Sort / OrderBy / Min / Max) を culture に依らない ordinal にし、tcs の C と VM と同じ順序にする -->
+  <PropertyGroup>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+</Project>

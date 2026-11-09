@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- in-process の .NET オラクル (SpecDotnetExecutor / VmCorpus) を TinySystem.props と同じく string の既定の比較が ordinal の .NET で動かす -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- digest kernel (T215) はトランスパイル入力データであり、
+         test assembly のソースではない (Main が entry point 衝突する) -->
+    <Compile Remove="DigestKernels/**/*.cs" />
+    <None Include="DigestKernels/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Transpiler\Transpiler.csproj" />
+    <ProjectReference Include="..\SelfHost\SelfHost.csproj" />
+    <ProjectReference Include="..\tcsvm\Emitter\tcs2vm.csproj" />
+  </ItemGroup>
+
+  <!-- BCL の名前の表 (BclCatalogTests) を作るときだけ読む参照アセンブリ (compiler の参照には入れない) -->
+  <Target Name="EmbedCatalogReferences" BeforeTargets="AssignTargetPaths" DependsOnTargets="ResolveFrameworkReferences">
+    <PropertyGroup>
+      <_CatalogRefDir>@(ResolvedTargetingPack->WithMetadataValue('NuGetPackageId', 'Microsoft.NETCore.App.Ref')->'%(Path)')/ref/net10.0</_CatalogRefDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <EmbeddedResource Include="$(_CatalogRefDir)/System.Threading.Thread.dll" LogicalName="catalog/System.Threading.Thread.dll" />
+      <EmbeddedResource Include="$(_CatalogRefDir)/System.Linq.Expressions.dll" LogicalName="catalog/System.Linq.Expressions.dll" />
+      <EmbeddedResource Include="$(_CatalogRefDir)/System.Net.Sockets.dll" LogicalName="catalog/System.Net.Sockets.dll" />
+      <EmbeddedResource Include="$(_CatalogRefDir)/System.Net.Primitives.dll" LogicalName="catalog/System.Net.Primitives.dll" />
+    </ItemGroup>
+  </Target>
+
+</Project>

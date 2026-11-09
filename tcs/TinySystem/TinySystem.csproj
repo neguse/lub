@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- Linq.cs は TinySystem.dll に入れず source のまま配る: tcs は user のコードと一緒に
+       C / VM の IL に変換し、.NET の project は TinySystem.props で自分の assembly にコンパイルする -->
+  <ItemGroup>
+    <Compile Remove="Linq.cs" />
+    <Compile Remove="ValueTuple.cs" />
+    <Compile Remove="Collections.cs" />
+  </ItemGroup>
+
+</Project>

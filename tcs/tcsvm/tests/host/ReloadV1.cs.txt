@@ -1,0 +1,39 @@
+using System;
+using System.Collections.Generic;
+
+public struct Pt { public int X; public int Y; }
+
+public class Enemy
+{
+    public int Hp;
+    public string Name;
+    public Pt Pos;
+    public Enemy(string name, int hp) { Name = name; Hp = hp; }
+    public string Show() => $"{Name}:{Hp}@{Pos.X},{Pos.Y}";
+}
+
+public static class Game
+{
+    static List<Enemy> enemies = new List<Enemy>();
+    static List<Pt> path = new List<Pt>();
+    static int frame;
+    static Func<int, int> step;
+
+    public static void Setup()
+    {
+        enemies.Add(new Enemy("a", 10));
+        enemies.Add(new Enemy("b", 20));
+        int k = 3;
+        step = x => x + k;
+    }
+
+    public static void Frame()
+    {
+        frame++;
+        foreach (var e in enemies) { e.Hp = step(e.Hp); e.Pos.X += 1; }
+        path.Add(new Pt { X = frame, Y = frame * 2 });
+        Console.WriteLine($"v1 frame {frame}: {enemies[0].Show()} {enemies[1].Show()} path={path.Count}");
+    }
+
+    public static void Report() { Console.WriteLine("v1 report"); }
+}

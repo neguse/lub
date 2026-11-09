@@ -1,0 +1,5 @@
+v1 frame 1: a:13@1,0 b:23@1,0 path=1
+v1 frame 2: a:16@2,0 b:26@2,0 path=2
+v2 frame 3: a:19/7@3,0,-1 log=1 b:29/7@3,0,-1 log=1 path=3 first=1,2,0 hello v2
+v2 frame 4: a:22/7@4,0,-2 log=1 b:32/7@4,0,-2 log=1 path=4 first=1,2,0 hello v2
+v2 report

@@ -1,0 +1,35 @@
+using System.Collections.Generic;
+using System.IO;
+
+public struct Vec2
+{
+    public int X;
+    public int this[int i] { get { return X; } }
+}
+
+public class Demo
+{
+    public static string Load(string path)
+    {
+        string Local() => File.ReadAllText(path);
+
+        try
+        {
+            return Local();
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
+    public static Dictionary<string, string?> Values()
+    {
+        return new Dictionary<string, string?> { ["a"] = null };
+    }
+
+    public static bool MatchesPair(int[] values)
+    {
+        return values is [1, 2];
+    }
+}

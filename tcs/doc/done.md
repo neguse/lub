@@ -1,0 +1,3240 @@
+# 完了ログ
+
+> 記録: 2026-11-10 までの完了の記録。これより後は追記しない (これからやることは GitHub の issue、やったことは PR の本文に書く)。
+
+### T1-T6: Phase 0 プロジェクトセットアップ ✓ (2026-02-23)
+- git init、.gitignore、.NET 10 ソリューション (Transpiler / Transpiler.Tests / TinySystem)
+- deps/lua submodule 追加、Lua 5.5 ビルド確認
+- 最小トランスパイラ実装、セマンティックテスト基盤
+- run-tests.sh、.githooks/pre-commit
+- よかったこと: セマンティックテスト方式は出力形式に依存しないため堅牢
+- 判断: トップレベルはグローバル出力にした（dofile互換、将来require対応で切替可能）
+- 残課題: なし
+
+### T12-T34: Phase 2-5 トランスパイラ中核 ✓ (2026-02-23)
+- for/foreach、クラス、継承、enum、ラムダ、三項演算子、文字列補間
+- Roslyn SemanticModel で instance/static 判定、`:` / `.` 自動切替
+- LuaEmitter を3ファイルに partial class 分割
+- よかったこと: SemanticModel の型情報が正確で、手動の型追跡が不要
+- 判断: syntax tree ベースで走査。IOperation ベースへの移行は必要になったら
+- 残課題: switch式、record
+
+### T35-T40: TinySystem Luaランタイム ✓ (2026-02-23)
+- runtime/tinysystem.lua: List, Dict, Math, Random
+- LINQ メソッド (Where, Select, Any, All, First, OrderBy, Min, Max, Sum)
+- RuntimeTests 13件
+- よかったこと: Lua 標準ライブラリのラッパーとして薄く実装できた
+- 判断: LINQメソッドは即時評価（遅延なし）。objective.md の方針通り
+- 残課題: トランスパイラ側のメソッドチェーン → ランタイム関数呼び出し変換
+
+### T48: CLI エントリポイント ✓ (2026-02-23)
+- `tcs <input.cs> [-o <output.lua>]`
+- samples/hello.cs → hello.lua → Lua 5.5 実行確認
+- よかったこと: ファイル → ファイルの基本フローが動く
+- 判断: System.CommandLine は使わずシンプルな args パースで十分
+- 残課題: 複数ファイル、watch モード、エラーメッセージ改善
+
+### T41-T43: List/Dictionary/LINQ トランスパイル統合 ✓ (2026-02-23)
+- C# の List<T>/Dictionary<K,V> 生成・操作・LINQ チェーンをランタイム関数呼び出しに変換
+- LuaEmitter.Expressions.cs に TryMapCollectionMethod() 追加
+- `new List<int>{1,2,3}` → `{1,2,3}`, `list[i]` → `list[i+1]` (0→1 indexed)
+- `list.Where(f).Select(g).ToList()` → `List.ToList(List.Select(List.Where(list, f), g))`
+- `dict["key"]` → `dict["key"]`, `dict.ContainsKey(k)` → `(dict[k] ~= nil)`
+- CollectionTests 14件追加、全67テストパス
+- よかったこと: SemanticModel の型情報でコレクション型を正確に検出、メソッドチェーンは再帰的にネスト変換
+- 判断: List indexer は 0→1 変換を自動で行う。Count は `#` 演算子に直接マップ
+- 残課題: なし
+
+### T23,T32,T38,T46,T47: switch/interface/string/null条件/is ✓ (2026-02-23)
+- switch文/式、interface透過、String メソッド群、?.演算子、is パターン
+- String ランタイム追加 (Contains, Replace, StartsWith, EndsWith, Trim, Substring, Split)
+- string + string → `..` 演算子への自動変換
+- テスト21件追加、全88テストパス
+- よかったこと: SemanticModel の SpecialType.System_String で文字列結合の + を正確に検出
+- 判断: switch式はIIFE+if-elseifで実装。パターンマッチングは定数パターンのみ
+- 残課題: switch式の when ガード、型パターン
+
+### T49: 複数ファイル・名前空間解決 ✓ (2026-02-23)
+- Transpile(string[]) で複数ソースを共有 CSharpCompilation でコンパイル
+- クロスファイル参照（クラス、enum、継承）が解決される
+- namespace / file-scoped namespace は透過
+- float リテラル suffix (f, d, L等) の自動除去
+- MultiFileTests 5件追加
+
+### T50: エラーメッセージ改善 ✓ (2026-02-23)
+- TranspileResult + TranspileWithDiagnostics() API
+- C# コンパイルエラーをソース位置付きで報告
+- enum↔int 変換/比較エラーは TinyC# では許容 (CS0029,CS0266,CS0019)
+- interface 未実装エラーも許容 (CS0535)
+- DiagnosticTests 3件追加、全96テストパス
+
+### T62-T69: Phase 10.5 標準ライブラリ セマンティックテスト補完 ✓ (2026-02-23)
+- Math, Random, StringSplit, List, Dict, LINQ, Console, Action のセマンティックテスト追加
+- 全テスト 191件パス
+
+### T70-T73: Phase 11 record型 + パターンマッチング拡充 ✓ (2026-02-23)
+- positional record (`record Point(int X, int Y)`) → table + metatable + .new()
+- 宣言パターン (`is Type name`) → getmetatable + local 変数束縛
+- 関係パターン (`is > 0`, `is <= 10`) → 比較式展開
+- and/or パターン (`is > 0 and < 100`, `is 1 or 2`) → and/or 結合
+- RecordTests, PatternMatchTests 追加
+
+### T74-T80: Phase 12 リテラル対応拡充 ✓ (2026-02-23)
+- 16進数リテラル (`0xFF`) → そのまま出力
+- 桁区切り (`1_000_000`) → `_` 除去
+- 文字リテラル (`'A'`) → `"A"` (1文字string)
+- verbatim文字列 (`@"..."`) → ValueText → Lua文字列エスケープ
+- raw文字列 (`"""..."""`) → ValueText → Lua文字列エスケープ
+- 2進数リテラル (`0b1010`) → Token.Value で10進変換
+- default/default(T) → 型に応じたデフォルト値 (0, false, nil)
+- LiteralTests 追加
+
+### T81-T84: Phase 13 Null Safety 強化 ✓ (2026-02-23)
+- `??=` → `if x == nil then x = value end`
+- `?[]` → IIFE nil チェック + インデックスアクセス
+- `Nullable<T>` → nil 透過 (HasValue, Value, GetValueOrDefault)
+- NullConditionalTests, NullableValueTypeTests 追加
+
+### T51: TinyCSharpGen 基盤 ✓ (2026-02-23)
+- lub3d の Generator/TinyCSharp/TinyCSharpGen.cs を作成
+- `Generate(ModuleSpec spec)` → C# interface 文字列
+- BindingType → C#型名マッピング (int, long, float, string, Action/Func, Vector2 等)
+- Struct → public class + public fields
+- Enum → public enum
+- OpaqueType → public class + methods
+- Module functions → public static class
+- 変更ファイル: lub3d/Generator/TinyCSharp/TinyCSharpGen.cs, lub3d/Generator.Tests/TinyCSharpGenTests.cs
+- テスト40件追加、全471件パス (lub3d Generator.Tests)
+- よかったこと: LuaCatsGen をテンプレートとして同じ ModuleSpec → 文字列生成パターンで実装できた
+- 判断: namespace は module name の PascalCase 変換 (sokol.gfx → Sokol.Gfx)、static class は最後のセグメント
+- 残課題: T58-T61 (全モジュール展開、サンプルゲームスクリプト、ホットリロード、watch)
+
+### T52-T55: StructBinding/FuncBinding/EnumBinding/OpaqueType 詳細対応 ✓ (2026-02-23)
+- T51 の TinyCSharpGen.Generate() で全てカバー済み
+- Struct → public class + public fields (PascalCase変換)
+- Func → static メソッド (Optional params, Output params 除外)
+- Enum → public enum + items
+- OpaqueType → public class + instance methods + static constructor
+
+### T56: App + Gfx モジュール検証 ✓ (2026-02-23)
+- App module の JSON → BuildSpec → TinyCSharpGen で正しい C# が生成されること確認
+- namespace Sokol.App、public class Desc/Event、public enum EventType、public static class App
+- Callback フィールド (init_cb → Action Init)、Enum フィールド (type → EventType Type) 変換OK
+- テスト6件追加、全477件パス (lub3d)
+- よかったこと: 実モジュールのBuildSpec出力がそのまま TinyCSharpGen で処理できた
+
+### T57: Program.cs 統合 ✓ (2026-02-23)
+- `--tcs-output-dir` オプション追加
+- 全モジュール (Sokol 10個 + Miniaudio + ImGui + stb + Box2D) で TinyCSharpGen 出力対応
+- TcsOutputPath(): "sokol.app" → "Sokol.App.cs" のファイル名規則
+- 変更ファイル: lub3d/Generator/Program.cs
+- 残課題: 実際にヘッダをパースしての E2E テストは clang 依存のため手動確認
+
+### T58: 全モジュール展開 — Generator E2E C#コンパイル検証 ✓ (2026-02-23)
+- 14モジュール × clang AST → ModuleSpec → TinyCSharpGen → C# ファイル生成 → dotnet build 0エラー
+- 生成ファイル14個、計5,443行
+- 修正1: 数字始まり enum item (keycode `0`→`_0`) → SanitizeIdentifier
+- 修正2: C# 予約語パラメータ (`lock`, `params`) → EscapeKeyword (@prefix)
+- 修正3: `using System;` → `System.Action`/`System.Func` 完全修飾 (System.Environment 衝突回避)
+- 修正4: 跨モジュール型参照 → LuaClassNameToCSharp で完全修飾名生成 (sokol.gfx.Desc → Sokol.Gfx.Desc)
+- 修正5: Vec2/Vec4 → float[] (System.Numerics 不要)
+- 修正6: 未定義 dep 型 → stub class 自動生成 (CollectReferencedLocalTypes)
+- 変更ファイル: lub3d/Generator/TinyCSharp/TinyCSharpGen.cs, lub3d/Generator.Tests/TinyCSharpGenTests.cs
+- テスト46件、全477件パス (lub3d Generator.Tests)
+- よかったこと: 段階的にコンパイルエラーを潰すアプローチが効果的だった
+- 判断: dep 型は stub class で対応 (miniaudio の ResourceManager 等は Lua 非公開型)
+- 残課題: T59-T61 (サンプルゲームスクリプト、ホットリロード、watch)
+
+### T59: サンプルゲームスクリプト + --ref 機能 ✓ (2026-02-23)
+- `--ref <file.cs>` オプション追加: 型チェック用参照ソース (Lua 出力なし)
+- Transpiler.TranspileWithDiagnostics に referenceSources パラメータ追加
+- samples/lub3d_hello.cs: Sokol.App/Gfx/Time API を使ったサンプルゲームスクリプト
+- C# → Lua トランスパイル成功、Lua 5.5 で構文エラーなし
+- テスト2件追加 (Ref_TypeCheckOnly_NoLuaOutput, Ref_EnumFromRefSource)、全193件パス
+- 変更ファイル: Transpiler/Transpiler.cs, Transpiler/Program.cs, Transpiler.Tests/MultiFileTests.cs, samples/lub3d_hello.cs
+- よかったこと: Roslyn の CSharpCompilation が ref trees と main trees を自然に統合してくれた
+- 判断: ref ソースは CSharpCompilation に含めるが LuaEmitter では skip する設計
+- 残課題: T60-T61 (ホットリロード統合、watch モードでの ref 自動検出)
+
+### 静的フィールド + continue + do-while ✓ (2026-02-23)
+- static field: ClassName.field = defaultValue で初期化、ResolveIdentifier で ClassName.field 参照
+- continue: goto _continue_N + ::_continue_N:: ラベル (全ループ型対応、ネスト対応)
+- do-while: repeat ... until not (cond)
+- テスト9件追加 (StaticField ×4, Continue ×3, DoWhile ×2)、全202件パス
+- const field: ConstKeyword でも static 扱い → ClassName.CONST = value
+- array creation: `new int[] { 1,2,3 }` / `new [] { 1,2,3 }` → `{1, 2, 3}`
+- PredefinedType: `string.Method()` で PredefinedType 解決 (unsupported 回避)
+- continue label 最適化: 実際に continue がある loop のみ label 出力
+- テスト13件追加 (StaticField ×5, Continue ×3, DoWhile ×2, Array ×3)、全206件パス
+- 変更ファイル: LuaEmitter.cs, LuaEmitter.Expressions.cs, LuaEmitter.Statements.cs, ClassTests.cs, ForLoopTests.cs, CollectionTests.cs
+
+### T60-T61: ホットリロード統合テスト + watch モード ✓ (2026-02-23)
+- watch モード (`--watch` / `-w`): FileSystemWatcher + デバウンス(100ms) + 自動リビルド (Program.cs)
+- HotReload ランタイム: swap/watch/update (tinysystem.lua)、深いテーブル更新で既存インスタンスの状態保持
+- E2E テスト2件追加: C# トランスパイル → Lua HotReload.swap → メソッド更新・状態保持の検証
+- watch モード E2E テスト1件追加: ファイル変更 → 自動再トランスパイル → 出力更新の検証
+- テスト3件追加 (E2E_TranspiledClass_HotReload, E2E_TranspiledClass_StatePreserved, Watch_FileChange_TriggersRebuild)、全209件パス
+- 変更ファイル: HotReloadTests.cs, WatchModeTests.cs (新規)
+- よかったこと: watch モード・HotReload ランタイムは既に実装済みで、E2E テスト追加のみで完了
+- 判断: watch モードは FileSystemWatcher で入力ファイルのみ監視、--ref ファイルの変更監視は将来課題
+- 残課題: --ref ファイルの変更監視
+
+### T85: プロパティパターン ✓ (2026-02-23)
+- `is { X: > 0, Y: < 10 }` → `expr.X > 0 and expr.Y < 10`
+- `RecursivePatternSyntax` + `PropertyPatternClauseSyntax` を再帰的に展開
+- switch 式でもプロパティパターン使用可能
+- テスト3件追加 (単一/複数プロパティ、switch式内)
+
+### T86: `with` 式 ✓ (2026-02-23)
+- `p with { X = 10 }` → IIFE でシャローコピー + フィールド上書き
+- 元オブジェクト不変、メタテーブル継承
+- テスト3件追加 (単一/複数フィールド変更、元オブジェクト不変)
+
+### T87: Deconstruct ✓ (2026-02-23)
+- `var (x, y) = point` → `local x, y = point.X, point.Y`
+- record の positional パラメータからプロパティ名を取得
+- `DeclarationExpressionSyntax` + `ParenthesizedVariableDesignationSyntax` を処理
+- テスト1件追加
+
+### T88: record value-based Equals ✓ (2026-02-23)
+- record 型に `__eq` メタメソッドを自動生成
+- 全 positional パラメータの値比較
+- テスト2件追加 (同値 true、異値 false)
+
+### T89: Extension methods ✓ (2026-02-23)
+- `obj.ExtMethod(args)` → `ExtClass.ExtMethod(obj, args)`
+- `IMethodSymbol.IsExtensionMethod` + `ReducedFrom` で元のstatic class を取得
+- LINQ extension methods との衝突回避 (LINQ は先にマッチ)
+- テスト2件追加 (基本、引数付き)
+
+### T90: コレクション初期化拡充 ✓ (2026-02-23)
+- Dictionary インデクサ初期化: `{ ["key"] = value }` → `{["key"] = value}`
+- `ImplicitElementAccessSyntax` を検出して正しいキーを抽出
+- テスト1件追加
+
+### T91: string interpolation 高度なケース ✓ (2026-02-23)
+- フォーマット指定子: `$"{value:F2}"` → `string.format("%.2f", value)`
+- F/N/D/X/E/G 指定子対応、精度指定あり/なし
+- `InterpolationSyntax.FormatClause` を検出
+- テスト2件追加 (F2, D3)
+
+### T92-T94: Lua出力最適化 ✓ (2026-02-23)
+- 現状のIIFEベース出力は正確性を優先
+- 三項演算子・null条件のIIFEは安全性のため維持
+- 定数畳み込みはRoslyn側で既に実施済み
+- テスト1件追加 (三項演算子の動作確認)
+- 判断: 過度な最適化は壊れやすいため、正確性を優先して最小限に留めた
+
+### T95-T96: ソースマップ ✓ (2026-02-23)
+- SourceMap は既に実装済み (LuaEmitter.SetSource + SourceMap.cs)
+- `--sourcemap` フラグで JSON 出力 (Program.cs 対応済み)
+- LuaLine → (CsFile, CsLine) のマッピング
+- Lookup() で逆引き可能
+- テスト3件追加 (マッピング存在確認、ファイル名検証、逆引き)
+- 変更ファイル: Phase14to19Tests.cs (新規)
+- 全18件追加、全227件パス
+
+### T103,T115: Compact C# baseline / support matrix 整理 ✓ (2026-06-29)
+- C# 14 / full BCL 全対応ではなく、モダンな .NET/C# 開発体験に必要な小さな baseline を採用
+- `doc/support-matrix.md` に Core / Useful / Out of scope の分類を追加
+- 言語機能と標準ライブラリのサマリへ優先度列を追加し、現実装に合わせて対応状況を更新
+- `doc/tasks.md` の推奨着手順を T97 起点に整理し、T103/T115 は完了扱いにした
+- 判断: lub3d 直対応は tcs 本体の主目的から外し、外部 API facade / `--ref` の参考統合として扱う
+- 残課題: T101/T102 で実行環境の信頼性を固める
+
+### T97: 未対応構文を黙殺しない診断へ統一 ✓ (2026-06-29)
+- `VisitMember` と class/record 内 member の default 経路で unsupported warning を出すようにした
+- `VisitStatement` の default 経路で `throw`, `try/catch`, `using`, local function などが黙って消えないようにした
+- unsupported pattern の `TODO pattern` コメントを warning 化した
+- binary/unary/postfix/assignment expression の unsupported コメントも warning 化した
+- 診断位置に file/line/column を含め、将来の T122 analyzer で使い回しやすい形に寄せた
+- テスト7件追加、全234テストパス
+- 判断: T122 でルール共有を進める前段として、まず既存 `Warnings` API に最小統合した
+- 残課題: T122 で Roslyn Analyzer PoC、T98 で top-level statements の復旧または禁止を決める
+
+### T101-T102: Lua 実行環境の再現性 ✓ (2026-06-29)
+- CLI 生成 Lua に TinySystem runtime prelude をデフォルト埋め込みし、`--no-runtime` で bare 出力へ戻せるようにした
+- runtime prelude 埋め込み時も `.lua.map` の Lua 行番号が実ファイルの行番号に合うよう SourceMap offset を追加
+- `TestHelper` / `run-tests.sh` / `run-tests.ps1` で `lua -v` が `Lua 5.5` で始まることを検証するようにした
+- CLI E2E テスト3件と Lua version テスト1件を追加し、全238 tcs テスト + 5 analyzer テストが通過
+- 変更ファイル: Program.cs, LuaRuntime.cs, SourceMap.cs, TestHelper.cs, CliRuntimeTests.cs, RuntimeTests.cs, run-tests.sh, run-tests.ps1, README.md
+- よかったこと: runtime をファイルパス参照ではなく埋め込みにしたため、生成 Lua 単体で List/Dict/Math/String/Random/HotReload を再現できる
+- 判断: エンジン統合や runtime 外部供給の余地を残すため、Transpiler API は bare Lua のままとし、CLI にだけ runtime 埋め込みを適用した
+- 残課題: 配布時に runtime/tinysystem.lua を CLI と同梱する packaging 方針は T118 で整理する
+
+### T98-T100,T104-T105: Core 正しさ穴埋め ✓ (2026-06-29)
+- T98: top-level statements を Lua chunk へ出力し、型定義を先に emit して同一/別ファイルの class 参照を可能にした
+- T99: `base.Method(args)` を `Base.Method(self, args)` へ変換し、override/new method 内の親実装呼び出しを修正した
+- T100: null 条件アクセス内の String/List/Dictionary method/property/indexer を通常アクセスと同じ runtime mapping に通した
+- T104: initializer なし instance field / auto property を型別 default (`0`/`false`/`nil`) で constructor 初期化するようにした
+- T105: 一般 `for` ループの incrementor を文として emit し、`i--`, `i += 2`, 複数 incrementor を正しく処理するようにした
+- テスト13件追加: TopLevelStatementTests, InheritanceTests, NullConditionalTests, ClassTests, ForLoopTests
+- 変更ファイル: Transpiler.cs, LuaEmitter.cs, LuaEmitter.Expressions.cs, LuaEmitter.Statements.cs, TopLevelStatementTests.cs, InheritanceTests.cs, NullConditionalTests.cs, ClassTests.cs, ForLoopTests.cs, support-matrix/current/tasks
+- よかったこと: 既存の statement emit / default value / runtime mapping を再利用し、特殊ケースを増やしすぎずに Core gap を埋められた
+- 判断: top-level statements は禁止ではなく復旧を選び、C# 側 compilation は top-level 検出時だけ `OutputKind.ConsoleApplication` に切り替える
+- 残課題: T106 の lambda block SourceMap、T107 の `--ref` watch、T108 の TinySystem facade
+
+### T106-T107: SourceMap/watch 開発体験ギャップ修正 ✓ (2026-06-29)
+- T106: lambda block 生成時に一時 `_sb` / `_luaLine` / `_currentSource` を復元し、仮 emit の SourceMap を削除するようにした
+- T106: `AppendLine` が multiline 文字列の実出力行数を `_luaLine` に反映するようにした
+- T107: watch モードの監視対象に `--ref` ファイルを含め、参照 stub/facade 更新でも rebuild されるようにした
+- T107: `--ref` ファイルの存在チェックを CLI 引数検証に追加した
+- テスト2件追加: block lambda 後続行 SourceMap、`--ref` watch rebuild
+- 変更ファイル: SourceMap.cs, LuaEmitter.cs, LuaEmitter.Expressions.cs, Program.cs, SourceMapTests.cs, WatchModeTests.cs
+- よかったこと: SourceMap のずれは行カウンタ復元だけでなく multiline output の実行数加算も同時に直す必要があると確認できた
+- 判断: lambda block 内部の個別行マッピングはまだ粗いが、今回の修正範囲は「後続行を壊さない」ことに絞った
+- 残課題: T108 の TinySystem facade、T114 の Lua runtime error から SourceMap を引く仕組み
+
+### T108: TinySystem C# facade 同期 ✓ (2026-06-29)
+- `TinySystem/RuntimeFacades.cs` を追加し、runtime/tinysystem.lua と対応する `Random`, `Math`, `String`, `List`, `Dict` の C# 型チェック用 API を定義した
+- Transpiler の Roslyn compilation に TinySystem.dll を参照追加し、手書き stub なしで `TinySystem.Random.NextFloat()` などが解決できるようにした
+- `TinySystem.*` facade static call を Lua runtime global (`Random.*`, `Math.*`, `String.*`, `List.*`, `Dict.*`) へ変換する mapping を追加した
+- `RandomSemanticTests` の手書き `Random` stub を削除し、`TinySystem.Random` facade 参照へ移行した
+- facade E2E テスト5件追加、Random 既存テスト3件も facade 経由で通過
+- 変更ファイル: RuntimeFacades.cs, Transpiler.cs, LuaEmitter.Expressions.cs, TinySystemFacadeTests.cs, RandomSemanticTests.cs, current/tasks/done
+- よかったこと: TinySystem.dll を Transpiler compilation に入れることで、IDE/build/check/transpile が同じ facade を見られる基盤になった
+- 判断: `System.Action` / `System.Func` は BCL 型をそのまま使い、TinySystem 側で別名 delegate を増やさない
+- 残課題: T122 の analyzer で TinySystem facade を許可 API 判定に使う、T7-T11 で実サンプルから不足 facade を洗い出す
+
+### T7: サンプル検証ハーネス整備 ✓ (2026-06-29)
+- `samples/hello.cs`, `samples/game.cs`, `samples/inventory.cs` を実ファイルから読み、C# → Lua 5.5 実行まで検証する E2E テストを追加した
+- 期待 Lua 文字列比較ではなく、代表 API の戻り値を検証する形にした
+- 検証内容: Hello greeting/add, Battle.Run summary, Inventory/Game.Test summary
+- テスト3件追加、サンプルが現行 Compact C# baseline 上で動作することを確認
+- 変更ファイル: SampleE2ETests.cs, current/tasks/done
+- よかったこと: T98-T108 の基盤修正後に既存サンプルがそのまま実行でき、baseline の実用経路を確認できた
+- 判断: `samples/lub3d_hello.cs` は外部 stub が必要なため T7 対象外とし、T121 で扱いを整理する
+- 残課題: T8-T11 で entity/statemachine/inventory/collision サンプルを拡充し、不足 API を洗い出す
+
+### T8: エンティティ定義サンプル ✓ (2026-06-29)
+- `samples/entity.cs` を追加し、class, field, auto property, enum, constructor, method による状態更新の最小サンプルを作った
+- `EntitySample.Run()` の E2E テストを追加し、生成・移動・ダメージ・switch expression による表示文字列を Lua 5.5 で検証した
+- テスト1件追加、期待値 `Slime:enemy@6,2 HP=13` を確認
+- 変更ファイル: samples/entity.cs, SampleE2ETests.cs, current/tasks/done
+- よかったこと: T104 の field/property default と T98-T100 の Core 修正後の構文をサンプルでも自然に使えることを確認できた
+- 判断: 既存 `samples/game.cs` から分離せず、entity 単体の読みやすい最小サンプルとして追加した
+- 残課題: T9 状態遷移サンプル、T10 inventory Dictionary 拡張、T11 collision サンプル
+
+### T9: 状態遷移サンプル ✓ (2026-06-29)
+- `samples/statemachine.cs` を追加し、enum, switch 文, switch 式, method call による状態遷移サンプルを作った
+- default case が先頭にある switch 文を E2E で検証し、Lua 出力では default section を最後の `else` として emit するよう修正した
+- `StateMachineSample.Run()` の E2E テストを追加し、期待値 `open,open,locked,closed` を確認
+- テスト1件追加
+- 変更ファイル: samples/statemachine.cs, LuaEmitter.Statements.cs, SampleE2ETests.cs, current/tasks/done
+- よかったこと: サンプル作成で switch default 非末尾の実バグを検出し、仕様に近い形へ修正できた
+- 判断: switch 文の section 順序は case section を先に評価し、default は出現位置に関わらず fallback として最後に出す
+- 残課題: T10 inventory Dictionary 拡張、T11 collision サンプル
+
+### T10: インベントリ Dictionary サンプル拡張 ✓ (2026-06-29)
+- `samples/inventory.cs` に `Dictionary<string, Item>` の名前検索インデックスを追加した
+- `Add` で List と Dictionary の両方を更新し、`ContainsKey` と indexer lookup を `Summary()` 経由で使うようにした
+- 既存 Sample E2E の期待値を `Items=4 Total=330 Best=Sword Shield=1` に更新し、List/LINQ/Dictionary の実サンプルを同時に検証した
+- 変更ファイル: samples/inventory.cs, SampleE2ETests.cs, current/tasks/done
+- よかったこと: 既存 Inventory サンプルの流れを保ったまま Dictionary の代表操作を自然に追加できた
+- 判断: `DictSemanticTests` の単体保証に加え、ユーザー向け sample でも `ContainsKey` + indexer を通す形にした
+- 残課題: T11 collision サンプルとサブセット妥当性レビュー
+
+### T11: 衝突処理サンプル + サブセット妥当性レビュー ✓ (2026-06-29)
+- `samples/collision.cs` を追加し、`Vec2` と `CircleCollider` を `class` で表現した衝突判定サンプルを作った
+- `CollisionSample.Run()` の E2E テストを追加し、期待値 `hit,miss,hit` を Lua 5.5 で確認した
+- `objective.md` の型リストから Core 風に見える `struct` 記述を外し、ユーザー定義 `struct` / `record struct` は Useful 扱いで class/record 代替する方針を明記した
+- サンプル検証の結果、現時点の entity/statemachine/inventory/collision ではユーザー定義 struct は不要と判断した
+- テスト1件追加
+- 変更ファイル: samples/collision.cs, SampleE2ETests.cs, objective.md, current/tasks/done
+- よかったこと: collision でも class ベースの Vec2 で十分に読みやすく、struct 実装を Core に戻す根拠は出なかった
+- 判断: ユーザー定義 struct は T120 の診断/実装方針タスクに残し、サンプル側では class/record 代替を標準とする
+- 残課題: T119 でサンプルから必要になった標準ライブラリ候補だけ追加検討する
+
+### T109: Dictionary TryGetValue セマンティクス ✓ (2026-06-29)
+- `Dictionary<TKey,TValue>.TryGetValue(key, out value)` を out 代入 + bool 戻り値として変換するようにした
+- key が存在する場合は value へ代入して `true`、存在しない場合は TValue の default (`0`/`false`/`nil`) を代入して `false` を返す
+- `out var` / 既存 out 変数の両方を statement emit 側で扱い、条件式内でも宣言済み変数として使えるようにした
+- テスト4件追加: found, missing default, `if` 条件内 out var, 既存 string out 変数の missing
+- 変更ファイル: LuaEmitter.Expressions.cs, LuaEmitter.Statements.cs, DictSemanticTests.cs, current/tasks/support-matrix/done
+- よかったこと: out/ref 全般対応へ広げず、Compact C# baseline に必要な `TryGetValue` だけを閉じた IIFE とローカル宣言で実装できた
+- 判断: `Dictionary` は Lua `nil` を key 不在と同一視する現方針を維持し、null 値セマンティクスは T111 へ残す
+- 残課題: T111 で `List<T>` null 要素と `Dictionary<K,V>` null 値の扱いを定義する
+
+### T110: LINQ Count/ToDictionary Core 実装 ✓ (2026-06-29)
+- LINQ `.Count()` / `.Count(predicate)` を `List.Count(list, predicate)` へ変換するようにした
+- LINQ `.ToDictionary(keySelector)` / `.ToDictionary(keySelector, valueSelector)` を `List.ToDictionary` runtime へ追加した
+- TinySystem C# facade に predicate 版 `Count` と `ToDictionary` overload を追加し、dotnet 側の型チェックと Lua runtime を同期した
+- テスト4件追加: Count, Count(predicate), ToDictionary key selector, ToDictionary value selector
+- 変更ファイル: runtime/tinysystem.lua, RuntimeFacades.cs, LuaEmitter.Expressions.cs, LinqSemanticTests.cs, current/tasks/support-matrix/done
+- よかったこと: objective.md の LINQ baseline に既に含まれていた API を実装へ追いつかせ、サンプルから必要になりやすい集計/辞書化を Core として扱えるようになった
+- 判断: 遅延評価は導入せず、既存 LINQ runtime と同じ即時評価 table 生成に揃える
+- 残課題: T119 で追加 LINQ (`OrderByDescending`, `Take`, `Skip`, `Last/LastOrDefault` など) の必要性をサンプルベースで判断する
+
+### T111: List/Dictionary null 保存セマンティクス ✓ (2026-06-29)
+- Lua table の制約に合わせ、`List<T>` の null 要素と `Dictionary<K,V>` の null 値は TinyC# では未対応として禁止する方針にした
+- shared compliance facts に `TCS1003` を追加し、analyzer と transpiler warning の両方で同じ検出ルールを使うようにした
+- 検出対象: collection initializer、`List.Add(null)`, `list[i] = null`, `Dictionary.Add(k, null)`, `dict[k] = null`, `ToDictionary(..., _ => null)` の直接 `null` / 参照型 `default`
+- analyzer テスト2件、transpiler diagnostic テスト1件を追加
+- 変更ファイル: TinyCsComplianceFacts.cs, TinyCsComplianceAnalyzer.cs, TinyCsComplianceAnalyzerTests.cs, Transpiler.cs, DiagnosticTests.cs, README.md, current/tasks/support-matrix/done
+- よかったこと: sentinel を runtime に導入せず、Lua の `nil` 表現とずれるケースを事前診断に寄せて実装を小さく保てた
+- 判断: nullable flow の完全解析や null key の扱いまでは広げず、ソース上で直接分かる null 値保存をまず警告する
+- 残課題: 必要になれば T119/T120 以降で null key 診断やより強い nullable flow 解析を検討する
+
+### T112: HotReload mtime の組み込み環境対応 ✓ (2026-06-29)
+- `runtime/tinysystem.lua` の default `HotReload.mtime` から `io.popen('stat ...')` 依存を削除し、shell 非依存の no-op (`nil`) にした
+- `HotReload.watch` / `HotReload.update` は `HotReload.mtime` を `pcall` 経由で呼び、host 側 mtime 実装の例外で runtime 全体が落ちないようにした
+- engine 側は `HotReload.mtime = function(path) return fs.mtime(path) end` のように注入する方針を README/current/support-matrix に明記した
+- HotReload テスト2件追加: default mtime が shell 不要で安全に nil を返すこと、注入 mtime で watch/update が reload すること
+- 変更ファイル: runtime/tinysystem.lua, HotReloadTests.cs, README.md, current/tasks/support-matrix/done
+- よかったこと: デスクトップ専用の `stat` 推測をやめ、iOS/WASM/コンソール機など shell-less 環境でも安全な default にできた
+- 判断: 純 Lua で不完全な mtime 推測を続けず、HotReload の file watch は host API 注入を明示要件にする
+- 残課題: T113 で Lua ビルドのプラットフォーム分岐、T114 で runtime error と SourceMap 連携を整理する
+
+### T113: Lua CMake platform 分岐 ✓ (2026-06-29)
+- `CMakeLists.txt` の Lua build を Linux / Windows / macOS / iOS-family / Emscripten / BSD / generic Unix で分岐し、非 Windows 全部を `LUA_USE_LINUX` + `m dl` にする状態を解消した
+- Linux は `LUA_USE_LINUX` + `m` + `${CMAKE_DL_LIBS}`、macOS は `LUA_USE_MACOSX` + `m`、iOS/tvOS/watchOS は `LUA_USE_IOS`、Emscripten/unknown は `LUA_USE_C89` にした
+- `run-tests.sh` / `run-tests.ps1` は Lua binary が存在しない場合だけでなく、`CMakeLists.txt` / `luaconf.h` / `lua.c` より古い場合や version mismatch 時も再ビルドするようにした
+- Linux 環境で `cmake -B build -DCMAKE_BUILD_TYPE=Release -S . && cmake --build build --parallel 2` が通ることを確認した
+- 変更ファイル: CMakeLists.txt, run-tests.sh, run-tests.ps1, README.md, current/tasks/support-matrix/done
+- よかったこと: CMake の platform 判定を `CMAKE_SYSTEM_NAME` ベースに寄せ、desktop と embedded/WASM の前提を分けられた
+- 判断: iOS-family と Emscripten はこの repo では cross build 実行まではせず、compile definitions の方針と host 側検証境界を文書化する
+- 残課題: T114 で runtime error と SourceMap 連携を整理する
+
+### T114: SourceMap runtime error 注釈 CLI ✓ (2026-06-29)
+- `SourceMapResolver` を追加し、`.lua.map` JSON から Lua 行番号を C# ファイル:行番号へ解決できるようにした
+- `tcs --map-stacktrace <output.lua.map> [trace.txt]` を追加し、Lua stack trace 内の `file.lua:line:` 行へ `--> file.cs:line` 注釈を付けて stdout に出すようにした
+- stack trace 行が SourceMap の exact key に無い場合は、直前の mapping を使う nearest lookup にした
+- `.lua.map` の仕様を README に明記した: `version: 1`, `mappings: { "<luaLine>": { "file": "...", "line": n } }`
+- テスト2件追加: resolver の exact/nearest 注釈、CLI `--map-stacktrace` の注釈出力
+- 変更ファイル: SourceMapResolver.cs, Program.cs, SourceMapTests.cs, CliRuntimeTests.cs, README.md, current/tasks/support-matrix/done
+- よかったこと: runtime 実行器に依存せず、Lua の標準 stack trace テキストを後処理するだけで既存 SourceMap を実用経路へ接続できた
+- 判断: 現時点の SourceMap は statement の最初の出力行中心なので、generated line 内部の完全精度ではなく nearest lookup による実用的な復元を採用した
+- 残課題: SourceMap の列情報や multi-line 式内部の精度改善は、必要になった時に別タスクで扱う
+
+### T116: README / objective / q / current 同期 ✓ (2026-06-29)
+- README に `--ref` の参照専用 stub/facade 手順を追加し、CMake 要件を `3.12+` へ更新した
+- `objective.md` を TinySystem facade 実装済み、collection null 診断、実装済み String/LINQ 対象範囲に合わせた
+- `q.md` の Q2/Q3/Q5 を resolved な決定事項として整理し、namespace mapping、entrypoint、CLI/watch/sourcemap 方針を明記した
+- `doc/current.md` の次タスクを T117/T119/T122 へ同期した
+- 変更ファイル: CMakeLists.txt, README.md, objective.md, q.md, current/tasks/done
+- よかったこと: 実装で固まった CLI と facade の境界を古い検討メモから回収できた
+- 判断: commit 履歴欄は実 git 履歴として残し、未コミットの今回作業は done/current の完了タスク欄で表現する
+- 残課題: T117 で CLI UX、T118 で配布/依存の再現性、T121 で外部エンジンサンプルの扱いを整理する
+
+### T117: CLI 引数 UX 改善 ✓ (2026-06-29)
+- `--help` / `-h` を追加し、usage を stdout に出して exit 0 にした
+- `--version` を追加し、`tcs 0.1.0` を stdout に出して exit 0 にした
+- unknown option を error として stderr に出し、exit 1 にした
+- `-o` / `--ref` の値欠落を検出し、次の option を値として誤読しないようにした
+- README の `src/*.cs` は shell glob 展開に依存する例であることを明記した
+- CLI テスト5件追加
+- 変更ファイル: Program.cs, CliRuntimeTests.cs, README.md, current/tasks/support-matrix/done
+- よかったこと: 引数パースを大きな parser 導入なしで、既存 CLI の構造に沿って明確化できた
+- 判断: glob 展開は CLI 側ではまだ実装せず、T117 ではドキュメント明記に留める
+- 残課題: T118 で配布/依存の再現性、T121 で外部エンジンサンプルの扱いを整理する
+
+### T118: 依存・配布の再現性 ✓ (2026-06-29)
+- floating package version (`4.*`, `17.*`, `2.*`) を解決済み version へ pin した
+- `Directory.Build.props` で `RestorePackagesWithLockFile=true` を有効化し、各 project の `packages.lock.json` を生成した
+- `Transpiler.csproj` の publish/build 出力へ `runtime/tinysystem.lua` を `runtime/` 配下でコピーするようにした
+- `dotnet publish Transpiler/Transpiler.csproj -c Release -o /tmp/tcs-publish` を実行し、publish 出力単体で runtime prelude 埋め込みが動くことを確認した
+- README に `deps/lua` submodule policy、package pin/lock policy、CLI publish 手順と runtime 同梱方針を追記した
+- 変更ファイル: Directory.Build.props, *.csproj, packages.lock.json, README.md, current/tasks/support-matrix/done
+- よかったこと: runtime を publish output に含めたことで、開発 checkout 以外から実行した CLI でも `--no-runtime` なしの通常変換が再現できる
+- 判断: NuGet は floating range を使わず、今 restore で解決されていた version へ明示 pin する
+- 残課題: T119 で標準ライブラリ小拡張、T120 で struct 方針、T121 で外部エンジンサンプルの扱いを整理する
+
+### T119: 標準ライブラリ小拡張 ✓ (2026-06-29)
+- Compact C# baseline とサンプルで不足しやすい API に絞り、`String.IndexOf`, `String.Join`, `Math.Pow`, `List.Sort`, LINQ `OrderByDescending` / `Take` / `Skip` / `Last` / `LastOrDefault` を追加した
+- Lua runtime と TinySystem C# facade を同期し、transpiler の instance/static/extension method mapping を追加した
+- LINQ 追加 API は既存方針どおり遅延評価ではなく即時評価 table を返す
+- テスト13件追加: string IndexOf/Join overloads, Math.Pow, List.Sort overloads, LINQ OrderByDescending/Take/Skip/Last/LastOrDefault
+- 変更ファイル: runtime/tinysystem.lua, RuntimeFacades.cs, LuaEmitter.Expressions.cs, StringMethodTests.cs, MathSemanticTests.cs, ListSemanticTests.cs, LinqSemanticTests.cs, README.md, objective.md, current/tasks/support-matrix/done
+- よかったこと: T119 の候補を全部入り BCL に広げず、ゲームスクリプトで使いやすい小核だけを TDD で増やせた
+- 判断: `List.Reverse`, `Find` 系、DateTime/TimeSpan 相当は現サンプルでは必要性が薄いため未対応のまま維持する
+- 残課題: T120 で struct 方針、T121 で外部エンジンサンプルの扱いを整理する
+
+### T120: struct 方針を TCS1001 診断として確定 ✓ (2026-06-29)
+- ユーザー定義 `struct` / `record struct` は現時点で Lua へ class 相当に lowering せず、TCS1001 の未対応構文診断として扱う方針に確定した
+- `record struct` の analyzer / transpiler 診断テストを追加し、既存 `struct` 診断と同じ shared compliance facts 経由で検出されることを確認した
+- `objective.md` と `doc/support-matrix.md` の記述を、曖昧な「class に寄せる」から「class / record class で代替」に更新した
+- テスト2件追加: analyzer `RecordStructDeclaration_ReportsUnsupportedSyntax`, transpiler `UnsupportedRecordStructDeclaration_ReportsWarning`
+- 変更ファイル: TinyCsComplianceAnalyzerTests.cs, DiagnosticTests.cs, README.md, objective.md, current/tasks/support-matrix/done
+- よかったこと: 値セマンティクスの不完全な再現に踏み込まず、現サンプルで有効だった class/record class 代替を仕様境界として明確にできた
+- 判断: 外部数学型や engine API の値型が必要になった場合は、ユーザー定義 struct lowering ではなく facade/stub か専用 runtime 型として別途検討する
+- 残課題: T121 で外部エンジンサンプルの扱いを整理する
+
+### T121: 外部エンジン連携サンプル整理 ✓ (2026-06-29)
+- `samples/lub3d_hello.cs` を削除し、engine agnostic な `samples/host_api_game.cs` + `samples/host_api_stub.cs` に置き換えた
+- `host_api_stub.cs` は `--ref` 用の型チェック専用 stub とし、Lua 出力には含めない方針を sample と README で明示した
+- E2E テストで ref source が Lua に出ないこと、実行時に注入した `Screen` / `Time` / `Log` Lua table で sample が動くことを確認した
+- テスト1件追加: `Sample_HostApiRef_TranspilesAndRuns`
+- 変更ファイル: samples/host_api_game.cs, samples/host_api_stub.cs, samples/lub3d_hello.cs, SampleE2ETests.cs, README.md, current/tasks/done
+- よかったこと: `--ref` の代表例を特定エンジン名から外し、host API 境界だけを小さく示せるようになった
+- 判断: lub3d 連携は過去の generator 参考実装として記録に残し、tcs 本体の sample は engine agnostic に保つ
+- 残課題: T122 の Rider 実機確認が残る
+
+### T122: Rider リアルタイム警告向け tcs Roslyn Analyzer PoC ✓ (2026-07-12)
+- TinyCs.Analyzers / analyzer tests / samples/analyzer-demo / `tcs check` / CI workflow / analyzer nupkg consumer 検証 / InspectCode headless 検証 / Rider helper script (bash + PowerShell) を整備した
+- Rider 実機 (Windows 10.0.26200, JetBrains Toolbox) で TCS1001 x5 / TCS1002 x1 / TCS1003 x1 が editor inspection に表示され、`.editorconfig` の severity=error 昇格が Rider 表示にも反映されることを確認し、Q12 を go で解決した
+- Windows pwsh 7 で `$isWindows` / `$isMacOS` が read-only 自動変数と衝突して precheck が落ちる不具合を修正した (Linux の pwsh 7.6.3 で再現・検証)
+- run-tests.ps1 の bash helper script 検証は WSL bash 検出が壊れやすく Rider 確認にも寄与しないため撤去し、`verify-rider-scripts.sh` の検証は run-tests.sh (Linux/CI) のみとした
+- 変更ファイル: run-tests.ps1, samples/analyzer-demo/rider-env.ps1, samples/analyzer-demo/verify-inspectcode.ps1, q.md, doc/tasks.md, doc/done.md, doc/current.md, CLAUDE.md
+- よかったこと: pwsh を Linux に導入して Windows の失敗を手元で再現でき、実機往復を減らして修正を検証できた
+- 判断: precheck 全 pass を Rider 起動の前提にした設計は目的過剰だった。go/no-go 確認は analyzer-demo build pass だけで進められると判断し、bash gate は撤去した
+- 残課題: T123 (analyzer package 正式導線) / T124 (診断一致の継続検証)
+
+### タスク棚卸し・トリアージ再設定 ✓ (2026-07-12)
+- T122 go 後の方向をタスク棚卸しで再設定し、lub (`../lub`) の Haxe 代替検証を P0 とした
+- T125 (script 層ギャップ分析) / T126 (00_hello 相当を tcs で実行) / T127 (hot reload 検証) を新設
+- T123 は release 手順の README 化へ縮小して P2 降格 (NuGet 公開は Q8 どおり当面やらない、consumer gate は run-tests で恒常化済み)
+- T124 はタスクとしてクローズし、run-tests の恒常ゲート (analyzer-demo expected diagnostics / nupkg consumer 検証) として扱う
+- `../lub` は readonly。lub 側に変更が必要な場合は feature request を出す
+- 変更ファイル: doc/tasks.md, doc/current.md, doc/done.md, CLAUDE.md
+- 判断: stub を書き始める前にギャップ分析 (T125) を置き、snake_case リネームやエントリ契約など tcs 本体機能になり得るものと shim で吸収するものを先に切り分ける
+
+### T125: lub script 層のギャップ分析 ✓ (2026-07-12)
+- lub の entry/hot reload/module/core API/lubx 契約を実装読解し、tcs で 00_hello 相当の最小コードを transpile/check して実験した
+- 成果物: `doc/lub-gap-analysis.md`。ギャップは G1 (object initializer 黙殺 = 既存バグ) / G2 (module return なし) / G3 (naming warning で check exit 1) / G4 (multi-return 表現なし) の4点
+- 名前は無変換で emit されるためリネーム機構は不要、`--ref` と lub extern の構図一致、`.lua` entry は lub 外パス可 + mtime poll で hotswap、と PoC 経路が lub 無変更で成立する見込みを確認した
+- 切り分け: G1-G4 は全て tcs 側機能 (T128-T131 として起票)、stub/起動定型は tcs 側 samples で吸収、lub への feature request は現時点なし
+- 変更ファイル: doc/lub-gap-analysis.md, doc/tasks.md, doc/current.md, doc/done.md
+- よかったこと: 読解だけで済ませず最小コードを実 transpile したことで、黙殺バグ (G1) と check exit 1 (G3) という読解では出ない事実を掴めた
+- 判断: G1 は lub 非依存の正しさバグなので PoC 都合と切り離して最優先に置いた。multi-return (G4) は 00_hello に不要なので breakout 級まで先送りした
+- 残課題: T128 → T129 → T130 → T126 → T127 → T131 の順で実装・検証
+
+### T128: object initializer の黙殺修正 (G1) ✓ (2026-07-12)
+- `new T { X = v }` の初期化子が診断なしで消える既存バグを修正した (T97 方針)
+- 通常 class は IIFE (`local __init = T.new(...)` + field 代入) で対応、`--ref` 型 (Lua 出力対象外) は plain table literal `{key = value}` へ emit するようにした
+- `--ref` 型の `new` はこれまで存在しない `.new()` を emit して実行時エラーだったが、lub の opts table 契約にそのまま合う形になった
+- implicit `new(args)` / `new() { ... }` にも List/Dict/ref/class の同じ経路を配線した
+- ネストした初期化子・collection add 形式・ref 型 constructor 引数は TCS1001 warning (黙殺しない)
+- テスト5件追加 (ObjectInitializerTests): class 初期化子、constructor 併用、ref 型 table literal、ref 型空 table、ネスト警告
+- 変更ファイル: LuaEmitter.cs, LuaEmitter.Expressions.cs, Transpiler.cs, ObjectInitializerTests.cs, doc/support-matrix.md, current/tasks/done
+- よかったこと: ref 型かどうかを DeclaringSyntaxReferences と ReferenceTrees の照合だけで判定でき、emitter に大きな状態を足さずに済んだ
+- 判断: 通常 class の初期化子は TCS1001 にせず対応した。record `with` の IIFE 前例があり、コストが低かったため
+- 残課題: T129 (module return) → T130 (naming 抑制) → T126 (00_hello)
+
+### T129: entry class 指定で module return を出す (G2) ✓ (2026-07-12)
+- `--entry <Class>` CLI オプションを追加し、出力 Lua の末尾に `return <Class>` を追記するようにした
+- lub の entry module 契約 (require が callback table を返す) に tcs 出力単体で適合できる
+- entry class が存在しない場合と `--ref` 型 (Lua 出力対象外) の場合はエラーにする
+- Transpiler API は `TranspileWithDiagnostics(..., entryClass:)`、watch モードにも配線
+- テスト4件追加 (EntryClassTests): dofile が class table を返す、not found エラー、ref-only エラー、CLI E2E
+- 変更ファイル: Transpiler.cs, Program.cs, EntryClassTests.cs, README.md, current/tasks/done
+- よかったこと: emitter 出力の末尾追記だけで済み、SourceMap のずれも runtime prelude 埋め込み (前置) とも干渉しない
+- 判断: entry 検証は GetTypeByMetadataName で行い、namespace 付き (`Foo.Bar`) はそのまま Lua の namespace table パスに一致する形にした
+- 残課題: T130 (naming 抑制) → T126 (00_hello)
+
+### T130: naming warning の抑制手段 (G3) ✓ (2026-07-12)
+- `--no-naming-check` CLI flag を transpile / `tcs check` の両方に追加した (デフォルト挙動は不変)
+- lub の wire format (lowerCamel callback / snake_case API) を使うコードを `tcs check` ゲートに乗せられるようになった
+- Transpiler API は `TranspileWithDiagnostics(..., checkNaming:)`。TCS1001/1002/1003 の準拠診断は抑制対象外
+- テスト4件追加 (NamingSuppressionTests): デフォルト警告あり、抑制で警告なし、抑制時も TCS1001 は残る、check の exit code 比較
+- 変更ファイル: Transpiler.cs, Program.cs, NamingSuppressionTests.cs, README.md, current/tasks/done
+- よかったこと: NamingAnalyzer は元々独立していたので、呼び出しの conditional 化だけで済んだ
+- 判断: file 単位や diagnostic 単位の細かい suppress は必要になるまで作らない。flag 一発で全 naming warning を止める
+- 残課題: T126 (00_hello) → T127 (hot reload)
+
+### T126: 00_hello 相当を tcs で動かす + G5 --prelude ✓ (2026-07-12)
+- `samples/lub/` に hello.cs (entry) / lub_stub.cs (--ref) / lub_shim.lua (--prelude) / run-lub.sh (staging + headless 起動) を追加した
+- lub 実機 (lavapipe + xvfb headless) で tcs 生成 Lua が onInit → onFrame ループ → onQuit まで動き、`--capture` の frame 30 画像が clear_color (0.1, 0.1, 0.2) どおりであることを確認した
+- 新ギャップ G5 を発見: lub C 側は flat global を expose し、namespace table は Haxe 専用 prelude が組み立てる。汎用機能 `--prelude <shim.lua>` (ユーザー Lua を出力へ前置、SourceMap offset 合算) を tcs に追加して解決した
+- ギャップ分析の誤り2点を訂正: 非 hxml entry の dirname は package.path に追加されない (samples/<mod>/.lub の cwd 相対レイアウト前提)、API は namespace table ではなく flat global
+- Program.cs の Run 系引数を BuildOptions record に整理した
+- テスト3件追加 (PreludeTests): prelude 前置で ref API が解決される E2E、missing file エラー、+ 全318テスト green
+- 変更ファイル: Program.cs, PreludeTests.cs, samples/lub/*, doc/lub-gap-analysis.md, README.md, current/tasks/done
+- よかったこと: lub の --capture がそのまま画面検証ゲートになった。読解ベースの分析2点が実測で覆っており、PoC を先にやる判断が正しかった
+- 判断: lub 側 HAXE_PRELUDE 相当は lub 固有 shim (samples/lub/lub_shim.lua) と汎用 CLI (--prelude) に分離し、tcs 本体に lub 依存を入れない
+- 残課題: T127 (hot reload) → T131 (multi-return)。lub feature request 候補: .lua entry の任意パス対応
+
+### T127: lub 上の hot reload 検証 ✓ (2026-07-12)
+- lub 実行中に `tcs --watch` で entry .lua を再生成 → lub の mtime poll → `lume.hotswap` が発火し、Lua エラーなしで clear 色の変更が反映されることを確認した (変更後の frame を `--capture` して赤画面を検証)
+- 発見1: `tcs --watch` が Changed イベントしか拾わず、エディタの atomic save (tmp へ書いて rename) を取りこぼしていた。NotifyFilters.FileName + Created/Renamed handler を追加し、os.replace での保存でも rebuild が走ることを実測した
+- 発見2: WatchModeTests が `dotnet run` の wrapper だけ Kill して子の Transpiler --watch プロセスを leak していた (47個蓄積、inotify 枯渇で他テストが flaky 化)。`proc.Kill(entireProcessTree: true)` に修正し、3連続 green + leak 0 を確認した
+- tcs 側 HotReload runtime は lub 経路では不要 (lume.hotswap が担う)。併用しない方針を current.md に明記
+- 変更ファイル: Program.cs, WatchModeTests.cs, current/tasks/done
+- よかったこと: 実機の hot reload 検証が、watch の atomic save バグとテストの process leak という2つの既存問題を炙り出した
+- 判断: leak した watch プロセス群は当セッションで kill して掃除した。flaky の再発条件 (inotify 上限) は leak 修正で根が取れている
+- 残課題: T131 (multi-return) → breakout 級サンプル移植の判断
+
+### T131: Lua multi-return 対応 (G4) ✓ (2026-07-12)
+- `--ref` method の `out` 引数を Lua multi-return 受けにマップした: void 戻りは `a, b = f(args)`、値戻りは IIFE で `__ret, a, b = f(args)` を受けて `__ret` を返す (条件式内でも使える)
+- out 変数の local 宣言は既存の EmitOutVarDeclarations (statement 冒頭) をそのまま利用し、`out _` は Lua の `_` へ落ちる
+- lub の `Io.load_text` (text/version/status) 型 API を C# の out 引数シグネチャで書けるようになった
+- テスト3件追加 (MultiReturnTests): multi-return 受け、値戻り + 条件式、discard
+- 変更ファイル: LuaEmitter.Expressions.cs, MultiReturnTests.cs, current/tasks/done
+- よかったこと: TryGetValue の先例 (statement 冒頭 local + 代入) に乗ったので、emitter の新規機構なしで表現できた
+- 判断: `ref` 引数は未対応警告に留めた (lub API に前例がなく、C# 側の意味論も multi-return と一致しない)
+- 残課題: T132 (breakout 級サンプル移植) で実戦検証
+
+### T123: tcs analyzer package の release 手順整備 (縮小) ✓ (2026-07-12)
+- README の analyzer 節に release 手順 (PackageVersion bump → 参照例と run-tests consumer の version 同期 → pack → run-tests 検証) を追記した
+- NuGet 公開は当面行わず local nupkg 配布のみとする方針 (Q8) を手順に明記した
+- 変更ファイル: README.md, current/tasks/done
+- 判断: T123 当初案の metadata / versioning policy / CI gate 整備は、consumer gate が run-tests で恒常化済みのため手順文書化のみに縮小した (2026-07-12 の棚卸しどおり)
+- 残課題: なし (公開判断は必要になった時点で再検討)
+
+### T132: lub breakout 級サンプル移植 ✓ (2026-07-12)
+- lub の samples/09_breakout 相当を TinyC# で移植した (samples/lub/breakout.cs、Brick class + List<double> 頂点構築 + out 引数 multi-return)
+- lub_stub.cs / lub_shim.lua を Input (key_down/key_pressed) / Io (require "lub_io") / Gfx (use_shader/use_buffer/draw + VERTEX/NONE/ALPHA) まで拡張し、run-lub.sh をサンプル名パラメータ対応にした
+- lavapipe headless + `--capture` frame 240 で、ブロック破壊・スコア・残機減少まで決定論 gameplay が動くことを画像で確認した
+- 未実測2項目を確定: `--ref` 型 instance method は colon call で lub の userdata method 規約 (self 第1引数) と一致、host table の field 読みは透過 (RefTypeAccessTests 2件で固定)
+- 追加発見1: `x!` (null-forgiving) が unsupported 黙殺で Lua を壊していた → 透過に修正 (support-matrix N/A → Y)
+- 追加発見2: 完全修飾 `System.Math.*` の TCS1002 誤検出 → T133 として起票 (breakout は `using System;` + bare Math で回避)
+- 変更ファイル: samples/lub/breakout.cs, samples/lub/lub_stub.cs, samples/lub/lub_shim.lua, samples/lub/run-lub.sh, LuaEmitter.Expressions.cs, RefTypeAccessTests.cs, doc/lub-gap-analysis.md, doc/support-matrix.md, current/tasks/done
+- よかったこと: T128-T131 で入れた機能 (object initializer table / --entry / --prelude / multi-return) が全部そのまま効き、移植中の tcs 側変更は null-forgiving の1点だけだった
+- 判断: 原典の Array<Dynamic> は class Brick に型付けした (tcs に Dynamic はなく、型付けの方が TinyC# の狙いに合う)。paddle 衝突の rect は座標引数に展開して Dynamic 相当の使い捨て table を避けた
+- 残課題: T133。以降のサンプル移植 (audio / texture 系) や Useful 層追加は需要駆動で判断
+
+### T135: CLI 出力パス衝突による入力破壊を防止 ✓ (2026-07-12)
+- input / `--ref` / `--prelude` と output / source map を絶対パスに加えて実ファイルIDでも比較し、衝突時は書き込み前にexit 1とする共通検証を追加した。Windowsはvolume/file ID、Linux/macOSはdevice/inodeを使う
+- one-shotの6組合せ (output/map × input/ref/prelude)、dot-segment、OS別case、symlink/hardlink、親directory symlink、watch初回build前の拒否、atomic置換契約を19テストで固定し、内容とmtimeが変わらないことを確認した
+- 変更ファイル: Program.cs, FileIdentity.cs, OutputFileWriter.cs, CliRuntimeTests.cs, WatchModeTests.cs, FileLinkTestHelper.cs, README.md, current/tasks/done
+- よかったこと: Mainの分岐前とwatchの各rebuildで同じ検証を再利用し、one-shot/watchの両方を同じ契約で保護できた。watchテストも実際のテスト構成のDLLを直接起動するようにした
+- 判断: 既存ファイルは実体IDでaliasを拒否し、通常の検証後競合でsymlink/hardlink targetをtruncateしないよう、出力は同一directoryの一時ファイルからatomic置換する二層防御にした。安全な既存出力linkも意図的に通常ファイルへ切り離し、事前write-openで従来の書込権限契約を守り、Unix permission bitsは維持する（ACL/xattr等は引き継がない）。敵対的な親directory差し替えを完全に閉じるhandle-relative I/Oは範囲外
+- 残課題: T134 (C# compile error健全化) → T136 (String edge + Lua test timeout)
+
+### T134: C# compile error の一律除外を型安全な判定へ置換 ✓ (2026-07-12)
+- `CS0266` / `CS0029` / `CS0019` / `CS0535` のID一律除外を廃止し、diagnostic位置のsymbol/type/syntaxでTinyC#固有ケースだけを許容する`CompilationDiagnosticPolicy`へ置換した
+- 通常の型変換・二項演算・未実装method、field facadeの型/可視性/static/readonly/method/event/operator/conversion/継承field、enum↔char、外側enum変換による内側error隠蔽をnegative testにし、enum/intと互換fieldの正例を含む21テストで固定した
+- `Program.Main`を直接呼ぶCLI系4クラスはprocess-wide Consoleを奪い合わない非並列collectionへまとめ、追加CLI testが顕在化させた全体testのflakeも解消した
+- 変更ファイル: Transpiler.cs, CompilationDiagnosticPolicy.cs, Diagnostic/Enum/Interface/CliRuntime tests, ConsoleCollection.cs, EntryClass/NamingSuppression/Prelude tests, README.md, support-matrix/current/tasks/done
+- よかったこと: diagnostic IDではなく最内側の式だけを見ることで、同じIDの通常errorと、外側にenum変換があるnested errorをともにfatalにできた。CLI系40件の反復実行も安定した
+- 判断: enum/integerの`CS0019`は`==`/`!=`だけを許容し、Lua string表現の`char`はinteger集合から除外する。interface facadeは全未実装member（static abstract operator/conversionを含む）がpropertyで、同じclassに宣言した同名・同型public instance fieldがある場合だけ許容し、setterにはmutable fieldを要求する
+- 残課題: T136 (String edge + Lua process timeout) → T133/T137/T138 (診断契約)
+
+### T136: Lua 実行テストの timeout と String edge contract 修正 ✓ (2026-07-12)
+- `RunLua`とLua version取得を共通の有限時間process helperへ寄せ、stdout/stderrの同時非同期drain、timeout時のprocess tree終了、wait/drain、PID・command・両出力・script文脈付き診断を実装した。cleanup中のplatform例外や一部tree kill失敗でも診断まで進む
+- 実際の子孫Lua processをspawnするtree kill、timeout直前の両stream回収、pipe buffer超過の正常終了を3テストで固定した。Stringは空oldValueのReplace即時error、空suffixのEndsWith、空/null separatorと引数なしSplitを.NET比較し、allowlist全体の空文字edgeを8テストで棚卸しした
+- 変更ファイル: TestProcessRunner.cs, TestHelper.cs, ProcessRunnerTests.cs, StringEdgeContractTests.cs, LuaEmitter.Expressions.cs, runtime/tinysystem.lua, support-matrix/current/tasks/done
+- よかったこと: process終了待ちとstream drainを共通化したことで、既存テストの逐次ReadToEnd deadlockと無期限hangを同時に閉じられた。tree killテストはroot PIDだけでなく実descendant PIDの消滅まで確認する
+- 判断: `Split()`と明示nullをLuaの可変引数個数で区別し、引数なしだけをwhitespace分割にした。whitespaceは既存のUTF-8 byte列制約に合わせてLua `%s`の範囲とし、Unicode `Char.IsWhiteSpace`との差はsupport matrixへ明記した。root正常終了後にdescendantがpipeを保持する異常系も5秒で診断失敗するが、root消滅後のtree追跡はprocess helperの契約外
+- 残課題: T133 → T137 → T138 (診断契約)
+
+### T133: 完全修飾 API アクセスの TCS1002 誤検出修正 ✓ (2026-07-12)
+- syntax全走査で`System.Math.Min`の中間`System.Math`をAPI memberとして再判定していたため、別のmember accessのreceiverとなる`INamedTypeSymbol`をqualifierとして除外し、実際の外側member symbolだけを共有allowlistで判定するようにした
+- Analyzer、`TranspileWithDiagnostics`、`tcs check`の3経路を4テストで固定した。完全修飾`System.Math.Min`は診断なし、`System.IO.File.ReadAllText`はtype qualifierとの重複なしでTCS1002を1件だけ返す
+- 変更ファイル: TinyCsComplianceFacts.cs, TinyCsComplianceAnalyzerTests.cs, DiagnosticTests.cs, CliRuntimeTests.cs, support-matrix/current/tasks/done
+- よかったこと: syntax文字列ではなくRoslynの`INamedTypeSymbol`と親子関係でqualifierを識別したため、namespace名や表記揺れに依存せずAnalyzerのoperation単位診断と揃えられた
+- 判断: publicなsymbol overloadの契約は変えず、誤検出が起きるsyntax member-access経路だけでtype qualifierを除外した。unsupported側もouter method/property/field/constructor symbolは従来どおり判定する
+- 追加発見: `nameof(...)`の警告なし不正Lua出力をT162、`global::`のTCS1001誤警告・重複をT163として起票した
+- 残課題: T137 → T162 → T138 → T163 (診断契約)
+
+### T137: partial / lock の Analyzer / check / emitter 診断を統一 ✓ (2026-07-12)
+- class/record/interfaceのpartial modifierとLockStatementを共有TCS1001へ追加し、Analyzer、`TranspileWithDiagnostics`、`tcs check`、通常CLI transpileで同じsyntax名・1 node 1診断に統一した。partial struct/record structは既存診断1件のまま重複させない
+- emitterはpartial宣言をVisitClass/VisitRecord前に止めてpartial subtreeのunsupported markerを残し、同名Lua tableのlast-write-winsを防止した。lockはunsupported markerの後に`do ... end`でbodyとlocal scopeを保持する（同期は実装しない）
+- 複数partial class、partial record/interface、通常型、partial struct系、lock body実行をAnalyzer 2件・transpiler/check/通常CLI 3件の計5テストで固定した。全380 tcs / 13 analyzerテストがgreen
+- 変更ファイル: TinyCsComplianceFacts.cs, TinyCsComplianceAnalyzerTests.cs, LuaEmitter.cs, LuaEmitter.Statements.cs, DiagnosticTests.cs, ComplianceParityTests.cs, README.md, support-matrix/current/tasks/done
+- よかったこと: shared factsをemitter入口でも使い、診断の正本とwrong-code防止gateを同じ判定にできた。通常CLI出力も実Luaで実行し、lock bodyが消えないことを確認した
+- 判断: partialは安全にmergeできる基盤がないため全宣言をemitしない。lockはシングルスレッドbackendに合わせて同期を省略するが、TCS1001で明示し、bodyの副作用とscopeは保持するfallbackにした。analyzer-demo fixtureの期待件数は変えず、専用parity testを恒常dotnet/run-tests gateへ載せた
+- 残課題: T162 → T138 → T163 (診断契約)
+
+### T164: browser-wasm compiler bundle (WasmCompiler) ✓ (2026-07-12)
+- spike (doc/wasm-playground-spike.md) の変更を本実装として再適用: Transpiler.References 注入口 (byte image 参照) と concurrentBuild:false。ReferenceInjectionTests で契約を固定
+- WasmCompiler/ プロジェクト新設 (Microsoft.NET.Sdk.WebAssembly)。Transpiler core ソース直取り込み + TinySystem ProjectReference + ref pack 4 DLL / TinySystem.dll / runtime/tinysystem.lua を EmbeddedResource 化し、JSExport CompilerExports.Compile(requestJson) で公開。JSON は source-generated JsonSerializerContext (wasm は reflection serializer 無効)
+- WasmFingerprintAssets=false で安定 URL 配信、InvariantGlobalization + SatelliteResourceLanguages=en で _framework 13MB / gzip 約4.6MB
+- 検証: dotnet test 全緑 (381+13)、publish 出力を http 配信し headless chromium で Compile → `return Hello` を確認 (smoke PASS)
+- 変更ファイル: Transpiler/Transpiler.cs, Transpiler.Tests/ReferenceInjectionTests.cs, WasmCompiler/*
+- よかったこと: spike の再適用手順が書いてあったため本実装が一直線だった
+- 判断: WasmCompiler は tcs.slnx に入れない (CI に wasm-tools workload を要求しないため)。ビルドは `dotnet publish WasmCompiler -c Release` を消費側 (lub) が明示的に叩く。TinySystem は DLL 埋め込み (ProjectReference が先にビルドする順序保証を利用)
+- 残課題: なし (lub playground 側の worker 統合は lub リポジトリの作業)
+
+### T162: nameof を無警告で不正Luaへ出さない ✓ (2026-07-13)
+- Roslynの`INameOfOperation`を共有factsでsemantic判定し、Analyzer、`TranspileWithDiagnostics`、`tcs check`、通常CLI transpileの全経路で`NameOfExpression`のTCS1001へ統一した。同じsyntax形状でも`IInvocationOperation`になる同名ユーザーmethodは通常callのまま扱う
+- `nameof` operand内のmember/typeを通常API使用と誤認しないよう、operation/syntax双方のAPI診断を抑制した。`nameof(System.Math.E)`と`nameof(System.DateTime)`でも余分なTCS1002は出ない
+- emitterはoperandを評価せず、Roslynのcompile-time定数文字列とunsupported markerを持つvalid Lua式へ置換する。警告なしの生成Luaに未定義`nameof(...)`が残るsilent wrong-codeを解消した
+- simple/member/type operandと同名ユーザーmethodをAnalyzer 2件・transpiler/check/通常CLI 5件で固定し、全386 tcs / 15 analyzerテストがgreen
+- 変更ファイル: TinyCsComplianceFacts.cs, TinyCsComplianceAnalyzer.cs, TinyCsComplianceAnalyzerTests.cs, Transpiler.cs, LuaEmitter.Expressions.cs, DiagnosticTests.cs, ComplianceParityTests.cs, README.md, support-matrix/current/tasks/done
+- よかったこと: token文字列やsymbol lookupではなくRoslyn operationで識別したため、contextual keywordである`nameof`と通常method callを同じ共有契約で安全に分離できた
+- 判断: unsupported診断は維持しつつ、通常transpileはRoslynが確定した定数値を安全なfallbackとして出す。API診断抑制はbuilt-in `nameof`の祖先内だけに限定し、同名ユーザーmethodの引数には適用しない
+- 残課題: T138 → T163 (診断契約)
+### T165: ユーザー定義演算子オーバーロード ✓ (2026-07-13)
+- 二項 `+ - * / %` と単項 `-` の operator 宣言を Lua metamethod (`__add`/`__sub`/`__mul`/`__div`/`__mod`/`__unm`) として class table (= instance metatable) へ emit するようにした (LuaEmitter.Operators.cs 新設、class / record class 両対応)
+- 同一演算子の複数 overload (Vec2*Vec2 / Vec2*double / double*Vec2 等) は overload ごとの関数 + 単一 metamethod dispatcher に分け、実行時 operand 型 (class は `getmetatable == Class`、数値/文字列/bool は `type()`) で分岐する。どれにも一致しない場合は明示 error
+- 未対応の operator 宣言 (`==` `!=` 比較系、checked、変換演算子) は共有 facts の TCS1001 (`OperatorDeclaration(token)` / `ConversionOperatorDeclaration`) にし、Analyzer / `tcs check` / transpiler の三面一致にした
+- セマンティックテスト14件 (OperatorOverloadTests: 単一/複数 overload dispatch、単項 -、%、複合代入、record class、statement body、診断3件) + analyzer 2件
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, Transpiler/LuaEmitter.Operators.cs, Transpiler/LuaEmitter.cs, OperatorOverloadTests.cs, TinyCsComplianceAnalyzerTests.cs, objective.md, support-matrix/current/done
+- よかったこと: metamethod 対応表を共有 facts (`TryGetOperatorMetamethod`) に置いたことで、emitter の supported 判定と診断の supported 判定が同一ソースになった
+- 判断: オーナー決定により従来 Out だった演算子オーバーロードを Core へ方針変更 (lub の Vec2/Vec3/Vec4/Quat/Mat4 移植に必要な算術セットのみ)。`==`/`!=` は record `__eq` と意味論が競合するためスコープ外を維持。dispatch 条件を作れない引数型 (interface / object 等) は `true` 扱いで宣言順 fallback (C# コンパイル時に overload 解決済みのため実行時の誤 dispatch は型エラー相当のみ)
+- 残課題: operator `==`/`!=` の class 対応は必要になったら別タスク。metamethod は継承されない (metatable 直付け) 点は現行の浅い継承方針では未対応のまま
+
+### T166: 整数ビット演算子 ✓ (2026-07-13)
+- 二項 `& | ^ << >>` と単項 `~` を Lua 5.5 native 演算子 (`& | ~ << >>` / 単項 `~`) へ写像した。C# の `^` は Lua の二項 `~` になる (Lua の `^` は冪乗)
+- 複合代入 `&= |= ^= <<= >>=` を既存の展開形 (`x = x op y`) に追加した
+- 対象は整数と enum。bool operand の `& | ^` / `&= |= ^=` は TCS1001 未対応警告に留めた (Lua native は boolean を拒否し、and/or 写像は非短絡の C# 意味論を黙って変えるため)
+- C# int 32bit と Lua 整数 64bit の幅意味論差 (`~` の上位 bit、負数 `>>` の算術/論理シフト差、シフト量マスク) は support-matrix に明記し、移植側の明示マスク運用とした
+- セマンティックテスト12件 (BitwiseOperatorTests: 各演算子、C# 一致の優先順位2件、複合代入、flags enum、mask 条件、bool 診断)
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs, BitwiseOperatorTests.cs, support-matrix/current/done
+- よかったこと: C# と Lua 5.5 でビット演算子の相対優先順位 (shift > & > ^ > |、加算 > shift) が一致しているため、構文木からの素直な再出力で括弧補正が不要だった
+- 判断: `>>>` (C# 11 unsigned shift) は 64bit 幅では意味がさらにずれるため未対応のまま。負数 `>>` の意味論補正 (floor div 展開) は行わず、幅差と同じく明示マスク運用に含めた
+- 残課題: 32bit wrap 演算が lub 移植で頻出するようであれば、`Bit32` 系 runtime helper の追加を別タスクで検討
+
+### T167: BCL allowlist 追加 (Math.Round/Sign/Tan/Log/Exp, String.IsNullOrEmpty) ✓ (2026-07-13)
+- `Math.Round` (引数なし/digits、C# と同じ偶数丸め)、`Math.Sign`、`Math.Tan`、`Math.Log` (自然対数 + base 指定)、`Math.Exp`、`String.IsNullOrEmpty` を runtime/tinysystem.lua + TinySystem C# facade + Shared allowlist の3点セットで追加した
+- emitter は `string.IsNullOrEmpty` を `String.IsNullOrEmpty(s)` runtime call へ写像 (既存 `string.Join` 分岐を拡張)。`Math.*` は既存の汎用写像で通る
+- セマンティックテスト10件 (BclAllowlistExtensionTests: 偶数丸め5値、digits、Sign 3値、Tan/Log/Exp、IsNullOrEmpty null/空/非空、TCS1002 が消えること、Log10 が引き続き TCS1002 であること、TinySystem facade 同期)
+- 既存 negative fixture が unsupported 例に使っていた `Math.Log` は `Math.Cbrt` へ差し替えた (`Math.Truncate` は int 引数で double/decimal overload が曖昧になるため不採用)
+- 変更ファイル: runtime/tinysystem.lua, TinySystem/RuntimeFacades.cs, Shared/TinyCsComplianceFacts.cs, Transpiler/LuaEmitter.Expressions.cs, BclAllowlistExtensionTests.cs, DiagnosticTests.cs, TinyCsComplianceAnalyzerTests.cs, CLAUDE.md, support-matrix/current/done
+- よかったこと: allowlist / runtime / facade の3点を同一コミットで揃え、facade 経由と System.Math 経由の両方をテストで固定できた
+- 判断: Round は C# 既定の MidpointRounding.ToEven を Lua で実装した (Haxe Math.round の half-up とは異なるが、C# 意味論が正)。Log10/Log2 は `Log(x, base)` で代替できるため追加しない。Math.E は今回のスコープ外 (必要になったら定数1行)
+- 残課題: allowlist は member 名単位のため、未実装 overload の検出は T138 (完全シグネチャ単位) に委ねる
+
+### T168: Dictionary<string, object> の wire format 保証 ✓ (2026-07-13)
+- 現状確認: tinysystem の Dictionary 表現は最初から素の Lua hash table (`{[k]=v}`) で、metatable も bookkeeping フィールドも持たない。`Count`/`Keys`/`Values` は pairs 走査の都度計算 (`Dict.Count` 等)。表現の変更は不要で、契約をセマンティックテストで固定した
+- 契約: (1) `Dictionary<string, object>` のヘテロ値 (double / string / bool / `--ref` ハンドル / ネスト Dictionary / List 混在) が保持される、(2) `--ref` 関数へ渡すと host は文字列キー→値のみの素の table を受け取る (`getmetatable == nil`、非文字列キーなし、エントリ数一致、ハンドルは `rawequal` で同一)
+- テスト4件 (DictionaryWireFormatTests): --ref inspect によるヘテロ初期化子 / Add+indexer 構築の素 table 検証、Count の都度計算 (Add/Remove 混在)、foreach がユーザーエントリのみ見えること
+- 変更ファイル: DictionaryWireFormatTests.cs, support-matrix (§18 wire format 契約), current/done
+- よかったこと: 既存表現が既に契約を満たしていたため、実装変更ゼロでテストと文書の固定だけで済んだ。既存 Dictionary テストへの影響なし
+- 判断: lub の `--ref` 関数 (C runtime が table を読む) との契約を tcs 側のテストで保証する形にした。Count を table 内に持つ最適化は今後も不採用 (wire format が壊れるため、この契約テストが番人になる)
+- 残課題: duplicate key の Add 意味論は T153、Clear の allowlist 追加は需要駆動
+
+### T169: `(` 開始文の Lua 結合パースを `;` 前置で分離 ✓ (2026-07-13)
+- IIFE 文 (`List.Clear`、conditional access 文など) の直前の文が callable 終端 (`local b = t[k]` / `f(x)`) の場合、Lua が `t[k](function()...)()` と一続きにパースして実行時エラーになる問題を修正した (lub 側 SpriteBatch.begin() で必発)
+- Lua の定石どおり、`(` で始まる行の emit に `;` を前置する。全 statement は `AppendLine` を通るため、そこで一元的に付与し、lambda block 内の文も同じ経路でカバーされる
+- セマンティックテスト4件 (StatementSeparatorTests: indexer local 直後の List.Clear、conditional access 文、call 文直後の Clear、lambda block 内の conditional access 文)
+- 変更ファイル: Transpiler/LuaEmitter.cs, StatementSeparatorTests.cs, doc (current/done)
+- よかったこと: 出力経路が AppendLine に集約されていたため、1箇所の前置で全 statement emit 経路 (member/statement/lambda block) を一貫して直せた
+- 判断: 「前の文が callable 終端かどうか」の文脈判定はせず、無条件に `;` を前置した (Lua 5.5 は空文 `;` を許すため常に安全で、判定漏れが起きない)
+- 残課題: なし
+
+### T170: ユーザー定義メソッドの out/ref パラメータを診断化 ✓ (2026-07-13)
+- out 多値戻りは --ref 型メソッド専用だが、ユーザー定義メソッドに out/ref を書いても check が素通りし、値渡しのままの silent wrong-code な Lua になっていた (out 代入が呼び出し元へ返らない)
+- Shared/TinyCsComplianceFacts.cs の `TryGetUnsupportedSyntax` に `ParameterSyntax` の out/ref modifier 判定を追加し、TCS1001 (`OutParameter` / `RefParameter`) として analyzer / `tcs check` / transpiler warning の三面一致で診断するようにした (`UnsupportedSyntaxKinds` に `SyntaxKind.Parameter` を追加)
+- `--ref` source の宣言は check/transpiler では解析対象外 (refTrees を Analyze しない) ため、host stub の out multi-return は従来どおり無警告で使える。Rider (analyzer) では stub ファイル自体に警告が出るため、stub 側は `.editorconfig` の per-file severity 抑制か auto-generated マーカーで抑止する運用
+- テスト4件 (MultiReturnTests: out 宣言 TCS1001 / ref 宣言 TCS1001 / --ref stub 宣言は無警告、analyzer: out+ref で2件)
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, MultiReturnTests.cs, TinyCsComplianceAnalyzerTests.cs, doc (support-matrix/current/done)
+- よかったこと: 宣言サイト (ParameterSyntax) だけで判定できたため、--ref 判定を持たない analyzer 面と意味がずれない
+- 判断: 呼び出しサイトでなく宣言サイトで診断した (--ref 概念のない analyzer と三面一致にでき、check 面は refTrees 非解析で stub を自然に除外できる)。`in` / `ref readonly` は値意味論の差が小さくスコープ外 (`ref readonly` は ref token を含むため RefParameter に含まれる)
+- 残課題: emitter は警告付きで従来の値渡し Lua を出す (check exit 1 が契約)。完全シグネチャ単位の API 診断は T138
+
+### T171: 不正 Lua を生む識別子の診断化 (Lua 予約語 + verbatim @) ✓ (2026-07-13)
+- Lua 5.5 予約語 (`end` `repeat` `until` `global` 等 23語、deps/lua llex.c luaX_tokens 準拠) と同名の宣言識別子を TCS1001 (`LuaKeywordIdentifier(name)`) で診断するようにした。従来は check 素通りで `function C:end()` / `local repeat` のような syntax error Lua を silent に生成していた
+- 対象宣言: 型 (class/record/enum/interface)、メソッド、プロパティ、enum メンバー、field/local (VariableDeclarator)、パラメータ、foreach 変数、pattern/out var designation。Shared facts 起点で analyzer / `tcs check` / transpiler warning の三面一致 (`UnsupportedSyntaxKinds` に対応 SyntaxKind を追加)
+- verbatim 識別子 (`@float` `@out` 等) は emitter 全体を `Identifier.Text` → `Identifier.ValueText` に統一して `@` なしで emit するようにした (従来は `self.@float` 等の不正 Lua)。`@end` は ValueText 化で Lua 予約語診断に自然に合流する
+- テスト: transpiler 12件 (LuaIdentifierTests: 各宣言種の予約語診断、verbatim 予約語、negative、verbatim の @ なし emit + C# 意味論のセマンティック実行) + analyzer 2件
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, Transpiler/LuaEmitter{,.Expressions,.Statements,.Operators}.cs, LuaIdentifierTests.cs, TinyCsComplianceAnalyzerTests.cs, doc (support-matrix §11/tasks T151/current/done)
+- よかったこと: ValueText 統一により verbatim 対応と予約語判定 (ValueText 比較) が同じ土台になり、`@end` のような合成ケースが追加コードなしで正しく診断された
+- 判断: 自動リネームはせず「診断して拒否」(T151 の中央マングリング導入時にリネームへ昇格可能な形)。予約語セットに Lua 5.5 新予約語 `global` を含めた。usage サイト (--ref stub の予約語メンバー等) は宣言サイト診断の対象外で、実需要が出たら T151 のスコープ
+- 残課題: emitter は警告付きで不正 Lua を出しうる (check exit 1 が契約)。型syntax の raw 出力箇所 (`getmetatable(x) == {dp.Type}` の `@Type`) は T151 で symbol 名へ統一する
+
+### T172: [M0] player 側 apply baseline bench ✓ (2026-07-14)
+- `bench/player-apply.lua` を追加 (deps/lua/lua 5.5 単体で再現実行可)。系列: 合成 bundle の load (12/156/471KB)、lume.hotswap update 走査 (type table 直 return / old==new fast-path / thin wrapper、live static list 1e4/1e5/2e5 entry)
+- 実測 (native Lua 5.5.1, p50): load 156KB=5.0ms / 471KB=16.7ms。walk-type-table 1e5=106ms / 2e5=224ms。walk-fastpath / walk-wrapper は 1〜4µs
+- design doc §15 の参考実測を bench 由来の数値で更新
+- 変更ファイル: bench/player-apply.lua (新規), doc/incremental-module-compilation-design.md
+- よかったこと: 設計レビューで定性的だった blocker (lume の live graph 全走査) を、budget 比 3 倍超という数字で確定できた。wrapper/fast-path の効果も同一 harness で対比でき、§14.2 の対策が必須である根拠が再現可能になった
+- 判断: lume 実装は計測用に bench 内へ忠実複製 (MIT, rxi/lume)。lub の vendored lume に依存すると readonly 制約と壊れやすい相対 path を持ち込むため。合成 bundle は emitter 出力風 (class table = instance metatable) に揃え、実生成物への依存を切った
+- 残課題: browser (WASM) での同系列実測は T173 の Chrome harness に載せて係数を確定する
+
+### T173: [M0] Chrome benchmark harness ✓ (2026-07-14)
+- `bench/chrome-compile.mjs` を追加。lub playground (readonly) を headless Chromium で駆動し、C# 経路の cold (page load → running) と warm edit→compiled (warm-up 5 + n=30、p50/p95/max) を計測する。playwright は ../lub/web/node_modules から解決し追加 install 不要
+- 実測 (dev server + Release publish bundle、01_triangle): cold 11.3s、warm p50 5.58s / p95 6.23s — design doc §2 の少数回観測 (11.38s / 5.6-7.0s) と整合。§2 に再現 baseline として記録
+- 変更ファイル: bench/chrome-compile.mjs (新規), doc/incremental-module-compilation-design.md
+- よかったこと: status 遷移の観測に MutationObserver 履歴を使うことで、同期 compile 中に rAF が止まり waitForFunction が "compiling…" を取りこぼす問題 (main-thread jank が計測系にも効く実例) を回避できた。初版の「前 run の synced が残って即時成立する」誤計測 (p50 31ms) を、doc 記載値との突き合わせで検出できた — baseline に外部照合値があることの価値
+- 判断: 終点は compile 完了 (現行 protocol に commit ACK がないため Lua commit は測れない。§13.1 導入後に切り替え)。dev server 経由だが WasmCompiler bundle は Release publish 物で、観測値も既存 Release 計測と一致するため baseline として採用。usedJSHeapSize は page 側 heap のみで .NET wasm heap を含まない
+- 残課題: managed heap 計測は T175 の phase timing (managedHeapBytes) で拾う。memory soak (1,000 edit) は同 harness の --runs 拡大で実行可能だが、正式には T175 gate 計測と同時に採る
+
+### T174: [M0] incremental/full diagnostics differential test 雛形 ✓ (2026-07-14)
+- `Transpiler.Tests/IncrementalDifferentialTests.cs` を追加。canonical key (id, severity, path, span, message) への正規化 (Roslyn 標準形式パース + パース不能行の raw fallback)、順序非依存比較、missing/extra を出す readable diff を実装
+- 現段階は full vs full の恒等比較 (clean / warning / error+TCS1001 混在) で契約を固定。T175 で Left 側を IncrementalCompilationSession の増分結果へ差し替える
+- 変更ファイル: Transpiler.Tests/IncrementalDifferentialTests.cs (新規)
+- よかったこと: 診断が整形済み文字列で返る現行 API のまま canonical 化を先に固めたので、session 実装時に wire format を変えずに parity gate を挿せる
+- 判断: harness は test project 内に置いた (production 側に consumer がまだ無く、dead code を作らないため。T175 で必要になれば昇格)
+- 残課題: T175 で Left=session 差し替え + body-edit/surface-change の実 differential 系列を追加
+
+### T175: [M1] IncrementalCompilationSession ✓ (2026-07-14)
+- `Transpiler/IncrementalCompilationSession.cs` を追加。常駐 Roslyn session (fixed/ref tree cache、`WithChangedText`/`ReplaceSyntaxTree`)、body-only fast path (変更 span の body 内包含 + body 除去 surface hash の二重判定、error 状態からの復帰と非 body 編集は無条件 slow path)、error head / last-good artifact の分離と dirty closure、per-module emit
+- fast path の semantic 診断を変更 body span 限定の `GetDiagnostics(span)` に (161→21ms)。emit は変更 method のみ emit して cache へ splice (`LuaEmitter.MethodRanges`/`EmitSingleMethod`、231→1ms)。constructor/accessor/record/警告持ちは file 全体 emit へ fallback
+- `WasmCompiler` に M1 gate 計測用の最小 `SessionExports.Open/Update` JSExport を追加 (production wire は M4)
+- `bench/chrome-session.mjs` で M1 gate PASS: 実サンプル級 file (11.5KB/61 methods) warm body-edit p50 105.8ms / p95 124.2ms (gate 275ms)、tree count assertion 全 run 通過。現行 full path warm 5.58s 比 53 倍
+- 変更ファイル: Transpiler/IncrementalCompilationSession.cs (新規), Transpiler/LuaEmitter.cs, WasmCompiler/Program.cs, Transpiler.Tests/IncrementalSessionTests.cs (新規), Transpiler.Tests/IncrementalDifferentialTests.cs 連携, bench/chrome-session.mjs (新規), doc 更新
+- よかったこと: gate を probe 極小 file だけで測らず実サンプル級 file を足したことで、「file 全体 emit が budget を壊す」を実装前でなく計測で発見し、method splice まで M1 内で消化できた。splice は full emit との byte 一致をテストで固定した
+- 判断: 診断 parity のため compliance/naming は tree 全体 walk を維持 (23ms、他 member の警告行番号がずれるため span 限定にしない)。splice の continue ラベル採番は file 内通番と不一致だが Lua のラベルは関数スコープで実行意味同一と判断し、byte 決定性は「同一 session 経路内」で保証
+- 残課題: SourceMap は増分 artifact に未対応 (M3 §12)。SurfaceHash/JSON 往復の ~60ms は M4 の wire 設計で削る。sample/言語切替 soak と 1000 edit soak は M4 の E2E gate と同時に採る
+
+### T176: [M2] descriptor artifact / registry vertical slice ✓ (2026-07-14)
+- `Transpiler/ModuleArtifacts.cs` を追加: type 単位 metadata (`EmittedTypeInfo`: 宣言行/static 初期化行の範囲、owned definition keys、instance shape、static field の pure 判定 + initializer hash)、define/initializer chunk の切り出し (`ModuleArtifactText`)、bridge snapshot linker (`ModuleLinker.LinkSnapshot`)
+- `LuaEmitter` が emit しながら type section を記録 (class/record/enum/operator/accessor)。fast path の method splice は記録範囲も同 delta でシフト
+- `runtime/module_registry.lua` を追加: stable type table の declare (pre-zero 込み) → define → initialize 三段階 apply、read-only module `_ENV` (alias → host 順、未宣言 write は error)、hash unchanged module の skip、owned key 削除、thin entry wrapper (identity 維持)、stale revision skip
+- snapshot は idempotent bootstrap (`_G.__tcs_module_runtime` ABI guard) + `applyBatch` + `return wrapper`。fresh VM でも hot reload でも同一ファイルで成立する full active snapshot (§14.2 bridge)
+- 検証: `dotnet test` 467/467 (新規 ModuleDescriptorTests 7: define/initializer 分割、逆順継承の fresh 実行、hot apply の identity 維持 + method swap + static 保持、unchanged skip + 削除 key + 新規 pure static、pre-zero の cross-type 先読み、read-only env、stale skip)
+- 判断: descriptor は文字列 chunk でなく `function(_ENV)` literal で埋め込み (snapshot 全体を 1 parse、load() 不要)。declare は関数でなく metadata 駆動 (pre-zero policy を registry 側に集約)。owned key は shadow-table 検出でなく emitter 記録 (spike で実証済みの直接 apply を維持)
+- 残課題: fresh initialize は per-type topo order でなく module/emit 順 (現 workload と同等。topo は namespaced 入力対応時)。transaction/rollback/ACK/restart 分類は T177。compilerAbi/referenceAbiHash の wire 化は T178
+
+### T177: [M3] transaction / full snapshot compatibility ✓ (2026-07-14)
+- `runtime/module_registry.lua` に atomic transaction を実装: mutation 前検証 (module 削除/alias collision) → 影響 key (新旧 definition/static key の和集合) + metatable + alias を rawget/rawset + presence sentinel で transaction log へ保存 → declare/define/initialize を pcall → 失敗時は完全 rollback して error 再送出 (lume.hotswap が old module を維持)。inherited key を own key として復元しない (§18.2 failed override-add 検証済み)
+- commit ACK (§13.1): `@@tcs_commit {"revision":N,"ok":bool,"commitTimeMs":ms,"error"?}` を host print relay へ出す (batch.ack 時のみ、成功/失敗の両方。commit 後に失敗し得る処理なし)。`ModuleLinker.LinkSnapshot(emitAck)` で bridge snapshot に組み込む
+- restart classification (§11.3): `SessionUpdateResult.RequiresRestart/RestartReasons`。slow path で新旧 artifact metadata を diff — type 削除 / kind / base / instance shape / 既存 static initializer 変更 / 副作用ありの新規 static → restart。body edit / member 追加削除 / 純粋な新規 static / enum member 変更は live-safe
+- lume.hotswap E2E (lume 2.3.0 hotswap を忠実再現した harness): wrapper/type table identity 維持、body edit 反映、200k entry の runtime live state が走査されず保持、失敗 reload で last-good 維持 (nil+err、revision 不変)
+- 検証: `dotnet test` 476/476 (新規 ModuleTransactionTests 9)
+- 判断: per-module source map / revisioned chunk name は見送り (lub に consumer が無い §12。bridge は単一 file で従来と同粒度)。lume E2E は lub の実 lume を直接参照せず verbatim 再現 harness で固定 (repo 境界を越える依存を作らない。実 lume は lub 側 verify で通す)
+- 残課題: fixed implementation の build-time pre-emit と prebuilt assets は T178。T154 の任意 global graph rollback は別 gate (design doc §11.4 注記どおり)
+
+### T178: [M4] Wasm delta API と playground bridge ✓ warm gate (2026-07-14)
+- `WasmCompiler` SessionExports を production wire 化: `Open`(projectEpoch 発行、entryClass 保持)/`Update(epoch, path, content)`(requiresRestart + restartReasons + revision + phase timing)/`LinkSnapshot(epoch)`(bridge snapshot を raw Lua で返す。JSON escape 回避)。module_registry.lua を埋め込み resource 化。registry は同一 revision 再適用に ACK を返し直す (host の再送 retry が完結する)
+- lub 側 (直接実装。分担廃止に伴い feature request は出さない): `tcs-compiler.ts` に `openTcsSession`(Open/Update/LinkSnapshot client)、`main.ts` を ACK 駆動へ (C# は 75ms debounce → 変更 .cs だけ Update → LinkSnapshot → entry 書き込み → `@@tcs_commit` ACK で synced 表示、1.5s×3 の ACK timeout 再送、requiresRestart は fresh player 起動)、`third_party/lume` hotswap に `old == new` fast-path、`verify-headless.mjs` に A6 (実 C# edit → commit ACK 貫通判定)、submodule tcs 更新 + wasm assets 再生成
+- **E2E gate PASS**: `bench/chrome-e2e-ack.mjs`(playground 実機 17_flappy C# body edit、headless chromium + swiftshader)で edit-stop → commit ACK p50 422 ms / p95 442 ms / max 442 ms (12 runs、gate 500 ms)。従来の同経路 (T173 baseline) は compile だけで warm 5.58 s
+- 検証: dotnet test 476/476、lub 側 tsc/prettier、E2E bench 上記、headless verify (A1-A6) は lub 側で実行
+- 判断: bridge snapshot は毎 edit 全文再送 (§14.2 bridge のまま)。mtime 取りこぼしは ACK timeout 再送 + 同 revision 再 ACK で回収。二相 handoff は未実装のため restart 分類の編集は既存 restart() (compile 成功後の runtime error で旧 player を失い得るが、snapshot は last-good compile なので次 edit で復旧可能)
+- 残課題: prebuilt assets + background prewarm (cold start 11.7s > 従来 5.6s の解消)、ABI-mismatch fallback、二相 handoff + runtimeReady、TextChange span、compiler ready 前 edit queue、soak (1000 edit / sample 切替 heap)。§17 M4 残項目として記載
+
+### T178 追補: cold path 完遂 (prebuilt / runtimeReady / 二相 handoff) ✓ (2026-07-14)
+- CLI `--snapshot` を追加 (`--entry` 必須、bridge snapshot を出力。module ID = 入力 path。playground の in-browser session と ID を一致させる相対 path 契約は lub 側 gen-tcs-prebuilt が担う)
+- lub 側: `gen-tcs-prebuilt.mjs`(cs-lib + 各 C# サンプルを staging して CLI で snapshot 化、web/tcs-prebuilt/ へ)、prebuilt boot(cold start 11.7s → **0.5s**、status running まで)、background session warm + warming 中 edit の queue/flush、player の runtimeReady 分離(FS ready まで syncFiles を queue)、requiresRestart 編集の二相 handoff(hidden player boot → 初回 commit ACK → swap、失敗時旧 player 維持。実測 7.4s)、deploy workflow に prebuilt 生成を追加
+- 設計簡略化: prebuilt は boot 加速専用(session への artifact 再利用なし)。ABI-mismatch fallback は不要化、TextChange span も見送り(design doc §17 M4 に記録)
+- 検証: cold E2E(prebuilt boot 0.5s → warming 中 edit queue → ready 後 flush synced 416ms → static initializer 編集の二相 handoff 7.4s → handoff 後 warm edit 332ms)、soak PASS(chrome-soak.mjs: 1000 edit で JS heap 16→13.4MB と増加なし、20 reopen で 15.4MB plateau。§18.3)
+
+### T179: [M5] optional optimization ✓ 全項目見送り (2026-07-14)
+- profile 判断で全項目不着手 (design doc §17 M5 に内訳)。warm E2E p95 442ms < gate 500ms、managed compile p50 45ms < 予算 275ms。direct apply / candidate-aware invalidation / Worker / AOT A/B のいずれも gate 充足に不要
+
+### HotReload runtime の粉砕 (T154 クローズ) ✓ (2026-07-17)
+- 残タスク棚卸しで consumer 不在を確認し、runtime の legacy HotReload module (`swap`/`watch`/`update`/`mtime`) を削除。prelude / bridge snapshot の `_G.HotReload` alias、HotReloadTests (9件) も削除
+- 変更ファイル: runtime/tinysystem.lua, Transpiler/LuaRuntime.cs, Transpiler/ModuleArtifacts.cs, Transpiler.Tests/HotReloadTests.cs (削除), README.md, q.md, doc/support-matrix.md, doc/current.md, doc/tasks.md (T154 削除), doc/incremental-module-compilation-design.md
+- 検証: 削除前に全 grep で利用箇所を棚卸し (samples 参照ゼロ / lub は lume.hotswap / browser playground は module_registry)。`dotnet test` 470/470 + analyzer 20/20 PASS
+- よかったこと: 「rollback を作り込む (T154)」ではなく「使われていない機構ごと消す」で backlog を1件無効化できた
+- 判断: swap 単体でなく module 全体を削除 (watch/update/mtime は swap 専用の付属機構)。hot reload の正本は module_registry transaction (T177) と host 側 lume.hotswap に一本化
+- 残課題: なし
+
+### 残タスク棚卸し (T163 削除 / T151・T153 スコープ縮小) ✓ (2026-07-17)
+- 棚卸し基準は「check が通った C# は C# どおりに動く」への直結度と日常コードの遭遇頻度。T138-T153 の silent wrong-code 系は全て維持
+- 変更ファイル: doc/tasks.md, doc/current.md
+- 判断:
+  - T163 削除 — `global::` の生成 Lua は正しく警告が不正確なだけ (wrong-code ではない)。ゲームスクリプトで `global::` を書く実需要なし
+  - T151 縮小 — 「予約語をリネームで通す」中央マングリングは見送り (T171 の診断拒否が DSL 契約として明瞭)。残スコープは generated temp/label の衝突安全 (T139 の前提) と `@Type` raw 出力の symbol 名統一
+  - T153 縮小 — duplicate key throw 契約は見送り (不正なプログラムの挙動差で、正しいプログラムを壊さない)。ToDictionary selector の一回評価だけ残し T139 依存へ
+  - 完了済み増分 module compilation track (T172-T179) のエントリを tasks.md から削除 (done.md が正本)
+- 残課題: なし。次の着手は T138 → T151 縮小版 → T139
+
+### T156: stdout sourcemap に runtime/prelude offset を反映 ✓ (2026-07-17)
+- `-o` なしの `--sourcemap` (stderr JSON) だけ `ToJson()` を offset なしで呼んでいた stdout 分岐を `ToJson(sourceMapLineOffset)` に修正
+- 変更ファイル: Transpiler/Program.cs, Transpiler.Tests/CliRuntimeTests.cs
+- 検証: runtime のみ / runtime+prelude / prelude のみ (--no-runtime) の3構成で、stdout Lua の実行文行と stderr JSON の mapping key が一致することを Red → Green で固定
+- 判断: なし (file 出力分岐と同じ offset を渡すだけの一行修正)
+- 残課題: なし
+
+### T138: supported API allowlist を完全シグネチャ単位へ変更 ✓ (2026-07-17)
+- method 名単位だった許可判定を `OriginalDefinition` の signature display string (custom SymbolDisplayFormat: 型完全修飾 + generic type parameter + ref/out/params) の HashSet 照合へ変更。ReducedFrom で拡張メソッドを unreduced 定義に正規化
+- optional / params 引数を runtime が実装しない overload (`Split(string, StringSplitOptions)` 等) は `MaxExplicitArguments` で明示引数数に上限を設け、`Split(",")` は許可・`Split(",", StringSplitOptions.None)` は TCS1002 に分離。明示引数数は operation ではなく呼び出し syntax から数え、Analyzer と transpiler/check の判定正本を一致させた
+- property/field は family 別の小さな name set (string.Length / List.Count / Dict.Count/Keys/Values / Math.PI) に分離し、List/Dict の indexer を明示許可
+- 検出できるようになった負例: indexed `Select((x,i)=>...)`、comparer 付き OrderBy/Sort/ToDictionary、`StringComparison` 付き Contains/StartsWith (従来は引数を黙って捨てていた)、`Contains(char)`、capacity constructor、`Dictionary.Remove(k, out v)`、`FirstOrDefault(defaultValue)`、`Round(x, MidpointRounding)`、char separator の Split/Join
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, TinyCs.Analyzers/TinyCsComplianceAnalyzer.cs, Transpiler.Tests/ApiSignatureComplianceTests.cs (新規16負例+11正例), TinyCs.Analyzers.Tests/TinyCsComplianceAnalyzerTests.cs (同一 matrix の parity), README/support-matrix/current/tasks/done
+- 検証: dotnet test 500/500 + analyzer 47/47、負例 probe の `tcs check` exit 1 を実機確認。allowlist の正解データは probe compilation から display string を機械採取 (.NET 10 で `Split()`/`Join(sep, params)` が `params ReadOnlySpan<T>` overload に解決される事実を発見、推測記述を排除)
+- よかったこと: 実装前に全テスト/サンプルの API 使用 overload を監査し「テスト証拠 + runtime 実装」の交差だけを allowlist 化した。signature 文字列は手書きせず採取したので typo リスクなし
+- 判断: char overload (`Contains('a')` 等) は emitter が char を Lua string 化するため動く可能性はあるが、テスト証拠がないため許可しない (需要が出たら test とセットで追加)。診断メッセージは従来の `{Type}.{Member}` 形式を維持 (overload 情報は含めない。既存 fixture/parity の期待を変えない)
+- 残課題: なし
+
+### T151: 予約識別子診断と generated temp の衝突安全 ✓ (2026-07-17)
+- `self` (Lua method receiver) と `__tcs_` prefix (generated temp) の宣言識別子を TCS1001 `ReservedIdentifier(name)` で拒否 (T171 の LuaKeywordIdentifier と同じ宣言サイト網羅・Analyzer/check/transpiler 共有)
+- generated temp を `__tcs_` prefix へ統一 (`__init`→`__tcs_init`, `__ret`→`__tcs_ret`)。prefix 予約により temp とユーザー symbol の衝突を構造的に排除 (`var __init = 5; new T { X = __init }` が正しく動くことをテストで固定)。`_continue_N` label は Lua の label 名前空間が変数と別で衝突しないことをテストで固定
+- pattern 経路の型参照 4 箇所 (`getmetatable(x) == {Type}` raw emit) を ValueText ベースの `FormatTypeReference` へ統一し、verbatim 型名 (`@float`) が pattern でも valid Lua になるよう修正
+- 追加発見: 型名だけの switch arm (`Circle => 1`) は syntax 上 ConstantPattern になり値比較 (`s == Circle`) を emit していた silent wrong-code を修正 — semantic model で型と判れば metatable 比較にする (verbatim 無関係の実バグ)
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, Transpiler/LuaEmitter.Expressions.cs, Transpiler.Tests/LuaIdentifierTests.cs, Transpiler.Tests/SwitchTests.cs, doc 同期
+- 検証: dotnet test 508/508 + analyzer 47/47
+- 判断: fresh name 生成器 (リネーム側) ではなく予約 prefix + 診断拒否を採用 — T171 と同じ「拒否で通す」契約で、emitter に scope 解決の複雑さを持ち込まない。`self`/`__tcs_*` の field/method 名は table key で安全だが、契約を一文に保つため宣言サイト一律拒否にした
+- 残課題: designation なしの binary `is Type` (BinaryExpressionSyntax IsExpression) は従来どおり TCS1001 警告の未対応 (silent ではないので需要が出たら対応)。`--entry` の emitted name API は T155 のスコープ
+
+### T139: `?.` receiver の一回評価 lowering ✓ (2026-07-17)
+- `VisitConditionalAccess` が receiver 式文字列を nil 判定と本体の両方へ複製していた多重評価を、IIFE local `__tcs_ca` への一回保存に変更。when-not-null 側の引数/index は if 分岐内でのみ評価される (null 時未評価)
+- 追加発見と修正: チェーン `a?.B?.C` は内側 `?.` が未宣言 global `__tcs_ca` を参照して実行時エラーだった (`attempt to index a nil value`)。ネスト用の `VisitNestedConditionalAccess` を追加し、内側 receiver を外側 temp 上で評価してから内側 IIFE local で shadow する構造にした (Lua の local RHS は宣言前に評価されるため shadow が正しく機能する)
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs, Transpiler.Tests/NullConditionalTests.cs (+5: receiver 一回 / null 時引数未評価 / element access の receiver 一回 + index 遅延 / チェーン / メソッドチェーン)
+- 検証: dotnet test 513/513
+- 判断: 汎用の setup-statements + fresh temp counter 基盤は導入しなかった — `?.` は固定名 `__tcs_ca` + IIFE shadow で正しさが完結し、T151 の `__tcs_` prefix 予約が衝突を構造的に排除する。counter が必要になるのは statement 文脈 (T140 switch 等) で、その時点で消費者と一緒に導入する
+- 副産物: T180 を起票 — `v is int inner` が `getmetatable(v) == int` (未定義 global) になり nil が値型パターンにマッチする silent wrong-code を発見 (テスト作成中に検出)
+- 残課題: T180 (値型/string 型パターン)。conditional TryGetValue の default 値差異は T152 スコープ
+
+### T140: switch 対象式の一回評価とパターンラベル対応 ✓ (2026-07-17)
+- switch expression / statement の対象式を local `__tcs_sw` へ一度だけ保存し、全 case/arm/when 条件で再利用 (従来は case ごとに式文字列を複製して再評価)
+- 追加発見と修正: switch statement のパターンラベルは `CaseSwitchLabelSyntax` の OfType filter で黙って落とされ、`case > 5:` / `case 1 or 2:` が空条件の `if then` (不正 Lua) を無診断で出力していた。`CasePatternSwitchLabelSyntax` を VisitPattern + when 条件で対応し、declaration pattern の designation は is-pattern と同じく chain 前に `local c = __tcs_sw` で束縛
+- `case Circle:` (bare 型) は旧構文の定数ラベルとして parse されるため、semantic 判定で metatable 比較へ (T151 の switch expression 側と同じ扱い)
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs, Transpiler/LuaEmitter.Statements.cs, Transpiler.Tests/SwitchTests.cs (+4)
+- 検証: dotnet test 517/517
+- 判断: temp は固定名 `__tcs_sw` (ネストは Lua の local shadow で正しく分離、`__tcs_` prefix は T151 で予約済み)。連続する switch statement の同名 local 再宣言は Lua で合法
+- 残課題: is-pattern (`if (Next() is Circle c)`) の receiver も binding と条件で二重評価している — T141 以降の一回評価ファミリーで扱う
+
+### T141: deconstruction RHS の一回評価 ✓ (2026-07-17)
+- `var (x, y) = Make()` が RHS を要素数分複製して多重評価していた問題を、`local __tcs_dec` への一回保存に変更 (宣言/代入/discard 共通の `EmitDeconstruction` 経路)
+- 既存変数への分解代入 `(a, b) = Make()` (TupleExpression 左辺) を新規対応 — 従来は TCS1001 warning で代入自体が消えていた。混在形 `(var a, b)` は明示 TCS1001 のまま
+- 変更ファイル: Transpiler/LuaEmitter.Statements.cs, Transpiler.Tests/Phase14to19Tests.cs (+3)
+- 検証: dotnet test 520/520
+- 判断: temp は固定名 `__tcs_dec` (T151 の prefix 予約 + ブロック内 local 再宣言は Lua 合法)。ValueTuple swap `(a,b)=(b,a)` は RHS の TupleExpression が従来どおり TCS1001 (tuple 型自体が未対応)
+- 残課題: なし
+
+### T142: with 式 receiver の一回評価 ✓ (2026-07-17)
+- with 式の copy 元式が shallow copy の table 走査と metatable 取得の2箇所に複製されていた多重評価を、IIFE local `__tcs_src` への一回保存に変更
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs, Transpiler.Tests/Phase14to19Tests.cs (+2: 副作用 receiver 一回 / copy の非破壊性と metatable 保持)
+- 検証: dotnet test 522/522
+- 判断: override の適用順は既存実装が構文順で C# と一致済み (テストで担保)
+- 残課題: なし
+
+### T143: 副作用付き lvalue の一回評価と compound semantics ✓ (2026-07-17)
+- compound assignment / `??=` / increment / `List.Clear` で receiver・index の式文字列を複製していた多重評価を修正。lvalue の receiver/index に副作用があり得るとき (syntax 判定: invocation / object creation / conditional access / assignment / with / increment を含む) だけ `__tcs_obj` / `__tcs_idx` temp へ下げ、pure な lvalue は従来の出力を維持 (既存テスト・生成 Lua 無変化)
+- string `+=` が Lua `+` を emit して実行時エラーになっていた問題を `..` へ修正 (`s += 1` も C# と同じ "s1" 連結になる)。評価順は C# の receiver → index → read → rhs → write に一致
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs (VisitAssignment 再構成 + CompoundOperator / TryLowerLvalue / HasSideEffectSyntax), Transpiler/LuaEmitter.Statements.cs (increment / `??=` statement 経路), Transpiler.Tests/LvalueEvaluationTests.cs (新規6)
+- 検証: dotnet test 528/528
+- 判断: 全 lvalue を一律 temp 化せず「副作用の可能性がある場合のみ」に限定 — pure 経路の生成 Lua を変えないことで可読性と既存挙動を守る。bool の &=/|=/^= は従来どおり TCS1001
+- 残課題: expression 文脈の compound assignment (`x = (y += 1)`) は IIFE 化済みだが C# の値返し意味論の網羅テストは未整備 (需要が出たら追加)
+
+### T144: simple for 最適化の動的条件セマンティクス修正 ✓ (2026-07-17)
+- Lua numeric for は limit を一度しか評価しないため、`i < list.Count` / `i < Limit()` / body で bound や loop 変数を書き換える for が C# (毎 iteration 再評価) とずれていた。numeric for への最適化を「bound がリテラル、または関数スコープ内で再代入されない local/param」かつ「loop 変数が body 内で未書き換え」に限定し、それ以外を既存の while lowering へ fallback
+- 変更ファイル: Transpiler/LuaEmitter.Statements.cs (IsLoopInvariantBound / IsAssignedWithin), Transpiler.Tests/ForLoopTests.cs (+5)
+- 検証: dotnet test 533/533
+- 判断: 不変判定は過剰側に倒した (loop 後の再代入でも fallback) — while fallback は常に意味論的に正しく、numeric for は最適化にすぎない。field/property bound は body 内呼び出し経由の変更を追えないため一律 fallback
+- 残課題: loop 前に定義した lambda 経由の local 変更は Roslyn dataflow を使えば precision を上げられるが、syntax 走査 (lambda 内の代入も DescendantNodes で検出) で実用上は足りる
+- 注: while fallback 時の continue → incrementor 順は既存実装が C# と一致 (ラベル後に incrementor)
+
+### T145: C# の除算・剰余セマンティクス ✓ (2026-07-17)
+- 整数 `/` が Lua 実数除算 (5/2=2.5)、`%` が floor 剰余 (-5%2=1) になっていた silent wrong-code を修正。結果型が整数のとき `__tcs_idiv` (0 方向 truncation) / `__tcs_irem` (被除数符号)、float の `%` は `math.fmod` (C# の truncated remainder と一致)。compound `/=` `%=` も同判定。nullable は lifted operator 用に unwrap して判定
+- helper は生成 Lua 冒頭に chunk-local で常時定義 (言語 lowering であり `--no-runtime` の bare 出力でも動く)。module mode の define chunk は同名 global (`_G.__tcs_idiv` — bootstrap が runtime の `TinySystem.idiv/irem` を alias) へ fallback
+- ユーザー定義 operator `%` は従来どおり Lua `%` (__mod metamethod)。整数 0 除算は Lua の `n // 0` エラーで明示 fail、float /0 は IEEE inf のまま
+- 変更ファイル: Transpiler/LuaEmitter.cs (header helper), Transpiler/LuaEmitter.Expressions.cs, runtime/tinysystem.lua (TinySystem.idiv/irem), Transpiler/ModuleArtifacts.cs (bootstrap alias), Transpiler.Tests/DivisionSemanticTests.cs (新規6)
+- 検証: dotnet test 539/539 (sourcemap / module descriptor / operator overload の回帰なし)
+- 判断: helper を usage 検出で条件 emit せず常時 emit — 出力 +8 行のコストで、emit 中に記録する type range / source map の後方 shift 問題を構造的に回避。int.MinValue / -1 の overflow 例外は再現しない (Lua は wrap) — 既知差異
+- 残課題: なし
+
+### T146: nullable bool と GetValueOrDefault の nil-safe lowering ✓ (2026-07-17)
+- `bool? false ?? true` が Lua `or` で true になる問題を、bool 型 (unwrap nullable) の `??` だけ明示 nil 判定 IIFE (`__tcs_lhs` 一回評価、右辺は nil 時のみ) へ変更。非 bool は false を取り得ないため `or` を維持 (軽く、右辺 lazy も既に正しい)
+- 追加発見と修正: `GetValueOrDefault(fallback)` は明示 fallback 引数を黙って無視して default(T) を返していた。receiver → fallback の順で常に各 1 回評価し、false 値も fallback しない nil 判定へ。引数なし版は default(T) が false/0/nil なので `(x or default)` のまま
+- `??=` は T143 の nil 判定 lowering 済みで bool? も正しい (既存挙動)
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs, Transpiler.Tests/NullableValueTypeTests.cs (+4)
+- 検証: dotnet test 543/543
+- 判断: 全 `??` を IIFE 化せず bool 限定 — 生成 Lua の可読性と実行コストを守りつつ、意味論が壊れる型だけ下げる (T143 の pure/complex 分岐と同じ思想)
+- 残課題: なし
+
+### T147: custom property accessor の read/write lowering ✓ (2026-07-17)
+- 定義側は get_/set_ を生成するのに全使用サイトが raw field を読み書きし、accessor が一度も呼ばれない silent wrong-code を修正。IsCustomProperty (accessor body / expression body の有無を宣言 syntax で判定、auto と BCL property は false) を導入し、member access / implicit this / simple・compound assignment / `??=` / increment / object initializer / conditional access / property pattern の8経路を get_/set_ 呼び出しへ
+- expression-bodied property (`int D => expr;`) を get-only custom property として定義側に新規対応 (従来は TCS1001 で member ごと消えていた)
+- compound は `set_X(get_X() op rhs)` で C# の read → rhs → write 順、副作用 receiver は `__tcs_obj` temp で一回評価 (T143 と同方針)。T145 の整数除算判定は ApplyCompound として共有化
+- 変更ファイル: Transpiler/LuaEmitter.cs, Transpiler/LuaEmitter.Expressions.cs, Transpiler/LuaEmitter.Statements.cs, Transpiler.Tests/PropertyAccessorTests.cs (新規9)
+- 検証: dotnet test 552/552
+- 判断: static custom property は T148 スコープとして触らず (定義側 emit 自体が instance 形式のため)。record 宣言内の custom property は既存 record 経路のまま (需要が出たら拡張)
+- 残課題: T148 (static property)
+
+### T148: static property の storage/accessor lowering ✓ (2026-07-17)
+- static auto property が instance ctor 内で `self` に初期化され、`Class.Prop` の static access が常に nil になる silent wrong-code を修正 — static field と同じ class table 初期化 (initializer / 型別 default、StaticFieldMeta による hot-apply pure 判定も共通) へ
+- static custom property の accessor を `function Class:get_X()` (instance 形式) から `function Class.get_X()` (class function) へ。読み書き・compound・increment・implicit access の全サイトで `Class.get_/set_` を dot 呼び出しする (TryGetCustomPropertyTarget に CallOp を追加)
+- 変更ファイル: Transpiler/LuaEmitter.cs, Transpiler/LuaEmitter.Expressions.cs, Transpiler/LuaEmitter.Statements.cs, Transpiler.Tests/PropertyAccessorTests.cs (+2)
+- 検証: dotnet test 554/554
+- 判断: instance 生成なしでも static 値が共有されることを initializer 読み出しで担保 (class table 初期化は型 emit 時に走る)
+- 残課題: なし
+
+### T149: 継承リンクの宣言順・ファイル順独立化 ✓ (2026-07-17)
+- 派生 class が基底より先に emit されると `setmetatable(Derived, {__index = nil})` になり継承 lookup が全滅する問題を修正。基底が未 emit なら link を `_pendingBaseLinks` へ遅延し、全型 emit 後 (top-level 文の実行前、または ToString 時) にまとめて張る
+- 宣言順が正しいコードは従来どおり inline link (生成 Lua 無変化)。module/registry 経路は T176 の declare/define 分離が既に順序独立
+- 変更ファイル: Transpiler/LuaEmitter.cs, Transpiler.Tests/InheritanceTests.cs (+3: 同一ファイル逆順 / 3段逆順 / 複数ファイル逆順)
+- 検証: dotnet test 557/557
+- 判断: 型依存 graph でのソートではなく link 行だけの遅延 — 順序依存は link 行のみで (ctor 内の `Base.new()` は実行時解決)、emit 順を変えないほうが module slicing と source map に安全
+- 残課題: なし
+
+### T150: 暗黙 base() と constructor chaining の境界整理 ✓ (2026-07-17)
+- initializer なしの派生 constructor / 合成 default constructor が基底の field initializer を黙って落としていた問題を修正 — 非 object 基底なら `local self = Base.new()` → `setmetatable(self, Derived)` で C# の暗黙 base() を実行 (`class B { int X = 42; } class D : B {}` の `new D().X` が 42 に)
+- `: this(...)` initializer を TCS1001 `ThisConstructorInitializer`、2個目以降の constructor を TCS1001 `MultipleConstructors` として shared facts へ追加 (Analyzer/check/transpiler 共有)。emit は先頭 constructor 採用で決定的
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, Transpiler/LuaEmitter.cs, Transpiler.Tests/InheritanceTests.cs (+4)
+- 検証: dotnet test 561/561 + analyzer 47/47
+- 判断: field initializer の実行順は既存 explicit base() 経路と同じ「基底 (init+body) → 派生 init → 派生 body」。C# は「派生 init → 基底 → 派生 body」だが、観測可能な差は仮想呼び出し等の稀なケースのみで、既存経路との一貫性を優先 (既知差異)
+- 残課題: なし
+
+### T152: empty sequence と型別 default の LINQ/runtime 契約 ✓ (2026-07-17)
+- `FirstOrDefault<int>()` 等が常に nil を返し、値型で後続の算術が実行時エラーになる問題を修正。emitter が呼び出しサイトの return type (conditional 経路は receiver の要素型) から `default(T)` を計算し、runtime の `List.FirstOrDefault(list, predicate, default)` / `LastOrDefault` 第3引数へ埋め込む (predicate なしは nil placeholder)
+- `First()` の empty (従来 nil 返し) と `Min`/`Max` の empty (従来 nil 返し) を "Sequence contains no elements" の明示 error へ。`Sum()` empty=0 と `Last` の既存 error は維持
+- 変更ファイル: runtime/tinysystem.lua, Transpiler/LuaEmitter.Expressions.cs (通常 + conditional の2経路), Transpiler.Tests/LinqSemanticTests.cs (+4)
+- 検証: dotnet test 565/565 (既存の LastOrDefault string→nil 期待は参照型 default として正しいまま)
+- 判断: default は emitter がサイト毎に埋め込む方式 — runtime に型情報を持たせない (型消去の原則を維持)
+- 残課題: なし
+
+### T153: ToDictionary selector の評価契約 ✓ (2026-07-17)
+- レビュー時に疑われた「selector が要素ごとに複数回評価される」は現行 runtime では再現せず (各要素 1 回)。counter/log 付き selector の semantic test で評価回数と key → value 順を固定
+- Lua の代入式 `dict[k(x)] = v(x)` の評価順は言語仕様上未規定のため、runtime を `local key = keySelector(item)` で明示順序化
+- duplicate key は棚卸し (2026-07-17) の決定どおり C# の ArgumentException を再現せず Lua table 上書きとし、support-matrix の既知差異へ記載 (`Dictionary.Add` も同様)
+- 変更ファイル: runtime/tinysystem.lua, Transpiler.Tests/LinqSemanticTests.cs (+1), doc/support-matrix.md
+- 検証: dotnet test 566/566
+- 判断: 前提が再現しないことを test で確認してからクローズ (作り込みではなく契約の固定)
+- 残課題: なし
+
+### T180: 値型/string 型パターンの型判定修正 ✓ (2026-07-17)
+- `v is int inner` が `getmetatable(v) == int` (未定義 global との nil == nil 比較) になり、**nil が値型パターンにマッチして束縛される** silent wrong-code を修正。値型・string・enum のパターンは `type(expr) == "number"/"boolean"/"string"` 判定へ (全パターン経路: is-pattern / switch expression arm / switch statement label / recursive pattern の型部 / 型名 constant pattern)
+- int/float は Lua の integer/float subtype が代入経路で揺れるため "number" 一括判定 (静的型が違う組合せは C# コンパイルで弾かれる)。class/record は従来どおり metatable 比較
+- 追加対応1: designation なしの binary `is Type` (`s is Circle`) を新規サポート (従来は TCS1001 warning で条件が壊れていた)。T151 の残課題を解消
+- 追加対応2: switch expression の arm designation (`int v => v`) が未束縛で nil になっていた問題を IIFE 内 local 束縛で修正
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs (EmitTypeCheck / LuaTypeNameFor + 全パターンサイト), Transpiler/LuaEmitter.Statements.cs, Transpiler.Tests/TypePatternTests.cs (新規4)
+- 検証: dotnet test 570/570
+- 判断: `~= nil` ではなく type() 判定 — interface 型 receiver 等でも型不一致を検出できる。object receiver の int/float 判別は型消去の既知限界 (tcs は object 未対応なので実害なし)
+- 副産物: T181 を起票 — 式文脈 (ternary 等) の is-pattern designation が未束縛で nil になる gap を発見
+- 残課題: T181
+
+### T181: 式文脈の is-pattern designation 束縛 ✓ (2026-07-17)
+- ternary (`x is int v ? v : -1`)、複合条件 (`if (s is Circle c && c.R > 5)`)、lambda 内の is-pattern designation が束縛されず nil になる silent wrong-code を修正。out var と同じ statement 前 `local` 宣言 (elseif 連鎖は chain 全体を root 前で宣言、expression-bodied lambda は function 冒頭で宣言) + IIFE 内の一回評価代入 `(function() v = expr; return type(v)==... end)()` へ統一
+- VisitIf の root 限定 special case (binding + receiver 二重評価) を削除し、全文脈が同じ経路に
+- 変更ファイル: Transpiler/LuaEmitter.Statements.cs (pre-pass 拡張 / IsPatternDesignationNames), Transpiler/LuaEmitter.Expressions.cs (VisitIsPattern 束縛 / lambda locals), Transpiler.Tests/TypePatternTests.cs (+3)
+- 検証: dotnet test 573/573
+- 判断: designation の束縛は C# と同じく match 失敗時も変数自体は存在する (読み出しは C# の definite assignment が防ぐ)。recursive pattern の designation (`is Circle { R: > 2 } c`) は従来どおり未対応
+- 残課題: なし
+
+### T155: --entry を実際の emitted 名と一致させる ✓ (2026-07-17)
+- `--entry Game.App` が入力文字列をそのまま `return Game.App` に貼り、namespace 透過 emit の実名 (`App`) と食い違って nil を返す silent wrong-code を修正。`GetTypeByMetadataName` → source assembly の一意な simple 名の順で解決し、`return {symbol.Name}` を emit
+- interface / enum 等の非 class は "entry class must be a class or record class"、複数 namespace の同名 simple 指定は候補一覧付き "ambiguous" で exit 1 (output 未作成)
+- 変更ファイル: Transpiler/Transpiler.cs, Transpiler.Tests/EntryClassTests.cs (+4)
+- 検証: dotnet test 577/577
+- 判断: 同名型が複数あるときの全 emit 衝突 (namespace 透過による last-write-wins) は entry 解決とは別の既知制約として残る (namespaced 入力を本格対応する際に扱う)
+- 残課題: なし
+
+### T157: watch の --prelude dependency 監視 ✓ (2026-07-17)
+- 出力へ埋め込まれる `--prelude` だけを変更しても rebuild されない問題を修正。prelude path を input/`--ref` と同じ監視集合へ追加し、watcher filter を `*.cs` 固定から `*.*` + `watchedFiles` の exact path 判定へ変更 (無関係ファイルでは rebuild しない)。Deleted イベントも rebuild を起こし、missing dependency の失敗として報告される
+- 変更ファイル: Transpiler/Program.cs, Transpiler.Tests/WatchModeTests.cs (+1: prelude-only 変更で rebuild / 無関係 .lua で非 rebuild、watch 子プロセスは entireProcessTree kill)
+- 検証: dotnet test 578/578
+- 判断: 出力 (.lua) と prelude が同居しても、対象判定が exact path なので self-trigger loop にならない
+- 残課題: なし
+
+### T158: LuaEmitter.Expressions.cs の責務分割 ✓ (2026-07-17)
+- 800 行禁止を大きく超えていた LuaEmitter.Expressions.cs (1565 行) を責務別 partial へ分割: Expressions (dispatcher / literal / operator / assignment / lvalue helper、580 行)、Invocations (invocation / collection・string・Math API mapping / member access、406 行)、Patterns (pattern / 型判定 / switch 式 / null 条件アクセス / lambda、400 行)、Objects (object・collection・array 生成 / initializer / with / 補間、244 行)
+- 変更ファイル: Transpiler/LuaEmitter.{Expressions,Invocations,Objects,Patterns}.cs
+- 検証: dotnet test 578/578 (behavior / source map 差分なし — 出力生成コードは無変更のテキスト移動)
+- 判断: temp/lvalue helper (TryLowerLvalue / HasSideEffectSyntax / ApplyCompound) は assignment 系と同じ Expressions に置き所有を一意化。mapping table (ListRuntimeMethods) も Expressions 先頭に集約
+- 残課題: なし
+
+### T159: TinyCsComplianceFacts.cs の責務分割 ✓ (2026-07-17)
+- 896 行に達していた共有 facts を partial へ分割: TinyCsComplianceFacts.cs (TCS1001 syntax / 予約語 / operator metamethod、220 行)、.Api.cs (TCS1002 allowlist シグネチャと判定、459 行)、.CollectionNull.cs (TCS1003、261 行)
+- Transpiler / TinyCs.Analyzers の csproj を `..\Shared\*.cs` wildcard include へ変更 (ファイル追加時の二重管理をなくす)
+- 変更ファイル: Shared/TinyCsComplianceFacts{,.Api,.CollectionNull}.cs, Transpiler/Transpiler.csproj, TinyCs.Analyzers/TinyCs.Analyzers.csproj
+- 検証: dotnet test 578/578 + analyzer 47/47 (parity / nupkg consumer は run-tests 恒常ゲート)
+- 判断: allowlist と diagnostic formatting は Api partial に一元化し重複なし
+- 残課題: なし
+
+### T160: 600/800 行 file size gate の自動化 ✓ (2026-07-17)
+- CLAUDE.md の 600 行警告 / 800 行禁止を FileSizeGateTests として dotnet test に常設。run-tests.sh / run-tests.ps1 / CI はいずれも dotnet test を通るため、外部 checker スクリプトを作らず判定の二重実装を回避
+- 境界 (600/601/800/801) は Theory で固定し、リポジトリ実走査は bin/obj/deps/.git を除外して 800 超をテスト失敗、600 超を warning 出力にする
+- 変更ファイル: Transpiler.Tests/FileSizeGateTests.cs (新規5)
+- 検証: dotnet test 583/583 (現行ソースは T158/T159 の分割後で error 0)
+- 判断: fixture ファイル方式ではなく境界 Theory + 実 tree 走査 — cross-platform かつ CI 配線変更ゼロ
+- 残課題: なし
+
+### T161: support matrix / test evidence の最終監査 ✓ (2026-07-17)
+- T138-T181 の変更と support-matrix / README の記述を突き合わせ、stale な箇所を更新: 算術演算子 (整数 `/` `%` の idiv/irem)、`??` (bool? nil 判定)、`is Type` / 型パターン / 宣言パターン (type() 判定・式文脈束縛で P→Y)、パターン変数 (-→Y)、switch 文 (パターンラベル)、分解宣言 (分解代入対応)、FirstOrDefault/Last (型別 default と empty error)。サマリ表を再集計 (言語機能 Y 99→101 / P 18→17 / - 94→93)
+- current.md のテスト件数記述を廃止し `dotnet test` / `run-tests.sh` の実行結果を正本に (件数の手動同期をやめる)。README の analyzer-demo 期待件数 (TCS1001 x5 等) は run-tests の恒常ゲートが実件数を検証しており一致を確認済み
+- 「Y だが実行不能」記述の残りなし (監査は subagent の全文照合で実施)
+- 変更ファイル: doc/support-matrix.md, doc/current.md, doc/tasks.md (空化)
+- 判断: HotReload の概念的言及 (async を Out にする理由の「ホットリロード可能な」) は lume.hotswap / module registry でも成立するため据え置き
+- 残課題: なし — tasks.md は空
+
+### 働き方改革: doc/current.md の粉砕とワークフロー簡素化 ✓ (2026-07-17)
+- doc/current.md を削除。ralph loop 時代の「セッション跨ぎ進捗スナップショット」であり、1 タスクをセッション内で完遂できる現在は不要と判断 (ユーザー決定)。残作業は tasks.md、直近文脈は done.md 末尾 + git log、仕様の正本は support-matrix / README / design doc に一本化
+- 粉砕前に各節を照合し、他に無かった記述だけ README へ移設: `--entry` の解決規則 (T155 仕様) と output/入力の同一実体エラー。Dictionary wire format / String edge 挙動 / run-lub 手順は support-matrix / lub-gap-analysis が既に正本
+- CLAUDE.md の作業手順を 9 step → 5 step へ (current.md の確認・更新を廃止)。完了ログ形式から「変更ファイル」を廃止 (commit が正本) し「検証」を明示化
+- 検証: 全ドキュメントの current.md 参照を除去 (design doc の関連文書リンク含む)
+- 判断: GitHub Issues への移行は見送り — ローカル grep 性・オフライン性・エージェントの読み書き速度で doc/ 運用が勝つ。ralph loop に戻る場合は必要な形の状態ファイルをその時に再設計する
+- 残課題: なし
+
+### T182: [C0] 仕様 corpus 取り込みと分類 sweep ✓ (2026-07-17)
+- deps/csharpstandard (draft-v12) を submodule 追加し、注釈付き例 642 件の全数分類を実装: 注釈パーサ (bare-key JSON) / 公式 template 展開 ($example-code + additional-files + inline `// File`) / 分類パイプライン / baseline 照合 / 章別レポート生成。sweep は TCS_SPEC_CONFORMANCE=1 ゲート、`run-spec-conformance.sh` で実行
+- 分類は analyzer 視点で行う: `TranspileWithDiagnostics` に references 注入口を追加して TPA フル参照でコンパイルし、SDK ImplicitUsings 相当を referenceSources で補完。これでサブセット外 API が compile error でなく TCS 診断として観測され、unexpected-compile-error 238→29 (残りは unsafe 25 + 個別 4)
+- 集計: InRun 55 / InCompile 171 / Diag 248 / CsErr 119 / Unextracted 49 / **Bug 0**
+- 検証: `dotnet test` 608+47 green (sweep は通常実行では Skip)、`bash run-spec-conformance.sh` exit 0 で report/baseline 再現、注釈数の突き合わせ (grep 651 のうち 9 件は upstream が `Incomplete$`/`NeedsReview$` で無効化しており正味 642 で一致)
+- よかったこと: Codex に契約書ベースで委譲し Fable がレビュー・仕上げする分担が機能した。full-ref 化と ImplicitUsings 補完は初回 sweep の unexpected-compile-error 集計から系統原因を特定して潰せた — 全数分類レポートが自分自身のデバッグに効く
+- 判断: 公式 ExampleExtractor の実行照合は net6 ツールチェーン依存のため marker 数照合で代替。FluentAssertions 8.9 (non-OSS ライセンス) の依存追加は却下し既存どおり素の xUnit Assert に統一。baseline キーは同名重複時のみ全出現へ `:L<行>` を付与 (片側付与は文書順依存のため不採用)
+- 残課題: C1 (T183) で expectedOutput 実行検証。個別 4 件 (documentation-comments IDStrings*, patterns LogicalPattern3, structs RecordStructEqualityMembers2) と expected-error 系 3 件 (LangVersion 依存の期待) のスポット調査は C1 冒頭で
+
+### T183: [C1] expectedOutput 例の Lua 実行検証 ✓ (2026-07-17)
+- SpecLuaExecutor を追加: InRun かつ expectedOutput / ignoreOutput 付きの例を runtime prelude + emitted Lua + entry 呼び出し (top-level はチャンク実行、それ以外は static Main を Roslyn で発見し namespace 込みで明示呼び) で実行し、仕様明記の出力と照合。失敗は Bug へ再分類して baseline / Bugs 節に乗せる
+- Normalizer 第1版 (bool True/False → true/false) と known-differences.json (例別 allowlist、理由必須) を導入。sweep gate は「baseline にない新規 Bug / 分類後退ゼロ」とし、Bug ゼロは発見タスク完了時の C1 完了条件へ
+- 初回実行 12 例中 7 合格 (1 は allowlist: string interning による参照等価差)。**発見 5 件を T188-T192 として起票**: tuple 構文 silent 破損 / top-level `args` 未定義 / `[Conditional]` 無視 / interface default member 欠落 / string concat null エラー — sweep が狙いどおり silent wrong-code を検出
+- C0 残のスポット調査: IDStrings 2 件は unsafe (CS0227) で実質 unsafe 27 件、LogicalPattern3 は CS0841 (要 upstream 照合)、RecordStructEqualityMembers2 は CS1513 (複数 fence 例の可能性、C2 で調査)、expected-error 系 3 件は upstream の LangVersion 12 pin と C# 14 の版差
+- レポートに Execution 節と Unexpected extraction details 節 (先頭エラー行) を常設
+- 検証: dotnet test 613/613+47 (sweep Skip 込み)、run-spec-conformance.sh 31/31 green、baseline 再生成後の連続実行で差分なし
+- 判断: 実行失敗の allowlist 逃しは意味論差の受容 (accepted:) に限定し、tcs のバグは Bug のまま baseline に記録して起票する — 「Bug 0 を維持するために隠す」構造を作らない
+
+### T188: tuple 構文の TCS1001 診断化 ✓ (2026-07-17)
+- `(string, int)` 型と tuple literal が診断なしで `ValueTuple.new(...)` (未定義) に emit されていた silent wrong-code を診断化。TupleType 全部と、分解代入 LHS `(x, y) = rhs` (deconstruction lowering が受け持つ) を除く TupleExpression を TCS1001 へ追加
+- 検証: dotnet test 615/615 green (分解宣言/分解代入の非退行テスト込み)、spec baseline で types.md:TupleTypes5 が Bug → Diag
+- 判断: ネスト tuple LHS `((a,b),c) = rhs` は最外殻だけ除外対象なので内側が診断される — 現行 lowering も非対応のため正しい
+
+### T189: top-level statements の args 参照を TCS1001 診断化 ✓ (2026-07-17)
+- 暗黙パラメータ `args` の参照が未定義 global として emit され実行時 nil エラーになる silent wrong-code を診断化。semantic model で synthesized `<Main>$` の parameter 判定 (lambda 等の自前 args は除外)
+- 検証: dotnet test 617/617 green、spec baseline で basic-concepts.md:TopLevelStatements2A が Bug → Diag
+- 判断: 空 table 供給ではなく診断 — command line は host の責務で、暗黙供給は「動くが常に空」という別の silent 差異を作るため
+
+### T190: [Conditional] 属性の TCS1001 診断化 ✓ (2026-07-18)
+- `[Conditional("DEBUG")]` 付きメソッドの呼び出しが条件無視で常に実行される silent 差異を、属性宣言側の TCS1001 診断で拒否。System.Diagnostics.ConditionalAttribute を semantic 判定し、意味論を変えない他属性 ([Obsolete] 等) は対象外
+- 検証: dotnet test 619/619 green、spec baseline で attributes.md:ConditionalMethods4 ほかが Bug/InRun → Diag
+- 判断: 呼び出し側でなく宣言側で1回診断 (呼び出し網羅より位置が安定)。BCL の Conditional API (Debug.Assert 等) は TCS1002 allowlist 外で既に拒否される
+
+### T191: interface default member / explicit implementation の TCS1001 診断化 ✓ (2026-07-18)
+- interface は Lua 出力を持たないため、実装付き interface member (DIM) と explicit interface implementation (`void IA.M()`) が silent 欠落し実行時 nil call になっていた。両方を TCS1001 で拒否 (宣言のみの interface 契約と通常の implicit 実装は従来どおり)
+- 検証: dotnet test 621/621 green、spec baseline で interfaces.md ほか 14 例が Diag へ
+- 判断: property は AccessorList の body/expression-body 有無で判定 (auto-property 宣言 `int P { get; }` は契約のみなので許容)
+
+### T192: string concat の null 安全化と指数表記 Normalizer ✓ (2026-07-18)
+- C# の string 連結は null を空文字列扱いするが、Lua の `..` は nil でエラーになっていた。binary `+` は null になり得る string オペランドへ `or ""` を付与 (リテラル・補間・ネスト連結は non-null 確定で素通し)、`+=` は read/right 両側を null 安全化
+- Normalizer に浮動小数の指数表記差 (C# `1.23E+15` / Lua `1.23e+15`) の正規化を追加
+- 検証: dotnet test 623/623 green。spec の AdditionOperator は残差が decimal スケール (`2.900` vs `2.9`) のみに縮小 (→ T193 decimal 診断化で解消予定)
+- 判断: 全 string オペランド一律ラップではなく non-null 確定形を除外 — 出力の可読性維持と no-op ラップ削減
+
+### T193: decimal 型/リテラルの TCS1001 診断化 ✓ (2026-07-18)
+- decimal が Lua number (binary float) へ silent マップされ、スケール表示 (`2.900` → `2.9`) や精度の意味論差が診断なしで出ていた。PredefinedType の decimal keyword と `m` サフィックスリテラルを TCS1001 で拒否 (float/double は非対象)
+- 検証: dotnet test 627/627 green。**spec conformance の Bug 分類が 0 に到達 — C1 完了条件達成** (Executed 7/7 passed、集計: InRun 50 / InCompile 153 / Diag 271 / CsErr 119 / Unextracted 49 / Bug 0)
+- 判断: 数値意味論を近似で通すより DSL 契約として明示拒否 (struct と同じ扱い)。需要が出たら固定小数 helper で再検討
+
+### T184: [C2 前半] spec 例の dotnet differential ✓ (2026-07-18)
+- SpecDotnetExecutor を追加: 例を in-memory Roslyn compile → AssemblyLoadContext 実行 → Console capture (排他 + 10s timeout)。出力契約の無い InRun 例のオラクルを実 .NET 実行出力にし、実行対象を全 InRun 50 例へ拡大
+- 初回 differential で **17 件の意味論バグを新規検出し T194-T204 として起票**: overload 誤 dispatch / `new` hiding 無視 / static ctor 欠落 / 式文脈 increment の副作用消失 / field default nil / delegate `new` / interface const / hex escape 破損 / Console マッピング漏れ / 補間 format specifier / namespace 解決。手書きテスト 326 本が一度も踏まなかった領域が仕様 corpus + 実処理系オラクルで一気に可視化された
+- ハーネス修正 1 件: dotnet 側にも ImplicitUsings 補完 (classifier と対称)
+- 検証: SpecConformance 単体 34/34 green、sweep は baseline 一致 (Bug 17 は起票済み記録)、Executed 50 / passed 33
+- 判断: C2 後半 (既存 TranspileAndRun corpus の裏取り) は luaExpr → C# 翻訳の設計が必要なため T206 へ分割
+
+### T202: string literal escape の Lua 再変換 ✓ (2026-07-18)
+- 通常の `"..."` literal が C# の raw token text のまま Lua へコピーされていた (escape 文法は非互換: `\x` の可変長 hex、`\0` 直後の数字、`\u` など)。常に ValueText を Lua 形式へ escape し直す経路へ統一し、制御文字は 2 桁固定 `\xXX` で emit
+- 検証: dotnet test 630/630 green (バイト長セマンティクステスト追加)、spec baseline で lexical-structure.md:CharacterLiterals が Bug → InRun (dotnet differential 一致)
+
+### T203: Console を allowlist 型へ昇格 (WriteLine のみ許可) ✓ (2026-07-18)
+- System.Console が型ごと TCS1002 判定を素通りし、emitter が print へマップしない member (Console.In/Write/ReadLine 等) が silent nil アクセスになっていた。Console を partially-supported 型にし WriteLine のみ許可
+- 検証: dotnet test 632/632 green、spec baseline で patterns.md:PatternFormGen1/2 ほかが Diag へ
+
+### T200: delegate / event 宣言の TCS1001 診断化 ✓ (2026-07-18)
+- delegate 型宣言が silent に `D.new(...)` (未定義) へ、event 宣言が silent 欠落へ落ちていた。DelegateDeclaration / EventDeclaration / EventFieldDeclaration を TCS1001 で拒否 (callback は BCL の Action/Func が正)
+- あわせて 800 行 gate 超過の DiagnosticTests.cs を分割 (spec conformance 由来の診断テストを SubsetDiagnosticTests.cs へ)
+- 検証: dotnet test 634/634 green、spec baseline で conversions.md:AnonFuncTypeConv2 ほかが Diag へ
+
+### T205: System.Random を TCS1002 未対応型へ ✓ (2026-07-18)
+- System.Random が allowlist 判定を素通りし `new Random()` が Lua で `Random.new` nil になっていた (乱数の正は TinySystem.Random static facade)。UnsupportedFullTypeNames へ追加
+- 検証: dotnet test 635/635 green、spec baseline で conversions.md:AnonFuncTypeConv2 が Bug → Diag
+
+### T201: interface の field/const 宣言を TCS1001 診断化 ✓ (2026-07-18)
+- interface 内 field/const が silent 欠落し `IX.A` が実行時 nil になっていた。FieldDeclaration (parent が interface) を TCS1001 で拒否
+- 検証: dotnet test 636/636 green、spec baseline で interfaces.md:InterfaceFields が Bug → Diag
+
+### T195: `new` member hiding の TCS1001 診断化 ✓ (2026-07-18)
+- `new` modifier による member hiding は静的型でディスパッチが変わる意味論で、metatable の動的ディスパッチでは表現できず silent 誤 dispatch になっていた。`new` modifier 付き member 宣言を TCS1001 で一括拒否 (override は従来どおり対応)
+- 検証: dotnet test 637/637 green、spec baseline で VirtualMethods1/2 と PropertyReservedSignatures (CS0109 の new 宣言含む例) が Bug → Diag。残 Bug 9
+
+### T194: メソッド overload の TCS1001 診断化 ✓ (2026-07-18)
+- Lua table は同名 key を 1 つしか持てず、overload が last-write-wins の silent 誤 dispatch になっていた。同一型内の 2 個目以降の同名メソッド宣言を TCS1001 で拒否 (MultipleConstructors と同じ方針)
+- 検証: dotnet test 639/639 + run-tests.sh 全ゲート green (samples に overload 使用なし)、spec baseline で ParameterArrays3 ほかが Diag へ
+
+### T196: static constructor の TCS1001 診断化 ✓ (2026-07-18)
+- static constructor は「初回アクセス時に一度だけ」の実行タイミング意味論を持ち、eager な class table 生成では再現できず silent 欠落していた。TCS1001 で拒否
+- 検証: dotnet test 640/640 green、spec baseline で StaticConstructors1/2 と StaticFieldInitialization2 (いずれも static ctor を含む) が Bug → Diag。残 Bug 5
+- 判断: static field 初期化「順序」自体の意味論差 (宣言順 eager vs 初回アクセス) は、cctor なしの純粋な発現例が corpus に無いため個別タスク化しない。需要が出たら support-matrix の既知差異に記載
+
+### T199: static field の default 値 pre-zero ✓ (2026-07-18)
+- C# は static field を default 値で事前初期化してから initializer を宣言順に実行するが、tcs は initializer を宣言順に直接代入しており、循環参照 (`a = b + 1; b = a + 1`) や後方 field 参照が nil arithmetic になっていた。class table 宣言直後に非 nil default の pre-zero を emit し、DeclRanges に載せて hot apply の define チャンクから除外 (live static 値を上書きしない)
+- instance field は CS0236 (initializer から他 field 参照不可) が守るため対応不要
+- 検証: dotnet test 641/641 green (module artifact / transaction テスト含む)、spec baseline で classes.md:VariableInitializers2 が Bug → InRun (dotnet differential 一致)
+
+### T197: 式文脈 ++/-- と named argument の TCS1001 診断化 ✓ (2026-07-18)
+- 式文脈の `i++` は「値を返しつつ代入」の意味論だが、現行 emit は `i + 1` の値だけで副作用が消えていた。statement / for 更新部以外の increment/decrement を TCS1001 で拒否。named argument も位置渡しへ黙って落ちていたため NameColon 付き引数を拒否
+- 検証: dotnet test 643/643 + run-tests.sh 全ゲート green (samples/既存テストは statement/for 利用のみ)、spec baseline で Run-timeEvalOfArgLists1 が Diag へ。残 Bug 3
+- 判断: IIFE + temp での完全対応は lvalue 機構拡張が必要で、需要が出たら別タスク。optional parameter default の silent nil は診断でなく修正が妥当 (ゲームコードで頻出) — T207 起票
+
+### T207: optional parameter の default 補完 ✓ (2026-07-18)
+- ユーザーメソッド / constructor の optional parameter が省略呼び出しで silent nil になっていた。関数冒頭に `if p == nil then p = <default> end` を emit して C# の省略時 default を再現
+- 検証: dotnet test 644/644 green (method / ctor / string default の semantic テスト追加)
+- 判断: 省略と明示 null は Lua ではどちらも nil で区別不能 — 明示 null に default と異なる挙動を期待する呼び出しは既知の意味論差としてコメントに明記
+
+### T208: params parameter の TCS1001 診断化 ✓ (2026-07-18)
+- params の展開呼び出し (`F(1,2,3)` → 配列 pack) が未実装で、展開形が先頭引数だけ束縛される silent wrong-code だった。out/ref と同様に宣言側を TCS1001 で拒否
+- 検証: dotnet test 646/646 + run-tests.sh 全ゲート green、spec baseline で ParameterArrays4 ほかが Diag へ
+- 判断: pack 実装は `F((string)null)` → `{null}` が TCS1003 (collection null) と衝突するなど fidelity の泥沼があり、需要が出てから判断
+
+### T198: 補間文字列の alignment / hex・指数の大文字小文字 / brace escape ✓ (2026-07-18)
+- 補間の text 部が raw token copy で `{{`/`}}` が残り、`X`/`E` 指定子が常に小文字 `%x`/`%e` になり、alignment (`{val,4:X}`) が無視されていた。text 部は brace 解決 + Lua escape 再変換 (T202 と同方針)、指定子は大文字小文字を反映、alignment は整形後文字列への `%ns`/`%-ns` として合成
+- 検証: dotnet test 647/647 green、spec baseline で attributes.md:DeclCustomHandler1 が Bug → InRun (dotnet differential 一致)。残 Bug 1
+
+### T204: spec executor の entry を namespace 透過 emit に合わせる ✓ (2026-07-18)
+- ExtensionMethodInvocations2 の失敗は tcs 側でなくハーネス側: entry 探索が `N2.Test.Main()` と namespace 込みで呼んでいた (tcs は T155 のとおり型を flat 名で emit)。型名チェーンのみで entry を組むよう修正
+- 結果、user 拡張メソッドの static call lowering + using ベースの解決が dotnet differential と一致することを確認 — **C2 differential も Bug 0 達成**
+- 検証: SpecConformance 35/35 green、sweep baseline 一致、Executed 全 InRun で failures ゼロ
+
+### T209: TinySystem facade を System 委譲実装へ ✓ (2026-07-18)
+- dotnet 側 RuntimeFacades が全 member no-op スタブで、CLAUDE.md の設計「dotnet 側では System 名前空間の型に委譲」と乖離していた。Math/String/List/Dict/Random 全 member を System 相当へ委譲 (Dict.Add は Lua wire format に合わせ indexer 代入 = duplicate 上書き、T153 判断と整合)
+- これによりユーザーは純粋ゲームロジックを dotnet 単体テストで検証でき、corpus differential が facade parity を検証できる
+- 検証: dotnet test 661/661 green、differential で facade 系 5 mismatch が全て解消
+
+### T206: [C2 後半] 既存 TranspileAndRun corpus の dotnet differential ✓ (2026-07-18)
+- TestHelper.TranspileAndRun(WithRuntime) に differential フックを追加 (TCS_DIFFERENTIAL=1 で有効)。luaExpr を C# 式へ自動翻訳できる呼び出し (単純な static 呼び / tostring ラップ / 'str'→"str" / nil→null) は実 .NET で in-memory 評価し、Lua 形式へ整形して実行結果と突き合わせる。IIFE / `..` / `#` / Lua 演算子は skip として集計 (silent drop なし、TCS_DIFFERENTIAL_LOG に内訳)
+- 比較は正規化 (bool/指数) + 数値等価 fallback (C# double 4.0 と Lua integer 4 は既知の表現差)。Random 使用ソースと文字列長系 (UTF-16 vs byte、opt-out 引数) は対象外
+- 結果: **253 呼び出しが実 .NET と一致、mismatch 0** (初回検出の 24 件は全てハーネス整形差と facade no-op → T209 で解消)。skip 44 (untranslatable 26 / compile 14 / random 4)
+- `run-differential.sh` で再現実行 + 内訳表示
+- 検証: dotnet test 661/661 green (env なしでは従来動作)、run-differential.sh exit 0
+- 判断: 手書き期待値そのものの裏取りは「Lua 実行値 vs .NET 実行値」の一致で担保 (期待値が両者とずれれば従来 Assert が落ちる)。翻訳器を汎用化するより skip を可視化して集計する方が誤検出ゼロで保守が軽い
+
+### T185: [C3] spec conformance / differential の恒常ゲート化 ✓ (2026-07-18)
+- run-tests.sh / run-tests.ps1 の dotnet test を TCS_SPEC_CONFORMANCE=1 + TCS_DIFFERENTIAL=1 + TCS_SPEC_REPORT 付きの 1 回実行に変更 — スイート二重実行なしで sweep (baseline 後退検知) と corpus differential が常設ゲートになり、章別レポートも毎回再生成される (挙動変更は report/baseline の diff として現れる)
+- pre-commit hook は run-tests.sh を呼ぶため、コミットごとに sweep + differential 込みの全ゲート (約 40 秒) が走る
+- 検証: baseline を意図的に破壊して赤 (conformance baseline mismatch) を確認後に復元。run-tests.sh 全体 39 秒 exit 0、662/662 green (Skip 0)
+- 判断: nightly 分離は不要 — 全ゲート込みで +数十秒に収まり、恒常実行のほうが後退検知が早い
+
+### T187: [C5] coverlet で emitter 未踏分岐を可視化 ✓ (2026-07-18)
+- coverlet.collector を Transpiler.Tests に追加 (PrivateAssets)。`dotnet test --collect:"XPlat Code Coverage"` (sweep + differential 込み) で計測
+- branch coverage (主要ファイル): LuaEmitter.cs 94% / Invocations 93% / Expressions 86% / Statements 86% / **Objects 68.5%** / **Patterns 70.7%**、Shared facts 83-97%。CLI 系は Program.cs 67% / FileIdentity 50% (watch・stacktrace 注釈の分岐)
+- 判断: カバレッジ率目標は置かない (design 方針)。corpus 追加の需要判定として、Objects (with 式 / initializer 系) と Patterns (switch 式 / null 条件) の未踏分岐が最有力候補。CLI 分岐は CliRuntimeTests の粒度で妥当
+- 検証: dotnet test 662/662 green (collector 追加後)
+
+### T186: [C4] サブセット内 AST 生成 fuzz ✓ (2026-07-18)
+- FuzzGenerator (seed 決定的): int/bool/string/List<int> の宣言、算術 (非ゼロ定数除数の除算/剰余込み)、比較・論理、if/else、有界 for、文字列連結、Console 出力を生成。32bit overflow (C# wrap vs Lua 64bit の既知差) は ±50 初期値と有界ループで生成側から回避
+- FuzzRunner: 生成物に TCS 診断が出たら生成器バグとして fail → tcs → Lua 実行と実 .NET 実行 (SpecDotnetExecutor 再利用) を行単位比較 (正規化 + 数値等価)。失敗時は文単位 greedy 縮小で最小再現を作り seed とともに報告
+- 検出網の自己検証: Lua への故障注入 (余分な print) を必ず検出することをテストで常設 (design §17 C4 gate 相当)。縮小の機構検証も常設
+- run-tests に smoke (20 seeds、+5 秒) を常設、`run-fuzz.sh [count] [seed]` で deep 実行 (既定 500)
+- 検証: 単体 3/3 green、50 seeds 全一致、run-tests.sh 全ゲート 45 秒 exit 0 (666/666)
+- 判断: nightly の cron 配線は CI 未整備のため持たない — smoke が恒常ゲートにあり、deep はスクリプト一発で足りる
+
+### C0-C5 受入条件の充足確認 ✓ (2026-07-18)
+- design doc §8 の 5 項目: (1) 仕様例全数分類 + Bug 0 + 章別レポート ✓ (2) 既存 corpus differential の allowlist 外差異 0 ✓ (253 match / mismatch 0) (3) 後退検知ゲート常設 ✓ (run-tests = pre-commit hook 経由で毎コミット) (4) fuzz の seed 再現 + 自動縮小 ✓ (nightly は run-fuzz.sh、判断は T186 参照) (5) known-differences ↔ support-matrix 相互参照 ✓ (support-matrix §27 を新設)
+
+### CI flaky の根治: dotnet 実行 capture の Console 競合 ✓ (2026-07-18)
+- CI (2 vCPU) で FileSizeGate / FuzzSweep が不定に失敗。原因は SpecDotnetExecutor がグローバル Console.Out を StringWriter へ差し替えて capture する実装で、並列テストの出力 (FileSizeGate の 600 行超 warning 等) が (1) fuzz の期待出力へ混入、(2) dispose 済み writer への書き込み例外、の 2 形態で他テストを壊していた
+- AsyncLocal ルーティング writer を一度だけ挿し、「この実行の論理コールツリーからの書き込み」だけを capture、他スレッドは元の writer へ素通しする方式へ変更 (lock 不要)
+- 検証: ローカル全ゲート green (666/666)。CI は verbosity minimal 化 (失敗詳細の可視化) 済みで、以後の再発時はログに assert が出る
+
+### T210: [IL] 紙の演習 — lowering 例で IL の抽象度を決定 ✓ (2026-07-18)
+- `doc/il-lowering-examples.md` を新設。switch 式パターン / for 変数捕捉 closure / struct 配列更新 / 文字列補間の 4 構文で IL 形と両 backend 出力を手書きし、抽象度 8 決定を確定 (パターン・式位置制御フロー・ループ構文は IL に無い、IIFE 廃止で statement 化、演算ノードは型解決済み単型、capture は変数単位、値型は place/copy 地点列挙、runtime 表面は intrinsic)
+- 演習の実測で現行 transpiler の意味論バグ 2 件を発見・起票: T221 (for 変数捕捉 closure が C# `3 3 3` / 現行 `0 1 2`)、T222 (派生インスタンスへの `is Base` が C# `true` / 現行 `false`)。除算/剰余は既に idiv/irem 補正済みで il-design の「未整理」が stale と判明 → 修正
+- 現行 emitter は bound tree (IOperation) でなく syntax tree + SemanticModel 走査と確認 → il-design.md の記述を実態へ修正し、M1 でも syntax 走査を維持する判断を明記
+- 検証: probe を transpile + Lua 5.5 実行、同一プログラムを実 .NET (net10.0) で実行して両挙動を突き合わせ (バグ 2 件はこの差分)。idiv/irem は -7/2=-3, -7%2=-1 で C# 一致を確認
+- よかったこと: コードを書く前の紙の演習で P0 バグ 2 件と設計判断 8 件が確定。IL 正本化の価値仮説 (ギャップの場当たり埋めが起きている) が実証された
+- 判断: IL builder の入力は IOperation へ移行せず syntax + SemanticModel を維持 — IL 化の価値は IL 側にあり、現行走査コードは資産。IIFE 廃止は意味論でなく性能・可読性判断 (closure 割当除去)
+- 残課題: T211 (仕様 v0)、バグ T221/T222 の修正時期 (M1 先行か畳むか)
+
+### T211: [IL] 意味論仕様 v0 ✓ (2026-07-18)
+- `doc/il-spec.md` を新設。il-design §2 ギャップ表の各行を「IL の条項 + backend の義務」へ分解し、意味論の正本を規範化: 厳密左→右評価・f32 再結合/縮約禁止 (§4 §6)、i32 wrap + C# 除算規則 + overflow fault (§5)、capture は変数単位 + ループ脱糖 (§7)、fault の決定性 (§12)、値型 copy 地点の列挙 (§10)、intrinsic の規範 = TinySystem dotnet facade + known-differences (§13)
+- 合格基準「本文が Lua にも C にも言及せず読める」を満たし、backend 義務は付録 A/B に分離。il-design §8 の未決 6 件中 3 件 (具体形 / 例外 / interop 境界) を決着、残 3 件 + 新規 3 件を il-spec 付録 C に同期
+- 検証: 文書のみの変更。規範の根拠事実は T210 の実測 (probe 2 本の Lua/.NET 突き合わせ) に依拠
+- 判断: string を UTF-8 バイト列で規範化 (出荷ターゲット表現を正に置き、.NET 実行側を既知差とする — 逆だと release backend が UTF-16 を背負う)。f32→i32 変換不能と INT_MIN/-1 は fault として決定的に定義 (C# 側が unspecified / 例外なので矛盾しない)。数学関数の規範は「同一プラットフォーム内一致」に留め、プラットフォーム間ビット一致は要求しない (spike の libm 排除方針と整合)
+- 残課題: gpt-5.6 second opinion review、M2 (T217) でシリアライズ形式と旧 AOT の C backend 向け入力契約
+
+### T211 補遺: gpt-5.6 反証レビューの反映 ✓ (2026-07-18)
+- 反証限定・load-bearing 6 決定に絞った second opinion (Codex 14分)。反証 4 / 生存 2 (fault 決定性、capture 脱糖)
+- 採用 4 件: (1) string 規範を「任意の octet 列」へ修正 + 孤立 surrogate literal の診断化 (UTF-8 不変条件は byte slicing で破綻するため)、(2) 非網羅 switch 式の no-match を fault 種別に追加 (temp 未代入の穴。例外サブセット外なので fault が C# 実挙動と等価)、(3) f32 リテラルは IL が bit 値保持・backend は 16 進浮動小数表記 + excess precision 排除 (10 進→double→f32 の二重丸めで 1 bit ずれる反例)、(4) interface への type test は診断化で決着 (T223 起票)
+- 検証: 文書のみの変更。反例は Codex 提示の C# 仕様条項 (§8.2.5 / §12.12 / §6.4.5.4 / §12.15.12.1) と Lua 5.5 luaconf.h 参照
+- よかったこと: 反証限定 + 対象 6 決定の明示でニトピックゼロ、全指摘が本質だった。レビュー前に自前で付録 C へ落としていた interface 項も具体的な偽陰性反例で決断まで進んだ
+
+### T211 補遺2: relaxed-fp 出荷オプションの追加 ✓ (2026-07-18)
+- il-spec §6 に fp モードを定義: strict (既定、digest 一致ゲート適用) と relaxed-fp (出荷ビルド単位の明示 opt-in。縮約/再結合/中間精度昇格を許可)
+- 判断: relaxed でも NaN/Inf/−0 の意味論は維持 (finite-math 系は不許可 — 精度は緩めても制御フローの意味は壊さない)。既定を緩めない理由は dev/release 対称性 (digest ゲート) がこの設計の商品価値であるため。Cortex-M7 は SIMD なしで fast-math の旨味は実質 fma 縮約のみ、strict のコストは spike (T212、-ffp-contract=off で測る) が定量化する
+- 検証: 文書のみの変更
+
+### T222: `is` / switch 型判定の継承対応 ✓ (2026-07-18)
+- EmitTypeCheck の `getmetatable(x) == T` 完全一致を `__tcs_is(x, T)` (metatable chain 走査) へ置換。chunk-local helper (idiv と同方式、--no-runtime でも動く) + TinySystem.instanceof + module mode の _G 配線
+- il-spec §9 の規範 (T またはその派生、null は偽) に準拠。多段継承・無関係型・null・designation 束縛・switch arm 順を semantic テスト 5 本で固定
+- 検証: InheritanceTypeTestTests 5/5 green (Red 4 件を確認してから実装)、コミット時 pre-commit で全ゲート
+- 判断: Operators.cs の overload dispatch (getmetatable 完全一致) は今回のスコープ外 — 派生型を base 引数の演算子に流す挙動は別途需要が出た時に判断
+
+### T221: for 変数を捕捉する closure の意味論修正 ✓ (2026-07-18)
+- TryEmitSimpleFor に捕捉ガードを追加: body 内の lambda が制御変数名を参照するなら numeric for を諦めて while 脱糖へ fallback (local 1 個 = 全 closure が同一 upvalue 共有、C# `3 3 3` と一致)。名前一致の過剰判定は fallback が常に正しいので許容
+- foreach の反復変数が反復ごと (C# 5+ 準拠、Lua generic for と自然に一致) であることもテストでロック
+- 検証: ForLoopTests 19/19 green (Red 1 件確認後に実装)、コミット時 pre-commit で全ゲート
+- 判断: M1 に畳まず先行修正 — M1 は挙動不変が完了条件のため、意味論変更を分離してから内部再編に入る
+
+### T214a: [M1] IL 核 — method body の syntax→IL→Lua 経路 ✓ (2026-07-18)
+- IL ノード定義 (Il.cs: place/単型演算/構造化制御フロー、il-spec 準拠)、syntax→IL builder (IlBuild 2 ファイル、全 SemanticModel 問い合わせを集約)、IL→Lua emitter (IlEmit、Roslyn 非依存 — IL が意味を運ぶことの構造的証明)。未対応構文は method 粒度で legacy visitor へ fallback するストラングラー構成
+- 対応範囲: statements 全種 (if/while/for numeric+脱糖/foreach/repeat/break/continue/return/代入/複合代入/increment)、式コア (算術 idiv/irem/fmod・比較・論理・bitwise・null 安全 concat・補間・ternary・List 生成/操作・Dict 読み・new・要素アクセス +1・facade/Math/String/Console 呼び出し)
+- 計測: TranspileResult.IlBodies/LegacyBodies、TCS_IL=off で IL 経路無効化 (退行診断)。samples 実測 21/31 bodies (67%) が IL 経由
+- 検証: 全テスト 671 green + IlPipelineTests 5 本 (IL 経由の確認・fallback 分離・意味論)。挙動不変は corpus semantic + differential + conformance sweep が担保
+- 判断: builder は legacy と同じ helper (VisitLiteral/CompoundOperator/IsListType 等) を共有し出力一致を構成的に保証。診断を出し得る経路 (WarnUnsupported) は必ず fallback。IIFE 廃止等の出力改善は legacy 削除後に IL 上で行う (T214c 以降) — 移行中の差分を挙動不変だけに絞るため
+- 残課題: T214b (lambda/pattern/?./custom property 等)、T214c (legacy 削除)
+
+### T214b: [M1] 残構文の IL 化 — samples 100% ✓ (2026-07-18)
+- 追加対応: lambda/closure (式/block body、pattern locals)、pattern 全種 (is 式/switch 式/switch 文、recursive/relational/binary/not)、型 test ノード (IlIsType/IlIsLuaType)、conditional access (?. ネスト込み)、?? (bool 厳密判定 IIFE)、??=、custom property accessor (get_/set_、compound、increment、副作用 receiver temp)、副作用 lvalue の temp 化、Dict 操作 (Add 代入形/TryGetValue/Remove/ContainsKey/Clear)、object initializer、ref-type option table、配列生成、with 式、分解代入 (宣言/tuple)、out 引数 multi-return、base 呼び出し、GetValueOrDefault、out var / is-pattern designation の前宣言
+- IL ノード追加: IlIife (式位置逐次実行)、IlClosure、IlWith、IlDo、IlMultiAssign、IlForPairs、IlIsType/IlIsLuaType、IlTable NameKey。inline render (IIFE 内 1 行化) を emitter に追加
+- 検証: 全テスト 676 green (fallback 例を method group 参照へ差し替え)。samples 実測 31/31 bodies (100%) が IL 経由 (T214a 時点 67%)
+- 判断: IIFE 形は legacy と同形を維持 (M1 は挙動不変が契約)。statement 化 (examples 決定 2) は M1 完了後に IL 上で行う
+- 残課題: T214c — ctor/accessor/operator/top-level 文の body も IL 経由へ、fallback は診断 method のみに
+
+### T214c: [M1] ctor / accessor / operator / top-level 文の IL 経由化 — M1 完 ✓ (2026-07-18)
+- TryEmitStatsViaIl / TryEmitReturnViaIl / TryEmitExprStatViaIl の共通フックを追加し、method body 以外の 4 emit 地点 (constructor body、custom property accessor body/expression body、operator body、top-level 文) を IL 経由化。origin を SyntaxNode? に統一
+- samples 実測 37/37 bodies (100%、ctor/accessor 込み) が IL 経由、legacy 0。M1 の完了条件 (全テスト green・増分コンパイル session 両立・fuzz/differential/conformance ゲート不変) を充足
+- 検証: 全テスト 676 green、deep fuzz 100 seeds 全一致 (生成プログラムの IL 経路を実 .NET と行単位比較)、コミット時 pre-commit 全ゲート
+- 判断: legacy visitor のコード削除は見送り — fallback は診断構文・method group 参照等の残構文が使い、挙動不変の保険としても機能する。縮退は T224 (P2)、IIFE statement 化は T225 (P2) として M1 契約から分離
+- 残課題: T224/T225、M2 (T217) で旧 AOT の C backend 向け入力契約 (program 構造の IL 化を含む)
+
+### IL 経路への continue scope 修正の写像 ✓ (2026-07-18)
+- origin 側 19d35c4 (一般 for lowering の continue goto が local スコープへ飛ぶ問題の legacy 修正) を rebase で取り込み、IL emitter (IlWhile) にも同条件 (incrementor あり + 直下 continue) の do..end 囲いを写像。IlWhile に ScopeBody を追加
+- 検証: 回帰テスト Continue_GeneralFor_LocalDeclaredAfterContinue が IL 経路で Red → 修正後 green、全テスト 677 green
+
+### T230: SessionExports に補完/hover クエリ API を追加 ✓ (2026-07-18)
+- lub web playground の C# 補完・hover (lub docs/playground-dx.md §3) 向けに `SessionExports.Complete/Hover(epoch, path, content, offset)` を追加。エディタの現在バッファを受け取り、`IncrementalCompilationSession.ForkWithContent` (ReplaceSyntaxTree による speculative fork、session の texts/trees/revision/artifacts 不変) へ `SemanticQueries` が SemanticModel 直叩きでクエリする
+- 補完は member access 文脈 (instance / 型 receiver の static / namespace) とスコープ補完を判別し、`TinyCsComplianceFacts.TryGetUnsupportedApi` で allowlist フィルタ (「補完に出る = tcs で書ける」)。overload は名前単位 1 件、上限 200 件。hover は識別子限定でシグネチャ + /// summary を返す
+- 検証: SemanticQueriesTests 9 件 (instance/static/allowlist/List/scope/hover/doc/fork 不変/speculative 内容) green、run-tests.sh 全ゲート exit 0 (685/685 + skip 1)
+- よかったこと: fork が Roslyn の immutable Compilation そのままなので session 不変が構造的に保証される。allowlist が ISymbol 判定 (TryGetUnsupportedApi) として既に公開されていたため補完フィルタは 1 行
+- 判断: Microsoft.CodeAnalysis.Features は wasm バンドル肥大のため不使用 (SemanticModel の Lookup* で必要十分)。fork/SemanticModel はキャッシュしない (wasm ホストのメモリ膨張防止、tcs-main の指摘)。doc は source symbol の <summary> のみ (metadata 参照は XML doc を積んでいない)
+- 残課題: wasm 上の実レイテンシ計測は lub 側 (playground 統合) で行い、自動発火可否を判断する → lub verify A8 で実測 complete 47ms / hover 5ms (17_flappy、swiftshader headless)、恒常観測ログ化済み
+- レビュー反映 (PR #1): hover の対象を SimpleName 参照 / 宣言ノードに限定し、親式 walk による user-defined operator の誤 hover を排除
+
+### T238: Lua 出力の名前規則 (snake_case 写像) ✓ (2026-09-05)
+- lub の言語構成設計 (lub `docs/log/2026-09-04-language-architecture-design.md`) に従い、C# のメンバ名を規則で Lua の snake_case に写す `LuaNaming` を emit の全経路 (IL builder / legacy visitor / class 骨格 / enum / record / object initializer / pattern / conditional access) に入れた。enum メンバは UPPER_SNAKE、`--ref` 型の static アクセスは入れ子の型名を小文字で `.` 結合 (`Lub.Gfx` → `lub.gfx`)、`--ref` 型に入れ子の enum は親の下に平らに置く。`const` field は値を inline。同じ型で写像後の名前が衝突するメンバは warning
+- 検証: LuaNamingTests 27 件 green、既存テストの Lua 式を写像後の名前へ書き換えて全テスト 720 green、run-tests.sh 全ゲート exit 0
+- 判断: flag にせず無条件の規則にした (tcs の出力を Lua ライブラリとして配れる形に揃える)。表は持たず関数 1 つで写す。BCL / TinySystem の metadata symbol は写さない (runtime の名前で呼ぶ)。全大文字の名前は既に snake_case とみなす
+- 残課題: lub 側の stub / サンプルの PascalCase 化と `--no-naming-check` の撤去 (lub 側で実施)
+
+### T239: host 連携 BCL (Environment / Parse / EnumerateRunes / string indexer) ✓ (2026-09-05)
+- Lua 標準ライブラリを C# 側の stub (`os` / `utf8` / `string`) で直接呼ぶ代わりに、同じ C# が実 .NET でも通る BCL を写す: `Environment.GetEnvironmentVariable` → `os.getenv`、`int.Parse` → `math.tointeger(tonumber)`、`double.Parse` / `float.Parse` → `tonumber`、`foreach (var r in s.EnumerateRunes())` + `r.Value` → `utf8.codes`、`s[i]` → `string.sub`、`(int)s[i]` / `(int)ch` → `string.byte`、`(int)'a'` は定数畳み込み
+- 検証: HostBclExtensionTests 5 件 green (allowlist 側の非警告も確認)、全テスト green
+- 判断: `Rune` は `System.Text` (未対応 namespace) だが `Value` だけ partial 対応にした。`int` / `double` は元から allowlist の外側 (許可) なので partial 型にはしない (`int.MaxValue` 等の既存挙動を変えないため)
+
+### T223: interface type test と孤立 surrogate literal の診断化 ✓ (2026-07-18)
+- Shared/TinyCsComplianceFacts に 2 ルール追加: InterfaceTypeTest (is 式 / declaration・type・recursive・constant pattern の interface 対象 — 実行時表現が無く常に偽の silent wrong-code) と LoneSurrogateLiteral (string/char literal と補間テキストの孤立 surrogate — il-spec §11 の UTF-8 octet 規範へ写像不能)。対 surrogate (astral 文字) は許容
+- 診断一致 (analyzer / check / transpiler) は Shared 共有により自動で、恒常ゲートが担保
+- 検証: SubsetDiagnosticTests 4 本 (Red 2 → green、非対象 2 の非診断)、全テスト 692 + analyzer 47 green
+
+### T213: LUA_32BITS ビルド整備 (lua32) ✓ (2026-07-18)
+- CMake に TCS_LUA_32BITS_VARIANT (既定 ON) を追加し、LUA_32BITS 定義の liblua32/lua32 を deps/lua/lua32 へ併産。既存 lua (64bit) と共存し、run-tests の再ビルド経路でも一緒に生成される
+- 検証: cmake ビルド成功、lua32 で math.maxinteger=2147483647 (int32) / 1/3=0.333333343 (float32) を確認
+- 判断: 既定バイナリの切替は M4 (T216) で行う — テスト資産の移行と同時でないと挙動確認が split-brain になる
+
+### T216: [M4] 数値モデルを i32/f32 (LUA_32BITS) へ移行 ✓ (2026-07-18)
+- テスト実行の Lua を lua32 優先へ (TestHelper FindLua)、run-tests.sh/ps1 の鮮度判定にも lua32 を追加。differential の数値等価は .NET double を f32 量子化してから比較 (il-spec §6)
+- 移行の爆風半径は 3 件のみ: double 精度前提テスト 2 件を f32/double 両立形へ適正化 (1e308→1e30、epsilon 1e-9→1e-6)、spec 例 VariableInitializers1 (Math.Sqrt の double 全桁表示) を known-differences へ理由付き登録
+- 検証: run-tests.sh 全ゲート exit 0 (conformance sweep + differential + fuzz smoke 込み、694 tests)
+- 判断: double/long の診断化 (il-design §4 の完全なサブセット外化) は分離 — T216 の完了条件 (32bit ビルドで全ゲート green + differential f32 比較) は満たしており、ソース資産の一括 f32 リテラル移行は独立タスクとして需要と合わせて判断する (tasks.md T226 起票)
+
+### T215: digest harness — spike 3 kernel の f32 FNV digest ゲート ✓ (2026-07-18)
+- 旧 AOT の repo の spike/CONTRACT.md と同一仕様 (LCG / 演算列 / FNV-1a) の 3 kernel を TinyC# で記述 (Transpiler.Tests/DigestKernels/、particles は M5 まで class SoA 形)。lua32 実行の出力 f32 を bit 列で FNV し、期待値を恒常ゲート化 (DigestHarnessTests、+約 2.5 秒)
+- 実測 digest: sprite_update e8814b32 / spawn_churn 4e5bf016 / particles 8bf97e09。CONTRACT へ追記済みで、旧 AOT の spike の全変種 (interp/aot-hash/aot-slot/native) はこれと一致すべき — 2 backend 一致検証の tcs 側正本
+- 検証: 3/3 green。spawn_churn の CONTRACT 未規定分 (初期空・spawn→update 順・ring 順序) は解釈を明文化
+- 副次発見: nested class は Lua 出力に emit されず実行時 nil (診断もなし)。要診断化 — T227 起票
+
+### T217: [M2] IL 入力契約 — IlExport API + リファレンス文書 ✓ (2026-07-18)
+- `IlExport.Export(sources)` を公開: class metadata (fields/型/static、auto property 込み)、migration metadata の layout hash (il-spec §14 — instance field の名前:型列 FNV、static 変更で不変・改名で変化)、method body の IL (未対応は null)。旧 AOT の repo は assembly 参照で直接消費
+- `doc/il-reference.md` を新設: 全 IL ノードのカタログ (意味論は il-spec 参照、Lua render は参考情報)、API、C backend の義務、digest 検証の接続 (DigestKernels ↔ spike CONTRACT)
+- 検証: IlExportTests 3 本 green (metadata/IL body 形/layout hash 性質/未対応 null)
+- 判断: シリアライズ形式は定義しない (il-spec §1 の v0 決定どおり in-memory)。class 骨格 (ctor/accessor/field initializer) の IL 本文は T224 で拡張
+
+### T227: nested class の診断化 ✓ (2026-07-18)
+- class 内の class / record class 宣言を TCS1001 (NestedTypeDeclaration) で拒否。emit されず参照時に実行時 nil になる silent wrong-code (T215 で実測) の封鎖
+- 検証: SubsetDiagnosticTests 追加 1 本 green、run-tests 全ゲート green (conformance baseline 影響なし)
+
+### T212: [spike] AOT 性能上界の PC 測定 ✓ (2026-07-18)
+- 旧 AOT の repo の spike/ に CONTRACT 準拠の 3 kernel × 5 変種 (native/aot-hash/aot-slot/interp/jit-off) を実装 (実装は Codex 委任、検証・適用・突き合わせは当方)。全変種 digest 一致 + tcs TinyC#→Lua とも 3 kernel bit 一致 — 「手書き C と transpiler 出力が同じ計算」の初実証で、digest harness (T215) が backend 間契約として実働
+- 実測 (PC): aot-slot/native = 16.8x (sprite N=1024)、interp/native ≈ 19-36x。aot-slot は interp と大差なし — boxed TValue 表現自体がボトルネック
+- 合否解釈: 「aot-* のみ予算落ち、native は通る」側 → **release-lowering は IL-native 表現 (struct / 連続配列) を採る** (il-design §8 の spike 待ち 2 項が決着: release class 表現 = native、Lua 側 struct 配列表現の需要は M5 実装時に再実測)
+- spawn_churn の CONTRACT 未規定分は spike 実装解釈 (開始時充填) に統一し、tcs kernel を追随 (digest 9274159d で一致確認)
+- 残課題: 実機 (Playdate) 測定は SDK 導入後。旧 AOT の repo にコミット済み (未 push)
+
+### T218 第一マイルストーン: luoc IL→C backend 骨格 ✓ (2026-07-18)
+- 旧 AOT の repo の luoc/ (net10.0 console、Transpiler を ProjectReference) が IlExport.Export を消費して C を生成。class=calloc struct、配列=型付き連続バッファ (spike 合否解釈の IL-native 表現)、strict f32 bit literal、null/bounds/除算 fault、未対応ノードは名前付きエラー (実装は Codex 委任、適用と受入検証は当方)
+- 受入: digest kernel 3 種の C 変換を指定 flags (gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard) でビルド・実行し、digest が Lua backend と 3/3 一致 (e8814b32 / 9274159d / 8bf97e09) — **M3 の核である 2 backend digest 一致が初成立**
+- 判断: IlExport v0 に無い宣言情報 (method 型、配列要素型/長さ、field initializer) は暫定で Roslyn 再解析により補完 → 契約拡充を T228 起票。式・制御フローは IL のみから生成
+- 残課題: T218 本体の全域化 (tasks.md 更新済み)、旧 AOT の repo にコミット済み (未 push)
+
+### T228: IlExport 契約拡充 ✓ (2026-07-18)
+- IlNewArray (要素型 + 長さ、il-spec §11 の固定長配列) を IL に追加 (Lua render は legacy 互換の {})。IlTable に要素型 metadata。IlMethodInfo に ReturnType/ParameterTypes、IlFieldInfo に Init (initializer の IL)。il-reference 更新
+- T218 第一実装が Roslyn 再解析で補完していた宣言情報が IL 契約に載った
+- 検証: IlExportTests +1 green、run-tests 全ゲート green (Lua 出力不変)
+
+### T219: [M5 v1] データ struct のサブセット追加 ✓ (2026-07-18)
+- field のみの struct を TCS1001 解除。値意味論は il-spec §10 の copy 地点 (代入/引数/return/値文脈読み) を IL builder が IlStructCopy 挿入で実装 — Lua は __tcs_scopy (metatable 無し plain table の shallow copy)、C backend は素の値代入に写る。place への部分書き込み (arr[i].X = v) は copy なし
+- 診断の再構成: struct member (method/ctor/property 等) は StructMember、nested struct は NestedTypeDeclaration、record struct は従来どおり。struct 値が legacy fallback 経路へ流れる場合は警告 (silent wrong-code 防止の安全網)
+- 検証: StructSemanticsTests 4 本 (copy 3 地点 + 診断)、**particles struct 版 digest = 8bf97e09 で SoA 版と一致** (値意味論込みで同一計算の実証)、run-tests 全ゲート green (analyzer-demo/CLI/analyzer テストの期待を StructMember へ更新)
+- 判断: v1 はデータ struct のみ — メソッド付き値型は metatable 無し表現と両立せず、需要も particles 型 kernel が field アクセスのみで満たされるため。残りは T219b (P2)
+
+### T218 第二マイルストーン: luoc の string/List/instance method 対応 ✓ (2026-07-18)
+- luoc が string (immutable byte 列 + concat + 値別 WriteLine)、instance method、exact type-id の型 test、List<int>/<float> (連続 growable buffer)、IlNewArray/IlTable/IlForeachList/IlTernary に対応。T228 契約のみで生成 (第一実装の Roslyn 再解析を廃止)
+- 受入: collision の実行値 (hit,miss,hit) が lua32 実行と一致、追加 harness も f32 印字表記以外一致 (同一 binary32。Lua 側 %.14g が shortest でない既知課題 → tasks の T218 残りに記載)、digest 回帰 3/3 維持。実装 Codex 委任、適用と再検証は当方
+- 判断 (契約ギャップとして記録): ctor 本文なし → 宣言順 positional 扱い、local 型なし → initializer 推論、IlTable の array/List 種別なし → List 扱い。これらは T224 (class 骨格 IL 化) / T228 続きで契約側に載せる
+
+### T224 前半: class 骨格の IL 契約化 (ctor / accessor) ✓ (2026-07-18)
+- IlExport に IlCtorInfo (explicit ctor の params/型/本文 IL) と custom property accessor (get_/set_ 名の IlMethodInfo) を追加。luoc の「ctor 本文なし → positional 暫定」の契約ギャップを解消
+- レビュー指摘の docs 反映: il-reference に GNU statement expression の移植性制約、il-spec §12 に実装定義の資源 fault 許容を明記
+- 検証: IlExportTests +1 green、run-tests 全ゲート green
+
+### Lua 側 f32 印字の shortest round-trip 化 ✓ (2026-07-18)
+- __tcs_fstr (%.6g/%.8g/%.9g の round-trip 最短、il-spec §13) を導入し、builder が float 静的型既知の出力 4 地点 (WriteLine 引数 / 補間 hole / ToString / concat operand) で適用。C backend との stdout 完全一致の最後のギャップ (%.14g の余剰桁) を解消し、.NET の表示形 (1.0f → "1") とも一致
+- 付随: IlBuild.Expressions が 800 行超 → Invocations 系を分割。struct テスト期待 3 件を新表示形へ更新
+- 検証: run-tests 全ゲート green。object 型経由など動的値の tostring は対象外 (静的型でのみ適用 — 既知の限界として記録)
+
+### T226: double / long のサブセット外化 ✓ (2026-07-18)
+- TCS1001 に DoubleType / LongType (predefined type keyword) と DoubleLiteral (Token.Value is double — 1.5/1e3/1d を捉え 1.5f と整数を巻き込まない) を追加、analyzer 登録同期。TinySystem facade を MathF 委譲の float シグネチャへ移行 (dotnet 側単体テストと differential が f32 で計算し Lua32 と真正 parity)
+- テスト・サンプル資産を f suffix へ移行、spec 例 10 件が Diag へ (baseline 更新、VariableInitializers1 の known-difference 登録は Diag 化に伴い削除)。FuzzGenerator の 32bit overflow 回避制約を撤廃し、wrap 跨ぎ for (i != end 条件) と全域 int32 を生成 (CS0220 は片側変数化で回避)
+- 検証: run-tests 全ゲート green + deep fuzz 200 seeds 全一致。着手は Codex 委任だったが指示により中断し、診断コア/FuzzGenerator/facade/baseline を精査のうえ当方で完成・検証
+
+### T225 第一スライス: ternary の statement 化 (local 初期化 / return) ✓ (2026-07-18)
+- 評価順が構造的に不変な 2 位置 (local 初期化子・return 式) の条件式を IIFE から if 文へ。closure 割当を最頻出位置で除去 (examples 決定 2 の実施開始)
+- 検証: 専用テスト (IIFE 不在 + 意味論) + run-tests 全ゲート green。代入 RHS 等の残り位置は評価順条件を tasks に明記
+
+### T225 第一スライス: ternary の statement 化 (local 初期化 / return) ✓ (2026-07-18)
+- 評価順が構造的に不変な 2 位置 (local 初期化子・return 式) の条件式を IIFE から if 文へ。closure 割当を最頻出位置で除去 (examples 決定 2 の実施開始)
+- 検証: 専用テスト (IIFE 不在 + 意味論) + run-tests 全ゲート green。代入 RHS 等の残り位置は評価順条件を tasks に明記
+
+### T225 第二スライス: switch 式の statement 化 + return 経路統一 ✓ (2026-07-18)
+- switch 式 IIFE の形 (前置 local 列 + return する if 連鎖) を認識し、local 初期化 / 純 local 代入 / return 位置で文へ inline (代入位置は return→代入へ書換)。return 位置の else 無し chain は「値なし return」化で print の 0 値/1 値差が出るため IIFE 維持
+- return 位置の statement 化を AddReturnStat に共通化し、method 式 body (VisitMethod)・operator/accessor (TryEmitReturnViaIl)・IlExport の 3 経路を統一
+- 検証: 専用テスト + run-tests 全ゲート green
+
+### T225 第三スライス: 値返し IIFE 形状の一般化 ✓ (2026-07-18)
+- 形状認識を [locals + IlIf(arm=前置文*+末尾return, else?) + 末尾return?] へ一般化し、?. / ?? / TryGetValue / GetValueOrDefault の IIFE も statement 位置で文へ。末尾 return は else へ正規化、arm 前置文 (TryGetValue の out 代入) は保存
+- 検証: 専用テスト (IIFE 不在 + hit/miss/?? 意味論) + run-tests 全ゲート green
+
+### T224 後半: IlExport 契約の完備 (top-level 文 / operator) ✓ (2026-07-18)
+- IlExportResult.TopLevel (top-level 文の IL) と operator (metamethod 名 __add 等の static IlMethodInfo) を収載。program 構造の IL 契約はこれで完備 — luoc はエントリポイント込みの全体を IL のみから生成できる
+- 判断: legacy visitor のコード削除は行わない — 診断構文の出力経路と挙動不変の保険として保持し、fallback 面の縮小 (残構文の IL 化/診断化) のみ継続する
+- 検証: IlExportTests +1 green、run-tests 全ゲート green
+
+### T218 第三マイルストーン: ctor 本文と top-level 文の適用 (自作) ✓ (2026-07-18)
+- luoc に T224 で完備した契約を消化: ctor を __ctor 合成 instance method、top-level 文を TopLevel.Main 合成 static method として注入し、facts/prototype/EmitMethod の既存機構をそのまま通す。RenderNew は ctor 呼び出しへ置換 (positional 暫定を廃止、ctor 無し + 引数ありは明示エラー)
+- __tcs_fstr intrinsic (f32 印字改善で IL に増えた分) を luoc の to-string 経路へ写像。digest モードは unwrap して f32 bit を直接投入
+- 検証: digest 回帰 3/3 + ctor/string field initializer/concat/top-level 混在サンプルの stdout が lua32 と完全一致
+
+### T218 第四マイルストーン: 継承 (自作) ✓ (2026-07-18)
+- luoc に継承を実装: DFS pre-order の範囲型 ID (`is` = type_id 範囲判定)、chain flatten による prefix layout 互換 upcast (中央 RenderCoerced で明示 cast)、同名再宣言の推論による type_id switch dispatcher (契約に virtual/override フラグ不要 — hiding/overload は診断済みなので同名 = override が健全)、base.M(self,...) 形は dispatcher を通さない直呼び、ctor は chain 最寄り (連鎖は base 初期化子が契約に無いため明示エラー → 契約拡張の需要として記録)
+- 受入: 仮想 dispatch / base 呼び / is (base 真・派生真・無関係偽) / 継承 field / 非仮想メソッド経由の多態を含むサンプルの stdout が lua32 と完全一致、digest 回帰 3/3、gcc エラーなし
+
+### Dict lowering の契約クリーン化 (T218 Dict の前提) ✓ (2026-07-18)
+- ContainsKey を IlCall("Dict.ContainsKey")、TryGetValue を Dict.TryGet (found, value) の multi-return intrinsic + IlMultiAssign へ変更 — 「nil 比較 = 不在判定」の Lua 方言を IL から排除 (C backend は nil を型付けできない)。runtime に Dict.TryGet を追加
+- 線形 IIFE (分岐なし前置 + 末尾 return) と無条件前置 (代入/呼び出し) も statement 化対象へ拡張 → TryGetValue も statement 位置で IIFE 不要に
+- 判断: TryGetValue は runtime 必須へ (Dict.Remove 等と同格 — Dictionary は言語機能でなくライブラリ)。検証: run-tests 全ゲート green
+
+### T218 第五マイルストーン: Dict runtime + 契約補強 (自作) ✓ (2026-07-18)
+- 契約補強 (tcs): IlLocal.Type (宣言型 — 初期化なし local の型付け)、IlTable.KeyType (空 Dict リテラルの K/V 型)、ContainsKey の intrinsic call 化を実在箇所 (Invocations/Patterns — 前回コミットは置換空振りで無効だった) へ適用、out 前宣言を out var 形のみに削減 (既存 local への冗長 shadow を廃止)
+- luoc: TcsDict (chained hash、i32/string キー、8byte 値スロット)、literal/index get (不在 fault)・upsert/ContainsKey/TryGet (multi-assign)/Remove/Count/foreach-dict (KeyValuePair は Kvp 疑似型で .Key/.Value を node へ写像)。変数束縛を Lua と同じ後勝ち shadow へ
+- 受入: dict 総合サンプル (string/int キー、hit/miss、upsert、foreach) の stdout が lua32 と完全一致、継承/ctor サンプル回帰一致、digest 3/3
+- 教訓: python replace の空振り検証を必須化 (assert 追加で再発防止)
+
+### T225 完了: IIFE の statement 化 (設計範囲) ✓ (2026-07-18)
+- 最終ピース: root if 条件位置の値返し IIFE hoist (`if (d.TryGetValue(...))` 形 — root 条件は無条件先頭評価なので前置 hoist が評価順不変。elseif / while 条件は再評価・条件付き評価のため対象外)
+- 完了範囲: statement 位置 (local 初期化 / 純 local 代入 / return / root if 条件) の ternary / switch 式 / ?. / ?? / TryGetValue 系。式中間位置は「IIFE 維持」を設計判断として確定 — 除去には全 effectful 左 operand の temp 化枠組みが必要で、意味は既に正しく最適化のみの問題。必要になれば C backend 側の最適化 (statement expression は既に温存) で吸収する
+- 検証: 専用テスト + run-tests 全ゲート green
+
+### T224 完: fallback 構文の整理 ✓ (2026-07-18)
+- static method group を IL 化 (IlField(Class, Method) = Lua の関数値と同型、Select(Twice) 等が IL 経由に)。instance method group を診断化 (InstanceMethodGroup — `self:Method` が値位置で不正 Lua になる silent wrong-code、bound closure は需要待ち)。補間 alignment の定数式 (非リテラル) を診断化 (NonConstantAlignment — format 文字列へ式テキストが埋まる。非定数は C# 自体が CS0150 で拒否と判明)
+- 進化に伴う期待更新: fallback 例を instance method group へ差し替え (method group が IL 対応になったため)
+- T224 はこれで完 — legacy visitor は診断構文の出力と挙動不変の保険として恒久保持 (削除しない判断は既録)
+
+### T218 第六マイルストーン: ctor 連鎖の契約化と実装 (自作) ✓ (2026-07-18)
+- 契約: IlCtorInfo.BaseArgs (base(...) 初期化子の引数 IL、暗黙 base() は空)
+- luoc: 構築を Lua backend の Class.new と同順 (base ctor → type_id 上書き = setmetatable 相当 → 自 class field init → ctor body) の tcs_new_C(params) へ再構成。__ctor 合成と「連鎖未対応」制約を撤去
+- 受入: 2 段連鎖 (Puppy→Dog(base args)→Animal、field init と ctor body の交互実行順) の stdout が lua32 と一致、既存 3 サンプル回帰一致、digest 3/3
+
+### T218 第七マイルストーン: closure (自作) ✓ (2026-07-18)
+- luoc: capture-by-variable (il-spec §7) の C 実装 — escape 解析で捕捉 local/param を heap cell (T*) へ box、closure = lifted static 関数 + cells 配列 (TcsClosure)。static method group は thunk、closure 要素 List、一般 callee 式の呼び出し (fs[0]() 等) に対応。前方宣言はマーカー差し込み
+- tcs: BuildInvocation に一般 callee fallthrough を追加 (legacy `{expr}({args})` の写像 — fs[0]() が IL 化)
+- 受入: 共有変異 (2)・ループ捕捉 (9 = 3,3,3 の T221 意味論を C でも実証)・thunk (42)・後変異可視 (101) が lua32 と stdout 一致。全サンプル回帰 + digest 3/3
+
+### T218 完: 静的 link 出荷形 (--lib) と M3 クローズ ✓ (2026-07-18)
+- luoc --lib: main なしで tcs_lib_init / tcs_entry_<Class>_<Method> を外部 linkage 公開。ar で .a 化し外部 main から link 実行 → stdout が lua32 と一致 (il-design の「release AOT = 静的 link」の最小成立)
+- T218 (M3) はこれでクローズ: 継承 / Dict / closure / ctor 連鎖 / 静的 link の全残項目を受入済み。未対応構文は明示エラー方針を維持し、対応面の拡張は実利用需要で駆動する
+- T219b / T220 は需要ゲートの最終判断を tasks.md に記録 (検証面が立つまで書かない)
+
+### CI flaky 根治 v2: 生 Console.SetOut の全廃 ✓ (2026-07-18)
+- CI (2 vCPU) で fuzz smoke が「dotnet 側 capture 空」で 1 回失敗 (seed 1004、master 先頭は green)。真因: CLI 系テスト 6 ファイルが生 SetOut/SetError で Console を全域差し替えており、並列中は SpecDotnetExecutor の AsyncLocal router が外れて in-proc 実行の出力が失われる (T209 対策の枠外)。ローカル再現なし・当該コミットでも再現なし → 競合タイミング依存を確認してから修正
+- 共有 ConsoleCapture (プロセス唯一の out/err ルーティング + AsyncLocal capture) を導入し、SpecDotnetExecutor / CliRuntimeTests / PreludeTests / ComplianceParityTests / EntryClassTests / NamingSuppressionTests / SnapshotCliTests を統一。生 SetOut はテストコードから全廃
+- 検証: run-tests 全ゲート green (並列実行込み)。縮小結果が無意味な断片だったのは「空 baseline への縮小」の帰結で、生成器の問題ではない
+
+### luoc / spike の tcs 取り込み ✓ (2026-07-18)
+- git subtree (履歴保持) で旧 AOT の repo から luoc/ と spike/ を取り込み。ProjectReference をリポジトリ内参照へ、slnx に luoc を追加、doc/spike-ceiling.md を移管し全参照を付け替え (done.md の歴史記述は当時のまま)
+- run-tests に luoc digest ゲートを常設 (cc 存在時) — **2 backend 一致が毎コミット・CI で守られる**ようになった (従来は手動)。ファイルサイズ規約の適用で CEmitter を 6 ファイルへ分割
+- 判断: 対称 2 backend は同一リポジトリが正 (契約ロックステップの解消、ゲート統合、bisect)。旧 AOT の repo はアーカイブとして以後変更しない (CLAUDE.md 記載)
+
+### spike の名称整理 → perf/ ✓ (2026-07-18)
+- 合否決着済みの「spike」を恒久名 perf/ へ改称 (既存 bench/ = wasm E2E スクリプト群との衝突回避)。暫定正本だった spike-ceiling.md を解体し、恒久内容 (KPI floor / 変種 / 決着済み合否 / 実機残り) を perf/README.md へ、参照を全付け替え (done.md の歴史は当時のまま)
+- 判断: spike 名は「一時実験」を示唆し役割決着後は負債 — 実体は kernel 契約・性能回帰基盤・実機測定受け皿という恒久物
+
+### perf Playdate ハーネス: 実機/シミュレータビルド + spike 識別子の粉砕 ✓ (2026-07-18)
+- Playdate SDK 3.1.0 + arm-none-eabi toolchain (Arch pacman) を導入し、perf 全変種 (native / aot-hash / aot-slot / interp) を 1 つの .pdx で実行する `perf/playdate/` ハーネスを追加。デバイス (Cortex-M7) とシミュレータ (host .so) の両ビルドが green
+- 前提リファクタ: common.c を core.c (OS 非依存: LCG/frand/digest) とホスト CLI 部へ分離、native.c/aot.c に dispatch 関数 (`PERF_NO_MAIN` で main をガード)、aot.c は hash/slot を別 TU で 2 回コンパイル。ホストの digest 回帰 (全 kernel × 3 C 変種) は results-pc.md と bit 一致
+- Playdate 対応の要点: pd_api.h の独自 `lua_State` (void*) と本物の Lua ヘッダが衝突するため interp 実行を別 TU (interp_runner.c) へ分離。bench.lua は CMake で hex 埋め込み、os.clock/io.write を pd タイマー/console へ差し替え。newlib setjmp が引き込む ARM unwinder には空 exidx を defsym、`-nostartfiles` で欠ける `_init/_fini` は空 stub、malloc は SDK setup.c が pd realloc へ接続
+- 残っていた spike 識別子・参照 (perf/*.c/h, CMake, run.sh, CONTRACT/results, root CMakeLists, Transpiler.Tests コメントの旧 AOT の repo の spike の stale パス) を perf 系へ全置換。CLAUDE.md に「spike 名称禁止」を明文化
+- 検証: ホスト perf 再ビルド + 各変種実行で digest 一致 (e8814b32/d4a095ee/0040a0c1/9274159d/8bf97e09)、デバイスビルドで tcs_perf_DEVICE.pdx (pdex.bin 165KB) 生成、`file` で ARM EABI5 確認。実機実行は未 (デバイス未接続)
+- 残課題: 実機での実行・results-playdate.md への記録。update 長時間ブロックが watchdog に当たる場合はフレーム分割が必要 (README に記載)
+
+### perf Playdate ハーネス: results.csv 出力 + シミュレータ検証 ✓ (2026-07-18)
+- perf_pd_log を console + `Data/<bundleID>/results.csv` の二重出力へ (job 毎 append+close — ヘッドレス実行と実機からの結果回収の正になる)
+- 検証: Xvfb + dbus-run-session でシミュレータをヘッドレス実行し、全 24 job (4 変種 × 6 workload) 完走、全 digest が results-pc.md と bit 一致 (interp = 埋め込み lua32 + os.clock/io.write 差し替えも含めて動作確認)
+- よかったこと: logToConsole はヘッドレスでは取れない — ファイル出力を結果の正としたことで実機でも同じ回収導線になる
+- 残課題: 実機実行のみ (README 記載)
+
+### perf 2-backend bench: PC 実測 + CI 常設 ✓ (2026-07-18)
+- `perf/bench-2backend.sh`: 同一 TinyC# kernel (DigestKernels、frames=5000 へスケール) を dev (tcs→Lua→lua32) と release (tcs→IL→luoc→C, gcc -O2) で実行。digest 相互一致 = fail ゲート、ms/frame = レポート。GHA に bench-2backend job を追加し毎 push 実行 (step summary へ表出力)
+- PC 実測 (7-run median): dev/release = sprite_update 50x / spawn_churn 48x / particles 38x。release backend は手書き native 天井とほぼ同水準 (particles 0.015 vs 0.014 ms/f) — release-lowering の IL-native 表現判断を実パイプラインで裏付け
+- 発見: particles_struct は luoc 未対応 (`unsupported IL type: Particle`) — T219b (struct 拡張) への具体需要 1 件目。bench は dev のみで継続し、luoc が対応したら自動で比較に入る
+- 判断: CI では絶対時間の閾値ゲートを置かない (runner がぶれる)。決定的な digest 一致のみゲート
+- 検証: ローカルで GITHUB_STEP_SUMMARY 込み実行 green、digest 3 kernel 相互一致 + struct は dev digest が SoA 版と一致 (85ca3656)
+
+### luoc → tcs2c 改名 ✓ (2026-07-18)
+- IL→C release backend の luoc を tcs2c へ一括改名 (ディレクトリ / csproj / namespace TinyCs.Tcs2c / Tcs2cException / CLI usage / slnx / run-tests / verify-digests / bench-2backend / ドキュメント参照。done.md の歴史は当時のまま)
+- 判断: luoc は旧 AOT の repo 由来で実体 (tcs IL → C) と乖離。tcs2c は安直だが「tcs 全体のリブランディングが控えている前提で tcs 系に暫定統一」というユーザー判断
+- 検証: verify-digests.sh 3/3 green (改名後の再ビルド込み)、luoc の残存参照ゼロ (grep、done.md 除く)
+
+### bench 結果の workflow artifact 化 ✓ (2026-07-18)
+- CI の bench-2backend job で stdout CSV を `bench-results.csv` へ tee し、workflow artifact `bench-2backend-results` としてアップロード (if: always() — digest 不一致で fail しても部分結果を残す)
+- 検証: 軽量パラメータ (RUNS=1, FRAMES=100) で stdout が純 CSV であることを確認、push 後の CI 完走と artifact 生成を確認
+
+### T220(a): layout hash の struct 推移展開 ✓ (2026-07-18)
+- IlExport の LayoutHash を拡張: struct 型 field は内部レイアウト `{name:type;...}` へ再帰展開して hash する (struct in struct も推移、循環は防御的に名前で打ち切り)。struct 値は reload 時に owner 経由で再直列化される (il-design §6) ため、struct 内部の変更が owner class の hash に現れないと変更検知が漏れる穴を塞いだ
+- 文脈: ユーザー判断で T220 のゲート解除 — cold reload 安全弁止まりでなく CLOS 流 eager migration を実装する。検証面は同一 VM 2 版 reload のセマンティックテストで立てる方針 (tasks.md に段階 (b)(c) を記録)
+- 検証: IlExportTests +2 (embed 変更/改名の伝播、nested struct 伝播、同一レイアウト安定) 8/8 green
+- 判断: T219b の struct 型 field 解禁に先行して hash 契約だけ先に固めた (解禁時に hash 互換を壊さないため)
+
+### T220(b): hot reload runtime — weak registry + eager migration ✓ (2026-07-18)
+- 生成 Lua に weak instance registry (`__tcs_instances`、global 共有・weak key) と構築時登録を常設 (class new / record new。struct は identity なしなので対象外)。base ctor 連鎖は同一 key 上書きで最派生 class が勝つ
+- `HotReload.EmitReloadChunk(v1, v2)`: v2 定義 + eager migration の単一 Lua chunk を生成。旧 class table を捕獲 → v2 実行 → global を旧 identity へ復元 → method 全面差し替え (accessor/operator/new 込み、削除は nil) / static diff (retained は生存値保持・added は fresh 初期値・discarded 破棄) / 親付け替え (base 変更時) → registry walk で instance field diff (added=initializer render or 型 default / discarded=nil、継承 field は chain 判定で派生 instance にも適用) → OnReload を instance ごと 1 回
+- module mode: registry の strict _ENV が `__tcs_instances` guard 代入を弾いたため、host 所有 + 当該キーのみ write 許可に変更
+- 検証: HotReloadTests 4 本 (field migration + identity / static 保持 + method swap / 継承 field 伝播 / OnReload) green、全 721 green (module/snapshot 回帰込み)
+- 判断: reload chunk は自己完結 (helper を chunk 内 local 定義) — 将来 load() 経由の実 reload 導線にそのまま載る。record class は IlExport 対象外のため未移行 (対象化は需要待ち)。DigestKernels は class 構築を含まないため bench 数値への登録コスト影響なし
+
+### T220(c): struct 値の再直列化 migration + struct field default 修正 ✓ (2026-07-18)
+- 発見バグ修正: struct 型 class field の default 初期化が `nil` で member アクセスが実行時エラーになる既存ギャップ (T219b 残の一因) を修正 — source 宣言のデータ struct は `{Struct}.new()` (zero 値) で初期化
+- IlExport 契約拡張: `Structs` (IlStructInfo: Name/Fields/LayoutHash) を追加、il-reference.md へ記載
+- HotReload: layout の変わった struct ごとに再直列化関数を生成し、owner (class instance field / static field、直接と配列の両形) 経由で新 layout の table に組み直す。retained field は旧値 (struct は再帰 migrate)、added は default (struct なら v2 の zero 値)、同名型変更は新型 default へ reset
+- 検証: HotReloadTests +3 (struct field 追加+削除 / 配列要素 / added struct field の zero 値)、StructSemanticsTests +1 (default init)、全 725+48 green
+- 残課題: List/Dict 内 struct 値の再直列化、record class の migration、実導線接続 (tasks.md 記載)
+
+### T232: 補間文字列 emit の atomicity 修正 (fuzz 発見) ✓ (2026-08-07)
+- T231 の拡張 fuzz が 4/200 seeds で即検出した同根バグの修正。補間文字列が括弧なしの `..` 連接チェーンで emit されるが、Lua は `#` が `..` より強く結合するため、`$"...".Length` が「先頭リテラルの長さに残りを連接した文字列」になる (crash 2 seeds / silent 誤出力 2 seeds)。legacy (`VisitInterpolatedString`) と IL (`BuildInterpolatedString`) の両経路を producer 側で括弧付けに修正。`$""` (空補間) が空文字列 emit になり構文エラーを生む隣接バグも同時修正
+- 検証: 新規 StringTests 3 本 (Length receiver / 算術文脈 / 空補間) Red→Green、全 733+48 green、run-fuzz.sh 500 seeds ×2 域 (1000-1499 / 5000-5499) 差分ゼロ
+- 判断: 修正は `#` 使用側の括弧補強でなく producer 側 — 「複合式は自己完結で emit する」という emitter の他経路と同じ不変条件に合わせた (IL 側も `IlParen` wrap で同形)
+
+### T231: fuzz 文法拡張 第1弾 — string 操作 + static helper ✓ (2026-08-07)
+- FuzzGenerator を拡張: string allowlist 全 API (Length / Contains / StartsWith / EndsWith / IndexOf / Replace / Trim / ToUpper / ToLower / ガード付き Substring)、文字列補間、static helper メソッド 0-3 個 (int/bool/string の型付きシグネチャ、先行 helper のみ呼べる非再帰構造、呼び出しは各型の式アトムとして合流)。文字列は ASCII のみ (UTF-16/バイト列既知差異を踏まない)
+- ユーザー定義オーバーロード生成は実装直後に TCS1001 (MethodOverload) と判明し撤去 — 新設した transpile-only の subset invariant テストが実行前に検出。「生成しないこと」のテストへ反転して固定
+- FuzzRunner.Reduce を helper 対応にし、「使用中 decl/helper の削除で compile error にすり替わった候補は採用しない」ガードを追加 (semantic bug の再現が invalid C# に化けるのを防ぐ)
+- 検証: FuzzTests 6 本 green (決定性 / 文法枝の生存 / オーバーロード不生成 / subset invariant 30 seeds / 故障注入検出 / 縮小)、拡張直後の run-fuzz.sh で 4/200 seeds が実バグを検出 (→ T232 で修正済み)、修正後 1000 seeds (1000-1499 / 5000-5499) 差分ゼロ。run-tests の 20-seed smoke は自動で強化済み
+- よかったこと: 拡張初回の 200 seeds で silent wrong-code (補間 + Length) を掘り当てた — 手書き 733 テストと仕様 corpus 642 例が踏んでいなかった領域。縮小器は 4 件とも数文の repro まで縮めた
+- 判断: 方向はユーザー決定「C# compat が先」(2026-08-07)。hot reload fuzz は不変量オラクルの新設計になるため T235 として分離。第2弾 (class/record/pattern) は T233、LINQ/struct は T234
+
+### T236: switch-case break の Lua 素通し修正 (fuzz 発見) ✓ (2026-08-07)
+- T233(a) の拡張 fuzz が 153/300 seeds で検出。switch section の暗黙 break skip が「section 直下」しか見ておらず、block で包んだ case 本体 (`case X: { ...; break; }`) の break が Lua の `break` として素通し。switch が関数直下なら `break outside loop` で crash、**loop 内なら外側 loop を静かに脱出する silent wrong-code** (mismatch 系 3 seeds も同根)
+- 修正: 「末尾 block 連鎖の末尾 break = 暗黙終端」を再帰収集して suppress。それ以外の switch 束縛 break (条件付き早期 break) は legacy が switch 全体を `repeat ... until true` で包んで Lua break を switch 脱出に束縛 (C# と Lua の break 束縛規則が一致、生テキストで包むので continue label 機構は無傷)。IL 側は IlRepeat が do-while 用に continue label を積む設計のため早期 break を含む switch は IL 化せず legacy fallback
+- 検証: SwitchTests +4 (braced case in loop / 条件付き早期 break / nested loop の break 束縛 / switch 内 continue の外側 loop 束縛) Red→Green、既存 SwitchTests 10 本含め全 737+48 green、run-fuzz.sh 300 seeds 差分ゼロ (修正前 153/300 失敗)
+- 判断: repeat 包みは早期 break を含む switch のみ (needsBreakScope)。全 switch を包むと tcs2c 側の IlRepeat 対応が必要になり blast radius が大きい
+
+### T233(a): fuzz 文法拡張 第2弾 — 制御フロー + コレクション ✓ (2026-08-07)
+- FuzzGenerator に追加: 有界 while (カウンタは block スコープなので変数表に登録しない — 終了保証も兼ねる)、switch 文 (int/string、block 付き case)、switch 式 (定数 arm を先頭に置き CS8510 包摂を回避)、break/continue (増分先頭の while なので continue しても前進)、foreach (body はリスト不変更)、三項、正数ガード付き変数除数 (MinValue/-1 overflow も排除)、複合代入 -=/*=//=/%=、List indexer 読み書き・Sort・RemoveAt (全て Count ガード)、Dictionary int/string キー (Add は相異 pool キー、読みは ContainsKey ガード、TryGetValue out var、列挙は Lua と順序が異なるため生成せず固定キープローブで内容検証)
+- 検証: FuzzTests 6 本 green (coverage マーカー 19 種)、初回 300 seeds で 153 失敗 → 全て単一根 (T236 switch break) と特定、修正後 300 seeds 差分ゼロ、全 737+48 green
+- よかったこと: 「範囲内が呼び出し側契約の API は常にガード付きで生成」の原則 (Substring と同型) が List/Dict にそのまま延びた。early break の縮小 repro が switch 単体まで縮んで root cause 特定が数分で済んだ
+
+### T233(b): fuzz 文法拡張 第2弾 — class/record 生成 ✓ (2026-08-07)
+- FuzzGenerator.TypeGen.cs (partial) を追加: class 生成 (int/string field initializer、auto property、instance method 0-2 引数、virtual + override、単一継承)、positional record (先頭 param は int 保証)。ctor は生成しない (MultipleConstructors 回避、object initializer で代替)。`Base o = (cond ? new Derived() : new Base());` の実行時条件 dispatch、is / is-designation 三項 / property pattern (record・auto property 両方)、record の with 再代入 (`r = r with {...}` — 宣言文にしないのは nested block スコープ事故防止)、値等価 ==/!=
+- instance method body は field を平名でスコープ登録して既存の Statement/式生成器を再利用 (状態変化する field 書き込みも生成される)。record の直接 WriteLine は ToString 書式が C# と異なるため member 単位で出力
+- reducer は 型リストも greedy 削除対象に追加 (使用中の型は invalid C# ガードで保護)
+- 検証: FuzzTests coverage マーカー 27 種 green、subset invariant 30 seeds green (property pattern 含め全構文がサブセット内)、deep fuzz 2300 seeds (1000-1999 / 7000-7999 / 初回300) 差分ゼロ、全 737+48 green
+
+### T237: LINQ チェーンの FirstOrDefault/LastOrDefault が default(T) を返さない修正 (fuzz 発見) ✓ (2026-08-07)
+- T234(a) の LINQ fuzz が 5/500 seeds で検出。List receiver 直呼びの OrDefault 系は呼び出しサイトの型から default(T) を注入済みだったが、**IEnumerable 拡張メソッドの汎用 fallthrough (チェーン途中 — `xs.OrderBy(...).Skip(2).FirstOrDefault()` 等) が default を渡しておらず**、空列で nil が漏れる。int なら 0 のはずが nil → 後段の算術で crash、record field 経由なら `nil` 出力の silent wrong-code
+- 修正: legacy / IL 両経路の拡張メソッド fallthrough に OrDefault 特例を追加し、`methodSym.ReturnType` から default(T) を埋め込む (List receiver 分岐と同形)
+- 検証: LinqSemanticTests +2 (OrderBy.Skip 空列 / Where 空列) Red→Green、20/20 green、run-fuzz.sh 500 seeds 差分ゼロ (修正前 5/500 失敗)、全 739+48 green
+
+### T234(a): fuzz 文法拡張 第3弾 — LINQ 小核 + Split/Join/IsNullOrEmpty ✓ (2026-08-07)
+- FuzzGenerator.Linq.cs (partial) を追加: Where/Select/Sum/Count(pred)/Min/Max (Count ガード)/FirstOrDefault/LastOrDefault/OrderBy(Descending).Skip.FirstOrDefault/Take/Any/All、ラムダ述語 (1/5 で外側変数捕捉 — closure emit を踏む)、string.Join(sep, List<int>)、s.Split(needle) の foreach、string.IsNullOrEmpty。例外を踏む形は構造的に排除 (Sum は %1000 有界化 — C# の Enumerable.Sum は checked、ToDictionary はキー重複 throw、First/Last は OrDefault 系のみ)
+- 分布調整: LINQ bool は BoolExpr の depth>0 arm だけだと出現が枯れる (BoolExpr は atom 直行しない構造) ため BoolAtom 側にも 1/5 ゲートで注入。ついでに BoolExpr の `_` arm が死んで helper-bool 呼び出しが消えていた事故を Next(13) 化で修正。coverage corpus は 200 seeds (固定シードなので実測で全マーカー出現を確認済み = 決定的)
+- 検証: FuzzTests 6 本 green (マーカー 37 種)、fuzz 即 5/500 seeds で T237 を検出 → 修正後 500 seeds 差分ゼロ、全 739+48 green
+- よかったこと: 生成器を単体 csproj で回してマーカー出現数を実測する手が分布デバッグに効いた (Any 21 / All 4 / Sum 3 / Where 31 / Join 12 / Split 79 を確認して確率でなく実測で固定)
+
+### T234(a) 追補: LINQ 即時評価の既知差異から fuzz 生成を隔離 ✓ (2026-08-07)
+- 大規模スイープ (seed 6355) が「Where 述語が捕捉した変数を foreach 本体が変異」で C# (遅延評価) と runtime (即時評価) の可視差を検出。これは support-matrix 明記の設計判断 (遅延評価は非目標) なのでバグでなく既知差異 — dict 列挙順と同じ扱いで、foreach 駆動の述語は捕捉なし (PurePredicate) に制約。単一評価点の式文脈では捕捉を維持 (closure emit のプローブは残る)
+- support-matrix の LINQ 節に可視差の条件 (捕捉変数の列挙中変異) を 1 文追記
+- 検証: seed 6355 を含む 2000 seeds (6000-7999) 差分ゼロ
+
+### T219b(a): struct instance member 解禁 — 静的自由関数 emit ✓ (2026-08-08)
+- struct の instance method / property (auto・custom・式本体) / 単一のパラメータ付き ctor をサブセット解禁。emit は設計方針どおり metatable なしを維持し、member は `function S.M(self, ...)` の静的自由関数、呼び出しサイトは Roslyn の静的型から `S.M(recv, ...)` へ直接ディスパッチ (struct は継承がなく動的ディスパッチ不要)
+- receiver 規則: C# の「変数」(local/param/field/配列要素/this) は直渡しで変異が残り、rvalue (property / List indexer / 呼び出し結果) は copy へ変異 = 捨てられる — `list[0].Inc()` が no-op になる C# の有名な挙動まで一致
+- 明示 ctor は `S.ctor(args)` (zero 初期化 → field initializer → 本文の順、C# 11 意味論)。`new S()` は ctor を通らず zero 値 (`S.new()`) のまま。ctor 引数の struct copy 漏れ (class ctor にもあった既存ギャップ) も同時修正
+- custom property は get_/set_ の自由関数化を BuildPropTarget の StructOwner 経由で compound 代入 / ??= / increment / object initializer まで一貫適用
+- LuaEmitter.cs が 800 行超過 → struct 節を LuaEmitter.Structs.cs (partial) へ分離
+- override method (ToString/Equals/GetHashCode) は診断維持 — 呼び出しが tostring 等の動的経路に乗り metatable なしでは差し替え不能 (class 側も __tostring 未対応で、対応するなら両者一括の別タスク)。spec sweep の structs.md:Constructors1 が Diag→Bug になったことで検出
+- spec conformance baseline 更新: 診断緩和で 7 例が Diag → InCompile x5 / InRun x2 へ改善 (InRun は実 .NET オラクルと出力一致 — 仕様 corpus でも member 意味論を裏取り)
+- 検証: StructSemanticsTests +7 (Red→Green、receiver 3 形 / ctor / auto・custom property / static 診断維持)、analyzer・CLI・demo の診断期待を instance 解禁へ追随 (TCS1001 x5 維持)、spec sweep 642 例 Bug ゼロ、全 745+48 green、fuzz 300 seeds 差分ゼロ
+
+### T219b(b): record struct 解禁 ✓ (2026-08-08)
+- record struct / readonly record struct をサブセット解禁。emit は struct と同じ plain table + 自由関数の上に、positional primary ctor (`R.ctor` — zero → positional 代入 → field initializer 順、initializer は param 参照可) と値等価 `R.op_Equality` を合成。==/!= の呼び出しサイトは IlBuild が静的型 (INamedTypeSymbol.IsRecord + struct) から直接振り分け、!= は not 包み
+- 値等価はネストした struct 値を推移的に field 展開して比較 (struct は循環不能なので停止)。member 列挙は IFieldSymbol ベース (positional prop の backing field 込み) で明示 field / auto prop / positional を一様に拾う
+- with 式は既存 IlWith render がそのまま正しい (plain table では `setmetatable(copy, getmetatable(src))` が no-op)。`new R()` は zero 値 (ctor を通らない — C# と一致)。record struct 本体の member は struct と同じ規則 (instance のみ、override/static は診断)
+- 発見 (d 送り): __tcs_scopy が shallow のため struct-in-struct の copy 経由部分書き込みが alias する潜在ギャップ (v1 由来) を特定 — per-struct copy 関数生成で解消予定、tasks.md に記録
+- 検証: StructSemanticsTests +6 (positional/zero、値等価、with、代入 copy、ネスト値等価、readonly) Red→Green、DiagnosticTests/analyzer の record struct 期待を解禁へ追随、spec sweep で structs.md の RecordStruct 2 例が Diag→InCompile (baseline 更新、Bug ゼロ維持)、全 749+48 green、fuzz 300 seeds 差分ゼロ
+
+### T219b(c): readonly (record) struct の copy 省略 ✓ (2026-08-08)
+- readonly struct / readonly record struct は不変で alias が観測不能なため、copy 地点の __tcs_scopy 挿入を全省略 (コピーコスト・GC 圧ゼロの性能レバー)。不変性は Roslyn がコンパイル時保証するので runtime 検査なし。実装は WrapStructCopy (IlStructCopy の単一生成点) に IsReadOnly 判定を足すだけ
+- 検証: 省略テスト (readonly = scopy 呼び出しサイトゼロ / mutable = 保持、header 定義分は出現数で除外) + 値フロー semantic テスト Red→Green、全 751+48 green
+
+### T234(b): fuzz 文法拡張 — struct copy セマンティクス ✓ (2026-08-08)
+- FuzzGenerator に struct 生成を追加: mutable struct (int field 1-2、this 変異 method、単一 ctor、object initializer)、record struct / readonly record struct (positional int)。member は int のみ — string member は zero 値 null の出力 nil/"" 差 (既知差異) を踏むため生成しない
+- プローブ形: `var w = v;` の代入 copy ペア (片方の変異が漏れたら tail print で検出)、変数間再コピー、field 書き込み/複合代入、this 変異 method 呼び (receiver 規則)、record の with 再代入・positional set・値等価 ==/!=
+- T233 / T234 全段完了 — 生成文法は 式/文/制御フロー/string/List/Dictionary/class/record/継承/pattern/LINQ 小核/struct/record struct を差分オラクル + 自動縮小付きでカバー
+- 検証: coverage マーカー 40 種 green、subset invariant 30 seeds green、struct 込み deep fuzz 2000 seeds (1000-1999 / 6000-6999) 差分ゼロ、全 751+48 green
+
+### T219b(d): tcs2c のデータ struct 対応 + struct-in-struct copy の再帰化 ✓ (2026-08-08)
+- tcs2c: CTypeKind.StructVal を追加 (ポインタなしの素の C 値型)。struct typedef 生成 (struct-in-struct は完全型が要るため内側先の依存順)、IlNewObj → `(Tcs_S){0}` (zero 値)、IlStructCopy → 素通し (C の値代入が copy)、配列要素・ネスト field への読み書きは RenderStructPlace の lvalue 連鎖 (`(*(T*)tcs_array_at(a,i)).f = v`)。struct member / record struct / 明示 ctor の tcs2c 対応は明示エラーのまま需要駆動
+- Lua 側: __tcs_scopy (shallow) の struct-in-struct alias ギャップを型別 `S.__copy` 生成で解消 — struct-typed member は再帰 copy、readonly struct member は不変なので共有。IlStructCopy に TypeName を付与 (il-reference.md 更新)、無い場合は従来の __tcs_scopy に fallback
+- 検証: NestedStruct_CopyIsDeep Red→Green、**bench-2backend 完走 — particles_struct が初めて release 列に載り dev/release digest 一致 (85ca3656 = SoA 版 particles と同値)、72.1x**。release では AoS struct 版 (0.0119ms/frame) が SoA 版 (0.0156ms/frame) より速い。全 752+48 green、fuzz 500 seeds 差分ゼロ。CEmitter.cs が 800 行超過 → CEmitter.Structs.cs へ分離
+- 残課題: record struct の IlExport (layout hash / hot reload migration) は未対応 — T220 系の需要待ちとして tasks.md 記録
+
+### T235: hot reload fuzz — v1/v2 ペア生成 + 不変量オラクル ✓ (2026-08-08)
+- FuzzReloadGenerator: 単一 class (+ 任意で struct 型 field) の v1/v2 型定義ペアと状態構築 Lua・検証 Lua を seed 決定的に生成。mutation は field/static の retain・drop・add、struct layout 変更 (owner walk 再直列化を踏む)、method body 変更、static method 変更、OnReload フック。オラクルは differential でなく生成時計算の不変量: retained=live 値保持 / added=initializer / dropped=nil / instance・class identity / method swap / OnReload 1 回 / reload 後の新規構築は v2 shape
+- 検出網の自己検証: 毎シナリオ必ず「method body 変更 + added field」を含む構造にし、reload を適用しない fault 注入で不変量が破れることをテストで常設確認
+- 常設ゲート: 固定 10 seeds の不変量テスト (常時) + FuzzReloadSweep (TCS_FUZZ ゲート、run-tests smoke と run-fuzz.sh の filter に組み込み)
+- 検証: 3+1 テスト green、reload sweep 1300 seeds (1000-1299 / 5000-5999) 不変量違反ゼロ、全 755+48 green
+- 判断: record class / 継承の reload fuzz は migration 側が未対応 (需要待ち) のため生成対象外と明記。対象機能が入った時に生成器へ足す
+
+### push 前レビュー適用: struct emit の重複排除と dead code 粉砕 ✓ (2026-08-09)
+- 汎用 __tcs_scopy を粉砕: T219b(d) の型別 __copy 化で呼び出しが全滅していた fallback (IlEmit 分岐 / 生成 Lua ヘッダの関数定義 / module prelude の _G alias / runtime の TinySystem.scopy) を除去し、IlStructCopy.TypeName を必須化 (il-reference 更新)。生成 Lua が全ファイル 5 行軽くなり、二重 doc comment (Il.cs) も解消
+- 余剰 copy 2 種を除去: `new S(args)` (S.ctor 経由) と with 式の結果は常に fresh なのに WrapStructCopy が再 copy していた — fresh 除外 (BaseObjectCreation / IlWith) を追加。struct を返す一般メソッド呼び出しの call-site copy は残置 (List.FirstOrDefault 等 runtime 関数は要素 alias を返すため、除外には callee の由来判定が要る — 需要が出たら)
+- LuaEmitter.Structs.cs の重複排除: zero-init new / member dispatch / field initializer を struct・record struct 共通ヘルパー化。VisitStruct 側だけ override method を emit していた非対称も解消 (診断済み構文は emit しない)。ValueEqualityParts は ValueMembers 経由に統一
+- ファイルサイズ帯の是正: struct 系ヘルパーを LuaEmitter.IlBuild.cs (792→754) から Structs へ、RenderStructPlace を tcs2c/CEmitter.Expressions.cs (784→750) から CEmitter.Structs.cs へ移設。fuzz の record/struct 等価生成を共通化
+- 見送り (過剰化回避): BuildPropGet/Set の tri-state enum 化・struct dispatch 4 サイトの強制共通化・StructOwnerName ヘルパー・FuzzReloadGenerator の分割 — いずれも抽象の追加コストが重複コストを上回ると判断
+- 検証: 全 755+48 green、fuzz 1000 seeds (differential + reload) 差分ゼロ、bench-2backend digest 4/4 不変 (85ca3656 等) — copy 除去が意味論に影響していないことを確認
+
+### 開発 script の world-writable な /tmp 依存を除去 ✓ (2026-08-15)
+- verify-inspectcode.sh は `/tmp/tcs-jetbrains-tools/jb` を固定パスで実行していた。/tmp は world-writable なので、共有ホストでは別ユーザーが先回りして jb を置ける (実行されるのは script を動かした側の権限)。`[ ! -x "$JB" ]` ガードは install を *skip* する方向に働くため、仕込まれた方が優先される
+- 既定の作業ディレクトリを per-user cache (`${XDG_CACHE_HOME:-$HOME/.cache}/tcs/...`) に移し、rider-env.sh に `tcs_cache_dir` / `ensure_private_dir` を追加。使う前に「symlink でない」「自分の所有」を確認して 0700 を強制する。対象は verify-inspectcode.sh の tool/output と verify-rider-prechecks.sh の output
+- run-tests.sh の analyzer package consumer は `mktemp -d` (= /tmp 直下) の dir で `dotnet build` していた。MSBuild / NuGet は project の祖先を遡って Directory.Build.props / NuGet.Config を取り込むため、/tmp に置かれた props の `<Exec>` が開発者権限で走る。scratch root を同じ per-user cache 配下に移し、祖先から world-writable な dir を外した (mktemp のランダム名と cleanup trap はそのまま)
+- 検証: verify-rider-scripts.sh に ensure_private_dir の unit テスト (cache 既定パス / 0700 / symlink 拒否) と verify-inspectcode.sh の e2e ガードテストを追加。ガードを外した copy では symlink が通ることを確認 (Red) → 追加後 green。`bash run-tests.sh` 全通過 (758+48 green、tcs2c digest 3/3 不変、analyzer demo / package consumer / severity override 期待どおり)、`~/.cache/tcs/tmp` が 0700 で作られることを確認
+- 判断: PowerShell 版は据え置き。Windows の `%TEMP%` はユーザーごとで同じ攻撃が成立せず、この機械で検証もできないため。README には両者の差を明記
+- 注記: このマシンの .NET SDK が壊れており (`Workload set version 10.0.109.1 has missing manifests`、SDK 10.0.110)、run-tests.sh は `MSBuildEnableWorkloadResolver=false` を付けて実行した。`dotnet workload repair` が別途必要
+
+### .NET SDK の版管理を global.json pin + Dependabot に移行 ✓ (2026-08-15)
+- 背景: Arch の pacman dotnet と `dotnet workload install` (wasm-tools、lub の gen-tcs 用) が `/usr/share/dotnet` に同居し、pacman 更新のたびに workload set の pin (`sdk-manifests/.../workloadsets`、pacman 管理外) が参照する manifest だけ消えて resolver が例外 → `dotnet build/test` 全滅、が再発していた (3月にも repair 履歴)
+- `global.json` で SDK 10.0.111 を pin、`.github/dependabot.yml` に `dotnet-sdk` ecosystem を追加 (新版が出たら pin bump の PR が来て、CI が run-tests で検証してからマージ)。CI の setup-dotnet は `dotnet-version: 10.0.x` → `global-json-file: global.json` に変更し、CI とローカルが同じ正本を読むようにした
+- マシン側は dotnet-install.sh の per-user install (`~/.dotnet` + DOTNET_ROOT/PATH) に一本化し、SDK と workload の所有者を一人にした。README / CLAUDE.md に方針を明記
+- 検証: `~/.dotnet` の SDK 10.0.111 で pre-commit ゲート (run-tests.sh) 全通過 — MSBuildEnableWorkloadResolver 無効化なしで通ることを確認 (壊れた pacman 側 resolver を踏んでいない証明)。SDK 暗黙参照の追随で WasmCompiler の packages.lock.json が 10.0.11 に上がる (別コミット)
+- 残課題: workload set 版の pin (`sdk.workloadVersion`) は wasm-tools を実際に要求する lub 側で行う。Dependabot は workloadVersion の bump 未対応 (dependabot-core#13216) のため、workload set は SDK bump PR に乗せて手動更新
+
+### 名前付き引数を build を止める error にする (#19) ✓ (2026-10-01)
+- TCS1001 `NamedArgument` は warning のままだと build (`-o` / `--watch` / 増分 session) が位置渡しの Lua を書いて exit 0 になり、省略・並べ替えた引数が黙って別の parameter に入っていた (lub の `Gfx.UseBuffer(..., count: n)` が version に入る)。facts に「build を止める未対応構文」の集合 (`IsBuildBlocking`) を置き、`AnalyzeUnsupportedSyntaxes` が該当種類を `error TCS1001` 行で返す。transpiler は error 行を `TranspileResult.Errors` に回して Lua を返さず、CLI は exit 1、watch は Build FAILED、増分 session は open 時 emit なし / edit 時 last-good 維持で commit しない (WasmCompiler は `Success` / `CollectDiagnostics` 経由でそのまま追従)
+- analyzer は `SyntaxKind.Argument` を登録していなかったため `NamedArgument` を一度も報告していなかった (transpiler とのずれ)。登録して warning で報告する。severity は warning のまま (.editorconfig で error にできる)
+- spec conformance の classifier は `error TCS1001` だけの失敗を compile error ではなく Diag に数える (named argument を含む例が Unextracted に落ちないように)
+- 検証: `dotnet test` 全 800+50 green (`Cli_AtomicOutputReplace_RespectsUnixWritePermission` は root 実行の環境要因で master でも fail)。check / build CLI の parity テスト (issue の再現コードで exit 1・Lua なし・error 3 件)、session の open / update / 復帰、classifier の単体テストを追加
+- 判断: 本対応 (IInvocationOperation.Arguments からの並べ替え + 既定値補完 + 副作用順の一時変数) は別タスク。error 化は「誤った Lua を掴ませない」ための暫定で、対応時に集合から外すだけで戻せる
+- 残課題: 名前付き引数の本対応 (#19 の期待挙動)
+### List.Add を table.insert ではなく添字代入で出力する (#24) ✓ (2026-10-01)
+- Lua backend の文位置 lowering: IlCallStat / IlReturn / closure exprBody が `table.insert(t, v)` (List.Add) のとき `t[#t + 1] = v` を出力する (TryRenderListAddStat、LuaEmitter.IlEmit.cs)。IL 自体は IlCall("table.insert") のままなので tcs2c (callee 名で List.Add を検出) と IlExport / hot reload は無変更
+- 受け手は IlVar / IlField 連鎖に限る (1 回評価が自明)。`Get().Add(v)` のような式受け手だけ table.insert に fallback
+- 引数が呼び出しを含む (`new Foo()` / `F()` / IIFE 等) ときは `local __tcs_v = v; t[#t + 1] = __tcs_v` に束縛する。Lua は `t[#t + 1] = v` で `#t` を右辺より先に評価するため、右辺が t に副作用を持つと C# (引数評価 → Add) と順序が入れ替わる — 束縛で順序を守る。block 位置は `do ... end` で閉じて local を後続文へ漏らさない (closure exprBody / 関数末尾の IlReturn / IIFE 文列では素の 2 文)。純粋な runtime helper (`__tcs_*` / math / string / Math / String / tostring) だけの引数は束縛せず直接代入
+- 検証: ListAddIndexTests 11 件 Red→Green (文 / 式 lambda / expression-bodied method / field・auto property 受け手 / method 呼び出し受け手の 1 回評価 / 副作用引数の順序 / `new Foo()` 引数 / method 呼び出し引数 / 束縛 local の非漏洩 / List<struct> の copy / loop 内)。`dotnet test` (TCS_SPEC_CONFORMANCE/DIFFERENTIAL/FUZZ 有効) 805+48 green (Cli_AtomicOutputReplace_RespectsUnixWritePermission は root 実行環境で master でも落ちる既知の環境依存)。micro bench (Lua 5.5, 2M 要素): table.insert 51.9 ns → 添字 25.2 ns
+- 判断: render 層で文脈 (文位置) を見て切り替える方式にし、IL ノードは足さなかった — tcs2c の digest 並行性と IlExport を触らずに済み、式位置 (値が要る所) は元々 table.insert のまま。引数束縛は `do local ...; ... end` の 1 行にして生成 Lua の行構造 (source map) を崩さない
+- 残課題: 束縛形は「引数評価が受け手変数そのものを再代入する」場合 (C# は旧 list に Add) だけ C# と食い違う — 実用上出ない形として許容
+### 写像後に衝突するメンバ名を warning から error にする (#36) ✓ (2026-10-01)
+- field `flash` と method `Flash` のように Lua 名が同じになるメンバは `Repro.flash = 0` と `function Repro.flash(...)` が後勝ちで片方が消えるのに、emitter の `WarnLuaNameCollisions` が warning を足すだけで build (`-o`) は壊れた Lua を exit 0 で書いていた。判定を `Shared/TinyCsComplianceFacts.TryGetLuaNameCollision` に移し、Transpiler / IncrementalCompilationSession は compile error と同じ段で `AnalyzeLuaNameCollisions` を `Errors` に入れて emit せず失敗する (CLI は check / build / watch とも非 0、WasmCompiler は session の `"): error "` 分類にそのまま乗る)。emitter 側の warning は削除し判定の正本を 1 つにした
+- analyzer / `tcs check` は同じ判定を TCS1001 `LuaNameCollision(flash/Flash)` として 2 個目以降の宣言に報告する (MethodOverload と同じ「最初の宣言は無罪」方針)。そのため `LuaNaming` を `Transpiler/` から `Shared/` へ移した (netstandard2.0 でそのまま compile できる)。同名 overload は衝突扱いせず MethodOverload に任せる
+- メッセージは他の TCS1001 と同じ `error TCS1001: unsupported syntax: LuaNameCollision(flash/Flash): 'flash' and 'Flash' both map to Lua 'flash'`。session の error/warning 分類 (`"): error "`) に乗り、spec conformance の分類も TCS100x の error を Diag (サブセット外) として数える。classes.md の Accessors 系など field と property が大小文字だけ違う例は InCompile → Diag になる
+- 検証: field/method・property/method・field/property・record positional の衝突 (error、Lua 空)、`Flash`/`flashCount` の非衝突、overload の非衝突、CLI check/build の exit 1、session の slow path error + full build parity、analyzer の TCS1001 を追加。`dotnet test` 全 804+49 (Transpiler.Tests 800 green / 3 skip、analyzer 49 green)。`Cli_AtomicOutputReplace_RespectsUnixWritePermission` 1 件は root 実行環境で master でも落ちる既存事象
+- 判断: error は compile error と同じく他の warning より先に短絡して返す (TCS1001 の同一箇所二重報告を避ける)。fast path (body 限定編集) は member 名が変わらないので衝突判定を走らせない。struct / interface は旧 emitter と同じく対象外 (struct method は静的自由関数で field と table が異なる)
+### 文字列と bool の `+` を tostring で連結する (#22) ✓ (2026-10-01)
+- `"b=" + b` (bool) が `"b=" .. b` のまま出て Lua で `attempt to concatenate a boolean value` になっていた。IL builder の `WrapConcatOperand` を連結 operand 変換の単一経路にし、float の `__tcs_fstr` もここへ寄せた上で bool / bool? を `tostring` (ToString / 補間と同じ) に写す。bool? の null は C# 同様 `""` (`x ~= nil and tostring(x) or ""`)。`+=` の右辺 (BuildCompoundValue) と legacy visitor (NullSafeConcatOperand / ApplyCompound) も同じ変換にそろえた
+- 検証: StringTests に 5 件追加 (bool 右/左 operand・連鎖、ToString / 補間との一致、`+=`、bool?) — Red → Green。`dotnet test` 796+48 green (CliRuntimeTests の Unix 権限テスト 1 件は root 実行環境の既知失敗で変更と無関係)。tcs2c の verify-digests 3/3 不変、同じ C# を tcs2c でも実行し Lua と同じ `b=true:false` を確認 (C backend は IlCall `tostring(bool)` を既に `tcs_string_bool` に写すため追加変更なし)
+- 判断: 表記は .NET の `True`/`False` でなく tcs 既存の `ToString()` / 補間 / Console 出力と同じ小文字 `true`/`false` (conformance の Normalizer が known difference として吸収している既定)。文字列化の表記を .NET に寄せる変更は ToString / 補間 / C runtime をまとめて動かす別タスク
+### static field の initializer を constructor と method の後に出力する (#15) ✓ (2026-10-01)
+- `public static V Zero = new V(1, 2);` のように static initializer が自クラスの constructor / static method を呼ぶと、生成 Lua では initializer 行が `function V.new` より前に並んでいたため chunk load 時に `attempt to call a nil value (field 'new')` で落ちていた。LuaEmitter の VisitClass で initializer 行の出力を constructor / method / property / operator の後 (EmitStaticFieldInitializers) に移した。pre-zero (`V.zero = <default>`) は宣言直後のままにし、initializer 同士の前方参照は従来どおり default 値を見る
+- hot reload の metadata は不変: StaticFieldMeta の Start/Length は移動後の行を指すので、define チャンク (BuildDefineLua) は initializer 行を除き、type 単位 thunk (BuildTypeInitializerLua) は宣言順のまま。registry の phase 2 (define) → phase 3 (init) の順序とも一致するため、増分 session / snapshot 側の変更は不要。EmittedTypeInfo.Shifted は Start > spliceStart で shift するので、method body の増分差し替えが initializer 行より前に来ても範囲は追従する
+- struct / record struct は static member が TCS1001、record は static field を emit しないため対象外。tcs2c は IL から C を出す (Lua のテキスト順に依存しない) ので変更なし
+- 検証: ClassTests に 自クラス ctor 呼び / 自クラス static method 呼び / 宣言順の 3 本 (fix 前は前 2 本が Red)、HotReloadTests に ctor 呼び initializer を持つ class の reload (retained static の identity / live 値保持、added static は v2 initializer で初期化)、ModuleDescriptorTests に snapshot の load + method-body hot apply で static 保持。`dotnet test` 797+48 green (Cli_AtomicOutputReplace_RespectsUnixWritePermission だけ root 実行環境のため fail — 権限テストで変更と無関係)、tcs2c digest 3/3 不変
+- 判断: C# の static constructor 意味論 (型の最初の使用前に initializer を宣言順に実行) に寄せ、「宣言順」は保ったまま「member 定義後」に動かすだけにした。Lua の遅延実行 (static method 内で参照) は元から動いていたので、挙動が変わるのは chunk load 時に即評価される initializer だけ
+- 残課題: 別クラスの static initializer から宣言順で後ろにある class の `new` を呼ぶ cross-class の前方参照 (`class A { static B b = new B(); } class B {}`) は未対応のまま (型の出力順の問題で、本件とは別)
+### enum 型 field の既定値を 0 にする (#14) ✓ (2026-10-01)
+- initializer 無しの enum 型 instance / static field と auto property が `nil` で emit されていた (`GetDefaultValueForType` が SpecialType だけを見ていた)。`TypeKind.Enum` を 0 に写し、C# の `default(E) == 0` (member 値に依らない) に揃えた。同じ helper を通る struct の zero-init (`S.new()`)、`default(E)` 式、static field の pre-zero も同時に直る
+- hot reload の added field default (`HotReload.DefaultFor`) は型名文字列で判定するため enum を見分けられず nil だった。IlExport が enum 宣言名 (`IlExportResult.Enums`) を出し、reload chunk 側で 0 に解決するようにした
+- tcs2c は enum 型を `MapType` で受けないため対象外 (C の zero 初期化側は既に I32 を 0 にしている)
+- 検証: EnumTests 3 件 (instance / static / auto property / `default(E)`、0 member 無し enum、struct member) + HotReloadTests 1 件 (added enum field) を先に Red で確認 → fix 後 green。`dotnet test` 全通過
+- 判断: enum 名の照合は struct と同じく単純名 (ToDisplayString の namespace 付き名とは一致しない) で、既存 struct 判定と同じ制約に揃えた。TopLevel 以外の既存 API は default 引数で後方互換
+
+### runtime の global と同名の型を error にする (#21) ✓ (2026-10-01)
+- runtime は `_G.TinySystem` / `List` / `Dict` / `Math` / `String` / `Random` を global に置き、生成コードの BCL 呼び出しは `Math.Abs` / `List.Add` / `Dict.ContainsKey` / `String.Split` と facade の `TinySystem.<Type>.*` を素の global 名で参照する。型は namespace を捨てた simple name で global に emit されるため、`namespace Game { class Math }` でも runtime の table を上書きし、以後の BCL 呼び出しが nil を呼んでいた (check も build も無診断)。TCS1001 `RuntimeGlobalIdentifier(name)` を型宣言 (interface 以外) に追加し、#19 の build を止める機構で error にする
+- 予約名の集合 (`ReservedRuntimeGlobals`) と prelude / module snapshot の `_G` alias (`RuntimeGlobalAliases`) は facts の同じ配列から作る (LuaRuntime.CreateEmbeddedPrelude と ModuleLinker.LinkSnapshot は配列を回して emit)。runtime/tinysystem.lua が全 alias を定義し、`_G` に置く名前が予約集合を含むことをテストで固定
+- 検証: `dotnet test` 全 806+50 green (環境要因の root 権限テストを除く)。analyzer / transpiler / check / build の各経路で `class Math`・`namespace Game { class Dict }` が error、`class MathUtil` は clean。既存 smoke test の `class Math` は `Calc` に改名
+- 判断: `Random` は alias にあるが予約しない。#28 で facade 呼び出しが `TinySystem.Random.*` に固定され、生成コードが素の `Random` を参照しないため、user の `class Random` は共存できる (既存テスト RandomFacade_DoesNotResolveToGameRandom がその契約)。local / parameter 名は C# 側で同スコープの BCL 参照が compile error になるため対象外
+- 残課題: 本対応は BCL 参照を user 名に左右されない形 (`TinySystem.Math.Abs` や `__tcs_` 別名) に変えて予約を外すこと (#21 の期待挙動)。別 namespace の同名型どうしの上書き (#18) は別件
+
+### caller info 属性を TCS1001 で診断する (#17) ✓ (2026-10-01)
+- `[CallerArgumentExpression]` / `[CallerMemberName]` / `[CallerLineNumber]` / `[CallerFilePath]` は C# では呼び出し側でコンパイラが引数を埋めるが、tcs は再現せず既定値がそのまま渡り、診断も無かった。parameter に付いた属性を構文名で判定して TCS1001 `CallerInfoAttribute(name)` (warning、build は止めない) にする。`Attribute` suffix の有無と `System.Runtime.CompilerServices.` / `global::` 修飾を許容し、別 namespace の同名属性は対象外。analyzer は `SyntaxKind.Attribute` を登録して同じ判定を共有する
+- spec conformance: `attributes.md:CallerArgumentAttr1` (M の宣言) が InCompile → Diag に移り、baseline と report の集計を更新 (CallerArgumentAttr2 は従来どおり Diag、理由に属性の診断が加わる)
+- 検証: `dotnet test` 全 814+54 green (環境要因の root 権限テストを除く)。transpiler は 7 形 (4 属性 / suffix / 修飾 / global::) の Theory、analyzer は 4 形、他の属性が誤検出されない control。spec sweep は更新した baseline で green
+- 判断: semantic model で `System.Runtime.CompilerServices` の属性型に束縛することも可能だが、analyzer が構文のみの経路 (`TryGetUnsupportedSyntax(SyntaxNode)`) で診断を共有するため構文判定にした。本対応 (呼び出し側で引数式テキスト / member 名 / 行番号 / path を埋める) は別タスク
+- 残課題: caller info の本対応 (#17 の期待挙動)。`ConditionalAttribute` 等 semantic 判定の診断は analyzer 側に無いまま (従来どおり)
+### Lua 予約語と同名のローカル変数を安全な名前に写す (#7) ✓ (2026-10-01)
+- `var local = 1;` / `int end` / `foreach (var until ...)` / `is int nil` / lambda parameter などローカル束縛が Lua 予約語と同名のとき、TCS1001 `LuaKeywordIdentifier` の警告を出した上でそのまま emit して不正 Lua (syntax error) を生成していた。member は LuaNaming.Member が `end_` に写しているので、ローカル束縛にも同じ規則を入れた
+- LuaLocalRenamer (Transpiler/LuaLocalRenamer.cs): emit 前に syntax tree の token 置換で写す。予約語 `x` → `x_`、同じ member body (lambda / local function を含む。top-level 文は compilation unit) に識別子として `x_` が現れるなら `_` を足す。semantic model で宣言と全参照 (closure 内含む) を同じ symbol として束ねるので、emit の各所 (IL 経路 / legacy 経路 / 既定引数 / pattern 前宣言) は名前を知らなくてよい。改行を増やさないので source map の行番号は保たれる。写した tree は `ReplaceSyntaxTree` で compilation に差し替え、新しい semantic model で emit する。予約語を含まない tree は token 走査だけで素通り
+- 適用点: LuaEmitter.Visit / EmitSingleMethod (incremental session の splice 経路。同種 node の序数で写した tree の method を引く) / IlExport (hot reload / tcs2c が見る IL の名前を Lua 出力と揃える)
+- Shared/TinyCsComplianceFacts: `LuaKeywordIdentifier` の対象から local 変数 / parameter / foreach / designation を外した (analyzer / `tcs check` / transpiler warning は同じ facts なので一括)。field / record positional parameter / 型 / method / property / enum メンバの診断は従来どおり残す (LuaNaming.Member が写してはいるが、member 側の整理は別件)。`self` / `__tcs_` prefix の `ReservedIdentifier` はローカル束縛でも従来どおり拒否
+- LuaNaming の予約語表に Lua 5.5 の `global` を追加 (facts 側には既にあり、member `Global` が `global` のまま emit されていた)
+- 検証: LuaLocalRenameTests 10 件 (local / parameter 既定値 / foreach / closure 捕捉 / `local_` との衝突 / 同名 member 参照の束縛保持 / pattern designation / for 変数 / incremental session の splice / reserved の据え置き) Red→Green、LuaIdentifierTests を新挙動に書き換え (member は警告、local は写す)、analyzer テストにローカル束縛の無診断を追加。`TCS_SPEC_CONFORMANCE=1 TCS_DIFFERENTIAL=1 TCS_FUZZ=1 dotnet test` 全通過
+- 判断: emit の各所に名前写像を足す案 (宣言サイト約 30 箇所 + 参照 2 箇所) は漏れやすいので、tree 置換で構造的に網羅する方を採った。衝突判定は宣言だけでなく member body 内の全識別子 token を見る (同名 member の simple name 参照が写した local に束縛し直されるのを防ぐ)。tcs2c はローカルを `v_<name>_<i>` に写すので C 側の予約語とは衝突しない
+- spec conformance: `attributes.md:CallerArgumentAttr2` は `int local = 10;` の警告で Diag に隠れていたが、写すようになって Lua 実行まで進む。#17 の `CallerInfoAttribute` 診断 (parameter の属性) が先に入っているので分類は Diag のまま変わらず、baseline / report に差分なし
+- 残課題: `nameof(local)` は写した名前 (`local_`) になる (nameof 自体がサブセット外)。member の `LuaKeywordIdentifier` 診断は LuaNaming.Member が既に安全化しているので外せる可能性があるが、issue の範囲 (ローカル) に留めた
+
+### T240: tcs2c GC — 精密 heap / 保守的 stack の mark-sweep ✓ (2026-10-01)
+- release backend の確保を calloc 放置から自前 GC へ。全 heap object に `TcsGcHeader` (kind + `TcsLayout`) を付け、生成側が class / struct の pointer slot 表 (`offsetof` 平坦化) と static root 走査関数を出す。array / List / Dict / closure cell は確保時に要素 layout を受け取り、heap trace は精密。root は static (精密) + C stack の保守的走査 (entry で frame を記録、setjmp で register を落とす、interior pointer 許容)。トリガは「直近 GC 以降の確保 bytes ≥ 生存 bytes (下限 1 MiB)」
+- 付随: string literal を `TCS_GC_STATIC` な file-scope object に intern (評価ごとの確保を廃止)。TcsArray の要素を inline 化、Dictionary を bucket 倍化 + node 末尾の可変長 value (従来の 8 byte slot は struct 値で heap を壊していた)。派生 class の確保を最派生の `tcs_new_C` に一本化し `tcs_init_C` で base init を連鎖 (従来は base 側で `sizeof(Base)` だけ確保して派生 field が溢れる latent bug)。格納型の制限を解除 (List / array の要素型・Dict・closure を field / parameter に許可)、closure 値の代入 / 引数 / return / 初期化子を target 型付けで通す、static struct field と Dict の struct 値を place として読める
+- tcs2c.Tests (xUnit、slnx 登録): 2 backend differential ハーネス (`Backends.AssertParity` — C 通常 + `-DTCS_GC_STRESS=1` + Lua の stdout 一致)、GC テスト 5 本 (churn / 全 container 経路の root 保持 / garbage 回収で heap 有界 / `--lib` 境界 + `tcs_lib_gc` / literal の static 化)。C compiler が無い環境は skip
+- 検証: tcs2c.Tests 5/5 green (stress + AddressSanitizer でも同出力、`ASAN_OPTIONS=detect_stack_use_after_return=0`)、verify-digests 3/3 不変 (e8814b32 / 9274159d / 8bf97e09)。300k 確保の churn で RSS 10 MB (GC なしは 1.2 GB)
+- よかったこと: stress (確保ごとに full GC) × 2 backend stdout 一致が root 漏れの検出器としてそのまま働く。保守的走査と ASan の衝突は `TCS_NO_ASAN` + `__builtin_frame_address` で解消
+- 判断: 精密 stack (shadow stack) は statement-expression の temp 全てに root 登録が要り codegen を汚すので却下。参照カウントは循環と codegen 侵襲で却下。sweep は address 順 index (qsort) で保守的候補を二分探索 — 自前 allocator (page map) より単純で system malloc/free をそのまま使える
+- 残課題: 世代別 / incremental 化は需要待ち。32bit target (Playdate) での実測は未
+
+### T241: tcs2c の対応面完成 — enum / LINQ / String / Math / Dict / format / IIFE + IL 契約拡充 ✓ (2026-10-01)
+- C backend を IL 契約の全域へ: enum (契約の IlEnumInfo 定数表で i32 畳み込み)、char (1 文字 string)、List / array の全要素型と Dictionary / closure の格納型、List.* (LINQ 小核を要素型ごとの inline loop、Sort / OrderBy は runtime の安定 merge sort + call site ごとの lifted 比較関数、closure の戻り型は本体から推論)、String.* / string.sub / byte / upper / lower / format (Lua 意味論の `%d %s %f %e %g %x %c` + flag / 幅 / 精度)、tonumber / math.tointeger / math.fmod / os.getenv、Math.* (`MathF.X` の host BCL 経路も同じ intrinsic)、Dict.Keys / Values / Clear、List.Clear (IlForPairs 形の認識)、table.remove、Console.Write、IlForeachRunes (UTF-8 decode)、IlIife (GNU statement expression、内側の return は結果変数 + goto)、`string s = null` / 派生型初期化子の宣言型優先、downcast、List リテラルの upcast 項、Dictionary の struct 値 place
+- IL 契約 / Lua backend 側の修正 (両 backend 共通の意味論): float literal を `7.0` 形で出す (従来 `7` は integer subtype で LUA_32BITS の乗算が wrap)、`(int)f` を `__tcs_trunc` (0 方向 truncation。従来は透過で 2.7 のまま)、auto property initializer を IlFieldInfo.Init に載せる、is-pattern / out var の前宣言 local に型を付ける、Dictionary の indexer initializer (`["k"] = v`) を IL 化、`foreach` / LINQ / `Count` の Keys / Values (`Dictionary<K,V>.KeyCollection`) 判定 — 従来は Dictionary 本体と誤認して pairs 反復 (KeyValuePair) になる wrong-code
+- tcs2c.Tests: samples 6 本の 2 backend parity (期待値は SampleE2ETests と同じ)、digest kernel 3 本の C 側固定、言語機能別 differential 8 本 (enum / LINQ / String / Dictionary / Math / 継承 / closure / struct / 制御フロー) — いずれも C 通常 + GC stress + Lua の stdout 一致
+- 検証: tcs2c.Tests 21/21 green、verify-digests 3/3 不変、Transpiler.Tests 856/858 (残 2 は root 実行環境の権限テストと deps/csharpstandard 未取得時の conformance sweep — 取得後は green)、spec-conformance-report に意味差分なし
+- よかったこと: probe 群 (構文 1 つ 1 文の小 program) を 2 backend で回す導線が、C 側の穴と Lua 側の wrong-code (Keys 反復 / float literal / cast) を同時に炙り出した
+- 判断: LINQ は runtime の generic 関数ではなく call site 展開にした (要素型と closure 型が静的に決まり、void* + element_size の間接を避けられる)。IIFE は一般形を statement expression で受け、Clear だけ runtime 呼びへ特化。record / Nullable / Random / StringBuilder は明示エラーのまま (record は IL 契約に未収載、Random は il-spec §13 で backend 間一致の対象外)
+- 残課題: record (with / 値等価) の IL 契約収載と C 対応、Nullable<T>、closure 型 field の直接呼び出し (`obj.F()`) の IL 化、`int.TryParse`
+
+### bench-2backend の導線修復 ✓ (2026-10-01)
+- T238 の snake_case 写像で Lua 側の entry 呼び (`X.Main()`) が nil になっていたのを `X.main()` へ追随。ms/frame の算出を Python 3.12 専用の入れ子 quote f-string から `%` 書式へ (3.11 以前でも動く)
+- 検証: `PERF_BENCH_RUNS=1 PERF_BENCH_FRAMES=200` で 4 kernel とも dev / release の digest 一致 (particles_struct は T219b(d) 以降 release 側も走る)、GC 込みの release が dev の 11-30x
+
+### T242: delegate 型 field の直接呼び出しと int / float.TryParse ✓ (2026-10-02)
+- IL builder: delegate 型の field / auto property の `obj.F(args)` / `Cls.F(args)` / 非修飾 `F(args)` を IlDynCall(IlField) に (従来は legacy fallback で C backend 不可)。C backend は class 名修飾の static field が closure 型なら closure 呼びとして型付け
+- `int.TryParse(s, out v)` / `float.TryParse`: runtime に Math.TryParseInt / TryParseFloat ((found, value or default) multi-return) を追加し、IL builder は TryGetValue と同形の IIFE + multi-assign、legacy visitor も同じ IIFE を出す (従来は `math.TryParse(...)` という存在しない関数を出す wrong-code)。C backend は multi-assign を (found, value) intrinsic 一般へ拡張し `tcs_try_parse_i32 / f32` で受ける
+- 検証: HostBclExtensionTests / LambdaTests に Lua 側 2 本、tcs2c.Tests に 2 backend differential 1 本 (22/22 green)、Transpiler.Tests 857/858 (残 1 は root 環境の権限テスト)
+- 判断: TryParse の runtime 関数は新 global を増やさず既存の `Math` table に置いた (ReservedRuntimeGlobals / module alias を触らない)
+- 残課題: 需要待ち (record / Nullable / Random は方針合意待ち)
+
+### T243: record class を IL 契約に収載し C backend で構造等価 / with ✓ (2026-10-02)
+- IlExport が record class を IsRecord 付き IlClassInfo として export: positional parameter を Fields の先頭に (base の primary ctor へ渡すだけの parameter は C# 同様に合成しない)、Ctor は宣言順の代入 + `: Base(args)` の引数、本体の method / field / property は class と同じ。hot reload は Classes を見るので record もそのまま migration 対象になる
+- C backend: record 型ごとに `tcs_eq_<R>` を生成 (null / 同一参照 / type_id 不一致 → 派生 record へ dispatch → chain 全 field の比較。string は内容、record は再帰、データ struct は memberwise の `tcs_eq_S_<S>`)。`==` / `!=` と List.Contains / IndexOf / Remove がこれを使う。IlWith は `TCS_GC_HEADER(src)->layout` (実行時型) で確保 + memcpy + 上書き。分解代入は右辺全評価 → 左から代入の一般 multi-assign
+- IL に IlCast (user class / record への明示 downcast) を追加: Lua は透過のまま、C は `tcs_cast` で実行時型 check (fault "invalid-cast")。型消去で downcast 後の field access が C で型付けできなかったため
+- 検証: IlExportTests +1 (positional field / ctor / base args / 合成しない parameter)、tcs2c.Tests Records differential (等価・with・継承・分解・List 内探索・Dict 値、C 通常 + GC stress + Lua 一致)、tcs2c.Tests 23/23
+- 判断: Lua の `__eq` は派生 record で自分の positional field しか比べないが、C は chain 全 field + 実行時型一致を比べる (C# の規則)。差が出るのは派生 record 同士の比較で base field だけ違う場合で、Lua 側の既知差異として support-matrix に残さず C# 側に揃えた (Lua 修正は別件)。struct field の等価は Lua が table identity (常に false)、C は memberwise (C#) — これも C# 側に揃えた
+- 残課題: record struct の IlExport (需要待ちのまま)、record の ToString / Equals 呼び
+
+### T244: Nullable<T> の正式対応 — IL 明示ノード + lifted 演算子を 3 backend で ✓ (2026-10-02)
+- IL (il-spec §3): `T?` を独立した型とし、IlNullableWrap / HasValue / Value / GetOrDefault と IlLiftedBin / IlLiftedUn (IlLiftedOp は DivInt / RemInt を含む) を追加。builder は Roslyn の ConvertedType を見て T → T? を BuildExpr の入口で一元的に wrap し、`== null` / `is null` / `??` / HasValue / Value / GetValueOrDefault / lifted 二項・単項 / `++ --` / 複合代入 / `(int?)` cast を明示ノードへ。文字列化 (連結・補間・WriteLine) は `__tcs_nstr` で null → "" (C# と同じ)。IL から nil 比較・`or` の Lua 方言が消えた
+- Lua backend: 表現は nil または値のまま。chunk-local helper (`__tcs_nval` は値なしで error、`__tcs_nget`、`__tcs_nlift` + 定数 op 関数、`__tcs_ncmp`、三値の `__tcs_nand / nor / nnot`、`__tcs_nstr`) を prelude に追加し、module mode は TinySystem の同名関数へ alias。`??` の右辺は呼び出しを含むときだけ IIFE で遅延、GetValueOrDefault(arg) は method 引数なので常に評価
+- C backend: `T?` = `{ bool has; T v; }` (TcsOptI32 / F32 / Bool + struct ごとの TcsOpt_S_X typedef と GC layout)。各ノードを 1 対 1 の statement expression に (lifted は `x.has && y.has` のとき演算、比較は false、Eq は `has == has && (!has || v == v)`、bool? の And / Or は三値)。IL の nil 比較の残り (`?.` 等) は T? と null の Eq を lifted 等価で受ける安全網
+- 検証: NullableValueTypeTests +3 (lifted 算術・比較、bool? 三値と float、`.Value` の fault) は dotnet differential で実 .NET と一致、既存の Nullable / 連結 / パターン系テスト green、tcs2c.Tests に真理表 program の 2 backend differential (C 通常 + GC stress + Lua 一致)、verify-digests 3/3 不変
+- 判断: lifted 演算は診断で外さず全面対応 (ユーザー合意)。Lua の lifted helper は定数 op 関数 + 汎用 lift で closure 確保を避けた。`List<int?>` / `Dictionary<K, int?>` の null 要素は Lua table の穴になるため TCS1003 の範囲のまま (C は表現できるが仕様に揃える)。il-spec 付録 C の「Nullable<T> の位置づけ」は決着として削除
+- 残課題: `T?` の `?.` (IlIife の nil 比較のまま。C は安全網で動く)、`switch` の `case null` は ConstantPattern 経由で動くが Lua 側の legacy visitor は旧 nil 流儀のまま
+
+### T245: Random の合意 PRNG — Lua 5.5 xoshiro256** の C 移植と Random.Seed ✓ (2026-10-02)
+- facade `Random.Seed(int)` を TinySystem に追加 (Lua は `math.randomseed(n)`、dotnet は `Random.Shared = new Random(n)`)。tcs2c の C runtime に Lua 5.5 lmathlib の xoshiro256** を LUA_32BITS 構成のまま移植 (seed は `{n, 0xff, 0, 0}` + 16 回捨て、float は上位 24 bit から、整数範囲は `project` の rejection sampling)。`Random.Next / Next(max) / Next(min, max) / NextFloat / Range` を intrinsic として `tcs_rand_*` へ直結し、seed 未指定は起動ごとに time と address から seed する
+- 検証: tcs2c.Tests に seed 固定 program の 2 backend differential (Lua と C の列が bit 一致。C 通常 + GC stress)、RandomSemanticTests に Seed の決定性テスト、tcs2c.Tests 25/25、Transpiler.Tests は root 環境固有の permission テスト 1 件を除き green、verify-digests 3/3 不変
+- よかったこと: Lua の `math.random` を仕様として採用したので「Lua と C の列が一致する」が機械的に検証でき、il-spec §13 の Random 条項と付録 C の未決項目を決着できた
+- 判断: dotnet facade は System.Random のままなので乱数列は dotnet differential の対象外 (seed 固定テストは Lua / C 間のみ)。独自 PRNG を 3 backend に載せる案は、Lua backend の `math.random` を置き換える不利益の方が大きいので却下
+- 残課題: `Random` インスタンス (`new Random(seed)`) は facade 外のまま。必要になれば Seed 付き状態を持つ型として IL に載せる
+
+### T246: struct / record struct の IL 契約完成と C backend の値型 member ✓ (2026-10-02)
+- IlStructInfo に Methods / Ctor / IsRecord を追加し、record struct を struct 側の契約に収載 (positional parameter と auto property も field、layout hash と hot reload の migration に乗る)。IlExport の class / struct の member 収集を共通化 (CollectFields / BuildCtor / CollectMethods)。expression-bodied property の getter も契約に現れるようにした
+- C backend: struct の instance method / accessor は `Tcs_S *self` で格納場所を直接指す自由関数 (変数 receiver はアドレス渡しでコピーゼロ、rvalue receiver は一時値)、`S.ctor` は zero 値 → field initializer → 本文を値で返す関数、record struct の `==` は memberwise 比較関数、`with` は値 copy + 上書き。struct は素の C 値型のまま (配列 / List / field に inline、heap 確保なし)
+- 両 backend の揃え: `default(S)` / `new S[n]` の要素を IlNewObj の zero 値に (IL の `S.new()` リテラルを排除、IlNewArray に Default を追加して Lua も値型配列を n 個詰める)、List.Contains / IndexOf / Remove の struct 要素を memberwise 等価に (Lua は型別 op_Equality を末尾引数で受ける、plain struct にも op_Equality を合成)、legacy 経路の `new S(args)` を S.ctor に、C の f32 文字列化を Lua と同じ %.6g → %.8g → %.9g の刻みに (100.0f が "1e+02" / "100" に割れていた)
+- 検証: tcs2c.Tests に struct member / ctor / property / record struct / 入れ子 / List 等価 / 配列 zero 値を 1 program にまとめた 2 backend differential (C 通常 + GC stress + Lua 一致)、IlExportTests に契約テスト、HotReloadTests に record struct の migration、StructSemanticsTests に `new S[n]` と List 値等価 (dotnet differential)。Transpiler.Tests 868/869 (root 環境固有の permission テストのみ)、tcs2c.Tests / Analyzers / verify-digests green
+- よかったこと: `self` を Boxed 変数 (`(*v_self)`) として登録するだけで既存の place 連鎖 (RenderStructPlace / EmitAssign) がそのまま struct method 本文に使えた。LuaEmitter.cs の prelude を Prelude.cs に分離して 800 行ゲートを守った
+- 判断: struct の parameterless ctor は従来どおり対象外 (`new S()` の zero 意味論を保つ)。List 等価の Lua 側は metatable を struct に付けず (plain table 設計と migration を保つ)、IL が等価関数を渡す形にした。`new string[n]` の要素 nil / Length 0 は TCS1003 と同じ nil 制約として残す
+- 残課題: struct を Dictionary の key にする用途 (C は i32 / string key のみ)
+
+### T247: `T?` の `?.` と `??=` を明示 nullable ノードへ ✓ (2026-10-02)
+- BuildConditionalAccess を共通化 (BuildConditionalCore): `S?` receiver は IlNullableHasValue で分岐し、then 側で IlNullableValue を `__tcs_cav` に束ねて member / method を参照する (method は struct の静的ディスパッチ + copy = C# の .Value 意味論)。結果が非 nullable 値型なら IlNullableWrap で `T?` に揃えた (参照型 receiver の `o?.Hp` も C# どおり `int?`)。nested `?.` も同じ経路。`??=` の 3 経路と bool? の文字列化から nil 比較を消した (`__tcs_nstr`)
+- Shared facts の InstanceMethodGroup 規則が `x?.M()` の `.M` (MemberBinding の name) を method group と誤診していたのを修正 (analyzer / check / transpiler 共通)
+- 検証: NullableValueTypeTests に `S?` / 参照型 / nested / `??=` / bool? を 1 本にまとめた dotnet differential、tcs2c.Tests に同 program の 2 backend differential、SubsetDiagnosticTests に `?.M()` 無診断。既存 Nullable / ConditionalAccess / Coalesce 系 43 件 green
+- 判断: `__tcs_ca` (receiver) と `__tcs_cav` (値) を分けた。IlNullableValue を直接 member の receiver にすると MemberBinding 経路 (`n?.Pos.X` の `.Pos`) が名前で receiver を引く既存設計と噛み合わないため、builder の `_condAccessVar` で切り替える
+- 残課題: legacy visitor (IL 化できない本文の fallback) の `?.` は旧 nil 流儀のまま (Lua では同値)
+
+### T248: Random を System.Random 形に — instance / Shared を 3 backend で ✓ (2026-10-02)
+- TinySystem.Random を instance class (`new Random()` / `new Random(seed)`、`Next` / `Next(max)` / `Next(min, max)` / `NextFloat` / `NextSingle` / `Range`) + `Random.Shared` + `Random.Seed(seed)` に変更 (静的 `Random.Next()` は `Random.Shared.Next()` へ)。dotnet facade は System.Random に委譲、`Range` は両端含む (Lua / C と同じ)
+- Lua runtime: instance は xoshiro256** の pure-Lua 実装 (64bit 値を 32bit 対で持ち、LUA_32BITS の `math.random` と同じ射影 / float 化。32bit / 64bit どちらの Lua でも同じ列)、Shared は VM の `math.random` 状態。C runtime: `TcsRandom` を GC object にし、Shared は static 1 個。IL は facade 型を `TinySystem.Random` で修飾 (user の `class Random` と衝突しない)、C backend は `CTypeKind.Random` (pointer、List / field / null 比較可)
+- 検証: lua32 / lua64 で instance の列が `math.randomseed` 後の Shared と seed 5 種 (負数・両端含む) で一致、tcs2c.Tests に instance / Shared / List / class field / null / identity の 2 backend differential (C 通常 + GC stress)、RandomSemanticTests に instance ≡ Shared / 同 seed 一致 / 異 seed 相違 / auto seed 相違、既存 Random / facade テストを新 API へ移行
+- よかったこと: T245 の C 移植が lua32 と bit 一致済みだったので、pure-Lua 版は「C 移植を 32bit 対に写す」だけで済み、instance ≡ Shared の等式が両 backend の自己検証になった
+- 判断: 静的 `Random.Next()` の facade は廃止 (同名 instance method と共存できない)。BCL と同じ `Random.Shared` の形を取る方が CoreCLR 側の経験に揃う。auto seed は時刻 + カウンタ (instance ごとに異なる) で、Shared の列を消費しない
+- 残課題: `NextDouble` / `NextBytes` / `Shuffle` は double / Span がサブセット外のため対象外のまま
+
+### T249: シフトの C# 意味論と compound 右辺の括り、int.MinValue literal ✓ (2026-10-02)
+- Lua backend の `<<` / `>>` を `__tcs_shl` / `__tcs_shr` (count は 31 でマスク、int の `>>` は算術シフト) に変更し、support-matrix §4.2 の既知差異「負数 `>>`」「シフト量の無マスク」を解消。IL emit / lifted op / legacy visitor / runtime alias の全経路
+- `x op= a ⊕ b` の展開で右辺を括っていなかった (`s += a ^ b` が Lua の優先順位で `(s + a) ~ b` に化ける silent wrong-code。`x *= a + b` も同様) のを IL builder / legacy の両方で修正
+- `-2147483648` / `int.MinValue` const は literal 2147483648 が lua32 で float になり C でも i32 literal として読めないため、`(-2147483647 - 1)` の式形で出す
+- 検証: BitwiseOperatorTests に算術シフト / count マスク / compound 右辺 / int.MinValue (いずれも dotnet differential で実 .NET と一致)、tcs2c.Tests にシフトの 2 backend differential (40 段の総和まで一致)
+- 判断: 数値基準は lua32 (LUA_32BITS) なので、64bit Lua での上位 32bit の差は基準外として matrix の注記を書き換えた
+- 残課題: for の増分式 (`i += a ^ b`) の StepValue 経路は compound と別経路のまま (括りは不要な形のみ受ける)
+
+### T250: legacy visitor の廃止 — IL 経路を唯一の Lua 生成経路に ✓ (2026-10-02)
+- IL builder が null を返す本文は legacy visitor へ fallback していた (T224 で「診断出力と挙動不変の保険として恒久保持」)。これを廃止し、IL 化できない本文は `LuaEmitter.IlBuild.Unsupported` が原因ノード (子がすべて build できるのに自分はできない最小ノード。Shared facts が診断する構文ではそこで止めて二重警告を避ける) を特定して TCS1001 を出し、本文は実行時 `error("TinyC#: unsupported ...")` の stub にする。field initializer / parameter default / base 引数も IL render に統一
+- legacy だけが扱っていた構文を IL 化: switch 文の早期 break (IlBreakScope = Lua `repeat ... until true` / C は block + goto label、continue は外側ループ束縛のまま)、user 定義の拡張メソッド (静的呼び出し、値型 receiver は copy)、ネストした object / collection initializer (C# と同じく既存 member への代入 / Add)、discard `_ = expr`、式位置の代入 (`(i = y) >= 0` / `arr[x = 1]` は IIFE)、`lock` (body 実行 + marker、診断は Shared facts)、`else if` の is-pattern 前宣言 (else への入れ子)、`?.` の Clear / FirstOrDefault / LastOrDefault。`nameof` は定数文字列として正式対応 (TCS1001 を外した。analyzer も)
+- 旧 Expressions / Statements / Objects / Patterns / Invocations / HostBcl (約 2,600 行) を削除し、IL builder が参照する判定 helper だけを `LuaEmitter.Helpers.cs` に移した。`TCS_IL=off` と `LegacyBodies` 計測も撤去
+- 検証: Transpiler.Tests 全体 (root 環境固有 1 件を除き green。IlPipelineTests は stub + 診断の形に、spec conformance は CollectionInitializers2 が Diag → InCompile に改善で baseline 更新、他は不変)、IlOnlyPathTests (旧 legacy 構文 6 本、dotnet differential)、tcs2c.Tests / Analyzers green、run-tests.sh の sample check / analyzer-demo / nupkg も通過
+- よかったこと: 2 経路の写し漏れ (T246 で見つけた `new S(args)` の引数捨て等) が構造的に消えた。原因ノード探索は builder を再実行するだけで済み、builder に診断ロジックを足さずに済んだ
+- 判断: T224 の「恒久保持」判断を覆した (ユーザー合意)。IL 化できない構文は「動かない Lua」ではなく stub + 診断 (`tcs check` が exit 1) にする。lock は単一 thread では body と等価なので実行し、警告だけ残す
+- 残課題: IL builder が null を返す経路の網羅的な洗い出し (fuzz / spec sweep / samples で未検出のものは stub になる)。`var a, b` 混在の分解は診断のまま
+
+### T251: char を整数 code unit として両 backend で対応 ✓ (2026-10-02)
+- char の表現を「1 文字 string」から「整数 code unit (byte)」に変更 (il-spec §3)。literal は整数 (非 ASCII は TCS1001 `NonAsciiCharLiteral`)、`s[i]` は `string.byte`、char ↔ int cast は恒等、算術 / 比較 / switch / pattern は int と同じ。文字列化地点 (連結・補間・`ToString`・`WriteLine`) で `string.char`、string method の char 引数 (IndexOf / Contains / StartsWith / EndsWith / Replace / Split) は `string.char` で 1 文字 string に。`char.IsDigit` 等 8 member を `Char.*` runtime (Lua / C 同じ ASCII 表) に、`foreach (char c in s)` は byte 走査
+- 以前は `c + 1` が Lua で `"a" + 1` の実行時 error、C は型 error になっていた (char の算術は両 backend で未対応) のが消えた
+- 検証: CharTests (表面一式 + 算術 + 非 ASCII 診断、dotnet differential で実 .NET と一致)、tcs2c.Tests に同 program の 2 backend differential、既存 String / Literal / HostBcl / ApiSignature テストを新表現に合わせて green
+- 判断: UTF-16 code unit ではなく byte にした (runtime の string が UTF-8 byte 列で `s[i]` / `Length` と整合する。codepoint は `EnumerateRunes`)。非 ASCII の char literal は silent wrong-code になるので診断にした。`Char.IsLetter` 等は ASCII 範囲 (Lua の `%a` は locale 依存で C と割れる)
+- 残課題: `List<char>` の `string.Join` (整数が並ぶ)、`string.CompareTo` / `Compare` は未対応のまま
+
+
+### T252: tcs2c の GC をフレーム同期の世代別に — 保守的 stack 走査の廃止 ✓ (2026-10-02)
+- C runtime の GC を「確保時 trigger の mark-sweep + 保守的 C stack 走査 (setjmp)」から「フレーム同期の世代別」に置き換えた。nursery は bump 確保の chunk 列 (256 KiB) でフレーム中は一切 GC しない。フレーム境界 (`tcs_lib_gc` = `tcs_gc_frame`、host が entry から戻った後 = C# スタックが空) で static / host hold slot / dirty な旧 object から到達する若い object だけを旧世代へ copy 昇格 (Cheney、forwarding は header の next、slot を昇格先に書き換え)、nursery は先頭 chunk を zero に戻して一括解放。旧世代は malloc 個別 + 連結 list の非移動 mark-sweep (root = static + hold、閾値 = 直近生存 bytes / 下限 1 MiB) を同じ境界で回す。root は全部精密で stack 走査は無い
+- ライトバリア `tcs_wb(owner)`: 旧 object の参照型 slot (class field / struct 連鎖 field / 配列・List 要素 / 捕捉 cell / Dict 値) への store で owner を dirty 登録。生成側は EmitAssign の各 place に挿し (NeedsBarrier = pointer / struct / struct? の型)、runtime は `tcs_list_add` / `tcs_list_reserve` / `tcs_dict_put` / `tcs_dict_grow` に挿した。struct method は `self` に加えて所有 heap object `v_owner` (local なら NULL) を受け、呼び出し側が place の owner (cell / 配列 / List / class object) を渡す。static は毎境界で `tcs_gc_forward_statics` が全走査するのでバリア不要
+- lib 出荷形に `tcs_lib_hold(void **)` / `tcs_lib_release` を追加 (host が境界を跨いで持つ pointer の slot。境界で昇格先へ書き換わる)。実行形 (`main`) は Main 全体が 1 フレームで GC は走らない。`tcs_gc_enter/leave`、setjmp、ASAN の `detect_stack_use_after_return=0` 要件を撤去
+- 検証: tcs2c.Tests を lib 形の Setup / Frame×N / Report で回す `AssertParityLib` (C 通常 + stress + Lua) に書き換え、各 root / 各バリア経路 (class field / struct-in-class / struct 配列 / ref 配列 / List.Add / Dict 新規・既存 node / 閉包 cell / static struct / struct method の self) をフレームを跨いで読み書きする Roots テスト、境界で nursery が chunk 1 個に戻り昇格 bytes が保持分だけで旧世代 GC が閾値で走る Garbage テスト (統計を同一 TU の host から読む)、host hold の保持テスト。バリアを 1 箇所ずつ外す mutation (emitter 4 経路 + runtime 3 経路 + hold 転送 + tcs_wb 全体) をすべて stress で検出することを確認した。tcs2c.Tests 31/31、Transpiler.Tests 882/883 (root 固有 1 件)、Analyzers 55/55、verify-digests 3/3 不変
+- 実測 (lib 形、2000 個/フレームの短命 object + ring / List への長命書き込み、2000 フレーム、median of 7): 旧 GC 0.199 ms/frame (閾値 GC のみ) / 0.270 ms/frame (毎フレーム tcs_lib_gc) → 新 GC 0.027 ms/frame (毎フレーム境界)。実行形 (bench-2backend と同条件の exe、5000 フレーム、digest 一致) は旧 / 新 = sprite_update 0.0034 / 0.0034、spawn_churn 0.0049 / 0.0045、particles 0.0196 / 0.0187、particles_struct 0.0115 / 0.0122 ms/frame (差は測定ばらつき内。bench-2backend の dev/release は 32–67x)
+- よかったこと: 昇格の scan queue に旧世代の mark stack をそのまま使い、forward と mark で同じ kind 別 trace 構造 (`tcs_gc_trace` / `tcs_gc_forward_object`) を並べたので、container 種別ごとの slot 列挙が 2 箇所で見比べられる。mutation で「どのバリアもテストが単独で検出する」ことを確かめたので、同じ owner への別 store がバリア漏れを隠す偽陽性 (Holder.Latest) を見つけて Box で分離できた
+- 判断: 保守的 stack 走査 (Boehm 流) はユーザーの判断で廃止。フレーム中に GC しないことで「C stack 上の pointer を見つける」問題そのものを消した (Capcom の RE ENGINE FrameGC と同じ発想: C# スタックが空の点だけで回収)。実行形は GC 無しにした (Main がフレームを内側で回す digest kernel は ≤ 11 MB で有界、長時間走らせる形は lib + host ループが前提)。旧世代は copy ではなく非移動 mark-sweep のまま (host hold / static の書き換えが昇格時だけで済み、旧 object の address が安定)
+- 残課題: フレーム中の確保量がそのまま nursery の peak になる (chunk を足すだけ)。1 フレームで巨大な一時確保をする workload は旧世代の pacing と別に nursery 上限の設計が要る。旧世代 mark-sweep は stop-the-world (incremental 化は未着手)
+
+### T253: master (Codex XR 系列 tcs2c) の取り込み — 衝突解消と機能移植 ✓ (2026-10-02)
+- master には PR #47 で Codex 実装の tcs2c 系列 (foreign `--ref` host API / interface / object boxing / generic 単相化 / 遅延 static 初期化 / host return 境界の GC / 省略可能引数 / 配列 literal / IlNumericConvert・IlRefCast) が入っており、こちらの T240–T252 (precise heap + フレーム同期 GC、struct 値型、Nullable 値、Random、char、record、31 本の 2 backend differential) と同じファイルを別アーキテクチャ (type_id ヘッダ + trace 関数ポインタ、boxed nullable、固定 64 bucket Dict) で書き換えていた。機械的な merge は不可能なので、**こちらの tcs2c を土台に master の機能を移植**した。IL 契約 (Transpiler 側) は両者を合成 (IlClassInfo.Interfaces / IsInterface / IsExternal、ParameterDefaults / IsAbstract、IlTable.IsArray / ObjectType、IlNumericConvert / IlRefCast、IlLit.Type、ForeignMethods / ForeignValues、Export(specializeGenerics, referenceSources)。foreign enum は IlEnumInfo に合流)
+- C backend への移植: interface (IsAncestorOrSame が Interfaces を辿る、interface method は常に dispatch、`tcs_is_<Iface>`、abstract 本体は fault)、ctor / method / base ctor / foreign の省略引数 (`CompleteArguments`)、`new T[] {...}` の固定長配列、`object` (`void *`、スカラは `TcsBox`、GC header に `type_id` を追加して kind / flags を 16bit に詰めた。class は init、string は `tcs_string_new`、配列 / List / Dict は生成時と box 時に `tcs_typed`)、検査付き cast (`tcs_cast` / `tcs_unbox` / `tcs_interface_cast`、record の with copy も tag を写す)、foreign (`extern tcs_host_*`、out は pointer、nullable は `TcsOpt*` の値渡し、外部 class の `host_value`、object initializer、`out _`)、遅延 static 初期化 (定数でない initializer を持つ class だけ `tcs_sinit_<C>` + accessor `tcs_sp_<C>_<f>()`、定数 class は従来どおり一括)、lib entry の scalar 引数と最外 entry 復帰時の自動フレーム境界 (`tcs_gc_call_depth`)、`tcs_lib_collect` / `tcs_lib_heap_bytes` / `tcs_lib_heap_objects` (旧世代 bytes を昇格時に加算、nursery object 数)。master の Strings / Math / RuntimeServices / BlockExpressions は既存 intrinsic (os.getenv / int.Parse / Split / Join / IIFE) で足りたので持ち込まず
+- master の verify スクリプト 4 本 (gc / game-core / object-values / host) を通した。期待出力は Lua 一致を優先して `4.2949673e9` → `4.2949673e+09` に、`tests/foreign-host.c` はこちらの ABI (`tcs_new_Resource()`、`TcsOptI32` 値、`TCS_GC_HEADER(p)->type_id`、`TCS_TYPE_ARRAY_F32`) に、runtime-services は `Random.Shared.Next()` に書き換え。README の master 追記 2 節も merged の実態に書き直した
+- 検証: tcs2c.Tests 31/31 (frame GC の stats テストは entry 自動境界に合わせて更新)、Transpiler.Tests 890/891 (root 固有 1 件。master の IlForeign / IlGameCore / IlGeneric / IlObjectValue テスト込み)、Analyzers 55/55、verify-digests 3/3 不変、verify-gc / game-core / object-values / host 全通過、run-tests の残りゲート通過。exe kernel 4 本の ms/frame は merge 前後で不変 (0.0035 / 0.0043 / 0.0177 / 0.0118)
+- よかったこと: 先に master 側の全変更を agent に棚卸しさせ、「IL 側は合成 / C 側はこちら土台 + 機能移植」と決めてから、master の exe テストを Lua と C で流す triage スクリプトで差分を潰していけた。GC header への type tag は box 時に遅延付与することで runtime の確保 API を変えずに済んだ
+- 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
+- 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
+
+### fix: tcs2c が E を含む 16 進 literal を f32 と取り違える (#52) ✓ (2026-10-05)
+- `CEmitter.IsFloatText` が「`.` か `e` を含む text は float」と判定していたため、`0x1E2` / `0xFFE940` のような 16 進 literal を f32 の指数表記と見て `invalid f32 literal` で落ちる、または三項の枝で型が f32 になって `cannot assign f32 to i32` で落ちていた。`0x` 接頭の text は float 判定から除外した (IL literal の `Type` は float const にしか付かないので text 判定が残る)
+- 検証: tcs2c.Tests に `HexLiterals_DigitEIsNotExponent` (直接代入 / 三項の枝 / const / bit 演算 / float への暗黙変換 / `1E2f` と並べた 2 backend differential)。`./run-tests.sh` 全通過 (Transpiler.Tests 892/892、tcs2c.Tests 46/46、Analyzers 55/55、digest / gc / game-core / object-values / host verify、analyzer demo / nupkg)
+- 判断: Transpiler 側で IL literal に常に `Type` を付ける案は、IL 契約の変更と全 literal 経路の修正が要るので採らず、backend の text 判定を正した
+
+### 参照型要素の `new T[n]` を TCS1003 で診断 (#20, #26) ✓ (2026-10-05)
+- 値型要素 (数値 / bool / enum / char / struct) の `new T[n]` は master で既に `__tcs_arr(n, default)` になっており Length / foreach / default は正しい。残っていた参照型要素 (`new string[3]` が `{}` で Length 0、診断なし) を、要素の default が nil になる `new T[n]` (参照型 / `T?` / 型パラメータ / `new int[n][]`)・初期化子の null 要素・`a[i] = null` の TCS1003 にした。型パラメータは制約 (`where T : struct` を含む) を問わず default が Lua で nil になるので、`new T[n]` と `default` の格納 (配列 / List / Dictionary) をどちらも対象にする。`new T[0]` は対象外。null / `default` の判定は変換前の型で行い、`int?` / `object` へ変換される `default(int)` は非 null として扱う。実装は `Shared/TinyCsComplianceFacts.CollectionNull.cs` で analyzer / `tcs check` / transpiler が共有する。support-matrix の配列行を更新
+- 検証: DiagnosticTests / TinyCsComplianceAnalyzerTests に 12 件の診断 (struct 制約付き `new T[n]`、`T` の `default` を配列初期化子・`a[i]`・`List<T>.Add` に入れる境界を含む) と非診断 (値型 / 初期化子 / jagged 初期化子 / List / `new int?[] { default(int) }` / `new object[] { default(int) }`) の同一 source を追加。conformance baseline の ArrayCreationExpressions3 / 5 (`new int[100][]`) が InRun → Diag。`dotnet test` と `bash run-tests.sh` の件数は PR 本文
+- 判断: 長さ field (`n` / `__len`) は採らない。nil 穴を持てない Lua sequence の上に長さを足すと Length / foreach / index 全部が `n` 経由になり、値型配列の `#` / ipairs / `__tcs_arr` の hot path を重くする。List\<T\> / Dictionary の null 保存を TCS1003 で禁じている方針とも揃う。tcs2c は C 側で NULL 初期化の固定長配列を持てるが、2 backend parity の原則で frontend 診断を共通にした
+- 残課題: 多次元配列 (`new int[2,3]`) は診断なしで `{}` になる (別 issue 候補)。collection expression (`string[] a = [null]`) の null 要素は未検出
+
+### --ref stub class の instance method を tcs2c で呼べるように ✓ (2026-10-05)
+- IlForeignMethod に `Receiver` (instance method の所有 class) を追加し、IlExport が foreign class の instance method も署名として出す。C backend は受け手の class chain から引いて `tcs_host_<class>_<method>(self, args...)` (受け手 null は fault) を `extern` で宣言して呼ぶ。chain は下から辿り、途中の user class が同名を宣言していればそちら。stub の method を同じシグネチャで再宣言 (override / 隠蔽) する user subclass があれば、IlInvoke の実行時型解決 (il-reference §9) に合わせて type_id で振り分ける dispatcher を経由する。以前は foreign class の Methods が空で `unknown method` になっていた
+- 検証: `bash tcs2c/verify-host.sh` (foreign stub の instance method (値返し / void / 基底 class 宣言と、virtual の override・非 virtual の隠蔽・暗黙 this・subclass 側 overload・`base.Get` 呼び出し・中間 class の override の下に別シグネチャ同名を持つ Leaf) を追加。修正前は `unknown method: Resource.get` / override や隠蔽を無視して host 直呼び、修正後 pass)。IlForeignTests に export 契約テスト
+- 判断: Lua backend は foreign を持たないので IL の追加フィールドのみ。virtual な stub method の拒否ではなく dispatcher を選んだ (user class 同士の再宣言と同じ実行時型解決で、Lua の metatable 解決とも一致)。シグネチャの違う再宣言は dispatch しない (user class 同士と同じ) が、祖先探索はそこで止めず中間 class の override を拾う。明示的 `base.M(...)` (IL は `IlCall("<class>.<method>", [self, args...])`) は先頭引数を receiver として検査・分離し、dispatcher を通さず host 実装を直接呼ぶ。stub 内の overload は従来どおり拒否
+- 残課題: foreign class の property accessor (`b.Length` が field でなく property の stub) は未対応
+
+### #16: --snapshot で struct を含むと module registry の適用が失敗する ✓ (2026-10-05)
+- 原因: `VisitStruct` / `VisitRecordStruct` が module artifact に `EmittedTypeInfo` を登録していなかった (class / record / enum だけが登録)。descriptor の types に struct が無いので registry の declare が `P` を宣言せず、define chunk に残った `P = {}` が read-only module env で `write to undeclared global` になる。`_currentType` も null のまま member key (new / __copy / op_Equality / method) が記録されず、hot apply の削除 diff からも漏れていた
+- 修正: runtime type の登録 + 宣言行の DeclRanges 記録を `LuaEmitter.BeginType(name, kind)` に集約し、class / record / enum / struct / record struct の 5 visitor すべてをこれ経由にした。struct は kind `struct`、instance shape は値 member の名前 + 宣言型 (field 追加・型変更は restart 分類。Lua の default 値では `string` と `int[]` がどちらも nil で区別できないため型で比較)
+- 検証: ModuleDescriptorTests に struct / record struct の descriptor 内容 + snapshot 実行 (issue の再現コード相当で `10`)、struct method body edit の hot apply (既存の値に新 body が届く、type table identity 維持)、field 追加と同じ default 値になる field 型変更 (`string` → `int[]`) の restart 分類。issue の再現手順 (`--snapshot --entry App` → `dofile(...).run()`) は `@@tcs_commit ok:true` と `2`
+- よかったこと: 登録を 1 箇所にしたので、新しい runtime type 種別を足すときに declare 漏れが構造的に起きない
+- 判断: struct の fast path (method 単位 splice) は class 限定のまま (struct の body edit は module 全体 emit に fallback し、hot apply 自体は成立する)
+- 残課題: README の TCS1001 一覧に `struct` / `record struct` が残っている (T219b 以降は対応済みの記述漏れ、本件の範囲外)。class の instance shape も「名前 = initializer / default 値」で、initializer の無い field の同 default 型変更を区別しない (本件の範囲外)
+
+### 式位置の ++ / -- (IncrementAsExpression) を両 backend で対応 ✓ (2026-10-05)
+- 式位置の `++x` / `x++` / `--x` / `x--` を IL 構築で「1 回だけ代入して値を返す」IIFE に下げた (前置は更新後、後置は更新前の値)。place 解決は文位置と共通 (custom property は accessor、副作用 receiver / index は temp 化、Nullable は lifted)。TCS1001 `IncrementAsExpression` 診断は撤去
+- 副作用 index の lowered target が `+1` を IlBin に焼いて `PlusOne=false` で持っていたため C backend が「0-based のみ」と拒否していた (`data[Idx()] += 1` も同様)。index は raw のまま temp に置き `IlIndex.PlusOne` を立てる形に修正
+- operand 評価順の固定: 右側 operand / 右辺が書き換える local (代入 / ++ / -- / ref・out 引数、lambda で書かれる捕捉 local + 呼び出し) を左 operand や代入先の受け手 / 添字が読むとき、左側を temp に退避する (`i + i++`、`q += q++`、`i + (i = 5)`、`d[k] = k++`、`d[u] += u++`)。Lua は local を register のまま参照し、C は statement expression 間の順序を規定しないため、IL 構築側で直す。値型受け手 (`s.X = …`) は temp が copy になるので対象外。式位置の lowered 代入は再評価せず代入後の place を返す
+- custom property の getter を含む受け手 / 添字 (`Current.N++`、`Current.N += 1`) も副作用扱いで temp 化し、getter を 1 回だけ呼ぶ (文位置・式位置とも)。getter の先が値型の受け手 (`Current.S.N++`、`Current.S.I.N += 1`、`Current.Arr[i].N++`、struct の custom property `Current.S.P++`) は struct field / 配列要素を辿った先の参照型 prefix (と配列添字) だけを temp にし、経路を組み直して元の field に書き込む (struct を copy しない)。式位置の custom property 代入 (`(Get().P += 1)` / `= v` / `??=`) は lowered 代入より先に accessor 経路へ振り分け、受け手を 1 回評価して setter に渡した値を返す
+- 検証: `bash run-tests.sh` (Transpiler.Tests 899 合格 / 3 skip、tcs2c.Tests 49/49、Analyzers 55/55、All tests passed)。`IncrementAsExpression_PrefixAndPostfixValues` / `EvaluationOrder_LeftOperandAndIndexBeforeRhsSideEffect` / `GetterReceiverAndCustomPropertyAssignAsExpression` / `GetterThroughStructField_EvaluatedOnceAndWritesInPlace` を Lua・C 一致 + C# 期待値で確認
+- 判断: 診断で拒否し続ける案は却下 (文位置と同じ lowering で正しく書ける)
+- 残課題: 値型受け手への代入で右辺が struct local 自体を差し替える形 (`s.X = (s = t).X`) は評価順未固定
+
+### instance registry (`__tcs_instances`) を opt-in に ✓ (2026-10-05)
+- 生成 Lua の構築ごとの `__tcs_instances[self] = C` と header の weak table 宣言を既定で出さず、`--instance-registry` (API は `Transpile(instanceRegistry: true)` / `LuaEmitter.InstanceRegistry`) のときだけ出す。読むのは `HotReload.EmitReloadChunk` だけで、registry 付きで transpile した v1 / v2 を前提にする (HotReload は v2 を registry 付きで emit、テストの v1 は opt-in)。registry なしの v1 へ適用した reload chunk は v2 定義の実行前に `assert` で失敗する (migration の黙った空回りを防ぐ)。`--snapshot` との併用は拒否
+- 検証: `dotnet test` Transpiler.Tests 892 passed / 3 skipped (env 無効の sweep)、Analyzers 55、tcs2c 45。新規 InstanceRegistryTests (既定で `__tcs_instances == nil`、opt-in で最派生 class を登録、CLI オプション、`--snapshot` 併用拒否、registry なし v1 への reload が v2 適用前に失敗)。deps/lua/lua (5.5.1) の micro benchmark (300 万回、best of 5): `V.new` (3 field class) 279 ns → 150 ns、`S.new` 179 → 127 ns、`S.__copy` 143 → 130 ns (struct は元から registry 対象外のため差はノイズ)
+- 判断: reload 時だけ列挙する方式 (VM の heap 走査) は標準 Lua に列挙 API がないので opt-in にした。`runtime/module_registry.lua` は host 側の空 table を作るだけで害がないため触らない
+- 残課題: module registry 経由の reload (§11) で registry を自動 opt-in にする導線は未接続
+
+### 別 namespace の同名型が Lua global で上書きされる問題 (#18) ✓ (2026-10-05)
+- 原因: namespace を捨てた simple 名で型を global に emit していたため、`A.Color` / `B.Color` が同じ `Color` になり後勝ちで上書きされた (A.Color/B.Color で 12 のはずが 22)。型名は宣言・参照・IlExport・hot reload・snapshot・`--entry`/`--module` が各所で simple 名を直接使っていた
+- 型の Lua 名を `LuaEmitter.TypeName` に一本化。source assembly 内で simple 名が重複する型だけ namespace 修飾名 (`A_Color`、`Game_Gfx_Color`) にし、一意な型は従来どおり simple 名 (衝突しない出力は不変)。宣言 (class / record / struct / enum)、静的参照、`new` / cast / `is` / 型パターン、base 呼び出し、struct copy / default / op_Equality、演算子 overload の型判定、IlExport の Name / BaseName、`--entry` の `return`、`--module` の key、snapshot の type id を全てこの名前に揃えた
+- IL 契約の型文字列 (field 型 / 引数型) は C# 表示名のまま、IlClassInfo / IlStructInfo / IlEnumInfo に `DisplayName` を足して対応を持たせた。hot reload (struct migrate / default) と tcs2c (`ContractFacts.MapType`、interface 判定) はこの表で Lua 名へ写す。tcs2c の interface 実装判定は表で引いた名前だけで比較し、simple 名への fallback は持たない (global `IValue` と `A.IValue` を取り違えて誤 cast が通るため)。`EmittedTypeInfo.CSharpName` で snapshot の entry を `A.Color` / `A_Color` / simple 名 (曖昧ならエラー) で解決
+- 検証: NamespaceTypeNameTests 15 本 (宣言・static / enum / struct・継承 / is / cast・entry・module・IlExport・hot reload 2 本・snapshot 2 本・incremental で衝突型が増えたとき他 module も改名され restart 判定・incremental fast path の method 差し替えが修飾名の型に当たる)、tcs2c の Lua / C differential (`Namespaces_SameNamedTypesStayDistinct`、`Namespaces_SameNamedInterfacesStayDistinct`) と C で `A.IValue` 実装 class を global `IValue` へ cast すると invalid-cast fault になるテスト
+- よかったこと: 型名の決定点を 1 関数に集めると、衝突しない場合は simple 名を返すだけなので既存出力が変わらない
+- 判断: 全型を常に修飾する案は既存出力 (`Color = {}`、hot reload / registry の type id、利用者の Lua 側参照) を壊すので却下。衝突した型の名前が他ファイルの追加で変わるが、incremental session は型集合の変更を slow path で全 module 再 emit し、改名は type removed として RequiresRestart にする (hot apply しない)。fast path の method 差し替えも `TypeName` で key を引く。`_` 連結は `A_B.C` と `A.B_C` で理論上衝突しうる (実用上無視)
+- 残課題: `--ref` (参照専用) 型の衝突は対象外。Lua 側からは衝突型を `A_Color` で引く必要がある。入れ子型 (`Outer.Inner`) と generic 単相化後の同名型は未対応
+
+### 演算子を呼び出し箇所で静的に解決 (#23 / #13 part 2) ✓ (2026-10-05)
+- user-defined operator (二項 `+ - * / %`、単項 `-`、複合代入) の呼び出しを、Roslyn が選んだ overload の static 関数への直呼び (`V.__mul_2(a, b)`) に変更。複数 overload の名前は `LuaNaming.OperatorName` (Lua 出力 / IlExport / 呼び出し箇所で共通)。metatable 経由の `__add` 等と実行時型分岐 dispatcher、tcs2c 側の型一致による operator 解決 (`CEmitter.Operators.cs`) を廃止し、両 backend とも IL の IlCall だけで動く。hot reload は operator も通常の static method と同じ owned key なので影響なし
+- 原因: 派生 class の table は `setmetatable(Derived, {__index = Base})` で、メタメソッドは `__index` 経由で継承されず、基底 class で宣言した operator が派生値で `attempt to perform arithmetic on a table value` になっていた。overload 選択も実行時の型で決まり C# の静的解決と食い違い得た
+- 検証: `dotnet test` Transpiler.Tests 898 passed / 3 skipped、tcs2c.Tests 46、Analyzers.Tests 55。新規テスト: 基底 operator + 派生値、overload の静的選択 (静的型 vs 実行時型)、複合代入、int / string を返す・取る operator、IlExport の名前と呼び出し、interface static abstract operator の診断と制約付き generic の `a + b`、hot reload の overload 本体差し替え、`(int)` float 切り捨て (#13 part 1 回帰)、tcs2c 2 backend differential
+- 実測 (micro benchmark、Vec2 float 型、5M 回の best of 5、ノイズ ±15%): `add` 約 167–200 → 166–250 ns/op (単一 overload で変化なし)、`mul` (overload 2 回/iter) 約 510–650 → 360–510 ns/op
+- 判断: `==`/`!=`/比較/変換 operator は subset 外 (TCS1001) のままなので対象外。`--ref` 型の operator は host 側実装なので従来どおり Lua 演算子に委ねる。interface の static abstract / virtual operator (C# 11、subset 外) は宣言を TCS1001 `InterfaceOperatorDeclaration` にし、制約付き generic 内の演算は Lua 出力の無い interface を呼ばず従来どおり Lua 演算子 (実装 class の metamethod) に委ねる。overload / 継承のある実装は型消去の Lua で解決できないので、黙って動く範囲を広げるより明示診断を選んだ (tcs2c は TCS1001 で停止)
+- 型名と同名のローカル束縛: `static int Sum(V a, int V) { return (a + a).X; }` の `V.__add(a, a)` が int parameter の `V` を index して落ちていた (`new V(...)` → `V.new` と型内 static member 参照も従来から同じ)。LuaLocalRenamer の対象をユーザ型名 (`Assembly.TypeNames`) と同名のローカル束縛に広げ、`V` → `V_` に写す (写した先が型名と同じなら更に `_`)。emit 各所の型参照に生成 binding を足す案より、既存の tree 置換に寄せる方が網羅的
+- 残課題: `==`/`!=`/変換 operator の対応は未着手 (subset 判断が先)
+
+
+### namespace 型名と operator 静的束縛の統合修正 (#61 / #62) ✓ (2026-10-05)
+- LuaLocalRenamer の予約名に LuaEmitter.TypeName が実際に出力する namespace 修飾名を追加。通常 / 増分 Lua emit と IlExport が同じ集合を渡し、`A.V` / `B.V` の併存時に parameter `A_V` が `A_V.__add` を遮蔽しないようにした。写した先も型名および既に選んだ local 名との衝突を避ける
+- 検証: `LuaLocalRenameTests` に修飾 operator owner と同名の parameter、写した先が別の修飾型名になる場合、複数 parameter の置換名衝突、IlExport の parameter 名の回帰を追加。`git diff --check` 通過。作業環境に .NET / Lua が無いため実行テストは未実施、累積 CI で確認する
+- 判断: namespace 名を renamer 側で組み直さず既存 TypeName を使い、--ref 型の除外規則も共有する。後続 #65 の nameof 修正は変更せず、その統合後に元の綴りが保たれる回帰を追加する
+- 残課題: 累積 CI の実行確認
+
+### instance / struct 生成を 1 つのテーブルコンストラクタにする ✓ (2026-10-05)
+- 基底なし class の `new` を `setmetatable({x = x, y = y, ...}, C)` にした (field は宣言順)。ctor 本文の先頭に連続する `this.F = E` は、E が ctor parameter と定数だけから決まる式 (他の initializer の副作用と順序を入れ替えても観測できない。整数除算 / 剰余、field / static の読み、呼び出し、`this`、Dictionary literal のリテラル以外の key (nil / NaN でテーブル生成中に fault する) を含まず、演算子の operand は数値 / bool 型の parameter と定数に限る) で、F の initializer も副作用なしのときだけコンストラクタへ畳み、F の既定値の二重代入を消す。それ以外に当たった時点で畳みを止め、残りは元の順序で emit。record class の `new`、struct の `S.new` (zero 値) / `__copy` も同形
+- 検証: `bash run-tests.sh` (csharpstandard submodule あり) Transpiler.Tests 912、Analyzers 55、tcs2c 45 すべて passed。新規 ConstructorTableTests 20 本 (initializer の副作用が上書きされても実行される / 宣言順 / 本文が畳み対象前に field を読む・`this` を渡す・virtual を呼ぶと既定値が見える / 繰り返し代入 / 0 除算 fault と initializer 副作用の順 / Dictionary literal の parameter key が nil のとき initializer 副作用の後に fault・リテラル key は畳む / user 定義・--ref host の operator が initializer の後に走る / 数値・bool の演算は畳む / 派生 class / record / struct の入れ子 copy)。`deps/lua/lua` (5.5.1) micro benchmark (300 万回、best of 5、registry 付き同士): `V.new` (3 field class) 172 → 92 ns、`S.new` 126 → 54 ns、`S.__copy` 130 → 57 ns
+- 判断: IL の leading assignment を観測不能性で畳む方式にした (Roslyn 側の構文パターンでは conversion 挿入後の値が拾えない)。派生 class は `Base.new()` が作った self に積むので対象外 (基底 ctor が virtual を呼ぶ順序の観測を保つ)。Lua のテーブルコンストラクタ内の評価順は仕様未定義だが、実装は左から右で、既存の引数評価順と同じ前提。user 定義 / --ref host 型の operator は Lua metamethod で任意のコードを走らせるので、IL に型がない以上 operand を ctor の数値 / bool 型 parameter と定数に限る (operator の一方は宣言型なので、両 operand が primitive なら user operator は選ばれない)
+- 残課題: 派生 class の field 生成と record struct の ctor (`S.new()` の zero 値 → 代入) は未対応
+
+### 式中の三項演算子を closure ではなく temp local + if 文で出力する (#25) ✓ (2026-10-05)
+- Lua backend の emit 時 IL→IL 変換 (`LuaEmitter.IlLower.cs`): 文の式に現れる `IlTernary` を `local t; if c then t = a else t = b end` に下ろす。括弧付き (`return (c ? a : b)`)・入れ子 (`a ? x : (b ? y : z)` は elseif に畳む、sink を各分岐へ複製して temp を経由しない)・式の途中 (`a + (c ? 1 : 2) * 3`)・引数 / receiver / table 項 / interpolation / compound 代入 / 添字・field 代入 / lambda 式本体 (block 本体へ) / while・for 条件 / if・elseif 条件 / foreach・numeric for の範囲 / do-while 条件。builder (IL 生成) は変えない: return / 宣言 / 純 local 代入の直下の三項を IlIf にする既存の if 化はそのまま残り、IL は master と同一 (tcs2c / IlExport / hot reload は無変更)
+- 評価順: 下ろす式の左にある兄弟 operand は、(IsCallFree でない) か (右にある下ろす式までの兄弟のどれかが呼び出しを含む) ときだけ temp に先に束縛する。呼び出しを含まない同士は束縛しない。`&&` / `||` の右辺と `??` の右辺 (呼び出しか三項を含むとき) は条件付き if の中に前置文を置く (eager 評価しない)。while 条件は `while true do do 前置文; if not c then break end end ...` (continue label / trailer を保つ)、elseif は入れ子の else、do-while は本体を do ... end に閉じて label の後で条件を temp 評価。temp は文ごとに `do ... end` で閉じ、Lua の local 上限 (200) を踏まない (230 個の三項を 1 body に置くテストあり)
+- `??` の右辺が呼び出しを含む場合 (`a ?? Make()`) の IIFE も同じ機構で `local t = a; if t == nil then t = Make() end` にした
+- 検証: TernaryTests 22 本 (Red→Green、dotnet differential 込み。括弧 / 中間 / 入れ子 / 引数・receiver・補間 / 評価順 (左 field 読み・呼び出し順・添字代入・3 項以上の引数 / 配列初期化 / closure が書く captured local / 条件が差し替える self 起点 field 連鎖の受け手 / 条件内のユーザー定義演算子) / 短絡 / 各ループ条件 / if-elseif / lambda / 複合代入 / `?.` `??` / `??` 右辺の三項の遅延評価 / switch 式 / struct copy / 230 個の temp)。tcs2c.Tests に closure を選ぶ三項 (return / 宣言 / 代入) の 2 backend parity。`bash run-tests.sh` Transpiler.Tests 911 + tcs2c.Tests 46 + Analyzers.Tests 55 green (spec conformance / differential / fuzz 込み)、`run-fuzz.sh 3000 5000` 2/2 green。micro bench (Lua 5.5 -O2、2000 万呼び出し、呼び出し側 loop 込み): `return (c ? a : b)` 90.9 → 20.7 ns、`a + (c ? 1 : 2) * 3` 65.0 → 22.9 ns、入れ子 `x < 0 ? -1 : (x == 0 ? 0 : 1)` 50.1 → 19.5 ns
+- よかったこと: 「文位置へ下ろす」を `Lower` (式 → 前置文 + 式) と `LowerInto` (式 → sink へ渡す文列) の 2 関数にして、ternary / 短絡 / `??` の条件付き評価と評価順の束縛を 1 箇所の規則 (子の列挙と「後ろへずらして安全か」) で扱えた。IL ノードを足さず emit 段だけで済んだ。samples の tcs2c C 出力は master とバイト一致
+- 判断: IL に statement 化済みの形を持たせず Lua emitter 内の変換にした (C backend は式のまま持てる)。builder の既存 if 化を消すと tcs2c が未対応の形 (closure を選ぶ IlTernary) を受け取るため残した。左 operand の束縛は IsCallFree による保守的判定 (読み取りだけの式同士は束縛しない)。IsCallFree は `+ - * / %` と単項 `-` を、operand が IL の形からプリミティブと言える (literal / 長さ / 比較結果など) ときだけ純粋とみなす (ユーザー定義演算子は Lua metamethod でユーザーコードを呼ぶため。変数・field operand は型が IL に無いので保守側)。field 連鎖への代入で分岐へ直接代入するのは self の直下 field か値が呼び出しを含まないときだけで、`self.a.b = F() ? x : y` は受け手 `self.a` を先に temp に固定する
+- 残課題: IIFE 内部の文 (`?.` / switch 式 / 式位置代入が作る IIFE の中の三項) と field initializer / hot reload の式 render は前置文を置けないので三項の IIFE が残る。switch 式 (return / local / 代入位置は if-chain 済み、式の途中は IIFE) と `?.` は未着手 (#12 item 2 の続き)。`??` の右辺が呼び出しも三項も含まない式 (`x ?? n!.F`) は `__tcs_nget(x, n.F)` で右辺を eager 評価する (master と同じ。右辺が nil index で落ち得る)
+
+### 型 table の chunk-local cache と Math 直接呼び出し (#27) ✓ (2026-10-05)
+- plain 出力 (`Transpile` / CLI の非 module・非 snapshot) で型 table (class / struct / record / enum) を chunk 先頭で `local A, B, ...` として forward 宣言し、宣言行を `A = {}; _ENV.A = A` にした。global にも公開するので host・reload chunk・registry からは従来どおり引け、chunk 内の参照 (method 本文・他型の static) は宣言順に関係なく upvalue になる。型名の参照箇所は変えていない (local が global を遮蔽するだけ)。chunk 直下 200 local の上限に対し、prelude helper (約 35) と利用者 prelude の余地を残して 100 型 (top-level 文の local 数を差し引く) までを cache し、超過分は global のまま
+- `Math.Min/Max/Abs/Floor/Ceil/Sqrt/Sin/Cos/Tan/Exp/Log/Atan2` は Lua 描画時に `math.*` を直接呼ぶ。runtime の wrapper 本体が builtin の素通しなので意味論は不変 (IL の callee 名は tcs2c と共有のため IL ではなく描画で置換)。`Round` (banker's) / `Sign` / `Clamp` / `Pow` / `TryParse*` は変換を持つので wrapper のまま。`--no-runtime` でも動く
+- reload chunk は v1・v2 の両方にある struct / enum の型 table も旧 table の中身を v2 で置き換えて identity を保つ (v1 chunk の closure は local 経由で旧 table を引き続けるため。class は従来どおり in-place merge)
+- 生成コードが素の global で参照する名前 (Lua 標準 global `math` / `string` / `table` ... と runtime の `List` / `Dict` / `Math` / `String` / `TinySystem`) と同名のローカル束縛は、予約語と同じく LuaLocalRenamer が `math_` 等へ写す。写す local を参照する `nameof` は写す前の model の定数値 (元の綴り) の文字列 literal に置き換える
+- `local A, B, ...` の placeholder 行は prelude 出力時の位置だけを置換する (同じ文字列のユーザー文字列リテラルは書き換えない)
+- cache の対象外: hot reload の v2 chunk (method 本文が「global を旧 identity へ戻した後に解決される」ことに依存、`Transpile(..., cacheTypeLocals: false)`)、module / snapshot の define chunk (型 table は registry 所有で読み取り専用 `_ENV` 解決。LuaEmitter の既定 budget 0)
+- 検証: `dotnet test` Transpiler.Tests / tcs2c.Tests / Analyzers.Tests green (ChunkLocalTests 追加: Math 直接呼び出し・global 公開・後方宣言の参照・150 型での budget 超過 fallback・top-level local との合算・v1 cache chunk への hot reload の class / struct / enum identity・`math` 等の名前のローカル・その `nameof`・placeholder と同じ文字列リテラル。hot reload のテストは v1 と reload chunk を別 chunk で load() する TestHelper.ComposeReload に統一)。実測 (deps/lua、300 万反復、Vec.new + Math.Sqrt/Min/Max/Abs/Sin/Floor + static 呼び出し、出力一致): 1.34 s → 1.03 s (-23%)。micro (2000 万回): `Math.Sqrt` wrapper 0.52 s → `math.sqrt` 0.23 s、class static 呼び出し global 0.22 s → local 0.17 s
+- 判断: `math.sqrt` 自体の local cache は locals 枠を食うので見送り (global 参照のまま)。`Math.Pow` は `^` 演算子への展開が要り、描画の括弧処理が増えるので wrapper のまま
+- 残課題: runtime table (`List` / `Dict` / `String` / `Char`) の呼び出しは global 参照のまま (runtime が chunk の外にある module mode との整合設計が要る)。module / snapshot の define chunk の型参照 cache (registry の型削除・再宣言で identity が変わり得るため別設計)
+
+### namespace の中の型を常に namespace 修飾名にし、--ref 型の Lua パスに namespace を含める ✓ (2026-10-10)
+- 型の Lua global 名を「namespace の中の型は常に namespace 修飾名 (`Game.Gfx.Color` → `Game_Gfx_Color`)、namespace に属さない型は simple 名」にした。#18 の「simple 名が重複する型だけ修飾」をやめ、型の Lua 名が他の型の有無に左右されないようにした (ライブラリの型名が利用側の型追加で変わらない、増分コンパイルで同名型を足しても既存型が改名されず restart 境界にならない)。`LuaEmitter.TypeName` の衝突集合 (`CollectCollidingTypeNames`) を消した
+- `--ref` 型の Lua パス (`LuaNaming.RefTypePath`) を namespace まで辿るようにした (`namespace Lub { static class Gfx }` → `lub.gfx`)。enum は入っている型か namespace の下に平らに置く (namespace 直下の `Lub.EventKind.Quit` → `lub.QUIT`、入れ子の `Lub.Gfx.PixelFormat.Rgba8` → `lub.gfx.RGBA8`)。グローバル名前空間の enum は従来どおり。C backend へ渡す foreign 関数名 (IlExport) も同じ規則。予約語になる区切りは member と同じく `_` を後置し (`namespace End` → `end_.api`)、パスの先頭 (`hostapi`) と同名のローカルは改名して host table を隠さない
+- 修飾名は namespace の `Name` をつなぐ (`ToDisplayString` は `namespace @event` を `@event` と逃がす)。foreign instance method の `Receiver` を外部 class の IL 名 (`Lub_Blob`) に揃え、C backend が class 表を引けるようにした
+- `--module` の戻り値表の key を C# の simple 名にした (namespace の中の型も `m.Color` で引ける)。simple 名が出力内で重複するときと generic の型だけ Lua の global 名を key にする
+- 変更ファイル: Transpiler/LuaEmitter.Naming.cs, Shared/LuaNaming.cs, Transpiler/Transpiler.cs, Transpiler/IlExport.Foreign.cs, Transpiler.Tests (NamespaceTypeNameTests, RefTypeAccessTests, IlForeignTests, MultiFileTests, SampleE2ETests, SpecConformanceTests, SpecConformance/SpecLuaExecutor), README.md, doc/support-matrix.md, doc/hot-reload-design.md, q.md, CLAUDE.md
+- 検証: WSL (Linux) で `bash run-tests.sh` 相当。Transpiler.Tests 1003 / 1004 passed (残る `ProcessRunnerTests.Run_TimeoutKillsDescendantProcess` の 1 件は、検証に使った WSL の写しが Windows の作業ツリー (CRLF) のままだったために落ちたもので、LF の作業ツリーでは通る。tcs の不具合ではない)、tcs2c.Tests 55 passed (Lua / C differential の `Namespaces_SameNamedTypesStayDistinct` は一意な namespaced 型 `Game.Gfx.Palette` も含む)、Analyzers 56 passed、spec conformance sweep は baseline どおり (namespace の中の `Main` を呼ぶ executor を修飾名に合わせた)、samples の `tcs check`、tcs2c の digest 検証 5 種、Rider helper、analyzer demo / package consumer がすべて通過
+- よかったこと: 型名の決定点が `TypeName` に一本化されていたので、規則の変更は 1 関数で済み、宣言・参照・IlExport・hot reload・snapshot・C backend の記号がそろって追従した
+- 判断: q.md Q2 の nested table 案は採らず、修飾名の flat global にした (registry / hot reload の type id、IL 契約、C backend の記号が平らな名前のまま揃う)。#18 が却下した「全型を常に修飾」は既存の flat な出力を壊すのが理由だったので、namespace に属さない型は simple 名のまま残した。namespace の中の型を外部の Lua から引くコードは修飾名 (`Game_T`) か `--module` の key で引く必要がある (破壊的変更)。`samples/host_api_stub.cs` は `namespace HostApi;` なので host の table は `hostapi.screen` などに変わる
+- 残課題: namespace の中の型は runtime の global を上書きしなくなったが、`RuntimeGlobalIdentifier` (#21) は namespace の中でも error のまま (緩められる)。`_` 連結の理論上の衝突 (`A_B.C` と `A.B_C`)、入れ子型と generic 単相化後の同名型は未対応のまま。lub 側は lub_stub.cs を namespace にする変更と submodule 更新で追従する
+
+### watch に --reload-chunks を足し、実行中の VM へ reload chunk を順に当てる ✓ (2026-10-10)
+- `--watch --reload-chunks`: 2 回目以降の rebuild で、ホストの VM が実行している build (初回出力、または前回 chunk を書いた build) から今回の build への reload chunk (`HotReload.EmitReloadChunk`) を、標準出力へ `@@tcs_reload_chunk <UTF-8 の byte 数>` の行と本文の組で書く。`--instance-registry` を含意する。chunk を作れなかった rebuild は出力だけ書き、基準の build は進めない
+- 出力の先頭と chunk の末尾が VM の build 番号 (`__tcs_build`、成功した build の通し番号) を書く。chunk は冒頭で、VM が既に to 以降を含むなら何もせず、from でなければ何も変えずに失敗する (届かなかった chunk、出力の読み直し)
+- 配送を stream にしたのは、ファイルの上書きだとホストが読む前に 2 回 build が終わったとき (デバッガ停止・長いフレーム) に前の chunk が消え、途中の build で足した field の初期化が抜けるため。stream は順序を保って取りこぼさないので、ホストは届いた順に当てるだけでよい (lub は子プロセスのパイプ、lub serve はそれを SSE で中継)
+- `EmitReloadChunk` を `--ref` に対応させた (v1 / v2 それぞれの参照ソース)。`--ref` の class (外部 class) は host の table なので merge 対象から外す。IL にできないソースは移行を組めないので例外にする
+- 動機: lub は watch の全体出力を `lume.hotswap` で読み直していたため、型 table の chunk-local cache (#27) の後は、差し替えた関数が新しい chunk の table を upvalue で掴み、`OnInit` で作った状態を読めなくなった (リロードは成功扱い)。設計どおり reload chunk で当てる導線にする
+- 変更ファイル: Transpiler/Program.cs, Transpiler/HotReload.cs, Transpiler.Tests/WatchModeTests.cs, README.md, doc/tasks.md
+- 検証: WSL (Linux) で `bash run-tests.sh` 相当 (件数は PR を参照)。追加した `Watch_ReloadChunks_ApplyInOrderAcrossMissedFrames` は実際に `tcs --watch --ref ... --entry Game --reload-chunks` を起動し、ホストが当てる前に 2 回 build を終わらせる (2 回目で instance field を追加)。2 つの chunk を順に当てると追加 field が初期化され、`OnInit` の instance と static の値が更新後の method から読めること (43 → 472)、適用済みの chunk の再実行が何もしないこと、1 つ目を飛ばすと状態を変えずに失敗することを見る
+- 残課題: restart 判定 (static initializer の変更など、`doc/hot-reload-design.md` §11) は未実装のまま
+
+### tcs2c: --lib が List<float> / List<int> の構造型 id を出す (#66) ✓ (2026-10-11)
+- `--lib` の出力に `TCS_TYPE_LIST_F32` / `TCS_TYPE_LIST_I32` を足した (`TCS_TYPE_ARRAY_F32` / `TCS_TYPE_ARRAY_I32` と同じく、program 内で intern した構造型 id)。host は `object` で受けた `List<float>` を `float[]` と見分けられ、`tcs_typed(tcs_list_new(...), TCS_TYPE_LIST_F32)` で作った値は C# 側の `(List<float>)` cast を通る
+- 検証: `dotnet test tcs2c.Tests --filter LibTypeIdTests` が変更前は `TCS_TYPE_LIST_F32 undeclared` の C compile error で失敗、変更後は通常 / GC stress とも pass。`bash run-tests.sh` (pre-commit) 全通過
+- 判断: 要素型は配列の id と同じ F32 / I32 に揃えた (issue の要望が「配列と同じく」)。`List<bool>` などは必要になった時点で足す
+- 残課題: `o is List<float>` (IlIsType の構造型) は tcs2c が未対応 (class だけ)。cast は通る
+
+### switch / pattern の照合を C# に揃える (#82 #83 #88 #98) ✓ (2026-10-11)
+- switch 式の `_ when 条件` を条件付きの arm にした。従来は when 無しの discard と同じく else に置き、条件を評価せず後続の `_` に上書きされていた (#82)
+- 型を書かない property pattern (`{ }` / `{ Value: 1 }`) は入力が null でないことも判定する (`T?` は値の有無、member は中の値から読む)。従来 `{ }` は `true` で null に一致し、`{ Value: 1 }` は null の member を読んで落ちた (#83)
+- 入力を複数回読む pattern (and / or、複数条件の property pattern) は、入力が呼び出しを含む式 (IsCallFree でない) なら temp (`__tcs_pat<深さ>`) に 1 回評価してから照合する。is 式の入力に加え、property pattern の中の getter (`{ Item: { A: 1, B: 2 } }`) も 1 回だけ呼ぶ (#88。T140 の残課題)
+- switch 文で `default` と同じ section にある case も出現順に照合する。従来は section ごと分岐から外して else にだけ置いたため、その case に一致する入力が後の section に流れた。本文は arm と else で同じ IL block を共有する (#98)
+- 検証: tcs2c.Tests に `DifferentialTests.Patterns.cs` の 4 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は 4 本とも fail (`22:0` / `0:2` / `A\nB\nB` / Lua の nil index と Nullable の error)、修正後 pass。`bash run-tests.sh` で Analyzers.Tests 56 / Transpiler.Tests 1005 / tcs2c.Tests 60 が pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: temp は IIFE (`SnapshotOperand` と同じ形)。単純な変数・field 読み (IsCallFree) は読み直しても値が変わらないので temp にしない (Lua で closure を作らない)。入れ子の temp 名を深さで分けるのは、C の `T x = x;` が初期化子で新しい変数を指すため。null 判定は値型でない入力 (参照型・制約の無い型 parameter) に付ける
+- 残課題: 型を書いた property pattern の入力が `T?` のとき (`p is Pt { X: 2 }`) の member 読みは従来のまま (中の値を取り出さない)
+
+### ±0 と NaN の扱いを .NET facade に揃える (#70 #71 #73 #80 #81) ✓ (2026-10-11)
+- Math.Min / Max (#80): float は MathF.Min / Max (IEEE 754:2019 minimum / maximum) と同じく NaN を伝播し、-0 を +0 より小さいとみなす。Lua は runtime の `Math.Min/Max` と、System.Math 経路の描画先を `math.min/max` から chunk prelude の `__tcs_min/__tcs_max` に替えた (module mode は `TinySystem.Math.Min/Max` へ alias)。C は F32 だけ `tcs_math_min/max` (int は従来の比較式)
+- Math.Floor / Ceil (#81): Lua の `math.floor/ceil` は結果を整数へ変換して -0 の符号を落とす (結果も float ではなく integer になる) ので、float のまま丸める `x // 1` / `-(-x // 1)` にした。System.Math 経路は描画時に式で出す
+- Math.Round (#71): floor から組み立てた結果が 0 のとき x の符号を付ける (Lua は `scaled * 0.0`、C は `copysignf`)。Lua の floor も `// 1` にして結果を float にした
+- LINQ Min / Max (#70): Enumerable と同じく NaN を最小の値とみなす。Min は NaN を見た時点で打ち切って NaN を返し (以降の selector は呼ばない)、Max は NaN の暫定値を次の値で置き換える。等しい値同士 (±0) は先に出た方を残す (.NET と同じ)
+- List.Contains / IndexOf / Remove (#73): EqualityComparer\<float\>.Default と同じく NaN 同士を等しいとみなす。Lua は探す値が NaN のときだけ別ループ (NaN でない値の検索は raw == のループ 1 本で、要素ごとの `eq` 有無の判定も無くした)。C は F32 要素だけ `v == t || (t != t && v != v)`
+- 検証: 追加した `DifferentialTests.Math_SignedZeroAndNaN_MatchDotnet` / `Linq_MinMaxAndListSearch_NaN_MatchDotnet` (Lua と C の parity + CoreCLR で同じ program を実行した stdout との一致) が修正前は両 backend とも不一致 (Red)、修正後 Green。`bash run-tests.sh` 全通過。micro bench (lua32、2000 万回、loop 込み): `math.min` 0.45 s → `__tcs_min` 0.40 s、`math.floor` 0.44 s → `// 1` 0.18 s
+- 判断: Floor / Ceil / Round の Lua の結果が integer から float になる (C# の型どおり)。print で直接見ると `3` ではなく `3.0` (MathSemanticTests の期待値を合わせた)。生成コードの文字列化は `__tcs_fstr` を通るので `3` のまま。int の Math.Min / Max も `__tcs_min/max` を通る (IL に型が無いため。bench では math.min より速い)
+- 残課題: float field を持つ struct 要素の List 検索と Dictionary\<float, _\> の NaN key は .NET との一致を確認していない
+
+### record class の == を C# の合成 Equals に揃える (#119 #120) ✓ (2026-10-11)
+- Lua backend の record class の `__eq` が、struct の positional field を field ごとの値等価に展開する (record struct の `op_Equality` と同じ `ValueEqualityParts`)。従来は struct の table を参照比較し、同じ値でも false だった (#119)
+- `__eq` の先頭で両辺の metatable (実行時型) の一致を見る。従来は左辺の型の field だけを比べ、基底と派生・兄弟の派生型が等価になり、左右を入れ替えると結果が変わった (#120)。C backend は従来どおり type_id で同じ判定をしている
+- 検証: tcs2c.Tests に `DifferentialTests.RecordEquality.cs` の 2 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は 2 本とも Lua と C が不一致 (`value:0:1:0:1:0` / `base-derived:1:0`、siblings `1:1`)、修正後 pass。`bash run-tests.sh` (pre-commit) 全通過
+- 判断: 実行時型は metatable の比較で見る (record の instance は型 table を metatable に持つ)。Lua は両辺が table のときだけ `__eq` を呼ぶので null 比較は従来どおり
+- 残課題: `S?` (Nullable の struct) の field は Lua で参照比較のまま (C は値等価)。基底 record の positional field のうち派生の parameter に無いもの (`record D(int v) : Root(P.Next())` の tag) は派生の `__eq` が比べない (Lua `1`、C と CoreCLR `0`)
+
+### tcs2c: struct の receiver を 1 回だけ評価し、rvalue の field は copy で呼ぶ (#95 #74) ✓ (2026-10-11)
+- struct method の receiver と struct place への field store は、place の lvalue と GC の owner (ライトバリアの対象) を別々に描いていたため、owner 側で receiver の式 (`Get().Data.Add(7)` の `Get()`、`GetA()[i]` の `GetA()`) をもう一度評価していた (#95)。place を所有する heap object (class 参照 / 配列・List) を temp に 1 回評価し、lvalue と owner の両方がその temp を指す `RenderOwnedStructPlace` にまとめた (旧 `RenderStructOwner` は削除)
+- field store で receiver に heap object を含む場合は、slot のアドレスを先に取ってから値を書く。C の `=` は左右の評価順を決めないので、C# と同じく receiver・添字を値より先に評価させる
+- property / 呼び出し結果 (rvalue) の struct の field を receiver にした method 呼び出し (`h.Prop.Inner.Bump()`) は place として `&` を取り、C compile error になっていた (#74)。`IsStructPlace` は struct field の親も place かを見るようにし、rvalue の場合は既存の copy 経路 (temp に値を置いてそのアドレスを渡す。変異は捨てる) に流す
+- 検証: tcs2c.Tests に `DifferentialTests.StructReceiver.cs` の 2 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は C の呼び出し回数が `17,2` 等、store の評価順が `via` (C# は `aiv`) で不一致、#74 の program は `lvalue required as unary '&' operand` で C compile 失敗。修正後 pass。`bash run-tests.sh` 全通過
+- 判断: receiver が local / static / 捕捉 cell / self だけの place は副作用が無いので temp を挟まず従来の形のまま出す
+
+### BCL / 言語の .NET 意味論ずれ 4 件を直す (#67 / #69 / #72 / #86) ✓ (2026-10-11)
+- #67 `Random.Next(0)` / `Next(n, n)` (instance / `Shared`): 排他上限から 1 を引いて `low > up` の空区間にしていたため、Lua / C とも `interval is empty` で止まっていた。空の範囲は .NET と同じく下限を返す (Lua `lastof`、C `tcs_rand_below`)。下限 == 上限の区間を 1 回引くので、乱数列の消費は Lua / C で揃ったまま
+- #69 Lua の `OrderBy` / `OrderByDescending` が `table.sort` (不安定) で同じ key の順を崩していた。key を要素ごとに 1 回求め、元の位置を同値時の比較に使う安定 sort にした (C は既に安定 merge sort)
+- #72 C の `string.Replace` が置換後文字列 null で fault していた。runtime は null を長さ 0 として削除し、emitter は置換後の `null` literal を受ける
+- #86 Lua で interface / 基底の virtual 経由の省略引数に実装側の既定値が入っていた (callee 冒頭の補完 (T207) が実行時の型の method で走るため)。IL builder が、ユーザー source の method 呼び出しの末尾の省略引数を、呼び出しが静的に束縛した宣言の既定値で埋める (`WithOmittedDefaults`)。IL を共有する C backend は従来どおり同じ宣言の既定値になる
+- 検証: tcs2c.Tests に `DifferentialTests.BclBehavior.cs` (4 本、C 通常 + GC stress と Lua の一致に加え、CoreCLR (net10.0) で実測した stdout との一致を見る)。修正前は 4 本とも fail (Random は Lua が `interval is empty`、OrderBy は Lua が `1,3,2,4`、Replace は C の emit が null を拒否、省略引数は Lua が `7:7:11`)、修正後は pass。`bash run-tests.sh` で Analyzers.Tests 56 / Transpiler.Tests 1005 / tcs2c.Tests 60 が全て pass
+- 判断: callee 冒頭の補完は host など C# 以外からの呼び出しのために残した (明示 null と省略を区別しない既知差もそのまま)。既定値は宣言側の syntax tree の model で IL にするので、別ファイルの interface の const / enum / float の既定値も呼び出し側で同じ値になる。既定値を IL にできないときは埋めずに callee に任せる。`--ref` の host method は対象外 (host 側が既定値を持つ)。`Next(max)` の負の上限など .NET が例外にする入力は従来どおり fault
+- 残課題: なし
+
+### 補間の D 精度・raw 補間の brace・int.TryParse の書式を C# に揃える (#90 #91 #77) ✓ (2026-10-11)
+- 補間の `D<n>` を `%0<n>d` から `%.<n>d` にした。D の精度は符号を除いた最小桁数で、`%0<n>d` は符号込みの幅なので負数で 1 桁足りなかった (`-12:D4` が `-012`) (#90)
+- raw 補間 (`$$"""..."""`) の text には `{{` / `}}` の unescape を掛けない。Roslyn の ValueText が既に literal の内容 ($ の個数より短い brace の連続は文字のまま) で、通常の補間と同じ置換で brace が減っていた (#91)
+- `int.TryParse` を NumberStyles.Integer (前後の空白、先頭の符号、1 桁以上の 10 進数字) にした。Lua は書式を pattern で絞ってから integer に限って読む (`tonumber` は `1.0` / `1e3` / `0x10` も読み、LUA_32BITS では i32 を超える数字列が float に丸まって範囲内に見えた)。C は strtoll をやめて自前で読む (空白だけの文字列を成功にしていた) (#77)
+- 検証: `tcs2c.Tests/DifferentialTests.FormatParse.cs` (Lua と C の parity + CoreCLR で同じ program を実行した stdout との一致) が変更前は fail、変更後 pass。`bash run-tests.sh` (pre-commit) 全通過
+- 判断: C の `int.Parse` も同じ parser を使うので、空白だけの文字列は fault になる (.NET の FormatException と同じ)
+- 残課題: Lua の `int.Parse` は従来どおり `math.tointeger(tonumber(s))` (不正な文字列は nil の既知差異)。`float.TryParse` の書式は .NET と照合していない。.NET が末尾の NUL を無視する挙動は合わせていない
+
+### Lua backend の struct copy 抜けを専用 lowering の各経路で埋める (#75 #78 #84 #85 #99 #112 #113 #115 #116 #117) ✓ (2026-10-11)
+- il-spec §10 の copy 地点のうち、汎用の代入 / 引数 / return を通らない lowering に `WrapStructCopy` (構文のない値は型だけで決める `CopyIfMutableStruct`) を入れた: object initializer の field / property 値と入れ子の collection initializer の要素 (#112)、foreach (List / 配列) の反復変数 (#113)、分解の成分 (#115)、`with` の上書き値 (#116)、custom setter の `value` (instance / static、#117)、static / instance の field・auto-property initializer と struct の member initializer (#99)、配列 / List / Dictionary の initializer の要素 (#84)、Dictionary.Add と TryGetValue の out (#78)
+- lambda の struct parameter は入口で copy する (#75)。LINQ 等の runtime は要素を copy せずに callback へ渡すので、呼び出し側では copy できない。式本体の lambda は copy 文と合わせて block 本体にする (void は呼び出し文、値を返すなら return)
+- `ToList` は変更可能な struct 要素のとき末尾引数に `S.__copy` を渡し、runtime の `List.ToList` が要素を copy する (#85)。C backend は要素を値で写すので引数を読まない (2 番目が要素型の `__copy` のときだけ 2 引数を許す)。拡張 method は `System.Linq.Enumerable` のものだけ runtime の `List.*` へ写し、LINQ と同名の user 拡張 method (`ToList(this S[], int)` 等) は通常の拡張呼び出しにした (名前だけで写していたので Lua は runtime に誤った引数を渡し、C は型検査で落ちていた)
+- 検証: 新規 `StructCopyPointTests` 13 本 (dotnet differential 込み) は修正前に全て失敗 (例: foreach `3:3:3:3`、ToList `9:9:9`)、修正後に通過。tcs2c.Tests の `StructCopy_LoweredPathsKeepValueSemantics` (C / GC stress / Lua の一致) も修正前は失敗、修正後に通過。各 issue の最小再現を lua32 と tcs2c→gcc で実行し、全て C と一致
+- 実測 (lua32、int + float の 2 field struct、3 回): foreach で 1000 要素の配列を 2000 周読むだけのループ 0.055 → 0.30 s、1000 要素の List.Sort (比較 lambda) + Count (述語 lambda) を 200 回 0.25 → 0.90 s。`var x = a[i]` や引数渡しと同じく copy 地点ごとに table を作る費用で、readonly struct なら copy しない
+- 判断: lambda は parameter が書かれるかどうかの解析で copy を省く案を採らなかった (predicate の中で元の配列を書き換えると、copy しない parameter から変化が見える)。readonly struct は従来どおり copy しない
+- 残課題: static method group を runtime に渡す経路 (`xs.Any(IsGood)`) は copy されない (wrapper closure にすると delegate の同一性が変わるので判断が要る)。`base(...)` 引数、`?.` 経由の List 呼び出し (`list?.Add(s)`)、式本体の lambda の戻り値 (`xs.Select(x => holder.F)`)、ToDictionary の値、式位置の setter 代入の値 (`var y = (h.Item = s)` で setter の変更が y に見える) も同じ種類の copy 抜けとして残る
+
+### tcs2c: field と auto-property の初期化子を宣言順に実行する (#79) ✓ (2026-10-11)
+- IL の型情報 (`IlExport.CollectFields`) が全 field の後に全 auto-property を並べていたため、C backend は field と auto-property を交互に宣言した型で field の初期化子を先にまとめて実行していた (CoreCLR / Lua `APB`、C `ABP`)。instance (constructor 冒頭) と static (型の初期化) の両方。member の宣言順に並べるようにした (C# §15.5.6)
+- 検証: tcs2c.Tests の `DifferentialTests.InitializerOrder.cs` (instance と static の両方で field / auto-property を交互に宣言。Lua / C / C GC stress の一致 + CoreCLR で同じ program を実行した stdout `APBQ 0n` / `xyz 123` との一致)。修正前は C が `ABPQ 0n` / `xzy 132` で fail、修正後 pass。`IlExportTests.Export_ClassMetadataAndIlBodies` の field 列の期待を宣言順に直した。`bash run-tests.sh` (pre-commit) 全通過
+- 判断: positional record の parameter は従来どおり先頭 (Lua の VisitRecord と同順)。struct の C layout と `LayoutHash` も宣言順になる (hot reload の比較は同じ規則で作った v1 / v2 の間なので影響しない)
+- 残課題: 基底と派生の初期化子の順 (T150 の既知差異) は対象外
+
+### 後に文が続く return を do ... end に閉じ、loop 末尾の return と continue を正しい Lua にする (#106) ✓ (2026-10-11)
+- Lua の `return` は block の最後の文に限られる。loop 本体の最後が `return` で本体に `continue` があると、`return` の後ろに continue label (`::_continue_N::`) が出て構文エラーになっていた (`while (true)` / `for` / `foreach` / `do-while`)。同じ形で、for の増分 (`i = i + 1`) が `return` の後ろに続く場合 (continue が無くても) と、`return` の後の到達不能文も構文エラーだった
+- `EmitIlBlock` が、後に文が続く `return` を `do return ... end` の block に閉じる。loop 本体は `EmitLoopBody` で出し、末尾の `return` の後に continue label (使うときだけ) か同じ block の増分が続くなら閉じる
+- 検証: 追加した `DifferentialTests.Loop_TrailingReturnFollowedByLabelOrStep_MatchesCSharp` (while / for の continue、for の増分、do-while、foreach、到達不能文。Lua / C / C GC stress の一致と C# の期待値 `3 7 30 4 2 7`) が修正前は Lua の `'end' expected ... near '::'` で失敗、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: label を `return` の前に置く案は、`continue` の飛び先で `return` を実行してしまうので採らない。閉じるかどうかは末尾の文を出す時点で決める (continue label を使うかは本体を出し終えるまで分からないが、末尾の `return` より前の `continue` は出し終えている)
+- 残課題: constructor の `return;` は `return` (nil) を出すので、`new C()` が nil になり、末尾の `return;` は後ろの `return self` と合わせて構文エラーになる (この修正の対象外)
+
+### 別 namespace の同名 --ref 型を両方出し、型の Lua global 名の衝突を診断する (#104 #105) ✓ (2026-10-11)
+- tcs2c: `--ref` の外部 class を辿る訪問済み集合の key を simple 名から型 symbol (generic は定義) にした。`A.Opts` と `B.Opts` の片方が外部 class として出ず `unsupported IL type: B.Opts` で止まっていた (#104)
+- 型の Lua global 名 (namespace 修飾名を `_` で結合) が先に宣言された別の型と同じになるもの (`A_B.C` と `A.B.C` は共に `A_B_C`) を、member の LuaNameCollision と同じ書式の TCS1001 `LuaNameCollision(A_B.C/A.B.C)` にした。transpiler / `tcs check` / 増分 session は error で Lua を出さず、IlExport も同じ error を Diagnostics に返すので tcs2c も止まる。analyzer は 2 個目以降の型に warning。従来 Lua は黙って後勝ちの `2 2`、C は `duplicate class: A_B_C` だった (#105)
+- 型の global 名の規則を `LuaNaming.TypeGlobalName` (Shared) に移し、emit (`LuaEmitter.TypeName`) と診断が同じ関数を使う
+- 検証: 追加した `RefNamespaceTests` (IlExport の外部 class が `A_Opts` だけ → 両方、生成 C を host 付きで compile / 実行して `37`)、`LuaTypeNameCollisionTests` 6 本 (transpile / 複数ファイル / 非衝突 / check / 増分 session / IlExport) と analyzer の 1 本は修正前に red、修正後 green。`bash run-tests.sh` で Analyzers.Tests 57 / Transpiler.Tests 1011 / tcs2c.Tests 64 が pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: 「別名にする」案は q.md Q2 の flat な修飾名を変えるので採らず、診断にした。宣言順は入力ファイルの順と位置で、最初の型は報告しない (member と同じ)。interface / delegate は Lua の global を持たず、入れ子の型は NestedTypeDeclaration の領分、`--ref` の型は小文字パスで呼ぶので対象外。generic と非 generic の同名型 (`Queue` と `Queue<T>`) も Lua では同じ global なので同じ error になり、conformance baseline の types.md:ConstructedTypes1 が InCompile → Diag。IlExport は単相化で書き換える前の tree で判定する (Lua 経路と同じ規則、位置も入力のまま)
+- 残課題: なし
+
+### Lua: 初期化子のない static field を initializer の段で default に戻さない (#89) ✓ (2026-10-11)
+- 先に宣言した static の初期化子 (から呼んだ method) が後ろの初期化子なし field / auto-property に書いた値を、Lua だけ後から型別 default で上書きしていた (`State.First = State.initialize()` の後の `State.later = 0`)。C# §15.5.6 どおり、全 static を default にするのは pre-zero (型宣言の直後) だけにし、initializer の段では初期化子のある field だけを宣言順に代入する
+- 検証: tcs2c.Tests の `DifferentialTests.StaticDefaults.cs` (Lua / C / C GC stress の一致 + CoreCLR で同じ program を実行した stdout `3/7/4/5/1/0` との一致)。修正前は Lua が `attempt to index a nil value (field 'ref')` で fail、修正後 pass。`ModuleDescriptorTests.DefineChunkExcludesDeclarationAndStaticInit` は初期化子なし field の initializer thunk が空であることを見る形に直した。`bash run-tests.sh` (pre-commit) 全通過
+- 判断: 初期化子なし field の StaticFieldMeta は残す (長さ 0 の範囲)。registry の declare が `default` で pre-zero し、hot apply の新規 field も pure 扱いのまま。reload chunk (`HotReload.EmitReloadChunk`、`--watch --reload-chunks`) は v2 の pre-zero 済み fresh table から新規 field を写すので、どちらの経路でも追加した初期化子なし static は型別 default になり、既存 static は live 値のまま (`HotReloadTests` / `ModuleDescriptorTests` の `*AddedStaticWithoutInitializerGetsDefault`)
+- 残課題: なし
+
+### 代入先を右辺より先に確定させ、式位置の代入の値を代入した値にする (#87 #97) ✓ (2026-10-11)
+- 式位置の代入 (`=` / op= / `??=`) は、代入後に左辺を組み直して読んだ値を式の値にしていた。右辺が受け手を差し替える (`(Receiver()[1] = Right())` で Right が static field を新しい Dictionary にする) と、受け手を再評価して別の格納先を読んでいた (#97。Dictionary / class の field / List / 配列の添字)。受け手 / 添字に副作用があるとき、または受け手 / 添字が local / parameter / this / 型名 / 定数だけで組まれていないときは、受け手 / 添字を temp に固定した place を読む。式位置の custom property 代入も、読み直すと変わり得る参照型の受け手を temp に固定してから setter を呼ぶ (従来は右辺の後に受け手を評価していた)
+- struct の member への代入 (`h.Data.N += Right()`、`=` / `??=`、custom property も) は、Lua で右辺より先に左辺の table (`h.data`) を評価するため、右辺が途中の struct を差し替えると古い table に書いていた (#87。class の field / 配列要素 / static field / this の field / 捕捉された local の field を起点にした place)。右辺が格納先を書き換え得るときは、参照型 prefix と配列添字を temp に固定し、値を `__tcs_v` に置いてから格納先を辿り直して書く (式位置の値は `__tcs_v`)。参照型 prefix 自体を右辺が差し替える形 (`H.Data.N += F()` で F が `H` を作り直す) は C も右辺の後に `H` を読んでいたので、temp で両 backend とも直る
+- 「右辺が状態を書き換え得る」は代入 / ++ / -- と、呼び出し・構築・custom property の getter・user 定義演算子。delegate も ref 引数も受けない Math / MathF・数値 / bool / char / string の method、source に無い構築子、struct の暗黙の構築子は含めない。collection の method は中身を変える (`A[L.Count] = L.Remove(5) ? 70 : 80` は `Count` を変える) ので含める
+- C backend: struct の field を括弧付きの式から読む形 (`(s = t).N`) を struct place として描画する。done.md の残課題 `s.X = (s = t).X` は Lua では local が register なので元から C# どおりで、C は C compile 前に `unsupported struct place: IlParen` で失敗していた
+- 検証: tcs2c.Tests に `DifferentialTests.AssignTarget.cs` の 5 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は 5 本とも fail (#97 の 4 例は Lua / C とも `100,2,7,100`、#87 の例は Lua `100:100,8`、struct の custom property / ??= は Lua の文位置で古い table に書く、`(s = t).N` は C で例外、式位置の custom property 代入は Lua / C とも差し替え後の受け手に書き、collection の method が変える添字は Lua / C とも別の要素を読む)、修正後 pass。`bash run-tests.sh` で Analyzers.Tests 56 / Transpiler.Tests 1005 / tcs2c.Tests 70 が pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: 文位置の参照型受け手への代入 (`Receiver()[1] = Right()`) は Lua も C も受け手を先に評価しているので変えない。struct の place は temp に struct 自体を置かない (C では copy になり書き込みが消える)。経路を右辺の後に辿り直すのは、C# の格納場所が「親の slot」であり、Lua でその slot の今の table を引けば同じ場所になるため。右辺が書き換え得ない代入は従来の出力のまま
+- 残課題: 右辺が書き換え得るかの判定は user 定義の暗黙変換と、文字列化で呼ばれる user の ToString を見ない
+
+### watch の reload chunk が移行できない変更を restart として知らせる (#107) ✓ (2026-10-11)
+- `--watch --reload-chunks` は、chunk で移行できない変更 (既存 static の initializer と const の値、base class、型の削除・種類の変更、enum member の削除・値の変更) では chunk を書かず、`-o` の出力を書いた後に標準出力へ `@@tcs_restart_required <UTF-8 の byte 数>` の行と理由の行 (`static initializer changed: Game.x` など、1 行 1 理由) を書き、標準エラーにも理由を出す。ホストが出力を読み直して VM を起動し直す前提で、以後の chunk はその build からの差分にする。従来は chunk に `G.x = 2` を含めながら既存の static は旧い値のまま残し、ログは `Sent reload chunk` だけだった
+- 判定は `ReloadClassifier` (IlExport の v1 / v2 の差分)。`HotReload.PlanReload` が chunk か restart の理由を返し、`EmitReloadChunk` は restart なら理由付きで例外にする。IlFieldInfo に initializer の構文 hash (`InitHash`) を足した
+- base の変更は restart にしたので、chunk の親の付け替え (setmetatable) は消した
+- `doc/hot-reload-design.md` §9 に stream の形式、§5.2 に const、§11 を現状に合わせた (record class は移行される)
+- 検証: 追加した `HotReloadRestartTests` (restart 9 例 / live 4 例) と `WatchRestartTests` (実際に `tcs --watch --entry Game --reload-chunks` を起動し、static の initializer を変えると `restart_required` が届き、読み直した出力の VM に次の編集の chunk が当たり、起動し直していない VM には状態を変えずに当たらないこと) が修正前は失敗、修正後は通る。`TCS_FUZZ=1 TCS_FUZZ_COUNT=200` の reload fuzz sweep も通る。`bash run-tests.sh` (pre-commit) 全通過
+- 判断: instance field の追加・削除・型変更は registry で移行できるので restart にしない (module registry の `ClassifyRestart` との違い)。static の追加は #15 の通り initializer の副作用を見ずに live のまま。const の値変更は、使う static の initializer が再評価されず旧い値に残るので restart (web の session と同じ)。restart 時に基準の build を進めるのは、§9 の通りホストが出力で起動し直すため (進めないと、起動し直した VM に次の chunk が当たらない)。進めるのは出力を書けた後。`reload_chunk` だけを解するホスト (現在の lub) は他の行を 1 行ずつ捨てるので、restart の本文は改行終端の行に限った。`ChunkLocalTests.Reload_V1CachedChunk_SeesV2EnumValues` は enum の renumber (restart になった) を使っていたので、member の追加で table identity を見る `Reload_EnumMemberAdded_KeepsTableIdentity` に替えた
+- 残課題: 型の削除は生存 instance を見ずに常に restart (§5.2 は生存ゼロなら live)。top-level statement の再実行、§6 の struct detector、struct static の merge、ReloadPlanner の一本化は §11 のまま。lub 側の再起動導線 (`restart_required` を受けて VM を起動し直す) は lub で対応する
+
+### 型をまたぐ static initializer の初期化順をファイル順から独立させる (#103) ✓ (2026-10-11)
+- static initializer が後ろのファイル (後ろの宣言) の型を参照すると、Lua はロード時に `attempt to index a nil value (local 'B')` で落ち、C は `6` (C# は `16`) を返していた。Lua は initializer を型の定義と同じ位置で実行し、C は定数だけの class の値を、それを読む遅延 class の初期化より後に埋めていた
+- `StaticInitOrder` (Transpiler) が、型ごとに static initializer と、そこから呼ぶ project 内 method / constructor (instance 初期化子と暗黙の base constructor を含む) / accessor / operator / virtual・interface の実装の本文を推移的に辿り、static field に触れる他の型を依存として集める (method ごとに memo)。lambda の本文と method group の先は、delegate を作るだけでは実行しないので辿らない。順は依存を宣言順の root から辿る DFS post-order で、型を宣言順に触ったときの lazy 初期化と同じ (循環では先に触った型が初期化中の default のまま読まれる)
+- Lua (単一 chunk): initializer は chunk 内の全型の定義と base link の後、top-level 文と entry の return の前に、この順でまとめて出す (`LuaEmitter.StaticInit.cs`)。emitter の警告は initializer を出した後に集める。struct 型の static の pre-zero は型の定義より前に走るので、`S.new()` ではなく zero 値の table literal にした (module mode の descriptor の `default` も同じ)
+- module mode: 型の依存を `EmittedTypeInfo.InitDependencies` に持ち、snapshot の `init_order` に順を出す。registry は fresh type の initializer thunk をこの順に走らせる。依存は他 module の method 本文にも及ぶので、session は open / slow path で全型の依存を取り直す。fast path では、編集した method が initializer から辿る範囲にあり、その本文が直接触る型・呼ぶ method が変わったときだけ取り直し、それ以外は前の artifact の依存を型名で引き継ぐ (constructor 本文の編集などで module を丸ごと emit し直した artifact も)
+- C: `tcs_init_statics` で定数だけの class を先に埋め、遅延 class (`tcs_sinit_<C>`) は従来どおり宣言順に触る (最初のアクセスで初期化)
+- 検証: tcs2c.Tests の `DifferentialTests.StaticInitOrder.cs` (Lua / C / C GC stress の一致 + CoreCLR で同じ program を実行した stdout との一致)。a.cs / b.cs の 2 ファイルを両方の順で: 直接参照 / constructor 本文 / static getter / virtual / interface の先 / 同じファイル内の循環 (`16` / `42,50,22,23` / `3,2`。修正前は Lua が両方の順でロード時に落ち、C は a.cs, b.cs の順で `6`)。delegate を作るだけの initializer (`static Action OnHit = Hit;` / `static Func<int> F = () => B.Y;`) は依存にしない (`300,10` / `6,5`。lambda / method group を辿ると偽の循環で Lua が `0,10` / `1,5` になる)。struct 型の static を struct より前のファイルで宣言 (`1,4,3,0`。修正前は Lua が `local 'V2'` の nil index)。Transpiler.Tests の `StaticInitOrderTests`: snapshot の fresh load で `16` / `42` (修正前 `6` / `0`)、他 module の body edit 後の fresh load で新しい依存の順 (`7`、修正前 `0`) と、触る型の変わらない edit で依存を引き継ぐこと、constructor 本文の edit (module 丸ごと emit) 後も依存が残ること (`11`)、struct の module が後ろの snapshot が load できること、後へ回した initializer の TCS 警告も結果に載ること。`ModuleDescriptorTests.PreZeroMakesCrossTypeInitReadDefaultsNotNil` の循環の期待値は `1` / `11` から `11` / `10` (CoreCLR で A を先に触ったときと同じ) に変わった。lub の C# サンプル 31 本は cs-lib と合わせて transpile でき、生成 Lua は static initializer の行 (cs-lib の分を含む) が chunk 末尾へ移る。`bash run-tests.sh` (pre-commit) 全通過
+- 計測 (Release、手元): `static Game Instance = new Game()` から 300 class / 3000 method に届く合成 project で、触る型・呼ぶ method の変わらない warm edit の emit は 2〜4ms (master と同程度)。呼ぶ method を変える edit は全型の取り直しで 0.4〜0.8s
+- 判断: Lua は lazy (初回アクセスで初期化) にせず eager のまま順だけを決めた。lazy は static field の読み書きすべてに metatable の trap が要り、class table の継承用 metatable・registry の pre-zero と衝突する。C は lazy のまま (依存を取りこぼしても正しい) で宣言順に触るので、解析が実行時の依存と一致する範囲では Lua と同じ結果になる。依存は「static field に触れる」型だけで、static method を呼ぶだけ・instance を作るだけの型は本文が static に触れない限り依存にしない (C# の beforefieldinit と同じ)
+- 残課題: initializer の副作用 (log 等) の順は、Lua では依存を丸ごと先に初期化するので、初回アクセスで初期化する C# / C backend と違い得る (例: A の initializer が log を書いてから B の static を読み、B の initializer がその log を読む)。依存は制御フローを見ない過大評価 (分岐の両側、virtual は全 override) なので、偽の循環では Lua が C# / C と違い得る。delegate 値の呼び出しの先は辿らない。循環の結果は型の宣言順 (ファイル順) で決まる (C# は Main が先に触った型で決まる)。呼ぶ method を変える fast path edit は全型の依存を取り直す (差分だけの取り直しは未実装)
+
+### int → float の変換・int の Sum の overflow・enum の int 最小値・float → int の下限を C# に揃える (#92 #93 #118 #76) ✓ (2026-10-11)
+- int / char → float の暗黙変換 (代入・引数・return・比較の昇格、`float?` への wrap の手前) を IL builder の入口 (`BuildExpr`) で `IlNumericConvert` にした。Lua は `(x * 1.0)` で描き、LUA_32BITS の integer を f32 へ丸める。従来は Lua の integer のまま残り、`float f = 16777217` が 16777217 のまま、`16777217 == 16777216f` が偽だった (#92)。定数は float literal に畳む (`float big = 100000` は `100000.0`。integer のままだと `big * big` が i32 wrap した)。明示 `(float)x` も同じ描画で、変換元が既に float なら IL に node を置かない
+- uint / short / byte / long などの整数 → float も同じ変換にした
+- float の field / 配列要素 / `default` の既定値、`float.Parse` (`__tcs_tofloat`、不正な文字列の nil はそのまま) と `float.TryParse` の結果 (失敗時の 0 も)、float の `Sum` (空でも) を Lua でも float にした (integer の 0 に int を足すと integer のまま進む)
+- int の `Sum` (要素型か selector の戻り値が int) を checked にした。IL の callee を静的な型で `List.SumInt` に分け、途中の加算が i32 を超えたら fault (Lua は error、C は `tcs_checked_add_i32` の `overflow`)。float の `List.Sum` は従来どおり検査しない (#93)
+- `enum` の member 値が int.MinValue のとき、Lua は通常の const と同じ `(-2147483647 - 1)` で出す。literal `-2147483648` は Lua32 で float になっていた (#118)
+- tcs2c の `tcs_trunc_f32` の下限を `>= -2147483648.0f` にした。`-2147483649.0f` は f32 で -2^31 に丸まるので、範囲内の `(int)-2147483648f` が fault していた (#76)
+- 検証: `tcs2c.Tests/DifferentialTests.NumericConversion.cs` (Lua と C の parity + CoreCLR で同じ program を実行した stdout との一致、Sum の overflow は 3 経路とも "before" の後で停止。C だけの float → int の境界 (-2^31 と -2147483648.5f は変換、-2147483904f / 2^31 / NaN / ±inf は fault)) が変更前は fail、変更後 pass。raw Lua の `tostring` で float の結果を見ていた Transpiler.Tests の期待値 (`1122` → `1122.0` など) を合わせた。`bash run-tests.sh` (pre-commit) 全通過
+- Sum の速さ (1000 要素 × 20000 回、9 回の最小値。計測時の load average が 20 超で絶対値は揺れるので比で見る): lua64 は master の Sum が int 0.84 s / float 0.83 s に対し、SumInt 1.23 s (selector 付き 1.43 s、master 0.63 s) / float Sum 0.79 s。lua32 は master int 0.64 s / float 0.67 s に対し、SumInt 1.10 s (selector 付き 1.79 s、master 0.81 s) / float Sum 0.68 s。最初の実装 (要素ごとの `math.type`) は int 3.18 s / float 1.94 s (lua64) だった
+- 判断: 組み込みの float 算術 (+ - * / %) の operand では変換を省いた (Lua / C とも演算が integer を float へ変換してから計算する)。省けるのは相手の operand が Lua で float であるときなので、float の既定値と runtime が返す float を float にしてこの前提を保つ。`+ 0.0` は float の -0 を +0 にするので `* 1.0` にした。Sum の int / float は Lua の値の subtype ではなく静的な型で分ける (float の値が integer のこともあり、実行時の判定は誤って fault する上に遅い)。SumInt は selector 無しで identity を呼ばない loop を持つ
+- 残課題: Lua の `__tcs_trunc` は NaN / 範囲外の float → int で fault しない (C は fault)。host から integer で渡された float 値は従来どおり integer のままで、組み込みの float 算術で int と混ぜると f32 へ丸まらない
+
+### tcs2c: 入れ子の lambda が外側の lambda の parameter を捕捉できるようにする (#140) ✓ (2026-10-11)
+- `x => arr.Count(y => y == x)` の内側の closure が外側の lambda の parameter `x` を捕捉すると、C が `'v_x_0' undeclared` で compile できなかった。原因は 2 つ: (1) method の parameter は入れ子の closure が捕捉するなら cell へ移す (`BoxCapturedParameters`) が、lambda の parameter は移していなかった。(2) closure の捕捉集合を本体の直接の参照だけから作っていたので、さらに内側の closure だけが使う外側の変数 (`self`、2 段外の lambda の parameter) を lifted 関数へ渡していなかった
+- lifted 関数の先頭で、入れ子の closure が捕捉する parameter を method と同じく cell へ移す。捕捉集合は入れ子の closure の本体も (その parameter と local を除いて) 見る
+- 検証: tcs2c.Tests に `DifferentialTests.NestedClosures.cs` の 2 本 (main 形: Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。外側の parameter の読み書き、3 段の curry、`self` の field、static field の initializer、LINQ の中の LINQ。lib 形: 外側の parameter を捕捉した closure を static の List に残し、フレーム境界の GC (stress 含む) をまたいで呼ぶ)。修正前は 2 本とも C compile error (`v_x_0` / `c_v_self` / `v_a_0` undeclared)、修正後 pass。#140 本文の program も C が CoreCLR と同じ `2`。`bash run-tests.sh` で Analyzers.Tests 57 / Transpiler.Tests 1041 / tcs2c.Tests 85 が pass。変更は C backend だけで、生成 Lua は変わらない
+- 判断: 捕捉の判定は名前単位のまま (過剰な box は意味を変えない)
+- 残課題: なし
+
+### record class の継承と S? field の == を C# に揃える (#135) ✓ (2026-10-11)
+- Lua backend の record class が基底 record を無視していた。基底と `__index` で繋ぎ (class と同じ遅延 link)、ctor は基底の `new` に primary ctor 引数 (`Root(P.Next())`) を渡してから自分の field を足す。従来は基底の ctor 引数を評価せず、継承した method も引けなかった
+- `__eq` は実行時型の一致に続けて、基底から順に各 record が宣言した field を比べる (C# の合成 Equals が基底の Equals を呼ぶのと同じ)。Lua は metamethod を rawget で引くので、parameter の無い record にも `__eq` を出す (`new E() == new E()` は C# で true)
+- struct の `T?` field (record / record struct / struct の値等価) は値の有無が同じで中の値が等しいとき等しい。従来は struct の table を参照比較していた
+- 基底から同名 member を継承している positional parameter (`record Pass(int tag) : Root(tag * 2)`) には C# も property を合成しない。Lua と C (IL の positional ctor) が派生の ctor でこの parameter を field に代入して基底の値を上書きしていたので、合成される parameter だけを代入する (`IsSynthesizedPositional`。IlExport の field 収集と共有)
+- 検証: tcs2c.Tests に `DifferentialTests.RecordInheritance.cs` の 2 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は Lua が `record:0:...` (S? を参照比較) と `Nullable object must have a value` (基底の ctor が走らない) で fail、C は `pass-through:3` / `inherited:1:101` で CoreCLR (`6` / `2:102`) と不一致。修正後 pass。#135 本文の program も 3 backend が CoreCLR と同じ `1 0 2`。`bash run-tests.sh` で Analyzers.Tests 56 / Transpiler.Tests 1019 / tcs2c.Tests 77 が pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: C# は派生の field 初期化を基底 ctor の呼び出しより先に行うが、Lua は基底の `new` が self を作るので後になる。record の本体は positional property だけなので (他の member は TCS1001)、順序の差は観測できない
+- 残課題: なし (record の明示 ctor は従来どおり TCS1001)
+
+### Dictionary<float, V> の NaN key を .NET に揃える (#132) ✓ (2026-10-11)
+- Lua backend で `Dictionary<float, V>` に NaN の key を入れると `table index is NaN` で止まり、読み出し (`d[NaN]` / `ContainsKey`) は常に不在になっていた。.NET の `EqualityComparer<float>.Default` と同じく NaN 同士を 1 つの key として扱う
+- float key の dict だけ、key を runtime の `Dict.FloatKey` (NaN を sentinel の文字列 `"NaN"` に替える) に通してから引く: indexer の get / set、`Add`、`Remove`、`ContainsKey`、`TryGetValue`、collection / index initializer、`?.` 経由。`Keys` は `Dict.FloatKeys`、foreach の `KeyValuePair.Key` は `Dict.FloatKeyOut` で NaN に戻す。`List.ToDictionary` は float key のときだけ `Dict.FloatKey` を末尾の引数で受けて key を置き換える (他の key 型は従来どおり)。key が読み直しても変わらない式 (変数・field・定数) なら Lua の描画で `(k ~= k and "NaN" or k)` に inline し、呼び出しを省く。NaN でない定数の key は素通し
+- C backend は float の key を従来どおり対応外とし、生成前に `Dictionary key type not supported: f32` で止まる (変更なし。test で固定)
+- 検証: tcs2c.Tests に `DifferentialTests.DictFloatKey.cs` の 4 本 (Lua が CoreCLR で実行した stdout と一致 / C が `Dictionary key type not supported` で止まる / ToDictionary の置換は float key だけ / object の key の NaN を文字列 "NaN" の key と取り違えない)。修正前は Lua が `table index is NaN` で fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は、埋め込みの runtime に足した関数を除いて master とバイト一致 (float key の dict を使うサンプルは無い)。lua32 の micro bench (float key の get + set を 500 万回): raw 0.45 s、inline 0.61 s、`Dict.FloatKey` 呼び出し 0.93 s
+- 判断: float 以外の key の dict は生成コードも runtime の経路も変えない (int / string key のコストは不変)。sentinel は hot reload で runtime を読み直しても同じ値になる文字列にした (float key の dict は他に文字列の key を持たない)。host が raw table を読むと `"NaN"` の key が見える (support-matrix に記載)。`Dict.Keys` 本体に NaN 戻しを足すと全 dict の列挙が遅くなるので別関数にした
+- 残課題: 判定は呼び出し地点の静的な key 型なので、`Dictionary<object, V>` など float 以外の key や、key 型が型 parameter の dict (generic method に K = float で渡したもの) に入れた NaN は対象外 (従来どおり `table index is NaN`)
+
+### struct 型の pattern を struct / `T?` の入力に当てる (#130) ✓ (2026-10-11)
+- 型を書いた property pattern の入力が `T?` (`Pt? p; p is Pt { X: 2 }`) のとき、型を書かない `{ X: 2 }` と同じく値の有無を判定して member は中の値から読む。従来 Lua は struct の table に `__tcs_is` (metatable 判定) を当てて常に不一致、C は `IlIsType target is not a class: Pt` で止まっていた
+- 同じ原因の型 pattern / 宣言 pattern (`p is Pt`、`p is Pt v`、switch の `Pt v =>` / `case Pt:`) も直した。型照合 (`BuildTypeCheck`) が pattern の入力型を受け取り、struct `S` の入力を `S` で照合するのは常に true (入力は 1 回評価)、`S?` の入力は値の有無にする。宣言 pattern は入力 (`S?` は中の値) の copy を arm ごとに照合の中で束縛する (従来 Lua は元の struct と alias、C は `Pt?` を `Pt` に代入できず停止)。`and` の右辺は左辺が絞った型を入力にするので、`S?` の入力を左辺が `S` に絞ったら右辺は中の値を照合する (`p is Pt and { X: 2 }`)
+- 検証: tcs2c.Tests に `DifferentialTests.NullablePattern.cs` の 3 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は 3 本とも C が `IlIsType target is not a class: Pt` で fail (Lua は `p is Pt { X: 2 }` が `0`、`w is Pt u` の変異が元に残る)、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: switch の struct の宣言 pattern は型だけ前宣言し、arm の照合の中で値の有無を見てから copy を束縛する (IIFE)。arm より前に 1 回だけ copy を束縛すると、同名の designation を持つ arm 同士で copy を共有し、前の arm の when での変異が後の arm に見える。class の designation は従来どおり arm より前に入力をそのまま束縛する
+- 残課題: object / interface に入れた struct (boxing) の型照合は従来どおり (struct の値は型 tag を持たない)
+
+### 構造型 (List / 配列 / Dictionary) への is (#131) ✓ (2026-10-11)
+- C backend: `o is List<float>` / `o is float[]` / `o is Dictionary<string, object>` (is 式、switch の arm、`case List<float>:`、`is not`) を、box 時に `tcs_typed` が付ける構造型 id (cast と同じ id) の一致で判定する。IL は新しい `IlIsRefType` (型表記は IlRefCast と同じ)。従来は `IlIsType target is not a class: List<float>` で止まっていた
+- Lua backend: table は構造型の tag を持たず `List<float>` と `List<int>` / 配列を見分けられないので、IL 化せず TCS1001 (`unsupported syntax: type test against System.Collections.Generic.List<float> (Lua tables carry no List / array / Dictionary type)`) を出し、本文は実行時 error の stub にする。IL にできない field 初期化子 / 省略引数の既定値も、`nil` を黙って入れずに評価した時点の実行時 error にする。従来は診断なしで `__tcs_is(o, List<float>)` という読めない Lua を出していた。入力の静的型が同じ構造型 (`List<float> l; l is List<float>`) なら null 判定にする (両 backend)
+- switch の arm の型 pattern (`float[] =>` のように TypePatternSyntax になるもの) も照合に入れた。従来は IL 化に失敗していた
+- 検証: tcs2c.Tests に `DifferentialTests.StructuralIs.cs` の 3 本 (C 通常 + GC stress が CoreCLR で実行した stdout と一致 / Lua が TCS1001 を出し実行時 error の stub になる / field 初期化子でも初期化の時点で止まる)。修正前は 2 本とも fail (C は `method has no IL body: P.kind`、Lua は警告なし)、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: 構造型の型 test を作るかは builder の `StructuralTypeTests` (IlExport だけ有効) で分けた。Lua で要素を覗いて推測する判定は空の List や List と配列を区別できないので入れない。IlExport の IL を Lua に描く経路 (hot reload の field 初期化子) では実行時 error にする
+- 残課題: C で `object` を入力にした宣言 pattern (`o is List<float> l`、switch の `List<float> l =>`) は class (`o is Box b`) と同じく未対応のまま (`cannot assign object to ...` / `field receiver is not a class reference` で止まる)
+
+### int / float の CompareTo を -1 / 0 / 1 の比較にする (#141) ✓ (2026-10-11)
+- `l.Sort((x, y) => y.N.CompareTo(x.N))` が Lua は `attempt to index a number value`、C は `IlInvoke receiver is not a class reference` で止まっていた。原因は struct の Sort ではなく数値の `CompareTo` で、数値型の member は API allowlist の外 (診断なし) のまま、IL builder が instance method 呼び出し (`y.n:CompareTo(x.n)`) にしていた
+- `int` / `float` の `CompareTo(同じ型)` (`x.CompareTo(y)` と `x?.CompareTo(y)`) を backend 非依存の intrinsic `Math.CompareTo(a, b)` にした。Single.CompareTo と同じく -1 / 0 / 1 を返し、NaN は他のどの値より小さく、NaN 同士は 0、±0 は 0。Lua は runtime の `Math.CompareTo` (`Math.TryParseInt` と同じく lowering 先で facade は持たない)、C は引数を temp に 1 回ずつ評価する式。int は引き算でないので `int.MinValue.CompareTo(1)` も -1
+- 検証: tcs2c.Tests に `DifferentialTests.CompareTo.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。struct の List の int / float field による Sort、int の List の降順 Sort、境界値、NaN / ±0、`int?` の `?.CompareTo`、引数の評価回数)。修正前は Lua が `attempt to index a number value`、C が `IlInvoke receiver is not a class reference` で fail、修正後 pass。#141 本文の program も 3 backend が CoreCLR と同じ `3,2,1`。`bash run-tests.sh` で Analyzers.Tests 57 / Transpiler.Tests 1041 / tcs2c.Tests 84 が pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は、埋め込んだ runtime に `Math.CompareTo` の 10 行が増える以外 master とバイト一致
+- intrinsic にしない CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<int>` の receiver、generic の `T : IComparable<T>`) は emit / 実行時に落ちる前に TCS1002 にする (`TinyCsComplianceFacts.IsSupportedNumericCompareTo` が IL builder と共有の判定)。検証: `Transpiler.Tests/CompareToComplianceTests.cs` (追加前は 5 件が診断なしで fail)
+- 判断: `char.CompareTo` は差 (`'b'.CompareTo('z')` は -24) を返すので含めず、従来どおり TCS1002。long / double はサブセット外 (宣言型として TCS1001) なので対象にしない
+- 残課題: 数値型の他の member (`Equals` 等) は allowlist の外で診断されないまま
+
+### 拡張メソッドの static の形と ?. 経由の呼び出しを直す (#139) ✓ (2026-10-11)
+- static の形 `Ext.Twice(sq)` は Roslyn が reduce しない拡張 method (`ReducedFrom` が null) を返すが、IL builder は拡張の形と同じく member access の左辺 (型 `Ext`) を receiver として第 1 引数に足し、`Ext.twice(Ext, sq)` を出していた (Lua は算術で落ち、C は引数の数で止まる)。reduce された呼び出しだけを拡張の形として扱い、static の形は引数をそのまま渡す。LINQ の static の形 (`Enumerable.Count(l)` 等) は第 1 引数を receiver にして拡張の形と同じ runtime 写像に流す (従来は型を第 1 引数に足した `List.Count(Enumerable, l)` だった)
+- `?.` 経由 `h.S?.Twice()` は、when-not-null 側の呼び出しを名前だけで振り分けて instance method 呼び出しにしていた (Lua は nil 呼び出し、C は `IlInvoke receiver is not a class reference`)。呼び出しの symbol が user 定義の拡張 method なら、拡張の形と同じ静的呼び出しにする (struct の `T?` receiver は値の copy を渡す)
+- 検証: tcs2c.Tests に `DifferentialTests.ExtensionCalls.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。static の形・既定値の省略・struct receiver の copy・`?.` の null / 非 null・`V?` receiver・LINQ の static の形)。修正前は Lua が `attempt to perform arithmetic on a table value`、C が `Ext.twice: expected 1 arguments, got 2` で fail、修正後 pass。#139 本文の 2 program も 3 backend が CoreCLR と同じ `10` / `6`。`bash run-tests.sh` で Analyzers.Tests 57 / Transpiler.Tests 1025 / tcs2c.Tests 78 が pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: static の形の判定は `ReducedFrom` の有無で行う (`IsExtensionMethod` は両方の形で true)
+- 残課題: なし
+
+### file size の上限から LuaEmitter.IlBuild.Expressions.cs を一時的に外す ✓ (2026-10-11)
+- `FileSizeGateTests` に一時的な除外を足し、`Transpiler/LuaEmitter.IlBuild.Expressions.cs` は 800 行を越えても失敗にしない (600 行の警告は出し続ける)。並行して入る不具合の修正の多くがこの file に手を入れるため、その場しのぎの分割を避ける
+- 検証: 除外した file を 803 行にしても `TrackedCsharpSources_StayUnderErrorLimit` が通り、別の file (`LuaEmitter.IlBuild.Patterns.cs`) を 800 行越えにすると失敗する
+- 残課題: 概念の単位で分割して除外を外す (#167)
+
+### 補間の D0 で値 0 を "0" にする (#153) ✓ (2026-10-11)
+- `$"{0:D0}"` が Lua / C で空文字になっていた。書式 `D` の精度を `%.Nd` に写すと、精度 0 では printf が値 0 の数字を出さない。C# の精度 0 (`D0` / `D00`) は精度なしと同じで最低 1 桁を出すので、0 だけの精度は `%d` にする (C backend は同じ `string.format` の IL を受けるので両方直る)
+- 検証: tcs2c.Tests に `DifferentialTests.FormatDZero.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。値 0 / 負数 / int.MinValue の D0、D00、D1、alignment 付き、小文字 d0、定数の 0)。修正前は Lua / C が `|0||00|...` で fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: 1 以上の精度は従来どおり `%.Nd` (符号を除いた桁数で C# と同じ)
+- 残課題: なし
+
+### 型名で修飾した static method の method group (#165) ✓ (2026-10-11)
+- `Func<int, int> f = Ext.Twice;` (拡張 method かどうかによらない) は、member access の method group を写していない名前 (`Ext.Twice`) と C# の型名のまま IL にしていた。Lua は nil の呼び出しで止まり、C は `unbound IL variable: Ext` で止まっていた。修飾しない `Twice` と同じく、型の参照 (`TypeRef`、namespace は平らな名前) と Lua の名前 (`twice`) の field にする
+- 検証: tcs2c.Tests に `DifferentialTests.StaticMethodGroup.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。拡張 method・他の型の static method・namespace の中の型・修飾あり / なしの自分の型・引数に渡す・`Select` に渡す・closure に捕まえる)。修正前は Lua が `attempt to call a nil value (local 'f')`、C が `unbound IL variable: Ext` で fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 残課題: Lua は method group で渡した static method の struct 引数を copy しない (#129、方針を決めていない)。拡張の形の method group (`Func<int> g = s.Len;`) は receiver を束ねた closure が要り、従来どおり TCS1001
+
+### watch の rebuild で -o の出力を書いてから reload chunk の frame を書く (#166) ✓ (2026-10-11)
+- `--watch --reload-chunks` の rebuild は `@@tcs_reload_chunk` の frame を標準出力へ書いてから `-o` の出力 (と source map) を書いていた。その間に接続して出力を読んだホスト (lub --serve の page) は古い build の出力と、もう流れた chunk の後の状態を受け取り、以後の chunk が guard で拒否される。`restart_required` と同じく、出力を書き終えてから frame を書き、その後に driver の build を進める。書き終えた出力で起動したホストには、その chunk は guard (`__tcs_build >= to`) で何もしない
+- 検証: `Transpiler.Tests/WatchChunkOrderTests.cs` (5 回の編集それぞれで、frame が届いた時点の `-o` がその build の `__tcs_build = N` で始まり、その出力に chunk を当てても何もせず、後から出力と source map が書き変わらない)。修正前は 3 回の実行すべてで 2〜4 回目の編集で古い build の出力を読んで fail、修正後は watch のテスト 8 本が 3 回とも pass。`bash run-tests.sh` 全通過。生成 Lua は変わらない (watch の書き込み順だけの変更)
+- 判断: 出力の書き込みが例外で失敗したときは chunk も書かず build も進めない (従来は chunk を書いて build を進めた後に失敗しえた)。次の rebuild の chunk は VM の build から作る
+- 残課題: なし
+
+### tcs2c: closure が foreach の反復変数を捕捉できるようにする (#164) ✓ (2026-10-11)
+- closure (直接でも入れ子でも) が `foreach` の反復変数を捕捉すると、C が `v_v_N undeclared` で compile できなかった。反復変数を捕捉 cell にしていなかったので、lifted 関数へ渡せていなかった。List / 配列 / `EnumerateRunes()` の反復変数は、closure が捕捉するとき local と同じく反復ごとに新しい heap cell にする (C# 5 以降の意味)。Dictionary の反復の KeyValuePair は、捕捉するとき node の copy (`tcs_dict_node_copy`) を作り、closure はその pointer を捕捉する (反復の後の Dictionary の変更を映さない)。`EnumerateRunes()` の本体は捕捉の走査が見ていなかったので足した
+- 捕捉 cell を作る変数を、関数 (method / closure) ごとに、その関数の直下の closure が捕捉する名前に絞った。従来は method 全体の捕捉名の集合で判断していて、`l.Count(x => x > 1)` の `x` が、同じ method の別の lambda (`x => l.Count(y => y == x)`) のせいで要素ごとに `tcs_new_cell` していた
+- 検証: tcs2c.Tests に `DifferentialTests.ForeachCapture.cs` の 4 本 (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。List / 配列 / string / `EnumerateRunes()` / struct 要素 / lambda の中の foreach / instance method / 入れ子の closure / KeyValuePair、--lib 形でフレーム境界の GC をまたぐもの、cell を作る数)。修正前は 3 本が C の `undeclared`、cell の数の 1 本が 5 (期待 3) で fail、修正後 pass。`bash run-tests.sh` 全通過。Transpiler (Lua 生成) は変えていないので lub の C# サンプルの生成 Lua は変わらない
+- 判断: 捕捉の判断は名前単位のまま (同じ関数の中の同名の別変数は過剰に box しうるが意味は同じ)
+- 残課題: なし
+
+### record の等価で float field を float.Equals で比べる (#163) ✓ (2026-10-11)
+- record / record struct の ==/!= は C# の合成 Equals と同じく field を EqualityComparer\<T\>.Default で比べる。float / double (と `float?`) の field は float.Equals で、NaN 同士は等しく +0 と -0 も等しい。従来は両 backend とも IEEE の == で、`new F(float.NaN) == new F(float.NaN)` が false だった
+- Lua は field ごとの等価式 (`MemberEqualityParts`) が float に `(a == b or a ~= a and b ~= b)` を出す。struct の値等価 (record struct の op_Equality と、struct の List 検索が使う ValueType.Equals) も同じ式を通る。C は field の等価式 (`FieldEqualExpr`) が float を runtime の `tcs_float_equals` にする。`T?` の field は Nullable\<T\>.Equals (中の float も NaN 同士は等しい) にし、`float? == float?` の lifted == は IEEE のまま残した。C の List 検索 (#122) も同じ `tcs_float_equals` を使い、`List<float?>.Contains(NaN)` が false だったのも直した
+- 検証: tcs2c.Tests に `DifferentialTests.RecordFloatEquality.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。record / 派生 record / record struct / `float?` field / struct field / 入れ子 / struct と record の List 検索 / `List<float?>`)。修正前は Lua と C がともに `record-nan:0:1:0:0` 等で CoreCLR と違い、C は `List<float?>` の Contains も 0 だった。修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: struct の ValueType.Equals も CoreCLR では float field を float.Equals で比べる (NaN の struct 同士で `List<S>.Contains` が true) ので、record struct と分けずに同じ式にした
+- 残課題: record struct の `T?` 同士の lifted == (`RS? a, b; a == b`) は float に限らず C# と違う (CoreCLR は値が等しければ true。Lua は値が等しくても false、C は `invalid operands to binary ==` で C コンパイルに失敗する)
+
+### hot reload の restart 判定を native (watch) と web (増分 session) で揃え、initializer を書き方に依らずに比べる (#155) ✓ (2026-10-11)
+- restart の規則を `ReloadRules` の 1 つにした。reload chunk (`ReloadClassifier`、IlExport の metadata) と増分 session (`IncrementalCompilationSession.ClassifyRestart`、emitter の記録) はそれぞれの metadata を `ReloadType` に写して同じ規則で判定する。session は enum member の削除・値の変更を restart にし (従来 live で、保存済みの整数が別の member を指した)、native は既存 static の型の変更を restart にする (従来 live で新しい初期値に置き換えた。session は initializer の文字列が同じ `int X = 1` → `float X = 1` を live にしていた)。session の emitter 記録に enum member の値と static の型を足した
+- initializer の hash は `Sha256(init.ToString())` (trivia 込みの構文の文字列) をやめ、整数・bool・char・string の定数は値と型、それ以外は trivia を除いた token 列にした (IlExport の InitHash、session の static と instance shape で共通)。`1+2` → `1 + 2` / `3`、空白・comment だけの編集は restart にならない。const と static の入れ替えは initializer の変更 (restart) にした
+- session の instance shape に field の型 (class) と positional member の型 (record) を入れた。従来は `int A = 1` → `float A = 1`、`string S` → `int[] S` (どちらも default は nil)、`record R(int X)` → `record R(float X)` を live にしていた
+- 意図した差 (native は instance shape の変更と副作用のありうる static の追加を live に移行、session は restart) は残し、規則表を hot-reload-design.md §11 に書いた
+- 検証: `Transpiler.Tests/ReloadRulesAlignmentTests.cs` (同じ編集を両方に通す。restart 10 件 / live 6 件 / 意図した差 5 件)。修正前は 15 件が fail (enum 3 件が session で live、static の型の変更 2 件が native で live、空白・comment・定数の書き方 5 件が両方で restart、const と static の入れ替え 2 件が両方で live、instance field / record の型の変更 3 件が session で live)、修正後 pass。HotReloadRestartTests の live 側から static の型の変更を外して restart 側に入れた。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: const と static の入れ替えは同名・同じ型・同じ値でも restart。const は使う側に埋め込まれ、static に戻しても table の値 (実行中に変えた値) が初期値に戻らない。float / double の定数は Roslyn が f32 で畳むが emitter は式のまま書くので、値ではなく token で比べる。`new()` と `new List<int>()` は token が違うので restart のまま。IOperation や IL で意味を比べる hash は、比べ漏れた要素 (型 test の型など) が live の誤判定になるので入れなかった
+
+### Lua32 の Skip(int.MaxValue) を要素数で打ち切る (#126) ✓ (2026-10-11)
+- `l.Skip(int.MaxValue)` が Lua32 で戻らなかった。runtime の `List.Skip` が開始位置を `count + 1` で作り、LUA_32BITS では int.MaxValue + 1 が -2^31 に wrap して約 2^31 回の反復になっていた。要素数以上の count は先に空列を返し、要素数未満の count だけ `+ 1` する
+- 同じ wrap を runtime の他の helper で確認した: `List.Take` は `math.min(count, #list)` で加算なし。`List.RemoveAt` (`index + 1`) と `String.Substring` (`start + 1` / `start + length`) は有効な入力では要素数・長さを超えないので wrap しない。C backend の Skip / Take は添字と count の比較だけで加算を持たない
+- 検証: tcs2c.Tests に `DifferentialTests.SkipTakeExtremes.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。1 / 3 / 0 要素の Skip(int.MaxValue)、Skip(int.MaxValue - 1)、Skip の 0 / 負 / int.MinValue / 要素数ちょうど、Take(int.MaxValue) / Take(-1)、Skip と Take の連鎖)。修正前は lua32 が 60 秒の timeout で fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は、埋め込みの runtime の `List.Skip` を除いて master とバイト一致
+- 残課題: `String.Substring` の範囲外 (`"abc".Substring(10)` 等) は wrap と別に fault しない (il-spec §13 では fault)
+
+### tcs2c で Dictionary への store の key を値より先に評価する (#152) ✓ (2026-10-11)
+- 文の位置の Dictionary への代入 / 複合代入 (`D[I] += Right()`、`D[I] = Right()`、Lua では代入形の `Add`) が `*(int32_t *)tcs_dict_put(d, key, NULL) = (値);` で、C の `=` の左右の評価順が決まっていないため key を右辺の後に評価していた (`Right` が `I = 1` にすると CoreCLR `17,20`、C `10,17`)。key を temp に取ってから値を評価する。collection initializer (`{ [K()] = V() }`) も値の temp を key より先に取っていたので、key → 値の順にした
+- 検証: tcs2c.Tests に `DictStore_EvaluatesKeyBeforeValue` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。int / string key の代入・複合代入・Add・initializer)。修正前は C が `10,17` / `vkvk...` で fail、修正後 pass。Lua の生成物は変わらない
+- 判断: List / 配列の store は既に受け手と添字を temp に取っていたので、dict だけ同じ形にした
+- 残課題: なし
+
+### ?. の when-not-null の連鎖 (#162) ✓ (2026-10-11)
+- `h.S?.Len().Twice()` / `h.Q?.Next().Next()` / `h.T?.ToUpper().Length` のように when-not-null が呼び出し / member の連鎖のとき、連鎖全体を通常の式として作り、一番内側の binding (`.Len()` / `.Next()`) は receiver の local の field を返すだけだった。Lua は `Ext.twice(__tcs_ca.len(1))` (`string.len` に解決して 2) や `self` の無い `__tcs_ca.next()` を出し、`h.S?.Length.ToString()` は `__tcs_ca.Length` (nil)、`h.L?[1].Twice()` は `unsupported ElementBindingExpression` で止まっていた。C も同じ IL を受けていた
+- 連鎖の一番内側の binding (`.M()` / `.P` / `[i]`) を、連鎖が単独の when-not-null のときと同じ builder (拡張 method の静的呼び出し、string / List / Dict の写像、struct の静的ディスパッチ) で `?.` の receiver に対して作り、外側の連鎖はその IL を receiver にして作る。binding を receiver の local の field にする汎用の経路は無くした
+- 検証: tcs2c.Tests に `DifferentialTests.ConditionalChain.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。拡張 method / instance method / string / List / `V?` の連鎖、null の receiver、`?.` の入れ子、`!`)。修正前は Lua が `bad argument #1 to 'len'` / `unsupported ElementBindingExpression`、C が `method has no IL body: P.main` で fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+
+### Math.Log(x, base) の特殊値を MathF.Log に揃える (#147) ✓ (2026-10-11)
+- `Math.Log(2f, 1f)` / `Math.Log(2f, 0f)` / `Math.Log(2f, +∞)` が Lua / C で +∞ / -0 / +0 になっていた (`log(x) / log(base)` をそのまま返す)。MathF.Log と同じく、base が 1、または x が 1 でなく base が 0 / +∞ のとき NaN にする。x が 1 なら base 0 / +∞ は従来どおり -0 / +0
+- Lua: 底付きの `Math.Log` は生成 Lua が `math.log` を直接呼ぶのをやめ、runtime の `Math.Log` (判定を足した wrapper) を呼ぶ。1 引数の `Math.Log` は従来どおり `math.log` を直接呼ぶ。C: runtime の `tcs_math_log` に同じ判定を足した
+- 検証: tcs2c.Tests に `DifferentialTests.MathLogBase.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。x と base を 1 / ±0 / ±∞ / NaN / 有限値で総当たり)。修正前は Lua / C が base=1 で +∞ を出して fail、修正後 pass。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は、埋め込みの runtime の `Math.Log` を除いて master とバイト一致 (底付きの Log を使うサンプルは無い)
+- 判断: 底 2 / 10 は従来どおり log2 / log10 を使う (Lua の `math.log` と同じ。MathF.Log は底によらず `Log(x) / Log(base)`)。精度の差は特殊値の分類と別の問題なので変えない
+- 残課題: なし
+
+### 既定の順序で NaN を最小にする (#145) ✓ (2026-10-11)
+- `List<float>.Sort()` と float key の `OrderBy` / `OrderByDescending` の NaN の位置が CoreCLR と異なっていた (Lua は比較関数なしの `table.sort` と `<` / `>`、C は `<` だけの比較で NaN と有限値が「等しい」)。.NET の既定の comparer (Single.CompareTo) と同じく NaN を他のどの値より小さくする
+- Lua: runtime の比較なしの `List.Sort` と `List.OrderBy` / `List.OrderByDescending` が、列 (key) を 1 回走査して NaN を含むときだけ NaN を最小にする比較を使う。含まなければ従来と同じ比較 (`table.sort(list)`、`<` / `>`)。要素型で呼び分けないので、型 parameter の generic method (T = float)、TinySystem.List の facade、`float?` の key も同じ順序になる。C: 既定の sort の比較関数 (natural / key / keydesc) を、float だけ Single.CompareTo と同じ 3 方向比較にする (generic は特殊化後の型で選ばれる)
+- 検証: tcs2c.Tests に `DifferentialTests.SortNaN.cs`。Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致で、NaN / ±∞ 混在の Sort、40 要素の Sort、NaN だけの Sort、float key の OrderBy / OrderByDescending (NaN key の安定性、定数 key)、generic method の Sort / OrderBy / OrderByDescending、facade の `TinySystem.List.Sort` / `OrderBy` / `OrderByDescending`、int / string の Sort と int key の OrderBy を見る。`float?` の key は C が順序を持たない (`ordering is not supported for f32?` で生成前に止まる、変更なし) ので Lua だけ CoreCLR と比べる。修正前は Lua と C が食い違い、generic / facade の Sort は Lua が `1,N,2` (CoreCLR は `N,1,2`)、`float?` の key も Lua が従来の順で fail、修正後 pass。#145 本文と追記の program の入力を含む。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は、埋め込みの runtime の Sort / OrderBy を除いて master とバイト一致。lua32 で 20 万要素 ×5 回 (同じコードを抜き出した計測、2 回目): `Sort` の int 0.302 → 0.321 s、string 0.585 → 0.622 s、float 0.328 → 0.325 s、int key の OrderBy 1.594 → 1.590 s (1 回目は 1.442 → 1.583 s で、揺れの幅に収まる)
+- 判断: NaN は数値の列・key にしか現れず、.NET の既定の comparer はどれも NaN を最小にするので、要素型を見ずに runtime で 1 回走査する (静的な型で float 専用の関数に分けると generic / facade / `float?` で Lua だけ旧順序のまま残る)。NaN の無い列は比較関数を足さない (比較関数ありの table.sort は無しより遅い)
+- 残課題: ±0 は従来どおり等しい値として扱う。C の安定 merge sort と Lua / CoreCLR の不安定 sort では、-0 と +0 の相対順が入力によって異なる (今回の変更による差ではない)
+
+### Lua の struct copy 抜け: base 引数・?. 呼び出し・ToDictionary・代入式の値 (#128 #152) ✓ (2026-10-11)
+- Lua backend で、次の経路の struct 値を copy する (il-spec §10、readonly struct は従来どおり copy しない)。`base(...)` の引数、`?.` 経由の呼び出しの引数 (`l?.Add(t)`)、value selector の無い `ToDictionary` の値 (IL は value selector の位置に `S.__copy` 参照を置き、C backend は要素を値で写すので読まない)、`??=` の右辺
+- 式位置の代入の値を、格納した slot ではなく値の copy にする (`Mut(h.Data.I = Make())`、`Mut(d[1] = src)`、`Mut(l[0] = src)`、`Mut(loc = src)` で `Mut` の変更が格納先に残っていた)。代入式の IIFE は末尾の return を copy にし、`WrapStructCopy` が IIFE を新しい値とみなす前提を満たす。custom property への代入式も同じ末尾を通し、setter には `__tcs_v` の copy を渡す (setter が `value` を書き換えると `var y = (h.Item = s)` の y に見えていた。`S?` の custom property への `??=` の値も copy になる)
+- 検証: Transpiler.Tests に `StructCopyValueTests` (6 本、dotnet differential 込み)、tcs2c.Tests に `StructCopy_ArgumentsAndAssignmentValues` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は全て fail (Lua が `5:5` / `77:77:77:77:77:77:5` など)、修正後 pass。#128 本文の program は 3 backend が CoreCLR と同じ `base 1` / `qadd 1` / `todict 1` / `setval 1`。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: 代入式の値の copy は IIFE の側で作る (受け手の側で IIFE を copy すると、新しい値を返す IIFE まで copy する)。式の型で copy を決めるので、`S?` への `??=` の値 (型は `S`) も copy になる
+- 残課題: C backend の `S?` への `??=` の式の値 (`Mut(o ??= s)`) は `cannot assign struct S? to struct S` で止まる (#152 の 3 つ目と同じ原因)。宣言の初期化子の switch 式 (`var a = k switch { 1 => h.F, _ => h.G }`) は arm の値を copy せずに束縛する (Lua、master から。`a.N = 9` が `h.F` に残る)
+
+### enum の ToString / 文字列連結 / 補間 / Console.WriteLine を member 名にする (#133) ✓ (2026-10-11)
+- enum 値の文字列化 (`ToString()`、文字列連結と `+=`、補間、`Console.WriteLine`、`E?` も) を .NET の Enum.ToString と同じにした: 定義された値は member 名、`[Flags]` は上位の member から含まれる bit を取った名前の `", "` 連結、どちらでも表せない値は数値。従来は両 backend とも数値を出していた
+- IL は `String.FormatEnum(v, spec)`。spec は文字列化する地点ごとの string literal (`名前:値` の列、Flags は先頭が `*`) で、名前の表は文字列化される enum の分だけ、その地点にだけ出る。Lua は runtime の `String.FormatEnum` が spec ごとに 1 度だけ表へ展開して cache し、C は spec ごとに file-scope の名前 (string literal) と値の表を作って runtime の `tcs_enum_format` で引く。`--ref` の host enum も stub の member 名を出す
+- 書式: `ToString("G")` / `{e:G}` は名前、`ToString("F")` / `{e:F}` は Flags でない enum も名前の組み合わせ、`ToString("D")` は数値 (小文字も同じ)。`ToString` の他の書式 (`"X"` 等) と定数でない書式は TCS1002 (analyzer / check / transpiler で同じ `TryGetUnsupportedEnumToString`)。従来は書式を無視していた
+- enum の member の値を、基底型 (byte / sbyte / short / ushort / int / uint) によらず symbol の定数から実行時の 32 bit の 2 の補数に写す (Lua の VisitEnum と C の IlEnumInfo)。従来は int 以外の定数 (`0x80000000` の uint、`200` の byte 等) を前の member からの連番にしていた。名前の表の値も同じ形にする (uint の enum で C が int.Parse の overflow で止まり、lua32 で名前と値の表がずれていた)
+- host が数でない Lua の値で持つ enum (lub の `[LubLuaString]` 等) はその値を出す (Flags でも bit 演算に渡さない)
+- 同じ値の member が複数あるときの名前と Flags の並びは .NET の EnumInfo に合わせた: 値を符号なしで昇順に並べ (宣言順で既に整列していればそのまま、でなければ Array.Sort)、Flags でない enum は 32 個以下なら最初、それより多ければ二分探索で当たった名前、Flags は値の一致を上から探す。並べ方は transpiler の中で .NET の Array.Sort / IndexOf / BinarySearch そのものを使う
+- 検証: tcs2c.Tests に `DifferentialTests.EnumToString.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。#133 本文の 3 形、未定義の値、負の値、同じ値の member (20 / 34 member の enum を含む)、Flags の組み合わせ・0・表せない値・-1 の member・重なる member、member の無い enum、`E?`、補間の幅指定、`+=`、field / 戻り値、書式 G / F / D と補間の書式、uint / byte / sbyte の enum)。Transpiler.Tests に `EnumToStringTests.cs` (文字列化しない enum の名前は出ない / `--ref` の enum は stub の名前 / 数でない host の値はそのまま / 書式の TCS1002)、Analyzers.Tests に `TinyCsComplianceAnalyzerTests.EnumToString.cs`。修正前は 3 本とも fail (数値)、修正後 pass。別に、乱数で作った 150 個の enum (Flags / 同じ値 / 負の値 / 1〜45 member) の 3463 個の値で Lua と C の出力が CoreCLR と一致することを確かめた (コミットしない使い捨ての検査)。`bash run-tests.sh` 全通過
+- samples/*.cs と lub の C# サンプル 31 本の生成 Lua は、埋め込んだ runtime に `String.FormatEnum` の 46 行が増える以外 master とバイト一致。ただし lub の 00_hello は host enum を連結しているので `STORAGE=4 RGBA8=1 CLEAR=1` が .NET と同じ `STORAGE=Storage RGBA8=Rgba8 CLEAR=Clear` になる
+- 判断: 名前の表を enum の定義側に置くと、文字列化する地点が別の module (増分 session / hot reload の 1 method 差し替え) や `--ref` の enum のときに表の有無を全体で決める必要があるので、地点ごとの literal にした (同じ enum を何か所で文字列化しても runtime の展開は spec ごとに 1 回)
+- 残課題: 静的型が enum でない値の文字列化 (`object` に入れた enum、generic の `T`、`string.Join` に渡した enum の List / 配列) は数値のまま (Lua の値は型を持たない。C は `string.Join` で止まり、`object` の print は未対応)。`e?.ToString()` は enum に限らず値型 receiver で両 backend とも止まる (Lua は `attempt to index a number value`、C は `IlInvoke receiver is not a class reference`)。補間の G / F / D 以外の書式 (`{e:X}` 等) は数値の書式に写したまま (.NET と桁や表記が違い得る)
+
+### 式位置の `??=` の値を非 nullable の値にする (#152) ✓ (2026-10-11)
+- `int r = (x.Opt ??= 7)` (`Opt` は `int?`) で、代入式の IIFE が `T?` の place (`x.opt`) をそのまま値として返していた。C# の式の型は `int` なので、C backend は `int?` の値を `int` として扱えず `concat operands are not stringifiable: string, i32?` / `print does not support i32?` で止まっていた。左辺が `T?` で式の型が `T` のとき、IIFE の値を `IlNullableValue` で中の値にする (field / local / static / auto-property / custom property / struct の member / 受け手を固定する経路、struct の `S?` も同じ。`S?` の値は中の値の copy になり、C で `Mut(o ??= s)` が `cannot assign struct S? to struct S` で止まっていたのも直る)
+- 検証: tcs2c.Tests に `CoalesceAssignment_ValueIsUnderlyingType` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は C が `concat operands are not stringifiable: i32?, string` で fail、修正後 pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: C backend で `T?` → `T` を暗黙に許すのではなく、IL に式の型どおりの値を置く (Lua は `__tcs_nval` を 1 回呼ぶだけ)
+- 残課題: なし
+
+### struct の static field を error にし、record class の static field を class と同じにする (#154) ✓ (2026-10-11)
+- struct / record struct の static field (`static` / `static readonly`) と static auto property は TCS1001 `StructStaticField` の build を止める error にした (transpiler は Lua を出さず、check は exit 1)。従来は shared facts が struct の FieldDeclaration を診断の対象から外していて、Lua は診断なしで `nil` を読み、C は `static struct member is not supported` で止まっていた。analyzer は他の build を止める診断と同じく warning のまま (.editorconfig で上げられる)。analyzer の syntax action に FieldDeclaration を足した
+- struct / record struct の const は使用箇所で値に畳まれるので診断せず、C の IL 契約 (IlStructInfo) の field から落とした。従来 C は const も static field として `static struct member is not supported` で止まっていた
+- record class の static field (const / static readonly 込み) と static auto property を class と同じく emit する: pre-zero して、型をまたぐ static initializer の順 (#150 の StaticInitOrder) に載せる。従来 Lua は `member: FieldDeclaration` の warning を出して `nil` を読み、依存解析も ClassDeclaration だけを見ていた。C は record も class と同じ IL (IlClassInfo の static field) で既に動いていた
+- 検証: Transpiler.Tests に `StructStaticFieldTests.cs` (error と位置 / check の exit 1 / 本体を持つ static property は warning のまま / const は診断なし)、Analyzers.Tests に `TinyCsComplianceAnalyzerTests.StructStatics.cs`、tcs2c.Tests に `DifferentialTests.RecordStatics.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。record の static field と static auto property の初期値・書き込み・static method・const・別の型を読む initializer の順、struct / record struct の const)。修正前は診断の 4 本が fail (診断なし)、差分テストは Lua が `attempt to perform arithmetic on a nil value (field 'y')`、C が `static struct member is not supported: S.k` で fail。StaticInitOrder の変更だけを戻すと `D.Z` が 2 (CoreCLR は 12) になる。修正後 pass。spec conformance の baseline と report は `expressions.md:IdenticalSimpleAndTypeNames` (struct の `static readonly` field) が InCompile から Diag に変わる。`bash run-tests.sh` 全通過。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- hot-reload-design.md から struct の static field を前提にした記述 (§5.1 の root の行、§11 の「struct table の static merge なし」) を消した
+- 判断: struct の static method と本体を持つ static property は従来どおり warning の TCS1001 (`StructMember(...)`)。呼ぶと Lua は nil 呼び出しで止まり、黙って別の値を読む static field とは違う
+- 残課題: C で基底の static field を派生型の名前で読む (`B.Y`、Y は基底 A の static) と `unbound IL variable: B` で止まる (record に限らず class も同じ。Lua は動く)
+
+### while に落ちる for のループ変数を for の中だけに置く (#182) ✓ (2026-10-11)
+- numeric for に落ちない for (`i += 2`、bound が不変でない、宣言子が複数 等) は while に脱糖し、宣言したループ変数をその for を含む block に置いていた。lambda の中で外の local と同じ名前のループ変数を宣言すると、ループの後の参照が外の local の捕捉ではなくループ変数を読んでいた (Lua / C とも同じ IL なので一致して違う)。宣言のある for は宣言と while を `IlDo` (Lua の do..end、C の block) で囲う。初期化子が式だけの for (`for (i = 0; ...)`) は変数を作らないので囲わない
+- 検証: tcs2c.Tests に `DifferentialTests.ForScope.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。#182 本文の 2 形、宣言子 2 つと incrementor 2 つ、入れ子の for と continue (ScopeBody の経路)、ループ変数の捕捉、`*=` と continue、bound が不変でない for と break)。修正前は Lua / C とも `6:4:7597:117:333:614:33` (CoreCLR は `11:9:7512:417:333:554:32`) で fail、修正後 pass。samples/*.cs の生成 Lua は master とバイト一致。lub の C# サンプル 31 本の生成 Lua は、while に落ちる宣言付きの for が `do ... end` に包まれて 1 段深く indent される以外 master と同じ (行頭の空白を除いて比べると差は追加の `do` / `end` 582 組だけ。大半は全サンプルに入る cs-lib の for)
+- 判断: 外の名前と衝突するときだけ囲う案は、衝突の判定 (lambda の捕捉・入れ子の scope) を builder に持ち込むので採らず、C# の scope どおり常に囲う。do..end は Lua の実行時のコストがなく、block の後でループ変数の register が空く
+- 残課題: なし
+
+### tcs2c: Dictionary の struct 値の kv.Value.F を読めるようにする (#183) ✓ (2026-10-11)
+- C backend で、Dictionary の値が struct のとき `kv.Value.F` (foreach の KeyValuePair、closure が捕捉したものも) が `unsupported struct place receiver: kvp` で止まっていた。struct の lvalue 連鎖 (`RenderStructPlace`) が KeyValuePair の receiver を扱わず、`Value` の node の値 (`(*(T *)node->value)`) を読む既存の field の render に回していなかった。読みのみ (`kv.Value.F = ...` は C# が CS1612 で拒否)。`kv.Value.M()` は従来どおり copy の上で呼ぶ (place ではない) ので Dictionary は変わらない
+- 検証: tcs2c.Tests に `DifferentialTests.DictStructValue.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。`kv.Value.F`、入れ子の `kv.Value.In.F`、`kv.Value` の method (mutating を含む)、`var copy = kv.Value` の copy、`d[k].F` / `d[k].In.F`、closure が捕捉した kv の struct 値を Dictionary の変更・削除と GC の後に読む)。修正前は 2 本とも C が `unsupported struct place receiver: kvp` で fail、修正後 pass。`bash run-tests.sh` 全通過。Lua の emitter は変えていないので samples/*.cs と lub の C# サンプルの生成 Lua は変わらない
+- 判断: KeyValuePair の Key の struct は C の Dictionary の key が i32 / string / host handle に限られるので現れない
+- 残課題: なし
+
+### Lua で switch 式の arm と GetValueOrDefault(x) の struct の値を copy する (#188) ✓ (2026-10-11)
+- `var a = k switch { 1 => h.F, _ => h.G }` (Lua) で、`a` が `h.F` と同じ table になり `a.N = 9` が `h.F` に残っていた。copy 地点 (WrapStructCopy) が IIFE を新しい値として copy を省いていたが、switch 式の IIFE は arm の格納先の table をそのまま返す。宣言の初期値に限らず、代入 (`x = k switch ...`)、引数 (`Mut(k switch ...)`、`l.Add(...)`)、配列の要素、arm の入れ子 (`k switch { 1 => k switch { ... } }`) も同じだった。`S? n = k switch { 1 => h.G, _ => null }` も `h.G` と alias していた。同じ理由で `h.Opt.GetValueOrDefault(fb)` (IIFE) も `h.Opt` の中の table を返していた
+- 新しい値かどうかを IL の node の種類 (IIFE) ではなく式の形で決める (`IsFreshStructValue`: object creation / with 式 / 代入式 / switch 式、括弧は中を見る)。switch 式は arm の値を arm ごとに copy 地点として扱い、copy した値を返す。`GetValueOrDefault(x)` は受け手の copy 地点で copy する。`?:` / `??` / 括弧で包んだ switch 式は従来から copy していた
+- 検証: Transpiler.Tests に `StructCopyBranchValueTests.cs` (5 本、`TCS_DIFFERENTIAL=1` で CoreCLR と一致)、tcs2c.Tests に `DifferentialTests.StructCopyBranch.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は 4 本と差分テストが fail (Lua が `opt:9` / `decl:9` / `assign:9` / `arg:5:5:5` / `nested:9`。return と lambda の本体は呼び出し側の copy で隠れて pass)、修正後 pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: switch 式の copy は受け手の側ではなく arm の側で作る (#176 の代入式の値と同じ)。受け手の側で IIFE を copy すると、新しい値を作る arm (`1 => new S { N = 1 }`) まで copy し、宣言 / 代入 / return の if 文化 (TryGetValueChainShape) も効かなくなって closure が残る。`GetValueOrDefault(x)` は受け手の側で copy するので、宣言の初期値でも closure の IIFE のまま (struct の `T?` に限る)
+- 残課題: struct の `T?` の値 (型が `S?`) は copy 地点で copy しない (IsUserStruct が `Nullable<S>` を外す)。`S? x = c ? h.F : null` と `var x = h?.F` (h は class) は `h.F` と同じ table を持ち、後で `h.F.N = 9` とすると `x.Value.N` も 9 になる (Lua、master から。CoreCLR は 0)
+
+### tcs2c の OrderBy の key を要素ごとに 1 回だけ計算する (#187) ✓ (2026-10-11)
+- C backend の `OrderBy` / `OrderByDescending` は sort の比較関数の中で key の selector を呼んでいて、比較のたびに 2 回呼んでいた (12 要素で 62 回)。CoreCLR と Lua (#125) は要素ごとに 1 回、要素の順に呼ぶ。selector に副作用 (回数の記録、呼ぶたびに変わる key) があると出力が違っていた
+- 生成側が copy した列の要素の順に selector を 1 回ずつ呼んで key の List を作り、runtime の `tcs_list_sort_by_keys` が添字の列を key で安定 merge sort (既存の `tcs_list_sort`) して、その順に要素を並べ替える。比較関数は添字を受けて key の List を引く (`index` / `indexdesc`)。比較から selector を呼ぶ `key` / `keydesc` の mode は無くした。ThenBy 等は tcs に無い
+- 検証: tcs2c.Tests に `DifferentialTests.OrderByKeyOnce.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。selector の呼び出し回数と呼ばれた順、呼ぶたびに増える key (OrderBy は元の順、OrderByDescending は逆順)、block の lambda、`.First()`、配列、空と 2 要素、string / float (NaN) / struct 要素の key、lib 形で毎フレーム作る string の key を並べた結果をフレームをまたいで読む)。修正前は 2 本とも C が Lua / CoreCLR と食い違い (`62 3,9,...`、lib 形は 1 フレーム 234 回)、修正後 pass。`bash run-tests.sh` 全通過。Lua の emitter / runtime は変えていないので samples/*.cs と lub の C# サンプルの生成 Lua は変わらない
+- 判断: key と要素を組にした列を並べるのではなく添字の列を並べる (要素型・key 型ごとの組の型を作らずに既存の安定 merge sort をそのまま使える)。作業領域は GC の List (フレーム中は GC しないので root の追加は要らない)
+- 残課題: CoreCLR は 1 要素の List / 配列の `OrderBy(...).ToList()` で selector を呼ばない (`foreach` や `.First()` では 1 回呼ぶ)。Lua も C も 1 回呼ぶ (#125 から。今回の変更による差ではない)
+
+### delegate の `f?.Invoke(...)` と `f.Invoke(...)` を delegate 値の呼び出しにする (#185) ✓ (2026-10-11)
+- `Action` / `Func` の `f?.Invoke(...)` と明示の `f.Invoke(...)` を、delegate 値そのものの呼び出し (`f(...)`) にした。従来は `Invoke` を method として `f:Invoke()` (IlInvoke) にしていたので、Lua は `attempt to index a function value`、C は IL の `IlInvoke receiver is not a class reference` で止まっていた。IL builder は両 backend 共通なので、`?.` の側 (BuildConditionalInvocation) と member access の呼び出しの側の 2 か所で `MethodKind.DelegateInvoke` を IlDynCall にする。`?.` の null 判定と戻り値の `T?` への wrap は従来の `?.` と同じ
+- 検証: tcs2c.Tests に `DifferentialTests.ConditionalInvoke.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致。local / parameter / field / auto property / static field の delegate、null と非 null、戻り値なし・`int?` / struct の `V?` に wrap する戻り値・`??` の式、`?.` の連鎖 `c?.F?.Invoke(3)`、明示の `f.Invoke(...)`)。修正前は Lua が `attempt to index a function value`、C が `IlInvoke receiver is not a class reference` で fail、修正後 pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: Lua の delegate は function 値で、C の delegate も closure 値なので、`Invoke` を特別な member として runtime に持たせず IL の呼び出しノードに寄せる
+- 残課題: なし
+
+### 値で比べる key の Dictionary を build を止める TCS1001 にする (#185) ✓ (2026-10-11)
+- struct / record struct / struct の `T?` / record class を key にした Dictionary を、作る地点 (`new Dictionary<K, V>()`、target-typed `new()`、`ToDictionary`) で TCS1001 `ValueEqualityDictionaryKey(K)` にし、transpiler は build を止める (Lua を出さず、check は exit 1)。.NET は等しい値の key を同じ key とみなすが、Lua table は table の同一性で引くので、`ContainsKey(等しい値)` が false、同じ値の record の key が 2 つになる、を診断なしで起こしていた。C backend は従来 `Dictionary key type not supported` で止まっていて、今は同じ shared facts の診断で IL を作る前に止まる。analyzer は他の build を止める診断と同じく warning (syntax node action を足した)
+- 検証: Transpiler.Tests に `DictValueKeyTests.cs` (error と位置 / check の exit 1 / class・enum・int・string の key と struct の値は診断なし)、Analyzers.Tests に `TinyCsComplianceAnalyzerTests.DictValueKey.cs`、tcs2c.Tests に `DifferentialTests.DictValueKey.cs` (#185 の program で Lua / C の両方が同じ TCS1001 で止まる。CoreCLR は `rs:1:1` / `s:1` / `r:1` / `todict:1`、修正前の Lua は `rs:0:1` / `s:0` / `r:2` / `todict:0`)。修正前は診断の 4 本が fail、修正後 pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: 値の等価で引く key は、Lua table の key を値から作る正規形 (文字列化など) と、Keys / foreach で元の値に戻す表が要り、Dictionary を素の Lua table とする wire format 契約 (support-matrix §18) と両立しないので、対応せずに止める。同一性で比べる class の key は .NET と一致するので従来どおり
+- 残課題: key 型が型 parameter の dict (generic method の中で `new Dictionary<K, V>()` を作り K = struct で呼ぶもの) は診断できず、Lua は同一性で引く
+
+### generic な record の型 parameter の field を NaN 同士も等しく比べる (#185) ✓ (2026-10-11)
+- `record Box<T>(T V)` / `record struct RBox<T>(T V)` の合成 Equals (Lua の `__eq` / `op_Equality`) で、型 parameter の field (と `T?` の field) を float field と同じ `(a == b or a ~= a and b ~= b)` で比べる。従来は `MemberEqualityParts` が SpecialType しか見ず、型 parameter の field は `==` に落ちて、T = float の NaN を CoreCLR (EqualityComparer<T>.Default、float.Equals) と違って不等にしていた。NaN でない値では `==` と同じ (record class の値は従来どおり `__eq`)
+- 検証: tcs2c.Tests に `DifferentialTests.GenericRecordEquality.cs`。C backend は generic な record を受け付けない (`unsupported IL type: T`、変更なし) ので、Lua の出力を同じ program を CoreCLR で実行した stdout と比べ、C が生成前に止まることを別に見る。record class / record struct の T = float の NaN・±0、型 parameter 2 つの record、`T?` (where T : struct) の field、generic method の中で作る record、T = int / string / null / record class、record の入れ子。修正前は `box:0:1:...` / `pair:0:0:0` などで fail、修正後 pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: Lua は型消去で、実体化した T を実行時に知らない。NaN の判定 (`a ~= a`) は NaN 以外のどの値でも偽なので、型 parameter の field を全て float と同じ式で比べても他の型の結果は変わらない
+- 残課題: 型 parameter に struct / record struct を入れた field (`Box<S>`、`RBox<RBox<float>>`) は master と同じく table の同一性で比べる (CoreCLR は値で等しい。Lua の struct は metatable を持たないので、型消去した field からは値で比べる関数を引けない)
+
+### Lua で struct の T? の値を copy 地点で copy する (#196) ✓ (2026-10-11)
+- `S? x = c ? h.F : null` と `var x = h?.F` (h は class) (Lua) で、`x` が `h.F` と同じ table になり、後の `h.F.N = 9` で `x.Value.N` も 9 になっていた (CoreCLR は 0)。copy 地点 (WrapStructCopy) は値の型が変更可能な struct のときだけ copy し、IsUserStruct が `Nullable<S>` を外すので `S?` の値は copy しなかった。代入 / 引数 / return / List・配列・Dictionary の要素 / field と property / object initializer / `??` / `??=` / 式位置の代入 / switch 式の arm / struct の field (`w.O = ...`、`arr[0].O = ...`) / static field の初期化子も同じだった
+- copy 地点で値の型が struct の `T?` なら、値があるときだけ中の struct を copy する (IlStructCopy に Nullable を足し、Lua は既存の `__tcs_nlift1(v, S.__copy)`)。target-typed な `c ? h.F : null` は自然な型を持たないので変換先の型 (ConvertedType) で決める。値なし (nil) と新しい値の `T?` への変換 (`S? x = new S()` 等) は copy しない。`S? x = h.F` は従来どおり `S` の値として copy する。C backend は IlStructCopy を値の代入として扱うので変わらない (修正前から CoreCLR と一致)
+- 検証: Transpiler.Tests に `StructCopyNullableValueTests.cs` (4 本)、tcs2c.Tests に `DifferentialTests.StructCopyNullable.cs` (Lua / C / C GC stress の一致 + CoreCLR で実行した stdout との一致)。修正前は 4 本とも Lua が 9 を返して fail、差分テストは Lua (`decl:9:9:9:-1:9` ...) と C (`decl:0:0:0:-1:0` ...) が食い違って fail、修正後 pass。samples/*.cs と lub の C# サンプル 31 本の生成 Lua は master とバイト一致
+- 判断: `T?` の値は `.Value` も含めて書き換えられない (CS1612。mutating method は `.Value` の copy に対して呼ぶ) ので、`T?` の格納先どうしの共有は観測できない。`S` の格納先から `T?` へ値が移る copy 地点だけ copy すれば足り、foreach の反復変数 / lambda の parameter / `ToList` の要素 / out の書き出しの `T?` は copy しない。呼び出しの結果 (`S? n = MakeN()`) は `S` と同じく copy する (return 側でも copy するので二重になるが、`S` の既存の挙動に揃える)。`T?` の field を持つ struct の `__copy` は `T?` の table を共有したまま (同じ理由で観測できない)
+- 残課題: なし
+
+### class / record の継承を build を止める TCS1001 にする (q.md Q15) ✓ (2026-10-12)
+- class / record の継承を対象外にする決定 (q.md Q15) の最初の段。基底 class の宣言 (`class D : B`、`record D(...) : B(...)`) を `ClassInheritance(B)`、継承で意味を持つ member を `VirtualMember` / `AbstractMember` / `AbstractClass` / `OverrideMember` / `SealedMember` / `ProtectedMember` / `NewMemberHiding` (従来は警告) / `BaseMemberAccess` / `BaseConstructorInitializer` の TCS1001 にし、build を止める (transpiler と増分 session は Lua を出さない、check は exit 1、tcs2c も IL の前に止まる)。analyzer は他の build を止める診断と同じく warning。判定は Shared の `TinyCsComplianceFacts.Inheritance.cs` で、構文で決まる種類は他の TCS1001 (警告) に隠れないよう switch の前に見る。基底が class か interface かは型を引いて決める (analyzer は SimpleBaseType / PrimaryConstructorBaseType の node action)。interface の実装 (`class C : IFoo`、record / struct も)、interface 同士の継承、`sealed class` はそのまま。`--ref` の型は診断の対象の木に入らないので止めない (lub の `sealed class LubHandleAttribute : Attribute`、stub の `GltfMesh : MeshData`)。継承の実装 (metatable の連鎖、vtable、hot reload の base 変更の restart) は消さずに残す
+- object の member の override (ToString / Equals / GetHashCode) も `OverrideMember` で止める。master の Lua は class の `override ToString()` を `to_string` として出すが、`c.ToString()` / 補間 / `Console.WriteLine(c)` は `tostring(c)` (table のアドレス)、`"s" + c` は `..` で実行時 error、`List.Contains` / `IndexOf` は同一性で、override を呼ばない。`Equals(object o) => o is P p && ...` は designation を global に書いていた。record の `override ToString()` も同じく呼ばれない
+- 検証: Transpiler.Tests に `InheritanceDiagnosticTests.cs` (全種類の error と位置、check の exit 1、増分 session が止まる、interface の実装は診断なしで動く、`--ref` の継承は診断なし)、Analyzers.Tests に `TinyCsComplianceAnalyzerTests.Inheritance.cs`、tcs2c.Tests に `DifferentialTests.Inheritance.cs` (Lua / C の両方が同じ TCS1001 で止まる)。修正前は新しいテストが fail、修正後 pass。継承を使っていた既存テストは、継承だけを見るものを消し (InheritanceTests、InheritanceTypeTestTests の派生の型判定、基底 operator、virtual dispatch、record の継承、hot reload の基底 field の移行と base 変更の restart の行)、他を見るものは object の変数・interface・field で書き直した (型パターン、switch、ctor の closure、struct の ctor 引数の copy、static 初期化順、record の static / float 等価、optional 引数、instance registry、fuzz 生成器は継承の代わりに object の変数に 2 つの class のどちらかを入れて型判定を probe する)。tcs2c の verify script の入力 (`tcs2c/tests/`) も同じく書き直した (gc / game-core / game-expressions は field と factory 関数、generics と interfaces は interface の実装)。`foreign.cs` の host class (`--ref` の `Resource`) を継承した user class と、その override / `base.Get` は止まるので消した (host の instance method を host の値で呼ぶ所は残す)。テスト数は Transpiler.Tests 1104 → 1089、Analyzers.Tests 60 → 61、tcs2c.Tests 149 → 146。lub の C# サンプル 31 本 + templates/game (`--ref cs-lib/lub_stub.cs` + cs-lib) は check の診断 0 件のまま、生成 Lua は master とバイト一致。samples/*.cs の生成 Lua も master とバイト一致。spec conformance の baseline (と report) は、継承・`protected`・`override`・`base`・user の attribute class を使う 37 例が InCompile / InRun → Diag、`AttributeCantBeGeneric` の Unextracted の理由が expected-error-mismatch (期待する CS8936 は従来どおり出ず、代わりに TCS1001 の error が出る) に変わったので更新した。`bash run-tests.sh` 全通過
+- よかったこと: 構文で決まる種類を switch の前で見る partial file (`TinyCsComplianceFacts.Inheritance.cs`) に分けたので、他の TCS1001 (警告) に先に当たって build が通る抜けが無く、transpiler / 増分 session / check / tcs2c が同じ判定を通る。継承を道具として使っていたテストを object の変数・interface・field で書き直すと、見ている観点をそのまま残せた
+- 判断: object の member の override は、Lua で ToString / Equals / GetHashCode を override に dispatch する経路 (`__tostring`、`__concat`、List 検索の Equals) を足すと値の表示と比較の仕様を決めることになるので、継承を外す段では止めるだけにした。user の attribute class (`: System.Attribute`) も基底 class として止まる (lub と tcs の sample に使う所は無い)
+- 残課題: 継承の実装を消す段 (LuaEmitter の metatable 連鎖、tcs2c の vtable、IL の BaseName / BaseArgs、hot reload の base 変更)。interface の default method と static member を持たない決定 (q.md Q15) の診断。C backend は interface / object 型の値の型パターンの designation が通らない (master から。`IShape s; s switch { Rect r => r.W }` が `unknown field: IShape.w`、`object o; o switch { Rect r => r.W }` が `field receiver is not a class reference`、`object o; if (o is Rect q)` が `cannot assign object to ref Rect`。`if (s is Rect q)` は通る)。継承を外すと多態の主な書き方になるので別に直す。analyzer は event 宣言の node を登録していないので `protected event` を報告しない (transpiler は止める)。C backend は interface の property を読めない (master から。`T : IItem` の `item.Value` が `unknown field: IItem.value`。generics.cs は method にした)。user の class が host の class を継承する形 (以前の foreign.cs) は書けなくなった。host の型を拡張したい場合は合成か interface で書く
+
+### user の member 名を C# の識別子のまま Lua / IL の名前にする (q.md Q16) ✓ (2026-10-12)
+- user の型 (入力の tree に宣言された型) の member (method / field / property / record の positional parameter / enum メンバ / static member / entry の callback) は C# の識別子をそのまま Lua と IL の名前にする (`OnFrame` → `OnFrame`、`BigValue` → `BigValue`、`hp` → `hp`、property の accessor は `get_Name` / `set_Name`)。tcs2c の C 名 (`tcs_entry_<Class>_<Method>`、`tcs_s_<Class>_<Field>`) も IL の名前から従う。Lua の予約語と同じ綴り (`end` / `local` / `global` 等) だけ従来どおり `_` を後置する。`--ref` (host) の型は今の snake_case の規則 (`lub.gfx.begin_pass`、enum `lub.gfx.RGBA8`) のまま (`LuaNaming.Member` / `Const` / `RefTypePath` / `IsLuaKeyword` は lub の lub-gen が host の名前に使うので名前も挙動も変えない)。user の規則は `LuaNaming.UserMember` / `UserMemberName` で、emitter の `N(ISymbol)` と IlExport は `IsReferenceOnlyType` (DeclaringSyntaxReferences が ReferenceTrees にあるか) で host と user を分ける。metadata の symbol (BCL / TinySystem) は従来どおり runtime の名前。hot reload の entry hook は `OnReload` (reload chunk と runtime/module_registry.lua)
+- 写像が一対一になるので、同じ型の中の衝突は `end` と `end_` だけになり、既存の LuaNameCollision の member の判定を新しい写像に乗せた。型の global 名の衝突 (`A_B.C` と `A.B.C`) は型名と namespace 名の `_` を禁じたので起き得なくなり、`FindLuaTypeNameCollisions` / `AnalyzeLuaTypeNameCollisions` とそのテスト (Transpiler.Tests の LuaTypeNameCollisionTests、Analyzers.Tests の TypeNames) を消した
+- 新しい診断 (TCS1001、build を止める。transpiler / 増分 session は Lua を出さない error、check は exit 1、analyzer は warning、tcs2c も IL の前に止まる。`Shared/TinyCsComplianceFacts.Identifiers.cs`、switch の先頭で見る): `__` で始まる識別子 (member / 型 / namespace / local / parameter / foreach / designation) `DoubleUnderscoreIdentifier(__hp)`、非 ASCII の識別子 `NonAsciiIdentifier(速度)`、生成コードが class table に置く key と同名の member `ReservedClassKey(new)` / `ReservedClassKey(ctor)` (`T.new` と positional record struct の `S.ctor`。`__index` / `__eq` / `__copy` は `__` の規則)、型名の `_` `UnderscoreTypeName(My_Type)`、namespace 名の `_` `UnderscoreNamespaceName(B_C)` (file-scoped も)、`--ref` の interface を実装する user の型 `RefInterfaceImplementation(IHostHook)` (interface 経由の呼び出しは host の snake_case、実装は C# の名前になって届かない。host の interface は参照専用の tree に宣言されたものか、runtime 以外の assembly の metadata)。`--ref` の型の宣言は対象外。生成 temp の `__tcs_` prefix の予約 (`ReservedIdentifier(__tcs_x)` の warning) は `__` の規則に吸収した。analyzer は NamespaceDeclaration / FileScopedNamespaceDeclaration の node action を足した。IlExport は generic の単相化が作る型名 (`TcsClosed0_Pool`) を診断しないよう、入力の tree で診断する
+- テストの driver の文字列 (`T.test()` → `T.Test()`、`Program.main()` → `Program.Main()`、`m.on_frame()` → `m.OnFrame()`、tcs2c の host .c の `tcs_entry_X_setup` → `Setup` 等) を、同じテストの C# の宣言から写し戻す script で書き換え、残りを手で直した。TestHelper の MapLuaExpr (luaExpr の C# 名を snake に写す) と CorpusDifferential の snake → PascalCase の写し戻しは不要になったので消した (luaExpr は emit された Lua の名前そのもの)。SpecLuaExecutor / FuzzRunner / FuzzTests / DigestHarnessTests / perf/bench-2backend.sh の entry は `.Main()`
+- 検証: `LC_ALL=ja_JP.UTF-8 bash run-tests.sh` 全通過 (Analyzers.Tests 61 → 62、Transpiler.Tests 1089 → 1098、tcs2c.Tests 146 → 148)。新しいテスト: Transpiler.Tests `IdentifierDiagnosticTests` (全種類の error と位置、check の exit 1、増分 session、`__tcs_` の local、member 名と local 名の `_` と `@new` / `ctor` の local は通る、`--ref` の `Host_Api.__Get` は診断なし)、`LuaNamingTests` (UserMember の表、user の member / enum / 予約語 / record / IL の名前、host の snake_case はそのまま)、`RefInterfaceDiagnosticTests` (transpile / check / 増分 session / IlExport の error、user の interface は可)、Analyzers.Tests `TinyCsComplianceAnalyzerTests.ReservedIdentifiers` (delegate の `_`、metadata の host interface の実装も)、tcs2c.Tests `DifferentialTests.Identifiers` (両 backend が同じ診断で止まる、C の entry 名と member 名が C# の綴り)。spec conformance の baseline と report は、`private int x; public int X` の形が LuaNameCollision でなくなった 8 例が Diag → InCompile、`__x` の field (AutomaticProperties4) と `S_Boxing` (BoxingConversions) の 3 例が Diag に変わった。lub (origin/master ed212cb を scratch に clone) の C# サンプル 31 本 + templates/game を `Transpiler.dll check <sample>/*.cs cs-lib/**/*.cs --ref cs-lib/lub_stub.cs` で検査して 32 本とも診断 0 件。lub-gen をこの tcs で build でき (`dotnet build tools/lub-gen`)、header / Lua binding / surface test / docs json / facade の生成物は checkin 済みと一致 (lub_api.h は clang-format の折り返しだけ違う)
+- よかったこと: user と host の規則を LuaNaming の別の関数に分け、分岐を emitter の `N(ISymbol)` と IlExport の `MemberName` の 2 か所に寄せたので、呼び出し側は変わらない。識別子の規則を切り出した partial file を switch の先頭で見る形 (継承と同じ) にしたので、警告の種類に隠れず全経路で止まる
+- 判断: method の改名 (呼び出し側も同じ build で作り直す) を reload chunk (HotReload.PlanReload) と増分 session (IncrementalCompilationSession.Update) の両方で分類すると live で、reload chunk は旧 key を `nil` にして新 key を足し、registry は型の keys の差分で旧 key を消す (ReloadRulesAlignmentTests.MethodRename_WithCallersRebuilt_IsLiveInBoth、HotReloadTests.Reload_MethodRename_ReplacesKeyAndDropsOldOne)。overload に引数の型を付ける名前 (Q16) も同じ経路になるので、overload の対応は別の段に残した (MethodOverload は TCS1001 のまま)。`__` の規則は local にも掛ける (Lua の local は `__tcs_*` の temp と同じ scope に出る)。`new` / `ctor` は local には掛けない (table の key にならない)。struct の positional record の `ctor` も予約に入れた。`self` の予約 (`ReservedIdentifier(self)` の warning) は変えていない
+- 残課題: overload の名前付けと host の interface の実装 (doc/tasks.md)。lub 側は別 session で host (lub の player の `OnInit` / `OnFrame` / `OnEvent` / `OnQuit` / `OnReload` の lookup) を合わせ、submodule を上げる
+
+### 変換の `--warnaserror` ✓ (2026-10-12)
+- `tcs <input.cs> ... -o out.lua --warnaserror` は、警告 (命名規約、TCS1001 の warning 等) が 1 つでもあれば出力を書かずに exit 1 にする。`tcs check` の判定 (`Success && Warnings.Count == 0`) と同じで、check と変換で 2 回 compile していた lub の CI (サンプルと runtime test の変換) を 1 回にするため
+- 検証: Transpiler.Tests `CliRuntimeTests.Cli_WarnAsError_FailsOnWarningsWithoutWritingOutput` (警告ありで exit 1 かつ出力なし、付けなければ従来どおり 0) と `Cli_WarnAsError_WritesOutputWithoutWarnings`
+- 判断: `--watch` でも同じ判定 (警告のある build は書かない) になる。`--snapshot` の経路は対象外
+- 残課題: なし
+
+### 未対応の構文と API を build を止める error にする ✓ (2026-10-14)
+- TCS1001 (未対応構文) と TCS1002 (未対応 API) を、種類を問わず error にした。transpiler・増分 session・`--watch` は Lua を書かず (session は commit せず last-good を保つ)、変換は exit 1。naming の警告と TCS1003 は warning のまま (`tcs check` と `--warnaserror` は従来どおり exit 1)。種類ごとに足してきた build を止める集合 (`IsBuildBlocking` とその判定の集合) は消した。emitter が emit 中に見つける未対応 (IL にできない式など、Shared の判定に無いもの) も error で、full build と増分 session (open / fast path / slow path) の両方で止める。emitter の `Warnings` は `Errors`、`WarnUnsupported` は `ReportUnsupported`、`SessionModuleArtifact.Warnings` は常に空になるので消した。analyzer の severity は warning のまま
+- 経緯: lub の release の一式で claude.ai の Claude がゲームを書いたとき、`out` 引数・`double`・`Math.Acos`・`string.PadLeft` が warning のまま Lua になり、`error loading module` や実行時の nil 呼び出しで落ちて、原因の warning を naming の警告と見分けられず同じ誤りを繰り返した (lub の issue、tcs #206)。warning にしていたのは T97 で黙殺を既存の Warnings API に載せた名残で、通す理由は記録に無かった
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1106 → 1104、tcs2c.Tests 148)。warning と成功を期待していたテストは error と失敗を期待する形に直し、未対応のまま出力を実行していたテスト (lock の本体の実行、IL の stub、class の Lua の予約語 member の `_` 後置、interface の static abstract operator の metamethod への委譲、構造型の `is` の Lua の実行時 error、MixedClass の method 単位の分割) は error を確かめる形にするか消した。`double` を本題でなく使っていたテストは `float` に置き換えた。新しいテスト `IncrementalSessionTests.EmitterFoundUnsupported_BlocksOpenAndUpdate` (emitter だけが見つける `unchecked` が open / fast path / slow path を止め、full build と診断が一致する) は master で fail、修正後 pass。lub (origin/master c45ed77) の C# サンプル全部 + tests/cs + templates/game を `Transpiler.dll check` で検査して診断 0 件
+- 判断: tcs2c は従来から Shared の TCS1001 があれば止まるので変えていない。spec conformance の report は手元の locale で Roslyn のメッセージの言語が変わるだけなので更新していない
+- 残課題: 出力に届かなくなった fallback の実装 (未対応の本文の実行時 error の stub、partial / lock の marker と `do ... end`、user の member の Lua 予約語の `_` 後置) を消す段。const の命名の警告 (tcs #207)
+
+### 命名の流儀の検査を外す ✓ (2026-10-14)
+- `NamingAnalyzer` (PascalCase / camelCase の `naming:` 警告) と `--no-naming-check`、`TranspileWithDiagnostics` と `IncrementalCompilationSession` の `checkNaming`、WasmCompiler の `CheckNaming` を消した。`tcs check` と `--warnaserror` が止めるのは TCS1003 などの TinyC# の warning だけになる
+- 経緯: const の `MAX_BALLS` に private field の命名の警告が出た (tcs #207)。Q16 で user の member 名は C# の識別子のまま Lua / IL に出るので、命名の検査は出力に関わらない流儀の検査で、Lua の名前の衝突は `LuaNaming` と `LuaNameCollision` が規則で扱っている。流儀の検査は利用側の linter (`.editorconfig` 等) に任せる
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1081、tcs2c.Tests 148)。新しいテスト `CliRuntimeTests.Cli_Check_DoesNotJudgeNamingStyle` (UPPER_SNAKE の const、小文字の class と method、PascalCase の parameter と local で `tcs check` が exit 0 かつ出力なし) は master で fail、修正後 pass。warning の入力として命名の警告を使っていたテスト (`--warnaserror`、増分 session と full build の診断の一致) は TCS1003 の入力に替えた。`NamingTests` と `NamingSuppressionTests` は消した
+- 残課題: なし
+
+### 出力に届かない未対応の stub と lock の marker を消す ✓ (2026-10-15)
+- emitter が IL にできない本文と式の代わりに書いていた実行時 error の stub (`error("TinyC#: unsupported ...")`) と、未対応の member の位置の `--[[ unsupported: ... ]]`、`lock` の marker と本文の `do ... end` を消した。`lock` だけが使っていた `IlComment` も消した。`EmitUnsupportedBody` は何も書かないので `ReportUnsupportedBody` にし、`ReportUnsupported` は error を足すだけにした
+- 経緯: 未対応の構文と API を error にした段 (tcs #206) から、error があると Lua を書かないので、これらは出力に届かなくなっていた
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1081、tcs2c.Tests 148)。テストの変更なし
+- 残課題: user の member の Lua 予約語の `_` 後置と、それに伴う `LuaNameCollision` (予約語の member は宣言の側で `LuaKeywordIdentifier` の error になるので届かない)
+
+### user の member の Lua 予約語の `_` 後置と LuaNameCollision を消す ✓ (2026-10-15)
+- `LuaNaming.UserMember` / `UserMemberName` (予約語に `_` を後置する写像) を消し、user の member 名は C# の識別子をそのまま使う。emitter の `N(string)` も消した。`LuaNameCollision` (`end` と `end_` が同じ Lua 名になる、という TCS1001) の判定一式 (`TryGetLuaNameCollision`、`AnalyzeLuaNameCollisions`、transpiler と増分 session の先行チェック) を消した
+- 経緯: Lua の予約語と同名の member と型は宣言で `LuaKeywordIdentifier` の error になるので、`_` 後置とそれが生む衝突は出力に届かなくなっていた (出力に届かない stub を消した段の残課題)
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 64、Transpiler.Tests 1081 → 1071、tcs2c.Tests 148)。`LuaNameCollision` を期待していたテストは、予約語の側だけに `LuaKeywordIdentifier` が 1 つ出ることを見る形に直し (変更前の master で 8 件 fail、変更後 pass)、`UserMember` 自体のテストと重複していた衝突のテストは消した
+- 判断: local の予約語は従来どおり `LuaLocalRenamer` が `_` を後置する。host (`--ref`) の名前の規則は変えていない
+- 残課題: なし
+
+### tcs2c の GC を本物の runtime のまま有界に全列挙する harness ✓ (2026-10-24)
+- 「実装コードから仕様を吸い出して Z3 / TLA+ でバグを払い出す」流儀 (吸い出し → 反例探索 → 突き合わせ) を tcs2c の世代別 GC に当てた。model を別に書かず、本物の runtime (`tcs2c --lib` の出力 + harness を同じ translation unit) を arena (`-Dmalloc=` 等で差し替え) + snapshot / restore に載せ、mutator の op (new / static・hold root 代入 / field store / `List<Node>` Add・RemoveAt / `List<int>` Add / Dict put・Remove・rehash / 境界) を到達構造で dedup する深さ制限 DFS (反復深化、違反は最短の witness) で列挙し、境界ごとに shadow graph と実 heap を root から突き合わせる (`tcs2c.Tests/GcEnumeration.c`、`GcEnumerationTests`)。store は emit された関数 (`tcs_m_G_*`) を通すので emitter のバリアもそのまま対象。性質は NoDangling / NoLostObject / OldGenSound と「境界後に DIRTY / FORWARD / MARK が残らない」
+- 検証: `dotnet test tcs2c.Tests --filter GcEnumeration` 17/17 (24 s)。正常 1 件 (深さ 9 で違反なし、old→young store / 旧 node を持つ rehash / バリア無し remove の危険形を踏んだカウンタ > 0)、broken variant 16 件 (emitter の field バリア、`tcs_wb` 本体、list add・reserve、dict grow の node・put の既存 node・put の新規 node、hold・static の forwarding、DIRTY クリア、dirty object の forward、scan queue の drain、list buffer・dict value の forward、list buffer・dict chain の mark をそれぞれ落とし、全部 witness 付きで赤)。Windows は `zig cc` (clang 20) を gcc shim 経由で、gcc 13 (WSL) でも harness をコンパイル・実行して状態数まで一致 (深さ 8: 426,888 状態)。深さ 10 は 1,082 万状態 / 34 s で違反なし (ゲートは深さ 9 で約 3.5 s)
+- よかったこと: broken variant を先に回したので「常に緑の空検査」にならず、列挙が「どのバリアがどこで効いているか」を返した — `tcs_list_reserve` のバリアは要素 layout の無い `List<int>` でだけ効く (最初の alphabet に値型 List が無く variant が緑のままだったことで coverage の穴が見えた)、`tcs_dict_grow` 末尾の `tcs_wb(dict)` は唯一の呼び出し元 `tcs_dict_put` の末尾のバリアに内包されていて落としても違反が出ない。runtime が壊れた pointer を踏んで落ちる variant は signal handler で witness を出す
+- 判断: C# の model や TLA+ でなく本物の C を回した (写し間違いの偽証明が原理的に無い。仕様文書は README の GC 節の台帳で持つ)。op 列ごとの再実行は深さ 6 で 10^9 になるので arena snapshot + 到達構造の dedup にした。runtime に test hook は足さず、生成 C の字面置換で variant を作る。`tcs_dict_grow` の冗長なバリアは消していない。stress build 限定 (毎境界の full GC が「旧世代 = 到達集合」の前提)
+- 残課題: alphabet に無い経路 — struct 連鎖 field / 配列要素 / 閉包 cell / string key の Dict / hold の release / 非 stress の閾値 pacing。host 規約 (entry の外で持つ pointer) は検査対象外
+
+### T269: `--trace <path-prefix>` で実行した C# 行と呼び出し元を host に見せる ✓ (2026-10-25)
+- 入力 path (`/` 区切りに正規化) が prefix に path の segment 単位で一致するファイルの文 (`LuaEmitter.EmitIlStat` を通る `Origin` 付きの文。prefix は path そのものか directory で、先頭の `./` と末尾の `/` は外して比べる) の直前に `__tcs_at = "<file>:<line>"; __tcs_trace[__tcs_at] = true` を出す。`__tcs_at` は対象ファイルの関数 (method / ctor / accessor / operator / struct ctor / block 本体の lambda) ごとに本体の先頭で `local` 宣言し、host が `lua_getlocal` で frame ごとの現在行を読める。`__tcs_trace` は global で、chunk prelude が `__tcs_trace = __tcs_trace or {}` してから chunk-local に alias する (host は in place で消す)。1 つの文が builder (前宣言、条件の hoist など) や lowering で同じ origin の文の列に分かれるときは、列の先頭で 1 回だけ出す。`else if` と `while` / `do-while` の条件は評価のたびにその条件の行で trace する: trace する関数では `else if` を `else` の中の `if` に開き、条件のある `while` を lowering と同じ `while true do if not (c) then break end ... end` に開き、`do-while` は本体を `do ... end` に閉じて continue label の後に trace 行を置いてから条件を評価する (`else if` と `do-while` の条件式は IL の `Origin` に自分の位置を持つ)。式本体の setter / ctor の式も文として trace する
+- watch の reload chunk: `HotReload.PlanReload` に v2 の入力 path と trace prefix を足し、`Program.Rebuild` が `inputPaths` と `options.TracePrefixes` を渡す。v2 定義は `TranspileWithDiagnostics(v2Sources, v2FilePaths, ..., tracePrefixes)` で emit するので、chunk の key も出力と同じ実 path になる。`--snapshot` との併用は拒否。付けなければ出力は不変
+- 検証: `dotnet test` 全通過 (Transpiler.Tests 1083、新規 `StatementTraceTests` 8 件: 対象ファイルの実行行だけが入り取らなかった if の枝と対象外ファイルは入らない / `debug.getlocal` で Inner → Outer と lambda → 外側の行が並ぶ / reload chunk が実 path の key で v2 本文を trace し table identity を保つ / `\` の path が `/` の prefix に一致 / `--trace` なしで `__tcs_trace` `__tcs_at` が無く path 付きでも同じ出力 / CLI の正方向と `--snapshot` 拒否と値なし)、`bash run-tests.sh` 全通過。`StatementTraceTests.Trace_ElseIfConditionRunsAtItsOwnLine` (`else if` の条件の host 呼び出しがその行を見て、その行が `__tcs_trace` に入る。lowering に下りる条件も) と `Trace_LoopConditionRunsAtItsOwnLineOnEveryIteration` (`while` / `do-while` の条件が反復ごとに自分の行を見る。lowering に下りる条件も) は修正前に fail、修正後 pass。`Trace_ExpressionBodiedSetterAndCtorAreTraced` は修正前に fail、修正後 pass。`Trace_NonMethodFunctionsAreTraced` (ctor / accessor / 式本体の property / operator / struct ctor の行が入り、`__tcs_at` が global に漏れない。どの関数の `BeginTraceFunction` を消しても fail) と `Watch_ReloadChunkTracesWithInputPath` (`--watch --reload-chunks --trace` の reload chunk が入力 path の key で trace する。`PlanReload` に prefix か入力 path を渡さないと fail)。`Trace_PrefixMatchesWholePathSegments` (`samples/game` が `samples/gameover/` に一致せず、`./samples/game/` とファイルの path と `./` は一致する) は修正前に fail、修正後 pass。`Trace_EachStatementWritesTraceOnce` (`__tcs_trace` を書き込みを数える proxy にして、is-pattern の前宣言を持つ `if` と `else if`、continue label が後に続いて `do ... end` に閉じる `return` が 1 回ずつ書く) は修正前に fail、修正後 pass。`bash run-tests.sh` 全通過 (Analyzers.Tests 69、Transpiler.Tests 1098、tcs2c.Tests 184)
+- 判断: `return f(x)` は Lua の tail call で呼び出し元の frame が消える。trace のために tail call を崩すと stack の深さの挙動が変わるので崩さず、契約として書いた (テストで押さえた)。式本体の lambda は文を持たないので `__tcs_at` を宣言しない (host は無い frame を飛ばす)。IIFE に畳む文 (inline render)、top-level 文、ctor 先頭の table constructor に畳まれる field 代入は対象外。HotReload の migration 式用 emitter は文を emit しないので prefix を渡していない。`IncrementalCompilationSession` (snapshot / WasmCompiler) は `--snapshot` を拒否するので触っていない。`for` の条件も `while` に落ちるので同じ形になる。定数の条件 (`while (true)`) は評価しないので開かない。同じ origin の列で trace 行を省くのは前の文が入れ子の文を持たない (`local` / 代入 / 呼び出し) ときだけで、入れ子の文の後は `__tcs_at` が他の行に進み得るので出し直す。式本体の setter / ctor の式に origin を付けたので、`--trace` なしでも source map にその行が載る (Lua の出力は変わらない。式本体の getter / method と同じ扱い)
+- 残課題: なし
+
+### T270: `--trace` で対象ファイルの型 table を `__tcs_trace_classes` に登録する ✓ (2026-10-25)
+- `--trace` のとき、対象ファイルの class / record / struct の型 table を作った直後 (`BeginType`) に `__tcs_trace_classes["<LuaName>"] = <LuaName>` を出す。enum は状態を持たないので登録しない。chunk prelude が `__tcs_trace` の隣で `__tcs_trace_classes = __tcs_trace_classes or {}` して既存の table を保つ。host はここから static field を辿って game の状態を snapshot / restore する
+- reload chunk: v2 定義は fresh の型 table を登録するが、chunk が global を旧 identity へ戻した後に `for k in pairs(__tcs_trace_classes) do __tcs_trace_classes[k] = _ENV[k] end` で登録を戻した global に向け直す (v2 で足した型は fresh のまま残る)。付けなければ出力は不変
+- 検証: `dotnet test` / `bash run-tests.sh` 全通過。新規 `StatementTraceTests.Trace_RegistersTypeTablesOfTracedFileOnly` (static class / instance を持つ class / struct が同じ identity で入り、enum と対象外ファイルの class は入らず件数 3)、`Trace_ReloadChunkKeepsRegisteredIdentityAndRegistersNewClass` (reload 後も registry と class の identity を保ち、登録は保った identity を指し、足した class が登録される)。どちらも実装前に fail、実装後 pass。`NoTrace_OutputHasNoTraceCode` に `__tcs_trace_classes` が無いことを足した
+- 判断: 型単位の判定は `symbol.DeclaringSyntaxReferences` の tree の path で行う (partial 型は TCS1001 なので宣言は 1 つ)。登録行は module artifact の `DeclRanges` の外 (`--snapshot` とは併用不可なので影響しない)。reload chunk の向け直しは registry の全 key を舐める (v1 で消えた型の global も残るので entry は残る。型の削除は restart の理由なので chunk には来ない)
+- 残課題: なし
+
+### static method の overload ✓ (2026-10-25)
+- 同じ型に同名の static method (拡張 method を含む) が複数あるときだけ、Lua / IL / C の名前に引数の型を `__` でつないで付ける (`Shared/LuaNaming.MethodName`。`Show(int)` → `Show__int`、`Total<T>(List<T>, Func<T, float>)` → `Total__List_T__Func_T_float`、引数の無い overload は C# の名前のまま)。宣言 (Lua の `VisitMethod`、`IlExport`) と呼び出し (`N()`) が同じ関数を使う。tcs2c の generic 特殊化の key も同じ名前で overload を区別する (名前と引数の数だけでは、型だけが違う overload の閉じた copy が 1 つに潰れていた)
+- 診断: instance method を含む overload、partial 宣言に分かれた instance method の overload、`--ref` の型の overload、型を付けた名前が他の member と同じ綴りになる overload は TCS1001 MethodOverload のまま。analyzer は構文の規則 (同じ宣言の中の instance method の overload) だけを見る
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 70、Transpiler.Tests 1079、tcs2c.Tests 185)。DifferentialTests.StaticOverload (引数の型と数、struct / 配列 / string、generic の拡張 method の Func<T, int> と Func<T, float>、拡張 method の static の形、method group) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。overload の追加は reload chunk と増分 session の両方で live (ReloadRulesAlignmentTests.AddingStaticOverload_IsLiveInBoth)。conformance baseline は `BetterParmPassingMode` と `ExtensionMethodInvocations1` が Diag → InCompile
+- 判断: instance method は interface 経由の呼び出しが名前で dispatch するので対象外にした (interface の method と実装で同じ名前を選ぶ規則が要る)。名前の衝突は構文だけでは判定できないので transpile 時の error にし、analyzer には出ない
+- 残課題: instance method の overload (tasks.md の名前の写し方トラック)
+
+### T269 string.CompareOrdinal ✓ (2026-10-25)
+- `string.CompareOrdinal(string, string)` を allowlist に足し、Lua は `String.CompareOrdinal` (tinysystem.lua、`tcs_rt.string_compare`)、C は `tcs_string_compare_ordinal` に写す。どちらも -1 / 0 / 1 を返し、null は他のどの string より小さい
+- 値は 0 との比較の operand でだけ使える。それ以外は TCS1001 `CompareOrdinalValue` (`TryGetUnsupportedSyntax(IOperation)`。analyzer は Invocation の operation で、transpiler は invocation の node から同じ判定を引く)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.CompareOrdinal_SignMatchesDotnet (ASCII、接頭辞、非 ASCII、U+E000-U+FFFF と U+10000 以上の組、同じ上位 surrogate の組、null) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。SubsetDiagnosticTests と analyzer のテストで、値として使う 2 箇所だけが CompareOrdinalValue になり、範囲つきの overload は TCS1002
+- 判断: CoreCLR の値そのもの (最初に異なる UTF-16 code unit の差) を返す案は捨てた。実測すると `("", "x")` が -120、`("abc", "ab")` が 1、`("x😀", "x")` が 55357 で、2 文字ずつ比べる位置で接頭辞のときの値が変わる。契約は符号だけなので、符号だけを使える形にした
+- 残課題: なし
+
+### T270 Lua の generic な default(T) ✓ (2026-10-25)
+- Lua は型を消すので、型引数の既定値を呼び出し側が隠れ引数で渡す。generic method は自分の型引数 (`__tcs_dm_T`)、generic class は `new` と static method が class の型引数 (`__tcs_dc_T`) を末尾に受け、instance は `new` が self に持つ。`DefaultIl` / `GetDefaultValueForType` は型引数をこの隠れ引数 (instance の method / accessor では `self.__tcs_dc_T`) に写す。呼び出し側は `WithOmittedDefaults` の後ろと generic class の `new` に足し、省略した optional 引数は位置を詰めないよう nil で埋める。generic method の method group (`Pick<int>`、`G.Pick<int>`) は既定値を足して呼ぶ closure にする
+- 検証: `bash run-tests.sh` 全通過 (Analyzers.Tests 71、Transpiler.Tests 1082、tcs2c.Tests 187)。DifferentialTests.GenericDefault_IsDefaultOfTypeArgument (int / float / bool / string / readonly record struct / 可変 struct / `int?` / enum、型引数の受け渡し、lambda、拡張 method の受け手の形と static の形、generic class の field・instance / static method・generic method) は CoreCLR の stdout と Lua / C が一致 (変更前は Lua が nil の算術で落ちる)。GenericDefaultTests (method group) は Lua と .NET が一致
+- 判断: Lua も特殊化する案は、出力が型引数の組ごとに増え hot reload の単位も変わるので捨てた。struct の型引数は呼び出しごとに zero 値を作って渡す (generic なコードは T の field を書き換えられず、受け取った側は copy 地点で copy する)
+- 残課題: generic record / struct / interface の型引数と generic class の static property の default(T) は nil のまま。C の特殊化は generic record / struct と generic method の method group を扱わない (tasks.md)
+
+### T271 checked(expr) の i32 演算 ✓ (2026-10-25)
+- `checked(expr)` / `unchecked(expr)` を通し、Roslyn の `IsChecked` が立つ i32 の `+ - *` と単項 `-` を overflow で fault する helper の呼び出し (`IlCall("__tcs_cadd" | "__tcs_csub" | "__tcs_cmul" | "__tcs_cneg")`) にする。Lua は chunk の prelude と `TinySystem.cadd` 等 (module mode は `_G` の alias)、C は `tcs_checked_add` 等 (64 bit で計算して範囲を見る)。除算と float → int の変換は checked でなくても範囲外を fault にするのでそのまま。TinySystem.Linq の int の Sum はこれで checked に書ける
+- 診断: それ以外の checked な演算 (明示の整数変換、`++` / `--`、複合代入、int 以外の型、lifted) は TCS1001 `CheckedOperation` (`TryGetUnsupportedSyntax(IOperation)`。analyzer は Binary / Unary / Conversion / Increment / Decrement / CompoundAssignment の operation で見る)。checked 文は従来どおり TCS1001 `CheckedStatement`
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.CheckedInt (overflow 9 件は Lua / C (GC stress 込み) とも "before" の後に fault、範囲内 10 件は stdout が一致。どちらも CoreCLR で同じ結果 (overflow は OverflowException) を確かめた)。SubsetDiagnosticTests と analyzer のテストで、`checked(a++)` と `checked((uint)a)` だけが CheckedOperation になる。conformance baseline は `CheckedAndUncheckedOperators1` / `3` / `4` が Diag → InCompile。「emit して初めて見つかる未対応」の例に `unchecked(...)` を使っていた StaticInitOrderTests / IncrementalSessionTests は `sizeof(int)` に替えた
+- 判断: Sum の意味を unchecked に変える案は、C# の Enumerable.Sum と同じ名前で意味が変わるので捨てた。support-matrix の `checked(expr)` は「透過」と書かれていたが、実際は TCS1001 で止まっていた
+- 残課題: checked 文、checked な `++` / `--` と複合代入
+
+### T254 / T255 LINQ を tcs サブセットの C# で書いた TinySystem.Linq にする ✓ (2026-10-25)
+- `TinySystem/Linq.cs` (namespace `TinySystem.Linq`、static class `Enumerable`) に `List<T>` の拡張メソッド Where / Select / Any / All / Count(pred) / FirstOrDefault / Sum / Min / Max / OrderBy / OrderByDescending を tcs のサブセットの C# で書いた。契約は doc comment。tcs は `Transpiler.LibraryTrees` (埋め込みの source) を user のコードと同じ compilation に入れ、user が `using TinySystem.Linq;` するか型を参照するときだけ Lua / C に出す (Transpiler、IlExport、増分 session。session は使い始めた編集で library の module を足して slow path)。`Linq.cs` は TinySystem.dll に入れず、.NET の project は `TinySystem/TinySystem.props` で同じ source をコンパイルする (dll と source の両方にあると拡張メソッドが曖昧になる)
+- 消したもの: `System.Linq.Enumerable` の allowlist 50 行 (`System.Linq` は namespace ごと TCS1002)、Lua runtime の LINQ (`List.Where` など、NaN / string 順序の helper)、emitter の LINQ の名前による写像、tcs2c の LINQ の inline 展開 (`CEmitter.Linq.cs` は List の member だけを残して `CEmitter.Lists.cs` に)、C runtime の `tcs_list_sort_by_keys` と `tcs_checked_add_i32`、TinySystem の `List` facade の LINQ。First / Last / LastOrDefault / Take / Skip / ToList / Count() / ToDictionary は書かない (T255)。代わりに copy constructor `new List<T>(source)` (source は `List<T>`、`T[]`、Dictionary の Keys / Values) を足した
+- 空の列の Min / Max (int / float) は、値の無い Nullable の Value を読んで fault にする (throw はサブセットに無く、Lua の範囲外の読み出しは fault にならない)。.NET でも同じ InvalidOperationException になる
+- 検証: `bash run-tests.sh` 全通過。LinqSemanticTests (ライブラリが C# としてコンパイルでき、サブセットに準拠すること、各演算、callback の回数と呼び出し時点の Count、copy constructor、System.Linq の TCS1002) は Lua と .NET が一致。DifferentialTests.LinqLibrary (callback が受け手に Add しても走査は呼び出し時点の Count まで、空の Min / Max は 3 経路とも "before" の後に fault) は CoreCLR の stdout と Lua / C が一致。IncrementalSessionTests.FirstLibraryUseInBodyEdit_AddsLibraryModule。既存の LINQ のテストは `using TinySystem.Linq;` と残す演算に書き換え、消した演算そのもののテスト (RuntimeTests の List_*、SkipTakeExtremes、ToDictionary の各テスト、float? の key の OrderBy) は削除
+- 判断: class を `TinySystem.Linq.List` にする案は、runtime の global `List` と同じ名前として RuntimeGlobalIdentifier に当たるので `Enumerable` にした。namespace TinySystem に置く案は `using System;` と並べると Math / String / Random が曖昧 (CS0104) になるので捨てた。OrderBy の key は int / float / string の overload だけ (サブセットに generic な比較が無い。enum は `(int)` で渡す)
+- 残課題: Lua の List / 配列の範囲外の読み出しが fault にならない、lub の雛形への反映、T256 (FindIndex / RemoveAll / MinBy / MaxBy)、T261 (Keys / Values を LINQ の受け手にする)
+
+### T256 List<T>.FindIndex / RemoveAll と TinySystem.Linq の MinBy / MaxBy ✓ (2026-10-25)
+- `List<T>.FindIndex(Predicate<T>)` と `RemoveAll(Predicate<T>)` を BCL の名前のまま allowlist に足した。Lua は `List.FindIndex` / `List.RemoveAll` (tinysystem.lua)、C は inline の loop で、RemoveAll は残す要素をその場で前へ詰めて `tcs_list_truncate` で末尾を落とす (`tcs_list_remove_at` と同じく要素の byte を写す)。述語は .NET と同じく各要素に 1 回ずつ先頭から呼ぶ
+- `MinBy` / `MaxBy` を TinySystem.Linq の C# で書いた (key は int / float / string、比べ方は OrderBy と同じ、key は各要素 1 回、等しい key は先に出た方、空の列は fault)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.FindIndexRemoveAll_MinByMaxBy_MatchDotnet と MinByMaxBy_OnEmpty は CoreCLR の stdout と Lua / C (GC stress 込み) が一致
+- 判断: 空の列で System.Linq は参照型の要素なら null を返すが、Lua は型を消すので値型と区別できない。Min / Max と同じく常に fault にした
+- 残課題: なし
+
+### T257 data を運ぶ struct の既定を readonly record struct にする ✓ (2026-10-25)
+- support-matrix の `struct` の行と §19 に、data を運ぶ struct は `readonly record struct` を既定にすることを、copy のコストの実測 (q.md Q18: Lua で readonly record struct 0.089 s、readonly なし 0.715 s) とともに書いた。毎フレームの一時の `List<T>` は作ってよいことも §19 に書いた
+- 検証: docs のみ。`bash run-tests.sh` 全通過
+- 残課題: lub の雛形への反映 (lub へ feature request)
+
+### Lua の List / 配列 / string の添字の範囲外を fault にする ✓ (2026-10-25)
+- Lua の table は範囲外の key を nil で読み、範囲外の key にも書けるので、il-spec §12 の fault にならなかった (C は fault)。要素は nil を持たない (TCS1003) ので、範囲内の key は必ず値を持つことを使う: 読み出しは `(t[i + 1] or __tcs_oob())` (false を読む bool の要素は `__tcs_get`)、書き込みは `if t[i + 1] == nil then __tcs_oob() end t[i + 1] = v` (受け手と添字を読み直せないときは `__tcs_set`)、string の添字は `__tcs_byte`。module mode は `TinySystem.get` / `set` / `byte` の alias。範囲外で fault しうるので、要素の読み出しは評価順の入れ替えの対象から外した (`IsCallFree`)
+- 要素が nil になりうる配列 (参照型 / `T?` / 型引数の要素。`new T[n]` が穴を持つ。TCS1003) は長さが分からないので検査しない (`IlIndex.Unchecked`)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.IndexBounds (List / 配列の読み書きの範囲外、負の添字、string の添字、TinySystem.Linq の callback が受け手を縮める場合) は Lua / C (GC stress 込み) とも "before" の後に fault し、CoreCLR も同じ位置で例外。範囲内の読み書き (bool の要素、複合代入) は CoreCLR の stdout と一致
+- 性能 (perf/bench-2backend.sh、2000 フレーム、7 回の中央値、load average 7 前後の同じ時間帯に前後を続けて測った): Lua は particles 1.17 → 1.36 ms / frame、particles_struct 1.33 → 1.69 ms / frame (sprite_update と spawn_churn は揺れの範囲)。最初の helper 呼び出しの形では particles が約 2 倍になったので、読み出しを `or`、書き込みを nil との比較の inline にした。C は変わらない
+- 判断: 書き込みを `#t` と比べる案は、Lua の長さの計算が要素の読み出しより重いので捨てた。要素が nil になりうる配列も長さで見る案は、穴のある table の `#` が当てにならないので捨てた。helper の名前は `__tcs_get` (`__tcs_at` は `--trace` が関数ごとの現在行の local に使う)
+- 残課題: なし
+
+### instance method の overload ✓ (2026-10-25)
+- static method と同じく、同じ型に同名の method が複数あるときだけ名前に引数の型を付ける。interface の method は interface の中の overload で名前を決め、それを実装する method は interface の method の名前を使う (`LuaNaming.ImplementedInterfaceMethods`)。interface 経由の呼び出し (Lua の `obj:M`、C の dispatch) と class 経由の呼び出しが同じ key を引く。tcs2c に渡す interface の IL の method 名も同じ関数で作る
+- 診断: 別の interface から同じ名前の method を実装して名前が食い違う場合と、型を付けた名前が他の member と同じ綴りになる場合は TCS1001 MethodOverload。構文の規則 (instance method を含む overload を止めていた) は消した
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.InstanceOverload_DispatchesBySignature (interface の overload を class と interface の両方から呼ぶ、interface に無い overload、static と instance の同名、struct の instance method の overload) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。overload の追加は reload chunk と増分 session の両方で live (AddingInstanceOverload_IsLiveInBoth)
+- 判断: interface の method を常に型付きの名前にする案は、overload の無い interface でも名前が変わり host から見える名前が読みにくくなるので捨てた
+- 残課題: なし
+
+### generic な record / struct と、generic class の static property と generic method の method group ✓ (2026-10-25)
+- Lua: 型引数の既定値の隠れ引数 (T270) を generic な record / struct / record struct にも広げた。record は `new`、struct は zero 値の `new` と `ctor` が受けて値に持ち、`__copy` と static field の zero 値もそれを写す。generic class の static property の accessor も受け、呼び出し側 (読み出し、代入、複合代入) が渡す。generic struct の `__copy` は型引数の値を写す関数も受け、copy 地点が型引数の可変な struct の `__copy` (入れ子の generic struct は closure) を渡す。変更前は `Slot<M>` を copy しても中の `M` を共有し、片方への書き込みがもう片方に見えていた
+- C: generic な型の特殊化を class から record / struct / record struct / interface に広げ、generic method の method group (`G.Id<int>`、型引数を推論させた `G.Id`) も閉じた method に書き換える。`IlSpecialization.Expand` は top level の型だけを扱う (copy を compilation unit の根に足すため)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.GenericRecordStruct (generic record の default(T) と with、generic struct の zero 値と default(T)、generic record struct の値等価、generic class の static property、generic method の method group、generic struct の copy が型引数の struct も写すこと) と、Lua だけだった Records_GenericFieldsCompareWithEqualityComparerDefault は CoreCLR の stdout と Lua / C (GC stress 込み) が一致
+- 判断: generic なコードの中で型引数の値を copy する経路には copier を渡していない。generic なコードは T の field を書き換えられず、値を受け取った具体的な型の側が copy 地点で写し直すため
+- 残課題: なし
+
+### T268 ユーザー定義ジェネリクスの docs を実態に揃え、generic な型の static field を TCS1001 にする ✓ (2026-10-25)
+- support-matrix の Out 行と §7、objective.md の「切るもの」とジェネリクス方針を、実態 (class / record / struct / method と型制約が Lua は型消去、C は特殊化で動く) に揃えた (q.md Q20)
+- 確かめる途中で、generic class の static field が Lua では閉じた型の間で共有されることが分かった (`Counter<int>` を 3 回と `Counter<string>` を 1 回作ると、C# と C は 3 / 1、Lua は 4 / 4)。Lua は型を消すので閉じた型ごとの値を持てない。generic な型の static field と static auto property を TCS1001 `GenericStaticField` にした (const と、backing field の無い static property は可)
+- 検証: `bash run-tests.sh` 全通過。SubsetDiagnosticTests.StaticFieldOfGenericType_IsUnsupported (static field と static auto property の 2 箇所だけが GenericStaticField)。C だけで閉じた型ごとの static を確かめていた host テスト (`tcs2c/tests/generics.cs`、`verify-game-core.sh`) からその部分を外した
+- 判断: Lua でも閉じた型ごとの static を持たせる案 (型引数の組を key にした table) は、型引数の既定値の隠れ引数では型を区別できず (int と enum はどちらも 0)、型の識別子を別に渡す仕組みが要るので捨てた
+- 残課題: なし
+
+### T261 Dictionary の Keys / Values を TinySystem.Linq の受け手にする ✓ (2026-10-25)
+- TinySystem.Linq に `Dictionary<TKey, TValue>.KeyCollection` / `ValueCollection` を受け手にする overload を足した (Where / Select / Any / All / Count / FirstOrDefault / Sum / Min / Max / MinBy / MaxBy / OrderBy / OrderByDescending と、要素型の Sum / Min / Max)。どれも copy constructor で List に写して List の版に渡す (Lua / C の Keys / Values はもともと List の写し)。tcs2c は KeyCollection / ValueCollection 型の parameter を key / value の List として扱う
+- overload の名前に付ける型の表記に外側の型を入れた (`Dictionary<TKey, int>.ValueCollection` と `Dictionary<TKey, float>.ValueCollection` が同じ名前になっていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.KeysValues_AreLinqReceivers (順序に依らない集計と、OrderBy で並べた結果) は CoreCLR の stdout と Lua / C (GC stress 込み) が一致。LinqSemanticTests.Library_CompilesAndStaysInsideSubset は失敗時にサブセットの診断を全部出すようにした
+- 判断: 受け手を `IReadOnlyCollection<T>` 1 つにまとめる案は、List の呼び出しでも毎回写しが要るので捨てた
+- 残課題: なし
+
+### spec conformance report を生成する環境に依らず同じにする ✓ (2026-10-25)
+- `doc/spec-conformance-report.md` は compiler のメッセージを載せるので、生成した環境の UI の言語で中身が変わり (日本語の Windows と英語の Linux)、run-tests のたびに関係のない差分が出ていた。sweep の実行中だけ UI culture を invariant にして英語に揃え、report を生成し直した (static method の overload と checked で、expressions.md の 5 件が Diag → InCompile)
+- 検証: `bash run-tests.sh` 全通過。生成し直した report は、もう一度 run-tests を回しても差分が出ない
+- 判断: Transpiler 自身のメッセージは利用者の言語のままにした (CLI と IDE の利用者には読める言語で出すほうがよい)
+- 残課題: なし
+
+### lub への feature request (TinySystem.Linq と readonly record struct) ✓ (2026-10-25)
+- neguse/lub#302 に、third_party/tcs を上げるときの合わせ方を出した: LINQ を使うコードは `using TinySystem.Linq;` (tcs は csproj の global using を読まない)、.NET は `TinySystem.props` の Import で `Linq.cs` を取り込む (雛形はすでに Import している)、残る演算と落とした演算、data を運ぶ struct は `readonly record struct`
+- 検証: lub の samples / templates / cs-lib に LINQ と C# の struct の宣言が無いことを grep で確かめた (submodule を上げても今のコードは変えずに通る見込み)
+- 残課題: なし (lub 側の対応は #302)
+
+### overload のセルフレビューの指摘を直す ✓ (2026-10-25)
+- `x?.M(...)` は C# が選んだ overload を呼ぶようにした (同名の method の先頭を呼んでいた。Lua は黙って別の method、C は型の error)
+- analyzer も TCS1001 MethodOverload を出すようにした (判定が `tcs check` の側にしか無く、IDE は黙っていた)。判定は TinyCsComplianceFacts.TryGetUnsupportedOverload にまとめた
+- `--ref` の型の overload は、参照する名前の側で TCS1001 MethodOverload にした (host の宣言の tree は診断しないので、宣言の側の判定は届いていなかった)
+- C の特殊化で、generic な型の overload が型引数で同じ parameter の型になる場合 (`M(T)` と `M(string)` の T = string) に、閉じた copy の宣言と呼び出しを IL の名前にした (同じ method が 2 つになり C# の compile が止まっていた)
+- tcs2c/README の `--lib` の entry の名前に overload の型が付くことを書いた
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.InstanceOverload_ConditionalCallUsesBoundOverload / InstanceOverload_InGenericTypeWithCoincidingTypeArgument は CoreCLR の stdout と Lua / C が一致、SubsetDiagnosticTests.CallingHostOverload_IsMethodOverload、analyzer の OverloadNameCollision_ReportsMethodOverload
+- 判断: host の overload は宣言の tree を診断に足す案もあったが、host の宣言は使わない member も多く、呼ばない overload まで止めることになるので参照の側にした
+- 残課題: なし
+
+### 型引数の既定値のセルフレビューの指摘を直す ✓ (2026-10-25)
+- 省略した `T x = default` は callee に埋めさせる (呼び出し側で作ると、generic な呼び出し元の型引数の既定値を渡していた)
+- generic な struct の配列 (`new S<int>[n]`) の要素を、型引数の既定値を渡して作る (`S.new()` で作り、`V` が nil だった)
+- generic な型の operator は、自分の型の operand が持つ型引数の既定値を使う (operator の中の `default(T)` と `new Vec<T>()` が nil の既定値になっていた)
+- 型引数を書いた呼び出し (`Get<int>()`) は直接の呼び出しにする (method group の closure をその場で呼ぶ Lua になり、括弧が無く構文 error だった)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.GenericDefault_OmittedArgumentArrayAndOperator は CoreCLR の stdout と Lua / C が一致
+- 判断: operator は呼び出しが metamethod の形で隠れ引数を足せないので、operand から取る。operand が全部 null のときは既定値が nil になる (C# の operator は少なくとも 1 つの operand が自分の型)
+- 残課題: なし
+
+### Lua の添字の範囲検査のセルフレビューの指摘を直す ✓ (2026-10-25)
+- false になりうる要素 (bool に加えて型引数と object) は nil と比べて範囲を見る (`List<T>` の T = bool で false の要素を読むと範囲外になっていた)。受け手と添字を読み直せるなら helper を呼ばない形にした
+- `x?[i]` も要素が nil になりうる配列と false になりうる要素を区別する (null の要素、false の要素で範囲外になっていた)
+- 要素への代入は受け手、添字、値を評価してから範囲を見る (C# の順序)。Lua は受け手と添字を読み直せるときに値より先に範囲を見ていて、C は常に値より先に範囲を見ていた
+- string の負の添字 (`s[-2]`) を範囲外にした (Lua の string.byte は負の位置を末尾から数え、C の runtime も同じにしていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.IndexStore_EvaluatesValueBeforeRangeFault / IndexRead_FalseAndNullElementsThroughGenericAndConditional と `s[-2]` の範囲外は CoreCLR の stdout と Lua / C が一致。`perf/bench-2backend.sh` は 4 kernel とも dev / release の digest が一致し、Lua dev の ms/frame は直前の計測より遅くない
+- 判断: 型引数の要素を常に helper で読む案は、TinySystem.Linq の loop が毎回 helper を呼ぶことになるので、読み直せる形は inline にした (false のときだけ 2 回目の比較をする)
+- 残課題: なし
+
+### TinySystem.Linq の配線のセルフレビューの指摘を直す ✓ (2026-10-25)
+- query 式 (`from x in xs ...`) を TCS1001 `QueryExpression` にした (TinySystem.Linq が query の形を満たすので .NET と analyzer は通し、tcs は別の構文の名前で止めていた)
+- `--module` の table に library の型 (`Enumerable`) を入れない
+- user が TinySystem.Linq の namespace を渡したとき (手元の版) は同梱の library を入れない (同じ型が 2 つになり、渡していない file の位置で error になっていた)。増分 session も同じ
+- 増分 session と IL export は library を診断しない (full build と揃えた)
+- `List<T>.RemoveAll` を .NET と同じ手順にした (述語が list を伸ばしたときに残る要素が違っていた)
+- 使わなくなった `List.ToDictionary` の runtime と ToDictionary の key の判定、古い記述 (il-spec の ToList / ToDictionary の copy、support-matrix の ToDictionary) を消し、README / objective の LINQ の一覧に MinBy / MaxBy と Keys / Values を足した
+- 検証: `bash run-tests.sh` 全通過。LinqSemanticTests.QueryExpression_IsUnsupportedSyntax / Module_DoesNotExportLibraryTypes / UserTinySystemLinq_ReplacesBundledLibrary、analyzer の QueryExpression_ReportsUnsupportedSyntax、DifferentialTests.FindIndexRemoveAll_MinByMaxBy_MatchDotnet (伸ばす述語の結果 `2 1,3,9,` は CoreCLR で確かめた)
+- 判断: 手元の版の判定は namespace の宣言で見る (型の名前で見ると、一部だけ差し替えた版で同梱の版と混ざる)
+- 残課題: なし
+
+### struct の with を値の copy の上に書く ✓ (2026-10-25)
+- struct の `with` を `__copy` (入れ子の struct も写す) の上に override を書く形にした (pairs の shallow copy で、入れ子の struct が元の値と共有されていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructCopy_WithCopiesNestedStructs は CoreCLR の stdout と Lua / C が一致
+- 判断: record class の with も struct の field を写し直す案は、サブセットの record class が可変な struct の field を持てない (positional property は init だけ、本体の field は TCS1001) ので入れなかった
+- 残課題: なし
+
+### ctor の省略した引数を宣言の既定値で埋める ✓ (2026-10-25)
+- ctor の呼び出しで省略した引数を、呼び出し側で宣言の既定値で埋める (record / record struct の positional parameter の既定値は Lua で nil、C は引数の数の error だった)
+- 型引数の型の parameter の既定値 (`T b = default`) は、呼び出しで決まった型の既定値にした (callee に nil を渡して埋めさせていたが、record / struct の ctor は埋める本文を持たない)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.OmittedConstructorArguments_UseDeclaredDefaults は CoreCLR の stdout と Lua / C が一致
+- 残課題: なし
+
+### C backend も未対応 API を TCS1002 で止め、MathF を TCS1002 にする ✓ (2026-10-25)
+- tcs2c (IL export) も未対応 API の診断 (TCS1002) を出す (Lua 経路だけが出していて、C は `method has no IL body` などの別の error か、そのまま通っていた)
+- `System.MathF` を TCS1002 にした (support-matrix ではサブセット外だが判定に無く、Lua は global の MathF が nil で実行時 error、C はそのまま動いていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.UnsupportedApi_BothBackendsStopWithDiagnostic (MathF.Sqrt、System.Linq の First) は Lua / C とも同じ TCS1002 で止まる
+- 残課題: なし
+
+### C の特殊化で interface の generic method を扱う ✓ (2026-10-25)
+- interface の generic method を、interface と実装する型 (generic な型の閉じた copy も) に同じ名前の閉じた method として作る (interface 経由の呼び出しが閉じた method を見つけられず、C# の compile が止まっていた)。実装する型の method の呼び出しも interface の method で数える
+- 型引数の置き換えは型の key の文字列で持つ (後の round でできる実装する型にも、同じ型引数で作る)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.InterfaceGenericMethod_DispatchesThroughInterface (非 generic な interface、generic な型の copy が実装する場合、generic な interface) は CoreCLR の stdout と Lua / C が一致
+- 残課題: なし
+
+### analyzer も意味を見る TCS1001 の規則を transpiler と同じに出す ✓ (2026-10-25)
+- 意味を見る規則 (TopLevelArgs / ConditionalAttribute / InstanceMethodGroup / NonConstantAlignment / InterfaceTypeTest / 値で比べる key の Dictionary / 継承 / host の interface の実装 / MethodOverload) を TinyCsComplianceFacts.TryGetUnsupportedSemanticSyntax にまとめた。analyzer は semantic model action で tree の全 node に呼ぶ (前半の 5 つは analyzer が出していなかった)
+- 検証: `bash run-tests.sh` 全通過。analyzer の SemanticRules_MatchTranspilerDiagnostics (規則ごとの例で、analyzer と AnalyzeUnsupportedSyntaxes の位置と名前が一致) は修正前に 5 件が red
+- 判断: 規則ごとに node の種類を analyzer に登録する形をやめた (規則を足したときに analyzer の登録を忘れて食い違う)
+- 残課題: なし
+
+### struct の boxing を TCS1001 StructBoxing にする ✓ (2026-10-25)
+- struct (record struct、struct の `T?` も) を object / interface に変換する式を TCS1001 `StructBoxing` にした (Lua は `o is M` が常に偽、interface 経由の呼び出しが nil の method、C は emit の error だった)。暗黙の変換は式の変換先の型、明示の cast は cast の型で見る
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructBoxing_BothBackendsStopWithDiagnostic は Lua / C とも同じ TCS1001 で止まる。analyzer の SemanticRules_MatchTranspilerDiagnostics に boxing の例を足した
+- 判断: Lua の struct の table に型を持たせて `is` と interface 経由の呼び出しを通す案は、copy 地点ごとに作る table が重くなり、C も boxing の表現を新しく持つことになるので取らなかった
+- 残課題: なし
+
+### 文字列にできない型の文字列化を TCS1001 UnsupportedToString にする ✓ (2026-10-25)
+- class / record / interface / struct / List / Dictionary を静的型に持つ値の文字列化 (`ToString()`・文字列連結・補間・`Console.WriteLine`・`string.Join` の要素) を TCS1001 `UnsupportedToString(T)` にした (C# は型名や record の member の一覧を書くが、Lua は table のアドレスを書くか連結で落ち、C は受け付けなかった)
+- object と型引数の値は実行時に値で決める: Lua の `__tcs_nstr` / `TinySystem.nstr` / `String.Join` は table の値で fault する。型引数の値も object と同じく `__tcs_nstr` を通す (`tostring` のままで、`T?` の null の連結で落ちていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.UnsupportedToString_BothBackendsStopWithDiagnostic は Lua / C とも同じ TCS1001 で止まる。TypeParameterToString_FollowsValue (`1E+10|1E+10|0.1|0.1|||3|3|s|s`) は CoreCLR の stdout と Lua / C が一致。StringTests.ObjectHoldingRecord_ToStringFaults、analyzer の SemanticRules_MatchTranspilerDiagnostics に文字列化の例を足した
+- 判断: record の ToString (`R { A = 1 }`) を Lua / C で書く案は、型ごとの書式関数と入れ子の値の書式が要り、support-matrix で対象外としてきたので取らなかった
+- 残課題: なし
+
+### bool の文字列化を .NET と同じ True / False にする ✓ (2026-10-25)
+- bool の文字列化 (`ToString()`・連結・補間・`Console.WriteLine`・`string.Join` の要素、`bool?` と object に入れた値も) を .NET と同じ `True` / `False` にした (Lua も C も `true` / `false` を書いていた)。Lua は `__tcs_bstr` (module の artifact は `TinySystem.bstr`)、C は `tcs_string_bool`
+- spec sweep / fuzz の bool の正規化 (`True` → `true`) を消した。CorpusDifferential は式の値そのものが bool の場合だけ、Lua の print の表示に合わせる
+- 既存のテストと tcs2c の検証 script の期待値を C# の `True` / `False` に直した (CorpusDifferential が同じ C# を .NET でも実行して突き合わせる)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.BoolToString_MatchesDotnet は CoreCLR の stdout と Lua / C が一致。spec conformance report は変わらない
+- 判断: lub など既存のコードの bool の表示は `true` から `True` に変わる (ユーザーの判断で .NET に揃えた)
+- 残課題: なし
+
+### 要素への代入で、値の呼び出しが受け手や添字を書き換える場合も C# の順序にする ✓ (2026-10-25)
+- 受け手と添字を読み直せて値が呼び出しを含む代入 (`a[si] = F()` で F が si を書き換える) は、受け手と添字を先に local に取ってから値を評価する (値を先に local に取っていたので、書き換えた後の受け手と添字に書いていた)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.IndexStore_ValueCallChangingReceiverOrIndex は CoreCLR の stdout と Lua / C が一致 (修正前の Lua は `1,9` / `1,5`)
+- 残課題: なし
+
+### C の特殊化で、generic な型の overload の型引数を書いた呼び出しを保つ ✓ (2026-10-25)
+- 閉じた copy の overload を IL の名前にするとき、generic method の書いた型引数 (`g.Make<int>(1)`) を残す (落としていたので、推論できない型引数の呼び出しが閉じた method にならず C# の compile error だった)
+- 型の copy は型の型引数だけ、method の copy は method の型引数だけを置き換える (同じ名前の method の型引数が型の型引数を隠す場合)。overload の IL 名は型自身が型引数を持つときだけ使う (generic な型の中の入れ子の型は TCS1001 の診断に任せる)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.InstanceOverload_GenericMethodsInGenericTypeWithExplicitTypeArguments は CoreCLR の stdout と Lua / C が一致
+- 残課題: なし
+
+### host の overload の判定に、拡張 method の形の呼び出しと基底の型の method を入れ、private を外す ✓ (2026-10-25)
+- `--ref` の型の overload の TCS1001 MethodOverload を、拡張 method の形の呼び出し (`o.Poke(1)`) と基底の型の同名の method (`Derived.Dup(string)` と `Base.Dup(int)`) にも出す。private の overload は user から呼べないので数えない
+- 検証: `bash run-tests.sh` 全通過。SubsetDiagnosticTests.CallingHostOverload_ReducedExtensionBaseAndPrivate (3 例)
+- 残課題: なし
+
+### 手元の版の TinySystem.Linq を、入れ子の namespace と増分 session の編集でも扱う ✓ (2026-10-25)
+- 入れ子の `namespace TinySystem { namespace Linq { } }` も手元の版として見る (外側の namespace の名前をつなぐ。namespace の宣言だけをたどる)
+- 増分 session は編集のたびに同梱の library を合わせ直す: 手元の版を消した編集は compilation を作り直し、使っていれば library の module を足す (compilation に library が無いままで、以後の編集が CS0234 で止まっていた)。手元の版を足した編集は library の module を外す (重複の定義で止まっていた)
+- 同梱の library と同じ path の、手元の版でない module は OpenProject で ArgumentException にする (library の module に上書きされていた)
+- 検証: `bash run-tests.sh` 全通過。IncrementalSessionTests.VendoredLibraryAddedOrRemovedInUpdate_SwitchesBundledLibrary / UserModuleAtLibraryPath_IsRejected、LinqSemanticTests.UserTinySystemLinq_InNestedNamespace_ReplacesBundledLibrary
+- 残課題: なし
+
+### Console.Write を Lua / C で書き、MathF の二重の診断と RemoveAll の縮む list を直す ✓ (2026-10-25)
+- 1 引数の `Console.Write` を対応にした: Lua は `io.write` (文字列化は WriteLine と同じ)、C は `tcs_write_string` (C は以前から書けたが、IL export の TCS1002 で止まるようになっていた)。書式つきの Write は TCS1002 のまま
+- analyzer の TCS1004 (System.Math の超越関数) から MathF を外した (MathF は TCS1002 で、同じ呼び出しに 2 つ出ていた)
+- C の RemoveAll は、述語が list を free より短くしたときに切らない (負の長さで memset していた)。.NET は消した要素を数えなおすが、Lua / C は負の数を返すだけ
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.ConsoleWrite_MatchesDotnet (`a11.5Truec|`) と FindIndexRemoveAll_MinByMaxBy_MatchDotnet は CoreCLR の stdout と Lua / C が一致。analyzer の MathF_ReportsOnlyTcs1002、SubsetDiagnosticTests.ConsoleMembersOutsideWriteLineAndWrite_ReportErrors
+- 残課題: なし
+
+### 文字列化の診断の見逃しと、bool / string / char の補間の書式を直す ✓ (2026-10-25)
+- TCS1001 `UnsupportedToString(T)` を、metadata の struct (`KeyValuePair` など) の連結と `Console.WriteLine`、`x?.ToString()` と型の中の `ToString()`、`string.Join` の配列と Dictionary の Values にも出す (診断が出ず、Lua は table のアドレスか実行時 error、C は emit の error だった)
+- bool / string / char の補間の書式は C# と同じく使わない (IFormattable でない。Lua は string.format の error、C は emit の error だった)
+- dotnet differential の bool の比較を戻した: bool の値は FormatLikeLua が Lua の表示に揃えるので、文字列の "True" を小文字にしていたのは誤り (値そのものが "True" の文字列の test が不一致になり、生の boolean を返す Lua を見逃す)
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.UnsupportedToString_BothBackendsStopWithDiagnostic に 7 例を足した、InterpolationFormat_IgnoredForBoolStringAndChar (`[True][False][s][c][  True]`) は CoreCLR の stdout と Lua / C が一致、StringTests.BoolToStringAsWholeResult (TCS_DIFFERENTIAL=1 で修正前は red)
+- 残課題: なし
+
+### object の member の呼び出しを TCS1002 にする ✓ (2026-10-25)
+- `Equals` / `GetHashCode` / `ReferenceEquals` / `GetType` / `MemberwiseClone` (record の合成するもの、数値や enum が継承したものも) の呼び出しを TCS1002 にした (診断が出ず、Lua は nil の method の呼び出しか構文の壊れた Lua、C は emit の error だった)。user が宣言した同名の method は対象外
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.ObjectMembers_BothBackendsStopWithDiagnostic (7 例) は Lua / C とも同じ TCS1002 で止まる
+- 判断: record の `Equals` を `__eq` に写す案は、`==` で書けることと、GetHashCode も揃える必要があるので取らなかった
+- 残課題: なし
+
+### interface の制約を持つ型引数に入れる struct と、foreach の interface への変換を TCS1001 にする ✓ (2026-10-25)
+- interface の制約を持つ型引数 (`where T : IShape`) に struct を入れる generic method の呼び出しと generic な型を TCS1001 `StructInterfaceConstraint(S)` にした (Lua の generic なコードは interface の method を `x:Area()` にするが、struct の member は自由関数で、実行時に nil の method を呼んでいた。C は動いていた)
+- `foreach (IShape s in List<Sq>)` の反復変数への変換も TCS1001 `StructBoxing`
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructBoxing_BothBackendsStopWithDiagnostic に 3 例を足した (Lua / C とも同じ TCS1001)
+- 判断: Lua の struct の table に interface の method を持たせる案は、struct に metatable を持たせない設計 (copy 地点ごとの table を軽くする) と合わないので取らなかった
+- 残課題: なし
+
+### generic な型の operator は型引数の既定値を隠れ引数で受ける ✓ (2026-10-26)
+- generic な型の operator を、static method と同じく末尾の隠れ引数で型引数の既定値を受ける形にした (operand が持つ値を読んでいたので、operand が全部 null のときに `default(T)` / `new Vec<T>()` が nil の既定値だった)。呼び出し箇所は Roslyn が選んだ operator を直接呼ぶので、隠れ引数を足せる
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.GenericDefault_OmittedArgumentArrayAndOperator に operand が全部 null の operator と複合代入を足した (CoreCLR の stdout と Lua / C が一致)
+- 残課題: なし
+
+### struct を入れた型引数の既定値と代入を、値ごとに別の table にする ✓ (2026-10-26)
+- 可変な struct を入れた型引数は、既定値の隠れ引数に値の table ではなく zero 値と copy の作り方 (記述子 `{__tcs_td = true, n, c}`。非 generic な struct は `S.__tcs_td`) を渡す。`default(T)` は使うたびに新しい zero 値 (`__tcs_dv`)、型引数の型の field / 配列の要素への代入 (object initializer も) は copy (`__tcs_tc`)、`new T[n]` は要素ごとに zero 値
+- 修正前は既定値の table を field と既定値のすべてが共有し (`Pair<In>` の A を書き換えると B も変わる)、generic なコードの中の `A = B` も同じ table を共有していた。`new T[n]` は T が値型でも空の table だった
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.StructTypeArgument_DefaultsAndStoresDoNotAlias は CoreCLR の stdout と Lua / C が一致。`perf/bench-2backend.sh` は 4 kernel とも digest が一致し、Lua dev の ms/frame は直前の計測より遅くない
+- 判断: copy は外から観測できる地点 (field と配列の要素への代入) だけにした。List の要素はその場で書き換えられず、呼び出しの結果は呼び出し側の copy 地点で写すので、LINQ の loop には copy を足さない
+- 残課題: なし
+
+### analyzer も生成されたコードを診断し、assembly / module の属性を API の対象外にする ✓ (2026-10-26)
+- analyzer は生成されたコード (`[GeneratedCode]` の member、生成された file) も診断する (transpiler は変換して診断するのに、analyzer は黙っていた)
+- assembly / module に付く属性 (`[assembly: AssemblyVersion(...)]`) は実行時の意味を持たない metadata なので、TCS1002 の対象外にした (build が生成する AssemblyInfo に TCS1002 が出ていた。user の file に書いた場合も同じ)
+- 検証: `bash run-tests.sh` 全通過 (analyzer-demo の期待する診断の数は変わらない)。analyzer の SemanticRules_MatchTranspilerDiagnostics に `[GeneratedCode]` の例 (修正前は analyzer が 0 件)、AssemblyAttributes_AreNotUnsupportedApi (analyzer と transpiler)
+- 残課題: なし
+
+### enum を入れた型引数の値と、enum の List / 配列の string.Join を member 名で文字列化する ✓ (2026-10-26)
+- enum を入れた型引数は、型引数の既定値の隠れ引数に member 名で文字列化する記述子を渡す (`__tcs_etd(spec)`。名前の表ごとに 1 つを cache し、表は enum を型引数に渡す地点にだけ出る)。型引数の値の文字列化 (連結・補間・`Console.WriteLine`) は `__tcs_tstr` が記述子の名前の引き方を使う
+- `string.Join` に渡した enum の List / 配列は member 名で Join する (`String.JoinEnum`。C は `tcs_string_join_enum`)
+- 修正前はどちらも数値を書いていた (support-matrix の既知の差)。`object` に入れた enum は実行時の値が enum の型を持たないので数値のまま
+- 検証: `bash run-tests.sh` 全通過。DifferentialTests.EnumTypeArgumentAndJoin_UseMemberNames は CoreCLR の stdout と Lua / C が一致
+- 判断: enum ごとに記述子を型の table に置く案は、名前の表を文字列化しない enum にも出すことになる (EnumToStringTests.NameTable_IsEmittedOnlyWhereStringified) ので、渡す地点で作る形にした
+- 残課題: `object` に入れた enum の文字列化 (値に型の札を付けないと区別できない)
+
+### 単項マイナスのオペランドが `-` で始まっても `--` にしない ✓ (2026-10-31)
+- 負の int 定数のインライン化 (`const int K = -5; -K`) と入れ子の単項マイナス (`- -x`) で、Lua は `--` (行の残りがコメントになる)、C は `--INT32_C(5)` (減算子) を出していた。`-` で始まるオペランドを括弧で包む
+- 検証: DifferentialTests.UnaryMinus_OperandStartingWithMinus は CoreCLR の stdout と Lua / C が一致 (修正前は Lua の構文エラーと C の compile エラー)
+- 残課題: なし
+
+### 生成 Lua に構文ノードの生テキストを使わない (型パターンの型参照、補間の書式句と配置句) ✓ (2026-10-31)
+- 型パターンの型参照は `FormatTypeSyntax` の fallback (`type.ToString()`) を消し、名前で表せない型は TCS1001 にする。delegate、`object`、metadata の class、`--ref` の generic な型への型 test は Shared の規則 `TypeTestWithoutRuntimeType` で analyzer / check / transpiler が同じ診断を出す (修正前は `__tcs_is(o, Func<int>)` やコメントの中身がそのまま Lua に出た)
+- 補間の配置句は `GetConstantValue` の int から、書式句は `ValueText` から作り、どちらも `EscapeLuaString` を通す。精度に数字以外がある書式指定子は規則 `MalformedFormatSpecifier` で拒否する
+- 検証: SubsetDiagnosticTests の TypeTest* / MalformedFormatSpecifier_IsRejected / InterpolationAlignment_UsesConstantValueNotSyntaxText、analyzer の SemanticRules_MatchTranspilerDiagnostics。配置句にコメントを含む program は CoreCLR の stdout と Lua / C が一致
+- 判断: 同じ値型の入力への `is` は値の有無だけで型の表現が要らないので規則の対象外
+- 残課題: なし
+
+### 括弧付きの pattern を中の pattern に透過して lower する ✓ (2026-10-31)
+- `(Sq or Ci) or Tri` や `(Sq s)` の `ParenthesizedPatternSyntax` は lower できず TCS1001 になっていた (analyzer は診断しない)。switch 式 / 文の照合と `is` の sub-pattern は中の pattern に透過し、designation の前宣言、discard の arm、`is` の宣言 pattern の判定も括弧を外して見る。`((Ci))` の型名は括弧の中の型参照を使う
+- 検証: DifferentialTests.ParenthesizedPattern_IsTransparent は CoreCLR の stdout と Lua / C が一致。TypePatternTests.ParenthesizedPattern_BindsDesignation (Lua)
+- 判断: `CoversAll` は master に無い (T265 の PR は未 merge) ので触らない
+- 残課題: なし
+
+### int? → float? の変換で整数を f32 に丸める ✓ (2026-10-31)
+- 暗黙の `int?` → `float?` (比較の昇格、代入、引数) と `(float?)x` は Lua で整数のまま残り、`16777217 <= 16777216f` が nullable だけ false だった。C は `(float?)x` を受けなかった。値があるときだけ変換する lifted の単項 `IlUnOp.ToFloat` を IL に足し、Lua は `__tcs_nlift1(x, __tcs_op_tofloat)`、C は `{ has, v }` の変換で出す
+- 検証: DifferentialTests.NullableIntToNullableFloat_RoundsToFloat32 は CoreCLR の stdout と Lua / C が一致
+- 残課題: なし
+
+### nullable の `??` の未選択の右辺を Lua で評価しない ✓ (2026-10-31)
+- Lua は呼び出しを含まない右辺を `__tcs_nget(left, right)` の引数として先に評価し、左に値があってもゼロ除算や null の field 参照で停止した。`__tcs_nget` は評価しても fault しない右辺 (literal / local と、その括弧・wrap) だけに使い、他は文への lowering か IIFE で遅延する
+- 検証: DifferentialTests.NullableCoalesce_DoesNotEvaluateUnselectedRight は CoreCLR の stdout と Lua / C が一致
+- 残課題: なし
+
+### `??=` の右辺が local の受け手を差し替えても元の object に書く ✓ (2026-10-31)
+- `box.Name ??= (box = other).Name + "!"` で、Lua は差し替え後の object に書き、C は式の値を差し替え後の object から読み直していた。右辺が受け手 / 添字の読む local を書き換えるときは、文でも式でも受け手を右辺より先に temp に固定する
+- 検証: DifferentialTests.CoalesceAssignment_RightReplacesLocalReceiver は CoreCLR の stdout と Lua / C が一致
+- 残課題: なし
+### Rune の文字列化と char.ConvertFromUtf32 を UTF-8 の文字列にする ✓ (2026-10-31)
+- `Rune` の `ToString`・連結・補間・`WriteLine` と `char.ConvertFromUtf32` は codepoint の UTF-8 文字列を返す。範囲外は Lua / C とも同じ文言で fault
+- 検証: DifferentialTests の Rune_ / ConvertFromUtf32_ は CoreCLR の stdout と Lua / C が一致
+- 判断: 文字列は byte 単位のまま。CoreCLR は BCL の同名 API が動くので facade を足さない
+- 残課題: なし
+
+### (char)x の範囲外を Lua / C で同じ fault にする ✓ (2026-10-31)
+- `(char)x` の x が 0〜255 の外なら fault し、`char.ConvertFromUtf32` を案内する。C の char の文字列化も範囲外で fault する (Lua の `string.char` と同じ)
+- 検証: DifferentialTests の CharCast_ / CharIncrement_ は Lua / C とも同じ stdout の後に fault
+- 判断: 定数の範囲外も TCS1001 にせず同じ fault にして、診断の範囲を広げない
+- 残課題: なし
+### Array の member と SortedDictionary を TCS1002 にする ✓ (2026-10-31)
+- `Array.Sort` などの System.Array の member (配列の `Length` 以外) と `new SortedDictionary<,>()` を TCS1002 にした。support-matrix ではどちらも未対応なのに check を通り、Lua は実行時に nil の index、C は emit の error だった
+- 検証: ApiSignatureComplianceTests.UnimplementedOverload_ReportsTcs1002 (transpiler と analyzer) と DifferentialTests.UnsupportedApi_BothBackendsStopWithDiagnostic
+- 残課題: 同じ表の `HashSet` / `Queue` / `Stack` / `LinkedList` / `SortedList` / `SortedSet` は扱っていない。名前の無い BCL の型を既定で通す判定 (TryGetUnsupportedApi) はそのまま
+
+### 補間の数値の書式を .NET の ToString(format) と同じ文字列にする ✓ (2026-10-31)
+- int の G / E / F / N / D / X / R (`String.FormatInt`) と float の F / N / R (`String.FormatFloat`) を runtime/fmt の実装で書く。修正前は printf の書式に写していて、整数の `{x:E}` の指数が 2 桁、`{x:G}` が `1.23457e+06`、精度なしの F が 6 桁、N に区切りが無く、Lua は 3 桁以上の精度を `string.format` が受けなかった
+- float は正確な値を偶数に丸め、int の E / G はちょうど中間を絶対値の大きい方に丸める (CoreCLR の実測)。int の R は G と同じく精度を使い、float の R は精度を見ない
+- 検証: DifferentialTests.IntFormat_MatchesDotnet、FloatFormat_FixedAndRoundTripMatchDotnet、NumberFormat_WideRangeHashMatchesDotnet は CoreCLR の文字列と Lua / C が一致
+- 判断: 新しい source file を足すと host (tcs_rt を build する側) の build の変更が要るので、int の書式も runtime/fmt/f2s.c に置いた
+- 残課題: C / P と custom の書式 (T267)。float の D / X は .NET の FormatException と同じく Lua / C も実行時の error で止まる。2^31 以上の uint の書式は、lua32 は実行時の error、C は emit の error、64 bit の Lua も `tcs_rt.ifmt` の範囲検査で実行時の error で止まる
+### tcs_rt.sort_strings で __len の返す長さに上限を設ける ✓ (2026-10-31)
+- `__len` が返す長さをそのまま掛け算していたので、64bit の lua で 2^61 + 1 を返すと確保の大きさが wrap し、確保した外へ書いて segfault した。`table.sort` と同じく `INT_MAX` 以上と `size_t` に収まらない長さを "array too big" で止める
+- 検証: RuntimeTests.SortStrings_RejectsLengthThatDoesNotFit (lua32 と lua)。修正前は lua の 2^61 + 1 が exit 139、他は "block too big"
+
+### tcs2c: string.Join と enum の文字列化の長さの合計に桁あふれ検査を入れる ✓ (2026-10-31)
+- `tcs_string_join_items` と `tcs_enum_format` の `total` を `tcs_string_concat` と同じく `string-length-overflow` で止める。`tcs_string_join_values` と `tcs_string_join_enum` の `count * sizeof(*items)` は `allocation-overflow` で止める
+- 検証: StringLengthOverflowTests (長さだけを持つ TcsString を runtime の関数へ渡す 6 件)。修正前は 6 件とも fault せず失敗
+
+### Lua の String.Trim を空白の連続の長さに線形にする ✓ (2026-10-31)
+- `^%s*(.-)%s*$` は `.-` の各位置で `%s*$` をやり直すので、内側の空白の連続に対して 2 乗の時間がかかっていた。先頭の非空白を `find` で探し、そこから `.*%S` で最後の非空白まで取る
+- 検証: StringMethodTests.String_Trim_LongInnerWhitespaceIsLinear (内側に 100 万個の空白)。修正前は RunLua の 10 秒の timeout で失敗。String_Trim_Runtime は修正の前後で通る
+
+### seed 未指定の Random の仕様を実装に合わせ、lua32 で os.clock の項が消えるのを直す ✓ (2026-10-31)
+- il-spec と C runtime のコメントの「`luai_makeseed` 相当」を取り下げ、il-spec と support-matrix に時刻由来で予測でき、敵対的な用途には向かないと書く。実装は時刻由来のまま
+- lua32 では CPU 時間が 2^31 µs を越えると `os.clock` の項が `math.tointeger` の nil で 0 になっていた。2^31 の剰余を取って項を残す
+- 検証: RandomSemanticTests.Random_AutoSeed_UsesClockBeyondLua32IntegerRange。修正前は `os.clock` が 3000 秒と 4000 秒で同じ列になり失敗
+- 判断: OS の entropy から 4 語を埋める案は取らない (seed 未指定の Random は `math.random` 相当のゲーム用 PRNG)
+### watch: reload chunk を組めない例外でも restart を求める ✓ (2026-10-31)
+- `--reload-chunks` の watch で `PlanReload` が例外を投げたら、例外の message を理由に `restart_required` を送り、ホストの build を進める (restart の理由がある編集と同じ経路)
+- 修正前は log だけを出して build を進めなかったので、出力から起動し直したホストに次の chunk が当たらなかった
+- 検証: `dotnet test Transpiler.Tests --filter "FullyQualifiedName~WatchRestartTests|FullyQualifiedName~WatchChunkOrderTests|FullyQualifiedName~WatchModeTests"` が全通過。Watch_ReloadChunks_PlanFailure_RequestsRestart は修正前に `no @@tcs_restart_required within 5000ms` で fail
+- 判断: この例外を自然に踏む入力が無いので、テストは環境変数 `TCS_TEST_RELOAD_PLAN_FAILURE` で 1 回だけ失敗させる。テストは Debug でしか走らないので (`run-tests.sh` と CI の `dotnet test` は構成を指定しない)、hook は `#if DEBUG` で囲み、Release の binary には入れない
+- 残課題: なし
+
+### runtime の Lua をバイナリの隣だけから読む ✓ (2026-10-31)
+- `LuaRuntime.FindPath` は作業ディレクトリとバイナリの祖先を探さず、`AppContext.BaseDirectory` の `runtime/` だけを読む。無ければ変換は失敗する。`Transpiler.csproj` は `module_registry.lua` もバイナリの隣に置く
+- 修正前は、リポジトリの外に置いた tcs の `--snapshot` が `module_registry.lua` を作業ディレクトリの祖先から読んで生成物に埋め込んでいた
+- 検証: RuntimeLocationTests は修正前に 3 件 fail (仕込んだファイルが `--snapshot` の出力に入る、runtime の無いバイナリが仕込んだファイルで成功する)、修正後は全通過。作業ディレクトリに `runtime/` を仕込んだ状態で、`dotnet run --project Transpiler`、Release の `Transpiler.dll`、`dotnet publish` の出力、NativeAOT の publish の出力のそれぞれで `--snapshot` と通常の変換が通り、仕込んだものが出力に入らないことを確認。`dotnet build WasmCompiler -c Release` は通る (埋め込み resource を使い `FindPath` を通らない)
+- 判断: 開発用の `--runtime-dir` や環境変数は足さない。`dotnet build` / `dotnet run` / テストの出力にも `runtime/` が置かれるので、リポジトリ内の開発で要らない
+- 残課題: なし
+
+### PowerShell 版の補助スクリプトの作業場所をユーザー別の private dir に移す ✓ (2026-10-31)
+- `rider-env.ps1` に bash 版の `tcs_cache_dir` / `ensure_private_dir` に当たる `Get-TcsCacheDir` / `Initialize-PrivateDir` を足し、`verify-inspectcode.ps1`、`verify-rider-prechecks.ps1`、`run-tests.ps1` の作業場所を共有の temp dir からそこへ移した
+- 検証: PowerShell で一度も実行していない (この環境に pwsh が無く、CI にも PowerShell の step が無い)。`bash run-tests.sh` は通るが、ps1 は通らない
+- 判断: `run-tests.ps1` の scratch root に空の `Directory.Build.props` を置く案は入れない。bash 版と同じく、自分専用の場所に移すことで足りる
+- 残課題: PowerShell での実行
+
+### TinySystem.Text: RuneCount / RuneSubstring / Utf8Bytes ✓ (2026-10-31)
+- 文字列の文字と byte の位置の API を `TinySystem.Text` に置く。C の正本は `runtime/utf8`、Lua は `tcs_utf8` module、.NET は `TinySystem/Utf8.cs`
+- `Utf8Bytes` は `readonly struct`。Lua は `{ s, o, Length }` の不変の table、C は user の struct と同じ値 (GC の layout に文字列の slot)、.NET は `byte[]` / start / Length。`ToString` は壊れた並びを `Encoding.UTF8` と同じ位置で U+FFFD にする
+- 検証: `dotnet test tcs2c.Tests --filter "FullyQualifiedName~Utf8"`。`Backends.RunDotnet` で同じ program を実 .NET でも実行し、Lua / C / .NET の stdout を比べる。C の復号は 1〜2 byte の全組み合わせと境界の値の 3〜4 byte の並びで `Encoding.UTF8` と比べる
+- 判断: struct にすると `default(Utf8Bytes)` と未初期化の field の意味を 3 経路で揃える手間がかかるので、null の意味が揃う class にする
+- 残課題: `byte` の `++` と `(byte)x` は Lua / C で 0〜255 に丸めない
+
+### Trim と引数なしの Split の空白を 3 経路で揃える ✓ (2026-10-31)
+- Lua と C は ASCII の空白だけを見ていて、U+3000 などを .NET と違う扱いにしていた。空白の判定と走査を `runtime/utf8` に置き、Lua と C が同じ実装を呼ぶ
+- 検証: `dotnet test tcs2c.Tests --filter "FullyQualifiedName~TrimAndSplit"`。修正前は 2 件 fail、修正後は U+0000〜U+3100 の全文字で Lua / C / .NET が一致
+- 判断: `char.IsWhiteSpace(char)` は整数 code unit の ASCII 判定のまま (§13b)
+- 判断: .NET Release の `Slice` が class の 19.2ns に対して struct は 3.8ns で、添字は差が無い (1.26ns / 1.30ns)。後から変えると意味の変更になるので struct にする。`default` は長さ 0 の view
+- 判断: `byte` は i32 と同じ表現で Lua / C は丸めないので、`(byte)x` (範囲内の定数は可) と `byte` への `++` / `--` / 複合代入は TCS1001 `ByteNarrowing` で止める
+- 残課題: なし
+
+### EnumerateRunes を壊れた列で 3 経路揃える ✓ (2026-10-31)
+- Lua は `utf8.codes` が error で止まり、C は緩い復号で overlong などを通していた。どちらも `runtime/utf8` の `tcs_utf8_decode` で読み、壊れた並びは `Encoding.UTF8` と同じ位置で U+FFFD にする
+- 検証: `dotnet test tcs2c.Tests --filter "FullyQualifiedName~EnumerateRunes_Broken|FullyQualifiedName~RuntimeScrub"`。修正前は 14 件 fail
+- 判断: program の中の string は `(char)` の 1 byte の連結でだけ壊れ、.NET では別の文字になるので、同じ byte 列の `Encoding.UTF8` の結果を期待値にする
+- 残課題: なし
+
+### string の Length / Substring / IndexOf / 添字 / foreach を TCS1002 で止める ✓ (2026-10-31)
+- 文字列を UTF-8 と定めたので、.NET と結果が揃わない位置の API を止める。診断に置き換え先を書く。Lua と C の対応する実装は消す
+- tcs の既存のテストを `RuneCount` / `RuneSubstring` / `Utf8Bytes` に書き換える。`IndexOf` と添字の動作を見ていたテストは消す。fuzz の生成器も同じ
+- 検証: `DifferentialTests.UnsupportedApi_BothBackendsStopWithDiagnostic` (Lua / C の診断)、`TinyCsComplianceAnalyzerTests.Utf16StringApis_ReportUnsupportedApiWithReplacement` (analyzer)
+- 残課題: lub の `cs-lib`、`samples`、`tests/cs` の使用は lub 側の作業
+
+### 一覧に無い BCL の型を既定で止める ✓ (2026-10-31)
+- `TinyCsComplianceFacts` の TCS1002 を、止める namespace と型を列挙する形から、support-matrix の一覧にある型だけを通す形に変えた。`System.*` / `Microsoft.*` の型は member を使う地点に加えて型を書く地点でも止まる。`Enum` の static member も止まる
+- 修正前は `HashSet` や `Convert` などが診断なしで通り、実行時に nil で落ちていた
+- 検証: `dotnet test` の全通過。追加した `UnlistedBclType_IsUnsupportedApi`、`UnlistedBclTypeMention_ReportsUnsupportedApi`、`UnsupportedApi_BothBackendsStopWithDiagnostic` は修正前に fail
+- 判断: 属性の中は Lua / C に出ないので対象外。`IEnumerable<T>` などの N/A の型は書くのを許し member を止める。`StringComparison.Ordinal` のように overload の引数にしか使えない enum の member も型の一覧に無いので止まり、1 文に TCS1002 が 2 つ出ることがある
+- 残課題: なし
+
+### List に null を入れられるようにする ✓ (2026-10-31)
+- List の要素の null を C# と同じ結果にした。Lua は要素が null になりうる List (参照型 / `T?` / 型引数 / object) の長さを field `n` に持ち、添字の範囲は nil か false を読んだときだけ長さと比べる。`foreach` は長さまで数える numeric for にした (ipairs は nil で止まる)。C は `string.Join` の null の要素を空文字列にし、比較なしの Sort の null を最小にした。List の null の TCS1003 を外した
+- 値型の要素の List は null を持たないので `n` を持たず、生成コードは `#list` のまま。host が返す素の table も `n` が無いので List として読める
+- 検証: `DifferentialTests.ListNull` (Lua / C 通常 + GC stress の stdout が CoreCLR の stdout と一致)。Lua の前後の実測は PR に書いた
+- 判断: 全 List に `n` を持たせる案は値型の Add が 21〜52% 遅くなり、参照型で `n` を null を入れるまで作らない案は `n` が無い table の field 読みが遅く Add が 77% 遅くなった。値型は `n` を持たず、参照型は Add で `n` を進める形にした
+- 残課題: `List<int>.RemoveAt(Count)` は Lua の `table.remove` が末尾の次の位置を受け付けるので fault にならない (修正前から)
+
+### List.Insert と List.GetRange ✓ (2026-10-31)
+- `List<T>.Insert(int, T)` と `List<T>.GetRange(int, int)` を Lua / C に足した。範囲外は fault。GetRange は新しい List に写し、変更可能な struct の要素は copy する
+- 検証: `DifferentialTests.ListInsertGetRange` (Lua / C 通常 + GC stress の stdout が CoreCLR の stdout と一致)、範囲外の fault parity
+- 判断: `InsertRange` / `RemoveRange` / `Slice` は依頼の範囲外なので入れない
+- 残課題: なし
+
+### Queue\<T\> ✓ (2026-10-31)
+- `new Queue<T>()`、`Enqueue`、`Dequeue`、`Peek`、`Count`、`Clear`、`Contains`、`foreach` を Lua / C に足した。Lua は先頭と末尾の添字で O(1)、C は連続 buffer と先頭の添字
+- 検証: `DifferentialTests.Queue` (Lua / C 通常 + GC stress の stdout が CoreCLR の stdout と一致)、`AssertParityLib` でフレーム境界の GC を跨ぐ
+- 判断: `foreach` は今の要素の写しを反復する (Dictionary の `Keys` / `Values` と同じ)。`TryDequeue` と容量つきの constructor は入れない
+- 残課題: なし
+
+### HashSet\<T\> ✓ (2026-10-31)
+- `new HashSet<T>()`、initializer、`Add`、`Remove`、`Contains`、`Count`、`Clear`、`foreach` を Lua / C に足した。.NET の HashSet と同じく slot に要素を持つので、列挙の順も 3 経路で同じになる
+- 検証: `DifferentialTests.HashSet` (Lua / C 通常 + GC stress の stdout が CoreCLR の stdout と一致)、`AssertParityLib` でフレーム境界の GC を跨ぐ (class の要素は昇格で address が変わる)
+- 判断: 値で比べる要素と float は TCS1001 で止める。C の TcsDict は key が i32 / string / host handle だけで、class の同一性と列挙の順を持たないので使わない。集合演算と `new HashSet<T>(source)` は入れない
+- 残課題: なし
+
+### struct の演算子と static member ✓ (2026-10-31)
+- struct / record struct に二項 `+ - * / %` と単項 `-` の演算子 (class と同じ範囲)、static field、static auto property、static method、custom な static property を入れた。Lua は型の table に class と同じ形で置き、C は class の static と同じ置き場と初期化の規則に乗せる
+- IL 契約は `IlStructInfo.StaticFields` を足した。`Fields` は instance のままなので layout と等価と copy は変わらない
+- hot reload は struct の型 table を置き換えるので、残る static の値を移し直し、layout が変わった struct の static は再直列化する
+- `Box<int>.Of(1)` の受け手 (型引数を書いた型) は Lua の経路が受け付けていなかったので、class と struct の両方で通した
+- 検証: `DifferentialTests.StructOperators` (C 通常 + GC stress + Lua) の期待値は同じ program を CoreCLR で実行した stdout。`HotReloadTests` / `HotReloadRestartTests` に struct の static を足した
+- 判断: `==` / 比較系 / 変換演算子は class と同じくサブセットの外。Main を struct に置く entry は C backend が class だけを探すので対象外のまま
+- 残課題: なし
+
+### 複数の constructor ✓ (2026-10-31)
+- class / struct / record struct に constructor を複数書けるようにした。Lua は `LuaNaming.CtorName` の名前 (`C.new__int`、`S.ctor__float__float`) の関数を constructor ごとに作り、C は `tcs_new_` / `tcs_init_` / `tcs_ctor_S_` を constructor ごとに作る
+- IL 契約は `IlClassInfo.Ctor` / `IlStructInfo.Ctor` を `Ctors` にし、`IlCtorInfo.Name` と `IlNewObj.Ctor` で宣言と呼び出しを結ぶ
+- 引数のある explicit constructor を持つ record struct は Lua で関数が出ていなかったので、struct と同じ経路で出すようにした
+- 検証: `DifferentialTests.MultipleConstructors` (C 通常 + GC stress + Lua) の期待値は同じ program を CoreCLR で実行した stdout
+- 判断: `: this(...)` は入れない (今回の範囲に無い)。TCS1001 `ThisConstructorInitializer` のまま
+- 残課題: なし
+
+### ToString の override ✓ (2026-10-31)
+- class / record / struct / record struct に `override string ToString()` を書けるようにした。`x.ToString()` は instance method の呼び出しで、連結 / 補間 / `Console.WriteLine` は直接呼びに写す (null の値と ToString が返した null は空文字列、struct は copy の上で呼ぶ)
+- 型引数の値は Lua で class の metatable と struct の記述子 (`s`) から引く。C は閉じた型で静的に解決する
+- Equals / GetHashCode の override は struct でも `OverrideMember` にした (`StructMember(MethodDeclaration)` だと何が悪いか読めない)
+- 検証: `DifferentialTests.ToStringOverride` (C 通常 + GC stress + Lua) の期待値は同じ program を CoreCLR で実行した stdout
+- Lua の `new T()` は型の無い global `T.new()` を呼んで落ちていたので、struct の型引数は隠れ引数の既定値から作るようにした。class の型引数は作り方を持たないので fault のまま (C は閉じた型で動く)
+- 判断: `string.Join` の要素は runtime が文字列にするので止めたまま。`S?` の連結 / 補間 / `Console.WriteLine` は StructBoxing のまま (`?.ToString()` は書ける)
+- 残課題: なし
+
+### Lua の可変 struct の引数の copy の省略 ✓ (2026-10-31)
+- 引数の copy を、呼ばれた側の書き換えを隠す役は呼ばれた側の入口の copy に移し、呼び出しの間に変わらない場所 (lambda が捕捉しない local / parameter で後の引数と受け手に現れないもの) を渡す呼び出し側は copy を省く。C に渡す IL は copy 地点を残す
+- 検証: `DifferentialTests.StructArgumentCopy` (C 通常 + GC stress + Lua) の期待値は同じ program を CoreCLR で実行した stdout。`IncrementalSessionTests.BodyEdit_ThatStartsWritingStructParameter_KeepsCallerValue`
+- 判断: 省略の判断を呼び出し側が呼ばれた側の本文を見て決める形は採らない。呼ばれた側の本文だけの hot reload で判断が古くなる。同じ理由で readonly でない instance member の呼び出しは本文を見ずに書き換えとみなす
+- 残課題: なし
+
+### ref / in の診断 ✓ (2026-10-31)
+- `in` の parameter は `expression: InvocationExpression` で止まっていたので TCS1001 `InParameter` にした。ref の戻り値と ref local は `RefType`、host の method への `ref` / `in` 引数は `RefArgument` / `InArgument`
+- 検証: `DifferentialTests.RefIn` (Lua と C)、`MultiReturnTests.HostRefAndInArguments_ReportUnsupportedSyntax`、analyzer の `InAndRefReturnAndRefLocal_ReportUnsupportedSyntax`
+- 残課題: なし
+
+### 自作メソッドの out (`out var` / `out _`) ✓ (2026-10-31)
+- 自作メソッドの宣言に `out` を書ける。呼び出しに渡せるのは `out var` / `out T x` / `out _` だけで、前もって宣言した変数、field、配列の要素、out parameter は TCS1001 (`OutArgumentNotDeclaration`)
+- Lua は `return 戻り値, out...` の multi-return で、条件の位置の呼び出しは IIFE を作らず文に下ろす。C は signature の末尾の `T *` で、本体は普通の local に書き、return の位置で呼び出し側の stack の一時変数へ書く
+- 検証: `dotnet test tcs2c.Tests --filter "FullyQualifiedName~OutParameters"` の Lua、C、GC stress が一致し、期待値は CoreCLR の実行結果。`dotnet test Transpiler.Tests --filter "FullyQualifiedName~MultiReturn"`、`dotnet test TinyCs.Analyzers.Tests --filter "FullyQualifiedName~Out"` が通過
+- 判断: delegate / lambda / constructor の out は呼び出しの形が決まらないので TCS1001 のまま
+- 残課題: なし
+
+### タプル ✓ (2026-10-31)
+- 戻り値、分解 (入れ子、`foreach`、`(a, b) = (b, a)`、field と配列の要素への代入)、変数と field への保持、`List<(int, int)>`、配列、`T?` を使える。比較、パターン、要素の型が違うタプルへの変換、8 要素以上、`ValueTuple` の型名は TCS1001
+- `TinySystem/ValueTuple.cs` を library として user のコードと一緒にコンパイルすると、タプルの構文は Roslyn がこの宣言に結び付くので、struct の copy、既定値、List の等価はそのまま動く。C は `IlSpecialization` がタプルの構文を閉じた struct に置き換える。.NET はこのファイルを読まず BCL の ValueTuple を使う
+- Lua は戻り値の宣言がタプルの method を multi-return にし、保持する位置だけ table に詰める
+- 検証: `dotnet test tcs2c.Tests --filter "FullyQualifiedName~Tuples"` の Lua、C、GC stress が一致し、期待値は CoreCLR の実行結果。`dotnet test Transpiler.Tests --filter "FullyQualifiedName~TupleTests"`、`dotnet test TinyCs.Analyzers.Tests --filter "FullyQualifiedName~Tuple"` が通過
+- 判断: 分解の左辺の custom property は TCS1001 のまま (setter を呼ぶ経路が要る)。library は使う tree だけを emit する (タプルだけの program に Linq を入れない)
+- 残課題: なし
+
+### delegate の同一性と合成を TCS1001 で止める ✓ (2026-10-31)
+- delegate どうしの `==` / `!=` は `DelegateEquality`、`+` / `-` / `+=` / `-=` は `DelegateCombine` の TCS1001。`Equals` は既に TCS1002 で止まる。null との比較、呼び出し、代入は残す
+- 検証: `DifferentialTests.DelegateOperations` が修正前に 8 件 fail、修正後は全通過。残す形の期待値は CoreCLR の stdout。analyzer の parity にも足した
+- 判断: `== null` は値の有無だけで全経路の結果が同じなので止めない
+- 残課題: なし
+
+### 入れ子の型を扱う ✓ (2026-10-31)
+- class / struct / record / record struct / enum / interface の中の型を、外側の型の名前を `_` でつないだ独立の型 (`Outer_Inner`) にする。Lua と C で同じ名前。generic でない型の中の generic な型も、C は閉じた copy を同じ外側の型に置く
+- generic な型の中の型は TCS1001 `NestedTypeInGenericType`
+- C の struct の typedef の順は、field の型名を写した名前で比べる (修飾名の struct の依存を見落としていた)。本文編集の差し替えは method を直接持つ class だけにする (class の中の struct の method を外側の class の同名 method に当てていた)
+- 検証: `DifferentialTests.NestedTypes` は Lua / C / C (GC stress) の stdout と、同じ program の CoreCLR の stdout が一致する。`NestedTypeTests` で名前、本文編集、module の登録、診断を確かめる
+- 判断: generic な型の中の型は外側の型引数を持つので、Lua の型消去と C の閉じた copy のどちらにも単純には写らない。実装は需要を見てから
+- 残課題: なし
+
+### class の interface の検査 ✓ (2026-10-31)
+- class / record class への `is I`、`as I`、型 switch を判定する。Lua は class table の `__interfaces` (名前の集合) を `__tcs_implements` で引き、C は既存の型 id の switch を使う
+- 型 switch の designation の local は宣言の型にする。C で object / interface の入力から宣言の型の member を引ける
+- 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`)、generic な interface、metadata と `--ref` の interface は TCS1001 `InterfaceTypeTest` のまま
+- 検証: `DifferentialTests.InterfaceTypeTest` は Lua / C / C (GC stress) の stdout と、同じ program の CoreCLR の stdout が一致する。止める形は両 backend の診断を確かめる。module mode は `InterfaceTests` で確かめる
+- 判断: generic な interface は Lua が型引数を消すので、`I<int>` と `I<string>` を区別する名前を別に決める必要がある。需要を見てから
+- 残課題: `as` は interface だけで、class の `as` は TCS1001 のまま
+
+### interface の property ✓ (2026-11-01)
+- interface 経由の property を、実装の形によらず `get_X` / `set_X` の呼び出しにした。Lua は custom property の実装で nil を読み、setter を飛ばしていた。C は `unknown field` で止まっていた
+- 自動 property と record の positional property で interface を実装する型には accessor を生成する。実装の型で読むときは field の直接アクセスのまま
+- delegate 型の property の `a.Cb(3)` は accessor の戻り値を呼ぶ。class の custom property も同じ経路で呼べる
+- C は継承した interface の member を派生した interface の表にも写し、`IB : IA` の `b.M()` が `unknown method` で止まらないようにした。`o is I { W: 1 }` は member を検査した型として読む
+- field で interface の property を実装する緩和 (CS0535 の除外) を外した。C# が拒否する program を通していた
+- 検証: `DifferentialTests.InterfaceProperty_*` は Lua / C / C (GC stress) の stdout と CoreCLR の stdout が一致する。`InterfaceTests.InterfaceProperty_ModuleMode` は module mode と本文の差し替えを確かめる
+- 判断: interface の indexer は TCS1001 のまま
+- 残課題: なし
+
+### Lua の cast の実行時の検査 ✓ (2026-11-01)
+- object / interface / 型引数からの cast を Lua でも実行時に確かめ、合わなければ C / .NET と同じく fault する。対象は class / record、generic でない interface、string、bool、int、float。これまで Lua は何も確かめずに素通ししていた
+- Lua が型を見分けられない型 (List / Dictionary / Queue / HashSet / 配列 / delegate / generic な型 / 型引数 / enum / char / byte / `T?`) への cast は TCS1001 `UnverifiableCast`、型 test は `UnverifiableTypeTest`。C だけが判定できた `o is List<T>` も止める
+- char / byte / enum などを object に入れるのは TCS1001 `ValueBoxing`。文字列化だけの位置は残す
+- 検証: `DifferentialTests.Casts_*` は Lua / C / C (GC stress) の stdout と CoreCLR の stdout が一致し、不一致の cast は全経路で fault する
+- 判断: 型引数を Lua に持ち込むと generic の呼び出しごとに値を渡す費用がかかるので、型消去のまま止める
+- 残課題: C の `tcs_typed` の構造型 id は lib の host との境界に残している
+
+### セルフホストの compiler ✓ (2026-10-31)
+- TinyC# のサブセットで書いた compiler (`SelfHost/Compiler`、約 1.5 万行) を足した。lexer、parser、宣言、binder、Lua の emitter からなり、参照実装の runtime の前置きの上で動く Lua を直接出す。設計と提案からの差は `doc/self-hosting-design.md` §17
+- bootstrap: 参照実装が作った stage1 が lua32 の上で自分のソースを変換し (stage2)、stage2 がもう一度変換した stage3 と byte で一致する。同じ compiler を .NET で動かした出力も stage2 と一致する (`SelfHostBootstrapTests`)
+- 差分の検査 (`TCS_SELFHOST_DIFF=1`): TranspileAndRun、tcs2c.Tests の Lua の実行、fuzz、C# の仕様の例を母集団にして、実行の結果を参照実装と比べる。`run-tests.sh` で有効にした
+- 検証: `run-tests.sh` と同じ設定の `dotnet test` で、比べた入力 577 件のうち 575 件が一致、2 件はセルフホストだけが TCS1001 を出す (参照実装の取りこぼし、T276)。fuzz を `TCS_FUZZ_COUNT=300` にしても全て一致。この container で落ちる 2 件 (root で走らせる書き込み権限の test、en_US の locale が無い test) はセルフホストと関係しない
+- よかったこと: 実行の結果を比べる差分の検査は、既存の test をそのまま母集団にでき、出力の形 (一時変数の名前など) を参照実装と揃えなくて済んだ。食い違いは 1 件ずつ再現の program (`selfhost-cases/`) に落ちるので直しやすい
+- 判断: IL と後半を共有する提案 (S1、S2) は採らなかった。参照実装の後半はサブセットに入らない書き方 (継承、例外、ImmutableArray) を使っていて、移すと参照実装の全体に手が入る。runtime の前置きを共有すれば同じ意味を保てる
+- 残課題: 増分の session と統合 (T275)。差分の検査で見つけた参照実装の不具合は T272 (`float.IsNaN`) と T276 (多次元配列)
+
+### T274 セルフホストの compiler の C の build ✓ (2026-10-31)
+- tcs2c でセルフホストの compiler を C にした。driver (`SelfHost/Native/TcscMain.cs`) はファイルの読み書きと引数を host の関数 (`HostStub.cs` の宣言、`host.c` の実装) で受ける
+- compiler から object を key にする Dictionary を除いた (tcs2c の key は int と string)。型の scope は TypeDeclSym の field に、`?.` の受け手は Node の field に置き、Dictionary どうしの参照の比較もやめた
+- 検証: `SelfHost/build.sh` で、C の build が compiler 自身を変換した出力は stage2 と byte で一致する。Lua (stage2 / stage3)、.NET、C の 3 経路が同じ出力になる。C の build の変換は約 0.09 秒
+- 判断: C の build を xUnit ではなく run-tests の cc のある段に置いた。tcs2c と gcc の build で 20 秒ほどかかり、tcs2c の他の検証 (verify-*.sh) と同じ条件で走らせるため
+- 残課題: なし
+
+### T272 / T276 数値の static method と多次元配列を準拠検査で止める ✓ (2026-10-31)
+- 数値と bool の static method は `Parse(string)` と `TryParse(string, out T)` だけを通し、他 (`float.IsNaN`、`float.IsInfinity`、`int.Max`、`float.Abs` など) を TCS1002 にした。これまでは `tcs check` を通り、Lua は `math.IsNaN` (nil) を呼んで止まっていた
+- 多次元配列 (`int[,]`、`new int[5, 2]`) を TCS1001 `MultiDimensionalArray` にした。これまでは診断なしで通り、Lua は添字で範囲外の error になっていた。jagged 配列は対象外
+- どちらもセルフホストの差分の検査で見つけた (前者は compiler を書く途中、後者は C# の仕様の例でセルフホストだけが TCS1001 を出した)
+- 検証: `SubsetDiagnosticTests` (transpiler) と `TinyCsComplianceAnalyzerTests` (analyzer) で両方の診断と、Parse / TryParse が通って動くことを確かめる。`run-tests.sh` の全体
+- 判断: `float.IsNaN` を Lua の `x ~= x` と C の `isnan` に写す案もあったが、`TinySystem/Linq.cs` が既に「サブセットに無い」として `x != x` で書いている方針に合わせた。需要が出たら Math の側に足す
+- 残課題: なし
+
+### T273 セルフホストの準拠検査とフロー解析、受理と拒否の比較 ✓ (2026-11-01)
+- 差分の検査に受理と拒否の比較を足した。C# の仕様の例のうち実行しないものを、参照実装が受理したならセルフホストも受理し、拒否したならセルフホストも拒否するかで比べる (`SelfHostDifferential.CheckVerdict`)。test が差し込む偽の transpile の結果とは比べない
+- 構文で決まる TCS1001 を `SelfHost/Compiler/Compliance.cs` に写した (識別子の規則、継承の語、record class と struct の member、演算子、属性、`: this(...)` など)。TCS1002 (`System.Random`、`long`)、TCS1003 (長さで作る参照型の配列、参照実装と同じく警告)、多次元配列の型 (型引数の中も) は Declarer と Binder で判定する
+- フロー解析: 到達可能性 (CS0161、CS1643) と、確実な代入の緩い判定 (CS0165。到達できない場所は代入済み)。他に CS0220 (定数の桁あふれ、unchecked は除く)、CS1612、CS0236 / CS0027、CS0523、CS0111、CS0150 / CS0847、CS0178、CS1032
+- 受理の側の不足も直した: `init` accessor の中の代入、Color Color の規則、instance の method が合わないときの拡張メソッド、取得だけの property への入れ子の collection 初期化子、interface の variance、識別子の Unicode escape、`#define` / `#if` / `#elif` / `#else` / `#endif`、namespace を指す using の別名、`global::`、`new int()`、`using static`、空の positional record
+- 名前が同じで型引数の数が違う型は TCS1900 (未対応) にした
+- Roslyn だけが判定する検査 (出力に影響しない accessibility、制約の形、variance、修飾子の組み合わせ、tuple の名前) は design §17.6 に一覧にし、差分の検査は deferred として数える
+- 検証: `run-tests.sh` と同じ設定の `dotnet test` で、実行の一致 575 件、受理の一致 99 件、拒否の一致 448 件、deferred 7 件、未対応 1 件。拒否、見逃し、食い違い、crash は 0。`SelfHostDiagnosticsTests` が検査ごとの代表 (拒否 22 形、受理 14 形) を固定する。bootstrap の 3 経路は一致したまま
+- 判断: 確実な代入は、まず C# が受理する program を拒否しない緩い判定 (読む前のどこかで代入されているか) で入れ、T277 で C# の規則に置き換えた
+- 残課題: なし
+
+### T277 セルフホストの確実な代入を C# の規則で判定する ✓ (2026-11-01)
+- `SelfHost/Compiler/DefiniteAssignment.cs`: 束縛した後の本体を走査し、代入済みの local の集合を状態として持つ。合流は積集合で、到達できない経路は全て代入済み。条件式は真のときと偽のときの状態を分ける (&& || ! と定数の true / false)。loop は break / continue の状態を合流し、本体の始まりは入る前の状態。switch は default の有無と、定数の switch で値に合わない section を見る。lambda は作った時点の状態で中を見て、中の代入は外に出さない。?. ?? ??= と switch 式の腕は評価されないことがある
+- 追うのは初期化子なしで宣言した local。pattern と out var の local は宣言した時点で代入済み、struct / tuple の local は field ごとの代入を追わないので見ない
+- 束縛の中でやっていた緩い判定 (ソースの順) と、そのための到達できない文の数え方は消した
+- 検証: `SelfHostDefiniteAssignmentTests` が 47 の本体 (&& / || と out、loop と break / continue、switch と switch 式、?. と ??、lambda、到達できない場所、定数の switch) を参照実装と同じ判定か比べる。`run-tests.sh` と同じ設定の差分の検査
+- 判断: struct の local の field ごとの確実な代入 (全ての field に代入すれば値として読める) は追わない。読まれる前に全ての field を代入しない struct の local を受理してしまうが、Lua の struct は zero 値の table で作るので出力は壊れない
+- 残課題: なし
+
+### T275 セルフホストの増分の session と Step の driver ✓ (2026-11-01)
+- `SelfHost/Compiler/Session.cs`: ファイルを足し、差し替え、外して compile する。parse は内容が変わったファイルだけやり直し、parse したままの木を持つ。束縛は木を書き換えるので、compile ごとに木の複製 (`Node.CloneTree`) を組み立てて、宣言、束縛、出力をやり直す。compile は Step (parse 1 ファイル、組み立てと準拠検査、宣言、束縛、出力) に分かれ、`Start` は途中の compile を捨てる
+- `Compiler.CompileWithLibraries` は session を 1 回回す入口にした (経路を 1 つにした)
+- C の build は `TcscMain.Start` と `TcscMain.Step` の entry に分け、host.c が Step を終わりまで呼ぶ。entry の間が GC の frame の境界になる。`TCSC_HEAP=1` で段の間の managed heap の最大を出す
+- `SelfHost/Host/bench-session.lua` で Lua の上の時間を測る
+- 検証: `SelfHostSessionTests` (編集の後の結果が 1 から compile した結果と同じ、parse し直すのは変わったファイルだけ、宣言の変更が他のファイルの束縛に届く、ファイルを外す、Step の数と途中の始め直し、parse の誤りの持ち越し)。bootstrap の 3 経路は一致したまま (C の build は Step で回して stage2 と同じ)
+- 測定: compiler 自身 (約 1.7 万行) で cold 約 1.7 秒、変更なし約 0.6〜0.75 秒、小さいファイルの編集の後 約 0.6 秒 (lua32)。C の build は 18 段、段の間の managed heap は最大約 51MB
+- 判断: 束縛と出力を変わったファイルの分だけにするのは、束縛が木を書き換えることと出力が program 全体で決まることから見送った。ゲームの規模なら全体をやり直しても速い見込みで、lub に同梱してから測って決める
+- 残課題: lub への同梱は lub の側の変更なので feature request にする (T278、文面の案は design §17.7)
+
+### セルフホストの compiler を lub の C# で確かめ、lub から使う ✓ (2026-11-01)
+- host (`--ref`) の規則を参照実装と同じにした (型のパス、snake_case と UPPER_SNAKE、host の enum を畳まない、property は field、`new` は table、host の class の継承と属性の宣言)
+- `Host/tcsc.lua` に `check`、`--watch` (restart_required)、`--reload-chunks`、`--warnaserror` を足した
+- 検証: lub (Linux、SDL の offscreen、lavapipe) で samples 31 本を参照実装とセルフホストの出力で動かし、frame の digest と capture が全て一致。tests/cs は 48 本が両方で通る (TestManyDraws は両方で segfault する環境の問題)。`SelfHostHostApiTests` が偽の host の上で参照実装と同じ結果を確かめる
+- lub の側は branch `tcs-selfhost` (lub の push は利用者の承認が要るので push していない): `lub tcsc`、dotnet が無いときの fallback、`scripts/build-tcs-selfhost.sh` (lub の Lua で固定点)、release の一式への同梱、smoke test、manual
+- 判断: セルフホストは reload chunk を作らず、保存で VM を作り直す。lub の protocol の restart_required でそのまま扱える
+- 残課題: なし (web の playground は T278 で足した)
+
+### T278 セルフホストの compiler の WebAssembly 版と、lub の playground での利用 ✓ (2026-11-01)
+- `SelfHost/Web/`: Emscripten で Lua 5.5 (LUA_32BITS) と tcs の runtime の C を 1 つの ES module にし (SINGLE_FILE、web / worker / node)、`web.lua` が `TcsSelf_Session` を JSON で包む。`tcsc.mjs` の `createTcsc` が JS の入口
+- lub の側 (branch `tcs-selfhost`): playground の `?compiler=selfhost` で、.NET wasm の worker と同じ要求を受ける worker (`tcs-selfhost-worker.ts`) を使う。出力に runtime の commit ACK と同じ行を足し、player の作り直しの handoff に乗せる。`npm run gen-tcs-selfhost` と `npm run verify-tcs-selfhost`
+- 検証: `node SelfHost/Web/test.mjs` (stage2.lua と byte で同じ、増分の結果が 1 からの結果と同じ)。lub の wasm の player を build し、headless Chromium で playground の 30 サンプルの描画と C# の編集 (ClearColor を赤に) を確かめた
+- 判断: 補完と hover は返さない (Roslyn の worker が持つ機能で、セルフホストの binder を IDE 用に途中の誤りに強くするのは別の仕事)。編集はいつも player を作り直す
+- 残課題: なし
+
+### T279 IL の型と IL を Lua にする処理をサブセットに写す ✓ (2026-11-01)
+- 単一の実装へ移す最初の段 (self-hosting-design §18)。参照実装の IL (`Transpiler/Il.cs`) を `SelfHost/Compiler/Il.cs` に、`LuaEmitter.IlEmit.cs` / `LuaEmitter.IlLower.cs` と出力の状態を `SelfHost/Compiler/LuaGen.cs` に写した
+- 参照実装の IL を入口 (method の本体、式の描画、struct の記述子) ごとに写した IL へ変換し、写した emitter でも描いて出力と状態を比べる (`TCS_LUAGEN_CHECK=1`、`Transpiler/LuaGenCheck.cs`)。Transpiler は SelfHost を参照する
+- 検証: `TCS_LUAGEN_CHECK=1 dotnet test Transpiler.Tests` で 1273 件が通過 (失敗の 1 件 Cli_AtomicOutputReplace_RespectsUnixWritePermission は root で動かす環境由来で、master でも同じ)。fuzz と仕様の例の sweep (`TCS_FUZZ=1 TCS_SPEC_CONFORMANCE=1`) の 4 件も通過。compiler 自身と lub の Baseball24 (764 回の比較) も一致。`bash SelfHost/build.sh` で固定点と C の build の一致
+- よかったこと: 参照実装の record とサブセットの record の名前と constructor の parameter の名前を揃えたので、変換は reflection だけで書けた
+- 判断: 参照実装の出力を写した版に切り替えるのではなく、比べる形にした (切り替えても同じ証拠になり、変換の費用が毎回かかる)。参照実装は手順 3 で消す
+- 残課題: 手順 2〜4 (T280〜T282)
+
+### T280 IL の組み立てと型の出力をサブセットに写す ✓ (2026-11-01)
+- 単一の実装へ移す 2 段目 (self-hosting-design §18.2)。参照実装の LuaEmitter (IL の組み立て、型の出力、static の初期化の順) を、セルフホストの束縛済みの木から作る形で `SelfHost/Compiler/IlBuild.cs` / `LuaEmit.cs` / `LuaPrelude.cs` / `StaticInitDeps.cs` に写した。準拠の検査のうち型を見る規則を `SemanticChecks.cs` に写した
+- Session は既定で写した出力 (LuaEmit) を使う。driver (`SelfHost/Host/tcsc.lua` ほか) が前に付けるのは埋め込みの runtime だけにした (`SelfHost/build.sh` の prelude.lua)
+- 検査の道具: Transpiler に `TCS_DUMP_CORPUS=dir` を足し、`TranspileWithDiagnostics` の入力をファイルに落とす。参照実装とセルフホストの出力を byte で比べる道具で、Transpiler.Tests と tcs2c.Tests の入力と lub の sample を比べた
+- 検証: Transpiler.Tests の入力 794 件、tcs2c.Tests の入力 335 件、lub の 31 の sample が byte で一致。参照実装が拒否する 1009 件はすべて拒否。`bash SelfHost/build.sh` で stage1 (参照実装) = stage2 = stage3 = C の build。`TCS_SELFHOST_DIFF=1` の dotnet test (Transpiler.Tests と tcs2c.Tests) が通過
+- よかったこと: 比べる母集団を tests から機械的に集めた (`TCS_DUMP_CORPUS`) ので、未対応の所が理由ごとの件数で見え、件数の多い順に写せた。Roslyn の型の情報 (自然な型と変換先の型、括弧の中の式の変換) に合わせる所は、束縛の側を直すか、IL を作る所で変換の位置を変えて揃えた
+- 判断: 参照実装の出力のうち設計として疑わしいもの (pattern 変数の前宣言が式本体の lambda の中の out var を拾う、string.Join の要素は ToString の override があっても止める など) も、手順 2 では写した。直すのは単一の実装にしてから
+- 残課題: 手順 3、4 (T281、T282)。tcs2c の pattern 変数の取り違え (T283)。診断の code と文言は Roslyn と違うものが残る
+
+
+### T281 tcs を単一の実装 (セルフホストの compiler) に切り替え、Roslyn を部品にした実装を消す ✓ (2026-11-01)
+- CLI の変換と `tcs check`、tcs2c の入力 (IlExport)、generic の単相化、増分 session (`--snapshot` と playground)、reload chunk の初期化子をセルフホストの `Session` に切り替えた (self-hosting-design §18.3〜§18.6)。`Transpiler/` は .NET の host で、compile はセルフホストを呼ぶ
+- Roslyn を部品にした変換 (`LuaEmitter.*`、Roslyn 版の IlExport と IlSpecialization ほか) とセルフホストの旧い出力 (`Emitter.cs`) を消した。Roslyn は IDE の analyzer、playground の補完と hover、検証の oracle (C# として正しいかの判定) だけに使う
+- 検証: `bash run-tests.sh` の全段 (dotnet test は root で動かす環境由来の Cli_AtomicOutputReplace_RespectsUnixWritePermission の 1 件だけが失敗、tcs2c.Tests 541 件、analyzer 120 件、sample の check、tcs2c の verify 5 本、bootstrap の固定点と C の build、analyzer demo)。消す前に、母集団 (794 件、335 件、lub の 31) の Lua を旧い実装と byte で比べて一致、IL の構造も単相化なしで 798 件、ありで 335 件が一致
+- よかったこと: 検証を「Roslyn が受け付ける C# に tcs が C# の誤りを出さない」に変えたら、受理か拒否かだけの比較で見逃していた差 (サブセットの外の構文に構文の誤りを出す 70 件、delegate の生成式と式本体の分解の代入を拒否する後退) が見えた
+- 判断: 旧い実装が受け付けていたが出力が壊れていたもの (同じ名前で型引数の数だけ違う型、`new object()`) は拒否にした。method 単位の splice は持たず、増分 session は毎回全体を出力して変わった module を返す
+- 残課題: lub を単一の実装に合わせる (T282)。tcs2c の pattern 変数 (T283)
+
+### T282 lub を単一の実装に合わせる ✓ (2026-11-01)
+- lub (branch `tcs-selfhost`、PR neguse/lub#348) の `third_party/tcs` を T281 の版に上げ、manual に「dotnet、lub の Lua、playground のどれでも同じ compiler が動く」ことを書いた
+- .NET での実行との比較は lub の native gate がもともと持つ (サンプルごとに tcs→Lua と `dotnet/SampleRunner` の frame の digest を比べる)。単一の実装になったので、tcs の側の比較の相手は Roslyn の旧い実装ではなく .NET の実行になった
+- 検証: lub の `scripts/native-gate.sh --require-cs --skip-golden` が通る (TestManyDraws は lavapipe のこの環境で以前から segfault するので除いた)。API の生成物の検査、tests/cs の 48 本、サンプルの digest の比較、serve の smoke を含む
+- 残課題: playground の .NET wasm の bundle の作り直しは lub の CI (wasm-tools の workload) で確かめる
+
+### T283 switch の section ごとに同じ名前の pattern 変数を C backend で取り違える ✓ (2026-11-01)
+- `case A x: ... case B x:` の pattern 変数は switch の前に前宣言するので、IL では同じ名前の local が 2 つになり、C の出力が全ての section で最後の `x` を参照していた
+- compiler の local の名前付け (`SelfHost/Compiler/LocalNames.cs`) で、同じ member の中の同じ名前の pattern の designation を `x_2` のように分けた。Lua の出力もその名前になる
+- 検証: tcs2c.Tests に `SwitchSections_SameNamePatternVariables` (switch 文と switch 式) を足して C と Lua と .NET の出力が一致。Transpiler.Tests、tcs2c.Tests、bootstrap が通る
+- 判断: C の emitter で scope を追うより、名前を付ける compiler の側で分けた (IL は名前で local を持つ契約のまま)
+
+### T284 tcs の host を TinyC# に写す ✓ (2026-11-01)
+- CLI の全体 (引数、check、1 回の変換、`--watch` と reload chunk と restart の判定、`--snapshot` と増分 session、source map と `--map-stacktrace`) を `SelfHost/Tool/` の TinyC# にした。OS に触る所は `TcsHost` の関数 (`--ref` の stub) にして、.NET (`Transpiler/DotnetHost.cs`)、C (`SelfHost/Native/host.c`)、Lua (`SelfHost/Host/tcsc.lua`) の host が実装する (self-hosting-design §19.2)
+- .NET の `Program.Main` は TcsHost.Run だけになり、旧い CLI (Program.cs の 770 行)、ReloadRules / ReloadClassifier / StaticInitOrder / SourceMapResolver の C# 版を消した。IncrementalCompilationSession、ModuleLinker、HotReload は WasmCompiler とテストのための薄い入口にした
+- bootstrap は tcs 全体 (Compiler と Tool) を作る。stage1 (.NET) == stage2 == stage3 (Lua の host) == C の tcs の出力
+- 検証: Transpiler.Tests (root の環境由来の Cli_AtomicOutputReplace_RespectsUnixWritePermission の 1 件だけが失敗)、tcs2c.Tests、`bash SelfHost/build.sh`。C の tcs で `--snapshot`、`--sourcemap`、`check`、`--watch --reload-chunks --instance-registry` を動かして .NET と同じ出力と message になることを確かめた
+- よかったこと: host を Start / Step の形にしておいたので、`--watch` の待ちも Step の中に入り、3 つの host の loop が同じ形で済んだ。CLI のテスト (Transpiler.Tests の CLI と watch の 100 件余り) が TinyC# の CLI をそのまま検査した
+- 判断: tcs と一緒に配るファイルは C と Lua では `TCS_HOME` か実行ファイルの dir から読む (C の実行ファイルへの埋め込みは配布の形を決める T285 で考える)。Lua の host は stat が無いので、変わったかの印はファイルの内容にした
+- 残課題: C の host の Windows の部分を 3 OS の CI で確かめる (T285)。lub の `build-tcs-selfhost.sh` と `lub tcsc` を新しい tcsc.lua の形 (`tcsc.lua <tcs.lua> <引数>`) に合わせる (lub の submodule を上げるとき)
+
+### T285 tcs2c で C にした tcs を CI で 3 OS に作り、release で配る ✓ (2026-11-01)
+- `SelfHost/native.sh` が tcs (Compiler と Tool) を tcs2c で C にして build し、samples の変換、check の終了コードと診断、`--snapshot`、tcs 自身の変換が .NET の tcs と byte で同じことを確かめる。CI の NativeAOT の job を Linux (cc)、macOS (clang)、Windows (clang) の native の job に置き換え、tcs と一緒に配るファイル (runtime/、lib/) と一緒に成果物にした
+- lub (branch `tcs-selfhost`): release の一式は NativeAOT の tcs の代わりに C の tcs を `bin/tcs/tcs` に入れる (`scripts/build-tcs-native.sh`)。lub は実行ファイルの隣の `tcs/tcs` を最初に使う。dotnet の無い環境のための Lua の経路 (`lub tcsc`) は消した
+- 検証: tcs の CI の 3 OS の native の job が通る。lub の 102 の project (samples と tests/cs) で C の tcs と .NET の tcs の出力が byte で同じ。lub から C の tcs で 09_breakout を動かし、.NET の tcs と同じ frame の digest と capture になる
+- よかったこと: CLI が同じ形なので、lub は起動する実行ファイルを替えるだけで済んだ
+- 判断: Windows は GNU C の文の式を使うので MSVC ではなく clang で build する。C の標準出力は binary mode にして .NET と同じ改行にした
+- 残課題: lub の Windows と macOS の release の一式に C の tcs を入れるのは、lub がそれらの一式を作るとき
+
+### T286 tcs の WebAssembly 版を tcs2c の C で作り、playground の変換にする ✓ (2026-11-01)
+- playground の増分 session の入口 (`SelfHost/Tool/Playground.cs`、要求と応答は WasmCompiler の SessionExports と同じ) を TinyC# で書き、tcs2c で C にした tcs と `SelfHost/Web/tcs_web.c` を emcc で wasm にした (`SelfHost/Web/build.sh`)。Lua の wasm (tcsc_web.c、web.lua) は消した
+- lub の playground の `?compiler=selfhost` をこの wasm にした。.NET の worker と同じ増分 session と bridge snapshot を返すので、C# の編集は hot reload で当たる
+- 検証: `node SelfHost/Web/test.mjs` で open と link の出力が C の tcs の `--snapshot` と byte で同じ (samples/game.cs で約 50ms)、本文の編集が fast path、誤りのある編集は最後の snapshot を保つ。lub の `npm run verify-tcs-selfhost` で 30 サンプルが描画され、ClearColor の編集が hot reload (synced rev 2、180ms) で当たる
+- 判断: lub は C の tcs を library として link せず、同じ CLI の実行ファイルとして起動する (link すると lub の build に tcs2c と dotnet が要る)。web は wasm を worker に置く
+- playground の既定の変換をこの wasm にした。補完と hover は .NET の wasm の Roslyn が、compile しない session (`EditorSession`、`SessionExports.OpenEditor` と `UpdateText`) で答える。`?compiler=dotnet` なら変換も .NET の wasm で行う。lub の CI の web-build は tcs の wasm も作る
+- 検証 (続き): lub の `npm run verify` (A1-A9。A6 の編集は synced rev 2 で 134ms、A8 の補完と hover は .NET の editor の session)、`verify-tcs-startup`、`verify-tcs-selfhost` が通る。`EditorSession_MatchesCompilingSession` は compile する session と同じ補完と hover になることを確かめる
+- 残課題: 無し (lub の Windows と macOS の release の一式は T285 の残課題)
+### tcs VM の V1 試作 ✓ (2026-11-01)
+- `doc/vm-design.md` の V1 を `tcsvm/` に試作した。`tcs2vm` (.NET) が IL を `.tcsb` にし、`tcsvm` (C11) が読み込み・検査・link して実行する。Lua source も Lua の parse も通らない
+- 範囲は i32 / f32 / bool、class の field (struct の field は葉に展開)、struct の local と配列要素と static、配列、static field と static method、制御、`Console.WriteLine`、fault と C# の行の trace。GC は無く bump 確保だけ
+- `perf/bench-2backend.sh` に vm の列を足した (stdout が dev と byte で一致することも fail ゲート)。root の CMake に `tcsvm` target、`run-tests.sh` に `tcsvm/run-tests.sh` の差分テスト、`tcs.slnx` に `tcs2vm` を足した
+- 検証: `tcsvm/run-tests.sh` は digest の 4 kernel と `tcsvm/tests/` の 6 本で lua32 と stdout が一致 (fault 2 本は両方失敗し、VM の trace が C# の行を指す)。bench は 4 kernel で lua32 の 0.23〜0.35 倍の ms/frame (2.9〜4.4 倍速い)、tcs2c の 11〜29 倍。`tcsvm/fuzz-loader.py` で変異させた `.tcsb` を ASan / UBSan 付きで計 3.6 万件流し、最後の 1.2 万件は crash 0。この環境の `bash run-tests.sh` は `dotnet test` の 3 件で止まった (`deps/csharpstandard` の submodule が無い、root で動くので書き込み権限の test が成り立たない、`en_US.UTF-8` の locale が無い。どれも VM と関係しない)
+- よかったこと: register の種類を関数の中で固定する規則で、verifier が種類表との照合 1 pass になった。fuzz は最初の数千件で、正しい入力でも起きていた UB (24 bit の符号拡張を signed の shift で書いていた) を見つけた
+- 判断: 呼び出しの窓を Lua のように重ねると、caller の register に callee が別の種類を書いて種類表が崩れるので、frame を重ねず引数を copy する形に設計を直した。`CALL` は引数と戻り値の先頭を別に持つ。V0 (tcs2c の型推論の共有化) は飛ばし、emitter が小さな型推論を持つ
+- 残課題: V2 以降 (tasks.md の VM トラック)。続けるかは vm-design §18 の D-V1 / D-V2 の決定待ち。性能は定数 operand と、struct の要素の命令の要素の大きさの読み直しと範囲の検査の重複に余地がある
+
+### tcs VM の V2 の 1 段目 ✓ (2026-11-01)
+- VM を dev 実行系に採ることを決めた (vm-design §18 D-V1)。V2 の 1 段目として、tcs の `samples/` の 6 本が VM で動く範囲を足した: string、`List<T>`、`Dictionary<K, V>` (int / string の key)、closure と cell、instance method と constructor (field の initializer)、enum、foreach、`?:` / `??`、List.Sort、checked 演算
+- VM の C を読み込み / interpreter / runtime の 3 file に分け、interpreter を入れ子に入れる形にした (runtime の List.Sort が比較の closure を呼ぶ)。Sort は `runtime/sort/` の C に出した (.NET の introsort と同じ比較の呼び出し列)
+- emitter は到達する関数だけを作る。変数は register / cell / 捕捉した cell の 3 種で、lambda の引数の型は代入先の delegate の型から決める
+- 検証: `tcsvm/run-tests.sh` の 22 本 (tests 12、samples 6、digest kernel 4) で lua32 と stdout が一致し、samples は tcs2c.Tests の SampleParityTests と同じ期待の文字列とも一致する。fault の trace は List.Sort の中の lambda から外側の Main まで続く。perf は V1 と同じ水準。fuzz (新しい命令と型を含む seed) が 2 つ見つけたので直した (呼び出し先の関数の頭を検査より前に読んでいた、runtime からの入れ子の深さに上限が無く C の stack が溢れた)。直した後の 1.2 万件は crash 0
+- よかったこと: frame が自分の closure を持つ形にしたので、`LDCAP` の検査が「捕捉の番号が範囲内」だけで済む。関数型の引数の並びを `CLOSURE` で照合するので、method group は thunk 無しで関数そのものを指せる
+- 判断: Lua の `tostring(nil)` は "nil" だが、VM は C# と同じく string の null を空文字列にする (il-spec §13)。lambda の位置は作った場所の行にした (式本体の lambda は IL に位置が無い)
+- 残課題: tasks.md の VM トラックの V2 の残り。GC が無いので lub のフレームを長く回すと memory が増える
+
+### object model の M-3 と VM の hot reload (tvm_apply) ✓ (2026-11-01)
+- heap の walker (`runtime/model/tcs_walk`) と reload の計画 (byte 列 v1、`Transpiler/Backend/ReloadPlan.cs` が作り、`tcs_plan_read` が読む) を VM と tcs2c が共有する形で置いた。VM の GC の mark と reload の張り替えは `tvm_object_refs` を sink だけ替えて使う
+- `tvm_apply` (`tcsvm/vm/tcsvm_reload.c`): 新版を別の VM に読み、型を名前で対応させ、layout の変わる class の instance と List / 配列 / Dictionary の struct の値を新しい layout に作り直し (`tcs_migrate_value`)、static を名前で移し、closure を同じ名前と形の関数へ付け替え、全部の参照を転送先へ張り替える。続いて ADDED / RESET の field の initializer、足した static の initializer (`型.<reload-static>`)、OnReload を走らせる
+- `.tcsb` は v4: static の field の表 (名前、先頭の slot、種類と型) を足した。`tcs2vm --reload-from OLD.cs --plan OUT` と `tcsvm --reload K NEW PLAN` を足した。restart は終了コード 3
+- 検証: `tcs2c.Tests` の `VmReloadTests` (T235 の reload fuzz の scenario 20 本を C# の driver で VM に当て、Lua と同じ不変量を確かめる。relayout、restart 2 種、遅延初期化の型の static の追加、hook の fault の警告)。どれも GC stress でも同じ出力。initializer を止めた VM では fuzz が落ちることを確かめた。手元の scenario を ASan / UBSan で走らせて報告 0。`tcsvm/run-tests.sh` は全部 ok
+- よかったこと: GC の mark と移行の張り替えが同じ `tvm_object_refs` で済み、移行が新しく辿る場所を持たない。計画の reader の bug (名前の macro が番号を 2 回読む) は ASan がすぐ見つけた
+- 判断: initializer は反映の後に走らせ、fault は警告にした (object-model §6.1)。旧版の heap のまま新版の関数を走らせると型の検査が合わない。closure は古い proto を生かさず新版の関数へ付け替え、合わなければ restart (vm-design §12.4 の形は次の段)。型の descriptor は版ごとの表のまま object の型の pointer を付け替える
+- 残課題: tasks.md の V4 の残り (古い proto、watch の stream、tcs2c の migrator)
+
+### tcs VM の V2: tcs2c.Tests の差分が全部 VM で通る ✓ (2026-11-01)
+- `string.format` を VM に入れた。emitter が書式の literal を文字列の部分と変換に分け、変換ごとに `fmt.i` / `fmt.f` / `fmt.s` を呼ぶ。変換 1 つの C は `runtime/fmt/printf.c` に置き、tcs2c の `tcs_string_format` も同じ C を使うようにした (これまで tcs2c は 1 変換を 511 byte で切っていた)
+- 直した emitter の誤り: void の IIFE の `return f()` が呼び出しを捨てていた (`a?.M()` の文)、IIFE が代入先を先に 0 にしていた (`q += q++`)、暗黙の ToString (IlStructCopy) で struct を書き戻していた、struct の method の戻り値の並び (out と self) が呼ぶ側と逆だった
+- 足した形: `T?` の比較を分岐の条件に置く形、値型の cast、List → 配列 (`s.Split` を `string[]` に)、struct の static method の method group、`uint`、`int.Parse` (`math.tointeger`)、interface 経由の `out` (selector の関数型の戻り値を多値にする)、特殊化した generic な interface (selector を名前と関数型の組で分け、型の違う実装には adapter を作る)
+- JoinEnum は List<string> の型を要らない形にした
+- 検証: tcs2c.Tests は 546 / 547 (落ちる 1 件は `StringOrder_Lua_IgnoresCollateLocale` で、この環境に `en_US.UTF-8` が無く Lua が落ちる)。`tcsvm/run-tests.sh` は全部 ok
+- 判断: `uint` は tcs2c と同じく 32 bit の int として扱う
+- 残課題: Transpiler.Tests の semantic テストを VM で走らせる
+
+### VM の reload: 生きている closure を lambda の指紋で追う ✓ (2026-11-01)
+- lambda の関数名に本文の指紋 (IL の正規形の SHA-256 の先頭 8 桁) を入れ、`tvm_apply` は同じ名前、同じ外側の関数の中の同じ指紋、lambda の数が変わらないときの同じ番号の順で新版の lambda を探す
+- 検証: `VmReloadTests.LiveClosures_FollowTheirLambda_WhenLambdasAreInsertedOrEdited` (前に lambda を足す、本文を変える)、ほかの reload のテストも全部通る
+- 判断: 古い proto を生かす案 (vm-design §12.4 の当初の案) は採らなかった。全部の operand を名前で引き直す link が要り、得られるのは「編集が既存の closure に効かない」挙動
+- 残課題: なし (同じ外側の関数で同じ本文の lambda が 2 つあると指紋では決まらず、番号の規則に落ちる)
+
+### tcs VM の V3: host 連携と watch の stream ✓ (2026-11-01)
+- `tvm_host` で host の関数を名前と葉の種類の列で登録する。module の runtime 関数の表は、組み込みに無い名前を host の登録から引く。host が VM の object の field を名前で引き (`tvm_field_offset`)、object と string を作る API を足した
+- emitter は `--ref` の stub の関数 (`IlExport` の ForeignMethods) を host の関数の CALLR に、static の値を引数の無い host の関数に、enum の定数を literal に、stub の record の初期化子を object の生成と field の書き込みにする。`tcs2vm --ref` を足した
+- `tcs2vm --watch` は編集ごとに直前の build からの reload を作り、`@@tcs_vm_batch` (batch の base64) か `@@tcs_restart_required` を流す。VM は `tvm_apply_batch`、CLI は `--reload-batch`
+- lub への feature request を vm-design §13.2 に書き直した (`lub-gen vm`、`vm_host.c`、watch の導線、web、digest)
+- 検証: `tcsvm/run-tests.sh` に `tests/host` (host_test.c が stub の面を登録し、host が作った event object を渡す。通常と GC stress で期待と一致、ASan / UBSan でも報告なし) と `watch_test.py` (vm_batch を当てた出力が期待と一致、static の initializer の変更で restart_required) を足した
+- 判断: lub は tcs から変えない (CLAUDE.md)。host の関数の型は module に書かず、host の登録の種類の列で検査する (同じ名前の関数の形を host が決める)
+- 残課題: host の関数の out 引数、callback、List / 配列の要素を読む API、handle。lub 側の作業
+
+### tcs VM の V2 の最後: Transpiler.Tests の corpus と C4 fuzz を VM でも ✓ (2026-11-01)
+- `Transpiler.Tests/SpecConformance/VmDifferential.cs`: `TranspileAndRun` の corpus のうち、luaExpr を C# の式に訳せる呼び出し (CorpusDifferential と同じ翻訳) を、`Console.WriteLine(式)` の entry を足して VM で走らせ Lua の結果と比べる。`TCS_VM_DIFFERENTIAL=1` (root の `run-tests.sh` が立てる)
+- `tcs2c.Tests/FuzzDifferentialTests.cs`: C4 fuzz の生成器 (FuzzGenerator) の program を Lua / C / C (GC stress) / VM / VM (GC stress) で比べる (既定 12 seed、`TCS_FUZZ_SEED` / `TCS_FUZZ_COUNT`)
+- 直した VM の形: top-level 文 (class TopLevel の Main)、式本体の void method、`n is int x` (n が `int?`)、object の `is int`、lambda の中の pattern の変数、`(string)null`、struct の要素の `List.Remove`、`TinySystem.Dict.*` / `TinySystem.Math.*` の名前と `Math.PI`、参照型の違う条件式 (object)
+- tcs2c も、別の class の object を返す条件式 (`object v = c ? new C1() : new C0()`) を object にした (fuzz が見つけた)
+- 検証: VmDifferential は 434 件一致、不一致と未対応は 0 (訳せない 35 件と、top-level の local を参照する 18 件は対象外)。FuzzDifferentialTests は seed 0〜11、100〜249、1000〜1149 で全部一致。tcs2c.Tests は locale の 1 件を除いて通る
+- 残課題: なし (V2 は完了。VM で未対応の形は tcs2vm が `... is not in the VM yet` で止める)
+
+### object model の M-4 の 1 段目: class の payload を tcs2c と同じ形に ✓ (2026-11-01)
+- VM の object の型記述子を payload の先頭から GC の header (`TvmGcHeader.type`、`TVM_TYPE(p)`) に移し、header を `max_align_t` に揃えた。class の payload は tcs2c と同じ `{ uint32_t type_id; field... }` になり、layout は class_prefix 4 で tcs2c と同じ C の規則 (runtime/model) で決まる
+- reload の転送先は header の type に置く (payload が 4 byte の class もあるので)。Random の状態は pad の後の 8 byte 目から
+- `tcsvm/tests/mixed`: 同じ source を tcs2vm と tcs2c --lib にし、VM が作った object に tcs2c の生成 C の関数 (`Game.Sum`、`Game.Bump`) を呼ぶ。int / float / bool / 参照の field を tcs2c が読み、tcs2c が書いた値を VM が読む。`tcsvm/run-tests.sh` に入れた
+- 検証: `tcsvm/run-tests.sh` (mixed を含む) と tcs2c.Tests の VM の差分
+- 判断: 型の pointer を header に置くのは object-model §3 の契約の形。string / List などの容器の形と GC はまだ別 (tcs2c の runtime が C# の文字列の中にあり、runtime/ に出すのが先)
+- 残課題: M-4 の残り (tasks.md)
+
+### tcs VM の V5 の tcs 側と V6 の判断材料 ✓ (2026-11-01)
+- `tcsvm/Emitter/VmSession.cs`: 最後に通った build を持つ増分 session。編集ごとに module (最初)、batch (reload)、restart (理由と新しい module)、error (最後の build のまま) を返す。`tcs2vm --watch` はこれを使うように直した。web の worker も同じものを使う想定
+- vm-design §18 に D-V9 (Lua backend の撤去) の材料と推奨を書いた。推奨はまだ撤去しない (lub の VM host、web の player、Lua の式の検査の移行が揃ってから)
+- 検証: `VmReloadTests.Session_ReturnsModuleThenBatchesAndKeepsTheLastGoodBuild` (module → 診断の編集は error で build を保つ → batch を当てた出力 → static の initializer の変更で restart)、`tcsvm/run-tests.sh` の watch
+- 判断: WasmCompiler の JSExport への配線は、この環境に wasm-tools workload が無く build で確かめられないので入れていない
+- 残課題: WasmCompiler の JSExport、lub 側の player
+
+### tcs VM の V5: WasmCompiler の VmExports ✓ (2026-11-01)
+- WasmCompiler に `VmExports.Open(request)` / `Update(epoch, path, content)` を足した。中身は `VmSession` で、module / batch を base64 で返し、epoch と revision は SessionExports と同じ約束。WasmCompiler は `tcsvm/Emitter` (Program.cs を除く) と `Transpiler/Backend` を取り込む
+- 実ブラウザで動かして、IlExport の Roslyn の compilation が並列の解析 (CLS の検査) で monitor の wait に入り、シングルスレッドの wasm で止まることが分かった。IlExport と IlSpecialization の compilation を `concurrentBuild: false` にした (Transpiler.cs と同じ)
+- `WasmCompiler/vm-smoke.mjs`: publish した wwwroot を配り、chromium で Open (v1) → Update (v2) を呼び、返った module と batch を native の tcsvm で当てて期待と一致することを確かめる。`TCS_WASM_SMOKE=1 bash run-tests.sh` で走る (wasm-tools workload と playwright が要る)
+- 検証: vm-smoke が ok。tcs2c.Tests と Transpiler.Tests (VmDifferential 込み) は環境の 2 件 (locale、root の書き込み権限) を除いて通る
+- 残課題: lub の player と playground の worker (feature request)
+
+### module 単位の混在の 1 段目: editor は C、content は VM で reload ✓ (2026-11-01)
+- 方針を「release / dev で切る」から「module (C# の project) 単位で C (tcs2c) と VM を混ぜる」に変えた (object-model §10)。M-5 (tcs2c 自身の reload) はこれに置き換えた
+- `tcs2c --lib --vm-host`: module の公開 static method を tcs VM の host 関数として登録する `tcs_vm_register` を生成する。名前は `IlExport.HostSurface` (VM の emitter の `--ref` の名前と同じ規則)。int / float / bool / enum はそのまま、string は境界で写し、class の object は VM の object をそのまま渡す (payload の形が同じなので C の関数が field を読み書きする)。登録できない形は C の comment に理由を書いて飛ばす
+- VM に `tvm_hold` / `tvm_handle_get` / `tvm_release` (host が frame を跨いで持つ object。GC の root、reload で張り替わる) を足した。`tcs2vm --batch` で reload の batch を直接書ける
+- `tcsvm/tests/modules`: Editor.cs を tcs2c --lib --vm-host の C に、Content を VM にして 1 つの process に載せる。content が editor の関数を呼び、editor (C) が content の object の field を書き、content を v2 (Enemy に field を足す) に reload しても host の handle は作り直された object を指す。通常と GC stress で期待と一致、ASan / UBSan で報告なし
+- 判断: X-2 (heap と GC を 1 つに) までは、C が VM の object を保持しない・class を返さない・境界を越える class に string の field を持たない、を境界の規則にした。X-2 は tcs2c の runtime を `runtime/` の C に出すのが先 (object-model §10.2)
+- 残課題: X-2、X-3 の残り、X-4 (tasks.md)
+
+### X-2 の 1 段目: tcs2c の runtime を runtime/core の C に ✓ (2026-11-01)
+- `tcs2c/CRuntime*.cs` の C# の文字列だった C runtime (prelude、core、GC、容器、文字列、library) を `runtime/core/` の C file に出し、tcs2c は埋め込み resource から読む。VM と同じ runtime を使う (object-model §10.2) ための前提
+- 検証: 出す前と後で、samples と tests の program の生成 C が byte 単位で同じ。tcs2c.Tests は locale の 1 件を除いて通る。`tcsvm/run-tests.sh` も ok
+- 残課題: 断片を VM と一緒に link できる library にする (生成 C が持つ static の root の表などを hook にする)、VM の容器と GC をこれに置き換える
+
+### Dictionary / HashSet の列挙を挿入順に決める ✓ (2026-11-01)
+- 仕様 (support-matrix §18): 列挙は今入っている key を最初に入れた順。上書きは位置を変えず、Remove した key をもう一度足すと末尾。Dictionary の foreach の途中で key を足すのは fault (上書きと Remove は許す)。HashSet も挿入順で、foreach は始めた時点の要素を回る。.NET の Dictionary の順 (消した場所を次の Add が使う) には合わせない
+- VM: 消した entry の場所を使わず末尾に積み、広げるときに詰める。版 (`dict.version` / `dict.check`) で foreach の途中の追加を fault にする
+- tcs2c (runtime/core): node を挿入順に並べる order (穴は NULL、広げるときに詰める) と版を足し、foreach・Keys・Values は order を回る。GC は order の buffer を辿る。HashSet は slot を使い回さず末尾に足し、埋まったら詰める
+- Lua: HashSet は挿入順にした。Dictionary は素の Lua table なので未規定のまま (Lua backend の撤去までの例外)
+- .NET: `TinySystem/Collections.cs` に挿入順の `Dictionary` / `HashSet` を置き、TinySystem.props が source で入れて BCL の同じ名前の型を隠す (CS0436 は抑える)。tcs の変換は使わない
+- 検証: `DictOrder_*` (C、C の GC stress、VM、TinySystem の Dictionary の .NET が同じ順で、foreach の途中の追加は全部止まる)。HashSet のテストの期待値は TinySystem の HashSet の .NET の出力と一致することを確かめて直した。GC の列挙テストは order を辿るように直し、node の鎖の mark が冗長になった代わりに order の buffer の mark を壊す変種を入れた。tcs2c.Tests と Transpiler.Tests (VM の差分込み) は環境の 2 件を除いて通る
+- 判断: 決定的で予測しやすい挿入順を選んだ (JS の Map / Python の dict と同じ)。foreach の途中の追加は bug になりやすいので止める
+- 残課題: lub の facade の `Dictionary<string, object>` の引数 (tasks.md の feature request)
+
+### module 単位の混在の X-2 / X-3: shared heap ✓ (2026-11-01)
+- VM の GC header を runtime/core の `TcsGcHeader` と同じ形にした (kind と flags。VM の object は `TCS_KIND_FOREIGN`)。runtime/core の GC に、FOREIGN の object の中を辿る hook と、VM の root を辿る hook を足した
+- `tcs2c --lib --vm-host` の `tcs_vm_register` は、その module の runtime を VM の heap にする (`tvm_use_heap`)。VM は確保を tcs2c の nursery に置き、回収は frame の境界だけ、参照の store と container を変える runtime の関数は write barrier を通る
+- reload は shared heap では境界で回収してから旧世代を辿り、C の module の static・hold・object の参照も張り替える
+- `tcsvm/tests/modules` を広げた: C の module が VM の object を static に持つ (VM 側は参照を捨てる)、C で作った object を VM に返して VM の object の field に入れる、C が VM の object に参照を書く (barrier)、C が `object` で持った content の object が reload (layout の変更) の後も同じ object を指す。通常と tcs2c の GC stress (`-DTCS_GC_STRESS`) で期待と一致、ASan / UBSan で報告なし
+- 検証: tcs2c.Tests (locale の 1 件を除く)、`tcsvm/run-tests.sh`、VmReloadTests (VM 単独の reload)
+- 判断: VM の容器 (string / List など) の形はそのままにし、tcs2c の GC から FOREIGN として辿らせた。容器まで揃えると VM の runtime の大半の書き換えになるので、境界で string を写す今の形で先に heap を 1 つにした
+- 残課題: 容器の形を 1 つに、type_id の番号、X-4
+
+### module 単位の混在の X-4: 境界を越える delegate と interface ✓ (2026-11-01)
+- `tcs2c --lib --vm-host` の glue は、C の module の関数の `Action` / `Func` の引数を、VM の closure を包んだ tcs2c の closure にする (関数型ごとの trampoline が `tvm_invoke` で VM の closure を呼ぶ)
+- C の interface の dispatcher は、VM の object (kind FOREIGN) に対して `tvm_invoke_method` で method を名前で呼ぶ。VM の emitter は `--ref` の interface を実装する class の instance method を、VM の中で到達しなくても作る。`--ref` の interface は VM では object として持つ。RefInterfaceImplementation (Lua の制約) は VM では止めない
+- `tcsvm/tests/modules`: content の lambda を C の module が static に持って呼ぶ (捕捉した変数は reload を跨いで続く)、content の `Sword : Ed.ITool` を C の List に登録して C の dispatcher が呼ぶ (reload の後は新版の本文)。通常と GC stress、ASan / UBSan で報告なし
+- 残課題: C の delegate を VM で呼ぶ、VM の中から `--ref` の interface の method を呼ぶ、容器の形を 1 つに、type_id の番号
+
+### module 単位の混在の X-4 の逆方向: VM から C の interface と delegate ✓ (2026-11-01)
+- VM の中から `--ref` の interface の method を呼ぶ: IlExport の ForeignMethods に interface の method (Receiver は interface の表示名、MethodName は C# の名前) を足し、VM は `HostIfaceT` の受け手の method を host の関数として呼ぶ。`tcs2c --lib --vm-host` は interface の method を、その dispatcher (C の object は C の実装、VM の object は VM へ戻る) を呼ぶ host の関数として登録する。tcs2c 自身の emit は interface の foreign method を host 関数にしない
+- C の module が返した delegate を VM が呼ぶ: glue が関数型ごとの invoke を `tvm_host_delegate` で登録し、VM の CALLD は C の closure を関数型の sig で引いて呼ぶ
+- `tcsvm/tests/modules`: VM が C の List の `ITool` (C の Ruler と VM の Sword) を `ToolAt(i).Use(2)` で呼ぶ、C が返した `Func<int, int>` と `Func<string, string>` を VM が呼ぶ。通常と GC stress、ASan / UBSan で報告なし
+- 検証: tcs2c.Tests と Transpiler.Tests は環境の 2 件を除いて通る、`tcsvm/run-tests.sh` も ok
+- 残課題: 容器の形を 1 つに (List / Dictionary を境界で渡す)、type_id の番号、C の delegate を VM の runtime の関数に渡す
+
+### module 単位の混在: string を写さずに渡す ✓ (2026-11-01)
+- VM の string と tcs2c の string は little endian で同じ byte 並びなので、`tcs2c --lib --vm-host` の glue は境界で string を写さない (引数、戻り値、delegate の引数と戻り値)
+- VM の型を引く所は `tvm_type_of` を通す。C の module の string は VM の string 型、C の object は型なし (等価は参照の一致、`is` は object だけ真、ToString は fault)
+- `tcsvm/tests/modules`: C の module の string を VM で `==`、Dictionary の key、`is string`、連結、ToUpper に使う。通常と GC stress、ASan / UBSan で報告なし
+- 判断: 写しを無くす方を、VM の string を `TcsString` の形に変える (len を size_t に) より先に選んだ。byte 並びが既に同じなので、変えるのは glue と型の引き方だけで済む
+- 残課題: List / Dictionary を境界で渡す、C で作った object の VM での型の test、C の delegate を VM の runtime の関数に渡す
+
+### module 単位の混在: 型の番号を合わせる ✓ (2026-11-01)
+- VM の class の object は header と payload の type_id に型ごとの番号を書く (VM だけの class は `TVM_TYPE_ID_VM` + 型の番号で tcs2c の番号と重ならない)。前は payload に VM の型の添字を書いていて、C の dispatcher の switch が VM の object を C の class と取り違えうる形だった
+- glue の `tcs_vm_register` は C の module の class を `tvm_host_type`、interface を `tvm_host_iface` (`tcs_is_*`) で登録する。VM が作ったその class の object は C の番号を持ち、C の型の test・cast・dispatcher がそのまま扱う。VM の型の test は C が作った object を同じ型として扱う (`tvm_type_of`)
+- VM の class の型の表に実装する `--ref` の interface を入れ (object の種類の型)、C の `tcs_is_*` は VM の object を `tvm_implements` で引く。VM の型の test は C の object を登録した C の判定で調べる
+- 準拠ルール: `--ref` の generic でない class / interface への型 test と cast は `RefTypeTest` / `RefCast` / `RefInterfaceTypeTest` という別の名前にした (Lua は止めたまま)。VM の emitter はこれを止めない。IL の `--ref` の class の型 test は cast と同じ IL の型名で指す
+- `tcsvm/tests/modules`: C の `Classify(object)` が VM の Transform / Sword / Enemy を見分け、VM が C の Transform と Ruler を `is` と cast で見分ける。通常と GC stress、ASan / UBSan で報告なし
+- 判断: C の番号を VM に寄せる (登録で上書き) 形にした。C の番号は tcs2c の DFS の範囲で、継承の範囲の検査がそれに依るので動かせない。VM は型の test に番号を使わないので、どの番号でも困らない
+- 残課題: List / Dictionary を境界で渡す、C の delegate を VM の runtime の関数に渡す
+
+### module 単位の混在: C の delegate を VM の runtime の関数に渡す ✓ (2026-11-01)
+- VM の runtime の関数 (List.Sort / FindIndex / RemoveAll) は delegate を `tvm_call_delegate` で呼ぶ。C の module の delegate (shared heap で kind が FOREIGN でないもの) は、要素の種類から作った sig ("i:b"、"ii:i") の invoke (`tvm_host_delegate`) で呼ぶ
+- `Predicate<T>` / `Comparison<T>` を tcs2c と VM の両方で `Func<T, bool>` / `Func<T, T, int>` と同じ関数型にした (C の module が返せる)
+- `tcsvm/tests/modules`: C の `Descending()` (Comparison) と `IsEven()` (Predicate) を VM の `xs.Sort` / `FindIndex` / `RemoveAll` に渡す。通常と GC stress、ASan / UBSan で報告なし
+- 残課題: List / Dictionary を境界で渡す
+
+
+### tcs#387 (tcs VM と module 単位の混在) を単一の実装に取り込む ✓ (2026-11-01)
+- tcs#387 の branch を merge し、Roslyn 版の emitter に入っていた変更をセルフホストの compiler に移した: `--ref` の generic でない class / interface への型 test と cast の診断名 (`RefTypeTest` / `RefCast` / `RefInterfaceTypeTest`)、`--ref` の class への型 pattern の `IlIsType`、foreign の interface の method と `MethodName`、`IlExport.HostSurface` (C の module が VM に公開する関数の一覧。--ref として読んだ型から作る)
+- tcs2c の C runtime は #387 の `runtime/core` にそろえ、こちらの `runtime/c` を消した (中身は同じ)
+- tcs VM が使う C# の入口を足した: IL の位置 (`IlNode.Origin` を `IlSourcePos` に)、`ReloadClassifier` (規則は TinyC# の ReloadRules)
+- 取り込みで見つかった移植の漏れを直した: `--ref` の class への `is` / cast / `as` を止めていなかった、`string.Join` に Dictionary の Keys / Values を渡せなかった、IL の書き出しが tcs VM の許す準拠の誤りでも class を返さなかった、`--ref` の interface を実装する method に host の名前を付けていた (C# の名前にそろえた)、型の検査と cast の IL が `--ref` の型を host の名前で書いていた (C# の global の名前にそろえた)
+- 検証: `tcsvm/run-tests.sh` (host / mixed / modules / watch を含めて ok)、Transpiler.Tests と tcs2c.Tests (通常と `TCS_VM_DIFFERENTIAL=1`。root の環境由来の 1 件を除いて通る)、Analyzers.Tests、`SelfHost/build.sh` (stage1 == stage2 == stage3 == C)、`SelfHost/native.sh`
+- 判断: #387 は別の session の draft PR だが、Roslyn 版の emitter を消した後では #387 を master に入れられないので、こちらの branch に取り込んで同じ実装に合わせた
+- 残課題: #387 の lub への feature request (TinySystem の Dictionary が BCL の Dictionary を隠すので、lub の `dotnet/Lub` の facade の引数を `IReadOnlyDictionary<string, object>` にする) は lub の submodule を上げるときに要る
+
+### T287 tcs2c を TinyC# に写す (G2) ✓ (2026-11-01)
+- tcs2c の C backend (CEmitter、ContractFacts、Model) を TinyC# に写し、`SelfHost/CBackend/` に置いた。CLI は `tcs c` (`SelfHost/Tool/CRun.cs`)、.NET の tcs2c はそれを動かす入口になり、C# の版を消した
+- 例外は最初の誤りを記録して既定の値を返す形 (CFail)、StringBuilder は文字列の List、record の構造等価は型の key の比較、Regex は手書きの判定、tuple は out の引数、runtime の C は `TcsHost.ToolFile` で読むファイルにした
+- 写す途中で見つけた compiler の誤り: method の式本体 (`=>`) の is-pattern と `out var` の局所変数を前宣言していなかった (Lua の出力では global になっていた)。式本体の前に文と同じ前宣言を置いた
+- Lua で Dictionary の列挙順が決まらない所 (captured の引数を cell にする順) は、scope ごとの宣言順の List で走査するようにした
+- 検証: `TCS_C_PORT=1` で tcs2c.Tests の全 corpus (553 件) の C が C# の版と byte で同じ、C# の版を消した後の tcs2c.Tests が 553 件通る、`SelfHost/build.sh` (Lua の固定点に加えて、tcs 自身の `tcs c` が Lua の上、C の tcs、.NET の tcs2c で同じ)、`SelfHost/native.sh` (C の tcs が自分の tcs.c を作り直す固定点)、`SelfHost/Web/build.sh` (wasm は 1.18MB から 1.20MB)
+- よかったこと: 写す前に C# の版との byte の比較の hook (`TCS_C_PORT`) をテストの helper に入れ、全 corpus を oracle にした。食い違いは最初の行で止まるので、写し間違いの場所がすぐ分かった
+- 判断: tcs VM の emitter (`tcsvm/`) は C# の IL の model (`Transpiler/Il.cs` と SelfHostIlExport) を使うので、その層は残した。tcs2c の CLI の usage は `tcs c` の形になった
+- 残課題: tcs VM の emitter を TinyC# に写すか (今は .NET の道具)
+
+### T288 host の食い違いを直す (#384 のレビュー) ✓ (2026-11-02)
+- Windows の C の host: 変わったかの印を `GetFileAttributesExA` の最終書き込み時刻 (100ns 単位) と大きさにした (前は秒単位の mtime で、同じ秒の同じ大きさの保存を見落とした)。絶対 path は `GetFullPathNameA` に任せる (drive の無い `\x`、drive 相対、UNC を前は相対として扱い、別の場所に書いた)。ファイルの同一性は volume とファイルの番号 (前は `-` で、hard link や junction を通した入力の上書きを止めなかった)。stdin も binary mode
+- Lua の host: 書き込みは出力の dir が無ければ作り、一時ファイルの名前を process ごとに変え、書き込みと close の失敗を見る。今の dir は shell (`pwd`、Windows は `cd`) に聞く (環境変数 PWD は子 process では古いことがある)。Windows の drive の無い path と UNC も .NET と同じに解く
+- `--watch --reload-chunks`: 動いている版の IL が無いときと reload chunk が compile できなかったときに、restart の理由が空行になっていた。理由を書き、空の文字列は理由 0 行にする
+- 小さな食い違い: .NET の host の ReadFile は不正な path でも例外にせず `""`。ModuleSession.Open は予約された path を、どのソースも入れる前に断る
+- 検証: `SelfHost/native.sh` に入力の hard link への出力を断る検査、`SelfHost/build.sh` に Lua の host が新しい dir に書く検査を足した。Windows の build は mingw で作り wine で動かして、drive の無い path、大文字小文字の違う path、hard link の入力への出力を確かめた
+- 判断: Windows の path は自前で解かず OS の関数にした。.NET の Path.GetFullPath も同じ関数の上にある
+- 残課題: なし
+
+### T289 以前からの黙った誤変換を止める (#384 のレビュー、T267 を含む) ✓ (2026-11-02)
+- object / interface / `where T : class` の型引数どうしの `==` / `!=` は参照の比較にした。Lua は `rawequal` (前は Lua の `==` が record の `__eq` を呼び、`object a = new R(1), b = new R(1); a == b` が True だった)。C backend と tcs VM は参照型の Eq として受ける。generic の単相化は型引数どうしの比較の両辺を object にして、型引数を record に置き換えても参照の比較のままにする。`where T : class` の型引数どうしの `==` を CS0019 で拒否していたのも直した
+- 補間の書式は .NET と同じ文字列にできるものだけを受け、他 (独自の書式 `0.00`、`C`、`P`、object と型引数の穴の書式、enum の G / F / D 以外) は TCS1001 `UnsupportedFormatSpecifier` にした (T267。前は printf の書式に写して別の文字列を出した)
+- int / float の `ToString(format)` は宣言だけで IL を作れず internal の誤りだった。定数の標準の書式を補間と同じ runtime で写し、他は TCS1002 にした
+- uint: 2^31 以上の定数は TCS1001 `UIntRange`、結果が 0〜2^31-1 を出うる演算は TCS1001 `UIntArithmetic` にした (前は Lua で wrap せず、lua32 では float になり、`0xFFFFFFFFu` は suffix つきのまま Lua に出て読めなかった)。16 進の literal の `u` / `L` suffix を除くようにした
+- support-matrix: `long` の行を N/A (TCS1001 `LongType`) に直し、uint、`==`、書式、数の ToString の行を実際の挙動に合わせた
+- analyzer にも同じ規則を足した (UnsupportedFormatSpecifier、UIntRange、UIntArithmetic、数の ToString)
+- 検証: tcs2c.Tests に ReferenceEquality、NumberToStringFormat、UIntLiteral (Lua、C、GC stress、VM が .NET と同じ)、Transpiler.Tests と analyzer のテスト、`run-tests.sh` (root の 1 件を除いて通る)、`TCS_VM_DIFFERENTIAL=1` の tcs2c.Tests、`tcsvm/run-tests.sh`、`SelfHost/build.sh`、`SelfHost/native.sh`。lub の samples、tests/cs、cs-lib は新しい規則でも check を通る
+- 判断: uint は符号なしの演算を 3 つの backend に入れず、i32 で表せる範囲に限った (support-matrix の「外部 API facade 用」のまま)。object に入れた数どうしの `==` は C# では box の参照の比較で False だが、tcs は値で比べる (box を持たない)。これは record と違い値が同じなら同じ結果になる用途が多いので残した
+- 残課題: 符号なしの演算が要るなら uint を本当に入れる (Lua の math.ult と符号なしの除算、C の uint32_t、VM)
+
+### T290 C の書き出しの peak のメモリを減らし、性能とセルフホストの世代を測る ✓ (2026-11-02)
+- tcs2c の GC は host の段の境界 (entry から戻る時) でしか回収しないので、1 つの段の割り当ては全部その段の終わりまで残る。tcs 自身を C にすると、単相化 (全体の束縛を回の数だけ) と IL の書き出しと C の生成が 1 つの段で、peak が 1.3GB あった
+- C の生成を段に分けた (CEmitter の Begin、class ごとの StepMethods、Finish。Emit は続けて動かす)。tcs c は compile の木を離してから生成の段に進む
+- 単相化を回ごとの段にした (Specializer.Step。最後の回の雛形を消した木の束縛も別の段)。IL の書き出しも別の段 (Session の PhaseSpecialize と PhaseExport)
+- tcs 自身の tcs c の peak は 1.3GB から 750MB に (段の間の managed heap は約 300MB)。生成した C は分ける前と byte で同じ
+- 速さ (Linux、master の NativeAOT の tcs と C# の tcs2c が基準、中央値): lub の tests/cs と cs-lib (約 1.7 万行) を Lua にするのは NativeAOT 3.08 秒 / 205MB から C の tcs 0.29 秒 / 129MB (.NET 0.85 秒)。小さなファイル 1 つは 0.100 秒から 0.008 秒。C の生成は samples/game.cs で C# の tcs2c 3.57 秒から C の tcs 0.033 秒、lub の binding の検査の入力で 2.49 秒から 0.045 秒。master の tcs2c は tcs 自身を C にできない (pattern 変数の取り違え、T283 で直したもの)
+- 生成するコードの速さ: perf/bench-2backend.sh の 4 つの kernel で digest は master と同じ、release (C) と dev (lua32) の時間も揺れの範囲で同じ。kernel の生成 C は user のコードの部分が同じで、違いは #387 の runtime (printf、型の検査の hook) だけ
+- セルフホストの世代: .NET の tcs2c が作った tcs.c から 5 世代続けて C の tcs で自分を作り直し、tcs.c は全部 byte で同じ (10,708,450 byte、1 世代 約 3 秒)。各世代の tcs は tcs 自身と lub の tests/cs の Lua、samples/game.cs と lub の binding の C を同じに出す。GC stress (-DTCS_GC_STRESS)、ASan と UBSan、clang、-O0 で build した tcs も同じ tcs.c と出力を作り、sanitizer の報告は無い
+- 判断: 段の中で回収する (frame の途中の GC) のは runtime の契約を変えるので、段を細かくする方を選んだ。残りの peak は 1 回分の全体の束縛の割り当て
+- 残課題: Lua の出力 (LuaEmit の EmitProgram) も 1 つの段 (tcs 自身で 458MB)。必要なら module ごとに分ける
+
+### T291 tcs VM の backend (tcs2vm) を TinyC# に写す ✓ (2026-11-02)
+- tcsvm/Emitter (C#、FunctionCompiler / ModuleBuilder / VmEmitter / VmSession / IlWalk / Dump / Model、約 5,300 行) を TinyC# に写し、`SelfHost/VmBackend/` に置いた。CLI は `tcs vm` (`SelfHost/Tool/VmRun.cs`、--watch、--reload-from、--dump-il も)。.NET の tcs2vm と VmSession は TinyC# の実装を動かす入口になり、C# の版と `Transpiler/Backend` (C# の TypeTable と ReloadPlan) を消した
+- record の階層は種類を持つ 1 つの class (VType、Var)、命令の 64 bit の語は 2 つの int、byte 列は int の List、型記述子は C backend の TypeTable を共有した。host は byte 列を書く `TcsHost.WriteBinaryAtomic` を足した (1 文字が 1 byte。.NET は Latin-1 で書く)
+- C# 版が reflection で書いていた IL の文字列 (lambda の本文の指紋の SHA-256 の入力) と子の列挙は、`gen-ilnodes.py` が Il.cs の record から生成する。SHA-256 と base64 は TinyC# で書いた
+- `rawequal` (T289 の参照の比較) は、C# 版では IL の変換層が Eq に直していたので、VM backend の入口で同じく Eq として読む
+- FunctionCompiler (3,700 行) は 5 つの部分に分けて並べて写し、同じ規約 (型と API の対応表、tuple の戻り値の out の形) で組み立てた。組み立て後の誤りは out の引数の宣言の形と `self` の名前だけだった
+- 検証: `TCS_VM_PORT=1` の比較 (C# 版と TinyC# 版の .tcsb) で tcs2c.Tests 556 件 (`TCS_VM_DIFFERENTIAL=1`、emit と reload) と Transpiler.Tests の VM の corpus 435 件が byte で同じ。C# 版を消した後の `dotnet test` (root の 1 件を除いて通る)、`tcsvm/run-tests.sh` 26 件、`SelfHost/build.sh` (tcs vm が Lua / C / .NET で同じ)、`SelfHost/native.sh` (C の tcs の tcs vm が .NET と同じ)
+- 判断: C# の IL の model と SelfHostIlExport は IL の形を調べるテスト (IlExportTests など) だけが使うので残した。テストを TcsSelf の IL で書き直せば消せる
+- 残課題: IL の形のテストを TcsSelf の IL に移して C# の IL の model を消す
+
+
+### Lua の出力の字下げの表を thread の間で共有しない ✓ (2026-11-02)
+- CI の bootstrap テスト (Bootstrap_ReachesFixedPoint_AndMatchesDotnetRun) が 1 度だけ stage1 (.NET) != stage2 (Lua) で落ちた。stage1 はテストの process の中の .NET で作り、xUnit が他の変換を別の thread で並べて動かす
+- `LuaGen.Spaces` は static の List に字下げの文字列を呼び出しのたびに足していた。2 つの thread が同時に足すと同じ長さの項が 2 つ入り、その後の字下げが process の終わりまでずれる (Lua の意味は変わらないので他のテストは通る)。T279 からあったもので、T291 で VM のテストが process の中で変換するようになって起きやすくなった
+- static initializer で 128 まで 1 度だけ作り、以後は読むだけにした (それより深い字下げはその場で作る)
+- 検証: `dotnet test` (root の権限のテスト 1 件を除いて通る)、`SelfHost/build.sh`
+- 判断: 他の static の遅延の表 (Builtins、BclCatalog、Lexer など) は作り終えてから代入するので、壊れた表は見えない
+- 残課題: なし
+
+### TcsHost の上で別の TinyC# の program を動かす入口と、束縛した宣言を読む口 ✓ (2026-11-02)
+- lub の lub-gen (API の記述 `lub_stub.cs` を読む generator) を TinyC# にするための口。lub-gen は tcs の compiler のソースと一緒に `tcs c` で C にし、tcs と同じ host で動かす
+- `SelfHost/Native/host.c` の entry と include する C を macro にした (`TCS_HOST_SOURCE`、`TCS_HOST_START`、`TCS_HOST_STEP`。既定は tcs の Cli)。.NET は `TcsHost.Run(args, start, step)`
+- `Session.KeepDeclarations` で、束縛を終えた宣言 (`Compilation` の型と member の symbol、構文の木) を `Session.Declarations` に残す。`IlExporter.RefTypePath` (host の型の Lua の path) を public にした
+- 検証: `dotnet test` (root の権限のテスト 1 件を除いて通る)、`SelfHost/build.sh`。lub の C の lub-gen が .NET の旧 lub-gen (Roslyn) と同じ出力を出す (lub 側で確かめる)
+- 判断: lub-gen を tcs の CLI の subcommand にする案は、lub の API の規則を tcs に持ち込むので採らなかった。host を共有し、program の入口だけを差し替える
+- 残課題: なし
+
+### .NET の build の警告を無くし、警告を誤りにする ✓ (2026-11-02)
+- `Directory.Build.props` で `TreatWarningsAsErrors` (NuGet の脆弱性の監査 NU1900〜NU1904 は警告のまま)。CI と release の build がそのまま gate になる。`samples/analyzer-demo` は TinyC# の診断を警告として見せる demo なので外した
+- 直した警告: compiler の null 許容 (Declarer、SemanticChecks、CEmitter)、`gen-ilnodes.py` の `Strs` を `List<string>` と `List<string?>` で分けた、NaN の判定 `x != x` は `float.IsNaN` が TinyC# に無いので `#pragma warning disable CS1718` で囲った、テストの null 許容と xUnit2029
+- WasmCompiler: C# の IL の model (Il、IlExport、SelfHostIlExport、ReloadClassifier) は IL の形のテストだけが使い、reflection が trim と合わないので入れない。`TcsHost.ReadStdin` は browser で `Console.In` を読まない。IL2104 (Roslyn の中の trim の警告。外の assembly で直せない) は NoWarn。消えた `Transpiler/Backend` の include を除いた
+- `TinySystem/Collections.cs` は .NET の実装なので、ゲームの project に取り込んだときに TinyC# の analyzer の診断を当てない (lub の templates/game で TCS1002 が出ていた)
+- 検証: `dotnet build tcs.slnx` (Debug と Release) と WasmCompiler の build と AOT の publish が警告 0。`SelfHost/build.sh`、`SelfHost/native.sh`、`run-tests.sh` (root の権限のテスト 1 件を除いて通る。analyzer demo の数の検査も)
+- 残課題: なし
+
+### C# の IL の model を消す ✓ (2026-11-02)
+- `Transpiler/Il.cs` (C# の IL の record)、`SelfHostIlExport.cs` (セルフホストの IL を reflection で写す層)、`ReloadClassifier.cs` を消した。`IlExport.Export` はセルフホストの `TcsSelf.ExportResult` をそのまま返す (誤りの扱いは前と同じ: 誤りがあれば Classes は空で Diagnostics に誤り、tcs VM が許す準拠の誤りだけなら IL と診断を返す)
+- IL の形を調べるテスト (IlExportTests、IlForeignTests、IlGameCoreTests、IlGenericTests、IlObjectValueTests など) は `TcsSelf` の IL を読む。型の名前と field は同じで、`ImmutableArray` が `List` になった (`Length` → `Count`、enum の member は `MemberNames`)
+- docs (il-reference、hot-reload-design、object-model、tcs2c/README) の型の名前を `ExClass` / `ExMethod` / `ExStruct` / `ExEnum` と `SelfHost/Compiler/Il.cs` にした
+- 検証: `dotnet test` (root の権限のテスト 1 件を除いて通る)
+- 残課題: なし
+
+### analyzer の準拠の規則を compiler の 1 か所にする ✓ (2026-11-02)
+- `Shared/TinyCsComplianceFacts*.cs` (Roslyn の構文と意味で TCS1001〜1003 を判定する約 2,600 行) と `Shared/LuaNaming.cs` を消した。`Shared/` は診断の id (`TinyCsDiagnosticIds`) だけ
+- `TinyCs.Analyzers` は compiler (`SelfHost/Compiler/*.cs`、netstandard2.0 で build できる) を入れ、compilation のソースで `tcs check` と同じ compile を 1 回走らせ、診断 (`treeN.cs(line,col): ... TCS100x: ...`) を Roslyn の Location (その位置の token) に写す。tree ごとの報告は semantic model の解析で行い、compile は compilation ごとに 1 回 (Lazy)。compiler の static な状態のため compile は lock で 1 つずつ。TCS1004 (System.Math の超越関数) は .NET で実行するときだけの話なので Roslyn のまま
+- `--ref` の stub は AdditionalFiles か Compile の項目に `TinyCsRef="true"` (CompilerVisibleItemMetadata)。TinySystem.props が入れる TinySystem の file (Linq、ValueTuple、Collections) は user のソースから外し、Linq と ValueTuple は library として足す (analyzer に埋め込み)。SDK が作る GlobalUsings は名前の解決に渡すが診断は出さず、AssemblyInfo は渡さない
+- netstandard2.0 で compiler を build するため `TinySystem/Utf8.cs` の `ArgumentOutOfRangeException.ThrowIf*` を手で書いた判定にし、analyzer に `IsExternalInit` を置いた
+- playground の補完の絞り込み (`SemanticQueries`) は `TcsSelf.Builtins.IsSupportedBclMember` (組み込みの表) で決める。`LuaRuntime.RuntimeGlobalAliases` と `Compliance.RuntimeGlobals` を public にしてテストが読む
+- analyzer のテストの食い違い 3 件は compiler に合わせた: delegate の宣言は TCS1001 (旧 analyzer は見逃していた)、host の interface は stub で渡す (BCL の interface の実装は TCS1002)、parity の入力の C# の誤り (CS0220 の定数の overflow。両側が同じ旧規則で通っていた) を直した
+- 検証: `dotnet test` (analyzer 123 件、Transpiler.Tests は root の権限のテスト 1 件を除いて通る、tcs2c.Tests 556 件)、`run-tests.sh` の analyzer demo の数の検査 (TCS1001 x5 / TCS1002 x1 / TCS1003 x1) と nupkg の consumer と severity の上書き、`SelfHost/build.sh`、`SelfHost/native.sh`、WasmCompiler の build
+- 判断: analyzer は project の全部のソースを毎回 compile する (IDE の編集のたびに compilation が変わる)。.NET の compiler で lub の tests/cs と cs-lib (約 1.7 万行) が 1 秒弱なので許容した。規則を 2 か所に持つより、判定が `tcs check` と必ず同じになる方を選んだ
+- 残課題: なし
+
+### reload で static の slot がずれても、状態の控えの static を正しい static に戻す ✓ (2026-11-04)
+- 初期化子の付いた static を足す reload は、後ろの static の slot を振り直す。状態の控え (`tvm_snapshot_take`) は static を slot で持ち、reload の後も古い slot のまま残っていたので、GC (`tvm_debug_mark`) が数の値を参照として mark して segfault し、`tvm_snapshot_restore` は値を別の static に書き戻していた
+- `reflect` で static を移した後、控えの static を名前で新版の slot へ付け替える (`remap_snapshot_statics`)。消えた static、型の変わった static、葉の並びの変わった struct の static は控えから落とす。対応の表は reload ごとに 1 回作り、全部の控えに当てる
+- `tcsvm` の CLI に `--snapshot K` / `--restore K` (lib 形の K 回目のフレームの後に控える / 書き戻す) を足し、`VmReloadTests.Snapshot_RestoresStaticsByName_WhenReloadRenumbersThem` で確かめる
+- 検証: 直す前はこのテストが exit 139 (segfault)、直した後は通る (GC stress を含む)。`run-tests.sh`
+- 判断: slot がずれたら控えを全部捨てる案は小さいが、開発中によくある「初期化子の付いた static を足す」たびに巻き戻しの履歴が消えるので採らなかった
+- 残課題: なし
+
+### VM の行ごとの負荷 (tvm_profile) ✓ (2026-11-07)
+- `tvm_profile_enable` で数え始めると、--trace の行ごとに、確保 (byte と回数) と、`tvm_profile_tick` で知らされた時間を足す。時間は知らされたときに実行していた行に付く。印の無い関数 (--trace の外と host の関数) の中の時間と確保は、それを呼んだ行に付く。呼んだ先の --trace の関数から戻ると (VM の中の呼び出しも、host や runtime からの入れ子の呼び出しも)、呼んだときの行に戻る (`f(g())` の g から戻った後の f の中は、g の行でなく呼んだ行に付く)。host から呼んだ一番外の呼び出しの外で知らされた時間は、どの行にも付けない
+- `tvm_profile_tick` は別の thread から呼んでよい (知らされた時間は 1 つの数に不可分に足し、行が変わるときに不可分に覗き、たまっていれば不可分に読んで 0 にする)。host が一定の間隔で呼ぶと、行ごとの時間の見積もりになる
+- GC の止まりは、`tvm_profile_enable` に渡す時計で 1 回ごとの長さを測り、回収の後に生きている byte と一緒に別に持つ (直近 64 回)。GC の間に知らされた時間は行に足さない
+- `tvm_profile_site` は数えている間の今の --trace の行を返す (host の関数の中では、それを呼んだ行)。host が API の呼び出し元の行に、行の外で測った値 (GPU の pass の時間など) を付けるのに使う
+- 行ごとの数は TvmDebug に持つので、reload で行の表が替わると 0 から数え直す。止めている間は、TRACE、確保、interpreter の出入りで時計の有無を見るだけ
+- 検証: `tcsvm/tests/profile` (host の関数が `tvm_profile_tick` で知らせる時間と確保と GC の止まりが、決まった行に決まった値で付く。別の thread から 200000 回知らせた時間が欠けずに付く。GC の間に読む時計が進み、そのたびに知らせても、GC の長さは時計の差になり、知らせた時間は行に付かない。--trace の関数から戻った後の印の無い関数の中の時間と確保、host の入れ子の呼び出しから戻った後の時間が、呼んだ行に付く。host の関数の中で引いた今の行が、それを呼んだ行になり、数えていなければ無い)、`bash tcsvm/run-tests.sh`、`run-tests.sh`。profile の test は ASan/UBSan と TSan でも警告なしで通る
+- 判断: 文ごとに時計を読む形をやめた。時計は一番速い TSC の直接読み (rdtsc) でも 1 回 8 ns かかり、VM の文 1 つ (足し算だけの loop で 1 回り約 10 ns、文は 2 つ) より重いので、時計の時間が行の時間に化ける (`clock_gettime` は環境によってさらに重く、ブラウザの時計は粗い)。知らせの時間で振り分ける形なら、ゲームの thread は文ごとに 1 つの数を覗くだけで済み、時計の速さによらない。数えている間の重さは、足し算だけの loop で 7〜12%。呼んだときの行を frame に控えるので、数えていなくても呼び出し 1 回に約 1 ns 足される (呼び出しだけの loop で 1〜4%)。行の時間はその行だけで、呼んだ先の --trace の行の時間を含めない
+- 残課題: なし
+
+### VM の持ち越しの数え (tvm_profile_take_kept) ✓ (2026-11-07)
+- 数えている間に --trace の行で作った object に印を付け、作った行を表に覚える (表は `tvm_frame_end` で忘れる)。`tvm_profile_take_kept` は entry と --trace の class の static から幅優先で辿り、印の付いた物を、作った行とそれを持つ field ごとに数えて渡す。一度数えた物は印を消す
+- 持つ field は、根から一番近い、前からある物の field (`型.field`。static は `class.field`)。新しく作った物の中の物はその新しい物を持つ field に付け、List と配列と Dictionary の中の物は、その入れ物を持つ field に付ける
+- 回収された物の番地は表に残るが、同じ番地に --trace の行で作り直すと上書きされ、行の外で作り直すと印が付かないので数えない。shared heap では数えない
+- 検証: `tcsvm/tests/profile` (frame の境目の後に作り、static、前からある object の field、static の List、新しく作った object の field に置いた物が、作った行と持つ field ごとに 1 つずつ付き、置かなかった物と、一度数えた物と、frame の境目より前に作った物は付かない)、`bash tcsvm/run-tests.sh`。ASan/UBSan でも通る
+- 判断: 辿る根は状態の控え (`tvm_snapshot_take`) と同じ entry と --trace の class の static にした。ゲームの状態として持ち越す物を数え、同じ VM で動く道具の static が持つ物を数えないため。印の付いた物だけを表で引くので、前からある物は印を見るだけで済む
+- 残課題: --trace の外の class の static だけが持つ物は数えない
+
+### static から辿れる個体を一度に探す (tvm_inspect_instances) ✓ (2026-11-07)
+- `tvm_inspect_instances(vm, entry, max_depth, max_children, fn, user)` は、entry と --trace の class の static から幅優先で 1 回辿り、class の instance を見つけた順に 1 度ずつ、型の名前と `tvm_inspect` と同じ path と id で渡す
+- 辿った object に印 (`TVM_GC_SEEN`) を付けるので、同じ object は最初に見つけた path で 1 度だけ渡し、輪も辿り直さない。struct の値の中も辿る。深さは static field が 1 で max_depth まで、List と配列などの子は先頭の max_children 個まで
+- 検証: `tcsvm/tests/inspect` (2 つの static から辿れる object が 1 度だけ、輪、struct の中、深さの上限で止まること、2^20 要素の配列の先頭の上限個だけを見ること、id が `tvm_inspect` と同じこと)、`bash tcsvm/run-tests.sh`。ASan/UBSan でも通る
+- 判断: 節ごとに `tvm_inspect` を呼んで探すと、そのたびに path を根から読み直し、子ごとに値の文字を作るので、static から 8000 節ほど辿るだけで 1 回 10 ms かかっていた。探すだけなら値の文字は要らない
+- 残課題: なし
+
+
+### host の関数の struct と out を C の layout の塊と pointer で渡す ✓ (2026-11-08)
+- `tvm_host` の params は C# の引数の順の項、rets は戻り値の項にした。項は `i` `f` `b` `s` `o`、struct の値 `S{型}` (型は IL の型の名前で `tvm_type` と同じ綴り。`T?` は `S{Eng_Vec2?}`、`int?` は `S{int?}`)、前に `&` を付けた out
+- 値の struct は VM が葉を C の layout (object-model §5) の一時の塊に詰めて `args[k].p` に渡す。out は 0 で埋めた場所を渡し、int / float / bool / 参照は結果の register そのもの、struct は塊で、host が戻ったら結果の register に写す。struct の戻り値は `rets[0].p` の塊。`rets` は戻り値だけになった
+- 写し方は読み込みで module の型の表から作る (`tvm_host_plans`)。module に無い型、struct でない型、参照の field を持つ struct、葉の形の合わない呼び出しは理由付きの読み込みエラー。`S` も `&` も無い関数は register をそのまま渡す
+- 一時の領域は VM の stack の今の frame の後ろに取り、host の呼び出しの間 `vm->top` を進める。host が `tvm_invoke` で VM に戻って入れ子で host の関数が呼ばれても塊は重ならない
+- compiler: `IlExport` が `--ref` の struct (record struct を含む) を field の layout だけの `ExStruct` として出す。VM と tcs2c は `new Vec2 { X = 1 }` を 0 の値に field を入れる値にする。VM の emitter は host の呼び出しが使う struct の型を型の表に入れる
+- tcs2c: `--ref` の host の関数は `T` を `T`、`out T` を宣言の位置の `T *` で受け、struct は `Tcs_<型>` の値。戻り値と out の両方を持つ呼び出しも出す (戻り値を受ける IL の local に型を付けた)
+- 検証: `tcsvm/tests/host` (struct の値と戻り値、scalar と struct の out、入れ子の struct、bool と enum の field、`readonly record struct`、`T?`、host から VM に戻る入れ子、登録の誤りと読み込みの拒否を Reject.cs で)、`tcs2c/verify-host.sh`、`run-tests.sh`。host の test は ASan/UBSan でも通る。直す前は VM が TCS1001 (`type 'Eng.Vec2' is not in the VM yet`)、tcs2c が `unsupported IL type` で止まった
+- 判断: scalar の out の場所は一時の塊でなく結果の register にした。host が書いた参照が、host が VM に戻って回収が走っても frame の root から見え、写し戻しも要らない。塊にできる struct を葉が int / float / bool のものに限ったのは、塊の中の参照を GC が辿らないため
+- 残課題: VM の中の呼び出しと delegate (`tvm_invoke`) の葉の並びは変えていない。`--ref` の struct の positional な constructor と instance method は無い
+
+### module 単位の混在の境界で struct と out を渡す ✓ (2026-11-08)
+- `tcs2c --lib --vm-host` の glue が、塊にできる struct (field が int / float / bool / enum とそれだけの struct) と `T?` の引数と戻り値、out の引数を持つ公開 static method も VM の host の関数として登録する。項は VM の host の ABI の `S{型}` と `&` で、型の名前は VM の module が `--ref` で見る IL の名前 (`Ed_Span`、`int?`)
+- glue は VM が渡す塊を `*(const Tcs_Ed_Span *)a[k].p` で値にし、out は VM が渡す場所を C の関数の末尾の `T *` に渡し、struct と `T?` の戻り値は `r[0].p` の塊に書く
+- 参照の field を持つ struct、List / Dictionary、interface の method の out は登録せず、生成 C に理由の comment を書く
+- 検証: `tcsvm/tests/modules` (C の module の struct の値と戻り値、out の string と struct、`int?` の戻り値を content (VM) が呼ぶ。reload の前後の module が同じ関数を呼ぶ。通常と tcs2c の GC stress)。ASan/UBSan でも通る。直す前は glue が `not a VM host function (parameter s: struct Ed_Span)` / `(out)` / `(return i32?)` で登録せず、VM の読み込みが `unknown runtime function ed.editor.widen` で止まった
+- 判断: C の module の struct の layout は tcs2c の生成 struct で、VM の塊の layout (§5) と同じなので、写さずに C の struct として読む
+- 残課題: なし
+
+### IL の Lua 寄りの表現を tcs VM と C の形にする (#461) ✓ (2026-11-08)
+- literal: `IlLit(LuaText, Type)` を `IlLit(Kind, I, F, S)` にし、値 (i32、f32、escape の無い文字列) で持つ。backend は Lua の文字列の escape、10 進と 16 進の数、NaN と ±∞ の語を読み直さない。int.MinValue は値の literal、負の float の literal は括弧で包まない
+- 名前: `IlIsLuaType` → `IlIsPrimType` (`IlPrimType`)、`IlNumericConvert.LuaCheck` → `Unbox`、`LuaName` → `IlName`、`TypeLuaNames` → `TypeIlNames`、C の `LuaTypeName` → `IlTypeName`。backend が読まない `IlRefCast.LuaCheck` / `LuaCheckArg` と `IlCast.LuaRef` を外した
+- Lua の関数の名前の IL の呼び出しを intrinsic の名前にした (`print` / `io.write` → `__tcs_writeline` / `__tcs_write`、`tonumber` 系 → `__tcs_iparse` / `__tcs_fparse`、`tostring` → `__tcs_str`、`string.char` / `upper` / `lower` / `format` → `__tcs_cstr` / `__tcs_upper` / `__tcs_lower` / `__tcs_format`、`math.fmod` → `__tcs_fmod`、`rawequal` → `__tcs_refeq`、`os.getenv` → `__tcs_getenv`、`table.insert` → `List.Add`、`table.remove` (1 始まり) → `List.RemoveAt` (0 始まり))
+- Lua のために入れた IL の形を外した: `IlIndex.BoolElements` / `NilElements`、`IlLen` / `IlTable` / `IlCall` の `NilElements`、`IlMethodGroup.CopyTypes`、`IlStructCopy` / `IlStructDescriptor` の `Copiers` (Lua の関数の source のテキスト)、`IlWhile.ScopeBody`、`IlForeachList.Counted`、`IlValues` とタプルの multi-return の経路 (`IlContext.ForCBackend` が常に真で使われていなかった)、`BuildOutMethodBody` (呼ばれていなかった)、`Dict.FloatKey` / `FloatKeys` / `FloatKeyOut` (float の key の Dictionary は TCS1001)
+- 検証: `bash run-tests.sh` (root で動かすと落ちる `Cli_AtomicOutputReplace_RespectsUnixWritePermission` を除く)、`SelfHost/build.sh` の固定点、lub の lub-gen をこの tcs で build
+- 判断: tcs VM の runtime の関数の名前 (`io.write`、`os.getenv`、`float.parse` など) は .tcsb に入るので変えない。intrinsic の名前は user の struct の method (`Type.Method` の IlCall) と重ならない `__tcs_` にし、副作用のある `__tcs_write` / `__tcs_writeline` / `__tcs_getenv` は `IlTree.IsPureCallee` から外した。`__tcs_refeq` は前の `rawequal` と違って副作用の無い呼び出しとして扱う (参照の比較は副作用が無い)
+- 残課題: host の名前の写し方 (`LuaNames`、lub-gen も使う) と Lua を理由にしたサブセットの規則は #460。IL に残る Lua 由来の形: List / Dictionary の Clear の `IlForPairs` + null の代入、null の合体の `IlBin(Or)`、List の copy に渡す `S.__copy` の参照、`IlIndex.Unchecked` (builder が式を読み直してよいかの判断に使う)

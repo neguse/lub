@@ -1,0 +1,9 @@
+# .NET SDK の更新は global.json の pin を bump する PR として届く。
+# CI (run-tests.sh) が通ってからマージし、各マシンは merge 後に
+# dotnet-install.sh --jsonfile global.json で追随する
+version: 2
+updates:
+  - package-ecosystem: "dotnet-sdk"
+    directory: "/"
+    schedule:
+      interval: "weekly"

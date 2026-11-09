@@ -1,0 +1,29 @@
+begin w=3 scale=1 title=t
+5 eng 42
+<a.txt> 9 True 3.5
+42 v7 16 3 20x 4 9
+3 2 12
+True False True 3
+8
+11
+2 3
+2 2 True
+True 14 0.25 False 0 0
+True 1 2.5 False
+11 -1 -2
+3 6
+10 0:0
+10 0:0,1:0.5
+10 0:0,1:0.5,2:1
+register S{Eng_Vec2 / f: refused
+register S{} / f: refused
+register &&i / : refused
+register i / &f: refused
+register i / if: refused
+register x / : refused
+reject unknown struct: eng.phys.dot: no struct type Eng_Vec3 in the module
+reject not a struct: eng.phys.dot: string is not a struct
+reject reference field: eng.phys.weight: struct Eng_Named has a reference field
+reject shape: argument 0 of eng.phys.dot: the call does not pass the leaves of struct Eng_Hit
+reject out shape: argument 1 of eng.phys.pick: the call does not pass the leaves of struct Eng_Vec2
+reject matching: loaded
