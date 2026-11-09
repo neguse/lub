@@ -73,7 +73,7 @@ done
 
 # 5. Current-state docs ban ** (bold) emphasis. "**/" and "/**" glob
 #    patterns inside code spans are not emphasis and are ignored.
-current_docs=(README.md AGENTS.md CLAUDE.md tasks.md web/README.md
+current_docs=(README.md AGENTS.md CLAUDE.md web/README.md
   docs/*.md docs/manual/*.md)
 for f in "${current_docs[@]}"; do
   [[ -f "$f" ]] || continue

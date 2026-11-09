@@ -47,7 +47,7 @@ public class TextPage
 /// Font.Glyph をオンデマンドに呼び、使ったグリフだけを atlas (RGBA、白 + coverage α) に詰めて SpriteBatch で描く。
 /// フォントに無い codepoint は黙ってスキップされる (フォールバックチェーンは呼び出し側で Text を重ねる)。
 /// 座標は SpriteBatch と同じ論理 px・左上原点で、draw の y はベースライン位置。
-/// 折返し・禁則はまだ無い (docs/roadmap.md)。
+/// 折返し・禁則はまだ無い。
 /// </summary>
 public class Text
 {

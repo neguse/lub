@@ -50,6 +50,7 @@ golden 画像 (`tests/golden/<name>_<backend>.png`) は tcs VM の player で撮
   別の決断になる。WebGPU の無い環境 (古い iOS、Vulkan driver がブロックリストに
   載った Android の Chrome) は配布対象外
   (経緯: `docs/log/2026-07-07-backend-consolidation.md`)。
+- マルチスレッド描画。thread ごとの command buffer、resource の所有の分割、pipeline cache の lock が要り、command queue が 1 本という今の前提を全面的に見直すことになる。
 
 ## Core API Boundary
 
