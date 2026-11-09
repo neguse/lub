@@ -1,5 +1,7 @@
 # 完了ログ
 
+> 記録: 2026-11-10 までの完了の記録。これより後は追記しない (これからやることは GitHub の issue、やったことは PR の本文に書く)。
+
 ### T1-T6: Phase 0 プロジェクトセットアップ ✓ (2026-02-23)
 - git init、.gitignore、.NET 10 ソリューション (Transpiler / Transpiler.Tests / TinySystem)
 - deps/lua submodule 追加、Lua 5.5 ビルド確認
