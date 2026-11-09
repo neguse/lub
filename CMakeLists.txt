@@ -71,10 +71,10 @@ add_subdirectory(third_party/box3d)
 # TinyC# の Math の超越関数 (tcs の runtime/math)、float の文字列化 (runtime/fmt)、UTF-8 (runtime/utf8)。
 # tcs VM が使う (tcs2c の生成 C は同じ実装を自分で持つ)。
 # 結果が変わらないよう、積和の融合と fast-math を止めて build する。
-file(GLOB TCS_MATH_SRC CONFIGURE_DEPENDS third_party/tcs/runtime/math/*.c)
+file(GLOB TCS_MATH_SRC CONFIGURE_DEPENDS tcs/runtime/math/*.c)
 add_library(tcs_runtime STATIC ${TCS_MATH_SRC}
-  third_party/tcs/runtime/fmt/f2s.c
-  third_party/tcs/runtime/utf8/tcs_utf8.c)
+  tcs/runtime/fmt/f2s.c
+  tcs/runtime/utf8/tcs_utf8.c)
 if(MSVC)
   target_compile_options(tcs_runtime PRIVATE /fp:precise)
 else()
@@ -378,14 +378,14 @@ endif()
 
 # tcs VM の player (src/vm_player.c): tcs vm が作った .tcsb を tcs VM で動かす。
 # VM と、その runtime のうち tcs_runtime に無いもの (書式、並べ替え、型の表)。
-file(GLOB TCSVM_SRC CONFIGURE_DEPENDS third_party/tcs/tcsvm/vm/*.c)
+file(GLOB TCSVM_SRC CONFIGURE_DEPENDS tcs/tcsvm/vm/*.c)
 list(FILTER TCSVM_SRC EXCLUDE REGEX "tcsvm_main\\.c$")
 add_library(tcsvm_lib STATIC ${TCSVM_SRC}
-  third_party/tcs/runtime/fmt/printf.c
-  third_party/tcs/runtime/sort/tcs_sort.c
-  third_party/tcs/runtime/model/tcs_model.c
-  third_party/tcs/runtime/model/tcs_walk.c)
-target_include_directories(tcsvm_lib PUBLIC third_party/tcs/tcsvm/vm)
+  tcs/runtime/fmt/printf.c
+  tcs/runtime/sort/tcs_sort.c
+  tcs/runtime/model/tcs_model.c
+  tcs/runtime/model/tcs_walk.c)
+target_include_directories(tcsvm_lib PUBLIC tcs/tcsvm/vm)
 target_link_libraries(tcsvm_lib PUBLIC tcs_runtime)
 if(MSVC)
   target_compile_options(tcsvm_lib PRIVATE /fp:precise)

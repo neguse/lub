@@ -115,7 +115,7 @@ cs_tests_tcs() {
   if [[ -n "${LUB_TCS_DLL:-}" ]]; then
     dotnet "$LUB_TCS_DLL" "$@"
   else
-    dotnet run --project third_party/tcs/Transpiler -- "$@"
+    dotnet run --project tcs/Transpiler -- "$@"
   fi
 }
 

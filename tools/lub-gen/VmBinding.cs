@@ -3,7 +3,7 @@ using TcsSelf;
 
 namespace LubGen;
 
-// tcs VM (third_party/tcs/tcsvm) の host の関数を作る: lub の C API を、VM が呼ぶ host の関数 (tvm_host) として登録する C。
+// tcs VM (tcs/tcsvm) の host の関数を作る: lub の C API を、VM が呼ぶ host の関数 (tvm_host) として登録する C。
 // 登録するのは stub の全部の関数 (player はゲームを選ばない)。--source を渡したときだけ、そのゲームが使う関数に絞る (テスト用)。
 // VM の object の layout は host の data class も tcs2c と同じ C の struct の規則 (tcs の doc/object-model.md §3、§5) なので、
 // record は C の struct の写し (VmLub_<型>) で読み書きする。読み込みと reload の後に vm_lub_verify が offset を VM の型の表と比べる。

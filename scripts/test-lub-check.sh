@@ -7,9 +7,9 @@ binary="${1:-./build-release-linux/lub}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-tcs_dll="${LUB_TCS_DLL:-$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)}"
+tcs_dll="${LUB_TCS_DLL:-$(find tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)}"
 if [[ -z "$tcs_dll" ]]; then
-  echo "Transpiler.dll not found (dotnet build third_party/tcs/Transpiler -c Release)" >&2
+  echo "Transpiler.dll not found (dotnet build tcs/Transpiler -c Release)" >&2
   exit 1
 fi
 export LUB_TCS="dotnet $tcs_dll"

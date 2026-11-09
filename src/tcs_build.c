@@ -52,9 +52,9 @@ static bool dotnet_on_path(void) {
 // 優先順:
 //   1. LUB_TCS 環境変数 (space 区切りの command prefix。quote は未対応)
 //   2. <exe>/tcs/tcs              -> tcs2c で C にした tcs (release の一式と、scripts/build-tcs-native.sh が build の dir に置くもの)
-//   3. <cwd>/third_party/tcs      -> dotnet run --project ... -- (PATH に dotnet があるとき)
-//   4. <exe>/../third_party/tcs   -> 同上
-//   5. third_party/tcs/SelfHost/out/native/tcs -> checkout で作った C の tcs (PATH に dotnet が無いとき)
+//   3. <cwd>/tcs      -> dotnet run --project ... -- (PATH に dotnet があるとき)
+//   4. <exe>/../tcs   -> 同上
+//   5. tcs/SelfHost/out/native/tcs -> checkout で作った C の tcs (PATH に dotnet が無いとき)
 // 返り値: argv に詰めた個数 (0 = 解決失敗)。
 // storage には strdup 相当で確保。
 static int resolve_tcs_cmd(char storage[][512], int max_args,
@@ -88,16 +88,15 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
     path_parent_dir(base_path, exe_root, sizeof(exe_root));
     roots[1] = exe_root;
   }
-  // dotnet が無ければ、checkout で作った C の tcs (third_party/tcs/SelfHost/native.sh の出力) を使う
+  // dotnet が無ければ、checkout で作った C の tcs (tcs/SelfHost/native.sh の出力) を使う
   for (int i = 0; !dotnet_on_path() && i < 2; i++) {
     if (!roots[i])
       continue;
 #ifdef _WIN32
-    SDL_snprintf(storage[0], 512,
-                 "%s/third_party/tcs/SelfHost/out/native/tcs.exe", roots[i]);
-#else
-    SDL_snprintf(storage[0], 512, "%s/third_party/tcs/SelfHost/out/native/tcs",
+    SDL_snprintf(storage[0], 512, "%s/tcs/SelfHost/out/native/tcs.exe",
                  roots[i]);
+#else
+    SDL_snprintf(storage[0], 512, "%s/tcs/SelfHost/out/native/tcs", roots[i]);
 #endif
     if (file_exists(storage[0])) {
       argv[0] = storage[0];
@@ -108,8 +107,8 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
     if (!roots[i])
       continue;
     char proj[768];
-    SDL_snprintf(proj, sizeof(proj),
-                 "%s/third_party/tcs/Transpiler/Transpiler.csproj", roots[i]);
+    SDL_snprintf(proj, sizeof(proj), "%s/tcs/Transpiler/Transpiler.csproj",
+                 roots[i]);
     if (!file_exists(proj))
       continue;
     SDL_strlcpy(storage[0], "dotnet", 512);
@@ -413,8 +412,8 @@ bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs) {
   const char *argv[TCS_ARGV_MAX];
   int n = resolve_tcs_cmd(storage, 16, argv);
   if (n == 0) {
-    SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
-            "(git submodule update --init third_party/tcs)");
+    SDL_Log("tcs not found: set LUB_TCS, or run from a lub checkout "
+            "(tcs/Transpiler/Transpiler.csproj)");
     return false;
   }
   argv[n++] = "vm";
@@ -444,8 +443,8 @@ bool tcs_check(const char *cs_path) {
   const char *argv[TCS_ARGV_MAX];
   int n = resolve_tcs_cmd(storage, 16, argv);
   if (n == 0) {
-    SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
-            "(git submodule update --init third_party/tcs)");
+    SDL_Log("tcs not found: set LUB_TCS, or run from a lub checkout "
+            "(tcs/Transpiler/Transpiler.csproj)");
     return false;
   }
   argv[n++] = "check";

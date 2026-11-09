@@ -1,4 +1,4 @@
-// tcs VM の player の library (include/lub/lub_vm.h): tcs vm が作った bytecode (.tcsb) を tcs VM (third_party/tcs/tcsvm) で動かす。
+// tcs VM の player の library (include/lub/lub_vm.h): tcs vm が作った bytecode (.tcsb) を tcs VM (tcs/tcsvm) で動かす。
 // 既製の lub_vm は src/vm_main.c の main を付けたもの。
 // frame の骨格は host API (src/host_api.c) が持ち、ここは VM の読み込み、entry の呼び出し、hot reload だけ。
 // API は lub-gen vm が作る host の関数 (src/gen/vm_api_gen.c) で、player はゲームを選ばない (stub の全部を登録する)。
