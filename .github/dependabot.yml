@@ -1,0 +1,8 @@
+# tcs/ の .NET SDK の更新は、tcs/global.json の pin を上げる PR として届く。
+# CI (tcs-test) が通ってから merge し、各マシンは merge の後に dotnet-install.sh --jsonfile tcs/global.json で合わせる。
+version: 2
+updates:
+  - package-ecosystem: "dotnet-sdk"
+    directory: "/tcs"
+    schedule:
+      interval: "weekly"

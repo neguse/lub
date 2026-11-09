@@ -5,6 +5,7 @@
 #   - docs のみ (docs/** の manual 以外, *.md, .claude/**, LICENSE) → lint のみ
 #   - web サブツリーのみ (web/, docs/manual/) → native をスキップ
 # それ以外は全 job 実行。
+# tcs/ の中のテスト (tcs-* の job) は、PR では tcs/ かこの workflow を変えたときだけ走る。
 # 依存の閉包が広い (src/ は wasm へ、cs-lib/ は全 golden へ波及する) ので、細かく削るより漏れない側に倒す。
 #
 # 速度は cache が本体:
@@ -33,6 +34,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
       web_only: ${{ steps.classify.outputs.web_only }}
+      tcs: ${{ steps.classify.outputs.tcs }}
     steps:
       - name: Classify changed paths
         id: classify
@@ -41,12 +43,18 @@ jobs:
         run: |
           docs_only=false
           web_only=false
+          # tcs/ の中のテスト (tcs-* の job) を走らせるか。PR では tcs/ か この workflow を変えたときだけ
+          tcs=true
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
               --paginate --jq '.[].filename' > /tmp/changed.txt
             docs_only=true
             web_only=true
+            tcs=false
             while IFS= read -r f; do
+              case "$f" in
+                tcs/* | .github/workflows/ci.yml) tcs=true ;;
+              esac
               case "$f" in
                 docs/manual/*) docs_only=false ;; # playground の docs.html に焼き込まれる
                 docs/* | *.md | .claude/* | LICENSE) continue ;;
@@ -60,11 +68,13 @@ jobs:
             if [ ! -s /tmp/changed.txt ]; then
               docs_only=false
               web_only=false
+              tcs=true
             fi
           fi
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
           echo "web_only=$web_only" >> "$GITHUB_OUTPUT"
-          echo "docs_only=$docs_only web_only=$web_only"
+          echo "tcs=$tcs" >> "$GITHUB_OUTPUT"
+          echo "docs_only=$docs_only web_only=$web_only tcs=$tcs"
 
   lint:
     runs-on: ubuntu-latest
@@ -934,8 +944,146 @@ jobs:
   # 唯一の required check。
   # 走った job が全部 success (skipped は changes の判定による意図的な skip) なら green。
   # changes / lint は必ず走る前提。
+  # ---- tcs/ の中のテスト ----
+  # tcs (C# の compiler と VM) 自身のテスト。lub の job は tcs を使う側から確かめ、こちらは tcs の仕様から確かめる。
+  # .NET SDK の版は tcs/global.json で固定する。
+  tcs-test:
+    needs: changes
+    if: needs.changes.outputs.tcs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: tcs
+    steps:
+      - uses: actions/checkout@v4
+
+      # spec conformance の入力 (C# の仕様の例)
+      - name: Init csharpstandard
+        working-directory: .
+        run: git submodule update --init tcs/deps/csharpstandard
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: tcs/global.json
+
+      - name: Run tests and tcs checks
+        run: bash run-tests.sh
+
+  # tcs VM と C (tcs2c) の digest が一致することを確かめる。時間は成果物に残すだけ (runner の時間は揺れる)。
+  tcs-bench-2backend:
+    needs: changes
+    if: needs.changes.outputs.tcs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tcs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: tcs/global.json
+
+      - name: Run 2-backend bench
+        run: bash perf/bench-2backend.sh | tee bench-results.csv
+        env:
+          PERF_BENCH_RUNS: "5"
+
+      - name: Upload bench results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tcs-bench-2backend-results
+          path: tcs/bench-results.csv
+
+  # 外向けの比較ベンチ (tcs/perf/compare) の全実装が同じ出力を出すことを確かめる。時間は測らない。
+  tcs-compare-check:
+    needs: changes
+    if: needs.changes.outputs.tcs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tcs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: tcs/global.json
+
+      - name: Check outputs of all implementations
+        run: python3 perf/compare/run.py --check
+
+  # tcs 自身の速さの回帰 (tcs/perf/selfbench)。PR の base と同じ runner で交互に測り、決定的な指標 (命令の数、managed heap の最大) が閾値を超えて増えたら失敗する。
+  tcs-selfbench:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.tcs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: tcs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: tcs/global.json
+
+      - name: Install valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Compare with the PR base
+        run: python3 perf/selfbench/run.py --base "origin/$BASE_REF" --runs 5 -o selfbench.json
+        env:
+          BASE_REF: ${{ github.base_ref }}
+
+      - name: Upload selfbench results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tcs-selfbench-results
+          path: tcs/selfbench.json
+
+  # tcs2c で C にした tcs (tcs/SelfHost/native.sh) を 3 OS で作り、.NET の tcs と同じ出力を出すことを確かめる。
+  tcs-native:
+    needs: changes
+    if: needs.changes.outputs.tcs == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cc: cc
+          - os: macos-latest
+            cc: clang
+          - os: windows-latest
+            cc: clang
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: tcs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: tcs/global.json
+
+      - name: Build native tcs and compare with .NET
+        run: bash SelfHost/native.sh
+        env:
+          CC: ${{ matrix.cc }}
+
   gate:
-    needs: [changes, lint, format, formal, linux, windows, macos, web-build, web-verify, web-golden, web-export]
+    needs: [changes, lint, format, formal, linux, windows, macos, web-build, web-verify, web-golden, web-export, tcs-test, tcs-bench-2backend, tcs-compare-check, tcs-selfbench, tcs-native]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
