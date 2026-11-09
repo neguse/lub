@@ -47,9 +47,7 @@ tcs/
 ├── deps/                  # 外部依存 (git submodule)
 │   └── csharpstandard/    # C# の仕様 (spec conformance の例)
 ├── tcs.slnx               # .NET ソリューション
-├── run-tests.sh           # テスト実行スクリプト
-└── .githooks/
-    └── pre-commit         # テスト実行ゲート
+└── run-tests.sh           # テスト実行スクリプト (CI の test job が走らせる)
 ```
 
 ## ビルド・テスト
@@ -64,9 +62,6 @@ tcs/
 ### コマンド
 
 ```bash
-# 初回セットアップ: pre-commit ゲート (.githooks/pre-commit = run-tests.sh) の配線
-git config core.hooksPath .githooks
-
 # テスト実行（基本操作）
 dotnet test
 
