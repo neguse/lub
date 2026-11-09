@@ -50,7 +50,7 @@
 
 ## If go
 
-Add product tasks to `doc/tasks.md` using this shape:
+Open GitHub issues for the product tasks using this shape:
 
 ```markdown
 ### T123: tcs analyzer package を正式導線にする

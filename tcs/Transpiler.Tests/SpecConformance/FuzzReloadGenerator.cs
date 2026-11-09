@@ -13,7 +13,7 @@ public sealed record FuzzReloadScenario(string V1, string V2, string StateCs, st
 /// を生成する。期待値は生成時に計算する (値は小さく保ち wrap を踏まない)。
 /// 検出網の自己検証のため、毎シナリオ必ず「method body 変更」と
 /// 「added field」を含む。record class / 継承は migration 未対応のため
-/// 生成しない (tasks.md の需要待ち項目)。
+/// 生成しない。
 /// </summary>
 internal sealed class FuzzReloadGenerator(int seed)
 {

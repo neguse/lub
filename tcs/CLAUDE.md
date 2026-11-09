@@ -15,8 +15,7 @@ tcs/
 ├── objective.md           # プロジェクト目標・設計文書
 ├── q.md                   # 未解決の質問
 ├── doc/
-│   ├── tasks.md           # タスクリスト
-│   └── done.md            # 完了ログ
+│   └── done.md            # 2026-11-10 までの完了の記録 (追記しない)
 ├── tcs2c/                 # tcs c (C backend) を .NET で動かす入口と、C の出力のテスト用のスクリプト
 ├── tcs2c.Tests/           # differential (C 通常 + GC stress、tcs VM 通常 + GC stress、.NET の stdout 一致)
 ├── perf/                  # 性能実測ハーネス (kernel 契約 CONTRACT.md + 変種実装 + 実測記録)
@@ -93,31 +92,19 @@ analyzer / `tcs check` の診断一致は run-tests のこの恒常ゲートで�
 
 ### 作業手順
 
-1. `doc/tasks.md` から次のタスクを選択（残作業の正本。直近の文脈は `doc/done.md` 末尾と `git log`）
+1. GitHub の issue から次のタスクを選択（残作業の正本。直近の文脈は `git log` と PR の本文）
 2. テストを先に書く（TDD）
 3. 実装し、`dotnet test` で全テスト通過を確認
-4. `doc/done.md` に完了ログを記録し、`doc/tasks.md` から削除
-5. コミット（1タスク = 1コミット）
+4. コミット（1タスク = 1コミット）
+5. PR の本文に、問題、最終的な変更、検証、判断（却下した代替案）、残した作業を書く。残した作業は issue にする
 
-進捗スナップショット（旧 doc/current.md）は持たない。仕様の正本は
-support-matrix / README / design doc、歴史は done.md と git log。
-
-### 完了ログ形式（done.md）
-
-```markdown
-### タスク名 ✓ (YYYY-MM-DD)
-- [実施内容]（変更ファイルの列挙は不要 — commit が正本）
-- 検証: [実行したコマンドと結果]
-- よかったこと: [成功したアプローチ、再利用可能なパターン]
-- 判断: [トレードオフ、選択理由、却下した代替案]
-- 残課題: [残作業]
-```
+リポの中に作業の一覧や完了の記録は置かない（branch どうしで競合するため）。仕様の正本は support-matrix / README / design doc、歴史は PR の本文と git log。`doc/done.md` は 2026-11-10 までの記録で、追記しない。
 
 ### コミットルール
 
 - 1タスク = 1コミット（`git bisect` / `git revert` 可能に）
 - テスト + 実装 + ドキュメント更新をセットで
-- コミットメッセージ: `feat: T{番号} {概要}`（例: `feat: T3 if/else文のトランスパイル`）
+- コミットメッセージ: `feat: {概要}`（例: `feat: if/else文のトランスパイル`）
 
 ## 進め方（このリポジトリ固有）
 

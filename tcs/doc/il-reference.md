@@ -118,6 +118,6 @@ il-spec 付録 A。
 
 ## 未カバー（backend 側で拒否してよい）
 
-- Body == null の method（診断構文、method group 参照等 — tasks.md T224）
+- Body == null の method（診断構文、method group 参照等）
 (2026-07-18 時点で契約は完備: top-level 文は Result.TopLevel、operator は
 `IlNames.OperatorName` の名前 (`__add`、overload は `__mul_1` 等) の static ExMethod として Methods に現れ、呼び出し箇所は IlCall)
