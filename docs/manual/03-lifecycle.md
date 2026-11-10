@@ -29,7 +29,7 @@ callback の中で error が起きると、その callback はそこで打ち切
 | `ErrorAction.Log` | log に出して次へ進む(`OnError` が無いときもこれ) |
 | `ErrorAction.Abort` | 終了コード 1 で終わる |
 
-`OnError` 自身が失敗したら `Abort` になる。自分で終わるときは `App.Quit()`、終了コードを返すときは `App.Quit(code)`。
+`OnError` 自身が失敗したら `Abort` になる。message は開発中(tcs VM)は C# の trace 付きで、配る build(C にしたもの)は error の種類だけになる。自分で終わるときは `App.Quit()`、終了コードを返すときは `App.Quit(code)`。
 
 ## 配る形にする (`lub export`)
 
