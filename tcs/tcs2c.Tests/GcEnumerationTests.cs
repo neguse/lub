@@ -69,12 +69,12 @@ public class GcEnumerationTests
     {
         { "emitter: class field store barrier", @"tcs_wb\(__tcs_object_\d+\);", "" },
         { "tcs_wb registers nothing", @"hdr->flags \|= TCS_GC_DIRTY;", "return;" },
-        { "tcs_list_add barrier", @"if \(layout != NULL\) tcs_wb\(list\);", "" },
+        { "tcs_list_add barrier", @"if \(layout != NULL\)\s*tcs_wb\(list\);", "" },
         { "tcs_list_reserve barrier", @"(list->capacity = capacity;)\s*tcs_wb\(list\);", "$1" },
         { "tcs_dict_grow node barrier", @"tcs_wb\(node\);(\s*buckets\[bucket\] = node;)", "$1" },
         // tcs_dict_grow 末尾の tcs_wb(dict) は唯一の呼び出し元 tcs_dict_put の末尾の
         // バリアに内包されていて、落としても違反は出ない (README の GC 節)
-        { "tcs_dict_put existing node barrier", @"\{ tcs_wb\(node\); return node->value; \}", "{ return node->value; }" },
+        { "tcs_dict_put existing node barrier", @"\{\s*tcs_wb\(node\);\s*return node->value;\s*\}", "{ return node->value; }" },
         { "tcs_dict_put new node barrier", @"(dict->count\+\+;)\s*tcs_wb\(dict\);", "$1" },
         { "boundary: hold slot forwarding", @"tcs_gc_forward_slot\(tcs_gc_holds\[i\]\);", "(void)tcs_gc_holds[i];" },
         { "boundary: static forwarding", @"tcs_s_G_S = tcs_gc_promote\(tcs_s_G_S\);", "" },
