@@ -146,7 +146,9 @@ def main():
     if args.base:
         base_tree = work / "base-tree"
         sh(["git", "-C", str(ROOT), "worktree", "add", "--detach", str(base_tree), args.base])
-        trees.insert(0, Tcs("base", base_tree, work / "base"))
+        # tcs が repo の下の dir にあるときは、base の tree でも同じ dir を見る
+        prefix = sh(["git", "-C", str(ROOT), "rev-parse", "--show-prefix"]).strip()
+        trees.insert(0, Tcs("base", base_tree / prefix, work / "base"))
     try:
         for t in trees:
             t.build()

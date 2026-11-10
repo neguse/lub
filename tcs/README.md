@@ -56,7 +56,7 @@ Windows (PowerShell):
 ```
 
 `run-tests` は `dotnet test` に加え、代表 sample の `tcs check`、Rider helper script、analyzer-demo build の expected diagnostics、analyzer nupkg の PackageReference consumer と `.editorconfig` severity override を検査する。
-GitHub Actions (`.github/workflows/ci.yml`) でも同じ gate を実行する。
+GitHub Actions (repo の root の `.github/workflows/ci.yml` の `tcs-test`) でも同じ gate を実行する。
 
 ## 依存と配布
 
