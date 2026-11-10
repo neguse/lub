@@ -224,4 +224,3 @@ public static class VmCorpus
         lock (Lock) File.AppendAllText(path, $"{kind}\t{expr.ReplaceLineEndings(" ")}\n");
     }
 }
-

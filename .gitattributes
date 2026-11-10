@@ -1,2 +1,4 @@
 third_party/** -whitespace
-tcs/** -whitespace
+# 期待する出力の行末の空白に意味がある
+tcs/tcs2c.Tests/DifferentialTests.NaNRelations.cs -whitespace
+tcs/tcsvm/tests/modules/expected.txt -whitespace

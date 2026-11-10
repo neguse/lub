@@ -18,7 +18,9 @@ static void take(void *user, const char *file, uint32_t line) {
     lines[nlines++] = (int)line;
 }
 
-static int cmp(const void *a, const void *b) { return *(const int *)a - *(const int *)b; }
+static int cmp(const void *a, const void *b) {
+  return *(const int *)a - *(const int *)b;
+}
 
 static void print(const char *what) {
   qsort(lines, (size_t)nlines, sizeof(int), cmp);
@@ -35,7 +37,10 @@ static char b_id[32];
 static void frame(void *user, const char *file, uint32_t line, const char *id) {
   (void)user;
   (void)file;
-  printf(" %u:%s", (unsigned)line, id[0] == 0 ? "-" : strcmp(id, b_id) == 0 ? "B" : "?");
+  printf(" %u:%s", (unsigned)line,
+         id[0] == 0              ? "-"
+         : strcmp(id, b_id) == 0 ? "B"
+                                 : "?");
 }
 
 static TvmStatus here(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
@@ -98,7 +103,8 @@ int main(int argc, char **argv) {
   tvm_trace_take_lines_for(vm, "none", take, NULL);
   print("no pin, B.Hit");
   TvmInspectNode b;
-  if (tvm_inspect(vm, "Game", "Game", 1, 1, &b) != 1 || strcmp(b.name, "B") != 0)
+  if (tvm_inspect(vm, "Game", "Game", 1, 1, &b) != 1 ||
+      strcmp(b.name, "B") != 0)
     return 1;
   snprintf(b_id, sizeof b_id, "%s", b.id);
   if (tvm_call(vm, tvm_find(vm, "Game.Look"), NULL, 0, NULL, 0) != TVM_OK)

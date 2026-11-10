@@ -2,9 +2,9 @@
 #ifndef TCSVM_INTERNAL_H
 #define TCSVM_INTERNAL_H
 
+#include "../../runtime/model/tcs_model.h"
 #include "tcsvm.h"
 #include "tcsvm_ops.h"
-#include "../../runtime/model/tcs_model.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -18,7 +18,8 @@
 #define TVM_MAX_DEPTH 200
 
 /* 分岐の相対 offset: bit 40..63 の符号付き 24 bit。signed の shift を使わずに符号拡張する */
-#define OFF24_OF(ins) ((int32_t)((uint32_t)((ins) >> 40) ^ 0x800000u) - 0x800000)
+#define OFF24_OF(ins)                                                          \
+  ((int32_t)((uint32_t)((ins) >> 40) ^ 0x800000u) - 0x800000)
 
 /* 型記述子は VM と tcs2c が共有する形 (runtime/model、doc/object-model.md §4) */
 typedef TcsInfo TvmRegInfo;
@@ -69,9 +70,11 @@ typedef struct TvmString {
 #endif
   /* 後ろに len byte と終端の '\0' */
 } TvmString;
-_Static_assert(sizeof(TvmString) == sizeof(size_t), "TvmString must match TcsString");
+_Static_assert(sizeof(TvmString) == sizeof(size_t),
+               "TvmString must match TcsString");
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
-#error "tcsvm assumes little endian (TvmString shares its layout with TcsString)"
+#error                                                                         \
+    "tcsvm assumes little endian (TvmString shares its layout with TcsString)"
 #endif
 
 #define STR_DATA(s) ((char *)(s) + sizeof(TvmString))
@@ -97,12 +100,14 @@ typedef struct TvmDict {
   int32_t used;  /* 積んだ entry (消したものを含む) */
   int32_t cap;   /* entry の列の容量 */
   int32_t nbuckets;
-  int32_t version;  /* 新しい key を足すか Clear するたびに増える (列挙の途中の追加を foreach が fault にする) */
+  int32_t
+      version; /* 新しい key を足すか Clear するたびに増える (列挙の途中の追加を foreach が fault にする) */
   char *entries;    /* blob */
   int32_t *buckets; /* blob: entry の番号 + 1。0 は空き、-1 は消した */
 } TvmDict;
 
-#define DICT_ENTRY(d, i) ((TvmDictEntry *)((d)->entries + (size_t)(i) * TVM_TYPE(d)->dict_entry))
+#define DICT_ENTRY(d, i)                                                       \
+  ((TvmDictEntry *)((d)->entries + (size_t)(i) * TVM_TYPE(d)->dict_entry))
 
 typedef struct TvmBox {
   TvmSlot value;
@@ -152,7 +157,8 @@ typedef struct TvmDebug {
   void **pair_self;
   const TvmType **pair_type;
   uint32_t npairs, cappairs;
-  uint32_t *pair_slot; /* 組の重複を見る表 (組の番号 + 1、0 は空き)。大きさは cappairs * 2 */
+  uint32_t *
+      pair_slot; /* 組の重複を見る表 (組の番号 + 1、0 は空き)。大きさは cappairs * 2 */
   uint8_t *line_flags; /* 取り出すときの、行ごとの self の分け方 (nlines 個) */
   uint32_t nvals;
   TvmTraceVal *vals;
@@ -210,8 +216,9 @@ typedef struct TvmProto {
   uint16_t nparams;
   uint16_t nret;
   uint16_t nregs;
-  uint16_t ncaps;            /* lambda の捕捉の数 (lambda は regs[0] が自分の closure) */
-  uint16_t zero_lo, zero_hi; /* 呼び出し時に null で埋める ref register の範囲 */
+  uint16_t ncaps; /* lambda の捕捉の数 (lambda は regs[0] が自分の closure) */
+  uint16_t zero_lo,
+      zero_hi; /* 呼び出し時に null で埋める ref register の範囲 */
   TvmRegInfo *regs;
   TvmRegInfo *rets;
   TvmRegInfo *caps;
@@ -219,16 +226,19 @@ typedef struct TvmProto {
   uint64_t *code;
   uint32_t nlines;
   TvmLine *lines;
-  uint16_t trace_self; /* --trace の class の instance の method なら self の register + 1 (TRACE の A。それ以外は 0) */
+  uint16_t
+      trace_self; /* --trace の class の instance の method なら self の register + 1 (TRACE の A。それ以外は 0) */
 } TvmProto;
 
 typedef struct TvmFrame {
   const uint64_t *pc;
   TvmSlot *R;
   const TvmProto *proto;
-  const struct TvmClosure *clo; /* lambda の frame の自分の closure (LDCAP が読む) */
-  uint32_t ret;                 /* 戻り値を書く caller の register */
-  uint32_t line;                /* 負荷を数えている間の、呼んだときの行 + 1 (戻ったらこの行に戻す) */
+  const struct TvmClosure
+      *clo;     /* lambda の frame の自分の closure (LDCAP が読む) */
+  uint32_t ret; /* 戻り値を書く caller の register */
+  uint32_t
+      line; /* 負荷を数えている間の、呼んだときの行 + 1 (戻ったらこの行に戻す) */
 } TvmFrame;
 
 /* heap の object の前に置く GC の header (doc/vm-design.md §10)。
@@ -246,8 +256,9 @@ typedef max_align_t tvm_max_align_t;
 
 typedef struct TvmGcHeader {
   _Alignas(tvm_max_align_t) struct TvmGcHeader *next;
-  const TvmType *type; /* 型 (blob は NULL)。reload で作り直した object は転送先 (TVM_GC_RELOADED) */
-  size_t size;         /* payload の byte 数 */
+  const TvmType *
+      type; /* 型 (blob は NULL)。reload で作り直した object は転送先 (TVM_GC_RELOADED) */
+  size_t size; /* payload の byte 数 */
   uint16_t kind;
   uint16_t flags;
   uint32_t type_id;
@@ -256,10 +267,13 @@ typedef struct TvmGcHeader {
 #define TVM_KIND_BLOB 0u      /* TCS_KIND_RAW */
 #define TVM_KIND_OBJECT 0x40u /* TCS_KIND_FOREIGN */
 #define TVM_GC_MARK 1u        /* 自前の GC の mark (TCS_GC_MARK と同じ値) */
-#define TVM_GC_STATIC 2u      /* 回収しない object (string の定数。TCS_GC_STATIC と同じ値) */
-#define TVM_GC_RELOADED 0x100u /* reload の移行で作り直した旧 object (tcs の flags と重ならない bit) */
-#define TVM_GC_NEW 0x200u      /* 負荷を数えている間に --trace の行で作った object (持ち越しを数える) */
-#define TVM_GC_SEEN 0x400u     /* 持ち越しを数える間に辿った印 */
+#define TVM_GC_STATIC                                                          \
+  2u /* 回収しない object (string の定数。TCS_GC_STATIC と同じ値) */
+#define TVM_GC_RELOADED                                                        \
+  0x100u /* reload の移行で作り直した旧 object (tcs の flags と重ならない bit) */
+#define TVM_GC_NEW                                                             \
+  0x200u /* 負荷を数えている間に --trace の行で作った object (持ち越しを数える) */
+#define TVM_GC_SEEN 0x400u /* 持ち越しを数える間に辿った印 */
 #define GC_BLOB(h) ((h)->kind == TVM_KIND_BLOB)
 
 #define GC_HEADER(p) ((TvmGcHeader *)(p) - 1)
@@ -275,9 +289,12 @@ struct TvmVm {
   uint32_t ntypes;
   TvmType *types;
   uint16_t string_type; /* string 型の番号 (無ければ TVM_NO_TYPE) */
-  uint32_t types_version; /* 型の表を読み込むか reload で入れ替えるたびに、tvm_next_types_version から新しい値を取る */
-  uint32_t *type_ids;          /* 型ごとの object の type_id (TVM_TYPE_ID_VM + 番号か、tvm_host_type の番号) */
-  TvmIfaceCheck *iface_checks; /* 型ごとの --ref の interface の判定 (tvm_host_iface。無ければ NULL) */
+  uint32_t
+      types_version; /* 型の表を読み込むか reload で入れ替えるたびに、tvm_next_types_version から新しい値を取る */
+  uint32_t *
+      type_ids; /* 型ごとの object の type_id (TVM_TYPE_ID_VM + 番号か、tvm_host_type の番号) */
+  TvmIfaceCheck *
+      iface_checks; /* 型ごとの --ref の interface の判定 (tvm_host_iface。無ければ NULL) */
   uint32_t nstatics;
   TvmRegInfo *static_info;
   TvmSlot *statics;
@@ -289,7 +306,8 @@ struct TvmVm {
   uint32_t nselectors;
   TvmSelector *selectors;
   uint32_t nintrinsics;
-  const TvmIntrinsic **intrinsics; /* module の runtime 関数の番号 → tvm_intrinsics か host の関数 */
+  const TvmIntrinsic **
+      intrinsics; /* module の runtime 関数の番号 → tvm_intrinsics か host の関数 */
   /* intrinsics と同じ番号の、struct か out を写す host の関数の呼び方 (module の型で解く。写さない関数は NULL) */
   TvmHostPlan **host_plans;
   /* host の関数 (tvm_host。名前と種類の列は複製して持つ) */
@@ -312,12 +330,14 @@ struct TvmVm {
   TvmSlot *stack, *stack_end, *top;
   TvmFrame *frames, *frames_end, *ftop;
   bool faulting; /* fault の trace を書いている途中 (外側の frame は追記する) */
-  uint32_t depth; /* runtime から入れ子に入った深さ (C の stack を使うので上限を置く) */
+  uint32_t
+      depth; /* runtime から入れ子に入った深さ (C の stack を使うので上限を置く) */
   /* heap: 動かさない mark-sweep (doc/vm-design.md §10)。debt が limit に達したら、
      フレーム境界 (tvm_frame_end) か interpreter の確保の地点で回収する */
   TvmGcHeader *objects;
   size_t gc_debt, gc_limit, gc_live, gc_count;
-  bool gc_stress; /* 確保の地点とフレーム境界ごとに回収する (root の漏れを出力の違いで見つける) */
+  bool
+      gc_stress; /* 確保の地点とフレーム境界ごとに回収する (root の漏れを出力の違いで見つける) */
   void **mark_stack;
   size_t nmark, capmark;
   /* runtime の C が持つ参照の場所 (List.Sort の作業領域と並べている buffer) */
@@ -374,7 +394,9 @@ void tvm_debug_pair(TvmVm *vm, uint32_t k, void *self);
 /* 負荷 (prof_clock があるときだけ呼ぶ): 行 k に着いた (TRACE)、interpreter に入る・出る、確保した、GC が始まる・止めた */
 void tvm_profile_line(TvmVm *vm, uint32_t k);
 /* 今の行 + 1 (数えていないか行の外なら 0)。呼ぶときに控え、戻ったら tvm_profile_return でこの行に戻す */
-static inline uint32_t tvm_profile_at(const TvmVm *vm) { return vm->prof_clock && vm->debug ? vm->debug->prof_cur : 0; }
+static inline uint32_t tvm_profile_at(const TvmVm *vm) {
+  return vm->prof_clock && vm->debug ? vm->debug->prof_cur : 0;
+}
 void tvm_profile_return(TvmVm *vm, uint32_t line);
 void tvm_profile_enter(TvmVm *vm);
 void tvm_profile_leave(TvmVm *vm, uint32_t line);
@@ -393,32 +415,40 @@ void tvm_set_error(TvmVm *vm, const char *fmt, ...);
 void tvm_append_error(TvmVm *vm, const char *fmt, ...);
 
 /* tcsvm_gc.c */
-void *tvm_alloc(TvmVm *vm, size_t size);      /* 型を持つ object (先頭が TvmType *)。0 で埋める */
-void *tvm_alloc_blob(TvmVm *vm, size_t size); /* 型を持たない buffer。0 で埋める */
-void *tvm_alloc_fixed(size_t size);           /* 回収しない object (定数) */
+void *
+tvm_alloc(TvmVm *vm,
+          size_t size); /* 型を持つ object (先頭が TvmType *)。0 で埋める */
+void *tvm_alloc_blob(TvmVm *vm,
+                     size_t size);  /* 型を持たない buffer。0 で埋める */
+void *tvm_alloc_fixed(size_t size); /* 回収しない object (定数) */
 void tvm_free_fixed(void *p);
 void tvm_heap_free(TvmVm *vm);
 void tvm_gc_collect(TvmVm *vm);
 /* object の中の参照の場所 (blob の pointer を含む) を順に fn に渡す。GC の mark と reload の張り替えが共有する */
-void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot), void *ctx);
+void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot),
+                     void *ctx);
 TvmString *tvm_str_new(TvmVm *vm, const char *data, size_t len);
 TvmString *tvm_str_concat(TvmVm *vm, const TvmString *a, const TvmString *b);
 bool tvm_str_eq(const TvmString *a, const TvmString *b);
 TvmList *tvm_list_new(TvmVm *vm, const TvmType *type);
 bool tvm_list_grow(TvmVm *vm, TvmList *list);
 TvmDict *tvm_dict_new(TvmVm *vm, const TvmType *type);
-int32_t tvm_dict_find(const TvmVm *vm, const TvmDict *d, TvmSlot key); /* 無ければ -1 */
-int32_t tvm_dict_insert(TvmVm *vm, TvmDict *d, TvmSlot key);            /* 確保に失敗したら -1 */
+int32_t tvm_dict_find(const TvmVm *vm, const TvmDict *d,
+                      TvmSlot key); /* 無ければ -1 */
+int32_t tvm_dict_insert(TvmVm *vm, TvmDict *d,
+                        TvmSlot key); /* 確保に失敗したら -1 */
 bool tvm_dict_remove(TvmVm *vm, TvmDict *d, TvmSlot key);
 bool tvm_list_insert0(TvmVm *vm, TvmList *list, int32_t at);
 void tvm_list_remove_at(TvmList *list, int32_t at);
-bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const void *b);
+bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a,
+                  const void *b);
 bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b);
 /* 参照の値の等価 (EqualityComparer<object>.Default): 実行時の型で string と box は中の値、record は field ごと、他は同一性 */
 bool tvm_object_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b);
 bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t);
 /* class の object に型を付ける (header の型記述子と、header と payload の type_id。tcs2c の型の test が読む) */
-static inline void tvm_class_init(const TvmVm *vm, TvmObject *o, const TvmType *t) {
+static inline void tvm_class_init(const TvmVm *vm, TvmObject *o,
+                                  const TvmType *t) {
   uint32_t id = vm->type_ids[t - vm->types];
   TVM_TYPE(o) = t;
   GC_HEADER(o)->type_id = id;
@@ -444,11 +474,14 @@ struct TvmIntrinsic {
 };
 /* host の関数の 1 つの引数か戻り値 (tvm_host の種類の列の 1 項を module の型で解いたもの。doc/vm-design.md §8.5) */
 typedef struct TvmHostArg {
-  char kind;         /* 'i' 'f' 'b' 's' 'o'、struct は 'S' */
-  bool byref;        /* '&' (out): 引数の slot は値の場所を指す。呼び出しの後、値は CALLR の結果の register にある */
+  char kind; /* 'i' 'f' 'b' 's' 'o'、struct は 'S' */
+  bool
+      byref; /* '&' (out): 引数の slot は値の場所を指す。呼び出しの後、値は CALLR の結果の register にある */
   const TvmType *st; /* struct の型 ('S'。葉は int / float / bool だけ) */
-  uint32_t reg;      /* 葉の先頭の register (値の引数は CALLR の a から、戻り値と out は b から) */
-  uint32_t block;    /* struct の塊の場所 (塊の領域の先頭からの byte。8 に揃える) */
+  uint32_t
+      reg; /* 葉の先頭の register (値の引数は CALLR の a から、戻り値と out は b から) */
+  uint32_t
+      block; /* struct の塊の場所 (塊の領域の先頭からの byte。8 に揃える) */
 } TvmHostArg;
 
 /* struct か out を持つ host の関数の呼び方。
@@ -463,23 +496,29 @@ struct TvmHostPlan {
 bool tvm_host_plans(TvmVm *vm);
 void tvm_host_plans_free(TvmHostPlan **plans, uint32_t n);
 /* CALLR: plan で引数を写して host の関数を呼ぶ。ra / rb は CALLR の a / b の register */
-TvmStatus tvm_host_call(TvmVm *vm, const TvmIntrinsic *in, const TvmHostPlan *plan, TvmSlot *ra, TvmSlot *rb);
+TvmStatus tvm_host_call(TvmVm *vm, const TvmIntrinsic *in,
+                        const TvmHostPlan *plan, TvmSlot *ra, TvmSlot *rb);
 
 extern const TvmIntrinsic tvm_intrinsics[];
 extern const size_t tvm_nintrinsics;
 TvmStatus tvm_fault_msg(TvmVm *vm, const char *what);
-int tvm_str_compare(const TvmString *a, const TvmString *b); /* .NET の ordinal (-1 / 0 / 1) */
+int tvm_str_compare(const TvmString *a,
+                    const TvmString *b); /* .NET の ordinal (-1 / 0 / 1) */
 uint32_t tvm_kind_size(uint8_t kind);
 
 /* tcsvm_run.c */
-TvmStatus tvm_run(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets);
+TvmStatus tvm_run(TvmVm *vm, const TvmProto *proto, const TvmSlot *args,
+                  TvmSlot *rets);
 /* 入れ子の呼び出し: closure を args で呼ぶ (runtime の List.Sort から) */
-TvmStatus tvm_call_closure(TvmVm *vm, const TvmClosure *c, const TvmSlot *args, TvmSlot *rets);
+TvmStatus tvm_call_closure(TvmVm *vm, const TvmClosure *c, const TvmSlot *args,
+                           TvmSlot *rets);
 /* runtime の関数が delegate を呼ぶ。C の module の delegate (shared heap) は sig ("i:b" など) の invoke で呼ぶ */
-TvmStatus tvm_call_delegate(TvmVm *vm, const TvmClosure *c, const char *sig, const TvmSlot *args, TvmSlot *rets);
+TvmStatus tvm_call_delegate(TvmVm *vm, const TvmClosure *c, const char *sig,
+                            const TvmSlot *args, TvmSlot *rets);
 /* 種類と型の葉の sig の文字 (tvm_host と同じ。i / f / b / s / o。struct は '?') */
 char tvm_sig_letter(const TvmVm *vm, uint8_t kind, uint16_t type);
-TvmStatus tvm_run_nested(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets);
+TvmStatus tvm_run_nested(TvmVm *vm, const TvmProto *proto, const TvmSlot *args,
+                         TvmSlot *rets);
 /* 関数型 t の C の delegate の invoke (無ければ NULL) */
 TvmDelegateFn tvm_delegate_for(TvmVm *vm, const TvmType *t);
 

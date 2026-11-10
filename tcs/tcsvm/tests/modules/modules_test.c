@@ -31,7 +31,8 @@ static uint8_t *read_file(const char *path, size_t *size) {
 static int call(TvmVm *vm, const char *name, TvmSlot *ret) {
   TvmSlot dummy;
   int32_t f = tvm_find(vm, name);
-  if (f < 0 || tvm_call(vm, f, NULL, 0, ret ? ret : &dummy, ret ? 1 : 0) != TVM_OK) {
+  if (f < 0 ||
+      tvm_call(vm, f, NULL, 0, ret ? ret : &dummy, ret ? 1 : 0) != TVM_OK) {
     fprintf(stderr, "modules_test: %s: %s\n", name, tvm_error(vm));
     return 0;
   }
@@ -40,11 +41,13 @@ static int call(TvmVm *vm, const char *name, TvmSlot *ret) {
 
 static void show(TvmVm *vm, TvmHandle h, const char *when) {
   char *e = (char *)tvm_handle_get(vm, h);
-  int32_t hp = tvm_field_offset(vm, "Enemy", "Hp"), mana = tvm_field_offset(vm, "Enemy", "Mana");
+  int32_t hp = tvm_field_offset(vm, "Enemy", "Hp"),
+          mana = tvm_field_offset(vm, "Enemy", "Mana");
   if (mana < 0)
     printf("host %s: hp=%d (no Mana)\n", when, *(int32_t *)(e + hp));
   else
-    printf("host %s: hp=%d mana=%d\n", when, *(int32_t *)(e + hp), *(int32_t *)(e + mana));
+    printf("host %s: hp=%d mana=%d\n", when, *(int32_t *)(e + hp),
+           *(int32_t *)(e + mana));
 }
 
 int main(int argc, char **argv) {
@@ -55,7 +58,8 @@ int main(int argc, char **argv) {
   TvmVm *vm = tvm_new(&config);
   printf("registered %d editor functions\n", tcs_vm_register(vm));
   size_t size, bsize;
-  uint8_t *bytes = read_file(argv[1], &size), *batch = read_file(argv[2], &bsize);
+  uint8_t *bytes = read_file(argv[1], &size),
+          *batch = read_file(argv[2], &bsize);
   if (!bytes || !batch || tvm_load(vm, bytes, size) != TVM_OK) {
     fprintf(stderr, "modules_test: %s\n", tvm_error(vm));
     return 1;

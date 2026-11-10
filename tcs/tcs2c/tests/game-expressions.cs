@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 
 class Item { public int Value; }
-class Factory {
+class Factory
+{
     public Item Item;
     public Func<int> Read;
     public Factory(Func<Item> make) { Item = make(); }
@@ -17,7 +18,8 @@ class GameExpressions
     public static void Main()
     {
         int total = 0;
-        foreach (char c in new char[] { '1', 'A', '2', '3' }) {
+        foreach (char c in new char[] { '1', 'A', '2', '3' })
+        {
             if (c == 'A') continue;
             total += Digit(c);
         }

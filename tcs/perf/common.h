@@ -5,34 +5,34 @@
 #include <stdint.h>
 
 enum {
-    PERF_FRAMES = 1000,
-    PERF_SPAWN_CAPACITY = 1024,
-    PERF_SPAWN_PER_FRAME = 32,
-    PERF_PARTICLE_COUNT = 4096
+  PERF_FRAMES = 1000,
+  PERF_SPAWN_CAPACITY = 1024,
+  PERF_SPAWN_PER_FRAME = 32,
+  PERF_PARTICLE_COUNT = 4096
 };
 
 #define PERF_DT (1.0f / 50.0f)
 
 typedef struct PerfRng {
-    uint32_t state;
+  uint32_t state;
 } PerfRng;
 
 typedef enum PerfKernel {
-    PERF_SPRITE_UPDATE,
-    PERF_SPAWN_CHURN_NAIVE,
-    PERF_SPAWN_CHURN_POOL,
-    PERF_PARTICLES
+  PERF_SPRITE_UPDATE,
+  PERF_SPAWN_CHURN_NAIVE,
+  PERF_SPAWN_CHURN_POOL,
+  PERF_PARTICLES
 } PerfKernel;
 
 typedef struct PerfWorkload {
-    PerfKernel kernel;
-    const char *name;
-    size_t count;
+  PerfKernel kernel;
+  const char *name;
+  size_t count;
 } PerfWorkload;
 
 typedef struct PerfRunResult {
-    double elapsed_seconds;
-    uint32_t digest;
+  double elapsed_seconds;
+  uint32_t digest;
 } PerfRunResult;
 
 uint32_t perf_lcg(PerfRng *rng);
@@ -46,7 +46,7 @@ uint32_t perf_digest_float(uint32_t digest, float value);
 double perf_now_seconds(void);
 int perf_parse_workload(int argc, char **argv, PerfWorkload *workload);
 void perf_print_result(const PerfWorkload *workload, const char *variant,
-    double elapsed_seconds, uint32_t digest);
+                       double elapsed_seconds, uint32_t digest);
 
 PerfRunResult perf_native_dispatch(const PerfWorkload *workload);
 

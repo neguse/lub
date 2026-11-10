@@ -41,7 +41,9 @@ void tvm_debug_free(TvmDebug *d) {
   free(d);
 }
 
-static const char *dstr(TvmVm *vm, uint32_t i) { return i < vm->nstrings ? vm->strings[i] : ""; }
+static const char *dstr(TvmVm *vm, uint32_t i) {
+  return i < vm->nstrings ? vm->strings[i] : "";
+}
 
 bool tvm_debug_read(TvmVm *vm, TcsReader *r) {
   TvmDebug *d = (TvmDebug *)calloc(1, sizeof(TvmDebug));
@@ -69,8 +71,8 @@ bool tvm_debug_read(TvmVm *vm, TcsReader *r) {
   d->prof_allocs = (uint32_t *)calloc(n ? n : 1, sizeof(uint32_t));
   d->prof_hit = (uint8_t *)calloc(n ? n : 1, 1);
   d->prof_hits = (uint32_t *)calloc(n ? n : 1, sizeof(uint32_t));
-  if (!d->line_files || !d->line_nums || !d->hit || !d->hits || !d->prof_ns || !d->prof_bytes || !d->prof_allocs ||
-      !d->prof_hit || !d->prof_hits)
+  if (!d->line_files || !d->line_nums || !d->hit || !d->hits || !d->prof_ns ||
+      !d->prof_bytes || !d->prof_allocs || !d->prof_hit || !d->prof_hits)
     return false;
   for (uint32_t i = 0; i < n; i++) {
     d->line_files[i] = dstr(vm, tcs_rd_u32(r));
@@ -108,7 +110,9 @@ bool tvm_debug_read(TvmVm *vm, TcsReader *r) {
 /* 値の場所の葉 k の種類 (struct なら型の葉) */
 uint8_t tvm_debug_val_leaf_kind(TvmVm *vm, const TvmTraceVal *v, uint32_t k) {
   if (v->kind == TVM_K_STRUCT)
-    return v->type < vm->ntypes && k < vm->types[v->type].nleaves ? vm->types[v->type].leaves[k].kind : 0xFF;
+    return v->type < vm->ntypes && k < vm->types[v->type].nleaves
+               ? vm->types[v->type].leaves[k].kind
+               : 0xFF;
   return k == 0 ? v->kind : 0xFF;
 }
 
@@ -137,15 +141,28 @@ void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p)) {
 #include <intrin.h>
 /* 文ごとに覗くので、ロックの付く命令にしない (MSVC の volatile の 64 bit の読みは x64 と ARM64 で裂けない) */
 static uint64_t pending_peek(TvmVm *vm) { return vm->prof_pending; }
-static uint64_t pending_take(TvmVm *vm) { return (uint64_t)_InterlockedExchange64((volatile long long *)&vm->prof_pending, 0); }
-void tvm_profile_tick(TvmVm *vm, uint64_t ns) { _InterlockedExchangeAdd64((volatile long long *)&vm->prof_pending, (long long)ns); }
+static uint64_t pending_take(TvmVm *vm) {
+  return (uint64_t)_InterlockedExchange64(
+      (volatile long long *)&vm->prof_pending, 0);
+}
+void tvm_profile_tick(TvmVm *vm, uint64_t ns) {
+  _InterlockedExchangeAdd64((volatile long long *)&vm->prof_pending,
+                            (long long)ns);
+}
 #else
-static uint64_t pending_peek(TvmVm *vm) { return __atomic_load_n(&vm->prof_pending, __ATOMIC_RELAXED); }
-static uint64_t pending_take(TvmVm *vm) { return __atomic_exchange_n(&vm->prof_pending, 0, __ATOMIC_RELAXED); }
-void tvm_profile_tick(TvmVm *vm, uint64_t ns) { __atomic_fetch_add(&vm->prof_pending, ns, __ATOMIC_RELAXED); }
+static uint64_t pending_peek(TvmVm *vm) {
+  return __atomic_load_n(&vm->prof_pending, __ATOMIC_RELAXED);
+}
+static uint64_t pending_take(TvmVm *vm) {
+  return __atomic_exchange_n(&vm->prof_pending, 0, __ATOMIC_RELAXED);
+}
+void tvm_profile_tick(TvmVm *vm, uint64_t ns) {
+  __atomic_fetch_add(&vm->prof_pending, ns, __ATOMIC_RELAXED);
+}
 #endif
 
-static void prof_add(TvmDebug *d, uint32_t k, uint64_t ns, uint64_t bytes, uint32_t allocs) {
+static void prof_add(TvmDebug *d, uint32_t k, uint64_t ns, uint64_t bytes,
+                     uint32_t allocs) {
   if (k >= d->nlines)
     return;
   d->prof_ns[k] += ns;
@@ -214,7 +231,9 @@ void tvm_profile_leave(TvmVm *vm, uint32_t line) {
     vm->debug->prof_cur = 0;
 }
 
-static uint32_t new_hash(const void *p, uint32_t cap) { return (uint32_t)(((uintptr_t)p >> 4) * 2654435761u) & (cap - 1); }
+static uint32_t new_hash(const void *p, uint32_t cap) {
+  return (uint32_t)(((uintptr_t)p >> 4) * 2654435761u) & (cap - 1);
+}
 
 static bool new_grow(TvmDebug *d) {
   uint32_t cap = d->capprof_new ? d->capprof_new * 2 : 1024;
@@ -292,7 +311,8 @@ void tvm_profile_gc_begin(TvmVm *vm) { prof_flush(vm); }
 void tvm_profile_gc(TvmVm *vm, uint64_t ns, size_t live) {
   pending_take(vm);
   if (vm->nprof_gc == TVM_PROFILE_GCS) {
-    memmove(vm->prof_gc, vm->prof_gc + 1, sizeof(vm->prof_gc[0]) * (TVM_PROFILE_GCS - 1));
+    memmove(vm->prof_gc, vm->prof_gc + 1,
+            sizeof(vm->prof_gc[0]) * (TVM_PROFILE_GCS - 1));
     vm->nprof_gc--;
   }
   vm->prof_gc[vm->nprof_gc].ns = ns;
@@ -315,7 +335,8 @@ void tvm_profile_take_lines(TvmVm *vm, TvmProfileLineFn fn, void *user) {
     return;
   for (uint32_t i = 0; i < d->nprof_hits; i++) {
     uint32_t k = d->prof_hits[i];
-    fn(user, d->line_files[k], d->line_nums[k], d->prof_ns[k], d->prof_bytes[k], d->prof_allocs[k]);
+    fn(user, d->line_files[k], d->line_nums[k], d->prof_ns[k], d->prof_bytes[k],
+       d->prof_allocs[k]);
     d->prof_ns[k] = 0;
     d->prof_bytes[k] = 0;
     d->prof_allocs[k] = 0;
@@ -346,7 +367,8 @@ static bool pairs_grow(TvmDebug *d) {
   void **self = (void **)realloc(d->pair_self, cap * sizeof(void *));
   if (self)
     d->pair_self = self;
-  const TvmType **type = (const TvmType **)realloc((void *)d->pair_type, cap * sizeof(TvmType *));
+  const TvmType **type =
+      (const TvmType **)realloc((void *)d->pair_type, cap * sizeof(TvmType *));
   if (type)
     d->pair_type = type;
   uint32_t *slot = (uint32_t *)calloc(cap * 2, sizeof(uint32_t));
@@ -358,7 +380,8 @@ static bool pairs_grow(TvmDebug *d) {
   d->pair_slot = slot;
   d->cappairs = cap;
   for (uint32_t i = 0; i < d->npairs; i++) {
-    uint32_t mask = cap * 2 - 1, at = pair_hash(d->pair_line[i], d->pair_self[i]) & mask;
+    uint32_t mask = cap * 2 - 1,
+             at = pair_hash(d->pair_line[i], d->pair_self[i]) & mask;
     while (slot[at])
       at = (at + 1) & mask;
     slot[at] = i + 1;
@@ -378,7 +401,8 @@ void tvm_debug_pair(TvmVm *vm, uint32_t k, void *self) {
   }
   if (d->npairs == d->cappairs && !pairs_grow(d))
     return;
-  uint32_t i = d->npairs++, mask = d->cappairs * 2 - 1, at = pair_hash(k, self) & mask;
+  uint32_t i = d->npairs++, mask = d->cappairs * 2 - 1,
+           at = pair_hash(k, self) & mask;
   d->pair_line[i] = k;
   d->pair_self[i] = self;
   d->pair_type[i] = TVM_TYPE(self);
@@ -387,9 +411,12 @@ void tvm_debug_pair(TvmVm *vm, uint32_t k, void *self) {
   d->pair_slot[at] = i + 1;
 }
 
-void tvm_trace_take_lines(TvmVm *vm, TvmTraceLineFn fn, void *user) { tvm_trace_take_lines_for(vm, NULL, fn, user); }
+void tvm_trace_take_lines(TvmVm *vm, TvmTraceLineFn fn, void *user) {
+  tvm_trace_take_lines_for(vm, NULL, fn, user);
+}
 
-void tvm_trace_take_lines_for(TvmVm *vm, const char *key, TvmTraceLineFn fn, void *user) {
+void tvm_trace_take_lines_for(TvmVm *vm, const char *key, TvmTraceLineFn fn,
+                              void *user) {
   TvmDebug *d = vm->debug;
   if (!d)
     return;
@@ -402,7 +429,10 @@ void tvm_trace_take_lines_for(TvmVm *vm, const char *key, TvmTraceLineFn fn, voi
     d->line_flags = (uint8_t *)calloc(d->nlines ? d->nlines : 1, 1);
   if (target && d->line_flags)
     for (uint32_t i = 0; i < d->npairs; i++)
-      d->line_flags[d->pair_line[i]] |= d->pair_self[i] == target ? 1 : d->pair_type[i] == TVM_TYPE(target) ? 2 : 4;
+      d->line_flags[d->pair_line[i]] |= d->pair_self[i] == target ? 1
+                                        : d->pair_type[i] == TVM_TYPE(target)
+                                            ? 2
+                                            : 4;
   for (uint32_t i = 0; i < d->nhits; i++) {
     uint32_t k = d->hits[i];
     d->hit[k] = 0;
@@ -488,7 +518,8 @@ static void *leaf_ref(const Loc *l, uint32_t leaf, uint32_t offset) {
 }
 
 static uint32_t kind_leaves(TvmVm *vm, uint8_t kind, uint16_t type) {
-  return kind == TVM_K_STRUCT && type < vm->ntypes ? vm->types[type].nleaves : 1;
+  return kind == TVM_K_STRUCT && type < vm->ntypes ? vm->types[type].nleaves
+                                                   : 1;
 }
 
 /* struct の field i の場所 (packed は offset、slots は先の field の葉の数) */
@@ -506,7 +537,9 @@ static Loc field_loc(TvmVm *vm, const Loc *s, uint32_t i) {
   return l;
 }
 
-static bool is_simple(uint8_t kind) { return kind == TVM_K_I32 || kind == TVM_K_F32 || kind == TVM_K_BOOL; }
+static bool is_simple(uint8_t kind) {
+  return kind == TVM_K_I32 || kind == TVM_K_F32 || kind == TVM_K_BOOL;
+}
 
 static void put_value(TvmVm *vm, Buf *b, const Loc *l, int depth);
 
@@ -591,7 +624,8 @@ static void put_object(TvmVm *vm, Buf *b, void *p, int depth) {
   case TVM_T_CLASS: {
     puts_(b, t->name);
     if (depth == 0) {
-      Loc base = {TVM_K_STRUCT, (uint16_t)(t - vm->types), (const char *)p, false};
+      Loc base = {TVM_K_STRUCT, (uint16_t)(t - vm->types), (const char *)p,
+                  false};
       put_fields(vm, b, t, &base);
     }
     return;
@@ -693,14 +727,17 @@ void tvm_stack_self(TvmVm *vm, TvmFrameSelfFn fn, void *user) {
     if (!fr->proto)
       continue;
     char id[32] = "";
-    void *self = fr->proto->trace_self ? fr->R[fr->proto->trace_self - 1].p : NULL;
+    void *self =
+        fr->proto->trace_self ? fr->R[fr->proto->trace_self - 1].p : NULL;
     if (self)
       snprintf(id, sizeof id, "%p", self);
     fn(user, tvm_func_path(vm, fr->proto), line_at(fr->proto, fr->pc), id);
   }
 }
 
-uint32_t tvm_traced_class_count(TvmVm *vm) { return vm->debug ? vm->debug->nclasses : 0; }
+uint32_t tvm_traced_class_count(TvmVm *vm) {
+  return vm->debug ? vm->debug->nclasses : 0;
+}
 
 const char *tvm_traced_class(TvmVm *vm, uint32_t i) {
   return vm->debug && i < vm->debug->nclasses ? vm->debug->classes[i] : "";
@@ -709,7 +746,8 @@ const char *tvm_traced_class(TvmVm *vm, uint32_t i) {
 /* ---- 値の木 ---- */
 
 /* 根の class: entry が先頭、ほかは --trace の class を名前の順 */
-static uint32_t root_classes(TvmVm *vm, const char *entry, const char **out, uint32_t max) {
+static uint32_t root_classes(TvmVm *vm, const char *entry, const char **out,
+                             uint32_t max) {
   uint32_t n = 0;
   if (entry && entry[0] && n < max)
     out[n++] = entry;
@@ -732,7 +770,8 @@ static uint32_t root_classes(TvmVm *vm, const char *entry, const char **out, uin
 /* class の static field (名前は "型.field"。初期化の flag の "<init>" は除く) */
 static bool static_of(const TvmStaticField *f, const char *cls) {
   size_t n = strlen(cls);
-  return strncmp(f->name, cls, n) == 0 && f->name[n] == '.' && !strchr(f->name + n + 1, '<');
+  return strncmp(f->name, cls, n) == 0 && f->name[n] == '.' &&
+         !strchr(f->name + n + 1, '<');
 }
 
 static Loc static_loc(TvmVm *vm, const TvmStaticField *f) {
@@ -740,7 +779,9 @@ static Loc static_loc(TvmVm *vm, const TvmStaticField *f) {
   return l;
 }
 
-static bool loc_null(const Loc *l) { return l->kind == TVM_K_REF && !leaf_ref(l, 0, 0); }
+static bool loc_null(const Loc *l) {
+  return l->kind == TVM_K_REF && !leaf_ref(l, 0, 0);
+}
 
 /* 子の 1 つ (name は親から見た名前、path に足す形) */
 typedef struct Child {
@@ -753,7 +794,8 @@ typedef struct Child {
 typedef struct Children {
   Child *v;
   uint32_t n, cap;
-  uint32_t first; /* v[0] が子の何番目か (List と配列は頼まれた範囲だけ並べる) */
+  uint32_t
+      first; /* v[0] が子の何番目か (List と配列は頼まれた範囲だけ並べる) */
 } Children;
 
 static Child *child_add(Children *c) {
@@ -779,7 +821,8 @@ static int cmp_child(const void *a, const void *b) {
 
 /* 値 l の子を out に並べる (null の field と関数は除く)。
    List と配列は from 番目から count 個だけ並べる (要素の数に比例する手間をかけない)。ほかは全部並べる */
-static void children_of(TvmVm *vm, const Loc *l, uint32_t from, uint32_t count, Children *out) {
+static void children_of(TvmVm *vm, const Loc *l, uint32_t from, uint32_t count,
+                        Children *out) {
   out->first = 0;
   if (l->kind == TVM_K_STRUCT) {
     if (l->type >= vm->ntypes)
@@ -809,7 +852,8 @@ static void children_of(TvmVm *vm, const Loc *l, uint32_t from, uint32_t count, 
   switch (t->tkind) {
   case TVM_T_CLASS:
     for (uint32_t i = 0; i < t->nfields; i++) {
-      Loc f = {t->fields[i].kind, t->fields[i].type, (const char *)p + t->fields[i].offset, false};
+      Loc f = {t->fields[i].kind, t->fields[i].type,
+               (const char *)p + t->fields[i].offset, false};
       if (loc_null(&f) || (f.kind == TVM_K_REF && is_func(leaf_ref(&f, 0, 0))))
         continue;
       Child *c = child_add(out);
@@ -822,8 +866,10 @@ static void children_of(TvmVm *vm, const Loc *l, uint32_t from, uint32_t count, 
     return;
   case TVM_T_LIST:
   case TVM_T_ARRAY: {
-    uint32_t n = (uint32_t)(t->tkind == TVM_T_LIST ? ((TvmList *)p)->count : ((TvmArray *)p)->len);
-    const char *data = t->tkind == TVM_T_LIST ? ((TvmList *)p)->data : ARR_DATA(p);
+    uint32_t n = (uint32_t)(t->tkind == TVM_T_LIST ? ((TvmList *)p)->count
+                                                   : ((TvmArray *)p)->len);
+    const char *data =
+        t->tkind == TVM_T_LIST ? ((TvmList *)p)->data : ARR_DATA(p);
     uint32_t lo = from < n ? from : n;
     uint32_t hi = count < n - lo ? lo + count : n;
     out->first = lo;
@@ -832,7 +878,8 @@ static void children_of(TvmVm *vm, const Loc *l, uint32_t from, uint32_t count, 
       if (!c)
         return;
       snprintf(c->name, sizeof c->name, "[%u]", (unsigned)i);
-      Loc e = {t->elem_kind, t->elem_type, data + (size_t)i * t->elem_size, false};
+      Loc e = {t->elem_kind, t->elem_type, data + (size_t)i * t->elem_size,
+               false};
       c->loc = e;
     }
     return;
@@ -846,10 +893,12 @@ static void children_of(TvmVm *vm, const Loc *l, uint32_t from, uint32_t count, 
       Child *c = child_add(out);
       if (!c)
         return;
-      const TvmType *kt = t->key_kind == TVM_K_REF && e->key.p ? type_of(e->key.p) : NULL;
+      const TvmType *kt =
+          t->key_kind == TVM_K_REF && e->key.p ? type_of(e->key.p) : NULL;
       if (kt && kt->tkind == TVM_T_STRING) {
         const TvmString *s = (const TvmString *)e->key.p;
-        snprintf(c->name, sizeof c->name, "[\"%.*s\"]", (int)(s->len > 200 ? 200 : s->len), STR_DATA(s));
+        snprintf(c->name, sizeof c->name, "[\"%.*s\"]",
+                 (int)(s->len > 200 ? 200 : s->len), STR_DATA(s));
       } else if (t->key_kind == TVM_K_I32) {
         snprintf(c->name, sizeof c->name, "[%d]", (int)e->key.i);
         c->sort_i = e->key.i;
@@ -885,7 +934,9 @@ static void class_children(TvmVm *vm, const char *cls, Children *out) {
   }
 }
 
-static void *loc_object(const Loc *l) { return l->kind == TVM_K_REF ? leaf_ref(l, 0, 0) : NULL; }
+static void *loc_object(const Loc *l) {
+  return l->kind == TVM_K_REF ? leaf_ref(l, 0, 0) : NULL;
+}
 
 static uint32_t count_children(TvmVm *vm, const Loc *l) {
   /* List と配列は要素を並べずに数える */
@@ -937,7 +988,8 @@ static bool walk_path(TvmVm *vm, const char *entry, const char *path, Walk *w) {
   size_t best = 0;
   for (uint32_t i = 0; i < nroots; i++) {
     size_t n = strlen(roots[i]);
-    if (n > best && strncmp(path, roots[i], n) == 0 && (path[n] == '\0' || path[n] == '.' || path[n] == '[')) {
+    if (n > best && strncmp(path, roots[i], n) == 0 &&
+        (path[n] == '\0' || path[n] == '.' || path[n] == '[')) {
       best = n;
       w->cls = roots[i];
       rest = path + n;
@@ -990,7 +1042,8 @@ static bool walk_path(TvmVm *vm, const char *entry, const char *path, Walk *w) {
         w->parent_static = NULL;
         if (!have) {
           for (uint32_t k = 0; k < vm->nstatic_fields; k++)
-            if ((const char *)&vm->statics[vm->static_fields[k].slot] == c.v[i].loc.addr) {
+            if ((const char *)&vm->statics[vm->static_fields[k].slot] ==
+                c.v[i].loc.addr) {
               w->parent_static = &vm->static_fields[k];
               break;
             }
@@ -1016,11 +1069,12 @@ static bool walk_path(TvmVm *vm, const char *entry, const char *path, Walk *w) {
   return true;
 }
 
-static void fill_node(TvmVm *vm, TvmInspectNode *node, const char *parent_path, const char *name, const Loc *l,
-                      const Walk *w) {
+static void fill_node(TvmVm *vm, TvmInspectNode *node, const char *parent_path,
+                      const char *name, const Loc *l, const Walk *w) {
   memset(node, 0, sizeof *node);
   snprintf(node->path, sizeof node->path, "%s%s", parent_path, name);
-  snprintf(node->name, sizeof node->name, "%s", name[0] == '.' ? name + 1 : name);
+  snprintf(node->name, sizeof node->name, "%s",
+           name[0] == '.' ? name + 1 : name);
   Buf b = {node->text, sizeof node->text, 0};
   put_value(vm, &b, l, 0);
   void *o = loc_object(l);
@@ -1037,8 +1091,8 @@ static void fill_node(TvmVm *vm, TvmInspectNode *node, const char *parent_path, 
   node->count = node->cycle ? 0 : (int32_t)count_children(vm, l);
 }
 
-int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path, int32_t offset, int32_t count,
-                    TvmInspectNode *out) {
+int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path,
+                    int32_t offset, int32_t count, TvmInspectNode *out) {
   if (offset < 0)
     offset = 0;
   int32_t written = 0;
@@ -1067,9 +1121,11 @@ int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path, int32_t offs
     void *o = loc_object(&w.loc);
     if (o && w.nanc < 64)
       w.anc[w.nanc++] = o;
-    children_of(vm, &w.loc, (uint32_t)offset, count > 0 ? (uint32_t)count : 0, &c);
+    children_of(vm, &w.loc, (uint32_t)offset, count > 0 ? (uint32_t)count : 0,
+                &c);
   }
-  for (uint32_t i = (uint32_t)offset > c.first ? (uint32_t)offset - c.first : 0; i < c.n && written < count; i++)
+  for (uint32_t i = (uint32_t)offset > c.first ? (uint32_t)offset - c.first : 0;
+       i < c.n && written < count; i++)
     fill_node(vm, &out[written++], path, c.v[i].name, &c.v[i].loc, &w);
   free(c.v);
   return written;
@@ -1136,7 +1192,8 @@ static size_t inst_path(InstWalk *w, size_t parent, const char *name) {
 }
 
 /* 値 l を見つけた: class の instance なら渡し、まだ辿っていなければ辿る節に足す */
-static void inst_visit(InstWalk *w, size_t parent, const char *name, const Loc *l, uint32_t depth) {
+static void inst_visit(InstWalk *w, size_t parent, const char *name,
+                       const Loc *l, uint32_t depth) {
   if (w->failed || (l->kind != TVM_K_REF && l->kind != TVM_K_STRUCT))
     return;
   void *o = loc_object(l);
@@ -1146,7 +1203,8 @@ static void inst_visit(InstWalk *w, size_t parent, const char *name, const Loc *
     TvmGcHeader *h = GC_HEADER(o);
     if (h->flags & (TVM_GC_STATIC | TVM_GC_SEEN))
       return;
-    if (!grow_to((void **)&w->seen, &w->capseen, w->nseen + 1, sizeof(void *))) {
+    if (!grow_to((void **)&w->seen, &w->capseen, w->nseen + 1,
+                 sizeof(void *))) {
       w->failed = true;
       return;
     }
@@ -1173,7 +1231,8 @@ static void inst_visit(InstWalk *w, size_t parent, const char *name, const Loc *
   w->q[w->nq++] = (InstNode){path, *l, depth};
 }
 
-void tvm_inspect_instances(TvmVm *vm, const char *entry, uint32_t max_depth, uint32_t max_children, TvmInstanceFn fn,
+void tvm_inspect_instances(TvmVm *vm, const char *entry, uint32_t max_depth,
+                           uint32_t max_children, TvmInstanceFn fn,
                            void *user) {
   InstWalk w = {0};
   w.vm = vm;
@@ -1209,7 +1268,8 @@ void tvm_inspect_instances(TvmVm *vm, const char *entry, uint32_t max_depth, uin
 
 /* ---- 弱く覚える object ---- */
 
-void tvm_inspect_pin(TvmVm *vm, const char *key, const char *entry, const char *path) {
+void tvm_inspect_pin(TvmVm *vm, const char *key, const char *entry,
+                     const char *path) {
   void *o = NULL;
   Walk w;
   if (path && path[0] && walk_path(vm, entry, path, &w) && !w.cls)
@@ -1383,7 +1443,9 @@ static void snap_add(TakeCtx *t, void *p) {
   t->stack[t->nstack++] = p;
 }
 
-static void snap_slot(void *ctx, void **slot) { snap_add((TakeCtx *)ctx, *slot); }
+static void snap_slot(void *ctx, void **slot) {
+  snap_add((TakeCtx *)ctx, *slot);
+}
 
 /* 根の class (entry と --trace の class) の static の slot を控える */
 static void snap_statics(TakeCtx *t, const char *entry) {
@@ -1405,7 +1467,8 @@ static void snap_statics(TakeCtx *t, const char *entry) {
       uint32_t slot = f->slot + k;
       if (s->nstatics == s->capstatics) {
         uint32_t cap = s->capstatics ? s->capstatics * 2 : 64;
-        TvmSnapStatic *g = (TvmSnapStatic *)realloc(s->statics, cap * sizeof(TvmSnapStatic));
+        TvmSnapStatic *g =
+            (TvmSnapStatic *)realloc(s->statics, cap * sizeof(TvmSnapStatic));
         if (!g) {
           t->failed = true;
           return;
@@ -1497,10 +1560,12 @@ uint32_t tvm_layout_version(TvmVm *vm) { return vm->layout_version; }
 static const char *snap_bytes(const TvmSnapshot *s, const void *p) {
   Seen seen = {s->seen_keys, s->seen_vals, s->seen_cap, 0};
   uint32_t i = seen_get(&seen, p);
-  return i < s->nobjs && s->objs[i].size ? (const char *)s->objs[i].bytes : NULL;
+  return i < s->nobjs && s->objs[i].size ? (const char *)s->objs[i].bytes
+                                         : NULL;
 }
 
-bool tvm_snapshot_number(TvmVm *vm, const TvmSnapshot *s, const char *entry, const char *path, float *out) {
+bool tvm_snapshot_number(TvmVm *vm, const TvmSnapshot *s, const char *entry,
+                         const char *path, float *out) {
   if (!s || s->layout_version != vm->layout_version)
     return false;
   Walk w;
@@ -1626,7 +1691,8 @@ static void kept_slot(void *ctx, void **slot) {
     uint32_t off = (uint32_t)((char *)slot - (char *)p);
     const TcsField *best = NULL;
     for (uint32_t i = 0; i < t->nfields; i++)
-      if (t->fields[i].offset <= off && (!best || t->fields[i].offset > best->offset))
+      if (t->fields[i].offset <= off &&
+          (!best || t->fields[i].offset > best->offset))
         best = &t->fields[i];
     if (best)
       at = (KeptAt){t->name, best->name};
@@ -1634,7 +1700,8 @@ static void kept_slot(void *ctx, void **slot) {
   kept_visit(w, *slot, at);
 }
 
-void tvm_profile_take_kept(TvmVm *vm, const char *entry, TvmProfileKeptFn fn, void *user) {
+void tvm_profile_take_kept(TvmVm *vm, const char *entry, TvmProfileKeptFn fn,
+                           void *user) {
   TvmDebug *d = vm->debug;
   if (!d || vm->heap)
     return;
@@ -1667,7 +1734,8 @@ void tvm_profile_take_kept(TvmVm *vm, const char *entry, TvmProfileKeptFn fn, vo
       snprintf(holder, sizeof holder, "%s.%s", r->at.name, r->at.field);
     else
       snprintf(holder, sizeof holder, "%s", r->at.name);
-    fn(user, d->line_files[r->line], d->line_nums[r->line], holder, r->count, r->bytes);
+    fn(user, d->line_files[r->line], d->line_nums[r->line], holder, r->count,
+       r->bytes);
   }
   free(w.objs);
   free(w.ats);

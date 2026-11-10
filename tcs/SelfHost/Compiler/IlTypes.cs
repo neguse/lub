@@ -179,28 +179,28 @@ public static class IlTypes
             case TypeKind.ValueCollection:
                 return "System.Collections.Generic.Dictionary<" + Display(t.Arg(0)) + ", " + Display(t.Arg(1)) + ">." + t.Name;
             case TypeKind.Tuple:
-            {
-                // 要素の名前があれば型の後ろに書く (`(int x, int y)`)
-                var parts = new List<string>();
-                for (int i = 0; i < t.Args!.Count; i++)
                 {
-                    string name = t.Names != null && i < t.Names.Count ? t.Names[i] : "";
-                    parts.Add(name != "" ? Display(t.Args[i]) + " " + name : Display(t.Args[i]));
+                    // 要素の名前があれば型の後ろに書く (`(int x, int y)`)
+                    var parts = new List<string>();
+                    for (int i = 0; i < t.Args!.Count; i++)
+                    {
+                        string name = t.Names != null && i < t.Names.Count ? t.Names[i] : "";
+                        parts.Add(name != "" ? Display(t.Args[i]) + " " + name : Display(t.Args[i]));
+                    }
+                    return "(" + string.Join(", ", parts) + ")";
                 }
-                return "(" + string.Join(", ", parts) + ")";
-            }
             case TypeKind.Delegate:
-            {
-                var parts = new List<string>();
-                foreach (var a in t.Args!) parts.Add(Display(a));
-                if (t.Ret!.Kind == TypeKind.Void)
                 {
-                    if (parts.Count == 0) return "System.Action";
-                    return "System.Action<" + string.Join(", ", parts) + ">";
+                    var parts = new List<string>();
+                    foreach (var a in t.Args!) parts.Add(Display(a));
+                    if (t.Ret!.Kind == TypeKind.Void)
+                    {
+                        if (parts.Count == 0) return "System.Action";
+                        return "System.Action<" + string.Join(", ", parts) + ">";
+                    }
+                    parts.Add(Display(t.Ret));
+                    return "System.Func<" + string.Join(", ", parts) + ">";
                 }
-                parts.Add(Display(t.Ret));
-                return "System.Func<" + string.Join(", ", parts) + ">";
-            }
             case TypeKind.Class:
             case TypeKind.Struct:
             case TypeKind.Interface:

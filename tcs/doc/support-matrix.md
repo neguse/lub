@@ -1069,4 +1069,3 @@ user の宣言の識別子のうち、下の予約された綴りは build を�
 | `--ref` の interface の実装 `class Impl : IHostHook` | `RefInterfaceImplementation(IHostHook)` | interface 経由の呼び出しは host の名前 (`do_thing`)、実装は C# の名前 (`DoThing`) で届かない。`tcs vm` は止めないが、interface 経由の呼び出しは host の関数を呼ぶ。user の interface の実装と、host の interface を値として受け渡すだけなら可 |
 
 member 名と local 名の `_` (`max_hp`、`_init`、`a_b`) はそのまま書ける。
-

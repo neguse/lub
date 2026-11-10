@@ -23,8 +23,8 @@ TCS_FMT_API size_t tcs_format_f32(float value, char out[TCS_FORMAT_F32_MAX]);
 /* 書式 spec ('G' / 'E' / 'F' / 'N' と小文字) の最長。
    E / F / N は小数部が precision 桁、G は正確な値の桁 (112 桁まで) で終わる */
 #define TCS_FORMAT_F32_SPEC_MAX(spec, precision)                               \
-  ((spec) != 'G' && (spec) != 'g' && (precision) > 0                          \
-       ? (size_t)(precision) + 128                                            \
+  ((spec) != 'G' && (spec) != 'g' && (precision) > 0                           \
+       ? (size_t)(precision) + 128                                             \
        : (size_t)128)
 
 /* 書式 spec と精度 precision (0 から 999999999、書式に精度が無ければ -1)。
@@ -47,7 +47,8 @@ TCS_FMT_API size_t tcs_format_i32_spec(int32_t value, char spec,
    out は TCS_PRINTF_MAX(slen) byte。書いた byte 数を返す。値が変換に合わなければ -1 で *error に理由 */
 enum { TCS_PRINTF_I32 = 0, TCS_PRINTF_F32 = 1, TCS_PRINTF_STR = 2 };
 #define TCS_PRINTF_MAX(slen) ((size_t)(slen) + 512)
-TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind, int32_t i, float f,
-                                const char *s, size_t slen, char *out, const char **error);
+TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
+                                int32_t i, float f, const char *s, size_t slen,
+                                char *out, const char **error);
 
 #endif

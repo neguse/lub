@@ -13,7 +13,9 @@ static int lcg(void) {
   return state;
 }
 
-static float frand(float lo, float hi) { return lo + (float)(lcg() % 1000) * (1.0f / 1000.0f) * (hi - lo); }
+static float frand(float lo, float hi) {
+  return lo + (float)(lcg() % 1000) * (1.0f / 1000.0f) * (hi - lo);
+}
 
 static void update(Sprite *s, float dt) {
   s->x = s->x + s->vx * dt;

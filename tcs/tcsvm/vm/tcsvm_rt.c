@@ -57,9 +57,11 @@ TvmList *tvm_list_new(TvmVm *vm, const TvmType *type) {
 
 bool tvm_list_grow(TvmVm *vm, TvmList *list) {
   int32_t cap = list->cap ? list->cap * 2 : 4;
-  if (cap <= list->cap || (uint64_t)cap * TVM_TYPE(list)->elem_size > ((uint64_t)1 << 31))
+  if (cap <= list->cap ||
+      (uint64_t)cap * TVM_TYPE(list)->elem_size > ((uint64_t)1 << 31))
     return false;
-  char *data = (char *)tvm_alloc_blob(vm, (size_t)cap * TVM_TYPE(list)->elem_size);
+  char *data =
+      (char *)tvm_alloc_blob(vm, (size_t)cap * TVM_TYPE(list)->elem_size);
   if (!data)
     return false;
   if (list->count)
@@ -75,7 +77,8 @@ bool tvm_list_grow(TvmVm *vm, TvmList *list) {
 /* key の hash と等価 (EqualityComparer<T>.Default と同じ): int / bool は値、float は Equals (NaN どうし、-0 と 0 が等しい)、
    string は内容、ほかの ref は identity */
 static bool key_is_string(const TvmVm *vm, const TvmDict *d) {
-  return TVM_TYPE(d)->key_kind == TVM_K_REF && TVM_TYPE(d)->key_type == vm->string_type;
+  return TVM_TYPE(d)->key_kind == TVM_K_REF &&
+         TVM_TYPE(d)->key_type == vm->string_type;
 }
 
 static uint32_t key_hash(const TvmVm *vm, const TvmDict *d, TvmSlot key) {
@@ -135,7 +138,8 @@ TvmDict *tvm_dict_new(TvmVm *vm, const TvmType *type) {
 }
 
 /* key の bucket の位置 (見つかった位置か、入れる位置) */
-static int32_t probe(const TvmVm *vm, const TvmDict *d, TvmSlot key, uint32_t h, bool *found) {
+static int32_t probe(const TvmVm *vm, const TvmDict *d, TvmSlot key, uint32_t h,
+                     bool *found) {
   uint32_t mask = (uint32_t)d->nbuckets - 1;
   int32_t tomb = -1;
   for (uint32_t i = h & mask;; i = (i + 1) & mask) {
@@ -172,7 +176,8 @@ static bool dict_rebuild(TvmVm *vm, TvmDict *d, int32_t cap) {
   int32_t nb = 8;
   while (nb < cap * 2)
     nb *= 2;
-  int32_t *buckets = (int32_t *)tvm_alloc_blob(vm, (size_t)nb * sizeof(int32_t));
+  int32_t *buckets =
+      (int32_t *)tvm_alloc_blob(vm, (size_t)nb * sizeof(int32_t));
   if (!entries || !buckets)
     return false;
   int32_t n = 0;
@@ -232,7 +237,9 @@ bool tvm_dict_remove(TvmVm *vm, TvmDict *d, TvmSlot key) {
     return false;
   int32_t at = d->buckets[slot] - 1;
   TvmDictEntry *e = DICT_ENTRY(d, at);
-  memset(e, 0, TVM_TYPE(d)->dict_entry); /* 穴 (live = 0)。参照を GC が辿らないように */
+  memset(
+      e, 0,
+      TVM_TYPE(d)->dict_entry); /* 穴 (live = 0)。参照を GC が辿らないように */
   d->buckets[slot] = -1;
   d->count--;
   return true;
@@ -261,9 +268,12 @@ void tvm_list_remove_at(TvmList *list, int32_t at) {
 
 /* ---- 値の等価 (il-spec §10: struct と record は field ごと。EqualityComparer<T>.Default と同じ) ---- */
 
-static bool f32_equals(float a, float b) { return a == b || (a != a && b != b); }
+static bool f32_equals(float a, float b) {
+  return a == b || (a != a && b != b);
+}
 
-bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const void *b) {
+bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a,
+                  const void *b) {
   switch (kind) {
   case TVM_K_I32:
     return *(const int32_t *)a == *(const int32_t *)b;
@@ -275,12 +285,14 @@ bool tvm_value_eq(TvmVm *vm, uint8_t kind, uint16_t type, const void *a, const v
     const TvmType *st = &vm->types[type];
     for (uint32_t k = 0; k < st->nleaves; k++)
       if (!tvm_value_eq(vm, st->leaves[k].kind, st->leaves[k].type,
-                        (const char *)a + st->leaves[k].offset, (const char *)b + st->leaves[k].offset))
+                        (const char *)a + st->leaves[k].offset,
+                        (const char *)b + st->leaves[k].offset))
         return false;
     return true;
   }
   default:
-    return tvm_object_eq(vm, *(const TvmObject *const *)a, *(const TvmObject *const *)b);
+    return tvm_object_eq(vm, *(const TvmObject *const *)a,
+                         *(const TvmObject *const *)b);
   }
 }
 
@@ -295,7 +307,9 @@ bool tvm_object_eq(TvmVm *vm, const TvmObject *x, const TvmObject *y) {
   if (tx->tkind == TVM_T_STRING)
     return tvm_str_eq((const TvmString *)x, (const TvmString *)y);
   if (tx->tkind == TVM_T_BOX)
-    return tvm_value_eq(vm, tx->elem_kind, TVM_NO_TYPE, &((const TvmBox *)x)->value, &((const TvmBox *)y)->value);
+    return tvm_value_eq(vm, tx->elem_kind, TVM_NO_TYPE,
+                        &((const TvmBox *)x)->value,
+                        &((const TvmBox *)y)->value);
   if (tx->tkind == TVM_T_CLASS && (tx->flags & TVM_CLASS_RECORD))
     return tvm_record_eq(vm, x, y);
   return false;
@@ -308,7 +322,8 @@ bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b) {
     return false;
   const TvmType *t = TVM_TYPE(a);
   for (uint32_t k = 0; k < t->nleaves; k++)
-    if (!tvm_value_eq(vm, t->leaves[k].kind, t->leaves[k].type, (const char *)a + t->leaves[k].offset,
+    if (!tvm_value_eq(vm, t->leaves[k].kind, t->leaves[k].type,
+                      (const char *)a + t->leaves[k].offset,
                       (const char *)b + t->leaves[k].offset))
       return false;
   return true;
@@ -367,7 +382,8 @@ typedef struct SortCtx {
   uint8_t kind;
   const TvmType *st; /* struct の要素なら、その型 (葉に展開して渡す) */
   TvmStatus status;
-  char sig[5]; /* C の module の比較の delegate の sig (struct の要素は '?' で、invoke は無い) */
+  char sig
+      [5]; /* C の module の比較の delegate の sig (struct の要素は '?' で、invoke は無い) */
 } SortCtx;
 
 static TvmSlot load_elem(const void *p, uint8_t kind) {
@@ -390,15 +406,18 @@ static TvmSlot load_elem(const void *p, uint8_t kind) {
   return s;
 }
 
-static int sort_compare(void *ctx, const void *left, const void *right, int *stop) {
+static int sort_compare(void *ctx, const void *left, const void *right,
+                        int *stop) {
   SortCtx *c = (SortCtx *)ctx;
   TvmSlot args[512];
   TvmSlot ret[1];
   if (c->st) {
     uint32_t n = c->st->nleaves;
     for (uint32_t k = 0; k < n; k++) {
-      args[k] = load_elem((const char *)left + c->st->leaves[k].offset, c->st->leaves[k].kind);
-      args[n + k] = load_elem((const char *)right + c->st->leaves[k].offset, c->st->leaves[k].kind);
+      args[k] = load_elem((const char *)left + c->st->leaves[k].offset,
+                          c->st->leaves[k].kind);
+      args[n + k] = load_elem((const char *)right + c->st->leaves[k].offset,
+                              c->st->leaves[k].kind);
     }
   } else {
     args[0] = load_elem(left, c->kind);
@@ -414,11 +433,16 @@ static int sort_compare(void *ctx, const void *left, const void *right, int *sto
 }
 
 TvmStatus tvm_list_sort(TvmVm *vm, TvmList *list, const TvmClosure *compare) {
-  const TvmType *st = TVM_TYPE(list)->elem_kind == TVM_K_STRUCT ? &vm->types[TVM_TYPE(list)->elem_type] : NULL;
+  const TvmType *st = TVM_TYPE(list)->elem_kind == TVM_K_STRUCT
+                          ? &vm->types[TVM_TYPE(list)->elem_type]
+                          : NULL;
   if (st && st->nleaves > 256)
     return tvm_fault_msg(vm, "struct too large to sort");
-  char e = tvm_sig_letter(vm, TVM_TYPE(list)->elem_kind, TVM_TYPE(list)->elem_type);
-  SortCtx ctx = {vm, compare, TVM_TYPE(list)->elem_size, TVM_TYPE(list)->elem_kind, st, TVM_OK, {e, e, ':', 'i', 0}};
+  char e =
+      tvm_sig_letter(vm, TVM_TYPE(list)->elem_kind, TVM_TYPE(list)->elem_type);
+  SortCtx ctx = {
+      vm, compare, TVM_TYPE(list)->elem_size, TVM_TYPE(list)->elem_kind,
+      st, TVM_OK,  {e, e, ':', 'i', 0}};
   TcsSortStatus sorted;
   /* 作業領域: 要素 2 個分。比較の closure が確保して GC が走っても、作業領域の参照と並べている
      buffer (比較が List に足して buffer が替わっても、並べるのは元の buffer) は生きていなければならない。
@@ -453,15 +477,18 @@ TvmStatus tvm_list_sort(TvmVm *vm, TvmList *list, const TvmClosure *compare) {
     vm->struct_pins[vm->nstruct_pins].count = 2;
     vm->nstruct_pins++;
   }
-  sorted = tcs_sort(data, (size_t)list->count, ctx.es, scratch, sort_compare, &ctx);
+  sorted =
+      tcs_sort(data, (size_t)list->count, ctx.es, scratch, sort_compare, &ctx);
   vm->npins = pins0;
   if (st)
     vm->nstruct_pins--;
   if (sorted == TCS_SORT_STOPPED)
     return ctx.status;
   if (sorted == TCS_SORT_INCONSISTENT) {
-    tvm_set_error(vm, "fault: Unable to sort because the IComparer.Compare() method returns "
-                      "inconsistent results");
+    tvm_set_error(
+        vm,
+        "fault: Unable to sort because the IComparer.Compare() method returns "
+        "inconsistent results");
     vm->faulting = true;
     return TVM_FAULT;
   }

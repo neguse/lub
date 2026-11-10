@@ -14,7 +14,8 @@ static char *dup(const char *s) {
 }
 
 /* 種類の列の 1 項 (tcsvm.h): 前に & (out) を付けてよい i f b s o か S{型の名前}。読めたら次の位置、読めなければ NULL */
-static const char *host_token(const char *p, char *kind, bool *byref, const char **name, size_t *len) {
+static const char *host_token(const char *p, char *kind, bool *byref,
+                              const char **name, size_t *len) {
   *byref = *p == '&';
   if (*byref)
     p++;
@@ -35,7 +36,8 @@ static const char *host_token(const char *p, char *kind, bool *byref, const char
   return end + 1;
 }
 
-int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets, TvmHostFn fn, void *user) {
+int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets,
+             TvmHostFn fn, void *user) {
   /* 読み込んだ後に足すと、module が持つ host の関数の pointer がずれる */
   if (vm->nfuncs || !name || !params || !rets || !fn)
     return 0;
@@ -54,7 +56,8 @@ int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets, 
   }
   if (vm->nhosts == vm->caphosts) {
     uint32_t cap = vm->caphosts ? vm->caphosts * 2 : 32;
-    TvmIntrinsic *h = (TvmIntrinsic *)realloc(vm->hosts, cap * sizeof(TvmIntrinsic));
+    TvmIntrinsic *h =
+        (TvmIntrinsic *)realloc(vm->hosts, cap * sizeof(TvmIntrinsic));
     if (!h)
       return 0;
     vm->hosts = h;
@@ -77,14 +80,17 @@ int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets, 
   return 1;
 }
 
-TvmStatus tvm_host_fault(TvmVm *vm, const char *message) { return tvm_fault_msg(vm, message); }
+TvmStatus tvm_host_fault(TvmVm *vm, const char *message) {
+  return tvm_fault_msg(vm, message);
+}
 
 /* ---- struct と out の写し (doc/vm-design.md §8.5) ----
    register の葉を、型の表の layout (doc/object-model.md §5) の C の struct の塊に写す。
    塊にする struct の葉は int / float / bool だけ (参照は塊の中で GC から見えない)。 */
 
 /* S{name} の型: 型の表の struct で、葉に参照が無いもの */
-static const TvmType *plan_struct(TvmVm *vm, const TvmIntrinsic *in, const char *name, size_t len) {
+static const TvmType *plan_struct(TvmVm *vm, const TvmIntrinsic *in,
+                                  const char *name, size_t len) {
   for (uint32_t i = 0; i < vm->ntypes; i++) {
     const TvmType *t = &vm->types[i];
     if (strlen(t->name) != len || memcmp(t->name, name, len) != 0)
@@ -96,20 +102,23 @@ static const TvmType *plan_struct(TvmVm *vm, const TvmIntrinsic *in, const char 
     for (uint32_t k = 0; k < t->nleaves; k++)
       if (t->leaves[k].kind == TVM_K_REF) {
         tvm_set_error(vm,
-                      "host %s: struct %s has a reference field (only int, float, bool, enum and structs of them cross "
+                      "host %s: struct %s has a reference field (only int, "
+                      "float, bool, enum and structs of them cross "
                       "as a block)",
                       in->name, t->name);
         return NULL;
       }
     return t;
   }
-  tvm_set_error(vm, "host %s: no struct type %.*s in the module", in->name, (int)len, name);
+  tvm_set_error(vm, "host %s: no struct type %.*s in the module", in->name,
+                (int)len, name);
   return NULL;
 }
 
 /* *p の 1 項を解いて進める。葉の register は値なら *in_at、out なら *out_at から、struct の塊は *block から (どれも進める) */
-static bool plan_arg(TvmVm *vm, const TvmIntrinsic *in, const char **p, TvmHostArg *x, uint32_t *in_at,
-                     uint32_t *out_at, uint32_t *block) {
+static bool plan_arg(TvmVm *vm, const TvmIntrinsic *in, const char **p,
+                     TvmHostArg *x, uint32_t *in_at, uint32_t *out_at,
+                     uint32_t *block) {
   const char *name;
   size_t len;
   *p = host_token(*p, &x->kind, &x->byref, &name, &len);
@@ -141,7 +150,8 @@ void tvm_host_plans_free(TvmHostPlan **plans, uint32_t n) {
 }
 
 bool tvm_host_plans(TvmVm *vm) {
-  vm->host_plans = (TvmHostPlan **)calloc(vm->nintrinsics ? vm->nintrinsics : 1, sizeof(TvmHostPlan *));
+  vm->host_plans = (TvmHostPlan **)calloc(vm->nintrinsics ? vm->nintrinsics : 1,
+                                          sizeof(TvmHostPlan *));
   if (!vm->host_plans) {
     tvm_set_error(vm, "out of memory");
     return false;
@@ -149,7 +159,8 @@ bool tvm_host_plans(TvmVm *vm) {
   for (uint32_t i = 0; i < vm->nintrinsics; i++) {
     const TvmIntrinsic *in = vm->intrinsics[i];
     /* 葉の種類の文字だけの関数は register をそのまま渡す (S と & の無い列) */
-    if (!in->host || !(strchr(in->params, 'S') || strchr(in->params, '&') || strchr(in->rets, 'S')))
+    if (!in->host || !(strchr(in->params, 'S') || strchr(in->params, '&') ||
+                       strchr(in->rets, 'S')))
       continue;
     TvmHostPlan *plan = (TvmHostPlan *)calloc(1, sizeof(TvmHostPlan));
     uint32_t n = 0;
@@ -217,7 +228,8 @@ static void unpack(const TvmType *st, const char *block, TvmSlot *r) {
   }
 }
 
-TvmStatus tvm_host_call(TvmVm *vm, const TvmIntrinsic *in, const TvmHostPlan *plan, TvmSlot *ra, TvmSlot *rb) {
+TvmStatus tvm_host_call(TvmVm *vm, const TvmIntrinsic *in,
+                        const TvmHostPlan *plan, TvmSlot *ra, TvmSlot *rb) {
   /* 呼び出しの間の領域は VM の stack の今の frame の後ろ (CALLR の SAVE が vm->top に置いた所)。
      host が tvm_invoke で VM に戻ると、入れ子の frame はこの領域の後ろから積むので、入れ子の host の関数の塊とは重ならない。 */
   TvmSlot *base = vm->top;
@@ -285,16 +297,18 @@ static bool same_type_name(const char *a, const char *b) {
   return *a == *b;
 }
 
-static int add_host_type(TvmVm *vm, const char *name, uint32_t type_id, TvmIfaceCheck check) {
-  struct TvmHostType *h =
-      (struct TvmHostType *)realloc(vm->host_types, (vm->nhost_types + 1) * sizeof(struct TvmHostType));
+static int add_host_type(TvmVm *vm, const char *name, uint32_t type_id,
+                         TvmIfaceCheck check) {
+  struct TvmHostType *h = (struct TvmHostType *)realloc(
+      vm->host_types, (vm->nhost_types + 1) * sizeof(struct TvmHostType));
   if (!h)
     return 0;
   vm->host_types = h;
   char *copy = dup(name);
   if (!copy)
     return 0;
-  vm->host_types[vm->nhost_types++] = (struct TvmHostType){copy, type_id, check};
+  vm->host_types[vm->nhost_types++] =
+      (struct TvmHostType){copy, type_id, check};
   return tvm_bind_host_types(vm) ? 1 : 0;
 }
 
@@ -366,7 +380,9 @@ const char *tvm_object_type(const void *object) {
   return TVM_TYPE(((const TvmObject *)object))->name;
 }
 
-const TvmTypeInfo *tvm_type(TvmVm *vm, const char *name) { return find_type(vm, name); }
+const TvmTypeInfo *tvm_type(TvmVm *vm, const char *name) {
+  return find_type(vm, name);
+}
 
 uint32_t tvm_types_version(TvmVm *vm) { return vm->types_version; }
 
@@ -424,22 +440,28 @@ bool tvm_list_resize(TvmVm *vm, void *list, int32_t count) {
   } else if (count > l->count) {
     memset(l->data + (size_t)l->count * es, 0, (size_t)(count - l->count) * es);
   } else if (count < l->count) {
-    memset(l->data + (size_t)count * es, 0, (size_t)(l->count - count) * es); /* 外した参照を GC に見せない */
+    memset(l->data + (size_t)count * es, 0,
+           (size_t)(l->count - count) * es); /* 外した参照を GC に見せない */
   }
   l->count = count;
   return true;
 }
 
-int32_t tvm_list_count(const void *list) { return list ? ((const TvmList *)list)->count : 0; }
+int32_t tvm_list_count(const void *list) {
+  return list ? ((const TvmList *)list)->count : 0;
+}
 
-void *tvm_list_data(const void *list) { return list ? ((const TvmList *)list)->data : NULL; }
+void *tvm_list_data(const void *list) {
+  return list ? ((const TvmList *)list)->data : NULL;
+}
 
 void *tvm_array_new_of(TvmVm *vm, const TvmTypeInfo *t, int32_t len) {
   if (!t || t->tkind != TVM_T_ARRAY || len < 0)
     return NULL;
   if ((uint64_t)len * t->elem_size > ((uint64_t)1 << 31))
     return NULL;
-  TvmArray *a = (TvmArray *)tvm_alloc(vm, sizeof(TvmArray) + (size_t)len * t->elem_size);
+  TvmArray *a =
+      (TvmArray *)tvm_alloc(vm, sizeof(TvmArray) + (size_t)len * t->elem_size);
   if (!a)
     return NULL;
   TVM_TYPE(a) = t;
@@ -447,13 +469,21 @@ void *tvm_array_new_of(TvmVm *vm, const TvmTypeInfo *t, int32_t len) {
   return a;
 }
 
-void *tvm_blob_new(TvmVm *vm, size_t size) { return tvm_alloc_blob(vm, size ? size : 1); }
+void *tvm_blob_new(TvmVm *vm, size_t size) {
+  return tvm_alloc_blob(vm, size ? size : 1);
+}
 
-int32_t tvm_array_len(const void *array) { return array ? ((const TvmArray *)array)->len : 0; }
+int32_t tvm_array_len(const void *array) {
+  return array ? ((const TvmArray *)array)->len : 0;
+}
 
-void *tvm_array_data(const void *array) { return array ? ARR_DATA((TvmArray *)array) : NULL; }
+void *tvm_array_data(const void *array) {
+  return array ? ARR_DATA((TvmArray *)array) : NULL;
+}
 
-void *tvm_string_new(TvmVm *vm, const char *data, size_t len) { return tvm_str_new(vm, data, len); }
+void *tvm_string_new(TvmVm *vm, const char *data, size_t len) {
+  return tvm_str_new(vm, data, len);
+}
 
 const char *tvm_string_data(const void *string, size_t *len) {
   const TvmString *s = (const TvmString *)string;
@@ -486,22 +516,25 @@ TvmHandle tvm_hold(TvmVm *vm, void *object) {
   return i + 1;
 }
 
-void *tvm_handle_get(TvmVm *vm, TvmHandle h) { return h && h <= vm->nhandles ? vm->handles[h - 1] : NULL; }
+void *tvm_handle_get(TvmVm *vm, TvmHandle h) {
+  return h && h <= vm->nhandles ? vm->handles[h - 1] : NULL;
+}
 
 void tvm_release(TvmVm *vm, TvmHandle h) {
   if (h && h <= vm->nhandles)
     vm->handles[h - 1] = NULL;
 }
 
-TvmStatus tvm_invoke(TvmVm *vm, void *closure, const TvmSlot *args, size_t nargs, TvmSlot *rets, size_t nrets) {
+TvmStatus tvm_invoke(TvmVm *vm, void *closure, const TvmSlot *args,
+                     size_t nargs, TvmSlot *rets, size_t nrets) {
   const TvmClosure *c = (const TvmClosure *)closure;
   if (!c || TVM_TYPE(c)->tkind != TVM_T_FUNC) {
     tvm_set_error(vm, "tvm_invoke: not a delegate");
     return TVM_LOAD_ERROR;
   }
   if (nargs != c->proto->nparams || nrets < c->proto->nret) {
-    tvm_set_error(vm, "tvm_invoke: %s takes %u argument slots and returns %u", c->proto->name, c->proto->nparams,
-                  c->proto->nret);
+    tvm_set_error(vm, "tvm_invoke: %s takes %u argument slots and returns %u",
+                  c->proto->name, c->proto->nparams, c->proto->nret);
     return TVM_LOAD_ERROR;
   }
   /* 外 (host の frame) から呼ぶときは tvm_call と同じく回収を止める。VM の呼び出しの中なら入れ子 */
@@ -517,8 +550,9 @@ TvmStatus tvm_invoke(TvmVm *vm, void *closure, const TvmSlot *args, size_t nargs
   return st;
 }
 
-TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method, const TvmSlot *args, size_t nargs,
-                            TvmSlot *rets, size_t nrets) {
+TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method,
+                            const TvmSlot *args, size_t nargs, TvmSlot *rets,
+                            size_t nrets) {
   const TvmType *t = object ? tvm_type_of(vm, object) : NULL;
   if (!t || t->tkind != TVM_T_CLASS) {
     tvm_set_error(vm, "tvm_invoke_method: not a VM object");
@@ -528,7 +562,8 @@ TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method, const T
   for (uint32_t k = 0; k < t->nitable && !f; k++) {
     const TvmSelector *sel = &vm->selectors[t->itable[k].selector];
     const TvmProto *g = &vm->funcs[t->itable[k].func];
-    if (strcmp(sel->name, method) == 0 && g->nparams == nargs + 1 && g->nret <= nrets)
+    if (strcmp(sel->name, method) == 0 && g->nparams == nargs + 1 &&
+        g->nret <= nrets)
       f = g;
   }
   if (!f) {
@@ -536,11 +571,14 @@ TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method, const T
     char name[512];
     snprintf(name, sizeof name, "%s.%s", t->name, method);
     int32_t i = tvm_find(vm, name);
-    if (i >= 0 && vm->funcs[i].nparams == nargs + 1 && vm->funcs[i].nret <= nrets)
+    if (i >= 0 && vm->funcs[i].nparams == nargs + 1 &&
+        vm->funcs[i].nret <= nrets)
       f = &vm->funcs[i];
   }
   if (!f) {
-    tvm_set_error(vm, "tvm_invoke_method: %s has no method %s with %zu argument slots", t->name, method, nargs);
+    tvm_set_error(
+        vm, "tvm_invoke_method: %s has no method %s with %zu argument slots",
+        t->name, method, nargs);
     return TVM_LOAD_ERROR;
   }
   TvmSlot all[64];
@@ -566,7 +604,8 @@ TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method, const T
 int tvm_host_delegate(TvmVm *vm, const char *sig, TvmDelegateFn fn) {
   if (vm->ndelegates == 32 || strlen(sig) >= sizeof vm->delegates[0].sig)
     return 0;
-  snprintf(vm->delegates[vm->ndelegates].sig, sizeof vm->delegates[0].sig, "%s", sig);
+  snprintf(vm->delegates[vm->ndelegates].sig, sizeof vm->delegates[0].sig, "%s",
+           sig);
   vm->delegates[vm->ndelegates++].fn = fn;
   return 1;
 }
@@ -586,7 +625,9 @@ char tvm_sig_letter(const TvmVm *vm, uint8_t kind, uint16_t type) {
   }
 }
 
-static char sig_letter(TvmVm *vm, const TvmRegInfo *info) { return tvm_sig_letter(vm, info->kind, info->type); }
+static char sig_letter(TvmVm *vm, const TvmRegInfo *info) {
+  return tvm_sig_letter(vm, info->kind, info->type);
+}
 
 static TvmDelegateFn delegate_by_sig(TvmVm *vm, const char *sig) {
   for (uint32_t i = 0; i < vm->ndelegates; i++)
@@ -595,7 +636,8 @@ static TvmDelegateFn delegate_by_sig(TvmVm *vm, const char *sig) {
   return NULL;
 }
 
-TvmStatus tvm_call_delegate(TvmVm *vm, const TvmClosure *c, const char *sig, const TvmSlot *args, TvmSlot *rets) {
+TvmStatus tvm_call_delegate(TvmVm *vm, const TvmClosure *c, const char *sig,
+                            const TvmSlot *args, TvmSlot *rets) {
   if (!vm->heap || GC_HEADER(c)->kind == TVM_KIND_OBJECT)
     return tvm_call_closure(vm, c, args, rets);
   /* C の module の delegate (X-4) */

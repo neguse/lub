@@ -84,7 +84,8 @@ static TvmStatus where_fn(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
 
 static uint64_t thread_ns;
 
-static void sum_ns(void *user, const char *file, uint32_t line, uint64_t ns, uint64_t bytes, uint32_t allocs) {
+static void sum_ns(void *user, const char *file, uint32_t line, uint64_t ns,
+                   uint64_t bytes, uint32_t allocs) {
   (void)user;
   (void)file;
   (void)line;
@@ -103,13 +104,15 @@ typedef struct Kept {
 static Kept kepts[16];
 static int nkepts;
 
-static void take_kept(void *user, const char *file, uint32_t line, const char *holder, uint32_t count, uint64_t bytes) {
+static void take_kept(void *user, const char *file, uint32_t line,
+                      const char *holder, uint32_t count, uint64_t bytes) {
   (void)user;
   const char *slash = strrchr(file, '/');
   if (strcmp(slash ? slash + 1 : file, "Game.cs") != 0 || nkepts == 16)
     return;
   kepts[nkepts].line = line;
-  snprintf(kepts[nkepts].holder, sizeof kepts[nkepts].holder, "%s", holder ? holder : "(host)");
+  snprintf(kepts[nkepts].holder, sizeof kepts[nkepts].holder, "%s",
+           holder ? holder : "(host)");
   kepts[nkepts].count = count;
   kepts[nkepts].bytes = bytes;
   nkepts++;
@@ -117,15 +120,19 @@ static void take_kept(void *user, const char *file, uint32_t line, const char *h
 
 static int cmp_kept(const void *a, const void *b) {
   const Kept *x = (const Kept *)a, *y = (const Kept *)b;
-  return x->line != y->line ? (int)x->line - (int)y->line : strcmp(x->holder, y->holder);
+  return x->line != y->line ? (int)x->line - (int)y->line
+                            : strcmp(x->holder, y->holder);
 }
 
 static void print_kept(const char *what) {
   qsort(kepts, (size_t)nkepts, sizeof(Kept), cmp_kept);
   printf("%s:\n", what);
   for (int i = 0; i < nkepts; i++)
-    printf("  Game.cs:%u %s count=%u bytes%s\n", kepts[i].line, kepts[i].holder, kepts[i].count,
-           kepts[i].bytes >= 32u * kepts[i].count && kepts[i].count > 0 ? "=ok" : "=bad");
+    printf("  Game.cs:%u %s count=%u bytes%s\n", kepts[i].line, kepts[i].holder,
+           kepts[i].count,
+           kepts[i].bytes >= 32u * kepts[i].count && kepts[i].count > 0
+               ? "=ok"
+               : "=bad");
   nkepts = 0;
 }
 
@@ -139,7 +146,8 @@ typedef struct Row {
 static Row rows[64];
 static int nrows;
 
-static void take(void *user, const char *file, uint32_t line, uint64_t ns, uint64_t bytes, uint32_t allocs) {
+static void take(void *user, const char *file, uint32_t line, uint64_t ns,
+                 uint64_t bytes, uint32_t allocs) {
   (void)user;
   const char *slash = strrchr(file, '/');
   if (strcmp(slash ? slash + 1 : file, "Game.cs") != 0 || nrows == 64)
@@ -151,14 +159,20 @@ static void take(void *user, const char *file, uint32_t line, uint64_t ns, uint6
   nrows++;
 }
 
-static int cmp(const void *a, const void *b) { return (int)((const Row *)a)->line - (int)((const Row *)b)->line; }
+static int cmp(const void *a, const void *b) {
+  return (int)((const Row *)a)->line - (int)((const Row *)b)->line;
+}
 
 static void print(const char *what) {
   qsort(rows, (size_t)nrows, sizeof(Row), cmp);
   printf("%s:\n", what);
   for (int i = 0; i < nrows; i++)
-    printf("  Game.cs:%u ns=%llu allocs=%u bytes%s\n", rows[i].line, (unsigned long long)rows[i].ns, rows[i].allocs,
-           rows[i].bytes >= 400u * rows[i].allocs && (rows[i].allocs > 0) == (rows[i].bytes > 0) ? "=ok" : "=bad");
+    printf("  Game.cs:%u ns=%llu allocs=%u bytes%s\n", rows[i].line,
+           (unsigned long long)rows[i].ns, rows[i].allocs,
+           rows[i].bytes >= 400u * rows[i].allocs &&
+                   (rows[i].allocs > 0) == (rows[i].bytes > 0)
+               ? "=ok"
+               : "=bad");
   nrows = 0;
 }
 
@@ -223,7 +237,10 @@ int main(int argc, char **argv) {
   tvm_profile_take_lines(vm, take, NULL);
   print("churn");
   tvm_profile_take_gc(vm, take_gc, NULL);
-  printf("gc: %s\n", gcs > 0 && gc_live > 0 ? (gcs_timed == gcs ? "stopped 1000 ns each" : "stopped, wrong length") : "none");
+  printf("gc: %s\n", gcs > 0 && gc_live > 0
+                         ? (gcs_timed == gcs ? "stopped 1000 ns each"
+                                             : "stopped, wrong length")
+                         : "none");
   /* 持ち越し: frame の境目の後に作った物だけを数え、一度数えた物は数えない */
   tvm_frame_end(vm);
   if (!call(vm, "Game.Keep"))
@@ -248,7 +265,8 @@ int main(int argc, char **argv) {
     return 1;
   pthread_join(th, NULL);
   tvm_profile_take_lines(vm, sum_ns, NULL);
-  printf("thread: %s\n", thread_ns == THREAD_TICKS ? "all ticks" : "lost ticks");
+  printf("thread: %s\n",
+         thread_ns == THREAD_TICKS ? "all ticks" : "lost ticks");
   /* 呼んだ先から戻った後 */
   if (!call(vm, "Game.Nest"))
     return 1;

@@ -22,7 +22,7 @@ public class GameCore
         Console.WriteLine(values[2]);
         var nested = new int[][] { new int[] { 7 }, new int[] { 8, 9 } };
         Console.WriteLine(nested[1][1]);
-        var empty = new float[] {};
+        var empty = new float[] { };
         Console.WriteLine(empty.Length);
         var point = new Point();
         Console.WriteLine(point.Shift());

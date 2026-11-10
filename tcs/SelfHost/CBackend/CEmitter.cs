@@ -779,79 +779,79 @@ public sealed class CEmitter
         switch (assign.Target)
         {
             case IlVar variable:
-            {
-                var target = Resolve(variable.Name);
-                Line(target.Boxed ? "(*" + target.CName + ") = " + value + ";" : target.CName + " = " + value + ";");
-                // 捕捉 cell は heap object: 参照の store は owner を dirty に
-                if (target.Boxed && NeedsBarrier(targetType)) Line("tcs_wb(" + target.CName + ");");
-                return;
-            }
+                {
+                    var target = Resolve(variable.Name);
+                    Line(target.Boxed ? "(*" + target.CName + ") = " + value + ";" : target.CName + " = " + value + ";");
+                    // 捕捉 cell は heap object: 参照の store は owner を dirty に
+                    if (target.Boxed && NeedsBarrier(targetType)) Line("tcs_wb(" + target.CName + ");");
+                    return;
+                }
             case IlField field:
-            {
-                if (TryStaticField(field, out string staticName, out CType? staticType))
                 {
-                    Line(staticName + " = " + value + ";");
-                    return;
-                }
-                // struct place への field 書き込み (配列要素・ローカル・class field 経由)。C の lvalue 連鎖でそのまま書ける
-                if (TypeOf(field.Recv).Kind == CTypeKind.StructVal)
-                {
-                    var setup = new List<string>();
-                    var place = RenderOwnedStructPlace(field.Recv, setup, out string? owner);
-                    var member = place + "." + Names.Field(field.Name);
-                    if (setup.Count > 0)
+                    if (TryStaticField(field, out string staticName, out CType? staticType))
                     {
-                        // receiver と添字を値より先に評価する (C# の順序。C の `=` は左右の評価順を決めない)
-                        Line(TrimEndText(string.Join("", setup)));
-                        var slot = Temp("slot");
-                        Line(targetType.CName + " *" + slot + " = &" + member + ";");
-                        member = "(*" + slot + ")";
+                        Line(staticName + " = " + value + ";");
+                        return;
                     }
-                    Line(member + " = " + value + ";");
-                    if (NeedsBarrier(targetType) && owner != null) Line("tcs_wb(" + owner + ");");
+                    // struct place への field 書き込み (配列要素・ローカル・class field 経由)。C の lvalue 連鎖でそのまま書ける
+                    if (TypeOf(field.Recv).Kind == CTypeKind.StructVal)
+                    {
+                        var setup = new List<string>();
+                        var place = RenderOwnedStructPlace(field.Recv, setup, out string? owner);
+                        var member = place + "." + Names.Field(field.Name);
+                        if (setup.Count > 0)
+                        {
+                            // receiver と添字を値より先に評価する (C# の順序。C の `=` は左右の評価順を決めない)
+                            Line(TrimEndText(string.Join("", setup)));
+                            var slot = Temp("slot");
+                            Line(targetType.CName + " *" + slot + " = &" + member + ";");
+                            member = "(*" + slot + ")";
+                        }
+                        Line(member + " = " + value + ";");
+                        if (NeedsBarrier(targetType) && owner != null) Line("tcs_wb(" + owner + ");");
+                        return;
+                    }
+                    var receiverType = TypeOf(field.Recv);
+                    if (receiverType.Kind != CTypeKind.Ref)
+                    {
+                        CFail.Report("field receiver is not a class reference");
+                        return;
+                    }
+                    var temp = Temp("object");
+                    Line(receiverType.CName + " " + temp + " = (" + receiverType.CName + ")tcs_nonnull(" + RenderExpr(field.Recv) + ");");
+                    Line(temp + "->" + Names.Field(field.Name) + " = " + value + ";");
+                    if (NeedsBarrier(targetType)) Line("tcs_wb(" + temp + ");");
                     return;
                 }
-                var receiverType = TypeOf(field.Recv);
-                if (receiverType.Kind != CTypeKind.Ref)
-                {
-                    CFail.Report("field receiver is not a class reference");
-                    return;
-                }
-                var temp = Temp("object");
-                Line(receiverType.CName + " " + temp + " = (" + receiverType.CName + ")tcs_nonnull(" + RenderExpr(field.Recv) + ");");
-                Line(temp + "->" + Names.Field(field.Name) + " = " + value + ";");
-                if (NeedsBarrier(targetType)) Line("tcs_wb(" + temp + ");");
-                return;
-            }
             case IlIndex index:
-            {
-                if (!index.PlusOne && TypeOf(index.Recv).Kind == CTypeKind.Dict)
                 {
-                    var slotType = RequireDict(index.Recv, out CType dictType);
-                    CheckAssignable(slotType, assign.Value, "dict store");
-                    // key を値より先に評価する (C# の順序。C の `=` は左右の評価順を決めない)
-                    var dictTemp = Temp("dict");
-                    var key = Temp("key");
-                    Line("TcsDict *" + dictTemp + " = " + RenderExpr(index.Recv) + ";");
-                    Line(dictType.KeyType!.CName + " " + key + " = " + RenderExpr(index.Idx) + ";");
-                    Line("*(" + slotType.CName + " *)tcs_dict_put(" + dictTemp + ", " + DictKeyArgs(dictType.KeyType!, key) + ") = " + value + ";");
+                    if (!index.PlusOne && TypeOf(index.Recv).Kind == CTypeKind.Dict)
+                    {
+                        var slotType = RequireDict(index.Recv, out CType dictType);
+                        CheckAssignable(slotType, assign.Value, "dict store");
+                        // key を値より先に評価する (C# の順序。C の `=` は左右の評価順を決めない)
+                        var dictTemp = Temp("dict");
+                        var key = Temp("key");
+                        Line("TcsDict *" + dictTemp + " = " + RenderExpr(index.Recv) + ";");
+                        Line(dictType.KeyType!.CName + " " + key + " = " + RenderExpr(index.Idx) + ";");
+                        Line("*(" + slotType.CName + " *)tcs_dict_put(" + dictTemp + ", " + DictKeyArgs(dictType.KeyType!, key) + ") = " + value + ";");
+                        return;
+                    }
+                    var sequenceType = RequireSequence(index);
+                    var sequence = Temp("sequence");
+                    var idx = Temp("index");
+                    var place = Temp("place");
+                    var stored = Temp("stored");
+                    // 受け手、添字、値を評価してから範囲を見る (C# の順序)
+                    Line(sequenceType.CName + " " + sequence + " = " + RenderExpr(index.Recv) + ";");
+                    Line("int32_t " + idx + " = " + RenderExpr(index.Idx) + ";");
+                    Line(sequenceType.ElementCName + " " + stored + " = " + value + ";");
+                    var at = sequenceType.Kind == CTypeKind.Array ? "tcs_array_at" : "tcs_list_at";
+                    Line(sequenceType.ElementCName + " *" + place + " = (" + sequenceType.ElementCName + " *)" + at + "(" + sequence + ", " + idx + ");");
+                    Line("*" + place + " = " + stored + ";");
+                    if (NeedsBarrier(targetType)) Line("tcs_wb(" + sequence + ");");
                     return;
                 }
-                var sequenceType = RequireSequence(index);
-                var sequence = Temp("sequence");
-                var idx = Temp("index");
-                var place = Temp("place");
-                var stored = Temp("stored");
-                // 受け手、添字、値を評価してから範囲を見る (C# の順序)
-                Line(sequenceType.CName + " " + sequence + " = " + RenderExpr(index.Recv) + ";");
-                Line("int32_t " + idx + " = " + RenderExpr(index.Idx) + ";");
-                Line(sequenceType.ElementCName + " " + stored + " = " + value + ";");
-                var at = sequenceType.Kind == CTypeKind.Array ? "tcs_array_at" : "tcs_list_at";
-                Line(sequenceType.ElementCName + " *" + place + " = (" + sequenceType.ElementCName + " *)" + at + "(" + sequence + ", " + idx + ");");
-                Line("*" + place + " = " + stored + ";");
-                if (NeedsBarrier(targetType)) Line("tcs_wb(" + sequence + ");");
-                return;
-            }
         }
         CFail.Report("unsupported assignment place: " + NodeName(assign.Target));
     }
@@ -1459,11 +1459,11 @@ public sealed class CEmitter
         {
             case IlLit literal: return RenderLiteral(literal);
             case IlVar variable:
-            {
-                var cell = Resolve(variable.Name);
-                if (cell.Boxed) return "(*" + cell.CName + ")";
-                return cell.CName;
-            }
+                {
+                    var cell = Resolve(variable.Name);
+                    if (cell.Boxed) return "(*" + cell.CName + ")";
+                    return cell.CName;
+                }
             case IlField field: return RenderField(field);
             case IlIndex index: return RenderIndex(index);
             case IlLen length: return RenderLength(length);
@@ -1536,11 +1536,11 @@ public sealed class CEmitter
                 RequireNullable(has.E, "HasValue");
                 return CType.Bool;
             case IlNullableValue val:
-            {
-                var nullable = RequireNullable(val.E, "Value");
-                if (nullable.Element == null) return CType.Void;
-                return nullable.Element;
-            }
+                {
+                    var nullable = RequireNullable(val.E, "Value");
+                    if (nullable.Element == null) return CType.Void;
+                    return nullable.Element;
+                }
             case IlNullableGetOrDefault gd: return TypeOfNullableGetOrDefault(gd);
             case IlLiftedBin lifted: return TypeOfLiftedBin(lifted);
             case IlLiftedUn liftedUn: return TypeOfLiftedUn(liftedUn);
@@ -2807,34 +2807,34 @@ public sealed class CEmitter
         switch (fn)
         {
             case IlClosure closure:
-            {
-                if (closure.Params.Count != paramTypes.Count)
                 {
-                    CFail.Report("closure arity mismatch");
-                    return CType.Void;
+                    if (closure.Params.Count != paramTypes.Count)
+                    {
+                        CFail.Report("closure arity mismatch");
+                        return CType.Void;
+                    }
+                    PushScope();
+                    for (var i = 0; i < paramTypes.Count; i++)
+                        AddVariable(closure.Params[i], new Variable("__infer", paramTypes[i]));
+                    CType? result;
+                    if (closure.ExprBody != null) result = TypeOf(closure.ExprBody);
+                    else result = ScanReturnType(closure.Body!.Stats);
+                    PopScope();
+                    if (result == null) return CType.Void;
+                    return result;
                 }
-                PushScope();
-                for (var i = 0; i < paramTypes.Count; i++)
-                    AddVariable(closure.Params[i], new Variable("__infer", paramTypes[i]));
-                CType? result;
-                if (closure.ExprBody != null) result = TypeOf(closure.ExprBody);
-                else result = ScanReturnType(closure.Body!.Stats);
-                PopScope();
-                if (result == null) return CType.Void;
-                return result;
-            }
             case IlMethodGroup group:
                 return _facts.Method(group.TypeRef, group.Method).ReturnType;
             default:
-            {
-                var type = TypeOf(fn);
-                if (type.Kind != CTypeKind.Closure)
                 {
-                    CFail.Report($"expected a closure, got {type.Display()}");
-                    return CType.Void;
+                    var type = TypeOf(fn);
+                    if (type.Kind != CTypeKind.Closure)
+                    {
+                        CFail.Report($"expected a closure, got {type.Display()}");
+                        return CType.Void;
+                    }
+                    return type.Element!;
                 }
-                return type.Element!;
-            }
         }
     }
 
@@ -2846,21 +2846,21 @@ public sealed class CEmitter
             switch (stat)
             {
                 case IlLocal local:
-                {
-                    CType? type = null;
-                    if (local.Type != null) type = _facts.TryMapType(local.Type);
-                    if (type == null)
                     {
-                        if (local.Init == null)
+                        CType? type = null;
+                        if (local.Type != null) type = _facts.TryMapType(local.Type);
+                        if (type == null)
                         {
-                            CFail.Report($"cannot type local {local.Name}");
-                            return null;
+                            if (local.Init == null)
+                            {
+                                CFail.Report($"cannot type local {local.Name}");
+                                return null;
+                            }
+                            type = TypeOf(local.Init);
                         }
-                        type = TypeOf(local.Init);
+                        AddVariable(local.Name, new Variable("__infer", type));
+                        break;
                     }
-                    AddVariable(local.Name, new Variable("__infer", type));
-                    break;
-                }
                 case IlReturn ret:
                     if (ret.Value != null) return TypeOf(ret.Value);
                     break;
@@ -2876,62 +2876,62 @@ public sealed class CEmitter
                     }
                     break;
                 case IlIf conditional:
-                {
-                    foreach (var arm in conditional.Arms)
                     {
-                        var armType = ScopedReturnType(arm.Body.Stats);
-                        if (armType != null) return armType;
+                        foreach (var arm in conditional.Arms)
+                        {
+                            var armType = ScopedReturnType(arm.Body.Stats);
+                            if (armType != null) return armType;
+                        }
+                        if (conditional.Else != null)
+                        {
+                            var elseType = ScopedReturnType(conditional.Else.Stats);
+                            if (elseType != null) return elseType;
+                        }
+                        break;
                     }
-                    if (conditional.Else != null)
-                    {
-                        var elseType = ScopedReturnType(conditional.Else.Stats);
-                        if (elseType != null) return elseType;
-                    }
-                    break;
-                }
                 case IlWhile whileLoop:
-                {
-                    var w = ScopedReturnType(whileLoop.Body.Stats);
-                    if (w != null) return w;
-                    break;
-                }
+                    {
+                        var w = ScopedReturnType(whileLoop.Body.Stats);
+                        if (w != null) return w;
+                        break;
+                    }
                 case IlRepeat repeat:
-                {
-                    var r = ScopedReturnType(repeat.Body.Stats);
-                    if (r != null) return r;
-                    break;
-                }
+                    {
+                        var r = ScopedReturnType(repeat.Body.Stats);
+                        if (r != null) return r;
+                        break;
+                    }
                 case IlDo block:
-                {
-                    var d = ScopedReturnType(block.Body.Stats);
-                    if (d != null) return d;
-                    break;
-                }
+                    {
+                        var d = ScopedReturnType(block.Body.Stats);
+                        if (d != null) return d;
+                        break;
+                    }
                 case IlBreakScope scope:
-                {
-                    var bs = ScopedReturnType(scope.Body.Stats);
-                    if (bs != null) return bs;
-                    break;
-                }
+                    {
+                        var bs = ScopedReturnType(scope.Body.Stats);
+                        if (bs != null) return bs;
+                        break;
+                    }
                 case IlNumericFor forLoop:
-                {
-                    PushScope();
-                    AddVariable(forLoop.Var, new Variable("__infer", CType.I32));
-                    var t = ScanReturnType(forLoop.Body.Stats);
-                    PopScope();
-                    if (t != null) return t;
-                    break;
-                }
+                    {
+                        PushScope();
+                        AddVariable(forLoop.Var, new Variable("__infer", CType.I32));
+                        var t = ScanReturnType(forLoop.Body.Stats);
+                        PopScope();
+                        if (t != null) return t;
+                        break;
+                    }
                 case IlForeachList foreachLoop:
-                {
-                    PushScope();
-                    AddVariable(foreachLoop.Var, new Variable("__infer",
-                        RequireSeq(foreachLoop.Coll, "foreach").Element!));
-                    var t = ScanReturnType(foreachLoop.Body.Stats);
-                    PopScope();
-                    if (t != null) return t;
-                    break;
-                }
+                    {
+                        PushScope();
+                        AddVariable(foreachLoop.Var, new Variable("__infer",
+                            RequireSeq(foreachLoop.Coll, "foreach").Element!));
+                        var t = ScanReturnType(foreachLoop.Body.Stats);
+                        PopScope();
+                        if (t != null) return t;
+                        break;
+                    }
             }
         }
         return null;
@@ -3157,17 +3157,17 @@ public sealed class CEmitter
         switch (name)
         {
             case "Enqueue":
-            {
-                var v = Temp("queue_value");
-                return $"({{ {head}{elem.CName} {v} = {RenderCoerced(call.Args[1], elem)}; " +
-                    $"tcs_queue_enqueue({q}, &{v}, sizeof({v}), {LayoutRef(elem)}); }})";
-            }
+                {
+                    var v = Temp("queue_value");
+                    return $"({{ {head}{elem.CName} {v} = {RenderCoerced(call.Args[1], elem)}; " +
+                        $"tcs_queue_enqueue({q}, &{v}, sizeof({v}), {LayoutRef(elem)}); }})";
+                }
             case "Dequeue":
-            {
-                var v = Temp("queue_value");
-                return $"({{ {head}{elem.CName} {v} = *({elem.CName} *)tcs_queue_front({q}); " +
-                    $"tcs_queue_drop({q}); {v}; }})";
-            }
+                {
+                    var v = Temp("queue_value");
+                    return $"({{ {head}{elem.CName} {v} = *({elem.CName} *)tcs_queue_front({q}); " +
+                        $"tcs_queue_drop({q}); {v}; }})";
+                }
             case "Peek":
                 return $"(*({elem.CName} *)tcs_queue_front({RenderExpr(call.Args[0])}))";
             case "Clear":
@@ -3177,17 +3177,17 @@ public sealed class CEmitter
             case "ToList":
                 return $"tcs_queue_to_list({RenderExpr(call.Args[0])})";
             case "Contains":
-            {
-                var target = Temp("target");
-                var found = Temp("found");
-                var i = Temp("i");
-                var v = Temp("v");
-                return $"({{ {head}{elem.CName} {target} = {RenderCoerced(call.Args[1], elem)}; " +
-                    $"bool {found} = false; tcs_nonnull({q}); " +
-                    $"for (size_t {i} = {q}->head; {i} < {q}->items->length; {i}++) {{ " +
-                    $"{elem.CName} {v} = *({elem.CName} *)tcs_list_at({q}->items, (int32_t){i}); " +
-                    $"if ({EqualExpr(elem, v, target)}) {{ {found} = true; break; }} }} {found}; }})";
-            }
+                {
+                    var target = Temp("target");
+                    var found = Temp("found");
+                    var i = Temp("i");
+                    var v = Temp("v");
+                    return $"({{ {head}{elem.CName} {target} = {RenderCoerced(call.Args[1], elem)}; " +
+                        $"bool {found} = false; tcs_nonnull({q}); " +
+                        $"for (size_t {i} = {q}->head; {i} < {q}->items->length; {i}++) {{ " +
+                        $"{elem.CName} {v} = *({elem.CName} *)tcs_list_at({q}->items, (int32_t){i}); " +
+                        $"if ({EqualExpr(elem, v, target)}) {{ {found} = true; break; }} }} {found}; }})";
+                }
             default:
                 CFail.Report($"unsupported Queue member: {name} ({type.Display()})");
                 return "";
@@ -3311,75 +3311,75 @@ public sealed class CEmitter
         {
             // C# と同じく受け手、添字、値の順に評価してから範囲を見る
             case "Insert":
-            {
-                var index = Temp("index");
-                sb.Add($"int32_t {index} = {RenderExpr(args[1])}; ");
-                sb.Add($"{elem.CName} {v} = {RenderCoerced(args[2], elem)}; ");
-                return $"({{ {JoinParts(sb)}tcs_list_insert({s}, {index}, &{v}, sizeof({v}), {LayoutRef(elem)}); }})";
-            }
+                {
+                    var index = Temp("index");
+                    sb.Add($"int32_t {index} = {RenderExpr(args[1])}; ");
+                    sb.Add($"{elem.CName} {v} = {RenderCoerced(args[2], elem)}; ");
+                    return $"({{ {JoinParts(sb)}tcs_list_insert({s}, {index}, &{v}, sizeof({v}), {LayoutRef(elem)}); }})";
+                }
             case "GetRange":
-            {
-                var index = Temp("index");
-                var count = Temp("count");
-                sb.Add($"int32_t {index} = {RenderExpr(args[1])}; int32_t {count} = {RenderExpr(args[2])}; ");
-                return $"({{ {JoinParts(sb)}tcs_list_get_range({s}, {index}, {count}); }})";
-            }
+                {
+                    var index = Temp("index");
+                    var count = Temp("count");
+                    sb.Add($"int32_t {index} = {RenderExpr(args[1])}; int32_t {count} = {RenderExpr(args[2])}; ");
+                    return $"({{ {JoinParts(sb)}tcs_list_get_range({s}, {index}, {count}); }})";
+                }
             case "Copy":
-            {
-                var copyFn = seq.Kind == CTypeKind.Array ? "tcs_array_to_list" : "tcs_list_copy";
-                return $"({{ {JoinParts(sb)}{copyFn}({s}); }})";
-            }
+                {
+                    var copyFn = seq.Kind == CTypeKind.Array ? "tcs_array_to_list" : "tcs_list_copy";
+                    return $"({{ {JoinParts(sb)}{copyFn}({s}); }})";
+                }
             case "FindIndex":
-            {
-                var match = ListClosure(sb, args, 1, CType.Bool, new List<CType> { elem }, f, v);
-                var r = Temp("index");
-                sb.Add($"int32_t {r} = -1; ");
-                sb.Add(ListLoop($"if ({match}) {{ {r} = {i}; break; }}", false, n, len, s, i, elem, v, at));
-                return $"({{ {JoinParts(sb)}{r}; }})";
-            }
+                {
+                    var match = ListClosure(sb, args, 1, CType.Bool, new List<CType> { elem }, f, v);
+                    var r = Temp("index");
+                    sb.Add($"int32_t {r} = -1; ");
+                    sb.Add(ListLoop($"if ({match}) {{ {r} = {i}; break; }}", false, n, len, s, i, elem, v, at));
+                    return $"({{ {JoinParts(sb)}{r}; }})";
+                }
             // .NET の RemoveAll と同じ手順で、残す要素をその場で前へ詰める (tcs_list_remove_at と
             // 同じく要素の byte を写す)。述語が list を変えても同じ結果になるよう、長さは毎回読む
             case "RemoveAll":
-            {
-                var match = ListClosure(sb, args, 1, CType.Bool, new List<CType> { elem }, f, v);
-                var free = Temp("free");
-                var current = Temp("current");
-                var removed = Temp("removed");
-                sb.Add($"int32_t {free} = 0; int32_t {removed} = 0; ");
-                sb.Add(ListSkip(free, false, len, s, elem, v, at, match));
-                sb.Add($"if ({free} < {len}({s})) {{ int32_t {current} = {free} + 1; ");
-                sb.Add($"while ({current} < {len}({s})) {{ {ListSkip(current, true, len, s, elem, v, at, match)}");
-                sb.Add($"if ({current} < {len}({s})) {{ {ListElement(elem, at, s, free)} = {ListElement(elem, at, s, current)}; {free}++; {current}++; }} }} ");
-                // 述語が list を詰めて free より短くした場合は .NET の _size のように伸ばせないので切らない
-                sb.Add($"{removed} = {len}({s}) - {free}; if ({removed} > 0) tcs_list_truncate({s}, (size_t){free}); }} ");
-                return $"({{ {JoinParts(sb)}{removed}; }})";
-            }
+                {
+                    var match = ListClosure(sb, args, 1, CType.Bool, new List<CType> { elem }, f, v);
+                    var free = Temp("free");
+                    var current = Temp("current");
+                    var removed = Temp("removed");
+                    sb.Add($"int32_t {free} = 0; int32_t {removed} = 0; ");
+                    sb.Add(ListSkip(free, false, len, s, elem, v, at, match));
+                    sb.Add($"if ({free} < {len}({s})) {{ int32_t {current} = {free} + 1; ");
+                    sb.Add($"while ({current} < {len}({s})) {{ {ListSkip(current, true, len, s, elem, v, at, match)}");
+                    sb.Add($"if ({current} < {len}({s})) {{ {ListElement(elem, at, s, free)} = {ListElement(elem, at, s, current)}; {free}++; {current}++; }} }} ");
+                    // 述語が list を詰めて free より短くした場合は .NET の _size のように伸ばせないので切らない
+                    sb.Add($"{removed} = {len}({s}) - {free}; if ({removed} > 0) tcs_list_truncate({s}, (size_t){free}); }} ");
+                    return $"({{ {JoinParts(sb)}{removed}; }})";
+                }
             case "Contains":
             case "IndexOf":
             case "Remove":
-            {
-                var target = Temp("target");
-                var r = Temp("index");
-                sb.Add($"{elem.CName} {target} = {RenderCoerced(args[1], elem)}; int32_t {r} = -1; ");
-                sb.Add(ListLoop($"if ({EqualExpr(elem, v, target)}) {{ {r} = {i}; break; }}", false, n, len, s, i, elem, v, at));
-                if (name == "Contains") return $"({{ {JoinParts(sb)}{r} >= 0; }})";
-                if (name == "IndexOf") return $"({{ {JoinParts(sb)}{r}; }})";
-                return $"({{ {JoinParts(sb)}if ({r} >= 0) tcs_list_remove_at({s}, {r}); {r} >= 0; }})";
-            }
-            case "Sort":
-            {
-                if (args.Count == 2)
                 {
-                    var type = CType.Closure(CType.I32, new List<CType> { elem, elem });
-                    sb.Add($"TcsClosure *{f} = (TcsClosure *)tcs_nonnull({RenderCoerced(args[1], type)}); ");
-                    var comparator = LiftComparator(elem, type, "comparison");
-                    return $"({{ {JoinParts(sb)}tcs_list_sort({s}, 0, {comparator}, {f}); }})";
+                    var target = Temp("target");
+                    var r = Temp("index");
+                    sb.Add($"{elem.CName} {target} = {RenderCoerced(args[1], elem)}; int32_t {r} = -1; ");
+                    sb.Add(ListLoop($"if ({EqualExpr(elem, v, target)}) {{ {r} = {i}; break; }}", false, n, len, s, i, elem, v, at));
+                    if (name == "Contains") return $"({{ {JoinParts(sb)}{r} >= 0; }})";
+                    if (name == "IndexOf") return $"({{ {JoinParts(sb)}{r}; }})";
+                    return $"({{ {JoinParts(sb)}if ({r} >= 0) tcs_list_remove_at({s}, {r}); {r} >= 0; }})";
                 }
-                var natural = LiftComparator(elem, null, "natural");
-                // float は .NET と同じく NaN を先頭に寄せてから残りを並べる
-                var start = elem.Kind == CTypeKind.F32 ? $"tcs_list_move_nans_to_front({s})" : "0";
-                return $"({{ {JoinParts(sb)}tcs_list_sort({s}, {start}, {natural}, NULL); }})";
-            }
+            case "Sort":
+                {
+                    if (args.Count == 2)
+                    {
+                        var type = CType.Closure(CType.I32, new List<CType> { elem, elem });
+                        sb.Add($"TcsClosure *{f} = (TcsClosure *)tcs_nonnull({RenderCoerced(args[1], type)}); ");
+                        var comparator = LiftComparator(elem, type, "comparison");
+                        return $"({{ {JoinParts(sb)}tcs_list_sort({s}, 0, {comparator}, {f}); }})";
+                    }
+                    var natural = LiftComparator(elem, null, "natural");
+                    // float は .NET と同じく NaN を先頭に寄せてから残りを並べる
+                    var start = elem.Kind == CTypeKind.F32 ? $"tcs_list_move_nans_to_front({s})" : "0";
+                    return $"({{ {JoinParts(sb)}tcs_list_sort({s}, {start}, {natural}, NULL); }})";
+                }
             default:
                 CFail.Report($"unsupported List member: {name}");
                 return "";
@@ -3442,18 +3442,18 @@ public sealed class CEmitter
         switch (mode)
         {
             case "natural":
-            {
-                var compare = CompareExpr(elem, "x", "y");
-                body.Add($"    return {compare};\n");
-                break;
-            }
+                {
+                    var compare = CompareExpr(elem, "x", "y");
+                    body.Add($"    return {compare};\n");
+                    break;
+                }
             case "comparison":
-            {
-                var call = CallClosure("f", closureType!, new List<string> { "x", "y" });
-                body.Add($"    int32_t r = {call};\n");
-                body.Add("    return r < 0 ? -1 : r > 0 ? 1 : 0;\n");
-                break;
-            }
+                {
+                    var call = CallClosure("f", closureType!, new List<string> { "x", "y" });
+                    body.Add($"    int32_t r = {call};\n");
+                    body.Add("    return r < 0 ? -1 : r > 0 ? 1 : 0;\n");
+                    break;
+                }
             default:
                 CFail.Report($"unknown comparator mode: {mode}");
                 return "";
@@ -3936,12 +3936,12 @@ public sealed class CEmitter
                 RequireType(CType.I32, TypeOf(args[1]), "RemoveAt index");
                 return RequireList(args[0]).Element!;
             case "Dict.Keys":
-            {
-                RequireArity(call.Callee, args.Count, 1);
-                if (CFail.Failed) return CType.Void;
-                RequireDict(args[0], out var keyDict);
-                return CType.List(keyDict.KeyType!);
-            }
+                {
+                    RequireArity(call.Callee, args.Count, 1);
+                    if (CFail.Failed) return CType.Void;
+                    RequireDict(args[0], out var keyDict);
+                    return CType.List(keyDict.KeyType!);
+                }
             case "Dict.Values":
                 RequireArity(call.Callee, args.Count, 1);
                 if (CFail.Failed) return CType.Void;
@@ -4004,12 +4004,12 @@ public sealed class CEmitter
             case "__tcs_iparse":
                 return $"tcs_parse_i32_or_fault({RenderExpr(args[0])})";
             case "__tcs_fmod":
-            {
-                var values = new List<TypedValue>();
-                values.Add(new TypedValue(CType.F32, RenderExpr(args[0])));
-                values.Add(new TypedValue(CType.F32, RenderExpr(args[1])));
-                return RenderOrderedCall("fmodf", type, values);
-            }
+                {
+                    var values = new List<TypedValue>();
+                    values.Add(new TypedValue(CType.F32, RenderExpr(args[0])));
+                    values.Add(new TypedValue(CType.F32, RenderExpr(args[1])));
+                    return RenderOrderedCall("fmodf", type, values);
+                }
             case "__tcs_getenv":
                 return $"tcs_getenv({RenderExpr(args[0])})";
             case "__tcs_cstr":
@@ -4021,16 +4021,16 @@ public sealed class CEmitter
             case "__tcs_format":
                 return RenderFormat(call);
             case "List.RemoveAt":
-            {
-                var list = Temp("list");
-                var at = Temp("index");
-                var removed = Temp("removed");
-                var elem = type.CName;
-                return $"({{ TcsList *{list} = {RenderExpr(args[0])}; " +
-                    $"int32_t {at} = {RenderExpr(args[1])}; " +
-                    $"{elem} {removed} = *({elem} *)tcs_list_at({list}, {at}); " +
-                    $"tcs_list_remove_at({list}, {at}); {removed}; }})";
-            }
+                {
+                    var list = Temp("list");
+                    var at = Temp("index");
+                    var removed = Temp("removed");
+                    var elem = type.CName;
+                    return $"({{ TcsList *{list} = {RenderExpr(args[0])}; " +
+                        $"int32_t {at} = {RenderExpr(args[1])}; " +
+                        $"{elem} {removed} = *({elem} *)tcs_list_at({list}, {at}); " +
+                        $"tcs_list_remove_at({list}, {at}); {removed}; }})";
+                }
             case "Dict.Keys":
                 return $"tcs_dict_keys({RenderExpr(args[0])})";
             case "Dict.Values":
@@ -4156,20 +4156,20 @@ public sealed class CEmitter
                 return TypeOfFormatEnum(call);
             case "FormatFloat":
             case "FormatInt":
-            {
-                RequireArity(call.Callee, args.Count, 2);
-                if (CFail.Failed) return CType.Void;
-                var isFloat = name == "FormatFloat";
-                var element = isFloat ? CType.F32 : CType.I32;
-                var value = TypeOf(args[0]);
-                if (!CType.Same(value, element) && !CType.Same(value, CType.Nullable(element)))
                 {
-                    CFail.Report($"String.{name}: value is not {element.Display()} ({value.Display()})");
-                    return CType.Void;
+                    RequireArity(call.Callee, args.Count, 2);
+                    if (CFail.Failed) return CType.Void;
+                    var isFloat = name == "FormatFloat";
+                    var element = isFloat ? CType.F32 : CType.I32;
+                    var value = TypeOf(args[0]);
+                    if (!CType.Same(value, element) && !CType.Same(value, CType.Nullable(element)))
+                    {
+                        CFail.Report($"String.{name}: value is not {element.Display()} ({value.Display()})");
+                        return CType.Void;
+                    }
+                    NumberFormatSpec(args[1], isFloat ? FloatFormatLetters : IntFormatLetters, out int precision);
+                    return CType.String;
                 }
-                NumberFormatSpec(args[1], isFloat ? FloatFormatLetters : IntFormatLetters, out int precision);
-                return CType.String;
-            }
             case "Contains":
             case "StartsWith":
             case "EndsWith":
@@ -4190,17 +4190,17 @@ public sealed class CEmitter
                 RequireType(CType.String, TypeOf(args[0]), name);
                 return CType.String;
             case "IsNullOrEmpty":
-            {
-                RequireArity(call.Callee, args.Count, 1);
-                if (CFail.Failed) return CType.Void;
-                var kind = TypeOf(args[0]).Kind;
-                if (kind != CTypeKind.String && kind != CTypeKind.Null)
                 {
-                    CFail.Report("IsNullOrEmpty argument is not a string");
-                    return CType.Void;
+                    RequireArity(call.Callee, args.Count, 1);
+                    if (CFail.Failed) return CType.Void;
+                    var kind = TypeOf(args[0]).Kind;
+                    if (kind != CTypeKind.String && kind != CTypeKind.Null)
+                    {
+                        CFail.Report("IsNullOrEmpty argument is not a string");
+                        return CType.Void;
+                    }
+                    return CType.Bool;
                 }
-                return CType.Bool;
-            }
             case "CompareOrdinal":
                 RequireArity(call.Callee, args.Count, 2);
                 if (CFail.Failed) return CType.Void;
@@ -4224,41 +4224,41 @@ public sealed class CEmitter
                 if (args.Count == 2) RequireType(CType.String, TypeOf(args[1]), "Split separator");
                 return CType.Array(CType.String);
             case "JoinEnum":
-            {
-                RequireArity(name, args.Count, 3);
-                if (CFail.Failed) return CType.Void;
-                RequireType(CType.String, TypeOf(args[0]), name);
-                var enumValues = TypeOf(args[1]);
-                if ((enumValues.Kind != CTypeKind.List && enumValues.Kind != CTypeKind.Array)
-                    || !CType.Same(enumValues.Element, CType.I32) || !(args[2] is IlLit))
                 {
-                    CFail.Report($"String.JoinEnum: values must be enum values ({enumValues.Display()})");
-                    return CType.Void;
-                }
-                return CType.String;
-            }
-            case "Join":
-            {
-                if (args.Count < 2)
-                {
-                    CFail.Report("String.Join: expected 2+ arguments");
-                    return CType.Void;
-                }
-                RequireType(CType.String, TypeOf(args[0]), name);
-                var values = TypeOf(args[1]);
-                if (args.Count == 2 && (values.Kind == CTypeKind.List || values.Kind == CTypeKind.Array))
-                {
-                    if (!CType.Same(values.Element, CType.String) && JoinValueKind(values.Element!) == null)
+                    RequireArity(name, args.Count, 3);
+                    if (CFail.Failed) return CType.Void;
+                    RequireType(CType.String, TypeOf(args[0]), name);
+                    var enumValues = TypeOf(args[1]);
+                    if ((enumValues.Kind != CTypeKind.List && enumValues.Kind != CTypeKind.Array)
+                        || !CType.Same(enumValues.Element, CType.I32) || !(args[2] is IlLit))
                     {
-                        CFail.Report(
-                            $"String.Join: values must be string, i32, f32 or bool ({values.Element!.Display()})");
+                        CFail.Report($"String.JoinEnum: values must be enum values ({enumValues.Display()})");
                         return CType.Void;
                     }
                     return CType.String;
                 }
-                for (var i = 1; i < args.Count; i++) RequireType(CType.String, TypeOf(args[i]), "Join value");
-                return CType.String;
-            }
+            case "Join":
+                {
+                    if (args.Count < 2)
+                    {
+                        CFail.Report("String.Join: expected 2+ arguments");
+                        return CType.Void;
+                    }
+                    RequireType(CType.String, TypeOf(args[0]), name);
+                    var values = TypeOf(args[1]);
+                    if (args.Count == 2 && (values.Kind == CTypeKind.List || values.Kind == CTypeKind.Array))
+                    {
+                        if (!CType.Same(values.Element, CType.String) && JoinValueKind(values.Element!) == null)
+                        {
+                            CFail.Report(
+                                $"String.Join: values must be string, i32, f32 or bool ({values.Element!.Display()})");
+                            return CType.Void;
+                        }
+                        return CType.String;
+                    }
+                    for (var i = 1; i < args.Count; i++) RequireType(CType.String, TypeOf(args[i]), "Join value");
+                    return CType.String;
+                }
             default:
                 CFail.Report($"unsupported String member: {name}");
                 return CType.Void;
@@ -4281,19 +4281,19 @@ public sealed class CEmitter
         {
             case "FormatEnum": return RenderFormatEnum(call);
             case "JoinEnum":
-            {
-                var table = EnumTable(((IlLit)args[2]).S);
-                var sequence = TypeOf(args[1]);
-                var sep = Temp("sep");
-                var seq = Temp("enum_values");
-                var flags = table.Flags ? "true" : "false";
-                var sepValue = RenderExpr(args[0]);
-                var seqValue = RenderExpr(args[1]);
-                return $"({{ TcsString *{sep} = {sepValue}; " +
-                    $"{sequence.CName} {seq} = ({sequence.CName})tcs_nonnull({seqValue}); " +
-                    $"tcs_string_join_enum({sep}, (const int32_t *){seq}->data, {seq}->length, " +
-                    $"{table.Names}, {table.Values}, {table.Count}, {flags}); }})";
-            }
+                {
+                    var table = EnumTable(((IlLit)args[2]).S);
+                    var sequence = TypeOf(args[1]);
+                    var sep = Temp("sep");
+                    var seq = Temp("enum_values");
+                    var flags = table.Flags ? "true" : "false";
+                    var sepValue = RenderExpr(args[0]);
+                    var seqValue = RenderExpr(args[1]);
+                    return $"({{ TcsString *{sep} = {sepValue}; " +
+                        $"{sequence.CName} {seq} = ({sequence.CName})tcs_nonnull({seqValue}); " +
+                        $"tcs_string_join_enum({sep}, (const int32_t *){seq}->data, {seq}->length, " +
+                        $"{table.Names}, {table.Values}, {table.Count}, {flags}); }})";
+                }
             case "FormatFloat": return RenderNumberFormat(call, FloatFormatLetters, "tcs_string_f32_spec");
             case "FormatInt": return RenderNumberFormat(call, IntFormatLetters, "tcs_string_i32_spec");
             case "Contains": return RenderOrderedCall("tcs_string_contains", type, StringArgs(args, 2));
@@ -4305,47 +4305,47 @@ public sealed class CEmitter
             case "CompareOrdinal":
                 return RenderOrderedCall("tcs_string_compare_ordinal", type, StringArgs(args, 2));
             case "Split":
-            {
-                if (args.Count == 2)
                 {
-                    var values = StringArgs(args, 2);
-                    values.Add(new TypedValue(CType.I32, "1"));
-                    return RenderOrderedCall("tcs_string_split", type, values);
-                }
-                return $"tcs_string_split({RenderExpr(args[0])}, NULL, 0)";
-            }
-            case "Join":
-            {
-                var values = TypeOf(args[1]);
-                if (args.Count == 2 && (values.Kind == CTypeKind.List || values.Kind == CTypeKind.Array))
-                {
-                    var join = values.Kind == CTypeKind.List ? "tcs_string_join_list" : "tcs_string_join_array";
-                    var kind = JoinValueKind(values.Element!);
-                    if (kind != null)
+                    if (args.Count == 2)
                     {
-                        var withKind = StringArgs(args, 1);
-                        withKind.Add(new TypedValue(values, RenderExpr(args[1])));
-                        withKind.Add(new TypedValue(CType.I32, kind));
-                        return RenderOrderedCall($"{join}_values", type, withKind);
+                        var values = StringArgs(args, 2);
+                        values.Add(new TypedValue(CType.I32, "1"));
+                        return RenderOrderedCall("tcs_string_split", type, values);
                     }
-                    var plain = StringArgs(args, 1);
-                    plain.Add(new TypedValue(values, RenderExpr(args[1])));
-                    return RenderOrderedCall(join, type, plain);
+                    return $"tcs_string_split({RenderExpr(args[0])}, NULL, 0)";
                 }
-                var sep = Temp("sep");
-                var items = Temp("join_items");
-                var sb = new List<string>();
-                sb.Add($"TcsString *{sep} = {RenderExpr(args[0])}; ");
-                var names = new List<string>();
-                for (var i = 1; i < args.Count; i++)
+            case "Join":
                 {
-                    var temp = Temp("join_item");
-                    sb.Add($"TcsString *{temp} = {RenderExpr(args[i])}; ");
-                    names.Add(temp);
+                    var values = TypeOf(args[1]);
+                    if (args.Count == 2 && (values.Kind == CTypeKind.List || values.Kind == CTypeKind.Array))
+                    {
+                        var join = values.Kind == CTypeKind.List ? "tcs_string_join_list" : "tcs_string_join_array";
+                        var kind = JoinValueKind(values.Element!);
+                        if (kind != null)
+                        {
+                            var withKind = StringArgs(args, 1);
+                            withKind.Add(new TypedValue(values, RenderExpr(args[1])));
+                            withKind.Add(new TypedValue(CType.I32, kind));
+                            return RenderOrderedCall($"{join}_values", type, withKind);
+                        }
+                        var plain = StringArgs(args, 1);
+                        plain.Add(new TypedValue(values, RenderExpr(args[1])));
+                        return RenderOrderedCall(join, type, plain);
+                    }
+                    var sep = Temp("sep");
+                    var items = Temp("join_items");
+                    var sb = new List<string>();
+                    sb.Add($"TcsString *{sep} = {RenderExpr(args[0])}; ");
+                    var names = new List<string>();
+                    for (var i = 1; i < args.Count; i++)
+                    {
+                        var temp = Temp("join_item");
+                        sb.Add($"TcsString *{temp} = {RenderExpr(args[i])}; ");
+                        names.Add(temp);
+                    }
+                    sb.Add($"TcsString *{items}[] = {{ {string.Join(", ", names)} }}; ");
+                    return $"({{ {string.Join("", sb)}tcs_string_join_items({sep}, {items}, {names.Count}); }})";
                 }
-                sb.Add($"TcsString *{items}[] = {{ {string.Join(", ", names)} }}; ");
-                return $"({{ {string.Join("", sb)}tcs_string_join_items({sep}, {items}, {names.Count}); }})";
-            }
             default:
                 CFail.Report($"unsupported String member: {name}");
                 return "";
@@ -4408,20 +4408,20 @@ public sealed class CEmitter
             case "RuneCount":
                 return $"tcs_string_rune_count({RenderExpr(call.Args[0])})";
             case "RuneSubstring":
-            {
-                var values = new List<TypedValue>();
-                values.Add(new TypedValue(CType.String, RenderExpr(call.Args[0])));
-                values.Add(new TypedValue(CType.I32, RenderExpr(call.Args[1])));
-                values.Add(new TypedValue(CType.I32, RenderExpr(call.Args[2])));
-                return RenderOrderedCall("tcs_string_rune_substring", type, values);
-            }
+                {
+                    var values = new List<TypedValue>();
+                    values.Add(new TypedValue(CType.String, RenderExpr(call.Args[0])));
+                    values.Add(new TypedValue(CType.I32, RenderExpr(call.Args[1])));
+                    values.Add(new TypedValue(CType.I32, RenderExpr(call.Args[2])));
+                    return RenderOrderedCall("tcs_string_rune_substring", type, values);
+                }
             case "New":
-            {
-                var text = Temp("utf8_text");
-                return $"({{ TcsString *{text} = {RenderExpr(call.Args[0])}; " +
-                    $"int32_t {text}_length = tcs_utf8_bytes_text_length({text}); " +
-                    $"({bytes}){{ .{fieldText} = {text}, .{fieldStart} = 0, .{fieldLength} = {text}_length }}; }})";
-            }
+                {
+                    var text = Temp("utf8_text");
+                    return $"({{ TcsString *{text} = {RenderExpr(call.Args[0])}; " +
+                        $"int32_t {text}_length = tcs_utf8_bytes_text_length({text}); " +
+                        $"({bytes}){{ .{fieldText} = {text}, .{fieldStart} = 0, .{fieldLength} = {text}_length }}; }})";
+                }
         }
         // receiver と引数はこの順に 1 度だけ評価する
         var u = Temp("utf8");
@@ -4430,20 +4430,20 @@ public sealed class CEmitter
         switch (name)
         {
             case "At":
-            {
-                var index = Temp("utf8_index");
-                return $"({{ {head}int32_t {index} = {RenderExpr(call.Args[1])}; " +
-                    $"tcs_utf8_bytes_at({view}, {index}); }})";
-            }
+                {
+                    var index = Temp("utf8_index");
+                    return $"({{ {head}int32_t {index} = {RenderExpr(call.Args[1])}; " +
+                        $"tcs_utf8_bytes_at({view}, {index}); }})";
+                }
             case "Slice":
-            {
-                var start = Temp("utf8_start");
-                var count = Temp("utf8_count");
-                return $"({{ {head}int32_t {start} = {RenderExpr(call.Args[1])}; " +
-                    $"int32_t {count} = {RenderExpr(call.Args[2])}; " +
-                    $"tcs_utf8_bytes_check_slice({u}.{fieldLength}, {start}, {count}); " +
-                    $"({bytes}){{ .{fieldText} = {u}.{fieldText}, .{fieldStart} = {u}.{fieldStart} + {start}, .{fieldLength} = {count} }}; }})";
-            }
+                {
+                    var start = Temp("utf8_start");
+                    var count = Temp("utf8_count");
+                    return $"({{ {head}int32_t {start} = {RenderExpr(call.Args[1])}; " +
+                        $"int32_t {count} = {RenderExpr(call.Args[2])}; " +
+                        $"tcs_utf8_bytes_check_slice({u}.{fieldLength}, {start}, {count}); " +
+                        $"({bytes}){{ .{fieldText} = {u}.{fieldText}, .{fieldStart} = {u}.{fieldStart} + {start}, .{fieldLength} = {count} }}; }})";
+                }
             default:
                 return $"({{ {head}tcs_utf8_bytes_to_string({view}); }})";
         }
@@ -4536,33 +4536,33 @@ public sealed class CEmitter
             case "NextSingle":
                 return $"({{ {head}tcs_rand_float({r}); }})";
             case "Next":
-            {
-                // Next() = tcs_rand_range(0, 2147483646)、Next(max) =
-                // Next(0, max)、Next(min, max) = tcs_rand_range(min, max - 1) (空の範囲は min)
-                if (args.Count == 0)
-                    return $"({{ {head}tcs_rand_range({r}, 0, INT32_C(2147483646)); }})";
-                if (args.Count == 1)
                 {
-                    var one = new List<TypedValue>();
-                    one.Add(new TypedValue(CType.Random, r));
-                    one.Add(new TypedValue(CType.I32, "0"));
-                    one.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
-                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, one) + "; })";
+                    // Next() = tcs_rand_range(0, 2147483646)、Next(max) =
+                    // Next(0, max)、Next(min, max) = tcs_rand_range(min, max - 1) (空の範囲は min)
+                    if (args.Count == 0)
+                        return $"({{ {head}tcs_rand_range({r}, 0, INT32_C(2147483646)); }})";
+                    if (args.Count == 1)
+                    {
+                        var one = new List<TypedValue>();
+                        one.Add(new TypedValue(CType.Random, r));
+                        one.Add(new TypedValue(CType.I32, "0"));
+                        one.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
+                        return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, one) + "; })";
+                    }
+                    var two = new List<TypedValue>();
+                    two.Add(new TypedValue(CType.Random, r));
+                    two.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
+                    two.Add(new TypedValue(CType.I32, RenderExpr(args[1])));
+                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, two) + "; })";
                 }
-                var two = new List<TypedValue>();
-                two.Add(new TypedValue(CType.Random, r));
-                two.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
-                two.Add(new TypedValue(CType.I32, RenderExpr(args[1])));
-                return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, two) + "; })";
-            }
             case "Range":
-            {
-                var values = new List<TypedValue>();
-                values.Add(new TypedValue(CType.Random, r));
-                values.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
-                values.Add(new TypedValue(CType.I32, RenderExpr(args[1])));
-                return $"({{ {head}" + RenderOrderedCall("tcs_rand_range", type, values) + "; })";
-            }
+                {
+                    var values = new List<TypedValue>();
+                    values.Add(new TypedValue(CType.Random, r));
+                    values.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
+                    values.Add(new TypedValue(CType.I32, RenderExpr(args[1])));
+                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_range", type, values) + "; })";
+                }
             default:
                 CFail.Report($"unsupported Random member: {name}");
                 return "";
@@ -4665,51 +4665,51 @@ public sealed class CEmitter
         switch (name)
         {
             case "Min":
-            {
-                if (type.Kind == CTypeKind.F32)
-                    return RenderOrderedCall("tcs_math_min", type, MathF32Args(args, 2));
-                var a = Temp("min_a"); var b = Temp("min_b");
-                return $"({{ {type.CName} {a} = {RenderExpr(args[0])}; {type.CName} {b} = " +
-                    $"{RenderExpr(args[1])}; {b} < {a} ? {b} : {a}; }})";
-            }
+                {
+                    if (type.Kind == CTypeKind.F32)
+                        return RenderOrderedCall("tcs_math_min", type, MathF32Args(args, 2));
+                    var a = Temp("min_a"); var b = Temp("min_b");
+                    return $"({{ {type.CName} {a} = {RenderExpr(args[0])}; {type.CName} {b} = " +
+                        $"{RenderExpr(args[1])}; {b} < {a} ? {b} : {a}; }})";
+                }
             case "Max":
-            {
-                if (type.Kind == CTypeKind.F32)
-                    return RenderOrderedCall("tcs_math_max", type, MathF32Args(args, 2));
-                var a = Temp("max_a"); var b = Temp("max_b");
-                return $"({{ {type.CName} {a} = {RenderExpr(args[0])}; {type.CName} {b} = " +
-                    $"{RenderExpr(args[1])}; {b} > {a} ? {b} : {a}; }})";
-            }
+                {
+                    if (type.Kind == CTypeKind.F32)
+                        return RenderOrderedCall("tcs_math_max", type, MathF32Args(args, 2));
+                    var a = Temp("max_a"); var b = Temp("max_b");
+                    return $"({{ {type.CName} {a} = {RenderExpr(args[0])}; {type.CName} {b} = " +
+                        $"{RenderExpr(args[1])}; {b} > {a} ? {b} : {a}; }})";
+                }
             case "Clamp":
-            {
-                var v = Temp("clamp_v"); var lo = Temp("clamp_lo"); var hi = Temp("clamp_hi");
-                return $"({{ {type.CName} {v} = {RenderExpr(args[0])}; {type.CName} {lo} = " +
-                    $"{RenderExpr(args[1])}; {type.CName} {hi} = {RenderExpr(args[2])}; " +
-                    $"{v} < {lo} ? {lo} : {v} > {hi} ? {hi} : {v}; }})";
-            }
+                {
+                    var v = Temp("clamp_v"); var lo = Temp("clamp_lo"); var hi = Temp("clamp_hi");
+                    return $"({{ {type.CName} {v} = {RenderExpr(args[0])}; {type.CName} {lo} = " +
+                        $"{RenderExpr(args[1])}; {type.CName} {hi} = {RenderExpr(args[2])}; " +
+                        $"{v} < {lo} ? {lo} : {v} > {hi} ? {hi} : {v}; }})";
+                }
             case "Abs":
                 if (type.Kind == CTypeKind.I32)
                     return $"({{ int32_t __a = {RenderExpr(args[0])}; __a < 0 ? -__a : __a; }})";
                 return $"fabsf({RenderExpr(args[0])})";
             case "Sign":
-            {
-                var v = Temp("sign");
-                var vt = TypeOf(args[0]);
-                return $"({{ {vt.CName} {v} = {RenderExpr(args[0])}; " +
-                    $"{v} > 0 ? INT32_C(1) : {v} < 0 ? -INT32_C(1) : INT32_C(0); }})";
-            }
+                {
+                    var v = Temp("sign");
+                    var vt = TypeOf(args[0]);
+                    return $"({{ {vt.CName} {v} = {RenderExpr(args[0])}; " +
+                        $"{v} > 0 ? INT32_C(1) : {v} < 0 ? -INT32_C(1) : INT32_C(0); }})";
+                }
             case "CompareTo":
-            {
-                // -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0
-                var vt = NumericJoin(TypeOf(args[0]), TypeOf(args[1]), name);
-                var a = Temp("cmp_a"); var b = Temp("cmp_b");
-                var unordered = vt.Kind == CTypeKind.F32
-                    ? $"{a} == {b} ? INT32_C(0) : {a} != {a} ? ({b} != {b} ? INT32_C(0) : -INT32_C(1)) : INT32_C(1)"
-                    : "INT32_C(0)";
-                return $"({{ {vt.CName} {a} = {RenderCoerced(args[0], vt)}; " +
-                    $"{vt.CName} {b} = {RenderCoerced(args[1], vt)}; " +
-                    $"{a} < {b} ? -INT32_C(1) : {a} > {b} ? INT32_C(1) : {unordered}; }})";
-            }
+                {
+                    // -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0
+                    var vt = NumericJoin(TypeOf(args[0]), TypeOf(args[1]), name);
+                    var a = Temp("cmp_a"); var b = Temp("cmp_b");
+                    var unordered = vt.Kind == CTypeKind.F32
+                        ? $"{a} == {b} ? INT32_C(0) : {a} != {a} ? ({b} != {b} ? INT32_C(0) : -INT32_C(1)) : INT32_C(1)"
+                        : "INT32_C(0)";
+                    return $"({{ {vt.CName} {a} = {RenderCoerced(args[0], vt)}; " +
+                        $"{vt.CName} {b} = {RenderCoerced(args[1], vt)}; " +
+                        $"{a} < {b} ? -INT32_C(1) : {a} > {b} ? INT32_C(1) : {unordered}; }})";
+                }
             case "Floor": return $"floorf({RenderExpr(args[0])})";
             case "Ceil":
             case "Ceiling": return $"ceilf({RenderExpr(args[0])})";
@@ -4721,26 +4721,26 @@ public sealed class CEmitter
             case "Atan2": return RenderOrderedCall("tcs_atan2f", type, MathF32Args(args, 2));
             case "Pow": return RenderOrderedCall("tcs_math_pow", type, MathF32Args(args, 2));
             case "Log":
-            {
-                if (args.Count == 2)
                 {
-                    var values = MathF32Args(args, 2);
-                    values.Add(new TypedValue(CType.I32, "1"));
-                    return RenderOrderedCall("tcs_math_log", type, values);
+                    if (args.Count == 2)
+                    {
+                        var values = MathF32Args(args, 2);
+                        values.Add(new TypedValue(CType.I32, "1"));
+                        return RenderOrderedCall("tcs_math_log", type, values);
+                    }
+                    return $"tcs_math_log({RenderExpr(args[0])}, 0.0f, 0)";
                 }
-                return $"tcs_math_log({RenderExpr(args[0])}, 0.0f, 0)";
-            }
             case "Round":
-            {
-                if (args.Count == 2)
                 {
-                    var values = MathF32Args(args, 1);
-                    values.Add(new TypedValue(CType.I32, RenderExpr(args[1])));
-                    values.Add(new TypedValue(CType.I32, "1"));
-                    return RenderOrderedCall("tcs_math_round", type, values);
+                    if (args.Count == 2)
+                    {
+                        var values = MathF32Args(args, 1);
+                        values.Add(new TypedValue(CType.I32, RenderExpr(args[1])));
+                        values.Add(new TypedValue(CType.I32, "1"));
+                        return RenderOrderedCall("tcs_math_round", type, values);
+                    }
+                    return $"tcs_math_round({RenderExpr(args[0])}, 0, 0)";
                 }
-                return $"tcs_math_round({RenderExpr(args[0])}, 0, 0)";
-            }
             default:
                 CFail.Report($"unsupported Math member: {name}");
                 return "";
@@ -5526,20 +5526,20 @@ public sealed class CEmitter
             case IlLiftedOp.Le:
             case IlLiftedOp.Gt:
             case IlLiftedOp.Ge:
-            {
-                IlBinOp op;
-                string symbol;
-                if (lifted.Op == IlLiftedOp.Lt) { op = IlBinOp.Lt; symbol = "<"; }
-                else if (lifted.Op == IlLiftedOp.Le) { op = IlBinOp.Le; symbol = "<="; }
-                else if (lifted.Op == IlLiftedOp.Gt) { op = IlBinOp.Gt; symbol = ">"; }
-                else { op = IlBinOp.Ge; symbol = ">="; }
-                string relation;
-                if (left.Element!.Kind == CTypeKind.F32 || right.Element!.Kind == CTypeKind.F32)
-                    relation = RenderFloatRelation(op, xv, yv);
-                else
-                    relation = $"{xv} {symbol} {yv}";
-                return $"({{ {sb}{x}.has && {y}.has && {relation}; }})";
-            }
+                {
+                    IlBinOp op;
+                    string symbol;
+                    if (lifted.Op == IlLiftedOp.Lt) { op = IlBinOp.Lt; symbol = "<"; }
+                    else if (lifted.Op == IlLiftedOp.Le) { op = IlBinOp.Le; symbol = "<="; }
+                    else if (lifted.Op == IlLiftedOp.Gt) { op = IlBinOp.Gt; symbol = ">"; }
+                    else { op = IlBinOp.Ge; symbol = ">="; }
+                    string relation;
+                    if (left.Element!.Kind == CTypeKind.F32 || right.Element!.Kind == CTypeKind.F32)
+                        relation = RenderFloatRelation(op, xv, yv);
+                    else
+                        relation = $"{xv} {symbol} {yv}";
+                    return $"({{ {sb}{x}.has && {y}.has && {relation}; }})";
+                }
             case IlLiftedOp.And:
                 return $"({{ {sb}{result.CName} r = {{0}}; " +
                     $"if (({x}.has && !{xv}) || ({y}.has && !{yv})) {{ r.has = true; r.v = false; }} " +
@@ -6510,12 +6510,12 @@ public sealed class CEmitter
             }
             var parts = new List<string>();
             foreach (var link in ChainRootFirst(cls.Name))
-            foreach (var field in link.Fields)
-            {
-                if (field.IsStatic) continue;
-                parts.Add(FieldEqualExpr(_facts.Field(link.Name, field.Name).Type,
-                    $"a->{Names.Field(field.Name)}", $"b->{Names.Field(field.Name)}"));
-            }
+                foreach (var field in link.Fields)
+                {
+                    if (field.IsStatic) continue;
+                    parts.Add(FieldEqualExpr(_facts.Field(link.Name, field.Name).Type,
+                        $"a->{Names.Field(field.Name)}", $"b->{Names.Field(field.Name)}"));
+                }
             Line("return " + (parts.Count == 0 ? "true" : string.Join(" && ", parts)) + ";");
             _indent--;
             Line("}");
@@ -6810,68 +6810,68 @@ public sealed class CEmitter
     private void EmitDispatchers()
     {
         foreach (var cls in _program.Classes)
-        foreach (var method in cls.Methods)
-        {
-            if (method.IsStatic) continue;
-            string? b = _classes[cls.Name].BaseName;
-            string? declaring = b != null
-                ? FindDeclaringClass(b, method.Name) : null;
-            if (declaring != null) continue; // 再宣言側は root が担当
-            if (!IsPolymorphic(cls.Name, method.Name)) continue;
-            var fact = _facts.Method(cls.Name, method.Name);
-            var parameterParts = new List<string>();
-            parameterParts.Add($"{Names.Class(cls.Name)} *v_self");
-            for (int i = 0; i < fact.Parameters.Count; i++)
-                parameterParts.Add($"{fact.Parameters[i].Type.CName} v_{Names.Id(fact.Parameters[i].Name)}_{i}");
-            for (int i = 0; i < fact.OutParameters.Count; i++)
-                parameterParts.Add(OutPointerParameter(fact.OutParameters[i], i));
-            var parameters = string.Join(", ", parameterParts);
-            Line($"static {fact.ReturnType.CName}");
-            Line($"{Names.Dispatch(cls.Name, method.Name)}({parameters})");
-            Line("{");
-            _indent++;
-            Line("switch (((TcsObjectHeader *)v_self)->type_id) {");
-            foreach (var target in _program.Classes)
+            foreach (var method in cls.Methods)
             {
-                if (target.IsInterface || !IsAncestorOrSame(cls.Name, target.Name)) continue;
-                // 同名でもシグネチャが違う宣言は override ではない (C# の別
-                // method)。一致する最寄りの宣言へ飛ばす
-                string? impl = null;
-                for (string? cur = target.Name; cur != null && impl == null; cur = _classes[cur].BaseName)
-                {
-                    bool declares = false;
-                    foreach (var m in _classes[cur].Methods)
-                    {
-                        if (m.Name == method.Name && !m.IsStatic) declares = true;
-                    }
-                    if (declares && SameParameterTypes(_facts.Method(cur, method.Name).Parameters, fact.Parameters))
-                        impl = cur;
-                }
-                if (impl == null) continue;
-                var callArgs = new List<string>();
-                callArgs.Add($"({Names.Class(impl)} *)v_self");
+                if (method.IsStatic) continue;
+                string? b = _classes[cls.Name].BaseName;
+                string? declaring = b != null
+                    ? FindDeclaringClass(b, method.Name) : null;
+                if (declaring != null) continue; // 再宣言側は root が担当
+                if (!IsPolymorphic(cls.Name, method.Name)) continue;
+                var fact = _facts.Method(cls.Name, method.Name);
+                var parameterParts = new List<string>();
+                parameterParts.Add($"{Names.Class(cls.Name)} *v_self");
                 for (int i = 0; i < fact.Parameters.Count; i++)
-                    callArgs.Add($"v_{Names.Id(fact.Parameters[i].Name)}_{i}");
+                    parameterParts.Add($"{fact.Parameters[i].Type.CName} v_{Names.Id(fact.Parameters[i].Name)}_{i}");
                 for (int i = 0; i < fact.OutParameters.Count; i++)
-                    callArgs.Add($"o_{Names.Id(fact.OutParameters[i].Name)}_{i}");
-                var call = Names.Method(impl, method.Name) + "(" +
-                    string.Join(", ", callArgs) + ")";
-                Line($"case {Names.TypeId(target.Name)}: " +
-                    (CType.Same(fact.ReturnType, CType.Void)
-                        ? call + "; return;" : "return " + call + ";"));
+                    parameterParts.Add(OutPointerParameter(fact.OutParameters[i], i));
+                var parameters = string.Join(", ", parameterParts);
+                Line($"static {fact.ReturnType.CName}");
+                Line($"{Names.Dispatch(cls.Name, method.Name)}({parameters})");
+                Line("{");
+                _indent++;
+                Line("switch (((TcsObjectHeader *)v_self)->type_id) {");
+                foreach (var target in _program.Classes)
+                {
+                    if (target.IsInterface || !IsAncestorOrSame(cls.Name, target.Name)) continue;
+                    // 同名でもシグネチャが違う宣言は override ではない (C# の別
+                    // method)。一致する最寄りの宣言へ飛ばす
+                    string? impl = null;
+                    for (string? cur = target.Name; cur != null && impl == null; cur = _classes[cur].BaseName)
+                    {
+                        bool declares = false;
+                        foreach (var m in _classes[cur].Methods)
+                        {
+                            if (m.Name == method.Name && !m.IsStatic) declares = true;
+                        }
+                        if (declares && SameParameterTypes(_facts.Method(cur, method.Name).Parameters, fact.Parameters))
+                            impl = cur;
+                    }
+                    if (impl == null) continue;
+                    var callArgs = new List<string>();
+                    callArgs.Add($"({Names.Class(impl)} *)v_self");
+                    for (int i = 0; i < fact.Parameters.Count; i++)
+                        callArgs.Add($"v_{Names.Id(fact.Parameters[i].Name)}_{i}");
+                    for (int i = 0; i < fact.OutParameters.Count; i++)
+                        callArgs.Add($"o_{Names.Id(fact.OutParameters[i].Name)}_{i}");
+                    var call = Names.Method(impl, method.Name) + "(" +
+                        string.Join(", ", callArgs) + ")";
+                    Line($"case {Names.TypeId(target.Name)}: " +
+                        (CType.Same(fact.ReturnType, CType.Void)
+                            ? call + "; return;" : "return " + call + ";"));
+                }
+                // --vm-host: VM の class が実装した interface の method は VM で走らせる (X-4)
+                string? vm = null;
+                if (_classes[cls.Name].IsInterface) vm = VmhDispatchBranch(fact, method.Name);
+                if (vm != null)
+                    Line("default: " + vm + " tcs_fault(\"dispatch\");");
+                else
+                    Line("default: tcs_fault(\"dispatch\");");
+                Line("}");
+                _indent--;
+                Line("}");
+                Line();
             }
-            // --vm-host: VM の class が実装した interface の method は VM で走らせる (X-4)
-            string? vm = null;
-            if (_classes[cls.Name].IsInterface) vm = VmhDispatchBranch(fact, method.Name);
-            if (vm != null)
-                Line("default: " + vm + " tcs_fault(\"dispatch\");");
-            else
-                Line("default: tcs_fault(\"dispatch\");");
-            Line("}");
-            _indent--;
-            Line("}");
-            Line();
-        }
     }
 
     // parameter の型の列が同じか (C# 版の Select(p => p.Type).SequenceEqual)
@@ -8177,15 +8177,15 @@ public sealed class CEmitter
             case CTypeKind.Nullable:
                 return VmhBlittable(t.Element!, depth + 1);
             case CTypeKind.StructVal:
-            {
-                ExStruct? st;
-                if (!_facts.Structs.TryGetValue(t.Name!, out st)) return false;
-                foreach (var f in st.Fields)
                 {
-                    if (!f.IsStatic && !VmhBlittable(_facts.MapType(f.Type), depth + 1)) return false;
+                    ExStruct? st;
+                    if (!_facts.Structs.TryGetValue(t.Name!, out st)) return false;
+                    foreach (var f in st.Fields)
+                    {
+                        if (!f.IsStatic && !VmhBlittable(_facts.MapType(f.Type), depth + 1)) return false;
+                    }
+                    return true;
                 }
-                return true;
-            }
         }
         return false;
     }

@@ -18,7 +18,8 @@
 
 static TvmStatus oom(TvmVm *vm) { return tvm_fault_msg(vm, "out of memory"); }
 
-static TvmStatus ret_str(TvmVm *vm, TvmSlot *rets, const char *data, size_t len) {
+static TvmStatus ret_str(TvmVm *vm, TvmSlot *rets, const char *data,
+                         size_t len) {
   TvmString *s = tvm_str_new(vm, data, len);
   if (!s)
     return oom(vm);
@@ -34,7 +35,8 @@ static TvmStatus ret_str(TvmVm *vm, TvmSlot *rets, const char *data, size_t len)
 
 /* 書式 "G"、"E2" など (文字 + 9 桁までの精度) の精度。無ければ -1、形が違えば -2 */
 static int32_t format_precision(const TvmString *spec, const char *letters) {
-  if (!spec || spec->len < 1 || spec->len > 10 || !strchr(letters, STR_DATA(spec)[0]))
+  if (!spec || spec->len < 1 || spec->len > 10 ||
+      !strchr(letters, STR_DATA(spec)[0]))
     return -2;
   int32_t precision = -1;
   for (int32_t i = 1; i < spec->len; i++) {
@@ -83,15 +85,17 @@ static TvmStatus fmt_int(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 }
 
 /* IL の string.format の変換 1 つ (emitter が書式の literal を分けて呼ぶ。runtime/fmt/printf.c) */
-static TvmStatus printf_one(TvmVm *vm, TvmSlot *r, const TvmString *spec, int kind, int32_t i, float f,
-                            const TvmString *s) {
+static TvmStatus printf_one(TvmVm *vm, TvmSlot *r, const TvmString *spec,
+                            int kind, int32_t i, float f, const TvmString *s) {
   size_t slen = s ? (size_t)s->len : 0;
   char *out = (char *)malloc(TCS_PRINTF_MAX(slen));
   if (!out)
     return oom(vm);
   const char *error = NULL;
-  long n = tcs_printf_one(STR_DATA(spec), (size_t)spec->len, kind, i, f, s ? STR_DATA(s) : "", slen, out, &error);
-  TvmStatus st = n < 0 ? tvm_fault_msg(vm, error) : ret_str(vm, r, out, (size_t)n);
+  long n = tcs_printf_one(STR_DATA(spec), (size_t)spec->len, kind, i, f,
+                          s ? STR_DATA(s) : "", slen, out, &error);
+  TvmStatus st =
+      n < 0 ? tvm_fault_msg(vm, error) : ret_str(vm, r, out, (size_t)n);
   free(out);
   return st;
 }
@@ -106,7 +110,8 @@ static TvmStatus fmt_f(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 
 static TvmStatus fmt_s(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   static const TvmString empty = {0};
-  return printf_one(vm, r, S(a[1]), TCS_PRINTF_STR, 0, 0, S(a[0]) ? S(a[0]) : &empty);
+  return printf_one(vm, r, S(a[1]), TCS_PRINTF_STR, 0, 0,
+                    S(a[0]) ? S(a[0]) : &empty);
 }
 
 /* enum の文字列化 (il-spec §13 の String.FormatEnum)。spec は `名前:値` を `,` で並べた列で、
@@ -133,7 +138,8 @@ static TvmStatus fmt_enum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
     names[n] = p;
     lens[n] = (size_t)(colon - p);
     char num[16] = {0};
-    size_t nl = (size_t)(comma - colon - 1) < 15 ? (size_t)(comma - colon - 1) : 15;
+    size_t nl =
+        (size_t)(comma - colon - 1) < 15 ? (size_t)(comma - colon - 1) : 15;
     memcpy(num, colon + 1, nl);
     values[n] = (int32_t)strtoll(num, NULL, 10);
     n++;
@@ -196,7 +202,8 @@ static TvmStatus str_trim(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return ret_str(vm, r, STR_DATA(s) + from, to - from);
 }
 
-static const char *find_bytes(const char *h, size_t hl, const char *n, size_t nl) {
+static const char *find_bytes(const char *h, size_t hl, const char *n,
+                              size_t nl) {
   if (nl == 0)
     return h;
   for (size_t i = 0; i + nl <= hl; i++)
@@ -215,7 +222,8 @@ static TvmStatus str_replace(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   size_t total = 0;
   const char *p = STR_DATA(s), *end = p + s->len;
   for (;;) {
-    const char *hit = find_bytes(p, (size_t)(end - p), STR_DATA(old), (size_t)old->len);
+    const char *hit =
+        find_bytes(p, (size_t)(end - p), STR_DATA(old), (size_t)old->len);
     if (!hit) {
       total += (size_t)(end - p);
       break;
@@ -229,7 +237,8 @@ static TvmStatus str_replace(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   size_t at = 0;
   p = STR_DATA(s);
   for (;;) {
-    const char *hit = find_bytes(p, (size_t)(end - p), STR_DATA(old), (size_t)old->len);
+    const char *hit =
+        find_bytes(p, (size_t)(end - p), STR_DATA(old), (size_t)old->len);
     if (!hit) {
       memcpy(out + at, p, (size_t)(end - p));
       at += (size_t)(end - p);
@@ -250,21 +259,24 @@ static TvmStatus str_replace(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 static TvmStatus str_contains(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *s = S(a[0]), *sub = S(a[1]);
   NONNULL_ARG(s && sub, "");
-  r[0].i = find_bytes(STR_DATA(s), (size_t)s->len, STR_DATA(sub), (size_t)sub->len) != NULL;
+  r[0].i = find_bytes(STR_DATA(s), (size_t)s->len, STR_DATA(sub),
+                      (size_t)sub->len) != NULL;
   return TVM_OK;
 }
 
 static TvmStatus str_starts(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *s = S(a[0]), *p = S(a[1]);
   NONNULL_ARG(s && p, "");
-  r[0].i = p->len <= s->len && memcmp(STR_DATA(s), STR_DATA(p), (size_t)p->len) == 0;
+  r[0].i =
+      p->len <= s->len && memcmp(STR_DATA(s), STR_DATA(p), (size_t)p->len) == 0;
   return TVM_OK;
 }
 
 static TvmStatus str_ends(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *s = S(a[0]), *p = S(a[1]);
   NONNULL_ARG(s && p, "");
-  r[0].i = p->len <= s->len && memcmp(STR_DATA(s) + s->len - p->len, STR_DATA(p), (size_t)p->len) == 0;
+  r[0].i = p->len <= s->len && memcmp(STR_DATA(s) + s->len - p->len,
+                                      STR_DATA(p), (size_t)p->len) == 0;
   return TVM_OK;
 }
 
@@ -276,7 +288,8 @@ static TvmStatus str_empty(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 
 /* .NET の ordinal (UTF-16 の code unit の順)。UTF-8 の byte の順と違うのは U+10000 以上と U+E000-U+FFFF の間だけ
    (tcs2c の runtime と同じ) */
-static int compare_utf16(const unsigned char *a, size_t la, const unsigned char *b, size_t lb) {
+static int compare_utf16(const unsigned char *a, size_t la,
+                         const unsigned char *b, size_t lb) {
   size_t n = la < lb ? la : lb;
   for (size_t i = 0; i < n; i++) {
     if (a[i] == b[i])
@@ -305,7 +318,8 @@ static TvmStatus str_compare(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 }
 
 /* Join の要素の文字列化 (連結と同じ: float は runtime/fmt、bool は True / False、null は空) */
-static size_t elem_str(const TvmType *lt, const char *e, char *buf, const char **out) {
+static size_t elem_str(const TvmType *lt, const char *e, char *buf,
+                       const char **out) {
   switch (lt->elem_kind) {
   case TVM_K_I32:
     *out = buf;
@@ -328,13 +342,16 @@ static TvmStatus str_join(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *sep = S(a[0]);
   const TvmList *l = (const TvmList *)a[1].p;
   NONNULL_ARG(l, "");
-  if (TVM_TYPE(l)->elem_kind == TVM_K_REF && TVM_TYPE(l)->elem_type != vm->string_type)
+  if (TVM_TYPE(l)->elem_kind == TVM_K_REF &&
+      TVM_TYPE(l)->elem_type != vm->string_type)
     return tvm_fault_msg(vm, "ToString of this value is not supported");
   size_t sl = sep ? (size_t)sep->len : 0, total = 0;
   char buf[32];
   const char *piece;
   for (int32_t i = 0; i < l->count; i++)
-    total += elem_str(TVM_TYPE(l), l->data + (size_t)i * TVM_TYPE(l)->elem_size, buf, &piece) + (i ? sl : 0);
+    total += elem_str(TVM_TYPE(l), l->data + (size_t)i * TVM_TYPE(l)->elem_size,
+                      buf, &piece) +
+             (i ? sl : 0);
   char *out = (char *)malloc(total + 1);
   if (!out)
     return oom(vm);
@@ -344,7 +361,8 @@ static TvmStatus str_join(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
       memcpy(out + at, STR_DATA(sep), sl);
       at += sl;
     }
-    size_t n = elem_str(TVM_TYPE(l), l->data + (size_t)i * TVM_TYPE(l)->elem_size, buf, &piece);
+    size_t n = elem_str(
+        TVM_TYPE(l), l->data + (size_t)i * TVM_TYPE(l)->elem_size, buf, &piece);
     memcpy(out + at, piece, n);
     at += n;
   }
@@ -371,7 +389,8 @@ static TvmStatus str_split(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   if (!sep || sep->len == 0)
     return list_push_str(vm, l, p, (size_t)s->len) ? TVM_OK : oom(vm);
   for (;;) {
-    const char *hit = find_bytes(p, (size_t)(end - p), STR_DATA(sep), (size_t)sep->len);
+    const char *hit =
+        find_bytes(p, (size_t)(end - p), STR_DATA(sep), (size_t)sep->len);
     if (!hit)
       return list_push_str(vm, l, p, (size_t)(end - p)) ? TVM_OK : oom(vm);
     if (!list_push_str(vm, l, p, (size_t)(hit - p)))
@@ -387,12 +406,15 @@ static TvmStatus str_split_ws(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *s = S(a[1]);
   NONNULL_ARG(s, "");
   size_t pos = 0, start, stop;
-  while (tcs_utf8_find_white_space(SDATA(s), (size_t)s->len, pos, &start, &stop)) {
+  while (
+      tcs_utf8_find_white_space(SDATA(s), (size_t)s->len, pos, &start, &stop)) {
     if (!list_push_str(vm, l, STR_DATA(s) + pos, start - pos))
       return oom(vm);
     pos = stop;
   }
-  return list_push_str(vm, l, STR_DATA(s) + pos, (size_t)s->len - pos) ? TVM_OK : oom(vm);
+  return list_push_str(vm, l, STR_DATA(s) + pos, (size_t)s->len - pos)
+             ? TVM_OK
+             : oom(vm);
 }
 
 static TvmStatus str_upper(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
@@ -577,7 +599,8 @@ static size_t utf8_encode(uint32_t c, char *out) {
 static TvmStatus char_from_utf32(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   int32_t c = a[0].i;
   if (c < 0 || c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF))
-    return tvm_fault_msg(vm, "char.ConvertFromUtf32: not a Unicode scalar value");
+    return tvm_fault_msg(vm,
+                         "char.ConvertFromUtf32: not a Unicode scalar value");
   char buf[4];
   return ret_str(vm, r, buf, utf8_encode((uint32_t)c, buf));
 }
@@ -593,7 +616,8 @@ static TvmStatus rune_substring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *s = S(a[0]);
   NONNULL_ARG(s, "");
   size_t from, to;
-  if (!tcs_utf8_rune_range(SDATA(s), (size_t)s->len, a[1].i, a[2].i, &from, &to))
+  if (!tcs_utf8_rune_range(SDATA(s), (size_t)s->len, a[1].i, a[2].i, &from,
+                           &to))
     return tvm_fault_msg(vm, "RuneSubstring: range is out of the string");
   return ret_str(vm, r, STR_DATA(s) + from, to - from);
 }
@@ -697,7 +721,8 @@ static TvmStatus m_sign_i(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 
 static TvmStatus m_sign_f(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   if (a[0].f != a[0].f)
-    return tvm_fault_msg(vm, "Function does not accept floating point Not-a-Number values.");
+    return tvm_fault_msg(
+        vm, "Function does not accept floating point Not-a-Number values.");
   r[0].i = (a[0].f > 0) - (a[0].f < 0);
   return TVM_OK;
 }
@@ -788,7 +813,8 @@ static TvmStatus m_round(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 
 static TvmStatus m_round2(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   if (a[1].i < 0 || a[1].i > 6)
-    return tvm_fault_msg(vm, "Rounding digits must be between 0 and 6, inclusive.");
+    return tvm_fault_msg(vm,
+                         "Rounding digits must be between 0 and 6, inclusive.");
   r[0].f = round_even(a[0].f, a[1].i, 1);
   return TVM_OK;
 }
@@ -800,7 +826,8 @@ static TvmStatus list_getrange(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   NONNULL_ARG(l, "");
   int32_t index = a[1].i, count = a[2].i;
   if (index < 0 || count < 0 || count > l->count - index)
-    return tvm_fault_msg(vm, "Offset and length were out of bounds for the List.");
+    return tvm_fault_msg(vm,
+                         "Offset and length were out of bounds for the List.");
   TvmList *out = tvm_list_new(vm, TVM_TYPE(l));
   if (!out)
     return oom(vm);
@@ -808,7 +835,8 @@ static TvmStatus list_getrange(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
     if (!tvm_list_grow(vm, out))
       return oom(vm);
   if (count)
-    memcpy(out->data, l->data + (size_t)index * TVM_TYPE(l)->elem_size, (size_t)count * TVM_TYPE(l)->elem_size);
+    memcpy(out->data, l->data + (size_t)index * TVM_TYPE(l)->elem_size,
+           (size_t)count * TVM_TYPE(l)->elem_size);
   out->count = count;
   r[0].p = out;
   return TVM_OK;
@@ -825,7 +853,8 @@ static TvmStatus list_copy(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 /* IndexOf (EqualityComparer<T>.Default と同じ等価) */
 static int32_t index_of(TvmVm *vm, const TvmList *l, const void *item) {
   for (int32_t i = 0; i < l->count; i++)
-    if (tvm_value_eq(vm, TVM_TYPE(l)->elem_kind, TVM_TYPE(l)->elem_type, l->data + (size_t)i * TVM_TYPE(l)->elem_size, item))
+    if (tvm_value_eq(vm, TVM_TYPE(l)->elem_kind, TVM_TYPE(l)->elem_type,
+                     l->data + (size_t)i * TVM_TYPE(l)->elem_size, item))
       return i;
   return -1;
 }
@@ -877,11 +906,15 @@ static TvmSlot load_slot(const char *p, uint8_t kind) {
 static TvmStatus list_findindex(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmList *l = (const TvmList *)a[0].p;
   NONNULL_ARG(l && a[1].p, "");
-  const char sig[] = {tvm_sig_letter(vm, TVM_TYPE(l)->elem_kind, TVM_TYPE(l)->elem_type), ':', 'b', 0};
+  const char sig[] = {
+      tvm_sig_letter(vm, TVM_TYPE(l)->elem_kind, TVM_TYPE(l)->elem_type), ':',
+      'b', 0};
   for (int32_t i = 0; i < l->count; i++) {
-    TvmSlot arg = load_slot(l->data + (size_t)i * TVM_TYPE(l)->elem_size, TVM_TYPE(l)->elem_kind);
+    TvmSlot arg = load_slot(l->data + (size_t)i * TVM_TYPE(l)->elem_size,
+                            TVM_TYPE(l)->elem_kind);
     TvmSlot ret;
-    TvmStatus st = tvm_call_delegate(vm, (const TvmClosure *)a[1].p, sig, &arg, &ret);
+    TvmStatus st =
+        tvm_call_delegate(vm, (const TvmClosure *)a[1].p, sig, &arg, &ret);
     if (st != TVM_OK)
       return st;
     if (ret.i) {
@@ -898,7 +931,9 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   TvmList *l = (TvmList *)a[0].p;
   NONNULL_ARG(l && a[1].p, "");
   const TvmClosure *pred = (const TvmClosure *)a[1].p;
-  const char sig[] = {tvm_sig_letter(vm, TVM_TYPE(l)->elem_kind, TVM_TYPE(l)->elem_type), ':', 'b', 0};
+  const char sig[] = {
+      tvm_sig_letter(vm, TVM_TYPE(l)->elem_kind, TVM_TYPE(l)->elem_type), ':',
+      'b', 0};
   size_t es = TVM_TYPE(l)->elem_size;
   int32_t free_at = 0;
   for (;;) {
@@ -906,7 +941,9 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
       r[0].i = 0;
       return TVM_OK;
     }
-    TvmSlot arg = load_slot(l->data + (size_t)free_at * es, TVM_TYPE(l)->elem_kind), ret;
+    TvmSlot arg = load_slot(l->data + (size_t)free_at * es,
+                            TVM_TYPE(l)->elem_kind),
+            ret;
     TvmStatus st = tvm_call_delegate(vm, pred, sig, &arg, &ret);
     if (st != TVM_OK)
       return st;
@@ -917,7 +954,9 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   int32_t current = free_at + 1;
   while (current < l->count) {
     while (current < l->count) {
-      TvmSlot arg = load_slot(l->data + (size_t)current * es, TVM_TYPE(l)->elem_kind), ret;
+      TvmSlot arg = load_slot(l->data + (size_t)current * es,
+                              TVM_TYPE(l)->elem_kind),
+              ret;
       TvmStatus st = tvm_call_delegate(vm, pred, sig, &arg, &ret);
       if (st != TVM_OK)
         return st;
@@ -926,7 +965,8 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
       current++;
     }
     if (current < l->count) {
-      memcpy(l->data + (size_t)free_at * es, l->data + (size_t)current * es, es);
+      memcpy(l->data + (size_t)free_at * es, l->data + (size_t)current * es,
+             es);
       free_at++;
       current++;
     }
@@ -977,7 +1017,8 @@ static int cmp_f32(void *ctx, const void *a, const void *b, int *stop) {
 static int cmp_str(void *ctx, const void *a, const void *b, int *stop) {
   (void)ctx;
   (void)stop;
-  return tvm_str_compare(*(const TvmString *const *)a, *(const TvmString *const *)b);
+  return tvm_str_compare(*(const TvmString *const *)a,
+                         *(const TvmString *const *)b);
 }
 
 static TvmStatus list_sort0(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
@@ -1008,8 +1049,10 @@ static TvmStatus list_sort0(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
     break;
   }
   default:
-    if (TVM_TYPE(l)->elem_kind != TVM_K_REF || TVM_TYPE(l)->elem_type != vm->string_type)
-      return tvm_fault_msg(vm, "Sort without a comparison needs int, float or string elements");
+    if (TVM_TYPE(l)->elem_kind != TVM_K_REF ||
+        TVM_TYPE(l)->elem_type != vm->string_type)
+      return tvm_fault_msg(
+          vm, "Sort without a comparison needs int, float or string elements");
     cmp = cmp_str;
     break;
   }
@@ -1027,7 +1070,8 @@ static TvmStatus obj_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
     return ret_str(vm, r, "", 0);
   const TvmType *ot = tvm_type_of(vm, o);
   if (!ot)
-    return tvm_fault_msg(vm, "ToString of an object of the C module is not supported");
+    return tvm_fault_msg(
+        vm, "ToString of an object of the C module is not supported");
   switch (ot->tkind) {
   case TVM_T_STRING:
     r[0].p = (void *)o;
@@ -1035,7 +1079,8 @@ static TvmStatus obj_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   case TVM_T_BOX: {
     const TvmBox *b = (const TvmBox *)o;
     if (ot->elem_kind == TVM_K_I32)
-      return ret_str(vm, r, buf, (size_t)snprintf(buf, sizeof buf, "%d", b->value.i));
+      return ret_str(vm, r, buf,
+                     (size_t)snprintf(buf, sizeof buf, "%d", b->value.i));
     if (ot->elem_kind == TVM_K_F32)
       return ret_str(vm, r, buf, tcs_format_f32(b->value.f, buf));
     return b->value.i ? ret_str(vm, r, "True", 4) : ret_str(vm, r, "False", 5);
@@ -1086,7 +1131,8 @@ CHAR_PRED(ch_digit, c >= 48 && c <= 57)
 CHAR_PRED(ch_upper, c >= 65 && c <= 90)
 CHAR_PRED(ch_lower, c >= 97 && c <= 122)
 CHAR_PRED(ch_letter, (c >= 65 && c <= 90) || (c >= 97 && c <= 122))
-CHAR_PRED(ch_letter_digit, (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57))
+CHAR_PRED(ch_letter_digit,
+          (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57))
 CHAR_PRED(ch_white, c == 32 || (c >= 9 && c <= 13))
 CHAR_PRED(ch_toupper, c >= 97 && c <= 122 ? c - 32 : c)
 CHAR_PRED(ch_tolower, c >= 65 && c <= 90 ? c + 32 : c)
@@ -1164,7 +1210,8 @@ static uint32_t rand_auto_counter;
 
 static uint32_t rand_auto_seed(void) {
   rand_auto_counter++;
-  return (uint32_t)time(NULL) ^ (uint32_t)(uintptr_t)&rand_auto_counter ^ (rand_auto_counter * 0x9E3779B1u);
+  return (uint32_t)time(NULL) ^ (uint32_t)(uintptr_t)&rand_auto_counter ^
+         (rand_auto_counter * 0x9E3779B1u);
 }
 
 static uint32_t rand_project(uint64_t *s, uint32_t ran, uint32_t n) {
@@ -1176,7 +1223,8 @@ static uint32_t rand_project(uint64_t *s, uint32_t ran, uint32_t n) {
   return ran;
 }
 
-static TvmStatus rand_range_(TvmVm *vm, uint64_t *s, int32_t low, int32_t up, int32_t *out) {
+static TvmStatus rand_range_(TvmVm *vm, uint64_t *s, int32_t low, int32_t up,
+                             int32_t *out) {
   uint64_t rv = rand_next(s);
   if (low > up)
     return tvm_fault_msg(vm, "interval is empty");
@@ -1203,7 +1251,8 @@ static TvmStatus random_autoseed(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 static TvmStatus random_next(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   NONNULL_ARG(a[0].p, "");
   int32_t min = a[1].i, max = a[2].i;
-  return rand_range_(vm, rand_state(a[0].p), min, max == min ? min : max - 1, &r[0].i);
+  return rand_range_(vm, rand_state(a[0].p), min, max == min ? min : max - 1,
+                     &r[0].i);
 }
 
 static TvmStatus random_range(TvmVm *vm, TvmSlot *a, TvmSlot *r) {

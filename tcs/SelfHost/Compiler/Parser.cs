@@ -1174,7 +1174,7 @@ public sealed class Parser
                 if (!Accept(",")) break;
             }
             if (ok && IsP(">")) Advance();
-            else if (ok && IsP(">=") )
+            else if (ok && IsP(">="))
             {
                 ok = false;
             }
@@ -3125,7 +3125,7 @@ public sealed class Parser
             return Done(N(NodeKind.PatDiscard));
         }
         if (IsP("{")) return PropertyPattern(null);
-        if (IsIdent() && Cur.Text == "_" )
+        if (IsIdent() && Cur.Text == "_")
         {
             var d = N(NodeKind.PatDiscard);
             Advance();

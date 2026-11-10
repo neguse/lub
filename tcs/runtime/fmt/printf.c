@@ -5,8 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind, int32_t i, float f,
-                                const char *s, size_t slen, char *out, const char **error) {
+TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
+                                int32_t i, float f, const char *s, size_t slen,
+                                char *out, const char **error) {
   char fmt[40];
   size_t n = speclen - 1; /* 変換の文字を除いた長さ */
   char conv;
@@ -90,7 +91,8 @@ TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind, int3
       *error = "string expected";
       return -1;
     }
-    while (k < n && (spec[k] == '-' || spec[k] == '+' || spec[k] == ' ' || spec[k] == '#' || spec[k] == '0')) {
+    while (k < n && (spec[k] == '-' || spec[k] == '+' || spec[k] == ' ' ||
+                     spec[k] == '#' || spec[k] == '0')) {
       if (spec[k] == '-')
         left = 1;
       k++;

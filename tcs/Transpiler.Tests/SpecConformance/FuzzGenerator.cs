@@ -367,12 +367,12 @@ internal sealed partial class FuzzGenerator
             case 0: return $"{d.Name}[{DictKey(d)}] = {IntExpr(1)};";
             case 1: return $"{d.Name}.Remove({DictKey(d)});";
             default:
-            {
-                var t = NextVar();
-                return $"if ({d.Name}.TryGetValue({DictKey(d)}, out var {t})) " +
-                    $"{{ Console.WriteLine({t}); }} " +
-                    $"else {{ Console.WriteLine(-8); }}";
-            }
+                {
+                    var t = NextVar();
+                    return $"if ({d.Name}.TryGetValue({DictKey(d)}, out var {t})) " +
+                        $"{{ Console.WriteLine({t}); }} " +
+                        $"else {{ Console.WriteLine(-8); }}";
+                }
         }
     }
 

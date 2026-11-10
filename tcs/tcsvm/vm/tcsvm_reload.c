@@ -15,8 +15,8 @@
 
    initializer は新版の関数なので、反映の後 (型と heap が新版で揃ってから) に走らせる。fault は hook と同じく
    警告にし (field は 0 の値のまま)、反映は巻き戻さない (doc/object-model.md §6)。 */
-#include "tcsvm_internal.h"
 #include "../../runtime/model/tcs_walk.h"
+#include "tcsvm_internal.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -26,14 +26,16 @@
 #define NONE 0xFFFFFFFFu
 
 typedef struct Reload {
-  TvmVm *vm;      /* 旧版 (反映の後は新版) */
-  TvmVm *nv;      /* 新版を読んだ VM (反映の後は旧版の module を持ち、解放する) */
+  TvmVm *vm; /* 旧版 (反映の後は新版) */
+  TvmVm *nv; /* 新版を読んだ VM (反映の後は旧版の module を持ち、解放する) */
   TcsPlan plan;
   char **plan_strings;
   uint32_t nplan_strings;
-  uint32_t *type_map;  /* 旧版の型の番号 → 新版の型の番号 (NONE は無し) */
-  uint8_t *rebuild;    /* 旧版の型ごと: object (か要素) を新しい layout で作り直す */
-  uint32_t *proto_map; /* 旧版の関数 → 新版の関数 (NONE は未定、NONE - 1 は無し) */
+  uint32_t *type_map; /* 旧版の型の番号 → 新版の型の番号 (NONE は無し) */
+  uint8_t
+      *rebuild; /* 旧版の型ごと: object (か要素) を新しい layout で作り直す */
+  uint32_t
+      *proto_map; /* 旧版の関数 → 新版の関数 (NONE は未定、NONE - 1 は無し) */
   char warnings[sizeof(((TvmVm *)0)->error)];
 } Reload;
 
@@ -65,8 +67,10 @@ static const char *type_name(const TvmVm *vm, uint16_t t) {
 }
 
 /* 旧版と新版の (種類、型) が同じ値か (型は名前で比べる) */
-static bool same_info(const TvmVm *a, TvmRegInfo x, const TvmVm *b, TvmRegInfo y) {
-  return x.kind == y.kind && strcmp(type_name(a, x.type), type_name(b, y.type)) == 0;
+static bool same_info(const TvmVm *a, TvmRegInfo x, const TvmVm *b,
+                      TvmRegInfo y) {
+  return x.kind == y.kind &&
+         strcmp(type_name(a, x.type), type_name(b, y.type)) == 0;
 }
 
 static bool relayout(const Reload *rl, const char *name) {
@@ -79,7 +83,8 @@ static bool relayout(const Reload *rl, const char *name) {
 /* 型の対応と、作り直すかどうか。計画が SAME と言う型の layout が実際に違えば、計画と module の食い違い */
 static const char *plan_types(Reload *rl) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
-  rl->type_map = (uint32_t *)xalloc(calloc(vm->ntypes ? vm->ntypes : 1, sizeof(uint32_t)));
+  rl->type_map =
+      (uint32_t *)xalloc(calloc(vm->ntypes ? vm->ntypes : 1, sizeof(uint32_t)));
   rl->rebuild = (uint8_t *)xalloc(calloc(vm->ntypes ? vm->ntypes : 1, 1));
   for (uint32_t i = 0; i < vm->ntypes; i++) {
     const TvmType *ot = &vm->types[i];
@@ -96,18 +101,21 @@ static const char *plan_types(Reload *rl) {
     case TVM_T_CLASS:
     case TVM_T_STRUCT:
       rl->rebuild[i] = relayout(rl, ot->name);
-      if (!rl->rebuild[i] && (ot->size != nt->size || ot->nleaves != nt->nleaves))
+      if (!rl->rebuild[i] &&
+          (ot->size != nt->size || ot->nleaves != nt->nleaves))
         return ot->name;
       for (uint32_t k = 0; !rl->rebuild[i] && k < ot->nleaves; k++)
         if (ot->leaves[k].offset != nt->leaves[k].offset ||
-            !same_info(vm, (TvmRegInfo){ot->leaves[k].kind, ot->leaves[k].type}, nv,
+            !same_info(vm, (TvmRegInfo){ot->leaves[k].kind, ot->leaves[k].type},
+                       nv,
                        (TvmRegInfo){nt->leaves[k].kind, nt->leaves[k].type}))
           return ot->name;
       break;
     case TVM_T_ARRAY:
     case TVM_T_LIST:
     case TVM_T_DICT:
-      rl->rebuild[i] = ot->elem_kind == TVM_K_STRUCT && relayout(rl, type_name(vm, ot->elem_type));
+      rl->rebuild[i] = ot->elem_kind == TVM_K_STRUCT &&
+                       relayout(rl, type_name(vm, ot->elem_type));
       if (!rl->rebuild[i] && ot->elem_size != nt->elem_size)
         return ot->name;
       break;
@@ -118,8 +126,10 @@ static const char *plan_types(Reload *rl) {
   return NULL;
 }
 
-static bool same_shape(const TvmVm *vm, const TvmProto *op, const TvmVm *nv, const TvmProto *np) {
-  bool ok = np->nparams == op->nparams && np->nret == op->nret && np->ncaps == op->ncaps;
+static bool same_shape(const TvmVm *vm, const TvmProto *op, const TvmVm *nv,
+                       const TvmProto *np) {
+  bool ok = np->nparams == op->nparams && np->nret == op->nret &&
+            np->ncaps == op->ncaps;
   for (uint32_t k = 0; ok && k < op->nparams; k++)
     ok = same_info(vm, op->regs[k], nv, np->regs[k]);
   for (uint32_t k = 0; ok && k < op->nret; k++)
@@ -130,7 +140,8 @@ static bool same_shape(const TvmVm *vm, const TvmProto *op, const TvmVm *nv, con
 }
 
 /* lambda の名前 `外側<lambdaN:指紋>` を外側 (長さ)、番号、指紋に分ける。lambda でなければ false */
-static bool lambda_parts(const char *name, size_t *outer, long *ordinal, const char **print) {
+static bool lambda_parts(const char *name, size_t *outer, long *ordinal,
+                         const char **print) {
   const char *at = NULL;
   for (const char *p = strstr(name, "<lambda"); p; p = strstr(p + 1, "<lambda"))
     at = p;
@@ -151,7 +162,8 @@ static uint32_t count_lambdas(const TvmVm *vm, const char *name, size_t outer) {
     size_t o;
     long k;
     const char *p;
-    if (lambda_parts(vm->funcs[i].name, &o, &k, &p) && o == outer && strncmp(vm->funcs[i].name, name, outer) == 0)
+    if (lambda_parts(vm->funcs[i].name, &o, &k, &p) && o == outer &&
+        strncmp(vm->funcs[i].name, name, outer) == 0)
       n++;
   }
   return n;
@@ -180,7 +192,8 @@ static uint32_t map_proto(Reload *rl, const TvmProto *op) {
       long k;
       const char *p;
       const char *name = nv->funcs[i].name;
-      if (!lambda_parts(name, &o, &k, &p) || o != outer || strncmp(name, op->name, outer) != 0 ||
+      if (!lambda_parts(name, &o, &k, &p) || o != outer ||
+          strncmp(name, op->name, outer) != 0 ||
           !same_shape(vm, op, nv, &nv->funcs[i]))
         continue;
       if (strcmp(p, print) == 0) {
@@ -193,7 +206,8 @@ static uint32_t map_proto(Reload *rl, const TvmProto *op) {
     if (by_print_count == 1)
       found = by_print;
     else if (by_print_count == 0 && by_ordinal != NONE &&
-             count_lambdas(vm, op->name, outer) == count_lambdas(nv, op->name, outer))
+             count_lambdas(vm, op->name, outer) ==
+                 count_lambdas(nv, op->name, outer))
       found = by_ordinal;
   }
   return rl->proto_map[oi] = found;
@@ -220,7 +234,8 @@ static void objs_add(Objs *o, void *p) {
 }
 
 static void objs_each(void *payload, uint32_t kind, void *ctx) {
-  if (kind == TVM_KIND_OBJECT && !(GC_HEADER(payload)->flags & (TVM_GC_STATIC | TVM_GC_RELOADED)))
+  if (kind == TVM_KIND_OBJECT &&
+      !(GC_HEADER(payload)->flags & (TVM_GC_STATIC | TVM_GC_RELOADED)))
     objs_add((Objs *)ctx, payload);
 }
 
@@ -238,7 +253,8 @@ static Objs snapshot(TvmVm *vm) {
 /* 生きている object の型と closure の関数が新版にあること */
 static TvmStatus plan_heap(Reload *rl) {
   TvmVm *vm = rl->vm;
-  rl->proto_map = (uint32_t *)xalloc(malloc((vm->nfuncs ? vm->nfuncs : 1) * sizeof(uint32_t)));
+  rl->proto_map = (uint32_t *)xalloc(
+      malloc((vm->nfuncs ? vm->nfuncs : 1) * sizeof(uint32_t)));
   for (uint32_t i = 0; i < vm->nfuncs; i++)
     rl->proto_map[i] = NONE;
   Objs objs = snapshot(vm);
@@ -246,20 +262,26 @@ static TvmStatus plan_heap(Reload *rl) {
     const TvmType *t = TVM_TYPE(objs.p[i]);
     if (rl->type_map[t - vm->types] == NONE) {
       free(objs.p);
-      return restart(rl, "a live object has type %s, which the new version does not have", t->name);
+      return restart(
+          rl, "a live object has type %s, which the new version does not have",
+          t->name);
     }
     if (t->tkind == TVM_T_FUNC) {
       const TvmClosure *c = (const TvmClosure *)objs.p[i];
       if (map_proto(rl, c->proto) == NONE - 1) {
         free(objs.p);
-        return restart(rl, "a live closure runs %s, which the new version does not have with the same shape",
+        return restart(rl,
+                       "a live closure runs %s, which the new version does not "
+                       "have with the same shape",
                        c->proto->name);
       }
     }
   }
   free(objs.p);
   if ((vm->nconsts || vm->nretired) && rl->nv->string_type == TVM_NO_TYPE)
-    return restart(rl, "%s", "the new version has no string type, but the old one has string constants");
+    return restart(rl, "%s",
+                   "the new version has no string type, but the old one has "
+                   "string constants");
   return TVM_OK;
 }
 
@@ -268,24 +290,27 @@ static TvmStatus plan_heap(Reload *rl) {
 static void forward(void *old, void *nw) {
   GC_HEADER(old)->flags |= TVM_GC_RELOADED;
   GC_HEADER(old)->type = (const TvmType *)nw; /* 旧 object の型はもう読まない */
-  GC_HEADER(old)->kind = TVM_KIND_BLOB;       /* GC が中を辿らない (shared heap では次の回収で消える) */
+  GC_HEADER(old)->kind =
+      TVM_KIND_BLOB; /* GC が中を辿らない (shared heap では次の回収で消える) */
 }
 
 static void root(TvmVm *vm, void *p) {
   if (vm->nreload_roots == vm->capreload_roots) {
     size_t cap = vm->capreload_roots ? vm->capreload_roots * 2 : 64;
-    vm->reload_roots = (void **)xalloc(realloc(vm->reload_roots, cap * sizeof(void *)));
+    vm->reload_roots =
+        (void **)xalloc(realloc(vm->reload_roots, cap * sizeof(void *)));
     vm->capreload_roots = cap;
   }
   vm->reload_roots[vm->nreload_roots++] = p;
 }
 
 /* 要素 n 個を旧版の struct 型 ot から新版の nt へ (要素の大きさはそれぞれ) */
-static void migrate_elems(Reload *rl, const TvmType *ot, const char *src, uint32_t osize, const TvmType *nt,
-                          char *dst, uint32_t nsize, uint32_t n) {
+static void migrate_elems(Reload *rl, const TvmType *ot, const char *src,
+                          uint32_t osize, const TvmType *nt, char *dst,
+                          uint32_t nsize, uint32_t n) {
   for (uint32_t i = 0; i < n; i++)
-    tcs_migrate_value(&rl->plan, rl->vm->types, ot, src + (size_t)i * osize, rl->nv->types, nt,
-                      dst + (size_t)i * nsize);
+    tcs_migrate_value(&rl->plan, rl->vm->types, ot, src + (size_t)i * osize,
+                      rl->nv->types, nt, dst + (size_t)i * nsize);
 }
 
 /* object を新版の型に移す。作り直した class の instance は initializer のために root に積む */
@@ -309,7 +334,8 @@ static void migrate_object(Reload *rl, void *p) {
   case TVM_T_CLASS: {
     TvmObject *o = (TvmObject *)xalloc(tvm_alloc(vm, nt->size));
     tvm_class_init(nv, o, nt);
-    tcs_migrate_value(&rl->plan, vm->types, ot, (const char *)p, nv->types, nt, (char *)o);
+    tcs_migrate_value(&rl->plan, vm->types, ot, (const char *)p, nv->types, nt,
+                      (char *)o);
     if ((ot->flags & TCS_TYPE_HOST_VALUE) && (nt->flags & TCS_TYPE_HOST_VALUE))
       TVM_HOST_VALUE(o) = TVM_HOST_VALUE(p);
     forward(p, o);
@@ -318,11 +344,13 @@ static void migrate_object(Reload *rl, void *p) {
   }
   case TVM_T_ARRAY: {
     TvmArray *a = (TvmArray *)p;
-    TvmArray *b = (TvmArray *)xalloc(tvm_alloc(vm, sizeof(TvmArray) + (size_t)a->len * nt->elem_size));
+    TvmArray *b = (TvmArray *)xalloc(
+        tvm_alloc(vm, sizeof(TvmArray) + (size_t)a->len * nt->elem_size));
     TVM_TYPE(b) = nt;
     b->len = a->len;
-    migrate_elems(rl, &vm->types[ot->elem_type], ARR_DATA(a), ot->elem_size, &nv->types[nt->elem_type], ARR_DATA(b),
-                  nt->elem_size, (uint32_t)a->len);
+    migrate_elems(rl, &vm->types[ot->elem_type], ARR_DATA(a), ot->elem_size,
+                  &nv->types[nt->elem_type], ARR_DATA(b), nt->elem_size,
+                  (uint32_t)a->len);
     forward(p, b);
     root(vm, b);
     break;
@@ -331,9 +359,11 @@ static void migrate_object(Reload *rl, void *p) {
     /* List の object は同じまま、要素の buffer を新しい要素の大きさで確保し直す */
     TvmList *l = (TvmList *)p;
     if (l->data) {
-      char *data = (char *)xalloc(tvm_alloc_blob(vm, (size_t)l->cap * nt->elem_size));
-      migrate_elems(rl, &vm->types[ot->elem_type], l->data, ot->elem_size, &nv->types[nt->elem_type], data,
-                    nt->elem_size, (uint32_t)l->count);
+      char *data =
+          (char *)xalloc(tvm_alloc_blob(vm, (size_t)l->cap * nt->elem_size));
+      migrate_elems(rl, &vm->types[ot->elem_type], l->data, ot->elem_size,
+                    &nv->types[nt->elem_type], data, nt->elem_size,
+                    (uint32_t)l->count);
       l->data = data;
     }
     TVM_TYPE(l) = nt;
@@ -350,7 +380,8 @@ static void migrate_object(Reload *rl, void *p) {
         TvmDictEntry *to = (TvmDictEntry *)(entries + (size_t)i * ne);
         *to = *from;
         if (from->live)
-          tcs_migrate_value(&rl->plan, vm->types, &vm->types[ot->elem_type], DICT_VALUE(from), nv->types,
+          tcs_migrate_value(&rl->plan, vm->types, &vm->types[ot->elem_type],
+                            DICT_VALUE(from), nv->types,
                             &nv->types[nt->elem_type], DICT_VALUE(to));
       }
       d->entries = entries;
@@ -409,7 +440,8 @@ static void migrate_statics(Reload *rl) {
     for (uint32_t k = 0; k < vm->nstatic_fields && !of; k++)
       if (strcmp(vm->static_fields[k].name, nf->name) == 0)
         of = &vm->static_fields[k];
-    if (!of || !same_info(vm, (TvmRegInfo){of->kind, of->type}, nv, (TvmRegInfo){nf->kind, nf->type}))
+    if (!of || !same_info(vm, (TvmRegInfo){of->kind, of->type}, nv,
+                          (TvmRegInfo){nf->kind, nf->type}))
       continue; /* 足した static (initializer は後で) か、型の変わった static (0 の値) */
     if (nf->kind != TVM_K_STRUCT) {
       nv->statics[nf->slot] = vm->statics[of->slot];
@@ -419,10 +451,12 @@ static void migrate_statics(Reload *rl) {
     char *src = (char *)xalloc(calloc(1, ot->size ? ot->size : 1));
     char *dst = (char *)xalloc(calloc(1, nt->size ? nt->size : 1));
     for (uint32_t k = 0; k < ot->nleaves; k++)
-      slot_to_mem(ot->leaves[k].kind, vm->statics[of->slot + k], src + ot->leaves[k].offset);
+      slot_to_mem(ot->leaves[k].kind, vm->statics[of->slot + k],
+                  src + ot->leaves[k].offset);
     tcs_migrate_value(&rl->plan, vm->types, ot, src, nv->types, nt, dst);
     for (uint32_t k = 0; k < nt->nleaves; k++)
-      nv->statics[nf->slot + k] = mem_to_slot(nt->leaves[k].kind, dst + nt->leaves[k].offset);
+      nv->statics[nf->slot + k] =
+          mem_to_slot(nt->leaves[k].kind, dst + nt->leaves[k].offset);
     free(src);
     free(dst);
   }
@@ -435,7 +469,8 @@ static void remap_snapshot_statics(Reload *rl) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
   if (!vm->snapshots)
     return;
-  uint32_t *to = (uint32_t *)xalloc(malloc((vm->nstatics ? vm->nstatics : 1) * sizeof(uint32_t)));
+  uint32_t *to = (uint32_t *)xalloc(
+      malloc((vm->nstatics ? vm->nstatics : 1) * sizeof(uint32_t)));
   for (uint32_t i = 0; i < vm->nstatics; i++)
     to[i] = UINT32_MAX;
   for (uint32_t i = 0; i < vm->nstatic_fields; i++) {
@@ -444,7 +479,8 @@ static void remap_snapshot_statics(Reload *rl) {
     for (uint32_t k = 0; k < nv->nstatic_fields && !nf; k++)
       if (strcmp(nv->static_fields[k].name, of->name) == 0)
         nf = &nv->static_fields[k];
-    if (!nf || !same_info(vm, (TvmRegInfo){of->kind, of->type}, nv, (TvmRegInfo){nf->kind, nf->type}))
+    if (!nf || !same_info(vm, (TvmRegInfo){of->kind, of->type}, nv,
+                          (TvmRegInfo){nf->kind, nf->type}))
       continue;
     if (of->kind != TVM_K_STRUCT) {
       to[of->slot] = nf->slot;
@@ -453,7 +489,8 @@ static void remap_snapshot_statics(Reload *rl) {
     const TvmType *ot = &vm->types[of->type], *nt = &nv->types[nf->type];
     bool same = ot->nleaves == nt->nleaves;
     for (uint32_t k = 0; k < ot->nleaves && same; k++)
-      same = ot->leaves[k].kind == nt->leaves[k].kind && ot->leaves[k].offset == nt->leaves[k].offset;
+      same = ot->leaves[k].kind == nt->leaves[k].kind &&
+             ot->leaves[k].offset == nt->leaves[k].offset;
     for (uint32_t k = 0; k < ot->nleaves && same; k++)
       to[of->slot + k] = nf->slot + k;
   }
@@ -473,11 +510,11 @@ static void remap_snapshot_statics(Reload *rl) {
 }
 
 /* module の部分 (strings、定数、型、static、関数) を 2 つの VM の間で入れ替える */
-#define SWAP(type, field)                                                                                              \
-  do {                                                                                                                 \
-    type tmp_ = a->field;                                                                                              \
-    a->field = b->field;                                                                                               \
-    b->field = tmp_;                                                                                                   \
+#define SWAP(type, field)                                                      \
+  do {                                                                         \
+    type tmp_ = a->field;                                                      \
+    a->field = b->field;                                                       \
+    b->field = tmp_;                                                           \
   } while (0)
 
 static void swap_module(TvmVm *a, TvmVm *b) {
@@ -525,8 +562,8 @@ static void reflect(Reload *rl) {
   remap_snapshot_statics(rl);
   /* 旧版の string の定数は heap から指されうるので残し、型を新版の string にする */
   if (vm->nconsts) {
-    TvmString **retired =
-        (TvmString **)xalloc(realloc(vm->retired, (vm->nretired + vm->nconsts) * sizeof(TvmString *)));
+    TvmString **retired = (TvmString **)xalloc(realloc(
+        vm->retired, (vm->nretired + vm->nconsts) * sizeof(TvmString *)));
     for (uint32_t i = 0; i < vm->nconsts; i++) {
       TVM_TYPE(vm->consts[i]) = &nv->types[nv->string_type];
       retired[vm->nretired++] = vm->consts[i];
@@ -547,11 +584,13 @@ static void reflect(Reload *rl) {
     }
   /* 弱く覚えた object も転送先へ */
   for (uint32_t i = 0; i < vm->npinned; i++)
-    if (vm->pinned[i].p && (GC_HEADER(vm->pinned[i].p)->flags & TVM_GC_RELOADED))
+    if (vm->pinned[i].p &&
+        (GC_HEADER(vm->pinned[i].p)->flags & TVM_GC_RELOADED))
       vm->pinned[i].p = (void *)GC_HEADER(vm->pinned[i].p)->type;
   /* 新版の host の関数は読み込みに使った nv の写しを指すので、同じ番号の vm の登録へ付け替える */
   for (uint32_t i = 0; i < vm->nintrinsics; i++)
-    if (nv->nhosts && vm->intrinsics[i] >= nv->hosts && vm->intrinsics[i] < nv->hosts + nv->nhosts)
+    if (nv->nhosts && vm->intrinsics[i] >= nv->hosts &&
+        vm->intrinsics[i] < nv->hosts + nv->nhosts)
       vm->intrinsics[i] = &vm->hosts[vm->intrinsics[i] - nv->hosts];
   /* 張り替え: 全部の object と static の参照を転送先へ (共有の walker、sink は fix_slot) */
   if (vm->heap) {
@@ -588,7 +627,8 @@ static void reflect(Reload *rl) {
 
 /* ---- 4. initializer と 5. hook ---- */
 
-static void call_warn(Reload *rl, int32_t func, TvmSlot *args, size_t nargs, TvmSlot *rets, size_t nrets) {
+static void call_warn(Reload *rl, int32_t func, TvmSlot *args, size_t nargs,
+                      TvmSlot *rets, size_t nrets) {
   TvmVm *vm = rl->vm;
   if (tvm_call(vm, func, args, nargs, rets, nrets) != TVM_OK)
     warn(rl, "%s%s", rl->warnings[0] ? "\n" : "", vm->error);
@@ -600,9 +640,11 @@ static void run_initializers(Reload *rl) {
   for (size_t i = 0; i < n; i++) {
     TvmObject *o = (TvmObject *)vm->reload_roots[i];
     const TcsPlanType *pt = tcs_plan_type(&rl->plan, TVM_TYPE(o)->name);
-    for (uint32_t k = 0; pt && k < pt->nfields && k < TVM_TYPE(o)->nfields; k++) {
+    for (uint32_t k = 0; pt && k < pt->nfields && k < TVM_TYPE(o)->nfields;
+         k++) {
       uint32_t init = pt->fields[k].init;
-      if (pt->fields[k].source == TCS_FIELD_RETAINED || !init || init > vm->nfuncs)
+      if (pt->fields[k].source == TCS_FIELD_RETAINED || !init ||
+          init > vm->nfuncs)
         continue;
       const TvmProto *f = &vm->funcs[init - 1];
       const TcsField *field = &TVM_TYPE(o)->fields[k];
@@ -617,7 +659,8 @@ static void run_initializers(Reload *rl) {
       if (field->kind == TVM_K_STRUCT) {
         const TvmType *st = &vm->types[field->type];
         for (uint32_t j = 0; j < st->nleaves && j < f->nret; j++)
-          slot_to_mem(st->leaves[j].kind, rets[j], (char *)o + field->offset + st->leaves[j].offset);
+          slot_to_mem(st->leaves[j].kind, rets[j],
+                      (char *)o + field->offset + st->leaves[j].offset);
       } else if (f->nret == 1)
         slot_to_mem(field->kind, rets[0], (char *)o + field->offset);
     }
@@ -688,7 +731,8 @@ static void reload_free(Reload *rl) {
   free(rl);
 }
 
-TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t *plan, size_t plan_size) {
+TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size,
+                    const uint8_t *plan, size_t plan_size) {
   vm->error[0] = '\0';
   if (!vm->nfuncs) {
     tvm_set_error(vm, "tvm_apply needs a loaded module");
@@ -717,7 +761,8 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t
   }
   /* 新版の読み込みも同じ host の関数を引く。新しい VM に登録を写す (反映の後も intrinsics は旧版の vm->hosts を指す) */
   for (uint32_t i = 0; i < vm->nhosts; i++)
-    tvm_host(rl->nv, vm->hosts[i].name, vm->hosts[i].params, vm->hosts[i].rets, vm->hosts[i].host, vm->hosts[i].user);
+    tvm_host(rl->nv, vm->hosts[i].name, vm->hosts[i].params, vm->hosts[i].rets,
+             vm->hosts[i].host, vm->hosts[i].user);
   for (uint32_t i = 0; i < vm->nhost_types; i++)
     if (vm->host_types[i].check)
       tvm_host_iface(rl->nv, vm->host_types[i].name, vm->host_types[i].check);
@@ -729,9 +774,11 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t
     return TVM_LOAD_ERROR;
   }
   TcsReader r = {plan, plan + plan_size, 0};
-  const char *err = tcs_model_read_strings(&r, &rl->plan_strings, &rl->nplan_strings);
+  const char *err =
+      tcs_model_read_strings(&r, &rl->plan_strings, &rl->nplan_strings);
   if (!err)
-    err = tcs_plan_read(&r, (const char *const *)rl->plan_strings, rl->nplan_strings, &rl->plan);
+    err = tcs_plan_read(&r, (const char *const *)rl->plan_strings,
+                        rl->nplan_strings, &rl->plan);
   if (err) {
     tvm_set_error(vm, "reload plan: %s", err);
     reload_free(rl);
@@ -747,7 +794,10 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size, const uint8_t
   }
   const char *mismatch = plan_types(rl);
   if (mismatch) {
-    tvm_set_error(vm, "reload plan does not match the new version: type %s changed its layout", mismatch);
+    tvm_set_error(vm,
+                  "reload plan does not match the new version: type %s changed "
+                  "its layout",
+                  mismatch);
     reload_free(rl);
     return TVM_LOAD_ERROR;
   }

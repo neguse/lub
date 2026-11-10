@@ -2,8 +2,8 @@
    root は static、VM の frame (register の種類表で ref の register だけを見る)、runtime の pin。
    object を動かさないので、native の C が持つ pointer は回収の前後で変わらない。
    回収は interpreter の確保の地点 (frame を保存してから) とフレーム境界 (tvm_frame_end) でだけ起きる。 */
-#include "tcsvm_internal.h"
 #include "../../runtime/model/tcs_walk.h"
+#include "tcsvm_internal.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -89,10 +89,10 @@ static void mark(TvmVm *vm, void *p) {
     push(vm, p);
 }
 
-
 /* 値の中の参照は共有の walker (runtime/model/tcs_walk、doc/object-model.md §7) で辿り、sink だけを替える
    (GC は mark、reload は転送先への張り替え) */
-void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot), void *ctx) {
+void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot),
+                     void *ctx) {
   const TvmType *t = TVM_TYPE(((TvmObject *)p));
   switch (t->tkind) {
   case TVM_T_CLASS:
@@ -100,14 +100,16 @@ void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot), voi
     break;
   case TVM_T_ARRAY: {
     TvmArray *a = (TvmArray *)p;
-    tcs_walk_elems(vm->types, t->elem_kind, t->elem_type, t->elem_size, ARR_DATA(a), (uint32_t)a->len, fn, ctx);
+    tcs_walk_elems(vm->types, t->elem_kind, t->elem_type, t->elem_size,
+                   ARR_DATA(a), (uint32_t)a->len, fn, ctx);
     break;
   }
   case TVM_T_LIST: {
     TvmList *l = (TvmList *)p;
     fn(ctx, (void **)&l->data);
     if (l->data)
-      tcs_walk_elems(vm->types, t->elem_kind, t->elem_type, t->elem_size, l->data, (uint32_t)l->count, fn, ctx);
+      tcs_walk_elems(vm->types, t->elem_kind, t->elem_type, t->elem_size,
+                     l->data, (uint32_t)l->count, fn, ctx);
     break;
   }
   case TVM_T_DICT: {
@@ -120,7 +122,8 @@ void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot), voi
         continue;
       if (t->key_kind == TVM_K_REF)
         fn(ctx, &e->key.p);
-      tcs_walk_elems(vm->types, t->elem_kind, t->elem_type, t->elem_size, DICT_VALUE(e), 1, fn, ctx);
+      tcs_walk_elems(vm->types, t->elem_kind, t->elem_type, t->elem_size,
+                     DICT_VALUE(e), 1, fn, ctx);
     }
     break;
   }
@@ -166,7 +169,9 @@ static void mark_roots(TvmVm *vm) {
     mark(vm, vm->handles[i]);
   for (uint32_t i = 0; i < vm->nstruct_pins; i++)
     for (uint32_t k = 0; k < vm->struct_pins[i].count; k++)
-      mark_leaves(vm, vm->struct_pins[i].base + (size_t)k * vm->struct_pins[i].st->size, vm->struct_pins[i].st);
+      mark_leaves(
+          vm, vm->struct_pins[i].base + (size_t)k * vm->struct_pins[i].st->size,
+          vm->struct_pins[i].st);
   /* --trace が控えた値と、状態の控えが持つ object */
   tvm_debug_mark(vm, mark);
 }
@@ -200,7 +205,8 @@ void tvm_gc_collect(TvmVm *vm) {
   }
   vm->gc_live = live;
   vm->gc_debt = 0;
-  vm->gc_limit = vm->gc_stress ? 0 : (live > GC_MIN_LIMIT ? live : GC_MIN_LIMIT);
+  vm->gc_limit =
+      vm->gc_stress ? 0 : (live > GC_MIN_LIMIT ? live : GC_MIN_LIMIT);
   vm->gc_count++;
   if (vm->prof_clock)
     tvm_profile_gc(vm, vm->prof_clock() - t0, live);

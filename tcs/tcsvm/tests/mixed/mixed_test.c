@@ -28,7 +28,8 @@ int main(int argc, char **argv) {
   TvmVm *vm = tvm_new(NULL);
   size_t size;
   uint8_t *bytes = read_file(argv[1], &size);
-  if (!bytes || tvm_load(vm, bytes, size) != TVM_OK || tvm_call(vm, tvm_find(vm, "Game.Setup"), NULL, 0, NULL, 0)) {
+  if (!bytes || tvm_load(vm, bytes, size) != TVM_OK ||
+      tvm_call(vm, tvm_find(vm, "Game.Setup"), NULL, 0, NULL, 0)) {
     fprintf(stderr, "mixed_test: %s\n", tvm_error(vm));
     return 1;
   }
@@ -37,8 +38,8 @@ int main(int argc, char **argv) {
     return 1;
   /* VM の object を tcs2c の struct として読む */
   Tcs_Pt *p = (Tcs_Pt *)obj.p;
-  printf("tcs2c reads: X=%d Y=%g On=%d Z=%d next=%s sum=%d\n", p->f_X, p->f_Y, p->f_On, p->f_Z,
-         p->f_Next == p ? "self" : "other", tcs_m_Game_Sum(p));
+  printf("tcs2c reads: X=%d Y=%g On=%d Z=%d next=%s sum=%d\n", p->f_X, p->f_Y,
+         p->f_On, p->f_Z, p->f_Next == p ? "self" : "other", tcs_m_Game_Sum(p));
   /* tcs2c の関数が書き、VM の関数が読む */
   tcs_m_Game_Bump(p);
   TvmSlot sum, y;
