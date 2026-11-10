@@ -200,4 +200,3 @@ float の演算と object の field (n-body、f32)
 | TinyC# → Lua (lua32) | 8.760 | 8.465 | 124.6 | 3.4 | 5 |
 
 ※ float32 を持たない言語は float64 で計算し、出力を相対 1e-3 の許容差で比べた
-

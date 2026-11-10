@@ -140,29 +140,29 @@ public sealed class SemanticChecks
         switch (n.Kind)
         {
             case NodeKind.TypeDecl:
-            {
-                var outerType = _typeDecl;
-                _typeDecl = n;
-                if (n.List != null)
                 {
-                    foreach (var m in n.List) Walk(m, false);
+                    var outerType = _typeDecl;
+                    _typeDecl = n;
+                    if (n.List != null)
+                    {
+                        foreach (var m in n.List) Walk(m, false);
+                    }
+                    _typeDecl = outerType;
+                    return;
                 }
-                _typeDecl = outerType;
-                return;
-            }
             case NodeKind.Method:
-            {
-                var outerMethod = _method;
-                _method = n;
-                Walk(n.B, false);
-                Walk(n.C, false);
-                if (n.List != null)
                 {
-                    foreach (var x in n.List) Walk(x, false);
+                    var outerMethod = _method;
+                    _method = n;
+                    Walk(n.B, false);
+                    Walk(n.C, false);
+                    if (n.List != null)
+                    {
+                        foreach (var x in n.List) Walk(x, false);
+                    }
+                    _method = outerMethod;
+                    return;
                 }
-                _method = outerMethod;
-                return;
-            }
             case NodeKind.Checked:
                 Walk(n.A, n.Value == 1);
                 return;
@@ -632,15 +632,15 @@ public sealed class SemanticChecks
                 if (boxed != null) Report("BoxedValuePattern(" + boxed.FullDisplay() + ")", p);
                 return;
             case NodeKind.PatAnd:
-            {
-                CheckBoxedValuePattern(p.A, input, boxed);
-                bool typeTest = p.A != null && (p.A.Kind == NodeKind.PatType || p.A.Kind == NodeKind.PatDecl);
-                // 数の型の test は左で報告済み。bool は右の pattern が値を読むときに報告する
-                var narrowed = boxed;
-                if (narrowed == null && fromObject && typeTest && IsBoolType(p.A!.Type)) narrowed = p.A.Type;
-                CheckBoxedValuePattern(p.B, typeTest ? p.A!.Type : input, narrowed);
-                return;
-            }
+                {
+                    CheckBoxedValuePattern(p.A, input, boxed);
+                    bool typeTest = p.A != null && (p.A.Kind == NodeKind.PatType || p.A.Kind == NodeKind.PatDecl);
+                    // 数の型の test は左で報告済み。bool は右の pattern が値を読むときに報告する
+                    var narrowed = boxed;
+                    if (narrowed == null && fromObject && typeTest && IsBoolType(p.A!.Type)) narrowed = p.A.Type;
+                    CheckBoxedValuePattern(p.B, typeTest ? p.A!.Type : input, narrowed);
+                    return;
+                }
             case NodeKind.PatOr:
                 CheckBoxedValuePattern(p.A, input, boxed);
                 CheckBoxedValuePattern(p.B, input, boxed);

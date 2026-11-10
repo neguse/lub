@@ -27,7 +27,8 @@ static void swap(Sort *s, unsigned char *keys, ptrdiff_t i, ptrdiff_t j) {
   memcpy(keys + j * es, s->tmp, es);
 }
 
-static void swap_if_greater(Sort *s, unsigned char *keys, ptrdiff_t i, ptrdiff_t j) {
+static void swap_if_greater(Sort *s, unsigned char *keys, ptrdiff_t i,
+                            ptrdiff_t j) {
   if (cmp(s, keys + i * s->es, keys + j * s->es) > 0)
     swap(s, keys, i, j);
 }
@@ -129,8 +130,8 @@ static void intro(Sort *s, unsigned char *keys, ptrdiff_t n, int depth) {
   }
 }
 
-TcsSortStatus tcs_sort(void *keys, size_t n, size_t es, void *scratch, TcsSortCompare compare,
-                       void *ctx) {
+TcsSortStatus tcs_sort(void *keys, size_t n, size_t es, void *scratch,
+                       TcsSortCompare compare, void *ctx) {
   Sort s;
   int log2 = 0;
   if (n < 2)

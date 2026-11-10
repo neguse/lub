@@ -85,21 +85,21 @@ static double tan_rbig(uint32_t u, int *q) {
 }
 
 static const double tan_cn[] = {0x1.921fb54442d18p+0, -0x1.fd226e573289fp-2,
-                            0x1.b7a60c8dac9f6p-6, -0x1.725beb40f33e5p-13};
+                                0x1.b7a60c8dac9f6p-6, -0x1.725beb40f33e5p-13};
 static const double tan_cd[] = {0x1p+0, -0x1.2395347fb829dp+0,
-                            0x1.2313660f29c36p-3, -0x1.9a707ab98d1c1p-9};
+                                0x1.2313660f29c36p-3, -0x1.9a707ab98d1c1p-9};
 static const double tan_sw[] = {0, 1};
 
 /* 有理式の近似で丸めを誤る入力と、その正しい値 (rh + rl) */
-static const float tan_arg[] = {0x1.143ec4p+0f,  0x1.ada6aap+27f, 0x1.af61dap+48f,
-                               0x1.0088bcp+52f, 0x1.f90dfcp+72f, 0x1.cc4e22p+85f,
-                               0x1.a6ce12p+86f, 0x1.6a0b76p+102f};
-static const float tan_rh[] = {0x1.ddf9f6p+0f,  0x1.e80304p-3f,  0x1.60d1c8p-2f,
-                              0x1.ca1edp+0f,   0x1.597f9cp-1f,  -0x1.f33584p+1f,
-                              -0x1.c5612ep-1f, -0x1.e42a1ep+0f};
-static const float tan_rl[] = {-0x1.891d24p-52f, 0x1.419f46p-58f, -0x1.2d6c3ap-55f,
-                              0x1.f6053p-53f,   0x1.925978p-53f, 0x1.d7254ap-51f,
-                              -0x1.26c33ep-53f, -0x1.1dc906p-52f};
+static const float tan_arg[] = {
+    0x1.143ec4p+0f,  0x1.ada6aap+27f, 0x1.af61dap+48f, 0x1.0088bcp+52f,
+    0x1.f90dfcp+72f, 0x1.cc4e22p+85f, 0x1.a6ce12p+86f, 0x1.6a0b76p+102f};
+static const float tan_rh[] = {0x1.ddf9f6p+0f,  0x1.e80304p-3f, 0x1.60d1c8p-2f,
+                               0x1.ca1edp+0f,   0x1.597f9cp-1f, -0x1.f33584p+1f,
+                               -0x1.c5612ep-1f, -0x1.e42a1ep+0f};
+static const float tan_rl[] = {
+    -0x1.891d24p-52f, 0x1.419f46p-58f, -0x1.2d6c3ap-55f, 0x1.f6053p-53f,
+    0x1.925978p-53f,  0x1.d7254ap-51f, -0x1.26c33ep-53f, -0x1.1dc906p-52f};
 
 float tcs_tanf(float x) {
   uint32_t u = tcs_asuint(x);
@@ -117,8 +117,8 @@ float tcs_tanf(float x) {
     z = tan_rbig(u, &i);
   } else {
     if (u << 9)
-      return x + x; /* nan */
-    return TCS_NANF;  /* inf */
+      return x + x;  /* nan */
+    return TCS_NANF; /* inf */
   }
   double z2 = z * z, z4 = z2 * z2;
   double n = tan_cn[0] + z2 * tan_cn[1], n2 = tan_cn[2] + z2 * tan_cn[3];

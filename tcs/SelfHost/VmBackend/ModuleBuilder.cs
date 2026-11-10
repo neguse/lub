@@ -1132,96 +1132,96 @@ public sealed class ModuleBuilder
         switch (t.Tag)
         {
             case VT.Class:
-            {
-                var info = Classes[t.Name];
-                var e = new TypeTableEntry(TypeTable.Class, name);
-                e.LayoutHash = TypeTable.ParseLayoutHash(info.LayoutHash);
-                bool hasOnReload = false;
-                foreach (var m in info.Methods)
                 {
-                    if (m.Name == "OnReload" && !m.IsStatic) hasOnReload = true;
-                }
-                e.Flags = (info.IsRecord ? TypeTable.FlagRecord : 0) | (hasOnReload ? TypeTable.FlagHasOnReload : 0)
-                    | (info.IsExternal ? TypeTable.FlagHostValue : 0); // host と共有する data class は host_value を持つ (doc/object-model.md §3)
-                var fields = new List<NamedType>();
-                foreach (var f in info.Fields)
-                {
-                    if (!f.IsStatic) fields.Add(new NamedType(f.Name, Parse(f.Type)));
-                }
-                e.Fields = Fields(fields);
-                foreach (var i in Interfaces(t.Name)) e.Interfaces.Add(TypeIndex(VType.OfIface(i)));
-                foreach (var i in HostInterfaces(t.Name)) e.Interfaces.Add(TypeIndex(i));
-                List<TypeTableItable>? table;
-                if (_itables.TryGetValue(t.Name, out table))
-                {
-                    // selector の番号の順 (同じ番号は足した順。C# の OrderBy は安定)
-                    var sorted = new List<TypeTableItable>();
-                    foreach (var x in table) sorted.Add(x);
-                    for (int a = 1; a < sorted.Count; a++)
+                    var info = Classes[t.Name];
+                    var e = new TypeTableEntry(TypeTable.Class, name);
+                    e.LayoutHash = TypeTable.ParseLayoutHash(info.LayoutHash);
+                    bool hasOnReload = false;
+                    foreach (var m in info.Methods)
                     {
-                        var cur = sorted[a];
-                        int b = a - 1;
-                        while (b >= 0 && sorted[b].Selector > cur.Selector)
-                        {
-                            sorted[b + 1] = sorted[b];
-                            b--;
-                        }
-                        sorted[b + 1] = cur;
+                        if (m.Name == "OnReload" && !m.IsStatic) hasOnReload = true;
                     }
-                    e.Itable = sorted;
+                    e.Flags = (info.IsRecord ? TypeTable.FlagRecord : 0) | (hasOnReload ? TypeTable.FlagHasOnReload : 0)
+                        | (info.IsExternal ? TypeTable.FlagHostValue : 0); // host と共有する data class は host_value を持つ (doc/object-model.md §3)
+                    var fields = new List<NamedType>();
+                    foreach (var f in info.Fields)
+                    {
+                        if (!f.IsStatic) fields.Add(new NamedType(f.Name, Parse(f.Type)));
+                    }
+                    e.Fields = Fields(fields);
+                    foreach (var i in Interfaces(t.Name)) e.Interfaces.Add(TypeIndex(VType.OfIface(i)));
+                    foreach (var i in HostInterfaces(t.Name)) e.Interfaces.Add(TypeIndex(i));
+                    List<TypeTableItable>? table;
+                    if (_itables.TryGetValue(t.Name, out table))
+                    {
+                        // selector の番号の順 (同じ番号は足した順。C# の OrderBy は安定)
+                        var sorted = new List<TypeTableItable>();
+                        foreach (var x in table) sorted.Add(x);
+                        for (int a = 1; a < sorted.Count; a++)
+                        {
+                            var cur = sorted[a];
+                            int b = a - 1;
+                            while (b >= 0 && sorted[b].Selector > cur.Selector)
+                            {
+                                sorted[b + 1] = sorted[b];
+                                b--;
+                            }
+                            sorted[b + 1] = cur;
+                        }
+                        e.Itable = sorted;
+                    }
+                    return e;
                 }
-                return e;
-            }
             case VT.Cell:
-            {
-                var e = new TypeTableEntry(TypeTable.Class, name);
-                var fields = new List<NamedType>();
-                fields.Add(new NamedType("value", t.Inner!));
-                e.Fields = Fields(fields);
-                return e;
-            }
+                {
+                    var e = new TypeTableEntry(TypeTable.Class, name);
+                    var fields = new List<NamedType>();
+                    fields.Add(new NamedType("value", t.Inner!));
+                    e.Fields = Fields(fields);
+                    return e;
+                }
             case VT.Random:
-            {
-                // 8 個の int = 64 bit の状態 × 4 (runtime の random.* が読み書きする)。先頭の pad で状態を
-                // payload の 8 byte 目から置く (type_id の 4 byte の後。64 bit の読み書きを揃える)
-                var e = new TypeTableEntry(TypeTable.Class, name);
-                var fields = new List<NamedType>();
-                for (int i = 0; i < 9; i++) fields.Add(new NamedType(i == 0 ? "pad" : "s" + (i - 1), VType.Int));
-                e.Fields = Fields(fields);
-                return e;
-            }
+                {
+                    // 8 個の int = 64 bit の状態 × 4 (runtime の random.* が読み書きする)。先頭の pad で状態を
+                    // payload の 8 byte 目から置く (type_id の 4 byte の後。64 bit の読み書きを揃える)
+                    var e = new TypeTableEntry(TypeTable.Class, name);
+                    var fields = new List<NamedType>();
+                    for (int i = 0; i < 9; i++) fields.Add(new NamedType(i == 0 ? "pad" : "s" + (i - 1), VType.Int));
+                    e.Fields = Fields(fields);
+                    return e;
+                }
             case VT.Array:
-            {
-                var e = new TypeTableEntry(TypeTable.Array, name);
-                e.Element = FieldInfo(t.Elem!);
-                return e;
-            }
+                {
+                    var e = new TypeTableEntry(TypeTable.Array, name);
+                    e.Element = FieldInfo(t.Elem!);
+                    return e;
+                }
             case VT.List:
-            {
-                var e = new TypeTableEntry(TypeTable.List, name);
-                e.Element = FieldInfo(t.Elem!);
-                return e;
-            }
+                {
+                    var e = new TypeTableEntry(TypeTable.List, name);
+                    e.Element = FieldInfo(t.Elem!);
+                    return e;
+                }
             case VT.Dict:
-            {
-                var e = new TypeTableEntry(TypeTable.Dict, name);
-                e.Key = FieldInfo(t.Key!);
-                e.Element = FieldInfo(t.Value!);
-                return e;
-            }
+                {
+                    var e = new TypeTableEntry(TypeTable.Dict, name);
+                    e.Key = FieldInfo(t.Key!);
+                    e.Element = FieldInfo(t.Value!);
+                    return e;
+                }
             case VT.Func:
-            {
-                var e = new TypeTableEntry(TypeTable.Func, name);
-                foreach (var p in t.Params)
                 {
-                    foreach (var l in Leaves(p)) e.Params.Add(FieldInfo(l.Type));
+                    var e = new TypeTableEntry(TypeTable.Func, name);
+                    foreach (var p in t.Params)
+                    {
+                        foreach (var l in Leaves(p)) e.Params.Add(FieldInfo(l.Type));
+                    }
+                    if (t.Ret!.Tag != VT.Void)
+                    {
+                        foreach (var l in Leaves(t.Ret)) e.Rets.Add(FieldInfo(l.Type));
+                    }
+                    return e;
                 }
-                if (t.Ret!.Tag != VT.Void)
-                {
-                    foreach (var l in Leaves(t.Ret)) e.Rets.Add(FieldInfo(l.Type));
-                }
-                return e;
-            }
             case VT.String:
                 return new TypeTableEntry(TypeTable.String, name);
             case VT.Iface:
@@ -1230,11 +1230,11 @@ public sealed class ModuleBuilder
             case VT.HostIface:
                 return new TypeTableEntry(TypeTable.Object, name);
             case VT.Box:
-            {
-                var e = new TypeTableEntry(TypeTable.Box, name);
-                e.Element = new TypeTableInfo((int)t.PKind, NoType);
-                return e;
-            }
+                {
+                    var e = new TypeTableEntry(TypeTable.Box, name);
+                    e.Element = new TypeTableInfo((int)t.PKind, NoType);
+                    return e;
+                }
         }
         if (t.IsAggregate)
         {

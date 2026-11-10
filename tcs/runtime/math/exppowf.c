@@ -86,7 +86,6 @@ float tcs_expf(float x) {
   return (float)y;
 }
 
-
 /*
 POWF_LOG2_POLY_ORDER = 5
 EXP2F_TABLE_BITS = 5

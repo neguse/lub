@@ -33,8 +33,10 @@ TvmVm *tvm_new(const TvmConfig *config) {
   TvmVm *vm = (TvmVm *)calloc(1, sizeof *vm);
   if (!vm)
     return NULL;
-  size_t slots = config && config->stack_slots ? config->stack_slots : ((size_t)1 << 20);
-  size_t frames = config && config->max_frames ? config->max_frames : ((size_t)1 << 16);
+  size_t slots =
+      config && config->stack_slots ? config->stack_slots : ((size_t)1 << 20);
+  size_t frames =
+      config && config->max_frames ? config->max_frames : ((size_t)1 << 16);
   vm->stack = (TvmSlot *)calloc(slots, sizeof(TvmSlot));
   vm->frames = (TvmFrame *)calloc(frames, sizeof(TvmFrame));
   if (!vm->stack || !vm->frames) {
@@ -158,7 +160,8 @@ static bool parse(TvmVm *vm, Reader *r) {
     return false;
   }
   if (rd_u32(r) != op_abi_hash()) {
-    tvm_set_error(vm, ".tcsb op table mismatch (rebuild tcs2vm and tcsvm together)");
+    tvm_set_error(
+        vm, ".tcsb op table mismatch (rebuild tcs2vm and tcsvm together)");
     return false;
   }
 
@@ -198,7 +201,8 @@ static bool parse(TvmVm *vm, Reader *r) {
   }
 
   /* 型の表 (VM と tcs2c が共有する形。runtime/model) */
-  const char *terr = tcs_model_read(r, (const char *const *)vm->strings, vm->nstrings, &vm->ntypes, &vm->types);
+  const char *terr = tcs_model_read(r, (const char *const *)vm->strings,
+                                    vm->nstrings, &vm->ntypes, &vm->types);
   if (terr) {
     tvm_set_error(vm, "%s", terr);
     return false;
@@ -206,8 +210,10 @@ static bool parse(TvmVm *vm, Reader *r) {
   for (uint32_t i = 0; i < vm->ntypes; i++)
     if (vm->types[i].tkind == TVM_T_STRING && vm->string_type == TVM_NO_TYPE)
       vm->string_type = (uint16_t)i;
-  vm->type_ids = (uint32_t *)calloc(vm->ntypes ? vm->ntypes : 1, sizeof(uint32_t));
-  vm->iface_checks = (TvmIfaceCheck *)calloc(vm->ntypes ? vm->ntypes : 1, sizeof(TvmIfaceCheck));
+  vm->type_ids =
+      (uint32_t *)calloc(vm->ntypes ? vm->ntypes : 1, sizeof(uint32_t));
+  vm->iface_checks = (TvmIfaceCheck *)calloc(vm->ntypes ? vm->ntypes : 1,
+                                             sizeof(TvmIfaceCheck));
   if (!vm->type_ids || !vm->iface_checks) {
     tvm_set_error(vm, "out of memory");
     return false;
@@ -229,7 +235,8 @@ static bool parse(TvmVm *vm, Reader *r) {
   n = rd_u32(r);
   if (!count_ok(r, n, 4))
     goto bad;
-  vm->intrinsics = (const TvmIntrinsic **)calloc(n ? n : 1, sizeof(TvmIntrinsic *));
+  vm->intrinsics =
+      (const TvmIntrinsic **)calloc(n ? n : 1, sizeof(TvmIntrinsic *));
   vm->nintrinsics = n;
   for (uint32_t i = 0; i < n && !r->bad; i++) {
     const char *name = str_at(vm, rd_u32(r));
@@ -250,7 +257,6 @@ static bool parse(TvmVm *vm, Reader *r) {
       tvm_set_error(vm, "unknown runtime function %s", name);
       return false;
     }
-
   }
 
   n = rd_u32(r);
@@ -264,7 +270,8 @@ static bool parse(TvmVm *vm, Reader *r) {
   n = rd_u32(r);
   if (!count_ok(r, n, 11))
     goto bad;
-  vm->static_fields = (TvmStaticField *)calloc(n ? n : 1, sizeof(TvmStaticField));
+  vm->static_fields =
+      (TvmStaticField *)calloc(n ? n : 1, sizeof(TvmStaticField));
   if (!vm->static_fields)
     goto bad;
   vm->nstatic_fields = n;
@@ -341,7 +348,8 @@ static uint32_t align_up(uint32_t v, uint32_t a) { return (v + a - 1) / a * a; }
 static bool info_ok(TvmVm *vm, const TvmRegInfo *info) {
   if (info->kind > TVM_K_REF)
     return false;
-  return info->kind != TVM_K_REF || info->type == TVM_NO_TYPE || info->type < vm->ntypes;
+  return info->kind != TVM_K_REF || info->type == TVM_NO_TYPE ||
+         info->type < vm->ntypes;
 }
 
 static bool layout(TvmVm *vm) {
@@ -360,7 +368,9 @@ static bool layout(TvmVm *vm) {
   for (uint32_t i = 0; i < vm->ntypes; i++)
     if (vm->types[i].tkind == TVM_T_CLASS && vm->type_ids[i] < TVM_TYPE_ID_VM)
       vm->types[i].flags &= (uint8_t)~TCS_TYPE_HOST_VALUE;
-  const char *err = tcs_model_layout(vm->types, vm->ntypes, (uint32_t)sizeof(TvmObject), (uint32_t)sizeof(void *));
+  const char *err =
+      tcs_model_layout(vm->types, vm->ntypes, (uint32_t)sizeof(TvmObject),
+                       (uint32_t)sizeof(void *));
   if (err) {
     tvm_set_error(vm, "type table: %s", err);
     return false;
@@ -380,7 +390,8 @@ static bool layout(TvmVm *vm) {
     if (t->tkind == TVM_T_CLASS)
       for (uint32_t k = 0; k < t->nifaces; k++)
         if (t->ifaces[k] >= vm->ntypes ||
-            (vm->types[t->ifaces[k]].tkind != TVM_T_IFACE && vm->types[t->ifaces[k]].tkind != TVM_T_OBJECT))
+            (vm->types[t->ifaces[k]].tkind != TVM_T_IFACE &&
+             vm->types[t->ifaces[k]].tkind != TVM_T_OBJECT))
           goto bad;
     if (t->tkind == TVM_T_CLASS || t->tkind == TVM_T_STRUCT)
       for (uint32_t k = 0; k < t->nleaves; k++) {
@@ -389,7 +400,8 @@ static bool layout(TvmVm *vm) {
           goto bad;
       }
     if (t->tkind == TVM_T_DICT) {
-      t->dict_entry = (uint32_t)sizeof(TvmDictEntry) + align_up(t->elem_size, 8);
+      t->dict_entry =
+          (uint32_t)sizeof(TvmDictEntry) + align_up(t->elem_size, 8);
       /* key は 1 葉の値 (int / float / bool / ref) */
       TvmRegInfo key = {t->key_kind, t->key_type};
       if (!info_ok(vm, &key))
@@ -425,7 +437,8 @@ static bool reg(Verify *v, uint32_t r, uint8_t kind) {
   if (r >= v->f->nregs)
     return vfail(v, "register r%u out of range", r);
   if (v->f->regs[r].kind != kind)
-    return vfail(v, "register r%u has kind %u, want %u", r, v->f->regs[r].kind, kind);
+    return vfail(v, "register r%u has kind %u, want %u", r, v->f->regs[r].kind,
+                 kind);
   return true;
 }
 
@@ -458,7 +471,8 @@ static bool ref_type(Verify *v, uint32_t r, uint16_t type) {
 
 /* register の値が info (kind, type) に合う */
 static bool value(Verify *v, uint32_t r, const TvmRegInfo *info) {
-  return info->kind == TVM_K_REF ? ref_type(v, r, info->type) : reg(v, r, info->kind);
+  return info->kind == TVM_K_REF ? ref_type(v, r, info->type)
+                                 : reg(v, r, info->kind);
 }
 
 /* register に info の値を書ける (ref は register の型に置ける型。null だけの register には書けない) */
@@ -466,7 +480,8 @@ static bool dest(Verify *v, uint32_t r, const TvmRegInfo *info) {
   if (!reg(v, r, info->kind))
     return false;
   uint16_t t = v->f->regs[r].type;
-  if (info->kind == TVM_K_REF && (t == TVM_NO_TYPE || !assignable(v->vm, info->type, t)))
+  if (info->kind == TVM_K_REF &&
+      (t == TVM_NO_TYPE || !assignable(v->vm, info->type, t)))
     return vfail(v, "register r%u has type %u, want %u", r, t, info->type);
   return true;
 }
@@ -478,7 +493,8 @@ static bool type_of_kind(TvmVm *vm, uint32_t t, uint8_t tkind) {
 static const TvmType *reg_type(Verify *v, uint32_t r, uint8_t tkind);
 
 /* CALLR の引数 / 戻り値の種類の 1 文字 (tcsvm_internal.h の TvmIntrinsic) */
-static bool spec_ok(Verify *v, uint32_t r, char spec, uint16_t arg0type, bool out) {
+static bool spec_ok(Verify *v, uint32_t r, char spec, uint16_t arg0type,
+                    bool out) {
   TvmVm *vm = v->vm;
   switch (spec) {
   case 'i':
@@ -488,18 +504,23 @@ static bool spec_ok(Verify *v, uint32_t r, char spec, uint16_t arg0type, bool ou
   case 'b':
     return reg(v, r, TVM_K_BOOL);
   case 's':
-    return out ? dest(v, r, &(TvmRegInfo){TVM_K_REF, vm->string_type}) : ref_type(v, r, vm->string_type);
+    return out ? dest(v, r, &(TvmRegInfo){TVM_K_REF, vm->string_type})
+               : ref_type(v, r, vm->string_type);
   case 'o':
     return reg(v, r, TVM_K_REF) && (!out || v->f->regs[r].type != TVM_NO_TYPE);
   case 'L':
   case 'A':
   case 'D':
   case 'F': {
-    uint8_t tk = spec == 'L' ? TVM_T_LIST : spec == 'A' ? TVM_T_ARRAY : spec == 'D' ? TVM_T_DICT : TVM_T_FUNC;
+    uint8_t tk = spec == 'L'   ? TVM_T_LIST
+                 : spec == 'A' ? TVM_T_ARRAY
+                 : spec == 'D' ? TVM_T_DICT
+                               : TVM_T_FUNC;
     return reg_type(v, r, tk) != NULL;
   }
   case 'r':
-    return out ? dest(v, r, &(TvmRegInfo){TVM_K_REF, arg0type}) : ref_type(v, r, arg0type);
+    return out ? dest(v, r, &(TvmRegInfo){TVM_K_REF, arg0type})
+               : ref_type(v, r, arg0type);
   case 'k': {
     if (!type_of_kind(vm, arg0type, TVM_T_DICT))
       return vfail(v, "key of a non-dictionary");
@@ -585,10 +606,12 @@ static bool matches_func(const TvmProto *g, const TvmType *t) {
   if (g->nparams != t->nparams || g->nret != t->nrets)
     return false;
   for (uint32_t k = 0; k < t->nparams; k++)
-    if (g->regs[k].kind != t->params[k].kind || g->regs[k].type != t->params[k].type)
+    if (g->regs[k].kind != t->params[k].kind ||
+        g->regs[k].type != t->params[k].type)
       return false;
   for (uint32_t k = 0; k < t->nrets; k++)
-    if (g->rets[k].kind != t->rets[k].kind || g->rets[k].type != t->rets[k].type)
+    if (g->rets[k].kind != t->rets[k].kind ||
+        g->rets[k].type != t->rets[k].type)
       return false;
   return true;
 }
@@ -647,7 +670,8 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       if (!vm->debug || c >= vm->debug->nvals)
         return vfail(&v, "trace value %u out of range", c);
       const TvmTraceVal *tv = &vm->debug->vals[c];
-      if (b >= tv->nleaves || a >= f->nregs || f->regs[a].kind != tvm_debug_val_leaf_kind(vm, tv, b))
+      if (b >= tv->nleaves || a >= f->nregs ||
+          f->regs[a].kind != tvm_debug_val_leaf_kind(vm, tv, b))
         return vfail(&v, "trace value leaf does not match");
       break;
     }
@@ -676,23 +700,42 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       if (!string_reg(&v, a))
         return false;
       break;
-    case TVM_OP_ADD_I32: case TVM_OP_SUB_I32: case TVM_OP_MUL_I32: case TVM_OP_DIV_I32:
-    case TVM_OP_REM_I32: case TVM_OP_AND_I32: case TVM_OP_OR_I32: case TVM_OP_XOR_I32:
-    case TVM_OP_SHL_I32: case TVM_OP_SHR_I32: case TVM_OP_CADD_I32: case TVM_OP_CSUB_I32:
-    case TVM_OP_CMUL_I32: case TVM_OP_CMP_I32:
-      if (!reg(&v, a, TVM_K_I32) || !reg(&v, b, TVM_K_I32) || !reg(&v, c, TVM_K_I32))
+    case TVM_OP_ADD_I32:
+    case TVM_OP_SUB_I32:
+    case TVM_OP_MUL_I32:
+    case TVM_OP_DIV_I32:
+    case TVM_OP_REM_I32:
+    case TVM_OP_AND_I32:
+    case TVM_OP_OR_I32:
+    case TVM_OP_XOR_I32:
+    case TVM_OP_SHL_I32:
+    case TVM_OP_SHR_I32:
+    case TVM_OP_CADD_I32:
+    case TVM_OP_CSUB_I32:
+    case TVM_OP_CMUL_I32:
+    case TVM_OP_CMP_I32:
+      if (!reg(&v, a, TVM_K_I32) || !reg(&v, b, TVM_K_I32) ||
+          !reg(&v, c, TVM_K_I32))
         return false;
       break;
-    case TVM_OP_NEG_I32: case TVM_OP_BNOT_I32: case TVM_OP_ADDI_I32: case TVM_OP_CNEG_I32:
+    case TVM_OP_NEG_I32:
+    case TVM_OP_BNOT_I32:
+    case TVM_OP_ADDI_I32:
+    case TVM_OP_CNEG_I32:
       if (!reg(&v, a, TVM_K_I32) || !reg(&v, b, TVM_K_I32))
         return false;
       break;
-    case TVM_OP_ADD_F32: case TVM_OP_SUB_F32: case TVM_OP_MUL_F32: case TVM_OP_DIV_F32:
-      if (!reg(&v, a, TVM_K_F32) || !reg(&v, b, TVM_K_F32) || !reg(&v, c, TVM_K_F32))
+    case TVM_OP_ADD_F32:
+    case TVM_OP_SUB_F32:
+    case TVM_OP_MUL_F32:
+    case TVM_OP_DIV_F32:
+      if (!reg(&v, a, TVM_K_F32) || !reg(&v, b, TVM_K_F32) ||
+          !reg(&v, c, TVM_K_F32))
         return false;
       break;
     case TVM_OP_CMP_F32:
-      if (!reg(&v, a, TVM_K_I32) || !reg(&v, b, TVM_K_F32) || !reg(&v, c, TVM_K_F32))
+      if (!reg(&v, a, TVM_K_I32) || !reg(&v, b, TVM_K_F32) ||
+          !reg(&v, c, TVM_K_F32))
         return false;
       break;
     case TVM_OP_NEG_F32:
@@ -700,11 +743,15 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
         return false;
       break;
     case TVM_OP_FMOD_F32:
-      if (!reg(&v, a, TVM_K_F32) || !reg(&v, b, TVM_K_F32) || !reg(&v, c, TVM_K_F32))
+      if (!reg(&v, a, TVM_K_F32) || !reg(&v, b, TVM_K_F32) ||
+          !reg(&v, c, TVM_K_F32))
         return false;
       break;
-    case TVM_OP_AND_B: case TVM_OP_OR_B: case TVM_OP_NE_B:
-      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_BOOL) || !reg(&v, c, TVM_K_BOOL))
+    case TVM_OP_AND_B:
+    case TVM_OP_OR_B:
+    case TVM_OP_NE_B:
+      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_BOOL) ||
+          !reg(&v, c, TVM_K_BOOL))
         return false;
       break;
     case TVM_OP_NVAL:
@@ -723,20 +770,28 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_BOOL))
         return false;
       break;
-    case TVM_OP_EQ_I32: case TVM_OP_LT_I32: case TVM_OP_LE_I32:
-      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_I32) || !reg(&v, c, TVM_K_I32))
+    case TVM_OP_EQ_I32:
+    case TVM_OP_LT_I32:
+    case TVM_OP_LE_I32:
+      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_I32) ||
+          !reg(&v, c, TVM_K_I32))
         return false;
       break;
-    case TVM_OP_EQ_F32: case TVM_OP_LT_F32: case TVM_OP_LE_F32:
-      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_F32) || !reg(&v, c, TVM_K_F32))
+    case TVM_OP_EQ_F32:
+    case TVM_OP_LT_F32:
+    case TVM_OP_LE_F32:
+      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_F32) ||
+          !reg(&v, c, TVM_K_F32))
         return false;
       break;
     case TVM_OP_EQ_B:
-      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_BOOL) || !reg(&v, c, TVM_K_BOOL))
+      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_BOOL) ||
+          !reg(&v, c, TVM_K_BOOL))
         return false;
       break;
     case TVM_OP_EQ_REF:
-      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_REF) || !reg(&v, c, TVM_K_REF))
+      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_REF) ||
+          !reg(&v, c, TVM_K_REF))
         return false;
       break;
     case TVM_OP_EQ_STR:
@@ -748,21 +803,31 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       if (!jump(&v, ins))
         return false;
       break;
-    case TVM_OP_JT: case TVM_OP_JF:
+    case TVM_OP_JT:
+    case TVM_OP_JF:
       if (!reg(&v, a, TVM_K_BOOL) || !jump(&v, ins))
         return false;
       break;
-    case TVM_OP_JNULL: case TVM_OP_JNN:
+    case TVM_OP_JNULL:
+    case TVM_OP_JNN:
       if (!reg(&v, a, TVM_K_REF) || !jump(&v, ins))
         return false;
       break;
-    case TVM_OP_JT_LT_I32: case TVM_OP_JF_LT_I32: case TVM_OP_JT_LE_I32:
-    case TVM_OP_JF_LE_I32: case TVM_OP_JT_EQ_I32: case TVM_OP_JF_EQ_I32:
+    case TVM_OP_JT_LT_I32:
+    case TVM_OP_JF_LT_I32:
+    case TVM_OP_JT_LE_I32:
+    case TVM_OP_JF_LE_I32:
+    case TVM_OP_JT_EQ_I32:
+    case TVM_OP_JF_EQ_I32:
       if (!reg(&v, a, TVM_K_I32) || !reg(&v, b, TVM_K_I32) || !jump(&v, ins))
         return false;
       break;
-    case TVM_OP_JT_LT_F32: case TVM_OP_JF_LT_F32: case TVM_OP_JT_LE_F32:
-    case TVM_OP_JF_LE_F32: case TVM_OP_JT_EQ_F32: case TVM_OP_JF_EQ_F32:
+    case TVM_OP_JT_LT_F32:
+    case TVM_OP_JF_LT_F32:
+    case TVM_OP_JT_LE_F32:
+    case TVM_OP_JF_LE_F32:
+    case TVM_OP_JT_EQ_F32:
+    case TVM_OP_JF_EQ_F32:
       if (!reg(&v, a, TVM_K_F32) || !reg(&v, b, TVM_K_F32) || !jump(&v, ins))
         return false;
       break;
@@ -784,8 +849,14 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       if (!dest(&v, a, &(TvmRegInfo){TVM_K_REF, (uint16_t)c}))
         return false;
       break;
-    case TVM_OP_LDF_I32: case TVM_OP_LDF_F32: case TVM_OP_LDF_B: case TVM_OP_LDF_REF:
-    case TVM_OP_STF_I32: case TVM_OP_STF_F32: case TVM_OP_STF_B: case TVM_OP_STF_REF: {
+    case TVM_OP_LDF_I32:
+    case TVM_OP_LDF_F32:
+    case TVM_OP_LDF_B:
+    case TVM_OP_LDF_REF:
+    case TVM_OP_STF_I32:
+    case TVM_OP_STF_F32:
+    case TVM_OP_STF_B:
+    case TVM_OP_STF_REF: {
       bool load = op <= TVM_OP_LDF_REF;
       uint8_t kind = load ? quad(op, TVM_OP_LDF_I32) : quad(op, TVM_OP_STF_I32);
       uint32_t obj = load ? b : a, val = load ? a : b;
@@ -803,18 +874,30 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
     case TVM_OP_NEWARR:
       if (c >= vm->ntypes || vm->types[c].tkind != TVM_T_ARRAY)
         return vfail(&v, "NEWARR of non-array type %u", c);
-      if (!dest(&v, a, &(TvmRegInfo){TVM_K_REF, (uint16_t)c}) || !reg(&v, b, TVM_K_I32))
+      if (!dest(&v, a, &(TvmRegInfo){TVM_K_REF, (uint16_t)c}) ||
+          !reg(&v, b, TVM_K_I32))
         return false;
       break;
     case TVM_OP_ARR_LEN:
       if (!reg(&v, a, TVM_K_I32) || !reg_type(&v, b, TVM_T_ARRAY))
         return false;
       break;
-    case TVM_OP_LDE_I32: case TVM_OP_LDE_F32: case TVM_OP_LDE_B: case TVM_OP_LDE_REF:
-    case TVM_OP_STE_I32: case TVM_OP_STE_F32: case TVM_OP_STE_B: case TVM_OP_STE_REF:
-    case TVM_OP_LIST_LD_I32: case TVM_OP_LIST_LD_F32: case TVM_OP_LIST_LD_B:
-    case TVM_OP_LIST_LD_REF: case TVM_OP_LIST_ST_I32: case TVM_OP_LIST_ST_F32:
-    case TVM_OP_LIST_ST_B: case TVM_OP_LIST_ST_REF: {
+    case TVM_OP_LDE_I32:
+    case TVM_OP_LDE_F32:
+    case TVM_OP_LDE_B:
+    case TVM_OP_LDE_REF:
+    case TVM_OP_STE_I32:
+    case TVM_OP_STE_F32:
+    case TVM_OP_STE_B:
+    case TVM_OP_STE_REF:
+    case TVM_OP_LIST_LD_I32:
+    case TVM_OP_LIST_LD_F32:
+    case TVM_OP_LIST_LD_B:
+    case TVM_OP_LIST_LD_REF:
+    case TVM_OP_LIST_ST_I32:
+    case TVM_OP_LIST_ST_F32:
+    case TVM_OP_LIST_ST_B:
+    case TVM_OP_LIST_ST_REF: {
       bool list = op >= TVM_OP_LIST_LD_I32;
       uint32_t first = list ? TVM_OP_LIST_LD_I32 : TVM_OP_LDE_I32;
       bool load = op < first + 4;
@@ -826,14 +909,22 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       if (t->elem_kind != kind)
         return vfail(&v, "element kind of %s does not match", t->name);
       TvmRegInfo info = elem_info(t);
-      if (!reg(&v, idx, TVM_K_I32) || (load ? !dest(&v, val, &info) : !value(&v, val, &info)))
+      if (!reg(&v, idx, TVM_K_I32) ||
+          (load ? !dest(&v, val, &info) : !value(&v, val, &info)))
         return false;
       break;
     }
-    case TVM_OP_LDEF_I32: case TVM_OP_LDEF_F32: case TVM_OP_LDEF_B: case TVM_OP_LDEF_REF:
-    case TVM_OP_STEF_I32: case TVM_OP_STEF_F32: case TVM_OP_STEF_B: case TVM_OP_STEF_REF: {
+    case TVM_OP_LDEF_I32:
+    case TVM_OP_LDEF_F32:
+    case TVM_OP_LDEF_B:
+    case TVM_OP_LDEF_REF:
+    case TVM_OP_STEF_I32:
+    case TVM_OP_STEF_F32:
+    case TVM_OP_STEF_B:
+    case TVM_OP_STEF_REF: {
       bool load = op <= TVM_OP_LDEF_REF;
-      uint8_t kind = load ? quad(op, TVM_OP_LDEF_I32) : quad(op, TVM_OP_STEF_I32);
+      uint8_t kind =
+          load ? quad(op, TVM_OP_LDEF_I32) : quad(op, TVM_OP_STEF_I32);
       uint32_t arr = load ? b : a, idx = load ? c : b, val = load ? a : c;
       const TvmType *t = reg_type(&v, arr, TVM_T_ARRAY);
       if (!t)
@@ -846,7 +937,8 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       if (s->leaves[x].offset > 0xFF)
         return vfail(&v, "leaf offset of %s exceeds 255", s->name);
       TvmRegInfo info = {kind, s->leaves[x].type};
-      if (!reg(&v, idx, TVM_K_I32) || (load ? !dest(&v, val, &info) : !value(&v, val, &info)))
+      if (!reg(&v, idx, TVM_K_I32) ||
+          (load ? !dest(&v, val, &info) : !value(&v, val, &info)))
         return false;
       f->code[v.pc] = with_x(ins, s->leaves[x].offset);
       break;
@@ -861,7 +953,9 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       if (!reg(&v, a, TVM_K_I32) || !reg_type(&v, b, TVM_T_LIST))
         return false;
       break;
-    case TVM_OP_LIST_ADD_I32: case TVM_OP_LIST_ADD_F32: case TVM_OP_LIST_ADD_B:
+    case TVM_OP_LIST_ADD_I32:
+    case TVM_OP_LIST_ADD_F32:
+    case TVM_OP_LIST_ADD_B:
     case TVM_OP_LIST_ADD_REF: {
       const TvmType *t = reg_type(&v, a, TVM_T_LIST);
       if (!t)
@@ -886,10 +980,12 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
         leaves = vm->types[t->elem_type].leaves;
         n = vm->types[t->elem_type].nleaves;
       }
-      if (ft->nparams != 2 * n || ft->nrets != 1 || ft->rets[0].kind != TVM_K_I32)
+      if (ft->nparams != 2 * n || ft->nrets != 1 ||
+          ft->rets[0].kind != TVM_K_I32)
         return vfail(&v, "sort comparison has a bad signature");
       for (uint32_t k = 0; k < 2 * n; k++) {
-        TvmRegInfo want = leaves ? (TvmRegInfo){leaves[k % n].kind, leaves[k % n].type} : one;
+        TvmRegInfo want =
+            leaves ? (TvmRegInfo){leaves[k % n].kind, leaves[k % n].type} : one;
         if (ft->params[k].kind != want.kind || ft->params[k].type != want.type)
           return vfail(&v, "sort comparison takes another element type");
       }
@@ -923,7 +1019,8 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
         return false;
       break;
     case TVM_OP_DICT_LIVE:
-      if (!reg(&v, a, TVM_K_BOOL) || !reg_type(&v, b, TVM_T_DICT) || !reg(&v, c, TVM_K_I32))
+      if (!reg(&v, a, TVM_K_BOOL) || !reg_type(&v, b, TVM_T_DICT) ||
+          !reg(&v, c, TVM_K_I32))
         return false;
       break;
     case TVM_OP_DICT_LDK: {
@@ -935,10 +1032,22 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
         return false;
       break;
     }
-    case TVM_OP_DICT_LDV_I32: case TVM_OP_DICT_LDV_F32: case TVM_OP_DICT_LDV_B: case TVM_OP_DICT_LDV_REF:
-    case TVM_OP_DICT_STV_I32: case TVM_OP_DICT_STV_F32: case TVM_OP_DICT_STV_B: case TVM_OP_DICT_STV_REF:
-    case TVM_OP_LIST_LDF_I32: case TVM_OP_LIST_LDF_F32: case TVM_OP_LIST_LDF_B: case TVM_OP_LIST_LDF_REF:
-    case TVM_OP_LIST_STF_I32: case TVM_OP_LIST_STF_F32: case TVM_OP_LIST_STF_B: case TVM_OP_LIST_STF_REF: {
+    case TVM_OP_DICT_LDV_I32:
+    case TVM_OP_DICT_LDV_F32:
+    case TVM_OP_DICT_LDV_B:
+    case TVM_OP_DICT_LDV_REF:
+    case TVM_OP_DICT_STV_I32:
+    case TVM_OP_DICT_STV_F32:
+    case TVM_OP_DICT_STV_B:
+    case TVM_OP_DICT_STV_REF:
+    case TVM_OP_LIST_LDF_I32:
+    case TVM_OP_LIST_LDF_F32:
+    case TVM_OP_LIST_LDF_B:
+    case TVM_OP_LIST_LDF_REF:
+    case TVM_OP_LIST_STF_I32:
+    case TVM_OP_LIST_STF_F32:
+    case TVM_OP_LIST_STF_B:
+    case TVM_OP_LIST_STF_REF: {
       /* 要素 / 値の葉: 1 葉の型なら x = 0、struct なら struct の葉 x。x を byte offset に書き換える */
       bool dict = op >= TVM_OP_DICT_LDV_I32 && op <= TVM_OP_DICT_STV_REF;
       uint32_t first = dict ? TVM_OP_DICT_LDV_I32 : TVM_OP_LIST_LDF_I32;
@@ -965,7 +1074,8 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       }
       if (off > 0xFF)
         return vfail(&v, "leaf offset exceeds 255");
-      if (!reg(&v, idx, TVM_K_I32) || (load ? !dest(&v, val, &info) : !value(&v, val, &info)))
+      if (!reg(&v, idx, TVM_K_I32) ||
+          (load ? !dest(&v, val, &info) : !value(&v, val, &info)))
         return false;
       f->code[v.pc] = with_x(ins, off);
       break;
@@ -990,24 +1100,31 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
           !dest(&v, a, &(TvmRegInfo){TVM_K_REF, (uint16_t)c}))
         return vfail(&v, "bad CAST");
       break;
-    case TVM_OP_BOX_I32: case TVM_OP_BOX_F32: case TVM_OP_BOX_B:
-    case TVM_OP_UNBOX_I32: case TVM_OP_UNBOX_F32: case TVM_OP_UNBOX_B: {
+    case TVM_OP_BOX_I32:
+    case TVM_OP_BOX_F32:
+    case TVM_OP_BOX_B:
+    case TVM_OP_UNBOX_I32:
+    case TVM_OP_UNBOX_F32:
+    case TVM_OP_UNBOX_B: {
       bool box = op <= TVM_OP_BOX_B;
       uint8_t kind = quad(op, box ? TVM_OP_BOX_I32 : TVM_OP_UNBOX_I32);
       if (!type_of_kind(vm, c, TVM_T_BOX) || vm->types[c].elem_kind != kind)
         return vfail(&v, "bad box type");
       if (box ? !(reg(&v, a, TVM_K_REF) && v.f->regs[a].type != TVM_NO_TYPE &&
-                  assignable(vm, (uint16_t)c, v.f->regs[a].type) && reg(&v, b, kind))
+                  assignable(vm, (uint16_t)c, v.f->regs[a].type) &&
+                  reg(&v, b, kind))
               : !(reg(&v, a, kind) && reg(&v, b, TVM_K_REF)))
         return vfail(&v, "bad box operands");
       break;
     }
     case TVM_OP_EQ_REC:
-      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_REF) || !reg(&v, c, TVM_K_REF))
+      if (!reg(&v, a, TVM_K_BOOL) || !reg(&v, b, TVM_K_REF) ||
+          !reg(&v, c, TVM_K_REF))
         return false;
       break;
     case TVM_OP_CLONE:
-      if (!reg_type(&v, b, TVM_T_CLASS) || !dest(&v, a, &(TvmRegInfo){TVM_K_REF, v.f->regs[b].type}))
+      if (!reg_type(&v, b, TVM_T_CLASS) ||
+          !dest(&v, a, &(TvmRegInfo){TVM_K_REF, v.f->regs[b].type}))
         return false;
       break;
     case TVM_OP_CHR:
@@ -1025,13 +1142,17 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
         for (uint32_t k = 0; k < plan->nargs; k++) {
           const TvmHostArg *x = &plan->args[k];
           if (!host_arg_ok(&v, x, (x->byref ? b : a) + x->reg, x->byref))
-            return x->st ? vfail(&v, "argument %u of %s: the call does not pass the leaves of struct %s", k, in->name,
-                                 x->st->name)
+            return x->st ? vfail(&v,
+                                 "argument %u of %s: the call does not pass "
+                                 "the leaves of struct %s",
+                                 k, in->name, x->st->name)
                          : vfail(&v, "argument %u of %s", k, in->name);
         }
         if (plan->ret.kind && !host_arg_ok(&v, &plan->ret, b, true))
-          return plan->ret.st ? vfail(&v, "result of %s: the call does not take the leaves of struct %s", in->name,
-                                      plan->ret.st->name)
+          return plan->ret.st ? vfail(&v,
+                                      "result of %s: the call does not take "
+                                      "the leaves of struct %s",
+                                      in->name, plan->ret.st->name)
                               : vfail(&v, "result of %s", in->name);
         break;
       }
@@ -1065,7 +1186,8 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       if (!ft)
         return false;
       if (!matches_func(g, ft))
-        return vfail(&v, "%s does not match the function type %s", g->name, ft->name);
+        return vfail(&v, "%s does not match the function type %s", g->name,
+                     ft->name);
       for (uint32_t k = 0; k < g->ncaps; k++)
         if (!value(&v, b + k, &g->caps[k]))
           return false;
@@ -1158,7 +1280,8 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
     return vfail(&v, "code falls off the end");
   }
   for (uint32_t k = 0; k < f->nlines; k++)
-    if (f->lines[k].pc >= f->ncode || (k > 0 && f->lines[k].pc < f->lines[k - 1].pc))
+    if (f->lines[k].pc >= f->ncode ||
+        (k > 0 && f->lines[k].pc < f->lines[k - 1].pc))
       return vfail(&v, "bad line table");
   return true;
 }
@@ -1213,12 +1336,15 @@ TvmStatus tvm_load_module(TvmVm *vm, const uint8_t *bytes, size_t size) {
       if (ok) {
         const TvmProto *g = &vm->funcs[it->func];
         const TvmType *ft = &vm->types[vm->selectors[it->selector].functype];
-        ok = g->ncaps == 0 && g->nparams == ft->nparams + 1 && g->nret == ft->nrets &&
-             g->regs[0].kind == TVM_K_REF && g->regs[0].type == i;
+        ok = g->ncaps == 0 && g->nparams == ft->nparams + 1 &&
+             g->nret == ft->nrets && g->regs[0].kind == TVM_K_REF &&
+             g->regs[0].type == i;
         for (uint32_t p = 0; ok && p < ft->nparams; p++)
-          ok = g->regs[p + 1].kind == ft->params[p].kind && g->regs[p + 1].type == ft->params[p].type;
+          ok = g->regs[p + 1].kind == ft->params[p].kind &&
+               g->regs[p + 1].type == ft->params[p].type;
         for (uint32_t p = 0; ok && p < ft->nrets; p++)
-          ok = g->rets[p].kind == ft->rets[p].kind && g->rets[p].type == ft->rets[p].type;
+          ok = g->rets[p].kind == ft->rets[p].kind &&
+               g->rets[p].type == ft->rets[p].type;
       }
       if (!ok) {
         tvm_set_error(vm, "type %s: bad itable entry %u", t->name, k);
@@ -1241,7 +1367,8 @@ TvmStatus tvm_load_module(TvmVm *vm, const uint8_t *bytes, size_t size) {
       ok = f->type < vm->ntypes && vm->types[f->type].tkind == TVM_T_STRUCT &&
            f->slot + vm->types[f->type].nleaves <= vm->nstatics;
       for (uint32_t k = 0; ok && k < vm->types[f->type].nleaves; k++)
-        ok = vm->static_info[f->slot + k].kind == vm->types[f->type].leaves[k].kind;
+        ok = vm->static_info[f->slot + k].kind ==
+             vm->types[f->type].leaves[k].kind;
     } else if (ok)
       ok = vm->static_info[f->slot].kind == f->kind;
     if (!ok) {
@@ -1261,15 +1388,17 @@ int32_t tvm_find(TvmVm *vm, const char *name) {
 
 int32_t tvm_entry(TvmVm *vm) { return vm->entry; }
 
-TvmStatus tvm_call(TvmVm *vm, int32_t func, const TvmSlot *args, size_t nargs, TvmSlot *rets,
-                   size_t nrets) {
+TvmStatus tvm_call(TvmVm *vm, int32_t func, const TvmSlot *args, size_t nargs,
+                   TvmSlot *rets, size_t nrets) {
   if (func < 0 || (uint32_t)func >= vm->nfuncs) {
     tvm_set_error(vm, "no such function %d", func);
     return TVM_LOAD_ERROR;
   }
   const TvmProto *proto = &vm->funcs[func];
   if (nargs != proto->nparams || nrets < proto->nret || proto->ncaps) {
-    tvm_set_error(vm, "%s takes %u argument slots and returns %u (given %zu and room for %zu)",
+    tvm_set_error(vm,
+                  "%s takes %u argument slots and returns %u (given %zu and "
+                  "room for %zu)",
                   proto->name, proto->nparams, proto->nret, nargs, nrets);
     return TVM_LOAD_ERROR;
   }

@@ -204,24 +204,24 @@ public sealed class VType
                 d = "Dictionary<" + Key!.Display() + ", " + Value!.Display() + ">";
                 break;
             case VT.Func:
-            {
-                var parts = new List<string>();
-                foreach (var p in Params) parts.Add(p.Display());
-                if (Ret!.Tag == VT.Void) d = "Action<" + string.Join(", ", parts) + ">";
-                else
                 {
-                    parts.Add(Ret.Display());
-                    d = "Func<" + string.Join(", ", parts) + ">";
+                    var parts = new List<string>();
+                    foreach (var p in Params) parts.Add(p.Display());
+                    if (Ret!.Tag == VT.Void) d = "Action<" + string.Join(", ", parts) + ">";
+                    else
+                    {
+                        parts.Add(Ret.Display());
+                        d = "Func<" + string.Join(", ", parts) + ">";
+                    }
+                    break;
                 }
-                break;
-            }
             case VT.Tuple:
-            {
-                var parts = new List<string>();
-                foreach (var p in Items) parts.Add(p.Display());
-                d = "(" + string.Join(", ", parts) + ")";
-                break;
-            }
+                {
+                    var parts = new List<string>();
+                    foreach (var p in Items) parts.Add(p.Display());
+                    d = "(" + string.Join(", ", parts) + ")";
+                    break;
+                }
             case VT.Cell:
                 d = "cell<" + Inner!.Display() + ">";
                 break;

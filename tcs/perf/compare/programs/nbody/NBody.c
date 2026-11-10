@@ -11,7 +11,8 @@ typedef struct {
 static float energy(Body *b) {
   float e = 0.0f;
   for (int i = 0; i < NB; i++) {
-    e = e + 0.5f * b[i].mass * (b[i].vx * b[i].vx + b[i].vy * b[i].vy + b[i].vz * b[i].vz);
+    e = e + 0.5f * b[i].mass *
+                (b[i].vx * b[i].vx + b[i].vy * b[i].vy + b[i].vz * b[i].vz);
     for (int j = i + 1; j < NB; j++) {
       float dx = b[i].x - b[j].x;
       float dy = b[i].y - b[j].y;
@@ -54,13 +55,17 @@ static int run(int n, int print) {
   Body b[NB] = {
       {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, solarMass},
       {4.84143144f, -1.16032004f, -0.103622044f, 0.00166007664f * daysPerYear,
-       0.00769901118f * daysPerYear, -0.0000690460016f * daysPerYear, 0.000954791938f * solarMass},
+       0.00769901118f * daysPerYear, -0.0000690460016f * daysPerYear,
+       0.000954791938f * solarMass},
       {8.34336671f, 4.12479856f, -0.403523417f, -0.00276742510f * daysPerYear,
-       0.00499852801f * daysPerYear, 0.0000230417297f * daysPerYear, 0.000285885980f * solarMass},
+       0.00499852801f * daysPerYear, 0.0000230417297f * daysPerYear,
+       0.000285885980f * solarMass},
       {12.8943695f, -15.1111514f, -0.223307579f, 0.00296460137f * daysPerYear,
-       0.00237847173f * daysPerYear, -0.0000296589568f * daysPerYear, 0.0000436624404f * solarMass},
+       0.00237847173f * daysPerYear, -0.0000296589568f * daysPerYear,
+       0.0000436624404f * solarMass},
       {15.3796971f, -25.9193146f, 0.179258772f, 0.00268067772f * daysPerYear,
-       0.00162824170f * daysPerYear, -0.0000951592254f * daysPerYear, 0.0000515138902f * solarMass},
+       0.00162824170f * daysPerYear, -0.0000951592254f * daysPerYear,
+       0.0000515138902f * solarMass},
   };
   float px = 0.0f, py = 0.0f, pz = 0.0f;
   for (int i = 0; i < NB; i++) {

@@ -18,18 +18,21 @@ static uint32_t line_of(const TvmProto *f, uint32_t pc) {
 }
 
 /* what が NULL なら、入れ子の中で書いた message に、この run の frame を足すだけ */
-static TvmStatus fault(TvmVm *vm, TvmFrame *base, TvmFrame *ci, const TvmProto *proto,
-                       const uint64_t *pc, const char *what) {
+static TvmStatus fault(TvmVm *vm, TvmFrame *base, TvmFrame *ci,
+                       const TvmProto *proto, const uint64_t *pc,
+                       const char *what) {
   if (what)
     tvm_set_error(vm, "fault: %s", what);
   vm->faulting = true;
   /* pc は命令の次を指している */
   uint32_t at = (uint32_t)(pc - proto->code) - 1;
-  tvm_append_error(vm, "\n  at %s (%s:%u)", proto->name, proto->file, line_of(proto, at));
+  tvm_append_error(vm, "\n  at %s (%s:%u)", proto->name, proto->file,
+                   line_of(proto, at));
   for (TvmFrame *fr = ci; fr > base; fr--) {
     const TvmProto *p = fr[-1].proto;
     uint32_t cat = (uint32_t)(fr[-1].pc - p->code) - 1;
-    tvm_append_error(vm, "\n  at %s (%s:%u)", p->name, p->file, line_of(p, cat));
+    tvm_append_error(vm, "\n  at %s (%s:%u)", p->name, p->file,
+                     line_of(p, cat));
   }
   return TVM_FAULT;
 }
@@ -45,7 +48,8 @@ static void print_line(const char *s, size_t n) {
 #define TVM_COMPUTED_GOTO 1
 #endif
 
-static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, const TvmSlot *args,
+static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
+                           const TvmClosure *clo, const TvmSlot *args,
                            TvmSlot *rets) {
   TvmSlot *const top0 = vm->top;
   TvmFrame *const base = vm->ftop;
@@ -57,7 +61,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
   }
   for (uint32_t k = 0; k < proto->nparams; k++)
     R[k] = args[k];
-  memset(R + proto->nparams, 0, sizeof(TvmSlot) * (size_t)(proto->nregs - proto->nparams));
+  memset(R + proto->nparams, 0,
+         sizeof(TvmSlot) * (size_t)(proto->nregs - proto->nparams));
   TvmFrame *ci = base;
   const uint64_t *pc = proto->code;
   uint64_t ins;
@@ -132,13 +137,20 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
 #endif
 
   CASE(NOP) NEXT;
-  CASE(MOV) RA = RB; NEXT;
-  CASE(LDK) RA.i = (int32_t)IMM; NEXT;
-  CASE(LDNULL) RA.p = NULL; NEXT;
-  CASE(LDSTR) RA.p = vm->consts[IMM]; NEXT;
-  CASE(ADD_I32) RA.i = (int32_t)((uint32_t)RB.i + (uint32_t)RC.i); NEXT;
-  CASE(SUB_I32) RA.i = (int32_t)((uint32_t)RB.i - (uint32_t)RC.i); NEXT;
-  CASE(MUL_I32) RA.i = (int32_t)((uint32_t)RB.i * (uint32_t)RC.i); NEXT;
+  CASE(MOV) RA = RB;
+  NEXT;
+  CASE(LDK) RA.i = (int32_t)IMM;
+  NEXT;
+  CASE(LDNULL) RA.p = NULL;
+  NEXT;
+  CASE(LDSTR) RA.p = vm->consts[IMM];
+  NEXT;
+  CASE(ADD_I32) RA.i = (int32_t)((uint32_t)RB.i + (uint32_t)RC.i);
+  NEXT;
+  CASE(SUB_I32) RA.i = (int32_t)((uint32_t)RB.i - (uint32_t)RC.i);
+  NEXT;
+  CASE(MUL_I32) RA.i = (int32_t)((uint32_t)RB.i * (uint32_t)RC.i);
+  NEXT;
   CASE(DIV_I32) {
     int32_t d = RC.i;
     if (d == 0)
@@ -157,14 +169,23 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     RA.i = RB.i % d;
     NEXT;
   }
-  CASE(AND_I32) RA.i = RB.i & RC.i; NEXT;
-  CASE(OR_I32) RA.i = RB.i | RC.i; NEXT;
-  CASE(XOR_I32) RA.i = RB.i ^ RC.i; NEXT;
-  CASE(SHL_I32) RA.i = (int32_t)((uint32_t)RB.i << (RC.i & 31)); NEXT;
-  CASE(SHR_I32) RA.i = RB.i >> (RC.i & 31); NEXT;
-  CASE(NEG_I32) RA.i = (int32_t)(0u - (uint32_t)RB.i); NEXT;
-  CASE(BNOT_I32) RA.i = ~RB.i; NEXT;
-  CASE(ADDI_I32) RA.i = (int32_t)((uint32_t)RB.i + (uint32_t)(int32_t)(int16_t)OPC); NEXT;
+  CASE(AND_I32) RA.i = RB.i & RC.i;
+  NEXT;
+  CASE(OR_I32) RA.i = RB.i | RC.i;
+  NEXT;
+  CASE(XOR_I32) RA.i = RB.i ^ RC.i;
+  NEXT;
+  CASE(SHL_I32) RA.i = (int32_t)((uint32_t)RB.i << (RC.i & 31));
+  NEXT;
+  CASE(SHR_I32) RA.i = RB.i >> (RC.i & 31);
+  NEXT;
+  CASE(NEG_I32) RA.i = (int32_t)(0u - (uint32_t)RB.i);
+  NEXT;
+  CASE(BNOT_I32) RA.i = ~RB.i;
+  NEXT;
+  CASE(ADDI_I32)
+  RA.i = (int32_t)((uint32_t)RB.i + (uint32_t)(int32_t)(int16_t)OPC);
+  NEXT;
 #define CHECKED(expr)                                                          \
   {                                                                            \
     int64_t r_ = (expr);                                                       \
@@ -173,17 +194,26 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     RA.i = (int32_t)r_;                                                        \
     NEXT;                                                                      \
   }
-  CASE(CADD_I32) CHECKED((int64_t)RB.i + RC.i)
-  CASE(CSUB_I32) CHECKED((int64_t)RB.i - RC.i)
-  CASE(CMUL_I32) CHECKED((int64_t)RB.i * RC.i)
-  CASE(CNEG_I32) CHECKED(-(int64_t)RB.i)
-  CASE(ADD_F32) RA.f = RB.f + RC.f; NEXT;
-  CASE(SUB_F32) RA.f = RB.f - RC.f; NEXT;
-  CASE(MUL_F32) RA.f = RB.f * RC.f; NEXT;
-  CASE(DIV_F32) RA.f = RB.f / RC.f; NEXT;
-  CASE(NEG_F32) RA.f = -RB.f; NEXT;
-  CASE(FMOD_F32) RA.f = fmodf(RB.f, RC.f); NEXT;
-  CASE(I2F) RA.f = (float)RB.i; NEXT;
+  CASE(CADD_I32)
+  CHECKED((int64_t)RB.i + RC.i)
+  CASE(CSUB_I32)
+  CHECKED((int64_t)RB.i - RC.i)
+  CASE(CMUL_I32)
+  CHECKED((int64_t)RB.i * RC.i)
+  CASE(CNEG_I32) CHECKED(-(int64_t)RB.i) CASE(ADD_F32) RA.f = RB.f + RC.f;
+  NEXT;
+  CASE(SUB_F32) RA.f = RB.f - RC.f;
+  NEXT;
+  CASE(MUL_F32) RA.f = RB.f * RC.f;
+  NEXT;
+  CASE(DIV_F32) RA.f = RB.f / RC.f;
+  NEXT;
+  CASE(NEG_F32) RA.f = -RB.f;
+  NEXT;
+  CASE(FMOD_F32) RA.f = fmodf(RB.f, RC.f);
+  NEXT;
+  CASE(I2F) RA.f = (float)RB.i;
+  NEXT;
   CASE(F2I) {
     float v = RB.f;
     if (!(v > -2147483904.0f && v < 2147483648.0f))
@@ -191,25 +221,40 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     RA.i = (int32_t)v;
     NEXT;
   }
-  CASE(NOT_B) RA.i = !RB.i; NEXT;
-  CASE(AND_B) RA.i = RB.i & RC.i; NEXT;
-  CASE(OR_B) RA.i = RB.i | RC.i; NEXT;
-  CASE(NE_B) RA.i = RB.i != RC.i; NEXT;
+  CASE(NOT_B) RA.i = !RB.i;
+  NEXT;
+  CASE(AND_B) RA.i = RB.i & RC.i;
+  NEXT;
+  CASE(OR_B) RA.i = RB.i | RC.i;
+  NEXT;
+  CASE(NE_B) RA.i = RB.i != RC.i;
+  NEXT;
   CASE(NVAL) {
     if (!RA.i)
       FAULT("Nullable object must have a value.");
     NEXT;
   }
-  CASE(EQ_I32) RA.i = RB.i == RC.i; NEXT;
-  CASE(LT_I32) RA.i = RB.i < RC.i; NEXT;
-  CASE(LE_I32) RA.i = RB.i <= RC.i; NEXT;
-  CASE(EQ_F32) RA.i = RB.f == RC.f; NEXT;
-  CASE(LT_F32) RA.i = RB.f < RC.f; NEXT;
-  CASE(LE_F32) RA.i = RB.f <= RC.f; NEXT;
-  CASE(EQ_B) RA.i = RB.i == RC.i; NEXT;
-  CASE(EQ_REF) RA.i = RB.p == RC.p; NEXT;
-  CASE(EQ_STR) RA.i = tvm_str_eq((const TvmString *)RB.p, (const TvmString *)RC.p); NEXT;
-  CASE(CMP_I32) RA.i = (RB.i > RC.i) - (RB.i < RC.i); NEXT;
+  CASE(EQ_I32) RA.i = RB.i == RC.i;
+  NEXT;
+  CASE(LT_I32) RA.i = RB.i < RC.i;
+  NEXT;
+  CASE(LE_I32) RA.i = RB.i <= RC.i;
+  NEXT;
+  CASE(EQ_F32) RA.i = RB.f == RC.f;
+  NEXT;
+  CASE(LT_F32) RA.i = RB.f < RC.f;
+  NEXT;
+  CASE(LE_F32) RA.i = RB.f <= RC.f;
+  NEXT;
+  CASE(EQ_B) RA.i = RB.i == RC.i;
+  NEXT;
+  CASE(EQ_REF) RA.i = RB.p == RC.p;
+  NEXT;
+  CASE(EQ_STR)
+  RA.i = tvm_str_eq((const TvmString *)RB.p, (const TvmString *)RC.p);
+  NEXT;
+  CASE(CMP_I32) RA.i = (RB.i > RC.i) - (RB.i < RC.i);
+  NEXT;
   CASE(CMP_F32) {
     float x = RB.f, y = RC.f;
     if (x < y)
@@ -224,25 +269,44 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
       RA.i = 1;
     NEXT;
   }
-  CASE(JMP) pc += OFF24; NEXT;
-  CASE(JT) if (RA.i) pc += OFF24; NEXT;
-  CASE(JF) if (!RA.i) pc += OFF24; NEXT;
-  CASE(JNULL) if (!RA.p) pc += OFF24; NEXT;
-  CASE(JNN) if (RA.p) pc += OFF24; NEXT;
-  CASE(JT_LT_I32) if (RA.i < RB.i) pc += OFF24; NEXT;
-  CASE(JF_LT_I32) if (!(RA.i < RB.i)) pc += OFF24; NEXT;
-  CASE(JT_LE_I32) if (RA.i <= RB.i) pc += OFF24; NEXT;
-  CASE(JF_LE_I32) if (!(RA.i <= RB.i)) pc += OFF24; NEXT;
-  CASE(JT_EQ_I32) if (RA.i == RB.i) pc += OFF24; NEXT;
-  CASE(JF_EQ_I32) if (RA.i != RB.i) pc += OFF24; NEXT;
-  CASE(JT_LT_F32) if (RA.f < RB.f) pc += OFF24; NEXT;
-  CASE(JF_LT_F32) if (!(RA.f < RB.f)) pc += OFF24; NEXT;
-  CASE(JT_LE_F32) if (RA.f <= RB.f) pc += OFF24; NEXT;
-  CASE(JF_LE_F32) if (!(RA.f <= RB.f)) pc += OFF24; NEXT;
-  CASE(JT_EQ_F32) if (RA.f == RB.f) pc += OFF24; NEXT;
-  CASE(JF_EQ_F32) if (!(RA.f == RB.f)) pc += OFF24; NEXT;
-  CASE(LDS) RA = vm->statics[IMM]; NEXT;
-  CASE(STS) vm->statics[IMM] = RA; NEXT;
+  CASE(JMP) pc += OFF24;
+  NEXT;
+  CASE(JT) if (RA.i) pc += OFF24;
+  NEXT;
+  CASE(JF) if (!RA.i) pc += OFF24;
+  NEXT;
+  CASE(JNULL) if (!RA.p) pc += OFF24;
+  NEXT;
+  CASE(JNN) if (RA.p) pc += OFF24;
+  NEXT;
+  CASE(JT_LT_I32) if (RA.i < RB.i) pc += OFF24;
+  NEXT;
+  CASE(JF_LT_I32) if (!(RA.i < RB.i)) pc += OFF24;
+  NEXT;
+  CASE(JT_LE_I32) if (RA.i <= RB.i) pc += OFF24;
+  NEXT;
+  CASE(JF_LE_I32) if (!(RA.i <= RB.i)) pc += OFF24;
+  NEXT;
+  CASE(JT_EQ_I32) if (RA.i == RB.i) pc += OFF24;
+  NEXT;
+  CASE(JF_EQ_I32) if (RA.i != RB.i) pc += OFF24;
+  NEXT;
+  CASE(JT_LT_F32) if (RA.f < RB.f) pc += OFF24;
+  NEXT;
+  CASE(JF_LT_F32) if (!(RA.f < RB.f)) pc += OFF24;
+  NEXT;
+  CASE(JT_LE_F32) if (RA.f <= RB.f) pc += OFF24;
+  NEXT;
+  CASE(JF_LE_F32) if (!(RA.f <= RB.f)) pc += OFF24;
+  NEXT;
+  CASE(JT_EQ_F32) if (RA.f == RB.f) pc += OFF24;
+  NEXT;
+  CASE(JF_EQ_F32) if (!(RA.f == RB.f)) pc += OFF24;
+  NEXT;
+  CASE(LDS) RA = vm->statics[IMM];
+  NEXT;
+  CASE(STS) vm->statics[IMM] = RA;
+  NEXT;
   CASE(NEW) {
     SAFEPOINT();
     const TvmType *t = &vm->types[OPC];
@@ -271,14 +335,17 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     *(T *)(o + OPC) = (T)RB.field;                                             \
     NEXT;                                                                      \
   }
-  CASE(LDF_I32) LDF(int32_t, i)
-  CASE(LDF_F32) LDF(float, f)
-  CASE(LDF_B) LDF(uint8_t, i)
-  CASE(LDF_REF) LDF(void *, p)
-  CASE(STF_I32) STF(int32_t, i)
-  CASE(STF_F32) STF(float, f)
-  CASE(STF_B) STF(uint8_t, i)
-  CASE(STF_REF) {
+  CASE(LDF_I32)
+  LDF(int32_t, i)
+  CASE(LDF_F32)
+  LDF(float, f)
+  CASE(LDF_B)
+  LDF(uint8_t, i)
+  CASE(LDF_REF)
+  LDF(void *, p)
+  CASE(STF_I32)
+  STF(int32_t, i)
+  CASE(STF_F32) STF(float, f) CASE(STF_B) STF(uint8_t, i) CASE(STF_REF) {
     WB(RA.p);
   }
   STF(void *, p)
@@ -290,7 +357,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     if ((uint64_t)n * t->elem_size > ((uint64_t)1 << 31))
       FAULT("out of memory");
     SAFEPOINT();
-    TvmArray *arr = (TvmArray *)tvm_alloc(vm, sizeof(TvmArray) + (size_t)n * t->elem_size);
+    TvmArray *arr =
+        (TvmArray *)tvm_alloc(vm, sizeof(TvmArray) + (size_t)n * t->elem_size);
     if (!arr)
       FAULT("out of memory");
     TVM_TYPE(arr) = t;
@@ -311,22 +379,73 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
   if (idx >= (uint32_t)arr->len)                                               \
     FAULT("index out of range");                                               \
   char *e = ARR_DATA(arr) + (size_t)idx * (size);
-  CASE(LDE_I32) { ELEM(RB.p, RC.i, 4) RA.i = *(int32_t *)e; NEXT; }
-  CASE(LDE_F32) { ELEM(RB.p, RC.i, 4) RA.f = *(float *)e; NEXT; }
-  CASE(LDE_B) { ELEM(RB.p, RC.i, 1) RA.i = *(uint8_t *)e; NEXT; }
-  CASE(LDE_REF) { ELEM(RB.p, RC.i, sizeof(void *)) RA.p = *(void **)e; NEXT; }
-  CASE(STE_I32) { ELEM(RA.p, RB.i, 4) *(int32_t *)e = RC.i; NEXT; }
-  CASE(STE_F32) { ELEM(RA.p, RB.i, 4) *(float *)e = RC.f; NEXT; }
-  CASE(STE_B) { ELEM(RA.p, RB.i, 1) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
-  CASE(STE_REF) { ELEM(RA.p, RB.i, sizeof(void *)) *(void **)e = RC.p; WB(RA.p); NEXT; }
-  CASE(LDEF_I32) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.i = *(int32_t *)(e + OPX); NEXT; }
-  CASE(LDEF_F32) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.f = *(float *)(e + OPX); NEXT; }
-  CASE(LDEF_B) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.i = *(uint8_t *)(e + OPX); NEXT; }
-  CASE(LDEF_REF) { ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.p = *(void **)(e + OPX); NEXT; }
-  CASE(STEF_I32) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(int32_t *)(e + OPX) = RC.i; NEXT; }
-  CASE(STEF_F32) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(float *)(e + OPX) = RC.f; NEXT; }
-  CASE(STEF_B) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(uint8_t *)(e + OPX) = (uint8_t)RC.i; NEXT; }
-  CASE(STEF_REF) { ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) *(void **)(e + OPX) = RC.p; WB(RA.p); NEXT; }
+  CASE(LDE_I32) {
+    ELEM(RB.p, RC.i, 4) RA.i = *(int32_t *)e;
+    NEXT;
+  }
+  CASE(LDE_F32) {
+    ELEM(RB.p, RC.i, 4) RA.f = *(float *)e;
+    NEXT;
+  }
+  CASE(LDE_B) {
+    ELEM(RB.p, RC.i, 1) RA.i = *(uint8_t *)e;
+    NEXT;
+  }
+  CASE(LDE_REF) {
+    ELEM(RB.p, RC.i, sizeof(void *)) RA.p = *(void **)e;
+    NEXT;
+  }
+  CASE(STE_I32) {
+    ELEM(RA.p, RB.i, 4) * (int32_t *)e = RC.i;
+    NEXT;
+  }
+  CASE(STE_F32) {
+    ELEM(RA.p, RB.i, 4) * (float *)e = RC.f;
+    NEXT;
+  }
+  CASE(STE_B) {
+    ELEM(RA.p, RB.i, 1) * (uint8_t *)e = (uint8_t)RC.i;
+    NEXT;
+  }
+  CASE(STE_REF) {
+    ELEM(RA.p, RB.i, sizeof(void *)) * (void **)e = RC.p;
+    WB(RA.p);
+    NEXT;
+  }
+  CASE(LDEF_I32) {
+    ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.i = *(int32_t *)(e + OPX);
+    NEXT;
+  }
+  CASE(LDEF_F32) {
+    ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.f = *(float *)(e + OPX);
+    NEXT;
+  }
+  CASE(LDEF_B) {
+    ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.i = *(uint8_t *)(e + OPX);
+    NEXT;
+  }
+  CASE(LDEF_REF) {
+    ELEM(RB.p, RC.i, TVM_TYPE(arr)->elem_size) RA.p = *(void **)(e + OPX);
+    NEXT;
+  }
+  CASE(STEF_I32) {
+    ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) * (int32_t *)(e + OPX) = RC.i;
+    NEXT;
+  }
+  CASE(STEF_F32) {
+    ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) * (float *)(e + OPX) = RC.f;
+    NEXT;
+  }
+  CASE(STEF_B) {
+    ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) * (uint8_t *)(e + OPX) =
+        (uint8_t)RC.i;
+    NEXT;
+  }
+  CASE(STEF_REF) {
+    ELEM(RA.p, RB.i, TVM_TYPE(arr)->elem_size) * (void **)(e + OPX) = RC.p;
+    WB(RA.p);
+    NEXT;
+  }
   CASE(NEWLIST) {
     SAFEPOINT();
     TvmList *l = tvm_list_new(vm, &vm->types[OPC]);
@@ -348,14 +467,39 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
   if (idx >= (uint32_t)l->count)                                               \
     FAULT("index out of range");                                               \
   char *e = l->data + (size_t)idx * (size);
-  CASE(LIST_LD_I32) { LELEM(RB.p, RC.i, 4) RA.i = *(int32_t *)e; NEXT; }
-  CASE(LIST_LD_F32) { LELEM(RB.p, RC.i, 4) RA.f = *(float *)e; NEXT; }
-  CASE(LIST_LD_B) { LELEM(RB.p, RC.i, 1) RA.i = *(uint8_t *)e; NEXT; }
-  CASE(LIST_LD_REF) { LELEM(RB.p, RC.i, sizeof(void *)) RA.p = *(void **)e; NEXT; }
-  CASE(LIST_ST_I32) { LELEM(RA.p, RB.i, 4) *(int32_t *)e = RC.i; NEXT; }
-  CASE(LIST_ST_F32) { LELEM(RA.p, RB.i, 4) *(float *)e = RC.f; NEXT; }
-  CASE(LIST_ST_B) { LELEM(RA.p, RB.i, 1) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
-  CASE(LIST_ST_REF) { LELEM(RA.p, RB.i, sizeof(void *)) *(void **)e = RC.p; WB(RA.p); NEXT; }
+  CASE(LIST_LD_I32) {
+    LELEM(RB.p, RC.i, 4) RA.i = *(int32_t *)e;
+    NEXT;
+  }
+  CASE(LIST_LD_F32) {
+    LELEM(RB.p, RC.i, 4) RA.f = *(float *)e;
+    NEXT;
+  }
+  CASE(LIST_LD_B) {
+    LELEM(RB.p, RC.i, 1) RA.i = *(uint8_t *)e;
+    NEXT;
+  }
+  CASE(LIST_LD_REF) {
+    LELEM(RB.p, RC.i, sizeof(void *)) RA.p = *(void **)e;
+    NEXT;
+  }
+  CASE(LIST_ST_I32) {
+    LELEM(RA.p, RB.i, 4) * (int32_t *)e = RC.i;
+    NEXT;
+  }
+  CASE(LIST_ST_F32) {
+    LELEM(RA.p, RB.i, 4) * (float *)e = RC.f;
+    NEXT;
+  }
+  CASE(LIST_ST_B) {
+    LELEM(RA.p, RB.i, 1) * (uint8_t *)e = (uint8_t)RC.i;
+    NEXT;
+  }
+  CASE(LIST_ST_REF) {
+    LELEM(RA.p, RB.i, sizeof(void *)) * (void **)e = RC.p;
+    WB(RA.p);
+    NEXT;
+  }
 #define LADD(T, field)                                                         \
   {                                                                            \
     TvmList *l = (TvmList *)RA.p;                                              \
@@ -367,11 +511,12 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     ((T *)l->data)[l->count++] = (T)RB.field;                                  \
     NEXT;                                                                      \
   }
-  CASE(LIST_ADD_I32) LADD(int32_t, i)
-  CASE(LIST_ADD_F32) LADD(float, f)
-  CASE(LIST_ADD_B) LADD(uint8_t, i)
-  CASE(LIST_ADD_REF) LADD(void *, p)
-  CASE(LIST_SORT) {
+  CASE(LIST_ADD_I32)
+  LADD(int32_t, i)
+  CASE(LIST_ADD_F32)
+  LADD(float, f)
+  CASE(LIST_ADD_B)
+  LADD(uint8_t, i) CASE(LIST_ADD_REF) LADD(void *, p) CASE(LIST_SORT) {
     TvmList *l = (TvmList *)RA.p;
     NONNULL(l);
     NONNULL(RB.p);
@@ -389,14 +534,39 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
   if (idx >= (uint32_t)l->count)                                               \
     FAULT("index out of range");                                               \
   char *e = l->data + (size_t)idx * TVM_TYPE(l)->elem_size + OPX;
-  CASE(LIST_LDF_I32) { LFELEM(RB.p, RC.i) RA.i = *(int32_t *)e; NEXT; }
-  CASE(LIST_LDF_F32) { LFELEM(RB.p, RC.i) RA.f = *(float *)e; NEXT; }
-  CASE(LIST_LDF_B) { LFELEM(RB.p, RC.i) RA.i = *(uint8_t *)e; NEXT; }
-  CASE(LIST_LDF_REF) { LFELEM(RB.p, RC.i) RA.p = *(void **)e; NEXT; }
-  CASE(LIST_STF_I32) { LFELEM(RA.p, RB.i) *(int32_t *)e = RC.i; NEXT; }
-  CASE(LIST_STF_F32) { LFELEM(RA.p, RB.i) *(float *)e = RC.f; NEXT; }
-  CASE(LIST_STF_B) { LFELEM(RA.p, RB.i) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
-  CASE(LIST_STF_REF) { LFELEM(RA.p, RB.i) *(void **)e = RC.p; WB(RA.p); NEXT; }
+  CASE(LIST_LDF_I32) {
+    LFELEM(RB.p, RC.i) RA.i = *(int32_t *)e;
+    NEXT;
+  }
+  CASE(LIST_LDF_F32) {
+    LFELEM(RB.p, RC.i) RA.f = *(float *)e;
+    NEXT;
+  }
+  CASE(LIST_LDF_B) {
+    LFELEM(RB.p, RC.i) RA.i = *(uint8_t *)e;
+    NEXT;
+  }
+  CASE(LIST_LDF_REF) {
+    LFELEM(RB.p, RC.i) RA.p = *(void **)e;
+    NEXT;
+  }
+  CASE(LIST_STF_I32) {
+    LFELEM(RA.p, RB.i) * (int32_t *)e = RC.i;
+    NEXT;
+  }
+  CASE(LIST_STF_F32) {
+    LFELEM(RA.p, RB.i) * (float *)e = RC.f;
+    NEXT;
+  }
+  CASE(LIST_STF_B) {
+    LFELEM(RA.p, RB.i) * (uint8_t *)e = (uint8_t)RC.i;
+    NEXT;
+  }
+  CASE(LIST_STF_REF) {
+    LFELEM(RA.p, RB.i) * (void **)e = RC.p;
+    WB(RA.p);
+    NEXT;
+  }
   CASE(LIST_PUSH0) {
     TvmList *l = (TvmList *)RA.p;
     NONNULL(l);
@@ -451,7 +621,7 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
   TvmDict *d = (TvmDict *)(dv);                                                \
   NONNULL(d);                                                                  \
   TvmSlot key = (keyv);                                                        \
-  if (TVM_TYPE(d)->key_kind == TVM_K_REF && !key.p)                                \
+  if (TVM_TYPE(d)->key_kind == TVM_K_REF && !key.p)                            \
     FAULT("null key");
   CASE(DICT_FIND) {
     DKEY(RB.p, RC)
@@ -479,14 +649,39 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     FAULT("index out of range");                                               \
   TvmDictEntry *en = DICT_ENTRY(d, idx);                                       \
   char *e = DICT_VALUE(en) + OPX;
-  CASE(DICT_LDV_I32) { DENTRY(RB.p, RC.i) RA.i = *(int32_t *)e; NEXT; }
-  CASE(DICT_LDV_F32) { DENTRY(RB.p, RC.i) RA.f = *(float *)e; NEXT; }
-  CASE(DICT_LDV_B) { DENTRY(RB.p, RC.i) RA.i = *(uint8_t *)e; NEXT; }
-  CASE(DICT_LDV_REF) { DENTRY(RB.p, RC.i) RA.p = *(void **)e; NEXT; }
-  CASE(DICT_STV_I32) { DENTRY(RA.p, RB.i) *(int32_t *)e = RC.i; NEXT; }
-  CASE(DICT_STV_F32) { DENTRY(RA.p, RB.i) *(float *)e = RC.f; NEXT; }
-  CASE(DICT_STV_B) { DENTRY(RA.p, RB.i) *(uint8_t *)e = (uint8_t)RC.i; NEXT; }
-  CASE(DICT_STV_REF) { DENTRY(RA.p, RB.i) *(void **)e = RC.p; WB(RA.p); NEXT; }
+  CASE(DICT_LDV_I32) {
+    DENTRY(RB.p, RC.i) RA.i = *(int32_t *)e;
+    NEXT;
+  }
+  CASE(DICT_LDV_F32) {
+    DENTRY(RB.p, RC.i) RA.f = *(float *)e;
+    NEXT;
+  }
+  CASE(DICT_LDV_B) {
+    DENTRY(RB.p, RC.i) RA.i = *(uint8_t *)e;
+    NEXT;
+  }
+  CASE(DICT_LDV_REF) {
+    DENTRY(RB.p, RC.i) RA.p = *(void **)e;
+    NEXT;
+  }
+  CASE(DICT_STV_I32) {
+    DENTRY(RA.p, RB.i) * (int32_t *)e = RC.i;
+    NEXT;
+  }
+  CASE(DICT_STV_F32) {
+    DENTRY(RA.p, RB.i) * (float *)e = RC.f;
+    NEXT;
+  }
+  CASE(DICT_STV_B) {
+    DENTRY(RA.p, RB.i) * (uint8_t *)e = (uint8_t)RC.i;
+    NEXT;
+  }
+  CASE(DICT_STV_REF) {
+    DENTRY(RA.p, RB.i) * (void **)e = RC.p;
+    WB(RA.p);
+    NEXT;
+  }
   CASE(DICT_LDK) {
     DENTRY(RB.p, RC.i)
     (void)e;
@@ -538,27 +733,35 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     TvmBox *bx = (TvmBox *)tvm_alloc(vm, sizeof(TvmBox));                      \
     if (!bx)                                                                   \
       FAULT("out of memory");                                                  \
-    TVM_TYPE(bx) = &vm->types[OPC];                                                \
+    TVM_TYPE(bx) = &vm->types[OPC];                                            \
     bx->value.field = RB.field;                                                \
     RA.p = bx;                                                                 \
     NEXT;                                                                      \
   }
-  CASE(BOX_I32) BOX(i)
-  CASE(BOX_F32) BOX(f)
-  CASE(BOX_B) BOX(i)
+  CASE(BOX_I32)
+  BOX(i)
+  CASE(BOX_F32)
+  BOX(f)
+  CASE(BOX_B)
+  BOX(i)
 #define UNBOX(field)                                                           \
   {                                                                            \
     const TvmBox *bx = (const TvmBox *)RB.p;                                   \
     NONNULL(bx);                                                               \
-    if (TVM_TYPE(bx) != &vm->types[OPC])                                           \
+    if (TVM_TYPE(bx) != &vm->types[OPC])                                       \
       FAULT("invalid cast");                                                   \
     RA.field = bx->value.field;                                                \
     NEXT;                                                                      \
   }
-  CASE(UNBOX_I32) UNBOX(i)
-  CASE(UNBOX_F32) UNBOX(f)
-  CASE(UNBOX_B) UNBOX(i)
-  CASE(EQ_REC) RA.i = tvm_object_eq(vm, (const TvmObject *)RB.p, (const TvmObject *)RC.p); NEXT;
+  CASE(UNBOX_I32)
+  UNBOX(i)
+  CASE(UNBOX_F32)
+  UNBOX(f)
+  CASE(UNBOX_B)
+  UNBOX(i)
+  CASE(EQ_REC)
+  RA.i = tvm_object_eq(vm, (const TvmObject *)RB.p, (const TvmObject *)RC.p);
+  NEXT;
   CASE(CLONE) {
     const TvmObject *o = (const TvmObject *)RB.p;
     NONNULL(o);
@@ -567,7 +770,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     if (!c)
       FAULT("out of memory");
     memcpy(c, o, TVM_TYPE(o)->size);
-    TVM_TYPE(c) = TVM_TYPE(o); /* 型は header にあり、payload の copy では写らない */
+    TVM_TYPE(c) =
+        TVM_TYPE(o); /* 型は header にあり、payload の copy では写らない */
     RA.p = c;
     NEXT;
   }
@@ -588,12 +792,14 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     SAVE();
     const TvmIntrinsic *in = vm->intrinsics[OPC];
     /* host の関数で struct か out を持つものは、引数を C の layout の塊に写して呼ぶ (tvm_host_call) */
-    TvmStatus st = !in->host                ? in->fn(vm, &RA, &RB)
-                   : vm->host_plans[OPC] ? tvm_host_call(vm, in, vm->host_plans[OPC], &RA, &RB)
-                                         : in->host(vm, &RA, &RB, in->user);
+    TvmStatus st = !in->host ? in->fn(vm, &RA, &RB)
+                   : vm->host_plans[OPC]
+                       ? tvm_host_call(vm, in, vm->host_plans[OPC], &RA, &RB)
+                       : in->host(vm, &RA, &RB, in->user);
     if (st != TVM_OK)
       FAULT(NULL);
-    if (vm->heap && !in->host) /* container を変える runtime の関数 (List / Dictionary / 配列の引数) */
+    if (vm->heap &&
+        !in->host) /* container を変える runtime の関数 (List / Dictionary / 配列の引数) */
       for (uint32_t k = 0; in->params[k]; k++)
         if (strchr("LDAr", in->params[k]))
           WB(R[OPA + k].p);
@@ -602,7 +808,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
   CASE(CLOSURE) {
     SAFEPOINT();
     const TvmProto *g = &vm->funcs[OPC];
-    TvmClosure *c = (TvmClosure *)tvm_alloc(vm, sizeof(TvmClosure) + sizeof(TvmSlot) * g->ncaps);
+    TvmClosure *c = (TvmClosure *)tvm_alloc(vm, sizeof(TvmClosure) +
+                                                    sizeof(TvmSlot) * g->ncaps);
     if (!c)
       FAULT("out of memory");
     TVM_TYPE(c) = &vm->types[proto->regs[OPA].type];
@@ -613,7 +820,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     RA.p = c;
     NEXT;
   }
-  CASE(LDCAP) RA = CLO_CAPS(clo)[OPC]; NEXT;
+  CASE(LDCAP) RA = CLO_CAPS(clo)[OPC];
+  NEXT;
   CASE(CALL) {
     /* 新しい frame は caller の frame の後ろ。引数は copy する (doc/vm-design.md §8.1) */
     const TvmProto *g = &vm->funcs[OPC];
@@ -623,7 +831,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     for (uint32_t k = 0; k < g->nparams; k++)
       nR[k] = R[OPA + k];
     if (g->zero_hi > g->zero_lo)
-      memset(nR + g->zero_lo, 0, sizeof(TvmSlot) * (size_t)(g->zero_hi - g->zero_lo));
+      memset(nR + g->zero_lo, 0,
+             sizeof(TvmSlot) * (size_t)(g->zero_hi - g->zero_lo));
     ci->pc = pc;
     ci->R = R;
     ci->proto = proto;
@@ -657,7 +866,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     for (uint32_t k = 0; k < g->nparams; k++)
       nR[k] = R[OPA + 1 + k];
     if (g->zero_hi > g->zero_lo)
-      memset(nR + g->zero_lo, 0, sizeof(TvmSlot) * (size_t)(g->zero_hi - g->zero_lo));
+      memset(nR + g->zero_lo, 0,
+             sizeof(TvmSlot) * (size_t)(g->zero_hi - g->zero_lo));
     ci->pc = pc;
     ci->R = R;
     ci->proto = proto;
@@ -696,7 +906,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
     for (uint32_t k = 0; k < g->nparams; k++)
       nR[k] = R[OPA + k];
     if (g->zero_hi > g->zero_lo)
-      memset(nR + g->zero_lo, 0, sizeof(TvmSlot) * (size_t)(g->zero_hi - g->zero_lo));
+      memset(nR + g->zero_lo, 0,
+             sizeof(TvmSlot) * (size_t)(g->zero_hi - g->zero_lo));
     ci->pc = pc;
     ci->R = R;
     ci->proto = proto;
@@ -743,7 +954,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
   }
   CASE(CONCAT) {
     SAFEPOINT();
-    TvmString *s = tvm_str_concat(vm, (const TvmString *)RB.p, (const TvmString *)RC.p);
+    TvmString *s =
+        tvm_str_concat(vm, (const TvmString *)RB.p, (const TvmString *)RC.p);
     if (!s)
       FAULT("out of memory");
     RA.p = s;
@@ -771,7 +983,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
   }
   CASE(B2S) {
     SAFEPOINT();
-    TvmString *s = RB.i ? tvm_str_new(vm, "True", 4) : tvm_str_new(vm, "False", 5);
+    TvmString *s =
+        RB.i ? tvm_str_new(vm, "True", 4) : tvm_str_new(vm, "False", 5);
     if (!s)
       FAULT("out of memory");
     RA.p = s;
@@ -830,15 +1043,16 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto, const TvmClosure *c
   }
 
 #if !TVM_COMPUTED_GOTO
-    default:
-      FAULT("bad opcode");
-    }
-  }
+default:
+  FAULT("bad opcode");
+}
+}
 #endif
 }
 
 /* 負荷を数えている間は、interpreter に入る・出るを知らせる (host からの一番外の呼び出しの外の時間を行に付けない) */
-static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, const TvmSlot *args, TvmSlot *rets) {
+static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo,
+                     const TvmSlot *args, TvmSlot *rets) {
   if (!vm->prof_clock)
     return interpret(vm, proto, clo, args, rets);
   uint32_t line = tvm_profile_at(vm);
@@ -849,11 +1063,13 @@ static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo, co
   return st;
 }
 
-TvmStatus tvm_run(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets) {
+TvmStatus tvm_run(TvmVm *vm, const TvmProto *proto, const TvmSlot *args,
+                  TvmSlot *rets) {
   return run(vm, proto, NULL, args, rets);
 }
 
-TvmStatus tvm_call_closure(TvmVm *vm, const TvmClosure *c, const TvmSlot *args, TvmSlot *rets) {
+TvmStatus tvm_call_closure(TvmVm *vm, const TvmClosure *c, const TvmSlot *args,
+                           TvmSlot *rets) {
   if (vm->depth >= TVM_MAX_DEPTH) {
     tvm_set_error(vm, "fault: stack overflow (nested calls from the runtime)");
     vm->faulting = true;
@@ -866,7 +1082,8 @@ TvmStatus tvm_call_closure(TvmVm *vm, const TvmClosure *c, const TvmSlot *args, 
 }
 
 /* 関数を入れ子で呼ぶ (host が VM の object の interface の method を呼ぶ。tvm_invoke_method) */
-TvmStatus tvm_run_nested(TvmVm *vm, const TvmProto *proto, const TvmSlot *args, TvmSlot *rets) {
+TvmStatus tvm_run_nested(TvmVm *vm, const TvmProto *proto, const TvmSlot *args,
+                         TvmSlot *rets) {
   if (vm->depth >= TVM_MAX_DEPTH) {
     tvm_set_error(vm, "fault: stack overflow (nested calls from the runtime)");
     vm->faulting = true;

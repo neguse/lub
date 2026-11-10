@@ -37,14 +37,12 @@ git_files() {
         # Working tree + index vs HEAD; deletions have nothing to format.
         git diff -z --name-only --diff-filter=d HEAD -- "$@" \
             ':!:third_party/**' \
-            ':!:tcs/**' \
             ':!:web/dist/**' \
             ':!:web/public/**' \
             ':!:web/node_modules/**'
     else
         git ls-files -z -- "$@" \
             ':!:third_party/**' \
-            ':!:tcs/**' \
             ':!:web/dist/**' \
             ':!:web/public/**' \
             ':!:web/node_modules/**'
@@ -65,7 +63,7 @@ run_if_any() {
 mapfile -d '' C_FILES < <(git_files '*.c' '*.cc' '*.cpp' '*.h' '*.hpp' '*.m')
 mapfile -d '' SLANG_FILES < <(git_files 'samples/*.slang' 'tests/*.slang')
 mapfile -d '' LUA_FILES < <(git_files '*.lua')
-mapfile -d '' CS_FILES < <(git_files 'samples/*.cs' 'cs-lib/*.cs' 'dotnet/*.cs' 'templates/*.cs')
+mapfile -d '' CS_FILES < <(git_files 'samples/*.cs' 'cs-lib/*.cs' 'dotnet/*.cs' 'templates/*.cs' 'tcs/*.cs')
 mapfile -d '' WEB_FILES < <(git_files \
     'web/*.html' \
     'web/*.json' \

@@ -8,16 +8,18 @@
 
 /* 比較。left < right なら負、等しければ 0、大きければ正。
    比較の中で止まる理由 (fault) が起きたら *stop を 0 以外にする。以後の比較は呼ばれない */
-typedef int (*TcsSortCompare)(void *ctx, const void *left, const void *right, int *stop);
+typedef int (*TcsSortCompare)(void *ctx, const void *left, const void *right,
+                              int *stop);
 
 typedef enum TcsSortStatus {
   TCS_SORT_OK = 0,
-  TCS_SORT_STOPPED = 1,      /* 比較が *stop を立てた */
-  TCS_SORT_INCONSISTENT = 2, /* 比較が不整合で走査が区間の外に出た (.NET は例外) */
+  TCS_SORT_STOPPED = 1, /* 比較が *stop を立てた */
+  TCS_SORT_INCONSISTENT =
+      2, /* 比較が不整合で走査が区間の外に出た (.NET は例外) */
 } TcsSortStatus;
 
 /* keys[0..n) (要素は es byte) を並べる。scratch は 2 * es byte の作業領域 */
-TcsSortStatus tcs_sort(void *keys, size_t n, size_t es, void *scratch, TcsSortCompare compare,
-                       void *ctx);
+TcsSortStatus tcs_sort(void *keys, size_t n, size_t es, void *scratch,
+                       TcsSortCompare compare, void *ctx);
 
 #endif

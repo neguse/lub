@@ -62,11 +62,25 @@ static inline uint64_t tcs_mul64(uint64_t a, uint64_t b, uint64_t *hi) {
 
 static inline int tcs_clz32(uint32_t x) {
   int n = 0;
-  if (!(x & 0xffff0000u)) { n += 16; x <<= 16; }
-  if (!(x & 0xff000000u)) { n += 8; x <<= 8; }
-  if (!(x & 0xf0000000u)) { n += 4; x <<= 4; }
-  if (!(x & 0xc0000000u)) { n += 2; x <<= 2; }
-  if (!(x & 0x80000000u)) { n += 1; }
+  if (!(x & 0xffff0000u)) {
+    n += 16;
+    x <<= 16;
+  }
+  if (!(x & 0xff000000u)) {
+    n += 8;
+    x <<= 8;
+  }
+  if (!(x & 0xf0000000u)) {
+    n += 4;
+    x <<= 4;
+  }
+  if (!(x & 0xc0000000u)) {
+    n += 2;
+    x <<= 2;
+  }
+  if (!(x & 0x80000000u)) {
+    n += 1;
+  }
   return n;
 }
 

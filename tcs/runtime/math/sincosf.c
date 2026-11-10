@@ -90,41 +90,83 @@ static double sincos_rltl0(double x, int *q) {
 }
 
 static const double sincos_b[] = {0x1.3bd3cc9be45dcp-6, -0x1.03c1f081b0833p-14,
-                           0x1.55d3c6fc9ac1fp-24, -0x1.e1d3ff281b40dp-35};
+                                  0x1.55d3c6fc9ac1fp-24,
+                                  -0x1.e1d3ff281b40dp-35};
 static const double sincos_a[] = {0x1.921fb54442d17p-3, -0x1.4abbce6256a39p-10,
-                           0x1.466bc5a518c16p-19, -0x1.32bdc61074ff6p-29};
+                                  0x1.466bc5a518c16p-19,
+                                  -0x1.32bdc61074ff6p-29};
 /* sin(i * pi/16)。cos の表 (tbc) は 8 つずらした cos(i * pi/16) */
-static const double sincos_tb[] = {
-    0x0p+0,                 0x1.8f8b83c69a60bp-3,   0x1.87de2a6aea963p-2,
-    0x1.1c73b39ae68c8p-1,   0x1.6a09e667f3bcdp-1,   0x1.a9b66290ea1a3p-1,
-    0x1.d906bcf328d46p-1,   0x1.f6297cff75cbp-1,    0x1p+0,
-    0x1.f6297cff75cbp-1,    0x1.d906bcf328d46p-1,   0x1.a9b66290ea1a3p-1,
-    0x1.6a09e667f3bcdp-1,   0x1.1c73b39ae68c8p-1,   0x1.87de2a6aea963p-2,
-    0x1.8f8b83c69a60bp-3,   0x0p+0,                 -0x1.8f8b83c69a60bp-3,
-    -0x1.87de2a6aea963p-2,  -0x1.1c73b39ae68c8p-1,  -0x1.6a09e667f3bcdp-1,
-    -0x1.a9b66290ea1a3p-1,  -0x1.d906bcf328d46p-1,  -0x1.f6297cff75cbp-1,
-    -0x1p+0,                -0x1.f6297cff75cbp-1,   -0x1.d906bcf328d46p-1,
-    -0x1.a9b66290ea1a3p-1,  -0x1.6a09e667f3bcdp-1,  -0x1.1c73b39ae68c8p-1,
-    -0x1.87de2a6aea963p-2,  -0x1.8f8b83c69a60bp-3};
+static const double sincos_tb[] = {0x0p+0,
+                                   0x1.8f8b83c69a60bp-3,
+                                   0x1.87de2a6aea963p-2,
+                                   0x1.1c73b39ae68c8p-1,
+                                   0x1.6a09e667f3bcdp-1,
+                                   0x1.a9b66290ea1a3p-1,
+                                   0x1.d906bcf328d46p-1,
+                                   0x1.f6297cff75cbp-1,
+                                   0x1p+0,
+                                   0x1.f6297cff75cbp-1,
+                                   0x1.d906bcf328d46p-1,
+                                   0x1.a9b66290ea1a3p-1,
+                                   0x1.6a09e667f3bcdp-1,
+                                   0x1.1c73b39ae68c8p-1,
+                                   0x1.87de2a6aea963p-2,
+                                   0x1.8f8b83c69a60bp-3,
+                                   0x0p+0,
+                                   -0x1.8f8b83c69a60bp-3,
+                                   -0x1.87de2a6aea963p-2,
+                                   -0x1.1c73b39ae68c8p-1,
+                                   -0x1.6a09e667f3bcdp-1,
+                                   -0x1.a9b66290ea1a3p-1,
+                                   -0x1.d906bcf328d46p-1,
+                                   -0x1.f6297cff75cbp-1,
+                                   -0x1p+0,
+                                   -0x1.f6297cff75cbp-1,
+                                   -0x1.d906bcf328d46p-1,
+                                   -0x1.a9b66290ea1a3p-1,
+                                   -0x1.6a09e667f3bcdp-1,
+                                   -0x1.1c73b39ae68c8p-1,
+                                   -0x1.87de2a6aea963p-2,
+                                   -0x1.8f8b83c69a60bp-3};
 
-static const double sincos_tbc[] = {
-    0x1p+0,                 0x1.f6297cff75cbp-1,    0x1.d906bcf328d46p-1,
-    0x1.a9b66290ea1a3p-1,   0x1.6a09e667f3bcdp-1,   0x1.1c73b39ae68c8p-1,
-    0x1.87de2a6aea963p-2,   0x1.8f8b83c69a60bp-3,   0x0p+0,
-    -0x1.8f8b83c69a60bp-3,  -0x1.87de2a6aea963p-2,  -0x1.1c73b39ae68c8p-1,
-    -0x1.6a09e667f3bcdp-1,  -0x1.a9b66290ea1a3p-1,  -0x1.d906bcf328d46p-1,
-    -0x1.f6297cff75cbp-1,   -0x1p+0,                -0x1.f6297cff75cbp-1,
-    -0x1.d906bcf328d46p-1,  -0x1.a9b66290ea1a3p-1,  -0x1.6a09e667f3bcdp-1,
-    -0x1.1c73b39ae68c8p-1,  -0x1.87de2a6aea963p-2,  -0x1.8f8b83c69a60bp-3,
-    0x0p+0,                 0x1.8f8b83c69a60bp-3,   0x1.87de2a6aea963p-2,
-    0x1.1c73b39ae68c8p-1,   0x1.6a09e667f3bcdp-1,   0x1.a9b66290ea1a3p-1,
-    0x1.d906bcf328d46p-1,   0x1.f6297cff75cbp-1};
+static const double sincos_tbc[] = {0x1p+0,
+                                    0x1.f6297cff75cbp-1,
+                                    0x1.d906bcf328d46p-1,
+                                    0x1.a9b66290ea1a3p-1,
+                                    0x1.6a09e667f3bcdp-1,
+                                    0x1.1c73b39ae68c8p-1,
+                                    0x1.87de2a6aea963p-2,
+                                    0x1.8f8b83c69a60bp-3,
+                                    0x0p+0,
+                                    -0x1.8f8b83c69a60bp-3,
+                                    -0x1.87de2a6aea963p-2,
+                                    -0x1.1c73b39ae68c8p-1,
+                                    -0x1.6a09e667f3bcdp-1,
+                                    -0x1.a9b66290ea1a3p-1,
+                                    -0x1.d906bcf328d46p-1,
+                                    -0x1.f6297cff75cbp-1,
+                                    -0x1p+0,
+                                    -0x1.f6297cff75cbp-1,
+                                    -0x1.d906bcf328d46p-1,
+                                    -0x1.a9b66290ea1a3p-1,
+                                    -0x1.6a09e667f3bcdp-1,
+                                    -0x1.1c73b39ae68c8p-1,
+                                    -0x1.87de2a6aea963p-2,
+                                    -0x1.8f8b83c69a60bp-3,
+                                    0x0p+0,
+                                    0x1.8f8b83c69a60bp-3,
+                                    0x1.87de2a6aea963p-2,
+                                    0x1.1c73b39ae68c8p-1,
+                                    0x1.6a09e667f3bcdp-1,
+                                    0x1.a9b66290ea1a3p-1,
+                                    0x1.d906bcf328d46p-1,
+                                    0x1.f6297cff75cbp-1};
 
 /* 多項式の近似で丸めを誤る入力と、その正しい値 (rh + rl) */
-static const float sin_arg[] = {0x1.33333p+13f, 0x1.75b8a2p-1f,
-                                0x1.4f0654p+0f, 0x1.2d97c8p+3f};
-static const float sin_rh[] = {-0x1.63f4bap-2f, 0x1.55688ap-1f,
-                               0x1.ee836cp-1f, -0x1.99bc5ap-26f};
+static const float sin_arg[] = {0x1.33333p+13f, 0x1.75b8a2p-1f, 0x1.4f0654p+0f,
+                                0x1.2d97c8p+3f};
+static const float sin_rh[] = {-0x1.63f4bap-2f, 0x1.55688ap-1f, 0x1.ee836cp-1f,
+                               -0x1.99bc5ap-26f};
 static const float sin_rl[] = {-0x1p-27f, -0x1p-26f, -0x1p-26f, -0x1p-51f};
 
 static float as_sinf_database(float x, double r) {
@@ -148,8 +190,10 @@ static float as_sinf_big(float x) {
   int ia;
   double z = sincos_rbig(u, &ia);
   double z2 = z * z, z4 = z2 * z2;
-  double aa = (sincos_a[0] + z2 * sincos_a[1]) + z4 * (sincos_a[2] + z2 * sincos_a[3]);
-  double bb = (sincos_b[0] + z2 * sincos_b[1]) + z4 * (sincos_b[2] + z2 * sincos_b[3]);
+  double aa =
+      (sincos_a[0] + z2 * sincos_a[1]) + z4 * (sincos_a[2] + z2 * sincos_a[3]);
+  double bb =
+      (sincos_b[0] + z2 * sincos_b[1]) + z4 * (sincos_b[2] + z2 * sincos_b[3]);
   double s0 = sincos_tb[ia & 31], c0 = sincos_tb[(ia + 8u) & 31];
   double r = s0 + z * (aa * c0 - bb * (z * s0));
   return (float)r;
@@ -181,8 +225,10 @@ float tcs_sinf(float x) {
     z = sincos_rltl(x, &ia);
   }
   double z2 = z * z, z4 = z2 * z2;
-  double aa = (sincos_a[0] + z2 * sincos_a[1]) + z4 * (sincos_a[2] + z2 * sincos_a[3]);
-  double bb = (sincos_b[0] + z2 * sincos_b[1]) + z4 * (sincos_b[2] + z2 * sincos_b[3]);
+  double aa =
+      (sincos_a[0] + z2 * sincos_a[1]) + z4 * (sincos_a[2] + z2 * sincos_a[3]);
+  double bb =
+      (sincos_b[0] + z2 * sincos_b[1]) + z4 * (sincos_b[2] + z2 * sincos_b[3]);
   double s0 = sincos_tb[ia & 31], c0 = sincos_tb[(ia + 8) & 31];
   double r = s0 + aa * (z * c0) - bb * (z2 * s0);
   return (float)r;
@@ -214,8 +260,10 @@ static float as_cosf_big(float x) {
   int ia;
   double z = sincos_rbig(u, &ia);
   double z2 = z * z, z4 = z2 * z2;
-  double aa = (sincos_a[0] + z2 * sincos_a[1]) + z4 * (sincos_a[2] + z2 * sincos_a[3]);
-  double bb = (sincos_b[0] + z2 * sincos_b[1]) + z4 * (sincos_b[2] + z2 * sincos_b[3]);
+  double aa =
+      (sincos_a[0] + z2 * sincos_a[1]) + z4 * (sincos_a[2] + z2 * sincos_a[3]);
+  double bb =
+      (sincos_b[0] + z2 * sincos_b[1]) + z4 * (sincos_b[2] + z2 * sincos_b[3]);
   double s0 = sincos_tbc[(ia + 8u) & 31], c0 = sincos_tbc[ia & 31];
   double r = c0 + z * (aa * s0 - bb * (z * c0));
   uint64_t tail = (tcs_asuint64(r) + 6) & (~(uint64_t)0 >> 36);
@@ -244,8 +292,10 @@ float tcs_cosf(float x) {
     z = sincos_rltl(x, &ia);
   }
   double z2 = z * z, z4 = z2 * z2;
-  double aa = (sincos_a[0] + z2 * sincos_a[1]) + z4 * (sincos_a[2] + z2 * sincos_a[3]);
-  double bb = (sincos_b[0] + z2 * sincos_b[1]) + z4 * (sincos_b[2] + z2 * sincos_b[3]);
+  double aa =
+      (sincos_a[0] + z2 * sincos_a[1]) + z4 * (sincos_a[2] + z2 * sincos_a[3]);
+  double bb =
+      (sincos_b[0] + z2 * sincos_b[1]) + z4 * (sincos_b[2] + z2 * sincos_b[3]);
   double c0 = sincos_tbc[ia & 31], s0 = sincos_tbc[(ia + 8) & 31];
   double r = c0 + aa * (z * s0) - bb * (z2 * c0);
   return (float)r;

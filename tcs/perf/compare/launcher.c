@@ -42,7 +42,8 @@ int main(int argc, char **argv) {
     return 2;
   }
   clock_gettime(CLOCK_MONOTONIC, &t1);
-  double wall = (double)(t1.tv_sec - t0.tv_sec) + (double)(t1.tv_nsec - t0.tv_nsec) / 1e9;
+  double wall =
+      (double)(t1.tv_sec - t0.tv_sec) + (double)(t1.tv_nsec - t0.tv_nsec) / 1e9;
   int code = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
   FILE *f = fopen(argv[1], "w");
   if (!f) {

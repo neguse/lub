@@ -19,7 +19,8 @@ static double now_ms(void) {
 
 static char solo_id[64];
 
-static void instance(void *user, const char *type, const char *path, const char *id) {
+static void instance(void *user, const char *type, const char *path,
+                     const char *id) {
   (void)user;
   printf("  %s %s\n", type, path);
   if (strcmp(path, "Game.Solo") == 0)
@@ -27,7 +28,8 @@ static void instance(void *user, const char *type, const char *path, const char 
 }
 
 static void print(const TvmInspectNode *n) {
-  printf("%s %s %s count=%d\n", n->name, n->type ? n->type : "-", n->text, (int)n->count);
+  printf("%s %s %s count=%d\n", n->name, n->type ? n->type : "-", n->text,
+         (int)n->count);
 }
 
 int main(int argc, char **argv) {
@@ -81,7 +83,8 @@ int main(int argc, char **argv) {
   int32_t n = tvm_inspect(vm, "Game", "Game", 0, 8, game);
   for (int32_t i = 0; i < n; i++)
     if (strcmp(game[i].path, "Game.Solo") == 0)
-      printf("same id: %s\n", strcmp(game[i].id, solo_id) == 0 && solo_id[0] ? "yes" : "no");
+      printf("same id: %s\n",
+             strcmp(game[i].id, solo_id) == 0 && solo_id[0] ? "yes" : "no");
   tvm_free(vm);
   free(bytes);
   return 0;

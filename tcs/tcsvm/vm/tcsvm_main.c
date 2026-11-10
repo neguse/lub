@@ -30,7 +30,8 @@ static uint8_t *read_file(const char *path, size_t *size) {
   return buf;
 }
 
-static TvmStatus call_named(TvmVm *vm, const char *cls, const char *method, int required) {
+static TvmStatus call_named(TvmVm *vm, const char *cls, const char *method,
+                            int required) {
   char name[512];
   snprintf(name, sizeof name, "%s.%s", cls, method);
   int32_t f = tvm_find(vm, name);
@@ -61,12 +62,14 @@ int main(int argc, char **argv) {
     else if (strcmp(argv[i], "--lib") == 0 && i + 2 < argc) {
       lib = argv[++i];
       frames = strtol(argv[++i], NULL, 10);
-    } else if (strcmp(argv[i], "--reload") == 0 && i + 3 < argc && nreloads < MAX_RELOADS) {
+    } else if (strcmp(argv[i], "--reload") == 0 && i + 3 < argc &&
+               nreloads < MAX_RELOADS) {
       reloads[nreloads].at = strtol(argv[++i], NULL, 10);
       reloads[nreloads].module = argv[++i];
       reloads[nreloads].plan = argv[++i];
       nreloads++;
-    } else if (strcmp(argv[i], "--reload-batch") == 0 && i + 2 < argc && nreloads < MAX_RELOADS) {
+    } else if (strcmp(argv[i], "--reload-batch") == 0 && i + 2 < argc &&
+               nreloads < MAX_RELOADS) {
       reloads[nreloads].at = strtol(argv[++i], NULL, 10);
       reloads[nreloads].module = argv[++i];
       reloads[nreloads].plan = NULL;
@@ -81,7 +84,8 @@ int main(int argc, char **argv) {
       path = argv[i];
   }
   if (!path) {
-    fprintf(stderr, "usage: tcsvm [--gc-stress] [--entry C.M | --lib C FRAMES [--reload K NEW.tcsb PLAN]...] "
+    fprintf(stderr, "usage: tcsvm [--gc-stress] [--entry C.M | --lib C FRAMES "
+                    "[--reload K NEW.tcsb PLAN]...] "
                     "program.tcsb\n");
     return 2;
   }
@@ -109,12 +113,14 @@ int main(int argc, char **argv) {
           continue;
         size_t msize, psize = 0;
         uint8_t *m = read_file(reloads[r].module, &msize);
-        uint8_t *p = reloads[r].plan ? read_file(reloads[r].plan, &psize) : NULL;
+        uint8_t *p =
+            reloads[r].plan ? read_file(reloads[r].plan, &psize) : NULL;
         if (!m || (reloads[r].plan && !p)) {
           fprintf(stderr, "tcsvm: cannot read %s\n", reloads[r].module);
           st = TVM_LOAD_ERROR;
         } else {
-          st = p ? tvm_apply(vm, m, msize, p, psize) : tvm_apply_batch(vm, m, msize);
+          st = p ? tvm_apply(vm, m, msize, p, psize)
+                 : tvm_apply_batch(vm, m, msize);
           if (st == TVM_OK && tvm_error(vm)[0])
             fprintf(stderr, "tcsvm: reload warning: %s\n", tvm_error(vm));
         }
@@ -133,7 +139,8 @@ int main(int argc, char **argv) {
   } else if (st == TVM_OK) {
     int32_t f = entry ? tvm_find(vm, entry) : tvm_entry(vm);
     if (f < 0) {
-      fprintf(stderr, "tcsvm: no entry %s\n", entry ? entry : "(module has none)");
+      fprintf(stderr, "tcsvm: no entry %s\n",
+              entry ? entry : "(module has none)");
       code = 2;
     } else {
       st = tvm_call(vm, f, NULL, 0, NULL, 0);

@@ -174,23 +174,23 @@ public static class IlNames
             case TypeKind.Nullable: return TokenDisplay(t.Elem) + "?";
             case TypeKind.Array: return TokenDisplay(t.Elem) + "[]";
             case TypeKind.Tuple:
-            {
-                var parts = new List<string>();
-                foreach (var a in t.Args!) parts.Add(TokenDisplay(a));
-                return "(" + string.Join(", ", parts) + ")";
-            }
-            case TypeKind.Delegate:
-            {
-                var parts = new List<string>();
-                foreach (var a in t.Args!) parts.Add(TokenDisplay(a));
-                if (t.Ret!.Kind == TypeKind.Void)
                 {
-                    if (parts.Count == 0) return "Action";
-                    return "Action<" + string.Join(", ", parts) + ">";
+                    var parts = new List<string>();
+                    foreach (var a in t.Args!) parts.Add(TokenDisplay(a));
+                    return "(" + string.Join(", ", parts) + ")";
                 }
-                parts.Add(TokenDisplay(t.Ret));
-                return "Func<" + string.Join(", ", parts) + ">";
-            }
+            case TypeKind.Delegate:
+                {
+                    var parts = new List<string>();
+                    foreach (var a in t.Args!) parts.Add(TokenDisplay(a));
+                    if (t.Ret!.Kind == TypeKind.Void)
+                    {
+                        if (parts.Count == 0) return "Action";
+                        return "Action<" + string.Join(", ", parts) + ">";
+                    }
+                    parts.Add(TokenDisplay(t.Ret));
+                    return "Func<" + string.Join(", ", parts) + ">";
+                }
             // Dictionary の Keys / Values は入れ子の型 (Dictionary<TKey, TValue>.KeyCollection)
             case TypeKind.KeyCollection:
                 return "Dictionary<" + TokenDisplay(t.Arg(0)) + ", " + TokenDisplay(t.Arg(1)) + ">.KeyCollection";

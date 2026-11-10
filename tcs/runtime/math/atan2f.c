@@ -32,7 +32,8 @@ SOFTWARE.
 #include "tcs_math_internal.h"
 
 /* (xh + xl) * (ch + cl) を double-double で返す */
-static double atan2_muldd(double xh, double xl, double ch, double cl, double *l) {
+static double atan2_muldd(double xh, double xl, double ch, double cl,
+                          double *l) {
   double ahlh = ch * xl, alhh = cl * xh, ahhh = ch * xh,
          ahhl = tcs_mul_err(ch, xh, ahhh);
   ahhl += alhh + ahlh;
@@ -42,7 +43,7 @@ static double atan2_muldd(double xh, double xl, double ch, double cl, double *l)
 }
 
 static double atan2_polydd(double xh, double xl, int n, const double c[][2],
-                     double *l) {
+                           double *l) {
   int i = n - 1;
   double ch = c[i][0], cl = c[i][1];
   while (--i >= 0) {
@@ -79,26 +80,28 @@ static float atan2f_tiny(float y, float x) {
 }
 
 static const double atan2_cn[] = {0x1p+0,
-                            0x1.40e0698f94c35p+1,
-                            0x1.248c5da347f0dp+1,
-                            0x1.d873386572976p-1,
-                            0x1.46fa40b20f1dp-3,
-                            0x1.33f5e041eed0fp-7,
-                            0x1.546bbf28667c5p-14};
+                                  0x1.40e0698f94c35p+1,
+                                  0x1.248c5da347f0dp+1,
+                                  0x1.d873386572976p-1,
+                                  0x1.46fa40b20f1dp-3,
+                                  0x1.33f5e041eed0fp-7,
+                                  0x1.546bbf28667c5p-14};
 static const double atan2_cd[] = {0x1p+0,
-                            0x1.6b8b143a3f6dap+1,
-                            0x1.8421201d18ed5p+1,
-                            0x1.8221d086914ebp+0,
-                            0x1.670657e3a07bap-2,
-                            0x1.0f4951fd1e72dp-5,
-                            0x1.b3874b8798286p-11};
+                                  0x1.6b8b143a3f6dap+1,
+                                  0x1.8421201d18ed5p+1,
+                                  0x1.8221d086914ebp+0,
+                                  0x1.670657e3a07bap-2,
+                                  0x1.0f4951fd1e72dp-5,
+                                  0x1.b3874b8798286p-11};
 static const double atan2_m[] = {0, 1};
 #define ATAN2_PI 0x1.921fb54442d18p+1
 #define ATAN2_PI2 0x1.921fb54442d18p+0
 #define ATAN2_PI2L 0x1.1a62633145c07p-54
-static const double atan2_off[] = {0.0f, ATAN2_PI2, ATAN2_PI, ATAN2_PI2, -0.0f, -ATAN2_PI2, -ATAN2_PI, -ATAN2_PI2};
-static const double atan2_offl[] = {0.0f,  ATAN2_PI2L, 2 * ATAN2_PI2L, ATAN2_PI2L,
-                              -0.0f, -ATAN2_PI2L, -2 * ATAN2_PI2L, -ATAN2_PI2L};
+static const double atan2_off[] = {0.0f,  ATAN2_PI2,  ATAN2_PI,  ATAN2_PI2,
+                                   -0.0f, -ATAN2_PI2, -ATAN2_PI, -ATAN2_PI2};
+static const double atan2_offl[] = {
+    0.0f,  ATAN2_PI2L,  2 * ATAN2_PI2L,  ATAN2_PI2L,
+    -0.0f, -ATAN2_PI2L, -2 * ATAN2_PI2L, -ATAN2_PI2L};
 static const double atan2_sgn[] = {1, -1};
 static const double atan2_c[32][2] = {
     {0x1p+0, -0x1.8c1dac5492248p-87},
@@ -145,9 +148,11 @@ float tcs_atan2f(float y, float x) {
     uint32_t yinf = ay == (0xffu << 23), xinf = ax == (0xffu << 23);
     if (yinf & xinf) {
       if (ux >> 31)
-        return (float)(0x1.2d97c7f3321d2p+1 * atan2_sgn[uy >> 31]); /* +/-3pi/4 */
+        return (float)(0x1.2d97c7f3321d2p+1 *
+                       atan2_sgn[uy >> 31]); /* +/-3pi/4 */
       else
-        return (float)(0x1.921fb54442d18p-1 * atan2_sgn[uy >> 31]); /* +/-pi/4 */
+        return (float)(0x1.921fb54442d18p-1 *
+                       atan2_sgn[uy >> 31]); /* +/-pi/4 */
     }
     if (xinf) {
       if (ux >> 31)
@@ -171,7 +176,8 @@ float tcs_atan2f(float y, float x) {
   }
   uint32_t gt = ay > ax, i = (uy >> 31) * 4 + (ux >> 31) * 2 + gt;
   double zx = x, zy = y;
-  double z = (atan2_m[gt] * zx + atan2_m[1 - gt] * zy) / (atan2_m[gt] * zy + atan2_m[1 - gt] * zx);
+  double z = (atan2_m[gt] * zx + atan2_m[1 - gt] * zy) /
+             (atan2_m[gt] * zy + atan2_m[1 - gt] * zx);
   /* z = x/y if |y| > |x|, and z = y/x otherwise */
   double r;
   int d = (int)ax - (int)ay;
@@ -214,7 +220,8 @@ float tcs_atan2f(float y, float x) {
     zh *= atan2_sgn[gt];
     zl *= atan2_sgn[gt];
     ph = atan2_muldd(zh, zl, ph, pl, &pl);
-    double sh = ph + atan2_off[i], sl = ((atan2_off[i] - sh) + ph) + pl + atan2_offl[i];
+    double sh = ph + atan2_off[i],
+           sl = ((atan2_off[i] - sh) + ph) + pl + atan2_offl[i];
     float rf = (float)sh;
     double th = rf, dh = sh - th, tm = dh + sl;
     if (th + th * 0x1p-60 == th - th * 0x1p-60) {

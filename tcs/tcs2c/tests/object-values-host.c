@@ -8,15 +8,15 @@ void tcs_entry_ObjectValues_Check(void);
 void tcs_entry_Interfaces_Init(void);
 void tcs_entry_Interfaces_Check(void);
 
-int main(void)
-{
-    tcs_lib_init();
-    tcs_entry_ObjectValues_Init();
-    tcs_entry_Interfaces_Init();
-    tcs_lib_collect();
-    if (tcs_lib_heap_bytes() == 0) return 1;
-    tcs_entry_ObjectValues_Check();
-    tcs_entry_Interfaces_Check();
-    tcs_lib_collect();
-    return tcs_lib_heap_bytes() != 0;
+int main(void) {
+  tcs_lib_init();
+  tcs_entry_ObjectValues_Init();
+  tcs_entry_Interfaces_Init();
+  tcs_lib_collect();
+  if (tcs_lib_heap_bytes() == 0)
+    return 1;
+  tcs_entry_ObjectValues_Check();
+  tcs_entry_Interfaces_Check();
+  tcs_lib_collect();
+  return tcs_lib_heap_bytes() != 0;
 }

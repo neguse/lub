@@ -12,7 +12,9 @@ static int lcg(void) {
   return state;
 }
 
-static float frand(float lo, float hi) { return lo + (float)(lcg() % 1000) * (1.0f / 1000.0f) * (hi - lo); }
+static float frand(float lo, float hi) {
+  return lo + (float)(lcg() % 1000) * (1.0f / 1000.0f) * (hi - lo);
+}
 
 static int run(int frames, int print) {
   state = 12345;

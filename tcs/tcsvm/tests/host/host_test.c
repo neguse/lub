@@ -16,12 +16,13 @@ static TvmStatus begin(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   void *opts = a[0].p;
   if (!opts || strcmp(tvm_object_type(opts), "Eng_Opts") != 0)
     return tvm_host_fault(vm, "begin: Opts expected");
-  int32_t w = tvm_field_offset(vm, "Eng_Opts", "w"), scale = tvm_field_offset(vm, "Eng_Opts", "scale"),
+  int32_t w = tvm_field_offset(vm, "Eng_Opts", "w"),
+          scale = tvm_field_offset(vm, "Eng_Opts", "scale"),
           title = tvm_field_offset(vm, "Eng_Opts", "title");
   size_t n;
   const char *t = tvm_string_data(*(void **)((char *)opts + title), &n);
-  printf("begin w=%d scale=%g title=%.*s\n", *(int32_t *)((char *)opts + w), *(float *)((char *)opts + scale), (int)n,
-         t ? t : "");
+  printf("begin w=%d scale=%g title=%.*s\n", *(int32_t *)((char *)opts + w),
+         *(float *)((char *)opts + scale), (int)n, t ? t : "");
   return TVM_OK;
 }
 
@@ -70,7 +71,8 @@ static TvmStatus sum(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
 static TvmStatus many(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   (void)user;
   const TvmTypeInfo *opts = tvm_type(vm, "Eng_Opts");
-  int32_t w = tvm_type_field_offset(opts, "w"), title = tvm_type_field_offset(opts, "title");
+  int32_t w = tvm_type_field_offset(opts, "w"),
+          title = tvm_type_field_offset(opts, "title");
   void *l = tvm_list_new_of(vm, tvm_type(vm, "List<Eng_Opts>"), 0);
   if (!l || !tvm_list_resize(vm, l, a[0].i))
     return tvm_host_fault(vm, "many: no List<Eng_Opts>");
@@ -98,7 +100,8 @@ static TvmStatus squares(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
 static TvmStatus ring(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   (void)user;
   const TvmTypeInfo *t = tvm_type(vm, "Eng_Circle");
-  int32_t kind = tvm_type_field_offset(t, "kind"), radius = tvm_type_field_offset(t, "r");
+  int32_t kind = tvm_type_field_offset(t, "kind"),
+          radius = tvm_type_field_offset(t, "r");
   void *c = tvm_object_new_of(vm, t);
   if (!c || kind != 16 || radius != 20) /* host_value の後に field */
     return tvm_host_fault(vm, "ring: Circle layout");
@@ -110,7 +113,8 @@ static TvmStatus ring(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
 
 static TvmStatus area(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   (void)user;
-  float radius = *(float *)((char *)a[0].p + tvm_field_offset(vm, "Eng_Circle", "r"));
+  float radius =
+      *(float *)((char *)a[0].p + tvm_field_offset(vm, "Eng_Circle", "r"));
   r[0].f = 3.0f * radius * radius;
   return TVM_OK;
 }
@@ -179,7 +183,9 @@ typedef struct OptHit { /* Hit? */
 
 /* host が包む C の API (struct を値で受け、out は pointer) */
 static float phys_dot(Vec2 a, Vec2 b) { return a.x * b.x + a.y * b.y; }
-static Vec2 phys_center(Box2 b) { return (Vec2){(b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2}; }
+static Vec2 phys_center(Box2 b) {
+  return (Vec2){(b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2};
+}
 static void phys_size(Box2 b, Vec2 *size, bool *solid) {
   float sign = b.layer == 5 ? 1.0f : -1.0f;
   *size = (Vec2){(b.max.x - b.min.x) * sign, (b.max.y - b.min.y) * sign};
@@ -196,7 +202,9 @@ static OptHit phys_cast(Vec2 from, float limit) {
     return (OptHit){0};
   return (OptHit){true, {(int32_t)from.x, from.y + 0.5f}};
 }
-static int32_t phys_score(OptHit h, int32_t bias) { return h.has ? h.v.id * 10 + bias : -bias; }
+static int32_t phys_score(OptHit h, int32_t bias) {
+  return h.has ? h.v.id * 10 + bias : -bias;
+}
 
 static TvmStatus dot(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   (void)vm;
@@ -301,18 +309,22 @@ typedef struct RejectHost {
   const char *name, *params, *rets;
 } RejectHost;
 
-static void reject(const char *label, const uint8_t *bytes, size_t size, const RejectHost *hosts, size_t nhosts,
-                   const char *needle) {
+static void reject(const char *label, const uint8_t *bytes, size_t size,
+                   const RejectHost *hosts, size_t nhosts, const char *needle) {
   TvmVm *vm = tvm_new(NULL);
   for (size_t k = 0; k < nhosts; k++)
-    if (!tvm_host(vm, hosts[k].name, hosts[k].params, hosts[k].rets, weight, NULL)) {
+    if (!tvm_host(vm, hosts[k].name, hosts[k].params, hosts[k].rets, weight,
+                  NULL)) {
       printf("reject %s: registration refused\n", label);
       tvm_free(vm);
       return;
     }
   TvmStatus st = tvm_load(vm, bytes, size);
   const char *err = tvm_error(vm);
-  printf("reject %s: %s\n", label, st != TVM_LOAD_ERROR ? "loaded" : strstr(err, needle) ? needle : err);
+  printf("reject %s: %s\n", label,
+         st != TVM_LOAD_ERROR  ? "loaded"
+         : strstr(err, needle) ? needle
+                               : err);
   tvm_free(vm);
 }
 
@@ -329,7 +341,9 @@ static void rejects(const uint8_t *bytes, size_t size) {
   };
   for (size_t k = 0; k < sizeof bad / sizeof bad[0]; k++)
     printf("register %s / %s: %s\n", bad[k][0], bad[k][1],
-           tvm_host(vm, "probe.bad", bad[k][0], bad[k][1], weight, NULL) ? "accepted" : "refused");
+           tvm_host(vm, "probe.bad", bad[k][0], bad[k][1], weight, NULL)
+               ? "accepted"
+               : "refused");
   tvm_free(vm);
   /* 他の場合の登録 (Named は塊にできないので、weight は葉の種類の列で受ける) */
   static const RejectHost dot = {"eng.phys.dot", "S{Eng_Vec2}S{Eng_Vec2}", "f"};
@@ -337,23 +351,37 @@ static void rejects(const uint8_t *bytes, size_t size) {
   static const RejectHost pick = {"eng.phys.pick", "i&S{Eng_Hit}", "b"};
   /* module に無い struct の名前 */
   reject("unknown struct", bytes, size,
-         (RejectHost[]){{"eng.phys.dot", "S{Eng_Vec3}S{Eng_Vec2}", "f"}, weight_leaves, pick}, 3,
-         "eng.phys.dot: no struct type Eng_Vec3 in the module");
+         (RejectHost[]){{"eng.phys.dot", "S{Eng_Vec3}S{Eng_Vec2}", "f"},
+                        weight_leaves,
+                        pick},
+         3, "eng.phys.dot: no struct type Eng_Vec3 in the module");
   /* struct でない型の名前 */
   reject("not a struct", bytes, size,
-         (RejectHost[]){{"eng.phys.dot", "S{string}S{Eng_Vec2}", "f"}, weight_leaves, pick}, 3,
-         "eng.phys.dot: string is not a struct");
+         (RejectHost[]){{"eng.phys.dot", "S{string}S{Eng_Vec2}", "f"},
+                        weight_leaves,
+                        pick},
+         3, "eng.phys.dot: string is not a struct");
   /* 参照の field を持つ struct は塊にできない */
-  reject("reference field", bytes, size, (RejectHost[]){dot, {"eng.phys.weight", "S{Eng_Named}", "f"}, pick}, 3,
+  reject("reference field", bytes, size,
+         (RejectHost[]){dot, {"eng.phys.weight", "S{Eng_Named}", "f"}, pick}, 3,
          "eng.phys.weight: struct Eng_Named has a reference field");
   /* 呼び出しの葉と struct の葉が合わない (Hit は int と float、Vec2 は float 2 つ) */
   reject("shape", bytes, size,
-         (RejectHost[]){{"eng.phys.dot", "S{Eng_Hit}S{Eng_Vec2}", "f"}, weight_leaves, pick}, 3,
-         "argument 0 of eng.phys.dot: the call does not pass the leaves of struct Eng_Hit");
-  reject("out shape", bytes, size, (RejectHost[]){dot, weight_leaves, {"eng.phys.pick", "i&S{Eng_Vec2}", "b"}}, 3,
-         "argument 1 of eng.phys.pick: the call does not pass the leaves of struct Eng_Vec2");
+         (RejectHost[]){{"eng.phys.dot", "S{Eng_Hit}S{Eng_Vec2}", "f"},
+                        weight_leaves,
+                        pick},
+         3,
+         "argument 0 of eng.phys.dot: the call does not pass the leaves of "
+         "struct Eng_Hit");
+  reject("out shape", bytes, size,
+         (RejectHost[]){
+             dot, weight_leaves, {"eng.phys.pick", "i&S{Eng_Vec2}", "b"}},
+         3,
+         "argument 1 of eng.phys.pick: the call does not pass the leaves of "
+         "struct Eng_Vec2");
   /* 合う登録は読める */
-  reject("matching", bytes, size, (RejectHost[]){dot, weight_leaves, pick}, 3, "");
+  reject("matching", bytes, size, (RejectHost[]){dot, weight_leaves, pick}, 3,
+         "");
 }
 
 int main(int argc, char **argv) {
@@ -362,39 +390,55 @@ int main(int argc, char **argv) {
   TvmConfig config = {0, 0, argc > 3 && strcmp(argv[3], "--gc-stress") == 0};
   TvmVm *vm = tvm_new(&config);
   static int bias = 0;
-  if (!tvm_host(vm, "eng.gfx.begin", "o", "", begin, NULL) || !tvm_host(vm, "eng.gfx.add", "ii", "i", add, &bias) ||
-      !tvm_host(vm, "eng.gfx.len", "ff", "f", len, NULL) || !tvm_host(vm, "eng.gfx.name", "", "s", name, NULL) ||
+  if (!tvm_host(vm, "eng.gfx.begin", "o", "", begin, NULL) ||
+      !tvm_host(vm, "eng.gfx.add", "ii", "i", add, &bias) ||
+      !tvm_host(vm, "eng.gfx.len", "ff", "f", len, NULL) ||
+      !tvm_host(vm, "eng.gfx.name", "", "s", name, NULL) ||
       !tvm_host(vm, "eng.gfx.main_tex", "", "i", main_tex, NULL) ||
-      !tvm_host(vm, "eng.gfx.load", "s&s&i", "", load, NULL) || !tvm_host(vm, "eng.gfx.try", "i&f", "b", try_, NULL) ||
-      !tvm_host(vm, "eng.gfx.make", "i", "o", make, NULL) || !tvm_host(vm, "eng.gfx.handle", "o", "i", handle, NULL) ||
-      !tvm_host(vm, "eng.gfx.range", "i", "o", range, NULL) || !tvm_host(vm, "eng.gfx.sum", "o", "i", sum, NULL) ||
-      !tvm_host(vm, "eng.gfx.many", "i", "o", many, NULL) || !tvm_host(vm, "eng.gfx.squares", "i", "o", squares, NULL) ||
-      !tvm_host(vm, "eng.gfx.ring", "f", "o", ring, NULL) || !tvm_host(vm, "eng.circle.area", "o", "f", area, NULL) ||
+      !tvm_host(vm, "eng.gfx.load", "s&s&i", "", load, NULL) ||
+      !tvm_host(vm, "eng.gfx.try", "i&f", "b", try_, NULL) ||
+      !tvm_host(vm, "eng.gfx.make", "i", "o", make, NULL) ||
+      !tvm_host(vm, "eng.gfx.handle", "o", "i", handle, NULL) ||
+      !tvm_host(vm, "eng.gfx.range", "i", "o", range, NULL) ||
+      !tvm_host(vm, "eng.gfx.sum", "o", "i", sum, NULL) ||
+      !tvm_host(vm, "eng.gfx.many", "i", "o", many, NULL) ||
+      !tvm_host(vm, "eng.gfx.squares", "i", "o", squares, NULL) ||
+      !tvm_host(vm, "eng.gfx.ring", "f", "o", ring, NULL) ||
+      !tvm_host(vm, "eng.circle.area", "o", "f", area, NULL) ||
       !tvm_host(vm, "eng.phys.dot", "S{Eng_Vec2}S{Eng_Vec2}", "f", dot, NULL) ||
-      !tvm_host(vm, "eng.phys.center", "S{Eng_Box2}", "S{Eng_Vec2}", center, NULL) ||
-      !tvm_host(vm, "eng.phys.size", "S{Eng_Box2}&S{Eng_Vec2}&b", "", size_, NULL) ||
+      !tvm_host(vm, "eng.phys.center", "S{Eng_Box2}", "S{Eng_Vec2}", center,
+                NULL) ||
+      !tvm_host(vm, "eng.phys.size", "S{Eng_Box2}&S{Eng_Vec2}&b", "", size_,
+                NULL) ||
       !tvm_host(vm, "eng.phys.pick", "i&S{Eng_Hit}", "b", pick, NULL) ||
-      !tvm_host(vm, "eng.phys.cast", "S{Eng_Vec2}f", "S{Eng_Hit?}", cast, NULL) ||
+      !tvm_host(vm, "eng.phys.cast", "S{Eng_Vec2}f", "S{Eng_Hit?}", cast,
+                NULL) ||
       !tvm_host(vm, "eng.phys.score", "S{Eng_Hit?}i", "i", score, NULL) ||
-      !tvm_host(vm, "eng.phys.apply", "oS{Eng_Vec2}", "S{Eng_Vec2}", apply, NULL))
+      !tvm_host(vm, "eng.phys.apply", "oS{Eng_Vec2}", "S{Eng_Vec2}", apply,
+                NULL))
     return 1;
   size_t size;
   uint8_t *bytes = read_file(argv[1], &size);
   int ok = bytes && check(vm, tvm_load(vm, bytes, size));
-  ok = ok && check(vm, tvm_call(vm, tvm_find(vm, "Game.OnInit"), NULL, 0, NULL, 0));
-  ok = ok && check(vm, tvm_call(vm, tvm_find(vm, "Game.Structs"), NULL, 0, NULL, 0));
+  ok = ok &&
+       check(vm, tvm_call(vm, tvm_find(vm, "Game.OnInit"), NULL, 0, NULL, 0));
+  ok = ok &&
+       check(vm, tvm_call(vm, tvm_find(vm, "Game.Structs"), NULL, 0, NULL, 0));
   for (int k = 0; ok && k < 3; k++) {
     /* host が event の object を作って渡す */
     void *ev = tvm_object_new(vm, "Eng_Ev");
-    int32_t kind = tvm_field_offset(vm, "Eng_Ev", "kind"), x = tvm_field_offset(vm, "Eng_Ev", "x");
+    int32_t kind = tvm_field_offset(vm, "Eng_Ev", "kind"),
+            x = tvm_field_offset(vm, "Eng_Ev", "x");
     if (!ev || kind < 0 || x < 0)
       return 1;
     *(int32_t *)((char *)ev + kind) = k;
     *(float *)((char *)ev + x) = 0.5f * (float)k;
     TvmSlot arg = {.p = ev};
-    ok = check(vm, tvm_call(vm, tvm_find(vm, "Game.OnEvent"), &arg, 1, NULL, 0));
+    ok =
+        check(vm, tvm_call(vm, tvm_find(vm, "Game.OnEvent"), &arg, 1, NULL, 0));
     TvmSlot dt = {.f = 2.0f};
-    ok = ok && check(vm, tvm_call(vm, tvm_find(vm, "Game.OnFrame"), &dt, 1, NULL, 0));
+    ok = ok &&
+         check(vm, tvm_call(vm, tvm_find(vm, "Game.OnFrame"), &dt, 1, NULL, 0));
     tvm_frame_end(vm);
   }
   tvm_free(vm);

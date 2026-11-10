@@ -87,94 +87,94 @@ public sealed class IlBuild
         switch (stmt.Kind)
         {
             case NodeKind.Return:
-            {
-                IlExpr? value = null;
-                if (stmt.A != null)
                 {
-                    value = BuildExpr(stmt.A);
-                    if (value == null) return false;
-                    value = WrapStructCopy(stmt.A, value);
+                    IlExpr? value = null;
+                    if (stmt.A != null)
+                    {
+                        value = BuildExpr(stmt.A);
+                        if (value == null) return false;
+                        value = WrapStructCopy(stmt.A, value);
+                    }
+                    AddReturnStat(acc, value, origin);
+                    return true;
                 }
-                AddReturnStat(acc, value, origin);
-                return true;
-            }
             case NodeKind.LocalDecl:
-            {
-                if (stmt.List == null) return true;
-                foreach (var v in stmt.List)
                 {
-                    IlExpr? init = null;
-                    if (v.A != null)
+                    if (stmt.List == null) return true;
+                    foreach (var v in stmt.List)
                     {
-                        init = BuildExpr(v.A);
-                        if (init == null) return false;
-                        init = WrapStructCopy(v.A, init);
-                    }
-                    var name = v.Local != null ? v.Local.IlName : v.Text;
-                    var declaredType = v.Local != null ? IlTypes.Display(LocalDisplayType(stmt, v.Local.Type)) : null;
-                    // 初期化子の条件式は文にする (return の位置と同じ方針)
-                    if (init is IlTernary lt)
-                    {
-                        var varNode = new IlVar(name, null);
-                        acc.Add(new IlLocal(name, null, declaredType, origin));
-                        var thenB = new IlBlock(One(new IlAssign(varNode, lt.T, null)));
-                        var elseB = new IlBlock(One(new IlAssign(varNode, lt.F, null)));
-                        acc.Add(new IlIf(Arm(lt.Cond, thenB), elseB, origin));
-                        continue;
-                    }
-                    if (init is IlIife li)
-                    {
-                        var shape = TryGetValueChainShape(li);
-                        if (shape != null)
+                        IlExpr? init = null;
+                        if (v.A != null)
+                        {
+                            init = BuildExpr(v.A);
+                            if (init == null) return false;
+                            init = WrapStructCopy(v.A, init);
+                        }
+                        var name = v.Local != null ? v.Local.IlName : v.Text;
+                        var declaredType = v.Local != null ? IlTypes.Display(LocalDisplayType(stmt, v.Local.Type)) : null;
+                        // 初期化子の条件式は文にする (return の位置と同じ方針)
+                        if (init is IlTernary lt)
                         {
                             var varNode = new IlVar(name, null);
                             acc.Add(new IlLocal(name, null, declaredType, origin));
-                            foreach (var st in shape.Setup) acc.Add(IlTree.WithOrigin(st, origin));
-                            if (shape.Chain != null) acc.Add(IlTree.WithOrigin(SwitchChainAsAssigns(shape.Chain, varNode), origin));
-                            else acc.Add(new IlAssign(varNode, shape.Tail!, origin));
+                            var thenB = new IlBlock(One(new IlAssign(varNode, lt.T, null)));
+                            var elseB = new IlBlock(One(new IlAssign(varNode, lt.F, null)));
+                            acc.Add(new IlIf(Arm(lt.Cond, thenB), elseB, origin));
                             continue;
                         }
+                        if (init is IlIife li)
+                        {
+                            var shape = TryGetValueChainShape(li);
+                            if (shape != null)
+                            {
+                                var varNode = new IlVar(name, null);
+                                acc.Add(new IlLocal(name, null, declaredType, origin));
+                                foreach (var st in shape.Setup) acc.Add(IlTree.WithOrigin(st, origin));
+                                if (shape.Chain != null) acc.Add(IlTree.WithOrigin(SwitchChainAsAssigns(shape.Chain, varNode), origin));
+                                else acc.Add(new IlAssign(varNode, shape.Tail!, origin));
+                                continue;
+                            }
+                        }
+                        acc.Add(new IlLocal(name, init, declaredType, origin));
                     }
-                    acc.Add(new IlLocal(name, init, declaredType, origin));
+                    return true;
                 }
-                return true;
-            }
             case NodeKind.ExprStmt:
                 return BuildExprStatInto(stmt.A!, stmt, acc);
             case NodeKind.If:
-            {
-                var built = BuildIf(stmt);
-                if (built == null) return false;
-                // root の条件の値を返す IIFE は if の前へ出す (root の条件は無条件に最初に評価されるので評価の順は変わらない。
-                // elseif の条件は前の条件が偽のときだけ評価されるので対象外)
-                if (built.Arms[0].Cond is IlIife condIife)
                 {
-                    var shape = TryGetValueChainShape(condIife);
-                    if (shape != null)
+                    var built = BuildIf(stmt);
+                    if (built == null) return false;
+                    // root の条件の値を返す IIFE は if の前へ出す (root の条件は無条件に最初に評価されるので評価の順は変わらない。
+                    // elseif の条件は前の条件が偽のときだけ評価されるので対象外)
+                    if (built.Arms[0].Cond is IlIife condIife)
                     {
-                        var condVar = new IlVar("__tcs_cond" + _condHoist, null);
-                        _condHoist++;
-                        acc.Add(new IlLocal(condVar.Name, null, "bool", origin));
-                        foreach (var st in shape.Setup) acc.Add(IlTree.WithOrigin(st, origin));
-                        if (shape.Chain != null) acc.Add(IlTree.WithOrigin(SwitchChainAsAssigns(shape.Chain, condVar), origin));
-                        else acc.Add(new IlAssign(condVar, shape.Tail!, origin));
-                        var arms = new List<IlArm>();
-                        arms.Add(new IlArm(condVar, built.Arms[0].Body));
-                        for (int i = 1; i < built.Arms.Count; i++) arms.Add(built.Arms[i]);
-                        built = built with { Arms = arms };
+                        var shape = TryGetValueChainShape(condIife);
+                        if (shape != null)
+                        {
+                            var condVar = new IlVar("__tcs_cond" + _condHoist, null);
+                            _condHoist++;
+                            acc.Add(new IlLocal(condVar.Name, null, "bool", origin));
+                            foreach (var st in shape.Setup) acc.Add(IlTree.WithOrigin(st, origin));
+                            if (shape.Chain != null) acc.Add(IlTree.WithOrigin(SwitchChainAsAssigns(shape.Chain, condVar), origin));
+                            else acc.Add(new IlAssign(condVar, shape.Tail!, origin));
+                            var arms = new List<IlArm>();
+                            arms.Add(new IlArm(condVar, built.Arms[0].Body));
+                            for (int i = 1; i < built.Arms.Count; i++) arms.Add(built.Arms[i]);
+                            built = built with { Arms = arms };
+                        }
                     }
+                    acc.Add(built with { Origin = origin });
+                    return true;
                 }
-                acc.Add(built with { Origin = origin });
-                return true;
-            }
             case NodeKind.While:
-            {
-                var cond = BuildExpr(stmt.A!);
-                var body = BuildBlock(stmt.B!);
-                if (cond == null || body == null) return false;
-                acc.Add(new IlWhile(cond, body, null, origin));
-                return true;
-            }
+                {
+                    var cond = BuildExpr(stmt.A!);
+                    var body = BuildBlock(stmt.B!);
+                    if (cond == null || body == null) return false;
+                    acc.Add(new IlWhile(cond, body, null, origin));
+                    return true;
+                }
             case NodeKind.Block:
                 // do..end は挟まず平らにする
                 return BuildStatsInto(stmt.List, acc);
@@ -185,14 +185,14 @@ public sealed class IlBuild
                 acc.Add(new IlContinue(origin));
                 return true;
             case NodeKind.DoWhile:
-            {
-                var body = BuildBlock(stmt.B!);
-                var cond = BuildExpr(stmt.A!);
-                if (body == null || cond == null) return false;
-                // 条件は本体の後に自分の位置で評価される (--trace)
-                acc.Add(new IlRepeat(body, WithExprOrigin(cond, Origin(stmt.A!)), origin));
-                return true;
-            }
+                {
+                    var body = BuildBlock(stmt.B!);
+                    var cond = BuildExpr(stmt.A!);
+                    if (body == null || cond == null) return false;
+                    // 条件は本体の後に自分の位置で評価される (--trace)
+                    acc.Add(new IlRepeat(body, WithExprOrigin(cond, Origin(stmt.A!)), origin));
+                    return true;
+                }
             case NodeKind.Empty:
                 return true;
             case NodeKind.DeconstructAssign:
@@ -360,32 +360,32 @@ public sealed class IlBuild
         switch (expr.Kind)
         {
             case NodeKind.Call:
-            {
-                if (expr.CondTop && expr.CondChain)
                 {
-                    var condCall = BuildExpr(expr);
-                    if (condCall == null) return false;
-                    acc.Add(new IlCallStat(condCall, origin));
+                    if (expr.CondTop && expr.CondChain)
+                    {
+                        var condCall = BuildExpr(expr);
+                        if (condCall == null) return false;
+                        acc.Add(new IlCallStat(condCall, origin));
+                        return true;
+                    }
+                    if (IsUserOutMethod(expr.Sym)) return BuildUserOutStatInto(expr, expr.Sym!, origin, acc);
+                    if (BuildDictAddStatInto(expr, origin, acc)) return true;
+                    if (IsRefOutCall(expr)) return BuildRefMultiReturnStatInto(expr, origin, acc);
+                    var call = BuildExpr(expr);
+                    if (call == null) return false;
+                    acc.Add(new IlCallStat(call, origin));
                     return true;
                 }
-                if (IsUserOutMethod(expr.Sym)) return BuildUserOutStatInto(expr, expr.Sym!, origin, acc);
-                if (BuildDictAddStatInto(expr, origin, acc)) return true;
-                if (IsRefOutCall(expr)) return BuildRefMultiReturnStatInto(expr, origin, acc);
-                var call = BuildExpr(expr);
-                if (call == null) return false;
-                acc.Add(new IlCallStat(call, origin));
-                return true;
-            }
             case NodeKind.Assign:
                 return BuildAssignInto(expr, origin, acc);
             // `new W();`: constructor の副作用のために作り、値は捨てる
             case NodeKind.New:
-            {
-                var created = BuildExpr(expr);
-                if (created == null) return false;
-                acc.Add(new IlCallStat(created, origin));
-                return true;
-            }
+                {
+                    var created = BuildExpr(expr);
+                    if (created == null) return false;
+                    acc.Add(new IlCallStat(created, origin));
+                    return true;
+                }
         }
         return UnportedStat("expression statement", expr);
     }
@@ -465,16 +465,16 @@ public sealed class IlBuild
                 }
                 break;
             case NodeKind.Call:
-            {
-                // readonly でない instance method の呼び出しは受け手を書き換えうる
-                var callee = n.A;
-                if (callee != null && callee.Kind == NodeKind.Member && callee.A != null && n.Sym != null
-                    && n.Info != CallKind.Extension && n.Sym.Kind == SymKind.Method && !n.Sym.IsStatic
-                    && n.Sym.Builtin == "" && !(n.Sym.Decl != null && n.Sym.Decl.Has(Mods.Readonly))
-                    && RootsAt(callee.A, variable))
-                    return true;
-                break;
-            }
+                {
+                    // readonly でない instance method の呼び出しは受け手を書き換えうる
+                    var callee = n.A;
+                    if (callee != null && callee.Kind == NodeKind.Member && callee.A != null && n.Sym != null
+                        && n.Info != CallKind.Extension && n.Sym.Kind == SymKind.Method && !n.Sym.IsStatic
+                        && n.Sym.Builtin == "" && !(n.Sym.Decl != null && n.Sym.Decl.Has(Mods.Readonly))
+                        && RootsAt(callee.A, variable))
+                        return true;
+                    break;
+                }
             case NodeKind.Member:
                 // getter が readonly でない property の読みも受け手を書き換えうる (代入の直接の子は除く)
                 if (!parentIsAssign && n.A != null && n.Sym != null && n.Sym.Kind == SymKind.Property && n.Sym.Builtin == ""
@@ -562,19 +562,19 @@ public sealed class IlBuild
             case NodeKind.NullLit:
                 return BuildLiteral(expr);
             case NodeKind.Paren:
-            {
-                var inner = BuildExpr(expr.A!);
-                return inner == null ? null : new IlParen(inner, null);
-            }
+                {
+                    var inner = BuildExpr(expr.A!);
+                    return inner == null ? null : new IlParen(inner, null);
+                }
             // checked / unchecked は中の演算の文脈 (CheckedIntCall)
             case NodeKind.Checked:
-            {
-                bool outer = _checked;
-                _checked = expr.Value == 1;
-                var inner = BuildExpr(expr.A!);
-                _checked = outer;
-                return inner == null ? null : new IlParen(inner, null);
-            }
+                {
+                    bool outer = _checked;
+                    _checked = expr.Value == 1;
+                    var inner = BuildExpr(expr.A!);
+                    _checked = outer;
+                    return inner == null ? null : new IlParen(inner, null);
+                }
             case NodeKind.This:
                 return new IlVar("self", null);
             case NodeKind.Name:
@@ -602,13 +602,13 @@ public sealed class IlBuild
             case NodeKind.Cast:
                 return BuildCast(expr);
             case NodeKind.Conditional:
-            {
-                var cond = BuildExpr(expr.A!);
-                var t = BuildExpr(expr.B!);
-                var f = BuildExpr(expr.C!);
-                if (cond == null || t == null || f == null) return null;
-                return new IlTernary(cond, t, f, null);
-            }
+                {
+                    var cond = BuildExpr(expr.A!);
+                    var t = BuildExpr(expr.B!);
+                    var f = BuildExpr(expr.C!);
+                    if (cond == null || t == null || f == null) return null;
+                    return new IlTernary(cond, t, f, null);
+                }
             case NodeKind.Index:
                 return BuildElementAccess(expr);
             case NodeKind.DefaultLit:
@@ -624,10 +624,10 @@ public sealed class IlBuild
             case NodeKind.NewArray:
                 return BuildNewArray(expr);
             case NodeKind.ArrayInit:
-            {
-                var at = expr.Type;
-                return BuildArrayItems(expr, at != null && at.Kind == TypeKind.Array ? IlTypes.Display(at.Elem) : null);
-            }
+                {
+                    var at = expr.Type;
+                    return BuildArrayItems(expr, at != null && at.Kind == TypeKind.Array ? IlTypes.Display(at.Elem) : null);
+                }
         }
         return Unported("expression", expr);
     }
@@ -664,27 +664,27 @@ public sealed class IlBuild
             case ConvKind.MethodGroup:
                 return inner;
             case ConvKind.NullableIntToFloat:
-            {
-                // int? → float? は値があるときだけ変換する
-                if (IlTypes.UnwrapNullable(conv.Type!).Kind != TypeKind.Float) return inner;
-                if (IsFloatConverted(inner) || promoted) return inner;
-                if (!IlTypes.IsNullableValueType(NaturalType(conv.A!))) return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", false, null));
-                return new IlLiftedUn(IlUnOp.ToFloat, inner, null);
-            }
-            case ConvKind.IntToFloat:
-            {
-                // 変換先が float (double ではない) のときだけ明示の変換にする
-                if (IlTypes.UnwrapNullable(conv.Type!).Kind != TypeKind.Float) return ApplyNullableConversion(conv, inner);
-                if (IsFloatConverted(inner) || promoted) return ApplyNullableConversion(conv, inner);
-                if (conv.A!.HasConst && conv.A.Const != null)
                 {
-                    var c = conv.A.Const;
-                    float f = c.Kind == ConstKind.Float ? c.F : (float)c.I;
-                    return ApplyNullableConversion(conv, FloatLit(f));
+                    // int? → float? は値があるときだけ変換する
+                    if (IlTypes.UnwrapNullable(conv.Type!).Kind != TypeKind.Float) return inner;
+                    if (IsFloatConverted(inner) || promoted) return inner;
+                    if (!IlTypes.IsNullableValueType(NaturalType(conv.A!))) return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", false, null));
+                    return new IlLiftedUn(IlUnOp.ToFloat, inner, null);
                 }
-                // int → float? は数の変換の後に T? へ包む
-                return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", false, null));
-            }
+            case ConvKind.IntToFloat:
+                {
+                    // 変換先が float (double ではない) のときだけ明示の変換にする
+                    if (IlTypes.UnwrapNullable(conv.Type!).Kind != TypeKind.Float) return ApplyNullableConversion(conv, inner);
+                    if (IsFloatConverted(inner) || promoted) return ApplyNullableConversion(conv, inner);
+                    if (conv.A!.HasConst && conv.A.Const != null)
+                    {
+                        var c = conv.A.Const;
+                        float f = c.Kind == ConstKind.Float ? c.F : (float)c.I;
+                        return ApplyNullableConversion(conv, FloatLit(f));
+                    }
+                    // int → float? は数の変換の後に T? へ包む
+                    return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", false, null));
+                }
         }
         return Unported("conversion " + conv.Info, conv);
     }
@@ -1080,19 +1080,19 @@ public sealed class IlBuild
                 return DTarget.Discard();
             case NodeKind.DeconstructAssign:
             case NodeKind.Tuple:
-            {
-                var items = new List<DTarget>();
-                if (t.List != null)
                 {
-                    foreach (var x in t.List)
+                    var items = new List<DTarget>();
+                    if (t.List != null)
                     {
-                        var item = DeconstructTargetOf(TupleElementNode(x));
-                        if (item == null) return null;
-                        items.Add(item);
+                        foreach (var x in t.List)
+                        {
+                            var item = DeconstructTargetOf(TupleElementNode(x));
+                            if (item == null) return null;
+                            items.Add(item);
+                        }
                     }
+                    return DTarget.Nested(items);
                 }
-                return DTarget.Nested(items);
-            }
             case NodeKind.Name:
                 if (t.Text == "_" && t.Info != RefKind.Local && t.Sym == null) return DTarget.Discard();
                 return t.Type != null ? DTarget.PlaceOf(t, t.Type) : null;
@@ -1797,15 +1797,15 @@ public sealed class IlBuild
         {
             case "Console.WriteLine":
             case "Console.Write":
-            {
-                var printArgs = new List<IlExpr>();
-                for (int i = 0; i < args.Count; i++)
                 {
-                    var src = call.List![i].A!;
-                    printArgs.Add(StringifyForPrint(src, args[i]));
+                    var printArgs = new List<IlExpr>();
+                    for (int i = 0; i < args.Count; i++)
+                    {
+                        var src = call.List![i].A!;
+                        printArgs.Add(StringifyForPrint(src, args[i]));
+                    }
+                    return new IlCall(id == "Console.Write" ? "__tcs_write" : "__tcs_writeline", printArgs, null);
                 }
-                return new IlCall(id == "Console.Write" ? "__tcs_write" : "__tcs_writeline", printArgs, null);
-            }
             case "Environment.GetEnvironmentVariable":
                 return new IlCall("__tcs_getenv", args, null);
             case "String.IsNullOrEmpty":
@@ -1814,23 +1814,23 @@ public sealed class IlBuild
             case "String.Join":
             case "String.JoinAny":
             case "String.JoinArgs":
-            {
-                if (args.Count == 2)
                 {
-                    var elem = IlTypes.ElementOf(NaturalType(call.List![1].A!));
-                    // enum の要素は member の名前にしてから Join する (Enum.ToString と同じ)
-                    var joinSpec = elem != null ? EnumFormatSpec(elem, false) : null;
-                    if (joinSpec != null)
+                    if (args.Count == 2)
                     {
-                        var ja = new List<IlExpr>();
-                        ja.Add(args[0]);
-                        ja.Add(args[1]);
-                        ja.Add(IlLiterals.Str(joinSpec));
-                        return new IlCall("String.JoinEnum", ja, null);
+                        var elem = IlTypes.ElementOf(NaturalType(call.List![1].A!));
+                        // enum の要素は member の名前にしてから Join する (Enum.ToString と同じ)
+                        var joinSpec = elem != null ? EnumFormatSpec(elem, false) : null;
+                        if (joinSpec != null)
+                        {
+                            var ja = new List<IlExpr>();
+                            ja.Add(args[0]);
+                            ja.Add(args[1]);
+                            ja.Add(IlLiterals.Str(joinSpec));
+                            return new IlCall("String.JoinEnum", ja, null);
+                        }
                     }
+                    return new IlCall("String.Join", args, null);
                 }
-                return new IlCall("String.Join", args, null);
-            }
             case "Int.Parse":
                 return new IlCall("__tcs_iparse", args, null);
             case "Float.Parse":
@@ -1891,11 +1891,11 @@ public sealed class IlBuild
             case "List.Insert":
                 return new IlCall("List." + callee.Text, Prepend(recv, args), null);
             case "List.GetRange":
-            {
-                var ga = Prepend(recv, args);
-                foreach (var c in ListElementCopier(recvType)) ga.Add(c);
-                return new IlCall("List.GetRange", ga, null);
-            }
+                {
+                    var ga = Prepend(recv, args);
+                    foreach (var c in ListElementCopier(recvType)) ga.Add(c);
+                    return new IlCall("List.GetRange", ga, null);
+                }
             case "Queue.Contains":
                 return new IlCall("TcsQueue.Contains", Prepend(recv, WithStructElementOps(recvType, "Contains", args)), null);
             case "Dict.ContainsKey":
@@ -1933,14 +1933,14 @@ public sealed class IlBuild
             case "Nullable.GetValueOrDefault":
                 return new IlNullableGetOrDefault(recv, DefaultIl(IlTypes.UnwrapNullable(recvType!)), null);
             case "Nullable.GetValueOrDefaultValue":
-            {
-                // method の引数なので常に 1 回評価する (?? と違い遅延しない)
-                var stats = new List<IlStat>();
-                stats.Add(new IlLocal("__tcs_val", recv, null, null));
-                stats.Add(new IlLocal("__tcs_fb", args[0], null, null));
-                stats.Add(new IlReturn(new IlNullableGetOrDefault(new IlVar("__tcs_val", null), new IlVar("__tcs_fb", null), null), null));
-                return new IlIife(stats, null);
-            }
+                {
+                    // method の引数なので常に 1 回評価する (?? と違い遅延しない)
+                    var stats = new List<IlStat>();
+                    stats.Add(new IlLocal("__tcs_val", recv, null, null));
+                    stats.Add(new IlLocal("__tcs_fb", args[0], null, null));
+                    stats.Add(new IlReturn(new IlNullableGetOrDefault(new IlVar("__tcs_val", null), new IlVar("__tcs_fb", null), null), null));
+                    return new IlIife(stats, null);
+                }
             case "String.Trim":
                 return new IlCall("String.Trim", One(recv), null);
             case "String.ToUpper":
@@ -1961,21 +1961,21 @@ public sealed class IlBuild
             case "Enum.ToString":
                 return WrapFloatToString(recvNode, recv);
             case "Enum.ToStringFormat":
-            {
-                // enum の書式 ("G" / "F" / "D")
-                var fa = call.List![0].A!;
-                if (fa.HasConst && fa.Const != null && fa.Const.Kind == ConstKind.String) return WrapEnumFormat(NaturalType(recvNode), recv, fa.Const.S);
-                return null;
-            }
+                {
+                    // enum の書式 ("G" / "F" / "D")
+                    var fa = call.List![0].A!;
+                    if (fa.HasConst && fa.Const != null && fa.Const.Kind == ConstKind.String) return WrapEnumFormat(NaturalType(recvNode), recv, fa.Const.S);
+                    return null;
+                }
             case "Float.ToStringFormat":
             case "Int.ToStringFormat":
-            {
-                // 数の標準の書式 (補間の `{x:F2}` と同じ)。空の書式は書式なしと同じ
-                var fa = call.List![0].A!;
-                if (!(fa.HasConst && fa.Const != null && fa.Const.Kind == ConstKind.String)) return null;
-                if (fa.Const.S == "") return WrapFloatToString(recvNode, recv);
-                return WrapNumberFormat(NaturalType(recvNode), recv, fa.Const.S);
-            }
+                {
+                    // 数の標準の書式 (補間の `{x:F2}` と同じ)。空の書式は書式なしと同じ
+                    var fa = call.List![0].A!;
+                    if (!(fa.HasConst && fa.Const != null && fa.Const.Kind == ConstKind.String)) return null;
+                    if (fa.Const.S == "") return WrapFloatToString(recvNode, recv);
+                    return WrapNumberFormat(NaturalType(recvNode), recv, fa.Const.S);
+                }
         }
         return Unported("builtin " + id, call);
     }
@@ -2938,18 +2938,18 @@ public sealed class IlBuild
             case NodeKind.Paren:
                 return BuildStructPlace(p.A!, baseExpr, setup);
             case NodeKind.Member:
-            {
-                var inner = BuildStructPlace(p.A!, baseExpr, setup);
-                return inner == null ? null : new IlField(inner, N(p.Sym!), null);
-            }
+                {
+                    var inner = BuildStructPlace(p.A!, baseExpr, setup);
+                    return inner == null ? null : new IlField(inner, N(p.Sym!), null);
+                }
             case NodeKind.Index:
-            {
-                var index = BuildExpr(p.List![0]);
-                if (index == null) return null;
-                setup.Add(new IlLocal("__tcs_idx", index, null, null));
-                var at = NaturalType(p.A!);
-                return new IlIndex(new IlVar("__tcs_obj", null), new IlVar("__tcs_idx", null), true, IlTypes.HasNilableElements(at), null);
-            }
+                {
+                    var index = BuildExpr(p.List![0]);
+                    if (index == null) return null;
+                    setup.Add(new IlLocal("__tcs_idx", index, null, null));
+                    var at = NaturalType(p.A!);
+                    return new IlIndex(new IlVar("__tcs_obj", null), new IlVar("__tcs_idx", null), true, IlTypes.HasNilableElements(at), null);
+                }
         }
         return null;
     }
@@ -3609,18 +3609,18 @@ public sealed class IlBuild
         switch (scope.Kind)
         {
             case NodeKind.Assign:
-            {
-                var l = scope.A!;
-                if (l.Kind == NodeKind.Name && l.Text == name) return true;
-                break;
-            }
+                {
+                    var l = scope.A!;
+                    if (l.Kind == NodeKind.Name && l.Text == name) return true;
+                    break;
+                }
             case NodeKind.PostIncDec:
             case NodeKind.PreIncDec:
-            {
-                var o = scope.A!;
-                if (o.Kind == NodeKind.Name && o.Text == name) return true;
-                break;
-            }
+                {
+                    var o = scope.A!;
+                    if (o.Kind == NodeKind.Name && o.Text == name) return true;
+                    break;
+                }
             case NodeKind.Arg:
                 if ((scope.Has(Mods.Ref) || scope.Has(Mods.Out) || scope.Has(Mods.In)) && scope.A != null && scope.A.Kind == NodeKind.Name && scope.A.Text == name) return true;
                 break;
@@ -3960,30 +3960,30 @@ public sealed class IlBuild
         switch (pattern.Kind)
         {
             case NodeKind.PatConst:
-            {
-                if (IsNullLiteral(pattern.A!) && IlTypes.IsNullableValueType(inputType))
-                    return new IlUn(IlUnOp.Not, new IlNullableHasValue(governing, null), null);
-                var value = BuildExpr(pattern.A!);
-                return value == null ? null : new IlBin(IlBinOp.Eq, governing, value, null);
-            }
+                {
+                    if (IsNullLiteral(pattern.A!) && IlTypes.IsNullableValueType(inputType))
+                        return new IlUn(IlUnOp.Not, new IlNullableHasValue(governing, null), null);
+                    var value = BuildExpr(pattern.A!);
+                    return value == null ? null : new IlBin(IlBinOp.Eq, governing, value, null);
+                }
             case NodeKind.PatDiscard:
             case NodeKind.PatVar:
                 return IlLiterals.Bool(true);
             case NodeKind.PatType:
                 return BuildTypeCheck(governing, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
             case NodeKind.PatDecl:
-            {
-                if (IsStructDesignation(pattern, inputType))
-                    return BuildStructDeclarationIs(new IlVar(pattern.Local!.IlName, null), governing, inputType!, pattern.Type!);
-                return BuildTypeCheck(governing, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
-            }
+                {
+                    if (IsStructDesignation(pattern, inputType))
+                        return BuildStructDeclarationIs(new IlVar(pattern.Local!.IlName, null), governing, inputType!, pattern.Type!);
+                    return BuildTypeCheck(governing, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
+                }
             case NodeKind.PatProp:
                 return BuildRecursivePattern(governing, pattern, inputType);
             case NodeKind.PatRel:
-            {
-                var v = BuildExpr(pattern.A!);
-                return v == null ? null : new IlBin(RelationalIlOp(pattern.Text), governing, v, null);
-            }
+                {
+                    var v = BuildExpr(pattern.A!);
+                    return v == null ? null : new IlBin(RelationalIlOp(pattern.Text), governing, v, null);
+                }
             case NodeKind.PatAnd:
             case NodeKind.PatOr:
                 return BindPatternInput(governing, input =>
@@ -3994,10 +3994,10 @@ public sealed class IlBuild
                     return r == null ? null : BinaryPatternIl(pattern, l, r);
                 });
             case NodeKind.PatNot:
-            {
-                var sub = BuildIsSubPattern(governing, pattern.A!, inputType);
-                return sub == null ? null : new IlUn(IlUnOp.Not, new IlParen(sub, null), null);
-            }
+                {
+                    var sub = BuildIsSubPattern(governing, pattern.A!, inputType);
+                    return sub == null ? null : new IlUn(IlUnOp.Not, new IlParen(sub, null), null);
+                }
         }
         return Unported("pattern", pattern);
     }
@@ -4008,23 +4008,23 @@ public sealed class IlBuild
         switch (pattern.Kind)
         {
             case NodeKind.PatConst:
-            {
-                var value = BuildExpr(pattern.A!);
-                return value == null ? null : new IlBin(IlBinOp.Eq, expr, value, null);
-            }
+                {
+                    var value = BuildExpr(pattern.A!);
+                    return value == null ? null : new IlBin(IlBinOp.Eq, expr, value, null);
+                }
             case NodeKind.PatType:
             case NodeKind.PatDecl:
                 return BuildTypeCheck(expr, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
             case NodeKind.PatNot:
-            {
-                var sub = BuildIsSubPattern(expr, pattern.A!, inputType);
-                return sub == null ? null : new IlUn(IlUnOp.Not, new IlParen(sub, null), null);
-            }
+                {
+                    var sub = BuildIsSubPattern(expr, pattern.A!, inputType);
+                    return sub == null ? null : new IlUn(IlUnOp.Not, new IlParen(sub, null), null);
+                }
             case NodeKind.PatRel:
-            {
-                var v = BuildExpr(pattern.A!);
-                return v == null ? null : new IlBin(RelationalIlOp(pattern.Text), expr, v, null);
-            }
+                {
+                    var v = BuildExpr(pattern.A!);
+                    return v == null ? null : new IlBin(RelationalIlOp(pattern.Text), expr, v, null);
+                }
             case NodeKind.PatAnd:
             case NodeKind.PatOr:
                 return BindPatternInput(expr, input =>
@@ -4433,24 +4433,24 @@ public sealed class IlBuild
             case RefKind.Local:
                 return new IlVar(id.Local!.IlName, null);
             case RefKind.MethodGroup:
-            {
-                var m = id.Sym;
-                if (m != null && m.IsStatic && m.Owner != null) return MethodGroup(m, id.TypeArgs);
-                return null;
-            }
+                {
+                    var m = id.Sym;
+                    if (m != null && m.IsStatic && m.Owner != null) return MethodGroup(m, id.TypeArgs);
+                    return null;
+                }
             case RefKind.Field:
             case RefKind.Property:
-            {
-                var s = sym!;
-                if (s.Kind == SymKind.Property && IsCustomProperty(s))
                 {
-                    if (s.IsStatic) return new IlDynCall(new IlField(new IlVar(TypeRef(s.Owner!), null), "get_" + N(s), null), StaticAccessorArgs(s, null), null);
-                    if (IlTypes.IsUserStruct(s.Owner!.SelfType())) return new IlCall(TypeRef(s.Owner) + ".get_" + N(s), One(new IlVar("self", null)), null);
-                    return new IlInvoke(new IlVar("self", null), "get_" + N(s), new List<IlExpr>(), null);
+                    var s = sym!;
+                    if (s.Kind == SymKind.Property && IsCustomProperty(s))
+                    {
+                        if (s.IsStatic) return new IlDynCall(new IlField(new IlVar(TypeRef(s.Owner!), null), "get_" + N(s), null), StaticAccessorArgs(s, null), null);
+                        if (IlTypes.IsUserStruct(s.Owner!.SelfType())) return new IlCall(TypeRef(s.Owner) + ".get_" + N(s), One(new IlVar("self", null)), null);
+                        return new IlInvoke(new IlVar("self", null), "get_" + N(s), new List<IlExpr>(), null);
+                    }
+                    if (!s.IsStatic) return new IlField(new IlVar("self", null), N(s), null);
+                    return new IlField(new IlVar(TypeRef(s.Owner!), null), N(s), null);
                 }
-                if (!s.IsStatic) return new IlField(new IlVar("self", null), N(s), null);
-                return new IlField(new IlVar(TypeRef(s.Owner!), null), N(s), null);
-            }
             case RefKind.EnumMember:
                 return EnumMemberIl(sym!);
             case RefKind.Type:

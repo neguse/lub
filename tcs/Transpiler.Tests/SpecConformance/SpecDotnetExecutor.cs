@@ -91,7 +91,7 @@ internal sealed class SpecDotnetExecutor
             }
             finally
             {
-                
+
             }
             return new SpecDotnetRun(true, writer.ToString(), null);
         }

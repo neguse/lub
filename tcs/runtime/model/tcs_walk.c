@@ -4,13 +4,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-TCS_MODEL_API void tcs_walk_value(const TcsType *t, char *base, TcsRefFn fn, void *ctx) {
+TCS_MODEL_API void tcs_walk_value(const TcsType *t, char *base, TcsRefFn fn,
+                                  void *ctx) {
   for (uint32_t k = 0; k < t->nleaves; k++)
     if (t->leaves[k].kind == TCS_K_REF)
       fn(ctx, (void **)(base + t->leaves[k].offset));
 }
 
-TCS_MODEL_API void tcs_walk_elems(const TcsType *types, uint8_t kind, uint16_t type, uint32_t size, char *data,
+TCS_MODEL_API void tcs_walk_elems(const TcsType *types, uint8_t kind,
+                                  uint16_t type, uint32_t size, char *data,
                                   uint32_t n, TcsRefFn fn, void *ctx) {
   if (kind == TCS_K_REF) {
     for (uint32_t i = 0; i < n; i++)
@@ -22,7 +24,8 @@ TCS_MODEL_API void tcs_walk_elems(const TcsType *types, uint8_t kind, uint16_t t
   }
 }
 
-static const char *plan_name(TcsReader *r, const char *const *strings, uint32_t nstrings) {
+static const char *plan_name(TcsReader *r, const char *const *strings,
+                             uint32_t nstrings) {
   uint32_t i = tcs_rd_u32(r);
   if (i >= nstrings) {
     r->bad = 1;
@@ -31,7 +34,9 @@ static const char *plan_name(TcsReader *r, const char *const *strings, uint32_t 
   return strings[i];
 }
 
-TCS_MODEL_API const char *tcs_plan_read(TcsReader *r, const char *const *strings, uint32_t nstrings, TcsPlan *plan) {
+TCS_MODEL_API const char *tcs_plan_read(TcsReader *r,
+                                        const char *const *strings,
+                                        uint32_t nstrings, TcsPlan *plan) {
   memset(plan, 0, sizeof *plan);
 #define NAME(ignored) plan_name(r, strings, nstrings)
   uint32_t n = tcs_rd_u32(r);
@@ -59,7 +64,8 @@ TCS_MODEL_API const char *tcs_plan_read(TcsReader *r, const char *const *strings
     t->nfields = tcs_rd_u16(r);
     if (!tcs_rd_count_ok(r, t->nfields, 7))
       return "truncated plan";
-    t->fields = (TcsPlanField *)calloc(t->nfields ? t->nfields : 1, sizeof(TcsPlanField));
+    t->fields = (TcsPlanField *)calloc(t->nfields ? t->nfields : 1,
+                                       sizeof(TcsPlanField));
     if (!t->fields)
       return "out of memory";
     for (uint32_t k = 0; k < t->nfields; k++) {
@@ -93,35 +99,43 @@ TCS_MODEL_API void tcs_plan_free(TcsPlan *plan) {
   memset(plan, 0, sizeof *plan);
 }
 
-TCS_MODEL_API const TcsPlanType *tcs_plan_type(const TcsPlan *plan, const char *name) {
+TCS_MODEL_API const TcsPlanType *tcs_plan_type(const TcsPlan *plan,
+                                               const char *name) {
   for (uint32_t i = 0; i < plan->ntypes; i++)
     if (strcmp(plan->types[i].name, name) == 0)
       return &plan->types[i];
   return NULL;
 }
 
-static void copy_field(const TcsPlan *plan, const TcsType *oldtypes, const TcsField *of, const char *src,
+static void copy_field(const TcsPlan *plan, const TcsType *oldtypes,
+                       const TcsField *of, const char *src,
                        const TcsType *newtypes, const TcsField *nf, char *dst) {
   if (of->kind != nf->kind)
     return;
   if (nf->kind == TCS_K_STRUCT) {
-    tcs_migrate_value(plan, oldtypes, &oldtypes[of->type], src + of->offset, newtypes, &newtypes[nf->type],
-                      dst + nf->offset);
+    tcs_migrate_value(plan, oldtypes, &oldtypes[of->type], src + of->offset,
+                      newtypes, &newtypes[nf->type], dst + nf->offset);
     return;
   }
-  memcpy(dst + nf->offset, src + of->offset, tcs_kind_size(nf->kind, (uint32_t)sizeof(void *)));
+  memcpy(dst + nf->offset, src + of->offset,
+         tcs_kind_size(nf->kind, (uint32_t)sizeof(void *)));
 }
 
-TCS_MODEL_API void tcs_migrate_value(const TcsPlan *plan, const TcsType *oldtypes, const TcsType *ot, const char *src,
-                                     const TcsType *newtypes, const TcsType *nt, char *dst) {
+TCS_MODEL_API void tcs_migrate_value(const TcsPlan *plan,
+                                     const TcsType *oldtypes, const TcsType *ot,
+                                     const char *src, const TcsType *newtypes,
+                                     const TcsType *nt, char *dst) {
   const TcsPlanType *pt = tcs_plan_type(plan, nt->name);
   if (!pt || pt->change != TCS_PLAN_RELAYOUT) {
     /* 形の変わらない型: field を順に写す (struct の field は中の計画で) */
     for (uint32_t k = 0; k < nt->nfields && k < ot->nfields; k++)
-      copy_field(plan, oldtypes, &ot->fields[k], src, newtypes, &nt->fields[k], dst);
+      copy_field(plan, oldtypes, &ot->fields[k], src, newtypes, &nt->fields[k],
+                 dst);
     return;
   }
   for (uint32_t k = 0; k < pt->nfields && k < nt->nfields; k++)
-    if (pt->fields[k].source == TCS_FIELD_RETAINED && pt->fields[k].old_field < ot->nfields)
-      copy_field(plan, oldtypes, &ot->fields[pt->fields[k].old_field], src, newtypes, &nt->fields[k], dst);
+    if (pt->fields[k].source == TCS_FIELD_RETAINED &&
+        pt->fields[k].old_field < ot->nfields)
+      copy_field(plan, oldtypes, &ot->fields[pt->fields[k].old_field], src,
+                 newtypes, &nt->fields[k], dst);
 }
