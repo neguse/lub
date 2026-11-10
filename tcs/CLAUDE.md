@@ -7,6 +7,9 @@ C#の小さなサブセットをフロントエンド言語とし、tcs VM の b
 Rider など標準的な C# ツールキット上で tcs 準拠コードかをリアルタイム確認できる Roslyn Analyzer も開発体験の中核に置く。
 詳細は `objective.md` を参照。
 
+tcs は lub の repo の `tcs/` にある。作業の流れ (branch、PR、CI、format、記録の置き場所) は repo の root の `CLAUDE.md` に従い、このファイルは tcs に固有のことだけを書く。
+このファイルの path とコマンドは `tcs/` を基準にする。
+
 ## ディレクトリ構成
 
 ```
@@ -53,9 +56,8 @@ tcs/
 
 ### 前提
 
-- .NET 10 SDK / C# 14 — SDK 版は `global.json` で固定し、Dependabot (`dotnet-sdk`) が
-  bump PR を出す。マシンへの導入は `dotnet-install.sh --jsonfile global.json` の
-  per-user install (distro package と混ぜると workload manifest が更新で消えて壊れる)
+- .NET 10 SDK / C# 14 — SDK 版は `global.json` で固定し、Dependabot (`dotnet-sdk`) が bump PR を出す。
+  マシンへの導入は `dotnet-install.sh --jsonfile global.json` の per-user install (distro package と混ぜると workload manifest が更新で消えて壊れる)
 - CMake 3.12+ / C compiler (tcsvm の build と、tcs c の出力のテスト)
 
 ### コマンド
@@ -85,35 +87,22 @@ analyzer / `tcs check` の診断一致は run-tests のこの恒常ゲートで�
 
 ## 開発ワークフロー
 
-### 作業手順
+1. テストを先に書く (TDD)
+2. 実装し、`dotnet test` で全テスト通過を確認
+3. テスト、実装、ドキュメントの更新を 1 つの PR に入れる
 
-1. GitHub の issue から次のタスクを選択（残作業の正本。直近の文脈は `git log` と PR の本文）
-2. テストを先に書く（TDD）
-3. 実装し、`dotnet test` で全テスト通過を確認
-4. コミット（1タスク = 1コミット）
-5. PR の本文に、問題、最終的な変更、検証、判断（却下した代替案）、残した作業を書く。残した作業は issue にする
+仕様の正本は support-matrix / README / design doc。`doc/done.md` は 2026-11-10 までの記録で、追記しない。
 
-リポの中に作業の一覧や完了の記録は置かない（branch どうしで競合するため）。仕様の正本は support-matrix / README / design doc、歴史は PR の本文と git log。`doc/done.md` は 2026-11-10 までの記録で、追記しない。
+## 進め方
 
-### コミットルール
-
-- 1タスク = 1コミット（`git bisect` / `git revert` 可能に）
-- テスト + 実装 + ドキュメント更新をセットで
-- コミットメッセージ: `feat: {概要}`（例: `feat: if/else文のトランスパイル`）
-
-## 進め方（このリポジトリ固有）
-
-- 実装は Claude (Fable) が直接行う。Codex は反証限定の second opinion レビューに
-  限定し、実装委任はユーザーが明示的に求めた場合のみ
+- 実装は Claude (Fable) が直接行う。Codex は反証限定の second opinion レビューに限定し、実装委任はユーザーが明示的に求めた場合のみ
 
 ## コード規約
 
 ### 命名
 
-- 「spike」という名称は使わない（識別子・ファイル名・新規ドキュメントとも）。
-  旧 spike 由来の実体はすべて `perf` 系の名前を使う
-- tcs / tcs2c はプロジェクト全体のリブランディング（時期・名称未定）を控えた
-  暫定名。新規の命名は tcs 系に揃える
+- 「spike」という名称は使わない（識別子・ファイル名・新規ドキュメントとも）。旧 spike 由来の実体はすべて `perf` 系の名前を使う
+- tcs / tcs2c はプロジェクト全体のリブランディング（時期・名称未定）を控えた暫定名。新規の命名は tcs 系に揃える
 
 ### C# (.NET 10 / C# 14)
 
@@ -141,67 +130,6 @@ analyzer / `tcs check` の診断一致は run-tests のこの恒常ゲートで�
 - `TCS1001`: 未対応構文 (`try`, `throw`, local function, list pattern, Equals の override など)
 - `TCS1002`: 未対応 BCL API / core library allowlist 外 member (`Math.Cbrt`, `List.Reverse`, `Enumerable.Single` など)
 - `TCS1003`: 配列と Dictionary の null 保存
-
-## 外部エンジン連携メモ
-
-tcs のコア目的は engine agnostic な C# サブセットのコンパイラ (tcs VM と C) であり、lub3d への直接対応は現時点の前提ではない。
-lub3d 側のプロジェクト方針が変わっているため、以下の TinyCSharpGen 案は過去の検討メモとして扱う。実装タスクに戻す場合は、その時点の lub3d 側設計を読み直してから判断する。
-
-### 旧案: lub3d API interface 生成（TinyCSharpGen）
-
-lub3d の Generator パイプラインに乗せて C# interface を自動生成する案。
-
-### アーキテクチャ
-
-```
-Clang AST → TypeRegistry → ModuleSpec（既存IR）
-                                ├→ CBindingGen.Generate()   → .c  (既存)
-                                ├→ LuaCatsGen.Generate()    → .lua (既存)
-                                └→ TinyCSharpGen.Generate() → .cs  (新規)
-```
-
-### BindingType → C# 型マッピング
-
-| BindingType       | C# 型           |
-|-------------------|-----------------|
-| Int               | int             |
-| Int64             | long            |
-| UInt32            | uint            |
-| Float             | float           |
-| Double            | double          |
-| Bool              | bool            |
-| Str               | string          |
-| Void              | void            |
-| Struct(_, _, lua) | class名         |
-| Enum(_, lua)      | enum名          |
-| Callback(p, r)    | Action/Func     |
-| Vec2              | Vector2         |
-| Vec4              | Vector4         |
-| Ptr(inner)        | inner（透過）    |
-| VoidPtr           | nint            |
-
-### 生成物の配置
-
-- lub3d の `Generator/TinyCSharp/TinyCSharpGen.cs` に実装
-- 出力先: tcs の `TinySystem/` または `gen/` ディレクトリ
-- lub3d の `Program.cs` に `TinyCSharpGen.Generate(spec)` 呼び出しを追加
-
-### 段階的展開
-
-1. App + Gfx + Glm で検証
-2. 全モジュール展開（Audio, Imgui, Shape, Time, DebugText, ...）
-
-## 参考リポジトリ（読み取り専用）
-
-- `../lub` — tcs を使うゲームエンジン。ゲームは C# で書き、tcs を git submodule として取り込み、既定では tcs VM の player (C# → `.tcsb`) で動かす。readonly で、lub 側に変更が必要な場合は feature request を出す
-- `../lub3d` — 参考実装。直接対応先とは限らない
-
-### lub3d から学ぶこと
-
-- Generator/ の .NET プロジェクト構成・IModule/ModuleSpec/BindingType
-- LuaCatsGen の実装パターン（TinyCSharpGen のテンプレート）
-- xUnit テストの書き方
-- deps/ の submodule 管理
 
 ## 既知の制約・注意事項
 
