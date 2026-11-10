@@ -114,6 +114,8 @@ List、配列、callback の引数にも置けない (`lub-gen check` が止め�
 tcs2c が process を止める誤り (配列の長さ、bit mask) は、その呼び出しの VM の fault (C# の trace 付き) になる。
 callback の fault は、その callback の class (entry か overlay) の `OnError` に message (C# の trace 付き) を渡し、`ErrorAction` で処置を決める。
 query の visitor (`Phys2d.RaycastAll` など) の fault は、query を fault にせず null を返す (message は log に出す)。
+tcs2c の経路でも、entry の callback の fault は `OnError` に渡る (message は fault の種類で、trace は付かない)。
+runtime の関数が呼んでいる callback (query の visitor など) の中の fault は、tcs2c の経路では process を止める。
 record の中の callback (`WorldCallbacks` など、runtime が持ち続ける物) は closure を `tvm_hold` で持ち、runtime が手放すとき (`user_release`) に放す。
 その fault は callback ごとに 1 回だけ log に出し、既定の値で続ける。
 `lub-gen vm --source Game.cs` はそのゲームが使う関数だけを出す (`scripts/verify-vm-binding.sh` が偽の C API で使う)。

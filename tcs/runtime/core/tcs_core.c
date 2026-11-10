@@ -216,8 +216,14 @@ static void *tcs_interface_cast(void *object, bool (*matches)(void *)) {
   return object;
 }
 
+/* host が置く fault の受け口 (--lib の tcs_lib_on_fault)。
+   戻らずに host の frame へ longjmp で抜ければ process は続く。戻れば下の exit で終わる */
+static void (*tcs_fault_handler)(const char *kind);
+
 static _Noreturn void tcs_fault(const char *kind) {
   fprintf(stderr, "TinyC# fault: %s\n", kind);
+  if (tcs_fault_handler != NULL)
+    tcs_fault_handler(kind);
   exit(EXIT_FAILURE);
 }
 

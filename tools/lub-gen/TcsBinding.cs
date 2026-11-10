@@ -383,6 +383,31 @@ internal sealed class TcsBindingGen
         Line(onEvent == null
             ? "static void tcs_game_on_event(const LubEventData *e) { (void)e; }"
             : "static void tcs_game_on_event(const LubEventData *e) { tcs_entry_" + entry.Name + "_OnEvent(tcs_lub_from_EventData(e)); }");
+        ErrorHook(entry);
+    }
+
+    // fault した callback の処置を entry の OnError に聞く (無ければ Log)。
+    // message は境界を跨がない nursery の string なので、OnError の間は入れ子の深さを上げて境界を止める
+    private void ErrorHook(ExClass entry)
+    {
+        var found = StaticMethod(entry, "OnError");
+        if (found == null)
+        {
+            Line("static int32_t tcs_game_on_error(const char *message) { (void)message; return LUB_ERROR_ACTION_LOG; }");
+            return;
+        }
+        if (found.ReturnType != ApiModelLoader.RootNamespace + ".ErrorAction" || found.Parameters.Count != 1
+            || found.ParameterTypes[0] != "string")
+        {
+            GenError.Report(entry.Name + ".OnError must be static Lub.ErrorAction (string) to be an entry");
+            return;
+        }
+        Line("static int32_t tcs_game_on_error(const char *message) {");
+        Line("  tcs_gc_call_depth++;");
+        Line("  int32_t action = (int32_t)tcs_m_" + entry.Name + "_OnError(tcs_string_new((const unsigned char *)message, strlen(message)));");
+        Line("  tcs_gc_call_depth--;");
+        Line("  tcs_lib_gc();");
+        Line("  return action;\n}");
     }
 
     private void Hook(ExClass entry, string method, string hook, string parameter, string argument)
@@ -831,7 +856,11 @@ internal sealed class TcsBindingGen
         var cRet = ret.Kind == LubTypeKind.Void ? "void" : Scalar(ret);
         Line("static " + cRet + " " + CallbackName(function, param) + "(" + string.Join(", ", cParams) + ") {");
         Line("  TcsClosure *f = user;");
-        Line("  " + (cRet == "void" ? "" : "return ") + "((" + TcsType(ret) + " (*)(" + string.Join(", ", tcsParams) + "))f->fn)(" + string.Join(", ", values) + ");");
+        var call = "((" + TcsType(ret) + " (*)(" + string.Join(", ", tcsParams) + "))f->fn)(" + string.Join(", ", values) + ")";
+        Line("  tcs_lub_callback_depth++;");
+        Line("  " + (cRet == "void" ? "" : cRet + " result = ") + call + ";");
+        Line("  tcs_lub_callback_depth--;");
+        if (cRet != "void") Line("  return result;");
         Line("}");
     }
 
@@ -853,8 +882,14 @@ internal sealed class TcsBindingGen
     }
 
     private const string Helpers = """
+        /* runtime の関数の中から呼ばれている callback の深さ。
+           この間の fault は runtime の frame を跨いで抜けられないので、host は process を止める */
+        static int tcs_lub_callback_depth;
         static void tcs_lub_check(LubStatus status) {
-          if (status == LUB_ERROR) { fprintf(stderr, "%s\n", lub_last_error(tcs_lub_context)); tcs_fault("lub-api"); }
+          if (status != LUB_ERROR) return;
+          static char text[1024];
+          snprintf(text, sizeof text, "lub-api: %s", lub_last_error(tcs_lub_context));
+          tcs_fault(text);
         }
         static LubStr tcs_lub_str(TcsString *text) {
           return text ? (LubStr){(const char *)text->data, (int32_t)text->length} : (LubStr){0};

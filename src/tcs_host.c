@@ -15,12 +15,75 @@
 #include <SDL3/SDL_main.h>
 #endif
 #endif
+#include <setjmp.h>
 #include LUB_TCS_GAME
 #include LUB_TCS_BINDING
 #ifndef LUB_TCS_ENTRY
 #error                                                                         \
     "no entry in binding: pass the game sources (a class with static void OnFrame(float)) to lub-gen tcs, or --entry CLASS; regenerate older bindings"
 #endif
+
+// callback の fault (tcs_fault) は、その callback を打ち切って entry の OnError に処置を聞く (無ければ Log)。
+// OnError 自身が fault するか Log 以外を返したら Abort (終了コード 1 で終わる)。
+// callback の外 (static の初期化) の fault と、runtime の関数が呼んでいる callback (query の visitor など) の中の fault は process を止める。
+static jmp_buf tcs_fault_jmp;
+static bool tcs_fault_armed;
+static const char *tcs_fault_kind;
+
+static void tcs_host_on_fault(const char *kind) {
+  if (!tcs_fault_armed || tcs_lub_callback_depth > 0)
+    return;
+  tcs_fault_armed = false;
+  tcs_fault_kind = kind;
+  longjmp(tcs_fault_jmp, 1);
+}
+
+static void tcs_host_ask_on_error(void) {
+  int32_t action = LUB_ERROR_ACTION_ABORT;
+  tcs_lib_unwind();
+  tcs_fault_armed = true;
+  if (setjmp(tcs_fault_jmp) == 0) {
+    action = tcs_game_on_error(tcs_fault_kind);
+    tcs_fault_armed = false;
+  } else {
+    tcs_lib_unwind();
+  }
+  if (action != LUB_ERROR_ACTION_LOG)
+    lub_app_quit(tcs_lub_context, 1);
+}
+
+typedef enum {
+  TCS_HOOK_INIT,
+  TCS_HOOK_EVENT,
+  TCS_HOOK_FRAME,
+  TCS_HOOK_QUIT
+} TcsHook;
+
+// callback を 1 つ呼ぶ。
+// fault せずに終われば true。
+static bool tcs_host_call(TcsHook hook, const LubEventData *event, float dt) {
+  tcs_fault_armed = true;
+  if (setjmp(tcs_fault_jmp) != 0) {
+    tcs_host_ask_on_error();
+    return false;
+  }
+  switch (hook) {
+  case TCS_HOOK_INIT:
+    tcs_game_on_init();
+    break;
+  case TCS_HOOK_EVENT:
+    tcs_game_on_event(event);
+    break;
+  case TCS_HOOK_FRAME:
+    tcs_game_on_frame(dt);
+    break;
+  case TCS_HOOK_QUIT:
+    tcs_game_on_quit();
+    break;
+  }
+  tcs_fault_armed = false;
+  return true;
+}
 
 #ifdef __EMSCRIPTEN__
 static bool tcs_shutting_down;
@@ -34,7 +97,7 @@ EMSCRIPTEN_KEEPALIVE void lub_tcs_shutdown(void) {
     return;
   tcs_shutting_down = true;
   emscripten_cancel_main_loop();
-  tcs_game_on_quit();
+  tcs_host_call(TCS_HOOK_QUIT, NULL, 0);
   lub_host_destroy(tcs_lub_context);
   tcs_lub_context = NULL;
 }
@@ -52,8 +115,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
   tcs_lub_context = lub_host_create(&opts);
   if (!tcs_lub_context)
     return SDL_APP_FAILURE;
+  tcs_lib_on_fault(tcs_host_on_fault);
   tcs_lib_init();
-  tcs_game_on_init();
+  tcs_host_call(TCS_HOOK_INIT, NULL, 0);
   return lub_host_start(tcs_lub_context) == LUB_OK ? SDL_APP_CONTINUE
                                                    : SDL_APP_FAILURE;
 }
@@ -66,11 +130,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     return SDL_APP_CONTINUE;
   if (translated.kind == LUB_EVENT_KIND_QUIT)
     return SDL_APP_SUCCESS;
-  tcs_game_on_event(&translated);
+  tcs_host_call(TCS_HOOK_EVENT, &translated, 0);
   return SDL_APP_CONTINUE;
 }
 
-// tcs2c のゲームの error (tcs_fault) は process を止めるので、frame_end に届く frame は常に成功している。
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
   // OnEvent が Quit を呼んだ frame は回さない
@@ -78,8 +141,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     return SDL_APP_SUCCESS;
   float dt;
   if (lub_host_frame_begin(tcs_lub_context, &dt)) {
-    tcs_game_on_frame(dt);
-    lub_host_frame_end(tcs_lub_context, true);
+    bool ok = tcs_host_call(TCS_HOOK_FRAME, NULL, dt);
+    lub_host_frame_end(tcs_lub_context, ok);
   }
   return lub_host_quit_requested(tcs_lub_context) ? SDL_APP_SUCCESS
                                                   : SDL_APP_CONTINUE;
@@ -111,8 +174,9 @@ int main(int argc, char **argv) {
   tcs_lub_context = lub_host_create(&opts);
   if (!tcs_lub_context)
     return 1;
+  tcs_lib_on_fault(tcs_host_on_fault);
   tcs_lib_init();
-  tcs_game_on_init();
+  tcs_host_call(TCS_HOOK_INIT, NULL, 0);
   if (lub_host_start(tcs_lub_context) != LUB_OK) {
     lub_host_destroy(tcs_lub_context);
     return 1;
@@ -122,7 +186,7 @@ int main(int argc, char **argv) {
     while (lub_host_poll_event(tcs_lub_context, &event)) {
       if (event.kind == LUB_EVENT_KIND_QUIT)
         break;
-      tcs_game_on_event(&event);
+      tcs_host_call(TCS_HOOK_EVENT, &event, 0);
     }
     // Quit を受けた frame と OnEvent が Quit を呼んだ frame は回さない
     if (lub_host_quit_requested(tcs_lub_context))
@@ -132,11 +196,12 @@ int main(int argc, char **argv) {
       SDL_Delay(16);
       continue;
     }
-    tcs_game_on_frame(dt);
-    lub_host_frame_end(tcs_lub_context, true);
+    bool ok = tcs_host_call(TCS_HOOK_FRAME, NULL, dt);
+    lub_host_frame_end(tcs_lub_context, ok);
   }
-  tcs_game_on_quit();
+  tcs_host_call(TCS_HOOK_QUIT, NULL, 0);
+  int code = lub_host_exit_code(tcs_lub_context);
   lub_host_destroy(tcs_lub_context);
-  return 0;
+  return code;
 }
 #endif

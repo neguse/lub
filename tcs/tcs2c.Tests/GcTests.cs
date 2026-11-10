@@ -482,4 +482,57 @@ public class GcTests
         Assert.Equal("35\nTrue", Backends.CompileAndRunC(c, stress: true));
         Assert.Equal("35\nTrue", Backends.RunVm([source], "Program"));
     }
+
+    [CFact]
+    public void LibMode_FaultHandlerUnwindsAndTheNextEntryRuns()
+    {
+        // host の fault の受け口 (tcs_lib_on_fault) が longjmp で抜け、tcs_lib_unwind の後に次の entry が動く。
+        // fault の前に static へ入れた object は境界の GC を越えて残り、入れ子の深さが戻るので境界は entry ごとに踏まれる
+        const string source = """
+            using System.Collections.Generic;
+            public class Program
+            {
+                public static List<string> Kept = new List<string>();
+                public static int Zero;
+                public static void Frame(int n)
+                {
+                    Kept.Add("f" + n);
+                    if (n % 2 == 1) Kept.Add("unreachable " + n / Zero);
+                }
+                public static void Report()
+                {
+                    System.Console.WriteLine(string.Join(" ", Kept));
+                }
+            }
+            """;
+        var c = Backends.EmitC([source], null, lib: true);
+        c += """
+            #include <setjmp.h>
+            static jmp_buf host_jmp;
+            static int host_faults;
+            static void host_fault(const char *kind) { printf("fault %s\n", kind); host_faults++; longjmp(host_jmp, 1); }
+            int main(void)
+            {
+                volatile int i;
+                tcs_lib_init();
+                tcs_lib_on_fault(host_fault);
+                for (i = 0; i < 4; i++) {
+                    if (setjmp(host_jmp) == 0) tcs_entry_Program_Frame(i);
+                    else tcs_lib_unwind();
+                }
+                tcs_entry_Program_Report();
+                printf("faults=%d frames=%zu\n", host_faults, tcs_gc_frames);
+                return 0;
+            }
+            """;
+        foreach (var stress in new[] { false, true })
+        {
+            var lines = Backends.CompileAndRunC(c, stress: stress).Split('\n');
+            Assert.Equal("fault divide-by-zero", lines[0]);
+            Assert.Equal("fault divide-by-zero", lines[1]);
+            Assert.Equal("f0 f1 f2 f3", lines[2]);
+            // init + 4 回の Frame (fault した 2 回は tcs_lib_unwind の境界) + Report
+            Assert.Equal("faults=2 frames=6", lines[3]);
+        }
+    }
 }

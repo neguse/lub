@@ -180,8 +180,8 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
 
 ## 12. fault
 
-fault = 決定的に検出される実行時異常。発生した fault はプログラムを即時
-停止し、回復手段は無い。
+fault = 決定的に検出される実行時異常。発生した fault は実行中の entry の呼び出しを即時に打ち切り、プログラムの中に回復手段は無い。
+host は打ち切られた後に次の entry を呼べる: tcs VM は `tvm_call` が error を返す。C の `--lib` は、host が `tcs_lib_on_fault` で置いた handler が entry を呼んだ frame へ longjmp で抜け、`tcs_lib_unwind` を呼んでから次の entry を呼ぶ。handler が無いか handler が戻れば process を止める。実行形 (`main`) の C は process を止める。
 
 - 種別: 除数 0 (§5)、i32 除算 overflow (§5)、f32→i32 変換不能 (§5)、
   null 参照への member アクセス、配列/List/Utf8Bytes の範囲外 index、

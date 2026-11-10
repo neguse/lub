@@ -7610,6 +7610,26 @@ public sealed class CEmitter
         _indent--;
         Line("}");
         Line();
+        // fault の受け口。handler は kind を受け、戻れば process は exit する。
+        // 続けるなら handler は entry を呼んだ host の frame へ longjmp で抜け、次の entry の前に tcs_lib_unwind を呼ぶ
+        Line("void");
+        Line("tcs_lib_on_fault(void (*handler)(const char *kind))");
+        Line("{");
+        _indent++;
+        Line("tcs_fault_handler = handler;");
+        _indent--;
+        Line("}");
+        Line();
+        // fault で打ち切った entry の後始末: C# スタックは空になったので、入れ子の深さを戻して境界を踏む
+        Line("void");
+        Line("tcs_lib_unwind(void)");
+        Line("{");
+        _indent++;
+        Line("tcs_gc_call_depth = 0;");
+        Line("tcs_gc_frame();");
+        _indent--;
+        Line("}");
+        Line();
         foreach (var cls in _program.Classes)
         {
             if (cls.IsInterface) continue;

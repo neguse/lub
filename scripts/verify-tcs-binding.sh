@@ -127,6 +127,48 @@ for stress in '' -DTCS_GC_STRESS=1; do
 done
 echo "tcs host: OnEvent receives events until Quit, and kept EventData survive GC stress"
 
+# callback の fault は、その callback を打ち切って entry の OnError に渡る。
+# Log なら次の callback へ進み、失敗した frame は frame_end に失敗として届く。
+# OnError 自身が fault すると Abort で、OnQuit を呼んでから終了コード 1 で終わる。
+# OnError が持ち越した message は、fault の後の境界の GC を越えて残る。
+dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+  --ref cs-lib/lub_stub.cs tests/c/tcs_error.cs -o "$work/error_game.c"
+dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+  --source tests/c/tcs_error.cs -o "$work/error_binding.c"
+cat > "$work/error.expected" <<'OUT'
+init
+error 1 null
+event 4
+frame null
+error 2 divide-by-zero
+frame failed
+event 7
+delay 16
+frame null divide-by-zero
+error 3 divide-by-zero
+frame failed
+quit errors=3 kept=3
+exit 1
+OUT
+for stress in '' -DTCS_GC_STRESS=1; do
+  "${CC:-cc}" "${cflags[@]}" -Isrc $stress -DLUB_TCS_GAME="\"$work/error_game.c\"" \
+    -DLUB_TCS_BINDING="\"$work/error_binding.c\"" src/tcs_host.c tests/c/tcs_event_host.c \
+    -lm -o "$work/error"
+  { "$work/error" 2> "$work/error.err" && echo 'exit 0' || echo "exit $?"; } | tr -d '\r' | diff "$work/error.expected" -
+  grep -qF 'TinyC# fault: divide-by-zero' "$work/error.err"
+done
+echo "tcs host: a fault reaches OnError, Log continues, and a fault in OnError aborts with exit code 1"
+
+# OnError は static Lub.ErrorAction OnError(string) でなければ entry にしない。
+printf 'using Lub;\nstatic class Game\n{\n    public static void OnError(string message) { }\n    public static void OnFrame(float dt) { }\n}\n' > "$work/bad_error.cs"
+if dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+  --source "$work/bad_error.cs" -o "$work/bad_error.c" 2> "$work/bad_error.err"; then
+  echo 'tcs host: lub-gen accepted an OnError without a result' >&2
+  exit 1
+fi
+grep -qF 'OnError must be static Lub.ErrorAction (string)' "$work/bad_error.err"
+echo "tcs host: lub-gen rejects OnError with another signature"
+
 # OnEvent は static void OnEvent(Lub.EventData) でなければ entry にしない。
 for bad in 'void OnEvent(int key) { }' 'int OnEvent(EventData e) { return 0; }' 'void OnEvent() { }'; do
   printf 'using Lub;\nstatic class Game\n{\n    public static %s\n    public static void OnFrame(float dt) { }\n}\n' "$bad" > "$work/bad_event.cs"
