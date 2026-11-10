@@ -28,13 +28,13 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
-    public async Task LuaKeywordMember_ReportsKeywordMemberOnly()
+    public async Task ReservedMember_ReportsReservedMemberOnly()
     {
         var diagnostics = await AnalyzeAsync("""
             public class Repro
             {
-                public int end_;
-                public void end() { end_ = 1; }
+                public int self_;
+                public void self() { self_ = 1; }
                 public int flash;
                 public void Flash() { flash = 1; }
             }
@@ -42,7 +42,7 @@ public partial class TinyCsComplianceAnalyzerTests
 
         var diagnostic = Assert.Single(diagnostics);
         Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
-        Assert.Contains("LuaKeywordIdentifier(end)", diagnostic.GetMessage());
+        Assert.Contains("ReservedIdentifier(self)", diagnostic.GetMessage());
         Assert.Equal(3, diagnostic.Location.GetLineSpan().StartLinePosition.Line);
     }
 

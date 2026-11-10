@@ -94,23 +94,23 @@ public class ComplianceParityTests
     }
 
     [Fact]
-    public void Check_LuaKeywordMemberIsErrorExit1()
+    public void Check_ReservedMemberIsErrorExit1()
     {
-        var result = RunCli(KeywordMemberSource, check: true);
+        var result = RunCli(ReservedMemberSource, check: true);
 
         Assert.Equal(1, result.ExitCode);
-        Assert.Contains("error TCS1001: unsupported syntax: LuaKeywordIdentifier(end)",
+        Assert.Contains("error TCS1001: unsupported syntax: ReservedIdentifier(self)",
             result.Stderr);
-        Assert.DoesNotContain("end_", result.Stderr);
+        Assert.DoesNotContain("self_", result.Stderr);
     }
 
     [Fact]
-    public void BuildC_LuaKeywordMemberIsErrorWithoutOutput()
+    public void BuildC_ReservedMemberIsErrorWithoutOutput()
     {
-        var result = RunCli(KeywordMemberSource, check: false);
+        var result = RunCli(ReservedMemberSource, check: false);
 
         Assert.Equal(1, result.ExitCode);
-        Assert.Contains("error TCS1001: unsupported syntax: LuaKeywordIdentifier(end)",
+        Assert.Contains("error TCS1001: unsupported syntax: ReservedIdentifier(self)",
             result.Stderr);
         Assert.Null(result.Output);
     }
@@ -206,11 +206,11 @@ public class ComplianceParityTests
         }
         """;
 
-    private const string KeywordMemberSource = """
+    private const string ReservedMemberSource = """
         public class Repro
         {
-            public int end_;
-            public void end() { end_ = 1; }
+            public int self_;
+            public void self() { self_ = 1; }
         }
         """;
 }

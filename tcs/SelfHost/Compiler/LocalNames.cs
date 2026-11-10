@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace TcsSelf;
 
 // local の束縛 (local 変数 / parameter / foreach の変数 / pattern の designation / lambda の parameter) の IL の名前 (IlName)。
-// 予約語 (LuaNames.IsReserved)、型の名前、IL の callee が素の名前で参照する global と同じ名前は
+// 型の名前と、IL の callee が素の名前で参照する global と同じ名前は
 // `x` → `x_` に写し、写した先が同じ member の中の識別子か型の名前なら `_` を足す。同じ member の同じ名前は同じ名前に写す
 public static class LocalNames
 {
@@ -18,6 +18,20 @@ public static class LocalNames
     public const string Utf8ModuleGlobal = "tcs_utf8";
 
     private static HashSet<string>? _globals;
+    private static HashSet<string>? _reserved;
+
+    // pattern の変数の改名 (Binder) が避ける名前 (self と、IL の callee が素の名前で参照する global)
+    public static bool IsReserved(string name)
+    {
+        if (_reserved == null)
+        {
+            var r = new HashSet<string>();
+            string all = "self print tostring tonumber type setmetatable getmetatable rawget rawset rawequal rawlen string table math error select pairs ipairs next require pcall assert utf8 os io coroutine load dofile collectgarbage _ENV _G List Dict String Math Random Char TcsQueue TcsHashSet TinySystem tcs_math tcs_utf8 tcs_rt";
+            foreach (var w in all.Split(' ')) r.Add(w);
+            _reserved = r;
+        }
+        return _reserved.Contains(name);
+    }
 
     private static bool IsGlobal(string name)
     {
@@ -52,7 +66,7 @@ public static class LocalNames
 
     public static bool IsCandidate(string name, HashSet<string> typeNames)
     {
-        return LuaNames.IsLuaKeyword(name) || typeNames.Contains(name) || IsGlobal(name);
+        return typeNames.Contains(name) || IsGlobal(name);
     }
 
     // unit の全ての member (入れ子の型を含む) と top-level の文の local の名前を付ける

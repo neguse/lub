@@ -4,7 +4,7 @@ using TcsSelf;
 namespace LubGen;
 
 // lub-gen: cs-lib/lub_stub.cs を記述として読み、面を検査し生成物を作る。
-//   lub-gen check                     記述の検査 (名前の規則・衝突・予約語)
+//   lub-gen check                     記述の検査 (名前の規則・衝突)
 //   lub-gen model [-o out.json]       API model を JSON で出す
 //   lub-gen header [-o file]          C API の header (include/lub/lub_api.h)
 //   lub-gen docs [-o file]            API reference のデータ (web/gen/lub-api-docs.json)
@@ -226,9 +226,6 @@ public static class Checks
             if (prev != csharp) problems.Add(ns + ": '" + prev + "' and '" + csharp + "' both map to the host name '" + host + "'");
         }
         else seen[host] = csharp;
-        // tcs は host の名前が Lua の予約語になると末尾に `_` を足す (C の名前と合わなくなるので、そうなる member を止める)
-        if (host.EndsWith("_") && LuaNames.IsLuaKeyword(Text.DropEnd(host, 1)))
-            problems.Add(ns + "." + csharp + ": maps to a Lua keyword ('" + Text.DropEnd(host, 1) + "'); rename the member");
         if (!Text.HasLower(csharp)) problems.Add(ns + "." + csharp + ": all-caps name; use PascalCase");
     }
 

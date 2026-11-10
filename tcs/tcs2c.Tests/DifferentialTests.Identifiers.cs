@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// user の識別子は C# の綴りのまま両 backend の名前になる (q.md Q16)。Lua と生成
+// user の識別子は C# の綴りのまま両 backend の名前になる (q.md Q16)。生成
 // コードの予約と重なる綴りは、両 backend とも shared facts の同じ診断で IL を作る
 // 前に止まる
 public partial class DifferentialTests
@@ -65,5 +65,39 @@ public partial class DifferentialTests
         Assert.Contains("tcs_entry_P_Main", c);
         Assert.Contains("AddHp", c);
         Assert.DoesNotContain("add_hp", c);
+    }
+
+    // C# の予約語でない名前は、他の言語 (Lua、C) の予約語と同じ綴りでも member、型、local に使える
+    [Fact]
+    public void NamesLikeOtherLanguageKeywords_ReachBothBackends()
+    {
+        const string program = """
+            using System;
+            public record Span(int until);
+            public enum Token { nil, then }
+            public class local
+            {
+                public int end_ = 100;
+                public int function;
+                public int repeat { get; set; }
+                public int union;
+                public static int typedef = 7;
+                public int end() => function + repeat;
+                public int elseif(int not) { var auto = not + 1; return auto; }
+            }
+            public class P
+            {
+                public static void Main()
+                {
+                    var end = new local();
+                    end.function = 3;
+                    end.repeat = 4;
+                    end.union = 5;
+                    var nil = new Span(6);
+                    Console.WriteLine(end.end() + ":" + end.elseif(1) + ":" + nil.until + ":" + (int)Token.then + ":" + end.end_ + ":" + end.union + ":" + local.typedef);
+                }
+            }
+            """;
+        Assert.Equal("7:2:6:1:100:5:7", Backends.AssertParity(program, "P"));
     }
 }

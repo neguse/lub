@@ -1180,7 +1180,7 @@ public sealed class Declarer
             {
                 if (o.Kind == SymKind.Method) methods++;
             }
-            m.IlName = methods > 1 ? m.Name + "__" + Signature(m) : LuaNames.Member(m.Name);
+            m.IlName = methods > 1 ? m.Name + "__" + Signature(m) : m.Name;
         }
         // constructor (struct の new は既定値を作る関数なので、constructor は ctor)
         string ctorBase = t.IsStruct ? "ctor" : "new";
@@ -1219,8 +1219,8 @@ public sealed class Declarer
         t.IlName = HostPath(t);
         foreach (var m in t.Members)
         {
-            if (m.Kind == SymKind.EnumMember) m.IlName = LuaNames.HostConst(m.Name);
-            else m.IlName = LuaNames.HostMember(m.Name);
+            if (m.Kind == SymKind.EnumMember) m.IlName = HostNames.HostConst(m.Name);
+            else m.IlName = HostNames.HostMember(m.Name);
         }
     }
 
@@ -1235,13 +1235,13 @@ public sealed class Declarer
         }
         while (cur != null)
         {
-            parts.Insert(0, LuaNames.HostPathSegment(cur.Name));
+            parts.Insert(0, HostNames.HostPathSegment(cur.Name));
             cur = cur.Outer;
         }
         if (t.Namespace != "")
         {
             var ns = t.Namespace.Split('.');
-            for (int i = ns.Length - 1; i >= 0; i--) parts.Insert(0, LuaNames.HostPathSegment(ns[i]));
+            for (int i = ns.Length - 1; i >= 0; i--) parts.Insert(0, HostNames.HostPathSegment(ns[i]));
         }
         return string.Join(".", parts);
     }
@@ -1284,23 +1284,15 @@ public sealed class Declarer
     }
 }
 
-public static class LuaNames
+public static class HostNames
 {
     // ---- host (--ref) の名前 (lub-gen も同じ関数で写す) ----
 
-    public static string HostMember(string name)
-    {
-        string snake = ToSnake(name);
-        return IsLuaKeyword(snake) ? snake + "_" : snake;
-    }
+    public static string HostMember(string name) => ToSnake(name);
 
     public static string HostConst(string name) => ToSnake(name).ToUpper();
 
-    public static string HostPathSegment(string name)
-    {
-        string lower = name.ToLower();
-        return IsLuaKeyword(lower) ? lower + "_" : lower;
-    }
+    public static string HostPathSegment(string name) => name.ToLower();
 
     // 小文字を含まない名前 (CLEAR / DEPTH24_STENCIL8) は既に全大文字の snake_case とみなして小文字にする。
     // それ以外は先頭の _ を残し、2 文字目以降の大文字の前に _ を入れて小文字にする
@@ -1336,64 +1328,5 @@ public static class LuaNames
         }
         if (k > run) parts.Add(b.Slice(run, k - run).ToString());
         return string.Join("", parts);
-    }
-
-    private static HashSet<string>? _reserved;
-
-    // local の改名 (LocalNames と Binder の pattern の変数) が避ける名前
-    public static bool IsReserved(string name)
-    {
-        if (_reserved == null)
-        {
-            var r = new HashSet<string>();
-            string all = "and break do else elseif end false for function goto if in local nil not or repeat return then true until while self print tostring tonumber type setmetatable getmetatable rawget rawset rawequal rawlen string table math error select pairs ipairs next require pcall assert utf8 os io coroutine load dofile collectgarbage _ENV _G List Dict String Math Random Char TcsQueue TcsHashSet TinySystem tcs_math tcs_utf8 tcs_rt";
-            foreach (var w in all.Split(' ')) r.Add(w);
-            _reserved = r;
-        }
-        return _reserved.Contains(name);
-    }
-
-    public static bool IsLuaKeyword(string name)
-    {
-        switch (name)
-        {
-            case "and":
-            case "break":
-            case "do":
-            case "else":
-            case "elseif":
-            case "end":
-            case "false":
-            case "for":
-            case "function":
-            case "global":
-            case "goto":
-            case "if":
-            case "in":
-            case "local":
-            case "nil":
-            case "not":
-            case "or":
-            case "repeat":
-            case "return":
-            case "then":
-            case "true":
-            case "until":
-            case "while":
-                return true;
-        }
-        return false;
-    }
-
-    public static string Local(string name)
-    {
-        if (IsReserved(name)) return name + "_";
-        return name;
-    }
-
-    public static string Member(string name)
-    {
-        if (IsLuaKeyword(name)) return name + "_";
-        return name;
     }
 }

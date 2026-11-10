@@ -15,8 +15,6 @@ public sealed class Compliance
     private static readonly List<string> ReservedClassKeys = SplitWords("new ctor");
     // runtime が _G に置く名前 (ReservedRuntimeGlobals)
     public static readonly List<string> RuntimeGlobals = SplitWords("TinySystem List Dict Math String TcsQueue TcsHashSet");
-    // member の名前に使えない語 (LuaKeywords)
-    private static readonly List<string> LuaKeywords = SplitWords("and break do else elseif end false for function global goto if in local nil not or repeat return then true until while");
     private static readonly List<string> CallerInfoNames = SplitWords("CallerArgumentExpression CallerMemberName CallerLineNumber CallerFilePath");
 
     public Compliance(Diagnostics diags)
@@ -101,7 +99,7 @@ public sealed class Compliance
         string common = IdentifierRule(n.Text);
         if (common != "") Report(common, n);
         else if (n.Text.Contains("_")) Report("UnderscoreTypeName(" + n.Text + ")", n);
-        else if (IsUnsafeLuaIdentifier(n.Text)) Report(UnsafeLuaIdentifierName(n.Text), n);
+        else if (n.Text == "self") Report("ReservedIdentifier(self)", n);
         else if (!isInterface && RuntimeGlobals.Contains(n.Text)) Report("RuntimeGlobalIdentifier(" + n.Text + ")", n);
         if (inGeneric) Report("NestedTypeInGenericType", n);
         if (n.Has(Mods.Abstract) && (n.Value == DeclKinds.Class || n.Value == DeclKinds.RecordClass)) Report("AbstractClass", n);
@@ -300,21 +298,16 @@ public sealed class Compliance
         return "";
     }
 
-    private static bool IsUnsafeLuaIdentifier(string name) => LuaKeywords.Contains(name) || name == "self";
-
-    private static string UnsafeLuaIdentifierName(string name) =>
-        LuaKeywords.Contains(name) ? "LuaKeywordIdentifier(" + name + ")" : "ReservedIdentifier(" + name + ")";
-
     // field、property、method、enum の member、record の positional parameter
     private void MemberName(string name, Node at)
     {
         string common = IdentifierRule(name);
         if (common != "") Report(common, at);
         else if (ReservedClassKeys.Contains(name)) Report("ReservedClassKey(" + name + ")", at);
-        else if (IsUnsafeLuaIdentifier(name)) Report(UnsafeLuaIdentifierName(name), at);
+        else if (name == "self") Report("ReservedIdentifier(self)", at);
     }
 
-    // local、parameter、foreach の変数、pattern の変数 (予約語と同じ名前は LocalNames が改名する)
+    // local、parameter、foreach の変数、pattern の変数
     private void LocalName(string name, Node at)
     {
         if (name == "") return;

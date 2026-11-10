@@ -6,12 +6,12 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// Lua 識別子 (予約語 / verbatim / ローカル束縛) の診断。本体は
+// 識別子 (他の言語の予約語と同じ名前 / verbatim / ローカル束縛) の診断。本体は
 // TinyCsComplianceAnalyzerTests.cs。
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]
-    public async Task LuaKeywordIdentifiers_ReportUnsupportedSyntax()
+    public async Task IdentifiersNamedLikeOtherLanguageKeywords_HaveNoDiagnostics()
     {
         var diagnostics = await AnalyzeAsync("""
             public class Turn
@@ -30,25 +30,12 @@ public partial class TinyCsComplianceAnalyzerTests
             }
             """);
 
-        var syntaxDiagnostics = diagnostics
-            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
-            .ToArray();
-
-        // member (field / method) だけ診断する。ローカル束縛 (repeat / @nil)
-        // は transpiler が安全な名前に写すので対象外
-        Assert.Equal(2, syntaxDiagnostics.Length);
-        Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("LuaKeywordIdentifier(until)"));
-        Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("LuaKeywordIdentifier(end)"));
-        Assert.DoesNotContain(syntaxDiagnostics,
-            d => d.GetMessage().Contains("LuaKeywordIdentifier(repeat)"));
-        Assert.DoesNotContain(syntaxDiagnostics,
-            d => d.GetMessage().Contains("LuaKeywordIdentifier(nil)"));
+        Assert.DoesNotContain(diagnostics,
+            d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax);
     }
 
     [Fact]
-    public async Task LuaKeywordLocalBindings_HaveNoDiagnostics()
+    public async Task LocalBindingsNamedLikeOtherLanguageKeywords_HaveNoDiagnostics()
     {
         var diagnostics = await AnalyzeAsync("""
             using System.Collections.Generic;

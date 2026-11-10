@@ -3,7 +3,7 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// IL の名前の規則 (user の型の method、constructor、演算子、parameter の名前)。host の型の名前は Declarer.cs の LuaNames
+// IL の名前の規則 (user の型の method、constructor、演算子、parameter の名前)。host の型の名前は Declarer.cs の HostNames
 public static class IlNames
 {
     // user の型の method の名前。同じ型に同名の method が複数あるときだけ

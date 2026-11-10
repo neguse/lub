@@ -41,10 +41,9 @@ public class RefTypeAccessTests
             result.ForeignMethods.Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal));
     }
 
-    // namespace を写したパスの区切りが Lua の予約語になるときは、member と同じ
-    // 規則で `_` を後置する (End → end_)
+    // namespace を写したパスの区切りは小文字にするだけで、他の言語の予約語と同じ綴りでも変えない (End → end)
     [Fact]
-    public void RefPathSegmentThatIsLuaKeyword_GetsUnderscoreSuffix()
+    public void RefPathSegment_IsLowercasedOnly()
     {
         var result = IlExport.Export(["""
             using End;
@@ -53,7 +52,7 @@ public class RefTypeAccessTests
             ["namespace End { public static class Api { public static int Get() { return 0; } } }"]);
 
         Assert.Empty(result.Diagnostics);
-        Assert.Equal("end_.api.get", Assert.Single(result.ForeignMethods).Name);
+        Assert.Equal("end.api.get", Assert.Single(result.ForeignMethods).Name);
     }
 
     // --ref パスの先頭 (namespace 由来の hostapi など) と同名のローカルも書ける
