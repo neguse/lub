@@ -23,7 +23,7 @@ lub は GUI editor や特定 asset pipeline を中心に据えず、開発者が
 実行の層 (tcs VM) は、reload 時に data shape の変化へ追従しやすいことを重視する (設計は tcs の `doc/vm-design.md`)。
 C# はその性質を活かしたまま、より書きやすい script authoring を提供するために使う。
 
-script authoring layer は TinyC# ([tcs](https://github.com/neguse/tcs)、C# サブセットの compiler)。
+script authoring layer は TinyC# (tcs、C# サブセットの compiler。この repo の `tcs/`)。
 全サンプルを C# で提供する (一覧の正は `web/playground/samples.ts` の CS_SAMPLES)。
 web playground と native CLI (`lub <sample>/<Entry>.csproj`) は同じ DX (build + watch + hotswap) を持ち、player (tcs VM)・API 面 (生成した host の関数)・hot reload セマンティクスを共有する。
 csproj は IDE 用の実プロジェクトでもあり、lub は basename (= entry class) と、印を付けた参照しか読まない。

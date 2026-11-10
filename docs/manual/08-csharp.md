@@ -1,7 +1,7 @@
 # C# (TinyC#) で書く
 
 lub のゲームコードは C# で書く。
-使うのは [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (release 向けに C にも変換できる) で、playground ではブラウザ内 (tcs2c で C にした tcs の WASM 版)、native では lub が `tcs` を dotnet で動かす。
+使うのは [tcs (TinyC#)](https://github.com/neguse/lub/tree/master/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (release 向けに C にも変換できる) で、playground ではブラウザ内 (tcs2c で C にした tcs の WASM 版)、native では lub が `tcs` を dotnet で動かす。
 dotnet が無い環境では、tcs2c で C にした tcs (C の tcs) を使う。
 実行ファイルの隣に C の tcs があれば、dotnet があってもそちらを先に使う (後述)。
 tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、C の tcs、ブラウザのどれで動かしても同じ出力になる。

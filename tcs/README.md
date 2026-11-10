@@ -15,9 +15,11 @@ Roslyn は compiler の外の道具 (IDE の Roslyn Analyzer、playground の補
 
 ## セットアップ
 
+tcs は [lub](https://github.com/neguse/lub) の repo の `tcs/` にある。以下のコマンドは `tcs/` で実行する。
+
 ```bash
-git clone --recursive https://github.com/neguse/tcs.git
-cd tcs
+git clone --recursive https://github.com/neguse/lub.git
+cd lub/tcs
 ```
 
 サブモジュールを取得し忘れた場合:
