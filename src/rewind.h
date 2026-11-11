@@ -15,25 +15,6 @@
 
 struct App;
 
-// 控えた 1 frame の入力 (その frame にゲームから見えたもの。overlay が Input.Grab で取っていた種類は何も押されていない)。
-// 止めている間、ゲームから読む Input はこれを返す (今の Input.Grab によらない。overlay は今の入力を読む)
-typedef struct RewindInput {
-  bool keys[SDL_SCANCODE_COUNT];
-  bool key_pressed[SDL_SCANCODE_COUNT];
-  bool key_released[SDL_SCANCODE_COUNT];
-  uint32_t mouse_buttons;
-  uint32_t mouse_pressed_mask;
-  uint32_t mouse_released_mask;
-  float mouse_x, mouse_y;
-  float mouse_rel_x, mouse_rel_y;
-  // gamepad の slot ごと
-  bool pad_connected[LUB_GAMEPAD_SLOTS];
-  float pad_axes[LUB_GAMEPAD_SLOTS][SDL_GAMEPAD_AXIS_COUNT];
-  uint32_t pad_down[LUB_GAMEPAD_SLOTS];
-  uint32_t pad_pressed[LUB_GAMEPAD_SLOTS];
-  uint32_t pad_released[LUB_GAMEPAD_SLOTS];
-} RewindInput;
-
 // frames 個まで控える (0 で控えるのをやめ、控えを捨てる)
 void rewind_record(struct App *app, int frames);
 int rewind_count(const struct App *app);
@@ -56,8 +37,10 @@ void rewind_frame_end(struct App *app);
 // 止めているか (ゲームの OnEvent を呼ばない)
 bool rewind_paused(const struct App *app);
 
-// ゲームから読む入力 (止めている間に、ゲームの callback の中から読むと控えた入力、それ以外は NULL)
-const RewindInput *rewind_input(const struct App *app);
+// ゲームから読む入力 (止めている間に、ゲームの callback の中から読むと控えた入力、それ以外は NULL)。
+// 控えるのは、その frame にゲームから見えたもの (overlay が Input.Grab で取っていた種類は何も押されていない)。
+// 止めている間は今の Input.Grab によらずこれを返す (overlay は今の入力を読む)
+const InputState *rewind_input(const struct App *app);
 
 // 控えを全部捨てる (player が VM を作り直す前)
 void rewind_drop(struct App *app);

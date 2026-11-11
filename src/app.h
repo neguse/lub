@@ -12,6 +12,7 @@
 #include "audio.h"
 #include "capture.h"
 #include "digest.h"
+#include "input.h"
 #include "lub/lub_api.h"
 #include "pass.h"
 #include "physics_box2d.h"
@@ -27,9 +28,6 @@ typedef enum { APP_PHASE_PRE_BACKEND, APP_PHASE_POST_BACKEND } AppPhase;
 // App.Config で Width / Height を指定しないときの window の大きさ。
 #define LUB_DEFAULT_WINDOW_W 1280
 #define LUB_DEFAULT_WINDOW_H 720
-
-// Input.Gamepad* の player の数 (0..3)。
-#define LUB_GAMEPAD_SLOTS 4
 
 struct App;
 // 検査の口 (Sys.TakeTrace / TakeValues / Inspect* と Rewind の状態の控え)。
@@ -135,25 +133,11 @@ typedef struct App {
   // so the swapchain is only ever rebuilt at frame start.
   bool pending_resize;
 
-  // Input latch: lub_host_translate_event accumulates edge events here so a
-  // press that begins and ends inside one frame is still observable from the
-  // game. lub_host_frame_end clears the latches right after the game's
-  // OnFrame.
-  bool key_pressed[SDL_SCANCODE_COUNT];
-  bool key_released[SDL_SCANCODE_COUNT];
-  uint32_t mouse_pressed_mask;
-  uint32_t mouse_released_mask;
-  // Per-frame mouse motion sum (framebuffer px). lub_input_mouse_delta reads
-  // this, so it is idempotent within a frame (unlike
-  // SDL_GetRelativeMouseState).
-  float mouse_rel_x, mouse_rel_y;
-  // Per-frame wheel sum (SDL wheel units; +y = away from user).
-  float mouse_wheel_x, mouse_wheel_y;
+  // Input.* が読む入力 (input.h)。
+  InputState input;
   // Gamepads by player slot. A slot keeps its pad until that pad is removed.
   SDL_Gamepad *gamepads[LUB_GAMEPAD_SLOTS];
   SDL_JoystickID gamepad_ids[LUB_GAMEPAD_SLOTS];
-  uint32_t gamepad_pressed[LUB_GAMEPAD_SLOTS];
-  uint32_t gamepad_released[LUB_GAMEPAD_SLOTS];
 
   // Effective frame delta time in seconds, passed to UI and OnFrame(dt).
   // Normally measured from the real frame clock and clamped so a debugger

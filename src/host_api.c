@@ -92,9 +92,48 @@ static void gamepad_button(App *app, const SDL_GamepadButtonEvent *e) {
     return;
   uint32_t bit = UINT32_C(1) << e->button;
   if (e->down)
-    app->gamepad_pressed[slot] |= bit;
+    app->input.pad_pressed[slot] |= bit;
   else
-    app->gamepad_released[slot] |= bit;
+    app->input.pad_released[slot] |= bit;
+}
+
+// SDL の軸 (-32768..32767) を Input.GamepadAxis の値にする。
+// stick は両端が -1 と 1 になるように割り、trigger (0..32767) は 0..1 にする。
+static float pad_axis(SDL_Gamepad *pad, int axis) {
+  int value = SDL_GetGamepadAxis(pad, (SDL_GamepadAxis)axis);
+  if (axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ||
+      axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)
+    return value > 0 ? (float)value / 32767.0f : 0.0f;
+  return (float)value / (value < 0 ? 32768.0f : 32767.0f);
+}
+
+// 今押されているもの (key、mouse の button と位置、gamepad) を SDL の状態から写す。
+// 押した・離した瞬間と移動の合計は event が積む。
+static void input_sample(App *app) {
+  InputState *in = &app->input;
+  int n = 0;
+  const bool *keys = SDL_GetKeyboardState(&n);
+  memset(in->keys, 0, sizeof(in->keys));
+  if (keys)
+    memcpy(in->keys, keys,
+           (size_t)(n < SDL_SCANCODE_COUNT ? n : SDL_SCANCODE_COUNT));
+  float px = 0.0f, py = 0.0f;
+  in->mouse_buttons = SDL_GetMouseState(&px, &py);
+  float density = lub_host_pixel_density(app);
+  int main_x = 0, main_y = 0, main_w = 0, main_h = 0;
+  lub_host_main_rect(app, &main_x, &main_y, &main_w, &main_h);
+  in->mouse_x = px * density - (float)main_x;
+  in->mouse_y = py * density - (float)main_y;
+  for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i) {
+    SDL_Gamepad *pad = app->gamepads[i];
+    in->pad_connected[i] = pad != NULL;
+    in->pad_down[i] = 0;
+    for (int a = 0; a < SDL_GAMEPAD_AXIS_COUNT; ++a)
+      in->pad_axes[i][a] = pad ? pad_axis(pad, a) : 0.0f;
+    for (int b = 0; pad && b < SDL_GAMEPAD_BUTTON_COUNT; ++b)
+      if (SDL_GetGamepadButton(pad, (SDL_GamepadButton)b))
+        in->pad_down[i] |= UINT32_C(1) << b;
+  }
 }
 
 // gamepad が使えなくても (subsystem の初期化に失敗しても) runtime は動かす。
@@ -251,7 +290,7 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     return true;
   case SDL_EVENT_KEY_DOWN:
     if (!e->key.repeat && e->key.scancode < SDL_SCANCODE_COUNT)
-      app->key_pressed[e->key.scancode] = true;
+      app->input.key_pressed[e->key.scancode] = true;
     out->kind = LUB_EVENT_KIND_KEY_DOWN;
     out->key = (int32_t)e->key.scancode;
     out->mods = event_mods(e->key.mod);
@@ -260,7 +299,7 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     return true;
   case SDL_EVENT_KEY_UP:
     if (e->key.scancode < SDL_SCANCODE_COUNT)
-      app->key_released[e->key.scancode] = true;
+      app->input.key_released[e->key.scancode] = true;
     out->kind = LUB_EVENT_KIND_KEY_UP;
     out->key = (int32_t)e->key.scancode;
     out->mods = event_mods(e->key.mod);
@@ -268,22 +307,22 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     out->plain = event_char(e->key.scancode, SDL_KMOD_NONE);
     return true;
   case SDL_EVENT_MOUSE_BUTTON_DOWN:
-    app->mouse_pressed_mask |= SDL_BUTTON_MASK(e->button.button);
+    app->input.mouse_pressed_mask |= SDL_BUTTON_MASK(e->button.button);
     out->kind = LUB_EVENT_KIND_MOUSE_BUTTON_DOWN;
     out->button = e->button.button;
     out->x = e->button.x * density - (float)main_x;
     out->y = e->button.y * density - (float)main_y;
     return true;
   case SDL_EVENT_MOUSE_BUTTON_UP:
-    app->mouse_released_mask |= SDL_BUTTON_MASK(e->button.button);
+    app->input.mouse_released_mask |= SDL_BUTTON_MASK(e->button.button);
     out->kind = LUB_EVENT_KIND_MOUSE_BUTTON_UP;
     out->button = e->button.button;
     out->x = e->button.x * density - (float)main_x;
     out->y = e->button.y * density - (float)main_y;
     return true;
   case SDL_EVENT_MOUSE_MOTION:
-    app->mouse_rel_x += e->motion.xrel * density;
-    app->mouse_rel_y += e->motion.yrel * density;
+    app->input.mouse_rel_x += e->motion.xrel * density;
+    app->input.mouse_rel_y += e->motion.yrel * density;
     out->kind = LUB_EVENT_KIND_MOUSE_MOTION;
     out->x = e->motion.x * density - (float)main_x;
     out->y = e->motion.y * density - (float)main_y;
@@ -304,8 +343,8 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     out->kind = LUB_EVENT_KIND_OTHER;
     return true;
   case SDL_EVENT_MOUSE_WHEEL:
-    app->mouse_wheel_x += e->wheel.x;
-    app->mouse_wheel_y += e->wheel.y;
+    app->input.mouse_wheel_x += e->wheel.x;
+    app->input.mouse_wheel_y += e->wheel.y;
     out->kind = LUB_EVENT_KIND_MOUSE_WHEEL;
     out->dx = e->wheel.x;
     out->dy = e->wheel.y;
@@ -320,6 +359,7 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
 bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out) {
   if (!translate_event(app, e, out))
     return false;
+  input_sample(app);
   app->declare_epoch++;
   return true;
 }
@@ -372,6 +412,7 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
     return false;
   }
   app->declare_epoch++;
+  input_sample(app);
   ui_new_frame(app, (float)app->frame_dt, w, h);
   pick_frame_begin(app);
   profile_begin_scope(&app->profile, "script.onFrame");
@@ -380,17 +421,19 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   return true;
 }
 
+// 押した・離した瞬間と、移動と wheel の合計を消す (OnFrame の後)
 static void input_latch_clear(App *app) {
-  memset(app->key_pressed, 0, sizeof(app->key_pressed));
-  memset(app->key_released, 0, sizeof(app->key_released));
-  app->mouse_pressed_mask = 0;
-  app->mouse_released_mask = 0;
-  app->mouse_rel_x = 0.0f;
-  app->mouse_rel_y = 0.0f;
-  app->mouse_wheel_x = 0.0f;
-  app->mouse_wheel_y = 0.0f;
-  memset(app->gamepad_pressed, 0, sizeof(app->gamepad_pressed));
-  memset(app->gamepad_released, 0, sizeof(app->gamepad_released));
+  InputState *in = &app->input;
+  memset(in->key_pressed, 0, sizeof(in->key_pressed));
+  memset(in->key_released, 0, sizeof(in->key_released));
+  in->mouse_pressed_mask = 0;
+  in->mouse_released_mask = 0;
+  in->mouse_rel_x = 0.0f;
+  in->mouse_rel_y = 0.0f;
+  in->mouse_wheel_x = 0.0f;
+  in->mouse_wheel_y = 0.0f;
+  memset(in->pad_pressed, 0, sizeof(in->pad_pressed));
+  memset(in->pad_released, 0, sizeof(in->pad_released));
 }
 
 void lub_host_frame_end(LubContext *ctx, bool frame_ok) {
