@@ -216,6 +216,8 @@ typedef struct App {
   struct RewindState *rewind;
   // player が持つ検査の口 (tcs VM の player が置く。無ければ Sys.TakeTrace などは空を返す)
   const struct LubDebugHooks *debug_hooks;
+  // 検査の口に渡る player の状態 (口の関数が app から引く)
+  void *debug_user;
   // overlay の callback の中か (player が立てる)。
   // overlay_grab_* は overlay が Input.Grab で取った入力の種類で、取っている間はゲームの OnEvent に届かず、overlay の外から読む Input は何も押されていない状態を返す
   bool in_overlay;
