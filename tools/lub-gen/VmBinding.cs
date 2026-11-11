@@ -125,7 +125,7 @@ internal sealed class VmBindingGen
             at = typeNames.Count;
             typeNames.Add(vmName);
         }
-        return "&vm_lub_types[" + at + "]";
+        return "&s->types[" + at + "]";
     }
 
     private static string NativeType(TypeRef type)
@@ -259,10 +259,10 @@ internal sealed class VmBindingGen
             if (type.Kind == "handle") Handle(type);
             if (type.Kind == "view") View(type);
         }
-        foreach (var name in inputs) Line("static Lub" + name + " vm_lub_to_" + name + "(" + Struct(name) + " *source);");
-        foreach (var name in outputs) Line("VM_LUB_UNUSED static " + Struct(name) + " *vm_lub_from_" + name + "(const Lub" + name + " *source);");
-        foreach (var name in inputLists) Line("static Lub" + name + " *vm_lub_to_" + name + "_list(void *source, int32_t *count);");
-        foreach (var name in outputLists) Line("static void *vm_lub_from_" + name + "_list(void *list, const Lub" + name + " *source, int32_t count);");
+        foreach (var name in inputs) Line("static Lub" + name + " vm_lub_to_" + name + "(VmLub *s, " + Struct(name) + " *source);");
+        foreach (var name in outputs) Line("VM_LUB_UNUSED static " + Struct(name) + " *vm_lub_from_" + name + "(VmLub *s, const Lub" + name + " *source);");
+        foreach (var name in inputLists) Line("static Lub" + name + " *vm_lub_to_" + name + "_list(VmLub *s, void *source, int32_t *count);");
+        foreach (var name in outputLists) Line("static void *vm_lub_from_" + name + "_list(VmLub *s, void *list, const Lub" + name + " *source, int32_t count);");
         foreach (var name in inputs) InputRecord(model.FindType(name)!);
         foreach (var name in outputs) OutputRecord(model.FindType(name)!);
         foreach (var name in inputLists) InputList(name);
@@ -287,8 +287,8 @@ internal sealed class VmBindingGen
                 var name = CHeader.FunctionName(ns, value.HostName);
                 var fn = "vm_host_" + name;
                 Line("static TvmStatus " + fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {");
-                Line("  (void)a; (void)user; VM_LUB_ENTER();");
-                PackReturn(value.Type, From(value.Type, name + "(vm_lub_context)"));
+                Line("  (void)a; VM_LUB_ENTER();");
+                PackReturn(value.Type, From(value.Type, name + "(s->ctx)"));
                 Line("  VM_LUB_LEAVE(vm);\n}");
                 registrations.Add("{\"" + hostName + "\", \"\", \"" + Token(value.Type) + "\", " + fn + "}");
             }
@@ -310,21 +310,29 @@ internal sealed class VmBindingGen
         }
         output = head;
         // 型の cache は本文が使う名前が決まってから置く
-        Line("static VmLubType vm_lub_types[" + (typeNames.Count == 0 ? 1 : typeNames.Count) + "] = {");
-        foreach (var n in typeNames) Line("  {\"" + n + "\", 0, NULL},");
-        if (typeNames.Count == 0) Line("  {\"\", 0, NULL},");
+        Line("static const char *const vm_lub_type_names[" + (typeNames.Count == 0 ? 1 : typeNames.Count) + "] = {");
+        foreach (var n in typeNames) Line("  \"" + n + "\",");
+        if (typeNames.Count == 0) Line("  \"\",");
         Line("};");
         output.Write(body.ToString());
+        Line("/* 状態を作る (0 で埋めた VmLub に 1 回)。失敗したら 0 */");
+        Line("static int vm_lub_init(VmLub *s, LubContext *ctx) {");
+        Line("  size_t n = sizeof(vm_lub_type_names) / sizeof(vm_lub_type_names[0]);");
+        Line("  s->ctx = ctx;");
+        Line("  s->types = calloc(n, sizeof(VmLubType));");
+        Line("  if (!s->types) return 0;");
+        Line("  for (size_t i = 0; i < n; i++) s->types[i].name = vm_lub_type_names[i];");
+        Line("  return 1;\n}");
         Line("/* EventData を VM の object にする (src/vm_player.c の OnEvent) */");
-        Line("static void *vm_lub_event(const LubEventData *e) { return vm_lub_from_EventData(e); }");
+        Line("static void *vm_lub_event(VmLub *s, const LubEventData *e) { return vm_lub_from_EventData(s, e); }");
         Line("static const struct { const char *name, *params, *rets; TvmHostFn fn; } vm_lub_hosts[] = {");
         foreach (var r in registrations) Line("  " + r + ",");
         Line("  {NULL, NULL, NULL, NULL},");
         Line("};");
-        Line("/* host の関数を全部登録する (tvm_load の前)。失敗したら 0 */");
-        Line("static int vm_lub_register(TvmVm *vm) {");
+        Line("/* host の関数を全部登録する (tvm_load の前)。s->vm は呼び出し側が置く。失敗したら 0 */");
+        Line("static int vm_lub_register(VmLub *s, TvmVm *vm) {");
         Line("  for (int i = 0; vm_lub_hosts[i].name; i++)");
-        Line("    if (!tvm_host(vm, vm_lub_hosts[i].name, vm_lub_hosts[i].params, vm_lub_hosts[i].rets, vm_lub_hosts[i].fn, NULL)) return 0;");
+        Line("    if (!tvm_host(vm, vm_lub_hosts[i].name, vm_lub_hosts[i].params, vm_lub_hosts[i].rets, vm_lub_hosts[i].fn, s)) return 0;");
         Line("  return 1;\n}");
         return output.ToString();
     }
@@ -337,10 +345,10 @@ internal sealed class VmBindingGen
     {
         var fn = "vm_host_" + CHeader.FunctionName(ns, f.HostName);
         Line("static TvmStatus " + fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {");
-        Line("  (void)user; VM_LUB_ENTER();");
-        Line("  if (!a[0].p) { vm_lub_fail(\"null reference\"); VM_LUB_LEAVE(vm); }");
-        Line("  " + Struct(f.Return.Name) + " *result = vm_lub_new(" + TypeVar(Il(f.Return.Name)) + ", sizeof(*result));");
-        Line("  result->host_value = vm_lub_key_store(vm_lub_str(a[0].p));");
+        Line("  VM_LUB_ENTER();");
+        Line("  if (!a[0].p) { vm_lub_fail(s, \"null reference\"); VM_LUB_LEAVE(vm); }");
+        Line("  " + Struct(f.Return.Name) + " *result = vm_lub_new(s, " + TypeVar(Il(f.Return.Name)) + ", sizeof(*result));");
+        Line("  result->host_value = vm_lub_key_store(s, vm_lub_str(a[0].p));");
         Line("  r[0].p = result;");
         Line("  VM_LUB_LEAVE(vm);\n}");
         registrations.Add("{\"" + ns.HostPath + "." + f.HostName + "\", \"s\", \"o\", " + fn + "}");
@@ -424,13 +432,13 @@ internal sealed class VmBindingGen
         switch (type.Kind)
         {
             case LubTypeKind.String:
-                return "vm_lub_string(" + value + ")";
+                return "vm_lub_string(s, " + value + ")";
             case LubTypeKind.Handle:
-                return "vm_lub_handle_" + type.Name + "(" + value + ")";
+                return "vm_lub_handle_" + type.Name + "(s, " + value + ")";
             case LubTypeKind.View:
-                return "vm_lub_view_" + type.Name + "(" + value + ")";
+                return "vm_lub_view_" + type.Name + "(s, " + value + ")";
             case LubTypeKind.Record:
-                return "vm_lub_from_" + type.Name + "(&" + value + ")";
+                return "vm_lub_from_" + type.Name + "(s, &" + value + ")";
             case LubTypeKind.List:
                 return ListFrom(type, value, "NULL", type.Nullable);
         }
@@ -443,9 +451,9 @@ internal sealed class VmBindingGen
     {
         var elem = type.Elem!;
         string filled;
-        if (elem.Kind == LubTypeKind.Record) filled = "vm_lub_from_" + elem.Name + "_list(" + list + ", " + value + ", " + value + "_count)";
-        else if (elem.IsScalar) filled = "vm_lub_list(" + TypeVar(VmTypeName(type)) + ", " + list + ", " + value + ", " + value + "_count, sizeof(*" + value + "))";
-        else if (elem.Kind == LubTypeKind.String) filled = "vm_lub_string_list(" + TypeVar(VmTypeName(type)) + ", " + list + ", " + value + ", " + value + "_count)";
+        if (elem.Kind == LubTypeKind.Record) filled = "vm_lub_from_" + elem.Name + "_list(s, " + list + ", " + value + ", " + value + "_count)";
+        else if (elem.IsScalar) filled = "vm_lub_list(s, " + TypeVar(VmTypeName(type)) + ", " + list + ", " + value + ", " + value + "_count, sizeof(*" + value + "))";
+        else if (elem.Kind == LubTypeKind.String) filled = "vm_lub_string_list(s, " + TypeVar(VmTypeName(type)) + ", " + list + ", " + value + ", " + value + "_count)";
         else
         {
             GenError.Report("unsupported list result: " + type.ToString());
@@ -458,7 +466,7 @@ internal sealed class VmBindingGen
     {
         if (type.Kind == LubTypeKind.String) return "vm_lub_str(" + value + ")";
         if (type.Kind == LubTypeKind.Handle) return "(" + value + " ? (int32_t)" + value + "->host_value : 0)";
-        if (type.Kind == LubTypeKind.Keyed) return "vm_lub_key_load(" + value + " ? " + value + "->host_value : 0)";
+        if (type.Kind == LubTypeKind.Keyed) return "vm_lub_key_load(s, " + value + " ? " + value + "->host_value : 0)";
         if (type.IsScalar || type.Kind == LubTypeKind.Struct) return type.Nullable ? value + ".v" : value;
         GenError.Report("unsupported field: " + type.ToString());
         return "";
@@ -487,11 +495,11 @@ internal sealed class VmBindingGen
         {
             if (f.Type.Kind != LubTypeKind.Func) continue;
             if (funcs >= 8) GenError.Report("too many callback fields: " + type.Name);
-            Trampoline(FieldCallbackName(type, f), f.Type, type.Name + "." + f.Name, "VmLubHeld *held = user; void *closure = vm_lub_held_get(held, " + funcs + ");", "!closure", "closure", "vm_lub_held_fault(held, " + funcs + ")");
+            Trampoline(FieldCallbackName(type, f), f.Type, type.Name + "." + f.Name, "VmLubHeld *held = user; VmLub *s = held->s; void *closure = vm_lub_held_get(held, " + funcs + ");", "!closure", "closure", "vm_lub_held_fault(held, " + funcs + ")");
             funcs++;
         }
-        Line("static Lub" + type.Name + " vm_lub_to_" + type.Name + "(" + Struct(type.Name) + " *source) {");
-        Line("  Lub" + type.Name + " result = {0}; if (!source) return result;");
+        Line("static Lub" + type.Name + " vm_lub_to_" + type.Name + "(VmLub *s, " + Struct(type.Name) + " *source) {");
+        Line("  (void)s; Lub" + type.Name + " result = {0}; if (!source) return result;");
         foreach (var fp in Fields(type))
         {
             var field = fp.Field;
@@ -502,7 +510,7 @@ internal sealed class VmBindingGen
             if ((field.Type.IsScalar || field.Type.Kind == LubTypeKind.Struct) && field.Optional)
                 Line("  if (" + src + ".has) { " + has + " = true; " + dst + " = " + src + ".v; }");
             else if (field.Bits)
-                Line("  " + (field.Optional ? has + " = " : "") + "vm_lub_bits(" + src + ", &" + dst + ");");
+                Line("  " + (field.Optional ? has + " = " : "") + "vm_lub_bits(s, " + src + ", &" + dst + ");");
             else if (field.Type.Kind == LubTypeKind.Array)
             {
                 if (field.ArrayLen < 0)
@@ -513,7 +521,7 @@ internal sealed class VmBindingGen
                 int length = field.ArrayLen;
                 Line("  if (" + src + ") {");
                 if (field.Optional) Line("    " + has + " = true;");
-                Line("    if (tvm_array_len(" + src + ") != " + length + ") vm_lub_fail(\"" + type.Name + "." + field.Name + ": the array must have " + length + " elements\");");
+                Line("    if (tvm_array_len(" + src + ") != " + length + ") vm_lub_fail(s, \"" + type.Name + "." + field.Name + ": the array must have " + length + " elements\");");
                 Line("    else memcpy(" + dst + ", tvm_array_data(" + src + "), sizeof(" + dst + "));\n  }");
             }
             else if (field.Type.Kind == LubTypeKind.List)
@@ -522,7 +530,7 @@ internal sealed class VmBindingGen
                 Line("  if (" + src + ") {");
                 if (elem.Kind == LubTypeKind.Record)
                 {
-                    Line("    " + dst + " = vm_lub_to_" + elem.Name + "_list(" + src + ", &" + dst + "_count);");
+                    Line("    " + dst + " = vm_lub_to_" + elem.Name + "_list(s, " + src + ", &" + dst + "_count);");
                     Line("  }");
                     continue;
                 }
@@ -530,21 +538,21 @@ internal sealed class VmBindingGen
                 if (elem.IsScalar && field.ArrayLen >= 0)
                 {
                     int cap = field.ArrayLen;
-                    Line("    if (" + dst + "_count > " + cap + ") { vm_lub_fail(\"" + type.Name + "." + field.Name + ": at most " + cap + " elements\"); " + dst + "_count = 0; }");
+                    Line("    if (" + dst + "_count > " + cap + ") { vm_lub_fail(s, \"" + type.Name + "." + field.Name + ": at most " + cap + " elements\"); " + dst + "_count = 0; }");
                     Line("    memcpy(" + dst + ", tvm_list_data(" + src + "), (size_t)" + dst + "_count * sizeof(*" + dst + "));");
                 }
                 else if (elem.IsScalar) Line("    " + dst + " = tvm_list_data(" + src + ");");
                 else if (elem.Kind == LubTypeKind.Handle)
                 {
-                    Line("    LubHandle *items = vm_lub_alloc((size_t)" + dst + "_count * sizeof(*items));");
+                    Line("    LubHandle *items = vm_lub_alloc(s, (size_t)" + dst + "_count * sizeof(*items));");
                     Line("    for (int i = 0; i < " + dst + "_count; i++) { " + Struct(elem.Name) + " *item = ((" + Struct(elem.Name) + " **)tvm_list_data(" + src + "))[i]; items[i] = item ? (int32_t)item->host_value : 0; }");
                     Line("    " + dst + " = items;");
                 }
                 else if (elem.Kind == LubTypeKind.Array && field.ArrayLen >= 0)
                 {
                     int len = field.ArrayLen;
-                    Line("    " + Scalar(elem.Elem!) + " (*items)[" + len + "] = vm_lub_alloc((size_t)" + dst + "_count * sizeof(*items));");
-                    Line("    for (int i = 0; i < " + dst + "_count; i++) { void *item = ((void **)tvm_list_data(" + src + "))[i]; if (tvm_array_len(item) != " + len + ") vm_lub_fail(\"" + type.Name + "." + field.Name + ": each array must have " + len + " elements\"); else memcpy(items[i], tvm_array_data(item), sizeof(items[i])); }");
+                    Line("    " + Scalar(elem.Elem!) + " (*items)[" + len + "] = vm_lub_alloc(s, (size_t)" + dst + "_count * sizeof(*items));");
+                    Line("    for (int i = 0; i < " + dst + "_count; i++) { void *item = ((void **)tvm_list_data(" + src + "))[i]; if (tvm_array_len(item) != " + len + ") vm_lub_fail(s, \"" + type.Name + "." + field.Name + ": each array must have " + len + " elements\"); else memcpy(items[i], tvm_array_data(item), sizeof(items[i])); }");
                     Line("    " + dst + " = items;");
                 }
                 else
@@ -555,15 +563,15 @@ internal sealed class VmBindingGen
                 Line("  }");
             }
             else if (field.Type.Kind == LubTypeKind.Record && field.Optional)
-                Line("  if (" + src + ") { " + has + " = true; " + dst + " = vm_lub_to_" + field.Type.Name + "(" + src + "); }");
+                Line("  if (" + src + ") { " + has + " = true; " + dst + " = vm_lub_to_" + field.Type.Name + "(s, " + src + "); }");
             else if (field.Type.Kind == LubTypeKind.Record)
-                Line("  " + dst + " = vm_lub_to_" + field.Type.Name + "(" + src + ");");
+                Line("  " + dst + " = vm_lub_to_" + field.Type.Name + "(s, " + src + ");");
             else if (field.Type.Kind == LubTypeKind.Func)
             {
                 int slot = FuncFieldIndex(type, field);
                 Line("  if (" + src + ") {");
-                Line("    if (!result.user) { result.user = vm_lub_held_new(); result.user_release = vm_lub_held_release; }");
-                Line("    ((VmLubHeld *)result.user)->h[" + slot + "] = tvm_hold(vm_lub_vm, " + src + ");");
+                Line("    if (!result.user) { result.user = vm_lub_held_new(s); result.user_release = vm_lub_held_release; }");
+                Line("    ((VmLubHeld *)result.user)->h[" + slot + "] = tvm_hold(s->vm, " + src + ");");
                 Line("    " + dst + " = " + FieldCallbackName(type, field) + ";");
                 Line("  }");
             }
@@ -574,8 +582,8 @@ internal sealed class VmBindingGen
 
     private void OutputRecord(ApiType type)
     {
-        Line("static " + Struct(type.Name) + " *vm_lub_from_" + type.Name + "(const Lub" + type.Name + " *source) {");
-        Line("  " + Struct(type.Name) + " *result = vm_lub_new(" + TypeVar(Il(type.Name)) + ", sizeof(*result));");
+        Line("static " + Struct(type.Name) + " *vm_lub_from_" + type.Name + "(VmLub *s, const Lub" + type.Name + " *source) {");
+        Line("  " + Struct(type.Name) + " *result = vm_lub_new(s, " + TypeVar(Il(type.Name)) + ", sizeof(*result));");
         foreach (var fp in Fields(type))
         {
             var field = fp.Field;
@@ -586,13 +594,13 @@ internal sealed class VmBindingGen
             if (field.Type.Kind == LubTypeKind.Array)
             {
                 // 配列の field は host が作る (VM の object は field の initializer を走らせない)
-                Line("  " + dst + " = vm_lub_array(" + TypeVar(VmTypeName(field.Type)) + ", " + field.ArrayLen + ");");
+                Line("  " + dst + " = vm_lub_array(s, " + TypeVar(VmTypeName(field.Type)) + ", " + field.ArrayLen + ");");
                 Line("  if (" + dst + ") memcpy(tvm_array_data(" + dst + "), " + src + ", sizeof(" + src + "));");
             }
             else if ((field.Type.IsScalar || field.Type.Kind == LubTypeKind.Struct) && field.Optional)
                 Line("  " + dst + " = (" + Opt(field.Type) + "){" + has + ", " + src + "};");
             else if (field.Bits)
-                Line("  " + dst + " = " + (field.Optional ? "!" + has + " ? NULL : " : "") + "vm_lub_bits_string(" + src + ");");
+                Line("  " + dst + " = " + (field.Optional ? "!" + has + " ? NULL : " : "") + "vm_lub_bits_string(s, " + src + ");");
             else if (field.Type.Kind == LubTypeKind.Record && field.Optional)
                 Line("  " + dst + " = " + has + " ? " + From(field.Type, src) + " : NULL;");
             else if (field.Type.Kind == LubTypeKind.List)
@@ -604,30 +612,30 @@ internal sealed class VmBindingGen
 
     private void InputList(string name)
     {
-        Line("static Lub" + name + " *vm_lub_to_" + name + "_list(void *source, int32_t *count) {");
-        Line("  *count = tvm_list_count(source); Lub" + name + " *items = vm_lub_alloc((size_t)*count * sizeof(*items));");
-        Line("  for (int i = 0; i < *count; i++) items[i] = vm_lub_to_" + name + "(((" + Struct(name) + " **)tvm_list_data(source))[i]);");
+        Line("static Lub" + name + " *vm_lub_to_" + name + "_list(VmLub *s, void *source, int32_t *count) {");
+        Line("  *count = tvm_list_count(source); Lub" + name + " *items = vm_lub_alloc(s, (size_t)*count * sizeof(*items));");
+        Line("  for (int i = 0; i < *count; i++) items[i] = vm_lub_to_" + name + "(s, ((" + Struct(name) + " **)tvm_list_data(source))[i]);");
         Line("  return items;\n}");
     }
 
     private void OutputList(string name)
     {
         var listType = TypeVar("List<" + Il(name) + ">");
-        Line("static void *vm_lub_from_" + name + "_list(void *list, const Lub" + name + " *source, int32_t count) {");
-        Line("  if (!list) list = vm_lub_list_new(" + listType + ");");
+        Line("static void *vm_lub_from_" + name + "_list(VmLub *s, void *list, const Lub" + name + " *source, int32_t count) {");
+        Line("  if (!list) list = vm_lub_list_new(s, " + listType + ");");
         Line("  if (!list) return NULL;");
         Line("  int32_t base = tvm_list_count(list);");
-        Line("  if (!tvm_list_resize(vm_lub_vm, list, base + count)) { vm_lub_fail(\"allocation-overflow\"); return list; }");
-        Line("  for (int i = 0; i < count; i++) ((void **)tvm_list_data(list))[base + i] = vm_lub_from_" + name + "(&source[i]);");
+        Line("  if (!tvm_list_resize(s->vm, list, base + count)) { vm_lub_fail(s, \"allocation-overflow\"); return list; }");
+        Line("  for (int i = 0; i < count; i++) ((void **)tvm_list_data(list))[base + i] = vm_lub_from_" + name + "(s, &source[i]);");
         Line("  return list;\n}");
     }
 
     private void Handle(ApiType type)
     {
-        Line("static " + Struct(type.Name) + " *vm_lub_handle_" + type.Name + "(LubHandle handle) {");
+        Line("static " + Struct(type.Name) + " *vm_lub_handle_" + type.Name + "(VmLub *s, LubHandle handle) {");
         // 無効な handle (0) は null
         Line("  if (!handle) return NULL;");
-        Line("  " + Struct(type.Name) + " *result = vm_lub_new(" + TypeVar(Il(type.Name)) + ", sizeof(*result));");
+        Line("  " + Struct(type.Name) + " *result = vm_lub_new(s, " + TypeVar(Il(type.Name)) + ", sizeof(*result));");
         Line("  result->host_value = (uint32_t)handle;");
         bool hasVersion = false;
         foreach (var f in type.Fields)
@@ -638,7 +646,7 @@ internal sealed class VmBindingGen
         {
             Line("  if (handle) {");
             Line("    LubStr key; int32_t version = 0;");
-            Line("    lub_gfx_resource_info(vm_lub_context, handle, &key, &version);");
+            Line("    lub_gfx_resource_info(s->ctx, handle, &key, &version);");
             Line("    result->f_version = version;");
             Line("  }");
         }
@@ -647,10 +655,10 @@ internal sealed class VmBindingGen
 
     private void View(ApiType type)
     {
-        Line("static " + Struct(type.Name) + " *vm_lub_view_" + type.Name + "(LubView value) {");
+        Line("static " + Struct(type.Name) + " *vm_lub_view_" + type.Name + "(VmLub *s, LubView value) {");
         Line("  if (!value.ptr) return NULL;");
-        Line("  " + Struct(type.Name) + " *result = vm_lub_new(" + TypeVar(Il(type.Name)) + ", sizeof(*result));");
-        Line("  result->host_value = vm_lub_view_store(value); result->f_length = value.len;");
+        Line("  " + Struct(type.Name) + " *result = vm_lub_new(s, " + TypeVar(Il(type.Name)) + ", sizeof(*result));");
+        Line("  result->host_value = vm_lub_view_store(s, value); result->f_length = value.len;");
         Line("  return result;\n}");
     }
 
@@ -717,12 +725,12 @@ internal sealed class VmBindingGen
             && method.Params[0].Type.Kind == LubTypeKind.Int && method.Return.Kind == LubTypeKind.Int)
         {
             Line("static TvmStatus " + fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {");
-            Line("  (void)user; VM_LUB_ENTER();");
+            Line("  VM_LUB_ENTER();");
             Line("  " + Struct(type.Name) + " *self = a[0].p; int32_t p_index = a[1].i;");
-            Line("  if (!self) { vm_lub_fail(\"null reference\"); VM_LUB_LEAVE(vm); }");
-            Line("  LubView view = vm_lub_view_load(self->host_value);");
-            Line("  if (vm_lub_error) VM_LUB_LEAVE(vm);");
-            Line("  if (p_index < 0 || p_index >= view.len) { vm_lub_fail(\"view index out of range\"); VM_LUB_LEAVE(vm); }");
+            Line("  if (!self) { vm_lub_fail(s, \"null reference\"); VM_LUB_LEAVE(vm); }");
+            Line("  LubView view = vm_lub_view_load(s, self->host_value);");
+            Line("  if (s->error) VM_LUB_LEAVE(vm);");
+            Line("  if (p_index < 0 || p_index >= view.len) { vm_lub_fail(s, \"view index out of range\"); VM_LUB_LEAVE(vm); }");
             Line("  r[0].i = view.ptr[p_index];");
             Line("  VM_LUB_LEAVE(vm);\n}");
             registrations.Add("{\"" + hostName + "\", \"oi\", \"i\", " + fn + "}");
@@ -755,7 +763,7 @@ internal sealed class VmBindingGen
         }
         var fn = "vm_host_" + name;
         Line("static TvmStatus " + fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {");
-        Line("  (void)a; (void)r; (void)user; VM_LUB_ENTER();");
+        Line("  (void)a; (void)r; VM_LUB_ENTER();");
         // 引数は C# の順に 1 つずつ a[k] に来る。out (&) の a[k].p は VM が値を受ける場所
         var tokens = new List<string>();
         for (int k = 0; k < function.Params.Count; k++)
@@ -766,7 +774,7 @@ internal sealed class VmBindingGen
         }
         var st = new CallState();
         var args = st.Args;
-        args.Add("vm_lub_context");
+        args.Add("s->ctx");
         string? nativeName = null;
         string? nativeParam = null;
         foreach (var param in function.Params)
@@ -788,13 +796,13 @@ internal sealed class VmBindingGen
             if (type.Kind == LubTypeKind.Array && type.Elem!.Kind == LubTypeKind.Double && countParam != null)
             {
                 var count = "p_" + countParam.HostName;
-                Line("  if (" + p + " && (uint32_t)" + count + " > (uint32_t)tvm_array_len(" + p + ")) { vm_lub_fail(\"" + hostName + ": count is out of range for the array\"); VM_LUB_LEAVE(vm); }");
+                Line("  if (" + p + " && (uint32_t)" + count + " > (uint32_t)tvm_array_len(" + p + ")) { vm_lub_fail(s, \"" + hostName + ": count is out of range for the array\"); VM_LUB_LEAVE(vm); }");
                 args.Add(p + " ? (const float *)tvm_array_data(" + p + ") : NULL");
                 args.Add(count);
             }
             else if (type.Kind == LubTypeKind.Record)
             {
-                Line("  Lub" + type.Name + " " + n + " = vm_lub_to_" + type.Name + "(" + p + ");");
+                Line("  Lub" + type.Name + " " + n + " = vm_lub_to_" + type.Name + "(s, " + p + ");");
                 args.Add(p + " ? &" + n + " : NULL");
             }
             else if (type.Kind == LubTypeKind.List && type.Elem!.IsScalar)
@@ -804,28 +812,28 @@ internal sealed class VmBindingGen
             }
             else if (type.Kind == LubTypeKind.List && type.Elem!.Kind == LubTypeKind.Record)
             {
-                Line("  int32_t " + n + "_count = 0; Lub" + type.Elem.Name + " *" + n + " = " + p + " ? vm_lub_to_" + type.Elem.Name + "_list(" + p + ", &" + n + "_count) : NULL;");
+                Line("  int32_t " + n + "_count = 0; Lub" + type.Elem.Name + " *" + n + " = " + p + " ? vm_lub_to_" + type.Elem.Name + "_list(s, " + p + ", &" + n + "_count) : NULL;");
                 args.Add(n);
                 args.Add(n + "_count");
             }
             else if (type.Kind == LubTypeKind.View)
             {
                 Line("  LubView " + n + " = {0};");
-                Line("  if (" + p + ") " + n + " = vm_lub_view_load(" + p + "->host_value);");
+                Line("  if (" + p + ") " + n + " = vm_lub_view_load(s, " + p + "->host_value);");
                 args.Add(n + ".ptr");
                 args.Add(n + ".len");
             }
             else if (type.Kind == LubTypeKind.Native)
             {
-                Line("  if (!" + p + ") { vm_lub_fail(\"null reference\"); VM_LUB_LEAVE(vm); }");
-                Line("  LubBindings *" + n + " = vm_lub_bindings_block(" + p + ");");
+                Line("  if (!" + p + ") { vm_lub_fail(s, \"null reference\"); VM_LUB_LEAVE(vm); }");
+                Line("  LubBindings *" + n + " = vm_lub_bindings_block(s, " + p + ");");
                 args.Add(n);
                 nativeName = n;
                 nativeParam = p;
             }
             else if (type.Kind == LubTypeKind.Array && type.Elem!.Kind == LubTypeKind.Double)
             {
-                Line("  if (!" + p + ") { vm_lub_fail(\"null reference\"); VM_LUB_LEAVE(vm); }");
+                Line("  if (!" + p + ") { vm_lub_fail(s, \"null reference\"); VM_LUB_LEAVE(vm); }");
                 args.Add("(const float *)tvm_array_data(" + p + ")");
                 args.Add("tvm_array_len(" + p + ")");
             }
@@ -833,19 +841,20 @@ internal sealed class VmBindingGen
             else if (type.IsScalar && type.Nullable) args.Add(p + ".has ? &" + p + ".v : NULL");
             else if (type.Kind == LubTypeKind.Func)
             {
+                Line("  VmLubVisit v_" + param.HostName + " = {s, " + p + "};");
                 args.Add(p + " ? " + CallbackName(name, param) + " : NULL");
-                args.Add(p);
+                args.Add("&v_" + param.HostName);
             }
             else
             {
                 // null を受けない handle は誤り
                 if (type.Kind == LubTypeKind.Handle && !type.Nullable && !(param.Optional && !param.HasDefault))
-                    Line("  if (!" + p + ") { vm_lub_fail(\"" + hostName + ": " + param.Name + " is null\"); VM_LUB_LEAVE(vm); }");
+                    Line("  if (!" + p + ") { vm_lub_fail(s, \"" + hostName + ": " + param.Name + " is null\"); VM_LUB_LEAVE(vm); }");
                 args.Add(To(type, p));
             }
         }
         // 入力の変換の誤り (配列の長さ、bit mask) は C API を呼ぶ前に止める
-        Line("  if (vm_lub_error) VM_LUB_LEAVE(vm);");
+        Line("  if (s->error) VM_LUB_LEAVE(vm);");
         // scalar と struct の record の out は VM の場所に C API が直接書く。他は C の値で受け、VM の値にして場所に置く
         for (int k = 0; k < function.Params.Count; k++)
         {
@@ -897,15 +906,15 @@ internal sealed class VmBindingGen
         {
             if (param.Type.Kind == LubTypeKind.Func) visits = true;
         }
-        if (visits) Line("  bool vm_lub_visitor_outer = vm_lub_visitor_failed; vm_lub_visitor_failed = false;");
+        if (visits) Line("  bool vm_lub_visitor_outer = s->visitor_failed; s->visitor_failed = false;");
         if (function.NoFail) Line("  " + (byValue ? "result = " : "") + call + ";");
         else Line("  LubStatus status = " + call + ";");
         // visitor が失敗した query は null (戻り値と out は 0)
         if (visits)
         {
-            Line("  if (vm_lub_visitor_failed) {");
-            Line("    fprintf(stderr, \"lub: " + hostName + " visitor: %s\\n\", vm_lub_visitor_text);");
-            Line("    vm_lub_visitor_failed = vm_lub_visitor_outer;");
+            Line("  if (s->visitor_failed) {");
+            Line("    fprintf(stderr, \"lub: " + hostName + " visitor: %s\\n\", s->visitor_text);");
+            Line("    s->visitor_failed = vm_lub_visitor_outer;");
             if (block) Line("    *result = (" + Opt(ret) + "){0};");
             else if (structRet) Line("    *" + Place(ret, "r[0].p") + " = " + Zero(ret) + ";");
             else if (returned) Line("    r[0].u = 0;");
@@ -916,14 +925,14 @@ internal sealed class VmBindingGen
             }
             Line("    VM_LUB_LEAVE(vm);");
             Line("  }");
-            Line("  vm_lub_visitor_failed = vm_lub_visitor_outer;");
+            Line("  s->visitor_failed = vm_lub_visitor_outer;");
         }
         if (!function.NoFail)
         {
             if (nativeName != null)
-                Line("  while (status == LUB_BINDINGS_FULL) { " + nativeName + " = vm_lub_bindings_grow(" + nativeParam + "); status = " + call + "; }");
-            Line("  vm_lub_check(status);");
-            Line("  if (vm_lub_error) VM_LUB_LEAVE(vm);");
+                Line("  while (status == LUB_BINDINGS_FULL) { " + nativeName + " = vm_lub_bindings_grow(s, " + nativeParam + "); status = " + call + "; }");
+            Line("  vm_lub_check(s, status);");
+            Line("  if (s->error) VM_LUB_LEAVE(vm);");
         }
         // 見つからない (LUB_NOT_FOUND) か値の無い結果は null で、struct の record は 0 の値。scalar の out はそのとき C API が書いたまま
         string? missing = null;
@@ -961,11 +970,11 @@ internal sealed class VmBindingGen
         registrations.Add("{\"" + hostName + "\", \"" + string.Join("", tokens) + "\", \"" + Token(ret) + "\", " + fn + "}");
     }
 
-    // Func 引数は C の関数 pointer + user (VM の closure) に写す。C API が呼び出しの間だけ呼ぶ
+    // Func 引数は C の関数 pointer + user (状態と VM の closure の組) に写す。C API が呼び出しの間だけ呼ぶ
     private static string CallbackName(string function, ApiParam param) => "vm_lub_" + function + "_" + param.HostName;
 
     private void Callback(string function, ApiParam param) =>
-        Trampoline(CallbackName(function, param), param.Type, param.Name, "", "vm_lub_visitor_failed", "user", "vm_lub_visitor_fail()");
+        Trampoline(CallbackName(function, param), param.Type, param.Name, "VmLubVisit *visit = user; VmLub *s = visit->s;", "s->visitor_failed", "visit->closure", "vm_lub_visitor_fail(s)");
 
     // callback の既定の値 (呼べないか失敗したとき)
     private static string CallbackDefault(TypeRef ret) =>
@@ -991,7 +1000,7 @@ internal sealed class VmBindingGen
             if (type.Kind == LubTypeKind.Record)
             {
                 cParams.Add("const Lub" + type.Name + " *" + a);
-                sets.Add("args[" + at + "].p = vm_lub_from_" + type.Name + "(" + a + ");");
+                sets.Add("args[" + at + "].p = vm_lub_from_" + type.Name + "(s, " + a + ");");
             }
             else if (type.IsScalar && !type.Nullable)
             {
@@ -1011,9 +1020,9 @@ internal sealed class VmBindingGen
         Line("  TvmSlot args[" + (at == 0 ? 1 : at) + "] = {{0}}, rets[1] = {{0}};");
         if (prologue != "") Line("  " + prologue);
         // 前の呼び出しが失敗したら VM に戻らない
-        Line("  if (vm_lub_error || " + skip + ") " + giveUp);
+        Line("  if (s->error || " + skip + ") " + giveUp);
         foreach (var st in sets) Line("  " + st);
-        Line("  if (tvm_invoke(vm_lub_vm, " + closure + ", args, " + at + ", rets, " + (ret.Kind == LubTypeKind.Void ? "0" : "1") + ") != TVM_OK) { " + onFault + "; " + giveUp + " }");
+        Line("  if (tvm_invoke(s->vm, " + closure + ", args, " + at + ", rets, " + (ret.Kind == LubTypeKind.Void ? "0" : "1") + ") != TVM_OK) { " + onFault + "; " + giveUp + " }");
         if (cRet == "float") Line("  return rets[0].f;");
         else if (cRet == "bool") Line("  return rets[0].i != 0;");
         else if (cRet != "void") Line("  return rets[0].i;");
@@ -1023,17 +1032,17 @@ internal sealed class VmBindingGen
     // Bindings の中身の block は GC の blob に置く (field の blob で辿れるので、手放せば GC が回収する)
     private void NativeBindings()
     {
-        Line("static LubBindings *vm_lub_bindings_alloc(VmLub_Bindings *owner, int32_t scale) {");
-        Line("  void *block = tvm_blob_new(vm_lub_vm, lub_bindings_size(scale));");
-        Line("  if (!block) { vm_lub_fail(\"allocation-overflow\"); return NULL; }");
+        Line("static LubBindings *vm_lub_bindings_alloc(VmLub *s, VmLub_Bindings *owner, int32_t scale) {");
+        Line("  void *block = tvm_blob_new(s->vm, lub_bindings_size(scale));");
+        Line("  if (!block) { vm_lub_fail(s, \"allocation-overflow\"); return NULL; }");
         Line("  owner->f_blob = block;");
         Line("  lub_bindings_init((LubBindings *)block, scale);");
         Line("  return (LubBindings *)block;\n}");
-        Line("static LubBindings *vm_lub_bindings_block(VmLub_Bindings *owner) {");
-        Line("  return owner->f_blob ? (LubBindings *)owner->f_blob : vm_lub_bindings_alloc(owner, 1);\n}");
-        Line("static LubBindings *vm_lub_bindings_grow(VmLub_Bindings *owner) {");
+        Line("static LubBindings *vm_lub_bindings_block(VmLub *s, VmLub_Bindings *owner) {");
+        Line("  return owner->f_blob ? (LubBindings *)owner->f_blob : vm_lub_bindings_alloc(s, owner, 1);\n}");
+        Line("static LubBindings *vm_lub_bindings_grow(VmLub *s, VmLub_Bindings *owner) {");
         Line("  LubBindings *old = (LubBindings *)owner->f_blob;");
-        Line("  LubBindings *grown = vm_lub_bindings_alloc(owner, lub_bindings_scale(old) * 2);");
+        Line("  LubBindings *grown = vm_lub_bindings_alloc(s, owner, lub_bindings_scale(old) * 2);");
         Line("  if (!grown) return old;");
         Line("  lub_bindings_grow_into(grown, old);");
         Line("  return grown;\n}");
@@ -1050,155 +1059,171 @@ internal sealed class VmBindingGen
         typedef struct VmLubOptI32 { bool has; int32_t v; } VmLubOptI32;
         typedef struct VmLubOptF32 { bool has; float v; } VmLubOptF32;
         typedef struct VmLubOptBool { bool has; bool v; } VmLubOptBool;
-        static LubContext *vm_lub_context;
-        static TvmVm *vm_lub_vm;
-        static const char *vm_lub_error;
-        static char vm_lub_error_text[1024];
-        static void **vm_lub_temps;
-        static size_t vm_lub_ntemps, vm_lub_ctemps;
-        static void vm_lub_fail(const char *message) {
-          if (!vm_lub_error) vm_lub_error = message;
+        /* VM の型 (読み込みと reload で作り直すので版で引き直す) */
+        typedef struct VmLubType { const char *name; uint32_t version; const TvmTypeInfo *type; } VmLubType;
+        /* VM 1 つ分の binding の状態。host の関数には tvm_host の user で渡る */
+        typedef struct VmLub {
+          LubContext *ctx;
+          TvmVm *vm;
+          /* 今の host の関数の誤り (無ければ NULL) と、その文面の置き場 */
+          const char *error;
+          char error_text[1024];
+          /* host の関数の間だけの C の memory */
+          void **temps;
+          size_t ntemps, ctemps;
+          /* query の visitor の fault */
+          bool visitor_failed;
+          char visitor_text[1024];
+          VmLubType *types;
+          /* keyed の object の key (host_value は表の番号 + 1。key は少なく、表は残す) */
+          char **keys;
+          uint32_t nkeys;
+          /* view の実体 (frame の終わりまで) */
+          LubView *views;
+          uint32_t view_count, view_capacity;
+          int32_t view_frame;
+        } VmLub;
+        static void vm_lub_fail(VmLub *s, const char *message) {
+          if (!s->error) s->error = message;
         }
-        static void vm_lub_fail_text(const char *message) {
-          if (vm_lub_error) return;
-          snprintf(vm_lub_error_text, sizeof vm_lub_error_text, "%s", message);
-          vm_lub_error = vm_lub_error_text;
+        static void vm_lub_fail_text(VmLub *s, const char *message) {
+          if (s->error) return;
+          snprintf(s->error_text, sizeof s->error_text, "%s", message);
+          s->error = s->error_text;
         }
         /* callback の中の VM の fault (trace は tvm_error) */
-        static void vm_lub_fail_vm(void) { vm_lub_fail_text(tvm_error(vm_lub_vm)); }
+        static void vm_lub_fail_vm(VmLub *s) { vm_lub_fail_text(s, tvm_error(s->vm)); }
         /* query の visitor の fault。query は fault にせず null を返す (message は log に出す) */
-        static bool vm_lub_visitor_failed;
-        static char vm_lub_visitor_text[1024];
-        static void vm_lub_visitor_fail(void) {
-          if (vm_lub_visitor_failed) return;
-          snprintf(vm_lub_visitor_text, sizeof vm_lub_visitor_text, "%s", tvm_error(vm_lub_vm));
-          vm_lub_visitor_failed = true;
+        static void vm_lub_visitor_fail(VmLub *s) {
+          if (s->visitor_failed) return;
+          snprintf(s->visitor_text, sizeof s->visitor_text, "%s", tvm_error(s->vm));
+          s->visitor_failed = true;
         }
         /* record の callback の field (world の Filter など): runtime が持ち続けるので、closure を tvm_hold で持つ。
            runtime が手放すとき (user_release) に放す。作った VM でなければ呼ばず、放さない */
-        typedef struct VmLubHeld { TvmVm *vm; int n; TvmHandle h[8]; bool logged[8]; } VmLubHeld;
-        static VmLubHeld *vm_lub_held_new(void) {
+        /* query の visitor に渡す user (呼び出しの間だけ) */
+        typedef struct VmLubVisit { VmLub *s; void *closure; } VmLubVisit;
+        typedef struct VmLubHeld { VmLub *s; TvmVm *vm; int n; TvmHandle h[8]; bool logged[8]; } VmLubHeld;
+        static VmLubHeld *vm_lub_held_new(VmLub *s) {
           VmLubHeld *held = calloc(1, sizeof(*held));
           if (!held) abort();
-          held->vm = vm_lub_vm;
+          held->s = s;
+          held->vm = s->vm;
           return held;
         }
         static void VM_LUB_UNUSED vm_lub_held_release(void *user) {
           VmLubHeld *held = user;
-          if (held->vm == vm_lub_vm && vm_lub_vm)
-            for (int i = 0; i < 8; i++) if (held->h[i]) tvm_release(vm_lub_vm, held->h[i]);
+          VmLub *s = held->s;
+          if (held->vm == s->vm && s->vm)
+            for (int i = 0; i < 8; i++) if (held->h[i]) tvm_release(s->vm, held->h[i]);
           free(held);
         }
         static void *vm_lub_held_get(VmLubHeld *held, int i) {
-          return held->vm == vm_lub_vm && vm_lub_vm && held->h[i] ? tvm_handle_get(vm_lub_vm, held->h[i]) : NULL;
+          VmLub *s = held->s;
+          return held->vm == s->vm && s->vm && held->h[i] ? tvm_handle_get(s->vm, held->h[i]) : NULL;
         }
         /* fault は callback ごとに 1 回だけ log に出し、既定の値で続ける */
         static void vm_lub_held_fault(VmLubHeld *held, int i) {
           if (held->logged[i]) return;
           held->logged[i] = true;
-          fprintf(stderr, "lub: callback error: %s\n", tvm_error(vm_lub_vm));
+          fprintf(stderr, "lub: callback error: %s\n", tvm_error(held->s->vm));
         }
-        static void vm_lub_check(LubStatus status) {
+        static void vm_lub_check(VmLub *s, LubStatus status) {
           if (status == LUB_ERROR) {
-            if (vm_lub_error) return;
-            snprintf(vm_lub_error_text, sizeof vm_lub_error_text, "lub-api: %s", lub_last_error(vm_lub_context));
-            vm_lub_error = vm_lub_error_text;
+            if (s->error) return;
+            snprintf(s->error_text, sizeof s->error_text, "lub-api: %s", lub_last_error(s->ctx));
+            s->error = s->error_text;
           }
         }
         /* host の関数の間だけの C の memory (入力の record の list など) */
-        static void *vm_lub_alloc(size_t size) {
-          if (vm_lub_ntemps == vm_lub_ctemps) {
-            size_t cap = vm_lub_ctemps ? vm_lub_ctemps * 2 : 16;
-            void **grown = realloc(vm_lub_temps, cap * sizeof(void *));
+        static void *vm_lub_alloc(VmLub *s, size_t size) {
+          if (s->ntemps == s->ctemps) {
+            size_t cap = s->ctemps ? s->ctemps * 2 : 16;
+            void **grown = realloc(s->temps, cap * sizeof(void *));
             if (!grown) abort();
-            vm_lub_temps = grown;
-            vm_lub_ctemps = cap;
+            s->temps = grown;
+            s->ctemps = cap;
           }
           void *p = calloc(1, size ? size : 1);
           if (!p) abort();
-          vm_lub_temps[vm_lub_ntemps++] = p;
+          s->temps[s->ntemps++] = p;
           return p;
         }
-        static void vm_lub_free_to(size_t mark) {
-          while (vm_lub_ntemps > mark) free(vm_lub_temps[--vm_lub_ntemps]);
+        static void vm_lub_free_to(VmLub *s, size_t mark) {
+          while (s->ntemps > mark) free(s->temps[--s->ntemps]);
         }
-        #define VM_LUB_ENTER() size_t vm_lub_mark = vm_lub_ntemps; const char *vm_lub_outer = vm_lub_error; vm_lub_error = NULL
-        #define VM_LUB_LEAVE(vm) return vm_lub_leave(vm, vm_lub_mark, vm_lub_outer)
-        static TvmStatus vm_lub_leave(TvmVm *vm, size_t mark, const char *outer) {
-          vm_lub_free_to(mark);
-          const char *error = vm_lub_error;
-          vm_lub_error = outer;
+        #define VM_LUB_ENTER() VmLub *s = user; size_t vm_lub_mark = s->ntemps; const char *vm_lub_outer = s->error; s->error = NULL
+        #define VM_LUB_LEAVE(vm) return vm_lub_leave(s, vm, vm_lub_mark, vm_lub_outer)
+        static TvmStatus vm_lub_leave(VmLub *s, TvmVm *vm, size_t mark, const char *outer) {
+          vm_lub_free_to(s, mark);
+          const char *error = s->error;
+          s->error = outer;
           return error ? tvm_host_fault(vm, error) : TVM_OK;
         }
-        /* VM の型 (読み込みと reload で作り直すので版で引き直す) */
-        typedef struct VmLubType { const char *name; uint32_t version; const TvmTypeInfo *type; } VmLubType;
-        static const TvmTypeInfo *vm_lub_type(VmLubType *t) {
-          uint32_t version = tvm_types_version(vm_lub_vm);
+        static const TvmTypeInfo *vm_lub_type(VmLub *s, VmLubType *t) {
+          uint32_t version = tvm_types_version(s->vm);
           if (t->version != version) {
-            t->type = tvm_type(vm_lub_vm, t->name);
+            t->type = tvm_type(s->vm, t->name);
             t->version = version;
           }
-          if (!t->type && !vm_lub_error) {
-            snprintf(vm_lub_error_text, sizeof vm_lub_error_text, "lub: the module has no type %s", t->name);
-            vm_lub_error = vm_lub_error_text;
+          if (!t->type && !s->error) {
+            snprintf(s->error_text, sizeof s->error_text, "lub: the module has no type %s", t->name);
+            s->error = s->error_text;
           }
           return t->type;
         }
         /* 型が無ければ (誤りは積んである) 捨てる C の memory を返し、呼び出し側の書き込みを受ける */
-        static void *vm_lub_new(VmLubType *t, size_t size) {
-          const TvmTypeInfo *type = vm_lub_type(t);
-          void *o = type ? tvm_object_new_of(vm_lub_vm, type) : NULL;
-          return o ? o : vm_lub_alloc(size);
+        static void *vm_lub_new(VmLub *s, VmLubType *t, size_t size) {
+          const TvmTypeInfo *type = vm_lub_type(s, t);
+          void *o = type ? tvm_object_new_of(s->vm, type) : NULL;
+          return o ? o : vm_lub_alloc(s, size);
         }
-        static void *vm_lub_list_new(VmLubType *t) {
-          const TvmTypeInfo *type = vm_lub_type(t);
-          return type ? tvm_list_new_of(vm_lub_vm, type, 0) : NULL;
+        static void *vm_lub_list_new(VmLub *s, VmLubType *t) {
+          const TvmTypeInfo *type = vm_lub_type(s, t);
+          return type ? tvm_list_new_of(s->vm, type, 0) : NULL;
         }
-        static void *vm_lub_array(VmLubType *t, int32_t len) {
-          const TvmTypeInfo *type = vm_lub_type(t);
-          return type ? tvm_array_new_of(vm_lub_vm, type, len) : NULL;
+        static void *vm_lub_array(VmLub *s, VmLubType *t, int32_t len) {
+          const TvmTypeInfo *type = vm_lub_type(s, t);
+          return type ? tvm_array_new_of(s->vm, type, len) : NULL;
         }
-        /* keyed の object の key (host_value は表の番号 + 1。key は少なく、表は process の間残す) */
-        static char **vm_lub_keys;
-        static uint32_t vm_lub_nkeys;
-        static LubStr vm_lub_key_load(uint64_t host_value) {
-          if (host_value == 0 || host_value > vm_lub_nkeys) { vm_lub_fail("null reference"); return (LubStr){0}; }
-          const char *key = vm_lub_keys[host_value - 1];
+        static LubStr vm_lub_key_load(VmLub *s, uint64_t host_value) {
+          if (host_value == 0 || host_value > s->nkeys) { vm_lub_fail(s, "null reference"); return (LubStr){0}; }
+          const char *key = s->keys[host_value - 1];
           return (LubStr){key, (int32_t)strlen(key)};
         }
-        static uint64_t vm_lub_key_store(LubStr key) {
-          for (uint32_t i = 0; i < vm_lub_nkeys; i++)
-            if ((int32_t)strlen(vm_lub_keys[i]) == key.len && memcmp(vm_lub_keys[i], key.ptr, (size_t)key.len) == 0) return i + 1;
-          char **grown = realloc(vm_lub_keys, (vm_lub_nkeys + 1) * sizeof(char *));
+        static uint64_t vm_lub_key_store(VmLub *s, LubStr key) {
+          for (uint32_t i = 0; i < s->nkeys; i++)
+            if ((int32_t)strlen(s->keys[i]) == key.len && memcmp(s->keys[i], key.ptr, (size_t)key.len) == 0) return i + 1;
+          char **grown = realloc(s->keys, (s->nkeys + 1) * sizeof(char *));
           char *copy = malloc((size_t)key.len + 1);
           if (!grown || !copy) abort();
           memcpy(copy, key.ptr, (size_t)key.len);
           copy[key.len] = 0;
-          vm_lub_keys = grown;
-          vm_lub_keys[vm_lub_nkeys++] = copy;
-          return vm_lub_nkeys;
+          s->keys = grown;
+          s->keys[s->nkeys++] = copy;
+          return s->nkeys;
         }
         static LubStr vm_lub_str(void *text) {
           size_t len = 0;
           const char *data = tvm_string_data(text, &len);
           return data ? (LubStr){data, (int32_t)len} : (LubStr){0};
         }
-        static void *vm_lub_string(LubStr text) {
-          return text.ptr ? tvm_string_new(vm_lub_vm, text.ptr, (size_t)text.len) : NULL;
+        static void *vm_lub_string(VmLub *s, LubStr text) {
+          return text.ptr ? tvm_string_new(s->vm, text.ptr, (size_t)text.len) : NULL;
         }
-        static void *vm_lub_list(VmLubType *t, void *list, const void *data, int32_t count, size_t size) {
-          if (!list) list = vm_lub_list_new(t);
+        static void *vm_lub_list(VmLub *s, VmLubType *t, void *list, const void *data, int32_t count, size_t size) {
+          if (!list) list = vm_lub_list_new(s, t);
           if (!list) return NULL;
-          if (!tvm_list_resize(vm_lub_vm, list, count)) { vm_lub_fail("allocation-overflow"); return list; }
+          if (!tvm_list_resize(s->vm, list, count)) { vm_lub_fail(s, "allocation-overflow"); return list; }
           if (count) memcpy(tvm_list_data(list), data, (size_t)count * size);
           return list;
         }
-        static void *vm_lub_string_list(VmLubType *t, void *list, const LubStr *data, int32_t count) {
-          if (!list) list = vm_lub_list_new(t);
+        static void *vm_lub_string_list(VmLub *s, VmLubType *t, void *list, const LubStr *data, int32_t count) {
+          if (!list) list = vm_lub_list_new(s, t);
           if (!list) return NULL;
-          if (!tvm_list_resize(vm_lub_vm, list, count)) { vm_lub_fail("allocation-overflow"); return list; }
+          if (!tvm_list_resize(s->vm, list, count)) { vm_lub_fail(s, "allocation-overflow"); return list; }
           void **items = (void **)tvm_list_data(list);
-          for (int32_t i = 0; i < count; i++) items[i] = vm_lub_string(data[i]);
+          for (int32_t i = 0; i < count; i++) items[i] = vm_lub_string(s, data[i]);
           return list;
         }
         """;
@@ -1206,60 +1231,57 @@ internal sealed class VmBindingGen
     // [LubBits] の 64 bit mask は C# 面では hex 文字列。規則は tcs2c の接続コードと同じ
     private const string BitsHelpers = """
         #include <inttypes.h>
-        static void vm_lub_bits_fault(const char *what, LubStr text) {
-          if (vm_lub_error) return;
-          snprintf(vm_lub_error_text, sizeof vm_lub_error_text, "bit mask: %s '%.*s'", what, (int)text.len, text.ptr);
-          vm_lub_error = vm_lub_error_text;
+        static void vm_lub_bits_fault(VmLub *s, const char *what, LubStr text) {
+          if (s->error) return;
+          snprintf(s->error_text, sizeof s->error_text, "bit mask: %s '%.*s'", what, (int)text.len, text.ptr);
+          s->error = s->error_text;
         }
-        static bool vm_lub_bits(void *string, uint64_t *out) {
+        static bool vm_lub_bits(VmLub *s, void *string, uint64_t *out) {
           if (!string) return false;
           LubStr text = vm_lub_str(string);
           int32_t length = text.len, i = 0;
           if (length >= 2 && text.ptr[0] == '0' && (text.ptr[1] == 'x' || text.ptr[1] == 'X')) i = 2;
-          if (i == length) { vm_lub_bits_fault("empty hex string", text); return false; }
-          if (length - i > 16) { vm_lub_bits_fault("more than 16 hex digits", text); return false; }
+          if (i == length) { vm_lub_bits_fault(s, "empty hex string", text); return false; }
+          if (length - i > 16) { vm_lub_bits_fault(s, "more than 16 hex digits", text); return false; }
           uint64_t value = 0;
           for (; i < length; i++) {
             unsigned char c = (unsigned char)text.ptr[i];
             int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
-            if (digit < 0) { vm_lub_bits_fault("invalid hex", text); return false; }
+            if (digit < 0) { vm_lub_bits_fault(s, "invalid hex", text); return false; }
             value = value << 4 | (uint64_t)digit;
           }
           *out = value;
           return true;
         }
-        static void *vm_lub_bits_string(uint64_t value) {
+        static void *vm_lub_bits_string(VmLub *s, uint64_t value) {
           char text[17];
           snprintf(text, sizeof(text), "%016" PRIx64, value);
-          return tvm_string_new(vm_lub_vm, text, 16);
+          return tvm_string_new(s->vm, text, 16);
         }
         """;
 
     // view は frame の終わりまで有効。VM の object は frame を跨いで残りうるので、実体は host の表に置き、host_value は frame と番号
     private const string ViewHelpers = """
-        static LubView *vm_lub_views;
-        static uint32_t vm_lub_view_count, vm_lub_view_capacity;
-        static int32_t vm_lub_view_frame;
-        static uint64_t vm_lub_view_store(LubView value) {
-          int32_t frame = lub_frame_index(vm_lub_context);
-          if (frame != vm_lub_view_frame) { vm_lub_view_frame = frame; vm_lub_view_count = 0; }
-          if (vm_lub_view_count == vm_lub_view_capacity) {
-            vm_lub_view_capacity = vm_lub_view_capacity ? vm_lub_view_capacity * 2 : 16;
-            vm_lub_views = realloc(vm_lub_views, vm_lub_view_capacity * sizeof(*vm_lub_views));
-            if (!vm_lub_views) abort();
+        static uint64_t vm_lub_view_store(VmLub *s, LubView value) {
+          int32_t frame = lub_frame_index(s->ctx);
+          if (frame != s->view_frame) { s->view_frame = frame; s->view_count = 0; }
+          if (s->view_count == s->view_capacity) {
+            s->view_capacity = s->view_capacity ? s->view_capacity * 2 : 16;
+            s->views = realloc(s->views, s->view_capacity * sizeof(*s->views));
+            if (!s->views) abort();
           }
-          vm_lub_views[vm_lub_view_count] = value;
-          return (uint64_t)(uint32_t)frame << 32 | vm_lub_view_count++;
+          s->views[s->view_count] = value;
+          return (uint64_t)(uint32_t)frame << 32 | s->view_count++;
         }
-        static LubView vm_lub_view_load(uint64_t host_value) {
-          int32_t frame = lub_frame_index(vm_lub_context);
+        static LubView vm_lub_view_load(VmLub *s, uint64_t host_value) {
+          int32_t frame = lub_frame_index(s->ctx);
           uint32_t index = (uint32_t)host_value;
-          if ((int32_t)(host_value >> 32) != frame || frame != vm_lub_view_frame || index >= vm_lub_view_count
-              || vm_lub_views[index].frame != frame) {
-            vm_lub_fail("stale view: a view is valid until the end of its frame (copy what you keep)");
+          if ((int32_t)(host_value >> 32) != frame || frame != s->view_frame || index >= s->view_count
+              || s->views[index].frame != frame) {
+            vm_lub_fail(s, "stale view: a view is valid until the end of its frame (copy what you keep)");
             return (LubView){0};
           }
-          return vm_lub_views[index];
+          return s->views[index];
         }
         """;
 }

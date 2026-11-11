@@ -14,8 +14,11 @@ int main(int argc, char **argv) {
     return 2;
   fclose(f);
   TvmVm *vm = tvm_new(NULL);
-  vm_lub_vm = vm;
-  if (!vm_lub_register(vm) || tvm_load(vm, bytes, (size_t)n) != TVM_OK) {
+  static VmLub lub;
+  if (!vm_lub_init(&lub, NULL))
+    return 2;
+  lub.vm = vm;
+  if (!vm_lub_register(&lub, vm) || tvm_load(vm, bytes, (size_t)n) != TVM_OK) {
     fprintf(stderr, "load: %s\n", tvm_error(vm));
     return 1;
   }
