@@ -628,13 +628,13 @@ public sealed class Binder
             if (s.IsLambda) break;
             s = s.Parent;
         }
-        // 予約語 (LuaNames.IsReserved) と、型の global 名 (IL は型を名前で参照する) を避ける。
+        // IL が素の名前で参照する名前 (LocalNames.IsReserved) と、型の global 名 (IL は型を名前で参照する) を避ける。
         // 改名した名前はファイルの他の識別子と重ならないものにする
         string ln = l.Name;
-        if (LuaNames.IsReserved(ln) || _c.TypeIlNames.Contains(ln))
+        if (LocalNames.IsReserved(ln) || _c.TypeIlNames.Contains(ln))
         {
             ln = ln + "_";
-            while (LuaNames.IsReserved(ln) || _c.TypeIlNames.Contains(ln) || at.File.Identifiers.Contains(ln)) ln = ln + "_";
+            while (LocalNames.IsReserved(ln) || _c.TypeIlNames.Contains(ln) || at.File.Identifiers.Contains(ln)) ln = ln + "_";
         }
         l.IlName = ln;
         l.Depth = _depth;

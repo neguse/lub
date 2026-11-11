@@ -55,7 +55,7 @@
 - 性能 (2026-10-25、PC、tcs2c gcc -O2、2000 フレーム × 1000 要素、int と readonly record struct の Where を 1 回ずつ、process 全体の時間): runtime の実装から C# の実装にすると、C は 0.064 s → 0.065 s で差がない
 
 ### Q16: 名前の写し方 → user のコードは C# の名前のまま (2026-10-12)
-- snake_case 化ですべての名前を作ると、大文字小文字の情報を落とす (`Rng` / `rng` / `RNG` → `rng`、`XMLValue` → `x_m_l_value`)。host (`--ref`) の名前の写し方は `SelfHost/Compiler/Declarer.cs` の `LuaNames` にあり、lub-gen も同じ関数で写す
+- snake_case 化ですべての名前を作ると、大文字小文字の情報を落とす (`Rng` / `rng` / `RNG` → `rng`、`XMLValue` → `x_m_l_value`)。host (`--ref`) の名前の写し方は `SelfHost/Compiler/Declarer.cs` の `HostNames` にあり、lub-gen も同じ関数で写す
 - user の型の member は C# の識別子をそのまま IL の名前にする (tcs VM と C の名前もここから作る)。同じ型の中の同じ綴りは C# が禁じる (CS0102 / CS0082) ので写像は一対一になり、名前の衝突の診断 (#111、#109) が要らなくなる。error と stack trace にも C# の名前が出る
 - `--ref` の host 型の member は今の snake_case の規則で固定する (lub-gen と C ABI のため。user の規則の変更に巻き込まない)
 - overload は、overload があるときだけ名前に引数の型を付ける。2 つ目を足すと既存の名前が変わる。呼び出し側は作り直され、名前の変わった関数を指す生きている closure (method group の値) があれば、新版に対応が無いので reload は restart になる (vm-design §12.4)。entry の callback など host が名前で呼ぶものの overload は禁じる

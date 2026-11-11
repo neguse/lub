@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// 名前規則 (LuaNames)。user の型の member は C# の識別子のまま、
+// 名前規則 (HostNames)。user の型の member は C# の識別子のまま、
 // 参照専用型 (--ref、host) は snake_case / UPPER_SNAKE に写し、小文字パスで参照する (IL の foreign の名前、C の host 関数の名前の元)。
-public class LuaNamingTests
+public class HostNamingTests
 {
     [Theory]
     [InlineData("BeginPass", "begin_pass")]
@@ -14,12 +14,12 @@ public class LuaNamingTests
     [InlineData("X", "x")]
     [InlineData("_hp", "_hp")]
     [InlineData("_maxHp", "_max_hp")]
-    [InlineData("End", "end_")]
-    [InlineData("Do", "do_")]
+    [InlineData("End", "end")]
+    [InlineData("Do", "do")]
     [InlineData("Rgba32f", "rgba32f")]
     public void HostMember_MapsToSnakeCase(string csharp, string lua)
     {
-        Assert.Equal(lua, TcsSelf.LuaNames.HostMember(csharp));
+        Assert.Equal(lua, TcsSelf.HostNames.HostMember(csharp));
     }
 
     [Theory]
@@ -31,7 +31,7 @@ public class LuaNamingTests
     [InlineData("End", "END")]
     public void HostConst_MapsToUpperSnake(string csharp, string lua)
     {
-        Assert.Equal(lua, TcsSelf.LuaNames.HostConst(csharp));
+        Assert.Equal(lua, TcsSelf.HostNames.HostConst(csharp));
     }
 
     [Fact]

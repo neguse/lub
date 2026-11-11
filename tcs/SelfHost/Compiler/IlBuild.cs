@@ -4464,7 +4464,7 @@ public sealed class IlBuild
     private IlExpr EnumMemberIl(Symbol sym)
     {
         // namespace にも型にも属さない --ref の enum は enum 自身の名前の path
-        if (sym.Owner != null && sym.Owner.IsRef && sym.Owner.IlName == "") return new IlField(new IlVar(LuaNames.HostPathSegment(sym.Owner.Name), null), N(sym), null);
+        if (sym.Owner != null && sym.Owner.IsRef && sym.Owner.IlName == "") return new IlField(new IlVar(HostNames.HostPathSegment(sym.Owner.Name), null), N(sym), null);
         return new IlField(new IlVar(TypeRef(sym.Owner!), null), N(sym), null);
     }
 

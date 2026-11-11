@@ -535,16 +535,14 @@ using(宣言)  virtual  volatile  yield
 
 ### 識別子
 
-予約語は `and` `break` `do` `else` `elseif` `end` `false` `for` `function` `global` `goto` `if` `in` `local` `nil` `not` `or` `repeat` `return` `then` `true` `until` `while`。
+C# の予約語でない名前は、他の言語の予約語と同じ綴り (`end`、`local`、`nil`、`function` など) でも、member、型、ローカル束縛にそのまま使える。
 
 | 識別子 | 状態 | 備考 |
 |--------|:----:|------|
-| 予約語と同名のローカル束縛 (local 変数 / parameter / lambda parameter / foreach 変数 / pattern designation の `local`, `end`, `nil` 等) | **Y** | IL の local の名前は `local` → `local_` に写す。写した先が同じ member body (lambda 連鎖を含む) に識別子として現れる場合は `_` を足して衝突を避ける (`local_` があれば `local__`)。宣言と全参照 (closure 内含む) を同じ symbol として写す (`LocalNames`) |
-| 予約語と同名の member 宣言 (型 / method / property / field / enum メンバ / record positional parameter の `end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)` |
 | `self` と同名の宣言 | **-** | TCS1001 `ReservedIdentifier(self)` (ローカル束縛も写さずに止める)。IL は instance member の receiver を `self` と呼ぶ。`__tcs_` を含む `__` で始まる名前は `DoubleUnderscoreIdentifier` (§28) |
 | runtime の型と同名の型宣言 (`TinySystem`, `List`, `Dict`, `Math`, `String`, `TcsQueue`, `TcsHashSet`) | **-** | TCS1001 `RuntimeGlobalIdentifier(name)`。build を止める error (§24)。namespace の中の型も同じ。集合は `Compliance.RuntimeGlobals`。interface と `Random` は対象外 |
-| ユーザ型と同名のローカル束縛 (`static int Sum(V a, int V)` 等) | **Y** | 予約語と同じく、IL の local の名前は `V` → `V_` に写す (IL は型を名前で参照する: `V.new`、operator の `V.__add`、型内 static member)。写した先がユーザ型名と同じなら更に `_` を足す |
-| verbatim 識別子 (`@float`, `@out` 等) | **Y** | `@` を除いた名前。予約語になるもの (`@end` 等) はローカル束縛なら上記のとおり写し、member なら TCS1001 |
+| ユーザ型と同名のローカル束縛 (`static int Sum(V a, int V)` 等) | **Y** | IL の local の名前は `V` → `V_` に写す (IL は型を名前で参照する: `V.new`、operator の `V.__add`、型内 static member)。写した先がユーザ型名か、同じ member body (lambda 連鎖を含む) の識別子と同じなら更に `_` を足す。宣言と全参照 (closure 内含む) を同じ symbol として写す (`LocalNames`) |
+| verbatim 識別子 (`@float`, `@out` 等) | **Y** | `@` を除いた名前 |
 
 ---
 
@@ -983,7 +981,7 @@ Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).Orde
 | 実行 trace | **Y** | `tcs vm --trace <path-prefix>` で対象ファイルの文と代入を記録する (prefix は path の segment 単位。README) |
 | watch モード | **Y** | `tcs vm --watch` でファイル監視、reload の batch か restart を標準出力に書く (README) |
 | 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + `tcs c` が埋め込む runtime の C |
-| 予約された綴りの識別子 | **Y** | 予約語 (§11) と同名の member と型、`__` 始まり、非 ASCII、`new` / `ctor`、型名と namespace 名の `_` は error (§28)。analyzer / `tcs check` は TCS1001 `LuaKeywordIdentifier(end)` / `DoubleUnderscoreIdentifier(__x)` 等 |
+| 予約された綴りの識別子 | **Y** | `self`、`__` 始まり、非 ASCII、`new` / `ctor`、型名と namespace 名の `_` は error (§28)。analyzer / `tcs check` は TCS1001 `ReservedIdentifier(self)` / `DoubleUnderscoreIdentifier(__x)` 等 |
 
 ## 25. 許容される C# エラー (TinyC# 固有)
 
@@ -1028,7 +1026,7 @@ C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収でき
 
 ## 28. 名前規則
 
-名前は表を持たず規則で写す (`SelfHost/Compiler/Declarer.cs` の `LuaNames` と `IlNames.cs`)。user の型 (入力の tree に宣言された型) の
+名前は表を持たず規則で写す (`SelfHost/Compiler/Declarer.cs` の `HostNames` と `IlNames.cs`)。user の型 (入力の tree に宣言された型) の
 member は C# の識別子をそのまま IL / C の名前にし、`--ref` の型 (host) の member だけ
 host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (`Player`) は写さない。
 `--ref` の型の path は host の関数の名前 (IL の foreign 関数、C の `tcs_host_<path を _ 連結>`) になる。
@@ -1039,17 +1037,14 @@ host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (
 | user の enum メンバ `BigValue`, `RGBA8` | `BigValue`, `RGBA8` | C# の識別子のまま |
 | method の overload `Show()`, `Show(int)`, `Total<T>(List<T>, Func<T, float>)` | `Show`, `Show__int`, `Total__List_T__Func_T_float` | 同じ型に同名の method が複数あるときだけ、引数の型を `__` でつないで付ける (ref / out は `ref_` 等を前置、`int[]` は `int_arr`、`int?` は `int_opt`)。引数の無い overload は C# の名前のまま。interface の method を実装する method は interface の method の名前 |
 | 入れ子の型 `Outer.Inner`、namespace の中の `Game.Outer.Inner` | `Outer_Inner`、`Game_Outer_Inner` | 外側の型と namespace の名前を `_` でつなぐ。型名の `_` は TCS1001 なので、別の型と同じ名前にならない |
-| 予約語 (§11) と同名のローカル束縛 `local`, `end` | `local_`, `end_` | `_` を後置。同じ member body に `local_` があれば `local__` のように足す |
-| ユーザ型と同名のローカル束縛 `V` | `V_` | 予約語と同じ規則 |
+| ユーザ型と同名のローカル束縛 `V` | `V_` | `_` を後置。同じ member body に `V_` があれば `V__` のように足す |
 | custom property `Width` | `get_Width` / `set_Width` | accessor 名の接頭辞に C# の名前 |
 | record の positional parameter `PosX` | field `PosX` (ctor 引数も C# 名) | そのまま |
 | entry の callback `OnInit`, `OnFrame`, `OnReload` | `OnInit`, `OnFrame`, `OnReload` | host は C# の名前で呼ぶ |
 | `--ref` 型の member `BeginPass`, `_maxHp` | `begin_pass`, `_max_hp` | 先頭を小文字にし、以降の大文字の前に `_` を入れて小文字化。先頭の `_` は保つ。小文字を含まない名前 (`CLEAR`) は既に snake_case とみなす |
 | `--ref` 型の enum メンバ `DontCare`, `Depth24Stencil8` | `DONT_CARE`, `DEPTH24_STENCIL8` | 上の結果を全大文字 |
-| `--ref` 型の member で予約語に落ちる名前 `End`, `Do` | `end_`, `do_` | `_` を後置 |
 | `--ref` 型の static アクセス `Lub.Gfx.BeginPass` | `lub.gfx.begin_pass` | 入れ子の型名を全小文字で `.` 結合 |
 | `--ref` 型に入れ子の enum `Lub.Gfx.PixelFormat.Rgba8` | `lub.gfx.RGBA8` | enum 名を省いて親の下に平らに置く |
-| `--ref` 型のパスで予約語になる区切り `End.Api.Get` | `end_.api.get` | member と同じく `_` を後置 |
 | `--ref` 型のパスの先頭と同名のローカル束縛 `lub` | `lub_` | ユーザ型と同名のローカル束縛と同じ規則 |
 | `const` field (enum メンバ以外) | 値を inline | C# の意味論どおり |
 | BCL / TinySystem のメンバ (`List.Add`, `Math.Min`) | runtime の名前のまま | source に宣言の無い symbol は写さない |
@@ -1060,7 +1055,7 @@ user の宣言の識別子のうち、下の予約された綴りは build を�
 
 | 識別子 | 診断 | 備考 |
 |----|-----|------|
-| 予約語 (§11) と同名の member / 型 `end` | `LuaKeywordIdentifier(end)` | local は `_` を後置して写す (上の表) |
+| `self` と同名の宣言 (member / 型 / local / parameter) | `ReservedIdentifier(self)` | IL は instance member の receiver を `self` と呼ぶ (§11) |
 | `__` で始まる識別子 (member / 型 / namespace / local / parameter) `__hp` | `DoubleUnderscoreIdentifier(__hp)` | IL が作る名前 (operator の `__add`、`__copy`、`__tcs_*` の intrinsic) の領域 |
 | 非 ASCII の識別子 `速度` | `NonAsciiIdentifier(速度)` | lexer が報告する |
 | constructor の IL の名前と同名の member `@new`, `ctor` | `ReservedClassKey(new)` | IL の constructor は class が `new`、struct が `ctor` (§2.3) |

@@ -1,55 +1,64 @@
 namespace TinyCs.Tests;
 
-// Lua 5.5 の予約語などと重なる識別子の扱い:
-// - Lua 5.5 予約語 (end, repeat, ...) と同名の member 宣言は TCS1001 で拒否する
-// - ローカル束縛 (local、引数、foreach、pattern の変数) は診断しない (VM での実行は LuaLocalRenameTests)
+// 識別子の扱い:
+// - C# の予約語でない名前 (end、local、nil、repeat など) は、member にも型にも local にも使える
 // - verbatim 識別子 (@float 等) は C# の意味で動く
-public class LuaIdentifierTests
+// - self、runtime の global と同名の型は TCS1001
+public class IdentifierTests
 {
-    private static void AssertLuaKeywordError(CheckResult result,
-        string keyword)
-    {
-        Assert.False(result.Success);
-        Assert.Contains(result.Errors, e =>
-            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
-            && e.Contains($"LuaKeywordIdentifier({keyword})"));
-    }
-
+    // tcs VM と C の名前は C# の識別子から作るので、他の言語の予約語と同じ名前に特別な扱いは無い
     [Fact]
-    public void MethodNamedLuaKeyword_ReportsUnsupportedSyntax()
+    public void MembersAndTypesNamedLikeOtherLanguageKeywords_HaveNoDiagnostic()
     {
         var result = Checker.Check(["""
-            public class Turn
+            public record Span(int until);
+            public enum Token { nil, then }
+            public class local
             {
-                public void end() { }
+                public int function;
+                public int repeat { get; set; }
+                public int end() => function + repeat;
+                public int @elseif() => 1;
             }
             """]);
 
-        AssertLuaKeywordError(result, "end");
+        AssertNoDiagnostic(result);
     }
 
     [Fact]
-    public void FieldNamedLuaKeyword_ReportsUnsupportedSyntax()
+    public void MembersAndTypesNamedLikeOtherLanguageKeywords_Run()
     {
-        var result = Checker.Check(["""
-            public class Loop
-            {
-                public int until;
-            }
-            """]);
+        var output = TestHelper.CompileAndRunVmTopLevel("""
+            var value = new local();
+            value.function = 3;
+            value.repeat = 4;
+            var span = new Span(5);
+            var token = Token.then;
+            var total = value.end() + value.elseif() + span.until + (int)token + value.end_;
 
-        AssertLuaKeywordError(result, "until");
+            public record Span(int until);
+            public enum Token { nil, then }
+            public class local
+            {
+                public int end_ = 100;
+                public int function;
+                public int repeat { get; set; }
+                public int end() => function + repeat;
+                public int @elseif() => 1;
+            }
+            """, "total");
+
+        Assert.Equal("114", output);
     }
 
-    private static void AssertNoLuaKeywordWarning(CheckResult result)
+    private static void AssertNoDiagnostic(CheckResult result)
     {
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.DoesNotContain(result.Warnings,
-            w => w.Contains("LuaKeywordIdentifier"));
+        Assert.Empty(result.Warnings);
     }
 
     [Fact]
-    public void LocalNamedLuaKeyword_HasNoDiagnostic()
+    public void LocalNamedLikeOtherLanguageKeyword_HasNoDiagnostic()
     {
         var result = Checker.Check(["""
             public class Runner
@@ -62,11 +71,11 @@ public class LuaIdentifierTests
             }
             """]);
 
-        AssertNoLuaKeywordWarning(result);
+        AssertNoDiagnostic(result);
     }
 
     [Fact]
-    public void ParameterNamedLuaKeyword_HasNoDiagnostic()
+    public void ParameterNamedLikeOtherLanguageKeyword_HasNoDiagnostic()
     {
         var result = Checker.Check(["""
             public class Timer
@@ -75,47 +84,11 @@ public class LuaIdentifierTests
             }
             """]);
 
-        AssertNoLuaKeywordWarning(result);
+        AssertNoDiagnostic(result);
     }
 
     [Fact]
-    public void RecordPositionalParameterNamedLuaKeyword_ReportsUnsupportedSyntax()
-    {
-        var result = Checker.Check(["""
-            public record Span(int until);
-            """]);
-
-        AssertLuaKeywordError(result, "until");
-    }
-
-    [Fact]
-    public void EnumMemberNamedLuaKeyword_ReportsUnsupportedSyntax()
-    {
-        var result = Checker.Check(["""
-            public enum Token
-            {
-                nil,
-            }
-            """]);
-
-        AssertLuaKeywordError(result, "nil");
-    }
-
-    [Fact]
-    public void ClassNamedLuaKeyword_ReportsUnsupportedSyntax()
-    {
-        var result = Checker.Check(["""
-            public class local
-            {
-                public int X;
-            }
-            """]);
-
-        AssertLuaKeywordError(result, "local");
-    }
-
-    [Fact]
-    public void ForEachVariableNamedLuaKeyword_HasNoDiagnostic()
+    public void ForEachVariableNamedLikeOtherLanguageKeyword_HasNoDiagnostic()
     {
         var result = Checker.Check(["""
             using System.Collections.Generic;
@@ -131,11 +104,11 @@ public class LuaIdentifierTests
             }
             """]);
 
-        AssertNoLuaKeywordWarning(result);
+        AssertNoDiagnostic(result);
     }
 
     [Fact]
-    public void PatternDesignationNamedLuaKeyword_HasNoDiagnostic()
+    public void PatternDesignationNamedLikeOtherLanguageKeyword_HasNoDiagnostic()
     {
         var result = Checker.Check(["""
             public class Matcher
@@ -148,11 +121,11 @@ public class LuaIdentifierTests
             }
             """]);
 
-        AssertNoLuaKeywordWarning(result);
+        AssertNoDiagnostic(result);
     }
 
     [Fact]
-    public void VerbatimLuaKeywordParameter_HasNoDiagnostic()
+    public void VerbatimParameter_HasNoDiagnostic()
     {
         var result = Checker.Check(["""
             public class Turn
@@ -161,24 +134,11 @@ public class LuaIdentifierTests
             }
             """]);
 
-        AssertNoLuaKeywordWarning(result);
+        AssertNoDiagnostic(result);
     }
 
     [Fact]
-    public void VerbatimLuaKeywordMethod_ReportsUnsupportedSyntax()
-    {
-        var result = Checker.Check(["""
-            public class Turn
-            {
-                public int @end() => 1;
-            }
-            """]);
-
-        AssertLuaKeywordError(result, "end");
-    }
-
-    [Fact]
-    public void NonKeywordIdentifiers_HaveNoLuaKeywordWarning()
+    public void IdentifiersContainingKeywords_HaveNoDiagnostic()
     {
         var result = Checker.Check(["""
             public class Game
@@ -193,9 +153,7 @@ public class LuaIdentifierTests
             }
             """]);
 
-        Assert.True(result.Success);
-        Assert.DoesNotContain(result.Warnings,
-            w => w.Contains("LuaKeywordIdentifier"));
+        AssertNoDiagnostic(result);
     }
 
     [Fact]
@@ -214,9 +172,7 @@ public class LuaIdentifierTests
             }
             """]);
 
-        Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.DoesNotContain(result.Warnings,
-            w => w.Contains("LuaKeywordIdentifier"));
+        AssertNoDiagnostic(result);
     }
 
     [Fact]
@@ -243,7 +199,7 @@ public class LuaIdentifierTests
         Assert.Equal("9", output);
     }
 
-    // `self` は Lua method receiver として emit 側が予約する。宣言すると
+    // `self` は IL が method の receiver の名前に使う。宣言すると
     // receiver を壊すため TCS1001 (generated temp の `__tcs_` は `__` で始まる
     // 識別子の規則、IdentifierDiagnosticTests)。
     private static void AssertReservedIdentifierError(CheckResult result,
@@ -335,8 +291,7 @@ public class LuaIdentifierTests
         Assert.Equal("2", output);
     }
 
-    // Lua の runtime が _G に置いた名前 (TinySystem / List / Dict / Math / String など) と同名の型は、
-    // Lua の出力では runtime の table を上書きしたので、build を止める error にしている (#21)
+    // IL が素の名前で参照する runtime の名前 (TinySystem / List / Dict / Math / String など) と同名の型は、build を止める error にしている
     private static void AssertRuntimeGlobalError(CheckResult result,
         string name)
     {

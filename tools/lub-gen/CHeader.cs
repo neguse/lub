@@ -163,8 +163,8 @@ public static class CHeader
 
     public static string EnumMember(ApiEnum e, ApiEnumMember m) =>
         e.Namespace == ApiModelLoader.RootNamespace
-            ? "LUB_" + LuaNames.HostConst(e.Name) + "_" + m.HostName
-            : "LUB_" + LuaNames.HostConst(e.Namespace) + "_" + LuaNames.HostConst(e.Name) + "_" + m.HostName;
+            ? "LUB_" + HostNames.HostConst(e.Name) + "_" + m.HostName
+            : "LUB_" + HostNames.HostConst(e.Namespace) + "_" + HostNames.HostConst(e.Name) + "_" + m.HostName;
 
     // lub.gfx.begin_pass → lub_gfx_begin_pass、lubx.vorbis.decode → lubx_vorbis_decode。
     public static string FunctionName(ApiNamespace ns, string hostName) => ns.HostPath.Replace(".", "_") + "_" + hostName;
@@ -520,7 +520,7 @@ internal sealed class CHeaderGen
             {
                 if (c.Value.Kind != ValueKind.Int) continue;
                 CHeader.Comment(sb, c.Doc);
-                sb.Write("#define LUB_" + LuaNames.HostConst(ns.Name) + "_" + c.HostName + " " + c.Value.I + "\n\n");
+                sb.Write("#define LUB_" + HostNames.HostConst(ns.Name) + "_" + c.HostName + " " + c.Value.I + "\n\n");
             }
         }
     }

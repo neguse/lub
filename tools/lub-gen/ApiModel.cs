@@ -509,7 +509,7 @@ public static class ApiModelLoader
             {
                 var value = m.ConstVal;
                 if (value == null && m.Decl != null && m.Decl.A != null && m.Decl.A.HasConst) value = m.Decl.A.Const;
-                consts.Add(new ApiConst(m.Name, LuaNames.HostConst(m.Name), ConstVal.FromConst(value), Doc(FieldDecl(m)!)));
+                consts.Add(new ApiConst(m.Name, HostNames.HostConst(m.Name), ConstVal.FromConst(value), Doc(FieldDecl(m)!)));
             }
         }
         return new ApiNamespace(cls.Name, hostPath, functions, enums, fields, consts, Doc(cls.Decl), Line(cls.Decl));
@@ -541,7 +541,7 @@ public static class ApiModelLoader
         {
             if (m.Kind != SymKind.EnumMember) continue;
             int v = m.ConstVal == null ? 0 : m.ConstVal.I;
-            members.Add(new ApiEnumMember(m.Name, LuaNames.HostConst(m.Name), v, Doc(m.Decl!)));
+            members.Add(new ApiEnumMember(m.Name, HostNames.HostConst(m.Name), v, Doc(m.Decl!)));
         }
         return new ApiEnum(e.Name, ns, IlExporter.RefTypePath(e), members, Doc(e.Decl), Line(e.Decl));
     }
@@ -599,20 +599,20 @@ public static class ApiModelLoader
                 bool optional = p.Default != null;
                 var dflt = new ConstVal(ValueKind.None);
                 if (p.Default != null && p.Default.HasConst) dflt = ConstVal.FromConst(p.Default.Const);
-                var ap = new ApiParam(p.Name, LuaNames.HostMember(p.Name), Resolve(p.Type), optional, p.IsOut,
+                var ap = new ApiParam(p.Name, HostNames.HostMember(p.Name), Resolve(p.Type), optional, p.IsOut,
                     pn == null ? -1 : ArrayLen(pn), dflt);
                 ap.IsCount = pn != null && HasAttr(pn, "LubCount");
                 ps.Add(ap);
             }
         }
-        return new ApiFunction(m.Name, LuaNames.HostMember(m.Name), Resolve(m.Type), ps, Doc(decl),
+        return new ApiFunction(m.Name, HostNames.HostMember(m.Name), Resolve(m.Type), ps, Doc(decl),
             HasAttr(decl, "LubNoFail"), HasAttr(decl, "LubMaybe"), HasAttr(decl, "LubNoC"));
     }
 
     private static ApiField LoadProperty(Symbol p)
     {
         var decl = p.Decl!;
-        var field = new ApiField(p.Name, LuaNames.HostMember(p.Name), Resolve(p.Type), p.Type.Annotated || p.Type.Kind == TypeKind.Nullable,
+        var field = new ApiField(p.Name, HostNames.HostMember(p.Name), Resolve(p.Type), p.Type.Annotated || p.Type.Kind == TypeKind.Nullable,
             Doc(decl), ArrayLen(decl), HasAttr(decl, "LubBits"));
         field.Accessor = p.IsInit ? "init" : p.HasSetter ? "set" : "get";
         return field;
@@ -622,7 +622,7 @@ public static class ApiModelLoader
     {
         var decl = FieldDecl(f)!;
         bool optional = f.Type.Annotated || f.Type.Kind == TypeKind.Nullable;
-        var field = new ApiField(f.Name, LuaNames.HostMember(f.Name), Resolve(f.Type), optional, Doc(decl), ArrayLen(decl),
+        var field = new ApiField(f.Name, HostNames.HostMember(f.Name), Resolve(f.Type), optional, Doc(decl), ArrayLen(decl),
             HasAttr(decl, "LubBits"));
         var init = f.Decl != null && f.Decl.Kind == NodeKind.VarDeclarator ? f.Decl.A : null;
         if (init != null) field.Init = Text.Trim(init.File.Slice(init.Pos, init.End));

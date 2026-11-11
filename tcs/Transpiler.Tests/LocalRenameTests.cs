@@ -1,11 +1,11 @@
 namespace TinyCs.Tests;
 
-// Lua 予約語 (local / end / nil ...) と同名のローカル束縛は、宣言と全参照
-// (closure 内含む) を IL では安全な名前 (`local_`、衝突時は `_` を足す) に写す。診断はせず、VM で C# と同じに動く。
-// 予約語と同名の member は宣言で error になる。self は予約のままで、
-// ここでは扱わない (ReservedIdentifier として拒否される。`__` で始まる名前は
+// 型の名前や IL が素の名前で参照する名前と同名のローカル束縛は、宣言と全参照
+// (closure 内含む) を IL では別の名前 (`V_`、衝突時は `_` を足す) に写す。診断はせず、VM で C# と同じに動く。
+// 他の言語の予約語 (local / end / nil ...) と同名のローカル束縛は、そのままの名前で動く。
+// self は予約のままで、ここでは扱わない (ReservedIdentifier として拒否される。`__` で始まる名前は
 // DoubleUnderscoreIdentifier の error)。
-public class LuaLocalRenameTests
+public class LocalRenameTests
 {
     [Fact]
     public void LocalNamedLocal_RunsWithoutDiagnostic()
@@ -22,8 +22,7 @@ public class LuaLocalRenameTests
             """]);
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.DoesNotContain(result.Warnings,
-            w => w.Contains("LuaKeywordIdentifier"));
+        Assert.Empty(result.Warnings);
         Assert.Equal("1", TestHelper.CompileAndRunVmTopLevel("""
             var r = Runner.Run();
 
@@ -172,9 +171,9 @@ public class LuaLocalRenameTests
         Assert.Contains(result.Errors, e => e.Contains("ReservedIdentifier(self)"));
     }
 
-    // 型名と同名のローカル束縛は、emit が生成する型参照 (operator の static 呼び
-    // 出し `V.__add(a, b)` / `V.new(...)` / 型内の static member 参照) を Lua で
-    // 隠すので、予約語と同じく写す
+    // 型名と同名のローカル束縛は、IL の型参照 (operator の static 呼び
+    // 出し `V.__add(a, b)` / `V.new(...)` / 型内の static member 参照) を
+    // 隠すので、別の名前に写す
     [Fact]
     public void ParameterNamedLikeOperatorOwnerType_Runs()
     {

@@ -503,7 +503,7 @@ public sealed class IlExporter
                 int value = m.ConstVal != null ? m.ConstVal.I : 0;
                 var key = RefTypePath(d) + "." + m.IlName;
                 AddValue(result, new ExForeignValue(key, display, true, value));
-                info.MemberNames.Add(LuaNames.HostConst(m.Name));
+                info.MemberNames.Add(HostNames.HostConst(m.Name));
                 info.MemberValues.Add(value);
             }
             int at;
@@ -531,13 +531,13 @@ public sealed class IlExporter
         if (skipSelf) cur = t.Outer;
         while (cur != null)
         {
-            parts.Insert(0, LuaNames.HostPathSegment(cur.Name));
+            parts.Insert(0, HostNames.HostPathSegment(cur.Name));
             cur = cur.Outer;
         }
         if (t.Namespace != "")
         {
             var ns = t.Namespace.Split('.');
-            for (int i = ns.Length - 1; i >= 0; i--) parts.Insert(0, LuaNames.HostPathSegment(ns[i]));
+            for (int i = ns.Length - 1; i >= 0; i--) parts.Insert(0, HostNames.HostPathSegment(ns[i]));
         }
         return string.Join(".", parts);
     }
