@@ -29,3 +29,8 @@ typedef struct InputState {
   uint32_t pad_pressed[LUB_GAMEPAD_SLOTS];
   uint32_t pad_released[LUB_GAMEPAD_SLOTS];
 } InputState;
+
+// mouse の button (1 = 左) の mask の bit。範囲の外は 0
+static inline uint32_t input_mouse_bit(int button) {
+  return button >= 1 && button <= 32 ? UINT32_C(1) << (button - 1) : 0;
+}

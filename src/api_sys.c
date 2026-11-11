@@ -200,10 +200,8 @@ static const InputState *mouse_input(LubContext *ctx, const int32_t *button,
   int32_t b = button ? *button : 1;
   bool replay;
   const InputState *in = input_of(app, &replay);
-  if (b < 1 || b > 32 || (!replay && mouse_hidden(app)))
-    return NULL;
-  *bit = SDL_BUTTON_MASK(b);
-  return in;
+  *bit = input_mouse_bit(b);
+  return *bit == 0 || (!replay && mouse_hidden(app)) ? NULL : in;
 }
 
 bool lub_input_mouse_down(LubContext *ctx, const int32_t *button) {

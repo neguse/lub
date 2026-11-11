@@ -307,14 +307,14 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     out->plain = event_char(e->key.scancode, SDL_KMOD_NONE);
     return true;
   case SDL_EVENT_MOUSE_BUTTON_DOWN:
-    app->input.mouse_pressed_mask |= SDL_BUTTON_MASK(e->button.button);
+    app->input.mouse_pressed_mask |= input_mouse_bit(e->button.button);
     out->kind = LUB_EVENT_KIND_MOUSE_BUTTON_DOWN;
     out->button = e->button.button;
     out->x = e->button.x * density - (float)main_x;
     out->y = e->button.y * density - (float)main_y;
     return true;
   case SDL_EVENT_MOUSE_BUTTON_UP:
-    app->input.mouse_released_mask |= SDL_BUTTON_MASK(e->button.button);
+    app->input.mouse_released_mask |= input_mouse_bit(e->button.button);
     out->kind = LUB_EVENT_KIND_MOUSE_BUTTON_UP;
     out->button = e->button.button;
     out->x = e->button.x * density - (float)main_x;
