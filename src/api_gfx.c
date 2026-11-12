@@ -222,7 +222,7 @@ static ResEntry *entry_from_handle(App *app, LubHandle h, ResKind kind,
 // backend (renderer) は OnInit の後 (lub_host_start) に起動する。
 // それより前に backend を触る API を呼ぶと g_backend が NULL なので、落ちる代わりに error。
 static bool require_backend(App *app, const char *fn) {
-  if (app->phase == APP_PHASE_POST_BACKEND && g_backend)
+  if (app->proc->phase == APP_PHASE_POST_BACKEND && g_backend)
     return true;
   lub_api_fail(app,
                "%s: not available in OnInit (the renderer starts after "
@@ -252,7 +252,7 @@ LubHandle lub_gfx_main_tex(LubContext *ctx) {
 void lub_gfx_size(LubContext *ctx, int32_t *out_w, int32_t *out_h) {
   App *app = lub_api_app(ctx);
   int x = 0, y = 0, w = 0, h = 0;
-  if (app && app->window)
+  if (app && app->proc->window)
     lub_host_main_rect(app, &x, &y, &w, &h);
   if (w <= 0)
     w = 1280;

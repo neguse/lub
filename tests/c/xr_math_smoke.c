@@ -44,7 +44,8 @@ int main(void) {
       for (int col = 0; col < 4; ++col)
         close_to(matrix[row * 4 + col], expected.m[col * 4 + row]);
   }
-  App app = {0};
+  Process proc = {0};
+  App app = {.proc = &proc};
   LubXrView view = {0};
   if (lub_xr_view(lub_api_ctx(&app), 0, 0, 100, &view) != LUB_ERROR)
     failures++;

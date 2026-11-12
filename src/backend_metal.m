@@ -437,7 +437,7 @@ static bool mt_init(App *app) {
       return false;
     }
     g_queue = [g_device newCommandQueue];
-    g_view = SDL_Metal_CreateView(app->window);
+    g_view = SDL_Metal_CreateView(app->proc->window);
     if (!g_view) {
       SDL_Log("metal: SDL_Metal_CreateView failed: %s", SDL_GetError());
       g_queue = nil;
@@ -452,8 +452,10 @@ static bool mt_init(App *app) {
     // A capture run draws at the requested size, not at what the window got:
     // the drawable is ours to size, and the layer scales it for display.
     if (app->capture.pending) {
-      app->fixed_w = app->cfg_w > 0 ? app->cfg_w : LUB_DEFAULT_WINDOW_W;
-      app->fixed_h = app->cfg_h > 0 ? app->cfg_h : LUB_DEFAULT_WINDOW_H;
+      app->proc->fixed_w =
+          app->proc->cfg_w > 0 ? app->proc->cfg_w : LUB_DEFAULT_WINDOW_W;
+      app->proc->fixed_h =
+          app->proc->cfg_h > 0 ? app->proc->cfg_h : LUB_DEFAULT_WINDOW_H;
     }
     mt_ts_init();
     SDL_Log("metal: device: %s%s", g_device.name.UTF8String,
@@ -526,17 +528,17 @@ static void mt_begin_frame(App *app, int *out_w, int *out_h) {
   @autoreleasepool {
     mt_ts_begin_frame(app);
     int w = 0, h = 0;
-    SDL_GetWindowSizeInPixels(app->window, &w, &h);
-    if (app->fixed_w > 0 && app->fixed_h > 0) {
-      w = app->fixed_w;
-      h = app->fixed_h;
+    SDL_GetWindowSizeInPixels(app->proc->window, &w, &h);
+    if (app->proc->fixed_w > 0 && app->proc->fixed_h > 0) {
+      w = app->proc->fixed_w;
+      h = app->proc->fixed_h;
     }
     if (w > 0 && h > 0) {
       CGSize size = g_layer.drawableSize;
       if ((int)size.width != w || (int)size.height != h)
         g_layer.drawableSize = CGSizeMake(w, h);
     }
-    app->pending_resize = false;
+    app->proc->pending_resize = false;
     g_cmd = [g_queue commandBuffer];
     g_drawable = [g_layer nextDrawable];
     w = h = 0;

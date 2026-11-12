@@ -19,18 +19,18 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
     return lub_api_fail(app, "config: opts required");
   // VM を作り直した後の OnInit (entry_restarting) は backend の後なので、backend と window の大きさは変えられない。
   // 違う値なら log だけ出す
-  bool restarting = app->phase != APP_PHASE_PRE_BACKEND;
+  bool restarting = app->proc->phase != APP_PHASE_PRE_BACKEND;
   if (restarting && !app->entry_restarting)
     return lub_api_fail(app, "config: must be called inside OnInit");
 
   // backend は d3d12 / vulkan / metal / sdlgpu。
-  // 未指定なら app_init が決めた既定 (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。
+  // 未指定なら process_init が決めた既定 (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。
   char name[16];
 #ifdef __EMSCRIPTEN__
   // WASM: backend は webgpu 一択なので指定を無視する (native と共用のサンプルが native 向け指定を持っていても壊さない)。
   (void)lub_str_copy(lub_str_c("webgpu"), name, sizeof(name));
-  strncpy(app->backend_name, name, sizeof(app->backend_name) - 1);
-  app->backend_name[sizeof(app->backend_name) - 1] = '\0';
+  strncpy(app->proc->backend_name, name, sizeof(app->proc->backend_name) - 1);
+  app->proc->backend_name[sizeof(app->proc->backend_name) - 1] = '\0';
 #else
   if (d->backend.len > 0 && !export_active()) {
     if (!lub_str_copy(d->backend, name, sizeof(name)) ||
@@ -42,11 +42,12 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
                           d->backend.len, d->backend.ptr ? d->backend.ptr : "");
     }
     if (restarting) {
-      if (strcmp(name, app->backend_name) != 0)
+      if (strcmp(name, app->proc->backend_name) != 0)
         SDL_Log("config: backend '%s' applies after restarting lub", name);
     } else {
-      strncpy(app->backend_name, name, sizeof(app->backend_name) - 1);
-      app->backend_name[sizeof(app->backend_name) - 1] = '\0';
+      strncpy(app->proc->backend_name, name,
+              sizeof(app->proc->backend_name) - 1);
+      app->proc->backend_name[sizeof(app->proc->backend_name) - 1] = '\0';
     }
   }
 #endif
@@ -67,15 +68,15 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
     app->readback_fixed_latency = d->readback_fixed_latency;
   if ((d->has_width && d->width < 0) || (d->has_height && d->height < 0))
     return lub_api_fail(app, "config: width/height must be >= 0");
-  int w = d->has_width && d->width > 0 ? d->width : app->cfg_w;
-  int h = d->has_height && d->height > 0 ? d->height : app->cfg_h;
+  int w = d->has_width && d->width > 0 ? d->width : app->proc->cfg_w;
+  int h = d->has_height && d->height > 0 ? d->height : app->proc->cfg_h;
   if (restarting) {
-    if (w != app->cfg_w || h != app->cfg_h)
+    if (w != app->proc->cfg_w || h != app->proc->cfg_h)
       SDL_Log("config: size %dx%d applies after restarting lub", w, h);
     return LUB_OK;
   }
-  app->cfg_w = w;
-  app->cfg_h = h;
+  app->proc->cfg_w = w;
+  app->proc->cfg_h = h;
   return LUB_OK;
 }
 
@@ -246,14 +247,15 @@ void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
 
 bool lub_input_focused(LubContext *ctx) {
   App *app = lub_api_app(ctx);
-  return app->window &&
-         (SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS) != 0;
+  return app->proc->window &&
+         (SDL_GetWindowFlags(app->proc->window) & SDL_WINDOW_INPUT_FOCUS) != 0;
 }
 
 // web では SDL が Pointer Lock の要求を次の入力 event まで遅らせる (Pointer Lock はユーザーの操作の中でしか通らない)。
 bool lub_input_capture_mouse(LubContext *ctx, bool captured) {
   App *app = lub_api_app(ctx);
-  return app->window && SDL_SetWindowRelativeMouseMode(app->window, captured);
+  return app->proc->window &&
+         SDL_SetWindowRelativeMouseMode(app->proc->window, captured);
 }
 
 // lub の PadAxis / PadButton は SDL の番号をそのまま使う。
@@ -314,7 +316,7 @@ bool lub_input_gamepad_released(LubContext *ctx, int32_t player,
 // ------------------------------------------------------------------- sys
 
 float lub_sys_actual_fps(LubContext *ctx) {
-  return (float)lub_api_app(ctx)->actual_fps;
+  return (float)lub_api_app(ctx)->proc->actual_fps;
 }
 
 // 文字列の FNV-1a 64bit hash を int32 に畳む (version の identity claim 用)。

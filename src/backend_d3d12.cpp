@@ -842,7 +842,7 @@ bool dx_init(App *app) {
     return false;
 
   HWND hwnd =
-      (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(app->window),
+      (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(app->proc->window),
                                    SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
   if (!hwnd) {
     SDL_Log("d3d12: no HWND from SDL window");
@@ -939,8 +939,8 @@ bool dx_timestamp(App *app, uint32_t index) {
 }
 
 void dx_begin_frame(App *app, int *out_w, int *out_h) {
-  if (app->pending_resize) {
-    app->pending_resize = false;
+  if (app->proc->pending_resize) {
+    app->proc->pending_resize = false;
     dx_resize_swapchain();
   }
 

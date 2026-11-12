@@ -122,7 +122,7 @@ static bool ex_init(App *app) {
 static void ex_shutdown(App *app) { (void)app; }
 
 static void ex_begin_frame(App *app, int *out_w, int *out_h) {
-  SDL_GetWindowSizeInPixels(app->window, out_w, out_h);
+  SDL_GetWindowSizeInPixels(app->proc->window, out_w, out_h);
 }
 static void ex_end_frame(App *app) { (void)app; }
 
