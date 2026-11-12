@@ -3072,6 +3072,19 @@ LUB_API void lub_app_quit(LubContext *ctx, int32_t code);
 
 LUB_API void lub_app_restart(LubContext *ctx);
 
+LUB_API LubStatus lub_app_use(LubContext *ctx, LubStr key, LubStr module,
+                              LubStr entry, LubHandle *out);
+
+// 開いた app を 1 frame 進める (`OnFrame(dt)` を呼ぶ)。 app の `Gfx.MainTex`
+// への描画は target に入り、`Gfx.Size` は target の大きさを返す。 target は
+// `Target = true` で宣言した color の texture。入力はこの app の入力をそのま
+// ま渡す。`OnEvent` は呼ばない。 `OnFrame` の中で、pass の外から呼ぶ。進めた
+// frame が error なく終わったら true。 module を読めないか、`OnFrame` が失敗
+// したか、app が `App.Quit` を呼んだ後なら false。開いた app の中では、`Ui.*`
+// は何もせず、`App.Use` は error になる。
+LUB_API LubStatus lub_app_step(LubContext *ctx, LubHandle app, LubHandle target,
+                               float dt, bool *out);
+
 // ------------------------------------------------------------------- gfx
 // 即時モード GPU API。 draw / dispatch には名前と値の組を Bindings で渡す。
 

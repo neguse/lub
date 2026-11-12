@@ -112,6 +112,18 @@ typedef struct Process {
   bool quit_requested;
 } Process;
 
+// 他の app を開いて動かす口 (App.Use / App.Step、api_app.c)。tcs VM の player が置く。
+typedef struct LubAppHooks {
+  // module (.tcsb) の entry を child の上に開き、OnInit を呼ぶ。
+  // module を読めなくても player の状態は返す (書き直されるのを待つ)。NULL は memory が無いときだけ
+  void *(*open)(struct App *owner, struct App *child, const char *module,
+                const char *entry);
+  // OnFrame(dt) を呼ぶ。module が無いか OnFrame が失敗したら false
+  bool (*step)(void *player, float dt);
+  // OnQuit を呼び、player の状態を捨てる
+  void (*close)(void *player);
+} LubAppHooks;
+
 typedef struct App {
   Process *proc;
 
@@ -188,11 +200,22 @@ typedef struct App {
   // NULL なら PickHit.Site は空。
   void (*pick_sites)(void *user, char *out, size_t cap);
   void *pick_sites_user;
+
+  // App.Use で開いた app の表 (api_app.c 所有) と、開く口。
+  struct OpenApps *open_apps;
+  const LubAppHooks *app_hooks;
+  // この app を App.Use で開いた app (window に描く app は NULL)。
+  struct App *opened_by;
+  // 開かれた app の main の描き先 (App.Step の間だけ。それ以外は 0)。
+  // main_w / main_h は最後の Step の target の大きさで、Gfx.Size が返す。
+  uintptr_t main_color, main_depth;
+  SglPixelFormat main_fmt;
+  int main_w, main_h;
 } App;
 
 // SDL_Init の後に呼ぶ。backend の既定を決め、window を作る
 bool process_init(Process *proc);
-// window を壊す (app_shutdown の後、SDL_Quit の前)
+// backend を終え、window を壊す (全部の app_shutdown の後、SDL_Quit の前)
 void process_shutdown(Process *proc);
 bool app_init(App *app, Process *proc);
 bool app_backend_init(App *app); // call after OnInit has run; returns false

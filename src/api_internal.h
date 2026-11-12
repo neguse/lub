@@ -51,6 +51,9 @@ bool shader_compile_compute_for_backend(const char *cs, ShaderBlob *out_cs,
                                         ShaderReflection *out_refl, char *err,
                                         size_t err_size);
 
+// key の最大の長さ (終端の NUL を含む)。
+#define LUB_KEY_MAX 256
+
 // frame の終わりに呼ぶ (app_frame_end)。
 // key で宣言する queue / snd の sweep。
 void api_gfx_frame_end(App *app);
@@ -70,6 +73,9 @@ void app_frame_garbage_drain(App *app);
 // app_shutdown が呼ぶ。
 void api_gfx_shutdown(App *app);
 void api_audio_shutdown(App *app);
+// App.Use で開いた app の sweep と、全部を閉じる後始末 (api_app.c)。
+void api_app_frame_end(App *app);
+void api_app_shutdown(App *app);
 void api_io_shutdown(App *app);
 
 uint64_t lub_io_fnv1a64(const void *data, size_t len);

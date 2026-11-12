@@ -163,6 +163,13 @@ namespace Lub
     {
     }
 
+    /// <summary>App.Use の不透明ハンドル。
+    /// </summary>
+    [LubHandle]
+    public class AppRef
+    {
+    }
+
     /// <summary> ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の結果)。
     /// 返された frame の終わりまで有効で、古い view を API に渡すと error になる。
     /// frame を跨いで持ちたい内容は自分の memory に写す。
@@ -404,6 +411,33 @@ namespace Lub
         [LubNoFail]
         public static void Restart()
         {
+        }
+
+        /// <summary>別の app を key で宣言する。
+        /// module は tcs VM の bytecode (.tcsb) の path、entry はその中の entry class (IL の名前。省くと module の basename)。
+        /// 開かれた app は自分の VM、key の資源、物理、音を持ち、この app とは何も共有しない。
+        /// 宣言が途切れると、資源と同じ規則で閉じる (`OnQuit` を呼ぶ)。
+        /// 同じ key で module か entry を変えると、閉じて開き直す。
+        /// module の読み込みと `OnInit` は最初の `Step` で行う。
+        /// tcs VM の player (`lub <Entry>.csproj`、web) だけで使え、他では error。
+        /// </summary>
+        public static AppRef Use(string key, string module, string? entry = null)
+        {
+            return null!;
+        }
+
+        /// <summary>開いた app を 1 frame 進める (`OnFrame(dt)` を呼ぶ)。
+        /// app の `Gfx.MainTex` への描画は target に入り、`Gfx.Size` は target の大きさを返す。
+        /// target は `Target = true` で宣言した color の texture。
+        /// 入力はこの app の入力をそのまま渡す。`OnEvent` は呼ばない。
+        /// `OnFrame` の中で、pass の外から呼ぶ。
+        /// 進めた frame が error なく終わったら true。
+        /// module を読めないか、`OnFrame` が失敗したか、app が `App.Quit` を呼んだ後なら false。
+        /// 開いた app の中では、`Ui.*` は何もせず、`App.Use` は error になる。
+        /// </summary>
+        public static bool Step(AppRef app, TextureRef target, float dt)
+        {
+            return false;
         }
     }
 

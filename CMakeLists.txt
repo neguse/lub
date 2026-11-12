@@ -273,6 +273,7 @@ set(LUB_SOURCES
   src/api_bindings.c
   src/api_sys.c
   src/api_audio.c
+  src/api_app.c
   src/api_io.c
   src/api_font.c
   src/api_mesh.c

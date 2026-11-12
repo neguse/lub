@@ -1120,6 +1120,103 @@ static bool begin_export(const char *os, const char *out) {
 }
 #endif
 
+// 動かす .tcsb と、その隣の .batch / .rev の path、entry class (NULL なら .tcsb の basename) を決める
+static void set_module(Player *p, const char *module, const char *entry) {
+  SDL_strlcpy(p->module, module, sizeof(p->module));
+  size_t n = strlen(p->module);
+  size_t stem = n > 5 && !strcmp(p->module + n - 5, ".tcsb") ? n - 5 : n;
+  SDL_snprintf(p->batch, sizeof(p->batch), "%.*s.batch", (int)stem, p->module);
+  SDL_snprintf(p->rev, sizeof(p->rev), "%.*s.rev", (int)stem, p->module);
+  if (entry)
+    SDL_strlcpy(p->game.cls, entry, sizeof(p->game.cls));
+  else {
+    const char *base = strrchr(p->module, '/');
+    base = base ? base + 1 : p->module;
+    size_t len = stem - (size_t)(base - p->module);
+    SDL_snprintf(p->game.cls, sizeof(p->game.cls), "%.*s", (int)len, base);
+  }
+}
+
+// ---- App.Use で開く app (LubAppHooks) ----
+// 開いた app は自分の Player (VM、binding の状態、reload) を持つ。
+// .tcsb を直接動かし、隣の .batch と .tcsb の書き直しで reload する (.csproj の build と watch はしない)。
+
+static void *app_open(App *owner, App *child, const char *module,
+                      const char *entry) {
+  Player *from = (Player *)owner->debug_user;
+  Player *p = (Player *)SDL_calloc(1, sizeof(Player));
+  if (!p)
+    return NULL;
+  p->acked = -1;
+  p->ctx = lub_api_ctx(child);
+  if (!vm_lub_init(&p->lub, p->ctx)) {
+    SDL_free(p);
+    return NULL;
+  }
+  memcpy(p->extensions, from->extensions, sizeof(p->extensions));
+  p->nextensions = from->nextensions;
+  set_module(p, module, entry[0] ? entry : NULL);
+  child->debug_hooks = &g_debug_hooks;
+  child->debug_user = p;
+  pick_set_sites(child, vm_pick_sites, p);
+  clear_hooks(&p->game);
+  clear_hooks(&p->tool);
+  if (load_module(p)) {
+    // App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
+    child->entry_restarting = true;
+    call_init(p);
+    child->entry_restarting = false;
+  }
+  return p;
+}
+
+static bool app_step(void *player, float dt) {
+  Player *p = (Player *)player;
+  App *app = lub_api_app(p->ctx);
+  // App.Restart は次の frame の始めに作り直す
+  if (app->restart_requested) {
+    app->restart_requested = false;
+    if (p->lub.vm)
+      restart(p, "App.Restart was called");
+  }
+  poll_reload(p);
+  return p->lub.vm && on_frame(p, dt);
+}
+
+static void app_close(void *player) {
+  Player *p = (Player *)player;
+  call_quit(p);
+  free_vm(p);
+  VmLub *s = &p->lub;
+  for (uint32_t i = 0; i < s->nkeys; i++)
+    free(s->keys[i]);
+  free(s->keys);
+  free(s->types);
+  free(s->views);
+  free(s->temps);
+  SDL_free(p->trace_arena.p);
+  SDL_free(p->trace_at);
+  SDL_free(p->trace_strs);
+  SDL_free(p->value_arena.p);
+  SDL_free(p->value_at);
+  SDL_free(p->values);
+  SDL_free(p->nodes);
+  SDL_free(p->lub_nodes);
+  SDL_free(p->profile_arena.p);
+  SDL_free(p->profile_at);
+  SDL_free(p->profile);
+  SDL_free(p->pauses);
+  SDL_free(p->kept_arena.p);
+  SDL_free(p->kept_at);
+  SDL_free(p->kept);
+  SDL_free(p->inst_arena.p);
+  SDL_free(p->inst_at);
+  SDL_free(p->inst);
+  SDL_free(p);
+}
+
+static const LubAppHooks g_app_hooks = {app_open, app_step, app_close};
+
 static bool parse_args(Player *p, int argc, char **argv, LubHostOpts *opts) {
   const char *module = NULL, *entry = NULL;
   int first = 1;
@@ -1183,19 +1280,7 @@ static bool parse_args(Player *p, int argc, char **argv, LubHostOpts *opts) {
     SDL_strlcpy(p->csproj, module, sizeof(p->csproj));
     return true;
   }
-  SDL_strlcpy(p->module, module, sizeof(p->module));
-  size_t n = strlen(p->module);
-  size_t stem = n > 5 && !strcmp(p->module + n - 5, ".tcsb") ? n - 5 : n;
-  SDL_snprintf(p->batch, sizeof(p->batch), "%.*s.batch", (int)stem, p->module);
-  SDL_snprintf(p->rev, sizeof(p->rev), "%.*s.rev", (int)stem, p->module);
-  if (entry)
-    SDL_strlcpy(p->game.cls, entry, sizeof(p->game.cls));
-  else {
-    const char *base = strrchr(p->module, '/');
-    base = base ? base + 1 : p->module;
-    size_t len = stem - (size_t)(base - p->module);
-    SDL_snprintf(p->game.cls, sizeof(p->game.cls), "%.*s", (int)len, base);
-  }
+  set_module(p, module, entry);
   return true;
 }
 
@@ -1250,6 +1335,7 @@ SDL_AppResult lub_vm_app_init(int argc, char **argv,
     return SDL_APP_FAILURE;
   lub_api_app(p->ctx)->debug_hooks = &g_debug_hooks;
   lub_api_app(p->ctx)->debug_user = p;
+  lub_api_app(p->ctx)->app_hooks = &g_app_hooks;
   pick_set_sites(lub_api_app(p->ctx), vm_pick_sites, p);
   clear_hooks(&p->game);
   clear_hooks(&p->tool);
