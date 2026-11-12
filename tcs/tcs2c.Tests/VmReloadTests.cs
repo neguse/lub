@@ -188,7 +188,7 @@ public class VmReloadTests
         const string v1 = Header + "public static class Game { static int n; public static void Frame() { n++; } public static void Report() { Console.WriteLine(\"v1 \" + n); } }";
         const string bad = Header + "public static class Game { static int n; public static void Frame() { n++ } }";
         const string v2 = Header + "public static class Game { static int n; static int m = 5; public static void Frame() { n++; } public static void Report() { Console.WriteLine(\"v2 \" + n + \" \" + m); } }";
-        const string v3 = Header + "public static class Game { static int n; static int m = 6; public static void Frame() { n++; } public static void Report() { } }";
+        const string v3 = Header + "public static class Game { static int n; static int m; public static void Frame() { n++; } public static void Report() { } }";
         var first = session.Update([v1]);
         Assert.Equal("module", first.Kind);
         Assert.Equal("error", session.Update([bad]).Kind);
@@ -199,7 +199,7 @@ public class VmReloadTests
         Assert.Equal("v2 3 5", stdout);
         var third = session.Update([v3]);
         Assert.Equal("restart", third.Kind);
-        Assert.Contains("static initializer changed: Game.m", third.Reasons!);
+        Assert.Contains("static initializer removed: Game.m", third.Reasons!);
     }
 
     [Fact]
@@ -220,14 +220,38 @@ public class VmReloadTests
     }
 
     [Fact]
-    public void ChangedStaticInitializer_RequiresRestart()
+    public void ChangedStaticInitializer_ReevaluatesThatStaticAndItsReaders()
+    {
+        if (!Backends.VmEnabled) return;
+        // 初期化子を変えた static と const、それを初期化子で読む static だけを評価し直す。ほかの static は今の値を保つ
+        const string report = "public static void Frame() { frames++; kept++; } public static void Report() { Console.WriteLine($\"{Speed} {Lives} {Twice} {Half} {frames} {kept} {list.Count}\"); } }";
+        const string v1 = Header + "public static class Game { static float Speed = 3f; const int Lives = 3; static int Twice = Lives * 2; static float Half = Speed / 2f; static int frames; static int kept = 10; static List<int> list = new List<int> { 1, 2 }; " + report;
+        const string v2 = Header + "public static class Game { static float Speed = 5f; const int Lives = 4; static int Twice = Lives * 2; static float Half = Speed / 2f; static int frames; static int kept = 10; static List<int> list = new List<int> { 1, 2 }; " + report;
+        var (code, stdout, stderr) = Reload(v1, v2, 3);
+        Assert.True(code == 0, stderr);
+        Assert.Equal("5 4 8 2.5 3 13 2", stdout);
+    }
+
+    [Fact]
+    public void ChangedStaticType_ReevaluatesThatStatic()
+    {
+        if (!Backends.VmEnabled) return;
+        const string v1 = Header + "public static class Game { static int n = 1; static int m = 7; public static void Frame() { m++; } public static void Report() { } }";
+        const string v2 = Header + "public static class Game { static float n = 1.5f; static int m = 7; public static void Frame() { m++; } public static void Report() { Console.WriteLine($\"{n} {m}\"); } }";
+        var (code, stdout, stderr) = Reload(v1, v2);
+        Assert.True(code == 0, stderr);
+        Assert.Equal("1.5 8", stdout);
+    }
+
+    [Fact]
+    public void RemovedStaticInitializer_RequiresRestart()
     {
         if (!Backends.VmEnabled) return;
         const string v1 = Header + "public static class Game { static int n = 1; public static void Frame() { n++; } public static void Report() { Console.WriteLine(n); } }";
-        const string v2 = Header + "public static class Game { static int n = 2; public static void Frame() { n++; } public static void Report() { Console.WriteLine(n); } }";
+        const string v2 = Header + "public static class Game { static int n; public static void Frame() { n++; } public static void Report() { Console.WriteLine(n); } }";
         var (code, _, stderr) = Reload(v1, v2);
         Assert.Equal(3, code);
-        Assert.Contains("static initializer changed: Game.n", stderr);
+        Assert.Contains("static initializer removed: Game.n", stderr);
     }
 
     [Fact]
