@@ -1167,6 +1167,7 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
                                  "only available inside OnFrame");
       uintptr_t color[1] = {app->main_color};
       SglPixelFormat fmt[1] = {app->main_fmt};
+      pick_begin_pass(app, -1);
       pass_state_label(&app->pass, "main");
       pass_state_begin_ex(&app->pass, 1, color, fmt, app->main_w, app->main_h,
                           (const float (*)[4])d->clear_color, app->main_depth,
@@ -1708,9 +1709,12 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
   return LUB_OK;
 }
 
-void lub_gfx_pick(LubContext *ctx, LubHandle target, int32_t x, int32_t y) {
-  App *app = lub_api_app(ctx);
-  int eye = lub_gfx_xr_eye_of(target);
+void lub_gfx_pick(LubContext *ctx, LubHandle target, int32_t x, int32_t y,
+                  LubHandle of) {
+  App *app = api_app_observed(lub_api_app(ctx), of);
+  if (!app)
+    return;
+  int eye = of ? -1 : lub_gfx_xr_eye_of(target);
   if (target != LUB_GFX_MAIN_TEX && eye < 0) {
     SDL_Log("gfx.pick: target must be main_tex or an XR eye target");
     return;
@@ -1718,10 +1722,11 @@ void lub_gfx_pick(LubContext *ctx, LubHandle target, int32_t x, int32_t y) {
   pick_request(app, eye >= 0 ? eye : -1, x, y);
 }
 
-LubStatus lub_gfx_pick_result(LubContext *ctx, LubPickHit *out) {
+LubStatus lub_gfx_pick_result(LubContext *ctx, LubHandle of, LubPickHit *out) {
   int draw = -1;
   const char *site = NULL, *self = NULL;
-  if (!pick_result(lub_api_app(ctx), &draw, &site, &self))
+  App *app = api_app_observed(lub_api_app(ctx), of);
+  if (!app || !pick_result(app, &draw, &site, &self))
     return LUB_NOT_FOUND;
   out->draw = draw;
   out->site.ptr = site;
