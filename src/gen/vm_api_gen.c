@@ -12107,11 +12107,13 @@ static TvmStatus vm_host_lub_sys_take_gpu_passes(TvmVm *vm, TvmSlot *a,
   (void)a;
   (void)r;
   VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   const LubGpuPass *result = {0};
   int32_t result_count = 0;
-  lub_sys_take_gpu_passes(s->ctx, &result, &result_count);
+  lub_sys_take_gpu_passes(s->ctx, (p_app ? (int32_t)p_app->host_value : 0),
+                          &result, &result_count);
   r[0].p = vm_lub_from_GpuPass_list(s, NULL, result, result_count);
   VM_LUB_LEAVE(vm);
 }
@@ -16121,7 +16123,7 @@ static const struct {
     {"lub.sys.take_profile", "o", "o", vm_host_lub_sys_take_profile},
     {"lub.sys.take_gc_pauses", "o", "o", vm_host_lub_sys_take_gc_pauses},
     {"lub.sys.take_kept", "o", "o", vm_host_lub_sys_take_kept},
-    {"lub.sys.take_gpu_passes", "", "o", vm_host_lub_sys_take_gpu_passes},
+    {"lub.sys.take_gpu_passes", "o", "o", vm_host_lub_sys_take_gpu_passes},
     {"lub.rewind.record", "i", "", vm_host_lub_rewind_record},
     {"lub.rewind.count", "", "i", vm_host_lub_rewind_count},
     {"lub.rewind.pause", "i", "", vm_host_lub_rewind_pause},

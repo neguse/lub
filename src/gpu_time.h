@@ -14,7 +14,7 @@ struct Process;
 // pass.c が pass の始まりと終わりを、draw を出す所が draw を知らせる。
 // 時刻を測れる backend は pass の前後に時刻を書き、その frame を GPU が終えた後に gpu_time_resolved で返す。
 // 測れない backend の pass は、frame の終わりに時間 -1 で出す。
-// Gfx.BeginPass で始めた pass を控え (overlay の中の pass と lub の中の pass は除く)、debug hook (tcs VM の player) が今の --trace の行を返せばそれも控える。
+// 数えるかどうかは app ごとで (Sys.ProfileLines)、数えている app が Gfx.BeginPass で始めた pass を控え (overlay の中の pass と lub の中の pass は除く)、debug hook (tcs VM の player) が今の --trace の行を返せばそれも控える。
 // frame の途中で数え始めたら、次の frame の pass から控える。
 
 // 1 frame で控える pass の数の上限。backend の時刻の番号は pass i の前が 2i、後が 2i + 1
@@ -35,8 +35,11 @@ void gpu_time_draw(struct App *app);
 void gpu_time_frame_end(struct Process *proc);
 // backend が frame の時刻 (ns、count 個) を返す。書かなかった時刻は GPU_TIME_NONE
 void gpu_time_resolved(uint64_t frame, const uint64_t *ns, uint32_t count);
-// 前に取り出してから届いた pass を古い順に渡す (次に呼ぶまで有効)
-void gpu_time_take(const LubGpuPass **out, int32_t *count);
+// app が始めた pass のうち、前に取り出してから届いたものを古い順に渡す (次に呼ぶまで有効)
+void gpu_time_take(const struct App *app, const LubGpuPass **out,
+                   int32_t *count);
+// app が終わるときに呼ぶ
+void gpu_time_forget(struct App *app);
 
 #ifdef __cplusplus
 }

@@ -435,10 +435,13 @@ void lub_sys_profile_lines(LubContext *ctx, bool on, LubHandle of) {
     app->debug_hooks->profile_lines(app, on);
 }
 
-void lub_sys_take_gpu_passes(LubContext *ctx, const LubGpuPass **out,
-                             int32_t *out_count) {
-  (void)ctx;
-  gpu_time_take(out, out_count);
+void lub_sys_take_gpu_passes(LubContext *ctx, LubHandle of,
+                             const LubGpuPass **out, int32_t *out_count) {
+  App *app = api_app_observed(lub_api_app(ctx), of);
+  *out = NULL;
+  *out_count = 0;
+  if (app)
+    gpu_time_take(app, out, out_count);
 }
 
 void lub_sys_take_profile(LubContext *ctx, LubHandle of,

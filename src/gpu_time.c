@@ -10,6 +10,8 @@
 #define GPU_TIME_KEEP 4096
 
 typedef struct GpuPassRec {
+  // pass を始めた app (取り出すときに分ける。比べるだけで読まない)
+  const App *owner;
   char site[160];
   char target[64];
   int32_t draws;
@@ -33,9 +35,8 @@ typedef struct GpuDoneList {
   int32_t n, cap;
 } GpuDoneList;
 
-static bool g_on;
-// 数え始める frame (frame の途中で数え始めたら次の frame。backend は frame の頭で時刻の用意をする)
-static uint64_t g_from;
+// 数えている app の数 (App.gpu_time_on)。1 つでもあれば backend が時刻の用意をする
+static int g_on;
 static GpuFrame g_frames[GPU_TIME_FRAMES];
 static GpuPassRec *g_cur; // 控えている pass (無ければ NULL)
 static uint32_t g_cur_index;
@@ -45,13 +46,15 @@ static LubGpuPass *g_out;
 static int32_t g_out_cap;
 
 void gpu_time_enable(App *app, bool on) {
-  if (on && !g_on)
-    g_from = app->proc->frame_index + (app->proc->in_frame ? 1 : 0);
-  g_on = on;
+  if (on && !app->gpu_time_on)
+    app->gpu_time_from = app->proc->frame_index + (app->proc->in_frame ? 1 : 0);
+  if (on != app->gpu_time_on)
+    g_on += on ? 1 : -1;
+  app->gpu_time_on = on;
   g_cur = NULL;
 }
 
-bool gpu_time_enabled(void) { return g_on; }
+bool gpu_time_enabled(void) { return g_on > 0; }
 
 static void copy_str(char *dst, size_t cap, const char *src) {
   SDL_strlcpy(dst, src ? src : "", cap);
@@ -59,8 +62,8 @@ static void copy_str(char *dst, size_t cap, const char *src) {
 
 // 描き先の名前の無い pass は lub の中の pass (Gfx.Pick の描き直し)
 static bool wants(App *app, const char *target) {
-  return g_on && app->proc->in_frame && !app->in_overlay && target &&
-         app->proc->frame_index >= g_from;
+  return app->gpu_time_on && app->proc->in_frame && !app->in_overlay &&
+         target && app->proc->frame_index >= app->gpu_time_from;
 }
 
 bool gpu_time_wants_pass(App *app) { return wants(app, app->pass.label); }
@@ -87,6 +90,7 @@ void gpu_time_pass_begin(App *app, const char *target) {
     return;
   g_cur_index = f->n++;
   g_cur = &f->passes[g_cur_index];
+  g_cur->owner = app;
   copy_str(g_cur->site, sizeof g_cur->site, site);
   copy_str(g_cur->target, sizeof g_cur->target, target);
   g_cur->draws = 0;
@@ -131,7 +135,9 @@ static void flush(GpuFrame *f, const uint64_t *ns, uint32_t count) {
     float ms = b != GPU_TIME_NONE && e != GPU_TIME_NONE && e >= b
                    ? (float)((double)(e - b) / 1e6)
                    : -1.0f;
-    push_done(&f->passes[i], ms);
+    // 始めた app がもう無い pass は捨てる
+    if (f->passes[i].owner)
+      push_done(&f->passes[i], ms);
   }
   f->used = false;
   f->n = 0;
@@ -150,24 +156,38 @@ void gpu_time_resolved(uint64_t frame, const uint64_t *ns, uint32_t count) {
     flush(f, ns, count);
 }
 
-void gpu_time_take(const LubGpuPass **out, int32_t *count) {
-  GpuDoneList t = g_taken;
-  g_taken = g_pending;
-  g_pending = t;
-  g_pending.n = 0;
-  if (g_taken.n > g_out_cap) {
-    LubGpuPass *p = (LubGpuPass *)SDL_realloc(g_out, (size_t)g_taken.n *
-                                                         sizeof(LubGpuPass));
-    if (!p) {
-      *out = NULL;
-      *count = 0;
+// app の pass を pending から taken に移す (ほかの app の pass は pending に残す)
+void gpu_time_take(const App *app, const LubGpuPass **out, int32_t *count) {
+  *out = NULL;
+  *count = 0;
+  GpuDoneList *t = &g_taken;
+  t->n = 0;
+  if (t->cap < g_pending.n) {
+    GpuDone *p =
+        (GpuDone *)SDL_realloc(t->p, (size_t)g_pending.n * sizeof(GpuDone));
+    if (!p)
       return;
-    }
-    g_out = p;
-    g_out_cap = g_taken.n;
+    t->p = p;
+    t->cap = g_pending.n;
   }
-  for (int32_t i = 0; i < g_taken.n; i++) {
-    const GpuDone *d = &g_taken.p[i];
+  int32_t kept = 0;
+  for (int32_t i = 0; i < g_pending.n; i++) {
+    if (g_pending.p[i].rec.owner == app)
+      t->p[t->n++] = g_pending.p[i];
+    else
+      g_pending.p[kept++] = g_pending.p[i];
+  }
+  g_pending.n = kept;
+  if (t->n > g_out_cap) {
+    LubGpuPass *p =
+        (LubGpuPass *)SDL_realloc(g_out, (size_t)t->n * sizeof(LubGpuPass));
+    if (!p)
+      return;
+    g_out = p;
+    g_out_cap = t->n;
+  }
+  for (int32_t i = 0; i < t->n; i++) {
+    const GpuDone *d = &t->p[i];
     g_out[i].site = (LubStr){d->rec.site, (int32_t)SDL_strlen(d->rec.site)};
     g_out[i].target =
         (LubStr){d->rec.target, (int32_t)SDL_strlen(d->rec.target)};
@@ -175,5 +195,19 @@ void gpu_time_take(const LubGpuPass **out, int32_t *count) {
     g_out[i].draws = d->rec.draws;
   }
   *out = g_out;
-  *count = g_taken.n;
+  *count = t->n;
+}
+
+// app が終わる: 数えるのをやめ、まだ取り出していない pass を捨てる
+void gpu_time_forget(App *app) {
+  gpu_time_enable(app, false);
+  int32_t kept = 0;
+  for (int32_t i = 0; i < g_pending.n; i++)
+    if (g_pending.p[i].rec.owner != app)
+      g_pending.p[kept++] = g_pending.p[i];
+  g_pending.n = kept;
+  for (int k = 0; k < GPU_TIME_FRAMES; k++)
+    for (uint32_t i = 0; i < g_frames[k].n; i++)
+      if (g_frames[k].passes[i].owner == app)
+        g_frames[k].passes[i].owner = NULL;
 }

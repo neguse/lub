@@ -308,6 +308,7 @@ void app_frame_end(App *app, bool frame_ok) {
 void app_shutdown(App *app) {
   // 開いた app は backend のあるうちに閉じる
   api_app_shutdown(app);
+  gpu_time_forget(app);
   pick_shutdown(app);
   // Pipelines reference shaders, so destroy pipelines before resources.
   pipeline_cache_shutdown(&app->pip_cache);

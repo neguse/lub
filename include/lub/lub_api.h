@@ -3756,8 +3756,11 @@ LUB_API void lub_sys_take_kept(LubContext *ctx, LubHandle app,
 // の時間は、その frame を GPU が終えた後 (多くの backend で 2 frame 後) に届
 // く。 Gfx.BeginPass で始めた pass を数え、overlay の中の pass は数えない。
 // frame の途中で数え始めたら、次の frame の pass から数える。数えていなけれ
-// ば空。
-LUB_API void lub_sys_take_gpu_passes(LubContext *ctx, const LubGpuPass **out,
+// ば空。 app を渡すと、`App.Use` で開いたその app の pass を返す (省くとこの
+// app。数えるかどうかも app ごとで、`ProfileLines` に同じ app を渡して始め
+// る)。
+LUB_API void lub_sys_take_gpu_passes(LubContext *ctx, LubHandle app,
+                                     const LubGpuPass **out,
                                      int32_t *out_count);
 
 // ---------------------------------------------------------------- rewind
