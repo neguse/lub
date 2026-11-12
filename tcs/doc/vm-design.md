@@ -421,7 +421,7 @@ void      *tvm_string_new(TvmVm *vm, const char *data, size_t len);
 const char *tvm_string_data(const void *string, size_t *len);
 ```
 
-ほかに、型記述子で object / List / 配列を作って読む関数 (`tvm_type`、`tvm_list_*`、`tvm_array_*`)、C の module との混在の関数 (`tvm_use_heap`、`tvm_host_type`、`tvm_host_iface`、`tvm_host_delegate`、`tvm_invoke_method`。object-model §10)、検査の口 (§14) と状態の控え (`tvm_snapshot_*`) がある。
+ほかに、型記述子で object / List / 配列を作って読む関数 (`tvm_type`、`tvm_list_*`、`tvm_array_*`)、C の module との混在の関数 (`tvm_use_heap`、`tvm_host_type`、`tvm_host_iface`、`tvm_host_delegate`、`tvm_invoke_method`。object-model §10)、検査の口 (§14) と状態の控え (`tvm_snapshot_*`)、状態の保存と読み込み (`tvm_state_*`。§13.4) がある。
 
 - host の関数の名前は IL の host の名前 (`--ref` の stub の `Eng.Gfx.Begin` は `eng.gfx.begin`、static の値 `Gfx.MainTex` は引数の無い `eng.gfx.main_tex`)。enum の定数は module に literal で入る
 - params は C# の引数の順の項、rets は戻り値の項で書く (`i` int と enum、`f` float、`b` bool、`s` string、`o` ほかの参照、`S{型}` struct の値、params の `&` は out)。struct と out は C の layout の塊と pointer で渡る (§8.5)。module が使う host の関数が無いか、struct の型が module に無いか塊にできないか、呼び出しの形が合わなければ読み込みエラーにする。
@@ -454,6 +454,41 @@ VM を組み込む host の流れ:
 | `build_failed` | 診断の行 (stderr にも書く) | 表示する。最後に通った build のまま次の編集を待つ |
 
 どの kind の本文も改行終端のテキスト行。検査は `tcsvm/tests/host/watch_test.py`。
+
+### 13.4 状態の保存と読み込み
+
+`tvm_state_save` は VM の状態を byte 列に書き、`tvm_state_load` はそれを読み込む (`tcsvm_state.c`)。
+byte 列は address と layout に依らないので、別の VM にも、別の process の VM にも、pointer の大きさが違う VM にも読み込める。
+どちらも frame の境界でだけ呼べる。
+
+書くもの:
+
+- 全部の static (struct の static は葉の並び)。
+- static から届く object。class の field、配列と List の要素、Dictionary の key と値 (足した順)、string の中身、closure の関数の名前と捕捉、box の値、host と共有する class の host の値。
+- 使った型の名前と形 (class と struct は field の名前と種類、容器は要素の種類)。
+
+書かないもの:
+
+- host の handle (`tvm_hold`) が持つ object。読み込んだ後も handle は前の object を指す。
+- `--trace` の記録、状態の控え、負荷の記録。
+- 実行の途中の frame (frame の境界には無い)。
+
+読み込みの約束:
+
+- 型は名前で今の module の型に対応させ、形 (field の名前と種類と並び、要素と key の種類) が同じであることを確かめる。違えば断る。
+- 参照の先の object が置き場所の型 (field、要素、key、捕捉、static) に合うことを確かめる。
+- closure の関数は名前で引き、関数型と捕捉の数が合うことを確かめる。
+- static は名前で対応させる。今の module に無い static は捨て、状態に無い static は今の値のまま残す。
+- 確かめ終わるまで static に触らない。断ったときは `TVM_LOAD_ERROR` を返し、状態は変わらず、理由は `tvm_error` にある。
+- Dictionary は key を入れ直して作るので、object を key にした Dictionary も読み込んだ先の address で引ける。
+
+関数の中身だけが違う版には、そのまま読み込める。
+型の形が違う版には読み込めないので、同じ版に読み込んでから reload (§12) を当てる。
+
+検査は `tcs2c.Tests` の `VmStateTests`。
+状態を file に書き、別の process の VM に読み込んで続きを走らせ、止めずに走らせた結果と比べる。
+形の違う版と、壊した byte 列を断ることも見る。
+`tcsvm` の `--save-state K FILE` と `--load-state K FILE` が同じことを手で試す口になる。
 
 ## 14. debug 情報と検査の口
 

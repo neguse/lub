@@ -126,6 +126,49 @@ internal static partial class Backends
         }
     }
 
+    /// <summary>状態の保存と読み込み (doc/vm-design.md §13.4)。save を Setup → Frame×saveAt で走らせて状態を file に書き、
+    /// 別の process の load が Setup の代わりにその状態を読み込んで Frame×(total - saveAt) → Report。
+    /// 戻り値の Baseline は save を止めずに Frame×total → Report まで走らせた stdout。tamper は読み込む前の byte 列を変える。
+    /// 読み込む側は GC stress でも同じ出力であること。</summary>
+    public static (string Baseline, int ExitCode, string Stdout, string Stderr) RunVmState(string[] save, string[] load,
+        string cls, int saveAt, int total, Func<byte[], byte[]>? tamper = null)
+    {
+        string[] exports = [cls + ".*"];
+        var dir = Directory.CreateTempSubdirectory("tcsvm-state-");
+        try
+        {
+            var p1 = Path.Combine(dir.FullName, "save.tcsb");
+            var p2 = Path.Combine(dir.FullName, "load.tcsb");
+            var ps = Path.Combine(dir.FullName, "state.bin");
+            File.WriteAllBytes(p1, SelfHostVm.Emit(save, null, exports));
+            File.WriteAllBytes(p2, SelfHostVm.Emit(load, null, exports));
+            string N(int n) => n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var baseline = Run(Start(VmExe.Value, ["--lib", cls, N(total), p1]), RunTimeout);
+            Assert.True(baseline.ExitCode == 0, baseline.Stderr);
+            var saved = Run(Start(VmExe.Value, ["--lib", cls, N(saveAt), "--save-state", N(saveAt), ps, p1]), RunTimeout);
+            Assert.True(saved.ExitCode == 0, saved.Stderr);
+            if (tamper != null) File.WriteAllBytes(ps, tamper(File.ReadAllBytes(ps)));
+            (int, string, string)? first = null;
+            foreach (var stress in new[] { false, true })
+            {
+                var args = new List<string> { "--lib", cls, N(total - saveAt), "--load-state", "0", ps };
+                if (stress) args.Add("--gc-stress");
+                args.Add(p2);
+                var run = Run(Start(VmExe.Value, args), RunTimeout);
+                var result = (run.ExitCode, run.Stdout.Replace("\r\n", "\n").TrimEnd('\n'), run.Stderr);
+                if (first is { } f)
+                    Assert.True(f.Item1 == result.ExitCode && f.Item2 == result.Item2,
+                        $"gc stress differs:\n{f.Item2}\n---\n{result.Item2}\n{result.Stderr}");
+                first = result;
+            }
+            return (baseline.Stdout.Replace("\r\n", "\n").TrimEnd('\n'), first!.Value.Item1, first.Value.Item2, first.Value.Item3);
+        }
+        finally
+        {
+            try { dir.Delete(recursive: true); } catch (IOException) { }
+        }
+    }
+
     /// <summary>module を lib 形で走らせ、frames 回目のフレームの後に batch (VmSession / tcs2vm --watch の形) を当てる。</summary>
     public static (int ExitCode, string Stdout, string Stderr) RunVmBatch(byte[] module, byte[] batch, string cls, int frames)
     {

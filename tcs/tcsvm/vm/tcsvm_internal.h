@@ -411,6 +411,8 @@ const char *tvm_func_path(TvmVm *vm, const TvmProto *p);
 /* tcsvm_load.c */
 /* 読み込み・検査・link まで (static initializer は走らせない)。reload は別の VM にこれで読む */
 TvmStatus tvm_load_module(TvmVm *vm, const uint8_t *bytes, size_t size);
+/* 関数 g の引数と戻り値が関数型 t と同じか */
+bool tvm_proto_matches(const TvmProto *g, const TvmType *t);
 void tvm_set_error(TvmVm *vm, const char *fmt, ...);
 void tvm_append_error(TvmVm *vm, const char *fmt, ...);
 
