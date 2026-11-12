@@ -137,6 +137,11 @@ static Player g_player = {.acked = -1};
 
 static void call_reload(Player *p);
 
+static bool is_csproj(const char *path) {
+  size_t n = strlen(path);
+  return n > 7 && !SDL_strcasecmp(path + n - 7, ".csproj");
+}
+
 static int64_t file_mtime(const char *path) {
   SDL_PathInfo info;
   return SDL_GetPathInfo(path, &info) ? (int64_t)info.modify_time : -1;
@@ -1139,7 +1144,44 @@ static void set_module(Player *p, const char *module, const char *entry) {
 
 // ---- App.Use で開く app (LubAppHooks) ----
 // 開いた app は自分の Player (VM、binding の状態、reload) を持つ。
-// .tcsb を直接動かし、隣の .batch と .tcsb の書き直しで reload する (.csproj の build と watch はしない)。
+// .tcsb は直接動かし、隣の .batch と .tcsb の書き直しで reload する。
+// .csproj は tcs vm --watch を張り、最初の build が終わった frame から動かす (build を待って止まらない)。
+
+#ifdef VM_PROJECT
+// 開いた app の .csproj の入力を集め、tcs vm --watch を張る。
+// ゲームのソースは --trace で変換し、csproj の overlay は呼ばない (開いた側が観察する)。
+// module は build が .tcsb を書き直した frame に app_step が読む
+static void open_project(Player *p, const char *csproj, const char *entry) {
+  p->project_mode = true;
+  SDL_strlcpy(p->csproj, csproj, sizeof(p->csproj));
+  if (!vm_project_open(&p->project, p->csproj))
+    return;
+  p->project.trace = true;
+  SDL_strlcpy(p->game.cls, entry ? entry : p->project.entry,
+              sizeof(p->game.cls));
+  SDL_strlcpy(p->module, p->project.out_tcsb, sizeof(p->module));
+  vm_project_scan(&p->project);
+  for (int i = 0; i < p->project.nextensions; i++)
+    load_extension(p, p->project.extensions[i]);
+  const char *args[256];
+  int n = vm_project_args(&p->project, args, 256);
+  // 前の build の .tcsb が残っていても、この build が書き直すまで読まない
+  p->module_mtime = file_mtime(p->module);
+  if (tcs_vm_pipeline_start(&p->tcs, args, n))
+    SDL_Log("tcs: compiling %s for the tcs VM ...", p->csproj);
+}
+#endif
+
+// module を読み、OnInit を呼ぶ。
+// App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
+static void start_module(Player *p) {
+  if (!load_module(p))
+    return;
+  App *app = lub_api_app(p->ctx);
+  app->entry_restarting = true;
+  call_init(p);
+  app->entry_restarting = false;
+}
 
 static void *app_open(App *owner, App *child, const char *module,
                       const char *entry) {
@@ -1155,18 +1197,21 @@ static void *app_open(App *owner, App *child, const char *module,
   }
   memcpy(p->extensions, from->extensions, sizeof(p->extensions));
   p->nextensions = from->nextensions;
-  set_module(p, module, entry[0] ? entry : NULL);
   child->debug_hooks = &g_debug_hooks;
   child->debug_user = p;
   pick_set_sites(child, vm_pick_sites, p);
   clear_hooks(&p->game);
   clear_hooks(&p->tool);
-  if (load_module(p)) {
-    // App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
-    child->entry_restarting = true;
-    call_init(p);
-    child->entry_restarting = false;
+  if (is_csproj(module)) {
+#ifdef VM_PROJECT
+    open_project(p, module, entry[0] ? entry : NULL);
+#else
+    SDL_Log("lub: this player cannot build %s (open the built .tcsb)", module);
+#endif
+    return p;
   }
+  set_module(p, module, entry[0] ? entry : NULL);
+  start_module(p);
   return p;
 }
 
@@ -1179,7 +1224,16 @@ static bool app_step(void *player, float dt) {
     if (p->lub.vm)
       restart(p, "App.Restart was called");
   }
-  poll_reload(p);
+#ifdef VM_PROJECT
+  if (p->project_mode) {
+    poll_project(p);
+    // 最初の build と、読み込めなかった module の次の build は、.tcsb の書き直しで届く
+    int64_t mtime = file_mtime(p->module);
+    if (!p->lub.vm && mtime >= 0 && mtime != p->module_mtime)
+      start_module(p);
+  } else
+#endif
+    poll_reload(p);
   return p->lub.vm && on_frame(p, dt);
 }
 
@@ -1187,6 +1241,13 @@ static void app_close(void *player) {
   Player *p = (Player *)player;
   call_quit(p);
   free_vm(p);
+#ifdef VM_PROJECT
+  if (p->project_mode) {
+    tcs_pipeline_stop(&p->tcs);
+    vm_project_close(&p->project);
+    SDL_free(p->notes);
+  }
+#endif
   VmLub *s = &p->lub;
   for (uint32_t i = 0; i < s->nkeys; i++)
     free(s->keys[i]);
@@ -1315,8 +1376,7 @@ static bool parse_args(Player *p, int argc, char **argv, LubHostOpts *opts) {
             "[--capture PNG] [--capture-frame N] [--digest]");
     return false;
   }
-  size_t mlen = strlen(module);
-  if (mlen > 7 && !SDL_strcasecmp(module + mlen - 7, ".csproj")) {
+  if (is_csproj(module)) {
     p->project_mode = true;
     SDL_strlcpy(p->csproj, module, sizeof(p->csproj));
     return true;
