@@ -89,6 +89,7 @@ cs_runtime_tests=(
   TestGpuPassTime
   TestOpenApp
   TestAppState
+  TestAppInput
 )
 # runtime テストに付ける起動引数
 cs_test_args=(--readback-fixed-latency)

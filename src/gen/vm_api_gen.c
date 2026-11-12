@@ -249,6 +249,7 @@ typedef struct VmLub_BufferRef VmLub_BufferRef;
 typedef struct VmLub_FrameRange VmLub_FrameRange;
 typedef struct VmLub_AppRef VmLub_AppRef;
 typedef struct VmLub_Bytes VmLub_Bytes;
+typedef struct VmLub_StepInput VmLub_StepInput;
 typedef struct VmLub_PassOpts VmLub_PassOpts;
 typedef struct VmLub_DrawOpts VmLub_DrawOpts;
 typedef struct VmLub_DispatchOpts VmLub_DispatchOpts;
@@ -449,6 +450,15 @@ struct VmLub_Bytes {
   uint32_t type_id;
   uint64_t host_value;
   int32_t f_length;
+};
+struct VmLub_StepInput {
+  uint32_t type_id;
+  uint64_t host_value;
+  VmLubOptBool f_keyboard;
+  VmLubOptBool f_mouse;
+  VmLubOptBool f_gamepad;
+  VmLubOptF32 f_mouse_x;
+  VmLubOptF32 f_mouse_y;
 };
 struct VmLub_PassOpts {
   uint32_t type_id;
@@ -2429,6 +2439,11 @@ static const struct {
     {"Lub_ShaderRef", "version", offsetof(VmLub_ShaderRef, f_version)},
     {"Lub_BufferRef", "version", offsetof(VmLub_BufferRef, f_version)},
     {"Lub_Bytes", "length", offsetof(VmLub_Bytes, f_length)},
+    {"Lub_StepInput", "keyboard", offsetof(VmLub_StepInput, f_keyboard)},
+    {"Lub_StepInput", "mouse", offsetof(VmLub_StepInput, f_mouse)},
+    {"Lub_StepInput", "gamepad", offsetof(VmLub_StepInput, f_gamepad)},
+    {"Lub_StepInput", "mouse_x", offsetof(VmLub_StepInput, f_mouse_x)},
+    {"Lub_StepInput", "mouse_y", offsetof(VmLub_StepInput, f_mouse_y)},
     {"Lub_PassOpts", "target", offsetof(VmLub_PassOpts, f_target)},
     {"Lub_PassOpts", "targets", offsetof(VmLub_PassOpts, f_targets)},
     {"Lub_PassOpts", "depth_target", offsetof(VmLub_PassOpts, f_depth_target)},
@@ -4494,6 +4509,8 @@ static VmLub_JointRef3d *vm_lub_handle_JointRef3d(VmLub *s, LubHandle handle) {
   return result;
 }
 static LubConfigOpts vm_lub_to_ConfigOpts(VmLub *s, VmLub_ConfigOpts *source);
+static LubStepInput vm_lub_to_StepInput(VmLub *s, VmLub_StepInput *source);
+static LubEventData vm_lub_to_EventData(VmLub *s, VmLub_EventData *source);
 static LubPassOpts vm_lub_to_PassOpts(VmLub *s, VmLub_PassOpts *source);
 static LubTextureOpts vm_lub_to_TextureOpts(VmLub *s,
                                             VmLub_TextureOpts *source);
@@ -4884,6 +4901,50 @@ static LubConfigOpts vm_lub_to_ConfigOpts(VmLub *s, VmLub_ConfigOpts *source) {
     result.has_readback_fixed_latency = true;
     result.readback_fixed_latency = source->f_readback_fixed_latency.v;
   }
+  return result;
+}
+static LubStepInput vm_lub_to_StepInput(VmLub *s, VmLub_StepInput *source) {
+  (void)s;
+  LubStepInput result = {0};
+  if (!source)
+    return result;
+  if (source->f_keyboard.has) {
+    result.has_keyboard = true;
+    result.keyboard = source->f_keyboard.v;
+  }
+  if (source->f_mouse.has) {
+    result.has_mouse = true;
+    result.mouse = source->f_mouse.v;
+  }
+  if (source->f_gamepad.has) {
+    result.has_gamepad = true;
+    result.gamepad = source->f_gamepad.v;
+  }
+  if (source->f_mouse_x.has) {
+    result.has_mouse_x = true;
+    result.mouse_x = source->f_mouse_x.v;
+  }
+  if (source->f_mouse_y.has) {
+    result.has_mouse_y = true;
+    result.mouse_y = source->f_mouse_y.v;
+  }
+  return result;
+}
+static LubEventData vm_lub_to_EventData(VmLub *s, VmLub_EventData *source) {
+  (void)s;
+  LubEventData result = {0};
+  if (!source)
+    return result;
+  result.kind = source->f_kind;
+  result.key = source->f_key;
+  result.mods = source->f_mods;
+  result.typed = source->f_typed;
+  result.plain = source->f_plain;
+  result.button = source->f_button;
+  result.x = source->f_x;
+  result.y = source->f_y;
+  result.dx = source->f_dx;
+  result.dy = source->f_dy;
   return result;
 }
 static LubPassOpts vm_lub_to_PassOpts(VmLub *s, VmLub_PassOpts *source) {
@@ -9952,6 +10013,7 @@ static TvmStatus vm_host_lub_app_step(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_AppRef *p_app = a[0].p;
   VmLub_TextureRef *p_target = a[1].p;
   float p_dt = a[2].f;
+  VmLub_StepInput *p_input = a[3].p;
   if (!p_app) {
     vm_lub_fail(s, "lub.app.step: app is null");
     VM_LUB_LEAVE(vm);
@@ -9960,12 +10022,38 @@ static TvmStatus vm_host_lub_app_step(TvmVm *vm, TvmSlot *a, TvmSlot *r,
     vm_lub_fail(s, "lub.app.step: target is null");
     VM_LUB_LEAVE(vm);
   }
+  LubStepInput n_input = vm_lub_to_StepInput(s, p_input);
   if (s->error)
     VM_LUB_LEAVE(vm);
   bool result = {0};
-  LubStatus status = lub_app_step(
-      s->ctx, (p_app ? (int32_t)p_app->host_value : 0),
-      (p_target ? (int32_t)p_target->host_value : 0), p_dt, &result);
+  LubStatus status =
+      lub_app_step(s->ctx, (p_app ? (int32_t)p_app->host_value : 0),
+                   (p_target ? (int32_t)p_target->host_value : 0), p_dt,
+                   p_input ? &n_input : NULL, &result);
+  vm_lub_check(s, status);
+  if (s->error)
+    VM_LUB_LEAVE(vm);
+  r[0].i = result;
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_app_send_event(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                            void *user) {
+  (void)a;
+  (void)r;
+  VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
+  VmLub_EventData *p_e = a[1].p;
+  if (!p_app) {
+    vm_lub_fail(s, "lub.app.send_event: app is null");
+    VM_LUB_LEAVE(vm);
+  }
+  LubEventData n_e = vm_lub_to_EventData(s, p_e);
+  if (s->error)
+    VM_LUB_LEAVE(vm);
+  bool result = {0};
+  LubStatus status =
+      lub_app_send_event(s->ctx, (p_app ? (int32_t)p_app->host_value : 0),
+                         p_e ? &n_e : NULL, &result);
   vm_lub_check(s, status);
   if (s->error)
     VM_LUB_LEAVE(vm);
@@ -15816,7 +15904,8 @@ static const struct {
     {"lub.app.quit", "i", "", vm_host_lub_app_quit},
     {"lub.app.restart", "", "", vm_host_lub_app_restart},
     {"lub.app.use", "sss", "o", vm_host_lub_app_use},
-    {"lub.app.step", "oof", "b", vm_host_lub_app_step},
+    {"lub.app.step", "oofo", "b", vm_host_lub_app_step},
+    {"lub.app.send_event", "oo", "b", vm_host_lub_app_send_event},
     {"lub.app.save", "oi&s", "b", vm_host_lub_app_save},
     {"lub.app.load", "oi&s", "b", vm_host_lub_app_load},
     {"lub.app.drop", "i", "", vm_host_lub_app_drop},

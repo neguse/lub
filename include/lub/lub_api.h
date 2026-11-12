@@ -405,6 +405,23 @@ typedef enum LubPhys3dEventKind {
   LUB_PHYS3D_EVENT_KIND_HIT = 2,
 } LubPhys3dEventKind;
 
+// App.Step が開いた app に見せる入力の選び方。省いた項目は、この app の入力
+// をそのまま見せる。
+typedef struct LubStepInput {
+  bool has_keyboard;
+  bool keyboard; // false なら、keyboard は何も押されていない。
+  bool has_mouse;
+  bool
+      mouse; // false なら、mouse の button は押されておらず、移動と wheel は 0。
+  bool has_gamepad;
+  bool gamepad; // false なら、gamepad はつながっていない。
+  bool has_mouse_x;
+  float
+      mouse_x; // 開いた app から見える mouse の位置 (target の左上からの px)。 target を画面のどこにどの大きさで置いたかは開いた側しか知らないので、置いた場所に合わせて渡す。省くと、この app の位置のまま。
+  bool has_mouse_y;
+  float mouse_y;
+} LubStepInput;
+
 // Gfx.BeginPass のオプション。
 typedef struct LubPassOpts {
   LubHandle target;         // 0 = 無し
@@ -3077,13 +3094,21 @@ LUB_API LubStatus lub_app_use(LubContext *ctx, LubStr key, LubStr module,
 
 // 開いた app を 1 frame 進める (`OnFrame(dt)` を呼ぶ)。 app の `Gfx.MainTex`
 // への描画は target に入り、`Gfx.Size` は target の大きさを返す。 target は
-// `Target = true` で宣言した color の texture。入力はこの app の入力をそのま
-// ま渡す。`OnEvent` は呼ばない。 `OnFrame` の中で、pass の外から呼ぶ。進めた
-// frame が error なく終わったら true。 module を読めないか、`OnFrame` が失敗
-// したか、app が `App.Quit` を呼んだ後なら false。開いた app の中では、`Ui.*`
-// は何もせず、`App.Use` は error になる。
+// `Target = true` で宣言した color の texture。入力は、input を省くとこの app
+// の入力をそのまま見せ、渡すと項目ごとに選べる (StepInput)。 `OnEvent` は呼
+// ばない。event を渡すなら `SendEvent` を使う。 `OnFrame` の中で、pass の外
+// から呼ぶ。進めた frame が error なく終わったら true。 module を読めない
+// か、`OnFrame` が失敗したか、app が `App.Quit` を呼んだ後なら false。開いた
+// app の中では、`Ui.*` は何もせず、`App.Use` は error になる。
 LUB_API LubStatus lub_app_step(LubContext *ctx, LubHandle app, LubHandle target,
-                               float dt, bool *out);
+                               float dt, const LubStepInput *input, bool *out);
+
+// 開いた app の `OnEvent` を、この event で呼ぶ。この app の `OnEvent` に届
+// いた event をそのまま渡すか、位置を target に合わせて書き換えてから渡す。
+// まだ module を読み込んでいない app と、`OnEvent` を持たない app では何もし
+// ない。開いた app の `OnEvent` が失敗したら false。
+LUB_API LubStatus lub_app_send_event(LubContext *ctx, LubHandle app,
+                                     const LubEventData *e, bool *out);
 
 // 開いた app の状態を、番号 slot の控えに書く (同じ番号の前の控えは置き換え
 // る)。状態は、app の C# の static の全部と、そこから届く object。控えはこの

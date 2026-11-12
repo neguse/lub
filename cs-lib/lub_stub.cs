@@ -187,6 +187,28 @@ namespace Lub
         }
     }
 
+    /// <summary>App.Step が開いた app に見せる入力の選び方。
+    /// 省いた項目は、この app の入力をそのまま見せる。
+    /// </summary>
+    public class StepInput
+    {
+        /// <summary>false なら、keyboard は何も押されていない。
+        /// </summary>
+        public bool? Keyboard;
+        /// <summary>false なら、mouse の button は押されておらず、移動と wheel は 0。
+        /// </summary>
+        public bool? Mouse;
+        /// <summary>false なら、gamepad はつながっていない。
+        /// </summary>
+        public bool? Gamepad;
+        /// <summary>開いた app から見える mouse の位置 (target の左上からの px)。
+        /// target を画面のどこにどの大きさで置いたかは開いた側しか知らないので、置いた場所に合わせて渡す。
+        /// 省くと、この app の位置のまま。
+        /// </summary>
+        public float? MouseX;
+        public float? MouseY;
+    }
+
     // -------------------------------------------------------------------- Gfx
 
     /// <summary>Gfx.BeginPass のオプション。
@@ -433,13 +455,24 @@ namespace Lub
         /// <summary>開いた app を 1 frame 進める (`OnFrame(dt)` を呼ぶ)。
         /// app の `Gfx.MainTex` への描画は target に入り、`Gfx.Size` は target の大きさを返す。
         /// target は `Target = true` で宣言した color の texture。
-        /// 入力はこの app の入力をそのまま渡す。`OnEvent` は呼ばない。
+        /// 入力は、input を省くとこの app の入力をそのまま見せ、渡すと項目ごとに選べる (StepInput)。
+        /// `OnEvent` は呼ばない。event を渡すなら `SendEvent` を使う。
         /// `OnFrame` の中で、pass の外から呼ぶ。
         /// 進めた frame が error なく終わったら true。
         /// module を読めないか、`OnFrame` が失敗したか、app が `App.Quit` を呼んだ後なら false。
         /// 開いた app の中では、`Ui.*` は何もせず、`App.Use` は error になる。
         /// </summary>
-        public static bool Step(AppRef app, TextureRef target, float dt)
+        public static bool Step(AppRef app, TextureRef target, float dt, StepInput? input = null)
+        {
+            return false;
+        }
+
+        /// <summary>開いた app の `OnEvent` を、この event で呼ぶ。
+        /// この app の `OnEvent` に届いた event をそのまま渡すか、位置を target に合わせて書き換えてから渡す。
+        /// まだ module を読み込んでいない app と、`OnEvent` を持たない app では何もしない。
+        /// 開いた app の `OnEvent` が失敗したら false。
+        /// </summary>
+        public static bool SendEvent(AppRef app, EventData e)
         {
             return false;
         }

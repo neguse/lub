@@ -1316,8 +1316,17 @@ static bool app_load(void *player, const uint8_t *bytes, size_t size,
   return true;
 }
 
-static const LubAppHooks g_app_hooks = {app_open, app_step, app_close, app_save,
-                                        app_load};
+static bool app_event(void *player, const LubEventData *e) {
+  Player *p = (Player *)player;
+  if (!p->lub.vm || p->game.event < 0)
+    return true;
+  TvmSlot args[1];
+  args[0].p = vm_lub_event(&p->lub, e);
+  return call_hook(p, &p->game, p->game.event, "OnEvent", args, 1);
+}
+
+static const LubAppHooks g_app_hooks = {app_open,  app_step, app_close,
+                                        app_event, app_save, app_load};
 
 static bool parse_args(Player *p, int argc, char **argv, LubHostOpts *opts) {
   const char *module = NULL, *entry = NULL;
