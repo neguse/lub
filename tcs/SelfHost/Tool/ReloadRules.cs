@@ -9,12 +9,22 @@ public sealed class ReloadStatic
     public string Name;
     public string Type;
     public string? InitHash;
+    // 初期化子が直に読む static と const ("型\nfield")
+    public List<string> Reads = new List<string>();
 
     public ReloadStatic(string name, string type, string? initHash)
     {
         Name = name;
         Type = type;
         InitHash = initHash;
+    }
+
+    public ReloadStatic(ExField f)
+    {
+        Name = f.Name;
+        Type = f.Type;
+        InitHash = f.InitHash;
+        Reads = f.Reads;
     }
 }
 
@@ -40,7 +50,7 @@ public sealed class ReloadType
 public static class ReloadRules
 {
     // 戻り値は restart の理由で、空なら live。生きている instance の field は reload が移し、新しい static の初期化子は reload が評価するので、
-    // instance の形の変更と static の追加は restart にしない
+    // instance の形の変更と static の追加は restart にしない。初期化子か型を変えた static は reload が評価し直す (ReinitStatics)
     public static List<string> RestartReasons(List<ReloadType> v1, List<ReloadType> v2)
     {
         var reasons = new List<string>();
@@ -66,8 +76,7 @@ public static class ReloadRules
         return reasons;
     }
 
-    // 既存の static は今の値を保つので、初期化子の変更は反映されない。型の変更も restart (保った値は旧い型のまま)。
-    // const も static と同じ (使う側には埋め込まれるが、それを使う static の初期化子は評価し直さない)
+    // 初期化子を消した static は、評価し直す式が無いので restart にする (保った値は旧い初期化子のまま)
     private static void StaticReasons(ReloadType old, ReloadType t, List<string> reasons)
     {
         var oldStatics = new Dictionary<string, ReloadStatic>();
@@ -75,12 +84,57 @@ public static class ReloadRules
         foreach (var s in t.Statics)
         {
             ReloadStatic? os;
-            if (oldStatics.TryGetValue(s.Name, out os))
+            if (oldStatics.TryGetValue(s.Name, out os) && os.Type == s.Type && os.InitHash != null && s.InitHash == null)
+                reasons.Add("static initializer removed: " + t.Name + "." + s.Name);
+        }
+    }
+
+    // reload が新しい初期化子で評価し直す static ("型\nfield")。初期化子か型を変えた static と const、
+    // それを初期化子で読む static (読む先を辿る)。ほかの static は今の値を保つ
+    public static List<string> ReinitStatics(List<ReloadType> v1, List<ReloadType> v2)
+    {
+        var prev = new Dictionary<string, ReloadStatic>();
+        foreach (var t in v1)
+        {
+            foreach (var s in t.Statics) prev[t.Name + "\n" + s.Name] = s;
+        }
+        var changed = new HashSet<string>();
+        var order = new List<string>();
+        foreach (var t in v2)
+        {
+            foreach (var s in t.Statics)
             {
-                if (os.Type != s.Type) reasons.Add("static type changed: " + t.Name + "." + s.Name);
-                else if (os.InitHash != s.InitHash) reasons.Add("static initializer changed: " + t.Name + "." + s.Name);
+                string key = t.Name + "\n" + s.Name;
+                ReloadStatic? os;
+                if (!prev.TryGetValue(key, out os)) continue;
+                if (os.Type == s.Type && os.InitHash == s.InitHash) continue;
+                changed.Add(key);
+                order.Add(key);
             }
         }
+        bool grew = order.Count > 0;
+        while (grew)
+        {
+            grew = false;
+            foreach (var t in v2)
+            {
+                foreach (var s in t.Statics)
+                {
+                    string key = t.Name + "\n" + s.Name;
+                    if (changed.Contains(key) || !prev.ContainsKey(key)) continue;
+                    bool reads = false;
+                    foreach (var r in s.Reads)
+                    {
+                        if (changed.Contains(r)) reads = true;
+                    }
+                    if (!reads) continue;
+                    changed.Add(key);
+                    order.Add(key);
+                    grew = true;
+                }
+            }
+        }
+        return order;
     }
 
     // live に当てられるが、host に知らせたい変化。生きている instance は field の今の値を保つので、
@@ -130,15 +184,15 @@ public static class ReloadRules
             t.BaseName = c.BaseName != null ? c.BaseName : "";
             foreach (var f in c.Fields)
             {
-                if (f.IsStatic) t.Statics.Add(new ReloadStatic(f.Name, f.Type, f.InitHash));
-                else t.InstanceFields.Add(new ReloadStatic(f.Name, f.Type, f.InitHash));
+                if (f.IsStatic) t.Statics.Add(new ReloadStatic(f));
+                else t.InstanceFields.Add(new ReloadStatic(f));
             }
             types.Add(t);
         }
         foreach (var s in export.Structs)
         {
             var t = new ReloadType(s.Name, "struct");
-            foreach (var f in s.StaticFields) t.Statics.Add(new ReloadStatic(f.Name, f.Type, f.InitHash));
+            foreach (var f in s.StaticFields) t.Statics.Add(new ReloadStatic(f));
             types.Add(t);
         }
         foreach (var e in export.EnumTypes)
