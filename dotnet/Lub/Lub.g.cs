@@ -135,6 +135,10 @@ public class StepInput
     /// <summary>開いた app から見える mouse の位置 (target の左上からの px)。 target を画面のどこにどの大きさで置いたかは開いた側しか知らないので、置いた場所に合わせて渡す。省くと、この app の位置のまま。</summary>
     public float? MouseX;
     public float? MouseY;
+    /// <summary>この Step で開いた app に見せた入力を、番号の控えに書く (`App.Save` と同じ番号の控え。状態と入力を 1 つの番号に持てる)。</summary>
+    public int? Keep;
+    /// <summary>この app の入力の代わりに、番号の控えに書いた入力を見せる。上の項目はその後に効く。入力を書いていない番号は error。</summary>
+    public int? Replay;
 }
 
 /// <summary>Gfx.BeginPass のオプション。</summary>
@@ -2602,7 +2606,7 @@ public static unsafe partial class App
         }
     }
 
-    /// <summary>番号 slot の控えを捨てる。控えが無ければ何もしない。</summary>
+    /// <summary>番号 slot の控え (状態と入力) を捨てる。控えが無ければ何もしない。</summary>
     public static void Drop(int slot)
     {
         var a = LubRuntime.Arena.Begin();
@@ -8601,6 +8605,10 @@ internal static unsafe partial class LubNative
         public float @mouse_x;
         public bool @has_mouse_y;
         public float @mouse_y;
+        public bool @has_keep;
+        public int @keep;
+        public bool @has_replay;
+        public int @replay;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -12176,6 +12184,10 @@ internal static unsafe partial class LubNative
         s->@mouse_x = (float)(o.MouseX ?? default);
         s->@has_mouse_y = o.MouseY.HasValue;
         s->@mouse_y = (float)(o.MouseY ?? default);
+        s->@has_keep = o.Keep.HasValue;
+        s->@keep = (o.Keep ?? default);
+        s->@has_replay = o.Replay.HasValue;
+        s->@replay = (o.Replay ?? default);
     }
 
     internal static void Fill_LubStepInput(StepInput o, LubStepInput* s)
@@ -12185,6 +12197,8 @@ internal static unsafe partial class LubNative
         o.Gamepad = s->@has_gamepad ? s->@gamepad : null;
         o.MouseX = s->@has_mouse_x ? s->@mouse_x : null;
         o.MouseY = s->@has_mouse_y ? s->@mouse_y : null;
+        o.Keep = s->@has_keep ? s->@keep : null;
+        o.Replay = s->@has_replay ? s->@replay : null;
     }
 
     internal static StepInput From_LubStepInput(LubStepInput* s)

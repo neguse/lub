@@ -207,6 +207,13 @@ namespace Lub
         /// </summary>
         public float? MouseX;
         public float? MouseY;
+        /// <summary>この Step で開いた app に見せた入力を、番号の控えに書く (`App.Save` と同じ番号の控え。状態と入力を 1 つの番号に持てる)。
+        /// </summary>
+        public int? Keep;
+        /// <summary>この app の入力の代わりに、番号の控えに書いた入力を見せる。
+        /// 上の項目はその後に効く。入力を書いていない番号は error。
+        /// </summary>
+        public int? Replay;
     }
 
     // -------------------------------------------------------------------- Gfx
@@ -504,7 +511,7 @@ namespace Lub
             return false;
         }
 
-        /// <summary>番号 slot の控えを捨てる。控えが無ければ何もしない。
+        /// <summary>番号 slot の控え (状態と入力) を捨てる。控えが無ければ何もしない。
         /// </summary>
         [LubNoFail]
         public static void Drop(int slot)

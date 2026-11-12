@@ -420,6 +420,12 @@ typedef struct LubStepInput {
       mouse_x; // 開いた app から見える mouse の位置 (target の左上からの px)。 target を画面のどこにどの大きさで置いたかは開いた側しか知らないので、置いた場所に合わせて渡す。省くと、この app の位置のまま。
   bool has_mouse_y;
   float mouse_y;
+  bool has_keep;
+  int32_t
+      keep; // この Step で開いた app に見せた入力を、番号の控えに書く (`App.Save` と同じ番号の控え。状態と入力を 1 つの番号に持てる)。
+  bool has_replay;
+  int32_t
+      replay; // この app の入力の代わりに、番号の控えに書いた入力を見せる。上の項目はその後に効く。入力を書いていない番号は error。
 } LubStepInput;
 
 // Gfx.BeginPass のオプション。
@@ -3131,7 +3137,7 @@ LUB_API LubStatus lub_app_save(LubContext *ctx, LubHandle app, int32_t slot,
 LUB_API LubStatus lub_app_load(LubContext *ctx, LubHandle app, int32_t slot,
                                LubStr *error, bool *out);
 
-// 番号 slot の控えを捨てる。控えが無ければ何もしない。
+// 番号 slot の控え (状態と入力) を捨てる。控えが無ければ何もしない。
 LUB_API void lub_app_drop(LubContext *ctx, int32_t slot);
 
 // ------------------------------------------------------------------- gfx
