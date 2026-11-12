@@ -459,6 +459,8 @@ struct VmLub_StepInput {
   VmLubOptBool f_gamepad;
   VmLubOptF32 f_mouse_x;
   VmLubOptF32 f_mouse_y;
+  VmLubOptI32 f_keep;
+  VmLubOptI32 f_replay;
 };
 struct VmLub_PassOpts {
   uint32_t type_id;
@@ -2444,6 +2446,8 @@ static const struct {
     {"Lub_StepInput", "gamepad", offsetof(VmLub_StepInput, f_gamepad)},
     {"Lub_StepInput", "mouse_x", offsetof(VmLub_StepInput, f_mouse_x)},
     {"Lub_StepInput", "mouse_y", offsetof(VmLub_StepInput, f_mouse_y)},
+    {"Lub_StepInput", "keep", offsetof(VmLub_StepInput, f_keep)},
+    {"Lub_StepInput", "replay", offsetof(VmLub_StepInput, f_replay)},
     {"Lub_PassOpts", "target", offsetof(VmLub_PassOpts, f_target)},
     {"Lub_PassOpts", "targets", offsetof(VmLub_PassOpts, f_targets)},
     {"Lub_PassOpts", "depth_target", offsetof(VmLub_PassOpts, f_depth_target)},
@@ -4927,6 +4931,14 @@ static LubStepInput vm_lub_to_StepInput(VmLub *s, VmLub_StepInput *source) {
   if (source->f_mouse_y.has) {
     result.has_mouse_y = true;
     result.mouse_y = source->f_mouse_y.v;
+  }
+  if (source->f_keep.has) {
+    result.has_keep = true;
+    result.keep = source->f_keep.v;
+  }
+  if (source->f_replay.has) {
+    result.has_replay = true;
+    result.replay = source->f_replay.v;
   }
   return result;
 }

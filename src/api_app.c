@@ -25,8 +25,11 @@ typedef struct OpenApp {
 // App.Save が書いた状態の控え
 typedef struct StateSlot {
   int32_t slot;
+  // App.Save が書いた状態 (無ければ NULL)
   uint8_t *bytes;
   size_t size;
+  // StepInput.Keep が書いた入力 (無ければ NULL)
+  InputState *input;
 } StateSlot;
 
 struct OpenApps {
@@ -151,6 +154,33 @@ static void open_app_player(App *app, OpenApp *o) {
   ui_set_enabled(true);
 }
 
+static StateSlot *state_find(struct OpenApps *s, int32_t slot) {
+  for (int i = 0; i < s->nstates; ++i)
+    if (s->states[i].slot == slot)
+      return &s->states[i];
+  return NULL;
+}
+
+// 番号の控えを探し、無ければ空の控えを作る (memory が無ければ NULL)
+static StateSlot *state_get(struct OpenApps *s, int32_t slot) {
+  StateSlot *st = state_find(s, slot);
+  if (st)
+    return st;
+  if (s->nstates == s->capstates) {
+    int cap = s->capstates ? s->capstates * 2 : 8;
+    StateSlot *grown =
+        (StateSlot *)realloc(s->states, sizeof(StateSlot) * (size_t)cap);
+    if (!grown)
+      return NULL;
+    s->states = grown;
+    s->capstates = cap;
+  }
+  st = &s->states[s->nstates++];
+  memset(st, 0, sizeof(*st));
+  st->slot = slot;
+  return st;
+}
+
 // 開いた app に見せる入力: 開いた側の入力から、選ばれなかった種類を「何も押されていない」にする
 static void step_input(InputState *dst, const InputState *src,
                        const LubStepInput *in) {
@@ -212,7 +242,23 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
   child->main_fmt = te->u.tex.fmt;
   child->main_w = te->u.tex.w;
   child->main_h = te->u.tex.h_;
-  step_input(&child->input, &app->input, input);
+  const InputState *shown = &app->input;
+  if (input && input->has_replay) {
+    StateSlot *st = state_find(app->open_apps, input->replay);
+    if (!st || !st->input)
+      return lub_api_fail(app, "app_step: slot %d has no input to replay",
+                          (int)input->replay);
+    shown = st->input;
+  }
+  step_input(&child->input, shown, input);
+  if (input && input->has_keep) {
+    StateSlot *st = state_get(app->open_apps, input->keep);
+    if (st && !st->input)
+      st->input = (InputState *)malloc(sizeof(InputState));
+    if (!st || !st->input)
+      return lub_api_fail(app, "app_step: out of memory");
+    *st->input = child->input;
+  }
   open_app_player(app, o);
   ui_set_enabled(false);
   bool ok = false;
@@ -254,13 +300,6 @@ LubStatus lub_app_send_event(LubContext *ctx, LubHandle handle,
   return LUB_OK;
 }
 
-static StateSlot *state_find(struct OpenApps *s, int32_t slot) {
-  for (int i = 0; i < s->nstates; ++i)
-    if (s->states[i].slot == slot)
-      return &s->states[i];
-  return NULL;
-}
-
 static void state_result(struct OpenApps *s, bool ok, LubStr *error,
                          bool *out) {
   *out = ok;
@@ -287,21 +326,7 @@ LubStatus lub_app_save(LubContext *ctx, LubHandle handle, int32_t slot,
     SDL_snprintf(s->state_error, sizeof(s->state_error), "out of memory");
   } else if (app->app_hooks->save(o->player, &bytes, &size, s->state_error,
                                   sizeof(s->state_error))) {
-    StateSlot *st = state_find(s, slot);
-    if (!st && s->nstates == s->capstates) {
-      int cap = s->capstates ? s->capstates * 2 : 8;
-      StateSlot *grown =
-          (StateSlot *)realloc(s->states, sizeof(StateSlot) * (size_t)cap);
-      if (grown) {
-        s->states = grown;
-        s->capstates = cap;
-      }
-    }
-    if (!st && s->nstates < s->capstates) {
-      st = &s->states[s->nstates++];
-      st->slot = slot;
-      st->bytes = NULL;
-    }
+    StateSlot *st = state_get(s, slot);
     if (st) {
       free(st->bytes);
       st->bytes = bytes;
@@ -330,7 +355,7 @@ LubStatus lub_app_load(LubContext *ctx, LubHandle handle, int32_t slot,
   StateSlot *st = state_find(s, slot);
   s->state_error[0] = '\0';
   bool ok = false;
-  if (!st) {
+  if (!st || !st->bytes) {
     SDL_snprintf(s->state_error, sizeof(s->state_error), "slot %d is empty",
                  (int)slot);
   } else {
@@ -352,6 +377,7 @@ void lub_app_drop(LubContext *ctx, int32_t slot) {
   if (!st)
     return;
   free(st->bytes);
+  free(st->input);
   *st = s->states[--s->nstates];
 }
 
@@ -378,8 +404,10 @@ void api_app_shutdown(App *app) {
     return;
   for (int i = 0; i < s->n; ++i)
     open_app_close(app, &s->e[i]);
-  for (int i = 0; i < s->nstates; ++i)
+  for (int i = 0; i < s->nstates; ++i) {
     free(s->states[i].bytes);
+    free(s->states[i].input);
+  }
   free(s->states);
   free(s->e);
   free(s);
