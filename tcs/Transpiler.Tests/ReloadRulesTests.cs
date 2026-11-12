@@ -39,34 +39,10 @@ public class ReloadRulesTests
     }
 
     [Theory]
-    [InlineData(
+    [InlineData( // 評価し直す式が無い
         "public class G { public static int X = 1; }",
-        "public class G { public static int X = 2; }",
-        "static initializer changed: G.X")]
-    [InlineData(
         "public class G { public static int X; }",
-        "public class G { public static int X = 2; }",
-        "static initializer changed: G.X")]
-    [InlineData(
-        "public class G { public static int P { get; set; } = 1; }",
-        "public class G { public static int P { get; set; } = 2; }",
-        "static initializer changed: G.P")]
-    [InlineData( // const は使う側に埋め込まれるが、static の initializer は再評価されない
-        "public class G { public const int K = 1; public static int X = K * 2; }",
-        "public class G { public const int K = 2; public static int X = K * 2; }",
-        "static initializer changed: G.K")]
-    [InlineData( // 保持した値は旧い型のまま
-        "public class G { public static int X = 1; }",
-        "public class G { public static float X = 1; }",
-        "static type changed: G.X")]
-    [InlineData(
-        "public struct G { public static int X = 1; }",
-        "public struct G { public static int X = 2; }",
-        "static initializer changed: G.X")]
-    [InlineData(
-        "public struct G { public static int X = 1; }",
-        "public struct G { public static float X = 1; }",
-        "static type changed: G.X")]
+        "static initializer removed: G.X")]
     [InlineData(
         "public class A { } public class B { }",
         "public class A { }",
@@ -138,25 +114,49 @@ public class ReloadRulesTests
     }
 
     [Theory]
-    [InlineData("const int K = 1;", "const int K = 2;", "static initializer changed: G.K")]
-    [InlineData("static int X = 1;", "static int X = 2;", "static initializer changed: G.X")]
-    [InlineData("static int X = 1;", "static float X = 2f;", "static type changed: G.X")]
-    [InlineData("static int X = 1;", "static float X = 1;", "static type changed: G.X")]
     [InlineData("enum E { One, Two }", "enum E { Two, One }",
         "enum member removed or renumbered: E.One")]
     [InlineData("enum E { One, Two }", "enum E { One }",
         "enum member removed or renumbered: E.Two")]
     [InlineData("enum E { One, Two }", "enum E { One, Two = 5 }",
         "enum member removed or renumbered: E.Two")]
-    [InlineData("F = 1f / 3f;", "F = 0.333333343f;", "static initializer changed: G.F")]
-    // const は使う側に埋め込まれ、static の値は戻らない (実行中に変えた値が残る)
-    [InlineData("public const int K = 1;", "public static int K = 1;",
-        "static initializer changed: G.K")]
-    [InlineData("public static int X = 1;", "public const int X = 1;",
-        "static initializer changed: G.X")]
     public void RestartEdit_InGame_ReportsReason(string from, string to, string reason)
     {
         Assert.Contains(reason, RestartReasons(Game, Edit(from, to)));
+    }
+
+    // 初期化子か型を変えた static と const は live で、reload が評価し直す。それを初期化子で読む static も評価し直す
+    [Theory]
+    [InlineData("const int K = 1;", "const int K = 2;", "G.K")]
+    [InlineData("static int X = 1;", "static int X = 2;", "G.X")]
+    [InlineData("static int X = 1;", "static float X = 2f;", "G.X")]
+    [InlineData("static int X = 1;", "static float X = 1;", "G.X")]
+    [InlineData("F = 1f / 3f;", "F = 0.333333343f;", "G.F")]
+    [InlineData("public const int K = 1;", "public static int K = 1;", "G.K")]
+    [InlineData("public static int X = 1;", "public const int X = 1;", "G.X")]
+    [InlineData("public static int Y = 1 + 2;", "public static int Y = 1 + 2;\n    public static int W = Y * K;", "")]
+    [InlineData("public const int K = 1;\n    public static int X = 1;", "public const int K = 2;\n    public static int X = K + 1;", "G.K G.X")]
+    [InlineData("public static int Y = 1 + 2;", "public static int Y = X + 2;", "G.Y")]
+    public void StaticEdit_IsLiveAndReevaluated(string from, string to, string statics)
+    {
+        var old = IlExport.Export([Game]);
+        var next = IlExport.Export([Edit(from, to)]);
+        Assert.Empty(next.Diagnostics);
+        var v1 = TcsSelf.ReloadRules.TypesOf(old);
+        var v2 = TcsSelf.ReloadRules.TypesOf(next);
+        Assert.Empty(TcsSelf.ReloadRules.RestartReasons(v1, v2));
+        Assert.Equal(statics, string.Join(" ", TcsSelf.ReloadRules.ReinitStatics(v1, v2).Select(k => k.Replace("\n", "."))));
+    }
+
+    // 変えた static を初期化子で読む static は、読む先を辿って評価し直す
+    [Fact]
+    public void StaticEdit_ReevaluatesReaders()
+    {
+        const string v1 = "public class G { public const float K = 1f; public static float A = K * 2f; public static float B = A + 1f; public static float C = 3f; } public class H { public static float D = G.B; }";
+        var old = IlExport.Export([v1]);
+        var next = IlExport.Export([v1.Replace("K = 1f", "K = 2f")]);
+        Assert.Equal(["G.K", "G.A", "G.B", "H.D"],
+            TcsSelf.ReloadRules.ReinitStatics(TcsSelf.ReloadRules.TypesOf(old), TcsSelf.ReloadRules.TypesOf(next)).Select(k => k.Replace("\n", ".")));
     }
 
     // initializer は空白・comment・定数の書き方では変わらない

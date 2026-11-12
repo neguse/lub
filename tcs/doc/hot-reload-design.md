@@ -109,9 +109,11 @@ migration が到達できる生存状態の全域 (roots):
 | static field 追加 | live | 新版の initializer を走らせる (持ち主の型が遅延初期化でまだ初期化していなければ、最初の読み書きで全部を初期化する)。initializer が無ければ型の 0 の値 |
 | static field 削除 | live | 消える |
 | 既存 static の値 | live | 保持 (再実行しない) |
-| 既存 static の initializer 変更 | **restart** | 保持した値には変更が反映されないため (値意図の変更は restart で反映) |
-| 既存 static の型変更 | **restart** | 保持した値は旧い型のまま |
-| const の値変更 | **restart** | 使う側には埋め込まれるが、それを使う既存 static の initializer は再評価されない |
+| 既存 static の initializer 変更 | live | その static だけを新版の initializer で評価し直す。ほかの static と heap は保持する |
+| 既存 static の型変更 | live | その static を新版の initializer で評価し直す (initializer が無ければ型の 0 の値) |
+| const の値変更 | live | 使う側には埋め込まれる。const 自身も評価し直す |
+| 評価し直す static や const を initializer で読む static | live | 読む先を辿って、同じく評価し直す。辿るのは initializer の式が直に名前を引く static と const で、呼んだ関数の中の読みは辿らない |
+| 既存 static の initializer の削除 | **restart** | 評価し直す式が無く、保持した値は旧い initializer のまま |
 | base class 変更 (再親付け) | **restart** | 継承 field 集合と ctor 連鎖の差分移行は対象外。class / record の継承は TCS1001 で書けない (q.md Q15) |
 | class / record / struct / enum の追加 | live | 新規定義のみ |
 | type の削除・種類の変更 | **restart** | 生きている instance の有無を見ない (§11) |
@@ -133,7 +135,7 @@ VM は struct の値の居場所を型で辿れるので、closure の捕捉や�
 
 1. **検査** (状態を変えない): 新版の読み込みと検査、計画の restart の理由、生きている object と closure の対応 (§6)。どこかで止まれば旧版のまま続く
 2. **反映** (失敗の経路が無い): layout の変わる object の作り直し、型と関数の付け替え、static の移し、module の入れ替え、参照の張り替え
-3. **新版の関数を走らせる**: 足した field と型を変えた field の initializer、足した static の initializer、続いて hook (§8)
+3. **新版の関数を走らせる**: 足した field と型を変えた field の initializer、足した static と評価し直す static の initializer、続いて hook (§8)
 
 initializer は新版の関数なので、型と heap が新版で揃った 2 の後に走らせる (旧版の heap のまま走らせると `is` と cast が型と合わない)。3 の fault は commit を巻き戻さず警告にする。fault した initializer の field は 0 の値のまま。
 
@@ -177,16 +179,15 @@ restart の規則は `ReloadRules` (`SelfHost/Tool/ReloadRules.cs`。IlExport �
 |---|---|
 | 型の削除・種類の変更 (class / record / struct / enum) | restart |
 | base class の変更 | restart |
-| 既存 static (const を含む) の initializer の変更 | restart |
-| 既存 static の型の変更 | restart |
-| const と static の入れ替え (同名・同じ型・同じ値でも) | restart |
+| 既存 static の initializer の削除 | restart |
+| 既存 static (const を含む) の initializer と型の変更、const と static の入れ替え | live (その static と、それを initializer で読む static を評価し直す。`ReloadRules.ReinitStatics`) |
 | enum member の削除・値の変更 | restart |
 | enum member・型の追加、static の追加と削除 | live |
 | instance field / auto-property の追加・削除・型・initializer の変更、record の positional member の変更 | live (instance field の initializer の変更は `reload_notes` で知らせる) |
 
-const と static の入れ替えが restart なのは、const は使う側に埋め込まれる値で、static は reload を跨いで今の値を保つため、入れ替えるとどちらの向きでも使う側が見る値が書いた値と合うとは限らないから (initializer の hash も const と static で別になる)。
+const と static の入れ替えは、initializer の hash が const と static で別になるので、initializer の変更と同じく評価し直す。
 
-initializer の比較は書き方に依らない形で行う (`IlExport.InitializerHash`): 整数・bool・string・null の定数は値と型で、それ以外は trivia (空白・comment) を除いた token 列で比べる。`1+2`、`1 + 2`、`3` は同じ initializer になる。float の定数は token で比べるので、`1f / 3f` と `0.333333343f` は別の initializer になる。`new()` と `new List<int>()` のように token が違う書き換えは、意味が同じでも restart になる。
+initializer の比較は書き方に依らない形で行う (`IlExport.InitializerHash`): 整数・bool・string・null の定数は値と型で、それ以外は trivia (空白・comment) を除いた token 列で比べる。`1+2`、`1 + 2`、`3` は同じ initializer になる。float の定数は token で比べるので、`1f / 3f` と `0.333333343f` は別の initializer になる。`new()` と `new List<int>()` のように token が違う書き換えは、意味が同じでも評価し直す。
 
 §5.2 の設計との差と、既知の制限:
 
