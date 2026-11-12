@@ -187,6 +187,28 @@ namespace Lub
         }
     }
 
+    /// <summary>App.Status が返す、開いた app の今の様子。
+    /// Reloads と Restarts は増えていく数で、前に見た値と比べて、その間に起きたことを知る。
+    /// </summary>
+    public class AppStatus
+    {
+        /// <summary>module を読み込んで動いている。build を待つ間と、module を読めなかった後は false。
+        /// </summary>
+        public bool Running;
+        /// <summary>hot reload を当てた回数。
+        /// </summary>
+        public int Reloads;
+        /// <summary>VM を作り直した回数 (差分で移せない変更、`App.Restart`、module の書き直し)。
+        /// </summary>
+        public int Restarts;
+        /// <summary>最後の build が通らなかったときの診断。次に build が通ると空に戻る。
+        /// </summary>
+        public string BuildError = "";
+        /// <summary>最後に当てた hot reload の知らせ (instance の field の初期化子の変更など)。無ければ空。
+        /// </summary>
+        public string ReloadNotes = "";
+    }
+
     /// <summary>App.Step が開いた app に見せる入力の選び方。
     /// 省いた項目は、この app の入力をそのまま見せる。
     /// </summary>
@@ -472,6 +494,14 @@ namespace Lub
         public static bool Step(AppRef app, TextureRef target, float dt, StepInput? input = null)
         {
             return false;
+        }
+
+        /// <summary>開いた app の今の様子 (AppStatus)。
+        /// まだ `Step` していない app は、何も起きていない状態を返す。
+        /// </summary>
+        public static AppStatus Status(AppRef app)
+        {
+            return null!;
         }
 
         /// <summary>開いた app の `OnEvent` を、この event で呼ぶ。

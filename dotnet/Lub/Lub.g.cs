@@ -123,6 +123,21 @@ public sealed class JointRef3d
     internal JointRef3d(int h) { H = h; }
 }
 
+/// <summary>App.Status が返す、開いた app の今の様子。 Reloads と Restarts は増えていく数で、前に見た値と比べて、その間に起きたことを知る。</summary>
+public class AppStatus
+{
+    /// <summary>module を読み込んで動いている。build を待つ間と、module を読めなかった後は false。</summary>
+    public bool Running;
+    /// <summary>hot reload を当てた回数。</summary>
+    public int Reloads;
+    /// <summary>VM を作り直した回数 (差分で移せない変更、`App.Restart`、module の書き直し)。</summary>
+    public int Restarts;
+    /// <summary>最後の build が通らなかったときの診断。次に build が通ると空に戻る。</summary>
+    public string BuildError = "";
+    /// <summary>最後に当てた hot reload の知らせ (instance の field の初期化子の変更など)。無ければ空。</summary>
+    public string ReloadNotes = "";
+}
+
 /// <summary>App.Step が開いた app に見せる入力の選び方。省いた項目は、この app の入力をそのまま見せる。</summary>
 public class StepInput
 {
@@ -2524,6 +2539,27 @@ public static unsafe partial class App
             }
             LubRuntime.Check(st);
             return o_out;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>開いた app の今の様子 (AppStatus)。まだ `Step` していない app は、何も起きていない状態を返す。</summary>
+    public static AppStatus Status(AppRef app)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubAppStatus o_out = default;
+            var st = LubNative.lub_app_status(LubRuntime.Ctx, app.H, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("App.Status: not found");
+            }
+            LubRuntime.Check(st);
+            return LubNative.From_LubAppStatus(&o_out);
         }
         finally
         {
@@ -8593,6 +8629,16 @@ internal static unsafe partial class LubNative
     internal static JointRef3d? H_JointRef3d(int h) => h == 0 ? null : new JointRef3d(h);
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubAppStatus
+    {
+        public bool @running;
+        public int @reloads;
+        public int @restarts;
+        public LubStr @build_error;
+        public LubStr @reload_notes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubStepInput
     {
         public bool @has_keyboard;
@@ -11390,6 +11436,9 @@ internal static unsafe partial class LubNative
     internal static extern int lub_app_step(void* ctx, int @app, int @target, float @dt, LubStepInput* @input, bool* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_app_status(void* ctx, int @app, LubAppStatus* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_app_send_event(void* ctx, int @app, LubEventData* @e, bool* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -12171,6 +12220,31 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lubx_vorbis_decode(void* ctx, byte* @data, int @data_len, LubView* @pcm, int* @channels, int* @rate);
+
+    internal static void To_LubAppStatus(AppStatus o, LubRuntime.Arena a, LubAppStatus* s)
+    {
+        s->@running = o.Running;
+        s->@reloads = o.Reloads;
+        s->@restarts = o.Restarts;
+        s->@build_error = a.Str(o.BuildError);
+        s->@reload_notes = a.Str(o.ReloadNotes);
+    }
+
+    internal static void Fill_LubAppStatus(AppStatus o, LubAppStatus* s)
+    {
+        o.Running = s->@running;
+        o.Reloads = s->@reloads;
+        o.Restarts = s->@restarts;
+        o.BuildError = LubRuntime.Str(s->@build_error);
+        o.ReloadNotes = LubRuntime.Str(s->@reload_notes);
+    }
+
+    internal static AppStatus From_LubAppStatus(LubAppStatus* s)
+    {
+        var o = new AppStatus();
+        Fill_LubAppStatus(o, s);
+        return o;
+    }
 
     internal static void To_LubStepInput(StepInput o, LubRuntime.Arena a, LubStepInput* s)
     {

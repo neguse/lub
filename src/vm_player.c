@@ -85,6 +85,10 @@ typedef struct Player {
   // native の拡張 (include/lub/lub_vm_extension.h)。VM を作るたびに呼ぶ
   LubVmExtensionFn extensions[MAX_EXTENSIONS];
   int nextensions;
+  // App.Status が返す、reload と作り直しの回数、最後の build の診断、最後の reload の知らせ
+  int32_t reloads, restarts;
+  char *build_error;
+  char *reload_notes;
   // .csproj から動かすときの入力と tcs vm --watch
   bool project_mode;
   char csproj[1024];
@@ -140,6 +144,19 @@ static void call_reload(Player *p);
 static bool is_csproj(const char *path) {
   size_t n = strlen(path);
   return n > 7 && !SDL_strcasecmp(path + n - 7, ".csproj");
+}
+
+// App.Status の文字列を置き換える (text が NULL なら空にする)
+static void status_text(char **slot, const char *text, size_t len) {
+  SDL_free(*slot);
+  *slot = NULL;
+  if (!text || !len)
+    return;
+  *slot = (char *)SDL_malloc(len + 1);
+  if (!*slot)
+    return;
+  memcpy(*slot, text, len);
+  (*slot)[len] = '\0';
 }
 
 static int64_t file_mtime(const char *path) {
@@ -393,6 +410,8 @@ static void restart(Player *p, const char *why) {
     return;
   }
   SDL_Log("lub: restarted");
+  p->restarts++;
+  status_text(&p->build_error, NULL, 0);
   app->entry_restarting = true;
   call_init(p);
   app->entry_restarting = false;
@@ -436,6 +455,9 @@ static void poll_reload(Player *p) {
       restart(p, "the reloaded module does not bind");
       return;
     }
+    p->reloads++;
+    status_text(&p->build_error, NULL, 0);
+    status_text(&p->reload_notes, NULL, 0);
     call_reload(p);
     ack(p, rev, true, NULL, (double)(SDL_GetTicksNS() - t0) / 1e6);
     return;
@@ -1017,6 +1039,9 @@ static void apply_vm_batch(Player *p, const char *text, size_t len,
     return;
   }
   SDL_Log("lub: reloaded");
+  p->reloads++;
+  status_text(&p->build_error, NULL, 0);
+  status_text(&p->reload_notes, notes, notes_len);
   call_reload(p);
   if (notes)
     call_reload_notes(p, notes, notes_len);
@@ -1050,6 +1075,7 @@ static void poll_project(Player *p) {
       // 診断は tcs が stderr に書く
       SDL_Log("lub: reload failed: the build has errors, the running code is "
               "unchanged");
+      status_text(&p->build_error, body, len);
       call_build_failed(p, body, len);
     }
     SDL_free(body);
@@ -1248,6 +1274,8 @@ static void app_close(void *player) {
     SDL_free(p->notes);
   }
 #endif
+  SDL_free(p->build_error);
+  SDL_free(p->reload_notes);
   VmLub *s = &p->lub;
   for (uint32_t i = 0; i < s->nkeys; i++)
     free(s->keys[i]);
@@ -1316,6 +1344,19 @@ static bool app_load(void *player, const uint8_t *bytes, size_t size,
   return true;
 }
 
+static void app_status(void *player, LubAppStatus *out) {
+  Player *p = (Player *)player;
+  out->running = p->lub.vm != NULL;
+  out->reloads = p->reloads;
+  out->restarts = p->restarts;
+  if (p->build_error)
+    out->build_error =
+        (LubStr){p->build_error, (int32_t)strlen(p->build_error)};
+  if (p->reload_notes)
+    out->reload_notes =
+        (LubStr){p->reload_notes, (int32_t)strlen(p->reload_notes)};
+}
+
 static bool app_event(void *player, const LubEventData *e) {
   Player *p = (Player *)player;
   if (!p->lub.vm || p->game.event < 0)
@@ -1325,8 +1366,8 @@ static bool app_event(void *player, const LubEventData *e) {
   return call_hook(p, &p->game, p->game.event, "OnEvent", args, 1);
 }
 
-static const LubAppHooks g_app_hooks = {app_open,  app_step, app_close,
-                                        app_event, app_save, app_load};
+static const LubAppHooks g_app_hooks = {
+    app_open, app_step, app_close, app_event, app_status, app_save, app_load};
 
 static bool parse_args(Player *p, int argc, char **argv, LubHostOpts *opts) {
   const char *module = NULL, *entry = NULL;

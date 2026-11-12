@@ -405,6 +405,20 @@ typedef enum LubPhys3dEventKind {
   LUB_PHYS3D_EVENT_KIND_HIT = 2,
 } LubPhys3dEventKind;
 
+// App.Status が返す、開いた app の今の様子。 Reloads と Restarts は増えてい
+// く数で、前に見た値と比べて、その間に起きたことを知る。
+typedef struct LubAppStatus {
+  bool
+      running; // module を読み込んで動いている。build を待つ間と、module を読めなかった後は false。
+  int32_t reloads; // hot reload を当てた回数。
+  int32_t
+      restarts; // VM を作り直した回数 (差分で移せない変更、`App.Restart`、module の書き直し)。
+  LubStr
+      build_error; // 最後の build が通らなかったときの診断。次に build が通ると空に戻る。
+  LubStr
+      reload_notes; // 最後に当てた hot reload の知らせ (instance の field の初期化子の変更など)。無ければ空。
+} LubAppStatus;
+
 // App.Step が開いた app に見せる入力の選び方。省いた項目は、この app の入力
 // をそのまま見せる。
 typedef struct LubStepInput {
@@ -3108,6 +3122,11 @@ LUB_API LubStatus lub_app_use(LubContext *ctx, LubStr key, LubStr module,
 // app の中では、`Ui.*` は何もせず、`App.Use` は error になる。
 LUB_API LubStatus lub_app_step(LubContext *ctx, LubHandle app, LubHandle target,
                                float dt, const LubStepInput *input, bool *out);
+
+// 開いた app の今の様子 (AppStatus)。まだ `Step` していない app は、何も起き
+// ていない状態を返す。
+LUB_API LubStatus lub_app_status(LubContext *ctx, LubHandle app,
+                                 LubAppStatus *out);
 
 // 開いた app の `OnEvent` を、この event で呼ぶ。この app の `OnEvent` に届
 // いた event をそのまま渡すか、位置を target に合わせて書き換えてから渡す。

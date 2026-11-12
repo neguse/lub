@@ -127,6 +127,8 @@ typedef struct LubAppHooks {
   void (*close)(void *player);
   // OnEvent(e) を呼ぶ。module が無いか OnEvent が無ければ何もせず true。失敗したら false
   bool (*event)(void *player, const LubEventData *e);
+  // 今の様子 (App.Status)。out は 0 で埋めて渡す。文字列は次の hook の呼び出しまで有効
+  void (*status)(void *player, LubAppStatus *out);
   // 状態を byte 列に書く。bytes は malloc で確保し、呼ぶ側が free する。
   // 書けなければ false で、理由を error に書く
   bool (*save)(void *player, uint8_t **bytes, size_t *size, char *error,

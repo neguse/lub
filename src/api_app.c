@@ -276,6 +276,20 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
   return LUB_OK;
 }
 
+LubStatus lub_app_status(LubContext *ctx, LubHandle handle, LubAppStatus *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  out->build_error = (LubStr){"", 0};
+  out->reload_notes = (LubStr){"", 0};
+  OpenApp *o = open_app_find(app, handle);
+  if (!o)
+    return lub_api_fail(app, "app_status: the app is closed (declare it with "
+                             "App.Use every frame)");
+  if (o->player)
+    app->app_hooks->status(o->player, out);
+  return LUB_OK;
+}
+
 LubStatus lub_app_send_event(LubContext *ctx, LubHandle handle,
                              const LubEventData *e, bool *out) {
   App *app = lub_api_app(ctx);
