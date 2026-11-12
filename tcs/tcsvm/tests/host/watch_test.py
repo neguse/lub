@@ -49,12 +49,12 @@ try:
     expected = open(os.path.join(here, "reload_expected.txt")).read()
     if run.returncode != 0 or run.stdout != expected:
         raise SystemExit(f"FAIL watch: reload output\n{run.stdout}\n{run.stderr}")
-    # static の initializer を変える編集は restart
+    # static の initializer を消す編集は restart
     time.sleep(0.2)
     with open(src, "w") as f:
-        f.write(open(os.path.join(here, "ReloadV2.cs.txt")).read().replace('"hello v2"', '"hello v3"'))
+        f.write(open(os.path.join(here, "ReloadV2.cs.txt")).read().replace(' = "hello v2"', ''))
     kind, body = read_message()
-    if kind != "restart_required" or "static initializer changed: Game.banner" not in body:
+    if kind != "restart_required" or "static initializer removed: Game.banner" not in body:
         raise SystemExit(f"FAIL watch: expected restart_required, got {kind}: {body}")
     print("ok   watch (vm_batch, restart_required)")
 finally:
