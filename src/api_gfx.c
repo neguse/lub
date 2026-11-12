@@ -16,7 +16,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define LUB_KEY_MAX 256
 // swapchain を指す特別な handle (lub_gfx_main_tex() が返す)。
 #define LUB_GFX_MAIN_TEX ((LubHandle) - 1)
 #define LUB_GFX_MAX_COLOR_TARGETS SGL_MAX_COLOR_TARGETS
@@ -252,8 +251,13 @@ LubHandle lub_gfx_main_tex(LubContext *ctx) {
 void lub_gfx_size(LubContext *ctx, int32_t *out_w, int32_t *out_h) {
   App *app = lub_api_app(ctx);
   int x = 0, y = 0, w = 0, h = 0;
-  if (app && app->proc->window)
+  if (app && app->opened_by) {
+    // 開かれた app の main は App.Step の target
+    w = app->main_w;
+    h = app->main_h;
+  } else if (app && app->proc->window) {
     lub_host_main_rect(app->proc, &x, &y, &w, &h);
+  }
   if (w <= 0)
     w = 1280;
   if (h <= 0)
@@ -1153,6 +1157,22 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
   int xr_eye = d->n_targets == 1 ? lub_gfx_xr_eye_of(d->targets[0]) : -1;
   if (d->n_targets == 1 && (d->targets[0] == LUB_GFX_MAIN_TEX || xr_eye >= 0)) {
     const char *what = xr_eye >= 0 ? "an XR eye target" : "main_tex";
+    if (app->opened_by) {
+      // 開かれた app の main は、App.Step が渡した target と depth への pass
+      if (xr_eye >= 0 || depth_image)
+        return lub_api_fail(app, "begin_pass: an opened app draws to main_tex "
+                                 "with the default depth buffer");
+      if (!app->main_color)
+        return lub_api_fail(app, "begin_pass: main_tex of an opened app is "
+                                 "only available inside OnFrame");
+      uintptr_t color[1] = {app->main_color};
+      SglPixelFormat fmt[1] = {app->main_fmt};
+      pass_state_label(&app->pass, "main");
+      pass_state_begin_ex(&app->pass, 1, color, fmt, app->main_w, app->main_h,
+                          (const float (*)[4])d->clear_color, app->main_depth,
+                          SGL_PF_DEPTH24_STENCIL8, 1.0f, load);
+      return LUB_OK;
+    }
     if (depth_image)
       return lub_api_fail(app,
                           "begin_pass: %s uses the default depth buffer; "

@@ -42,6 +42,13 @@ public sealed class FrameRange
     internal FrameRange(int h) { H = h; }
 }
 
+/// <summary>App.Use の不透明ハンドル。</summary>
+public sealed class AppRef
+{
+    internal readonly int H;
+    internal AppRef(int h) { H = h; }
+}
+
 /// <summary>ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の結果)。返された frame の終わりまで有効で、古い view を API に渡すと error になる。 frame を跨いで持ちたい内容は自分の memory に写す。</summary>
 public sealed unsafe class Bytes
 {
@@ -2452,6 +2459,47 @@ public static unsafe partial class App
         try
         {
             LubNative.lub_app_restart(LubRuntime.Ctx);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static AppRef Use(string key, string module, string? entry = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            int o_out = 0;
+            var st = LubNative.lub_app_use(LubRuntime.Ctx, a.Str(key), a.Str(module), a.Str(entry), &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                throw new LubException("App.Use: not found");
+            }
+            LubRuntime.Check(st);
+            return LubNative.H_AppRef(o_out)!;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>開いた app を 1 frame 進める (`OnFrame(dt)` を呼ぶ)。 app の `Gfx.MainTex` への描画は target に入り、`Gfx.Size` は target の大きさを返す。 target は `Target = true` で宣言した color の texture。入力はこの app の入力をそのまま渡す。`OnEvent` は呼ばない。 `OnFrame` の中で、pass の外から呼ぶ。進めた frame が error なく終わったら true。 module を読めないか、`OnFrame` が失敗したか、app が `App.Quit` を呼んだ後なら false。開いた app の中では、`Ui.*` は何もせず、`App.Use` は error になる。</summary>
+    public static bool Step(AppRef app, TextureRef target, float dt)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            bool o_out = default;
+            var st = LubNative.lub_app_step(LubRuntime.Ctx, app.H, target.H, dt, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return false;
+            }
+            LubRuntime.Check(st);
+            return o_out;
         }
         finally
         {
@@ -8411,6 +8459,8 @@ internal static unsafe partial class LubNative
 
     internal static FrameRange? H_FrameRange(int h) => h == 0 ? null : new FrameRange(h);
 
+    internal static AppRef? H_AppRef(int h) => h == 0 ? null : new AppRef(h);
+
     internal static WorldRef? H_WorldRef(int h) => h == 0 ? null : new WorldRef(h);
 
     internal static BodyRef? H_BodyRef(int h) => h == 0 ? null : new BodyRef(h);
@@ -11200,6 +11250,12 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_app_restart(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_app_use(void* ctx, LubStr @key, LubStr @module, LubStr @entry, int* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_app_step(void* ctx, int @app, int @target, float @dt, bool* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_main_tex(void* ctx);

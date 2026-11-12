@@ -22,6 +22,8 @@ extern "C" {
 // fb_w/fb_h は process_frame_begin が返した framebuffer サイズ (wasm では SDL_GetWindowSizeInPixels が canvas サイズを返さないため引数で受ける)。
 void ui_new_frame(struct App *app, float dt, int fb_w, int fb_h);
 void ui_shutdown(void);
+// false の間、lub_ui_* は何もしない (App.Step が開いた app を動かす間)。
+void ui_set_enabled(bool on);
 
 #ifdef __cplusplus
 }

@@ -56,6 +56,7 @@ static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
 
 bool process_init(Process *proc) {
   memset(proc, 0, sizeof(*proc));
+  gpu_stats_init_from_env();
   // backend は App.Config で最終決定される(window 生成より後)が、App.Config で指定しない sample でも harness の backend 選択を尊重できるよう、ここで default を env LUB_BACKEND から決める。
   // App.Config が明示すれば勝つ。
 #ifdef __EMSCRIPTEN__
@@ -106,6 +107,9 @@ bool process_init(Process *proc) {
 }
 
 void process_shutdown(Process *proc) {
+  if (g_backend)
+    g_backend->shutdown(proc);
+  gpu_stats_shutdown(g_backend ? g_backend->name : NULL);
   capture_state_shutdown(&proc->capture);
   if (proc->window)
     SDL_DestroyWindow(proc->window);
@@ -118,7 +122,6 @@ bool app_init(App *app, Process *proc) {
   pass_state_init(&app->pass);
   pass_state_set_app(&app->pass, app);
   profile_state_init(&app->profile);
-  gpu_stats_init_from_env();
   res_table_init(&app->res);
   phys2d_state_init(&app->phys);
   phys3d_state_init(&app->phys3);
@@ -281,6 +284,7 @@ void app_frame_end(App *app, bool frame_ok) {
   // key で宣言する snd / readback queue の sweep。
   // 退役した snd の PCM 回収はこの後の audio_state_frame_end が行う。
   api_audio_frame_end(app);
+  api_app_frame_end(app);
   api_gfx_frame_end(app);
   if (app->audio) {
     audio_state_frame_end(app->audio);
@@ -302,6 +306,8 @@ void app_frame_end(App *app, bool frame_ok) {
 }
 
 void app_shutdown(App *app) {
+  // 開いた app は backend のあるうちに閉じる
+  api_app_shutdown(app);
   pick_shutdown(app);
   // Pipelines reference shaders, so destroy pipelines before resources.
   pipeline_cache_shutdown(&app->pip_cache);
@@ -318,9 +324,6 @@ void app_shutdown(App *app) {
   phys3d_state_shutdown(&app->phys3);
   phys2d_state_shutdown(&app->phys);
   res_table_shutdown(&app->res);
-  if (g_backend)
-    g_backend->shutdown(app->proc);
-  gpu_stats_shutdown(g_backend ? g_backend->name : NULL);
 }
 
 int64_t app_file_mtime_ns(const char *path) {

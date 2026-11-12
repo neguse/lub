@@ -23,6 +23,10 @@ extern "C" {
 static App *g_app_ui = nullptr;
 static bool g_ctx_ready = false;
 static bool g_frame_open = false;
+// App.Step が開いた app を動かす間は false (その app の Ui.* は何もしない)
+static bool g_enabled = true;
+static bool ui_open() { return g_frame_open && g_enabled; }
+extern "C" void ui_set_enabled(bool on) { g_enabled = on; }
 static bool g_gpu_ready = false;
 static bool g_gpu_failed = false;
 static BackendShader g_shader = 0;
@@ -220,7 +224,7 @@ static const char *ui_cstr(LubStr s) {
 
 extern "C" LubStatus lub_ui_render(LubContext *ctx) {
   App *app = (App *)ctx;
-  if (!g_app_ui || !g_frame_open)
+  if (!g_app_ui || !ui_open())
     return LUB_OK;
   if (!pass_state_in_pass(&app->pass))
     return lub_api_fail(app, "ui_render: must be called inside begin_pass");
@@ -350,34 +354,34 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
 
 extern "C" bool lub_ui_begin_window(LubContext *ctx, LubStr title) {
   (void)ctx;
-  if (!g_frame_open)
+  if (!ui_open())
     return false;
   return ImGui::Begin(ui_cstr(title));
 }
 
 extern "C" void lub_ui_end_window(LubContext *ctx) {
   (void)ctx;
-  if (g_frame_open)
+  if (ui_open())
     ImGui::End();
 }
 
 extern "C" void lub_ui_text(LubContext *ctx, LubStr text) {
   (void)ctx;
-  if (!g_frame_open)
+  if (!ui_open())
     return;
   ImGui::TextUnformatted(text.ptr, text.ptr ? text.ptr + text.len : nullptr);
 }
 
 extern "C" bool lub_ui_button(LubContext *ctx, LubStr label) {
   (void)ctx;
-  if (!g_frame_open)
+  if (!ui_open())
     return false;
   return ImGui::Button(ui_cstr(label));
 }
 
 extern "C" bool lub_ui_checkbox(LubContext *ctx, LubStr label, bool value) {
   (void)ctx;
-  if (!g_frame_open)
+  if (!ui_open())
     return value;
   ImGui::Checkbox(ui_cstr(label), &value);
   return value;
@@ -386,7 +390,7 @@ extern "C" bool lub_ui_checkbox(LubContext *ctx, LubStr label, bool value) {
 extern "C" float lub_ui_slider_float(LubContext *ctx, LubStr label, float value,
                                      float min, float max) {
   (void)ctx;
-  if (!g_frame_open)
+  if (!ui_open())
     return value;
   ImGui::SliderFloat(ui_cstr(label), &value, min, max);
   return value;
@@ -395,7 +399,7 @@ extern "C" float lub_ui_slider_float(LubContext *ctx, LubStr label, float value,
 extern "C" int32_t lub_ui_slider_int(LubContext *ctx, LubStr label,
                                      int32_t value, int32_t min, int32_t max) {
   (void)ctx;
-  if (!g_frame_open)
+  if (!ui_open())
     return value;
   int v = value;
   ImGui::SliderInt(ui_cstr(label), &v, min, max);
@@ -406,7 +410,7 @@ extern "C" float lub_ui_drag_float(LubContext *ctx, LubStr label, float value,
                                    const float *speed, const float *min,
                                    const float *max) {
   (void)ctx;
-  if (!g_frame_open)
+  if (!ui_open())
     return value;
   ImGui::DragFloat(ui_cstr(label), &value, speed && *speed > 0 ? *speed : 1.0f,
                    min ? *min : 0.0f, max ? *max : 0.0f);
@@ -418,7 +422,7 @@ extern "C" void lub_ui_color_edit3(LubContext *ctx, LubStr label, float r,
                                    float *new_b) {
   (void)ctx;
   float rgb[3] = {r, g, b};
-  if (g_frame_open)
+  if (ui_open())
     ImGui::ColorEdit3(ui_cstr(label), rgb);
   *new_r = rgb[0];
   *new_g = rgb[1];
@@ -427,13 +431,13 @@ extern "C" void lub_ui_color_edit3(LubContext *ctx, LubStr label, float r,
 
 extern "C" void lub_ui_separator(LubContext *ctx) {
   (void)ctx;
-  if (g_frame_open)
+  if (ui_open())
     ImGui::Separator();
 }
 
 extern "C" void lub_ui_same_line(LubContext *ctx) {
   (void)ctx;
-  if (g_frame_open)
+  if (ui_open())
     ImGui::SameLine();
 }
 
@@ -442,7 +446,7 @@ extern "C" void lub_ui_same_line(LubContext *ctx) {
 extern "C" bool lub_ui_tree_node(LubContext *ctx, LubStr label,
                                  const bool *default_open) {
   (void)ctx;
-  if (!g_frame_open)
+  if (!ui_open())
     return false;
   return ImGui::TreeNodeEx(ui_cstr(label), default_open && *default_open
                                                ? ImGuiTreeNodeFlags_DefaultOpen
@@ -451,14 +455,14 @@ extern "C" bool lub_ui_tree_node(LubContext *ctx, LubStr label,
 
 extern "C" void lub_ui_tree_pop(LubContext *ctx) {
   (void)ctx;
-  if (g_frame_open)
+  if (ui_open())
     ImGui::TreePop();
 }
 
 extern "C" void lub_ui_set_next_window(LubContext *ctx, float x, float y,
                                        float w, float h) {
   (void)ctx;
-  if (!g_frame_open)
+  if (!ui_open())
     return;
   ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_FirstUseEver);
