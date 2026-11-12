@@ -79,12 +79,15 @@ typedef struct ResTable {
   ResEntry **by_handle;
   int32_t handle_cap;
   int32_t handle_count;
-  int32_t next_handle; // 最後に発行した handle
+  // 最後に発行した handle の場所 (res_table_init の counter)
+  int32_t *next_handle;
   ResSwept swept[RES_SWEPT_KEEP];
   int32_t swept_next;
 } ResTable;
 
-void res_table_init(ResTable *t);
+// handle の通し番号は counter から取る (counter は表より長く生きること)。
+// 同じ counter を使う表の handle は重ならないので、別の表の handle を渡しても別の entry を指さない。
+void res_table_init(ResTable *t, int32_t *counter);
 void res_table_shutdown(ResTable *t);
 
 // Issues a fresh effective version for a "content changed" declaration.

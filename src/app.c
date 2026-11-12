@@ -122,7 +122,7 @@ bool app_init(App *app, Process *proc) {
   pass_state_init(&app->pass);
   pass_state_set_app(&app->pass, app);
   profile_state_init(&app->profile);
-  res_table_init(&app->res);
+  res_table_init(&app->res, &proc->res_next_handle);
   phys2d_state_init(&app->phys);
   phys3d_state_init(&app->phys3);
   pipeline_cache_init(&app->pip_cache);

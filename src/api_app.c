@@ -22,10 +22,21 @@ typedef struct OpenApp {
   int64_t last_seen_frame;
 } OpenApp;
 
+// App.Save が書いた状態の控え
+typedef struct StateSlot {
+  int32_t slot;
+  uint8_t *bytes;
+  size_t size;
+} StateSlot;
+
 struct OpenApps {
   OpenApp *e;
   int n, cap;
   int32_t next_handle;
+  StateSlot *states;
+  int nstates, capstates;
+  // Save / Load が返す理由 (次の呼び出しまで有効)
+  char state_error[1024];
 };
 
 static void open_app_close(App *owner, OpenApp *o) {
@@ -115,15 +126,29 @@ static bool open_app_depth(OpenApp *o, int w, int h) {
   return o->depth != 0;
 }
 
+static OpenApp *open_app_find(App *app, LubHandle handle) {
+  struct OpenApps *s = app->open_apps;
+  for (int i = 0; s && i < s->n; ++i)
+    if (s->e[i].handle == handle)
+      return &s->e[i];
+  return NULL;
+}
+
+// module を読み込み、OnInit を呼ぶ (まだなら)。
+// ImGui の context は開いた側のものなので、開かれた app の Ui.* は何もしない
+static void open_app_player(App *app, OpenApp *o) {
+  if (o->player)
+    return;
+  ui_set_enabled(false);
+  o->player = app->app_hooks->open(app, o->app, o->module, o->entry);
+  ui_set_enabled(true);
+}
+
 LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
                        float dt, bool *out) {
   App *app = lub_api_app(ctx);
   *out = false;
-  struct OpenApps *s = app->open_apps;
-  OpenApp *o = NULL;
-  for (int i = 0; s && i < s->n; ++i)
-    if (s->e[i].handle == handle)
-      o = &s->e[i];
+  OpenApp *o = open_app_find(app, handle);
   if (!o)
     return lub_api_fail(app, "app_step: the app is closed (declare it with "
                              "App.Use every frame)");
@@ -150,10 +175,8 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
   child->main_w = te->u.tex.w;
   child->main_h = te->u.tex.h_;
   child->input = app->input;
-  // ImGui の context は開いた側のもの。開かれた app の Ui.* は何もしない
+  open_app_player(app, o);
   ui_set_enabled(false);
-  if (!o->player)
-    o->player = app->app_hooks->open(app, child, o->module, o->entry);
   bool ok = false;
   if (o->player && !child->quit_requested) {
     child->declare_epoch++;
@@ -167,6 +190,107 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
   child->main_depth = 0;
   *out = ok;
   return LUB_OK;
+}
+
+static StateSlot *state_find(struct OpenApps *s, int32_t slot) {
+  for (int i = 0; i < s->nstates; ++i)
+    if (s->states[i].slot == slot)
+      return &s->states[i];
+  return NULL;
+}
+
+static void state_result(struct OpenApps *s, bool ok, LubStr *error,
+                         bool *out) {
+  *out = ok;
+  error->ptr = ok ? NULL : s->state_error;
+  error->len = ok ? 0 : (int32_t)strlen(s->state_error);
+}
+
+LubStatus lub_app_save(LubContext *ctx, LubHandle handle, int32_t slot,
+                       LubStr *error, bool *out) {
+  App *app = lub_api_app(ctx);
+  *out = false;
+  error->ptr = NULL;
+  error->len = 0;
+  OpenApp *o = open_app_find(app, handle);
+  if (!o)
+    return lub_api_fail(app, "app_save: the app is closed (declare it with "
+                             "App.Use every frame)");
+  struct OpenApps *s = app->open_apps;
+  open_app_player(app, o);
+  uint8_t *bytes = NULL;
+  size_t size = 0;
+  s->state_error[0] = '\0';
+  if (!o->player) {
+    SDL_snprintf(s->state_error, sizeof(s->state_error), "out of memory");
+  } else if (app->app_hooks->save(o->player, &bytes, &size, s->state_error,
+                                  sizeof(s->state_error))) {
+    StateSlot *st = state_find(s, slot);
+    if (!st && s->nstates == s->capstates) {
+      int cap = s->capstates ? s->capstates * 2 : 8;
+      StateSlot *grown =
+          (StateSlot *)realloc(s->states, sizeof(StateSlot) * (size_t)cap);
+      if (grown) {
+        s->states = grown;
+        s->capstates = cap;
+      }
+    }
+    if (!st && s->nstates < s->capstates) {
+      st = &s->states[s->nstates++];
+      st->slot = slot;
+      st->bytes = NULL;
+    }
+    if (st) {
+      free(st->bytes);
+      st->bytes = bytes;
+      st->size = size;
+      state_result(s, true, error, out);
+      return LUB_OK;
+    }
+    free(bytes);
+    SDL_snprintf(s->state_error, sizeof(s->state_error), "out of memory");
+  }
+  state_result(s, false, error, out);
+  return LUB_OK;
+}
+
+LubStatus lub_app_load(LubContext *ctx, LubHandle handle, int32_t slot,
+                       LubStr *error, bool *out) {
+  App *app = lub_api_app(ctx);
+  *out = false;
+  error->ptr = NULL;
+  error->len = 0;
+  OpenApp *o = open_app_find(app, handle);
+  if (!o)
+    return lub_api_fail(app, "app_load: the app is closed (declare it with "
+                             "App.Use every frame)");
+  struct OpenApps *s = app->open_apps;
+  StateSlot *st = state_find(s, slot);
+  s->state_error[0] = '\0';
+  bool ok = false;
+  if (!st) {
+    SDL_snprintf(s->state_error, sizeof(s->state_error), "slot %d is empty",
+                 (int)slot);
+  } else {
+    open_app_player(app, o);
+    if (!o->player)
+      SDL_snprintf(s->state_error, sizeof(s->state_error), "out of memory");
+    else
+      ok = app->app_hooks->load(o->player, st->bytes, st->size, s->state_error,
+                                sizeof(s->state_error));
+  }
+  state_result(s, ok, error, out);
+  return LUB_OK;
+}
+
+void lub_app_drop(LubContext *ctx, int32_t slot) {
+  App *app = lub_api_app(ctx);
+  struct OpenApps *s = app->open_apps;
+  StateSlot *st = s ? state_find(s, slot) : NULL;
+  if (!st)
+    return;
+  free(st->bytes);
+  *st = s->states[--s->nstates];
 }
 
 void api_app_frame_end(App *app) {
@@ -192,6 +316,9 @@ void api_app_shutdown(App *app) {
     return;
   for (int i = 0; i < s->n; ++i)
     open_app_close(app, &s->e[i]);
+  for (int i = 0; i < s->nstates; ++i)
+    free(s->states[i].bytes);
+  free(s->states);
   free(s->e);
   free(s);
   app->open_apps = NULL;

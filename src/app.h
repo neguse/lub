@@ -110,6 +110,9 @@ typedef struct Process {
       capture_then_exit; // set by process_frame_submit after a successful capture
   // window の close と XR の session の終わりが立てる (App.Quit は App の quit_requested)
   bool quit_requested;
+  // 最後に発行した resource の handle。
+  // 同じ process の app が番号を分け合うので、ある app の handle は別の app の resource を指さない
+  int32_t res_next_handle;
 } Process;
 
 // 他の app を開いて動かす口 (App.Use / App.Step、api_app.c)。tcs VM の player が置く。
@@ -122,6 +125,13 @@ typedef struct LubAppHooks {
   bool (*step)(void *player, float dt);
   // OnQuit を呼び、player の状態を捨てる
   void (*close)(void *player);
+  // 状態を byte 列に書く。bytes は malloc で確保し、呼ぶ側が free する。
+  // 書けなければ false で、理由を error に書く
+  bool (*save)(void *player, uint8_t **bytes, size_t *size, char *error,
+               size_t error_size);
+  // byte 列の状態を読み込む。断ったら false で、状態は変えず、理由を error に書く
+  bool (*load)(void *player, const uint8_t *bytes, size_t size, char *error,
+               size_t error_size);
 } LubAppHooks;
 
 typedef struct App {
