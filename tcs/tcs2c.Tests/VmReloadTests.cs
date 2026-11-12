@@ -231,6 +231,18 @@ public class VmReloadTests
     }
 
     [Fact]
+    public void UnreachableObjectOfATypeTheNewVersionDrops_DoesNotBlockReload()
+    {
+        if (!Backends.VmEnabled) return;
+        // v2 は Temp を使わないので、v2 の module に Temp の型が無い。v1 が捨てた Temp は届かないので、reload を止めない
+        const string v1 = Header + "public class Temp { public int N; } public static class Game { public static void Setup() { var t = new Temp(); t.N = 1; } public static void Frame() { } public static void Report() { } }";
+        const string v2 = Header + "public class Temp { public int N; } public static class Game { public static void Setup() { } public static void Frame() { } public static void Report() { Console.WriteLine(\"ok\"); } }";
+        var (code, stdout, stderr) = Reload(v1, v2);
+        Assert.True(code == 0, stderr);
+        Assert.Equal("ok", stdout);
+    }
+
+    [Fact]
     public void LiveClosureWithoutCounterpart_RequiresRestart()
     {
         if (!Backends.VmEnabled) return;
