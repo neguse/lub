@@ -137,10 +137,10 @@ static void flush(GpuFrame *f, const uint64_t *ns, uint32_t count) {
   f->n = 0;
 }
 
-void gpu_time_frame_end(App *app) {
+void gpu_time_frame_end(Process *proc) {
   g_cur = NULL;
-  GpuFrame *f = &g_frames[app->proc->frame_index % GPU_TIME_FRAMES];
-  if (f->used && f->frame == app->proc->frame_index && !f->waiting)
+  GpuFrame *f = &g_frames[proc->frame_index % GPU_TIME_FRAMES];
+  if (f->used && f->frame == proc->frame_index && !f->waiting)
     flush(f, NULL, 0);
 }
 

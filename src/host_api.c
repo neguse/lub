@@ -393,7 +393,7 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   SDL_GetWindowSizeInPixels(app->proc->window, &w, &h);
   if (w == 0 || h == 0)
     return false;
-  if (app_frame_waits_for_gpu(app))
+  if (process_frame_waits_for_gpu(app->proc) || app_frame_waits_for_gpu(app))
     return false;
   uint64_t now = SDL_GetPerformanceCounter();
   if (app->proc->fixed_frame_dt > 0.0) {
@@ -409,7 +409,7 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   app->proc->frame_prev_counter = now;
   profile_frame_begin(&app->profile, app->frame_index);
   profile_begin_scope(&app->profile, "runtime.begin_frame");
-  app_frame_begin(app, &w, &h);
+  process_frame_begin(app->proc, &w, &h);
 #if defined(LUB_HAS_OPENXR)
   if (xr)
     app->proc->frame_dt = lubxr_frame_dt();
@@ -455,7 +455,9 @@ void lub_host_frame_end(LubContext *ctx, bool frame_ok) {
   profile_end_scope(&app->profile, "runtime.pass_guard");
   pick_frame_end(app);
   profile_begin_scope(&app->profile, "runtime.end_frame");
+  process_frame_submit(app->proc);
   app_frame_end(app, frame_ok);
+  process_frame_end(app->proc);
   profile_end_scope(&app->profile, "runtime.end_frame");
   profile_frame_end(&app->profile, profile_frame);
 }

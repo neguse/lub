@@ -19,7 +19,7 @@ struct App;
 extern "C" {
 #endif
 
-// fb_w/fb_h は app_frame_begin が返した framebuffer サイズ (wasm では SDL_GetWindowSizeInPixels が canvas サイズを返さないため引数で受ける)。
+// fb_w/fb_h は process_frame_begin が返した framebuffer サイズ (wasm では SDL_GetWindowSizeInPixels が canvas サイズを返さないため引数で受ける)。
 void ui_new_frame(struct App *app, float dt, int fb_w, int fb_h);
 void ui_shutdown(void);
 
