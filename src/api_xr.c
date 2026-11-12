@@ -9,7 +9,7 @@
 
 #if defined(LUB_HAS_OPENXR)
 static bool enabled(App *app) {
-  return strcmp(app->backend_name, "openxr") == 0;
+  return strcmp(app->proc->backend_name, "openxr") == 0;
 }
 #endif
 

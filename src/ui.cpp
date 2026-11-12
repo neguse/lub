@@ -162,7 +162,7 @@ extern "C" void ui_new_frame(App *app, float dt, int fb_w, int fb_h) {
   float mx = 0, my = 0;
   Uint32 buttons = SDL_GetMouseState(&mx, &my);
   int ww = 0, wh = 0;
-  SDL_GetWindowSize(app->window, &ww, &wh);
+  SDL_GetWindowSize(app->proc->window, &ww, &wh);
   float sx = ww > 0 ? (float)w / (float)ww : 1.0f;
   float sy = wh > 0 ? (float)h / (float)wh : 1.0f;
   io.AddMousePosEvent(mx * sx, my * sy);

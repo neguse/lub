@@ -330,8 +330,8 @@ static BindingsDesc rebind(const PickDraw *d, const ShaderReflection *refl) {
 
 static bool target_size(App *app, int target, int *w, int *h) {
   if (target < 0) {
-    *w = app->last_w;
-    *h = app->last_h;
+    *w = app->proc->last_w;
+    *h = app->proc->last_h;
     return *w > 0 && *h > 0;
   }
 #if defined(LUB_HAS_OPENXR)

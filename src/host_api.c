@@ -54,40 +54,40 @@ EM_JS(void, lub_web_fix_modifier_codes, (void), {
 // clang-format on
 #endif
 
-static int gamepad_slot(App *app, SDL_JoystickID id) {
+static int gamepad_slot(Process *proc, SDL_JoystickID id) {
   for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i)
-    if (app->gamepads[i] && app->gamepad_ids[i] == id)
+    if (proc->gamepads[i] && proc->gamepad_ids[i] == id)
       return i;
   return -1;
 }
 
 // 空いている最初の slot に入れる。
-static void gamepad_add(App *app, SDL_JoystickID id) {
-  if (gamepad_slot(app, id) >= 0)
+static void gamepad_add(Process *proc, SDL_JoystickID id) {
+  if (gamepad_slot(proc, id) >= 0)
     return;
   for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i) {
-    if (app->gamepads[i])
+    if (proc->gamepads[i])
       continue;
-    app->gamepads[i] = SDL_OpenGamepad(id);
-    app->gamepad_ids[i] = id;
+    proc->gamepads[i] = SDL_OpenGamepad(id);
+    proc->gamepad_ids[i] = id;
     return;
   }
 }
 
 // 押していた button の release は、SDL が REMOVED より先に button の event で送る。
-static void gamepad_remove(App *app, SDL_JoystickID id) {
-  int slot = gamepad_slot(app, id);
+static void gamepad_remove(Process *proc, SDL_JoystickID id) {
+  int slot = gamepad_slot(proc, id);
   if (slot < 0)
     return;
-  SDL_CloseGamepad(app->gamepads[slot]);
-  app->gamepads[slot] = NULL;
+  SDL_CloseGamepad(proc->gamepads[slot]);
+  proc->gamepads[slot] = NULL;
 }
 
 _Static_assert(SDL_GAMEPAD_BUTTON_COUNT <= 32,
                "gamepad buttons are kept in a uint32_t bit mask");
 
 static void gamepad_button(App *app, const SDL_GamepadButtonEvent *e) {
-  int slot = gamepad_slot(app, e->which);
+  int slot = gamepad_slot(app->proc, e->which);
   if (slot < 0 || e->button >= SDL_GAMEPAD_BUTTON_COUNT)
     return;
   uint32_t bit = UINT32_C(1) << e->button;
@@ -125,7 +125,7 @@ static void input_sample(App *app) {
   in->mouse_x = px * density - (float)main_x;
   in->mouse_y = py * density - (float)main_y;
   for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i) {
-    SDL_Gamepad *pad = app->gamepads[i];
+    SDL_Gamepad *pad = app->proc->gamepads[i];
     in->pad_connected[i] = pad != NULL;
     in->pad_down[i] = 0;
     for (int a = 0; a < SDL_GAMEPAD_AXIS_COUNT; ++a)
@@ -137,7 +137,7 @@ static void input_sample(App *app) {
 }
 
 // gamepad が使えなくても (subsystem の初期化に失敗しても) runtime は動かす。
-static void gamepads_init(App *app) {
+static void gamepads_init(Process *proc) {
   if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
     SDL_Log("gamepad init failed: %s", SDL_GetError());
     return;
@@ -145,15 +145,15 @@ static void gamepads_init(App *app) {
   int count = 0;
   SDL_JoystickID *ids = SDL_GetGamepads(&count);
   for (int i = 0; ids && i < count; ++i)
-    gamepad_add(app, ids[i]);
+    gamepad_add(proc, ids[i]);
   SDL_free(ids);
 }
 
-static void gamepads_close(App *app) {
+static void gamepads_close(Process *proc) {
   for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i) {
-    if (app->gamepads[i])
-      SDL_CloseGamepad(app->gamepads[i]);
-    app->gamepads[i] = NULL;
+    if (proc->gamepads[i])
+      SDL_CloseGamepad(proc->gamepads[i]);
+    proc->gamepads[i] = NULL;
   }
 }
 
@@ -181,13 +181,18 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
     SDL_Log("SDL_Init failed: %s", SDL_GetError());
     return NULL;
   }
+  Process *proc = (Process *)calloc(1, sizeof(Process));
   App *app = (App *)calloc(1, sizeof(App));
-  if (!app) {
+  if (!proc || !app || !process_init(proc)) {
+    free(app);
+    free(proc);
     SDL_Quit();
     return NULL;
   }
-  if (!app_init(app)) {
+  if (!app_init(app, proc)) {
+    process_shutdown(proc);
     free(app);
+    free(proc);
     SDL_Quit();
     return NULL;
   }
@@ -195,10 +200,13 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
     app->digest.enabled = opts->digest;
     app->readback_fixed_latency = opts->readback_fixed_latency;
     if (opts->backend.len > 0)
-      lub_str_copy(opts->backend, app->backend_name, sizeof(app->backend_name));
-    app->fixed_frame_dt = opts->fixed_dt > 0.0f ? (double)opts->fixed_dt : 0.0;
-    if (app->fixed_frame_dt > 0.0)
-      SDL_Log("fixed frame dt enabled: %.17g seconds", app->fixed_frame_dt);
+      lub_str_copy(opts->backend, app->proc->backend_name,
+                   sizeof(app->proc->backend_name));
+    app->proc->fixed_frame_dt =
+        opts->fixed_dt > 0.0f ? (double)opts->fixed_dt : 0.0;
+    if (app->proc->fixed_frame_dt > 0.0)
+      SDL_Log("fixed frame dt enabled: %.17g seconds",
+              app->proc->fixed_frame_dt);
     if (opts->capture_path.len > 0) {
       char path[1024];
       if (lub_str_copy(opts->capture_path, path, sizeof(path))) {
@@ -210,14 +218,14 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
       }
     }
   }
-  gamepads_init(app);
+  gamepads_init(proc);
   return lub_api_ctx(app);
 }
 
 LubStatus lub_host_start(LubContext *ctx) {
   App *app = lub_api_app(ctx);
-  if (app->cfg_w > 0 && app->cfg_h > 0)
-    SDL_SetWindowSize(app->window, app->cfg_w, app->cfg_h);
+  if (app->proc->cfg_w > 0 && app->proc->cfg_h > 0)
+    SDL_SetWindowSize(app->proc->window, app->proc->cfg_w, app->proc->cfg_h);
   if (!app_backend_init(app))
     return lub_api_fail(app, "backend init failed");
   return LUB_OK;
@@ -227,22 +235,24 @@ LubStatus lub_host_start(LubContext *ctx) {
 // (metal backend: Retina, iPhone) those are points, while everything the game
 // draws with is in framebuffer pixels (Gfx.Size), so input is scaled to match.
 float lub_host_pixel_density(App *app) {
-  float density = app->window ? SDL_GetWindowPixelDensity(app->window) : 0.0f;
+  float density =
+      app->proc->window ? SDL_GetWindowPixelDensity(app->proc->window) : 0.0f;
   return density > 0.0f ? density : 1.0f;
 }
 
 void lub_host_main_rect(App *app, int *x, int *y, int *w, int *h) {
   *x = *y = *w = *h = 0;
-  if (!app->window)
+  if (!app->proc->window)
     return;
-  if (app->fixed_w > 0 && app->fixed_h > 0) {
-    *w = app->fixed_w;
-    *h = app->fixed_h;
+  if (app->proc->fixed_w > 0 && app->proc->fixed_h > 0) {
+    *w = app->proc->fixed_w;
+    *h = app->proc->fixed_h;
     return;
   }
-  SDL_GetWindowSizeInPixels(app->window, w, h);
+  SDL_GetWindowSizeInPixels(app->proc->window, w, h);
   SDL_Rect safe;
-  if (!SDL_GetWindowSafeArea(app->window, &safe) || safe.w <= 0 || safe.h <= 0)
+  if (!SDL_GetWindowSafeArea(app->proc->window, &safe) || safe.w <= 0 ||
+      safe.h <= 0)
     return;
   float density = lub_host_pixel_density(app);
   int x0 = (int)(safe.x * density + 0.5f);
@@ -283,7 +293,7 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     out->kind = LUB_EVENT_KIND_QUIT;
     return true;
   case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-    app->pending_resize = true;
+    app->proc->pending_resize = true;
     out->kind = LUB_EVENT_KIND_WINDOW_RESIZE;
     out->x = (float)e->window.data1;
     out->y = (float)e->window.data2;
@@ -330,11 +340,11 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     out->dy = e->motion.yrel * density;
     return true;
   case SDL_EVENT_GAMEPAD_ADDED:
-    gamepad_add(app, e->gdevice.which);
+    gamepad_add(app->proc, e->gdevice.which);
     out->kind = LUB_EVENT_KIND_OTHER;
     return true;
   case SDL_EVENT_GAMEPAD_REMOVED:
-    gamepad_remove(app, e->gdevice.which);
+    gamepad_remove(app->proc, e->gdevice.which);
     out->kind = LUB_EVENT_KIND_OTHER;
     return true;
   case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
@@ -377,34 +387,34 @@ bool lub_host_poll_event(LubContext *ctx, LubEventData *out) {
 bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   App *app = lub_api_app(ctx);
 #if defined(LUB_HAS_OPENXR)
-  bool xr = strcmp(app->backend_name, "openxr") == 0;
+  bool xr = strcmp(app->proc->backend_name, "openxr") == 0;
   if (xr && !lubxr_poll(&app->quit_requested))
     return false;
 #endif
   int w = 0, h = 0;
-  SDL_GetWindowSizeInPixels(app->window, &w, &h);
+  SDL_GetWindowSizeInPixels(app->proc->window, &w, &h);
   if (w == 0 || h == 0)
     return false;
   if (app_frame_waits_for_gpu(app))
     return false;
   uint64_t now = SDL_GetPerformanceCounter();
-  if (app->fixed_frame_dt > 0.0) {
-    app->frame_dt = app->fixed_frame_dt;
-  } else if (app->frame_prev_counter != 0) {
-    app->frame_dt = (double)(now - app->frame_prev_counter) /
-                    (double)SDL_GetPerformanceFrequency();
-    if (app->frame_dt > 0.25)
-      app->frame_dt = 0.25;
+  if (app->proc->fixed_frame_dt > 0.0) {
+    app->proc->frame_dt = app->proc->fixed_frame_dt;
+  } else if (app->proc->frame_prev_counter != 0) {
+    app->proc->frame_dt = (double)(now - app->proc->frame_prev_counter) /
+                          (double)SDL_GetPerformanceFrequency();
+    if (app->proc->frame_dt > 0.25)
+      app->proc->frame_dt = 0.25;
   } else {
-    app->frame_dt = 1.0 / 60.0;
+    app->proc->frame_dt = 1.0 / 60.0;
   }
-  app->frame_prev_counter = now;
+  app->proc->frame_prev_counter = now;
   profile_frame_begin(&app->profile, app->frame_index);
   profile_begin_scope(&app->profile, "runtime.begin_frame");
   app_frame_begin(app, &w, &h);
 #if defined(LUB_HAS_OPENXR)
   if (xr)
-    app->frame_dt = lubxr_frame_dt();
+    app->proc->frame_dt = lubxr_frame_dt();
 #endif
   profile_end_scope(&app->profile, "runtime.begin_frame");
   if (app->quit_requested) {
@@ -413,11 +423,11 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   }
   app->declare_epoch++;
   input_sample(app);
-  ui_new_frame(app, (float)app->frame_dt, w, h);
+  ui_new_frame(app, (float)app->proc->frame_dt, w, h);
   pick_frame_begin(app);
   profile_begin_scope(&app->profile, "script.onFrame");
   if (dt)
-    *dt = (float)app->frame_dt;
+    *dt = (float)app->proc->frame_dt;
   return true;
 }
 
@@ -475,11 +485,14 @@ void lub_host_destroy(LubContext *ctx) {
   if (!ctx)
     return;
   App *app = lub_api_app(ctx);
+  Process *proc = app->proc;
   write_exit_file(app->exit_code);
   profile_report_at_exit(&app->profile);
   ui_shutdown();
   app_shutdown(app);
-  gamepads_close(app);
   free(app);
+  gamepads_close(proc);
+  process_shutdown(proc);
+  free(proc);
   SDL_Quit();
 }

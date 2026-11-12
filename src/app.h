@@ -57,7 +57,52 @@ typedef struct LubDebugHooks {
                             const LubInspectInstance **out, int32_t *n);
 } LubDebugHooks;
 
+// process に 1 つの部分: SDL、window と画面の大きさ、backend の選択、gamepad、frame の時計。
+// App (VM ごとの context) は proc でこれを指す。
+typedef struct Process {
+  SDL_Window *window;
+  int last_w, last_h; // last extents seen by app_frame_begin
+  int cfg_w, cfg_h;   // App.Config の Width / Height。0 = 既定維持
+  // > 0: main target をこの大きさで描く (metal backend の capture run)。
+  // 画面より大きい window は縮められ、Retina では pixel が倍になるので、window の実 pixel で描くと capture の大きさが機材で変わる。
+  int fixed_w, fixed_h;
+  // Set by lub_host_translate_event on SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED.
+  // The backend's begin_frame checks this and rebuilds its swapchain before
+  // acquire. The vulkan backend's VkResult path (OUT_OF_DATE / SUBOPTIMAL)
+  // sets its own need_recreate, which begin_frame checks alongside this flag,
+  // so the swapchain is only ever rebuilt at frame start.
+  bool pending_resize;
+
+  // Backend selection. process_init sets phase = PRE_BACKEND and backend_name
+  // from env LUB_BACKEND (unset = platform default: Windows "d3d12",
+  // Linux "vulkan", Apple "metal", wasm "webgpu", else "sdlgpu"). The game's
+  // App.Config() may overwrite backend_name during OnInit (PRE_BACKEND only).
+  // app_backend_init flips phase to POST_BACKEND after init() succeeds.
+  AppPhase phase;
+  char backend_name[16];
+
+  // Gamepads by player slot. A slot keeps its pad until that pad is removed.
+  SDL_Gamepad *gamepads[LUB_GAMEPAD_SLOTS];
+  SDL_JoystickID gamepad_ids[LUB_GAMEPAD_SLOTS];
+
+  // Effective frame delta time in seconds, passed to UI and OnFrame(dt).
+  // Normally measured from the real frame clock and clamped so a debugger
+  // pause or window drag does not produce a giant step.
+  double frame_dt;
+  // Test-only override from --fixed-dt. 0 means use the real frame clock.
+  double fixed_frame_dt;
+  uint64_t frame_prev_counter;
+  // updated once per second after backend end_frame/present.
+  // --fixed-dt の間は壁時計に依らず、fixed dt の逆数 (1e-3 に丸め) を 1 秒分の frame ごとに更新する。
+  double actual_fps;
+  uint64_t fps_fixed_ns;
+  uint64_t fps_last_ns;
+  int fps_frame_count;
+} Process;
+
 typedef struct App {
+  Process *proc;
+
   SDL_Window *window;
 
   PassState pass;
@@ -86,49 +131,13 @@ typedef struct App {
   bool capture_then_exit; // set by app_frame_end after a successful capture
   int last_w, last_h;     // last extents seen by app_frame_begin
   int cfg_w, cfg_h;       // App.Config の Width / Height。0 = 既定維持
-  // > 0: main target をこの大きさで描く (metal backend の capture run)。
-  // 画面より大きい window は縮められ、Retina では pixel が倍になるので、window の実 pixel で描くと capture の大きさが機材で変わる。
-  int fixed_w, fixed_h;
-  bool quit_requested; // App.Quit と window の close が立てる
-  int32_t exit_code;   // Quit の code (0 = 成功)
+  bool quit_requested;    // App.Quit と window の close が立てる
+  int32_t exit_code;      // Quit の code (0 = 成功)
   // App.Restart が立て、player が frame の終わりに作り直す
   bool restart_requested;
-  // updated once per second after backend end_frame/present.
-  // --fixed-dt の間は壁時計に依らず、fixed dt の逆数 (1e-3 に丸め) を 1 秒分の frame ごとに更新する。
-  double actual_fps;
-  uint64_t fps_fixed_ns;
-  uint64_t fps_last_ns;
-  int fps_frame_count;
-
-  // Set by lub_host_translate_event on SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED.
-  // The backend's begin_frame checks this and rebuilds its swapchain before
-  // acquire. The vulkan backend's VkResult path (OUT_OF_DATE / SUBOPTIMAL)
-  // sets its own need_recreate, which begin_frame checks alongside this flag,
-  // so the swapchain is only ever rebuilt at frame start.
-  bool pending_resize;
 
   // Input.* が読む入力 (input.h)。
   InputState input;
-  // Gamepads by player slot. A slot keeps its pad until that pad is removed.
-  SDL_Gamepad *gamepads[LUB_GAMEPAD_SLOTS];
-  SDL_JoystickID gamepad_ids[LUB_GAMEPAD_SLOTS];
-
-  // Effective frame delta time in seconds, passed to UI and OnFrame(dt).
-  // Normally measured from the real frame clock and clamped so a debugger
-  // pause or window drag does not produce a giant step.
-  double frame_dt;
-  // Test-only override from --fixed-dt. 0 means use the real frame clock.
-  double fixed_frame_dt;
-  uint64_t frame_prev_counter;
-
-  // Backend selection. app_init sets phase = PRE_BACKEND and backend_name
-  // from env LUB_BACKEND (unset = platform default: Windows "d3d12",
-  // Linux "vulkan", Apple "metal", wasm "webgpu", else "sdlgpu"). The game's
-  // App.Config() may
-  // overwrite backend_name during OnInit (PRE_BACKEND only).
-  // app_backend_init flips phase to POST_BACKEND after init() succeeds.
-  AppPhase phase;
-  char backend_name[16];
 
   // 宣言 (use* / snd / readback の poll) が途切れた resource を何 frame 後に破棄するか。
   // 既定 120、0 で破棄しない。
@@ -178,7 +187,11 @@ typedef struct App {
   void *pick_sites_user;
 } App;
 
-bool app_init(App *app);
+// SDL_Init の後に呼ぶ。backend の既定を決め、window を作る
+bool process_init(Process *proc);
+// window を壊す (app_shutdown の後、SDL_Quit の前)
+void process_shutdown(Process *proc);
+bool app_init(App *app, Process *proc);
 bool app_backend_init(App *app); // call after OnInit has run; returns false
                                  // on backend init failure
 void app_frame_begin(App *app, int *out_w, int *out_h);

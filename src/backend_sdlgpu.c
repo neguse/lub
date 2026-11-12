@@ -167,8 +167,8 @@ static bool sg_acquire_swapchain_texture(App *app, const char *context) {
   if (!sg_acquire_command_buffer(app, context))
     return false;
   Uint32 sw = 0, sh = 0;
-  if (!SDL_AcquireGPUSwapchainTexture(g_cmd, app->window, &g_swapchain_tex, &sw,
-                                      &sh)) {
+  if (!SDL_AcquireGPUSwapchainTexture(g_cmd, app->proc->window,
+                                      &g_swapchain_tex, &sw, &sh)) {
     SDL_Log("%s: SDL_AcquireGPUSwapchainTexture failed: %s", context,
             SDL_GetError());
     g_swapchain_tex = NULL;
@@ -259,7 +259,7 @@ static bool sg_init(App *app) {
     SDL_Log("SDL_CreateGPUDevice failed: %s", SDL_GetError());
     return false;
   }
-  if (!SDL_ClaimWindowForGPUDevice(g_device, app->window)) {
+  if (!SDL_ClaimWindowForGPUDevice(g_device, app->proc->window)) {
     SDL_Log("SDL_ClaimWindowForGPUDevice failed: %s", SDL_GetError());
     SDL_DestroyGPUDevice(g_device);
     g_device = NULL;
@@ -268,7 +268,7 @@ static bool sg_init(App *app) {
   if (!sg_make_dummies()) {
     SDL_Log("sdlgpu: dummy resource creation failed");
     sg_destroy_dummies();
-    SDL_ReleaseWindowFromGPUDevice(g_device, app->window);
+    SDL_ReleaseWindowFromGPUDevice(g_device, app->proc->window);
     SDL_DestroyGPUDevice(g_device);
     g_device = NULL;
     return false;
@@ -283,7 +283,7 @@ static void sg_shutdown(App *app) {
     sg_release_frame_bufs();
     sg_destroy_dummies();
     sg_release_depth_texture(app);
-    SDL_ReleaseWindowFromGPUDevice(g_device, app->window);
+    SDL_ReleaseWindowFromGPUDevice(g_device, app->proc->window);
     SDL_DestroyGPUDevice(g_device);
     g_device = NULL;
   }
@@ -334,8 +334,8 @@ static void sg_begin_frame(App *app, int *out_w, int *out_h) {
   }
   Uint32 sw = 0, sh = 0;
   g_swapchain_tex = NULL;
-  if (!SDL_AcquireGPUSwapchainTexture(g_cmd, app->window, &g_swapchain_tex, &sw,
-                                      &sh)) {
+  if (!SDL_AcquireGPUSwapchainTexture(g_cmd, app->proc->window,
+                                      &g_swapchain_tex, &sw, &sh)) {
     SDL_Log("SDL_AcquireGPUSwapchainTexture failed: %s", SDL_GetError());
   }
   if (g_swapchain_tex && sw > 0 && sh > 0) {
@@ -381,9 +381,9 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
                                           d->clear[0][2], d->clear[0][3]};
     targets[0].load_op = load_op;
     targets[0].store_op = SDL_GPU_STOREOP_STORE;
-    if (!g_depth_tex && app->last_w > 0 && app->last_h > 0) {
-      (void)sg_ensure_depth_texture(app, (Uint32)app->last_w,
-                                    (Uint32)app->last_h);
+    if (!g_depth_tex && app->proc->last_w > 0 && app->proc->last_h > 0) {
+      (void)sg_ensure_depth_texture(app, (Uint32)app->proc->last_w,
+                                    (Uint32)app->proc->last_h);
     }
     if (!g_depth_tex) {
       SDL_Log("sg_begin_pass: no depth texture for swapchain pass");
@@ -1627,8 +1627,8 @@ static bool sg_capture(App *app, const char *path) {
   if (!app || !g_device || !g_cmd || !g_swapchain_tex || !path) {
     return false;
   }
-  int w = app->last_w;
-  int h = app->last_h;
+  int w = app->proc->last_w;
+  int h = app->proc->last_h;
   if (w <= 0 || h <= 0) {
     SDL_Log("sg_capture: zero extent");
     return false;
@@ -1716,7 +1716,7 @@ static bool sg_capture(App *app, const char *path) {
 
 static SglPixelFormat sg_swapchain_color_format(App *app) {
   SDL_GPUTextureFormat fmt =
-      SDL_GetGPUSwapchainTextureFormat(g_device, app->window);
+      SDL_GetGPUSwapchainTextureFormat(g_device, app->proc->window);
   switch (fmt) {
   case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM:
   case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB:

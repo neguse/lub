@@ -37,7 +37,7 @@ static void wg_target_size(App *app, int *w, int *h) {
   *w = wg_canvas_width();
   *h = wg_canvas_height();
   if (*w <= 0 || *h <= 0)
-    SDL_GetWindowSizeInPixels(app->window, w, h);
+    SDL_GetWindowSizeInPixels(app->proc->window, w, h);
 }
 
 // ---- helpers ---------------------------------------------------------------
@@ -1035,12 +1035,12 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   bool xr = lubwebxr_active();
   WGPUTextureFormat format =
       xr ? WGPUTextureFormat_RGBA8Unorm : WGPUTextureFormat_BGRA8Unorm;
-  bool needs_resize = app->pending_resize || g_surface_format != format ||
-                      (app->last_w != 0 && cw != app->last_w) ||
-                      (app->last_h != 0 && ch != app->last_h);
+  bool needs_resize = app->proc->pending_resize || g_surface_format != format ||
+                      (app->proc->last_w != 0 && cw != app->proc->last_w) ||
+                      (app->proc->last_h != 0 && ch != app->proc->last_h);
   if (needs_resize) {
     g_surface_format = format;
-    app->pending_resize = false;
+    app->proc->pending_resize = false;
     if (g_swapchain_view) {
       wgpuTextureViewRelease(g_swapchain_view);
       gpu_stats_destroy(GPU_STAT_SURFACE_VIEW, 0);
@@ -1922,8 +1922,8 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
       w = d->target_w;
       h = d->target_h;
     } else {
-      w = app->last_w;
-      h = app->last_h;
+      w = app->proc->last_w;
+      h = app->proc->last_h;
     }
     wgpuRenderPassEncoderSetViewport(g_rpass, 0, 0, (float)w, (float)h, 0.f,
                                      1.f);

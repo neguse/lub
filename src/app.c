@@ -54,29 +54,28 @@ static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
 }
 #endif
 
-bool app_init(App *app) {
-  memset(app, 0, sizeof(*app));
-
+bool process_init(Process *proc) {
+  memset(proc, 0, sizeof(*proc));
   // backend は App.Config で最終決定される(window 生成より後)が、App.Config で指定しない sample でも harness の backend 選択を尊重できるよう、ここで default を env LUB_BACKEND から決める。
   // App.Config が明示すれば勝つ。
 #ifdef __EMSCRIPTEN__
-  strcpy(app->backend_name, "webgpu");
+  strcpy(proc->backend_name, "webgpu");
 #else
   {
     const char *env_b = getenv("LUB_BACKEND");
     if (env_b && *env_b) {
-      strncpy(app->backend_name, env_b, sizeof(app->backend_name) - 1);
-      app->backend_name[sizeof(app->backend_name) - 1] = '\0';
+      strncpy(proc->backend_name, env_b, sizeof(proc->backend_name) - 1);
+      proc->backend_name[sizeof(proc->backend_name) - 1] = '\0';
     } else {
-      strcpy(app->backend_name, LUB_DEFAULT_BACKEND);
+      strcpy(proc->backend_name, LUB_DEFAULT_BACKEND);
     }
   }
 #endif
 
   // wasm は canvas-backed default のみ。
 #ifdef __EMSCRIPTEN__
-  app->window = SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W,
-                                 LUB_DEFAULT_WINDOW_H, SDL_WINDOW_RESIZABLE);
+  proc->window = SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W,
+                                  LUB_DEFAULT_WINDOW_H, SDL_WINDOW_RESIZABLE);
 #else
   if (export_active()) {
     // export の window は大きさを持つだけ。
@@ -89,18 +88,31 @@ bool app_init(App *app) {
                           LUB_DEFAULT_WINDOW_H);
     SDL_SetBooleanProperty(
         props, SDL_PROP_WINDOW_CREATE_EXTERNAL_GRAPHICS_CONTEXT_BOOLEAN, true);
-    app->window = SDL_CreateWindowWithProperties(props);
+    proc->window = SDL_CreateWindowWithProperties(props);
     SDL_DestroyProperties(props);
   } else {
-    app->window =
+    proc->window =
         SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W, LUB_DEFAULT_WINDOW_H,
-                         window_flags_for_backend(app->backend_name));
+                         window_flags_for_backend(proc->backend_name));
   }
 #endif
-  if (!app->window) {
+  if (!proc->window) {
     SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
     return false;
   }
+  proc->phase = APP_PHASE_PRE_BACKEND;
+  return true;
+}
+
+void process_shutdown(Process *proc) {
+  if (proc->window)
+    SDL_DestroyWindow(proc->window);
+  proc->window = NULL;
+}
+
+bool app_init(App *app, Process *proc) {
+  memset(app, 0, sizeof(*app));
+  app->proc = proc;
   pass_state_init(&app->pass);
   pass_state_set_app(&app->pass, app);
   profile_state_init(&app->profile);
@@ -111,20 +123,11 @@ bool app_init(App *app) {
   pipeline_cache_init(&app->pip_cache);
   capture_state_init(&app->capture);
   app->capture_then_exit = false;
-  app->last_w = 0;
-  app->last_h = 0;
   app->frame_index = 0;
   app->declare_epoch = 1;
   app->resource_frame = 0;
-  app->cfg_w = 0;
-  app->cfg_h = 0;
   app->quit_requested = false;
   app->exit_code = 0;
-  app->actual_fps = 0.0;
-  app->fps_last_ns = 0;
-  app->fps_frame_count = 0;
-  app->fixed_frame_dt = 0.0;
-  app->phase = APP_PHASE_PRE_BACKEND;
   app->readback_depth = 8;
   app->resource_sweep_after_frames = 120;
   return true;
@@ -134,14 +137,14 @@ bool app_backend_init(App *app) {
 #ifndef __EMSCRIPTEN__
   // App.Config が window 生成後に backend を上書きした場合、window に SDL_WINDOW_VULKAN が欠けていることがある。
   // その時だけ作り直す (逆方向 — flag が余分に付いている — は無害なので放置)。
-  SDL_WindowFlags want = window_flags_for_backend(app->backend_name);
+  SDL_WindowFlags want = window_flags_for_backend(app->proc->backend_name);
   if ((want & SDL_WINDOW_VULKAN) &&
-      !(SDL_GetWindowFlags(app->window) & SDL_WINDOW_VULKAN)) {
+      !(SDL_GetWindowFlags(app->proc->window) & SDL_WINDOW_VULKAN)) {
     int w = 0, h = 0;
-    SDL_GetWindowSize(app->window, &w, &h);
-    SDL_DestroyWindow(app->window);
-    app->window = SDL_CreateWindow("lub", w, h, want);
-    if (!app->window) {
+    SDL_GetWindowSize(app->proc->window, &w, &h);
+    SDL_DestroyWindow(app->proc->window);
+    app->proc->window = SDL_CreateWindow("lub", w, h, want);
+    if (!app->proc->window) {
       SDL_Log("SDL_CreateWindow (vulkan-capable) failed: %s", SDL_GetError());
       return false;
     }
@@ -150,24 +153,24 @@ bool app_backend_init(App *app) {
   if (export_active()) {
     // export は backend の名前 (環境変数や App.Config) によらない
     g_backend = &g_backend_export;
-  } else if (strcmp(app->backend_name, "sdlgpu") == 0) {
+  } else if (strcmp(app->proc->backend_name, "sdlgpu") == 0) {
     g_backend = &g_backend_sdlgpu;
-  } else if (strcmp(app->backend_name, "d3d12") == 0) {
+  } else if (strcmp(app->proc->backend_name, "d3d12") == 0) {
 #if defined(_WIN32)
     g_backend = &g_backend_d3d12;
 #else
     SDL_Log("backend 'd3d12' is Windows-only");
     return false;
 #endif
-  } else if (strcmp(app->backend_name, "vulkan") == 0 ||
-             strcmp(app->backend_name, "openxr") == 0) {
+  } else if (strcmp(app->proc->backend_name, "vulkan") == 0 ||
+             strcmp(app->proc->backend_name, "openxr") == 0) {
 #if defined(LUB_HAS_VULKAN)
     g_backend = &g_backend_vulkan;
 #else
     SDL_Log("backend 'vulkan' is not available in this build");
     return false;
 #endif
-  } else if (strcmp(app->backend_name, "metal") == 0) {
+  } else if (strcmp(app->proc->backend_name, "metal") == 0) {
 #if defined(__APPLE__)
     g_backend = &g_backend_metal;
 #else
@@ -177,21 +180,21 @@ bool app_backend_init(App *app) {
   } else {
     SDL_Log("unknown backend '%s' (expected 'd3d12', 'vulkan', 'metal', "
             "'openxr' or 'sdlgpu')",
-            app->backend_name);
+            app->proc->backend_name);
     return false;
   }
 #else
   // wasm build: webgpu backend only (backend_name is ignored).
   g_backend = &g_backend_webgpu;
 #endif
-  SDL_Log("backend selected: %s", strcmp(app->backend_name, "openxr") == 0
+  SDL_Log("backend selected: %s", strcmp(app->proc->backend_name, "openxr") == 0
                                       ? "openxr"
                                       : g_backend->name);
   if (!g_backend->init(app)) {
     SDL_Log("backend init failed");
     return false;
   }
-  app->phase = APP_PHASE_POST_BACKEND;
+  app->proc->phase = APP_PHASE_POST_BACKEND;
   return true;
 }
 
@@ -203,8 +206,8 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
     *out_w = w;
   if (out_h)
     *out_h = h;
-  app->last_w = w;
-  app->last_h = h;
+  app->proc->last_w = w;
+  app->proc->last_h = h;
 }
 
 bool app_frame_waits_for_gpu(App *app) {
@@ -238,28 +241,30 @@ void app_frame_end(App *app, bool frame_ok) {
   g_backend->end_frame(app);
   app->in_frame = false;
   uint64_t now_ns;
-  if (app->fixed_frame_dt > 0.0) {
-    app->fps_fixed_ns += (uint64_t)(app->fixed_frame_dt * 1e9 + 0.5);
-    now_ns = app->fps_fixed_ns;
+  if (app->proc->fixed_frame_dt > 0.0) {
+    app->proc->fps_fixed_ns +=
+        (uint64_t)(app->proc->fixed_frame_dt * 1e9 + 0.5);
+    now_ns = app->proc->fps_fixed_ns;
   } else {
     now_ns = SDL_GetTicksNS();
   }
-  if (app->fps_last_ns == 0) {
-    app->fps_last_ns = now_ns;
-    app->fps_frame_count = 0;
+  if (app->proc->fps_last_ns == 0) {
+    app->proc->fps_last_ns = now_ns;
+    app->proc->fps_frame_count = 0;
   } else {
-    app->fps_frame_count++;
-    uint64_t elapsed_ns = now_ns - app->fps_last_ns;
+    app->proc->fps_frame_count++;
+    uint64_t elapsed_ns = now_ns - app->proc->fps_last_ns;
     if (elapsed_ns >= 1000000000ULL) {
-      if (app->fixed_frame_dt > 0.0) {
+      if (app->proc->fixed_frame_dt > 0.0) {
         // fixed dt は float から来るので 1/dt は 60 や 80 から 1e-6 ほどずれる。1e-3 に丸めて切りのよい値にする
-        app->actual_fps = floor(1000.0 / app->fixed_frame_dt + 0.5) / 1000.0;
+        app->proc->actual_fps =
+            floor(1000.0 / app->proc->fixed_frame_dt + 0.5) / 1000.0;
       } else {
-        app->actual_fps =
-            (double)app->fps_frame_count * 1000000000.0 / (double)elapsed_ns;
+        app->proc->actual_fps = (double)app->proc->fps_frame_count *
+                                1000000000.0 / (double)elapsed_ns;
       }
-      app->fps_last_ns = now_ns;
-      app->fps_frame_count = 0;
+      app->proc->fps_last_ns = now_ns;
+      app->proc->fps_frame_count = 0;
     }
   }
   if (!capture_before_end_frame && capture_state_drain(&app->capture, app)) {
@@ -310,9 +315,6 @@ void app_shutdown(App *app) {
   if (g_backend)
     g_backend->shutdown(app);
   gpu_stats_shutdown(g_backend ? g_backend->name : NULL);
-
-  if (app->window)
-    SDL_DestroyWindow(app->window);
 }
 
 int64_t app_file_mtime_ns(const char *path) {

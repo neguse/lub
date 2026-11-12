@@ -1109,7 +1109,7 @@ static bool vkb_create_swapchain(void) {
   VkExtent2D extent = caps.currentExtent;
   if (extent.width == 0xFFFFFFFFu) {
     int w = 0, h = 0;
-    SDL_GetWindowSizeInPixels(g.app->window, &w, &h);
+    SDL_GetWindowSizeInPixels(g.app->proc->window, &w, &h);
     extent.width = (uint32_t)w;
     extent.height = (uint32_t)h;
   }
@@ -1454,7 +1454,7 @@ static BackendImage vkb_make_image(const ImageDesc *desc);
 
 static bool vkb_init(App *app) {
   g.app = app;
-  g.xr = strcmp(app->backend_name, "openxr") == 0;
+  g.xr = strcmp(app->proc->backend_name, "openxr") == 0;
 #if defined(LUB_HAS_OPENXR)
   if (g.xr && !lubxr_init())
     return false;
@@ -1540,8 +1540,8 @@ static bool vkb_init(App *app) {
     }
   }
 
-  if (!g.xr &&
-      !SDL_Vulkan_CreateSurface(app->window, g.instance, NULL, &g.surface)) {
+  if (!g.xr && !SDL_Vulkan_CreateSurface(app->proc->window, g.instance, NULL,
+                                         &g.surface)) {
     SDL_Log("vk: SDL_Vulkan_CreateSurface failed: %s", SDL_GetError());
     return false;
   }
@@ -1851,8 +1851,8 @@ static bool vkb_timestamp(App *app, uint32_t index) {
 }
 
 static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
-  if (!g.xr && (app->pending_resize || g.need_recreate)) {
-    app->pending_resize = false;
+  if (!g.xr && (app->proc->pending_resize || g.need_recreate)) {
+    app->proc->pending_resize = false;
     g.need_recreate = false;
     if (!vkb_recreate_swapchain())
       g.need_recreate = true; // minimized etc.; retry next frame
