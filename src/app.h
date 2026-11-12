@@ -1,14 +1,4 @@
 #pragma once
-#include <SDL3/SDL.h>
-#ifndef __EMSCRIPTEN__
-// SDL_GPU headers only exist on the native build.
-#include <SDL3/SDL_gpu.h>
-#else
-// emdawnwebgpu port supplies webgpu/webgpu.h. Defining types here keeps the
-// App struct WGPU fields real (opaque pointer typedefs) instead of void*
-// placeholders.
-#include <webgpu/webgpu.h>
-#endif
 #include "audio.h"
 #include "capture.h"
 #include "digest.h"
@@ -20,6 +10,7 @@
 #include "pipeline.h"
 #include "profile.h"
 #include "resources.h"
+#include <SDL3/SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -68,23 +59,6 @@ typedef struct LubDebugHooks {
 
 typedef struct App {
   SDL_Window *window;
-
-#ifdef __EMSCRIPTEN__
-  // WGPU state. backend_webgpu.c creates these in init and tears them down
-  // in shutdown. The surface lives across resizes; depth_stencil + the
-  // current swapchain view get rebuilt when canvas extents change.
-  WGPUInstance wgpu_instance;
-  WGPUDevice wgpu_device;
-  WGPUSurface wgpu_surface;
-  WGPUTextureFormat wgpu_surface_format; // WGPUTextureFormat_BGRA8Unorm
-  WGPUTexture wgpu_depth_tex;
-  WGPUTextureView wgpu_depth_view;
-  // Per-frame: acquired from wgpuSurfaceGetCurrentTexture in begin_frame,
-  // released in end_frame. begin_pass reads it to populate the swapchain
-  // attachment.
-  WGPUTexture wgpu_swapchain_tex;
-  WGPUTextureView wgpu_swapchain_view;
-#endif // __EMSCRIPTEN__
 
   PassState pass;
   ProfileState profile;
@@ -181,17 +155,6 @@ typedef struct App {
   // app_frame_end が各 free_fn で解放する。
   struct FrameGarbage *frame_garbage;
   int frame_garbage_count, frame_garbage_cap;
-
-#ifndef __EMSCRIPTEN__
-  // SDL3 GPU backend state. Owned/used by backend_sdlgpu.c only.
-  SDL_GPUDevice *gpu_device;
-  SDL_GPUTexture *gpu_swapchain_tex; // current frame の swapchain
-  SDL_GPUCommandBuffer *gpu_cmd;     // current frame
-  SDL_GPUTexture *gpu_depth_tex;     // swapchain-sized depth/stencil target
-  int gpu_depth_w;
-  int gpu_depth_h;
-  SDL_GPUTextureFormat gpu_depth_fmt;
-#endif // __EMSCRIPTEN__
 
   // VM を作り直した後の OnInit の間だけ true。
   // backend の後なので、App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
