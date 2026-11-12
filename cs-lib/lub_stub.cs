@@ -436,7 +436,11 @@ namespace Lub
         }
 
         /// <summary>別の app を key で宣言する。
-        /// module は tcs VM の bytecode (.tcsb) の path、entry はその中の entry class (IL の名前。省くと module の basename)。
+        /// module は tcs VM の bytecode (.tcsb) か、ゲームの .csproj の path。entry はその中の entry class (IL の名前。省くと module の basename)。
+        /// .csproj は `lub <Entry>.csproj` と同じに build して watch し、ソースを保存すると開いた app だけに hot reload を当てる。
+        /// build を待つ間は `Step` が false を返し、この app は止まらない。
+        /// .csproj の app のソースは tcs の --trace で変換し、csproj の overlay は呼ばない。
+        /// .csproj を開けるのは `lub <Entry>.csproj` の player だけで、web では .tcsb を開く。
         /// 開かれた app は自分の VM、key の資源、物理、音を持ち、この app とは何も共有しない。
         /// 宣言が途切れると、資源と同じ規則で閉じる (`OnQuit` を呼ぶ)。
         /// 同じ key で module か entry を変えると、閉じて開き直す。

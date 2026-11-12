@@ -422,7 +422,7 @@ bool vm_project_scan(VmProject *proj) {
 }
 
 int vm_project_args(VmProject *proj, const char **args, int max) {
-  static char exports[2][320];
+  char (*exports)[320] = proj->exports;
   int n = 0;
   args[n++] = "--inputs-from";
   args[n++] = proj->list_path;
@@ -445,13 +445,15 @@ int vm_project_args(VmProject *proj, const char **args, int max) {
   }
   args[n++] = "-o";
   args[n++] = proj->out_tcsb;
-  SDL_snprintf(exports[0], sizeof(exports[0]), "%s.*", proj->entry);
+  SDL_snprintf(exports[0], sizeof(proj->exports[0]), "%s.*", proj->entry);
   args[n++] = "--export";
   args[n++] = exports[0];
   if (proj->overlay[0]) {
-    SDL_snprintf(exports[1], sizeof(exports[1]), "%s.*", proj->overlay);
+    SDL_snprintf(exports[1], sizeof(proj->exports[1]), "%s.*", proj->overlay);
     args[n++] = "--export";
     args[n++] = exports[1];
+  }
+  if (proj->overlay[0] || proj->trace) {
     // ゲームのソースを --trace にする (overlay のディレクトリは除く。entry と同じなら entry も除かれる)
     for (int i = 0; i < proj->ndirs && n < max - 2; i++) {
       if (SDL_strcmp(proj->dirs[i], proj->overlay_dir) == 0)
