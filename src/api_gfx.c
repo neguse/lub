@@ -253,7 +253,7 @@ void lub_gfx_size(LubContext *ctx, int32_t *out_w, int32_t *out_h) {
   App *app = lub_api_app(ctx);
   int x = 0, y = 0, w = 0, h = 0;
   if (app && app->proc->window)
-    lub_host_main_rect(app, &x, &y, &w, &h);
+    lub_host_main_rect(app->proc, &x, &y, &w, &h);
   if (w <= 0)
     w = 1280;
   if (h <= 0)
@@ -528,7 +528,7 @@ static bool is_frame_range_handle(LubHandle h) {
 // このフレームの範囲でなければ NULL。
 static const FrameRangeEntry *frame_range_entry(App *app, LubHandle h) {
   struct GfxFrameRanges *r = app->frame_ranges;
-  if (!r || !app->in_frame || r->frame != (int64_t)app->frame_index)
+  if (!r || !app->proc->in_frame || r->frame != (int64_t)app->frame_index)
     return NULL;
   uint32_t index = ((uint32_t)h - r->first_id) & FRAME_RANGE_ID_MASK;
   return index < (uint32_t)r->count ? &r->items[index] : NULL;
@@ -547,7 +547,7 @@ static LubStatus frame_buffer_check(App *app, const char *fn, int32_t type,
   }
   if (!require_backend(app, fn))
     return LUB_ERROR;
-  if (!app->in_frame)
+  if (!app->proc->in_frame)
     return lub_api_fail(app, "%s: only available inside a frame", fn);
   if (type != SGL_BUFFER_INDEX && type != SGL_BUFFER_STORAGE)
     return lub_api_fail(app, "%s: only INDEX/STORAGE are supported", fn);
@@ -1839,7 +1839,7 @@ LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x, int32_t y,
       dd.uniform_count++;
     }
   }
-  g_backend->dispatch(app, &dd);
+  g_backend->dispatch(app->proc, &dd);
   return LUB_OK;
 }
 
@@ -2024,7 +2024,7 @@ static void rb_enqueue(App *app, RbQueue *q, LubHandle tex, int32_t token) {
   RbItem *it = &q->items[tail];
   rb_item_clear(it);
   it->token = token;
-  it->due_frame = app->in_frame ? (int64_t)app->frame_index + 2 : 0;
+  it->due_frame = app->proc->in_frame ? (int64_t)app->frame_index + 2 : 0;
   q->count++;
   ResEntry *e = res_table_get_by_handle(&app->res, tex);
   if (!e || e->kind != RES_TEXTURE || e->u.tex.h == 0) {
@@ -2045,7 +2045,7 @@ static void rb_enqueue(App *app, RbQueue *q, LubHandle tex, int32_t token) {
     return;
   }
   BackendReadback req = 0;
-  if (!g_backend->request_readback_image(app, e->u.tex.h, e->u.tex.w,
+  if (!g_backend->request_readback_image(app->proc, e->u.tex.h, e->u.tex.w,
                                          e->u.tex.h_, e->u.tex.fmt, &req) ||
       !req) {
     it->error = SDL_strdup("read_texture: backend readback request failed");

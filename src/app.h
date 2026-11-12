@@ -98,6 +98,17 @@ typedef struct Process {
   uint64_t fps_fixed_ns;
   uint64_t fps_last_ns;
   int fps_frame_count;
+
+  // 画面の frame の番号 (backend、画面の capture、GPU の時刻が使う)。
+  // App の frame_index はゲームから見える frame の番号で、別に数える。
+  uint64_t frame_index;
+  // app_frame_begin から app_frame_end までの間 true (backend の begin_frame から end_frame まで)。
+  bool in_frame;
+  // 画面の capture (--capture)
+  CaptureState capture;
+  bool capture_then_exit; // set by app_frame_end after a successful capture
+  // window の close と XR の session の終わりが立てる (App.Quit は App の quit_requested)
+  bool quit_requested;
 } Process;
 
 typedef struct App {
@@ -119,20 +130,15 @@ typedef struct App {
   // 同じ key の違う version の宣言が同じ呼び出しの中か (矛盾か) を見る。
   // 0 は「まだ宣言していない」に使うので 1 から始める。
   uint64_t declare_epoch;
-  // app_frame_begin から app_frame_end までの間 true。
-  bool in_frame;
   // resource の寿命を数える frame 番号。
   // OnFrame が error で終わった frame (VM が無い frame を含む) では進まないので、直している間は sweep されない。
   int64_t resource_frame;
 
-  // Offscreen capture
-  CaptureState capture;
-  DigestState digest;     // --digest (host opts)
-  bool capture_then_exit; // set by app_frame_end after a successful capture
-  int last_w, last_h;     // last extents seen by app_frame_begin
-  int cfg_w, cfg_h;       // App.Config の Width / Height。0 = 既定維持
-  bool quit_requested;    // App.Quit と window の close が立てる
-  int32_t exit_code;      // Quit の code (0 = 成功)
+  DigestState digest;  // --digest (host opts)
+  int last_w, last_h;  // last extents seen by app_frame_begin
+  int cfg_w, cfg_h;    // App.Config の Width / Height。0 = 既定維持
+  bool quit_requested; // App.Quit が立てる
+  int32_t exit_code;   // Quit の code (0 = 成功)
   // App.Restart が立て、player が frame の終わりに作り直す
   bool restart_requested;
 

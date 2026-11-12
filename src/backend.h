@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-struct App;
+struct Process;
 
 // Opaque handles. Each backend casts integer IDs or pointers into uintptr_t.
 typedef uintptr_t BackendBuffer;
@@ -82,6 +82,8 @@ typedef struct PassBeginDesc {
   SglLoadAction load;
   // Swapchain passes only: -1 = the window, 0 / 1 = that XR eye's image.
   int xr_eye;
+  // Write GPU timestamps around this pass (gpu_time_wants_pass, gpu_time.h).
+  bool timed;
 } PassBeginDesc;
 
 typedef struct BindingsDesc {
@@ -163,14 +165,14 @@ typedef struct BackendFrameRange {
 typedef struct RenderBackend {
   const char *name;
 
-  bool (*init)(struct App *app);
-  void (*shutdown)(struct App *app);
+  bool (*init)(struct Process *proc);
+  void (*shutdown)(struct Process *proc);
 
   // When begin_frame gets no swapchain image (none returned in time, window
   // hidden), the frame still runs once (OnFrame, offscreen passes, compute);
   // swapchain passes and the present are skipped.
-  void (*begin_frame)(struct App *app, int *out_w, int *out_h);
-  void (*end_frame)(struct App *app);
+  void (*begin_frame)(struct Process *proc, int *out_w, int *out_h);
+  void (*end_frame)(struct Process *proc);
 
   BackendBuffer (*make_buffer)(SglBufferType type, const void *data,
                                size_t bytes);
@@ -190,8 +192,8 @@ typedef struct RenderBackend {
   bool (*frame_buffer)(SglBufferType type, const void *data, size_t bytes,
                        BackendFrameRange *out);
 
-  void (*begin_pass)(struct App *app, const PassBeginDesc *);
-  void (*end_pass)(struct App *app);
+  void (*begin_pass)(struct Process *proc, const PassBeginDesc *);
+  void (*end_pass)(struct Process *proc);
 
   void (*apply_pipeline)(BackendPipeline);
   void (*apply_bindings)(const BindingsDesc *);
@@ -205,13 +207,13 @@ typedef struct RenderBackend {
   // Compute dispatch (outside any render pass). The backend opens its own
   // compute pass internally; the call must not be made between begin_pass
   // and end_pass.
-  void (*dispatch)(struct App *app, const ComputeDispatchDesc *);
+  void (*dispatch)(struct Process *proc, const ComputeDispatchDesc *);
 
   // A request made inside a frame reads what the frame recorded before it.
-  // Outside a frame (app->in_frame false) no frame submit follows, so the
+  // Outside a frame (proc->in_frame false) no frame submit follows, so the
   // backend finishes it before returning when it can.
-  bool (*request_readback_image)(struct App *app, BackendImage image, int w,
-                                 int h, SglPixelFormat src_fmt,
+  bool (*request_readback_image)(struct Process *proc, BackendImage image,
+                                 int w, int h, SglPixelFormat src_fmt,
                                  BackendReadback *out);
   // wait: block until the GPU has finished the request instead of returning
   // PENDING (ignored when cannot_block_on_gpu).
@@ -219,12 +221,12 @@ typedef struct RenderBackend {
                                       ReadbackResult *out);
   void (*destroy_readback)(BackendReadback req);
 
-  bool (*capture)(struct App *app, const char *path);
+  bool (*capture)(struct Process *proc, const char *path);
   bool capture_before_end_frame;
 
   // Pipeline cache uses this as part of its key — every backend must
   // return the swapchain's color format for the current frame.
-  SglPixelFormat (*swapchain_color_format)(struct App *app);
+  SglPixelFormat (*swapchain_color_format)(struct Process *proc);
 
   // The backend cannot block on GPU work (webgpu: a buffer map completes only
   // after control returns to the browser), so poll_readback ignores wait.
@@ -234,13 +236,13 @@ typedef struct RenderBackend {
   // Set instead of capture by a backend that cannot_block_on_gpu: copies the
   // swapchain into a readback, and capture.c writes the PNG once
   // poll_readback is READY.
-  bool (*request_capture)(struct App *app, BackendReadback *out);
+  bool (*request_capture)(struct Process *proc, BackendReadback *out);
   // The backend binds only whole buffers, so a buffer's capacity is what the
   // shader sees and must equal the declared size.
   bool binds_whole_buffers;
   // GPU の時刻を、この frame の index 番目として書く (gpu_time.h)。書けたら true。
   // 測れない backend は NULL。書いた時刻は、その frame を GPU が終えた後に gpu_time_resolved で返す
-  bool (*timestamp)(struct App *app, uint32_t index);
+  bool (*timestamp)(struct Process *proc, uint32_t index);
 } RenderBackend;
 
 extern const RenderBackend *g_backend;

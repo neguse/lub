@@ -1,4 +1,5 @@
 #include "pass.h"
+#include "app.h"
 #include "backend.h"
 #include "gpu_time.h"
 #include <SDL3/SDL.h>
@@ -30,7 +31,7 @@ void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
     return;
   }
   SglPixelFormat use_fmt =
-      target_image ? fmt : g_backend->swapchain_color_format(p->app);
+      target_image ? fmt : g_backend->swapchain_color_format(p->app->proc);
   PassBeginDesc d = {
       .n_color_targets = 1,
       .targets = {target_image},
@@ -43,8 +44,9 @@ void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
       .depth_fmt = SGL_PF_DEPTH24_STENCIL8,
       .load = load,
       .xr_eye = target_image ? -1 : xr_eye,
+      .timed = gpu_time_wants_pass(p->app),
   };
-  g_backend->begin_pass(p->app, &d);
+  g_backend->begin_pass(p->app->proc, &d);
   gpu_time_pass_begin(p->app, p->label);
   p->label = NULL;
   p->in_pass = true;
@@ -80,6 +82,7 @@ void pass_state_begin_ex(PassState *p, int n_targets, const uintptr_t *targets,
   d.has_depth = (depth_target != 0);
   d.load = load;
   d.xr_eye = -1;
+  d.timed = gpu_time_wants_pass(p->app);
   for (int i = 0; i < n_targets; ++i) {
     d.targets[i] = targets[i];
     d.color_fmts[i] = fmts[i];
@@ -88,7 +91,7 @@ void pass_state_begin_ex(PassState *p, int n_targets, const uintptr_t *targets,
     d.clear[i][2] = clears[i][2];
     d.clear[i][3] = clears[i][3];
   }
-  g_backend->begin_pass(p->app, &d);
+  g_backend->begin_pass(p->app->proc, &d);
   gpu_time_pass_begin(p->app, p->label);
   p->label = NULL;
   p->in_pass = true;
@@ -106,6 +109,6 @@ void pass_state_end(PassState *p) {
     return;
   }
   gpu_time_pass_end(p->app);
-  g_backend->end_pass(p->app);
+  g_backend->end_pass(p->app->proc);
   p->in_pass = false;
 }

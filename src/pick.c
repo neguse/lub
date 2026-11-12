@@ -411,8 +411,8 @@ static ReplayResult replay(App *app, PickState *p) {
   }
   pass_state_end(&app->pass);
   if (!g_backend->request_readback_image ||
-      !g_backend->request_readback_image(app, p->color, w, h, SGL_PF_RGBA8,
-                                         &p->readback))
+      !g_backend->request_readback_image(app->proc, p->color, w, h,
+                                         SGL_PF_RGBA8, &p->readback))
     return REPLAY_NOTHING;
   // 結果の呼び出し元は draw の番号で引くので、読み戻しが届くまで残す
   free_sites(p);

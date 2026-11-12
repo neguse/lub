@@ -12,9 +12,9 @@ bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out);
 
 // window 座標 (SDL の mouse) から framebuffer pixel への倍率。
 // 高 pixel 密度の window (metal backend) 以外は 1。
-float lub_host_pixel_density(App *app);
+float lub_host_pixel_density(Process *proc);
 
 // main target の矩形 (framebuffer pixel)。
 // ノッチや home indicator のある端末では safe area で、ゲームの描画と入力の原点はこの左上になる。
 // それ以外は window 全体 (x = y = 0)。
-void lub_host_main_rect(App *app, int *x, int *y, int *w, int *h);
+void lub_host_main_rect(Process *proc, int *x, int *y, int *w, int *h);

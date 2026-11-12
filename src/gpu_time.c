@@ -46,7 +46,7 @@ static int32_t g_out_cap;
 
 void gpu_time_enable(App *app, bool on) {
   if (on && !g_on)
-    g_from = app->frame_index + (app->in_frame ? 1 : 0);
+    g_from = app->proc->frame_index + (app->proc->in_frame ? 1 : 0);
   g_on = on;
   g_cur = NULL;
 }
@@ -59,8 +59,8 @@ static void copy_str(char *dst, size_t cap, const char *src) {
 
 // 描き先の名前の無い pass は lub の中の pass (Gfx.Pick の描き直し)
 static bool wants(App *app, const char *target) {
-  return g_on && app->in_frame && !app->in_overlay && target &&
-         app->frame_index >= g_from;
+  return g_on && app->proc->in_frame && !app->in_overlay && target &&
+         app->proc->frame_index >= g_from;
 }
 
 bool gpu_time_wants_pass(App *app) { return wants(app, app->pass.label); }
@@ -74,13 +74,13 @@ void gpu_time_pass_begin(App *app, const char *target) {
   char site[sizeof(g_cur->site)] = "";
   if (app->debug_hooks && app->debug_hooks->profile_site)
     app->debug_hooks->profile_site(app, site, (int32_t)sizeof site);
-  GpuFrame *f = &g_frames[app->frame_index % GPU_TIME_FRAMES];
-  if (f->used && f->frame != app->frame_index)
+  GpuFrame *f = &g_frames[app->proc->frame_index % GPU_TIME_FRAMES];
+  if (f->used && f->frame != app->proc->frame_index)
     flush(f, NULL, 0);
   if (!f->used) {
     f->used = true;
     f->waiting = false;
-    f->frame = app->frame_index;
+    f->frame = app->proc->frame_index;
     f->n = 0;
   }
   if (f->n >= GPU_TIME_PASSES)
@@ -90,13 +90,13 @@ void gpu_time_pass_begin(App *app, const char *target) {
   copy_str(g_cur->site, sizeof g_cur->site, site);
   copy_str(g_cur->target, sizeof g_cur->target, target);
   g_cur->draws = 0;
-  if (g_backend->timestamp && g_backend->timestamp(app, 2 * g_cur_index))
+  if (g_backend->timestamp && g_backend->timestamp(app->proc, 2 * g_cur_index))
     f->waiting = true;
 }
 
 void gpu_time_pass_end(App *app) {
   if (g_cur && g_backend->timestamp)
-    g_backend->timestamp(app, 2 * g_cur_index + 1);
+    g_backend->timestamp(app->proc, 2 * g_cur_index + 1);
   g_cur = NULL;
 }
 
@@ -139,8 +139,8 @@ static void flush(GpuFrame *f, const uint64_t *ns, uint32_t count) {
 
 void gpu_time_frame_end(App *app) {
   g_cur = NULL;
-  GpuFrame *f = &g_frames[app->frame_index % GPU_TIME_FRAMES];
-  if (f->used && f->frame == app->frame_index && !f->waiting)
+  GpuFrame *f = &g_frames[app->proc->frame_index % GPU_TIME_FRAMES];
+  if (f->used && f->frame == app->proc->frame_index && !f->waiting)
     flush(f, NULL, 0);
 }
 

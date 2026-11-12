@@ -115,16 +115,16 @@ void export_copy(const char *src, const char *path) {
 
 static uintptr_t next_handle(void) { return g_next_handle++; }
 
-static bool ex_init(App *app) {
-  (void)app;
+static bool ex_init(Process *proc) {
+  (void)proc;
   return true;
 }
-static void ex_shutdown(App *app) { (void)app; }
+static void ex_shutdown(Process *proc) { (void)proc; }
 
-static void ex_begin_frame(App *app, int *out_w, int *out_h) {
-  SDL_GetWindowSizeInPixels(app->proc->window, out_w, out_h);
+static void ex_begin_frame(Process *proc, int *out_w, int *out_h) {
+  SDL_GetWindowSizeInPixels(proc->window, out_w, out_h);
 }
-static void ex_end_frame(App *app) { (void)app; }
+static void ex_end_frame(Process *proc) { (void)proc; }
 
 static BackendBuffer ex_make_buffer(SglBufferType type, const void *data,
                                     size_t bytes) {
@@ -164,11 +164,11 @@ static bool ex_frame_buffer(SglBufferType type, const void *data, size_t bytes,
   return true;
 }
 
-static void ex_begin_pass(App *app, const PassBeginDesc *desc) {
-  (void)app;
+static void ex_begin_pass(Process *proc, const PassBeginDesc *desc) {
+  (void)proc;
   (void)desc;
 }
-static void ex_end_pass(App *app) { (void)app; }
+static void ex_end_pass(Process *proc) { (void)proc; }
 static void ex_apply_pipeline(BackendPipeline p) { (void)p; }
 static void ex_apply_bindings(const BindingsDesc *b) { (void)b; }
 static void ex_apply_uniforms(SglShaderStage stage, int ub_slot,
@@ -189,15 +189,15 @@ static void ex_set_scissor(int x, int y, int w, int h) {
   (void)w;
   (void)h;
 }
-static void ex_dispatch(App *app, const ComputeDispatchDesc *desc) {
-  (void)app;
+static void ex_dispatch(Process *proc, const ComputeDispatchDesc *desc) {
+  (void)proc;
   (void)desc;
 }
 
-static bool ex_request_readback_image(App *app, BackendImage image, int w,
+static bool ex_request_readback_image(Process *proc, BackendImage image, int w,
                                       int h, SglPixelFormat src_fmt,
                                       BackendReadback *out) {
-  (void)app;
+  (void)proc;
   (void)image;
   (void)w;
   (void)h;
@@ -214,14 +214,14 @@ static ReadbackPollStatus ex_poll_readback(BackendReadback req, bool wait,
 }
 static void ex_destroy_readback(BackendReadback req) { (void)req; }
 
-static bool ex_capture(App *app, const char *path) {
-  (void)app;
+static bool ex_capture(Process *proc, const char *path) {
+  (void)proc;
   (void)path;
   return false;
 }
 
-static SglPixelFormat ex_swapchain_color_format(App *app) {
-  (void)app;
+static SglPixelFormat ex_swapchain_color_format(Process *proc) {
+  (void)proc;
   return SGL_PF_BGRA8;
 }
 

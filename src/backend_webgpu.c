@@ -33,11 +33,11 @@ EM_JS(int, wg_canvas_height, (void),
       { return (window._canvasHeight || 0) | 0; })
 // clang-format on
 
-static void wg_target_size(App *app, int *w, int *h) {
+static void wg_target_size(Process *proc, int *w, int *h) {
   *w = wg_canvas_width();
   *h = wg_canvas_height();
   if (*w <= 0 || *h <= 0)
-    SDL_GetWindowSizeInPixels(app->proc->window, w, h);
+    SDL_GetWindowSizeInPixels(proc->window, w, h);
 }
 
 // ---- helpers ---------------------------------------------------------------
@@ -614,7 +614,7 @@ static void wg_release_xr(void) {
   g_xr_width = g_xr_height = 0;
 }
 
-static bool wg_prepare_xr(App *app, int width, int height) {
+static bool wg_prepare_xr(Process *proc, int width, int height) {
   if (g_xr_width == width && g_xr_height == height)
     return true;
   wg_release_xr();
@@ -658,7 +658,7 @@ fail:
 
 // Runs from wg_begin_frame before the frame's encoder records anything, so
 // only submitted work has used the old depth texture.
-static bool wg_recreate_depth(App *app, uint32_t w, uint32_t h) {
+static bool wg_recreate_depth(Process *proc, uint32_t w, uint32_t h) {
   if (g_depth_view) {
     wgpuTextureViewRelease(g_depth_view);
     gpu_stats_destroy(GPU_STAT_VIEW, 0);
@@ -696,7 +696,7 @@ static bool wg_recreate_depth(App *app, uint32_t w, uint32_t h) {
   return true;
 }
 
-static void wg_configure_surface(App *app, uint32_t w, uint32_t h) {
+static void wg_configure_surface(Process *proc, uint32_t w, uint32_t h) {
   // CopySrc: wg_capture (golden test) が swapchain texture を readback する。
   WGPUSurfaceConfiguration cfg = {
       .device = g_dev,
@@ -794,7 +794,7 @@ static void wg_ts_mapped(WGPUMapAsyncStatus status, WGPUStringView message,
 }
 
 // map の終わった組を返し、この frame の組を決める
-static void wg_ts_begin_frame(App *app) {
+static void wg_ts_begin_frame(Process *proc) {
   for (int r = 0; r < WG_TS_FRAMES; r++) {
     WgTsFrame *t = &g_ts[r];
     if (!t->busy || !(t->mapped || t->failed))
@@ -815,10 +815,10 @@ static void wg_ts_begin_frame(App *app) {
   }
   g_ts_cur = NULL;
   g_ts_last = -1;
-  WgTsFrame *t = &g_ts[app->frame_index % WG_TS_FRAMES];
+  WgTsFrame *t = &g_ts[proc->frame_index % WG_TS_FRAMES];
   if (!g_ts_set || !gpu_time_enabled() || t->busy)
     return;
-  t->frame = app->frame_index;
+  t->frame = proc->frame_index;
   t->passes = 0;
   t->count = 0;
   for (int i = 0; i < GPU_TIME_PASSES; i++)
@@ -855,8 +855,8 @@ static void wg_ts_map(void) {
                      2 * t->passes * sizeof(uint64_t), cb);
 }
 
-static bool wg_timestamp(App *app, uint32_t index) {
-  (void)app;
+static bool wg_timestamp(Process *proc, uint32_t index) {
+  (void)proc;
   WgTsFrame *t = g_ts_cur;
   if (!t || index >= GPU_TIME_STAMPS)
     return false;
@@ -874,7 +874,7 @@ static bool wg_timestamp(App *app, uint32_t index) {
   return true;
 }
 
-static bool wg_init(App *app) {
+static bool wg_init(Process *proc) {
   g_dev = emscripten_webgpu_get_device();
   if (!g_dev) {
     SDL_Log("[webgpu] emscripten_webgpu_get_device returned NULL");
@@ -903,9 +903,9 @@ static bool wg_init(App *app) {
   g_surface_format = WGPUTextureFormat_BGRA8Unorm;
   g_queue = wgpuDeviceGetQueue(g_dev);
   int cw, ch;
-  wg_target_size(app, &cw, &ch);
-  wg_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
-  if (!wg_recreate_depth(app, (uint32_t)cw, (uint32_t)ch))
+  wg_target_size(proc, &cw, &ch);
+  wg_configure_surface(proc, (uint32_t)cw, (uint32_t)ch);
+  if (!wg_recreate_depth(proc, (uint32_t)cw, (uint32_t)ch))
     return false;
 
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
@@ -942,7 +942,7 @@ static bool wg_init(App *app) {
   return true;
 }
 
-static void wg_shutdown(App *app) {
+static void wg_shutdown(Process *proc) {
   wg_ts_shutdown();
   wg_destroy_image((BackendImage)g_dummy_tex);
   wg_destroy_buffer((BackendBuffer)g_dummy_sbuf);
@@ -1017,8 +1017,8 @@ static void wg_submit_enc(void) {
   wg_destroy_retired();
 }
 
-static void wg_begin_frame(App *app, int *out_w, int *out_h) {
-  wg_ts_begin_frame(app);
+static void wg_begin_frame(Process *proc, int *out_w, int *out_h) {
+  wg_ts_begin_frame(proc);
   lubwebxr_begin();
   g_xr_drawn[0] = g_xr_drawn[1] = false;
   g_xr_copied = false;
@@ -1030,17 +1030,17 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   wg_bg_cache_sweep();
 
   int cw, ch;
-  wg_target_size(app, &cw, &ch);
+  wg_target_size(proc, &cw, &ch);
 
   bool xr = lubwebxr_active();
   WGPUTextureFormat format =
       xr ? WGPUTextureFormat_RGBA8Unorm : WGPUTextureFormat_BGRA8Unorm;
-  bool needs_resize = app->proc->pending_resize || g_surface_format != format ||
-                      (app->proc->last_w != 0 && cw != app->proc->last_w) ||
-                      (app->proc->last_h != 0 && ch != app->proc->last_h);
+  bool needs_resize = proc->pending_resize || g_surface_format != format ||
+                      (proc->last_w != 0 && cw != proc->last_w) ||
+                      (proc->last_h != 0 && ch != proc->last_h);
   if (needs_resize) {
     g_surface_format = format;
-    app->proc->pending_resize = false;
+    proc->pending_resize = false;
     if (g_swapchain_view) {
       wgpuTextureViewRelease(g_swapchain_view);
       gpu_stats_destroy(GPU_STAT_SURFACE_VIEW, 0);
@@ -1051,8 +1051,8 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
       gpu_stats_destroy(GPU_STAT_SURFACE_TEXTURE, 0);
       g_swapchain_tex = NULL;
     }
-    wg_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
-    if (!wg_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) {
+    wg_configure_surface(proc, (uint32_t)cw, (uint32_t)ch);
+    if (!wg_recreate_depth(proc, (uint32_t)cw, (uint32_t)ch)) {
       if (out_w)
         *out_w = cw;
       if (out_h)
@@ -1074,8 +1074,8 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
     if (surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Outdated ||
         surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Lost ||
         surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Timeout) {
-      wg_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
-      if (!wg_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) {
+      wg_configure_surface(proc, (uint32_t)cw, (uint32_t)ch);
+      if (!wg_recreate_depth(proc, (uint32_t)cw, (uint32_t)ch)) {
         if (out_w)
           *out_w = cw;
         if (out_h)
@@ -1099,7 +1099,7 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
     uint32_t sw = wgpuTextureGetWidth(surf_tex.texture);
     uint32_t sh = wgpuTextureGetHeight(surf_tex.texture);
     if ((int)sw != cw || (int)sh != ch) {
-      if (!wg_recreate_depth(app, sw, sh))
+      if (!wg_recreate_depth(proc, sw, sh))
         SDL_Log("[webgpu] depth recreate failed for %ux%u", sw, sh);
       cw = (int)sw;
       ch = (int)sh;
@@ -1115,7 +1115,7 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   WGPUCommandEncoderDescriptor enc_desc = {0};
   g_enc = wgpuDeviceCreateCommandEncoder(g_dev, &enc_desc);
   if (xr) {
-    if (!wg_prepare_xr(app, cw / 2, ch))
+    if (!wg_prepare_xr(proc, cw / 2, ch))
       SDL_Log("[webgpu] XR targets unavailable");
   } else if (g_xr_width)
     wg_release_xr();
@@ -1128,7 +1128,7 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
 
 // Puts the drawn eyes side by side on the surface.
 // The capture of an XR frame needs this before end_frame does.
-static void wg_copy_xr_eyes(App *app) {
+static void wg_copy_xr_eyes(Process *proc) {
   if (g_xr_copied || !g_xr_width || !g_swapchain_tex)
     return;
   g_xr_copied = true;
@@ -1145,10 +1145,10 @@ static void wg_copy_xr_eyes(App *app) {
   }
 }
 
-static void wg_end_frame(App *app) {
+static void wg_end_frame(Process *proc) {
   // Submit the command buffer.
   if (g_enc) {
-    wg_copy_xr_eyes(app);
+    wg_copy_xr_eyes(proc);
     wg_ts_resolve();
     wg_submit_enc();
     wg_ts_map();
@@ -1823,7 +1823,7 @@ static void wg_update_image(BackendImage h, const void *data, size_t bytes) {
 
 // ---- pass begin / end ------------------------------------------------------
 
-static void wg_begin_pass(App *app, const PassBeginDesc *d) {
+static void wg_begin_pass(Process *proc, const PassBeginDesc *d) {
   g_ts_last = -1;
   if (!g_enc)
     return;
@@ -1896,8 +1896,7 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
   }
 
   WGPUPassTimestampWrites tsw;
-  if (g_ts_cur && g_ts_cur->passes < GPU_TIME_PASSES &&
-      gpu_time_wants_pass(app)) {
+  if (g_ts_cur && g_ts_cur->passes < GPU_TIME_PASSES && d->timed) {
     uint32_t base = (uint32_t)(g_ts_cur - g_ts) * GPU_TIME_STAMPS;
     uint32_t k = g_ts_cur->passes++;
     tsw = (WGPUPassTimestampWrites){
@@ -1922,8 +1921,8 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
       w = d->target_w;
       h = d->target_h;
     } else {
-      w = app->proc->last_w;
-      h = app->proc->last_h;
+      w = proc->last_w;
+      h = proc->last_h;
     }
     wgpuRenderPassEncoderSetViewport(g_rpass, 0, 0, (float)w, (float)h, 0.f,
                                      1.f);
@@ -1936,8 +1935,8 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
   memset(&g_bound, 0, sizeof(g_bound));
 }
 
-static void wg_end_pass(App *app) {
-  (void)app;
+static void wg_end_pass(Process *proc) {
+  (void)proc;
   if (g_rpass) {
     wgpuRenderPassEncoderEnd(g_rpass);
     wgpuRenderPassEncoderRelease(g_rpass);
@@ -2194,8 +2193,8 @@ static void wg_set_scissor(int x, int y, int w, int h) {
                                       (uint32_t)w, (uint32_t)h);
 }
 
-static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
-  (void)app;
+static void wg_dispatch(Process *proc, const ComputeDispatchDesc *d) {
+  (void)proc;
   if (!d || !d->pipeline || !d->refl || !g_enc)
     return;
 
@@ -2354,7 +2353,7 @@ static void wg_readback_callback(WGPUMapAsyncStatus status,
 
 // Copies tex into a mappable buffer after the work recorded so far and starts
 // the map; poll_readback returns the result once the map has completed.
-static bool wg_readback_texture(App *app, WGPUTexture tex, int w, int h,
+static bool wg_readback_texture(Process *proc, WGPUTexture tex, int w, int h,
                                 SglPixelFormat src_fmt, BackendReadback *out) {
   int bpp = wg_readback_bpp(src_fmt);
   if (bpp == 0)
@@ -2432,15 +2431,15 @@ static bool wg_readback_texture(App *app, WGPUTexture tex, int w, int h,
   return true;
 }
 
-static bool wg_request_readback_image(App *app, BackendImage image, int w,
+static bool wg_request_readback_image(Process *proc, BackendImage image, int w,
                                       int h, SglPixelFormat src_fmt,
                                       BackendReadback *out) {
   if (!out)
     return false;
   *out = 0;
-  if (!app || !image || w <= 0 || h <= 0)
+  if (!proc || !image || w <= 0 || h <= 0)
     return false;
-  return wg_readback_texture(app, ((WgImage *)image)->tex, w, h, src_fmt, out);
+  return wg_readback_texture(proc, ((WgImage *)image)->tex, w, h, src_fmt, out);
 }
 
 static ReadbackPollStatus wg_poll_readback(BackendReadback h, bool wait,
@@ -2493,9 +2492,9 @@ static void wg_destroy_readback(BackendReadback h) {
 
 // Runs before end_frame (capture_before_end_frame) because end_frame releases
 // the surface texture.
-static bool wg_capture(App *app, BackendReadback *out) {
+static bool wg_capture(Process *proc, BackendReadback *out) {
   *out = 0;
-  if (!app || !g_dev || !g_swapchain_tex)
+  if (!proc || !g_dev || !g_swapchain_tex)
     return false;
   int w = (int)wgpuTextureGetWidth(g_swapchain_tex);
   int h = (int)wgpuTextureGetHeight(g_swapchain_tex);
@@ -2508,14 +2507,14 @@ static bool wg_capture(App *app, BackendReadback *out) {
   if (xr) {
     if (!g_xr_drawn[0] || !g_xr_drawn[1])
       return false;
-    wg_copy_xr_eyes(app);
+    wg_copy_xr_eyes(proc);
   }
   // wg_begin_frame picks the surface format from the same condition.
-  return wg_readback_texture(app, g_swapchain_tex, w, h,
+  return wg_readback_texture(proc, g_swapchain_tex, w, h,
                              xr ? SGL_PF_RGBA8 : SGL_PF_BGRA8, out);
 }
 
-static SglPixelFormat wg_swapchain_color_format(App *app) {
+static SglPixelFormat wg_swapchain_color_format(Process *proc) {
   if (lubwebxr_active())
     return SGL_PF_RGBA8_SRGB;
   return g_surface_format == WGPUTextureFormat_RGBA8Unorm ? SGL_PF_RGBA8
