@@ -198,32 +198,78 @@ bool app_backend_init(App *app) {
   return true;
 }
 
-void app_frame_begin(App *app, int *out_w, int *out_h) {
+bool process_frame_waits_for_gpu(Process *proc) {
+  if (!capture_state_in_flight(&proc->capture))
+    return false;
+  if (capture_state_finish(&proc->capture))
+    proc->capture_then_exit = true;
+  return true;
+}
+
+void process_frame_begin(Process *proc, int *out_w, int *out_h) {
   int w = 0, h = 0;
-  g_backend->begin_frame(app->proc, &w, &h);
-  app->proc->in_frame = true;
+  g_backend->begin_frame(proc, &w, &h);
+  proc->in_frame = true;
   if (out_w)
     *out_w = w;
   if (out_h)
     *out_h = h;
-  app->proc->last_w = w;
-  app->proc->last_h = h;
+  proc->last_w = w;
+  proc->last_h = h;
+}
+
+// fps を 1 秒ごとに数え直す
+static void process_count_fps(Process *proc) {
+  uint64_t now_ns;
+  if (proc->fixed_frame_dt > 0.0) {
+    proc->fps_fixed_ns += (uint64_t)(proc->fixed_frame_dt * 1e9 + 0.5);
+    now_ns = proc->fps_fixed_ns;
+  } else {
+    now_ns = SDL_GetTicksNS();
+  }
+  if (proc->fps_last_ns == 0) {
+    proc->fps_last_ns = now_ns;
+    proc->fps_frame_count = 0;
+    return;
+  }
+  proc->fps_frame_count++;
+  uint64_t elapsed_ns = now_ns - proc->fps_last_ns;
+  if (elapsed_ns < 1000000000ULL)
+    return;
+  if (proc->fixed_frame_dt > 0.0) {
+    // fixed dt は float から来るので 1/dt は 60 や 80 から 1e-6 ほどずれる。1e-3 に丸めて切りのよい値にする
+    proc->actual_fps = floor(1000.0 / proc->fixed_frame_dt + 0.5) / 1000.0;
+  } else {
+    proc->actual_fps =
+        (double)proc->fps_frame_count * 1000000000.0 / (double)elapsed_ns;
+  }
+  proc->fps_last_ns = now_ns;
+  proc->fps_frame_count = 0;
+}
+
+void process_frame_submit(Process *proc) {
+  bool capture_before_end_frame =
+      g_backend && g_backend->capture_before_end_frame;
+  gpu_time_frame_end(proc);
+  if (capture_before_end_frame && capture_state_drain(&proc->capture, proc))
+    proc->capture_then_exit = true;
+  g_backend->end_frame(proc);
+  proc->in_frame = false;
+  process_count_fps(proc);
+  if (!capture_before_end_frame && capture_state_drain(&proc->capture, proc))
+    proc->capture_then_exit = true;
+}
+
+void process_frame_end(Process *proc) {
+  proc->frame_index++;
+  gpu_stats_frame(proc->frame_index, g_backend ? g_backend->name : NULL);
 }
 
 bool app_frame_waits_for_gpu(App *app) {
-  // capture の PNG を書くまで待つ。
-  // 書いた後は capture_then_exit で終わるので frame を始めない
-  if (capture_state_in_flight(&app->proc->capture)) {
-    if (capture_state_finish(&app->proc->capture))
-      app->proc->capture_then_exit = true;
-    return true;
-  }
   if (!g_backend || !g_backend->cannot_block_on_gpu)
     return false;
   // 保証するモードの readback は、この frame に渡す結果が要る
-  if (app->readback_fixed_latency && !api_gfx_readbacks_due_ready(app))
-    return true;
-  return false;
+  return app->readback_fixed_latency && !api_gfx_readbacks_due_ready(app);
 }
 
 static void app_on_shader_release(void *ctx, uintptr_t old_shader) {
@@ -232,46 +278,6 @@ static void app_on_shader_release(void *ctx, uintptr_t old_shader) {
 }
 
 void app_frame_end(App *app, bool frame_ok) {
-  bool capture_before_end_frame =
-      g_backend && g_backend->capture_before_end_frame;
-  gpu_time_frame_end(app);
-  if (capture_before_end_frame &&
-      capture_state_drain(&app->proc->capture, app->proc)) {
-    app->proc->capture_then_exit = true;
-  }
-  g_backend->end_frame(app->proc);
-  app->proc->in_frame = false;
-  uint64_t now_ns;
-  if (app->proc->fixed_frame_dt > 0.0) {
-    app->proc->fps_fixed_ns +=
-        (uint64_t)(app->proc->fixed_frame_dt * 1e9 + 0.5);
-    now_ns = app->proc->fps_fixed_ns;
-  } else {
-    now_ns = SDL_GetTicksNS();
-  }
-  if (app->proc->fps_last_ns == 0) {
-    app->proc->fps_last_ns = now_ns;
-    app->proc->fps_frame_count = 0;
-  } else {
-    app->proc->fps_frame_count++;
-    uint64_t elapsed_ns = now_ns - app->proc->fps_last_ns;
-    if (elapsed_ns >= 1000000000ULL) {
-      if (app->proc->fixed_frame_dt > 0.0) {
-        // fixed dt は float から来るので 1/dt は 60 や 80 から 1e-6 ほどずれる。1e-3 に丸めて切りのよい値にする
-        app->proc->actual_fps =
-            floor(1000.0 / app->proc->fixed_frame_dt + 0.5) / 1000.0;
-      } else {
-        app->proc->actual_fps = (double)app->proc->fps_frame_count *
-                                1000000000.0 / (double)elapsed_ns;
-      }
-      app->proc->fps_last_ns = now_ns;
-      app->proc->fps_frame_count = 0;
-    }
-  }
-  if (!capture_before_end_frame &&
-      capture_state_drain(&app->proc->capture, app->proc)) {
-    app->proc->capture_then_exit = true;
-  }
   // key で宣言する snd / readback queue の sweep。
   // 退役した snd の PCM 回収はこの後の audio_state_frame_end が行う。
   api_audio_frame_end(app);
@@ -293,8 +299,6 @@ void app_frame_end(App *app, bool frame_ok) {
   if (frame_ok)
     app->resource_frame++;
   app->frame_index++;
-  app->proc->frame_index++;
-  gpu_stats_frame(app->proc->frame_index, g_backend ? g_backend->name : NULL);
 }
 
 void app_shutdown(App *app) {

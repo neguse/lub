@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 struct App;
+struct Process;
 
 // 負荷を数えている間の、pass ごとの GPU の時間と draw の数 (Sys.TakeGpuPasses)。
 // pass.c が pass の始まりと終わりを、draw を出す所が draw を知らせる。
@@ -31,7 +32,7 @@ void gpu_time_pass_begin(struct App *app, const char *target);
 void gpu_time_pass_end(struct App *app);
 void gpu_time_draw(struct App *app);
 // backend の end_frame の前に呼ぶ
-void gpu_time_frame_end(struct App *app);
+void gpu_time_frame_end(struct Process *proc);
 // backend が frame の時刻 (ns、count 個) を返す。書かなかった時刻は GPU_TIME_NONE
 void gpu_time_resolved(uint64_t frame, const uint64_t *ns, uint32_t count);
 // 前に取り出してから届いた pass を古い順に渡す (次に呼ぶまで有効)

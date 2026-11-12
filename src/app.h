@@ -61,7 +61,7 @@ typedef struct LubDebugHooks {
 // App (VM ごとの context) は proc でこれを指す。
 typedef struct Process {
   SDL_Window *window;
-  int last_w, last_h; // last extents seen by app_frame_begin
+  int last_w, last_h; // last extents seen by process_frame_begin
   int cfg_w, cfg_h;   // App.Config の Width / Height。0 = 既定維持
   // > 0: main target をこの大きさで描く (metal backend の capture run)。
   // 画面より大きい window は縮められ、Retina では pixel が倍になるので、window の実 pixel で描くと capture の大きさが機材で変わる。
@@ -102,19 +102,18 @@ typedef struct Process {
   // 画面の frame の番号 (backend、画面の capture、GPU の時刻が使う)。
   // App の frame_index はゲームから見える frame の番号で、別に数える。
   uint64_t frame_index;
-  // app_frame_begin から app_frame_end までの間 true (backend の begin_frame から end_frame まで)。
+  // process_frame_begin から process_frame_submit までの間 true (backend の begin_frame から end_frame まで)。
   bool in_frame;
   // 画面の capture (--capture)
   CaptureState capture;
-  bool capture_then_exit; // set by app_frame_end after a successful capture
+  bool
+      capture_then_exit; // set by process_frame_submit after a successful capture
   // window の close と XR の session の終わりが立てる (App.Quit は App の quit_requested)
   bool quit_requested;
 } Process;
 
 typedef struct App {
   Process *proc;
-
-  SDL_Window *window;
 
   PassState pass;
   ProfileState profile;
@@ -135,8 +134,6 @@ typedef struct App {
   int64_t resource_frame;
 
   DigestState digest;  // --digest (host opts)
-  int last_w, last_h;  // last extents seen by app_frame_begin
-  int cfg_w, cfg_h;    // App.Config の Width / Height。0 = 既定維持
   bool quit_requested; // App.Quit が立てる
   int32_t exit_code;   // Quit の code (0 = 成功)
   // App.Restart が立て、player が frame の終わりに作り直す
@@ -200,12 +197,19 @@ void process_shutdown(Process *proc);
 bool app_init(App *app, Process *proc);
 bool app_backend_init(App *app); // call after OnInit has run; returns false
                                  // on backend init failure
-void app_frame_begin(App *app, int *out_w, int *out_h);
-// frame_ok は OnFrame が error なく終わったか (resource_frame を進めるか)。
-void app_frame_end(App *app, bool frame_ok);
-// GPU を待てない backend (cannot_block_on_gpu) で、次の frame が要る GPU の結果か capture の readback がまだ届いていなければ true。
+// 画面の frame は process_frame_begin で始まり、context の callback の後に process_frame_submit が backend に渡して見せ、context の app_frame_end の後に process_frame_end で終わる。
+// 画面の capture の readback がまだ届いていなければ true (書いた後は capture_then_exit で終わる)。
+// host はその間 frame を始めない。
+bool process_frame_waits_for_gpu(Process *proc);
+void process_frame_begin(Process *proc, int *out_w, int *out_h);
+void process_frame_submit(Process *proc);
+void process_frame_end(Process *proc);
+// GPU を待てない backend (cannot_block_on_gpu) で、この context の次の frame が要る GPU の結果がまだ届いていなければ true。
 // host はその間 frame を始めない。
 bool app_frame_waits_for_gpu(App *app);
+// context の frame の後始末 (resource の sweep、frame 有効の view の回収、digest)。
+// frame_ok は OnFrame が error なく終わったか (resource_frame を進めるか)。
+void app_frame_end(App *app, bool frame_ok);
 void app_shutdown(App *app);
 
 // Returns mtime of `path` in nanoseconds since epoch (sub-second precision;

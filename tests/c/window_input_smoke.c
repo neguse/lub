@@ -20,7 +20,7 @@ int main(void) {
   check(ctx != NULL, "lub_host_create");
   if (!ctx)
     return 1;
-  SDL_Window *window = lub_api_app(ctx)->window;
+  SDL_Window *window = lub_api_app(ctx)->proc->window;
   LubEventData event;
   while (lub_host_poll_event(ctx, &event)) {
   }
