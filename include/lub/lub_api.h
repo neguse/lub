@@ -3622,16 +3622,18 @@ LUB_API float lub_sys_seconds(LubContext *ctx);
 // を返し、記録を空にする。 tcs VM の player (lub Game.csproj) は overlay
 // (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリ
 // を除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を
-// --trace で変換する。記録が無ければ空。順番は決まっていない。
-LUB_API void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
-                                int32_t *out_count);
+// --trace で変換する。記録が無ければ空。順番は決まっていない。 app を渡す
+// と、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
+LUB_API void lub_sys_take_trace(LubContext *ctx, LubHandle app,
+                                const LubStr **out, int32_t *out_count);
 
 // TakeTrace と同じに、前に呼んでから実行した行を返し、記録を空にする。ただ
 // し、InspectPin で key に覚えた個体と同じ class の別の個体を this にして通
 // っただけの行は返さない (別の class と static のメソッドの行は返す)。 key
 // に覚えた個体が無ければ TakeTrace と同じ。 tcs VM の player だけ (ほかの
-// player ではいつも空)。
-LUB_API void lub_sys_take_trace_for(LubContext *ctx, LubStr key,
+// player ではいつも空)。 app を渡すと、`App.Use` で開いたその app を見る (省
+// くとこの app。閉じた app は空)。
+LUB_API void lub_sys_take_trace_for(LubContext *ctx, LubStr key, LubHandle app,
                                     const LubStr **out, int32_t *out_count);
 
 // tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を
@@ -3641,8 +3643,10 @@ LUB_API void lub_sys_take_trace_for(LubContext *ctx, LubStr key,
 // で囲み 40 byte で切り、null は null。 class と struct は型の名前で、field
 // が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。 List と配列
 // は [要素の数]、Dictionary は {…}。記録が無ければ空。順番は決まっていない。
-LUB_API void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
-                                 int32_t *out_count);
+// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app
+// は空)。
+LUB_API void lub_sys_take_values(LubContext *ctx, LubHandle app,
+                                 const LubTraceValue **out, int32_t *out_count);
 
 // tcs の --trace で変換した class から辿れる、今の値の木の節の子を 1 段返す。
 // path は節の C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"]
@@ -3651,28 +3655,34 @@ LUB_API void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
 // field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の
 // 順)。null の field と関数は返さない。子のうち offset 番目から count 個を返
 // す (子の数は親の節の Count)。path が辿れなければ空。 Text は TakeValues と
-// 同じ書き方。
+// 同じ書き方。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの
+// app。閉じた app は空)。
 LUB_API void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
-                             int32_t count, const LubInspectNode **out,
-                             int32_t *out_count);
+                             int32_t count, LubHandle app,
+                             const LubInspectNode **out, int32_t *out_count);
 
 // tcs の --trace で変換した class の static から幅優先で 1 回辿り、class の
 // instance を見つけた順に 1 度ずつ返す (InspectInstance)。 Path と Id は
 // Sys.Inspect と同じ書き方で、同じ object は最初に見つけた path で 1 度だけ
 // 返す。深さは static field を 1 として maxDepth まで、List と配列などの子は
 // 先頭の maxChildren 個まで辿る。 Sys.Inspect を節ごとに呼んで探すより速い
-// (path を根から辿り直さず、値の文字を作らない)。
+// (path を根から辿り直さず、値の文字を作らない)。 app を渡すと、`App.Use` で
+// 開いたその app を見る (省くとこの app。閉じた app は空)。
 LUB_API void lub_sys_inspect_instances(LubContext *ctx, int32_t max_depth,
-                                       int32_t max_children,
+                                       int32_t max_children, LubHandle app,
                                        const LubInspectInstance **out,
                                        int32_t *out_count);
 
 // path の節の object を key で弱く覚える (object の寿命は延ばさない)。path
-// が辿れないか object でなければ、key の記憶を消す。
-LUB_API void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path);
+// が辿れないか object でなければ、key の記憶を消す。 app を渡すと、`App.Use`
+// で開いたその app を見る (省くとこの app。閉じた app は空)。
+LUB_API void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path,
+                                 LubHandle app);
 
-// key で覚えた object がまだ回収されておらず、その Id が id か。
-LUB_API bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id);
+// key で覚えた object がまだ回収されておらず、その Id が id か。 app を渡す
+// と、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
+LUB_API bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id,
+                                    LubHandle app);
 
 // path の節の直近の値を count frame 分まで、古い順に返す (Rewind が控えてい
 // る分だけ。止めていれば止めている frame まで)。返した列は次の呼び出しまで有
@@ -3689,17 +3699,22 @@ LUB_API void lub_sys_inspect_history(LubContext *ctx, LubStr path,
 // の止まり、持ち越しは tcs VM の player だけが数え、GPU の pass はどの host
 // でも数える。数えている間は、別の thread が 0.25 ms ごとに経った時間を知ら
 // せ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。
-LUB_API void lub_sys_profile_lines(LubContext *ctx, bool on);
+// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app
+// は空)。
+LUB_API void lub_sys_profile_lines(LubContext *ctx, bool on, LubHandle app);
 
 // 前に呼んでから、行ごとに足した負荷を返し、0 に戻す (ProfileLine)。数えてい
-// なければ空。順番は決まっていない。
-LUB_API void lub_sys_take_profile(LubContext *ctx, const LubProfileLine **out,
+// なければ空。順番は決まっていない。 app を渡すと、`App.Use` で開いたその app
+// を見る (省くとこの app。閉じた app は空)。
+LUB_API void lub_sys_take_profile(LubContext *ctx, LubHandle app,
+                                  const LubProfileLine **out,
                                   int32_t *out_count);
 
 // 前に呼んでから GC が止めた回を、古い順に返す (直近 64 回まで。GcPause)。数
-// えていなければ空。
-LUB_API void lub_sys_take_gc_pauses(LubContext *ctx, const LubGcPause **out,
-                                    int32_t *out_count);
+// えていなければ空。 app を渡すと、`App.Use` で開いたその app を見る (省くと
+// この app。閉じた app は空)。
+LUB_API void lub_sys_take_gc_pauses(LubContext *ctx, LubHandle app,
+                                    const LubGcPause **out, int32_t *out_count);
 
 // frame の境目をまたいで持ち越す物 (KeptObject) を、作った行と、それを持つ
 // field ごとに返す。数えるのは、前の frame の境目の後に tcs の --trace で変
@@ -3707,9 +3722,10 @@ LUB_API void lub_sys_take_gc_pauses(LubContext *ctx, const LubGcPause **out,
 // した class の static) から辿れる物で、一度返した物は次から返さない。 frame
 // の境目 (ゲームと overlay の OnFrame の後) で作った物を忘れるので、ゲームの
 // frame の分は overlay の OnFrame の中で取る。数えていなければ空。順番は決ま
-// っていない。
-LUB_API void lub_sys_take_kept(LubContext *ctx, const LubKeptObject **out,
-                               int32_t *out_count);
+// っていない。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの
+// app。閉じた app は空)。
+LUB_API void lub_sys_take_kept(LubContext *ctx, LubHandle app,
+                               const LubKeptObject **out, int32_t *out_count);
 
 // 前に呼んでから GPU が終えた frame の pass (GpuPass) を、古い順に返す。 GPU
 // の時間は、その frame を GPU が終えた後 (多くの backend で 2 frame 後) に届

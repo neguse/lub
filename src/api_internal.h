@@ -74,6 +74,8 @@ void app_frame_garbage_drain(App *app);
 void api_gfx_shutdown(App *app);
 void api_audio_shutdown(App *app);
 // App.Use で開いた app の sweep と、全部を閉じる後始末 (api_app.c)。
+// 検査の API が見る app: handle が 0 なら app 自身、そうでなければ App.Use で開いた app (閉じていれば NULL)
+App *api_app_observed(App *app, LubHandle handle);
 void api_app_frame_end(App *app);
 void api_app_shutdown(App *app);
 void api_io_shutdown(App *app);

@@ -11857,11 +11857,13 @@ static TvmStatus vm_host_lub_sys_take_trace(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)a;
   (void)r;
   VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   const LubStr *result = {0};
   int32_t result_count = 0;
-  lub_sys_take_trace(s->ctx, &result, &result_count);
+  lub_sys_take_trace(s->ctx, (p_app ? (int32_t)p_app->host_value : 0), &result,
+                     &result_count);
   r[0].p = vm_lub_string_list(s, &s->types[117], NULL, result, result_count);
   VM_LUB_LEAVE(vm);
 }
@@ -11871,11 +11873,14 @@ static TvmStatus vm_host_lub_sys_take_trace_for(TvmVm *vm, TvmSlot *a,
   (void)r;
   VM_LUB_ENTER();
   void *p_key = a[0].p;
+  VmLub_AppRef *p_app = a[1].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   const LubStr *result = {0};
   int32_t result_count = 0;
-  lub_sys_take_trace_for(s->ctx, vm_lub_str(p_key), &result, &result_count);
+  lub_sys_take_trace_for(s->ctx, vm_lub_str(p_key),
+                         (p_app ? (int32_t)p_app->host_value : 0), &result,
+                         &result_count);
   r[0].p = vm_lub_string_list(s, &s->types[117], NULL, result, result_count);
   VM_LUB_LEAVE(vm);
 }
@@ -11884,11 +11889,13 @@ static TvmStatus vm_host_lub_sys_take_values(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)a;
   (void)r;
   VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   const LubTraceValue *result = {0};
   int32_t result_count = 0;
-  lub_sys_take_values(s->ctx, &result, &result_count);
+  lub_sys_take_values(s->ctx, (p_app ? (int32_t)p_app->host_value : 0), &result,
+                      &result_count);
   r[0].p = vm_lub_from_TraceValue_list(s, NULL, result, result_count);
   VM_LUB_LEAVE(vm);
 }
@@ -11900,11 +11907,13 @@ static TvmStatus vm_host_lub_sys_inspect(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   void *p_path = a[0].p;
   int32_t p_offset = a[1].i;
   int32_t p_count = a[2].i;
+  VmLub_AppRef *p_app = a[3].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   const LubInspectNode *result = {0};
   int32_t result_count = 0;
-  lub_sys_inspect(s->ctx, vm_lub_str(p_path), p_offset, p_count, &result,
+  lub_sys_inspect(s->ctx, vm_lub_str(p_path), p_offset, p_count,
+                  (p_app ? (int32_t)p_app->host_value : 0), &result,
                   &result_count);
   r[0].p = vm_lub_from_InspectNode_list(s, NULL, result, result_count);
   VM_LUB_LEAVE(vm);
@@ -11916,11 +11925,13 @@ static TvmStatus vm_host_lub_sys_inspect_instances(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   int32_t p_max_depth = a[0].i;
   int32_t p_max_children = a[1].i;
+  VmLub_AppRef *p_app = a[2].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   const LubInspectInstance *result = {0};
   int32_t result_count = 0;
-  lub_sys_inspect_instances(s->ctx, p_max_depth, p_max_children, &result,
+  lub_sys_inspect_instances(s->ctx, p_max_depth, p_max_children,
+                            (p_app ? (int32_t)p_app->host_value : 0), &result,
                             &result_count);
   r[0].p = vm_lub_from_InspectInstance_list(s, NULL, result, result_count);
   VM_LUB_LEAVE(vm);
@@ -11932,9 +11943,11 @@ static TvmStatus vm_host_lub_sys_inspect_pin(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VM_LUB_ENTER();
   void *p_key = a[0].p;
   void *p_path = a[1].p;
+  VmLub_AppRef *p_app = a[2].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
-  lub_sys_inspect_pin(s->ctx, vm_lub_str(p_key), vm_lub_str(p_path));
+  lub_sys_inspect_pin(s->ctx, vm_lub_str(p_key), vm_lub_str(p_path),
+                      (p_app ? (int32_t)p_app->host_value : 0));
   VM_LUB_LEAVE(vm);
 }
 static TvmStatus vm_host_lub_sys_inspect_pinned(TvmVm *vm, TvmSlot *a,
@@ -11944,10 +11957,12 @@ static TvmStatus vm_host_lub_sys_inspect_pinned(TvmVm *vm, TvmSlot *a,
   VM_LUB_ENTER();
   void *p_key = a[0].p;
   void *p_id = a[1].p;
+  VmLub_AppRef *p_app = a[2].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   bool result = {0};
-  result = lub_sys_inspect_pinned(s->ctx, vm_lub_str(p_key), vm_lub_str(p_id));
+  result = lub_sys_inspect_pinned(s->ctx, vm_lub_str(p_key), vm_lub_str(p_id),
+                                  (p_app ? (int32_t)p_app->host_value : 0));
   r[0].i = result;
   VM_LUB_LEAVE(vm);
 }
@@ -11974,9 +11989,10 @@ static TvmStatus vm_host_lub_sys_profile_lines(TvmVm *vm, TvmSlot *a,
   (void)r;
   VM_LUB_ENTER();
   bool p_on = a[0].i != 0;
+  VmLub_AppRef *p_app = a[1].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
-  lub_sys_profile_lines(s->ctx, p_on);
+  lub_sys_profile_lines(s->ctx, p_on, (p_app ? (int32_t)p_app->host_value : 0));
   VM_LUB_LEAVE(vm);
 }
 static TvmStatus vm_host_lub_sys_take_profile(TvmVm *vm, TvmSlot *a, TvmSlot *r,
@@ -11984,11 +12000,13 @@ static TvmStatus vm_host_lub_sys_take_profile(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)a;
   (void)r;
   VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   const LubProfileLine *result = {0};
   int32_t result_count = 0;
-  lub_sys_take_profile(s->ctx, &result, &result_count);
+  lub_sys_take_profile(s->ctx, (p_app ? (int32_t)p_app->host_value : 0),
+                       &result, &result_count);
   r[0].p = vm_lub_from_ProfileLine_list(s, NULL, result, result_count);
   VM_LUB_LEAVE(vm);
 }
@@ -11997,11 +12015,13 @@ static TvmStatus vm_host_lub_sys_take_gc_pauses(TvmVm *vm, TvmSlot *a,
   (void)a;
   (void)r;
   VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   const LubGcPause *result = {0};
   int32_t result_count = 0;
-  lub_sys_take_gc_pauses(s->ctx, &result, &result_count);
+  lub_sys_take_gc_pauses(s->ctx, (p_app ? (int32_t)p_app->host_value : 0),
+                         &result, &result_count);
   r[0].p = vm_lub_from_GcPause_list(s, NULL, result, result_count);
   VM_LUB_LEAVE(vm);
 }
@@ -12010,11 +12030,13 @@ static TvmStatus vm_host_lub_sys_take_kept(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)a;
   (void)r;
   VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   const LubKeptObject *result = {0};
   int32_t result_count = 0;
-  lub_sys_take_kept(s->ctx, &result, &result_count);
+  lub_sys_take_kept(s->ctx, (p_app ? (int32_t)p_app->host_value : 0), &result,
+                    &result_count);
   r[0].p = vm_lub_from_KeptObject_list(s, NULL, result, result_count);
   VM_LUB_LEAVE(vm);
 }
@@ -16023,18 +16045,19 @@ static const struct {
     {"lub.sys.fnv1a64", "s", "i", vm_host_lub_sys_fnv1a64},
     {"lub.sys.actual_fps", "", "f", vm_host_lub_sys_actual_fps},
     {"lub.sys.seconds", "", "f", vm_host_lub_sys_seconds},
-    {"lub.sys.take_trace", "", "o", vm_host_lub_sys_take_trace},
-    {"lub.sys.take_trace_for", "s", "o", vm_host_lub_sys_take_trace_for},
-    {"lub.sys.take_values", "", "o", vm_host_lub_sys_take_values},
-    {"lub.sys.inspect", "sii", "o", vm_host_lub_sys_inspect},
-    {"lub.sys.inspect_instances", "ii", "o", vm_host_lub_sys_inspect_instances},
-    {"lub.sys.inspect_pin", "ss", "", vm_host_lub_sys_inspect_pin},
-    {"lub.sys.inspect_pinned", "ss", "b", vm_host_lub_sys_inspect_pinned},
+    {"lub.sys.take_trace", "o", "o", vm_host_lub_sys_take_trace},
+    {"lub.sys.take_trace_for", "so", "o", vm_host_lub_sys_take_trace_for},
+    {"lub.sys.take_values", "o", "o", vm_host_lub_sys_take_values},
+    {"lub.sys.inspect", "siio", "o", vm_host_lub_sys_inspect},
+    {"lub.sys.inspect_instances", "iio", "o",
+     vm_host_lub_sys_inspect_instances},
+    {"lub.sys.inspect_pin", "sso", "", vm_host_lub_sys_inspect_pin},
+    {"lub.sys.inspect_pinned", "sso", "b", vm_host_lub_sys_inspect_pinned},
     {"lub.sys.inspect_history", "si", "o", vm_host_lub_sys_inspect_history},
-    {"lub.sys.profile_lines", "b", "", vm_host_lub_sys_profile_lines},
-    {"lub.sys.take_profile", "", "o", vm_host_lub_sys_take_profile},
-    {"lub.sys.take_gc_pauses", "", "o", vm_host_lub_sys_take_gc_pauses},
-    {"lub.sys.take_kept", "", "o", vm_host_lub_sys_take_kept},
+    {"lub.sys.profile_lines", "bo", "", vm_host_lub_sys_profile_lines},
+    {"lub.sys.take_profile", "o", "o", vm_host_lub_sys_take_profile},
+    {"lub.sys.take_gc_pauses", "o", "o", vm_host_lub_sys_take_gc_pauses},
+    {"lub.sys.take_kept", "o", "o", vm_host_lub_sys_take_kept},
     {"lub.sys.take_gpu_passes", "", "o", vm_host_lub_sys_take_gpu_passes},
     {"lub.rewind.record", "i", "", vm_host_lub_rewind_record},
     {"lub.rewind.count", "", "i", vm_host_lub_rewind_count},

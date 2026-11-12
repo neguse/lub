@@ -4597,15 +4597,15 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 tcs VM の player (lub Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。記録が無ければ空。順番は決まっていない。</summary>
-    public static List<string> TakeTrace()
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。 tcs VM の player (lub Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。記録が無ければ空。順番は決まっていない。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static List<string> TakeTrace(AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
             LubNative.LubStr* o_out = null;
             int o_out_n = 0;
-            LubNative.lub_sys_take_trace(LubRuntime.Ctx, &o_out, &o_out_n);
+            LubNative.lub_sys_take_trace(LubRuntime.Ctx, (app?.H ?? 0), &o_out, &o_out_n);
             return LubRuntime.StrList(o_out, o_out_n);
         }
         finally
@@ -4614,15 +4614,15 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>TakeTrace と同じに、前に呼んでから実行した行を返し、記録を空にする。ただし、InspectPin で key に覚えた個体と同じ class の別の個体を this にして通っただけの行は返さない (別の class と static のメソッドの行は返す)。 key に覚えた個体が無ければ TakeTrace と同じ。 tcs VM の player だけ (ほかの player ではいつも空)。</summary>
-    public static List<string> TakeTraceFor(string key)
+    /// <summary>TakeTrace と同じに、前に呼んでから実行した行を返し、記録を空にする。ただし、InspectPin で key に覚えた個体と同じ class の別の個体を this にして通っただけの行は返さない (別の class と static のメソッドの行は返す)。 key に覚えた個体が無ければ TakeTrace と同じ。 tcs VM の player だけ (ほかの player ではいつも空)。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static List<string> TakeTraceFor(string key, AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
             LubNative.LubStr* o_out = null;
             int o_out_n = 0;
-            LubNative.lub_sys_take_trace_for(LubRuntime.Ctx, a.Str(key), &o_out, &o_out_n);
+            LubNative.lub_sys_take_trace_for(LubRuntime.Ctx, a.Str(key), (app?.H ?? 0), &o_out, &o_out_n);
             return LubRuntime.StrList(o_out, o_out_n);
         }
         finally
@@ -4631,15 +4631,15 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を空にする。変換するソースは TakeTrace と同じ。 Site は "file:line:col:代入先" (代入先は C# の書き方)、Text は値を短い文字にしたもの。 1 frame に何度も通る代入は最後の値になる。数はそのまま、bool は true / false、文字列は "" で囲み 40 byte で切り、null は null。 class と struct は型の名前で、field が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。 List と配列は [要素の数]、Dictionary は {…}。記録が無ければ空。順番は決まっていない。</summary>
-    public static List<TraceValue> TakeValues()
+    /// <summary>tcs の --trace で変換したソースが、前に呼んでから代入した値を返し、記録を空にする。変換するソースは TakeTrace と同じ。 Site は "file:line:col:代入先" (代入先は C# の書き方)、Text は値を短い文字にしたもの。 1 frame に何度も通る代入は最後の値になる。数はそのまま、bool は true / false、文字列は "" で囲み 40 byte で切り、null は null。 class と struct は型の名前で、field が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。 List と配列は [要素の数]、Dictionary は {…}。記録が無ければ空。順番は決まっていない。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static List<TraceValue> TakeValues(AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
             LubNative.LubTraceValue* o_out = null;
             int o_out_n = 0;
-            LubNative.lub_sys_take_values(LubRuntime.Ctx, &o_out, &o_out_n);
+            LubNative.lub_sys_take_values(LubRuntime.Ctx, (app?.H ?? 0), &o_out, &o_out_n);
             return LubRuntime.RecordList<TraceValue, LubNative.LubTraceValue>(o_out, o_out_n, &LubNative.From_LubTraceValue);
         }
         finally
@@ -4648,15 +4648,15 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>tcs の --trace で変換した class から辿れる、今の値の木の節の子を 1 段返す。 path は節の C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"] か [3])。空なら根で、子は --trace で変換した class (entry が先頭、ほかは名前の順)。 class の子は static field (宣言の順)、instance と struct の子は field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の順)。null の field と関数は返さない。子のうち offset 番目から count 個を返す (子の数は親の節の Count)。path が辿れなければ空。 Text は TakeValues と同じ書き方。</summary>
-    public static List<InspectNode> Inspect(string path, int offset, int count)
+    /// <summary>tcs の --trace で変換した class から辿れる、今の値の木の節の子を 1 段返す。 path は節の C# の書き方 (Game.Field.Items[2]、Dictionary の項目は ["key"] か [3])。空なら根で、子は --trace で変換した class (entry が先頭、ほかは名前の順)。 class の子は static field (宣言の順)、instance と struct の子は field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の順)。null の field と関数は返さない。子のうち offset 番目から count 個を返す (子の数は親の節の Count)。path が辿れなければ空。 Text は TakeValues と同じ書き方。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static List<InspectNode> Inspect(string path, int offset, int count, AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
             LubNative.LubInspectNode* o_out = null;
             int o_out_n = 0;
-            LubNative.lub_sys_inspect(LubRuntime.Ctx, a.Str(path), offset, count, &o_out, &o_out_n);
+            LubNative.lub_sys_inspect(LubRuntime.Ctx, a.Str(path), offset, count, (app?.H ?? 0), &o_out, &o_out_n);
             return LubRuntime.RecordList<InspectNode, LubNative.LubInspectNode>(o_out, o_out_n, &LubNative.From_LubInspectNode);
         }
         finally
@@ -4665,15 +4665,15 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>tcs の --trace で変換した class の static から幅優先で 1 回辿り、class の instance を見つけた順に 1 度ずつ返す (InspectInstance)。 Path と Id は Sys.Inspect と同じ書き方で、同じ object は最初に見つけた path で 1 度だけ返す。深さは static field を 1 として maxDepth まで、List と配列などの子は先頭の maxChildren 個まで辿る。 Sys.Inspect を節ごとに呼んで探すより速い (path を根から辿り直さず、値の文字を作らない)。</summary>
-    public static List<InspectInstance> InspectInstances(int maxDepth, int maxChildren)
+    /// <summary>tcs の --trace で変換した class の static から幅優先で 1 回辿り、class の instance を見つけた順に 1 度ずつ返す (InspectInstance)。 Path と Id は Sys.Inspect と同じ書き方で、同じ object は最初に見つけた path で 1 度だけ返す。深さは static field を 1 として maxDepth まで、List と配列などの子は先頭の maxChildren 個まで辿る。 Sys.Inspect を節ごとに呼んで探すより速い (path を根から辿り直さず、値の文字を作らない)。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static List<InspectInstance> InspectInstances(int maxDepth, int maxChildren, AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
             LubNative.LubInspectInstance* o_out = null;
             int o_out_n = 0;
-            LubNative.lub_sys_inspect_instances(LubRuntime.Ctx, maxDepth, maxChildren, &o_out, &o_out_n);
+            LubNative.lub_sys_inspect_instances(LubRuntime.Ctx, maxDepth, maxChildren, (app?.H ?? 0), &o_out, &o_out_n);
             return LubRuntime.RecordList<InspectInstance, LubNative.LubInspectInstance>(o_out, o_out_n, &LubNative.From_LubInspectInstance);
         }
         finally
@@ -4682,13 +4682,13 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>path の節の object を key で弱く覚える (object の寿命は延ばさない)。path が辿れないか object でなければ、key の記憶を消す。</summary>
-    public static void InspectPin(string key, string path)
+    /// <summary>path の節の object を key で弱く覚える (object の寿命は延ばさない)。path が辿れないか object でなければ、key の記憶を消す。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static void InspectPin(string key, string path, AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.lub_sys_inspect_pin(LubRuntime.Ctx, a.Str(key), a.Str(path));
+            LubNative.lub_sys_inspect_pin(LubRuntime.Ctx, a.Str(key), a.Str(path), (app?.H ?? 0));
         }
         finally
         {
@@ -4696,13 +4696,13 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>key で覚えた object がまだ回収されておらず、その Id が id か。</summary>
-    public static bool InspectPinned(string key, string id)
+    /// <summary>key で覚えた object がまだ回収されておらず、その Id が id か。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static bool InspectPinned(string key, string id, AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
-            var r = LubNative.lub_sys_inspect_pinned(LubRuntime.Ctx, a.Str(key), a.Str(id));
+            var r = LubNative.lub_sys_inspect_pinned(LubRuntime.Ctx, a.Str(key), a.Str(id), (app?.H ?? 0));
             return (r != 0);
         }
         finally
@@ -4728,13 +4728,13 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止まり (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept)、pass ごとの GPU の時間 (Sys.TakeGpuPasses) を数え始める (true) か止める (false)。行ごとの負荷、GC の止まり、持ち越しは tcs VM の player だけが数え、GPU の pass はどの host でも数える。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。</summary>
-    public static void ProfileLines(bool on)
+    /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止まり (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept)、pass ごとの GPU の時間 (Sys.TakeGpuPasses) を数え始める (true) か止める (false)。行ごとの負荷、GC の止まり、持ち越しは tcs VM の player だけが数え、GPU の pass はどの host でも数える。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static void ProfileLines(bool on, AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.lub_sys_profile_lines(LubRuntime.Ctx, (byte)(on ? 1 : 0));
+            LubNative.lub_sys_profile_lines(LubRuntime.Ctx, (byte)(on ? 1 : 0), (app?.H ?? 0));
         }
         finally
         {
@@ -4742,15 +4742,15 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>前に呼んでから、行ごとに足した負荷を返し、0 に戻す (ProfileLine)。数えていなければ空。順番は決まっていない。</summary>
-    public static List<ProfileLine> TakeProfile()
+    /// <summary>前に呼んでから、行ごとに足した負荷を返し、0 に戻す (ProfileLine)。数えていなければ空。順番は決まっていない。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static List<ProfileLine> TakeProfile(AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
             LubNative.LubProfileLine* o_out = null;
             int o_out_n = 0;
-            LubNative.lub_sys_take_profile(LubRuntime.Ctx, &o_out, &o_out_n);
+            LubNative.lub_sys_take_profile(LubRuntime.Ctx, (app?.H ?? 0), &o_out, &o_out_n);
             return LubRuntime.RecordList<ProfileLine, LubNative.LubProfileLine>(o_out, o_out_n, &LubNative.From_LubProfileLine);
         }
         finally
@@ -4759,15 +4759,15 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>前に呼んでから GC が止めた回を、古い順に返す (直近 64 回まで。GcPause)。数えていなければ空。</summary>
-    public static List<GcPause> TakeGcPauses()
+    /// <summary>前に呼んでから GC が止めた回を、古い順に返す (直近 64 回まで。GcPause)。数えていなければ空。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static List<GcPause> TakeGcPauses(AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
             LubNative.LubGcPause* o_out = null;
             int o_out_n = 0;
-            LubNative.lub_sys_take_gc_pauses(LubRuntime.Ctx, &o_out, &o_out_n);
+            LubNative.lub_sys_take_gc_pauses(LubRuntime.Ctx, (app?.H ?? 0), &o_out, &o_out_n);
             return LubRuntime.RecordList<GcPause, LubNative.LubGcPause>(o_out, o_out_n, &LubNative.From_LubGcPause);
         }
         finally
@@ -4776,15 +4776,15 @@ public static unsafe partial class Sys
         }
     }
 
-    /// <summary>frame の境目をまたいで持ち越す物 (KeptObject) を、作った行と、それを持つ field ごとに返す。数えるのは、前の frame の境目の後に tcs の --trace で変換したソースの行で作られ、今ゲームの状態 (entry の class と --trace で変換した class の static) から辿れる物で、一度返した物は次から返さない。 frame の境目 (ゲームと overlay の OnFrame の後) で作った物を忘れるので、ゲームの frame の分は overlay の OnFrame の中で取る。数えていなければ空。順番は決まっていない。</summary>
-    public static List<KeptObject> TakeKept()
+    /// <summary>frame の境目をまたいで持ち越す物 (KeptObject) を、作った行と、それを持つ field ごとに返す。数えるのは、前の frame の境目の後に tcs の --trace で変換したソースの行で作られ、今ゲームの状態 (entry の class と --trace で変換した class の static) から辿れる物で、一度返した物は次から返さない。 frame の境目 (ゲームと overlay の OnFrame の後) で作った物を忘れるので、ゲームの frame の分は overlay の OnFrame の中で取る。数えていなければ空。順番は決まっていない。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
+    public static List<KeptObject> TakeKept(AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
             LubNative.LubKeptObject* o_out = null;
             int o_out_n = 0;
-            LubNative.lub_sys_take_kept(LubRuntime.Ctx, &o_out, &o_out_n);
+            LubNative.lub_sys_take_kept(LubRuntime.Ctx, (app?.H ?? 0), &o_out, &o_out_n);
             return LubRuntime.RecordList<KeptObject, LubNative.LubKeptObject>(o_out, o_out_n, &LubNative.From_LubKeptObject);
         }
         finally
@@ -11646,40 +11646,40 @@ internal static unsafe partial class LubNative
     internal static extern float lub_sys_seconds(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_sys_take_trace(void* ctx, LubStr** @out, int* @out_count);
+    internal static extern void lub_sys_take_trace(void* ctx, int @app, LubStr** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_sys_take_trace_for(void* ctx, LubStr @key, LubStr** @out, int* @out_count);
+    internal static extern void lub_sys_take_trace_for(void* ctx, LubStr @key, int @app, LubStr** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_sys_take_values(void* ctx, LubTraceValue** @out, int* @out_count);
+    internal static extern void lub_sys_take_values(void* ctx, int @app, LubTraceValue** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_sys_inspect(void* ctx, LubStr @path, int @offset, int @count, LubInspectNode** @out, int* @out_count);
+    internal static extern void lub_sys_inspect(void* ctx, LubStr @path, int @offset, int @count, int @app, LubInspectNode** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_sys_inspect_instances(void* ctx, int @max_depth, int @max_children, LubInspectInstance** @out, int* @out_count);
+    internal static extern void lub_sys_inspect_instances(void* ctx, int @max_depth, int @max_children, int @app, LubInspectInstance** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_sys_inspect_pin(void* ctx, LubStr @key, LubStr @path);
+    internal static extern void lub_sys_inspect_pin(void* ctx, LubStr @key, LubStr @path, int @app);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern byte lub_sys_inspect_pinned(void* ctx, LubStr @key, LubStr @id);
+    internal static extern byte lub_sys_inspect_pinned(void* ctx, LubStr @key, LubStr @id, int @app);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_inspect_history(void* ctx, LubStr @path, int @count, float** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_sys_profile_lines(void* ctx, byte @on);
+    internal static extern void lub_sys_profile_lines(void* ctx, byte @on, int @app);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_sys_take_profile(void* ctx, LubProfileLine** @out, int* @out_count);
+    internal static extern void lub_sys_take_profile(void* ctx, int @app, LubProfileLine** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_sys_take_gc_pauses(void* ctx, LubGcPause** @out, int* @out_count);
+    internal static extern void lub_sys_take_gc_pauses(void* ctx, int @app, LubGcPause** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_sys_take_kept(void* ctx, LubKeptObject** @out, int* @out_count);
+    internal static extern void lub_sys_take_kept(void* ctx, int @app, LubKeptObject** @out, int* @out_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_take_gpu_passes(void* ctx, LubGpuPass** @out, int* @out_count);

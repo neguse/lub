@@ -376,58 +376,60 @@ float lub_sys_seconds(LubContext *ctx) {
 
 // ---- 検査 (player の LubDebugHooks。無ければ空) ----
 
-void lub_sys_take_trace(LubContext *ctx, const LubStr **out,
+void lub_sys_take_trace(LubContext *ctx, LubHandle of, const LubStr **out,
                         int32_t *out_count) {
-  App *app = lub_api_app(ctx);
+  App *app = api_app_observed(lub_api_app(ctx), of);
   *out = NULL;
   *out_count = 0;
-  if (app->debug_hooks && app->debug_hooks->take_trace)
+  if (app && app->debug_hooks && app->debug_hooks->take_trace)
     app->debug_hooks->take_trace(app, (LubStr){"", 0}, out, out_count);
 }
 
-void lub_sys_take_trace_for(LubContext *ctx, LubStr key, const LubStr **out,
-                            int32_t *out_count) {
-  App *app = lub_api_app(ctx);
+void lub_sys_take_trace_for(LubContext *ctx, LubStr key, LubHandle of,
+                            const LubStr **out, int32_t *out_count) {
+  App *app = api_app_observed(lub_api_app(ctx), of);
   *out = NULL;
   *out_count = 0;
-  if (app->debug_hooks && app->debug_hooks->take_trace)
+  if (app && app->debug_hooks && app->debug_hooks->take_trace)
     app->debug_hooks->take_trace(app, key, out, out_count);
 }
 
-void lub_sys_take_values(LubContext *ctx, const LubTraceValue **out,
-                         int32_t *out_count) {
-  App *app = lub_api_app(ctx);
+void lub_sys_take_values(LubContext *ctx, LubHandle of,
+                         const LubTraceValue **out, int32_t *out_count) {
+  App *app = api_app_observed(lub_api_app(ctx), of);
   *out = NULL;
   *out_count = 0;
-  if (app->debug_hooks && app->debug_hooks->take_values)
+  if (app && app->debug_hooks && app->debug_hooks->take_values)
     app->debug_hooks->take_values(app, out, out_count);
 }
 
 void lub_sys_inspect(LubContext *ctx, LubStr path, int32_t offset,
-                     int32_t count, const LubInspectNode **out,
+                     int32_t count, LubHandle of, const LubInspectNode **out,
                      int32_t *out_count) {
-  App *app = lub_api_app(ctx);
+  App *app = api_app_observed(lub_api_app(ctx), of);
   *out = NULL;
   *out_count = 0;
-  if (app->debug_hooks && app->debug_hooks->inspect && count > 0)
+  if (app && app->debug_hooks && app->debug_hooks->inspect && count > 0)
     app->debug_hooks->inspect(app, path, offset, count, out, out_count);
 }
 
 void lub_sys_inspect_instances(LubContext *ctx, int32_t max_depth,
-                               int32_t max_children,
+                               int32_t max_children, LubHandle of,
                                const LubInspectInstance **out,
                                int32_t *out_count) {
-  App *app = lub_api_app(ctx);
+  App *app = api_app_observed(lub_api_app(ctx), of);
   *out = NULL;
   *out_count = 0;
-  if (app->debug_hooks && app->debug_hooks->inspect_instances &&
+  if (app && app->debug_hooks && app->debug_hooks->inspect_instances &&
       max_depth > 0 && max_children > 0)
     app->debug_hooks->inspect_instances(app, max_depth, max_children, out,
                                         out_count);
 }
 
-void lub_sys_profile_lines(LubContext *ctx, bool on) {
-  App *app = lub_api_app(ctx);
+void lub_sys_profile_lines(LubContext *ctx, bool on, LubHandle of) {
+  App *app = api_app_observed(lub_api_app(ctx), of);
+  if (!app)
+    return;
   gpu_time_enable(app, on);
   if (app->debug_hooks && app->debug_hooks->profile_lines)
     app->debug_hooks->profile_lines(app, on);
@@ -439,42 +441,44 @@ void lub_sys_take_gpu_passes(LubContext *ctx, const LubGpuPass **out,
   gpu_time_take(out, out_count);
 }
 
-void lub_sys_take_profile(LubContext *ctx, const LubProfileLine **out,
-                          int32_t *out_count) {
-  App *app = lub_api_app(ctx);
+void lub_sys_take_profile(LubContext *ctx, LubHandle of,
+                          const LubProfileLine **out, int32_t *out_count) {
+  App *app = api_app_observed(lub_api_app(ctx), of);
   *out = NULL;
   *out_count = 0;
-  if (app->debug_hooks && app->debug_hooks->take_profile)
+  if (app && app->debug_hooks && app->debug_hooks->take_profile)
     app->debug_hooks->take_profile(app, out, out_count);
 }
 
-void lub_sys_take_gc_pauses(LubContext *ctx, const LubGcPause **out,
-                            int32_t *out_count) {
-  App *app = lub_api_app(ctx);
+void lub_sys_take_gc_pauses(LubContext *ctx, LubHandle of,
+                            const LubGcPause **out, int32_t *out_count) {
+  App *app = api_app_observed(lub_api_app(ctx), of);
   *out = NULL;
   *out_count = 0;
-  if (app->debug_hooks && app->debug_hooks->take_gc_pauses)
+  if (app && app->debug_hooks && app->debug_hooks->take_gc_pauses)
     app->debug_hooks->take_gc_pauses(app, out, out_count);
 }
 
-void lub_sys_take_kept(LubContext *ctx, const LubKeptObject **out,
+void lub_sys_take_kept(LubContext *ctx, LubHandle of, const LubKeptObject **out,
                        int32_t *out_count) {
-  App *app = lub_api_app(ctx);
+  App *app = api_app_observed(lub_api_app(ctx), of);
   *out = NULL;
   *out_count = 0;
-  if (app->debug_hooks && app->debug_hooks->take_kept)
+  if (app && app->debug_hooks && app->debug_hooks->take_kept)
     app->debug_hooks->take_kept(app, out, out_count);
 }
 
-void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path) {
-  App *app = lub_api_app(ctx);
-  if (app->debug_hooks && app->debug_hooks->inspect_pin)
+void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path,
+                         LubHandle of) {
+  App *app = api_app_observed(lub_api_app(ctx), of);
+  if (app && app->debug_hooks && app->debug_hooks->inspect_pin)
     app->debug_hooks->inspect_pin(app, key, path);
 }
 
-bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id) {
-  App *app = lub_api_app(ctx);
-  return app->debug_hooks && app->debug_hooks->inspect_pinned &&
+bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id,
+                            LubHandle of) {
+  App *app = api_app_observed(lub_api_app(ctx), of);
+  return app && app->debug_hooks && app->debug_hooks->inspect_pinned &&
          app->debug_hooks->inspect_pinned(app, key, id);
 }
 
