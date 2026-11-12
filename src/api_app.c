@@ -144,8 +144,39 @@ static void open_app_player(App *app, OpenApp *o) {
   ui_set_enabled(true);
 }
 
+// 開いた app に見せる入力: 開いた側の入力から、選ばれなかった種類を「何も押されていない」にする
+static void step_input(InputState *dst, const InputState *src,
+                       const LubStepInput *in) {
+  *dst = *src;
+  if (!in)
+    return;
+  if (in->has_keyboard && !in->keyboard) {
+    memset(dst->keys, 0, sizeof(dst->keys));
+    memset(dst->key_pressed, 0, sizeof(dst->key_pressed));
+    memset(dst->key_released, 0, sizeof(dst->key_released));
+  }
+  if (in->has_mouse && !in->mouse) {
+    dst->mouse_buttons = 0;
+    dst->mouse_pressed_mask = 0;
+    dst->mouse_released_mask = 0;
+    dst->mouse_rel_x = dst->mouse_rel_y = 0;
+    dst->mouse_wheel_x = dst->mouse_wheel_y = 0;
+  }
+  if (in->has_gamepad && !in->gamepad) {
+    memset(dst->pad_connected, 0, sizeof(dst->pad_connected));
+    memset(dst->pad_axes, 0, sizeof(dst->pad_axes));
+    memset(dst->pad_down, 0, sizeof(dst->pad_down));
+    memset(dst->pad_pressed, 0, sizeof(dst->pad_pressed));
+    memset(dst->pad_released, 0, sizeof(dst->pad_released));
+  }
+  if (in->has_mouse_x)
+    dst->mouse_x = in->mouse_x;
+  if (in->has_mouse_y)
+    dst->mouse_y = in->mouse_y;
+}
+
 LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
-                       float dt, bool *out) {
+                       float dt, const LubStepInput *input, bool *out) {
   App *app = lub_api_app(ctx);
   *out = false;
   OpenApp *o = open_app_find(app, handle);
@@ -174,7 +205,7 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
   child->main_fmt = te->u.tex.fmt;
   child->main_w = te->u.tex.w;
   child->main_h = te->u.tex.h_;
-  child->input = app->input;
+  step_input(&child->input, &app->input, input);
   open_app_player(app, o);
   ui_set_enabled(false);
   bool ok = false;
@@ -189,6 +220,30 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
   child->main_color = 0;
   child->main_depth = 0;
   *out = ok;
+  return LUB_OK;
+}
+
+LubStatus lub_app_send_event(LubContext *ctx, LubHandle handle,
+                             const LubEventData *e, bool *out) {
+  App *app = lub_api_app(ctx);
+  *out = false;
+  OpenApp *o = open_app_find(app, handle);
+  if (!o)
+    return lub_api_fail(app, "app_send_event: the app is closed (declare it "
+                             "with App.Use every frame)");
+  if (!e)
+    return lub_api_fail(app, "app_send_event: the event is null");
+  // まだ開いていない app には届けない (OnInit の前に OnEvent を呼ばない)
+  if (!o->player) {
+    *out = true;
+    return LUB_OK;
+  }
+  ui_set_enabled(false);
+  *out = app->app_hooks->event(o->player, e);
+  ui_set_enabled(true);
+  // OnEvent が開いたままにした pass は閉じる
+  if (pass_state_in_pass(&o->app->pass))
+    pass_state_end(&o->app->pass);
   return LUB_OK;
 }
 

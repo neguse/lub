@@ -123,6 +123,20 @@ public sealed class JointRef3d
     internal JointRef3d(int h) { H = h; }
 }
 
+/// <summary>App.Step が開いた app に見せる入力の選び方。省いた項目は、この app の入力をそのまま見せる。</summary>
+public class StepInput
+{
+    /// <summary>false なら、keyboard は何も押されていない。</summary>
+    public bool? Keyboard;
+    /// <summary>false なら、mouse の button は押されておらず、移動と wheel は 0。</summary>
+    public bool? Mouse;
+    /// <summary>false なら、gamepad はつながっていない。</summary>
+    public bool? Gamepad;
+    /// <summary>開いた app から見える mouse の位置 (target の左上からの px)。 target を画面のどこにどの大きさで置いたかは開いた側しか知らないので、置いた場所に合わせて渡す。省くと、この app の位置のまま。</summary>
+    public float? MouseX;
+    public float? MouseY;
+}
+
 /// <summary>Gfx.BeginPass のオプション。</summary>
 public class PassOpts
 {
@@ -2486,14 +2500,47 @@ public static unsafe partial class App
         }
     }
 
-    /// <summary>開いた app を 1 frame 進める (`OnFrame(dt)` を呼ぶ)。 app の `Gfx.MainTex` への描画は target に入り、`Gfx.Size` は target の大きさを返す。 target は `Target = true` で宣言した color の texture。入力はこの app の入力をそのまま渡す。`OnEvent` は呼ばない。 `OnFrame` の中で、pass の外から呼ぶ。進めた frame が error なく終わったら true。 module を読めないか、`OnFrame` が失敗したか、app が `App.Quit` を呼んだ後なら false。開いた app の中では、`Ui.*` は何もせず、`App.Use` は error になる。</summary>
-    public static bool Step(AppRef app, TextureRef target, float dt)
+    /// <summary>開いた app を 1 frame 進める (`OnFrame(dt)` を呼ぶ)。 app の `Gfx.MainTex` への描画は target に入り、`Gfx.Size` は target の大きさを返す。 target は `Target = true` で宣言した color の texture。入力は、input を省くとこの app の入力をそのまま見せ、渡すと項目ごとに選べる (StepInput)。 `OnEvent` は呼ばない。event を渡すなら `SendEvent` を使う。 `OnFrame` の中で、pass の外から呼ぶ。進めた frame が error なく終わったら true。 module を読めないか、`OnFrame` が失敗したか、app が `App.Quit` を呼んだ後なら false。開いた app の中では、`Ui.*` は何もせず、`App.Use` は error になる。</summary>
+    public static bool Step(AppRef app, TextureRef target, float dt, StepInput? input = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
+            LubNative.LubStepInput* _input = null;
+            if (input != null)
+            {
+                _input = a.Alloc<LubNative.LubStepInput>(1);
+                LubNative.To_LubStepInput(input, a, _input);
+            }
             bool o_out = default;
-            var st = LubNative.lub_app_step(LubRuntime.Ctx, app.H, target.H, dt, &o_out);
+            var st = LubNative.lub_app_step(LubRuntime.Ctx, app.H, target.H, dt, _input, &o_out);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return false;
+            }
+            LubRuntime.Check(st);
+            return o_out;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    /// <summary>開いた app の `OnEvent` を、この event で呼ぶ。この app の `OnEvent` に届いた event をそのまま渡すか、位置を target に合わせて書き換えてから渡す。まだ module を読み込んでいない app と、`OnEvent` を持たない app では何もしない。開いた app の `OnEvent` が失敗したら false。</summary>
+    public static bool SendEvent(AppRef app, EventData e)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubEventData* _e = null;
+            if (e != null)
+            {
+                _e = a.Alloc<LubNative.LubEventData>(1);
+                LubNative.To_LubEventData(e, a, _e);
+            }
+            bool o_out = default;
+            var st = LubNative.lub_app_send_event(LubRuntime.Ctx, app.H, _e, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
                 return false;
@@ -8542,6 +8589,21 @@ internal static unsafe partial class LubNative
     internal static JointRef3d? H_JointRef3d(int h) => h == 0 ? null : new JointRef3d(h);
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubStepInput
+    {
+        public bool @has_keyboard;
+        public bool @keyboard;
+        public bool @has_mouse;
+        public bool @mouse;
+        public bool @has_gamepad;
+        public bool @gamepad;
+        public bool @has_mouse_x;
+        public float @mouse_x;
+        public bool @has_mouse_y;
+        public float @mouse_y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubPassOpts
     {
         public int @target;
@@ -11317,7 +11379,10 @@ internal static unsafe partial class LubNative
     internal static extern int lub_app_use(void* ctx, LubStr @key, LubStr @module, LubStr @entry, int* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_app_step(void* ctx, int @app, int @target, float @dt, bool* @out);
+    internal static extern int lub_app_step(void* ctx, int @app, int @target, float @dt, LubStepInput* @input, bool* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_app_send_event(void* ctx, int @app, LubEventData* @e, bool* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_app_save(void* ctx, int @app, int @slot, LubStr* @error, bool* @out);
@@ -12098,6 +12163,36 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lubx_vorbis_decode(void* ctx, byte* @data, int @data_len, LubView* @pcm, int* @channels, int* @rate);
+
+    internal static void To_LubStepInput(StepInput o, LubRuntime.Arena a, LubStepInput* s)
+    {
+        s->@has_keyboard = o.Keyboard.HasValue;
+        s->@keyboard = (o.Keyboard ?? default);
+        s->@has_mouse = o.Mouse.HasValue;
+        s->@mouse = (o.Mouse ?? default);
+        s->@has_gamepad = o.Gamepad.HasValue;
+        s->@gamepad = (o.Gamepad ?? default);
+        s->@has_mouse_x = o.MouseX.HasValue;
+        s->@mouse_x = (float)(o.MouseX ?? default);
+        s->@has_mouse_y = o.MouseY.HasValue;
+        s->@mouse_y = (float)(o.MouseY ?? default);
+    }
+
+    internal static void Fill_LubStepInput(StepInput o, LubStepInput* s)
+    {
+        o.Keyboard = s->@has_keyboard ? s->@keyboard : null;
+        o.Mouse = s->@has_mouse ? s->@mouse : null;
+        o.Gamepad = s->@has_gamepad ? s->@gamepad : null;
+        o.MouseX = s->@has_mouse_x ? s->@mouse_x : null;
+        o.MouseY = s->@has_mouse_y ? s->@mouse_y : null;
+    }
+
+    internal static StepInput From_LubStepInput(LubStepInput* s)
+    {
+        var o = new StepInput();
+        Fill_LubStepInput(o, s);
+        return o;
+    }
 
     internal static void To_LubPassOpts(PassOpts o, LubRuntime.Arena a, LubPassOpts* s)
     {
