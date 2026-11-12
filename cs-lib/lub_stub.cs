@@ -443,6 +443,40 @@ namespace Lub
         {
             return false;
         }
+
+        /// <summary>開いた app の状態を、番号 slot の控えに書く (同じ番号の前の控えは置き換える)。
+        /// 状態は、app の C# の static の全部と、そこから届く object。
+        /// 控えはこの app (開いた側) が持ち、`Drop` で捨てるか、この app が終わるまで残る。
+        /// 物理の world、音、file、key で宣言した資源の中身は入らない。
+        /// まだ `Step` していない app は、module を読み込んで `OnInit` を呼んでから書く。
+        /// 書けたら true。書けなければ false で、理由が error に入る (module を読めない、`Bindings` を static から持っている、など)。
+        /// </summary>
+        public static bool Save(AppRef app, int slot, out string? error)
+        {
+            error = null;
+            return false;
+        }
+
+        /// <summary>番号 slot の控えを、開いた app に読み込む。
+        /// app の C# の static は控えの値に置き換わり、次の `Step` はそこから続く。
+        /// 控えを書いた app と別の app にも読み込める (同じ型の形を持つ module であること。関数の中身は違ってよい)。
+        /// 物理の world、音、file は読み込む前のまま。
+        /// 資源の ref は控えを書いた app のもので、別の app に読み込むと、宣言し直すまで使えない。
+        /// まだ `Step` していない app は、module を読み込んで `OnInit` を呼んでから読み込む。
+        /// 読み込めたら true。断ったら false で、app の状態は変わらず、理由が error に入る (控えが無い、型の形が違う、など)。
+        /// </summary>
+        public static bool Load(AppRef app, int slot, out string? error)
+        {
+            error = null;
+            return false;
+        }
+
+        /// <summary>番号 slot の控えを捨てる。控えが無ければ何もしない。
+        /// </summary>
+        [LubNoFail]
+        public static void Drop(int slot)
+        {
+        }
     }
 
     /// <summary>即時モード GPU API。

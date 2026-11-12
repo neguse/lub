@@ -37,7 +37,8 @@ static ResEntry *declare(ResTable *t, const char *fmt, int a, int b,
 // 毎 round 新しい key を大量に作って捨てても、表は伸び続けず、生きている key の handle は変わらない。
 static void test_churn(void) {
   ResTable t;
-  res_table_init(&t);
+  int32_t counter = 0;
+  res_table_init(&t, &counter);
   ResEntry *keep[KEEP];
   int32_t keep_handle[KEEP];
   int32_t first_round[PER_ROUND];
@@ -77,7 +78,8 @@ static void test_churn(void) {
 static void test_partial_sweep(void) {
   enum { N = 5000 };
   ResTable t;
-  res_table_init(&t);
+  int32_t counter = 0;
+  res_table_init(&t, &counter);
   ResEntry *entries[N];
   int32_t handles[N];
   for (int i = 0; i < N; ++i) {
@@ -111,11 +113,12 @@ static void test_partial_sweep(void) {
 // handle が int32 の上限に達したら 1 に戻り、生きている値を飛ばす。
 static void test_wrap(void) {
   ResTable t;
-  res_table_init(&t);
+  int32_t counter = 0;
+  res_table_init(&t, &counter);
   ResEntry *a = declare(&t, "wrap_%d%d", 0, 0, 0);
   ResEntry *b = declare(&t, "wrap_%d%d", 1, 0, 0);
   CHECK(a->handle == 1 && b->handle == 2);
-  t.next_handle = INT32_MAX - 1;
+  counter = INT32_MAX - 1;
   ResEntry *c = declare(&t, "wrap_%d%d", 2, 0, 0);
   ResEntry *d = declare(&t, "wrap_%d%d", 3, 0, 0);
   ResEntry *e = declare(&t, "wrap_%d%d", 4, 0, 0);
@@ -128,10 +131,28 @@ static void test_wrap(void) {
   res_table_shutdown(&t);
 }
 
+// 同じ counter を使う 2 つの表の handle は重ならず、片方の handle はもう片方では引けない。
+static void test_shared_counter(void) {
+  ResTable a, b;
+  int32_t counter = 0;
+  res_table_init(&a, &counter);
+  res_table_init(&b, &counter);
+  ResEntry *x = declare(&a, "shared_%d%d", 0, 0, 0);
+  ResEntry *y = declare(&b, "shared_%d%d", 0, 0, 0);
+  ResEntry *z = declare(&a, "shared_%d%d", 1, 0, 0);
+  CHECK(x->handle == 1 && y->handle == 2 && z->handle == 3);
+  CHECK(res_table_get_by_handle(&b, x->handle) == NULL);
+  CHECK(res_table_get_by_handle(&a, y->handle) == NULL);
+  CHECK(res_table_get_by_handle(&a, z->handle) == z);
+  res_table_shutdown(&a);
+  res_table_shutdown(&b);
+}
+
 int main(void) {
   test_churn();
   test_partial_sweep();
   test_wrap();
+  test_shared_counter();
   if (failures) {
     fprintf(stderr, "RESOURCES: %d failure(s)\n", failures);
     return 1;

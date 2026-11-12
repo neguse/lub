@@ -1276,7 +1276,48 @@ static void app_close(void *player) {
   SDL_free(p);
 }
 
-static const LubAppHooks g_app_hooks = {app_open, app_step, app_close};
+static bool app_save(void *player, uint8_t **bytes, size_t *size, char *error,
+                     size_t error_size) {
+  Player *p = (Player *)player;
+  if (!p->lub.vm) {
+    SDL_snprintf(error, error_size, "the app has no module loaded");
+    return false;
+  }
+  uint8_t *state;
+  size_t n;
+  if (tvm_state_save(p->lub.vm, &state, &n) != TVM_OK) {
+    SDL_snprintf(error, error_size, "%s", tvm_error(p->lub.vm));
+    return false;
+  }
+  uint8_t *copy = (uint8_t *)malloc(n ? n : 1);
+  if (copy)
+    memcpy(copy, state, n);
+  tvm_state_free(state);
+  if (!copy) {
+    SDL_snprintf(error, error_size, "out of memory");
+    return false;
+  }
+  *bytes = copy;
+  *size = n;
+  return true;
+}
+
+static bool app_load(void *player, const uint8_t *bytes, size_t size,
+                     char *error, size_t error_size) {
+  Player *p = (Player *)player;
+  if (!p->lub.vm) {
+    SDL_snprintf(error, error_size, "the app has no module loaded");
+    return false;
+  }
+  if (tvm_state_load(p->lub.vm, bytes, size) != TVM_OK) {
+    SDL_snprintf(error, error_size, "%s", tvm_error(p->lub.vm));
+    return false;
+  }
+  return true;
+}
+
+static const LubAppHooks g_app_hooks = {app_open, app_step, app_close, app_save,
+                                        app_load};
 
 static bool parse_args(Player *p, int argc, char **argv, LubHostOpts *opts) {
   const char *module = NULL, *entry = NULL;

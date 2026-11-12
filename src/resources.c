@@ -16,7 +16,10 @@ static uint32_t hash_str(const char *s) {
   return h;
 }
 
-void res_table_init(ResTable *t) { memset(t, 0, sizeof(*t)); }
+void res_table_init(ResTable *t, int32_t *counter) {
+  memset(t, 0, sizeof(*t));
+  t->next_handle = counter;
+}
 
 int64_t res_table_next_revision(ResTable *t) { return ++t->revision; }
 
@@ -83,7 +86,6 @@ void res_table_shutdown(ResTable *t) {
   t->by_handle = NULL;
   t->handle_cap = 0;
   t->handle_count = 0;
-  t->next_handle = 0;
 }
 
 ResEntry *res_table_get_n(ResTable *t, const char *key, size_t len) {
@@ -180,11 +182,11 @@ static bool res_table_assign_handle(ResTable *t, ResEntry *e) {
   }
   // 通し番号を進め、int32 の上限を越えたら 1 に戻る。
   // 生きている値は飛ばす (stale な handle が別の entry を指さないように、死んだ値だけを再利用する)
-  int32_t h = t->next_handle;
+  int32_t h = *t->next_handle;
   do {
     h = h == INT32_MAX ? 1 : h + 1;
   } while (res_table_get_by_handle(t, h));
-  t->next_handle = h;
+  *t->next_handle = h;
   e->handle = h;
   handle_insert(t->by_handle, t->handle_cap, e);
   ++t->handle_count;

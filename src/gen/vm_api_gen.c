@@ -9972,6 +9972,67 @@ static TvmStatus vm_host_lub_app_step(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   r[0].i = result;
   VM_LUB_LEAVE(vm);
 }
+static TvmStatus vm_host_lub_app_save(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                      void *user) {
+  (void)a;
+  (void)r;
+  VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
+  int32_t p_slot = a[1].i;
+  if (!p_app) {
+    vm_lub_fail(s, "lub.app.save: app is null");
+    VM_LUB_LEAVE(vm);
+  }
+  if (s->error)
+    VM_LUB_LEAVE(vm);
+  LubStr n_error = {0};
+  bool result = {0};
+  LubStatus status =
+      lub_app_save(s->ctx, (p_app ? (int32_t)p_app->host_value : 0), p_slot,
+                   &n_error, &result);
+  vm_lub_check(s, status);
+  if (s->error)
+    VM_LUB_LEAVE(vm);
+  r[0].i = result;
+  *(void **)a[2].p = vm_lub_string(s, n_error);
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_app_load(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                      void *user) {
+  (void)a;
+  (void)r;
+  VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
+  int32_t p_slot = a[1].i;
+  if (!p_app) {
+    vm_lub_fail(s, "lub.app.load: app is null");
+    VM_LUB_LEAVE(vm);
+  }
+  if (s->error)
+    VM_LUB_LEAVE(vm);
+  LubStr n_error = {0};
+  bool result = {0};
+  LubStatus status =
+      lub_app_load(s->ctx, (p_app ? (int32_t)p_app->host_value : 0), p_slot,
+                   &n_error, &result);
+  vm_lub_check(s, status);
+  if (s->error)
+    VM_LUB_LEAVE(vm);
+  r[0].i = result;
+  *(void **)a[2].p = vm_lub_string(s, n_error);
+  VM_LUB_LEAVE(vm);
+}
+static TvmStatus vm_host_lub_app_drop(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                      void *user) {
+  (void)a;
+  (void)r;
+  VM_LUB_ENTER();
+  int32_t p_slot = a[0].i;
+  if (s->error)
+    VM_LUB_LEAVE(vm);
+  lub_app_drop(s->ctx, p_slot);
+  VM_LUB_LEAVE(vm);
+}
 static TvmStatus vm_host_lub_gfx_begin_pass(TvmVm *vm, TvmSlot *a, TvmSlot *r,
                                             void *user) {
   (void)a;
@@ -15756,6 +15817,9 @@ static const struct {
     {"lub.app.restart", "", "", vm_host_lub_app_restart},
     {"lub.app.use", "sss", "o", vm_host_lub_app_use},
     {"lub.app.step", "oof", "b", vm_host_lub_app_step},
+    {"lub.app.save", "oi&s", "b", vm_host_lub_app_save},
+    {"lub.app.load", "oi&s", "b", vm_host_lub_app_load},
+    {"lub.app.drop", "i", "", vm_host_lub_app_drop},
     {"lub.gfx.begin_pass", "o", "", vm_host_lub_gfx_begin_pass},
     {"lub.gfx.end_pass", "", "", vm_host_lub_gfx_end_pass},
     {"lub.gfx.use_shader", "sssS{int?}", "o", vm_host_lub_gfx_use_shader},
