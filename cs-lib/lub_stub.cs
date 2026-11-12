@@ -1478,9 +1478,10 @@ namespace Lub
         /// tcs VM の player (lub Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。
         /// 記録が無ければ空。
         /// 順番は決まっていない。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static List<string> TakeTrace()
+        public static List<string> TakeTrace(AppRef? app = null)
         {
             return new List<string>();
         }
@@ -1489,9 +1490,10 @@ namespace Lub
         /// ただし、InspectPin で key に覚えた個体と同じ class の別の個体を this にして通っただけの行は返さない (別の class と static のメソッドの行は返す)。
         /// key に覚えた個体が無ければ TakeTrace と同じ。
         /// tcs VM の player だけ (ほかの player ではいつも空)。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static List<string> TakeTraceFor(string key)
+        public static List<string> TakeTraceFor(string key, AppRef? app = null)
         {
             return new List<string>();
         }
@@ -1504,9 +1506,10 @@ namespace Lub
         /// class と struct は型の名前で、field が 4 つ以下で数と bool だけなら名前の後に {X=1 Y=2} を付ける。
         /// List と配列は [要素の数]、Dictionary は {…}。
         /// 記録が無ければ空。順番は決まっていない。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static List<TraceValue> TakeValues()
+        public static List<TraceValue> TakeValues(AppRef? app = null)
         {
             return new List<TraceValue>();
         }
@@ -1516,9 +1519,10 @@ namespace Lub
         /// class の子は static field (宣言の順)、instance と struct の子は field (名前の順)、List と配列の子は要素、Dictionary の子は項目 (key の順)。null の field と関数は返さない。
         /// 子のうち offset 番目から count 個を返す (子の数は親の節の Count)。path が辿れなければ空。
         /// Text は TakeValues と同じ書き方。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static List<InspectNode> Inspect(string path, int offset, int count)
+        public static List<InspectNode> Inspect(string path, int offset, int count, AppRef? app = null)
         {
             return new List<InspectNode>();
         }
@@ -1527,24 +1531,27 @@ namespace Lub
         /// Path と Id は Sys.Inspect と同じ書き方で、同じ object は最初に見つけた path で 1 度だけ返す。
         /// 深さは static field を 1 として maxDepth まで、List と配列などの子は先頭の maxChildren 個まで辿る。
         /// Sys.Inspect を節ごとに呼んで探すより速い (path を根から辿り直さず、値の文字を作らない)。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static List<InspectInstance> InspectInstances(int maxDepth, int maxChildren)
+        public static List<InspectInstance> InspectInstances(int maxDepth, int maxChildren, AppRef? app = null)
         {
             return new List<InspectInstance>();
         }
 
         /// <summary>path の節の object を key で弱く覚える (object の寿命は延ばさない)。path が辿れないか object でなければ、key の記憶を消す。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static void InspectPin(string key, string path)
+        public static void InspectPin(string key, string path, AppRef? app = null)
         {
         }
 
         /// <summary>key で覚えた object がまだ回収されておらず、その Id が id か。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static bool InspectPinned(string key, string id)
+        public static bool InspectPinned(string key, string id, AppRef? app = null)
         {
             return false;
         }
@@ -1561,26 +1568,29 @@ namespace Lub
 
         /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止まり (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept)、pass ごとの GPU の時間 (Sys.TakeGpuPasses) を数え始める (true) か止める (false)。
         /// 行ごとの負荷、GC の止まり、持ち越しは tcs VM の player だけが数え、GPU の pass はどの host でも数える。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static void ProfileLines(bool on)
+        public static void ProfileLines(bool on, AppRef? app = null)
         {
         }
 
         /// <summary>前に呼んでから、行ごとに足した負荷を返し、0 に戻す (ProfileLine)。
         /// 数えていなければ空。順番は決まっていない。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static List<ProfileLine> TakeProfile()
+        public static List<ProfileLine> TakeProfile(AppRef? app = null)
         {
             return new List<ProfileLine>();
         }
 
         /// <summary>前に呼んでから GC が止めた回を、古い順に返す (直近 64 回まで。GcPause)。
         /// 数えていなければ空。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static List<GcPause> TakeGcPauses()
+        public static List<GcPause> TakeGcPauses(AppRef? app = null)
         {
             return new List<GcPause>();
         }
@@ -1589,9 +1599,10 @@ namespace Lub
         /// 数えるのは、前の frame の境目の後に tcs の --trace で変換したソースの行で作られ、今ゲームの状態 (entry の class と --trace で変換した class の static) から辿れる物で、一度返した物は次から返さない。
         /// frame の境目 (ゲームと overlay の OnFrame の後) で作った物を忘れるので、ゲームの frame の分は overlay の OnFrame の中で取る。
         /// 数えていなければ空。順番は決まっていない。
+        /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
         [LubNoFail]
-        public static List<KeptObject> TakeKept()
+        public static List<KeptObject> TakeKept(AppRef? app = null)
         {
             return new List<KeptObject>();
         }

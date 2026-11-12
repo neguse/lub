@@ -134,6 +134,13 @@ static OpenApp *open_app_find(App *app, LubHandle handle) {
   return NULL;
 }
 
+App *api_app_observed(App *app, LubHandle handle) {
+  if (!handle)
+    return app;
+  OpenApp *o = open_app_find(app, handle);
+  return o ? o->app : NULL;
+}
+
 // module を読み込み、OnInit を呼ぶ (まだなら)。
 // ImGui の context は開いた側のものなので、開かれた app の Ui.* は何もしない
 static void open_app_player(App *app, OpenApp *o) {
