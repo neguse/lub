@@ -353,7 +353,7 @@ host は新版の module と計画 (か、その 2 つを 1 つにした batch) 
 1. **読み込み**: 新版を別の VM に読み、parse / verify / link する。失敗したら `TVM_LOAD_ERROR` を返し、状態は旧版のまま
 2. **計画**: 計画に restart の理由があれば `TVM_RESTART`。型を名前で対応させ、計画が「変わらない」と言う型の layout が新版で違えば、計画と module の食い違いとして `TVM_LOAD_ERROR`。生きている object の型と closure の関数が新版にあるかを確かめ、無ければ `TVM_RESTART` (§12.3)。ここまでは状態を変えない
 3. **反映**: layout の変わる型の object を新しい layout で作り直し (§12.2)、ほかの object は型を新版に付け替え、closure を新版の関数に付け替え (§12.4)、static を名前で移し、module を入れ替え、全部の参照 (object、static、handle、C の module の root) を転送先へ張り替える。ここに失敗の経路は無い (確保の失敗は abort)
-4. **initializer**: 足した field と型を変えた field の initializer を、作り直した instance ごとに走らせる。足した static の initializer (`型.<reload-static>` の関数) を走らせる。遅延初期化の型でまだ初期化していなければ走らせない (最初の読み書きで全部を初期化する)
+4. **initializer**: 足した field と型を変えた field の initializer を、作り直した instance ごとに走らせる。足した static と評価し直す static の initializer (`型.<reload-static>` の関数) を走らせる。遅延初期化の型でまだ初期化していなければ走らせない (最初の読み書きで全部を初期化する)
 5. **hook**: `OnReload()` を持つ型の生きている instance ごとに `OnReload()`、続いて entry の型の static の `OnReload()` (hot-reload §8)
 
 initializer は新版の関数なので、型と heap が新版で揃った 3 の後に走らせる (旧版の heap のまま走らせると `is` と cast が型と合わない)。4 と 5 の fault は警告で、`tvm_apply` は `TVM_OK` を返し `tvm_error` が警告を持つ。反映は巻き戻さず、fault した initializer の field は 0 の値のまま。

@@ -10,7 +10,7 @@
       ほかの object は型を新版に付け替え、static を名前で移し、module を入れ替え、全部の参照を共有の walker で
       転送先へ張り替える。ここに失敗の経路は無い (確保の失敗は abort)
    4. initializer: 足した (と型を変えた) field の initializer を、作り直した instance ごとに走らせる。
-      足した static の initializer (`型.<reload-static>`) を走らせる
+      足した static と評価し直す static の initializer (`型.<reload-static>`) を走らせる
    5. hook: OnReload を持つ型の生きている instance ごとに OnReload()、続いて entry の型の static の OnReload()
 
    initializer は新版の関数なので、反映の後 (型と heap が新版で揃ってから) に走らせる。fault は hook と同じく
@@ -665,7 +665,7 @@ static void run_initializers(Reload *rl) {
         slot_to_mem(field->kind, rets[0], (char *)o + field->offset);
     }
   }
-  /* 足した static: 遅延初期化の型で、まだ初期化していなければ最初の読み書きで全部を初期化するので走らせない */
+  /* 足した static と評価し直す static: 遅延初期化の型で、まだ初期化していなければ最初の読み書きで全部を初期化するので走らせない */
   for (uint32_t i = 0; i < vm->nfuncs; i++) {
     const char *name = vm->funcs[i].name;
     const char *suffix = ".<reload-static>";

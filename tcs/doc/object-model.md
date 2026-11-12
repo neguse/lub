@@ -141,7 +141,7 @@ u32 static の変化の数、static ごとに: u32 型の名前、u32 field の�
 - static は「型.field」の名前で対応させる。`.tcsb` は static の slot の種類表の後に static の field の表
   (名前、先頭の slot、種類と型) を持つ。struct の static は葉を値に組み立て、struct の計画で移して葉に戻す。
   遅延初期化の型の「初期化を始めた」flag は `型.<init>` の名前で同じく移す
-- 足した static の initializer は `型.<reload-static>` の関数にまとめる。遅延初期化の型でまだ初期化して
+- 足した static と、評価し直す static (initializer か型を変えた static と、それを initializer で読む static) の initializer は `型.<reload-static>` の関数にまとめる。遅延初期化の型でまだ初期化して
   いなければ走らせない (最初の読み書きで全部を初期化する)
 
 ### 6.1 適用の順 (VM の `tvm_apply`)
