@@ -1,8 +1,14 @@
-// 差分で移せない保存の検査: static の初期化子を変えて保存すると、tcs が restart を知らせ、player は VM を作り直して OnInit から始める。
+// 差分で移せない保存の検査: enum の member の値を変えて保存すると、tcs が restart を知らせ、player は VM を作り直して OnInit から始める。
 // 作り直した VM の static は新しい初期化子の値になる。
 // player は作り直すたびに `lub: restarted` を log に出す (../expect.txt)。
 using System;
 using Lub;
+
+public enum Phase
+{
+    First,
+    Second,
+}
 
 public static class Game
 {
@@ -33,11 +39,12 @@ public static class Game
                 App.Quit(1);
                 return;
             }
-            Io.SaveText(path, text.Replace("Version = " + "1;", "Version = " + "2;"));
+            text = text.Replace("Version = " + "1;", "Version = " + "2;");
+            Io.SaveText(path, text.Replace("    First,\n" + "    Second,", "    Second,\n" + "    First,"));
         }
         if (Sys.Seconds() > 60)
         {
-            Console.WriteLine("FAIL the static initializer change did not restart the VM");
+            Console.WriteLine("FAIL the enum change did not restart the VM");
             App.Quit(1);
         }
     }

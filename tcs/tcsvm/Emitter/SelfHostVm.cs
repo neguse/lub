@@ -46,7 +46,7 @@ internal static class SelfHostVm
         {
             TcsC.CFail.Error = "";
             var module = TcsVm.VmEmitter.EmitReload(old, next, entryClass ?? "", exports?.ToList() ?? [],
-                TcsSelf.VmSession.RestartReasons(old, next), out var plan, out _);
+                TcsSelf.VmSession.RestartReasons(old, next), TcsSelf.VmSession.ReinitStatics(old, next), out var plan, out _);
             Throw();
             return (Bytes(module), Bytes(plan));
         }

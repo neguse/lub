@@ -13,6 +13,8 @@ public sealed class ExField
     public bool IsStatic;
     public IlExpr? Init;
     public string? InitHash;
+    // static の初期化子が直に読む static と const ("型\nfield")
+    public List<string> Reads = new List<string>();
 
     public ExField(string name, string type, bool isStatic, IlExpr? init, string? initHash)
     {
@@ -691,7 +693,9 @@ public sealed class IlExporter
                         Enter(t, null, m, false);
                         init = Expr(v.A);
                     }
-                    fields.Add(new ExField(sym != null ? FieldName(t, sym) : v.Text, sym != null ? IlTypes.Display(sym.Type) : "?", isStatic, init, v.A != null ? InitializerHash(v.A, m.Has(Mods.Const)) : null));
+                    var field = new ExField(sym != null ? FieldName(t, sym) : v.Text, sym != null ? IlTypes.Display(sym.Type) : "?", isStatic, init, v.A != null ? InitializerHash(v.A, m.Has(Mods.Const)) : null);
+                    if (isStatic) StaticReads(v.A, field.Reads);
+                    fields.Add(field);
                 }
             }
             else if (m.Kind == NodeKind.Property && IsAutoProperty(m))
@@ -705,10 +709,37 @@ public sealed class IlExporter
                     init = Expr(m.D);
                 }
                 var initNode = m.D;
-                fields.Add(new ExField(sym != null ? FieldName(t, sym) : m.Text, sym != null ? IlTypes.Display(sym.Type) : "?", isStatic, init, initNode != null ? InitializerHash(initNode, false) : null));
+                var field = new ExField(sym != null ? FieldName(t, sym) : m.Text, sym != null ? IlTypes.Display(sym.Type) : "?", isStatic, init, initNode != null ? InitializerHash(initNode, false) : null);
+                if (isStatic) StaticReads(initNode, field.Reads);
+                fields.Add(field);
             }
         }
         return fields;
+    }
+
+    // 式の中で名前を引いた static の field、自動実装の property、const を集める
+    private static void StaticReads(Node? n, List<string> reads)
+    {
+        if (n == null) return;
+        var sym = n.Sym;
+        if (sym != null && sym.Owner != null && (sym.Kind == SymKind.Field || sym.Kind == SymKind.Property) && (sym.IsStatic || sym.IsConst))
+        {
+            string key = sym.Owner.IlName + "\n" + FieldName(sym.Owner, sym);
+            if (!reads.Contains(key)) reads.Add(key);
+        }
+        StaticReads(n.A, reads);
+        StaticReads(n.B, reads);
+        StaticReads(n.C, reads);
+        StaticReads(n.D, reads);
+        StaticReadsIn(n.List, reads);
+        StaticReadsIn(n.List2, reads);
+        StaticReadsIn(n.List3, reads);
+    }
+
+    private static void StaticReadsIn(List<Node>? list, List<string> reads)
+    {
+        if (list == null) return;
+        foreach (var n in list) StaticReads(n, reads);
     }
 
     // accessor が本文を持たない property (式の本文の property も除く)。B = get、C = set / init、D = 初期化子

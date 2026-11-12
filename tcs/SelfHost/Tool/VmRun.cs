@@ -119,7 +119,7 @@ public sealed class VmSession
             return r;
         }
         var notes = ReloadRules.Notes(ReloadRules.TypesOf(_last), ReloadRules.TypesOf(next));
-        var m = VmEmitter.EmitReload(_lastDesc!, next, _entry, _exports, RestartReasons(_last, next), out List<int> plan, out List<string> reasons,
+        var m = VmEmitter.EmitReload(_lastDesc!, next, _entry, _exports, RestartReasons(_last, next), ReinitStatics(_last, next), out List<int> plan, out List<string> reasons,
             out VmDescription nextDesc);
         if (CFail.Failed) return Failed();
         _last = next;
@@ -141,6 +141,10 @@ public sealed class VmSession
     /// <summary>live に当てられない編集の理由 (ReloadRules)。</summary>
     public static List<string> RestartReasons(ExportResult oldProgram, ExportResult newProgram) =>
         ReloadRules.RestartReasons(ReloadRules.TypesOf(oldProgram), ReloadRules.TypesOf(newProgram));
+
+    /// <summary>reload が評価し直す static (ReloadRules)。</summary>
+    public static List<string> ReinitStatics(ExportResult oldProgram, ExportResult newProgram) =>
+        ReloadRules.ReinitStatics(ReloadRules.TypesOf(oldProgram), ReloadRules.TypesOf(newProgram));
 
     private static VmUpdate Failed()
     {
@@ -258,7 +262,7 @@ public sealed class VmRun
             var oldDiags = new List<string>();
             var old = VmSession.Export(oldSources, _o.ReloadFrom, refs, oldDiags);
             if (old == null) return VError("TinyC# diagnostics (old version):\n" + string.Join("\n", oldDiags));
-            var module = VmEmitter.EmitReload(old, exported, _o.Entry, _o.Exports, VmSession.RestartReasons(old, exported), out List<int> plan, out List<string> reasons);
+            var module = VmEmitter.EmitReload(old, exported, _o.Entry, _o.Exports, VmSession.RestartReasons(old, exported), VmSession.ReinitStatics(old, exported), out List<int> plan, out List<string> reasons);
             if (CFail.Failed) return VError(CFail.Error);
             if (WriteBytes(_o.Output, module) != 0) return 1;
             if (_o.PlanOut != "" && WriteBytes(_o.PlanOut, plan) != 0) return 1;
