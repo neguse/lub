@@ -119,9 +119,9 @@ static void input_sample(App *app) {
            (size_t)(n < SDL_SCANCODE_COUNT ? n : SDL_SCANCODE_COUNT));
   float px = 0.0f, py = 0.0f;
   in->mouse_buttons = SDL_GetMouseState(&px, &py);
-  float density = lub_host_pixel_density(app);
+  float density = lub_host_pixel_density(app->proc);
   int main_x = 0, main_y = 0, main_w = 0, main_h = 0;
-  lub_host_main_rect(app, &main_x, &main_y, &main_w, &main_h);
+  lub_host_main_rect(app->proc, &main_x, &main_y, &main_w, &main_h);
   in->mouse_x = px * density - (float)main_x;
   in->mouse_y = py * density - (float)main_y;
   for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i) {
@@ -211,7 +211,7 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
       char path[1024];
       if (lub_str_copy(opts->capture_path, path, sizeof(path))) {
         capture_schedule(
-            &app->capture, path,
+            &app->proc->capture, path,
             (uint64_t)(opts->capture_frame > 0 ? opts->capture_frame : 0));
         SDL_Log("capture scheduled: path=%s at_frame=%d", path,
                 opts->capture_frame);
@@ -234,27 +234,25 @@ LubStatus lub_host_start(LubContext *ctx) {
 // SDL reports the mouse in window coordinates. On a high pixel density window
 // (metal backend: Retina, iPhone) those are points, while everything the game
 // draws with is in framebuffer pixels (Gfx.Size), so input is scaled to match.
-float lub_host_pixel_density(App *app) {
-  float density =
-      app->proc->window ? SDL_GetWindowPixelDensity(app->proc->window) : 0.0f;
+float lub_host_pixel_density(Process *proc) {
+  float density = proc->window ? SDL_GetWindowPixelDensity(proc->window) : 0.0f;
   return density > 0.0f ? density : 1.0f;
 }
 
-void lub_host_main_rect(App *app, int *x, int *y, int *w, int *h) {
+void lub_host_main_rect(Process *proc, int *x, int *y, int *w, int *h) {
   *x = *y = *w = *h = 0;
-  if (!app->proc->window)
+  if (!proc->window)
     return;
-  if (app->proc->fixed_w > 0 && app->proc->fixed_h > 0) {
-    *w = app->proc->fixed_w;
-    *h = app->proc->fixed_h;
+  if (proc->fixed_w > 0 && proc->fixed_h > 0) {
+    *w = proc->fixed_w;
+    *h = proc->fixed_h;
     return;
   }
-  SDL_GetWindowSizeInPixels(app->proc->window, w, h);
+  SDL_GetWindowSizeInPixels(proc->window, w, h);
   SDL_Rect safe;
-  if (!SDL_GetWindowSafeArea(app->proc->window, &safe) || safe.w <= 0 ||
-      safe.h <= 0)
+  if (!SDL_GetWindowSafeArea(proc->window, &safe) || safe.w <= 0 || safe.h <= 0)
     return;
-  float density = lub_host_pixel_density(app);
+  float density = lub_host_pixel_density(proc);
   int x0 = (int)(safe.x * density + 0.5f);
   int y0 = (int)(safe.y * density + 0.5f);
   int x1 = (int)((safe.x + safe.w) * density + 0.5f);
@@ -284,12 +282,12 @@ static int32_t event_char(SDL_Scancode scancode, SDL_Keymod mod) {
 static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
   memset(out, 0, sizeof(*out));
   out->mods = event_mods(SDL_GetModState());
-  float density = lub_host_pixel_density(app);
+  float density = lub_host_pixel_density(app->proc);
   int main_x = 0, main_y = 0, main_w = 0, main_h = 0;
-  lub_host_main_rect(app, &main_x, &main_y, &main_w, &main_h);
+  lub_host_main_rect(app->proc, &main_x, &main_y, &main_w, &main_h);
   switch (e->type) {
   case SDL_EVENT_QUIT:
-    app->quit_requested = true;
+    app->proc->quit_requested = true;
     out->kind = LUB_EVENT_KIND_QUIT;
     return true;
   case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
@@ -388,7 +386,7 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   App *app = lub_api_app(ctx);
 #if defined(LUB_HAS_OPENXR)
   bool xr = strcmp(app->proc->backend_name, "openxr") == 0;
-  if (xr && !lubxr_poll(&app->quit_requested))
+  if (xr && !lubxr_poll(&app->proc->quit_requested))
     return false;
 #endif
   int w = 0, h = 0;
@@ -417,7 +415,7 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
     app->proc->frame_dt = lubxr_frame_dt();
 #endif
   profile_end_scope(&app->profile, "runtime.begin_frame");
-  if (app->quit_requested) {
+  if (app->quit_requested || app->proc->quit_requested) {
     profile_frame_end(&app->profile, app->frame_index);
     return false;
   }
@@ -464,7 +462,8 @@ void lub_host_frame_end(LubContext *ctx, bool frame_ok) {
 
 bool lub_host_quit_requested(LubContext *ctx) {
   App *app = lub_api_app(ctx);
-  return app->quit_requested || app->capture_then_exit;
+  return app->quit_requested || app->proc->quit_requested ||
+         app->proc->capture_then_exit;
 }
 
 int32_t lub_host_exit_code(LubContext *ctx) {

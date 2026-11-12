@@ -2,9 +2,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-struct App;
+struct Process;
 
-// Capture state attached to App.
+// Capture state attached to Process.
 typedef struct CaptureState {
   bool pending;          // true = capture next presented frame
   char *path;            // strdup'd PNG path (free on shutdown / after capture)
@@ -28,10 +28,10 @@ void capture_schedule(CaptureState *c, const char *path, uint64_t at_frame);
 bool capture_state_due(const CaptureState *c, uint64_t frame_index);
 
 // Called from app_frame_end. If a capture is pending and the current frame
-// is at/after target_frame, dispatch g_backend->capture(app, path) and clear
+// is at/after target_frame, dispatch g_backend->capture(proc, path) and clear
 // the pending flag. Returns true if capture was performed. With
 // request_capture it returns false and leaves the readback in flight.
-bool capture_state_drain(CaptureState *c, struct App *app);
+bool capture_state_drain(CaptureState *c, struct Process *proc);
 
 bool capture_state_in_flight(const CaptureState *c);
 // Writes the PNG of the in-flight readback once it is READY. Returns true

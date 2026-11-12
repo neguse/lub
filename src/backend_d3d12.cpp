@@ -232,7 +232,7 @@ struct DxImage {
 
 // --- global state ------------------------------------------------------------
 struct Dx12State {
-  App *app = nullptr;
+  Process *proc = nullptr;
   ComPtr<IDXGIFactory4> factory;
   ComPtr<ID3D12Device> device;
   ComPtr<ID3D12Device10> device10; // CreateCommittedResource3 (layouts)
@@ -293,7 +293,7 @@ Dx12State g;
 
 void dx_drain_zombies();
 void dx_readbacks_submitted(uint64_t fence_value);
-void dx_end_pass(App *app);
+void dx_end_pass(Process *proc);
 bool dx_init_descriptor_heaps();
 void dx_set_descriptor_heaps();
 void dx_reset_bound_state();
@@ -689,8 +689,8 @@ static void dx_log_runtime(void) {
           ok && o12.EnhancedBarriersSupported ? "yes" : "no");
 }
 
-bool dx_init(App *app) {
-  g.app = app;
+bool dx_init(Process *proc) {
+  g.proc = proc;
 
   UINT factory_flags = 0;
   bool want_debug = getenv("LUB_D3D12_DEBUG") != nullptr;
@@ -842,7 +842,7 @@ bool dx_init(App *app) {
     return false;
 
   HWND hwnd =
-      (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(app->proc->window),
+      (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(proc->window),
                                    SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
   if (!hwnd) {
     SDL_Log("d3d12: no HWND from SDL window");
@@ -875,8 +875,8 @@ bool dx_init(App *app) {
 
 void dx_free_zombies_now();
 
-void dx_shutdown(App *app) {
-  (void)app;
+void dx_shutdown(Process *proc) {
+  (void)proc;
   dx_wait_idle();
   dx_log_debug_messages("shutdown");
   dx_free_zombies_now();
@@ -925,8 +925,8 @@ static void dx_timestamps_resolve() {
   f.ts_resolved = true;
 }
 
-bool dx_timestamp(App *app, uint32_t index) {
-  (void)app;
+bool dx_timestamp(Process *proc, uint32_t index) {
+  (void)proc;
   FrameCtx &f = g.frames[g.slot];
   if (!g.ts_heap || !g.recording || !f.ts_on || index >= GPU_TIME_STAMPS)
     return false;
@@ -938,16 +938,16 @@ bool dx_timestamp(App *app, uint32_t index) {
   return true;
 }
 
-void dx_begin_frame(App *app, int *out_w, int *out_h) {
-  if (app->proc->pending_resize) {
-    app->proc->pending_resize = false;
+void dx_begin_frame(Process *proc, int *out_w, int *out_h) {
+  if (proc->pending_resize) {
+    proc->pending_resize = false;
     dx_resize_swapchain();
   }
 
   FrameCtx &f = g.frames[g.slot];
   dx_wait_for_fence(f.fence_value);
   dx_timestamps_read(g.slot);
-  f.ts_frame = app->frame_index;
+  f.ts_frame = proc->frame_index;
   f.ts_on = g.ts_heap && gpu_time_enabled();
   f.ts_resolved = false;
   dx_drain_zombies();
@@ -968,8 +968,8 @@ void dx_begin_frame(App *app, int *out_w, int *out_h) {
     *out_h = g.sw_h;
 }
 
-void dx_end_frame(App *app) {
-  (void)app;
+void dx_end_frame(Process *proc) {
+  (void)proc;
   if (g.recording) {
     dx_timestamps_resolve();
     g.cl->Close();
@@ -1005,8 +1005,8 @@ void dx_set_viewport_scissor(int w, int h) {
   g.cl->RSSetScissorRects(1, &sc);
 }
 
-void dx_begin_pass(App *app, const PassBeginDesc *d) {
-  (void)app;
+void dx_begin_pass(Process *proc, const PassBeginDesc *d) {
+  (void)proc;
   if (!g.recording)
     return;
   // D3D12 has no load op; LOAD just skips the explicit clears (contents are
@@ -1868,8 +1868,8 @@ void dx_set_graphics_table(int root, D3D12_GPU_DESCRIPTOR_HANDLE h) {
   g_bound.tables[root] = h.ptr;
 }
 
-void dx_end_pass(App *app) {
-  (void)app;
+void dx_end_pass(Process *proc) {
+  (void)proc;
   if (g.recording && g.in_pass) {
     if (g.pass_swapchain)
       dx_swapchain_to_present(g.backbuffers[g.bb_index].Get());
@@ -2314,8 +2314,8 @@ void dx_write_null_uav(D3D12_CPU_DESCRIPTOR_HANDLE at) {
   g.device->CreateUnorderedAccessView(nullptr, nullptr, &ud, at);
 }
 
-void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
-  (void)app;
+void dx_dispatch(Process *proc, const ComputeDispatchDesc *d) {
+  (void)proc;
   if (!g.recording) {
     SDL_Log("d3d12: dispatch: no open frame");
     return;
@@ -2520,9 +2520,9 @@ void dx_readbacks_submitted(uint64_t fence_value) {
   g_frame_readbacks.clear();
 }
 
-bool dx_request_readback_image(App *app, BackendImage image, int w, int h,
+bool dx_request_readback_image(Process *proc, BackendImage image, int w, int h,
                                SglPixelFormat src_fmt, BackendReadback *out) {
-  (void)app;
+  (void)proc;
   if (!out)
     return false;
   *out = 0;
@@ -2676,8 +2676,8 @@ void dx_destroy_readback(BackendReadback h) {
 // Copy the current backbuffer to a readback buffer, submit the frame list
 // (without presenting) and wait, then write the PNG. end_frame sees
 // submitted_before_present and only presents + signals.
-bool dx_capture(App *app, const char *path) {
-  (void)app;
+bool dx_capture(Process *proc, const char *path) {
+  (void)proc;
   if (!g.recording) {
     SDL_Log("d3d12: capture: no open frame");
     return false;
@@ -2755,8 +2755,8 @@ bool dx_capture(App *app, const char *path) {
   return true;
 }
 
-SglPixelFormat dx_swapchain_color_format(App *app) {
-  (void)app;
+SglPixelFormat dx_swapchain_color_format(Process *proc) {
+  (void)proc;
   return SGL_PF_RGBA8;
 }
 

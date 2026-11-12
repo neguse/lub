@@ -327,7 +327,7 @@ static void mt_ts_shutdown(void) {
 }
 
 // command buffer の終わった組を返し、この frame の組を決める
-static void mt_ts_begin_frame(App *app) {
+static void mt_ts_begin_frame(Process *proc) {
   if (!mt_ts_on())
     return;
   if (@available(macOS 11.0, iOS 14.0, *)) {
@@ -370,10 +370,10 @@ static void mt_ts_begin_frame(App *app) {
   }
   g_ts_cur = NULL;
   g_ts_last = -1;
-  MtTsFrame *t = &g_ts[app->frame_index % MT_TS_FRAMES];
+  MtTsFrame *t = &g_ts[proc->frame_index % MT_TS_FRAMES];
   if (!gpu_time_enabled() || t->busy)
     return;
-  t->frame = app->frame_index;
+  t->frame = proc->frame_index;
   t->passes = 0;
   t->count = 0;
   for (int i = 0; i < GPU_TIME_PASSES; i++)
@@ -382,9 +382,8 @@ static void mt_ts_begin_frame(App *app) {
 }
 
 // pass の時刻を頼む (pass を作る前に、控える pass だけ)
-static void mt_ts_attach(App *app, MTLRenderPassDescriptor *rp) {
-  if (!g_ts_cur || g_ts_cur->passes >= GPU_TIME_PASSES ||
-      !gpu_time_wants_pass(app))
+static void mt_ts_attach(bool timed, MTLRenderPassDescriptor *rp) {
+  if (!g_ts_cur || g_ts_cur->passes >= GPU_TIME_PASSES || !timed)
     return;
   if (@available(macOS 11.0, iOS 14.0, *)) {
     NSUInteger base = (NSUInteger)(g_ts_cur - g_ts) * GPU_TIME_STAMPS;
@@ -410,8 +409,8 @@ static void mt_ts_end_frame(void) {
   t->busy = true;
 }
 
-static bool mt_timestamp(App *app, uint32_t index) {
-  (void)app;
+static bool mt_timestamp(Process *proc, uint32_t index) {
+  (void)proc;
   MtTsFrame *t = g_ts_cur;
   if (!t || index >= GPU_TIME_STAMPS)
     return false;
@@ -429,7 +428,7 @@ static bool mt_timestamp(App *app, uint32_t index) {
   return true;
 }
 
-static bool mt_init(App *app) {
+static bool mt_init(Process *proc) {
   @autoreleasepool {
     g_device = MTLCreateSystemDefaultDevice();
     if (!g_device) {
@@ -437,7 +436,7 @@ static bool mt_init(App *app) {
       return false;
     }
     g_queue = [g_device newCommandQueue];
-    g_view = SDL_Metal_CreateView(app->proc->window);
+    g_view = SDL_Metal_CreateView(proc->window);
     if (!g_view) {
       SDL_Log("metal: SDL_Metal_CreateView failed: %s", SDL_GetError());
       g_queue = nil;
@@ -451,11 +450,9 @@ static bool mt_init(App *app) {
     g_layer.framebufferOnly = NO;
     // A capture run draws at the requested size, not at what the window got:
     // the drawable is ours to size, and the layer scales it for display.
-    if (app->capture.pending) {
-      app->proc->fixed_w =
-          app->proc->cfg_w > 0 ? app->proc->cfg_w : LUB_DEFAULT_WINDOW_W;
-      app->proc->fixed_h =
-          app->proc->cfg_h > 0 ? app->proc->cfg_h : LUB_DEFAULT_WINDOW_H;
+    if (proc->capture.pending) {
+      proc->fixed_w = proc->cfg_w > 0 ? proc->cfg_w : LUB_DEFAULT_WINDOW_W;
+      proc->fixed_h = proc->cfg_h > 0 ? proc->cfg_h : LUB_DEFAULT_WINDOW_H;
     }
     mt_ts_init();
     SDL_Log("metal: device: %s%s", g_device.name.UTF8String,
@@ -487,8 +484,8 @@ static bool mt_init(App *app) {
   }
 }
 
-static void mt_shutdown(App *app) {
-  (void)app;
+static void mt_shutdown(Process *proc) {
+  (void)proc;
   @autoreleasepool {
     if (g_cmd) {
       [g_cmd commit];
@@ -524,21 +521,21 @@ static void mt_shutdown(App *app) {
   }
 }
 
-static void mt_begin_frame(App *app, int *out_w, int *out_h) {
+static void mt_begin_frame(Process *proc, int *out_w, int *out_h) {
   @autoreleasepool {
-    mt_ts_begin_frame(app);
+    mt_ts_begin_frame(proc);
     int w = 0, h = 0;
-    SDL_GetWindowSizeInPixels(app->proc->window, &w, &h);
-    if (app->proc->fixed_w > 0 && app->proc->fixed_h > 0) {
-      w = app->proc->fixed_w;
-      h = app->proc->fixed_h;
+    SDL_GetWindowSizeInPixels(proc->window, &w, &h);
+    if (proc->fixed_w > 0 && proc->fixed_h > 0) {
+      w = proc->fixed_w;
+      h = proc->fixed_h;
     }
     if (w > 0 && h > 0) {
       CGSize size = g_layer.drawableSize;
       if ((int)size.width != w || (int)size.height != h)
         g_layer.drawableSize = CGSizeMake(w, h);
     }
-    app->proc->pending_resize = false;
+    proc->pending_resize = false;
     g_cmd = [g_queue commandBuffer];
     g_drawable = [g_layer nextDrawable];
     w = h = 0;
@@ -550,7 +547,7 @@ static void mt_begin_frame(App *app, int *out_w, int *out_h) {
       g_main_w = w;
       g_main_h = h;
       int mx = 0, my = 0, mw = 0, mh = 0;
-      lub_host_main_rect(app, &mx, &my, &mw, &mh);
+      lub_host_main_rect(proc, &mx, &my, &mw, &mh);
       if (mw > 0 && mh > 0 && mx + mw <= w && my + mh <= h) {
         g_main_x = mx;
         g_main_y = my;
@@ -565,8 +562,8 @@ static void mt_begin_frame(App *app, int *out_w, int *out_h) {
   }
 }
 
-static void mt_end_frame(App *app) {
-  (void)app;
+static void mt_end_frame(Process *proc) {
+  (void)proc;
   @autoreleasepool {
     if (g_cmd) {
       if (g_drawable)
@@ -592,7 +589,7 @@ static void mt_end_frame(App *app) {
   }
 }
 
-static void mt_begin_pass(App *app, const PassBeginDesc *d) {
+static void mt_begin_pass(Process *proc, const PassBeginDesc *d) {
   @autoreleasepool {
     g_ts_last = -1;
     g_pass = nil;
@@ -657,7 +654,7 @@ static void mt_begin_pass(App *app, const PassBeginDesc *d) {
       g_pass_w = (int)first.width;
       g_pass_h = (int)first.height;
     }
-    mt_ts_attach(app, rp);
+    mt_ts_attach(d->timed, rp);
     g_pass = [g_cmd renderCommandEncoderWithDescriptor:rp];
     [g_pass setViewport:(MTLViewport){g_pass_x, g_pass_y, g_pass_w, g_pass_h,
                                       0.0, 1.0}];
@@ -670,8 +667,8 @@ static void mt_begin_pass(App *app, const PassBeginDesc *d) {
   }
 }
 
-static void mt_end_pass(App *app) {
-  (void)app;
+static void mt_end_pass(Process *proc) {
+  (void)proc;
   if (g_pass)
     [g_pass endEncoding];
   g_pass = nil;
@@ -1300,8 +1297,8 @@ static void mt_set_scissor(int x, int y, int w, int h) {
                                           (NSUInteger)(y1 - y0)}];
 }
 
-static void mt_dispatch(App *app, const ComputeDispatchDesc *d) {
-  (void)app;
+static void mt_dispatch(Process *proc, const ComputeDispatchDesc *d) {
+  (void)proc;
   if (!d || !d->pipeline || !d->refl)
     return;
   MtPipeline *p = MT_OBJ(MtPipeline, d->pipeline);
@@ -1470,7 +1467,7 @@ static bool mt_convert(id<MTLBuffer> buf, int w, int h, SglPixelFormat src_fmt,
   return true;
 }
 
-static bool mt_request_readback_image(App *app, BackendImage image, int w,
+static bool mt_request_readback_image(Process *proc, BackendImage image, int w,
                                       int h, SglPixelFormat src_fmt,
                                       BackendReadback *out) {
   if (!out)
@@ -1490,7 +1487,7 @@ static bool mt_request_readback_image(App *app, BackendImage image, int w,
     req->h = h;
     req->src_fmt = src_fmt;
     // Outside a frame no frame commit follows: finish it here.
-    if (!app->in_frame && !mt_flush_and_wait())
+    if (!proc->in_frame && !mt_flush_and_wait())
       return false;
     *out = MT_HANDLE(req);
     return true;
@@ -1526,8 +1523,8 @@ static void mt_destroy_readback(BackendReadback h) {
     MT_RELEASE(h);
 }
 
-static bool mt_capture(App *app, const char *path) {
-  (void)app;
+static bool mt_capture(Process *proc, const char *path) {
+  (void)proc;
   if (!g_device || !g_drawable || !path)
     return false;
   @autoreleasepool {
@@ -1546,8 +1543,8 @@ static bool mt_capture(App *app, const char *path) {
   }
 }
 
-static SglPixelFormat mt_swapchain_color_format(App *app) {
-  (void)app;
+static SglPixelFormat mt_swapchain_color_format(Process *proc) {
+  (void)proc;
   return SGL_PF_BGRA8;
 }
 

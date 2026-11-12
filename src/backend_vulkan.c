@@ -209,7 +209,7 @@ typedef struct RenderPassEntry {
 
 // --- global state ------------------------------------------------------------
 typedef struct VkbState {
-  App *app;
+  Process *proc;
   VkInstance instance;
   VkDebugUtilsMessengerEXT messenger;
   VkSurfaceKHR surface;
@@ -1109,7 +1109,7 @@ static bool vkb_create_swapchain(void) {
   VkExtent2D extent = caps.currentExtent;
   if (extent.width == 0xFFFFFFFFu) {
     int w = 0, h = 0;
-    SDL_GetWindowSizeInPixels(g.app->proc->window, &w, &h);
+    SDL_GetWindowSizeInPixels(g.proc->window, &w, &h);
     extent.width = (uint32_t)w;
     extent.height = (uint32_t)h;
   }
@@ -1452,9 +1452,9 @@ static bool vkb_pick_device(void) {
 static bool vkb_make_dummies(void);
 static BackendImage vkb_make_image(const ImageDesc *desc);
 
-static bool vkb_init(App *app) {
-  g.app = app;
-  g.xr = strcmp(app->proc->backend_name, "openxr") == 0;
+static bool vkb_init(Process *proc) {
+  g.proc = proc;
+  g.xr = strcmp(proc->backend_name, "openxr") == 0;
 #if defined(LUB_HAS_OPENXR)
   if (g.xr && !lubxr_init())
     return false;
@@ -1540,8 +1540,8 @@ static bool vkb_init(App *app) {
     }
   }
 
-  if (!g.xr && !SDL_Vulkan_CreateSurface(app->proc->window, g.instance, NULL,
-                                         &g.surface)) {
+  if (!g.xr &&
+      !SDL_Vulkan_CreateSurface(proc->window, g.instance, NULL, &g.surface)) {
     SDL_Log("vk: SDL_Vulkan_CreateSurface failed: %s", SDL_GetError());
     return false;
   }
@@ -1680,7 +1680,7 @@ static bool vkb_init(App *app) {
 #if defined(LUB_HAS_OPENXR)
   if (g.xr) {
     if (!lubxr_start(g.instance, g.phys, g.device, g.qfam,
-                     app->capture.pending))
+                     proc->capture.pending))
       return false;
     lubxr_size(&g.sw_w, &g.sw_h);
     g.sc_format = VK_FORMAT_R8G8B8A8_SRGB;
@@ -1743,8 +1743,8 @@ static bool vkb_make_dummies(void) {
   return true;
 }
 
-static void vkb_shutdown(App *app) {
-  (void)app;
+static void vkb_shutdown(Process *proc) {
+  (void)proc;
   vkb_wait_idle();
   for (int eye = 0; eye < 2; ++eye)
     if (g.xr_depth[eye])
@@ -1834,8 +1834,8 @@ static void vkb_timestamps_resolve(int slot) {
   f->ts_count = 0;
 }
 
-static bool vkb_timestamp(App *app, uint32_t index) {
-  (void)app;
+static bool vkb_timestamp(Process *proc, uint32_t index) {
+  (void)proc;
   FrameCtx *f = &g.frames[g.slot];
   if (!g.ts_pool || !g.recording || !f->ts_reset || index >= GPU_TIME_STAMPS)
     return false;
@@ -1850,9 +1850,9 @@ static bool vkb_timestamp(App *app, uint32_t index) {
   return true;
 }
 
-static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
-  if (!g.xr && (app->proc->pending_resize || g.need_recreate)) {
-    app->proc->pending_resize = false;
+static void vkb_begin_frame(Process *proc, int *out_w, int *out_h) {
+  if (!g.xr && (proc->pending_resize || g.need_recreate)) {
+    proc->pending_resize = false;
     g.need_recreate = false;
     if (!vkb_recreate_swapchain())
       g.need_recreate = true; // minimized etc.; retry next frame
@@ -1880,7 +1880,7 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
   };
   vkBeginCommandBuffer(f->cmd, &bi);
   g.recording = true;
-  f->ts_frame = app->frame_index;
+  f->ts_frame = proc->frame_index;
   f->ts_reset = g.ts_pool && gpu_time_enabled();
   if (f->ts_reset)
     vkCmdResetQueryPool(f->cmd, g.ts_pool, (uint32_t)g.slot * GPU_TIME_STAMPS,
@@ -1896,7 +1896,7 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
   memset(g_uniforms, 0, sizeof(g_uniforms));
 
   if (g.swapchain && !g.need_recreate) {
-    uint64_t timeout = capture_state_due(&app->capture, app->frame_index)
+    uint64_t timeout = capture_state_due(&proc->capture, proc->frame_index)
                            ? UINT64_MAX
                            : KACQUIRE_TIMEOUT_NS;
     VkResult r =
@@ -1923,7 +1923,7 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
 
 #if defined(LUB_HAS_OPENXR)
   if (g.xr && !lubxr_begin_frame())
-    app->quit_requested = true;
+    proc->quit_requested = true;
 #endif
   if (out_w)
     *out_w = g.sw_w;
@@ -1931,8 +1931,8 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
     *out_h = g.sw_h;
 }
 
-static void vkb_end_frame(App *app) {
-  (void)app;
+static void vkb_end_frame(Process *proc) {
+  (void)proc;
   if (g.recording) {
     if (g.have_acquired) {
       vkb_image_barrier(g.frames[g.slot].cmd, g.sc_images[g.bb_index],
@@ -1973,7 +1973,7 @@ static void vkb_end_frame(App *app) {
 
 #if defined(LUB_HAS_OPENXR)
   if (g.xr && !lubxr_end_frame())
-    app->quit_requested = true;
+    proc->quit_requested = true;
 #endif
   g.frames[g.slot].fence_value = g.last_submit_value;
   g.slot = (g.slot + 1) % KFRAMES_IN_FLIGHT;
@@ -1991,8 +1991,8 @@ static void vkb_set_viewport_scissor(VkCommandBuffer cmd, int w, int h) {
   vkCmdSetScissor(cmd, 0, 1, &sc);
 }
 
-static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
-  (void)app;
+static void vkb_begin_pass(Process *proc, const PassBeginDesc *d) {
+  (void)proc;
   if (!g.recording)
     return;
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
@@ -2137,8 +2137,8 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
   g.in_pass = true;
 }
 
-static void vkb_end_pass(App *app) {
-  (void)app;
+static void vkb_end_pass(Process *proc) {
+  (void)proc;
   bool ended = g.in_pass && g.recording;
   if (ended && !g.pass_suspended)
     vkb_end_rendering();
@@ -3419,8 +3419,8 @@ static void vkb_draw(int base, int count, int instance_count) {
 // --- compute
 // -----------------------------------------------------------------------
 
-static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
-  (void)app;
+static void vkb_dispatch(Process *proc, const ComputeDispatchDesc *d) {
+  (void)proc;
   if (!g.recording) {
     SDL_Log("vk: dispatch: no open frame");
     return;
@@ -3622,10 +3622,10 @@ static void vkb_readbacks_submitted(uint64_t value) {
   }
 }
 
-static bool vkb_request_readback_image(App *app, BackendImage image, int w,
+static bool vkb_request_readback_image(Process *proc, BackendImage image, int w,
                                        int h, SglPixelFormat src_fmt,
                                        BackendReadback *out) {
-  (void)app;
+  (void)proc;
   if (!out)
     return false;
   *out = 0;
@@ -3792,8 +3792,8 @@ static void vkb_destroy_readback(BackendReadback h) {
 // Copy the current backbuffer (XR: both eyes side by side) to a host buffer,
 // submit the frame command buffer (without presenting) and wait, then write
 // the PNG. end_frame sees submitted_before_present and only presents.
-static bool vkb_capture(App *app, const char *path) {
-  (void)app;
+static bool vkb_capture(Process *proc, const char *path) {
+  (void)proc;
   VkImage images[2];
   int count = 1;
   VkImageLayout from, to;
@@ -3900,8 +3900,8 @@ static bool vkb_capture(App *app, const char *path) {
   return true;
 }
 
-static SglPixelFormat vkb_swapchain_color_format(App *app) {
-  (void)app;
+static SglPixelFormat vkb_swapchain_color_format(Process *proc) {
+  (void)proc;
   return g.sc_fmt_sgl ? g.sc_fmt_sgl : SGL_PF_RGBA8;
 }
 

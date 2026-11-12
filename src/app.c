@@ -101,10 +101,12 @@ bool process_init(Process *proc) {
     return false;
   }
   proc->phase = APP_PHASE_PRE_BACKEND;
+  capture_state_init(&proc->capture);
   return true;
 }
 
 void process_shutdown(Process *proc) {
+  capture_state_shutdown(&proc->capture);
   if (proc->window)
     SDL_DestroyWindow(proc->window);
   proc->window = NULL;
@@ -121,8 +123,6 @@ bool app_init(App *app, Process *proc) {
   phys2d_state_init(&app->phys);
   phys3d_state_init(&app->phys3);
   pipeline_cache_init(&app->pip_cache);
-  capture_state_init(&app->capture);
-  app->capture_then_exit = false;
   app->frame_index = 0;
   app->declare_epoch = 1;
   app->resource_frame = 0;
@@ -190,7 +190,7 @@ bool app_backend_init(App *app) {
   SDL_Log("backend selected: %s", strcmp(app->proc->backend_name, "openxr") == 0
                                       ? "openxr"
                                       : g_backend->name);
-  if (!g_backend->init(app)) {
+  if (!g_backend->init(app->proc)) {
     SDL_Log("backend init failed");
     return false;
   }
@@ -200,8 +200,8 @@ bool app_backend_init(App *app) {
 
 void app_frame_begin(App *app, int *out_w, int *out_h) {
   int w = 0, h = 0;
-  g_backend->begin_frame(app, &w, &h);
-  app->in_frame = true;
+  g_backend->begin_frame(app->proc, &w, &h);
+  app->proc->in_frame = true;
   if (out_w)
     *out_w = w;
   if (out_h)
@@ -213,9 +213,9 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
 bool app_frame_waits_for_gpu(App *app) {
   // capture の PNG を書くまで待つ。
   // 書いた後は capture_then_exit で終わるので frame を始めない
-  if (capture_state_in_flight(&app->capture)) {
-    if (capture_state_finish(&app->capture))
-      app->capture_then_exit = true;
+  if (capture_state_in_flight(&app->proc->capture)) {
+    if (capture_state_finish(&app->proc->capture))
+      app->proc->capture_then_exit = true;
     return true;
   }
   if (!g_backend || !g_backend->cannot_block_on_gpu)
@@ -235,11 +235,12 @@ void app_frame_end(App *app, bool frame_ok) {
   bool capture_before_end_frame =
       g_backend && g_backend->capture_before_end_frame;
   gpu_time_frame_end(app);
-  if (capture_before_end_frame && capture_state_drain(&app->capture, app)) {
-    app->capture_then_exit = true;
+  if (capture_before_end_frame &&
+      capture_state_drain(&app->proc->capture, app->proc)) {
+    app->proc->capture_then_exit = true;
   }
-  g_backend->end_frame(app);
-  app->in_frame = false;
+  g_backend->end_frame(app->proc);
+  app->proc->in_frame = false;
   uint64_t now_ns;
   if (app->proc->fixed_frame_dt > 0.0) {
     app->proc->fps_fixed_ns +=
@@ -267,8 +268,9 @@ void app_frame_end(App *app, bool frame_ok) {
       app->proc->fps_frame_count = 0;
     }
   }
-  if (!capture_before_end_frame && capture_state_drain(&app->capture, app)) {
-    app->capture_then_exit = true;
+  if (!capture_before_end_frame &&
+      capture_state_drain(&app->proc->capture, app->proc)) {
+    app->proc->capture_then_exit = true;
   }
   // key で宣言する snd / readback queue の sweep。
   // 退役した snd の PCM 回収はこの後の audio_state_frame_end が行う。
@@ -291,7 +293,8 @@ void app_frame_end(App *app, bool frame_ok) {
   if (frame_ok)
     app->resource_frame++;
   app->frame_index++;
-  gpu_stats_frame(app->frame_index, g_backend ? g_backend->name : NULL);
+  app->proc->frame_index++;
+  gpu_stats_frame(app->proc->frame_index, g_backend ? g_backend->name : NULL);
 }
 
 void app_shutdown(App *app) {
@@ -311,9 +314,8 @@ void app_shutdown(App *app) {
   phys3d_state_shutdown(&app->phys3);
   phys2d_state_shutdown(&app->phys);
   res_table_shutdown(&app->res);
-  capture_state_shutdown(&app->capture);
   if (g_backend)
-    g_backend->shutdown(app);
+    g_backend->shutdown(app->proc);
   gpu_stats_shutdown(g_backend ? g_backend->name : NULL);
 }
 

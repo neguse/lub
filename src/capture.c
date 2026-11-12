@@ -63,34 +63,34 @@ bool capture_state_due(const CaptureState *c, uint64_t frame_index) {
   return c && c->pending && c->path && frame_index >= c->target_frame;
 }
 
-bool capture_state_drain(CaptureState *c, struct App *app) {
-  if (!capture_state_due(c, app->frame_index))
+bool capture_state_drain(CaptureState *c, struct Process *proc) {
+  if (!capture_state_due(c, proc->frame_index))
     return false;
 
   bool ok = false;
   if (g_backend->request_capture) {
     BackendReadback rb = 0;
-    if (g_backend->request_capture(app, &rb)) {
+    if (g_backend->request_capture(proc, &rb)) {
       c->readback = rb;
-      c->target_frame = app->frame_index;
+      c->target_frame = proc->frame_index;
       c->pending = false;
       return false;
     }
   } else {
-    ok = g_backend->capture(app, c->path);
+    ok = g_backend->capture(proc, c->path);
   }
   if (ok) {
     // Log the 1-based frame count to match the --capture-frame argument.
     SDL_Log("captured frame %llu -> %s",
-            (unsigned long long)(app->frame_index + 1), c->path);
+            (unsigned long long)(proc->frame_index + 1), c->path);
   } else if (c->retries_left > 0) {
     c->retries_left--;
     // Slip the target forward one frame and try again next iteration.
-    c->target_frame = app->frame_index + 1;
+    c->target_frame = proc->frame_index + 1;
     return false; // not consumed yet
   } else {
     SDL_Log("capture failed (frame %llu, path=%s)",
-            (unsigned long long)app->frame_index, c->path);
+            (unsigned long long)proc->frame_index, c->path);
   }
   free(c->path);
   c->path = NULL;

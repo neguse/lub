@@ -8,7 +8,8 @@ struct App; // 前方宣言
 
 typedef struct PassState {
   bool in_pass;
-  struct App *app; // backend pass calls need the App context
+  struct App *
+      app; // the context: its Process for backend calls, its pass label for gpu_time
   int current_n_color_targets;
   SglPixelFormat
       current_color_fmts[SGL_MAX_COLOR_TARGETS]; // valid while in_pass
