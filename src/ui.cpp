@@ -169,8 +169,8 @@ extern "C" void ui_new_frame(App *app, float dt, int fb_w, int fb_h) {
   io.AddMouseButtonEvent(0, (buttons & SDL_BUTTON_LMASK) != 0);
   io.AddMouseButtonEvent(1, (buttons & SDL_BUTTON_RMASK) != 0);
   io.AddMouseButtonEvent(2, (buttons & SDL_BUTTON_MMASK) != 0);
-  if (app->mouse_wheel_x != 0 || app->mouse_wheel_y != 0)
-    io.AddMouseWheelEvent(app->mouse_wheel_x, app->mouse_wheel_y);
+  if (app->input.mouse_wheel_x != 0 || app->input.mouse_wheel_y != 0)
+    io.AddMouseWheelEvent(app->input.mouse_wheel_x, app->input.mouse_wheel_y);
 
   ImGui::NewFrame();
   g_frame_open = true;

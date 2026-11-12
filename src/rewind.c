@@ -7,7 +7,7 @@
 typedef struct RewindFrame {
   void *snapshot; // player の控え (LubDebugHooks.snapshot_take)
   double dt;
-  RewindInput input;
+  InputState input;
 } RewindFrame;
 
 typedef struct RewindState {
@@ -108,51 +108,24 @@ void *rewind_snapshot(const App *app, int back) {
 
 // ---------------------------------------------------------------- input
 
-// SDL の軸 (-32768..32767) を Input.GamepadAxis と同じ値にする
-static float pad_axis(SDL_Gamepad *pad, int axis) {
-  int value = SDL_GetGamepadAxis(pad, (SDL_GamepadAxis)axis);
-  if (axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ||
-      axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)
-    return value > 0 ? (float)value / 32767.0f : 0.0f;
-  return (float)value / (value < 0 ? 32768.0f : 32767.0f);
-}
-
 // その frame にゲームから見える入力を控える (overlay が取っている種類は何も押されていない)
-static void capture_input(App *app, RewindInput *in) {
-  memset(in, 0, sizeof(*in));
-  if (!app->overlay_grab_keyboard) {
-    int n = 0;
-    const bool *keys = SDL_GetKeyboardState(&n);
-    if (keys)
-      memcpy(in->keys, keys,
-             (size_t)(n < SDL_SCANCODE_COUNT ? n : SDL_SCANCODE_COUNT));
-    memcpy(in->key_pressed, app->key_pressed, sizeof(in->key_pressed));
-    memcpy(in->key_released, app->key_released, sizeof(in->key_released));
+static void capture_input(App *app, InputState *in) {
+  *in = app->input;
+  if (app->overlay_grab_keyboard) {
+    memset(in->keys, 0, sizeof(in->keys));
+    memset(in->key_pressed, 0, sizeof(in->key_pressed));
+    memset(in->key_released, 0, sizeof(in->key_released));
   }
-  uint32_t buttons = SDL_GetMouseState(&in->mouse_x, &in->mouse_y);
-  if (!app->overlay_grab_mouse) {
-    in->mouse_buttons = buttons;
-    in->mouse_pressed_mask = app->mouse_pressed_mask;
-    in->mouse_released_mask = app->mouse_released_mask;
-    in->mouse_rel_x = app->mouse_rel_x;
-    in->mouse_rel_y = app->mouse_rel_y;
-  }
-  for (int i = 0; i < LUB_GAMEPAD_SLOTS; ++i) {
-    SDL_Gamepad *pad = app->gamepads[i];
-    in->pad_pressed[i] = app->gamepad_pressed[i];
-    in->pad_released[i] = app->gamepad_released[i];
-    if (!pad)
-      continue;
-    in->pad_connected[i] = true;
-    for (int a = 0; a < SDL_GAMEPAD_AXIS_COUNT; ++a)
-      in->pad_axes[i][a] = pad_axis(pad, a);
-    for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b)
-      if (SDL_GetGamepadButton(pad, (SDL_GamepadButton)b))
-        in->pad_down[i] |= UINT32_C(1) << b;
+  if (app->overlay_grab_mouse) {
+    in->mouse_buttons = 0;
+    in->mouse_pressed_mask = 0;
+    in->mouse_released_mask = 0;
+    in->mouse_rel_x = 0.0f;
+    in->mouse_rel_y = 0.0f;
   }
 }
 
-const RewindInput *rewind_input(const App *app) {
+const InputState *rewind_input(const App *app) {
   const RewindState *r = app->rewind;
   if (!r || !r->replaying || app->in_overlay)
     return NULL;
