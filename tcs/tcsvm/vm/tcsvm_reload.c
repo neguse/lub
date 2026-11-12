@@ -742,9 +742,12 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size,
     tvm_set_error(vm, "tvm_apply runs only at a frame boundary");
     return TVM_LOAD_ERROR;
   }
-  /* shared heap: 若い object を旧世代に置いてから辿る (nursery の object は列挙できない) */
+  /* shared heap: 若い object を旧世代に置いてから辿る (nursery の object は列挙できない)。
+     VM の heap: 届かない object を先に回収する。計画の検査は heap の列を見るので、回収の時期で結果が変わらないようにする */
   if (vm->heap)
     vm->heap->frame();
+  else
+    tvm_gc_collect(vm);
   Reload *rl = (Reload *)calloc(1, sizeof(Reload));
   if (!rl) {
     tvm_set_error(vm, "out of memory");
