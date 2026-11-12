@@ -1,6 +1,6 @@
 #pragma once
 // Gfx.Pick: 指した画素に一番手前で描いた draw を引く。
-// 要求の次の frame で、overlay の外 (ゲーム) の draw のうち指した target (main_tex か XR の眼) へのものを記録する。
+// 要求の次の frame で、その app の draw のうち指した target (main_tex か XR の眼) へのものを記録する。
 // 呼び出し元は player が pick_set_sites で立てた関数で、draw のたびにその場の呼び出しの並びを書かせる。
 // その frame の終わりに、記録した draw を同じ vertex shader と draw の番号を書く fragment shader で、指した 1 画素だけ流し直し、読み戻す。
 // depth test と書き込みは元の draw のままなので、残るのは画面で一番手前に見える draw になる。
@@ -41,7 +41,7 @@ void pick_frame_begin(struct App *app);
 // target は -1 = main_tex、0 / 1 = XR の眼、-2 = それ以外 (記録しない)
 void pick_begin_pass(struct App *app, int target);
 
-// draw を記録する (記録しない frame と overlay の draw は何もしない)。
+// draw を記録する (記録しない frame は何もしない)。
 // 続く pick_record_uniform は、この draw の uniform block
 void pick_record_draw(struct App *app, struct ResEntry *sh,
                       const BindingsDesc *bind, int cull, int prim,

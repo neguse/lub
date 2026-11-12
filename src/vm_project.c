@@ -219,17 +219,14 @@ static bool collect_refs(VmProject *proj, const char *csproj, int depth) {
       break;
     size_t tag_len = (size_t)(close - p);
     char role[32], include[512];
-    bool source = false, overlay = false;
+    bool source = false;
     if (xml_attr(p, tag_len, "Lub", role, sizeof(role))) {
       source = SDL_strcasecmp(role, "Source") == 0;
-      overlay = SDL_strcasecmp(role, "Overlay") == 0;
-      if (!source && !overlay)
-        SDL_Log("%s: unknown Lub=\"%s\" on a ProjectReference (use Source or "
-                "Overlay)",
+      if (!source)
+        SDL_Log("%s: unknown Lub=\"%s\" on a ProjectReference (use Source)",
                 csproj, role);
     }
-    if ((source || overlay) &&
-        xml_attr(p, tag_len, "Include", include, sizeof(include))) {
+    if (source && xml_attr(p, tag_len, "Include", include, sizeof(include))) {
       if (SDL_strstr(include, "$(")) {
         SDL_Log("%s: skipping ProjectReference %s (lub does not expand "
                 "MSBuild properties)",
@@ -246,19 +243,9 @@ static bool collect_refs(VmProject *proj, const char *csproj, int depth) {
                   include, norm);
           ok = false;
         } else {
-          if (overlay) {
-            char base[256];
-            path_basename_noext(norm, base, sizeof(base));
-            if (proj->overlay[0] && SDL_strcmp(proj->overlay, base) != 0)
-              SDL_Log("lub: only one overlay is supported; ignoring %s", base);
-            else
-              SDL_strlcpy(proj->overlay, base, sizeof(proj->overlay));
-          }
           path_dirname(norm, ref_dir, sizeof(ref_dir));
           char abs_dir[512];
           path_absolute(ref_dir, abs_dir, sizeof(abs_dir));
-          if (overlay && !proj->overlay_dir[0])
-            SDL_strlcpy(proj->overlay_dir, abs_dir, sizeof(proj->overlay_dir));
           if (add_dir(proj, abs_dir))
             ok = collect_refs(proj, norm, depth + 1) && ok;
         }
@@ -422,7 +409,6 @@ bool vm_project_scan(VmProject *proj) {
 }
 
 int vm_project_args(VmProject *proj, const char **args, int max) {
-  char (*exports)[320] = proj->exports;
   int n = 0;
   args[n++] = "--inputs-from";
   args[n++] = proj->list_path;
@@ -445,19 +431,11 @@ int vm_project_args(VmProject *proj, const char **args, int max) {
   }
   args[n++] = "-o";
   args[n++] = proj->out_tcsb;
-  SDL_snprintf(exports[0], sizeof(proj->exports[0]), "%s.*", proj->entry);
+  SDL_snprintf(proj->export_, sizeof(proj->export_), "%s.*", proj->entry);
   args[n++] = "--export";
-  args[n++] = exports[0];
-  if (proj->overlay[0]) {
-    SDL_snprintf(exports[1], sizeof(proj->exports[1]), "%s.*", proj->overlay);
-    args[n++] = "--export";
-    args[n++] = exports[1];
-  }
-  if (proj->overlay[0] || proj->trace) {
-    // ゲームのソースを --trace にする (overlay のディレクトリは除く。entry と同じなら entry も除かれる)
+  args[n++] = proj->export_;
+  if (proj->trace) {
     for (int i = 0; i < proj->ndirs && n < max - 2; i++) {
-      if (SDL_strcmp(proj->dirs[i], proj->overlay_dir) == 0)
-        continue;
       args[n++] = "--trace";
       args[n++] = proj->dirs[i];
     }

@@ -266,7 +266,9 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
   if (o->player && !child->quit_requested) {
     child->declare_epoch++;
     pick_frame_begin(child);
+    child->replaying = input && input->has_replay;
     ok = app->app_hooks->step(o->player, dt);
+    child->replaying = false;
     if (pass_state_in_pass(&child->pass))
       pass_state_end(&child->pass);
     // Gfx.Pick の描き直しは、main の描き先がある間に行う

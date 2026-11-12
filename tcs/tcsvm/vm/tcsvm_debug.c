@@ -958,7 +958,7 @@ typedef struct Walk {
   Loc loc;
   void *anc[64];
   uint32_t nanc;
-  /* 最後の段の親 (InspectHistory が控えから読む): 親が object なら parent、static なら parent_static */
+  /* 最後の段の親 (tvm_snapshot_number が控えから読む): 親が object なら parent、static なら parent_static */
   void *parent;
   const TvmStaticField *parent_static;
   uint32_t parent_offset; /* parent の payload の中の位置 */
