@@ -19,11 +19,15 @@
 // because the vtable's begin_pass/end_pass don't take a backend cookie.
 static SDL_GPURenderPass *g_render_pass = NULL;
 
-// Cached App* for use by resource-creation vtable functions that don't
-// receive App* as an argument (make_buffer/make_shader/make_pipeline).
-// The current runtime owns exactly one App per process. Set in sg_init and
-// re-confirmed each begin_frame as a paranoia measure.
-static App *g_app = NULL;
+// The GPU device and the per-frame objects. The backend is one per process,
+// like the window it presents to.
+static SDL_GPUDevice *g_device;
+static SDL_GPUTexture *g_swapchain_tex; // current frame の swapchain
+static SDL_GPUCommandBuffer *g_cmd;     // current frame
+static SDL_GPUTexture *g_depth_tex;     // swapchain-sized depth/stencil target
+static int g_depth_w;
+static int g_depth_h;
+static SDL_GPUTextureFormat g_depth_fmt;
 
 // Pipeline of the last apply_pipeline in the current pass; cleared at
 // end_pass. SDL_GPU binds pipelines per render pass, so apply_pipeline binds
@@ -38,17 +42,16 @@ static bool g_last_indexed = false;
 static SglPixelFormat sg_swapchain_color_format(App *app);
 
 static void sg_release_depth_texture(App *app) {
-  if (app->gpu_device && app->gpu_depth_tex) {
-    SDL_ReleaseGPUTexture(app->gpu_device, app->gpu_depth_tex);
-    gpu_stats_destroy(GPU_STAT_TEXTURE,
-                      gpu_stats_image_bytes(SGL_PF_DEPTH24_STENCIL8,
-                                            app->gpu_depth_w,
-                                            app->gpu_depth_h));
+  if (g_device && g_depth_tex) {
+    SDL_ReleaseGPUTexture(g_device, g_depth_tex);
+    gpu_stats_destroy(
+        GPU_STAT_TEXTURE,
+        gpu_stats_image_bytes(SGL_PF_DEPTH24_STENCIL8, g_depth_w, g_depth_h));
   }
-  app->gpu_depth_tex = NULL;
-  app->gpu_depth_w = 0;
-  app->gpu_depth_h = 0;
-  app->gpu_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+  g_depth_tex = NULL;
+  g_depth_w = 0;
+  g_depth_h = 0;
+  g_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
 }
 
 static SDL_GPUTextureFormat sg_choose_depth_format(SDL_GPUDevice *dev) {
@@ -105,42 +108,41 @@ static bool sgl_is_depth_format(SglPixelFormat fmt) {
 }
 
 static bool sg_ensure_depth_texture(App *app, Uint32 w, Uint32 h) {
-  if (!app || !app->gpu_device || w == 0 || h == 0)
+  if (!app || !g_device || w == 0 || h == 0)
     return false;
-  if (app->gpu_depth_tex && app->gpu_depth_w == (int)w &&
-      app->gpu_depth_h == (int)h) {
+  if (g_depth_tex && g_depth_w == (int)w && g_depth_h == (int)h) {
     return true;
   }
 
   sg_release_depth_texture(app);
 
-  SDL_GPUTextureFormat fmt = sg_choose_depth_format(app->gpu_device);
+  SDL_GPUTextureFormat fmt = sg_choose_depth_format(g_device);
   if (fmt == SDL_GPU_TEXTUREFORMAT_INVALID) {
     SDL_Log("sg_ensure_depth_texture: no supported depth format");
     return false;
   }
 
-  app->gpu_depth_tex = SDL_CreateGPUTexture(
-      app->gpu_device, &(SDL_GPUTextureCreateInfo){
-                           .type = SDL_GPU_TEXTURETYPE_2D,
-                           .format = fmt,
-                           .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-                           .width = w,
-                           .height = h,
-                           .layer_count_or_depth = 1,
-                           .num_levels = 1,
-                           .sample_count = SDL_GPU_SAMPLECOUNT_1,
-                       });
-  if (!app->gpu_depth_tex) {
+  g_depth_tex = SDL_CreateGPUTexture(
+      g_device, &(SDL_GPUTextureCreateInfo){
+                    .type = SDL_GPU_TEXTURETYPE_2D,
+                    .format = fmt,
+                    .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+                    .width = w,
+                    .height = h,
+                    .layer_count_or_depth = 1,
+                    .num_levels = 1,
+                    .sample_count = SDL_GPU_SAMPLECOUNT_1,
+                });
+  if (!g_depth_tex) {
     SDL_Log("sg_ensure_depth_texture: SDL_CreateGPUTexture failed: %s",
             SDL_GetError());
-    app->gpu_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+    g_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
     return false;
   }
 
-  app->gpu_depth_w = (int)w;
-  app->gpu_depth_h = (int)h;
-  app->gpu_depth_fmt = fmt;
+  g_depth_w = (int)w;
+  g_depth_h = (int)h;
+  g_depth_fmt = fmt;
   gpu_stats_create(
       GPU_STAT_TEXTURE,
       gpu_stats_image_bytes(SGL_PF_DEPTH24_STENCIL8, (int)w, (int)h));
@@ -148,10 +150,10 @@ static bool sg_ensure_depth_texture(App *app, Uint32 w, Uint32 h) {
 }
 
 static bool sg_acquire_command_buffer(App *app, const char *context) {
-  if (app->gpu_cmd)
+  if (g_cmd)
     return true;
-  app->gpu_cmd = SDL_AcquireGPUCommandBuffer(app->gpu_device);
-  if (!app->gpu_cmd) {
+  g_cmd = SDL_AcquireGPUCommandBuffer(g_device);
+  if (!g_cmd) {
     SDL_Log("%s: SDL_AcquireGPUCommandBuffer failed: %s", context,
             SDL_GetError());
     return false;
@@ -160,22 +162,22 @@ static bool sg_acquire_command_buffer(App *app, const char *context) {
 }
 
 static bool sg_acquire_swapchain_texture(App *app, const char *context) {
-  if (app->gpu_swapchain_tex)
+  if (g_swapchain_tex)
     return true;
   if (!sg_acquire_command_buffer(app, context))
     return false;
   Uint32 sw = 0, sh = 0;
-  if (!SDL_AcquireGPUSwapchainTexture(app->gpu_cmd, app->window,
-                                      &app->gpu_swapchain_tex, &sw, &sh)) {
+  if (!SDL_AcquireGPUSwapchainTexture(g_cmd, app->window, &g_swapchain_tex, &sw,
+                                      &sh)) {
     SDL_Log("%s: SDL_AcquireGPUSwapchainTexture failed: %s", context,
             SDL_GetError());
-    app->gpu_swapchain_tex = NULL;
+    g_swapchain_tex = NULL;
     return false;
   }
-  if (app->gpu_swapchain_tex && sw > 0 && sh > 0) {
+  if (g_swapchain_tex && sw > 0 && sh > 0) {
     (void)sg_ensure_depth_texture(app, sw, sh);
   }
-  return app->gpu_swapchain_tex != NULL;
+  return g_swapchain_tex != NULL;
 }
 
 // --- per-resource backend objects ----------------------------------------
@@ -252,25 +254,23 @@ static void sg_destroy_dummies(void) {
 }
 
 static bool sg_init(App *app) {
-  app->gpu_device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
-  if (!app->gpu_device) {
+  g_device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
+  if (!g_device) {
     SDL_Log("SDL_CreateGPUDevice failed: %s", SDL_GetError());
     return false;
   }
-  if (!SDL_ClaimWindowForGPUDevice(app->gpu_device, app->window)) {
+  if (!SDL_ClaimWindowForGPUDevice(g_device, app->window)) {
     SDL_Log("SDL_ClaimWindowForGPUDevice failed: %s", SDL_GetError());
-    SDL_DestroyGPUDevice(app->gpu_device);
-    app->gpu_device = NULL;
+    SDL_DestroyGPUDevice(g_device);
+    g_device = NULL;
     return false;
   }
-  g_app = app;
   if (!sg_make_dummies()) {
     SDL_Log("sdlgpu: dummy resource creation failed");
     sg_destroy_dummies();
-    SDL_ReleaseWindowFromGPUDevice(app->gpu_device, app->window);
-    SDL_DestroyGPUDevice(app->gpu_device);
-    app->gpu_device = NULL;
-    g_app = NULL;
+    SDL_ReleaseWindowFromGPUDevice(g_device, app->window);
+    SDL_DestroyGPUDevice(g_device);
+    g_device = NULL;
     return false;
   }
   return true;
@@ -279,15 +279,14 @@ static bool sg_init(App *app) {
 static void sg_release_frame_bufs(void);
 
 static void sg_shutdown(App *app) {
-  if (app->gpu_device) {
+  if (g_device) {
     sg_release_frame_bufs();
     sg_destroy_dummies();
     sg_release_depth_texture(app);
-    SDL_ReleaseWindowFromGPUDevice(app->gpu_device, app->window);
-    SDL_DestroyGPUDevice(app->gpu_device);
-    app->gpu_device = NULL;
+    SDL_ReleaseWindowFromGPUDevice(g_device, app->window);
+    SDL_DestroyGPUDevice(g_device);
+    g_device = NULL;
   }
-  g_app = NULL;
 }
 
 // SDL_GPU binds only whole buffers, so each range is its own buffer.
@@ -323,10 +322,9 @@ static bool sg_frame_buffer(SglBufferType type, const void *data, size_t bytes,
 }
 
 static void sg_begin_frame(App *app, int *out_w, int *out_h) {
-  g_app = app;
   sg_release_frame_bufs();
-  app->gpu_cmd = SDL_AcquireGPUCommandBuffer(app->gpu_device);
-  if (!app->gpu_cmd) {
+  g_cmd = SDL_AcquireGPUCommandBuffer(g_device);
+  if (!g_cmd) {
     SDL_Log("SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
     if (out_w)
       *out_w = 0;
@@ -335,12 +333,12 @@ static void sg_begin_frame(App *app, int *out_w, int *out_h) {
     return;
   }
   Uint32 sw = 0, sh = 0;
-  app->gpu_swapchain_tex = NULL;
-  if (!SDL_AcquireGPUSwapchainTexture(app->gpu_cmd, app->window,
-                                      &app->gpu_swapchain_tex, &sw, &sh)) {
+  g_swapchain_tex = NULL;
+  if (!SDL_AcquireGPUSwapchainTexture(g_cmd, app->window, &g_swapchain_tex, &sw,
+                                      &sh)) {
     SDL_Log("SDL_AcquireGPUSwapchainTexture failed: %s", SDL_GetError());
   }
-  if (app->gpu_swapchain_tex && sw > 0 && sh > 0) {
+  if (g_swapchain_tex && sw > 0 && sh > 0) {
     if (!sg_ensure_depth_texture(app, sw, sh)) {
       SDL_Log("sg_begin_frame: depth texture unavailable; swapchain pass will "
               "be skipped");
@@ -373,7 +371,7 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
       g_render_pass = NULL;
       return;
     }
-    SDL_GPUTexture *tex = app->gpu_swapchain_tex;
+    SDL_GPUTexture *tex = g_swapchain_tex;
     if (!tex) {
       g_render_pass = NULL;
       return;
@@ -383,17 +381,17 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
                                           d->clear[0][2], d->clear[0][3]};
     targets[0].load_op = load_op;
     targets[0].store_op = SDL_GPU_STOREOP_STORE;
-    if (!app->gpu_depth_tex && app->last_w > 0 && app->last_h > 0) {
+    if (!g_depth_tex && app->last_w > 0 && app->last_h > 0) {
       (void)sg_ensure_depth_texture(app, (Uint32)app->last_w,
                                     (Uint32)app->last_h);
     }
-    if (!app->gpu_depth_tex) {
+    if (!g_depth_tex) {
       SDL_Log("sg_begin_pass: no depth texture for swapchain pass");
       g_render_pass = NULL;
       return;
     }
     SDL_GPUDepthStencilTargetInfo depth = {
-        .texture = app->gpu_depth_tex,
+        .texture = g_depth_tex,
         .clear_depth = 1.0f,
         .load_op = load_op,
         // STORE so a later swapchain pass with load = LOAD sees valid depth
@@ -402,7 +400,7 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
         .stencil_load_op = SDL_GPU_LOADOP_DONT_CARE,
         .stencil_store_op = SDL_GPU_STOREOP_DONT_CARE,
     };
-    g_render_pass = SDL_BeginGPURenderPass(app->gpu_cmd, targets, 1, &depth);
+    g_render_pass = SDL_BeginGPURenderPass(g_cmd, targets, 1, &depth);
     return;
   }
   for (int i = 0; i < nct; ++i) {
@@ -435,7 +433,7 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
     };
     depth_ptr = &depth;
   }
-  g_render_pass = SDL_BeginGPURenderPass(app->gpu_cmd, nct > 0 ? targets : NULL,
+  g_render_pass = SDL_BeginGPURenderPass(g_cmd, nct > 0 ? targets : NULL,
                                          (Uint32)nct, depth_ptr);
 }
 
@@ -455,7 +453,7 @@ static void sg_end_pass(App *app) {
 // updates (update_buffer) to avoid in-flight resource conflicts.
 static bool sg_upload_to_buffer(SDL_GPUBuffer *dst, const void *data,
                                 size_t bytes, bool cycle) {
-  SDL_GPUDevice *dev = g_app->gpu_device;
+  SDL_GPUDevice *dev = g_device;
   SDL_GPUTransferBuffer *tbuf = SDL_CreateGPUTransferBuffer(
       dev, &(SDL_GPUTransferBufferCreateInfo){
                .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
@@ -501,7 +499,7 @@ static bool sg_upload_to_buffer(SDL_GPUBuffer *dst, const void *data,
 // h). `cycle` should be false on first upload (make_image) and true on updates.
 static bool sg_upload_to_image(SDL_GPUTexture *dst, int w, int h,
                                const void *data, size_t bytes, bool cycle) {
-  SDL_GPUDevice *dev = g_app->gpu_device;
+  SDL_GPUDevice *dev = g_device;
   SDL_GPUTransferBuffer *tbuf = SDL_CreateGPUTransferBuffer(
       dev, &(SDL_GPUTransferBufferCreateInfo){
                .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
@@ -548,7 +546,7 @@ static bool sg_upload_to_image(SDL_GPUTexture *dst, int w, int h,
 
 static BackendBuffer sg_make_buffer(SglBufferType type, const void *data,
                                     size_t bytes) {
-  if (!g_app || !g_app->gpu_device) {
+  if (!g_device) {
     SDL_Log("sg_make_buffer: no GPU device");
     return 0;
   }
@@ -575,10 +573,10 @@ static BackendBuffer sg_make_buffer(SglBufferType type, const void *data,
     free(b);
     return 0;
   }
-  b->gpu = SDL_CreateGPUBuffer(g_app->gpu_device, &(SDL_GPUBufferCreateInfo){
-                                                      .usage = usage,
-                                                      .size = (Uint32)bytes,
-                                                  });
+  b->gpu = SDL_CreateGPUBuffer(g_device, &(SDL_GPUBufferCreateInfo){
+                                             .usage = usage,
+                                             .size = (Uint32)bytes,
+                                         });
   if (!b->gpu) {
     SDL_Log("SDL_CreateGPUBuffer failed: %s", SDL_GetError());
     free(b);
@@ -587,7 +585,7 @@ static BackendBuffer sg_make_buffer(SglBufferType type, const void *data,
   gpu_stats_create(GPU_STAT_BUFFER, b->bytes);
   if (data && bytes > 0) {
     if (!sg_upload_to_buffer(b->gpu, data, bytes, false)) {
-      SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
+      SDL_ReleaseGPUBuffer(g_device, b->gpu);
       gpu_stats_destroy(GPU_STAT_BUFFER, b->bytes);
       free(b);
       return 0;
@@ -600,8 +598,8 @@ static void sg_destroy_buffer(BackendBuffer h) {
   SgBuffer *b = (SgBuffer *)h;
   if (!b)
     return;
-  if (g_app && g_app->gpu_device && b->gpu) {
-    SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
+  if (g_device && b->gpu) {
+    SDL_ReleaseGPUBuffer(g_device, b->gpu);
     gpu_stats_destroy(GPU_STAT_BUFFER, b->bytes);
   }
   free(b);
@@ -660,7 +658,7 @@ static Uint32 refl_storage_tex_count(const ShaderReflection *refl,
 }
 
 static BackendImage sg_make_image(const ImageDesc *d) {
-  if (!g_app || !g_app->gpu_device) {
+  if (!g_device) {
     SDL_Log("sg_make_image: no GPU device");
     return 0;
   }
@@ -683,16 +681,15 @@ static BackendImage sg_make_image(const ImageDesc *d) {
   if (d->storage) {
     usage |= SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
   }
-  im->tex = SDL_CreateGPUTexture(g_app->gpu_device,
-                                 &(SDL_GPUTextureCreateInfo){
-                                     .type = SDL_GPU_TEXTURETYPE_2D,
-                                     .format = tfmt,
-                                     .usage = usage,
-                                     .width = (Uint32)d->w,
-                                     .height = (Uint32)d->h,
-                                     .layer_count_or_depth = 1,
-                                     .num_levels = 1,
-                                 });
+  im->tex = SDL_CreateGPUTexture(g_device, &(SDL_GPUTextureCreateInfo){
+                                               .type = SDL_GPU_TEXTURETYPE_2D,
+                                               .format = tfmt,
+                                               .usage = usage,
+                                               .width = (Uint32)d->w,
+                                               .height = (Uint32)d->h,
+                                               .layer_count_or_depth = 1,
+                                               .num_levels = 1,
+                                           });
   if (!im->tex) {
     SDL_Log("sg_make_image: SDL_CreateGPUTexture failed: %s", SDL_GetError());
     free(im);
@@ -703,7 +700,7 @@ static BackendImage sg_make_image(const ImageDesc *d) {
   if (!d->render_target && d->data && d->data_bytes > 0) {
     if (!sg_upload_to_image(im->tex, d->w, d->h, d->data, d->data_bytes,
                             false)) {
-      SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
+      SDL_ReleaseGPUTexture(g_device, im->tex);
       gpu_stats_destroy(GPU_STAT_TEXTURE,
                         gpu_stats_image_bytes(d->fmt, d->w, d->h));
       free(im);
@@ -716,16 +713,16 @@ static BackendImage sg_make_image(const ImageDesc *d) {
   SDL_GPUSamplerAddressMode sw = (d->wrap == SGL_WRAP_CLAMP)
                                      ? SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE
                                      : SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
-  im->smp = SDL_CreateGPUSampler(g_app->gpu_device, &(SDL_GPUSamplerCreateInfo){
-                                                        .min_filter = sf,
-                                                        .mag_filter = sf,
-                                                        .address_mode_u = sw,
-                                                        .address_mode_v = sw,
-                                                        .address_mode_w = sw,
-                                                    });
+  im->smp = SDL_CreateGPUSampler(g_device, &(SDL_GPUSamplerCreateInfo){
+                                               .min_filter = sf,
+                                               .mag_filter = sf,
+                                               .address_mode_u = sw,
+                                               .address_mode_v = sw,
+                                               .address_mode_w = sw,
+                                           });
   if (!im->smp) {
     SDL_Log("sg_make_image: SDL_CreateGPUSampler failed: %s", SDL_GetError());
-    SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
+    SDL_ReleaseGPUTexture(g_device, im->tex);
     gpu_stats_destroy(GPU_STAT_TEXTURE,
                       gpu_stats_image_bytes(d->fmt, d->w, d->h));
     free(im);
@@ -736,7 +733,7 @@ static BackendImage sg_make_image(const ImageDesc *d) {
 }
 
 static BackendShader sg_make_shader(const ShaderDesc *d) {
-  if (!g_app || !g_app->gpu_device) {
+  if (!g_device) {
     SDL_Log("sg_make_shader: no GPU device");
     return 0;
   }
@@ -748,7 +745,7 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
   // Compute path collapses shader+pipeline into SDL_GPUComputePipeline.
   if (d->cs_spirv) {
     s->compute_pip = SDL_CreateGPUComputePipeline(
-        g_app->gpu_device,
+        g_device,
         &(SDL_GPUComputePipelineCreateInfo){
             .code = (const Uint8 *)d->cs_spirv,
             .code_size = d->cs_bytes,
@@ -781,7 +778,7 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
   // Slang's SPIR-V emitter renames the entry-point function to "main".
   // Both vs and fs blobs each have a single "main" entry point.
   s->vs = SDL_CreateGPUShader(
-      g_app->gpu_device,
+      g_device,
       &(SDL_GPUShaderCreateInfo){
           .code = (const Uint8 *)d->vs_spirv,
           .code_size = d->vs_bytes,
@@ -796,7 +793,7 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
           .num_samplers = refl_sampler_count(d->refl, SGL_STAGE_VERTEX),
       });
   s->fs = SDL_CreateGPUShader(
-      g_app->gpu_device,
+      g_device,
       &(SDL_GPUShaderCreateInfo){
           .code = (const Uint8 *)d->fs_spirv,
           .code_size = d->fs_bytes,
@@ -815,9 +812,9 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
     SDL_Log("sg_make_shader: shader create failed (vs=%p fs=%p): %s",
             (void *)s->vs, (void *)s->fs, SDL_GetError());
     if (s->vs)
-      SDL_ReleaseGPUShader(g_app->gpu_device, s->vs);
+      SDL_ReleaseGPUShader(g_device, s->vs);
     if (s->fs)
-      SDL_ReleaseGPUShader(g_app->gpu_device, s->fs);
+      SDL_ReleaseGPUShader(g_device, s->fs);
     free(s);
     return 0;
   }
@@ -830,17 +827,17 @@ static void sg_destroy_shader(BackendShader h) {
   SgShader *s = (SgShader *)h;
   if (!s)
     return;
-  if (g_app && g_app->gpu_device) {
+  if (g_device) {
     if (s->vs)
-      SDL_ReleaseGPUShader(g_app->gpu_device, s->vs);
+      SDL_ReleaseGPUShader(g_device, s->vs);
     if (s->vs)
       gpu_stats_destroy(GPU_STAT_SHADER, 0);
     if (s->fs)
-      SDL_ReleaseGPUShader(g_app->gpu_device, s->fs);
+      SDL_ReleaseGPUShader(g_device, s->fs);
     if (s->fs)
       gpu_stats_destroy(GPU_STAT_SHADER, 0);
     if (s->compute_pip)
-      SDL_ReleaseGPUComputePipeline(g_app->gpu_device, s->compute_pip);
+      SDL_ReleaseGPUComputePipeline(g_device, s->compute_pip);
     if (s->compute_pip)
       gpu_stats_destroy(GPU_STAT_PIPELINE, 0);
   }
@@ -892,7 +889,7 @@ static SDL_GPUColorTargetBlendState to_sdl_blend(SglBlend b) {
 }
 
 static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
-  if (!g_app || !g_app->gpu_device) {
+  if (!g_device) {
     SDL_Log("sg_make_pipeline: no GPU device");
     return 0;
   }
@@ -963,14 +960,14 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
   SDL_GPUTextureFormat depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
   if (d->has_depth) {
     if (d->depth_fmt == SGL_PF_DEPTH24_STENCIL8) {
-      depth_fmt = g_app->gpu_depth_fmt;
+      depth_fmt = g_depth_fmt;
     }
     if (depth_fmt == SDL_GPU_TEXTUREFORMAT_INVALID &&
         d->depth_fmt != SGL_PF_DEPTH24_STENCIL8) {
       depth_fmt = sgl_to_sdl_texture_format(d->depth_fmt);
     }
     if (depth_fmt == SDL_GPU_TEXTUREFORMAT_INVALID) {
-      depth_fmt = sg_choose_depth_format(g_app->gpu_device);
+      depth_fmt = sg_choose_depth_format(g_device);
     }
     if (depth_fmt == SDL_GPU_TEXTUREFORMAT_INVALID) {
       SDL_Log("sg_make_pipeline: no supported depth format");
@@ -980,7 +977,7 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
   }
 
   p->gpu = SDL_CreateGPUGraphicsPipeline(
-      g_app->gpu_device,
+      g_device,
       &(SDL_GPUGraphicsPipelineCreateInfo){
           .vertex_shader = sh->vs,
           .fragment_shader = sh->fs,
@@ -1027,8 +1024,8 @@ static void sg_destroy_pipeline(BackendPipeline h) {
   SgPipeline *p = (SgPipeline *)h;
   if (!p)
     return;
-  if (g_app && g_app->gpu_device && p->gpu) {
-    SDL_ReleaseGPUGraphicsPipeline(g_app->gpu_device, p->gpu);
+  if (g_device && p->gpu) {
+    SDL_ReleaseGPUGraphicsPipeline(g_device, p->gpu);
     gpu_stats_destroy(GPU_STAT_PIPELINE, 0);
   }
   // p->compute_gpu is owned by SgShader, do not release here.
@@ -1053,14 +1050,14 @@ static void sg_destroy_image(BackendImage h) {
   SgImage *im = (SgImage *)h;
   if (!im)
     return;
-  if (g_app && g_app->gpu_device) {
+  if (g_device) {
     if (im->tex)
-      SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
+      SDL_ReleaseGPUTexture(g_device, im->tex);
     if (im->tex)
       gpu_stats_destroy(GPU_STAT_TEXTURE,
                         gpu_stats_image_bytes(im->fmt, im->w, im->h));
     if (im->smp)
-      SDL_ReleaseGPUSampler(g_app->gpu_device, im->smp);
+      SDL_ReleaseGPUSampler(g_device, im->smp);
     if (im->smp)
       gpu_stats_destroy(GPU_STAT_SAMPLER, 0);
   }
@@ -1164,14 +1161,14 @@ static void sg_apply_bindings(const BindingsDesc *b) {
 
 static void sg_apply_uniforms(SglShaderStage stage, int slot, const void *d,
                               size_t b) {
-  if (!g_app || !g_app->gpu_cmd)
+  if (!g_cmd)
     return;
   if (stage == SGL_STAGE_FRAGMENT) {
-    SDL_PushGPUFragmentUniformData(g_app->gpu_cmd, (Uint32)slot, d, (Uint32)b);
+    SDL_PushGPUFragmentUniformData(g_cmd, (Uint32)slot, d, (Uint32)b);
   } else if (stage == SGL_STAGE_COMPUTE) {
-    SDL_PushGPUComputeUniformData(g_app->gpu_cmd, (Uint32)slot, d, (Uint32)b);
+    SDL_PushGPUComputeUniformData(g_cmd, (Uint32)slot, d, (Uint32)b);
   } else {
-    SDL_PushGPUVertexUniformData(g_app->gpu_cmd, (Uint32)slot, d, (Uint32)b);
+    SDL_PushGPUVertexUniformData(g_cmd, (Uint32)slot, d, (Uint32)b);
   }
 }
 
@@ -1271,7 +1268,7 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
     }
   }
   SDL_GPUComputePass *cp = SDL_BeginGPUComputePass(
-      app->gpu_cmd, rw_tex, (Uint32)n_rw_tex, rw, (Uint32)n_rw);
+      g_cmd, rw_tex, (Uint32)n_rw_tex, rw, (Uint32)n_rw);
   if (!cp) {
     SDL_Log("sg_dispatch: SDL_BeginGPUComputePass failed: %s", SDL_GetError());
     return;
@@ -1310,7 +1307,7 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
   for (int i = 0; i < d->uniform_count; ++i) {
     if (d->uniforms[i].slot >= 0 && d->uniforms[i].data &&
         d->uniforms[i].bytes > 0) {
-      SDL_PushGPUComputeUniformData(app->gpu_cmd, (Uint32)d->uniforms[i].slot,
+      SDL_PushGPUComputeUniformData(g_cmd, (Uint32)d->uniforms[i].slot,
                                     d->uniforms[i].data,
                                     (Uint32)d->uniforms[i].bytes);
     }
@@ -1394,7 +1391,7 @@ static SgReadbackRequest *g_frame_readbacks = NULL;
 static void sg_readback_release_tb(SgReadbackRequest *req) {
   if (!req->tb)
     return;
-  SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, req->tb);
+  SDL_ReleaseGPUTransferBuffer(g_device, req->tb);
   gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, req->tb_bytes);
   req->tb = NULL;
 }
@@ -1402,7 +1399,7 @@ static void sg_readback_release_tb(SgReadbackRequest *req) {
 static void sg_frame_fence_unref(SgFrameFence *f) {
   if (!f || --f->refs > 0)
     return;
-  SDL_ReleaseGPUFence(g_app->gpu_device, f->fence);
+  SDL_ReleaseGPUFence(g_device, f->fence);
   gpu_stats_destroy(GPU_STAT_FENCE, 0);
   free(f);
 }
@@ -1414,7 +1411,7 @@ static void sg_readback_release_fence(SgReadbackRequest *req) {
 
 // Copies a completed download out of its transfer buffer as RGBA8.
 static bool sg_readback_resolve(SgReadbackRequest *req) {
-  SDL_GPUDevice *dev = g_app->gpu_device;
+  SDL_GPUDevice *dev = g_device;
   Uint32 dst_stride = (Uint32)req->w * 4;
   Uint32 dst_bytes = dst_stride * (Uint32)req->h;
   void *src = SDL_MapGPUTransferBuffer(dev, req->tb, false);
@@ -1453,9 +1450,9 @@ static void sg_readback_finish(SgReadbackRequest *req, bool ok) {
 // holds. The readbacks recorded into it get its fence; with `wait` set, the
 // GPU is waited for and they are resolved right away.
 static bool sg_submit_frame(App *app, bool wait) {
-  SDL_GPUCommandBuffer *cmd = app->gpu_cmd;
-  app->gpu_cmd = NULL;
-  app->gpu_swapchain_tex = NULL;
+  SDL_GPUCommandBuffer *cmd = g_cmd;
+  g_cmd = NULL;
+  g_swapchain_tex = NULL;
   bool ok = true;
   SgFrameFence *frame_fence = NULL;
   if (cmd && (wait || g_frame_readbacks)) {
@@ -1468,7 +1465,7 @@ static bool sg_submit_frame(App *app, bool wait) {
       gpu_stats_create(GPU_STAT_FENCE, 0);
       frame_fence = (SgFrameFence *)calloc(1, sizeof(SgFrameFence));
       if (!frame_fence) {
-        SDL_ReleaseGPUFence(app->gpu_device, fence);
+        SDL_ReleaseGPUFence(g_device, fence);
         gpu_stats_destroy(GPU_STAT_FENCE, 0);
         ok = false;
       } else {
@@ -1477,7 +1474,7 @@ static bool sg_submit_frame(App *app, bool wait) {
       }
     }
     if (ok && wait &&
-        !SDL_WaitForGPUFences(app->gpu_device, true, &frame_fence->fence, 1)) {
+        !SDL_WaitForGPUFences(g_device, true, &frame_fence->fence, 1)) {
       SDL_Log("sg_submit_frame: SDL_WaitForGPUFences failed: %s",
               SDL_GetError());
       ok = false;
@@ -1509,7 +1506,7 @@ static bool sg_request_readback_image(App *app, BackendImage image, int w,
     return false;
   *out = 0;
   SgImage *im = (SgImage *)image;
-  if (!app || !app->gpu_device || !im || !im->tex || w <= 0 || h <= 0)
+  if (!app || !g_device || !im || !im->tex || w <= 0 || h <= 0)
     return false;
   int bpp = sg_readback_src_bpp(src_fmt);
   if (bpp == 0) {
@@ -1525,10 +1522,10 @@ static bool sg_request_readback_image(App *app, BackendImage image, int w,
   req->src_fmt = src_fmt;
   req->tb_bytes = (Uint32)w * (Uint32)bpp * (Uint32)h;
   req->tb = SDL_CreateGPUTransferBuffer(
-      app->gpu_device, &(SDL_GPUTransferBufferCreateInfo){
-                           .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
-                           .size = req->tb_bytes,
-                       });
+      g_device, &(SDL_GPUTransferBufferCreateInfo){
+                    .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+                    .size = req->tb_bytes,
+                });
   if (!req->tb) {
     SDL_Log("sg_request_readback_image: SDL_CreateGPUTransferBuffer failed: "
             "%s",
@@ -1539,13 +1536,13 @@ static bool sg_request_readback_image(App *app, BackendImage image, int w,
   gpu_stats_create(GPU_STAT_TRANSFER_BUFFER, req->tb_bytes);
   // Outside a frame (e.g. OnQuit) no frame submit follows, so the readback
   // gets its own command buffer, submitted and waited for right away.
-  bool outside_frame = app->gpu_cmd == NULL;
+  bool outside_frame = g_cmd == NULL;
   if (!sg_acquire_command_buffer(app, "sg_request_readback_image")) {
     sg_readback_release_tb(req);
     free(req);
     return false;
   }
-  SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(app->gpu_cmd);
+  SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g_cmd);
   if (!cp) {
     SDL_Log("sg_request_readback_image: SDL_BeginGPUCopyPass failed: %s",
             SDL_GetError());
@@ -1584,7 +1581,7 @@ static ReadbackPollStatus sg_poll_readback(BackendReadback h, bool wait,
     return READBACK_POLL_ERROR;
   SgReadbackRequest *req = (SgReadbackRequest *)h;
   if (req->state == SG_READBACK_SUBMITTED) {
-    SDL_GPUDevice *dev = g_app->gpu_device;
+    SDL_GPUDevice *dev = g_device;
     if (!SDL_QueryGPUFence(dev, req->fence->fence)) {
       if (!wait)
         return READBACK_POLL_PENDING;
@@ -1627,8 +1624,7 @@ static void sg_destroy_readback(BackendReadback h) {
 }
 
 static bool sg_capture(App *app, const char *path) {
-  if (!app || !app->gpu_device || !app->gpu_cmd || !app->gpu_swapchain_tex ||
-      !path) {
+  if (!app || !g_device || !g_cmd || !g_swapchain_tex || !path) {
     return false;
   }
   int w = app->last_w;
@@ -1650,10 +1646,10 @@ static bool sg_capture(App *app, const char *path) {
   Uint32 dst_stride = (Uint32)w * 4;
   Uint32 dst_bytes = dst_stride * (Uint32)h;
   SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(
-      app->gpu_device, &(SDL_GPUTransferBufferCreateInfo){
-                           .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
-                           .size = src_bytes,
-                       });
+      g_device, &(SDL_GPUTransferBufferCreateInfo){
+                    .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+                    .size = src_bytes,
+                });
   if (!tb) {
     SDL_Log("sg_capture: SDL_CreateGPUTransferBuffer failed: %s",
             SDL_GetError());
@@ -1661,16 +1657,16 @@ static bool sg_capture(App *app, const char *path) {
   }
   gpu_stats_create(GPU_STAT_TRANSFER_BUFFER, src_bytes);
 
-  SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(app->gpu_cmd);
+  SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g_cmd);
   if (!cp) {
     SDL_Log("sg_capture: SDL_BeginGPUCopyPass failed: %s", SDL_GetError());
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+    SDL_ReleaseGPUTransferBuffer(g_device, tb);
     gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
     return false;
   }
   SDL_DownloadFromGPUTexture(cp,
                              &(SDL_GPUTextureRegion){
-                                 .texture = app->gpu_swapchain_tex,
+                                 .texture = g_swapchain_tex,
                                  .w = (Uint32)w,
                                  .h = (Uint32)h,
                                  .d = 1,
@@ -1684,29 +1680,29 @@ static bool sg_capture(App *app, const char *path) {
   SDL_EndGPUCopyPass(cp);
 
   if (!sg_submit_frame(app, /*wait=*/true)) {
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+    SDL_ReleaseGPUTransferBuffer(g_device, tb);
     gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
     return false;
   }
 
-  void *src = SDL_MapGPUTransferBuffer(app->gpu_device, tb, false);
+  void *src = SDL_MapGPUTransferBuffer(g_device, tb, false);
   if (!src) {
     SDL_Log("sg_capture: SDL_MapGPUTransferBuffer failed: %s", SDL_GetError());
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+    SDL_ReleaseGPUTransferBuffer(g_device, tb);
     gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
     return false;
   }
   uint8_t *rgba = (uint8_t *)malloc(dst_bytes);
   if (!rgba) {
     SDL_Log("sg_capture: out of memory (%u bytes)", dst_bytes);
-    SDL_UnmapGPUTransferBuffer(app->gpu_device, tb);
-    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+    SDL_UnmapGPUTransferBuffer(g_device, tb);
+    SDL_ReleaseGPUTransferBuffer(g_device, tb);
     gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
     return false;
   }
   sg_convert_readback_to_rgba8(src_fmt, (const uint8_t *)src, rgba, w, h);
-  SDL_UnmapGPUTransferBuffer(app->gpu_device, tb);
-  SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+  SDL_UnmapGPUTransferBuffer(g_device, tb);
+  SDL_ReleaseGPUTransferBuffer(g_device, tb);
   gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
 
   int ok = stbi_write_png(path, w, h, 4, rgba, (int)dst_stride);
@@ -1720,7 +1716,7 @@ static bool sg_capture(App *app, const char *path) {
 
 static SglPixelFormat sg_swapchain_color_format(App *app) {
   SDL_GPUTextureFormat fmt =
-      SDL_GetGPUSwapchainTextureFormat(app->gpu_device, app->window);
+      SDL_GetGPUSwapchainTextureFormat(g_device, app->window);
   switch (fmt) {
   case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM:
   case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB:
