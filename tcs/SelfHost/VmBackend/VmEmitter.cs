@@ -102,10 +102,10 @@ public static class VmEmitter
 
     /// <summary>reload (doc/object-model.md §6): 旧版と新版を同じ entry / exports で作り、新版の module を返す (plan に計画、
     /// reasons に restart の理由)。計画の byte 列は自分の string 表を前に持つ。restart の理由は ReloadRules の規則
-    /// (ReloadRules。呼ぶ側が求めて restart に渡す)。新版には、足した (と型を変えた) instance field の initializer と、足した static の initializer
-    /// (`型.&lt;reload-static&gt;`) を関数として足す。</summary>
+    /// (ReloadRules。呼ぶ側が求めて restart に渡す)。新版には、足した (と型を変えた) instance field の initializer と、足した static と
+    /// 評価し直す static (reinit。ReloadRules.ReinitStatics) の initializer (`型.&lt;reload-static&gt;`) を関数として足す。</summary>
     public static List<int> EmitReload(ExportResult oldProgram, ExportResult newProgram, string entryClass, List<string> exports,
-        List<string> restart, out List<int> plan, out List<string> reasons)
+        List<string> restart, List<string> reinit, out List<int> plan, out List<string> reasons)
     {
         plan = new List<int>();
         reasons = new List<string>();
@@ -114,7 +114,7 @@ public static class VmEmitter
         var oldDesc = new VmDescription();
         oldDesc.Types = old.Describe(out List<StaticKey> oldStatics);
         oldDesc.Statics = oldStatics;
-        var module = EmitReload(oldDesc, newProgram, entryClass, exports, restart, out List<int> plan1, out List<string> reasons1,
+        var module = EmitReload(oldDesc, newProgram, entryClass, exports, restart, reinit, out List<int> plan1, out List<string> reasons1,
             out VmDescription unused);
         plan = plan1;
         reasons = reasons1;
@@ -123,7 +123,7 @@ public static class VmEmitter
 
     /// <summary>EmitReload と同じ。旧版は前の Emit / EmitReload が返した記述 (旧版を作り直さない)。newDesc に新版の記述を返す。</summary>
     public static List<int> EmitReload(VmDescription oldDesc, ExportResult newProgram, string entryClass, List<string> exports,
-        List<string> restart, out List<int> plan, out List<string> reasons, out VmDescription newDesc)
+        List<string> restart, List<string> reinit, out List<int> plan, out List<string> reasons, out VmDescription newDesc)
     {
         plan = new List<int>();
         reasons = new List<string>();
@@ -162,6 +162,7 @@ public static class VmEmitter
         {
             if (s.Change == ReloadPlan.Added) added.Add(s.Owner + "\n" + s.Field);
         }
+        foreach (var key in reinit) added.Add(key);
         foreach (var o in m.StaticOwners())
         {
             var fresh = new List<ExField>();
