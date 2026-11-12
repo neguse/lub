@@ -10535,14 +10535,15 @@ static TvmStatus vm_host_lub_gfx_pick(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   VmLub_TextureRef *p_target = a[0].p;
   int32_t p_x = a[1].i;
   int32_t p_y = a[2].i;
+  VmLub_AppRef *p_app = a[3].p;
   if (!p_target) {
     vm_lub_fail(s, "lub.gfx.pick: target is null");
     VM_LUB_LEAVE(vm);
   }
   if (s->error)
     VM_LUB_LEAVE(vm);
-  lub_gfx_pick(s->ctx, (p_target ? (int32_t)p_target->host_value : 0), p_x,
-               p_y);
+  lub_gfx_pick(s->ctx, (p_target ? (int32_t)p_target->host_value : 0), p_x, p_y,
+               (p_app ? (int32_t)p_app->host_value : 0));
   VM_LUB_LEAVE(vm);
 }
 static TvmStatus vm_host_lub_gfx_pick_result(TvmVm *vm, TvmSlot *a, TvmSlot *r,
@@ -10550,10 +10551,12 @@ static TvmStatus vm_host_lub_gfx_pick_result(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)a;
   (void)r;
   VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
   LubPickHit result = {0};
-  LubStatus status = lub_gfx_pick_result(s->ctx, &result);
+  LubStatus status = lub_gfx_pick_result(
+      s->ctx, (p_app ? (int32_t)p_app->host_value : 0), &result);
   vm_lub_check(s, status);
   if (s->error)
     VM_LUB_LEAVE(vm);
@@ -16019,8 +16022,8 @@ static const struct {
     {"lub.gfx.lookup_shader", "s", "o", vm_host_lub_gfx_lookup_shader},
     {"lub.gfx.lookup_buffer", "s", "o", vm_host_lub_gfx_lookup_buffer},
     {"lub.gfx.resource_info", "i&s&i", "b", vm_host_lub_gfx_resource_info},
-    {"lub.gfx.pick", "oii", "", vm_host_lub_gfx_pick},
-    {"lub.gfx.pick_result", "", "o", vm_host_lub_gfx_pick_result},
+    {"lub.gfx.pick", "oiio", "", vm_host_lub_gfx_pick},
+    {"lub.gfx.pick_result", "o", "o", vm_host_lub_gfx_pick_result},
     {"lub.gfx.readback", "s", "o", vm_host_lub_gfx_readback},
     {"lub.gfx.read_texture", "ooS{int?}&i&o&i&i&i&i&i&i&s", "",
      vm_host_lub_gfx_read_texture},

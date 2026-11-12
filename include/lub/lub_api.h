@@ -3281,12 +3281,17 @@ LUB_API bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
 // 直したりしても、描いた時の中身で引く (同じ frame の後の compute が書いた
 // storage buffer は、書いた後の中身)。 fragment shader の discard と透明は見
 // ないので、透明な部分の後ろの draw は拾えない。 shader を実行中に compile
-// するので、slang を持たない player (web) では結果の Draw が -1 になる。
+// するので、slang を持たない player (web) では結果の Draw が -1 になる。 app
+// を渡すと、`App.Use` で開いたその app の main を引く (target は
+// `Gfx.MainTex`。x, y は `App.Step` に渡した target の px)。記録するのは、そ
+// の app の次の `Step` の draw。
 LUB_API void lub_gfx_pick(LubContext *ctx, LubHandle target, int32_t x,
-                          int32_t y);
+                          int32_t y, LubHandle app);
 
-// Pick の結果。まだ届いていなければ null。
-LUB_API LubStatus lub_gfx_pick_result(LubContext *ctx, LubPickHit *out);
+// Pick の結果。まだ届いていなければ null。 app を渡すと、その app に出した
+// Pick の結果。
+LUB_API LubStatus lub_gfx_pick_result(LubContext *ctx, LubHandle app,
+                                      LubPickHit *out);
 
 // readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻
 // しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の

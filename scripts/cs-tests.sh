@@ -92,6 +92,7 @@ cs_runtime_tests=(
   TestAppInput
   TestAppObserve
   TestAppTimeline
+  TestAppPick
 )
 # runtime テストに付ける起動引数
 cs_test_args=(--readback-fixed-latency)

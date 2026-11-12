@@ -773,16 +773,18 @@ namespace Lub
         /// 記録した draw が使う buffer と texture をその frame の中で書き換えたり作り直したりしても、描いた時の中身で引く (同じ frame の後の compute が書いた storage buffer は、書いた後の中身)。
         /// fragment shader の discard と透明は見ないので、透明な部分の後ろの draw は拾えない。
         /// shader を実行中に compile するので、slang を持たない player (web) では結果の Draw が -1 になる。
+        /// app を渡すと、`App.Use` で開いたその app の main を引く (target は `Gfx.MainTex`。x, y は `App.Step` に渡した target の px)。記録するのは、その app の次の `Step` の draw。
         /// </summary>
         [LubNoFail]
-        public static void Pick(TextureRef target, int x, int y)
+        public static void Pick(TextureRef target, int x, int y, AppRef? app = null)
         {
         }
 
         /// <summary>Pick の結果。
         /// まだ届いていなければ null。
+        /// app を渡すと、その app に出した Pick の結果。
         /// </summary>
-        public static PickHit? PickResult()
+        public static PickHit? PickResult(AppRef? app = null)
         {
             return null;
         }

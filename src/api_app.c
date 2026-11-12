@@ -3,6 +3,7 @@
 // app の中身 (tcs VM と entry の呼び出し) は player が LubAppHooks で作る。hook が無い host では error。
 #include "api_internal.h"
 #include "backend.h"
+#include "pick.h"
 #include "ui.h"
 #include <stdlib.h>
 #include <string.h>
@@ -264,9 +265,12 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
   bool ok = false;
   if (o->player && !child->quit_requested) {
     child->declare_epoch++;
+    pick_frame_begin(child);
     ok = app->app_hooks->step(o->player, dt);
     if (pass_state_in_pass(&child->pass))
       pass_state_end(&child->pass);
+    // Gfx.Pick の描き直しは、main の描き先がある間に行う
+    pick_frame_end(child);
     app_frame_end(child, ok);
   }
   ui_set_enabled(true);
