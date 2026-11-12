@@ -206,6 +206,9 @@ typedef struct App {
   // overlay の callback の中か (player が立てる)。
   // overlay_grab_* は overlay が Input.Grab で取った入力の種類で、取っている間はゲームの OnEvent に届かず、overlay の外から読む Input は何も押されていない状態を返す
   bool in_overlay;
+  // pass の GPU の時間を数えているか (Sys.ProfileLines) と、数え始める画面の frame (src/gpu_time.c)
+  bool gpu_time_on;
+  uint64_t gpu_time_from;
   bool overlay_grab_keyboard;
   bool overlay_grab_mouse;
   // Gfx.Pick の状態 (pick.c 所有、最初の要求で作る)。

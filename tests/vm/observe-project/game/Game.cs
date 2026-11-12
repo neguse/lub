@@ -1,4 +1,4 @@
-// .csproj で開いた app を、開いた側から検査する: 通った行、代入した値、static の木、行ごとの負荷。
+// .csproj で開いた app を、開いた側から検査する: 通った行、代入した値、static の木、行ごとの負荷、pass ごとの GPU の時間。
 // 開いた app のソースは --trace で変換されるので、overlay が無くても記録が取れる。
 // 開いた側のソースは記録に入らない。
 using System;
@@ -8,7 +8,7 @@ using Lub;
 public static class Game
 {
     static int stepped;
-    static bool sawLine, sawValue, sawProfile;
+    static bool sawLine, sawValue, sawProfile, sawPass;
 
     static string ChildCsproj()
     {
@@ -40,7 +40,7 @@ public static class Game
         Gfx.EndPass();
         if (Sys.Seconds() > 120)
         {
-            Fail($"line={sawLine} value={sawValue} profile={sawProfile} after {stepped} frames of the opened app");
+            Fail($"line={sawLine} value={sawValue} profile={sawProfile} pass={sawPass} after {stepped} frames of the opened app");
             return;
         }
         // build を待つ間は Step が false
@@ -59,6 +59,16 @@ public static class Game
         {
             if (p.Site.Contains("Child.cs:")) sawProfile = true;
         }
+        foreach (var g in Sys.TakeGpuPasses(child))
+        {
+            if (g.Target == "main" && g.Site.Contains("Child.cs:")) sawPass = true;
+        }
+        // 自分の pass は数えていない
+        if (Sys.TakeGpuPasses().Count != 0)
+        {
+            Fail("the opening app has GPU passes without ProfileLines");
+            return;
+        }
         var score = "";
         foreach (var n in Sys.Inspect("Child", 0, 10, child))
         {
@@ -75,7 +85,7 @@ public static class Game
             Fail("the opening app has its own trace");
             return;
         }
-        if (sawLine && sawValue && sawProfile)
+        if (sawLine && sawValue && sawProfile && sawPass)
         {
             Console.WriteLine("PASS");
             App.Quit(0);

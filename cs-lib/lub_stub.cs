@@ -1648,9 +1648,10 @@ namespace Lub
         /// GPU の時間は、その frame を GPU が終えた後 (多くの backend で 2 frame 後) に届く。
         /// Gfx.BeginPass で始めた pass を数え、overlay の中の pass は数えない。
         /// frame の途中で数え始めたら、次の frame の pass から数える。数えていなければ空。
+        /// app を渡すと、`App.Use` で開いたその app の pass を返す (省くとこの app。数えるかどうかも app ごとで、`ProfileLines` に同じ app を渡して始める)。
         /// </summary>
         [LubNoFail]
-        public static List<GpuPass> TakeGpuPasses()
+        public static List<GpuPass> TakeGpuPasses(AppRef? app = null)
         {
             return new List<GpuPass>();
         }
