@@ -292,6 +292,17 @@ uint32_t tvm_layout_version(TvmVm *vm);
 bool tvm_snapshot_number(TvmVm *vm, const TvmSnapshot *s, const char *entry,
                          const char *path, float *out);
 
+/* ---- 状態の保存と読み込み (tcsvm_state.c、doc/vm-design.md §13.4) ----
+   全部の static と、そこから届く object を、address に依らない byte 列にする。
+   同じ形の型を持つ別の VM (別の process でもよい) に読み込める。frame の境界でだけ呼べる。
+   host の handle (tvm_hold) が持つ object は書かない。 */
+/* bytes は tvm_state_free で解放する。失敗したら TVM_LOAD_ERROR (理由は tvm_error) */
+TvmStatus tvm_state_save(TvmVm *vm, uint8_t **bytes, size_t *size);
+void tvm_state_free(uint8_t *bytes);
+/* 読み込んだ値で static を置き換える。今の module に無い static は捨て、状態に無い static は今の値のまま。
+   型の形か関数が合わなければ TVM_LOAD_ERROR で、状態は変わらない (理由は tvm_error) */
+TvmStatus tvm_state_load(TvmVm *vm, const uint8_t *bytes, size_t size);
+
 #ifdef __cplusplus
 }
 #endif

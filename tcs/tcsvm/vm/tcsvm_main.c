@@ -5,10 +5,13 @@
      --reload K NEW.tcsb PLAN                       (--lib と) K 回目のフレームの後に新版を当てる (繰り返せる)
      --reload-batch K BATCH                         同じく、tcs2vm --watch の vm_batch を戻した byte 列を当てる
      --snapshot K / --restore K                     (--lib と) K 回目のフレームの後 (reload の後) に状態を控える / 控えを書き戻す
+     --save-state K FILE                            (--lib と) K 回目のフレームの後に状態を FILE に書く
+     --load-state K FILE                            (--lib と) K 回目のフレームの後に FILE の状態を読み込む。0 なら Setup の代わりに読み込む
    --lib は host の形 (tcs2c の lib 形と同じ順)。フレーム境界で GC が回る。
    reload が restart を求めたら終了コード 3 (理由は stderr)。 */
 #include "tcsvm.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +31,36 @@ static uint8_t *read_file(const char *path, size_t *size) {
   fclose(fp);
   *size = n > 0 ? (size_t)n : 0;
   return buf;
+}
+
+static TvmStatus save_state(TvmVm *vm, const char *path) {
+  uint8_t *state;
+  size_t size;
+  TvmStatus st = tvm_state_save(vm, &state, &size);
+  if (st != TVM_OK)
+    return st;
+  FILE *fp = fopen(path, "wb");
+  bool ok = fp && fwrite(state, 1, size, fp) == size;
+  if (fp)
+    ok = fclose(fp) == 0 && ok;
+  tvm_state_free(state);
+  if (!ok) {
+    fprintf(stderr, "tcsvm: cannot write %s\n", path);
+    return TVM_LOAD_ERROR;
+  }
+  return TVM_OK;
+}
+
+static TvmStatus load_state(TvmVm *vm, const char *path) {
+  size_t size;
+  uint8_t *state = read_file(path, &size);
+  if (!state) {
+    fprintf(stderr, "tcsvm: cannot read %s\n", path);
+    return TVM_LOAD_ERROR;
+  }
+  TvmStatus st = tvm_state_load(vm, state, size);
+  free(state);
+  return st;
 }
 
 static TvmStatus call_named(TvmVm *vm, const char *cls, const char *method,
@@ -55,6 +88,8 @@ int main(int argc, char **argv) {
   } reloads[MAX_RELOADS];
   int nreloads = 0;
   long snapshot_at = 0, restore_at = 0;
+  long save_at = -1, load_at = -1;
+  const char *save_path = NULL, *load_path = NULL;
   TvmConfig config = {0, 0, 0};
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--entry") == 0 && i + 1 < argc)
@@ -78,7 +113,13 @@ int main(int argc, char **argv) {
       snapshot_at = strtol(argv[++i], NULL, 10);
     else if (strcmp(argv[i], "--restore") == 0 && i + 1 < argc)
       restore_at = strtol(argv[++i], NULL, 10);
-    else if (strcmp(argv[i], "--gc-stress") == 0)
+    else if (strcmp(argv[i], "--save-state") == 0 && i + 2 < argc) {
+      save_at = strtol(argv[++i], NULL, 10);
+      save_path = argv[++i];
+    } else if (strcmp(argv[i], "--load-state") == 0 && i + 2 < argc) {
+      load_at = strtol(argv[++i], NULL, 10);
+      load_path = argv[++i];
+    } else if (strcmp(argv[i], "--gc-stress") == 0)
       config.gc_stress = 1;
     else
       path = argv[i];
@@ -104,7 +145,10 @@ int main(int argc, char **argv) {
   TvmSnapshot *snap = NULL;
   TvmStatus st = tvm_load(vm, bytes, size);
   if (st == TVM_OK && lib) {
-    st = call_named(vm, lib, "Setup", 0);
+    st = load_at == 0 ? load_state(vm, load_path)
+                      : call_named(vm, lib, "Setup", 0);
+    if (st == TVM_OK && save_at == 0)
+      st = save_state(vm, save_path);
     for (long k = 0; k < frames && st == TVM_OK; k++) {
       st = call_named(vm, lib, "Frame", 1);
       tvm_frame_end(vm);
@@ -127,6 +171,10 @@ int main(int argc, char **argv) {
         free(m);
         free(p);
       }
+      if (st == TVM_OK && load_at == k + 1)
+        st = load_state(vm, load_path);
+      if (st == TVM_OK && save_at == k + 1)
+        st = save_state(vm, save_path);
       if (st == TVM_OK && restore_at == k + 1)
         tvm_snapshot_restore(vm, snap);
       if (st == TVM_OK && snapshot_at == k + 1) {

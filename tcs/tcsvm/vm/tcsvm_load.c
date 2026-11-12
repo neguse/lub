@@ -602,7 +602,7 @@ static uint8_t quad(uint32_t op, uint32_t first) {
 }
 
 /* closure を作れる関数か: 引数と戻り値が関数型 t と同じ並び */
-static bool matches_func(const TvmProto *g, const TvmType *t) {
+bool tvm_proto_matches(const TvmProto *g, const TvmType *t) {
   if (g->nparams != t->nparams || g->nret != t->nrets)
     return false;
   for (uint32_t k = 0; k < t->nparams; k++)
@@ -1185,7 +1185,7 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       const TvmType *ft = reg_type(&v, a, TVM_T_FUNC);
       if (!ft)
         return false;
-      if (!matches_func(g, ft))
+      if (!tvm_proto_matches(g, ft))
         return vfail(&v, "%s does not match the function type %s", g->name,
                      ft->name);
       for (uint32_t k = 0; k < g->ncaps; k++)
