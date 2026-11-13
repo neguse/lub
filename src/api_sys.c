@@ -85,8 +85,10 @@ void lub_app_quit(LubContext *ctx, int32_t code) {
   app->exit_code = code;
 }
 
-void lub_app_restart(LubContext *ctx) {
-  lub_api_app(ctx)->restart_requested = true;
+void lub_app_restart(LubContext *ctx, LubHandle of) {
+  App *app = api_app_observed(lub_api_app(ctx), of);
+  if (app)
+    app->restart_requested = true;
 }
 
 // ----------------------------------------------------------------- input

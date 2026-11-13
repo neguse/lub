@@ -3107,7 +3107,7 @@ LUB_API LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *opts);
 // 受け取れない iOS simulator 用)。
 LUB_API void lub_app_quit(LubContext *ctx, int32_t code);
 
-LUB_API void lub_app_restart(LubContext *ctx);
+LUB_API void lub_app_restart(LubContext *ctx, LubHandle app);
 
 LUB_API LubStatus lub_app_use(LubContext *ctx, LubStr key, LubStr module,
                               LubStr entry, LubHandle *out);
