@@ -1,6 +1,6 @@
 // ゲームの物を指すと、それを描いたコードが What に出る。画面の座標は MainTex の画素に直して引く (web の高 DPI)。
 // 物はゲーム (game/Game.cs) が画面の真ん中に描く四角。
-//   - 画素の比率が 2 なら、画面の 1/4 の所は MainTex の 1/2 の所を引く
+//   - 画素の比率が 2 なら、ゲームは画面の 2 倍の画素の texture に描き、画面の真ん中はその texture の真ん中を引く (比率を見なければ 1/4 の所を引いて外れる)
 //   - 物を指すと What に「メソッド (file:行)」が内側から並ぶ。何も無い所では空
 //   - 中 click するとその行を開く
 // frame はゲームが動き始めてから数える。
@@ -45,6 +45,8 @@ public static class TestWhatis
 
     static void TestFrame(float dt)
     {
+        // 比率は、ゲームの texture が作り直されるよう、指す前に変える
+        Lider.PixelRatio = 2;
         // ゲームの build を待つ
         if (failed || GameApp.Frames == 0)
             return;
@@ -60,8 +62,7 @@ public static class TestWhatis
         var what = string.Join(" / ", Lider.What);
         if (stage == 0)
         {
-            Lider.PixelRatio = 2;
-            Lider.HoverAt(w / 4, h / 4);
+            Lider.HoverAt(w / 2, h / 2);
             stage = 1;
         }
         else if (stage == 1 && what != "")
@@ -76,7 +77,7 @@ public static class TestWhatis
         {
             Check(what == "", "the empty place has a what: " + what);
             // 足あとの板が前にあるので、奥のゲームの物を引く中 click にする
-            Lider.OnEvent(new EventData { Kind = EventKind.MouseButtonDown, Button = 2, X = w / 4, Y = h / 4 });
+            Lider.OnEvent(new EventData { Kind = EventKind.MouseButtonDown, Button = 2, X = w / 2, Y = h / 2 });
             stage = 3;
         }
         else if (stage == 3 && Lider.Work!.Focus != null)
