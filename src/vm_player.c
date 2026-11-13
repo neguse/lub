@@ -446,6 +446,9 @@ static void poll_reload(Player *p) {
       restart(p, "the reloaded module does not bind");
       return;
     }
+    // 書く側は、batch を当てた後の版の module を batch より先に書いてよい (作り直すときに読む版を揃える)。
+    // 今の module を当てた版として控え、その書き直しで作り直さない
+    p->module_mtime = file_mtime(p->module);
     p->reloads++;
     status_text(&p->build_error, NULL, 0);
     status_text(&p->reload_notes, NULL, 0);

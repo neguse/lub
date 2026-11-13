@@ -1,0 +1,18 @@
+# tcs と一緒に配るファイル (tcs/TinySystem の Linq.cs と ValueTuple.cs) を C の配列にした header を作る (native/tcs/vm_tcs.c が include する)。
+#   cmake -DTINYSYSTEM=<tcs/TinySystem> -DOUT=<tcs_tool_files.h> -P embed.cmake
+set(names Linq.cs ValueTuple.cs)
+set(text "/* tcs/TinySystem から native/tcs/embed.cmake が作る。手で書き換えない */\n")
+string(APPEND text "#include <stddef.h>\n\ntypedef struct TcsToolFile {\n  const char *name;\n  const unsigned char *data;\n  size_t length;\n} TcsToolFile;\n\n")
+set(table "")
+set(i 0)
+foreach(name IN LISTS names)
+  file(READ "${TINYSYSTEM}/${name}" hex HEX)
+  string(LENGTH "${hex}" hex_length)
+  math(EXPR length "${hex_length} / 2")
+  string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," bytes "${hex}")
+  string(APPEND text "static const unsigned char tcs_tool_file_${i}[] = {${bytes}0};\n")
+  string(APPEND table "  {\"lib/TinySystem/${name}\", tcs_tool_file_${i}, ${length}},\n")
+  math(EXPR i "${i} + 1")
+endforeach()
+string(APPEND text "\nstatic const TcsToolFile tcs_tool_files[] = {\n${table}};\n")
+file(WRITE "${OUT}" "${text}")
