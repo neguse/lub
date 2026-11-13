@@ -43,12 +43,12 @@ public class PanelView
     // 層の texture の密度の上限 (texture は幅と高さがこの倍になる)
     const int MaxDensity = 3;
 
-    // 非 XR で、既定の画角と大きさの窓の 1 論理 px が高さ screenH の画面で覆う画素を、整数に丸めた密度。
+    // 非 XR で、既定の画角と大きさの窓の 1 論理 px が高さ viewportH の画面で覆う画素を、整数に丸めた密度。
     // 整数なら scroll でずらしても画素が揃う。少し足りないだけなら上げない (texture の量は 2 乗で増える)
-    public static int DensityFor(int screenH)
+    public static int DensityFor(int viewportH)
     {
         var visible = 2 * Space.R * (float)Math.Tan(Space.FlatFov * 0.5f * Math.PI / 180);
-        var d = screenH * BaseH * Space.FlatScale / visible / BasePxH;
+        var d = viewportH * BaseH * Space.FlatScale / visible / BasePxH;
         return Math.Max(1, Math.Min(MaxDensity, (int)Math.Ceiling(d - 0.25f)));
     }
 

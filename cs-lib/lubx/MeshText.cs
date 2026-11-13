@@ -29,9 +29,9 @@ public class MeshText
 {
     private static string vs = "struct Uniforms {\n"
         + "  float4\n"
-        + "      psr; // x, y (screen px), scale (px per em), rotation (rad, CCW in y-up)\n"
+        + "      psr; // x, y (viewport px), scale (px per em), rotation (rad, CCW in y-up)\n"
         + "  float4 tint;\n"
-        + "  float4 screen; // logical w, h\n"
+        + "  float4 viewport; // logical w, h\n"
         + "  float4 center; // rotation/placement center in em (glyph bbox center)\n"
         + "};\n"
         + "ConstantBuffer<Uniforms> u;\n"
@@ -53,8 +53,8 @@ public class MeshText
         + "  float s = sin(u.psr.w);\n"
         + "  float2 l = (i.pos - u.center.xy) * u.psr.z;\n"
         + "  float2 r = float2(l.x * c - l.y * s, l.x * s + l.y * c);\n"
-        + "  float2 p = float2(u.psr.x + r.x, u.psr.y - r.y); // y-up -> screen y-down\n"
-        + "  o.pos = float4(p.x / u.screen.x * 2.0 - 1.0, 1.0 - p.y / u.screen.y * 2.0,\n"
+        + "  float2 p = float2(u.psr.x + r.x, u.psr.y - r.y); // y-up -> viewport y-down\n"
+        + "  o.pos = float4(p.x / u.viewport.x * 2.0 - 1.0, 1.0 - p.y / u.viewport.y * 2.0,\n"
         + "                 0.0, 1.0);\n"
         + "  o.color = u.tint;\n"
         + "  return o;\n"
@@ -196,7 +196,7 @@ public class MeshText
         bindings.Set("indices", ib);
         bindings.Set("psr", new Vec4(x, y, size, angle ?? 0.0f));
         bindings.Set("tint", new Vec4(c.R, c.G, c.B, c.A));
-        bindings.Set("screen", new Vec4((float)logicalW, (float)logicalH, 0.0f, 0.0f));
+        bindings.Set("viewport", new Vec4((float)logicalW, (float)logicalH, 0.0f, 0.0f));
         bindings.Set("center", ctr
                     ? new List<float> { e.Cx, e.Cy, 0.0f, 0.0f }
                     : new List<float> { 0.0f, 0.0f, 0.0f, 0.0f });

@@ -1,4 +1,4 @@
-// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project / Camera3d.ScreenRay / Ray / Rand.Between / Sfx.Synth) の振る舞いを見る。
+// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project / Camera3d.ViewportRay / Ray / Rand.Between / Sfx.Synth) の振る舞いを見る。
 // 純粋な計算は OnInit で、resource を宣言する定型は frame を回して確かめる。
 using System;
 using System.Collections.Generic;
@@ -95,7 +95,7 @@ public static class TestLubxGameHelpers
     // ゲームの床のマス選び: 画面の点 -> レイ -> 床 (y = 0) との交点
     static Vec3? PickFloor(Mat4 cam, float sx, float sy, float w, float h)
     {
-        var ray = Camera3d.ScreenRay(cam, sx, sy, w, h);
+        var ray = Camera3d.ViewportRay(cam, sx, sy, w, h);
         var t = ray.IntersectPlane(new Vec3(0, 0, 0), new Vec3(0, 1, 0));
         if (t == null)
             return null;
@@ -112,8 +112,8 @@ public static class TestLubxGameHelpers
         if (center == null)
             return;
         var c = center.Value;
-        Near(c.X, w / 2, 1e-3f, "target x is the screen center");
-        Near(c.Y, h / 2, 1e-3f, "target y is the screen center");
+        Near(c.X, w / 2, 1e-3f, "target x is the viewport center");
+        Near(c.Y, h / 2, 1e-3f, "target y is the viewport center");
         Check.That(c.Z > 0 && c.Z < 1, "depth must be in (0, 1)");
 
         var right = Camera3d.Project(vp, 3, 0, 0, w, h);
@@ -150,7 +150,7 @@ public static class TestLubxGameHelpers
             Near(hit.Value.Z, picks[i + 1], 1e-3f, "round trip z");
         }
 
-        var ray = Camera3d.ScreenRay(vp, w / 2, h / 2, w, h);
+        var ray = Camera3d.ViewportRay(vp, w / 2, h / 2, w, h);
         Near(ray.Dir.Length(), 1, 1e-6f, "ray dir is normalized");
         Near(ray.Dir.X, 0, 1e-6f, "center ray dir x");
         Near(ray.Dir.Y, -(float)Math.Sqrt(0.5f), 1e-4f, "center ray dir y");

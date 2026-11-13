@@ -1,4 +1,4 @@
-// focus のある窓の cursor の画面の位置 (Lider.CaretScreen。LIDER_CARET_LOG=1 なら標準出力にも書く)。
+// focus のある窓の cursor の画面の位置 (Lider.CaretViewport。LIDER_CARET_LOG=1 なら標準出力にも書く)。
 //   - 画面の中にあり、高さは行の高さほど
 //   - 1 行下へ動かすと、同じ x で、行の高さだけ下へ動く
 using System;
@@ -59,16 +59,16 @@ public static class TestCaret
         {
             stage = 1;
             waited = 0;
-            before = Lider.CaretScreen;
+            before = Lider.CaretViewport;
             Gfx.Size(out var sw, out var sh);
-            Check(before.X > 0 && before.X < sw && before.Y > 0 && before.Y < sh, "the caret is off the screen: " + before.X + "," + before.Y);
+            Check(before.X > 0 && before.X < sw && before.Y > 0 && before.Y < sh, "the caret is off the viewport: " + before.X + "," + before.Y);
             Check(before.Z > 5 && before.Z < 60, "the caret height is " + before.Z);
             w.Focus!.MoveTo(4, 4);
         }
         if (stage == 1 && waited > 1)
         {
             stage = 2;
-            var after = Lider.CaretScreen;
+            var after = Lider.CaretViewport;
             Check(Math.Abs(after.X - before.X) < 1, "moving down changed x: " + before.X + " -> " + after.X);
             Check(Math.Abs(after.Y - before.Y - before.Z) < 2, "moving down one line moved y by " + (after.Y - before.Y) + ", the line is " + before.Z);
             if (failed)

@@ -64,7 +64,7 @@ public static class TestArea
         }
         if (frames == 4)
         {
-            var alone = Lider.BoardScreen();
+            var alone = Lider.BoardViewport();
             Check(Near(alone.X, X), "without a window, the inspector's left edge is at " + alone.X + ", want " + X);
             w.FocusOn(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!);
             waited = 0;
@@ -78,11 +78,11 @@ public static class TestArea
         var half = window.W * window.Scale * 0.5f;
         var top = window.Y + (window.H + PanelView.TitleH) * 0.5f * window.Scale;
         var bottom = window.Y - window.H * 0.5f * window.Scale;
-        var left = Lider.ScreenPoint(Space.At(angle - half / Space.R, top, Space.R));
-        var right = Lider.ScreenPoint(Space.At(angle + half / Space.R, bottom, Space.R));
+        var left = Lider.ViewportPoint(Space.At(angle - half / Space.R, top, Space.R));
+        var right = Lider.ViewportPoint(Space.At(angle + half / Space.R, bottom, Space.R));
         Check(Near(right.X, X + W), "the window's right edge is at " + right.X + ", want " + (X + W));
         Check(left.X > X && left.Y >= Y - 2 && right.Y <= Y + H + 2, "the window is outside the area: " + left.X + "," + left.Y + " - " + right.X + "," + right.Y);
-        var board = Lider.BoardScreen();
+        var board = Lider.BoardViewport();
         Check(board.X >= X - 2 && board.Z <= left.X && board.Y >= Y - 2 && board.W <= Y + H + 2,
             "the inspector is outside the area or over the window: " + board.X + "," + board.Y + " - " + board.Z + "," + board.W + " (window from " + left.X + ")");
         // 止めるには控えた frame が要るので、ゲームが動き始めるまで待つ
@@ -105,7 +105,7 @@ public static class TestArea
         }
         if (after < 5)
             return;
-        var band = Lider.TimelineScreen();
+        var band = Lider.TimelineViewport();
         var fail = GameApp.Position != 0 ? "F5 did not pause"
             : band.X < X - 2 || band.Z > X + W + 2 || band.Y < Y + H - 60 || band.W > Y + H + 2
             ? "the timeline is not at the bottom of the area: " + band.X + "," + band.Y + " - " + band.Z + "," + band.W : "";

@@ -29,25 +29,25 @@ public class Camera2d
         this.OriginY = originY;
     }
 
-    /// <summary>world x → screen x</summary>
+    /// <summary>world x → viewport x</summary>
     public float Sx(float wx)
     {
         return OriginX + wx * Ppm;
     }
 
-    /// <summary>world y → screen y</summary>
+    /// <summary>world y → viewport y</summary>
     public float Sy(float wy)
     {
         return OriginY - wy * Ppm;
     }
 
-    /// <summary>screen x → world x</summary>
+    /// <summary>viewport x → world x</summary>
     public float Wx(float sxv)
     {
         return (sxv - OriginX) / Ppm;
     }
 
-    /// <summary>screen y → world y</summary>
+    /// <summary>viewport y → world y</summary>
     public float Wy(float syv)
     {
         return (OriginY - syv) / Ppm;
