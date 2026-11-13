@@ -931,8 +931,8 @@ public class Renderer3d
     private int areaY = 0;
     private int areaW = 0;
     private int areaH = 0;
-    private int screenW = 0;
-    private int screenH = 0;
+    private int viewportW = 0;
+    private int viewportH = 0;
 
     public Renderer3d(string key)
     {
@@ -959,8 +959,8 @@ public class Renderer3d
         var near = cam.Near ?? 0.1f;
         var far = cam.Far ?? 100.0f;
         Gfx.Size(out var w, out var h);
-        screenW = w;
-        screenH = h;
+        viewportW = w;
+        viewportH = h;
         if (Viewport != null)
         {
             var area = Viewport.Value;
@@ -1360,10 +1360,10 @@ public class Renderer3d
         Blit(ldr, tonemap, passBindings);
 
         // FXAA (or 素通し) → swapchain の描く範囲
-        var dst = new Vec4((float)areaX / screenW * 2.0f - 1.0f,
-            1.0f - (float)(areaY + h) / screenH * 2.0f,
-            (float)(areaX + w) / screenW * 2.0f - 1.0f,
-            1.0f - (float)areaY / screenH * 2.0f);
+        var dst = new Vec4((float)areaX / viewportW * 2.0f - 1.0f,
+            1.0f - (float)(areaY + h) / viewportH * 2.0f,
+            (float)(areaX + w) / viewportW * 2.0f - 1.0f,
+            1.0f - (float)areaY / viewportH * 2.0f);
         var present = new PassOpts { Target = Gfx.MainTex };
         if (Viewport != null)
             present.Load = Gfx.LoadAction.Load;

@@ -189,7 +189,7 @@ public static class TestWindows
         Near(Space.FollowX(0, 0.5f, 0.3f, 1), 0, "a visible window moved the view");
         Near(Space.FollowX(0, 2, 0.3f, 1), 1.3f, "the view did not go right to the window");
         Near(Space.FollowX(2, 0, 0.3f, 1), 0.7f + 0.0f, "the view did not go left to the window");
-        Near(Space.FollowX(0, 2, 1.5f, 1), 2, "a window wider than the screen is not centered");
+        Near(Space.FollowX(0, 2, 1.5f, 1), 2, "a window wider than the viewport is not centered");
         Check(Space.OffView(0, 0.3f, 0.1f, 0.5f) == 0, "a visible window has a cue");
         Check(Space.OffView(0, 1.5f, 0.1f, 0.5f) == 1 && Space.OffView(0, -1.5f, 0.1f, 0.5f) == -1, "the cue points the wrong way");
         Check(Space.OffView(3.0f, -3.0f, 0.1f, 0.5f) == 0, "the angle does not wrap around");

@@ -367,7 +367,7 @@ public static class Commands
             {
                 if (!InView(dv, x, y))
                     return false;
-                dv.ResolveScreenPosition(x, y, out var line, out var col);
+                dv.ResolvePixelPosition(x, y, out var line, out var col);
                 if (name == "doc:split-cursor")
                 {
                     var removal = 0;
@@ -411,7 +411,7 @@ public static class Commands
     {
         var doc = dv.Doc;
         doc.GetSelection(false, out _, out _, out var line1, out var col1);
-        dv.ResolveScreenPosition(x, y, out var line2, out var col2);
+        dv.ResolvePixelPosition(x, y, out var line2, out var col2);
         dv.StartMouseSelection(line1, col1, 0);
         doc.SetSelection(line2, col2, line1, col1);
         return true;

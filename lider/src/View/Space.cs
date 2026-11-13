@@ -80,16 +80,16 @@ public static class Space
         return new Vec2(u, v);
     }
 
-    // 平面で視点の x を view に置くとき、中心 center、幅の半分 half の窓が画面 (幅の半分 screen) に入る、一番近い view。
+    // 平面で視点の x を view に置くとき、中心 center、幅の半分 half の窓が画面 (幅の半分 viewport) に入る、一番近い view。
     // 窓が画面より広ければ窓の真ん中を見る
-    public static float FollowX(float view, float center, float half, float screen)
+    public static float FollowX(float view, float center, float half, float viewport)
     {
-        if (half >= screen)
+        if (half >= viewport)
             return center;
-        if (center - half < view - screen)
-            return center - half + screen;
-        if (center + half > view + screen)
-            return center + half - screen;
+        if (center - half < view - viewport)
+            return center - half + viewport;
+        if (center + half > view + viewport)
+            return center + half - viewport;
         return view;
     }
 

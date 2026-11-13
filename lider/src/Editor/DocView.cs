@@ -255,7 +255,7 @@ public class DocView
         return i;
     }
 
-    public void ResolveScreenPosition(float x, float y, out int line, out int col)
+    public void ResolvePixelPosition(float x, float y, out int line, out int col)
     {
         // 上の端が y 以下の最後の行 (空けた行の所は、その上の行)
         var l = LastLineAbove(y - ContentOffsetY() - Style.PaddingY, LineHeight());
@@ -402,7 +402,7 @@ public class DocView
         HoveringGutter = gw > 0 && x >= PosX && x <= PosX + gw;
         if (!MouseSelecting)
             return;
-        ResolveScreenPosition(x, y, out var l1, out var c1);
+        ResolvePixelPosition(x, y, out var l1, out var c1);
         var l2 = msLine;
         var c2 = msCol;
         if (EditorCore.Ctrl)
@@ -480,7 +480,7 @@ public class DocView
     {
         if (!HoveringGutter)
             return false;
-        ResolveScreenPosition(x, y, out var line, out _);
+        ResolvePixelPosition(x, y, out var line, out _);
         if (EditorCore.Shift)
         {
             Doc.GetSelection(true, out var sline, out _, out var sline2, out _);

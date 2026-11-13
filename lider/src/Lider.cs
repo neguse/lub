@@ -54,8 +54,8 @@ public static class Lider
     // ホイールで狭めると拡大して読める
     static float fov = Space.FlatFov;
     static Mat4 lastVp = new Mat4();
-    static int screenW = 1;
-    static int screenH = 1;
+    static int viewportW = 1;
+    static int viewportH = 1;
     // 閉じる印を指している窓
     static Window? closeHover;
     static readonly Dictionary<string, PanelView> panels = new Dictionary<string, PanelView>();
@@ -630,15 +630,15 @@ public static class Lider
     static readonly bool caretLog = Environment.GetEnvironmentVariable("LIDER_CARET_LOG") == "1";
     static string loggedCaret = "";
     // focus のある窓の cursor の上の端の画面の位置 (px) と高さ (Z)。描いていない frame は前のまま
-    public static Vec3 CaretScreen;
+    public static Vec3 CaretViewport;
 
     static void LogCaret(Mat4 vp)
     {
         if (!PanelView.CaretDrawn)
             return;
-        var top = ScreenOf(vp, PanelView.CaretTop);
-        var bottom = ScreenOf(vp, PanelView.CaretBottom);
-        CaretScreen = new Vec3(top.X, top.Y, bottom.Y - top.Y);
+        var top = ViewportOf(vp, PanelView.CaretTop);
+        var bottom = ViewportOf(vp, PanelView.CaretBottom);
+        CaretViewport = new Vec3(top.X, top.Y, bottom.Y - top.Y);
         var s = "lider_caret " + (int)top.X + " " + (int)top.Y + " " + (int)(bottom.Y - top.Y);
         if (!caretLog || s == loggedCaret)
             return;
@@ -661,36 +661,36 @@ public static class Lider
     }
 
     // インスペクタの板の、最後に描いた frame の画面の px (左, 上, 右, 下)
-    public static Vec4 BoardScreen()
+    public static Vec4 BoardViewport()
     {
         var w = InspectView.W * InspectScale * 0.5f;
         var h = InspectView.H * InspectScale * 0.5f;
-        var a = ScreenPoint(Space.At(inspectAngle - w / InspectR, InspectY + h, InspectR));
-        var b = ScreenPoint(Space.At(inspectAngle + w / InspectR, InspectY - h, InspectR));
+        var a = ViewportPoint(Space.At(inspectAngle - w / InspectR, InspectY + h, InspectR));
+        var b = ViewportPoint(Space.At(inspectAngle + w / InspectR, InspectY - h, InspectR));
         return new Vec4(a.X, a.Y, b.X, b.Y);
     }
 
     // 足元の帯 (止めた位置の印の高さを含む) の、最後に描いた frame の画面の px (左, 上, 右, 下)
-    public static Vec4 TimelineScreen()
+    public static Vec4 TimelineViewport()
     {
         var half = timelineW * 0.5f / timelineR;
         var h = TimelineMarkH * timelineR / Space.R * 0.5f;
-        var a = ScreenPoint(Space.At(timelineAngle - half, timelineY + h, timelineR));
-        var b = ScreenPoint(Space.At(timelineAngle + half, timelineY - h, timelineR));
+        var a = ViewportPoint(Space.At(timelineAngle - half, timelineY + h, timelineR));
+        var b = ViewportPoint(Space.At(timelineAngle + half, timelineY - h, timelineR));
         return new Vec4(a.X, a.Y, b.X, b.Y);
     }
 
     // 空間の位置の、最後に描いた frame の画面の px (左上が 0,0)
-    public static Vec2 ScreenPoint(Vec3 p)
+    public static Vec2 ViewportPoint(Vec3 p)
     {
-        return ScreenOf(lastVp, p);
+        return ViewportOf(lastVp, p);
     }
 
     // 空間の位置の、画面の px (左上が 0,0)
-    static Vec2 ScreenOf(Mat4 vp, Vec3 p)
+    static Vec2 ViewportOf(Mat4 vp, Vec3 p)
     {
         var c = vp * new Vec4(p.X, p.Y, p.Z, 1);
-        return new Vec2((c.X / c.W * 0.5f + 0.5f) * screenW, (0.5f - c.Y / c.W * 0.5f) * screenH);
+        return new Vec2((c.X / c.W * 0.5f + 0.5f) * viewportW, (0.5f - c.Y / c.W * 0.5f) * viewportH);
     }
 
     // 画面の (x, y) (VR では頭の向き) を click する
@@ -856,7 +856,7 @@ public static class Lider
     {
         // 非 XR は画面の中に収める
         var halfH = Space.R * (float)Math.Tan(fov * 0.5f * Math.PI / 180);
-        hintCard.Place(at, dt, Space.Flat ? -halfH : -1000, Space.Flat ? (viewX.Value + halfH * screenW / screenH) / Space.R : 1000);
+        hintCard.Place(at, dt, Space.Flat ? -halfH : -1000, Space.Flat ? (viewX.Value + halfH * viewportW / viewportH) / Space.R : 1000);
     }
 
     // 負荷の一覧の行か、窓の行の右の負荷を指しているなら、その行の負荷を文字だけの行で (案内の札の上に出す)
@@ -998,7 +998,7 @@ public static class Lider
 
     static Ray PointerRay(float x, float y)
     {
-        return Camera3d.ScreenRay(lastVp, x, y, screenW, screenH);
+        return Camera3d.ViewportRay(lastVp, x, y, viewportW, viewportH);
     }
 
     // 窓の角度
@@ -1431,20 +1431,20 @@ public static class Lider
         lastEye = null;
 
         Gfx.Size(out var sw, out var sh);
-        screenW = sw;
-        screenH = sh;
-        var halfScreenH = Space.R * (float)Math.Tan(fov * 0.5f * Math.PI / 180);
+        viewportW = sw;
+        viewportH = sh;
+        var halfViewportH = Space.R * (float)Math.Tan(fov * 0.5f * Math.PI / 180);
         if (w.Active && Input.MouseDown(3) && !grab.Holding)
         {
             Input.MouseDelta(out var dx, out _);
-            viewTarget -= dx * 2 * halfScreenH / screenH;
+            viewTarget -= dx * 2 * halfViewportH / viewportH;
             viewX.Snap(viewTarget);
         }
-        var pxPerM = screenH / (2 * halfScreenH);
+        var pxPerM = viewportH / (2 * halfViewportH);
         if (AreaW > 0)
             FitArea(w, pxPerM);
         else
-            FollowFocus(w, halfScreenH * screenW / screenH);
+            FollowFocus(w, halfViewportH * viewportW / viewportH);
         viewX.Step(viewTarget, dt);
         // 視点を動かすと層の間に視差が出るので、視点は原点のまま、奥行きに比例して横へずらす (どの層も同じ角度だけずれる)。
         // 範囲を決めていれば、縦も範囲の真ん中に合わせる
@@ -1453,7 +1453,7 @@ public static class Lider
         if (AreaW > 0)
         {
             // 窓の見出しは本文の上に乗るので、見出しも入れた高さの真ん中 (面の上の高さ TitleH / 2) を範囲の真ん中に合わせる
-            slide.M12 = ((screenH * 0.5f - AreaY - AreaH * 0.5f) / pxPerM - InspectY) / Space.R;
+            slide.M12 = ((viewportH * 0.5f - AreaY - AreaH * 0.5f) / pxPerM - InspectY) / Space.R;
         }
         PlaceTimeline(pxPerM, slide.M12);
         lastVp = Camera3d.Vp(new Camera3dOpts
@@ -1463,11 +1463,11 @@ public static class Lider
             Fov = fov,
             Near = 0.05f,
             Far = 100,
-            Aspect = (float)screenW / screenH,
+            Aspect = (float)viewportW / viewportH,
         }) * slide;
         Input.MousePos(out var mx, out var my);
         if (Search.Shown)
-            PlaceSearch(PointerRay(screenW * 0.5f, screenH * 0.12f));
+            PlaceSearch(PointerRay(viewportW * 0.5f, viewportH * 0.12f));
         if (w.Active)
         {
             Hover(w, PointerRay(mx, my), mx, my, dt);
@@ -1507,18 +1507,18 @@ public static class Lider
         if (focus == null)
         {
             // 窓が無ければ、インスペクタを範囲の左の端に置く (面の上の位置 a の板は、画面の x = 真ん中 + (a - 視点 / R) * R * pxPerM)
-            inspectAngle = (AreaX + AreaW * AreaBoard * 0.5f - screenW * 0.5f) / (Space.R * pxPerM) + viewX.Value / Space.R;
+            inspectAngle = (AreaX + AreaW * AreaBoard * 0.5f - viewportW * 0.5f) / (Space.R * pxPerM) + viewX.Value / Space.R;
             return;
         }
         if (grab.Holding)
             return;
         // 窓の右の端を範囲の右の端に合わせる
         var right = WindowAngle(w, focus) * Space.R + focus.W * focus.Scale * 0.5f;
-        viewTarget = right - (AreaX + AreaW - screenW * 0.5f) / pxPerM;
+        viewTarget = right - (AreaX + AreaW - viewportW * 0.5f) / pxPerM;
     }
 
     // focus が移るか窓が動いたら、focus のある窓が見える所まで視点の行き先を動かす (列を動かした後は、次に動くまで追わない)
-    static void FollowFocus(Workspace w, float halfScreen)
+    static void FollowFocus(Workspace w, float halfViewport)
     {
         var window = w.FocusWindow;
         if (window == null || grab.Holding)
@@ -1535,8 +1535,8 @@ public static class Lider
         // 窓の左の板も入れる (板は手前にあるので、面の上では大きく見える)
         var left = angle * Space.R - half - OldBoardW - (BoardW > 0 ? InspectGap + BoardW * Space.R / InspectR : 0);
         // 板と窓が両方は入らなければ、板の側を見せる (窓の右端は本文が少ない)
-        var right = Math.Min(angle * Space.R + half, left + 2 * (halfScreen - FollowMargin));
-        viewTarget = Space.FollowX(viewTarget, (left + right) * 0.5f, (right - left) * 0.5f + FollowMargin, halfScreen);
+        var right = Math.Min(angle * Space.R + half, left + 2 * (halfViewport - FollowMargin));
+        viewTarget = Space.FollowX(viewTarget, (left + right) * 0.5f, (right - left) * 0.5f + FollowMargin, halfViewport);
     }
 
     // 視点が追うときに窓の外に残す幅 (メートル)
@@ -1584,10 +1584,10 @@ public static class Lider
         }
         timelineR = InspectR - 0.01f;
         var perPx = timelineR / (Space.R * pxPerM);
-        timelineAngle = (AreaX + AreaW * 0.5f - screenW * 0.5f) / (Space.R * pxPerM) + viewX.Value / Space.R;
+        timelineAngle = (AreaX + AreaW * 0.5f - viewportW * 0.5f) / (Space.R * pxPerM) + viewX.Value / Space.R;
         timelineW = (AreaW - 2 * TimelineMarginPx) * perPx;
         var bottom = AreaY + AreaH - TimelineMarginPx - TimelineMarkH * 0.5f / Space.R / perPx * timelineR;
-        timelineY = ((screenH * 0.5f - bottom) / (Space.R * pxPerM) - m12) * timelineR;
+        timelineY = ((viewportH * 0.5f - bottom) / (Space.R * pxPerM) - m12) * timelineR;
     }
 
     static Spring Stiff()
@@ -1994,7 +1994,7 @@ public static class Lider
     {
         if (Flash <= 0)
             return;
-        var at = Space.OnCylinderAt(lastEye != null ? gaze : PointerRay(screenW * 0.5f, screenH * 0.5f), Space.R);
+        var at = Space.OnCylinderAt(lastEye != null ? gaze : PointerRay(viewportW * 0.5f, viewportH * 0.5f), Space.R);
         if (at == null)
             return;
         var color = Flash > 0.8f ? Color.Rgb(0, 0, 0, 0.35f) : Color.Rgb(1, 1, 1, 0.24f * Flash);

@@ -89,15 +89,15 @@ public static class TestLongLine
         waited = 1;
     }
 
-    // focus のある窓の cursor (Lider.CaretScreen) が、窓の左右の端の間にあるか
+    // focus のある窓の cursor (Lider.CaretViewport) が、窓の左右の端の間にあるか
     static bool InWindow(Workspace w)
     {
         var window = w.FocusWindow!;
         var angle = Lider.WindowAngle(w, window);
         var half = window.W * window.Scale * 0.5f;
-        var l = Lider.ScreenPoint(Space.At(angle - half / Space.R, window.Y, Space.R));
-        var r = Lider.ScreenPoint(Space.At(angle + half / Space.R, window.Y, Space.R));
-        var x = Lider.CaretScreen.X;
+        var l = Lider.ViewportPoint(Space.At(angle - half / Space.R, window.Y, Space.R));
+        var r = Lider.ViewportPoint(Space.At(angle + half / Space.R, window.Y, Space.R));
+        var x = Lider.CaretViewport.X;
         if (x > l.X && x < r.X)
             return true;
         Console.WriteLine("caret x " + x + ", window " + l.X + " - " + r.X);

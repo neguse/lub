@@ -25,11 +25,11 @@ view-projection を 1 発で作る(fov 60°、up +Y、aspect は `Gfx.Size()` �
 するように、
 「上が +Y」がワールドの前提。
 
-`Camera3d.Project(vp, x, y, z, screenW, screenH)` は world 点を画面 px(左上が原点、y は下向き)と depth [0, 1] の `Vec3` にする。カメラの後ろなら null。
-`Camera3d.ScreenRay(vp, sx, sy, screenW, screenH)` は画面 px から出る視線を `Ray`(始点と正規化した方向)で返す。
+`Camera3d.Project(vp, x, y, z, viewportW, viewportH)` は world 点を画面 px(左上が原点、y は下向き)と depth [0, 1] の `Vec3` にする。カメラの後ろなら null。
+`Camera3d.ViewportRay(vp, x, y, viewportW, viewportH)` は画面 px から出る視線を `Ray`(始点と正規化した方向)で返す。
 どちらも `Camera3d.Vp` の結果を `vp` に取る。
 `Ray.IntersectPlane(point, normal)` は平面までの距離 t を返し(平行か始点の後ろなら null)、`Ray.At(t)` が交点になる。
-床(y = 0)のマスを選ぶなら `ScreenRay` の結果に `IntersectPlane(new Vec3(0, 0, 0), new Vec3(0, 1, 0))` を呼び、`At` で点にする。
+床(y = 0)のマスを選ぶなら `ViewportRay` の結果に `IntersectPlane(new Vec3(0, 0, 0), new Vec3(0, 1, 0))` を呼び、`At` で点にする。
 
 ### 回転
 
@@ -55,9 +55,9 @@ view-projection を 1 発で作る(fov 60°、up +Y、aspect は `Gfx.Size()` �
 
 ```csharp
 var cam = new Camera2d(1280, 720, 64, 640, 600); // 原点 = 画面 (640,600)
-cam.Sx(wx);  // world x → screen x:  originX + wx * ppm
-cam.Sy(wy);  // world y → screen y:  originY - wy * ppm(y が反転する)
-cam.Wx(sx);  // screen → world も同名の逆関数
+cam.Sx(wx);  // world x → viewport x:  originX + wx * ppm
+cam.Sy(wy);  // world y → viewport y:  originY - wy * ppm(y が反転する)
+cam.Wx(sx);  // viewport → world も同名の逆関数
 ```
 
 y の符号反転はこの 1 箇所に閉じ込め、gameplay は y 上向きワールドで、
