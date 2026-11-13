@@ -1,0 +1,6 @@
+.lub/
+bin/
+obj/
+build/
+data/mozc.dict
+src/*.so

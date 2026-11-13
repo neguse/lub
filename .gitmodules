@@ -14,3 +14,6 @@
 	path = tcs/deps/csharpstandard
 	url = https://github.com/dotnet/csharpstandard.git
 	branch = draft-v12
+[submodule "third_party/jamo"]
+	path = third_party/jamo
+	url = https://github.com/neguse/jamo.git

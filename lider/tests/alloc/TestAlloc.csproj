@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- test の entry。lider は動かさず、TestAllocProbe.csproj を App.Use で開く。lider を参照するのは、同じディレクトリの TestAllocProbe.cs が lider の型を使い、開く app が使う lider の native の拡張をこの entry が読むため -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.lub/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Lider.csproj" Lub="Source" />
+  </ItemGroup>
+</Project>
