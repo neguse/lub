@@ -5,14 +5,16 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "npm run gen-api && vite",
-    "build": "npm run gen-api && vite build",
+    "dev": "npm run gen-api && npm run gen-lider && vite",
+    "build": "npm run gen-api && npm run gen-lider && vite build",
     "gen-api": "node scripts/gen-api-docs.mjs",
+    "gen-lider": "bash ../lider/scripts/build-module.sh ../lider/build/web/Lider.tcsb",
     "preview": "vite preview",
     "fetch-slang": "bash scripts/fetch-slang-wasm.sh",
     "gen-tcs": "node scripts/gen-tcs-assets.mjs",
     "gen-tcs-selfhost": "node scripts/gen-tcs-selfhost.mjs",
     "verify": "node scripts/verify-headless.mjs",
+    "verify-lider": "node scripts/verify-lider.mjs",
     "bench-tcs": "node scripts/bench-tcs-warmup.mjs",
     "verify-tcs-startup": "node scripts/verify-tcs-startup.mjs",
     "verify-tcs-selfhost": "node scripts/verify-tcs-selfhost.mjs",
@@ -30,7 +32,8 @@
     "@codemirror/lint": "^6.9.7",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.43.6",
-    "codemirror": "^6.0.1"
+    "codemirror": "^6.0.1",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@johnnymorganz/stylua-bin": "^2.5.2",
