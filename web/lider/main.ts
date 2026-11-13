@@ -5,6 +5,9 @@
 // project の file は保存のたびに IndexedDB に写し、次に開いたときはそこから始める。
 // ?gist=<gist の id か URL> で開くと、公開の gist の file を project にし、lider を出さずにゲームだけで始める (F1 で編集)。
 // その project は gist ごとの key に写し、普段の project には書かない。
+// #sample=<サンプルの名前> で開くと、lub のサンプル (samples/<名前>) を project にする。
+// サンプルは samples/<名前>/data/... のように lub の root からの path で file を読むので、project を同じ場所に置く。
+// その project もサンプルごとの key に写す。
 import { unzipSync, zipSync } from "fflate";
 import { initSlang } from "../playground/slang-bridge";
 import { openTcsVmSession } from "../playground/tcs-compiler";
@@ -14,6 +17,8 @@ const BASE = import.meta.env.BASE_URL;
 // MEMFS に置く file (vite.config.ts の LIDER_TREE) と、その一覧
 const FS_URL = BASE + "lider-fs/";
 const FS_LIST_URL = BASE + "lider-fs.json";
+// lub のサンプルの file の一覧 (vite.config.ts の sampleAssets)
+const SAMPLES_URL = BASE + "sample-assets.json";
 // lider の bytecode と lider の player
 const LIDER_MODULE_URL = BASE + "lider-wasm/Lider.tcsb";
 const PLAYER_URL = BASE + "lider-wasm/";
@@ -21,9 +26,11 @@ const PLAYER_URL = BASE + "lider-wasm/";
 const HOME = "/lider";
 // player が動かす entry (lider)
 const LIDER = "Lider";
-// 編集する project の場所 (どの project もここで動かす)
-const PROJECT_DIR = "project";
-const GAME = `${HOME}/${PROJECT_DIR}`;
+// 編集する project の場所 (HOME からの path)。サンプルは samples/<名前> に置く
+let PROJECT_DIR = "project";
+let GAME = `${HOME}/${PROJECT_DIR}`;
+// ゲームが相対の path で file を読む場所。サンプルは lub の root に当たる HOME から読む
+let CWD = GAME;
 const DRAFTS_DIR = "drafts";
 const DRAFTS = `${HOME}/${DRAFTS_DIR}`;
 const FLAPPY = "samples/flappy/";
@@ -46,6 +53,10 @@ const OWN: Keys = { project: "current", drafts: "drafts" };
 
 function gistKeys(id: string): Keys {
   return { project: `gist:${id}`, drafts: `gist:${id}:drafts` };
+}
+
+function sampleKeys(name: string): Keys {
+  return { project: `sample:${name}`, drafts: `sample:${name}:drafts` };
 }
 
 let leaving = false;
@@ -329,8 +340,29 @@ function readProject(FS: any, dir = GAME, out: Files = new Map()): Files {
   return out;
 }
 
-function mtimes(FS: any, files: Files) {
-  return new Map([...files.keys()].map((p) => [p, mtime(FS, `${GAME}/${p}`)]));
+// project の file の mtime。中身は読まない (大きい data を持つ project でも、変わったかを軽く調べる)
+function mtimes(
+  FS: any,
+  dir = GAME,
+  out: Map<string, number> = new Map(),
+): Map<string, number> {
+  for (const name of FS.readdir(dir)) {
+    if (name === "." || name === "..") continue;
+    const path = `${dir}/${name}`;
+    const stat = FS.stat(path);
+    if (FS.isDir(stat.mode)) mtimes(FS, path, out);
+    else out.set(path.slice(GAME.length + 1), stat.mtime.getTime());
+  }
+  return out;
+}
+
+// project の .cs
+function readSources(FS: any): Files {
+  return new Map(
+    [...mtimes(FS).keys()]
+      .filter(isSource)
+      .map((p) => [p, FS.readFile(`${GAME}/${p}`)]),
+  );
 }
 
 function sameTimes(a: Map<string, number>, b: Map<string, number>) {
@@ -339,15 +371,14 @@ function sameTimes(a: Map<string, number>, b: Map<string, number>) {
 
 // 保存された file を IndexedDB に写す。変換を待たないので、変換の途中で閉じても残る
 function persist(FS: any, keys: Keys) {
-  let seen = mtimes(FS, readProject(FS));
+  let seen = mtimes(FS);
   let seenDrafts = draftTimes(FS, readDrafts(FS));
   setInterval(() => {
     if (leaving) return;
-    const project = readProject(FS);
-    const now = mtimes(FS, project);
+    const now = mtimes(FS);
     if (!sameTimes(seen, now)) {
       seen = now;
-      saveFiles(keys.project, project).catch((e) =>
+      saveFiles(keys.project, readProject(FS)).catch((e) =>
         say(`保存できません: ${e}`),
       );
     }
@@ -387,13 +418,12 @@ function watch(
 ) {
   const poll = async () => {
     try {
-      const before = mtimes(m.FS, readProject(m.FS));
+      const before = mtimes(m.FS);
       const changed = [...before]
         .filter(([p, t]) => seen.get(p) !== t && isSource(p))
         .map(([p]) => p);
       for (const p of changed) await format(m, session, p);
-      const project = readProject(m.FS);
-      const now = mtimes(m.FS, project);
+      const now = mtimes(m.FS);
       const removed = [...seen.keys()].filter(
         (p) => isSource(p) && !now.has(p),
       );
@@ -403,7 +433,7 @@ function watch(
       for (const p of removed) seen.delete(p);
       for (const p of changed) if (now.has(p)) seen.set(p, now.get(p)!);
       if (added.length + edited.length + removed.length > 0)
-        await apply(m, session, project, entry, removed, added, edited);
+        await apply(m, session, entry, removed, added, edited);
     } finally {
       setTimeout(poll, POLL_MS);
     }
@@ -457,7 +487,6 @@ async function load(
 async function apply(
   m: any,
   session: TcsVmSession,
-  project: Files,
   entry: string,
   removed: string[],
   added: string[],
@@ -474,7 +503,7 @@ async function apply(
     buildFailed(m, entry, r.errors);
     return;
   }
-  const found = findEntry(project);
+  const found = findEntry(readSources(m.FS));
   if (!found) {
     buildFailed(m, entry, ["OnFrame を持つ static class がありません"]);
     return;
@@ -490,6 +519,50 @@ async function apply(
       ? `applied (revision ${r.revision})`
       : `restarted (revision ${r.revision})`,
   );
+}
+
+// lub のサンプルの file (.cs と data)。path はサンプルのディレクトリから
+async function fetchSample(name: string): Promise<Files> {
+  const r = await fetch(SAMPLES_URL);
+  if (!r.ok) throw new Error(`fetch ${SAMPLES_URL} -> ${r.status}`);
+  const list: {
+    samples: Record<string, string[]>;
+    sources: Record<string, string[]>;
+  } = await r.json();
+  if (!list.sources[name]?.length)
+    throw new Error(
+      `sample error: サンプル ${name} がありません (#sample= に渡せる名前: ${Object.keys(
+        list.sources,
+      )
+        .filter((n) => list.sources[n].length)
+        .join(", ")})`,
+    );
+  const prefix = `samples/${name}/`;
+  const got = await Promise.all(
+    [...list.sources[name], ...list.samples[name]].map(
+      async (p): Promise<[string, Uint8Array]> => [
+        p.slice(prefix.length),
+        await fetchBytes(BASE + p),
+      ],
+    ),
+  );
+  return new Map(got);
+}
+
+// サンプルが共通で読む file (samples/data)。path は lub の root から
+async function fetchShared(): Promise<Files> {
+  const r = await fetch(SAMPLES_URL);
+  if (!r.ok) throw new Error(`fetch ${SAMPLES_URL} -> ${r.status}`);
+  const list: { shared: string[] } = await r.json();
+  const got = await Promise.all(
+    list.shared.map(
+      async (p): Promise<[string, Uint8Array]> => [
+        p,
+        await fetchBytes(BASE + p),
+      ],
+    ),
+  );
+  return new Map(got);
 }
 
 function template(tree: Files, prefix: string): Files {
@@ -563,7 +636,12 @@ function download(name: string, bytes: Uint8Array) {
 }
 
 // 壊れた project でも押せるよう、ゲームを起動する前に繋ぐ。m はゲームを起動するまで null
-function bindTools(getModule: () => any, keys: Keys, gist: string | null) {
+function bindTools(
+  getModule: () => any,
+  keys: Keys,
+  gist: string | null,
+  sample: string | null,
+) {
   const tools = document.getElementById("tools")!;
   document
     .getElementById("toggle")!
@@ -588,6 +666,13 @@ function bindTools(getModule: () => any, keys: Keys, gist: string | null) {
   if (gist) {
     document.getElementById("gist")!.hidden = false;
     bindReset("gist", "gist に戻します", keys, () => refetchGist(gist));
+  }
+  if (sample) {
+    // サンプルの場所で動かしているので、別の project には替えない
+    for (const id of ["flappy", "empty", "import"])
+      document.getElementById(id)!.hidden = true;
+    document.getElementById("sample")!.hidden = false;
+    bindReset("sample", "サンプルに戻します", keys, () => fetchSample(sample));
   }
   document.getElementById("export")!.addEventListener("click", async () => {
     const m = getModule();
@@ -643,20 +728,31 @@ async function main() {
         fail(
           `gist error: ?gist= の値 (${param}) から gist の id が読めません`,
         ));
-  const keys = gist ? gistKeys(gist) : OWN;
+  const sample = new URLSearchParams(location.hash.slice(1)).get("sample");
+  if (sample) {
+    PROJECT_DIR = `samples/${sample}`;
+    GAME = `${HOME}/${PROJECT_DIR}`;
+    CWD = HOME;
+  }
+  // 別のサンプルは開き直して始める
+  window.addEventListener("hashchange", () => location.reload());
+  const keys = sample ? sampleKeys(sample) : gist ? gistKeys(gist) : OWN;
   let m: any = null;
-  bindTools(() => m, keys, gist);
+  bindTools(() => m, keys, gist, sample);
   say("読み込み中...");
   const paths = await fetchList();
-  const [all, lider, adapter, saved, drafts] = await Promise.all([
+  const [all, lider, adapter, saved, drafts, shared] = await Promise.all([
     fetchTree(paths),
     fetchBytes(LIDER_MODULE_URL),
     (navigator as any).gpu.requestAdapter(),
-    // gist は、写した物が無ければ gist から始める
+    // gist とサンプルは、写した物が無ければ元から始める
     loadFiles(keys.project).then(
-      (p) => p ?? (gist ? fetchGist(gist) : undefined),
+      (p) =>
+        p ??
+        (sample ? fetchSample(sample) : gist ? fetchGist(gist) : undefined),
     ),
     loadFiles(keys.drafts),
+    sample ? fetchShared() : new Map<string, Uint8Array>(),
     initSlang(),
   ]);
   if (!adapter) fail("WebGPU の adapter を取れません");
@@ -716,6 +812,7 @@ async function main() {
     device,
     new Map([
       ...home,
+      ...shared,
       ...projectPaths(project),
       ...[...(drafts ?? [])].map(
         ([p, b]) => [`${DRAFTS_DIR}/${p}`, b] as [string, Uint8Array],
@@ -731,13 +828,13 @@ async function main() {
   window.dispatchEvent(new Event("resize"));
   canvas.focus();
   // ゲームが相対の path で読む file は project から探す (lub の起動が終わってから移る)
-  m.FS.chdir(GAME);
+  m.FS.chdir(CWD);
   persist(m.FS, keys);
   // 空の class で起動した時は、保存した project を差分として当てる
   watch(
     m,
     built.session!,
-    stubbed ? new Map([[`${entry}.cs`, -1]]) : mtimes(m.FS, readProject(m.FS)),
+    stubbed ? new Map([[`${entry}.cs`, -1]]) : mtimes(m.FS),
     entry,
   );
   if (gist) showHint();

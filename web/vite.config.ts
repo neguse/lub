@@ -15,29 +15,42 @@ const ARTIFACT_DIRS = new Set(["bin", "obj", ".lub"]);
 // player が起動前に MEMFS へ置くファイルの目録 (sample-assets.json)。
 // runtime の Io は MEMFS にあるファイルしか読まないので、サンプルが読み得る samples/<name>/** と samples/data/** を全部載せる。
 // .cs / .csproj は playground が compile して tcs VM の bytecode で渡すので載せない。
-function listAssets(dir: string, rel: string, out: string[]) {
+// lider の page はサンプルを project として開くので、.cs の一覧を sources に載せる。
+function listFiles(
+  dir: string,
+  rel: string,
+  keep: (name: string) => boolean,
+  out: string[],
+) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name.startsWith(".") || ARTIFACT_DIRS.has(e.name)) continue;
     const r = `${rel}/${e.name}`;
-    if (e.isDirectory()) listAssets(resolve(dir, e.name), r, out);
-    else if (!/\.(cs|csproj)$/.test(e.name)) out.push(r);
+    if (e.isDirectory()) listFiles(resolve(dir, e.name), r, keep, out);
+    else if (keep(e.name)) out.push(r);
   }
   return out;
+}
+
+function isAsset(name: string) {
+  return !/\.(cs|csproj)$/.test(name);
+}
+
+function isSource(name: string) {
+  return name.endsWith(".cs");
 }
 
 function sampleAssets(): string {
   const root = resolve(__dirname, "../samples");
   const samples: Record<string, string[]> = {};
+  const sources: Record<string, string[]> = {};
   for (const e of readdirSync(root, { withFileTypes: true })) {
     if (!e.isDirectory() || e.name === "data") continue;
-    samples[e.name] = listAssets(
-      resolve(root, e.name),
-      `samples/${e.name}`,
-      [],
-    );
+    const dir = resolve(root, e.name);
+    samples[e.name] = listFiles(dir, `samples/${e.name}`, isAsset, []);
+    sources[e.name] = listFiles(dir, `samples/${e.name}`, isSource, []);
   }
-  const shared = listAssets(resolve(root, "data"), "samples/data", []);
-  return JSON.stringify({ shared, samples });
+  const shared = listFiles(resolve(root, "data"), "samples/data", isAsset, []);
+  return JSON.stringify({ shared, samples, sources });
 }
 
 // lider の page (lider.html) が MEMFS に置く file (lider/ からの path)。

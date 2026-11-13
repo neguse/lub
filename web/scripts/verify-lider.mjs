@@ -6,6 +6,7 @@
 //   L4. compile error: 通らない file を書くと page が `compile error` を出し、診断の file (<Entry>.errors) が書かれ、ゲームの player がそれを読んで消す。動いているゲームは変わらない。
 //   L5. 直す: 通る file に戻すと、また `applied` になり、背景の色が変わる。
 //   L6. 通らない project で開き直す: 通らない file を保存して page を読み直すと、同じ名前の空の class のゲームで起動して `compile error` を出し、直すと保存した project がゲームに入る (`applied` か `restarted`)。
+//   L7. サンプル: lider.html#sample=17_flappy で開くと、lub のサンプルが project になって起動し (data は samples/17_flappy/data から読める)、サンプルの .cs の書き換えがゲームの絵に出る。
 //
 // lider が compile error を窓の中に出すことは見ていない (ゲームの player が診断を受け取った所まで)。
 //
@@ -32,6 +33,11 @@ const BATCH = `/lider/.lub/${ENTRY}.batch`;
 const ERRORS = `/lider/.lub/${ENTRY}.errors`;
 // 非 XR の pass の背景 (Render.Frame の本体にある)
 const BACKGROUND = "ClearColor = background }";
+const SAMPLE = "17_flappy";
+const SAMPLE_SOURCE = `/lider/samples/${SAMPLE}/Flappy17.cs`;
+// サンプルの画面の pass の背景
+const SAMPLE_BACKGROUND =
+  "ClearColor = new float[] { 0.05f, 0.05f, 0.15f, 1.0f }";
 
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
@@ -145,17 +151,17 @@ async function waitColor(name, pred, ms) {
   return got;
 }
 
-function readSource() {
+function readSource(file = SOURCE) {
   return page.evaluate(
     (p) => window.Module.FS.readFile(p, { encoding: "utf8" }),
-    SOURCE,
+    file,
   );
 }
 
-function writeSource(text) {
+function writeSource(text, file = SOURCE) {
   return page.evaluate(
     ([p, t]) => window.Module.FS.writeFile(p, t),
-    [SOURCE, text],
+    [file, text],
   );
 }
 
@@ -280,6 +286,55 @@ try {
     "L6 the game draws the project",
     reloaded > 0.3,
     `green ${pct(reloaded)}`,
+  );
+
+  // L7
+  // hash だけが違う URL は読み直しにならないので、別の page を挟む
+  await page.goto("about:blank");
+  await page.goto(new URL(`lider.html#sample=${SAMPLE}`, BASE).href, {
+    waitUntil: "load",
+  });
+  const sampleReady = await waitStatus(
+    (t) => t === "ready" || /error|使えません|取れません/.test(t),
+    READY_MS,
+  );
+  check(
+    "L7 the sample starts",
+    sampleReady === "ready",
+    `status: ${sampleReady}`,
+  );
+  if (sampleReady !== "ready") throw new Error("the sample did not start");
+  await page.locator("#canvas").focus();
+  await page.keyboard.press("Shift+F1");
+  const sampleSource = await readSource(SAMPLE_SOURCE);
+  check(
+    "L7 the sample source has the pass to edit",
+    sampleSource.includes(SAMPLE_BACKGROUND),
+  );
+  const notGreen = fraction(await shot("sample"), green);
+  check(
+    "L7 the sample is not green yet",
+    notGreen < 0.05,
+    `green ${pct(notGreen)}`,
+  );
+  await writeSource(
+    sampleSource.replace(
+      SAMPLE_BACKGROUND,
+      "ClearColor = new float[] { 0, 0.8f, 0, 1 }",
+    ),
+    SAMPLE_SOURCE,
+  );
+  const sampleRev = await waitApplied(-1);
+  check(
+    "L7 the sample edit is applied",
+    sampleRev >= 0,
+    `revision ${sampleRev}`,
+  );
+  const sampleGreen = await waitColor("sample-green", green, 10000);
+  check(
+    "L7 the sample draws the edit",
+    sampleGreen > 0.3,
+    `green ${pct(sampleGreen)}`,
   );
 
   check("no 404 on the same origin", missing.length === 0, missing.join(" "));
