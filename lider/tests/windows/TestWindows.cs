@@ -159,20 +159,20 @@ public static class TestWindows
 
         w.Arrange(null);
         var grab = new Grab();
-        grab.Start(first, first.Bounds!.X, 0);
-        grab.Move(b.Bounds!.X + 0.01f, 0.2f);
+        grab.Start(first, first.Position!.Value.X, 0);
+        grab.Move(b.Position!.Value.X + 0.01f, 0.2f);
         w.Arrange(first);
         Check(Order(w) == "Second Target Third", "dragging over the neighbour's center did not reorder: " + Order(w));
-        Check(first.Bounds!.Y == 0.2f, "the held window did not stay at the pointer");
+        Check(first.Position!.Value.Y == 0.2f, "the held window did not stay at the pointer");
         grab.Release();
         w.Arrange(null);
-        Check(first.Bounds!.Y == 0 && b.Bounds!.X == 0, "the window did not settle in the row");
+        Check(first.Position!.Value.Y == 0 && b.Position!.Value.X == 0, "the window did not settle in the row");
 
         w.FocusWindow = first;
-        var keep = c.Bounds!.X;
+        var keep = c.Position!.Value.X;
         w.Close(first);
         w.Arrange(null);
-        Check(w.FocusWindow == c && c.Bounds!.X < keep, "closing did not close the gap or focus the right neighbour");
+        Check(w.FocusWindow == c && c.Position!.Value.X < keep, "closing did not close the gap or focus the right neighbour");
         w.Close(c);
         Check(w.FocusWindow == b, "closing the right end did not focus the left neighbour");
         w.Close(b);

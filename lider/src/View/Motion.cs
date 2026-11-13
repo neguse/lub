@@ -60,8 +60,8 @@ public class WindowMotion
     public readonly Spring Angle;
     public readonly Spring Y;
     public readonly Spring Scale;
-    // つかんでいる間は 1 (手前へ浮く)
-    public readonly Spring Lift = new Spring(0);
+    // 奥行き (Window の Position の Z を追う。負が手前)
+    public readonly Spring Z = new Spring(0);
     // focus のある間は 1 (縁が光る)
     public readonly Spring Glow = new Spring(0);
     // 閉じた後、縮みきるまで描く
@@ -107,12 +107,12 @@ public class WindowMotion
         Scale = new Spring(scale);
     }
 
-    public void Step(float angle, float y, float scale, bool lifted, bool focused, float dt)
+    public void Step(float angle, float y, float z, float scale, bool focused, float dt)
     {
         Angle.Step(angle, dt);
         Y.Step(y, dt);
+        Z.Step(z, dt);
         Scale.Step(scale, dt);
-        Lift.Step(lifted ? 1 : 0, dt);
         Glow.Step(focused ? 1 : 0, dt);
         Shake = Math.Max(0, Shake - dt / 0.3f);
         Arrive = Math.Max(0, Arrive - dt / 0.4f);

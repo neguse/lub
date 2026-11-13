@@ -70,19 +70,20 @@ public static class TestGrab
         w!.FocusOn(target!);
         var window = w.FocusWindow!;
         // つかむ位置と動かす先は、コードのスクリーンの面の上の (x, y)
-        window.Bounds = new Bounds(0.2f, 0.1f, window.W, window.H);
+        window.Position = new Vec3(0.2f, 0.1f, 0);
+        window.Size = window.UnscaledSize;
 
         var grab = new Grab();
         grab.Start(window, 0.25f, 0.0f);
         grab.Move(0.45f, -0.2f);
-        Near(window.Bounds!.X, 0.4f, "x after a one-hand move");
-        Near(window.Bounds.Y, -0.1f, "height after a one-hand move");
+        Near(window.Position!.Value.X, 0.4f, "x after a one-hand move");
+        Near(window.Position!.Value.Y, -0.1f, "height after a one-hand move");
 
         grab.StartTwo(new Vec3(-0.1f, 0, 0.3f), new Vec3(0.1f, 0, 0.3f));
         grab.MoveTwo(new Vec3(-0.2f, 0, 0.3f), new Vec3(0.2f, 0, 0.3f));
         Near(window.Scale, 2, "scale after doubling the hands' distance");
         grab.Move(0.9f, 0.9f);
-        Near(window.Bounds!.X, 0.4f, "a one-hand move during a two-hand grab");
+        Near(window.Position!.Value.X, 0.4f, "a one-hand move during a two-hand grab");
         grab.MoveTwo(new Vec3(-5, 0, 0.3f), new Vec3(5, 0, 0.3f));
         Near(window.Scale, Grab.MaxScale, "scale clamped at the maximum");
         grab.MoveTwo(new Vec3(-0.001f, 0, 0.3f), new Vec3(0.001f, 0, 0.3f));
@@ -90,8 +91,8 @@ public static class TestGrab
 
         grab.ReleaseTwo(0.5f, 0.0f);
         grab.Move(0.6f, 0.1f);
-        Near(window.Bounds!.X, 0.5f, "x after going back to one hand");
-        Near(window.Bounds.Y, 0.0f, "height after going back to one hand");
+        Near(window.Position!.Value.X, 0.5f, "x after going back to one hand");
+        Near(window.Position!.Value.Y, 0.0f, "height after going back to one hand");
         grab.Release();
         Check(!grab.Holding, "still holding after release");
 
@@ -104,11 +105,11 @@ public static class TestGrab
         Check(Space.HitCurved(ray, 0.5f, 0.2f, Space.R, PanelView.BaseW, PanelView.BaseH) == null,
             "an unscaled window was hit where only the scaled one should be");
 
-        window.Bounds = null;
+        window.Position = null;
         window.Scale = 1;
         Lider.WindowKey(w, Keys.PageUp);
         Near(window.Scale, 1.1f, "scale after Alt+PageUp");
-        window.Bounds = null;
+        window.Position = null;
     }
 
     // lider の frame を 1 度通ると、非 XR の平面で窓が読める大きさになる

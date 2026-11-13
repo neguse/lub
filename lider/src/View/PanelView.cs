@@ -404,17 +404,16 @@ public class PanelView
         Gfx.EndPass();
     }
 
-    // Prepare した frame の中で、画面への pass に描く
-    // つかんだ窓が手前へ浮く距離 (メートル)
-    public const float LiftDistance = 0.08f;
-
-    // scale は窓の大きさの倍率、lift は浮き (0 から 1)、glow は縁の光 (0 から 1)、shake は error の行の震え (0 から 1)
-    public void Draw(Document doc, float angle, float y, float scale, Mat4 vp, float lift, float glow, float shake)
+    // Prepare した frame の中で、画面への pass に描く。
+    // scale は窓の大きさの倍率、z は奥行き (メートル、負が手前)、glow は縁の光 (0 から 1)、shake は error の行の震え (0 から 1)
+    public void Draw(Document doc, float angle, float y, float scale, Mat4 vp, float z, float glow, float shake)
     {
         if (face == null || front == null || back == null)
             return;
         var white = Color.Rgb(1, 1, 1);
-        var r = Space.R - lift * LiftDistance;
+        var r = Space.R + z;
+        // つかんだ窓の浮き (0 から 1)
+        var lift = -z / Grab.LiftDistance;
         faceR = r;
         var plate = r + PlateGap;
         var k = plate / Space.R;
@@ -512,7 +511,7 @@ public class PanelView
 
     // 窓の texture の外に描く cursor (x と top は view の中の px)。
     // 下にある行と同じ層 (手前に浮いた行なら手前) に置く
-    public void DrawCaret(Mat4 vp, Document doc, float angle, float y, float scale, float lift, float x, float top)
+    public void DrawCaret(Mat4 vp, Document doc, float angle, float y, float scale, float z, float x, float top)
     {
         var lh = EditorHost.LineHeight(View);
         if (lh <= 0 || top < 0 || top + lh > PxH || x < 0 || x > PxW)
@@ -525,7 +524,7 @@ public class PanelView
         var line = EditorHost.FirstLine(View);
         for (var l = line + 1; l <= EditorHost.LastLine(View) && EditorHost.LineY(View, l) <= top + lh * 0.5f; l++)
             line = l;
-        var r = Space.R - lift * LiftDistance - (Front(doc, line) ? FrontGap : 0);
+        var r = Space.R + z - (Front(doc, line) ? FrontGap : 0);
         var k = r / Space.R;
         var w = EditorHost.CaretWidth();
         Quad3d.CurvedSolid(vp, Unpack(EditorHost.CaretColor()), AngleAt(angle, scale, x + w * 0.5f) + ShiftAngle(r), (YAt(y, scale, top + lh * 0.5f) + ShiftY(r)) * k, r,
@@ -533,7 +532,7 @@ public class PanelView
     }
 
     // 打った文字: その行の層の texture の同じ所を、手前に浮かせて大きめに描き、Landing.Seconds で層に収めて消す
-    public void DrawLanding(Mat4 vp, Document doc, float angle, float y, float scale, float lift, Landing l)
+    public void DrawLanding(Mat4 vp, Document doc, float angle, float y, float scale, float z, Landing l)
     {
         var front = Front(doc, l.Line);
         var tex = front ? this.front : face;
@@ -543,7 +542,7 @@ public class PanelView
             return;
         var t = Math.Min(1, l.Age / Landing.Seconds);
         var e = 1 - (1 - t) * (1 - t) * (1 - t);
-        var r = Space.R - lift * LiftDistance - (front ? FrontGap : 0) - 0.03f * (1 - e);
+        var r = Space.R + z - (front ? FrontGap : 0) - 0.03f * (1 - e);
         var k = r / Space.R;
         var grow = 1 + 0.35f * (1 - e);
         var uv = new List<float> { l.X0 / PxW, top / PxH, l.X1 / PxW, (top + lh) / PxH };

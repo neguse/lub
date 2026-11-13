@@ -10,6 +10,8 @@ public class Grab
 {
     public const float MinScale = 0.5f;
     public const float MaxScale = 3;
+    // つかんだ窓を手前へ出す距離 (メートル)
+    public const float LiftDistance = 0.08f;
     public Window? Window;
     float xOffset;
     float yOffset;
@@ -25,8 +27,8 @@ public class Grab
     {
         Window = window;
         two = false;
-        xOffset = (window.Bounds != null ? window.Bounds.X : x) - x;
-        yOffset = (window.Bounds != null ? window.Bounds.Y : 0) - y;
+        xOffset = (window.Position != null ? window.Position.Value.X : x) - x;
+        yOffset = (window.Position != null ? window.Position.Value.Y : 0) - y;
     }
 
     // 指す点がスクリーンの面の上の (x, y) に動いた
@@ -47,14 +49,15 @@ public class Grab
     // 窓の真ん中を (x, y) に置く (大きさは今の倍率で)
     static void Place(Window window, float x, float y)
     {
-        window.Bounds = new Bounds(x, y, window.W * window.Scale, window.H * window.Scale);
+        window.Place(x, y);
+        window.Size = window.UnscaledSize * window.Scale;
     }
 
     static void Rescale(Window window, float scale)
     {
         window.Scale = Math.Max(MinScale, Math.Min(MaxScale, scale));
-        if (window.Bounds != null)
-            Place(window, window.Bounds.X, window.Bounds.Y);
+        if (window.Position != null)
+            Place(window, window.Position.Value.X, window.Position.Value.Y);
     }
 
     // もう片方の手でもつかんだ (手の位置は a と b)

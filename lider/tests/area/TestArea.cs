@@ -75,10 +75,10 @@ public static class TestArea
             return;
         var window = w.FocusWindow!;
         var angle = Lider.WindowAngle(w, window);
-        var half = window.W * window.Scale * 0.5f;
+        var half = window.UnscaledSize.X * window.Scale * 0.5f;
         var y = Lider.WindowY(w, window);
-        var top = y + (window.H + PanelView.TitleH) * 0.5f * window.Scale;
-        var bottom = y - window.H * 0.5f * window.Scale;
+        var top = y + (window.UnscaledSize.Y + PanelView.TitleH) * 0.5f * window.Scale;
+        var bottom = y - window.UnscaledSize.Y * 0.5f * window.Scale;
         var left = Lider.ViewportPoint(Space.At(angle - half / Space.R, top, Space.R));
         var right = Lider.ViewportPoint(Space.At(angle + half / Space.R, bottom, Space.R));
         Check(Near(right.X, X + W), "the window's right edge is at " + right.X + ", want " + (X + W));

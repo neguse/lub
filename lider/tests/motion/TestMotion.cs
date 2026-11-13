@@ -181,10 +181,10 @@ public static class TestMotion
             Lider.WindowKey(w, Keys.PageDown);
             Lider.Animate(w, 1.0f / 60);
         }
-        Check(m.Lift.Value > 0.3f, "resizing a window with Alt did not lift it: " + m.Lift.Value);
+        Check(m.Z.Value < -0.3f * Grab.LiftDistance, "resizing a window with Alt did not lift it: " + m.Z.Value);
         for (var i = 0; i < 60; i++)
             Lider.Animate(w, 1.0f / 60);
-        Check(m.Lift.Value < 0.05f, "the window stayed lifted after the keys stopped: " + m.Lift.Value);
+        Check(m.Z.Value > -0.05f * Grab.LiftDistance, "the window stayed lifted after the keys stopped: " + m.Z.Value);
         w.CloseTab();
         Lider.Animate(w, 1.0f / 60);
         Check(Lider.MotionOf(window!) != null, "a closed window vanished at once");
