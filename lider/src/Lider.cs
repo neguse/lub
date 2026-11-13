@@ -123,6 +123,11 @@ public static class Lider
     static bool ZenShown => Zen && Work != null && Work.Active;
     // 窓を描かず、ゲームだけを見せる
     public static bool GameOnly = true;
+    // 空間に置いたスクリーン。コードの窓 (CodeWindow) と板は、スクリーンとは別に円筒に並べ、スクリーンの手前に描く
+    public static readonly List<Screen> Screens = new List<Screen>();
+    // 一番奥のスクリーン: 視野をちょうど覆い、ゲームの絵を映す
+    static Screen backdrop = new Screen("backdrop");
+    const float BackdropDistance = 10;
     // lider の描く物の濃さ (編集は 1、試す間は TryOpacity へ寄せる)
     public static float Opacity = 1;
     const float TryOpacity = 0.35f;
@@ -155,6 +160,10 @@ public static class Lider
         if (size.Length == 2 && int.TryParse(size[0], out var width) && int.TryParse(size[1], out var height))
             App.Config(new ConfigOpts { Width = width, Height = height });
         GameApp.Module = Environment.GetEnvironmentVariable("LIDER_GAME") ?? "";
+        backdrop = new Screen("backdrop") { Position = new Vec3(0, 0, BackdropDistance) };
+        backdrop.Windows.Add(new Window(new GameView()));
+        Screens.Clear();
+        Screens.Add(backdrop);
         var area = (Environment.GetEnvironmentVariable("LIDER_AREA") ?? "").Split(',');
         if (area.Length == 4 && float.TryParse(area[0], out var ax) && float.TryParse(area[1], out var ay)
             && float.TryParse(area[2], out var aw) && float.TryParse(area[3], out var ah))
@@ -273,11 +282,11 @@ public static class Lider
         // 試す間とゲームだけの間は、入力はゲームのもの。編集の間は、キーボードとマウスの他だけをゲームに渡す
         if (!w.Active)
         {
-            GameApp.Send(e, PixelRatio);
+            GameApp.Send(e);
             return;
         }
         if (e.Kind == EventKind.WindowResize || e.Kind == EventKind.Other)
-            GameApp.Send(e, PixelRatio);
+            GameApp.Send(e);
         if (Search.Shown && SearchEvent(w, e))
             return;
         if (e.Kind == EventKind.KeyDown && w.Ctrl && !w.Shift && e.Key == Keys.P && !EditorHost.Modal())
@@ -956,7 +965,7 @@ public static class Lider
         hoverPick = false;
         // XR ではゲームを空間に描いていないので、指せない
         if (lastEye == null)
-            GameApp.Pick((int)(pickX * PixelRatio), (int)(pickY * PixelRatio));
+            GameApp.Pick(pickX, pickY);
     }
 
     // 今の画面に合う密度の、窓の本文の文字
@@ -1157,7 +1166,15 @@ public static class Lider
 
     public static void OnFrame(float dt)
     {
-        GameApp.Step(dt, Work != null && Work.Active, PixelRatio);
+        Gfx.Size(out var sw, out var sh);
+        // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
+        backdrop.Fill(Space.FlatFov, (float)sw / sh);
+        foreach (var screen in Screens)
+            screen.Place(sw, sh, Space.FlatFov);
+        var game = GameWindow();
+        if (game != null)
+            GameApp.Step(dt, Work != null && Work.Active, game.Viewport!, PixelRatio);
+        ScreenView.Draw(Screens, sw, sh);
         var change = GameApp.Changed();
         if (change.Reloaded)
             GameReloaded();
@@ -1168,6 +1185,16 @@ public static class Lider
         if (stepping > 0 && --stepping == 0)
             GameApp.Pause(0);
         Frame(dt);
+    }
+
+    // ゲームの絵を映している (画面に出ている) ウィンドウ
+    static Window? GameWindow()
+    {
+        foreach (var screen in Screens)
+            foreach (var window in screen.Windows)
+                if (window.Content is GameView && window.Viewport != null)
+                    return window;
+        return null;
     }
 
     // 窓の大きさを Zen に合わせる。画面に 1 枚が収まる px は、窓の px の大きさ (倍率) と画角で決まる

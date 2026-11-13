@@ -34,6 +34,14 @@ LUB_URL=http://localhost:5173/ npm run verify-lider
 ゲームの C# の変換と整形は playground と同じ物を使う (`npm run gen-tcs-selfhost` と `npm run gen-tcs -- --publish`)。
 `?gist=<gist の id か URL>` で開くと、公開の gist の file を project にして、ゲームだけで始まる。
 
+## 画面の組み立て
+
+- 空間 (`Space`) が基底で、画面はそれを視点から見た絵。
+- スクリーン (`Screen`、`src/Core/Screen.cs`) は空間に置く面で、上にウィンドウ (`Window`) を並べる。
+- どこに並べるかは配置の規則 (`ILayout`、`src/Core/Layout.cs`) が決め、ウィンドウは中身 (`IContent`、`src/Core/Content.cs`) を 1 つ映す。
+- スクリーンは、視点に固定して視野を覆う 1 枚で、ゲームの絵 (`GameView`) を映す。画面に描くのは `src/View/ScreenView.cs`。
+- コードの窓 (`CodeWindow`) と板は、スクリーンとは別に円筒に並べ、スクリーンの手前に描く。
+
 ## 置き場所
 
 | 場所 | 中身 |
