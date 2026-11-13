@@ -9,7 +9,6 @@ web/node_modules/
 web/dist/
 web/dist-sub/
 web/tcs-wasm-assets/
-web/tcs-selfhost-assets/
 # API reference データ(gen-api-docs.mjs が stub の docs から生成)
 web/public/api-docs.json
 # lub player の emcc ビルド成果物(ローカルビルド由来)

@@ -56,7 +56,7 @@ jobs:
                 tcs/* | .github/workflows/ci.yml) tcs=true ;;
               esac
               case "$f" in
-                docs/manual/*) docs_only=false ;; # playground の docs.html に焼き込まれる
+                docs/manual/*) docs_only=false ;; # サイトの docs.html に焼き込まれる
                 docs/* | *.md | .claude/* | LICENSE) continue ;;
                 *) docs_only=false ;;
               esac
@@ -553,7 +553,7 @@ jobs:
           path: ${{ runner.temp }}/apple-gate-tmp
           if-no-files-found: ignore
 
-  # web playground (lub.neguse.net) のアセット生成 + build。
+  # web のサイト (lub.neguse.net) のアセット生成 + build。
   # 検証は下流の web-verify / web-golden が artifact (web-dist-test) に対して行う。
   # 前提アセット (web/README.md) の供給:
   #   - lub player wasm: emsdk でこの job 内でビルド (emcc は ccache)
@@ -660,21 +660,6 @@ jobs:
         working-directory: web
         run: npm run gen-tcs -- --publish
 
-      # playground の C# の変換 (tcs2c で C にした tcs を emcc で wasm にしたもの)。入力は tcs/ だけ
-      - name: Cache tcs selfhost wasm
-        id: tcs-selfhost-cache
-        uses: actions/cache@v4
-        with:
-          path: web/tcs-selfhost-assets
-          key: tcs-selfhost-${{ steps.tcs.outputs.sha }}-${{ hashFiles('web/scripts/gen-tcs-selfhost.mjs') }}
-
-      - name: Generate tcs selfhost wasm
-        if: steps.tcs-selfhost-cache.outputs.cache-hit != 'true'
-        working-directory: web
-        run: |
-          source "$HOME/emsdk/emsdk_env.sh"
-          npm run gen-tcs-selfhost
-
       # src/tcs_host.c の web の player (tests/c/tcs_shutdown.cs)。
       # lub の object は上の player と同じ flag なので ccache が当たる。
       # web-export の job が page で開き、page が player を外す順番を見る。
@@ -731,7 +716,7 @@ jobs:
           retention-days: 1
 
   # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
-  # LUB_VERIFY_SHARD で suite を分割: shard 1 = 編集経路 (A1-A4) + C# session (A6-A8) + tests/cs (A9)、shard 2..n = A5 全サンプル切替のスライス。
+  # shard 1 = player の page (tests/cs)、shard 2 = サイトの入口、shard 3 = サブパスで配信した入口。
   # verify は閾値判定なので runner の system chromium で足りる (golden の byte 比較だけ playwright の版固定 chromium を使う)。
   web-verify:
     needs: [changes, web-build]
@@ -741,17 +726,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
 
-      # A9 (shard 1) は tests/cs の test を native の tcs で変換した bytecode を流す。
+      # player の page の検査 (shard 1) は tests/cs の test を native の tcs で変換した bytecode を流す。
       - uses: actions/setup-dotnet@v4
         if: matrix.shard == 1
         with:
           dotnet-version: 10.0.x
 
-      - name: Build tests/cs bytecode (A9)
+      - name: Build tests/cs bytecode
         if: matrix.shard == 1
         shell: bash
         run: |
@@ -775,7 +760,9 @@ jobs:
           name: web-dist-test
           path: web/dist
 
-      - name: Verify headless (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+      # tests/cs の runtime テストを web の player の page で動かす (verify-player の A9)。
+      - name: Verify player page (shard 1)
+        if: matrix.shard == 1
         working-directory: web
         run: |
           npm run preview -- --port 4173 &
@@ -783,29 +770,11 @@ jobs:
             curl -sf http://localhost:4173/ >/dev/null && break
             sleep 1
           done
-          LUB_URL=http://localhost:4173/ LUB_VERIFY_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} npm run verify
+          LUB_URL=http://localhost:4173/ npm run verify
 
-      # --base /lub/ の build をサブパスで配信し、root 固定のパスが残っていないか (404 が出ないか) を shard 2 のサンプル (data を読む 03_texture を含む)、C# session の起動、docs.html で確認する。
-      - uses: actions/download-artifact@v4
+      # サイトの入口 (lider): 起動、保存した編集の反映、診断、並べる表示、サンプル、メニューと Doc の page (verify-lider)。
+      - name: Verify entry page (shard 2)
         if: matrix.shard == 2
-        with:
-          name: web-dist-test-sub
-          path: web/dist-sub
-
-      - name: Verify headless under a subpath (shard 2)
-        if: matrix.shard == 2
-        working-directory: web
-        run: |
-          npm run preview -- --base /lub/ --outDir dist-sub --port 4174 &
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:4174/lub/ >/dev/null && break
-            sleep 1
-          done
-          LUB_URL=http://localhost:4174/lub/ LUB_VERIFY_STRICT_404=1 LUB_VERIFY_SHARD=2/${{ strategy.job-total }} npm run verify
-
-      # lider の page: 起動、ゲームの絵、保存した編集の反映、通らない build の診断、直した後の反映 (verify-lider)。
-      - name: Verify lider page (shard 3)
-        if: matrix.shard == 3
         working-directory: web
         run: |
           npm run preview -- --port 4176 &
@@ -815,18 +784,23 @@ jobs:
           done
           LUB_URL=http://localhost:4176/ npm run verify-lider
 
-      # 起動中の入力キューと失敗からの復帰 (verify-tcs-startup) は compiler と player を fixture に差し替えるので、module を個別に配信する dev server で走らせる。
-      # wasm / tcs アセットは要らない。
-      - name: Verify TCS startup queue (shard 4)
-        if: matrix.shard == 4
+      # --base /lub/ の build をサブパスで配信し、root 固定のパスが残っていないか (同じ origin に 404 が出ないか) を入口の検査で確かめる。
+      - uses: actions/download-artifact@v4
+        if: matrix.shard == 3
+        with:
+          name: web-dist-test-sub
+          path: web/dist-sub
+
+      - name: Verify entry page under a subpath (shard 3)
+        if: matrix.shard == 3
         working-directory: web
         run: |
-          npm run dev -- --port 4175 &
+          npm run preview -- --base /lub/ --outDir dist-sub --port 4174 &
           for i in $(seq 1 30); do
-            curl -sf http://localhost:4175/ >/dev/null && break
+            curl -sf http://localhost:4174/lub/ >/dev/null && break
             sleep 1
           done
-          LUB_URL=http://localhost:4175/ npm run verify-tcs-startup
+          LUB_URL=http://localhost:4174/lub/ npm run verify-lider
 
       - name: Upload verify screenshots
         if: failure()

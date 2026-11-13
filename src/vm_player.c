@@ -19,9 +19,6 @@
 // 当てられない差分 (restart) と <Entry>.tcsb の書き直しは、OnQuit の後に新しい VM を作って OnInit から始める。
 // App.Restart も frame の終わりに同じ作り直しをする。
 // 作り直すたびに log に 1 行出す (`lub: restarted`)。
-// <Entry>.rev (playground が置く build の revision) があれば、読み込みと batch の後に
-// `@@tcs_commit {"revision":N,"ok":...}` を出す (playground の commit ACK)。
-// 当てた revision 以下の batch (ACK の再送) は当てずに ACK だけ返す。
 // `lub export <os> <entry> -o <dir>` は、画面も GPU も使わずに起動して OnInit の後に OnExport を 1 回呼び、
 // その OS の player が動かす snapshot を dir に書く (backend_export.c)。
 // snapshot の bytecode は <Entry>.tcsb で、player は引数なしで起動すると、実行ファイルの隣の .tcsb を動かす (src/main.c)。
@@ -75,9 +72,7 @@ typedef struct Player {
   VmLub lub;
   char module[1024];
   char batch[1024];
-  char rev[1024];
   char errors[1024];
-  int32_t acked; // ACK を返した revision (無ければ -1)
   int64_t module_mtime;
   Hooks game;
   // native の拡張 (include/lub/lub_vm_extension.h)。VM を作るたびに呼ぶ
@@ -135,7 +130,7 @@ typedef struct Player {
 } Player;
 
 // SDL の callback (lub_vm_app_*) が動かす player
-static Player g_player = {.acked = -1};
+static Player g_player;
 
 static void call_reload(Player *p);
 static void call_build_failed(Player *p, const char *errors, size_t len);
@@ -161,36 +156,6 @@ static void status_text(char **slot, const char *text, size_t len) {
 static int64_t file_mtime(const char *path) {
   SDL_PathInfo info;
   return SDL_GetPathInfo(path, &info) ? (int64_t)info.modify_time : -1;
-}
-
-// playground が置いた revision (無ければ -1)
-static int32_t read_revision(Player *p) {
-  size_t size = 0;
-  char *text =
-      SDL_GetPathInfo(p->rev, NULL) ? SDL_LoadFile(p->rev, &size) : NULL;
-  if (!text)
-    return -1;
-  int32_t rev = (int32_t)strtol(text, NULL, 10);
-  SDL_free(text);
-  return rev;
-}
-
-static void ack(Player *p, int32_t rev, bool ok, const char *error, double ms) {
-  if (rev < 0)
-    return;
-  char safe[256] = {0};
-  for (size_t i = 0; error && error[i] && i + 1 < sizeof(safe); i++)
-    safe[i] =
-        (error[i] == '"' || error[i] == '\\' || (unsigned char)error[i] < 32)
-            ? ' '
-            : error[i];
-  printf(
-      "@@tcs_commit {\"revision\":%d,\"ok\":%s,\"commitTimeMs\":%.2f%s%s%s}\n",
-      (int)rev, ok ? "true" : "false", ms, error ? ",\"error\":\"" : "",
-      error ? safe : "", error ? "\"" : "");
-  fflush(stdout);
-  if (ok)
-    p->acked = rev;
 }
 
 static void log_fault(Player *p, const char *what) {
@@ -383,18 +348,14 @@ static void restart(Player *p, const char *why) {
   phys2d_state_init(&app->phys);
   phys3d_state_shutdown(&app->phys3);
   phys3d_state_init(&app->phys3);
-  uint64_t t0 = SDL_GetTicksNS();
-  if (!load_module(p)) {
-    ack(p, read_revision(p), false, "the module failed to load", 0);
+  if (!load_module(p))
     return;
-  }
   SDL_Log("lub: restarted");
   p->restarts++;
   status_text(&p->build_error, NULL, 0);
   app->entry_restarting = true;
   call_init(p);
   app->entry_restarting = false;
-  ack(p, read_revision(p), true, NULL, (double)(SDL_GetTicksNS() - t0) / 1e6);
 }
 
 // frame の境界で hot reload を見る (VM の frame が無いときだけ当てられる)
@@ -416,13 +377,6 @@ static void poll_reload(Player *p) {
       SDL_GetPathInfo(p->batch, NULL) ? SDL_LoadFile(p->batch, &size) : NULL;
   if (batch) {
     SDL_RemovePath(p->batch);
-    int32_t rev = read_revision(p);
-    if (rev >= 0 && rev <= p->acked) { // 当てた build の再送
-      SDL_free(batch);
-      ack(p, rev, true, NULL, 0);
-      return;
-    }
-    uint64_t t0 = SDL_GetTicksNS();
     if (!p->lub.vm) {
       SDL_free(batch);
       restart(p, "a batch arrived without a running VM");
@@ -437,7 +391,6 @@ static void poll_reload(Player *p) {
     }
     if (st != TVM_OK) {
       SDL_Log("lub: reload failed: %s", tvm_error(p->lub.vm));
-      ack(p, rev, false, tvm_error(p->lub.vm), 0);
       return;
     }
     if (tvm_error(p->lub.vm)[0])
@@ -453,7 +406,6 @@ static void poll_reload(Player *p) {
     status_text(&p->build_error, NULL, 0);
     status_text(&p->reload_notes, NULL, 0);
     call_reload(p);
-    ack(p, rev, true, NULL, (double)(SDL_GetTicksNS() - t0) / 1e6);
     return;
   }
   int64_t mtime = file_mtime(p->module);
@@ -1061,13 +1013,12 @@ static bool begin_export(const char *os, const char *out) {
 }
 #endif
 
-// 動かす .tcsb と、その隣の .batch / .rev の path、entry class (NULL なら .tcsb の basename) を決める
+// 動かす .tcsb と、その隣の .batch / .errors の path、entry class (NULL なら .tcsb の basename) を決める
 static void set_module(Player *p, const char *module, const char *entry) {
   SDL_strlcpy(p->module, module, sizeof(p->module));
   size_t n = strlen(p->module);
   size_t stem = n > 5 && !strcmp(p->module + n - 5, ".tcsb") ? n - 5 : n;
   SDL_snprintf(p->batch, sizeof(p->batch), "%.*s.batch", (int)stem, p->module);
-  SDL_snprintf(p->rev, sizeof(p->rev), "%.*s.rev", (int)stem, p->module);
   SDL_snprintf(p->errors, sizeof(p->errors), "%.*s.errors", (int)stem,
                p->module);
   if (entry)
@@ -1127,7 +1078,6 @@ static void *app_open(App *owner, App *child, const char *module,
   Player *p = (Player *)SDL_calloc(1, sizeof(Player));
   if (!p)
     return NULL;
-  p->acked = -1;
   p->ctx = lub_api_ctx(child);
   if (!vm_lub_init(&p->lub, p->ctx)) {
     SDL_free(p);
@@ -1472,7 +1422,6 @@ SDL_AppResult lub_vm_app_init(int argc, char **argv,
   if (p->exporting && p->project_mode)
     tcs_pipeline_stop(&p->tcs);
 #endif
-  uint64_t t0 = SDL_GetTicksNS();
   if (!load_module(p))
     return SDL_APP_FAILURE;
 #ifdef VM_PROJECT
@@ -1487,7 +1436,6 @@ SDL_AppResult lub_vm_app_init(int argc, char **argv,
   if (p->exporting && lub_host_exit_code(p->ctx) != 0)
     return SDL_APP_FAILURE;
 #endif
-  ack(p, read_revision(p), true, NULL, (double)(SDL_GetTicksNS() - t0) / 1e6);
   if (lub_host_quit_requested(p->ctx))
     return lub_host_exit_code(p->ctx) == 0 ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
   return lub_host_start(p->ctx) == LUB_OK ? SDL_APP_CONTINUE : SDL_APP_FAILURE;

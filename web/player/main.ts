@@ -1,28 +1,13 @@
-// Iframe-side glue for the lub playground. Replaces the inline <script>
-// block that used to live in public/player.html. Vite picks
-// player.html up as a secondary HTML entry (see vite.config.ts) and bundles
-// this module alongside.
-//
-// Responsibilities:
-//   1. Boot slang-wasm (slang-bridge) so window.slangCompile is defined
-//      before WASM main() runs and shader_compile calls it synchronously
-//      across the EM_JS bridge.
-//   2. Relay console output from the WASM print/printErr hooks (and from
-//      any in-iframe JS) up to the parent window for the editor's log
-//      panel.
-//   3. Init a WebGPU device and pass it to lub.js via
-//      Module.preinitializedWebGPUDevice.
-//   4. Receive `setFiles` (first boot) and `syncFiles` (live edits)
-//      postMessage from the parent.
-//   5. Put every file the sample may read into MEMFS before main(): the
-//      runtime's Io only looks at MEMFS and never fetches.
-//
-// The C side looks for the entry's .batch and polls the module's mtime each
-// frame (see src/vm_player.c) and Io's file cache checks mtime on read
-// (src/api_io.c), so syncFiles just rewrites the file content and the C side
-// picks it up next frame.
+// player の page (player.html): エディタを通らずに、渡された bytecode と file で lub の tcs VM の player (wasm/vm/lub.js) を動かす。
+// web の golden (scripts/golden-web.mjs) と tests/cs の検査 (scripts/verify-player.mjs の A9) が、page を開いて postMessage で起動する。
+//   1. slang-wasm (lib/slang-bridge.ts) を起動し、wasm の main の前に window.slangCompile を置く (shader_compile は EM_JS から同期で呼ぶ)。
+//   2. wasm の print / printErr と JS の console を、親の window へ postMessage する (top-level で開いたときは自分)。
+//   3. WebGPU の device を作り、Module.preinitializedWebGPUDevice で lub.js に渡す。
+//   4. `setFiles` (起動) と `syncFiles` (起動の後に file を置き直す) を受ける。
+//   5. サンプルが読み得る file を main の前に MEMFS に置く (runtime の Io は MEMFS しか見ない)。
+// C の側は entry の .batch と module の mtime を毎 frame 見て (src/vm_player.c)、Io は読むときに mtime を見る (src/api_io.c) ので、syncFiles は file を書き直すだけでよい。
 
-import { initSlang } from "./slang-bridge";
+import { initSlang } from "../lib/slang-bridge";
 
 declare global {
   interface Window {
@@ -39,9 +24,8 @@ declare global {
 }
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-// Render resolution comes from the iframe URL (?w=&h=), so the editor shell can
-// pick a preset (smaller = faster on weak devices). The whole offscreen chain
-// follows this via Gfx.size() on the C side; CSS scales the canvas to fit.
+// Render resolution comes from the page URL (?w=&h=). The whole offscreen
+// chain follows this via Gfx.size() on the C side; CSS scales the canvas to fit.
 const _q = new URLSearchParams(location.search);
 const _cw = Math.max(
   64,
@@ -56,8 +40,8 @@ canvas.height = _ch;
 window._canvasWidth = _cw;
 window._canvasHeight = _ch;
 
-// iframe URL は execve 相当の起動境界: ?argv=<token> (繰り返し) を Module.arguments へ、?env=KEY=VALUE (繰り返し) を Module.ENV (preRun) へ機械的に写す。
-// 値の意味づけ (golden 等) は渡す側 — main.ts の golden mode や web/scripts/golden-web.mjs — が持ち、ここは機構のみ。
+// page の URL は execve 相当の起動境界: ?argv=<token> (繰り返し) を Module.arguments へ、?env=KEY=VALUE (繰り返し) を Module.ENV (preRun) へ機械的に写す。
+// 値の意味づけ (golden 等) は渡す側 — web/scripts/golden-web.mjs — が持ち、ここは機構のみ。
 // __lubTest と同じく dev/test build 限定で、production には入らない。
 let extraArgv: string[] = [];
 let extraEnv: Array<[string, string]> = [];
@@ -90,8 +74,8 @@ console.warn = (...a: any[]) => {
   relayLog(a.join(" "), "warn");
 };
 
-// Mirror uncaught rejections / errors into the editor log so the user has
-// a chance to see them. The console.error hook above also relays these, but
+// Mirror uncaught rejections / errors to the parent so the page that opened
+// the player sees them. The console.error hook above also relays these, but
 // not all browsers report them as console.error first.
 window.addEventListener("unhandledrejection", (e) => {
   relayLog(
@@ -294,11 +278,11 @@ async function startWasm() {
       for (const [k, v] of extraEnv) ENV[k] = v;
     });
   }
-  // Overlay the fetched assets and the editor files before main().
+  // Overlay the fetched assets and the given files before main().
   // The assets may still be in flight when preRun runs, so main() waits on
-  // an "editor_overlay" run dependency that is removed once they are
-  // written. Editor files go last so they win over the fetched copies.
-  const DEP = "editor_overlay";
+  // an "overlay" run dependency that is removed once they are written.
+  // Given files go last so they win over the fetched copies.
+  const DEP = "overlay";
   moduleConfig.preRun.push(function () {
     const M: any = moduleConfig;
     M.addRunDependency(DEP);
@@ -313,7 +297,7 @@ async function startWasm() {
           fetched.length,
           "assets and",
           files.length,
-          "editor files",
+          "given files",
         );
       })
       .catch((e: any) => {

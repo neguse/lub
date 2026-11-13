@@ -121,9 +121,8 @@ record の中の callback (`WorldCallbacks` など、runtime が持ち続ける�
 `lub-gen vm --source Game.cs` はそのゲームが使う関数だけを出す (`scripts/verify-vm-binding.sh` が偽の C API で使う)。
 
 hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当てる) で、当てられない編集と `.tcsb` の書き直しは
-`OnQuit` の後に新しい VM で `OnInit` から始める。`<Entry>.errors` (通らなかった build の診断) があれば、読んで消し、`OnBuildFailed` に渡す (`App.Use` で開いた app では `App.Status` の `BuildError` に入る)。`<Entry>.rev` があれば、読み込みと batch の後に
-commit ACK (`@@tcs_commit {"revision":N,"ok":...}`) を出す。
-playground はこの player (`build/wasm/vm/lub.js`) を使い、変換は tcs の wasm の VM の session (`vmopen` / `vmupdate`)。
+`OnQuit` の後に新しい VM で `OnInit` から始める。`<Entry>.errors` (通らなかった build の診断) があれば、読んで消し、`OnBuildFailed` に渡す (`App.Use` で開いた app では `App.Status` の `BuildError` に入る)。
+web の player の page (`player.html`) はこの player (`build/wasm/vm/lub.js`) を使う。web のサイトの入口 (lider) では、lider が player に組み込んだ tcs でゲームを変換する。
 
 `lub Game.csproj` は入力 (csproj のディレクトリと `Lub="Source"` の参照先の下の `*.cs`、cs-lib の実装。`*.ref.cs` は `--ref`) の一覧を `.lub/<Entry>.inputs` に書き、`tcs vm --watch --inputs-from` を背後に張る (`src/vm_project.c`)。
 一覧は 0.3 秒ごとに探し直すので、file を足すか消すとそのまま変換し直す。
@@ -169,7 +168,7 @@ golden (`scripts/run-golden.sh`) も tcs VM の player で撮る。
 | --- | --- |
 | `cs-lib/lub_stub.cs` | C# binding 宣言 = API 面の記述 |
 | `cs-lib/` | 実装ライブラリ |
-| `web/playground/tcs-worker.ts` | playground が stub を fetch し `--ref` 相当で渡す |
+| `lider/src/Core/GameBuild.cs` | lider がゲームを変換するとき、stub を `--ref` 相当で渡す (web は `web/lider/main.ts` が cs-lib を MEMFS に置く) |
 | `scripts/run-cs-sample.sh` | CLI 外での check / bytecode への変換 |
 | `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`facade-lubx`(`dotnet/Lub/Lubx.g.cs`)、`docs`(`web/gen/lub-api-docs.json`)、`tcs`(tcs2c 実行の接続コード)、`vm`(`src/gen/vm_api_gen.c`、tcs VM の host の関数)。まとめて `scripts/gen-api.sh`。本体は TinyC# で、stub とゲームは tcs の compiler(`tcs/SelfHost/Compiler`)で読む。.NET では `tools/lub-gen/lub-gen.csproj`(`host/Program.cs` が入口)、C では `scripts/build-lub-gen.sh` が tcs の compiler と一緒に `tcs c` で C にした `<build-dir>/tcs/lub-gen`(dotnet は要らない)。どちらも同じ出力を出す |
 
@@ -177,5 +176,5 @@ golden (`scripts/run-golden.sh`) も tcs VM の player で撮る。
 
 `cs-lib/` 配下の `*.cs` のうち `lub_stub.cs` だけが `--ref`(宣言のみ、emit されない)。
 それ以外は実装ソースとして全 C# サンプルのコンパイル入力に一律追加される
-(lub CLI / `run-cs-sample.sh` / playground の 3 箇所とも。サンプル側での選択はしない)。
+(lub CLI / `run-cs-sample.sh` / lider の 3 箇所とも。サンプル側での選択はしない)。
 配置は `cs-lib/lub/<Name>.cs` / `cs-lib/lubx/<Name>.cs` で、namespace はそれぞれ `Lub` / `Lubx`(ゲームは `using Lubx;` で使う。IDE 用の csproj は両ディレクトリを Compile Include する)。

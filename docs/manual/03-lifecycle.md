@@ -11,7 +11,7 @@ entry class(static class)は次の static メソッドを持つ(`OnFrame` 以外
 | `OnFrame(float dt)` | 毎フレーム。`dt` は通常、直近フレームの実測秒 |
 | `OnQuit()` | 終了時に 1 回 |
 | `OnError(string message)` | 他の callback が失敗したとき。`ErrorAction` を返す(後述) |
-| `OnReload()` | playground で編集が生きたまま反映された直後に 1 回(後述) |
+| `OnReload()` | 編集が生きたまま反映された直後に 1 回(後述) |
 | `OnExport()` | `lub export` のときだけ、`OnInit` の後に 1 回。`OnFrame` は呼ばれない(後述) |
 
 `dt` は固定レートではない。移動や時間経過は必ず `dt` でスケールする。
@@ -153,21 +153,17 @@ log には、作り直した VM の `OnInit` の前に `lub: restarted` を 1 �
 呼んだ frame の終わりに作り直す。
 tcs2c の release build では何もしない。
 
-web playground では in-browser の増分コンパイラが同じ流れを担う。
+web のサイトの入口 (lider) では、lider が player に組み込んだ同じ tcs の増分 session が同じ流れを担う (変換するのは lider で、差分と作り直しの規則は同じ)。
 
-reload の意味論は 2 方式あり、環境で決まる。
+| 変更 | 挙動 |
+| --- | --- |
+| static 変数の値 | 保持される |
+| クラスの形の変更 | field を移行(追加は初期化子、削除は破棄) |
+| instance の field の初期化子の変更 | 生きている instance は今の値のまま(新しく作る instance から新しい初期化子。全部に入れるなら `App.Restart()`) |
+| static の初期化子の変更 | その static と、それを初期化子で読む static だけを評価し直す |
+| static の初期化子の削除 | 自動で作り直し(restart) |
 
-|  | native watch | playground |
-| --- | --- | --- |
-| 方式 | 差分を VM に適用 | 増分コンパイル + 差分適用 |
-| static 変数の値 | 保持される | 保持される |
-| クラスの形の変更 | field を移行(追加は初期化子、削除は破棄) | 自動で作り直し(restart) |
-| instance の field の初期化子の変更 | 生きている instance は今の値のまま(新しく作る instance から新しい初期化子。全部に入れるなら `App.Restart()`) | 自動で作り直し(restart) |
-| static の初期化子の変更 | その static と、それを初期化子で読む static だけを評価し直す | その static と、それを初期化子で読む static だけを評価し直す |
-| static の初期化子の削除 | 自動で作り直し(restart) | 自動で作り直し(restart) |
-| 反映の速さ | 再 transpile 数百 ms〜数 s | 編集停止から 0.5 s 未満 |
-
-どちらの方式でも共通:
+どの変更でも共通:
 
 - コンパイル失敗ではゲームは止まらない。古いコードのまま動き続け、
   エラーが log に出る。直せばまた反映される。
@@ -183,10 +179,9 @@ GPU resource cache は reload を跨いで生きるので、`Gfx.Use*` に渡す
 省略して「内容が変わった」を宣言する — 変更履歴は runtime が cache と同じ
 寿命で管理する。詳細は「描画モデル」章の version 規約を参照。
 
-## 何が生きたまま反映されるか(C# / playground)
+## 何が生きたまま反映されるか(C#)
 
-playground の C# は判定が単純で、
-「関数の中身」の編集は生きたまま反映、「クラスの形」の変更は自動で作り直し。
+「関数の中身」と field の足し引きは生きたまま反映、型を消すか型の種類を変えると自動で作り直し。
 
 | 編集 | 挙動 |
 | --- | --- |
@@ -196,12 +191,12 @@ playground の C# は判定が単純で、
 | static フィールドの追加(定数か初期化子なし) | live 反映。追加分だけ初期化される |
 | static フィールドと const の初期値・型の変更 | live 反映。その static と、それを初期化子で読む static だけが新しい初期値になり、ほかの状態は残る。初期値の空白やコメントだけの変更では値を保つ |
 | static フィールドの初期値の削除 | 作り直し(入れ直す値が無いため) |
-| インスタンスフィールドの追加・削除・初期値変更 | 作り直し(既存インスタンスを作り替えられないため) |
+| インスタンスフィールドの追加・削除 | live 反映。既存インスタンスの field を移行する(追加は初期化子、削除は破棄) |
+| インスタンスフィールドの初期値変更 | live 反映。既存インスタンスは今の値のまま(`OnReloadNotes` で知らせる。全部に入れるなら `App.Restart()`) |
 | 継承・クラス種別の変更、クラスの削除 | 作り直し |
 | コンパイルエラー | 何も変えない(直前のコードのまま) |
 
-どちらになったかは status 表示で分かる: `synced rev N (Xms)` = live 反映、
-`restarting…` = 作り直し(ゲーム状態はリセット)。
+どちらになったかは log で分かる: `lub: reloaded` = live 反映、`lub: restarted` = 作り直し(ゲーム状態はリセット)。
 
 live 反映では static が保持されるため、「コードを評価して最初に作るデータ」
 (SDF メッシュなど)は自動では作り直されない。その再構築の境界が

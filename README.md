@@ -21,7 +21,7 @@ webgpu.h 直接実装。
 - [lub.neguse.net/docs](https://lub.neguse.net/docs): ゲームを書く人向けの
   ガイド(基礎概念)+ API reference。ガイドの原稿は `docs/manual/`、API は
   `cs-lib/lub_stub.cs` の doc comment から生成。
-- [lub.neguse.net](https://lub.neguse.net): ブラウザで動く playground。
+- [lub.neguse.net](https://lub.neguse.net): ブラウザで動くエディタ (lider)。サンプルはメニューから開ける。
 - [docs/README.md](docs/README.md): ドキュメント索引と方針。
 - [docs/design.md](docs/design.md): lub の why / to-be / 設計原則。
 - [docs/serve.md](docs/serve.md): 外部リポのゲームを web で開発する `--serve` モード。
@@ -201,12 +201,10 @@ lub は 5 つの GPU backend を持ち、同一 API で動く:
 LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/Triangle01.csproj
 ```
 
-## WASM playground (web)
+## web のサイト
 
-ブラウザ上で動く playground を `web/` 配下に同梱し、
-[lub.neguse.net](https://lub.neguse.net) で公開している。
-`.cs` はブラウザ内で tcs の wasm (tcs2c で C にした TinyC# コンパイラ) が tcs VM の bytecode に変換し、hot reload で player に反映される。
-補完と hover は .NET wasm の Roslyn が答える。
+ブラウザで動くエディタ (lider、`lider/`) を `web/` 配下に同梱し、[lub.neguse.net](https://lub.neguse.net) で公開している。
+`.cs` は lider が player に組み込んだ tcs で tcs VM の bytecode に変換し、hot reload で動いているゲームに反映される。
 ガイド + API reference の docs サイト (`/docs`) も同じサイトに同居する。
 
 ビルド手順・実行時アーキテクチャ・headless 検証・制約は
@@ -226,6 +224,6 @@ lub を別リポのゲームから使うための Web 開発モード。native �
 
 ## ライセンス
 
-- lub 本体(C ランタイム / web playground / samples / `cs-lib`)は MIT(`LICENSE`)。
+- lub 本体(C ランタイム / web のサイト / lider / samples / `cs-lib`)は MIT(`LICENSE`)。
 - バンドル/リンクする第三者依存(SDL3 / Slang / TinyC# の runtime 等)は
   `THIRD_PARTY_LICENSES.md` を参照。

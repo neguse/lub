@@ -106,7 +106,7 @@ static bool base64(Buf *out, const unsigned char *in, size_t n) {
 }
 
 // page の loader。
-// player が要る WebGPU の device を先に作って渡す (web/playground/player.ts と同じ)。
+// player が要る WebGPU の device を先に作って渡す (web/player/main.ts と同じ)。
 static const char k_loader_head[] =
     "(async () => {\n"
     "  const status = document.getElementById(\"status\");\n"

@@ -572,7 +572,7 @@ if(LUB_WASM)
   # render-paths regress, revert to this SDK version or update backend_webgpu.c
   # to track the newer Dawn ABI.
   target_compile_options(lub_objs PUBLIC --use-port=emdawnwebgpu)
-  # tcs VM の player は vm/lub.{js,wasm} (playground、serve、export が読む)
+  # tcs VM の player は vm/lub.{js,wasm} (web のサイトの player の page、serve、export が読む)
   lub_vm_player_link_options(lub_vm "${CMAKE_CURRENT_BINARY_DIR}/vm")
   # tcs2c の web の player (scripts/web-tcs-host-build.sh) は build の dir の lub.{js,wasm}
   if(TARGET lub)

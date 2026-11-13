@@ -12,35 +12,48 @@ import { resolve, extname, sep, basename, dirname } from "node:path";
 // dotnet build (bin/obj) と変換の出力 (.lub) は配信物に含めない
 const ARTIFACT_DIRS = new Set(["bin", "obj", ".lub"]);
 
-// player が起動前に MEMFS へ置くファイルの目録 (sample-assets.json)。
-// runtime の Io は MEMFS にあるファイルしか読まないので、サンプルが読み得る samples/<name>/** と samples/data/** を全部載せる。
-// .cs / .csproj は playground が compile して tcs VM の bytecode で渡すので載せない。
-function listAssets(dir: string, rel: string, out: string[]) {
+// サンプルの file の目録 (sample-assets.json)。
+// runtime の Io は MEMFS にあるファイルしか読まないので、player の page (player/main.ts) と、サンプルを開く入口の page (lider/main.ts) が起動前に MEMFS へ置く。
+//   samples: サンプルが読み得る samples/<name>/** の data (.cs と .csproj を除く)
+//   shared: サンプルが共通で読む samples/data/**
+//   sources: サンプルの .cs (入口の page が project として開く)
+//   entries: サンプルの entry class (<Entry>.csproj の basename)
+function listFiles(
+  dir: string,
+  rel: string,
+  keep: (name: string) => boolean,
+  out: string[],
+) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name.startsWith(".") || ARTIFACT_DIRS.has(e.name)) continue;
     const r = `${rel}/${e.name}`;
-    if (e.isDirectory()) listAssets(resolve(dir, e.name), r, out);
-    else if (!/\.(cs|csproj)$/.test(e.name)) out.push(r);
+    if (e.isDirectory()) listFiles(resolve(dir, e.name), r, keep, out);
+    else if (keep(e.name)) out.push(r);
   }
   return out;
 }
 
+const isAsset = (name: string) => !/\.(cs|csproj)$/.test(name);
+const isSource = (name: string) => name.endsWith(".cs");
+
 function sampleAssets(): string {
   const root = resolve(__dirname, "../samples");
   const samples: Record<string, string[]> = {};
+  const sources: Record<string, string[]> = {};
+  const entries: Record<string, string> = {};
   for (const e of readdirSync(root, { withFileTypes: true })) {
     if (!e.isDirectory() || e.name === "data") continue;
-    samples[e.name] = listAssets(
-      resolve(root, e.name),
-      `samples/${e.name}`,
-      [],
-    );
+    const dir = resolve(root, e.name);
+    samples[e.name] = listFiles(dir, `samples/${e.name}`, isAsset, []);
+    sources[e.name] = listFiles(dir, `samples/${e.name}`, isSource, []);
+    const proj = readdirSync(dir).find((f) => f.endsWith(".csproj"));
+    if (proj) entries[e.name] = proj.slice(0, -".csproj".length);
   }
-  const shared = listAssets(resolve(root, "data"), "samples/data", []);
-  return JSON.stringify({ shared, samples });
+  const shared = listFiles(resolve(root, "data"), "samples/data", isAsset, []);
+  return JSON.stringify({ shared, samples, sources, entries });
 }
 
-// lider の page (lider.html) が MEMFS に置く file (lider/ からの path)。
+// 入口の page (index.html。lider/main.ts) が MEMFS に置く file (lider/ からの path)。
 // lider が読む font と、project の雛形にするゲームの例。
 const LIDER_ROOT = resolve(__dirname, "../lider");
 const LIDER_TREE = [
@@ -74,28 +87,17 @@ function liderTree(): string[] {
 
 export default defineConfig({
   publicDir: "public",
-  // index / player / docs / lider の 4 page 構成。
+  // index (lider を動かす入口) / player / docs の 3 page と、前の lider の page の URL から index へ移す lider.html。
   // 無い path は SPA fallback の 200 (index.html) ではなく 404 にする。
   // 配信先 (Cloudflare の assets) と同じ挙動で、web verify の strict 404 が base の中の誤った path を拾える。
   appType: "mpa",
   server: { fs: { allow: [".."] } },
-  // editor.ts が Compartment を @codemirror/state から直接 import するため、codemirror バンドルが内包する copy と二重ロードされると instanceof が壊れる ("Unrecognized extension value")。
-  // 単一インスタンスに dedupe する。
-  resolve: {
-    dedupe: ["@codemirror/state", "@codemirror/view", "@codemirror/language"],
-  },
   build: {
     outDir: "dist",
-    // Keep the editor shell parseable on a wide range of browsers (Vite's
-    // default target can be newer than the user's Safari, which would make
-    // main.js fail to even build the sample dropdown). The player still needs
-    // WebGPU, but the shell + the "use a WebGPU browser" hint must load.
+    // WebGPU の無いブラウザでも page の script は読めるようにし、使えないことを出す (vite の既定の target は古い Safari より新しいことがある)
     target: "es2020",
     rollupOptions: {
-      // Three HTML entries: the main editor shell (index.html), the
-      // iframe player (player.html) and the docs page (docs.html). Vite
-      // processes each and emits a hashed JS bundle per entry. Without this only index.html would
-      // pick up its <script type="module">.
+      // HTML の入口ごとに script を束ねる (指さないと index.html だけになる)
       input: {
         main: resolve(__dirname, "index.html"),
         player: resolve(__dirname, "player.html"),
@@ -151,12 +153,8 @@ export default defineConfig({
         serveDir(base + "samples", resolve(__dirname, "../samples"));
         serveDir(base + "cs-lib", resolve(__dirname, "../cs-lib"));
         serveDir(base + "tcs-wasm", resolve(__dirname, "tcs-wasm-assets"));
-        serveDir(
-          base + "tcs-selfhost",
-          resolve(__dirname, "tcs-selfhost-assets"),
-        );
         serveDir(base + "wasm", resolve(__dirname, "../build/wasm"));
-        // lider の page の file は中身をそのまま返す (build の copy と同じ byte 列)
+        // 入口の page の file は中身をそのまま返す (build の copy と同じ byte 列)
         function serveFiles(prefix: string, files: () => Map<string, string>) {
           server.middlewares.use(prefix, (req, res, next) => {
             const file = files().get((req.url || "").split("?")[0].slice(1));
@@ -198,15 +196,11 @@ export default defineConfig({
         });
         if (existsSync("tcs-wasm-assets"))
           cpSync("tcs-wasm-assets", "dist/tcs-wasm", { recursive: true });
-        if (existsSync("tcs-selfhost-assets"))
-          cpSync("tcs-selfhost-assets", "dist/tcs-selfhost", {
-            recursive: true,
-          });
         // tcs VM の player
         mkdirSync("dist/wasm/vm", { recursive: true });
         for (const f of ["lub.js", "lub.wasm"])
           cpSync(`../build/wasm/vm/${f}`, `dist/wasm/vm/${f}`);
-        // lider の page
+        // 入口の page
         const tree = liderTree();
         for (const p of tree) {
           mkdirSync(dirname(`dist/lider-fs/${p}`), { recursive: true });

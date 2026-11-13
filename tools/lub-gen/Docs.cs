@@ -4,7 +4,7 @@ namespace LubGen;
 
 // API reference のデータ (web/gen/lub-api-docs.json)。
 // web/scripts/gen-api-docs.mjs が読み、doc の markdown を HTML にしてガイドと合わせて web/public/api-docs.json にする。
-// 形は web/playground/docs.ts の ApiDocs (guides を除く)。
+// 形は web/docs/main.ts の ApiDocs (guides を除く)。
 //
 // - module = stub の namespace (Lub / Gfx / Input / ...)。
 //   主型は namespace 自身、

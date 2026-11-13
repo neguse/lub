@@ -1,4 +1,4 @@
-// lider の page (lider.html) を headless の chromium (WebGPU は swiftshader) で開いて確かめる。
+// サイトの入口 (index.html。lider を動かす page) を headless の chromium (WebGPU は swiftshader) で開いて確かめる。
 //
 //   L1. 起動: page が `ready` を出し、canvas が真っ黒でない。
 //   L2. lider とゲーム: 起動したときは lider の窓が出ていて、Shift+F1 でゲームだけになる (絵が変わる)。
@@ -7,6 +7,8 @@
 //   L5. 直す: 通る file に戻すと、また `lider: build saved batch` になり、背景の色が変わる。
 //   L6. 通らない project で開き直す: 通らない file を保存して page を読み直すと、lider は起動して `lider: build saved error` を出し、直すとゲームが始まる (`lider: build saved module`)。
 //   L7. 並べる: 編集の間に F10 を押すと、lider が編集中の版を変換し (`lider: build draft module`)、画面の左右に 2 つのゲームが出る (どちらも L6 の緑)。状態を写すので、左右はほぼ同じ絵になる。
+//   L8. サンプル: 前の lider の page の URL (lider.html#sample=17_flappy) で開くと、hash を付けたまま入口に移り、lub のサンプルが project になって起動し (data は samples/17_flappy/data から読める)、サンプルの .cs の書き換えがゲームの絵に出る。
+//   L9. メニュー: Doc の link と、サンプルの一覧 (17_flappy を含む) がある。Doc の page はガイドを描く。
 //
 // 変換は lider が player に組み込んだ tcs で行い、結果を console に書く (lider の GameBuild)。
 // lider が compile error を窓の中に出すことは見ていない (lider が診断を受け取った所まで)。
@@ -31,6 +33,11 @@ const APPLY_MS = Number(process.env.LIDER_APPLY_MS || 60000);
 const ENTRY = "Flappy";
 const SOURCE = "/lider/project/Render.cs";
 const MODULE = `/lider/project/.lub/${ENTRY}.tcsb`;
+const SAMPLE = "17_flappy";
+const SAMPLE_SOURCE = `/lider/samples/${SAMPLE}/Flappy17.cs`;
+// サンプルの画面の pass の背景
+const SAMPLE_BACKGROUND =
+  "ClearColor = new float[] { 0.05f, 0.05f, 0.15f, 1.0f }";
 // 非 XR の pass の背景 (Render.Frame の本体にある)
 const BACKGROUND = "ClearColor = background }";
 
@@ -61,7 +68,7 @@ page.on("console", (m) => {
 page.on("pageerror", (e) => console.error("PAGEERR", e.message));
 const origin = new URL(BASE).origin;
 const missing = [];
-page.on("response", (r) => {
+ctx.on("response", (r) => {
   if (r.status() === 404 && r.url().startsWith(origin)) missing.push(r.url());
 });
 
@@ -142,17 +149,17 @@ async function waitColor(name, pred, ms) {
   return got;
 }
 
-function readSource() {
+function readSource(file = SOURCE) {
   return page.evaluate(
     (p) => window.Module.FS.readFile(p, { encoding: "utf8" }),
-    SOURCE,
+    file,
   );
 }
 
-function writeSource(text) {
+function writeSource(text, file = SOURCE) {
   return page.evaluate(
     ([p, t]) => window.Module.FS.writeFile(p, t),
-    [SOURCE, text],
+    [file, text],
   );
 }
 
@@ -161,7 +168,7 @@ const green = (r, g, b) => g > 150 && r < 80 && b < 80;
 const magenta = (r, g, b) => r > 150 && b > 150 && g < 80;
 
 try {
-  await page.goto(new URL("lider.html", BASE).href, { waitUntil: "load" });
+  await page.goto(BASE, { waitUntil: "load" });
 
   // L1
   const ready = await waitStatus(
@@ -324,6 +331,83 @@ try {
     apart < 0.05,
     `differ ${pct(apart)}`,
   );
+
+  // L8
+  logs.length = 0;
+  await page.goto("about:blank");
+  await page.goto(new URL(`lider.html#sample=${SAMPLE}`, BASE).href, {
+    waitUntil: "load",
+  });
+  await page.waitForURL((u) => !u.pathname.endsWith("lider.html"), {
+    timeout: 10000,
+  });
+  const moved = new URL(page.url());
+  check(
+    "L8 lider.html moves to the entry with the hash",
+    moved.pathname === new URL(BASE).pathname &&
+      moved.hash === `#sample=${SAMPLE}`,
+    page.url(),
+  );
+  const sampleReady = await waitStatus(
+    (t) => t === "ready" || /error|使えません|取れません/.test(t),
+    READY_MS,
+  );
+  at = await waitLog(0, built("module"), APPLY_MS);
+  check(
+    "L8 the sample starts",
+    sampleReady === "ready" && at >= 0,
+    `status: ${sampleReady}, ${logs[at] ?? "no build"}`,
+  );
+  await page.locator("#canvas").focus();
+  await page.keyboard.press("Shift+F1");
+  const sampleSource = await readSource(SAMPLE_SOURCE);
+  check(
+    "L8 the sample source has the pass to edit",
+    sampleSource.includes(SAMPLE_BACKGROUND),
+  );
+  from = logs.length;
+  await writeSource(
+    sampleSource.replace(
+      SAMPLE_BACKGROUND,
+      "ClearColor = new float[] { 0, 0.8f, 0, 1 }",
+    ),
+    SAMPLE_SOURCE,
+  );
+  at = await waitLog(from, built("batch"), APPLY_MS);
+  check("L8 the sample edit is applied", at >= 0, logs[at] ?? "");
+  const sampleGreen = await waitColor("sample-green", green, 10000);
+  check(
+    "L8 the sample draws the edit",
+    sampleGreen > 0.3,
+    `green ${pct(sampleGreen)}`,
+  );
+
+  // L9
+  const menu = await page.evaluate(() => ({
+    docs: document.getElementById("docs")?.getAttribute("href"),
+    samples: [...document.querySelectorAll("#samples a")].map(
+      (a) => a.textContent,
+    ),
+    own: !document.getElementById("own")?.hidden,
+  }));
+  check("L9 the menu links the docs", menu.docs === "docs.html", menu.docs);
+  check(
+    "L9 the menu lists the samples",
+    menu.samples.includes(SAMPLE),
+    `${menu.samples.length} samples`,
+  );
+  check("L9 the menu goes back to the own project from a sample", menu.own);
+  // docs.html は api-docs.json を base 基準で読み、ガイドの section を描く
+  const docs = await ctx.newPage();
+  await docs.goto(new URL("docs.html", BASE).href, { waitUntil: "load" });
+  const guides = await docs
+    .waitForSelector("#content section", { timeout: 20000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  await docs.close();
+  check("L9 the docs page renders the guides", guides);
 
   check("no 404 on the same origin", missing.length === 0, missing.join(" "));
 } catch (e) {

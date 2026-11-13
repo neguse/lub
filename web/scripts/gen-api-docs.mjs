@@ -5,7 +5,7 @@
 // - API の記述は cs-lib/lub_stub.cs の XML doc。
 //   tools/lub-gen が
 //   web/gen/lub-api-docs.json (scripts/gen-api.sh で再生成) に固めた
-//   signature + doc (markdown) を読む。形は web/playground/docs.ts の ApiDocs。
+//   signature + doc (markdown) を読む。形は web/docs/main.ts の ApiDocs。
 // - ガイドは docs/manual/*.md。
 //   ファイル名の数字 prefix が表示順。
 // - doc comment / ガイドの markdown は build 時に HTML へ変換する
