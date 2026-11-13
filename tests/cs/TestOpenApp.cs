@@ -1,6 +1,7 @@
 // App.Use / App.Step: 同じ process に別の app を開き、その絵を texture で受け取る。
 // TestOpenApp が TestOpenAppChild を同じ bytecode から開き、毎 frame 進めて、描かせた texture を読み戻す。
 // 開かれた app は自分の VM を持つので、static は開いた側と別になる。
+// module の隣に置いた build の診断 (.errors) が、開いた app の Status に入る。
 using System;
 using Lub;
 
@@ -57,6 +58,9 @@ public static class TestOpenApp
         Check.That(rt != null, "UseTexture failed");
         if (rt == null) return;
         var child = App.Use("child", "tests/cs/.lub/all.tcsb", "TestOpenAppChild");
+        // module の隣に置いた build の診断は、次の Step で開いた app の Status に入り、file は消える
+        if (frame == 3)
+            Io.SaveText("tests/cs/.lub/all.errors", "Child.cs(1,1): error: boom");
         Check.That(App.Step(child, rt, dt), $"frame {frame}: Step failed");
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
         Gfx.EndPass();
@@ -71,6 +75,13 @@ public static class TestOpenApp
                 var got = bytes!.Get(i);
                 Check.That(Math.Abs(got - want[i]) <= 1, $"frame {id} byte {i}: got {got}, want {want[i]}");
             }
+        }
+        if (frame == 3)
+        {
+            var status = App.Status(child);
+            Check.That(status.Running && status.BuildError.Contains("boom"), $"the build error did not arrive: {status.BuildError}");
+            Io.LoadText("tests/cs/.lub/all.errors", out var left, out _, out _, out _);
+            Check.That(left == null, "the build error file was not removed");
         }
         frame++;
         if (frame == frames)

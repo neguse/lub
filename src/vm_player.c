@@ -15,6 +15,7 @@
 // entry class は --entry (IL の名前、namespace は '_' で繋ぐ)、無ければ .tcsb の basename。
 // OnFrame(float) は必須、OnInit / OnEvent(EventData) / OnQuit は任意。
 // hot reload: <Entry>.batch (tcs vm --watch の vm_batch。module と計画) が現れたら当てて消す。
+// <Entry>.errors (通らなかった build の診断) が現れたら、読んで消し、App.Status の BuildError に入れて OnBuildFailed を呼ぶ。
 // 当てられない差分 (restart) と <Entry>.tcsb の書き直しは、OnQuit の後に新しい VM を作って OnInit から始める。
 // App.Restart も frame の終わりに同じ作り直しをする。
 // 作り直すたびに log に 1 行出す (`lub: restarted`)。
@@ -75,6 +76,7 @@ typedef struct Player {
   char module[1024];
   char batch[1024];
   char rev[1024];
+  char errors[1024];
   int32_t acked; // ACK を返した revision (無ければ -1)
   int64_t module_mtime;
   Hooks game;
@@ -136,6 +138,7 @@ typedef struct Player {
 static Player g_player = {.acked = -1};
 
 static void call_reload(Player *p);
+static void call_build_failed(Player *p, const char *errors, size_t len);
 
 static bool is_csproj(const char *path) {
   size_t n = strlen(path);
@@ -396,6 +399,18 @@ static void restart(Player *p, const char *why) {
 
 // frame の境界で hot reload を見る (VM の frame が無いときだけ当てられる)
 static void poll_reload(Player *p) {
+  // 通らなかった build の診断 (<Entry>.errors)。
+  // 読んで消し、App.Status の BuildError に入れて OnBuildFailed を呼ぶ。
+  size_t errors_size = 0;
+  char *errors = SDL_GetPathInfo(p->errors, NULL)
+                     ? (char *)SDL_LoadFile(p->errors, &errors_size)
+                     : NULL;
+  if (errors) {
+    SDL_RemovePath(p->errors);
+    status_text(&p->build_error, errors, errors_size);
+    call_build_failed(p, errors, errors_size);
+    SDL_free(errors);
+  }
   size_t size = 0;
   void *batch =
       SDL_GetPathInfo(p->batch, NULL) ? SDL_LoadFile(p->batch, &size) : NULL;
@@ -1050,6 +1065,8 @@ static void set_module(Player *p, const char *module, const char *entry) {
   size_t stem = n > 5 && !strcmp(p->module + n - 5, ".tcsb") ? n - 5 : n;
   SDL_snprintf(p->batch, sizeof(p->batch), "%.*s.batch", (int)stem, p->module);
   SDL_snprintf(p->rev, sizeof(p->rev), "%.*s.rev", (int)stem, p->module);
+  SDL_snprintf(p->errors, sizeof(p->errors), "%.*s.errors", (int)stem,
+               p->module);
   if (entry)
     SDL_strlcpy(p->game.cls, entry, sizeof(p->game.cls));
   else {
