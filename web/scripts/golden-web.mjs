@@ -1,22 +1,20 @@
-// Golden image regression test for the web playground (swiftshader).
+// web の player の golden (swiftshader)。
 //
-// For each curated sample: load the playground with ?golden=<frame> (main.ts
-// pins 640x360 and forwards --capture-frame <frame> to the player iframe), let the
-// in-browser compiler build the sample, and wait for the wasm side to write
-// /lub_golden.png into MEMFS via the native --capture path (backend_webgpu's
-// wg_capture). The PNG bytes are byte-compared to tests/golden/<name>_web.png.
+// サンプルごとに、native の tcs が変換した bytecode (samples/<name>/.lub/<Entry>.tcsb。scripts/run-cs-sample.sh <name> --vm) を player の page (player.html、640x360) に直接渡し、
+// --capture-frame <frame> の frame の画面を native の --capture の経路 (backend_webgpu の wg_capture) で MEMFS の /lub_golden.png に書かせて、tests/golden/<name>_web.png と byte で比べる。
+// player の page の ?argv= と ?env= は dev と test の build だけが読む。
 //
-// Determinism relies on:
-//   - swiftshader (CPU rasterizer) pinned by the playwright chromium version
-//   - --fixed-dt + --capture-frame (main.ts, same values as run-golden.sh)
-//   - stb_image_write as the single PNG encoder (same as native captures)
-// Goldens are therefore swiftshader-specific (`_web.png`), regenerated with
-// --update whenever playwright/chromium is bumped.
+// 同じ絵になるのは次による:
+//   - playwright の版で固定した chromium の swiftshader (CPU の rasterizer)
+//   - --fixed-dt と --capture-frame (native の golden の scripts/run-golden.sh と同じ値)
+//   - PNG の encoder が stb_image_write だけ (native の capture と同じ)
+// golden は swiftshader に固有の `_web.png` で、playwright と chromium を上げたら --update で作り直す。
 //
-// Usage:
+// 使い方 (先に対象のサンプルを scripts/run-cs-sample.sh <name> --vm で変換しておく):
 //   LUB_URL=http://localhost:5173/ node scripts/golden-web.mjs
-//   node scripts/golden-web.mjs --update            # regenerate goldens
+//   node scripts/golden-web.mjs --update            # golden を作り直す
 //   node scripts/golden-web.mjs --sample 01_triangle
+//   node scripts/golden-web.mjs --list              # この shard で撮るサンプルの名前を 1 行ずつ出す (変換する物を決める)
 import { launchChromium } from "./lib/browser.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +28,31 @@ const GOLDEN_DIR = path.resolve(
   "../../tests/golden",
 );
 const FAIL_DIR = process.env.LUB_GOLDEN_FAIL_DIR || "/tmp/lub-golden-web";
+const SAMPLES_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../samples",
+);
+
+// サンプルの entry class (<Entry>.csproj の basename) と、変換した bytecode の samples/ からの path
+function moduleOf(name) {
+  const proj = fs
+    .readdirSync(path.join(SAMPLES_DIR, name))
+    .find((f) => f.endsWith(".csproj"));
+  if (!proj) throw new Error(`no .csproj in samples/${name}`);
+  const entry = proj.slice(0, -".csproj".length);
+  return { entry, path: `samples/${name}/.lub/${entry}.tcsb` };
+}
+
+// player の起動の引数 (native の golden と同じ契約)
+const ARGV = (frame) => [
+  "--capture",
+  "/lub_golden.png",
+  "--capture-frame",
+  String(frame),
+  "--fixed-dt",
+  "0.0166666666666667",
+  "--readback-fixed-latency",
+];
 
 // Same curation + frame table as scripts/run-golden.sh (native goldens).
 const FRAME_DEFAULT = 30;
@@ -58,10 +81,12 @@ const SAMPLES = [
 ];
 
 let update = false;
+let list = false;
 let sampleFilter = null;
 for (let i = 2; i < process.argv.length; ++i) {
   const a = process.argv[i];
   if (a === "--update") update = true;
+  else if (a === "--list") list = true;
   else if (a === "--sample") sampleFilter = process.argv[++i];
   else {
     console.error(`unknown arg: ${a}`);
@@ -112,6 +137,11 @@ const targets = (() => {
   return shards[SHARD.k - 1].sort((a, b) => a.i - b.i).map((e) => e.s);
 })();
 
+if (list) {
+  for (const name of targets) console.log(name);
+  process.exit(0);
+}
+
 // Goldens are chromium-version-specific, so ONLY the playwright-bundled
 // chromium (pinned by web/package-lock.json) is used — a system chrome found
 // on PATH would silently drift with OS updates. CHROMIUM_PATH overrides for
@@ -142,18 +172,43 @@ for (const name of targets) {
   ctx.on("pageerror", (e) => console.error("PAGEERR", e.message));
 
   try {
-    await page.goto(`${URL}?golden=${frame}#sample=${name}`, {
+    const mod = moduleOf(name);
+    const bytecode = path.join(SAMPLES_DIR, "..", mod.path);
+    if (!fs.existsSync(bytecode))
+      throw new Error(
+        `${mod.path} is missing (run scripts/run-cs-sample.sh ${name} --vm)`,
+      );
+    const query =
+      ARGV(frame)
+        .map((a) => `&argv=${encodeURIComponent(a)}`)
+        .join("") + `&env=${encodeURIComponent("LUB_GOLDEN=1")}`;
+    await page.goto(`${URL}player.html?w=640&h=360${query}`, {
       waitUntil: "load",
     });
-    const iframeHandle = await page.waitForSelector("iframe", {
-      timeout: 30000,
-    });
-    const iframe = await iframeHandle.contentFrame();
-    if (!iframe) throw new Error("iframe contentFrame returned null");
+    // player は setFiles を受けて起動し、サンプルの data は自分で取ってくる
+    await page.evaluate(
+      ({ file, b64, name, entry }) => {
+        window.postMessage(
+          {
+            type: "setFiles",
+            files: { [file]: b64 },
+            entry: name,
+            argv: [file, "--entry", entry],
+          },
+          "*",
+        );
+      },
+      {
+        file: mod.path,
+        b64: fs.readFileSync(bytecode).toString("base64"),
+        name,
+        entry: mod.entry,
+      },
+    );
 
-    // wasm boot + in-browser compile + N frames + PNG encode. The capture
-    // file lands in MEMFS; FS stays readable after the app exits post-capture.
-    const b64 = await iframe.waitForFunction(
+    // wasm の起動、N frame、PNG の encode。
+    // capture の file は MEMFS に書かれ、capture の後に app が終わっても FS は読める。
+    const b64 = await page.waitForFunction(
       () => {
         const FS = window.FS ?? window.Module?.FS;
         if (!FS) return null;
