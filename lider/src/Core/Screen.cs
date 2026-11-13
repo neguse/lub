@@ -41,9 +41,9 @@ public class Screen
         Width = Height * aspect;
     }
 
-    // ウィンドウを並べ、画面の上の矩形を決める。
+    // 配置の規則でウィンドウを並べ、画面に投影した矩形 (ViewportBounds) を決める。
     // viewportW と viewportH は画面の大きさ (画面の座標)、fov は縦の画角 (度)
-    public void Place(float viewportW, float viewportH, float fov)
+    public void Project(float viewportW, float viewportH, float fov)
     {
         Layout.Arrange(this);
         // 距離 Position.Z の所の 1 メートルが、画面の上で覆う長さ
@@ -55,14 +55,14 @@ public class Screen
             var b = window.Bounds;
             if (b == null)
             {
-                window.Viewport = null;
+                window.ViewportBounds = null;
                 continue;
             }
             var x0 = (float)Math.Round(left + b.X * perM);
             var y0 = (float)Math.Round(top + b.Y * perM);
             var x1 = (float)Math.Round(left + (b.X + b.W) * perM);
             var y1 = (float)Math.Round(top + (b.Y + b.H) * perM);
-            window.Viewport = new Bounds(x0, y0, x1 - x0, y1 - y0);
+            window.ViewportBounds = new Bounds(x0, y0, x1 - x0, y1 - y0);
         }
     }
 }
@@ -95,8 +95,8 @@ public class Window
     public IContent Content;
     // スクリーンの上の場所 (メートル、スクリーンの左上が 0,0)。配置の規則が決め、出さないウィンドウは null
     public Bounds? Bounds;
-    // 画面の上の場所 (画面の座標、画素に揃える)。Screen.Place が決め、出さないウィンドウは null
-    public Bounds? Viewport;
+    // 画面の上の場所 (画面の座標、画素に揃える)。Screen.Project が決め、出さないウィンドウは null
+    public Bounds? ViewportBounds;
 
     public Window(IContent content)
     {

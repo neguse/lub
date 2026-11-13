@@ -34,7 +34,7 @@ public static class ScreenView
             foreach (var screen in FarFirst(screens))
                 foreach (var window in screen.Windows)
                 {
-                    var at = window.Viewport;
+                    var at = window.ViewportBounds;
                     var tex = window.Content.Texture();
                     if (at == null || tex == null)
                         continue;

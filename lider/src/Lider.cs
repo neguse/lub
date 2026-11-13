@@ -1170,10 +1170,10 @@ public static class Lider
         // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
         foreach (var screen in Screens)
-            screen.Place(sw, sh, Space.FlatFov);
+            screen.Project(sw, sh, Space.FlatFov);
         var game = GameWindow();
         if (game != null)
-            GameApp.Step(dt, Work != null && Work.Active, game.Viewport!, PixelRatio);
+            GameApp.Step(dt, Work != null && Work.Active, game.ViewportBounds!, PixelRatio);
         ScreenView.Draw(Screens, sw, sh);
         var change = GameApp.Changed();
         if (change.Reloaded)
@@ -1192,7 +1192,7 @@ public static class Lider
     {
         foreach (var screen in Screens)
             foreach (var window in screen.Windows)
-                if (window.Content is GameView && window.Viewport != null)
+                if (window.Content is GameView && window.ViewportBounds != null)
                     return window;
         return null;
     }
