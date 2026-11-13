@@ -3,7 +3,7 @@
 // 既製の lub_vm は、これに src/vm_main.c の数行の main を付けたもの。
 // 自前の player は、自分の main (lub_vm_main.h の LUB_VM_MAIN) で、静的に link した native の拡張を渡す。
 // web で native の拡張を使うには、この形で player ごと emscripten で build する。
-// 引数と動き (.tcsb / .csproj、overlay、hot reload、検査の口) は既製の lub_vm と同じ。
+// 引数と動き (.tcsb / .csproj、hot reload、検査の口) は既製の lub_vm と同じ。
 #include <SDL3/SDL.h>
 #include <lub/lub_vm_extension.h>
 

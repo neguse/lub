@@ -3,16 +3,13 @@
 // frame の骨格は host API (src/host_api.c) が持ち、ここは VM の読み込み、entry の呼び出し、hot reload だけ。
 // API は lub-gen vm が作る host の関数 (src/gen/vm_api_gen.c) で、player はゲームを選ばない (stub の全部を登録する)。
 //
-//   lub_vm <Entry>.tcsb [--entry CLASS] [--overlay CLASS] [--extension LIB] [--fixed-dt S] [--capture PNG] [--capture-frame N] [--digest]
+//   lub_vm <Entry>.tcsb [--entry CLASS] [--extension LIB] [--fixed-dt S] [--capture PNG] [--capture-frame N] [--digest]
 //   lub_vm <Entry>.csproj [...]
 //
 // .csproj を渡すと、入力 (src/vm_project.h) を集めて tcs vm --watch を背後に張り、保存のたびに差分を当てる。
-// 差分を当てた後に entry と overlay の OnReload() を呼び、compile error の保存では OnBuildFailed(string errors) を呼ぶ。
+// 差分を当てた後に entry の OnReload() を呼び、compile error の保存では OnBuildFailed(string errors) を呼ぶ。
 // どちらも log に 1 行出す (`lub: reloaded` / `lub: reload failed: ...`)。
 // 差分に知らせ (tcs の reload_notes。生きている instance に入らない初期化子の変更など) があれば、OnReload の後に OnReloadNotes(string notes) を呼ぶ。
-// ProjectReference に Lub="Overlay" を付けた参照先の class は、ゲームに重ねる overlay にする。
-// overlay の callback は OnInit がゲームの後、OnEvent がゲームの前、OnFrame がゲームの後 (ゲームの上に描く)、OnQuit がゲームの前。
-// overlay が Input.Grab で取った種類の event はゲームに渡さない。
 // X.ref.cs の隣の native の library は、その関数を VM の host の関数として登録する拡張として読む (include/lub/lub_vm_extension.h)。
 //
 // entry class は --entry (IL の名前、namespace は '_' で繋ぐ)、無ければ .tcsb の basename。
@@ -28,7 +25,7 @@
 // その OS の player が動かす snapshot を dir に書く (backend_export.c)。
 // snapshot の bytecode は <Entry>.tcsb で、player は引数なしで起動すると、実行ファイルの隣の .tcsb を動かす (src/main.c)。
 // 誤り (C# の例外に当たる VM の fault) は log に出し、その frame を失敗にして続ける。
-// fault の処置は、失敗した callback の class (entry か overlay) の static ErrorAction OnError(string) に聞く (無ければ Log)。
+// fault の処置は、entry class の static ErrorAction OnError(string) に聞く (無ければ Log)。
 // OnError 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。
 #include "api_internal.h"
 #include "app.h"
@@ -47,7 +44,6 @@
 #include "gen/vm_api_gen.c"
 #include "pass.h"
 #include "pick.h"
-#include "rewind.h"
 #ifndef __EMSCRIPTEN__
 #define VM_PROJECT                                                             \
   1 // .csproj から動かす (tcs の子 process を張る。native だけ)
@@ -56,7 +52,7 @@
 #include "vm_project.h"
 #endif
 
-// entry class と overlay の callback の関数の番号 (無ければ -1)
+// entry class の callback の関数の番号 (無ければ -1)
 typedef struct Hooks {
   char cls[256];
   int32_t init, frame, event, quit, reload, build_failed, reload_notes, error,
@@ -81,7 +77,7 @@ typedef struct Player {
   char rev[1024];
   int32_t acked; // ACK を返した revision (無ければ -1)
   int64_t module_mtime;
-  Hooks game, tool;
+  Hooks game;
   // native の拡張 (include/lub/lub_vm_extension.h)。VM を作るたびに呼ぶ
   LubVmExtensionFn extensions[MAX_EXTENSIONS];
   int nextensions;
@@ -230,8 +226,6 @@ static bool bind_entry(Player *p) {
     return false;
   }
   bind_hooks(p, &p->game);
-  if (p->tool.cls[0])
-    bind_hooks(p, &p->tool);
   if (p->game.frame < 0) {
     SDL_Log("lub: %s has no static OnFrame(float)", p->game.cls);
     return false;
@@ -296,51 +290,33 @@ static void call_on_error(Player *p, const Hooks *h) {
     lub_app_quit(p->ctx, 1);
 }
 
-// overlay の callback の間だけ App.in_overlay を立てる (Input.Grab と、入力を隠す判定が見る)
-static bool call_hook(Player *p, const Hooks *h, int32_t fn, const char *what,
+// entry の callback を呼び、失敗したら OnError に処置を聞く
+static bool call_hook(Player *p, int32_t fn, const char *what,
                       const TvmSlot *args, size_t nargs) {
-  App *app = lub_api_app(p->ctx);
-  bool overlay = h == &p->tool;
-  if (overlay)
-    app->in_overlay = true;
   bool ok = call_fn(p, fn, what, args, nargs);
   if (!ok)
-    call_on_error(p, h);
-  if (overlay)
-    app->in_overlay = false;
+    call_on_error(p, &p->game);
   return ok;
 }
 
 static void profile_stop(Player *p);
 
 static void free_vm(Player *p) {
-  // Rewind の控えは VM の中にあるので、VM より先に捨てる
-  if (p->ctx)
-    rewind_drop(lub_api_app(p->ctx));
   // 行ごとの負荷の時間を知らせる thread は VM を触るので、VM より先に止める
   profile_stop(p);
   if (p->lub.vm)
     tvm_free(p->lub.vm);
   p->lub.vm = NULL;
   clear_hooks(&p->game);
-  clear_hooks(&p->tool);
-  App *app = lub_api_app(p->ctx);
-  if (app) {
-    app->overlay_grab_keyboard = false;
-    app->overlay_grab_mouse = false;
-  }
 }
 
-// 起動と作り直しの OnInit (ゲームの後に overlay)
+// 起動と作り直しの OnInit
 static void call_init(Player *p) {
-  call_hook(p, &p->game, p->game.init, "OnInit", NULL, 0);
-  call_hook(p, &p->tool, p->tool.init, "overlay OnInit", NULL, 0);
+  call_hook(p, p->game.init, "OnInit", NULL, 0);
 }
 
-// OnQuit (overlay はゲームを包むので先)
 static void call_quit(Player *p) {
-  call_hook(p, &p->tool, p->tool.quit, "overlay OnQuit", NULL, 0);
-  call_hook(p, &p->game, p->game.quit, "OnQuit", NULL, 0);
+  call_hook(p, p->game.quit, "OnQuit", NULL, 0);
 }
 
 // native の拡張を読む (失敗は log に出して飛ばす。その関数を使う module は読み込みで止まる)
@@ -468,7 +444,7 @@ static void poll_reload(Player *p) {
             p->lub.vm ? "the module was rewritten" : "the module was rebuilt");
 }
 
-// ---- 検査の口 (LubDebugHooks): --trace の記録、値の木、Rewind の状態の控え ----
+// ---- 検査の口 (LubDebugHooks): --trace の記録、値の木 ----
 
 static void arena_reset(StrArena *a) { a->len = 0; }
 
@@ -631,36 +607,6 @@ static bool hook_inspect_pinned(App *app, LubStr key, LubStr id) {
   char k[64], i[64];
   return p->lub.vm && tvm_inspect_pinned(p->lub.vm, cstr(key, k, sizeof k),
                                          cstr(id, i, sizeof i));
-}
-
-static void *hook_snapshot_take(App *app) {
-  Player *p = (Player *)app->debug_user;
-  return p->lub.vm ? tvm_snapshot_take(p->lub.vm, p->game.cls) : NULL;
-}
-
-static void hook_snapshot_restore(App *app, void *s) {
-  Player *p = (Player *)app->debug_user;
-  if (p->lub.vm)
-    tvm_snapshot_restore(p->lub.vm, (const TvmSnapshot *)s);
-}
-
-static void hook_snapshot_free(App *app, void *s) {
-  Player *p = (Player *)app->debug_user;
-  if (p->lub.vm)
-    tvm_snapshot_free(p->lub.vm, (TvmSnapshot *)s);
-}
-
-static bool hook_snapshot_number(App *app, void *s, LubStr path, float *out) {
-  Player *p = (Player *)app->debug_user;
-  char text[1024];
-  return p->lub.vm &&
-         tvm_snapshot_number(p->lub.vm, (const TvmSnapshot *)s, p->game.cls,
-                             cstr(path, text, sizeof text), out);
-}
-
-static uint32_t hook_layout_version(App *app) {
-  Player *p = (Player *)app->debug_user;
-  return p->lub.vm ? tvm_layout_version(p->lub.vm) : 0;
 }
 
 // Gfx.Pick の呼び出し元: draw を呼んだ時の VM の呼び出しの並び (内側から 1 行に 1 つ "file:line")
@@ -872,103 +818,50 @@ static void hook_inspect_instances(App *app, int32_t max_depth,
 }
 
 static const LubDebugHooks g_debug_hooks = {
-    hook_take_trace,        hook_take_values,    hook_inspect,
-    hook_inspect_pin,       hook_inspect_pinned, hook_snapshot_take,
-    hook_snapshot_restore,  hook_snapshot_free,  hook_snapshot_number,
-    hook_layout_version,    hook_profile_lines,  hook_take_profile,
-    hook_take_gc_pauses,    hook_take_kept,      hook_profile_site,
-    hook_inspect_instances,
+    hook_take_trace,   hook_take_values,       hook_inspect,
+    hook_inspect_pin,  hook_inspect_pinned,    hook_profile_lines,
+    hook_take_profile, hook_take_gc_pauses,    hook_take_kept,
+    hook_profile_site, hook_inspect_instances,
 };
 
-// overlay が Input.Grab で取っている種類の event か
-static bool event_grabbed(const App *app, const LubEventData *e) {
-  switch (e->kind) {
-  case LUB_EVENT_KIND_KEY_DOWN:
-  case LUB_EVENT_KIND_KEY_UP:
-    return app->overlay_grab_keyboard;
-  case LUB_EVENT_KIND_MOUSE_BUTTON_DOWN:
-  case LUB_EVENT_KIND_MOUSE_BUTTON_UP:
-  case LUB_EVENT_KIND_MOUSE_MOTION:
-  case LUB_EVENT_KIND_MOUSE_WHEEL:
-    return app->overlay_grab_mouse;
-  default:
-    return false;
-  }
-}
-
-// overlay が先に受け取る。
-// overlay がその場で Grab した event もゲームには渡さない
 static void on_event(Player *p, const LubEventData *e) {
-  if (!p->lub.vm)
+  if (!p->lub.vm || p->game.event < 0)
     return;
   TvmSlot args[1];
-  if (p->tool.event >= 0) {
-    args[0].p = vm_lub_event(&p->lub, e);
-    call_hook(p, &p->tool, p->tool.event, "overlay OnEvent", args, 1);
-  }
-  App *app = lub_api_app(p->ctx);
-  if (p->game.event < 0 || event_grabbed(app, e) || rewind_paused(app))
-    return;
   args[0].p = vm_lub_event(&p->lub, e);
-  call_hook(p, &p->game, p->game.event, "OnEvent", args, 1);
+  call_hook(p, p->game.event, "OnEvent", args, 1);
 }
 
 static bool on_frame(Player *p, float dt) {
   if (!p->lub.vm)
     return true;
-  App *app = lub_api_app(p->ctx);
-  // Rewind: 記録中は控え、止めていれば止めた frame の状態に戻して、控えた入力と dt で作り直す
-  double game_dt = dt;
-  rewind_frame_begin(app, &game_dt);
+  // VM の frame の境目は、次の OnFrame の前に置く。
+  // 開いた側は、App.Step の後にその frame の持ち越し (Sys.TakeKept) を取れる
+  tvm_frame_end(p->lub.vm);
   TvmSlot args[1];
-  args[0].f = (float)game_dt;
-  bool ok = call_hook(p, &p->game, p->game.frame, "OnFrame", args, 1);
-  rewind_frame_end(app);
   args[0].f = dt;
-  if (p->tool.frame >= 0 && p->lub.vm) {
-    // overlay はゲームの後に描き、ゲームの OnFrame が失敗した frame でも動く。
-    // 失敗で開いたままの pass は閉じてから渡す。
-    // どちらかが失敗した frame は失敗した frame (resource の sweep までの frame に数えない)
-    if (pass_state_in_pass(&app->pass))
-      pass_state_end(&app->pass);
-    ok =
-        call_hook(p, &p->tool, p->tool.frame, "overlay OnFrame", args, 1) && ok;
-  }
-  if (p->lub.vm)
-    tvm_frame_end(p->lub.vm);
-  return ok;
+  return call_hook(p, p->game.frame, "OnFrame", args, 1);
 }
 
-// 差分を当てた後の OnReload (ゲームの後に overlay)
+// 差分を当てた後の OnReload
 static void call_reload(Player *p) {
-  call_hook(p, &p->game, p->game.reload, "OnReload", NULL, 0);
-  call_hook(p, &p->tool, p->tool.reload, "overlay OnReload", NULL, 0);
+  call_hook(p, p->game.reload, "OnReload", NULL, 0);
 }
 
 static void call_build_failed(Player *p, const char *errors, size_t len) {
-  if (!p->lub.vm)
+  if (!p->lub.vm || p->game.build_failed < 0)
     return;
-  const Hooks *hooks[2] = {&p->game, &p->tool};
-  for (int i = 0; i < 2 && p->lub.vm; i++) {
-    if (hooks[i]->build_failed < 0)
-      continue;
-    TvmSlot args[1];
-    args[0].p = tvm_string_new(p->lub.vm, errors, len);
-    call_hook(p, hooks[i], hooks[i]->build_failed,
-              i ? "overlay OnBuildFailed" : "OnBuildFailed", args, 1);
-  }
+  TvmSlot args[1];
+  args[0].p = tvm_string_new(p->lub.vm, errors, len);
+  call_hook(p, p->game.build_failed, "OnBuildFailed", args, 1);
 }
 
 static void call_reload_notes(Player *p, const char *notes, size_t len) {
-  const Hooks *hooks[2] = {&p->game, &p->tool};
-  for (int i = 0; i < 2 && p->lub.vm; i++) {
-    if (hooks[i]->reload_notes < 0)
-      continue;
-    TvmSlot args[1];
-    args[0].p = tvm_string_new(p->lub.vm, notes, len);
-    call_hook(p, hooks[i], hooks[i]->reload_notes,
-              i ? "overlay OnReloadNotes" : "OnReloadNotes", args, 1);
-  }
+  if (!p->lub.vm || p->game.reload_notes < 0)
+    return;
+  TvmSlot args[1];
+  args[0].p = tvm_string_new(p->lub.vm, notes, len);
+  call_hook(p, p->game.reload_notes, "OnReloadNotes", args, 1);
 }
 
 #ifdef VM_PROJECT
@@ -1091,7 +984,6 @@ static bool start_project(Player *p) {
   if (!vm_project_open(&p->project, p->csproj))
     return false;
   SDL_strlcpy(p->game.cls, p->project.entry, sizeof(p->game.cls));
-  SDL_strlcpy(p->tool.cls, p->project.overlay, sizeof(p->tool.cls));
   SDL_strlcpy(p->module, p->project.out_tcsb, sizeof(p->module));
   vm_project_scan(&p->project);
   for (int i = 0; i < p->project.nextensions; i++)
@@ -1175,7 +1067,7 @@ static void set_module(Player *p, const char *module, const char *entry) {
 
 #ifdef VM_PROJECT
 // 開いた app の .csproj の入力を集め、tcs vm --watch を張る。
-// ゲームのソースは --trace で変換し、csproj の overlay は呼ばない (開いた側が観察する)。
+// ゲームのソースは --trace で変換する (開いた側が観察する)。
 // module は build が .tcsb を書き直した frame に app_step が読む
 static void open_project(Player *p, const char *csproj, const char *entry) {
   p->project_mode = true;
@@ -1227,7 +1119,6 @@ static void *app_open(App *owner, App *child, const char *module,
   child->debug_user = p;
   pick_set_sites(child, vm_pick_sites, p);
   clear_hooks(&p->game);
-  clear_hooks(&p->tool);
   if (is_csproj(module)) {
 #ifdef VM_PROJECT
     open_project(p, module, entry[0] ? entry : NULL);
@@ -1363,7 +1254,7 @@ static bool app_event(void *player, const LubEventData *e) {
     return true;
   TvmSlot args[1];
   args[0].p = vm_lub_event(&p->lub, e);
-  return call_hook(p, &p->game, p->game.event, "OnEvent", args, 1);
+  return call_hook(p, p->game.event, "OnEvent", args, 1);
 }
 
 static const LubAppHooks g_app_hooks = {
@@ -1405,8 +1296,6 @@ static bool parse_args(Player *p, int argc, char **argv, LubHostOpts *opts) {
         opts->capture_frame = 30;
     } else if (!strcmp(argv[i], "--entry") && i + 1 < argc)
       entry = argv[++i];
-    else if (!strcmp(argv[i], "--overlay") && i + 1 < argc)
-      SDL_strlcpy(p->tool.cls, argv[++i], sizeof(p->tool.cls));
     else if (!strcmp(argv[i], "--extension") && i + 1 < argc)
       load_extension(p, argv[++i]);
     else if (!module)
@@ -1450,7 +1339,7 @@ EMSCRIPTEN_KEEPALIVE void lub_vm_shutdown(void) {
   p->lub.ctx = NULL;
 }
 
-// page が変換した C# の compile error を、ゲームと overlay の OnBuildFailed に渡す
+// page が変換した C# の compile error を、ゲームの OnBuildFailed に渡す
 EMSCRIPTEN_KEEPALIVE void lub_vm_build_failed(const char *errors) {
   Player *p = &g_player;
   if (p->ctx && errors)
@@ -1489,7 +1378,6 @@ SDL_AppResult lub_vm_app_init(int argc, char **argv,
   lub_api_app(p->ctx)->app_hooks = &g_app_hooks;
   pick_set_sites(lub_api_app(p->ctx), vm_pick_sites, p);
   clear_hooks(&p->game);
-  clear_hooks(&p->tool);
 #ifdef VM_PROJECT
   if (p->project_mode && !start_project(p))
     return SDL_APP_FAILURE;
@@ -1546,7 +1434,7 @@ SDL_AppResult lub_vm_app_iterate(void) {
     float dt = 0.0f;
     bool ok = lub_host_frame_begin(p->ctx, &dt);
     if (ok) {
-      ok = call_hook(p, &p->game, p->game.export_, "OnExport", NULL, 0);
+      ok = call_hook(p, p->game.export_, "OnExport", NULL, 0);
       lub_host_frame_end(p->ctx, ok);
     }
     ok = ok && !export_failed() && lub_host_exit_code(p->ctx) == 0;

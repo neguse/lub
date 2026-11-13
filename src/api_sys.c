@@ -4,7 +4,6 @@
 #include "gpu_time.h"
 #include "host_api.h"
 #include "profile.h"
-#include "rewind.h"
 #include <SDL3/SDL.h>
 #include <ctype.h>
 #include <math.h>
@@ -137,47 +136,17 @@ static SDL_Scancode scancode_from_name(LubStr name) {
   return SDL_GetScancodeFromName(key);
 }
 
-// overlay が Input.Grab で取っている入力は、overlay の外 (ゲーム) からは何も押されていないように見せる。
-static bool keyboard_hidden(const App *app) {
-  return app->overlay_grab_keyboard && !app->in_overlay;
-}
-
-static bool mouse_hidden(const App *app) {
-  return app->overlay_grab_mouse && !app->in_overlay;
-}
-
-void lub_input_grab(LubContext *ctx, bool keyboard, bool mouse) {
-  App *app = lub_api_app(ctx);
-  if (!app->in_overlay)
-    return;
-  app->overlay_grab_keyboard = keyboard;
-  app->overlay_grab_mouse = mouse;
-}
-
-// ゲームから読む入力。Rewind で止めている間のゲームの callback では控えた入力 (*replay が true)
-static const InputState *input_of(App *app, bool *replay) {
-  const InputState *in = rewind_input(app);
-  *replay = in != NULL;
-  return in ? in : &app->input;
-}
-
 bool lub_input_key_down(LubContext *ctx, LubStr key) {
   App *app = lub_api_app(ctx);
   SDL_Scancode sc = scancode_from_name(key);
-  bool replay;
-  const InputState *in = input_of(app, &replay);
-  if (!replay && keyboard_hidden(app))
-    return false;
+  const InputState *in = &app->input;
   return sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT && in->keys[sc];
 }
 
 bool lub_input_key_pressed(LubContext *ctx, LubStr key) {
   App *app = lub_api_app(ctx);
   SDL_Scancode sc = scancode_from_name(key);
-  bool replay;
-  const InputState *in = input_of(app, &replay);
-  if (!replay && keyboard_hidden(app))
-    return false;
+  const InputState *in = &app->input;
   return sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
          in->key_pressed[sc];
 }
@@ -185,24 +154,20 @@ bool lub_input_key_pressed(LubContext *ctx, LubStr key) {
 bool lub_input_key_released(LubContext *ctx, LubStr key) {
   App *app = lub_api_app(ctx);
   SDL_Scancode sc = scancode_from_name(key);
-  bool replay;
-  const InputState *in = input_of(app, &replay);
-  if (!replay && keyboard_hidden(app))
-    return false;
+  const InputState *in = &app->input;
   return sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
          in->key_released[sc];
 }
 
 // button (省略で 1 = 左) の bit を *bit に書き、読む入力を返す。
-// button が範囲の外か、overlay が mouse を取っていれば NULL
+// button が範囲の外なら NULL
 static const InputState *mouse_input(LubContext *ctx, const int32_t *button,
                                      uint32_t *bit) {
   App *app = lub_api_app(ctx);
   int32_t b = button ? *button : 1;
-  bool replay;
-  const InputState *in = input_of(app, &replay);
+  const InputState *in = &app->input;
   *bit = input_mouse_bit(b);
-  return *bit == 0 || (!replay && mouse_hidden(app)) ? NULL : in;
+  return *bit == 0 ? NULL : in;
 }
 
 bool lub_input_mouse_down(LubContext *ctx, const int32_t *button) {
@@ -224,8 +189,7 @@ bool lub_input_mouse_released(LubContext *ctx, const int32_t *button) {
 }
 
 void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
-  bool replay;
-  const InputState *in = input_of(lub_api_app(ctx), &replay);
+  const InputState *in = &lub_api_app(ctx)->input;
   if (x)
     *x = in->mouse_x;
   if (y)
@@ -236,13 +200,11 @@ void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
 // frame の中では何度読んでも同じ。
 void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
   App *app = lub_api_app(ctx);
-  bool replay;
-  const InputState *in = input_of(app, &replay);
-  bool hidden = !replay && mouse_hidden(app);
+  const InputState *in = &app->input;
   if (dx)
-    *dx = hidden ? 0.0f : in->mouse_rel_x;
+    *dx = in->mouse_rel_x;
   if (dy)
-    *dy = hidden ? 0.0f : in->mouse_rel_y;
+    *dy = in->mouse_rel_y;
 }
 
 bool lub_input_focused(LubContext *ctx) {
@@ -275,14 +237,12 @@ static bool gamepad_button_valid(int32_t button) {
 }
 
 bool lub_input_gamepad_connected(LubContext *ctx, int32_t player) {
-  bool replay;
-  const InputState *in = input_of(lub_api_app(ctx), &replay);
+  const InputState *in = &lub_api_app(ctx)->input;
   return player_valid(player) && in->pad_connected[player];
 }
 
 float lub_input_gamepad_axis(LubContext *ctx, int32_t player, int32_t axis) {
-  bool replay;
-  const InputState *in = input_of(lub_api_app(ctx), &replay);
+  const InputState *in = &lub_api_app(ctx)->input;
   return player_valid(player) && axis >= 0 && axis < SDL_GAMEPAD_AXIS_COUNT
              ? in->pad_axes[player][axis]
              : 0.0f;
@@ -291,8 +251,7 @@ float lub_input_gamepad_axis(LubContext *ctx, int32_t player, int32_t axis) {
 // 読む入力。player か button が範囲の外なら NULL
 static const InputState *pad_input(LubContext *ctx, int32_t player,
                                    int32_t button) {
-  bool replay;
-  const InputState *in = input_of(lub_api_app(ctx), &replay);
+  const InputState *in = &lub_api_app(ctx)->input;
   return player_valid(player) && gamepad_button_valid(button) ? in : NULL;
 }
 
@@ -483,54 +442,4 @@ bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id,
   App *app = api_app_observed(lub_api_app(ctx), of);
   return app && app->debug_hooks && app->debug_hooks->inspect_pinned &&
          app->debug_hooks->inspect_pinned(app, key, id);
-}
-
-// 直近の値の列 (次の呼び出しまで有効)
-static float *g_history;
-static int32_t g_history_cap;
-
-void lub_sys_inspect_history(LubContext *ctx, LubStr path, int32_t count,
-                             const float **out, int32_t *out_count) {
-  App *app = lub_api_app(ctx);
-  *out = NULL;
-  *out_count = 0;
-  const LubDebugHooks *h = app->debug_hooks;
-  if (!h || !h->snapshot_number || count <= 0)
-    return;
-  int32_t n = 0;
-  while (n < count && rewind_snapshot(app, n))
-    n++;
-  if (n > g_history_cap) {
-    float *grown = (float *)realloc(g_history, (size_t)n * sizeof(float));
-    if (!grown)
-      return;
-    g_history = grown;
-    g_history_cap = n;
-  }
-  // 古い順
-  for (int32_t i = 0; i < n; i++) {
-    float v;
-    g_history[i] =
-        h->snapshot_number(app, rewind_snapshot(app, n - 1 - i), path, &v)
-            ? v
-            : NAN;
-  }
-  *out = g_history;
-  *out_count = n;
-}
-
-void lub_rewind_record(LubContext *ctx, int32_t frames) {
-  rewind_record(lub_api_app(ctx), frames);
-}
-
-int32_t lub_rewind_count(LubContext *ctx) {
-  return rewind_count(lub_api_app(ctx));
-}
-
-void lub_rewind_pause(LubContext *ctx, int32_t back) {
-  rewind_pause(lub_api_app(ctx), back);
-}
-
-int32_t lub_rewind_position(LubContext *ctx) {
-  return rewind_position(lub_api_app(ctx));
 }

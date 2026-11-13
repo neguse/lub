@@ -11060,18 +11060,6 @@ static TvmStatus vm_host_lub_input_capture_mouse(TvmVm *vm, TvmSlot *a,
   r[0].i = result;
   VM_LUB_LEAVE(vm);
 }
-static TvmStatus vm_host_lub_input_grab(TvmVm *vm, TvmSlot *a, TvmSlot *r,
-                                        void *user) {
-  (void)a;
-  (void)r;
-  VM_LUB_ENTER();
-  bool p_keyboard = a[0].i != 0;
-  bool p_mouse = a[1].i != 0;
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  lub_input_grab(s->ctx, p_keyboard, p_mouse);
-  VM_LUB_LEAVE(vm);
-}
 static TvmStatus vm_host_lub_input_gamepad_connected(TvmVm *vm, TvmSlot *a,
                                                      TvmSlot *r, void *user) {
   (void)a;
@@ -12031,23 +12019,6 @@ static TvmStatus vm_host_lub_sys_inspect_pinned(TvmVm *vm, TvmSlot *a,
   r[0].i = result;
   VM_LUB_LEAVE(vm);
 }
-static TvmStatus vm_host_lub_sys_inspect_history(TvmVm *vm, TvmSlot *a,
-                                                 TvmSlot *r, void *user) {
-  (void)a;
-  (void)r;
-  VM_LUB_ENTER();
-  void *p_path = a[0].p;
-  int32_t p_count = a[1].i;
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  const float *result = {0};
-  int32_t result_count = 0;
-  lub_sys_inspect_history(s->ctx, vm_lub_str(p_path), p_count, &result,
-                          &result_count);
-  r[0].p = vm_lub_list(s, &s->types[22], NULL, result, result_count,
-                       sizeof(*result));
-  VM_LUB_LEAVE(vm);
-}
 static TvmStatus vm_host_lub_sys_profile_lines(TvmVm *vm, TvmSlot *a,
                                                TvmSlot *r, void *user) {
   (void)a;
@@ -12118,52 +12089,6 @@ static TvmStatus vm_host_lub_sys_take_gpu_passes(TvmVm *vm, TvmSlot *a,
   lub_sys_take_gpu_passes(s->ctx, (p_app ? (int32_t)p_app->host_value : 0),
                           &result, &result_count);
   r[0].p = vm_lub_from_GpuPass_list(s, NULL, result, result_count);
-  VM_LUB_LEAVE(vm);
-}
-static TvmStatus vm_host_lub_rewind_record(TvmVm *vm, TvmSlot *a, TvmSlot *r,
-                                           void *user) {
-  (void)a;
-  (void)r;
-  VM_LUB_ENTER();
-  int32_t p_frames = a[0].i;
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  lub_rewind_record(s->ctx, p_frames);
-  VM_LUB_LEAVE(vm);
-}
-static TvmStatus vm_host_lub_rewind_count(TvmVm *vm, TvmSlot *a, TvmSlot *r,
-                                          void *user) {
-  (void)a;
-  (void)r;
-  VM_LUB_ENTER();
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  int32_t result = {0};
-  result = lub_rewind_count(s->ctx);
-  r[0].i = result;
-  VM_LUB_LEAVE(vm);
-}
-static TvmStatus vm_host_lub_rewind_pause(TvmVm *vm, TvmSlot *a, TvmSlot *r,
-                                          void *user) {
-  (void)a;
-  (void)r;
-  VM_LUB_ENTER();
-  int32_t p_back = a[0].i;
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  lub_rewind_pause(s->ctx, p_back);
-  VM_LUB_LEAVE(vm);
-}
-static TvmStatus vm_host_lub_rewind_position(TvmVm *vm, TvmSlot *a, TvmSlot *r,
-                                             void *user) {
-  (void)a;
-  (void)r;
-  VM_LUB_ENTER();
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  int32_t result = {0};
-  result = lub_rewind_position(s->ctx);
-  r[0].i = result;
   VM_LUB_LEAVE(vm);
 }
 static TvmStatus vm_host_lub_profiler_enabled(TvmVm *vm, TvmSlot *a, TvmSlot *r,
@@ -16056,7 +15981,6 @@ static const struct {
     {"lub.input.mouse_delta", "&f&f", "", vm_host_lub_input_mouse_delta},
     {"lub.input.focused", "", "b", vm_host_lub_input_focused},
     {"lub.input.capture_mouse", "b", "b", vm_host_lub_input_capture_mouse},
-    {"lub.input.grab", "bb", "", vm_host_lub_input_grab},
     {"lub.input.gamepad_connected", "i", "b",
      vm_host_lub_input_gamepad_connected},
     {"lub.input.gamepad_axis", "ii", "f", vm_host_lub_input_gamepad_axis},
@@ -16121,16 +16045,11 @@ static const struct {
      vm_host_lub_sys_inspect_instances},
     {"lub.sys.inspect_pin", "sso", "", vm_host_lub_sys_inspect_pin},
     {"lub.sys.inspect_pinned", "sso", "b", vm_host_lub_sys_inspect_pinned},
-    {"lub.sys.inspect_history", "si", "o", vm_host_lub_sys_inspect_history},
     {"lub.sys.profile_lines", "bo", "", vm_host_lub_sys_profile_lines},
     {"lub.sys.take_profile", "o", "o", vm_host_lub_sys_take_profile},
     {"lub.sys.take_gc_pauses", "o", "o", vm_host_lub_sys_take_gc_pauses},
     {"lub.sys.take_kept", "o", "o", vm_host_lub_sys_take_kept},
     {"lub.sys.take_gpu_passes", "o", "o", vm_host_lub_sys_take_gpu_passes},
-    {"lub.rewind.record", "i", "", vm_host_lub_rewind_record},
-    {"lub.rewind.count", "", "i", vm_host_lub_rewind_count},
-    {"lub.rewind.pause", "i", "", vm_host_lub_rewind_pause},
-    {"lub.rewind.position", "", "i", vm_host_lub_rewind_position},
     {"lub.profiler.enabled", "", "b", vm_host_lub_profiler_enabled},
     {"lub.profiler.begin_scope", "s", "", vm_host_lub_profiler_begin_scope},
     {"lub.profiler.end_scope", "s", "", vm_host_lub_profiler_end_scope},

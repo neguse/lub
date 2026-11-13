@@ -234,6 +234,7 @@ namespace Lub
         public int? Keep;
         /// <summary>この app の入力の代わりに、番号の控えに書いた入力を見せる。
         /// 上の項目はその後に効く。入力を書いていない番号は error。
+        /// 同じ frame を作り直すための入力なので、この Step の間、開いた app の音は鳴らず、master volume も変わらない。
         /// </summary>
         public int? Replay;
     }
@@ -468,7 +469,7 @@ namespace Lub
         /// module は tcs VM の bytecode (.tcsb) か、ゲームの .csproj の path。entry はその中の entry class (IL の名前。省くと module の basename)。
         /// .csproj は `lub <Entry>.csproj` と同じに build して watch し、ソースを保存すると開いた app だけに hot reload を当てる。
         /// build を待つ間は `Step` が false を返し、この app は止まらない。
-        /// .csproj の app のソースは tcs の --trace で変換し、csproj の overlay は呼ばない。
+        /// .csproj の app のソースは tcs の --trace で変換する。
         /// .csproj を開けるのは `lub <Entry>.csproj` の player だけで、web では .tcsb を開く。
         /// 開かれた app は自分の VM、key の資源、物理、音を持ち、この app とは何も共有しない。
         /// 宣言が途切れると、資源と同じ規則で閉じる (`OnQuit` を呼ぶ)。
@@ -764,7 +765,7 @@ namespace Lub
         }
 
         /// <summary>target (MainTex か XR の眼の Target) の画素 (x, y) に、一番手前で描いた draw を調べる要求。
-        /// 次の frame のゲームの draw (overlay の draw は除く) を記録し、その frame の終わりに、同じ vertex shader と depth の設定で、その 1 画素だけを流し直す。
+        /// 次の frame の draw を記録し、その frame の終わりに、同じ vertex shader と depth の設定で、その 1 画素だけを流し直す。
         /// 結果は PickResult で受け取る (届くのは早くて次の frame)。
         /// 新しい要求は前の結果を捨てる (記録している frame の中で出した要求は、その frame ではなく後の frame から引く)。
         /// x, y は target の px (左上原点)。
@@ -981,16 +982,6 @@ namespace Lub
         public static bool CaptureMouse(bool captured)
         {
             return false;
-        }
-
-        /// <summary>overlay (csproj の ProjectReference に Lub="Overlay" を付けた参照先の entry class) が、キーボードとマウスの入力を取るか。
-        /// 取っている間、その種類の event はゲームの OnEvent に届かず、ゲームから読む Input は何も押されていない状態 (MouseDelta は 0) を返す。
-        /// overlay は取っている間も全部の入力を読める。
-        /// overlay の callback の中で呼んだときだけ効き、VM を作り直すと取っていない状態に戻る。
-        /// </summary>
-        [LubNoFail]
-        public static void Grab(bool keyboard, bool mouse)
-        {
         }
 
         /// <summary>gamepad の軸。stick は -1..1 (下と右が +)、trigger は 0..1。
@@ -1514,7 +1505,7 @@ namespace Lub
         }
 
         /// <summary>tcs の --trace で変換したソースが、前に呼んでから実行した行 ("file:line") を返し、記録を空にする。
-        /// tcs VM の player (lub Game.csproj) は overlay (Lub="Overlay") があるとき、ゲームのソース (overlay の参照先のディレクトリを除いた、entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。
+        /// tcs VM の player (lub Game.csproj) は、`App.Use` で .csproj を開いた app のソース (entry と Lub="Source" の参照先のディレクトリの下の .cs) を --trace で変換する。
         /// 記録が無ければ空。
         /// 順番は決まっていない。
         /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
@@ -1595,16 +1586,6 @@ namespace Lub
             return false;
         }
 
-        /// <summary>path の節の直近の値を count frame 分まで、古い順に返す (Rewind が控えている分だけ。止めていれば止めている frame まで)。返した列は次の呼び出しまで有効。
-        /// path の親の object は今の値の木で決め、各 frame のその object の値を読むので、要素の並びが変わっても同じ個体を追う。
-        /// その frame に親の object が無いか、値が数でなければ NaN。
-        /// </summary>
-        [LubNoFail]
-        public static List<float> InspectHistory(string path, int count)
-        {
-            return new List<float>();
-        }
-
         /// <summary>tcs の --trace で変換したソースの行ごとの負荷 (Sys.TakeProfile)、GC の止まり (Sys.TakeGcPauses)、持ち越し (Sys.TakeKept)、pass ごとの GPU の時間 (Sys.TakeGpuPasses) を数え始める (true) か止める (false)。
         /// 行ごとの負荷、GC の止まり、持ち越しは tcs VM の player だけが数え、GPU の pass はどの host でも数える。数えている間は、別の thread が 0.25 ms ごとに経った時間を知らせ、そのとき実行していた行に足す (thread の無い環境では時間を数えない)。
         /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
@@ -1636,7 +1617,7 @@ namespace Lub
 
         /// <summary>frame の境目をまたいで持ち越す物 (KeptObject) を、作った行と、それを持つ field ごとに返す。
         /// 数えるのは、前の frame の境目の後に tcs の --trace で変換したソースの行で作られ、今ゲームの状態 (entry の class と --trace で変換した class の static) から辿れる物で、一度返した物は次から返さない。
-        /// frame の境目 (ゲームと overlay の OnFrame の後) で作った物を忘れるので、ゲームの frame の分は overlay の OnFrame の中で取る。
+        /// 開いた app の frame の分は、その `App.Step` の後、次の `App.Step` の前に取る。
         /// 数えていなければ空。順番は決まっていない。
         /// app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
         /// </summary>
@@ -1648,7 +1629,7 @@ namespace Lub
 
         /// <summary>前に呼んでから GPU が終えた frame の pass (GpuPass) を、古い順に返す。
         /// GPU の時間は、その frame を GPU が終えた後 (多くの backend で 2 frame 後) に届く。
-        /// Gfx.BeginPass で始めた pass を数え、overlay の中の pass は数えない。
+        /// Gfx.BeginPass で始めた pass を数える。
         /// frame の途中で数え始めたら、次の frame の pass から数える。数えていなければ空。
         /// app を渡すと、`App.Use` で開いたその app の pass を返す (省くとこの app。数えるかどうかも app ごとで、`ProfileLines` に同じ app を渡して始める)。
         /// </summary>
@@ -1656,52 +1637,6 @@ namespace Lub
         public static List<GpuPass> TakeGpuPasses(AppRef? app = null)
         {
             return new List<GpuPass>();
-        }
-    }
-
-    /// <summary>overlay (Lub="Overlay") がゲームの時間を止め、過去の frame に戻る口。
-    /// 控えている間は、ゲームの OnFrame の前ごとに、ゲームの状態と、その frame の入力と dt を控える。
-    /// ゲームの状態は、entry の class と、tcs の --trace で変換した class の static から辿れる値の全部で (一部の class だけを戻さないことはできない)、戻すときは同じ object に書き戻す。
-    /// 止めている間は、毎 frame、止めた位置の状態に戻し、控えた入力と dt でゲームの OnFrame を呼び直して描く (コードを直せば、直したコードで描き直す)。
-    /// 控える入力は、その frame にゲームから見えた keyboard、mouse、gamepad (overlay が Input.Grab で取っていた種類は何も押されていない) で、作り直している間は今の Input.Grab によらずそれを返す。
-    /// ゲームの OnEvent は呼ばず、音は鳴らさず、master volume も変えない。
-    /// VM を起動し直すか、reload が object を作り直すと、控えは捨てる。
-    /// 止めている間に reload が object を作り直したときは、止めたままで、次の frame の状態を控え直してそこで止める (それより前へは戻れない)。
-    /// 物理の world、file など VM の外の状態は戻らない。
-    /// どれも tcs VM の player の overlay の callback の中で呼んだときだけ効く。
-    /// </summary>
-    public static class Rewind
-    {
-        /// <summary>直近の frames 個の frame を控える (0 で控えるのをやめ、控えを捨てる。既定は 0)。
-        /// </summary>
-        [LubNoFail]
-        public static void Record(int frames)
-        {
-        }
-
-        /// <summary>控えている frame の数。
-        /// </summary>
-        [LubNoFail]
-        public static int Count()
-        {
-            return 0;
-        }
-
-        /// <summary>back 個前 (0 = 直近に控えた frame) の frame で止める。
-        /// -1 なら、止めている位置の状態に戻し、それより後の控えを捨てて、そこから続ける。
-        /// </summary>
-        [LubNoFail]
-        public static void Pause(int back)
-        {
-        }
-
-        /// <summary>止めている位置 (何個前か)。
-        /// 止めていなければ -1。
-        /// </summary>
-        [LubNoFail]
-        public static int Position()
-        {
-            return 0;
         }
     }
 

@@ -278,7 +278,6 @@ set(LUB_SOURCES
   src/api_font.c
   src/api_mesh.c
   src/lubx/vorbis.c
-  src/rewind.c
   src/pass.c
   src/pick.c
   src/profile.c

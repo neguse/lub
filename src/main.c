@@ -60,7 +60,7 @@ static bool resolve_entry(int *argc, char ***argvp) {
     if ((strcmp(argv[i], "--capture") == 0 ||
          strcmp(argv[i], "--capture-frame") == 0 ||
          strcmp(argv[i], "--fixed-dt") == 0 ||
-         strcmp(argv[i], "--entry") == 0 || strcmp(argv[i], "--overlay") == 0 ||
+         strcmp(argv[i], "--entry") == 0 ||
          strcmp(argv[i], "--extension") == 0 || strcmp(argv[i], "-o") == 0) &&
         i + 1 < n) {
       i++;

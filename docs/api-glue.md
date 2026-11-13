@@ -112,7 +112,7 @@ tcs2c の接続コードは tcs2c の値の struct と C API の struct を fiel
 struct の record は関数の引数と out と戻り値では null にできず、`T?` は class の record の field にだけ置ける。
 List、配列、callback の引数にも置けない (`lub-gen check` が止める)。
 tcs2c が process を止める誤り (配列の長さ、bit mask) は、その呼び出しの VM の fault (C# の trace 付き) になる。
-callback の fault は、その callback の class (entry か overlay) の `OnError` に message (C# の trace 付き) を渡し、`ErrorAction` で処置を決める。
+callback の fault は、entry class の `OnError` に message (C# の trace 付き) を渡し、`ErrorAction` で処置を決める。
 query の visitor (`Phys2d.RaycastAll` など) の fault は、query を fault にせず null を返す (message は log に出す)。
 tcs2c の経路でも、entry の callback の fault は `OnError` に渡る (message は fault の種類で、trace は付かない)。
 runtime の関数が呼んでいる callback (query の visitor など) の中の fault は、tcs2c の経路では process を止める。
@@ -125,13 +125,13 @@ hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当て�
 commit ACK (`@@tcs_commit {"revision":N,"ok":...}`) を出す。
 playground はこの player (`build/wasm/vm/lub.js`) を使い、変換は tcs の wasm の VM の session (`vmopen` / `vmupdate`)。
 
-`lub Game.csproj` は入力 (csproj のディレクトリと `Lub="Source"` / `Lub="Overlay"` の参照先の下の `*.cs`、cs-lib の実装。`*.ref.cs` は `--ref`) の一覧を `.lub/<Entry>.inputs` に書き、`tcs vm --watch --inputs-from` を背後に張る (`src/vm_project.c`)。
+`lub Game.csproj` は入力 (csproj のディレクトリと `Lub="Source"` の参照先の下の `*.cs`、cs-lib の実装。`*.ref.cs` は `--ref`) の一覧を `.lub/<Entry>.inputs` に書き、`tcs vm --watch --inputs-from` を背後に張る (`src/vm_project.c`)。
 一覧は 0.3 秒ごとに探し直すので、file を足すか消すとそのまま変換し直す。
-差分は `@@tcs_vm_batch` の frame で届き、当ててから entry と overlay の `OnReload` を呼ぶ。
+差分は `@@tcs_vm_batch` の frame で届き、当ててから entry の `OnReload` を呼ぶ。
 その差分に `@@tcs_reload_notes` の frame (生きている instance に入らない instance の field の初期化子の変更など) が先に届いていれば、`OnReload` の後に `OnReloadNotes(notes)` に渡す。
 compile error は `@@tcs_build_failed` の frame で届き、`OnBuildFailed(errors)` に渡す。
-`Lub="Overlay"` の参照先の class は overlay として、`OnInit` はゲームの後、`OnEvent` はゲームの前、`OnFrame` はゲームの後、`OnQuit` はゲームの前に呼ぶ (`.tcsb` から動かすときは `--overlay CLASS`)。
-overlay があると、overlay の参照先を除いたソースのディレクトリを `tcs vm --trace` にし、`Sys.TakeTrace` / `TakeTraceFor` / `TakeValues` / `Inspect*`、`Rewind`、`Gfx.Pick` の呼び出し元と段ごとの this の個体、`Sys.ProfileLines` / `TakeProfile` / `TakeGcPauses` / `TakeKept` の行ごとの負荷と GC の止まりと持ち越しを VM から読む (tcs の `tcsvm.h` の検査の口)。
+`App.Use` で `.csproj` を開いた app は、そのソースのディレクトリを `tcs vm --trace` にする。
+開いた側は、`Sys.TakeTrace` / `TakeTraceFor` / `TakeValues` / `Inspect*`、`Gfx.Pick` の呼び出し元と段ごとの this の個体、`Sys.ProfileLines` / `TakeProfile` / `TakeGcPauses` / `TakeKept` の行ごとの負荷と GC の止まりと持ち越しを、開いた app の VM から読む (tcs の `tcsvm.h` の検査の口)。
 tcs2c と .NET 実行はこれらの口を持たず、空を返す。
 ゲームのソースのディレクトリの `X.ref.cs` の隣に native の library (`X.so` / `X.dylib` / `X.dll`、無ければ `libX.*`) を置くと、`lub` はそれを native の拡張として読み、VM を作るたびに `lub_vm_extension` を呼んで、`X.ref.cs` の関数を VM の host の関数として登録させる (`include/lub/lub_vm_extension.h`。拡張は lub の symbol を使わず、渡した表の関数だけを使う)。
 `.tcsb` から動かすときは `--extension LIB` で渡す。

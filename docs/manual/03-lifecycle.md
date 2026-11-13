@@ -70,7 +70,7 @@ public static void OnExport()
 }
 ```
 
-ゲームか overlay の `OnFrame` が error で終わったフレームと、hot reload で VM を作り直せずに待っている間のフレームは数えない。
+`OnFrame` が error で終わったフレームと、hot reload で VM を作り直せずに待っている間のフレームは数えない。
 コードを直している間にリソースが破棄されることはない。
 
 ## 駆動パターン (可変 dt と固定 tick)

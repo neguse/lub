@@ -4,7 +4,6 @@
 // decode は png_load と同格の純関数 utility で snd handle を作らない。
 #include "api_internal.h"
 #include "audio.h"
-#include "rewind.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -189,8 +188,8 @@ bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
     digest_tag(lub_api_app(ctx), "audio_play");
     digest_i32(lub_api_app(ctx), snd);
   }
-  // Rewind で止めた frame を作り直している間は鳴らさない
-  if (rewind_input(lub_api_app(ctx)))
+  // 控えた入力で同じ frame を作り直している間は鳴らさない
+  if (lub_api_app(ctx)->replaying)
     return false;
   AudioState *st = audio_lazy(lub_api_app(ctx));
   if (!st)
@@ -203,7 +202,7 @@ bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
 bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
                      const LubVoiceOpts *opts) {
   App *app = lub_api_app(ctx);
-  if (rewind_input(app))
+  if (app->replaying)
     return false;
   char kbuf[AUDIO_KEY_MAX];
   if (!lub_str_copy(key, kbuf, sizeof(kbuf))) {
@@ -231,8 +230,8 @@ bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
 }
 
 void lub_audio_master_volume(LubContext *ctx, float volume) {
-  // Rewind で止めた frame を作り直している間は、音の状態を変えない
-  if (rewind_input(lub_api_app(ctx)))
+  // 控えた入力で同じ frame を作り直している間は、音の状態を変えない
+  if (lub_api_app(ctx)->replaying)
     return;
   AudioState *st = audio_lazy(lub_api_app(ctx));
   if (st)

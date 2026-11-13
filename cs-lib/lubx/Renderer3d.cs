@@ -1137,7 +1137,7 @@ public class Renderer3d
     public void End()
     {
         Render();
-        // 描いた命令は次の frame に持ち越さない (持ち越すと、Rewind の控えがそれを生かし続ける)
+        // 描いた命令は次の frame に持ち越さない (持ち越すと、状態の控えがそれを生かし続ける)
         draws = new List<Renderer3dDrawCmd>();
     }
 

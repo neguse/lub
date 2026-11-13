@@ -169,7 +169,7 @@ void pick_record_draw(App *app, ResEntry *sh, const BindingsDesc *bind,
                       int cull, int prim, bool depth_test, bool depth_write,
                       int count, int instance_count) {
   PickState *p = app->pick;
-  if (!p || !p->recording || app->in_overlay)
+  if (!p || !p->recording)
     return;
   int index = p->draw_count++;
   if (p->pass_target != p->target || !sh->u.sh.vs_src)
@@ -201,7 +201,7 @@ void pick_record_draw(App *app, ResEntry *sh, const BindingsDesc *bind,
 void pick_record_uniform(App *app, int stage, int slot, const float *data,
                          size_t bytes) {
   PickState *p = app->pick;
-  if (!p || !p->recording || app->in_overlay || p->n_draws == 0)
+  if (!p || !p->recording || p->n_draws == 0)
     return;
   PickDraw *d = &p->draws[p->n_draws - 1];
   // 直前の pick_record_draw が記録しなかった draw の uniform は捨てる

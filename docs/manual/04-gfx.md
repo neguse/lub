@@ -173,7 +173,7 @@ GPU からの読み戻しは `Gfx.Readback(key)` の queue に `Gfx.ReadTexture`
 ## 画素から draw を引く (Gfx.Pick)
 
 `Gfx.Pick(target, x, y)` は、`target`(`MainTex` か XR の眼の `Target`)の画素 `(x, y)` に一番手前で描いた draw を調べる。
-要求の次の frame のゲームの draw(overlay の draw は除く)を記録し、その frame の終わりに、同じ vertex shader と depth の設定で 1 画素だけを流し直して読み戻す。
+要求の次の frame の draw を記録し、その frame の終わりに、同じ vertex shader と depth の設定で 1 画素だけを流し直して読み戻す。
 結果は `Gfx.PickResult()` が返す `PickHit` で、まだ届いていなければ null。
 `Draw` はその frame の中の draw の番号(0 始まり、何も描いていなければ -1)、`Site` は draw を呼んだ所の並び(内側から 1 行に 1 つ、`file:line`)。
 `Site` を作るのは player で、tcs VM の player では VM の呼び出しの並び(C# のソースの行)になる。

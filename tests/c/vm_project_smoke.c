@@ -1,4 +1,4 @@
-// vm_project (csproj の Lub="Source" / Lub="Overlay" の ProjectReference と入力の一覧) の smoke。
+// vm_project (csproj の Lub="Source" の ProjectReference と入力の一覧) の smoke。
 // path の正規化と XML の属性の読み取りは static なので、vm_project.c をそのまま取り込んで呼ぶ。
 #include "../../src/vm_project.c"
 #include <stdlib.h>

@@ -62,8 +62,8 @@ static void copy_str(char *dst, size_t cap, const char *src) {
 
 // 描き先の名前の無い pass は lub の中の pass (Gfx.Pick の描き直し)
 static bool wants(App *app, const char *target) {
-  return app->gpu_time_on && app->proc->in_frame && !app->in_overlay &&
-         target && app->proc->frame_index >= app->gpu_time_from;
+  return app->gpu_time_on && app->proc->in_frame && target &&
+         app->proc->frame_index >= app->gpu_time_from;
 }
 
 bool gpu_time_wants_pass(App *app) { return wants(app, app->pass.label); }

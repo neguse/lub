@@ -21,7 +21,7 @@ typedef enum { APP_PHASE_PRE_BACKEND, APP_PHASE_POST_BACKEND } AppPhase;
 #define LUB_DEFAULT_WINDOW_H 720
 
 struct App;
-// 検査の口 (Sys.TakeTrace / TakeValues / Inspect* と Rewind の状態の控え)。
+// 検査の口 (Sys.TakeTrace / TakeValues / Inspect*)。
 // 結果の配列と文字列は次の同じ呼び出しまで有効。
 typedef struct LubDebugHooks {
   // key に覚えた個体と同じ class の別の個体だけが通った行を除く (key が空なら全部)
@@ -33,15 +33,6 @@ typedef struct LubDebugHooks {
                   const LubInspectNode **out, int32_t *n);
   void (*inspect_pin)(struct App *app, LubStr key, LubStr path);
   bool (*inspect_pinned)(struct App *app, LubStr key, LubStr id);
-  // ゲームの状態を控える (失敗は NULL)、書き戻す、捨てる
-  void *(*snapshot_take)(struct App *app);
-  void (*snapshot_restore)(struct App *app, void *snapshot);
-  void (*snapshot_free)(struct App *app, void *snapshot);
-  // 控えの中の path の節の数の値 (数でなければ false)
-  bool (*snapshot_number)(struct App *app, void *snapshot, LubStr path,
-                          float *out);
-  // 控えを戻せなくなるたびに変わる数
-  uint32_t (*layout_version)(struct App *app);
   // 行ごとの負荷を数え始める・止める、前に取り出してからの行の負荷と GC の止まり、frame の境目をまたいで持ち越す物
   void (*profile_lines)(struct App *app, bool on);
   void (*take_profile)(struct App *app, const LubProfileLine **out,
@@ -197,20 +188,16 @@ typedef struct App {
   // VM を作り直した後の OnInit の間だけ true。
   // backend の後なので、App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
   bool entry_restarting;
-  // Rewind の状態 (rewind.c 所有、最初の Record で作る)
-  struct RewindState *rewind;
   // player が持つ検査の口 (tcs VM の player が置く。無ければ Sys.TakeTrace などは空を返す)
   const struct LubDebugHooks *debug_hooks;
   // 検査の口に渡る player の状態 (口の関数が app から引く)
   void *debug_user;
-  // overlay の callback の中か (player が立てる)。
-  // overlay_grab_* は overlay が Input.Grab で取った入力の種類で、取っている間はゲームの OnEvent に届かず、overlay の外から読む Input は何も押されていない状態を返す
-  bool in_overlay;
+  // 開いた側が控えた入力で step している間だけ true (StepInput.Replay)。
+  // 同じ frame を作り直している間なので、音は鳴らさない
+  bool replaying;
   // pass の GPU の時間を数えているか (Sys.ProfileLines) と、数え始める画面の frame (src/gpu_time.c)
   bool gpu_time_on;
   uint64_t gpu_time_from;
-  bool overlay_grab_keyboard;
-  bool overlay_grab_mouse;
   // Gfx.Pick の状態 (pick.c 所有、最初の要求で作る)。
   struct PickState *pick;
   // Gfx.Pick が記録する draw の呼び出し元を書く関数と、その引数 (player が pick_set_sites で立てる、pick.h)。

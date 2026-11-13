@@ -1,5 +1,5 @@
 // .csproj で開いた app を、開いた側から検査する: 通った行、代入した値、static の木、行ごとの負荷、pass ごとの GPU の時間。
-// 開いた app のソースは --trace で変換されるので、overlay が無くても記録が取れる。
+// 開いた app のソースは --trace で変換される。
 // 開いた側のソースは記録に入らない。
 using System;
 using System.Collections.Generic;
@@ -79,7 +79,7 @@ public static class Game
             Fail($"frame {stepped}: Score of the opened app is {score}");
             return;
         }
-        // 自分の記録は別 (overlay が無いので --trace で変換されず、空)
+        // 自分の記録は別 (開いた側のソースは --trace で変換されず、空)
         if (Sys.TakeTrace().Count != 0)
         {
             Fail("the opening app has its own trace");

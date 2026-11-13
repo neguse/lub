@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tcs VM の player が .csproj から動かす経路 (tcs vm --watch、overlay、hot reload、OnBuildFailed、検査の口、native の拡張) の検査。
+# tcs VM の player が .csproj から動かす経路 (tcs vm --watch、hot reload、OnBuildFailed、App.Use で開いた app の検査の口、native の拡張) の検査。
 # test は file を書き換えるので、tests/vm/<name>/ を一時ディレクトリに写して動かす。
 # tests/vm/<name>/env があれば、その行 (NAME=VALUE) を環境に足して動かす。
 # env: LUB_VM (lub の実行ファイル。既定は build-release-linux/lub)、LUB_TCS (tcs の起動コマンド。無ければ lub が探す)
