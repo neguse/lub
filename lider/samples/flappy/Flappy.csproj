@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <LubRoot Condition="'$(LubRoot)' == ''">$(MSBuildThisFileDirectory)../../..</LubRoot>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.lub/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(LubRoot)/cs-lib/lub_stub.cs" Link="lub_stub.cs" />
+    <Compile Include="$(LubRoot)/cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="$(LubRoot)/cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

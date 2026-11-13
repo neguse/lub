@@ -33,6 +33,13 @@ lub bundles or links the following third-party components.
 | Box3D v0.1.0 | third_party/box3d/ | MIT | https://github.com/erincatto/box3d |
 | OpenXR SDK 1.1.63 | third_party/openxr/ | Apache-2.0 / MIT | https://github.com/KhronosGroup/OpenXR-SDK |
 | JsonCpp (OpenXR loader) | third_party/openxr/src/external/jsoncpp/ | MIT | https://github.com/open-source-parsers/jsoncpp |
+| jamo (lider の player のかな漢字変換) | third_party/jamo/ | MIT | https://github.com/neguse/jamo |
+
+## Ported behavior
+
+| Component | Path | License | Source |
+|-----------|------|---------|--------|
+| Lite XL 2.1.8 (doc、選択、検索、keymap、色分け、あいまいな一致の振る舞いを C# に写したもの) | lider/src/Editor/、lider/src/Core/Utf8.cs | MIT | https://github.com/lite-xl/lite-xl |
 
 ## Bundled sample assets
 
@@ -41,6 +48,7 @@ lub bundles or links the following third-party components.
 | Box.glb | samples/data/08_box.glb | CC0 (Public Domain) | https://github.com/KhronosGroup/glTF-Sample-Assets |
 | Sponza | samples/14_sponza/data/Sponza/ | Cryengine Limited License Agreement | https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Sponza |
 | M PLUS 1p Regular (kana+ASCII subset) | samples/data/fonts/MPLUS1p-subset.ttf | OFL-1.1 (samples/data/fonts/MPLUS1p-OFL.txt) | https://github.com/google/fonts/tree/main/ofl/mplus1p |
+| ゆたぽん (コーディング) 0.81 | lider/data/yutapon_coding_081d.ttf | フリーフォント。改変せず Readme と一緒に配布する (lider/data/yutapon_coding-README.TXT) | http://net2-system.top/ |
 
 ## Client-side C# compiler (web playground)
 

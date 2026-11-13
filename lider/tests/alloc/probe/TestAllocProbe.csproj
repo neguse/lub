@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- TestAlloc.cs が App.Use で開く app (entry は TestAllocProbe)。lider のソースを取り込み、lider の検索と描画を呼ぶ。dotnet 側は lider の assembly から lub の型と lider の型を見る -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.lub/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Lider.csproj" Lub="Source" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- lider の entry (class Lider)。`lub Lider.csproj` で起動し、env LIDER_GAME のゲームを開く。
+       dotnet 側 (IDE) の型チェック用に lub の stub と lubx を Compile する。LubRoot は lub のリポジトリの root。 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <RootNamespace></RootNamespace>
+    <LubRoot Condition="'$(LubRoot)' == ''">$(MSBuildThisFileDirectory)../..</LubRoot>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.lub/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(LubRoot)/cs-lib/lub_stub.cs" Link="lub_stub.cs" />
+    <Compile Include="$(LubRoot)/cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="$(LubRoot)/cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
+    <ProjectReference Include="$(LubRoot)/tcs/TinySystem/TinySystem.csproj" />
+    <ProjectReference Include="$(LubRoot)/tcs/TinyCs.Analyzers/TinyCs.Analyzers.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+  <Import Project="$(LubRoot)/tcs/TinySystem/TinySystem.props" />
+</Project>

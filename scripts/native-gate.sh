@@ -462,6 +462,15 @@ if [[ $cs_available -eq 1 ]]; then
   run_timed scripts/test-bindings-digest.sh "$native_binary"
   # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、hot reload、OnBuildFailed、App.Use で開いた app の --trace と検査の口)
   run_timed env LUB_VM="$native_binary" scripts/vm-project-test.sh
+  # lider (lider/README.md): 自前の player の build と、lider の runtime テスト
+  if command -v cargo >/dev/null; then
+    run_timed lider/scripts/gate.sh
+  elif [[ $require_cs -eq 1 ]]; then
+    echo "lider gate needs cargo" >&2
+    exit 1
+  else
+    echo "==> lider gate skipped (cargo missing)"
+  fi
 else
   echo
   echo "==> C# sample gate skipped (dotnet or tcs missing)"
