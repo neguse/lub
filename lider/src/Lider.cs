@@ -17,6 +17,8 @@
 //   LIDER_REWIND  控える frame の数 (既定 600、0 で控えない)
 // 時間: F5 でゲームを止める / 続ける、止めている間 F6 で 1 frame 戻り、F7 で 1 frame 進む。Shift+F5 でゲームを最初から作り直す。
 // F8 で compile error の行へ順に飛ぶ。
+// F10 で、保存した版と編集中の版 (保存していない本文で変換した版) のゲームを左右に並べる。もう一度 F10 で戻す。
+// 並べている間、入力は両方のゲームに渡し、F3 で保存した版の今の状態を編集中の版に写す (DraftGame)。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -129,6 +131,8 @@ public static class Lider
     public static readonly List<Screen> Screens = new List<Screen>();
     // 一番奥のスクリーン: 視野をちょうど覆い、ゲームの絵を映す
     static Screen backdrop = new Screen("backdrop");
+    // 編集中の版のゲームを映すウィンドウ (並べている間だけ)
+    static Window? draftWindow;
     const float BackdropDistance = 10;
     // lider の描く物の濃さ (編集は 1、試す間は TryOpacity へ寄せる)
     public static float Opacity = 1;
@@ -163,6 +167,8 @@ public static class Lider
             App.Config(new ConfigOpts { Width = width, Height = height });
         GameApp.Open(Environment.GetEnvironmentVariable("LIDER_GAME") ?? "");
         backdrop = new Screen("backdrop") { Position = new Vec3(0, 0, BackdropDistance) };
+        draftWindow = null;
+        DraftGame.Close();
         backdrop.Windows.Add(new Window(new GameView()));
         Screens.Clear();
         Screens.Add(backdrop);
@@ -231,6 +237,8 @@ public static class Lider
                 continue;
             notices.Add((item != null ? (item.Line + 1) + ": " : "") + name + " の初期値は動いている物に入りません (Shift+F5 で作り直すと入る)");
         }
+        if (DraftGame.Notice != "" && window == w.FocusWindow)
+            notices.Add(DraftGame.Notice);
         return notices;
     }
 
@@ -284,11 +292,11 @@ public static class Lider
         // 試す間とゲームだけの間は、入力はゲームのもの。編集の間は、キーボードとマウスの他だけをゲームに渡す
         if (!w.Active)
         {
-            GameApp.Send(e);
+            SendGame(e);
             return;
         }
         if (e.Kind == EventKind.WindowResize || e.Kind == EventKind.Other)
-            GameApp.Send(e);
+            SendGame(e);
         if (Search.Shown && SearchEvent(w, e))
             return;
         if (e.Kind == EventKind.KeyDown && w.Ctrl && !w.Shift && e.Key == Keys.P && !EditorHost.Modal())
@@ -337,6 +345,16 @@ public static class Lider
             }
             else if (!repeated)
                 inspect.Shown = !inspect.Shown;
+        }
+        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F10)
+        {
+            if (!repeated)
+                ToggleCompare();
+        }
+        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F3)
+        {
+            if (!repeated)
+                DraftGame.CopyPending = true;
         }
         else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F9 && !Composing())
         {
@@ -1173,9 +1191,16 @@ public static class Lider
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
         foreach (var screen in Screens)
             screen.Project(sw, sh, Space.FlatFov);
-        var game = GameWindow();
-        if (game != null)
-            GameApp.Step(dt, Work != null && Work.Active, game.ViewportBounds!, PixelRatio);
+        var saved = GameWindow(GameVersion.Saved);
+        var draft = GameWindow(GameVersion.Draft);
+        // 入力は、マウスのあるゲームのウィンドウの中の位置で、どちらのゲームにも渡す
+        Input.MousePos(out var mx, out var my);
+        var from = draft != null && draft.ViewportBounds!.Contains(mx, my) ? draft : saved;
+        var grabbed = Work != null && Work.Active;
+        if (saved != null)
+            GameApp.Step(dt, grabbed, saved.ViewportBounds!, from!.ViewportBounds!, PixelRatio);
+        if (draft != null && Work != null)
+            DraftGame.Step(dt, grabbed, GameApp.Position >= 0, draft.ViewportBounds!, from!.ViewportBounds!, PixelRatio, Work.Docs);
         ScreenView.Draw(Screens, sw, sh);
         var change = GameApp.Changed();
         if (change.Reloaded)
@@ -1189,14 +1214,39 @@ public static class Lider
         Frame(dt);
     }
 
-    // ゲームの絵を映している (画面に出ている) ウィンドウ
-    static Window? GameWindow()
+    // version のゲームの絵を映している (画面に出ている) ウィンドウ
+    static Window? GameWindow(GameVersion version)
     {
         foreach (var screen in Screens)
             foreach (var window in screen.Windows)
-                if (window.Content is GameView && window.ViewportBounds != null)
+                if (window.Content is GameView view && view.Version == version && window.ViewportBounds != null)
                     return window;
         return null;
+    }
+
+    // ゲームの OnEvent に event を渡す (並べている間は、編集中の版にも)
+    static void SendGame(EventData e)
+    {
+        GameApp.Send(e);
+        DraftGame.Send(e);
+    }
+
+    // 保存した版と編集中の版を並べる / 戻す (背景のスクリーンを左右に等分する)
+    public static void ToggleCompare()
+    {
+        if (DraftGame.Shown)
+        {
+            DraftGame.Close();
+            if (draftWindow != null)
+                backdrop.Windows.Remove(draftWindow);
+            draftWindow = null;
+            backdrop.Layout = new Full();
+            return;
+        }
+        DraftGame.Open(GameApp.Project);
+        draftWindow = new Window(new GameView(GameVersion.Draft));
+        backdrop.Windows.Add(draftWindow);
+        backdrop.Layout = new Even();
     }
 
     // 窓の大きさを Zen に合わせる。画面に 1 枚が収まる px は、窓の px の大きさ (倍率) と画角で決まる

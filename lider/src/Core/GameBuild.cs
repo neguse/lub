@@ -1,7 +1,8 @@
-// 保存した版のゲームを、lider の player に組み込んだ tcs (TcsSession) で変換する。
+// ゲームの 1 つの版を、lider の player に組み込んだ tcs (TcsSession) で変換する。
+// 保存した版 (名前 saved) は disk の file を、編集中の版 (名前 draft) は保存していない本文 (Unsaved) を disk の file の代わりに使う。
 // 入力は、ゲームが .csproj なら lub が .csproj を開くときと同じ規則 (App.Inputs) で集め、ディレクトリなら (web) その下の .cs と、env LIDER_CS_LIB の cs-lib にする。
-// module は <ゲームのディレクトリ>/.lub/<Entry>.tcsb、差分は隣の .batch に書く。ゲームの app (GameApp) はそれを開いて読む。
-// 毎 frame、入力の file の版 (Io.LoadText の version。更新時刻が変わると読み直す) を見て、変わった物をまとめて変換し直す。
+// module は <ゲームのディレクトリ>/.lub/<Entry>.tcsb (saved 以外は <Entry>.<名前>.tcsb)、差分は隣の .batch に書く。ゲームの app はそれを開いて読む。
+// 毎 frame、入力の file の版 (Io.LoadText の version。更新時刻が変わると読み直す) と保存していない本文を見て、変わった物をまとめて変換し直す。
 // 前の差分をゲームがまだ読んでいなければ、読むまで待つ。
 using System;
 using System.Collections.Generic;
@@ -17,14 +18,20 @@ public class GameBuild
 
     // ゲーム (.csproj かディレクトリ)
     public readonly string Project;
+    // 版の名前 (saved か draft)
+    public readonly string Name;
+    // disk の file の代わりに使う本文 (絶対 path → 本文)
+    public Dictionary<string, string> Unsaved = new Dictionary<string, string>();
+    // 実行した行と値を記録するか (lider が観察する版だけ)
+    public bool Traced = true;
     public string Entry = "";
     // 変換した module の path (GameApp が開く)。入力が集まるまで ""
     public string ModulePath = "";
     string batchPath = "";
-    readonly TcsSession session = new TcsSession("saved");
+    readonly TcsSession session;
     bool opened;
-    // 変換に渡した file の版
-    readonly Dictionary<string, int> sent = new Dictionary<string, int>();
+    // 変換に渡した file の版 (disk なら "d" と version、保存していない本文なら "u" と本文)
+    readonly Dictionary<string, string> sent = new Dictionary<string, string>();
     List<string> sources = new List<string>();
     List<string> refs = new List<string>();
     List<string> traces = new List<string>();
@@ -34,10 +41,15 @@ public class GameBuild
     public string PendingNotes = "";
     // 通った回数
     public int Revision;
+    // 受け取った結果の数と、最後の結果の kind
+    public int Results;
+    public string LastKind = "";
 
-    public GameBuild(string project)
+    public GameBuild(string project, string name = "saved")
     {
         Project = project;
+        Name = name;
+        session = new TcsSession(name);
     }
 
     // ゲームが .tcsb (変換済み) なら、変換しない
@@ -69,10 +81,10 @@ public class GameBuild
         var texts = new List<string>();
         foreach (var path in sources)
         {
-            Io.LoadText(path, out var text, out var version, out var status, out _);
-            if (status != Io.Status.Ready || text == null || (sent.TryGetValue(path, out var seen) && seen == version))
+            var text = Version(path, out var key);
+            if (text == null || (sent.TryGetValue(path, out var seen) && seen == key))
                 continue;
-            sent[path] = version;
+            sent[path] = key;
             paths.Add(path);
             texts.Add(text);
         }
@@ -94,12 +106,12 @@ public class GameBuild
         var texts = new List<string>();
         foreach (var path in sources)
         {
-            Io.LoadText(path, out var text, out var version, out var status, out _);
-            if (status != Io.Status.Ready || text == null)
+            var text = Version(path, out var key);
+            if (text == null)
                 continue;
             paths.Add(path);
             texts.Add(text);
-            sent[path] = version;
+            sent[path] = key;
         }
         var refTexts = new List<string>();
         foreach (var path in refs)
@@ -108,7 +120,7 @@ public class GameBuild
             if (text != null)
                 refTexts.Add(text);
         }
-        session.Open(Entry, ModulePath, batchPath, new List<string>(), traces, refTexts, paths, texts);
+        session.Open(Entry, ModulePath, batchPath, new List<string>(), Traced ? traces : new List<string>(), refTexts, paths, texts);
         opened = true;
         Take();
     }
@@ -117,7 +129,9 @@ public class GameBuild
     {
         foreach (var r in session.Take())
         {
-            Console.WriteLine("lider: build " + r.Kind + " (revision " + r.Revision + ")");
+            Console.WriteLine("lider: build " + Name + " " + r.Kind + " (revision " + r.Revision + ")");
+            Results++;
+            LastKind = r.Kind;
             if (r.Kind == "error")
             {
                 PendingErrors = string.Join("\n", r.Errors);
@@ -175,8 +189,9 @@ public class GameBuild
         sources = found;
         refs = refFiles;
         traces = dirs;
-        ModulePath = dir + "/.lub/" + entry + ".tcsb";
-        batchPath = dir + "/.lub/" + entry + ".batch";
+        var stem = dir + "/.lub/" + entry + (Name == "saved" ? "" : "." + Name);
+        ModulePath = stem + ".tcsb";
+        batchPath = stem + ".batch";
     }
 
     // OnFrame を持つ static class の名前 (path の順で最初の物。無ければ "")
@@ -243,6 +258,19 @@ public class GameBuild
     {
         var slash = Utf8.LastIndexOf(path, "/");
         return slash > 0 ? Utf8.Sub(path, 0, slash) : ".";
+    }
+
+    // path の本文と、変わったかを比べる印。読めなければ null
+    string? Version(string path, out string key)
+    {
+        if (Unsaved.TryGetValue(path, out var text))
+        {
+            key = "u" + text;
+            return text;
+        }
+        Io.LoadText(path, out var disk, out var version, out var status, out _);
+        key = "d" + version;
+        return status == Io.Status.Ready ? disk : null;
     }
 
     static string? Read(string path)

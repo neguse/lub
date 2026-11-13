@@ -2,10 +2,11 @@
 //
 //   L1. 起動: page が `ready` を出し、canvas が真っ黒でない。
 //   L2. lider とゲーム: 起動したときは lider の窓が出ていて、Shift+F1 でゲームだけになる (絵が変わる)。
-//   L3. 差分: project の file (Render.cs) の関数の本体を MEMFS で書き換えると、lider が変換して `lider: build batch` を出し、ゲームを作り直さずに当てて、ゲームの背景の色が変わる。
-//   L4. compile error: 通らない file を書くと、lider が `lider: build error` と診断を出す。動いているゲームは変わらない。
-//   L5. 直す: 通る file に戻すと、また `lider: build batch` になり、背景の色が変わる。
-//   L6. 通らない project で開き直す: 通らない file を保存して page を読み直すと、lider は起動して `lider: build error` を出し、直すとゲームが始まる (`lider: build module`)。
+//   L3. 差分: project の file (Render.cs) の関数の本体を MEMFS で書き換えると、lider が変換して `lider: build saved batch` を出し、ゲームを作り直さずに当てて、ゲームの背景の色が変わる。
+//   L4. compile error: 通らない file を書くと、lider が `lider: build saved error` と診断を出す。動いているゲームは変わらない。
+//   L5. 直す: 通る file に戻すと、また `lider: build saved batch` になり、背景の色が変わる。
+//   L6. 通らない project で開き直す: 通らない file を保存して page を読み直すと、lider は起動して `lider: build saved error` を出し、直すとゲームが始まる (`lider: build saved module`)。
+//   L7. 並べる: 編集の間に F10 を押すと、lider が編集中の版を変換し (`lider: build draft module`)、画面の左右に 2 つのゲームが出る (どちらも L6 の緑)。状態を写すので、左右はほぼ同じ絵になる。
 //
 // 変換は lider が player に組み込んだ tcs で行い、結果を console に書く (lider の GameBuild)。
 // lider が compile error を窓の中に出すことは見ていない (lider が診断を受け取った所まで)。
@@ -89,9 +90,9 @@ async function waitLog(from, pred, ms) {
   return -1;
 }
 
-// lider の変換の結果の行 (`lider: build <kind> (revision N)`)
+// lider の保存した版の変換の結果の行 (`lider: build saved <kind> (revision N)`)
 function built(kind) {
-  return (t) => t.startsWith(`lider: build ${kind} (revision `);
+  return (t) => t.startsWith(`lider: build saved ${kind} (revision `);
 }
 
 // ゲームの module を読み直して作り直した (差分で当てなかった) 行
@@ -261,6 +262,67 @@ try {
     "L6 the game draws the project",
     reloaded > 0.3,
     `green ${pct(reloaded)}`,
+  );
+
+  // L7
+  from = logs.length;
+  await page.keyboard.press("F1");
+  await page.keyboard.press("F10");
+  at = await waitLog(
+    from,
+    (t) => t.startsWith("lider: build draft module (revision "),
+    APPLY_MS,
+  );
+  check("L7 lider builds the draft", at >= 0, logs[at] ?? "");
+  await page.keyboard.press("Shift+F1");
+  // 左と右の半分が、どちらもゲームの緑になるのを待つ
+  const halves = (png) => {
+    const half = (x0, x1) => {
+      let n = 0;
+      let all = 0;
+      for (let y = 0; y < png.height; y++)
+        for (let x = x0; x < x1; x++) {
+          const i = (y * png.width + x) * 4;
+          all++;
+          if (green(png.data[i], png.data[i + 1], png.data[i + 2])) n++;
+        }
+      return n / all;
+    };
+    return [half(0, png.width >> 1), half(png.width >> 1, png.width)];
+  };
+  let both = [0, 0];
+  const end = Date.now() + 15000;
+  while (Date.now() < end) {
+    both = halves(await shot("compare"));
+    if (both[0] > 0.3 && both[1] > 0.3) break;
+    await page.waitForTimeout(300);
+  }
+  check(
+    "L7 both games are drawn side by side",
+    both[0] > 0.3 && both[1] > 0.3,
+    `green left ${pct(both[0])}, right ${pct(both[1])}`,
+  );
+  // 状態を写したので、左右はほぼ同じ絵になる (どちらも同じ大きさの texture に、同じ縦横比で描く)
+  const last = await shot("compare");
+  let differ = 0;
+  const halfW = last.width >> 1;
+  for (let y = 0; y < last.height; y++)
+    for (let x = 0; x < halfW; x++) {
+      const a = (y * last.width + x) * 4;
+      const b = (y * last.width + x + halfW) * 4;
+      if (
+        Math.abs(last.data[a] - last.data[b]) +
+          Math.abs(last.data[a + 1] - last.data[b + 1]) +
+          Math.abs(last.data[a + 2] - last.data[b + 2]) >
+        48
+      )
+        differ++;
+    }
+  const apart = differ / (halfW * last.height);
+  check(
+    "L7 the two halves show the same scene",
+    apart < 0.05,
+    `differ ${pct(apart)}`,
   );
 
   check("no 404 on the same origin", missing.length === 0, missing.join(" "));

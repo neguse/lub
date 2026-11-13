@@ -41,6 +41,7 @@ LUB_URL=http://localhost:5173/ npm run verify-lider
 - スクリーン (`Screen`、`src/Core/Screen.cs`) は空間に置く面で、上にウィンドウ (`Window`) を並べる。
 - どこに並べるかは配置の規則 (`ILayout`、`src/Core/Layout.cs`) が決め、ウィンドウは中身 (`IContent`、`src/Core/Content.cs`) を 1 つ映す。
 - スクリーンは、視点に固定して視野を覆う 1 枚で、ゲームの絵 (`GameView`) を映す。画面に描くのは `src/View/ScreenView.cs`。
+- F10 で、保存した版 (`GameApp`) と編集中の版 (`DraftGame`。保存していない本文で変換する) のゲームを、スクリーンを左右に等分して (`Even`) 並べる。編集中の版は保存した版の状態を写して、同じ入力で動く。
 - コードの窓 (`CodeWindow`) と板は、スクリーンとは別に円筒に並べ、スクリーンの手前に描く。
 
 ## 置き場所

@@ -27,6 +27,7 @@ public static class Keys
     public const int F7 = 64;
     public const int F8 = 65;
     public const int F9 = 66;
+    public const int F10 = 67;
     public const int F11 = 68;
     public const int F12 = 69;
     public const int Minus = 45;
