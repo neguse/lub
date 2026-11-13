@@ -352,6 +352,12 @@ export type TcsVmOpenResult = {
   session: TcsVmSession | null;
 };
 
+/** C# を幅 width で整形する (.NET の wasm の Roslyn。compile しない editor の session)。 */
+export function formatCs(content: string, width: number): Promise<string> {
+  const w = editor.ensure();
+  return editor.call(w, "format", content, width);
+}
+
 export async function openTcsVmSession(
   files: Record<string, string>,
   entryClass: string,
@@ -405,10 +411,7 @@ export async function openTcsVmSession(
       }
       return module;
     },
-    async format(content, width) {
-      const w = editor.ensure();
-      return editor.call(w, "format", content, width);
-    },
+    format: formatCs,
   };
   return { ok: true, errors: [], module, session };
 }

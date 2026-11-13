@@ -1277,8 +1277,68 @@ static bool app_event(void *player, const LubEventData *e) {
   return call_hook(p, p->game.event, "OnEvent", args, 1);
 }
 
+#ifdef VM_PROJECT
+// App.Inputs: .csproj を開くときと同じ規則 (vm_project) で入力を集める。
+// 文字列は次の呼び出しまで持つ
+static char *g_inputs_text[3];
+
+static char *join_dirs(const VmProject *proj) {
+  size_t n = 1;
+  for (int i = 0; i < proj->ndirs; i++)
+    n += SDL_strlen(proj->dirs[i]) + 1;
+  char *out = (char *)SDL_malloc(n);
+  if (!out)
+    return NULL;
+  out[0] = '\0';
+  for (int i = 0; i < proj->ndirs; i++) {
+    SDL_strlcat(out, proj->dirs[i], n);
+    SDL_strlcat(out, "\n", n);
+  }
+  return out;
+}
+
+static bool app_inputs(const char *csproj, LubProjectInputs *out) {
+  static char entry[256];
+  SDL_PathInfo info;
+  if (!SDL_GetPathInfo(csproj, &info) || info.type != SDL_PATHTYPE_FILE)
+    return false;
+  VmProject proj;
+  if (!vm_project_open(&proj, csproj)) {
+    vm_project_close(&proj);
+    return false;
+  }
+  vm_project_scan(&proj);
+  for (int i = 0; i < 3; i++)
+    SDL_free(g_inputs_text[i]);
+  g_inputs_text[0] = join_dirs(&proj);
+  g_inputs_text[1] = SDL_strdup(proj.list_text ? proj.list_text : "");
+  size_t refs = SDL_strlen(proj.stub) + 2 +
+                (proj.refs_text ? SDL_strlen(proj.refs_text) : 0);
+  g_inputs_text[2] = (char *)SDL_malloc(refs);
+  if (g_inputs_text[2])
+    SDL_snprintf(g_inputs_text[2], refs, "%s%s%s",
+                 proj.refs_text ? proj.refs_text : "", proj.stub,
+                 proj.stub[0] ? "\n" : "");
+  SDL_strlcpy(entry, proj.entry, sizeof(entry));
+  vm_project_close(&proj);
+  if (!g_inputs_text[0] || !g_inputs_text[1] || !g_inputs_text[2])
+    return false;
+  out->entry = (LubStr){entry, SDL_strlen(entry)};
+  out->dirs = (LubStr){g_inputs_text[0], SDL_strlen(g_inputs_text[0])};
+  out->sources = (LubStr){g_inputs_text[1], SDL_strlen(g_inputs_text[1])};
+  out->refs = (LubStr){g_inputs_text[2], SDL_strlen(g_inputs_text[2])};
+  return true;
+}
+#endif
+
 static const LubAppHooks g_app_hooks = {
-    app_open, app_step, app_close, app_event, app_status, app_save, app_load};
+    app_open,   app_step, app_close, app_event, app_status, app_save, app_load,
+#ifdef VM_PROJECT
+    app_inputs,
+#else
+    NULL,
+#endif
+};
 
 static bool parse_args(Player *p, int argc, char **argv, LubHostOpts *opts) {
   const char *module = NULL, *entry = NULL;

@@ -2,12 +2,13 @@
 //
 //   L1. 起動: page が `ready` を出し、canvas が真っ黒でない。
 //   L2. lider とゲーム: 起動したときは lider の窓が出ていて、Shift+F1 でゲームだけになる (絵が変わる)。
-//   L3. 差分: project の file (Render.cs) の関数の本体を MEMFS で書き換えると `applied (revision N)` になり、差分の file (<Entry>.batch) をゲームの player が読んで消し、ゲームの背景の色が変わる。
-//   L4. compile error: 通らない file を書くと page が `compile error` を出し、診断の file (<Entry>.errors) が書かれ、ゲームの player がそれを読んで消す。動いているゲームは変わらない。
-//   L5. 直す: 通る file に戻すと、また `applied` になり、背景の色が変わる。
-//   L6. 通らない project で開き直す: 通らない file を保存して page を読み直すと、同じ名前の空の class のゲームで起動して `compile error` を出し、直すと保存した project がゲームに入る (`applied` か `restarted`)。
+//   L3. 差分: project の file (Render.cs) の関数の本体を MEMFS で書き換えると、lider が変換して `lider: build batch` を出し、ゲームを作り直さずに当てて、ゲームの背景の色が変わる。
+//   L4. compile error: 通らない file を書くと、lider が `lider: build error` と診断を出す。動いているゲームは変わらない。
+//   L5. 直す: 通る file に戻すと、また `lider: build batch` になり、背景の色が変わる。
+//   L6. 通らない project で開き直す: 通らない file を保存して page を読み直すと、lider は起動して `lider: build error` を出し、直すとゲームが始まる (`lider: build module`)。
 //
-// lider が compile error を窓の中に出すことは見ていない (ゲームの player が診断を受け取った所まで)。
+// 変換は lider が player に組み込んだ tcs で行い、結果を console に書く (lider の GameBuild)。
+// lider が compile error を窓の中に出すことは見ていない (lider が診断を受け取った所まで)。
 //
 // 使い方 (dev server か preview を動かしておく):
 //   cd web && npm run dev
@@ -28,8 +29,7 @@ const READY_MS = Number(process.env.LIDER_READY_MS || 180000);
 const APPLY_MS = Number(process.env.LIDER_APPLY_MS || 60000);
 const ENTRY = "Flappy";
 const SOURCE = "/lider/project/Render.cs";
-const BATCH = `/lider/.lub/${ENTRY}.batch`;
-const ERRORS = `/lider/.lub/${ENTRY}.errors`;
+const MODULE = `/lider/project/.lub/${ENTRY}.tcsb`;
 // 非 XR の pass の背景 (Render.Frame の本体にある)
 const BACKGROUND = "ClearColor = background }";
 
@@ -50,7 +50,10 @@ const ctx = await browser.newContext({
   deviceScaleFactor: 1,
 });
 const page = await ctx.newPage();
+// console に出た行 (lider の変換の結果を見る)
+const logs = [];
 page.on("console", (m) => {
+  logs.push(m.text());
   if (VERBOSE || m.type() === "error")
     console.log("CONSOLE", `[${m.type()}]`, m.text());
 });
@@ -76,33 +79,26 @@ async function waitStatus(pred, ms) {
   return null;
 }
 
-function revision(text) {
-  const m = /^applied \(revision (\d+)\)/.exec(text ?? "");
-  return m ? Number(m[1]) : -1;
-}
-
-// after より新しい revision の `applied` を待つ
-async function waitApplied(after) {
-  return revision(await waitStatus((t) => revision(t) > after, APPLY_MS));
-}
-
-// page が file を書き、player がそれを読んで消すのを待つ。[書かれた, 消えた] を返す
-async function waitConsumed(file, ms) {
-  const state = () =>
-    page.evaluate(
-      (p) => [
-        window.__liderWrites.includes(p),
-        !window.Module.FS.analyzePath(p).exists,
-      ],
-      file,
-    );
+// logs の from より後に、pred を満たす行が出るのを待つ。出た行の位置を返し、出なければ -1
+async function waitLog(from, pred, ms) {
   const end = Date.now() + ms;
-  let got = await state();
-  while (!(got[0] && got[1]) && Date.now() < end) {
+  while (Date.now() < end) {
+    for (let i = from; i < logs.length; i++) if (pred(logs[i])) return i;
     await page.waitForTimeout(100);
-    got = await state();
   }
-  return got;
+  return -1;
+}
+
+// lider の変換の結果の行 (`lider: build <kind> (revision N)`)
+function built(kind) {
+  return (t) => t.startsWith(`lider: build ${kind} (revision `);
+}
+
+// ゲームの module を読み直して作り直した (差分で当てなかった) 行
+function restarted(from) {
+  return logs
+    .slice(from)
+    .some((t) => t.includes("starting the VM again") && t.includes(MODULE));
 }
 
 async function shot(name) {
@@ -201,50 +197,35 @@ try {
   check("L2 the game is not green yet", before < 0.05, `green ${pct(before)}`);
 
   // L3
-  // page が FS に書く file の path を控える (差分と診断の file は player がすぐ消す)
-  await page.evaluate(() => {
-    const FS = window.Module.FS;
-    const write = FS.writeFile;
-    window.__liderWrites = [];
-    FS.writeFile = (p, ...rest) => {
-      window.__liderWrites.push(p);
-      return write.call(FS, p, ...rest);
-    };
-  });
   const original = await readSource();
   check("L3 the source has the pass to edit", original.includes(BACKGROUND));
   const edit = (color) =>
     original.replace(BACKGROUND, `ClearColor = new float[] { ${color} } }`);
+  let from = logs.length;
   await writeSource(edit("0, 0.8f, 0, 1"));
-  const rev1 = await waitApplied(-1);
-  check("L3 body edit is applied", rev1 >= 0, `revision ${rev1}`);
-  const batch = await waitConsumed(BATCH, 10000);
-  check(`L3 ${BATCH} was written`, batch[0]);
-  check(`L3 ${BATCH} was consumed`, batch[1]);
+  let at = await waitLog(from, built("batch"), APPLY_MS);
+  check("L3 lider builds the edit as a batch", at >= 0, logs[at] ?? "");
   const greenNow = await waitColor("green", green, 10000);
   check("L3 the game draws the edit", greenNow > 0.3, `green ${pct(greenNow)}`);
+  check("L3 the game was not started again", !restarted(from));
 
   // L4
+  from = logs.length;
   await writeSource(edit("nope"));
-  const broken = await waitStatus(
-    (t) => t.startsWith("compile error"),
-    APPLY_MS,
-  );
+  at = await waitLog(from, built("error"), APPLY_MS);
+  check("L4 lider reports the compile error", at >= 0, logs[at] ?? "");
   check(
-    "L4 page reports compile error",
-    broken !== null,
-    (broken ?? (await statusText())).split("\n").slice(0, 2).join(" | "),
+    "L4 the diagnostic names the error",
+    (await waitLog(from, (t) => t.includes("CS0103"), 5000)) >= 0,
   );
-  const errors = await waitConsumed(ERRORS, 10000);
-  check(`L4 ${ERRORS} was written`, errors[0]);
-  check(`L4 ${ERRORS} was consumed`, errors[1]);
   const kept = fraction(await shot("broken"), green);
   check("L4 the running game is unchanged", kept > 0.3, `green ${pct(kept)}`);
 
   // L5
+  from = logs.length;
   await writeSource(edit("0.8f, 0, 0.8f, 1"));
-  const rev2 = await waitApplied(rev1);
-  check("L5 fixed source is applied", rev2 > rev1, `revision ${rev2}`);
+  at = await waitLog(from, built("batch"), APPLY_MS);
+  check("L5 the fixed source is built as a batch", at >= 0, logs[at] ?? "");
   const magentaNow = await waitColor("fixed", magenta, 10000);
   check(
     "L5 the game draws the fix",
@@ -254,25 +235,25 @@ try {
 
   // L6
   await writeSource(edit("nope"));
-  await waitStatus((t) => t.startsWith("compile error"), APPLY_MS);
+  await waitLog(logs.length, built("error"), APPLY_MS);
   // 保存した file が IndexedDB に写るのを待つ
   await page.waitForTimeout(1000);
+  logs.length = 0;
   await page.reload({ waitUntil: "load" });
   const reopened = await waitStatus(
-    (t) => t.startsWith("compile error"),
+    (t) => t === "ready" || /error|使えません|取れません/.test(t),
     READY_MS,
   );
+  at = await waitLog(0, built("error"), APPLY_MS);
   check(
     "L6 a project that does not compile still starts",
-    reopened !== null && (await page.evaluate(() => !!window.Module?.FS)),
-    (reopened ?? (await statusText())).split("\n").slice(0, 2).join(" | "),
+    reopened === "ready" && at >= 0,
+    `status: ${reopened}, ${logs[at] ?? "no build error"}`,
   );
+  from = logs.length;
   await writeSource(edit("0, 0.8f, 0, 1"));
-  const recovered = await waitStatus(
-    (t) => /^(applied|restarted) \(revision \d+\)/.test(t),
-    APPLY_MS,
-  );
-  check("L6 the fixed project is loaded", recovered !== null, recovered ?? "");
+  at = await waitLog(from, built("module"), APPLY_MS);
+  check("L6 the fixed project is built", at >= 0, logs[at] ?? "");
   await page.locator("#canvas").focus();
   await page.keyboard.press("Shift+F1");
   const reloaded = await waitColor("reopened", green, 10000);

@@ -88,6 +88,7 @@ cs_runtime_tests=(
   TestUniformMatch
   TestGpuPassTime
   TestOpenApp
+  TestAppInputs
   TestAppState
   TestAppInput
   TestAppObserve

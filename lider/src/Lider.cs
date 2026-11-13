@@ -6,7 +6,9 @@
 // 窓は横一列に並ぶ。非 XR の右ドラッグは、窓の上なら並びを変え (ドラッグ中のホイールで大きさを変える)、窓の外なら列を動かす。
 // Alt + 左右で隣の窓へ、Alt + Shift + 左右で並びを変え、Alt + 数字でその番目の窓へ移る。非 XR では focus のある窓が見える所まで視点が滑る。
 // env:
-//   LIDER_GAME    開くゲームの .csproj (web では .tcsb) の path
+//   LIDER_GAME    開くゲーム。.csproj か、ディレクトリ (その下の .cs。web) なら lider が変換し (GameBuild)、.tcsb ならそのまま開く
+//   LIDER_CS_LIB  LIDER_GAME がディレクトリのときに一緒に変換する lub の cs-lib のディレクトリ
+//   LIDER_ENTRY   LIDER_GAME がディレクトリのときの entry class (無ければ OnFrame を持つ static class)
 //   LIDER_ROOT    並べる .cs を探すディレクトリ (既定はゲームの .csproj のディレクトリ、LIDER_GAME が無ければ ".")
 //   LIDER_SIZE    画面の大きさ ("幅x高さ")
 //   LIDER_HOME    lider のディレクトリ (font を data/ から読む。既定 ".")
@@ -159,7 +161,7 @@ public static class Lider
         var size = (Environment.GetEnvironmentVariable("LIDER_SIZE") ?? "").Split('x');
         if (size.Length == 2 && int.TryParse(size[0], out var width) && int.TryParse(size[1], out var height))
             App.Config(new ConfigOpts { Width = width, Height = height });
-        GameApp.Module = Environment.GetEnvironmentVariable("LIDER_GAME") ?? "";
+        GameApp.Open(Environment.GetEnvironmentVariable("LIDER_GAME") ?? "");
         backdrop = new Screen("backdrop") { Position = new Vec3(0, 0, BackdropDistance) };
         backdrop.Windows.Add(new Window(new GameView()));
         Screens.Clear();
@@ -194,10 +196,10 @@ public static class Lider
             Session.Save(Work, Sys.Seconds());
     }
 
-    // ゲームの .csproj のディレクトリ (LIDER_GAME が無ければ ".")
+    // ゲーム (LIDER_GAME) のディレクトリ (LIDER_GAME が無ければ ".")
     static string GameDir()
     {
-        var module = GameApp.Module;
+        var module = GameApp.Project;
         for (var i = Utf8.Bytes(module) - 1; i > 0; i--)
             if (Utf8.At(module, i) == '/')
                 return Utf8.Sub(module, 0, i);

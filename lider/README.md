@@ -12,7 +12,7 @@ LIDER_GAME=$PWD/lider/samples/flappy/Flappy.csproj LIDER_HOME=$PWD/lider LIDER_A
   lider/build/player/lider_player lider/src/Lider.csproj
 ```
 
-- `LIDER_GAME`: 開くゲームの `.csproj`。
+- `LIDER_GAME`: 開くゲームの `.csproj`。lider が player に組み込んだ tcs で変換し (`src/Core/GameBuild.cs`)、保存した file を変換し直して、動いているゲームに当てる。
 - `LIDER_HOME`: このディレクトリ (font を `data/` から読む)。
 - `LIDER_ACTIVE=1`: 起動したときから編集の画面にする。無ければ F1 で出す。
 - ほかの env と key は `src/Lider.cs` の先頭にある。
@@ -20,8 +20,9 @@ LIDER_GAME=$PWD/lider/samples/flappy/Flappy.csproj LIDER_HOME=$PWD/lider LIDER_A
 ## ブラウザで動かす
 
 `web/lider.html` (lub の web の page の 1 つ。`web/lider/main.ts`)。
-lider は build のときに作った bytecode (`Lider.tcsb`) で動き、ゲームの C# はブラウザの中で変換する。
-project は MEMFS に置き、保存のたびに IndexedDB に写す。
+lider は build のときに作った bytecode (`Lider.tcsb`) で動き、ゲームの C# は lider が player に組み込んだ tcs でブラウザの中で変換する。
+project と lub の cs-lib は MEMFS に置き、project は保存のたびに IndexedDB に写す。
+page は保存された `.cs` を整形して書き戻す。
 
 ```
 source ~/emsdk/emsdk_env.sh
@@ -31,7 +32,7 @@ cd web && npm run dev                    # Lider.tcsb を作って (npm run gen-
 LUB_URL=http://localhost:5173/ npm run verify-lider
 ```
 
-ゲームの C# の変換と整形は playground と同じ物を使う (`npm run gen-tcs-selfhost` と `npm run gen-tcs -- --publish`)。
+整形は playground と同じ物を使う (`npm run gen-tcs -- --publish`)。
 `?gist=<gist の id か URL>` で開くと、公開の gist の file を project にして、ゲームだけで始まる。
 
 ## 画面の組み立て

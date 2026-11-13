@@ -282,6 +282,19 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
   return LUB_OK;
 }
 
+LubStatus lub_app_inputs(LubContext *ctx, LubStr csproj, LubProjectInputs *out,
+                         bool *has) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  *has = false;
+  if (!app->app_hooks || !app->app_hooks->inputs)
+    return LUB_OK;
+  char path[1024];
+  SDL_snprintf(path, sizeof(path), "%.*s", (int)csproj.len, csproj.ptr);
+  *has = app->app_hooks->inputs(path, out);
+  return LUB_OK;
+}
+
 LubStatus lub_app_status(LubContext *ctx, LubHandle handle, LubAppStatus *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));

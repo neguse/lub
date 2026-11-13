@@ -12,8 +12,12 @@ namespace LiderCore;
 
 public static class GameApp
 {
-    // ゲームの .csproj (web では .tcsb) の path。空なら開かない
+    // ゲーム (.csproj、ディレクトリ、変換済みの .tcsb)。空なら開かない
+    public static string Project = "";
+    // 開く module (.tcsb) の path。Project が .tcsb ならそれ、ほかは Build が変換した物。空なら開かない
     public static string Module = "";
+    // 保存した版の変換 (Project が .tcsb なら変換しない)
+    public static GameBuild Build = new GameBuild("");
     // 開いたゲーム (最初の Step まで null)
     public static AppRef? Ref;
     // ゲームが描く texture (ゲームを映すウィンドウと同じ大きさ)
@@ -87,12 +91,25 @@ public static class GameApp
         App.SendEvent(Ref, e);
     }
 
+    // ゲームを開く (Project を決めた後に、Step より前に呼ぶ)
+    public static void Open(string project)
+    {
+        Project = project;
+        Build = new GameBuild(project);
+        Module = Build.Needed ? "" : project;
+    }
+
     // ゲームを 1 frame 進める。
     // at はゲームを映すウィンドウの画面の上の矩形 (画面の座標)、pixelRatio は画面の座標の 1 に対する画面の画素の数。
     // grabbed なら、ゲームにはキーボードとマウスを見せない
     public static void Step(float dt, bool grabbed, Bounds at, float pixelRatio)
     {
         Stepped = false;
+        if (Build.Needed)
+        {
+            Build.Tick(dt);
+            Module = Build.ModulePath;
+        }
         var w = Math.Max(1, (int)(at.W * pixelRatio));
         var h = Math.Max(1, (int)(at.H * pixelRatio));
         originX = at.X;
@@ -151,6 +168,17 @@ public static class GameApp
         }
         if (status.BuildError != seenError && status.BuildError != "")
             change.BuildError = status.BuildError;
+        // lider が変換したときの診断と、当てた差分の知らせ (知らせは、ゲームが差分を読んだ frame に渡す)
+        if (Build.PendingErrors != "")
+        {
+            change.BuildError = Build.PendingErrors;
+            Build.PendingErrors = "";
+        }
+        if (change.Reloaded && Build.PendingNotes != "")
+        {
+            change.Notes = Build.PendingNotes;
+            Build.PendingNotes = "";
+        }
         seenReloads = status.Reloads;
         seenRestarts = status.Restarts;
         seenError = status.BuildError;
