@@ -55,6 +55,7 @@ SelfHost/
     CRun.cs              tcs c
     VmRun.cs             tcs vm と、VM の増分 session (VmSession)
     Playground.cs        playground の要求 (vmopen、vmupdate、vmmodule、vmconfig、vmremove) の入口
+    Sessions.cs          名前で持つ複数の VM の増分 session の入口 (open、update、close。結果は host が指す path に書く)
     ReloadRules.cs       hot reload で live に当てられない編集の規則
     HostMessage.cs       --watch の host への message
     TcsHost.cs           host の関数の宣言 (C の build では --ref の stub)
@@ -113,7 +114,7 @@ tcsvm/Emitter/         .NET で tcs vm を動かす入口 (tcs2vm)
 - `Session` はファイルを足し (`SetSource`、`SetReference`、`SetLibrary`)、差し替え、外し (`Remove`)、compile する。parse は内容の変わったファイルだけをやり直し、parse したままの木を持つ。束縛は木を書き換えるので、compile のたびに木の複製 (`Node.CloneTree`) を組み立て、宣言、束縛、出力は全体をやり直す
 - compile は Step に分かれる: 変わったファイルの parse を 1 つずつ、組み立て (構文で決まる準拠検査を含む)、宣言、束縛と型で決まる準拠検査、出力 (C backend と tcs VM のための単相化は回ごとに 1 段)。`Start` は途中の compile を捨てて始め直すので、host は Step の合間に新しい編集を受け取れる
 - 出力は mode で決まる。`ExportOnly` は tcs c と tcs vm への IL、`CheckOnly` は `tcs check` と analyzer の検査 (IL を組み立てて、組み立てられない本文も診断にする)、どちらでもなければ束縛と準拠の診断だけ
-- VM の増分 session (`VmSession`、`SelfHost/Tool/VmRun.cs`) は `Session` の上で、最後に通った build を持ち、編集ごとに reload の batch か restart を返す。診断のある編集は最後の build を変えない。`tcs vm --watch`、wasm の playground (`Playground.Call`)、.NET の wasm の `VmExports` が同じものを使う (`doc/vm-design.md`)
+- VM の増分 session (`VmSession`、`SelfHost/Tool/VmRun.cs`) は `Session` の上で、最後に通った build を持ち、編集ごとに reload の batch か restart を返す。診断のある編集は最後の build を変えない。`tcs vm --watch`、wasm の playground (`Playground.Call`)、名前で持つ複数の session (`Sessions.Call`。lub の lider の player が組み込む)、.NET の wasm の `VmExports` が同じものを使う (`doc/vm-design.md`)
 
 ## 8. サブセットで compiler を書くことの帰結
 

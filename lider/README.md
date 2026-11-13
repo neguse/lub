@@ -7,7 +7,7 @@ lider 自身も lub の上で動く C# (TinyC#) で書いてあり、開発中�
 
 ```
 scripts/build-release.sh                 # lub
-lider/scripts/build-player.sh            # lider の player (要 cargo)
+lider/scripts/build-player.sh            # lider の player (要 cargo と dotnet)
 LIDER_GAME=$PWD/lider/samples/flappy/Flappy.csproj LIDER_HOME=$PWD/lider LIDER_ACTIVE=1 \
   lider/build/player/lider_player lider/src/Lider.csproj
 ```
@@ -47,7 +47,7 @@ LUB_URL=http://localhost:5173/ npm run verify-lider
 | 場所 | 中身 |
 |---|---|
 | `src/` | lider の本体。entry は `src/Lider.cs`、ゲームを開いて進めるのは `src/Core/GameApp.cs` |
-| `native/` | lider の player。lub の player の library (`find_package(lub)`) に、かな漢字変換 (`third_party/jamo`) と file system の操作を静的に link する |
+| `native/` | lider の player。lub の player の library (`find_package(lub)`) に、かな漢字変換 (`third_party/jamo`)、file system の操作、tcs の compiler (`tcs/` を tcs2c で C にした物) を静的に link する |
 | `tests/` | runtime テスト。`tests/<name>/` は lider を動かす test、`tests/editor/` はエディタの core だけの test |
 | `samples/` | lider で開くゲームの例 |
 | `data/` | font |

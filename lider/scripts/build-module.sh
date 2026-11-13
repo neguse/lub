@@ -21,6 +21,8 @@ fi
 mapfile -t sources < <(find "$root/src" -name '*.cs' ! -name '*.ref.cs' ! -path '*/bin/*' ! -path '*/obj/*' ! -path '*/.lub/*' | sort)
 mapfile -t cslib < <(find "$lub/cs-lib" -name '*.cs' ! -name lub_stub.cs | sort)
 mkdir -p "$(dirname "$out")"
+refs=(--ref "$lub/cs-lib/lub_stub.cs")
+for r in "$root"/src/*.ref.cs; do refs+=(--ref "$r"); done
 # shellcheck disable=SC2086
-$LUB_TCS vm "${sources[@]}" "${cslib[@]}" --ref "$lub/cs-lib/lub_stub.cs" --ref "$root/src/Jamo.ref.cs" --ref "$root/src/Fs.ref.cs" --export "Lider.*" -o "$out"
+$LUB_TCS vm "${sources[@]}" "${cslib[@]}" "${refs[@]}" --export "Lider.*" -o "$out"
 echo "wrote $out"
