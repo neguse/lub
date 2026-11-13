@@ -1135,9 +1135,11 @@ jobs:
   # master push / workflow_dispatch のみ。
   # verify 済み artifact とは別に production build (web-dist-prod) を deploy する。
   # local の `cd web && npm run deploy` は脱出ハッチとして残す。
+  # gate が待つ job に skipped (PR だけで走る job) があると、if に状態の関数が無い job は skipped になる。
+  # gate の結果を自分で見る。
   deploy:
     needs: [gate]
-    if: github.event_name != 'pull_request'
+    if: ${{ !cancelled() && needs.gate.result == 'success' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
