@@ -23,7 +23,7 @@ public static class GameApp
     // ゲームが描く texture (ゲームを映すウィンドウと同じ大きさ)
     public static TextureRef? Target;
     // ゲームを映すウィンドウの画面の上の矩形 (pick の位置を直す) と、入力の位置をゲームの画素に直す写し方
-    static Bounds? shownAt;
+    static PixelRect? shownAt;
     public static readonly InputMap Map = new InputMap();
     static AppTimeline? timeline;
     // reload が当たった回数、作り直した回数、最後の build の診断 (前に見た値。変わったら Changed に出す)
@@ -90,7 +90,7 @@ public static class GameApp
     // ゲームを 1 frame 進める。
     // at はゲームを映すウィンドウの画面の上の矩形 (画面の座標)、from は入力の位置を測るウィンドウの矩形 (編集中の版と入力を揃えるとき、マウスのある方)、pixelRatio は画面の座標の 1 に対する画面の画素の数。
     // grabbed なら、ゲームにはキーボードとマウスを見せない
-    public static void Step(float dt, bool grabbed, Bounds at, Bounds from, float pixelRatio)
+    public static void Step(float dt, bool grabbed, PixelRect at, PixelRect from, float pixelRatio)
     {
         Stepped = false;
         if (Build.Needed)

@@ -422,7 +422,7 @@ public class Search
         {
             var window = w.WindowOf(opened);
             if (window != null)
-                w.CloseTab(window, window.Tabs.IndexOf(opened));
+                w.CloseTab(window, window.Code.Tabs.IndexOf(opened));
             opened = null;
             Restore(w);
         }

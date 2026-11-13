@@ -59,7 +59,7 @@ public static class TestDiffSide
         if (frames < 60)
             return;
         var window = w.FocusWindow!;
-        var doc = window.Doc;
+        var doc = window.Code.Doc;
         var panel = Lider.Panel(window);
         if (frames == 60)
         {
@@ -79,9 +79,9 @@ public static class TestDiffSide
             Check(doc.Differs() && panel.OldShown, "the board is not shown after typing");
             Check(HasF9(), "F9 is not in the hints with a difference");
             // カーソルは足した行 (対応しない) にあるので、その上の '{' を揃える
-            var lh = EditorHost.LineHeight(window.ViewId);
-            Check(Math.Abs(panel.OldTop(doc) + 6 * lh - EditorHost.LineY(window.ViewId, 7)) < 0.5f,
-                "the live line 7 is at " + (panel.OldTop(doc) + 6 * lh) + ", want " + EditorHost.LineY(window.ViewId, 7));
+            var lh = EditorHost.LineHeight(window.Code.ViewId);
+            Check(Math.Abs(panel.OldTop(doc) + 6 * lh - EditorHost.LineY(window.Code.ViewId, 7)) < 0.5f,
+                "the live line 7 is at " + (panel.OldTop(doc) + 6 * lh) + ", want " + EditorHost.LineY(window.Code.ViewId, 7));
             var shift = boardBefore - Lider.BoardAngle;
             oldSpan = (PanelView.OldW * window.Scale + PanelView.OldGap) / Space.R;
             // 窓の大きさは動きで寄せているので、少しの差は許す
@@ -113,7 +113,7 @@ public static class TestDiffSide
 
     static bool HasF9()
     {
-        foreach (var h in Hints.For(new HintContext { Differs = Lider.Work!.FocusWindow!.Doc.Differs(), SideBySide = PanelView.SideBySide }))
+        foreach (var h in Hints.For(new HintContext { Differs = Lider.Work!.FocusWindow!.Code.Doc.Differs(), SideBySide = PanelView.SideBySide }))
             if (h.Key == "F9")
                 return true;
         return false;

@@ -12,7 +12,7 @@ public static class TestStages
     static int stage;
     static float waited;
     static bool failed;
-    static CodeWindow? window;
+    static Window? window;
 
     public static void OnInit()
     {

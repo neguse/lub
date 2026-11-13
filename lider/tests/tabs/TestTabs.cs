@@ -16,7 +16,7 @@ public static class TestTabs
     const int W = 26;
     static int frames;
     static bool failed;
-    static CodeWindow? first;
+    static Window? first;
 
     public static void OnInit()
     {
@@ -54,9 +54,9 @@ public static class TestTabs
             w.FocusOn(target);
             first = w.FocusWindow!;
             w.FocusOn(second);
-            Check(w.Windows.Count == 1 && first.Tabs.Count == 2 && w.Focus!.Path == second, "opening a second file did not add a tab: " + Shape(w));
+            Check(w.Windows.Count == 1 && first.Code.Tabs.Count == 2 && w.Focus!.Path == second, "opening a second file did not add a tab: " + Shape(w));
             w.FocusOn(target);
-            Check(w.Windows.Count == 1 && first.Tab == 0 && w.Focus!.Path == target, "opening an open file did not show its tab: " + Shape(w));
+            Check(w.Windows.Count == 1 && first.Code.Tab == 0 && w.Focus!.Path == target, "opening an open file did not show its tab: " + Shape(w));
             w.FocusOn(third);
             Check(Shape(w) == "[Target.cs *Third.cs Second.cs]", "a new tab goes right of the current tab: " + Shape(w));
 
@@ -108,10 +108,10 @@ public static class TestTabs
         foreach (var window in w.Windows)
         {
             var tabs = new List<string>();
-            for (var i = 0; i < window.Tabs.Count; i++)
+            for (var i = 0; i < window.Code.Tabs.Count; i++)
             {
-                var p = window.Tabs[i].Path;
-                tabs.Add((i == window.Tab ? "*" : "") + Utf8.Sub(p, Utf8.LastIndexOf(p, "/") + 1));
+                var p = window.Code.Tabs[i].Path;
+                tabs.Add((i == window.Code.Tab ? "*" : "") + Utf8.Sub(p, Utf8.LastIndexOf(p, "/") + 1));
             }
             s += (s == "" ? "" : " ") + "[" + string.Join(" ", tabs) + "]";
         }

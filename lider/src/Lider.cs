@@ -39,7 +39,7 @@ public static class Lider
     // 非 XR の視点の横の位置 (平面の x)。行き先と、行き先を決めたときの focus のある窓
     static readonly Spring viewX = new Spring(0);
     static float viewTarget;
-    static CodeWindow? followed;
+    static Window? followed;
     // 非 XR で、インスペクタと focus のある窓を置く画面の範囲 (px、左上が 0,0。LIDER_AREA="x,y,w,h")。
     // AreaW が 0 なら決めない (窓は既定の大きさで、視点は focus のある窓を追う)
     public static float AreaX;
@@ -61,7 +61,7 @@ public static class Lider
     static int viewportW = 1;
     static int viewportH = 1;
     // 閉じる印を指している窓
-    static CodeWindow? closeHover;
+    static Window? closeHover;
     static readonly Dictionary<string, PanelView> panels = new Dictionary<string, PanelView>();
     // VR のときの頭の向きと、Gfx.Pick に渡す左眼
     static Ray gaze = new Ray(new Vec3(0, 0, 0), new Vec3(0, 0, 1));
@@ -70,13 +70,13 @@ public static class Lider
     static readonly Grab grab = new Grab();
     static bool triggerDown;
     // 左ボタンか trigger を押した窓 (離すまで、指した所までを選ぶ)
-    static CodeWindow? pressed;
+    static Window? pressed;
     static bool rightGrip;
     static bool leftGrip;
     static float stepWait;
     static CylinderPoint? pointer;
     // 操作の手応え: 窓の見た目の動き、粒、focus が移ったときに流れる光
-    static readonly Dictionary<CodeWindow, WindowMotion> motions = new Dictionary<CodeWindow, WindowMotion>();
+    static readonly Dictionary<Window, WindowMotion> motions = new Dictionary<Window, WindowMotion>();
     static readonly Particles particles = new Particles();
     static readonly List<Ring> rings = new List<Ring>();
     // 音と演出の強さ (F4 で 2 全部、1 音なし、0 演出も抑える)
@@ -88,13 +88,13 @@ public static class Lider
     static int seenJumps;
     // 続けて保存している間は、演出を短くする秒
     const float RepeatSeconds = 2;
-    static CodeWindow? shownFocus;
+    static Window? shownFocus;
     static float cometFrom;
     static float cometTo;
     static float cometY;
     static float comet = 1;
     // Alt で並びか大きさを変えた窓と、まだ浮かせておく秒
-    static CodeWindow? keyMoved;
+    static Window? keyMoved;
     static float keyLift;
     // 止めている間の空間の冷え (0 から 1) と、足元の帯の上の点の位置
     static float cold;
@@ -127,7 +127,8 @@ public static class Lider
     static bool ZenShown => Zen && Work != null && Work.Active;
     // 窓を描かず、ゲームだけを見せる
     public static bool GameOnly = true;
-    // 空間に置いたスクリーン。コードの窓 (CodeWindow) と板は、スクリーンとは別に円筒に並べ、スクリーンの手前に描く
+    // 空間に置いたスクリーン (奥のゲームの絵と、コードの窓の円筒)。
+    // 視点に固定した平面のスクリーンは ScreenView が先に描き、コードの窓と板は、その手前に DrawScene が描く
     public static readonly List<Screen> Screens = new List<Screen>();
     // 一番奥のスクリーン: 視野をちょうど覆い、ゲームの絵を映す
     static Screen backdrop = new Screen("backdrop");
@@ -184,6 +185,7 @@ public static class Lider
         // LIDER_REWIND=0 で控えない
         Record(Environment.GetEnvironmentVariable("LIDER_REWIND"));
         Work = new Workspace(Environment.GetEnvironmentVariable("LIDER_ROOT") ?? GameDir());
+        Screens.Add(Work.CodeScreen);
         if (Environment.GetEnvironmentVariable("LIDER_ACTIVE") == "1")
             SetActive(true);
         Work.Drafts?.Restore(Work);
@@ -227,13 +229,13 @@ public static class Lider
 
     // 窓の file で宣言した field の、動いている個体に入らなかった初期値の変更の知らせ。
     // 宣言が見つからない field は focus のある窓に出す
-    public static List<string> InitNotices(Workspace w, CodeWindow window)
+    public static List<string> InitNotices(Workspace w, Window window)
     {
         var notices = new List<string>();
         foreach (var name in w.InitChanged)
         {
             var item = Search.Find(name);
-            if (item == null ? window != w.FocusWindow : item.Path != window.Doc.Path)
+            if (item == null ? window != w.FocusWindow : item.Path != window.Code.Doc.Path)
                 continue;
             notices.Add((item != null ? (item.Line + 1) + ": " : "") + name + " の初期値は動いている物に入りません (Shift+F5 で作り直すと入る)");
         }
@@ -389,7 +391,7 @@ public static class Lider
         {
             var at = Space.OnCylinderAt(PointerRay(e.X, e.Y), Space.R);
             if (at != null)
-                grab.Move(at.Angle, at.Y);
+                grab.Move(w.CodeScreen.XAt(at.Angle), at.Y);
         }
         else if (e.Kind == EventKind.MouseButtonUp && e.Button == 3 && lastEye == null)
             grab.Release();
@@ -413,7 +415,7 @@ public static class Lider
             if (!w.Ctrl && InspectAt(lastEye != null ? gaze : PointerRay(mx, my)) != null)
                 inspect.Scroll -= e.Dy * 3;
             else if (hit != null)
-                EditorHost.Scroll(hit.Window.ViewId, e.Dy);
+                EditorHost.Scroll(hit.Window.Code.ViewId, e.Dy);
             else
                 fov = Math.Max(15, Math.Min(90, fov - e.Dy * 4));
         }
@@ -476,7 +478,7 @@ public static class Lider
         var hit = TitleAt(w, ray) ?? WindowAt(w, ray);
         var at = Space.OnCylinderAt(ray, Space.R);
         if (hit != null && at != null)
-            grab.Start(hit.Window, at.Angle, at.Y);
+            grab.Start(hit.Window, w.CodeScreen.XAt(at.Angle), at.Y);
     }
 
     const int TabScancode = 43;
@@ -555,12 +557,12 @@ public static class Lider
     }
 
     // 窓の i 番目のタブを出して focus を移す (見出しのタブを押した)
-    public static void ShowTab(CodeWindow window, int i)
+    public static void ShowTab(Window window, int i)
     {
         var w = Work;
-        if (w == null || i < 0 || i >= window.Tabs.Count)
+        if (w == null || i < 0 || i >= window.Code.Tabs.Count)
             return;
-        window.Tab = i;
+        window.Code.Tab = i;
         w.FocusWindow = window;
     }
 
@@ -808,7 +810,7 @@ public static class Lider
                 return;
             }
             pressed = hit.Window;
-            EditorHost.Press(hit.Window.ViewId, hit.Uv.X * hit.Window.PxW, hit.Uv.Y * hit.Window.PxH);
+            EditorHost.Press(hit.Window.Code.ViewId, hit.Uv.X * hit.Window.PxW, hit.Uv.Y * hit.Window.PxH);
             return;
         }
         if (pickGame)
@@ -840,7 +842,7 @@ public static class Lider
             Vr = lastEye != null,
             InspectShown = inspect.Shown,
             Zen = Zen,
-            Differs = w.FocusWindow != null && w.FocusWindow.Doc.Differs(),
+            Differs = w.FocusWindow != null && w.FocusWindow.Code.Doc.Differs(),
             SideBySide = PanelView.SideBySide,
             Paused = Paused,
             Errors = w.NextError() != null,
@@ -910,7 +912,7 @@ public static class Lider
         }
         else if (WindowAt(w, ray) is WindowHit over)
         {
-            var doc = over.Window.Doc;
+            var doc = over.Window.Code.Doc;
             var line = Panel(over.Window).CostLineAt(over.Uv.X * over.Window.PxW, over.Uv.Y * over.Window.PxH);
             var live = line < 0 ? -1 : doc.LiveLine(line - 1);
             cost = live < 0 ? null : Costs.At(doc.Path, live + 1);
@@ -968,14 +970,14 @@ public static class Lider
             return;
         var uv = HitWindow(w, pressed, ray);
         if (uv != null)
-            EditorHost.Drag(pressed.ViewId, uv.Value.X * pressed.PxW, uv.Value.Y * pressed.PxH);
+            EditorHost.Drag(pressed.Code.ViewId, uv.Value.X * pressed.PxW, uv.Value.Y * pressed.PxH);
     }
 
     static void ReleasePress(Workspace w)
     {
         if (pressed == null)
             return;
-        EditorHost.Release(pressed.ViewId, 0, 0);
+        EditorHost.Release(pressed.Code.ViewId, 0, 0);
         pressed = null;
     }
 
@@ -1014,12 +1016,12 @@ public static class Lider
     }
 
     // 窓の view ごとの板
-    public static PanelView Panel(CodeWindow window)
+    public static PanelView Panel(Window window)
     {
-        var key = window.ViewId.ToString();
+        var key = window.Code.ViewId.ToString();
         if (!panels.TryGetValue(key, out var panel))
         {
-            panel = new PanelView("lider_panel_" + panels.Count, window.ViewId);
+            panel = new PanelView("lider_panel_" + panels.Count, window.Code.ViewId);
             panels[key] = panel;
         }
         return panel;
@@ -1030,12 +1032,20 @@ public static class Lider
         return Camera3d.ViewportRay(lastVp, x, y, viewportW, viewportH);
     }
 
-    // 窓の角度
-    public static float WindowAngle(Workspace w, CodeWindow window)
+    // コードの窓の、円筒の角度 (まだ並べていなければ並べる)
+    public static float WindowAngle(Workspace w, Window window)
     {
-        if (window.Angle == null)
+        if (window.Bounds == null)
             w.Arrange(grab.Window);
-        return window.Angle ?? 0;
+        return window.Bounds != null ? w.CodeScreen.AngleAt(window.Bounds.X) : 0;
+    }
+
+    // コードの窓の真ん中の高さ (並べた窓は 0。つかんでいる間だけ動く)
+    public static float WindowY(Workspace w, Window window)
+    {
+        if (window.Bounds == null)
+            w.Arrange(grab.Window);
+        return window.Bounds != null ? window.Bounds.Y : 0;
     }
 
     // ray が当たる窓 (focus のある窓を先に見る)
@@ -1059,12 +1069,12 @@ public static class Lider
     }
 
     // ray が window に当たる所 (窓の中の 0..1)
-    static Vec2? HitWindow(Workspace w, CodeWindow window, Ray ray)
+    static Vec2? HitWindow(Workspace w, Window window, Ray ray)
     {
         // 動いている間は、見えている所を指す
         var m = MotionOf(window);
         var scale = m != null ? m.Scale.Value : window.Scale;
-        return Space.HitCurved(ray, m != null ? m.Angle.Value : WindowAngle(w, window), m != null ? m.Y.Value : window.Y, Space.R, window.W * scale, window.H * scale);
+        return Space.HitCurved(ray, m != null ? m.Angle.Value : WindowAngle(w, window), m != null ? m.Y.Value : WindowY(w, window), Space.R, window.W * scale, window.H * scale);
     }
 
     // ray が当たる窓の見出しの帯 (focus のある窓を先に見る)
@@ -1085,11 +1095,11 @@ public static class Lider
         return null;
     }
 
-    static Vec2? HitTitle(Workspace w, CodeWindow window, Ray ray)
+    static Vec2? HitTitle(Workspace w, Window window, Ray ray)
     {
         var m = MotionOf(window);
         var scale = m != null ? m.Scale.Value : window.Scale;
-        return Space.HitCurved(ray, m != null ? m.Angle.Value : WindowAngle(w, window), Panel(window).TitleY(m != null ? m.Y.Value : window.Y, scale), Space.R,
+        return Space.HitCurved(ray, m != null ? m.Angle.Value : WindowAngle(w, window), Panel(window).TitleY(m != null ? m.Y.Value : WindowY(w, window), scale), Space.R,
             window.W * scale, PanelView.TitleH * scale);
     }
 
@@ -1190,17 +1200,18 @@ public static class Lider
         // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
         foreach (var screen in Screens)
-            screen.Project(sw, sh, Space.FlatFov);
+            if (screen.Anchor == ScreenAnchor.View && screen.Shape == ScreenShape.Plane)
+                screen.Project(sw, sh, Space.FlatFov);
         var saved = GameWindow(GameVersion.Saved);
         var draft = GameWindow(GameVersion.Draft);
         // 入力は、マウスのあるゲームのウィンドウの中の位置で、どちらのゲームにも渡す
         Input.MousePos(out var mx, out var my);
-        var from = draft != null && draft.ViewportBounds!.Contains(mx, my) ? draft : saved;
+        var from = draft != null && draft.ViewportRect!.Contains(mx, my) ? draft : saved;
         var grabbed = Work != null && Work.Active;
         if (saved != null)
-            GameApp.Step(dt, grabbed, saved.ViewportBounds!, from!.ViewportBounds!, PixelRatio);
+            GameApp.Step(dt, grabbed, saved.ViewportRect!, from!.ViewportRect!, PixelRatio);
         if (draft != null && Work != null)
-            DraftGame.Step(dt, grabbed, GameApp.Position >= 0, draft.ViewportBounds!, from!.ViewportBounds!, PixelRatio, Work.Docs);
+            DraftGame.Step(dt, grabbed, GameApp.Position >= 0, draft.ViewportRect!, from!.ViewportRect!, PixelRatio, Work.Docs);
         ScreenView.Draw(Screens, sw, sh);
         if (draft != null)
             DrawLabels(sw, sh, saved, draft);
@@ -1221,7 +1232,7 @@ public static class Lider
     {
         foreach (var screen in Screens)
             foreach (var window in screen.Windows)
-                if (window.Content is GameView view && view.Version == version && window.ViewportBounds != null)
+                if (window.Content is GameView view && view.Version == version && window.ViewportRect != null)
                     return window;
         return null;
     }
@@ -1242,13 +1253,13 @@ public static class Lider
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
         labelBatch.Begin();
         if (saved != null)
-            Label(saved.ViewportBounds!, "保存済み");
-        Label(draft.ViewportBounds!, DraftGame.Label());
+            Label(saved.ViewportRect!, "保存済み");
+        Label(draft.ViewportRect!, DraftGame.Label());
         labelBatch.Flush();
         Gfx.EndPass();
     }
 
-    static void Label(Bounds at, string text)
+    static void Label(PixelRect at, string text)
     {
         var t = labelText!;
         var w = (Utf8.Cells(text, Utf8.Bytes(text)) + 2) * t.CellW;
@@ -1336,14 +1347,14 @@ public static class Lider
     const float EdgeW = 0.018f;
 
     // 指した窓の端。右なら 1、下なら 2 の和 (当たらなければ 0)
-    public static int EdgeAt(Workspace w, CodeWindow window, Ray ray)
+    public static int EdgeAt(Workspace w, Window window, Ray ray)
     {
         if (grab.Holding)
             return 0;
         var m = MotionOf(window);
         var scale = m != null ? m.Scale.Value : window.Scale;
         var angle = m != null ? m.Angle.Value : WindowAngle(w, window);
-        var y = m != null ? m.Y.Value : window.Y;
+        var y = m != null ? m.Y.Value : WindowY(w, window);
         var bw = window.W * scale;
         var bh = window.H * scale;
         var uv = Space.HitCurved(ray, angle + EdgeW * 0.5f / Space.R, y - EdgeW * 0.5f, Space.R, bw + EdgeW, bh + EdgeW);
@@ -1358,7 +1369,7 @@ public static class Lider
     }
 
     // 窓の外側の右か下の端を探す (focus のある窓を先に見る)。端の向きは foundEdge に置く
-    static CodeWindow? EdgeWindow(Workspace w, Ray ray)
+    static Window? EdgeWindow(Workspace w, Ray ray)
     {
         foundEdge = 0;
         if (w.FocusWindow != null)
@@ -1397,13 +1408,13 @@ public static class Lider
         }
         if ((sizingEdge & 2) != 0)
         {
-            var bottom = window.Y - window.H * window.Scale * 0.5f;
+            var bottom = WindowY(w, window) - window.H * window.Scale * 0.5f;
             pxH += (int)((bottom - at.Y) * 2 / perPx);
         }
         window.Resize(pxW, pxH);
     }
 
-    public static void StartEdge(CodeWindow window, int edge)
+    public static void StartEdge(Window window, int edge)
     {
         sizing = window;
         sizingEdge = edge;
@@ -1414,11 +1425,11 @@ public static class Lider
         sizing = null;
     }
 
-    static CodeWindow? sizing;
+    static Window? sizing;
     static int sizingEdge;
     static int edgeHover;
     static int foundEdge;
-    static CodeWindow? edgeHoverWindow;
+    static Window? edgeHoverWindow;
 
     // Zen の窓が画面に占める割合
     const float ZenFill = 0.96f;
@@ -1459,7 +1470,7 @@ public static class Lider
         var panelText = PanelText();
         w.Tick(dt);
         if (w.FocusWindow != null)
-            EditorHost.Focus(w.FocusWindow.ViewId);
+            EditorHost.Focus(w.FocusWindow.Code.ViewId);
         EditorHost.Step();
         w.Sync();
         TakePick(w);
@@ -1479,22 +1490,22 @@ public static class Lider
                 window.Scale = Space.FlatScale;
             }
             var panel = Panel(window);
-            panel.Errors = w.ErrorsIn(window.Doc.Path);
+            panel.Errors = w.ErrorsIn(window.Code.Doc.Path);
             panel.Notices = InitNotices(w, window);
             panel.ErrorsVersion = w.ErrorsVersion;
             var motion = MotionOf(window);
             panel.TabLabels = w.TabTitles(window);
-            panel.Tab = window.Tab;
+            panel.Tab = window.Code.Tab;
             panel.Title = motion != null && motion.LandLabel > 0 ? (int)(motion.LandSeconds * 100) / 100.0f + "s" : "";
             panel.Focused = window == w.FocusWindow;
             panel.Costs = Costs;
-            panel.Fields = Fields.For(Search.DeclarationsIn(window.Doc.Path), EditorHost.FirstLine(window.ViewId), EditorHost.LastLine(window.ViewId));
+            panel.Fields = Fields.For(Search.DeclarationsIn(window.Code.Doc.Path), EditorHost.FirstLine(window.Code.ViewId), EditorHost.LastLine(window.Code.ViewId));
             panel.CloseLit = window == closeHover;
-            var differs = window == w.FocusWindow && window.Doc.Differs();
+            var differs = window == w.FocusWindow && window.Code.Doc.Differs();
             panel.OldShown = differs && PanelView.SideBySide && !ZenShown;
             panel.Inline = differs && !PanelView.SideBySide;
-            EditorHost.SetGaps(window.ViewId, panel.Inline ? window.Doc.InlineGaps() : NoGaps);
-            panel.Prepare(window.Doc, panelText, w.Trace);
+            EditorHost.SetGaps(window.Code.ViewId, panel.Inline ? window.Code.Doc.InlineGaps() : NoGaps);
+            panel.Prepare(window.Code.Doc, panelText, w.Trace);
         }
         w.Arrange(grab.Window);
         // 閉じる動きの間の窓は描き直さないが、描くので texture を宣言し続ける
@@ -1779,7 +1790,7 @@ public static class Lider
             if (hit != null)
             {
                 w.FocusWindow = hit.Window;
-                grab.Start(hit.Window, pointer.Angle, pointer.Y);
+                grab.Start(hit.Window, w.CodeScreen.XAt(pointer.Angle), pointer.Y);
             }
         }
         if (!rGrip && rightGrip)
@@ -1791,11 +1802,11 @@ public static class Lider
             if (lGrip && !leftGrip && a != null && b != null)
                 grab.StartTwo(a.Value, b.Value);
             else if (!lGrip && leftGrip && pointer != null)
-                grab.ReleaseTwo(pointer.Angle, pointer.Y);
+                grab.ReleaseTwo(w.CodeScreen.XAt(pointer.Angle), pointer.Y);
             if (lGrip && a != null && b != null)
                 grab.MoveTwo(a.Value, b.Value);
             else if (pointer != null)
-                grab.Move(pointer.Angle, pointer.Y);
+                grab.Move(w.CodeScreen.XAt(pointer.Angle), pointer.Y);
         }
         rightGrip = rGrip;
         leftGrip = lGrip;
@@ -1809,7 +1820,7 @@ public static class Lider
         if (right != null && Math.Abs(right.StickY) > 0.2f && InspectAt(aim) != null)
             inspect.Scroll -= right.StickY * dt * 18;
         else if (right != null && w.FocusWindow != null && Math.Abs(right.StickY) > 0.2f)
-            EditorHost.Scroll(w.FocusWindow.ViewId, right.StickY * dt * 6);
+            EditorHost.Scroll(w.FocusWindow.Code.ViewId, right.StickY * dt * 6);
         // 止めている間、左の stick を倒すと frame を送る (倒したままなら 0.12 秒ごと)
         stepWait -= dt;
         if (left != null && GameApp.Position >= 0 && Math.Abs(left.StickX) > 0.6f && stepWait <= 0)
@@ -1825,7 +1836,7 @@ public static class Lider
     }
 
     // 窓の見た目 (まだ描いていなければ null)
-    public static WindowMotion? MotionOf(CodeWindow window)
+    public static WindowMotion? MotionOf(Window window)
     {
         return motions.TryGetValue(window, out var m) ? m : null;
     }
@@ -1849,40 +1860,40 @@ public static class Lider
             if (!motions.TryGetValue(window, out var m))
             {
                 // 開いた窓は、その場で小さな大きさから広がる
-                m = new WindowMotion(WindowAngle(w, window), window.Y, WindowMotion.SmallScale);
-                m.SeenSaved = window.Doc.Saved;
-                m.SeenLanded = window.Doc.Landed;
-                m.SeenRevision = window.Doc.Revision;
+                m = new WindowMotion(WindowAngle(w, window), WindowY(w, window), WindowMotion.SmallScale);
+                m.SeenSaved = window.Code.Doc.Saved;
+                m.SeenLanded = window.Code.Doc.Landed;
+                m.SeenRevision = window.Code.Doc.Revision;
                 m.SeenFailures = w.Failures;
-                m.SeenRemoved = EditorHost.RemovedCount(window.ViewId);
+                m.SeenRemoved = EditorHost.RemovedCount(window.Code.ViewId);
                 motions[window] = m;
             }
-            if (m.SeenDoc != window.Doc)
+            if (m.SeenDoc != window.Code.Doc)
             {
                 // タブを替えたら、その file の今の状態から追う (替えたことを保存や反映と取り違えない)
-                m.SeenDoc = window.Doc;
-                m.SeenSaved = window.Doc.Saved;
-                m.SeenLanded = window.Doc.Landed;
-                m.SeenRevision = window.Doc.Revision;
-                m.SeenRemoved = EditorHost.RemovedCount(window.ViewId);
+                m.SeenDoc = window.Code.Doc;
+                m.SeenSaved = window.Code.Doc.Saved;
+                m.SeenLanded = window.Code.Doc.Landed;
+                m.SeenRevision = window.Code.Doc.Revision;
+                m.SeenRemoved = EditorHost.RemovedCount(window.Code.ViewId);
             }
-            m.Step(WindowAngle(w, window), window.Y, window.Scale, grab.Window == window || (keyMoved == window && keyLift > 0),
+            m.Step(WindowAngle(w, window), WindowY(w, window), window.Scale, grab.Window == window || (keyMoved == window && keyLift > 0),
                 window == w.FocusWindow, dt);
             if (window == w.FocusWindow)
                 FollowCaret(window, m, dt);
             else
                 m.CaretShown = false;
-            if (window.Doc.Saved != m.SeenSaved)
+            if (window.Code.Doc.Saved != m.SeenSaved)
             {
-                m.SeenSaved = window.Doc.Saved;
+                m.SeenSaved = window.Code.Doc.Saved;
                 m.Wave = 1;
                 m.SavedAt = now;
                 Cues.Play(Cues.Save, 0.35f);
             }
-            if (window.Doc.Landed != m.SeenLanded)
+            if (window.Code.Doc.Landed != m.SeenLanded)
             {
                 // 保存した内容がゲームに入ると、窓からゲームの空間へ光が飛ぶ
-                m.SeenLanded = window.Doc.Landed;
+                m.SeenLanded = window.Code.Doc.Landed;
                 m.LandSeconds = now - m.SavedAt;
                 m.LandLabel = 2.5f;
                 Land(m, repeat, celebrate);
@@ -1897,24 +1908,24 @@ public static class Lider
                 m.RippleAt = panel.SankAt;
             }
             // 本文から文字が消えると、消えた所から粒が散る
-            var removed = EditorHost.RemovedCount(window.ViewId);
+            var removed = EditorHost.RemovedCount(window.Code.ViewId);
             if (removed != m.SeenRemoved)
             {
                 m.SeenRemoved = removed;
                 Cues.Play(Cues.Key, 0.1f, 0.68f + Cues.Random() * 0.1f);
-                BurstAt(window, m, EditorHost.RemovedX(window.ViewId), EditorHost.RemovedY(window.ViewId),
+                BurstAt(window, m, EditorHost.RemovedX(window.Code.ViewId), EditorHost.RemovedY(window.Code.ViewId),
                     Color.Rgb(0.95f, 0.75f, 0.35f, 1), 8, 0.35f);
             }
-            if (window.Doc.Revision != m.SeenRevision)
+            if (window.Code.Doc.Revision != m.SeenRevision)
             {
-                m.SeenRevision = window.Doc.Revision;
+                m.SeenRevision = window.Code.Doc.Revision;
                 m.Pulse = 1;
             }
             if (w.Failures != m.SeenFailures)
             {
                 // 保存した版が compile error なら、error のある file の窓が赤く光り、赤い粒がこぼれる
                 m.SeenFailures = w.Failures;
-                if (w.ErrorsIn(window.Doc.Path).Count > 0)
+                if (w.ErrorsIn(window.Code.Doc.Path).Count > 0)
                 {
                     m.Alarm = 1;
                     m.Shake = Juice > 0 ? 1 : 0;
@@ -1928,7 +1939,7 @@ public static class Lider
         if (celebrate && w.FocusWindow != null && motions.TryGetValue(w.FocusWindow, out var here))
             Land(here, false, true);
         // 閉じた窓はその場で縮んでから消す
-        var gone = new List<CodeWindow>();
+        var gone = new List<Window>();
         foreach (var pair in motions)
         {
             if (w.Windows.Contains(pair.Key))
@@ -2015,9 +2026,9 @@ public static class Lider
 
     // focus のある窓の cursor の見た目を、エディタが最後に描いた所へ滑らせる (focus が来たときは、その場に出す)。
     // 同じ行で cursor が進み、行がその分だけ長くなったら、進んだ所を打った文字として Landing にする
-    static void FollowCaret(CodeWindow window, WindowMotion m, float dt)
+    static void FollowCaret(Window window, WindowMotion m, float dt)
     {
-        var id = window.ViewId;
+        var id = window.Code.ViewId;
         if (EditorHost.CaretCount(id) == 0)
         {
             m.CaretShown = false;
@@ -2048,19 +2059,19 @@ public static class Lider
     }
 
     // カーソルのある行の、円筒の上の高さ
-    static float CursorY(CodeWindow window, WindowMotion m)
+    static float CursorY(Window window, WindowMotion m)
     {
-        var id = window.ViewId;
+        var id = window.Code.ViewId;
         var panel = Panel(window);
         var v = (EditorHost.LineY(id, EditorHost.CursorLine(id)) + (text != null ? text.LineH * 0.5f : 0)) / window.PxH;
         return m.Y.Value + (0.5f - v) * window.H * m.Scale.Value;
     }
 
     // 窓の view の中の (x, y) px (行の左上) から粒を散らす (窓の外なら散らさない)
-    static void BurstAt(CodeWindow window, WindowMotion m, float x, float y, Color color, int n, float life)
+    static void BurstAt(Window window, WindowMotion m, float x, float y, Color color, int n, float life)
     {
         var panel = Panel(window);
-        var lh = EditorHost.LineHeight(window.ViewId);
+        var lh = EditorHost.LineHeight(window.Code.ViewId);
         if (y < 0 || y + lh > window.PxH || x < 0 || x > window.PxW)
             return;
         particles.Burst(panel.AngleAt(m.Angle.Value, m.Scale.Value, x), panel.YAt(m.Y.Value, m.Scale.Value, y + lh * 0.5f),
@@ -2164,23 +2175,23 @@ public static class Lider
             panel.Flat = lastEye == null;
             panel.FrameAngle = (particles.Next() - 0.5f) * 0.03f * m.Shake * m.Shake;
             panel.FrameY = (particles.Next() - 0.5f) * 0.05f * m.Shake * m.Shake;
-            panel.Draw(window.Doc, angle, y, scale, vp, m.Lift.Value, m.Glow.Value, m.Alarm);
+            panel.Draw(window.Code.Doc, angle, y, scale, vp, m.Lift.Value, m.Glow.Value, m.Alarm);
             if (panel.OldShown)
                 panel.DrawOld(vp, angle, y, scale, InspectR);
             foreach (var l in Landings)
                 if (l.Window == window)
-                    panel.DrawLanding(vp, window.Doc, angle, y, scale, m.Lift.Value, l);
+                    panel.DrawLanding(vp, window.Code.Doc, angle, y, scale, m.Lift.Value, l);
             if (m.CaretShown)
             {
-                var id = window.ViewId;
+                var id = window.Code.ViewId;
                 var scroll = EditorHost.ScrollY(id);
                 PanelView.CaretDrawn = false;
-                panel.DrawCaret(vp, window.Doc, angle, y, scale, m.Lift.Value, m.CaretX.Value, m.CaretY.Value - scroll);
+                panel.DrawCaret(vp, window.Code.Doc, angle, y, scale, m.Lift.Value, m.CaretX.Value, m.CaretY.Value - scroll);
                 if (window == w.FocusWindow)
                     LogCaret(vp);
                 // 2 つ目からの cursor (複数の選択) は滑らせない
                 for (var i = 1; i < EditorHost.CaretCount(id); i++)
-                    panel.DrawCaret(vp, window.Doc, angle, y, scale, m.Lift.Value, EditorHost.CaretX(id, i), EditorHost.CaretY(id, i));
+                    panel.DrawCaret(vp, window.Code.Doc, angle, y, scale, m.Lift.Value, EditorHost.CaretX(id, i), EditorHost.CaretY(id, i));
             }
             var r = Space.R - m.Lift.Value * PanelView.LiftDistance - PanelView.FrontGap - 0.005f;
             var width = window.W * scale * r / Space.R;

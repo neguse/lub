@@ -10,7 +10,7 @@ public static class TestTabLabels
 {
     static int frames;
     static bool failed;
-    static CodeWindow? window;
+    static Window? window;
     static Readback? queue;
     static bool asked;
 

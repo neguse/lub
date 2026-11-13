@@ -84,17 +84,17 @@ public static class TestSearch
         TypeIn(w, "bcn blnk");
         Check(s.Results.Count == 1 && s.Results[0].Text == "Beacon.Blink" && s.Results[0].Where == "Beacon.cs:4", "a declaration is not found");
 
-        var count = w.FocusWindow!.Tabs.Count;
+        var count = w.FocusWindow!.Code.Tabs.Count;
         s.Move(w, 1);
-        Check(w.FocusWindow!.Tabs.Count == count + 1 && w.Focus!.Path.EndsWith("Beacon.cs") && w.Focus.Line == 3, "selecting did not preview the place");
+        Check(w.FocusWindow!.Code.Tabs.Count == count + 1 && w.Focus!.Path.EndsWith("Beacon.cs") && w.Focus.Line == 3, "selecting did not preview the place");
         s.Cancel(w);
-        Check(!s.Shown && w.FocusWindow!.Tabs.Count == count && w.Focus == first, "Escape did not go back");
+        Check(!s.Shown && w.FocusWindow!.Code.Tabs.Count == count && w.Focus == first, "Escape did not go back");
 
         s.Open(w);
         TypeIn(w, "swep");
         var line = w.Focus!.Line;
         s.Move(w, 0);
-        Check(w.FocusWindow!.Tabs.Count == count && w.Focus!.Line == 5, "selecting in an open file moved to " + w.Focus!.Line);
+        Check(w.FocusWindow!.Code.Tabs.Count == count && w.Focus!.Line == 5, "selecting in an open file moved to " + w.Focus!.Line);
         s.Cancel(w);
         Check(w.Focus!.Line == line, "Escape did not put the cursor back");
 
@@ -104,7 +104,7 @@ public static class TestSearch
         s.Move(w, 1);
         TypeIn(w, "zzzz");
         s.Commit(w);
-        Check(!s.Shown && w.FocusWindow!.Tabs.Count == count && w.Focus == first, "Return with no results kept the preview");
+        Check(!s.Shown && w.FocusWindow!.Code.Tabs.Count == count && w.Focus == first, "Return with no results kept the preview");
 
         // 打った直後は読み直さず、検索を開くと読み直す
         var lastType = first;
@@ -132,7 +132,7 @@ public static class TestSearch
         s.Open(w);
         TypeIn(w, "bcn");
         s.Commit(w);
-        Check(w.FocusWindow!.Tabs.Count == count + 1 && w.Focus!.Path.EndsWith("Beacon.cs"), "Return did not open the file");
+        Check(w.FocusWindow!.Code.Tabs.Count == count + 1 && w.Focus!.Path.EndsWith("Beacon.cs"), "Return did not open the file");
         // Ctrl+- で確定の前の場所へ戻る (タブは開いたまま)
         w.Back();
         Check(w.Focus == first && w.Focus!.Line == 3, "going back did not return to the place before Return");

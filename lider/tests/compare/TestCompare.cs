@@ -55,8 +55,8 @@ public static class TestCompare
         {
             var windows = Lider.Screens[0].Windows;
             Check(windows.Count == 2, "want 2 game windows, got " + windows.Count);
-            var left = windows[0].ViewportBounds!;
-            var right = windows[1].ViewportBounds!;
+            var left = windows[0].ViewportRect!;
+            var right = windows[1].ViewportRect!;
             Check(left.W > 0 && Math.Abs(left.W - right.W) <= 1 && left.X < right.X && Math.Abs(left.X + left.W - right.X) <= 1,
                 "the windows are not side by side: " + left.X + "+" + left.W + " and " + right.X + "+" + right.W);
             copiedAt = Count(GameApp.Ref);

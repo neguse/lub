@@ -60,7 +60,7 @@ public static class TestOpen
         var targetText = target.Text(0);
 
         Chord(w, Keys.ModCtrl, N);
-        Check(w.Windows.Count == 1 && w.FocusWindow!.Tabs.Count == 2 && w.Focus != target && w.Focus!.Path == "", "Ctrl+N did not add a tab for a new doc");
+        Check(w.Windows.Count == 1 && w.FocusWindow!.Code.Tabs.Count == 2 && w.Focus != target && w.Focus!.Path == "", "Ctrl+N did not add a tab for a new doc");
         if (failed)
             return;
         var untitled = w.Focus!;
@@ -79,8 +79,8 @@ public static class TestOpen
         w.FocusOn(path!);
         OpenFile(w);
         Check(!EditorHost.Modal(), "Return did not close the open bar");
-        Check(w.FocusWindow!.Tabs.Count == 3 && w.Focus!.Path.EndsWith("other.cs") && w.Focus.Text(1) == "public static class Other",
-            "Ctrl+O other.cs opened '" + w.Focus?.Path + "' with " + w.FocusWindow!.Tabs.Count + " tabs");
+        Check(w.FocusWindow!.Code.Tabs.Count == 3 && w.Focus!.Path.EndsWith("other.cs") && w.Focus.Text(1) == "public static class Other",
+            "Ctrl+O other.cs opened '" + w.Focus?.Path + "' with " + w.FocusWindow!.Code.Tabs.Count + " tabs");
         if (failed)
             return;
         var other = w.Focus!;
@@ -88,14 +88,14 @@ public static class TestOpen
 
         w.FocusOn(path!);
         OpenFile(w);
-        Check(w.FocusWindow!.Tabs.Count == 3 && w.Focus == other, "opening other.cs again added a tab or did not show it (" + w.FocusWindow!.Tabs.Count + " tabs)");
+        Check(w.FocusWindow!.Code.Tabs.Count == 3 && w.Focus == other, "opening other.cs again added a tab or did not show it (" + w.FocusWindow!.Code.Tabs.Count + " tabs)");
 
         w.FocusOn(path!);
         Chord(w, Keys.ModCtrl, P);
         Check(EditorHost.Modal(), "Ctrl+P did not open the find bar");
         Type(w, "othe");
         Press(w, Return);
-        Check(w.FocusWindow!.Tabs.Count == 3 && w.Focus == other, "Ctrl+P othe showed '" + w.Focus?.Path + "' with " + w.FocusWindow!.Tabs.Count + " tabs");
+        Check(w.FocusWindow!.Code.Tabs.Count == 3 && w.Focus == other, "Ctrl+P othe showed '" + w.Focus?.Path + "' with " + w.FocusWindow!.Code.Tabs.Count + " tabs");
         if (failed)
             return;
         Console.WriteLine("PASS");

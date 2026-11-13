@@ -232,13 +232,13 @@ public static class TestFields
             return;
         Check(mark.X1 > mark.X0, "the mark has no place");
         var px = (mark.X0 + mark.X1) * 0.5f;
-        var py = EditorHost.LineY(window.ViewId, row) + EditorHost.LineHeight(window.ViewId) * 0.5f;
+        var py = EditorHost.LineY(window.Code.ViewId, row) + EditorHost.LineHeight(window.Code.ViewId) * 0.5f;
         Check(panel.MarkAt(px, py) == mark, "MarkAt does not find the mark");
         var a = Lider.WindowAngle(w, window) + (px / PanelView.BasePxW - 0.5f) * PanelView.BaseW * window.Scale / Space.R;
         var y = (0.5f - py / PanelView.BasePxH) * PanelView.BaseH * window.Scale;
-        var line = window.Doc.Line;
+        var line = window.Code.Doc.Line;
         Lider.Click(w, new Ray(new Vec3(0, 0, 0), Space.At(a, y, Space.R)), false);
-        Check(window.Doc.Line == line, "pressing the mark moved the cursor");
+        Check(window.Code.Doc.Line == line, "pressing the mark moved the cursor");
         Check(Lider.Fields.IsSelected("Mote", Id(0)), "pressing the mark did not select the instance");
         Lider.Fields.Toggle("Mote", Id(0));
     }

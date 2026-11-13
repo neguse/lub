@@ -18,7 +18,7 @@ public static class TestMotion
     static bool failed;
     static int frames;
     static int stage;
-    static CodeWindow? window;
+    static Window? window;
 
     public static void OnInit()
     {
@@ -93,12 +93,12 @@ public static class TestMotion
         for (var i = 0; i < 60; i++)
             Lider.Animate(w, 1.0f / 60);
         Check(m != null && Math.Abs(m.Scale.Value - window.Scale) < 0.03f, "the window did not grow to its size: " + (m == null ? -1 : m.Scale.Value));
-        EditorHost.SetCursor(window.ViewId, 1, 1);
+        EditorHost.SetCursor(window.Code.ViewId, 1, 1);
     }
 
     static void CaretShown()
     {
-        var id = window!.ViewId;
+        var id = window!.Code.ViewId;
         var n = EditorHost.Draw(id, PanelView.BasePxW, PanelView.BasePxH);
         Check(EditorHost.CaretCount(id) == 1, "the view has " + EditorHost.CaretCount(id) + " carets, want 1");
         var x = EditorHost.CaretX(id, 0);

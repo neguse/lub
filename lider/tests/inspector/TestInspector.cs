@@ -193,7 +193,7 @@ public static class TestInspector
     // 板の i 番目の行の、横 u の所を押す
     static void Press(Workspace w, InspectView view, int i, float u)
     {
-        var lineH = EditorHost.LineHeight(w.FocusWindow != null ? w.FocusWindow.ViewId : 0);
+        var lineH = EditorHost.LineHeight(w.FocusWindow != null ? w.FocusWindow.Code.ViewId : 0);
         Lider.Click(w, RayAt(new Vec2(u, (view.RowY(i) + lineH * 0.5f) / InspectView.PxH)), false);
     }
 

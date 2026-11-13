@@ -64,7 +64,7 @@ public static class DraftGame
 
     // 1 frame 進める。docs は開いている file (保存していない本文を使う)。
     // paused なら進めず (保存した版を止めている)、at と from と grabbed は GameApp.Step と同じ
-    public static void Step(float dt, bool grabbed, bool paused, Bounds at, Bounds from, float pixelRatio, Dictionary<string, Document> docs)
+    public static void Step(float dt, bool grabbed, bool paused, PixelRect at, PixelRect from, float pixelRatio, Dictionary<string, Document> docs)
     {
         if (Build == null)
             return;

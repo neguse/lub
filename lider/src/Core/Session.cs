@@ -30,8 +30,8 @@ public static class Session
         var lines = new List<string> { now + " " + (w.FocusWindow != null ? w.Windows.IndexOf(w.FocusWindow) : -1) };
         foreach (var window in w.Windows)
         {
-            lines.Add("window " + window.Tab + " " + window.WidthPx + " " + window.HeightPx + " " + window.Scale + " " + (window.Sized ? 1 : 0));
-            foreach (var doc in window.Tabs)
+            lines.Add("window " + window.Code.Tab + " " + window.WidthPx + " " + window.HeightPx + " " + window.Scale + " " + (window.Sized ? 1 : 0));
+            foreach (var doc in window.Code.Tabs)
                 lines.Add("tab " + doc.Line + " " + doc.Col + " " + EditorHost.FirstLine(doc.Id) + " " + w.Relative(doc.Path));
         }
         Io.SaveText(PathIn(w), string.Join("\n", lines));
@@ -81,10 +81,10 @@ public static class Session
                 n++;
             if (spec != null && docs.Count > 0)
             {
-                var window = new CodeWindow(docs[0]);
+                var window = new Window(new Code(docs[0]));
                 for (var k = 1; k < docs.Count; k++)
-                    window.Tabs.Add(docs[k]);
-                window.Tab = Math.Min(int.Parse(spec[1]), docs.Count - 1);
+                    window.Code.Tabs.Add(docs[k]);
+                window.Code.Tab = Math.Min(int.Parse(spec[1]), docs.Count - 1);
                 window.Resize(int.Parse(spec[2]), int.Parse(spec[3]));
                 window.Scale = float.Parse(spec[4]);
                 window.Sized = spec[5] == "1";

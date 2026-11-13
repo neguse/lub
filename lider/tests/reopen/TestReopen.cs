@@ -15,7 +15,7 @@ public static class TestReopen
     static int waitUntil;
     static bool failed;
     static string file = "";
-    static CodeWindow? closed;
+    static Window? closed;
 
     public static void OnInit()
     {

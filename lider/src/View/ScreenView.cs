@@ -32,9 +32,13 @@ public static class ScreenView
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
         if (shader != null)
             foreach (var screen in FarFirst(screens))
+            {
+                // 視点に固定した平面のスクリーンだけを描く (コードの窓の円筒は DrawScene が描く)
+                if (screen.Anchor != ScreenAnchor.View || screen.Shape != ScreenShape.Plane)
+                    continue;
                 foreach (var window in screen.Windows)
                 {
-                    var at = window.ViewportBounds;
+                    var at = window.ViewportRect;
                     var tex = window.Content.Texture();
                     if (at == null || tex == null)
                         continue;
@@ -57,6 +61,7 @@ public static class ScreenView
                         Depth = false,
                     });
                 }
+            }
         Gfx.EndPass();
     }
 
