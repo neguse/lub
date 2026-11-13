@@ -4,6 +4,7 @@
 //   - 通らない本文は error で、診断を返し、何も書かない
 //   - static の初期化子を消すと restart で、app は作り直す
 //   - 別の名前の session は、別に変換する
+//   - file を足すのと本文を替えるのを 1 回で変換し、file を外すと (型が消えるので) restart になる
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -104,11 +105,17 @@ public static class TestTcs
             Open(b);
             if (One(b, "module") == null)
                 return;
-            a.Update("Tiny.cs", Source.Replace(Body, "Count += Step * 1000;"));
+            a.Update(new List<string>(), new List<string> { "Tiny.cs", "Extra.cs" },
+                new List<string> { Source.Replace(Body, "Count += Step * 1000;"), "public static class Extra\n{\n    public static int X;\n}\n" });
             var r = One(a, "batch");
             if (r == null)
                 return;
-            Check(r.Revision == 4, "the other session changed this one: revision " + r.Revision);
+            Check(r.Revision == 4, "the other session changed this one, or one update compiled twice: revision " + r.Revision);
+            a.Update(new List<string> { "Extra.cs" }, new List<string>(), new List<string>());
+            r = One(a, "restart");
+            if (r == null)
+                return;
+            Check(r.Revision == 5, "removing a file should compile once: revision " + r.Revision);
             Console.WriteLine("PASS");
             App.Quit(0);
             stage = 4;

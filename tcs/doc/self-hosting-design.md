@@ -55,7 +55,7 @@ SelfHost/
     CRun.cs              tcs c
     VmRun.cs             tcs vm と、VM の増分 session (VmSession)
     Playground.cs        playground の要求 (vmopen、vmupdate、vmmodule、vmconfig、vmremove) の入口
-    Sessions.cs          名前で持つ複数の VM の増分 session の入口 (open、update、remove、close。結果は host が指す path に書く)
+    Sessions.cs          名前で持つ複数の VM の増分 session の入口 (open、update、close。結果は host が指す path に書く)
     ReloadRules.cs       hot reload で live に当てられない編集の規則
     HostMessage.cs       --watch の host への message
     TcsHost.cs           host の関数の宣言 (C の build では --ref の stub)

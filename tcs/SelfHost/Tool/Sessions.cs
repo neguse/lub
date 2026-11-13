@@ -7,8 +7,7 @@ namespace TcsSelf;
 // 同じ process の中で、別の版の同じ program (保存した版と編集中の版など) を並べて変換するのに使う。
 // host は要求を TcsHost の引数に並べて Call を呼び、応答を TcsHost.WriteOut で受け取る:
 //   open <名前> <entry> <module の path> <batch の path> <export の数> [<C.M か C.*>]... <trace の数> [<path の先頭>]... <参照の数> [<text>]... [<path> <text>]...
-//   update <名前> <path> <text>   (file を足すか、本文を替える)
-//   remove <名前> <path>          (file を session から外す)
+//   update <名前> <外す file の数> [<path>]... [<path> <text>]...   (file を外し、足し、本文を替えて、まとめて 1 回変換する)
 //   close <名前>
 // open は同じ名前の session を開き直す。entry class の static method は全部 export する。
 // 変換が通ると、module (最初の build と restart) か batch (tvm_apply_batch で当てる差分) を、open で指した path に書く (TcsHost.WriteBinaryAtomic)。
@@ -43,8 +42,7 @@ public static class Sessions
         string method = n > 0 ? TcsHost.Arg(0) : "";
         string name = n > 1 ? TcsHost.Arg(1) : "";
         if (method == "open") OpenSession(n, name);
-        else if (method == "update") UpdateFile(n, name);
-        else if (method == "remove") RemoveFile(n, name);
+        else if (method == "update") Update(n, name);
         else if (method == "close")
         {
             _open.Remove(name);
@@ -96,38 +94,34 @@ public static class Sessions
         return i;
     }
 
-    private static void UpdateFile(int n, string name)
-    {
-        if (!_open.ContainsKey(name) || n < 4)
-        {
-            Fail(!_open.ContainsKey(name) ? "no session named " + name : "update needs <name> <path> <text>");
-            return;
-        }
-        var s = _open[name];
-        string path = TcsHost.Arg(2);
-        int at = s.Paths.IndexOf(path);
-        if (at < 0)
-        {
-            s.Paths.Add(path);
-            s.Texts.Add(TcsHost.Arg(3));
-        }
-        else s.Texts[at] = TcsHost.Arg(3);
-        Reply(s, s.Vm.Update(s.Texts, s.Paths));
-    }
-
-    private static void RemoveFile(int n, string name)
+    private static void Update(int n, string name)
     {
         if (!_open.ContainsKey(name) || n < 3)
         {
-            Fail(!_open.ContainsKey(name) ? "no session named " + name : "remove needs <name> <path>");
+            Fail(!_open.ContainsKey(name) ? "no session named " + name : "update needs <name> <removed count> ...");
             return;
         }
         var s = _open[name];
-        int at = s.Paths.IndexOf(TcsHost.Arg(2));
-        if (at >= 0)
+        var removed = new List<string>();
+        int i = ReadList(2, n, removed);
+        foreach (var path in removed)
         {
+            int at = s.Paths.IndexOf(path);
+            if (at < 0) continue;
             s.Paths.RemoveAt(at);
             s.Texts.RemoveAt(at);
+        }
+        while (i + 1 < n)
+        {
+            string path = TcsHost.Arg(i);
+            int at = s.Paths.IndexOf(path);
+            if (at < 0)
+            {
+                s.Paths.Add(path);
+                s.Texts.Add(TcsHost.Arg(i + 1));
+            }
+            else s.Texts[at] = TcsHost.Arg(i + 1);
+            i += 2;
         }
         Reply(s, s.Vm.Update(s.Texts, s.Paths));
     }

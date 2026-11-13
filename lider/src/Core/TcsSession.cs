@@ -79,23 +79,24 @@ public class TcsSession
         Call();
     }
 
-    // file を足すか、本文を替えて変換する
-    public void Update(string path, string text)
+    // removed の file を外し、paths の file を足すか本文を texts に替えて、まとめて 1 回変換する
+    public void Update(List<string> removed, List<string> paths, List<string> texts)
     {
         Tcs.Arg("update");
         Tcs.Arg(Name);
-        Tcs.Arg(path);
-        Tcs.Arg(text);
+        ArgList(removed);
+        for (var i = 0; i < paths.Count && i < texts.Count; i++)
+        {
+            Tcs.Arg(paths[i]);
+            Tcs.Arg(texts[i]);
+        }
         Call();
     }
 
-    // file を外して変換する
-    public void Remove(string path)
+    // 1 つの file を足すか、本文を替えて変換する
+    public void Update(string path, string text)
     {
-        Tcs.Arg("remove");
-        Tcs.Arg(Name);
-        Tcs.Arg(path);
-        Call();
+        Update(new List<string>(), new List<string> { path }, new List<string> { text });
     }
 
     public void Close()
