@@ -136,7 +136,7 @@ tcs2c と .NET 実行はこれらの口を持たず、空を返す。
 ゲームのソースのディレクトリの `X.ref.cs` の隣に native の library (`X.so` / `X.dylib` / `X.dll`、無ければ `libX.*`) を置くと、`lub` はそれを native の拡張として読み、VM を作るたびに `lub_vm_extension` を呼んで、`X.ref.cs` の関数を VM の host の関数として登録させる (`include/lub/lub_vm_extension.h`。拡張は lub の symbol を使わず、渡した表の関数だけを使う)。
 `.tcsb` から動かすときは `--extension LIB` で渡す。
 player は library (`lub_vm_player`、`include/lub/lub_vm.h`) で、`lub` の main がそれを呼ぶ (web は数行の main `src/vm_main.c` を付けた `build/wasm/vm/lub.js`)。
-自前の player は、lub を CMake の `add_subdirectory` で取り込み、自分の main (`include/lub/lub_vm_main.h` の `LUB_VM_MAIN`) で native の拡張を静的に link する (web で native の拡張を使うのはこの形だけ)。
+自前の player は、lub の build のディレクトリを `lub_DIR` に渡して CMake の `find_package(lub CONFIG)` をし、`lub::lub_vm_player` を link して、自分の main (`include/lub/lub_vm_main.h` の `LUB_VM_MAIN`) で native の拡張を静的に link する (web で native の拡張を使うのはこの形だけ。例は `tests/cmake/player`)。
 web の実行物の設定は `lub_vm_player_link_options(<target> <出力のディレクトリ>)` が付ける。
 `scripts/vm-project-test.sh` が `tests/vm/` の project で確かめる。
 native gate は全サンプルで、tcs VM の player の digest と capture が .NET 実行と一致することを確かめる。

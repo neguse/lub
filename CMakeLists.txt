@@ -392,28 +392,7 @@ if(MSVC)
 else()
   target_compile_options(tcsvm_lib PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
-# web の player の実行物の設定 (web の lub_vm、tcs2c の web の lub、lub を add_subdirectory した自前の player が使う)。
-# 出力は <dir>/lub.{js,wasm}。
-function(lub_vm_player_link_options target dir)
-  # LUB_WASM は lub の scope の変数なので、add_subdirectory した側からも見える EMSCRIPTEN で見る
-  if(NOT EMSCRIPTEN)
-    return()
-  endif()
-  set_target_properties(${target} PROPERTIES SUFFIX ".js" OUTPUT_NAME lub
-    RUNTIME_OUTPUT_DIRECTORY "${dir}")
-  # SHELL: は複数の token の flag を 1 つにまとめ、CMake が分けたり重複として落としたりしないようにする。
-  target_link_options(${target} PRIVATE
-    --use-port=emdawnwebgpu
-    # save/<名前>/ の保存 (src/api_io.c) が IndexedDB に同期する
-    -lidbfs.js
-    -sALLOW_MEMORY_GROWTH=1
-    -sASSERTIONS=1
-    -sSTACK_SIZE=1048576
-    # ENV: player.ts (dev/test) が preRun で env var を注入する (?env= 転写)。
-    # addRunDependency / removeRunDependency: player.ts が取ってきた file を置き終わるまで main() を待たせる
-    "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV','addRunDependency','removeRunDependency']"
-  )
-endfunction()
+include(cmake/LubVmPlayer.cmake)
 # library: 自前の player (自分の main と静的に link した native の拡張) も同じものを link する (include/lub/lub_vm.h)
 add_library(lub_vm_player STATIC src/vm_player.c)
 if(NOT LUB_WASM)
@@ -749,3 +728,12 @@ if(LUB_HAS_SLANG)
     add_dependencies(lub_shader_d3d12_smoke lub) # slang DLLs land via lub's post-build copy
   endif()
 endif()
+
+# 外の project が find_package(lub) で player の library (lub::lub_vm_player) を使えるよう、build の tree の target を書き出す。
+# 使う側は lub_DIR にこの build のディレクトリを渡す (docs/api-glue.md)。
+set(LUB_EXPORT_TARGETS lub_vm_player lub_objs tcsvm_lib tcs_runtime box2d box3d tess2)
+if(LUB_HAS_OPENXR)
+  list(APPEND LUB_EXPORT_TARGETS openxr_loader headers)
+endif()
+export(TARGETS ${LUB_EXPORT_TARGETS} NAMESPACE lub:: FILE "${CMAKE_CURRENT_BINARY_DIR}/lubTargets.cmake")
+configure_file(cmake/lubConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/lubConfig.cmake" @ONLY)
