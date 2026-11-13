@@ -82,7 +82,7 @@ public static class TestRelayout
         }
         Check(Value("Target", "Value") == 0, "the restarted game has the removed initializer: " + Value("Target", "Value"));
         Check(Shape(w) == "[*Target.cs Third.cs] [*Second.cs] focus 1", "after the restart the layout is " + Shape(w));
-        var first = w.Windows.Count > 0 ? w.Windows[0].Doc : null;
+        var first = w.Windows.Count > 0 ? w.Windows[0].Code.Doc : null;
         Check(first != null && first.Line == 3 && first.Col == 8, "the cursor of Target.cs is not kept");
         Check(w.Focus != null && w.Focus.Line == 3 && w.Focus.Col == 4, "the cursor of Second.cs is not kept");
         if (failed)
@@ -107,10 +107,10 @@ public static class TestRelayout
         foreach (var window in w.Windows)
         {
             var tabs = new List<string>();
-            for (var i = 0; i < window.Tabs.Count; i++)
+            for (var i = 0; i < window.Code.Tabs.Count; i++)
             {
-                var p = window.Tabs[i].Path;
-                tabs.Add((i == window.Tab ? "*" : "") + Utf8.Sub(p, Utf8.LastIndexOf(p, "/") + 1));
+                var p = window.Code.Tabs[i].Path;
+                tabs.Add((i == window.Code.Tab ? "*" : "") + Utf8.Sub(p, Utf8.LastIndexOf(p, "/") + 1));
             }
             s += "[" + string.Join(" ", tabs) + "] ";
         }

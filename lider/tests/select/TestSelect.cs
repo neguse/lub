@@ -62,7 +62,7 @@ public static class TestSelect
             // 画面の真ん中に窓を置くため、インスペクタはしまう
             Lider.Inspector.Shown = false;
             w!.FocusOn(path!);
-            id = w.FocusWindow!.ViewId;
+            id = w.FocusWindow!.Code.ViewId;
             // 動いている間は、見えている大きさで指す
             opening = 1.5f;
         }

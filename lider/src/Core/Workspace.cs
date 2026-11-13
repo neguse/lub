@@ -1,4 +1,4 @@
-// lider の状態: 対象の file の一覧、開いた Document、円筒に並べた窓とどれに focus があるか、入力を取っているか。
+// lider の状態: 対象の file の一覧、開いた Document、コードのスクリーンに並べた窓とどれに focus があるか、入力を取っているか。
 // 編集の key と文字は、focus のある窓の エディタの view に渡す (エディタの keymap が編集、選択、undo、検索をする)。
 using System;
 using System.Collections.Generic;
@@ -13,47 +13,6 @@ public class Place
     public string Path = "";
     public int Line;
     public int Col;
-}
-
-// 円筒に並べた、file を 1 つ開いた窓
-public class CodeWindow
-{
-    // タブ (左から) と、出しているタブ
-    public readonly List<Document> Tabs = new List<Document>();
-    public int Tab;
-    public Document Doc => Tabs[Tab];
-    // 出しているタブの エディタの view
-    public int ViewId => Doc.Id;
-    // 円筒の角度 (Workspace.Arrange が並びから決める。null はまだ決めていない窓)
-    public float? Angle;
-    // 中心の高さ (メートル。つかんでいる間だけ 0 でない) と、大きさの倍率
-    public float Y;
-    public float Scale = 1;
-    // 非 XR で読める大きさにしたか
-    public bool Sized;
-    // 利用者が決めた大きさ (px) と、今の大きさ (Zen の間だけ違う)
-    public int WidthPx = PanelView.BasePxW;
-    public int HeightPx = PanelView.BasePxH;
-    public int PxW = PanelView.BasePxW;
-    public int PxH = PanelView.BasePxH;
-    public float W => PanelView.BaseW * PxW / PanelView.BasePxW;
-    public float H => PanelView.BaseW * PxH / PanelView.BasePxW;
-
-    public const int MinPxW = 320;
-    public const int MinPxH = 160;
-    public const int MaxPx = 2048;
-
-    // 利用者の大きさを変える (px)。文字の桁に揃えなくても エディタが桁を決める
-    public void Resize(int pxW, int pxH)
-    {
-        WidthPx = Math.Max(MinPxW, Math.Min(MaxPx, pxW));
-        HeightPx = Math.Max(MinPxH, Math.Min(MaxPx, pxH));
-    }
-
-    public CodeWindow(Document doc)
-    {
-        Tabs.Add(doc);
-    }
 }
 
 public class Workspace
@@ -73,16 +32,24 @@ public class Workspace
     public const float RescanSeconds = 2;
     float sinceScan;
     public readonly Dictionary<string, Document> Docs = new Dictionary<string, Document>();
-    // 横一列の並び (左から)
-    public readonly List<CodeWindow> Windows = new List<CodeWindow>();
+    // コードの窓を並べるスクリーン: 見る人を軸にした半径 Space.R の円筒に、横一列 (Strip) で並べる。最初の窓の真ん中が角度 0
+    public readonly Screen CodeScreen = new Screen("code")
+    {
+        Shape = ScreenShape.Cylinder,
+        Anchor = ScreenAnchor.World,
+        Position = new Vec3(0, 0, Space.R),
+        Layout = new Strip(),
+    };
+    // コードの窓 (中身は Code。左から)
+    public List<Window> Windows => CodeScreen.Windows;
     // 入力が入る窓
-    public CodeWindow? FocusWindow;
-    public Document? Focus => FocusWindow?.Doc;
+    public Window? FocusWindow;
+    public Document? Focus => FocusWindow?.Code.Doc;
     // 見ている窓に focus を移すのは、LookSeconds 見続け、その間 QuietSeconds 打っていないとき
     // (打ちながら脇を見ても移らない)
     public const float LookSeconds = 0.35f;
     public const float QuietSeconds = 0.5f;
-    CodeWindow? looked;
+    Window? looked;
     float lookedFor;
     float sinceKey = QuietSeconds;
     public readonly TraceLog Trace = new TraceLog();
@@ -205,7 +172,7 @@ public class Workspace
         if (ShownAsset != "")
             EditorHost.AskDeleteFile(ShownAsset);
         else if (FocusWindow != null)
-            EditorHost.AskDelete(FocusWindow.ViewId);
+            EditorHost.AskDelete(FocusWindow.Code.ViewId);
     }
 
     // 消すと答えた file の窓と Document を片付ける
@@ -222,7 +189,7 @@ public class Workspace
                 continue;
             var window = WindowOf(Docs[key]);
             if (window != null)
-                CloseTab(window, window.Tabs.IndexOf(Docs[key]));
+                CloseTab(window, window.Code.Tabs.IndexOf(Docs[key]));
             Docs.Remove(key);
             EditorHost.Close(id);
             Drafts?.Forget(this, key);
@@ -346,21 +313,21 @@ public class Workspace
         var window = WindowOf(doc);
         if (window != null)
         {
-            window.Tab = window.Tabs.IndexOf(doc);
+            window.Code.Tab = window.Code.Tabs.IndexOf(doc);
             FocusWindow = window;
             return;
         }
         if (FocusWindow == null)
         {
-            AddWindow(new CodeWindow(doc), Windows.Count);
+            AddWindow(new Window(new Code(doc)), Windows.Count);
             return;
         }
-        FocusWindow.Tabs.Insert(FocusWindow.Tab + 1, doc);
-        FocusWindow.Tab++;
+        FocusWindow.Code.Tabs.Insert(FocusWindow.Code.Tab + 1, doc);
+        FocusWindow.Code.Tab++;
     }
 
     // 窓を並びの at 番目に足し、focus を移す
-    void AddWindow(CodeWindow window, int at)
+    void AddWindow(Window window, int at)
     {
         Windows.Insert(at, window);
         FocusWindow = window;
@@ -371,7 +338,7 @@ public class Workspace
     {
         var window = FocusWindow;
         if (window != null)
-            window.Tab = (window.Tab + by + window.Tabs.Count) % window.Tabs.Count;
+            window.Code.Tab = (window.Code.Tab + by + window.Code.Tabs.Count) % window.Code.Tabs.Count;
     }
 
     // focus のある窓の今のタブを、by (1 か -1) の側の隣の窓へ移す (端なら新しい窓を作る)。
@@ -379,23 +346,23 @@ public class Workspace
     public void MoveTab(int by)
     {
         var from = FocusWindow;
-        if (from == null || (from.Tabs.Count == 1 && (by < 0 ? Windows.IndexOf(from) == 0 : Windows.IndexOf(from) == Windows.Count - 1)))
+        if (from == null || (from.Code.Tabs.Count == 1 && (by < 0 ? Windows.IndexOf(from) == 0 : Windows.IndexOf(from) == Windows.Count - 1)))
             return;
-        var doc = from.Doc;
+        var doc = from.Code.Doc;
         var at = Windows.IndexOf(from) + by;
-        RemoveTab(from, from.Tab);
-        if (at < 0 || at >= Windows.Count + (from.Tabs.Count == 0 ? 1 : 0))
+        RemoveTab(from, from.Code.Tab);
+        if (at < 0 || at >= Windows.Count + (from.Code.Tabs.Count == 0 ? 1 : 0))
         {
-            AddWindow(new CodeWindow(doc), at < 0 ? 0 : Windows.Count);
-            if (from.Tabs.Count == 0)
+            AddWindow(new Window(new Code(doc)), at < 0 ? 0 : Windows.Count);
+            if (from.Code.Tabs.Count == 0)
                 Windows.Remove(from);
             return;
         }
         var to = Windows[at];
-        if (from.Tabs.Count == 0)
+        if (from.Code.Tabs.Count == 0)
             Windows.Remove(from);
-        to.Tabs.Insert(to.Tab + 1, doc);
-        to.Tab++;
+        to.Code.Tabs.Insert(to.Code.Tab + 1, doc);
+        to.Code.Tab++;
         FocusWindow = to;
     }
 
@@ -403,15 +370,15 @@ public class Workspace
     public void CloseTab()
     {
         if (FocusWindow != null)
-            CloseTab(FocusWindow, FocusWindow.Tab);
+            CloseTab(FocusWindow, FocusWindow.Code.Tab);
     }
 
     // 窓の i 番目のタブを閉じる (view は Doc が持ち続けるので、未保存の本文は残る)。最後のタブなら窓も閉じる
-    public void CloseTab(CodeWindow window, int i)
+    public void CloseTab(Window window, int i)
     {
-        if (i < 0 || i >= window.Tabs.Count)
+        if (i < 0 || i >= window.Code.Tabs.Count)
             return;
-        if (window.Tabs.Count == 1)
+        if (window.Code.Tabs.Count == 1)
         {
             Close(window);
             return;
@@ -420,11 +387,11 @@ public class Workspace
     }
 
     // タブを外す (今のタブなら、右隣 (無ければ左隣) を出す)
-    static void RemoveTab(CodeWindow window, int i)
+    static void RemoveTab(Window window, int i)
     {
-        window.Tabs.RemoveAt(i);
-        if (window.Tab > i || window.Tab == window.Tabs.Count)
-            window.Tab = Math.Max(0, window.Tab - 1);
+        window.Code.Tabs.RemoveAt(i);
+        if (window.Code.Tab > i || window.Code.Tab == window.Code.Tabs.Count)
+            window.Code.Tab = Math.Max(0, window.Code.Tab - 1);
     }
 
     // 飛ぶ前にいた場所 (新しい物が後ろ)
@@ -466,33 +433,12 @@ public class Workspace
     // 飛んだ先の行の上に見せる行の数
     public const int ContextLines = 5;
 
-    // 窓どうしの間 (メートル)
-    public const float WindowGap = 0.06f;
-
-    // 窓を横一列に並べる (最初の窓の中心が角度 0)。
-    // つかんでいる窓 (held) はそのまま指す点に付いていき、隣の窓の中心を越えると並びが入れ替わる
-    public void Arrange(CodeWindow? held)
+    // 窓を並べる (コードのスクリーンの配置の規則で)。
+    // つかんでいる窓 (held) はそのまま指す点に付いていき、隣の窓の真ん中を越えると並びが入れ替わる
+    public void Arrange(Window? held)
     {
-        if (held != null && held.Angle != null && Windows.Contains(held))
-        {
-            var at = Windows.IndexOf(held);
-            if (at + 1 < Windows.Count && Windows[at + 1].Angle != null && held.Angle.Value > Windows[at + 1].Angle!.Value)
-                Swap(at, at + 1);
-            else if (at > 0 && Windows[at - 1].Angle != null && held.Angle.Value < Windows[at - 1].Angle!.Value)
-                Swap(at, at - 1);
-        }
-        var right = 0.0f;
-        for (var i = 0; i < Windows.Count; i++)
-        {
-            var window = Windows[i];
-            var half = window.W * window.Scale * 0.5f;
-            var center = i == 0 ? 0 : right + half;
-            right = center + half + WindowGap;
-            if (window == held)
-                continue;
-            window.Angle = center / Space.R;
-            window.Y = 0;
-        }
+        CodeScreen.Held = held;
+        CodeScreen.Arrange();
     }
 
     void Swap(int a, int b)
@@ -531,7 +477,7 @@ public class Workspace
 
     // 窓をタブごと閉じる (view は Doc が持ち続けるので、未保存の本文は残る)。
     // focus があった窓なら、右隣 (無ければ左隣) に focus を移す
-    public void Close(CodeWindow window)
+    public void Close(Window window)
     {
         var at = Windows.IndexOf(window);
         if (at < 0)
@@ -542,16 +488,16 @@ public class Workspace
     }
 
     // 窓の見出しに出す今のタブの名前 (Root からの path と、未保存の印)
-    public string Title(CodeWindow window)
+    public string Title(Window window)
     {
-        return TabTitle(window.Doc);
+        return TabTitle(window.Code.Doc);
     }
 
     // 窓の見出しに並べるタブの名前
-    public List<string> TabTitles(CodeWindow window)
+    public List<string> TabTitles(Window window)
     {
         var titles = new List<string>();
-        foreach (var doc in window.Tabs)
+        foreach (var doc in window.Code.Tabs)
             titles.Add(TabTitle(doc));
         return titles;
     }
@@ -569,16 +515,16 @@ public class Workspace
     }
 
     // doc のタブを持つ窓
-    public CodeWindow? WindowOf(Document doc)
+    public Window? WindowOf(Document doc)
     {
         foreach (var w in Windows)
-            if (w.Tabs.Contains(doc))
+            if (w.Code.Tabs.Contains(doc))
                 return w;
         return null;
     }
 
     // 毎 frame、今見ている窓 (視線か指している所。無ければ null) を渡す
-    public void Look(CodeWindow? window, float dt)
+    public void Look(Window? window, float dt)
     {
         if (window != looked)
         {
@@ -654,7 +600,7 @@ public class Workspace
             return false;
         if (down)
             sinceKey = 0;
-        EditorHost.Focus(FocusWindow!.ViewId);
+        EditorHost.Focus(FocusWindow!.Code.ViewId);
         EditorHost.KeyNamed(key, down, plain);
         if (down && !Ctrl && typed != 0)
             EditorHost.Text(Utf8.Encode(typed));

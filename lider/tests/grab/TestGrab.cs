@@ -69,20 +69,20 @@ public static class TestGrab
         Lider.Inspector.Shown = false;
         w!.FocusOn(target!);
         var window = w.FocusWindow!;
-        window.Angle = 0.2f;
-        window.Y = 0.1f;
+        // つかむ位置と動かす先は、コードのスクリーンの面の上の (x, y)
+        window.Bounds = new Bounds(0.2f, 0.1f, window.W, window.H);
 
         var grab = new Grab();
         grab.Start(window, 0.25f, 0.0f);
         grab.Move(0.45f, -0.2f);
-        Near(window.Angle ?? 0, 0.4f, "angle after a one-hand move");
-        Near(window.Y, -0.1f, "height after a one-hand move");
+        Near(window.Bounds!.X, 0.4f, "x after a one-hand move");
+        Near(window.Bounds.Y, -0.1f, "height after a one-hand move");
 
         grab.StartTwo(new Vec3(-0.1f, 0, 0.3f), new Vec3(0.1f, 0, 0.3f));
         grab.MoveTwo(new Vec3(-0.2f, 0, 0.3f), new Vec3(0.2f, 0, 0.3f));
         Near(window.Scale, 2, "scale after doubling the hands' distance");
         grab.Move(0.9f, 0.9f);
-        Near(window.Angle ?? 0, 0.4f, "a one-hand move during a two-hand grab");
+        Near(window.Bounds!.X, 0.4f, "a one-hand move during a two-hand grab");
         grab.MoveTwo(new Vec3(-5, 0, 0.3f), new Vec3(5, 0, 0.3f));
         Near(window.Scale, Grab.MaxScale, "scale clamped at the maximum");
         grab.MoveTwo(new Vec3(-0.001f, 0, 0.3f), new Vec3(0.001f, 0, 0.3f));
@@ -90,28 +90,25 @@ public static class TestGrab
 
         grab.ReleaseTwo(0.5f, 0.0f);
         grab.Move(0.6f, 0.1f);
-        Near(window.Angle ?? 0, 0.5f, "angle after going back to one hand");
-        Near(window.Y, 0.0f, "height after going back to one hand");
+        Near(window.Bounds!.X, 0.5f, "x after going back to one hand");
+        Near(window.Bounds.Y, 0.0f, "height after going back to one hand");
         grab.Release();
         Check(!grab.Holding, "still holding after release");
 
         // 高さ 0.2、大きさ 1.5 の窓の上端の近くは、大きさ 1 なら外れる高さでも当たる
-        window.Y = 0.2f;
         window.Scale = 1.5f;
         var edge = 0.2f + PanelView.BaseH * 1.5f * 0.45f;
         var ray = new Ray(new Vec3(0, 0, 0), new Vec3((float)Math.Sin(0.5f) * Space.R, edge, (float)Math.Cos(0.5f) * Space.R));
-        Check(Space.HitCurved(ray, 0.5f, window.Y, Space.R, PanelView.BaseW * window.Scale, PanelView.BaseH * window.Scale) != null,
+        Check(Space.HitCurved(ray, 0.5f, 0.2f, Space.R, PanelView.BaseW * window.Scale, PanelView.BaseH * window.Scale) != null,
             "the scaled and raised window was not hit near its top");
-        Check(Space.HitCurved(ray, 0.5f, window.Y, Space.R, PanelView.BaseW, PanelView.BaseH) == null,
+        Check(Space.HitCurved(ray, 0.5f, 0.2f, Space.R, PanelView.BaseW, PanelView.BaseH) == null,
             "an unscaled window was hit where only the scaled one should be");
 
-        window.Angle = 0;
-        window.Y = 0;
+        window.Bounds = null;
         window.Scale = 1;
         Lider.WindowKey(w, Keys.PageUp);
         Near(window.Scale, 1.1f, "scale after Alt+PageUp");
-        window.Angle = 0;
-        window.Y = 0;
+        window.Bounds = null;
     }
 
     // lider の frame を 1 度通ると、非 XR の平面で窓が読める大きさになる
@@ -142,20 +139,20 @@ public static class TestGrab
 
         Mouse(EventKind.MouseButtonDown, 1, 1);
         Mouse(EventKind.MouseMotion, cx, cy);
-        Near(window.Angle ?? 1, 0, "right drag from outside the window moved it");
+        Near(Lider.WindowAngle(Lider.Work!, window), 0, "right drag from outside the window moved it");
         Mouse(EventKind.MouseButtonUp, cx, cy);
 
         Mouse(EventKind.MouseButtonDown, cx, cy);
         Mouse(EventKind.MouseMotion, cx + sw * 0.1f, cy - sh * 0.1f);
-        Check((window.Angle ?? 0) > 0.05f, "right drag to the right: angle " + window.Angle);
-        Check(window.Y > 0.05f, "right drag up: y " + window.Y);
+        Check(Lider.WindowAngle(Lider.Work!, window) > 0.05f, "right drag to the right: angle " + Lider.WindowAngle(Lider.Work!, window));
+        Check(Lider.WindowY(Lider.Work!, window) > 0.05f, "right drag up: y " + Lider.WindowY(Lider.Work!, window));
         Lider.OnEvent(new EventData { Kind = EventKind.MouseWheel, Dy = 1 });
         Near(window.Scale, 1.1f, "scale after the wheel during a right drag");
         Mouse(EventKind.MouseButtonUp, cx + sw * 0.1f, cy - sh * 0.1f);
 
         Lider.Work!.Arrange(null);
-        Near(window.Angle ?? 1, 0, "the only window did not go back to its place after the release");
-        Near(window.Y, 0, "the window did not go back to the row after the release");
+        Near(Lider.WindowAngle(Lider.Work!, window), 0, "the only window did not go back to its place after the release");
+        Near(Lider.WindowY(Lider.Work!, window), 0, "the window did not go back to the row after the release");
         if (failed)
             return;
         Console.WriteLine("PASS");

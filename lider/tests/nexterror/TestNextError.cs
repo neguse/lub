@@ -50,7 +50,7 @@ public static class TestNextError
         w.FocusOn(target);
         w.Focus!.MoveTo(40, 0);
         w.BuildFailed("broken without a place\n" + target + "(4,1): error CS0001: a\n" + target + "(8,3): error CS0002: b\n" + other + "(2,1): error CS0003: c\n");
-        Check(w.Windows.Count == 1 && w.FocusWindow!.Tabs.Count == 1, "the other file has a tab already");
+        Check(w.Windows.Count == 1 && w.FocusWindow!.Code.Tabs.Count == 1, "the other file has a tab already");
 
         F8();
         At(target, 3, "the first error from a line without an error");
@@ -58,7 +58,7 @@ public static class TestNextError
         At(target, 7, "the next error in the same file");
         F8();
         At(other, 1, "the error in a file without a window");
-        Check(w.Windows.Count == 1 && w.FocusWindow!.Tabs.Count == 2, "no tab opened for the other file");
+        Check(w.Windows.Count == 1 && w.FocusWindow!.Code.Tabs.Count == 2, "no tab opened for the other file");
         F8();
         At(target, 3, "the first error after the last");
 

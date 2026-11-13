@@ -51,9 +51,9 @@ public static class TestDiffInline
         if (frames < 6)
             return;
         var window = w.FocusWindow!;
-        var doc = window.Doc;
+        var doc = window.Code.Doc;
         var panel = Lider.Panel(window);
-        var id = window.ViewId;
+        var id = window.Code.ViewId;
         var lh = EditorHost.LineHeight(id);
         if (frames == 6)
         {

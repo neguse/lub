@@ -73,21 +73,21 @@ public static class TestZen
         if (frames == 10)
         {
             Check(window.PxW == PanelView.BasePxW + 64 && Lider.Panel(window).PxW == window.PxW, "the panel width: " + Lider.Panel(window).PxW);
-            Check(Longest(window.ViewId, window.PxW) > PanelView.BasePxW, "the long line is cut at the old width");
+            Check(Longest(window.Code.ViewId, window.PxW) > PanelView.BasePxW, "the long line is cut at the old width");
             // 右端を引く
             var scale = window.Scale;
             var angle = Lider.WindowAngle(w, window);
             var right = angle + (window.W * scale * 0.5f + 0.005f) / Space.R;
-            var ray = new Ray(new Vec3(0, 0, 0), Space.At(right, window.Y, Space.R));
+            var ray = new Ray(new Vec3(0, 0, 0), Space.At(right, Lider.WindowY(w, window), Space.R));
             var edge = Lider.EdgeAt(w, window, ray);
             Check((edge & 1) != 0, "the right edge is not found: " + edge);
             var before = window.WidthPx;
             Lider.StartEdge(window, 1);
-            Lider.DragEdge(w, new Ray(new Vec3(0, 0, 0), Space.At(right + 0.1f / Space.R, window.Y, Space.R)));
+            Lider.DragEdge(w, new Ray(new Vec3(0, 0, 0), Space.At(right + 0.1f / Space.R, Lider.WindowY(w, window), Space.R)));
             Lider.EndEdge();
             Check(window.WidthPx > before, "dragging did not widen: " + before + " -> " + window.WidthPx);
             window.Resize(1, 1);
-            Check(window.WidthPx == CodeWindow.MinPxW && window.HeightPx == CodeWindow.MinPxH, "no lower limit: " + window.WidthPx);
+            Check(window.WidthPx == Window.MinPxW && window.HeightPx == Window.MinPxH, "no lower limit: " + window.WidthPx);
             window.Resize(900, PanelView.BasePxH);
         }
         if (frames == 12)

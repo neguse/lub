@@ -49,7 +49,7 @@ public static class TestWindows
     }
 
     // 時間を進めながら、ずっと window を見る
-    static void LookFor(Workspace w, CodeWindow window, float seconds)
+    static void LookFor(Workspace w, Window window, float seconds)
     {
         var dt = 0.05f;
         for (var t = 0.0f; t < seconds - 0.001f; t += dt)
@@ -109,19 +109,19 @@ public static class TestWindows
         Check(w.FocusWindow == next, "pressing the title changed the focus to the wrong window");
         Press(w, first, 0.5f);
         Check(w.FocusWindow == first, "pressing the title did not move the focus");
-        EditorHost.Insert(next.ViewId, "// x\n");
+        EditorHost.Insert(next.Code.ViewId, "// x\n");
         Check(w.Title(next) == "Second.cs *", "the title does not mark the unsaved text: " + w.Title(next));
         Press(w, next, 0.99f);
         Check(w.Windows.Count == 1 && w.FocusWindow == first, "the close mark did not close a window without focus");
         w.FocusOn(second);
-        Check(w.FocusWindow!.Doc.Text(0) == "// x", "closing lost the unsaved text");
+        Check(w.FocusWindow!.Code.Doc.Text(0) == "// x", "closing lost the unsaved text");
         if (failed)
             return;
         Console.WriteLine("PASS");
         App.Quit(0);
     }
 
-    static void Strip(Workspace w, CodeWindow first, string target, string second)
+    static void Strip(Workspace w, Window first, string target, string second)
     {
         var third = target.Replace("Target.cs", "Third.cs");
         w.FocusWindow = first;
@@ -137,12 +137,12 @@ public static class TestWindows
         Check(Order(w) == "Target Third Second", "the windows are not in order: " + Order(w));
         c.Scale = 2;
         w.Arrange(null);
-        var a0 = first.Angle!.Value;
-        var a1 = c.Angle!.Value;
-        var a2 = b.Angle!.Value;
+        var a0 = Lider.WindowAngle(w, first);
+        var a1 = Lider.WindowAngle(w, c);
+        var a2 = Lider.WindowAngle(w, b);
         Check(a0 == 0, "the first window is not at the origin");
-        Near((a1 - a0) * Space.R, PanelView.BaseW * (first.Scale + c.Scale) * 0.5f + Workspace.WindowGap, "the gap after the first window");
-        Near((a2 - a1) * Space.R, PanelView.BaseW * (c.Scale + b.Scale) * 0.5f + Workspace.WindowGap, "the gap after the scaled window");
+        Near((a1 - a0) * Space.R, PanelView.BaseW * (first.Scale + c.Scale) * 0.5f + LiderCore.Strip.Gap, "the gap after the first window");
+        Near((a2 - a1) * Space.R, PanelView.BaseW * (c.Scale + b.Scale) * 0.5f + LiderCore.Strip.Gap, "the gap after the scaled window");
         c.Scale = 1;
 
         w.FocusWindow = first;
@@ -159,20 +159,20 @@ public static class TestWindows
 
         w.Arrange(null);
         var grab = new Grab();
-        grab.Start(first, first.Angle!.Value, 0);
-        grab.Move(b.Angle!.Value + 0.01f, 0.2f);
+        grab.Start(first, first.Bounds!.X, 0);
+        grab.Move(b.Bounds!.X + 0.01f, 0.2f);
         w.Arrange(first);
         Check(Order(w) == "Second Target Third", "dragging over the neighbour's center did not reorder: " + Order(w));
-        Check(first.Y == 0.2f, "the held window did not stay at the pointer");
+        Check(first.Bounds!.Y == 0.2f, "the held window did not stay at the pointer");
         grab.Release();
         w.Arrange(null);
-        Check(first.Y == 0 && b.Angle == 0, "the window did not settle in the row");
+        Check(first.Bounds!.Y == 0 && b.Bounds!.X == 0, "the window did not settle in the row");
 
         w.FocusWindow = first;
-        var keep = c.Angle!.Value;
+        var keep = c.Bounds!.X;
         w.Close(first);
         w.Arrange(null);
-        Check(w.FocusWindow == c && c.Angle!.Value < keep, "closing did not close the gap or focus the right neighbour");
+        Check(w.FocusWindow == c && c.Bounds!.X < keep, "closing did not close the gap or focus the right neighbour");
         w.Close(c);
         Check(w.FocusWindow == b, "closing the right end did not focus the left neighbour");
         w.Close(b);
@@ -202,7 +202,7 @@ public static class TestWindows
         var s = "";
         foreach (var window in w.Windows)
         {
-            var name = window.Doc.Path;
+            var name = window.Code.Doc.Path;
             name = Utf8.Sub(name, Utf8.Bytes(name) - 9);
             s += (s == "" ? "" : " ") + name.Replace(".cs", "").Replace("/", "");
         }
@@ -215,10 +215,10 @@ public static class TestWindows
     }
 
     // window の見出しの帯の横 u の所を、見る人の位置から押す
-    static void Press(Workspace w, CodeWindow window, float u)
+    static void Press(Workspace w, Window window, float u)
     {
         var a = Lider.WindowAngle(w, window) + (u - 0.5f) * PanelView.BaseW * window.Scale / Space.R;
-        var at = Space.At(a, Lider.Panel(window).TitleY(window.Y, window.Scale), Space.R);
+        var at = Space.At(a, Lider.Panel(window).TitleY(Lider.WindowY(w, window), window.Scale), Space.R);
         Lider.Click(w, new Ray(new Vec3(0, 0, 0), at), false);
     }
 

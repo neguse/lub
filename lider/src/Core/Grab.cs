@@ -1,5 +1,5 @@
 // 窓をつかんで動かし、両手で広げる。
-// 片手は、つかんだ点と窓の中心の差 (円筒の角度と高さ) を保って、指す点に付いていく。
+// 片手は、つかんだ点と窓の真ん中の差 (スクリーンの面の上の位置) を保って、指す点に付いていく。
 // 両手は、つかんだときの手の間の距離に対する今の距離の比で、大きさを変える。
 using System;
 using Lub;
@@ -10,8 +10,8 @@ public class Grab
 {
     public const float MinScale = 0.5f;
     public const float MaxScale = 3;
-    public CodeWindow? Window;
-    float angleOffset;
+    public Window? Window;
+    float xOffset;
     float yOffset;
     // 両手でつかんでいる間
     bool two;
@@ -20,29 +20,41 @@ public class Grab
 
     public bool Holding => Window != null;
 
-    // 円筒の上の (angle, y) で window をつかむ
-    public void Start(CodeWindow window, float angle, float y)
+    // スクリーンの面の上の (x, y) で window をつかむ
+    public void Start(Window window, float x, float y)
     {
         Window = window;
         two = false;
-        angleOffset = (window.Angle ?? angle) - angle;
-        yOffset = window.Y - y;
+        xOffset = (window.Bounds != null ? window.Bounds.X : x) - x;
+        yOffset = (window.Bounds != null ? window.Bounds.Y : 0) - y;
     }
 
-    // 指す点が円筒の上の (angle, y) に動いた
-    public void Move(float angle, float y)
+    // 指す点がスクリーンの面の上の (x, y) に動いた
+    public void Move(float x, float y)
     {
         if (Window == null || two)
             return;
-        Window.Angle = angle + angleOffset;
-        Window.Y = y + yOffset;
+        Place(Window, x + xOffset, y + yOffset);
     }
 
     // つかんでいる窓の大きさをホイールの dy 段だけ変える
     public void Zoom(float dy)
     {
         if (Window != null)
-            Window.Scale = Math.Max(MinScale, Math.Min(MaxScale, Window.Scale * (float)Math.Pow(1.1f, dy)));
+            Rescale(Window, Window.Scale * (float)Math.Pow(1.1f, dy));
+    }
+
+    // 窓の真ん中を (x, y) に置く (大きさは今の倍率で)
+    static void Place(Window window, float x, float y)
+    {
+        window.Bounds = new Bounds(x, y, window.W * window.Scale, window.H * window.Scale);
+    }
+
+    static void Rescale(Window window, float scale)
+    {
+        window.Scale = Math.Max(MinScale, Math.Min(MaxScale, scale));
+        if (window.Bounds != null)
+            Place(window, window.Bounds.X, window.Bounds.Y);
     }
 
     // もう片方の手でもつかんだ (手の位置は a と b)
@@ -59,16 +71,15 @@ public class Grab
     {
         if (Window == null || !two)
             return;
-        var s = startScale * (a - b).Length() / startDistance;
-        Window.Scale = Math.Max(MinScale, Math.Min(MaxScale, s));
+        Rescale(Window, startScale * (a - b).Length() / startDistance);
     }
 
     // 片手を離した (両手のときは片手に戻り、指す点からつかみ直す)
-    public void ReleaseTwo(float angle, float y)
+    public void ReleaseTwo(float x, float y)
     {
         if (Window == null)
             return;
-        Start(Window, angle, y);
+        Start(Window, x, y);
     }
 
     public void Release()

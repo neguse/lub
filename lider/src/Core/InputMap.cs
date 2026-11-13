@@ -16,7 +16,7 @@ public class InputMap
     public int H = 1;
 
     // from は入力を測るウィンドウの矩形、w と h は texture の画素の数
-    public void Set(Bounds from, int w, int h)
+    public void Set(PixelRect from, int w, int h)
     {
         x0 = from.X;
         y0 = from.Y;

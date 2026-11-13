@@ -62,7 +62,7 @@ public static class TestLongLine
         if (frames < 3 || waited < 1.5f)
             return;
         var doc = w.Focus!;
-        var view = w.FocusWindow!.ViewId;
+        var view = w.FocusWindow!.Code.ViewId;
         if (stage == 0)
         {
             Check(InWindow(w), "the caret at the start of the long line is outside the window");
@@ -95,8 +95,9 @@ public static class TestLongLine
         var window = w.FocusWindow!;
         var angle = Lider.WindowAngle(w, window);
         var half = window.W * window.Scale * 0.5f;
-        var l = Lider.ViewportPoint(Space.At(angle - half / Space.R, window.Y, Space.R));
-        var r = Lider.ViewportPoint(Space.At(angle + half / Space.R, window.Y, Space.R));
+        var y = Lider.WindowY(w, window);
+        var l = Lider.ViewportPoint(Space.At(angle - half / Space.R, y, Space.R));
+        var r = Lider.ViewportPoint(Space.At(angle + half / Space.R, y, Space.R));
         var x = Lider.CaretViewport.X;
         if (x > l.X && x < r.X)
             return true;
