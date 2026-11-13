@@ -614,6 +614,9 @@ jobs:
           source "$HOME/emsdk/emsdk_env.sh"
           emcmake cmake --preset wasm-release
           cmake --build build/wasm -j
+          # 外の project が find_package(lub) で自前の player を作れること
+          emcmake cmake -S tests/cmake/player -B build/wasm/export-player -G Ninja -Dlub_DIR="$PWD/build/wasm"
+          cmake --build build/wasm/export-player
           ccache -s | head -8 || true
 
       - uses: actions/setup-node@v4

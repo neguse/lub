@@ -303,6 +303,9 @@ run_timed bash scripts/build-release.sh --target lub_tcs_resolve_smoke --no-conf
 run_timed ./build-release-linux/lub_tcs_resolve_smoke
 run_timed bash scripts/build-release.sh --target lub_vm_project_smoke --no-configure
 run_timed ./build-release-linux/lub_vm_project_smoke
+# 外の project が find_package(lub) で自前の player を作れること (tests/cmake/player)
+run_timed cmake -S tests/cmake/player -B build-release-linux/export-player -G Ninja -Dlub_DIR="$PWD/build-release-linux"
+run_timed cmake --build build-release-linux/export-player
 run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
 run_timed ./build-release-linux/lub_physics_box2d_smoke
 run_timed bash scripts/build-release.sh --target lub_surfacenets_smoke --no-configure
