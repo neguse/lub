@@ -419,6 +419,16 @@ typedef struct LubAppStatus {
       reload_notes; // 最後に当てた hot reload の知らせ (instance の field の初期化子の変更など)。無ければ空。
 } LubAppStatus;
 
+// App.Inputs が返す、ゲームの .csproj の変換の入力。 path は絶対 path で、複
+// 数のときは改行で区切る。
+typedef struct LubProjectInputs {
+  LubStr entry; // entry class (.csproj の basename)。
+  LubStr
+      dirs; // ソースを探したディレクトリ (.csproj のディレクトリと、`Lub="Source"` の参照先。cs-lib は含まない)。
+  LubStr sources; // 変換する *.cs (cs-lib の実装を含む)。
+  LubStr refs; // 型だけの宣言として渡す file (*.ref.cs と cs-lib/lub_stub.cs)。
+} LubProjectInputs;
+
 // App.Step が開いた app に見せる入力の選び方。省いた項目は、この app の入力
 // をそのまま見せる。
 typedef struct LubStepInput {
@@ -3111,6 +3121,9 @@ LUB_API void lub_app_restart(LubContext *ctx, LubHandle app);
 
 LUB_API LubStatus lub_app_use(LubContext *ctx, LubStr key, LubStr module,
                               LubStr entry, LubHandle *out);
+
+LUB_API LubStatus lub_app_inputs(LubContext *ctx, LubStr csproj,
+                                 LubProjectInputs *out, bool *has);
 
 // 開いた app を 1 frame 進める (`OnFrame(dt)` を呼ぶ)。 app の `Gfx.MainTex`
 // への描画は target に入り、`Gfx.Size` は target の大きさを返す。 target は

@@ -127,6 +127,9 @@ typedef struct LubAppHooks {
   // byte 列の状態を読み込む。断ったら false で、状態は変えず、理由を error に書く
   bool (*load)(void *player, const uint8_t *bytes, size_t size, char *error,
                size_t error_size);
+  // .csproj の変換の入力を集める (App.Inputs)。
+  // 集められなければ false。文字列は次の呼び出しまで有効。.csproj を読めない player では NULL
+  bool (*inputs)(const char *csproj, LubProjectInputs *out);
 } LubAppHooks;
 
 typedef struct App {

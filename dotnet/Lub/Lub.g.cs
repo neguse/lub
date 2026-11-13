@@ -138,6 +138,19 @@ public class AppStatus
     public string ReloadNotes = "";
 }
 
+/// <summary>App.Inputs が返す、ゲームの .csproj の変換の入力。 path は絶対 path で、複数のときは改行で区切る。</summary>
+public class ProjectInputs
+{
+    /// <summary>entry class (.csproj の basename)。</summary>
+    public string Entry = "";
+    /// <summary>ソースを探したディレクトリ (.csproj のディレクトリと、`Lub="Source"` の参照先。cs-lib は含まない)。</summary>
+    public string Dirs = "";
+    /// <summary>変換する *.cs (cs-lib の実装を含む)。</summary>
+    public string Sources = "";
+    /// <summary>型だけの宣言として渡す file (*.ref.cs と cs-lib/lub_stub.cs)。</summary>
+    public string Refs = "";
+}
+
 /// <summary>App.Step が開いた app に見せる入力の選び方。省いた項目は、この app の入力をそのまま見せる。</summary>
 public class StepInput
 {
@@ -2512,6 +2525,27 @@ public static unsafe partial class App
             }
             LubRuntime.Check(st);
             return LubNative.H_AppRef(o_out)!;
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
+    public static ProjectInputs? Inputs(string csproj)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubProjectInputs o_out = default;
+            bool has = false;
+            var st = LubNative.lub_app_inputs(LubRuntime.Ctx, a.Str(csproj), &o_out, &has);
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return null;
+            }
+            LubRuntime.Check(st);
+            return (!has ? null : LubNative.From_LubProjectInputs(&o_out));
         }
         finally
         {
@@ -8545,6 +8579,15 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubProjectInputs
+    {
+        public LubStr @entry;
+        public LubStr @dirs;
+        public LubStr @sources;
+        public LubStr @refs;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubStepInput
     {
         public bool @has_keyboard;
@@ -11339,6 +11382,9 @@ internal static unsafe partial class LubNative
     internal static extern int lub_app_use(void* ctx, LubStr @key, LubStr @module, LubStr @entry, int* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_app_inputs(void* ctx, LubStr @csproj, LubProjectInputs* @out, bool* has);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_app_step(void* ctx, int @app, int @target, float @dt, LubStepInput* @input, bool* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -12131,6 +12177,29 @@ internal static unsafe partial class LubNative
     {
         var o = new AppStatus();
         Fill_LubAppStatus(o, s);
+        return o;
+    }
+
+    internal static void To_LubProjectInputs(ProjectInputs o, LubRuntime.Arena a, LubProjectInputs* s)
+    {
+        s->@entry = a.Str(o.Entry);
+        s->@dirs = a.Str(o.Dirs);
+        s->@sources = a.Str(o.Sources);
+        s->@refs = a.Str(o.Refs);
+    }
+
+    internal static void Fill_LubProjectInputs(ProjectInputs o, LubProjectInputs* s)
+    {
+        o.Entry = LubRuntime.Str(s->@entry);
+        o.Dirs = LubRuntime.Str(s->@dirs);
+        o.Sources = LubRuntime.Str(s->@sources);
+        o.Refs = LubRuntime.Str(s->@refs);
+    }
+
+    internal static ProjectInputs From_LubProjectInputs(LubProjectInputs* s)
+    {
+        var o = new ProjectInputs();
+        Fill_LubProjectInputs(o, s);
         return o;
     }
 

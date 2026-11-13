@@ -1,14 +1,14 @@
 // ブラウザの中で lider を動かす。
 // lider は build のときに作った bytecode (Lider.tcsb。lider/scripts/build-module.sh) で、lider の player (lider/scripts/build-player.sh --web) が動かす。
-// ゲーム (project) の C# はその場で tcs VM の bytecode にして MEMFS に置き、lider がそれを別の app として開く (env LIDER_GAME)。
-// lider が project の file を保存すると MEMFS の mtime が変わるので、それを見て変換し直し、差分 (batch) を動いているゲームに当てる。
+// ゲーム (project) の C# は、lider が player に組み込んだ tcs で変換し、別の app として開く (env LIDER_GAME に project のディレクトリを渡す)。
+// 一緒に変換する lub の cs-lib は MEMFS に置く (env LIDER_CS_LIB)。
+// lider が project の .cs を保存すると MEMFS の mtime が変わるので、page はそれを見て整形して書き戻す (lider はそれを変換し直す)。
 // project の file は保存のたびに IndexedDB に写し、次に開いたときはそこから始める。
 // ?gist=<gist の id か URL> で開くと、公開の gist の file を project にし、lider を出さずにゲームだけで始める (F1 で編集)。
 // その project は gist ごとの key に写し、普段の project には書かない。
 import { unzipSync, zipSync } from "fflate";
 import { initSlang } from "../playground/slang-bridge";
-import { openTcsVmSession } from "../playground/tcs-compiler";
-import type { TcsVmSession, TcsVmUpdate } from "../playground/tcs-compiler";
+import { formatCs } from "../playground/tcs-compiler";
 
 const BASE = import.meta.env.BASE_URL;
 // MEMFS に置く file (vite.config.ts の LIDER_TREE) と、その一覧
@@ -19,6 +19,13 @@ const LIDER_MODULE_URL = BASE + "lider-wasm/Lider.tcsb";
 const PLAYER_URL = BASE + "lider-wasm/";
 // lider のディレクトリと同じ形で MEMFS に置く
 const HOME = "/lider";
+// ゲームと一緒に変換する lub の cs-lib (lub_stub.cs と実装)
+const CS_LIB = `${HOME}/cs-lib`;
+const CS_LIB_FILES = import.meta.glob("../../cs-lib/**/*.cs", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
 // player が動かす entry (lider)
 const LIDER = "Lider";
 // 編集する project の場所 (どの project もここで動かす)
@@ -53,26 +60,8 @@ let leaving = false;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const status = document.getElementById("status")!;
 
-// player が読む module (lider とゲーム)。
-// ゲームの batch (差分) は同じ名前の .batch に、通らなかった build の診断は .errors に置く (player が次の frame に読んで消す)
-function modulePath(entry: string) {
-  return `${HOME}/.lub/${entry}.tcsb`;
-}
-
-function batchPath(entry: string) {
-  return `${HOME}/.lub/${entry}.batch`;
-}
-
-function errorsPath(entry: string) {
-  return `${HOME}/.lub/${entry}.errors`;
-}
-
-function decodeBase64(text: string): Uint8Array {
-  const bin = atob(text);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
+// player が動かす lider の module
+const LIDER_MODULE = `${HOME}/.lub/${LIDER}.tcsb`;
 
 let idleTimer = 0;
 
@@ -238,23 +227,6 @@ function projectPaths(project: Files) {
   return new Map([...project].map(([p, b]) => [`${PROJECT_DIR}/${p}`, b]));
 }
 
-// ゲーム (project) を bytecode にする
-async function compile(project: Files, entry: string) {
-  const text = new TextDecoder();
-  const files: Record<string, string> = {};
-  for (const [p, b] of projectPaths(project))
-    if (isSource(p)) files[p] = text.decode(b);
-  // lider が読めるよう、ゲームの実行した行と値を記録する (実行トレースと値の木)
-  const open = await openTcsVmSession(
-    files,
-    entry,
-    {},
-    { traces: [PROJECT_DIR] },
-  );
-  if (!open.ok) return { errors: open.errors };
-  return { session: open.session!, module: decodeBase64(open.module) };
-}
-
 function resizeCanvas() {
   const ratio = window.devicePixelRatio || 1;
   canvas.width = Math.floor(canvas.clientWidth * ratio);
@@ -263,16 +235,14 @@ function resizeCanvas() {
   (window as any)._canvasHeight = canvas.height;
 }
 
-// lider を動かし、lider に entry のゲームを開かせる。
+// lider を動かし、lider に project のゲームを開かせる。
 // active でなければ lider を出さずに始める (F1 で出る)
 function start(
   device: any,
   tree: Files,
-  entry: string,
   open: string,
   active: boolean,
   lider: Uint8Array,
-  game: Uint8Array,
 ): Promise<any> {
   return new Promise((resolve) => {
     const m: any = {
@@ -281,12 +251,13 @@ function start(
       print: (t: string) => console.log(t),
       printErr: (t: string) => console.error(t),
       locateFile: (p: string) => PLAYER_URL + p,
-      arguments: [modulePath(LIDER)],
+      arguments: [LIDER_MODULE],
       preRun: [
         () => {
           Object.assign(m.ENV, {
             LIDER_HOME: HOME,
-            LIDER_GAME: modulePath(entry),
+            LIDER_GAME: GAME,
+            LIDER_CS_LIB: CS_LIB,
             LIDER_ROOT: GAME,
             LIDER_OPEN: `${GAME}/${open}`,
             LIDER_FOLLOW_DISK: "1",
@@ -297,8 +268,13 @@ function start(
           // project の file を HOME の下に置く (player の data file が preload する path とは重ならないので、その展開を待たない)
           m.FS.mkdirTree(DRAFTS);
           for (const [p, b] of tree) writeFile(m.FS, `${HOME}/${p}`, b);
-          writeFile(m.FS, modulePath(LIDER), lider);
-          writeFile(m.FS, modulePath(entry), game);
+          for (const [p, text] of Object.entries(CS_LIB_FILES))
+            writeFile(
+              m.FS,
+              `${CS_LIB}/${p.replace(/^.*\/cs-lib\//, "")}`,
+              text,
+            );
+          writeFile(m.FS, LIDER_MODULE, lider);
         },
       ],
       onRuntimeInitialized: () => resolve(m),
@@ -319,9 +295,12 @@ function mtime(FS: any, path: string): number {
   return FS.stat(path).mtime.getTime();
 }
 
+// project の file。'.' で始まるディレクトリ (lider が変換した物を置く .lub) は project に入れない
 function readProject(FS: any, dir = GAME, out: Files = new Map()): Files {
   for (const name of FS.readdir(dir)) {
     if (name === "." || name === "..") continue;
+    if (name.startsWith(".") && FS.isDir(FS.stat(`${dir}/${name}`).mode))
+      continue;
     const path = `${dir}/${name}`;
     if (FS.isDir(FS.stat(path).mode)) readProject(FS, path, out);
     else out.set(path.slice(GAME.length + 1), FS.readFile(path));
@@ -376,34 +355,20 @@ function draftTimes(FS: any, files: Files) {
   );
 }
 
-// 保存された file を変換し、通ったら動いているゲームに当てる。
-// 保存された file は変換する前に整形して書き戻す (lider は書き戻しを窓に写す)。
-// seen は session が知っている file の版。
-function watch(
-  m: any,
-  session: TcsVmSession,
-  seen: Map<string, number>,
-  entry: string,
-) {
+// 保存された .cs を整形して書き戻す (lider は書き戻しを窓に写し、変換し直す)。
+// seen は見た file の版
+function watch(m: any, seen: Map<string, number>) {
   const poll = async () => {
     try {
-      const before = mtimes(m.FS, readProject(m.FS));
-      const changed = [...before]
+      const now = mtimes(m.FS, readProject(m.FS));
+      const changed = [...now]
         .filter(([p, t]) => seen.get(p) !== t && isSource(p))
         .map(([p]) => p);
-      for (const p of changed) await format(m, session, p);
-      const project = readProject(m.FS);
-      const now = mtimes(m.FS, project);
-      const removed = [...seen.keys()].filter(
-        (p) => isSource(p) && !now.has(p),
-      );
-      const added = changed.filter((p) => now.has(p) && !seen.has(p));
-      const edited = changed.filter((p) => now.has(p) && seen.has(p));
-      // 整形を待つ間に保存された別の file は、次の回に見つける
-      for (const p of removed) seen.delete(p);
-      for (const p of changed) if (now.has(p)) seen.set(p, now.get(p)!);
-      if (added.length + edited.length + removed.length > 0)
-        await apply(m, session, project, entry, removed, added, edited);
+      for (const p of changed) await format(m, p);
+      // 整形して書き戻した版も見たことにする (整形している間に保存された file は、次の回に見つける)
+      const after = mtimes(m.FS, readProject(m.FS));
+      for (const p of changed) if (after.has(p)) seen.set(p, after.get(p)!);
+      for (const p of [...seen.keys()]) if (!after.has(p)) seen.delete(p);
     } finally {
       setTimeout(poll, POLL_MS);
     }
@@ -413,17 +378,17 @@ function watch(
 
 let formatBroken = false;
 
-async function format(m: any, session: TcsVmSession, path: string) {
-  // 整形の worker (.NET の wasm) が動かない環境でも、変換して当てるのは止めない
+async function format(m: any, path: string) {
+  // 整形の worker (.NET の wasm) が動かない環境でも、lider の変換は止めない
   if (formatBroken) return;
   const file = `${GAME}/${path}`;
   const content = m.FS.readFile(file, { encoding: "utf8" });
   let formatted: string;
   try {
-    formatted = await session.format(content, FORMAT_WIDTH);
+    formatted = await formatCs(content, FORMAT_WIDTH);
   } catch (e) {
     formatBroken = true;
-    console.warn("[lider] 整形できないので、整形せずに当てる:", e);
+    console.warn("[lider] 整形できないので、整形しない:", e);
     return;
   }
   // 整形している間に保存されたら、次の保存の版を整形する
@@ -432,64 +397,6 @@ async function format(m: any, session: TcsVmSession, path: string) {
     m.FS.readFile(file, { encoding: "utf8" }) === content
   )
     m.FS.writeFile(file, formatted);
-}
-
-// 診断を player に渡す (lider が compile error として出す)
-function buildFailed(m: any, entry: string, errors: string[]) {
-  say("compile error\n" + errors.join("\n"));
-  m.FS.writeFile(errorsPath(entry), errors.join("\n"));
-}
-
-// batch は player が次の frame に当てる。
-// 当てられない変更 (restart) は module を書き直し、player がゲームの VM を作り直す
-async function load(
-  m: any,
-  session: TcsVmSession,
-  entry: string,
-  r: TcsVmUpdate,
-) {
-  if (r.kind === "batch")
-    m.FS.writeFile(batchPath(entry), decodeBase64(r.batch));
-  else m.FS.writeFile(modulePath(entry), decodeBase64(await session.module()));
-}
-
-// 途中の版は、消した file の型を別の file へ移した時のように通らないことがある。最後の結果で決める
-async function apply(
-  m: any,
-  session: TcsVmSession,
-  project: Files,
-  entry: string,
-  removed: string[],
-  added: string[],
-  edited: string[],
-) {
-  const read = (p: string) =>
-    m.FS.readFile(`${GAME}/${p}`, { encoding: "utf8" });
-  const name = (p: string) => `${PROJECT_DIR}/${p}`;
-  let r!: TcsVmUpdate;
-  for (const p of removed) r = await session.remove(name(p));
-  for (const p of [...added, ...edited])
-    r = await session.update(name(p), read(p));
-  if (!r.ok) {
-    buildFailed(m, entry, r.errors);
-    return;
-  }
-  const found = findEntry(project);
-  if (!found) {
-    buildFailed(m, entry, ["OnFrame を持つ static class がありません"]);
-    return;
-  }
-  // entry が変わると、動いている VM には当てられない
-  if (found !== entry) {
-    location.reload();
-    return;
-  }
-  await load(m, session, entry, r);
-  say(
-    r.kind === "batch"
-      ? `applied (revision ${r.revision})`
-      : `restarted (revision ${r.revision})`,
-  );
 }
 
 function template(tree: Files, prefix: string): Files {
@@ -668,28 +575,14 @@ async function main() {
   device.addEventListener("uncapturederror", (e: any) => {
     console.error("[webgpu]", e.error?.message ?? e.error);
   });
-  say("C# を変換中...");
   // lider が LIDER_HOME から読む file (font)。ゲームの例は project の雛形で、MEMFS には置かない
   const home: Files = new Map(
     [...all].filter(([p]) => !p.startsWith("samples/")),
   );
   const project = saved ?? template(all, FLAPPY);
   if (gist && !project.has(FONT)) project.set(FONT, all.get(`data/${FONT}`)!);
-  // 保存した project が変換を通らなくても直せるよう、同じ名前の空の class の VM で起動する (file は保存した物を置き、watch が error を出す)
+  // project が変換を通らなくても lider は起動し、compile error を出す (直すとゲームが始まる)
   const entry = findEntry(project) ?? "Game";
-  let built = await compile(project, entry);
-  // session の revision は開くと戻り、動いている VM は同じ revision を捨てるので、開き直さず、この session に差分を当てる
-  const stubbed = !!built.errors;
-  if (built.errors) {
-    const stub = new TextDecoder()
-      .decode(all.get(`${EMPTY}Game.cs`))
-      .replace("class Game", `class ${entry}`);
-    built = await compile(
-      new Map([[`${entry}.cs`, new TextEncoder().encode(stub)]]),
-      entry,
-    );
-    if (built.errors) fail("compile error: " + built.errors.join("\n"));
-  }
   resizeCanvas();
   // 右ドラッグは窓を動かす操作なので、ブラウザのメニューを出さない
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -721,11 +614,9 @@ async function main() {
         ([p, b]) => [`${DRAFTS_DIR}/${p}`, b] as [string, Uint8Array],
       ),
     ]),
-    entry,
     open,
     !gist,
     lider,
-    built.module!,
   );
   // SDL の窓は App.Config の大きさで始まるので、canvas の大きさを伝える (Gfx.Size はこれを返す)
   window.dispatchEvent(new Event("resize"));
@@ -733,13 +624,7 @@ async function main() {
   // ゲームが相対の path で読む file は project から探す (lub の起動が終わってから移る)
   m.FS.chdir(GAME);
   persist(m.FS, keys);
-  // 空の class で起動した時は、保存した project を差分として当てる
-  watch(
-    m,
-    built.session!,
-    stubbed ? new Map([[`${entry}.cs`, -1]]) : mtimes(m.FS, readProject(m.FS)),
-    entry,
-  );
+  watch(m, mtimes(m.FS, readProject(m.FS)));
   if (gist) showHint();
   say("ready");
 }

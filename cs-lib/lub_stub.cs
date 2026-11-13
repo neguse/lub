@@ -209,6 +209,25 @@ namespace Lub
         public string ReloadNotes = "";
     }
 
+    /// <summary>App.Inputs が返す、ゲームの .csproj の変換の入力。
+    /// path は絶対 path で、複数のときは改行で区切る。
+    /// </summary>
+    public class ProjectInputs
+    {
+        /// <summary>entry class (.csproj の basename)。
+        /// </summary>
+        public string Entry = "";
+        /// <summary>ソースを探したディレクトリ (.csproj のディレクトリと、`Lub="Source"` の参照先。cs-lib は含まない)。
+        /// </summary>
+        public string Dirs = "";
+        /// <summary>変換する *.cs (cs-lib の実装を含む)。
+        /// </summary>
+        public string Sources = "";
+        /// <summary>型だけの宣言として渡す file (*.ref.cs と cs-lib/lub_stub.cs)。
+        /// </summary>
+        public string Refs = "";
+    }
+
     /// <summary>App.Step が開いた app に見せる入力の選び方。
     /// 省いた項目は、この app の入力をそのまま見せる。
     /// </summary>
@@ -484,6 +503,16 @@ namespace Lub
         public static AppRef Use(string key, string module, string? entry = null)
         {
             return null!;
+        }
+
+        /// <summary>ゲームの .csproj から、変換の入力を集める (`lub <Entry>.csproj` と同じ規則)。
+        /// 自分で変換し、できた .tcsb を `Use` で開く app (エディタなど) が使う。
+        /// .csproj を読める player (`lub <Entry>.csproj`) だけで使え、web と、読めない .csproj では null。
+        /// </summary>
+        [LubMaybe]
+        public static ProjectInputs? Inputs(string csproj)
+        {
+            return null;
         }
 
         /// <summary>開いた app を 1 frame 進める (`OnFrame(dt)` を呼ぶ)。
