@@ -1,7 +1,7 @@
 # C# (TinyC#) で書く
 
 lub のゲームコードは C# で書く。
-使うのは [tcs (TinyC#)](https://github.com/neguse/lub/tree/master/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (release 向けに C にも変換できる) で、playground ではブラウザ内 (tcs2c で C にした tcs の WASM 版)、native では lub が `tcs` を dotnet で動かす。
+使うのは [tcs (TinyC#)](https://github.com/neguse/lub/tree/master/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (release 向けに C にも変換できる) で、web のサイトの入口ではエディタ (lider) の player に組み込んだ tcs (tcs2c で C にした tcs) がブラウザ内で、native では lub が `tcs` を動かす。
 dotnet が無い環境では、tcs2c で C にした tcs (C の tcs) を使う。
 実行ファイルの隣に C の tcs があれば、dotnet があってもそちらを先に使う (後述)。
 tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、C の tcs、ブラウザのどれで動かしても同じ出力になる。
@@ -31,8 +31,8 @@ tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、C �
 - LINQ クエリ構文(`from x in y select`)
 
 境界を踏むとコンパイル時に `TCS1001`(未対応構文)/ `TCS1002`(未対応 API)/
-`TCS1003`(配列と Dictionary への null 保存)の診断が出る。playground では
-ログパネルに表示される。
+`TCS1003`(配列と Dictionary への null 保存)の診断が出る。web のサイトの入口では
+エディタの窓に表示される。
 `TCS1001` と `TCS1002` はエラーで、出力を書かずに止まる(hot reload では直前の版が動き続ける)。
 `TCS1003` は警告として出るが、`lub check` と `tcs check` は警告でも失敗するので放置しない。
 
@@ -155,10 +155,7 @@ release の一式は `bin/tcs/` に入っていて、dotnet は要らない。
 手元の build では `scripts/build-tcs-native.sh <build-dir>` が `<build-dir>/tcs` に作る (作るのに dotnet SDK と C compiler が要る)。
 `tcs/tcs` が無いときは、PATH に dotnet があれば `tcs` を `dotnet run` で動かし、無ければ `tcs/SelfHost/out/native/tcs` (tcs の `SelfHost/native.sh` の出力) を使う。
 
-playground の変換も、同じ C の tcs を wasm にしたもの (worker で動かす) が行う。
-補完と hover は .NET wasm の Roslyn が答える (`web/README.md`)。
-
-playground の C# は増分コンパイラで hot reload する(編集停止から 0.5 s 未満)。
+web のサイトの入口の変換も、同じ C の tcs をエディタ (lider) の player に組み込んだもの (`lider/README.md`) が行い、同じ増分 session で hot reload する。
 何が生きたまま反映されて何が作り直しになるかは「ライフサイクルと hot reload」
 の章を参照。
 

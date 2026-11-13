@@ -2143,7 +2143,7 @@ static bool compile_compute(const char *cs_src, ShaderTargetBackend target,
 // Emscripten Slang bridge.
 //
 // We delegate Slang compilation to the JS side via EM_JS. The JS glue
-// (`window.slangCompile`, defined in web/playground/slang-bridge.ts)
+// (`window.slangCompile`, defined in web/lib/slang-bridge.ts)
 // runs slang-wasm in-page and returns `{wgsl, reflectJson}` (or `{error}`).
 // The call is synchronous: the page loads slang-wasm (the only async part)
 // before it starts lub.js, so the wasm side never has to suspend.
@@ -2154,7 +2154,7 @@ static bool compile_compute(const char *cs_src, ShaderTargetBackend target,
 #include <emscripten.h>
 
 // Stage codes passed across the JS bridge to window.slangCompile.
-// Must match what playground/slang-bridge.ts expects.
+// Must match what web/lib/slang-bridge.ts expects.
 enum SlangBridgeStage {
   SLANG_BRIDGE_STAGE_VS = 0,
   SLANG_BRIDGE_STAGE_FS = 1,
@@ -3239,7 +3239,7 @@ bool compile_one(const char *src, const char *entry, SglShaderStage stage,
 
 } // anonymous namespace
 
-// The page loads slang-wasm only where it compiles (the playground); a
+// The page loads slang-wasm only where it compiles (the site's pages); a
 // packed page has none and uses the shader cache alone.
 // clang-format off
 EM_JS(int, lub_slang_available_js, (void), {

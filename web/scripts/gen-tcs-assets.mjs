@@ -1,4 +1,4 @@
-// gen-tcs-assets.mjs — tcs WasmCompiler (Roslyn 込み browser-wasm。playground の補完と hover に使う) を web playground 用アセットに固める。
+// gen-tcs-assets.mjs — tcs WasmCompiler (Roslyn と CSharpier 込みの browser-wasm。サイトの入口が C# の整形に使う。web/lib/format.ts) を web のアセットに固める。
 // 出力: web/tcs-wasm-assets/_framework/*(dotnet.js ローダ + wasm 一式)。
 // public/ に置くと vite が「public アセットの import」を拒否するため、vite.config.ts の serveDir が /tcs-wasm として配信する (build は closeBundle で copy)。
 //   node web/scripts/gen-tcs-assets.mjs [--publish]

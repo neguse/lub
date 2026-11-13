@@ -1,4 +1,4 @@
-// ブラウザの中で lider を動かす。
+// サイトの入口 (index.html): ブラウザの中で lider を動かす。
 // lider は build のときに作った bytecode (Lider.tcsb。lider/scripts/build-module.sh) で、lider の player (lider/scripts/build-player.sh --web) が動かす。
 // ゲーム (project) の C# は、lider が player に組み込んだ tcs で変換し、別の app として開く (env LIDER_GAME に project のディレクトリを渡す)。
 // 一緒に変換する lub の cs-lib は MEMFS に置く (env LIDER_CS_LIB)。
@@ -6,14 +6,19 @@
 // project の file は保存のたびに IndexedDB に写し、次に開いたときはそこから始める。
 // ?gist=<gist の id か URL> で開くと、公開の gist の file を project にし、lider を出さずにゲームだけで始める (F1 で編集)。
 // その project は gist ごとの key に写し、普段の project には書かない。
+// #sample=<サンプルの名前> で開くと、lub のサンプル (samples/<名前>) を project にする (メニューの「サンプル」)。
+// サンプルは samples/<名前>/data/... のように lub の root からの path で file を読むので、project を MEMFS の同じ場所に置き、ゲームの cwd を root に当たる HOME にする。
+// その project もサンプルごとの key に写す。
 import { unzipSync, zipSync } from "fflate";
-import { initSlang } from "../playground/slang-bridge";
-import { formatCs } from "../playground/tcs-compiler";
+import { initSlang } from "../lib/slang-bridge";
+import { formatCs } from "../lib/format";
 
 const BASE = import.meta.env.BASE_URL;
 // MEMFS に置く file (vite.config.ts の LIDER_TREE) と、その一覧
 const FS_URL = BASE + "lider-fs/";
 const FS_LIST_URL = BASE + "lider-fs.json";
+// lub のサンプルの file の一覧 (vite.config.ts の sampleAssets)
+const SAMPLES_URL = BASE + "sample-assets.json";
 // lider の bytecode と lider の player
 const LIDER_MODULE_URL = BASE + "lider-wasm/Lider.tcsb";
 const PLAYER_URL = BASE + "lider-wasm/";
@@ -28,9 +33,11 @@ const CS_LIB_FILES = import.meta.glob("../../cs-lib/**/*.cs", {
 }) as Record<string, string>;
 // player が動かす entry (lider)
 const LIDER = "Lider";
-// 編集する project の場所 (どの project もここで動かす)
-const PROJECT_DIR = "project";
-const GAME = `${HOME}/${PROJECT_DIR}`;
+// 編集する project の場所 (HOME からの path)。サンプルは samples/<名前> に置く
+let PROJECT_DIR = "project";
+let GAME = `${HOME}/${PROJECT_DIR}`;
+// ゲームが相対の path で file を読む場所。サンプルは lub の root に当たる HOME から読む
+let CWD = GAME;
 const DRAFTS_DIR = "drafts";
 const DRAFTS = `${HOME}/${DRAFTS_DIR}`;
 const FLAPPY = "samples/flappy/";
@@ -53,6 +60,70 @@ const OWN: Keys = { project: "current", drafts: "drafts" };
 
 function gistKeys(id: string): Keys {
   return { project: `gist:${id}`, drafts: `gist:${id}:drafts` };
+}
+
+function sampleKeys(name: string): Keys {
+  return { project: `sample:${name}`, drafts: `sample:${name}:drafts` };
+}
+
+// sample-assets.json: サンプルごとの data (samples) と .cs (sources)、entry class (entries)、サンプルが共通で読む data (shared)。path は lub の root から
+type SampleList = {
+  shared: string[];
+  samples: Record<string, string[]>;
+  sources: Record<string, string[]>;
+  entries: Record<string, string>;
+};
+
+let sampleList: Promise<SampleList> | null = null;
+
+function fetchSampleList(): Promise<SampleList> {
+  if (!sampleList)
+    sampleList = fetch(SAMPLES_URL).then(async (r) => {
+      if (!r.ok) throw new Error(`fetch ${SAMPLES_URL} -> ${r.status}`);
+      return r.json();
+    });
+  return sampleList;
+}
+
+// .cs を持つサンプルの名前 (名前の順)
+async function sampleNames(): Promise<string[]> {
+  const list = await fetchSampleList();
+  return Object.keys(list.sources)
+    .filter((n) => list.sources[n].length > 0)
+    .sort();
+}
+
+// サンプルの file (.cs と data)。path はサンプルのディレクトリから
+async function fetchSample(name: string): Promise<Files> {
+  const list = await fetchSampleList();
+  if (!list.sources[name]?.length)
+    throw new Error(
+      `sample error: サンプル ${name} がありません (#sample= に渡せる名前: ${(await sampleNames()).join(", ")})`,
+    );
+  const prefix = `samples/${name}/`;
+  const got = await Promise.all(
+    [...list.sources[name], ...list.samples[name]].map(
+      async (p): Promise<[string, Uint8Array]> => [
+        p.slice(prefix.length),
+        await fetchBytes(BASE + p),
+      ],
+    ),
+  );
+  return new Map(got);
+}
+
+// サンプルが共通で読む file (samples/data)。path は lub の root から
+async function fetchShared(): Promise<Files> {
+  const list = await fetchSampleList();
+  const got = await Promise.all(
+    list.shared.map(
+      async (p): Promise<[string, Uint8Array]> => [
+        p,
+        await fetchBytes(BASE + p),
+      ],
+    ),
+  );
+  return new Map(got);
 }
 
 let leaving = false;
@@ -243,6 +314,7 @@ function start(
   open: string,
   active: boolean,
   lider: Uint8Array,
+  entry: string | null,
 ): Promise<any> {
   return new Promise((resolve) => {
     const m: any = {
@@ -265,6 +337,7 @@ function start(
             LIDER_PIXEL_RATIO: String(window.devicePixelRatio || 1),
           });
           if (active) m.ENV.LIDER_ACTIVE = "1";
+          if (entry) m.ENV.LIDER_ENTRY = entry;
           // project の file を HOME の下に置く (player の data file が preload する path とは重ならないので、その展開を待たない)
           m.FS.mkdirTree(DRAFTS);
           for (const [p, b] of tree) writeFile(m.FS, `${HOME}/${p}`, b);
@@ -308,8 +381,22 @@ function readProject(FS: any, dir = GAME, out: Files = new Map()): Files {
   return out;
 }
 
-function mtimes(FS: any, files: Files) {
-  return new Map([...files.keys()].map((p) => [p, mtime(FS, `${GAME}/${p}`)]));
+// project の file の mtime ('.' で始まるディレクトリは見ない)。
+// 中身は読まないので、大きい data を持つ project でも変わったかを軽く調べられる
+function mtimes(
+  FS: any,
+  dir = GAME,
+  out: Map<string, number> = new Map(),
+): Map<string, number> {
+  for (const name of FS.readdir(dir)) {
+    if (name === "." || name === "..") continue;
+    const path = `${dir}/${name}`;
+    const stat = FS.stat(path);
+    if (FS.isDir(stat.mode)) {
+      if (!name.startsWith(".")) mtimes(FS, path, out);
+    } else out.set(path.slice(GAME.length + 1), stat.mtime.getTime());
+  }
+  return out;
 }
 
 function sameTimes(a: Map<string, number>, b: Map<string, number>) {
@@ -318,15 +405,14 @@ function sameTimes(a: Map<string, number>, b: Map<string, number>) {
 
 // 保存された file を IndexedDB に写す。変換を待たないので、変換の途中で閉じても残る
 function persist(FS: any, keys: Keys) {
-  let seen = mtimes(FS, readProject(FS));
+  let seen = mtimes(FS);
   let seenDrafts = draftTimes(FS, readDrafts(FS));
   setInterval(() => {
     if (leaving) return;
-    const project = readProject(FS);
-    const now = mtimes(FS, project);
+    const now = mtimes(FS);
     if (!sameTimes(seen, now)) {
       seen = now;
-      saveFiles(keys.project, project).catch((e) =>
+      saveFiles(keys.project, readProject(FS)).catch((e) =>
         say(`保存できません: ${e}`),
       );
     }
@@ -360,13 +446,13 @@ function draftTimes(FS: any, files: Files) {
 function watch(m: any, seen: Map<string, number>) {
   const poll = async () => {
     try {
-      const now = mtimes(m.FS, readProject(m.FS));
+      const now = mtimes(m.FS);
       const changed = [...now]
         .filter(([p, t]) => seen.get(p) !== t && isSource(p))
         .map(([p]) => p);
       for (const p of changed) await format(m, p);
       // 整形して書き戻した版も見たことにする (整形している間に保存された file は、次の回に見つける)
-      const after = mtimes(m.FS, readProject(m.FS));
+      const after = mtimes(m.FS);
       for (const p of changed) if (after.has(p)) seen.set(p, after.get(p)!);
       for (const p of [...seen.keys()]) if (!after.has(p)) seen.delete(p);
     } finally {
@@ -470,7 +556,12 @@ function download(name: string, bytes: Uint8Array) {
 }
 
 // 壊れた project でも押せるよう、ゲームを起動する前に繋ぐ。m はゲームを起動するまで null
-function bindTools(getModule: () => any, keys: Keys, gist: string | null) {
+function bindTools(
+  getModule: () => any,
+  keys: Keys,
+  gist: string | null,
+  sample: string | null,
+) {
   const tools = document.getElementById("tools")!;
   document
     .getElementById("toggle")!
@@ -496,6 +587,32 @@ function bindTools(getModule: () => any, keys: Keys, gist: string | null) {
     document.getElementById("gist")!.hidden = false;
     bindReset("gist", "gist に戻します", keys, () => refetchGist(gist));
   }
+  if (sample) {
+    // サンプルの場所で動かしているので、別の project には替えない (自分の project へはメニューから戻る)
+    for (const id of ["flappy", "empty", "import"])
+      document.getElementById(id)!.hidden = true;
+    document.getElementById("sample")!.hidden = false;
+    document.getElementById("own")!.hidden = false;
+    bindReset("sample", "サンプルに戻します", keys, () => fetchSample(sample));
+  }
+  // サンプルの一覧 (押すと開き閉じする)。選ぶと #sample= で開き直す
+  const samples = document.getElementById("samples")!;
+  document.getElementById("samples-toggle")!.addEventListener("click", (e) => {
+    e.stopPropagation();
+    samples.hidden = !samples.hidden;
+  });
+  sampleNames().then(
+    (names) => {
+      for (const name of names) {
+        const a = document.createElement("a");
+        a.href = `#sample=${encodeURIComponent(name)}`;
+        a.textContent = name;
+        if (name === sample) a.classList.add("current");
+        samples.appendChild(a);
+      }
+    },
+    (e) => console.warn("[lider] サンプルの一覧を読めません:", e),
+  );
   document.getElementById("export")!.addEventListener("click", async () => {
     const m = getModule();
     const files = m ? readProject(m.FS) : await loadFiles(keys.project);
@@ -550,22 +667,37 @@ async function main() {
         fail(
           `gist error: ?gist= の値 (${param}) から gist の id が読めません`,
         ));
-  const keys = gist ? gistKeys(gist) : OWN;
+  const sample = new URLSearchParams(location.hash.slice(1)).get("sample");
+  if (sample) {
+    PROJECT_DIR = `samples/${sample}`;
+    GAME = `${HOME}/${PROJECT_DIR}`;
+    CWD = HOME;
+  }
+  // 別のサンプル (や自分の project) は開き直して始める
+  window.addEventListener("hashchange", () => location.reload());
+  const keys = sample ? sampleKeys(sample) : gist ? gistKeys(gist) : OWN;
   let m: any = null;
-  bindTools(() => m, keys, gist);
+  bindTools(() => m, keys, gist, sample);
   say("読み込み中...");
   const paths = await fetchList();
-  const [all, lider, adapter, saved, drafts] = await Promise.all([
-    fetchTree(paths),
-    fetchBytes(LIDER_MODULE_URL),
-    (navigator as any).gpu.requestAdapter(),
-    // gist は、写した物が無ければ gist から始める
-    loadFiles(keys.project).then(
-      (p) => p ?? (gist ? fetchGist(gist) : undefined),
-    ),
-    loadFiles(keys.drafts),
-    initSlang(),
-  ]);
+  const [all, lider, adapter, saved, drafts, shared, entries] =
+    await Promise.all([
+      fetchTree(paths),
+      fetchBytes(LIDER_MODULE_URL),
+      (navigator as any).gpu.requestAdapter(),
+      // gist とサンプルは、写した物が無ければ元から始める
+      loadFiles(keys.project).then(
+        (p) =>
+          p ??
+          (sample ? fetchSample(sample) : gist ? fetchGist(gist) : undefined),
+      ),
+      loadFiles(keys.drafts),
+      sample ? fetchShared() : new Map<string, Uint8Array>(),
+      sample
+        ? fetchSampleList().then((l) => l.entries)
+        : ({} as Record<string, string>),
+      initSlang(),
+    ]);
   if (!adapter) fail("WebGPU の adapter を取れません");
   const device = await adapter.requestDevice({
     requiredFeatures: ["depth32float-stencil8", "float32-filterable"].filter(
@@ -581,8 +713,9 @@ async function main() {
   );
   const project = saved ?? template(all, FLAPPY);
   if (gist && !project.has(FONT)) project.set(FONT, all.get(`data/${FONT}`)!);
-  // project が変換を通らなくても lider は起動し、compile error を出す (直すとゲームが始まる)
-  const entry = findEntry(project) ?? "Game";
+  // project が変換を通らなくても lider は起動し、compile error を出す (直すとゲームが始まる)。
+  // サンプルの entry は .csproj の basename (OnFrame を持つ class が幾つもあるサンプルがある)
+  const entry = (sample && entries[sample]) || findEntry(project) || "Game";
   resizeCanvas();
   // 右ドラッグは窓を動かす操作なので、ブラウザのメニューを出さない
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -609,6 +742,7 @@ async function main() {
     device,
     new Map([
       ...home,
+      ...shared,
       ...projectPaths(project),
       ...[...(drafts ?? [])].map(
         ([p, b]) => [`${DRAFTS_DIR}/${p}`, b] as [string, Uint8Array],
@@ -617,14 +751,15 @@ async function main() {
     open,
     !gist,
     lider,
+    sample ? entry : null,
   );
   // SDL の窓は App.Config の大きさで始まるので、canvas の大きさを伝える (Gfx.Size はこれを返す)
   window.dispatchEvent(new Event("resize"));
   canvas.focus();
-  // ゲームが相対の path で読む file は project から探す (lub の起動が終わってから移る)
-  m.FS.chdir(GAME);
+  // ゲームが相対の path で読む file を探す場所 (lub の起動が終わってから移る)
+  m.FS.chdir(CWD);
   persist(m.FS, keys);
-  watch(m, mtimes(m.FS, readProject(m.FS)));
+  watch(m, mtimes(m.FS));
   if (gist) showHint();
   say("ready");
 }

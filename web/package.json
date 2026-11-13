@@ -1,5 +1,5 @@
 {
-  "name": "lub-playground",
+  "name": "lub-web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,27 +12,15 @@
     "preview": "vite preview",
     "fetch-slang": "bash scripts/fetch-slang-wasm.sh",
     "gen-tcs": "node scripts/gen-tcs-assets.mjs",
-    "gen-tcs-selfhost": "node scripts/gen-tcs-selfhost.mjs",
-    "verify": "node scripts/verify-headless.mjs",
+    "verify": "node scripts/verify-player.mjs",
     "verify-lider": "node scripts/verify-lider.mjs",
-    "bench-tcs": "node scripts/bench-tcs-warmup.mjs",
-    "verify-tcs-startup": "node scripts/verify-tcs-startup.mjs",
-    "verify-tcs-selfhost": "node scripts/verify-tcs-selfhost.mjs",
-    "verify-tcs-recovery": "node scripts/verify-tcs-recovery.mjs",
     "golden": "node scripts/golden-web.mjs",
-    "format": "prettier --write 'playground/**/*.ts' vite.config.ts",
-    "format:check": "prettier --check 'playground/**/*.ts' vite.config.ts",
+    "format": "prettier --write 'lider/**/*.ts' 'player/**/*.ts' 'docs/**/*.ts' 'lib/**/*.ts' vite.config.ts",
+    "format:check": "prettier --check 'lider/**/*.ts' 'player/**/*.ts' 'docs/**/*.ts' 'lib/**/*.ts' vite.config.ts",
     "deploy": "npm run build && wrangler deploy",
     "postinstall": "npm run fetch-slang"
   },
   "dependencies": {
-    "@codemirror/autocomplete": "^6.20.3",
-    "@codemirror/language": "^6.10.0",
-    "@codemirror/legacy-modes": "^6.4.0",
-    "@codemirror/lint": "^6.9.7",
-    "@codemirror/theme-one-dark": "^6.1.2",
-    "@codemirror/view": "^6.43.6",
-    "codemirror": "^6.0.1",
     "fflate": "^0.8.3"
   },
   "devDependencies": {

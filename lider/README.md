@@ -19,7 +19,7 @@ LIDER_GAME=$PWD/lider/samples/flappy/Flappy.csproj LIDER_HOME=$PWD/lider LIDER_A
 
 ## ブラウザで動かす
 
-`web/lider.html` (lub の web の page の 1 つ。`web/lider/main.ts`)。
+lub の web のサイトの入口 (`web/index.html`、`web/lider/main.ts`)。
 lider は build のときに作った bytecode (`Lider.tcsb`) で動き、ゲームの C# は lider が player に組み込んだ tcs でブラウザの中で変換する。
 project と lub の cs-lib は MEMFS に置き、project は保存のたびに IndexedDB に写す。
 page は保存された `.cs` を整形して書き戻す。
@@ -28,12 +28,13 @@ page は保存された `.cs` を整形して書き戻す。
 source ~/emsdk/emsdk_env.sh
 emcmake cmake --preset wasm-release && cmake --build build/wasm -j   # lub の wasm
 lider/scripts/build-player.sh --web      # lider の player (要 rustup の wasm32-unknown-emscripten)
-cd web && npm run dev                    # Lider.tcsb を作って (npm run gen-lider) 配る。http://localhost:5173/lider.html
+cd web && npm run dev                    # Lider.tcsb を作って (npm run gen-lider) 配る。http://localhost:5173/
 LUB_URL=http://localhost:5173/ npm run verify-lider
 ```
 
-整形は playground と同じ物を使う (`npm run gen-tcs -- --publish`)。
+整形は tcs の .NET の wasm の CSharpier を使う (`npm run gen-tcs -- --publish`)。
 `?gist=<gist の id か URL>` で開くと、公開の gist の file を project にして、ゲームだけで始まる。
+`#sample=<名前>` (メニューの「サンプル」) で開くと、lub のサンプルを project にする。
 
 ## 画面の組み立て
 

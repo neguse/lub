@@ -1,38 +1,10 @@
-// .NET / Roslyn はこの worker に常駐し、補完 / hover / 整形の editor の session の要求を順に実行する。
-import type { TcsRequest } from "./tcs-compiler";
+// C# の整形 (format.ts) の worker。
+// .NET の wasm (tcs の WasmCompiler) はこの worker に常駐し、整形の要求を順に実行する。
+import type { FormatRequest } from "./format";
 
 const ASSET_BASE = import.meta.env.BASE_URL + "tcs-wasm/";
-const STUB_URL = import.meta.env.BASE_URL + "cs-lib/lub_stub.cs";
-const IMPL_GLOB = import.meta.glob("../../cs-lib/**/*.cs", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-}) as Record<string, string>;
-const IMPL_SOURCES: Record<string, string> = {};
-for (const [path, src] of Object.entries(IMPL_GLOB)) {
-  const rel = path.replace(/^.*\/cs-lib\//, "");
-  if (rel !== "lub_stub.cs") IMPL_SOURCES[rel] = src;
-}
 
 let readyPromise: Promise<any> | null = null;
-let stubPromise: Promise<string> | null = null;
-
-/** lub_stub.cs (API 面の参照ソース)。runtime とは独立に取る: 失敗は
- * その open だけの失敗にし、起動済みの runtime を捨てる理由にしない。 */
-function ensureStub(): Promise<string> {
-  if (!stubPromise)
-    stubPromise = fetch(STUB_URL)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`fetch ${STUB_URL} -> ${r.status}`);
-        return r.text();
-      })
-      .catch((error) => {
-        stubPromise = null; // 次の open で取り直す
-        throw error;
-      });
-  return stubPromise;
-}
-void ensureStub().catch(() => {});
 
 type WasmChunk = { name: string; integrity: string };
 async function loadNativeWasm(chunks: WasmChunk[]): Promise<Response> {
@@ -99,25 +71,12 @@ function ensureRuntime(): Promise<any> {
   return readyPromise;
 }
 
-// host が取り下げた要求 id。
-// 未着手のものだけ実行前に捨てる。
-const cancelled = new Set<number>();
 let queue = Promise.resolve();
 // dotnet.js は import 時の globalThis.onmessage で sidecar worker を判別する。
 // onmessage を代入すると runtime worker と誤認し、create() が完了しない。
-self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
-  if (data.method === "cancel") {
-    for (const id of data.args) cancelled.add(id);
-    return;
-  }
+self.addEventListener("message", ({ data }: MessageEvent<FormatRequest>) => {
   queue = queue.then(async () => {
-    const { id, method, args } = data;
-    // 直前の要求 (同期で秒単位の Open) の間に届いた cancel を先に拾う。
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    if (cancelled.delete(id)) {
-      self.postMessage({ id, error: "cancelled" });
-      return;
-    }
+    const { id, content, width } = data;
     let exports;
     try {
       exports = await ensureRuntime();
@@ -128,33 +87,10 @@ self.addEventListener("message", ({ data }: MessageEvent<TcsRequest>) => {
       return;
     }
     try {
-      let result: string | undefined;
-      switch (method) {
-        case "initialize":
-          break;
-        case "openEditor":
-          result = exports.SessionExports.OpenEditor(
-            JSON.stringify({
-              files: { ...IMPL_SOURCES, ...args[0] },
-              refs: { "lub_stub.cs": await ensureStub() },
-              entryClass: args[1],
-            }),
-          );
-          break;
-        case "updateText":
-          result = exports.SessionExports.UpdateText(...args);
-          break;
-        case "complete":
-          result = exports.SessionExports.Complete(...args);
-          break;
-        case "hover":
-          result = exports.SessionExports.Hover(...args);
-          break;
-        case "format":
-          result = exports.SessionExports.Format(...args);
-          break;
-      }
-      self.postMessage({ id, result });
+      self.postMessage({
+        id,
+        result: exports.SessionExports.Format(content, width),
+      });
     } catch (error) {
       // wasm の trap は stack が無いと場所が分からない
       self.postMessage({

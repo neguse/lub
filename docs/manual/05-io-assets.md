@@ -20,7 +20,7 @@ if (text == null) return; // ready になるまで待つ
 | `error` | status が error のときの理由 |
 
 今の実装は native も web も同期で読み、置かれていないファイルはその場で error(`"missing"`)になる(web の `save/` は除く)。
-web では読めるファイルを起動前に MEMFS へ置く(playground はサンプルのファイル、`lub --serve` はゲームのディレクトリ、`lub export web` は snapshot)。
+web では読めるファイルを起動前に MEMFS へ置く(サイトの入口はゲームの project とサンプルのファイル、`lub --serve` はゲームのディレクトリ、`lub export web` は snapshot)。
 `Pending` と「ready になるまで null」は、将来ファイルを非同期に取る実装のために API の形として残している。
 null ならそのフレームをスキップする書き方にしておけば、その実装になっても書き換えずに済む。
 

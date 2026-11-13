@@ -14,7 +14,7 @@ if (!dir) {
   process.exit(2);
 }
 
-// player は WebGPU の device を Module.preinitializedWebGPUDevice で受け取る (web/playground/player.ts と同じ)
+// player は WebGPU の device を Module.preinitializedWebGPUDevice で受け取る (web/player/main.ts と同じ)
 const page = `<!doctype html>
 <canvas id="canvas" width="64" height="64"></canvas>
 <script type="module">

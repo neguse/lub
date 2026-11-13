@@ -12,7 +12,7 @@ namespace Lubx;
 /// tick は 1 フレームに 0〜maxCatchUp 回走る。
 /// keyPressed などの edge は tick 粒度で配送され、tick 0 回のフレームの edge も失われない。
 /// edge は tick callback の中で読むこと。
-/// callback は保持しない (毎フレーム frame() に渡す) ので、playground の live 反映後も次のフレームから新しいコードが呼ばれる。
+/// callback は保持しない (毎フレーム frame() に渡す) ので、hot reload の live 反映後も次のフレームから新しいコードが呼ばれる。
 /// </summary>
 public class FixedStep
 {

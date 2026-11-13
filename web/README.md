@@ -1,8 +1,15 @@
-# lub playground (web)
+# lub の web のサイト
 
-ブラウザで lub サンプルの C# ソースを編集 → client-only でその場コンパイル (tcs2c で C にした TinyC# コンパイラの wasm) → player iframe にホットリロードするプレイグラウンド。
+[lub.neguse.net](https://lub.neguse.net) の page 一式。サーバ不要・完全静的。
 
-サーバ不要・完全静的。C# から tcs VM の bytecode への変換もブラウザ内で完結する。
+- `index.html` (`lider/main.ts`): サイトの入口。ブラウザの中でエディタ (lider、`../lider/`) を動かす。
+  ゲームの C# は lider が player に組み込んだ tcs で変換し、別の app として開く。
+  project は MEMFS に置き、保存のたびに IndexedDB に写す。保存された `.cs` は page が整形して書き戻す (`lib/format.ts`)。
+  右下のメニューから、Doc の page、サンプル (`#sample=<名前>`)、zip の保存と読み込みを開く。`?gist=<id か URL>` で公開の gist を開く。
+- `player.html` (`player/main.ts`): エディタを通らない tcs VM の player (`build/wasm/vm/lub.js`)。
+  page を開いて postMessage (`setFiles`) で bytecode と file を渡すと起動する。golden と `tests/cs` の検査が使う。
+- `docs.html` (`docs/main.ts`): ガイド (`docs/manual/*.md`) と API reference (`cs-lib/lub_stub.cs` の doc comment)。
+- `lider.html`: 前の lider の page の URL。query と hash を付けたまま入口へ移る。
 
 ## WebXR
 
@@ -21,128 +28,59 @@ XR レイヤーへ転送する。XR セッション中は SDL の更新も XR �
 `npm run dev` / `build` の前に用意する:
 
 ```bash
-# 1. lub player wasm(tcs VM の player、build/wasm/vm/lub.{js,wasm,data}) … リポジトリルートで C ビルド
+# 1. lub の player の wasm (build/wasm/vm/lub.{js,wasm}) … リポジトリルートで C ビルド
 source ~/emsdk/emsdk_env.sh             # emcc / emcmake を PATH に
-emcmake cmake -S . -B build/wasm        # WGPU + emdawnwebgpu port が configure される
-cmake --build build/wasm -j             # vm/lub.{js,wasm,data} が生成
-# 2. slang-wasm(web/public/slang/…) … シェーダコンパイラ
-npm run fetch-slang          # postinstall でも走る
-# 3. 補完と hover の .NET wasm 一式(web/tcs-wasm-assets/)
-#    要 dotnet SDK + wasm-tools workload
-npm run gen-tcs -- --publish # tcs の .NET wasm bundle を web/tcs-wasm-assets/ に固める
-# 4. tcs の WebAssembly 版(web/tcs-selfhost-assets/)… C# の変換に使う
-#    要 dotnet SDK + Emscripten(source ~/emsdk/emsdk_env.sh)
-npm run gen-tcs-selfhost
+emcmake cmake --preset wasm-release
+cmake --build build/wasm -j
+# 2. lider の player の wasm (lider/build/player-web/web/lub.{js,wasm}) … tcs を組み込んだ player
+../lider/scripts/build-player.sh --web  # 要 rustup の wasm32-unknown-emscripten と dotnet
+# 3. slang-wasm (web/public/slang/…) … シェーダコンパイラ
+npm run fetch-slang                     # postinstall でも走る
+# 4. 整形の .NET wasm 一式 (web/tcs-wasm-assets/) … 要 dotnet SDK + wasm-tools workload
+npm run gen-tcs -- --publish
 ```
 
-playground の C# の変換は tcs の WebAssembly 版 (TinyC# で書いた tcs を tcs2c で C にし、emcc で wasm にしたもの。`playground/tcs-selfhost-worker.ts`) が行い、補完と hover は .NET wasm の Roslyn (`playground/tcs-worker.ts` の compile しない editor の session) が答える。
-変換の wasm は `npm run gen-tcs-selfhost` が `web/tcs-selfhost-assets/` に作る (要 dotnet SDK と Emscripten。`source ~/emsdk/emsdk_env.sh`)。
+lider の bytecode (`../lider/build/web/Lider.tcsb`) は `npm run dev` / `build` が `npm run gen-lider` で作る。
 
-`gen-tcs -- --publish` は AOT を有効にし、ブラウザでの最初のコンパイルを速める。
-通常の .NET wasm よりビルド時間とダウンロード量は増える。25MiB を超える native
-Wasm は 8MiB 以下のファイルに分け、`native-wasm.json` に URL と内容の hash を記録する。
-worker は各ファイルを検証してから結合した stream を .NET に渡すため、Cloudflare
-Assets のファイルサイズ上限内で静的配信できる。
+`gen-tcs -- --publish` は AOT を有効にする。
+25MiB を超える native Wasm は 8MiB 以下のファイルに分け、`native-wasm.json` に URL と内容の hash を記録する。
+worker は各ファイルを検証してから結合した stream を .NET に渡すため、Cloudflare Assets のファイルサイズ上限内で静的配信できる。
 
-## コンパイルの流れ
+## shader と MEMFS
 
-- `playground/tcs-compiler.ts` … 変換と補完の API。
-  変換は tcs の wasm (`tcs-selfhost-worker.ts`) の増分 session が専用 worker で行い、C# を tcs VM の bytecode にする。
-  変更 `.cs` のみ Update し、当てられる編集は差分 (batch) を、当てられない編集は作り直した bytecode を返す。
-  補完と hover は .NET wasm の Roslyn (`tcs-worker.ts` の compile しない editor の session) が非同期で答える。
-  warmup と編集の処理は editor / player のスレッドを塞がない。
-- `playground/diagnostics.ts` … tcs の診断をパースしてエディタ内に表示。
-- `playground/samples.ts` … `.cs` をロードし、その `Io.LoadText` / `Io.LoadFloats` の path を scan してエディタに出す data files (slang 等)を解決。
-  サンプル一覧の正は `CS_SAMPLES`。
-- `playground/main.ts` … boot とサンプル切替で compile→player 起動、ソース編集を debounce→再 compile→`syncFiles`。
-  data(slang)編集は compile 不要で直接 sync。
-  tcs の wasm の読み込みはソースの取得と同時に始める。
-  準備中の編集は完了後に反映し、サンプル切替後の古い結果は捨てる。
-
-## 実行時アーキテクチャ
-
-```
-            parent (index.html / main.ts)              iframe (player.html / player.ts)
-            ┌────────────────────────────┐             ┌──────────────────────────────────┐
-            │ CodeMirror editor          │   setFiles  │ slang-bridge.ts                  │
-            │   path -> content table    │  ────────▶  │   window.slangCompile() を export │
-            │ sample dropdown / restart  │  syncFiles  │ WebGPU device 取得 → preinit     │
-            │ debounce 75ms              │  ────────▶  │ lub.js (Emscripten module)     │
-            └────────────────────────────┘  ◀─player──│   ↑ EM_JS bridge (同期)           │
-                                            Ready/log │   ↑ FS.writeFile で MEMFS overlay │
-                                                       │ backend_webgpu — canvas へ描画   │
-                                                       └──────────────────────────────────┘
-```
-
-postMessage プロトコル:
-
-- `parent → iframe`: `setFiles {files, entry}` (初回ブート時 1 回), `syncFiles {files}` (編集毎)
-- `iframe → parent`: `playerReady` (ハンドシェイク), `runtimeReady` (wasm main が FS 公開後の
-  第二ハンドシェイク), `log {level, msg}` (console relay)
-
-shader compile は C 側 (`src/shader.cpp`) の `EM_JS` shim から `window.slangCompile(src, entry, stage)` を同期で呼び、`{wgsl, reflectJson}` を `'\x01'` 区切りで pack して戻す。
-非同期なのは slang-wasm の読み込みだけなので、player は読み込みを済ませてから lub.js を起動する。
+shader compile は C 側 (`src/shader.cpp`) の `EM_JS` shim から `window.slangCompile(src, entry, stage)` (`lib/slang-bridge.ts`) を同期で呼び、`{wgsl, reflectJson}` を `'\x01'` 区切りで pack して戻す。
+非同期なのは slang-wasm の読み込みだけなので、page は読み込みを済ませてから lub.js を起動する。
 エラーは `'\x02' + msg` 形式で Slang diagnostic として err_buf に届く。
 
-MEMFS sync: runtime の `Io` は MEMFS にあるファイルだけを読み、自分では取りに行かない。
-iframe 側は main() の前に、サンプルが読み得るファイル(`sample-assets.json` に載る `samples/<name>/**` と `samples/data/**`。`.cs` / `.csproj` は除く)を全部 fetch して `FS.writeFile` で置き、その上にエディタ内容を書く (`player.ts` の preRun。置き終わるまで run dependency で main() を待たせる)。
-`sample-assets.json` は dev では vite のミドルウェアが要求ごとに作り、build では `dist/` に書き出す (`vite.config.ts`)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は次フレームの
-`stat()` で mtime 違いを検知して reload する (native と同じ hot-reload コード)。
+runtime の `Io` は MEMFS にあるファイルだけを読み、自分では取りに行かない。
+page は main() の前に、ゲームが読み得るファイルを fetch して `FS.writeFile` で置く (置き終わるまで run dependency で main() を待たせる)。
+サンプルの file の一覧 (`sample-assets.json`。`samples/<name>/**` の data と `.cs`、`samples/data/**`、entry class) は、dev では vite のミドルウェアが要求ごとに作り、build では `dist/` に書き出す (`vite.config.ts`)。
+C 側は次フレームの `stat()` で mtime 違いを検知して reload する (native と同じ hot-reload コード)。
 
 ## コマンド
 
 ```bash
 npm run dev               # Vite dev server (http://localhost:5173/)
 npm run build             # 本番ビルド -> dist/
-npm run verify            # headless Chromium で end-to-end 検証(別ターミナルで dev を起動しておく)
-npm run bench-tcs         # dev server 上で TCS の warmup / 増分編集 / 補完 / 診断と UI 応答を検証
-npm run verify-tcs-startup  # 起動中の入力キューと、compile / player 再起動失敗からの復帰を検証
-npm run verify-tcs-recovery # 実 Wasm の通信失敗からの復帰と、Worker 再起動後の旧 session 拒否を検証
-npm run verify-tcs-selfhost # tcs の WebAssembly 版で全サンプルの描画と C# の編集を検証 (gen-tcs-selfhost のアセットが要る)
-npm run golden            # web golden(native と同 curation を wasm --capture 経路で byte 比較)
-npm run gen-api           # docs サイト用 API reference JSON を再生成(dev/build にも組み込み済)
-npm run gen-tcs -- --publish  # 補完と hover の .NET wasm を再生成(tcs 変更時)
-npm run gen-tcs-selfhost  # tcs の WebAssembly 版 (playground の変換) を再生成(tcs 変更時)
-npm run format            # prettier(format:check は CI 用)
+npm run verify-lider      # 入口の page の検査 (別ターミナルで dev を起動しておく)
+npm run verify            # player の page で tests/cs の runtime テストを動かす
+npm run golden            # web golden (native と同じ curation を wasm の --capture 経路で byte 比較)
+npm run gen-api           # docs サイト用 API reference JSON を再生成 (dev/build にも組み込み済)
+npm run gen-tcs -- --publish  # 整形の .NET wasm を再生成 (tcs 変更時)
+npm run format            # prettier (format:check は CI 用)
 npm run deploy            # build + wrangler deploy
 ```
 
 ## Headless verification
 
-`npm run verify`(`scripts/verify-headless.mjs`)は playwright + chromium
-(swiftshader Vulkan) で:
+どれも playwright + chromium (swiftshader) で、`LUB_URL` に dev server か preview の URL を渡す。
+ブラウザの解決順は `scripts/lib/browser.mjs` (`CHROMIUM_PATH` → playwright の版固定 chromium → system chromium)。
 
-1. sample 01 の初期描画 (orange triangle on dark blue clear) を pixel bucket で確認
-2. fragment shader を編集 → green になる
-3. `.cs` の ClearColor を編集 → 再 compile → 背景が red になる
-4. verts を縮小編集 → green pixel 数が減る
-5. 登録済み sample を順に切替 → 各サンプルの非黒描画を確認
-6. C# 増分編集が runtime の commit ACK(synced rev 表示)まで貫通する
-7. C# の診断がエディタ内に表示される
-8. C# 補完 / hover が返る(レイテンシ観測ログ付き)
-9. `tests/cs` の runtime テストを tcs VM の player で走らせ、PASS を確認する(`tests/cs/.lub/all.tcsb` を動かす。事前に `scripts/cs-tests.sh` の `cs_tests_vm_build` で作っておく)
-
-スクリーンショットは `/tmp/lub-verify/` に出力される。CI 利用時は dev server を
-別ジョブで立ち上げてから `LUB_URL=http://...` を指定すること。サブパス配信の確認は
-`--base /lub/` でビルドした dist を preview し、`LUB_URL` をそのサブパス
-(`http://localhost:4174/lub/`)にして `LUB_VERIFY_STRICT_404=1` を付けて実行する
-(同一 origin の 404 を失敗にし、C# session の起動と `docs.html` の描画も確かめる。
-preview は `appType: "mpa"` なので、base の中の無い path も 404 になる)。
-
-`npm run bench-tcs` は Vite dev server と TCS アセットだけで実行できる。
-player の Wasm は不要。`LUB_URL` で dev server を、`CHROMIUM_PATH` でブラウザの
-実行ファイルを指定できる。最初の session 準備、再度開く処理、本文の増分編集の時間と、
-処理中の main thread のタイマー間隔を出力する。診断からの復帰、補完・hover、
-古い session の拒否も確認する。
-
-`verify-tcs-startup` は compiler と player の応答を制御する fixture を使い、初回起動中の
-入力、初期化・更新失敗後の再試行、失敗した player 再起動の再試行を確認する。
-アセットが要らないので PR CI(web-verify の shard 4)でも dev server を立てて走る。
-`verify-tcs-recovery` は実際の Wasm を使い、破損した native Wasm の拒否と再試行、
-Worker の異常終了後に旧 session が新しい session を更新できないことを確認する。
-どちらも Vite dev server 上で実行し、`LUB_URL` で指定する。ブラウザの解決順は
-`scripts/lib/browser.mjs`(`CHROMIUM_PATH` → playwright の版固定 chromium →
-system chromium)で、`verify` と同じ。
+- `npm run verify-lider` (`scripts/verify-lider.mjs`): 入口の page。起動、保存した編集の反映、通らない build の診断、通らない project での起動、並べる表示 (F10)、サンプル、メニューと Doc の page、同じ origin の 404。
+  サブパス配信の確認は、`--base /lub/` でビルドした dist を preview し、`LUB_URL` をそのサブパス (`http://localhost:4174/lub/`) にして走らせる (preview は `appType: "mpa"` なので、base の中の無い path も 404 になる)。
+- `npm run verify` (`scripts/verify-player.mjs`): `tests/cs` の runtime テストを player の page で走らせ、PASS を確認する (A9)。
+  事前に `scripts/cs-tests.sh` の `cs_tests_vm_build` で `tests/cs/.lub/all.tcsb` を作っておく。
+- `npm run golden` (`scripts/golden-web.mjs`): サンプルを native の tcs で変換しておき (`scripts/run-cs-sample.sh <name> --vm`。撮るサンプルは `--list`)、player の page で撮って `tests/golden/<name>_web.png` と比べる。
 
 ## Browser requirements
 
@@ -156,11 +94,8 @@ system chromium)で、`verify` と同じ。
   `npx vite build --base /lub/` のように base を付けてビルドする(`vite preview --base /lub/`
   で確認できる)。
 
-## Live edit caveats / limitations
+## 制約
 
-- shader に syntax error がある場合: 既存の shader を維持して Slang diagnostic を
-  iframe log に流すのみ (next save で復帰)。初回 compile 失敗のみ load を止める。
-- 75ms debounce: 入力後 75ms 静止してから `syncFiles` を送る。連打中は更新されない。
-- サンプル切替時に dirty な編集があると `confirm()` で警告する。
+- shader に syntax error がある場合: 既存の shader を維持して Slang diagnostic を log に流すのみ (次の保存で復帰)。初回 compile 失敗のみ load を止める。
 - web の `--capture` は、指定した frame の swapchain を buffer に copy し、map が終わるまで次の frame を始めずに待ってから PNG を書く。
 - sdlgpu backend は web 非対応。web は `webgpu` のみ。
