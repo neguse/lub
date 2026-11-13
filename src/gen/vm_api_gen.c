@@ -10021,9 +10021,10 @@ static TvmStatus vm_host_lub_app_restart(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   (void)a;
   (void)r;
   VM_LUB_ENTER();
+  VmLub_AppRef *p_app = a[0].p;
   if (s->error)
     VM_LUB_LEAVE(vm);
-  lub_app_restart(s->ctx);
+  lub_app_restart(s->ctx, (p_app ? (int32_t)p_app->host_value : 0));
   VM_LUB_LEAVE(vm);
 }
 static TvmStatus vm_host_lub_app_use(TvmVm *vm, TvmSlot *a, TvmSlot *r,
@@ -15916,7 +15917,7 @@ static const struct {
     {"lub.xr.input", "i", "o", vm_host_lub_xr_input},
     {"lub.app.config", "o", "", vm_host_lub_app_config},
     {"lub.app.quit", "i", "", vm_host_lub_app_quit},
-    {"lub.app.restart", "", "", vm_host_lub_app_restart},
+    {"lub.app.restart", "o", "", vm_host_lub_app_restart},
     {"lub.app.use", "sss", "o", vm_host_lub_app_use},
     {"lub.app.step", "oofo", "b", vm_host_lub_app_step},
     {"lub.app.status", "o", "o", vm_host_lub_app_status},

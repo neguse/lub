@@ -1,6 +1,7 @@
 // App.Use で .csproj を開く検査: 開いた app の build を待つ間も開いた側は止まらず、build が終わった frame から app が描く。
 // 開いた app のソースを書き換えて保存すると、開いた app だけが hot reload で新しい色を描き、static (数えた frame) は残る。
 // App.Status で、reload の回数と、通らない build の診断と、直した後に診断が消えることを見る。
+// App.Restart に開いた app を渡すと、開いた app だけが作り直される。
 using System;
 using Lub;
 
@@ -11,6 +12,7 @@ public static class Game
     static bool edited;
     static int blueAtEdit;
     static int phase;
+    static int blueAtRestart;
 
     static string ChildDir()
     {
@@ -115,11 +117,19 @@ public static class Game
         if (phase == 2)
         {
             var status = App.Status(child);
-            if (status.Reloads >= 2 && status.BuildError == "")
+            // 作り直す前に、数えた frame が青に出るまで待つ
+            if (status.Reloads >= 2 && status.BuildError == "" && blue >= 30)
             {
-                Console.WriteLine("PASS");
-                App.Quit(0);
+                blueAtRestart = blue;
+                App.Restart(child);
+                phase = 3;
             }
+        }
+        else if (phase == 3 && App.Status(child).Restarts == 1 && blue < blueAtRestart)
+        {
+            // 開いた app だけが OnInit から始め直し、static (数えた frame) は初期値に戻る
+            Console.WriteLine("PASS");
+            App.Quit(0);
         }
     }
 }

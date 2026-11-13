@@ -2486,12 +2486,12 @@ public static unsafe partial class App
         }
     }
 
-    public static void Restart()
+    public static void Restart(AppRef? app = null)
     {
         var a = LubRuntime.Arena.Begin();
         try
         {
-            LubNative.lub_app_restart(LubRuntime.Ctx);
+            LubNative.lub_app_restart(LubRuntime.Ctx, (app?.H ?? 0));
         }
         finally
         {
@@ -11333,7 +11333,7 @@ internal static unsafe partial class LubNative
     internal static extern void lub_app_quit(void* ctx, int @code);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_app_restart(void* ctx);
+    internal static extern void lub_app_restart(void* ctx, int @app);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_app_use(void* ctx, LubStr @key, LubStr @module, LubStr @entry, int* @out);

@@ -459,9 +459,10 @@ namespace Lub
         /// この frame の終わりに `OnQuit` を呼んで VM を作り直し、`OnInit` から始める (hot reload が差分を当てられないときの作り直しと同じ)。
         /// C# の変数 (static と instance) はすべて初期値に戻り、key で宣言した GPU の資源と音は残る。
         /// 開発中の player (`lub <Entry>.csproj`、web) だけで効き、tcs2c の release build では何もしない。
+        /// app を渡すと、`App.Use` で開いたその app を、次の `Step` の始めに作り直す (この app は作り直さない。閉じた app では何もしない)。
         /// </summary>
         [LubNoFail]
-        public static void Restart()
+        public static void Restart(AppRef? app = null)
         {
         }
 
