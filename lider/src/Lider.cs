@@ -1202,6 +1202,8 @@ public static class Lider
         if (draft != null && Work != null)
             DraftGame.Step(dt, grabbed, GameApp.Position >= 0, draft.ViewportBounds!, from!.ViewportBounds!, PixelRatio, Work.Docs);
         ScreenView.Draw(Screens, sw, sh);
+        if (draft != null)
+            DrawLabels(sw, sh, saved, draft);
         var change = GameApp.Changed();
         if (change.Reloaded)
             GameReloaded();
@@ -1222,6 +1224,39 @@ public static class Lider
                 if (window.Content is GameView view && view.Version == version && window.ViewportBounds != null)
                     return window;
         return null;
+    }
+
+    // 並べたゲームのウィンドウの左上に、どちらの版かの札を出す (lider を出していない間も)
+    static MonoText? labelText;
+    static SpriteBatch? labelBatch;
+    const float LabelMargin = 8;
+    const float LabelPad = 4;
+
+    static void DrawLabels(int sw, int sh, Window? saved, Window draft)
+    {
+        var density = Math.Max(1, (int)Math.Round(PixelRatio));
+        if (labelText == null || labelText.Density != density)
+            labelText = new MonoText("lider_label_" + density, Ttf(), 15, density);
+        if (labelBatch == null || labelBatch.LogicalW != sw || labelBatch.LogicalH != sh)
+            labelBatch = new SpriteBatch("lider_label", sw, sh);
+        Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
+        labelBatch.Begin();
+        if (saved != null)
+            Label(saved.ViewportBounds!, "保存済み");
+        Label(draft.ViewportBounds!, DraftGame.Label());
+        labelBatch.Flush();
+        Gfx.EndPass();
+    }
+
+    static void Label(Bounds at, string text)
+    {
+        var t = labelText!;
+        var w = (Utf8.Cells(text, Utf8.Bytes(text)) + 2) * t.CellW;
+        var h = t.LineH + LabelPad * 2;
+        var x = at.X + LabelMargin;
+        var y = at.Y + LabelMargin;
+        labelBatch!.Rect(x, y, w, h, Theme.Surface);
+        t.Draw(labelBatch, text, x + t.CellW, y + LabelPad, Theme.Ink);
     }
 
     // ゲームの OnEvent に event を渡す (並べている間は、編集中の版にも)

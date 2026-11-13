@@ -34,6 +34,14 @@ public static class DraftGame
 
     public static bool Shown => Build != null;
 
+    // 並べたウィンドウの札 (変換できなければ、そのことも書く)
+    public static string Label()
+    {
+        if (Build == null || Build.LastKind != "error")
+            return "編集中";
+        return Build.Revision > 0 ? "編集中 (変換エラー: 最後に通った版)" : "編集中 (変換エラー)";
+    }
+
     // 編集中の版を開く (保存した版と同じゲーム)
     public static void Open(string project)
     {

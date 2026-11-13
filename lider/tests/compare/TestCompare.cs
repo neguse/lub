@@ -2,6 +2,7 @@
 //   - 背景のスクリーンが左右に等分され、左に保存した版、右に編集中の版が出る
 //   - 編集中の版は、動き始めた時に保存した版の状態を写し、その後は同じ frame を進む (数が同じ)
 //   - 保存せずに書き換えた本文は、編集中の版だけに入る (保存した版と disk の file は変わらない)
+//   - 編集中の版が変換できないと、札が「最後に通った版」を出していると書く
 //   - もう一度 F10 で、保存した版だけに戻る
 using System;
 using System.Collections.Generic;
@@ -88,10 +89,17 @@ public static class TestCompare
             Check(doc!.Dirty, "the edit should stay unsaved");
             Io.LoadText(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!, out var disk, out _, out _, out _);
             Check(disk != null && disk.Contains("return 1;"), "the file on disk changed");
-            Press(Keys.F10);
+            Check(DraftGame.Label() == "編集中", "label " + DraftGame.Label());
+            Replace("return 100;", "100", "100 +");
             stage = 5;
         }
-        else if (stage == 5)
+        else if (stage == 5 && DraftGame.Build!.LastKind == "error")
+        {
+            Check(DraftGame.Label() == "編集中 (変換エラー: 最後に通った版)", "label " + DraftGame.Label());
+            Press(Keys.F10);
+            stage = 6;
+        }
+        else if (stage == 6)
         {
             Check(Lider.Screens[0].Windows.Count == 1 && !DraftGame.Shown, "F10 did not go back to the saved version");
             Console.WriteLine("PASS");
