@@ -7,7 +7,7 @@ import {
   readdirSync,
   writeFileSync,
 } from "node:fs";
-import { resolve, extname, sep, basename } from "node:path";
+import { resolve, extname, sep, basename, dirname } from "node:path";
 
 // dotnet build (bin/obj) と変換の出力 (.lub) は配信物に含めない
 const ARTIFACT_DIRS = new Set(["bin", "obj", ".lub"]);
@@ -40,9 +40,41 @@ function sampleAssets(): string {
   return JSON.stringify({ shared, samples });
 }
 
+// lider の page (lider.html) が MEMFS に置く file (lider/ からの path)。
+// lider が読む font と、project の雛形にするゲームの例。
+const LIDER_ROOT = resolve(__dirname, "../lider");
+const LIDER_TREE = [
+  "data/yutapon_coding_081d.ttf",
+  "data/yutapon_coding-README.TXT",
+  "samples/flappy/*.cs",
+  "samples/empty/*.cs",
+];
+// lider の player (lider/scripts/build-player.sh --web) と lider の bytecode (npm run gen-lider)。
+// lub の player (wasm/) とは別の場所 (lider-wasm/) で配る。
+const LIDER_WASM: Record<string, string> = {
+  "lub.js": resolve(LIDER_ROOT, "build/player-web/web/lub.js"),
+  "lub.wasm": resolve(LIDER_ROOT, "build/player-web/web/lub.wasm"),
+  "Lider.tcsb": resolve(LIDER_ROOT, "build/web/Lider.tcsb"),
+};
+
+function liderTree(): string[] {
+  const out: string[] = [];
+  for (const pattern of LIDER_TREE) {
+    const dir = dirname(pattern);
+    const name = basename(pattern);
+    if (!name.startsWith("*")) {
+      out.push(pattern);
+      continue;
+    }
+    for (const e of readdirSync(resolve(LIDER_ROOT, dir)).sort())
+      if (e.endsWith(name.slice(1))) out.push(`${dir}/${e}`);
+  }
+  return out;
+}
+
 export default defineConfig({
   publicDir: "public",
-  // index / player / docs の 3 page 構成。
+  // index / player / docs / lider の 4 page 構成。
   // 無い path は SPA fallback の 200 (index.html) ではなく 404 にする。
   // 配信先 (Cloudflare の assets) と同じ挙動で、web verify の strict 404 が base の中の誤った path を拾える。
   appType: "mpa",
@@ -68,6 +100,7 @@ export default defineConfig({
         main: resolve(__dirname, "index.html"),
         player: resolve(__dirname, "player.html"),
         docs: resolve(__dirname, "docs.html"),
+        lider: resolve(__dirname, "lider.html"),
       },
     },
   },
@@ -123,6 +156,34 @@ export default defineConfig({
           resolve(__dirname, "tcs-selfhost-assets"),
         );
         serveDir(base + "wasm", resolve(__dirname, "../build/wasm"));
+        // lider の page の file は中身をそのまま返す (build の copy と同じ byte 列)
+        function serveFiles(prefix: string, files: () => Map<string, string>) {
+          server.middlewares.use(prefix, (req, res, next) => {
+            const file = files().get((req.url || "").split("?")[0].slice(1));
+            if (!file || !existsSync(file)) return next();
+            res.setHeader(
+              "Content-Type",
+              file.endsWith(".wasm")
+                ? "application/wasm"
+                : file.endsWith(".js")
+                  ? "application/javascript"
+                  : "application/octet-stream",
+            );
+            res.end(readFileSync(file));
+          });
+        }
+        server.middlewares.use(base + "lider-fs.json", (_req, res) => {
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(liderTree()));
+        });
+        serveFiles(
+          base + "lider-fs",
+          () => new Map(liderTree().map((p) => [p, resolve(LIDER_ROOT, p)])),
+        );
+        serveFiles(
+          base + "lider-wasm",
+          () => new Map(Object.entries(LIDER_WASM)),
+        );
       },
       closeBundle() {
         const noArtifacts = (src: string) => !ARTIFACT_DIRS.has(basename(src));
@@ -145,6 +206,16 @@ export default defineConfig({
         mkdirSync("dist/wasm/vm", { recursive: true });
         for (const f of ["lub.js", "lub.wasm"])
           cpSync(`../build/wasm/vm/${f}`, `dist/wasm/vm/${f}`);
+        // lider の page
+        const tree = liderTree();
+        for (const p of tree) {
+          mkdirSync(dirname(`dist/lider-fs/${p}`), { recursive: true });
+          cpSync(resolve(LIDER_ROOT, p), `dist/lider-fs/${p}`);
+        }
+        writeFileSync("dist/lider-fs.json", JSON.stringify(tree));
+        mkdirSync("dist/lider-wasm", { recursive: true });
+        for (const [name, file] of Object.entries(LIDER_WASM))
+          cpSync(file, `dist/lider-wasm/${name}`);
       },
     },
   ],

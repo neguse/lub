@@ -17,6 +17,23 @@ LIDER_GAME=$PWD/lider/samples/flappy/Flappy.csproj LIDER_HOME=$PWD/lider LIDER_A
 - `LIDER_ACTIVE=1`: 起動したときから編集の画面にする。無ければ F1 で出す。
 - ほかの env と key は `src/Lider.cs` の先頭にある。
 
+## ブラウザで動かす
+
+`web/lider.html` (lub の web の page の 1 つ。`web/lider/main.ts`)。
+lider は build のときに作った bytecode (`Lider.tcsb`) で動き、ゲームの C# はブラウザの中で変換する。
+project は MEMFS に置き、保存のたびに IndexedDB に写す。
+
+```
+source ~/emsdk/emsdk_env.sh
+emcmake cmake --preset wasm-release && cmake --build build/wasm -j   # lub の wasm
+lider/scripts/build-player.sh --web      # lider の player (要 rustup の wasm32-unknown-emscripten)
+cd web && npm run dev                    # Lider.tcsb を作って (npm run gen-lider) 配る。http://localhost:5173/lider.html
+LUB_URL=http://localhost:5173/ npm run verify-lider
+```
+
+ゲームの C# の変換と整形は playground と同じ物を使う (`npm run gen-tcs-selfhost` と `npm run gen-tcs -- --publish`)。
+`?gist=<gist の id か URL>` で開くと、公開の gist の file を project にして、ゲームだけで始まる。
+
 ## 置き場所
 
 | 場所 | 中身 |
@@ -26,6 +43,7 @@ LIDER_GAME=$PWD/lider/samples/flappy/Flappy.csproj LIDER_HOME=$PWD/lider LIDER_A
 | `tests/` | runtime テスト。`tests/<name>/` は lider を動かす test、`tests/editor/` はエディタの core だけの test |
 | `samples/` | lider で開くゲームの例 |
 | `data/` | font |
+| `scripts/` | build と test。`build-module.sh` は lider を bytecode にする |
 
 ## テスト
 
