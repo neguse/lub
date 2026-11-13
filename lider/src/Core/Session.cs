@@ -9,7 +9,7 @@ using LiderEditor;
 
 namespace LiderCore;
 
-public static class Layout
+public static class Session
 {
     // 書いてから読むまで (古い VM の OnQuit から、新しい VM のゲームと lider の OnInit まで) に許す秒
     public const float Seconds = 10;
@@ -20,7 +20,7 @@ public static class Layout
 
     static string PathIn(Workspace w)
     {
-        return w.Root + "/.lub/lider-layout.txt";
+        return w.Root + "/.lub/lider-session.txt";
     }
 
     // 1 行目は「書いた時の Sys.Seconds focus のある窓の番号」。
@@ -81,7 +81,7 @@ public static class Layout
                 n++;
             if (spec != null && docs.Count > 0)
             {
-                var window = new Window(docs[0]);
+                var window = new CodeWindow(docs[0]);
                 for (var k = 1; k < docs.Count; k++)
                     window.Tabs.Add(docs[k]);
                 window.Tab = Math.Min(int.Parse(spec[1]), docs.Count - 1);

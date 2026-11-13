@@ -18,7 +18,7 @@ public static class TestMotion
     static bool failed;
     static int frames;
     static int stage;
-    static Window? window;
+    static CodeWindow? window;
 
     public static void OnInit()
     {

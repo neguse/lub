@@ -147,10 +147,10 @@ public static class Space
 // ray が当たった窓と、その中の位置 (左上 0,0、右下 1,1)
 public class WindowHit
 {
-    public Window Window;
+    public CodeWindow Window;
     public Vec2 Uv;
 
-    public WindowHit(Window window, Vec2 uv)
+    public WindowHit(CodeWindow window, Vec2 uv)
     {
         Window = window;
         Uv = uv;
