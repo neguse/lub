@@ -10,7 +10,7 @@ public class Grab
 {
     public const float MinScale = 0.5f;
     public const float MaxScale = 3;
-    public Window? Window;
+    public CodeWindow? Window;
     float angleOffset;
     float yOffset;
     // 両手でつかんでいる間
@@ -21,7 +21,7 @@ public class Grab
     public bool Holding => Window != null;
 
     // 円筒の上の (angle, y) で window をつかむ
-    public void Start(Window window, float angle, float y)
+    public void Start(CodeWindow window, float angle, float y)
     {
         Window = window;
         two = false;

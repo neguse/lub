@@ -87,7 +87,7 @@ public static class TestZen
             Lider.EndEdge();
             Check(window.WidthPx > before, "dragging did not widen: " + before + " -> " + window.WidthPx);
             window.Resize(1, 1);
-            Check(window.WidthPx == Window.MinPxW && window.HeightPx == Window.MinPxH, "no lower limit: " + window.WidthPx);
+            Check(window.WidthPx == CodeWindow.MinPxW && window.HeightPx == CodeWindow.MinPxH, "no lower limit: " + window.WidthPx);
             window.Resize(900, PanelView.BasePxH);
         }
         if (frames == 12)

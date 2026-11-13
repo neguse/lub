@@ -141,13 +141,13 @@ public class WindowMotion
 public class Landing
 {
     public const float Seconds = 0.2f;
-    public Window Window;
+    public CodeWindow Window;
     public int Line;
     public float X0;
     public float X1;
     public float Age;
 
-    public Landing(Window window, int line, float x0, float x1)
+    public Landing(CodeWindow window, int line, float x0, float x1)
     {
         Window = window;
         Line = line;

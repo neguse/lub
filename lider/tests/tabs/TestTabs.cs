@@ -16,7 +16,7 @@ public static class TestTabs
     const int W = 26;
     static int frames;
     static bool failed;
-    static Window? first;
+    static CodeWindow? first;
 
     public static void OnInit()
     {

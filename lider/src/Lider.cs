@@ -35,7 +35,7 @@ public static class Lider
     // 非 XR の視点の横の位置 (平面の x)。行き先と、行き先を決めたときの focus のある窓
     static readonly Spring viewX = new Spring(0);
     static float viewTarget;
-    static Window? followed;
+    static CodeWindow? followed;
     // 非 XR で、インスペクタと focus のある窓を置く画面の範囲 (px、左上が 0,0。LIDER_AREA="x,y,w,h")。
     // AreaW が 0 なら決めない (窓は既定の大きさで、視点は focus のある窓を追う)
     public static float AreaX;
@@ -57,7 +57,7 @@ public static class Lider
     static int viewportW = 1;
     static int viewportH = 1;
     // 閉じる印を指している窓
-    static Window? closeHover;
+    static CodeWindow? closeHover;
     static readonly Dictionary<string, PanelView> panels = new Dictionary<string, PanelView>();
     // VR のときの頭の向きと、Gfx.Pick に渡す左眼
     static Ray gaze = new Ray(new Vec3(0, 0, 0), new Vec3(0, 0, 1));
@@ -66,13 +66,13 @@ public static class Lider
     static readonly Grab grab = new Grab();
     static bool triggerDown;
     // 左ボタンか trigger を押した窓 (離すまで、指した所までを選ぶ)
-    static Window? pressed;
+    static CodeWindow? pressed;
     static bool rightGrip;
     static bool leftGrip;
     static float stepWait;
     static CylinderPoint? pointer;
     // 操作の手応え: 窓の見た目の動き、粒、focus が移ったときに流れる光
-    static readonly Dictionary<Window, WindowMotion> motions = new Dictionary<Window, WindowMotion>();
+    static readonly Dictionary<CodeWindow, WindowMotion> motions = new Dictionary<CodeWindow, WindowMotion>();
     static readonly Particles particles = new Particles();
     static readonly List<Ring> rings = new List<Ring>();
     // 音と演出の強さ (F4 で 2 全部、1 音なし、0 演出も抑える)
@@ -84,13 +84,13 @@ public static class Lider
     static int seenJumps;
     // 続けて保存している間は、演出を短くする秒
     const float RepeatSeconds = 2;
-    static Window? shownFocus;
+    static CodeWindow? shownFocus;
     static float cometFrom;
     static float cometTo;
     static float cometY;
     static float comet = 1;
     // Alt で並びか大きさを変えた窓と、まだ浮かせておく秒
-    static Window? keyMoved;
+    static CodeWindow? keyMoved;
     static float keyLift;
     // 止めている間の空間の冷え (0 から 1) と、足元の帯の上の点の位置
     static float cold;
@@ -123,6 +123,11 @@ public static class Lider
     static bool ZenShown => Zen && Work != null && Work.Active;
     // 窓を描かず、ゲームだけを見せる
     public static bool GameOnly = true;
+    // 空間に置いたスクリーン。コードの窓 (CodeWindow) と板は、スクリーンとは別に円筒に並べ、スクリーンの手前に描く
+    public static readonly List<Screen> Screens = new List<Screen>();
+    // 一番奥のスクリーン: 視野をちょうど覆い、ゲームの絵を映す
+    static Screen backdrop = new Screen("backdrop");
+    const float BackdropDistance = 10;
     // lider の描く物の濃さ (編集は 1、試す間は TryOpacity へ寄せる)
     public static float Opacity = 1;
     const float TryOpacity = 0.35f;
@@ -155,6 +160,10 @@ public static class Lider
         if (size.Length == 2 && int.TryParse(size[0], out var width) && int.TryParse(size[1], out var height))
             App.Config(new ConfigOpts { Width = width, Height = height });
         GameApp.Module = Environment.GetEnvironmentVariable("LIDER_GAME") ?? "";
+        backdrop = new Screen("backdrop") { Position = new Vec3(0, 0, BackdropDistance) };
+        backdrop.Windows.Add(new Window(new GameView()));
+        Screens.Clear();
+        Screens.Add(backdrop);
         var area = (Environment.GetEnvironmentVariable("LIDER_AREA") ?? "").Split(',');
         if (area.Length == 4 && float.TryParse(area[0], out var ax) && float.TryParse(area[1], out var ay)
             && float.TryParse(area[2], out var aw) && float.TryParse(area[3], out var ah))
@@ -171,7 +180,7 @@ public static class Lider
             SetActive(true);
         Work.Drafts?.Restore(Work);
         // lider の VM を作り直した (lider 自身の static の初期化子の変更) なら、作り直す前の窓に戻す
-        if (Layout.Restore(Work, Sys.Seconds()))
+        if (Session.Restore(Work, Sys.Seconds()))
             return;
         var open = Environment.GetEnvironmentVariable("LIDER_OPEN");
         if (open != null)
@@ -182,7 +191,7 @@ public static class Lider
     public static void OnQuit()
     {
         if (Work != null)
-            Layout.Save(Work, Sys.Seconds());
+            Session.Save(Work, Sys.Seconds());
     }
 
     // ゲームの .csproj のディレクトリ (LIDER_GAME が無ければ ".")
@@ -210,7 +219,7 @@ public static class Lider
 
     // 窓の file で宣言した field の、動いている個体に入らなかった初期値の変更の知らせ。
     // 宣言が見つからない field は focus のある窓に出す
-    public static List<string> InitNotices(Workspace w, Window window)
+    public static List<string> InitNotices(Workspace w, CodeWindow window)
     {
         var notices = new List<string>();
         foreach (var name in w.InitChanged)
@@ -273,11 +282,11 @@ public static class Lider
         // 試す間とゲームだけの間は、入力はゲームのもの。編集の間は、キーボードとマウスの他だけをゲームに渡す
         if (!w.Active)
         {
-            GameApp.Send(e, PixelRatio);
+            GameApp.Send(e);
             return;
         }
         if (e.Kind == EventKind.WindowResize || e.Kind == EventKind.Other)
-            GameApp.Send(e, PixelRatio);
+            GameApp.Send(e);
         if (Search.Shown && SearchEvent(w, e))
             return;
         if (e.Kind == EventKind.KeyDown && w.Ctrl && !w.Shift && e.Key == Keys.P && !EditorHost.Modal())
@@ -526,7 +535,7 @@ public static class Lider
     }
 
     // 窓の i 番目のタブを出して focus を移す (見出しのタブを押した)
-    public static void ShowTab(Window window, int i)
+    public static void ShowTab(CodeWindow window, int i)
     {
         var w = Work;
         if (w == null || i < 0 || i >= window.Tabs.Count)
@@ -956,7 +965,7 @@ public static class Lider
         hoverPick = false;
         // XR ではゲームを空間に描いていないので、指せない
         if (lastEye == null)
-            GameApp.Pick((int)(pickX * PixelRatio), (int)(pickY * PixelRatio));
+            GameApp.Pick(pickX, pickY);
     }
 
     // 今の画面に合う密度の、窓の本文の文字
@@ -985,7 +994,7 @@ public static class Lider
     }
 
     // 窓の view ごとの板
-    public static PanelView Panel(Window window)
+    public static PanelView Panel(CodeWindow window)
     {
         var key = window.ViewId.ToString();
         if (!panels.TryGetValue(key, out var panel))
@@ -1002,7 +1011,7 @@ public static class Lider
     }
 
     // 窓の角度
-    public static float WindowAngle(Workspace w, Window window)
+    public static float WindowAngle(Workspace w, CodeWindow window)
     {
         if (window.Angle == null)
             w.Arrange(grab.Window);
@@ -1030,7 +1039,7 @@ public static class Lider
     }
 
     // ray が window に当たる所 (窓の中の 0..1)
-    static Vec2? HitWindow(Workspace w, Window window, Ray ray)
+    static Vec2? HitWindow(Workspace w, CodeWindow window, Ray ray)
     {
         // 動いている間は、見えている所を指す
         var m = MotionOf(window);
@@ -1056,7 +1065,7 @@ public static class Lider
         return null;
     }
 
-    static Vec2? HitTitle(Workspace w, Window window, Ray ray)
+    static Vec2? HitTitle(Workspace w, CodeWindow window, Ray ray)
     {
         var m = MotionOf(window);
         var scale = m != null ? m.Scale.Value : window.Scale;
@@ -1157,7 +1166,15 @@ public static class Lider
 
     public static void OnFrame(float dt)
     {
-        GameApp.Step(dt, Work != null && Work.Active, PixelRatio);
+        Gfx.Size(out var sw, out var sh);
+        // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
+        backdrop.Fill(Space.FlatFov, (float)sw / sh);
+        foreach (var screen in Screens)
+            screen.Project(sw, sh, Space.FlatFov);
+        var game = GameWindow();
+        if (game != null)
+            GameApp.Step(dt, Work != null && Work.Active, game.ViewportBounds!, PixelRatio);
+        ScreenView.Draw(Screens, sw, sh);
         var change = GameApp.Changed();
         if (change.Reloaded)
             GameReloaded();
@@ -1168,6 +1185,16 @@ public static class Lider
         if (stepping > 0 && --stepping == 0)
             GameApp.Pause(0);
         Frame(dt);
+    }
+
+    // ゲームの絵を映している (画面に出ている) ウィンドウ
+    static Window? GameWindow()
+    {
+        foreach (var screen in Screens)
+            foreach (var window in screen.Windows)
+                if (window.Content is GameView && window.ViewportBounds != null)
+                    return window;
+        return null;
     }
 
     // 窓の大きさを Zen に合わせる。画面に 1 枚が収まる px は、窓の px の大きさ (倍率) と画角で決まる
@@ -1222,7 +1249,7 @@ public static class Lider
     const float EdgeW = 0.018f;
 
     // 指した窓の端。右なら 1、下なら 2 の和 (当たらなければ 0)
-    public static int EdgeAt(Workspace w, Window window, Ray ray)
+    public static int EdgeAt(Workspace w, CodeWindow window, Ray ray)
     {
         if (grab.Holding)
             return 0;
@@ -1244,7 +1271,7 @@ public static class Lider
     }
 
     // 窓の外側の右か下の端を探す (focus のある窓を先に見る)。端の向きは foundEdge に置く
-    static Window? EdgeWindow(Workspace w, Ray ray)
+    static CodeWindow? EdgeWindow(Workspace w, Ray ray)
     {
         foundEdge = 0;
         if (w.FocusWindow != null)
@@ -1289,7 +1316,7 @@ public static class Lider
         window.Resize(pxW, pxH);
     }
 
-    public static void StartEdge(Window window, int edge)
+    public static void StartEdge(CodeWindow window, int edge)
     {
         sizing = window;
         sizingEdge = edge;
@@ -1300,11 +1327,11 @@ public static class Lider
         sizing = null;
     }
 
-    static Window? sizing;
+    static CodeWindow? sizing;
     static int sizingEdge;
     static int edgeHover;
     static int foundEdge;
-    static Window? edgeHoverWindow;
+    static CodeWindow? edgeHoverWindow;
 
     // Zen の窓が画面に占める割合
     const float ZenFill = 0.96f;
@@ -1340,7 +1367,7 @@ public static class Lider
             text = new MonoText("lider_mono", Ttf(), 15);
             // エディタの幅と行の高さを、lider の桁に合わせる
             Document.Boot(text.CellW, text.LineH);
-            Layout.ScrollTops();
+            Session.ScrollTops();
         }
         var panelText = PanelText();
         w.Tick(dt);
@@ -1711,7 +1738,7 @@ public static class Lider
     }
 
     // 窓の見た目 (まだ描いていなければ null)
-    public static WindowMotion? MotionOf(Window window)
+    public static WindowMotion? MotionOf(CodeWindow window)
     {
         return motions.TryGetValue(window, out var m) ? m : null;
     }
@@ -1814,7 +1841,7 @@ public static class Lider
         if (celebrate && w.FocusWindow != null && motions.TryGetValue(w.FocusWindow, out var here))
             Land(here, false, true);
         // 閉じた窓はその場で縮んでから消す
-        var gone = new List<Window>();
+        var gone = new List<CodeWindow>();
         foreach (var pair in motions)
         {
             if (w.Windows.Contains(pair.Key))
@@ -1901,7 +1928,7 @@ public static class Lider
 
     // focus のある窓の cursor の見た目を、エディタが最後に描いた所へ滑らせる (focus が来たときは、その場に出す)。
     // 同じ行で cursor が進み、行がその分だけ長くなったら、進んだ所を打った文字として Landing にする
-    static void FollowCaret(Window window, WindowMotion m, float dt)
+    static void FollowCaret(CodeWindow window, WindowMotion m, float dt)
     {
         var id = window.ViewId;
         if (EditorHost.CaretCount(id) == 0)
@@ -1934,7 +1961,7 @@ public static class Lider
     }
 
     // カーソルのある行の、円筒の上の高さ
-    static float CursorY(Window window, WindowMotion m)
+    static float CursorY(CodeWindow window, WindowMotion m)
     {
         var id = window.ViewId;
         var panel = Panel(window);
@@ -1943,7 +1970,7 @@ public static class Lider
     }
 
     // 窓の view の中の (x, y) px (行の左上) から粒を散らす (窓の外なら散らさない)
-    static void BurstAt(Window window, WindowMotion m, float x, float y, Color color, int n, float life)
+    static void BurstAt(CodeWindow window, WindowMotion m, float x, float y, Color color, int n, float life)
     {
         var panel = Panel(window);
         var lh = EditorHost.LineHeight(window.ViewId);

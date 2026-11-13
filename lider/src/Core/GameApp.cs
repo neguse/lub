@@ -1,5 +1,6 @@
 // lider が開いて動かすゲーム (lub の App.Use)。
-// ゲームは lider とは別の VM で動き、画面と同じ大きさの texture に描く。lider はそれを画面に写してから、上に自分の物を描く。
+// ゲームは lider とは別の VM で動き、ゲームの絵を映すウィンドウ (GameView) と同じ大きさの texture に描く。
+// lider はその texture をウィンドウに写し (ScreenView)、上に自分の物を描く。
 // 止める、戻る、進むは、frame ごとに控えた状態と入力 (Lubx.AppTimeline) で行う。
 // ゲームの値と実行の記録は、ここを通して読む (開く前は空を返す)。
 using System;
@@ -11,26 +12,18 @@ namespace LiderCore;
 
 public static class GameApp
 {
-    const string Vs = "struct VSOut { float2 uv : TEXCOORD0; float4 pos : SV_Position; };\n"
-        + "[shader(\"vertex\")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
-        + "  float2 c = float2(float(vid & 1), float(vid >> 1));\n"
-        + "  VSOut o;\n"
-        + "  o.pos = float4(c.x * 2.0 - 1.0, 1.0 - c.y * 2.0, 0.0, 1.0);\n"
-        + "  o.uv = c;\n"
-        + "  return o;\n"
-        + "}\n";
-    const string Fs = "LUB_TEXTURE2D(tex);\n"
-        + "struct FSIn { float2 uv : TEXCOORD0; };\n"
-        + "[shader(\"fragment\")] float4 fs_main(FSIn i) : SV_Target {\n"
-        + "  return float4(LUB_SAMPLE(tex, i.uv).rgb, 1.0);\n"
-        + "}\n";
-
     // ゲームの .csproj (web では .tcsb) の path。空なら開かない
     public static string Module = "";
     // 開いたゲーム (最初の Step まで null)
     public static AppRef? Ref;
-    // ゲームが描く texture (画面と同じ大きさ)
+    // ゲームが描く texture (ゲームを映すウィンドウと同じ大きさ)
     public static TextureRef? Target;
+    // ゲームを映すウィンドウの左上 (画面の座標) と、画面の座標の 1 に対する texture の画素の数。
+    // 画面の座標の入力を、ゲームの画素に直すのに使う
+    static float originX;
+    static float originY;
+    static float scaleX = 1;
+    static float scaleY = 1;
     static AppTimeline? timeline;
     // reload が当たった回数、作り直した回数、最後の build の診断 (前に見た値。変わったら Changed に出す)
     static int seenReloads;
@@ -73,11 +66,11 @@ public static class GameApp
     }
 
     // ゲームの OnEvent に event を渡す。位置は画面の座標から texture の画素に直す
-    public static void Send(EventData e, float pixelRatio)
+    public static void Send(EventData e)
     {
         if (Ref == null)
             return;
-        if (pixelRatio != 1)
+        if (originX != 0 || originY != 0 || scaleX != 1 || scaleY != 1)
             e = new EventData
             {
                 Kind = e.Kind,
@@ -86,29 +79,32 @@ public static class GameApp
                 Typed = e.Typed,
                 Plain = e.Plain,
                 Button = e.Button,
-                X = e.X * pixelRatio,
-                Y = e.Y * pixelRatio,
-                Dx = e.Dx * pixelRatio,
-                Dy = e.Dy * pixelRatio,
+                X = (e.X - originX) * scaleX,
+                Y = (e.Y - originY) * scaleY,
+                Dx = e.Dx * scaleX,
+                Dy = e.Dy * scaleY,
             };
         App.SendEvent(Ref, e);
     }
 
-    // ゲームを 1 frame 進め、描いた絵を画面に写す。
-    // grabbed なら、ゲームにはキーボードとマウスを見せない。pixelRatio は画面の座標の 1 に対する画面の画素の数
-    public static void Step(float dt, bool grabbed, float pixelRatio)
+    // ゲームを 1 frame 進める。
+    // at はゲームを映すウィンドウの画面の上の矩形 (画面の座標)、pixelRatio は画面の座標の 1 に対する画面の画素の数。
+    // grabbed なら、ゲームにはキーボードとマウスを見せない
+    public static void Step(float dt, bool grabbed, Bounds at, float pixelRatio)
     {
         Stepped = false;
-        Gfx.Size(out var sw, out var sh);
-        var w = Math.Max(1, (int)(sw * pixelRatio));
-        var h = Math.Max(1, (int)(sh * pixelRatio));
+        var w = Math.Max(1, (int)(at.W * pixelRatio));
+        var h = Math.Max(1, (int)(at.H * pixelRatio));
+        originX = at.X;
+        originY = at.Y;
+        scaleX = at.W > 0 ? w / at.W : 1;
+        scaleY = at.H > 0 ? h / at.H : 1;
         Target = Gfx.UseTexture("lider_game", w, h, Gfx.PixelFormat.Rgba8, null, 1, new TextureOpts { Target = true });
-        var shader = Gfx.UseShader("lider_game_blit", Vs, Fs, 1);
         if (Module != "" && Target != null)
         {
             Ref = App.Use("lider_game_app", Module);
             Input.MousePos(out var mx, out var my);
-            var input = new StepInput { MouseX = mx * pixelRatio, MouseY = my * pixelRatio };
+            var input = new StepInput { MouseX = (mx - originX) * scaleX, MouseY = (my - originY) * scaleY };
             if (grabbed)
             {
                 input.Keyboard = false;
@@ -119,20 +115,6 @@ public static class GameApp
             if (Stepped && !paused)
                 Frames++;
         }
-        Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
-        if (shader != null && Target != null && Ref != null)
-        {
-            var bindings = new Bindings();
-            bindings.Set("tex", Target);
-            Gfx.Draw(4, bindings, new DrawOpts
-            {
-                Shader = shader,
-                Cull = Gfx.Cull.None,
-                Primitive = Gfx.Primitive.TriangleStrip,
-                Depth = false,
-            });
-        }
-        Gfx.EndPass();
     }
 
     // 前に呼んでから、ゲームに起きたこと
@@ -175,11 +157,11 @@ public static class GameApp
         return change;
     }
 
-    // 画面の画素 (x, y) に何が描いてあるかを調べる (結果は PickResult)
-    public static void Pick(int x, int y)
+    // 画面の座標 (x, y) に何が描いてあるかを調べる (結果は PickResult)
+    public static void Pick(float x, float y)
     {
         if (Ref != null)
-            Gfx.Pick(Gfx.MainTex!, x, y, Ref);
+            Gfx.Pick(Gfx.MainTex!, (int)((x - originX) * scaleX), (int)((y - originY) * scaleY), Ref);
     }
 
     public static PickHit? PickResult()

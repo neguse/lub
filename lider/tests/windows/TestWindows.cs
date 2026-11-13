@@ -49,7 +49,7 @@ public static class TestWindows
     }
 
     // 時間を進めながら、ずっと window を見る
-    static void LookFor(Workspace w, Window window, float seconds)
+    static void LookFor(Workspace w, CodeWindow window, float seconds)
     {
         var dt = 0.05f;
         for (var t = 0.0f; t < seconds - 0.001f; t += dt)
@@ -121,7 +121,7 @@ public static class TestWindows
         App.Quit(0);
     }
 
-    static void Strip(Workspace w, Window first, string target, string second)
+    static void Strip(Workspace w, CodeWindow first, string target, string second)
     {
         var third = target.Replace("Target.cs", "Third.cs");
         w.FocusWindow = first;
@@ -215,7 +215,7 @@ public static class TestWindows
     }
 
     // window の見出しの帯の横 u の所を、見る人の位置から押す
-    static void Press(Workspace w, Window window, float u)
+    static void Press(Workspace w, CodeWindow window, float u)
     {
         var a = Lider.WindowAngle(w, window) + (u - 0.5f) * PanelView.BaseW * window.Scale / Space.R;
         var at = Space.At(a, Lider.Panel(window).TitleY(window.Y, window.Scale), Space.R);
