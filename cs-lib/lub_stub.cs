@@ -472,6 +472,7 @@ namespace Lub
         /// build を待つ間は `Step` が false を返し、この app は止まらない。
         /// .csproj の app のソースは tcs の --trace で変換する。
         /// .csproj を開けるのは `lub <Entry>.csproj` の player だけで、web では .tcsb を開く。
+        /// .tcsb の app は、隣の `<Entry>.batch` (tcs vm の差分) を当て、.tcsb の書き直しで作り直す。隣に `<Entry>.errors` (通らなかった build の診断) を置くと、読んで消し、`Status` の `BuildError` に入れる。
         /// 開かれた app は自分の VM、key の資源、物理、音を持ち、この app とは何も共有しない。
         /// 宣言が途切れると、資源と同じ規則で閉じる (`OnQuit` を呼ぶ)。
         /// 同じ key で module か entry を変えると、閉じて開き直す。

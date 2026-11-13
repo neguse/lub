@@ -121,7 +121,7 @@ record の中の callback (`WorldCallbacks` など、runtime が持ち続ける�
 `lub-gen vm --source Game.cs` はそのゲームが使う関数だけを出す (`scripts/verify-vm-binding.sh` が偽の C API で使う)。
 
 hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当てる) で、当てられない編集と `.tcsb` の書き直しは
-`OnQuit` の後に新しい VM で `OnInit` から始める。`<Entry>.rev` があれば、読み込みと batch の後に
+`OnQuit` の後に新しい VM で `OnInit` から始める。`<Entry>.errors` (通らなかった build の診断) があれば、読んで消し、`OnBuildFailed` に渡す (`App.Use` で開いた app では `App.Status` の `BuildError` に入る)。`<Entry>.rev` があれば、読み込みと batch の後に
 commit ACK (`@@tcs_commit {"revision":N,"ok":...}`) を出す。
 playground はこの player (`build/wasm/vm/lub.js`) を使い、変換は tcs の wasm の VM の session (`vmopen` / `vmupdate`)。
 
