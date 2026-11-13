@@ -32,8 +32,7 @@ public class Screen
     // 真ん中の位置 (固定先の座標)
     public Vec3 Position = new Vec3(0, 0, 1);
     // 幅と高さ (メートル)。並べた物で決まるスクリーン (Strip) では使わない
-    public float Width = 1;
-    public float Height = 1;
+    public Vec2 Size = new Vec2(1, 1);
     // 透過度 (1 で透けない)
     public float Opacity = 1;
     public ILayout Layout = new Full();
@@ -80,8 +79,8 @@ public class Screen
     public void Fill(float fov, float aspect)
     {
         Position = new Vec3(0, 0, Position.Z);
-        Height = 2 * Position.Z * (float)Math.Tan(fov * 0.5f * Math.PI / 180);
-        Width = Height * aspect;
+        var height = 2 * Position.Z * (float)Math.Tan(fov * 0.5f * Math.PI / 180);
+        Size = new Vec2(height * aspect, height);
     }
 
     // 視点に固定した平面のスクリーンで、ウィンドウを並べ、画面に投影した矩形 (ViewportRect) を決める。
@@ -94,35 +93,19 @@ public class Screen
         var perM = viewportH / (2 * Position.Z * (float)Math.Tan(fov * 0.5f * Math.PI / 180));
         foreach (var window in Windows)
         {
-            var b = window.Bounds;
-            if (b == null)
+            if (window.Position == null)
             {
                 window.ViewportRect = null;
                 continue;
             }
-            var x0 = (float)Math.Round(viewportW * 0.5f + (Position.X + b.X - b.W * 0.5f) * perM);
-            var y0 = (float)Math.Round(viewportH * 0.5f - (Position.Y + b.Y + b.H * 0.5f) * perM);
-            var x1 = (float)Math.Round(viewportW * 0.5f + (Position.X + b.X + b.W * 0.5f) * perM);
-            var y1 = (float)Math.Round(viewportH * 0.5f - (Position.Y + b.Y - b.H * 0.5f) * perM);
+            var at = window.Position.Value;
+            var size = window.Size;
+            var x0 = (float)Math.Round(viewportW * 0.5f + (Position.X + at.X - size.X * 0.5f) * perM);
+            var y0 = (float)Math.Round(viewportH * 0.5f - (Position.Y + at.Y + size.Y * 0.5f) * perM);
+            var x1 = (float)Math.Round(viewportW * 0.5f + (Position.X + at.X + size.X * 0.5f) * perM);
+            var y1 = (float)Math.Round(viewportH * 0.5f - (Position.Y + at.Y - size.Y * 0.5f) * perM);
             window.ViewportRect = new PixelRect(x0, y0, x1 - x0, y1 - y0);
         }
-    }
-}
-
-// スクリーンの面の上の矩形 (真ん中の位置と大きさ。メートル、上が +Y)
-public class Bounds
-{
-    public readonly float X;
-    public readonly float Y;
-    public readonly float W;
-    public readonly float H;
-
-    public Bounds(float x, float y, float w, float h)
-    {
-        X = x;
-        Y = y;
-        W = w;
-        H = h;
     }
 }
 
@@ -152,8 +135,11 @@ public class PixelRect
 public class Window
 {
     public IContent Content;
-    // スクリーンの面の上の場所。配置の規則か、つかんで動かす操作が決め、まだ決めていないか出さないウィンドウは null
-    public Bounds? Bounds;
+    // スクリーンの座標での真ん中の位置 (メートル)。X が右、Y が上、Z が奥 (0 が面の上、負が手前)。
+    // X と Y は配置の規則か、つかんで動かす操作が決める。まだ決めていないか、出さないウィンドウは null
+    public Vec3? Position;
+    // 幅と高さ (メートル)。Position と一緒に決める
+    public Vec2 Size = new Vec2(0, 0);
     // 画面に投影した場所 (視点に固定した平面のスクリーンだけ。Screen.Project が決める)
     public PixelRect? ViewportRect;
     // 中身を描く画素の数。利用者が決めた数 (WidthPx、HeightPx) と、今の数 (PxW、PxH。Zen の間だけ違う)
@@ -175,9 +161,24 @@ public class Window
         Content = content;
     }
 
-    // 倍率 1 の幅と高さ (メートル)
-    public float W => PanelView.BaseW * PxW / PanelView.BasePxW;
-    public float H => PanelView.BaseW * PxH / PanelView.BasePxW;
+    // 倍率 1 の幅と高さ (メートル。中身を描く画素の数で決まる)
+    public Vec2 UnscaledSize => new Vec2(PanelView.BaseW * PxW / PanelView.BasePxW, PanelView.BaseW * PxH / PanelView.BasePxW);
+
+    // 奥行き (Position の Z。決めていなければ 0)
+    public float Z => Position != null ? Position.Value.Z : 0;
+
+    // 真ん中を、スクリーンの面の上の (x, y) に置く。奥行きと大きさは今のまま
+    public void Place(float x, float y)
+    {
+        Position = new Vec3(x, y, Z);
+    }
+
+    // 奥行きを変える (まだ置いていなければ何もしない)
+    public void SetZ(float z)
+    {
+        if (Position != null)
+            Position = new Vec3(Position.Value.X, Position.Value.Y, z);
+    }
 
     // 中身がコードのときの、その中身
     public Code Code => (Code)Content;

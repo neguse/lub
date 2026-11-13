@@ -94,7 +94,7 @@ public static class TestLongLine
     {
         var window = w.FocusWindow!;
         var angle = Lider.WindowAngle(w, window);
-        var half = window.W * window.Scale * 0.5f;
+        var half = window.UnscaledSize.X * window.Scale * 0.5f;
         var y = Lider.WindowY(w, window);
         var l = Lider.ViewportPoint(Space.At(angle - half / Space.R, y, Space.R));
         var r = Lider.ViewportPoint(Space.At(angle + half / Space.R, y, Space.R));

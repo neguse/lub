@@ -1,5 +1,8 @@
 // 配置の規則: スクリーンの上にウィンドウを並べる。
-// ウィンドウの順番とスクリーンの大きさから、各ウィンドウの Bounds (スクリーンの面の上の場所) を決める。
+// ウィンドウの順番とスクリーンの大きさから、各ウィンドウの面の上の位置 (Position の X と Y) と大きさ (Size) を決める。
+// 奥行き (Position の Z) は変えない。
+using Lub;
+
 namespace LiderCore;
 
 public interface ILayout
@@ -7,7 +10,7 @@ public interface ILayout
     void Arrange(Screen screen);
 }
 
-// 横一列。ウィンドウは自分の大きさ (Window.W、H と Scale) を持ち、間を Gap だけ空けて左から並べる。
+// 横一列。ウィンドウは自分の大きさ (Window.UnscaledSize と Scale) を持ち、間を Gap だけ空けて左から並べる。
 // 最初のウィンドウの真ん中を、スクリーンの真ん中に置く。
 // つかんでいるウィンドウ (Screen.Held) は動かさず、隣のウィンドウの真ん中を越えたら並びを入れ替える
 public class Strip : ILayout
@@ -19,24 +22,27 @@ public class Strip : ILayout
     {
         var windows = screen.Windows;
         var held = screen.Held;
-        if (held != null && held.Bounds != null && windows.Contains(held))
+        if (held != null && held.Position != null && windows.Contains(held))
         {
             var at = windows.IndexOf(held);
-            if (at + 1 < windows.Count && windows[at + 1].Bounds != null && held.Bounds.X > windows[at + 1].Bounds!.X)
+            var x = held.Position.Value.X;
+            if (at + 1 < windows.Count && windows[at + 1].Position != null && x > windows[at + 1].Position!.Value.X)
                 Swap(windows, at, at + 1);
-            else if (at > 0 && windows[at - 1].Bounds != null && held.Bounds.X < windows[at - 1].Bounds!.X)
+            else if (at > 0 && windows[at - 1].Position != null && x < windows[at - 1].Position!.Value.X)
                 Swap(windows, at, at - 1);
         }
         var right = 0.0f;
         for (var i = 0; i < windows.Count; i++)
         {
             var window = windows[i];
-            var half = window.W * window.Scale * 0.5f;
+            var size = window.UnscaledSize * window.Scale;
+            var half = size.X * 0.5f;
             var center = i == 0 ? 0 : right + half;
             right = center + half + Gap;
             if (window == held)
                 continue;
-            window.Bounds = new Bounds(center, 0, half * 2, window.H * window.Scale);
+            window.Place(center, 0);
+            window.Size = size;
         }
     }
 
@@ -56,12 +62,22 @@ public class Even : ILayout
     public void Arrange(Screen screen)
     {
         var n = screen.Windows.Count;
-        var w = screen.Width;
-        var h = screen.Height;
+        var w = screen.Size.X;
+        var h = screen.Size.Y;
         for (var i = 0; i < n; i++)
-            screen.Windows[i].Bounds = Rows
-                ? new Bounds(0, h * 0.5f - h * (i + 0.5f) / n, w, h / n)
-                : new Bounds(-w * 0.5f + w * (i + 0.5f) / n, 0, w / n, h);
+        {
+            var window = screen.Windows[i];
+            if (Rows)
+            {
+                window.Place(0, h * 0.5f - h * (i + 0.5f) / n);
+                window.Size = new Vec2(w, h / n);
+            }
+            else
+            {
+                window.Place(-w * 0.5f + w * (i + 0.5f) / n, 0);
+                window.Size = new Vec2(w / n, h);
+            }
+        }
     }
 }
 
@@ -72,6 +88,14 @@ public class Full : ILayout
     {
         var shown = screen.Focus ?? (screen.Windows.Count > 0 ? screen.Windows[0] : null);
         foreach (var window in screen.Windows)
-            window.Bounds = window == shown ? new Bounds(0, 0, screen.Width, screen.Height) : null;
+        {
+            if (window != shown)
+            {
+                window.Position = null;
+                continue;
+            }
+            window.Place(0, 0);
+            window.Size = screen.Size;
+        }
     }
 }

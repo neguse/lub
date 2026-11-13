@@ -77,7 +77,7 @@ public static class TestZen
             // 右端を引く
             var scale = window.Scale;
             var angle = Lider.WindowAngle(w, window);
-            var right = angle + (window.W * scale * 0.5f + 0.005f) / Space.R;
+            var right = angle + (window.UnscaledSize.X * scale * 0.5f + 0.005f) / Space.R;
             var ray = new Ray(new Vec3(0, 0, 0), Space.At(right, Lider.WindowY(w, window), Space.R));
             var edge = Lider.EdgeAt(w, window, ray);
             Check((edge & 1) != 0, "the right edge is not found: " + edge);
