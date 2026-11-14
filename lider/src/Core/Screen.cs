@@ -40,6 +40,8 @@ public class Screen
     public readonly List<Window> Windows = new List<Window>();
     // 一つだけを出す規則 (Full) で出すウィンドウ (null なら最初の物)
     public Window? Focus;
+    // 横一列の規則 (Strip) で、面の真ん中に置くウィンドウ (null か、ここに無ければ最初の物)
+    public Window? Origin;
     // つかんで動かしているウィンドウ (配置の規則はこれを動かさず、これの場所で並びを入れ替える)
     public Window? Held;
 
