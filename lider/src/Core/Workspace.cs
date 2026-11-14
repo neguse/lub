@@ -40,8 +40,42 @@ public class Workspace
         Position = new Vec3(0, 0, Space.R),
         Layout = new Strip(),
     };
-    // コードの窓 (中身は Code。左から)
-    public List<Window> Windows => CodeScreen.Windows;
+    // コードの窓を置けるスクリーン (最初は CodeScreen だけ。ほかのスクリーンは Lider が足す)
+    public List<Screen> Screens = new List<Screen>();
+    // 新しく開くコードの窓を置くスクリーン (null なら CodeScreen)
+    public Screen? Home;
+
+    // コードの窓 (中身は Code)。Screens の順に、スクリーンの中では並びの順に集めた写し。
+    // 並びを変えるときは、窓のあるスクリーン (ScreenOf) の Windows を変える
+    public List<Window> Windows
+    {
+        get
+        {
+            var found = new List<Window>();
+            foreach (var screen in Screens)
+                foreach (var window in screen.Windows)
+                    if (window.Content is Code)
+                        found.Add(window);
+            return found;
+        }
+    }
+
+    // window を置いているスクリーン (どこにも無ければ null)
+    public Screen? ScreenOf(Window window)
+    {
+        foreach (var screen in Screens)
+            if (screen.Windows.Contains(window))
+                return screen;
+        return null;
+    }
+
+    // window を screen の並びの最後に移す (前のスクリーンからは外す)。位置は移した先の配置の規則が決め直す
+    public void MoveTo(Window window, Screen screen)
+    {
+        ScreenOf(window)?.Windows.Remove(window);
+        window.Position = null;
+        screen.Windows.Add(window);
+    }
     // 入力が入る窓
     public Window? FocusWindow;
     public Document? Focus => FocusWindow?.Code.Doc;
@@ -64,6 +98,7 @@ public class Workspace
     public Workspace(string root)
     {
         Root = root;
+        Screens.Add(CodeScreen);
         Rescan();
     }
 
@@ -319,17 +354,17 @@ public class Workspace
         }
         if (FocusWindow == null)
         {
-            AddWindow(new Window(new Code(doc)), Windows.Count);
+            AddWindow(new Window(new Code(doc)), Home ?? CodeScreen, (Home ?? CodeScreen).Windows.Count);
             return;
         }
         FocusWindow.Code.Tabs.Insert(FocusWindow.Code.Tab + 1, doc);
         FocusWindow.Code.Tab++;
     }
 
-    // 窓を並びの at 番目に足し、focus を移す
-    void AddWindow(Window window, int at)
+    // 窓を screen の並びの at 番目に足し、focus を移す
+    void AddWindow(Window window, Screen screen, int at)
     {
-        Windows.Insert(at, window);
+        screen.Windows.Insert(at, window);
         FocusWindow = window;
     }
 
@@ -346,21 +381,26 @@ public class Workspace
     public void MoveTab(int by)
     {
         var from = FocusWindow;
-        if (from == null || (from.Code.Tabs.Count == 1 && (by < 0 ? Windows.IndexOf(from) == 0 : Windows.IndexOf(from) == Windows.Count - 1)))
+        var screen = from != null ? ScreenOf(from) : null;
+        if (from == null || screen == null)
+            return;
+        // 同じスクリーンの中の、コードの窓の並び
+        var row = CodeWindows(screen);
+        if (from.Code.Tabs.Count == 1 && (by < 0 ? row.IndexOf(from) == 0 : row.IndexOf(from) == row.Count - 1))
             return;
         var doc = from.Code.Doc;
-        var at = Windows.IndexOf(from) + by;
+        var at = row.IndexOf(from) + by;
         RemoveTab(from, from.Code.Tab);
-        if (at < 0 || at >= Windows.Count + (from.Code.Tabs.Count == 0 ? 1 : 0))
+        if (at < 0 || at >= row.Count)
         {
-            AddWindow(new Window(new Code(doc)), at < 0 ? 0 : Windows.Count);
+            AddWindow(new Window(new Code(doc)), screen, at < 0 ? screen.Windows.IndexOf(row[0]) : screen.Windows.IndexOf(row[row.Count - 1]) + 1);
             if (from.Code.Tabs.Count == 0)
-                Windows.Remove(from);
+                screen.Windows.Remove(from);
             return;
         }
-        var to = Windows[at];
+        var to = row[at];
         if (from.Code.Tabs.Count == 0)
-            Windows.Remove(from);
+            screen.Windows.Remove(from);
         to.Code.Tabs.Insert(to.Code.Tab + 1, doc);
         to.Code.Tab++;
         FocusWindow = to;
@@ -437,15 +477,21 @@ public class Workspace
     // つかんでいる窓 (held) はそのまま指す点に付いていき、隣の窓の真ん中を越えると並びが入れ替わる
     public void Arrange(Window? held)
     {
-        CodeScreen.Held = held;
-        CodeScreen.Arrange();
+        foreach (var screen in Screens)
+        {
+            screen.Held = held != null && screen.Windows.Contains(held) ? held : null;
+            screen.Arrange();
+        }
     }
 
-    void Swap(int a, int b)
+    // screen の上のコードの窓 (並びの順)
+    static List<Window> CodeWindows(Screen screen)
     {
-        var w = Windows[a];
-        Windows[a] = Windows[b];
-        Windows[b] = w;
+        var found = new List<Window>();
+        foreach (var window in screen.Windows)
+            if (window.Content is Code)
+                found.Add(window);
+        return found;
     }
 
     // focus を by だけ隣の窓へ移す (端では止まる)
@@ -461,11 +507,18 @@ public class Workspace
     // focus のある窓を、並びの中で by だけ動かす (端では止まる)
     public void MoveFocus(int by)
     {
-        if (FocusWindow == null)
+        var screen = FocusWindow != null ? ScreenOf(FocusWindow) : null;
+        if (FocusWindow == null || screen == null)
             return;
-        var at = Windows.IndexOf(FocusWindow);
-        if (at + by >= 0 && at + by < Windows.Count)
-            Swap(at, at + by);
+        // 同じスクリーンの中で、隣のコードの窓と入れ替える
+        var row = CodeWindows(screen);
+        var at = row.IndexOf(FocusWindow);
+        if (at + by < 0 || at + by >= row.Count)
+            return;
+        var a = screen.Windows.IndexOf(FocusWindow);
+        var b = screen.Windows.IndexOf(row[at + by]);
+        screen.Windows[a] = row[at + by];
+        screen.Windows[b] = FocusWindow;
     }
 
     // 左から n 番目 (0 から) の窓に focus を移す
@@ -482,9 +535,10 @@ public class Workspace
         var at = Windows.IndexOf(window);
         if (at < 0)
             return;
-        Windows.Remove(window);
+        ScreenOf(window)!.Windows.Remove(window);
+        var rest = Windows;
         if (window == FocusWindow)
-            FocusWindow = Windows.Count > 0 ? Windows[Math.Min(at, Windows.Count - 1)] : null;
+            FocusWindow = rest.Count > 0 ? rest[Math.Min(at, rest.Count - 1)] : null;
     }
 
     // 窓の見出しに出す今のタブの名前 (Root からの path と、未保存の印)
