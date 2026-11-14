@@ -32,6 +32,7 @@
 | 16 | `Window.Position` (`Vec3`) は、スクリーンの座標での真ん中の位置で、X が右、Y が上、Z が奥 (0 が面の上、負が手前)。`Window.Size` と `Screen.Size` (`Vec2`) は幅と高さ。`Window.UnscaledSize` は倍率 1 のときの幅と高さ | 「Bounds が座標ってのがまずアホすぎんか名前」「ほい」 |
 | 17a | 画面に出す物は全部 `Window` にし、中身を `IContent` で持つ。中身は 6 つ: `Code` (file を開いた窓、タブ付き)、`GameView` (ゲームの絵。保存済みの版か編集中の版)、`Inspector` (ゲームの値の木 `InspectView`。負荷の一覧も出す)、`Search` (`SearchView`)、`Asset` (`AssetView`)、`Hints` (`HintCard`)。ゲームの動いている版との差分は `Code` の見せ方で、本文の中に出す形は `Code` の矩形の中に描き、左右に並べる形の板は `Code` の `Window` の子にして親の左の手前に出す (並びは変えない) | 「12はいいとして」「名前はいいけど、Codeで差分みせるのって大丈夫なの？」「ほい」 |
 | 17b | キーボードは focus のある `Window` へ、マウスは指している一番手前の `Window` へ、gamepad はゲームへ送る。編集、試す、ゲームだけの 3 つの状態 (`Workspace.Active`、`Lider.GameOnly`) は消す。F1 で focus をゲームの窓と `Code` の間で移し、Shift+F1 でゲーム以外の `Screen` を隠す / 出す。ゲームが動いている間、ゲームの窓をクリックするとクリックはゲームに届いて focus もゲームの窓に移り、`Code` をクリックすると focus が `Code` に移る。その間もゲームは動き続ける | 「12はいいとして」「ほい」 |
+| 21 | XR のための決まりは作らず、配置のデータはデスクトップと XR で同じ物を使う。`ScreenAnchor.View` は見る人に固定する意味で、デスクトップではカメラ、XR では頭に固定される。XR で頭に付くのが合わない `Screen` は、利用者が `ScreenAnchor.World` に変える | 「hoi」(項目 3 から導いた案に対して) |
 
 ## 決めていないこと
 
@@ -40,4 +41,3 @@
 - `Window` を持って動かしたときにできること。順番を変えるほかに、レイアウトを変える、別の `Screen` に移す、などが増えそう。
 - `Screen` の見せ方 (輪郭、余白、指したときの光り方)。
 - 既定の配置 (どの `Screen` を置き、どの `Window` をどこに並べるか)。
-- XR での扱い。
