@@ -81,6 +81,30 @@ public class Even : ILayout
     }
 }
 
+// 最初のウィンドウを左に大きく出し、残りを右に上から積む。
+// Ratio は、スクリーンの幅のうち最初のウィンドウに使う割合。ウィンドウが 1 つなら、スクリーンいっぱいに出す
+public class MainStack : ILayout
+{
+    public float Ratio = 0.5f;
+
+    public void Arrange(Screen screen)
+    {
+        var n = screen.Windows.Count;
+        var w = screen.Size.X;
+        var h = screen.Size.Y;
+        if (n == 0)
+            return;
+        var main = n == 1 ? w : w * Ratio;
+        screen.Windows[0].Place(-w * 0.5f + main * 0.5f, 0);
+        screen.Windows[0].Size = new Vec2(main, h);
+        for (var i = 1; i < n; i++)
+        {
+            screen.Windows[i].Place(-w * 0.5f + main + (w - main) * 0.5f, h * 0.5f - h * (i - 0.5f) / (n - 1));
+            screen.Windows[i].Size = new Vec2(w - main, h / (n - 1));
+        }
+    }
+}
+
 // focus のある (無ければ最初の) ウィンドウだけを、スクリーンいっぱいに出す。ほかのウィンドウは出さない
 public class Full : ILayout
 {
