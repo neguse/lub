@@ -64,7 +64,7 @@ public static class TestCommands
                 Type(">inspector:toggle");
                 Check(Lider.Search.Results.Count > 0 && Lider.Search.Results[0].Command == "inspector:toggle",
                     "the search did not find the command: " + (Lider.Search.Results.Count > 0 ? Lider.Search.Results[0].Text : "none"));
-                Check(Lider.Search.Results[0].Where.Contains("[alt+i]"), "the key is not shown: " + Lider.Search.Results[0].Where);
+                Check(Lider.Search.Results[0].Where.Contains("[Alt+I]"), "the key is not shown: " + Lider.Search.Results[0].Where);
                 foreach (var item in Lider.Search.Results)
                     Check(item.Command != "", "a file is listed after '>': " + item.Text);
                 Key(Keys.Return, 0, 0);

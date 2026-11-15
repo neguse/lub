@@ -53,7 +53,7 @@ public static class TestHints
         Expect(new HintContext { Vr = false, Target = HintTarget.Inspect, InspectShown = true, Openable = true, Jump = true },
             "MouseLeft:宣言へ飛ぶ|MouseWheel:scroll|KeyCap Alt+I:インスペクタへ移る (もう一度でしまう)|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
         Expect(new HintContext { Vr = false, Target = HintTarget.Window, Paused = true },
-            "MouseLeft:カーソルを置く・引いて選ぶ|KeyCap 右ドラッグ:窓の並びを変える (ホイールで大きさ)|MouseWheel:scroll|KeyCap Ctrl+P:file と宣言と命令を探す|KeyCap Ctrl+B Ctrl+-:定義へ飛ぶ・戻る|KeyCap Ctrl+Tab:隣のタブへ|KeyCap Ctrl+Alt+←→:タブを隣の窓へ移す|KeyCap Alt+矢印:隣のウィンドウへ|KeyCap Ctrl+W:タブを閉じる|KeyCap Alt+I:インスペクタを出す|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを続ける|KeyCap Shift+F5:ゲームを最初から作り直す|KeyCap F6/F7:1 frame 戻す・進める");
+            "MouseLeft:カーソルを置く・引いて選ぶ|KeyCap 右ドラッグ:窓の並びを変える (ホイールで大きさ)|MouseWheel:scroll|KeyCap Ctrl+P:file と宣言と命令を探す|KeyCap Ctrl+B Ctrl+-:定義へ飛ぶ・戻る|KeyCap Ctrl+Tab:隣のタブへ|KeyCap Ctrl+Alt+←→:タブを隣の窓へ移す|KeyCap Alt+←→↑↓:隣のウィンドウへ|KeyCap Ctrl+W:タブを閉じる|KeyCap Alt+I:インスペクタを出す|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを続ける|KeyCap Shift+F5:ゲームを最初から作り直す|KeyCap F6/F7:1 frame 戻す・進める");
         Expect(new HintContext { Vr = true, Target = HintTarget.Window, InstanceMark = true },
             "Trigger R:この個体に絞り込む・やめる|StickUpDown R:scroll|Face X:インスペクタを出す");
         Expect(new HintContext { Vr = true, Target = HintTarget.Window, MoreMark = true },

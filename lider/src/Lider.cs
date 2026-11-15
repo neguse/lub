@@ -6,6 +6,7 @@
 // F1 で focus をゲームの絵と Code の間で移す (focus がゲームにある間、窓は同じ所に薄く残る)。押したウィンドウにも focus が移る。
 // 起動したときは、ゲームの絵だけを出していて、focus はゲームにある (命令 screen:hide で、ゲームの絵だけにする / 戻す)。
 // 操作は名前の付いた命令で、key の割り当ては Keymap にあり、Ctrl+P の検索からも名前で呼べる。
+// key の割り当ては、命令 keys:set で変えられる (命令を選び、次に押した key を割り当てる)。変えた分は、利用者ごとの file に書く。命令 keys:reset で既定に戻す。
 // 左 click は窓ならカーソルを置く。ゲームを止めている間は、何も無い所ならゲームの物を描いたコードを開き、中 click は、前にコードがあってもゲームの物を指す。
 // 窓は横一列に並ぶ。非 XR の右ドラッグは、窓の上なら並びを変え (ドラッグ中のホイールで大きさを変える)、窓の外なら列を動かす。
 // Alt を押している間は、スクリーンの輪郭と名前の札が出る。動かせるスクリーンは、札を右ドラッグで面に沿って動かし、ドラッグ中のホイールで手前と奥へ動かす (命令 screen:anchor で、視点に固定するか世界に置くかを替える)。
@@ -521,6 +522,12 @@ public static class Lider
             return false;
         if (e.Kind == EventKind.KeyUp)
             return false;
+        // key を待っている間は、次に押した key を、選んだ命令に割り当てる
+        if (keyFor != null)
+        {
+            TakeKey(w, e);
+            return true;
+        }
         // focus をゲームへ移す key は、検索を出していても効く (検索は閉じる)
         var name = Document.Booted ? EditorHost.NameOf(e.Key, e.Plain) : null;
         if (name != null && Keymap.Binds(name, "focus:game"))
@@ -917,6 +924,16 @@ public static class Lider
             screen.Anchor = screen.Anchor == ScreenAnchor.View ? ScreenAnchor.World : ScreenAnchor.View;
             return true;
         });
+        CommandTable.Register("keys:set", "命令に割り当てる key を変える", () => With(w => Search.Pick(w, "key を変える命令", name =>
+        {
+            keyFor = name;
+            Search.Ask(w, KeyPrompt(name), typed => { });
+        })));
+        CommandTable.Register("keys:reset", "key の割り当てを既定に戻す", () => With(w =>
+        {
+            Keymap.Reset();
+            SaveKeys();
+        }));
         CommandTable.Register("game:pause", "ゲームを止める・続ける", () => With(w => TogglePause())).OverModal = true;
         CommandTable.Register("game:restart", "ゲームを最初から作り直す", () => With(w => GameApp.Restart())).OverModal = true;
         var back = CommandTable.Register("game:step-back", "1 frame 戻す", () => With(w => StepBack()));
@@ -2221,6 +2238,93 @@ public static class Lider
     }
 
     // 控えた配置の file を、読めるようになったら 1 度だけ読む。同じ名前の配置は、控えた物に置き換える
+    // key の割り当て: 利用者が変えた分を、利用者ごとの file に書く (プロジェクトによらない)。
+    // file は env LIDER_KEYS、無ければ XDG_CONFIG_HOME か ~/.config の lider/keys.txt。場所が決まらなければ、変えた分は lider を終えるまで
+    static bool keysLoaded;
+    // 次に押した key を割り当てる命令 (待っていなければ null)
+    static string? keyFor;
+    public static string? KeyFor => keyFor;
+
+    static string? KeysPath()
+    {
+        var path = Environment.GetEnvironmentVariable("LIDER_KEYS");
+        if (path != null && path != "")
+            return path;
+        var dir = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+        if (dir == null || dir == "")
+        {
+            var home = Environment.GetEnvironmentVariable("HOME");
+            if (home == null || home == "")
+                return null;
+            dir = home + "/.config";
+        }
+        return dir + "/lider/keys.txt";
+    }
+
+    static void LoadKeys()
+    {
+        if (keysLoaded)
+            return;
+        var path = KeysPath();
+        if (path == null)
+        {
+            keysLoaded = true;
+            return;
+        }
+        Io.LoadText(path, out var text, out _, out var status, out _);
+        if (status == Io.Status.Pending)
+            return;
+        keysLoaded = true;
+        if (text == null)
+            return;
+        Keymap.Load(text);
+        // focus をゲームから戻す key は、いつも 1 つは要る
+        if (Keymap.StrokeOf("focus:game") == "")
+            Keymap.Bind("f1", "focus:game");
+    }
+
+    static void SaveKeys()
+    {
+        var path = KeysPath();
+        if (path != null)
+            Io.SaveText(path, string.Join("\n", Keymap.Lines()) + "\n");
+    }
+
+    static string KeyPrompt(string name)
+    {
+        var now = Keymap.ShownOf(name);
+        return name + " の key を押す (今は " + (now != "" ? now : "無し") + "。Esc でやめる)";
+    }
+
+    // key を待っている間に押した key を、命令 keyFor に割り当てる。Esc はやめる。割り当てられない key は、理由を出して待ち続ける
+    static void TakeKey(Workspace w, EventData e)
+    {
+        var name = keyFor!;
+        var key = EditorHost.NameOf(e.Key, e.Plain);
+        if (e.Key == Keys.Escape || key == null)
+        {
+            keyFor = null;
+            Search.Cancel(w);
+            return;
+        }
+        var stroke = Keymap.Stroke(key);
+        if (!Keymap.Assignable(stroke))
+        {
+            Search.Prompt = Keymap.Shown(stroke) + " は割り当てられない (Ctrl か Alt を付けた key か、F key)";
+            return;
+        }
+        // focus をゲームから戻す key を、ほかの命令に取らせない
+        if (name != "focus:game" && Keymap.Binds(key, "focus:game"))
+        {
+            Search.Prompt = Keymap.Shown(stroke) + " は focus:game の key なので割り当てられない";
+            return;
+        }
+        Keymap.Bind(stroke, name);
+        SaveKeys();
+        keyFor = null;
+        Search.Cancel(w);
+    }
+
     static void LoadArrangements(Workspace w)
     {
         if (arrangementsLoaded)
@@ -2483,6 +2587,10 @@ public static class Lider
             return;
         Space.Flat = !Xr.Active();
         LoadArrangements(w);
+        LoadKeys();
+        // 検索の欄を閉じたら、key を待つのもやめる
+        if (!Search.Shown)
+            keyFor = null;
         PlaceInspector(w);
         // 記録は lider を出していない間も受け取って捨てる (溜めない)
         if (inspect.Tree.ScopeId != tracedScope)

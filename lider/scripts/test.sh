@@ -45,7 +45,7 @@ for test_dir in "${dirs[@]}"; do
   [ -f "$dir/game/Target.cs" ] && target="$dir/game/Target.cs"
   echo "==> $name"
   if (cd "$dir" && LIDER_ROOT="$dir" LIDER_GAME="$game" LIDER_HOME="$root" LIDER_ACTIVE=1 LIDER_JAMO_DICT="$dict" \
-    LIDER_TEST_FILE="$target" LIDER_JAMO_USER="$dir/jamo-user.dat" SDL_VIDEO_DRIVER="${SDL_VIDEO_DRIVER:-offscreen}" \
+    LIDER_TEST_FILE="$target" LIDER_JAMO_USER="$dir/jamo-user.dat" LIDER_KEYS="$dir/keys.txt" SDL_VIDEO_DRIVER="${SDL_VIDEO_DRIVER:-offscreen}" \
     timeout 180 "$player" "$entry"); then
     echo "ok $name"
   else

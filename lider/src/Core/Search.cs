@@ -54,7 +54,7 @@ public class Search : IContent
         return null;
     }
 
-    // 候補を引かずに、打った字を受け取るだけの欄として出しているときの、何を打つかの説明 (そうでなければ空)
+    // 欄を、決まった入力 (字を打ってもらう、命令を選んでもらう) として出しているときの、何を入れるかの説明 (そうでなければ空)
     public string Prompt = "";
     Action<string>? asked;
 
@@ -65,6 +65,16 @@ public class Search : IContent
         Prompt = prompt;
         asked = done;
         Results.Clear();
+    }
+
+    Action<string>? picked;
+
+    // 欄を、命令を選んでもらう入力として出す。選んだ命令は実行せず、名前を done に渡す
+    public void Pick(Workspace w, string prompt, Action<string> done)
+    {
+        Open(w, ">");
+        Prompt = prompt;
+        picked = done;
     }
 
     public const int MaxResults = 10;
@@ -190,6 +200,7 @@ public class Search : IContent
         Query = query;
         Prompt = "";
         asked = null;
+        picked = null;
         jumpWord = null;
         from = w.Here();
         Selected = 0;
@@ -352,7 +363,7 @@ public class Search : IContent
     {
         foreach (var command in CommandTable.All)
         {
-            var stroke = Keymap.StrokeOf(command.Name);
+            var stroke = Keymap.ShownOf(command.Name);
             Rank(new SearchItem { Text = command.Name, Where = command.Label + (stroke != "" ? "  [" + stroke + "]" : ""), Command = command.Name }, scores, query);
         }
     }
@@ -434,9 +445,13 @@ public class Search : IContent
         var item = Results[Selected];
         if (item.Command != "")
         {
-            // 検索を開く前の所に戻してから、命令を実行する
+            // 検索を開く前の所に戻してから、命令を実行する (命令を選んでもらっているなら、名前を渡す)
+            var pick = picked;
             Cancel(w);
-            CommandTable.Run(item.Command);
+            if (pick != null)
+                pick(item.Command);
+            else
+                CommandTable.Run(item.Command);
             return;
         }
         if (item.Create)
