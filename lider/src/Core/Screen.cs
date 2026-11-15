@@ -100,6 +100,7 @@ public class Screen
             if (window.Position == null)
             {
                 window.ViewportRect = null;
+                window.ContentRect = null;
                 continue;
             }
             var at = window.Position.Value;
@@ -109,6 +110,9 @@ public class Screen
             var x1 = (float)Math.Round(viewportW * 0.5f + (Position.X + at.X + size.X * 0.5f) * perM);
             var y1 = (float)Math.Round(viewportH * 0.5f - (Position.Y + at.Y - size.Y * 0.5f) * perM);
             window.ViewportRect = new PixelRect(x0, y0, x1 - x0, y1 - y0);
+            // 見出しの帯は矩形の上の端に取り、中身はその下に収める
+            var bar = Math.Min(window.TitleBar, y1 - y0);
+            window.ContentRect = new PixelRect(x0, y0 + bar, x1 - x0, y1 - y0 - bar);
         }
     }
 }
@@ -146,6 +150,10 @@ public class Window
     public Vec2 Size = new Vec2(0, 0);
     // 画面に投影した場所 (視点に固定した平面のスクリーンだけ。Screen.Project が決める)
     public PixelRect? ViewportRect;
+    // ViewportRect のうち、中身を映す所 (見出しの帯を除いた矩形)
+    public PixelRect? ContentRect;
+    // 見出しの帯の高さ (画面の座標。0 なら帯を出さない)。視点に固定した平面のスクリーンで、中身が自分で見出しを描かないウィンドウに使う
+    public float TitleBar;
     // 中身を描く画素の数。利用者が決めた数 (WidthPx、HeightPx) と、今の数 (PxW、PxH。Zen の間だけ違う)
     public int WidthPx = PanelView.BasePxW;
     public int HeightPx = PanelView.BasePxH;

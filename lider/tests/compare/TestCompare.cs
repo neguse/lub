@@ -59,6 +59,10 @@ public static class TestCompare
             var right = windows[1].ViewportRect!;
             Check(left.W > 0 && Math.Abs(left.W - right.W) <= 1 && left.X < right.X && Math.Abs(left.X + left.W - right.X) <= 1,
                 "the windows are not side by side: " + left.X + "+" + left.W + " and " + right.X + "+" + right.W);
+            // 並べている間は、どちらの絵にも見出しの帯が付き、絵はその下に収まる
+            var body = windows[1].ContentRect!;
+            Check(windows[0].TitleBar > 0 && body.Y == right.Y + windows[1].TitleBar && Math.Abs(body.H + windows[1].TitleBar - right.H) <= 1,
+                "the picture is not under the title bar: " + body.Y + "+" + body.H + " in " + right.Y + "+" + right.H);
             copiedAt = Count(GameApp.Ref);
             stage = 2;
         }
@@ -96,15 +100,29 @@ public static class TestCompare
         else if (stage == 5 && DraftGame.Build!.LastKind == "error")
         {
             Check(DraftGame.Label() == "編集中 (変換エラー: 最後に通った版)", "label " + DraftGame.Label());
-            Press(Keys.F10);
+            // 編集中の版の見出しを押すと focus が移り、閉じる印を押すと並べるのをやめる。保存した版の見出しに閉じる印は無い
+            var saved = Lider.Screens[0].Windows[0].ViewportRect!;
+            var draft = Lider.Screens[0].Windows[1].ViewportRect!;
+            Click(saved.X + saved.W - 8, saved.Y + 8);
+            Check(DraftGame.Shown && w.Focused == Lider.Screens[0].Windows[0], "a click at the right end of the saved title closed something or did not focus it");
+            Click(draft.X + draft.W * 0.5f, draft.Y + 8);
+            Check(DraftGame.Shown && w.Focused == Lider.Screens[0].Windows[1], "a click on the draft title did not move the focus");
+            Click(draft.X + draft.W - 8, draft.Y + 8);
+            Check(w.Focused == Lider.Screens[0].Windows[0], "closing the focused draft did not move the focus to the saved version");
             stage = 6;
         }
         else if (stage == 6)
         {
-            Check(Lider.Screens[0].Windows.Count == 1 && !DraftGame.Shown, "F10 did not go back to the saved version");
+            Check(Lider.Screens[0].Windows.Count == 1 && !DraftGame.Shown, "the close mark did not go back to the saved version");
             Console.WriteLine("PASS");
             App.Quit(0);
         }
+    }
+
+    static void Click(float x, float y)
+    {
+        Lider.OnEvent(new EventData { Kind = EventKind.MouseButtonDown, Button = 1, X = x, Y = y });
+        Lider.OnEvent(new EventData { Kind = EventKind.MouseButtonUp, Button = 1, X = x, Y = y });
     }
 
     static void Press(int key)
