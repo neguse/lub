@@ -1,5 +1,5 @@
 // 配置を、名前を付けて控えて戻す。
-//   - 初めから入っている配置 (重ねる形、左右に並ぶ形) に、命令で戻せる
+//   - 起動したときは左右に並ぶ形で、初めから入っている配置 (左右に並ぶ形、重ねる形) に、命令で戻せる
 //   - 今の配置を控えると file に書かれ、ほかの配置にした後で、その名前の配置に戻せる (スクリーンの規則と、ウィンドウの並び)
 //   - 控えるときの名前は、検索の欄に打って決める
 //   - file の行から読み直した配置は、書いた配置と同じ
@@ -58,7 +58,11 @@ public static class TestArrange
         switch (stage++)
         {
             case 0:
-                Check(Lider.ArrangementName == Lider.Overlay && w.ScreenOf(code) == w.CodeScreen && w.ScreenOf(inspector) == w.CodeScreen, "not the overlay at first");
+                Check(Lider.ArrangementName == Lider.SideBySide && Lider.Tiled && w.ScreenOf(code) == backdrop, "not side-by-side at first");
+                // 起動した後に開いたコードの窓も、配置の決めた順 (インスペクタの前) に入る
+                Check(Order(w, backdrop) == "game:saved code:Target.cs inspector", "the order at first: " + Order(w, backdrop));
+                Check(Lider.Run("arrange:" + Lider.Overlay), "arrange:overlay did not run");
+                Check(Lider.ArrangementName == Lider.Overlay && w.ScreenOf(code) == w.CodeScreen && w.ScreenOf(inspector) == w.CodeScreen, "overlay did not move the windows to the code screen");
                 Check(Lider.Run("arrange:" + Lider.SideBySide), "arrange:side-by-side did not run");
                 Check(Lider.Tiled && w.ScreenOf(code) == backdrop && w.ScreenOf(inspector) == backdrop, "side-by-side did not move the windows to the backdrop");
                 Check(backdrop.Layout is MainStack && Order(w, backdrop) == "game:saved code:Target.cs inspector", "side-by-side order: " + Order(w, backdrop));

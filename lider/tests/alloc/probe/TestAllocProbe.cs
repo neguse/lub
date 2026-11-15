@@ -27,7 +27,7 @@ public static class TestAllocProbe
         if (!Scanned)
             search.Refresh(work);
         sb ??= new SpriteBatch("test_alloc_sb", 320, 180);
-        mono ??= new MonoText("test_alloc_mono", (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/yutapon_coding_081d.ttf", 15, 2);
+        mono ??= new MonoText("test_alloc_mono", (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/UDEVGothic-Regular.ttf", 15, 2);
         keep = new int[8];
         search.Find("NoSuchDeclaration");
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex });

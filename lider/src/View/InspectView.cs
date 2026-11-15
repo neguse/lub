@@ -54,6 +54,8 @@ public class InspectView
     int batchW = BasePxW;
     int batchH = 624;
     public TextureRef? Texture;
+    // texture を最後に宣言した frame (DeclareGap.Frame)。宣言が途切れた texture は lub が捨てるので、途切れた後は写さない
+    public int DeclaredAt = -1;
     float lineH = 16;
 
     // texture を宣言し、出していれば木を引き直して描く (画面への pass の外で呼ぶ)
@@ -67,6 +69,7 @@ public class InspectView
         }
         batch.Ensure();
         Texture = Assets.RenderTarget("lider_inspect_" + PxW + "x" + PxH, PxW * text.Density, PxH * text.Density, Gfx.PixelFormat.Rgba8);
+        DeclaredAt = DeclareGap.Frame;
         if (!Shown || Texture == null)
             return;
         lineH = text.LineH;

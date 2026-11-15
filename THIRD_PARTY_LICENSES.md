@@ -48,7 +48,7 @@ lub bundles or links the following third-party components.
 | Box.glb | samples/data/08_box.glb | CC0 (Public Domain) | https://github.com/KhronosGroup/glTF-Sample-Assets |
 | Sponza | samples/14_sponza/data/Sponza/ | Cryengine Limited License Agreement | https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Sponza |
 | M PLUS 1p Regular (kana+ASCII subset) | samples/data/fonts/MPLUS1p-subset.ttf | OFL-1.1 (samples/data/fonts/MPLUS1p-OFL.txt) | https://github.com/google/fonts/tree/main/ofl/mplus1p |
-| ゆたぽん (コーディング) 0.81 | lider/data/yutapon_coding_081d.ttf | フリーフォント。改変せず Readme と一緒に配布する (lider/data/yutapon_coding-README.TXT) | http://net2-system.top/ |
+| UDEV Gothic 2.2.0 (Regular) | lider/data/UDEVGothic-Regular.ttf | OFL-1.1 (lider/data/UDEVGothic-LICENSE.txt。元にした BIZ UDGothic と JetBrains Mono は UDEVGothic-LICENSE_BIZUDGothic.txt と UDEVGothic-LICENSE_JetBrainsMono.txt) | https://github.com/yuru7/udev-gothic |
 
 ## Client-side C# formatter (web site)
 

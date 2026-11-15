@@ -57,8 +57,10 @@ function sampleAssets(): string {
 // lider が読む font と、project の雛形にするゲームの例。
 const LIDER_ROOT = resolve(__dirname, "../lider");
 const LIDER_TREE = [
-  "data/yutapon_coding_081d.ttf",
-  "data/yutapon_coding-README.TXT",
+  "data/UDEVGothic-Regular.ttf",
+  "data/UDEVGothic-LICENSE.txt",
+  "data/UDEVGothic-LICENSE_BIZUDGothic.txt",
+  "data/UDEVGothic-LICENSE_JetBrainsMono.txt",
   "samples/flappy/*.cs",
   "samples/empty/*.cs",
 ];

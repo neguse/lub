@@ -95,12 +95,12 @@ public static class HintRules
                 hints.Add(scroll);
                 if (!c.Vr)
                 {
-                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+P", "file と宣言と命令を探す"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+B Ctrl+-", "定義へ飛ぶ・戻る"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+Tab", "隣のタブへ"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+Alt+←→", "タブを隣の窓へ移す"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "Alt+矢印", "隣のウィンドウへ"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+W", "タブを閉じる"));
+                    hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "search:open" }), "file と宣言と命令を探す"));
+                    hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "code:go-to-definition", "code:back" }), "定義へ飛ぶ・戻る"));
+                    hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "tab:next" }), "隣のタブへ"));
+                    hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "tab:move-left", "tab:move-right" }), "タブを隣の窓へ移す"));
+                    hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "window:focus-left", "window:focus-right", "window:focus-up", "window:focus-down" }), "隣のウィンドウへ"));
+                    hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "window:close" }), "タブを閉じる"));
                 }
                 break;
             case HintTarget.Close:
@@ -143,23 +143,58 @@ public static class HintRules
                 if (!c.Vr)
                 {
                     hints.Add(new Hint(HintIcon.KeyCap, "右ドラッグ", "窓の列を動かす"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+P", "file と宣言と命令を探す"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "F1", "ゲームを触る"));
+                    hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "search:open" }), "file と宣言と命令を探す"));
+                    hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "focus:game" }), "ゲームを触る"));
                 }
                 break;
         }
         var tree = c.InspectShown ? "インスペクタへ移る (もう一度でしまう)" : "インスペクタを出す";
-        hints.Add(c.Vr ? new Hint(HintIcon.Face, "X", tree) : new Hint(HintIcon.KeyCap, "Alt+I", tree));
+        hints.Add(c.Vr ? new Hint(HintIcon.Face, "X", tree) : new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "inspector:toggle" }), tree));
         if (!c.Vr)
-            hints.Add(new Hint(HintIcon.KeyCap, "Alt+Enter", c.Zen ? "窓を元の大きさに戻す" : "窓を画面いっぱいに広げる"));
+            hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "window:zen" }), c.Zen ? "窓を元の大きさに戻す" : "窓を画面いっぱいに広げる"));
         if (!c.Vr)
-            hints.Add(new Hint(HintIcon.KeyCap, "F5", c.Paused ? "ゲームを続ける" : "ゲームを止める"));
+            hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "game:pause" }), c.Paused ? "ゲームを続ける" : "ゲームを止める"));
         if (!c.Vr)
-            hints.Add(new Hint(HintIcon.KeyCap, "Shift+F5", "ゲームを最初から作り直す"));
+            hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "game:restart" }), "ゲームを最初から作り直す"));
         if (!c.Vr && c.Errors)
-            hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+E", "エラーの行へ"));
+            hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "code:next-error" }), "エラーの行へ"));
         if (c.Paused)
-            hints.Add(c.Vr ? new Hint(HintIcon.StickLeftRight, "L", "1 frame 戻す・進める") : new Hint(HintIcon.KeyCap, "F6/F7", "1 frame 戻す・進める"));
-        return hints;
+            hints.Add(c.Vr ? new Hint(HintIcon.StickLeftRight, "L", "1 frame 戻す・進める") : new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "game:step-back", "game:step-forward" }), "1 frame 戻す・進める"));
+        // key を割り当てていない命令の行は出さない
+        var bound = new List<Hint>();
+        foreach (var hint in hints)
+            if (hint.Icon != HintIcon.KeyCap || hint.Key != "")
+                bound.Add(hint);
+        return bound;
+    }
+
+    // 命令に割り当てた key の、案内に出す書き方 (どれにも割り当てが無ければ "")。
+    // 修飾 key が同じ矢印は 1 つにまとめ ("Alt+←→")、修飾 key の無い key は "/" で、ほかは空白でつなぐ
+    static string KeysOf(List<string> names)
+    {
+        var text = "";
+        var last = "";
+        foreach (var name in names)
+        {
+            var shown = LiderEditor.Keymap.ShownOf(name);
+            if (shown == "")
+                continue;
+            var parts = shown.Split('+');
+            var key = parts[parts.Length - 1];
+            var mods = "";
+            for (var i = 0; i + 1 < parts.Length; i++)
+                mods += parts[i] + "+";
+            var arrow = key == "←" || key == "→" || key == "↑" || key == "↓";
+            if (text == "")
+                text = shown;
+            else if (arrow && mods == last && mods != "")
+                text += key;
+            else if (mods == "" && last == "")
+                text += "/" + shown;
+            else
+                text += " " + shown;
+            last = arrow || mods == "" ? mods : "\n";
+        }
+        return text;
     }
 }

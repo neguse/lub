@@ -54,10 +54,13 @@ public static class TestPick
             return;
         frames++;
         Gfx.Size(out var w, out var h);
+        // ゲームの絵の真ん中 (配置によって、絵は画面の一部になる)
+        var picture = Lider.Screens[0].Windows[0].ContentRect;
+        var at = picture != null ? new Vec2(picture.X + picture.W * 0.5f, picture.Y + picture.H * 0.5f) : new Vec2(w / 2, h / 2);
         if (frames == 3)
         {
             Lider.FocusGame();
-            Click(1, w / 2, h / 2);
+            Click(1, at.X, at.Y);
         }
         // ゲームの物を指して調べられるのは、止めている間だけ
         if (frames == 13)
@@ -71,7 +74,7 @@ public static class TestPick
             return;
         }
         if (frames == 23)
-            Click(1, w / 2, h / 2);
+            Click(1, at.X, at.Y);
         if (frames <= 23)
             return;
         waited += dt;
@@ -101,7 +104,7 @@ public static class TestPick
             phase = 1;
             waited = 0;
             focus.MoveTo(0, 0);
-            Click(2, w / 2, h / 2);
+            Click(2, at.X, at.Y);
             return;
         }
         Console.WriteLine("PASS");
