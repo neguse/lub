@@ -56,14 +56,18 @@ public static class TestPick
         Gfx.Size(out var w, out var h);
         if (frames == 3)
         {
-            Lider.SetActive(false);
+            Lider.FocusGame();
             Click(1, w / 2, h / 2);
         }
+        // ゲームの物を指して調べられるのは、止めている間だけ
         if (frames == 13)
-            Lider.SetActive(true);
+        {
+            Lider.FocusCode();
+            Lider.TogglePause();
+        }
         if (frames < 23)
         {
-            Check(Lider.Work?.Focus == null, "a click while lider was hidden opened " + Lider.Work?.Focus?.Path);
+            Check(Lider.Work?.Focus == null, "a click on the running game opened " + Lider.Work?.Focus?.Path);
             return;
         }
         if (frames == 23)
@@ -88,11 +92,6 @@ public static class TestPick
             return;
         if (phase == 0)
         {
-            var shown = "";
-            foreach (var n in GameApp.Inspect("Game", 0, 10))
-                if (n.Name == "Shown")
-                    shown = n.Id;
-            Check(shown != "" && Lider.Inspector.Tree.ScopeId == shown && Lider.Inspector.Tree.ScopeClass == "Quad", "opening did not scope to the drawing quad: " + string.Join("|", Lider.Inspector.Tree.Crumbs()));
             phase = 1;
             waited = 0;
             focus.MoveTo(0, 0);

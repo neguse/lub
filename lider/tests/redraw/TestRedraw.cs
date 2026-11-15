@@ -65,7 +65,7 @@ public static class TestRedraw
         Check(frames < 900, "the readback did not arrive");
         if (frames == 3)
         {
-            Lider.SetActive(false);
+            Lider.FocusGame();
             text = new MonoText("test_redraw_mono", (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/yutapon_coding_081d.ttf", 15);
             Document.Boot(text.CellW, text.LineH);
             doc = Document.Open(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!)!;

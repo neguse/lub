@@ -1,7 +1,8 @@
-// 編集、試す、ゲームだけの切り替え。
-//   - F1 で試すに移る: 入力はゲームに渡り、窓は同じ所に薄く残り、compile error のような窓の中身は描き続ける。もう一度 F1 で濃く戻る
-//   - 試す間は Zen の広げた窓を元の大きさにし、編集に戻ると広げ直す。検索は閉じる
-//   - Shift+F1 でゲームだけ (窓を描かない) にし、もう一度で試すに戻る。ゲームだけから F1 で編集に戻る
+// focus をゲームの絵と Code の間で移すことと、ゲームの絵でないスクリーンを隠すこと。
+//   - F1 で focus がゲームに移る: 入力はゲームに渡り、窓は同じ所に薄く残り、compile error のような窓の中身は描き続ける。もう一度 F1 で Code に戻り、濃く戻る
+//   - focus がゲームにある間は Zen の広げた窓を元の大きさにし、Code に戻ると広げ直す。検索は閉じる
+//   - Shift+F1 でゲームの絵でないスクリーンを隠し、もう一度で出す。隠している間に F1 を押すと、出して focus を Code に移す
+//   - ゲームの絵を押すと focus がゲームに移り、窓を押すと Code に戻る
 using System;
 using Lub;
 using LiderCore;
@@ -61,14 +62,14 @@ public static class TestStages
         switch (stage++)
         {
             case 0:
-                Check(w.Active && !Lider.GameOnly && Lider.Opacity == 1, "not editing at first");
+                Check(!w.OnGame && !Lider.Hidden && Lider.Opacity == 1, "not editing at first");
                 Key(Keys.F11, 0);
                 break;
             case 1:
                 Check(window.PxW > PanelView.BasePxW, "F11 did not widen the window: " + window.PxW);
                 Lider.Search.Open(w);
                 Key(Keys.F1, 0);
-                Check(!w.Active && !Lider.GameOnly, "F1 did not hand the input to the game");
+                Check(w.OnGame && !Lider.Hidden, "F1 did not hand the input to the game");
                 Check(!Lider.Search.Shown, "the search stayed open");
                 w.BuildFailed(path + "(3,1): error CS0001: broken");
                 break;
@@ -77,21 +78,31 @@ public static class TestStages
                 Check(window.PxW == PanelView.BasePxW, "the Zen window stays wide: " + window.PxW);
                 Check(Lider.Panel(window).Errors.Count == 1, "the window did not take the error");
                 Key(Keys.F1, 0);
-                Check(w.Active, "F1 did not return to editing");
+                Check(!w.OnGame, "F1 did not return to editing");
                 break;
             case 3:
                 Check(Lider.Opacity == 1, "the windows did not come back: " + Lider.Opacity);
                 Check(window.PxW > PanelView.BasePxW, "Zen did not come back: " + window.PxW);
                 Key(Keys.F1, 0);
                 Key(Keys.F1, Keys.ModShift);
-                Check(!w.Active && Lider.GameOnly, "Shift+F1 did not show the game only");
+                Check(w.OnGame && Lider.Hidden, "Shift+F1 did not show the game only");
                 break;
             case 4:
                 Key(Keys.F1, Keys.ModShift);
-                Check(!w.Active && !Lider.GameOnly, "Shift+F1 did not return to trying");
+                Check(w.OnGame && !Lider.Hidden, "Shift+F1 did not show the screens again");
                 Key(Keys.F1, Keys.ModShift);
                 Key(Keys.F1, 0);
-                Check(w.Active && !Lider.GameOnly, "F1 did not return from the game only to editing");
+                Check(!w.OnGame && !Lider.Hidden, "F1 did not return from the game only to editing");
+                break;
+            case 5:
+                // ゲームの絵 (窓の無い所) を押すと focus がゲームに移り、窓を押すと Code に戻る
+                Click(2, 2);
+                Check(w.OnGame && w.Focused != window, "a click on the game did not move the focus to the game");
+                Check(w.FocusWindow == window, "the code window was forgotten");
+                break;
+            case 6:
+                Click(Lider.CaretViewport.X + 4, Lider.CaretViewport.Y + 4);
+                Check(!w.OnGame && w.Focused == window, "a click on the window did not move the focus to the code");
                 if (!failed)
                 {
                     Console.WriteLine("PASS");
@@ -99,6 +110,12 @@ public static class TestStages
                 }
                 break;
         }
+    }
+
+    static void Click(float x, float y)
+    {
+        Lider.OnEvent(new EventData { Kind = EventKind.MouseButtonDown, Button = 1, X = x, Y = y });
+        Lider.OnEvent(new EventData { Kind = EventKind.MouseButtonUp, Button = 1, X = x, Y = y });
     }
 
     static void Key(int key, int mods)

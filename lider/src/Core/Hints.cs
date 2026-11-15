@@ -148,7 +148,7 @@ public static class Hints
                 }
                 break;
         }
-        var tree = c.InspectShown ? "インスペクタをしまう" : "インスペクタを出す";
+        var tree = c.InspectShown ? "インスペクタへ移る (もう一度でしまう)" : "インスペクタを出す";
         hints.Add(c.Vr ? new Hint(HintIcon.Face, "X", tree) : new Hint(HintIcon.KeyCap, "F2", tree));
         if (!c.Vr && c.Differs)
             hints.Add(new Hint(HintIcon.KeyCap, "F9", c.SideBySide ? "動いている版を行の間に出す" : "動いている版を左に並べる"));

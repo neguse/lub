@@ -63,8 +63,8 @@ public static class DraftGame
     }
 
     // 1 frame 進める。docs は開いている file (保存していない本文を使う)。
-    // paused なら進めず (保存した版を止めている)、at と from と grabbed は GameApp.Step と同じ
-    public static void Step(float dt, bool grabbed, bool paused, PixelRect at, PixelRect from, float pixelRatio, Dictionary<string, Document> docs)
+    // paused なら進めず (保存した版を止めている)、at と from と keyboard と mouse は GameApp.Step と同じ
+    public static void Step(float dt, bool keyboard, bool mouse, bool paused, PixelRect at, PixelRect from, float pixelRatio, Dictionary<string, Document> docs)
     {
         if (Build == null)
             return;
@@ -92,11 +92,8 @@ public static class DraftGame
             return;
         Input.MousePos(out var mx, out var my);
         var input = new StepInput { MouseX = Map.X(mx), MouseY = Map.Y(my) };
-        if (grabbed)
-        {
-            input.Keyboard = false;
-            input.Mouse = false;
-        }
+        input.Keyboard = keyboard;
+        input.Mouse = mouse;
         App.Step(Ref, Target, dt, input);
         // 最初に動いた時と、作り直された時に、保存した版の状態を写す
         var status = App.Status(Ref);

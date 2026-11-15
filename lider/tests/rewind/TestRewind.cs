@@ -101,11 +101,11 @@ public static class TestRewind
         {
             if (GameApp.Position != -1 || Count != at + 1)
                 fail = "resumed: count " + Count + " at " + GameApp.Position + ", want " + (at + 1) + " at -1";
-            Lider.SetActive(false);
+            Lider.FocusGame();
             Press(Keys.F5);
             if (fail == "" && GameApp.Position != -1)
                 fail = "F5 while lider was hidden paused the game";
-            Lider.SetActive(true);
+            Lider.FocusCode();
             Press(Keys.F5);
             at = Count;
             for (var i = 0; i < GameApp.Count + 2; i++)

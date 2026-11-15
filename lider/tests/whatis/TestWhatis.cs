@@ -62,6 +62,8 @@ public static class TestWhatis
         var what = string.Join(" / ", Lider.What);
         if (stage == 0)
         {
+            // 指した物のコードを調べたり開いたりできるのは、ゲームを止めている間だけ
+            Lider.TogglePause();
             Lider.HoverAt(w / 2, h / 2);
             stage = 1;
         }
