@@ -4,7 +4,7 @@
 // 初めから、左にゲームの絵、右にコードの窓を並べる形と、コードの窓をゲームの絵に重ねる形が入っていて、起動したときは左右に並べる形になる。Alt+L で次の配置へ替える。
 // キーボードは focus のあるウィンドウへ、マウスは指しているウィンドウへ送る。
 // F1 で focus をゲームの絵と Code の間で移す (focus がゲームにある間、窓は同じ所に薄く残る)。押したウィンドウにも focus が移る。
-// 起動したときは、ゲームの絵でないスクリーンを隠していて、focus はゲームにある (命令 screen:hide で隠す / 出す)。
+// 起動したときは、ゲームの絵だけを出していて、focus はゲームにある (命令 screen:hide で、ゲームの絵だけにする / 戻す)。
 // 操作は名前の付いた命令で、key の割り当ては Keymap にあり、Ctrl+P の検索からも名前で呼べる。
 // 左 click は窓ならカーソルを置く。ゲームを止めている間は、何も無い所ならゲームの物を描いたコードを開き、中 click は、前にコードがあってもゲームの物を指す。
 // 窓は横一列に並ぶ。非 XR の右ドラッグは、窓の上なら並びを変え (ドラッグ中のホイールで大きさを変える)、窓の外なら列を動かす。
@@ -310,19 +310,32 @@ public static class Lider
         Work.FocusCode();
     }
 
-    // ゲームの絵のウィンドウが無いスクリーンを隠しているか
-    public static bool Hidden => Work != null && !Work.CodeScreen.Shown;
+    // ゲームの絵だけを出しているか
+    public static bool Hidden => Work != null && hidden;
+    static bool hidden;
 
-    // ゲームの絵のウィンドウが無いスクリーンを隠す / 出す。隠すときは、focus をゲームに移す
+    // ゲームの絵だけを出す / 戻す。ゲームの絵だけにするときは、focus をゲームに移す
     public static void SetHidden(bool hidden)
     {
         if (Work == null)
             return;
-        foreach (var screen in Screens)
-            if (!HasGame(screen))
-                screen.Shown = !hidden;
+        Lider.hidden = hidden;
+        PutAway();
         if (hidden)
             FocusGame();
+    }
+
+    // 隠している間は、ゲームの絵だけを出す: ゲームの絵の無いスクリーンは出さず、ゲームの絵のあるスクリーンでは、ほかのウィンドウをしまう。
+    // 隠している間に足されたウィンドウにも効くよう、毎 frame 決め直す
+    static void PutAway()
+    {
+        foreach (var screen in Screens)
+        {
+            var game = HasGame(screen);
+            screen.Shown = !hidden || game;
+            foreach (var window in screen.Windows)
+                window.Away = hidden && game && !(window.Content is GameView);
+        }
     }
 
     static bool HasGame(Screen screen)
@@ -336,14 +349,7 @@ public static class Lider
     // lider の描く物 (ゲームの絵でないウィンドウ、検索、案内) を出しているか
     static bool LiderShown(Workspace w)
     {
-        if (w.CodeScreen.Shown)
-            return true;
-        foreach (var screen in Screens)
-            if (screen.Shown)
-                foreach (var window in screen.Windows)
-                    if (!(window.Content is GameView))
-                        return true;
-        return false;
+        return !hidden;
     }
 
     // ゲームの絵の上でマウスのボタンを押し、まだ離していないか (離すまで、マウスの入力はゲームに送る)
@@ -901,7 +907,7 @@ public static class Lider
             else
                 FocusGame();
         })).OverModal = true;
-        CommandTable.Register("screen:hide", "ゲームでないスクリーンを隠す・出す", () => With(w => SetHidden(!Hidden)));
+        CommandTable.Register("screen:hide", "ゲームの絵だけを出す・戻す", () => With(w => SetHidden(!Hidden)));
         CommandTable.Register("screen:anchor", "スクリーンを視点に固定する・ワールドに置く", () =>
         {
             var w = Work;
@@ -1912,6 +1918,7 @@ public static class Lider
     {
         Gfx.Size(out var sw, out var sh);
         // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
+        PutAway();
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
         hud.Fill(Space.FlatFov, (float)sw / sh);
         palette.Fill(Space.FlatFov, (float)sw / sh);

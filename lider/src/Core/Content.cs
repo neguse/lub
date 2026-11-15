@@ -44,7 +44,8 @@ public class Inspector : IContent
 
     public TextureRef? Texture()
     {
-        return View.Texture;
+        // 前の frame に宣言した絵だけを写す (lider を隠している間は宣言しない)
+        return View.DeclaredAt == DeclareGap.Frame ? View.Texture : null;
     }
 }
 
