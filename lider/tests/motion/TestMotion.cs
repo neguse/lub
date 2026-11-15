@@ -178,7 +178,7 @@ public static class TestMotion
         var m = Lider.MotionOf(window!)!;
         for (var i = 0; i < 10; i++)
         {
-            Lider.WindowKey(w, Keys.PageDown);
+            Lider.Run("window:shrink");
             Lider.Animate(w, 1.0f / 60);
         }
         Check(m.Z.Value < -0.3f * Grab.LiftDistance, "resizing a window with Alt did not lift it: " + m.Z.Value);

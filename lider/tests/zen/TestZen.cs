@@ -130,8 +130,8 @@ public static class TestZen
 
     static void Press()
     {
-        Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = Keys.F11, Mods = 0, Typed = 0, Plain = 0 });
-        Lider.OnEvent(new EventData { Kind = EventKind.KeyUp, Key = Keys.F11, Mods = 0, Typed = 0, Plain = 0 });
+        Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = Keys.Return, Mods = Keys.ModAlt, Typed = 0, Plain = 0 });
+        Lider.OnEvent(new EventData { Kind = EventKind.KeyUp, Key = Keys.Return, Mods = 0, Typed = 0, Plain = 0 });
     }
 
     static void Check(bool ok, string message)

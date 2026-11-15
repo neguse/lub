@@ -107,7 +107,7 @@ public static class TestGrab
 
         window.Position = null;
         window.Scale = 1;
-        Lider.WindowKey(w, Keys.PageUp);
+        Lider.Run("window:grow");
         Near(window.Scale, 1.1f, "scale after Alt+PageUp");
         window.Position = null;
     }

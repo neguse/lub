@@ -97,6 +97,24 @@ public static class EditorHost
             EditorCore.SetActive(id);
     }
 
+    // どの view にも key と文字を入れない (focus が Code でないウィンドウにある間)。変換中の文字は前の view に確定する
+    public static void Blur()
+    {
+        if (!EditorCore.Booted || focused == 0)
+            return;
+        Ime.Commit();
+        focused = 0;
+        var active = EditorCore.ViewOf(EditorCore.Active);
+        if (active != null && !OwnedOverlay(active))
+            EditorCore.SetActive(0);
+    }
+
+    // key の名前 (keymap が引く名前。無ければ null)
+    public static string? NameOf(int scancode, int plain)
+    {
+        return plain > 32 && plain < 127 ? ((char)plain).ToString().ToLower() : KeyName(scancode);
+    }
+
     // SDL の scancode の key を押した / 離した。その場で keymap を通る
     public static void Key(int scancode, bool down)
     {
@@ -160,7 +178,7 @@ public static class EditorHost
     // ASCII でない配列でも Ctrl+S などが効くよう、ASCII の時だけ使う
     public static void KeyNamed(int scancode, bool down, int plain)
     {
-        var name = plain > 32 && plain < 127 ? ((char)plain).ToString().ToLower() : KeyName(scancode);
+        var name = NameOf(scancode, plain);
         if (name == null || !EditorCore.Booted)
             return;
         if (down)

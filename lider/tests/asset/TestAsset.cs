@@ -78,9 +78,8 @@ public static class TestAsset
             Press(w, Keys.Escape);
             Check(w.ShownAsset == "" && w.Windows.Count == windows, "Escape: " + w.ShownAsset + " windows " + w.Windows.Count);
             w.ShownAsset = w.PathOf("beep.wav");
-            Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = Keys.Delete, Mods = Keys.ModAlt, Typed = 0, Plain = 0 });
-            Lider.OnEvent(new EventData { Kind = EventKind.KeyUp, Key = Keys.Delete, Mods = 0, Typed = 0, Plain = 0 });
-            Check(EditorHost.Modal(), "Alt+Delete did not ask");
+            Lider.Run("file:delete");
+            Check(EditorHost.Modal(), "file:delete did not ask");
             Press(w, 28); // y
             w.Rescan();
             Check(w.ShownAsset == "" && !w.AssetFiles.Contains(w.PathOf("beep.wav")), "the sound was not deleted");

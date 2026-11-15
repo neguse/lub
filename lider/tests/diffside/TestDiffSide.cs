@@ -1,7 +1,7 @@
 // 本文がゲームの動いている版と違う間の、動いている版の板 (左右の形)。
 //   - 違いが無い間は出さない。打って違いができると focus のある窓の左の手前に出す。インスペクタのウィンドウは動かない
 //   - 板の行は、カーソルの近くで対応する行を窓の同じ高さに揃える
-//   - F9 で左右とインラインを切り替え、インラインの間は板を出さない。違いがある間は案内に F9 が出る
+//   - code:diff-side で左右とインラインを切り替え、インラインの間は板を出さない
 //   - reload が当たって違いが無くなると、板を消す
 using System;
 using System.Collections.Generic;
@@ -64,7 +64,6 @@ public static class TestDiffSide
         if (frames == 60)
         {
             Check(!doc.Differs() && !panel.OldShown, "the board is shown before editing");
-            Check(!HasF9(), "F9 is in the hints without a difference");
             boardBefore = Lider.BoardAngle;
             // Step の '{' (7 行目) の下に 1 行足す
             doc.MoveTo(6, Utf8.Bytes(doc.Text(6)));
@@ -77,24 +76,23 @@ public static class TestDiffSide
         if (frames == 62)
         {
             Check(doc.Differs() && panel.OldShown, "the board is not shown after typing");
-            Check(HasF9(), "F9 is not in the hints with a difference");
             // カーソルは足した行 (対応しない) にあるので、その上の '{' を揃える
             var lh = EditorHost.LineHeight(window.Code.ViewId);
             Check(Math.Abs(panel.OldTop(doc) + 6 * lh - EditorHost.LineY(window.Code.ViewId, 7)) < 0.5f,
                 "the live line 7 is at " + (panel.OldTop(doc) + 6 * lh) + ", want " + EditorHost.LineY(window.Code.ViewId, 7));
             oldSpan = (PanelView.OldW * window.Scale + PanelView.OldGap) / Space.R;
             Check(Math.Abs(boardBefore - Lider.BoardAngle) < oldSpan * 0.01f, "the inspector moved by " + (boardBefore - Lider.BoardAngle));
-            Press(Keys.F9);
+            Lider.Run("code:diff-side");
         }
         if (frames == 64)
         {
-            Check(!PanelView.SideBySide && !panel.OldShown, "F9 did not hide the board");
+            Check(!PanelView.SideBySide && !panel.OldShown, "code:diff-side did not hide the board");
             Check(Math.Abs(Lider.BoardAngle - boardBefore) < oldSpan * 0.01f, "the inspector moved: " + Lider.BoardAngle + ", want " + boardBefore);
-            Press(Keys.F9);
+            Lider.Run("code:diff-side");
         }
         if (frames == 66)
         {
-            Check(PanelView.SideBySide && panel.OldShown, "F9 did not bring the board back");
+            Check(PanelView.SideBySide && panel.OldShown, "code:diff-side did not bring the board back");
             doc.Save();
             doc.Reloaded();
         }
@@ -107,14 +105,6 @@ public static class TestDiffSide
                 App.Quit(0);
             }
         }
-    }
-
-    static bool HasF9()
-    {
-        foreach (var h in Hints.For(new HintContext { Differs = Lider.Work!.FocusWindow!.Code.Doc.Differs(), SideBySide = PanelView.SideBySide }))
-            if (h.Key == "F9")
-                return true;
-        return false;
     }
 
     static void Press(int key)

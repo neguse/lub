@@ -115,7 +115,7 @@ public class PanelView
     // 行の負荷 (Lider が渡す。出していなければ Enabled が false)
     public LoadProfile? Costs;
 
-    // 本文がゲームの動いている版と違う間に、動いている版をどう見せるか (F9 で切り替える。true は左右、false はインライン)
+    // 本文がゲームの動いている版と違う間に、動いている版をどう見せるか (命令 code:diff-side で切り替える。true は左右、false はインライン)
     public static bool SideBySide = true;
     // 動いている版の板 (左右の形) を出すか (Lider が Prepare の前に決める)。出している間、実行した行の光と代入した値はその板に出す
     public bool OldShown;

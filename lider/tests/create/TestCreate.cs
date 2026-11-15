@@ -76,7 +76,7 @@ public static class TestCreate
 
         asked = w.Focus;
         EditorHost.Focus(asked!.Id);
-        Alt(Keys.Delete);
+        Lider.Run("file:delete");
         Check(EditorHost.Modal(), "Alt+Delete did not ask");
     }
 
@@ -96,7 +96,7 @@ public static class TestCreate
         Check(!EditorHost.Modal(), "the question stayed");
         Check(w.Files.Contains(fresh) && w.FocusWindow != null && w.Focus == doc, "answering no deleted the file");
 
-        Alt(Keys.Delete);
+        Lider.Run("file:delete");
         Press(w, 28); // y
         w.Tick(0);
         Check(!EditorHost.Modal(), "the question stayed after yes");
@@ -122,12 +122,6 @@ public static class TestCreate
             if (r.Create)
                 return true;
         return false;
-    }
-
-    static void Alt(int key)
-    {
-        Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = key, Mods = Keys.ModAlt, Typed = 0, Plain = 0 });
-        Lider.OnEvent(new EventData { Kind = EventKind.KeyUp, Key = key, Mods = 0, Typed = 0, Plain = 0 });
     }
 
     static void Press(Workspace w, int key)

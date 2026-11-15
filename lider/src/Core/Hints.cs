@@ -60,7 +60,7 @@ public class HintContext
     public bool InstanceMark;
     public bool MoreMark;
     public bool InspectShown;
-    // focus のある窓の本文がゲームの動いている版と違うか、動いている版を左右に並べるか (F9)
+    // focus のある窓の本文がゲームの動いている版と違うか、動いている版を左右に並べるか
     public bool Differs;
     public bool SideBySide;
     public bool Paused;
@@ -95,13 +95,12 @@ public static class Hints
                 hints.Add(scroll);
                 if (!c.Vr)
                 {
-                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+P", "file と宣言を探す・作る"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "F12 Ctrl+-", "定義へ飛ぶ・戻る"));
+                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+P", "file と宣言と命令を探す"));
+                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+B Ctrl+-", "定義へ飛ぶ・戻る"));
                     hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+Tab", "隣のタブへ"));
                     hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+Alt+←→", "タブを隣の窓へ移す"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "Alt+←→", "隣の窓へ"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "Alt+Del", "file を消す"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "Esc Ctrl+W", "タブを閉じる"));
+                    hints.Add(new Hint(HintIcon.KeyCap, "Alt+矢印", "隣のウィンドウへ"));
+                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+W", "タブを閉じる"));
                 }
                 break;
             case HintTarget.Close:
@@ -142,24 +141,21 @@ public static class Hints
                 if (!c.Vr)
                 {
                     hints.Add(new Hint(HintIcon.KeyCap, "右ドラッグ", "窓の列を動かす"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+P", "file と宣言を探す・作る"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "F4", c.Juice == 2 ? "音を切る" : c.Juice == 1 ? "演出を抑える" : "音と演出を戻す"));
-                    hints.Add(new Hint(HintIcon.KeyCap, "F1", "ゲームを触る (Shift+F1 でゲームだけ)"));
+                    hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+P", "file と宣言と命令を探す"));
+                    hints.Add(new Hint(HintIcon.KeyCap, "F1", "ゲームを触る"));
                 }
                 break;
         }
         var tree = c.InspectShown ? "インスペクタへ移る (もう一度でしまう)" : "インスペクタを出す";
-        hints.Add(c.Vr ? new Hint(HintIcon.Face, "X", tree) : new Hint(HintIcon.KeyCap, "F2", tree));
-        if (!c.Vr && c.Differs)
-            hints.Add(new Hint(HintIcon.KeyCap, "F9", c.SideBySide ? "動いている版を行の間に出す" : "動いている版を左に並べる"));
+        hints.Add(c.Vr ? new Hint(HintIcon.Face, "X", tree) : new Hint(HintIcon.KeyCap, "Alt+I", tree));
         if (!c.Vr)
-            hints.Add(new Hint(HintIcon.KeyCap, "F11", c.Zen ? "窓を元の大きさに戻す" : "窓を画面いっぱいに広げる"));
+            hints.Add(new Hint(HintIcon.KeyCap, "Alt+Enter", c.Zen ? "窓を元の大きさに戻す" : "窓を画面いっぱいに広げる"));
         if (!c.Vr)
             hints.Add(new Hint(HintIcon.KeyCap, "F5", c.Paused ? "ゲームを続ける" : "ゲームを止める"));
         if (!c.Vr)
             hints.Add(new Hint(HintIcon.KeyCap, "Shift+F5", "ゲームを最初から作り直す"));
         if (!c.Vr && c.Errors)
-            hints.Add(new Hint(HintIcon.KeyCap, "F8", "エラーの行へ"));
+            hints.Add(new Hint(HintIcon.KeyCap, "Ctrl+E", "エラーの行へ"));
         if (c.Paused)
             hints.Add(c.Vr ? new Hint(HintIcon.StickLeftRight, "L", "1 frame 戻す・進める") : new Hint(HintIcon.KeyCap, "F6/F7", "1 frame 戻す・進める"));
         return hints;

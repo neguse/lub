@@ -1,4 +1,5 @@
-// file と宣言を 1 つの欄で引く、インクリメンタルなあいまい検索。
+// file と宣言と命令を 1 つの欄で引く、インクリメンタルなあいまい検索。
+// 命令 (CommandTable) は名前で引き、確定すると実行する。">" で始めると命令だけを並べる。
 // 上下で候補を選ぶと、その場所を窓に出す (窓が無ければ仮に開く)。Return で確定し、Escape で開く前に戻す。
 // 確定すると、開いたときにいた場所を Workspace の履歴に残す (Ctrl+- で戻る)。
 using TinySystem.Text;
@@ -24,6 +25,8 @@ public class SearchItem
     public bool Asset;
     // 保存していない編集のある file
     public bool Dirty;
+    // 確定すると実行する命令の名前 (CommandTable。命令でなければ空)
+    public string Command = "";
 }
 
 // file 1 つの宣言と、読んだ時の版
@@ -251,6 +254,13 @@ public class Search
     {
         var scores = new List<int>();
         Results.Clear();
+        // ">" で始めると、命令だけを並べる
+        if (Query.StartsWith(">"))
+        {
+            RankCommands(Utf8.Sub(Query, 1).Trim(), scores);
+            Selected = Math.Min(Selected, Math.Max(0, Results.Count - 1));
+            return;
+        }
         foreach (var path in w.Files)
             Rank(new SearchItem { Text = w.Relative(path), Path = path, Dirty = w.Docs.TryGetValue(path, out var doc) && doc.Dirty }, scores);
         foreach (var path in w.AssetFiles)
@@ -260,6 +270,8 @@ public class Search
                 if (scanned.TryGetValue(path, out var file))
                     foreach (var item in file.Items)
                         Rank(item, scores);
+        if (Query.Trim() != "")
+            RankCommands(Query, scores);
         OfferCreate(w);
         Selected = Math.Min(Selected, Math.Max(0, Results.Count - 1));
     }
@@ -291,9 +303,24 @@ public class Search
         return true;
     }
 
+    // 命令を名前で引く。右に、何をするかと、割り当てた key を出す
+    void RankCommands(string query, List<int> scores)
+    {
+        foreach (var command in CommandTable.All)
+        {
+            var stroke = Keymap.StrokeOf(command.Name);
+            Rank(new SearchItem { Text = command.Name, Where = command.Label + (stroke != "" ? "  [" + stroke + "]" : ""), Command = command.Name }, scores, query);
+        }
+    }
+
     void Rank(SearchItem item, List<int> scores)
     {
-        var score = EditorHost.Fuzzy(item.Text, Query);
+        Rank(item, scores, Query);
+    }
+
+    void Rank(SearchItem item, List<int> scores, string query)
+    {
+        var score = EditorHost.Fuzzy(item.Text, query);
         if (score == EditorHost.NoMatch)
             return;
         var at = Results.Count;
@@ -352,6 +379,13 @@ public class Search
             return;
         }
         var item = Results[Selected];
+        if (item.Command != "")
+        {
+            // 検索を開く前の所に戻してから、命令を実行する
+            Cancel(w);
+            CommandTable.Run(item.Command);
+            return;
+        }
         if (item.Create)
         {
             Cancel(w);
@@ -392,7 +426,7 @@ public class Search
     {
         Undo(w);
         w.ShownAsset = item.Asset ? item.Path : "";
-        if (item.Create || item.Asset)
+        if (item.Create || item.Asset || item.Command != "")
             return;
         var had = w.Docs.TryGetValue(item.Path, out var open) && w.WindowOf(open) != null;
         w.FocusOn(item.Path);

@@ -3,7 +3,7 @@
 //   - 2 秒以内に続けて届くと、明滅せず、揺れも小さい
 //   - compile error で error が鳴り、直って届くと fixed が鳴り、粒が増える (紙吹雪)
 //   - 打つと key、飛ぶと move が鳴り、飛んだ先の窓に印が出る
-//   - F4 で 音なし、演出も抑える、全部の順に変わる。音なしでは鳴らず、抑えると明滅しない
+//   - juice:cycle で 音なし、演出も抑える、全部の順に変わる。音なしでは鳴らず、抑えると明滅しない
 //   - 鳴らした音の山 (振幅) はゲームの音 (0.1〜0.3) より小さく、大きい順に fixed、land、error、save、move
 using System;
 using System.Collections.Generic;

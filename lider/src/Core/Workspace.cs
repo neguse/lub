@@ -651,7 +651,7 @@ public class Workspace
 
     // key を focus のある窓の エディタの view に渡し、印字できる key は文字も渡す (Ctrl を押している間は渡さない)。
     // typed と plain は EventData の同じ名前の値。
-    // Escape は focus のある窓の今のタブを閉じる (変換中と、エディタの CommandView と NagView が出ている間は エディタに渡す)。
+    // key は表 (Keymap) を通って命令になり、命令にならなかった文字は focus のある Code に入る。
     // 扱った key なら true
     public bool Input(int key, bool down, int typed, int plain)
     {
@@ -659,28 +659,25 @@ public class Workspace
         if (key == Keys.LeftShift || key == Keys.RightShift || key == Keys.LeftCtrl || key == Keys.RightCtrl
             || key == Keys.LeftAlt || key == Keys.RightAlt)
             return true;
-        if (other != null)
-            return false;
         if (down && key == Keys.Escape && ShownAsset != "" && !(Document.Booted && EditorHost.Modal()))
         {
             ShownAsset = "";
             return true;
         }
-        if (down && key == Keys.Escape && !(Document.Booted && EditorHost.Modal()))
-        {
-            CloseTab();
-            return true;
-        }
-        var doc = Focus;
-        if (doc == null)
+        if (!Document.Booted)
             return false;
+        // key は表を通って命令になる。focus が Code に無い間は、エディタの中の命令が効かないよう、エディタの focus を外す
+        var doc = other == null ? Focus : null;
         if (down)
             sinceKey = 0;
-        EditorHost.Focus(FocusWindow!.Code.ViewId);
+        if (doc != null)
+            EditorHost.Focus(FocusWindow!.Code.ViewId);
+        else
+            EditorHost.Blur();
         EditorHost.KeyNamed(key, down, plain);
-        if (down && !Ctrl && typed != 0)
+        if (doc != null && down && !Ctrl && typed != 0)
             EditorHost.Text(Utf8.Encode(typed));
-        doc.Sync();
+        doc?.Sync();
         TakeOpened();
         return true;
     }

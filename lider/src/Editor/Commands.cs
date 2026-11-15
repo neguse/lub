@@ -22,6 +22,18 @@ public static class Commands
         var command = EditorCore.Active == EditorCore.CommandId;
         var nag = EditorCore.Active == EditorCore.NagId;
 
+        // 表に載せた命令 (lider の操作)
+        var listed = CommandTable.Find(name);
+        if (listed != null)
+        {
+            if ((command || nag) && !listed.OverModal)
+                return false;
+            // 繰り返さない命令は、押し続けている間の key を受けるだけで何もしない
+            if (CommandTable.Repeated && !listed.Repeats)
+                return true;
+            return listed.Run();
+        }
+
         if (name.StartsWith("doc:move-to-") || name.StartsWith("doc:select-to-") || name.StartsWith("doc:delete-to-"))
         {
             if (dv == null)

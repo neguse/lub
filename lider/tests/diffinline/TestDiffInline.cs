@@ -1,4 +1,4 @@
-// 本文が動いている版と違う間の、インラインの形 (F9 で左右から切り替える)。
+// 本文が動いている版と違う間の、インラインの形 (code:diff-side で左右から切り替える)。
 //   - 変えた行の上に、動いている版の対応しない行の数だけ行を空ける。消した行は、その次の行の上に挟む
 //   - 空けた所の下の行は、その分だけ下に描く。押した所の行も、空けた行を数えて決める
 //   - 左右の板は出さない。reload が当たって違いが無くなると、空けた行も無くなる
@@ -57,7 +57,7 @@ public static class TestDiffInline
         var lh = EditorHost.LineHeight(id);
         if (frames == 6)
         {
-            Press(Keys.F9);
+            Lider.Run("code:diff-side");
             // Hp = 1 (8 行目) を消し、Hp = 2 を Hp = 20 にする
             doc.MoveTo(6, Utf8.Bytes(doc.Text(6)));
             for (var i = 0; i < Utf8.Bytes(doc.Text(7)) + 1; i++)
@@ -72,7 +72,7 @@ public static class TestDiffInline
         if (frames == 8)
         {
             Check(doc.Text(7) == "        Hp = 20;" && doc.Text(8) == "    }", "the edit went wrong: " + doc.Text(7) + " / " + doc.Text(8));
-            Check(!PanelView.SideBySide && panel.Inline && !panel.OldShown, "F9 did not switch to inline");
+            Check(!PanelView.SideBySide && panel.Inline && !panel.OldShown, "code:diff-side did not switch to inline");
             var olds = doc.InlineOld();
             Check(olds.Count == 2 && olds[0] == 7 && olds[1] == 8 && doc.InlineAt()[0] == 8 && doc.InlineAt()[1] == 8,
                 "the live lines Hp = 1 and Hp = 2 are not above line 8");
@@ -90,7 +90,7 @@ public static class TestDiffInline
         if (frames == 10)
         {
             Check(!panel.Inline && Math.Abs(EditorHost.LineY(id, 8) - EditorHost.LineY(id, 7) - lh) < 0.01f, "the gap is left after the reload");
-            Press(Keys.F9);
+            Lider.Run("code:diff-side");
             if (!failed)
             {
                 Console.WriteLine("PASS");

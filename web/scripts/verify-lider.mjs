@@ -1,12 +1,12 @@
 // サイトの入口 (index.html。lider を動かす page) を headless の chromium (WebGPU は swiftshader) で開いて確かめる。
 //
 //   L1. 起動: page が `ready` を出し、canvas が真っ黒でない。
-//   L2. lider とゲーム: 起動したときは lider の窓が出ていて、Shift+F1 でゲームだけになる (絵が変わる)。
+//   L2. lider とゲーム: 起動したときは lider の窓が出ていて、命令 screen:hide でゲームだけになる (絵が変わる)。
 //   L3. 差分: project の file (Render.cs) の関数の本体を MEMFS で書き換えると、lider が変換して `lider: build saved batch` を出し、ゲームを作り直さずに当てて、ゲームの背景の色が変わる。
 //   L4. compile error: 通らない file を書くと、lider が `lider: build saved error` と診断を出す。動いているゲームは変わらない。
 //   L5. 直す: 通る file に戻すと、また `lider: build saved batch` になり、背景の色が変わる。
 //   L6. 通らない project で開き直す: 通らない file を保存して page を読み直すと、lider は起動して `lider: build saved error` を出し、直すとゲームが始まる (`lider: build saved module`)。
-//   L7. 並べる: 編集の間に F10 を押すと、lider が編集中の版を変換し (`lider: build draft module`)、画面の左右に 2 つのゲームが出る (どちらも L6 の緑)。状態を写すので、左右はほぼ同じ絵になる。
+//   L7. 並べる: 編集の間に Alt+D を押すと、lider が編集中の版を変換し (`lider: build draft module`)、画面の左右に 2 つのゲームが出る (どちらも L6 の緑)。状態を写すので、左右はほぼ同じ絵になる。
 //   L8. サンプル: 前の lider の page の URL (lider.html#sample=17_flappy) で開くと、hash を付けたまま入口に移り、lub のサンプルが project になって起動し (data は samples/17_flappy/data から読める)、サンプルの .cs の書き換えがゲームの絵に出る。
 //   L9. メニュー: Doc の link と、サンプルの一覧 (17_flappy を含む) がある。Doc の page はガイドを描く。
 //
@@ -190,14 +190,21 @@ try {
   const lit = fraction(first, (r, g, b) => r + g + b > 24);
   check("L1 canvas is not black", lit >= 0.01, `non-black ${pct(lit)}`);
 
+  // ゲームでないスクリーンを隠す: key を振っていない命令なので、Ctrl+P の検索から名前で呼ぶ
+  const hideLider = async () => {
+    await page.keyboard.press("Control+p");
+    await page.keyboard.type(">screen:hide");
+    await page.keyboard.press("Enter");
+  };
+
   // L2
   await page.locator("#canvas").focus();
-  await page.keyboard.press("Shift+F1");
+  await hideLider();
   await page.waitForTimeout(1000);
   const gameOnly = await shot("game-only");
   const overlay = difference(first, gameOnly);
   check(
-    "L2 lider is drawn over the game at startup (Shift+F1 leaves the game only)",
+    "L2 lider is drawn over the game at startup (screen:hide leaves the game only)",
     overlay > 0.1,
     `changed ${pct(overlay)}`,
   );
@@ -263,7 +270,7 @@ try {
   at = await waitLog(from, built("module"), APPLY_MS);
   check("L6 the fixed project is built", at >= 0, logs[at] ?? "");
   await page.locator("#canvas").focus();
-  await page.keyboard.press("Shift+F1");
+  await hideLider();
   const reloaded = await waitColor("reopened", green, 10000);
   check(
     "L6 the game draws the project",
@@ -274,14 +281,14 @@ try {
   // L7
   from = logs.length;
   await page.keyboard.press("F1");
-  await page.keyboard.press("F10");
+  await page.keyboard.press("Alt+d");
   at = await waitLog(
     from,
     (t) => t.startsWith("lider: build draft module (revision "),
     APPLY_MS,
   );
   check("L7 lider builds the draft", at >= 0, logs[at] ?? "");
-  await page.keyboard.press("Shift+F1");
+  await hideLider();
   // 左と右の半分が、どちらもゲームの緑になるのを待つ
   const halves = (png) => {
     const half = (x0, x1) => {
@@ -359,7 +366,7 @@ try {
     `status: ${sampleReady}, ${logs[at] ?? "no build"}`,
   );
   await page.locator("#canvas").focus();
-  await page.keyboard.press("Shift+F1");
+  await hideLider();
   const sampleSource = await readSource(SAMPLE_SOURCE);
   check(
     "L8 the sample source has the pass to edit",

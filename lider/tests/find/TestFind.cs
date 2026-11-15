@@ -99,7 +99,9 @@ public static class TestFind
         ClickReturn(doc);
 
         Press(w, Escape);
-        Check(w.Windows.Count == 0, "Escape did not close the window");
+        Check(w.Windows.Count == 1, "Escape closed the window");
+        Lider.Run("window:close");
+        Check(w.Windows.Count == 0, "window:close did not close the window");
         if (failed)
             return;
         Console.WriteLine("PASS");

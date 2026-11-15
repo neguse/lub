@@ -50,25 +50,25 @@ public static class TestHints
         Expect(new HintContext { Vr = true, Target = HintTarget.Nothing, Paused = true },
             "Trigger R:指した物を描いたコードを開く|Face X:インスペクタを出す|StickLeftRight L:1 frame 戻す・進める");
         Expect(new HintContext { Vr = false, Target = HintTarget.Inspect, InspectShown = true, Openable = true, Jump = true },
-            "MouseLeft:宣言へ飛ぶ|MouseWheel:scroll|KeyCap F2:インスペクタへ移る (もう一度でしまう)|KeyCap F11:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
+            "MouseLeft:宣言へ飛ぶ|MouseWheel:scroll|KeyCap Alt+I:インスペクタへ移る (もう一度でしまう)|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
         Expect(new HintContext { Vr = false, Target = HintTarget.Window, Paused = true },
-            "MouseLeft:カーソルを置く・引いて選ぶ|KeyCap 右ドラッグ:窓の並びを変える (ホイールで大きさ)|MouseWheel:scroll|KeyCap Ctrl+P:file と宣言を探す・作る|KeyCap F12 Ctrl+-:定義へ飛ぶ・戻る|KeyCap Ctrl+Tab:隣のタブへ|KeyCap Ctrl+Alt+←→:タブを隣の窓へ移す|KeyCap Alt+←→:隣の窓へ|KeyCap Alt+Del:file を消す|KeyCap Esc Ctrl+W:タブを閉じる|KeyCap F2:インスペクタを出す|KeyCap F11:窓を画面いっぱいに広げる|KeyCap F5:ゲームを続ける|KeyCap Shift+F5:ゲームを最初から作り直す|KeyCap F6/F7:1 frame 戻す・進める");
+            "MouseLeft:カーソルを置く・引いて選ぶ|KeyCap 右ドラッグ:窓の並びを変える (ホイールで大きさ)|MouseWheel:scroll|KeyCap Ctrl+P:file と宣言と命令を探す|KeyCap Ctrl+B Ctrl+-:定義へ飛ぶ・戻る|KeyCap Ctrl+Tab:隣のタブへ|KeyCap Ctrl+Alt+←→:タブを隣の窓へ移す|KeyCap Alt+矢印:隣のウィンドウへ|KeyCap Ctrl+W:タブを閉じる|KeyCap Alt+I:インスペクタを出す|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを続ける|KeyCap Shift+F5:ゲームを最初から作り直す|KeyCap F6/F7:1 frame 戻す・進める");
         Expect(new HintContext { Vr = true, Target = HintTarget.Window, InstanceMark = true },
             "Trigger R:この個体に絞り込む・やめる|StickUpDown R:scroll|Face X:インスペクタを出す");
         Expect(new HintContext { Vr = true, Target = HintTarget.Window, MoreMark = true },
             "Trigger R:続きの個体を並べる|StickUpDown R:scroll|Face X:インスペクタを出す");
         Expect(new HintContext { Vr = false, Target = HintTarget.Inspect, InspectShown = true, Openable = true, Scope = true },
-            "MouseLeft:ここに絞り込む|MouseWheel:scroll|KeyCap F2:インスペクタへ移る (もう一度でしまう)|KeyCap F11:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
+            "MouseLeft:ここに絞り込む|MouseWheel:scroll|KeyCap Alt+I:インスペクタへ移る (もう一度でしまう)|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
         Expect(new HintContext { Vr = true, Target = HintTarget.Inspect, InspectShown = true, Crumb = true },
             "Trigger R:ここまで戻る|StickUpDown R:scroll|Face X:インスペクタへ移る (もう一度でしまう)");
         Expect(new HintContext { Vr = false, Target = HintTarget.Nothing, What = new List<string> { "Pipe.Draw (Pipes.cs:34)", "← Flappy.Draw (Flappy.cs:86)" } },
             "None:Pipe.Draw (Pipes.cs:34)|None:← Flappy.Draw (Flappy.cs:86)|MouseLeft:このコードを開く");
         Expect(new HintContext { Vr = false, Target = HintTarget.Close },
-            "MouseLeft:窓を閉じる|KeyCap F2:インスペクタを出す|KeyCap F11:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
+            "MouseLeft:窓を閉じる|KeyCap Alt+I:インスペクタを出す|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
         Expect(new HintContext { Vr = false, Target = HintTarget.Close, Errors = true },
-            "MouseLeft:窓を閉じる|KeyCap F2:インスペクタを出す|KeyCap F11:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す|KeyCap F8:エラーの行へ");
+            "MouseLeft:窓を閉じる|KeyCap Alt+I:インスペクタを出す|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す|KeyCap Ctrl+E:エラーの行へ");
         Expect(new HintContext { Vr = false, Target = HintTarget.Nothing },
-            "MouseLeft:指した物を描いたコードを開く|KeyCap 右ドラッグ:窓の列を動かす|KeyCap Ctrl+P:file と宣言を探す・作る|KeyCap F4:音を切る|KeyCap F1:ゲームを触る (Shift+F1 でゲームだけ)|KeyCap F2:インスペクタを出す|KeyCap F11:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
+            "MouseLeft:指した物を描いたコードを開く|KeyCap 右ドラッグ:窓の列を動かす|KeyCap Ctrl+P:file と宣言と命令を探す|KeyCap F1:ゲームを触る|KeyCap Alt+I:インスペクタを出す|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
         // 札は指す点の右下に置き、画面の端を越えるなら上か左に置く
         var card = new HintCard();
         card.Place(new CylinderPoint(0, 0), 0, -1, 1);
