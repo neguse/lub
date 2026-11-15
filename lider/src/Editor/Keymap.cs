@@ -137,7 +137,7 @@ public static class Keymap
         Add("ctrl+alt+left", "tab:move-left");
         Add("ctrl+alt+right", "tab:move-right");
         Add("alt+return", "window:zen");
-        Add("alt+l", "screen:next-layout");
+        Add("alt+l", "arrange:next");
         Add("alt+i", "inspector:toggle");
         Add("alt+d", "game:compare");
     }

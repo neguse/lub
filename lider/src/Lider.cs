@@ -1,6 +1,7 @@
 // lider の entry。
 // `lub Lider.csproj` で起動し、LIDER_GAME のゲームを別の VM で開いて動かす (GameApp)。ゲームの絵を画面に写し、その上にコードの空間を描く。
-// Alt+L で、コードの窓をゲームの絵に重ねる形と、左にゲームの絵、右にコードの窓を並べる形を切り替える。
+// 配置 (どのスクリーンにどのウィンドウをどの規則で並べるか) は、名前で控えて戻せる (Arrangement)。
+// 初めから、コードの窓をゲームの絵に重ねる形と、左にゲームの絵、右にコードの窓を並べる形が入っていて、Alt+L で次の配置へ替える。
 // キーボードは focus のあるウィンドウへ、マウスは指しているウィンドウへ送る。
 // F1 で focus をゲームの絵と Code の間で移す (focus がゲームにある間、窓は同じ所に薄く残る)。押したウィンドウにも focus が移る。
 // 起動したときは、ゲームの絵でないスクリーンを隠していて、focus はゲームにある (命令 screen:hide で隠す / 出す)。
@@ -211,13 +212,14 @@ public static class Lider
         Screens.Add(hud);
         // スクリーンの一覧は 1 つだけ持つ
         Work.Screens = Screens;
-        Tiled = false;
+        backdrop.Layout = new Even();
         // 起動したときは、ゲームだけを出し、focus もゲームに置く (LIDER_ACTIVE=1 なら、最初から全部出して focus を Code に置く)
         gameHeld = false;
         SetHidden(true);
         if (Environment.GetEnvironmentVariable("LIDER_ACTIVE") == "1")
             FocusCode();
         RegisterCommands();
+        BuiltinArrangements(Work);
         Work.Drafts?.Restore(Work);
         // lider の VM を作り直した (lider 自身の static の初期化子の変更) なら、作り直す前の窓に戻す
         if (Session.Restore(Work, Sys.Seconds()))
@@ -745,7 +747,8 @@ public static class Lider
             if (w.Focused != null)
                 MoveToNextScreen(w, w.Focused);
         }));
-        CommandTable.Register("screen:next-layout", "並べ方の規則を替える", () => With(w => ToggleTiled()));
+        CommandTable.Register("arrange:next", "次の配置へ", () => With(w => NextArrangement()));
+        CommandTable.Register("arrange:save", "今の配置を、名前を付けて控える", () => With(w => Search.Ask(w, "配置の名前", SaveArrangement)));
         CommandTable.Register("inspector:toggle", "インスペクタを開く・focus を移す・閉じる", () => With(w =>
         {
             // 出していなければ出して focus を移し、focus がほかにあれば focus を移し、focus があれば閉じる
@@ -1241,7 +1244,7 @@ public static class Lider
     {
         // 出す間だけスクリーンに載せる。最初に載せる所は、コードの窓を置くスクリーン。その後は、移した先のスクリーンにそのまま居る
         var on = w.ScreenOf(inspectWindow);
-        var home = Tiled ? backdrop : w.CodeScreen;
+        var home = w.Home ?? w.CodeScreen;
         if (on != null && !inspect.Shown)
         {
             on.Windows.Remove(inspectWindow);
@@ -1251,10 +1254,11 @@ public static class Lider
         }
         if (inspect.Shown && on == null)
         {
-            if (Tiled)
-                home.Windows.Add(inspectWindow);
-            else
+            // コードのスクリーン (横一列) では一番左に、ほかのスクリーンでは最後に載せる
+            if (home == w.CodeScreen)
                 home.Windows.Insert(0, inspectWindow);
+            else
+                home.Windows.Add(inspectWindow);
             on = home;
         }
         // 範囲を決めている間は、focus のある窓のすぐ左に並べる (範囲にこの 2 つを収める)
@@ -1881,40 +1885,161 @@ public static class Lider
             if (draftWindow != null)
                 backdrop.Windows.Remove(draftWindow);
             draftWindow = null;
-            SetBackdropLayout();
             return;
         }
         DraftGame.Open(GameApp.Project);
         draftWindow = new Window(new GameView(GameVersion.Draft));
         // ゲームの絵は、コードの窓より前に並べる
         backdrop.Windows.Insert(1, draftWindow);
-        SetBackdropLayout();
     }
 
     // コードの窓を、ゲームの絵と同じスクリーン (backdrop) に並べているか。
     // false なら、コードの窓は手前のコードのスクリーンにあり、ゲームの絵に透けて重なる
-    public static bool Tiled;
+    public static bool Tiled => Work != null && Work.Home == backdrop;
 
-    // 重ねる形と、左右に並ぶ形 (左にゲームの絵、右にコードの窓を積む) を切り替える
-    public static void ToggleTiled()
+    // 配置: 初めから入っている 2 つ (重ねる形、左右に並ぶ形) と、利用者が控えた物。名前で引く
+    public static readonly List<Arrangement> Arrangements = new List<Arrangement>();
+    // 利用者が控えた配置 (file に書く物)
+    static readonly List<Arrangement> savedArrangements = new List<Arrangement>();
+    // 最後に戻した配置の名前
+    public static string ArrangementName = "";
+    // 控えた配置の file を読み終えたか
+    static bool arrangementsLoaded;
+    public const string Overlay = "overlay";
+    public const string SideBySide = "side-by-side";
+
+    static string ArrangementsPath(Workspace w)
+    {
+        return w.Root + "/.lider/arrangements.txt";
+    }
+
+    // 初めから入っている配置を作る (起動したときの、スクリーンの形と位置から)
+    static void BuiltinArrangements(Workspace w)
+    {
+        Arrangements.Clear();
+        savedArrangements.Clear();
+        arrangementsLoaded = false;
+        // 重ねる形: ゲームの絵が画面いっぱいで、手前のコードのスクリーンに、インスペクタとコードの窓が透けて重なる
+        var overlay = Arrangement.Capture(Overlay, w);
+        // 左右に並ぶ形: 左にゲームの絵、右にコードの窓とインスペクタを積む
+        var side = Arrangement.Capture(SideBySide, w);
+        foreach (var a in new List<Arrangement> { overlay, side })
+            foreach (var spec in a.Screens)
+            {
+                spec.Windows.Clear();
+                var tiled = a == side;
+                if (spec.Name == backdrop.Name)
+                {
+                    spec.Layout = tiled ? "MainStack 0.5" : "Even";
+                    spec.Windows.Add("game:saved");
+                    spec.Windows.Add("game:draft");
+                    if (tiled)
+                    {
+                        spec.Windows.Add(Arrangement.AllCode);
+                        spec.Windows.Add("inspector");
+                    }
+                }
+                else if (spec.Name == w.CodeScreen.Name && !tiled)
+                {
+                    spec.Windows.Add("inspector");
+                    spec.Windows.Add(Arrangement.AllCode);
+                }
+            }
+        Arrangements.Add(overlay);
+        Arrangements.Add(side);
+        ArrangementName = Overlay;
+        RegisterArrangements();
+    }
+
+    // 配置ごとに、その配置に戻す命令を載せる
+    static void RegisterArrangements()
+    {
+        foreach (var a in Arrangements)
+        {
+            var name = a.Name;
+            CommandTable.Register("arrange:" + name, "配置「" + name + "」に戻す", () => With(w => Arrange(name)));
+        }
+    }
+
+    // 控えた配置の file を、読めるようになったら 1 度だけ読む。同じ名前の配置は、控えた物に置き換える
+    static void LoadArrangements(Workspace w)
+    {
+        if (arrangementsLoaded)
+            return;
+        Io.LoadText(ArrangementsPath(w), out var text, out _, out var status, out _);
+        if (status == Io.Status.Pending)
+            return;
+        arrangementsLoaded = true;
+        if (text == null)
+            return;
+        foreach (var a in Arrangement.Read(text))
+            Keep(a);
+        RegisterArrangements();
+    }
+
+    // 控えた配置を一覧に入れる (同じ名前の物は置き換える)
+    static void Keep(Arrangement a)
+    {
+        Replace(savedArrangements, a);
+        Replace(Arrangements, a);
+    }
+
+    static void Replace(List<Arrangement> list, Arrangement a)
+    {
+        for (var i = 0; i < list.Count; i++)
+            if (list[i].Name == a.Name)
+            {
+                list[i] = a;
+                return;
+            }
+        list.Add(a);
+    }
+
+    // 名前の配置に戻す (無ければ false)
+    public static bool Arrange(string name)
+    {
+        var w = Work;
+        if (w == null)
+            return false;
+        foreach (var a in Arrangements)
+        {
+            if (a.Name != name)
+                continue;
+            a.Apply(w);
+            ArrangementName = name;
+            // 移した先では、開いたときと同じに小さな大きさから広がる
+            motions.Clear();
+            PlaceInspector(w);
+            return true;
+        }
+        return false;
+    }
+
+    // 一覧の、今の配置の次の配置に戻す
+    public static void NextArrangement()
+    {
+        var at = 0;
+        for (var i = 0; i < Arrangements.Count; i++)
+            if (Arrangements[i].Name == ArrangementName)
+                at = i;
+        if (Arrangements.Count > 0)
+            Arrange(Arrangements[(at + 1) % Arrangements.Count].Name);
+    }
+
+    // 今の配置を name で控え、file に書く (同じ名前の配置は上書きする)
+    public static void SaveArrangement(string name)
     {
         var w = Work;
         if (w == null)
             return;
-        Tiled = !Tiled;
-        w.Home = Tiled ? backdrop : null;
-        foreach (var window in w.Windows)
-        {
-            w.MoveTo(window, Tiled ? backdrop : w.CodeScreen);
-            // 移した先では、開いたときと同じに小さな大きさから広がる
-            motions.Remove(window);
-        }
-        SetBackdropLayout();
-        // インスペクタも、コードの窓と同じスクリーンに載せ直す
-        w.ScreenOf(inspectWindow)?.Windows.Remove(inspectWindow);
-        inspectWindow.Position = null;
-        inspectWindow.ViewportRect = null;
-        PlaceInspector(w);
+        Keep(Arrangement.Capture(name, w));
+        ArrangementName = name;
+        var lines = new List<string>();
+        foreach (var a in savedArrangements)
+            foreach (var line in a.Lines())
+                lines.Add(line);
+        Io.SaveText(ArrangementsPath(w), string.Join("\n", lines) + "\n");
+        RegisterArrangements();
     }
 
     // window を、次のスクリーンへ移す (ウィンドウを並べるスクリーンを順に回る)。
@@ -1937,16 +2062,6 @@ public static class Lider
                 w.Home = next == w.CodeScreen ? null : next;
             return;
         }
-    }
-
-    static void SetBackdropLayout()
-    {
-        if (Tiled)
-            backdrop.Layout = new MainStack();
-        else if (draftWindow != null)
-            backdrop.Layout = new Even();
-        else
-            backdrop.Layout = new Full();
     }
 
     // 窓の大きさを Zen に合わせる。画面に 1 枚が収まる px は、窓の px の大きさ (倍率) と画角で決まる
@@ -2106,6 +2221,7 @@ public static class Lider
         if (w == null)
             return;
         Space.Flat = !Xr.Active();
+        LoadArrangements(w);
         PlaceInspector(w);
         // 記録は lider を出していない間も受け取って捨てる (溜めない)
         if (inspect.Tree.ScopeId != tracedScope)

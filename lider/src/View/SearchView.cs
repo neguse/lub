@@ -32,7 +32,7 @@ public class SearchView
         if (gap.Lapsed())
             drawn = "";
         rows = search.Results.Count + 1;
-        var key = search.Query + "\n" + search.Selected + "\n" + text.Version + "\n" + text.Density;
+        var key = search.Query + "\n" + search.Prompt + "\n" + search.Selected + "\n" + text.Version + "\n" + text.Density;
         foreach (var item in search.Results)
             key += item.Text + (item.Dirty ? " *" : "") + "\t" + item.Where + "\n";
         if (texture == null || key == drawn)
@@ -47,6 +47,10 @@ public class SearchView
         var top = (RowH - text.LineH) * 0.5f;
         text.Draw(batch, ">", Pad * 2, Pad + top, Theme.Accent);
         text.Draw(batch, search.Query + "_", Pad * 2 + text.CellW * 2, Pad + top, ink);
+        // 字を打ってもらう入力のときは、何を打つかを右に出す
+        var asking = Utf8.Cells(search.Prompt, Utf8.Bytes(search.Prompt));
+        if (asking > 0)
+            text.Draw(batch, search.Prompt, PxW - Pad * 2 - asking * text.CellW, Pad + top, dim);
         for (var i = 0; i < search.Results.Count; i++)
         {
             var item = search.Results[i];
