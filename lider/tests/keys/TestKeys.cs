@@ -103,7 +103,7 @@ public static class TestKeys
         Send(EventKind.KeyUp, Keys.A);
         Send(EventKind.KeyDown, Keys.F1);
         Send(EventKind.KeyUp, Keys.F1);
-        Check(w.Active, "lider is not active after pressing F1 twice");
+        Check(!w.OnGame, "lider is not active after pressing F1 twice");
         Send(EventKind.KeyDown, Keys.A);
         Send(EventKind.KeyUp, Keys.A);
         Check(doc.Text(doc.Line) == "    // 日本aa語のコメント", "typed after F1: " + doc.Text(doc.Line));
@@ -131,7 +131,7 @@ public static class TestKeys
         Send(EventKind.KeyDown, Keys.F1);
         Send(EventKind.KeyDown, Keys.F1);
         Send(EventKind.KeyUp, Keys.F1);
-        Check(!w.Active, "holding F1 toggled lider more than once");
+        Check(w.OnGame, "holding F1 toggled lider more than once");
         if (failed)
             return;
         Console.WriteLine("PASS");

@@ -35,6 +35,8 @@ public class Screen
     public Vec2 Size = new Vec2(1, 1);
     // 透過度 (1 で透けない)
     public float Opacity = 1;
+    // 出しているか (隠している間、上のウィンドウは描かず、入力も届かない)
+    public bool Shown = true;
     public ILayout Layout = new Full();
     // ウィンドウ (並べる順)
     public readonly List<Window> Windows = new List<Window>();

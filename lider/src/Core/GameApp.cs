@@ -89,8 +89,8 @@ public static class GameApp
 
     // ゲームを 1 frame 進める。
     // at はゲームを映すウィンドウの画面の上の矩形 (画面の座標)、from は入力の位置を測るウィンドウの矩形 (編集中の版と入力を揃えるとき、マウスのある方)、pixelRatio は画面の座標の 1 に対する画面の画素の数。
-    // grabbed なら、ゲームにはキーボードとマウスを見せない
-    public static void Step(float dt, bool grabbed, PixelRect at, PixelRect from, float pixelRatio)
+    // keyboard と mouse は、それぞれをゲームに見せるか
+    public static void Step(float dt, bool keyboard, bool mouse, PixelRect at, PixelRect from, float pixelRatio)
     {
         Stepped = false;
         if (Build.Needed)
@@ -108,11 +108,8 @@ public static class GameApp
             Ref = Build.Needed ? App.Use("lider_game_app", Module, Build.Entry) : App.Use("lider_game_app", Module);
             Input.MousePos(out var mx, out var my);
             var input = new StepInput { MouseX = Map.X(mx), MouseY = Map.Y(my) };
-            if (grabbed)
-            {
-                input.Keyboard = false;
-                input.Mouse = false;
-            }
+            input.Keyboard = keyboard;
+            input.Mouse = mouse;
             var paused = Position >= 0;
             Stepped = timeline != null ? timeline.Step(Ref, Target, dt, input) : App.Step(Ref, Target, dt, input);
             if (Stepped && !paused)
