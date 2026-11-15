@@ -1501,8 +1501,8 @@ public static class Lider
             oskWindow.Position = null;
             oskWindow.ViewportRect = null;
             oskWindow.ContentRect = null;
-            osk.HoverRow = -1;
-            osk.HoverAt = -1;
+            osk.Point(0, -1, -1);
+            osk.Point(1, -1, -1);
             return;
         }
         if (!osk.Shown)
@@ -1534,21 +1534,21 @@ public static class Lider
         return new Vec2(u, v);
     }
 
-    // ray の指す key を光らせる
-    static void PointOsk(Workspace w, Ray ray)
+    // 指す物 pointer (左手 0、右手かマウス 1) の ray の指す key を光らせる (ray が無ければ、光らせない)
+    static void PointOsk(Workspace w, int pointer, Ray? ray)
     {
-        var uv = OskUv(w, ray);
-        osk.Point(uv != null ? uv.Value.X : -1, uv != null ? uv.Value.Y : -1);
+        var uv = ray != null ? OskUv(w, ray.Value) : null;
+        osk.Point(pointer, uv != null ? uv.Value.X : -1, uv != null ? uv.Value.Y : -1);
     }
 
     // ray が画面のキーボードの key を指していれば、その key を押す (つないだキーボードと同じ event を流す)。キーボードを指していれば true
-    public static bool PressOsk(Workspace w, Ray ray)
+    public static bool PressOsk(Workspace w, Ray ray, int pointer = 1)
     {
         var uv = OskUv(w, ray);
         if (uv == null)
             return false;
-        osk.Point(uv.Value.X, uv.Value.Y);
-        var key = osk.Hovered;
+        osk.Point(pointer, uv.Value.X, uv.Value.Y);
+        var key = osk.Hovered(pointer);
         if (key != null)
             foreach (var e in osk.Press(key))
                 OnEvent(e);
@@ -2949,14 +2949,9 @@ public static class Lider
             if (y && !oskButton)
                 osk.Shown = !osk.Shown;
             oskButton = y;
-            // 画面のキーボードは、どちらの手で指しても光る
-            PointOsk(w, aim);
-            for (var h = 0; h < 2 && osk.Hovered == null; h++)
-            {
-                var ray = HandRay(h);
-                if (ray != null)
-                    PointOsk(w, ray.Value);
-            }
+            // 画面のキーボードは、両手の指している key がそれぞれ光る
+            for (var h = 0; h < 2; h++)
+                PointOsk(w, h, HandRay(h));
             Triggers(w, w.OnGame);
             if (!w.OnGame)
             {
@@ -3010,7 +3005,8 @@ public static class Lider
             Aspect = (float)viewportW / viewportH,
         }) * slide;
         cameraSet = true;
-        PointOsk(w, PointerRay(mx, my));
+        PointOsk(w, 0, null);
+        PointOsk(w, 1, PointerRay(mx, my));
         if (!forGame)
         {
             Hover(w, PointerRay(mx, my), mx, my, dt);
@@ -3227,11 +3223,13 @@ public static class Lider
             // 押し離しは閾値を分けて、ぶれで繰り返さない
             var down = input != null && ray != null && (triggerDown[h] ? input.Trigger > 0.3f : input.Trigger > 0.7f);
             if (down && !triggerDown[h] && oskOnly)
-                PressOsk(w, ray!.Value);
+                PressOsk(w, ray!.Value, h);
             else if (down && !triggerDown[h] && activeHand < 0)
             {
                 activeHand = h;
-                Click(w, ray!.Value, true);
+                // 画面のキーボードは、押した手の指している key を押す
+                if (!PressOsk(w, ray!.Value, h))
+                    Click(w, ray!.Value, true);
             }
             else if (down && activeHand == h && !oskOnly)
                 DragTo(w, ray!.Value);
@@ -3798,15 +3796,6 @@ public static class Lider
                 Quad3d.Curved(on, inspectTitle.Texture, Color.Rgb(1, 1, 1, 1), BoardAngle, InspectTitleY(), Space.R, size.X, InspectTitleH, 0, 1);
             Space.Flat = worldFlat;
         }
-        // コントローラーで指している点 (両手。指している面の上に、見かけが同じ大きさで出す)
-        for (var h = 0; lastEye != null && h < 2; h++)
-        {
-            var on = aimScreen[h];
-            if (on == null)
-                continue;
-            var dot = 0.014f / Apparent(on);
-            SurfaceQuad(on, worldVp, new Vec4(aimAt[h].X, aimAt[h].Y, dot, dot), Color.Rgb(0.4f, 0.9f, 1.0f, 0.95f), null);
-        }
         foreach (var ring in rings)
             DrawRing(vp, ring);
         DrawFlash(vp);
@@ -3817,6 +3806,15 @@ public static class Lider
         if (keys != null && keys.Shown && oskWindow.Position != null && osk.Picture != null)
             SurfaceQuad(keys, worldVp, new Vec4(oskWindow.Position.Value.X, oskWindow.Position.Value.Y, oskWindow.Size.X, oskWindow.Size.Y), Color.Rgb(1, 1, 1, 1), osk.Picture);
         DrawScreenTags(w, worldVp);
+        // コントローラーで指している点 (両手。指している面の上に、見かけが同じ大きさで出す)。画面のキーボードの上にも見えるよう、キーボードの後に描く
+        for (var h = 0; lastEye != null && h < 2; h++)
+        {
+            var on = aimScreen[h];
+            if (on == null)
+                continue;
+            var dot = 0.014f / Apparent(on);
+            SurfaceQuad(on, worldVp, new Vec4(aimAt[h].X, aimAt[h].Y, dot, dot), Color.Rgb(0.4f, 0.9f, 1.0f, 0.95f), null);
+        }
         // 案内は、平面のスクリーンの上に、曲げずに描く
         Space.Flat = true;
         hintCard.Draw(VpOf(hud, worldVp));

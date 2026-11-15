@@ -25,9 +25,9 @@ public class Osk : IContent
     public bool Shown;
     // 次の 1 打に効く修飾 key (Keys.Mod* の bit の和)
     public int Mods;
-    // 指している key (行と、行の中の番号。指していなければ -1)
-    public int HoverRow = -1;
-    public int HoverAt = -1;
+    // 指している key (行と、行の中の番号。指していなければ -1)。指す物ごと (左手 0、右手かマウス 1) に持つ
+    public readonly int[] HoverRow = new int[] { -1, -1 };
+    public readonly int[] HoverAt = new int[] { -1, -1 };
     // 描いた絵 (OskView が描く)
     public TextureRef? Picture;
 
@@ -98,11 +98,11 @@ public class Osk : IContent
         return c != 0 ? ((char)c).ToString() : "";
     }
 
-    // 絵の中の位置 (左上が 0,0、右下が 1,1) にある key の、行と行の中の番号を HoverRow と HoverAt に入れる (無ければ -1)
-    public void Point(float u, float v)
+    // 指す物 pointer (左手 0、右手かマウス 1) が、絵の中の位置 (左上が 0,0、右下が 1,1) を指した。その key を光らせる (key の無い所なら、光らせない)
+    public void Point(int pointer, float u, float v)
     {
-        HoverRow = -1;
-        HoverAt = -1;
+        HoverRow[pointer] = -1;
+        HoverAt[pointer] = -1;
         if (u < 0 || u >= 1 || v < 0 || v >= 1)
             return;
         var r = (int)(v * Rows.Count);
@@ -112,16 +112,25 @@ public class Osk : IContent
         {
             if (x >= left && x < left + Rows[r][i].W)
             {
-                HoverRow = r;
-                HoverAt = i;
+                HoverRow[pointer] = r;
+                HoverAt[pointer] = i;
                 return;
             }
             left += Rows[r][i].W;
         }
     }
 
-    // 指している key (指していなければ null)
-    public OskKey? Hovered => HoverRow >= 0 ? Rows[HoverRow][HoverAt] : null;
+    // 指す物 pointer が指している key (指していなければ null)
+    public OskKey? Hovered(int pointer)
+    {
+        return HoverRow[pointer] >= 0 ? Rows[HoverRow[pointer]][HoverAt[pointer]] : null;
+    }
+
+    // 行 r の i 番目の key を、どれかの指す物が指しているか
+    public bool Lit(int r, int i)
+    {
+        return (HoverRow[0] == r && HoverAt[0] == i) || (HoverRow[1] == r && HoverAt[1] == i);
+    }
 
     // key を押す。修飾 key なら次の 1 打に効かせる (か外す) だけで、ほかの key は、押して離す event の並びを返し、修飾 key を外す
     public List<EventData> Press(OskKey key)

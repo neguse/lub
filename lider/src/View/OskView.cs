@@ -27,7 +27,7 @@ public class OskView
         osk.Picture = Assets.RenderTarget("lider_osk_tex", PxW * density, PxH(osk) * density, Gfx.PixelFormat.Rgba8);
         batch.Ensure();
         text.Glyphs.Ensure();
-        var state = osk.Mods + " " + osk.HoverRow + " " + osk.HoverAt + " " + density + " " + text.Version;
+        var state = osk.Mods + " " + osk.HoverRow[0] + " " + osk.HoverAt[0] + " " + osk.HoverRow[1] + " " + osk.HoverAt[1] + " " + density + " " + text.Version;
         if (osk.Picture == null || state == drawn)
             return;
         drawn = state;
@@ -42,7 +42,7 @@ public class OskView
                 var x = left * UnitPx;
                 var y = r * RowPx;
                 var w = key.W * UnitPx;
-                var lit = r == osk.HoverRow && i == osk.HoverAt;
+                var lit = osk.Lit(r, i);
                 var held = key.Mod != 0 && (osk.Mods & key.Mod) != 0;
                 var face = held ? Theme.Accent : lit ? Theme.Selected : Theme.TabCurrent;
                 batch.Rect(x + 2, y + 2, w - 4, RowPx - 4, Color.Rgb(face.R, face.G, face.B, held || lit ? 1 : face.A));
