@@ -119,11 +119,13 @@ public static class Lider
     public static List<string> What = new List<string>();
     // 画面の座標 (web は CSS px) の 1 に対する、MainTex の画素の数
     public static float PixelRatio = float.Parse(Environment.GetEnvironmentVariable("LIDER_PIXEL_RATIO") ?? "1");
-    // インスペクタ (F2 か左手の X で出し入れ)。中身が Inspector のウィンドウで、コードの窓と同じスクリーンに並ぶ。
+    // インスペクタ (F2 で出して focus を移し、focus があればしまう。左手の X でも出し入れ)。中身が Inspector のウィンドウで、コードの窓と同じスクリーンに並ぶ。
     // 重ねる形ではコードのスクリーンの一番左、左右に並ぶ形では背景のスクリーンの最後に置く
     static readonly InspectView inspect = new InspectView();
     public static InspectView Inspector => inspect;
     static Window inspectWindow = new Window(new Inspector(inspect));
+    public static Window InspectWindow => inspectWindow;
+    static readonly TitleView inspectTitle = new TitleView("lider_inspect_title");
     static bool TreeVisible => inspect.Shown && !ZenShown && inspectWindow.Position != null;
     // 窓を画面の幅に広げ、左の板を隠し、ゲームを暗くする。focus がゲームにある間は効かせない (ゲームを遊べるように)
     public static bool Zen;
@@ -342,7 +344,7 @@ public static class Lider
     // ray が lider の物 (ウィンドウ、その見出しと端、検索の板) を指しているか
     static bool OverLider(Workspace w, Ray ray)
     {
-        return Search.Shown || InspectAt(ray) != null || TitleAt(w, ray) != null || WindowAt(w, ray) != null
+        return Search.Shown || InspectAt(ray) != null || InspectTitleAt(ray) != null || TitleAt(w, ray) != null || WindowAt(w, ray) != null
             || (!Zen && EdgeWindow(w, ray) != null);
     }
 
@@ -457,8 +459,14 @@ public static class Lider
                 inspect.Load = !inspect.Shown || !inspect.Load;
                 inspect.Shown = true;
             }
+            // 出していなければ出して focus を移し、focus がほかにあれば focus を移し、focus があれば閉じる
+            else if (!repeated && inspect.Shown && w.Focused == inspectWindow)
+                Close(w, inspectWindow);
             else if (!repeated)
-                inspect.Shown = !inspect.Shown;
+            {
+                inspect.Shown = true;
+                w.FocusTo(inspectWindow);
+            }
         }
         else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F10)
         {
@@ -605,12 +613,37 @@ public static class Lider
         if (key == TabScancode)
             w.NextTab(w.Shift ? -1 : 1);
         else if (key == WScancode && !w.Alt && !w.Shift)
-            w.CloseTab();
+            CloseFocused(w);
         else if (w.Alt && (key == Keys.Left || key == Keys.Right))
             w.MoveTab(key == Keys.Left ? -1 : 1);
         else
             return false;
         return true;
+    }
+
+    // ウィンドウを閉じる (どの中身のウィンドウにも効く)。focus があったら、Code のウィンドウに戻す
+    public static void Close(Workspace w, Window window)
+    {
+        if (window.Content is Code)
+            w.Close(window);
+        else if (window == inspectWindow)
+        {
+            inspect.Shown = false;
+            if (w.Focused == window)
+                w.FocusCode();
+        }
+    }
+
+    // focus のあるウィンドウを閉じる (Code では今のタブを閉じ、最後のタブならウィンドウごと閉じる)
+    public static void CloseFocused(Workspace w)
+    {
+        var window = w.Focused;
+        if (window == null)
+            return;
+        if (window.Content is Code)
+            w.CloseTab();
+        else
+            Close(w, window);
     }
 
     // インスペクタの行に絞り込む。個体なら、エディタのフィールドの値もその個体にする
@@ -862,10 +895,19 @@ public static class Lider
     // 指した所で次のどれかをする: 窓の閉じる印なら閉じる、窓の見出しならその窓に focus を移す、窓ならその窓に focus を移してカーソルを動かす、どれでもなければゲームの物を描いたコードを探す (Gfx.Pick)
     public static void Click(Workspace w, Ray ray, bool pickGame)
     {
+        var bar = InspectTitleAt(ray);
+        if (bar != null)
+        {
+            if (inspectTitle.OnClose(bar.Value.X))
+                Close(w, inspectWindow);
+            else
+                w.FocusTo(inspectWindow);
+            return;
+        }
         var uv = InspectAt(ray);
-        // lider の物を押すと、focus はゲームから離れる
+        // 押したウィンドウに focus が移る (コードへ飛ぶ行を押したら、focus は開いた Code に移る)
         if (uv != null)
-            w.FocusCode();
+            w.FocusTo(inspectWindow);
         if (uv != null && inspect.Load)
         {
             var tab = inspect.TabAt(uv.Value);
@@ -873,7 +915,10 @@ public static class Lider
                 Costs.Metric = tab;
             var load = inspect.LoadAt(uv.Value);
             if (load != null)
+            {
+                w.FocusCode();
                 Search.GoToPlace(w, load.Path, load.Line - 1);
+            }
             return;
         }
         if (uv != null)
@@ -885,6 +930,7 @@ public static class Lider
             else if (row != null && row.Target != "" && InspectView.OnJump(uv.Value))
             {
                 Fields.Select(row.Key);
+                w.FocusCode();
                 Search.GoTo(w, row.Target);
             }
             else if (row != null && row.Scopable && InspectView.OnScope(uv.Value))
@@ -968,6 +1014,9 @@ public static class Lider
         var uv = InspectAt(ray);
         var head = uv == null ? TitleAt(w, ray) : null;
         closeHover = head != null && Panel(head.Window).OnClose(head.Uv) ? head.Window : null;
+        var bar = InspectTitleAt(ray);
+        if (bar != null && inspectTitle.OnClose(bar.Value.X))
+            closeHover = inspectWindow;
         var edged = uv == null && lastEye == null && !Zen ? EdgeWindow(w, ray) : null;
         edgeHoverWindow = edged;
         edgeHover = foundEdge;
@@ -1102,7 +1151,10 @@ public static class Lider
         inspectWindow.Scale = InspectScale;
         // 平面のスクリーンでは、配置の規則が決めた矩形に収める
         if (OnView(home) && inspectWindow.Position != null)
-            InspectView.SetSize(inspectWindow.Size.X * ViewScale(home) / InspectScale, inspectWindow.Size.Y * ViewScale(home) / InspectScale);
+            InspectView.SetSize(inspectWindow.Size.X * ViewScale(home) / InspectScale, inspectWindow.Size.Y * ViewScale(home) / InspectScale - PanelView.TitleH);
+        // 隠れたウィンドウには focus を置かない
+        if (w.Focused == inspectWindow && !TreeVisible)
+            w.FocusCode();
     }
 
     // インスペクタの中心の角度 (インスペクタの所を押すテストが使う)、高さ、大きさ (半径 Space.R の所のメートル)
@@ -1116,7 +1168,27 @@ public static class Lider
     static Vec2 InspectSize()
     {
         var screen = Work != null ? ScreenFor(Work, inspectWindow) : null;
-        return screen != null && OnView(screen) ? inspectWindow.Size * ViewScale(screen) : inspectWindow.Size;
+        // 平面のスクリーンでは、ウィンドウの矩形に見出しも収める
+        return screen != null && OnView(screen)
+            ? new Vec2(inspectWindow.Size.X * ViewScale(screen), inspectWindow.Size.Y * ViewScale(screen) - InspectTitleH)
+            : inspectWindow.Size;
+    }
+
+    // インスペクタの見出しの帯の高さと、中心の高さ
+    static float InspectTitleH => PanelView.TitleH * InspectScale;
+
+    static float InspectTitleY()
+    {
+        return InspectY() + (InspectSize().Y + InspectTitleH) * 0.5f;
+    }
+
+    // インスペクタの見出しの帯を指していれば、その中の位置
+    static Vec2? InspectTitleAt(Ray ray)
+    {
+        var w = Work;
+        if (w == null || !TreeVisible)
+            return null;
+        return HitOn(ScreenFor(w, inspectWindow), ray, BoardAngle, InspectTitleY(), InspectSize().X, InspectTitleH);
     }
 
     // インスペクタを指していれば、その中の位置
@@ -1269,7 +1341,7 @@ public static class Lider
         var screen = ScreenFor(w, window);
         // 平面のスクリーンでは、ウィンドウの矩形に見出しも収めるので、本文は見出しの分だけ下がる
         return OnView(screen)
-            ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - ((window.Content is Code) ? PanelView.TitleH * window.Scale * 0.5f : 0)
+            ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - ((window.Content is GameView) ? 0 : PanelView.TitleH * window.Scale * 0.5f)
             : window.Position.Value.Y;
     }
 
@@ -1404,7 +1476,7 @@ public static class Lider
         var moved = mx != hoverX || my != hoverY;
         hoverX = mx;
         hoverY = my;
-        var game = Paused && InspectAt(ray) == null && TitleAt(w, ray) == null && WindowAt(w, ray) == null && !Search.Shown;
+        var game = Paused && InspectAt(ray) == null && InspectTitleAt(ray) == null && TitleAt(w, ray) == null && WindowAt(w, ray) == null && !Search.Shown;
         if (moved || !game)
         {
             hoverStill = 0;
@@ -1769,7 +1841,7 @@ public static class Lider
             panel.TabLabels = w.TabTitles(window);
             panel.Tab = window.Code.Tab;
             panel.Title = motion != null && motion.LandLabel > 0 ? (int)(motion.LandSeconds * 100) / 100.0f + "s" : "";
-            panel.Focused = window == w.FocusWindow;
+            panel.Focused = window == w.Focused;
             panel.Costs = Costs;
             panel.Fields = Fields.For(Search.DeclarationsIn(window.Code.Doc.Path), EditorHost.FirstLine(window.Code.ViewId), EditorHost.LastLine(window.Code.ViewId));
             panel.CloseLit = window == closeHover;
@@ -1789,6 +1861,12 @@ public static class Lider
         if (Search.Shown || inspect.Shown)
             Search.Refresh(w);
         inspect.Prepare(panelText, w, Search, Fields, Costs);
+        inspectTitle.Label = inspect.Load ? "Load" : "Inspector";
+        inspectTitle.Focused = w.Focused == inspectWindow;
+        inspectTitle.CloseLit = closeHover == inspectWindow;
+        inspectTitle.PxW = InspectView.PxW;
+        if (inspect.Shown)
+            inspectTitle.Prepare(panelText);
         if (Search.Shown)
             searchView.Prepare(Search, panelText);
         AssetBoard.Prepare(w.ShownAsset, w.ShownAsset == "" ? "" : w.Relative(w.ShownAsset), panelText);
@@ -2565,6 +2643,9 @@ public static class Lider
             Space.Flat = worldFlat || onView;
             Theme.Plate(onView ? viewVp : vp, Theme.Surface, BoardAngle, InspectY(), Space.R, size.X, size.Y);
             Quad3d.Curved(onView ? viewVp : vp, inspect.Texture, Color.Rgb(1, 1, 1, 1), BoardAngle, InspectY(), Space.R, size.X, size.Y, 0, 1);
+            Theme.Plate(onView ? viewVp : vp, Theme.Surface, BoardAngle, InspectTitleY(), Space.R, size.X, InspectTitleH);
+            if (inspectTitle.Texture != null)
+                Quad3d.Curved(onView ? viewVp : vp, inspectTitle.Texture, Color.Rgb(1, 1, 1, 1), BoardAngle, InspectTitleY(), Space.R, size.X, InspectTitleH, 0, 1);
             Space.Flat = worldFlat;
         }
         DrawTimeline(vp);
