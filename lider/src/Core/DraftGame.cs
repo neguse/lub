@@ -63,8 +63,8 @@ public static class DraftGame
     }
 
     // 1 frame 進める。docs は開いている file (保存していない本文を使う)。
-    // paused なら進めず (保存した版を止めている)、at と from と keyboard と mouse は GameApp.Step と同じ
-    public static void Step(float dt, bool keyboard, bool mouse, bool paused, PixelRect at, PixelRect from, float pixelRatio, Dictionary<string, Document> docs)
+    // paused なら進めず (保存した版を止めている)、w と h と keyboard と mouse は GameApp.Step と同じ
+    public static void Step(float dt, bool keyboard, bool mouse, bool paused, int w, int h, Dictionary<string, Document> docs)
     {
         if (Build == null)
             return;
@@ -74,9 +74,9 @@ public static class DraftGame
             unsaved[pair.Key] = pair.Value;
         Build.Unsaved = unsaved;
         Build.Tick(dt);
-        var w = Math.Max(1, (int)(at.W * pixelRatio));
-        var h = Math.Max(1, (int)(at.H * pixelRatio));
-        Map.Set(from, w, h);
+        w = Math.Max(1, w);
+        h = Math.Max(1, h);
+        Map.Set(w, h);
         Target = Gfx.UseTexture("lider_draft", w, h, Gfx.PixelFormat.Rgba8, null, GameApp.SizeVersion(w, h), new TextureOpts { Target = true });
         if (Build.ModulePath == "" || Target == null)
             return;
@@ -90,8 +90,7 @@ public static class DraftGame
         }
         if (paused)
             return;
-        Input.MousePos(out var mx, out var my);
-        var input = new StepInput { MouseX = Map.X(mx), MouseY = Map.Y(my) };
+        var input = new StepInput { MouseX = Map.X, MouseY = Map.Y };
         input.Keyboard = keyboard;
         input.Mouse = mouse;
         App.Step(Ref, Target, dt, input);

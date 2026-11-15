@@ -23,7 +23,6 @@ public static class GameApp
     // ゲームが描く texture (ゲームを映すウィンドウと同じ大きさ)
     public static TextureRef? Target;
     // ゲームを映すウィンドウの画面の上の矩形 (pick の位置を直す) と、入力の位置をゲームの画素に直す写し方
-    static PixelRect? shownAt;
     public static readonly InputMap Map = new InputMap();
     static AppTimeline? timeline;
     // reload が当たった回数、作り直した回数、最後の build の診断 (前に見た値。変わったら Changed に出す)
@@ -72,7 +71,7 @@ public static class GameApp
         return w * 16384 + h;
     }
 
-    // ゲームの OnEvent に event を渡す。位置は画面の座標から texture の画素に直す (Map)
+    // ゲームの OnEvent に event を渡す。位置は、前もって Map.Point で渡した絵の中の位置を texture の画素に直す (Map)
     public static void Send(EventData e)
     {
         if (Ref != null)
@@ -88,9 +87,9 @@ public static class GameApp
     }
 
     // ゲームを 1 frame 進める。
-    // at はゲームを映すウィンドウの画面の上の矩形 (画面の座標)、from は入力の位置を測るウィンドウの矩形 (編集中の版と入力を揃えるとき、マウスのある方)、pixelRatio は画面の座標の 1 に対する画面の画素の数。
+    // w と h は絵の画素の数。マウスの位置は、前もって Map.Point で渡す。
     // keyboard と mouse は、それぞれをゲームに見せるか
-    public static void Step(float dt, bool keyboard, bool mouse, PixelRect at, PixelRect from, float pixelRatio)
+    public static void Step(float dt, bool keyboard, bool mouse, int w, int h)
     {
         Stepped = false;
         if (Build.Needed)
@@ -98,16 +97,14 @@ public static class GameApp
             Build.Tick(dt);
             Module = Build.ModulePath;
         }
-        var w = Math.Max(1, (int)(at.W * pixelRatio));
-        var h = Math.Max(1, (int)(at.H * pixelRatio));
-        shownAt = at;
-        Map.Set(from, w, h);
+        w = Math.Max(1, w);
+        h = Math.Max(1, h);
+        Map.Set(w, h);
         Target = Gfx.UseTexture("lider_game", w, h, Gfx.PixelFormat.Rgba8, null, SizeVersion(w, h), new TextureOpts { Target = true });
         if (Module != "" && Target != null)
         {
             Ref = Build.Needed ? App.Use("lider_game_app", Module, Build.Entry) : App.Use("lider_game_app", Module);
-            Input.MousePos(out var mx, out var my);
-            var input = new StepInput { MouseX = Map.X(mx), MouseY = Map.Y(my) };
+            var input = new StepInput { MouseX = Map.X, MouseY = Map.Y };
             input.Keyboard = keyboard;
             input.Mouse = mouse;
             var paused = Position >= 0;
@@ -168,14 +165,11 @@ public static class GameApp
         return change;
     }
 
-    // 画面の座標 (x, y) に何が描いてあるかを調べる (結果は PickResult)。ゲームを映すウィンドウの外なら調べない
-    public static void Pick(float x, float y)
+    // 絵の中の位置 uv (左上が 0,0、右下が 1,1) に何が描いてあるかを調べる (結果は PickResult)
+    public static void Pick(Vec2 uv)
     {
-        if (Ref == null || shownAt == null || !shownAt.Contains(x, y))
-            return;
-        var at = new InputMap();
-        at.Set(shownAt, Map.W, Map.H);
-        Gfx.Pick(Gfx.MainTex!, (int)at.X(x), (int)at.Y(y), Ref);
+        if (Ref != null)
+            Gfx.Pick(Gfx.MainTex!, (int)(uv.X * Map.W), (int)(uv.Y * Map.H), Ref);
     }
 
     public static PickHit? PickResult()

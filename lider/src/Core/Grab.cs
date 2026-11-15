@@ -36,7 +36,8 @@ public class Grab
     {
         if (Window == null || two)
             return;
-        Place(Window, x + xOffset, y + yOffset);
+        // 大きさは、配置の規則が決めた物のまま
+        Window.Place(x + xOffset, y + yOffset);
     }
 
     // つかんでいる窓の大きさをホイールの dy 段だけ変える

@@ -65,6 +65,36 @@ public class Strip : ILayout
     }
 }
 
+// スクリーンを区画に割る規則が共通に使う: 区画の真ん中と大きさを、並びの順にウィンドウへ割り当てる。
+// つかんでいるウィンドウ (Screen.Held) は動かさず、その真ん中がほかの区画に入ったら、その区画のウィンドウと並びを入れ替える
+public static class Tiles
+{
+    public static void Assign(Screen screen, System.Collections.Generic.List<Vec2> centers, System.Collections.Generic.List<Vec2> sizes)
+    {
+        var windows = screen.Windows;
+        var held = screen.Held;
+        var at = held != null ? windows.IndexOf(held) : -1;
+        if (held != null && held.Position != null && at >= 0)
+        {
+            var p = held.Position.Value;
+            for (var i = 0; i < windows.Count; i++)
+            {
+                if (i == at || System.Math.Abs(p.X - centers[i].X) > sizes[i].X * 0.5f || System.Math.Abs(p.Y - centers[i].Y) > sizes[i].Y * 0.5f)
+                    continue;
+                windows[at] = windows[i];
+                windows[i] = held;
+                break;
+            }
+        }
+        for (var i = 0; i < windows.Count; i++)
+        {
+            windows[i].Size = sizes[i];
+            if (windows[i] != held || windows[i].Position == null)
+                windows[i].Place(centers[i].X, centers[i].Y);
+        }
+    }
+}
+
 // ウィンドウを並べた順に、列 (Rows なら行) に等分して出す
 public class Even : ILayout
 {
@@ -75,20 +105,14 @@ public class Even : ILayout
         var n = screen.Windows.Count;
         var w = screen.Size.X;
         var h = screen.Size.Y;
+        var centers = new System.Collections.Generic.List<Vec2>();
+        var sizes = new System.Collections.Generic.List<Vec2>();
         for (var i = 0; i < n; i++)
         {
-            var window = screen.Windows[i];
-            if (Rows)
-            {
-                window.Place(0, h * 0.5f - h * (i + 0.5f) / n);
-                window.Size = new Vec2(w, h / n);
-            }
-            else
-            {
-                window.Place(-w * 0.5f + w * (i + 0.5f) / n, 0);
-                window.Size = new Vec2(w / n, h);
-            }
+            centers.Add(Rows ? new Vec2(0, h * 0.5f - h * (i + 0.5f) / n) : new Vec2(-w * 0.5f + w * (i + 0.5f) / n, 0));
+            sizes.Add(Rows ? new Vec2(w, h / n) : new Vec2(w / n, h));
         }
+        Tiles.Assign(screen, centers, sizes);
     }
 }
 
@@ -106,13 +130,14 @@ public class MainStack : ILayout
         if (n == 0)
             return;
         var main = n == 1 ? w : w * Ratio;
-        screen.Windows[0].Place(-w * 0.5f + main * 0.5f, 0);
-        screen.Windows[0].Size = new Vec2(main, h);
+        var centers = new System.Collections.Generic.List<Vec2> { new Vec2(-w * 0.5f + main * 0.5f, 0) };
+        var sizes = new System.Collections.Generic.List<Vec2> { new Vec2(main, h) };
         for (var i = 1; i < n; i++)
         {
-            screen.Windows[i].Place(-w * 0.5f + main + (w - main) * 0.5f, h * 0.5f - h * (i - 0.5f) / (n - 1));
-            screen.Windows[i].Size = new Vec2(w - main, h / (n - 1));
+            centers.Add(new Vec2(-w * 0.5f + main + (w - main) * 0.5f, h * 0.5f - h * (i - 0.5f) / (n - 1)));
+            sizes.Add(new Vec2(w - main, h / (n - 1)));
         }
+        Tiles.Assign(screen, centers, sizes);
     }
 }
 

@@ -1,46 +1,43 @@
-// 画面の座標の入力の位置を、ゲームの texture の画素に直す。
-// 入力を測るウィンドウの矩形 (画面の座標) の中の位置を、texture の同じ割合の位置にする。
-// 保存した版と編集中の版を並べて入力を揃えるとき、どちらのゲームも、マウスのあるウィンドウの中の位置を受け取る。
+// 入力の位置を、ゲームの texture の画素に直す。
+// ゲームの絵のウィンドウは、どのスクリーン (画面に貼った平面、空間の円筒) にも置けるので、位置は「絵の中の位置 (0 から 1)」で受け取る。
+// 保存した版と編集中の版を並べて入力を揃えるとき、どちらのゲームも、マウスのあるウィンドウの絵の中の同じ位置を受け取る。
 using Lub;
 
 namespace LiderCore;
 
 public class InputMap
 {
-    float x0;
-    float y0;
-    float scaleX = 1;
-    float scaleY = 1;
     // texture の画素の数
     public int W = 1;
     public int H = 1;
+    // 指している、絵の中の位置 (左上が 0,0、右下が 1,1)
+    float u;
+    float v;
+    // 画面の座標の 1 に対する、texture の画素の数 (マウスの移動の量を直す)
+    float scale = 1;
 
-    // from は入力を測るウィンドウの矩形、w と h は texture の画素の数
-    public void Set(PixelRect from, int w, int h)
+    // w と h は texture の画素の数
+    public void Set(int w, int h)
     {
-        x0 = from.X;
-        y0 = from.Y;
         W = w;
         H = h;
-        scaleX = from.W > 0 ? w / from.W : 1;
-        scaleY = from.H > 0 ? h / from.H : 1;
     }
 
-    public float X(float x)
+    // uv は指している絵の中の位置、screenW は指しているウィンドウの絵の、画面の上の幅 (画面の座標)
+    public void Point(Vec2 uv, float screenW)
     {
-        return (x - x0) * scaleX;
+        u = uv.X;
+        v = uv.Y;
+        scale = screenW > 0 ? W / screenW : 1;
     }
 
-    public float Y(float y)
-    {
-        return (y - y0) * scaleY;
-    }
+    public float X => u * W;
+    public float Y => v * H;
 
-    // 位置を直した event (写し方が何も変えなければ e のまま)
+    // 位置を直した event。マウスの移動の量は、絵の上の画素の数にする
     public EventData Event(EventData e)
     {
-        if (x0 == 0 && y0 == 0 && scaleX == 1 && scaleY == 1)
-            return e;
+        var motion = e.Kind == EventKind.MouseMotion;
         return new EventData
         {
             Kind = e.Kind,
@@ -49,10 +46,10 @@ public class InputMap
             Typed = e.Typed,
             Plain = e.Plain,
             Button = e.Button,
-            X = X(e.X),
-            Y = Y(e.Y),
-            Dx = e.Dx * scaleX,
-            Dy = e.Dy * scaleY,
+            X = X,
+            Y = Y,
+            Dx = motion ? e.Dx * scale : e.Dx,
+            Dy = motion ? e.Dy * scale : e.Dy,
         };
     }
 }
