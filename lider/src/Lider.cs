@@ -716,6 +716,11 @@ public static class Lider
         CommandTable.Register("window:widen", "ウィンドウの幅を広げる", () => Moved(w => w.FocusWindow!.Resize(w.FocusWindow.WidthPx + WidthStep, w.FocusWindow.HeightPx))).Repeats = true;
         CommandTable.Register("window:narrow", "ウィンドウの幅を狭める", () => Moved(w => w.FocusWindow!.Resize(w.FocusWindow.WidthPx - WidthStep, w.FocusWindow.HeightPx))).Repeats = true;
         CommandTable.Register("window:zen", "ウィンドウを画面いっぱいに広げる・戻す", () => With(w => Zen = !Zen));
+        CommandTable.Register("window:move-to-next-screen", "ウィンドウを次のスクリーンへ移す", () => With(w =>
+        {
+            if (w.Focused != null)
+                MoveToNextScreen(w, w.Focused);
+        }));
         CommandTable.Register("screen:next-layout", "並べ方の規則を替える", () => With(w => ToggleTiled()));
         CommandTable.Register("inspector:toggle", "インスペクタを開く・focus を移す・閉じる", () => With(w =>
         {
@@ -1210,12 +1215,14 @@ public static class Lider
     // インスペクタのウィンドウを、出しているならスクリーンに置き、しまっているなら外す
     static void PlaceInspector(Workspace w)
     {
+        // 出す間だけスクリーンに載せる。最初に載せる所は、コードの窓を置くスクリーン。その後は、移した先のスクリーンにそのまま居る
         var on = w.ScreenOf(inspectWindow);
         var home = Tiled ? backdrop : w.CodeScreen;
-        if (on != null && (!inspect.Shown || on != home))
+        if (on != null && !inspect.Shown)
         {
             on.Windows.Remove(inspectWindow);
             inspectWindow.Position = null;
+            inspectWindow.ViewportRect = null;
             on = null;
         }
         if (inspect.Shown && on == null)
@@ -1224,12 +1231,13 @@ public static class Lider
                 home.Windows.Add(inspectWindow);
             else
                 home.Windows.Insert(0, inspectWindow);
+            on = home;
         }
         // 範囲を決めている間は、focus のある窓のすぐ左に並べる (範囲にこの 2 つを収める)
-        if (inspect.Shown && !Tiled && AreaW > 0 && w.FocusWindow != null && w.ScreenOf(w.FocusWindow) == home)
+        if (on == w.CodeScreen && AreaW > 0 && w.FocusWindow != null && w.ScreenOf(w.FocusWindow) == on)
         {
-            home.Windows.Remove(inspectWindow);
-            home.Windows.Insert(home.Windows.IndexOf(w.FocusWindow), inspectWindow);
+            on.Windows.Remove(inspectWindow);
+            on.Windows.Insert(on.Windows.IndexOf(w.FocusWindow), inspectWindow);
         }
         // コードのスクリーンの真ん中には、最初のコードの窓を置く (インスペクタはその左に並ぶ)
         w.CodeScreen.Origin = null;
@@ -1241,8 +1249,8 @@ public static class Lider
         inspectWindow.PxH = InspectView.PxH;
         inspectWindow.Scale = InspectScale;
         // 平面のスクリーンでは、配置の規則が決めた矩形に収める
-        if (OnView(home) && inspectWindow.Position != null)
-            InspectView.SetSize(inspectWindow.Size.X * ViewScale(home) / InspectScale, inspectWindow.Size.Y * ViewScale(home) / InspectScale - PanelView.TitleH);
+        if (on != null && OnView(on) && inspectWindow.Position != null)
+            InspectView.SetSize(inspectWindow.Size.X * ViewScale(on) / InspectScale, inspectWindow.Size.Y * ViewScale(on) / InspectScale - PanelView.TitleH);
         // 隠れたウィンドウには focus を置かない
         if (w.Focused == inspectWindow && !TreeVisible)
             w.FocusCode();
@@ -1314,9 +1322,12 @@ public static class Lider
     {
         pickPending = true;
         hoverPick = false;
-        // XR ではゲームを空間に描いていないので、指せない
-        if (lastEye == null)
-            GameApp.Pick(pickX, pickY);
+        // 保存した版のゲームの絵を指しているときだけ調べる (XR ではゲームを空間に描いていないので、指せない)
+        if (lastEye != null)
+            return;
+        PointGames(pickX, pickY);
+        if (gamePointed == gameWindow)
+            GameApp.Pick(gameUv);
     }
 
     // 今の画面に合う密度の、窓の本文の文字
@@ -1632,9 +1643,9 @@ public static class Lider
             }
         var saved = GameWindow(GameVersion.Saved);
         var draft = GameWindow(GameVersion.Draft);
-        // 入力は、マウスのあるゲームのウィンドウの中の位置で、どちらのゲームにも渡す
+        // 入力は、マウスのあるゲームのウィンドウの絵の中の位置で、どちらのゲームにも渡す
         Input.MousePos(out var mx, out var my);
-        var from = draft != null && draft.ViewportRect!.Contains(mx, my) ? draft : saved;
+        PointGames(mx, my);
         gameCloseHover = null;
         var over = GameTitleAt(mx, my);
         if (over != null && OnGameClose(over, mx))
@@ -1643,9 +1654,9 @@ public static class Lider
         var keyboard = Work == null || Work.OnGame;
         var mouse = Work == null || MouseForGame(Work, mx, my);
         if (saved != null)
-            GameApp.Step(dt, keyboard, mouse, saved.ContentRect!, from!.ContentRect!, PixelRatio);
+            GameApp.Step(dt, keyboard, mouse, GamePxW(saved), GamePxH(saved));
         if (draft != null && Work != null)
-            DraftGame.Step(dt, keyboard, mouse, GameApp.Position >= 0, draft.ContentRect!, from!.ContentRect!, PixelRatio, Work.Docs);
+            DraftGame.Step(dt, keyboard, mouse, GameApp.Position >= 0, GamePxW(draft), GamePxH(draft), Work.Docs);
         ScreenView.Draw(Screens, sw, sh);
         StepTimeline(dt);
         DrawGameTitles(sw, sh);
@@ -1666,9 +1677,75 @@ public static class Lider
     {
         foreach (var screen in Screens)
             foreach (var window in screen.Windows)
-                if (window.Content is GameView view && view.Version == version && window.ViewportRect != null)
+                if (window.Content is GameView view && view.Version == version && window.Position != null)
                     return window;
         return null;
+    }
+
+    // ゲームの絵を描く画素の数。画面に貼った平面のスクリーンでは画面の上の矩形の画素、ほかのスクリーンではウィンドウの大きさに合う画素
+    static int GamePxW(Window window)
+    {
+        return (int)((window.ContentRect != null ? window.ContentRect.W : window.Size.X * PanelView.BasePxW / PanelView.BaseW) * PixelRatio);
+    }
+
+    static int GamePxH(Window window)
+    {
+        return (int)((window.ContentRect != null ? window.ContentRect.H : window.Size.Y * PanelView.BasePxW / PanelView.BaseW) * PixelRatio);
+    }
+
+    // マウスが最後に指した、ゲームの絵のウィンドウ (指していなければ null) と、絵の中の位置、絵の画面の上の幅
+    static Window? gamePointed;
+    static Vec2 gameUv = new Vec2(0.5f, 0.5f);
+    static float gameScreenW = 1;
+
+    // 画面の (x, y) が指している、ゲームの絵の中の位置を、どちらのゲームにも渡す。
+    // どの絵も指していなければ、画面に貼った保存した版の絵の外の位置にする (空間に置いた絵なら、最後に指した位置のまま)
+    static void PointGames(float x, float y)
+    {
+        gamePointed = null;
+        foreach (var version in new List<GameVersion> { GameVersion.Draft, GameVersion.Saved })
+        {
+            var window = GameWindow(version);
+            var uv = window != null ? GameUv(window, x, y) : null;
+            if (window == null || uv == null)
+                continue;
+            gamePointed = window;
+            gameUv = uv.Value;
+            break;
+        }
+        var saved = GameWindow(GameVersion.Saved);
+        if (gamePointed == null && saved != null && saved.ContentRect != null)
+        {
+            var at = saved.ContentRect;
+            gameUv = new Vec2((x - at.X) / at.W, (y - at.Y) / at.H);
+            gameScreenW = at.W;
+        }
+        GameApp.Map.Point(gameUv, gameScreenW);
+        DraftGame.Map.Point(gameUv, gameScreenW);
+    }
+
+    // 画面の (x, y) が window のゲームの絵を指していれば、絵の中の位置 (左上が 0,0)。指した絵の画面の上の幅を gameScreenW に入れる
+    static Vec2? GameUv(Window window, float x, float y)
+    {
+        var at = window.ContentRect;
+        if (at != null)
+        {
+            if (!at.Contains(x, y))
+                return null;
+            gameScreenW = at.W;
+            return new Vec2((x - at.X) / at.W, (y - at.Y) / at.H);
+        }
+        var w = Work;
+        if (w == null || lastEye != null || !ScreenFor(w, window).Shown)
+            return null;
+        var angle = WindowAngle(w, window);
+        var cy = WindowY(w, window);
+        var uv = HitOn(ScreenFor(w, window), PointerRay(x, y), angle, cy, window.Size.X, window.Size.Y);
+        if (uv == null)
+            return null;
+        var half = window.Size.X * 0.5f / Space.R;
+        gameScreenW = Math.Max(1, Math.Abs(ViewportPoint(Space.At(angle + half, cy, Space.R)).X - ViewportPoint(Space.At(angle - half, cy, Space.R)).X));
+        return uv;
     }
 
     // ゲームの絵のウィンドウの見出しの帯 (版の名前と、編集中の版には閉じる印)。
@@ -1762,6 +1839,8 @@ public static class Lider
     // ゲームの OnEvent に event を渡す (並べている間は、編集中の版にも)
     static void SendGame(EventData e)
     {
+        if (e.Kind == EventKind.MouseButtonDown || e.Kind == EventKind.MouseButtonUp || e.Kind == EventKind.MouseMotion)
+            PointGames(e.X, e.Y);
         GameApp.Send(e);
         DraftGame.Send(e);
     }
@@ -1807,7 +1886,33 @@ public static class Lider
             motions.Remove(window);
         }
         SetBackdropLayout();
+        // インスペクタも、コードの窓と同じスクリーンに載せ直す
+        w.ScreenOf(inspectWindow)?.Windows.Remove(inspectWindow);
+        inspectWindow.Position = null;
+        inspectWindow.ViewportRect = null;
         PlaceInspector(w);
+    }
+
+    // window を、次のスクリーンへ移す (ウィンドウを並べるスクリーンを順に回る)。
+    // 端から積む規則のスクリーン (案内、検索) は、決まった物を出す所なので、移す先にしない
+    public static void MoveToNextScreen(Workspace w, Window window)
+    {
+        var on = w.ScreenOf(window);
+        if (on == null)
+            return;
+        var at = Screens.IndexOf(on);
+        for (var i = 1; i < Screens.Count; i++)
+        {
+            var next = Screens[(at + i) % Screens.Count];
+            if (next.Layout is Stack)
+                continue;
+            w.MoveTo(window, next);
+            // 移した先では、開いたときと同じに小さな大きさから広がる
+            motions.Remove(window);
+            if (window.Content is Code)
+                w.Home = next == w.CodeScreen ? null : next;
+            return;
+        }
     }
 
     static void SetBackdropLayout()
@@ -2810,6 +2915,22 @@ public static class Lider
         }
         vp = worldVp;
         Space.Flat = worldFlat;
+        // 画面に貼った平面でないスクリーンの上のゲームの絵は、空間の面の上に描く (画面に貼った平面の上の絵は ScreenView が描く)
+        foreach (var screen in Screens)
+        {
+            if (!screen.Shown || OnView(screen))
+                continue;
+            foreach (var window in screen.Windows)
+            {
+                var picture = (window.Content is GameView) ? window.Content.Texture() : null;
+                if (picture == null || window.Position == null)
+                    continue;
+                var a = WindowAngle(w, window);
+                var y = WindowY(w, window);
+                Theme.Plate(vp, Theme.Surface, a, y, Space.R, window.Size.X, window.Size.Y);
+                Quad3d.Curved(vp, picture, Color.Rgb(1, 1, 1, 1), a, y, Space.R, window.Size.X, window.Size.Y, 0, 1);
+            }
+        }
         // focus が移ると、前の窓から次の窓へ光が流れる
         if (comet < 1)
         {

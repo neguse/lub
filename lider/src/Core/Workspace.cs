@@ -74,6 +74,8 @@ public class Workspace
     {
         ScreenOf(window)?.Windows.Remove(window);
         window.Position = null;
+        window.ViewportRect = null;
+        window.ContentRect = null;
         screen.Windows.Add(window);
     }
     // focus のある Code のウィンドウ (focus がほかの中身のウィンドウにある間は、最後に focus のあった物)
