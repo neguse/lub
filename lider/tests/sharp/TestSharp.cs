@@ -67,7 +67,7 @@ public static class TestSharp
             Check(PanelView.DensityFor(1080) == 2, "1080p should double the density");
             Check(PanelView.DensityFor(2160) == 3, "2160p should triple the density");
             Check(PanelView.DensityFor(8640) == 3, "the density should be capped");
-            var ttf = (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/yutapon_coding_081d.ttf";
+            var ttf = (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/UDEVGothic-Regular.ttf";
             coarse = new MonoText("test_sharp_coarse", ttf, 15);
             text = new MonoText("test_sharp_fine", ttf, 15, Density);
             Check(Math.Abs(text.CellW - coarse.CellW) < 0.001f, "the cell width changed: " + text.CellW + " " + coarse.CellW);

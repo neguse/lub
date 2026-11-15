@@ -66,7 +66,7 @@ public static class TestRedraw
         if (frames == 3)
         {
             Lider.FocusGame();
-            text = new MonoText("test_redraw_mono", (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/yutapon_coding_081d.ttf", 15);
+            text = new MonoText("test_redraw_mono", (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/UDEVGothic-Regular.ttf", 15);
             Document.Boot(text.CellW, text.LineH);
             doc = Document.Open(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!)!;
             doc.MoveTo(10, Utf8.Bytes(doc.Text(10)));

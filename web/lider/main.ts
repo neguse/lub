@@ -50,7 +50,7 @@ const DB_STORE = "projects";
 // 認証せずに呼ぶので、IP ごとに 1 時間に呼べる回数に上限がある
 const GIST_API = "https://api.github.com/gists";
 // ゲームが相対の path で読む字の font
-const FONT = "yutapon_coding_081d.ttf";
+const FONT = "UDEVGothic-Regular.ttf";
 
 type Files = Map<string, Uint8Array>;
 
