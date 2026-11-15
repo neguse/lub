@@ -49,8 +49,8 @@ public static class ScreenView
         if (shader != null)
             foreach (var screen in FarFirst(screens))
             {
-                // 視点に固定した平面のスクリーンだけを描く (コードの窓の円筒は DrawScene が描く)
-                if (screen.Anchor != ScreenAnchor.View || screen.Shape != ScreenShape.Plane)
+                // 平面のスクリーンだけを描く (コードの窓の円筒は DrawScene が描く)
+                if (screen.Shape != ScreenShape.Plane)
                     continue;
                 foreach (var window in screen.Windows)
                 {

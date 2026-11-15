@@ -598,14 +598,14 @@ public static class Lider
     // 面の上の長さを、半径 Space.R の所の同じ見かけの長さにする倍率
     static float Apparent(Screen screen)
     {
-        return OnView(screen) ? ViewScale(screen) : 1;
+        return OnPlane(screen) ? ViewScale(screen) : 1;
     }
 
     // screen の輪郭 (スクリーンの面の上の矩形: 真ん中の x と y、幅、高さ)。
     // 大きさを持つスクリーンはその大きさ、並べた物で決まるスクリーンは、出ているウィンドウを囲む矩形
     public static Vec4 OutlineOf(Screen screen)
     {
-        if (OnView(screen))
+        if (OnPlane(screen))
             return new Vec4(0, 0, screen.Size.X, screen.Size.Y);
         var any = false;
         float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
@@ -642,7 +642,7 @@ public static class Lider
         var left = box.X - box.Z * 0.5f;
         var top = box.Y + box.W * 0.5f;
         var pad = OutlinePad / k;
-        if (!OnView(screen))
+        if (!OnPlane(screen))
         {
             var corner = lastEye == null ? SurfacePoint(screen, PointerRay(0, 0)) : null;
             if (corner != null)
@@ -657,7 +657,7 @@ public static class Lider
         {
             if (other == screen)
                 break;
-            if (other.Shown && OnView(other) && screenTags.TryGetValue(other, out var before))
+            if (other.Shown && OnPlane(other) && screenTags.TryGetValue(other, out var before))
                 left += before.PxW * perPx + pad;
         }
         return new Vec4(left + pad + w * 0.5f, top - pad - h * 0.5f, w, h);
@@ -670,14 +670,14 @@ public static class Lider
     // Space の札の矩形 (backdrop の面の上の、真ん中の x と y、幅、高さ)。出していなければ null
     public static Vec4? SpaceTagOf()
     {
-        if (!ScreensLit || Work == null || Work.InSpace == null || !OnView(backdrop))
+        if (!ScreensLit || Work == null || Work.InSpace == null || !OnPlane(backdrop))
             return null;
         var k = Apparent(backdrop);
         var perPx = PanelView.BaseW / PanelView.BasePxW * TagScale / k;
         var pad = OutlinePad / k;
         var left = -backdrop.Size.X * 0.5f;
         foreach (var screen in Screens)
-            if (screen.Shown && OnView(screen) && screenTags.TryGetValue(screen, out var tag))
+            if (screen.Shown && OnPlane(screen) && screenTags.TryGetValue(screen, out var tag))
                 left += tag.PxW * perPx + pad;
         var w = spaceTag.PxW * perPx;
         var h = PanelView.TitlePx * perPx;
@@ -764,7 +764,7 @@ public static class Lider
         var flat = Space.Flat;
         Space.Flat = flat || screen.Shape == ScreenShape.Plane;
         var k = Apparent(screen);
-        var p = OnView(screen) ? Space.At((screen.Position.X + x) / screen.Position.Z, (screen.Position.Y + y) * k, Space.R) : Space.At(screen.AngleAt(x), y, Space.R);
+        var p = OnPlane(screen) ? Space.At((screen.Position.X + x) / screen.Position.Z, (screen.Position.Y + y) * k, Space.R) : Space.At(screen.AngleAt(x), y, Space.R);
         Space.Flat = flat;
         return ViewportOn(screen, p);
     }
@@ -775,8 +775,8 @@ public static class Lider
         var flat = Space.Flat;
         Space.Flat = flat || screen.Shape == ScreenShape.Plane;
         var k = Apparent(screen);
-        var angle = OnView(screen) ? (screen.Position.X + rect.X) / screen.Position.Z : screen.AngleAt(rect.X);
-        var y = OnView(screen) ? (screen.Position.Y + rect.Y) * k : rect.Y;
+        var angle = OnPlane(screen) ? (screen.Position.X + rect.X) / screen.Position.Z : screen.AngleAt(rect.X);
+        var y = OnPlane(screen) ? (screen.Position.Y + rect.Y) * k : rect.Y;
         if (tex != null)
             Quad3d.Curved(VpOf(screen, world), tex, color, angle, y, Space.R, rect.Z * k, rect.W * k, 0, 1);
         else
@@ -846,7 +846,7 @@ public static class Lider
         if (at == null)
             return null;
         // 視点に固定した平面は、半径 Space.R の所に同じ見かけの大きさで当てているので、スクリーンの距離の大きさに戻す
-        if (OnView(screen))
+        if (OnPlane(screen))
             return new Vec2(at.Angle * screen.Position.Z - screen.Position.X, at.Y / ViewScale(screen) - screen.Position.Y);
         return new Vec2(screen.XAt(at.Angle), at.Y);
     }
@@ -1133,7 +1133,7 @@ public static class Lider
     {
         var screen = ScreenFor(w, window);
         var at = window.Position!.Value;
-        if (OnView(screen))
+        if (OnPlane(screen))
             return new Vec2((screen.Position.X + at.X) * ViewScale(screen), (screen.Position.Y + at.Y) * ViewScale(screen));
         return new Vec2(WindowAngle(w, window) * Space.R - viewX.Value, at.Y);
     }
@@ -1578,7 +1578,7 @@ public static class Lider
         inspectWindow.PxH = InspectView.PxH;
         inspectWindow.Scale = InspectScale;
         // 平面のスクリーンでは、配置の規則が決めた矩形に収める
-        if (on != null && OnView(on) && inspectWindow.Position != null)
+        if (on != null && OnPlane(on) && inspectWindow.Position != null)
             InspectView.SetSize(inspectWindow.Size.X * ViewScale(on) / InspectScale, inspectWindow.Size.Y * ViewScale(on) / InspectScale - PanelView.TitleH);
         // 隠れたウィンドウには focus を置かない
         if (w.Focused == inspectWindow && !TreeVisible)
@@ -1597,7 +1597,7 @@ public static class Lider
     {
         var screen = Work != null ? ScreenFor(Work, inspectWindow) : null;
         // 平面のスクリーンでは、ウィンドウの矩形に見出しも収める
-        return screen != null && OnView(screen)
+        return screen != null && OnPlane(screen)
             ? new Vec2(inspectWindow.Size.X * ViewScale(screen), inspectWindow.Size.Y * ViewScale(screen) - InspectTitleH)
             : inspectWindow.Size;
     }
@@ -1707,11 +1707,11 @@ public static class Lider
         return w.ScreenOf(window) ?? w.CodeScreen;
     }
 
-    // 視点に固定した平面のスクリーンか。
-    // その上のコードの窓は、視点の座標 (拡大と横送りの効かない viewVp) で、半径 Space.R の所に同じ見かけの大きさで描いて当てる
-    static bool OnView(Screen screen)
+    // 平面のスクリーンか (固定先によらない)。
+    // その上の物は、半径 Space.R の所に、見る人の正面から同じ見かけの大きさになるように描いて当て、Pose でスクリーンの距離へ運ぶ
+    static bool OnPlane(Screen screen)
     {
-        return screen.Anchor == ScreenAnchor.View && screen.Shape == ScreenShape.Plane;
+        return screen.Shape == ScreenShape.Plane;
     }
 
     // 視点の座標の view-projection (非 XR は既定の画角のカメラ、XR は描いている眼) と、視点の座標から lider の空間への行列 (非 XR は単位行列)
@@ -1736,19 +1736,20 @@ public static class Lider
                 ray = Camera3d.ViewportRay(flatViewVp, px.X, px.Y, viewportW, viewportH);
             }
         }
-        if (OnView(screen))
-            return ray;
         var back = Pose(screen).Inverse();
         return new Ray(back.MulPoint(ray.Origin), back.MulDir(ray.Dir));
     }
 
     // screen を、基準の置き方 (円筒の軸が固定先の原点を通り、高さが 0) から、今の位置へ運ぶ行列。
     // スクリーンの上の物は、基準の置き方の座標で描いて当て、この行列で運ぶ。
-    // 視点に固定した平面のスクリーンは、位置を矩形の計算に入れているので運ばない
+    // 平面のスクリーンは、位置を面の上の座標に入れて半径 Space.R の所に描いているので、原点から距離の比で広げて、スクリーンの距離へ運ぶ
     static Mat4 Pose(Screen screen)
     {
-        if (OnView(screen))
-            return Mat4.Identity();
+        if (OnPlane(screen))
+        {
+            var far = screen.Position.Z / Space.R;
+            return Mat4.Scale(new Vec3(far, far, far));
+        }
         var deeper = screen.Radius - Space.R;
         // 円筒を平面に開いている間は、奥へまっすぐ運ぶ
         if (!Xr.Active())
@@ -1787,7 +1788,7 @@ public static class Lider
         if (window.Position == null)
             return 0;
         var screen = ScreenFor(w, window);
-        return OnView(screen) ? (screen.Position.X + window.Position.Value.X) / screen.Position.Z : screen.AngleAt(window.Position.Value.X);
+        return OnPlane(screen) ? (screen.Position.X + window.Position.Value.X) / screen.Position.Z : screen.AngleAt(window.Position.Value.X);
     }
 
     // コードのウィンドウの子の、動いている版を左右に並べる板 (無ければ null)
@@ -1833,7 +1834,7 @@ public static class Lider
             return 0;
         var screen = ScreenFor(w, window);
         // 平面のスクリーンでは、ウィンドウの矩形に見出しも収めるので、本文は見出しの分だけ下がる
-        return OnView(screen)
+        return OnPlane(screen)
             ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - (TitleInRect(window) ? PanelView.TitleH * window.Scale * 0.5f : 0)
             : window.Position.Value.Y;
     }
@@ -1985,19 +1986,62 @@ public static class Lider
 
     const float HoverSeconds = 0.25f;
 
+    // XR でないときの、画面の大きさと、視点に固定した物を描くカメラを決める。
+    // lider の物をまだ描いていなければ (起動してからゲームの絵だけを出している間)、世界を見るカメラは、視点を送っていない既定の物にする
+    static void SetCameras(int sw, int sh)
+    {
+        viewportW = sw;
+        viewportH = sh;
+        flatViewVp = Camera3d.Vp(new Camera3dOpts
+        {
+            Eye = new Vec3(0, 0, 0),
+            Target = new Vec3(0, 0, 1),
+            Fov = Space.FlatFov,
+            Near = 0.05f,
+            Far = 100,
+            Aspect = (float)sw / sh,
+        });
+        viewVp = flatViewVp;
+        headToWorld = Mat4.Identity();
+        if (!cameraSet)
+            lastVp = Camera3d.Vp(new Camera3dOpts
+            {
+                Eye = new Vec3(0, 0, 0),
+                Target = new Vec3(0, 0, 1),
+                Fov = fov,
+                Near = 0.05f,
+                Far = 100,
+                Aspect = (float)sw / sh,
+            });
+    }
+
     public static void OnFrame(float dt)
     {
         Gfx.Size(out var sw, out var sh);
+        var xr = Xr.Active();
+        if (!xr)
+            SetCameras(sw, sh);
         // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
         PutAway();
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
         hud.Fill(Space.FlatFov, (float)sw / sh);
         palette.Fill(Space.FlatFov, (float)sw / sh);
         foreach (var screen in Screens)
-            if (screen.Anchor == ScreenAnchor.View && screen.Shape == ScreenShape.Plane)
+            if (OnPlane(screen))
             {
                 SetGameTitles(screen);
-                screen.Project(sw, sh, Space.FlatFov);
+                if (xr)
+                {
+                    // XR には画面が無いので、既定の画角で見たときの矩形にする (ウィンドウの中の割り付けに使う)
+                    var perM = sh / (2 * screen.Position.Z * (float)Math.Tan(Space.FlatFov * 0.5f * Math.PI / 180));
+                    screen.Project(new Vec2(sw * 0.5f + screen.Position.X * perM, sh * 0.5f - screen.Position.Y * perM), perM);
+                }
+                else
+                {
+                    // スクリーンの面の真ん中と、その 1 メートル右が、画面のどこに写るか
+                    var origin = SurfacePx(screen, 0, 0);
+                    screen.Project(origin, SurfacePx(screen, 1, 0).X - origin.X);
+                }
             }
         // Space に置いたゲームは、XR でなければ、画面いっぱいの絵に描かせる (XR では、ゲームが眼に直に描く)
         var spaced = Work?.InSpace;
@@ -2008,17 +2052,7 @@ public static class Lider
             spaced.ContentRect = spaced.ViewportRect;
         }
         // Space を見ているカメラ (前の frame の物) を、Xr.View と同じ書き方 (前方 -Z) にして渡す
-        // lider の物をまだ描いていなければ (起動してからゲームの絵だけを出している間)、視点を送っていない既定のカメラ
-        var camera = cameraSet ? lastVp : Camera3d.Vp(new Camera3dOpts
-        {
-            Eye = new Vec3(0, 0, 0),
-            Target = new Vec3(0, 0, 1),
-            Fov = fov,
-            Near = 0.05f,
-            Far = 100,
-            Aspect = (float)sw / sh,
-        });
-        var eye = camera * Mat4.Scale(new Vec3(1, 1, -1));
+        var eye = lastVp * Mat4.Scale(new Vec3(1, 1, -1));
         GameApp.SpaceVp = new float[]
         {
             eye.M00, eye.M01, eye.M02, eye.M03, eye.M10, eye.M11, eye.M12, eye.M13,
@@ -2046,7 +2080,7 @@ public static class Lider
         if (draft != null && Work != null)
             DraftGame.Step(dt, keyboard, mouse, GameApp.Position >= 0, GamePxW(draft), GamePxH(draft), Work.Docs);
         // XR には画面が無い (左右の眼にだけ描ける) ので、画面に貼る絵は、眼への pass の中で空間の面として描く (DrawScene)
-        var flat = !Xr.Active();
+        var flat = !xr;
         if (flat)
             ScreenView.Draw(Screens, sw, sh, spaced?.Content.Texture());
         StepTimeline(dt);
@@ -2321,6 +2355,9 @@ public static class Lider
                 var tiled = a == side;
                 if (spec.Name == backdrop.Name)
                 {
+                    // 左右に並ぶ形は、世界に置く (XR で頭に付いてこず、頭を回して端まで見られる)
+                    if (tiled)
+                        spec.Anchor = ScreenAnchor.World;
                     spec.Layout = tiled ? "MainStack 0.5" : "Even";
                     spec.Windows.Add("game:saved");
                     spec.Windows.Add("game:draft");
@@ -2487,6 +2524,10 @@ public static class Lider
             PlaceInspector(w);
             a.Apply(w);
             ArrangementName = name;
+            // 視点の横送りは、配置を替えたら戻す
+            viewTarget = 0;
+            viewX.Snap(0);
+            followed = null;
             // 移した先では、開いたときと同じに小さな大きさから広がる
             motions.Clear();
             PlaceInspector(w);
@@ -2569,7 +2610,7 @@ public static class Lider
             }
             // 平面のスクリーンでは、配置の規則が決めた矩形に、見出しと本文をちょうど収める
             var screen = ScreenFor(w, window);
-            if (OnView(screen) && window.Position != null)
+            if (OnPlane(screen) && window.Position != null)
             {
                 var perPx = PanelView.BaseW / PanelView.BasePxW * window.Scale / ViewScale(screen);
                 // 矩形からはみ出さないよう、利用者の決める大きさの下限 (Window.MinPxW) は当てない
@@ -2824,8 +2865,6 @@ public static class Lider
         lastEye = null;
 
         Gfx.Size(out var sw, out var sh);
-        viewportW = sw;
-        viewportH = sh;
         // 視点の横送りと、画面に入る幅は、コードのスクリーンの面の上のメートルで数える
         var depth = w.CodeScreen.Radius;
         var halfViewportH = depth * (float)Math.Tan(fov * 0.5f * Math.PI / 180);
@@ -2862,17 +2901,6 @@ public static class Lider
             Aspect = (float)viewportW / viewportH,
         }) * slide;
         cameraSet = true;
-        flatViewVp = Camera3d.Vp(new Camera3dOpts
-        {
-            Eye = new Vec3(0, 0, 0),
-            Target = new Vec3(0, 0, 1),
-            Fov = Space.FlatFov,
-            Near = 0.05f,
-            Far = 100,
-            Aspect = (float)viewportW / viewportH,
-        });
-        viewVp = flatViewVp;
-        headToWorld = Mat4.Identity();
         if (!forGame)
         {
             Hover(w, PointerRay(mx, my), mx, my, dt);
@@ -3460,7 +3488,7 @@ public static class Lider
         foreach (var pair in motions)
         {
             // 床に光を落とすのは、世界に置いた窓だけ
-            if (OnView(ScreenFor(w, pair.Key)))
+            if (OnPlane(ScreenFor(w, pair.Key)))
                 continue;
             var m = pair.Value;
             var a = m.Angle.Value;
@@ -3471,6 +3499,27 @@ public static class Lider
         }
         var worldVp = vp;
         var worldFlat = Space.Flat;
+        // XR では、平面のスクリーンの上の絵 (ゲームの絵、インスペクタ) を、スクリーンの面として、ほかの物より先に描く (XR でなければ ScreenView が画面に写す)
+        if (lastEye != null)
+            foreach (var screen in Screens)
+            {
+                if (!screen.Shown || !OnPlane(screen))
+                    continue;
+                foreach (var window in screen.Windows)
+                {
+                    var whole = window.ViewportRect;
+                    var part = window.ContentRect;
+                    var picture = window.Content.Texture();
+                    if (whole == null || part == null || picture == null || window.Position == null || whole.W <= 0)
+                        continue;
+                    // 画面の上の矩形のうち中身を映す所を、スクリーンの面の上の矩形に直す
+                    var perM = whole.W / window.Size.X;
+                    var at = window.Position.Value;
+                    var rect = new Vec4(at.X + (part.X + part.W * 0.5f - whole.X - whole.W * 0.5f) / perM,
+                        at.Y - (part.Y + part.H * 0.5f - whole.Y - whole.H * 0.5f) / perM, part.W / perM, part.H / perM);
+                    SurfaceQuad(screen, worldVp, rect, Color.Rgb(1, 1, 1, screen.Opacity), picture);
+                }
+            }
         foreach (var pair in motions)
         {
             var window = pair.Key;
@@ -3480,7 +3529,7 @@ public static class Lider
             var scale = m.Scale.Value;
             var panel = Panel(window);
             // 視点に固定した平面のスクリーンの上の窓は、視点の座標で、曲げずに描く
-            var onView = OnView(ScreenFor(w, window));
+            var onView = OnPlane(ScreenFor(w, window));
             vp = VpOf(ScreenFor(w, window), worldVp);
             Space.Flat = worldFlat || onView;
             panel.Flat = lastEye == null;
@@ -3546,7 +3595,7 @@ public static class Lider
         // 画面に貼った平面でないスクリーンの上のゲームの絵は、空間の面の上に描く (画面に貼った平面の上の絵は ScreenView が描く)
         foreach (var screen in Screens)
         {
-            if (!screen.Shown || OnView(screen))
+            if (!screen.Shown || OnPlane(screen))
                 continue;
             foreach (var window in screen.Windows)
             {
@@ -3560,27 +3609,6 @@ public static class Lider
                 Quad3d.Curved(on, picture, Color.Rgb(1, 1, 1, 1), a, y, Space.R, window.Size.X, window.Size.Y, 0, 1);
             }
         }
-        // XR では、視点に固定した平面のスクリーンの上の絵 (ゲームの絵、インスペクタ) も、眼の前の面として描く (XR でなければ ScreenView が画面に写す)
-        if (lastEye != null)
-            foreach (var screen in Screens)
-            {
-                if (!screen.Shown || !OnView(screen))
-                    continue;
-                foreach (var window in screen.Windows)
-                {
-                    var whole = window.ViewportRect;
-                    var part = window.ContentRect;
-                    var picture = window.Content.Texture();
-                    if (whole == null || part == null || picture == null || window.Position == null || whole.W <= 0)
-                        continue;
-                    // 画面の上の矩形のうち中身を映す所を、スクリーンの面の上の矩形に直す
-                    var perM = whole.W / window.Size.X;
-                    var at = window.Position.Value;
-                    var rect = new Vec4(at.X + (part.X + part.W * 0.5f - whole.X - whole.W * 0.5f) / perM,
-                        at.Y - (part.Y + part.H * 0.5f - whole.Y - whole.H * 0.5f) / perM, part.W / perM, part.H / perM);
-                    SurfaceQuad(screen, worldVp, rect, Color.Rgb(1, 1, 1, screen.Opacity), picture);
-                }
-            }
         // 窓に付く光と印は、コードのスクリーンと一緒に動く
         vp = VpOf(w.CodeScreen, worldVp);
         // focus が移ると、前の窓から次の窓へ光が流れる
@@ -3599,7 +3627,7 @@ public static class Lider
         }
         if (TreeVisible && inspect.Texture != null)
         {
-            var onView = OnView(ScreenFor(w, inspectWindow));
+            var onView = OnPlane(ScreenFor(w, inspectWindow));
             var size = InspectSize();
             var on = VpOf(ScreenFor(w, inspectWindow), worldVp);
             Space.Flat = worldFlat || onView;
@@ -3620,16 +3648,16 @@ public static class Lider
         DrawFocusCue(w, vp);
         DrawEdge(w, vp);
         DrawScreenTags(w, worldVp);
-        // 案内は、視点に固定した平面のスクリーンの上に、曲げずに描く
+        // 案内は、平面のスクリーンの上に、曲げずに描く
         Space.Flat = true;
-        hintCard.Draw(viewVp);
+        hintCard.Draw(VpOf(hud, worldVp));
         Space.Flat = worldFlat;
-        // 検索とアセットも、視点に固定した平面のスクリーンの上に、曲げずに描く
+        // 検索とアセットも、平面のスクリーンの上に、曲げずに描く
         Space.Flat = true;
         if (assetWindow.Position != null)
-            AssetBoard.Draw(viewVp, WindowAngle(w, assetWindow), WindowTop(w, assetWindow), SearchScale);
+            AssetBoard.Draw(VpOf(palette, worldVp), WindowAngle(w, assetWindow), WindowTop(w, assetWindow), SearchScale);
         if (searchWindow.Position != null)
-            searchView.Draw(viewVp, WindowAngle(w, searchWindow), WindowTop(w, searchWindow), SearchScale);
+            searchView.Draw(VpOf(palette, worldVp), WindowAngle(w, searchWindow), WindowTop(w, searchWindow), SearchScale);
         Space.Flat = worldFlat;
         Quad3d.Opacity = 1;
     }
