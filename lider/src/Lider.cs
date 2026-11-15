@@ -1422,6 +1422,34 @@ public static class Lider
         return OnView(screen) ? (screen.Position.X + window.Position.Value.X) / screen.Position.Z : screen.AngleAt(window.Position.Value.X);
     }
 
+    // コードのウィンドウの子の、動いている版を左右に並べる板 (無ければ null)
+    public static Window? DiffOf(Window window)
+    {
+        foreach (var child in window.Children)
+            if (child.Content is Diff)
+                return child;
+        return null;
+    }
+
+    // 動いている版の板を、出す間だけコードのウィンドウの子にし、親の左の手前に置く (親の並びは変えない)
+    static void PlaceDiff(Window window, bool shown)
+    {
+        var board = DiffOf(window);
+        if (!shown)
+        {
+            if (board != null)
+                window.Disown(board);
+            return;
+        }
+        if (board == null)
+        {
+            board = new Window(new Diff(window.Code));
+            window.Adopt(board);
+        }
+        board.Size = new Vec2(PanelView.OldW * window.Scale, window.UnscaledSize.Y * window.Scale);
+        board.Position = new Vec3(-(window.UnscaledSize.X * window.Scale * 0.5f + PanelView.OldGap + board.Size.X * 0.5f), 0, InspectR - Space.R);
+    }
+
     // 平面のスクリーンで、ウィンドウの矩形の上の端に、本文と別に描く見出しの帯を収めるウィンドウか
     static bool TitleInRect(Window window)
     {
@@ -2011,6 +2039,7 @@ public static class Lider
             panel.CloseLit = window == closeHover;
             var differs = window == w.FocusWindow && window.Code.Doc.Differs();
             panel.OldShown = differs && PanelView.SideBySide && !ZenShown;
+            PlaceDiff(window, panel.OldShown);
             panel.Inline = differs && !PanelView.SideBySide;
             EditorHost.SetGaps(window.Code.ViewId, panel.Inline ? window.Code.Doc.InlineGaps() : NoGaps);
             panel.Prepare(window.Code.Doc, panelText, w.Trace);
@@ -2724,8 +2753,11 @@ public static class Lider
             panel.FrameAngle = (particles.Next() - 0.5f) * 0.03f * m.Shake * m.Shake;
             panel.FrameY = (particles.Next() - 0.5f) * 0.05f * m.Shake * m.Shake;
             panel.Draw(window.Code.Doc, angle, y, scale, vp, m.Z.Value, m.Glow.Value, m.Alarm);
-            if (panel.OldShown)
-                panel.DrawOld(vp, angle, y, scale, InspectR);
+            // 動いている版の板は、コードのウィンドウの子: 親の座標で置き、親より手前に描く
+            var board = DiffOf(window);
+            if (board != null && board.Position != null)
+                panel.DrawOld(vp, angle + board.Position.Value.X * scale / window.Scale / Space.R, y + board.Position.Value.Y, board.Size.X * scale / window.Scale,
+                    board.Size.Y * scale / window.Scale, Space.R + board.Position.Value.Z);
             foreach (var l in Landings)
                 if (l.Window == window)
                     panel.DrawLanding(vp, window.Code.Doc, angle, y, scale, m.Z.Value, l);

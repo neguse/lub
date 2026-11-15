@@ -893,21 +893,14 @@ public class PanelView
         }
     }
 
-    // 動いている版の板の中心の角度 (angle と scale は窓の)
-    public float OldAngle(float angle, float scale)
-    {
-        return angle - (W * scale * 0.5f + OldGap + OldW * scale * 0.5f) / Space.R;
-    }
-
-    // 動いている版の板を、窓の左に、窓と同じ高さと行の高さで置く (r は板の半径)
-    public void DrawOld(Mat4 vp, float angle, float y, float scale, float r)
+    // 動いている版の板を、真ん中の角度 angle と高さ y、幅 w と高さ h (半径 Space.R の所のメートル) で、半径 r に描く
+    public void DrawOld(Mat4 vp, float angle, float y, float w, float h, float r)
     {
         if (old == null)
             return;
         var k = r / Space.R;
-        var a = OldAngle(angle, scale);
-        Theme.Plate(vp, Theme.Surface, a, y * k, r, OldW * scale * k, H * scale * k);
-        Quad3d.Curved(vp, old, Color.Rgb(1, 1, 1, 1), a, y * k, r, OldW * scale * k, H * scale * k, 0, 1);
+        Theme.Plate(vp, Theme.Surface, angle, y * k, r, w * k, h * k);
+        Quad3d.Curved(vp, old, Color.Rgb(1, 1, 1, 1), angle, y * k, r, w * k, h * k, 0, 1);
     }
 
     // 宣言の行の本文の右に、フィールドなら「= 値」、class なら個体の印を出し、印の所を覚える (押して選ぶ)
