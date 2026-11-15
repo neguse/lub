@@ -18,6 +18,8 @@ public static class Keys
     public const int Return = 40;
     public const int Escape = 41;
     public const int Backspace = 42;
+    public const int Tab = 43;
+    public const int Space = 44;
     public const int F1 = 58;
     public const int F2 = 59;
     public const int F3 = 60;
@@ -31,7 +33,9 @@ public static class Keys
     public const int F11 = 68;
     public const int F12 = 69;
     public const int Minus = 45;
+    public const int Home = 74;
     public const int Delete = 76;
+    public const int End = 77;
     public const int PageUp = 75;
     public const int PageDown = 78;
     public const int Right = 79;

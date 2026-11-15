@@ -3412,12 +3412,6 @@ LUB_API bool lub_input_mouse_pressed(LubContext *ctx, const int32_t *button);
 
 LUB_API bool lub_input_mouse_released(LubContext *ctx, const int32_t *button);
 
-// 文字を打つ所に入力が向いているかを伝える。 true の間、画面のキーボードを出
-// せる機械 (Steam Deck など) では、画面のキーボードが出る。打った key は、い
-// つもの key の event で届く。ほかの機械では何もしない。状態が変わったときだ
-// け効くので、毎 frame 呼んでよい。`App.Use` で開いた app からは効かない。
-LUB_API void lub_input_text_input(LubContext *ctx, bool on);
-
 // カーソルの絶対座標 (window px)。
 LUB_API void lub_input_mouse_pos(LubContext *ctx, float *x, float *y);
 

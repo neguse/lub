@@ -3505,20 +3505,6 @@ public static unsafe partial class Input
         }
     }
 
-    /// <summary>文字を打つ所に入力が向いているかを伝える。 true の間、画面のキーボードを出せる機械 (Steam Deck など) では、画面のキーボードが出る。打った key は、いつもの key の event で届く。ほかの機械では何もしない。状態が変わったときだけ効くので、毎 frame 呼んでよい。`App.Use` で開いた app からは効かない。</summary>
-    public static void TextInput(bool on)
-    {
-        var a = LubRuntime.Arena.Begin();
-        try
-        {
-            LubNative.lub_input_text_input(LubRuntime.Ctx, (byte)(on ? 1 : 0));
-        }
-        finally
-        {
-            a.End();
-        }
-    }
-
     /// <summary>カーソルの絶対座標 (window px)。</summary>
     public static void MousePos(out float x, out float y)
     {
@@ -11511,9 +11497,6 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_input_mouse_released(void* ctx, int* @button);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void lub_input_text_input(void* ctx, byte @on);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_input_mouse_pos(void* ctx, float* @x, float* @y);

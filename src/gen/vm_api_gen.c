@@ -11098,17 +11098,6 @@ static TvmStatus vm_host_lub_input_mouse_released(TvmVm *vm, TvmSlot *a,
   r[0].i = result;
   VM_LUB_LEAVE(vm);
 }
-static TvmStatus vm_host_lub_input_text_input(TvmVm *vm, TvmSlot *a, TvmSlot *r,
-                                              void *user) {
-  (void)a;
-  (void)r;
-  VM_LUB_ENTER();
-  bool p_on = a[0].i != 0;
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  lub_input_text_input(s->ctx, p_on);
-  VM_LUB_LEAVE(vm);
-}
 static TvmStatus vm_host_lub_input_mouse_pos(TvmVm *vm, TvmSlot *a, TvmSlot *r,
                                              void *user) {
   (void)a;
@@ -16072,7 +16061,6 @@ static const struct {
      vm_host_lub_input_mouse_pressed},
     {"lub.input.mouse_released", "S{int?}", "b",
      vm_host_lub_input_mouse_released},
-    {"lub.input.text_input", "b", "", vm_host_lub_input_text_input},
     {"lub.input.mouse_pos", "&f&f", "", vm_host_lub_input_mouse_pos},
     {"lub.input.mouse_delta", "&f&f", "", vm_host_lub_input_mouse_delta},
     {"lub.input.focused", "", "b", vm_host_lub_input_focused},

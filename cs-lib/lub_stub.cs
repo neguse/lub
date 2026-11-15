@@ -992,15 +992,6 @@ namespace Lub
             return false;
         }
 
-        /// <summary>文字を打つ所に入力が向いているかを伝える。
-        /// true の間、画面のキーボードを出せる機械 (Steam Deck など) では、画面のキーボードが出る。打った key は、いつもの key の event で届く。ほかの機械では何もしない。
-        /// 状態が変わったときだけ効くので、毎 frame 呼んでよい。`App.Use` で開いた app からは効かない。
-        /// </summary>
-        [LubNoFail]
-        public static void TextInput(bool on)
-        {
-        }
-
         /// <summary>カーソルの絶対座標 (window px)。
         /// </summary>
         [LubNoFail]
