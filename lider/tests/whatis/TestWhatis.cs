@@ -59,19 +59,23 @@ public static class TestWhatis
         if (frames < nextAt)
             return;
         Gfx.Size(out var w, out var h);
+        // ゲームの絵の真ん中 (配置によって、絵は画面の一部になる)
+        var picture = Lider.Screens[0].Windows[0].ContentRect;
+        var at = picture != null ? new Vec2(picture.X + picture.W * 0.5f, picture.Y + picture.H * 0.5f) : new Vec2(w / 2, h / 2);
         var what = string.Join(" / ", Lider.What);
         if (stage == 0)
         {
             // 指した物のコードを調べたり開いたりできるのは、ゲームを止めている間だけ
             Lider.TogglePause();
-            Lider.HoverAt(w / 2, h / 2);
+            Lider.HoverAt(at.X, at.Y);
             stage = 1;
         }
         else if (stage == 1 && what != "")
         {
             Check(what.StartsWith("Game.Quad (game/Game.cs:"), "what: " + what);
             Check(what.Contains(" / ← Game.OnFrame (game/Game.cs:"), "the caller is missing: " + what);
-            Lider.HoverAt(1, 1);
+            // 絵の左上の隅 (物の無い所)
+            Lider.HoverAt(at.X - (picture != null ? picture.W : w) * 0.5f + 1, at.Y - (picture != null ? picture.H : h) * 0.5f + 1);
             stage = 2;
             nextAt = frames + 10;
         }
@@ -79,7 +83,7 @@ public static class TestWhatis
         {
             Check(what == "", "the empty place has a what: " + what);
             // 足あとの板が前にあるので、奥のゲームの物を引く中 click にする
-            Lider.OnEvent(new EventData { Kind = EventKind.MouseButtonDown, Button = 2, X = w / 2, Y = h / 2 });
+            Lider.OnEvent(new EventData { Kind = EventKind.MouseButtonDown, Button = 2, X = at.X, Y = at.Y });
             stage = 3;
         }
         else if (stage == 3 && Lider.Work!.Focus != null)

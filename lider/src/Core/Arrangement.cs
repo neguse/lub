@@ -73,6 +73,9 @@ public class Arrangement
                     all.Add(window);
         var placed = new List<Window>();
         Screen? home = null;
+        // "code:*" のすぐ後に並べたウィンドウ (新しく開くコードの窓は、この前に置く)
+        Window? after = null;
+        var afterAll = false;
         // key を名指しで控えた行の無いコードのウィンドウは、"code:*" の所に並べる
         var named = new List<string>();
         foreach (var spec in Screens)
@@ -95,6 +98,7 @@ public class Arrangement
                 if (key == AllCode)
                 {
                     home = screen;
+                    afterAll = true;
                     foreach (var window in all)
                         if (!placed.Contains(window) && window.Content is Code && !named.Contains(KeyOf(w, window)))
                         {
@@ -108,12 +112,16 @@ public class Arrangement
                     {
                         order.Add(window);
                         placed.Add(window);
+                        if (afterAll && after == null)
+                            after = window;
                         break;
                     }
             }
+            afterAll = false;
             Put(w, screen, order);
         }
         w.Home = home == w.CodeScreen ? null : home;
+        w.HomeBefore = after;
     }
 
     // windows を、この順に screen の並びへ載せる (ほかのスクリーンに居た物は移す)。

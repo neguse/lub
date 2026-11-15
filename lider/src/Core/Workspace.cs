@@ -45,6 +45,8 @@ public class Workspace
     public List<Screen> Screens = new List<Screen>();
     // 新しく開くコードの窓を置くスクリーン (null なら CodeScreen)
     public Screen? Home;
+    // 新しく開くコードの窓は、Home の上のこのウィンドウの前に置く (null か、Home の上に無ければ最後に置く)
+    public Window? HomeBefore;
 
     // コードの窓 (中身は Code)。Screens の順に、スクリーンの中では並びの順に集めた写し。
     // 並びを変えるときは、窓のあるスクリーン (ScreenOf) の Windows を変える
@@ -379,7 +381,9 @@ public class Workspace
         }
         if (FocusWindow == null)
         {
-            AddWindow(new Window(new Code(doc)), Home ?? CodeScreen, (Home ?? CodeScreen).Windows.Count);
+            var home = Home ?? CodeScreen;
+            var before = HomeBefore != null ? home.Windows.IndexOf(HomeBefore) : -1;
+            AddWindow(new Window(new Code(doc)), home, before >= 0 ? before : home.Windows.Count);
             return;
         }
         FocusWindow.Code.Tabs.Insert(FocusWindow.Code.Tab + 1, doc);

@@ -19,6 +19,8 @@ public static class TestStages
     {
         TestInit();
         Lider.OnInit();
+        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        Lider.Arrange(Lider.Overlay);
     }
 
     public static void OnEvent(EventData e)

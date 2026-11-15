@@ -1,7 +1,7 @@
 // lider の entry。
 // `lub Lider.csproj` で起動し、LIDER_GAME のゲームを別の VM で開いて動かす (GameApp)。ゲームの絵を画面に写し、その上にコードの空間を描く。
 // 配置 (どのスクリーンにどのウィンドウをどの規則で並べるか) は、名前で控えて戻せる (Arrangement)。
-// 初めから、コードの窓をゲームの絵に重ねる形と、左にゲームの絵、右にコードの窓を並べる形が入っていて、Alt+L で次の配置へ替える。
+// 初めから、左にゲームの絵、右にコードの窓を並べる形と、コードの窓をゲームの絵に重ねる形が入っていて、起動したときは左右に並べる形になる。Alt+L で次の配置へ替える。
 // キーボードは focus のあるウィンドウへ、マウスは指しているウィンドウへ送る。
 // F1 で focus をゲームの絵と Code の間で移す (focus がゲームにある間、窓は同じ所に薄く残る)。押したウィンドウにも focus が移る。
 // 起動したときは、ゲームの絵でないスクリーンを隠していて、focus はゲームにある (命令 screen:hide で隠す / 出す)。
@@ -221,6 +221,8 @@ public static class Lider
             FocusCode();
         RegisterCommands();
         BuiltinArrangements(Work);
+        // 起動したときは、左右に並ぶ形にする
+        Arrange(SideBySide);
         Work.Drafts?.Restore(Work);
         // lider の VM を作り直した (lider 自身の static の初期化子の変更) なら、作り直す前の窓に戻す
         if (Session.Restore(Work, Sys.Seconds()))
@@ -2195,8 +2197,8 @@ public static class Lider
                     spec.Windows.Add(Arrangement.AllCode);
                 }
             }
-        Arrangements.Add(overlay);
         Arrangements.Add(side);
+        Arrangements.Add(overlay);
         ArrangementName = Overlay;
         RegisterArrangements();
     }
@@ -2255,6 +2257,8 @@ public static class Lider
         {
             if (a.Name != name)
                 continue;
+            // 出しているインスペクタも、配置の決めた所に並べる
+            PlaceInspector(w);
             a.Apply(w);
             ArrangementName = name;
             // 移した先では、開いたときと同じに小さな大きさから広がる
