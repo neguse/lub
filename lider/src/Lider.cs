@@ -76,7 +76,12 @@ public static class Lider
     static XrView? lastEye;
     // コントローラー: 右手の aim で指し、trigger で click、grip でつかむ (両手で広げる)、右の stick で scroll、止めている間は左の stick で frame を送る
     static readonly Grab grab = new Grab();
-    static bool triggerDown;
+    // 手ごと (左 0、右 1) の、引き金を引いているか、指している面と、その面の上の位置
+    static readonly bool[] triggerDown = new bool[2];
+    static readonly List<Screen?> aimScreen = new List<Screen?> { null, null };
+    static readonly List<Vec2> aimAt = new List<Vec2> { new Vec2(0, 0), new Vec2(0, 0) };
+    // 押して引いている手 (押していなければ -1)。押せるのは、片方ずつ
+    static int activeHand = -1;
     // 左ボタンか trigger を押した窓 (離すまで、指した所までを選ぶ)
     static Window? pressed;
     static bool rightGrip;
@@ -2934,14 +2939,25 @@ public static class Lider
             lastEye = left;
             gaze = Gaze(left, right);
             headToWorld = HeadToWorld(left, right);
-            var aim = HandRay(1) ?? gaze;
+            // 指す ray は、押している手、右手、左手の順に、取れた物
+            var aim = (activeHand >= 0 ? HandRay(activeHand) : null) ?? HandRay(1) ?? HandRay(0) ?? gaze;
+            for (var h = 0; h < 2; h++)
+                AimAt(h, HandRay(h));
             // 左手の Y で、画面のキーボードを出し入れする
             var leftHand = Xr.Input(0);
             var y = leftHand != null && leftHand.Secondary;
             if (y && !oskButton)
                 osk.Shown = !osk.Shown;
             oskButton = y;
+            // 画面のキーボードは、どちらの手で指しても光る
             PointOsk(w, aim);
+            for (var h = 0; h < 2 && osk.Hovered == null; h++)
+            {
+                var ray = HandRay(h);
+                if (ray != null)
+                    PointOsk(w, ray.Value);
+            }
+            Triggers(w, w.OnGame);
             if (!w.OnGame)
             {
                 if (!Search.Shown)
@@ -2950,15 +2966,7 @@ public static class Lider
                 ShowHints(w, aim);
             }
             else
-            {
-                // focus がゲームにある間も、画面のキーボードは引き金で押せる (focus を戻す key を打てるように)
-                var hand = Xr.Input(1);
-                var trigger = hand != null && (triggerDown ? hand.Trigger > 0.3f : hand.Trigger > 0.7f);
-                if (trigger && !triggerDown)
-                    PressOsk(w, aim);
-                triggerDown = trigger;
                 HideHints();
-            }
             DrawEye(w, left);
             DrawEye(w, right);
             return;
@@ -3208,20 +3216,70 @@ public static class Lider
         return FromLocal(new Vec3(h.GripPosition[0], h.GripPosition[1], h.GripPosition[2]), new Vec3(0, 0, -1)).Origin;
     }
 
+    // 両手の引き金: 指している所を押し、引いたまま動かすと引く。押して引けるのは片方の手ずつで、先に引いた手が離すまで続く。
+    // oskOnly (focus がゲームにある間) は、画面のキーボードだけを押す (focus を戻す key を打てるように)
+    static void Triggers(Workspace w, bool oskOnly)
+    {
+        for (var h = 1; h >= 0; h--)
+        {
+            var input = Xr.Input(h);
+            var ray = HandRay(h);
+            // 押し離しは閾値を分けて、ぶれで繰り返さない
+            var down = input != null && ray != null && (triggerDown[h] ? input.Trigger > 0.3f : input.Trigger > 0.7f);
+            if (down && !triggerDown[h] && oskOnly)
+                PressOsk(w, ray!.Value);
+            else if (down && !triggerDown[h] && activeHand < 0)
+            {
+                activeHand = h;
+                Click(w, ray!.Value, true);
+            }
+            else if (down && activeHand == h && !oskOnly)
+                DragTo(w, ray!.Value);
+            else if (!down && activeHand == h)
+            {
+                ReleasePress(w);
+                activeHand = -1;
+            }
+            triggerDown[h] = down;
+        }
+    }
+
+    // 手 hand の ray が指している面と位置を決める。
+    // 手前のスクリーンから見て、ウィンドウの上に当たっていればそこ、どのウィンドウにも当たっていなければ、当たった一番奥の面
+    static void AimAt(int hand, Ray? ray)
+    {
+        aimScreen[hand] = null;
+        if (ray == null)
+            return;
+        var onWindow = false;
+        foreach (var screen in Screens)
+        {
+            if (!screen.Shown)
+                continue;
+            var at = SurfacePoint(screen, ray.Value);
+            if (at == null)
+                continue;
+            var hit = false;
+            foreach (var window in screen.Windows)
+                if (window.Position != null && Math.Abs(at.Value.X - window.Position.Value.X) <= window.Size.X * 0.5f
+                    && Math.Abs(at.Value.Y - window.Position.Value.Y) <= window.Size.Y * 0.5f)
+                    hit = true;
+            var best = aimScreen[hand];
+            var better = best == null || (hit && !onWindow)
+                || (hit == onWindow && (hit ? screen.Distance < best.Distance : screen.Distance > best.Distance));
+            if (!better)
+                continue;
+            aimScreen[hand] = screen;
+            aimAt[hand] = at.Value;
+            onWindow = hit;
+        }
+    }
+
     static void Controllers(Workspace w, Ray aim, float dt)
     {
         var right = Xr.Input(1);
         var left = Xr.Input(0);
         pointer = Space.OnCylinderAt(RayOn(w.CodeScreen, aim), Space.R);
-        // 押し離しは閾値を分けて、ぶれで繰り返さない
-        var trigger = right != null && (triggerDown ? right.Trigger > 0.3f : right.Trigger > 0.7f);
-        if (trigger && !triggerDown)
-            Click(w, aim, true);
-        else if (trigger)
-            DragTo(w, aim);
-        else if (triggerDown)
-            ReleasePress(w);
-        triggerDown = trigger;
 
         var rGrip = right != null && (rightGrip ? right.Grip > 0.3f : right.Grip > 0.7f);
         var lGrip = left != null && (leftGrip ? left.Grip > 0.3f : left.Grip > 0.7f);
@@ -3740,10 +3798,15 @@ public static class Lider
                 Quad3d.Curved(on, inspectTitle.Texture, Color.Rgb(1, 1, 1, 1), BoardAngle, InspectTitleY(), Space.R, size.X, InspectTitleH, 0, 1);
             Space.Flat = worldFlat;
         }
-        // コントローラーで指している円筒の上の点
-        if (lastEye != null && pointer != null)
-            Quad3d.Solid(vp * Space.OnCylinder(pointer.Angle, pointer.Y, Space.R - PanelView.FrontGap - 0.01f, 0.012f, 0.012f),
-                Color.Rgb(0.4f, 0.9f, 1.0f, 0.9f));
+        // コントローラーで指している点 (両手。指している面の上に、見かけが同じ大きさで出す)
+        for (var h = 0; lastEye != null && h < 2; h++)
+        {
+            var on = aimScreen[h];
+            if (on == null)
+                continue;
+            var dot = 0.014f / Apparent(on);
+            SurfaceQuad(on, worldVp, new Vec4(aimAt[h].X, aimAt[h].Y, dot, dot), Color.Rgb(0.4f, 0.9f, 1.0f, 0.95f), null);
+        }
         foreach (var ring in rings)
             DrawRing(vp, ring);
         DrawFlash(vp);
