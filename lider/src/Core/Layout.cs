@@ -116,6 +116,23 @@ public class MainStack : ILayout
     }
 }
 
+// スクリーンの右下の隅から、ウィンドウを上へ積む。大きさは、ウィンドウが持っている物のまま
+public class Corner : ILayout
+{
+    // 端とウィンドウの間、ウィンドウどうしの間
+    public float Margin = 0.03f;
+
+    public void Arrange(Screen screen)
+    {
+        var y = -screen.Size.Y * 0.5f + Margin;
+        foreach (var window in screen.Windows)
+        {
+            window.Place(screen.Size.X * 0.5f - Margin - window.Size.X * 0.5f, y + window.Size.Y * 0.5f);
+            y += window.Size.Y + Margin;
+        }
+    }
+}
+
 // focus のある (無ければ最初の) ウィンドウだけを、スクリーンいっぱいに出す。ほかのウィンドウは出さない
 public class Full : ILayout
 {

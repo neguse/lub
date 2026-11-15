@@ -18,7 +18,6 @@ public class HintCard
     const int IconS = 22;
     // 画素の細かさは code の窓 (PanelView) と同じ
     public const float W = PanelView.BaseW * PxW / PanelView.BasePxW;
-    const float Gap = 0.03f;
 
     readonly SpriteBatch batch = new SpriteBatch("lider_hints", PxW, PxH);
     readonly Atlas icons = Atlas.FromPixels("lider_hint_icons", Cell * 7, Cell, IconPixels(), 1);
@@ -27,12 +26,10 @@ public class HintCard
     int rows;
     float usedPxW = PxW;
     public TextureRef? Texture;
+    // 札の字のある所の真ん中の角度と高さ (置く側が決める)
     public float Angle;
     public float Y;
     public bool Shown;
-    float still;
-    float lastAngle;
-    float lastY;
 
     // texture を宣言し、案内が変わっていれば描き直す (画面への pass の外で呼ぶ)
     public void Prepare(List<Hint> hints, MonoText text)
@@ -51,37 +48,19 @@ public class HintCard
         Render(hints, text);
     }
 
-    // 指している点 (無ければ隠す) の右下に置く。画面の下の端 minY か右の端 maxAngle を越えるなら、上か左に置く
-    public void Place(CylinderPoint? at, float dt, float minY, float maxAngle)
-    {
-        Shown = at != null;
-        if (at == null)
-            return;
-        var moved = Math.Abs(at.Angle - lastAngle) * Space.R + Math.Abs(at.Y - lastY);
-        still = moved > 0.004f ? 0 : still + dt;
-        lastAngle = at.Angle;
-        lastY = at.Y;
-        var r = Radius();
-        Angle = at.Angle + (Gap + W * 0.5f) / r;
-        if (at.Angle + (Gap + UsedW()) / r > maxAngle)
-            Angle = at.Angle + (UsedW() - W * 0.5f - Gap) / r - UsedW() / r;
-        Y = at.Y - Gap - Height() * 0.5f;
-        if (Y - Height() * 0.5f < minY)
-            Y = at.Y + Gap + Height() * 0.5f;
-    }
-
+    // スクリーンの面 (半径 Space.R) の上に描く
     float Radius()
     {
-        return Space.R - PanelView.FrontGap - 0.04f;
+        return Space.R;
     }
 
     // 札の字のある幅 (texture の左から)
-    float UsedW()
+    public float UsedW()
     {
         return W * usedPxW / PxW;
     }
 
-    float Height()
+    public float Height()
     {
         return W * UsedPx() / PxW;
     }
@@ -95,10 +74,9 @@ public class HintCard
     {
         if (!Shown || Texture == null || rows == 0)
             return;
-        var t = Math.Max(0, Math.Min(1, (still - 0.2f) / 0.4f));
-        var alpha = 0.4f + 0.6f * t * t * (3 - 2 * t);
-        Theme.Plate(vp, Color.Rgb(Theme.Surface.R, Theme.Surface.G, Theme.Surface.B, 0.92f * alpha), Angle + (UsedW() - W) * 0.5f / Radius(), Y, Radius() + 0.003f, UsedW(), Height());
-        Quad3d.Curved(vp, Texture, Color.Rgb(1, 1, 1, alpha), Angle, Y, Radius(), W, Height(), 0, (float)UsedPx() / PxH);
+        Theme.Plate(vp, Color.Rgb(Theme.Surface.R, Theme.Surface.G, Theme.Surface.B, 0.92f), Angle, Y, Radius() + 0.003f, UsedW(), Height());
+        // texture は左から字のある幅だけを使うので、字のある所の真ん中が Angle に来るよう右へずらす
+        Quad3d.Curved(vp, Texture, Color.Rgb(1, 1, 1, 1), Angle + (W - UsedW()) * 0.5f / Radius(), Y, Radius(), W, Height(), 0, (float)UsedPx() / PxH);
     }
 
     void Render(List<Hint> hints, MonoText text)
