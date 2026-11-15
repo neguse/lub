@@ -168,9 +168,29 @@ public class Window
     public const int MinPxH = 160;
     public const int MaxPx = 2048;
 
+    // 親のウィンドウ (無ければ、スクリーンの並びにある)。
+    // 子は、親の中身が決めた、親の座標 (親の真ん中が原点。メートル。Z が負なら親より手前) に置く。配置の規則は、子を並べない
+    public Window? Parent;
+    public readonly List<Window> Children = new List<Window>();
+
     public Window(IContent content)
     {
         Content = content;
+    }
+
+    // child をこのウィンドウの子にする
+    public void Adopt(Window child)
+    {
+        child.Parent?.Children.Remove(child);
+        child.Parent = this;
+        Children.Add(child);
+    }
+
+    // child を子から外す
+    public void Disown(Window child)
+    {
+        if (Children.Remove(child))
+            child.Parent = null;
     }
 
     // 倍率 1 の幅と高さ (メートル。中身を描く画素の数で決まる)

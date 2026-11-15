@@ -87,12 +87,19 @@ public static class TestDiffSide
         if (frames == 64)
         {
             Check(!PanelView.SideBySide && !panel.OldShown, "code:diff-side did not hide the board");
+            Check(Lider.DiffOf(window) == null && window.Children.Count == 0, "the hidden board is still a child of the window");
             Check(Math.Abs(Lider.BoardAngle - boardBefore) < oldSpan * 0.01f, "the inspector moved: " + Lider.BoardAngle + ", want " + boardBefore);
             Lider.Run("code:diff-side");
         }
         if (frames == 66)
         {
             Check(PanelView.SideBySide && panel.OldShown, "code:diff-side did not bring the board back");
+            // 板はコードのウィンドウの子で、スクリーンの並びには入らず、親の左の手前にある
+            var board = Lider.DiffOf(window);
+            Check(board != null && board.Parent == window && board.Content is Diff, "the board is not a child of the code window");
+            Check(board != null && !w.ScreenOf(window)!.Windows.Contains(board), "the board is in the order of the screen");
+            Check(board != null && board.Position!.Value.X < -window.UnscaledSize.X * window.Scale * 0.5f && board.Position.Value.Z < 0,
+                "the board is not at the front left of its parent");
             doc.Save();
             doc.Reloaded();
         }

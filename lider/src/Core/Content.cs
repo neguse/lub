@@ -48,6 +48,22 @@ public class Inspector : IContent
     }
 }
 
+// コードの、ゲームの動いている版を左右に並べる板 (PanelView が描く。画面に写す絵は持たない)。コードのウィンドウの子になる
+public class Diff : IContent
+{
+    public readonly Code Code;
+
+    public Diff(Code code)
+    {
+        Code = code;
+    }
+
+    public TextureRef? Texture()
+    {
+        return null;
+    }
+}
+
 // 操作の案内 (HintCard が描く。画面に写す絵は持たない)
 public class Hints : IContent
 {
