@@ -1,12 +1,13 @@
 // lider の entry。
 // `lub Lider.csproj` で起動し、LIDER_GAME のゲームを別の VM で開いて動かす (GameApp)。ゲームの絵を画面に写し、その上にコードの空間を描く。
-// Shift+F11 で、コードの窓をゲームの絵に重ねる形と、左にゲームの絵、右にコードの窓を並べる形を切り替える。
+// Alt+L で、コードの窓をゲームの絵に重ねる形と、左にゲームの絵、右にコードの窓を並べる形を切り替える。
 // キーボードは focus のあるウィンドウへ、マウスは指しているウィンドウへ送る。
 // F1 で focus をゲームの絵と Code の間で移す (focus がゲームにある間、窓は同じ所に薄く残る)。押したウィンドウにも focus が移る。
-// Shift+F1 でゲームの絵でないスクリーンを隠す / 出す。起動したときは隠していて、focus はゲームにある。
+// 起動したときは、ゲームの絵でないスクリーンを隠していて、focus はゲームにある (命令 screen:hide で隠す / 出す)。
+// 操作は名前の付いた命令で、key の割り当ては Keymap にあり、Ctrl+P の検索からも名前で呼べる。
 // 左 click は窓ならカーソルを置く。ゲームを止めている間は、何も無い所ならゲームの物を描いたコードを開き、中 click は、前にコードがあってもゲームの物を指す。
 // 窓は横一列に並ぶ。非 XR の右ドラッグは、窓の上なら並びを変え (ドラッグ中のホイールで大きさを変える)、窓の外なら列を動かす。
-// Alt + 左右で隣の窓へ、Alt + Shift + 左右で並びを変え、Alt + 数字でその番目の窓へ移る。非 XR では focus のある窓が見える所まで視点が滑る。
+// Alt + 矢印で隣のウィンドウへ、Alt + Shift + 矢印で並びを変え、Alt + 数字でその番目の窓へ移る。非 XR では focus のある窓が見える所まで視点が滑る。
 // env:
 //   LIDER_GAME    開くゲーム。.csproj か、ディレクトリ (その下の .cs。web) なら lider が変換し (GameBuild)、.tcsb ならそのまま開く
 //   LIDER_CS_LIB  LIDER_GAME がディレクトリのときに一緒に変換する lub の cs-lib のディレクトリ
@@ -18,9 +19,9 @@
 //   LIDER_OPEN    起動したときに拡大する file の path
 //   LIDER_REWIND  控える frame の数 (既定 600、0 で控えない)
 // 時間: F5 でゲームを止める / 続ける、止めている間 F6 で 1 frame 戻り、F7 で 1 frame 進む。Shift+F5 でゲームを最初から作り直す。
-// F8 で compile error の行へ順に飛ぶ。
-// F10 で、保存した版と編集中の版 (保存していない本文で変換した版) のゲームを左右に並べる。もう一度 F10 で戻す。
-// 並べている間、入力は両方のゲームに渡し、F3 で保存した版の今の状態を編集中の版に写す (DraftGame)。
+// Ctrl+E で compile error の行へ順に飛ぶ。
+// Alt+D で、保存した版と編集中の版 (保存していない本文で変換した版) のゲームを左右に並べる。もう一度 Alt+D で戻す。
+// 並べている間、入力は両方のゲームに渡し、命令 game:copy-to-draft で保存した版の今の状態を編集中の版に写す (DraftGame)。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -81,7 +82,7 @@ public static class Lider
     static readonly Dictionary<Window, WindowMotion> motions = new Dictionary<Window, WindowMotion>();
     static readonly Particles particles = new Particles();
     static readonly List<Ring> rings = new List<Ring>();
-    // 音と演出の強さ (F4 で 2 全部、1 音なし、0 演出も抑える)
+    // 音と演出の強さ (命令 juice:cycle で 2 全部、1 音なし、0 演出も抑える)
     public static int Juice = 2;
     // 全面の明滅 (1 から 0 へ減る。最初は暗く、次に明るく)
     public static float Flash;
@@ -119,7 +120,7 @@ public static class Lider
     public static List<string> What = new List<string>();
     // 画面の座標 (web は CSS px) の 1 に対する、MainTex の画素の数
     public static float PixelRatio = float.Parse(Environment.GetEnvironmentVariable("LIDER_PIXEL_RATIO") ?? "1");
-    // インスペクタ (F2 で出して focus を移し、focus があればしまう。左手の X でも出し入れ)。中身が Inspector のウィンドウで、コードの窓と同じスクリーンに並ぶ。
+    // インスペクタ (Alt+I で出して focus を移し、focus があればしまう。左手の X でも出し入れ)。中身が Inspector のウィンドウで、コードの窓と同じスクリーンに並ぶ。
     // 重ねる形ではコードのスクリーンの一番左、左右に並ぶ形では背景のスクリーンの最後に置く
     static readonly InspectView inspect = new InspectView();
     public static InspectView Inspector => inspect;
@@ -183,7 +184,7 @@ public static class Lider
         if (area.Length == 4 && float.TryParse(area[0], out var ax) && float.TryParse(area[1], out var ay)
             && float.TryParse(area[2], out var aw) && float.TryParse(area[3], out var ah))
             SetArea(ax, ay, aw, ah);
-        // 本文と動いている版の違いを、最初から窓の中 (インライン) に出す (F9 で切り替えられる)
+        // 本文と動いている版の違いを、最初から窓の中 (インライン) に出す (命令 code:diff-side で切り替えられる)
         if (Environment.GetEnvironmentVariable("LIDER_DIFF") == "inline")
             PanelView.SideBySide = false;
         // 止める前の frame へ戻れるよう、lider を出していなくても起動したときから控える。
@@ -200,6 +201,7 @@ public static class Lider
         SetHidden(true);
         if (Environment.GetEnvironmentVariable("LIDER_ACTIVE") == "1")
             FocusCode();
+        RegisterCommands();
         Work.Drafts?.Restore(Work);
         // lider の VM を作り直した (lider 自身の static の初期化子の変更) なら、作り直す前の窓に戻す
         if (Session.Restore(Work, Sys.Seconds()))
@@ -360,20 +362,6 @@ public static class Lider
             w.SetMods(e.Mods);
         var repeated = (e.Kind == EventKind.KeyDown || e.Kind == EventKind.KeyUp)
             && w.Repeated(e.Key, e.Kind == EventKind.KeyDown);
-        if (e.Kind == EventKind.KeyDown && e.Key == Keys.F1 && w.Shift)
-        {
-            if (!repeated)
-                SetHidden(!Hidden);
-            return;
-        }
-        if (e.Kind == EventKind.KeyDown && e.Key == Keys.F1)
-        {
-            if (!repeated && w.OnGame)
-                FocusCode();
-            else if (!repeated)
-                FocusGame();
-            return;
-        }
         var key = e.Kind == EventKind.KeyDown || e.Kind == EventKind.KeyUp;
         var mouse = e.Kind == EventKind.MouseButtonDown || e.Kind == EventKind.MouseButtonUp
             || e.Kind == EventKind.MouseMotion || e.Kind == EventKind.MouseWheel;
@@ -385,6 +373,21 @@ public static class Lider
         }
         if (key && w.OnGame)
         {
+            // focus がゲームにある間、lider が取る key は、focus を戻す key だけ
+            var name = Document.Booted ? EditorHost.NameOf(e.Key, e.Plain) : null;
+            if (name != null && Keymap.Binds(name, "focus:game"))
+            {
+                if (e.Kind == EventKind.KeyDown && !repeated)
+                    CommandTable.Run("focus:game");
+                return;
+            }
+            // エディタを起こす前は、表を引けないので F1 で戻す
+            if (!Document.Booted && e.Key == Keys.F1)
+            {
+                if (e.Kind == EventKind.KeyDown && !repeated)
+                    FocusCode();
+                return;
+            }
             SendGame(e);
             return;
         }
@@ -413,99 +416,13 @@ public static class Lider
         }
         if (Search.Shown && SearchEvent(w, e))
             return;
-        if (e.Kind == EventKind.KeyDown && w.Ctrl && !w.Shift && e.Key == Keys.P && !EditorHost.Modal())
+        // key は、表 (Keymap) を通って命令になる。命令にならない key は、focus のある Code に入る
+        if (key)
         {
-            Search.Open(w);
-            if (lastEye != null)
-                PlaceSearch(gaze);
-            return;
-        }
-        if (e.Kind == EventKind.KeyDown && e.Key == Keys.F12 && !EditorHost.Modal())
-        {
-            Search.Jump(w);
-            if (lastEye != null)
-                PlaceSearch(gaze);
-            return;
-        }
-        if (e.Kind == EventKind.KeyDown && w.Ctrl && e.Key == Keys.Minus && !EditorHost.Modal())
-        {
-            w.Back();
-            return;
-        }
-        if (e.Kind == EventKind.KeyDown && e.Key == Keys.F8 && !EditorHost.Modal())
-        {
-            var error = w.NextError();
-            if (error != null)
-                Search.GoToPlace(w, error.Path, error.Line);
-            return;
-        }
-        if (e.Kind == EventKind.KeyDown && w.Ctrl && TabKey(w, e.Key))
-            return;
-        // Alt を押している間、左右と数字で focus を移し、Shift も押すと並びを変え、PageUp / PageDown で大きさを変え、Delete で file を消す
-        if (e.Kind == EventKind.KeyDown && w.Alt && WindowKey(w, e.Key))
-            return;
-        if (e.Kind == EventKind.KeyDown && e.Key == Keys.F11 && w.Shift)
-        {
-            if (!repeated)
-                ToggleTiled();
-        }
-        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F11)
-        {
-            if (!repeated)
-                Zen = !Zen;
-        }
-        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F2)
-        {
-            // Shift+F2 は板を値の木と負荷の一覧で切り替える (隠していれば負荷の一覧で出す)
-            if (!repeated && w.Shift)
-            {
-                inspect.Load = !inspect.Shown || !inspect.Load;
-                inspect.Shown = true;
-            }
-            // 出していなければ出して focus を移し、focus がほかにあれば focus を移し、focus があれば閉じる
-            else if (!repeated && inspect.Shown && w.Focused == inspectWindow)
-                Close(w, inspectWindow);
-            else if (!repeated)
-            {
-                inspect.Shown = true;
-                w.FocusTo(inspectWindow);
-            }
-        }
-        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F10)
-        {
-            if (!repeated)
-                ToggleCompare();
-        }
-        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F3)
-        {
-            if (!repeated)
-                DraftGame.CopyPending = true;
-        }
-        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F9 && !Composing())
-        {
-            if (!repeated)
-                PanelView.SideBySide = !PanelView.SideBySide;
-        }
-        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F4)
-        {
-            if (!repeated)
-                SetJuice((Juice + 2) % 3);
-        }
-        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F5)
-        {
-            // Shift+F5 はゲームを最初から作り直す (次の frame の始めに OnInit から始め直す。lider は作り直されない)
-            if (!repeated && w.Shift)
-                GameApp.Restart();
-            else if (!repeated)
-                TogglePause();
-        }
-        // かなの変換中の F6 と F7 は、ひらがなとカタカナにする (Workspace.Key から IME へ)
-        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F6 && !Composing())
-            StepBack();
-        else if (e.Kind == EventKind.KeyDown && e.Key == Keys.F7 && !Composing())
-            StepForward();
-        else if (e.Kind == EventKind.KeyDown || e.Kind == EventKind.KeyUp)
+            CommandTable.Repeated = repeated;
             w.Input(e.Key, e.Kind == EventKind.KeyDown, e.Typed, e.Plain);
+            CommandTable.Repeated = false;
+        }
         else if (e.Kind == EventKind.MouseButtonDown && e.Button == 1)
             ClickAt(e.X, e.Y);
         else if (e.Kind == EventKind.MouseButtonDown && e.Button == 3 && lastEye == null)
@@ -567,6 +484,10 @@ public static class Lider
             return false;
         if (e.Kind == EventKind.KeyUp)
             return false;
+        // focus をゲームへ移す key は、検索を出していても効く (検索は閉じる)
+        var name = Document.Booted ? EditorHost.NameOf(e.Key, e.Plain) : null;
+        if (name != null && Keymap.Binds(name, "focus:game"))
+            return false;
         if (e.Key == Keys.Escape || (w.Ctrl && e.Key == Keys.P))
             Search.Cancel(w);
         else if (e.Key == Keys.Return)
@@ -602,26 +523,6 @@ public static class Lider
         var at = Space.OnCylinderAt(ray, Space.R);
         if (hit != null && at != null && ScreenFor(w, hit.Window) == w.CodeScreen)
             grab.Start(hit.Window, w.CodeScreen.XAt(at.Angle), at.Y);
-    }
-
-    const int TabScancode = 43;
-    const int WScancode = 26;
-
-    // Ctrl を押しているときのタブの key: Ctrl+Tab / Ctrl+Shift+Tab で隣のタブ、Ctrl+W で閉じる、Ctrl+Alt+←→ で隣の窓へ移す。
-    // 扱った key なら true
-    static bool TabKey(Workspace w, int key)
-    {
-        if (EditorHost.Modal() || Composing())
-            return false;
-        if (key == TabScancode)
-            w.NextTab(w.Shift ? -1 : 1);
-        else if (key == WScancode && !w.Alt && !w.Shift)
-            CloseFocused(w);
-        else if (w.Alt && (key == Keys.Left || key == Keys.Right))
-            w.MoveTab(key == Keys.Left ? -1 : 1);
-        else
-            return false;
-        return true;
     }
 
     // ウィンドウを閉じる (どの中身のウィンドウにも効く)。focus があったら、Code のウィンドウに戻す
@@ -719,46 +620,177 @@ public static class Lider
     // Alt+Shift+PageUp / PageDown で変える幅 (px、約 8 桁)
     const int WidthStep = 64;
 
-    // Alt を押しているときの key。
-    // 扱った key なら true
-    public static bool WindowKey(Workspace w, int key)
+    // lider の操作を、名前の付いた命令として表に載せる (key の割り当ては Keymap、検索からも同じ名前で呼ぶ)
+    static void RegisterCommands()
     {
-        if (key >= Keys.Digit1 && key < Keys.Digit1 + 9)
+        CommandTable.Register("focus:game", "focus をゲームとコードの間で移す", () => With(w =>
         {
-            w.FocusNth(key - Keys.Digit1);
-            return true;
+            if (w.OnGame)
+                FocusCode();
+            else
+                FocusGame();
+        })).OverModal = true;
+        CommandTable.Register("screen:hide", "ゲームでないスクリーンを隠す・出す", () => With(w => SetHidden(!Hidden)));
+        CommandTable.Register("game:pause", "ゲームを止める・続ける", () => With(w => TogglePause())).OverModal = true;
+        CommandTable.Register("game:restart", "ゲームを最初から作り直す", () => With(w => GameApp.Restart())).OverModal = true;
+        var back = CommandTable.Register("game:step-back", "1 frame 戻す", () => With(w => StepBack()));
+        back.Repeats = true;
+        back.OverModal = true;
+        var forward = CommandTable.Register("game:step-forward", "1 frame 進める", () => With(w => StepForward()));
+        forward.Repeats = true;
+        forward.OverModal = true;
+        CommandTable.Register("game:compare", "編集中の版を並べる・やめる", () => With(w => ToggleCompare()));
+        CommandTable.Register("game:copy-to-draft", "保存済みの版の状態を編集中の版に写す", () => With(w => DraftGame.CopyPending = true));
+        CommandTable.Register("search:open", "file と宣言と命令を探す", () => With(w =>
+        {
+            Search.Open(w);
+            if (lastEye != null)
+                PlaceSearch(gaze);
+        }));
+        CommandTable.Register("code:go-to-definition", "定義へ飛ぶ", () => With(w =>
+        {
+            Search.Jump(w);
+            if (lastEye != null)
+                PlaceSearch(gaze);
+        }));
+        CommandTable.Register("code:back", "飛ぶ前の場所へ戻る", () => With(w => w.Back()));
+        CommandTable.Register("code:next-error", "次のエラーの行へ", () => With(w =>
+        {
+            var error = w.NextError();
+            if (error != null)
+                Search.GoToPlace(w, error.Path, error.Line);
+        }));
+        CommandTable.Register("code:diff-side", "動いている版との違いの出し方を替える", () => With(w => PanelView.SideBySide = !PanelView.SideBySide));
+        CommandTable.Register("file:delete", "file を消す", () => OnCode(w => w.AskDeleteFocus()));
+        CommandTable.Register("window:close", "ウィンドウを閉じる (コードはタブを閉じる)", () => With(w => CloseFocused(w))).Repeats = true;
+        CommandTable.Register("tab:next", "隣のタブへ", () => OnCode(w => w.NextTab(1))).Repeats = true;
+        CommandTable.Register("tab:previous", "前のタブへ", () => OnCode(w => w.NextTab(-1))).Repeats = true;
+        CommandTable.Register("tab:move-left", "タブを左のウィンドウへ移す", () => OnCode(w => w.MoveTab(-1))).Repeats = true;
+        CommandTable.Register("tab:move-right", "タブを右のウィンドウへ移す", () => OnCode(w => w.MoveTab(1))).Repeats = true;
+        CommandTable.Register("window:focus-left", "左のウィンドウへ", () => With(w => FocusToward(w, -1, 0))).Repeats = true;
+        CommandTable.Register("window:focus-right", "右のウィンドウへ", () => With(w => FocusToward(w, 1, 0))).Repeats = true;
+        CommandTable.Register("window:focus-up", "上のウィンドウへ", () => With(w => FocusToward(w, 0, 1))).Repeats = true;
+        CommandTable.Register("window:focus-down", "下のウィンドウへ", () => With(w => FocusToward(w, 0, -1))).Repeats = true;
+        for (var i = 1; i <= 9; i++)
+        {
+            var n = i - 1;
+            CommandTable.Register("window:focus-" + i, i + " 番目のコードのウィンドウへ", () => With(w =>
+            {
+                w.FocusCode();
+                w.FocusNth(n);
+            }));
         }
-        var window = w.FocusWindow;
-        if (window == null)
+        CommandTable.Register("window:move-back", "ウィンドウを並びの前へ動かす", () => Moved(w => w.MoveFocus(-1))).Repeats = true;
+        CommandTable.Register("window:move-forward", "ウィンドウを並びの後ろへ動かす", () => Moved(w => w.MoveFocus(1))).Repeats = true;
+        CommandTable.Register("window:grow", "ウィンドウを大きくする", () => Moved(w => w.FocusWindow!.Scale = Math.Min(Grab.MaxScale, w.FocusWindow.Scale * 1.1f))).Repeats = true;
+        CommandTable.Register("window:shrink", "ウィンドウを小さくする", () => Moved(w => w.FocusWindow!.Scale = Math.Max(Grab.MinScale, w.FocusWindow.Scale / 1.1f))).Repeats = true;
+        CommandTable.Register("window:widen", "ウィンドウの幅を広げる", () => Moved(w => w.FocusWindow!.Resize(w.FocusWindow.WidthPx + WidthStep, w.FocusWindow.HeightPx))).Repeats = true;
+        CommandTable.Register("window:narrow", "ウィンドウの幅を狭める", () => Moved(w => w.FocusWindow!.Resize(w.FocusWindow.WidthPx - WidthStep, w.FocusWindow.HeightPx))).Repeats = true;
+        CommandTable.Register("window:zen", "ウィンドウを画面いっぱいに広げる・戻す", () => With(w => Zen = !Zen));
+        CommandTable.Register("screen:next-layout", "並べ方の規則を替える", () => With(w => ToggleTiled()));
+        CommandTable.Register("inspector:toggle", "インスペクタを開く・focus を移す・閉じる", () => With(w =>
+        {
+            // 出していなければ出して focus を移し、focus がほかにあれば focus を移し、focus があれば閉じる
+            if (inspect.Shown && w.Focused == inspectWindow)
+                Close(w, inspectWindow);
+            else
+            {
+                inspect.Shown = true;
+                w.FocusTo(inspectWindow);
+            }
+        }));
+        CommandTable.Register("inspector:load", "インスペクタを値の木と負荷の一覧で切り替える", () => With(w =>
+        {
+            inspect.Load = !inspect.Shown || !inspect.Load;
+            inspect.Shown = true;
+        }));
+        CommandTable.Register("juice:cycle", "音と演出の強さを変える", () => With(w => SetJuice((Juice + 2) % 3)));
+    }
+
+    // 命令を名前で実行する (検索と test から)
+    public static bool Run(string name)
+    {
+        return CommandTable.Run(name);
+    }
+
+    // どの focus でも効く命令
+    static bool With(Action<Workspace> run)
+    {
+        if (Work == null)
             return false;
-        if (key == Keys.Delete)
-        {
-            w.AskDeleteFocus();
-            return true;
-        }
-        if ((key == Keys.Left || key == Keys.Right) && !w.Shift)
-        {
-            w.FocusBy(key == Keys.Left ? -1 : 1);
-            return true;
-        }
-        if (key == Keys.Left)
-            w.MoveFocus(-1);
-        else if (key == Keys.Right)
-            w.MoveFocus(1);
-        else if (key == Keys.PageUp && w.Shift)
-            window.Resize(window.WidthPx + WidthStep, window.HeightPx);
-        else if (key == Keys.PageDown && w.Shift)
-            window.Resize(window.WidthPx - WidthStep, window.HeightPx);
-        else if (key == Keys.PageUp)
-            window.Scale = Math.Min(Grab.MaxScale, window.Scale * 1.1f);
-        else if (key == Keys.PageDown)
-            window.Scale = Math.Max(Grab.MinScale, window.Scale / 1.1f);
-        else
+        run(Work);
+        return true;
+    }
+
+    // focus が Code にあるときだけ効く命令
+    static bool OnCode(Action<Workspace> run)
+    {
+        var w = Work;
+        if (w == null || w.FocusWindow == null || w.Focused != w.FocusWindow)
             return false;
-        // 動かしている間は、つかんだときと同じに浮かせる (key の繰り返しが続く間)
-        keyMoved = window;
+        run(w);
+        return true;
+    }
+
+    // focus のある Code のウィンドウを動かす命令。動かしている間は、つかんだときと同じに浮かせる (key の繰り返しが続く間)
+    static bool Moved(Action<Workspace> run)
+    {
+        if (!OnCode(run))
+            return false;
+        keyMoved = Work!.FocusWindow;
         keyLift = 0.3f;
         return true;
+    }
+
+    // focus のあるウィンドウから (dx, dy) の向きにある、同じスクリーンの一番近いウィンドウへ focus を移す (+X が右、+Y が上)
+    static void FocusToward(Workspace w, int dx, int dy)
+    {
+        var from = w.Focused;
+        if (from == null || from.Position == null)
+        {
+            w.FocusBy(dx != 0 ? dx : -dy);
+            return;
+        }
+        var here = Center(w, from);
+        Window? best = null;
+        var bestCost = 0.0f;
+        // 同じスクリーンの中で探す (重なっている別のスクリーンのウィンドウとは、隣かどうかを決められない)
+        var on = ScreenFor(w, from);
+        foreach (var screen in Screens)
+        {
+            if (screen != on)
+                continue;
+            foreach (var window in screen.Windows)
+            {
+                if (window == from || window.Position == null)
+                    continue;
+                var at = Center(w, window);
+                var along = (at.X - here.X) * dx + (at.Y - here.Y) * dy;
+                var across = Math.Abs((at.X - here.X) * dy) + Math.Abs((at.Y - here.Y) * dx);
+                // 向きの先にあり、横へのずれより先への進みが大きい物
+                if (along <= 0.001f || across > along)
+                    continue;
+                var cost = along + across * 2;
+                if (best == null || cost < bestCost)
+                {
+                    best = window;
+                    bestCost = cost;
+                }
+            }
+        }
+        if (best != null)
+            w.FocusTo(best);
+    }
+
+    // ウィンドウの真ん中の、見た目の位置 (半径 Space.R の所のメートル。視点の正面が 0)。
+    // 視点に固定した平面のスクリーンと、世界に置いた円筒のスクリーンのウィンドウを、同じ物差しで比べる
+    static Vec2 Center(Workspace w, Window window)
+    {
+        var screen = ScreenFor(w, window);
+        var at = window.Position!.Value;
+        if (OnView(screen))
+            return new Vec2((screen.Position.X + at.X) * ViewScale(screen), (screen.Position.Y + at.Y) * ViewScale(screen));
+        return new Vec2(WindowAngle(w, window) * Space.R - viewX.Value, at.Y);
     }
 
     static bool Composing()

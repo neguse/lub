@@ -1,4 +1,4 @@
-// Shift+F11 で、コードの窓をゲームの絵に重ねる形と、左右に並ぶ形を切り替える。
+// Alt+L (screen:next-layout) で、コードの窓をゲームの絵に重ねる形と、左右に並ぶ形を切り替える。
 //   - 左右に並ぶ形では、コードの窓は背景のスクリーン (視点に固定した平面) に移り、画面の右半分に出る
 //   - その窓は、右半分の真ん中を続けて 2 回押すと語を選べる (描いた所と、当たる所が合っている)
 //   - 画面の左半分を押しても、コードの窓には当たらない
@@ -113,8 +113,8 @@ public static class TestTiled
     static void ShiftF11()
     {
         Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = Keys.LeftShift, Mods = ShiftMod });
-        Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = Keys.F11, Mods = ShiftMod });
-        Lider.OnEvent(new EventData { Kind = EventKind.KeyUp, Key = Keys.F11, Mods = ShiftMod });
+        Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = 15, Mods = Keys.ModAlt });
+        Lider.OnEvent(new EventData { Kind = EventKind.KeyUp, Key = 15, Mods = Keys.ModAlt });
         Lider.OnEvent(new EventData { Kind = EventKind.KeyUp, Key = Keys.LeftShift, Mods = 0 });
     }
 

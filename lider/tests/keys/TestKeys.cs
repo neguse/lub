@@ -94,8 +94,8 @@ public static class TestKeys
 
         // lub から届く順に流す。
         // 隠している間に打った a はゲームのもので、Document には入らない
+        Send(EventKind.KeyDown, Keys.F1);
         Send(EventKind.KeyDown, Keys.LeftCtrl, Keys.ModCtrl);
-        Send(EventKind.KeyDown, Keys.F1, Keys.ModCtrl);
         Send(EventKind.KeyUp, Keys.LeftCtrl);
         Check(!w.Ctrl, "Ctrl stayed down after it was released while hidden");
         Send(EventKind.KeyUp, Keys.F1);

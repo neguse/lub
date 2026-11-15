@@ -75,7 +75,9 @@ public static class TestTabs
             Press(W, Keys.ModCtrl);
             Check(Shape(w) == "[Target.cs *Third.cs]", "Ctrl+W did not close the tab: " + Shape(w));
             Press(Keys.Escape, 0);
-            Check(Shape(w) == "[*Target.cs]", "Escape did not close the tab: " + Shape(w));
+            Check(Shape(w) == "[Target.cs *Third.cs]", "Escape closed the tab: " + Shape(w));
+            Press(W, Keys.ModCtrl);
+            Check(Shape(w) == "[*Target.cs]", "Ctrl+W did not close the tab: " + Shape(w));
             w.FocusOn(second);
             return;
         }

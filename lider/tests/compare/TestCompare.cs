@@ -1,9 +1,9 @@
-// F10 で、保存した版と編集中の版のゲームを並べる (DraftGame)。
+// Alt+D (game:compare) で、保存した版と編集中の版のゲームを並べる (DraftGame)。
 //   - 背景のスクリーンが左右に等分され、左に保存した版、右に編集中の版が出る
 //   - 編集中の版は、動き始めた時に保存した版の状態を写し、その後は同じ frame を進む (数が同じ)
 //   - 保存せずに書き換えた本文は、編集中の版だけに入る (保存した版と disk の file は変わらない)
 //   - 編集中の版が変換できないと、札が「最後に通った版」を出していると書く
-//   - もう一度 F10 で、保存した版だけに戻る
+//   - もう一度呼ぶか、編集中の版の閉じる印で、保存した版だけに戻る
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -48,7 +48,7 @@ public static class TestCompare
         var w = Lider.Work!;
         if (stage == 0 && Count(GameApp.Ref) >= 30)
         {
-            Press(Keys.F10);
+            Lider.Run("game:compare");
             stage = 1;
         }
         else if (stage == 1 && DraftGame.Copies > 0 && DraftGame.Ref != null)
