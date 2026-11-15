@@ -36,6 +36,21 @@ LUB_URL=http://localhost:5173/ npm run verify-lider
 `?gist=<gist の id か URL>` で開くと、公開の gist の file を project にして、ゲームだけで始まる。
 `#sample=<名前>` (メニューの「サンプル」) で開くと、lub のサンプルを project にする。
 
+## Linux arm64 向けに build する
+
+x86_64 の Linux の上で、Linux arm64 (aarch64、glibc) の機械で動く lider の player を作る。
+コンパイラは zig、かな漢字変換 (jamo-core) は Rust の `aarch64-unknown-linux-gnu` で作る。
+
+```
+rustup target add aarch64-unknown-linux-gnu
+lider/scripts/build-linux-arm64.sh <sysroot>   # lider/build/linux-arm64/player/lider_player
+```
+
+`<sysroot>/lib` には、動かす機械から写した arm64 の共有 library を置く (名前は `scripts/build-linux-arm64.sh` の先頭)。
+動かす機械には、`lider_player` と、Slang の library (`lider/build/linux-arm64/slang/lib` の `libslang-compiler.so.*`、`libslang-glslang-*.so`、`libslang-glsl-module-*.so`、`libslang-rt.so.*`) を置き、`LD_LIBRARY_PATH` で library の場所を渡す。
+lider の bytecode (`scripts/build-module.sh` が作る `Lider.tcsb`) は機械の種類によらないので、x86_64 で作った物をそのまま使う。
+XR (OpenXR) で動かすには `LUB_BACKEND=openxr` を渡す。
+
 ## 画面の組み立て
 
 - 空間 (`Space`) が基底で、画面はそれを視点から見た絵。
