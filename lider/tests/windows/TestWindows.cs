@@ -181,9 +181,9 @@ public static class TestWindows
 
         w.SetMods(Keys.ModAlt);
         Check(w.Alt, "Alt is not tracked");
-        w.Active = false;
+        w.FocusTo(new Window(new GameView()));
         w.SetMods(0);
-        w.Active = true;
+        w.FocusCode();
         Check(!w.Alt, "Alt stayed down after it was released while hidden");
 
         Near(Space.FollowX(0, 0.5f, 0.3f, 1), 0, "a visible window moved the view");

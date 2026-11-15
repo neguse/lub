@@ -46,7 +46,7 @@ public static class TestLiveLine
         frames++;
         if (failed || frames != 3)
             return;
-        Lider.SetActive(false);
+        Lider.FocusGame();
         CheckMatch();
         CheckDocument();
         if (failed)

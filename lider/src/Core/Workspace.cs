@@ -76,8 +76,32 @@ public class Workspace
         window.Position = null;
         screen.Windows.Add(window);
     }
-    // 入力が入る窓
+    // focus のある Code のウィンドウ (focus がほかの中身のウィンドウにある間は、最後に focus のあった物)
     public Window? FocusWindow;
+    // focus のある、Code でない中身のウィンドウ (focus が Code にある間は null)
+    Window? other;
+    // キーボードの入力が入るウィンドウ (どのウィンドウにも入らないなら null)
+    public Window? Focused => other ?? FocusWindow;
+    // focus がゲームの絵のウィンドウにあるか (その間、キーボードはゲームのもの)
+    public bool OnGame => other != null && other.Content is GameView;
+
+    // window に focus を移す
+    public void FocusTo(Window window)
+    {
+        if (window.Content is Code)
+        {
+            FocusWindow = window;
+            other = null;
+        }
+        else
+            other = window;
+    }
+
+    // focus を Code のウィンドウに戻す (Code のウィンドウが無ければ、どのウィンドウにも入らない)
+    public void FocusCode()
+    {
+        other = null;
+    }
     public Document? Focus => FocusWindow?.Code.Doc;
     // 見ている窓に focus を移すのは、LookSeconds 見続け、その間 QuietSeconds 打っていないとき
     // (打ちながら脇を見ても移らない)
@@ -87,8 +111,6 @@ public class Workspace
     float lookedFor;
     float sinceKey = QuietSeconds;
     public readonly TraceLog Trace = new TraceLog();
-    // lider がキーボードとマウスを取っているか (取っている間、ゲームには入力が届かない)
-    public bool Active;
     public bool Shift;
     public bool Ctrl;
     public bool Alt;
@@ -637,7 +659,7 @@ public class Workspace
         if (key == Keys.LeftShift || key == Keys.RightShift || key == Keys.LeftCtrl || key == Keys.RightCtrl
             || key == Keys.LeftAlt || key == Keys.RightAlt)
             return true;
-        if (!Active)
+        if (other != null)
             return false;
         if (down && key == Keys.Escape && ShownAsset != "" && !(Document.Booted && EditorHost.Modal()))
         {

@@ -86,12 +86,11 @@ public static class TestReopen
             case 6:
                 Check(Lider.Panel(w.FocusWindow!).RedrawnLines == -1, "reopening did not redraw everything: " + Lider.Panel(w.FocusWindow!).RedrawnLines);
                 Lider.Panel(w.FocusWindow!).RedrawnLines = Untouched;
-                Lider.SetActive(false);
-                Lider.GameOnly = true;
+                Lider.SetHidden(true);
                 waitUntil = frames + SweepFrames;
                 break;
             case 7:
-                Lider.SetActive(true);
+                Lider.FocusCode();
                 waitUntil = frames + 3;
                 break;
             default:

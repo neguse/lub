@@ -14,7 +14,7 @@ LIDER_GAME=$PWD/lider/samples/flappy/Flappy.csproj LIDER_HOME=$PWD/lider LIDER_A
 
 - `LIDER_GAME`: 開くゲームの `.csproj`。lider が player に組み込んだ tcs で変換し (`src/Core/GameBuild.cs`)、保存した file を変換し直して、動いているゲームに当てる。
 - `LIDER_HOME`: このディレクトリ (font を `data/` から読む)。
-- `LIDER_ACTIVE=1`: 起動したときから編集の画面にする。無ければ F1 で出す。
+- `LIDER_ACTIVE=1`: 起動したときからコードの窓を出し、focus をコードに置く。無ければ F1 で出す。
 - ほかの env と key は `src/Lider.cs` の先頭にある。
 
 ## ブラウザで動かす
