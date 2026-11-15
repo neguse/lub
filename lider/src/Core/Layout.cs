@@ -116,19 +116,23 @@ public class MainStack : ILayout
     }
 }
 
-// スクリーンの右下の隅から、ウィンドウを上へ積む。大きさは、ウィンドウが持っている物のまま
-public class Corner : ILayout
+// スクリーンの端から、ウィンドウを縦に積む。大きさは、ウィンドウが持っている物のまま。
+// 横は AlignX (-1 左の端、0 真ん中、1 右の端) に寄せ、縦は FromTop なら上の端から下へ、そうでなければ下の端から上へ積む
+public class Stack : ILayout
 {
+    public float AlignX = 1;
+    public bool FromTop;
     // 端とウィンドウの間、ウィンドウどうしの間
     public float Margin = 0.03f;
 
     public void Arrange(Screen screen)
     {
-        var y = -screen.Size.Y * 0.5f + Margin;
+        var edge = screen.Size.Y * 0.5f - Margin;
         foreach (var window in screen.Windows)
         {
-            window.Place(screen.Size.X * 0.5f - Margin - window.Size.X * 0.5f, y + window.Size.Y * 0.5f);
-            y += window.Size.Y + Margin;
+            var x = AlignX * (screen.Size.X * 0.5f - Margin - window.Size.X * 0.5f);
+            window.Place(x, FromTop ? edge - window.Size.Y * 0.5f : -edge + window.Size.Y * 0.5f);
+            edge -= window.Size.Y + Margin;
         }
     }
 }

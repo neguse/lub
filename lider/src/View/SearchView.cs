@@ -12,7 +12,7 @@ public class SearchView
     const int Pad = 8;
     const int PxW = PanelView.BasePxW;
     const int PxH = (Search.MaxResults + 1) * RowH + Pad * 2;
-    const float W = PanelView.BaseW;
+    public const float W = PanelView.BaseW;
     const float H = W * PxH / PxW;
     const float R = Space.R - 0.2f;
 

@@ -3,7 +3,7 @@
 //   - VR はコントローラーのボタン、非 VR は key とマウス
 //   - インスペクタの出し入れはいつも、frame を送る操作は止めている間だけ
 //   - エラーの行へ飛ぶ操作は、飛べるエラーがある間だけ
-//   - 案内のウィンドウを置く右下の隅の規則 (Corner) は、大きさを変えずに下から積む
+//   - 案内のウィンドウを置く端から積む規則 (Stack) は、大きさを変えずに下から積む
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -70,14 +70,14 @@ public static class TestHints
             "MouseLeft:窓を閉じる|KeyCap Alt+I:インスペクタを出す|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す|KeyCap Ctrl+E:エラーの行へ");
         Expect(new HintContext { Vr = false, Target = HintTarget.Nothing },
             "KeyCap 右ドラッグ:窓の列を動かす|KeyCap Ctrl+P:file と宣言と命令を探す|KeyCap F1:ゲームを触る|KeyCap Alt+I:インスペクタを出す|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
-        // 右下の隅の規則は、ウィンドウの大きさを変えずに、端から余白を空けて下から積む
-        var screen = new Screen("test") { Size = new Vec2(4, 2), Layout = new Corner() };
+        // 端から積む規則は、右下の隅に寄せると、ウィンドウの大きさを変えずに、端から余白を空けて下から積む
+        var screen = new Screen("test") { Size = new Vec2(4, 2), Layout = new Stack() };
         var a = new Window(new Hints(new HintCard())) { Size = new Vec2(1, 0.5f) };
         var b = new Window(new Hints(new HintCard())) { Size = new Vec2(0.6f, 0.2f) };
         screen.Windows.Add(a);
         screen.Windows.Add(b);
         screen.Arrange();
-        var margin = new Corner().Margin;
+        var margin = new Stack().Margin;
         Near(a.Position!.Value.X + 0.5f, 2 - margin, "the first window is not at the right edge");
         Near(a.Position.Value.Y - 0.25f, -1 + margin, "the first window is not at the bottom edge");
         Near(b.Position!.Value.X + 0.3f, 2 - margin, "the second window is not at the right edge");

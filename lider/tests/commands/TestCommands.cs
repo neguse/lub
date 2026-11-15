@@ -2,6 +2,7 @@
 //   - Ctrl+P の検索に命令が並び、">" で始めると命令だけになる。確定すると実行する
 //   - Alt+矢印で、見た目で隣にあるウィンドウへ focus が移る (インスペクタとゲームの絵も含む)
 //   - focus がゲームにある間は、focus を戻す key のほかは命令にならない
+//   - 検索はスクリーンの上の真ん中のウィンドウで、出している間は focus がそこにあり、やめると前のウィンドウに、確定すると Code に戻る
 using System;
 using Lub;
 using LiderCore;
@@ -84,6 +85,26 @@ public static class TestCommands
             case 2:
                 Check(Lider.Run("game:pause") && GameApp.Position >= -1, "game:pause did not run");
                 Check(!Lider.Run("no:such-command"), "an unknown command ran");
+                // 検索はウィンドウで、出している間は focus がそこにある
+                Key(I, Keys.ModAlt, 0);
+                Check(w.Focused == inspector, "Alt+I did not move the focus to the inspector");
+                Key(P, Keys.ModCtrl, 0);
+                Check(Lider.Search.Shown && w.Focused == Lider.SearchWindow, "the search did not take the focus");
+                break;
+            case 3:
+                Gfx.Size(out var sw, out var sh);
+                var at = Lider.SearchWindow.ViewportRect;
+                Check(at != null && Math.Abs(at.X + at.W * 0.5f - sw * 0.5f) <= 1 && at.Y > 0 && at.Y < sh * 0.1f,
+                    "the search is not at the top center: " + (at != null ? at.X + "," + at.Y + " " + at.W + "x" + at.H : "none"));
+                Key(Keys.Escape, 0, 0);
+                Check(!Lider.Search.Shown && w.Focused == inspector, "cancelling the search did not return the focus to the inspector");
+                Key(P, Keys.ModCtrl, 0);
+                Type("target");
+                Key(Keys.Return, 0, 0);
+                Check(!Lider.Search.Shown && w.Focused == w.FocusWindow, "committing the search did not move the focus to the code");
+                break;
+            case 4:
+                Check(Lider.SearchWindow.Position == null, "the closed search is still on the screen");
                 if (!failed)
                 {
                     Console.WriteLine("PASS");
