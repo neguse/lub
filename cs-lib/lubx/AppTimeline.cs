@@ -71,7 +71,14 @@ public class AppTimeline
         {
             var at = Index(paused);
             if (!App.Load(app, firstSlot + at, out _)) return false;
-            return App.Step(app, target, dts[at], new StepInput { Replay = firstSlot + at });
+            // 入力は控えた物を見せ、XR は今の物を見せる (見る人は、止めている間も動く)
+            return App.Step(app, target, dts[at], new StepInput
+            {
+                Xr = input?.Xr,
+                XrTargets = input?.XrTargets,
+                XrViewProjections = input?.XrViewProjections,
+                Replay = firstSlot + at,
+            });
         }
         var slot = firstSlot + head;
         if (resume)
@@ -91,6 +98,9 @@ public class AppTimeline
             Gamepad = input?.Gamepad,
             MouseX = input?.MouseX,
             MouseY = input?.MouseY,
+            Xr = input?.Xr,
+            XrTargets = input?.XrTargets,
+            XrViewProjections = input?.XrViewProjections,
             Replay = input?.Replay,
             Keep = slot,
         });

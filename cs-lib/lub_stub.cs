@@ -248,6 +248,19 @@ namespace Lub
         /// </summary>
         public float? MouseX;
         public float? MouseY;
+        /// <summary>false なら、開いた app からは XR が動いていないように見える (`Xr.Active` が false で、眼にも手にも触れない)。
+        /// 省くか true なら、XR の間、開いた app は `Xr.View` の眼に直に描ける (この app が眼に描く前に Step すれば、この app は `LoadAction.Load` で描き足せる)。
+        /// </summary>
+        public bool? Xr;
+        /// <summary>開いた app に見せる XR の眼を、この app が用意する。左、右の順の、眼の描き先 (color の target の texture を 2 つ。同じ大きさでなくてよい)。
+        /// 渡すと、この app が XR でなくても、開いた app には XR が動いて見え、`Xr.View(eye)` は、この描き先と `XrViewProjections` の行列を返す (眼の位置は原点、向きは回転なし)。手は見えない。
+        /// `Xr` が false なら効かない。
+        /// </summary>
+        public List<TextureRef>? XrTargets;
+        /// <summary>`XrTargets` の眼ごとの view-projection (行優先の projection * view、前方 -Z、深度 [0,1])。`XrTargets` と同じ数だけ渡す。
+        /// </summary>
+        [LubArray(16)]
+        public List<float[]>? XrViewProjections;
         /// <summary>この Step で開いた app に見せた入力を、番号の控えに書く (`App.Save` と同じ番号の控え。状態と入力を 1 つの番号に持てる)。
         /// </summary>
         public int? Keep;

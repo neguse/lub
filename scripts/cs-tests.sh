@@ -91,6 +91,7 @@ cs_runtime_tests=(
   TestAppInputs
   TestAppState
   TestAppInput
+  TestAppXr
   TestAppObserve
   TestAppTimeline
   TestAppPick

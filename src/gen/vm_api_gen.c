@@ -478,6 +478,9 @@ struct VmLub_StepInput {
   VmLubOptBool f_gamepad;
   VmLubOptF32 f_mouse_x;
   VmLubOptF32 f_mouse_y;
+  VmLubOptBool f_xr;
+  void *f_xr_targets;
+  void *f_xr_view_projections;
   VmLubOptI32 f_keep;
   VmLubOptI32 f_replay;
 };
@@ -2475,6 +2478,10 @@ static const struct {
     {"Lub_StepInput", "gamepad", offsetof(VmLub_StepInput, f_gamepad)},
     {"Lub_StepInput", "mouse_x", offsetof(VmLub_StepInput, f_mouse_x)},
     {"Lub_StepInput", "mouse_y", offsetof(VmLub_StepInput, f_mouse_y)},
+    {"Lub_StepInput", "xr", offsetof(VmLub_StepInput, f_xr)},
+    {"Lub_StepInput", "xr_targets", offsetof(VmLub_StepInput, f_xr_targets)},
+    {"Lub_StepInput", "xr_view_projections",
+     offsetof(VmLub_StepInput, f_xr_view_projections)},
     {"Lub_StepInput", "keep", offsetof(VmLub_StepInput, f_keep)},
     {"Lub_StepInput", "replay", offsetof(VmLub_StepInput, f_replay)},
     {"Lub_PassOpts", "target", offsetof(VmLub_PassOpts, f_target)},
@@ -4966,6 +4973,36 @@ static LubStepInput vm_lub_to_StepInput(VmLub *s, VmLub_StepInput *source) {
   if (source->f_mouse_y.has) {
     result.has_mouse_y = true;
     result.mouse_y = source->f_mouse_y.v;
+  }
+  if (source->f_xr.has) {
+    result.has_xr = true;
+    result.xr = source->f_xr.v;
+  }
+  if (source->f_xr_targets) {
+    result.xr_targets_count = tvm_list_count(source->f_xr_targets);
+    LubHandle *items =
+        vm_lub_alloc(s, (size_t)result.xr_targets_count * sizeof(*items));
+    for (int i = 0; i < result.xr_targets_count; i++) {
+      VmLub_TextureRef *item =
+          ((VmLub_TextureRef **)tvm_list_data(source->f_xr_targets))[i];
+      items[i] = item ? (int32_t)item->host_value : 0;
+    }
+    result.xr_targets = items;
+  }
+  if (source->f_xr_view_projections) {
+    result.xr_view_projections_count =
+        tvm_list_count(source->f_xr_view_projections);
+    float (*items)[16] = vm_lub_alloc(
+        s, (size_t)result.xr_view_projections_count * sizeof(*items));
+    for (int i = 0; i < result.xr_view_projections_count; i++) {
+      void *item = ((void **)tvm_list_data(source->f_xr_view_projections))[i];
+      if (tvm_array_len(item) != 16)
+        vm_lub_fail(
+            s, "StepInput.XrViewProjections: each array must have 16 elements");
+      else
+        memcpy(items[i], tvm_array_data(item), sizeof(items[i]));
+    }
+    result.xr_view_projections = items;
   }
   if (source->f_keep.has) {
     result.has_keep = true;
