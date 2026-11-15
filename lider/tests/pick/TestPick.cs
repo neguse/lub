@@ -92,6 +92,12 @@ public static class TestPick
             return;
         if (phase == 0)
         {
+            // 止めている間は毎 frame 状態を読み直すが、個体の id は変わらないので、押した個体に絞り込める
+            var shown = "";
+            foreach (var n in GameApp.Inspect("Game", 0, 10))
+                if (n.Name == "Shown")
+                    shown = n.Id;
+            Check(shown != "" && Lider.Inspector.Tree.ScopeId == shown && Lider.Inspector.Tree.ScopeClass == "Quad", "opening did not scope to the drawing quad: " + string.Join("|", Lider.Inspector.Tree.Crumbs()));
             phase = 1;
             waited = 0;
             focus.MoveTo(0, 0);

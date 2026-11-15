@@ -721,6 +721,147 @@ void tvm_stack(TvmVm *vm, TvmFrameFn fn, void *user) {
   }
 }
 
+/* ---- object の通し番号 ----
+   検査の id は番地でなく通し番号にする。状態を読み込むと object は作り直されて番地が変わるが、番号は状態と一緒に運ばれるので、
+   同じ個体は同じ id のままになる。 */
+
+static uint32_t id_hash(const void *p) {
+  uintptr_t x = (uintptr_t)p >> 4;
+  x ^= x >> 16;
+  return (uint32_t)(x * 0x9E3779B1u);
+}
+
+/* p のある所か、入れる空き (表が無ければ UINT32_MAX) */
+static uint32_t id_find(TvmVm *vm, const void *p) {
+  if (!vm->capids)
+    return UINT32_MAX;
+  uint32_t k = id_hash(p) & (vm->capids - 1);
+  while (vm->id_keys[k] && vm->id_keys[k] != p)
+    k = (k + 1) & (vm->capids - 1);
+  return k;
+}
+
+static bool id_put(TvmVm *vm, void *p, uint64_t id);
+
+static bool id_grow(TvmVm *vm) {
+  uint32_t cap = vm->capids ? vm->capids * 2 : 64;
+  void **keys = (void **)calloc(cap, sizeof(void *));
+  uint64_t *vals = (uint64_t *)calloc(cap, sizeof(uint64_t));
+  if (!keys || !vals) {
+    free(keys);
+    free(vals);
+    return false;
+  }
+  void **old_keys = vm->id_keys;
+  uint64_t *old_vals = vm->id_vals;
+  uint32_t old_cap = vm->capids;
+  vm->id_keys = keys;
+  vm->id_vals = vals;
+  vm->capids = cap;
+  vm->nids = 0;
+  for (uint32_t i = 0; i < old_cap; i++)
+    if (old_keys[i])
+      id_put(vm, old_keys[i], old_vals[i]);
+  free(old_keys);
+  free(old_vals);
+  return true;
+}
+
+static bool id_put(TvmVm *vm, void *p, uint64_t id) {
+  if ((vm->nids + 1) * 2 > vm->capids && !id_grow(vm))
+    return false;
+  uint32_t k = id_find(vm, p);
+  if (!vm->id_keys[k]) {
+    vm->id_keys[k] = p;
+    vm->nids++;
+  }
+  vm->id_vals[k] = id;
+  return true;
+}
+
+/* p を表から消し、後ろに続く組を詰め直す (空きで探索が切れないように) */
+static void id_remove(TvmVm *vm, const void *p) {
+  uint32_t k = id_find(vm, p);
+  if (k == UINT32_MAX || !vm->id_keys[k])
+    return;
+  uint32_t mask = vm->capids - 1;
+  vm->id_keys[k] = NULL;
+  vm->nids--;
+  for (uint32_t j = (k + 1) & mask; vm->id_keys[j]; j = (j + 1) & mask) {
+    void *q = vm->id_keys[j];
+    uint64_t v = vm->id_vals[j];
+    vm->id_keys[j] = NULL;
+    vm->nids--;
+    id_put(vm, q, v);
+  }
+}
+
+uint64_t tvm_debug_id_peek(TvmVm *vm, const void *p) {
+  uint32_t k = id_find(vm, p);
+  return k != UINT32_MAX && vm->id_keys[k] ? vm->id_vals[k] : 0;
+}
+
+uint64_t tvm_debug_id(TvmVm *vm, void *p) {
+  uint64_t id = tvm_debug_id_peek(vm, p);
+  if (id)
+    return id;
+  id = vm->next_id + 1;
+  if (!id_put(vm, p, id))
+    return 0;
+  vm->next_id = id;
+  return id;
+}
+
+void tvm_debug_id_set(TvmVm *vm, void *p, uint64_t id) {
+  if (!id || !id_put(vm, p, id))
+    return;
+  if (id > vm->next_id)
+    vm->next_id = id;
+}
+
+void tvm_debug_ids_reloaded(TvmVm *vm) {
+  bool moved = false;
+  for (uint32_t i = 0; i < vm->capids && !moved; i++)
+    moved =
+        vm->id_keys[i] && (GC_HEADER(vm->id_keys[i])->flags & TVM_GC_RELOADED);
+  if (!moved)
+    return;
+  void **keys = vm->id_keys;
+  uint64_t *vals = vm->id_vals;
+  uint32_t cap = vm->capids;
+  vm->id_keys = (void **)calloc(cap, sizeof(void *));
+  vm->id_vals = (uint64_t *)calloc(cap, sizeof(uint64_t));
+  vm->nids = 0;
+  if (!vm->id_keys || !vm->id_vals) {
+    /* 付け替えられなければ、番号を全部捨てる (次に聞かれたときに振り直す) */
+    free(vm->id_keys);
+    free(vm->id_vals);
+    vm->id_keys = NULL;
+    vm->id_vals = NULL;
+    vm->capids = 0;
+  } else {
+    for (uint32_t i = 0; i < cap; i++) {
+      void *p = keys[i];
+      if (!p)
+        continue;
+      if (GC_HEADER(p)->flags & TVM_GC_RELOADED)
+        p = (void *)GC_HEADER(p)->type;
+      id_put(vm, p, vals[i]);
+    }
+  }
+  free(keys);
+  free(vals);
+}
+
+/* object の id の文字列 ("#" と通し番号。振れなければ "") */
+static void put_id(TvmVm *vm, char *buf, size_t size, void *p) {
+  uint64_t id = tvm_debug_id(vm, p);
+  if (id)
+    snprintf(buf, size, "#%llu", (unsigned long long)id);
+  else
+    buf[0] = '\0';
+}
+
 void tvm_stack_self(TvmVm *vm, TvmFrameSelfFn fn, void *user) {
   for (TvmFrame *fr = vm->ftop; fr > vm->frames;) {
     fr--;
@@ -730,7 +871,7 @@ void tvm_stack_self(TvmVm *vm, TvmFrameSelfFn fn, void *user) {
     void *self =
         fr->proto->trace_self ? fr->R[fr->proto->trace_self - 1].p : NULL;
     if (self)
-      snprintf(id, sizeof id, "%p", self);
+      put_id(vm, id, sizeof id, self);
     fn(user, tvm_func_path(vm, fr->proto), line_at(fr->proto, fr->pc), id);
   }
 }
@@ -1083,7 +1224,7 @@ static void fill_node(TvmVm *vm, TvmInspectNode *node, const char *parent_path,
     if (t && t->tkind == TVM_T_CLASS)
       node->type = t->name;
     if (!t || t->tkind != TVM_T_STRING)
-      snprintf(node->id, sizeof node->id, "%p", o);
+      put_id(vm, node->id, sizeof node->id, o);
     for (uint32_t i = 0; i < w->nanc; i++)
       if (w->anc[i] == o)
         node->cycle = true;
@@ -1219,7 +1360,7 @@ static void inst_visit(InstWalk *w, size_t parent, const char *name,
   const TvmType *t = o ? type_of(o) : NULL;
   if (t && t->tkind == TVM_T_CLASS) {
     char id[32];
-    snprintf(id, sizeof id, "%p", o);
+    put_id(w->vm, id, sizeof id, o);
     w->fn(w->user, t->name, w->paths + path, id);
   }
   if (depth >= w->max_depth)
@@ -1274,6 +1415,9 @@ void tvm_inspect_pin(TvmVm *vm, const char *key, const char *entry,
   Walk w;
   if (path && path[0] && walk_path(vm, entry, path, &w) && !w.cls)
     o = loc_object(&w.loc);
+  /* 状態を読み込んだ後も同じ個体を指せるよう、通し番号を振っておく */
+  if (o)
+    tvm_debug_id(vm, o);
   for (uint32_t i = 0; i < vm->npinned; i++)
     if (strcmp(vm->pinned[i].key, key) == 0) {
       vm->pinned[i].p = o;
@@ -1300,7 +1444,7 @@ bool tvm_inspect_pinned(TvmVm *vm, const char *key, const char *id) {
       if (!vm->pinned[i].p)
         return false;
       char now[32];
-      snprintf(now, sizeof now, "%p", vm->pinned[i].p);
+      put_id(vm, now, sizeof now, vm->pinned[i].p);
       return strcmp(now, id) == 0;
     }
   return false;
@@ -1311,6 +1455,7 @@ void tvm_debug_forget(TvmVm *vm, void *p) {
   for (uint32_t i = 0; i < vm->npinned; i++)
     if (vm->pinned[i].p == p)
       vm->pinned[i].p = NULL;
+  id_remove(vm, p);
 }
 
 /* ---- 状態の控え ---- */

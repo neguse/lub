@@ -2288,7 +2288,7 @@ public class TraceValue
     public string Text = "";
 }
 
-/// <summary>Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は class の instance ならその class の名前、それ以外は空。 Count は子の数 (0 なら開けない)。Cycle は祖先と同じ object で、開けない。 Id は object の番地の文字列で、object が生きている間は変わらず、別の object とは違う (string と値型は空)。回収の後は別の object に再利用され得るので、覚えておくなら Sys.InspectPin と合わせて使う。</summary>
+/// <summary>Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は class の instance ならその class の名前、それ以外は空。 Count は子の数 (0 なら開けない)。Cycle は祖先と同じ object で、開けない。 Id は object に振った通し番号の文字列で、object が生きている間は変わらず、別の object とは違う (string と値型は空)。App.Save で控えた状態を App.Load で読み込んでも、同じ個体は同じ Id のままになる。</summary>
 public class InspectNode
 {
     public string Path = "";

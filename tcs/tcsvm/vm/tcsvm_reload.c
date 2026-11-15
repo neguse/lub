@@ -587,6 +587,7 @@ static void reflect(Reload *rl) {
     if (vm->pinned[i].p &&
         (GC_HEADER(vm->pinned[i].p)->flags & TVM_GC_RELOADED))
       vm->pinned[i].p = (void *)GC_HEADER(vm->pinned[i].p)->type;
+  tvm_debug_ids_reloaded(vm);
   /* 新版の host の関数は読み込みに使った nv の写しを指すので、同じ番号の vm の登録へ付け替える */
   for (uint32_t i = 0; i < vm->nintrinsics; i++)
     if (nv->nhosts && vm->intrinsics[i] >= nv->hosts &&

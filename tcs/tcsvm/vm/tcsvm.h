@@ -225,8 +225,9 @@ typedef struct TvmInspectNode {
   char name[256];
   char text[160];
   const char
-      *type;   /* class の instance ならその class の名前 (それ以外は NULL) */
-  char id[32]; /* object の値なら object の番地の文字列 (string と値型は "") */
+      *type; /* class の instance ならその class の名前 (それ以外は NULL) */
+  char id
+      [32]; /* object の値なら、その object に振った通し番号の文字列 (string と値型は "")。状態を読み込んでも変わらない */
   int32_t count; /* 子の数 */
   bool cycle;    /* 祖先と同じ object (開けない) */
 } TvmInspectNode;
