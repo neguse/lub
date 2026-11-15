@@ -1,6 +1,7 @@
 // key の名前から command (Lite XL の core/keymap.lua の既定の keymap)。
 // 押した key を修飾 key と合わせた名前 ("ctrl+shift+left") にし、並べた command を効くまで順に試す。
 // key の名前は lub の EventData.Plain (修飾 key なしの文字) で引くので、JIS でも Ctrl+[ は [ の刻印の key で効く。
+// 表は、既定の割り当てに、利用者の変えた分を重ねた物。変えた分は、1 行に「key 命令」を書いたテキストで読み書きする (命令の無い行は、その key を外す)。
 using System;
 using System.Collections.Generic;
 
@@ -9,15 +10,151 @@ namespace LiderEditor;
 public static class Keymap
 {
     static readonly Dictionary<string, string> map = new Dictionary<string, string>();
+    // 既定の割り当てと、利用者の変えた分 (key から命令の並び。空なら、その key を外す)
+    static readonly Dictionary<string, string> defaults = new Dictionary<string, string>();
+    static readonly Dictionary<string, string> changes = new Dictionary<string, string>();
 
     static void Add(string stroke, string commands)
     {
+        defaults[stroke] = commands;
         map[stroke] = commands;
+    }
+
+    // 既定の割り当てに、変えた分を重ねる
+    static void Rebuild()
+    {
+        map.Clear();
+        foreach (var pair in defaults)
+            if (!changes.ContainsKey(pair.Key))
+                map[pair.Key] = pair.Value;
+        foreach (var pair in changes)
+            if (pair.Value != "")
+                map[pair.Key] = pair.Value;
+    }
+
+    // stroke の割り当てを commands にする (空なら外す)。既定と同じになったら、変えた分から除く
+    static void Change(string stroke, string commands)
+    {
+        var same = defaults.TryGetValue(stroke, out var was) ? was == commands : commands == "";
+        if (same)
+            changes.Remove(stroke);
+        else
+            changes[stroke] = commands;
+    }
+
+    // 命令 name を stroke に割り当てる。その命令だけを割り当てていたほかの key は外し、stroke に前からあった割り当ては無くなる
+    public static void Bind(string stroke, string name)
+    {
+        Init();
+        var old = new List<string>();
+        foreach (var pair in map)
+            if (pair.Value == name && pair.Key != stroke)
+                old.Add(pair.Key);
+        foreach (var key in old)
+            Change(key, "");
+        Change(stroke, name);
+        Rebuild();
+    }
+
+    // 変えた分を捨てて、既定の割り当てに戻す
+    public static void Reset()
+    {
+        Init();
+        changes.Clear();
+        Rebuild();
+    }
+
+    // 変えた分を、text の行から読み直す
+    public static void Load(string text)
+    {
+        Init();
+        changes.Clear();
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line == "" || line.StartsWith("#"))
+                continue;
+            var stroke = "";
+            var commands = new List<string>();
+            foreach (var word in line.Split(' '))
+            {
+                if (word == "")
+                    continue;
+                if (stroke == "")
+                    stroke = word;
+                else
+                    commands.Add(word);
+            }
+            Change(stroke, string.Join(" ", commands));
+        }
+        Rebuild();
+    }
+
+    // 変えた分の行
+    public static List<string> Lines()
+    {
+        var lines = new List<string>();
+        foreach (var pair in changes)
+            lines.Add(pair.Value == "" ? pair.Key : pair.Key + " " + pair.Value);
+        return lines;
+    }
+
+    // stroke に割り当てた命令の並び (無ければ "")
+    public static string CommandsOf(string stroke)
+    {
+        Init();
+        return map.TryGetValue(stroke, out var commands) ? commands : "";
+    }
+
+    // 命令に割り当てられる key か。
+    // 修飾なしと Shift だけの key は中身への入力なので、割り当てられるのは、Ctrl か Alt を付けた key と、F key だけ
+    public static bool Assignable(string stroke)
+    {
+        if (stroke.Contains("ctrl+") || stroke.Contains("alt+"))
+            return true;
+        var key = stroke.Replace("shift+", "");
+        return key.StartsWith("f") && int.TryParse(key.Replace("f", ""), out _);
+    }
+
+    // 人に見せるときの、key の名前の書き方 (ここに無い名前は大文字にする)
+    static readonly Dictionary<string, string> shownNames = new Dictionary<string, string>
+    {
+        { "ctrl", "Ctrl" }, { "shift", "Shift" }, { "alt", "Alt" }, { "altgr", "AltGr" },
+        { "return", "Enter" }, { "escape", "Esc" }, { "tab", "Tab" }, { "space", "Space" },
+        { "backspace", "Backspace" }, { "delete", "Delete" }, { "insert", "Insert" },
+        { "home", "Home" }, { "end", "End" }, { "pageup", "PageUp" }, { "pagedown", "PageDown" },
+        { "left", "←" }, { "right", "→" }, { "up", "↑" }, { "down", "↓" },
+    };
+
+    // stroke を、人に見せる書き方にする ("ctrl+shift+left" は "Ctrl+Shift+←")
+    public static string Shown(string stroke)
+    {
+        if (stroke == "")
+            return "";
+        var parts = new List<string>();
+        foreach (var part in stroke.Split('+'))
+        {
+            // "ctrl++" のように、key が + のとき
+            if (part == "")
+            {
+                if (parts.Count == 0 || parts[parts.Count - 1] != "+")
+                    parts.Add("+");
+                continue;
+            }
+            parts.Add(shownNames.TryGetValue(part, out var shown) ? shown : part.ToUpper());
+        }
+        return string.Join("+", parts);
+    }
+
+    // 命令 name を割り当てた key の、人に見せる書き方 (無ければ "")
+    public static string ShownOf(string name)
+    {
+        return Shown(StrokeOf(name));
     }
 
     public static void Init()
     {
-        if (map.Count > 0)
+        if (defaults.Count > 0)
             return;
         // lider の検索 (file と宣言と命令)。エディタだけで動かすときは、エディタの file の検索になる
         Add("ctrl+p", "search:open core:find-file");
@@ -146,6 +283,10 @@ public static class Keymap
     public static string StrokeOf(string name)
     {
         Init();
+        // その命令だけを割り当てた key を先に見る
+        foreach (var pair in map)
+            if (pair.Value == name)
+                return pair.Key;
         foreach (var pair in map)
             foreach (var command in pair.Value.Split(' '))
                 if (command == name)
@@ -187,7 +328,7 @@ public static class Keymap
     }
 
     // 押している修飾 key を前に付けた名前
-    static string Stroke(string key)
+    public static string Stroke(string key)
     {
         var s = "";
         if (EditorCore.Ctrl)
