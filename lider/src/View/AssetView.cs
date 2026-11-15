@@ -12,8 +12,8 @@ public class AssetView
     const int Pad = 8;
     const int PxW = 640;
     const int PxH = 400;
-    const float W = PanelView.BaseW * 0.6f;
-    const float H = W * PxH / PxW;
+    public const float W = PanelView.BaseW * 0.6f;
+    public const float H = W * PxH / PxW;
     const float R = Space.R - 0.2f;
     const int Bars = PxW - Pad * 2;
     const string TextureKey = "lider_asset_image";

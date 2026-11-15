@@ -167,8 +167,11 @@ public static class Lider
     static int fieldFrames;
     // 宣言を読み直す間隔
     const int ScanFrames = 15;
-    static float searchAngle;
-    static float searchTop;
+    // 検索とアセットのウィンドウと、それを置くスクリーン (視点に固定した平面。上の端の真ん中から下へ積む)
+    static Window searchWindow = new Window(Search);
+    static Window assetWindow = new Window(new Asset(AssetBoard));
+    static Screen palette = new Screen("palette");
+    public static Window SearchWindow => searchWindow;
 
     public static void OnInit()
     {
@@ -197,7 +200,12 @@ public static class Lider
         Record(Environment.GetEnvironmentVariable("LIDER_REWIND"));
         Work = new Workspace(Environment.GetEnvironmentVariable("LIDER_ROOT") ?? GameDir());
         Screens.Add(Work.CodeScreen);
-        hud = new Screen("hud") { Position = new Vec3(0, 0, Space.R), Layout = new Corner() };
+        palette = new Screen("palette") { Position = new Vec3(0, 0, Space.R), Layout = new Stack { AlignX = 0, FromTop = true } };
+        searchWindow = new Window(Search);
+        assetWindow = new Window(new Asset(AssetBoard));
+        Search.Window = searchWindow;
+        Screens.Add(palette);
+        hud = new Screen("hud") { Position = new Vec3(0, 0, Space.R), Layout = new Stack() };
         hintWindow = new Window(new Hints(hintCard));
         hud.Windows.Add(hintWindow);
         Screens.Add(hud);
@@ -481,7 +489,7 @@ public static class Lider
         if (e.Kind == EventKind.MouseButtonDown)
         {
             // 板の上を押しても、下の窓には届かない
-            var onBoard = lastEye == null && searchView.Hit(PointerRay(e.X, e.Y), searchAngle, searchTop, SearchScale);
+            var onBoard = lastEye == null && searchWindow.ViewportRect != null && searchWindow.ViewportRect.Contains(e.X, e.Y);
             Search.Cancel(w);
             return onBoard;
         }
@@ -513,14 +521,33 @@ public static class Lider
 
     static float SearchScale => Space.Flat ? Space.FlatScale * 0.8f : 1;
 
-    // ray の指す所に検索の板を置く
-    static void PlaceSearch(Ray ray)
+    // 検索とアセットのウィンドウを、出している間だけスクリーンに載せ、板の大きさにして、規則 (上の端の真ん中から下へ) で置く
+    static void PlacePalette(Workspace w)
     {
-        var at = Space.OnCylinderAt(ray, Space.R);
-        if (at == null)
-            return;
-        searchAngle = at.Angle;
-        searchTop = at.Y;
+        Show(palette, searchWindow, Search.Shown, 0);
+        Show(palette, assetWindow, w.ShownAsset != "", palette.Windows.Count);
+        searchWindow.Size = new Vec2(SearchView.W * SearchScale / ViewScale(palette), searchView.Height(SearchScale) / ViewScale(palette));
+        assetWindow.Size = new Vec2(AssetView.W * SearchScale / ViewScale(palette), AssetView.H * SearchScale / ViewScale(palette));
+        palette.Arrange();
+    }
+
+    // window を、shown の間だけ screen の並びの at 番目に載せる
+    static void Show(Screen screen, Window window, bool shown, int at)
+    {
+        var on = screen.Windows.Contains(window);
+        if (shown && !on)
+            screen.Windows.Insert(Math.Min(at, screen.Windows.Count), window);
+        else if (!shown && on)
+        {
+            screen.Windows.Remove(window);
+            window.Position = null;
+        }
+    }
+
+    // ウィンドウの上の端の高さ (板は、上の端の真ん中を決めて描く)
+    static float WindowTop(Workspace w, Window window)
+    {
+        return WindowY(w, window) + window.Size.Y * ViewScale(ScreenFor(w, window)) * 0.5f;
     }
 
     // 指している窓をマウスでつかむ
@@ -540,6 +567,10 @@ public static class Lider
             w.Close(window);
         else if (window == draftWindow)
             ToggleCompare();
+        else if (window == searchWindow)
+            Search.Cancel(w);
+        else if (window == assetWindow)
+            w.ShownAsset = "";
         else if (window == inspectWindow)
         {
             inspect.Shown = false;
@@ -649,18 +680,8 @@ public static class Lider
         forward.OverModal = true;
         CommandTable.Register("game:compare", "編集中の版を並べる・やめる", () => With(w => ToggleCompare()));
         CommandTable.Register("game:copy-to-draft", "保存済みの版の状態を編集中の版に写す", () => With(w => DraftGame.CopyPending = true));
-        CommandTable.Register("search:open", "file と宣言と命令を探す", () => With(w =>
-        {
-            Search.Open(w);
-            if (lastEye != null)
-                PlaceSearch(gaze);
-        }));
-        CommandTable.Register("code:go-to-definition", "定義へ飛ぶ", () => With(w =>
-        {
-            Search.Jump(w);
-            if (lastEye != null)
-                PlaceSearch(gaze);
-        }));
+        CommandTable.Register("search:open", "file と宣言と命令を探す", () => With(w => Search.Open(w)));
+        CommandTable.Register("code:go-to-definition", "定義へ飛ぶ", () => With(w => Search.Jump(w)));
         CommandTable.Register("code:back", "飛ぶ前の場所へ戻る", () => With(w => w.Back()));
         CommandTable.Register("code:next-error", "次のエラーの行へ", () => With(w =>
         {
@@ -1577,6 +1598,7 @@ public static class Lider
         // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
         hud.Fill(Space.FlatFov, (float)sw / sh);
+        palette.Fill(Space.FlatFov, (float)sw / sh);
         foreach (var screen in Screens)
             if (screen.Anchor == ScreenAnchor.View && screen.Shape == ScreenShape.Plane)
             {
@@ -2013,6 +2035,7 @@ public static class Lider
         if (Search.Shown)
             searchView.Prepare(Search, panelText);
         AssetBoard.Prepare(w.ShownAsset, w.ShownAsset == "" ? "" : w.Relative(w.ShownAsset), panelText);
+        PlacePalette(w);
         Animate(w, dt);
 
         if (Xr.Active())
@@ -2090,8 +2113,6 @@ public static class Lider
         });
         viewVp = flatViewVp;
         headToWorld = Mat4.Identity();
-        if (Search.Shown)
-            PlaceSearch(PointerRay(viewportW * 0.5f, viewportH * 0.12f));
         if (!forGame)
         {
             Hover(w, PointerRay(mx, my), mx, my, dt);
@@ -2808,9 +2829,13 @@ public static class Lider
         Space.Flat = true;
         hintCard.Draw(viewVp);
         Space.Flat = worldFlat;
-        AssetBoard.Draw(vp, searchAngle, Search.Shown ? searchTop - searchView.Height(SearchScale) : searchTop, SearchScale);
-        if (Search.Shown)
-            searchView.Draw(vp, searchAngle, searchTop, SearchScale);
+        // 検索とアセットも、視点に固定した平面のスクリーンの上に、曲げずに描く
+        Space.Flat = true;
+        if (assetWindow.Position != null)
+            AssetBoard.Draw(viewVp, WindowAngle(w, assetWindow), WindowTop(w, assetWindow), SearchScale);
+        if (searchWindow.Position != null)
+            searchView.Draw(viewVp, WindowAngle(w, searchWindow), WindowTop(w, searchWindow), SearchScale);
+        Space.Flat = worldFlat;
         Quad3d.Opacity = 1;
     }
 }
