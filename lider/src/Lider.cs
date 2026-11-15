@@ -99,7 +99,7 @@ public static class Lider
     // Alt で並びか大きさを変えた窓と、まだ浮かせておく秒
     static Window? keyMoved;
     static float keyLift;
-    // 止めている間の空間の冷え (0 から 1) と、足元の帯の上の点の位置
+    // 止めている間の空間の冷え (0 から 1) と、控えた frame の帯の上の点の位置
     static float cold;
     public static float Cold => cold;
     static readonly Spring timeline = Stiff();
@@ -151,6 +151,10 @@ public static class Lider
     static float InspectScale => Space.Flat ? 1.4f : 1;
     // 指している物に対して、そのとき効く操作の案内
     static readonly HintCard hintCard = new HintCard();
+    // 案内のウィンドウと、それを置くスクリーン (視点に固定した平面。右下の隅に積む)
+    static Window hintWindow = new Window(new Hints(hintCard));
+    static Screen hud = new Screen("hud");
+    public static Window HintWindow => hintWindow;
     // file と宣言を引く検索 (Ctrl+P)。板を置く円筒の角度と上の端の高さ
     public static readonly Search Search = new Search();
     static readonly SearchView searchView = new SearchView();
@@ -163,8 +167,11 @@ public static class Lider
     static int fieldFrames;
     // 宣言を読み直す間隔
     const int ScanFrames = 15;
-    static float searchAngle;
-    static float searchTop;
+    // 検索とアセットのウィンドウと、それを置くスクリーン (視点に固定した平面。上の端の真ん中から下へ積む)
+    static Window searchWindow = new Window(Search);
+    static Window assetWindow = new Window(new Asset(AssetBoard));
+    static Screen palette = new Screen("palette");
+    public static Window SearchWindow => searchWindow;
 
     public static void OnInit()
     {
@@ -193,6 +200,15 @@ public static class Lider
         Record(Environment.GetEnvironmentVariable("LIDER_REWIND"));
         Work = new Workspace(Environment.GetEnvironmentVariable("LIDER_ROOT") ?? GameDir());
         Screens.Add(Work.CodeScreen);
+        palette = new Screen("palette") { Position = new Vec3(0, 0, Space.R), Layout = new Stack { AlignX = 0, FromTop = true } };
+        searchWindow = new Window(Search);
+        assetWindow = new Window(new Asset(AssetBoard));
+        Search.Window = searchWindow;
+        Screens.Add(palette);
+        hud = new Screen("hud") { Position = new Vec3(0, 0, Space.R), Layout = new Stack() };
+        hintWindow = new Window(new Hints(hintCard));
+        hud.Windows.Add(hintWindow);
+        Screens.Add(hud);
         // スクリーンの一覧は 1 つだけ持つ
         Work.Screens = Screens;
         Tiled = false;
@@ -473,7 +489,7 @@ public static class Lider
         if (e.Kind == EventKind.MouseButtonDown)
         {
             // 板の上を押しても、下の窓には届かない
-            var onBoard = lastEye == null && searchView.Hit(PointerRay(e.X, e.Y), searchAngle, searchTop, SearchScale);
+            var onBoard = lastEye == null && searchWindow.ViewportRect != null && searchWindow.ViewportRect.Contains(e.X, e.Y);
             Search.Cancel(w);
             return onBoard;
         }
@@ -505,14 +521,33 @@ public static class Lider
 
     static float SearchScale => Space.Flat ? Space.FlatScale * 0.8f : 1;
 
-    // ray の指す所に検索の板を置く
-    static void PlaceSearch(Ray ray)
+    // 検索とアセットのウィンドウを、出している間だけスクリーンに載せ、板の大きさにして、規則 (上の端の真ん中から下へ) で置く
+    static void PlacePalette(Workspace w)
     {
-        var at = Space.OnCylinderAt(ray, Space.R);
-        if (at == null)
-            return;
-        searchAngle = at.Angle;
-        searchTop = at.Y;
+        Show(palette, searchWindow, Search.Shown, 0);
+        Show(palette, assetWindow, w.ShownAsset != "", palette.Windows.Count);
+        searchWindow.Size = new Vec2(SearchView.W * SearchScale / ViewScale(palette), searchView.Height(SearchScale) / ViewScale(palette));
+        assetWindow.Size = new Vec2(AssetView.W * SearchScale / ViewScale(palette), AssetView.H * SearchScale / ViewScale(palette));
+        palette.Arrange();
+    }
+
+    // window を、shown の間だけ screen の並びの at 番目に載せる
+    static void Show(Screen screen, Window window, bool shown, int at)
+    {
+        var on = screen.Windows.Contains(window);
+        if (shown && !on)
+            screen.Windows.Insert(Math.Min(at, screen.Windows.Count), window);
+        else if (!shown && on)
+        {
+            screen.Windows.Remove(window);
+            window.Position = null;
+        }
+    }
+
+    // ウィンドウの上の端の高さ (板は、上の端の真ん中を決めて描く)
+    static float WindowTop(Workspace w, Window window)
+    {
+        return WindowY(w, window) + window.Size.Y * ViewScale(ScreenFor(w, window)) * 0.5f;
     }
 
     // 指している窓をマウスでつかむ
@@ -532,6 +567,10 @@ public static class Lider
             w.Close(window);
         else if (window == draftWindow)
             ToggleCompare();
+        else if (window == searchWindow)
+            Search.Cancel(w);
+        else if (window == assetWindow)
+            w.ShownAsset = "";
         else if (window == inspectWindow)
         {
             inspect.Shown = false;
@@ -641,18 +680,8 @@ public static class Lider
         forward.OverModal = true;
         CommandTable.Register("game:compare", "編集中の版を並べる・やめる", () => With(w => ToggleCompare()));
         CommandTable.Register("game:copy-to-draft", "保存済みの版の状態を編集中の版に写す", () => With(w => DraftGame.CopyPending = true));
-        CommandTable.Register("search:open", "file と宣言と命令を探す", () => With(w =>
-        {
-            Search.Open(w);
-            if (lastEye != null)
-                PlaceSearch(gaze);
-        }));
-        CommandTable.Register("code:go-to-definition", "定義へ飛ぶ", () => With(w =>
-        {
-            Search.Jump(w);
-            if (lastEye != null)
-                PlaceSearch(gaze);
-        }));
+        CommandTable.Register("search:open", "file と宣言と命令を探す", () => With(w => Search.Open(w)));
+        CommandTable.Register("code:go-to-definition", "定義へ飛ぶ", () => With(w => Search.Jump(w)));
         CommandTable.Register("code:back", "飛ぶ前の場所へ戻る", () => With(w => w.Back()));
         CommandTable.Register("code:next-error", "次のエラーの行へ", () => With(w =>
         {
@@ -882,14 +911,11 @@ public static class Lider
         return new Vec4(a.X, a.Y, b.X, b.Y);
     }
 
-    // 足元の帯 (止めた位置の印の高さを含む) の、最後に描いた frame の画面の px (左, 上, 右, 下)
+    // 控えた frame の帯 (止めた位置の印の高さを含む) の、画面の px (左, 上, 右, 下)。出していなければ全部 0
     public static Vec4 TimelineViewport()
     {
-        var half = timelineW * 0.5f / timelineR;
-        var h = TimelineMarkH * timelineR / Space.R * 0.5f;
-        var a = ViewportPoint(Space.At(timelineAngle - half, timelineY + h, timelineR));
-        var b = ViewportPoint(Space.At(timelineAngle + half, timelineY - h, timelineR));
-        return new Vec4(a.X, a.Y, b.X, b.Y);
+        var band = TimelineRect();
+        return band != null ? new Vec4(band.X, band.Y, band.X + band.W, band.Y + band.H) : new Vec4(0, 0, 0, 0);
     }
 
     // 空間の位置の、最後に描いた frame の画面の px (左上が 0,0)
@@ -1026,11 +1052,11 @@ public static class Lider
             RequestPick(ray);
     }
 
-    // ray が指している物に対する操作の案内を、指している点 at の右下に置く (画面への pass の外で呼ぶ)
-    // LIDER_HINTS=0 なら、指している所に操作の案内を出さない
+    // ray が指している物に対する操作の案内を、右下の決まった場所に出す (画面への pass の外で呼ぶ)
+    // LIDER_HINTS=0 なら、操作の案内を出さない
     static readonly bool hintsOff = Environment.GetEnvironmentVariable("LIDER_HINTS") == "0";
 
-    static void ShowHints(Workspace w, Ray ray, CylinderPoint? at, float dt)
+    static void ShowHints(Workspace w, Ray ray)
     {
         if (text == null)
             return;
@@ -1042,7 +1068,7 @@ public static class Lider
             if (detail.Count > 0)
             {
                 hintCard.Prepare(detail, text);
-                PlaceHints(at, dt);
+                PlaceHints(w);
             }
             return;
         }
@@ -1089,17 +1115,35 @@ public static class Lider
             c.MoreMark = mark != null && mark.Id == "";
         }
         var hints = DetailHints(w, ray);
-        foreach (var h in Hints.For(c))
+        foreach (var h in HintRules.For(c))
             hints.Add(h);
         hintCard.Prepare(hints, text);
-        PlaceHints(at, dt);
+        PlaceHints(w);
     }
 
-    static void PlaceHints(CylinderPoint? at, float dt)
+    // マウスがゲームのものの間の案内: 指している物に依らない操作だけを出す
+    static void ShowGameHints(Workspace w)
     {
-        // 非 XR は画面の中に収める
-        var halfH = Space.R * (float)Math.Tan(fov * 0.5f * Math.PI / 180);
-        hintCard.Place(at, dt, Space.Flat ? -halfH : -1000, Space.Flat ? (viewX.Value + halfH * viewportW / viewportH) / Space.R : 1000);
+        if (text == null || hintsOff)
+            return;
+        hintCard.Prepare(HintRules.For(new HintContext
+        {
+            InspectShown = inspect.Shown,
+            Zen = Zen,
+            Paused = Paused,
+            Errors = w.NextError() != null,
+        }), text);
+        PlaceHints(w);
+    }
+
+    // 案内のウィンドウを、札の字のある大きさにして、スクリーンの規則 (右下の隅) で置く
+    static void PlaceHints(Workspace w)
+    {
+        hintCard.Shown = true;
+        hintWindow.Size = new Vec2(hintCard.UsedW() / ViewScale(hud), hintCard.Height() / ViewScale(hud));
+        hud.Arrange();
+        hintCard.Angle = WindowAngle(w, hintWindow);
+        hintCard.Y = WindowY(w, hintWindow);
     }
 
     // 負荷の一覧の行か、窓の行の右の負荷を指しているなら、その行の負荷を文字だけの行で (案内の札の上に出す)
@@ -1141,7 +1185,7 @@ public static class Lider
     // マウスとコントローラーがゲームのものの間は、指している物の案内と光を消す
     static void HideHints()
     {
-        hintCard.Place(null, 0, 0, 0);
+        hintCard.Shown = false;
         closeHover = null;
         edgeHoverWindow = null;
         pointer = null;
@@ -1378,6 +1422,40 @@ public static class Lider
         return OnView(screen) ? (screen.Position.X + window.Position.Value.X) / screen.Position.Z : screen.AngleAt(window.Position.Value.X);
     }
 
+    // コードのウィンドウの子の、動いている版を左右に並べる板 (無ければ null)
+    public static Window? DiffOf(Window window)
+    {
+        foreach (var child in window.Children)
+            if (child.Content is Diff)
+                return child;
+        return null;
+    }
+
+    // 動いている版の板を、出す間だけコードのウィンドウの子にし、親の左の手前に置く (親の並びは変えない)
+    static void PlaceDiff(Window window, bool shown)
+    {
+        var board = DiffOf(window);
+        if (!shown)
+        {
+            if (board != null)
+                window.Disown(board);
+            return;
+        }
+        if (board == null)
+        {
+            board = new Window(new Diff(window.Code));
+            window.Adopt(board);
+        }
+        board.Size = new Vec2(PanelView.OldW * window.Scale, window.UnscaledSize.Y * window.Scale);
+        board.Position = new Vec3(-(window.UnscaledSize.X * window.Scale * 0.5f + PanelView.OldGap + board.Size.X * 0.5f), 0, InspectR - Space.R);
+    }
+
+    // 平面のスクリーンで、ウィンドウの矩形の上の端に、本文と別に描く見出しの帯を収めるウィンドウか
+    static bool TitleInRect(Window window)
+    {
+        return window.Content is Code || window.Content is Inspector;
+    }
+
     // コードの窓の本文の真ん中の高さ (横一列に並べた窓は 0。つかんでいる間だけ動く)
     public static float WindowY(Workspace w, Window window)
     {
@@ -1388,7 +1466,7 @@ public static class Lider
         var screen = ScreenFor(w, window);
         // 平面のスクリーンでは、ウィンドウの矩形に見出しも収めるので、本文は見出しの分だけ下がる
         return OnView(screen)
-            ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - ((window.Content is GameView) ? 0 : PanelView.TitleH * window.Scale * 0.5f)
+            ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - (TitleInRect(window) ? PanelView.TitleH * window.Scale * 0.5f : 0)
             : window.Position.Value.Y;
     }
 
@@ -1544,6 +1622,8 @@ public static class Lider
         Gfx.Size(out var sw, out var sh);
         // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
+        hud.Fill(Space.FlatFov, (float)sw / sh);
+        palette.Fill(Space.FlatFov, (float)sw / sh);
         foreach (var screen in Screens)
             if (screen.Anchor == ScreenAnchor.View && screen.Shape == ScreenShape.Plane)
             {
@@ -1567,6 +1647,7 @@ public static class Lider
         if (draft != null && Work != null)
             DraftGame.Step(dt, keyboard, mouse, GameApp.Position >= 0, draft.ContentRect!, from!.ContentRect!, PixelRatio, Work.Docs);
         ScreenView.Draw(Screens, sw, sh);
+        StepTimeline(dt);
         DrawGameTitles(sw, sh);
         var change = GameApp.Changed();
         if (change.Reloaded)
@@ -1643,7 +1724,7 @@ public static class Lider
 
     static void DrawGameTitles(int sw, int sh)
     {
-        var any = false;
+        var any = TimelineRect() != null;
         foreach (var screen in Screens)
             foreach (var window in screen.Windows)
                 any = any || (window.Content is GameView && window.TitleBar > 0 && window.ViewportRect != null);
@@ -1673,6 +1754,7 @@ public static class Lider
                 if (Closable(window))
                     t.Draw(labelBatch, "×", at.X + at.W - (bar + t.CellW) * 0.5f, y, ink);
             }
+        DrawTimeline();
         labelBatch.Flush();
         Gfx.EndPass();
     }
@@ -1957,6 +2039,7 @@ public static class Lider
             panel.CloseLit = window == closeHover;
             var differs = window == w.FocusWindow && window.Code.Doc.Differs();
             panel.OldShown = differs && PanelView.SideBySide && !ZenShown;
+            PlaceDiff(window, panel.OldShown);
             panel.Inline = differs && !PanelView.SideBySide;
             EditorHost.SetGaps(window.Code.ViewId, panel.Inline ? window.Code.Doc.InlineGaps() : NoGaps);
             panel.Prepare(window.Code.Doc, panelText, w.Trace);
@@ -1980,6 +2063,7 @@ public static class Lider
         if (Search.Shown)
             searchView.Prepare(Search, panelText);
         AssetBoard.Prepare(w.ShownAsset, w.ShownAsset == "" ? "" : w.Relative(w.ShownAsset), panelText);
+        PlacePalette(w);
         Animate(w, dt);
 
         if (Xr.Active())
@@ -1999,7 +2083,7 @@ public static class Lider
                 if (!Search.Shown)
                     w.Look(WindowAt(w, gaze)?.Window, dt);
                 Controllers(w, aim, dt);
-                ShowHints(w, aim, pointer, dt);
+                ShowHints(w, aim);
             }
             else
                 HideHints();
@@ -2036,7 +2120,6 @@ public static class Lider
             // 窓の見出しは本文の上に乗るので、見出しも入れた高さの真ん中 (面の上の高さ TitleH / 2) を範囲の真ん中に合わせる
             slide.M12 = ((viewportH * 0.5f - AreaY - AreaH * 0.5f) / pxPerM - AreaCenterY) / Space.R;
         }
-        PlaceTimeline(pxPerM, slide.M12);
         lastVp = Camera3d.Vp(new Camera3dOpts
         {
             Eye = new Vec3(0, 0, 0),
@@ -2057,15 +2140,16 @@ public static class Lider
         });
         viewVp = flatViewVp;
         headToWorld = Mat4.Identity();
-        if (Search.Shown)
-            PlaceSearch(PointerRay(viewportW * 0.5f, viewportH * 0.12f));
         if (!forGame)
         {
             Hover(w, PointerRay(mx, my), mx, my, dt);
-            ShowHints(w, PointerRay(mx, my), Space.OnCylinderAt(PointerRay(mx, my), Space.R), dt);
+            ShowHints(w, PointerRay(mx, my));
         }
         else
+        {
             HideHints();
+            ShowGameHints(w);
+        }
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
         DrawScene(w, lastVp);
         Gfx.EndPass();
@@ -2144,26 +2228,16 @@ public static class Lider
     // 視点が追うときに窓の外に残す幅 (メートル)
     const float FollowMargin = 0.03f;
 
-    // 控えている frame の帯 (足元)。
-    // 止めていれば、止めた位置に印を出す
     // 窓が光を落とす床の高さと、円筒の軸からの距離 (原点は Recenter した両眼の中点。床の高さは仮)
     const float FloorY = -1.1f;
     const float FloorR = Space.R * 0.8f;
 
-    // 足元の帯の幅と高さ
-    const float TimelineWidth = 1.2f;
-    const float TimelineY = -0.95f;
-    const float TimelineH = 0.02f;
-    // 止めた位置の印の幅と高さ
-    const float TimelineMarkW = 0.012f;
-    const float TimelineMarkH = 0.06f;
-    // 範囲を決めているときに、帯と範囲の端の間に空ける px
-    const float TimelineMarginPx = 12;
-    // 帯を置く所: 中心の角度と高さ、半径、幅 (メートル)。範囲を決めていれば PlaceTimeline が決める
-    static float timelineAngle;
-    static float timelineY = TimelineY;
-    static float timelineR = Space.R;
-    static float timelineW = TimelineWidth;
+    // 控えた frame の帯: ゲームの絵のウィンドウの一部で、止めている間だけ、絵の下の端に重ねて出す (絵は縮めない)。
+    // 帯の高さ、止めた位置の印の幅と高さ、絵の端との間 (画面の座標)
+    const float TimelineH = 4;
+    const float TimelineMarkW = 3;
+    const float TimelineMarkH = 14;
+    const float TimelineMargin = 12;
 
     // 控えた frame の at 番目 (0 が直近) の、帯の上の位置 (帯の幅を 1 とし、真ん中が 0、右端が直近)
     static float TimelineX(int at, int count)
@@ -2171,25 +2245,23 @@ public static class Lider
         return 0.5f - (at + 0.5f) / count;
     }
 
-    // 範囲を決めていれば、帯を範囲の下の端に範囲の幅で置く。窓とインスペクタは範囲の下の端まであるので、それより手前に置いて後から描く。
-    // 範囲を決めていなければ足元に置く。
-    // 画面の (sx, sy) に見える半径 r の点は、角度 (sx - 画面の真ん中) / (R pxPerM) + 視点 / R、高さ ((画面の真ん中 - sy) / (R pxPerM) - m12) r (m12 は縦のずらし)
-    static void PlaceTimeline(float pxPerM, float m12)
+    // 帯を出す矩形 (印の高さを含む。出さなければ null)。
+    // 保存した版のゲームの絵の下の端に置く。範囲 (LIDER_AREA) を決めていれば、絵のうち範囲に入る所の下の端に置く
+    static PixelRect? TimelineRect()
     {
-        if (AreaW <= 0)
+        var at = gameWindow.ContentRect;
+        if (!timelineShown || at == null || GameApp.Count == 0)
+            return null;
+        var x0 = at.X;
+        var x1 = at.X + at.W;
+        var y1 = at.Y + at.H;
+        if (AreaW > 0)
         {
-            timelineAngle = 0;
-            timelineY = TimelineY;
-            timelineR = Space.R;
-            timelineW = TimelineWidth;
-            return;
+            x0 = Math.Max(x0, AreaX);
+            x1 = Math.Min(x1, AreaX + AreaW);
+            y1 = Math.Min(y1, AreaY + AreaH);
         }
-        timelineR = InspectR - 0.01f;
-        var perPx = timelineR / (Space.R * pxPerM);
-        timelineAngle = (AreaX + AreaW * 0.5f - viewportW * 0.5f) / (Space.R * pxPerM) + viewX.Value / Space.R;
-        timelineW = (AreaW - 2 * TimelineMarginPx) * perPx;
-        var bottom = AreaY + AreaH - TimelineMarginPx - TimelineMarkH * 0.5f / Space.R / perPx * timelineR;
-        timelineY = ((viewportH * 0.5f - bottom) / (Space.R * pxPerM) - m12) * timelineR;
+        return new PixelRect(x0 + TimelineMargin, y1 - TimelineMargin - TimelineMarkH, x1 - x0 - 2 * TimelineMargin, TimelineMarkH);
     }
 
     static Spring Stiff()
@@ -2200,18 +2272,33 @@ public static class Lider
         return s;
     }
 
-    static void DrawTimeline(Mat4 vp)
+    // 止めている間、帯を出し、止めた位置の印を今の frame の所へ滑らせる (lider を隠している間も)
+    static void StepTimeline(float dt)
     {
-        if (GameApp.Count == 0)
+        if (GameApp.Position >= 0 && GameApp.Count > 0)
+        {
+            var x = TimelineX(GameApp.Position, GameApp.Count);
+            if (!timelineShown)
+                timeline.Snap(x);
+            timeline.Step(x, dt);
+            timelineShown = true;
+        }
+        else if (stepping == 0)
+        {
+            timelineShown = false;
+        }
+    }
+
+    // ゲームの絵のウィンドウの上に、帯と、止めた位置の印を描く (labelBatch の pass の中で呼ぶ)
+    static void DrawTimeline()
+    {
+        var band = TimelineRect();
+        if (band == null || band.W <= 0)
             return;
-        // 手前に置いても足元と同じ大きさに見えるよう、半径に比例させる
-        var k = timelineR / Space.R;
-        Quad3d.Solid(vp * Space.OnCylinder(timelineAngle, timelineY, timelineR, timelineW, TimelineH * k), Color.Rgb(0.3f, 0.35f, 0.45f, 0.6f));
-        if (!timelineShown)
-            return;
+        var y = band.Y + band.H * 0.5f;
+        labelBatch!.Rect(band.X, y - TimelineH * 0.5f, band.W, TimelineH, Color.Rgb(0.3f, 0.35f, 0.45f, 0.6f));
         // 光の点は frame を送るたびに次の frame の所へ滑る
-        Quad3d.Solid(vp * Space.OnCylinder(timelineAngle + timeline.Value * timelineW / timelineR, timelineY, timelineR, TimelineMarkW * k, TimelineMarkH * k),
-            Color.Rgb(1.0f, 0.6f, 0.15f));
+        labelBatch.Rect(band.X + (0.5f + timeline.Value) * band.W - TimelineMarkW * 0.5f, band.Y, TimelineMarkW, TimelineMarkH, Color.Rgb(1.0f, 0.6f, 0.15f, 1));
     }
 
     // 頭の座標 (両眼の中点が原点、+Z が前) から lider の空間への行列
@@ -2460,18 +2547,6 @@ public static class Lider
         comet = Math.Min(1, comet + dt / 0.3f);
         keyLift -= dt;
         cold = Ease.Toward(cold, Paused ? 1 : 0, dt, 0.4f);
-        if (GameApp.Position >= 0 && GameApp.Count > 0)
-        {
-            var x = TimelineX(GameApp.Position, GameApp.Count);
-            if (!timelineShown)
-                timeline.Snap(x);
-            timeline.Step(x, dt);
-            timelineShown = true;
-        }
-        else if (stepping == 0)
-        {
-            timelineShown = false;
-        }
         particles.Step(dt);
         Flash = Math.Max(0, Flash - dt / 0.22f);
         for (var i = rings.Count - 1; i >= 0; i--)
@@ -2678,8 +2753,11 @@ public static class Lider
             panel.FrameAngle = (particles.Next() - 0.5f) * 0.03f * m.Shake * m.Shake;
             panel.FrameY = (particles.Next() - 0.5f) * 0.05f * m.Shake * m.Shake;
             panel.Draw(window.Code.Doc, angle, y, scale, vp, m.Z.Value, m.Glow.Value, m.Alarm);
-            if (panel.OldShown)
-                panel.DrawOld(vp, angle, y, scale, InspectR);
+            // 動いている版の板は、コードのウィンドウの子: 親の座標で置き、親より手前に描く
+            var board = DiffOf(window);
+            if (board != null && board.Position != null)
+                panel.DrawOld(vp, angle + board.Position.Value.X * scale / window.Scale / Space.R, y + board.Position.Value.Y, board.Size.X * scale / window.Scale,
+                    board.Size.Y * scale / window.Scale, Space.R + board.Position.Value.Z);
             foreach (var l in Landings)
                 if (l.Window == window)
                     panel.DrawLanding(vp, window.Code.Doc, angle, y, scale, m.Z.Value, l);
@@ -2758,7 +2836,6 @@ public static class Lider
                 Quad3d.Curved(onView ? viewVp : vp, inspectTitle.Texture, Color.Rgb(1, 1, 1, 1), BoardAngle, InspectTitleY(), Space.R, size.X, InspectTitleH, 0, 1);
             Space.Flat = worldFlat;
         }
-        DrawTimeline(vp);
         // コントローラーで指している円筒の上の点
         if (lastEye != null && pointer != null)
             Quad3d.Solid(vp * Space.OnCylinder(pointer.Angle, pointer.Y, Space.R - PanelView.FrontGap - 0.01f, 0.012f, 0.012f),
@@ -2768,10 +2845,17 @@ public static class Lider
         DrawFlash(vp);
         DrawFocusCue(w, vp);
         DrawEdge(w, vp);
-        hintCard.Draw(vp);
-        AssetBoard.Draw(vp, searchAngle, Search.Shown ? searchTop - searchView.Height(SearchScale) : searchTop, SearchScale);
-        if (Search.Shown)
-            searchView.Draw(vp, searchAngle, searchTop, SearchScale);
+        // 案内は、視点に固定した平面のスクリーンの上に、曲げずに描く
+        Space.Flat = true;
+        hintCard.Draw(viewVp);
+        Space.Flat = worldFlat;
+        // 検索とアセットも、視点に固定した平面のスクリーンの上に、曲げずに描く
+        Space.Flat = true;
+        if (assetWindow.Position != null)
+            AssetBoard.Draw(viewVp, WindowAngle(w, assetWindow), WindowTop(w, assetWindow), SearchScale);
+        if (searchWindow.Position != null)
+            searchView.Draw(viewVp, WindowAngle(w, searchWindow), WindowTop(w, searchWindow), SearchScale);
+        Space.Flat = worldFlat;
         Quad3d.Opacity = 1;
     }
 }

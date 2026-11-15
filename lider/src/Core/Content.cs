@@ -48,6 +48,54 @@ public class Inspector : IContent
     }
 }
 
+// コードの、ゲームの動いている版を左右に並べる板 (PanelView が描く。画面に写す絵は持たない)。コードのウィンドウの子になる
+public class Diff : IContent
+{
+    public readonly Code Code;
+
+    public Diff(Code code)
+    {
+        Code = code;
+    }
+
+    public TextureRef? Texture()
+    {
+        return null;
+    }
+}
+
+// 操作の案内 (HintCard が描く。画面に写す絵は持たない)
+public class Hints : IContent
+{
+    public readonly HintCard Card;
+
+    public Hints(HintCard card)
+    {
+        Card = card;
+    }
+
+    public TextureRef? Texture()
+    {
+        return null;
+    }
+}
+
+// 画像と音の file (AssetView が描く。画面に写す絵は持たない)
+public class Asset : IContent
+{
+    public readonly AssetView View;
+
+    public Asset(AssetView view)
+    {
+        View = view;
+    }
+
+    public TextureRef? Texture()
+    {
+        return null;
+    }
+}
+
 // ゲームの版: 保存した版 (GameApp) と、編集中の版 (DraftGame。保存していない本文で変換する)
 public enum GameVersion
 {

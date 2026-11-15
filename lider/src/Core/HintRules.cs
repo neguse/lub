@@ -74,7 +74,7 @@ public class HintContext
     public bool Vr;
 }
 
-public static class Hints
+public static class HintRules
 {
     public static List<Hint> For(HintContext c)
     {
@@ -133,9 +133,11 @@ public static class Hints
             default:
                 foreach (var w in c.What)
                     hints.Add(new Hint(HintIcon.None, "", w));
+                // ゲームの物を調べたり開いたりできるのは、止めている間だけ。
                 // 何かを指しているときは、それが何かと開き方だけを出す
                 press.Label = c.What.Count > 0 ? "このコードを開く" : "指した物を描いたコードを開く";
-                hints.Add(press);
+                if (c.Paused || c.What.Count > 0)
+                    hints.Add(press);
                 if (c.What.Count > 0)
                     return hints;
                 if (!c.Vr)

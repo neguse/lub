@@ -41,8 +41,19 @@ class ScannedFile
     public List<Declaration> Declarations = new List<Declaration>();
 }
 
-public class Search
+// 中身としては、検索の板 (SearchView が描く。画面に写す絵は持たない)
+public class Search : IContent
 {
+    // 検索を映すウィンドウ (出している間、focus を置く。置く側が決める。無ければ focus は動かさない)
+    public Window? Window;
+    // 検索を出す前に focus のあった、Code でないウィンドウ
+    Window? focusFrom;
+
+    public TextureRef? Texture()
+    {
+        return null;
+    }
+
     public const int MaxResults = 10;
 
     public bool Shown;
@@ -171,7 +182,23 @@ public class Search
         opened = null;
         moved = null;
         dirty = true;
+        if (Window != null && w.Focused != Window)
+        {
+            focusFrom = w.Focused != w.FocusWindow ? w.Focused : null;
+            w.FocusTo(Window);
+        }
         Refresh(w);
+    }
+
+    // 検索を閉じるときに、focus を戻す。確定したら開いた Code に、やめたら検索を出す前のウィンドウに
+    void Unfocus(Workspace w, bool committed)
+    {
+        if (Window == null || w.Focused != Window)
+            return;
+        w.FocusCode();
+        if (!committed && focusFrom != null && w.ScreenOf(focusFrom) != null)
+            w.FocusTo(focusFrom);
+        focusFrom = null;
     }
 
     // 出している間、毎 frame 呼ぶ (読み終えた file と変わった file の宣言を拾う)
@@ -403,6 +430,7 @@ public class Search
         moved = null;
         opened = null;
         Shown = false;
+        Unfocus(w, true);
     }
 
     public void Cancel(Workspace w)
@@ -413,6 +441,7 @@ public class Search
         moved = null;
         opened = null;
         Shown = false;
+        Unfocus(w, false);
     }
 
     // 開いたときのタブに focus を戻す (もう閉じていれば、今のまま)
