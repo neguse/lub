@@ -101,7 +101,7 @@ public static class TestLiveLine
 
     static void CheckDocument()
     {
-        var text = new MonoText("test_liveline_mono", (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/yutapon_coding_081d.ttf", 15);
+        var text = new MonoText("test_liveline_mono", (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/UDEVGothic-Regular.ttf", 15);
         Document.Boot(text.CellW, text.LineH);
         var doc = Document.Open(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!)!;
         // 動いている版の 8、9 行目 (1 から) が Hp = 1 と Hp = 2

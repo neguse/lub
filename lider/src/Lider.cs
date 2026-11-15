@@ -1627,7 +1627,7 @@ public static class Lider
 
     static string Ttf()
     {
-        return (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/yutapon_coding_081d.ttf";
+        return (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/UDEVGothic-Regular.ttf";
     }
 
     // 窓の view ごとの板

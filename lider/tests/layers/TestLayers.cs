@@ -45,7 +45,7 @@ public static class TestLayers
         if (failed || frames != 3)
             return;
         Lider.FocusGame();
-        var text = new MonoText("test_layers_mono", (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/yutapon_coding_081d.ttf", 15);
+        var text = new MonoText("test_layers_mono", (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/UDEVGothic-Regular.ttf", 15);
         Document.Boot(text.CellW, text.LineH);
         var doc = Document.Open(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!)!;
         var log = new TraceLog();
