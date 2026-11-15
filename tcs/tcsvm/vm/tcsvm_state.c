@@ -12,6 +12,7 @@
        string は byte 列、closure は関数の名前
      object の中身: 頭と同じ順
      static: u32 数、static ごとに 名前、u8 種類、u32 struct の型、値
+     検査の通し番号: u32 数、組ごとに u32 object の番号、u64 通し番号 (検査が番号を振った object だけ)
    値は int と float が 4 byte、bool が 1 byte、参照が u32 (object の番号 + 1。0 は null)、struct は field の順。
    名前は u32 の長さと byte 列。
 
@@ -25,7 +26,7 @@
 #include <string.h>
 
 #define STATE_MAGIC 0x53534354u /* "TCSS" */
-#define STATE_VERSION 1u
+#define STATE_VERSION 2u
 #define NONE 0xFFFFFFFFu
 #define NAME_MAX_LEN 1024u
 
@@ -382,6 +383,19 @@ TvmStatus tvm_state_save(TvmVm *vm, uint8_t **bytes, size_t *size) {
     put(&out, sv.heads.p, sv.heads.n);
     put(&out, sv.bodies.p, sv.bodies.n);
     put(&out, sv.statics.p, sv.statics.n);
+    /* 検査が振った通し番号を運ぶ (読み込んだ先で、同じ個体が同じ id になる) */
+    uint32_t nids = 0;
+    for (uint32_t i = 0; i < sv.nobjs; i++)
+      if (tvm_debug_id_peek(vm, sv.objs[i]))
+        nids++;
+    put_u32(&out, nids);
+    for (uint32_t i = 0; i < sv.nobjs; i++) {
+      uint64_t id = tvm_debug_id_peek(vm, sv.objs[i]);
+      if (!id)
+        continue;
+      put_u32(&out, i);
+      put_u64(&out, id);
+    }
     if (out.failed || sv.types.failed || sv.heads.failed || sv.bodies.failed ||
         sv.statics.failed)
       sv.error = "out of memory";
@@ -851,12 +865,35 @@ TvmStatus tvm_state_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
     ok = lfail(&ld, "%s", "not a state of this format");
   ok = ok && load_types(&ld) && load_heads(&ld) && load_bodies(&ld) &&
        load_statics(&ld);
+  /* 検査の通し番号は、確かめ終わってから付ける (ids は byte 列の中の組の始まり) */
+  const uint8_t *ids = NULL;
+  uint32_t nids = 0;
+  if (ok) {
+    nids = tcs_rd_u32(&ld.r);
+    ids = ld.r.p;
+    for (uint32_t i = 0; i < nids && ok; i++) {
+      uint32_t at = tcs_rd_u32(&ld.r);
+      rd_u64(&ld.r);
+      if (ld.r.bad || at >= ld.nobjs)
+        ok = lfail(&ld, "%s", "a bad object id");
+    }
+  }
   if (ok && ld.r.p != ld.r.end)
     ok = lfail(&ld, "%s", "the state has extra bytes");
   if (ok) {
     /* ここからは失敗しない。作った object は static から届き、前の object は次の回収で消える */
     for (uint32_t i = 0; i < ld.nstatics; i++)
       vm->statics[ld.statics[i].slot] = ld.statics[i].value;
+    ld.r.p = ids;
+    for (uint32_t i = 0; i < nids; i++) {
+      uint32_t at = tcs_rd_u32(&ld.r);
+      uint64_t id = rd_u64(&ld.r);
+      /* 弱く覚えた object (tvm_inspect_pin) は、同じ番号の作り直した object へ付け替える */
+      for (uint32_t k = 0; k < vm->npinned; k++)
+        if (vm->pinned[k].p && tvm_debug_id_peek(vm, vm->pinned[k].p) == id)
+          vm->pinned[k].p = ld.objs[at];
+      tvm_debug_id_set(vm, ld.objs[at], id);
+    }
   }
   free(ld.types);
   free(ld.check_state);

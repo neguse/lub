@@ -198,7 +198,7 @@ void tvm_gc_collect(TvmVm *vm) {
       link = &h->next;
     } else {
       *link = h->next;
-      if (vm->npinned)
+      if (vm->npinned || vm->nids)
         tvm_debug_forget(vm, h + 1);
       free(h);
     }

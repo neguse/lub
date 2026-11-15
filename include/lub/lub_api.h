@@ -3000,10 +3000,10 @@ typedef struct LubTraceValue {
 // Sys.Inspect の 1 件。 Path は子の C# の書き方で、そのまま Sys.Inspect に渡
 // せる。Name は親から見た名前 (Count、[2]、["key"])。 Type は class の
 // instance ならその class の名前、それ以外は空。 Count は子の数 (0 なら開け
-// ない)。Cycle は祖先と同じ object で、開けない。 Id は object の番地の文字
-// 列で、object が生きている間は変わらず、別の object とは違う (string と値型
-// は空)。回収の後は別の object に再利用され得るので、覚えておくなら
-// Sys.InspectPin と合わせて使う。
+// ない)。Cycle は祖先と同じ object で、開けない。 Id は object に振った通し
+// 番号の文字列で、object が生きている間は変わらず、別の object とは違う
+// (string と値型は空)。App.Save で控えた状態を App.Load で読み込んでも、同じ
+// 個体は同じ Id のままになる。
 typedef struct LubInspectNode {
   LubStr path;
   LubStr name;

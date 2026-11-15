@@ -367,6 +367,12 @@ struct TvmVm {
   uint32_t layout_version;
   TvmPinned *pinned;
   uint32_t npinned, cappinned;
+  /* 検査が object に振った通し番号 (object → 番号の open addressing。id_keys が NULL の所は空き)。
+     聞かれた object にだけ振る。状態の保存と読み込みは番号を運ぶ */
+  void **id_keys;
+  uint64_t *id_vals;
+  uint32_t nids, capids;
+  uint64_t next_id;
   /* 負荷 (tcsvm_debug.c): 時計 (NULL なら数えない)、知らされてまだ行に振り分けていない時間 (別の thread も足す)、
      interpreter の入れ子の深さ、GC の止まり */
   TvmClockFn prof_clock;
@@ -389,6 +395,14 @@ void tvm_debug_free(TvmDebug *d);
 uint8_t tvm_debug_val_leaf_kind(TvmVm *vm, const TvmTraceVal *v, uint32_t k);
 void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p));
 void tvm_debug_forget(TvmVm *vm, void *p);
+/* object の通し番号: 振ってあればその番号、無ければ新しく振る (振れなければ 0) */
+uint64_t tvm_debug_id(TvmVm *vm, void *p);
+/* 振ってあればその番号、無ければ 0 */
+uint64_t tvm_debug_id_peek(TvmVm *vm, const void *p);
+/* p の番号を id にする (状態の読み込みが、作り直した object に付け直す)。これより後に振る番号は id より大きい */
+void tvm_debug_id_set(TvmVm *vm, void *p, uint64_t id);
+/* reload が作り直した object の番号を、転送先へ付け替える */
+void tvm_debug_ids_reloaded(TvmVm *vm);
 /* --trace: 行 k を self で通った組を記録する (TRACE が呼ぶ) */
 void tvm_debug_pair(TvmVm *vm, uint32_t k, void *self);
 /* 負荷 (prof_clock があるときだけ呼ぶ): 行 k に着いた (TRACE)、interpreter に入る・出る、確保した、GC が始まる・止めた */
