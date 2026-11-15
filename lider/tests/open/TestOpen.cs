@@ -1,7 +1,6 @@
-// エディタの command が開いた doc (Ctrl+N、Ctrl+O、Ctrl+P) を、lider の窓のタブにする。key は Workspace.Key から流す。
+// エディタの command が開いた doc (Ctrl+N、Ctrl+O) を、lider の窓のタブにする。key は Workspace.Key から流す。
 //   - Ctrl+N は名前の無い doc のタブを足して出し、打った文字はその doc に入る。Ctrl+S で名前を付けて保存すると、タブの Document の path がその file になる
 //   - Ctrl+O で path を打って Return で、その file のタブを足す。もうタブのある file なら、タブを足さずにそのタブを出す
-//   - Ctrl+P で名前の一部を打って Return で、一覧の最初の file のタブを出す
 using System;
 using Lub;
 using LiderCore;
@@ -90,12 +89,6 @@ public static class TestOpen
         OpenFile(w);
         Check(w.FocusWindow!.Code.Tabs.Count == 3 && w.Focus == other, "opening other.cs again added a tab or did not show it (" + w.FocusWindow!.Code.Tabs.Count + " tabs)");
 
-        w.FocusOn(path!);
-        Chord(w, Keys.ModCtrl, P);
-        Check(EditorHost.Modal(), "Ctrl+P did not open the find bar");
-        Type(w, "othe");
-        Press(w, Return);
-        Check(w.FocusWindow!.Code.Tabs.Count == 3 && w.Focus == other, "Ctrl+P othe showed '" + w.Focus?.Path + "' with " + w.FocusWindow!.Code.Tabs.Count + " tabs");
         if (failed)
             return;
         Console.WriteLine("PASS");

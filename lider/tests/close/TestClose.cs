@@ -1,5 +1,5 @@
 // focus をどのウィンドウにも移せることと、ウィンドウを閉じる操作がどのウィンドウにも同じに効くこと。
-//   - F2 は、インスペクタに focus が無ければ focus を移し、あれば閉じる。閉じていれば出して focus を移す
+//   - Alt+I (inspector:toggle) は、インスペクタに focus が無ければ focus を移し、あれば閉じる。閉じていれば出して focus を移す
 //   - Ctrl+W は focus のあるウィンドウを閉じる (インスペクタなら focus は Code に戻り、Code ならタブを閉じる)
 //   - インスペクタの本文を押すと focus が移り、見出しの閉じる印を押すと閉じる
 using System;
@@ -56,18 +56,18 @@ public static class TestClose
         {
             case 0:
                 Check(Lider.Inspector.Shown && w.Focused == w.FocusWindow && w.FocusWindow != null, "the focus is not on the code at first");
-                Key(Keys.F2, 0);
-                Check(Lider.Inspector.Shown && w.Focused == inspector, "F2 did not move the focus to the inspector");
-                Key(Keys.F2, 0);
-                Check(!Lider.Inspector.Shown && w.Focused == w.FocusWindow, "F2 on the focused inspector did not close it");
-                Key(Keys.F2, 0);
-                Check(Lider.Inspector.Shown && w.Focused == inspector, "F2 did not open the inspector with the focus");
+                Key(12, Keys.ModAlt);
+                Check(Lider.Inspector.Shown && w.Focused == inspector, "Alt+I did not move the focus to the inspector");
+                Key(12, Keys.ModAlt);
+                Check(!Lider.Inspector.Shown && w.Focused == w.FocusWindow, "Alt+I on the focused inspector did not close it");
+                Key(12, Keys.ModAlt);
+                Check(Lider.Inspector.Shown && w.Focused == inspector, "Alt+I did not open the inspector with the focus");
                 break;
             case 1:
                 Key(26, Keys.ModCtrl);
                 Check(!Lider.Inspector.Shown && w.Focused == w.FocusWindow, "Ctrl+W did not close the focused inspector");
                 Check(w.Windows.Count == 1, "Ctrl+W on the inspector closed a code window");
-                Key(Keys.F2, 0);
+                Key(12, Keys.ModAlt);
                 Key(Keys.F1, 0);
                 Key(Keys.F1, 0);
                 Check(w.Focused == w.FocusWindow, "F1 did not bring the focus back to the code");

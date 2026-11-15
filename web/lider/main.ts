@@ -719,16 +719,15 @@ async function main() {
   resizeCanvas();
   // 右ドラッグは窓を動かす操作なので、ブラウザのメニューを出さない
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-  // Alt + 左右 (戻る)、Alt + 数字 (タブ)、Ctrl+P (印刷)、Ctrl+- (縮小)、F1 (ヘルプ)、F11 (全画面)、F12 (開発者ツール) をブラウザに取られないようにする
+  // Alt を押した key (ウィンドウの操作)、Ctrl+P (印刷)、Ctrl+- (縮小)、Ctrl+B と Ctrl+E (ブラウザの欄)、F1 (ヘルプ) をブラウザに取られないようにする
   window.addEventListener(
     "keydown",
     (e) => {
       if (
         e.altKey ||
-        (e.ctrlKey && (e.key === "p" || e.key === "-")) ||
-        e.key === "F1" ||
-        e.key === "F11" ||
-        e.key === "F12"
+        (e.ctrlKey &&
+          (e.key === "p" || e.key === "-" || e.key === "b" || e.key === "e")) ||
+        e.key === "F1"
       )
         e.preventDefault();
     },

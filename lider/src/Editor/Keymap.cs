@@ -19,7 +19,8 @@ public static class Keymap
     {
         if (map.Count > 0)
             return;
-        Add("ctrl+p", "core:find-file");
+        // lider の検索 (file と宣言と命令)。エディタだけで動かすときは、エディタの file の検索になる
+        Add("ctrl+p", "search:open core:find-file");
         Add("ctrl+o", "core:open-file");
         Add("ctrl+n", "core:new-doc");
 
@@ -104,6 +105,64 @@ public static class Keymap
         Add("shift+pagedown", "doc:select-to-next-page");
         Add("ctrl+shift+up", "doc:create-cursor-previous-line");
         Add("ctrl+shift+down", "doc:create-cursor-next-line");
+
+        // ゲームの時間と focus (修飾なしの 1 押しで繰り返し押す操作)
+        Add("f1", "focus:game");
+        Add("f5", "game:pause");
+        Add("shift+f5", "game:restart");
+        Add("f6", "game:step-back");
+        Add("f7", "game:step-forward");
+        // 中身への操作
+        Add("ctrl+b", "code:go-to-definition");
+        Add("ctrl+-", "code:back");
+        Add("ctrl+e", "code:next-error");
+        Add("ctrl+w", "window:close");
+        Add("ctrl+tab", "tab:next");
+        Add("ctrl+shift+tab", "tab:previous");
+        // ウィンドウとスクリーンへの操作
+        Add("alt+left", "window:focus-left");
+        Add("alt+right", "window:focus-right");
+        Add("alt+up", "window:focus-up");
+        Add("alt+down", "window:focus-down");
+        Add("shift+alt+left", "window:move-back");
+        Add("shift+alt+right", "window:move-forward");
+        Add("shift+alt+up", "window:move-back");
+        Add("shift+alt+down", "window:move-forward");
+        for (var i = 1; i <= 9; i++)
+            Add("alt+" + i, "window:focus-" + i);
+        Add("alt+pageup", "window:grow");
+        Add("alt+pagedown", "window:shrink");
+        Add("shift+alt+pageup", "window:widen");
+        Add("shift+alt+pagedown", "window:narrow");
+        Add("ctrl+alt+left", "tab:move-left");
+        Add("ctrl+alt+right", "tab:move-right");
+        Add("alt+return", "window:zen");
+        Add("alt+l", "screen:next-layout");
+        Add("alt+i", "inspector:toggle");
+        Add("alt+d", "game:compare");
+    }
+
+    // 命令 name を割り当てた key (無ければ "")。検索と案内に出す
+    public static string StrokeOf(string name)
+    {
+        Init();
+        foreach (var pair in map)
+            foreach (var command in pair.Value.Split(' '))
+                if (command == name)
+                    return pair.Key;
+        return "";
+    }
+
+    // 今の修飾 key と合わせて key を押すと、命令 name になるか
+    public static bool Binds(string key, string name)
+    {
+        Init();
+        if (!map.TryGetValue(Stroke(key), out var commands))
+            return false;
+        foreach (var command in commands.Split(' '))
+            if (command == name)
+                return true;
+        return false;
     }
 
     // 修飾 key の名前から状態を変える。修飾 key なら true

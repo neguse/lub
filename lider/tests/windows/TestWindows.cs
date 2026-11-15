@@ -95,8 +95,8 @@ public static class TestWindows
         LookFor(w, next, Workspace.QuietSeconds);
         Check(w.FocusWindow == next, "focus did not move after the typing stopped");
 
-        w.Key(Keys.Escape, true);
-        Check(w.Windows.Count == 1 && w.FocusWindow == first, "Escape did not close the focused window");
+        Lider.Run("window:close");
+        Check(w.Windows.Count == 1 && w.FocusWindow == first, "window:close did not close the focused window");
 
         Strip(w, first, target, second);
         first = w.FocusWindow!;
@@ -131,9 +131,7 @@ public static class TestWindows
         w.FocusOn(third);
         w.MoveTab(1);
         var c = w.FocusWindow!;
-        w.SetMods(Keys.ModShift);
-        Lider.WindowKey(w, Keys.Left);
-        w.SetMods(0);
+        Lider.Run("window:move-back");
         Check(Order(w) == "Target Third Second", "the windows are not in order: " + Order(w));
         c.Scale = 2;
         w.Arrange(null);
@@ -146,15 +144,13 @@ public static class TestWindows
         c.Scale = 1;
 
         w.FocusWindow = first;
-        Lider.WindowKey(w, Keys.Left);
+        Lider.Run("window:focus-left");
         Check(w.FocusWindow == first, "Alt+Left at the left end moved the focus");
-        Lider.WindowKey(w, Keys.Right);
+        Lider.Run("window:focus-right");
         Check(w.FocusWindow == c, "Alt+Right did not move to the neighbour");
-        Lider.WindowKey(w, Keys.Digit1 + 2);
+        Lider.Run("window:focus-3");
         Check(w.FocusWindow == b, "Alt+3 did not move to the third window");
-        w.SetMods(Keys.ModShift);
-        Lider.WindowKey(w, Keys.Left);
-        w.SetMods(0);
+        Lider.Run("window:move-back");
         Check(Order(w) == "Target Second Third" && w.FocusWindow == b, "Alt+Shift+Left did not reorder: " + Order(w));
 
         w.Arrange(null);

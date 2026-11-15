@@ -1,7 +1,7 @@
 // focus をゲームの絵と Code の間で移すことと、ゲームの絵でないスクリーンを隠すこと。
 //   - F1 で focus がゲームに移る: 入力はゲームに渡り、窓は同じ所に薄く残り、compile error のような窓の中身は描き続ける。もう一度 F1 で Code に戻り、濃く戻る
 //   - focus がゲームにある間は Zen の広げた窓を元の大きさにし、Code に戻ると広げ直す。検索は閉じる
-//   - Shift+F1 でゲームの絵でないスクリーンを隠し、もう一度で出す。隠している間に F1 を押すと、出して focus を Code に移す
+//   - 命令 screen:hide でゲームの絵でないスクリーンを隠し、もう一度で出す。隠している間に F1 を押すと、出して focus を Code に移す
 //   - ゲームの絵を押すと focus がゲームに移り、窓を押すと Code に戻る
 using System;
 using Lub;
@@ -63,10 +63,10 @@ public static class TestStages
         {
             case 0:
                 Check(!w.OnGame && !Lider.Hidden && Lider.Opacity == 1, "not editing at first");
-                Key(Keys.F11, 0);
+                Key(Keys.Return, Keys.ModAlt);
                 break;
             case 1:
-                Check(window.PxW > PanelView.BasePxW, "F11 did not widen the window: " + window.PxW);
+                Check(window.PxW > PanelView.BasePxW, "Alt+Enter did not widen the window: " + window.PxW);
                 Lider.Search.Open(w);
                 Key(Keys.F1, 0);
                 Check(w.OnGame && !Lider.Hidden, "F1 did not hand the input to the game");
@@ -84,13 +84,13 @@ public static class TestStages
                 Check(Lider.Opacity == 1, "the windows did not come back: " + Lider.Opacity);
                 Check(window.PxW > PanelView.BasePxW, "Zen did not come back: " + window.PxW);
                 Key(Keys.F1, 0);
-                Key(Keys.F1, Keys.ModShift);
-                Check(w.OnGame && Lider.Hidden, "Shift+F1 did not show the game only");
+                Lider.Run("screen:hide");
+                Check(w.OnGame && Lider.Hidden, "screen:hide did not show the game only");
                 break;
             case 4:
-                Key(Keys.F1, Keys.ModShift);
-                Check(w.OnGame && !Lider.Hidden, "Shift+F1 did not show the screens again");
-                Key(Keys.F1, Keys.ModShift);
+                Lider.Run("screen:hide");
+                Check(w.OnGame && !Lider.Hidden, "screen:hide did not show the screens again");
+                Lider.Run("screen:hide");
                 Key(Keys.F1, 0);
                 Check(!w.OnGame && !Lider.Hidden, "F1 did not return from the game only to editing");
                 break;
