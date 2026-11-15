@@ -100,10 +100,28 @@ public class Screen
         Position = new Vec3(depth * (float)Math.Sin(a), y, depth * (float)Math.Cos(a));
     }
 
-    // ウィンドウを並べる (配置の規則で)
+    // ウィンドウを並べる (配置の規則で)。
+    // しまっているウィンドウ (Window.Away) は、並びから外して規則に渡し、並べた後で元の順番の所に戻す
     public void Arrange()
     {
+        var away = new List<Window>();
+        var at = new List<int>();
+        for (var i = 0; i < Windows.Count; i++)
+            if (Windows[i].Away)
+            {
+                away.Add(Windows[i]);
+                at.Add(i);
+            }
+        foreach (var window in away)
+        {
+            Windows.Remove(window);
+            window.Position = null;
+            window.ViewportRect = null;
+            window.ContentRect = null;
+        }
         Layout.Arrange(this);
+        for (var i = 0; i < away.Count; i++)
+            Windows.Insert(Math.Min(at[i], Windows.Count), away[i]);
     }
 
     // 今の距離のまま、縦の画角 fov (度) と縦横比 aspect の視野をちょうど覆う大きさにし、正面に置く
@@ -194,6 +212,9 @@ public class Window
     public const int MinPxW = 320;
     public const int MinPxH = 160;
     public const int MaxPx = 2048;
+
+    // しまっているか (並びの順番は保ったまま、並べず、出さない)
+    public bool Away;
 
     // 親のウィンドウ (無ければ、スクリーンの並びにある)。
     // 子は、親の中身が決めた、親の座標 (親の真ん中が原点。メートル。Z が負なら親より手前) に置く。配置の規則は、子を並べない

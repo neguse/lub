@@ -23,6 +23,8 @@ public static class TestTiled
     {
         App.Config(new ConfigOpts { Width = 640, Height = 360 });
         Lider.OnInit();
+        // 重ねる形から始めて、左右に並ぶ形へ替える
+        Lider.Arrange(Lider.Overlay);
     }
 
     public static void OnEvent(EventData e)
