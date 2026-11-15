@@ -99,7 +99,7 @@ public static class Lider
     // Alt で並びか大きさを変えた窓と、まだ浮かせておく秒
     static Window? keyMoved;
     static float keyLift;
-    // 止めている間の空間の冷え (0 から 1) と、足元の帯の上の点の位置
+    // 止めている間の空間の冷え (0 から 1) と、控えた frame の帯の上の点の位置
     static float cold;
     public static float Cold => cold;
     static readonly Spring timeline = Stiff();
@@ -911,14 +911,11 @@ public static class Lider
         return new Vec4(a.X, a.Y, b.X, b.Y);
     }
 
-    // 足元の帯 (止めた位置の印の高さを含む) の、最後に描いた frame の画面の px (左, 上, 右, 下)
+    // 控えた frame の帯 (止めた位置の印の高さを含む) の、画面の px (左, 上, 右, 下)。出していなければ全部 0
     public static Vec4 TimelineViewport()
     {
-        var half = timelineW * 0.5f / timelineR;
-        var h = TimelineMarkH * timelineR / Space.R * 0.5f;
-        var a = ViewportPoint(Space.At(timelineAngle - half, timelineY + h, timelineR));
-        var b = ViewportPoint(Space.At(timelineAngle + half, timelineY - h, timelineR));
-        return new Vec4(a.X, a.Y, b.X, b.Y);
+        var band = TimelineRect();
+        return band != null ? new Vec4(band.X, band.Y, band.X + band.W, band.Y + band.H) : new Vec4(0, 0, 0, 0);
     }
 
     // 空間の位置の、最後に描いた frame の画面の px (左上が 0,0)
@@ -1622,6 +1619,7 @@ public static class Lider
         if (draft != null && Work != null)
             DraftGame.Step(dt, keyboard, mouse, GameApp.Position >= 0, draft.ContentRect!, from!.ContentRect!, PixelRatio, Work.Docs);
         ScreenView.Draw(Screens, sw, sh);
+        StepTimeline(dt);
         DrawGameTitles(sw, sh);
         var change = GameApp.Changed();
         if (change.Reloaded)
@@ -1698,7 +1696,7 @@ public static class Lider
 
     static void DrawGameTitles(int sw, int sh)
     {
-        var any = false;
+        var any = TimelineRect() != null;
         foreach (var screen in Screens)
             foreach (var window in screen.Windows)
                 any = any || (window.Content is GameView && window.TitleBar > 0 && window.ViewportRect != null);
@@ -1728,6 +1726,7 @@ public static class Lider
                 if (Closable(window))
                     t.Draw(labelBatch, "×", at.X + at.W - (bar + t.CellW) * 0.5f, y, ink);
             }
+        DrawTimeline();
         labelBatch.Flush();
         Gfx.EndPass();
     }
@@ -2092,7 +2091,6 @@ public static class Lider
             // 窓の見出しは本文の上に乗るので、見出しも入れた高さの真ん中 (面の上の高さ TitleH / 2) を範囲の真ん中に合わせる
             slide.M12 = ((viewportH * 0.5f - AreaY - AreaH * 0.5f) / pxPerM - AreaCenterY) / Space.R;
         }
-        PlaceTimeline(pxPerM, slide.M12);
         lastVp = Camera3d.Vp(new Camera3dOpts
         {
             Eye = new Vec3(0, 0, 0),
@@ -2201,26 +2199,16 @@ public static class Lider
     // 視点が追うときに窓の外に残す幅 (メートル)
     const float FollowMargin = 0.03f;
 
-    // 控えている frame の帯 (足元)。
-    // 止めていれば、止めた位置に印を出す
     // 窓が光を落とす床の高さと、円筒の軸からの距離 (原点は Recenter した両眼の中点。床の高さは仮)
     const float FloorY = -1.1f;
     const float FloorR = Space.R * 0.8f;
 
-    // 足元の帯の幅と高さ
-    const float TimelineWidth = 1.2f;
-    const float TimelineY = -0.95f;
-    const float TimelineH = 0.02f;
-    // 止めた位置の印の幅と高さ
-    const float TimelineMarkW = 0.012f;
-    const float TimelineMarkH = 0.06f;
-    // 範囲を決めているときに、帯と範囲の端の間に空ける px
-    const float TimelineMarginPx = 12;
-    // 帯を置く所: 中心の角度と高さ、半径、幅 (メートル)。範囲を決めていれば PlaceTimeline が決める
-    static float timelineAngle;
-    static float timelineY = TimelineY;
-    static float timelineR = Space.R;
-    static float timelineW = TimelineWidth;
+    // 控えた frame の帯: ゲームの絵のウィンドウの一部で、止めている間だけ、絵の下の端に重ねて出す (絵は縮めない)。
+    // 帯の高さ、止めた位置の印の幅と高さ、絵の端との間 (画面の座標)
+    const float TimelineH = 4;
+    const float TimelineMarkW = 3;
+    const float TimelineMarkH = 14;
+    const float TimelineMargin = 12;
 
     // 控えた frame の at 番目 (0 が直近) の、帯の上の位置 (帯の幅を 1 とし、真ん中が 0、右端が直近)
     static float TimelineX(int at, int count)
@@ -2228,25 +2216,23 @@ public static class Lider
         return 0.5f - (at + 0.5f) / count;
     }
 
-    // 範囲を決めていれば、帯を範囲の下の端に範囲の幅で置く。窓とインスペクタは範囲の下の端まであるので、それより手前に置いて後から描く。
-    // 範囲を決めていなければ足元に置く。
-    // 画面の (sx, sy) に見える半径 r の点は、角度 (sx - 画面の真ん中) / (R pxPerM) + 視点 / R、高さ ((画面の真ん中 - sy) / (R pxPerM) - m12) r (m12 は縦のずらし)
-    static void PlaceTimeline(float pxPerM, float m12)
+    // 帯を出す矩形 (印の高さを含む。出さなければ null)。
+    // 保存した版のゲームの絵の下の端に置く。範囲 (LIDER_AREA) を決めていれば、絵のうち範囲に入る所の下の端に置く
+    static PixelRect? TimelineRect()
     {
-        if (AreaW <= 0)
+        var at = gameWindow.ContentRect;
+        if (!timelineShown || at == null || GameApp.Count == 0)
+            return null;
+        var x0 = at.X;
+        var x1 = at.X + at.W;
+        var y1 = at.Y + at.H;
+        if (AreaW > 0)
         {
-            timelineAngle = 0;
-            timelineY = TimelineY;
-            timelineR = Space.R;
-            timelineW = TimelineWidth;
-            return;
+            x0 = Math.Max(x0, AreaX);
+            x1 = Math.Min(x1, AreaX + AreaW);
+            y1 = Math.Min(y1, AreaY + AreaH);
         }
-        timelineR = InspectR - 0.01f;
-        var perPx = timelineR / (Space.R * pxPerM);
-        timelineAngle = (AreaX + AreaW * 0.5f - viewportW * 0.5f) / (Space.R * pxPerM) + viewX.Value / Space.R;
-        timelineW = (AreaW - 2 * TimelineMarginPx) * perPx;
-        var bottom = AreaY + AreaH - TimelineMarginPx - TimelineMarkH * 0.5f / Space.R / perPx * timelineR;
-        timelineY = ((viewportH * 0.5f - bottom) / (Space.R * pxPerM) - m12) * timelineR;
+        return new PixelRect(x0 + TimelineMargin, y1 - TimelineMargin - TimelineMarkH, x1 - x0 - 2 * TimelineMargin, TimelineMarkH);
     }
 
     static Spring Stiff()
@@ -2257,18 +2243,33 @@ public static class Lider
         return s;
     }
 
-    static void DrawTimeline(Mat4 vp)
+    // 止めている間、帯を出し、止めた位置の印を今の frame の所へ滑らせる (lider を隠している間も)
+    static void StepTimeline(float dt)
     {
-        if (GameApp.Count == 0)
+        if (GameApp.Position >= 0 && GameApp.Count > 0)
+        {
+            var x = TimelineX(GameApp.Position, GameApp.Count);
+            if (!timelineShown)
+                timeline.Snap(x);
+            timeline.Step(x, dt);
+            timelineShown = true;
+        }
+        else if (stepping == 0)
+        {
+            timelineShown = false;
+        }
+    }
+
+    // ゲームの絵のウィンドウの上に、帯と、止めた位置の印を描く (labelBatch の pass の中で呼ぶ)
+    static void DrawTimeline()
+    {
+        var band = TimelineRect();
+        if (band == null || band.W <= 0)
             return;
-        // 手前に置いても足元と同じ大きさに見えるよう、半径に比例させる
-        var k = timelineR / Space.R;
-        Quad3d.Solid(vp * Space.OnCylinder(timelineAngle, timelineY, timelineR, timelineW, TimelineH * k), Color.Rgb(0.3f, 0.35f, 0.45f, 0.6f));
-        if (!timelineShown)
-            return;
+        var y = band.Y + band.H * 0.5f;
+        labelBatch!.Rect(band.X, y - TimelineH * 0.5f, band.W, TimelineH, Color.Rgb(0.3f, 0.35f, 0.45f, 0.6f));
         // 光の点は frame を送るたびに次の frame の所へ滑る
-        Quad3d.Solid(vp * Space.OnCylinder(timelineAngle + timeline.Value * timelineW / timelineR, timelineY, timelineR, TimelineMarkW * k, TimelineMarkH * k),
-            Color.Rgb(1.0f, 0.6f, 0.15f));
+        labelBatch.Rect(band.X + (0.5f + timeline.Value) * band.W - TimelineMarkW * 0.5f, band.Y, TimelineMarkW, TimelineMarkH, Color.Rgb(1.0f, 0.6f, 0.15f, 1));
     }
 
     // 頭の座標 (両眼の中点が原点、+Z が前) から lider の空間への行列
@@ -2517,18 +2518,6 @@ public static class Lider
         comet = Math.Min(1, comet + dt / 0.3f);
         keyLift -= dt;
         cold = Ease.Toward(cold, Paused ? 1 : 0, dt, 0.4f);
-        if (GameApp.Position >= 0 && GameApp.Count > 0)
-        {
-            var x = TimelineX(GameApp.Position, GameApp.Count);
-            if (!timelineShown)
-                timeline.Snap(x);
-            timeline.Step(x, dt);
-            timelineShown = true;
-        }
-        else if (stepping == 0)
-        {
-            timelineShown = false;
-        }
         particles.Step(dt);
         Flash = Math.Max(0, Flash - dt / 0.22f);
         for (var i = rings.Count - 1; i >= 0; i--)
@@ -2815,7 +2804,6 @@ public static class Lider
                 Quad3d.Curved(onView ? viewVp : vp, inspectTitle.Texture, Color.Rgb(1, 1, 1, 1), BoardAngle, InspectTitleY(), Space.R, size.X, InspectTitleH, 0, 1);
             Space.Flat = worldFlat;
         }
-        DrawTimeline(vp);
         // コントローラーで指している円筒の上の点
         if (lastEye != null && pointer != null)
             Quad3d.Solid(vp * Space.OnCylinder(pointer.Angle, pointer.Y, Space.R - PanelView.FrontGap - 0.01f, 0.012f, 0.012f),

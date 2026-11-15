@@ -87,6 +87,11 @@ public static class TestRewind
         {
             if (Lider.Cold <= 0)
                 fail = "the space did not cool while paused";
+            // 止めている間、控えた frame の帯がゲームの絵の下の端に出る
+            Gfx.Size(out var sw, out var sh);
+            var band = Lider.TimelineViewport();
+            if (fail == "" && (band.Z <= band.X || band.W > sh || band.Y < sh - 40))
+                fail = "the timeline is not at the bottom of the game: " + band.X + "," + band.Y + " - " + band.Z + "," + band.W;
             if (fail == "" && (Count != at - 1 || GameApp.Position != 1))
                 fail = "one back: count " + Count + " at " + GameApp.Position + ", want " + (at - 1) + " at 1";
             Press(Keys.F7);
@@ -101,6 +106,8 @@ public static class TestRewind
         {
             if (GameApp.Position != -1 || Count != at + 1)
                 fail = "resumed: count " + Count + " at " + GameApp.Position + ", want " + (at + 1) + " at -1";
+            if (fail == "" && Lider.TimelineViewport().Z != 0)
+                fail = "the timeline stayed after resuming";
             Lider.FocusGame();
             Press(Keys.F5);
             if (fail == "" && GameApp.Position != -1)
