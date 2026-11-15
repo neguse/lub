@@ -50,7 +50,9 @@ public static class Session
         var head = lines[0].Split(' ');
         if (head.Length != 2 || !float.TryParse(head[0], out var at) || !int.TryParse(head[1], out var focus) || now < at || now - at > Seconds)
             return false;
-        w.Windows.Clear();
+        // 戻す窓は、コードのスクリーンに並べる (ほかのスクリーンに移した並びは控えていない)
+        foreach (var old in w.Windows)
+            w.ScreenOf(old)!.Windows.Remove(old);
         w.FocusWindow = null;
         string[]? spec = null;
         var docs = new List<Document>();
@@ -89,15 +91,15 @@ public static class Session
                 window.Scale = float.Parse(spec[4]);
                 window.Sized = spec[5] == "1";
                 if (n <= focus)
-                    focused = w.Windows.Count;
-                w.Windows.Add(window);
+                    focused = w.CodeScreen.Windows.Count;
+                w.CodeScreen.Windows.Add(window);
             }
             // 次の窓の行 (最後は番兵)
             spec = f;
             docs = new List<Document>();
         }
-        if (w.Windows.Count > 0)
-            w.FocusWindow = w.Windows[focused];
+        if (w.CodeScreen.Windows.Count > 0)
+            w.FocusWindow = w.CodeScreen.Windows[focused];
         return true;
     }
 

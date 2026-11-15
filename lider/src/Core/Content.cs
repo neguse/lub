@@ -32,6 +32,22 @@ public class Code : IContent
     }
 }
 
+// ゲームの値の木と、負荷の一覧 (InspectView が描いた絵)
+public class Inspector : IContent
+{
+    public readonly InspectView View;
+
+    public Inspector(InspectView view)
+    {
+        View = view;
+    }
+
+    public TextureRef? Texture()
+    {
+        return View.Texture;
+    }
+}
+
 // ゲームの版: 保存した版 (GameApp) と、編集中の版 (DraftGame。保存していない本文で変換する)
 public enum GameVersion
 {
