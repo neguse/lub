@@ -466,6 +466,7 @@ byte 列は address と layout に依らないので、別の VM にも、別の
 - 全部の static (struct の static は葉の並び)。
 - static から届く object。class の field、配列と List の要素、Dictionary の key と値 (足した順)、string の中身、closure の関数の名前と捕捉、box の値、host と共有する class の host の値。
 - 使った型の名前と形 (class と struct は field の名前と種類、容器は要素の種類)。
+- 検査 (§14) が object に振った通し番号。読み込んだ先の object に同じ番号を付け直すので、検査の id は読み込みの前後で変わらない。読み込んだ VM がその後に振る番号は、読み込んだ番号より大きい。弱く覚えた object (`tvm_inspect_pin`) は、同じ番号の読み込んだ object へ付け替える。
 
 書かないもの:
 

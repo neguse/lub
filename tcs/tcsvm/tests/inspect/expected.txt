@@ -13,3 +13,4 @@ instances:
   Node Game.Chain.Next
   Node Game.Chain.Next.Next
 same id: yes
+same id after load: yes

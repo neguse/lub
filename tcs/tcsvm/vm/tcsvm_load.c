@@ -99,6 +99,8 @@ void tvm_free(TvmVm *vm) {
     tvm_snapshot_free(vm, vm->snapshots);
   tvm_debug_free(vm->debug);
   free(vm->pinned);
+  free(vm->id_keys);
+  free(vm->id_vals);
   tvm_heap_free(vm);
   free(vm->stack);
   free(vm->frames);
