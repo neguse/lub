@@ -27,11 +27,18 @@ public class Arrangement
 
     public string Name = "";
     public List<ScreenSpec> Screens = new List<ScreenSpec>();
+    // Space に置くウィンドウの key (置かなければ空)。戻す先は、Screens の中でこの key を書いた所
+    public string Space = "";
 
     // 今の配置を控える
     public static Arrangement Capture(string name, Workspace w)
     {
         var a = new Arrangement { Name = name };
+        // Space に置いたウィンドウも、戻す先の Screen の並びに入れて控える
+        var spaced = w.InSpace;
+        w.TakeFromSpace();
+        if (spaced != null)
+            a.Space = KeyOf(w, spaced);
         var home = w.Home ?? w.CodeScreen;
         foreach (var screen in w.Screens)
         {
@@ -58,6 +65,8 @@ public class Arrangement
                 spec.Windows.Add(AllCode);
             a.Screens.Add(spec);
         }
+        if (spaced != null)
+            w.PutInSpace(spaced);
         return a;
     }
 
@@ -66,6 +75,7 @@ public class Arrangement
     public void Apply(Workspace w)
     {
         front.Clear();
+        w.TakeFromSpace();
         var all = new List<Window>();
         foreach (var screen in w.Screens)
             if (!(screen.Layout is Stack))
@@ -122,6 +132,13 @@ public class Arrangement
         }
         w.Home = home == w.CodeScreen ? null : home;
         w.HomeBefore = after;
+        if (Space != "")
+            foreach (var window in all)
+                if (KeyOf(w, window) == Space)
+                {
+                    w.PutInSpace(window);
+                    break;
+                }
     }
 
     // windows を、この順に screen の並びへ載せる (ほかのスクリーンに居た物は移す)。
@@ -168,10 +185,12 @@ public class Arrangement
         return "";
     }
 
-    // file に書く行: "arrangement 名前"、スクリーンごとに "screen 名前 形 固定先 x y z 幅 高さ 透過度 規則"、ウィンドウごとに "window key"
+    // file に書く行: "arrangement 名前"、Space に置くウィンドウがあれば "space key"、スクリーンごとに "screen 名前 形 固定先 x y z 幅 高さ 透過度 規則"、ウィンドウごとに "window key"
     public List<string> Lines()
     {
         var lines = new List<string> { "arrangement " + Name };
+        if (Space != "")
+            lines.Add("space " + Space);
         foreach (var s in Screens)
         {
             lines.Add("screen " + s.Name + " " + (s.Shape == ScreenShape.Plane ? "plane" : "cylinder") + " " + (s.Anchor == ScreenAnchor.View ? "view" : "world")
@@ -196,6 +215,8 @@ public class Arrangement
                 spec = null;
                 all.Add(a);
             }
+            else if (line.StartsWith("space ") && a != null)
+                a.Space = Utf8.Sub(line, 6);
             else if (line.StartsWith("screen ") && a != null)
             {
                 var f = line.Split(' ');

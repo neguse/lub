@@ -64,6 +64,9 @@ public static class DraftGame
 
     // 1 frame 進める。docs は開いている file (保存していない本文を使う)。
     // paused なら進めず (保存した版を止めている)、w と h と keyboard と mouse は GameApp.Step と同じ
+    // Space に置いているか (GameApp.InSpace と同じ)
+    public static bool InSpace;
+
     public static void Step(float dt, bool keyboard, bool mouse, bool paused, int w, int h, Dictionary<string, Document> docs)
     {
         if (Build == null)
@@ -93,6 +96,7 @@ public static class DraftGame
         var input = new StepInput { MouseX = Map.X, MouseY = Map.Y };
         input.Keyboard = keyboard;
         input.Mouse = mouse;
+        GameApp.ShowViewer(input, InSpace, Target);
         App.Step(Ref, Target, dt, input);
         // 最初に動いた時と、作り直された時に、保存した版の状態を写す
         var status = App.Status(Ref);

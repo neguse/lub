@@ -105,8 +105,9 @@ public static class TestCompare
             // 編集中の版の見出しを押すと focus が移り、閉じる印を押すと並べるのをやめる。保存した版の見出しに閉じる印は無い
             var saved = Lider.Screens[0].Windows[0].ViewportRect!;
             var draft = Lider.Screens[0].Windows[1].ViewportRect!;
-            Click(saved.X + saved.W - 8, saved.Y + 8);
-            Check(DraftGame.Shown && w.Focused == Lider.Screens[0].Windows[0], "a click at the right end of the saved title closed something or did not focus it");
+            // 右の端は Space へ出す印なので、その左を押す
+            Click(saved.X + saved.W - 8 - PanelView.TitlePx, saved.Y + 8);
+            Check(DraftGame.Shown && w.Focused == Lider.Screens[0].Windows[0], "a click near the right end of the saved title closed something or did not focus it");
             Click(draft.X + draft.W * 0.5f, draft.Y + 8);
             Check(DraftGame.Shown && w.Focused == Lider.Screens[0].Windows[1], "a click on the draft title did not move the focus");
             Click(draft.X + draft.W - 8, draft.Y + 8);

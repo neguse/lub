@@ -89,6 +89,31 @@ public static class GameApp
     // ゲームを 1 frame 進める。
     // w と h は絵の画素の数。マウスの位置は、前もって Map.Point で渡す。
     // keyboard と mouse は、それぞれをゲームに見せるか
+    // Space に置いているか。
+    // 置いていれば、ゲームには見る人を見せる: XR の間は眼をそのまま、XR でなければ lider のカメラ (SpaceVp) を、絵 (target) を描き先にした眼として渡す。
+    // 置いていなければ、ゲームからは XR が動いていないように見え、自分のカメラで絵に描く
+    public static bool InSpace;
+    // lider が Space を見ているカメラの view-projection (Xr.View と同じ書き方: 行優先、前方 -Z。Lider が毎 frame 決める)
+    public static float[]? SpaceVp;
+
+    // ゲームに見せる見る人を、input に書く
+    public static void ShowViewer(StepInput input, bool inSpace, TextureRef target)
+    {
+        if (!inSpace)
+        {
+            input.Xr = false;
+            return;
+        }
+        if (Xr.Active() || SpaceVp == null)
+            return;
+        // 眼は 2 つ要るので、右の眼は小さな捨ての描き先にする
+        var spare = Gfx.UseTexture("lider_game_spare_eye", 8, 8, Gfx.PixelFormat.Rgba8, null, 1, new TextureOpts { Target = true });
+        if (spare == null)
+            return;
+        input.XrTargets = new List<TextureRef> { target, spare };
+        input.XrViewProjections = new List<float[]> { SpaceVp, SpaceVp };
+    }
+
     public static void Step(float dt, bool keyboard, bool mouse, int w, int h)
     {
         Stepped = false;
@@ -107,6 +132,7 @@ public static class GameApp
             var input = new StepInput { MouseX = Map.X, MouseY = Map.Y };
             input.Keyboard = keyboard;
             input.Mouse = mouse;
+            ShowViewer(input, InSpace, Target);
             var paused = Position >= 0;
             Stepped = timeline != null ? timeline.Step(Ref, Target, dt, input) : App.Step(Ref, Target, dt, input);
             if (Stepped && !paused)
