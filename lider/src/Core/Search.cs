@@ -54,6 +54,19 @@ public class Search : IContent
         return null;
     }
 
+    // 候補を引かずに、打った字を受け取るだけの欄として出しているときの、何を打つかの説明 (そうでなければ空)
+    public string Prompt = "";
+    Action<string>? asked;
+
+    // 欄を、字を打ってもらう入力として出す。Return で、打った字 (前後の空白を除く。空なら呼ばない) を done に渡す
+    public void Ask(Workspace w, string prompt, Action<string> done)
+    {
+        Open(w);
+        Prompt = prompt;
+        asked = done;
+        Results.Clear();
+    }
+
     public const int MaxResults = 10;
 
     public bool Shown;
@@ -175,6 +188,8 @@ public class Search : IContent
     {
         Shown = true;
         Query = query;
+        Prompt = "";
+        asked = null;
         jumpWord = null;
         from = w.Here();
         Selected = 0;
@@ -281,6 +296,8 @@ public class Search : IContent
     {
         var scores = new List<int>();
         Results.Clear();
+        if (asked != null)
+            return;
         // ">" で始めると、命令だけを並べる
         if (Query.StartsWith(">"))
         {
@@ -400,6 +417,15 @@ public class Search : IContent
     // 選んでいる候補へ移って閉じる
     public void Commit(Workspace w)
     {
+        if (asked != null)
+        {
+            var done = asked;
+            var typed = Query.Trim();
+            Cancel(w);
+            if (typed != "")
+                done(typed);
+            return;
+        }
         if (Results.Count == 0)
         {
             Cancel(w);

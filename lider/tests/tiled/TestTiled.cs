@@ -1,4 +1,4 @@
-// Alt+L (screen:next-layout) で、コードの窓をゲームの絵に重ねる形と、左右に並ぶ形を切り替える。
+// Alt+L (arrange:next) で、配置を替える: コードの窓をゲームの絵に重ねる形と、左右に並ぶ形を切り替える。
 //   - 左右に並ぶ形では、コードの窓は背景のスクリーン (視点に固定した平面) に移り、画面の右半分に出る
 //   - その窓は、右半分の真ん中を続けて 2 回押すと語を選べる (描いた所と、当たる所が合っている)
 //   - 画面の左半分を押しても、コードの窓には当たらない
@@ -136,7 +136,7 @@ public static class TestTiled
         stage++;
     }
 
-    // Alt+L (並べ方の規則を替える)
+    // Alt+L (次の配置へ)
     static void NextLayout()
     {
         Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = 15, Mods = Keys.ModAlt });
