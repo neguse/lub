@@ -15,9 +15,9 @@ namespace LiderCore;
 
 public class InspectView
 {
-    // 画素の細かさは code の窓 (PanelView) と同じにし、字を同じ大きさで出す (BasePxW px が BaseW メートル)
+    // 画素の細かさは code の窓 (PanelView) と同じにし、字を同じ大きさで出す
     const int BasePxW = 520;
-    const float BaseW = 0.75f;
+    const float BaseW = PanelView.BaseW * BasePxW / PanelView.BasePxW;
     // 板の大きさ (px)。既定は 520 x 624 で、SetSize で変える (LIDER_AREA)
     public static int PxW = BasePxW;
     public static int PxH = 624;

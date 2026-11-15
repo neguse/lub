@@ -201,7 +201,7 @@ public static class TestInspector
     static Ray RayAt(Vec2 uv)
     {
         var scale = Space.Flat ? 1.4f : 1;
-        var r = Space.R - 0.12f;
+        var r = Space.R;
         var angle = Lider.BoardAngle + (uv.X - 0.5f) * InspectView.W * scale / r;
         var y = (0.5f - uv.Y) * InspectView.H * scale;
         return new Ray(new Vec3(0, 0, 0), Space.At(angle, y, r));

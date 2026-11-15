@@ -49,8 +49,8 @@ public static class Lider
     public static float AreaH;
     // 範囲の幅のうち、インスペクタに使う割合
     const float AreaBoard = 0.34f;
-    // インスペクタの板の真ん中の高さ。範囲を決めていれば、窓の見出しも入れた高さの真ん中に揃える
-    static float InspectY => AreaW > 0 ? PanelView.TitleH * Space.FlatScale * 0.5f : 0;
+    // 範囲を決めているときの、範囲の真ん中に合わせる高さ。窓の見出しも入れた高さの真ん中
+    static float AreaCenterY => AreaW > 0 ? PanelView.TitleH * Space.FlatScale * 0.5f : 0;
     static float followedAngle;
     static float followedScale;
     static float followedBoard;
@@ -118,11 +118,12 @@ public static class Lider
     public static List<string> What = new List<string>();
     // 画面の座標 (web は CSS px) の 1 に対する、MainTex の画素の数
     public static float PixelRatio = float.Parse(Environment.GetEnvironmentVariable("LIDER_PIXEL_RATIO") ?? "1");
-    // インスペクタの板 (F2 か左手の X で出し入れ)。focus のある窓の左に、窓より手前に置く
+    // インスペクタ (F2 か左手の X で出し入れ)。中身が Inspector のウィンドウで、コードの窓と同じスクリーンに並ぶ。
+    // 重ねる形ではコードのスクリーンの一番左、左右に並ぶ形では背景のスクリーンの最後に置く
     static readonly InspectView inspect = new InspectView();
     public static InspectView Inspector => inspect;
-    static float inspectAngle = -0.6f;
-    static bool TreeVisible => inspect.Shown && !ZenShown;
+    static Window inspectWindow = new Window(new Inspector(inspect));
+    static bool TreeVisible => inspect.Shown && !ZenShown && inspectWindow.Position != null;
     // 窓を画面の幅に広げ、左の板を隠し、ゲームを暗くする。試す間は効かせない (ゲームを遊べるように)
     public static bool Zen;
     static bool ZenShown => Zen && Work != null && Work.Active;
@@ -140,9 +141,8 @@ public static class Lider
     public static float Opacity = 1;
     const float TryOpacity = 0.35f;
     static bool inspectButton;
+    // 手前に出す板 (動いている版の板、範囲を決めたときの帯) の半径
     const float InspectR = Space.R - 0.12f;
-    // インスペクタの板と窓の間 (メートル)
-    const float InspectGap = 0.05f;
     // 非 XR は窓を大きく開くので、インスペクタの字も同じくらいにする
     static float InspectScale => Space.Flat ? 1.4f : 1;
     // 指している物に対して、そのとき効く操作の案内
@@ -174,6 +174,7 @@ public static class Lider
         backdrop.Windows.Add(new Window(new GameView()));
         Screens.Clear();
         Screens.Add(backdrop);
+        inspectWindow = new Window(new Inspector(inspect));
         var area = (Environment.GetEnvironmentVariable("LIDER_AREA") ?? "").Split(',');
         if (area.Length == 4 && float.TryParse(area[0], out var ax) && float.TryParse(area[1], out var ay)
             && float.TryParse(area[2], out var aw) && float.TryParse(area[3], out var ah))
@@ -703,10 +704,9 @@ public static class Lider
     // インスペクタの板の、最後に描いた frame の画面の px (左, 上, 右, 下)
     public static Vec4 BoardViewport()
     {
-        var w = InspectView.W * InspectScale * 0.5f;
-        var h = InspectView.H * InspectScale * 0.5f;
-        var a = ViewportPoint(Space.At(inspectAngle - w / InspectR, InspectY + h, InspectR));
-        var b = ViewportPoint(Space.At(inspectAngle + w / InspectR, InspectY - h, InspectR));
+        var size = InspectSize();
+        var a = ViewportPoint(Space.At(BoardAngle - size.X * 0.5f / Space.R, InspectY() + size.Y * 0.5f, Space.R));
+        var b = ViewportPoint(Space.At(BoardAngle + size.X * 0.5f / Space.R, InspectY() - size.Y * 0.5f, Space.R));
         return new Vec4(a.X, a.Y, b.X, b.Y);
     }
 
@@ -960,16 +960,66 @@ public static class Lider
         }
     }
 
-    // 窓の左の板の幅 (メートル。出していなければ 0)
-    static float BoardW => TreeVisible ? InspectView.W * InspectScale : 0;
+    // インスペクタのウィンドウを、出しているならスクリーンに置き、しまっているなら外す
+    static void PlaceInspector(Workspace w)
+    {
+        var on = w.ScreenOf(inspectWindow);
+        var home = Tiled ? backdrop : w.CodeScreen;
+        if (on != null && (!inspect.Shown || on != home))
+        {
+            on.Windows.Remove(inspectWindow);
+            inspectWindow.Position = null;
+            on = null;
+        }
+        if (inspect.Shown && on == null)
+        {
+            if (Tiled)
+                home.Windows.Add(inspectWindow);
+            else
+                home.Windows.Insert(0, inspectWindow);
+        }
+        // 範囲を決めている間は、focus のある窓のすぐ左に並べる (範囲にこの 2 つを収める)
+        if (inspect.Shown && !Tiled && AreaW > 0 && w.FocusWindow != null && w.ScreenOf(w.FocusWindow) == home)
+        {
+            home.Windows.Remove(inspectWindow);
+            home.Windows.Insert(home.Windows.IndexOf(w.FocusWindow), inspectWindow);
+        }
+        // コードのスクリーンの真ん中には、最初のコードの窓を置く (インスペクタはその左に並ぶ)
+        w.CodeScreen.Origin = null;
+        foreach (var window in w.CodeScreen.Windows)
+            if (window.Content is Code && w.CodeScreen.Origin == null)
+                w.CodeScreen.Origin = window;
+        // 横一列では、インスペクタの画素の数と倍率が大きさを決める
+        inspectWindow.PxW = InspectView.PxW;
+        inspectWindow.PxH = InspectView.PxH;
+        inspectWindow.Scale = InspectScale;
+        // 平面のスクリーンでは、配置の規則が決めた矩形に収める
+        if (OnView(home) && inspectWindow.Position != null)
+            InspectView.SetSize(inspectWindow.Size.X * ViewScale(home) / InspectScale, inspectWindow.Size.Y * ViewScale(home) / InspectScale);
+    }
 
-    // 窓の左の板の中心の角度 (インスペクタの所を押すテストが使う)
-    public static float BoardAngle => inspectAngle;
+    // インスペクタの中心の角度 (インスペクタの所を押すテストが使う)、高さ、大きさ (半径 Space.R の所のメートル)
+    public static float BoardAngle => Work != null ? WindowAngle(Work, inspectWindow) : 0;
 
-    // インスペクタの板を指していれば、板の中の位置
+    static float InspectY()
+    {
+        return Work != null ? WindowY(Work, inspectWindow) : 0;
+    }
+
+    static Vec2 InspectSize()
+    {
+        var screen = Work != null ? ScreenFor(Work, inspectWindow) : null;
+        return screen != null && OnView(screen) ? inspectWindow.Size * ViewScale(screen) : inspectWindow.Size;
+    }
+
+    // インスペクタを指していれば、その中の位置
     static Vec2? InspectAt(Ray ray)
     {
-        return TreeVisible ? Space.HitCurved(ray, inspectAngle, InspectY, InspectR, InspectView.W * InspectScale, InspectView.H * InspectScale) : null;
+        var w = Work;
+        if (w == null || !TreeVisible)
+            return null;
+        var size = InspectSize();
+        return HitOn(ScreenFor(w, inspectWindow), ray, BoardAngle, InspectY(), size.X, size.Y);
     }
 
     // 押した窓の上を指していれば、押した所からそこまでを選ぶ
@@ -1112,7 +1162,7 @@ public static class Lider
         var screen = ScreenFor(w, window);
         // 平面のスクリーンでは、ウィンドウの矩形に見出しも収めるので、本文は見出しの分だけ下がる
         return OnView(screen)
-            ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - PanelView.TitleH * window.Scale * 0.5f
+            ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - ((window.Content is Code) ? PanelView.TitleH * window.Scale * 0.5f : 0)
             : window.Position.Value.Y;
     }
 
@@ -1383,6 +1433,7 @@ public static class Lider
             motions.Remove(window);
         }
         SetBackdropLayout();
+        PlaceInspector(w);
     }
 
     static void SetBackdropLayout()
@@ -1513,7 +1564,7 @@ public static class Lider
         {
             // 先頭の窓は真ん中が動かないので、端までの差の 2 倍だけ広げる
             var right = WindowAngle(w, window) * Space.R + window.UnscaledSize.X * window.Scale * 0.5f;
-            var factor = w.Windows.IndexOf(window) == 0 ? 2 : 1;
+            var factor = w.CodeScreen.Windows.IndexOf(window) == 0 ? 2 : 1;
             pxW += (int)((at.Angle * Space.R - right) * factor / perPx);
         }
         if ((sizingEdge & 2) != 0)
@@ -1552,6 +1603,7 @@ public static class Lider
         if (w == null)
             return;
         Space.Flat = !Xr.Active();
+        PlaceInspector(w);
         // 記録は lider を出していない間も受け取って捨てる (溜めない)
         if (inspect.Tree.ScopeId != tracedScope)
         {
@@ -1630,13 +1682,6 @@ public static class Lider
         if (Search.Shown)
             searchView.Prepare(Search, panelText);
         AssetBoard.Prepare(w.ShownAsset, w.ShownAsset == "" ? "" : w.Relative(w.ShownAsset), panelText);
-        if (w.FocusWindow != null)
-        {
-            var m = MotionOf(w.FocusWindow);
-            var scale = m != null ? m.Scale.Value : w.FocusWindow.Scale;
-            inspectAngle = (m != null ? m.Angle.Value : WindowAngle(w, w.FocusWindow))
-                - (w.FocusWindow.UnscaledSize.X * scale * 0.5f + InspectGap + OldBoardW) / Space.R - BoardW * 0.5f / InspectR;
-        }
         Animate(w, dt);
 
         if (Xr.Active())
@@ -1689,7 +1734,7 @@ public static class Lider
         if (AreaW > 0)
         {
             // 窓の見出しは本文の上に乗るので、見出しも入れた高さの真ん中 (面の上の高さ TitleH / 2) を範囲の真ん中に合わせる
-            slide.M12 = ((viewportH * 0.5f - AreaY - AreaH * 0.5f) / pxPerM - InspectY) / Space.R;
+            slide.M12 = ((viewportH * 0.5f - AreaY - AreaH * 0.5f) / pxPerM - AreaCenterY) / Space.R;
         }
         PlaceTimeline(pxPerM, slide.M12);
         lastVp = Camera3d.Vp(new Camera3dOpts
@@ -1740,9 +1785,9 @@ public static class Lider
     // pxPerM は面 (半径 R) の上の 1 メートルの画素。インスペクタは手前 (InspectR) にあるので R / InspectR 倍に見える
     static void FitArea(Workspace w, float pxPerM)
     {
-        var near = InspectR / Space.R / InspectScale;
-        InspectView.SetSize(AreaW * AreaBoard / pxPerM * near, AreaH / pxPerM * near);
-        var gap = InspectGap * pxPerM;
+        // インスペクタは、範囲の左に、窓の本文と同じ高さで置く
+        InspectView.SetSize(AreaW * AreaBoard / pxPerM / InspectScale, (AreaH / pxPerM - PanelView.TitleH * Space.FlatScale) / InspectScale);
+        var gap = Strip.Gap * pxPerM;
         foreach (var window in w.Windows)
         {
             var pxW = (int)((AreaW * (1 - AreaBoard) - gap) / pxPerM / window.Scale / PanelView.BaseW * PanelView.BasePxW);
@@ -1753,8 +1798,12 @@ public static class Lider
         var focus = w.FocusWindow;
         if (focus == null)
         {
-            // 窓が無ければ、インスペクタを範囲の左の端に置く (面の上の位置 a の板は、画面の x = 真ん中 + (a - 視点 / R) * R * pxPerM)
-            inspectAngle = (AreaX + AreaW * AreaBoard * 0.5f - viewportW * 0.5f) / (Space.R * pxPerM) + viewX.Value / Space.R;
+            // 窓が無ければ、インスペクタの左の端を範囲の左の端に合わせる
+            if (TreeVisible)
+            {
+                viewTarget = BoardAngle * Space.R - InspectSize().X * 0.5f - (AreaX - viewportW * 0.5f) / pxPerM;
+                viewX.Snap(viewTarget);
+            }
             return;
         }
         if (grab.Holding)
@@ -1768,19 +1817,26 @@ public static class Lider
     static void FollowFocus(Workspace w, float halfViewport)
     {
         var window = w.FocusWindow;
+        // コードの窓が無ければ、インスペクタを画面の左の端に寄せる
+        if (window == null && TreeVisible && ScreenFor(w, inspectWindow) == w.CodeScreen)
+            viewTarget = BoardAngle * Space.R - InspectSize().X * 0.5f - FollowMargin + halfViewport;
         if (window == null || grab.Holding || ScreenFor(w, window) != w.CodeScreen)
             return;
         var angle = WindowAngle(w, window);
-        if (window == followed && angle == followedAngle && window.Scale == followedScale && BoardW == followedBoard && OldBoardW == followedOld)
+        // インスペクタが focus のある窓のすぐ左に並んでいれば、インスペクタも見える所へ動かす (その左の端。並んでいなければ 0)
+        var row = w.CodeScreen.Windows;
+        var beside = TreeVisible && row.IndexOf(inspectWindow) >= 0 && row.IndexOf(inspectWindow) == row.IndexOf(window) - 1;
+        var board = beside ? BoardAngle * Space.R - InspectSize().X * 0.5f : 0;
+        if (window == followed && angle == followedAngle && window.Scale == followedScale && board == followedBoard && OldBoardW == followedOld)
             return;
         followed = window;
         followedAngle = angle;
         followedScale = window.Scale;
-        followedBoard = BoardW;
+        followedBoard = board;
         followedOld = OldBoardW;
         var half = window.UnscaledSize.X * window.Scale * 0.5f;
-        // 窓の左の板も入れる (板は手前にあるので、面の上では大きく見える)
-        var left = angle * Space.R - half - OldBoardW - (BoardW > 0 ? InspectGap + BoardW * Space.R / InspectR : 0);
+        // 窓の左の、動いている版の板も入れる
+        var left = beside ? Math.Min(board, angle * Space.R - half - OldBoardW) : angle * Space.R - half - OldBoardW;
         // 板と窓が両方は入らなければ、板の側を見せる (窓の右端は本文が少ない)
         var right = Math.Min(angle * Space.R + half, left + 2 * (halfViewport - FollowMargin));
         viewTarget = Space.FollowX(viewTarget, (left + right) * 0.5f, (right - left) * 0.5f + FollowMargin, halfViewport);
@@ -2393,8 +2449,12 @@ public static class Lider
         }
         if (TreeVisible && inspect.Texture != null)
         {
-            Theme.Plate(vp, Theme.Surface, inspectAngle, InspectY, InspectR, InspectView.W * InspectScale, InspectView.H * InspectScale);
-            Quad3d.Curved(vp, inspect.Texture, Color.Rgb(1, 1, 1, 1), inspectAngle, InspectY, InspectR, InspectView.W * InspectScale, InspectView.H * InspectScale, 0, 1);
+            var onView = OnView(ScreenFor(w, inspectWindow));
+            var size = InspectSize();
+            Space.Flat = worldFlat || onView;
+            Theme.Plate(onView ? viewVp : vp, Theme.Surface, BoardAngle, InspectY(), Space.R, size.X, size.Y);
+            Quad3d.Curved(onView ? viewVp : vp, inspect.Texture, Color.Rgb(1, 1, 1, 1), BoardAngle, InspectY(), Space.R, size.X, size.Y, 0, 1);
+            Space.Flat = worldFlat;
         }
         DrawTimeline(vp);
         // コントローラーで指している円筒の上の点

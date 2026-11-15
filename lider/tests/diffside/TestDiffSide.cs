@@ -1,5 +1,5 @@
 // 本文がゲームの動いている版と違う間の、動いている版の板 (左右の形)。
-//   - 違いが無い間は出さない。打って違いができると focus のある窓に出し、値の木と足あとの板は板の幅だけ左へ寄る
+//   - 違いが無い間は出さない。打って違いができると focus のある窓の左の手前に出す。インスペクタのウィンドウは動かない
 //   - 板の行は、カーソルの近くで対応する行を窓の同じ高さに揃える
 //   - F9 で左右とインラインを切り替え、インラインの間は板を出さない。違いがある間は案内に F9 が出る
 //   - reload が当たって違いが無くなると、板を消す
@@ -82,16 +82,14 @@ public static class TestDiffSide
             var lh = EditorHost.LineHeight(window.Code.ViewId);
             Check(Math.Abs(panel.OldTop(doc) + 6 * lh - EditorHost.LineY(window.Code.ViewId, 7)) < 0.5f,
                 "the live line 7 is at " + (panel.OldTop(doc) + 6 * lh) + ", want " + EditorHost.LineY(window.Code.ViewId, 7));
-            var shift = boardBefore - Lider.BoardAngle;
             oldSpan = (PanelView.OldW * window.Scale + PanelView.OldGap) / Space.R;
-            // 窓の大きさは動きで寄せているので、少しの差は許す
-            Check(Math.Abs(shift - oldSpan) < oldSpan * 0.01f, "the left boards moved by " + shift + ", want " + oldSpan);
+            Check(Math.Abs(boardBefore - Lider.BoardAngle) < oldSpan * 0.01f, "the inspector moved by " + (boardBefore - Lider.BoardAngle));
             Press(Keys.F9);
         }
         if (frames == 64)
         {
             Check(!PanelView.SideBySide && !panel.OldShown, "F9 did not hide the board");
-            Check(Math.Abs(Lider.BoardAngle - boardBefore) < oldSpan * 0.01f, "the left boards did not come back: " + Lider.BoardAngle + ", want " + boardBefore);
+            Check(Math.Abs(Lider.BoardAngle - boardBefore) < oldSpan * 0.01f, "the inspector moved: " + Lider.BoardAngle + ", want " + boardBefore);
             Press(Keys.F9);
         }
         if (frames == 66)

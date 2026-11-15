@@ -11,7 +11,7 @@ public interface ILayout
 }
 
 // 横一列。ウィンドウは自分の大きさ (Window.UnscaledSize と Scale) を持ち、間を Gap だけ空けて左から並べる。
-// 最初のウィンドウの真ん中を、スクリーンの真ん中に置く。
+// Screen.Origin のウィンドウ (無ければ最初のウィンドウ) の真ん中を、スクリーンの真ん中に置く。
 // つかんでいるウィンドウ (Screen.Held) は動かさず、隣のウィンドウの真ん中を越えたら並びを入れ替える
 public class Strip : ILayout
 {
@@ -31,7 +31,18 @@ public class Strip : ILayout
             else if (at > 0 && windows[at - 1].Position != null && x < windows[at - 1].Position!.Value.X)
                 Swap(windows, at, at - 1);
         }
+        // 最初のウィンドウの真ん中を 0 として並べたときの、Origin の真ん中
+        var origin = 0.0f;
         var right = 0.0f;
+        for (var i = 0; i < windows.Count; i++)
+        {
+            var half = windows[i].UnscaledSize.X * windows[i].Scale * 0.5f;
+            var center = i == 0 ? 0 : right + half;
+            right = center + half + Gap;
+            if (windows[i] == screen.Origin)
+                origin = center;
+        }
+        right = 0.0f;
         for (var i = 0; i < windows.Count; i++)
         {
             var window = windows[i];
@@ -41,7 +52,7 @@ public class Strip : ILayout
             right = center + half + Gap;
             if (window == held)
                 continue;
-            window.Place(center, 0);
+            window.Place(center - origin, 0);
             window.Size = size;
         }
     }
