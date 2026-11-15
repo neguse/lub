@@ -330,6 +330,9 @@ public static class Lider
     // ゲームが動いている間、lider の物を指していなければゲームに渡す。止めている間は、ゲームの絵の上も lider が受ける (描いたコードを調べる)
     static bool MouseForGame(Workspace w, float x, float y)
     {
+        // ゲームの絵のウィンドウの見出しの帯は、lider の物
+        if (lastEye == null && !gameHeld && GameTitleAt(x, y) != null)
+            return false;
         if (!LiderShown(w))
             return true;
         if (lastEye != null)
@@ -626,6 +629,8 @@ public static class Lider
     {
         if (window.Content is Code)
             w.Close(window);
+        else if (window == draftWindow)
+            ToggleCompare();
         else if (window == inspectWindow)
         {
             inspect.Shown = false;
@@ -874,6 +879,16 @@ public static class Lider
         var w = Work;
         if (w == null)
             return;
+        // ゲームの絵のウィンドウの見出しを押すと focus が移り、閉じる印なら閉じる
+        var bar = lastEye == null ? GameTitleAt(x, y) : null;
+        if (bar != null)
+        {
+            if (OnGameClose(bar, x))
+                Close(w, bar);
+            else
+                w.FocusTo(bar);
+            return;
+        }
         pickX = x;
         pickY = y;
         Click(w, lastEye != null ? gaze : PointerRay(x, y), true);
@@ -1499,22 +1514,28 @@ public static class Lider
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
         foreach (var screen in Screens)
             if (screen.Anchor == ScreenAnchor.View && screen.Shape == ScreenShape.Plane)
+            {
+                SetGameTitles(screen);
                 screen.Project(sw, sh, Space.FlatFov);
+            }
         var saved = GameWindow(GameVersion.Saved);
         var draft = GameWindow(GameVersion.Draft);
         // 入力は、マウスのあるゲームのウィンドウの中の位置で、どちらのゲームにも渡す
         Input.MousePos(out var mx, out var my);
         var from = draft != null && draft.ViewportRect!.Contains(mx, my) ? draft : saved;
+        gameCloseHover = null;
+        var over = GameTitleAt(mx, my);
+        if (over != null && OnGameClose(over, mx))
+            gameCloseHover = over;
         // キーボードは focus がゲームにあるとき、マウスはゲームを指しているときだけ、ゲームに見せる
         var keyboard = Work == null || Work.OnGame;
         var mouse = Work == null || MouseForGame(Work, mx, my);
         if (saved != null)
-            GameApp.Step(dt, keyboard, mouse, saved.ViewportRect!, from!.ViewportRect!, PixelRatio);
+            GameApp.Step(dt, keyboard, mouse, saved.ContentRect!, from!.ContentRect!, PixelRatio);
         if (draft != null && Work != null)
-            DraftGame.Step(dt, keyboard, mouse, GameApp.Position >= 0, draft.ViewportRect!, from!.ViewportRect!, PixelRatio, Work.Docs);
+            DraftGame.Step(dt, keyboard, mouse, GameApp.Position >= 0, draft.ContentRect!, from!.ContentRect!, PixelRatio, Work.Docs);
         ScreenView.Draw(Screens, sw, sh);
-        if (draft != null)
-            DrawLabels(sw, sh, saved, draft);
+        DrawGameTitles(sw, sh);
         var change = GameApp.Changed();
         if (change.Reloaded)
             GameReloaded();
@@ -1537,37 +1558,91 @@ public static class Lider
         return null;
     }
 
-    // 並べたゲームのウィンドウの左上に、どちらの版かの札を出す (lider を出していない間も)
+    // ゲームの絵のウィンドウの見出しの帯 (版の名前と、編集中の版には閉じる印)。
+    // スクリーンに出ているウィンドウが 1 枚だけなら出さない (画面いっぱいのゲームの絵に帯を乗せない)
     static MonoText? labelText;
     static SpriteBatch? labelBatch;
-    const float LabelMargin = 8;
-    const float LabelPad = 4;
+    // 閉じる印を指しているゲームの絵のウィンドウ
+    static Window? gameCloseHover;
 
-    static void DrawLabels(int sw, int sh, Window? saved, Window draft)
+    static void SetGameTitles(Screen screen)
     {
+        screen.Arrange();
+        var shown = 0;
+        foreach (var window in screen.Windows)
+            if (window.Position != null)
+                shown++;
+        foreach (var window in screen.Windows)
+            if (window.Content is GameView)
+                window.TitleBar = shown > 1 ? PanelView.TitlePx : 0;
+    }
+
+    // 画面の (x, y) にある、ゲームの絵のウィンドウの見出しの帯 (無ければ null)
+    static Window? GameTitleAt(float x, float y)
+    {
+        foreach (var screen in Screens)
+            if (screen.Shown)
+                foreach (var window in screen.Windows)
+                    if (window.Content is GameView && window.TitleBar > 0 && window.ViewportRect != null
+                        && window.ViewportRect.Contains(x, y) && y < window.ViewportRect.Y + window.TitleBar)
+                        return window;
+        return null;
+    }
+
+    // 閉じられるゲームの絵のウィンドウか (保存した版は閉じられない)
+    static bool Closable(Window window)
+    {
+        return window.Content is GameView view && view.Version == GameVersion.Draft;
+    }
+
+    // 見出しの帯の x が閉じる印の上か
+    static bool OnGameClose(Window window, float x)
+    {
+        var at = window.ViewportRect!;
+        return Closable(window) && x >= at.X + at.W - window.TitleBar;
+    }
+
+    static string GameTitle(Window window)
+    {
+        if (Closable(window))
+            return DraftGame.Label();
+        return DraftGame.Shown ? "保存済み" : "Game";
+    }
+
+    static void DrawGameTitles(int sw, int sh)
+    {
+        var any = false;
+        foreach (var screen in Screens)
+            foreach (var window in screen.Windows)
+                any = any || (window.Content is GameView && window.TitleBar > 0 && window.ViewportRect != null);
+        if (!any)
+            return;
         var density = Math.Max(1, (int)Math.Round(PixelRatio));
         if (labelText == null || labelText.Density != density)
             labelText = new MonoText("lider_label_" + density, Ttf(), 15, density);
         if (labelBatch == null || labelBatch.LogicalW != sw || labelBatch.LogicalH != sh)
             labelBatch = new SpriteBatch("lider_label", sw, sh);
+        var t = labelText;
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
         labelBatch.Begin();
-        if (saved != null)
-            Label(saved.ViewportRect!, "保存済み");
-        Label(draft.ViewportRect!, DraftGame.Label());
+        foreach (var screen in Screens)
+            foreach (var window in screen.Windows)
+            {
+                var at = window.ViewportRect;
+                if (!(window.Content is GameView) || window.TitleBar <= 0 || at == null)
+                    continue;
+                var bar = window.TitleBar;
+                var ink = Work != null && Work.Focused == window ? Theme.Ink : Theme.Muted;
+                var y = at.Y + (bar - t.LineH) * 0.5f;
+                labelBatch.Rect(at.X, at.Y, at.W, bar, Theme.Surface);
+                if (Closable(window))
+                    labelBatch.Rect(at.X + at.W - bar + 3, at.Y + 3, bar - 6, bar - 6, Color.Rgb(0.9f, 0.3f, 0.35f, window == gameCloseHover ? 1 : 0));
+                t.Draw(labelBatch, GameTitle(window), at.X + 4 + t.CellW, y, ink);
+                if (Closable(window))
+                    t.Draw(labelBatch, "×", at.X + at.W - (bar + t.CellW) * 0.5f, y, ink);
+            }
         labelBatch.Flush();
         Gfx.EndPass();
-    }
-
-    static void Label(PixelRect at, string text)
-    {
-        var t = labelText!;
-        var w = (Utf8.Cells(text, Utf8.Bytes(text)) + 2) * t.CellW;
-        var h = t.LineH + LabelPad * 2;
-        var x = at.X + LabelMargin;
-        var y = at.Y + LabelMargin;
-        labelBatch!.Rect(x, y, w, h, Theme.Surface);
-        t.Draw(labelBatch, text, x + t.CellW, y + LabelPad, Theme.Ink);
     }
 
     // ゲームの OnEvent に event を渡す (並べている間は、編集中の版にも)
@@ -1583,6 +1658,9 @@ public static class Lider
         if (DraftGame.Shown)
         {
             DraftGame.Close();
+            // 閉じるウィンドウに focus があったら、保存した版のウィンドウに移す
+            if (Work != null && draftWindow != null && Work.Focused == draftWindow)
+                Work.FocusTo(gameWindow);
             if (draftWindow != null)
                 backdrop.Windows.Remove(draftWindow);
             draftWindow = null;

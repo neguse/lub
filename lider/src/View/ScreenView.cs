@@ -38,7 +38,7 @@ public static class ScreenView
                     continue;
                 foreach (var window in screen.Windows)
                 {
-                    var at = window.ViewportRect;
+                    var at = window.ContentRect;
                     var tex = window.Content.Texture();
                     if (at == null || tex == null)
                         continue;
