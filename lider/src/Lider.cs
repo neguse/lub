@@ -1961,9 +1961,13 @@ public static class Lider
             GameApp.Step(dt, keyboard, mouse, GamePxW(saved), GamePxH(saved));
         if (draft != null && Work != null)
             DraftGame.Step(dt, keyboard, mouse, GameApp.Position >= 0, GamePxW(draft), GamePxH(draft), Work.Docs);
-        ScreenView.Draw(Screens, sw, sh);
+        // XR には画面が無い (左右の眼にだけ描ける) ので、画面に貼る絵は、眼への pass の中で空間の面として描く (DrawScene)
+        var flat = !Xr.Active();
+        if (flat)
+            ScreenView.Draw(Screens, sw, sh);
         StepTimeline(dt);
-        DrawGameTitles(sw, sh);
+        if (flat)
+            DrawGameTitles(sw, sh);
         var change = GameApp.Changed();
         if (change.Reloaded)
             GameReloaded();
@@ -3443,6 +3447,27 @@ public static class Lider
                 Quad3d.Curved(on, picture, Color.Rgb(1, 1, 1, 1), a, y, Space.R, window.Size.X, window.Size.Y, 0, 1);
             }
         }
+        // XR では、視点に固定した平面のスクリーンの上の絵 (ゲームの絵、インスペクタ) も、眼の前の面として描く (XR でなければ ScreenView が画面に写す)
+        if (lastEye != null)
+            foreach (var screen in Screens)
+            {
+                if (!screen.Shown || !OnView(screen))
+                    continue;
+                foreach (var window in screen.Windows)
+                {
+                    var whole = window.ViewportRect;
+                    var part = window.ContentRect;
+                    var picture = window.Content.Texture();
+                    if (whole == null || part == null || picture == null || window.Position == null || whole.W <= 0)
+                        continue;
+                    // 画面の上の矩形のうち中身を映す所を、スクリーンの面の上の矩形に直す
+                    var perM = whole.W / window.Size.X;
+                    var at = window.Position.Value;
+                    var rect = new Vec4(at.X + (part.X + part.W * 0.5f - whole.X - whole.W * 0.5f) / perM,
+                        at.Y - (part.Y + part.H * 0.5f - whole.Y - whole.H * 0.5f) / perM, part.W / perM, part.H / perM);
+                    SurfaceQuad(screen, worldVp, rect, Color.Rgb(1, 1, 1, screen.Opacity), picture);
+                }
+            }
         // 窓に付く光と印は、コードのスクリーンと一緒に動く
         vp = VpOf(w.CodeScreen, worldVp);
         // focus が移ると、前の窓から次の窓へ光が流れる
