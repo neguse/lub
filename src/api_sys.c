@@ -190,6 +190,21 @@ bool lub_input_mouse_released(LubContext *ctx, const int32_t *button) {
   return in && (in->mouse_released_mask & bit) != 0;
 }
 
+// 文字を打つ所に入力が向いているか。変わったときだけ SDL に伝える。
+// 画面のキーボードを出せる機械では、SDL が画面のキーボードを出し入れする。
+// 出せない機械では何もしない (SDL の文字入力を始めると、OS の IME が key を取る。文字は key の event から作っている)。
+void lub_input_text_input(LubContext *ctx, bool on) {
+  App *app = lub_api_app(ctx);
+  SDL_Window *window = app->proc->window;
+  if (app->opened_by || !window || !SDL_HasScreenKeyboardSupport() ||
+      SDL_TextInputActive(window) == on)
+    return;
+  if (on)
+    SDL_StartTextInput(window);
+  else
+    SDL_StopTextInput(window);
+}
+
 void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
   const InputState *in = &lub_api_app(ctx)->input;
   if (x)

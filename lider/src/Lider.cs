@@ -2021,6 +2021,8 @@ public static class Lider
         var xr = Xr.Active();
         if (!xr)
             SetCameras(sw, sh);
+        // key を lider が受ける間 (focus がゲームに無い間) は、文字を打つ所に入力が向いている (画面のキーボードを出せる機械では、出る)
+        Input.TextInput(Work != null && !hidden && !Work.OnGame);
         // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
         PutAway();
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
