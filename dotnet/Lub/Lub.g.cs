@@ -163,6 +163,12 @@ public class StepInput
     /// <summary>開いた app から見える mouse の位置 (target の左上からの px)。 target を画面のどこにどの大きさで置いたかは開いた側しか知らないので、置いた場所に合わせて渡す。省くと、この app の位置のまま。</summary>
     public float? MouseX;
     public float? MouseY;
+    /// <summary>false なら、開いた app からは XR が動いていないように見える (`Xr.Active` が false で、眼にも手にも触れない)。省くか true なら、XR の間、開いた app は `Xr.View` の眼に直に描ける (この app が眼に描く前に Step すれば、この app は `LoadAction.Load` で描き足せる)。</summary>
+    public bool? Xr;
+    /// <summary>開いた app に見せる XR の眼を、この app が用意する。左、右の順の、眼の描き先 (color の target の texture を 2 つ。同じ大きさでなくてよい)。渡すと、この app が XR でなくても、開いた app には XR が動いて見え、`Xr.View(eye)` は、この描き先と `XrViewProjections` の行列を返す (眼の位置は原点、向きは回転なし)。手は見えない。 `Xr` が false なら効かない。</summary>
+    public List<TextureRef>? XrTargets;
+    /// <summary>`XrTargets` の眼ごとの view-projection (行優先の projection * view、前方 -Z、深度 [0,1])。`XrTargets` と同じ数だけ渡す。</summary>
+    public List<float[]>? XrViewProjections;
     /// <summary>この Step で開いた app に見せた入力を、番号の控えに書く (`App.Save` と同じ番号の控え。状態と入力を 1 つの番号に持てる)。</summary>
     public int? Keep;
     /// <summary>この app の入力の代わりに、番号の控えに書いた入力を見せる。上の項目はその後に効く。入力を書いていない番号は error。同じ frame を作り直すための入力なので、この Step の間、開いた app の音は鳴らず、master volume も変わらない。</summary>
@@ -8600,6 +8606,12 @@ internal static unsafe partial class LubNative
         public float @mouse_x;
         public bool @has_mouse_y;
         public float @mouse_y;
+        public bool @has_xr;
+        public bool @xr;
+        public int* @xr_targets;
+        public int @xr_targets_count;
+        public float* @xr_view_projections;
+        public int @xr_view_projections_count;
         public bool @has_keep;
         public int @keep;
         public bool @has_replay;
@@ -12215,6 +12227,10 @@ internal static unsafe partial class LubNative
         s->@mouse_x = (float)(o.MouseX ?? default);
         s->@has_mouse_y = o.MouseY.HasValue;
         s->@mouse_y = (float)(o.MouseY ?? default);
+        s->@has_xr = o.Xr.HasValue;
+        s->@xr = (o.Xr ?? default);
+        s->@xr_targets = a.Handles(o.XrTargets, out s->@xr_targets_count, static h => h.H);
+        s->@xr_view_projections = a.FloatRows(o.XrViewProjections, out s->@xr_view_projections_count, 16);
         s->@has_keep = o.Keep.HasValue;
         s->@keep = (o.Keep ?? default);
         s->@has_replay = o.Replay.HasValue;
@@ -12228,6 +12244,9 @@ internal static unsafe partial class LubNative
         o.Gamepad = s->@has_gamepad ? s->@gamepad : null;
         o.MouseX = s->@has_mouse_x ? s->@mouse_x : null;
         o.MouseY = s->@has_mouse_y ? s->@mouse_y : null;
+        o.Xr = s->@has_xr ? s->@xr : null;
+        o.XrTargets = s->@xr_targets == null ? null! : LubRuntime.HandleList(s->@xr_targets, s->@xr_targets_count, LubNative.H_TextureRef);
+        o.XrViewProjections = s->@xr_view_projections == null ? null! : LubRuntime.FloatRowList(s->@xr_view_projections, s->@xr_view_projections_count, 16);
         o.Keep = s->@has_keep ? s->@keep : null;
         o.Replay = s->@has_replay ? s->@replay : null;
     }

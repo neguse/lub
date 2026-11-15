@@ -20,6 +20,9 @@ typedef struct OpenApp {
   // main の pass の depth。target の大きさに合わせて作り直す
   BackendImage depth;
   int depth_w, depth_h;
+  // StepInput.XrTargets の眼の depth
+  BackendImage xr_depth[2];
+  int xr_depth_w[2], xr_depth_h[2];
   int64_t last_seen_frame;
 } OpenApp;
 
@@ -48,6 +51,9 @@ static void open_app_close(App *owner, OpenApp *o) {
     owner->app_hooks->close(o->player);
   if (o->depth)
     g_backend->destroy_image(o->depth);
+  for (int i = 0; i < 2; ++i)
+    if (o->xr_depth[i])
+      g_backend->destroy_image(o->xr_depth[i]);
   app_shutdown(o->app);
   free(o->app);
 }
@@ -108,6 +114,57 @@ LubStatus lub_app_use(LubContext *ctx, LubStr key, LubStr module, LubStr entry,
   }
   o->last_seen_frame = app->resource_frame;
   *out = o->handle;
+  return LUB_OK;
+}
+
+// depth を target の大きさに合わせる
+static bool depth_fit(BackendImage *depth, int *depth_w, int *depth_h, int w,
+                      int h) {
+  if (*depth && *depth_w == w && *depth_h == h)
+    return true;
+  if (*depth)
+    g_backend->destroy_image(*depth);
+  ImageDesc id = {
+      .fmt = SGL_PF_DEPTH24_STENCIL8,
+      .w = w,
+      .h = h,
+      .filter = SGL_FILTER_NEAREST,
+      .render_target = true,
+  };
+  *depth = g_backend->make_image(&id);
+  *depth_w = w;
+  *depth_h = h;
+  return *depth != 0;
+}
+
+// StepInput.XrTargets の描き先を確かめ、開いた app の XR の眼にする
+static LubStatus open_app_xr(App *app, OpenApp *o, const LubStepInput *in) {
+  App *child = o->app;
+  if (in->xr_targets_count != 2 || in->xr_view_projections_count != 2)
+    return lub_api_fail(app, "app_step: XrTargets and XrViewProjections "
+                             "must have 2 items (left, right)");
+  for (int i = 0; i < 2; ++i) {
+    ResEntry *te = res_table_get_by_handle(&app->res, in->xr_targets[i]);
+    if (!te || te->kind != RES_TEXTURE || !te->u.tex.is_target ||
+        te->u.tex.fmt == SGL_PF_DEPTH16 ||
+        te->u.tex.fmt == SGL_PF_DEPTH24_STENCIL8 ||
+        te->u.tex.fmt == SGL_PF_DEPTH32F)
+      return lub_api_fail(app,
+                          "app_step: XrTargets[%d] must be a color "
+                          "texture declared with {target=true}",
+                          i + 1);
+    if (!depth_fit(&o->xr_depth[i], &o->xr_depth_w[i], &o->xr_depth_h[i],
+                   te->u.tex.w, te->u.tex.h_))
+      return lub_api_fail(app, "app_step: cannot create the depth target");
+    res_table_touch(te, app->resource_frame);
+    child->xr_color[i] = te->u.tex.h;
+    child->xr_depth[i] = o->xr_depth[i];
+    child->xr_fmt[i] = te->u.tex.fmt;
+    child->xr_w[i] = te->u.tex.w;
+    child->xr_h[i] = te->u.tex.h_;
+    memcpy(child->xr_vp[i], in->xr_view_projections[i], sizeof(float) * 16);
+  }
+  child->xr_given = true;
   return LUB_OK;
 }
 
@@ -252,6 +309,13 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
     shown = st->input;
   }
   step_input(&child->input, shown, input);
+  child->xr_hidden = input && input->has_xr && !input->xr;
+  child->xr_given = false;
+  if (input && input->xr_targets_count > 0 && !child->xr_hidden) {
+    LubStatus st = open_app_xr(app, o, input);
+    if (st != LUB_OK)
+      return st;
+  }
   if (input && input->has_keep) {
     StateSlot *st = state_get(app->open_apps, input->keep);
     if (st && !st->input)
@@ -278,6 +342,7 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
   ui_set_enabled(true);
   child->main_color = 0;
   child->main_depth = 0;
+  child->xr_given = false;
   *out = ok;
   return LUB_OK;
 }

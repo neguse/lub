@@ -218,6 +218,15 @@ typedef struct App {
   uintptr_t main_color, main_depth;
   SglPixelFormat main_fmt;
   int main_w, main_h;
+  // 開かれた app に XR を見せないか (StepInput.Xr が false の Step の間)。
+  bool xr_hidden;
+  // 開いた app が用意した XR の眼 (StepInput.XrTargets を渡した Step の間だけ)。
+  // 描き先と depth、大きさ、view-projection。
+  bool xr_given;
+  uintptr_t xr_color[2], xr_depth[2];
+  SglPixelFormat xr_fmt[2];
+  int xr_w[2], xr_h[2];
+  float xr_vp[2][16];
 } App;
 
 // SDL_Init の後に呼ぶ。backend の既定を決め、window を作る

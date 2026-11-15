@@ -9,14 +9,15 @@
 
 #if defined(LUB_HAS_OPENXR)
 static bool enabled(App *app) {
-  return strcmp(app->proc->backend_name, "openxr") == 0;
+  return !app->xr_hidden && strcmp(app->proc->backend_name, "openxr") == 0;
 }
 #endif
 
 bool lub_xr_active(LubContext *ctx) {
+  if (lub_api_app(ctx)->xr_given)
+    return true;
 #if defined(__EMSCRIPTEN__)
-  (void)ctx;
-  return lubwebxr_active();
+  return !lub_api_app(ctx)->xr_hidden && lubwebxr_active();
 #elif defined(LUB_HAS_OPENXR)
   return enabled(lub_api_app(ctx)) && lubxr_active();
 #else
@@ -26,9 +27,10 @@ bool lub_xr_active(LubContext *ctx) {
 }
 
 bool lub_xr_focused(LubContext *ctx) {
+  if (lub_api_app(ctx)->xr_given)
+    return true;
 #if defined(__EMSCRIPTEN__)
-  (void)ctx;
-  return lubwebxr_focused();
+  return !lub_api_app(ctx)->xr_hidden && lubwebxr_focused();
 #elif defined(LUB_HAS_OPENXR)
   return enabled(lub_api_app(ctx)) && lubxr_focused();
 #else
@@ -44,8 +46,17 @@ LubStatus lub_xr_view(LubContext *ctx, int32_t eye, float near_plane,
   if (eye < 0 || eye > 1 || !isfinite(near_plane) || !isfinite(far_plane) ||
       near_plane <= 0 || far_plane <= near_plane)
     return lub_api_fail(app, "xr.view: invalid eye or clip distances");
+  if (app->xr_given) {
+    // 開いた app が用意した眼 (位置は原点、向きは回転なし)
+    memcpy(out->view_projection, app->xr_vp[eye], sizeof(float) * 16);
+    out->width = app->xr_w[eye];
+    out->height = app->xr_h[eye];
+    out->orientation[3] = 1;
+    out->target = LUB_GFX_XR_EYE_TEX(eye);
+    return LUB_OK;
+  }
 #if defined(__EMSCRIPTEN__)
-  if (lubwebxr_view(eye, near_plane, far_plane, out)) {
+  if (!app->xr_hidden && lubwebxr_view(eye, near_plane, far_plane, out)) {
     out->target = LUB_GFX_XR_EYE_TEX(eye);
     return LUB_OK;
   }
@@ -66,8 +77,10 @@ LubStatus lub_xr_input(LubContext *ctx, int32_t hand, LubXrInput *out) {
   memset(out, 0, sizeof(*out));
   if (hand < 0 || hand > 1)
     return lub_api_fail(app, "xr.input: invalid hand");
+  if (app->xr_given)
+    return LUB_NOT_FOUND;
 #if defined(__EMSCRIPTEN__)
-  if (lubwebxr_input(hand, out))
+  if (!app->xr_hidden && lubwebxr_input(hand, out))
     return LUB_OK;
 #elif defined(LUB_HAS_OPENXR)
   if (enabled(app)) {
