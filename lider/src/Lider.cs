@@ -445,9 +445,9 @@ public static class Lider
             GrabAt(w, e.X, e.Y);
         else if (e.Kind == EventKind.MouseMotion && grab.Holding && lastEye == null)
         {
-            var at = Space.OnCylinderAt(PointerRay(e.X, e.Y), Space.R);
+            var at = SurfacePoint(ScreenFor(w, grab.Window!), PointerRay(e.X, e.Y));
             if (at != null)
-                grab.Move(w.CodeScreen.XAt(at.Angle), at.Y);
+                grab.Move(at.Value.X, at.Value.Y);
         }
         else if (e.Kind == EventKind.MouseButtonUp && e.Button == 3 && lastEye == null)
             grab.Release();
@@ -550,14 +550,38 @@ public static class Lider
         return WindowY(w, window) + window.Size.Y * ViewScale(ScreenFor(w, window)) * 0.5f;
     }
 
-    // 指している窓をマウスでつかむ
+    // 指しているウィンドウをマウスでつかむ (どの中身のウィンドウでも、どのスクリーンの上でも)。
+    // ゲームの絵は、見出しの帯でつかむ (絵の上のマウスはゲームのもの)
     static void GrabAt(Workspace w, float x, float y)
     {
         var ray = PointerRay(x, y);
-        var hit = TitleAt(w, ray) ?? WindowAt(w, ray);
-        var at = Space.OnCylinderAt(ray, Space.R);
-        if (hit != null && at != null && ScreenFor(w, hit.Window) == w.CodeScreen)
-            grab.Start(hit.Window, w.CodeScreen.XAt(at.Angle), at.Y);
+        var window = GameTitleAt(x, y);
+        if (window == null && (InspectTitleAt(ray) != null || InspectAt(ray) != null))
+            window = inspectWindow;
+        window ??= (TitleAt(w, ray) ?? WindowAt(w, ray))?.Window;
+        if (window == null || window.Position == null)
+            return;
+        var at = SurfacePoint(ScreenFor(w, window), ray);
+        if (at == null)
+            return;
+        grab.Start(window, at.Value.X, at.Value.Y);
+        // 次に並べるときから、配置の規則はこのウィンドウを動かさない
+        ScreenFor(w, window).Held = window;
+    }
+
+    // ray が screen の面に当たる所 (スクリーンの面の上の座標。当たらなければ null)
+    static Vec2? SurfacePoint(Screen screen, Ray ray)
+    {
+        var flat = Space.Flat;
+        Space.Flat = flat || screen.Shape == ScreenShape.Plane;
+        var at = Space.OnCylinderAt(RayOn(screen, ray), Space.R);
+        Space.Flat = flat;
+        if (at == null)
+            return null;
+        // 視点に固定した平面は、半径 Space.R の所に同じ見かけの大きさで当てているので、スクリーンの距離の大きさに戻す
+        if (OnView(screen))
+            return new Vec2(at.Angle * screen.Position.Z - screen.Position.X, at.Y / ViewScale(screen) - screen.Position.Y);
+        return new Vec2(screen.XAt(at.Angle), at.Y);
     }
 
     // ウィンドウを閉じる (どの中身のウィンドウにも効く)。focus があったら、Code のウィンドウに戻す
