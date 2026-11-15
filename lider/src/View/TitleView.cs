@@ -13,6 +13,8 @@ public class TitleView
     // focus があるか、閉じる印を指しているか (Lider が毎 frame 決める)
     public bool Focused;
     public bool CloseLit;
+    // 閉じる印を描くか
+    public bool Mark = true;
     // 帯の幅 (px)
     public int PxW = 1;
     public TextureRef? Texture;
@@ -40,7 +42,7 @@ public class TitleView
         Texture = Assets.RenderTarget(key + "_tex", PxW * density, PanelView.TitlePx * density, Gfx.PixelFormat.Rgba8);
         batch.Ensure();
         text.Glyphs.Ensure();
-        var state = Label + "\n" + Focused + CloseLit + PxW + "x" + density + text.Version;
+        var state = Label + "\n" + Focused + CloseLit + Mark + PxW + "x" + density + text.Version;
         if (Texture == null || state == drawn)
             return;
         drawn = state;
@@ -48,11 +50,12 @@ public class TitleView
         batch.Begin();
         var ink = Focused ? Theme.Ink : Theme.Muted;
         var y = (PanelView.TitlePx - text.LineH) * 0.5f;
-        var mark = PanelView.TitlePx;
+        var mark = Mark ? PanelView.TitlePx : 0;
         // SpriteBatch は atlas を初めて使った順に描くので、指していなくても (透明に) 先に塗る
         batch.Rect(PxW - mark + 3, 3, mark - 6, mark - 6, Color.Rgb(0.9f, 0.3f, 0.35f, CloseLit ? 1 : 0));
         text.Draw(batch, Label, 4 + text.CellW, y, ink, 0, PxW - mark);
-        text.Draw(batch, "×", PxW - (mark + text.CellW) * 0.5f, y, ink);
+        if (Mark)
+            text.Draw(batch, "×", PxW - (mark + text.CellW) * 0.5f, y, ink);
         batch.Flush();
         Gfx.EndPass();
     }

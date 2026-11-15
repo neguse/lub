@@ -2,7 +2,9 @@
 // 上にウィンドウ (Window) を並べ、どこに並べるかは配置の規則 (ILayout) が決める。
 // 形は平面か、視点を通る縦の軸の回りの円筒の一部。固定先は視点か世界。
 // 位置は固定先の座標 (+X 右、+Y 上、+Z 前、単位はメートル) で、スクリーンの真ん中の点を持つ。
-// 円筒の半径と真ん中の角度は、その点の、軸からの距離と向きで決まる。
+// 円筒の曲がりの半径は Space.R で、動かしても曲がりは変わらない。
+// 真ん中の点が固定先の縦の軸から Space.R の距離にあるとき、円筒の軸は固定先の原点を通る。
+// 真ん中の角度と奥行きは、その点の、軸の回りの向きと軸からの距離で決まる。
 // スクリーンの面の上の場所は、スクリーンの真ん中を原点に、右が +X (円筒では弧に沿った長さ)、上が +Y の、メートルで表す。
 using System;
 using System.Collections.Generic;
@@ -37,6 +39,8 @@ public class Screen
     public float Opacity = 1;
     // 出しているか (隠している間、上のウィンドウは描かず、入力も届かない)
     public bool Shown = true;
+    // 利用者がつかんで動かせるか、固定先を替えられるか
+    public bool Movable;
     public ILayout Layout = new Full();
     // ウィンドウ (並べる順)
     public readonly List<Window> Windows = new List<Window>();
@@ -55,7 +59,7 @@ public class Screen
     // 視点からの距離。奥のスクリーンから描く
     public float Distance => (float)Math.Sqrt(Position.X * Position.X + Position.Y * Position.Y + Position.Z * Position.Z);
 
-    // 円筒の半径 (縦の軸からの距離)
+    // 円筒の真ん中の奥行き (縦の軸からの距離)
     public float Radius => (float)Math.Sqrt(Position.X * Position.X + Position.Z * Position.Z);
 
     // 円筒の真ん中の角度 (+Z が 0、右が正)
@@ -64,13 +68,36 @@ public class Screen
     // 面の上の x の所の、円筒の角度
     public float AngleAt(float x)
     {
-        return Angle + x / Radius;
+        return Angle + x / Space.R;
     }
 
     // 円筒の角度 angle の所の、面の上の x
     public float XAt(float angle)
     {
-        return (angle - Angle) * Radius;
+        return (angle - Angle) * Space.R;
+    }
+
+    // 奥行きの範囲 (メートル)
+    public const float MinDepth = 0.6f;
+    public const float MaxDepth = 6;
+
+    // 円筒のスクリーンを、面に沿って右へ dx、上へ dy メートル動かす (奥行きは今のまま)
+    public void Shift(float dx, float dy)
+    {
+        Place(Angle + dx / Space.R, Position.Y + dy, Radius);
+    }
+
+    // 円筒のスクリーンの奥行きを depth メートルにする (向きと高さは今のまま)
+    public void SetDepth(float depth)
+    {
+        Place(Angle, Position.Y, Math.Max(MinDepth, Math.Min(MaxDepth, depth)));
+    }
+
+    // 真ん中の点を、軸の回りの角度 angle、高さ y、軸からの距離 depth に置く (真後ろは越えない)
+    void Place(float angle, float y, float depth)
+    {
+        var a = Math.Max(-3, Math.Min(3, angle));
+        Position = new Vec3(depth * (float)Math.Sin(a), y, depth * (float)Math.Cos(a));
     }
 
     // ウィンドウを並べる (配置の規則で)

@@ -39,6 +39,7 @@ public class Workspace
         Anchor = ScreenAnchor.World,
         Position = new Vec3(0, 0, Space.R),
         Layout = new Strip(),
+        Movable = true,
     };
     // コードの窓を置けるスクリーン (最初は CodeScreen だけ。ほかのスクリーンは Lider が足す)
     public List<Screen> Screens = new List<Screen>();
