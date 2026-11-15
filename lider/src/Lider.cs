@@ -151,6 +151,10 @@ public static class Lider
     static float InspectScale => Space.Flat ? 1.4f : 1;
     // 指している物に対して、そのとき効く操作の案内
     static readonly HintCard hintCard = new HintCard();
+    // 案内のウィンドウと、それを置くスクリーン (視点に固定した平面。右下の隅に積む)
+    static Window hintWindow = new Window(new Hints(hintCard));
+    static Screen hud = new Screen("hud");
+    public static Window HintWindow => hintWindow;
     // file と宣言を引く検索 (Ctrl+P)。板を置く円筒の角度と上の端の高さ
     public static readonly Search Search = new Search();
     static readonly SearchView searchView = new SearchView();
@@ -193,6 +197,10 @@ public static class Lider
         Record(Environment.GetEnvironmentVariable("LIDER_REWIND"));
         Work = new Workspace(Environment.GetEnvironmentVariable("LIDER_ROOT") ?? GameDir());
         Screens.Add(Work.CodeScreen);
+        hud = new Screen("hud") { Position = new Vec3(0, 0, Space.R), Layout = new Corner() };
+        hintWindow = new Window(new Hints(hintCard));
+        hud.Windows.Add(hintWindow);
+        Screens.Add(hud);
         // スクリーンの一覧は 1 つだけ持つ
         Work.Screens = Screens;
         Tiled = false;
@@ -1026,11 +1034,11 @@ public static class Lider
             RequestPick(ray);
     }
 
-    // ray が指している物に対する操作の案内を、指している点 at の右下に置く (画面への pass の外で呼ぶ)
-    // LIDER_HINTS=0 なら、指している所に操作の案内を出さない
+    // ray が指している物に対する操作の案内を、右下の決まった場所に出す (画面への pass の外で呼ぶ)
+    // LIDER_HINTS=0 なら、操作の案内を出さない
     static readonly bool hintsOff = Environment.GetEnvironmentVariable("LIDER_HINTS") == "0";
 
-    static void ShowHints(Workspace w, Ray ray, CylinderPoint? at, float dt)
+    static void ShowHints(Workspace w, Ray ray)
     {
         if (text == null)
             return;
@@ -1042,7 +1050,7 @@ public static class Lider
             if (detail.Count > 0)
             {
                 hintCard.Prepare(detail, text);
-                PlaceHints(at, dt);
+                PlaceHints(w);
             }
             return;
         }
@@ -1089,17 +1097,35 @@ public static class Lider
             c.MoreMark = mark != null && mark.Id == "";
         }
         var hints = DetailHints(w, ray);
-        foreach (var h in Hints.For(c))
+        foreach (var h in HintRules.For(c))
             hints.Add(h);
         hintCard.Prepare(hints, text);
-        PlaceHints(at, dt);
+        PlaceHints(w);
     }
 
-    static void PlaceHints(CylinderPoint? at, float dt)
+    // マウスがゲームのものの間の案内: 指している物に依らない操作だけを出す
+    static void ShowGameHints(Workspace w)
     {
-        // 非 XR は画面の中に収める
-        var halfH = Space.R * (float)Math.Tan(fov * 0.5f * Math.PI / 180);
-        hintCard.Place(at, dt, Space.Flat ? -halfH : -1000, Space.Flat ? (viewX.Value + halfH * viewportW / viewportH) / Space.R : 1000);
+        if (text == null || hintsOff)
+            return;
+        hintCard.Prepare(HintRules.For(new HintContext
+        {
+            InspectShown = inspect.Shown,
+            Zen = Zen,
+            Paused = Paused,
+            Errors = w.NextError() != null,
+        }), text);
+        PlaceHints(w);
+    }
+
+    // 案内のウィンドウを、札の字のある大きさにして、スクリーンの規則 (右下の隅) で置く
+    static void PlaceHints(Workspace w)
+    {
+        hintCard.Shown = true;
+        hintWindow.Size = new Vec2(hintCard.UsedW() / ViewScale(hud), hintCard.Height() / ViewScale(hud));
+        hud.Arrange();
+        hintCard.Angle = WindowAngle(w, hintWindow);
+        hintCard.Y = WindowY(w, hintWindow);
     }
 
     // 負荷の一覧の行か、窓の行の右の負荷を指しているなら、その行の負荷を文字だけの行で (案内の札の上に出す)
@@ -1141,7 +1167,7 @@ public static class Lider
     // マウスとコントローラーがゲームのものの間は、指している物の案内と光を消す
     static void HideHints()
     {
-        hintCard.Place(null, 0, 0, 0);
+        hintCard.Shown = false;
         closeHover = null;
         edgeHoverWindow = null;
         pointer = null;
@@ -1378,6 +1404,12 @@ public static class Lider
         return OnView(screen) ? (screen.Position.X + window.Position.Value.X) / screen.Position.Z : screen.AngleAt(window.Position.Value.X);
     }
 
+    // 平面のスクリーンで、ウィンドウの矩形の上の端に、本文と別に描く見出しの帯を収めるウィンドウか
+    static bool TitleInRect(Window window)
+    {
+        return window.Content is Code || window.Content is Inspector;
+    }
+
     // コードの窓の本文の真ん中の高さ (横一列に並べた窓は 0。つかんでいる間だけ動く)
     public static float WindowY(Workspace w, Window window)
     {
@@ -1388,7 +1420,7 @@ public static class Lider
         var screen = ScreenFor(w, window);
         // 平面のスクリーンでは、ウィンドウの矩形に見出しも収めるので、本文は見出しの分だけ下がる
         return OnView(screen)
-            ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - ((window.Content is GameView) ? 0 : PanelView.TitleH * window.Scale * 0.5f)
+            ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - (TitleInRect(window) ? PanelView.TitleH * window.Scale * 0.5f : 0)
             : window.Position.Value.Y;
     }
 
@@ -1544,6 +1576,7 @@ public static class Lider
         Gfx.Size(out var sw, out var sh);
         // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
+        hud.Fill(Space.FlatFov, (float)sw / sh);
         foreach (var screen in Screens)
             if (screen.Anchor == ScreenAnchor.View && screen.Shape == ScreenShape.Plane)
             {
@@ -1999,7 +2032,7 @@ public static class Lider
                 if (!Search.Shown)
                     w.Look(WindowAt(w, gaze)?.Window, dt);
                 Controllers(w, aim, dt);
-                ShowHints(w, aim, pointer, dt);
+                ShowHints(w, aim);
             }
             else
                 HideHints();
@@ -2062,10 +2095,13 @@ public static class Lider
         if (!forGame)
         {
             Hover(w, PointerRay(mx, my), mx, my, dt);
-            ShowHints(w, PointerRay(mx, my), Space.OnCylinderAt(PointerRay(mx, my), Space.R), dt);
+            ShowHints(w, PointerRay(mx, my));
         }
         else
+        {
             HideHints();
+            ShowGameHints(w);
+        }
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
         DrawScene(w, lastVp);
         Gfx.EndPass();
@@ -2768,7 +2804,10 @@ public static class Lider
         DrawFlash(vp);
         DrawFocusCue(w, vp);
         DrawEdge(w, vp);
-        hintCard.Draw(vp);
+        // 案内は、視点に固定した平面のスクリーンの上に、曲げずに描く
+        Space.Flat = true;
+        hintCard.Draw(viewVp);
+        Space.Flat = worldFlat;
         AssetBoard.Draw(vp, searchAngle, Search.Shown ? searchTop - searchView.Height(SearchScale) : searchTop, SearchScale);
         if (Search.Shown)
             searchView.Draw(vp, searchAngle, searchTop, SearchScale);

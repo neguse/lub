@@ -48,6 +48,22 @@ public class Inspector : IContent
     }
 }
 
+// 操作の案内 (HintCard が描く。画面に写す絵は持たない)
+public class Hints : IContent
+{
+    public readonly HintCard Card;
+
+    public Hints(HintCard card)
+    {
+        Card = card;
+    }
+
+    public TextureRef? Texture()
+    {
+        return null;
+    }
+}
+
 // ゲームの版: 保存した版 (GameApp) と、編集中の版 (DraftGame。保存していない本文で変換する)
 public enum GameVersion
 {
