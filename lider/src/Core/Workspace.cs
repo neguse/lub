@@ -72,6 +72,44 @@ public class Workspace
         return null;
     }
 
+    // Space に置いた GameView のウィンドウ (どの Screen の並びにも居ない。置いていなければ null)。
+    // Space に置いたゲームは、絵でなく場面として出る。置けるのは 1 つ
+    public Window? InSpace;
+    // Space から戻す先の Screen と、並びの中の位置
+    Screen? spaceFrom;
+    int spaceAt;
+
+    // GameView の window を、Screen の並びから外して Space に置く。前に置いていた物は、元の Screen に戻す
+    public void PutInSpace(Window window)
+    {
+        if (window == InSpace || !(window.Content is GameView))
+            return;
+        TakeFromSpace();
+        var screen = ScreenOf(window);
+        if (screen == null)
+            return;
+        spaceFrom = screen;
+        spaceAt = screen.Windows.IndexOf(window);
+        screen.Windows.Remove(window);
+        window.Position = null;
+        window.ViewportRect = null;
+        window.ContentRect = null;
+        InSpace = window;
+    }
+
+    // Space に置いたウィンドウを、元の Screen の並びに戻す (その Screen がもう無ければ、最初の Screen に戻す)
+    public void TakeFromSpace()
+    {
+        var window = InSpace;
+        if (window == null)
+            return;
+        InSpace = null;
+        var screen = spaceFrom != null && Screens.Contains(spaceFrom) ? spaceFrom : (Screens.Count > 0 ? Screens[0] : null);
+        window.ViewportRect = null;
+        window.ContentRect = null;
+        screen?.Windows.Insert(Math.Min(spaceAt, screen.Windows.Count), window);
+    }
+
     // window を screen の並びの最後に移す (前のスクリーンからは外す)。位置は移した先の配置の規則が決め直す
     public void MoveTo(Window window, Screen screen)
     {

@@ -132,14 +132,12 @@ public class Screen
         Size = new Vec2(height * aspect, height);
     }
 
-    // 視点に固定した平面のスクリーンで、ウィンドウを並べ、画面に投影した矩形 (ViewportRect) を決める。
-    // viewportW と viewportH は画面の大きさ (画面の座標)、fov は縦の画角 (度)。
-    // 視点の正面を向く平面なので、矩形は軸に揃い、画素に揃える
-    public void Project(float viewportW, float viewportH, float fov)
+    // 平面のスクリーンで、ウィンドウを並べ、画面の上の矩形 (ViewportRect) を決める。
+    // origin は、スクリーンの面の真ん中が写る画面の位置 (画面の座標)、perM は、面の上の 1 メートルが画面の上で覆う長さ。
+    // 見る人の正面を向く平面なので、矩形は軸に揃い、画素に揃える
+    public void Project(Vec2 origin, float perM)
     {
         Arrange();
-        // 距離 Position.Z の所の 1 メートルが、画面の上で覆う長さ
-        var perM = viewportH / (2 * Position.Z * (float)Math.Tan(fov * 0.5f * Math.PI / 180));
         foreach (var window in Windows)
         {
             if (window.Position == null)
@@ -150,10 +148,10 @@ public class Screen
             }
             var at = window.Position.Value;
             var size = window.Size;
-            var x0 = (float)Math.Round(viewportW * 0.5f + (Position.X + at.X - size.X * 0.5f) * perM);
-            var y0 = (float)Math.Round(viewportH * 0.5f - (Position.Y + at.Y + size.Y * 0.5f) * perM);
-            var x1 = (float)Math.Round(viewportW * 0.5f + (Position.X + at.X + size.X * 0.5f) * perM);
-            var y1 = (float)Math.Round(viewportH * 0.5f - (Position.Y + at.Y - size.Y * 0.5f) * perM);
+            var x0 = (float)Math.Round(origin.X + (at.X - size.X * 0.5f) * perM);
+            var y0 = (float)Math.Round(origin.Y - (at.Y + size.Y * 0.5f) * perM);
+            var x1 = (float)Math.Round(origin.X + (at.X + size.X * 0.5f) * perM);
+            var y1 = (float)Math.Round(origin.Y - (at.Y - size.Y * 0.5f) * perM);
             window.ViewportRect = new PixelRect(x0, y0, x1 - x0, y1 - y0);
             // 見出しの帯は矩形の上の端に取り、中身はその下に収める
             var bar = Math.Min(window.TitleBar, y1 - y0);
