@@ -30,7 +30,8 @@ public class MonoText
         Glyphs = new Text(key, ttfPath, px * Density, 1024 * Density);
         // 数字の幅 (等幅でない font でも数字はふつう揃っている)
         CellW = Glyphs.Width("0") / Density;
-        LineH = Glyphs.LineHeight / Density;
+        // 行の高さは、密度によらない整数の論理 px に丸める (font の行の高さが半端だと、行の帯が画素の境目に乗らず、変わった行だけを描き直せない)
+        LineH = (float)Math.Round(Glyphs.LineHeight / Density);
         // 印字できる ASCII は先に atlas に入れる (打った英数字や記号で、描いた texture を全部描き直さない)
         for (var cp = 33; cp < 127; cp++)
             seen[cp] = Glyphs.GlyphAdvance(cp) / Density;
