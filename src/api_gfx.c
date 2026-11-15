@@ -1157,9 +1157,10 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
   int xr_eye = d->n_targets == 1 ? lub_gfx_xr_eye_of(d->targets[0]) : -1;
   if (d->n_targets == 1 && (d->targets[0] == LUB_GFX_MAIN_TEX || xr_eye >= 0)) {
     const char *what = xr_eye >= 0 ? "an XR eye target" : "main_tex";
-    if (app->opened_by) {
+    // 開かれた app も、XR の眼には window に描く app と同じに描く (下の pass)
+    if (app->opened_by && xr_eye < 0) {
       // 開かれた app の main は、App.Step が渡した target と depth への pass
-      if (xr_eye >= 0 || depth_image)
+      if (depth_image)
         return lub_api_fail(app, "begin_pass: an opened app draws to main_tex "
                                  "with the default depth buffer");
       if (!app->main_color)
@@ -1179,6 +1180,19 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
                           "begin_pass: %s uses the default depth buffer; "
                           "depth_target is only for offscreen passes",
                           what);
+    if (xr_eye >= 0 && app->xr_given) {
+      // 開いた app が用意した眼: その描き先と depth への pass。
+      // main と同じ描き先なら、Gfx.Pick は main の pass として扱う
+      if (app->xr_color[xr_eye] == app->main_color)
+        pick_begin_pass(app, -1);
+      pass_state_label(&app->pass, xr_eye == 0 ? "xr0" : "xr1");
+      pass_state_begin_ex(&app->pass, 1, &app->xr_color[xr_eye],
+                          &app->xr_fmt[xr_eye], app->xr_w[xr_eye],
+                          app->xr_h[xr_eye], (const float (*)[4])d->clear_color,
+                          app->xr_depth[xr_eye], SGL_PF_DEPTH24_STENCIL8, 1.0f,
+                          load);
+      return LUB_OK;
+    }
     bool xr_active = lub_xr_active(ctx);
     if (xr_eye >= 0 && !xr_active)
       return lub_api_fail(app, "begin_pass: XR eye target is unavailable; "

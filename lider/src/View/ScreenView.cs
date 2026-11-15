@@ -25,11 +25,27 @@ public static class ScreenView
         + "  return float4(LUB_SAMPLE(tex, i.uv).rgb, i.alpha);\n"
         + "}\n";
 
-    // viewportW と viewportH は画面の大きさ (画面の座標)
-    public static void Draw(List<Screen> screens, float viewportW, float viewportH)
+    // viewportW と viewportH は画面の大きさ (画面の座標)。
+    // behind は、Space に置いたゲームの絵 (無ければ null)。どのスクリーンよりも奥に、画面いっぱいに写す
+    public static void Draw(List<Screen> screens, float viewportW, float viewportH, TextureRef? behind)
     {
         var shader = Gfx.UseShader("lider_screen", Vs, Fs, 1);
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
+        if (shader != null && behind != null)
+        {
+            var bindings = new Bindings();
+            bindings.Set("tex", behind);
+            bindings.Set("rect", new List<float> { -1, 1, 1, -1 });
+            bindings.Set("tint", new List<float> { 1, 1, 1, 1 });
+            Gfx.Draw(4, bindings, new DrawOpts
+            {
+                Shader = shader,
+                Blend = Blends.Alpha,
+                Cull = Gfx.Cull.None,
+                Primitive = Gfx.Primitive.TriangleStrip,
+                Depth = false,
+            });
+        }
         if (shader != null)
             foreach (var screen in FarFirst(screens))
             {

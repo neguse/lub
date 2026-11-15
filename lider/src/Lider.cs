@@ -64,6 +64,8 @@ public static class Lider
     // ホイールで狭めると拡大して読める
     static float fov = Space.FlatFov;
     static Mat4 lastVp = new Mat4();
+    // lastVp を決めたか (lider の物を 1 度でも描いたか)
+    static bool cameraSet;
     static int viewportW = 1;
     static int viewportH = 1;
     // 閉じる印を指している窓
@@ -217,6 +219,7 @@ public static class Lider
         backdrop.Layout = new Even();
         // 起動したときは、ゲームだけを出し、focus もゲームに置く (LIDER_ACTIVE=1 なら、最初から全部出して focus を Code に置く)
         gameHeld = false;
+        cameraSet = false;
         SetHidden(true);
         if (Environment.GetEnvironmentVariable("LIDER_ACTIVE") == "1")
             FocusCode();
@@ -377,7 +380,7 @@ public static class Lider
     // ray が lider の物 (ウィンドウ、その見出しと端、検索の板) を指しているか
     static bool OverLider(Workspace w, Ray ray)
     {
-        return Search.Shown || TagAt(w, ray) != null || InspectAt(ray) != null || InspectTitleAt(ray) != null || TitleAt(w, ray) != null || WindowAt(w, ray) != null
+        return Search.Shown || TagAt(w, ray) != null || OnSpaceTag(ray) || InspectAt(ray) != null || InspectTitleAt(ray) != null || TitleAt(w, ray) != null || WindowAt(w, ray) != null
             || (!Zen && EdgeWindow(w, ray) != null);
     }
 
@@ -660,6 +663,35 @@ public static class Lider
         return new Vec4(left + pad + w * 0.5f, top - pad - h * 0.5f, w, h);
     }
 
+    // Space の札: Space にゲームを置いている間、スクリーンの名前の札の列の右に出す。押すと、ゲームが元のスクリーンのウィンドウに戻る。
+    // 札は、奥のゲームの絵のスクリーン (backdrop) の面の上に置く
+    static readonly TitleView spaceTag = new TitleView("lider_space_tag") { Mark = false };
+
+    // Space の札の矩形 (backdrop の面の上の、真ん中の x と y、幅、高さ)。出していなければ null
+    public static Vec4? SpaceTagOf()
+    {
+        if (!ScreensLit || Work == null || Work.InSpace == null || !OnView(backdrop))
+            return null;
+        var k = Apparent(backdrop);
+        var perPx = PanelView.BaseW / PanelView.BasePxW * TagScale / k;
+        var pad = OutlinePad / k;
+        var left = -backdrop.Size.X * 0.5f;
+        foreach (var screen in Screens)
+            if (screen.Shown && OnView(screen) && screenTags.TryGetValue(screen, out var tag))
+                left += tag.PxW * perPx + pad;
+        var w = spaceTag.PxW * perPx;
+        var h = PanelView.TitlePx * perPx;
+        return new Vec4(left + pad + w * 0.5f, backdrop.Size.Y * 0.5f - pad - h * 0.5f, w, h);
+    }
+
+    // ray が Space の札を指しているか
+    static bool OnSpaceTag(Ray ray)
+    {
+        var tag = SpaceTagOf();
+        var at = tag != null ? SurfacePoint(backdrop, ray) : null;
+        return tag != null && at != null && Math.Abs(at.Value.X - tag.Value.X) <= tag.Value.Z * 0.5f && Math.Abs(at.Value.Y - tag.Value.Y) <= tag.Value.W * 0.5f;
+    }
+
     // ray が指している名前の札のスクリーン (手前のスクリーンを先に見る)
     static Screen? TagAt(Workspace w, Ray ray)
     {
@@ -717,6 +749,13 @@ public static class Lider
             if (screen.Shown)
                 tag.Prepare(text);
         }
+        if (w.InSpace != null)
+        {
+            spaceTag.Label = "space: " + GameTitle(w.InSpace) + " ↓";
+            spaceTag.Focused = true;
+            spaceTag.PxW = (int)(text.CellW * (Utf8.Cells(spaceTag.Label, Utf8.Bytes(spaceTag.Label)) + 2)) + 8;
+            spaceTag.Prepare(text);
+        }
     }
 
     // screen の面の上の (x, y) の、最後に描いた frame の画面の px
@@ -768,6 +807,13 @@ public static class Lider
             var texture = screenTags[screen].Texture;
             if (texture != null)
                 SurfaceQuad(screen, world, tag.Value, Color.Rgb(1, 1, 1, 1), texture);
+        }
+        var space = SpaceTagOf();
+        if (space != null)
+        {
+            SurfaceQuad(backdrop, world, space.Value, Theme.Surface, null);
+            if (spaceTag.Texture != null)
+                SurfaceQuad(backdrop, world, space.Value, Color.Rgb(1, 1, 1, 1), spaceTag.Texture);
         }
     }
 
@@ -1219,8 +1265,16 @@ public static class Lider
         {
             if (OnGameClose(bar, x))
                 Close(w, bar);
+            else if (OnGameSpace(bar, x))
+                w.PutInSpace(bar);
             else
                 w.FocusTo(bar);
+            return;
+        }
+        // Space の札を押すと、Space に置いたゲームが、元のスクリーンのウィンドウに戻る
+        if (OnSpaceTag(lastEye != null ? gaze : PointerRay(x, y)))
+        {
+            w.TakeFromSpace();
             return;
         }
         pickX = x;
@@ -1945,15 +1999,45 @@ public static class Lider
                 SetGameTitles(screen);
                 screen.Project(sw, sh, Space.FlatFov);
             }
+        // Space に置いたゲームは、XR でなければ、画面いっぱいの絵に描かせる (XR では、ゲームが眼に直に描く)
+        var spaced = Work?.InSpace;
+        if (spaced != null)
+        {
+            spaced.TitleBar = 0;
+            spaced.ViewportRect = Xr.Active() ? null : new PixelRect(0, 0, sw, sh);
+            spaced.ContentRect = spaced.ViewportRect;
+        }
+        // Space を見ているカメラ (前の frame の物) を、Xr.View と同じ書き方 (前方 -Z) にして渡す
+        // lider の物をまだ描いていなければ (起動してからゲームの絵だけを出している間)、視点を送っていない既定のカメラ
+        var camera = cameraSet ? lastVp : Camera3d.Vp(new Camera3dOpts
+        {
+            Eye = new Vec3(0, 0, 0),
+            Target = new Vec3(0, 0, 1),
+            Fov = fov,
+            Near = 0.05f,
+            Far = 100,
+            Aspect = (float)sw / sh,
+        });
+        var eye = camera * Mat4.Scale(new Vec3(1, 1, -1));
+        GameApp.SpaceVp = new float[]
+        {
+            eye.M00, eye.M01, eye.M02, eye.M03, eye.M10, eye.M11, eye.M12, eye.M13,
+            eye.M20, eye.M21, eye.M22, eye.M23, eye.M30, eye.M31, eye.M32, eye.M33,
+        };
+        GameApp.InSpace = spaced != null && spaced.Content is GameView inSpace && inSpace.Version == GameVersion.Saved;
+        DraftGame.InSpace = spaced != null && !GameApp.InSpace;
         var saved = GameWindow(GameVersion.Saved);
         var draft = GameWindow(GameVersion.Draft);
         // 入力は、マウスのあるゲームのウィンドウの絵の中の位置で、どちらのゲームにも渡す
         Input.MousePos(out var mx, out var my);
         PointGames(mx, my);
         gameCloseHover = null;
+        gameSpaceHover = null;
         var over = GameTitleAt(mx, my);
         if (over != null && OnGameClose(over, mx))
             gameCloseHover = over;
+        else if (over != null && OnGameSpace(over, mx))
+            gameSpaceHover = over;
         // キーボードは focus がゲームにあるとき、マウスはゲームを指しているときだけ、ゲームに見せる
         var keyboard = Work == null || Work.OnGame;
         var mouse = Work == null || MouseForGame(Work, mx, my);
@@ -1964,7 +2048,7 @@ public static class Lider
         // XR には画面が無い (左右の眼にだけ描ける) ので、画面に貼る絵は、眼への pass の中で空間の面として描く (DrawScene)
         var flat = !Xr.Active();
         if (flat)
-            ScreenView.Draw(Screens, sw, sh);
+            ScreenView.Draw(Screens, sw, sh, spaced?.Content.Texture());
         StepTimeline(dt);
         if (flat)
             DrawGameTitles(sw, sh);
@@ -1983,6 +2067,8 @@ public static class Lider
     // version のゲームの絵を映している (画面に出ている) ウィンドウ
     static Window? GameWindow(GameVersion version)
     {
+        if (Work != null && Work.InSpace != null && Work.InSpace.Content is GameView spaced && spaced.Version == version)
+            return Work.InSpace;
         foreach (var screen in Screens)
             foreach (var window in screen.Windows)
                 if (window.Content is GameView view && view.Version == version && window.Position != null)
@@ -2071,8 +2157,9 @@ public static class Lider
             if (window.Position != null)
                 shown++;
         foreach (var window in screen.Windows)
+            // 1 枚だけのときも、Alt を押している間 (ウィンドウとスクリーンへの操作の間) は帯を出す
             if (window.Content is GameView)
-                window.TitleBar = shown > 1 ? PanelView.TitlePx : 0;
+                window.TitleBar = shown > 1 || ScreensLit ? PanelView.TitlePx : 0;
     }
 
     // 画面の (x, y) にある、ゲームの絵のウィンドウの見出しの帯 (無ければ null)
@@ -2099,6 +2186,23 @@ public static class Lider
         var at = window.ViewportRect!;
         return Closable(window) && x >= at.X + at.W - window.TitleBar;
     }
+
+    // Space へ出す印の左の端 (閉じる印があれば、その左に並べる)
+    static float GameSpaceMarkX(Window window)
+    {
+        var at = window.ViewportRect!;
+        return at.X + at.W - window.TitleBar * (Closable(window) ? 2 : 1);
+    }
+
+    // 見出しの帯の x が、Space へ出す印の上か
+    static bool OnGameSpace(Window window, float x)
+    {
+        var left = GameSpaceMarkX(window);
+        return x >= left && x < left + window.TitleBar;
+    }
+
+    // Space へ出す印を指しているゲームの絵のウィンドウ
+    static Window? gameSpaceHover;
 
     static string GameTitle(Window window)
     {
@@ -2135,9 +2239,13 @@ public static class Lider
                 labelBatch.Rect(at.X, at.Y, at.W, bar, Theme.Surface);
                 if (Closable(window))
                     labelBatch.Rect(at.X + at.W - bar + 3, at.Y + 3, bar - 6, bar - 6, Color.Rgb(0.9f, 0.3f, 0.35f, window == gameCloseHover ? 1 : 0));
+                var mark = GameSpaceMarkX(window);
+                labelBatch.Rect(mark + 3, at.Y + 3, bar - 6, bar - 6, Color.Rgb(Theme.Accent.R, Theme.Accent.G, Theme.Accent.B, window == gameSpaceHover ? 0.8f : 0));
                 t.Draw(labelBatch, GameTitle(window), at.X + 4 + t.CellW, y, ink);
                 if (Closable(window))
                     t.Draw(labelBatch, "×", at.X + at.W - (bar + t.CellW) * 0.5f, y, ink);
+                // Space へ出す印
+                t.Draw(labelBatch, "↑", mark + (bar - t.CellW * 2) * 0.5f, y, ink);
             }
         DrawTimeline();
         labelBatch.Flush();
@@ -2162,8 +2270,11 @@ public static class Lider
             // 閉じるウィンドウに focus があったら、保存した版のウィンドウに移す
             if (Work != null && draftWindow != null && Work.Focused == draftWindow)
                 Work.FocusTo(gameWindow);
+            if (Work != null && draftWindow != null && Work.InSpace == draftWindow)
+                Work.TakeFromSpace();
             if (draftWindow != null)
-                backdrop.Windows.Remove(draftWindow);
+                foreach (var screen in Screens)
+                    screen.Windows.Remove(draftWindow);
             draftWindow = null;
             return;
         }
@@ -2750,6 +2861,7 @@ public static class Lider
             Far = 100,
             Aspect = (float)viewportW / viewportH,
         }) * slide;
+        cameraSet = true;
         flatViewVp = Camera3d.Vp(new Camera3dOpts
         {
             Eye = new Vec3(0, 0, 0),
@@ -3284,7 +3396,8 @@ public static class Lider
         anchor.ViewProjection(view, eyeVp);
         // 視点に固定したスクリーンは、頭の座標で描く
         viewVp = Space.FromXr(eyeVp) * headToWorld;
-        Gfx.BeginPass(new PassOpts { Target = view.Target, Load = Gfx.LoadAction.Load });
+        // Space に置いたゲームが眼に描いていれば、その上に描き足す。置いていなければ、眼を塗り直してから描く
+        Gfx.BeginPass(new PassOpts { Target = view.Target, Load = w.InSpace != null ? Gfx.LoadAction.Load : Gfx.LoadAction.Clear, ClearColor = new float[] { 0, 0, 0, 1 } });
         DrawScene(w, Space.FromXr(eyeVp));
         Gfx.EndPass();
     }
