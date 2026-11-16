@@ -229,6 +229,7 @@ public class LoadProfile
     // 数えた frame の数と、その間に行ごとに足した値 (trace の key → 和)、持ち越しを持つ field ごとの数 (trace の key → field → 和)
     int counted;
     bool counting;
+    int seenSwitches;
     readonly Dictionary<string, LineCost> sums = new Dictionary<string, LineCost>();
     readonly List<string> sumKeys = new List<string>();
     readonly Dictionary<string, Dictionary<string, float>> holders = new Dictionary<string, Dictionary<string, float>>();
@@ -250,10 +251,16 @@ public class LoadProfile
             return;
         if (counting)
             Take();
+        // 見るゲームが替わったら、新しいゲームに数えさせる所から始める
+        if (seenSwitches != Watched.Switches)
+        {
+            seenSwitches = Watched.Switches;
+            counting = false;
+        }
         var want = Viewing || Frame % SampleEvery == 0;
         if (want != counting)
         {
-            GameApp.ProfileLines(want);
+            Watched.ProfileLines(want);
             counting = want;
         }
         if (counted >= (Viewing ? Window : SampleWindow))
@@ -266,7 +273,7 @@ public class LoadProfile
     void Take()
     {
         counted++;
-        foreach (var p in GameApp.TakeProfile())
+        foreach (var p in Watched.TakeProfile())
         {
             var sum = SumAt(p.Site);
             if (sum == null)
@@ -274,7 +281,7 @@ public class LoadProfile
             sum.Ms += p.Ms;
             sum.Bytes += p.Bytes;
         }
-        foreach (var k in GameApp.TakeKept())
+        foreach (var k in Watched.TakeKept())
         {
             var sum = SumAt(k.Site);
             if (sum == null)
@@ -288,7 +295,7 @@ public class LoadProfile
             by.TryGetValue(k.Holder, out var n);
             by[k.Holder] = n + k.Count;
         }
-        foreach (var g in GameApp.TakeGpuPasses())
+        foreach (var g in Watched.TakeGpuPasses())
         {
             var sum = SumAt(g.Site);
             if (sum == null)
@@ -307,7 +314,7 @@ public class LoadProfile
                 sum.Gpu += g.Ms;
             }
         }
-        foreach (var g in GameApp.TakeGcPauses())
+        foreach (var g in Watched.TakeGcPauses())
             Stops.Add(new GcStop { Frame = Frame, Ms = g.Ms });
     }
 

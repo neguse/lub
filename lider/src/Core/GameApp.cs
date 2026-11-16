@@ -2,7 +2,6 @@
 // ゲームは lider とは別の VM で動き、ゲームの絵を映すウィンドウ (GameView) と同じ大きさの texture に描く。
 // lider はその texture をウィンドウに写し (ScreenView)、上に自分の物を描く。
 // 止める、戻る、進むは、frame ごとに控えた状態と入力 (Lubx.AppTimeline) で行う。
-// ゲームの値と実行の記録は、ここを通して読む (開く前は空を返す)。
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -191,72 +190,9 @@ public static class GameApp
         return change;
     }
 
-    // 絵の中の位置 uv (左上が 0,0、右下が 1,1) に何が描いてあるかを調べる (結果は PickResult)
-    public static void Pick(Vec2 uv)
-    {
-        if (Ref != null)
-            Gfx.Pick(Gfx.MainTex!, (int)(uv.X * Map.W), (int)(uv.Y * Map.H), Ref);
-    }
-
-    public static PickHit? PickResult()
-    {
-        return Ref != null ? Gfx.PickResult(Ref) : null;
-    }
-
+    // 保存した版の値を読む (lider が見る版の値は Watched で読む)
     public static List<InspectNode> Inspect(string path, int offset, int count)
     {
         return Ref != null ? Sys.Inspect(path, offset, count, Ref) : new List<InspectNode>();
-    }
-
-    public static List<InspectInstance> InspectInstances(int maxDepth, int maxChildren)
-    {
-        return Ref != null ? Sys.InspectInstances(maxDepth, maxChildren, Ref) : new List<InspectInstance>();
-    }
-
-    public static void InspectPin(string key, string path)
-    {
-        if (Ref != null)
-            Sys.InspectPin(key, path, Ref);
-    }
-
-    public static bool InspectPinned(string key, string id)
-    {
-        return Ref != null && Sys.InspectPinned(key, id, Ref);
-    }
-
-    public static List<string> TakeTraceFor(string key)
-    {
-        return Ref != null ? Sys.TakeTraceFor(key, Ref) : new List<string>();
-    }
-
-    public static List<TraceValue> TakeValues()
-    {
-        return Ref != null ? Sys.TakeValues(Ref) : new List<TraceValue>();
-    }
-
-    public static void ProfileLines(bool on)
-    {
-        if (Ref != null)
-            Sys.ProfileLines(on, Ref);
-    }
-
-    public static List<ProfileLine> TakeProfile()
-    {
-        return Ref != null ? Sys.TakeProfile(Ref) : new List<ProfileLine>();
-    }
-
-    public static List<GcPause> TakeGcPauses()
-    {
-        return Ref != null ? Sys.TakeGcPauses(Ref) : new List<GcPause>();
-    }
-
-    public static List<KeptObject> TakeKept()
-    {
-        return Ref != null ? Sys.TakeKept(Ref) : new List<KeptObject>();
-    }
-
-    public static List<GpuPass> TakeGpuPasses()
-    {
-        return Ref != null ? Sys.TakeGpuPasses(Ref) : new List<GpuPass>();
     }
 }

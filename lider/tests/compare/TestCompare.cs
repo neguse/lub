@@ -3,6 +3,7 @@
 //   - 編集中の版は、動き始めた時に保存した版の状態を写し、その後は同じ frame を進む (数が同じ)
 //   - 保存せずに書き換えた本文は、編集中の版だけに入る (保存した版と disk の file は変わらない)
 //   - 編集中の版が変換できないと、札が「最後に通った版」を出していると書く
+//   - lider が値を見る版は、最後に focus を置いたゲームの絵のウィンドウの版になる
 //   - もう一度呼ぶか、編集中の版の閉じる印で、保存した版だけに戻る
 using System;
 using System.Collections.Generic;
@@ -113,12 +114,28 @@ public static class TestCompare
             Check(DraftGame.Shown && w.Focused == Lider.Screens[0].Windows[0], "a click near the right end of the saved title closed something or did not focus it");
             Click(draft.X + draft.W * 0.5f, draft.Y + bar * 0.5f);
             Check(DraftGame.Shown && w.Focused == Lider.Screens[0].Windows[1], "a click on the draft title did not move the focus");
+            Check(Watched.Version == GameVersion.Saved, "lider watched the draft before the focus moved to it");
+            stage = 51;
+        }
+        else if (stage == 51)
+        {
+            // focus を置いた版を、lider が見る: 値は編集中の版の物になり、インスペクタの見出しに版の名前が出る
+            var watched = -1;
+            foreach (var n in Watched.Inspect("Game", 0, 100))
+                if (n.Name == "Count" && int.TryParse(n.Text, out var count))
+                    watched = count;
+            Check(Watched.Version == GameVersion.Draft, "lider does not watch the focused draft");
+            Check(watched == Count(DraftGame.Ref) && watched != Count(GameApp.Ref), "the watched count " + watched + " is not the draft's " + Count(DraftGame.Ref) + " (saved " + Count(GameApp.Ref) + ")");
+            Check(Lider.TitleOf(Lider.InspectWindow).Label.Contains("編集中"), "the inspector title does not name the draft: " + Lider.TitleOf(Lider.InspectWindow).Label);
+            var draft = Lider.Screens[0].Windows[1].ViewportRect!;
+            var bar = Lider.Screens[0].Windows[0].TitleBar;
             Click(draft.X + draft.W - bar * 0.5f, draft.Y + bar * 0.5f);
             Check(w.Focused == Lider.Screens[0].Windows[0], "closing the focused draft did not move the focus to the saved version");
             stage = 6;
         }
         else if (stage == 6)
         {
+            Check(Watched.Version == GameVersion.Saved, "lider still watches the closed draft");
             Check(Lider.Screens[0].Windows.Count == 1 && !DraftGame.Shown, "the close mark did not go back to the saved version");
             Console.WriteLine("PASS");
             App.Quit(0);

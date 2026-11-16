@@ -75,9 +75,9 @@ public class TraceLog
     public void Take(string pin = "")
     {
         Frame++;
-        foreach (var key in GameApp.TakeTraceFor(pin))
+        foreach (var key in Watched.TakeTraceFor(pin))
             Hit(key);
-        foreach (var v in GameApp.TakeValues())
+        foreach (var v in Watched.TakeValues())
             Value(v.Site, v.Text);
     }
 

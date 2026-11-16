@@ -22,8 +22,6 @@ public class GameBuild
     public readonly string Name;
     // disk の file の代わりに使う本文 (絶対 path → 本文)
     public Dictionary<string, string> Unsaved = new Dictionary<string, string>();
-    // 実行した行と値を記録するか (lider が観察する版だけ)
-    public bool Traced = true;
     public string Entry = "";
     // 変換した module の path (GameApp が開く)。入力が集まるまで ""
     public string ModulePath = "";
@@ -120,7 +118,7 @@ public class GameBuild
             if (text != null)
                 refTexts.Add(text);
         }
-        session.Open(Entry, ModulePath, batchPath, new List<string>(), Traced ? traces : new List<string>(), refTexts, paths, texts);
+        session.Open(Entry, ModulePath, batchPath, new List<string>(), traces, refTexts, paths, texts);
         opened = true;
         Take();
     }

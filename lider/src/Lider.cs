@@ -454,8 +454,15 @@ public static class Lider
             if (forGame)
             {
                 // ゲームの絵を押すと、focus もゲームに移る
-                if (e.Kind == EventKind.MouseButtonDown && !w.OnGame)
-                    FocusGame();
+                if (e.Kind == EventKind.MouseButtonDown)
+                {
+                    // 押した絵のウィンドウに focus を移す (lider が見る版も、その版になる)
+                    PointGames(x, y);
+                    if (gamePointed != null && w.Focused != gamePointed)
+                        w.FocusTo(gamePointed);
+                    else if (!w.OnGame)
+                        FocusGame();
+                }
                 SendGame(e);
                 return;
             }
@@ -1722,12 +1729,12 @@ public static class Lider
     {
         pickPending = true;
         hoverPick = false;
-        // 保存した版のゲームの絵を指しているときだけ調べる (XR ではゲームを空間に描いていないので、指せない)
+        // lider が見ている版のゲームの絵を指しているときだけ調べる (XR ではゲームを空間に描いていないので、指せない)
         if (lastEye != null)
             return;
         PointGames(pickX, pickY);
-        if (gamePointed == gameWindow)
-            GameApp.Pick(gameUv);
+        if (gamePointed != null && gamePointed == GameWindow(Watched.Version))
+            Watched.Pick(gameUv);
     }
 
     // 今の画面に合う密度の、窓の本文の文字
@@ -1973,7 +1980,8 @@ public static class Lider
         }
         else if (window == inspectWindow)
         {
-            title.Label = inspect.Load ? "Load" : "Inspector";
+            // 版を並べている間は、見ている版の名前も出す
+            title.Label = (inspect.Load ? "Load" : "Inspector") + (DraftGame.Shown ? ": " + (Watched.Version == GameVersion.Draft ? DraftGame.Label() : "保存済み") : "");
             title.PxW = BarPxW(window) ?? InspectView.PxW;
             title.Marks.Add(TitleView.Close);
         }
@@ -2149,7 +2157,7 @@ public static class Lider
     {
         if (!pickPending)
             return;
-        var hit = GameApp.PickResult();
+        var hit = Watched.PickResult();
         if (hit == null)
             return;
         pickPending = false;
@@ -2273,6 +2281,11 @@ public static class Lider
             SetCameras(sw, sh);
         // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
         PutAway();
+        // lider が見るゲームは、最後に focus を置いたゲームの絵のウィンドウの版 (編集中の版を閉じたら、保存した版)
+        if (Work != null && Work.Focused != null && Work.Focused.Content is GameView seen)
+            Watched.Watch(seen.Version);
+        if (!DraftGame.Shown)
+            Watched.Watch(GameVersion.Saved);
         backdrop.Fill(Space.FlatFov, (float)sw / sh);
         hud.Fill(Space.FlatFov, (float)sw / sh);
         palette.Fill(Space.FlatFov, (float)sw / sh);

@@ -122,7 +122,7 @@ public class FieldValues
     void Discover()
     {
         instances = new Dictionary<string, List<FoundInstance>>();
-        foreach (var n in GameApp.InspectInstances(MaxDepth, MaxChildren))
+        foreach (var n in Watched.InspectInstances(MaxDepth, MaxChildren))
         {
             if (!instances.TryGetValue(n.Type, out var list))
             {
@@ -133,12 +133,12 @@ public class FieldValues
         }
         var gone = new List<string>();
         foreach (var pair in selected)
-            if (!GameApp.InspectPinned(pair.Key, pair.Value) || !instances.TryGetValue(pair.Key, out var found) || IndexOf(found, pair.Value) < 0)
+            if (!Watched.InspectPinned(pair.Key, pair.Value) || !instances.TryGetValue(pair.Key, out var found) || IndexOf(found, pair.Value) < 0)
                 gone.Add(pair.Key);
         foreach (var cls in gone)
         {
             selected.Remove(cls);
-            GameApp.InspectPin(cls, "");
+            Watched.InspectPin(cls, "");
         }
     }
 
@@ -282,7 +282,7 @@ public class FieldValues
     {
         if (!read.TryGetValue(path, out var children))
         {
-            children = GameApp.Inspect(path, 0, MaxChildren);
+            children = Watched.Inspect(path, 0, MaxChildren);
             read[path] = children;
         }
         foreach (var c in children)
@@ -342,7 +342,7 @@ public class FieldValues
     void Choose(string cls, FoundInstance found)
     {
         selected[cls] = found.Id;
-        GameApp.InspectPin(cls, found.Path);
+        Watched.InspectPin(cls, found.Path);
     }
 
     // path か、その祖先のうち一番近い個体を選ぶ (インスペクタの行から)
@@ -371,7 +371,7 @@ public class FieldValues
         if (IsSelected(cls, id))
         {
             selected.Remove(cls);
-            GameApp.InspectPin(cls, "");
+            Watched.InspectPin(cls, "");
             return;
         }
         Choose(cls, list[IndexOf(list, id)]);
