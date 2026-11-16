@@ -33,6 +33,9 @@ typedef struct LubDebugHooks {
                   const LubInspectNode **out, int32_t *n);
   void (*inspect_pin)(struct App *app, LubStr key, LubStr path);
   bool (*inspect_pinned)(struct App *app, LubStr key, LubStr id);
+  // path の値を text に書き換える (Sys.InspectSet)。書けなければ false で、理由を error (cap byte) に書く
+  bool (*inspect_set)(struct App *app, LubStr path, LubStr text, char *error,
+                      int32_t cap);
   // 行ごとの負荷を数え始める・止める、前に取り出してからの行の負荷と GC の止まり、frame の境目をまたいで持ち越す物
   void (*profile_lines)(struct App *app, bool on);
   void (*take_profile)(struct App *app, const LubProfileLine **out,

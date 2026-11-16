@@ -572,6 +572,21 @@ static void hook_inspect_pin(App *app, LubStr key, LubStr path) {
                     cstr(path, text, sizeof text));
 }
 
+static bool hook_inspect_set(App *app, LubStr path, LubStr text, char *error,
+                             int32_t cap) {
+  Player *p = (Player *)app->debug_user;
+  char where[1024], value[1024];
+  if (!p->lub.vm) {
+    SDL_snprintf(error, (size_t)cap, "the app has no module loaded");
+    return false;
+  }
+  if (tvm_inspect_set(p->lub.vm, p->game.cls, cstr(path, where, sizeof where),
+                      cstr(text, value, sizeof value)))
+    return true;
+  SDL_snprintf(error, (size_t)cap, "%s", tvm_error(p->lub.vm));
+  return false;
+}
+
 static bool hook_inspect_pinned(App *app, LubStr key, LubStr id) {
   Player *p = (Player *)app->debug_user;
   char k[64], i[64];
@@ -788,10 +803,10 @@ static void hook_inspect_instances(App *app, int32_t max_depth,
 }
 
 static const LubDebugHooks g_debug_hooks = {
-    hook_take_trace,   hook_take_values,       hook_inspect,
-    hook_inspect_pin,  hook_inspect_pinned,    hook_profile_lines,
-    hook_take_profile, hook_take_gc_pauses,    hook_take_kept,
-    hook_profile_site, hook_inspect_instances,
+    hook_take_trace,    hook_take_values,    hook_inspect,
+    hook_inspect_pin,   hook_inspect_pinned, hook_inspect_set,
+    hook_profile_lines, hook_take_profile,   hook_take_gc_pauses,
+    hook_take_kept,     hook_profile_site,   hook_inspect_instances,
 };
 
 static void on_event(Player *p, const LubEventData *e) {

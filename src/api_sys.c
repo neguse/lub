@@ -439,6 +439,25 @@ void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path,
     app->debug_hooks->inspect_pin(app, key, path);
 }
 
+bool lub_sys_inspect_set(LubContext *ctx, LubStr path, LubStr text,
+                         LubHandle of, LubStr *error) {
+  // 理由は次に呼ぶまで残す
+  static char reason[512];
+  App *app = api_app_observed(lub_api_app(ctx), of);
+  bool ok = false;
+  reason[0] = '\0';
+  if (!app)
+    SDL_snprintf(reason, sizeof reason, "the app is closed");
+  else if (!app->debug_hooks || !app->debug_hooks->inspect_set)
+    SDL_snprintf(reason, sizeof reason,
+                 "this player cannot write the values of an app");
+  else
+    ok = app->debug_hooks->inspect_set(app, path, text, reason, sizeof reason);
+  error->ptr = ok ? NULL : reason;
+  error->len = ok ? 0 : (int32_t)strlen(reason);
+  return ok;
+}
+
 bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id,
                             LubHandle of) {
   App *app = api_app_observed(lub_api_app(ctx), of);

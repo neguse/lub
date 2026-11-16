@@ -12086,6 +12086,25 @@ static TvmStatus vm_host_lub_sys_inspect_pin(TvmVm *vm, TvmSlot *a, TvmSlot *r,
                       (p_app ? (int32_t)p_app->host_value : 0));
   VM_LUB_LEAVE(vm);
 }
+static TvmStatus vm_host_lub_sys_inspect_set(TvmVm *vm, TvmSlot *a, TvmSlot *r,
+                                             void *user) {
+  (void)a;
+  (void)r;
+  VM_LUB_ENTER();
+  void *p_path = a[0].p;
+  void *p_text = a[1].p;
+  VmLub_AppRef *p_app = a[3].p;
+  if (s->error)
+    VM_LUB_LEAVE(vm);
+  LubStr n_error = {0};
+  bool result = {0};
+  result =
+      lub_sys_inspect_set(s->ctx, vm_lub_str(p_path), vm_lub_str(p_text),
+                          (p_app ? (int32_t)p_app->host_value : 0), &n_error);
+  r[0].i = result;
+  *(void **)a[2].p = vm_lub_string(s, n_error);
+  VM_LUB_LEAVE(vm);
+}
 static TvmStatus vm_host_lub_sys_inspect_pinned(TvmVm *vm, TvmSlot *a,
                                                 TvmSlot *r, void *user) {
   (void)a;
@@ -16128,6 +16147,7 @@ static const struct {
     {"lub.sys.inspect_instances", "iio", "o",
      vm_host_lub_sys_inspect_instances},
     {"lub.sys.inspect_pin", "sso", "", vm_host_lub_sys_inspect_pin},
+    {"lub.sys.inspect_set", "ss&so", "b", vm_host_lub_sys_inspect_set},
     {"lub.sys.inspect_pinned", "sso", "b", vm_host_lub_sys_inspect_pinned},
     {"lub.sys.profile_lines", "bo", "", vm_host_lub_sys_profile_lines},
     {"lub.sys.take_profile", "o", "o", vm_host_lub_sys_take_profile},

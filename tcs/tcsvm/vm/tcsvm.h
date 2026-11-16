@@ -237,6 +237,12 @@ typedef struct TvmInspectNode {
    Dictionary は項目 (key の順)。null の field と関数は返さない。path が辿れなければ 0 */
 int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path,
                     int32_t offset, int32_t count, TvmInspectNode *out);
+/* path の節の値を、text の値に書き換える (path は tvm_inspect の path)。frame の境界でだけ呼ぶ。
+   書けるのは、int (10 進。enum の値も int)、float、bool (true / false)、string (" で囲む。\\ と \" と \n が使える)、
+   参照を null にすること (text が null)。struct、object、List、配列、Dictionary そのものは書けない。
+   書けたら true。path が辿れない、書けない種類、text が値として読めないときは false で、理由が tvm_error にある */
+bool tvm_inspect_set(TvmVm *vm, const char *entry, const char *path,
+                     const char *text);
 /* entry と --trace の class の static から幅優先で辿り、class の instance を見つけた順に 1 度ずつ fn に渡す
    (path は tvm_inspect の path、id は TvmInspectNode.id。同じ object は最初に見つけた path で 1 度だけ)。
    深さ max_depth まで (static field が 1)、List と配列は先頭の max_children 個まで辿る。

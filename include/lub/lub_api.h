@@ -3724,6 +3724,18 @@ LUB_API void lub_sys_inspect_instances(LubContext *ctx, int32_t max_depth,
 LUB_API void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path,
                                  LubHandle app);
 
+// path の節の値を、text の値に書き換える (path は Inspect の Path)。書けるの
+// は、int (10 進。enum の値も int)、float、bool (true / false)、string (" で
+// 囲む。\\ と \" と \n が使える)、参照を null にすること (text が null)。
+// struct、object、List、配列、Dictionary そのものは書けない (その中の値を書
+// く)。書くのは呼んだ時で、app の次の frame はその値から動く。書けたら
+// true。path が辿れない、書けない種類、text が値として読めないときは false
+// で、理由が error に入る。 tcs VM の player だけ (ほかの player ではいつも
+// false)。 app を渡すと、`App.Use` で開いたその app に書く (省くとこの app。
+// 閉じた app は false)。
+LUB_API bool lub_sys_inspect_set(LubContext *ctx, LubStr path, LubStr text,
+                                 LubHandle app, LubStr *error);
+
 // key で覚えた object がまだ回収されておらず、その Id が id か。 app を渡す
 // と、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。
 LUB_API bool lub_sys_inspect_pinned(LubContext *ctx, LubStr key, LubStr id,

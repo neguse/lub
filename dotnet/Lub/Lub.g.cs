@@ -4762,6 +4762,23 @@ public static unsafe partial class Sys
         }
     }
 
+    /// <summary>path の節の値を、text の値に書き換える (path は Inspect の Path)。書けるのは、int (10 進。enum の値も int)、float、bool (true / false)、string (" で囲む。\\ と \" と \n が使える)、参照を null にすること (text が null)。 struct、object、List、配列、Dictionary そのものは書けない (その中の値を書く)。書くのは呼んだ時で、app の次の frame はその値から動く。書けたら true。path が辿れない、書けない種類、text が値として読めないときは false で、理由が error に入る。 tcs VM の player だけ (ほかの player ではいつも false)。 app を渡すと、`App.Use` で開いたその app に書く (省くとこの app。閉じた app は false)。</summary>
+    public static bool InspectSet(string path, string text, out string? error, AppRef? app = null)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            LubNative.LubStr o_error = default;
+            var r = LubNative.lub_sys_inspect_set(LubRuntime.Ctx, a.Str(path), a.Str(text), (app?.H ?? 0), &o_error);
+            error = LubRuntime.StrOrNull(o_error);
+            return (r != 0);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
     /// <summary>key で覚えた object がまだ回収されておらず、その Id が id か。 app を渡すと、`App.Use` で開いたその app を見る (省くとこの app。閉じた app は空)。</summary>
     public static bool InspectPinned(string key, string id, AppRef? app = null)
     {
@@ -11680,6 +11697,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_sys_inspect_pin(void* ctx, LubStr @key, LubStr @path, int @app);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lub_sys_inspect_set(void* ctx, LubStr @path, LubStr @text, int @app, LubStr* @error);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_sys_inspect_pinned(void* ctx, LubStr @key, LubStr @id, int @app);

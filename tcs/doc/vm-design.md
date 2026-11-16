@@ -504,7 +504,7 @@ host はこれらを `tcsvm.h` の「検査」の関数で読む。
 
 - 通った行と、代入の場所ごとの最後の値 (`tvm_trace_take_lines` / `tvm_trace_take_values`)
 - 呼び出しの並び (`tvm_stack`。host の関数の中から)
-- 値の木 (`tvm_inspect`): entry と `--trace` のファイルの class の static から辿れる値を、C# の書き方の path (`Game.Field.Items[2]`) で 1 段ずつ返す。`tvm_inspect_instances` は class の instance を列挙する
+- 値の木 (`tvm_inspect`): entry と `--trace` のファイルの class の static から辿れる値を、C# の書き方の path (`Game.Field.Items[2]`) で 1 段ずつ返す。`tvm_inspect_instances` は class の instance を列挙する。`tvm_inspect_set` は、同じ path の値 (int、float、bool、string、参照の null) を frame の境界で書き換える
 - 行ごとの負荷 (`tvm_profile_*`): `--trace` の行ごとの時間と確保、GC の止まり、frame を跨いで持ち越した物
 - 状態の控え (`tvm_snapshot_take` / `tvm_snapshot_restore`): 同じ static から辿れる object の中身を写して持ち、同じ object に書き戻す
 

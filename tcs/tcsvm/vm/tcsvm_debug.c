@@ -1232,6 +1232,111 @@ static void fill_node(TvmVm *vm, TvmInspectNode *node, const char *parent_path,
   node->count = node->cycle ? 0 : (int32_t)count_children(vm, l);
 }
 
+/* " で囲んだ text を string にする (\\ と \" と \n を戻す)。囲んでいなければ NULL で、*bad に true */
+static TvmString *parse_string(TvmVm *vm, const char *text, bool *bad) {
+  size_t n = strlen(text);
+  *bad = n < 2 || text[0] != '"' || text[n - 1] != '"';
+  if (*bad)
+    return NULL;
+  char *buf = (char *)malloc(n);
+  if (!buf)
+    return NULL;
+  size_t len = 0;
+  for (size_t i = 1; i + 1 < n; i++) {
+    char c = text[i];
+    if (c == '\\' && i + 2 < n) {
+      c = text[++i];
+      if (c == 'n')
+        c = '\n';
+      else if (c != '\\' && c != '"')
+        *bad = true;
+    } else if (c == '"' || c == '\\')
+      *bad = true;
+    buf[len++] = c;
+  }
+  TvmString *s = *bad ? NULL : tvm_str_new(vm, buf, len);
+  free(buf);
+  return s;
+}
+
+bool tvm_inspect_set(TvmVm *vm, const char *entry, const char *path,
+                     const char *text) {
+  vm->error[0] = '\0';
+  Walk w;
+  if (!walk_path(vm, entry, path, &w) || w.cls) {
+    tvm_set_error(vm, "tvm_inspect_set: no value at %s", path);
+    return false;
+  }
+  const Loc *l = &w.loc;
+  TvmSlot v = {0};
+  char *end = NULL;
+  bool ok = false;
+  switch (l->kind) {
+  case TVM_K_I32: {
+    long long n = strtoll(text, &end, 10);
+    ok = *text && !*end && n >= INT32_MIN && n <= INT32_MAX;
+    v.i = (int32_t)n;
+    break;
+  }
+  case TVM_K_F32:
+    v.f = strtof(text, &end);
+    ok = *text && !*end;
+    break;
+  case TVM_K_BOOL:
+    ok = strcmp(text, "true") == 0 || strcmp(text, "false") == 0;
+    v.i = text[0] == 't';
+    break;
+  case TVM_K_REF:
+    if (strcmp(text, "null") == 0) {
+      ok = true;
+      break;
+    }
+    if (l->type != TVM_NO_TYPE && l->type == vm->string_type) {
+      bool bad;
+      v.p = parse_string(vm, text, &bad);
+      if (!bad && !v.p) {
+        tvm_set_error(vm, "%s", "tvm_inspect_set: out of memory");
+        return false;
+      }
+      ok = !bad;
+      break;
+    }
+    tvm_set_error(vm,
+                  "tvm_inspect_set: %s is an object (only null can be written)",
+                  path);
+    return false;
+  default:
+    tvm_set_error(vm, "tvm_inspect_set: %s is a struct (write its fields)",
+                  path);
+    return false;
+  }
+  if (!ok) {
+    tvm_set_error(vm, "tvm_inspect_set: cannot read %s as the value of %s",
+                  text, path);
+    return false;
+  }
+  if (l->slots) {
+    ((TvmSlot *)l->addr)[0] = v;
+    return true;
+  }
+  char *mem = (char *)l->addr;
+  switch (l->kind) {
+  case TVM_K_I32:
+    memcpy(mem, &v.i, 4);
+    break;
+  case TVM_K_F32:
+    memcpy(mem, &v.f, 4);
+    break;
+  case TVM_K_BOOL:
+    *(uint8_t *)mem = (uint8_t)v.i;
+    break;
+  default:
+    memcpy(mem, &v.p, sizeof(void *));
+    break;
+  }
+  return true;
+}
+
 int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path,
                     int32_t offset, int32_t count, TvmInspectNode *out) {
   if (offset < 0)
