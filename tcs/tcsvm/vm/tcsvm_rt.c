@@ -108,7 +108,8 @@ static uint32_t key_hash(const TvmVm *vm, const TvmDict *d, TvmSlot key) {
         for (int32_t i = 0; i < s->len; i++)
           h = (h ^ (uint8_t)STR_DATA(s)[i]) * 16777619u;
     } else {
-      uintptr_t p = (uintptr_t)key.p;
+      /* 64 bit に広げてから畳む。uintptr_t が 32 bit の target (wasm32) では、幅と同じだけの shift は未定義になる */
+      uint64_t p = (uint64_t)(uintptr_t)key.p;
       h = (uint32_t)(p ^ (p >> 32)) * 2654435761u;
     }
     break;
