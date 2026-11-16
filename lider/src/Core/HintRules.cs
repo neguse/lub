@@ -51,6 +51,8 @@ public class HintContext
     public HintTarget Target;
     // インスペクタの行を指しているとき、その行を開けるか、開いているか
     public bool Openable;
+    // 止めている間に、書き換えられる値を指している
+    public bool Editable;
     public bool Open;
     // 宣言へ飛ぶ印、絞り込む印、パンくずを指しているか
     public bool Jump;
@@ -88,7 +90,7 @@ public static class HintRules
                 hints.Add(press);
                 return hints;
             case HintTarget.Window:
-                press.Label = c.InstanceMark ? "この個体に絞り込む・やめる" : c.MoreMark ? "続きの個体を並べる" : "カーソルを置く・引いて選ぶ";
+                press.Label = c.InstanceMark ? "この個体に絞り込む・やめる" : c.MoreMark ? "続きの個体を並べる" : c.Editable ? "値を書き換える" : "カーソルを置く・引いて選ぶ";
                 hints.Add(press);
                 if (!c.Vr)
                     hints.Add(new Hint(HintIcon.KeyCap, "右ドラッグ", "窓の並びを変える (ホイールで大きさ)"));
@@ -126,6 +128,11 @@ public static class HintRules
                 else if (c.Openable)
                 {
                     press.Label = c.Open ? "閉じる" : "開く";
+                    hints.Add(press);
+                }
+                else if (c.Editable)
+                {
+                    press.Label = "値を書き換える";
                     hints.Add(press);
                 }
                 hints.Add(scroll);
