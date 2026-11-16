@@ -25,6 +25,25 @@ public static class Watched
         Switches++;
     }
 
+    // 見ている版の状態を、番号 slot の控えに書く (App.Save)。書けなければ false で、理由が error に入る
+    public static bool Save(int slot, out string? error)
+    {
+        error = "ゲームがまだ動いていない";
+        return Ref != null && App.Save(Ref, slot, out error);
+    }
+
+    // 番号 slot の控えを、見ている版に読み込む (App.Load)。読み込めなければ false で、状態は変わらず、理由が error に入る。
+    // 止めている間に読み込んだら、控えた frame を捨てて、読み込んだ状態から続ける
+    public static bool Load(int slot, out string? error)
+    {
+        error = "ゲームがまだ動いていない";
+        if (Ref == null || !App.Load(Ref, slot, out error))
+            return false;
+        if (Version == GameVersion.Saved && GameApp.Position >= 0)
+            GameApp.Forget();
+        return true;
+    }
+
     // 絵の中の位置 uv (左上が 0,0、右下が 1,1) に何が描いてあるかを調べる (結果は PickResult)
     public static void Pick(Vec2 uv)
     {
