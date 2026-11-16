@@ -65,8 +65,6 @@ public class PanelView
     readonly string traceKey;
     readonly string valuesKey;
     readonly SpriteBatch batch;
-    readonly string titleKey;
-    readonly SpriteBatch titleBatch;
     int sizedW = BasePxW;
     int sizedH = BasePxH;
     int drawnVersion = -1;
@@ -143,8 +141,6 @@ public class PanelView
         traceKey = key + "_trace";
         valuesKey = key + "_values";
         batch = new SpriteBatch(key, PxW, PxH);
-        titleKey = key + "_title";
-        titleBatch = new SpriteBatch(titleKey, PxW, TitlePx);
         oldKey = key + "_old";
         oldBatch = new SpriteBatch(oldKey, OldPxW, PxH);
     }
@@ -162,12 +158,6 @@ public class PanelView
         return line < 0 || (line > 0 && doc.LineChanged(line - 1));
     }
 
-    // タブの後ろに出す文字 (反映にかかった秒) と、focus があるか、閉じる印を指しているか (Lider が毎 frame 決める)
-    public string Title = "";
-    public bool Focused;
-    public bool CloseLit;
-    TextureRef? title;
-    string drawnTitle = "";
     readonly DeclareGap gap = new DeclareGap();
 
     // 見出しの帯の中心の高さ
@@ -176,41 +166,11 @@ public class PanelView
         return y + (H + TitleH) * 0.5f * scale;
     }
 
-    // 見出しの帯の中の位置 (0..1) が閉じる印の上か
-    public bool OnClose(Vec2 uv)
-    {
-        return uv.X >= 1 - (float)TitlePx / PxW;
-    }
-
-    // 見出しに並べるタブの名前と、出しているタブ (Lider が毎 frame 決める)
-    public List<string> TabLabels = new List<string>();
-    public int Tab;
-    // 最後に描いたタブの左端と幅 (px)
-    readonly List<float> tabX = new List<float>();
-    readonly List<float> tabW = new List<float>();
-
-    // i 番目のタブの左端 (px。描く前は 0)
-    public float TabX(int i)
-    {
-        return i < tabX.Count ? tabX[i] : 0;
-    }
-
-    // 見出しの横の位置 (0〜1) にあるタブ (無ければ -1)
-    public int TabAt(float u)
-    {
-        var x = u * PxW;
-        for (var i = 0; i < tabX.Count; i++)
-            if (x >= tabX[i] && x < tabX[i] + tabW[i])
-                return i;
-        return -1;
-    }
-
     TextureRef? face;
     TextureRef? front;
     TextureRef? back;
     // 層の texture (Prepare の後)
     public TextureRef? FaceTexture => face;
-    public TextureRef? TitleTexture => title;
     public TextureRef? FrontTexture => front;
     public TextureRef? BackTexture => back;
     TextureRef? trace;
@@ -297,7 +257,6 @@ public class PanelView
             // 次の Prepare で全部を描き直す
             drawnVersion = -1;
             drawnText = -1;
-            drawnTitle = "";
         }
         if (sizedW != PxW || sizedH != PxH)
         {
@@ -305,10 +264,8 @@ public class PanelView
             sizedH = PxH;
             drawnVersion = -1;
             drawnText = -1;
-            drawnTitle = "";
             batch.LogicalW = PxW;
             batch.LogicalH = PxH;
-            titleBatch.LogicalW = PxW;
             oldBatch.LogicalH = PxH;
         }
         density = text.Density;
@@ -319,11 +276,9 @@ public class PanelView
         back = Assets.RenderTarget(backKey, pw, ph, Gfx.PixelFormat.Rgba8);
         trace = Assets.RenderTarget(traceKey, pw, ph, Gfx.PixelFormat.Rgba8);
         values = Assets.RenderTarget(valuesKey, pw, ph, Gfx.PixelFormat.Rgba8);
-        title = Assets.RenderTarget(titleKey, PxW * density, TitlePx * density, Gfx.PixelFormat.Rgba8);
         old = OldShown ? Assets.RenderTarget(oldKey, OldPxW * density, ph, Gfx.PixelFormat.Rgba8) : null;
         batch.Ensure();
         oldBatch.Ensure();
-        titleBatch.Ensure();
         text.Glyphs.Ensure();
         DeclareShaders();
         scratch = Assets.RenderTarget("lider_panel_scratch_" + pw + "x" + ph, pw, ph, Gfx.PixelFormat.Rgba8);
@@ -335,7 +290,6 @@ public class PanelView
         Declare(text);
         if (face == null || front == null || back == null)
             return false;
-        RenderTitle(text);
         var version = EditorHost.Version(View);
         var gapsVersion = EditorHost.GapsVersion(View);
         if (version != drawnVersion || doc.Revision != drawnRevision || text.Version != drawnText
@@ -369,41 +323,6 @@ public class PanelView
         return true;
     }
 
-    void RenderTitle(MonoText text)
-    {
-        if (title == null)
-            return;
-        var key = Title + "\n" + string.Join("\n", TabLabels) + "\n" + Tab + Focused + CloseLit + density + text.Version;
-        if (key == drawnTitle)
-            return;
-        drawnTitle = key;
-        Gfx.BeginPass(new PassOpts { Target = title, ClearColor = new float[] { 0, 0, 0, 0 } });
-        titleBatch.Begin();
-        var ink = Focused ? Theme.Ink : Theme.Muted;
-        var y = (TitlePx - text.LineH) * 0.5f;
-        // SpriteBatch は atlas を初めて使った順に描くので、指していなくても (透明に) 先に塗る
-        titleBatch.Rect(PxW - TitlePx + 3, 3, TitlePx - 6, TitlePx - 6, Color.Rgb(0.9f, 0.3f, 0.35f, CloseLit ? 1 : 0));
-        // タブは名前を並べ、出しているタブだけ下地を明るくする。後ろに Title (反映にかかった秒) を続ける
-        tabX.Clear();
-        tabW.Clear();
-        var x = 4.0f;
-        for (var i = 0; i < TabLabels.Count; i++)
-        {
-            var label = TabLabels[i];
-            var w = (Utf8.Cells(label, Utf8.Bytes(label)) + 2) * text.CellW;
-            tabX.Add(x);
-            tabW.Add(w);
-            titleBatch.Rect(x, 3, w, TitlePx - 6, i == Tab ? Theme.TabCurrent : Color.Rgb(0, 0, 0, 0));
-            text.Draw(titleBatch, label, x + text.CellW, y, i == Tab ? ink : Theme.Muted, 0, PxW - TitlePx);
-            x += w + 2;
-        }
-        if (Title != "")
-            text.Draw(titleBatch, Title, x + text.CellW, y, ink, 0, PxW - TitlePx);
-        text.Draw(titleBatch, "×", PxW - (TitlePx + text.CellW) * 0.5f, y, ink);
-        titleBatch.Flush();
-        Gfx.EndPass();
-    }
-
     // Prepare した frame の中で、画面への pass に描く。
     // scale は窓の大きさの倍率、z は奥行き (メートル、負が手前)、glow は縁の光 (0 から 1)、shake は error の行の震え (0 から 1)
     public void Draw(Document doc, float angle, float y, float scale, Mat4 vp, float z, float glow, float shake)
@@ -431,8 +350,6 @@ public class PanelView
         Theme.Plate(vp, Color.Rgb(Theme.Surface.R, Theme.Surface.G, Theme.Surface.B, Math.Min(0.97f, 0.72f + 0.18f * clamped + 0.1f * lift)), angle + FrameAngle, plateY, plate, plateW, plateH);
         var titleY = TitleY(y, scale);
         Quad3d.CurvedSolid(vp, Theme.Hairline, angle + FrameAngle, (titleY + FrameY - TitleH * 0.5f * scale) * k, plate, plateW, 0.0015f);
-        if (title != null)
-            Quad3d.Curved(vp, title, white, angle, titleY * r / Space.R, r, W * scale * r / Space.R, TitleH * scale * r / Space.R, 0, 1);
         Layer(vp, back, Flat ? Color.Rgb(1, 1, 1, 0.5f) : white, angle, y, scale, r + BackGap, null);
         if (trace != null)
             Layer(vp, trace, white, angle, y, scale, r, null);

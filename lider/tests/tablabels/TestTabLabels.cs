@@ -62,8 +62,8 @@ public static class TestTabLabels
         // 文字の atlas が揃って見出しを描き直すまで待つ
         if (frames < 20)
             return;
-        var panel = Lider.Panel(window!);
-        var labels = panel.TabLabels;
+        var panel = Lider.TitleOf(window!);
+        var labels = panel.Tabs;
         Check(labels.Count == 4 && panel.Tab == 0, "the title has " + string.Join("|", labels) + " at tab " + panel.Tab);
         if (failed)
             return;
@@ -77,14 +77,14 @@ public static class TestTabLabels
         Read(panel, null);
     }
 
-    static void Read(PanelView panel, int? id)
+    static void Read(TitleView panel, int? id)
     {
-        Gfx.ReadTexture(queue!, panel.TitleTexture!, id, out var st, out var bytes, out var tw, out var th, out _, out var stride, out _, out _, out var err);
+        Gfx.ReadTexture(queue!, panel.Texture!, id, out var st, out var bytes, out var tw, out var th, out _, out var stride, out _, out _, out var err);
         Check(st != Gfx.ReadbackStatus.Error, "readback failed: " + err);
         if (st != Gfx.ReadbackStatus.Ready || bytes == null)
             return;
         var density = tw / panel.PxW;
-        for (var i = 1; i < panel.TabLabels.Count; i++)
+        for (var i = 1; i < panel.Tabs.Count; i++)
         {
             // 名前の頭の 3 桁ほど
             var from = (int)(panel.TabX(i) * density);
@@ -94,7 +94,7 @@ public static class TestTabLabels
                 for (var x = from; x < to && x < tw; x++)
                     if (bytes.Get(y * stride + x * 4 + 3) > 0)
                         ink++;
-            Check(ink > 0, "tab " + i + " (" + panel.TabLabels[i] + " at x " + panel.TabX(i) + ") has no letters");
+            Check(ink > 0, "tab " + i + " (" + panel.Tabs[i] + " at x " + panel.TabX(i) + ") has no letters");
         }
         if (failed)
             return;

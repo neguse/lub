@@ -195,7 +195,7 @@ public class Window
     public PixelRect? ViewportRect;
     // ViewportRect のうち、中身を映す所 (見出しの帯を除いた矩形)
     public PixelRect? ContentRect;
-    // 見出しの帯の高さ (画面の座標。0 なら帯を出さない)。視点に固定した平面のスクリーンで、中身が自分で見出しを描かないウィンドウに使う
+    // 矩形の上の端に取る見出しの帯の高さ (画面の座標。0 なら取らない)。平面のスクリーンの上のゲームの絵に使う
     public float TitleBar;
     // 中身を描く画素の数。利用者が決めた数 (WidthPx、HeightPx) と、今の数 (PxW、PxH。Zen の間だけ違う)
     public int WidthPx = PanelView.BasePxW;
