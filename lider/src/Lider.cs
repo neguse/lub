@@ -1974,14 +1974,13 @@ public static class Lider
         else if (window == inspectWindow)
         {
             title.Label = inspect.Load ? "Load" : "Inspector";
-            // 平面のスクリーンでは、帯は画面の上の矩形の幅で描く
-            title.PxW = window.ViewportRect != null && window.TitleBar > 0 ? Math.Max(1, (int)window.ViewportRect.W) : InspectView.PxW;
+            title.PxW = BarPxW(window) ?? InspectView.PxW;
             title.Marks.Add(TitleView.Close);
         }
         else
         {
             title.Label = GameTitle(window);
-            title.PxW = Math.Max(1, (int)(window.ViewportRect != null ? window.ViewportRect.W : window.Size.X * PanelView.BasePxW / PanelView.BaseW));
+            title.PxW = BarPxW(window) ?? Math.Max(1, (int)(window.Size.X * PanelView.BasePxW / PanelView.BaseW));
             if (Closable(window))
                 title.Marks.Add(TitleView.Close);
             title.Marks.Add(SpaceMark);
@@ -1989,6 +1988,14 @@ public static class Lider
         title.Focused = window == w.Focused;
         title.Lit = window == markHover ? markHoverAt : -1;
         return title;
+    }
+
+    // 矩形の上の端に帯の高さを取ったウィンドウの、帯の絵の幅 (px。帯の高さが PanelView.TitlePx になる縮尺。取っていなければ null)
+    static int? BarPxW(Window window)
+    {
+        if (window.ViewportRect == null || window.TitleBar <= 0)
+            return null;
+        return Math.Max(1, (int)(window.ViewportRect.W * PanelView.TitlePx / window.TitleBar));
     }
 
     // 見出しの帯の置き場所: スクリーンの上の、中心の角度と高さ、幅、高さ (半径 Space.R の所のメートル) と、描く半径
@@ -2272,19 +2279,17 @@ public static class Lider
         foreach (var screen in Screens)
             if (OnPlane(screen))
             {
-                SetTitleBars(screen);
-                if (xr)
+                // スクリーンの面の真ん中が写る画面の位置と、面の上の 1 メートルが画面の上で覆う長さ。
+                // XR には画面が無いので、既定の画角で見たときの物にする (ウィンドウの中の割り付けに使う)
+                var perM = sh / (2 * screen.Position.Z * (float)Math.Tan(Space.FlatFov * 0.5f * Math.PI / 180));
+                var origin = new Vec2(sw * 0.5f + screen.Position.X * perM, sh * 0.5f - screen.Position.Y * perM);
+                if (!xr)
                 {
-                    // XR には画面が無いので、既定の画角で見たときの矩形にする (ウィンドウの中の割り付けに使う)
-                    var perM = sh / (2 * screen.Position.Z * (float)Math.Tan(Space.FlatFov * 0.5f * Math.PI / 180));
-                    screen.Project(new Vec2(sw * 0.5f + screen.Position.X * perM, sh * 0.5f - screen.Position.Y * perM), perM);
+                    origin = SurfacePx(screen, 0, 0);
+                    perM = SurfacePx(screen, 1, 0).X - origin.X;
                 }
-                else
-                {
-                    // スクリーンの面の真ん中と、その 1 メートル右が、画面のどこに写るか
-                    var origin = SurfacePx(screen, 0, 0);
-                    screen.Project(origin, SurfacePx(screen, 1, 0).X - origin.X);
-                }
+                SetTitleBars(screen, perM);
+                screen.Project(origin, perM);
             }
         // Space に置いたゲームは、XR でなければ、画面いっぱいの絵に描かせる (XR では、ゲームが眼に直に描く)
         var spaced = Work?.InSpace;
@@ -2417,12 +2422,14 @@ public static class Lider
     static SpriteBatch? labelBatch;
 
     // 平面のスクリーンの上の、絵を写すウィンドウ (ゲームの絵、インスペクタ) に、見出しの帯の高さを取る。
+    // 高さは、Code の見出しの帯と同じ見かけの大きさにする (perM は、面の上の 1 メートルが画面の上で覆う長さ)。
     // lider の物を隠している間 (ゲームだけにしている間) は、帯を出さない
-    static void SetTitleBars(Screen screen)
+    static void SetTitleBars(Screen screen, float perM)
     {
+        var bar = (float)Math.Round(PanelView.TitleH * (Space.Flat ? Space.FlatScale : 1) / ViewScale(screen) * perM);
         foreach (var window in screen.Windows)
             if (window.Content is GameView || window.Content is Inspector)
-                window.TitleBar = Work != null && LiderShown(Work) ? PanelView.TitlePx : 0;
+                window.TitleBar = Work != null && LiderShown(Work) ? bar : 0;
     }
 
     // 閉じられるゲームの絵のウィンドウか (保存した版は閉じられない)
