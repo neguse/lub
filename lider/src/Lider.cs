@@ -1641,7 +1641,7 @@ public static class Lider
         inspectWindow.Scale = InspectScale;
         // 平面のスクリーンでは、配置の規則が決めた矩形に収める
         if (on != null && OnPlane(on) && inspectWindow.Position != null)
-            InspectView.SetSize(inspectWindow.Size.X * ViewScale(on) / InspectScale, inspectWindow.Size.Y * ViewScale(on) / InspectScale - PanelView.TitleH);
+            InspectView.SetSize(inspectWindow.Size.X * ViewScale(on) / InspectScale, (inspectWindow.Size.Y * ViewScale(on) - InspectTitleH) / InspectScale);
         // 隠れたウィンドウには focus を置かない
         if (w.Focused == inspectWindow && !TreeVisible)
             w.FocusCode();
@@ -1665,7 +1665,21 @@ public static class Lider
     }
 
     // インスペクタの見出しの帯の高さと、中心の高さ
-    static float InspectTitleH => PanelView.TitleH * InspectScale;
+    static float InspectTitleH
+    {
+        get
+        {
+            var screen = Work != null ? ScreenFor(Work, inspectWindow) : null;
+            return screen != null && OnPlane(screen) ? BarH(screen, inspectWindow) : PanelView.TitleH * InspectScale;
+        }
+    }
+
+    // 平面のスクリーンで、window の矩形の上の端に取った見出しの帯の高さ (半径 Space.R の所のメートル)
+    static float BarH(Screen screen, Window window)
+    {
+        var whole = window.ViewportRect;
+        return whole != null && whole.W > 0 ? window.TitleBar * window.Size.X / whole.W * ViewScale(screen) : 0;
+    }
 
     static float InspectTitleY()
     {
@@ -1678,8 +1692,12 @@ public static class Lider
         var w = Work;
         if (w == null || !TreeVisible)
             return null;
+        var screen = ScreenFor(w, inspectWindow);
+        // 平面のスクリーンの上の絵は Code より先に描くので、Code の陰になっている所は指せない
+        if (OnPlane(screen) && WindowAt(w, ray) != null)
+            return null;
         var size = InspectSize();
-        return HitOn(ScreenFor(w, inspectWindow), ray, BoardAngle, InspectY(), size.X, size.Y);
+        return HitOn(screen, ray, BoardAngle, InspectY(), size.X, size.Y);
     }
 
     // 押した窓の上を指していれば、押した所からそこまでを選ぶ
@@ -1888,7 +1906,7 @@ public static class Lider
         var screen = ScreenFor(w, window);
         // 平面のスクリーンでは、ウィンドウの矩形に見出しも収めるので、本文は見出しの分だけ下がる
         return OnPlane(screen)
-            ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - (TitleInRect(window) ? PanelView.TitleH * window.Scale * 0.5f : 0)
+            ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - (TitleInRect(window) ? ((window.Content is Inspector) ? BarH(screen, window) : PanelView.TitleH * window.Scale) * 0.5f : 0)
             : window.Position.Value.Y;
     }
 
@@ -1956,7 +1974,8 @@ public static class Lider
         else if (window == inspectWindow)
         {
             title.Label = inspect.Load ? "Load" : "Inspector";
-            title.PxW = InspectView.PxW;
+            // 平面のスクリーンでは、帯は画面の上の矩形の幅で描く
+            title.PxW = window.ViewportRect != null && window.TitleBar > 0 ? Math.Max(1, (int)window.ViewportRect.W) : InspectView.PxW;
             title.Marks.Add(TitleView.Close);
         }
         else
@@ -2026,15 +2045,15 @@ public static class Lider
             window.Size.X * k, bar * k, Space.R);
     }
 
-    // 見出しの帯を持つウィンドウ。手前に描く順: インスペクタ、平面でないスクリーンの上のゲームの絵、Code (focus のあるウィンドウが先)、平面のスクリーンの上のゲームの絵
+    // 見出しの帯を持つウィンドウ。手前に描く順: 平面でないスクリーンの上の絵 (インスペクタ、ゲームの絵)、Code (focus のあるウィンドウが先)、平面のスクリーンの上の絵
     static List<Window> Titled(Workspace w)
     {
-        var all = new List<Window> { inspectWindow };
+        var all = new List<Window>();
         foreach (var plane in new List<bool> { false, true })
         {
             foreach (var screen in Screens)
                 foreach (var window in screen.Windows)
-                    if (window.Content is GameView && OnPlane(screen) == plane)
+                    if ((window.Content is GameView || window.Content is Inspector) && OnPlane(screen) == plane)
                         all.Add(window);
             if (plane)
                 break;
@@ -2048,7 +2067,7 @@ public static class Lider
     }
 
     // ray が当たる見出しの帯 (手前に描くウィンドウを先に見る)。
-    // 平面のスクリーンの上のゲームの絵は、ほかのウィンドウより先に描くので、ほかのウィンドウの陰になっている帯は指せない
+    // 平面のスクリーンの上の絵は Code より先に描くので、Code の陰になっている帯は指せない
     static WindowHit? TitleAt(Workspace w, Ray ray)
     {
         foreach (var window in Titled(w))
@@ -2056,7 +2075,7 @@ public static class Lider
             var uv = HitTitle(w, window, ray);
             if (uv == null)
                 continue;
-            if (window.Content is GameView && OnPlane(ScreenFor(w, window)) && (WindowAt(w, ray) != null || InspectAt(ray) != null))
+            if (!(window.Content is Code) && OnPlane(ScreenFor(w, window)) && WindowAt(w, ray) != null)
                 return null;
             return new WindowHit(window, uv.Value);
         }
@@ -2397,12 +2416,12 @@ public static class Lider
     static MonoText? labelText;
     static SpriteBatch? labelBatch;
 
-    // 平面のスクリーンの上のゲームの絵のウィンドウに、見出しの帯の高さを取る。
+    // 平面のスクリーンの上の、絵を写すウィンドウ (ゲームの絵、インスペクタ) に、見出しの帯の高さを取る。
     // lider の物を隠している間 (ゲームだけにしている間) は、帯を出さない
     static void SetTitleBars(Screen screen)
     {
         foreach (var window in screen.Windows)
-            if (window.Content is GameView)
+            if (window.Content is GameView || window.Content is Inspector)
                 window.TitleBar = Work != null && LiderShown(Work) ? PanelView.TitlePx : 0;
     }
 
@@ -3728,11 +3747,11 @@ public static class Lider
                     SurfaceQuad(screen, worldVp, rect, Color.Rgb(1, 1, 1, screen.Opacity), picture);
                 }
             }
-        // 平面のスクリーンの上のゲームの絵の見出しは、絵と同じく、ほかの物より先に描く
+        // 平面のスクリーンの上の絵 (ゲームの絵、インスペクタ) の見出しは、絵と同じく、ほかの物より先に描く
         foreach (var screen in Screens)
             if (screen.Shown && OnPlane(screen))
                 foreach (var window in screen.Windows)
-                    if (window.Content is GameView)
+                    if (!(window.Content is Code))
                         DrawTitle(w, window, worldVp);
         foreach (var pair in motions)
         {
@@ -3841,15 +3860,13 @@ public static class Lider
             Quad3d.Solid(vp * Space.OnCylinder(p.Angle, p.Y, p.Radius, size, size),
                 Color.Rgb(p.Color.R, p.Color.G, p.Color.B, p.Life / p.MaxLife));
         }
-        if (TreeVisible && inspect.Texture != null)
+        // 平面でないスクリーンの上のインスペクタは、空間の面の上に描く (平面のスクリーンの上の絵は、ゲームの絵と同じ経路で写す)
+        if (TreeVisible && inspect.Texture != null && !OnPlane(ScreenFor(w, inspectWindow)))
         {
-            var onView = OnPlane(ScreenFor(w, inspectWindow));
             var size = InspectSize();
             var on = VpOf(ScreenFor(w, inspectWindow), worldVp);
-            Space.Flat = worldFlat || onView;
             Theme.Plate(on, Theme.Surface, BoardAngle, InspectY(), Space.R, size.X, size.Y);
             Quad3d.Curved(on, inspect.Texture, Color.Rgb(1, 1, 1, 1), BoardAngle, InspectY(), Space.R, size.X, size.Y, 0, 1);
-            Space.Flat = worldFlat;
             DrawTitle(w, inspectWindow, worldVp);
         }
         foreach (var ring in rings)

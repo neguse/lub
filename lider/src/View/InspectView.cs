@@ -204,7 +204,7 @@ public class InspectView
 
     void RenderLoad(MonoText text)
     {
-        Gfx.BeginPass(new PassOpts { Target = Texture, ClearColor = new float[] { 0, 0, 0, 0 } });
+        Gfx.BeginPass(new PassOpts { Target = Texture, ClearColor = new float[] { Theme.Surface.R, Theme.Surface.G, Theme.Surface.B, 1 } });
         batch.Begin();
         // SpriteBatch は atlas を初めて使った順に描くので、文字より先に (透明に) 塗る
         batch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
@@ -294,7 +294,7 @@ public class InspectView
 
     void Render(MonoText text)
     {
-        Gfx.BeginPass(new PassOpts { Target = Texture, ClearColor = new float[] { 0, 0, 0, 0 } });
+        Gfx.BeginPass(new PassOpts { Target = Texture, ClearColor = new float[] { Theme.Surface.R, Theme.Surface.G, Theme.Surface.B, 1 } });
         batch.Begin();
         // SpriteBatch は atlas を初めて使った順に描くので、文字より先に (透明に) 塗る
         batch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
