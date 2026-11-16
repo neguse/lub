@@ -1804,10 +1804,17 @@ public static class Lider
     static Mat4 flatViewVp = Mat4.Identity();
     static Mat4 headToWorld = Mat4.Identity();
 
+    // screen を、見る人の座標で描くか (世界の座標でなく)。
+    // 視点に固定したスクリーンはいつも。XR でないときは、平面のスクリーンも: 視点の横送りと拡大は、円筒のスクリーンの窓の列を読むための物で、平面のスクリーンは動かさない
+    static bool ByViewer(Screen screen)
+    {
+        return screen.Anchor == ScreenAnchor.View || (lastEye == null && OnPlane(screen));
+    }
+
     // lider の空間の ray を、screen の上の窓を当てる ray にする (視点に固定したスクリーンなら視点の座標の ray)
     static Ray RayOn(Screen screen, Ray ray)
     {
-        if (screen.Anchor == ScreenAnchor.View)
+        if (ByViewer(screen))
         {
             if (lastEye != null)
             {
@@ -1845,7 +1852,7 @@ public static class Lider
     // screen の上の物を描く view-projection (world は、世界の座標の view-projection)
     static Mat4 VpOf(Screen screen, Mat4 world)
     {
-        return (screen.Anchor == ScreenAnchor.View ? viewVp : world) * Pose(screen);
+        return (ByViewer(screen) ? viewVp : world) * Pose(screen);
     }
 
     // screen の上の、角度 angle、高さ y を中心にした幅 w、高さ h の板を ray で指した所 (板の中の 0..1)。

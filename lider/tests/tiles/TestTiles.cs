@@ -5,6 +5,7 @@
 //   - 積んだウィンドウの境目 (下の端) を引くと、高さの割合が変わる
 //   - 命令で、focus のあるウィンドウの幅を変えられる (右の端の列は、左の境目が動く)
 //   - 変えた設定は、規則の書き方に出て、読み直すと同じ並びになる
+//   - 拡大 (ウィンドウの外でのホイール) は、平面のスクリーンを動かさない
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -15,6 +16,7 @@ public static class TestTiles
     static int frames;
     static int stage;
     static bool failed;
+    static PixelRect? kept;
 
     public static void OnInit()
     {
@@ -101,6 +103,15 @@ public static class TestTiles
                 break;
             case 5:
                 Check(g!.W < 445 && Near(c!.X, g.W) && Near(c.X + c.W, 1200), "after window:widen: game " + Show(g) + " code " + Show(c!));
+                // 拡大 (ウィンドウの外でのホイール) は、平面のスクリーンを動かさない
+                kept = g;
+                // テストではマウスの位置を決められない (ホイールは今の位置で受ける) ので、端を引いている間 (マウスの入力を lider が受ける間) に送る
+                Lider.StartEdge(game, 1);
+                Lider.OnEvent(new EventData { Kind = EventKind.MouseWheel, Dy = 3 });
+                Lider.EndEdge();
+                break;
+            case 6:
+                Check(Near(g!.X, kept!.X) && Near(g.W, kept.W) && Near(g.H, kept.H), "zooming moved the plane screen: game " + Show(kept) + " -> " + Show(g));
                 Console.WriteLine("PASS");
                 App.Quit(0);
                 break;
