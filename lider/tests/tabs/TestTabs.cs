@@ -84,8 +84,8 @@ public static class TestTabs
         if (frames == 3)
         {
             // 見出しの 2 つ目のタブを押す (1 frame 描いた後の位置)
-            var panel = Lider.Panel(first!);
-            var labels = panel.TabLabels;
+            var panel = Lider.TitleOf(first!);
+            var labels = panel.Tabs;
             Check(labels.Count == 2 && labels[0] == "Target.cs" && labels[1] == "Second.cs", "the title shows " + string.Join("|", labels));
             if (failed)
                 return;

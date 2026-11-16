@@ -56,18 +56,16 @@ public static class TestInSpace
         {
             case 0:
                 Check(backdrop.Windows[0].Content is GameView && w.InSpace == null, "the game is not on the backdrop at first");
-                w.SetMods(Keys.ModAlt);
                 break;
             case 1:
                 var game = backdrop.Windows[0];
                 var bar = game.ViewportRect;
-                Check(bar != null && game.TitleBar > 0, "the title bar is not out while Alt is down");
+                Check(bar != null && game.TitleBar > 0, "the game window has no title bar");
                 if (failed)
                     return;
                 // 帯の右の端の印 (保存した版には閉じる印が無いので、右の端が Space へ出す印)
                 Press(bar!.X + bar.W - game.TitleBar * 0.5f, bar.Y + game.TitleBar * 0.5f);
                 Check(w.InSpace == game && w.ScreenOf(game) == null, "pressing the mark did not put the game in the space");
-                w.SetMods(0);
                 framesBefore = GameApp.Frames;
                 break;
             case 2:

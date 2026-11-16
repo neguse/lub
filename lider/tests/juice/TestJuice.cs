@@ -71,7 +71,7 @@ public static class TestJuice
             Check(Lider.Flash > 0, "landing did not flash");
             Check(m.Shake > 0.5f, "landing did not shake the frame: " + m.Shake);
             Check(m.LandLabel > 0 && m.LandSeconds >= 0, "the seconds are not shown");
-            Check(Lider.Panel(w.FocusWindow!).Title.EndsWith("s"), "the title has no seconds: " + Lider.Panel(w.FocusWindow!).Title);
+            Check(Lider.TitleOf(w.FocusWindow!).Label.EndsWith("s"), "the title has no seconds: " + Lider.TitleOf(w.FocusWindow!).Label);
             Lider.Flash = 0;
             m.Shake = 0;
             w.Focus!.Type("// b\n");

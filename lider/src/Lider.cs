@@ -68,8 +68,6 @@ public static class Lider
     static bool cameraSet;
     static int viewportW = 1;
     static int viewportH = 1;
-    // 閉じる印を指している窓
-    static Window? closeHover;
     static readonly Dictionary<string, PanelView> panels = new Dictionary<string, PanelView>();
     // VR のときの頭の向きと、Gfx.Pick に渡す左眼
     static Ray gaze = new Ray(new Vec3(0, 0, 0), new Vec3(0, 0, 1));
@@ -136,7 +134,6 @@ public static class Lider
     public static InspectView Inspector => inspect;
     static Window inspectWindow = new Window(new Inspector(inspect));
     public static Window InspectWindow => inspectWindow;
-    static readonly TitleView inspectTitle = new TitleView("lider_inspect_title");
     static bool TreeVisible => inspect.Shown && !ZenShown && inspectWindow.Position != null;
     // 窓を画面の幅に広げ、左の板を隠し、ゲームを暗くする。focus がゲームにある間は効かせない (ゲームを遊べるように)
     public static bool Zen;
@@ -384,9 +381,6 @@ public static class Lider
     // ゲームが動いている間、lider の物を指していなければゲームに渡す。止めている間は、ゲームの絵の上も lider が受ける (描いたコードを調べる)
     static bool MouseForGame(Workspace w, float x, float y)
     {
-        // ゲームの絵のウィンドウの見出しの帯は、lider の物
-        if (lastEye == null && !gameHeld && GameTitleAt(x, y) != null)
-            return false;
         if (!LiderShown(w))
             return true;
         if (lastEye != null)
@@ -401,7 +395,7 @@ public static class Lider
     // ray が lider の物 (ウィンドウ、その見出しと端、検索の板) を指しているか
     static bool OverLider(Workspace w, Ray ray)
     {
-        return Search.Shown || OskUv(w, ray) != null || TagAt(w, ray) != null || OnSpaceTag(ray) || InspectAt(ray) != null || InspectTitleAt(ray) != null || TitleAt(w, ray) != null || WindowAt(w, ray) != null
+        return Search.Shown || OskUv(w, ray) != null || TagAt(w, ray) != null || OnSpaceTag(ray) || InspectAt(ray) != null || TitleAt(w, ray) != null || WindowAt(w, ray) != null
             || (!Zen && EdgeWindow(w, ray) != null);
     }
 
@@ -686,7 +680,7 @@ public static class Lider
 
     // Space の札: Space にゲームを置いている間、スクリーンの名前の札の列の右に出す。押すと、ゲームが元のスクリーンのウィンドウに戻る。
     // 札は、奥のゲームの絵のスクリーン (backdrop) の面の上に置く
-    static readonly TitleView spaceTag = new TitleView("lider_space_tag") { Mark = false };
+    static readonly TitleView spaceTag = new TitleView("lider_space_tag");
 
     // Space の札の矩形 (backdrop の面の上の、真ん中の x と y、幅、高さ)。出していなければ null
     public static Vec4? SpaceTagOf()
@@ -760,7 +754,7 @@ public static class Lider
         {
             if (!screenTags.TryGetValue(screen, out var tag))
             {
-                tag = new TitleView("lider_screen_tag_" + screen.Name) { Mark = false };
+                tag = new TitleView("lider_screen_tag_" + screen.Name);
                 screenTags[screen] = tag;
             }
             tag.Label = screen.Name;
@@ -843,10 +837,10 @@ public static class Lider
     static void GrabAt(Workspace w, float x, float y)
     {
         var ray = PointerRay(x, y);
-        var window = GameTitleAt(x, y);
-        if (window == null && (InspectTitleAt(ray) != null || InspectAt(ray) != null))
+        var window = TitleAt(w, ray)?.Window;
+        if (window == null && InspectAt(ray) != null)
             window = inspectWindow;
-        window ??= (TitleAt(w, ray) ?? WindowAt(w, ray))?.Window;
+        window ??= WindowAt(w, ray)?.Window;
         if (window == null || window.Position == null)
             return;
         var at = SurfacePoint(ScreenFor(w, window), ray);
@@ -1281,18 +1275,6 @@ public static class Lider
         var w = Work;
         if (w == null)
             return;
-        // ゲームの絵のウィンドウの見出しを押すと focus が移り、閉じる印なら閉じる
-        var bar = lastEye == null ? GameTitleAt(x, y) : null;
-        if (bar != null)
-        {
-            if (OnGameClose(bar, x))
-                Close(w, bar);
-            else if (OnGameSpace(bar, x))
-                w.PutInSpace(bar);
-            else
-                w.FocusTo(bar);
-            return;
-        }
         // Space の札を押すと、Space に置いたゲームが、元のスクリーンのウィンドウに戻る
         if (OnSpaceTag(lastEye != null ? gaze : PointerRay(x, y)))
         {
@@ -1317,20 +1299,11 @@ public static class Lider
         RequestPick(lastEye != null ? gaze : PointerRay(x, y));
     }
 
-    // 指した所で次のどれかをする: 窓の閉じる印なら閉じる、窓の見出しならその窓に focus を移す、窓ならその窓に focus を移してカーソルを動かす、どれでもなければゲームの物を描いたコードを探す (Gfx.Pick)
+    // 指した所で次のどれかをする: 見出しの印ならその操作 (閉じる、Space へ出す)、タブならそのタブを出す、見出しならそのウィンドウに focus を移す、窓ならその窓に focus を移してカーソルを動かす、どれでもなければゲームの物を描いたコードを探す (Gfx.Pick)
     public static void Click(Workspace w, Ray ray, bool pickGame)
     {
         if (PressOsk(w, ray))
             return;
-        var bar = InspectTitleAt(ray);
-        if (bar != null)
-        {
-            if (inspectTitle.OnClose(bar.Value.X))
-                Close(w, inspectWindow);
-            else
-                w.FocusTo(inspectWindow);
-            return;
-        }
         var uv = InspectAt(ray);
         // 押したウィンドウに focus が移る (コードへ飛ぶ行を押したら、focus は開いた Code に移る)
         if (uv != null)
@@ -1376,11 +1349,14 @@ public static class Lider
         var head = TitleAt(w, ray);
         if (head != null)
         {
-            var panel = Panel(head.Window);
-            if (panel.OnClose(head.Uv))
-                w.Close(head.Window);
-            else if (panel.TabAt(head.Uv.X) >= 0)
-                ShowTab(head.Window, panel.TabAt(head.Uv.X));
+            var title = TitleOf(head.Window);
+            var mark = title.MarkAt(head.Uv.X);
+            if (mark == TitleView.Close)
+                Close(w, head.Window);
+            else if (mark == SpaceMark)
+                w.PutInSpace(head.Window);
+            else if (title.TabAt(head.Uv.X) >= 0)
+                ShowTab(head.Window, title.TabAt(head.Uv.X));
             else
                 w.FocusTo(head.Window);
             return;
@@ -1412,6 +1388,7 @@ public static class Lider
 
     static void ShowHints(Workspace w, Ray ray)
     {
+        HoverMarks(w, ray);
         if (text == null)
             return;
         if (hintsOff)
@@ -1439,17 +1416,13 @@ public static class Lider
             Juice = Juice,
         };
         var uv = InspectAt(ray);
-        var head = uv == null ? TitleAt(w, ray) : null;
-        closeHover = head != null && Panel(head.Window).OnClose(head.Uv) ? head.Window : null;
-        var bar = InspectTitleAt(ray);
-        if (bar != null && inspectTitle.OnClose(bar.Value.X))
-            closeHover = inspectWindow;
+        var closing = markHover != null && TitleOf(markHover).Marks[markHoverAt] == TitleView.Close;
         var edged = uv == null && lastEye == null && !Zen ? EdgeWindow(w, ray) : null;
         edgeHoverWindow = edged;
         edgeHover = foundEdge;
         if (edged != null)
             c.Target = HintTarget.Edge;
-        else if (closeHover != null)
+        else if (closing)
             c.Target = HintTarget.Close;
         else if (uv != null)
         {
@@ -1604,7 +1577,8 @@ public static class Lider
     static void HideHints()
     {
         hintCard.Shown = false;
-        closeHover = null;
+        markHover = null;
+        markHoverAt = -1;
         edgeHoverWindow = null;
         pointer = null;
         What = new List<string>();
@@ -1696,15 +1670,6 @@ public static class Lider
     static float InspectTitleY()
     {
         return InspectY() + (InspectSize().Y + InspectTitleH) * 0.5f;
-    }
-
-    // インスペクタの見出しの帯を指していれば、その中の位置
-    static Vec2? InspectTitleAt(Ray ray)
-    {
-        var w = Work;
-        if (w == null || !TreeVisible)
-            return null;
-        return HitOn(ScreenFor(w, inspectWindow), ray, BoardAngle, InspectTitleY(), InspectSize().X, InspectTitleH);
     }
 
     // インスペクタを指していれば、その中の位置
@@ -1956,30 +1921,201 @@ public static class Lider
         return HitOn(ScreenFor(w, window), ray, m != null ? m.Angle.Value : WindowAngle(w, window), m != null ? m.Y.Value : WindowY(w, window), window.UnscaledSize.X * scale, window.UnscaledSize.Y * scale);
     }
 
-    // ray が当たる窓の見出しの帯 (focus のある窓を先に見る)
+    // ウィンドウの見出しの帯。どの中身のウィンドウにも同じ物を付け、置き場所、当たり、描くのを 1 つの経路で扱う
+    static readonly Dictionary<Window, TitleView> titles = new Dictionary<Window, TitleView>();
+    static int titleCount;
+    // 指している見出しの印 (ウィンドウと、印の番号)
+    static Window? markHover;
+    static int markHoverAt = -1;
+    // Space へ出す印
+    public const string SpaceMark = "↑";
+
+    // window の見出しの帯。中身 (タブ、名前、印、幅) は、今のウィンドウの様子から決める
+    public static TitleView TitleOf(Window window)
+    {
+        if (!titles.TryGetValue(window, out var title))
+        {
+            title = new TitleView("lider_title_" + titleCount++);
+            titles[window] = title;
+        }
+        var w = Work;
+        // 閉じる動きの間の窓は、中身を変えない
+        if (w == null || (window.Content is Code && !w.Windows.Contains(window)))
+            return title;
+        title.Marks.Clear();
+        if (window.Content is Code)
+        {
+            var motion = MotionOf(window);
+            title.Tabs = w.TabTitles(window);
+            title.Tab = window.Code.Tab;
+            // タブの後ろに、反映にかかった秒を出す
+            title.Label = motion != null && motion.LandLabel > 0 ? (int)(motion.LandSeconds * 100) / 100.0f + "s" : "";
+            title.PxW = Panel(window).PxW;
+            title.Marks.Add(TitleView.Close);
+        }
+        else if (window == inspectWindow)
+        {
+            title.Label = inspect.Load ? "Load" : "Inspector";
+            title.PxW = InspectView.PxW;
+            title.Marks.Add(TitleView.Close);
+        }
+        else
+        {
+            title.Label = GameTitle(window);
+            title.PxW = Math.Max(1, (int)(window.ViewportRect != null ? window.ViewportRect.W : window.Size.X * PanelView.BasePxW / PanelView.BaseW));
+            if (Closable(window))
+                title.Marks.Add(TitleView.Close);
+            title.Marks.Add(SpaceMark);
+        }
+        title.Focused = window == w.Focused;
+        title.Lit = window == markHover ? markHoverAt : -1;
+        return title;
+    }
+
+    // 見出しの帯の置き場所: スクリーンの上の、中心の角度と高さ、幅、高さ (半径 Space.R の所のメートル) と、描く半径
+    class TitlePlace
+    {
+        public readonly Screen Screen;
+        public readonly float Angle;
+        public readonly float Y;
+        public readonly float W;
+        public readonly float H;
+        public readonly float R;
+
+        public TitlePlace(Screen screen, float angle, float y, float w, float h, float r)
+        {
+            Screen = screen;
+            Angle = angle;
+            Y = y;
+            W = w;
+            H = h;
+            R = r;
+        }
+    }
+
+    // window の見出しの帯の置き場所 (帯を出していなければ null)。
+    // 帯は本文の上の端に付く。平面のスクリーンでは、ウィンドウの矩形の上の端に収める
+    static TitlePlace? TitlePlaceOf(Workspace w, Window window)
+    {
+        var screen = ScreenFor(w, window);
+        if (window.Content is Code)
+        {
+            // 動いている間は、見えている所に付ける
+            var m = MotionOf(window);
+            if (m == null && window.Position == null)
+                return null;
+            var scale = m != null ? m.Scale.Value : window.Scale;
+            return new TitlePlace(screen, m != null ? m.Angle.Value : WindowAngle(w, window), Panel(window).TitleY(m != null ? m.Y.Value : WindowY(w, window), scale),
+                window.UnscaledSize.X * scale, PanelView.TitleH * scale, Space.R + (m != null ? m.Z.Value : 0));
+        }
+        if (window == inspectWindow)
+            return TreeVisible ? new TitlePlace(screen, BoardAngle, InspectTitleY(), InspectSize().X, InspectTitleH, Space.R) : null;
+        if (!(window.Content is GameView) || window.Position == null || window == w.InSpace || !screen.Shown || !LiderShown(w))
+            return null;
+        var at = window.Position.Value;
+        if (!OnPlane(screen))
+            return new TitlePlace(screen, WindowAngle(w, window), WindowY(w, window) + (window.Size.Y + PanelView.TitleH * window.Scale) * 0.5f,
+                window.Size.X, PanelView.TitleH * window.Scale, Space.R);
+        var whole = window.ViewportRect;
+        if (whole == null || whole.W <= 0 || window.TitleBar <= 0)
+            return null;
+        // 画面の上の帯の高さを、スクリーンの面の上の長さに直す
+        var k = ViewScale(screen);
+        var bar = window.TitleBar * window.Size.X / whole.W;
+        return new TitlePlace(screen, (screen.Position.X + at.X) / screen.Position.Z, (screen.Position.Y + at.Y + (window.Size.Y - bar) * 0.5f) * k,
+            window.Size.X * k, bar * k, Space.R);
+    }
+
+    // 見出しの帯を持つウィンドウ。手前に描く順: インスペクタ、平面でないスクリーンの上のゲームの絵、Code (focus のあるウィンドウが先)、平面のスクリーンの上のゲームの絵
+    static List<Window> Titled(Workspace w)
+    {
+        var all = new List<Window> { inspectWindow };
+        foreach (var plane in new List<bool> { false, true })
+        {
+            foreach (var screen in Screens)
+                foreach (var window in screen.Windows)
+                    if (window.Content is GameView && OnPlane(screen) == plane)
+                        all.Add(window);
+            if (plane)
+                break;
+            if (w.FocusWindow != null)
+                all.Add(w.FocusWindow);
+            foreach (var window in w.Windows)
+                if (window != w.FocusWindow)
+                    all.Add(window);
+        }
+        return all;
+    }
+
+    // ray が当たる見出しの帯 (手前に描くウィンドウを先に見る)。
+    // 平面のスクリーンの上のゲームの絵は、ほかのウィンドウより先に描くので、ほかのウィンドウの陰になっている帯は指せない
     static WindowHit? TitleAt(Workspace w, Ray ray)
     {
-        if (w.FocusWindow != null)
-        {
-            var uv = HitTitle(w, w.FocusWindow, ray);
-            if (uv != null)
-                return new WindowHit(w.FocusWindow, uv.Value);
-        }
-        foreach (var window in w.Windows)
+        foreach (var window in Titled(w))
         {
             var uv = HitTitle(w, window, ray);
-            if (uv != null)
-                return new WindowHit(window, uv.Value);
+            if (uv == null)
+                continue;
+            if (window.Content is GameView && OnPlane(ScreenFor(w, window)) && (WindowAt(w, ray) != null || InspectAt(ray) != null))
+                return null;
+            return new WindowHit(window, uv.Value);
         }
         return null;
     }
 
     static Vec2? HitTitle(Workspace w, Window window, Ray ray)
     {
-        var m = MotionOf(window);
-        var scale = m != null ? m.Scale.Value : window.Scale;
-        return HitOn(ScreenFor(w, window), ray, m != null ? m.Angle.Value : WindowAngle(w, window), Panel(window).TitleY(m != null ? m.Y.Value : WindowY(w, window), scale),
-            window.UnscaledSize.X * scale, PanelView.TitleH * scale);
+        var place = TitlePlaceOf(w, window);
+        return place != null ? HitOn(place.Screen, ray, place.Angle, place.Y, place.W, place.H) : null;
+    }
+
+    // ray が指している見出しの印を覚える (印の下地を光らせる)
+    static void HoverMarks(Workspace w, Ray ray)
+    {
+        markHover = null;
+        markHoverAt = -1;
+        var head = TitleAt(w, ray);
+        var at = head != null ? TitleOf(head.Window).MarkIndexAt(head.Uv.X) : -1;
+        if (head == null || at < 0)
+            return;
+        markHover = head.Window;
+        markHoverAt = at;
+    }
+
+    // 見出しの帯の texture を描き直す (画面への pass の外で呼ぶ)
+    static void PrepareTitles(Workspace w, MonoText text)
+    {
+        var live = Titled(w);
+        // 閉じる動きの間の窓も、描き続ける
+        foreach (var pair in motions)
+            if (!live.Contains(pair.Key))
+                live.Add(pair.Key);
+        var gone = new List<Window>();
+        foreach (var pair in titles)
+            if (!live.Contains(pair.Key))
+                gone.Add(pair.Key);
+        foreach (var window in gone)
+            titles.Remove(window);
+        foreach (var window in live)
+            if (TitlePlaceOf(w, window) != null)
+                TitleOf(window).Prepare(text);
+    }
+
+    // window の見出しの帯を描く (world は、世界の座標の view-projection)
+    static void DrawTitle(Workspace w, Window window, Mat4 world)
+    {
+        var place = TitlePlaceOf(w, window);
+        if (place == null || !titles.TryGetValue(window, out var title) || title.Texture == null)
+            return;
+        var flat = Space.Flat;
+        Space.Flat = flat || OnPlane(place.Screen);
+        var on = VpOf(place.Screen, world);
+        var k = place.R / Space.R;
+        // Code は、板 (PanelView) が見出しの下地も描く
+        if (!(window.Content is Code))
+            Theme.Plate(on, Theme.Surface, place.Angle, place.Y, Space.R, place.W, place.H);
+        Quad3d.Curved(on, title.Texture, Color.Rgb(1, 1, 1, 1), place.Angle, place.Y * k, place.R, place.W * k, place.H * k, 0, 1);
+        Space.Flat = flat;
     }
 
     // Gfx.Pick の結果が届いたら、click なら呼び出し元の並びのうち一覧にある最初の file をその行で開き、指しているだけなら What にする
@@ -2058,7 +2194,7 @@ public static class Lider
         var moved = mx != hoverX || my != hoverY;
         hoverX = mx;
         hoverY = my;
-        var game = Paused && InspectAt(ray) == null && InspectTitleAt(ray) == null && TitleAt(w, ray) == null && WindowAt(w, ray) == null && !Search.Shown;
+        var game = Paused && InspectAt(ray) == null && TitleAt(w, ray) == null && WindowAt(w, ray) == null && !Search.Shown;
         if (moved || !game)
         {
             hoverStill = 0;
@@ -2117,7 +2253,7 @@ public static class Lider
         foreach (var screen in Screens)
             if (OnPlane(screen))
             {
-                SetGameTitles(screen);
+                SetTitleBars(screen);
                 if (xr)
                 {
                     // XR には画面が無いので、既定の画角で見たときの矩形にする (ウィンドウの中の割り付けに使う)
@@ -2153,13 +2289,6 @@ public static class Lider
         // 入力は、マウスのあるゲームのウィンドウの絵の中の位置で、どちらのゲームにも渡す
         Input.MousePos(out var mx, out var my);
         PointGames(mx, my);
-        gameCloseHover = null;
-        gameSpaceHover = null;
-        var over = GameTitleAt(mx, my);
-        if (over != null && OnGameClose(over, mx))
-            gameCloseHover = over;
-        else if (over != null && OnGameSpace(over, mx))
-            gameSpaceHover = over;
         // キーボードは focus がゲームにあるとき、マウスはゲームを指しているときだけ、ゲームに見せる
         var keyboard = Work == null || Work.OnGame;
         var mouse = Work == null || MouseForGame(Work, mx, my);
@@ -2173,7 +2302,7 @@ public static class Lider
             ScreenView.Draw(Screens, sw, sh, spaced?.Content.Texture());
         StepTimeline(dt);
         if (flat)
-            DrawGameTitles(sw, sh);
+            DrawTimelineBar(sw, sh);
         var change = GameApp.Changed();
         if (change.Reloaded)
             GameReloaded();
@@ -2264,36 +2393,17 @@ public static class Lider
         return uv;
     }
 
-    // ゲームの絵のウィンドウの見出しの帯 (版の名前と、編集中の版には閉じる印)。
-    // スクリーンに出ているウィンドウが 1 枚だけなら出さない (画面いっぱいのゲームの絵に帯を乗せない)
+    // 画面に貼る絵の上に重ねる字 (控えた frame の帯)
     static MonoText? labelText;
     static SpriteBatch? labelBatch;
-    // 閉じる印を指しているゲームの絵のウィンドウ
-    static Window? gameCloseHover;
 
-    static void SetGameTitles(Screen screen)
+    // 平面のスクリーンの上のゲームの絵のウィンドウに、見出しの帯の高さを取る。
+    // lider の物を隠している間 (ゲームだけにしている間) は、帯を出さない
+    static void SetTitleBars(Screen screen)
     {
-        screen.Arrange();
-        var shown = 0;
         foreach (var window in screen.Windows)
-            if (window.Position != null)
-                shown++;
-        foreach (var window in screen.Windows)
-            // 1 枚だけのときも、Alt を押している間 (ウィンドウとスクリーンへの操作の間) は帯を出す
             if (window.Content is GameView)
-                window.TitleBar = shown > 1 || ScreensLit ? PanelView.TitlePx : 0;
-    }
-
-    // 画面の (x, y) にある、ゲームの絵のウィンドウの見出しの帯 (無ければ null)
-    static Window? GameTitleAt(float x, float y)
-    {
-        foreach (var screen in Screens)
-            if (screen.Shown)
-                foreach (var window in screen.Windows)
-                    if (window.Content is GameView && window.TitleBar > 0 && window.ViewportRect != null
-                        && window.ViewportRect.Contains(x, y) && y < window.ViewportRect.Y + window.TitleBar)
-                        return window;
-        return null;
+                window.TitleBar = Work != null && LiderShown(Work) ? PanelView.TitlePx : 0;
     }
 
     // 閉じられるゲームの絵のウィンドウか (保存した版は閉じられない)
@@ -2302,30 +2412,6 @@ public static class Lider
         return window.Content is GameView view && view.Version == GameVersion.Draft;
     }
 
-    // 見出しの帯の x が閉じる印の上か
-    static bool OnGameClose(Window window, float x)
-    {
-        var at = window.ViewportRect!;
-        return Closable(window) && x >= at.X + at.W - window.TitleBar;
-    }
-
-    // Space へ出す印の左の端 (閉じる印があれば、その左に並べる)
-    static float GameSpaceMarkX(Window window)
-    {
-        var at = window.ViewportRect!;
-        return at.X + at.W - window.TitleBar * (Closable(window) ? 2 : 1);
-    }
-
-    // 見出しの帯の x が、Space へ出す印の上か
-    static bool OnGameSpace(Window window, float x)
-    {
-        var left = GameSpaceMarkX(window);
-        return x >= left && x < left + window.TitleBar;
-    }
-
-    // Space へ出す印を指しているゲームの絵のウィンドウ
-    static Window? gameSpaceHover;
-
     static string GameTitle(Window window)
     {
         if (Closable(window))
@@ -2333,42 +2419,17 @@ public static class Lider
         return DraftGame.Shown ? "保存済み" : "Game";
     }
 
-    static void DrawGameTitles(int sw, int sh)
+    static void DrawTimelineBar(int sw, int sh)
     {
-        var any = TimelineRect() != null;
-        foreach (var screen in Screens)
-            foreach (var window in screen.Windows)
-                any = any || (window.Content is GameView && window.TitleBar > 0 && window.ViewportRect != null);
-        if (!any)
+        if (TimelineRect() == null)
             return;
         var density = Math.Max(1, (int)Math.Round(PixelRatio));
         if (labelText == null || labelText.Density != density)
             labelText = new MonoText("lider_label_" + density, Ttf(), 15, density);
         if (labelBatch == null || labelBatch.LogicalW != sw || labelBatch.LogicalH != sh)
             labelBatch = new SpriteBatch("lider_label", sw, sh);
-        var t = labelText;
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
         labelBatch.Begin();
-        foreach (var screen in Screens)
-            foreach (var window in screen.Windows)
-            {
-                var at = window.ViewportRect;
-                if (!(window.Content is GameView) || window.TitleBar <= 0 || at == null)
-                    continue;
-                var bar = window.TitleBar;
-                var ink = Work != null && Work.Focused == window ? Theme.Ink : Theme.Muted;
-                var y = at.Y + (bar - t.LineH) * 0.5f;
-                labelBatch.Rect(at.X, at.Y, at.W, bar, Theme.Surface);
-                if (Closable(window))
-                    labelBatch.Rect(at.X + at.W - bar + 3, at.Y + 3, bar - 6, bar - 6, Color.Rgb(0.9f, 0.3f, 0.35f, window == gameCloseHover ? 1 : 0));
-                var mark = GameSpaceMarkX(window);
-                labelBatch.Rect(mark + 3, at.Y + 3, bar - 6, bar - 6, Color.Rgb(Theme.Accent.R, Theme.Accent.G, Theme.Accent.B, window == gameSpaceHover ? 0.8f : 0));
-                t.Draw(labelBatch, GameTitle(window), at.X + 4 + t.CellW, y, ink);
-                if (Closable(window))
-                    t.Draw(labelBatch, "×", at.X + at.W - (bar + t.CellW) * 0.5f, y, ink);
-                // Space へ出す印
-                t.Draw(labelBatch, "↑", mark + (bar - t.CellW * 2) * 0.5f, y, ink);
-            }
         DrawTimeline();
         labelBatch.Flush();
         Gfx.EndPass();
@@ -2887,14 +2948,8 @@ public static class Lider
             panel.Errors = w.ErrorsIn(window.Code.Doc.Path);
             panel.Notices = InitNotices(w, window);
             panel.ErrorsVersion = w.ErrorsVersion;
-            var motion = MotionOf(window);
-            panel.TabLabels = w.TabTitles(window);
-            panel.Tab = window.Code.Tab;
-            panel.Title = motion != null && motion.LandLabel > 0 ? (int)(motion.LandSeconds * 100) / 100.0f + "s" : "";
-            panel.Focused = window == w.Focused;
             panel.Costs = Costs;
             panel.Fields = Fields.For(Search.DeclarationsIn(window.Code.Doc.Path), EditorHost.FirstLine(window.Code.ViewId), EditorHost.LastLine(window.Code.ViewId));
-            panel.CloseLit = window == closeHover;
             var differs = window == w.FocusWindow && window.Code.Doc.Differs();
             panel.OldShown = differs && PanelView.SideBySide && !ZenShown;
             PlaceDiff(window, panel.OldShown);
@@ -2912,12 +2967,7 @@ public static class Lider
         if (Search.Shown || inspect.Shown)
             Search.Refresh(w);
         inspect.Prepare(panelText, w, Search, Fields, Costs);
-        inspectTitle.Label = inspect.Load ? "Load" : "Inspector";
-        inspectTitle.Focused = w.Focused == inspectWindow;
-        inspectTitle.CloseLit = closeHover == inspectWindow;
-        inspectTitle.PxW = InspectView.PxW;
-        if (inspect.Shown)
-            inspectTitle.Prepare(panelText);
+        PrepareTitles(w, panelText);
         if (Search.Shown)
             searchView.Prepare(Search, panelText);
         PrepareScreenTags(w, panelText);
@@ -3678,6 +3728,12 @@ public static class Lider
                     SurfaceQuad(screen, worldVp, rect, Color.Rgb(1, 1, 1, screen.Opacity), picture);
                 }
             }
+        // 平面のスクリーンの上のゲームの絵の見出しは、絵と同じく、ほかの物より先に描く
+        foreach (var screen in Screens)
+            if (screen.Shown && OnPlane(screen))
+                foreach (var window in screen.Windows)
+                    if (window.Content is GameView)
+                        DrawTitle(w, window, worldVp);
         foreach (var pair in motions)
         {
             var window = pair.Key;
@@ -3694,6 +3750,7 @@ public static class Lider
             panel.FrameAngle = (particles.Next() - 0.5f) * 0.03f * m.Shake * m.Shake;
             panel.FrameY = (particles.Next() - 0.5f) * 0.05f * m.Shake * m.Shake;
             panel.Draw(window.Code.Doc, angle, y, scale, vp, m.Z.Value, m.Glow.Value, m.Alarm);
+            DrawTitle(w, window, worldVp);
             // 動いている版の板は、コードのウィンドウの子: 親の座標で置き、親より手前に描く
             var board = DiffOf(window);
             if (board != null && board.Position != null)
@@ -3765,6 +3822,7 @@ public static class Lider
                 var on = VpOf(screen, worldVp);
                 Theme.Plate(on, Theme.Surface, a, y, Space.R, window.Size.X, window.Size.Y);
                 Quad3d.Curved(on, picture, Color.Rgb(1, 1, 1, 1), a, y, Space.R, window.Size.X, window.Size.Y, 0, 1);
+                DrawTitle(w, window, worldVp);
             }
         }
         // 窓に付く光と印は、コードのスクリーンと一緒に動く
@@ -3791,10 +3849,8 @@ public static class Lider
             Space.Flat = worldFlat || onView;
             Theme.Plate(on, Theme.Surface, BoardAngle, InspectY(), Space.R, size.X, size.Y);
             Quad3d.Curved(on, inspect.Texture, Color.Rgb(1, 1, 1, 1), BoardAngle, InspectY(), Space.R, size.X, size.Y, 0, 1);
-            Theme.Plate(on, Theme.Surface, BoardAngle, InspectTitleY(), Space.R, size.X, InspectTitleH);
-            if (inspectTitle.Texture != null)
-                Quad3d.Curved(on, inspectTitle.Texture, Color.Rgb(1, 1, 1, 1), BoardAngle, InspectTitleY(), Space.R, size.X, InspectTitleH, 0, 1);
             Space.Flat = worldFlat;
+            DrawTitle(w, inspectWindow, worldVp);
         }
         foreach (var ring in rings)
             DrawRing(vp, ring);
