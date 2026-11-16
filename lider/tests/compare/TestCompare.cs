@@ -108,11 +108,12 @@ public static class TestCompare
             // 小さい画面では Code のウィンドウがゲームの絵の見出しに重なるので、Code のスクリーンを下へ除ける (手前の見出しが先に押される)
             w.CodeScreen.Shift(0, -3);
             // 右の端は Space へ出す印なので、その左を押す
-            Click(saved.X + saved.W - 8 - PanelView.TitlePx, saved.Y + 8);
+            var bar = Lider.Screens[0].Windows[0].TitleBar;
+            Click(saved.X + saved.W - bar * 1.5f, saved.Y + bar * 0.5f);
             Check(DraftGame.Shown && w.Focused == Lider.Screens[0].Windows[0], "a click near the right end of the saved title closed something or did not focus it");
-            Click(draft.X + draft.W * 0.5f, draft.Y + 8);
+            Click(draft.X + draft.W * 0.5f, draft.Y + bar * 0.5f);
             Check(DraftGame.Shown && w.Focused == Lider.Screens[0].Windows[1], "a click on the draft title did not move the focus");
-            Click(draft.X + draft.W - 8, draft.Y + 8);
+            Click(draft.X + draft.W - bar * 0.5f, draft.Y + bar * 0.5f);
             Check(w.Focused == Lider.Screens[0].Windows[0], "closing the focused draft did not move the focus to the saved version");
             stage = 6;
         }
