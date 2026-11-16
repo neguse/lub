@@ -259,10 +259,27 @@ public static class Layouts
         if (layout is Even even)
             return even.Rows ? "Even rows" : "Even";
         if (layout is MainStack main)
-            return "MainStack " + main.Ratio;
+            return "MainStack mains=" + main.Mains + (main.Widths.Count > 0 ? " widths=" + Numbers(main.Widths) : "") + (main.Heights.Count > 0 ? " heights=" + Numbers(main.Heights) : "");
         if (layout is Stack stack)
             return "Stack " + stack.AlignX + " " + (stack.FromTop ? "top" : "bottom") + " " + stack.Margin;
         return "Full";
+    }
+
+    static string Numbers(List<float> values)
+    {
+        var parts = new List<string>();
+        foreach (var v in values)
+            parts.Add(v.ToString());
+        return string.Join(",", parts);
+    }
+
+    static List<float> ParseNumbers(string text)
+    {
+        var values = new List<float>();
+        foreach (var part in text.Split(','))
+            if (float.TryParse(part, out var v))
+                values.Add(v);
+        return values;
     }
 
     public static ILayout Parse(string text)
@@ -273,7 +290,23 @@ public static class Layouts
         if (f[0] == "Even")
             return new Even { Rows = f.Length > 1 && f[1] == "rows" };
         if (f[0] == "MainStack")
-            return new MainStack { Ratio = f.Length > 1 && float.TryParse(f[1], out var ratio) ? ratio : 0.5f };
+        {
+            var main = new MainStack();
+            for (var i = 1; i < f.Length; i++)
+            {
+                var pair = f[i].Split('=');
+                // 名前の無い数は、先頭のウィンドウに使う幅の割合 (前の書き方)
+                if (pair.Length == 1 && float.TryParse(f[i], out var ratio) && ratio > 0 && ratio < 1)
+                    main.Widths = new List<float> { ratio, 1 - ratio };
+                else if (pair.Length == 2 && pair[0] == "mains" && int.TryParse(pair[1], out var mains))
+                    main.Mains = mains;
+                else if (pair.Length == 2 && pair[0] == "widths")
+                    main.Widths = ParseNumbers(pair[1]);
+                else if (pair.Length == 2 && pair[0] == "heights")
+                    main.Heights = ParseNumbers(pair[1]);
+            }
+            return main;
+        }
         if (f[0] == "Stack" && f.Length > 3)
             return new Stack { AlignX = float.TryParse(f[1], out var x) ? x : 1, FromTop = f[2] == "top", Margin = float.TryParse(f[3], out var m) ? m : 0.03f };
         return new Full();

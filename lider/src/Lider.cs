@@ -970,7 +970,8 @@ public static class Lider
     }
 
     // Alt+Shift+PageUp / PageDown で変える幅 (px、約 8 桁)
-    const int WidthStep = 64;
+    // key で 1 回に変えるウィンドウの大きさ (メートル。半径 Space.R の所の見かけの長さ)
+    static float SizeStep => 64 * PanelView.BaseW / PanelView.BasePxW * (Space.Flat ? Space.FlatScale : 1);
 
     // lider の操作を、名前の付いた命令として表に載せる (key の割り当ては Keymap、検索からも同じ名前で呼ぶ)
     static void RegisterCommands()
@@ -1046,8 +1047,12 @@ public static class Lider
         CommandTable.Register("window:move-forward", "ウィンドウを並びの後ろへ動かす", () => Moved(w => w.MoveFocus(1))).Repeats = true;
         CommandTable.Register("window:grow", "ウィンドウを大きくする", () => Moved(w => w.FocusWindow!.Scale = Math.Min(Grab.MaxScale, w.FocusWindow.Scale * 1.1f))).Repeats = true;
         CommandTable.Register("window:shrink", "ウィンドウを小さくする", () => Moved(w => w.FocusWindow!.Scale = Math.Max(Grab.MinScale, w.FocusWindow.Scale / 1.1f))).Repeats = true;
-        CommandTable.Register("window:widen", "ウィンドウの幅を広げる", () => Moved(w => w.FocusWindow!.Resize(w.FocusWindow.WidthPx + WidthStep, w.FocusWindow.HeightPx))).Repeats = true;
-        CommandTable.Register("window:narrow", "ウィンドウの幅を狭める", () => Moved(w => w.FocusWindow!.Resize(w.FocusWindow.WidthPx - WidthStep, w.FocusWindow.HeightPx))).Repeats = true;
+        CommandTable.Register("window:widen", "ウィンドウの幅を広げる", () => With(w => GrowFocused(w, SizeStep, 0))).Repeats = true;
+        CommandTable.Register("window:narrow", "ウィンドウの幅を狭める", () => With(w => GrowFocused(w, -SizeStep, 0))).Repeats = true;
+        CommandTable.Register("window:heighten", "ウィンドウの高さを広げる", () => With(w => GrowFocused(w, 0, SizeStep))).Repeats = true;
+        CommandTable.Register("window:lower", "ウィンドウの高さを狭める", () => With(w => GrowFocused(w, 0, -SizeStep))).Repeats = true;
+        CommandTable.Register("layout:more-mains", "先頭に 1 枚ずつ並べるウィンドウを増やす", () => With(w => TellLayout(w, LayoutMessage.MoreMains))).Repeats = true;
+        CommandTable.Register("layout:fewer-mains", "先頭に 1 枚ずつ並べるウィンドウを減らす", () => With(w => TellLayout(w, LayoutMessage.FewerMains))).Repeats = true;
         CommandTable.Register("window:zen", "ウィンドウを画面いっぱいに広げる・戻す", () => With(w => Zen = !Zen));
         CommandTable.Register("window:move-to-next-screen", "ウィンドウを次のスクリーンへ移す", () => With(w =>
         {
@@ -1349,7 +1354,9 @@ public static class Lider
         var edged = !Zen && lastEye == null ? EdgeWindow(w, ray) : null;
         if (edged != null)
         {
-            w.FocusTo(edged);
+            // 自分の大きさを持つ Code のウィンドウは、引くと focus も移る。区画の境目を引いても、focus は動かさない
+            if (edged.Content is Code && ScreenFor(w, edged).Layout is Strip)
+                w.FocusTo(edged);
             StartEdge(edged, foundEdge);
             return;
         }
@@ -2546,7 +2553,7 @@ public static class Lider
                     // 左右に並ぶ形は、世界に置く (XR で頭に付いてこず、頭を回して端まで見られる)
                     if (tiled)
                         spec.Anchor = ScreenAnchor.World;
-                    spec.Layout = tiled ? "MainStack 0.5" : "Even";
+                    spec.Layout = tiled ? "MainStack mains=1" : "Even";
                     spec.Windows.Add("game:saved");
                     spec.Windows.Add("game:draft");
                     if (tiled)
@@ -2811,95 +2818,111 @@ public static class Lider
         }
     }
 
-    // 指しているか引いている端を光らせる
-    static void DrawEdge(Workspace w, Mat4 vp)
+    // 指しているか引いている端を光らせる (world は、世界の座標の view-projection)
+    static void DrawEdge(Workspace w, Mat4 world)
     {
         var window = sizing ?? edgeHoverWindow;
         var edge = sizing != null ? sizingEdge : edgeHover;
-        var m = window != null ? MotionOf(window) : null;
-        if (window == null || m == null)
+        if (window == null || window.Position == null)
             return;
+        var screen = ScreenFor(w, window);
         var color = Color.Rgb(Theme.Accent.R, Theme.Accent.G, Theme.Accent.B, 0.9f);
-        var r = Space.R - PanelView.FrontGap - 0.006f;
-        var k = r / Space.R;
-        var bw = window.UnscaledSize.X * m.Scale.Value;
-        var bh = window.UnscaledSize.Y * m.Scale.Value;
+        var at = window.Position.Value;
+        var line = 0.005f / Apparent(screen);
         if ((edge & 1) != 0)
-            Quad3d.CurvedSolid(vp, color, m.Angle.Value + (bw * 0.5f + 0.004f) / Space.R, m.Y.Value * k, r, 0.005f, bh * k);
+            SurfaceQuad(screen, world, new Vec4(at.X + window.Size.X * 0.5f + line, at.Y, line, window.Size.Y), color, null);
         if ((edge & 2) != 0)
-            Quad3d.CurvedSolid(vp, color, m.Angle.Value, (m.Y.Value - bh * 0.5f - 0.004f) * k, r, bw * k, 0.005f);
+            SurfaceQuad(screen, world, new Vec4(at.X, at.Y - window.Size.Y * 0.5f - line, window.Size.X, line), color, null);
     }
 
-    // 窓の端の、引いて大きさを変える所の幅 (メートル。窓の外側)
+    // ウィンドウの端の、引いて大きさを変える所の幅 (メートル。半径 Space.R の所の見かけの長さ。ウィンドウの外側)
     const float EdgeW = 0.018f;
 
-    // 指した窓の端。右なら 1、下なら 2 の和 (当たらなければ 0)
+    // 指したウィンドウの端。右なら 1、下なら 2 の和 (当たらなければ 0)。
+    // 引けるのは、ウィンドウを置いているスクリーンの規則が引けると答えた端だけ
     public static int EdgeAt(Workspace w, Window window, Ray ray)
     {
-        // 端を引いて大きさを変えられるのは、自分の大きさを持つ窓 (横一列のコードのスクリーン) だけ
-        if (grab.Holding || ScreenFor(w, window) != w.CodeScreen)
+        var screen = ScreenFor(w, window);
+        if (grab.Holding || window.Position == null || !screen.Shown)
             return 0;
-        var m = MotionOf(window);
-        var scale = m != null ? m.Scale.Value : window.Scale;
-        var angle = m != null ? m.Angle.Value : WindowAngle(w, window);
-        var y = m != null ? m.Y.Value : WindowY(w, window);
-        var bw = window.UnscaledSize.X * scale;
-        var bh = window.UnscaledSize.Y * scale;
-        var uv = Space.HitCurved(RayOn(w.CodeScreen, ray), angle + EdgeW * 0.5f / Space.R, y - EdgeW * 0.5f, Space.R, bw + EdgeW, bh + EdgeW);
-        if (uv == null)
+        var can = screen.Layout.Edges(screen, window);
+        var p = can != 0 ? SurfacePoint(screen, ray) : null;
+        if (p == null)
             return 0;
-        var edge = 0;
-        if (uv.Value.X * (bw + EdgeW) >= bw)
-            edge += 1;
-        if (uv.Value.Y * (bh + EdgeW) >= bh)
-            edge += 2;
-        return edge;
+        var band = EdgeW / Apparent(screen);
+        var x = p.Value.X - (window.Position.Value.X + window.Size.X * 0.5f);
+        var y = window.Position.Value.Y - window.Size.Y * 0.5f - p.Value.Y;
+        // 右の端の外側と、下の端の外側 (角は両方)
+        if (x < -window.Size.X || x >= band || y < -window.Size.Y || y >= band)
+            return 0;
+        return ((can & 1) != 0 && x >= 0 ? 1 : 0) + ((can & 2) != 0 && y >= 0 ? 2 : 0);
     }
 
-    // 窓の外側の右か下の端を探す (focus のある窓を先に見る)。端の向きは foundEdge に置く
+    // ウィンドウの外側の右か下の端を探す (focus のあるウィンドウを先に見る)。端の向きは foundEdge に置く
     static Window? EdgeWindow(Workspace w, Ray ray)
     {
         foundEdge = 0;
-        if (w.FocusWindow != null)
+        if (w.Focused != null)
         {
-            foundEdge = EdgeAt(w, w.FocusWindow, ray);
+            foundEdge = EdgeAt(w, w.Focused, ray);
             if (foundEdge != 0)
-                return w.FocusWindow;
+                return w.Focused;
         }
-        foreach (var window in w.Windows)
-        {
-            foundEdge = EdgeAt(w, window, ray);
-            if (foundEdge != 0)
-                return window;
-        }
+        foreach (var screen in Screens)
+            foreach (var window in screen.Windows)
+            {
+                foundEdge = EdgeAt(w, window, ray);
+                if (foundEdge != 0)
+                    return window;
+            }
         return null;
     }
 
-    // ray の指す所まで、引いている端を動かす
+    // ray の指す所まで、引いている端を動かす (どの境目がどう動くかは、スクリーンの規則が決める)
     public static void DragEdge(Workspace w, Ray ray)
     {
         var window = sizing;
-        if (window == null || Zen)
+        if (window == null || Zen || window.Position == null)
             return;
-        var at = Space.OnCylinderAt(RayOn(w.CodeScreen, ray), Space.R);
-        if (at == null)
+        var screen = ScreenFor(w, window);
+        var p = SurfacePoint(screen, ray);
+        if (p == null)
             return;
-        var perPx = PanelView.BaseW / PanelView.BasePxW * window.Scale;
-        var pxW = window.WidthPx;
-        var pxH = window.HeightPx;
-        if ((sizingEdge & 1) != 0)
+        // 大きくした分だけ端が動くとは限らない (真ん中の動かないウィンドウは、両側へ広がる) ので、端が指す所に寄るまで繰り返す
+        for (var i = 0; i < 4 && window.Position != null; i++)
         {
-            // 先頭の窓は真ん中が動かないので、端までの差の 2 倍だけ広げる
-            var right = WindowAngle(w, window) * Space.R + window.UnscaledSize.X * window.Scale * 0.5f;
-            var factor = w.CodeScreen.Windows.IndexOf(window) == 0 ? 2 : 1;
-            pxW += (int)((at.Angle * Space.R - right) * factor / perPx);
+            var right = window.Position.Value.X + window.Size.X * 0.5f;
+            var bottom = window.Position.Value.Y - window.Size.Y * 0.5f;
+            screen.Layout.Grow(screen, window, (sizingEdge & 1) != 0 ? p.Value.X - right : 0, (sizingEdge & 2) != 0 ? bottom - p.Value.Y : 0);
+            screen.Arrange();
+            // 並べ直しても端が動かない規則 (大きさが次の frame に決まる) は、次の引きで続きを寄せる
+            if (window.Position == null || (window.Position.Value.X + window.Size.X * 0.5f == right && window.Position.Value.Y - window.Size.Y * 0.5f == bottom))
+                break;
         }
-        if ((sizingEdge & 2) != 0)
+    }
+
+    // focus のあるウィンドウの幅を dx、高さを dy メートル (半径 Space.R の所の見かけの長さ) だけ大きくする
+    static void GrowFocused(Workspace w, float dx, float dy)
+    {
+        var window = w.Focused;
+        if (window == null || window.Position == null)
+            return;
+        var screen = ScreenFor(w, window);
+        screen.Layout.Grow(screen, window, dx / Apparent(screen), dy / Apparent(screen));
+        // Code のウィンドウは、key で動かしている間、少し浮かせる
+        if (window == w.FocusWindow)
         {
-            var bottom = WindowY(w, window) - window.UnscaledSize.Y * window.Scale * 0.5f;
-            pxH += (int)((bottom - at.Y) * 2 / perPx);
+            keyMoved = window;
+            keyLift = 0.3f;
         }
-        window.Resize(pxW, pxH);
+    }
+
+    // focus のあるウィンドウを置いているスクリーンの規則に知らせる
+    static void TellLayout(Workspace w, string message)
+    {
+        var window = w.Focused ?? w.FocusWindow;
+        if (window != null)
+            ScreenFor(w, window).Layout.Tell(message);
     }
 
     public static void StartEdge(Window window, int edge)
@@ -3893,7 +3916,7 @@ public static class Lider
             DrawRing(vp, ring);
         DrawFlash(vp);
         DrawFocusCue(w, vp);
-        DrawEdge(w, vp);
+        DrawEdge(w, worldVp);
         // 画面のキーボードは、ほかのウィンドウより手前に描く
         var keys = w.ScreenOf(oskWindow);
         if (keys != null && keys.Shown && oskWindow.Position != null && osk.Picture != null)
