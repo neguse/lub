@@ -821,8 +821,12 @@ public class PanelView
     }
 
     // 宣言の行の本文の右に、フィールドなら「= 値」、class なら個体の印を出し、印の所を覚える (押して選ぶ)
+    // 値を描いた字の 1 桁の幅 (ValueAt が、描いた所を求めるのに使う)
+    float valueCellW = 1;
+
     void RenderField(Document doc, MonoText text, FieldValue f, float x0, float lh)
     {
+        valueCellW = text.CellW;
         var body = doc.Text(f.Line - 1);
         var x = x0 + (Utf8.Cells(body, Utf8.Bytes(body)) + 2) * text.CellW;
         var y = EditorHost.LineY(View, f.Line);
@@ -845,6 +849,24 @@ public class PanelView
             text.Draw(batch, m.Text, x, y, Theme.Accent, 0, PxW);
             x = m.X1 + text.CellW;
         }
+    }
+
+    // 窓の中の (x, y) px にある、フィールドの値 (行の後ろの "= 値"。無ければ null)
+    public FieldValue? ValueAt(Document doc, float x, float y)
+    {
+        var lh = EditorHost.LineHeight(View);
+        foreach (var f in Fields)
+        {
+            var top = EditorHost.LineY(View, f.Line);
+            if (f.Text == "" || f.Path == "" || y < top || y >= top + lh)
+                continue;
+            var body = doc.Text(f.Line - 1);
+            var left = EditorHost.TextX(View) + (Utf8.Cells(body, Utf8.Bytes(body)) + 2) * valueCellW;
+            var s = "= " + f.Text;
+            if (x >= left - 4 && x <= left + Utf8.Cells(s, Utf8.Bytes(s)) * valueCellW + 4)
+                return f;
+        }
+        return null;
     }
 
     // 窓の中の (x, y) px にある、class の行の印

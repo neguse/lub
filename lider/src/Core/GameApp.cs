@@ -46,6 +46,12 @@ public static class GameApp
         timeline?.Clear();
     }
 
+    // 止めている frame の状態を書き換える (AppTimeline.Edit)。止めていなければ false
+    public static bool Edit(Func<bool> change)
+    {
+        return timeline != null && Ref != null && timeline.Edit(Ref, change);
+    }
+
     // 控えている frame の数
     public static int Count => timeline != null ? timeline.Count : 0;
     // 止めている位置 (何個前か。止めていなければ -1)

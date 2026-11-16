@@ -1354,6 +1354,8 @@ public static class Lider
                 EnterScope(row);
             else if (row != null && row.Openable && !row.Cycle)
                 inspect.Tree.Toggle(row.Key);
+            else if (row != null && Editable(row))
+                EditValue(w, row.Key, row.Text);
             return;
         }
         var edged = !Zen && lastEye == null ? EdgeWindow(w, ray) : null;
@@ -1391,6 +1393,13 @@ public static class Lider
                     ToggleInstance(mark.Class, mark.Id);
                 else
                     Fields.NextPage(mark.Class);
+                return;
+            }
+            // 止めている間は、行の後ろの値を押すと、その値を書き換える
+            var value = Paused ? Panel(hit.Window).ValueAt(hit.Window.Code.Doc, hit.Uv.X * hit.Window.PxW, hit.Uv.Y * hit.Window.PxH) : null;
+            if (value != null)
+            {
+                EditValue(w, value.Path, value.Text);
                 return;
             }
             pressed = hit.Window;
@@ -1448,6 +1457,7 @@ public static class Lider
             c.Target = HintTarget.Inspect;
             var row = inspect.Load ? null : inspect.RowAt(uv.Value);
             c.Openable = row != null && row.Openable && !row.Cycle;
+            c.Editable = !inspect.Load && row != null && Editable(row);
             c.Open = row != null && row.Open;
             c.Jump = inspect.Load ? inspect.LoadAt(uv.Value) != null : row != null && row.Target != "" && InspectView.OnJump(uv.Value);
             c.Scope = row != null && row.Scopable && InspectView.OnScope(uv.Value);
@@ -1458,6 +1468,7 @@ public static class Lider
             c.Target = HintTarget.Window;
             var mark = Panel(over.Window).MarkAt(over.Uv.X * over.Window.PxW, over.Uv.Y * over.Window.PxH);
             c.InstanceMark = mark != null && mark.Id != "";
+            c.Editable = Paused && Panel(over.Window).ValueAt(over.Window.Code.Doc, over.Uv.X * over.Window.PxW, over.Uv.Y * over.Window.PxH) != null;
             c.MoreMark = mark != null && mark.Id == "";
         }
         var hints = DetailHints(w, ray);
@@ -2774,7 +2785,7 @@ public static class Lider
     static readonly List<string> savedStates = new List<string>();
     // 控えの番号の始まり (控えた frame と、編集中の版へ写す控えの番号と重ならない所)
     const int StateSlots = 2000000;
-    // 状態を控えられなかった、戻せなかった理由 (focus のあるウィンドウに出す。次に通ったら消す)
+    // 状態を控えられなかった、戻せなかった、値を書けなかった理由 (focus のあるウィンドウに出す。次に通ったら消す)
     public static string StateNotice = "";
 
     // lider が見ている版のゲームの状態を、name で控える (同じ名前なら上書きする)。控えるたびに、戻す命令 state:load:<名前> を載せる
@@ -2790,6 +2801,29 @@ public static class Lider
             CommandTable.Register("state:load:" + name, "状態「" + name + "」に戻す", () => With(w => LoadState(name)));
         }
         StateNotice = Watched.Save(StateSlots + at, out var error) ? "" : "状態「" + name + "」を控えられません: " + error;
+    }
+
+    // 止めている間に書き換えられる、インスペクタの値の行か (開閉する行、メソッドの行、区切りの行は書けない)
+    static bool Editable(InspectRow row)
+    {
+        return Paused && !row.Openable && row.Text != "";
+    }
+
+    // 止めている間に、値を押した: bool は反転し、ほかは検索の欄に新しい値を打ってもらう
+    public static void EditValue(Workspace w, string path, string text)
+    {
+        if (!Paused)
+            return;
+        if (text == "true" || text == "false")
+            SetValue(path, text == "true" ? "false" : "true");
+        else
+            Search.Ask(w, path + " (今 " + text + ") =", typed => SetValue(path, typed));
+    }
+
+    // lider が見ている版のゲームの、path の値を text の値に書き換える (止めている間だけ)。書けなければ、理由を知らせる
+    public static void SetValue(string path, string text)
+    {
+        StateNotice = Watched.Set(path, text, out var error) ? "" : path + " に書けません: " + error;
     }
 
     // name で控えた状態を、lider が見ている版のゲームに読み込む。読み込めなければ、ゲームはそのまま続き、理由を知らせる

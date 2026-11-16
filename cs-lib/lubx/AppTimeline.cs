@@ -1,6 +1,7 @@
 // 実装ライブラリ lubx の AppTimeline。
 // App.Use で開いた app の直近の frame を控え、止めて、過去の frame に戻る。
 
+using System;
 using Lub;
 
 namespace Lubx;
@@ -104,6 +105,24 @@ public class AppTimeline
             Replay = input?.Replay,
             Keep = slot,
         });
+    }
+
+    /// <summary>止めている frame の状態を書き換える。
+    /// change は、その frame を進める前の状態を読み込んだ app に、値を書く (Sys.InspectSet など)。書けたら true を返す。
+    /// change が true を返したら、書き換えた状態を控え直し、それより後の控えを捨てる (止めている位置は直近になる)。次の Step は、書き換えた状態から止めた frame を作り直す。
+    /// 止めていないか、状態を読み書きできないか、change が false を返したら、控えは変えずに false。
+    /// </summary>
+    public bool Edit(AppRef app, Func<bool> change)
+    {
+        if (paused < 0) return false;
+        var at = Index(paused);
+        if (!App.Load(app, firstSlot + at, out _)) return false;
+        if (!change()) return false;
+        if (!App.Save(app, firstSlot + at, out _)) return false;
+        head = (at + 1) % capacity;
+        count -= paused;
+        paused = 0;
+        return true;
     }
 
     /// <summary>控えを全部捨てる。

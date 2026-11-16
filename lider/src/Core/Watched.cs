@@ -25,6 +25,24 @@ public static class Watched
         Switches++;
     }
 
+    // 止めている間に、path の値 (Inspect の Path) を text の値に書き換える (Sys.InspectSet)。
+    // 保存した版は、止めた frame を進める前の状態に書き、その frame を作り直す (それより後の控えた frame は捨てる)。
+    // 編集中の版は、止めている間は進めないので、今の状態に書く。
+    // 書けなければ false で、値は変わらず、理由が error に入る
+    public static bool Set(string path, string text, out string? error)
+    {
+        error = "ゲームを止めている間だけ書けます";
+        var app = Ref;
+        if (app == null || GameApp.Position < 0)
+            return false;
+        if (Version == GameVersion.Draft)
+            return Sys.InspectSet(path, text, out error, app);
+        string? reason = null;
+        var ok = GameApp.Edit(() => Sys.InspectSet(path, text, out reason, app));
+        error = ok ? null : reason ?? "止めた frame の状態を読み書きできません";
+        return ok;
+    }
+
     // 見ている版の状態を、番号 slot の控えに書く (App.Save)。書けなければ false で、理由が error に入る
     public static bool Save(int slot, out string? error)
     {

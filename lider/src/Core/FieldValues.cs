@@ -30,6 +30,8 @@ public class FieldValue
     public int Line;
     // 値 (class の行は "")
     public string Text = "";
+    // 値の節の Path (Watched.Inspect の Path。class の行は "")
+    public string Path = "";
     // 変わって光る強さ (0 から 1)
     public float Glow;
     // 数なら直近の frame の値 (古い順。数でなければ null)
@@ -176,6 +178,7 @@ public class FieldValues
             if (node != null)
             {
                 value.Text = node.Text;
+                value.Path = node.Path;
                 value.Glow = flash.Track(node.Path, node.Text);
                 value.History = Sample(node.Path, node.Text);
                 shown.Add(value);
@@ -194,6 +197,7 @@ public class FieldValues
             if (node == null)
                 continue;
             value.Text = node.Text;
+            value.Path = node.Path;
             // 並びがずれて path が変わっても光らないよう、個体で覚える
             value.Glow = flash.Track(one.Id + "." + field, node.Text);
             // 並びがずれても同じ個体を追うよう、個体で覚える
