@@ -298,6 +298,8 @@ public static class Lider
         }
         if (DraftGame.Notice != "" && window == w.FocusWindow)
             notices.Add(DraftGame.Notice);
+        if (StateNotice != "" && window == w.FocusWindow)
+            notices.Add(StateNotice);
         return notices;
     }
 
@@ -1061,6 +1063,9 @@ public static class Lider
         }));
         CommandTable.Register("arrange:next", "次の配置へ", () => With(w => NextArrangement()));
         CommandTable.Register("arrange:save", "今の配置を、名前を付けて控える", () => With(w => Search.Ask(w, "配置の名前", SaveArrangement)));
+        CommandTable.Register("state:save", "今のゲームの状態を、名前を付けて控える", () => With(w => Search.Ask(w, "状態の名前", SaveState)));
+        savedStates.Clear();
+        StateNotice = "";
         CommandTable.Register("inspector:toggle", "インスペクタを開く・focus を移す・閉じる", () => With(w =>
         {
             // 出していなければ出して focus を移し、focus がほかにあれば focus を移し、focus があれば閉じる
@@ -2763,6 +2768,37 @@ public static class Lider
                 lines.Add(line);
         Io.SaveText(ArrangementsPath(w), string.Join("\n", lines) + "\n");
         RegisterArrangements();
+    }
+
+    // 名前を付けて控えたゲームの状態 (並びの番号が控えの番号)。控えは lider を閉じるまで
+    static readonly List<string> savedStates = new List<string>();
+    // 控えの番号の始まり (控えた frame と、編集中の版へ写す控えの番号と重ならない所)
+    const int StateSlots = 2000000;
+    // 状態を控えられなかった、戻せなかった理由 (focus のあるウィンドウに出す。次に通ったら消す)
+    public static string StateNotice = "";
+
+    // lider が見ている版のゲームの状態を、name で控える (同じ名前なら上書きする)。控えるたびに、戻す命令 state:load:<名前> を載せる
+    public static void SaveState(string name)
+    {
+        if (name == "")
+            return;
+        var at = savedStates.IndexOf(name);
+        if (at < 0)
+        {
+            at = savedStates.Count;
+            savedStates.Add(name);
+            CommandTable.Register("state:load:" + name, "状態「" + name + "」に戻す", () => With(w => LoadState(name)));
+        }
+        StateNotice = Watched.Save(StateSlots + at, out var error) ? "" : "状態「" + name + "」を控えられません: " + error;
+    }
+
+    // name で控えた状態を、lider が見ている版のゲームに読み込む。読み込めなければ、ゲームはそのまま続き、理由を知らせる
+    public static void LoadState(string name)
+    {
+        var at = savedStates.IndexOf(name);
+        if (at < 0)
+            return;
+        StateNotice = Watched.Load(StateSlots + at, out var error) ? "" : "状態「" + name + "」に戻せません: " + error;
     }
 
     // window を、次のスクリーンへ移す (ウィンドウを並べるスクリーンを順に回る)。

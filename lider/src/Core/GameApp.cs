@@ -40,6 +40,12 @@ public static class GameApp
         timeline = frames > 0 ? new AppTimeline(frames) : null;
     }
 
+    // 控えた frame を捨て、止めていれば続ける (外から状態を読み込んだ後に呼ぶ。止めたままだと、止めた frame の状態に戻されてしまう)
+    public static void Forget()
+    {
+        timeline?.Clear();
+    }
+
     // 控えている frame の数
     public static int Count => timeline != null ? timeline.Count : 0;
     // 止めている位置 (何個前か。止めていなければ -1)
