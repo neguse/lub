@@ -158,18 +158,106 @@ public class VmStateTests
         Assert.Equal("17 7", stdout);
     }
 
+    // 形を変える編集に使う小さいゲーム。class、struct (field、static、List と Dictionary と配列の要素)、参照の field を持つ
+    private const string Small = Header + """
+        public struct Pt { public int X; public float Y; }
+        public class Item { public int Id; }
+        public class Enemy
+        {
+            public int Hp = 3;
+            public int Armor = 5;
+            public Pt Pos;
+            public Item? Held;
+            public List<Pt> Trail = new List<Pt>();
+        }
+        public static class Game
+        {
+            static List<Enemy> all = new List<Enemy>();
+            static Pt origin;
+            static Dictionary<int, Pt> marks = new Dictionary<int, Pt>();
+            static Pt[] grid = new Pt[2];
+            public static void Setup()
+            {
+                var e = new Enemy();
+                e.Held = new Item { Id = 4 };
+                all.Add(e);
+                all.Add(new Enemy());
+                origin.X = 7;
+                origin.Y = 1.5f;
+            }
+            public static void Frame()
+            {
+                foreach (var e in all) { e.Hp++; e.Armor += 2; e.Pos.X += 1; e.Pos.Y += 0.5f; e.Trail.Add(e.Pos); }
+                origin.X++;
+                marks[all[0].Hp] = all[0].Pos;
+                grid[1].X += 2;
+                grid[1].Y += 0.25f;
+            }
+            public static void Report()
+            {
+                Console.WriteLine($"{all[0].Hp} {all[1].Hp}");
+            }
+        }
+        """;
+
+    private const string SmallReport = "Console.WriteLine($\"{all[0].Hp} {all[1].Hp}\");";
+
+    /// <summary>形の違う版への読み込みは、reload (doc/object-model.md §6) と同じ決まりで値を移す。
+    /// 同じ編集を、止めずに reload で当てた結果と、状態を保存して新版に読み込んだ結果が同じであること。
+    /// edits は「旧版の文字列 => 新版の文字列」を `@@` で並べたもの、report は新版の Report の中身。</summary>
     [Theory]
-    [InlineData("public int Armor;", "public int Armor; public int Mana;", "type Enemy has different fields")]
-    [InlineData("public int Armor;", "public float Armor;", "type Enemy has different fields")]
-    [InlineData("public struct Pt { public int X; public float Y; public bool On; }",
-        "public struct Pt { public float Y; public int X; public bool On; }", "type Pt has different fields")]
-    public void ChangedShape_IsRefused(string from, string to, string reason)
+    // class に initializer のある field を足す: 足した field は initializer の値
+    [InlineData("public int Armor = 5;=>public int Armor = 5; public int Mana = 9;",
+        "Console.WriteLine($\"{all[0].Hp} {all[0].Armor} {all[0].Mana} {all[1].Mana}\");", "5 9 9 9")]
+    // class の field を消す: 残りの field は値を保つ
+    [InlineData("public int Armor = 5;=>@@e.Armor += 2; =>",
+        "Console.WriteLine($\"{all[0].Hp} {all[0].Pos.X} {all[0].Held!.Id} {all[0].Trail.Count}\");", "5 2 4 2")]
+    // field の型を変える: 値は移さず、initializer の値になる
+    [InlineData("public int Armor = 5;=>public float Armor = 5.5f;",
+        "Console.WriteLine($\"{all[0].Hp} {all[0].Armor} {all[1].Armor}\");", "5 5.5 5.5")]
+    // struct に field を足す: field、static、List と Dictionary と配列の要素のどれも、前の field は値を保ち、足した field は 0
+    [InlineData("public struct Pt { public int X; public float Y; }=>public struct Pt { public int X; public float Y; public int Z; }",
+        "Console.WriteLine($\"{all[0].Pos.X} {all[0].Pos.Y} {all[0].Pos.Z} {origin.X} {origin.Y} {origin.Z} {all[0].Trail[1].Y} {marks[5].X} {grid[1].Y} {grid[1].Z}\");",
+        "2 1 0 9 1.5 0 1 2 0.5 0")]
+    // struct の field の順を変える: 名前で対応する
+    [InlineData("public struct Pt { public int X; public float Y; }=>public struct Pt { public float Y; public int X; }",
+        "Console.WriteLine($\"{all[0].Pos.X} {all[0].Pos.Y} {origin.X} {origin.Y} {all[0].Trail[1].X} {marks[5].Y} {grid[1].X}\");", "2 1 9 1.5 2 1 4")]
+    // 参照の field の型を変える: 値は移さない (null)
+    [InlineData("public Item? Held;=>public object? Held;",
+        "Console.WriteLine($\"{all[0].Hp} {all[0].Held == null} {all[1].Held == null}\");", "5 True True")]
+    // object を作る initializer の field を足す: instance ごとに別の object
+    [InlineData("public int Armor = 5;=>public int Armor = 5; public List<int> Log = new List<int>();",
+        "Console.WriteLine($\"{all[0].Log.Count} {all[1].Log.Count} {all[0].Log != all[1].Log} {all[0].Armor}\");", "0 0 True 9")]
+    public void ChangedShape_MovesLikeAReload(string edits, string report, string expected)
     {
         if (!Backends.VmEnabled) return;
-        Assert.Contains(from, Types);
-        var (_, code, stdout, stderr) = Backends.RunVmState([Game()], [Game(types: Types.Replace(from, to))], "Game", 2, 4);
+        var v2 = Small;
+        foreach (var edit in edits.Split("@@"))
+        {
+            var pair = edit.Split("=>");
+            Assert.Contains(pair[0], v2);
+            v2 = v2.Replace(pair[0], pair[1]);
+        }
+        Assert.Contains(SmallReport, v2);
+        v2 = v2.Replace(SmallReport, report);
+        var reloaded = Backends.RunVmReload([Small], [v2], "Game", 2);
+        Assert.True(reloaded.ExitCode == 0, reloaded.Stderr);
+        var (_, code, stdout, stderr) = Backends.RunVmState([Small], [v2], "Game", 2, 2);
+        Assert.True(code == 0, stderr);
+        Assert.Equal(reloaded.Stdout, stdout);
+        Assert.Equal(expected, stdout);
+    }
+
+    [Fact]
+    public void ChangedKindOfType_IsRefused()
+    {
+        if (!Backends.VmEnabled) return;
+        const string v1 = Header + "public class C { public int A; } public static class Game { static List<C> all = new List<C>(); public static void Setup() { all.Add(new C()); } public static void Frame() { } public static void Report() { } }";
+        const string v2 = Header + "public struct C { public int A; } public static class Game { static List<C> all = new List<C>(); public static void Setup() { all.Add(new C()); } public static void Frame() { } public static void Report() { } }";
+        var (_, code, stdout, stderr) = Backends.RunVmState([v1], [v2], "Game", 1, 2);
         Assert.Equal(1, code);
-        Assert.Contains(reason, stderr);
+        // class を struct にすると、それを要素に持つ容器の形も変わる
+        Assert.Contains("tvm_state_load: type List<C> has a different element", stderr);
         Assert.Equal("", stdout);
     }
 
@@ -192,12 +280,12 @@ public class VmStateTests
     public void RefusedLoad_LeavesTheStateAsItWas()
     {
         if (!Backends.VmEnabled) return;
-        // 型の形が合わない状態を読み込もうとしても、読み込む側の static は初期化子の値のまま
-        const string v1 = Header + "public class C { public int A; } public static class Game { static C c = new C(); static int n = 1; public static void Setup() { n = 50; } public static void Frame() { } public static void Report() { } }";
-        const string v2 = Header + "public class C { public int A; public int B; } public static class Game { static C c = new C(); static int n = 1; public static void Setup() { } public static void Frame() { } public static void Report() { } }";
+        // 読み込めない状態 (型が今の版に無い) を読み込もうとしても、読み込む側の static は初期化子の値のまま
+        const string v1 = Header + "public class C { public int A; } public static class Game { static object c = new C(); static int n = 1; public static void Setup() { n = 50; } public static void Frame() { } public static void Report() { } }";
+        const string v2 = Header + "public static class Game { static object c = \"\"; static int n = 1; public static void Setup() { } public static void Frame() { } public static void Report() { } }";
         var (_, code, _, stderr) = Backends.RunVmState([v1], [v2], "Game", 1, 2);
         Assert.Equal(1, code);
-        Assert.Contains("type C has different fields", stderr);
+        Assert.Contains("this version has no type C", stderr);
     }
 
     // 壊れた byte 列は断るだけで、VM は落ちない (終了コードは 0 か 1)

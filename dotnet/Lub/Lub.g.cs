@@ -2658,7 +2658,7 @@ public static unsafe partial class App
         }
     }
 
-    /// <summary>番号 slot の控えを、開いた app に読み込む。 app の C# の static は控えの値に置き換わり、次の `Step` はそこから続く。控えを書いた app と別の app にも読み込める (同じ型の形を持つ module であること。関数の中身は違ってよい)。物理の world、音、file は読み込む前のまま。資源の ref は控えを書いた app のもので、別の app に読み込むと、宣言し直すまで使えない。まだ `Step` していない app は、module を読み込んで `OnInit` を呼んでから読み込む。読み込めたら true。断ったら false で、app の状態は変わらず、理由が error に入る (控えが無い、型の形が違う、など)。</summary>
+    /// <summary>番号 slot の控えを、開いた app に読み込む。 app の C# の static は控えの値に置き換わり、次の `Step` はそこから続く。控えを書いた app と別の app にも、控えた後にコードを変えた app にも読み込める。関数の中身は違ってよい。class と struct の形が違えば、field を名前で対応させて移す (種類と型が同じ field は控えの値、足した field と型を変えた field は初期化子の値、消した field は捨てる)。物理の world、音、file は読み込む前のまま。資源の ref は控えを書いた app のもので、別の app に読み込むと、宣言し直すまで使えない。まだ `Step` していない app は、module を読み込んで `OnInit` を呼んでから読み込む。読み込めたら true。断ったら false で、app の状態は変わらず、理由が error に入る (控えが無い、控えにある型が今の版に無い、など)。</summary>
     public static bool Load(AppRef app, int slot, out string? error)
     {
         var a = LubRuntime.Arena.Begin();

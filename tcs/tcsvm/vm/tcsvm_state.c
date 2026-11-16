@@ -5,18 +5,21 @@
    byte 列 (little endian):
      u32 magic、u32 版
      型の表: u32 数、型ごとに 名前、u8 種類、形
-       class / struct: u8 host の値を持つか、u32 field の数、field ごとに 名前、u8 種類、u32 struct の型 (struct の field だけ)
+       class / struct: u8 host の値を持つか、u32 field の数、field ごとに 名前、u8 種類、u32 struct の型 (struct の field だけ)、
+         宣言した型の名前 (参照の field だけ)
        配列 / List / box: u8 要素の種類、u32 要素の struct の型
        Dictionary: u8 key の種類、u8 値の種類、u32 値の struct の型
      object の頭: u32 数、object ごとに u32 型、u32 数 (配列と List と Dictionary は要素、string は byte、closure は捕捉)、
        string は byte 列、closure は関数の名前
      object の中身: 頭と同じ順
-     static: u32 数、static ごとに 名前、u8 種類、u32 struct の型、値
+     static: u32 数、static ごとに 名前、u8 種類、u32 struct の型、宣言した型の名前 (参照の static だけ)、値
      検査の通し番号: u32 数、組ごとに u32 object の番号、u64 通し番号 (検査が番号を振った object だけ)
    値は int と float が 4 byte、bool が 1 byte、参照が u32 (object の番号 + 1。0 は null)、struct は field の順。
    名前は u32 の長さと byte 列。
 
-   読み込みは、型の形が今の module と同じであること、参照の先が置き場所の型に合うこと、closure の関数が関数型に合うことを確かめる。
+   読み込みは、型を名前で今の module の型に対応させる。class と struct の形が違えば、reload の計画 (doc/object-model.md §6) と同じ決まりで移す:
+   field を名前で対応させ、種類と型の名前が同じなら状態の値、違えば 0 の値、状態に無い field は 0 の値から initializer、今の型に無い field は読み捨てる。
+   参照の先が置き場所の型に合うこと、closure の関数が関数型に合うことを確かめる。
    確かめ終わるまで static に触らないので、断ったときは状態は変わらない。
    host の handle が持つ object は書かない (読み込んだ後も handle は前の object を指す)。 */
 #include "tcsvm_internal.h"
@@ -26,7 +29,7 @@
 #include <string.h>
 
 #define STATE_MAGIC 0x53534354u /* "TCSS" */
-#define STATE_VERSION 2u
+#define STATE_VERSION 3u
 #define NONE 0xFFFFFFFFu
 #define NAME_MAX_LEN 1024u
 
@@ -286,6 +289,11 @@ static void save_object(Save *sv, void *p) {
   }
 }
 
+/* 参照の置き場所が宣言した型の名前 (型を持たない置き場所は "") */
+static const char *declared_name(const TvmVm *vm, uint16_t type) {
+  return type < vm->ntypes ? vm->types[type].name : "";
+}
+
 static void save_type_shape(Save *sv, uint32_t i) {
   const TvmType *t = &sv->vm->types[sv->type_of[i]];
   Buf *b = &sv->types;
@@ -302,6 +310,8 @@ static void save_type_shape(Save *sv, uint32_t i) {
       put_u32(b, t->fields[k].kind == TVM_K_STRUCT
                      ? save_type(sv, t->fields[k].type)
                      : NONE);
+      if (t->fields[k].kind == TVM_K_REF)
+        put_str(b, declared_name(sv->vm, t->fields[k].type));
     }
     break;
   case TVM_T_DICT:
@@ -359,6 +369,8 @@ TvmStatus tvm_state_save(TvmVm *vm, uint8_t **bytes, size_t *size) {
       put_u8(&sv.statics, f->kind);
       if (f->kind != TVM_K_STRUCT) {
         put_u32(&sv.statics, NONE);
+        if (f->kind == TVM_K_REF)
+          put_str(&sv.statics, declared_name(vm, f->type));
         save_slot(&sv, &sv.statics, f->kind, vm->statics[f->slot]);
         continue;
       }
@@ -423,22 +435,58 @@ void tvm_state_free(uint8_t *bytes) { free(bytes); }
 
 /* ---- 読む ---- */
 
+static void slot_to_mem(uint8_t kind, TvmSlot s, char *p) {
+  switch (kind) {
+  case TVM_K_I32:
+    memcpy(p, &s.i, 4);
+    break;
+  case TVM_K_F32:
+    memcpy(p, &s.f, 4);
+    break;
+  case TVM_K_BOOL:
+    *(uint8_t *)p = (uint8_t)s.i;
+    break;
+  default:
+    memcpy(p, &s.p, sizeof(void *));
+    break;
+  }
+}
+
 typedef struct StaticValue {
   uint32_t slot;
   TvmSlot value;
 } StaticValue;
 
+/* 状態の class / struct の field。to は今の型の field の番号 (値を移さない field は -1) */
+typedef struct SavedField {
+  uint8_t kind;
+  uint32_t st; /* struct の field の、状態の型の番号 */
+  int32_t to;
+} SavedField;
+
+/* 状態の型の形。class / struct は field、容器は要素の struct の型 */
+typedef struct SavedType {
+  SavedField *fields;
+  uint32_t nfields;
+  uint32_t elem_st; /* 要素が struct の容器の、状態の型の番号 */
+  /* 今の型の field のうち、状態から値を移さなかった物 (class だけ。読み込んだ後に initializer を走らせる) */
+  uint32_t *fresh;
+  uint32_t nfresh;
+} SavedType;
+
 typedef struct Load {
   TvmVm *vm;
   TcsReader r;
   uint32_t ntypes;
-  uint16_t *types; /* 状態の型の番号 → VM の型 */
-  /* struct の型の対応を後で確かめる組 (状態の型の番号、VM の型) */
+  uint16_t *types;   /* 状態の型の番号 → VM の型 */
+  SavedType *shapes; /* 状態の型の番号 → 状態の形 */
+  /* 容器の要素の struct の型の対応を後で確かめる組 (状態の型の番号、VM の型) */
   uint32_t *check_state;
   uint16_t *check_vm;
   uint32_t nchecks, capchecks;
   uint32_t nobjs;
   void **objs;
+  uint32_t *obj_types; /* object の、状態の型の番号 */
   uint32_t *counts;
   StaticValue *statics;
   uint32_t nstatics, capstatics;
@@ -497,11 +545,12 @@ static bool load_check(Load *ld, uint32_t state_type, uint16_t vm_type) {
 }
 
 /* 要素の種類と struct の型が今の型と同じか */
-static bool load_elem_shape(Load *ld, const TvmType *t) {
+static bool load_elem_shape(Load *ld, uint32_t i, const TvmType *t) {
   uint8_t kind = tcs_rd_u8(&ld->r);
   uint32_t st = tcs_rd_u32(&ld->r);
   if (kind != t->elem_kind)
     return lfail(ld, "type %s has a different element", t->name);
+  ld->shapes[i].elem_st = st;
   if (kind == TVM_K_STRUCT)
     return load_check(ld, st, t->elem_type);
   return true;
@@ -514,7 +563,9 @@ static bool load_types(Load *ld) {
   if (!tcs_rd_count_ok(&ld->r, ld->ntypes, 5))
     return lfail(ld, "%s", "truncated state");
   ld->types = (uint16_t *)malloc((ld->ntypes ? ld->ntypes : 1) * 2);
-  if (!ld->types)
+  ld->shapes =
+      (SavedType *)calloc(ld->ntypes ? ld->ntypes : 1, sizeof(SavedType));
+  if (!ld->types || !ld->shapes)
     return lfail(ld, "%s", "out of memory");
   for (uint32_t i = 0; i < ld->ntypes; i++) {
     if (!rd_name(ld, name))
@@ -533,31 +584,50 @@ static bool load_types(Load *ld) {
       uint32_t nfields = tcs_rd_u32(&ld->r);
       if (ld->r.bad)
         return lfail(ld, "%s", "truncated state");
-      if (nfields != t->nfields ||
-          host != (t->flags & TCS_TYPE_HOST_VALUE ? 1 : 0))
-        return lfail(ld, "type %s has different fields", name);
+      if (host != (t->flags & TCS_TYPE_HOST_VALUE ? 1 : 0))
+        return lfail(ld, "type %s has a different host value", name);
+      if (!tcs_rd_count_ok(&ld->r, nfields, 9))
+        return lfail(ld, "%s", "truncated state");
+      SavedType *shape = &ld->shapes[i];
+      shape->fields =
+          (SavedField *)calloc(nfields ? nfields : 1, sizeof(SavedField));
+      if (!shape->fields)
+        return lfail(ld, "%s", "out of memory");
+      shape->nfields = nfields;
       for (uint32_t k = 0; k < nfields; k++) {
         if (!rd_name(ld, field))
           return false;
-        uint8_t kind = tcs_rd_u8(&ld->r);
-        uint32_t st = tcs_rd_u32(&ld->r);
-        if (strcmp(field, t->fields[k].name) != 0 || kind != t->fields[k].kind)
-          return lfail(ld, "type %s has different fields", name);
-        if (kind == TVM_K_STRUCT && !load_check(ld, st, t->fields[k].type))
-          return false;
+        SavedField *sf = &shape->fields[k];
+        sf->kind = tcs_rd_u8(&ld->r);
+        sf->st = tcs_rd_u32(&ld->r);
+        sf->to = -1;
+        if (ld->r.bad || sf->kind > TVM_K_STRUCT)
+          return lfail(ld, "%s", "truncated state");
+        /* 名前で対応させ、種類と型の名前が同じなら値を移す (struct の型は、全部の型を読んでから確かめる) */
+        for (uint32_t j = 0; j < t->nfields && sf->to < 0; j++)
+          if (strcmp(field, t->fields[j].name) == 0 &&
+              t->fields[j].kind == sf->kind)
+            sf->to = (int32_t)j;
+        if (sf->kind == TVM_K_REF) {
+          if (!rd_name(ld, field))
+            return false;
+          if (sf->to >= 0 &&
+              strcmp(field, declared_name(vm, t->fields[sf->to].type)) != 0)
+            sf->to = -1;
+        }
       }
       break;
     }
     case TVM_T_DICT:
       if (tcs_rd_u8(&ld->r) != t->key_kind)
         return lfail(ld, "type %s has a different key", name);
-      if (!load_elem_shape(ld, t))
+      if (!load_elem_shape(ld, i, t))
         return false;
       break;
     case TVM_T_ARRAY:
     case TVM_T_LIST:
     case TVM_T_BOX:
-      if (!load_elem_shape(ld, t))
+      if (!load_elem_shape(ld, i, t))
         return false;
       break;
     case TVM_T_STRING:
@@ -574,12 +644,45 @@ static bool load_types(Load *ld) {
         ld->types[ld->check_state[i]] != ld->check_vm[i])
       return lfail(ld, "type %s has a different struct inside",
                    vm->types[ld->check_vm[i]].name);
+  /* struct の field は、状態の struct の型が今の field の型に対応するときだけ値を移す。
+     今の class の field のうち値を移さない物を、initializer を走らせる field として覚える */
+  for (uint32_t i = 0; i < ld->ntypes; i++) {
+    SavedType *shape = &ld->shapes[i];
+    const TvmType *t = &vm->types[ld->types[i]];
+    if (t->tkind != TVM_T_CLASS && t->tkind != TVM_T_STRUCT)
+      continue;
+    for (uint32_t k = 0; k < shape->nfields; k++) {
+      SavedField *sf = &shape->fields[k];
+      if (sf->kind != TVM_K_STRUCT)
+        continue;
+      if (sf->st >= ld->ntypes ||
+          vm->types[ld->types[sf->st]].tkind != TVM_T_STRUCT)
+        return lfail(ld, "type %s has a bad struct field", t->name);
+      if (sf->to >= 0 && ld->types[sf->st] != t->fields[sf->to].type)
+        sf->to = -1;
+    }
+    if (t->tkind != TVM_T_CLASS || !t->nfields)
+      continue;
+    shape->fresh = (uint32_t *)malloc(t->nfields * sizeof(uint32_t));
+    if (!shape->fresh)
+      return lfail(ld, "%s", "out of memory");
+    for (uint32_t j = 0; j < t->nfields; j++) {
+      bool moved = false;
+      for (uint32_t k = 0; k < shape->nfields && !moved; k++)
+        moved = shape->fields[k].to == (int32_t)j;
+      if (!moved)
+        shape->fresh[shape->nfresh++] = j;
+    }
+  }
   return true;
 }
 
 /* 参照を読む。置き場所の型 (TVM_NO_TYPE は任意) に合わない object は断る */
 static bool load_ref(Load *ld, uint16_t type, void **out) {
   uint32_t at = tcs_rd_u32(&ld->r);
+  void *unused;
+  if (!out)
+    out = &unused;
   *out = NULL;
   if (ld->r.bad)
     return lfail(ld, "%s", "truncated state");
@@ -618,34 +721,60 @@ static bool load_slot(Load *ld, uint8_t kind, uint16_t type, TvmSlot *s) {
   return !ld->r.bad || lfail(ld, "%s", "truncated state");
 }
 
-static bool load_value(Load *ld, uint8_t kind, uint16_t type, char *mem) {
+static bool load_fields(Load *ld, uint32_t st, char *mem);
+
+/* object の中の値 (field、要素) を読む。kind は状態の種類、st は struct の値の状態の型の番号、type は参照の置き場所の型。
+   mem が NULL なら読み捨てる */
+static bool load_value(Load *ld, uint8_t kind, uint32_t st, uint16_t type,
+                       char *mem) {
   switch (kind) {
   case TVM_K_I32:
   case TVM_K_F32: {
     uint32_t v = tcs_rd_u32(&ld->r);
-    memcpy(mem, &v, 4);
+    if (mem)
+      memcpy(mem, &v, 4);
     break;
   }
-  case TVM_K_BOOL:
-    *(uint8_t *)mem = tcs_rd_u8(&ld->r) ? 1 : 0;
+  case TVM_K_BOOL: {
+    uint8_t v = tcs_rd_u8(&ld->r) ? 1 : 0;
+    if (mem)
+      *(uint8_t *)mem = v;
     break;
+  }
   case TVM_K_REF: {
     void *p;
-    if (!load_ref(ld, type, &p))
+    if (!load_ref(ld, mem ? type : TVM_NO_TYPE, &p))
       return false;
-    memcpy(mem, &p, sizeof p);
+    if (mem)
+      memcpy(mem, &p, sizeof p);
     break;
   }
-  default: {
-    const TvmType *st = &ld->vm->types[type];
-    for (uint32_t k = 0; k < st->nfields; k++)
-      if (!load_value(ld, st->fields[k].kind, st->fields[k].type,
-                      mem + st->fields[k].offset))
-        return false;
-    break;
-  }
+  case TVM_K_STRUCT:
+    return load_fields(ld, st, mem);
+  default:
+    return lfail(ld, "%s", "a value has a kind that cannot be loaded");
   }
   return !ld->r.bad || lfail(ld, "%s", "truncated state");
+}
+
+/* 状態の型 st の class / struct の field を、状態の並びで読み、今の型の field へ移す (移さない field は読み捨てる)。
+   mem は今の型の値の先頭 (NULL なら全部を読み捨てる) */
+static bool load_fields(Load *ld, uint32_t st, char *mem) {
+  if (st >= ld->ntypes)
+    return lfail(ld, "%s", "a value has a bad type");
+  const SavedType *shape = &ld->shapes[st];
+  const TvmType *t = &ld->vm->types[ld->types[st]];
+  if (t->tkind != TVM_T_CLASS && t->tkind != TVM_T_STRUCT)
+    return lfail(ld, "%s", "a value has a bad type");
+  for (uint32_t k = 0; k < shape->nfields; k++) {
+    const SavedField *sf = &shape->fields[k];
+    bool keep = mem && sf->to >= 0;
+    if (!load_value(ld, sf->kind, sf->st,
+                    keep ? t->fields[sf->to].type : TVM_NO_TYPE,
+                    keep ? mem + t->fields[sf->to].offset : NULL))
+      return false;
+  }
+  return true;
 }
 
 /* object を作る。中身は後で入れる (string だけはここで入れる。Dictionary の key の hash が読む) */
@@ -657,8 +786,9 @@ static bool load_heads(Load *ld) {
     return lfail(ld, "%s", "truncated state");
   uint32_t n = ld->nobjs ? ld->nobjs : 1;
   ld->objs = (void **)calloc(n, sizeof(void *));
+  ld->obj_types = (uint32_t *)calloc(n, sizeof(uint32_t));
   ld->counts = (uint32_t *)calloc(n, sizeof(uint32_t));
-  if (!ld->objs || !ld->counts)
+  if (!ld->objs || !ld->obj_types || !ld->counts)
     return lfail(ld, "%s", "out of memory");
   for (uint32_t i = 0; i < ld->nobjs; i++) {
     uint32_t ti = tcs_rd_u32(&ld->r);
@@ -667,6 +797,7 @@ static bool load_heads(Load *ld) {
       return lfail(ld, "%s", "truncated state");
     const TvmType *t = &vm->types[ld->types[ti]];
     void *p = NULL;
+    ld->obj_types[i] = ti;
     ld->counts[i] = count;
     switch (t->tkind) {
     case TVM_T_CLASS:
@@ -733,24 +864,23 @@ static bool load_bodies(Load *ld) {
     void *p = ld->objs[i];
     const TvmType *t = TVM_TYPE(p);
     uint32_t count = ld->counts[i];
+    uint32_t est = ld->shapes[ld->obj_types[i]].elem_st;
     switch (t->tkind) {
     case TVM_T_CLASS:
-      for (uint32_t k = 0; k < t->nfields; k++)
-        if (!load_value(ld, t->fields[k].kind, t->fields[k].type,
-                        (char *)p + t->fields[k].offset))
-          return false;
+      if (!load_fields(ld, ld->obj_types[i], (char *)p))
+        return false;
       if (t->flags & TCS_TYPE_HOST_VALUE)
         TVM_HOST_VALUE(p) = rd_u64(&ld->r);
       break;
     case TVM_T_ARRAY:
       for (uint32_t k = 0; k < count; k++)
-        if (!load_value(ld, t->elem_kind, t->elem_type,
+        if (!load_value(ld, t->elem_kind, est, t->elem_type,
                         ARR_DATA((TvmArray *)p) + (size_t)k * t->elem_size))
           return false;
       break;
     case TVM_T_LIST:
       for (uint32_t k = 0; k < count; k++)
-        if (!load_value(ld, t->elem_kind, t->elem_type,
+        if (!load_value(ld, t->elem_kind, est, t->elem_type,
                         ((TvmList *)p)->data + (size_t)k * t->elem_size))
           return false;
       break;
@@ -763,7 +893,7 @@ static bool load_bodies(Load *ld) {
         int32_t at = tvm_dict_insert(vm, d, key);
         if (at < 0)
           return lfail(ld, "%s", "out of memory");
-        if (!load_value(ld, t->elem_kind, t->elem_type,
+        if (!load_value(ld, t->elem_kind, est, t->elem_type,
                         DICT_VALUE(DICT_ENTRY(d, at))))
           return false;
       }
@@ -811,10 +941,44 @@ static bool load_static(Load *ld, uint32_t slot, uint8_t kind, uint16_t type,
   return true;
 }
 
-/* static を名前で対応させて読む。今の module に無い static の値は読み捨てる */
+/* struct の static の葉を、状態の型 st の field の並びで読む。
+   root は static の今の struct の型、base は読んでいる struct の値の root の中の offset、slot は static の先頭の slot。
+   keep が false なら読み捨てる */
+static bool load_static_struct(Load *ld, uint32_t st, const TvmType *root,
+                               uint32_t base, uint32_t slot, bool keep) {
+  if (st >= ld->ntypes)
+    return lfail(ld, "%s", "a static has a bad type");
+  const SavedType *shape = &ld->shapes[st];
+  const TvmType *t = &ld->vm->types[ld->types[st]];
+  if (t->tkind != TVM_T_STRUCT)
+    return lfail(ld, "%s", "a static has a bad type");
+  for (uint32_t k = 0; k < shape->nfields; k++) {
+    const SavedField *sf = &shape->fields[k];
+    bool moved = keep && sf->to >= 0;
+    uint32_t offset = moved ? base + t->fields[sf->to].offset : 0;
+    if (sf->kind == TVM_K_STRUCT) {
+      if (!load_static_struct(ld, sf->st, root, offset, slot, moved))
+        return false;
+      continue;
+    }
+    /* 今の field の葉 (root の中の同じ offset の葉) */
+    uint32_t leaf = root->nleaves;
+    for (uint32_t l = 0; moved && l < root->nleaves && leaf == root->nleaves;
+         l++)
+      if (root->leaves[l].offset == offset && root->leaves[l].kind == sf->kind)
+        leaf = l;
+    moved = moved && leaf < root->nleaves;
+    if (!load_static(ld, moved ? slot + leaf : 0, sf->kind,
+                     moved ? root->leaves[leaf].type : TVM_NO_TYPE, moved))
+      return false;
+  }
+  return true;
+}
+
+/* static を名前で対応させて読む。今の module に無い static と、種類か型の変わった static の値は読み捨てる (今の値のまま残る) */
 static bool load_statics(Load *ld) {
   TvmVm *vm = ld->vm;
-  char name[NAME_MAX_LEN];
+  char name[NAME_MAX_LEN], declared[NAME_MAX_LEN];
   uint32_t n = tcs_rd_u32(&ld->r);
   if (!tcs_rd_count_ok(&ld->r, n, 9))
     return lfail(ld, "%s", "truncated state");
@@ -830,25 +994,86 @@ static bool load_statics(Load *ld) {
     for (uint32_t k = 0; k < vm->nstatic_fields && !f; k++)
       if (strcmp(vm->static_fields[k].name, name) == 0)
         f = &vm->static_fields[k];
-    if (f &&
-        (f->kind != kind || (kind == TVM_K_STRUCT && ld->types[st] != f->type)))
-      return lfail(ld, "static %s has a different type", name);
+    bool keep = f && f->kind == kind;
+    if (kind == TVM_K_REF) {
+      if (!rd_name(ld, declared))
+        return false;
+      keep = keep && strcmp(declared, declared_name(vm, f->type)) == 0;
+    }
     if (kind != TVM_K_STRUCT) {
       /* 読み捨てる参照は置き場所の型を持たない */
-      if (!load_static(ld, f ? f->slot : 0, kind, f ? f->type : TVM_NO_TYPE,
-                       f != NULL))
+      if (!load_static(ld, keep ? f->slot : 0, kind,
+                       keep ? f->type : TVM_NO_TYPE, keep))
         return false;
       continue;
     }
-    const TvmType *t = &vm->types[ld->types[st]];
-    if (t->tkind != TVM_T_STRUCT)
-      return lfail(ld, "static %s has a different type", name);
-    for (uint32_t k = 0; k < t->nleaves; k++)
-      if (!load_static(ld, f ? f->slot + k : 0, t->leaves[k].kind,
-                       t->leaves[k].type, f != NULL))
-        return false;
+    keep = keep && ld->types[st] == f->type;
+    if (!load_static_struct(ld, st, keep ? &vm->types[f->type] : NULL, 0,
+                            keep ? f->slot : 0, keep))
+      return false;
   }
   return true;
+}
+
+/* 状態から値を移さなかった class の field (足した field と、種類か型の変わった field) に、initializer の値を入れる。
+   initializer は `型.<init>field` の関数 (引数を取らず field の値を返す)。無い field は 0 の値のまま。
+   fault は警告にして (vm->error に残す)、その field は 0 の値のままにする */
+static void run_initializers(Load *ld) {
+  TvmVm *vm = ld->vm;
+  char name[NAME_MAX_LEN * 2 + 16];
+  char warnings[sizeof vm->error];
+  warnings[0] = '\0';
+  /* initializer の確保で回収が起きても、static から届かない object (読み捨てた field だけが指していた物) が消えないよう、root に積む */
+  size_t need = 0;
+  for (uint32_t i = 0; i < ld->nobjs; i++)
+    need += ld->shapes[ld->obj_types[i]].nfresh ? 1 : 0;
+  if (!need)
+    return;
+  if (vm->capreload_roots < need) {
+    void **roots = (void **)realloc(vm->reload_roots, need * sizeof(void *));
+    if (!roots)
+      return; /* initializer を走らせない (field は 0 の値のまま) */
+    vm->reload_roots = roots;
+    vm->capreload_roots = need;
+  }
+  vm->nreload_roots = 0;
+  for (uint32_t i = 0; i < ld->nobjs; i++)
+    if (ld->shapes[ld->obj_types[i]].nfresh)
+      vm->reload_roots[vm->nreload_roots++] = ld->objs[i];
+  for (uint32_t i = 0; i < ld->nobjs; i++) {
+    const SavedType *shape = &ld->shapes[ld->obj_types[i]];
+    char *o = (char *)ld->objs[i];
+    if (!shape->nfresh)
+      continue;
+    const TvmType *t = TVM_TYPE(o);
+    for (uint32_t k = 0; k < shape->nfresh; k++) {
+      const TcsField *field = &t->fields[shape->fresh[k]];
+      snprintf(name, sizeof name, "%s.<init>%s", t->name, field->name);
+      int32_t func = tvm_find(vm, name);
+      if (func < 0)
+        continue;
+      const TvmProto *f = &vm->funcs[func];
+      TvmSlot rets[256];
+      if (f->nparams || f->nret > 256)
+        continue;
+      memset(rets, 0, sizeof rets);
+      if (tvm_call(vm, func, NULL, 0, rets, f->nret) != TVM_OK) {
+        size_t used = strlen(warnings);
+        snprintf(warnings + used, sizeof warnings - used, "%s%s",
+                 used ? "\n" : "", vm->error);
+        continue;
+      }
+      if (field->kind == TVM_K_STRUCT) {
+        const TvmType *st = &vm->types[field->type];
+        for (uint32_t j = 0; j < st->nleaves && j < f->nret; j++)
+          slot_to_mem(st->leaves[j].kind, rets[j],
+                      o + field->offset + st->leaves[j].offset);
+      } else if (f->nret == 1)
+        slot_to_mem(field->kind, rets[0], o + field->offset);
+    }
+  }
+  vm->nreload_roots = 0;
+  memcpy(vm->error, warnings, sizeof warnings);
 }
 
 TvmStatus tvm_state_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
@@ -894,7 +1119,14 @@ TvmStatus tvm_state_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
           vm->pinned[k].p = ld.objs[at];
       tvm_debug_id_set(vm, ld.objs[at], id);
     }
+    run_initializers(&ld);
   }
+  for (uint32_t i = 0; ld.shapes && i < ld.ntypes; i++) {
+    free(ld.shapes[i].fields);
+    free(ld.shapes[i].fresh);
+  }
+  free(ld.shapes);
+  free(ld.obj_types);
   free(ld.types);
   free(ld.check_state);
   free(ld.check_vm);

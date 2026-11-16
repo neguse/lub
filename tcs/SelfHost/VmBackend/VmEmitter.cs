@@ -358,6 +358,36 @@ public static class VmEmitter
             }
         }
         m.CompilePending();
+        RequestFieldInits(m);
         return m;
+    }
+
+    /// <summary>型の表にある class の instance field の initializer (`型.&lt;init&gt;field`) を、到達しなくても作る。
+    /// 状態の読み込み (doc/vm-design.md §13.4) が、状態に無い field を initializer の値にするのに呼ぶ。
+    /// initializer が新しい class を型の表に足しうるので、足されなくなるまで繰り返す。</summary>
+    private static void RequestFieldInits(ModuleBuilder m)
+    {
+        var done = new Dictionary<string, bool>();
+        bool added = true;
+        while (added && !CFail.Failed)
+        {
+            added = false;
+            foreach (var name in m.UsedClasses())
+            {
+                if (done.ContainsKey(name)) continue;
+                done[name] = true;
+                var ci = m.ClassInfo(name);
+                if (ci == null) continue;
+                foreach (var f in ci.Fields)
+                {
+                    if (f.IsStatic || f.Init == null) continue;
+                    var field = f;
+                    string typeName = name;
+                    m.Request(typeName + ".<init>" + field.Name, def => new FunctionCompiler(m, def, typeName).CompileFieldInit(field));
+                    added = true;
+                }
+            }
+            m.CompilePending();
+        }
     }
 }

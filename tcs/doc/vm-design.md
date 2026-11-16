@@ -465,7 +465,7 @@ byte 列は address と layout に依らないので、別の VM にも、別の
 
 - 全部の static (struct の static は葉の並び)。
 - static から届く object。class の field、配列と List の要素、Dictionary の key と値 (足した順)、string の中身、closure の関数の名前と捕捉、box の値、host と共有する class の host の値。
-- 使った型の名前と形 (class と struct は field の名前と種類、容器は要素の種類)。
+- 使った型の名前と形 (class と struct は field の名前と種類、参照の field は宣言した型の名前、容器は要素の種類)。
 - 検査 (§14) が object に振った通し番号。読み込んだ先の object に同じ番号を付け直すので、検査の id は読み込みの前後で変わらない。読み込んだ VM がその後に振る番号は、読み込んだ番号より大きい。弱く覚えた object (`tvm_inspect_pin`) は、同じ番号の読み込んだ object へ付け替える。
 
 書かないもの:
@@ -476,19 +476,21 @@ byte 列は address と layout に依らないので、別の VM にも、別の
 
 読み込みの約束:
 
-- 型は名前で今の module の型に対応させ、形 (field の名前と種類と並び、要素と key の種類) が同じであることを確かめる。違えば断る。
+- 型は名前で今の module の型に対応させる。今の module に無い型、種類 (class か struct か容器か) の違う型、要素か key の種類の違う容器は断る。
+- class と struct の形が違えば、reload の計画 (doc/object-model.md §6) と同じ決まりで値を移す。field を名前で対応させ、種類と型の名前が同じなら状態の値、違えば 0 の値にする。今の型に無い field は読み捨てる。struct の field は、その struct の形で同じに移す (struct の static、List と配列と Dictionary の struct の要素も同じ)。
+- 状態から値を移さなかった class の field (状態に無い field と、種類か型の変わった field) は、0 の値から始めて、確かめ終えた後に initializer を走らせる。initializer は `型.<init>field` の関数で、型の表にある class の全部の field について emitter が作る。initializer の fault は警告で (`tvm_error` に残る)、その field は 0 の値のままになる。
 - 参照の先の object が置き場所の型 (field、要素、key、捕捉、static) に合うことを確かめる。
 - closure の関数は名前で引き、関数型と捕捉の数が合うことを確かめる。
-- static は名前で対応させる。今の module に無い static は捨て、状態に無い static は今の値のまま残す。
+- static は名前で対応させる。今の module に無い static と、種類か型の変わった static は捨て、状態に無い static は今の値のまま残す。
 - 確かめ終わるまで static に触らない。断ったときは `TVM_LOAD_ERROR` を返し、状態は変わらず、理由は `tvm_error` にある。
 - Dictionary は key を入れ直して作るので、object を key にした Dictionary も読み込んだ先の address で引ける。
 
-関数の中身だけが違う版には、そのまま読み込める。
-型の形が違う版には読み込めないので、同じ版に読み込んでから reload (§12) を当てる。
+関数の中身だけが違う版にも、型の形が違う版にも読み込める。
+reload (§12) と違って計画を受け取らないので、`[RenamedFrom]` の引き継ぎと `OnReload` の hook は無く、名前を変えた field は足した field として扱う。
 
 検査は `tcs2c.Tests` の `VmStateTests`。
 状態を file に書き、別の process の VM に読み込んで続きを走らせ、止めずに走らせた結果と比べる。
-形の違う版と、壊した byte 列を断ることも見る。
+形の違う版への読み込みが、同じ編集を reload で当てた結果と同じになること、読み込めない版と壊した byte 列を断ることも見る。
 `tcsvm` の `--save-state K FILE` と `--load-state K FILE` が同じことを手で試す口になる。
 
 ## 14. debug 情報と検査の口
