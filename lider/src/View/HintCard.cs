@@ -25,6 +25,10 @@ public class HintCard
     // 札の大きさ (px)。出す案内の行の数と、一番長い行で決める
     int pxW = 1;
     int pxH = 1;
+    // 絵の大きさ (px)。札が収まらなくなったときだけ広げる (案内が変わるたびに絵を作り直すと、その frame が長くなる)
+    int texW = Grain;
+    int texH = Grain;
+    const int Grain = 128;
     public TextureRef? Texture;
     // 札の字のある所の真ん中の角度と高さ (置く側が決める)
     public float Angle;
@@ -39,14 +43,16 @@ public class HintCard
             width = Math.Max(width, Pad + IconWidth(h, text) + 8 + Utf8.Cells(h.Label, Utf8.Bytes(h.Label)) * text.CellW + Pad);
         pxW = (int)Math.Ceiling(width);
         pxH = hints.Count * RowH + 2 * Pad;
-        batch.LogicalW = pxW;
-        batch.LogicalH = pxH;
+        texW = Math.Max(texW, (pxW + Grain - 1) / Grain * Grain);
+        texH = Math.Max(texH, (pxH + Grain - 1) / Grain * Grain);
+        batch.LogicalW = texW;
+        batch.LogicalH = texH;
         batch.Ensure();
-        Texture = Assets.RenderTarget("lider_hints", pxW, pxH, Gfx.PixelFormat.Rgba8);
+        Texture = Assets.RenderTarget("lider_hints", texW, texH, Gfx.PixelFormat.Rgba8);
         if (gap.Lapsed())
             drawn = "";
-        // 大きさが変わると texture を作り直すので、描き直す
-        var key = pxW + "x" + pxH + "\n";
+        // 絵を広げると texture を作り直すので、描き直す
+        var key = texW + "x" + texH + "\n";
         foreach (var h in hints)
             key += (int)h.Icon + h.Key + "\t" + h.Label + "\n";
         if (Texture == null || key == drawn)
@@ -78,7 +84,9 @@ public class HintCard
         if (!Shown || Texture == null || rows == 0)
             return;
         Theme.Plate(vp, Color.Rgb(Theme.Surface.R, Theme.Surface.G, Theme.Surface.B, 0.92f), Angle, Y, Radius() + 0.003f, UsedW(), Height());
-        Quad3d.Curved(vp, Texture, Color.Rgb(1, 1, 1, 1), Angle, Y, Radius(), UsedW(), Height(), 0, 1);
+        // 絵は左上から札の大きさだけを使うので、札の真ん中が Angle に来るよう、絵の幅の板を右へずらす
+        var wide = PerPx * texW;
+        Quad3d.Curved(vp, Texture, Color.Rgb(1, 1, 1, 1), Angle + (wide - UsedW()) * 0.5f / Radius(), Y, Radius(), wide, Height(), 0, (float)pxH / texH);
     }
 
     void Render(List<Hint> hints, MonoText text)
