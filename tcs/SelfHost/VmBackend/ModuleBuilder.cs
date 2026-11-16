@@ -192,6 +192,17 @@ public sealed class ModuleBuilder
         }
     }
 
+    /// <summary>module の型の表にある class の名前 (型の表に出す名前)。</summary>
+    public List<string> UsedClasses()
+    {
+        var names = new List<string>();
+        foreach (var t in _types)
+        {
+            if (t.Tag == VT.Class) names.Add(t.Display());
+        }
+        return names;
+    }
+
     public ExClass? ClassInfo(string name)
     {
         ExClass? c;
