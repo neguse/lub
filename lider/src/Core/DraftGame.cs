@@ -45,7 +45,7 @@ public static class DraftGame
     // 編集中の版を開く (保存した版と同じゲーム)
     public static void Open(string project)
     {
-        Build = new GameBuild(project, "draft") { Traced = false };
+        Build = new GameBuild(project, "draft");
         settled.Clear();
         typing.Clear();
         quiet.Clear();

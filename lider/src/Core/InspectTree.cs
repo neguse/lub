@@ -100,7 +100,7 @@ public class InspectTree
             ScopeBase = "";
             ScopeId = "";
             ScopePath = "";
-            GameApp.InspectPin(ScopePin, "");
+            Watched.InspectPin(ScopePin, "");
         }
         else if (i == 2 && ScopeBase != "")
             ScopePath = ScopeBase;
@@ -134,7 +134,7 @@ public class InspectTree
         ScopeBase = path;
         ScopePath = path;
         ScopeId = id;
-        GameApp.InspectPin(ScopePin, path);
+        Watched.InspectPin(ScopePin, path);
     }
 
     // 絞り込んだ個体の path が変わった (並びの要素が増減した) ときに、その下の節ごと移す
@@ -155,7 +155,7 @@ public class InspectTree
         flash.Tick();
         Rows.Clear();
         // 絞り込んだ個体が回収されるか辿れなくなったら、class に戻す (別の個体へ移らない)
-        if (ScopeId != "" && !GameApp.InspectPinned(ScopePin, ScopeId))
+        if (ScopeId != "" && !Watched.InspectPinned(ScopePin, ScopeId))
             ScopeTo(1);
         if (ScopePath != "")
         {
@@ -166,7 +166,7 @@ public class InspectTree
                 AddRange(ScopePath, 0, 1000, 0, ScopeClass);
             return;
         }
-        foreach (var n in GameApp.Inspect("", 0, 1000))
+        foreach (var n in Watched.Inspect("", 0, 1000))
         {
             if (ScopeClass == "")
                 AddNode(n, 0, "");
@@ -236,7 +236,7 @@ public class InspectTree
     // 宣言の見つからないフィールドは後ろに続ける
     void AddMembers(string cls, string path, int depth, bool methods)
     {
-        var fields = GameApp.Inspect(path, 0, 1000);
+        var fields = Watched.Inspect(path, 0, 1000);
         var used = new Dictionary<string, bool>();
         foreach (var m in Members(cls))
         {
@@ -318,7 +318,7 @@ public class InspectTree
     // path の子のうち offset から count 個を、表か木の行にして足す
     void AddRange(string path, int offset, int count, int depth, string owner)
     {
-        var children = GameApp.Inspect(path, offset, count);
+        var children = Watched.Inspect(path, offset, count);
         if (!SameClass(children))
         {
             foreach (var c in children)
@@ -326,14 +326,14 @@ public class InspectTree
             return;
         }
         var columns = new List<string>();
-        foreach (var f in GameApp.Inspect(children[0].Path, 0, MaxColumns))
+        foreach (var f in Watched.Inspect(children[0].Path, 0, MaxColumns))
             columns.Add(f.Name);
         Rows.Add(new InspectRow { Key = path + "#columns", Depth = depth, Name = children[0].Type, Cells = columns, Header = true });
         foreach (var c in children)
         {
             var cells = new List<string>();
             var glow = new List<float>();
-            var fields = GameApp.Inspect(c.Path, 0, MaxColumns);
+            var fields = Watched.Inspect(c.Path, 0, MaxColumns);
             foreach (var col in columns)
             {
                 var text = "";
