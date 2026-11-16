@@ -10,21 +10,21 @@ namespace LiderCore;
 
 public class HintCard
 {
-    public const int PxW = 360;
-    public const int PxH = 320;
     const int Cell = 64;
     const int RowH = 28;
     const int Pad = 6;
     const int IconS = 22;
     // 画素の細かさは code の窓 (PanelView) と同じ
-    public const float W = PanelView.BaseW * PxW / PanelView.BasePxW;
+    const float PerPx = PanelView.BaseW / PanelView.BasePxW;
 
-    readonly SpriteBatch batch = new SpriteBatch("lider_hints", PxW, PxH);
+    readonly SpriteBatch batch = new SpriteBatch("lider_hints", 1, 1);
     readonly Atlas icons = Atlas.FromPixels("lider_hint_icons", Cell * 7, Cell, IconPixels(), 1);
     string drawn = "";
     readonly DeclareGap gap = new DeclareGap();
     int rows;
-    float usedPxW = PxW;
+    // 札の大きさ (px)。出す案内の行の数と、一番長い行で決める
+    int pxW = 1;
+    int pxH = 1;
     public TextureRef? Texture;
     // 札の字のある所の真ん中の角度と高さ (置く側が決める)
     public float Angle;
@@ -34,11 +34,19 @@ public class HintCard
     // texture を宣言し、案内が変わっていれば描き直す (画面への pass の外で呼ぶ)
     public void Prepare(List<Hint> hints, MonoText text)
     {
+        var width = 1f;
+        foreach (var h in hints)
+            width = Math.Max(width, Pad + IconWidth(h, text) + 8 + Utf8.Cells(h.Label, Utf8.Bytes(h.Label)) * text.CellW + Pad);
+        pxW = (int)Math.Ceiling(width);
+        pxH = hints.Count * RowH + 2 * Pad;
+        batch.LogicalW = pxW;
+        batch.LogicalH = pxH;
         batch.Ensure();
-        Texture = Assets.RenderTarget("lider_hints", PxW, PxH, Gfx.PixelFormat.Rgba8);
+        Texture = Assets.RenderTarget("lider_hints", pxW, pxH, Gfx.PixelFormat.Rgba8);
         if (gap.Lapsed())
             drawn = "";
-        var key = "";
+        // 大きさが変わると texture を作り直すので、描き直す
+        var key = pxW + "x" + pxH + "\n";
         foreach (var h in hints)
             key += (int)h.Icon + h.Key + "\t" + h.Label + "\n";
         if (Texture == null || key == drawn)
@@ -54,20 +62,15 @@ public class HintCard
         return Space.R;
     }
 
-    // 札の字のある幅 (texture の左から)
+    // 札の幅と高さ (メートル)
     public float UsedW()
     {
-        return W * usedPxW / PxW;
+        return PerPx * pxW;
     }
 
     public float Height()
     {
-        return W * UsedPx() / PxW;
-    }
-
-    int UsedPx()
-    {
-        return Math.Min(PxH, rows * RowH + 2 * Pad);
+        return PerPx * pxH;
     }
 
     public void Draw(Mat4 vp)
@@ -75,18 +78,13 @@ public class HintCard
         if (!Shown || Texture == null || rows == 0)
             return;
         Theme.Plate(vp, Color.Rgb(Theme.Surface.R, Theme.Surface.G, Theme.Surface.B, 0.92f), Angle, Y, Radius() + 0.003f, UsedW(), Height());
-        // texture は左から字のある幅だけを使うので、字のある所の真ん中が Angle に来るよう右へずらす
-        Quad3d.Curved(vp, Texture, Color.Rgb(1, 1, 1, 1), Angle + (W - UsedW()) * 0.5f / Radius(), Y, Radius(), W, Height(), 0, (float)UsedPx() / PxH);
+        Quad3d.Curved(vp, Texture, Color.Rgb(1, 1, 1, 1), Angle, Y, Radius(), UsedW(), Height(), 0, 1);
     }
 
     void Render(List<Hint> hints, MonoText text)
     {
         Gfx.BeginPass(new PassOpts { Target = Texture, ClearColor = new float[] { 0, 0, 0, 0 } });
         batch.Begin();
-        var width = 0f;
-        foreach (var h in hints)
-            width = Math.Max(width, Pad + IconWidth(h, text) + 8 + Utf8.Cells(h.Label, Utf8.Bytes(h.Label)) * text.CellW + Pad);
-        usedPxW = Math.Min(PxW, width);
         batch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
         var ink = Theme.Ink;
         for (var i = 0; i < hints.Count; i++)
@@ -96,7 +94,7 @@ public class HintCard
             var cy = Pad + i * RowH + RowH * 0.5f;
             var w = IconWidth(h, text);
             DrawIcon(h, x, cy, w, text);
-            text.Draw(batch, h.Label, x + w + 8, cy - text.LineH * 0.5f, ink, 0, PxW);
+            text.Draw(batch, h.Label, x + w + 8, cy - text.LineH * 0.5f, ink, 0, pxW);
         }
         batch.Flush();
         Gfx.EndPass();
@@ -130,14 +128,14 @@ public class HintCard
             batch.Quad(icons, new Rect(index * Cell, 0, src, Cell), x, y, edge, IconS, light);
             batch.Quad(icons, new Rect(index * Cell + src, 0, Cell - 2 * src, Cell), x + edge, y, w - 2 * edge, IconS, light);
             batch.Quad(icons, new Rect(index * Cell + Cell - src, 0, src, Cell), x + w - edge, y, edge, IconS, light);
-            text.Draw(batch, h.Key, x + (w - Utf8.Cells(h.Key, Utf8.Bytes(h.Key)) * text.CellW) * 0.5f, cy - text.LineH * 0.5f, light, 0, PxW);
+            text.Draw(batch, h.Key, x + (w - Utf8.Cells(h.Key, Utf8.Bytes(h.Key)) * text.CellW) * 0.5f, cy - text.LineH * 0.5f, light, 0, pxW);
             return;
         }
         batch.Quad(icons, new Rect(index * Cell, 0, Cell, Cell), x, y, IconS, IconS, light);
         if (h.Icon == HintIcon.Face)
-            text.Draw(batch, h.Key, x + (IconS - text.CellW) * 0.5f, cy - text.LineH * 0.5f, Color.Rgb(0.05f, 0.06f, 0.1f, 1), 0, PxW);
+            text.Draw(batch, h.Key, x + (IconS - text.CellW) * 0.5f, cy - text.LineH * 0.5f, Color.Rgb(0.05f, 0.06f, 0.1f, 1), 0, pxW);
         else if (h.Key != "")
-            text.Draw(batch, h.Key, x + IconS, cy - text.LineH * 0.2f, Color.Rgb(0.6f, 0.75f, 1.0f, 1), 0, PxW);
+            text.Draw(batch, h.Key, x + IconS, cy - text.LineH * 0.2f, Color.Rgb(0.6f, 0.75f, 1.0f, 1), 0, pxW);
     }
 
     // 7 つの絵を横に並べた画素 (RGBA)。白で描き、色は貼るときに付ける
