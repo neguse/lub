@@ -163,19 +163,19 @@ jobs:
           [ "$RUNNER_OS" = Linux ] || export CC=clang
           bash scripts/build-tcs-native.sh build-kit
 
-      # lub-gen (TinyC#) を C の tcs で C にする (.NET で動かした lub-gen と同じ出力を出すことも確かめる)
-      - name: Build lub-gen
-        run: |
-          unset Platform
-          [ "$RUNNER_OS" = Linux ] || export CC=clang
-          bash scripts/build-lub-gen.sh --verify build-kit
-
       # lider の player は、tcs2c で C にした tcs の compiler を含む。Windows は MSVC と同じ ABI の clang-cl で build し、MSVC で build した lub と link する
       - name: Build the lider player
         run: |
           unset Platform
           [ "$RUNNER_OS" = Windows ] && export CC=clang-cl CXX=clang-cl
           LUB_BUILD="$PWD/build-kit" bash lider/scripts/build-player.sh
+
+      # lub-gen (TinyC#) を C の tcs で C にする (.NET で動かした lub-gen と同じ出力を出すことも確かめる)
+      - name: Build lub-gen
+        run: |
+          unset Platform
+          [ "$RUNNER_OS" = Linux ] || export CC=clang
+          bash scripts/build-lub-gen.sh --verify build-kit
 
       - uses: actions/download-artifact@v4
         with:

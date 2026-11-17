@@ -65,6 +65,8 @@ same() {
     echo "  same: $3"
   else
     echo "  DIFFERENT: $3" >&2
+    # 最初の違いを出す (行末の \r も見えるように)
+    diff "$1" "$2" | head -12 | cat -A | cut -c1-200 >&2 || true
     fail=1
   fi
 }
