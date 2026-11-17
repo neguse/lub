@@ -187,6 +187,13 @@ bool export_write_web_page(const char *out_dir, const char *title,
     SDL_Log("export: %s: %s", out_dir, SDL_GetError());
     ok = false;
   }
+#ifdef _WIN32
+  // Windows の SDL_GlobDirectory は区切りを \ で返す。page の中の名前は / で区切り、並びも他の OS と揃える
+  for (int i = 0; i < count; ++i)
+    for (char *c = paths[i]; *c; ++c)
+      if (*c == '\\')
+        *c = '/';
+#endif
   if (paths)
     qsort(paths, (size_t)count, sizeof(*paths), compare_paths);
   for (int i = 0; ok && i < count; ++i) {
