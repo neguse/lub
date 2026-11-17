@@ -17,8 +17,9 @@ on:
       - lider/kit/**
       - lider/scripts/build-dict.sh
 
+# build の job は第三者の action を動かすので、書き込みの権限は release を作る publish の job にだけ渡す
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   # OS によらない物: web の player (wasm)、lider の bytecode (Lider.tcsb)、かな漢字変換の辞書 (mozc.dict)
@@ -135,7 +136,8 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install bash ninja
 
-      - uses: ilammy/msvc-dev-cmd@v1
+      # 一式はこの job で作るので、第三者の action は commit で固定する
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         if: runner.os == 'Windows'
         with:
           arch: ${{ matrix.arch }}
@@ -144,28 +146,34 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       - name: Build lub
         run: |
           cmake -S . -B build-kit -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build-kit
 
-      # tcs2c で C にした tcs (.NET の tcs と同じ出力を出すことも確かめる)。生成した C は GNU C の文の式を使うので、Linux 以外は clang で build する
+      # tcs2c で C にした tcs (.NET の tcs と同じ出力を出すことも確かめる)。生成した C は GNU C の文の式を使うので、Linux 以外は clang で build する。
+      # dotnet を使う段では env の Platform を外す。msvc-dev-cmd が置く Platform があると、dotnet build の出力が bin/<Platform>/ に変わり、script が見つけられない
       - name: Build tcs
         run: |
+          unset Platform
           [ "$RUNNER_OS" = Linux ] || export CC=clang
           bash scripts/build-tcs-native.sh build-kit
 
       # lub-gen (TinyC#) を C の tcs で C にする (.NET で動かした lub-gen と同じ出力を出すことも確かめる)
       - name: Build lub-gen
         run: |
+          unset Platform
           [ "$RUNNER_OS" = Linux ] || export CC=clang
           bash scripts/build-lub-gen.sh --verify build-kit
 
       # lider の player は、tcs2c で C にした tcs の compiler を含む。Windows は MSVC と同じ ABI の clang-cl で build し、MSVC で build した lub と link する
       - name: Build the lider player
         run: |
+          unset Platform
           [ "$RUNNER_OS" = Windows ] && export CC=clang-cl CXX=clang-cl
           LUB_BUILD="$PWD/build-kit" bash lider/scripts/build-player.sh
 
@@ -260,6 +268,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
