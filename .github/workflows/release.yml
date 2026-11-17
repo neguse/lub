@@ -104,6 +104,12 @@ jobs:
       run:
         shell: bash
     steps:
+      # Windows の git は既定で行末を CRLF にして取り出す。どの一式もリポジトリのままの行末 (LF) から作る。
+      # CRLF のままだと、C# の複数行の文字列の行末が .NET と tcs で変わり (tcs は LF にする)、lub-gen の検査も通らない
+      - name: Check out without converting line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v4
         with:
           submodules: recursive
