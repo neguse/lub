@@ -1039,7 +1039,10 @@ static void set_module(Player *p, const char *module, const char *entry) {
   if (entry)
     SDL_strlcpy(p->game.cls, entry, sizeof(p->game.cls));
   else {
-    const char *base = strrchr(p->module, '/');
+    // 区切りは / と \ (Windows の path)。path_util.c の basename と同じ
+    const char *slash = strrchr(p->module, '/');
+    const char *bs = strrchr(p->module, '\\');
+    const char *base = slash && (!bs || slash > bs) ? slash : bs;
     base = base ? base + 1 : p->module;
     size_t len = stem - (size_t)(base - p->module);
     SDL_snprintf(p->game.cls, sizeof(p->game.cls), "%.*s", (int)len, base);
