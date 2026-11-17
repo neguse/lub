@@ -23,6 +23,9 @@ lub bundles or links the following third-party components.
 |-----------|------|---------|--------|
 | Slang prebuilt | third_party/slang/{lib,bin}/ | Apache-2.0 WITH LLVM-exception | https://github.com/shader-slang/slang/releases |
 | slang-wasm | web/public/slang/slang-wasm.{js,wasm} | Apache-2.0 WITH LLVM-exception | https://github.com/shader-slang/slang/releases |
+| DirectX Shader Compiler (Windows の dxcompiler.dll) | third_party/slang/bin/dxcompiler.dll | NCSA (LLVM) ほか。zip の LICENSE-LLVM.txt、LICENSE-MIT.txt、LICENSE-MS.txt (third_party/slang/bin/dxc-LICENSE-*.txt に写す) | https://github.com/microsoft/DirectXShaderCompiler/releases |
+| DirectX 12 Agility SDK (Windows の D3D12Core.dll) | third_party/d3d12agility/ | Microsoft の再配布できる license (package の LICENSE.txt) | https://www.nuget.org/packages/Microsoft.Direct3D.D3D12 |
+| mozc dictionary_oss (lider のかな漢字変換の辞書。release の一式の lider/data/mozc.dict) | lider/data/mozc.dict (lider/scripts/build-dict.sh が作る) | IPAdic license + BSD-3-Clause (mozc) + 沖縄辞書 (public domain)。mozc-README.txt と mozc-LICENSE.txt を辞書の隣に置く | https://github.com/google/mozc |
 
 ## Git submodules (source build)
 

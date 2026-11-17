@@ -6,3 +6,5 @@ tcs/tcsvm/tests/modules/expected.txt -whitespace
 lider/data/UDEVGothic-LICENSE*.txt -whitespace
 # test が、行末の空白の後ろに打つ
 lider/tests/ime/Target.cs -whitespace
+# cmd は LF だけの行末で goto と label を読み違えることがあるので、batch file は CRLF で取り出す
+*.cmd text eol=crlf

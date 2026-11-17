@@ -1,0 +1,21 @@
+#!/bin/sh
+# release の一式の lider を起動する (Linux と macOS)。
+#   lub/bin/lider [Game.csproj] [lub の player の引数...]
+# Game.csproj を渡すと、lider がそのゲームを開く (env LIDER_GAME)。
+# lider の file (Lider.tcsb、font、かな漢字変換の辞書) は一式の lider/ から読む (env LIDER_HOME)。
+set -e
+bin="$(cd "$(dirname "$0")" && pwd)"
+kit="$(dirname "$bin")"
+case "${1:-}" in
+  *.csproj)
+    game="$1"
+    shift
+    case "$game" in
+      /*) ;;
+      *) game="$PWD/$game" ;;
+    esac
+    export LIDER_GAME="$game"
+    ;;
+esac
+export LIDER_HOME="${LIDER_HOME:-$kit/lider}"
+exec "$bin/lider-player" "$kit/lider/Lider.tcsb" "$@"

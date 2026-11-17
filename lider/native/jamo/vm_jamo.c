@@ -6,9 +6,13 @@
  * engine と session は process にひとつ。IME の状態 (かな入力、変換、候補、文節の伸び縮み、学習) は jamo の session が持ち、ここは渡すだけ。
  * 文節と候補の番号、preedit の中の位置は 0 から。 */
 #include <lub/lub_vm_extension.h>
-#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
 
 #include <jamo.h>
 
@@ -18,16 +22,48 @@ static jamo_session_t *session;
 
 /* 辞書の読み込み (mozc.dict で数秒) を裏の thread で先に始める。
  * thread は preload_engine にだけ書き、Open が待ってから読む */
-static pthread_t preload_thread;
 static int preload_started;
 static jamo_engine_t *preload_engine;
 static char *preload_dict;
 
+static void preload_run(void) {
+  preload_engine = jamo_engine_open(preload_dict);
+}
+
+/* 裏の thread を始める (始められたら 1) と、終わるのを待つ */
+#ifdef _WIN32
+static HANDLE preload_thread;
+
+static DWORD WINAPI preload_main(LPVOID arg) {
+  (void)arg;
+  preload_run();
+  return 0;
+}
+
+static int preload_start(void) {
+  preload_thread = CreateThread(NULL, 0, preload_main, NULL, 0, NULL);
+  return preload_thread != NULL;
+}
+
+static void preload_join(void) {
+  WaitForSingleObject(preload_thread, INFINITE);
+  CloseHandle(preload_thread);
+}
+#else
+static pthread_t preload_thread;
+
 static void *preload_main(void *arg) {
   (void)arg;
-  preload_engine = jamo_engine_open(preload_dict);
+  preload_run();
   return NULL;
 }
+
+static int preload_start(void) {
+  return pthread_create(&preload_thread, NULL, preload_main, NULL) == 0;
+}
+
+static void preload_join(void) { pthread_join(preload_thread, NULL); }
+#endif
 
 /* VM の string を NUL で終わる文字列に写す (呼ぶ側が free) */
 static char *dup_arg(const void *s) {
@@ -67,8 +103,7 @@ FN(f_preload) {
     return TVM_OK;
   }
   preload_dict = dup_arg(args[0].p);
-  preload_started = preload_dict && pthread_create(&preload_thread, NULL,
-                                                   preload_main, NULL) == 0;
+  preload_started = preload_dict && preload_start();
   if (!preload_started) {
     free(preload_dict);
     preload_dict = NULL;
@@ -80,7 +115,7 @@ FN(f_preload) {
 FN(f_open) {
   UNUSED;
   if (!engine && preload_started) {
-    pthread_join(preload_thread, NULL); /* 読んでいる途中ならここで待つ */
+    preload_join(); /* 読んでいる途中ならここで待つ */
     preload_started = 0;
     engine = preload_engine;
     free(preload_dict);
