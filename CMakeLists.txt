@@ -118,11 +118,21 @@ set(LUB_HAS_SLANG OFF)
 if(NOT LUB_WASM AND NOT LUB_NO_SLANG)
   set(LUB_HAS_SLANG ON)
 endif()
+# Windows の prebuilt (Slang、DXC、Agility SDK、WARP) は CPU ごとに分かれている。DXC と NuGet の package は bin/<LUB_WIN_ARCH> に置く。
+if(WIN32)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|arm64|aarch64)$")
+    set(LUB_WIN_ARCH arm64)
+    set(_slang_win_arch aarch64)
+  else()
+    set(LUB_WIN_ARCH x64)
+    set(_slang_win_arch x86_64)
+  endif()
+endif()
 if(LUB_HAS_SLANG)
   if(WIN32)
     set(_slang_lib_marker "${SLANG_ROOT}/lib/slang.lib")
     set(_slang_archive_url
-      "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-windows-x86_64.zip")
+      "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-windows-${_slang_win_arch}.zip")
   elseif(APPLE)
     set(_slang_lib_marker "${SLANG_ROOT}/lib/libslang.dylib")
     set(_slang_archive_url
@@ -169,10 +179,12 @@ if(LUB_HAS_SLANG)
   # License: University of Illinois/NCSA (LLVM Release License).
   if(WIN32)
     set(_dxc_marker "${SLANG_ROOT}/bin/dxcompiler.dll")
+    # 配るときに同梱する DXC のライセンス (lub.exe の隣に dxc-LICENSE-*.txt として写る)
+    set(_dxc_license_marker "${SLANG_ROOT}/bin/dxc-LICENSE-MS.txt")
     set(_dxc_archive_url
       "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602.24/dxc_2026_05_27.zip")
-    if(NOT EXISTS "${_dxc_marker}")
-      message(STATUS "dxcompiler.dll missing; downloading ${_dxc_archive_url}")
+    if(NOT EXISTS "${_dxc_marker}" OR NOT EXISTS "${_dxc_license_marker}")
+      message(STATUS "dxcompiler.dll or its license missing; downloading ${_dxc_archive_url}")
       set(_dxc_archive "${CMAKE_CURRENT_BINARY_DIR}/_dxc_prebuilt.archive")
       set(_dxc_extract "${CMAKE_CURRENT_BINARY_DIR}/_dxc_prebuilt")
       file(DOWNLOAD "${_dxc_archive_url}" "${_dxc_archive}" SHOW_PROGRESS STATUS _dxc_dl_status)
@@ -182,9 +194,12 @@ if(LUB_HAS_SLANG)
       endif()
       file(REMOVE_RECURSE "${_dxc_extract}")
       file(ARCHIVE_EXTRACT INPUT "${_dxc_archive}" DESTINATION "${_dxc_extract}")
-      file(COPY "${_dxc_extract}/bin/x64/dxcompiler.dll" DESTINATION "${SLANG_ROOT}/bin")
+      file(COPY "${_dxc_extract}/bin/${LUB_WIN_ARCH}/dxcompiler.dll" DESTINATION "${SLANG_ROOT}/bin")
+      foreach(_dxc_license LLVM MIT MS)
+        file(COPY_FILE "${_dxc_extract}/LICENSE-${_dxc_license}.txt" "${SLANG_ROOT}/bin/dxc-LICENSE-${_dxc_license}.txt")
+      endforeach()
       if(NOT EXISTS "${_dxc_marker}")
-        message(FATAL_ERROR "DXC archive did not contain bin/x64/dxcompiler.dll")
+        message(FATAL_ERROR "DXC archive did not contain bin/${LUB_WIN_ARCH}/dxcompiler.dll")
       endif()
     endif()
   endif()
@@ -198,7 +213,7 @@ if(LUB_HAS_SLANG)
   if(WIN32)
     set(LUB_AGILITY_VERSION "1.619.5")
     set(LUB_AGILITY_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/d3d12agility")
-    set(_agility_marker "${LUB_AGILITY_ROOT}/build/native/bin/x64/D3D12Core.dll")
+    set(_agility_marker "${LUB_AGILITY_ROOT}/build/native/bin/${LUB_WIN_ARCH}/D3D12Core.dll")
     if(NOT EXISTS "${_agility_marker}")
       set(_agility_url
         "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/${LUB_AGILITY_VERSION}")
@@ -212,7 +227,7 @@ if(LUB_HAS_SLANG)
       file(REMOVE_RECURSE "${LUB_AGILITY_ROOT}")
       file(ARCHIVE_EXTRACT INPUT "${_agility_archive}" DESTINATION "${LUB_AGILITY_ROOT}")
       if(NOT EXISTS "${_agility_marker}")
-        message(FATAL_ERROR "Agility SDK package did not contain build/native/bin/x64/D3D12Core.dll")
+        message(FATAL_ERROR "Agility SDK package did not contain build/native/bin/${LUB_WIN_ARCH}/D3D12Core.dll")
       endif()
     endif()
     # WARP from its own NuGet package for software-rasterizer runs (CI golden):
@@ -221,7 +236,7 @@ if(LUB_HAS_SLANG)
     if(LUB_FETCH_WARP)
       set(LUB_WARP_VERSION "1.0.20")
       set(LUB_WARP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/d3d12warp")
-      set(_warp_marker "${LUB_WARP_ROOT}/build/native/bin/x64/d3d10warp.dll")
+      set(_warp_marker "${LUB_WARP_ROOT}/build/native/bin/${LUB_WIN_ARCH}/d3d10warp.dll")
       if(NOT EXISTS "${_warp_marker}")
         set(_warp_url
           "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.WARP/${LUB_WARP_VERSION}")
@@ -235,7 +250,7 @@ if(LUB_HAS_SLANG)
         file(REMOVE_RECURSE "${LUB_WARP_ROOT}")
         file(ARCHIVE_EXTRACT INPUT "${_warp_archive}" DESTINATION "${LUB_WARP_ROOT}")
         if(NOT EXISTS "${_warp_marker}")
-          message(FATAL_ERROR "WARP package did not contain build/native/bin/x64/d3d10warp.dll")
+          message(FATAL_ERROR "WARP package did not contain build/native/bin/${LUB_WIN_ARCH}/d3d10warp.dll")
         endif()
       endif()
     endif()
@@ -522,14 +537,14 @@ if(WIN32)
   add_custom_command(TARGET lub POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:lub>/D3D12"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${LUB_AGILITY_ROOT}/build/native/bin/x64/D3D12Core.dll"
-      "${LUB_AGILITY_ROOT}/build/native/bin/x64/d3d12SDKLayers.dll"
+      "${LUB_AGILITY_ROOT}/build/native/bin/${LUB_WIN_ARCH}/D3D12Core.dll"
+      "${LUB_AGILITY_ROOT}/build/native/bin/${LUB_WIN_ARCH}/d3d12SDKLayers.dll"
       "$<TARGET_FILE_DIR:lub>/D3D12"
     VERBATIM)
   if(LUB_FETCH_WARP)
     add_custom_command(TARGET lub POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${LUB_WARP_ROOT}/build/native/bin/x64/d3d10warp.dll"
+        "${LUB_WARP_ROOT}/build/native/bin/${LUB_WIN_ARCH}/d3d10warp.dll"
         "$<TARGET_FILE_DIR:lub>"
       VERBATIM)
   endif()

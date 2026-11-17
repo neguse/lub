@@ -38,7 +38,8 @@ LUB_URL=http://localhost:5173/ npm run verify-lider
 
 ## Linux arm64 向けに build する
 
-x86_64 の Linux の上で、Linux arm64 (aarch64、glibc) の機械で動く lider の player を作る。
+release の一式 (`docs/release-kit.md` の `lub-linux-arm64.tar.gz`) には、arm64 の Linux で build した lider が入っている。
+ここは、x86_64 の Linux の上で、Linux arm64 (aarch64、glibc) の機械で動く lider の player を作る手順。
 コンパイラは zig、かな漢字変換 (jamo-core) は Rust の `aarch64-unknown-linux-gnu` で作る。
 
 ```
@@ -78,4 +79,4 @@ XR (OpenXR) で動かすには `LUB_BACKEND=openxr` を渡す。
 lider/scripts/gate.sh
 ```
 
-かな漢字変換の辞書 (`data/mozc.dict`) はリポジトリに無い。無いと `tests/ime` は飛ばす。
+かな漢字変換の辞書 (`data/mozc.dict`) はリポジトリに無い。`scripts/build-dict.sh data` で作る (要 cargo と curl)。無いと `tests/ime` は飛ばす。

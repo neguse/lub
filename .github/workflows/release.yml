@@ -1,5 +1,5 @@
-# release の一式 (docs/release-kit.md) を作り、iOS の simulator で player を確かめる。
-# tag (v*) の push で、両方が通れば GitHub の release に lub-linux-x64.tar.gz を載せる。
+# release の一式 (docs/release-kit.md) を OS と CPU の組 (target) ごとに作って確かめ、iOS の simulator で player を確かめる。
+# tag (v*) の push で、全部が通れば GitHub の release に一式 (lub-<target>.tar.gz、Windows は lub-<target>.zip) を載せる。
 # `-` を含む tag (v0.2.0-rc.1 など) は prerelease にする (releases/latest の対象にならない)。
 # これらを変える PR では、載せずに確かめるところまで走る。
 name: release
@@ -11,29 +11,24 @@ on:
     paths:
       - .github/workflows/release.yml
       - scripts/package-release.sh
+      - scripts/verify-release-kit.sh
       - docs/release-kit.md
       - scripts/apple-gate.sh
+      - lider/kit/**
+      - lider/scripts/build-dict.sh
 
 permissions:
   contents: write
 
 jobs:
-  linux-x64:
-    # glibc 2.39 の環境 (claude.ai の sandbox など) でも動くよう、Ubuntu 24.04 で build する
+  # OS によらない物: web の player (wasm)、lider の bytecode (Lider.tcsb)、かな漢字変換の辞書 (mozc.dict)
+  common:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Cache slang prebuilts
-        uses: actions/cache@v4
-        with:
-          path: |
-            third_party/slang/lib
-            third_party/slang/bin
-          key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Cache emsdk
         uses: actions/cache@v4
@@ -43,16 +38,11 @@ jobs:
 
       - name: Install system deps
         run: |
+          # runner イメージ同梱の Google Chrome の apt source は metadata の Hash Sum mismatch を時々出して update ごと落とす。
+          # ここでは使わない
           sudo rm -f /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ninja-build patchelf libvulkan-dev \
-            libasound2-dev libpulse-dev libpipewire-0.3-dev \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-            libxfixes-dev libxi-dev libxss-dev libxtst-dev \
-            libxkbcommon-dev libwayland-dev libdecor-0-dev \
-            libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
-            libdbus-1-dev libudev-dev
+          sudo apt-get install -y --no-install-recommends ninja-build
 
       - name: Install emsdk
         run: |
@@ -66,52 +56,149 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Build lub (Linux x64)
-        run: bash scripts/build-release.sh --build-dir build-release-linux
-
       - name: Build the web player (wasm)
         run: |
           source "$HOME/emsdk/emsdk_env.sh"
           emcmake cmake --preset wasm-release
-          cmake --build build/wasm -j
+          cmake --build build/wasm --target lub_vm
+          mkdir -p common/wasm/vm
+          cp build/wasm/vm/lub.js build/wasm/vm/lub.wasm common/wasm/vm/
 
-      # tcs2c で C にした tcs (.NET の tcs と同じ出力を出すことも確かめる)
+      - name: Build Lider.tcsb
+        run: bash lider/scripts/build-module.sh common/lider/Lider.tcsb
+
+      # mozc の辞書を固定した commit で取って作り、1 文を変換して確かめる
+      - name: Build the dictionary
+        run: bash lider/scripts/build-dict.sh common/dict
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: kit-common
+          path: common
+
+  # target ごとの一式。lub、tcs、lub-gen、lider の player をその target の上で build し、common の物と一緒に固めて確かめる
+  kit:
+    needs: common
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # glibc 2.39 の環境 (claude.ai の sandbox など) でも動くよう、Linux は Ubuntu 24.04 で build する
+          - target: linux-x64
+            os: ubuntu-24.04
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+          - target: windows-x64
+            os: windows-latest
+            arch: x64
+          - target: windows-arm64
+            os: windows-11-arm
+            arch: arm64
+          - target: macos-arm64
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache prebuilts
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/slang/lib
+            third_party/slang/bin
+            third_party/d3d12agility
+          key: release-prebuilt-${{ matrix.target }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*
+          sudo apt-get update
+          # mesa-vulkan-drivers (lavapipe) と xvfb は、一式の lider を描かせて確かめるのに使う
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build patchelf libvulkan-dev mesa-vulkan-drivers xvfb \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev libdecor-0-dev \
+            libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
+            libdbus-1-dev libudev-dev
+
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bash ninja
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: ${{ matrix.arch }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build lub
+        run: |
+          cmake -S . -B build-kit -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-kit
+
+      # tcs2c で C にした tcs (.NET の tcs と同じ出力を出すことも確かめる)。生成した C は GNU C の文の式を使うので、Linux 以外は clang で build する
       - name: Build tcs
-        run: bash scripts/build-tcs-native.sh build-release-linux
+        run: |
+          [ "$RUNNER_OS" = Linux ] || export CC=clang
+          bash scripts/build-tcs-native.sh build-kit
 
       # lub-gen (TinyC#) を C の tcs で C にする (.NET で動かした lub-gen と同じ出力を出すことも確かめる)
       - name: Build lub-gen
-        run: bash scripts/build-lub-gen.sh --verify build-release-linux
+        run: |
+          [ "$RUNNER_OS" = Linux ] || export CC=clang
+          bash scripts/build-lub-gen.sh --verify build-kit
+
+      # lider の player は、tcs2c で C にした tcs の compiler を含む。Windows は MSVC と同じ ABI の clang-cl で build し、MSVC で build した lub と link する
+      - name: Build the lider player
+        run: |
+          [ "$RUNNER_OS" = Windows ] && export CC=clang-cl CXX=clang-cl
+          LUB_BUILD="$PWD/build-kit" bash lider/scripts/build-player.sh
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kit-common
+          path: common
 
       - name: Package
-        run: bash scripts/package-release.sh build-release-linux build/wasm build-release-linux/tcs dist/lub-linux-x64.tar.gz
+        run: bash scripts/package-release.sh ${{ matrix.target }} build-kit common dist
 
-      # 一式だけを展開した所で、雛形のゲームを web に export できること (リポジトリの tcs や cs-lib を使わない)。
-      - name: Export the template with the kit
+      # 一式だけを展開した所で、雛形を export、check し、lider で開いて動かす。
+      # 描画は、Linux は lavapipe (CPU の Vulkan) と仮想の画面、Windows は WARP (CPU の D3D12)、macOS は runner の GPU
+      - name: Verify the kit
         run: |
-          kit="$RUNNER_TEMP/kit"
-          mkdir -p "$kit"
-          tar xf dist/lub-linux-x64.tar.gz -C "$kit"
-          cp -r "$kit/lub/templates/game" "$kit/mygame"
-          cd "$kit/mygame"
-          ../lub/bin/lub export web Game.csproj -o out
-          test -s ../lub/manual/tcs-support-matrix.md
-          test -s ../lub/COMMIT
-          test -s out/index.html
-          # dotnet を PATH から外しても、一式の tcs で同じ雛形を check できること
-          PATH=/usr/bin:/bin ../lub/bin/lub check Game.csproj
-          # 一式の lub-gen も dotnet なしで stub を読み、雛形の接続コードを作れること (入力は tcs c と同じく、ゲームの後に cs-lib の実装)
-          gen_args=()
-          for f in Game.cs ../lub/cs-lib/lub/*.cs ../lub/cs-lib/lubx/*.cs; do gen_args+=(--source "$f"); done
-          PATH=/usr/bin:/bin ../lub/bin/tcs/lub-gen tcs --stub ../lub/cs-lib/lub_stub.cs "${gen_args[@]}" -o binding.c
-          test -s binding.c
-          grep -qa '@fragment' out/cache/shader/*.lubshader
+          kit=$(ls dist/lub-${{ matrix.target }}.*)
+          case "$RUNNER_OS" in
+            Linux)
+              VK_ICD_FILENAMES="$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)" xvfb-run -a bash scripts/verify-release-kit.sh "$kit"
+              ;;
+            Windows)
+              LUB_D3D12_WARP=1 bash scripts/verify-release-kit.sh "$kit"
+              ;;
+            *)
+              bash scripts/verify-release-kit.sh "$kit"
+              ;;
+          esac
 
       - name: Upload the kit
         uses: actions/upload-artifact@v4
         with:
-          name: lub-linux-x64
-          path: dist/lub-linux-x64.tar.gz
+          name: lub-${{ matrix.target }}
+          path: dist/lub-${{ matrix.target }}.*
 
   # tests/cs のうち iOS で走らせるものを、simulator の app で動かす (scripts/apple-gate.sh --part ios)。
   # simulator の起動の遅さは runner 次第で揺れるので PR の CI には置かない。
@@ -169,15 +256,16 @@ jobs:
           if-no-files-found: ignore
 
   publish:
-    needs: [linux-x64, ios]
+    needs: [kit, ios]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: lub-linux-x64
+          pattern: lub-*
           path: dist
+          merge-multiple: true
 
       - name: Publish the release
         env:
@@ -185,5 +273,5 @@ jobs:
         run: |
           pre=()
           case "$GITHUB_REF_NAME" in *-*) pre=(--prerelease) ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/lub-linux-x64.tar.gz \
+          gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes "${pre[@]}"

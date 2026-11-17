@@ -1,7 +1,7 @@
 # lider の player (native/main.c): lub の player の library に、lider の native の拡張 (かな漢字変換、file system の操作、tcs の compiler) を静的に link する。
 # lub の build は find_package(lub) で使う (lub_DIR に lub の build のディレクトリ)。scripts/build-player.sh が呼ぶ。
 # web の出力は build/player-web/web/lub.{js,wasm}。
-# 要るもの: cargo (web は rustup の wasm32-unknown-emscripten)、dotnet (tcs を C にする)、GCC か Clang (tcs の C は GNU C の文の式を使う)。
+# 要るもの: cargo (web は rustup の wasm32-unknown-emscripten)、dotnet (tcs を C にする)、GCC か Clang (tcs の C は GNU C の文の式を使う。Windows は clang-cl)。
 cmake_minimum_required(VERSION 3.22)
 project(lider_player C CXX)
 
@@ -60,12 +60,21 @@ add_custom_command(OUTPUT "${TCS_C_DIR}/tcs_tool_files.h"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/tcs/embed.cmake"
   DEPENDS "${TCS_ROOT}/TinySystem/Linq.cs" "${TCS_ROOT}/TinySystem/ValueTuple.cs" "${CMAKE_CURRENT_SOURCE_DIR}/tcs/embed.cmake"
   VERBATIM)
+# tcs2c の C の約束 (tcs/SelfHost/Web/build.sh と同じ)。生成した C の警告は出さない
+# 生成した C は GNU C の文の式を使うので、MSVC の cl では build できない。Windows は clang-cl で build する
+if(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+  message(FATAL_ERROR "lider の player は MSVC の cl では build できない (tcs2c の C が GNU C の文の式を使う)。clang-cl を使う (-DCMAKE_C_COMPILER=clang-cl)")
+elseif(CMAKE_C_SIMULATE_ID STREQUAL "MSVC")
+  # clang-cl は GNU の形の option を /clang: で受ける
+  set(TCS_C_OPTIONS "/O2;/clang:-ffp-contract=off;/clang:-fwrapv;/w")
+else()
+  set(TCS_C_OPTIONS "-O2;-ffp-contract=off;-fwrapv;-w")
+endif()
 set_source_files_properties(tcs/vm_tcs.c PROPERTIES
   OBJECT_DEPENDS "${TCS_C_DIR}/tcs.c;${TCS_C_DIR}/tcs_tool_files.h"
   INCLUDE_DIRECTORIES "${TCS_C_DIR}"
   COMPILE_DEFINITIONS lub_vm_extension=lub_vm_extension_tcs
-  # tcs2c の C の約束 (tcs/SelfHost/Web/build.sh と同じ)。生成した C の警告は出さない
-  COMPILE_OPTIONS "-O2;-ffp-contract=off;-fwrapv;-w")
+  COMPILE_OPTIONS "${TCS_C_OPTIONS}")
 
 add_executable(lider_player main.c jamo/vm_jamo.c fs/vm_fs.c tcs/vm_tcs.c)
 add_dependencies(lider_player lider_jamo_core)
