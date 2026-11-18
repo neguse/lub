@@ -54,14 +54,16 @@ TCS_FMT_API size_t tcs_format_i32_spec(int32_t value, char spec,
    conversion character (flags [-+ #0], width, precision). The value is chosen
    by kind: TCS_PRINTF_I32 uses i, TCS_PRINTF_F32 uses f, TCS_PRINTF_STR uses s
    and slen (%s only). %d / %x etc. take an integer value (a float only when it
-   has an integer value), %f / %e / %g / %a promote to double, %c is a byte. out
-   is TCS_PRINTF_MAX(slen) bytes. Returns the number of bytes written. If the
-   value does not fit the conversion, returns -1 with the reason in *error */
+   has an integer value), %f / %e / %g / %a promote to double, %c is a byte.
+   Like snprintf, returns the number of bytes of the result, and writes the
+   result to out only when that is less than cap (out may be NULL and cap may be
+   0). The caller gets the length with cap 0 and then calls with an out of that
+   length + 1 bytes. If the value does not fit the conversion or the result
+   exceeds INT32_MAX bytes, returns -1 with the reason in *error */
 enum { TCS_PRINTF_I32 = 0, TCS_PRINTF_F32 = 1, TCS_PRINTF_STR = 2 };
-#define TCS_PRINTF_MAX(slen) ((size_t)(slen) + 512)
 TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
                                 int32_t i, float f, const char *s, size_t slen,
-                                char *out, const char **error);
+                                char *out, size_t cap, const char **error);
 
 /* Reads the length bytes of text with the same rules as .NET's
    int.Parse(string) (NumberStyles.Integer). Leading and trailing whitespace

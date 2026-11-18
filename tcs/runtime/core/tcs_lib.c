@@ -96,16 +96,19 @@ static TcsString *tcs_string_format(TcsString *format, size_t argc,
                  : arg->kind == TCS_FMT_I32 ? TCS_PRINTF_I32
                  : arg->kind == TCS_FMT_F32 ? TCS_PRINTF_F32
                                             : TCS_PRINTF_STR;
+      const char *data = text ? (const char *)text->data : "";
       const char *error = NULL;
-      char *out = malloc(TCS_PRINTF_MAX(slen));
-      long written;
-      if (out == NULL)
-        tcs_fault("allocation");
-      written = tcs_printf_one(spec, speclen, kind, arg->i, arg->f,
-                               text ? (const char *)text->data : "", slen, out,
-                               &error);
+      char *out;
+      /* Gets the length of the result, then writes into an out of that size */
+      long written = tcs_printf_one(spec, speclen, kind, arg->i, arg->f, data,
+                                    slen, NULL, 0, &error);
       if (written < 0)
         tcs_fault(error);
+      out = malloc((size_t)written + 1);
+      if (out == NULL)
+        tcs_fault("allocation");
+      tcs_printf_one(spec, speclen, kind, arg->i, arg->f, data, slen, out,
+                     (size_t)written + 1, &error);
       tcs_format_append(&buffer, &length, &capacity, (const unsigned char *)out,
                         (size_t)written);
       free(out);
