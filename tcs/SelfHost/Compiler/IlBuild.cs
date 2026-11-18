@@ -2525,9 +2525,13 @@ public sealed class IlBuild
         // (float?)x で x が int?: 値があるときだけ変換する
         if (target.Kind == TypeKind.Nullable && target.Elem.Kind == TypeKind.Float && srcType.Kind == TypeKind.Nullable && IlTypes.IsIntegralSource(srcType.Elem))
             return new IlLiftedUn(IlUnOp.ToFloat, value, null);
-        // (int?)x: 明示の T → T? の変換
+        // (int?)x / (float?)x: 明示の T → U? の変換は U に変換してから包む (int → float? は f32 に丸める)
         if (target.Kind == TypeKind.Nullable && srcType.Kind != TypeKind.Nullable && srcType.Kind != TypeKind.Null)
-            return new IlNullableWrap(CastToEnum(target.Elem, srcType, value), IlTypes.Display(srcType), null);
+        {
+            if (target.Elem.Kind == TypeKind.Float && IlTypes.IsIntegralSource(srcType) && !IsFloatConverted(value))
+                value = new IlNumericConvert(value, "float", false, null);
+            return new IlNullableWrap(CastToEnum(target.Elem, srcType, value), IlTypes.Display(target.Elem), null);
+        }
         if (target.Kind == TypeKind.Enum) return CastToEnum(target, srcType, value);
         // (E?)x で x が T?: 値があれば wrap する (lifted)
         if (target.Kind == TypeKind.Nullable && srcType.Kind == TypeKind.Nullable && target.Elem.Kind == TypeKind.Enum && !TypeSym.Same(target.Elem, srcType.Elem))
