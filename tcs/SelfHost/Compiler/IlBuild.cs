@@ -3911,7 +3911,7 @@ public sealed class IlBuild
     private void CollectIsDesignations(Node n, Node scope, List<Node> into)
     {
         if (n != scope && (IsStatementKind(n.Kind) || n.Kind == NodeKind.Lambda)) return;
-        if (n != scope && n.Kind == NodeKind.Is && n.B != null && n.B.Kind == NodeKind.PatDecl && n.B.Local != null) into.Add(n.B);
+        if (n != scope && n.Kind == NodeKind.Is && n.B != null && HasDesignation(n.B)) into.Add(n.B);
         VisitChildren(n, c => CollectIsDesignations(c, scope, into));
     }
 
@@ -4217,9 +4217,16 @@ public sealed class IlBuild
         return Unported("is sub-pattern", pattern);
     }
 
+    // A property pattern in a nested position. The form with a variable binds only at the root position (the right side of is, a switch arm and case), so it is not built here
     private IlExpr? BuildRecursivePattern(IlExpr expr, Node rp, TypeSym? inputType)
     {
-        if (rp.Text != "") return null;
+        if (rp.Local != null) return null;
+        return BuildPropertyMatch(expr, rp, inputType);
+    }
+
+    // The match of a property pattern (the caller binds the variable)
+    private IlExpr? BuildPropertyMatch(IlExpr expr, Node rp, TypeSym? inputType)
+    {
         var subpatterns = new List<Node>();
         if (rp.List != null)
         {
@@ -4269,11 +4276,18 @@ public sealed class IlBuild
         return result;
     }
 
-    // A declaration pattern of struct S applied to an S / S? input, and a declaration pattern of value type T applied to a T? input (extracts the value and binds it)
+    // A pattern with a variable at its root: a declaration pattern (`T v`) and a property pattern with a variable (`T { ... } v`, `{ ... } v`)
+    private static bool HasDesignation(Node p)
+    {
+        return (p.Kind == NodeKind.PatDecl || p.Kind == NodeKind.PatProp) && p.Local != null;
+    }
+
+    // A variable of struct S applied to an S / S? input, and a variable of value type T applied to a T? input (extracts the value and binds it)
     private static bool IsStructDesignation(Node dp, TypeSym? inputType)
     {
-        if (dp.Type == null || inputType == null || !TypeSym.Same(IlTypes.UnwrapNullable(inputType), dp.Type)) return false;
-        return IlTypes.IsUserStruct(dp.Type) || dp.Type.IsValueType && IlTypes.IsNullableValueType(inputType);
+        var t = dp.Local != null ? dp.Local.Type : dp.Type;
+        if (t == null || inputType == null || !TypeSym.Same(IlTypes.UnwrapNullable(inputType), t)) return false;
+        return IlTypes.IsUserStruct(t) || t.IsValueType && IlTypes.IsNullableValueType(inputType);
     }
 
     private IlExpr DesignationValue(IlExpr input, TypeSym inputType, TypeSym declType)
@@ -4309,8 +4323,26 @@ public sealed class IlBuild
     private IlLocal SwitchDesignationLocal(Node dp, TypeSym? inputType, IlExpr sw)
     {
         var name = dp.Local!.IlName;
-        if (IsStructDesignation(dp, inputType)) return new IlLocal(name, null, IlTypes.Display(dp.Type!), null);
-        return new IlLocal(name, sw, dp.Type != null ? IlTypes.Display(dp.Type) : null, null);
+        if (IsStructDesignation(dp, inputType)) return new IlLocal(name, null, IlTypes.Display(dp.Local.Type), null);
+        return new IlLocal(name, sw, IlTypes.Display(dp.Local.Type), null);
+    }
+
+    // The root pattern of a switch arm and case. A property pattern with a variable matches, for a reference type, against the variable the predeclaration initialized with the input, and
+    // for a value type binds the value after the match succeeds
+    private IlExpr? BuildSwitchPattern(Node pattern, IlExpr sw, TypeSym? inputType)
+    {
+        if (pattern.Kind != NodeKind.PatProp || pattern.Local == null) return BuildPattern(pattern, sw, inputType);
+        if (IsStructDesignation(pattern, inputType)) return BuildStructPropertyDesignation(pattern, sw, inputType!);
+        return BuildPropertyMatch(sw, pattern, inputType);
+    }
+
+    // A property pattern with a value-type variable: when the match succeeds, binds the value (a copy for a struct) to the variable
+    private IlExpr? BuildStructPropertyDesignation(Node pattern, IlExpr input, TypeSym inputType)
+    {
+        var matched = BuildPropertyMatch(input, pattern, inputType);
+        if (matched == null) return null;
+        var bind = BuildStructDeclarationIs(new IlVar(pattern.Local!.IlName, null), input, inputType, pattern.Local.Type);
+        return new IlBin(IlBinOp.And, matched, bind, null);
     }
 
     private IlExpr? BuildIsPattern(Node isNode)
@@ -4319,11 +4351,18 @@ public sealed class IlBuild
         if (expr == null) return null;
         var inputType = NaturalType(isNode.A!);
         var pattern = isNode.B!;
-        if (pattern.Kind == NodeKind.PatDecl && pattern.Local != null)
+        if (HasDesignation(pattern))
         {
-            var name = pattern.Local.IlName;
-            if (IsStructDesignation(pattern, inputType)) return BuildStructDeclarationIs(new IlVar(name, null), expr, inputType, pattern.Type!);
-            var check = BuildTypeCheck(new IlVar(name, null), inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
+            var name = pattern.Local!.IlName;
+            if (IsStructDesignation(pattern, inputType))
+            {
+                if (pattern.Kind == NodeKind.PatDecl) return BuildStructDeclarationIs(new IlVar(name, null), expr, inputType, pattern.Type!);
+                return BindPatternInput(expr, input => BuildStructPropertyDesignation(pattern, input, inputType));
+            }
+            // A reference-type variable binds the input first, then the variable is matched
+            var check = pattern.Kind == NodeKind.PatDecl
+                ? BuildTypeCheck(new IlVar(name, null), inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type))
+                : BuildPropertyMatch(new IlVar(name, null), pattern, inputType);
             if (check == null) return null;
             var stats = new List<IlStat>();
             stats.Add(new IlAssign(new IlVar(name, null), expr, null));
@@ -4356,7 +4395,7 @@ public sealed class IlBuild
         {
             foreach (var arm in sx.List)
             {
-                if (arm.A != null && arm.A.Kind == NodeKind.PatDecl && arm.A.Local != null) stats.Add(SwitchDesignationLocal(arm.A, inputType, sw));
+                if (arm.A != null && HasDesignation(arm.A)) stats.Add(SwitchDesignationLocal(arm.A, inputType, sw));
             }
         }
         var arms = new List<IlArm>();
@@ -4373,7 +4412,7 @@ public sealed class IlBuild
                     elseBlock = new IlBlock(One(new IlReturn(value, null)));
                     continue;
                 }
-                var pattern = BuildPattern(arm.A, sw, inputType);
+                var pattern = BuildSwitchPattern(arm.A, sw, inputType);
                 if (pattern == null) return null;
                 if (arm.B != null)
                 {
@@ -4418,7 +4457,7 @@ public sealed class IlBuild
             if (section.List == null) continue;
             foreach (var label in section.List)
             {
-                if (label.Kind == NodeKind.CaseLabel && label.A != null && label.A.Kind == NodeKind.PatDecl && label.A.Local != null)
+                if (label.Kind == NodeKind.CaseLabel && label.A != null && HasDesignation(label.A))
                     products.Add(SwitchDesignationLocal(label.A, inputType, sw) with { Origin = origin });
             }
         }
@@ -4474,7 +4513,7 @@ public sealed class IlBuild
 
     private IlExpr? BuildPatternLabel(Node label, IlExpr sw, TypeSym? inputType)
     {
-        var condition = BuildPattern(label.A!, sw, inputType);
+        var condition = BuildSwitchPattern(label.A!, sw, inputType);
         if (condition == null) return null;
         if (label.B == null) return new IlParen(condition, null);
         var when = BuildExpr(label.B);

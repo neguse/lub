@@ -5293,7 +5293,8 @@ public sealed class Binder
                     }
                     if (p.Text != "")
                     {
-                        var l = new LocalSym(p.Text, t);
+                        // The type of the variable is the type of the input when it matches (T for a value-type T? input when no type is written)
+                        var l = new LocalSym(p.Text, p.A == null && t.Kind == TypeKind.Nullable ? t.Elem : t);
                         p.Local = l;
                         DeclareExprLocal(l, p);
                     }

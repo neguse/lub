@@ -120,6 +120,7 @@ public static class LocalNames
                 case NodeKind.Foreach:
                 case NodeKind.PatDecl:
                 case NodeKind.PatVar:
+                case NodeKind.PatProp:
                     into.Add(n);
                     break;
             }
@@ -176,7 +177,7 @@ public static class LocalNames
         var patternNames = new List<string>();
         foreach (var d in decls)
         {
-            if (d.Kind != NodeKind.PatDecl && d.Kind != NodeKind.PatVar) continue;
+            if (d.Kind != NodeKind.PatDecl && d.Kind != NodeKind.PatVar && d.Kind != NodeKind.PatProp) continue;
             var l = d.Local!;
             if (!patternNames.Contains(l.IlName))
             {
