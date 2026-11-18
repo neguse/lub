@@ -42,6 +42,26 @@ callback の中で error が起きると、その callback はそこで打ち切
 
 `OnExport` では、ゲームが使う shader と file をふだんの API(`Io.Load*`、`Gfx.UseShader` など)で一通り使う。描画の呼び出しは何もしない。`OnExport` が無いゲームは shader も file も記録しない。`<os>` は `web`、`linux`、`windows`、`macos`、`ios`、`android` のどれかで、その OS の player が使いうる target を全部入れる(`windows` は d3d12 と vulkan / sdlgpu、`macos` と `ios` は metal と sdlgpu、`android` は vulkan)。`windows` への export は、DXIL を作る dxcompiler がある Windows の lub でだけ動く。`<dir>` は空か、まだ無いディレクトリにする。
 
+### page の JS とやり取りする (`Host`)
+
+web の player を載せた page が `window.lubHost` を定義すると、ゲームは `Host` でその page の JS と topic と payload の組をやり取りできる。
+通信(WebTransport など)や clipboard のように player が持たない機能は、page の JS に置く。
+page は `lub export web` の `index.html` に script を書き足したものでも、web の player を自分の page に載せたものでもよい。
+
+```js
+window.lubHost = {
+  // ゲームの Host.Poll が先頭から 1 件ずつ取り出す。payload は Uint8Array か string
+  queue: [],
+  // ゲームの Host.Send が届く。payload は UTF-8 の Uint8Array
+  onMessage(topic, payload) {},
+};
+```
+
+- `Host.Available()` は、`window.lubHost.onMessage` が関数のとき true になる。
+- `Host.Send(topic, payload)` は `onMessage` を同期で呼ぶ。`onMessage` が無いときと、topic が 255 byte を超えるときは捨てる。
+- `Host.Poll(out topic, out payload)` は `queue` の先頭を取り出す。空なら topic は null になる。
+- native では `Available()` は false で、`Send` は何もせず、`Poll` は何も返さない。
+
 ## リソースの宣言
 
 `Gfx.Use*`、`Audio.Snd`、`Assets.*` の宣言は「無ければ作り、あれば使う」。
