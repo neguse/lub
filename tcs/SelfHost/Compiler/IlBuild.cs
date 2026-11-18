@@ -4728,15 +4728,14 @@ public sealed class IlBuild
         return new IlIife(stats, null);
     }
 
-    // later の評価が earlier の読む local / parameter を書き換えうるか: 代入 / ++ / -- / ref・out の引数の直接の書き込み、
-    // または lambda の中で書かれる (捕捉された) local を読んでいて later が呼び出しを含むとき
+    // later の評価が earlier の読む local / parameter を書き換えうるか: 代入 / ++ / -- / ref・out の引数の直接の書き込み、または lambda の中で書かれる (捕捉された) local を読んでいて later が user のコード (呼び出し、構築、custom property の getter、user の演算子) を動かしうるとき
     private bool WritesLocalReadBy(Node earlier, Node later)
     {
         var read = new List<LocalSym>();
         CollectLocalReads(earlier, read);
         if (read.Count == 0) return false;
         if (WritesAny(later, read)) return true;
-        if (!ContainsCallOrNew(later)) return false;
+        if (!MayWriteStorage(later)) return false;
         var member = ScopeRoots.Count > 0 ? ScopeRoots[0] : null;
         if (member == null) return false;
         foreach (var l in read)
@@ -4752,12 +4751,6 @@ public sealed class IlBuild
     {
         if (n.Kind == NodeKind.Name && n.Info == RefKind.Local && n.Local != null && !into.Contains(n.Local)) into.Add(n.Local);
         VisitChildren(n, c => CollectLocalReads(c, into));
-    }
-
-    private static bool ContainsCallOrNew(Node n)
-    {
-        if (n.Kind == NodeKind.Call || n.Kind == NodeKind.New) return true;
-        return AnyChild(n, c => ContainsCallOrNew(c));
     }
 
     private static bool LambdaWrites(Node n, List<LocalSym> symbols)
