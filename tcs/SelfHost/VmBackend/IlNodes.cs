@@ -580,7 +580,7 @@ public static class IlNodes
         if (node is IlNumericFor nIlNumericFor)
         {
             var n = nIlNumericFor;
-            return "IlNumericFor(" + Str(n.Var) + ", " + Dump(n.Start) + ", " + Dump(n.Limit) + ", " + Dump(n.Body) + ")";
+            return "IlNumericFor(" + Str(n.Var) + ", " + Dump(n.Start) + ", " + Dump(n.Limit) + ", " + (n.Inclusive ? "True" : "False") + ", " + Dump(n.Body) + ")";
         }
         if (node is IlForeachList nIlForeachList)
         {

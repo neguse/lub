@@ -943,8 +943,11 @@ public sealed class FunctionCompiler
         return b;
     }
 
-    /// <summary>数の for (IlNumericFor: v を start から limit まで 1 ずつ増やす)。limit は 1 回だけ評価し、
-    /// v が本文で書き換えられるときは隠れた counter を回す (il-reference: IlNumericFor)。</summary>
+    /// <summary>数の for (IlNumericFor: v を start にし、v が limit より小さい (Inclusive なら limit 以下の) 間、本文の後に v を 1 増やして繰り返す)。
+    /// limit は 1 回だけ評価する。
+    /// 増分の後も C# の条件のまま比べ、増分は wrap する (il-reference: IlNumericFor)。
+    /// 本文は v に書かない (builder が示す) ので、v は counter の register そのもの。
+    /// 同じ名前が関数の中で捕捉されるか本文の local と重なるときだけ、本文の v を周ごとの counter の写しにする</summary>
     private void NumericFor(IlNumericFor nf)
     {
         _scopes.Add(new Dictionary<string, Var>());
@@ -957,7 +960,7 @@ public sealed class FunctionCompiler
         var top = new Label();
         var cont = new Label();
         var exit = new Label();
-        Jump(Op.JF_LE_I32, exit, counter.Reg, limit.Reg);
+        Jump(nf.Inclusive ? Op.JF_LE_I32 : Op.JF_LT_I32, exit, counter.Reg, limit.Reg);
         Mark(top);
         TracePoint(nf.Origin);
         _scopes.Add(new Dictionary<string, Var>());
@@ -973,9 +976,8 @@ public sealed class FunctionCompiler
         _loops.RemoveAt(_loops.Count - 1);
         _scopes.RemoveAt(_scopes.Count - 1);
         Mark(cont);
-        Jump(Op.JT_EQ_I32, exit, counter.Reg, limit.Reg);
         Emit(Op.ADDI_I32, counter.Reg, counter.Reg, 1);
-        Jump(Op.JMP, top);
+        Jump(nf.Inclusive ? Op.JT_LE_I32 : Op.JT_LT_I32, top, counter.Reg, limit.Reg);
         Mark(exit);
         _scopes.RemoveAt(_scopes.Count - 1);
     }
