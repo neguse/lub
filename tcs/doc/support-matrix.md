@@ -702,7 +702,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `new Random()` / `new Random(seed)` | **Y** | `TinySystem.Random` (System.Random と同じ形)。tcs VM と C は同じ xoshiro256** の列を作り、seed 固定時は bit 一致し、`Random.Seed(seed)` 後の `Shared` とも一致 (il-spec §13)。seed 未指定は時刻などから作る seed で予測できるので、敵対的な用途には向かない。instance は GC object |
 | `Random.Shared` (static) | **Y** | |
 | `Random.Seed(seed)` | **Y** | `Shared` の列の固定 (tcs 独自。System.Random に無い) |
-| `r.Next()` / `r.Next(max)` / `r.Next(min, max)` | **Y** | .NET 標準 API (上限は exclusive。空の範囲 `Next(0)` / `Next(n, n)` は下限を返す) |
+| `r.Next()` / `r.Next(max)` / `r.Next(min, max)` | **Y** | .NET 標準 API (上限は exclusive。空の範囲 `Next(0)` / `Next(n, n)` は下限を返す)。負の max と `min > max` は fault (.NET は ArgumentOutOfRangeException) |
 | `r.NextFloat()` / `r.NextSingle()` | **Y** | [0, 1) の float |
 | `r.Range(min, max)` | **Y** | 両端含む整数 (tcs 独自) |
 | `Random.NextDouble()` | **-** | double はサブセット外 |

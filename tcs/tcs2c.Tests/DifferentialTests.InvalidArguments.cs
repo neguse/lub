@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// Math calls whose arguments .NET rejects with an exception fault (il-spec §12). All arguments are evaluated before the check.
+// Math and Random calls whose arguments .NET rejects with an exception fault (il-spec §12). All arguments are evaluated before the check.
 // The expected value is the stdout of the same program run on CoreCLR (each stops with an exception after "before")
 public class InvalidArgumentsDifferentialTests
 {
@@ -70,5 +70,61 @@ public class InvalidArgumentsDifferentialTests
             }
             """, "P");
         Assert.Equal("5,0,10,3\nNaN,1,0,0.5\n2147483647,2147483647,7,0\n1,-1,0,-1", output);
+    }
+
+    [CTheory]
+    [InlineData("r.Next(int.MinValue)")]
+    [InlineData("r.Next(0, int.MinValue)")]
+    [InlineData("r.Next(int.MaxValue, int.MinValue)")]
+    [InlineData("r.Next(-1)")]
+    [InlineData("r.Next(int.MinValue + 1)")]
+    [InlineData("r.Next(5, 0)")]
+    [InlineData("r.Next(1, 0)")]
+    public void RandomNextInvalidBound_FaultsAfterPrecedingOutput(string expr)
+    {
+        Assert.Equal("before", Backends.AssertFaultParity($$"""
+            using System;
+            using Random = TinySystem.Random;
+            public static class P
+            {
+                public static void Main()
+                {
+                    Random r = new Random(1);
+                    Console.WriteLine("before");
+                    Console.WriteLine({{expr}});
+                    Console.WriteLine("after");
+                }
+            }
+            """, "P"));
+    }
+
+    // A range of width 0 or 1 fixes the value. For the others only being in range is checked (the random sequence differs from .NET)
+    [CFact]
+    public void RandomNextBoundary_MatchesDotnet()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using Random = TinySystem.Random;
+            public static class P
+            {
+                public static void Main()
+                {
+                    Random r = new Random(7);
+                    Console.WriteLine(r.Next(0) + "," + r.Next(1) + "," + r.Next(5, 5) + "," + r.Next(-3, -2));
+                    Console.WriteLine(r.Next(int.MinValue, int.MinValue) + "," + r.Next(int.MaxValue, int.MaxValue));
+                    Console.WriteLine(r.Next(int.MinValue, int.MinValue + 1) + "," + r.Next(int.MaxValue - 1, int.MaxValue));
+                    bool inRange = true;
+                    for (int i = 0; i < 64; i++)
+                    {
+                        int a = r.Next(int.MinValue, int.MaxValue);
+                        int b = r.Next(-5, 5);
+                        int c = r.Next(int.MaxValue);
+                        inRange = inRange && a < int.MaxValue && b >= -5 && b < 5 && c >= 0 && c < int.MaxValue;
+                    }
+                    Console.WriteLine(inRange);
+                }
+            }
+            """, "P");
+        Assert.Equal("0,0,5,-3\n-2147483648,2147483647\n-2147483648,2147483646\nTrue", output);
     }
 }

@@ -1287,11 +1287,13 @@ static TvmStatus random_autoseed(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 }
 
 /* Next(min, max): the upper bound is exclusive. An empty range (max == min)
- * gives min, as in .NET */
+ * gives min, as in .NET.
+ * For max < min, max is passed as the upper end unchanged to make the range
+ * empty, which faults (max - 1 overflows when max is int.MinValue) */
 static TvmStatus random_next(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   NONNULL_ARG(a[0].p, "");
   int32_t min = a[1].i, max = a[2].i;
-  return rand_range_(vm, rand_state(a[0].p), min, max == min ? min : max - 1,
+  return rand_range_(vm, rand_state(a[0].p), min, max > min ? max - 1 : max,
                      &r[0].i);
 }
 
@@ -1344,7 +1346,8 @@ static TvmStatus set_remove(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 
 /* ---- switch expression ---- */
 
-/* A switch expression where no arm matches (.NET's SwitchExpressionException) */
+/* A switch expression where no arm matches (.NET's SwitchExpressionException)
+ */
 static TvmStatus switch_nomatch(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)a;
   (void)r;

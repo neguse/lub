@@ -809,9 +809,11 @@ static int32_t tcs_rand_range(TcsRandom *r, int32_t low, int32_t up) {
 }
 
 /* Random.Next(min, max): the upper bound is exclusive. An empty range (max ==
- * min) gives min, as in .NET */
+ * min) gives min, as in .NET.
+ * For max < min, max is passed as the upper end unchanged to make the range
+ * empty, which faults (max - 1 overflows when max is int.MinValue) */
 static int32_t tcs_rand_below(TcsRandom *r, int32_t min, int32_t max) {
-  return tcs_rand_range(r, min, max == min ? min : max - 1);
+  return tcs_rand_range(r, min, max > min ? max - 1 : max);
 }
 
 /* ---- char (integer code unit, ASCII tests / conversion; same table as Char in

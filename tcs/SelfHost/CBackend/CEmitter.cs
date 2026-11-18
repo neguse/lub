@@ -4553,7 +4553,7 @@ public sealed class CEmitter
             case "Next":
                 {
                     // Next() = tcs_rand_range(0, 2147483646), Next(max) =
-                    // Next(0, max), Next(min, max) = tcs_rand_range(min, max - 1) (min for an empty range)
+                    // Next(0, max), Next(min, max) = tcs_rand_below (the upper bound is exclusive; min for an empty range, a fault for max < min)
                     if (args.Count == 0)
                         return $"({{ {head}tcs_rand_range({r}, 0, INT32_C(2147483646)); }})";
                     if (args.Count == 1)
