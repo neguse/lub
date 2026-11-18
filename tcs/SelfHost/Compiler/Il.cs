@@ -245,8 +245,9 @@ public record IlWhile(IlExpr Cond, IlBlock Body, IlBlock? Trailer, IlPos? Origin
 // do-while (evaluates Cond after the body and repeats if true)
 public record IlRepeat(IlBlock Body, IlExpr Cond, IlPos? Origin) : IlStat;
 
-// Numeric for (Var goes from Start to Limit in steps of 1; Limit is evaluated only once). The builder creates it only when it knows the control variable is not captured and the range does not change
-public record IlNumericFor(string Var, IlExpr Start, IlExpr Limit, IlBlock Body, IlPos? Origin) : IlStat;
+// Numeric for: sets the int Var to Start and, while Var < Limit (Var <= Limit when Inclusive), repeats, incrementing Var by 1 (wrapping) after the body.
+// Limit is evaluated only once, after Start. The builder creates it only when it knows that Limit does not change during the for and that the body neither writes to Var nor captures it
+public record IlNumericFor(string Var, IlExpr Start, IlExpr Limit, bool Inclusive, IlBlock Body, IlPos? Origin) : IlStat;
 
 // foreach (List / array)
 public record IlForeachList(string Var, IlExpr Coll, IlBlock Body, IlPos? Origin) : IlStat;

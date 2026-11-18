@@ -3559,16 +3559,21 @@ public sealed class IlBuild
         return true;
     }
 
+    // Turns `for (int i = start; i < limit; i++)` (also `<=` and `i += 1`) into a numeric for.
+    // Only when the control variable and the comparison are int and it can be shown that limit does not change during the for and that the body neither writes to the control variable nor captures it.
+    // null (a general for) when it cannot be shown
     private IlNumericFor? TryBuildSimpleFor(Node forStmt)
     {
         if (forStmt.List == null || forStmt.List.Count != 1 || forStmt.List[0].Kind != NodeKind.LocalDecl) return null;
         var declNode = forStmt.List[0];
         if (declNode.List == null || declNode.List.Count != 1) return null;
         var decl = declNode.List[0];
-        if (decl.A == null) return null;
+        if (decl.A == null || decl.Local == null || !IsIntValueType(decl.Local.Type)) return null;
         var varName = decl.Text;
         var condNode = forStmt.A != null ? StripConv(forStmt.A) : null;
-        if (condNode == null || condNode.Kind != NodeKind.Binary) return null;
+        if (condNode == null || condNode.Kind != NodeKind.Binary || (condNode.Text != "<" && condNode.Text != "<=")) return null;
+        // Only comparisons between ints (a for that widens to float or T? to compare is a general for)
+        if (!IsIntValueType(condNode.A!.Type) || !IsIntValueType(condNode.B!.Type)) return null;
         var condLeft = StripConv(condNode.A!);
         if (condLeft.Kind != NodeKind.Name || condLeft.Text != varName) return null;
         if (forStmt.Count2 != 1) return null;
@@ -3583,15 +3588,16 @@ public sealed class IlBuild
         if (IsAssignedWithin(forStmt.B!, varName)) return null;
         if (IsCapturedByLambdaWithin(forStmt.B!, varName)) return null;
         var start = BuildExpr(decl.A);
-        var end = BuildExpr(condNode.B!);
+        var limit = BuildExpr(condNode.B!);
         var body = BuildBlock(forStmt.B!);
-        if (start == null || end == null || body == null) return null;
-        IlExpr? limit = null;
-        if (condNode.Text == "<") limit = new IlBin(IlBinOp.Sub, end, IlLiterals.Int(1), null);
-        else if (condNode.Text == "<=") limit = end;
-        if (limit == null) return null;
-        var name = decl.Local != null ? decl.Local.IlName : varName;
-        return new IlNumericFor(name, start, limit, body, null);
+        if (start == null || limit == null || body == null) return null;
+        return new IlNumericFor(decl.Local.IlName, start, limit, condNode.Text == "<=", body, null);
+    }
+
+    // Types whose IL value is an int (int, char, enum; T? is not included)
+    private static bool IsIntValueType(TypeSym? t)
+    {
+        return t != null && (t.Kind == TypeKind.Int || t.Kind == TypeKind.Char || t.Kind == TypeKind.Enum);
     }
 
     private static string SourceText(Node n)
@@ -3599,47 +3605,51 @@ public sealed class IlBuild
         return n.File.Slice(n.Pos, n.End);
     }
 
+    // Whether the upper bound of a for stays unchanged during the for: a constant, or a local variable that nothing writes to.
+    // A local variable can also be written from another lambda that captured it, so even for a for inside a lambda the whole member body (including lambdas) is examined
     private bool IsLoopInvariantBound(Node bound)
     {
         var b = StripConv(bound);
         switch (b.Kind)
         {
             case NodeKind.IntLit:
-            case NodeKind.FloatLit:
-            case NodeKind.StringLit:
             case NodeKind.CharLit:
-            case NodeKind.BoolLit:
-            case NodeKind.NullLit:
                 return true;
         }
-        if (b.Kind != NodeKind.Name || b.Info != RefKind.Local) return false;
-        var scope = ScopeRoots.Count > 0 ? ScopeRoots[ScopeRoots.Count - 1] : bound;
-        return !IsAssignedWithin(scope, b.Text);
+        if (b.Kind != NodeKind.Name || b.Info != RefKind.Local || ScopeRoots.Count == 0) return false;
+        return !IsAssignedWithin(ScopeRoots[0], b.Text);
     }
 
-    // Whether name (an identifier with that spelling) is assigned in scope (assignment, ++ / --, ref / out argument)
+    // Whether name (an identifier with that spelling) is written in scope (the target of an assignment or a deconstructing assignment, ++ / --, a ref / out / in argument)
     private static bool IsAssignedWithin(Node scope, string name)
     {
         switch (scope.Kind)
         {
             case NodeKind.Assign:
-                {
-                    var l = scope.A!;
-                    if (l.Kind == NodeKind.Name && l.Text == name) return true;
-                    break;
-                }
             case NodeKind.PostIncDec:
             case NodeKind.PreIncDec:
+                if (IsNameTarget(scope.A!, name)) return true;
+                break;
+            case NodeKind.DeconstructAssign:
+                // The list of deconstruction targets (a nested deconstruction is seen as a child DeconstructAssign)
+                if (scope.List == null) break;
+                foreach (var target in scope.List)
                 {
-                    var o = scope.A!;
-                    if (o.Kind == NodeKind.Name && o.Text == name) return true;
-                    break;
+                    if (IsNameTarget(target, name)) return true;
                 }
+                break;
             case NodeKind.Arg:
-                if ((scope.Has(Mods.Ref) || scope.Has(Mods.Out) || scope.Has(Mods.In)) && scope.A != null && scope.A.Kind == NodeKind.Name && scope.A.Text == name) return true;
+                if ((scope.Has(Mods.Ref) || scope.Has(Mods.Out) || scope.Has(Mods.In)) && scope.A != null && IsNameTarget(scope.A, name)) return true;
                 break;
         }
         return AnyChild(scope, c => IsAssignedWithin(c, name));
+    }
+
+    // Whether the write target is the variable name (also when parenthesized as `(name)`)
+    private static bool IsNameTarget(Node target, string name)
+    {
+        var t = WithoutParens(StripConv(target));
+        return t.Kind == NodeKind.Name && t.Text == name;
     }
 
     // Whether a lambda in scope contains name (an identifier with that spelling)

@@ -943,8 +943,11 @@ public sealed class FunctionCompiler
         return b;
     }
 
-    /// <summary>Numeric for (IlNumericFor: increments v by 1 from start to limit). limit is evaluated only once, and
-    /// when the body rewrites v, a hidden counter drives the loop (il-reference: IlNumericFor).</summary>
+    /// <summary>Numeric for (IlNumericFor: sets v to start and, while v is less than limit (at most limit when Inclusive), repeats, incrementing v by 1 after the body).
+    /// limit is evaluated only once.
+    /// After the increment it still compares with the C# condition, and the increment wraps (il-reference: IlNumericFor).
+    /// The body does not write to v (the builder guarantees it), so v is the counter register itself.
+    /// Only when the same name is captured in the function or clashes with a local of the body, v in the body is a per-iteration copy of the counter</summary>
     private void NumericFor(IlNumericFor nf)
     {
         _scopes.Add(new Dictionary<string, Var>());
@@ -957,7 +960,7 @@ public sealed class FunctionCompiler
         var top = new Label();
         var cont = new Label();
         var exit = new Label();
-        Jump(Op.JF_LE_I32, exit, counter.Reg, limit.Reg);
+        Jump(nf.Inclusive ? Op.JF_LE_I32 : Op.JF_LT_I32, exit, counter.Reg, limit.Reg);
         Mark(top);
         TracePoint(nf.Origin);
         _scopes.Add(new Dictionary<string, Var>());
@@ -973,9 +976,8 @@ public sealed class FunctionCompiler
         _loops.RemoveAt(_loops.Count - 1);
         _scopes.RemoveAt(_scopes.Count - 1);
         Mark(cont);
-        Jump(Op.JT_EQ_I32, exit, counter.Reg, limit.Reg);
         Emit(Op.ADDI_I32, counter.Reg, counter.Reg, 1);
-        Jump(Op.JMP, top);
+        Jump(nf.Inclusive ? Op.JT_LE_I32 : Op.JT_LT_I32, top, counter.Reg, limit.Reg);
         Mark(exit);
         _scopes.RemoveAt(_scopes.Count - 1);
     }
