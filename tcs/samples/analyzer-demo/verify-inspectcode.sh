@@ -134,8 +134,8 @@ cp "$REPO_ROOT/samples/analyzer-demo/Program.cs" "$PACKAGE_CONSUMER_DIR/Program.
 cat > "$PACKAGE_CONSUMER_PROJECT" <<EOF
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>14</LangVersion>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RestoreAdditionalProjectSources>$PACKAGE_DIR</RestoreAdditionalProjectSources>

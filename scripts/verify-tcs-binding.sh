@@ -6,9 +6,9 @@ trap 'rm -rf -- "$work"' EXIT
 cflags=(-std=gnu11 -O2 -fwrapv -ffp-contract=off -fexcess-precision=standard -Iinclude -Ithird_party/SDL/include -I"$work")
 dotnet build tcs/tcs2c/tcs2c.csproj -c Release
 dotnet build tools/lub-gen/lub-gen.csproj -c Release
-dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net11.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs tests/c/tcs_binding.cs -o "$work/game.c"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_binding.cs -o "$work/binding.c"
 cp tests/c/tcs_binding.c "$work/test.c"
 printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_Main(); return 0; }\n' >> "$work/test.c"
@@ -43,10 +43,10 @@ echo 'tcs2c binding: a count past the end of the array faults'
 # struct の record の書き方と渡り方 (scripts/verify-vm-binding.sh と同じ stub、ゲーム、偽の C API)
 cat cs-lib/lub_stub.cs tests/c/struct_stub.cs > "$work/struct_stub.cs"
 mkdir -p "$work/struct/lub"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"
-dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"
+dotnet tcs/tcs2c/bin/Release/net11.0/tcs2c.dll --lib \
   --ref "$work/struct_stub.cs" tests/c/struct_test.cs -o "$work/struct/game.c"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub "$work/struct_stub.cs" \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll tcs --stub "$work/struct_stub.cs" \
   --source tests/c/struct_test.cs -o "$work/struct/binding.c"
 cp tests/c/struct_test.c "$work/struct/test.c"
 printf '\nint main(void) { tcs_lib_init(); tcs_entry_StructGame_Main(); return 0; }\n' >> "$work/struct/test.c"
@@ -56,7 +56,7 @@ echo 'tcs2c binding: struct records pass by value, as outs and as results, and a
 
 # tcs2c の生成 C の Math (生成 C に埋め込まれた tcs の runtime/math) が、tcs VM の経路と同じ結果になること。
 # 期待値は tests/cs/TestMathDeterminism.cs の表 (OS ごとに分けない 1 つ)。
-dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll tests/c/tcs_math.cs -o "$work/math_game.c"
+dotnet tcs/tcs2c/bin/Release/net11.0/tcs2c.dll tests/c/tcs_math.cs -o "$work/math_game.c"
 "${CC:-cc}" "${cflags[@]}" -fno-fast-math "$work/math_game.c" -lm -o "$work/math"
 "$work/math" | tr -d '\r' > "$work/math.out"
 sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p' tests/cs/TestMathDeterminism.cs > "$work/math.expected"
@@ -72,9 +72,9 @@ echo "tcs2c math: $(wc -l < "$work/math.out") functions match tests/cs/TestMathD
 lubx=(cs-lib/lub/*.cs cs-lib/lubx/*.cs)
 lubx_sources=()
 for source in "${lubx[@]}"; do lubx_sources+=(--source "$source"); done
-dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net11.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs "${lubx[@]}" -o "$work/lubx_game.c"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   "${lubx_sources[@]}" -o "$work/lubx_binding.c"
 printf '#include "lubx_game.c"\n#include "lubx_binding.c"\n' > "$work/lubx.c"
 "${CC:-cc}" "${cflags[@]}" -c "$work/lubx.c" -o "$work/lubx.o"
@@ -86,9 +86,9 @@ echo "tcs2c binding: cs-lib (${#lubx[@]} files) generated and compiled"
 host_sources=(samples/13_sprites/Sprites13.cs "${lubx[@]}")
 host_args=()
 for source in "${host_sources[@]}"; do host_args+=(--source "$source"); done
-dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net11.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs "${host_sources[@]}" -o "$work/host_game.c"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   "${host_args[@]}" -o "$work/host_binding.c"
 grep -qF 'static void tcs_game_on_quit(void) {}' "$work/host_binding.c"
 "${CC:-cc}" "${cflags[@]}" -Isrc -DLUB_TCS_GAME="\"$work/host_game.c\"" \
@@ -104,9 +104,9 @@ echo "tcs host: entry class Sprites13 without OnQuit compiled and linked cleanly
 # Quit を受けたら残りの event は渡さず、その frame は回さない。
 # ゲームは受け取った EventData を List に持ち越すので、毎 frame の境界で旧世代まで GC する TCS_GC_STRESS でも同じ出力になること。
 # frame を始められない周回 (偽の frame_begin が frame 1 で一度 false を返す) では、次の周回の前に 16ms 待つこと。
-dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net11.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs tests/c/tcs_event.cs -o "$work/event_game.c"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_event.cs -o "$work/event_binding.c"
 cat > "$work/event.expected" <<'OUT'
 init
@@ -131,9 +131,9 @@ echo "tcs host: OnEvent receives events until Quit, and kept EventData survive G
 # Log なら次の callback へ進み、失敗した frame は frame_end に失敗として届く。
 # OnError 自身が fault すると Abort で、OnQuit を呼んでから終了コード 1 で終わる。
 # OnError が持ち越した message は、fault の後の境界の GC を越えて残る。
-dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net11.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs tests/c/tcs_error.cs -o "$work/error_game.c"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_error.cs -o "$work/error_binding.c"
 cat > "$work/error.expected" <<'OUT'
 init
@@ -161,7 +161,7 @@ echo "tcs host: a fault reaches OnError, Log continues, and a fault in OnError a
 
 # OnError は static Lub.ErrorAction OnError(string) でなければ entry にしない。
 printf 'using Lub;\nstatic class Game\n{\n    public static void OnError(string message) { }\n    public static void OnFrame(float dt) { }\n}\n' > "$work/bad_error.cs"
-if dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+if dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   --source "$work/bad_error.cs" -o "$work/bad_error.c" 2> "$work/bad_error.err"; then
   echo 'tcs host: lub-gen accepted an OnError without a result' >&2
   exit 1
@@ -172,7 +172,7 @@ echo "tcs host: lub-gen rejects OnError with another signature"
 # OnEvent は static void OnEvent(Lub.EventData) でなければ entry にしない。
 for bad in 'void OnEvent(int key) { }' 'int OnEvent(EventData e) { return 0; }' 'void OnEvent() { }'; do
   printf 'using Lub;\nstatic class Game\n{\n    public static %s\n    public static void OnFrame(float dt) { }\n}\n' "$bad" > "$work/bad_event.cs"
-  if dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+  if dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
     --source "$work/bad_event.cs" -o "$work/bad_event.c" 2> "$work/bad_event.err"; then
     echo "tcs host: lub-gen accepted $bad" >&2
     exit 1
@@ -195,7 +195,7 @@ namespace MyGame
     }
 }
 CS
-lub_gen=(dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs --source "$work/entry.cs")
+lub_gen=(dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs --source "$work/entry.cs")
 "${lub_gen[@]}" -o "$work/entry_default.c"
 "${lub_gen[@]}" --entry MyGame.Game -o "$work/entry_display.c"
 "${lub_gen[@]}" --entry MyGame_Game -o "$work/entry_il.c"

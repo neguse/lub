@@ -4,8 +4,8 @@
        ゲームはこの project を参照し、cs-lib/lub と cs-lib/lubx を compile に
        含める (templates/game/Game.csproj)。 -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>14</LangVersion>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace></RootNamespace>

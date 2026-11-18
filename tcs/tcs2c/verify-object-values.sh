@@ -8,7 +8,7 @@ work_dir="$(mktemp -d "${TMPDIR:-/tmp}/tcs2c-values.XXXXXX")"
 trap 'rm -rf -- "$work_dir"' EXIT
 
 "$dotnet_cmd" build "$script_dir/tcs2c.csproj" -p:NuGetAudit=false -v:minimal
-compiler="$script_dir/bin/Debug/net10.0/tcs2c.dll"
+compiler="$script_dir/bin/Debug/net11.0/tcs2c.dll"
 "$dotnet_cmd" "$compiler" --lib "$script_dir/tests/object-values.cs" \
   "$script_dir/tests/interfaces.cs" -o "$work_dir/values.c"
 "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \

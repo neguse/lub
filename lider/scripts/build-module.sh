@@ -14,7 +14,7 @@ out="$1"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 lub="$(cd "$root/.." && pwd)"
 if [ -z "${LUB_TCS:-}" ]; then
-  dll="$lub/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
+  dll="$lub/tcs/Transpiler/bin/Release/net11.0/Transpiler.dll"
   [ -f "$dll" ] || dotnet build "$lub/tcs/Transpiler" -c Release >/dev/null
   LUB_TCS="dotnet $dll"
 fi

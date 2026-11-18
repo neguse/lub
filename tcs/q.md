@@ -106,8 +106,8 @@
 - tcs のコアは engine agnostic な C# サブセットのコンパイラ (tcs VM と C)
 - 外部エンジン連携は必要になった時点で stub / adapter / generator のどれが妥当かを個別に判断する
 
-### Q1: .NET バージョン → .NET 10 / C# 14
-`net10.0` / `LangVersion 14`。
+### Q1: .NET バージョン → .NET 11 / C# 15
+`net11.0` / `LangVersion 15`。
 
 ### Q4: lub3d API の TinyC# 側公開範囲 → 旧方針: 全モジュール、Generator基盤に乗せる
 

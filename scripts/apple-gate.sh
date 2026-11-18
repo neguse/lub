@@ -86,7 +86,7 @@ run bash scripts/build-release.sh --build-dir "$build"
 # tests/cs の test は C# なので、tcs vm で tests/cs 全体を 1 つの bytecode (tests/cs/.lub/all.tcsb) にしてから、--entry で test を選んで動かす。
 # iOS の app にも同じ bytecode を入れる。
 run dotnet build tcs/Transpiler -c Release -nologo
-LUB_TCS_DLL="$repo_root/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
+LUB_TCS_DLL="$repo_root/tcs/Transpiler/bin/Release/net11.0/Transpiler.dll"
 export LUB_TCS_DLL
 # shellcheck source=scripts/cs-tests.sh
 source scripts/cs-tests.sh

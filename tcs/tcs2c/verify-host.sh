@@ -8,7 +8,7 @@ work_dir="$(mktemp -d "${TMPDIR:-/tmp}/tcs2c-host.XXXXXX")"
 trap 'rm -rf -- "$work_dir"' EXIT
 
 "$dotnet_cmd" build "$script_dir/tcs2c.csproj" -p:NuGetAudit=false -v:minimal
-compiler="$script_dir/bin/Debug/net10.0/tcs2c.dll"
+compiler="$script_dir/bin/Debug/net11.0/tcs2c.dll"
 "$dotnet_cmd" "$compiler" "$script_dir/tests/nullable-arguments.cs" -o "$work_dir/nullable.c"
 "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
   "$work_dir/nullable.c" -o "$work_dir/nullable"

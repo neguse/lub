@@ -8,7 +8,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/SelfHost/out"
-TCS="$ROOT/Transpiler/bin/Debug/net10.0/Transpiler.dll"
+TCS="$ROOT/Transpiler/bin/Debug/net11.0/Transpiler.dll"
 CC="${CC:-cc}"
 mkdir -p "$OUT/runtime" "$OUT/lib/TinySystem"
 unset TCS_HOME

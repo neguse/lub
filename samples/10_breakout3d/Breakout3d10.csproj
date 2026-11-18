@@ -4,8 +4,8 @@
        と同ディレクトリ以下の *.cs だけを読む: lub samples/10_breakout3d/Breakout3d10.csproj
        dotnet 側 (Rider / VS Code) はこの csproj で型チェック・補完・TCS 診断が効く。 -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>14</LangVersion>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <OutputType>Library</OutputType>
     <!-- .lub は lub の生成物の置き場。compile 対象から外す -->

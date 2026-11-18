@@ -7,8 +7,8 @@
        テスト (<Test>.cs と Check.cs) を同じように動かす。 -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>14</LangVersion>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <AssemblyName>lub-sample-$(Sample)</AssemblyName>
     <RootNamespace></RootNamespace>

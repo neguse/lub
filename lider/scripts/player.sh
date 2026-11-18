@@ -20,7 +20,7 @@ if [ "$(basename "$player")" = lub ] && { [ ! -f "$root/src/Jamo.so" ] || [ ! -f
   exit 1
 fi
 if [ -z "${LUB_TCS:-}" ]; then
-  dll="$lub_root/tcs/Transpiler/bin/Release/net10.0/Transpiler.dll"
+  dll="$lub_root/tcs/Transpiler/bin/Release/net11.0/Transpiler.dll"
   [ -f "$dll" ] || dotnet build "$lub_root/tcs/Transpiler" -c Release >/dev/null
   export LUB_TCS="dotnet $dll"
 fi

@@ -9,7 +9,7 @@ Roslyn は compiler の外の道具 (IDE の Roslyn Analyzer、playground の補
 
 ## 必要なもの
 
-- .NET 10 SDK (版は `global.json` で固定。導入は `dotnet-install.sh --jsonfile global.json` を推奨 — distro package は workload と版がずれるため混ぜない)
+- .NET 11 SDK (版は `global.json` で固定。導入は `dotnet-install.sh --jsonfile global.json` を推奨 — distro package は workload と版がずれるため混ぜない)
 - CMake 3.12+ (tcsvm のビルド用)
 - C コンパイラ (MSVC / GCC / Clang)
 
