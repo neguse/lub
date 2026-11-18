@@ -785,8 +785,11 @@ static TvmStatus m_logb(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 }
 
 /* Math.Round: 中間は偶数へ。0 に丸めた結果は x の符号 (.NET と tcs2c と同じ)。
-   digits 付きは .NET の MathF.Round(float, int) と同じく、double に広げて 10^digits を掛けて丸め、10^digits で割って float に戻す */
+   digits 付きは .NET の MathF.Round(float, int) と同じく、double に広げて 10^digits を掛けて丸め、10^digits で割って float に戻す。
+   46 以上の digits は、丸めの幅が float の最小の間隔 2^-149 の半分より狭く、どの float も変えない */
 static float round_even(float x, int32_t digits, int has_digits) {
+  if (has_digits && digits > 45)
+    return x;
   double scale = 1.0;
   for (int32_t i = 0; i < digits; i++)
     scale *= 10.0;
@@ -813,9 +816,10 @@ static TvmStatus m_round(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 }
 
 static TvmStatus m_round2(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
-  if (a[1].i < 0 || a[1].i > 6)
+  /* .NET と同じく digits に上限は無く、負だけを拒む */
+  if (a[1].i < 0)
     return tvm_fault_msg(vm,
-                         "Rounding digits must be between 0 and 6, inclusive.");
+                         "Rounding digits must be greater than or equal to 0.");
   r[0].f = round_even(a[0].f, a[1].i, 1);
   return TVM_OK;
 }

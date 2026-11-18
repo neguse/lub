@@ -163,11 +163,17 @@ static float tcs_math_max(float a, float b) {
 }
 
 /* C# Math.Round (banker's)。0 に丸めた結果は x の符号を持つ。
-   digits 付きは .NET の MathF.Round(float, int) と同じく、double に広げて 10^digits を掛けて丸め、10^digits で割って float に戻す */
+   digits 付きは .NET の MathF.Round(float, int) と同じく、double に広げて 10^digits を掛けて丸め、10^digits で割って float に戻す。
+   digits に上限は無く、負なら fault。
+   46 以上の digits は、丸めの幅が float の最小の間隔 2^-149 の半分より狭く、どの float も変えない */
 static float tcs_math_round(float x, int32_t digits, int has_digits) {
   double scale = 1.0;
   double scaled, fl, diff, rounded;
   int32_t i;
+  if (has_digits && digits < 0)
+    tcs_fault("rounding-digits");
+  if (has_digits && digits > 45)
+    return x;
   for (i = 0; has_digits && i < digits; i++)
     scale *= 10.0;
   scaled = (double)x * scale;

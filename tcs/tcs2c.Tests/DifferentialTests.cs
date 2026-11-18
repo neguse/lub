@@ -173,7 +173,7 @@ public partial class DifferentialTests
                 {
                     Console.WriteLine(Math.Max(3, 7) + ":" + Math.Min(3, 7) + ":" + Math.Abs(-5) + ":" + Math.Sign(-2) + ":" + Math.Clamp(15, 0, 10));
                     Console.WriteLine(Math.Max(1.5f, 2f) + ":" + Math.Abs(-1.25f) + ":" + Math.Clamp(0.5f, 1f, 2f));
-                    Console.WriteLine(Math.Floor(2.7f) + ":" + Math.Ceiling(2.1f) + ":" + Math.Round(2.5f) + ":" + Math.Round(3.5f) + ":" + Math.Round(2.345f, 2) + ":" + Math.Round(2.675f, 2));
+                    Console.WriteLine(Math.Floor(2.7f) + ":" + Math.Ceiling(2.1f) + ":" + Math.Round(2.5f) + ":" + Math.Round(3.5f) + ":" + Math.Round(2.345f, 2) + ":" + Math.Round(2.675f, 2) + ":" + Math.Round(1.2345678f, 7) + ":" + Math.Round(0.1f, 50));
                     Console.WriteLine(Math.Sqrt(16f) + ":" + Math.Pow(2f, 10f) + ":" + Math.Exp(0f) + ":" + Math.Log(1f));
                     Console.WriteLine((int)(Math.Sin(0f) * 100f) + ":" + (int)(Math.Cos(0f) * 100f) + ":" + (int)(Math.Atan2(1f, 1f) * 1000f));
                     Console.WriteLine((int)(Math.PI * 1000f));
@@ -188,6 +188,25 @@ public partial class DifferentialTests
                 }
             }
             """, "P");
+    }
+
+    // .NET の Math.Round(x, digits) は負の digits だけを拒む
+    [CFact]
+    public void Math_RoundNegativeDigitsFaults()
+    {
+        Assert.Equal("before", Backends.AssertFaultParity("""
+            using System;
+            public class P
+            {
+                public static void Main()
+                {
+                    int digits = -1;
+                    Console.WriteLine("before");
+                    Console.WriteLine(Math.Round(1.5f, digits));
+                    Console.WriteLine("after");
+                }
+            }
+            """, "P"));
     }
 
     [CFact]
