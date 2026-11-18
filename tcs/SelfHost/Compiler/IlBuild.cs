@@ -3905,10 +3905,11 @@ public sealed class IlBuild
     // Type match. Matching a struct input (S / S?) against the same struct type only checks whether it has a value
     private IlExpr? BuildTypeCheck(IlExpr expr, TypeSym? inputType, TypeSym? patternType, string? typeRef)
     {
-        // Matching a value-type input (T / T?) against the same value type T only checks whether it has a value (also for numbers, bool, and enum)
+        // Matching a value-type input (T / T?) against the same value type T only checks whether it has a value (also for numbers, bool, and enum).
+        // A T input always matches and the input is not read (BuildIsPattern keeps the evaluation of the left side of is)
         if (patternType != null && patternType.IsValueType && inputType != null)
         {
-            if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => IlLiterals.Bool(true));
+            if (TypeSym.Same(inputType, patternType)) return IlLiterals.Bool(true);
             if (IlTypes.IsNullableValueType(inputType) && TypeSym.Same(inputType.Elem, patternType)) return new IlNullableHasValue(expr, null);
         }
         var primTest = PrimTypeTest(expr, patternType);
@@ -4181,7 +4182,16 @@ public sealed class IlBuild
             return new IlIife(stats, null);
         }
         var sub = BuildIsSubPattern(expr, pattern, inputType);
-        return sub == null ? null : new IlParen(sub, null);
+        if (sub == null) return null;
+        // A match that always succeeds (`{ }` on a value-type input, a type pattern of the same type) does not read the input, but the left side expression is evaluated (its side effects and faults are kept)
+        if (sub is IlLit && !(expr is IlLit || expr is IlVar))
+        {
+            var stats = new List<IlStat>();
+            stats.Add(new IlLocal("_", expr, null, null));
+            stats.Add(new IlReturn(sub, null));
+            return new IlIife(stats, null);
+        }
+        return new IlParen(sub, null);
     }
 
     // Switch expression: IIFE, pre-binding, if chain. Arm values are copy points
