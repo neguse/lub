@@ -4109,6 +4109,23 @@ public sealed class IlBuild
         return input;
     }
 
+    // A constant pattern. C# compares the constant and the input with object.Equals, so a float NaN constant matches NaN (== is false between NaNs).
+    // Whether the input is NaN is checked by its not being equal to itself (for a T? input, only when it has a value)
+    private IlExpr? BuildConstantPattern(IlExpr input, Node constant, TypeSym? inputType)
+    {
+        if (constant.HasConst && constant.Const != null && constant.Const.IsNaN())
+        {
+            return BindPatternInput(input, x =>
+            {
+                if (!IlTypes.IsNullableValueType(inputType)) return new IlBin(IlBinOp.Ne, x, x, null);
+                var value = new IlNullableValue(x, null);
+                return new IlBin(IlBinOp.And, new IlNullableHasValue(x, null), new IlBin(IlBinOp.Ne, value, value, null), null);
+            });
+        }
+        var v = BuildExpr(constant);
+        return v == null ? null : new IlBin(IlBinOp.Eq, input, v, null);
+    }
+
     // A type reference inside a constant pattern (Foo in `case Foo:` is a type)
     private static bool IsTypeConstant(Node p)
     {
@@ -4124,8 +4141,7 @@ public sealed class IlBuild
                 {
                     if (IsNullLiteral(pattern.A!) && IlTypes.IsNullableValueType(inputType))
                         return new IlUn(IlUnOp.Not, new IlNullableHasValue(governing, null), null);
-                    var value = BuildExpr(pattern.A!);
-                    return value == null ? null : new IlBin(IlBinOp.Eq, governing, value, null);
+                    return BuildConstantPattern(governing, pattern.A!, inputType);
                 }
             case NodeKind.PatDiscard:
             case NodeKind.PatVar:
@@ -4169,10 +4185,7 @@ public sealed class IlBuild
         switch (pattern.Kind)
         {
             case NodeKind.PatConst:
-                {
-                    var value = BuildExpr(pattern.A!);
-                    return value == null ? null : new IlBin(IlBinOp.Eq, expr, value, null);
-                }
+                return BuildConstantPattern(expr, pattern.A!, inputType);
             case NodeKind.PatType:
             case NodeKind.PatDecl:
                 return BuildTypeCheck(expr, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
@@ -4432,11 +4445,7 @@ public sealed class IlBuild
                 else if (constantLabel)
                 {
                     if (IsNullLiteral(pat.A!) && IlTypes.IsNullableValueType(inputType)) one = new IlBin(IlBinOp.Eq, sw, IlLiterals.Null(), null);
-                    else
-                    {
-                        var v = BuildExpr(pat.A!);
-                        one = v == null ? null : new IlBin(IlBinOp.Eq, sw, v, null);
-                    }
+                    else one = BuildConstantPattern(sw, pat.A!, inputType);
                 }
                 else one = BuildPatternLabel(label, sw, inputType);
                 if (one == null) return false;

@@ -289,7 +289,8 @@ public sealed class DefiniteAssignment
             case ConstKind.Int: return a.I == b.I;
             case ConstKind.Bool: return a.B == b.B;
             case ConstKind.String: return a.S == b.S;
-            case ConstKind.Float: return a.F == b.F;
+            // A constant pattern compares with object.Equals, so NaN equals NaN
+            case ConstKind.Float: return a.F == b.F || a.IsNaN() && b.IsNaN();
         }
         return false;
     }
