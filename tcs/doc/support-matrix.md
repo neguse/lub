@@ -134,7 +134,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 型 | 状態 | 備考 |
 |----|:----:|------|
 | `void` | **Y** | 戻り値型として |
-| Nullable 値型 (`int?`) | **Y** | `null`/値/HasValue/Value/GetValueOrDefault/`??`/`??=`/`?.` (receiver が `S?` の member / method、結果の `T?` wrap)/null 比較/lifted 演算子 (算術・bit・比較・`bool?` の三値 `&` `\|`)。IL は明示ノード (il-spec §3)、C backend は `{ has, v }`。`.Value` の値なしは fault、文字列化は空文字列 |
+| Nullable 値型 (`int?`) | **Y** | `null`/値/HasValue/Value/GetValueOrDefault (`GetValueOrDefault(x)` の受け手が変数なら、x を評価した後のその変数の値を見る)/`??`/`??=`/`?.` (receiver が `S?` の member / method、結果の `T?` wrap)/null 比較/lifted 演算子 (算術・bit・比較・`bool?` の三値 `&` `\|`)。IL は明示ノード (il-spec §3)、C backend は `{ has, v }`。`.Value` の値なしは fault、文字列化は空文字列 |
 | Nullable 参照型 (`string?`) | **N/A** | 注釈は型の検査だけに使う。参照型は注釈によらず null を持てる |
 | タプル `(int, string)` | **Y** | 戻り値、分解、`(a, b) = (b, a)`、変数と field への保持、`List<(int, int)>`、配列、`T?`。7 要素まで (8 要素以上は TCS1001 `TupleArity`)。tcs VM と C は struct、.NET は ValueTuple |
 | 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は default で埋める (値型は default の値、参照型は null)。null が default になる要素型 (参照型 / `T?` / 型パラメータ (`where T : struct` も含む)、`new int[n][]` を含む) の `new T[n]` と、初期化子・代入の null / 型パラメータの `default` 要素は TCS1003 の警告 (`tcs check` は exit 1。`new T[0]` は対象外)。tcs VM と C はこれらの null の要素を持ち、Length と foreach と添字は .NET と同じ結果になる。多次元配列 (`int[,]`、`new int[5, 2]`) は TCS1001 `MultiDimensionalArray` (jagged 配列 `int[][]` は可)。List\<T\> を推奨 |
@@ -565,7 +565,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `int` / `float` の `Parse(string)` | **Y** | | 不正な文字列は fault (.NET は FormatException) |
 | `int` / `float` の `TryParse(string, out v)` | **Y** | IL は `Math.TryParseInt` / `Math.TryParseFloat` | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
 | `int` / `float` の `ToString(format)` | **Y** | `String.FormatInt` / `String.FormatFloat` | 定数の標準の書式だけ (補間の書式と同じ: float は `G` / `E` / `F` / `N` / `R`、int は加えて `D` / `X`、小文字と 9 桁までの精度も)。空の書式は書式なしと同じ。他の書式と定数でない書式は TCS1002 |
-| `int` / `float` の `CompareTo(同じ型)` | **Y** | IL は `Math.CompareTo(a, b)` | -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0 (Single.CompareTo と同じ)。それ以外の CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<T>` 経由と generic の `T`、差を返す `char`、`string`) は TCS1002 |
+| `int` / `float` の `CompareTo(同じ型)` | **Y** | IL は `Math.CompareTo(a, b)` | -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0 (Single.CompareTo と同じ)。受け手が変数 (local、field、配列の要素) なら、引数を評価した後のその変数の値を比べる (C# と同じ。引数が受け手を書き換えても今の値。property や List の添字の受け手は引数より先に読んだ値)。それ以外の CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<T>` 経由と generic の `T`、差を返す `char`、`string`) は TCS1002 |
 | 数値と bool の他の static method (`float.IsNaN`、`float.IsInfinity`、`int.Max`、`float.Abs`、`bool.Parse` など) | **-** | | TCS1002。NaN は `x != x`、最大と絶対値は `Math.Max` / `Math.Abs` で書く。定数 (`int.MaxValue`、`float.NaN`、`float.PositiveInfinity`、`float.NegativeInfinity` など) は使える |
 | `Convert` | **-** | | |
 | `Environment` | **P** | `GetEnvironmentVariable(s)` (無ければ null) | 他メンバーは未対応 |

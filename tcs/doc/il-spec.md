@@ -146,6 +146,9 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
 - out parameter は呼び出しごとの新しい変数で、呼び出しの正常な完了で値が渡る。自作メソッドの受け手は `out var` / `out _` と、呼び出しの中から見えない局所変数 (lambda に capture されない物) だけなので (TCS1001)、out を別名で観測する手段は無い。IL は method の out parameter を `ExMethod.OutParameters` に並べ (本文は parameter に代入する)、呼び出しを `IlMultiAssign` (受け手は [戻り値, out...]、値は out を除いた引数の呼び出し) で表す。tcs VM は戻り値の後ろの register で、C はポインタで写す
 - struct 配列の要素は互いに独立した place。連続メモリ配置は backend 表現の
   自由であり IL の意味論ではない
+- 値型の変数 (local / field / 配列の要素とその struct の field) を受け手にした組み込みの method (int / float の `CompareTo`、`T?` の `GetValueOrDefault(x)`) は、受け手の格納先を決めてから引数を評価し、その変数の今の値で呼ぶ (C# §12.6.6)。
+  格納先の null の object と範囲外の添字は引数より先に fault する。
+  IL は受け手の値を引数とする `IlCall` なので、引数が格納先を書き換えうるときだけ、参照型の prefix と添字を temp に固定して格納先を一度読み、引数を temp に評価してから格納先を読み直す IIFE にする
 - struct の instance member は静的ディスパッチの自由関数
   `IlCall("S.M", [receiver, args...])`。receiver が C# の「変数」(local /
   parameter / field / 配列要素 / this) なら place をそのまま渡し、変異は
