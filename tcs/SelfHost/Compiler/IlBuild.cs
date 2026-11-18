@@ -3905,10 +3905,11 @@ public sealed class IlBuild
     // 型の照合。struct の入力 (S / S?) を同じ struct の型で照合するのは値の有無だけ
     private IlExpr? BuildTypeCheck(IlExpr expr, TypeSym? inputType, TypeSym? patternType, string? typeRef)
     {
-        // 値型の入力 (T / T?) を同じ値型 T で照合するのは値の有無だけ (数と bool と enum も)
+        // 値型の入力 (T / T?) を同じ値型 T で照合するのは値の有無だけ (数と bool と enum も)。
+        // T の入力は常に一致し、入力を読まない (is の左辺の評価は BuildIsPattern が残す)
         if (patternType != null && patternType.IsValueType && inputType != null)
         {
-            if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => IlLiterals.Bool(true));
+            if (TypeSym.Same(inputType, patternType)) return IlLiterals.Bool(true);
             if (IlTypes.IsNullableValueType(inputType) && TypeSym.Same(inputType.Elem, patternType)) return new IlNullableHasValue(expr, null);
         }
         var primTest = PrimTypeTest(expr, patternType);
@@ -4181,7 +4182,16 @@ public sealed class IlBuild
             return new IlIife(stats, null);
         }
         var sub = BuildIsSubPattern(expr, pattern, inputType);
-        return sub == null ? null : new IlParen(sub, null);
+        if (sub == null) return null;
+        // 常に一致する照合 (値型の入力の `{ }`、同じ型の型 pattern) は入力を読まないが、左辺の式は評価する (副作用と fault を残す)
+        if (sub is IlLit && !(expr is IlLit || expr is IlVar))
+        {
+            var stats = new List<IlStat>();
+            stats.Add(new IlLocal("_", expr, null, null));
+            stats.Add(new IlReturn(sub, null));
+            return new IlIife(stats, null);
+        }
+        return new IlParen(sub, null);
     }
 
     // switch 式: IIFE、前束縛、if の連鎖。arm の値は copy 地点
