@@ -23,6 +23,7 @@ case "$archive" in
 esac
 kit="$work/lub"
 test -s "$kit/manual/tcs-support-matrix.md"
+test -s "$kit/bin/wasm/xr.mjs"
 test -s "$kit/COMMIT"
 test -s "$kit/lider/Lider.tcsb"
 test -s "$kit/lider/data/mozc.dict"

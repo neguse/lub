@@ -3,7 +3,7 @@
 // like WebTransport/fetch live in the hosting page's JS and talk to the game
 // through this bridge.
 //
-// JS contract (defined by the hosting page, e.g. --serve injects /host.js):
+// JS contract (defined by the hosting page):
 //
 //   window.lubHost = {
 //     queue: [],                        // inbound: {topic, payload} objects,

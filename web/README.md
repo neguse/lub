@@ -11,18 +11,6 @@
 - `docs.html` (`docs/main.ts`): ガイド (`docs/manual/*.md`) と API reference (`cs-lib/lub_stub.cs` の doc comment)。
 - `lider.html`: 前の lider の page の URL。query と hash を付けたまま入口へ移る。
 
-## WebXR
-
-`xr.mjs` の `createXR({ canvas, button, getModule, report })` を Wasm の読み込み前に
-呼び、初期化後に戻り値の `ready()` を呼ぶと、immersive-vr の開始・終了を扱える。
-`getModule` は Emscripten Module を返す関数。必要なら `maxDimension` で片眼の
-最大辺を制限し、`unlockAudio` にユーザー操作時の音声再開処理を渡す。
-
-ゲームは native と同じ `Lub.Xr.Active` / `View` / `Input` / `Focused` を使う。
-視点行列・生の入力・片眼の描画先 (`XrView.Target`) の接続を Lub が担当し、
-カメラやボタンの意味付けはゲームに置く。片眼の sRGB 出力を左右に並べ、WebGL の
-XR レイヤーへ転送する。XR セッション中は SDL の更新も XR フレーム内で実行する。
-
 ## 前提アセット(ローカルビルド由来・gitignore)
 
 `npm run dev` / `build` の前に用意する:
@@ -84,10 +72,7 @@ npm run deploy            # build + wrangler deploy
 
 ## Browser requirements
 
-- WebGPU が利用可能なブラウザ:
-  - Chrome / Edge (primary、137+) — 既定で WebGPU 有効。
-  - Safari (iPadOS / iOS / macOS 26+) — WebGPU を利用可能。
-  - Firefox Nightly — `dom.webgpu.enabled` を `about:config` で有効化。
+- 対応ブラウザは `docs/manual/10-web.md`。
 - ローカル開発: Vite dev server が emdawnwebgpu に必要な CORS/MIME 設定を済ませる。
 - production bundle (`npm run build`) は `web/dist/` 配下。資源 (`wasm/`, `slang/`,
   `samples/` など) は `import.meta.env.BASE_URL` 基準で読むので、サブパスに置くときは

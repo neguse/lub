@@ -24,7 +24,6 @@ webgpu.h 直接実装。
 - [lub.neguse.net](https://lub.neguse.net): ブラウザで動くエディタ (lider)。サンプルはメニューから開ける。
 - [docs/README.md](docs/README.md): ドキュメント索引と方針。
 - [docs/design.md](docs/design.md): lub の why / to-be / 設計原則。
-- [docs/serve.md](docs/serve.md): 外部リポのゲームを web で開発する `--serve` モード。
 - [docs/profile.md](docs/profile.md): Release 計測と汎用 CPU profiler。
 
 ## ビルド
@@ -210,17 +209,14 @@ LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/Triangle01.csproj
 ビルド手順・実行時アーキテクチャ・headless 検証・制約は
 [web/README.md](web/README.md) を参照。
 
-## 外部プロジェクトから使う (--serve)
+## 外部プロジェクトから使う
 
-lub を別リポのゲームから使うための Web 開発モード。native の `lub Game.csproj` と
-対称に、ブラウザをレンダリング先として `.cs` / `.slang` / `data/` のホットリロード
-開発ができる:
+別リポのゲームは、雛形の `templates/game/` (C#、tcs VM の player と .NET 実行の両方で動く) を `cp -r` して作り、サンプルと同じく `lub` で動かす。
 
 ```sh
-./build/lub --serve mygame/Game.csproj   # http://localhost:8080 (--port N で変更)
+./build/lub mygame/Game.csproj                  # 保存すると hot reload
+./build/lub export web mygame/Game.csproj -o out # web の page 1 枚にする
 ```
-
-雛形は `templates/game/` (C#、tcs VM の player と .NET 実行の両方で動く) を `cp -r` して使う。詳細は [docs/serve.md](docs/serve.md)。
 
 ## ライセンス
 

@@ -1,6 +1,6 @@
 // tcs (TinyC#) の子プロセス: lub が tcs を起動する。
 // tcs vm --watch を背後に張ると、.cs の保存ごとに tcs が変換し直し、実行中の VM へ当てる差分 (または VM の作り直しを求める restart_required、compile error) を標準出力へ順に書く。
-// lub 側は子プロセスの lifecycle と、その stream からの frame の切り出しを持つ (当てるのは src/vm_player.c、serve は SSE で送る)。
+// lub 側は子プロセスの lifecycle と、その stream からの frame の切り出しを持つ (当てるのは src/vm_player.c)。
 // tcs check は .csproj の入力を集めて起動し、終わるまで待つ。
 #include "tcs_build.h"
 #include <SDL3/SDL.h>

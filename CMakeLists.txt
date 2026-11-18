@@ -329,8 +329,6 @@ if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/backend_export.c src/export_web.c)
   # tcs (TinyC#) の子プロセス: tcs vm --watch の frame と tcs check (native のみ)
   list(APPEND LUB_SOURCES src/tcs_build.c)
-  # HTTP + SSE dev server for `lub --serve Game.csproj`.
-  list(APPEND LUB_SOURCES src/serve.c)
   if(WIN32)
     # D3D12 backend ("d3d12", Windows 既定).
     list(APPEND LUB_SOURCES src/backend_d3d12.cpp)
@@ -484,9 +482,8 @@ if(UNIX AND NOT LUB_WASM)
   target_link_libraries(lub_objs PUBLIC m)
 endif()
 if(WIN32)
-  # Winsock for the --serve HTTP/SSE server (src/sock_compat.h).
   # d3d12/dxgi/dxguid for the d3d12 backend (all OS-provided).
-  target_link_libraries(lub_objs PUBLIC ws2_32 d3d12 dxgi dxguid)
+  target_link_libraries(lub_objs PUBLIC d3d12 dxgi dxguid)
 endif()
 if(LUB_HAS_VULKAN)
   target_link_libraries(lub_objs PUBLIC Vulkan::Vulkan)
@@ -587,7 +584,7 @@ if(LUB_WASM)
   # render-paths regress, revert to this SDK version or update backend_webgpu.c
   # to track the newer Dawn ABI.
   target_compile_options(lub_objs PUBLIC --use-port=emdawnwebgpu)
-  # tcs VM の player は vm/lub.{js,wasm} (web のサイトの player の page、serve、export が読む)
+  # tcs VM の player は vm/lub.{js,wasm} (web のサイトの player の page と export が読む)
   lub_vm_player_link_options(lub_vm "${CMAKE_CURRENT_BINARY_DIR}/vm")
   # tcs2c の web の player (scripts/web-tcs-host-build.sh) は build の dir の lub.{js,wasm}
   if(TARGET lub)
@@ -602,17 +599,13 @@ if(LUB_HAS_OPENXR)
   target_include_directories(lub_xr_math_smoke PRIVATE third_party/openxr/src/common)
 endif()
 if(NOT LUB_WASM)
-  add_executable(lub_serve_smoke
-    tests/c/serve_smoke.c
-    src/serve.c
+  add_executable(lub_tcs_pipeline_smoke
+    tests/c/tcs_pipeline_smoke.c
     src/tcs_build.c
     src/path_util.c
   )
-  target_link_libraries(lub_serve_smoke PRIVATE SDL3::SDL3)
-  if(WIN32)
-    target_link_libraries(lub_serve_smoke PRIVATE ws2_32)
-  endif()
-  target_include_directories(lub_serve_smoke PRIVATE src)
+  target_link_libraries(lub_tcs_pipeline_smoke PRIVATE SDL3::SDL3)
+  target_include_directories(lub_tcs_pipeline_smoke PRIVATE src)
 
   add_executable(lub_tcs_sources_smoke
     tests/c/tcs_sources_smoke.c
