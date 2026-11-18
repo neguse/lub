@@ -40,8 +40,8 @@ cp "lider/build/player/lider_player$exe" "$kit/bin/lider-player$exe"
 case "$os" in
   linux)
     # lub が名前で引く共有 library (readelf の NEEDED と同じ名前で置く)。lider の player も同じ物を引く
-    cp -L "$build/third_party/SDL/libSDL3.so.0" \
-      "$build/third_party/openxr/src/loader/libopenxr_loader.so.1" \
+    cp -L "$build/deps/lib/libSDL3.so.0" \
+      "$build/deps/lib/libopenxr_loader.so.1" \
       third_party/slang/lib/libslang-compiler.so.0.* "$kit/bin/"
     for f in lub lider-player; do
       patchelf --set-rpath '$ORIGIN' "$kit/bin/$f"
@@ -56,7 +56,7 @@ case "$os" in
       pending=("${pending[@]:1}")
       for name in $(otool -L "$f" | awk 'NR > 1 && $1 ~ /^@rpath\// { sub("^@rpath/", "", $1); print $1 }'); do
         [ -e "$kit/bin/$name" ] && continue
-        src="$(find "$build/third_party/SDL" third_party/slang/lib -maxdepth 1 -name "$name" | head -1)"
+        src="$(find "$build/deps/lib" third_party/slang/lib -maxdepth 1 -name "$name" | head -1)"
         if [ -z "$src" ]; then
           echo "$f needs @rpath/$name, which is not in the build" >&2
           exit 1

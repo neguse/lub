@@ -8,11 +8,12 @@
 # tcs/ の中のテスト (tcs-* の job) は、PR では tcs/ かこの workflow を変えたときだけ走る。
 # 依存の閉包が広い (src/ は wasm へ、cs-lib/ は全 golden へ波及する) ので、細かく削るより漏れない側に倒す。
 #
-# 速度は cache が本体:
-#   - ccache (linux native build / emcc wasm build)
+# cache は入力の内容で key を取り、入力が同じなら同じ物を使う:
+#   - 第三者の library (SDL、Box2D、Box3D、OpenXR の loader) の install 先 <build>/deps/ (scripts/deps-cache-key.sh、cmake/LubDeps.cmake)
 #   - tcs wasm assets (content key: tcs/ の tree の hash)
-#   - slang prebuilt、playwright browsers、npm
-# master push が cache を温め、PR はそれを読む (actions/cache の branch scope)。
+#   - slang prebuilt、emsdk、playwright browsers、npm
+# lub 本体は毎回 build する (compile の cache は使わない)。
+# master push が cache を作り、PR はそれを読む (actions/cache の branch scope)。
 name: ci
 
 on:
@@ -142,9 +143,6 @@ jobs:
     if: needs.changes.outputs.web_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      CCACHE_DIR: /home/runner/.ccache
-      CCACHE_MAXSIZE: 500M
     steps:
       - uses: actions/checkout@v4
         with:
@@ -160,12 +158,16 @@ jobs:
             third_party/slang/bin
           key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
-      - name: Cache ccache
+      - name: Deps cache key
+        id: deps
+        run: echo "key=$(bash scripts/deps-cache-key.sh linux)" >> "$GITHUB_OUTPUT"
+
+      # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す
+      - name: Cache deps
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
-          key: ccache-linux-${{ github.sha }}
-          restore-keys: ccache-linux-
+          path: build-release-linux/deps
+          key: ${{ steps.deps.outputs.key }}
 
       # SDL3 は vendored build なので X11/Wayland/audio の dev ヘッダが要る。
       # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓。
@@ -176,7 +178,7 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ninja-build ccache libvulkan-dev mesa-vulkan-drivers xvfb \
+            ninja-build libvulkan-dev mesa-vulkan-drivers xvfb \
             libasound2-dev libpulse-dev libpipewire-0.3-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
             libxfixes-dev libxi-dev libxss-dev libxtst-dev \
@@ -191,9 +193,6 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Native gate (build, smokes, C# runtime tests, C# samples, .NET digest)
-        env:
-          CMAKE_C_COMPILER_LAUNCHER: ccache
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: |
           export TMPDIR="${RUNNER_TEMP}/native-gate-tmp"
           mkdir -p "$TMPDIR"
@@ -207,8 +206,8 @@ jobs:
           name: lub-linux
           path: |
             build-release-linux/lub
-            build-release-linux/third_party/SDL/libSDL3.so.0
-            build-release-linux/third_party/openxr/src/loader/libopenxr_loader.so.1
+            build-release-linux/deps/lib/libSDL3.so.0
+            build-release-linux/deps/lib/libopenxr_loader.so.1
             tests/cs/.lub/all.tcsb
 
       - name: Upload golden failure artifacts
@@ -255,6 +254,18 @@ jobs:
             third_party/d3d12warp
           key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
+      - name: Deps cache key
+        id: deps
+        shell: bash
+        run: echo "key=$(bash scripts/deps-cache-key.sh windows)" >> "$GITHUB_OUTPUT"
+
+      # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: build-release/deps
+          key: ${{ steps.deps.outputs.key }}
+
       - name: Configure
         run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
 
@@ -293,7 +304,7 @@ jobs:
             | grep -E '^d3d12:'
 
       # smoke test の exe は SDL3 (shared) にリンクしている。
-      # SDL3.dll は build-release/third_party/SDL/ に生成され、lub.exe 隣への copy は lub の POST_BUILD 頼み。
+      # SDL3.dll は build-release/deps/bin/ にあり、lub.exe 隣への copy は lub の POST_BUILD 頼み。
       # smoke exe と同じ dir に無いと loader が解決できず git-bash では起動前に落ちて exit 127 になるため、ここで明示的に staging。
       - name: Stage runtime DLLs next to smoke tests
         shell: bash
@@ -502,9 +513,6 @@ jobs:
     if: needs.changes.outputs.web_only != 'true'
     runs-on: macos-latest
     timeout-minutes: 60
-    env:
-      CCACHE_DIR: /Users/runner/.ccache
-      CCACHE_MAXSIZE: 500M
     steps:
       - uses: actions/checkout@v4
         with:
@@ -517,17 +525,24 @@ jobs:
           path: third_party/slang/lib
           key: slang-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
-      - name: Cache ccache
+      - name: Deps cache key
+        id: deps
+        run: echo "key=$(bash scripts/deps-cache-key.sh macos)" >> "$GITHUB_OUTPUT"
+
+      # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す。
+      # slang を持たない player (build-mac-player) も同じ物を使う。
+      - name: Cache deps
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
-          key: ccache-macos-${{ github.sha }}
-          restore-keys: ccache-macos-
+          path: |
+            build-mac/deps
+            build-mac-player/deps
+          key: ${{ steps.deps.outputs.key }}
 
       # run-golden.sh は bash 4+ (mapfile / wait -n)。
       # macOS 同梱の bash は 3.2。
       - name: Install tools
-        run: brew install bash ninja ccache
+        run: brew install bash ninja
 
       # tests/cs の test とサンプルの C# は起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
@@ -535,15 +550,10 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Apple gate, macOS part (build, smokes, C# runtime tests, golden, shader cache)
-        env:
-          CMAKE_C_COMPILER_LAUNCHER: ccache
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
-          CMAKE_OBJC_COMPILER_LAUNCHER: ccache
         run: |
           export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
           mkdir -p "$TMPDIR"
           bash scripts/apple-gate.sh --part mac
-          ccache -s | head -8 || true
 
       - name: Upload golden failure artifacts
         if: failure()
@@ -556,7 +566,7 @@ jobs:
   # web のサイト (lub.neguse.net) のアセット生成 + build。
   # 検証は下流の web-verify / web-golden が artifact (web-dist-test) に対して行う。
   # 前提アセット (web/README.md) の供給:
-  #   - lub player wasm: emsdk でこの job 内でビルド (emcc は ccache)
+  #   - lub player wasm: emsdk でこの job 内でビルド
   #   - tcs WasmCompiler: content key cache、miss 時だけ dotnet で publish
   web-build:
     needs: changes
@@ -564,8 +574,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      CCACHE_DIR: /home/runner/.ccache
-      CCACHE_MAXSIZE: 500M
+      EMSDK_VERSION: 5.0.2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -576,40 +585,35 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD:tcs)" >> "$GITHUB_OUTPUT"
 
       # emsdk は固定パス (~/emsdk) に置く。
-      # setup-emsdk action は毎 run ランダムな temp パスに展開するため、コンパイラパスが変わって ccache が全ミスしていた (実測 hit 0.4%)。
+      # setup-emsdk action は毎 run ランダムな temp パスに展開するので、compiler の path が変わり、deps の key (cmake/LubDeps.cmake) が合わなくなる。
       - name: Cache emsdk
         uses: actions/cache@v4
         with:
           path: ~/emsdk
-          key: emsdk-5.0.2
+          key: emsdk-${{ env.EMSDK_VERSION }}
       - name: Install emsdk
         run: |
           if [ ! -x "$HOME/emsdk/emsdk" ]; then
             git clone --depth 1 https://github.com/emscripten-core/emsdk "$HOME/emsdk"
           fi
-          "$HOME/emsdk/emsdk" install 5.0.2
-          "$HOME/emsdk/emsdk" activate 5.0.2
+          "$HOME/emsdk/emsdk" install "$EMSDK_VERSION"
+          "$HOME/emsdk/emsdk" activate "$EMSDK_VERSION"
 
-      - name: Install system deps
-        run: |
-          # runner イメージ同梱の Google Chrome の apt source は metadata の Hash Sum mismatch を時々出して update ごと落とす。
-          # ここでは使わない
-          sudo rm -f /etc/apt/sources.list.d/google-chrome*
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ccache
+      - name: Deps cache key
+        id: deps
+        run: echo "key=$(bash scripts/deps-cache-key.sh "wasm-emsdk-$EMSDK_VERSION")" >> "$GITHUB_OUTPUT"
 
-      - name: Cache ccache
+      # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す。
+      # tcs2c の web の player (build/wasm-tcs) も同じ物を使う。
+      - name: Cache deps
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
-          key: ccache-wasm-${{ github.sha }}
-          restore-keys: ccache-wasm-
+          path: |
+            build/wasm/deps
+            build/wasm-tcs/deps
+          key: ${{ steps.deps.outputs.key }}
 
       - name: Build lub player wasm
-        env:
-          CMAKE_C_COMPILER_LAUNCHER: ccache
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
-          CCACHE_COMPILERCHECK: content
         run: |
           source "$HOME/emsdk/emsdk_env.sh"
           emcmake cmake --preset wasm-release
@@ -617,7 +621,6 @@ jobs:
           # 外の project が find_package(lub) で自前の player を作れること
           emcmake cmake -S tests/cmake/player -B build/wasm/export-player -G Ninja -Dlub_DIR="$PWD/build/wasm"
           cmake --build build/wasm/export-player
-          ccache -s | head -8 || true
 
       # lider の page (web/lider.html) の player。lub の wasm の build を find_package(lub) で使い、かな漢字変換 (Rust) を静的に link する。
       - name: Build lider player wasm
@@ -661,13 +664,8 @@ jobs:
         run: npm run gen-tcs -- --publish
 
       # src/tcs_host.c の web の player (tests/c/tcs_shutdown.cs)。
-      # lub の object は上の player と同じ flag なので ccache が当たる。
       # web-export の job が page で開き、page が player を外す順番を見る。
       - name: Build tcs2c web player
-        env:
-          CMAKE_C_COMPILER_LAUNCHER: ccache
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
-          CCACHE_COMPILERCHECK: content
         run: |
           source "$HOME/emsdk/emsdk_env.sh"
           bash scripts/web-tcs-host-build.sh

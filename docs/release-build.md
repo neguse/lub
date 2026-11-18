@@ -5,6 +5,8 @@ dependencies (SDL3, Box2D, Box3D, and OpenXR on Linux and Android) are git submo
 run `git submodule update --init` once after cloning. First-time Release builds
 compile all dependencies from source, so automation should run these commands
 with a 2-hour process timeout.
+The configure step builds them as the `third_party/CMakeLists.txt` project and installs them into `<build>/deps/` (`cmake/LubDeps.cmake`).
+Later configures of the same build directory reuse it while the submodule commits and the toolchain stay the same.
 
 ## Windows
 

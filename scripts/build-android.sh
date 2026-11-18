@@ -105,8 +105,8 @@ rm -rf "$stage"
 mkdir -p "$stage/root/lib/$abi" "$stage/classes" "$stage/assets"
 libs=(
   "$build_dir/native/libmain.so"
-  "$build_dir/native/third_party/SDL/libSDL3.so"
-  "$build_dir/native/third_party/openxr/src/loader/libopenxr_loader.so"
+  "$build_dir/native/deps/lib/libSDL3.so"
+  "$build_dir/native/deps/lib/libopenxr_loader.so"
   "$ndk/toolchains/llvm/prebuilt/$host_tag/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
 )
 for lib in "${libs[@]}"; do
