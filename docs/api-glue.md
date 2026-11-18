@@ -86,7 +86,7 @@ entry callback は `OnInit` / `OnEvent` / `OnFrame` / `OnQuit` で、player も 
 同じ C# ソースを `tcs vm` で tcs VM の bytecode (`.tcsb`) にし、tcs VM の player (`src/vm_player.c`) で動かす。
 `lub` は `.csproj`、`.tcsb`、sample の名前をこの player で動かす (`src/main.c`)。
 引数が無ければ実行ファイルの隣の `.tcsb` を動かし、それも無ければ使い方を出して終わる。
-`lub check <entry>.csproj` は窓も VM も作らずに tcs check の結果を終了コードにする。`lub --serve` は web の tcs VM の player を配り、`tcs vm --watch` の差分を SSE で送る (`docs/serve.md`)。
+`lub check <entry>.csproj` は窓も VM も作らずに tcs check の結果を終了コードにする。
 `lub export <os>` の snapshot は `<Entry>.tcsb` を持ち、player は引数なしで起動すると実行ファイルの隣の `.tcsb` を動かす。
 `lub export web` の page は web の tcs VM の player (`build/wasm/vm`、release の一式では `bin/wasm/vm`) を埋め込む。
 `scripts/run-cs-sample.sh <sample> --vm` が `samples/<sample>/.lub/<Entry>.tcsb` を作る

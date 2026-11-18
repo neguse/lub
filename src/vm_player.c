@@ -1387,13 +1387,6 @@ EMSCRIPTEN_KEEPALIVE void lub_vm_shutdown(void) {
   p->lub.ctx = NULL;
 }
 
-// page が変換した C# の compile error を、ゲームの OnBuildFailed に渡す
-EMSCRIPTEN_KEEPALIVE void lub_vm_build_failed(const char *errors) {
-  Player *p = &g_player;
-  if (p->ctx && errors)
-    call_build_failed(p, errors, strlen(errors));
-}
-
 EMSCRIPTEN_KEEPALIVE void lub_vm_volume(float volume) {
   Player *p = &g_player;
   if (p->ctx)

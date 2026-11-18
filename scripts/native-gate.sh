@@ -475,10 +475,10 @@ else
   echo
   echo "==> C# sample gate skipped (dotnet or tcs missing)"
 fi
-# --serve の HTTP / SSE と接続の片づけ、tcs の標準出力の frame (知らない種類を読み飛ばす)。
+# tcs の子プロセスの標準出力から frame を切り出す (知らない種類を読み飛ばす)。
 # fake の tcs を使うので dotnet は要らない
-run_timed bash scripts/build-release.sh --target lub_serve_smoke --no-configure
-run_timed scripts/test-serve-smoke.sh ./build-release-linux/lub_serve_smoke
+run_timed bash scripts/build-release.sh --target lub_tcs_pipeline_smoke --no-configure
+run_timed scripts/test-tcs-pipeline-smoke.sh ./build-release-linux/lub_tcs_pipeline_smoke
 
 # samples/ngs の scenario golden (scene と入力 script を固定した capture)
 if [[ $skip_golden -eq 1 ]]; then
