@@ -39,6 +39,46 @@ public static class IlTypes
         return false;
     }
 
+    // The number of bits of an integer type. byte and sbyte are 8, short and ushort are 16, and the others are 32 (the value is held as i32)
+    public static int IntegerBits(TypeSym t)
+    {
+        if (t.Kind == TypeKind.Byte) return 8;
+        if (t.Kind == TypeKind.Short) return t.Name == "sbyte" ? 8 : 16;
+        return 32;
+    }
+
+    // Unsigned integer types (byte, ushort, uint)
+    public static bool IsUnsignedInteger(TypeSym t)
+    {
+        return t.Kind == TypeKind.Byte || t.Kind == TypeKind.UInt || (t.Kind == TypeKind.Short && t.Name == "ushort");
+    }
+
+    // v wrapped into the range of the integer type t (C#'s unchecked conversion). Unsigned keeps the low bits, signed sign-extends. A 32 bit type is unchanged
+    public static int WrapInteger(TypeSym t, int v)
+    {
+        int bits = IntegerBits(t);
+        if (bits == 32) return v;
+        if (IsUnsignedInteger(t)) return v & ((1 << bits) - 1);
+        int shift = 32 - bits;
+        return (v << shift) >> shift;
+    }
+
+    // The underlying type of an enum (and T? of an enum). null when it is not an enum
+    public static TypeSym? EnumUnderlying(TypeSym? t)
+    {
+        if (t == null) return null;
+        var u = UnwrapNullable(t);
+        if (u.Kind != TypeKind.Enum || u.Decl == null) return null;
+        return u.Decl.EnumBase != null ? u.Decl.EnumBase : TypeSym.IntType;
+    }
+
+    // An enum whose underlying type is uint (and T? of that enum). The value is held as 32 bit two's complement and ordered as unsigned
+    public static bool IsUIntEnum(TypeSym? t)
+    {
+        var b = EnumUnderlying(t);
+        return b != null && b.Kind == TypeKind.UInt;
+    }
+
     // Integral source type (including char)
     public static bool IsIntegralSource(TypeSym? t)
     {

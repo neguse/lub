@@ -388,10 +388,9 @@ public sealed class Declarer
             case "void": return TypeSym.VoidType;
             case "object": return TypeSym.ObjectType;
             case "uint": return TypeSym.UIntType;
-            case "short":
-            case "sbyte":
-            case "ushort":
-                return TypeSym.ShortType;
+            case "short": return TypeSym.ShortType;
+            case "sbyte": return TypeSym.SByteType;
+            case "ushort": return TypeSym.UShortType;
             case "double":
                 _c.Error("TCS1001", "unsupported syntax: DoubleType (numbers are int and float)", at);
                 return TypeSym.DoubleType;

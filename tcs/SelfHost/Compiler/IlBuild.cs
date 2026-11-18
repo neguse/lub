@@ -1797,7 +1797,11 @@ public sealed class IlBuild
         Node? recvNode = callee.Kind == NodeKind.Member && callee.A != null && callee.A.Info != RefKind.Type ? callee.A : null;
         TypeSym? recvType = recvNode != null ? recvNode.Type : null;
         if (callee.Kind == NodeKind.Member && IsFacadeReceiver(callee.A))
-            return new IlCall(callee.A!.Type!.Name + "." + callee.Text, args, null);
+        {
+            var facadeCallee = callee.A!.Type!.Name + "." + callee.Text;
+            if (facadeCallee == "TinySystem.List.Sort") return SortCall(facadeCallee, call.List![0].A!.Type, args);
+            return new IlCall(facadeCallee, args, null);
+        }
         if (id == "Int.TryParse" || id == "Float.TryParse") return BuildNumericTryParse(call, id == "Int.TryParse" ? "Int" : "Float");
         if (id == "Dict.TryGetValue" && recvNode != null) return BuildDictTryGetValue(call, recvNode, m);
         // CompareTo of int / float (same type): an intrinsic that returns -1 / 0 / 1
@@ -1901,7 +1905,7 @@ public sealed class IlBuild
             case "Dict.Clear":
                 return BuildClear(recv);
             case "List.Sort":
-                return new IlCall("List.Sort", Prepend(recv, args), null);
+                return SortCall("List.Sort", recvType, Prepend(recv, args));
             case "List.Contains":
             case "List.IndexOf":
             case "List.Remove":
@@ -1990,6 +1994,19 @@ public sealed class IlBuild
                 }
         }
         return Unported("builtin " + id, call);
+    }
+
+    // The order of List.Sort without a comparison (and TinySystem.List.Sort) is .NET's default comparer. A uint enum is in unsigned order, so
+    // it becomes a List.Sort that passes a closure with that comparison
+    private static IlExpr SortCall(string callee, TypeSym? listType, List<IlExpr> args)
+    {
+        var elem = IlTypes.ElementOf(listType);
+        if (args.Count != 1 || elem == null || elem.Kind != TypeKind.Enum || !IlTypes.IsUIntEnum(elem)) return new IlCall(callee, args, null);
+        var parameters = new List<string>();
+        parameters.Add("__tcs_a");
+        parameters.Add("__tcs_b");
+        var compare = new IlCall("Math.CompareTo", Two(FlipSignBit(new IlVar("__tcs_a", null)), FlipSignBit(new IlVar("__tcs_b", null))), null);
+        return new IlCall("List.Sort", Two(args[0], new IlClosure(parameters, null, compare, new List<string>(), null)), null);
     }
 
     // A built-in method whose receiver is a value-type variable (a local / field / array element and the fields of that struct).
@@ -2461,7 +2478,7 @@ public sealed class IlBuild
         if (op == "-" && _checked && u.Type != null && u.Type.Kind == TypeKind.Int) return new IlCall("__tcs_cneg", One(operand), null);
         if (op == "-") return new IlUn(IlUnOp.Neg, operand, null);
         if (op == "!") return new IlUn(IlUnOp.Not, operand, null);
-        if (op == "~") return new IlUn(IlUnOp.BitNot, operand, null);
+        if (op == "~") return WrapToEnum(u.A!.Type, new IlUn(IlUnOp.BitNot, operand, null));
         if (op == "+") return operand;
         return null;
     }
@@ -2510,7 +2527,11 @@ public sealed class IlBuild
             return new IlLiftedUn(IlUnOp.ToFloat, value, null);
         // (int?)x: an explicit T → T? conversion
         if (target.Kind == TypeKind.Nullable && srcType.Kind != TypeKind.Nullable && srcType.Kind != TypeKind.Null)
-            return new IlNullableWrap(value, IlTypes.Display(srcType), null);
+            return new IlNullableWrap(CastToEnum(target.Elem, srcType, value), IlTypes.Display(srcType), null);
+        if (target.Kind == TypeKind.Enum) return CastToEnum(target, srcType, value);
+        // (E?)x where x is T?: wraps when there is a value (lifted)
+        if (target.Kind == TypeKind.Nullable && srcType.Kind == TypeKind.Nullable && target.Elem.Kind == TypeKind.Enum && !TypeSym.Same(target.Elem, srcType.Elem))
+            value = WrapToEnum(target, value);
         // A downcast to a user class is an IlCast (a runtime check point for the C backend; upcasts and same-type casts pass through)
         // The source type is a named type (object, interface, class, etc.; excluding type arguments and arrays; Roslyn's INamedTypeSymbol)
         bool namedSource = srcType.Kind != TypeKind.TypeParam && srcType.Kind != TypeKind.Array && srcType.Kind != TypeKind.Null;
@@ -2519,6 +2540,13 @@ public sealed class IlBuild
         if (!IsReferenceType(target) && target.Kind != TypeKind.Bool && target.Kind != TypeKind.Nullable) return value;
         // The `?` annotation on a cast type remains only in a #nullable enable context
         return new IlRefCast(value, IlTypes.Display(cast.File.NullableEnabled ? target : target.WithoutAnnotation()), null);
+    }
+
+    // An explicit conversion from an integer or another enum to an enum wraps the value into the range of the underlying type (unchanged from the same enum)
+    private static IlExpr CastToEnum(TypeSym target, TypeSym srcType, IlExpr value)
+    {
+        if (target.Kind != TypeKind.Enum || TypeSym.Same(target, srcType)) return value;
+        return WrapToEnum(target, value);
     }
 
     private static bool IsDerivedFrom(TypeDeclSym source, TypeDeclSym target)
@@ -2614,12 +2642,64 @@ public sealed class IlBuild
         return null;
     }
 
-    // The value of ++ / --: lifted Add / Sub for T?
+    // The value of ++ / --: lifted Add / Sub for T?. An enum wraps into the range of its underlying type
     private static IlExpr StepValue(Node operand, IlExpr read, bool increment)
     {
-        if (IlTypes.IsNullableValueType(NaturalType(operand)))
+        var type = NaturalType(operand);
+        if (IlTypes.IsNullableValueType(type))
             return new IlLiftedBin(increment ? IlLiftedOp.Add : IlLiftedOp.Sub, read, new IlNullableWrap(IlLiterals.Int(1), "int", null), null);
-        return new IlBin(increment ? IlBinOp.AddNum : IlBinOp.Sub, read, IlLiterals.Int(1), null);
+        return WrapToEnum(type, new IlBin(increment ? IlBinOp.AddNum : IlBinOp.Sub, read, IlLiterals.Int(1), null));
+    }
+
+    // Wraps the value of an enum (and T? of an enum) into the range of its underlying type (same as C#'s unchecked conversion; only 8 / 16 bit underlying types change). A non-enum type is unchanged
+    private static IlExpr WrapToEnum(TypeSym? type, IlExpr value)
+    {
+        var b = IlTypes.EnumUnderlying(type);
+        if (b == null) return value;
+        return WrapToInteger(b, value, IlTypes.IsNullableValueType(type));
+    }
+
+    // Wraps into the range of the integer type b. Unsigned keeps the low bits (`v & mask`), and signed sign-extends (`(v << s) >> s`).
+    // lifted is a T? value (no value stays no value). An int literal is folded
+    private static IlExpr WrapToInteger(TypeSym b, IlExpr value, bool lifted)
+    {
+        int bits = IlTypes.IntegerBits(b);
+        if (bits == 32) return value;
+        var lit = IntLiteral(value);
+        if (!lifted && lit != null) return IlLiterals.Int(IlTypes.WrapInteger(b, lit.I));
+        if (IlTypes.IsUnsignedInteger(b)) return IntOp(IlBinOp.BitAnd, value, (1 << bits) - 1, lifted);
+        int shift = 32 - bits;
+        return IntOp(IlBinOp.Shr, IntOp(IlBinOp.Shl, value, shift, lifted), shift, lifted);
+    }
+
+    // `value op k` (k is an int constant; op is BitAnd / Shl / Shr)
+    private static IlExpr IntOp(IlBinOp op, IlExpr value, int k, bool lifted)
+    {
+        if (!lifted) return new IlParen(new IlBin(op, value, IlLiterals.Int(k), null), null);
+        var lop = op == IlBinOp.BitAnd ? IlLiftedOp.BitAnd : op == IlBinOp.Shl ? IlLiftedOp.Shl : IlLiftedOp.Shr;
+        return new IlParen(new IlLiftedBin(lop, value, new IlNullableWrap(IlLiterals.Int(k), "int", null), null), null);
+    }
+
+    // Ordering comparison of a uint enum: flipping the sign bit of both sides and comparing as signed gives the unsigned order
+    private static IlExpr Relation(IlBinOp op, IlExpr left, IlExpr right, bool isUnsigned)
+    {
+        if (!isUnsigned) return new IlBin(op, left, right, null);
+        return new IlBin(op, FlipSignBit(left), FlipSignBit(right), null);
+    }
+
+    private static IlExpr FlipSignBit(IlExpr value)
+    {
+        var lit = IntLiteral(value);
+        if (lit != null) return IlLiterals.Int(lit.I ^ int.MinValue);
+        return new IlParen(new IlBin(IlBinOp.BitXor, value, IlLiterals.Int(int.MinValue), null), null);
+    }
+
+    // An int literal inside parentheses (a foldable value). null when it is not a literal
+    private static IlLit? IntLiteral(IlExpr value)
+    {
+        var inner = value;
+        while (inner is IlParen p) inner = p.E;
+        return inner is IlLit lit && lit.Kind == IlLitKind.Int ? lit : null;
     }
 
     // Comparison with null / ?? / lifted binary operations. null if not applicable (falls through to the normal path)
@@ -2801,8 +2881,9 @@ public sealed class IlBuild
             return new IlBin(IlBinOp.Concat, new IlParen(new IlBin(IlBinOp.Or, read, IlLiterals.Str(""), null), null), WrapConcatOperand(assign.B!, right), null);
         switch (op)
         {
-            case "+": return new IlBin(IlBinOp.AddNum, read, right, null);
-            case "-": return new IlBin(IlBinOp.Sub, read, right, null);
+            // += / -= on an enum wraps into the range of the underlying type
+            case "+": return WrapToEnum(type, new IlBin(IlBinOp.AddNum, read, right, null));
+            case "-": return WrapToEnum(type, new IlBin(IlBinOp.Sub, read, right, null));
             case "*": return new IlBin(IlBinOp.Mul, read, right, null);
             case "/": return new IlBin(IlBinOp.DivNum, read, right, null);
             case "%": return new IlBin(IlBinOp.RemNum, read, right, null);
@@ -4058,7 +4139,7 @@ public sealed class IlBuild
             case NodeKind.PatRel:
                 {
                     var v = BuildExpr(pattern.A!);
-                    return v == null ? null : new IlBin(RelationalIlOp(pattern.Text), governing, v, null);
+                    return v == null ? null : Relation(RelationalIlOp(pattern.Text), governing, v, IlTypes.IsUIntEnum(pattern.A!.Type));
                 }
             case NodeKind.PatAnd:
             case NodeKind.PatOr:
@@ -4099,7 +4180,7 @@ public sealed class IlBuild
             case NodeKind.PatRel:
                 {
                     var v = BuildExpr(pattern.A!);
-                    return v == null ? null : new IlBin(RelationalIlOp(pattern.Text), expr, v, null);
+                    return v == null ? null : Relation(RelationalIlOp(pattern.Text), expr, v, IlTypes.IsUIntEnum(pattern.A!.Type));
                 }
             case NodeKind.PatAnd:
             case NodeKind.PatOr:
@@ -4919,19 +5000,23 @@ public sealed class IlBuild
             return new IlCall(callee, Two(left, right), null);
         }
         bool boolOperand = lt.Kind == TypeKind.Bool || rt.Kind == TypeKind.Bool;
+        bool enumOperand = lt.Kind == TypeKind.Enum || rt.Kind == TypeKind.Enum;
+        // The ordering of a uint enum is unsigned
+        bool unsignedRelation = IlTypes.IsUIntEnum(lt) || IlTypes.IsUIntEnum(rt);
         switch (op)
         {
-            case "+": return new IlBin(IlBinOp.AddNum, left, right, null);
-            case "-": return new IlBin(IlBinOp.Sub, left, right, null);
+            // + / - of an enum and an integer, and - between enums, wrap into the range of the result type (the enum, or the underlying type for - between enums)
+            case "+": return enumOperand ? WrapToResult(resultType, new IlBin(IlBinOp.AddNum, left, right, null)) : new IlBin(IlBinOp.AddNum, left, right, null);
+            case "-": return enumOperand ? WrapToResult(resultType, new IlBin(IlBinOp.Sub, left, right, null)) : new IlBin(IlBinOp.Sub, left, right, null);
             case "*": return new IlBin(IlBinOp.Mul, left, right, null);
             case "/": return new IlBin(IlBinOp.DivNum, left, right, null);
             case "%": return new IlBin(IlBinOp.RemNum, left, right, null);
             case "==": return new IlBin(IlBinOp.Eq, left, right, null);
             case "!=": return new IlBin(IlBinOp.Ne, left, right, null);
-            case "<": return new IlBin(IlBinOp.Lt, left, right, null);
-            case "<=": return new IlBin(IlBinOp.Le, left, right, null);
-            case ">": return new IlBin(IlBinOp.Gt, left, right, null);
-            case ">=": return new IlBin(IlBinOp.Ge, left, right, null);
+            case "<": return Relation(IlBinOp.Lt, left, right, unsignedRelation);
+            case "<=": return Relation(IlBinOp.Le, left, right, unsignedRelation);
+            case ">": return Relation(IlBinOp.Gt, left, right, unsignedRelation);
+            case ">=": return Relation(IlBinOp.Ge, left, right, unsignedRelation);
             case "&&": return new IlBin(IlBinOp.And, left, right, null);
             case "||": return new IlBin(IlBinOp.Or, left, right, null);
             case "??": return new IlBin(IlBinOp.Or, left, right, null);
@@ -4948,6 +5033,12 @@ public sealed class IlBuild
             case ">>": return new IlBin(IlBinOp.Shr, left, right, null);
         }
         return null;
+    }
+
+    private static IlExpr WrapToResult(TypeSym resultType, IlExpr value)
+    {
+        if (resultType.Kind == TypeKind.Enum) return WrapToEnum(resultType, value);
+        return resultType.IsIntegral ? WrapToInteger(resultType, value, false) : value;
     }
 
     // ---- Stringification ----
@@ -5074,28 +5165,40 @@ public sealed class IlBuild
         return new IlCall("String.FormatEnum", Two(value, IlLiterals.Str(spec)), null);
     }
 
-    // Enum formats (`e.ToString("G")` and `{e:G}` in interpolation). G is the name, F is a combination of names, D is the number. null otherwise
+    // Enum formats (`e.ToString("G")` and `{e:G}` in interpolation). G is the name, F is a combination of names, D is the number (String.FormatEnum without a name table).
+    // null for other formats and for non-enum types
     private static IlExpr? WrapEnumFormat(TypeSym t, IlExpr value, string format)
     {
         if (format == "G" || format == "g") return WrapEnumToStringFlags(t, value, false);
         if (format == "F" || format == "f") return WrapEnumToStringFlags(t, value, true);
-        if (format == "D" || format == "d") return new IlCall("__tcs_str", One(value), null);
+        if (format == "D" || format == "d")
+        {
+            var prefix = EnumSpecPrefix(IlTypes.UnwrapNullable(t));
+            return prefix == null ? null : new IlCall("String.FormatEnum", Two(value, IlLiterals.Str(prefix)), null);
+        }
+        return null;
+    }
+
+    // The mark placed before the name table of spec. A uint underlying type is `+` (a value not in the table is written as an unsigned number). null for a type that cannot make a spec
+    private static string? EnumSpecPrefix(TypeSym t)
+    {
+        if (t.Kind != TypeKind.Enum) return null;
+        var b = IlTypes.EnumUnderlying(t);
+        if (b == null) return null;
+        if (b.Kind == TypeKind.UInt) return "+";
+        if (b.Kind == TypeKind.Byte || b.Kind == TypeKind.Short || b.Kind == TypeKind.Int) return "";
         return null;
     }
 
     // spec is a list of `name:value` joined with `,`. Flags (and format "F") are prefixed with `*` and hold all members in the same order as .NET's EnumInfo
     // (ascending unsigned value; kept as is if already sorted in declaration order, sorted otherwise). Otherwise it holds only the one name .NET picks for each value
-    // (for members with the same value, the first one in that order if there are 32 or fewer, otherwise the one binary search hits)
+    // (for members with the same value, the first one in that order if there are 32 or fewer, otherwise the one binary search hits). A uint underlying type puts `+` before the name table
     public static string? EnumFormatSpec(TypeSym t, bool forceFlags)
     {
-        if (t.Kind != TypeKind.Enum || t.Decl == null) return null;
-        var d = t.Decl;
-        var ub = d.EnumBase != null ? d.EnumBase.Kind : TypeKind.Int;
-        int bits = 0;
-        if (ub == TypeKind.Byte) bits = 8;
-        else if (ub == TypeKind.Short) bits = 16;
-        else if (ub == TypeKind.Int || ub == TypeKind.UInt) bits = 32;
-        if (bits == 0) return null;
+        var prefix = EnumSpecPrefix(t);
+        if (prefix == null) return null;
+        var d = t.Decl!;
+        int bits = IlTypes.IntegerBits(IlTypes.EnumUnderlying(t)!);
         var names = new List<string>();
         var values = new List<int>();
         foreach (var m in d.Members)
@@ -5123,7 +5226,7 @@ public sealed class IlBuild
         if (forceFlags || d.IsFlags)
         {
             foreach (var i in order) entries.Add(names[i] + ":" + values[i]);
-            return "*" + string.Join(",", entries);
+            return "*" + prefix + string.Join(",", entries);
         }
         int k = 0;
         while (k < order.Count)
@@ -5156,7 +5259,7 @@ public sealed class IlBuild
             while (next < order.Count && EnumKeyEqual(values[order[next]], key, bits)) next++;
             k = next;
         }
-        return string.Join(",", entries);
+        return prefix + string.Join(",", entries);
     }
 
     private static int Log2(int n)

@@ -328,15 +328,28 @@ static TcsString *tcs_string_join_array_values(TcsString *sep, TcsArray *array,
   return tcs_string_join_values(sep, array->data, array->length, kind);
 }
 
+/* The number for an enum value that no name can represent. A uint enum is
+   written as unsigned */
+static TcsString *tcs_enum_number(int32_t value, bool is_unsigned) {
+  char buffer[16];
+  int written;
+  if (!is_unsigned)
+    return tcs_string_i32(value);
+  written = snprintf(buffer, sizeof(buffer), "%" PRIu32, (uint32_t)value);
+  if (written < 0 || (size_t)written >= sizeof(buffer))
+    tcs_fault("integer-format");
+  return tcs_string_new((const unsigned char *)buffer, (size_t)written);
+}
+
 /* Enum stringification (Enum.ToString). names / values are in the same order as
    .NET (Flags: all members in unsigned ascending value order; otherwise one per
    value). For Flags, the contained bits are taken from the highest member down,
    and the names are joined in ascending order with ", " (each member taken
    clears at least 1 bit, so at most 32). A value that neither form can
-   represent is shown as a number */
+   represent is shown as a number (unsigned when is_unsigned) */
 static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
                                   const int32_t *values, int32_t count,
-                                  bool flags) {
+                                  bool flags, bool is_unsigned) {
   int32_t found[32];
   int32_t found_count = 0;
   uint32_t rest = (uint32_t)value;
@@ -348,7 +361,7 @@ static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
     for (i = 0; i < count; i++)
       if (values[i] == value)
         return names[i];
-    return tcs_string_i32(value);
+    return tcs_enum_number(value, is_unsigned);
   }
   if (value == 0)
     return count > 0 && values[0] == 0 ? names[0] : tcs_string_i32(0);
@@ -363,7 +376,7 @@ static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
     }
   }
   if (rest != 0)
-    return tcs_string_i32(value);
+    return tcs_enum_number(value, is_unsigned);
   result = tcs_string_new(NULL, total);
   for (i = found_count - 1; i >= 0; i--) {
     TcsString *name = names[found[i]];
@@ -381,12 +394,14 @@ static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
 static TcsString *tcs_string_join_enum(TcsString *sep, const int32_t *data,
                                        size_t count, TcsString *const *names,
                                        const int32_t *values,
-                                       int32_t names_count, bool flags) {
+                                       int32_t names_count, bool flags,
+                                       bool is_unsigned) {
   TcsString **items = tcs_string_join_buffer(count);
   TcsString *result;
   size_t i;
   for (i = 0; i < count; i++)
-    items[i] = tcs_enum_format(data[i], names, values, names_count, flags);
+    items[i] = tcs_enum_format(data[i], names, values, names_count, flags,
+                               is_unsigned);
   result = tcs_string_join_items(sep, items, count);
   free(items);
   return result;
