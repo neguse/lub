@@ -344,6 +344,7 @@ public sealed class Compliance
                 LocalName(n.Text, n);
                 break;
             case NodeKind.PatDecl:
+            case NodeKind.PatProp:
                 LocalName(n.Text, n);
                 break;
             case NodeKind.Lambda:

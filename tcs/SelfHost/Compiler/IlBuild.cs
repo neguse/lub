@@ -3911,7 +3911,7 @@ public sealed class IlBuild
     private void CollectIsDesignations(Node n, Node scope, List<Node> into)
     {
         if (n != scope && (IsStatementKind(n.Kind) || n.Kind == NodeKind.Lambda)) return;
-        if (n != scope && n.Kind == NodeKind.Is && n.B != null && n.B.Kind == NodeKind.PatDecl && n.B.Local != null) into.Add(n.B);
+        if (n != scope && n.Kind == NodeKind.Is && n.B != null && HasDesignation(n.B)) into.Add(n.B);
         VisitChildren(n, c => CollectIsDesignations(c, scope, into));
     }
 
@@ -4217,9 +4217,16 @@ public sealed class IlBuild
         return Unported("is sub-pattern", pattern);
     }
 
+    // 入れ子の位置の property パターン。変数を付けた形は根の位置 (is の右辺、switch の arm と case) でだけ束縛するので、ここでは組み立てない
     private IlExpr? BuildRecursivePattern(IlExpr expr, Node rp, TypeSym? inputType)
     {
-        if (rp.Text != "") return null;
+        if (rp.Local != null) return null;
+        return BuildPropertyMatch(expr, rp, inputType);
+    }
+
+    // property パターンの照合 (変数の束縛は呼び出し側)
+    private IlExpr? BuildPropertyMatch(IlExpr expr, Node rp, TypeSym? inputType)
+    {
         var subpatterns = new List<Node>();
         if (rp.List != null)
         {
@@ -4269,11 +4276,18 @@ public sealed class IlBuild
         return result;
     }
 
-    // 入力 S / S? に当てた struct S の宣言のパターンと、入力 T? に当てた値型 T の宣言のパターン (値を取り出して束縛する)
+    // 根に変数を持つパターン: 宣言のパターン (`T v`) と変数を付けた property パターン (`T { ... } v`、`{ ... } v`)
+    private static bool HasDesignation(Node p)
+    {
+        return (p.Kind == NodeKind.PatDecl || p.Kind == NodeKind.PatProp) && p.Local != null;
+    }
+
+    // 入力 S / S? に当てた struct S の変数と、入力 T? に当てた値型 T の変数 (値を取り出して束縛する)
     private static bool IsStructDesignation(Node dp, TypeSym? inputType)
     {
-        if (dp.Type == null || inputType == null || !TypeSym.Same(IlTypes.UnwrapNullable(inputType), dp.Type)) return false;
-        return IlTypes.IsUserStruct(dp.Type) || dp.Type.IsValueType && IlTypes.IsNullableValueType(inputType);
+        var t = dp.Local != null ? dp.Local.Type : dp.Type;
+        if (t == null || inputType == null || !TypeSym.Same(IlTypes.UnwrapNullable(inputType), t)) return false;
+        return IlTypes.IsUserStruct(t) || t.IsValueType && IlTypes.IsNullableValueType(inputType);
     }
 
     private IlExpr DesignationValue(IlExpr input, TypeSym inputType, TypeSym declType)
@@ -4309,8 +4323,26 @@ public sealed class IlBuild
     private IlLocal SwitchDesignationLocal(Node dp, TypeSym? inputType, IlExpr sw)
     {
         var name = dp.Local!.IlName;
-        if (IsStructDesignation(dp, inputType)) return new IlLocal(name, null, IlTypes.Display(dp.Type!), null);
-        return new IlLocal(name, sw, dp.Type != null ? IlTypes.Display(dp.Type) : null, null);
+        if (IsStructDesignation(dp, inputType)) return new IlLocal(name, null, IlTypes.Display(dp.Local.Type), null);
+        return new IlLocal(name, sw, IlTypes.Display(dp.Local.Type), null);
+    }
+
+    // switch の arm と case の根のパターン。変数を付けた property パターンは、参照型なら前宣言が入力で初期化した変数のまま照合し、
+    // 値型なら照合が通ってから値を束縛する
+    private IlExpr? BuildSwitchPattern(Node pattern, IlExpr sw, TypeSym? inputType)
+    {
+        if (pattern.Kind != NodeKind.PatProp || pattern.Local == null) return BuildPattern(pattern, sw, inputType);
+        if (IsStructDesignation(pattern, inputType)) return BuildStructPropertyDesignation(pattern, sw, inputType!);
+        return BuildPropertyMatch(sw, pattern, inputType);
+    }
+
+    // 値型の変数を付けた property パターン: 照合が通ったら値 (struct は copy) を変数に束縛する
+    private IlExpr? BuildStructPropertyDesignation(Node pattern, IlExpr input, TypeSym inputType)
+    {
+        var matched = BuildPropertyMatch(input, pattern, inputType);
+        if (matched == null) return null;
+        var bind = BuildStructDeclarationIs(new IlVar(pattern.Local!.IlName, null), input, inputType, pattern.Local.Type);
+        return new IlBin(IlBinOp.And, matched, bind, null);
     }
 
     private IlExpr? BuildIsPattern(Node isNode)
@@ -4319,11 +4351,18 @@ public sealed class IlBuild
         if (expr == null) return null;
         var inputType = NaturalType(isNode.A!);
         var pattern = isNode.B!;
-        if (pattern.Kind == NodeKind.PatDecl && pattern.Local != null)
+        if (HasDesignation(pattern))
         {
-            var name = pattern.Local.IlName;
-            if (IsStructDesignation(pattern, inputType)) return BuildStructDeclarationIs(new IlVar(name, null), expr, inputType, pattern.Type!);
-            var check = BuildTypeCheck(new IlVar(name, null), inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
+            var name = pattern.Local!.IlName;
+            if (IsStructDesignation(pattern, inputType))
+            {
+                if (pattern.Kind == NodeKind.PatDecl) return BuildStructDeclarationIs(new IlVar(name, null), expr, inputType, pattern.Type!);
+                return BindPatternInput(expr, input => BuildStructPropertyDesignation(pattern, input, inputType));
+            }
+            // 参照型の変数は入力を束縛してから、変数を照合する
+            var check = pattern.Kind == NodeKind.PatDecl
+                ? BuildTypeCheck(new IlVar(name, null), inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type))
+                : BuildPropertyMatch(new IlVar(name, null), pattern, inputType);
             if (check == null) return null;
             var stats = new List<IlStat>();
             stats.Add(new IlAssign(new IlVar(name, null), expr, null));
@@ -4356,7 +4395,7 @@ public sealed class IlBuild
         {
             foreach (var arm in sx.List)
             {
-                if (arm.A != null && arm.A.Kind == NodeKind.PatDecl && arm.A.Local != null) stats.Add(SwitchDesignationLocal(arm.A, inputType, sw));
+                if (arm.A != null && HasDesignation(arm.A)) stats.Add(SwitchDesignationLocal(arm.A, inputType, sw));
             }
         }
         var arms = new List<IlArm>();
@@ -4373,7 +4412,7 @@ public sealed class IlBuild
                     elseBlock = new IlBlock(One(new IlReturn(value, null)));
                     continue;
                 }
-                var pattern = BuildPattern(arm.A, sw, inputType);
+                var pattern = BuildSwitchPattern(arm.A, sw, inputType);
                 if (pattern == null) return null;
                 if (arm.B != null)
                 {
@@ -4418,7 +4457,7 @@ public sealed class IlBuild
             if (section.List == null) continue;
             foreach (var label in section.List)
             {
-                if (label.Kind == NodeKind.CaseLabel && label.A != null && label.A.Kind == NodeKind.PatDecl && label.A.Local != null)
+                if (label.Kind == NodeKind.CaseLabel && label.A != null && HasDesignation(label.A))
                     products.Add(SwitchDesignationLocal(label.A, inputType, sw) with { Origin = origin });
             }
         }
@@ -4474,7 +4513,7 @@ public sealed class IlBuild
 
     private IlExpr? BuildPatternLabel(Node label, IlExpr sw, TypeSym? inputType)
     {
-        var condition = BuildPattern(label.A!, sw, inputType);
+        var condition = BuildSwitchPattern(label.A!, sw, inputType);
         if (condition == null) return null;
         if (label.B == null) return new IlParen(condition, null);
         var when = BuildExpr(label.B);
