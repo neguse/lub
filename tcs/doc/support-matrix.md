@@ -245,7 +245,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `while` ループ | **Y** | |
 | `do-while` ループ | **Y** | |
 | `for` ループ (C 形式) | **Y** | 一般 incrementor 対応 |
-| `foreach` ループ | **Y** | List、配列、Dictionary とその `Keys` / `Values`、Queue、HashSet、`EnumerateRunes` |
+| `foreach` ループ | **Y** | List、配列、Dictionary とその `Keys` / `Values`、Queue、HashSet、`EnumerateRunes`。反復の変数に要素と違う型を書くと、要素をその型へ cast (`(T)要素`) と同じ規則で変換した値になる (`foreach (int v in floats)` は 0 方向に切り捨てた値。cast で止まる変換は同じ TCS1001) |
 | `break` | **Y** | |
 | `continue` | **Y** | |
 | `return` | **Y** | |

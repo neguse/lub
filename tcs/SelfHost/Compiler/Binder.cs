@@ -1092,11 +1092,12 @@ public sealed class Binder
         {
             TypeSym vt = elem;
             bool isVar = s.A!.Kind == NodeKind.TypeName && s.A.Text == "var" && s.A.List == null && s.A.A == null;
+            s.D = null;
             if (!isVar)
             {
                 vt = _d.ResolveType(s.A, _scope!);
                 if (!IsExplicitlyConvertible(elem, vt)) Error("CS0030", "Cannot convert type '" + elem.Display() + "' to '" + vt.Display() + "'", s);
-                if (!TypeSym.Same(elem, vt) && !elem.IsError && !vt.IsError) s.Type2 = vt;
+                else if (!TypeSym.Same(elem, vt) && !elem.IsError && !vt.IsError) s.D = ElementConversion(s, elem, vt);
             }
             var l = new LocalSym(s.Text, vt);
             s.Local = l;
@@ -1106,6 +1107,21 @@ public sealed class Binder
         BindEmbedded(s.C!);
         _depth--;
         PopScope();
+    }
+
+    // foreach の反復の変数の値: 要素を変数の型へ明示に変換する cast (C# の foreach と同じ変換。cast と同じ規則で検査する)。
+    // 要素は名前の無い local で、IL が反復の temp の名前を付ける
+    private Node ElementConversion(Node s, TypeSym elem, TypeSym vt)
+    {
+        var item = new Node(NodeKind.Name, s.File, s.Pos);
+        item.Local = new LocalSym("", elem);
+        item.Info = RefKind.Local;
+        item.Type = elem;
+        var cast = new Node(NodeKind.Cast, s.File, s.Pos);
+        cast.End = s.End;
+        cast.B = item;
+        ConvertExplicitly(cast, vt);
+        return cast;
     }
 
     private void BindSwitch(Node s)
@@ -4998,6 +5014,12 @@ public sealed class Binder
     {
         var to = _d.ResolveType(e.A!, _scope!);
         BindExpr(e.B!, to);
+        ConvertExplicitly(e, to);
+    }
+
+    // cast の e の束縛した式 e.B を to へ変換する
+    private void ConvertExplicitly(Node e, TypeSym to)
+    {
         var from = e.B!.Type!;
         e.Type = to;
         if (from.IsError || to.IsError) return;

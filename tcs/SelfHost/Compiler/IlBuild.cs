@@ -3955,6 +3955,20 @@ public sealed class IlBuild
         var coll = BuildExpr(collNode);
         var body = BuildBlock(f.C!);
         if (coll == null || body == null) return false;
+        // 変数の型が要素の型と違えば、要素の temp を反復して、本体の頭で変数に変換した値を入れる
+        if (f.D != null)
+        {
+            // 要素は cast の式 (暗黙の変換なら binder が入れた Conv の中) の local
+            var item = StripConv(f.D.B!).Local!;
+            item.IlName = NewDeconstructTemp();
+            var converted = BuildExpr(f.D);
+            if (converted == null) return false;
+            var stats = new List<IlStat>();
+            stats.Add(new IlLocal(varName, CopyIfMutableStruct(f.Local!.Type, converted), IlTypes.Display(f.Local.Type), null));
+            foreach (var st in body.Stats) stats.Add(st);
+            body = new IlBlock(stats);
+            varName = item.IlName;
+        }
         var collType = NaturalType(collNode);
         // Dictionary の本体だけ IlForeachDict (KeyValuePair) で反復する。Keys / Values は runtime が配列を返すので List の反復
         if (IlTypes.IsDict(collType))
@@ -3967,7 +3981,7 @@ public sealed class IlBuild
         if (IlTypes.IsHashSet(collType)) coll = new IlCall("TcsHashSet.ToList", One(coll), null);
         // 反復の変数は要素の copy (struct の要素への変更を元へ残さない)
         var iterVar = new IlVar(varName, null);
-        var copied = CopyIfMutableStruct(f.Local != null ? f.Local.Type : null, iterVar);
+        var copied = f.D != null ? iterVar : CopyIfMutableStruct(f.Local != null ? f.Local.Type : null, iterVar);
         if (copied is IlStructCopy)
         {
             var stats = new List<IlStat>();
