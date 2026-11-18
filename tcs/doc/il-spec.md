@@ -234,6 +234,13 @@ host は打ち切られた後に次の entry を呼べる: tcs VM は `tvm_call`
   `D` は符号を除いて p 桁以上。`X` は 32 bit の 2 の補数の 16 進で p 桁以上。`T?` の値なしは空文字列。
   runtime/fmt の同じ実装が文字列を作る。
   それ以外の書式は printf の書式に写す（`IlCall("__tcs_format", [fmt, v])`）
+- 文字列→数値（`int.Parse` / `float.Parse` は `IlCall("__tcs_iparse")` / `IlCall("__tcs_fparse")`、TryParse は `Math.TryParseInt` / `Math.TryParseFloat`）は、.NET の `int.Parse(string)` / `float.Parse(string)`（InvariantCulture）と同じ文字列を受けて同じ値を返す。
+  int は NumberStyles.Integer、float は NumberStyles.Float | AllowThousands（小数点、指数、小数点より前で数字の後の桁区切り `,`）。
+  前後の空白は空白と HT、LF、VT、FF、CR で、末尾の NUL は読み飛ばす。
+  float は数として読めなければ、前後の空白（`char.IsWhiteSpace`）を除いた `Infinity` / `NaN` を大文字小文字を問わずに受け、前に符号を 1 つ置ける。
+  float の値は 10 進の正確な値に最も近い f32（ちょうど中間は仮数が偶数の方、範囲を超えれば ±∞）。
+  runtime/fmt の 1 つの C の実装 (tcs VM は link し、C は生成 C に埋め込む) が読む。
+  Parse は読めない文字列と int の範囲を超える値で fault する（.NET は FormatException / OverflowException）
 - enum (と enum の `T?`) の文字列化は `IlCall("String.FormatEnum", [v, spec])`。spec は string literal で、`名前:値` を `,` で並べる。`[Flags]` (と書式 "F") は先頭に `*` を付けて全 member を .NET の EnumInfo と同じ並び (値の符号なし昇順) で持ち、それ以外は値ごとに .NET が選ぶ名前を 1 つ持つ。値は実行時の 32 bit の 2 の補数 (uint の 0x80000000 は int.MinValue)。`T?` の値なしは空文字列
   uint の enum の spec は名前の表の前 (`*` があればその後) に `+` を置き、表の名前で表せない値を符号なしの 10 進で書く (それ以外の enum は符号付き)。
   書式 D は名前の表の無い spec (`""`、uint の enum は `"+"`) の `String.FormatEnum` で、値を数で書く

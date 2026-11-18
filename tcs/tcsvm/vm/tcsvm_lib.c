@@ -1,8 +1,8 @@
 /* Runtime functions of the tcs VM (CALLR). A C implementation of the TinySystem
    surface (il-spec §13), with the same semantics as the tcs2c runtime. String
-   conversion, math functions, and UTF-8 call the same C code in runtime/fmt,
-   runtime/math, and runtime/utf8. See TvmIntrinsic in tcsvm_internal.h for the
-   kind characters of arguments and return values. */
+   conversion and number parsing, math functions, and UTF-8 call the same C code
+   in runtime/fmt, runtime/math, and runtime/utf8. See TvmIntrinsic in
+   tcsvm_internal.h for the kind characters of arguments and return values. */
 #include "tcsvm_internal.h"
 
 #include "../../runtime/fmt/tcs_fmt.h"
@@ -478,52 +478,14 @@ static TvmStatus str_bytelen(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* int.Parse / float.Parse / TryParse (same as Math.TryParseInt: leading and
- * trailing whitespace, sign, decimal digits) */
+/* int.Parse / float.Parse / TryParse: the parsing in runtime/fmt. A null string
+ * fails */
 static int parse_int(const TvmString *s, int32_t *out) {
-  if (!s)
-    return 0;
-  const char *p = STR_DATA(s), *end = p + s->len;
-  while (p < end && (*p == ' ' || (*p >= 9 && *p <= 13)))
-    p++;
-  while (end > p && (end[-1] == ' ' || (end[-1] >= 9 && end[-1] <= 13)))
-    end--;
-  int neg = 0;
-  if (p < end && (*p == '+' || *p == '-')) {
-    neg = *p == '-';
-    p++;
-  }
-  if (p == end)
-    return 0;
-  int64_t v = 0;
-  for (; p < end; p++) {
-    if (*p < '0' || *p > '9')
-      return 0;
-    v = v * 10 + (*p - '0');
-    if (v > (int64_t)INT32_MAX + 1)
-      return 0;
-  }
-  v = neg ? -v : v;
-  if (v < INT32_MIN || v > INT32_MAX)
-    return 0;
-  *out = (int32_t)v;
-  return 1;
+  return s != NULL && tcs_parse_i32(STR_DATA(s), (size_t)s->len, out);
 }
 
 static int parse_float(const TvmString *s, float *out) {
-  if (!s || s->len == 0 || s->len > 200)
-    return 0;
-  char buf[256];
-  memcpy(buf, STR_DATA(s), (size_t)s->len);
-  buf[s->len] = '\0';
-  char *end;
-  double d = strtod(buf, &end);
-  while (*end == ' ' || (*end >= 9 && *end <= 13))
-    end++;
-  if (end == buf || *end)
-    return 0;
-  *out = (float)d;
-  return 1;
+  return s != NULL && tcs_parse_f32(STR_DATA(s), (size_t)s->len, out);
 }
 
 static TvmStatus int_parse(TvmVm *vm, TvmSlot *a, TvmSlot *r) {

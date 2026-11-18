@@ -516,7 +516,7 @@ reload は module ごと入れ替え、古い関数を残さない (§12.4) の�
 
 - 入力は C backend と同じ `IlExport` の結果で、generic は特殊化済み (`Session.Specialize`)
 - 式の静的型は VmEmitter が IL から求める (`FunctionCompiler.TypeOf`)。C backend と `TcsC` の部品 (`ContractFacts`、型記述子の表 `TypeTable`、誤りの記録 `CFail`) を共有する
-- runtime の algorithm は `runtime/` の C を C backend と共有する: List.Sort の introsort (`runtime/sort`。.NET と同じ比較の呼び出し列)、数値の書式 (`runtime/fmt`)、数学関数 (`runtime/math`)、UTF-8 (`runtime/utf8`)、型記述子と walker と reload の計画 (`runtime/model`)。Random (xoshiro256**。同じ seed なら同じ列) と Dictionary (列挙は挿入順) は VM と C がそれぞれの実装で持つ。hot-reload §10 の規則 4 (runtime を片側だけに持たない) の通り
+- runtime の algorithm は `runtime/` の C を C backend と共有する: List.Sort の introsort (`runtime/sort`。.NET と同じ比較の呼び出し列)、数値の書式と読み取り (`runtime/fmt`)、数学関数 (`runtime/math`)、UTF-8 (`runtime/utf8`)、型記述子と walker と reload の計画 (`runtime/model`)。Random (xoshiro256**。同じ seed なら同じ列) と Dictionary (列挙は挿入順) は VM と C がそれぞれの実装で持つ。hot-reload §10 の規則 4 (runtime を片側だけに持たない) の通り
 
 ### 15.2 register 割り当て
 

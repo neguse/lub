@@ -562,8 +562,8 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `Math` | **Y** | 後述の個別メンバー表参照 | |
 | `MathF` | **-** | | float 版 Math。TCS1002 (System.Math の float overload を使う) |
 | `Console` | **Y** | `WriteLine` と 1 引数の `Write` (文字列化は WriteLine と同じ) | object の引数は中の値で文字列にする (`__tcs_nstr`。値が float なら .NET と同じ文字列、null は空行。C backend は object の引数を受けない)。null の string は空文字列として書く (`WriteLine` なら空行) |
-| `int` / `float` の `Parse(string)` | **Y** | | 不正な文字列は fault (.NET は FormatException) |
-| `int` / `float` の `TryParse(string, out v)` | **Y** | IL は `Math.TryParseInt` / `Math.TryParseFloat` | 失敗時の out は 0。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗) |
+| `int` / `float` の `Parse(string)` | **Y** | 受ける文字列と値は TryParse と同じ | 読めない文字列は fault (.NET は FormatException)。int の範囲を超える値も fault (.NET は OverflowException) |
+| `int` / `float` の `TryParse(string, out v)` | **Y** | IL は `Math.TryParseInt` / `Math.TryParseFloat` | 失敗時の out は 0。InvariantCulture で、前後の空白は空白と HT、LF、VT、FF、CR、末尾の NUL は読み飛ばす。int は NumberStyles.Integer (前後の空白、先頭の符号、10 進数字だけ。小数・指数・16 進・空白だけは失敗)。float は NumberStyles.Float \| AllowThousands (int に加えて小数点、指数、小数点より前で数字の後の桁区切り `,`。16 進と `inf` は失敗) と、大文字小文字を問わない `Infinity` / `NaN` (前に符号 1 つ、前後の Unicode の空白も除く)。値は最も近い float (ちょうど中間は偶数、範囲を超えれば ±∞) |
 | `int` / `float` の `ToString(format)` | **Y** | `String.FormatInt` / `String.FormatFloat` | 定数の標準の書式だけ (補間の書式と同じ: float は `G` / `E` / `F` / `N` / `R`、int は加えて `D` / `X`、小文字と 9 桁までの精度も)。空の書式は書式なしと同じ。他の書式と定数でない書式は TCS1002 |
 | `int` / `float` の `CompareTo(同じ型)` | **Y** | IL は `Math.CompareTo(a, b)` | -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0 (Single.CompareTo と同じ)。受け手が変数 (local、field、配列の要素) なら、引数を評価した後のその変数の値を比べる (C# と同じ。引数が受け手を書き換えても今の値。property や List の添字の受け手は引数より先に読んだ値)。それ以外の CompareTo (object overload の `i.CompareTo(5L)`、enum、`IComparable<T>` 経由と generic の `T`、差を返す `char`、`string`) は TCS1002 |
 | 数値と bool の他の static method (`float.IsNaN`、`float.IsInfinity`、`int.Max`、`float.Abs`、`bool.Parse` など) | **-** | | TCS1002。NaN は `x != x`、最大と絶対値は `Math.Max` / `Math.Abs` で書く。定数 (`int.MaxValue`、`float.NaN`、`float.PositiveInfinity`、`float.NegativeInfinity` など) は使える |
