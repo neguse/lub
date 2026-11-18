@@ -105,6 +105,8 @@ goto は無い。例外機構は無い — try / throw はサブセット外（T
   abstract / override / sealed / protected / new による隠蔽、base は build を
   止める TCS1001）。多態は interface の実装と type test で書く
 - class の参照比較（operator 定義が無い `==`）は identity 比較
+- 呼び出しの受け手 (class の instance method、interface、delegate、TinySystem.Random) の null は、受け手と引数を評価した後の呼び出しで fault する。
+  class の field への代入 (`o.F = v`) の受け手と Dictionary への代入 (`d[k] = v`) の受け手の null も、値を評価した後に fault する (C# と同じ順序)
 
 ## 10. place と値型（struct / record struct。field + member + static + operator +
 ctor。override は ToString だけ、T246 で契約完成）
