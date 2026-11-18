@@ -265,9 +265,9 @@ public sealed class IlBuild
 
     private int _condHoist;
 
-    // 値を返す IIFE の形を認識する。対象は [IlLocal*, IlIf (各 arm = 前置の文* + 末尾の IlReturn、else も同じ形)?, IlReturn?]
+    // 値を返す IIFE の形を認識する。対象は [IlLocal*, IlIf (各 arm = 前置の文* + 末尾の IlReturn、else も同じ形か switch 式の一致しないときの fault)?, IlReturn?]
     // (switch 式 / ?. / ?? / TryGetValue / GetValueOrDefault を下ろしたもの)。末尾の IlReturn は else へ正規化する。
-    // Complete = 全経路が値を返す (false なら一致しないとき nil。return の位置では値の無い return になるので使えない)
+    // Complete = 全経路が値を返すか fault する (false なら一致しないとき nil。return の位置では値の無い return になるので使えない)
     private static ValueChain? TryGetValueChainShape(IlIife iife)
     {
         var stats = new List<IlStat>();
@@ -288,7 +288,7 @@ public sealed class IlBuild
         {
             if (!IsReturningBlock(a.Body)) return null;
         }
-        if (tail.Else != null && !IsReturningBlock(tail.Else)) return null;
+        if (tail.Else != null && !IsReturningBlock(tail.Else) && !IsNoMatchBlock(tail.Else)) return null;
         var setup = new List<IlStat>();
         for (int i = 0; i < stats.Count - 1; i++) setup.Add(stats[i]);
         IlIf chain = tail;
@@ -321,12 +321,25 @@ public sealed class IlBuild
         return true;
     }
 
-    // 各 arm の末尾の return を target への代入にした if の連鎖
+    // switch 式のどの arm にも一致しないときの fault (C# の SwitchExpressionException)
+    private static IlBlock NoMatchBlock()
+    {
+        return new IlBlock(One(new IlCallStat(new IlCall("__tcs_nomatch", new List<IlExpr>(), null), null)));
+    }
+
+    private static bool IsNoMatchBlock(IlBlock block)
+    {
+        return block.Stats.Count == 1 && block.Stats[0] is IlCallStat s && s.Call is IlCall c && c.Callee == "__tcs_nomatch";
+    }
+
+    // 各 arm の末尾の return を target への代入にした if の連鎖 (一致しないときの fault はそのまま)
     private static IlIf SwitchChainAsAssigns(IlIf chain, IlExpr target)
     {
         var arms = new List<IlArm>();
         foreach (var a in chain.Arms) arms.Add(new IlArm(a.Cond, RewriteReturnAsAssign(a.Body, target)));
-        return new IlIf(arms, chain.Else != null ? RewriteReturnAsAssign(chain.Else, target) : null, chain.Origin);
+        IlBlock? elseBlock = null;
+        if (chain.Else != null) elseBlock = IsNoMatchBlock(chain.Else) ? chain.Else : RewriteReturnAsAssign(chain.Else, target);
+        return new IlIf(arms, elseBlock, chain.Origin);
     }
 
     private static IlBlock RewriteReturnAsAssign(IlBlock body, IlExpr target)
@@ -4202,6 +4215,8 @@ public sealed class IlBuild
             }
         }
         if (arms.Count == 0 && elseBlock == null) return null;
+        // discard の arm が無ければ、一致しないときは fault (il-spec §12)
+        if (elseBlock == null) elseBlock = NoMatchBlock();
         if (arms.Count > 0) stats.Add(new IlIf(arms, elseBlock, null));
         else stats.Add(new IlIf(Arm(IlLiterals.Bool(true), elseBlock!), null, null));
         return new IlIife(stats, null);

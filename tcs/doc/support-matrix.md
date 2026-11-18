@@ -336,7 +336,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |---|:----:|------|
 | ラムダ (式本体) `x => expr` | **Y** | closure は変数を捕捉する (il-spec §7) |
 | ラムダ (文本体) `(x) => { }` | **Y** | |
-| switch 式 (C# 8) | **Y** | 網羅しない switch 式 (`_` の arm が無い) で一致する arm が無いと、tcs VM と C は結果の型の既定値で続く (.NET は SwitchExpressionException。il-spec §12 は fault と定める)。`tcs check` も診断しない (§27) |
+| switch 式 (C# 8) | **Y** | 網羅しない switch 式 (`_` の arm が無い) で一致する arm が無いと fault (.NET は SwitchExpressionException。il-spec §12) |
 | `this` | **Y** | |
 | `base.Method()` | **N/A** | TCS1001 `BaseMemberAccess` (継承は対象外、§8) |
 | メソッドチェーン (LINQ) | **Y** | |
@@ -1020,7 +1020,6 @@ C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収でき
 
 次は仕様の差ではなく、tcs VM か C が .NET と違う結果を出す不具合。
 
-- 網羅しない switch 式で一致する arm が無いと、tcs VM と C は fault せずに結果の型の既定値で続く (int なら 0)。.NET は SwitchExpressionException (§4)
 - `--ref` の型の user operator (`a + b`) は `tcs check` を通るが、`tcs vm` と `tcs c` は型の誤りで止まる
 - user の class を key にした Dictionary は、C backend だけが emit で止まる (§18)
 

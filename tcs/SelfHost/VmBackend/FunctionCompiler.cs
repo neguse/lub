@@ -3684,6 +3684,7 @@ public sealed class FunctionCompiler
         if (name == "__tcs_iparse") return new LibCall("int.parse", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "__tcs_char") return new LibCall("char.cast", P4Lists.Types1(I), P4Lists.Types1(I));
         if (name == "__tcs_write") return new LibCall("io.write", P4Lists.Types1(S), none);
+        if (name == "__tcs_nomatch") return new LibCall("switch.nomatch", none, none);
         if (name == "__tcs_getenv") return new LibCall("os.getenv", P4Lists.Types1(S), P4Lists.Types1(S));
         if (name == "TinySystem.Utf8.RuneCount") return new LibCall("utf8.runecount", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "TinySystem.Utf8.RuneSubstring") return new LibCall("utf8.runesubstring", P4Lists.Types3(S, I, I), P4Lists.Types1(S));

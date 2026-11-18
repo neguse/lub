@@ -2025,6 +2025,7 @@ public sealed class CEmitter
                 "tcs_checked_" + Strings.From(callee, ContractFacts.Len("__tcs_c")), type, values);
         }
         if (callee == "__tcs_cneg") return "tcs_checked_neg(" + RenderExpr(call.Args[0]) + ")";
+        if (callee == "__tcs_nomatch") return "tcs_fault(\"switch-no-match\")";
         if (callee == "__tcs_writeline") return RenderPrint(call);
         if (callee == "__tcs_write")
         {
@@ -2062,6 +2063,12 @@ public sealed class CEmitter
             if (CFail.Failed) return CType.I32;
             RequireType(CType.I32, TypeOf(call.Args[0]), call.Callee);
             return CType.I32;
+        }
+        // switch 式のどの arm にも一致しないときの fault
+        if (call.Callee == "__tcs_nomatch")
+        {
+            RequireArity(call.Callee, call.Args.Count, 0);
+            return CType.Void;
         }
         if (call.Callee == "__tcs_idiv" || call.Callee == "__tcs_irem"
             || call.Callee == "__tcs_cadd" || call.Callee == "__tcs_csub" || call.Callee == "__tcs_cmul")
