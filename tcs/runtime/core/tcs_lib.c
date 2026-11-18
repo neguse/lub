@@ -162,6 +162,32 @@ static float tcs_math_max(float a, float b) {
   return signbit(b) ? a : b;
 }
 
+/* Math.Clamp: min > max は fault (.NET の ArgumentException)。
+   NaN の境界は比較が偽なので拒まない (.NET と同じ) */
+static int32_t tcs_math_clamp_i32(int32_t value, int32_t min, int32_t max) {
+  if (min > max)
+    tcs_fault("clamp-min-greater-than-max");
+  return value < min ? min : value > max ? max : value;
+}
+
+static float tcs_math_clamp_f32(float value, float min, float max) {
+  if (min > max)
+    tcs_fault("clamp-min-greater-than-max");
+  return value < min ? min : value > max ? max : value;
+}
+
+/* Math.Abs(int): int.MinValue は符号を変えられないので fault (.NET の OverflowException) */
+static int32_t tcs_math_abs_i32(int32_t x) {
+  return x < 0 ? tcs_checked_neg(x) : x;
+}
+
+/* Math.Sign(float): NaN は fault (.NET の ArithmeticException) */
+static int32_t tcs_math_sign_f32(float x) {
+  if (x != x)
+    tcs_fault("sign-of-nan");
+  return (x > 0) - (x < 0);
+}
+
 /* C# Math.Round (banker's)。0 に丸めた結果は x の符号を持つ。
    digits 付きは .NET の MathF.Round(float, int) と同じく、double に広げて 10^digits を掛けて丸め、10^digits で割って float に戻す。
    digits に上限は無く、負なら fault。

@@ -4697,19 +4697,18 @@ public sealed class CEmitter
                 }
             case "Clamp":
                 {
-                    var v = Temp("clamp_v"); var lo = Temp("clamp_lo"); var hi = Temp("clamp_hi");
-                    return $"({{ {type.CName} {v} = {RenderExpr(args[0])}; {type.CName} {lo} = " +
-                        $"{RenderExpr(args[1])}; {type.CName} {hi} = {RenderExpr(args[2])}; " +
-                        $"{v} < {lo} ? {lo} : {v} > {hi} ? {hi} : {v}; }})";
+                    var values = new List<TypedValue>();
+                    for (var i = 0; i < 3; i++) values.Add(new TypedValue(type, RenderExpr(args[i])));
+                    return RenderOrderedCall(type.Kind == CTypeKind.F32 ? "tcs_math_clamp_f32" : "tcs_math_clamp_i32", type, values);
                 }
             case "Abs":
-                if (type.Kind == CTypeKind.I32)
-                    return $"({{ int32_t __a = {RenderExpr(args[0])}; __a < 0 ? -__a : __a; }})";
+                if (type.Kind == CTypeKind.I32) return $"tcs_math_abs_i32({RenderExpr(args[0])})";
                 return $"fabsf({RenderExpr(args[0])})";
             case "Sign":
                 {
-                    var v = Temp("sign");
                     var vt = TypeOf(args[0]);
+                    if (vt.Kind == CTypeKind.F32) return $"tcs_math_sign_f32({RenderExpr(args[0])})";
+                    var v = Temp("sign");
                     return $"({{ {vt.CName} {v} = {RenderExpr(args[0])}; " +
                         $"{v} > 0 ? INT32_C(1) : {v} < 0 ? -INT32_C(1) : INT32_C(0); }})";
                 }

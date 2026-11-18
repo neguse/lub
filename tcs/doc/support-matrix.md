@@ -660,8 +660,8 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `Math.PI` | **Y** | |
 | `Math.Min(a, b)` | **Y** | float は MathF.Min と同じく NaN を伝播し、-0 を +0 より小さいとみなす |
 | `Math.Max(a, b)` | **Y** | float は MathF.Max と同じく NaN を伝播し、+0 を -0 より大きいとみなす |
-| `Math.Clamp(v, min, max)` | **Y** | |
-| `Math.Abs(x)` | **Y** | |
+| `Math.Clamp(v, min, max)` | **Y** | `min > max` は fault (.NET は ArgumentException)。float の NaN の境界は比べても偽なので拒まない (.NET と同じ) |
+| `Math.Abs(x)` | **Y** | `Math.Abs(int.MinValue)` は fault (.NET は OverflowException) |
 | `Math.Floor(x)` | **Y** | 結果は float のまま (-0 を保つ) |
 | `Math.Ceiling(x)` | **Y** | 結果は float のまま (-0 を保つ) |
 | `Math.Sqrt(x)` | **Y** | |
@@ -674,9 +674,9 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `Math.Exp(x)` | **Y** | |
 | `Math.Log(x)` / `Math.Log(x, base)` | **Y** | base が 1、または x が 1 でなく base が 0 / +∞ なら NaN (MathF.Log と同じ) |
 | `Math.Log10(x)` / `Math.Log2(x)` | **-** | `Math.Log(x, base)` で代替 |
-| `Math.Round(x)` / `Math.Round(x, digits)` | **Y** | C# と同じ偶数丸め (banker's rounding)。0 に丸めた結果は x の符号を持つ (`Round(-0.25)` は -0) |
+| `Math.Round(x)` / `Math.Round(x, digits)` | **Y** | C# と同じ偶数丸め (banker's rounding)。0 に丸めた結果は x の符号を持つ (`Round(-0.25)` は -0)。負の digits は fault (.NET は ArgumentOutOfRangeException) |
 | `Math.Truncate(x)` | **-** | |
-| `Math.Sign(x)` | **Y** | |
+| `Math.Sign(x)` | **Y** | float の NaN は fault (.NET は ArithmeticException) |
 | `Math.Tan(x)` | **Y** | |
 | `Math.Asin(x)` / `Math.Acos(x)` / `Math.Atan(x)` | **-** | |
 | `Math.Sinh(x)` / `Math.Cosh(x)` / `Math.Tanh(x)` | **-** | |
