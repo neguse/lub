@@ -323,6 +323,7 @@ public static class BclCatalog
         d["System.IO.File"] = "System.IO.File";
         d["System.IO.FileAccess"] = "System.IO.FileAccess";
         d["System.IO.FileAttributes"] = "System.IO.FileAttributes";
+        d["System.IO.FileHandleType"] = "System.IO.FileHandleType";
         d["System.IO.FileInfo"] = "System.IO.FileInfo";
         d["System.IO.FileLoadException"] = "System.IO.FileLoadException";
         d["System.IO.FileMode"] = "System.IO.FileMode";
@@ -341,17 +342,20 @@ public static class BclCatalog
         d["System.IO.Path"] = "System.IO.Path";
         d["System.IO.PathTooLongException"] = "System.IO.PathTooLongException";
         d["System.IO.RandomAccess"] = "System.IO.RandomAccess";
+        d["System.IO.ReadOnlyMemoryStream"] = "System.IO.ReadOnlyMemoryStream";
         d["System.IO.SearchOption"] = "System.IO.SearchOption";
         d["System.IO.SeekOrigin"] = "System.IO.SeekOrigin";
         d["System.IO.Stream"] = "System.IO.Stream";
         d["System.IO.StreamReader"] = "System.IO.StreamReader";
         d["System.IO.StreamWriter"] = "System.IO.StreamWriter";
         d["System.IO.StringReader"] = "System.IO.StringReader";
+        d["System.IO.StringStream"] = "System.IO.StringStream";
         d["System.IO.StringWriter"] = "System.IO.StringWriter";
         d["System.IO.TextReader"] = "System.IO.TextReader";
         d["System.IO.TextWriter"] = "System.IO.TextWriter";
         d["System.IO.UnixFileMode"] = "System.IO.UnixFileMode";
         d["System.IO.UnmanagedMemoryStream"] = "System.IO.UnmanagedMemoryStream";
+        d["System.IO.WritableMemoryStream"] = "System.IO.WritableMemoryStream";
         d["System.IObservable`1"] = "System.IObservable<T>";
         d["System.IObserver`1"] = "System.IObserver<T>";
         d["System.IParsable`1"] = "System.IParsable<TSelf>";
@@ -447,6 +451,7 @@ public static class BclCatalog
         d["System.MulticastDelegate"] = "System.MulticastDelegate";
         d["System.MulticastNotSupportedException"] = "System.MulticastNotSupportedException";
         d["System.Net.Sockets.AddressFamily"] = "System.Net.Sockets.AddressFamily";
+        d["System.Net.Sockets.ConnectAlgorithm"] = "System.Net.Sockets.ConnectAlgorithm";
         d["System.Net.Sockets.IOControlCode"] = "System.Net.Sockets.IOControlCode";
         d["System.Net.Sockets.IPPacketInformation"] = "System.Net.Sockets.IPPacketInformation";
         d["System.Net.Sockets.IPProtectionLevel"] = "System.Net.Sockets.IPProtectionLevel";
@@ -490,7 +495,12 @@ public static class BclCatalog
         d["System.NullReferenceException"] = "System.NullReferenceException";
         d["System.Nullable"] = "System.Nullable";
         d["System.Nullable`1"] = "System.Nullable<T>";
+        d["System.Numerics.BFloat16"] = "System.Numerics.BFloat16";
         d["System.Numerics.BitOperations"] = "System.Numerics.BitOperations";
+        d["System.Numerics.Decimal128"] = "System.Numerics.Decimal128";
+        d["System.Numerics.Decimal32"] = "System.Numerics.Decimal32";
+        d["System.Numerics.Decimal64"] = "System.Numerics.Decimal64";
+        d["System.Numerics.DivisionRounding"] = "System.Numerics.DivisionRounding";
         d["System.Numerics.IAdditionOperators`3"] = "System.Numerics.IAdditionOperators<TSelf, TOther, TResult>";
         d["System.Numerics.IAdditiveIdentity`2"] = "System.Numerics.IAdditiveIdentity<TSelf, TResult>";
         d["System.Numerics.IBinaryFloatingPointIeee754`1"] = "System.Numerics.IBinaryFloatingPointIeee754<TSelf>";
@@ -498,6 +508,7 @@ public static class BclCatalog
         d["System.Numerics.IBinaryNumber`1"] = "System.Numerics.IBinaryNumber<TSelf>";
         d["System.Numerics.IBitwiseOperators`3"] = "System.Numerics.IBitwiseOperators<TSelf, TOther, TResult>";
         d["System.Numerics.IComparisonOperators`3"] = "System.Numerics.IComparisonOperators<TSelf, TOther, TResult>";
+        d["System.Numerics.IDecimalFloatingPointIeee754`1"] = "System.Numerics.IDecimalFloatingPointIeee754<TSelf>";
         d["System.Numerics.IDecrementOperators`1"] = "System.Numerics.IDecrementOperators<TSelf>";
         d["System.Numerics.IDivisionOperators`3"] = "System.Numerics.IDivisionOperators<TSelf, TOther, TResult>";
         d["System.Numerics.IEqualityOperators`3"] = "System.Numerics.IEqualityOperators<TSelf, TOther, TResult>";
@@ -582,7 +593,9 @@ public static class BclCatalog
         d["System.Text.EncodingProvider"] = "System.Text.EncodingProvider";
         d["System.Text.NormalizationForm"] = "System.Text.NormalizationForm";
         d["System.Text.Rune"] = "System.Text.Rune";
+        d["System.Text.RunePosition"] = "System.Text.RunePosition";
         d["System.Text.StringBuilder"] = "System.Text.StringBuilder";
+        d["System.Text.StringBuilderRuneEnumerator"] = "System.Text.StringBuilderRuneEnumerator";
         d["System.Text.StringRuneEnumerator"] = "System.Text.StringRuneEnumerator";
         d["System.ThreadStaticAttribute"] = "System.ThreadStaticAttribute";
         d["System.Threading.ApartmentState"] = "System.Threading.ApartmentState";
@@ -693,7 +706,7 @@ public static class BclCatalog
     {
         var d = new Dictionary<string, Dictionary<string, string>>();
         AddMembers(d, "System.Array", "AsReadOnly BinarySearch Clear Clone ConstrainedCopy ConvertAll Copy CopyTo CreateInstance CreateInstanceFromArrayType Empty Exists Fill Find FindAll FindIndex FindLast FindLastIndex ForEach GetEnumerator GetLength GetLongLength GetLowerBound GetUpperBound GetValue IndexOf Initialize IsFixedSize IsReadOnly IsSynchronized LastIndexOf Length LongLength MaxLength Rank Resize Reverse SetValue Sort SyncRoot TrueForAll");
-        AddMembers(d, "System.Char", "CompareTo ConvertFromUtf32 ConvertToUtf32 Equals GetHashCode GetNumericValue GetTypeCode GetUnicodeCategory IsAscii IsAsciiDigit IsAsciiHexDigit IsAsciiHexDigitLower IsAsciiHexDigitUpper IsAsciiLetter IsAsciiLetterLower IsAsciiLetterOrDigit IsAsciiLetterUpper IsBetween IsControl IsDigit IsHighSurrogate IsLetter IsLetterOrDigit IsLowSurrogate IsLower IsNumber IsPunctuation IsSeparator IsSurrogate IsSurrogatePair IsSymbol IsUpper IsWhiteSpace MaxValue MinValue Parse ToLower ToLowerInvariant ToString ToUpper ToUpperInvariant TryParse");
+        AddMembers(d, "System.Char", "CompareTo ConvertFromUtf32 ConvertToUtf32 Equals GetHashCode GetNumericValue GetTypeCode GetUnicodeCategory IsAscii IsAsciiDigit IsAsciiHexDigit IsAsciiHexDigitLower IsAsciiHexDigitUpper IsAsciiLetter IsAsciiLetterLower IsAsciiLetterOrDigit IsAsciiLetterUpper IsBetween IsControl IsDigit IsHighSurrogate IsLetter IsLetterOrDigit IsLowSurrogate IsLower IsNumber IsPunctuation IsSeparator IsSurrogate IsSurrogatePair IsSymbol IsUpper IsWhiteSpace MaxValue MinValue Parse ToLower ToLowerInvariant ToLowerOrdinal ToString ToUpper ToUpperInvariant ToUpperOrdinal TryParse");
         AddMembers(d, "System.Collections.Generic.Dictionary`2", "Add Capacity Clear Comparer ContainsKey ContainsValue Count EnsureCapacity GetAlternateLookup GetEnumerator GetObjectData Keys OnDeserialization Remove TrimExcess TryAdd TryGetAlternateLookup TryGetValue Values");
         AddMembers(d, "System.Collections.Generic.HashSet`1", "Add Capacity Clear Comparer Contains CopyTo Count CreateSetComparer EnsureCapacity ExceptWith GetAlternateLookup GetEnumerator GetObjectData IntersectWith IsProperSubsetOf IsProperSupersetOf IsSubsetOf IsSupersetOf OnDeserialization Overlaps Remove RemoveWhere SetEquals SymmetricExceptWith TrimExcess TryGetAlternateLookup TryGetValue UnionWith");
         AddMembers(d, "System.Collections.Generic.ICollection`1", "Add Clear Contains CopyTo Count GetEnumerator@System.Collections.Generic.IEnumerable<T> IsReadOnly Remove");
@@ -704,17 +717,17 @@ public static class BclCatalog
         AddMembers(d, "System.Collections.Generic.IReadOnlyList`1", "Count@System.Collections.Generic.IReadOnlyCollection<T> GetEnumerator@System.Collections.Generic.IEnumerable<T>");
         AddMembers(d, "System.Collections.Generic.List`1", "Add AddRange AsReadOnly BinarySearch Capacity Clear Contains ConvertAll CopyTo Count EnsureCapacity Exists Find FindAll FindIndex FindLast FindLastIndex ForEach GetEnumerator GetRange IndexOf Insert InsertRange LastIndexOf Remove RemoveAll RemoveAt RemoveRange Reverse Slice Sort ToArray TrimExcess TrueForAll");
         AddMembers(d, "System.Collections.Generic.Queue`1", "Capacity Clear Contains CopyTo Count Dequeue Enqueue EnsureCapacity GetEnumerator Peek ToArray TrimExcess TryDequeue TryPeek");
-        AddMembers(d, "System.Console", "BackgroundColor Beep BufferHeight BufferWidth CapsLock Clear CursorLeft CursorSize CursorTop CursorVisible Error ForegroundColor GetCursorPosition In InputEncoding IsErrorRedirected IsInputRedirected IsOutputRedirected KeyAvailable LargestWindowHeight LargestWindowWidth MoveBufferArea NumberLock OpenStandardError OpenStandardInput OpenStandardOutput Out OutputEncoding Read ReadKey ReadLine ResetColor SetBufferSize SetCursorPosition SetError SetIn SetOut SetWindowPosition SetWindowSize Title TreatControlCAsInput WindowHeight WindowLeft WindowTop WindowWidth Write WriteLine");
+        AddMembers(d, "System.Console", "BackgroundColor Beep BufferHeight BufferWidth CapsLock Clear CursorLeft CursorSize CursorTop CursorVisible Error ForegroundColor GetCursorPosition In InputEncoding IsErrorRedirected IsInputRedirected IsOutputRedirected KeyAvailable LargestWindowHeight LargestWindowWidth MoveBufferArea NumberLock OpenStandardError OpenStandardErrorHandle OpenStandardInput OpenStandardInputHandle OpenStandardOutput OpenStandardOutputHandle Out OutputEncoding Read ReadKey ReadLine ResetColor SetBufferSize SetCursorPosition SetError SetIn SetOut SetWindowPosition SetWindowSize Title TreatControlCAsInput WindowHeight WindowLeft WindowTop WindowWidth Write WriteLine");
         AddMembers(d, "System.Enum", "CompareTo Equals Format GetHashCode GetName GetNames GetTypeCode GetUnderlyingType GetValues GetValuesAsUnderlyingType HasFlag IsDefined Parse ToObject ToString TryFormat TryParse");
         AddMembers(d, "System.Environment", "CommandLine CpuUsage CurrentDirectory CurrentManagedThreadId Exit ExitCode ExpandEnvironmentVariables FailFast GetCommandLineArgs GetEnvironmentVariable GetEnvironmentVariables GetFolderPath GetLogicalDrives HasShutdownStarted Is64BitOperatingSystem Is64BitProcess IsPrivilegedProcess MachineName NewLine OSVersion ProcessId ProcessPath ProcessorCount SetEnvironmentVariable StackTrace SystemDirectory SystemPageSize TickCount TickCount64 UserDomainName UserInteractive UserName Version WorkingSet");
         AddMembers(d, "System.IComparable`1", "CompareTo");
-        AddMembers(d, "System.Int32", "Abs BigMul Clamp CompareTo CopySign CreateChecked CreateSaturating CreateTruncating DivRem Equals GetHashCode GetTypeCode IsEvenInteger IsNegative IsOddInteger IsPositive IsPow2 LeadingZeroCount Log2 Max MaxMagnitude MaxValue Min MinMagnitude MinValue Parse PopCount RotateLeft RotateRight Sign ToString TrailingZeroCount TryFormat TryParse");
-        AddMembers(d, "System.Linq.Enumerable", "Aggregate AggregateBy All Any Append AsEnumerable Average Cast Chunk Concat Contains Count CountBy DefaultIfEmpty Distinct DistinctBy ElementAt ElementAtOrDefault Empty Except ExceptBy First FirstOrDefault GroupBy GroupJoin Index InfiniteSequence Intersect IntersectBy Join Last LastOrDefault LeftJoin LongCount Max MaxBy Min MinBy OfType Order OrderBy OrderByDescending OrderDescending Prepend Range Repeat Reverse RightJoin Select SelectMany Sequence SequenceEqual Shuffle Single SingleOrDefault Skip SkipLast SkipWhile Sum Take TakeLast TakeWhile ThenBy ThenByDescending ToArray ToDictionary ToHashSet ToList ToLookup TryGetNonEnumeratedCount Union UnionBy Where Zip");
+        AddMembers(d, "System.Int32", "Abs BigMul Clamp CompareTo CopySign CreateChecked CreateSaturating CreateTruncating DivRem Equals GetHashCode GetTypeCode IsEvenInteger IsNegative IsOddInteger IsPositive IsPow2 LeadingZeroCount Log10 Log2 Max MaxMagnitude MaxValue Min MinMagnitude MinValue Parse PopCount RotateLeft RotateRight Sign ToString TrailingZeroCount TryFormat TryParse TryParsePartial");
+        AddMembers(d, "System.Linq.Enumerable", "Aggregate AggregateBy All Any Append AsEnumerable Average Cast Chunk Concat Contains Count CountBy DefaultIfEmpty Distinct DistinctBy ElementAt ElementAtOrDefault Empty Except ExceptBy First FirstOrDefault FullJoin GroupBy GroupJoin Index InfiniteSequence Intersect IntersectBy Join Last LastOrDefault LeftJoin LongCount Max MaxBy Min MinBy OfType Order OrderBy OrderByDescending OrderDescending Prepend Range Repeat Reverse RightJoin Select SelectMany Sequence SequenceEqual Shuffle Single SingleOrDefault Skip SkipLast SkipWhile Sum Take TakeLast TakeWhile ThenBy ThenByDescending ToArray ToDictionary ToHashSet ToList ToLookup TryGetNonEnumeratedCount Union UnionBy Where Zip");
         AddMembers(d, "System.Math", "Abs Acos Acosh Asin Asinh Atan Atan2 Atanh BigMul BitDecrement BitIncrement Cbrt Ceiling Clamp CopySign Cos Cosh DivRem E Exp Floor FusedMultiplyAdd IEEERemainder ILogB Log Log10 Log2 Max MaxMagnitude Min MinMagnitude PI Pow ReciprocalEstimate ReciprocalSqrtEstimate Round ScaleB Sign Sin SinCos Sinh Sqrt Tan Tanh Tau Truncate");
-        AddMembers(d, "System.Random", "GetHexString GetItems GetString Next NextBytes NextDouble NextInt64 NextSingle Shared Shuffle");
-        AddMembers(d, "System.Single", "Abs Acos AcosPi Acosh Asin AsinPi Asinh Atan Atan2 Atan2Pi AtanPi Atanh BitDecrement BitIncrement Cbrt Ceiling Clamp ClampNative CompareTo ConvertToInteger ConvertToIntegerNative CopySign Cos CosPi Cosh CreateChecked CreateSaturating CreateTruncating DegreesToRadians E Epsilon Equals Exp Exp10 Exp10M1 Exp2 Exp2M1 ExpM1 Floor FusedMultiplyAdd GetHashCode GetTypeCode Hypot ILogB Ieee754Remainder IsEvenInteger IsFinite IsInfinity IsInteger IsNaN IsNegative IsNegativeInfinity IsNormal IsOddInteger IsPositive IsPositiveInfinity IsPow2 IsRealNumber IsSubnormal Lerp Log Log10 Log10P1 Log2 Log2P1 LogP1 Max MaxMagnitude MaxMagnitudeNumber MaxNative MaxNumber MaxValue Min MinMagnitude MinMagnitudeNumber MinNative MinNumber MinValue MultiplyAddEstimate NaN NegativeInfinity NegativeZero Parse Pi PositiveInfinity Pow RadiansToDegrees ReciprocalEstimate ReciprocalSqrtEstimate RootN Round ScaleB Sign Sin SinCos SinCosPi SinPi Sinh Sqrt Tan TanPi Tanh Tau ToString Truncate TryFormat TryParse");
-        AddMembers(d, "System.String", "Clone Compare CompareOrdinal CompareTo Concat Contains Copy CopyTo Create Empty EndsWith EnumerateRunes Equals Format GetEnumerator GetHashCode GetPinnableReference GetTypeCode IndexOf IndexOfAny Insert Intern IsInterned IsNormalized IsNullOrEmpty IsNullOrWhiteSpace Join LastIndexOf LastIndexOfAny Length Normalize PadLeft PadRight Remove Replace ReplaceLineEndings Split StartsWith Substring ToCharArray ToLower ToLowerInvariant ToString ToUpper ToUpperInvariant Trim TrimEnd TrimStart TryCopyTo");
-        AddMembers(d, "System.Text.Rune", "CompareTo DecodeFromUtf16 DecodeFromUtf8 DecodeLastFromUtf16 DecodeLastFromUtf8 EncodeToUtf16 EncodeToUtf8 Equals GetHashCode GetNumericValue GetRuneAt GetUnicodeCategory IsAscii IsBmp IsControl IsDigit IsLetter IsLetterOrDigit IsLower IsNumber IsPunctuation IsSeparator IsSymbol IsUpper IsValid IsWhiteSpace Plane ReplacementChar ToLower ToLowerInvariant ToString ToUpper ToUpperInvariant TryCreate TryEncodeToUtf16 TryEncodeToUtf8 TryGetRuneAt Utf16SequenceLength Utf8SequenceLength Value");
+        AddMembers(d, "System.Random", "GetHexString GetItems GetString Next NextBinaryFloat NextBytes NextDouble NextInt64 NextInteger NextSingle Shared Shuffle");
+        AddMembers(d, "System.Single", "Abs Acos AcosPi Acosh Asin AsinPi Asinh Atan Atan2 Atan2Pi AtanPi Atanh BitDecrement BitIncrement Cbrt Ceiling Clamp ClampNative CompareTo ConvertToInteger ConvertToIntegerNative CopySign Cos CosPi Cosh CreateChecked CreateSaturating CreateTruncating DegreesToRadians E Epsilon Equals Exp Exp10 Exp10M1 Exp2 Exp2M1 ExpM1 Floor FusedMultiplyAdd GetHashCode GetTypeCode Hypot ILogB Ieee754Remainder IsEvenInteger IsFinite IsInfinity IsInteger IsNaN IsNegative IsNegativeInfinity IsNormal IsOddInteger IsPositive IsPositiveInfinity IsPow2 IsRealNumber IsSubnormal Lerp Log Log10 Log10P1 Log2 Log2P1 LogP1 Max MaxMagnitude MaxMagnitudeNumber MaxNative MaxNumber MaxValue Min MinMagnitude MinMagnitudeNumber MinNative MinNumber MinValue MultiplyAddEstimate NaN NegativeInfinity NegativeZero Parse Pi PositiveInfinity Pow RadiansToDegrees ReciprocalEstimate ReciprocalSqrtEstimate RootN Round ScaleB Sign Sin SinCos SinCosPi SinPi Sinh Sqrt Tan TanPi Tanh Tau ToString Truncate TryFormat TryParse TryParsePartial");
+        AddMembers(d, "System.String", "Clone Compare CompareOrdinal CompareTo Concat Contains Copy CopyTo Create Empty EndsWith EnumerateRunes Equals Format GetEnumerator GetHashCode GetPinnableReference GetTypeCode IndexOf IndexOfAny Insert Intern IsInterned IsNormalized IsNullOrEmpty IsNullOrWhiteSpace Join LastIndexOf LastIndexOfAny Length Normalize PadLeft PadRight Remove Replace ReplaceLineEndings Split StartsWith Substring ToCharArray ToLower ToLowerInvariant ToLowerOrdinal ToString ToUpper ToUpperInvariant ToUpperOrdinal Trim TrimEnd TrimStart TryCopyTo");
+        AddMembers(d, "System.Text.Rune", "CompareTo DecodeFromUtf16 DecodeFromUtf8 DecodeLastFromUtf16 DecodeLastFromUtf8 EncodeToUtf16 EncodeToUtf8 Equals GetHashCode GetNumericValue GetRuneAt GetUnicodeCategory IsAscii IsBmp IsControl IsDigit IsLetter IsLetterOrDigit IsLower IsNumber IsPunctuation IsSeparator IsSymbol IsUpper IsValid IsWhiteSpace Plane ReplacementChar ToLower ToLowerInvariant ToLowerOrdinal ToString ToUpper ToUpperInvariant ToUpperOrdinal TryCreate TryEncodeToUtf16 TryEncodeToUtf8 TryGetRuneAt Utf16SequenceLength Utf8SequenceLength Value");
         return d;
     }
 }

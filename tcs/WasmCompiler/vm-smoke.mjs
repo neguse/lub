@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const WWW = join(HERE, "bin/Release/net10.0/publish/wwwroot");
+const WWW = join(HERE, "bin/Release/net11.0/publish/wwwroot");
 const TCSVM = join(ROOT, "build/tcsvm/tcsvm");
 const HOST = join(ROOT, "tcsvm/tests/host");
 const { chromium } = createRequire(import.meta.url)("playwright");

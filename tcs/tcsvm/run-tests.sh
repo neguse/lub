@@ -16,8 +16,8 @@ cmake --build "$ROOT/build" --parallel >/dev/null
 "$DOTNET" build "$ROOT/tcsvm/Emitter/tcs2vm.csproj" -p:NuGetAudit=false -v:quiet -nologo >/dev/null
 "$DOTNET" build "$ROOT/tcs2c/tcs2c.csproj" -p:NuGetAudit=false -v:quiet -nologo >/dev/null
 
-TCS2VM_DLL="$ROOT/tcsvm/Emitter/bin/Debug/net10.0/tcs2vm.dll"
-TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net10.0/tcs2c.dll"
+TCS2VM_DLL="$ROOT/tcsvm/Emitter/bin/Debug/net11.0/tcs2vm.dll"
+TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net11.0/tcs2c.dll"
 TCSVM="$ROOT/build/tcsvm/tcsvm"
 CC_CMD="${CC:-cc}"
 

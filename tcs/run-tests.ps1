@@ -112,8 +112,8 @@ try {
     Set-Content -Path (Join-Path $consumerDir "analyzer-package-consumer.csproj") -Value @"
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>14</LangVersion>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RestoreAdditionalProjectSources>$packageDir</RestoreAdditionalProjectSources>

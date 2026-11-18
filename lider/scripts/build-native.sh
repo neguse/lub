@@ -34,7 +34,7 @@ for f in "$tcs"/SelfHost/Tool/*.cs; do
   [ "$(basename "$f")" = TcsHost.cs ] || self+=("$f")
 done
 mkdir -p "$out/tcs"
-dotnet "$tcs/tcs2c/bin/Release/net10.0/tcs2c.dll" --lib --ref "$tcs/SelfHost/Tool/TcsHost.cs" "${self[@]}" -o "$out/tcs/tcs.c"
+dotnet "$tcs/tcs2c/bin/Release/net11.0/tcs2c.dll" --lib --ref "$tcs/SelfHost/Tool/TcsHost.cs" "${self[@]}" -o "$out/tcs/tcs.c"
 cmake -DTINYSYSTEM="$tcs/TinySystem" -DOUT="$out/tcs/tcs_tool_files.h" -P "$root/native/tcs/embed.cmake"
 "${CC:-cc}" -shared -fPIC -O2 -ffp-contract=off -fwrapv -w \
   -I"$lub/include" -I"$lub/tcs/tcsvm/vm" -I"$out/tcs" \

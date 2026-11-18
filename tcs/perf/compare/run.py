@@ -76,7 +76,7 @@ class Toolchain:
         self.cc = os.environ.get("CC", "gcc")
         self.dotnet = os.environ.get("DOTNET") or shutil.which("dotnet") or str(Path.home() / ".dotnet" / "dotnet")
         self.tcsvm = os.environ.get("TCSVM", str(ROOT / "build" / "tcsvm" / "tcsvm"))
-        self.tcs_dll = ROOT / "Transpiler" / "bin" / "Release" / "net10.0" / "Transpiler.dll"
+        self.tcs_dll = ROOT / "Transpiler" / "bin" / "Release" / "net11.0" / "Transpiler.dll"
         self._tcs_ready = False
         self._native_ready = False
 
@@ -181,7 +181,7 @@ class TcsDotnet(TcsImpl):
   <Import Project="{ROOT}/TinySystem/TinySystem.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>

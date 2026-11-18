@@ -16,7 +16,7 @@
           BeforeTargets="AssignTargetPaths"
           DependsOnTargets="ResolveFrameworkReferences;ResolveProjectReferences">
     <PropertyGroup>
-      <_NetCoreRefDir>@(ResolvedTargetingPack->WithMetadataValue('NuGetPackageId', 'Microsoft.NETCore.App.Ref')->'%(Path)')/ref/net10.0</_NetCoreRefDir>
+      <_NetCoreRefDir>@(ResolvedTargetingPack->WithMetadataValue('NuGetPackageId', 'Microsoft.NETCore.App.Ref')->'%(Path)')/ref/$(TargetFramework)</_NetCoreRefDir>
     </PropertyGroup>
     <Error Condition="!Exists('$(_NetCoreRefDir)/System.Runtime.dll')"
            Text="Microsoft.NETCore.App.Ref targeting pack が解決できない: $(_NetCoreRefDir)" />

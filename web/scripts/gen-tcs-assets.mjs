@@ -29,7 +29,7 @@ const PUBLISH = join(
   "WasmCompiler",
   "bin",
   "Release",
-  "net10.0",
+  "net11.0",
   "publish",
   "wwwroot",
 );

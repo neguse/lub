@@ -37,8 +37,8 @@ cmake --build "$ROOT/build" --target tcsvm --parallel >/dev/null
   -p:TcsRoot="$ROOT" -p:BuildProjectReferences=false \
   -p:NuGetAudit=false -v:minimal >/dev/null
 
-TCS2VM_DLL="$ROOT/tcsvm/Emitter/bin/Debug/net10.0/tcs2vm.dll"
-TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net10.0/tcs2c.dll"
+TCS2VM_DLL="$ROOT/tcsvm/Emitter/bin/Debug/net11.0/tcs2vm.dll"
+TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net11.0/tcs2c.dll"
 
 # bench 用コピー: frames を増やしてループ支配にする (digest 期待値は固定せず
 # vm と release の相互一致で検証する)

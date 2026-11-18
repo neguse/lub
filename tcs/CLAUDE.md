@@ -56,7 +56,7 @@ tcs/
 
 ### 前提
 
-- .NET 10 SDK / C# 14 — SDK 版は `global.json` で固定し、Dependabot (`dotnet-sdk`) が bump PR を出す。
+- .NET 11 SDK / C# 15 — SDK 版は `global.json` で固定し、Dependabot (`dotnet-sdk`) が bump PR を出す。
   マシンへの導入は `dotnet-install.sh --jsonfile global.json` の per-user install (distro package と混ぜると workload manifest が更新で消えて壊れる)
 - CMake 3.12+ / C compiler (tcsvm の build と、tcs c の出力のテスト)
 
@@ -104,9 +104,9 @@ analyzer / `tcs check` の診断一致は run-tests のこの恒常ゲートで�
 - 「spike」という名称は使わない（識別子・ファイル名・新規ドキュメントとも）。旧 spike 由来の実体はすべて `perf` 系の名前を使う
 - tcs / tcs2c はプロジェクト全体のリブランディング（時期・名称未定）を控えた暫定名。新規の命名は tcs 系に揃える
 
-### C# (.NET 10 / C# 14)
+### C# (.NET 11 / C# 15)
 
-- `<TargetFramework>net10.0</TargetFramework>` / `<LangVersion>14</LangVersion>`
+- `<TargetFramework>net11.0</TargetFramework>` / `<LangVersion>15</LangVersion>`
 - nullable enable（全プロジェクト）
 - テストは xUnit + FluentAssertions スタイル
 - Roslyn の `Microsoft.CodeAnalysis.CSharp` パッケージを使用

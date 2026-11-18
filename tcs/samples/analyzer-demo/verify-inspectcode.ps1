@@ -286,8 +286,8 @@ $escapedPackagesPath = [System.Security.SecurityElement]::Escape((Join-Path $Pac
 Set-Content -Path $PackageConsumerProject -Encoding UTF8 -Value @"
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>14</LangVersion>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RestoreAdditionalProjectSources>$escapedPackageDir</RestoreAdditionalProjectSources>

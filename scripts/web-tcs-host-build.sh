@@ -8,9 +8,9 @@ out=build/wasm-tcs
 mkdir -p "$out/gen"
 dotnet build tcs/tcs2c/tcs2c.csproj -c Release -nologo -v q
 dotnet build tools/lub-gen/lub-gen.csproj -c Release -nologo -v q
-dotnet tcs/tcs2c/bin/Release/net10.0/tcs2c.dll --lib \
+dotnet tcs/tcs2c/bin/Release/net11.0/tcs2c.dll --lib \
   --ref cs-lib/lub_stub.cs tests/c/tcs_shutdown.cs -o "$out/gen/game.c"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll tcs --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_shutdown.cs -o "$out/gen/binding.c"
 emcmake cmake -S . -B "$out" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DLUB_TCS_GAME="$PWD/$out/gen/game.c" -DLUB_TCS_BINDING="$PWD/$out/gen/binding.c"

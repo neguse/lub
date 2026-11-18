@@ -2,8 +2,8 @@
   <!-- lider の entry (class Lider)。`lub Lider.csproj` で起動し、env LIDER_GAME のゲームを開く。
        dotnet 側 (IDE) の型チェック用に lub の stub と lubx を Compile する。LubRoot は lub のリポジトリの root。 -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>14</LangVersion>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <OutputType>Library</OutputType>
     <RootNamespace></RootNamespace>

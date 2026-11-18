@@ -17,7 +17,7 @@ SRC=(SelfHost/Compiler/*.cs SelfHost/CBackend/*.cs SelfHost/VmBackend/*.cs)
 for f in SelfHost/Tool/*.cs; do
   [ "$(basename "$f")" = TcsHost.cs ] || SRC+=("$f")
 done
-dotnet tcs2c/bin/Release/net10.0/tcs2c.dll --lib --ref SelfHost/Tool/TcsHost.cs "${SRC[@]}" -o "$OUT/tcs.c"
+dotnet tcs2c/bin/Release/net11.0/tcs2c.dll --lib --ref SelfHost/Tool/TcsHost.cs "${SRC[@]}" -o "$OUT/tcs.c"
 emcc -O2 -ffp-contract=off -fwrapv -I "$OUT" SelfHost/Web/tcs_web.c \
   -s MODULARIZE=1 -s EXPORT_ES6=1 -s SINGLE_FILE=1 -s ENVIRONMENT=web,worker,node \
   -s ALLOW_MEMORY_GROWTH=1 -s STACK_SIZE=8388608 \

@@ -8,9 +8,9 @@ work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 dotnet build tcs/Transpiler/Transpiler.csproj -c Release -nologo -v q
 dotnet build tools/lub-gen/lub-gen.csproj -c Release -nologo -v q
-dotnet tcs/Transpiler/bin/Release/net10.0/Transpiler.dll vm --ref cs-lib/lub_stub.cs \
+dotnet tcs/Transpiler/bin/Release/net11.0/Transpiler.dll vm --ref cs-lib/lub_stub.cs \
   --export 'BindingTest.*' tests/c/tcs_binding.cs -o "$work/game.tcsb"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll vm --stub cs-lib/lub_stub.cs \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll vm --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_binding.cs -o "$work/binding.c"
 # tests/c/tcs_binding.c は tcs2c の game.c も include するので、空にする
 : > "$work/game.c"
@@ -39,10 +39,10 @@ echo 'tcs VM binding: bad bit masks and a count past the end of the array fault 
 # struct の record の書き方と渡り方。tests/c/struct_stub.cs を stub の後ろに足した stub から header と接続コードを作る
 cat cs-lib/lub_stub.cs tests/c/struct_stub.cs > "$work/struct_stub.cs"
 mkdir -p "$work/struct/lub"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"
-dotnet tcs/Transpiler/bin/Release/net10.0/Transpiler.dll vm --ref "$work/struct_stub.cs" \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"
+dotnet tcs/Transpiler/bin/Release/net11.0/Transpiler.dll vm --ref "$work/struct_stub.cs" \
   --export 'StructGame.*' tests/c/struct_test.cs -o "$work/struct/game.tcsb"
-dotnet tools/lub-gen/bin/Release/net10.0/lub-gen.dll vm --stub "$work/struct_stub.cs" \
+dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll vm --stub "$work/struct_stub.cs" \
   --source tests/c/struct_test.cs -o "$work/struct/binding.c"
 : > "$work/struct/game.c"
 cat tests/c/struct_test.c tests/c/vm_binding_driver.c > "$work/struct/test.c"

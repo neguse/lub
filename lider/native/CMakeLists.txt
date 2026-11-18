@@ -50,7 +50,7 @@ list(FILTER TCS2C_SOURCES EXCLUDE REGEX "/(bin|obj)/")
 set(TCS_C_DIR "${CMAKE_CURRENT_BINARY_DIR}/tcs")
 add_custom_command(OUTPUT "${TCS_C_DIR}/tcs.c"
   COMMAND "${DOTNET}" build "${TCS_ROOT}/tcs2c" -c Release -v q -nologo
-  COMMAND "${DOTNET}" "${TCS_ROOT}/tcs2c/bin/Release/net10.0/tcs2c.dll" --lib
+  COMMAND "${DOTNET}" "${TCS_ROOT}/tcs2c/bin/Release/net11.0/tcs2c.dll" --lib
     --ref "${TCS_ROOT}/SelfHost/Tool/TcsHost.cs" ${TCS_SELF_SOURCES} -o "${TCS_C_DIR}/tcs.c"
   DEPENDS ${TCS_SELF_SOURCES} "${TCS_ROOT}/SelfHost/Tool/TcsHost.cs" ${TCS2C_SOURCES}
   COMMENT "Converting tcs to C"

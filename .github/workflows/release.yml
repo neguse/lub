@@ -55,7 +55,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          global-json-file: tcs/global.json
 
       - name: Build the web player (wasm)
         run: |
@@ -150,7 +150,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          global-json-file: tcs/global.json
 
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
@@ -248,7 +248,7 @@ jobs:
       # tests/cs の test は C# なので、app に入れる bytecode を tcs で作る。
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          global-json-file: tcs/global.json
 
       # macOS の player (shader cache を埋める) と iOS の app の build、simulator での実行
       - name: Apple gate, iOS part (iOS build, simulator)

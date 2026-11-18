@@ -16,7 +16,7 @@ trap 'rm -rf -- "$work_dir"' EXIT
   -p:TcsRoot="$tcs_root" -p:BuildProjectReferences=false \
   -p:NuGetAudit=false -v:minimal
 
-tcs2c_dll="$script_dir/bin/Debug/net10.0/tcs2c.dll"
+tcs2c_dll="$script_dir/bin/Debug/net11.0/tcs2c.dll"
 kernels=(sprite_update spawn_churn particles)
 entries=(SpriteUpdate SpawnChurn Particles)
 expected=(e8814b32 9274159d 8bf97e09)

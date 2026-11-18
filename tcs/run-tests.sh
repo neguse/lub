@@ -131,8 +131,8 @@ cp "$SCRIPT_DIR/samples/analyzer-demo/Program.cs" "$consumer_dir/Program.cs"
 cat > "$consumer_dir/analyzer-package-consumer.csproj" <<EOF
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>14</LangVersion>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RestoreAdditionalProjectSources>$package_dir</RestoreAdditionalProjectSources>
