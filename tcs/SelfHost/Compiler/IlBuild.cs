@@ -3955,6 +3955,20 @@ public sealed class IlBuild
         var coll = BuildExpr(collNode);
         var body = BuildBlock(f.C!);
         if (coll == null || body == null) return false;
+        // When the type of the variable differs from the type of the element, the element temp is iterated and the converted value goes into the variable at the head of the body
+        if (f.D != null)
+        {
+            // The element is the local in the cast expression (inside the Conv the binder inserted, for an implicit conversion)
+            var item = StripConv(f.D.B!).Local!;
+            item.IlName = NewDeconstructTemp();
+            var converted = BuildExpr(f.D);
+            if (converted == null) return false;
+            var stats = new List<IlStat>();
+            stats.Add(new IlLocal(varName, CopyIfMutableStruct(f.Local!.Type, converted), IlTypes.Display(f.Local.Type), null));
+            foreach (var st in body.Stats) stats.Add(st);
+            body = new IlBlock(stats);
+            varName = item.IlName;
+        }
         var collType = NaturalType(collNode);
         // Only the Dictionary itself is iterated with IlForeachDict (KeyValuePair). For Keys / Values the runtime returns an array, so they use List iteration
         if (IlTypes.IsDict(collType))
@@ -3967,7 +3981,7 @@ public sealed class IlBuild
         if (IlTypes.IsHashSet(collType)) coll = new IlCall("TcsHashSet.ToList", One(coll), null);
         // The iteration variable is a copy of the element (changes to a struct element are not kept in the original)
         var iterVar = new IlVar(varName, null);
-        var copied = CopyIfMutableStruct(f.Local != null ? f.Local.Type : null, iterVar);
+        var copied = f.D != null ? iterVar : CopyIfMutableStruct(f.Local != null ? f.Local.Type : null, iterVar);
         if (copied is IlStructCopy)
         {
             var stats = new List<IlStat>();
