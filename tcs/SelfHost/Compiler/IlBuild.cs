@@ -4109,6 +4109,23 @@ public sealed class IlBuild
         return input;
     }
 
+    // 定数のパターン。C# は定数と入力を object.Equals で比べるので、float の NaN の定数は NaN に一致する (== は NaN どうしで false)。
+    // 入力が NaN かは自分と等しくないかで見る (T? の入力は値があるときだけ)
+    private IlExpr? BuildConstantPattern(IlExpr input, Node constant, TypeSym? inputType)
+    {
+        if (constant.HasConst && constant.Const != null && constant.Const.IsNaN())
+        {
+            return BindPatternInput(input, x =>
+            {
+                if (!IlTypes.IsNullableValueType(inputType)) return new IlBin(IlBinOp.Ne, x, x, null);
+                var value = new IlNullableValue(x, null);
+                return new IlBin(IlBinOp.And, new IlNullableHasValue(x, null), new IlBin(IlBinOp.Ne, value, value, null), null);
+            });
+        }
+        var v = BuildExpr(constant);
+        return v == null ? null : new IlBin(IlBinOp.Eq, input, v, null);
+    }
+
     // 定数のパターンの中の型の参照 (`case Foo:` の Foo が型)
     private static bool IsTypeConstant(Node p)
     {
@@ -4124,8 +4141,7 @@ public sealed class IlBuild
                 {
                     if (IsNullLiteral(pattern.A!) && IlTypes.IsNullableValueType(inputType))
                         return new IlUn(IlUnOp.Not, new IlNullableHasValue(governing, null), null);
-                    var value = BuildExpr(pattern.A!);
-                    return value == null ? null : new IlBin(IlBinOp.Eq, governing, value, null);
+                    return BuildConstantPattern(governing, pattern.A!, inputType);
                 }
             case NodeKind.PatDiscard:
             case NodeKind.PatVar:
@@ -4169,10 +4185,7 @@ public sealed class IlBuild
         switch (pattern.Kind)
         {
             case NodeKind.PatConst:
-                {
-                    var value = BuildExpr(pattern.A!);
-                    return value == null ? null : new IlBin(IlBinOp.Eq, expr, value, null);
-                }
+                return BuildConstantPattern(expr, pattern.A!, inputType);
             case NodeKind.PatType:
             case NodeKind.PatDecl:
                 return BuildTypeCheck(expr, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
@@ -4432,11 +4445,7 @@ public sealed class IlBuild
                 else if (constantLabel)
                 {
                     if (IsNullLiteral(pat.A!) && IlTypes.IsNullableValueType(inputType)) one = new IlBin(IlBinOp.Eq, sw, IlLiterals.Null(), null);
-                    else
-                    {
-                        var v = BuildExpr(pat.A!);
-                        one = v == null ? null : new IlBin(IlBinOp.Eq, sw, v, null);
-                    }
+                    else one = BuildConstantPattern(sw, pat.A!, inputType);
                 }
                 else one = BuildPatternLabel(label, sw, inputType);
                 if (one == null) return false;
