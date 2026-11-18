@@ -265,9 +265,9 @@ public sealed class IlBuild
 
     private int _condHoist;
 
-    // Recognizes the shape of a value-returning IIFE. The target is [IlLocal*, IlIf (each arm = leading statements* + a trailing IlReturn, else has the same shape)?, IlReturn?]
+    // Recognizes the shape of a value-returning IIFE. The target is [IlLocal*, IlIf (each arm = leading statements* + a trailing IlReturn, else has the same shape or is the no-match fault of a switch expression)?, IlReturn?]
     // (lowered from switch expressions / ?. / ?? / TryGetValue / GetValueOrDefault). A trailing IlReturn is normalized into the else.
-    // Complete = every path returns a value (if false, nil when nothing matches; it cannot be used in return position because it becomes a return without a value)
+    // Complete = every path returns a value or faults (if false, nil when nothing matches; it cannot be used in return position because it becomes a return without a value)
     private static ValueChain? TryGetValueChainShape(IlIife iife)
     {
         var stats = new List<IlStat>();
@@ -288,7 +288,7 @@ public sealed class IlBuild
         {
             if (!IsReturningBlock(a.Body)) return null;
         }
-        if (tail.Else != null && !IsReturningBlock(tail.Else)) return null;
+        if (tail.Else != null && !IsReturningBlock(tail.Else) && !IsNoMatchBlock(tail.Else)) return null;
         var setup = new List<IlStat>();
         for (int i = 0; i < stats.Count - 1; i++) setup.Add(stats[i]);
         IlIf chain = tail;
@@ -321,12 +321,25 @@ public sealed class IlBuild
         return true;
     }
 
-    // An if chain where the trailing return of each arm is turned into an assignment to target
+    // The fault when no arm of a switch expression matches (C#'s SwitchExpressionException)
+    private static IlBlock NoMatchBlock()
+    {
+        return new IlBlock(One(new IlCallStat(new IlCall("__tcs_nomatch", new List<IlExpr>(), null), null)));
+    }
+
+    private static bool IsNoMatchBlock(IlBlock block)
+    {
+        return block.Stats.Count == 1 && block.Stats[0] is IlCallStat s && s.Call is IlCall c && c.Callee == "__tcs_nomatch";
+    }
+
+    // An if chain where the trailing return of each arm is turned into an assignment to target (the no-match fault is kept as is)
     private static IlIf SwitchChainAsAssigns(IlIf chain, IlExpr target)
     {
         var arms = new List<IlArm>();
         foreach (var a in chain.Arms) arms.Add(new IlArm(a.Cond, RewriteReturnAsAssign(a.Body, target)));
-        return new IlIf(arms, chain.Else != null ? RewriteReturnAsAssign(chain.Else, target) : null, chain.Origin);
+        IlBlock? elseBlock = null;
+        if (chain.Else != null) elseBlock = IsNoMatchBlock(chain.Else) ? chain.Else : RewriteReturnAsAssign(chain.Else, target);
+        return new IlIf(arms, elseBlock, chain.Origin);
     }
 
     private static IlBlock RewriteReturnAsAssign(IlBlock body, IlExpr target)
@@ -4202,6 +4215,8 @@ public sealed class IlBuild
             }
         }
         if (arms.Count == 0 && elseBlock == null) return null;
+        // Without a discard arm, no match is a fault (il-spec §12)
+        if (elseBlock == null) elseBlock = NoMatchBlock();
         if (arms.Count > 0) stats.Add(new IlIf(arms, elseBlock, null));
         else stats.Add(new IlIf(Arm(IlLiterals.Bool(true), elseBlock!), null, null));
         return new IlIife(stats, null);

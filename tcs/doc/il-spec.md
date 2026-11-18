@@ -189,6 +189,7 @@ host は打ち切られた後に次の entry を呼べる: tcs VM は `tvm_call`
   switch 式で一致 arm が無い場合。C# の SwitchExpressionException 相当 —
   例外がサブセット外のため fault として定義）、
   runtime intrinsic が定義する error
+- IL の switch 式の if の連鎖は、discard の arm が無ければ else に `IlCall("__tcs_nomatch")` の文を置く。
 - 同一入力・同一プログラムなら、どの backend・どの lowering モードでも
   同一の観測列の後に fault する（fault の位置も観測の一部）
 - fault 時の診断情報（メッセージ、source 位置）は品質事項であり適合条件では
