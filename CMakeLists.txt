@@ -32,41 +32,37 @@ if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL/CMakeLists.txt)
   message(FATAL_ERROR "Submodules are missing. Run: git submodule update --init")
 endif()
 
-# runtime は共有 library (lub_shared) にもなるので、静的に link する全部を PIC で作る (SDL / box2d / box3d / tess2 / lub 本体)。
+# runtime は共有 library (lub_shared) にもなるので、静的に link する全部を PIC で作る (tess2 / lub 本体)。
+# 第三者の library は third_party/CMakeLists.txt が同じ設定で作る。
 if(NOT LUB_WASM)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
 
-# SDL3 build flags must be set BEFORE add_subdirectory. The Emscripten build
-# uses static SDL and disables pthreads/tests so the wasm artifact stays
-# self-contained.
-if(LUB_WASM)
-  set(SDL_PTHREADS OFF CACHE BOOL "" FORCE)
-  set(SDL_TESTS    OFF CACHE BOOL "" FORCE)
-  set(SDL_SHARED   OFF CACHE BOOL "" FORCE)
-  set(SDL_STATIC   ON  CACHE BOOL "" FORCE)
+# Linux uses Vulkan as its default native backend, so its loader and headers
+# remain required. Windows defaults to D3D12 and adds the Vulkan backend only
+# when the SDK is available.
+# 第三者の library (OpenXR の loader) も同じ Vulkan で作るので、cmake/LubDeps.cmake より先に探す。
+set(LUB_HAS_VULKAN OFF)
+if(NOT LUB_WASM)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
+    # Android の Vulkan の header と libvulkan.so は NDK の sysroot にある。
+    find_package(Vulkan REQUIRED)
+    set(LUB_HAS_VULKAN ON)
+  elseif(WIN32)
+    find_package(Vulkan QUIET)
+    if(Vulkan_FOUND)
+      set(LUB_HAS_VULKAN ON)
+    else()
+      message(STATUS "Vulkan SDK not found; Windows Vulkan backend is disabled")
+    endif()
+  endif()
 endif()
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-  # An app bundle links SDL statically instead of embedding a framework.
-  set(SDL_TESTS  OFF CACHE BOOL "" FORCE)
-  set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-  set(SDL_STATIC ON  CACHE BOOL "" FORCE)
-endif()
-add_subdirectory(third_party/SDL)
 
-# Box2D v3 is C17. Only the library is used; the upstream sample/test/benchmark
-# applications are intentionally disabled because lub exposes its own
-# sample surface.
-set(BOX2D_SAMPLES OFF CACHE BOOL "" FORCE)
-set(BOX2D_UNIT_TESTS OFF CACHE BOOL "" FORCE)
-set(BOX2D_BENCHMARKS OFF CACHE BOOL "" FORCE)
-set(BOX2D_DOCS OFF CACHE BOOL "" FORCE)
-set(BOX2D_COMPILE_WARNING_AS_ERROR OFF CACHE BOOL "" FORCE)
-add_subdirectory(third_party/box2d)
-
-# Box3D samples/tests/benchmarks are gated by PROJECT_IS_TOP_LEVEL upstream,
-# so only the library builds here.
-add_subdirectory(third_party/box3d)
+# 第三者の library (SDL3、Box2D、Box3D、OpenXR の loader) は third_party/CMakeLists.txt で <build>/deps/ に作り、そこから使う。
+include(cmake/LubDeps.cmake)
+find_package(SDL3 REQUIRED CONFIG PATHS "${LUB_DEPS_PREFIX}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+find_package(box2d REQUIRED CONFIG PATHS "${LUB_DEPS_PREFIX}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+find_package(box3d REQUIRED CONFIG PATHS "${LUB_DEPS_PREFIX}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 # TinyC# の Math の超越関数 (tcs の runtime/math)、float の文字列化 (runtime/fmt)、UTF-8 (runtime/utf8)。
 # tcs VM が使う (tcs2c の生成 C は同じ実装を自分で持つ)。
@@ -257,25 +253,6 @@ if(LUB_HAS_SLANG)
   endif()
 endif()
 
-# Linux uses Vulkan as its default native backend, so its loader and headers
-# remain required. Windows defaults to D3D12 and adds the Vulkan backend only
-# when the SDK is available.
-set(LUB_HAS_VULKAN OFF)
-if(NOT LUB_WASM)
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
-    # Android の Vulkan の header と libvulkan.so は NDK の sysroot にある。
-    find_package(Vulkan REQUIRED)
-    set(LUB_HAS_VULKAN ON)
-  elseif(WIN32)
-    find_package(Vulkan QUIET)
-    if(Vulkan_FOUND)
-      set(LUB_HAS_VULKAN ON)
-    else()
-      message(STATUS "Vulkan SDK not found; Windows Vulkan backend is disabled")
-    endif()
-  endif()
-endif()
-
 # Source list. capture.c itself is backend-agnostic (uses g_backend->capture)
 # and compiles everywhere. backend_sdlgpu.c / backend_d3d12.cpp are
 # native-only; wasm builds ship the webgpu backend alone.
@@ -345,8 +322,7 @@ if(NOT LUB_WASM)
   endif()
 endif()
 if((CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID) AND LUB_HAS_VULKAN)
-  set(BUILD_WITH_SYSTEM_JSONCPP OFF CACHE BOOL "" FORCE)
-  add_subdirectory(third_party/openxr EXCLUDE_FROM_ALL)
+  find_package(OpenXR REQUIRED CONFIG PATHS "${LUB_DEPS_PREFIX}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
   list(APPEND LUB_SOURCES src/xr.c)
   set(LUB_HAS_OPENXR ON)
 endif()
@@ -469,8 +445,8 @@ endif()
 target_link_libraries(lub_objs PUBLIC
   SDL3::SDL3
   tcs_runtime
-  box2d
-  box3d
+  box2d::box2d
+  box3d::box3d
   tess2
 )
 if(LUB_HAS_SLANG)
@@ -640,7 +616,7 @@ if(NOT LUB_WASM)
   )
   target_link_libraries(lub_physics_box2d_smoke PRIVATE
     SDL3::SDL3
-    box2d
+    box2d::box2d
   )
   if(UNIX AND NOT APPLE)
     target_link_libraries(lub_physics_box2d_smoke PRIVATE m)
@@ -655,7 +631,7 @@ if(NOT LUB_WASM)
   )
   target_link_libraries(lub_physics_box3d_smoke PRIVATE
     SDL3::SDL3
-    box3d
+    box3d::box3d
   )
   if(UNIX AND NOT APPLE)
     target_link_libraries(lub_physics_box3d_smoke PRIVATE m)
@@ -739,9 +715,7 @@ endif()
 
 # 外の project が find_package(lub) で player の library (lub::lub_vm_player) を使えるよう、build の tree の target を書き出す。
 # 使う側は lub_DIR にこの build のディレクトリを渡す (docs/api-glue.md)。
-set(LUB_EXPORT_TARGETS lub_vm_player lub_objs tcsvm_lib tcs_runtime box2d box3d tess2)
-if(LUB_HAS_OPENXR)
-  list(APPEND LUB_EXPORT_TARGETS openxr_loader headers)
-endif()
+# 第三者の library は lubConfig.cmake が <build>/deps/ から探す。
+set(LUB_EXPORT_TARGETS lub_vm_player lub_objs tcsvm_lib tcs_runtime tess2)
 export(TARGETS ${LUB_EXPORT_TARGETS} NAMESPACE lub:: FILE "${CMAKE_CURRENT_BINARY_DIR}/lubTargets.cmake")
 configure_file(cmake/lubConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/lubConfig.cmake" @ONLY)

@@ -45,6 +45,10 @@ git submodule なので、clone 後に一度 submodule を取得する:
 git submodule update --init
 ```
 
+lub の configure は、これらを `third_party/CMakeLists.txt` の project として build し、build のディレクトリの `deps/` に install して使う (`cmake/LubDeps.cmake`)。
+build するのは初めての configure と、submodule の commit か toolchain が変わったときだけ。
+submodule の中の file を手で書き換えたときは、lub を configure し直す。
+
 Linux:
 
 ```sh
