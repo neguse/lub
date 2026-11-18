@@ -817,9 +817,12 @@ public sealed class CEmitter
                         CFail.Report("field receiver is not a class reference");
                         return;
                     }
+                    // Evaluate the receiver and the value before checking the receiver for null (C# order)
                     var temp = Temp("object");
-                    Line(receiverType.CName + " " + temp + " = (" + receiverType.CName + ")tcs_nonnull(" + RenderExpr(field.Recv) + ");");
-                    Line(temp + "->" + Names.Field(field.Name) + " = " + value + ";");
+                    var fieldValue = Temp("stored");
+                    Line(receiverType.CName + " " + temp + " = " + RenderExpr(field.Recv) + ";");
+                    Line(targetType.CName + " " + fieldValue + " = " + value + ";");
+                    Line("((" + receiverType.CName + ")tcs_nonnull(" + temp + "))->" + Names.Field(field.Name) + " = " + fieldValue + ";");
                     if (NeedsBarrier(targetType)) Line("tcs_wb(" + temp + ");");
                     return;
                 }
@@ -829,12 +832,15 @@ public sealed class CEmitter
                     {
                         var slotType = RequireDict(index.Recv, out CType dictType);
                         CheckAssignable(slotType, assign.Value, "dict store");
-                        // Evaluate the key before the value (C# order; C's `=` does not define the evaluation order of its sides)
+                        // Evaluate the receiver, the key and the value before taking the storage location (C# order; C's `=` does not define the evaluation order of its sides).
+                        // tcs_dict_put checks for a null receiver
                         var dictTemp = Temp("dict");
                         var key = Temp("key");
+                        var dictValue = Temp("stored");
                         Line("TcsDict *" + dictTemp + " = " + RenderExpr(index.Recv) + ";");
                         Line(dictType.KeyType!.CName + " " + key + " = " + RenderExpr(index.Idx) + ";");
-                        Line("*(" + slotType.CName + " *)tcs_dict_put(" + dictTemp + ", " + DictKeyArgs(dictType.KeyType!, key) + ") = " + value + ";");
+                        Line(slotType.CName + " " + dictValue + " = " + value + ";");
+                        Line("*(" + slotType.CName + " *)tcs_dict_put(" + dictTemp + ", " + DictKeyArgs(dictType.KeyType!, key) + ") = " + dictValue + ";");
                         return;
                     }
                     var sequenceType = RequireSequence(index);
@@ -2359,8 +2365,7 @@ public sealed class CEmitter
             TypeOfDynCall(call);
             if (CFail.Failed) return "";
             var values = new List<TypedValue>();
-            values.Add(new TypedValue(closureType,
-                "(TcsClosure *)tcs_nonnull(" + RenderExpr(call.Callee) + ")"));
+            values.Add(new TypedValue(closureType, "(TcsClosure *)" + RenderExpr(call.Callee)));
             for (var i = 0; i < call.Args.Count; i++)
                 values.Add(new TypedValue(closureType.Parameters![i],
                     RenderCoerced(call.Args[i], closureType.Parameters[i])));
@@ -2378,7 +2383,8 @@ public sealed class CEmitter
             callParts.Add(closTemp + "->cells");
             foreach (var argName in argNames) callParts.Add(argName);
             var callArgs = string.Join(", ", callParts);
-            return "({ " + string.Join("", declarations) +
+            // A null delegate is checked after the arguments are evaluated and before the call (C# order)
+            return "({ " + string.Join("", declarations) + "tcs_nonnull(" + closTemp + "); " +
                 "((" + ClosureFnPtrType(closureType, "") + ")" + closTemp + "->fn)(" + callArgs + "); })";
         }
         var fact = ParseDynCallee(call.Callee);
@@ -2431,7 +2437,7 @@ public sealed class CEmitter
         {
             var receiverType = CType.Ref(fact.ClassName);
             values.Add(new TypedValue(receiverType,
-                "(" + receiverType.CName + ")tcs_nonnull(" + RenderExpr(receiver) + ")"));
+                "(" + receiverType.CName + ")" + RenderExpr(receiver)));
         }
         for (var i = 0; i < complete.Count && i < fact.Parameters.Count; i++)
             values.Add(new TypedValue(fact.Parameters[i].Type,
@@ -2439,12 +2445,14 @@ public sealed class CEmitter
         string target;
         if (function != null) target = function;
         else target = Names.Method(fact.ClassName, fact.Name);
-        return RenderOrderedCall(target, fact.ReturnType, values, outArguments);
+        return RenderOrderedCall(target, fact.ReturnType, values, outArguments, receiver != null);
     }
 
+    // Evaluates the values into temps in order, then calls.
+    // With checkReceiver, the first value (the receiver) is checked for null at the call, after all arguments are evaluated (C# order)
     private string RenderOrderedCall(string function, CType returnType,
         List<TypedValue> values,
-        List<string>? outArguments = null)
+        List<string>? outArguments = null, bool checkReceiver = false)
     {
         if (values.Count == 0 && (outArguments == null || outArguments.Count == 0)) return function + "()";
         var declarations = new List<string>();
@@ -2458,7 +2466,8 @@ public sealed class CEmitter
             declarations.Add(" = ");
             declarations.Add(item.Value);
             declarations.Add("; ");
-            arguments.Add(temp);
+            if (checkReceiver && arguments.Count == 0) arguments.Add("(" + item.Type.CName + ")tcs_nonnull(" + temp + ")");
+            else arguments.Add(temp);
         }
         if (outArguments != null)
         {
@@ -4485,7 +4494,7 @@ public sealed class CEmitter
     {
         var name = Strings.From(call.Callee, Strings.ByteLength("Random."));
         if (name != "Seed")
-            return RenderRandomMethod("tcs_random_shared()", name, call.Args);
+            return RenderRandomMethod("tcs_random_shared()", false, name, call.Args);
         return $"tcs_rand_seed(tcs_random_shared(), (uint32_t)({RenderExpr(call.Args[0])}), 0)";
     }
 
@@ -4537,38 +4546,40 @@ public sealed class CEmitter
         }
     }
 
-    // Bind the receiver to a temp first to preserve evaluation order
-    private string RenderRandomMethod(string receiver, string name,
+    // Bind the receiver to a temp first to preserve evaluation order.
+    // When nullable (an instance receiver), null is checked after the arguments are evaluated (C# order)
+    private string RenderRandomMethod(string receiver, bool nullable, string name,
         List<IlExpr> args)
     {
         var type = TypeOfRandomMethod(name, args);
         if (CFail.Failed) return "";
         var r = Temp("rng");
         var head = $"TcsRandom *{r} = {receiver}; ";
+        var checkedR = nullable ? $"(TcsRandom *)tcs_nonnull({r})" : r;
         switch (name)
         {
             case "NextFloat":
             case "NextSingle":
-                return $"({{ {head}tcs_rand_float({r}); }})";
+                return $"({{ {head}tcs_rand_float({checkedR}); }})";
             case "Next":
                 {
                     // Next() = tcs_rand_range(0, 2147483646), Next(max) =
                     // Next(0, max), Next(min, max) = tcs_rand_below (the upper bound is exclusive; min for an empty range, a fault for max < min)
                     if (args.Count == 0)
-                        return $"({{ {head}tcs_rand_range({r}, 0, INT32_C(2147483646)); }})";
+                        return $"({{ {head}tcs_rand_range({checkedR}, 0, INT32_C(2147483646)); }})";
                     if (args.Count == 1)
                     {
                         var one = new List<TypedValue>();
                         one.Add(new TypedValue(CType.Random, r));
                         one.Add(new TypedValue(CType.I32, "0"));
                         one.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
-                        return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, one) + "; })";
+                        return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, one, null, nullable) + "; })";
                     }
                     var two = new List<TypedValue>();
                     two.Add(new TypedValue(CType.Random, r));
                     two.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
                     two.Add(new TypedValue(CType.I32, RenderExpr(args[1])));
-                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, two) + "; })";
+                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, two, null, nullable) + "; })";
                 }
             case "Range":
                 {
@@ -4576,7 +4587,7 @@ public sealed class CEmitter
                     values.Add(new TypedValue(CType.Random, r));
                     values.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
                     values.Add(new TypedValue(CType.I32, RenderExpr(args[1])));
-                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_range", type, values) + "; })";
+                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_range", type, values, null, nullable) + "; })";
                 }
             default:
                 CFail.Report($"unsupported Random member: {name}");
@@ -6791,7 +6802,7 @@ public sealed class CEmitter
         TypeOfInvoke(invoke);
         var receiver = TypeOf(invoke.Recv);
         if (receiver.Kind == CTypeKind.Random)
-            return RenderRandomMethod("tcs_nonnull(" + RenderExpr(invoke.Recv) + ")",
+            return RenderRandomMethod(RenderExpr(invoke.Recv), true,
                 invoke.Method, invoke.Args);
         var foreign = ForeignInstanceMethod(receiver, invoke.Method);
         if (foreign != null)
@@ -7366,13 +7377,13 @@ public sealed class CEmitter
         if (receiver != null)
         {
             var type = CType.Ref(method.Receiver!);
-            values.Add(new TypedValue(type, "(" + type.CName + ")tcs_nonnull(" + RenderExpr(receiver) + ")"));
+            values.Add(new TypedValue(type, "(" + type.CName + ")" + RenderExpr(receiver)));
         }
         for (int i = 0; i < args.Count && i < parameters.Count; i++)
             values.Add(new TypedValue(parameters[i].Type, RenderCoerced(args[i], parameters[i].Type)));
         string callee = receiver != null && dispatch && ForeignOverriders(method).Count > 0
             ? Names.Dispatch(method.Receiver!, ShortName(method)) : HostName(method.Name);
-        return RenderOrderedCall(callee, result, values);
+        return RenderOrderedCall(callee, result, values, null, receiver != null);
     }
 
     // Returns the C expression of the value and puts its type in type
