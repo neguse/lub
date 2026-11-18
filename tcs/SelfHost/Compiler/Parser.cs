@@ -2902,23 +2902,11 @@ public sealed class Parser
                         j++;
                         continue;
                     }
-                    // ブロックのコメントの中は数えない
-                    if (d == '/' && j + 1 < end && b[j + 1] == '*')
+                    // コメント、文字列、文字の中は数えない
+                    int skipped = Lexer.SkipInHole(b, j, end);
+                    if (skipped > j)
                     {
-                        j += 2;
-                        while (j + 1 < end && !(b[j] == '*' && b[j + 1] == '/')) j++;
-                        j += 2;
-                        continue;
-                    }
-                    if (d == '"' || d == '\'')
-                    {
-                        j++;
-                        while (j < end && b[j] != d)
-                        {
-                            if (b[j] == '\\') j++;
-                            j++;
-                        }
-                        j++;
+                        j = skipped;
                         continue;
                     }
                     if (d == '(' || d == '[') parens++;
@@ -2932,6 +2920,12 @@ public sealed class Parser
                     else if (d == ':' && depth == 1 && parens == 0 && formatAt < 0) formatAt = j;
                     else if (d == ',' && depth == 1 && parens == 0 && formatAt < 0 && alignAt < 0) alignAt = j;
                     j++;
+                }
+                if (j >= end)
+                {
+                    MissingHoleClose(i);
+                    run = end;
+                    break;
                 }
                 int exprEnd = alignAt >= 0 ? alignAt : formatAt >= 0 ? formatAt : j;
                 var hole = NAt(NodeKind.InterpHole, holeStart);
@@ -2961,29 +2955,25 @@ public sealed class Parser
     }
 
     // raw な補間文字列: escape は無く、$ と同じ数の { で穴が始まり、同じ数の } で終わる。
-    // それより多い { は文字の { として残す。複数行は各行の字下げを除く
+    // それより多い { は文字の { として残す。複数行は文字の部分の各行の頭から字下げを除く (穴の中の改行は行にしない)
     private Node RawInterpolatedString(Token t)
     {
         var n = NAt(NodeKind.InterpString, t.Pos);
         var b = _file.Bytes;
-        int i = t.ContentStart;
         int end = t.ContentEnd;
+        int i = Lexer.SkipRawIndent(b, t.ContentStart, end, t.RawIndent);
         int dollars = t.RawDollars;
         var text = new List<string>();
         int run = i;
         while (i < end)
         {
             int c = b[i];
-            if (c == '\n' && t.RawIndent > 0)
+            int nl = SourceFile.NewLineLength(b, i, end);
+            if (nl > 0)
             {
-                text.Add(_file.Slice(run, i + 1));
-                i++;
-                int skip = 0;
-                while (skip < t.RawIndent && i < end && (b[i] == ' ' || b[i] == '\t'))
-                {
-                    i++;
-                    skip++;
-                }
+                i += nl;
+                text.Add(_file.Slice(run, i));
+                i = Lexer.SkipRawIndent(b, i, end, t.RawIndent);
                 run = i;
                 continue;
             }
@@ -3006,6 +2996,13 @@ public sealed class Parser
                 while (j < end)
                 {
                     int d = b[j];
+                    // 式の中のコメント、文字列、文字の中は数えない
+                    int skipped = formatAt < 0 ? Lexer.SkipInHole(b, j, end) : j;
+                    if (skipped > j)
+                    {
+                        j = skipped;
+                        continue;
+                    }
                     if (d == '(' || d == '[') depth++;
                     else if (d == ')' || d == ']') depth--;
                     else if (d == ':' && depth == 0 && formatAt < 0) formatAt = j;
@@ -3018,6 +3015,12 @@ public sealed class Parser
                         continue;
                     }
                     j++;
+                }
+                if (j >= end)
+                {
+                    MissingHoleClose(i);
+                    run = end;
+                    break;
                 }
                 int exprEnd = formatAt >= 0 ? formatAt : j;
                 var hole = NAt(NodeKind.InterpHole, holeStart);
@@ -3037,6 +3040,10 @@ public sealed class Parser
         n.End = t.End;
         return n;
     }
+
+    // 穴が中身の終わりまでに閉じない (コメントが閉じの } を含む行の終わりまで続くときも)
+    private void MissingHoleClose(int pos) =>
+        _diags.Error("CS8076", "Missing close delimiter '}' for interpolated expression started with '{'", _file, pos);
 
     private void FlushText(Node n, List<string> text, int pos)
     {

@@ -91,6 +91,47 @@ public sealed class Lexer
         return _b[p];
     }
 
+    private int NewLine(int p) => SourceFile.NewLineLength(_b, p, _end);
+
+    // 補間の穴の式の中で、p から始まるコメント、文字列、文字の後ろの位置 (どれでもなければ p)。
+    // その中の括弧、引用符、: は穴の区切りに数えない。// のコメントは改行の前で終わる
+    public static int SkipInHole(Utf8Bytes b, int p, int end)
+    {
+        int c = b[p];
+        if (c == '/' && p + 1 < end && b[p + 1] == '/')
+        {
+            p += 2;
+            while (p < end && SourceFile.NewLineLength(b, p, end) == 0) p++;
+            return p;
+        }
+        if (c == '/' && p + 1 < end && b[p + 1] == '*')
+        {
+            p += 2;
+            while (p + 1 < end && !(b[p] == '*' && b[p + 1] == '/')) p++;
+            return p + 1 < end ? p + 2 : end;
+        }
+        if (c == '"' || c == '\'')
+        {
+            p++;
+            while (p < end && b[p] != c)
+            {
+                if (b[p] == '\\') p++;
+                p++;
+            }
+            return p < end ? p + 1 : end;
+        }
+        return p;
+    }
+
+    // 複数行の raw な文字列の行の頭 p から、閉じの行の字下げ (indent byte) を除いた位置。
+    // 字下げより短い空白だけの行は、改行の前で止まる
+    public static int SkipRawIndent(Utf8Bytes b, int p, int end, int indent)
+    {
+        int stop = p + indent;
+        while (p < stop && p < end && (b[p] == ' ' || b[p] == '\t')) p++;
+        return p;
+    }
+
     public List<Token> Tokenize()
     {
         var tokens = new List<Token>();
@@ -114,14 +155,15 @@ public sealed class Lexer
         while (_pos < _end)
         {
             int c = _b[_pos];
-            if (c == ' ' || c == '\t' || c == '\r')
+            int nl = NewLine(_pos);
+            if (c == ' ' || c == '\t')
             {
                 _pos++;
                 any = true;
             }
-            else if (c == '\n')
+            else if (nl > 0)
             {
-                _pos++;
+                _pos += nl;
                 any = true;
                 lineStart = true;
             }
@@ -131,7 +173,7 @@ public sealed class Lexer
             }
             else if (c == '/' && Peek(1) == '/')
             {
-                while (_pos < _end && _b[_pos] != '\n') _pos++;
+                while (_pos < _end && NewLine(_pos) == 0) _pos++;
                 any = true;
             }
             else if (c == '/' && Peek(1) == '*')
@@ -177,7 +219,12 @@ public sealed class Lexer
         while (_pos < _end && !Active())
         {
             int p = _pos;
-            while (p < _end && (_b[p] == ' ' || _b[p] == '\t' || _b[p] == '\r' || _b[p] == '\n')) p++;
+            while (p < _end)
+            {
+                int n = _b[p] == ' ' || _b[p] == '\t' ? 1 : NewLine(p);
+                if (n == 0) break;
+                p += n;
+            }
             if (p < _end && _b[p] == '#')
             {
                 _pos = p;
@@ -186,7 +233,7 @@ public sealed class Lexer
             else
             {
                 _pos = p;
-                while (_pos < _end && _b[_pos] != '\n') _pos++;
+                while (_pos < _end && NewLine(_pos) == 0) _pos++;
             }
         }
     }
@@ -195,7 +242,7 @@ public sealed class Lexer
     private void DirectiveLine()
     {
         int start = _pos;
-        while (_pos < _end && _b[_pos] != '\n') _pos++;
+        while (_pos < _end && NewLine(_pos) == 0) _pos++;
         string line = _file.Slice(start, _pos).Trim();
         // 行末の // の注釈を除く
         var lb = new Utf8Bytes(line);
@@ -387,6 +434,11 @@ public sealed class Lexer
 
     private static bool IsIdentPart(int c) => IsIdentStart(c) || c >= '0' && c <= '9';
 
+    // p の byte が識別子の始まり / 続きか。0x80 以上の byte のうち、U+0085 / U+2028 / U+2029 の改行は識別子にしない
+    private bool IdentStartAt(int p) => p < _end && IsIdentStart(_b[p]) && (_b[p] < 0x80 || NewLine(p) == 0);
+
+    private bool IdentPartAt(int p) => p < _end && IsIdentPart(_b[p]) && (_b[p] < 0x80 || NewLine(p) == 0);
+
     private static bool IsDigit(int c) => c >= '0' && c <= '9';
 
     private Token Next()
@@ -394,8 +446,8 @@ public sealed class Lexer
         if (_pos >= _end) return new Token(TokenKind.End, _pos, _pos, "");
         int start = _pos;
         int c = _b[_pos];
-        if (IsIdentStart(c) || IsUnicodeEscape(_pos)) return Ident(start, false);
-        if (c == '@' && Peek(1) >= 0 && IsIdentStart(Peek(1)))
+        if (IdentStartAt(_pos) || IsUnicodeEscape(_pos)) return Ident(start, false);
+        if (c == '@' && IdentStartAt(_pos + 1))
         {
             _pos++;
             return Ident(start, true);
@@ -442,7 +494,7 @@ public sealed class Lexer
         bool escaped = false;
         while (_pos < _end)
         {
-            if (IsIdentPart(_b[_pos])) _pos++;
+            if (IdentPartAt(_pos)) _pos++;
             else if (IsUnicodeEscape(_pos))
             {
                 if (_pos > run) parts.Add(_file.Slice(run, _pos));
@@ -476,7 +528,7 @@ public sealed class Lexer
         if (c == '0' && (Peek(1) == 'x' || Peek(1) == 'X' || Peek(1) == 'b' || Peek(1) == 'B'))
         {
             _pos += 2;
-            while (_pos < _end && (IsIdentPart(_b[_pos]))) _pos++;
+            while (_pos < _end && IdentPartAt(_pos)) _pos++;
             return new Token(TokenKind.IntLit, start, _pos, StripUnderscore(_file.Slice(start, _pos)));
         }
         while (_pos < _end && (IsDigit(_b[_pos]) || _b[_pos] == '_')) _pos++;
@@ -501,7 +553,7 @@ public sealed class Lexer
                 _pos = save;
             }
         }
-        while (_pos < _end && IsIdentPart(_b[_pos]))
+        while (_pos < _end && IdentPartAt(_pos))
         {
             int s = _b[_pos];
             if (s == 'f' || s == 'F' || s == 'd' || s == 'D' || s == 'm' || s == 'M') isFloat = true;
@@ -543,7 +595,7 @@ public sealed class Lexer
                 _pos++;
                 break;
             }
-            if (!verbatim && c == '\n')
+            if (!verbatim && NewLine(_pos) > 0)
             {
                 _diags.Error("CS1010", "Newline in constant", _file, start);
                 break;
@@ -562,68 +614,45 @@ public sealed class Lexer
         return t;
     }
 
-    // raw な補間文字列。穴は $ と同じ数の { } で囲む
+    // raw な補間文字列。穴は $ と同じ数の { } で囲む。穴と各行の字下げは parser が読む
     private Token RawInterp(int start, int dollars)
     {
         _pos += dollars;
-        int quotes = 0;
-        while (_pos < _end && _b[_pos] == '"')
-        {
-            quotes++;
-            _pos++;
-        }
-        int contentStart = _pos;
-        int contentEnd = -1;
-        while (_pos < _end)
-        {
-            if (_b[_pos] == '"')
-            {
-                int run = 0;
-                while (_pos + run < _end && _b[_pos + run] == '"') run++;
-                if (run >= quotes)
-                {
-                    contentEnd = _pos;
-                    _pos += run;
-                    break;
-                }
-                _pos += run;
-                continue;
-            }
-            _pos++;
-        }
-        if (contentEnd < 0)
-        {
-            _diags.Error("CS8997", "Unterminated raw string literal", _file, start);
-            contentEnd = _end;
-        }
-        var t = new Token(TokenKind.InterpString, start, _pos, "");
+        var t = RawLiteral(TokenKind.InterpString, start);
         t.RawDollars = dollars;
         t.Verbatim = true;
-        bool multiLine = false;
-        for (int i = contentStart; i < contentEnd; i++)
-        {
-            if (_b[i] == '\n') multiLine = true;
-        }
-        if (!multiLine)
-        {
-            t.ContentStart = contentStart;
-            t.ContentEnd = contentEnd;
-            return t;
-        }
-        int first = contentStart;
-        while (first < contentEnd && _b[first] != '\n') first++;
-        first++;
-        int lastNl = contentEnd - 1;
-        while (lastNl > first && _b[lastNl] != '\n') lastNl--;
-        t.ContentStart = first + (contentEnd - lastNl - 1);
-        t.ContentEnd = lastNl;
-        t.RawIndent = contentEnd - lastNl - 1;
-        if (t.ContentEnd > 0 && _b[t.ContentEnd - 1] == '\r') t.ContentEnd--;
         return t;
     }
 
-    // raw string literal ("""...""")。複数行のときは閉じの行の字下げを各行から除き、最初と最後の改行を除く
+    // raw string literal ("""...""")
     private Token RawString(int start)
+    {
+        var t = RawLiteral(TokenKind.StringLit, start);
+        var parts = new List<string>();
+        int i = SkipRawIndent(_b, t.ContentStart, t.ContentEnd, t.RawIndent);
+        int run = i;
+        while (i < t.ContentEnd)
+        {
+            int nl = SourceFile.NewLineLength(_b, i, t.ContentEnd);
+            if (nl == 0)
+            {
+                i++;
+                continue;
+            }
+            i += nl;
+            parts.Add(_file.Slice(run, i));
+            i = SkipRawIndent(_b, i, t.ContentEnd, t.RawIndent);
+            run = i;
+        }
+        parts.Add(_file.Slice(run, t.ContentEnd));
+        t.Text = string.Join("", parts);
+        return t;
+    }
+
+    // raw な文字列の区切りを読み、_pos を閉じの区切りの後ろに進める。中身の範囲を ContentStart / ContentEnd に置く。
+    // 開きの区切りの後ろが空白と改行なら複数行の形で、その改行までと、閉じの前の改行と閉じの行を中身から除き、閉じの行の字下げの byte 数を RawIndent に置く。
+    // 形は開きの区切りの後ろだけで決まり、補間の穴の中の改行は形を変えない。中身の改行は書いた bytes のまま残す
+    private Token RawLiteral(TokenKind kind, int start)
     {
         int quotes = 0;
         while (_pos < _end && _b[_pos] == '"')
@@ -655,34 +684,33 @@ public sealed class Lexer
             _diags.Error("CS8997", "Unterminated raw string literal", _file, start);
             contentEnd = _end;
         }
-        bool multiLine = false;
-        for (int i = contentStart; i < contentEnd; i++)
+        var t = new Token(kind, start, _pos, "");
+        t.ContentStart = contentStart;
+        t.ContentEnd = contentEnd;
+        int p = contentStart;
+        while (p < contentEnd && (_b[p] == ' ' || _b[p] == '\t')) p++;
+        int openNl = SourceFile.NewLineLength(_b, p, contentEnd);
+        if (openNl == 0) return t;
+        int first = p + openNl;
+        int lastNl = -1;
+        int lastLine = first;
+        int i = first;
+        while (i < contentEnd)
         {
-            if (_b[i] == '\n') multiLine = true;
+            int nl = SourceFile.NewLineLength(_b, i, contentEnd);
+            if (nl == 0)
+            {
+                i++;
+                continue;
+            }
+            lastNl = i;
+            i += nl;
+            lastLine = i;
         }
-        if (!multiLine) return new Token(TokenKind.StringLit, start, _pos, _file.Slice(contentStart, contentEnd));
-        // 開きの後の改行までを除く
-        int first = contentStart;
-        while (first < contentEnd && _b[first] != '\n') first++;
-        first++;
-        // 閉じの行の字下げ
-        int lastNl = contentEnd - 1;
-        while (lastNl > first && _b[lastNl] != '\n') lastNl--;
-        int indent = contentEnd - lastNl - 1;
-        var lines = new List<string>();
-        int ls = first;
-        while (ls <= lastNl)
-        {
-            int le = ls;
-            while (le < lastNl && _b[le] != '\n') le++;
-            int from = ls + indent;
-            if (from > le) from = le;
-            int lineEnd = le;
-            if (lineEnd > from && _b[lineEnd - 1] == '\r') lineEnd--;
-            lines.Add(_file.Slice(from, lineEnd));
-            ls = le + 1;
-        }
-        return new Token(TokenKind.StringLit, start, _pos, string.Join("\n", lines));
+        t.ContentStart = first;
+        t.ContentEnd = lastNl < 0 ? first : lastNl;
+        t.RawIndent = contentEnd - lastLine;
+        return t;
     }
 
     // _pos は '\' を指す。読んだ escape の値の文字列を返し、_pos を進める
@@ -807,7 +835,7 @@ public sealed class Lexer
                     _pos += 2;
                     continue;
                 }
-                if (c == '"' || !verbatim && c == '\n') break;
+                if (c == '"' || !verbatim && NewLine(_pos) > 0) break;
                 _pos++;
                 continue;
             }
@@ -839,7 +867,7 @@ public sealed class Lexer
                     _pos++;
                     continue;
                 }
-                if (!verbatim && c == '\n')
+                if (!verbatim && NewLine(_pos) > 0)
                 {
                     _diags.Error("CS1010", "Newline in constant", _file, start);
                     break;
@@ -847,12 +875,11 @@ public sealed class Lexer
                 _pos++;
                 continue;
             }
-            // 穴の中 (ブロックのコメントの中の引用符と括弧は数えない)
-            if (c == '/' && Peek(1) == '*')
+            // 穴の中 (コメント、文字列、文字の中の引用符と括弧は数えない)
+            int skipped = SkipInHole(_b, _pos, _end);
+            if (skipped > _pos)
             {
-                _pos += 2;
-                while (_pos < _end && !(_b[_pos] == '*' && Peek(1) == '/')) _pos++;
-                if (_pos < _end) _pos += 2;
+                _pos = skipped;
                 continue;
             }
             if (c == '{') depth++;
@@ -865,17 +892,6 @@ public sealed class Lexer
                 _pos++;
                 continue;
             }
-            else if (c == '"' || c == '\'')
-            {
-                SkipQuoted(c);
-                continue;
-            }
-            else if (c == '$' && Peek(1) == '"')
-            {
-                _pos++;
-                SkipQuoted('"');
-                continue;
-            }
             _pos++;
         }
         int contentEnd = _pos;
@@ -885,17 +901,6 @@ public sealed class Lexer
         t.ContentEnd = contentEnd;
         t.Verbatim = verbatim;
         return t;
-    }
-
-    private void SkipQuoted(int q)
-    {
-        _pos++;
-        while (_pos < _end && _b[_pos] != q)
-        {
-            if (_b[_pos] == '\\') _pos++;
-            _pos++;
-        }
-        _pos++;
     }
 
     // escape の code point の文字。対になっていない surrogate (UTF-8 にできない) と範囲の外は止める
