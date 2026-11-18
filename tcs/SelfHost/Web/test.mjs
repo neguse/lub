@@ -2,7 +2,7 @@
 //   1. vmOpen の module が、C の tcs の `tcs vm --export <entry>.*` (同じ VmSession) と byte で同じ
 //   2. vmUpdate の batch が、C の tcs の `tcs vm --reload-from <v1> <v2> --batch` と、先頭の元の版の印 (v1 の module の FNV-1a) のほかは byte で同じ
 //   3. 誤りのある編集は ok: false と診断を返し、最後に成功した build を保つ (vmModule が変わらない)
-//   4. live に当てられない編集は restart を返す
+//   4. static の初期化子を変える編集は batch (その static を評価し直す)、消す編集は restart を返す (doc/hot-reload-design.md §11)
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -83,9 +83,13 @@ try {
   if (broken.ok || broken.kind !== "error" || broken.errors.length === 0) fail("broken edit: " + JSON.stringify(broken));
   if (tcs.vmModule() !== before) fail("a failed edit changed the module");
 
-  // 4. static の初期化子の変更は restart
-  const restart = tcs.vmUpdate("Game.cs", v2.replace('"hello v2"', '"hello v3"'));
-  if (!restart.ok || restart.kind !== "restart" || restart.restartReasons.length === 0) fail("static initializer edit: " + JSON.stringify(restart));
+  // 4. static の初期化子を変える編集は batch、消す編集は restart (評価し直す式が無い)
+  const v3 = v2.replace('"hello v2"', '"hello v3"');
+  const live = tcs.vmUpdate("Game.cs", v3);
+  if (!live.ok || live.kind !== "batch") fail("static initializer edit: " + JSON.stringify(live));
+  const restart = tcs.vmUpdate("Game.cs", v3.replace('static string banner = "hello v3";', "static string banner;"));
+  if (!restart.ok || restart.kind !== "restart" || !restart.restartReasons.includes("static initializer removed: Game.banner"))
+    fail("static initializer removal: " + JSON.stringify(restart));
   console.log(`web: modules and batches match the native tcs, edits keep the last good build and restart when needed`);
 } catch (e) {
   console.error("FAIL: " + e.message);
