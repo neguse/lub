@@ -121,7 +121,7 @@ jobs:
   # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は mesa の version に依存し、runner の mesa はローカル生成の golden と一致しない。
   # CI の視覚 golden gate は windows job (WARP)、lavapipe golden はローカル pre-push の gate。
   # mesa を container 等で pin できたら有効化する。
-  # 形式検査 (tests/formal): --serve の接続の片づけを全列挙で、バッファの上限を z3 で検査する。
+  # 形式検査 (tests/formal): --serve のバッファの上限を z3 で検査する。
   # 実装の主張を書いた検査なので、契約を変えたら検査も直す。
   formal:
     needs: changes
