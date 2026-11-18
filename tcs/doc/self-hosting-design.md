@@ -136,7 +136,7 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 
 - `SelfHost/build.sh` (`run-tests.sh` が C compiler のある環境で走らせる): .NET の tcs が tcs (`SelfHost/Compiler`、`CBackend`、`VmBackend`、`Tool`。`TcsHost.cs` は `--ref`) を `tcs c --lib` で C にし (`out/tcs.c`)、`Native/host.c` と build する (`out/tcs`)。固定点は、`out/tcs` が同じソースを C にした結果が `out/tcs.c` と byte で一致すること。digest kernel の `tcs vm` の `.tcsb` と、tcs 自身の `tcs check` の診断と終了コードも .NET と C で byte で一致させる
 - `SelfHost/native.sh` (CI の native job が Linux、macOS、Windows で走らせる): .NET の tcs2c で C にした native の tcs を作り、.NET の tcs と比べる。samples の `tcs check` と `tcs c` と `tcs vm`、誤りのある入力の診断、tcs 自身の `tcs check` と `tcs vm`、digest kernel の `.tcsb`、reload の batch (`tcs vm --reload-from`)、tcs 自身の C (固定点)
-- `SelfHost/Web/test.mjs` (`SelfHost/Web/build.sh` と `SelfHost/native.sh` の後): wasm の `vmOpen` の module と `vmUpdate` の batch が native の tcs の `tcs vm` と byte で同じこと、誤りのある編集が最後の build を保つこと、live に当てられない編集が restart を返すこと
+- `SelfHost/Web/test.mjs` (`SelfHost/Web/build.sh` と `SelfHost/native.sh` の後。CI の native job が Linux で走らせる): wasm の `vmOpen` の module と `vmUpdate` の batch が native の tcs の `tcs vm` と byte で同じこと (batch は先頭の元の版の印のほか)、誤りのある編集が最後の build を保つこと、static の初期化子を変える編集が batch を、消す編集が restart を返すこと
 
 ### 9.2 検証の正解
 

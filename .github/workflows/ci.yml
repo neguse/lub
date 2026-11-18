@@ -1081,6 +1081,29 @@ jobs:
         env:
           CC: ${{ matrix.cc }}
 
+      # tcs の WebAssembly 版 (SelfHost/Web) が、上で作った C の tcs と同じ module と batch を返し、編集を同じ規則で分けること (SelfHost/Web/test.mjs)。
+      # emsdk は web-build と同じ固定パスと cache を使う。ubuntu でだけ見る
+      - name: Cache emsdk
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/cache@v4
+        with:
+          path: ~/emsdk
+          key: emsdk-5.0.2
+      - name: Install emsdk
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          if [ ! -x "$HOME/emsdk/emsdk" ]; then
+            git clone --depth 1 https://github.com/emscripten-core/emsdk "$HOME/emsdk"
+          fi
+          "$HOME/emsdk/emsdk" install 5.0.2
+          "$HOME/emsdk/emsdk" activate 5.0.2
+      - name: Build the wasm tcs and compare with the native tcs
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          source "$HOME/emsdk/emsdk_env.sh"
+          bash SelfHost/Web/build.sh
+          node SelfHost/Web/test.mjs
+
   gate:
     needs: [changes, lint, format, linux, windows, macos, web-build, web-verify, web-golden, web-export, tcs-test, tcs-bench-2backend, tcs-compare-check, tcs-selfbench, tcs-native]
     if: always()
