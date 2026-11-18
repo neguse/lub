@@ -482,8 +482,10 @@ jobs:
           scripts/run-cs-sample.sh 00_hello --vm
           ./build-release/lub.exe samples/00_hello/.lub/Hello00.tcsb --entry Hello00 --capture "$RUNNER_TEMP/cs.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/cs.digest"
           dotnet build dotnet/SampleRunner -p:Sample=00_hello -nologo -v q
-          ./dotnet/SampleRunner/bin/00_hello/lub-sample-00_hello.exe --capture "$RUNNER_TEMP/dn.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "$RUNNER_TEMP/dn.log" | grep '^digest ' > "$RUNNER_TEMP/dn.digest"
+          # 落ちたときは、何が起きたかを見るために出力を全部出す
+          ./dotnet/SampleRunner/bin/00_hello/lub-sample-00_hello.exe --capture "$RUNNER_TEMP/dn.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest > "$RUNNER_TEMP/dn.log" 2>&1 || { cat "$RUNNER_TEMP/dn.log"; exit 1; }
           grep -E '^d3d12:' "$RUNNER_TEMP/dn.log" || true
+          grep '^digest ' "$RUNNER_TEMP/dn.log" > "$RUNNER_TEMP/dn.digest" || { cat "$RUNNER_TEMP/dn.log"; exit 1; }
           cmp "$RUNNER_TEMP/cs.digest" "$RUNNER_TEMP/dn.digest"
 
       - name: Upload golden failure artifacts
