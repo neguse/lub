@@ -92,6 +92,8 @@ esac
 
 # tcs VM の web の player (lub export web が埋め込む)
 cp "$common/wasm/vm/lub.js" "$common/wasm/vm/lub.wasm" "$kit/bin/wasm/vm/"
+# 自分の page で WebXR を使うときの createXR (docs/manual/10-web.md)。player と同じ commit のものを組で配る
+cp web/xr.mjs "$kit/bin/wasm/"
 # tcs は一緒に配るファイル (runtime/、lib/) を実行ファイルの dir から読む。runtime/ の C (core、math など) は tcs c が生成 C に埋め込む
 cp "$build/tcs/tcs$exe" "$kit/bin/tcs/"
 # lub-gen (TinyC#、scripts/build-lub-gen.sh が tcs c で C にしたもの)。lib/ を tcs と共有する

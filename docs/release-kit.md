@@ -21,6 +21,7 @@ page は外の file を読まないので、claude.ai の artifact にそのま�
 | `bin/lider` (Windows は `bin/lider.cmd`) | lider を起動する。lider はゲームを動かしたまま、コードを書き直し、調べるエディタ |
 | `bin/lider-player` | lider の player (lub の player に、かな漢字変換と tcs の compiler を入れたもの)。`bin/lider` が起動する |
 | `bin/wasm/vm/` | web の tcs VM の player (`lub export web` が page に埋め込む) |
+| `bin/wasm/xr.mjs` | 自分の page で WebXR を使うときの `createXR` (`manual/10-web.md`) |
 | `bin/tcs/` | C# を tcs VM の bytecode にする tcs (tcs2c で C にした実行ファイル。.NET は要らない)。`tcs c` で C にもできる。`lub-gen tcs` は `tcs c` の C に lub の API の接続コードを作る (同じく C にした実行ファイル) |
 | `lider/` | lider の bytecode (`Lider.tcsb`)、font、かな漢字変換の辞書 (`data/mozc.dict`) |
 | `cs-lib/` | API の stub (`lub_stub.cs`) と、ゲームが使う C# の library (`lubx`) |
@@ -61,6 +62,7 @@ macOS で、browser で落とした一式は実行を止められるので、展
 | `manual/05-io-assets.md` | file の読み込みと asset |
 | `manual/07-xr.md` | XR |
 | `manual/09-renderer3d-shader.md` | Renderer3d の shader を差し替えるときの頂点と uniform の約束、export のしかた |
+| `manual/10-web.md` | web の player を載せる page、対応ブラウザ、page の JS とのやり取り (`Host`)、WebXR |
 
 未対応の構文と API は、tcs が error (TCS1001 / TCS1002) にして出力を書かない。error の行に出る名前を `manual/tcs-support-matrix.md` で引く。
 
