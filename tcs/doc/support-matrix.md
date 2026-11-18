@@ -625,7 +625,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `string.CompareOrdinal(a, b)` (static) | **Y** | -1 / 0 / 1。順序は il-spec §11 の ordinal で、null は他のどの string より小さい。値は 0 との比較 (`< 0`、`== 0` など) の operand でだけ使える。.NET の契約は符号だけで、値そのものは 2 文字ずつ比べる位置で変わる (`("", "x")` は -120、`("abc", "ab")` は 1) ので、それ以外の使い方は TCS1001 `CompareOrdinalValue`。範囲つきの overload は TCS1002 |
 | `String.IsNullOrWhiteSpace(s)` (static) | **-** | |
 | `String.Format(fmt, ...)` (static) | **-** | 補間で代替 |
-| `String.Join(sep, ...)` (static) | **Y** | List / 配列の要素は連結と同じく文字列化する (float は .NET と同じ文字列)。C backend の要素は string / int / float / bool |
+| `String.Join(sep, ...)` (static) | **Y** | List / 配列の要素は連結と同じく文字列化する (float は .NET と同じ文字列)。null の separator と要素は空文字列。C backend の要素は string / int / float / bool |
 | `String.Concat(...)` (static) | **-** | |
 | `String.Compare(a, b)` (static) | **-** | |
 | `String.Equals(a, b)` (static) | **-** | |
