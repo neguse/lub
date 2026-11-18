@@ -4553,7 +4553,7 @@ public sealed class CEmitter
             case "Next":
                 {
                     // Next() = tcs_rand_range(0, 2147483646)、Next(max) =
-                    // Next(0, max)、Next(min, max) = tcs_rand_range(min, max - 1) (空の範囲は min)
+                    // Next(0, max)、Next(min, max) = tcs_rand_below (上限は排他。空の範囲は min、max < min は fault)
                     if (args.Count == 0)
                         return $"({{ {head}tcs_rand_range({r}, 0, INT32_C(2147483646)); }})";
                     if (args.Count == 1)

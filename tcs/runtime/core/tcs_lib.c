@@ -794,9 +794,10 @@ static int32_t tcs_rand_range(TcsRandom *r, int32_t low, int32_t up) {
   return (int32_t)(p + (uint32_t)low);
 }
 
-/* Random.Next(min, max): 上限は排他。空の範囲 (max == min) は .NET と同じく min */
+/* Random.Next(min, max): 上限は排他。空の範囲 (max == min) は .NET と同じく min。
+   max < min は max を上端のまま渡して空の範囲にし、fault する (max - 1 は max が int.MinValue のとき溢れる) */
 static int32_t tcs_rand_below(TcsRandom *r, int32_t min, int32_t max) {
-  return tcs_rand_range(r, min, max == min ? min : max - 1);
+  return tcs_rand_range(r, min, max > min ? max - 1 : max);
 }
 
 /* ---- char (整数 code unit、ASCII 判定 / 変換。tcs VM の Char と同じ表) ---- */

@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// .NET が引数を拒んで例外を投げる Math の呼び出しは fault (il-spec §12)。引数は全て評価してから検査する。
+// .NET が引数を拒んで例外を投げる Math と Random の呼び出しは fault (il-spec §12)。引数は全て評価してから検査する。
 // 期待値は同じ program を CoreCLR で実行した stdout (どれも "before" の後に例外で停止する)
 public partial class DifferentialTests
 {
@@ -70,5 +70,61 @@ public partial class DifferentialTests
             }
             """, "P");
         Assert.Equal("5,0,10,3\nNaN,1,0,0.5\n2147483647,2147483647,7,0\n1,-1,0,-1", output);
+    }
+
+    [CTheory]
+    [InlineData("r.Next(int.MinValue)")]
+    [InlineData("r.Next(0, int.MinValue)")]
+    [InlineData("r.Next(int.MaxValue, int.MinValue)")]
+    [InlineData("r.Next(-1)")]
+    [InlineData("r.Next(int.MinValue + 1)")]
+    [InlineData("r.Next(5, 0)")]
+    [InlineData("r.Next(1, 0)")]
+    public void RandomNextInvalidBound_FaultsAfterPrecedingOutput(string expr)
+    {
+        Assert.Equal("before", Backends.AssertFaultParity($$"""
+            using System;
+            using Random = TinySystem.Random;
+            public static class P
+            {
+                public static void Main()
+                {
+                    Random r = new Random(1);
+                    Console.WriteLine("before");
+                    Console.WriteLine({{expr}});
+                    Console.WriteLine("after");
+                }
+            }
+            """, "P"));
+    }
+
+    // 幅が 0 か 1 の範囲は値が決まる。それ以外は範囲に入ることだけを見る (.NET とは乱数の列が違う)
+    [CFact]
+    public void RandomNextBoundary_MatchesDotnet()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using Random = TinySystem.Random;
+            public static class P
+            {
+                public static void Main()
+                {
+                    Random r = new Random(7);
+                    Console.WriteLine(r.Next(0) + "," + r.Next(1) + "," + r.Next(5, 5) + "," + r.Next(-3, -2));
+                    Console.WriteLine(r.Next(int.MinValue, int.MinValue) + "," + r.Next(int.MaxValue, int.MaxValue));
+                    Console.WriteLine(r.Next(int.MinValue, int.MinValue + 1) + "," + r.Next(int.MaxValue - 1, int.MaxValue));
+                    bool inRange = true;
+                    for (int i = 0; i < 64; i++)
+                    {
+                        int a = r.Next(int.MinValue, int.MaxValue);
+                        int b = r.Next(-5, 5);
+                        int c = r.Next(int.MaxValue);
+                        inRange = inRange && a < int.MaxValue && b >= -5 && b < 5 && c >= 0 && c < int.MaxValue;
+                    }
+                    Console.WriteLine(inRange);
+                }
+            }
+            """, "P");
+        Assert.Equal("0,0,5,-3\n-2147483648,2147483647\n-2147483648,2147483646\nTrue", output);
     }
 }

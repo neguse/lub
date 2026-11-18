@@ -1259,11 +1259,12 @@ static TvmStatus random_autoseed(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* Next(min, max): 上限は排他。空の範囲 (max == min) は .NET と同じく min */
+/* Next(min, max): 上限は排他。空の範囲 (max == min) は .NET と同じく min。
+   max < min は max を上端のまま渡して空の範囲にし、fault する (max - 1 は max が int.MinValue のとき溢れる) */
 static TvmStatus random_next(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   NONNULL_ARG(a[0].p, "");
   int32_t min = a[1].i, max = a[2].i;
-  return rand_range_(vm, rand_state(a[0].p), min, max == min ? min : max - 1,
+  return rand_range_(vm, rand_state(a[0].p), min, max > min ? max - 1 : max,
                      &r[0].i);
 }
 
