@@ -68,9 +68,10 @@ class Tcs:
         w = self.work
         w.mkdir(parents=True, exist_ok=True)
         print("[%s] build .NET tcs" % self.name, file=sys.stderr)
+        # 出力先を決めておき、tree ごとの TargetFramework に依らずに dll を見つける
         sh([dotnet(), "build", str(self.tree / "Transpiler" / "Transpiler.csproj"), "-c", "Release",
-            "-p:NuGetAudit=false", "-v:minimal"])
-        self.dll = self.tree / "Transpiler" / "bin" / "Release" / "net11.0" / "Transpiler.dll"
+            "-p:NuGetAudit=false", "-v:minimal", "-o", str(w / "dotnet")])
+        self.dll = w / "dotnet" / "Transpiler.dll"
         # tcs と一緒に配るファイル (build.sh と同じ配置)。C の tcs は実行ファイルの dir から読む
         (w / "runtime").mkdir(exist_ok=True)
         for d in ("core", "math", "fmt", "model", "utf8"):
