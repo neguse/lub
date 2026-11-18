@@ -165,6 +165,33 @@ static float tcs_math_max(float a, float b) {
   return signbit(b) ? a : b;
 }
 
+/* Math.Clamp: min > max faults (.NET's ArgumentException).
+   A NaN bound is not rejected because the comparison is false (same as .NET) */
+static int32_t tcs_math_clamp_i32(int32_t value, int32_t min, int32_t max) {
+  if (min > max)
+    tcs_fault("clamp-min-greater-than-max");
+  return value < min ? min : value > max ? max : value;
+}
+
+static float tcs_math_clamp_f32(float value, float min, float max) {
+  if (min > max)
+    tcs_fault("clamp-min-greater-than-max");
+  return value < min ? min : value > max ? max : value;
+}
+
+/* Math.Abs(int): int.MinValue cannot change sign, so it faults (.NET's
+   OverflowException) */
+static int32_t tcs_math_abs_i32(int32_t x) {
+  return x < 0 ? tcs_checked_neg(x) : x;
+}
+
+/* Math.Sign(float): NaN faults (.NET's ArithmeticException) */
+static int32_t tcs_math_sign_f32(float x) {
+  if (x != x)
+    tcs_fault("sign-of-nan");
+  return (x > 0) - (x < 0);
+}
+
 /* C# Math.Round (banker's). A result rounded to 0 keeps the sign of x.
    With digits, as in .NET's MathF.Round(float, int), it widens to double,
    multiplies by 10^digits, rounds, divides by 10^digits, and converts back to
