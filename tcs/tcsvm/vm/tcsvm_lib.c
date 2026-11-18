@@ -684,19 +684,28 @@ static TvmStatus u8_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 /* ---- Math (il-spec §13: transcendental functions use runtime/math, the rest
  * are determined by IEEE-754) ---- */
 
+/* MathF.Min / Max (IEEE 754:2019 minimum / maximum): propagates a NaN in either
+ * argument and treats -0 as less than +0.
+ * Same shape as tcs_math_min / max in the C runtime: when x != y (also when
+ * either is NaN) picks the NaN or the smaller / larger one, and when they are
+ * equal (including the +0 and -0 pair) picks by sign. */
 static TvmStatus m_min_f(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)vm;
   float x = a[0].f, y = a[1].f;
-  /* MathF.Min (IEEE 754:2019 minimum): propagates NaN and treats -0 as less
-   * than +0 */
-  r[0].f = x < y ? x : y < x ? y : (x != x || (x == 0 && signbit(x))) ? x : y;
+  if (x != y)
+    r[0].f = x != x || x < y ? x : y;
+  else
+    r[0].f = signbit(x) ? x : y;
   return TVM_OK;
 }
 
 static TvmStatus m_max_f(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)vm;
   float x = a[0].f, y = a[1].f;
-  r[0].f = x > y ? x : y > x ? y : (x != x || (y == 0 && signbit(y))) ? x : y;
+  if (x != y)
+    r[0].f = x != x || x > y ? x : y;
+  else
+    r[0].f = signbit(y) ? x : y;
   return TVM_OK;
 }
 

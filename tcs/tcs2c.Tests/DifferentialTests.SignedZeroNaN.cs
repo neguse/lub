@@ -49,6 +49,66 @@ public class SignedZeroNaNDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
+    // float Math.Min / Max match MathF.Min / Max for every pair of ±0, NaN and finite values (a NaN in either argument propagates, and -0 is less than +0).
+    // Clamp matches Math.Clamp even when the value or a bound is NaN or ±0
+    [CFact]
+    public void Math_MinMaxClamp_AllSignedZeroAndNaNPairs_MatchDotnet()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public class P
+            {
+                static string Show(float x) => x != x ? "NaN" : x == 0.0f && 1.0f / x < 0.0f ? "-0" : "" + x;
+                public static void Main()
+                {
+                    float p = 0.0f;
+                    float n = -1.0f * p;
+                    float nan = p / p;
+                    var values = new float[] { n, p, nan, 1.0f, -1.0f };
+                    foreach (var x in values)
+                    {
+                        var min = "";
+                        var max = "";
+                        foreach (var y in values)
+                        {
+                            min += " " + Show(Math.Min(x, y));
+                            max += " " + Show(Math.Max(x, y));
+                        }
+                        Console.WriteLine("min " + Show(x) + ":" + min);
+                        Console.WriteLine("max " + Show(x) + ":" + max);
+                    }
+                    float z = Math.Min(-0f, float.NaN);
+                    Console.WriteLine(z != z);
+                    Console.WriteLine(z == 0f);
+                    var clamp = "clamp";
+                    foreach (var v in values)
+                    {
+                        clamp += " " + Show(Math.Clamp(v, n, p));
+                        clamp += " " + Show(Math.Clamp(v, p, p));
+                        clamp += " " + Show(Math.Clamp(v, nan, 1.0f));
+                        clamp += " " + Show(Math.Clamp(v, -1.0f, nan));
+                    }
+                    Console.WriteLine(clamp);
+                }
+            }
+            """, "P");
+        Assert.Equal("""
+            min -0: -0 -0 NaN -0 -1
+            max -0: -0 0 NaN 1 -0
+            min 0: -0 0 NaN 0 -1
+            max 0: 0 0 NaN 1 0
+            min NaN: NaN NaN NaN NaN NaN
+            max NaN: NaN NaN NaN NaN NaN
+            min 1: -0 0 NaN 1 -1
+            max 1: 1 1 NaN 1 1
+            min -1: -1 -1 NaN -1 -1
+            max -1: -0 0 NaN 1 -1
+            True
+            False
+            clamp -0 -0 -0 -0 0 0 0 0 NaN NaN NaN NaN 0 0 1 1 -0 0 -1 -1
+            """.ReplaceLineEndings("\n"), output);
+    }
+
     [CFact]
     public void Linq_MinMaxAndListSearch_NaN_MatchDotnet()
     {
