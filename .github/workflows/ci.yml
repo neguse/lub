@@ -160,7 +160,7 @@ jobs:
 
       - name: Deps cache key
         id: deps
-        run: echo "key=$(bash scripts/deps-cache-key.sh linux)" >> "$GITHUB_OUTPUT"
+        run: bash scripts/deps-cache-key.sh linux >> "$GITHUB_OUTPUT"
 
       # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す
       - name: Cache deps
@@ -168,6 +168,7 @@ jobs:
         with:
           path: build-release-linux/deps
           key: ${{ steps.deps.outputs.key }}
+          restore-keys: ${{ steps.deps.outputs.restore }}
 
       # SDL3 は vendored build なので X11/Wayland/audio の dev ヘッダが要る。
       # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓。
@@ -257,7 +258,7 @@ jobs:
       - name: Deps cache key
         id: deps
         shell: bash
-        run: echo "key=$(bash scripts/deps-cache-key.sh windows)" >> "$GITHUB_OUTPUT"
+        run: bash scripts/deps-cache-key.sh windows >> "$GITHUB_OUTPUT"
 
       # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す
       - name: Cache deps
@@ -265,6 +266,7 @@ jobs:
         with:
           path: build-release/deps
           key: ${{ steps.deps.outputs.key }}
+          restore-keys: ${{ steps.deps.outputs.restore }}
 
       - name: Configure
         run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -527,7 +529,7 @@ jobs:
 
       - name: Deps cache key
         id: deps
-        run: echo "key=$(bash scripts/deps-cache-key.sh macos)" >> "$GITHUB_OUTPUT"
+        run: bash scripts/deps-cache-key.sh macos >> "$GITHUB_OUTPUT"
 
       # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す。
       # slang を持たない player (build-mac-player) も同じ物を使う。
@@ -538,6 +540,7 @@ jobs:
             build-mac/deps
             build-mac-player/deps
           key: ${{ steps.deps.outputs.key }}
+          restore-keys: ${{ steps.deps.outputs.restore }}
 
       # run-golden.sh は bash 4+ (mapfile / wait -n)。
       # macOS 同梱の bash は 3.2。
@@ -601,7 +604,7 @@ jobs:
 
       - name: Deps cache key
         id: deps
-        run: echo "key=$(bash scripts/deps-cache-key.sh "wasm-emsdk-$EMSDK_VERSION")" >> "$GITHUB_OUTPUT"
+        run: bash scripts/deps-cache-key.sh "wasm-emsdk-$EMSDK_VERSION" >> "$GITHUB_OUTPUT"
 
       # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す。
       # tcs2c の web の player (build/wasm-tcs) も同じ物を使う。
@@ -612,6 +615,7 @@ jobs:
             build/wasm/deps
             build/wasm-tcs/deps
           key: ${{ steps.deps.outputs.key }}
+          restore-keys: ${{ steps.deps.outputs.restore }}
 
       - name: Build lub player wasm
         run: |

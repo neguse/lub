@@ -234,7 +234,7 @@ jobs:
       # macOS の player の build は ci.yml の macos job と同じなので、master が作るその第三者の library (deps) を借りる (tag の run が保存しても次の tag からは見えない)。
       - name: Deps cache key
         id: deps
-        run: echo "key=$(bash scripts/deps-cache-key.sh macos)" >> "$GITHUB_OUTPUT"
+        run: bash scripts/deps-cache-key.sh macos >> "$GITHUB_OUTPUT"
       - name: Restore deps
         uses: actions/cache/restore@v4
         with:
@@ -242,6 +242,7 @@ jobs:
             build-mac/deps
             build-mac-player/deps
           key: ${{ steps.deps.outputs.key }}
+          restore-keys: ${{ steps.deps.outputs.restore }}
 
       - name: Install tools
         run: brew install bash ninja
