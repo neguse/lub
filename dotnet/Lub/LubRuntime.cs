@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -192,6 +193,7 @@ internal static unsafe class LubRuntime
     // 共有 library の場所: 環境変数 LUB_NATIVE_LIB (full path) が最優先。
     // 無ければ既定の探索 (実行ファイルの隣、system の library path)。
     // 最初の P/Invoke より前に host (App.Run) が呼ぶ。
+    // Windows は path を \ 区切りで渡さないと、library の dir から依存の DLL (SDL3.dll 等) を探さないので、GetFullPath で OS の区切りに直す。
     internal static void EnsureNative()
     {
         if (resolverSet) return;
@@ -200,7 +202,7 @@ internal static unsafe class LubRuntime
         {
             if (name != LibName) return IntPtr.Zero;
             var env = Environment.GetEnvironmentVariable("LUB_NATIVE_LIB");
-            if (!string.IsNullOrEmpty(env)) return NativeLibrary.Load(env);
+            if (!string.IsNullOrEmpty(env)) return NativeLibrary.Load(Path.GetFullPath(env));
             return IntPtr.Zero;
         });
     }
