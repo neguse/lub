@@ -7,7 +7,7 @@
 
 TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
                                 int32_t i, float f, const char *s, size_t slen,
-                                char *out, const char **error) {
+                                char *out, size_t cap, const char **error) {
   char fmt[40];
   size_t n = speclen - 1; /* 変換の文字を除いた長さ */
   char conv;
@@ -31,7 +31,7 @@ TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
       return -1;
     }
     memcpy(fmt + n, "lld", 4);
-    written = snprintf(out, TCS_PRINTF_MAX(0), fmt, value);
+    written = snprintf(out, cap, fmt, value);
     break;
   }
   case 'x':
@@ -51,7 +51,7 @@ TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
     fmt[n + 1] = 'l';
     fmt[n + 2] = conv;
     fmt[n + 3] = '\0';
-    written = snprintf(out, TCS_PRINTF_MAX(0), fmt, value);
+    written = snprintf(out, cap, fmt, value);
     break;
   }
   case 'c':
@@ -59,7 +59,8 @@ TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
       *error = "number expected";
       return -1;
     }
-    out[0] = (char)(unsigned char)i;
+    if (cap > 1)
+      out[0] = (char)(unsigned char)i;
     return 1;
   case 'f':
   case 'F':
@@ -80,7 +81,7 @@ TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
     }
     fmt[n] = conv;
     fmt[n + 1] = '\0';
-    written = snprintf(out, TCS_PRINTF_MAX(0), fmt, value);
+    written = snprintf(out, cap, fmt, value);
     break;
   }
   case 's': {
@@ -110,10 +111,13 @@ TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
       return -1;
     }
     len = slen < precision ? slen : precision;
+    if (width > 0x7FFFFFFF || len > 0x7FFFFFFF) {
+      *error = "string-length-overflow";
+      return -1;
+    }
     pad = width > len ? width - len : 0;
-    /* out は TCS_PRINTF_MAX(slen) byte */
-    if (pad > TCS_PRINTF_MAX(0))
-      pad = TCS_PRINTF_MAX(0);
+    if (len + pad >= cap)
+      return (long)(len + pad);
     if (left) {
       if (len != 0)
         memcpy(out, s, len);

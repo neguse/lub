@@ -88,14 +88,19 @@ static TvmStatus fmt_int(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 static TvmStatus printf_one(TvmVm *vm, TvmSlot *r, const TvmString *spec,
                             int kind, int32_t i, float f, const TvmString *s) {
   size_t slen = s ? (size_t)s->len : 0;
-  char *out = (char *)malloc(TCS_PRINTF_MAX(slen));
+  const char *data = s ? STR_DATA(s) : "";
+  const char *error = NULL;
+  /* 結果の長さを得てから、その大きさの out に書く */
+  long n = tcs_printf_one(STR_DATA(spec), (size_t)spec->len, kind, i, f, data,
+                          slen, NULL, 0, &error);
+  if (n < 0)
+    return tvm_fault_msg(vm, error);
+  char *out = (char *)malloc((size_t)n + 1);
   if (!out)
     return oom(vm);
-  const char *error = NULL;
-  long n = tcs_printf_one(STR_DATA(spec), (size_t)spec->len, kind, i, f,
-                          s ? STR_DATA(s) : "", slen, out, &error);
-  TvmStatus st =
-      n < 0 ? tvm_fault_msg(vm, error) : ret_str(vm, r, out, (size_t)n);
+  tcs_printf_one(STR_DATA(spec), (size_t)spec->len, kind, i, f, data, slen, out,
+                 (size_t)n + 1, &error);
+  TvmStatus st = ret_str(vm, r, out, (size_t)n);
   free(out);
   return st;
 }

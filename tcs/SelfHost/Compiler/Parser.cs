@@ -2889,7 +2889,6 @@ public sealed class Parser
                 int depth = 1;
                 int j = holeStart;
                 int formatAt = -1;
-                int alignAt = -1;
                 int parens = 0;
                 while (j < end)
                 {
@@ -2918,7 +2917,6 @@ public sealed class Parser
                         if (depth == 0) break;
                     }
                     else if (d == ':' && depth == 1 && parens == 0 && formatAt < 0) formatAt = j;
-                    else if (d == ',' && depth == 1 && parens == 0 && formatAt < 0 && alignAt < 0) alignAt = j;
                     j++;
                 }
                 if (j >= end)
@@ -2927,21 +2925,7 @@ public sealed class Parser
                     run = end;
                     break;
                 }
-                int exprEnd = alignAt >= 0 ? alignAt : formatAt >= 0 ? formatAt : j;
-                var hole = NAt(NodeKind.InterpHole, holeStart);
-                var lexer = new Lexer(_file, _diags, holeStart, exprEnd);
-                var sub = new Parser(_file, _diags, lexer.Tokenize());
-                hole.A = sub.Expression();
-                if (sub.Cur.Kind != TokenKind.End) _diags.Error("CS1003", "Syntax error in interpolation hole", _file, sub.Cur.Pos);
-                if (alignAt >= 0)
-                {
-                    int alignEnd = formatAt >= 0 ? formatAt : j;
-                    var alexer = new Lexer(_file, _diags, alignAt + 1, alignEnd);
-                    var asub = new Parser(_file, _diags, alexer.Tokenize());
-                    hole.B = asub.Expression();
-                }
-                if (formatAt >= 0) hole.Text = _file.Slice(formatAt + 1, j);
-                n.Add(Done(hole));
+                n.Add(InterpHole(holeStart, formatAt, j));
                 i = j + 1;
                 run = i;
                 continue;
@@ -3022,13 +3006,7 @@ public sealed class Parser
                     run = end;
                     break;
                 }
-                int exprEnd = formatAt >= 0 ? formatAt : j;
-                var hole = NAt(NodeKind.InterpHole, holeStart);
-                var lexer = new Lexer(_file, _diags, holeStart, exprEnd);
-                var sub = new Parser(_file, _diags, lexer.Tokenize());
-                hole.A = sub.Expression();
-                if (formatAt >= 0) hole.Text = _file.Slice(formatAt + 1, j);
-                n.Add(Done(hole));
+                n.Add(InterpHole(holeStart, formatAt, j));
                 i = j + dollars;
                 run = i;
                 continue;
@@ -3039,6 +3017,20 @@ public sealed class Parser
         FlushText(n, text, t.Pos);
         n.End = t.End;
         return n;
+    }
+
+    // 穴 (holeStart から閉じの } の位置 close まで。formatAt は書式の : の位置で、無ければ -1) の式、揃え、書式。
+    // 揃えは C# と同じく式を読んだ後ろの , からの式なので、式の中の , (初期化子、型引数) は揃えにならない
+    private Node InterpHole(int holeStart, int formatAt, int close)
+    {
+        var hole = NAt(NodeKind.InterpHole, holeStart);
+        var lexer = new Lexer(_file, _diags, holeStart, formatAt >= 0 ? formatAt : close);
+        var sub = new Parser(_file, _diags, lexer.Tokenize());
+        hole.A = sub.Expression();
+        if (sub.Accept(",")) hole.B = sub.Expression();
+        if (sub.Cur.Kind != TokenKind.End) _diags.Error("CS1003", "Syntax error in interpolation hole", _file, sub.Cur.Pos);
+        if (formatAt >= 0) hole.Text = _file.Slice(formatAt + 1, close);
+        return Done(hole);
     }
 
     // 穴が中身の終わりまでに閉じない (コメントが閉じの } を含む行の終わりまで続くときも)
