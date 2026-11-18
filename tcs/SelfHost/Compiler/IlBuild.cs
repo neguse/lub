@@ -4729,14 +4729,14 @@ public sealed class IlBuild
     }
 
     // Whether evaluating later may modify a local / parameter that earlier reads: a direct write by assignment / ++ / -- / ref or out argument,
-    // or when earlier reads a (captured) local written inside a lambda and later contains a call
+    // or when earlier reads a (captured) local written inside a lambda and later may run user code (a call, a construction, a custom property getter, a user operator)
     private bool WritesLocalReadBy(Node earlier, Node later)
     {
         var read = new List<LocalSym>();
         CollectLocalReads(earlier, read);
         if (read.Count == 0) return false;
         if (WritesAny(later, read)) return true;
-        if (!ContainsCallOrNew(later)) return false;
+        if (!MayWriteStorage(later)) return false;
         var member = ScopeRoots.Count > 0 ? ScopeRoots[0] : null;
         if (member == null) return false;
         foreach (var l in read)
@@ -4752,12 +4752,6 @@ public sealed class IlBuild
     {
         if (n.Kind == NodeKind.Name && n.Info == RefKind.Local && n.Local != null && !into.Contains(n.Local)) into.Add(n.Local);
         VisitChildren(n, c => CollectLocalReads(c, into));
-    }
-
-    private static bool ContainsCallOrNew(Node n)
-    {
-        if (n.Kind == NodeKind.Call || n.Kind == NodeKind.New) return true;
-        return AnyChild(n, c => ContainsCallOrNew(c));
     }
 
     private static bool LambdaWrites(Node n, List<LocalSym> symbols)
