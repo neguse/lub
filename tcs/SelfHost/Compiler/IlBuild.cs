@@ -1802,10 +1802,17 @@ public sealed class IlBuild
         if (id == "Dict.TryGetValue" && recvNode != null) return BuildDictTryGetValue(call, recvNode, m);
         // CompareTo of int / float (same type): an intrinsic that returns -1 / 0 / 1
         if (id == "Math.CompareTo" && recvNode != null)
-        {
-            var cmpRecv = BuildExpr(recvNode);
-            return cmpRecv == null ? null : new IlCall("Math.CompareTo", Prepend(cmpRecv, args), null);
-        }
+            return BuildValueReceiverCall(call, recvNode, args, (r, a) => new IlCall("Math.CompareTo", Prepend(r, a), null));
+        if (id == "Nullable.GetValueOrDefaultValue" && recvNode != null)
+            return BuildValueReceiverCall(call, recvNode, args, (r, a) =>
+            {
+                // It is a method argument, so it is always evaluated once (not deferred, unlike ??)
+                var stats = new List<IlStat>();
+                stats.Add(new IlLocal("__tcs_val", r, null, null));
+                stats.Add(new IlLocal("__tcs_fb", a[0], null, null));
+                stats.Add(new IlReturn(new IlNullableGetOrDefault(new IlVar("__tcs_val", null), new IlVar("__tcs_fb", null), null), null));
+                return new IlIife(stats, null);
+            });
         switch (id)
         {
             case "Console.WriteLine":
@@ -1945,15 +1952,6 @@ public sealed class IlBuild
                 return new IlInvoke(recv, callee.Text, args, null);
             case "Nullable.GetValueOrDefault":
                 return new IlNullableGetOrDefault(recv, DefaultIl(IlTypes.UnwrapNullable(recvType!)), null);
-            case "Nullable.GetValueOrDefaultValue":
-                {
-                    // It is a method argument, so it is always evaluated once (not deferred, unlike ??)
-                    var stats = new List<IlStat>();
-                    stats.Add(new IlLocal("__tcs_val", recv, null, null));
-                    stats.Add(new IlLocal("__tcs_fb", args[0], null, null));
-                    stats.Add(new IlReturn(new IlNullableGetOrDefault(new IlVar("__tcs_val", null), new IlVar("__tcs_fb", null), null), null));
-                    return new IlIife(stats, null);
-                }
             case "String.Trim":
                 return new IlCall("String.Trim", One(recv), null);
             case "String.ToUpper":
@@ -1992,6 +1990,47 @@ public sealed class IlBuild
                 }
         }
         return Unported("builtin " + id, call);
+    }
+
+    // A built-in method whose receiver is a value-type variable (a local / field / array element and the fields of that struct).
+    // C# fixes the storage location of the receiver (a null object and an out-of-range index fault here), evaluates the arguments, and then calls with the current value of that variable (C# §12.6.6).
+    // Only when the arguments may rewrite the storage location, it pins the reference-type prefix and the index in temps, reads the location once to check it, evaluates the arguments into temps, and reads the location again to call.
+    // A property result, a List index, and a ?. receiver are copies of the value and are read before the arguments
+    private IlExpr? BuildValueReceiverCall(Node call, Node recvNode, List<IlExpr> args, System.Func<IlExpr, List<IlExpr>, IlExpr?> build)
+    {
+        var argNodes = ArgExprs(call);
+        bool argsWrite = false;
+        foreach (var a in argNodes)
+        {
+            if (MayWriteStorage(a)) argsWrite = true;
+        }
+        var path = argsWrite && !(_condBinding != null && recvNode == _subNode) ? StructSlotPath(recvNode) : null;
+        if (path == null)
+        {
+            var recv = BuildExpr(recvNode);
+            return recv == null ? null : build(recv, args);
+        }
+        var stats = new List<IlStat>();
+        IlExpr? root = path.IsVariable ? BuildExpr(path.Base) : FixSlot(path.Base, "__tcs_obj", argNodes, stats);
+        if (root != null && path.Index != null)
+        {
+            var idx = FixSlot(path.Index, "__tcs_idx", argNodes, stats);
+            root = idx != null ? new IlIndex(root, idx, true, IlTypes.HasNilableElements(NaturalType(path.Base)), null) : null;
+        }
+        var place = root == null ? null : RebuildSlot(recvNode, path.Stop, root);
+        if (place == null) return null;
+        if (!path.IsVariable) stats.Add(new IlLocal("_", place, null, null));
+        var temps = new List<IlExpr>();
+        for (int i = 0; i < args.Count; i++)
+        {
+            var name = "__tcs_arg" + i;
+            stats.Add(new IlLocal(name, args[i], null, null));
+            temps.Add(new IlVar(name, null));
+        }
+        var result = build(place, temps);
+        if (result == null) return null;
+        stats.Add(new IlReturn(result, null));
+        return new IlIife(stats, null);
     }
 
     // A char argument of a string method is passed to the runtime as a one-character string (char is an integer code unit)
@@ -3264,10 +3303,12 @@ public sealed class IlBuild
         var ma = StripConv(assign.A!);
         var path = StructSlotPath(ma.A!)!;
         var stats = new List<IlStat>();
-        IlExpr? root = path.IsVariable ? BuildExpr(path.Base) : FixSlot(path.Base, "__tcs_obj", assign, stats);
+        var later = new List<Node>();
+        later.Add(assign.B!);
+        IlExpr? root = path.IsVariable ? BuildExpr(path.Base) : FixSlot(path.Base, "__tcs_obj", later, stats);
         if (root != null && path.Index != null)
         {
-            var idx = FixSlot(path.Index, "__tcs_idx", assign, stats);
+            var idx = FixSlot(path.Index, "__tcs_idx", later, stats);
             var bt = NaturalType(path.Base);
             root = idx != null ? new IlIndex(root, idx, true, IlTypes.HasNilableElements(bt), null) : null;
         }
@@ -3304,10 +3345,20 @@ public sealed class IlBuild
         return stats;
     }
 
-    private IlExpr? FixSlot(Node e, string temp, Node assign, List<IlStat> stats)
+    // Pins the prefix / index e of the storage location in a temp when reading it again could give a different value (later is the expressions evaluated after e)
+    private IlExpr? FixSlot(Node e, string temp, List<Node> later, List<IlStat> stats)
     {
         var built = BuildExpr(e);
-        if (built == null || (IsStableRead(e) && !WritesLocalReadBy(e, assign.B!))) return built;
+        if (built == null) return null;
+        if (IsStableRead(e))
+        {
+            bool written = false;
+            foreach (var n in later)
+            {
+                if (WritesLocalReadBy(e, n)) written = true;
+            }
+            if (!written) return built;
+        }
         stats.Add(new IlLocal(temp, built, null, null));
         return new IlVar(temp, null);
     }
