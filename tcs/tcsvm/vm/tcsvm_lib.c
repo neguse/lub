@@ -784,25 +784,26 @@ static TvmStatus m_logb(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* Math.Round: 中間は偶数へ。0 に丸めた結果は x の符号 (.NET と tcs2c と同じ) */
+/* Math.Round: 中間は偶数へ。0 に丸めた結果は x の符号 (.NET と tcs2c と同じ)。
+   digits 付きは .NET の MathF.Round(float, int) と同じく、double に広げて 10^digits を掛けて丸め、10^digits で割って float に戻す */
 static float round_even(float x, int32_t digits, int has_digits) {
-  float scale = 1.0f;
+  double scale = 1.0;
   for (int32_t i = 0; i < digits; i++)
-    scale *= 10.0f;
-  float scaled = x * scale;
-  float fl = floorf(scaled);
-  float diff = scaled - fl;
-  float rounded;
-  if (diff > 0.5f)
-    rounded = fl + 1.0f;
-  else if (diff < 0.5f)
+    scale *= 10.0;
+  double scaled = (double)x * scale;
+  double fl = floor(scaled);
+  double diff = scaled - fl;
+  double rounded;
+  if (diff > 0.5)
+    rounded = fl + 1.0;
+  else if (diff < 0.5)
     rounded = fl;
-  else if (fmodf(fl, 2.0f) == 0.0f)
+  else if (fmod(fl, 2.0) == 0.0)
     rounded = fl;
   else
-    rounded = fl + 1.0f;
-  rounded = copysignf(rounded, x);
-  return has_digits ? rounded / scale : rounded;
+    rounded = fl + 1.0;
+  rounded = copysign(rounded, (double)x);
+  return (float)(has_digits ? rounded / scale : rounded);
 }
 
 static TvmStatus m_round(TvmVm *vm, TvmSlot *a, TvmSlot *r) {

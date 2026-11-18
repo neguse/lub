@@ -162,24 +162,27 @@ static float tcs_math_max(float a, float b) {
   return signbit(b) ? a : b;
 }
 
-/* C# Math.Round (banker's)。digits 付きは
-   float 演算のまま丸める。0 に丸めた結果は x の符号を持つ */
+/* C# Math.Round (banker's)。0 に丸めた結果は x の符号を持つ。
+   digits 付きは .NET の MathF.Round(float, int) と同じく、double に広げて 10^digits を掛けて丸め、10^digits で割って float に戻す */
 static float tcs_math_round(float x, int32_t digits, int has_digits) {
-  float scale = has_digits ? tcs_math_pow(10.0f, (float)digits) : 1.0f;
-  float scaled = x * scale;
-  float fl = floorf(scaled);
-  float diff = scaled - fl;
-  float rounded;
-  if (diff > 0.5f)
-    rounded = fl + 1.0f;
-  else if (diff < 0.5f)
+  double scale = 1.0;
+  double scaled, fl, diff, rounded;
+  int32_t i;
+  for (i = 0; has_digits && i < digits; i++)
+    scale *= 10.0;
+  scaled = (double)x * scale;
+  fl = floor(scaled);
+  diff = scaled - fl;
+  if (diff > 0.5)
+    rounded = fl + 1.0;
+  else if (diff < 0.5)
     rounded = fl;
-  else if (fmodf(fl, 2.0f) == 0.0f)
+  else if (fmod(fl, 2.0) == 0.0)
     rounded = fl;
   else
-    rounded = fl + 1.0f;
-  rounded = copysignf(rounded, x);
-  return has_digits ? rounded / scale : rounded;
+    rounded = fl + 1.0;
+  rounded = copysign(rounded, (double)x);
+  return (float)(has_digits ? rounded / scale : rounded);
 }
 
 /* ---- List sort ----
