@@ -19,7 +19,10 @@ module / class / record class / enum / interface / method / field。
 
 - property・indexer・event・ループ構文・パターン・式位置の制御フロー・
   文字列補間は IL に存在しない（構築時 lowering 済み。examples 決定 1-2）
-- enum は i32 定数の集合。実行時表現は i32
+- enum は i32 定数の集合。実行時表現は i32。
+  基底型に依る意味は IL を作るときに i32 の演算にする。
+  8 / 16 bit の基底型への変換と演算の結果は基底型の範囲へ wrap する (符号なしは `v & 0xFF` / `v & 0xFFFF`、符号付きは `(v << 24) >> 24` / `(v << 16) >> 16`)。
+  uint の enum の大小比較は両方の operand の符号の bit を反転してから比べ (`(a ^ int.MinValue) < (b ^ int.MinValue)`)、比較なしの `List.Sort` は同じ比べ方の比較関数を渡す `List.Sort(list, comparison)` にする
 - 入れ子の型は外側の型と独立した型で、名前に外側の型の名前を `_` でつなぐ（`Outer_Inner`）
 - interface は値を作らない型。class / record class は実装する interface の一覧を実行時に持ち、
   interface を対象とする type test（IlIsType）はこの一覧で判定する。
@@ -232,6 +235,8 @@ host は打ち切られた後に次の entry を呼べる: tcs VM は `tvm_call`
   runtime/fmt の同じ実装が文字列を作る。
   それ以外の書式は printf の書式に写す（`IlCall("__tcs_format", [fmt, v])`）
 - enum (と enum の `T?`) の文字列化は `IlCall("String.FormatEnum", [v, spec])`。spec は string literal で、`名前:値` を `,` で並べる。`[Flags]` (と書式 "F") は先頭に `*` を付けて全 member を .NET の EnumInfo と同じ並び (値の符号なし昇順) で持ち、それ以外は値ごとに .NET が選ぶ名前を 1 つ持つ。値は実行時の 32 bit の 2 の補数 (uint の 0x80000000 は int.MinValue)。`T?` の値なしは空文字列
+  uint の enum の spec は名前の表の前 (`*` があればその後) に `+` を置き、表の名前で表せない値を符号なしの 10 進で書く (それ以外の enum は符号付き)。
+  書式 D は名前の表の無い spec (`""`、uint の enum は `"+"`) の `String.FormatEnum` で、値を数で書く
 - List.Sort の結果と比較関数の呼び出し列 (回数・順・引数) は .NET の introsort (dotnet/runtime の ArraySortHelper<T>。比較なしの float は NaN を先頭に寄せてから残りを並べる) と同じで、同値の要素の並びも一致する。
   比較関数が不整合で走査が区間の外に出る位置で、.NET は例外、tcs は fault になる
 - 数学関数は全 backend とプラットフォームでビット一致する。Sqrt / Floor / Ceil / Abs / Round は IEEE-754 で値が決まる。超越関数 (Sin / Cos / Tan / Exp / Log / Atan2 / Pow) は runtime/math の 1 つの C の実装 (tcs VM は link し、C は生成 C に埋め込む。.NET は TinySystem.Math の同じ手順の C# 版) が値を決める。

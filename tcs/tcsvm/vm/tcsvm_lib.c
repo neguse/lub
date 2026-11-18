@@ -114,81 +114,94 @@ static TvmStatus fmt_s(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
                     S(a[0]) ? S(a[0]) : &empty);
 }
 
+/* spec の 1 つの member `名前:値` ([from, to)) を読む。`:` が無ければ 0 */
+static int enum_member(const char *from, const char *to, const char **name,
+                       size_t *len, int32_t *value) {
+  const char *colon = memchr(from, ':', (size_t)(to - from));
+  if (!colon)
+    return 0;
+  char num[16] = {0};
+  size_t nl = (size_t)(to - colon - 1) < 15 ? (size_t)(to - colon - 1) : 15;
+  memcpy(num, colon + 1, nl);
+  *name = from;
+  *len = (size_t)(colon - from);
+  *value = (int32_t)strtoll(num, NULL, 10);
+  return 1;
+}
+
 /* enum の文字列化 (il-spec §13 の String.FormatEnum)。spec は `名前:値` を `,` で並べた列で、
-   Flags は先頭が `*` (値の符号なし昇順に並ぶ) */
+   先頭の `*` は Flags (値の符号なし昇順に並ぶ)、続く `+` は uint の enum (表に無い値を符号なしで書く)。
+   member は spec から 1 つずつ読む (Flags は後ろから) ので、member の数に上限は無い */
 static TvmStatus fmt_enum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *spec = S(a[1]);
   int32_t v = a[0].i;
-  const char *p = STR_DATA(spec), *end = p + spec->len;
-  int flags = p < end && *p == '*';
+  const char *begin = STR_DATA(spec), *end = begin + spec->len;
+  int flags = begin < end && *begin == '*';
   if (flags)
-    p++;
-  /* member を読む */
-  const char *names[256];
-  size_t lens[256];
-  int32_t values[256];
-  int n = 0;
-  while (p < end && n < 256) {
-    const char *colon = memchr(p, ':', (size_t)(end - p));
-    if (!colon)
-      break;
-    const char *comma = memchr(colon, ',', (size_t)(end - colon));
-    if (!comma)
-      comma = end;
-    names[n] = p;
-    lens[n] = (size_t)(colon - p);
-    char num[16] = {0};
-    size_t nl =
-        (size_t)(comma - colon - 1) < 15 ? (size_t)(comma - colon - 1) : 15;
-    memcpy(num, colon + 1, nl);
-    values[n] = (int32_t)strtoll(num, NULL, 10);
-    n++;
-    p = comma + 1;
-  }
-  char numbuf[16];
-  if (!flags) {
-    for (int i = 0; i < n; i++)
-      if (values[i] == v)
-        return ret_str(vm, r, names[i], lens[i]);
+    begin++;
+  int is_unsigned = begin < end && *begin == '+';
+  if (is_unsigned)
+    begin++;
+  const char *name;
+  size_t len;
+  int32_t value;
+  if (!flags || v == 0) {
+    /* Flags の 0 は先頭の member が 0 のときだけ名前 */
+    for (const char *p = begin; p < end;) {
+      const char *comma = memchr(p, ',', (size_t)(end - p));
+      if (!comma)
+        comma = end;
+      if (enum_member(p, comma, &name, &len, &value) && value == v)
+        return ret_str(vm, r, name, len);
+      if (flags)
+        break;
+      p = comma < end ? comma + 1 : end;
+    }
   } else {
-    if (v == 0) {
-      if (n > 0 && values[0] == 0)
-        return ret_str(vm, r, names[0], lens[0]);
-    } else {
-      uint32_t rest = (uint32_t)v;
-      int found[256], nf = 0;
-      for (int i = n - 1; i >= 0; i--) {
-        uint32_t cur = (uint32_t)values[i];
+    /* 上位の member から含まれる bit を取る (取る member は 1 bit 以上を消すので 32 個まで) */
+    const char *found[32];
+    size_t lens[32];
+    int nf = 0;
+    uint32_t rest = (uint32_t)v;
+    for (const char *q = end; q > begin && rest != 0;) {
+      const char *p = q;
+      while (p > begin && p[-1] != ',')
+        p--;
+      if (enum_member(p, q, &name, &len, &value)) {
+        uint32_t cur = (uint32_t)value;
         if (cur != 0 && (rest & cur) == cur) {
           rest &= ~cur;
-          found[nf++] = i;
-          if (rest == 0)
-            break;
+          found[nf] = name;
+          lens[nf] = len;
+          nf++;
         }
       }
-      if (rest == 0) {
-        size_t total = 0;
-        for (int k = 0; k < nf; k++)
-          total += lens[found[k]] + (k ? 2 : 0);
-        char *out = (char *)malloc(total + 1);
-        if (!out)
-          return oom(vm);
-        size_t at = 0;
-        for (int k = nf - 1; k >= 0; k--) {
-          memcpy(out + at, names[found[k]], lens[found[k]]);
-          at += lens[found[k]];
-          if (k) {
-            memcpy(out + at, ", ", 2);
-            at += 2;
-          }
+      q = p > begin ? p - 1 : begin;
+    }
+    if (rest == 0) {
+      size_t total = 0;
+      for (int k = 0; k < nf; k++)
+        total += lens[k] + (k ? 2 : 0);
+      char *out = (char *)malloc(total + 1);
+      if (!out)
+        return oom(vm);
+      size_t at = 0;
+      for (int k = nf - 1; k >= 0; k--) {
+        memcpy(out + at, found[k], lens[k]);
+        at += lens[k];
+        if (k) {
+          memcpy(out + at, ", ", 2);
+          at += 2;
         }
-        TvmStatus st = ret_str(vm, r, out, at);
-        free(out);
-        return st;
       }
+      TvmStatus st = ret_str(vm, r, out, at);
+      free(out);
+      return st;
     }
   }
-  int nn = snprintf(numbuf, sizeof numbuf, "%d", v);
+  char numbuf[16];
+  int nn = is_unsigned ? snprintf(numbuf, sizeof numbuf, "%u", (unsigned)v)
+                       : snprintf(numbuf, sizeof numbuf, "%d", v);
   return ret_str(vm, r, numbuf, (size_t)nn);
 }
 

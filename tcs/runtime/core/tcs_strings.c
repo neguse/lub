@@ -322,14 +322,26 @@ static TcsString *tcs_string_join_array_values(TcsString *sep, TcsArray *array,
   return tcs_string_join_values(sep, array->data, array->length, kind);
 }
 
+/* 名前で表せない enum の値の数。uint の enum は符号なしで書く */
+static TcsString *tcs_enum_number(int32_t value, bool is_unsigned) {
+  char buffer[16];
+  int written;
+  if (!is_unsigned)
+    return tcs_string_i32(value);
+  written = snprintf(buffer, sizeof(buffer), "%" PRIu32, (uint32_t)value);
+  if (written < 0 || (size_t)written >= sizeof(buffer))
+    tcs_fault("integer-format");
+  return tcs_string_new((const unsigned char *)buffer, (size_t)written);
+}
+
 /* enum の文字列化 (Enum.ToString)。names / values は .NET と同じ並び
    (Flags は全 member を値の符号なし昇順、それ以外は値ごとに 1 つ)。
    Flags は上位の member から含まれる bit を取り、名前を昇順に ", " で
    繋ぐ (取る member は 1 bit 以上を消すので 32 個まで)。どちらでも
-   表せない値は数値 */
+   表せない値は数値 (is_unsigned なら符号なし) */
 static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
                                   const int32_t *values, int32_t count,
-                                  bool flags) {
+                                  bool flags, bool is_unsigned) {
   int32_t found[32];
   int32_t found_count = 0;
   uint32_t rest = (uint32_t)value;
@@ -341,7 +353,7 @@ static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
     for (i = 0; i < count; i++)
       if (values[i] == value)
         return names[i];
-    return tcs_string_i32(value);
+    return tcs_enum_number(value, is_unsigned);
   }
   if (value == 0)
     return count > 0 && values[0] == 0 ? names[0] : tcs_string_i32(0);
@@ -356,7 +368,7 @@ static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
     }
   }
   if (rest != 0)
-    return tcs_string_i32(value);
+    return tcs_enum_number(value, is_unsigned);
   result = tcs_string_new(NULL, total);
   for (i = found_count - 1; i >= 0; i--) {
     TcsString *name = names[found[i]];
@@ -374,12 +386,14 @@ static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
 static TcsString *tcs_string_join_enum(TcsString *sep, const int32_t *data,
                                        size_t count, TcsString *const *names,
                                        const int32_t *values,
-                                       int32_t names_count, bool flags) {
+                                       int32_t names_count, bool flags,
+                                       bool is_unsigned) {
   TcsString **items = tcs_string_join_buffer(count);
   TcsString *result;
   size_t i;
   for (i = 0; i < count; i++)
-    items[i] = tcs_enum_format(data[i], names, values, names_count, flags);
+    items[i] = tcs_enum_format(data[i], names, values, names_count, flags,
+                               is_unsigned);
   result = tcs_string_join_items(sep, items, count);
   free(items);
   return result;

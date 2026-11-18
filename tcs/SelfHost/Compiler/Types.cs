@@ -109,6 +109,9 @@ public sealed class TypeSym
     public static readonly TypeSym ByteType = new TypeSym(TypeKind.Byte, "byte");
     public static readonly TypeSym UIntType = new TypeSym(TypeKind.UInt, "uint");
     public static readonly TypeSym ShortType = new TypeSym(TypeKind.Short, "short");
+    // sbyte と ushort は short と同じ Kind で、名前で幅と符号を分ける (IntegerBits、IsUnsignedInteger)
+    public static readonly TypeSym SByteType = new TypeSym(TypeKind.Short, "sbyte");
+    public static readonly TypeSym UShortType = new TypeSym(TypeKind.Short, "ushort");
     public static readonly TypeSym ObjectType = new TypeSym(TypeKind.Object, "object");
     public static readonly TypeSym DoubleType = new TypeSym(TypeKind.Double, "double");
     public static readonly TypeSym LongType = new TypeSym(TypeKind.Long, "long");
