@@ -190,6 +190,7 @@ host は打ち切られた後に次の entry を呼べる: tcs VM は `tvm_call`
   例外がサブセット外のため fault として定義）、
   runtime intrinsic が定義する error
 - IL の switch 式の if の連鎖は、discard の arm が無ければ else に `IlCall("__tcs_nomatch")` の文を置く。
+- string の明示の `ToString()` は `IlCall("__tcs_nonnull", [s])` で、参照の値をそのまま返し、null なら fault する (補間・連結・Console の null の string は空文字列のまま)
 - 同一入力・同一プログラムなら、どの backend・どの lowering モードでも
   同一の観測列の後に fault する（fault の位置も観測の一部）
 - fault 時の診断情報（メッセージ、source 位置）は品質事項であり適合条件では

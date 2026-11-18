@@ -1537,6 +1537,7 @@ public sealed class FunctionCompiler
             || callee == "__tcs_csub" || callee == "__tcs_cmul" || callee == "__tcs_cneg" || callee == "Math.CompareTo"
             || callee == "Dict.Count") return VType.Int;
         if (callee == "__tcs_str" || callee == "__tcs_fstr" || callee == "__tcs_bstr" || callee == "__tcs_nstr") return VType.String;
+        if (callee == "__tcs_nonnull") return TypeOf(c.Args[0]);
         if (callee == "__tcs_writeline" || callee == "List.Add") return VType.Void;
         if (callee == "List.Sort" && c.Args.Count == 2) return VType.Void;
         if (callee == "Dict.ContainsKey") return VType.Bool;
@@ -2675,6 +2676,15 @@ public sealed class FunctionCompiler
             var d = dest != null ? dest : Temp(VType.Int);
             Emit(Op.CNEG_I32, d.Reg, v.Reg);
             return d;
+        }
+        // 参照の値をそのまま返し、null なら fault
+        if (c.Callee == "__tcs_nonnull")
+        {
+            var v = Expr(c.Args[0], null, false);
+            Emit(Op.NNULL, v.Reg);
+            if (dest == null) return v;
+            Store(dest, v);
+            return dest;
         }
         if (c.Callee == "__tcs_trunc")
         {
