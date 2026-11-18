@@ -1960,8 +1960,9 @@ public sealed class IlBuild
                 return new IlCall("__tcs_upper", One(recv), null);
             case "String.ToLower":
                 return new IlCall("__tcs_lower", One(recv), null);
+            // ToString on a string is the receiver itself. A null receiver faults (null in interpolation and concatenation is the empty string, so __tcs_str is not used)
             case "String.ToString":
-                return new IlCall("__tcs_str", One(recv), null);
+                return new IlCall("__tcs_nonnull", One(recv), null);
             case "Int.ToString":
             case "Float.ToString":
             case "Bool.ToString":

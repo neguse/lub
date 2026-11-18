@@ -609,7 +609,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `.Split()` / `.Split(sep)` | **Y** | 引数なしは whitespace、空 / null の separator は元の文字列 1 要素。空の要素を残す |
 | `.ToUpper()` | **Y** | ASCII の文字だけを変える (.NET は ASCII の外の文字も変える。§27) |
 | `.ToLower()` | **Y** | 同上 |
-| `.ToString()` | **Y** | |
+| `.ToString()` | **Y** | 受け手の string そのもの。null の受け手は fault (.NET は NullReferenceException)。補間・連結・`Console.WriteLine` の null の string は空文字列 |
 | `string + string` | **Y** | |
 | `.IndexOf(c)` / `.IndexOf(s)` | **N/A** | TCS1002。`Contains`、`Split`、`Utf8Bytes` の走査 (§20b) |
 | `.LastIndexOf(c)` / `.LastIndexOf(s)` | **-** | |
