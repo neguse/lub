@@ -2525,9 +2525,13 @@ public sealed class IlBuild
         // (float?)x where x is int?: converts only when there is a value
         if (target.Kind == TypeKind.Nullable && target.Elem.Kind == TypeKind.Float && srcType.Kind == TypeKind.Nullable && IlTypes.IsIntegralSource(srcType.Elem))
             return new IlLiftedUn(IlUnOp.ToFloat, value, null);
-        // (int?)x: an explicit T → T? conversion
+        // (int?)x / (float?)x: an explicit T → U? conversion converts to U and then wraps (int → float? rounds to f32)
         if (target.Kind == TypeKind.Nullable && srcType.Kind != TypeKind.Nullable && srcType.Kind != TypeKind.Null)
-            return new IlNullableWrap(CastToEnum(target.Elem, srcType, value), IlTypes.Display(srcType), null);
+        {
+            if (target.Elem.Kind == TypeKind.Float && IlTypes.IsIntegralSource(srcType) && !IsFloatConverted(value))
+                value = new IlNumericConvert(value, "float", false, null);
+            return new IlNullableWrap(CastToEnum(target.Elem, srcType, value), IlTypes.Display(target.Elem), null);
+        }
         if (target.Kind == TypeKind.Enum) return CastToEnum(target, srcType, value);
         // (E?)x where x is T?: wraps when there is a value (lifted)
         if (target.Kind == TypeKind.Nullable && srcType.Kind == TypeKind.Nullable && target.Elem.Kind == TypeKind.Enum && !TypeSym.Same(target.Elem, srcType.Elem))

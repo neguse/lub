@@ -302,7 +302,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `??` (null 合体) | **Y** | 右辺は左辺が null のときだけ評価 |
 | `?.` (null 条件アクセス, C# 6) | **Y** | String/List/Dict の member も可。連鎖 (`x?.M().N()` / `x?.P.Q` / `x?[i].M()`) は一番内側を receiver に対する呼び出し / member にする。delegate の `f?.Invoke(...)` は null でなければ delegate 値を呼ぶ (戻り値は `T?` に wrap) |
 | object への値の変換 (boxing) | **P** | int / float / bool だけ。char / byte / enum などは IL で int と同じ値になるので TCS1001 `ValueBoxing` (文字列連結、補間、`Console.WriteLine` の引数は文字列にするだけなので書ける) |
-| `(T)x` (キャスト) | **Y** | 数値変換は il-spec §5 / §6 の契約: `(int)f` は 0 方向 truncation (`__tcs_trunc`)、整数 (int / uint / short / byte / char など) → float は f32 へ丸める (暗黙変換の代入・引数・return・比較の昇格も同じ。定数は float literal に畳む)。C は `(float)` / `tcs_trunc_f32`。object / interface / 型引数からの cast は実行時に型を確かめ、合わなければ fault する (class / record、generic でない interface、string、bool、int、float)。List / Dictionary / Queue / HashSet / 配列 / delegate / generic な型 / 型引数 `T` / enum / char / byte / `T?` への cast は TCS1001 `UnverifiableCast` |
+| `(T)x` (キャスト) | **Y** | 数値変換は il-spec §5 / §6 の契約: `(int)f` は 0 方向 truncation (`__tcs_trunc`)、整数 (int / uint / short / byte / char など) → float は f32 へ丸める (暗黙変換の代入・引数・return・比較の昇格と、`(float?)x` も同じ。定数は float literal に畳む)。C は `(float)` / `tcs_trunc_f32`。object / interface / 型引数からの cast は実行時に型を確かめ、合わなければ fault する (class / record、generic でない interface、string、bool、int、float)。List / Dictionary / Queue / HashSet / 配列 / delegate / generic な型 / 型引数 `T` / enum / char / byte / `T?` への cast は TCS1001 `UnverifiableCast` |
 | `is null` / `is not null` | **Y** | |
 | `is Type` | **Y** | designation なしの binary 形も対応。判定できる型は §5 の型パターンの行 |
 | `new T(args)` | **Y** | |
