@@ -834,7 +834,8 @@ float と double の key の Dictionary は対応外。
 HashSet の float の要素 (`UnsupportedHashSetElement(float)`) と同じく、作る地点 (`new Dictionary<float, V>()`、target-typed `new()`) を TCS1001 `UnsupportedDictionaryKey(float)` とし、`tcs vm` / `tcs c` は build を止める (analyzer は warning)。
 key 型が型 parameter の dict (generic method の中で作るもの) は対象外。
 
-user の class の key (参照で比べる) は tcs VM が .NET と同じ結果を出し、C backend は emit で `Dictionary key type not supported` として止まる (`tcs check` は通す)。
+user の class の key は参照で比べる (.NET の `EqualityComparer<K>.Default` と同じ。class は Equals / GetHashCode を override できない)。
+C backend の class の key の hash は address で、若い key を入れたまま GC の境界を跨ぐと次の操作で 1 回作り直す (HashSet の class の要素と同じ)。
 
 値で比べる key (struct / record struct / struct の `T?` / record class) の Dictionary は対応外。
 .NET (`EqualityComparer<K>.Default`) は等しい値の key を同じ key とみなす。
@@ -1021,7 +1022,6 @@ C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収でき
 次は仕様の差ではなく、tcs VM か C が .NET と違う結果を出す不具合。
 
 - `--ref` の型の user operator (`a + b`) は `tcs check` を通るが、`tcs vm` と `tcs c` は型の誤りで止まる
-- user の class を key にした Dictionary は、C backend だけが emit で止まる (§18)
 
 ## 28. 名前規則
 

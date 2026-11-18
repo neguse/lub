@@ -524,7 +524,11 @@ static void tcs_hashset_rehash(TcsHashSet *set) {
   for (slot = 0; (size_t)slot < set->items->length; slot++)
     if (set->nexts[slot] >= -1)
       tcs_hashset_link(set, slot);
-  set->has_young = false;
+  /* After crossing a boundary, all young elements are promoted.
+     When rebuilt (grown, compacted) within the same frame, the mark is kept
+     because the addresses of the young elements inserted change at the next
+     boundary */
+  set->has_young = set->has_young && set->frame == tcs_gc_frames;
   set->frame = tcs_gc_frames;
 }
 
@@ -666,14 +670,14 @@ static TcsList *tcs_dict_keys(TcsDict *dict) {
   TcsList *keys;
   size_t b;
   tcs_nonnull(dict);
-  keys = dict->key_is_string
+  keys = dict->key_kind != 0
              ? tcs_list_new(sizeof(TcsString *), &tcs_layout_ptr)
              : tcs_list_new(sizeof(int32_t), NULL);
   for (b = 0; b < dict->order_len; b++) {
     TcsDictNode *node = dict->order[b];
     if (node == NULL)
       continue;
-    if (dict->key_is_string)
+    if (dict->key_kind != 0)
       tcs_list_add(keys, &node->key_s, sizeof(node->key_s), &tcs_layout_ptr);
     else
       tcs_list_add(keys, &node->key_i, sizeof(node->key_i), NULL);
@@ -703,6 +707,7 @@ static void tcs_dict_clear(TcsDict *dict) {
   dict->order_len = 0;
   dict->version++;
   dict->count = 0;
+  dict->has_young = false;
 }
 
 /* ---- Random: xoshiro256** (il-spec §13). Integers are mapped to the range

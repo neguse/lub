@@ -117,15 +117,20 @@ typedef struct TcsClosure {
   void *cells[];
 } TcsClosure;
 
-/* Dictionary: chained hash (the bucket count doubles with count). Keys are
-   i32 / string / host handle (key_is_string == 2: the pointer of an external
-   data class is placed in key_s and identity is host_value; an object whose
-   host_value is 0 uses pointer identity), and the value is value_size bytes at
-   the end of the node (struct values allowed). Enumeration is in insertion
-   order (support-matrix §18): nodes are lined up in the order they were added
-   to order, removed nodes become NULL holes, and holes are compacted when
-   growing. version increases on a new key or Clear, making additions during
-   foreach a fault. */
+/* Dictionary: chained hash (the bucket count doubles with count).
+   key_kind is the kind of the key, the same as HashSet (0 = i32 in key_i, 1 =
+   string, 2 = host handle, 3 = class identity; 1 to 3 place the pointer in
+   key_s).
+   2 is an external data class whose identity is host_value (an object whose
+   host_value is 0 uses pointer identity).
+   The hash of 3 is the address, so buckets are rebuilt when a GC boundary is
+   crossed while a young key is held.
+   The value is value_size bytes at the end of the node (struct values allowed).
+   Enumeration is in insertion order (support-matrix §18): nodes are lined up in
+   the order they were added to order, removed nodes become NULL holes, and
+   holes are compacted when growing.
+   version increases on a new key or Clear, making additions during foreach a
+   fault. */
 typedef struct TcsDictNode {
   struct TcsDictNode *next;
   int32_t key_i;
@@ -138,13 +143,15 @@ typedef struct TcsDict {
   struct TcsDictNode **buckets; /* RAW heap buffer */
   size_t bucket_count;
   int32_t count;
-  int32_t key_is_string;
+  int32_t key_kind;
   size_t value_size;
   struct TcsDictNode *
       *order; /* RAW heap buffer (insertion order; holes are NULL) */
   size_t order_len;
   size_t order_cap;
   uint32_t version;
+  bool has_young; /* key_kind 3: a young key was inserted during the frame */
+  size_t frame;
 } TcsDict;
 
 static _Noreturn void tcs_fault(const char *kind);

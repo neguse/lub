@@ -298,7 +298,7 @@ public sealed class ContractFacts
         if (text.StartsWith(genericSet) && text.EndsWith(">"))
         {
             var element = MapType(Sub(text, Len(genericSet), n - 1));
-            if (element.Kind != CTypeKind.I32 && element.Kind != CTypeKind.String && element.Kind != CTypeKind.Ref)
+            if (!IsDictKey(element))
             {
                 CFail.Report("HashSet element type not supported: " + displayName);
                 return CType.Void;
@@ -367,10 +367,18 @@ public sealed class ContractFacts
         return displayName;
     }
 
-    // Types usable as Dictionary keys: int / string and external data classes holding a host handle (identity is host_value)
+    // Types usable as Dictionary keys and HashSet elements: int / string / class
     public bool IsDictKey(CType key)
     {
-        return key.Kind == CTypeKind.I32 || key.Kind == CTypeKind.String || key.Kind == CTypeKind.Ref && IsExternalClass(key.Name!);
+        return key.Kind == CTypeKind.I32 || key.Kind == CTypeKind.String || key.Kind == CTypeKind.Ref;
+    }
+
+    // Key kind for tcs_dict_new and tcs_hashset_new: 0 = i32, 1 = string (content), 2 = an external data class holding a host handle (host_value), 3 = a user class (reference identity)
+    public string KeyKind(CType key)
+    {
+        if (key.Kind == CTypeKind.String) return "1";
+        if (key.Kind == CTypeKind.Ref) return IsExternalClass(key.Name!) ? "2" : "3";
+        return "0";
     }
 
     // Whether it is itself an external data class declared by a --ref stub (ancestors are not checked)

@@ -3065,10 +3065,6 @@ public sealed class CEmitter
         return "NULL";
     }
 
-    // Element kind for tcs_hashset_new (0 = i32, 1 = string, 2 = host handle, 3 = class identity)
-    private string HashSetKeyKind(CType element) =>
-        element.Kind == CTypeKind.Ref && !_facts.IsDictKey(element) ? "3" : DictKeyKind(element);
-
     private CType TypeOfHashSetOp(IlCall call)
     {
         var name = Strings.From(call.Callee, ContractFacts.Len("TcsHashSet."));
@@ -3496,17 +3492,9 @@ public sealed class CEmitter
     private static string DictKeyArgs(CType keyType, string rendered)
     {
         if (keyType.Kind == CTypeKind.String) return $"0, {rendered}";
-        // handle key: the pointer is carried in the key_s slot (traced by the GC)
+        // class key: the pointer is carried in the key_s slot (traced by the GC)
         if (keyType.Kind == CTypeKind.Ref) return $"0, (TcsString *)(void *){rendered}";
         return $"{rendered}, NULL";
-    }
-
-    // Key kind for tcs_dict_new (0 = i32, 1 = string, 2 = host handle)
-    private static string DictKeyKind(CType keyType)
-    {
-        if (keyType.Kind == CTypeKind.String) return "1";
-        if (keyType.Kind == CTypeKind.Ref) return "2";
-        return "0";
     }
 
     // On failure, set dict to a type that has values (int → void) and return void
@@ -3574,7 +3562,7 @@ public sealed class CEmitter
         var dictTemp = Temp("dict");
         var sb = new List<string>();
         sb.Add($"TcsDict *{dictTemp} = tcs_typed(tcs_dict_new(" +
-            $"{DictKeyKind(type.KeyType!)}, " +
+            $"{_facts.KeyKind(type.KeyType!)}, " +
             $"sizeof({type.Element!.CName}), {LayoutRef(type.Element)}), {RuntimeTypeId(type)}); ");
         // Evaluate key → value in that order, as in C#
         foreach (var entry in table.Entries)
@@ -7110,7 +7098,7 @@ public sealed class CEmitter
     {
         var type = TypeOfNewHashSet(set);
         if (type.Element == null) return "";
-        return $"tcs_typed(tcs_hashset_new({HashSetKeyKind(type.Element!)}, sizeof({type.Element!.CName}), " +
+        return $"tcs_typed(tcs_hashset_new({_facts.KeyKind(type.Element!)}, sizeof({type.Element!.CName}), " +
             $"{LayoutRef(type.Element!)}), {RuntimeTypeId(type)})";
     }
 
