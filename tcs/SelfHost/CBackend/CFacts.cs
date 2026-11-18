@@ -298,7 +298,7 @@ public sealed class ContractFacts
         if (text.StartsWith(genericSet) && text.EndsWith(">"))
         {
             var element = MapType(Sub(text, Len(genericSet), n - 1));
-            if (element.Kind != CTypeKind.I32 && element.Kind != CTypeKind.String && element.Kind != CTypeKind.Ref)
+            if (!IsDictKey(element))
             {
                 CFail.Report("HashSet element type not supported: " + displayName);
                 return CType.Void;
@@ -367,10 +367,18 @@ public sealed class ContractFacts
         return displayName;
     }
 
-    // Dictionary の key にできる型: int / string と、host の handle を持つ外部 data class (同一性は host_value)
+    // Dictionary の key と HashSet の要素にできる型: int / string / class
     public bool IsDictKey(CType key)
     {
-        return key.Kind == CTypeKind.I32 || key.Kind == CTypeKind.String || key.Kind == CTypeKind.Ref && IsExternalClass(key.Name!);
+        return key.Kind == CTypeKind.I32 || key.Kind == CTypeKind.String || key.Kind == CTypeKind.Ref;
+    }
+
+    // tcs_dict_new と tcs_hashset_new の key の種別: 0 = i32、1 = string (内容)、2 = host の handle を持つ外部 data class (host_value)、3 = user の class (参照の同一性)
+    public string KeyKind(CType key)
+    {
+        if (key.Kind == CTypeKind.String) return "1";
+        if (key.Kind == CTypeKind.Ref) return IsExternalClass(key.Name!) ? "2" : "3";
+        return "0";
     }
 
     // --ref の stub が宣言した外部 data class 自身か (祖先は見ない)

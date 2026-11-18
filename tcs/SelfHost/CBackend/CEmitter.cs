@@ -3065,10 +3065,6 @@ public sealed class CEmitter
         return "NULL";
     }
 
-    // tcs_hashset_new の要素の種別 (0 = i32、1 = string、2 = host handle、3 = class の同一性)
-    private string HashSetKeyKind(CType element) =>
-        element.Kind == CTypeKind.Ref && !_facts.IsDictKey(element) ? "3" : DictKeyKind(element);
-
     private CType TypeOfHashSetOp(IlCall call)
     {
         var name = Strings.From(call.Callee, ContractFacts.Len("TcsHashSet."));
@@ -3496,17 +3492,9 @@ public sealed class CEmitter
     private static string DictKeyArgs(CType keyType, string rendered)
     {
         if (keyType.Kind == CTypeKind.String) return $"0, {rendered}";
-        // handle key: pointer を key_s の slot で運ぶ (GC が追う)
+        // class の key: pointer を key_s の slot で運ぶ (GC が追う)
         if (keyType.Kind == CTypeKind.Ref) return $"0, (TcsString *)(void *){rendered}";
         return $"{rendered}, NULL";
-    }
-
-    // tcs_dict_new の key 種別 (0 = i32、1 = string、2 = host handle)
-    private static string DictKeyKind(CType keyType)
-    {
-        if (keyType.Kind == CTypeKind.String) return "1";
-        if (keyType.Kind == CTypeKind.Ref) return "2";
-        return "0";
     }
 
     // 失敗したときは dict に値を持つ型 (int → void) を入れ、void を返す
@@ -3574,7 +3562,7 @@ public sealed class CEmitter
         var dictTemp = Temp("dict");
         var sb = new List<string>();
         sb.Add($"TcsDict *{dictTemp} = tcs_typed(tcs_dict_new(" +
-            $"{DictKeyKind(type.KeyType!)}, " +
+            $"{_facts.KeyKind(type.KeyType!)}, " +
             $"sizeof({type.Element!.CName}), {LayoutRef(type.Element)}), {RuntimeTypeId(type)}); ");
         // C# と同じく key → 値の順に評価する
         foreach (var entry in table.Entries)
@@ -7110,7 +7098,7 @@ public sealed class CEmitter
     {
         var type = TypeOfNewHashSet(set);
         if (type.Element == null) return "";
-        return $"tcs_typed(tcs_hashset_new({HashSetKeyKind(type.Element!)}, sizeof({type.Element!.CName}), " +
+        return $"tcs_typed(tcs_hashset_new({_facts.KeyKind(type.Element!)}, sizeof({type.Element!.CName}), " +
             $"{LayoutRef(type.Element!)}), {RuntimeTypeId(type)})";
     }
 
