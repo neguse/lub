@@ -518,6 +518,7 @@ static void remap_snapshot_statics(Reload *rl) {
   } while (0)
 
 static void swap_module(TvmVm *a, TvmVm *b) {
+  SWAP(uint32_t, module_hash);
   SWAP(uint32_t, nstrings);
   SWAP(char **, strings);
   SWAP(uint32_t, nconsts);
@@ -824,6 +825,7 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size,
 
 TvmStatus tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size) {
   TcsReader r = {batch, batch + size, 0};
+  uint32_t base = tcs_rd_u32(&r);
   uint32_t m = tcs_rd_u32(&r);
   if (r.bad || (size_t)(r.end - r.p) < (size_t)m + 4) {
     tvm_set_error(vm, "truncated reload batch");
@@ -835,6 +837,14 @@ TvmStatus tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size) {
   if (r.bad || (size_t)(r.end - r.p) != (size_t)n) {
     tvm_set_error(vm, "truncated reload batch");
     return TVM_LOAD_ERROR;
+  }
+  /* 計画は元の版の型と static の番号で書いてあるので、別の版の VM には当てない (doc/vm-design.md §13.3) */
+  if (base != vm->module_hash) {
+    tvm_set_error(vm,
+                  "the batch was made from another version of the module "
+                  "(the VM runs %08x, the batch expects %08x)",
+                  vm->module_hash, base);
+    return TVM_RESTART;
   }
   return tvm_apply(vm, module, m, r.p, n);
 }

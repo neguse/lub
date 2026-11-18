@@ -1,6 +1,6 @@
 // tcs の WebAssembly 版の検査 (node SelfHost/Web/test.mjs。先に SelfHost/Web/build.sh と SelfHost/native.sh)。
 //   1. vmOpen の module が、C の tcs の `tcs vm --export <entry>.*` (同じ VmSession) と byte で同じ
-//   2. vmUpdate の batch が、C の tcs の `tcs vm --reload-from <v1> <v2> --batch` と byte で同じ
+//   2. vmUpdate の batch が、C の tcs の `tcs vm --reload-from <v1> <v2> --batch` と、先頭の元の版の印 (v1 の module の FNV-1a) のほかは byte で同じ
 //   3. 誤りのある編集は ok: false と診断を返し、最後に成功した build を保つ (vmModule が変わらない)
 //   4. live に当てられない編集は restart を返す
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
@@ -27,6 +27,12 @@ const work = mkdtempSync(join(tmpdir(), "tcs-web-"));
 const nativeVm = (cwd, args, output) => {
   execFileSync(native, ["vm", ...args], { cwd, stdio: ["ignore", "ignore", "pipe"] });
   return readFileSync(join(cwd, output)).toString("base64");
+};
+// tcs VM の tvm_fnv1a と同じ FNV-1a (32 bit)
+const fnv1a = (bytes) => {
+  let h = 0x811c9dc5;
+  for (const b of bytes) h = Math.imul(h ^ b, 0x01000193) >>> 0;
+  return h;
 };
 const put = (dir, files) => {
   mkdirSync(dir, { recursive: true });
@@ -63,8 +69,12 @@ try {
   if (!update.ok || update.kind !== "batch") fail("reload update: " + JSON.stringify(update));
   put(join(work, "v1"), { "Game.cs": v1 });
   put(join(work, "v2"), { "Game.cs": v2 });
-  const batch = nativeVm(join(work, "v2"), ["--export", "Game.*", "--reload-from", "../v1/Game.cs", "Game.cs", "-o", "out.tcsb", "--batch", "out.batch"], "out.batch");
-  if (update.batch !== batch) fail("wasm batch differs from the native tcs vm --reload-from --batch");
+  const batch = Buffer.from(nativeVm(join(work, "v2"), ["--export", "Game.*", "--reload-from", "../v1/Game.cs", "Game.cs", "-o", "out.tcsb", "--batch", "out.batch"], "out.batch"), "base64");
+  // 元の版の印は module の source の path も含むので、session と同じ path (Game.cs) で変換した v1 の module から作る
+  const v1Module = Buffer.from(nativeVm(join(work, "v1"), ["--export", "Game.*", "Game.cs", "-o", "out.tcsb"], "out.tcsb"), "base64");
+  const base = Buffer.alloc(4);
+  base.writeUInt32LE(fnv1a(v1Module));
+  if (update.batch !== Buffer.concat([base, batch.subarray(4)]).toString("base64")) fail("wasm batch differs from the native tcs vm --reload-from --batch");
   console.log(`  same as native tcs vm --reload-from: batch (${updateMs.toFixed(0)} ms)`);
 
   // 3. 誤りのある編集は最後の build を保つ

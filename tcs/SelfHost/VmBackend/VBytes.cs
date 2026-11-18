@@ -27,6 +27,14 @@ public static class VBytes
         w.Add(v >> 24 & 255);
     }
 
+    /// <summary>byte 列の FNV-1a (32 bit)。batch が元の版の module の印に使い、tcs VM (tvm_fnv1a) が同じものを計算する。</summary>
+    public static int Fnv1a(List<int> bytes)
+    {
+        int h = -2128831035;
+        foreach (var b in bytes) h = (h ^ b) * 16777619;
+        return h;
+    }
+
     public static void Bytes(List<int> w, List<int> bytes)
     {
         foreach (var b in bytes) w.Add(b);

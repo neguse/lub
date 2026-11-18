@@ -220,6 +220,30 @@ public class VmReloadTests
     }
 
     [Fact]
+    public void Session_BatchIsAppliedOnlyToTheVersionItWasMadeFrom()
+    {
+        if (!Backends.VmEnabled) return;
+        // batch の計画は元の版 (v2) の field の番号で書いてある。v1 の VM に当てると値が別の field に写るので、VM は当てずに restart を求める (doc/vm-design.md §13.3)
+        var session = new TinyCs.Vm.VmSession(null, ["Game.*"], []);
+        const string game = "public static class Game { static Box box = new Box(); public static void Frame() { box.A++; } public static void Report() { Console.WriteLine(box.A + \" \" + box.Rest()); } }";
+        const string v1 = Header + "public class Box { public int A = 1; public string Rest() { return \"\"; } } " + game;
+        const string v2 = Header + "public class Box { public int B = 20; public int A = 1; public string Rest() { return \"\" + B; } } " + game;
+        const string v3 = Header + "public class Box { public int C = 300; public int B = 20; public int A = 1; public string Rest() { return B + \" \" + C; } } " + game;
+        var first = session.Update([v1]);
+        var second = session.Update([v2]);
+        var third = session.Update([v3]);
+        Assert.Equal("module", first.Kind);
+        Assert.Equal("batch", second.Kind);
+        Assert.Equal("batch", third.Kind);
+        var (code, stdout, stderr) = Backends.RunVmBatch(second.Module!, third.Batch!, "Game", 3);
+        Assert.True(code == 0, stderr);
+        Assert.Equal("4 20 300", stdout);
+        (code, stdout, stderr) = Backends.RunVmBatch(first.Module!, third.Batch!, "Game", 3);
+        Assert.True(code == 3, "exit " + code + ": " + stdout + " " + stderr);
+        Assert.Contains("the batch was made from another version of the module", stderr);
+    }
+
+    [Fact]
     public void ChangedStaticInitializer_ReevaluatesThatStaticAndItsReaders()
     {
         if (!Backends.VmEnabled) return;

@@ -282,6 +282,9 @@ typedef struct TvmGcHeader {
 
 struct TvmVm {
   /* module */
+  /* 動かしている module の byte 列の FNV-1a (tvm_load_module で読んだものか、最後に tvm_apply で当てた module)。
+     tvm_apply_batch は batch の元の版と比べる */
+  uint32_t module_hash;
   uint32_t nstrings;
   char **strings;
   uint32_t nconsts;
@@ -385,6 +388,9 @@ struct TvmVm {
   uint32_t nprof_gc;
   char error[4096];
 };
+
+/* byte 列の FNV-1a (32 bit)。module の版の印 (tcsvm_load.c) */
+uint32_t tvm_fnv1a(const uint8_t *p, size_t n);
 
 /* tcsvm_debug.c */
 /* 型の表の新しい版 (VM をまたいで一意。tcsvm_host.c) */

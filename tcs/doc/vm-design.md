@@ -437,7 +437,7 @@ VM を組み込む host の流れ:
 
 1. `tvm_new` で VM を作り、`tvm_host` で host の関数を全部登録してから `tvm_load` で module を読む (static initializer が走る)
 2. entry の関数 (OnInit / OnFrame など、`tcs vm --export` で module に入れたもの) を `tvm_find` で引き、フレームごとに `tvm_call` で呼んでから `tvm_frame_end` を呼ぶ。frame を跨いで持つ object は `tvm_hold` の handle にする
-3. reload の batch (§13.3 の `vm_batch`、web では session の応答) を受け取ったら、フレーム境界で `tvm_apply_batch` を呼ぶ。`TVM_OK` なら関数を `tvm_find` で引き直す (警告は `tvm_error`)。`TVM_RESTART` なら新しい module (batch の中の module か `-o` の出力) で VM を作り直す。`TVM_LOAD_ERROR` なら旧版のまま続ける
+3. reload の batch (§13.3 の `vm_batch`、web では session の応答) を受け取ったら、フレーム境界で `tvm_apply_batch` を呼ぶ。`TVM_OK` なら関数を `tvm_find` で引き直す (警告は `tvm_error`)。`TVM_RESTART` (batch が VM の動かしている版と違う版から作られていたときも。§13.3) なら新しい module (batch の中の module か `-o` の出力) で VM を作り直す。`TVM_LOAD_ERROR` なら旧版のまま続ける
 4. `TVM_FAULT` は `tvm_error` が C# の trace を持つ。止めるか、次の reload を待つかは host が決める (§11)
 
 `tcsvm --lib CLASS N` は同じ流れの最小の host (Setup → (Frame → フレーム境界) × N → Report) で、`--reload K NEW.tcsb PLAN` / `--reload-batch K BATCH` で K 回目のフレームの後に新版を当てる。
@@ -448,10 +448,16 @@ VM を組み込む host の流れ:
 
 | kind | 本文 | host の扱い |
 |---|---|---|
-| `vm_batch` | batch の byte 列 (u32 の module の長さ、module、u32 の計画の長さ、計画) を base64 にした 1 行と改行 | フレーム境界で `tvm_apply_batch` |
+| `vm_batch` | batch の byte 列 (u32 の元の版の module の FNV-1a、u32 の module の長さ、module、u32 の計画の長さ、計画) を base64 にした 1 行と改行 | フレーム境界で `tvm_apply_batch` |
 | `reload_notes` | live に当てたが知らせたい変化 (instance の field の初期化子の変更など) の行。`vm_batch` の前に送る | 表示する |
 | `restart_required` | restart の理由の行 | `-o` を読み直して VM を作り直す。以後の差分はその build から作る |
 | `build_failed` | 診断の行 (stderr にも書く) | 表示する。最後に通った build のまま次の編集を待つ |
+
+`vm_batch` の元の版は、直前に通った build の module (その build の `-o`) である。
+`tvm_apply_batch` は、VM が動かしている module (`tvm_load` で読んだものか、最後に `tvm_apply` / `tvm_apply_batch` で当てたもの) の FNV-1a と比べ、違えば何も変えずに `TVM_RESTART` を返す。
+計画は元の版の型と static の番号で書いてあるので、別の版の VM に当てると値が別の field に写るからである。
+host は `-o` を読み直して追いつく (`-o` はその batch の build か、それより新しい build を書き終えている)。
+増分 session (§15.3) と、host が名前で持つ session (`SelfHost/Tool/Sessions.cs`) も同じ batch を作る。
 
 どの kind の本文も改行終端のテキスト行。検査は `tcsvm/tests/host/watch_test.py`。
 

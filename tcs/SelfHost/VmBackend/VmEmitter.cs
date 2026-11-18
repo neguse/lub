@@ -89,10 +89,12 @@ public static class VmEmitter
         return module;
     }
 
-    /// <summary>batch (watch の stream と tvm_apply_batch の形): u32 の module の長さ、module、u32 の計画の長さ、計画。</summary>
-    public static List<int> Batch(List<int> module, List<int> plan)
+    /// <summary>batch (watch の stream と tvm_apply_batch の形): u32 の元の版の module の FNV-1a (VBytes.Fnv1a)、u32 の module の長さ、
+    /// module、u32 の計画の長さ、計画。VM は元の版が動かしている module と違えば当てない (doc/vm-design.md §13.3)。</summary>
+    public static List<int> Batch(int baseHash, List<int> module, List<int> plan)
     {
         var w = new List<int>();
+        VBytes.I32(w, baseHash);
         VBytes.I32(w, module.Count);
         VBytes.Bytes(w, module);
         VBytes.I32(w, plan.Count);

@@ -1290,6 +1290,13 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
 
 /* ---- 入口 ---- */
 
+uint32_t tvm_fnv1a(const uint8_t *p, size_t n) {
+  uint32_t h = 2166136261u;
+  for (size_t i = 0; i < n; i++)
+    h = (h ^ p[i]) * 16777619u;
+  return h;
+}
+
 TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
   if (vm->nfuncs) {
     tvm_set_error(vm, "one module per VM (use tvm_apply to reload)");
@@ -1378,6 +1385,7 @@ TvmStatus tvm_load_module(TvmVm *vm, const uint8_t *bytes, size_t size) {
       return TVM_LOAD_ERROR;
     }
   }
+  vm->module_hash = tvm_fnv1a(bytes, size);
   return TVM_OK;
 }
 

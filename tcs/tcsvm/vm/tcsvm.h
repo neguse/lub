@@ -69,8 +69,10 @@ void tvm_use_heap(TvmVm *vm, const TvmHeap *heap); /* tvm_load の前 */
 void tvm_heap_roots(TvmSlotFn fn);
 void tvm_heap_refs(void *payload, TvmSlotFn fn);
 
-/* tcs2vm --watch の stream の vm_batch (base64 を戻した byte 列: u32 の module の長さ、module、u32 の計画の長さ、
-   計画) を当てる。戻り値は tvm_apply と同じ */
+/* tcs2vm --watch の stream の vm_batch (base64 を戻した byte 列: u32 の元の版の module の FNV-1a、u32 の module の長さ、
+   module、u32 の計画の長さ、計画) を当てる。戻り値は tvm_apply と同じ。
+   元の版が VM の動かしている module (tvm_load で読んだものか、最後に tvm_apply / tvm_apply_batch で当てた module) と違えば、当てずに
+   TVM_RESTART を返す (host は新しい module で VM を作り直す) */
 TvmStatus tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size);
 
 /* ---- host (doc/vm-design.md §8.5、§13) ----

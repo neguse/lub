@@ -54,6 +54,8 @@ public sealed class VmSession
     private Session? _session;
     // 最後に通った build の型と static の記述 (次の reload の旧版)
     private VmDescription? _lastDesc;
+    // 最後に通った build の module の FNV-1a (次の batch の元の版。host はその build の module を動かしている)
+    private int _lastHash;
     // session に入れた入力の path (一覧から消えた file を session から外す)
     private List<string> _paths = new List<string>();
     /// <summary>--trace の path の先頭 (module を作るたびに VmTrace に置く)。</summary>
@@ -114,6 +116,7 @@ public sealed class VmSession
             if (CFail.Failed) return Failed();
             _last = next;
             _lastDesc = desc;
+            _lastHash = VBytes.Fnv1a(module);
             var r = new VmUpdate("module");
             r.Module = module;
             return r;
@@ -124,6 +127,8 @@ public sealed class VmSession
         if (CFail.Failed) return Failed();
         _last = next;
         _lastDesc = nextDesc;
+        int baseHash = _lastHash;
+        _lastHash = VBytes.Fnv1a(m);
         if (reasons.Count > 0)
         {
             var r = new VmUpdate("restart");
@@ -133,7 +138,7 @@ public sealed class VmSession
         }
         var b = new VmUpdate("batch");
         b.Module = m;
-        b.Batch = VmEmitter.Batch(m, plan);
+        b.Batch = VmEmitter.Batch(baseHash, m, plan);
         b.Notes = notes;
         return b;
     }
@@ -262,11 +267,18 @@ public sealed class VmRun
             var oldDiags = new List<string>();
             var old = VmSession.Export(oldSources, _o.ReloadFrom, refs, oldDiags);
             if (old == null) return VError("TinyC# diagnostics (old version):\n" + string.Join("\n", oldDiags));
+            // batch の元の版は、旧版を同じ引数で変換した module (tcs vm <OLD.cs> -o の出力と同じ byte 列)
+            int baseHash = 0;
+            if (_o.BatchOut != "")
+            {
+                baseHash = VBytes.Fnv1a(VmEmitter.Emit(old, _o.Entry, _o.Exports));
+                if (CFail.Failed) return VError(CFail.Error);
+            }
             var module = VmEmitter.EmitReload(old, exported, _o.Entry, _o.Exports, VmSession.RestartReasons(old, exported), VmSession.ReinitStatics(old, exported), out List<int> plan, out List<string> reasons);
             if (CFail.Failed) return VError(CFail.Error);
             if (WriteBytes(_o.Output, module) != 0) return 1;
             if (_o.PlanOut != "" && WriteBytes(_o.PlanOut, plan) != 0) return 1;
-            if (_o.BatchOut != "" && WriteBytes(_o.BatchOut, VmEmitter.Batch(module, plan)) != 0) return 1;
+            if (_o.BatchOut != "" && WriteBytes(_o.BatchOut, VmEmitter.Batch(baseHash, module, plan)) != 0) return 1;
             return 0;
         }
         var bytes = VmEmitter.Emit(exported, _o.Entry, _o.Exports);

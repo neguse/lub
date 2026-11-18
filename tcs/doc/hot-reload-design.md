@@ -127,7 +127,7 @@ migration が到達できる生存状態の全域 (roots):
 restart は 2 か所で決まる。
 
 1. **compiler** (`ReloadRules`、`SelfHost/Tool/ReloadRules.cs`): 旧版と新版の IL の metadata (型の種類、base、static と const の型と initializer の hash、enum member) を比べる。規則は §11 の表
-2. **VM** (`tvm_apply`、vm-design §12.3): 生きている object の型が新版に無い、生きている closure の関数に同じ形 (引数・戻り値・捕捉の種類と型) の対応が無い、旧版が string の定数を持つのに新版に string の型が無い
+2. **VM** (`tvm_apply`、vm-design §12.3): 生きている object の型が新版に無い、生きている closure の関数に同じ形 (引数・戻り値・捕捉の種類と型) の対応が無い、旧版が string の定数を持つのに新版に string の型が無い、batch の元の版が VM の動かしている module と違う (`tvm_apply_batch`。§9 の版の合意)
 
 VM は struct の値の居場所を型で辿れるので、closure の捕捉や容器の中の struct の値を理由に restart にすることは無い。VM の検出は旧版の状態に対して行う — 生存状態は旧版のプログラムが作ったものだから。
 
@@ -162,6 +162,7 @@ v2 の IL ──┘        │      ── 分類 (live の batch / requiresRest
 - metadata は IlExport (class / struct / enum の field、static と const、enum member、initializer の hash) と、module の型記述子を正とする
 - **ホスト統合契約**: ホスト側の義務は「受け取った batch をフレーム境界で当て、restart なら module を読み直す」のみ (vm-design §13.2)。旧版の保持・差分の計算・restart 判定・batch の生成はすべて driver 側 (UC1 では同一マシンの `tcs vm --watch`、UC2 では browser の増分 session)。この自己完結性が実機 dev への延長条件
 - **watch の stream (UC1)**: `tcs vm --watch` は標準出力へ `@@tcs_<kind> <UTF-8 の byte 数>\n` の行と本文の組を順に書く (kind は `vm_batch`、`reload_notes`、`restart_required`、`build_failed`。vm-design §13.3)。どの kind も、書く時点で `-o` の出力はその build で書き終えている。`restart_required` ではホストは出力を読み直して VM を起動し直し、driver は以後の差分をその build から作る。本文はどれも改行終端のテキスト行
+- 版の合意: batch は、元にした版の module の FNV-1a (32 bit) を先頭に持つ。VM は動かしている module (読み込んだものか、最後に当てたもの) の FNV-1a を覚えておき、batch の元の版と違えば何も変えずに `TVM_RESTART` を返す。ホストはそれを restart と同じに扱い、出力 (`-o`) から VM を作り直す。driver は batch を送る前にその build の出力を書き終えているので、作り直した VM はその build かそれより新しい build になり、続く batch は元の版が合えば当たり、合わなければまた作り直す。計画は元の版の型と static の番号で書いてあるので、別の版の VM に当てると値が別の field に写る。この合意で、当てられなかった batch (`TVM_LOAD_ERROR`) の後や、ホストが自分で VM を作り直した後 (ゲームが求めた作り直し、出力の読み直しなど) に届いた batch が、元の違う VM に当たることはない
 - reload の適用は 1 frame を超えるブロックになり得る (作り直しは heap の大きさに比例する)。dev 専用のヒッチとして許容する
 
 ## 10. backend に依らない規則
