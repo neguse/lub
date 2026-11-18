@@ -253,20 +253,20 @@ static TcsString *tcs_string_join_items(TcsString *sep, TcsString **items,
   size_t total = 0;
   size_t i;
   size_t at = 0;
+  /* A null separator and null elements are empty strings (same as .NET) */
+  size_t sep_length = sep != NULL ? sep->length : 0;
   TcsString *result;
-  tcs_nonnull(sep);
-  /* null elements are empty strings (same as .NET) */
   for (i = 0; i < count; i++) {
     if (items[i] != NULL)
       total = tcs_string_length_add(total, items[i]->length);
     if (i > 0)
-      total = tcs_string_length_add(total, sep->length);
+      total = tcs_string_length_add(total, sep_length);
   }
   result = tcs_string_new(NULL, total);
   for (i = 0; i < count; i++) {
-    if (i > 0) {
-      memcpy(result->data + at, sep->data, sep->length);
-      at += sep->length;
+    if (i > 0 && sep_length != 0) {
+      memcpy(result->data + at, sep->data, sep_length);
+      at += sep_length;
     }
     if (items[i] == NULL)
       continue;
