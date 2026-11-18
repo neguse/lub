@@ -259,8 +259,9 @@ public sealed class CEmitter
 
         _output.Add(RuntimePrelude());
         _output.Add(RuntimeMath());
-        _output.Add(RuntimeFmt());
+        // runtime/fmt の数の読み取りが runtime/utf8 の空白を使うので、utf8 を先に置く
         _output.Add(RuntimeUtf8());
+        _output.Add(RuntimeFmt());
         _output.Add(RuntimeCore());
         _output.Add(RuntimeGc());
         _output.Add(RuntimeCollections());
@@ -1035,13 +1036,13 @@ public sealed class CEmitter
     }
 
     private string RuntimeMath() => EmbedRuntime("math", "TCS_MATH_STATIC", "tcs_math.h tcs_math_internal.h atan2f.c exppowf.c log10f.c log2f.c logf.c sincosf.c tanf.c");
-    private string RuntimeFmt() => EmbedRuntime("fmt", "TCS_FMT_STATIC", "tcs_fmt.h f2s.c printf.c");
+    private string RuntimeFmt() => EmbedRuntime("fmt", "TCS_FMT_STATIC", "tcs_fmt.h f2s.c printf.c parse.c");
     // 型記述子の parser と layout (doc/object-model.md)。TCS_VERIFY_TYPES の build だけが使う
     private string RuntimeModel() => EmbedRuntime("model", "TCS_MODEL_STATIC", "tcs_model.h tcs_model.c");
     private string RuntimeUtf8() => EmbedRuntime("utf8", "TCS_UTF8_STATIC", "tcs_utf8.h tcs_utf8.c");
     // tcs2c の runtime の本体 (runtime/core。object-model §10.2 の X-2 で VM と共有する C)。生成 C にそのまま並べる断片
     private string RuntimePrelude() => RuntimeFile("core/tcs_prelude.h");
-    // runtime/fmt の tcs_format_f32 を使うので、埋め込む runtime (Math、Fmt、Utf8) の後に置く
+    // runtime/fmt の tcs_format_f32 を使うので、埋め込む runtime (Math、Utf8、Fmt) の後に置く
     private string RuntimeCore() => RuntimeFile("core/tcs_core.c");
     private string RuntimeGc() => RuntimeFile("core/tcs_gc.c");
     private string RuntimeCollections() => RuntimeFile("core/tcs_collections.c");
@@ -1053,7 +1054,7 @@ public sealed class CEmitter
     {
         var list = new List<string>();
         foreach (var n in "tcs_math.h tcs_math_internal.h atan2f.c exppowf.c log10f.c log2f.c logf.c sincosf.c tanf.c".Split(' ')) list.Add("math/" + n);
-        foreach (var n in "tcs_fmt.h f2s.c printf.c".Split(' ')) list.Add("fmt/" + n);
+        foreach (var n in "tcs_fmt.h f2s.c printf.c parse.c".Split(' ')) list.Add("fmt/" + n);
         foreach (var n in "tcs_model.h tcs_model.c".Split(' ')) list.Add("model/" + n);
         foreach (var n in "tcs_utf8.h tcs_utf8.c".Split(' ')) list.Add("utf8/" + n);
         foreach (var n in "tcs_prelude.h tcs_core.c tcs_gc.c tcs_collections.c tcs_strings.c tcs_lib.c".Split(' ')) list.Add("core/" + n);
