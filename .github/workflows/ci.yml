@@ -471,7 +471,7 @@ jobs:
 
   # macOS regression gate: scripts/apple-gate.sh --part mac (CI と手動の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> 視覚 golden -> shader cache の往復。
   # Metal は runner の GPU で描くので byte 一致にはならず、golden は Linux の *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
-  # iOS 側 (--part ios、simulator での実行) は release.yml で走る。
+  # iOS 側 (--part ios、simulator での実行) は ios job で走る。
   macos:
     runs-on: macos-latest
     timeout-minutes: 60

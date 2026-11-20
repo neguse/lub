@@ -1,7 +1,7 @@
 # lub の一式
 
 C# でゲームを書き、手元で動かしながら直し、web の page 1 枚にする道具一式。
-GitHub の release に OS と CPU の組ごとに置き、tag (`v*`) の push で `.github/workflows/release.yml` が作る。
+GitHub の release に OS と CPU の組ごとに置く。CI (`.github/workflows/ci.yml` の kit job) が毎回作って確かめ、tag (`v*`) の push では publish job が検査を通った一式を release に載せる。
 
 | file | 動く所 |
 | --- | --- |
