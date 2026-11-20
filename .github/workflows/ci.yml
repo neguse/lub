@@ -669,6 +669,19 @@ jobs:
           path: common
           retention-days: 1
 
+      # かな漢字変換 (jamo-core、Rust) の build の出力と、取ってきた crate。入力は jamo の commit と rustc の版で決まり、当たれば crates.io に行かない
+      - name: jamo cache key
+        id: jamo
+        run: echo "key=jamo-wasm-$(git rev-parse HEAD:third_party/jamo)-$(rustc -V | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache jamo
+        uses: actions/cache@v4
+        with:
+          path: |
+            lider/build/player-web/jamo
+            ~/.cargo/registry
+          key: ${{ steps.jamo.outputs.key }}
+
       # lider の page (web/lider.html) の player。lub の wasm の build を find_package(lub) で使い、かな漢字変換 (Rust) を静的に link する。
       - name: Build lider player wasm
         run: |
@@ -1132,6 +1145,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
+
+      # かな漢字変換 (jamo-core、Rust) の build の出力と、取ってきた crate。入力は jamo の commit と rustc の版で決まり、当たれば crates.io に行かない
+      - name: jamo cache key
+        id: jamo
+        run: echo "key=jamo-kit-${{ matrix.target }}-$(git rev-parse HEAD:third_party/jamo)-$(rustc -V | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache jamo
+        uses: actions/cache@v4
+        with:
+          path: |
+            lider/build/player/jamo
+            ~/.cargo/registry
+          key: ${{ steps.jamo.outputs.key }}
 
       - name: Build lub
         run: |
