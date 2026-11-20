@@ -16,6 +16,8 @@ C にした tcs (tcs c で自分を C にしたもの) と .NET の tcs で次�
   python3 perf/selfbench/run.py --base origin/master  # base と交互に測って比べる。決定的な指標が閾値を超えて増えたら exit 1
   python3 perf/selfbench/run.py --no-cachegrind --runs 3
   python3 perf/selfbench/run.py --base origin/master --tasks vm --hosts native --runs 0  # 決定的な指標だけ (CI)
+--base-results <file> は base の測定の結果を読み書きする: file があれば base を build も測定もせずにそれを使い、無ければ測って書く。
+base の測定は base の tree と toolchain だけで決まるので、CI はそれを key にして file を cache する。時間は比べられないので --runs 0 のときだけ使える。
 --base のときの入力は base の tree のソース (両方の compiler に同じ入力を与えるため)。
 """
 
@@ -140,8 +142,14 @@ def main():
     ap.add_argument("--no-cachegrind", action="store_true")
     ap.add_argument("--tasks", default="vm,c")
     ap.add_argument("--hosts", default="native,dotnet")
+    ap.add_argument("--base-results", help="base の測定の結果の JSON (あれば読み、無ければ書く)")
     ap.add_argument("-o", "--out", help="結果の JSON")
     args = ap.parse_args()
+    if args.base_results and (not args.base or args.runs):
+        raise SystemExit("--base-results は --base と --runs 0 のときだけ使える")
+    base_cached = None
+    if args.base_results and Path(args.base_results).exists():
+        base_cached = json.loads(Path(args.base_results).read_text())
 
     work = Path(tempfile.mkdtemp(prefix="tcs-selfbench."))
     trees = [Tcs("head", ROOT, work / "head")]
@@ -151,8 +159,10 @@ def main():
         # tcs が repo の下の dir にあるときは、base の tree でも同じ dir を見る
         prefix = sh(["git", "-C", str(ROOT), "rev-parse", "--show-prefix"]).strip()
         trees.insert(0, Tcs("base", base_tree / prefix, work / "base"))
+    # cache した base は build も測定もしない (base の tree は入力の source として使う)
+    measured = [t for t in trees if not (t.name == "base" and base_cached is not None)]
     try:
-        for t in trees:
+        for t in measured:
             t.build()
         inputs = sources(trees[0].tree)
         use_cg = not args.no_cachegrind and shutil.which("valgrind") is not None
@@ -160,10 +170,14 @@ def main():
             print("valgrind が無いので instructions は測らない", file=sys.stderr)
 
         results = {t.name: {} for t in trees}
+        if base_cached is not None:
+            results["base"] = base_cached
         for task in args.tasks.split(","):
             for host in args.hosts.split(","):
                 key = "%s/%s" % (host, task)
                 print("== " + key, file=sys.stderr)
+                if base_cached is not None and key not in base_cached:
+                    raise SystemExit("--base-results に %s が無い" % key)
                 times = {t.name: [] for t in trees}
                 if args.runs:
                     for t in trees:  # warmup (disk cache と .NET の初回)
@@ -171,7 +185,7 @@ def main():
                 for _ in range(args.runs):
                     for t in trees:  # 交互に走らせて、runner の揺れを両方に同じようにかける
                         times[t.name].append(timed(t.argv(host, task, inputs, t.work / ("out." + task))))
-                for t in trees:
+                for t in measured:
                     out = t.work / ("out." + task)
                     r = {}
                     if args.runs:
@@ -189,6 +203,9 @@ def main():
     finally:
         if args.base:
             subprocess.run(["git", "-C", str(ROOT), "worktree", "remove", "--force", str(work / "base-tree")])
+
+    if args.base_results and base_cached is None:
+        Path(args.base_results).write_text(json.dumps(results["base"], indent=1) + "\n")
 
     failures = []
     lines = []
