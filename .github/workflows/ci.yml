@@ -236,6 +236,12 @@ jobs:
   # WARP はソフトウェアラスタライザなので GPU の無い runner でも tests/golden/*_d3d12.png と byte 一致する。
   # vulkan backend は runner に Vulkan driver が無いためビルドのみ検証 (動作は linux job の lavapipe が同じ backend_vulkan.c で runtime テストを通す)。
   windows:
+    name: windows (${{ matrix.part }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # build の後の検査を 2 つの job に分けて並べる。checks = 個別の検査と export、runtime = tests/cs の runtime テストと golden と .NET 実行
+        part: [checks, runtime]
     runs-on: windows-latest
     timeout-minutes: 60
     env:
@@ -352,19 +358,21 @@ jobs:
         run: ccache -s
 
       - name: Save ccache
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && matrix.part == 'checks'
         uses: actions/cache/save@v4
         with:
           path: ~/.ccache
           key: ccache-windows-${{ github.sha }}
 
       - name: tcs process cleanup
+        if: matrix.part == 'checks'
         shell: bash
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 scripts/test-tcs-process-cleanup.sh ./build-release/lub.exe
 
       # どの D3D12 runtime(Agility SDK か inbox か)と WARP が載ったか、backend が見る feature flag を log に残す。
       # WARP は runner の inbox 版を使う (golden はその出力で撮ってある。NuGet 版は LSB が違う)。
       - name: d3d12 runtime info
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           ls -1 build-release/D3D12
@@ -376,6 +384,7 @@ jobs:
       # SDL3.dll は build-release/deps/bin/ にあり、lub.exe 隣への copy は lub の POST_BUILD 頼み。
       # smoke exe と同じ dir に無いと loader が解決できず git-bash では起動前に落ちて exit 127 になるため、ここで明示的に staging。
       - name: Stage runtime DLLs next to smoke tests
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           cd build-release
@@ -388,6 +397,7 @@ jobs:
           echo "== *.dll in build-release (after) =="; ls -1 *.dll 2>/dev/null || echo "(none)"
 
       - name: C smoke tests
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           cd build-release
@@ -400,11 +410,13 @@ jobs:
 
       # Windows の tcs の子プロセス (CreateProcess と Job Object) と標準出力の frame の切り出しは、native-gate の linux とは別に見る。
       - name: tcs pipeline smoke
+        if: matrix.part == 'checks'
         shell: bash
         run: scripts/test-tcs-pipeline-smoke.sh ./build-release/lub_tcs_pipeline_smoke.exe
 
       # --readback-fixed-latency を付けない起動でも、readback の届く frame が他の backend と同じで、保証しないモードでは GPU を待たないこと (下の loop は付けて走らせる)。
       - name: Readback latency
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
@@ -413,6 +425,7 @@ jobs:
       # pipeline、root signature、descriptor table を設定し直さずに使い回しても、各 draw が自分の状態で描くこと。
       # root signature を変えた後に設定し忘れた table は debug layer の error で見つける。
       - name: Draw state reuse (debug layer)
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           log="${RUNNER_TEMP}/draw_state_reuse.log"
@@ -425,6 +438,7 @@ jobs:
       # runtime テストは linux job が sdlgpu と vulkan で、macos job が metal で走らせる。
       # ここでは d3d12 で全部を debug layer 付きで走らせ、validation の error でも落とす。
       - name: Runtime tests (d3d12, debug layer)
+        if: matrix.part == 'runtime'
         shell: bash
         run: |
           source scripts/cs-tests.sh
@@ -452,6 +466,7 @@ jobs:
       # lub export windows は shader を d3d12 (DXIL) と vulkan / sdlgpu (spirv) の両方の target で compile する。
       # snapshot の中で起動した d3d12 (WARP) の絵が、リポジトリから動かしたものと一致すること。
       - name: Export (windows)
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           out="$RUNNER_TEMP/export"
@@ -471,6 +486,7 @@ jobs:
           test "$(ls "$out/TestDepthSample/cache/shader" | wc -l)" -eq 4
 
       - name: Golden image test (d3d12 backend, WARP)
+        if: matrix.part == 'runtime'
         shell: bash
         run: |
           export TMPDIR="${RUNNER_TEMP}/golden-tmp"
@@ -479,6 +495,7 @@ jobs:
 
       # .NET 実行: 共有 library (lub.dll、cmake --build が作る) を facade から P/Invoke で叩き、tcs VM の player と frame digest が一致することを 1 サンプルで確かめる (capture の比較は手元の native gate だけ)。
       - name: .NET run (00_hello, digest vs tcs VM)
+        if: matrix.part == 'runtime'
         shell: bash
         run: |
           export LUB_D3D12_WARP=1
@@ -496,7 +513,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: golden-failure-windows
+          name: golden-failure-windows-${{ matrix.part }}
           path: ${{ runner.temp }}/golden-tmp
           if-no-files-found: ignore
 
