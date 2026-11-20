@@ -1159,7 +1159,9 @@ jobs:
 
       - name: Tools cache key
         id: tools
-        run: bash scripts/kit-tools-cache-key.sh ${{ matrix.target }} >> "$GITHUB_OUTPUT"
+        run: |
+          [ "$RUNNER_OS" = Linux ] || export CC=clang
+          bash scripts/kit-tools-cache-key.sh ${{ matrix.target }} >> "$GITHUB_OUTPUT"
 
       # C の tcs と lub-gen は、入力 (tcs/ など) の内容が同じなら、.NET の版との比較を通った物をそのまま使う (scripts/kit-tools-cache-key.sh)
       - name: Cache tcs
