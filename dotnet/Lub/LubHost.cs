@@ -76,9 +76,20 @@ public static unsafe partial class App
     }
 
     /// <summary>assembly の中から entry class (static OnFrame を持つ唯一の class) を探して回す。
+    /// args に --entry CLASS (namespace 付きは MyGame.Game) があればその class を回す (tcs VM の player の --entry と同じ)。
     /// </summary>
     public static int Run(Assembly assembly, string[]? args = null)
     {
+        args ??= Array.Empty<string>();
+        var at = Array.IndexOf(args, "--entry");
+        if (at >= 0 && at + 1 < args.Length)
+        {
+            var name = args[at + 1];
+            var rest = new string[args.Length - 2];
+            Array.Copy(args, 0, rest, 0, at);
+            Array.Copy(args, at + 2, rest, at, args.Length - at - 2);
+            return Run(assembly.GetType(name) ?? throw new ArgumentException($"no entry class {name}"), rest);
+        }
         Type? found = null;
         foreach (var t in assembly.GetTypes())
         {

@@ -5,6 +5,7 @@
 # shellcheck shell=bash
 
 # 終了コードで合否が決まるもの。
+# native gate は Linux の sdlgpu と vulkan の両方で、apple gate は metal で、CI の windows job は d3d12 で、全部を走らせる。
 # readback の届く frame を固定するため --readback-fixed-latency を付けて走らせる (cs_test_args)
 cs_runtime_tests=(
   TestPhysicsBox2d
@@ -69,6 +70,7 @@ cs_runtime_tests=(
   TestFrameBufferLimit
   TestBlend
   TestUnboundBindings
+  TestUnboundAfterBound
   TestComputeUniformBlock
   TestStoragePreserve
   TestStorageFormat
@@ -108,14 +110,33 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull TestR
 # TestBindingsDigest は digest を scripts/test-bindings-digest.sh が比べる。
 # TestBlendValue は native gate が tcs VM の player と .NET 実行で走らせ、digest を比べる。
 # TestXrCapture は XR セッションが要るので、偽の session を入れられる web の verify (A9) だけが走らせる。
-# TestUnboundStorage は fragment shader から storage texture に書き、native の backend では確かめていないので、web の verify (A9) だけが走らせる。
+# TestUnboundStorage は fragment shader から storage texture に書くので、web の verify (A9) だけが走らせる。
+# sdlgpu は graphics の storage texture を読むことしかできず、fragment shader から書けない。
+# sdlgpu は dispatch で渡さなかった slot を埋めず、SDL の assert で止まる。
+# vulkan backend は graphics の書ける storage texture を pipeline の layout に入れず、SPIR-V ではその binding が StructuredBuffer と重なるので、lavapipe が draw で落ちる。
+# metal と d3d12 では確かめていない。
 # TestDrawStateReuse は backend の bind の使い回しを見るので、native gate が vulkan で、apple gate が metal で、CI の windows job が d3d12 で、web の verify (A9) が webgpu で走らせる。
-# TestUnboundAfterBound は apple gate が metal で、web の verify (A9) が webgpu で走らせる。
-cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestKeyMods TestSaveDir TestXrCapture TestDrawStateReuse TestBindingsDigest TestBlendValue TestUnboundAfterBound TestUnboundStorage)
+cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestKeyMods TestSaveDir TestXrCapture TestDrawStateReuse TestBindingsDigest TestBlendValue TestUnboundStorage)
 # web の verify (web/scripts/verify-player.mjs の A9) は cs_all_tests を全部 web の player で走らせる。
 # 次の test だけは web に当てはまらないので走らせない。
 # TestReadbackOnQuit は OnQuit の中で積んだ読み戻しがその場で届くことを見る。web の backend はブラウザの main thread で GPU の完了を待てないので、読み戻しは次の frame より前に届かない。
 cs_web_skip_tests=(TestReadbackOnQuit)
+# .NET 実行 (dotnet/SampleRunner を -p:Tests=true で build した lub-sample-tests。test は --entry <Entry> で選ぶ) でも、native gate が runtime テストと TestFixedDt、TestSaveDir、TestReadbackCapture、TestBindingsDigest、TestBlendValue を tcs VM の player と同じ引数で走らせる。
+# runtime テストのうち cs_dotnet_excluded は .NET 実行では走らせない。
+# App.Use (TestOpenApp、TestAppState、TestAppInput、TestAppXr、TestAppObserve、TestInspectSet、TestAppTimeline、TestAppPick) は tcs VM の player だけで使え、.NET 実行では error になる (stub の App.Use)。
+# App.Inputs (TestAppInputs) は .csproj を読める player (lub) だけが集め、.NET 実行では null を返す。
+# TestPick は Gfx.Pick の Site を見る。Site は tcs VM の player だけが作り、.NET 実行では空。
+# native gate が backend を見るために vulkan で走らせ直すもの (TestDrawStateReuse など) は、backend が C の runtime の中にあって .NET 実行も同じ所を通るので、tcs VM の player だけで走らせる。
+# cs_visual_tests の絵は golden (tcs VM の player) で見る。
+cs_dotnet_excluded=(TestOpenApp TestAppInputs TestAppState TestAppInput TestAppXr TestAppObserve TestInspectSet TestAppTimeline TestAppPick TestPick)
+
+# .NET 実行で走らせる runtime テスト (cs_runtime_tests から cs_dotnet_excluded を除いたもの) を 1 行に 1 つ出す。
+cs_dotnet_tests() {
+  local t
+  for t in "${cs_runtime_tests[@]}"; do
+    [[ " ${cs_dotnet_excluded[*]} " == *" $t "* ]] || echo "$t"
+  done
+}
 
 # tests/cs の入力: tests/cs の *.cs 全部と cs-lib の実装ソース。
 cs_tests_sources() {
@@ -150,4 +171,37 @@ cs_tests_check() {
   local sources
   mapfile -t sources < <(cs_tests_sources)
   cs_tests_tcs check "${sources[@]}" --ref cs-lib/lub_stub.cs
+}
+
+# test を最大 $1 本ずつ並べて走らせ、test の順に PASS か FAIL を出す。失敗した test は log も出す。
+# 1 本は "$2" <test> <log の file> <test の番号> で走らせ、関数 $2 が log を書く。0 以外を返すと失敗。
+# log は $cs_test_logs (無ければ一時ディレクトリを作る) に <test>.log で残る。
+# 使い方: cs_run_tests 4 run_one "${cs_runtime_tests[@]}"
+cs_run_tests() {
+  local jobs=$1 fn=$2 i t running=0 failed=0
+  shift 2
+  local tests=("$@")
+  cs_test_logs="${cs_test_logs:-$(mktemp -d)}"
+  for i in "${!tests[@]}"; do
+    t="${tests[$i]}"
+    rm -f "$cs_test_logs/$t.status"
+    # 関数は && の左に置くので、中で set -e は効かない。失敗は終了コードで返す
+    ("$fn" "$t" "$cs_test_logs/$t.log" "$i" && echo pass >"$cs_test_logs/$t.status") &
+    running=$((running + 1))
+    if ((running >= jobs)); then
+      wait -n || true
+      running=$((running - 1))
+    fi
+  done
+  wait
+  for t in "${tests[@]}"; do
+    if [[ "$(cat "$cs_test_logs/$t.status" 2>/dev/null)" == pass ]]; then
+      echo "PASS $t"
+    else
+      echo "FAIL $t"
+      sed 's/^/    /' "$cs_test_logs/$t.log" 2>/dev/null || true
+      failed=1
+    fi
+  done
+  return "$failed"
 }

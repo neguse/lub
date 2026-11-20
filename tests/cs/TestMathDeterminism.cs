@@ -3,7 +3,7 @@
 // 期待値は 1 つで、OS ごとに分けない。
 // TinySystem に無い Asin / Acos / Atan は tcs が変換できないので見ない。
 // tcs2c の経路は tests/c/tcs_math.cs が同じ入力列と hash で C# の Math を計算し、scripts/verify-tcs-binding.sh がこの表と比べる。
-// .NET の経路は scripts/native-gate.sh が dotnet/SampleRunner (-p:Test=TestMathDeterminism) でこのテストを動かす。
+// .NET の経路は scripts/native-gate.sh が .NET 実行の runtime テスト (dotnet/SampleRunner の -p:Tests=true) としてこのテストを動かす。
 using System;
 using Lub;
 

@@ -3,8 +3,8 @@
 # tests (tests/cs) -> visual goldens (Metal on the real GPU, within a tolerance of the
 # Linux goldens) -> shader cache round trip through a player without Slang
 # -> iOS build and a run on the simulator. Single source of truth shared by
-# the CI macos job (.github/workflows/ci.yml), the ios job
-# (.github/workflows/release.yml) and manual runs on a Mac.
+# the CI macos and ios jobs (.github/workflows/ci.yml) and manual runs on a
+# Mac.
 #
 # Needs bash 4+ (run-golden.sh uses mapfile / wait -n; macOS ships 3.2, so
 # `brew install bash`), CMake, Ninja, python3, and dotnet
@@ -38,7 +38,7 @@ Runs the macOS / iOS regression gate (all parts by default).
                shader cache round trip (--skip-ios is the same)
   --part ios   the macOS build (it fills the shader cache), the iOS build and
                the simulator run. Needs Xcode, not only the Command Line Tools.
-CI runs the mac part in ci.yml and the ios part in release.yml.
+CI runs the mac part in the macos job and the ios part in the ios job (ci.yml).
 EOF
       exit 0
       ;;
@@ -104,17 +104,10 @@ if [[ $part != ios ]]; then
 
   echo
   echo "==> C# runtime tests (${#cs_runtime_tests[@]})"
-  for cs_test in "${cs_runtime_tests[@]}"; do
-    if "./$build/lub" tests/cs/.lub/all.tcsb --entry "$cs_test" "${cs_test_args[@]}" >"$work/test.log" 2>&1; then
-      echo "PASS $cs_test"
-    else
-      echo "FAIL $cs_test"
-      sed 's/^/    /' "$work/test.log"
-      exit 1
-    fi
-  done
-  # 束縛しなかった slot に前の draw の texture と storage buffer が残らないこと。
-  run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestUnboundAfterBound "${cs_test_args[@]}"
+  metal_test() { "./$build/lub" tests/cs/.lub/all.tcsb --entry "$1" "${cs_test_args[@]}" >"$2" 2>&1; }
+  cs_test_logs="$work/runtime" && mkdir -p "$cs_test_logs"
+  # CI の runner の仮想の GPU (Apple Paravirtual device) は、process を並べると command buffer が GPU hang の error で止まるので、1 本ずつ走らせる
+  cs_run_tests 1 metal_test "${cs_runtime_tests[@]}"
   # encoder に設定済みの pipeline、buffer、texture を設定し直さなくても、各 draw が自分の状態で描くこと。
   run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestDrawStateReuse "${cs_test_args[@]}"
   # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
