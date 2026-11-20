@@ -148,6 +148,32 @@ jobs:
         with:
           global-json-file: tcs/global.json
 
+      # かな漢字変換の辞書 (lider の tests/ime と tests/editor/ime が使う)。入力は build-dict.sh (取る mozc の commit) と jamo の commit なので、それを key にして cache し、無いときだけ作る
+      - name: Dictionary key
+        if: matrix.part == 'lider'
+        id: dict
+        run: echo "key=mozc-dict-$(git rev-parse HEAD:third_party/jamo)-${{ hashFiles('lider/scripts/build-dict.sh') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the dictionary
+        if: matrix.part == 'lider'
+        id: dict-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            lider/data/mozc.dict
+            lider/data/mozc-README.txt
+            lider/data/mozc-LICENSE.txt
+          key: ${{ steps.dict.outputs.key }}
+
+      # 辞書が無いと tests/ime は飛ばすので、ここで有ることを確かめる
+      - name: Dictionary
+        if: matrix.part == 'lider'
+        run: |
+          if [ "${{ steps.dict-cache.outputs.cache-hit }}" != true ]; then
+            bash lider/scripts/build-dict.sh lider/data
+          fi
+          test -s lider/data/mozc.dict
+
       - name: Native gate (${{ matrix.part }})
         env:
           LIDER_SHARD: ${{ matrix.shard }}
