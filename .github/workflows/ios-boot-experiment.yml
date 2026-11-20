@@ -1,0 +1,101 @@
+# iOS の simulator の起動の時間を測る試し (merge しない)。
+# fresh: image に入っている device の 1 回目と 2 回目の起動を測り、起動した後の device の data を cache に入れる。
+# restored: 別の runner でその data を戻し、起動を測る。
+name: ios-boot-experiment
+
+on:
+  push:
+    branches: [ci/ios-boot-experiment]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Pick the device (apple-gate.sh と同じく最新の iOS の iPhone)
+        id: dev
+        run: |
+          sw_vers
+          xcodebuild -version
+          echo "image: $ImageOS $ImageVersion"
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          rts = sorted((k for k in d if ".iOS-" in k), key=lambda k: [int(x) for x in k.split(".iOS-")[1].split("-")])
+          phones = [x for x in d[rts[-1]] if x["name"].startswith("iPhone")]
+          print(phones[-1]["udid"])
+          ')"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices | grep "$udid"
+          du -sh ~/Library/Developer/CoreSimulator/Devices/"$udid"
+
+      - name: First boot
+        run: |
+          u="${{ steps.dev.outputs.udid }}"
+          t0=$(date +%s)
+          xcrun simctl boot "$u"
+          t1=$(date +%s)
+          xcrun simctl bootstatus "$u" -b
+          t2=$(date +%s)
+          echo "first boot: boot $((t1 - t0))s, bootstatus $((t2 - t1))s"
+
+      - name: Second boot
+        run: |
+          u="${{ steps.dev.outputs.udid }}"
+          xcrun simctl shutdown "$u"
+          t0=$(date +%s)
+          xcrun simctl boot "$u"
+          xcrun simctl bootstatus "$u" -b
+          t1=$(date +%s)
+          echo "second boot: $((t1 - t0))s"
+          xcrun simctl shutdown "$u"
+
+      - name: Pack the booted device
+        run: |
+          u="${{ steps.dev.outputs.udid }}"
+          du -sh ~/Library/Developer/CoreSimulator/Devices/"$u"
+          t0=$(date +%s)
+          tar -C ~/Library/Developer/CoreSimulator/Devices -cf - "$u" | zstd -T0 -3 -q -o "$RUNNER_TEMP/device.tar.zst"
+          t1=$(date +%s)
+          ls -l "$RUNNER_TEMP/device.tar.zst"
+          echo "pack: $((t1 - t0))s"
+          echo "$u" > "$RUNNER_TEMP/udid"
+
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ runner.temp }}/device.tar.zst
+            ${{ runner.temp }}/udid
+          key: ios-boot-experiment-${{ github.run_id }}-${{ github.run_attempt }}
+
+  restored:
+    needs: fresh
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ runner.temp }}/device.tar.zst
+            ${{ runner.temp }}/udid
+          key: ios-boot-experiment-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: true
+
+      - name: Restore the device and boot
+        run: |
+          echo "image: $ImageOS $ImageVersion"
+          u="$(cat "$RUNNER_TEMP/udid")"
+          xcrun simctl list devices | grep "$u" || echo "the device is not in this image"
+          t0=$(date +%s)
+          rm -rf ~/Library/Developer/CoreSimulator/Devices/"$u"
+          zstd -d -T0 -q -c "$RUNNER_TEMP/device.tar.zst" | tar -C ~/Library/Developer/CoreSimulator/Devices -xf -
+          t1=$(date +%s)
+          echo "unpack: $((t1 - t0))s"
+          xcrun simctl boot "$u"
+          xcrun simctl bootstatus "$u" -b
+          t2=$(date +%s)
+          echo "boot after restore: $((t2 - t1))s"
