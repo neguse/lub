@@ -98,12 +98,26 @@ async function loadSlangModule(): Promise<any> {
 
 export async function initSlang(): Promise<void> {
   const main = await loadSlangModule();
+  (window as any).slangCompile = (
+    src: string,
+    entry: string,
+    stage: StageCode,
+  ) => {
+    if (!globalSession) {
+      const err = openGlobalSession(main);
+      if (err) return { error: err };
+    }
+    return compileOne(main, src, entry, stage);
+  };
+}
+
+// The global session is opened at the first compile, not at load: opening it
+// takes a while, and a game that never compiles a shader does not pay for it.
+function openGlobalSession(main: any): string | null {
   globalSession = main.createGlobalSession();
   if (!globalSession) {
     const err = main.getLastError?.();
-    throw new Error(
-      "Slang createGlobalSession failed: " + (err?.message ?? "<unknown>"),
-    );
+    return "Slang createGlobalSession failed: " + (err?.message ?? "<unknown>");
   }
   // Look up the integer code for "WGSL" once and cache it.
   const targets = main.getCompileTargets() as { name: string; value: number }[];
@@ -113,21 +127,13 @@ export async function initSlang(): Promise<void> {
       break;
     }
   }
-  if (wgslTarget < 0) {
-    throw new Error(
+  if (wgslTarget < 0)
+    return (
       "Slang has no WGSL target (targets: " +
-        targets.map((t) => t.name).join(",") +
-        ")",
+      targets.map((t) => t.name).join(",") +
+      ")"
     );
-  }
-
-  (window as any).slangCompile = (
-    src: string,
-    entry: string,
-    stage: StageCode,
-  ) => {
-    return compileOne(main, src, entry, stage);
-  };
+  return null;
 }
 
 function compileOne(
