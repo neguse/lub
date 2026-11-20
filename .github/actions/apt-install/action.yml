@@ -45,8 +45,10 @@ runs:
         # runner の image にある Google Chrome の apt source は、metadata の Hash Sum mismatch を時々出して update ごと落とす。ここでは使わない
         sudo rm -f /etc/apt/sources.list.d/google-chrome*
         sudo apt-get update
+        # dpkg が合わない .deb を途中まで入れていたら、先に揃え直す (揃っていないと、apt は package を指定した install を断る)
+        sudo apt-get install -y --fix-broken
         # shellcheck disable=SC2086
-        sudo apt-get install -y --no-install-recommends --fix-broken -o Dir::Cache::archives="$dir" -o APT::Keep-Downloaded-Packages=true $PACKAGES
+        sudo apt-get install -y --no-install-recommends -o Dir::Cache::archives="$dir" -o APT::Keep-Downloaded-Packages=true $PACKAGES
         sudo chown -R "$(id -u)" "$dir"
         rm -rf "$dir/partial" "$dir/lock"
         touch "$dir/done"
