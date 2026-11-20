@@ -464,7 +464,7 @@ jobs:
 
   # macOS regression gate: scripts/apple-gate.sh --part mac (CI と手動の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> 視覚 golden -> shader cache の往復。
   # Metal は runner の GPU で描くので byte 一致にはならず、golden は Linux の *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
-  # iOS 側 (--part ios、simulator での実行) は ios job で走る。
+  # iOS 側 (--part ios、simulator での実行) は ios job (tag の push のとき) で走る。
   macos:
     runs-on: macos-latest
     timeout-minutes: 60
@@ -1251,7 +1251,9 @@ jobs:
           path: dist/lub-${{ matrix.target }}.*
 
   # tests/cs のうち iOS で走らせるものを、simulator の app で動かす (scripts/apple-gate.sh --part ios)。
+  # release の tag (v*) の push のときだけ走る (hosted の runner は simulator の起動だけで分の単位がかかる)。
   ios:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -1353,7 +1355,8 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS"
-          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | .key')
+          # ios は tag の push でしか走らないので、skipped も通す
+          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success" and (.key != "ios" or .value.result != "skipped")) | .key')
           if [ -n "$bad" ]; then
             echo "failed jobs: $bad" >&2
             exit 1
