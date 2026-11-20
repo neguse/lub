@@ -948,9 +948,15 @@ jobs:
   # ---- tcs/ の中のテスト ----
   # tcs (C# の compiler と VM) 自身のテスト。lub の job は tcs を使う側から確かめ、こちらは tcs の仕様から確かめる。
   # .NET SDK の版は tcs/global.json で固定する。
+  # tcs/run-tests.sh を部分 (--part) ごとの job に分けて並べる。部分は dotnet test の class の名前で分け、どの test もどれか 1 つの部分に入る。
   tcs-test:
     needs: changes
     if: needs.changes.outputs.tcs == 'true'
+    name: tcs-test (${{ matrix.part }})
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [transpiler-1, transpiler-2, tcs2c-1, tcs2c-2, tcs2c-3, scripts]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -959,17 +965,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # spec conformance の入力 (C# の仕様の例)
+      # spec conformance の入力 (C# の仕様の例)。Transpiler.Tests だけが読む
       - name: Init csharpstandard
+        if: startsWith(matrix.part, 'transpiler-')
         working-directory: .
-        run: git submodule update --init tcs/deps/csharpstandard
+        run: git submodule update --init --depth 1 tcs/deps/csharpstandard
 
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: tcs/global.json
 
       - name: Run tests and tcs checks
-        run: bash run-tests.sh
+        run: bash run-tests.sh --part ${{ matrix.part }}
 
   # tcs VM と C (tcs2c) の digest が一致することを確かめる。時間は成果物に残すだけ (runner の時間は揺れる)。
   tcs-bench-2backend:
