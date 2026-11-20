@@ -9,6 +9,7 @@
 //   L7. 並べる: 編集の間に Alt+D を押すと、lider が編集中の版を変換し (`lider: build draft module`)、画面の左右に 2 つのゲームが出る (どちらも L6 の緑)。状態を写すので、左右はほぼ同じ絵になる。
 //   L8. サンプル: 前の lider の page の URL (lider.html#sample=17_flappy) で開くと、hash を付けたまま入口に移り、lub のサンプルが project になって起動し (data は samples/17_flappy/data から読める)、サンプルの .cs の書き換えがゲームの絵に出る。
 //   L9. メニュー: Doc の link と、サンプルの一覧 (17_flappy を含む) がある。Doc の page はガイドを描く。
+//   L10. 整形: 空白を詰めて書いた .cs を保存すると、page が .NET の wasm (tcs の WasmCompiler の CSharpier) で整形して書き戻す。整形の worker が動かないという警告を出さない。
 //
 // 変換は lider が player に組み込んだ tcs で行い、結果を console に書く (lider の GameBuild)。
 // lider が compile error を窓の中に出すことは見ていない (lider が診断を受け取った所まで)。
@@ -246,6 +247,25 @@ try {
     "L5 the game draws the fix",
     magentaNow > 0.3,
     `magenta ${pct(magentaNow)}`,
+  );
+
+  // L10
+  await writeSource(edit("0.8f,0,0.8f,1"));
+  let formatted = "";
+  for (const end = Date.now() + APPLY_MS; Date.now() < end;) {
+    formatted = await readSource();
+    if (!formatted.includes("0.8f,0,0.8f,1")) break;
+    await page.waitForTimeout(200);
+  }
+  check(
+    "L10 the page formats the saved source",
+    formatted.includes("{ 0.8f, 0, 0.8f, 1 }"),
+    formatted.split("\n").find((l) => l.includes("ClearColor")) ?? "",
+  );
+  check(
+    "L10 the formatter runs",
+    !logs.some((t) => t.includes("整形できない")),
+    logs.find((t) => t.includes("整形できない")) ?? "",
   );
 
   // L6

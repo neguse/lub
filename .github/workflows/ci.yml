@@ -725,7 +725,7 @@ jobs:
           done
           LUB_URL=http://localhost:4173/ npm run verify
 
-      # サイトの入口 (lider): 起動、保存した編集の反映、診断、並べる表示、サンプル、メニューと Doc の page (verify-lider)。
+      # サイトの入口 (lider): 起動、保存した編集の反映、診断、並べる表示、サンプル、メニューと Doc の page、保存した .cs の整形 (verify-lider)。
       - name: Verify entry page (shard 2)
         if: matrix.shard == 2
         working-directory: web
