@@ -669,17 +669,15 @@ jobs:
           path: common
           retention-days: 1
 
-      # かな漢字変換 (jamo-core、Rust) の build の出力と、取ってきた crate。入力は jamo の commit と rustc の版で決まり、当たれば crates.io に行かない
+      # build 済みのかな漢字変換 (jamo-core、Rust)。入力は jamo の commit と rustc の版で決まり、当たれば cargo を動かさない (lider/scripts/build-player.sh の JAMO_CACHE)
       - name: jamo cache key
         id: jamo
-        run: echo "key=jamo-wasm-$(git rev-parse HEAD:third_party/jamo)-$(rustc -V | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+        run: echo "key=jamo-lib-wasm-$(git rev-parse HEAD:third_party/jamo)-$(rustc -V | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
 
       - name: Cache jamo
         uses: actions/cache@v4
         with:
-          path: |
-            lider/build/player-web/jamo
-            ~/.cargo/registry
+          path: build-jamo
           key: ${{ steps.jamo.outputs.key }}
 
       # lider の page (web/lider.html) の player。lub の wasm の build を find_package(lub) で使い、かな漢字変換 (Rust) を静的に link する。
@@ -687,7 +685,7 @@ jobs:
         run: |
           source "$HOME/emsdk/emsdk_env.sh"
           rustup target add wasm32-unknown-emscripten
-          bash lider/scripts/build-player.sh --web
+          JAMO_CACHE="$PWD/build-jamo" bash lider/scripts/build-player.sh --web
 
       - uses: actions/setup-node@v4
         with:
@@ -1142,21 +1140,15 @@ jobs:
         with:
           global-json-file: tcs/global.json
 
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
-        with:
-          toolchain: stable
-
-      # かな漢字変換 (jamo-core、Rust) の build の出力と、取ってきた crate。入力は jamo の commit と rustc の版で決まり、当たれば crates.io に行かない
+      # build 済みのかな漢字変換 (jamo-core、Rust)。入力は jamo の commit と rustc の版で決まり、当たれば cargo を動かさない (lider/scripts/build-player.sh の JAMO_CACHE)
       - name: jamo cache key
         id: jamo
-        run: echo "key=jamo-kit-${{ matrix.target }}-$(git rev-parse HEAD:third_party/jamo)-$(rustc -V | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+        run: echo "key=jamo-lib-${{ matrix.target }}-$(git rev-parse HEAD:third_party/jamo)-$(rustc -V | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
 
       - name: Cache jamo
         uses: actions/cache@v4
         with:
-          path: |
-            lider/build/player/jamo
-            ~/.cargo/registry
+          path: build-jamo
           key: ${{ steps.jamo.outputs.key }}
 
       - name: Build lub
@@ -1178,7 +1170,7 @@ jobs:
         run: |
           unset Platform
           [ "$RUNNER_OS" = Windows ] && export CC=clang-cl CXX=clang-cl
-          LUB_BUILD="$PWD/build-kit" bash lider/scripts/build-player.sh
+          LUB_BUILD="$PWD/build-kit" JAMO_CACHE="$PWD/build-jamo" bash lider/scripts/build-player.sh
 
       # lub-gen (TinyC#) を C の tcs で C にする (.NET で動かした lub-gen と同じ出力を出すことも確かめる)
       - name: Build lub-gen

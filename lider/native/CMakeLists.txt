@@ -24,19 +24,26 @@ if(NOT JAMO_TARGET)
     set(JAMO_TARGET "${CMAKE_MATCH_1}")
   endif()
 endif()
-set(JAMO_CARGO_DIR "${CMAKE_CURRENT_BINARY_DIR}/jamo")
-if(WIN32)
-  set(JAMO_LIB "${JAMO_CARGO_DIR}/${JAMO_TARGET}/release/jamo_core.lib")
+# build 済みの jamo-core があれば、それを link する (同じ jamo の commit、Rust の target、rustc から作ったもの。cargo は動かさない)
+set(JAMO_PREBUILT "" CACHE FILEPATH "build 済みの jamo-core の static library (空なら cargo で build する)")
+if(JAMO_PREBUILT)
+  set(JAMO_LIB "${JAMO_PREBUILT}")
+  add_custom_target(lider_jamo_core)
 else()
-  set(JAMO_LIB "${JAMO_CARGO_DIR}/${JAMO_TARGET}/release/libjamo_core.a")
+  set(JAMO_CARGO_DIR "${CMAKE_CURRENT_BINARY_DIR}/jamo")
+  if(WIN32)
+    set(JAMO_LIB "${JAMO_CARGO_DIR}/${JAMO_TARGET}/release/jamo_core.lib")
+  else()
+    set(JAMO_LIB "${JAMO_CARGO_DIR}/${JAMO_TARGET}/release/libjamo_core.a")
+  endif()
+  add_custom_command(OUTPUT "${JAMO_LIB}"
+    COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${JAMO_CARGO_DIR}
+      cargo rustc --manifest-path "${JAMO_ROOT}/Cargo.toml" -p jamo-core --release
+      --target ${JAMO_TARGET} --crate-type staticlib
+    COMMENT "Building jamo-core (${JAMO_TARGET})"
+    VERBATIM)
+  add_custom_target(lider_jamo_core DEPENDS "${JAMO_LIB}")
 endif()
-add_custom_command(OUTPUT "${JAMO_LIB}"
-  COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${JAMO_CARGO_DIR}
-    cargo rustc --manifest-path "${JAMO_ROOT}/Cargo.toml" -p jamo-core --release
-    --target ${JAMO_TARGET} --crate-type staticlib
-  COMMENT "Building jamo-core (${JAMO_TARGET})"
-  VERBATIM)
-add_custom_target(lider_jamo_core DEPENDS "${JAMO_LIB}")
 
 # tcs (tcs/SelfHost) を tcs2c で C にする (tcs.c)。tcs と一緒に配るファイルは header に埋め込む
 set(TCS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../tcs" CACHE PATH "tcs のソース")
