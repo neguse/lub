@@ -716,6 +716,18 @@ jobs:
         working-directory: web
         run: npm run gen-tcs -- --publish
 
+      - name: Build site
+        working-directory: web
+        run: npm run build
+
+      # web-verify と web-export がこれを待つので、できたらすぐ渡す。
+      # web の dist は同じ run の後続 job (検査と deploy) への受け渡し専用で、run の後は使わない。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
+
       # src/tcs_host.c の web の player (tests/c/tcs_shutdown.cs)。
       # web-export の job が page で開き、page が player を外す順番を見る。
       - name: Build tcs2c web player
@@ -730,10 +742,6 @@ jobs:
             build/wasm-tcs/lub.js
             build/wasm-tcs/lub.wasm
 
-      - name: Build site
-        working-directory: web
-        run: npm run build
-
       - name: ccache stats
         if: always()
         run: ccache -s
@@ -745,29 +753,30 @@ jobs:
           path: ~/.ccache
           key: ccache-wasm-${{ github.sha }}
 
-      # web の dist は同じ run の後続 job (検査と deploy) への受け渡し専用で、run の後は使わない。
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web-dist
-          path: web/dist
-          retention-days: 1
 
   # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
   # player = player の page (tests/cs。A9_SHARD で 2 つの job に分ける)、lider = サイトの入口。
   # verify は閾値判定なので runner の system chromium で足りる。
   web-verify:
     name: web-verify (${{ matrix.page }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
-    needs: web-build
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # web-build の artifact ができるのを待つのに、この run の artifact の一覧を読む
+    permissions:
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
         include:
           - page: player
-            shard: 1/2
+            shard: 1/4
           - page: player
-            shard: 2/2
+            shard: 2/4
+          - page: player
+            shard: 3/4
+          - page: player
+            shard: 4/4
           - page: lider
     steps:
       - uses: actions/checkout@v4
@@ -796,6 +805,12 @@ jobs:
       - name: npm ci
         working-directory: web
         run: npm ci
+
+      # 準備を先に済ませ、サイトの dist ができるのをここで待つ (scripts/ci-wait-artifact.sh)
+      - name: Wait for the site (web-dist)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci-wait-artifact.sh web-dist '^web-build$'
 
       - uses: actions/download-artifact@v4
         with:
@@ -840,9 +855,12 @@ jobs:
   # export は linux の job が build した lub、player は web-build の wasm を使う。
   # web-build が作った tcs2c の player を page から外す順番もここで見る (chromium があるので)。
   web-export:
-    needs: [linux, web-build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # linux と web-build の artifact ができるのを待つのに、この run の artifact の一覧を読む
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
@@ -854,21 +872,6 @@ jobs:
             third_party/slang/bin
           key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
           fail-on-cache-miss: true
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: lub-linux
-          path: .
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-dist
-          path: web/dist
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-tcs-player
-          path: build/wasm-tcs
 
       - uses: actions/setup-node@v4
         with:
@@ -897,6 +900,30 @@ jobs:
         uses: ./.github/actions/apt-install
         with:
           packages: libvulkan1
+
+      # 準備を先に済ませ、linux と web-build が作る物をここで待つ (scripts/ci-wait-artifact.sh)
+      - name: Wait for lub, the site and the tcs2c web player
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/ci-wait-artifact.sh lub-linux '^linux \(runtime\)$'
+          bash scripts/ci-wait-artifact.sh web-dist '^web-build$'
+          bash scripts/ci-wait-artifact.sh web-tcs-player '^web-build$'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: lub-linux
+          path: .
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-tcs-player
+          path: build/wasm-tcs
 
       - name: Web export gate
         run: |
@@ -1195,21 +1222,7 @@ jobs:
       - name: Wait for the common parts (kit-common)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          api="repos/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          for _ in $(seq 1 180); do
-            if gh api "$api/artifacts" --jq '.artifacts[].name' | grep -qx kit-common; then
-              exit 0
-            fi
-            state="$(gh api "$api/jobs?per_page=100" --jq '.jobs[] | select(.name == "web-build") | .conclusion')"
-            if [ -n "$state" ] && [ "$state" != success ]; then
-              echo "web-build did not succeed ($state)" >&2
-              exit 1
-            fi
-            sleep 5
-          done
-          echo "kit-common did not appear" >&2
-          exit 1
+        run: bash scripts/ci-wait-artifact.sh kit-common '^web-build$'
 
       - uses: actions/download-artifact@v4
         with:
