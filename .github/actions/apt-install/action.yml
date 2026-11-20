@@ -8,17 +8,20 @@ inputs:
 runs:
   using: composite
   steps:
-    # 入る .deb は、package の名前と、runner の image に入っている物で決まる (image の版が違うと依存の版が合わない)
+    # 入る .deb は、package の名前と、runner の image に入っている物で決まる。
+    # 同じ時期でも runner によって image の版が違うので、restore-keys は image の版の手前までにし、別の版の image で取った .deb も試す。
+    # その .deb がこの image に合わなければ (依存の版が違う、入っている物より古い)、dpkg が断るので、mirror から取り直す
     - id: key
       shell: bash
       env:
         PACKAGES: ${{ inputs.packages }}
-      run: echo "key=apt-${{ runner.arch }}-${ImageOS:-}-${ImageVersion:-}-$(echo $PACKAGES | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+      run: echo "prefix=apt-${{ runner.arch }}-${ImageOS:-}-$(echo $PACKAGES | git hash-object --stdin)-" >> "$GITHUB_OUTPUT"
 
     - uses: actions/cache@v4
       with:
         path: ~/.cache/lub-apt
-        key: ${{ steps.key.outputs.key }}
+        key: ${{ steps.key.outputs.prefix }}${{ env.ImageVersion }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
 
     - name: Install the packages
       shell: bash
@@ -33,10 +36,10 @@ runs:
         install() {
           shopt -s nullglob
           local debs=("$dir"/*.deb)
-          [ -f "$dir/done" ] && { [ ${#debs[@]} = 0 ] || sudo dpkg -i "${debs[@]}"; }
+          [ -f "$dir/done" ] && { [ ${#debs[@]} = 0 ] || sudo dpkg --refuse-downgrade -i "${debs[@]}"; }
         }
         install && exit 0
-        # .deb が無いときは mirror から取って入れ、取った .deb を置く
+        # .deb が無いか、この image に合わないときは、mirror から取って入れ、取った .deb を置く
         rm -rf "$dir"
         mkdir -p "$dir"
         # runner の image にある Google Chrome の apt source は、metadata の Hash Sum mismatch を時々出して update ごと落とす。ここでは使わない
