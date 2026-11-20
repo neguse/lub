@@ -855,16 +855,11 @@ jobs:
         working-directory: web
         run: npm ci
 
-      # 準備を先に済ませ、サイトの dist ができるのをここで待つ (scripts/ci-wait-artifact.sh)
+      # 準備を先に済ませ、サイトの dist ができるのをここで待つ (scripts/ci-fetch-artifact.sh)
       - name: Wait for the site (web-dist)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci-wait-artifact.sh web-dist '^web-build$'
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-dist
-          path: web/dist
+        run: bash scripts/ci-fetch-artifact.sh web-dist web/dist '^web-build$'
 
       # tests/cs の test を全部 web の player の page で動かす (verify-player の A9)。
       - name: Verify player page (${{ matrix.shard }})
@@ -950,29 +945,14 @@ jobs:
         with:
           packages: libvulkan1
 
-      # 準備を先に済ませ、linux と web-build が作る物をここで待つ (scripts/ci-wait-artifact.sh)
+      # 準備を先に済ませ、linux と web-build が作る物をここで待つ (scripts/ci-fetch-artifact.sh)
       - name: Wait for lub, the site and the tcs2c web player
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bash scripts/ci-wait-artifact.sh lub-linux '^linux \(runtime\)$'
-          bash scripts/ci-wait-artifact.sh web-dist '^web-build$'
-          bash scripts/ci-wait-artifact.sh web-tcs-player '^web-build$'
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: lub-linux
-          path: .
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-dist
-          path: web/dist
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-tcs-player
-          path: build/wasm-tcs
+          bash scripts/ci-fetch-artifact.sh lub-linux . '^linux \(runtime\)$'
+          bash scripts/ci-fetch-artifact.sh web-dist web/dist '^web-build$'
+          bash scripts/ci-fetch-artifact.sh web-tcs-player build/wasm-tcs '^web-build$'
 
       - name: Web export gate
         run: |
@@ -1289,12 +1269,7 @@ jobs:
       - name: Wait for the common parts (kit-common)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci-wait-artifact.sh kit-common '^web-build$'
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: kit-common
-          path: common
+        run: bash scripts/ci-fetch-artifact.sh kit-common common '^web-build$'
 
       - name: Package
         run: bash scripts/package-release.sh ${{ matrix.target }} build-kit common dist
