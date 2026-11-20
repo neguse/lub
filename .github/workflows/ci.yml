@@ -73,7 +73,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 500M
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -127,7 +126,12 @@ jobs:
           sudo apt-get update
           # shellcheck disable=SC2086
           sudo apt-get install -y --no-install-recommends \
-            ninja-build ccache libvulkan-dev mesa-vulkan-drivers xvfb $SDL_BUILD_DEPS
+            ninja-build libvulkan-dev mesa-vulkan-drivers xvfb $SDL_BUILD_DEPS
+
+      # 版を固定した ccache (scripts/install-ccache.sh)
+      - name: Install ccache
+        shell: bash
+        run: bash scripts/install-ccache.sh
 
       # tcs の変換と .NET 実行用。
       # native-gate.sh --require-cs が skip を fail 扱いにする。
@@ -227,15 +231,10 @@ jobs:
           restore-keys: ${{ steps.deps.outputs.restore }}
 
       # ccache は MSVC の cl も扱う (Release は debug の情報を持たないので、そのまま cache できる)。
-      # 版を固定して release から取り、hash を確かめる。
+      # 版を固定した ccache (scripts/install-ccache.sh)
       - name: Install ccache
         shell: bash
-        run: |
-          curl -sSfL -o "$RUNNER_TEMP/ccache.zip" https://github.com/ccache/ccache/releases/download/v4.14.2/ccache-4.14.2-windows-x86_64.zip
-          echo "6993ce645e53192cec592ee23186200b574ac4c59097ecde8d9cfd681b47ae84  $RUNNER_TEMP/ccache.zip" | sha256sum -c -
-          unzip -q "$RUNNER_TEMP/ccache.zip" -d "$RUNNER_TEMP"
-          cygpath -w "$RUNNER_TEMP/ccache-4.14.2-windows-x86_64" >> "$GITHUB_PATH"
-          echo "CCACHE_DIR=$(cygpath -w ~/.ccache)" >> "$GITHUB_ENV"
+        run: bash scripts/install-ccache.sh
 
       - name: Restore ccache
         uses: actions/cache/restore@v4
@@ -434,7 +433,6 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     env:
-      CCACHE_DIR: /Users/runner/.ccache
       CCACHE_MAXSIZE: 500M
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -479,7 +477,16 @@ jobs:
       # run-golden.sh は bash 4+ (mapfile / wait -n)。
       # macOS 同梱の bash は 3.2。
       - name: Install tools
-        run: brew install bash ninja ccache
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+        run: brew install bash ninja
+
+      # 版を固定した ccache (scripts/install-ccache.sh)
+      - name: Install ccache
+        shell: bash
+        run: bash scripts/install-ccache.sh
 
       # tests/cs の test とサンプルの C# は起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
@@ -521,7 +528,6 @@ jobs:
     timeout-minutes: 120
     env:
       EMSDK_VERSION: 5.0.2
-      CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 500M
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -574,11 +580,10 @@ jobs:
           key: ccache-wasm-${{ github.sha }}
           restore-keys: ccache-wasm-
 
+      # 版を固定した ccache (scripts/install-ccache.sh)
       - name: Install ccache
-        run: |
-          sudo rm -f /etc/apt/sources.list.d/google-chrome*
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ccache
+        shell: bash
+        run: bash scripts/install-ccache.sh
 
       - name: Build lub player wasm
         run: |
