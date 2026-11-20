@@ -50,6 +50,14 @@ EOF
   shift
 done
 
+# APPLE_GATE_SHARD=k/n runs the k-th of n shares of the mac part (default 1/1,
+# everything; CI runs the shares as separate jobs). The C# runtime tests are
+# dealt out one by one, the other groups of checks one group per share.
+shard="${APPLE_GATE_SHARD:-1/1}"
+shard_k="${shard%/*}"
+shard_n="${shard#*/}"
+mine() { (((($1 - 1) % shard_n) == shard_k - 1)); }
+
 run() {
   echo
   echo "==> $*"
@@ -93,6 +101,19 @@ source scripts/cs-tests.sh
 run cs_tests_vm_build
 
 if [[ $part != ios ]]; then
+  cs_shard_tests=()
+  for i in "${!cs_runtime_tests[@]}"; do
+    if ((i % shard_n == shard_k - 1)); then cs_shard_tests+=("${cs_runtime_tests[$i]}"); fi
+  done
+  echo
+  echo "==> C# runtime tests (${#cs_shard_tests[@]} of ${#cs_runtime_tests[@]}, share $shard)"
+  metal_test() { "./$build/lub" tests/cs/.lub/all.tcsb --entry "$1" "${cs_test_args[@]}" >"$2" 2>&1; }
+  cs_test_logs="$work/runtime" && mkdir -p "$cs_test_logs"
+  # CI の runner の仮想の GPU (Apple Paravirtual device) は、process を並べると command buffer が GPU hang の error で止まるので、1 本ずつ走らせる
+  cs_run_tests 1 metal_test "${cs_shard_tests[@]}"
+fi
+
+if [[ $part != ios ]] && mine 1; then
   for smoke in lub_physics_box2d_smoke lub_physics_box3d_smoke \
     lub_surfacenets_smoke lub_sdf_smoke lub_shader_layout_smoke; do
     run bash scripts/build-release.sh --build-dir "$build" --target "$smoke" --no-configure
@@ -102,21 +123,20 @@ if [[ $part != ios ]]; then
   run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestFixedDt --fixed-dt 0.0125
   run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestFixedDt --fixed-dt 0.0166666666666667
 
-  echo
-  echo "==> C# runtime tests (${#cs_runtime_tests[@]})"
-  metal_test() { "./$build/lub" tests/cs/.lub/all.tcsb --entry "$1" "${cs_test_args[@]}" >"$2" 2>&1; }
-  cs_test_logs="$work/runtime" && mkdir -p "$cs_test_logs"
-  # CI の runner の仮想の GPU (Apple Paravirtual device) は、process を並べると command buffer が GPU hang の error で止まるので、1 本ずつ走らせる
-  cs_run_tests 1 metal_test "${cs_runtime_tests[@]}"
   # encoder に設定済みの pipeline、buffer、texture を設定し直さなくても、各 draw が自分の状態で描くこと。
   run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestDrawStateReuse "${cs_test_args[@]}"
   # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
+fi
+
+if [[ $part != ios ]] && mine 2; then
   run scripts/test-tcs-process-cleanup.sh "./$build/lub"
 
   run env BINARY="./$build/lub" scripts/run-golden.sh
+fi
 
+if [[ $part != ios ]] && mine 3; then
   # Shader cache: `lub export macos` fills a snapshot's cache, a player without
   # Slang (what an iOS app is) run in the snapshot renders the same frame as
   # the player with Slang run from the repository, and names the key when a

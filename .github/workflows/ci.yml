@@ -466,6 +466,12 @@ jobs:
   # Metal は runner の GPU で描くので byte 一致にはならず、golden は Linux の *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
   # iOS 側 (--part ios、simulator での実行) は ios job (tag の push のとき) で走る。
   macos:
+    name: macos (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # gate を分け前 (APPLE_GATE_SHARD) ごとの job に分けて並べる。runtime テストは runner の GPU で 1 本ずつしか走らせられない
+        shard: [1/3, 2/3, 3/3]
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -533,14 +539,15 @@ jobs:
         run: |
           export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
           mkdir -p "$TMPDIR"
-          bash scripts/apple-gate.sh --part mac
+          APPLE_GATE_SHARD=${{ matrix.shard }} bash scripts/apple-gate.sh --part mac
 
       - name: ccache stats
         if: always()
         run: ccache -s
 
+      # Slang 無しの player も build する分け前が保存する
       - name: Save ccache
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && matrix.shard == '3/3'
         uses: actions/cache/save@v4
         with:
           path: ~/.ccache
@@ -550,7 +557,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: golden-failure-macos
+          name: golden-failure-macos-${{ strategy.job-index }}
           path: ${{ runner.temp }}/apple-gate-tmp
           if-no-files-found: ignore
 
@@ -621,19 +628,23 @@ jobs:
         shell: bash
         run: bash scripts/install-ccache.sh
 
-      - name: Build lub player wasm
-        run: |
-          source "$HOME/emsdk/emsdk_env.sh"
-          emcmake cmake --preset wasm-release
-          cmake --build build/wasm -j
-          # 外の project が find_package(lub) で自前の player を作れること
-          emcmake cmake -S tests/cmake/player -B build/wasm/export-player -G Ninja -Dlub_DIR="$PWD/build/wasm"
-          cmake --build build/wasm/export-player
-
       # lider の bytecode、tcs wasm assets、tcs2c の web の player に使う
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: tcs/global.json
+
+      # 後の段が使う .NET の tcs (lider の bytecode) と tcs2c (lider の player の tcs.c) の build は、wasm の build と並べて済ませる
+      - name: Build lub player wasm
+        run: |
+          (dotnet build tcs/Transpiler -c Release -nologo -v q && dotnet build tcs/tcs2c -c Release -nologo -v q) > "$RUNNER_TEMP/dotnet-build.log" 2>&1 &
+          dotnet_build=$!
+          source "$HOME/emsdk/emsdk_env.sh"
+          emcmake cmake --preset wasm-release
+          cmake --build build/wasm -j
+          wait "$dotnet_build" || { cat "$RUNNER_TEMP/dotnet-build.log"; exit 1; }
+          # 外の project が find_package(lub) で自前の player を作れること
+          emcmake cmake -S tests/cmake/player -B build/wasm/export-player -G Ninja -Dlub_DIR="$PWD/build/wasm"
+          cmake --build build/wasm/export-player
 
       # release の一式の job (kit) がこれを待つので、要る物 (lub の player の wasm) ができたらすぐ作って渡す
       # release の一式の OS によらない物: web の tcs VM の player (サイトが配るものと同じ)、lider の bytecode (サイトの build が作るものと同じ)、かな漢字変換の辞書。
