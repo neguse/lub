@@ -104,15 +104,10 @@ if [[ $part != ios ]]; then
 
   echo
   echo "==> C# runtime tests (${#cs_runtime_tests[@]})"
-  for cs_test in "${cs_runtime_tests[@]}"; do
-    if "./$build/lub" tests/cs/.lub/all.tcsb --entry "$cs_test" "${cs_test_args[@]}" >"$work/test.log" 2>&1; then
-      echo "PASS $cs_test"
-    else
-      echo "FAIL $cs_test"
-      sed 's/^/    /' "$work/test.log"
-      exit 1
-    fi
-  done
+  metal_test() { "./$build/lub" tests/cs/.lub/all.tcsb --entry "$1" "${cs_test_args[@]}" >"$2" 2>&1; }
+  cs_test_logs="$work/runtime" && mkdir -p "$cs_test_logs"
+  # CI の runner の仮想の GPU (Apple Paravirtual device) は、process を並べると command buffer が GPU hang の error で止まるので、1 本ずつ走らせる
+  cs_run_tests 1 metal_test "${cs_runtime_tests[@]}"
   # encoder に設定済みの pipeline、buffer、texture を設定し直さなくても、各 draw が自分の状態で描くこと。
   run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestDrawStateReuse "${cs_test_args[@]}"
   # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
