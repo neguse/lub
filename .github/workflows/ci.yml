@@ -1,12 +1,6 @@
 # PR のマージ gate と master deploy を 1 workflow に統合した CI。
 # required check は gate job だけ: test job の増減やシャード数の変更で branch protection を触らずに済む。
-#
-# 変更検知 (changes job) は保守的な 2 クラスだけ切る:
-#   - docs のみ (docs/** の manual 以外, *.md, .claude/**, LICENSE) → lint のみ
-#   - web サブツリーのみ (web/, docs/manual/) → native をスキップ
-# それ以外は全 job 実行。
-# tcs/ の中のテスト (tcs-* の job) は、PR では tcs/ かこの workflow を変えたときだけ走る。
-# 依存の閉包が広い (src/ は wasm へ、cs-lib/ は全 golden へ波及する) ので、細かく削るより漏れない側に倒す。
+# 変更した path で job を選ばず、毎回全部を走らせる。
 #
 # cache は入力の内容で key を取り、入力が同じなら同じ物を使う:
 #   - 第三者の library (SDL、Box2D、Box3D、OpenXR の loader) の install 先 <build>/deps/ (scripts/deps-cache-key.sh、cmake/LubDeps.cmake)
@@ -29,54 +23,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      docs_only: ${{ steps.classify.outputs.docs_only }}
-      web_only: ${{ steps.classify.outputs.web_only }}
-      tcs: ${{ steps.classify.outputs.tcs }}
-    steps:
-      - name: Classify changed paths
-        id: classify
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          docs_only=false
-          web_only=false
-          # tcs/ の中のテスト (tcs-* の job) を走らせるか。PR では tcs/ か この workflow を変えたときだけ
-          tcs=true
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
-              --paginate --jq '.[].filename' > /tmp/changed.txt
-            docs_only=true
-            web_only=true
-            tcs=false
-            while IFS= read -r f; do
-              case "$f" in
-                tcs/* | .github/workflows/ci.yml) tcs=true ;;
-              esac
-              case "$f" in
-                docs/manual/*) docs_only=false ;; # サイトの docs.html に焼き込まれる
-                docs/* | *.md | .claude/* | LICENSE) continue ;;
-                *) docs_only=false ;;
-              esac
-              case "$f" in
-                docs/manual/* | web/*) ;;
-                *) web_only=false ;;
-              esac
-            done < /tmp/changed.txt
-            if [ ! -s /tmp/changed.txt ]; then
-              docs_only=false
-              web_only=false
-              tcs=true
-            fi
-          fi
-          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
-          echo "web_only=$web_only" >> "$GITHUB_OUTPUT"
-          echo "tcs=$tcs" >> "$GITHUB_OUTPUT"
-          echo "docs_only=$docs_only web_only=$web_only tcs=$tcs"
-
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -123,8 +69,6 @@ jobs:
   # CI の視覚 golden gate は windows job (WARP)、lavapipe golden はローカル pre-push の gate。
   # mesa を container 等で pin できたら有効化する。
   linux:
-    needs: changes
-    if: needs.changes.outputs.web_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -207,8 +151,6 @@ jobs:
   # WARP はソフトウェアラスタライザなので GPU の無い runner でも tests/golden/*_d3d12.png と byte 一致する。
   # vulkan backend は runner に Vulkan driver が無いためビルドのみ検証 (動作は linux job の lavapipe が同じ backend_vulkan.c で runtime テストを通す)。
   windows:
-    needs: changes
-    if: needs.changes.outputs.web_only != 'true'
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -423,8 +365,6 @@ jobs:
   # Metal は runner の GPU で描くので byte 一致にはならず、golden は Linux の *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
   # iOS 側 (--part ios、simulator での実行) は release.yml で走る。
   macos:
-    needs: changes
-    if: needs.changes.outputs.web_only != 'true'
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -479,13 +419,11 @@ jobs:
           if-no-files-found: ignore
 
   # web のサイト (lub.neguse.net) のアセット生成 + build。
-  # 検証は下流の web-verify と web-export が artifact (web-dist-test) に対して行う。
+  # サイトは production の build を 1 回だけ作り、下流の web-verify と web-export が確かめた dist (web-dist) を deploy がそのまま載せる。
   # 前提アセット (web/README.md) の供給:
   #   - lub player wasm: emsdk でこの job 内でビルド
   #   - tcs WasmCompiler: content key cache、miss 時だけ dotnet で publish
   web-build:
-    needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -593,29 +531,14 @@ jobs:
             build/wasm-tcs/lub.js
             build/wasm-tcs/lub.wasm
 
-      - name: Build site (test mode for verify)
-        working-directory: web
-        run: |
-          npm run gen-api
-          npm run gen-lider
-          npx vite build --mode test
-
-      # web の dist は同じ run の後続 job への受け渡し専用で、run の後は使わない。
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web-dist-test
-          path: web/dist
-          retention-days: 1
-
-      - name: Build site (production)
-        if: github.event_name != 'pull_request'
+      - name: Build site
         working-directory: web
         run: npm run build
 
+      # web の dist は同じ run の後続 job (検査と deploy) への受け渡し専用で、run の後は使わない。
       - uses: actions/upload-artifact@v4
-        if: github.event_name != 'pull_request'
         with:
-          name: web-dist-prod
+          name: web-dist
           path: web/dist
           retention-days: 1
 
@@ -623,8 +546,7 @@ jobs:
   # shard 1 = player の page (tests/cs)、shard 2 = サイトの入口。
   # verify は閾値判定なので runner の system chromium で足りる。
   web-verify:
-    needs: [changes, web-build]
-    if: needs.changes.outputs.docs_only != 'true'
+    needs: web-build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -661,7 +583,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: web-dist-test
+          name: web-dist
           path: web/dist
 
       # tests/cs の runtime テストを web の player の page で動かす (verify-player の A9)。
@@ -700,7 +622,7 @@ jobs:
   # export は linux の job が build した lub、player は web-build の wasm を使う。
   # web-build が作った tcs2c の player を page から外す順番もここで見る (chromium があるので)。
   web-export:
-    needs: [changes, linux, web-build]
+    needs: [linux, web-build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -722,7 +644,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: web-dist-test
+          name: web-dist
           path: web/dist
 
       - uses: actions/download-artifact@v4
@@ -768,15 +690,10 @@ jobs:
         working-directory: web
         run: node scripts/tcs-shutdown-check.mjs ../build/wasm-tcs
 
-  # 唯一の required check。
-  # 走った job が全部 success (skipped は changes の判定による意図的な skip) なら green。
-  # changes / lint は必ず走る前提。
   # ---- tcs/ の中のテスト ----
   # tcs (C# の compiler と VM) 自身のテスト。lub の job は tcs を使う側から確かめ、こちらは tcs の仕様から確かめる。
   # .NET SDK の版は tcs/global.json で固定する。
   tcs-test:
-    needs: changes
-    if: needs.changes.outputs.tcs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -797,11 +714,9 @@ jobs:
       - name: Run tests and tcs checks
         run: bash run-tests.sh
 
-  # tcs 自身の速さの回帰 (tcs/perf/selfbench)。PR の base と同じ runner で測り、決定的な指標 (命令の数、managed heap の最大) が閾値を超えて増えたら失敗する。
+  # tcs 自身の速さの回帰 (tcs/perf/selfbench)。PR の base (push では 1 つ前の commit) と同じ runner で測り、決定的な指標 (命令の数、managed heap の最大) が閾値を超えて増えたら失敗する。
   # 測るのは C の tcs の tcs vm (lider の player が page の中でゲームを変換するのと同じ経路) だけで、時間は測らない。
   tcs-selfbench:
-    needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.tcs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -820,9 +735,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y valgrind
 
       - name: Compare with the PR base
-        run: python3 perf/selfbench/run.py --base "origin/$BASE_REF" --tasks vm --hosts native --runs 0 -o selfbench.json
+        run: python3 perf/selfbench/run.py --base "$BASE" --tasks vm --hosts native --runs 0 -o selfbench.json
         env:
-          BASE_REF: ${{ github.base_ref }}
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD^1' }}
 
       - name: Upload selfbench results
         if: always()
@@ -833,8 +748,6 @@ jobs:
 
   # tcs2c で C にした tcs (tcs/SelfHost/native.sh) を 3 OS で作り、.NET の tcs と同じ出力を出すことを確かめる。
   tcs-native:
-    needs: changes
-    if: needs.changes.outputs.tcs == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -863,8 +776,10 @@ jobs:
         env:
           CC: ${{ matrix.cc }}
 
+  # 唯一の required check。
+  # 待つ job が全部 success なら green。
   gate:
-    needs: [changes, lint, format, linux, windows, macos, web-build, web-verify, web-export, tcs-test, tcs-selfbench, tcs-native]
+    needs: [lint, format, linux, windows, macos, web-build, web-verify, web-export, tcs-test, tcs-selfbench, tcs-native]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -874,28 +789,18 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS"
-          bad=$(echo "$NEEDS" | jq -r 'to_entries[]
-            | select(.value.result != "success" and .value.result != "skipped")
-            | .key')
+          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | .key')
           if [ -n "$bad" ]; then
             echo "failed jobs: $bad" >&2
             exit 1
           fi
-          for must in changes lint format; do
-            if [ "$(echo "$NEEDS" | jq -r --arg j "$must" '.[$j].result')" != "success" ]; then
-              echo "$must did not succeed" >&2
-              exit 1
-            fi
-          done
 
   # master push / workflow_dispatch のみ。
-  # verify 済み artifact とは別に production build (web-dist-prod) を deploy する。
+  # web-verify と web-export が確かめた dist (web-dist) をそのまま載せる。
   # local の `cd web && npm run deploy` は脱出ハッチとして残す。
-  # gate が待つ job に skipped (PR だけで走る job) があると、if に状態の関数が無い job は skipped になる。
-  # gate の結果を自分で見る。
   deploy:
-    needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result == 'success' && github.event_name != 'pull_request' }}
+    needs: gate
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -913,7 +818,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: web-dist-prod
+          name: web-dist
           path: web/dist
 
       - name: Deploy (wrangler)

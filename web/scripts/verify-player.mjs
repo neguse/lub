@@ -215,7 +215,8 @@ function csTestDataFiles() {
   return files;
 }
 
-async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
+// run の argv は entry の後に足す起動の引数、env は runtime の環境変数 (どちらも setFiles で渡す)。
+async function runCsTestOnWeb(name, run = {}, init = A9_INIT[name]) {
   const files = {
     ...csTestDataFiles(),
     "/tests/cs/.lub/all.tcsb": fs
@@ -242,12 +243,7 @@ async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
   const consoleLines = [];
   p.on("console", (msg) => consoleLines.push(msg.text()));
   p.on("pageerror", (e) => consoleLines.push("[pageerror] " + e.message));
-  await p.goto(
-    `${URL}player.html?w=64&h=64&argv=--readback-fixed-latency${query}`,
-    {
-      waitUntil: "load",
-    },
-  );
+  await p.goto(`${URL}player.html?w=64&h=64`, { waitUntil: "load" });
   // player.html を top-level で開くと parent === window なので、relayLog (wasm の print / printErr) の postMessage を自分で受けて溜める。
   await p.evaluate(() => {
     window.__lubA9 = [];
@@ -256,12 +252,22 @@ async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
       if (d.type === "log") window.__lubA9.push(String(d.msg));
     });
   });
+  const argv = [
+    "tests/cs/.lub/all.tcsb",
+    "--entry",
+    name,
+    "--readback-fixed-latency",
+    ...(run.argv ?? []),
+  ];
+  const env = run.env ?? {};
   await p.evaluate(
-    ({ files, name }) => {
-      const argv = ["tests/cs/.lub/all.tcsb", "--entry", name];
-      window.postMessage({ type: "setFiles", files, entry: name, argv }, "*");
+    ({ files, name, argv, env }) => {
+      window.postMessage(
+        { type: "setFiles", files, entry: name, argv, env },
+        "*",
+      );
     },
-    { files, name },
+    { files, name, argv, env },
   );
   const okLine = "PASS";
   const collect = async () => {
@@ -306,21 +312,32 @@ async function runCsTestOnWeb(name, query = "", init = A9_INIT[name]) {
 
 // TestSaveDir は保存する page と読む page を順に開き、page をまたいで save/ の file が残ることを見る (IndexedDB は同じ context の page で共有)。
 const A9_RUNS = [
-  ...A9_TESTS.map((name) => [name, ""]),
-  ["TestSaveDir", "&env=LUB_SAVE_TEST=write"],
-  ["TestSaveDir", "&env=LUB_SAVE_TEST=read"],
-  ["TestSaveDir", "&env=LUB_SAVE_TEST=mount-fails"],
-  ["TestSaveDir", "&env=LUB_SAVE_TEST=load-fails", blockIndexedDb],
+  ...A9_TESTS.map((name) => [name, {}]),
+  ["TestSaveDir", { label: "write", env: { LUB_SAVE_TEST: "write" } }],
+  ["TestSaveDir", { label: "read", env: { LUB_SAVE_TEST: "read" } }],
+  [
+    "TestSaveDir",
+    { label: "mount-fails", env: { LUB_SAVE_TEST: "mount-fails" } },
+  ],
+  [
+    "TestSaveDir",
+    { label: "load-fails", env: { LUB_SAVE_TEST: "load-fails" } },
+    blockIndexedDb,
+  ],
   [
     "TestXrCapture",
-    "&argv=--capture&argv=/xr.png&argv=--capture-frame&argv=4&env=LUB_XR_CAPTURE_TEST_OUT=/xr.png",
+    {
+      label: "/xr.png",
+      argv: ["--capture", "/xr.png", "--capture-frame", "4"],
+      env: { LUB_XR_CAPTURE_TEST_OUT: "/xr.png" },
+    },
   ],
 ];
-for (const [test, query, init] of A9_RUNS) {
-  const name = query ? `${test} (${query.split("=").pop()})` : test;
+for (const [test, run, init] of A9_RUNS) {
+  const name = run.label ? `${test} (${run.label})` : test;
   try {
     console.log(`[verify] A9 ${name}`);
-    const r = await runCsTestOnWeb(test, query, init);
+    const r = await runCsTestOnWeb(test, run, init);
     const ok = r.ok && r.errors.length === 0;
     if (
       !check(
