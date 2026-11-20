@@ -352,7 +352,16 @@ async function runOnce(ctx, name, run) {
       )
       .then((h) => h.jsonValue())
       .catch(() => null);
-    const code = await Promise.race([exited, crashed.then(() => null)]);
+    let code = await Promise.race([exited, crashed.then(() => null)]);
+    // page の error で待つのをやめても、終了コードがもう書かれていれば、それで判定する
+    if (code === null)
+      code = await p.evaluate((file) => {
+        try {
+          return window.FS.readFile(file, { encoding: "utf8" });
+        } catch {
+          return null;
+        }
+      }, EXIT_FILE);
     // validation error は GPU の process から非同期に届く。
     // それまでに出した command の error は、queue の仕事の完了より先に届く。
     const r = await p.evaluate(async (capture) => {

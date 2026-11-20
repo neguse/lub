@@ -43,10 +43,13 @@ export async function launchChromium({
   return chromium.launch({
     headless,
     executablePath,
-    // 音は偽の出力に流す (音の device が無いか応えない機械でも、Web Audio の時計が進む)
+    // 音は偽の出力に流す (音の device が無いか応えない機械でも、Web Audio の時計が進む)。
+    // AudioContext の suspend() と resume() は仕様のとおり非同期に済ませる (close() が済んでいない promise を拒否する)。
+    // ブラウザの版や実験の設定で振る舞いが変わらないよう、常に有効にする。
     args: [
       ...(webgpu ? WEBGPU_ARGS : []),
       "--disable-audio-output",
+      "--enable-blink-features=AudioContextAsyncStateTransitions",
       "--no-sandbox",
     ],
   });
