@@ -59,7 +59,7 @@ LUB_API bool lub_host_quit_requested(LubContext *ctx);
 LUB_API int32_t lub_host_exit_code(LubContext *ctx);
 
 // runtime と SDL を終了して context を捨てる。
-// env LUB_EXIT_FILE があれば、その file に終了コードを書く (終了コードを受け取れない iOS simulator 用)。
+// env LUB_EXIT_FILE があれば、その file に終了コードを書く (終了コードを受け取れない iOS simulator と web 用)。
 LUB_API void lub_host_destroy(LubContext *ctx);
 
 #ifdef __cplusplus

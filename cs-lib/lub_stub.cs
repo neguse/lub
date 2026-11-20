@@ -480,7 +480,7 @@ namespace Lub
 
         /// <summary>アプリ終了を要求する。
         /// code は process の終了コード (0 = 成功)。
-        /// env LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く (終了コードを受け取れない iOS simulator 用)。
+        /// env LUB_EXIT_FILE があれば、終了時にその file へ終了コードを書く (終了コードを受け取れない iOS simulator と web 用)。
         /// </summary>
         [LubNoFail]
         public static void Quit(int code = 0)

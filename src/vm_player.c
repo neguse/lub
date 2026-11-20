@@ -1514,6 +1514,10 @@ SDL_AppResult lub_vm_app_iterate(void) {
 
 void lub_vm_app_quit(SDL_AppResult result) {
 #ifdef __EMSCRIPTEN__
+  Player *p = &g_player;
+  // 起動の失敗など、Quit を経ない失敗も終了状態の file に失敗として残す
+  if (p->ctx && result == SDL_APP_FAILURE && !lub_host_quit_requested(p->ctx))
+    lub_app_quit(p->ctx, 1);
   lub_vm_shutdown();
 #else
   Player *p = &g_player;
