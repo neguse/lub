@@ -185,7 +185,7 @@ fi
 cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
 
 # dotnet 相 (Transpiler prebuild / transpile / .NET 実行と雛形の build) は native binary に依存しないので、C build と並行に回して runtime テストの前で join する。
-# tests/cs の runtime テストを、$3 の backend (空白区切り) ごとに全部並列に走らせ、失敗があれば log を出して終わる。
+# tests/cs の runtime テストを、$3 の backend (空白区切り) ごとに全部、並べて走らせ (一度に core の数の 4 倍まで)、失敗があれば log を出して終わる。
 # $2 は test の名前から起動の引数 (実行ファイルと入力) を 1 行ずつ出す関数で、test の名前は $4 以降
 run_runtime_tests() {
   local label=$1 argv_fn=$2 backend entry i log failed=0 t0=$SECONDS
@@ -201,6 +201,10 @@ run_runtime_tests() {
       cleanup_files+=("$log")
       logs+=("$log")
       mapfile -t argv < <("$argv_fn" "$entry")
+      # 一度に動かす数を限る。全部を一度に起こすと、lavapipe と Xvfb の memory で機械ごと止まることがある
+      while (($(jobs -rp | wc -l) >= cs_jobs_max * 4)); do
+        sleep 0.05
+      done
       LUB_BACKEND=$backend LUB_XVFB_SERVERNUM=$((300 + ${#runs[@]})) "${timeout_cmd[@]}" \
         scripts/run-headless.sh "${argv[@]}" "${cs_test_args[@]}" >"$log" 2>&1 &
       pids+=("$!")

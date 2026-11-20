@@ -7,7 +7,8 @@ set -euo pipefail
 name="$1"
 producer="$2"
 api="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-for _ in $(seq 1 600); do
+# 上げる job が止まったまま終わらないときに備えて、10 分で諦める
+for _ in $(seq 1 200); do
   if gh api "$api/artifacts?per_page=100" --jq '.artifacts[].name' | grep -qxF "$name"; then
     exit 0
   fi
