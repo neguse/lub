@@ -6,8 +6,9 @@
 #   - 第三者の library (SDL、Box2D、Box3D、OpenXR の loader) の install 先 <build>/deps/ (scripts/deps-cache-key.sh、cmake/LubDeps.cmake)
 #   - tcs wasm assets (content key: tcs/ の tree の hash)
 #   - slang prebuilt、emsdk、playwright browsers、npm
-# lub 本体は毎回 build する (compile の cache は使わない)。
+# lub 自身の source は PR ごとに変わるので、compile は ccache で cache する (Linux、macOS、web)。
 # master push が cache を作り、PR はそれを読む (actions/cache の branch scope)。
+# ccache は PR では保存しない (PR ごとに保存すると cache が増え続ける)。branch で workflow_dispatch した run は、その branch の scope に保存する。
 name: ci
 
 on:
@@ -71,10 +72,18 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      CCACHE_DIR: /home/runner/.ccache
+      CCACHE_MAXSIZE: 500M
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        shell: bash
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr third_party/jamo
 
       # CMake configure が slang の prebuilt (~150MB) を落とすのでキャッシュする。
       # key は取得 URL を持つ CMakeLists.txt に紐付け。
@@ -92,28 +101,33 @@ jobs:
 
       # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す
       - name: Cache deps
+        id: deps-cache
         uses: actions/cache@v4
         with:
           path: build-release-linux/deps
           key: ${{ steps.deps.outputs.key }}
           restore-keys: ${{ steps.deps.outputs.restore }}
 
-      # SDL3 は vendored build なので X11/Wayland/audio の dev ヘッダが要る。
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-linux-${{ github.sha }}
+          restore-keys: ccache-linux-
+
       # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓。
+      # SDL3 を build するとき (deps の cache が key で当たらないとき) だけ、SDL3 の build に要る X11/Wayland/audio の dev ヘッダを入れる。
       - name: Install system deps
+        env:
+          SDL_BUILD_DEPS: ${{ steps.deps-cache.outputs.cache-hit != 'true' && 'libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev' || '' }}
         run: |
           # runner イメージ同梱の Google Chrome の apt source は metadata の Hash Sum mismatch を時々出して update ごと落とす。
           # ここでは使わない
           sudo rm -f /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
+          # shellcheck disable=SC2086
           sudo apt-get install -y --no-install-recommends \
-            ninja-build libvulkan-dev mesa-vulkan-drivers xvfb \
-            libasound2-dev libpulse-dev libpipewire-0.3-dev \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-            libxfixes-dev libxi-dev libxss-dev libxtst-dev \
-            libxkbcommon-dev libwayland-dev libdecor-0-dev \
-            libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
-            libdbus-1-dev libudev-dev
+            ninja-build ccache libvulkan-dev mesa-vulkan-drivers xvfb $SDL_BUILD_DEPS
 
       # tcs の変換と .NET 実行用。
       # native-gate.sh --require-cs が skip を fail 扱いにする。
@@ -126,6 +140,17 @@ jobs:
           export TMPDIR="${RUNNER_TEMP}/native-gate-tmp"
           mkdir -p "$TMPDIR"
           bash scripts/native-gate.sh --require-cs --skip-golden
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      - name: Save ccache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-linux-${{ github.sha }}
 
       # web-export が page を書くのに使う lub と、その共有 library、テストの bytecode。
       # 共有 library は RUNPATH (build の絶対 path) で探すので、同じ path に置き戻す。
@@ -155,8 +180,11 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        shell: bash
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr
 
       - uses: ilammy/msvc-dev-cmd@v1
 
@@ -367,10 +395,19 @@ jobs:
   macos:
     runs-on: macos-latest
     timeout-minutes: 60
+    env:
+      CCACHE_DIR: /Users/runner/.ccache
+      CCACHE_MAXSIZE: 500M
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJC_COMPILER_LAUNCHER: ccache
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        shell: bash
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr
 
       # CMake configure が slang の prebuilt を落とすのでキャッシュする。
       - name: Cache slang prebuilts
@@ -394,10 +431,17 @@ jobs:
           key: ${{ steps.deps.outputs.key }}
           restore-keys: ${{ steps.deps.outputs.restore }}
 
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-macos-${{ github.sha }}
+          restore-keys: ccache-macos-
+
       # run-golden.sh は bash 4+ (mapfile / wait -n)。
       # macOS 同梱の bash は 3.2。
       - name: Install tools
-        run: brew install bash ninja
+        run: brew install bash ninja ccache
 
       # tests/cs の test とサンプルの C# は起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
@@ -409,6 +453,17 @@ jobs:
           export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
           mkdir -p "$TMPDIR"
           bash scripts/apple-gate.sh --part mac
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      - name: Save ccache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-macos-${{ github.sha }}
 
       - name: Upload golden failure artifacts
         if: failure()
@@ -428,10 +483,17 @@ jobs:
     timeout-minutes: 120
     env:
       EMSDK_VERSION: 5.0.2
+      CCACHE_DIR: /home/runner/.ccache
+      CCACHE_MAXSIZE: 500M
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        shell: bash
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr third_party/jamo
 
       - name: Resolve tcs tree hash (cache key)
         id: tcs
@@ -466,6 +528,19 @@ jobs:
             build/wasm-tcs/deps
           key: ${{ steps.deps.outputs.key }}
           restore-keys: ${{ steps.deps.outputs.restore }}
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-wasm-${{ github.sha }}
+          restore-keys: ccache-wasm-
+
+      - name: Install ccache
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ccache
 
       - name: Build lub player wasm
         run: |
@@ -534,6 +609,17 @@ jobs:
       - name: Build site
         working-directory: web
         run: npm run build
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      - name: Save ccache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-wasm-${{ github.sha }}
 
       # web の dist は同じ run の後続 job (検査と deploy) への受け渡し専用で、run の後は使わない。
       - uses: actions/upload-artifact@v4
@@ -705,7 +791,7 @@ jobs:
       # spec conformance の入力 (C# の仕様の例)
       - name: Init csharpstandard
         working-directory: .
-        run: git submodule update --init tcs/deps/csharpstandard
+        run: git submodule update --init --depth 1 tcs/deps/csharpstandard
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -732,7 +818,7 @@ jobs:
           global-json-file: tcs/global.json
 
       - name: Install valgrind
-        run: sudo apt-get update && sudo apt-get install -y valgrind
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind
 
       - name: Compare with the PR base
         run: python3 perf/selfbench/run.py --base "$BASE" --tasks vm --hosts native --runs 0 -o selfbench.json
@@ -795,12 +881,12 @@ jobs:
             exit 1
           fi
 
-  # master push / workflow_dispatch のみ。
+  # master の push と、master での workflow_dispatch のときだけ。
   # web-verify と web-export が確かめた dist (web-dist) をそのまま載せる。
   # local の `cd web && npm run deploy` は脱出ハッチとして残す。
   deploy:
     needs: gate
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
