@@ -281,22 +281,6 @@ jobs:
           key: ccache-windows-${{ github.sha }}
           restore-keys: ccache-windows-
 
-      - name: Configure
-        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build
-        run: cmake --build build-release
-
-      - name: ccache stats
-        run: ccache -s
-
-      - name: Save ccache
-        if: github.event_name != 'pull_request'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.ccache
-          key: ccache-windows-${{ github.sha }}
-
       - name: Cache .NET
         uses: actions/cache@v4
         with:
@@ -308,17 +292,39 @@ jobs:
         with:
           global-json-file: tcs/global.json
 
-      # 後の step (golden の test と 00_hello の変換) も同じ Transpiler.dll を使う (repo root からの相対 path)
-      - name: Build tests/cs (tcs VM bytecode)
+      - name: Configure
+        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      # tests/cs の bytecode (.NET の tcs で作る) は lub の build に依らないので、並べて作る。
+      # 後の step (golden の test と 00_hello の変換) も同じ Transpiler.dll を使う (repo root からの相対 path)。
+      # msvc-dev-cmd が設定する Platform=x64 で dotnet の既定の出力先が bin/x64/Release に変わるので、出力先を明示する。
+      - name: Build (lub, and the tests/cs bytecode alongside)
         shell: bash
         run: |
-          # msvc-dev-cmd が設定する Platform=x64 で既定の出力先が bin/x64/Release に変わるので、出力先を明示する。
-          dotnet build tcs/Transpiler -c Release -nologo -v q -o build-tcs
           export LUB_TCS_DLL=build-tcs/Transpiler.dll
-          test -f "$LUB_TCS_DLL"
           echo "LUB_TCS_DLL=$LUB_TCS_DLL" >> "$GITHUB_ENV"
-          source scripts/cs-tests.sh
-          cs_tests_vm_build
+          (
+            dotnet build tcs/Transpiler -c Release -nologo -v q -o build-tcs
+            test -f "$LUB_TCS_DLL"
+            source scripts/cs-tests.sh
+            cs_tests_vm_build
+          ) > "$RUNNER_TEMP/tests-cs.log" 2>&1 &
+          bytecode=$!
+          cmake --build build-release
+          wait "$bytecode" || {
+            cat "$RUNNER_TEMP/tests-cs.log"
+            exit 1
+          }
+
+      - name: ccache stats
+        run: ccache -s
+
+      - name: Save ccache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-windows-${{ github.sha }}
 
       - name: tcs process cleanup
         shell: bash
