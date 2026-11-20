@@ -14,6 +14,8 @@ name: ci
 on:
   push:
     branches: [master]
+    # tag (v*) の push で、検査を通った release の一式を GitHub の release に載せる (publish job)
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -712,6 +714,38 @@ jobs:
           path: web/dist
           retention-days: 1
 
+      # release の一式の OS によらない物: web の tcs VM の player (サイトが配るものと同じ)、lider の bytecode (サイトの build が作る)、かな漢字変換の辞書。
+      # 辞書は build-dict.sh (取る mozc の commit) と jamo の commit から決まるので、それを key にして cache し、無いときだけ作る (linux の lider の job と同じ key)
+      - name: Dictionary key
+        id: dict
+        run: echo "key=mozc-dict-$(git rev-parse HEAD:third_party/jamo)-${{ hashFiles('lider/scripts/build-dict.sh') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the dictionary
+        id: dict-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            lider/data/mozc.dict
+            lider/data/mozc-README.txt
+            lider/data/mozc-LICENSE.txt
+          key: ${{ steps.dict.outputs.key }}
+
+      - name: Common parts of the release kit
+        run: |
+          if [ "${{ steps.dict-cache.outputs.cache-hit }}" != true ]; then
+            bash lider/scripts/build-dict.sh lider/data
+          fi
+          mkdir -p common/wasm/vm common/lider common/dict
+          cp build/wasm/vm/lub.js build/wasm/vm/lub.wasm common/wasm/vm/
+          cp lider/build/web/Lider.tcsb common/lider/
+          cp lider/data/mozc.dict lider/data/mozc-README.txt lider/data/mozc-LICENSE.txt common/dict/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kit-common
+          path: common
+          retention-days: 1
+
   # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
   # shard 1 = player の page (tests/cs)、shard 2 = サイトの入口。
   # verify は閾値判定なので runner の system chromium で足りる。
@@ -930,40 +964,318 @@ jobs:
           name: tcs-selfbench-results
           path: tcs/selfbench.json
 
-  # tcs2c で C にした tcs (tcs/SelfHost/native.sh) を 3 OS で作り、.NET の tcs と同じ出力を出すことを確かめる。
-  tcs-native:
+  # release の一式 (docs/release-kit.md) を target ごとに毎回作り、一式だけを展開した所で雛形を export、check し、lider で開いて動かす。
+  # lub、tcs (tcs2c で C にした tcs。.NET の tcs と同じ出力を出すことも確かめる)、lub-gen、lider の player をその target の上で build し、web-build が作る OS によらない物 (kit-common) と一緒に固める。
+  # tag (v*) の push では、publish job がこれを GitHub の release に載せる。
+  kit:
+    name: kit (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            cc: cc
-          - os: macos-latest
-            cc: clang
-          - os: windows-latest
-            cc: clang
+          # glibc 2.39 の環境 (claude.ai の sandbox など) でも動くよう、Linux は Ubuntu 24.04 で build する
+          - target: linux-x64
+            os: ubuntu-24.04
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+          - target: windows-x64
+            os: windows-latest
+            arch: x64
+          - target: windows-arm64
+            os: windows-11-arm
+            arch: arm64
+          - target: macos-arm64
+            os: macos-latest
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
+    # kit-common の artifact ができるのを待つのに、この run の artifact の一覧を読む
+    permissions:
+      contents: read
+      actions: read
     defaults:
       run:
         shell: bash
-        working-directory: tcs
+    env:
+      CCACHE_MAXSIZE: 500M
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJC_COMPILER_LAUNCHER: ccache
     steps:
+      # Windows の git は既定で行末を CRLF にして取り出す。どの一式もリポジトリのままの行末 (LF) から作る。
+      # CRLF のままだと、C# の複数行の文字列の行末が .NET と tcs で変わり (tcs は LF にする)、lub-gen の検査も通らない
+      - name: Check out without converting line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v4
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr third_party/jamo
+
+      - name: Cache prebuilts
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/slang/lib
+            third_party/slang/bin
+            third_party/d3d12agility
+          key: release-prebuilt-${{ matrix.target }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Deps cache key
+        id: deps
+        run: bash scripts/deps-cache-key.sh kit >> "$GITHUB_OUTPUT"
+
+      # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す
+      - name: Cache deps
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: build-kit/deps
+          key: ${{ steps.deps.outputs.key }}
+          restore-keys: ${{ steps.deps.outputs.restore }}
+
+      # 版を固定した ccache (scripts/install-ccache.sh)
+      - name: Install ccache
+        run: bash scripts/install-ccache.sh
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-kit-${{ matrix.target }}-${{ github.sha }}
+          restore-keys: ccache-kit-${{ matrix.target }}-
+
+      # mesa-vulkan-drivers (lavapipe) と xvfb は、一式の lider を描かせて確かめるのに使う。
+      # SDL3 を build するとき (deps の cache が key で当たらないとき) だけ、SDL3 の build に要る dev ヘッダを入れる。
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        env:
+          SDL_BUILD_DEPS: ${{ steps.deps-cache.outputs.cache-hit != 'true' && 'libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev' || '' }}
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*
+          sudo apt-get update
+          # shellcheck disable=SC2086
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build patchelf libvulkan-dev mesa-vulkan-drivers xvfb $SDL_BUILD_DEPS
+
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+        run: brew install bash ninja
+
+      # 一式はこの job で作るので、第三者の action は commit で固定する
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        if: runner.os == 'Windows'
+        with:
+          arch: ${{ matrix.arch }}
+
+      # Windows は image に無い .NET の SDK を毎回取るので、install 先を決めて cache する
+      - name: .NET install dir (Windows)
+        if: runner.os == 'Windows'
+        run: echo "DOTNET_INSTALL_DIR=C:\dotnet" >> "$GITHUB_ENV"
+
+      - name: Cache .NET (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: C:\dotnet
+          key: dotnet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tcs/global.json') }}
 
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: tcs/global.json
 
-      - name: Build native tcs and compare with .NET
-        run: bash SelfHost/native.sh
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+
+      - name: Build lub
+        run: |
+          cmake -S . -B build-kit -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-kit
+
+      # tcs2c で C にした tcs (.NET の tcs と同じ出力を出すことも確かめる)。生成した C は GNU C の文の式を使うので、Linux 以外は clang で build する。
+      # dotnet を使う段では env の Platform を外す。msvc-dev-cmd が置く Platform があると、dotnet build の出力が bin/<Platform>/ に変わり、script が見つけられない
+      - name: Build tcs
+        run: |
+          unset Platform
+          [ "$RUNNER_OS" = Linux ] || export CC=clang
+          bash scripts/build-tcs-native.sh build-kit
+
+      # lider の player は、tcs2c で C にした tcs の compiler を含む。Windows は MSVC と同じ ABI の clang-cl で build し、MSVC で build した lub と link する
+      - name: Build the lider player
+        run: |
+          unset Platform
+          [ "$RUNNER_OS" = Windows ] && export CC=clang-cl CXX=clang-cl
+          LUB_BUILD="$PWD/build-kit" bash lider/scripts/build-player.sh
+
+      # lub-gen (TinyC#) を C の tcs で C にする (.NET で動かした lub-gen と同じ出力を出すことも確かめる)
+      - name: Build lub-gen
+        run: |
+          unset Platform
+          [ "$RUNNER_OS" = Linux ] || export CC=clang
+          bash scripts/build-lub-gen.sh --verify build-kit
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      - name: Save ccache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-kit-${{ matrix.target }}-${{ github.sha }}
+
+      # OS によらない物は web-build が作る。needs で待つと、この job の build が web-build の後になるので、artifact ができるのをここで待つ
+      - name: Wait for the common parts (kit-common)
         env:
-          CC: ${{ matrix.cc }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          api="repos/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          for _ in $(seq 1 180); do
+            if gh api "$api/artifacts" --jq '.artifacts[].name' | grep -qx kit-common; then
+              exit 0
+            fi
+            state="$(gh api "$api/jobs?per_page=100" --jq '.jobs[] | select(.name == "web-build") | .conclusion')"
+            if [ -n "$state" ] && [ "$state" != success ]; then
+              echo "web-build did not succeed ($state)" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "kit-common did not appear" >&2
+          exit 1
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kit-common
+          path: common
+
+      - name: Package
+        run: bash scripts/package-release.sh ${{ matrix.target }} build-kit common dist
+
+      # 一式だけを展開した所で、雛形を export、check し、lider で開いて動かす。
+      # 描画は、Linux は lavapipe (CPU の Vulkan) と仮想の画面、Windows は WARP (CPU の D3D12)、macOS は runner の GPU
+      - name: Verify the kit
+        run: |
+          kit=$(ls dist/lub-${{ matrix.target }}.*)
+          case "$RUNNER_OS" in
+            Linux)
+              VK_ICD_FILENAMES="$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)" xvfb-run -a bash scripts/verify-release-kit.sh "$kit"
+              ;;
+            Windows)
+              LUB_D3D12_WARP=1 bash scripts/verify-release-kit.sh "$kit"
+              ;;
+            *)
+              bash scripts/verify-release-kit.sh "$kit"
+              ;;
+          esac
+
+      - name: Upload the kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: lub-${{ matrix.target }}
+          path: dist/lub-${{ matrix.target }}.*
+
+  # tests/cs のうち iOS で走らせるものを、simulator の app で動かす (scripts/apple-gate.sh --part ios)。
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      CCACHE_MAXSIZE: 500M
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJC_COMPILER_LAUNCHER: ccache
+    steps:
+      - uses: actions/checkout@v4
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr
+
+      - name: Cache slang prebuilts
+        uses: actions/cache@v4
+        with:
+          path: third_party/slang/lib
+          key: slang-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      # macOS の player (shader cache を埋める) は macos job と同じ deps を使う。iOS の app の deps は別に cache する
+      - name: Deps cache key
+        id: deps
+        run: |
+          bash scripts/deps-cache-key.sh macos >> "$GITHUB_OUTPUT"
+          bash scripts/deps-cache-key.sh ios | sed 's/^/ios_/' >> "$GITHUB_OUTPUT"
+
+      - name: Restore deps (macOS)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build-mac/deps
+            build-mac-player/deps
+          key: ${{ steps.deps.outputs.key }}
+          restore-keys: ${{ steps.deps.outputs.restore }}
+
+      - name: Cache deps (iOS)
+        uses: actions/cache@v4
+        with:
+          path: build-ios/deps
+          key: ${{ steps.deps.outputs.ios_key }}
+          restore-keys: ${{ steps.deps.outputs.ios_restore }}
+
+      - name: Install tools
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+        run: brew install bash ninja
+
+      # 版を固定した ccache (scripts/install-ccache.sh)
+      - name: Install ccache
+        run: bash scripts/install-ccache.sh
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-ios-${{ github.sha }}
+          restore-keys: ccache-ios-
+
+      # tests/cs の test は C# なので、app に入れる bytecode を tcs で作る。
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: tcs/global.json
+
+      # macOS の player (shader cache を埋める) と iOS の app の build、simulator での実行
+      - name: Apple gate, iOS part (iOS build, simulator)
+        run: |
+          export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
+          mkdir -p "$TMPDIR"
+          bash scripts/apple-gate.sh --part ios
+
+      - name: Save ccache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-ios-${{ github.sha }}
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-ios
+          path: ${{ runner.temp }}/apple-gate-tmp
+          if-no-files-found: ignore
 
   # 唯一の required check。
   # 待つ job が全部 success なら green。
   gate:
-    needs: [lint, format, linux, windows, macos, web-build, web-verify, web-export, tcs-test, tcs-selfbench, tcs-native]
+    needs: [lint, format, linux, windows, macos, web-build, web-verify, web-export, tcs-test, tcs-selfbench, kit, ios]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1010,3 +1322,29 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler deploy
+
+  # tag (v*) の push で、検査を通った一式 (lub-<target>.tar.gz、Windows は lub-<target>.zip) を GitHub の release に載せる。
+  # `-` を含む tag (v0.2.0-rc.1 など) は prerelease にする (releases/latest の対象にならない)。
+  # build の job は第三者の action を動かすので、書き込みの権限はこの job にだけ渡す。
+  publish:
+    needs: gate
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lub-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=()
+          case "$GITHUB_REF_NAME" in *-*) pre=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes "${pre[@]}"
