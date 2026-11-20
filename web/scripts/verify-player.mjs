@@ -12,6 +12,7 @@
 //   cd web && LUB_URL=http://localhost:5173/ npm run verify [-- Test...]
 // test の名前を渡すと、その test だけを走らせる。
 // A9_JOBS は同時に開く page の数 (既定は CPU の数)。
+// A9_SHARD=k/n は test を n 個に分けた k 番目だけを走らせる (既定 1/1。CI は job に分けて並べる)。
 //
 // 失敗があれば終了コード 1。
 
@@ -222,19 +223,24 @@ if (unknown.length > 0) {
   process.exit(1);
 }
 const only = process.argv.slice(2);
+const [SHARD_K, SHARD_N] = (process.env.A9_SHARD || "1/1")
+  .split("/")
+  .map(Number);
 const jobs = [];
+let index = 0;
 for (const name of ALL) {
   if (only.length > 0 && !only.includes(name)) continue;
   if (SKIP.has(name)) {
     console.log(`[verify] SKIP A9 ${name} (cs_web_skip_tests)`);
     continue;
   }
+  if (index++ % SHARD_N !== SHARD_K - 1) continue;
   jobs.push({ name, runs: RUNS[name] ?? [{}] });
 }
 // run の多い test から始める (1 つの test の run は順に走るので、後に回すと最後に残る)
 jobs.sort((a, b) => b.runs.length - a.runs.length);
 // 判定の経路が通ること: 起動に失敗した player は終了コード 1 を書く (0 を読んで通さない)
-if (only.length === 0)
+if (only.length === 0 && SHARD_K === 1)
   jobs.push({
     name: "TestMissingEntry",
     runs: [{ entry: "TestMissingEntry", exitCode: 1 }],
