@@ -82,9 +82,13 @@ jobs:
           - part: runtime
           - part: tools
           - part: lider
-            shard: 1/2
+            shard: 1/4
           - part: lider
-            shard: 2/2
+            shard: 2/4
+          - part: lider
+            shard: 3/4
+          - part: lider
+            shard: 4/4
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -173,9 +177,23 @@ jobs:
           fi
           test -s lider/data/mozc.dict
 
+      # build 済みのかな漢字変換 (jamo-core、Rust)。入力は jamo の commit と rustc の版で決まり、当たれば cargo を動かさない (lider/scripts/build-player.sh の JAMO_CACHE)
+      - name: jamo cache key
+        if: matrix.part == 'lider'
+        id: jamo
+        run: echo "key=jamo-lib-linux-$(git rev-parse HEAD:third_party/jamo)-$(rustc -V | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache jamo
+        if: matrix.part == 'lider'
+        uses: actions/cache@v4
+        with:
+          path: build-jamo
+          key: ${{ steps.jamo.outputs.key }}
+
       - name: Native gate (${{ matrix.part }})
         env:
           LIDER_SHARD: ${{ matrix.shard }}
+          JAMO_CACHE: ${{ github.workspace }}/build-jamo
         run: |
           export TMPDIR="${RUNNER_TEMP}/native-gate-tmp"
           mkdir -p "$TMPDIR"
