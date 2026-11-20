@@ -11,6 +11,12 @@ if [ "${1:-}" = --web ]; then
   emcmake cmake -S "$root/native" -B "$root/build/player-web" -G Ninja -Dlub_DIR="${LUB_BUILD:-$lub/build/wasm}"
   cmake --build "$root/build/player-web" --target lider_player
 else
-  cmake -S "$root/native" -B "$root/build/player" -G Ninja -Dlub_DIR="${LUB_BUILD:-$lub/build-release-linux}"
+  lub_build="${LUB_BUILD:-$lub/build-release-linux}"
+  # C の tcs (scripts/build-tcs-native.sh) があれば、tcs を C にするのに使う (dotnet が要らない)
+  tcs_native=""
+  for f in "$lub_build/tcs/tcs" "$lub_build/tcs/tcs.exe"; do
+    [ -f "$f" ] && tcs_native="$f"
+  done
+  cmake -S "$root/native" -B "$root/build/player" -G Ninja -Dlub_DIR="$lub_build" -DTCS_NATIVE="$tcs_native"
   cmake --build "$root/build/player" --target lider_player
 fi

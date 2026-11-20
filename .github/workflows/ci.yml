@@ -132,16 +132,9 @@ jobs:
       # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓。
       # SDL3 を build するとき (deps の cache が key で当たらないとき) だけ、SDL3 の build に要る X11/Wayland/audio の dev ヘッダを入れる。
       - name: Install system deps
-        env:
-          SDL_BUILD_DEPS: ${{ steps.deps-cache.outputs.cache-hit != 'true' && 'libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev' || '' }}
-        run: |
-          # runner イメージ同梱の Google Chrome の apt source は metadata の Hash Sum mismatch を時々出して update ごと落とす。
-          # ここでは使わない
-          sudo rm -f /etc/apt/sources.list.d/google-chrome*
-          sudo apt-get update
-          # shellcheck disable=SC2086
-          sudo apt-get install -y --no-install-recommends \
-            ninja-build libvulkan-dev mesa-vulkan-drivers xvfb $SDL_BUILD_DEPS
+        uses: ./.github/actions/apt-install
+        with:
+          packages: ninja-build libvulkan-dev mesa-vulkan-drivers xvfb ${{ steps.deps-cache.outputs.cache-hit != 'true' && 'libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev' || '' }}
 
       # 版を固定した ccache (scripts/install-ccache.sh)
       - name: Install ccache
@@ -882,13 +875,15 @@ jobs:
 
       # playwright 1.60 は ubuntu 26.04 を知らず、そのままでは download の URL が無い。
       # 配っている chromium は ubuntu の版によらず同じなので 24.04 として取る (--with-deps は 26.04 の package を引けないので使わない)。
-      - name: Install chromium (playwright) and the Vulkan loader lub links
+      - name: Install chromium (playwright)
         working-directory: web
         run: |
           PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright install chromium
-          sudo rm -f /etc/apt/sources.list.d/google-chrome*
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libvulkan1
+
+      - name: Install the Vulkan loader
+        uses: ./.github/actions/apt-install
+        with:
+          packages: libvulkan1
 
       - name: Web export gate
         run: |
@@ -967,7 +962,9 @@ jobs:
           key: selfbench-base-vm-native-${{ steps.base.outputs.tree }}-${{ steps.base.outputs.image }}
 
       - name: Install valgrind
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind
+        uses: ./.github/actions/apt-install
+        with:
+          packages: valgrind
 
       - name: Compare with the base
         run: python3 perf/selfbench/run.py --base "${{ steps.base.outputs.ref }}" --tasks vm --hosts native --runs 0 --base-results selfbench-base.json -o selfbench.json
@@ -1050,6 +1047,36 @@ jobs:
           key: ${{ steps.deps.outputs.key }}
           restore-keys: ${{ steps.deps.outputs.restore }}
 
+      - name: Tools cache key
+        id: tools
+        run: bash scripts/kit-tools-cache-key.sh ${{ matrix.target }} >> "$GITHUB_OUTPUT"
+
+      # C の tcs と lub-gen は、入力 (tcs/ など) の内容が同じなら、.NET の版との比較を通った物をそのまま使う (scripts/kit-tools-cache-key.sh)
+      - name: Cache tcs
+        id: tcs-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build-kit/tcs/tcs
+            build-kit/tcs/tcs.exe
+            build-kit/tcs/runtime
+            build-kit/tcs/lib
+          key: ${{ steps.tools.outputs.tcs }}
+
+      - name: Cache lub-gen
+        id: lub-gen-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build-kit/tcs/lub-gen
+            build-kit/tcs/lub-gen.exe
+          key: ${{ steps.tools.outputs.lub-gen }}
+
+      # dotnet は、C の tcs と lub-gen を作るときだけ要る
+      - name: Need .NET
+        id: dotnet
+        run: echo "need=${{ steps.tcs-cache.outputs.cache-hit != 'true' || steps.lub-gen-cache.outputs.cache-hit != 'true' }}" >> "$GITHUB_OUTPUT"
+
       # 版を固定した ccache (scripts/install-ccache.sh)
       - name: Install ccache
         run: bash scripts/install-ccache.sh
@@ -1065,14 +1092,9 @@ jobs:
       # SDL3 を build するとき (deps の cache が key で当たらないとき) だけ、SDL3 の build に要る dev ヘッダを入れる。
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
-        env:
-          SDL_BUILD_DEPS: ${{ steps.deps-cache.outputs.cache-hit != 'true' && 'libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev' || '' }}
-        run: |
-          sudo rm -f /etc/apt/sources.list.d/google-chrome*
-          sudo apt-get update
-          # shellcheck disable=SC2086
-          sudo apt-get install -y --no-install-recommends \
-            ninja-build patchelf libvulkan-dev mesa-vulkan-drivers xvfb $SDL_BUILD_DEPS
+        uses: ./.github/actions/apt-install
+        with:
+          packages: ninja-build patchelf libvulkan-dev mesa-vulkan-drivers xvfb ${{ steps.deps-cache.outputs.cache-hit != 'true' && 'libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev' || '' }}
 
       - name: Install tools (macOS)
         if: runner.os == 'macOS'
@@ -1090,17 +1112,18 @@ jobs:
 
       # Windows は image に無い .NET の SDK を毎回取るので、install 先を決めて cache する
       - name: .NET install dir (Windows)
-        if: runner.os == 'Windows'
+        if: steps.dotnet.outputs.need == 'true' && runner.os == 'Windows'
         run: echo "DOTNET_INSTALL_DIR=C:\dotnet" >> "$GITHUB_ENV"
 
       - name: Cache .NET (Windows)
-        if: runner.os == 'Windows'
+        if: steps.dotnet.outputs.need == 'true' && runner.os == 'Windows'
         uses: actions/cache@v4
         with:
           path: C:\dotnet
           key: dotnet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tcs/global.json') }}
 
       - uses: actions/setup-dotnet@v4
+        if: steps.dotnet.outputs.need == 'true'
         with:
           global-json-file: tcs/global.json
 
@@ -1116,12 +1139,13 @@ jobs:
       # tcs2c で C にした tcs (.NET の tcs と同じ出力を出すことも確かめる)。生成した C は GNU C の文の式を使うので、Linux 以外は clang で build する。
       # dotnet を使う段では env の Platform を外す。msvc-dev-cmd が置く Platform があると、dotnet build の出力が bin/<Platform>/ に変わり、script が見つけられない
       - name: Build tcs
+        if: steps.tcs-cache.outputs.cache-hit != 'true'
         run: |
           unset Platform
           [ "$RUNNER_OS" = Linux ] || export CC=clang
           bash scripts/build-tcs-native.sh build-kit
 
-      # lider の player は、tcs2c で C にした tcs の compiler を含む。Windows は MSVC と同じ ABI の clang-cl で build し、MSVC で build した lub と link する
+      # lider の player は、C にした tcs の compiler を含む (C にするのは上の C の tcs)。Windows は MSVC と同じ ABI の clang-cl で build し、MSVC で build した lub と link する
       - name: Build the lider player
         run: |
           unset Platform
@@ -1130,6 +1154,7 @@ jobs:
 
       # lub-gen (TinyC#) を C の tcs で C にする (.NET で動かした lub-gen と同じ出力を出すことも確かめる)
       - name: Build lub-gen
+        if: steps.lub-gen-cache.outputs.cache-hit != 'true'
         run: |
           unset Platform
           [ "$RUNNER_OS" = Linux ] || export CC=clang

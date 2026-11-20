@@ -1,0 +1,47 @@
+# apt の package を入れる。取ってきた .deb を cache に置き、同じ image で同じ package なら mirror に行かずに入れる。
+name: apt-install
+description: Install apt packages, reusing the downloaded .deb files from the cache
+inputs:
+  packages:
+    description: 空白で区切った package の名前
+    required: true
+runs:
+  using: composite
+  steps:
+    # 入る .deb は、package の名前と、runner の image に入っている物で決まる
+    - id: key
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: echo "key=apt-${{ runner.arch }}-${ImageOS:-}-${ImageVersion:-}-$(echo $PACKAGES | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+    - id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/lub-apt
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Download the packages
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        # runner の image にある Google Chrome の apt source は、metadata の Hash Sum mismatch を時々出して update ごと落とす。ここでは使わない
+        sudo rm -f /etc/apt/sources.list.d/google-chrome*
+        sudo apt-get update
+        mkdir -p ~/.cache/lub-apt
+        # shellcheck disable=SC2086
+        sudo apt-get install -y --no-install-recommends --download-only -o Dir::Cache::archives="$HOME/.cache/lub-apt" $PACKAGES
+        sudo chown -R "$(id -u)" ~/.cache/lub-apt
+        rm -rf ~/.cache/lub-apt/partial ~/.cache/lub-apt/lock
+
+    - name: Install the packages
+      shell: bash
+      run: |
+        # initramfs は runner で使わないので、package の trigger で作り直させない
+        conf=/etc/initramfs-tools/update-initramfs.conf
+        [ ! -f "$conf" ] || sudo sed -i 's/^update_initramfs=.*/update_initramfs=no/' "$conf"
+        shopt -s nullglob
+        debs=(~/.cache/lub-apt/*.deb)
+        [ ${#debs[@]} = 0 ] || sudo apt-get install -y --no-install-recommends --no-download "${debs[@]}"
