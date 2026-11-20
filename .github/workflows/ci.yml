@@ -8,7 +8,8 @@
 #   - slang prebuilt、emsdk、playwright browsers、npm
 # lub 自身の source は PR ごとに変わるので、compile は ccache で cache する (Linux、macOS、Windows、web)。
 # master push が cache を作り、PR はそれを読む (actions/cache の branch scope)。
-# Linux の job は runner の image を ubuntu-24.04 に決める (release の一式と同じ)。ubuntu-latest は版が混ざる時期があり、compiler が違うと ccache が全部外れる。
+# Linux の job は runner の image を ubuntu-26.04 に決める。ubuntu-latest は版が混ざる時期があり、compiler が違うと deps を作り直し、ccache も全部外れる。
+# release の一式 (kit) だけは、古い glibc の環境でも動くよう ubuntu-24.04 で作る。
 # ccache は PR では保存しない (PR ごとに保存すると cache が増え続ける)。branch で workflow_dispatch した run は、その branch の scope に保存する。
 name: ci
 
@@ -28,7 +29,7 @@ concurrency:
 
 jobs:
   lint:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +44,7 @@ jobs:
   # clang-format は版で出力が変わるので pip で版を固定する。
   # prettier / stylua は web/package-lock.json の版。
   format:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -90,7 +91,7 @@ jobs:
             shard: 3/4
           - part: lider
             shard: 4/4
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
       CCACHE_MAXSIZE: 500M
@@ -623,7 +624,7 @@ jobs:
   #   - lub player wasm: emsdk でこの job 内でビルド
   #   - tcs WasmCompiler: content key cache、miss 時だけ dotnet で publish
   web-build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 120
     env:
       EMSDK_VERSION: 5.0.2
@@ -826,7 +827,7 @@ jobs:
   # verify は閾値判定なので runner の system chromium で足りる。
   web-verify:
     name: web-verify (${{ matrix.page }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     # web-build の artifact ができるのを待つのに、この run の artifact の一覧を読む
     permissions:
@@ -917,7 +918,7 @@ jobs:
   # export は linux の job が build した lub、player は web-build の wasm を使う。
   # web-build が作った tcs2c の player を page から外す順番もここで見る (chromium があるので)。
   web-export:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     # linux と web-build の artifact ができるのを待つのに、この run の artifact の一覧を読む
     permissions:
@@ -951,10 +952,12 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
 
+      # playwright 1.60 は ubuntu 26.04 を知らず、そのままでは download の URL が無い。
+      # 配っている chromium は ubuntu の版によらず同じなので 24.04 として取る (--with-deps は 26.04 の package を引けないので使わない)。
       - name: Install chromium (playwright)
         working-directory: web
         run: |
-          npx playwright install chromium
+          PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright install chromium
 
       - name: Install the Vulkan loader
         uses: ./.github/actions/apt-install
@@ -992,7 +995,7 @@ jobs:
       fail-fast: false
       matrix:
         part: [transpiler-1, transpiler-2, tcs2c-1, tcs2c-2, tcs2c-3, scripts]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     defaults:
       run:
@@ -1016,7 +1019,7 @@ jobs:
   # tcs 自身の速さの回帰 (tcs/perf/selfbench)。PR の base (push では 1 つ前の commit) と同じ runner で測り、決定的な指標 (命令の数、managed heap の最大) が閾値を超えて増えたら失敗する。
   # 測るのは C の tcs の tcs vm (lider の player が page の中でゲームを変換するのと同じ経路) だけで、時間は測らない。
   tcs-selfbench:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     defaults:
       run:
@@ -1324,7 +1327,7 @@ jobs:
   gate:
     needs: [lint, format, linux, windows, macos, web-build, web-verify, web-export, tcs-test, tcs-selfbench, kit]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Check job results
@@ -1344,7 +1347,7 @@ jobs:
   deploy:
     needs: gate
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
