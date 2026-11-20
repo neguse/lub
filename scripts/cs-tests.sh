@@ -112,6 +112,10 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull TestR
 # TestDrawStateReuse は backend の bind の使い回しを見るので、native gate が vulkan で、apple gate が metal で、CI の windows job が d3d12 で、web の verify (A9) が webgpu で走らせる。
 # TestUnboundAfterBound は apple gate が metal で、web の verify (A9) が webgpu で走らせる。
 cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestKeyMods TestSaveDir TestXrCapture TestDrawStateReuse TestBindingsDigest TestBlendValue TestUnboundAfterBound TestUnboundStorage)
+# web の verify (web/scripts/verify-player.mjs の A9) は cs_all_tests を全部 web の player で走らせる。
+# 次の test だけは web に当てはまらないので走らせない。
+# TestReadbackOnQuit は OnQuit の中で積んだ読み戻しがその場で届くことを見る。web の backend はブラウザの main thread で GPU の完了を待てないので、読み戻しは次の frame より前に届かない。
+cs_web_skip_tests=(TestReadbackOnQuit)
 
 # tests/cs の入力: tests/cs の *.cs 全部と cs-lib の実装ソース。
 cs_tests_sources() {

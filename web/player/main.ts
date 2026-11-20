@@ -24,21 +24,19 @@ declare global {
 }
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-// Render resolution comes from the page URL (?w=&h=). The whole offscreen
-// chain follows this via Gfx.size() on the C side; CSS scales the canvas to fit.
+// URL に ?w=&h= があれば、MainTex をその大きさで描く (src/backend_webgpu.c の wg_target_size)。
+// ゲームの Gfx.Size は SDL の window の大きさ (App.Config の Width / Height) のままで、それとは揃わない。
+// 無ければ export の page と同じく、ゲームの window の大きさで描く。
+// どちらでも CSS が canvas を page に収める。
 const _q = new URLSearchParams(location.search);
-const _cw = Math.max(
-  64,
-  Math.min(4096, parseInt(_q.get("w") || "480", 10) || 480),
-);
-const _ch = Math.max(
-  64,
-  Math.min(4096, parseInt(_q.get("h") || "360", 10) || 360),
-);
-canvas.width = _cw;
-canvas.height = _ch;
-window._canvasWidth = _cw;
-window._canvasHeight = _ch;
+const _cw = parseInt(_q.get("w") || "", 10);
+const _ch = parseInt(_q.get("h") || "", 10);
+if (_cw > 0 && _ch > 0) {
+  canvas.width = _cw;
+  canvas.height = _ch;
+  window._canvasWidth = _cw;
+  window._canvasHeight = _ch;
+}
 
 function relayLog(msg: string, level: "log" | "err" | "warn" = "log") {
   try {

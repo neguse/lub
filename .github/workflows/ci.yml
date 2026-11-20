@@ -586,7 +586,7 @@ jobs:
           name: web-dist
           path: web/dist
 
-      # tests/cs の runtime テストを web の player の page で動かす (verify-player の A9)。
+      # tests/cs の test を全部 web の player の page で動かす (verify-player の A9)。
       - name: Verify player page (shard 1)
         if: matrix.shard == 1
         working-directory: web

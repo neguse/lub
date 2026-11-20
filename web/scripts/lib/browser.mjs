@@ -43,7 +43,12 @@ export async function launchChromium({
   return chromium.launch({
     headless,
     executablePath,
-    args: [...(webgpu ? WEBGPU_ARGS : []), "--no-sandbox"],
+    // 音は偽の出力に流す (音の device が無いか応えない機械でも、Web Audio の時計が進む)
+    args: [
+      ...(webgpu ? WEBGPU_ARGS : []),
+      "--disable-audio-output",
+      "--no-sandbox",
+    ],
   });
 }
 

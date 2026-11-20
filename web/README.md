@@ -64,7 +64,8 @@ npm run deploy            # build + wrangler deploy
 ブラウザの解決順は `scripts/lib/browser.mjs` (`CHROMIUM_PATH` → playwright の版固定 chromium → system chromium)。
 
 - `npm run verify-lider` (`scripts/verify-lider.mjs`): 入口の page。起動、保存した編集の反映、通らない build の診断、通らない project での起動、並べる表示 (F10)、サンプル、メニューと Doc の page、同じ origin の 404。
-- `npm run verify` (`scripts/verify-player.mjs`): `tests/cs` の runtime テストを player の page で走らせ、PASS を確認する (A9)。
+- `npm run verify` (`scripts/verify-player.mjs`): `tests/cs` の test を全部 player の page で走らせ、終了コードを確かめる (A9)。
+  走らせない test とその理由は `scripts/cs-tests.sh` の `cs_web_skip_tests`。
   事前に `scripts/cs-tests.sh` の `cs_tests_vm_build` で `tests/cs/.lub/all.tcsb` を作っておく。
 
 ## Browser requirements

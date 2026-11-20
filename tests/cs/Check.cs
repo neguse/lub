@@ -35,7 +35,7 @@ public static class Check
         Frame();
         if (failed)
             return;
-        // 終了コードを受け取れない web の verify (A9) はこの行で合否を見る
+        // 終了コードを受け取れない web の export の page の検査 (web/scripts/export-page-check.mjs) はこの行で合否を見る
         Console.WriteLine("PASS");
         App.Quit(0);
     }
