@@ -252,7 +252,7 @@ try {
   // L10
   await writeSource(edit("0.8f,0,0.8f,1"));
   let formatted = "";
-  for (const end = Date.now() + APPLY_MS; Date.now() < end;) {
+  for (const end = Date.now() + APPLY_MS; Date.now() < end; ) {
     formatted = await readSource();
     if (!formatted.includes("0.8f,0,0.8f,1")) break;
     await page.waitForTimeout(200);
