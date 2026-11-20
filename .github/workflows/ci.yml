@@ -20,9 +20,9 @@ on:
   workflow_dispatch:
 
 # PR は ref ごとに group を分け、同一 PR への連続 push は前の run を止める。
-# deploy 系 (master push / dispatch) は直列 (cancel しない)。
+# PR 以外 (master の push、tag の push、dispatch) の run は互いに待たない。直列にするのは deploy の job だけ。
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -1436,25 +1436,45 @@ jobs:
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # deploy は 1 つずつ (途中で止めない)
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
+      # run は互いに待たないので、古い commit の deploy が新しい commit の後になることがある。master の先頭の commit だけを載せる
+      - name: Skip unless this commit is the head of master
+        id: head
+        run: |
+          head="$(git ls-remote origin refs/heads/master | cut -f1)"
+          echo "master is at $head, this run is ${{ github.sha }}"
+          if [ "$head" = "${{ github.sha }}" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.head.outputs.current == 'true'
         with:
           node-version: 26
           cache: npm
           cache-dependency-path: web/package-lock.json
 
       - name: npm ci
+        if: steps.head.outputs.current == 'true'
         working-directory: web
         run: npm ci
 
       - uses: actions/download-artifact@v4
+        if: steps.head.outputs.current == 'true'
         with:
           name: web-dist
           path: web/dist
 
       - name: Deploy (wrangler)
+        if: steps.head.outputs.current == 'true'
         working-directory: web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
