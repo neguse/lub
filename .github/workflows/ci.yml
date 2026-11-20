@@ -519,7 +519,7 @@ jobs:
 
   # macOS regression gate: scripts/apple-gate.sh --part mac (CI と手動の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> 視覚 golden -> shader cache の往復。
   # Metal は runner の GPU で描くので byte 一致にはならず、golden は Linux の *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
-  # iOS 側 (--part ios、simulator での実行) は ios job (tag の push のとき) で走る。
+  # iOS 側 (--part ios、simulator での実行) は ios job (PR 以外) で走る。
   macos:
     name: macos (${{ matrix.shard }})
     strategy:
@@ -1317,9 +1317,10 @@ jobs:
           path: dist/lub-${{ matrix.target }}.*
 
   # tests/cs のうち iOS で走らせるものを、simulator の app で動かす (scripts/apple-gate.sh --part ios)。
-  # release の tag (v*) の push のときだけ走る (hosted の runner は simulator の起動だけで分の単位がかかる)。
+  # PR では走らせず、master の push と tag (v*) の push と workflow_dispatch で走る (hosted の runner は simulator の起動だけで分の単位がかかる)。
+  # gate は待たない: master では deploy を待たせず、落ちたらその commit の run が失敗になって分かる。tag では publish がこれを待つ。
   ios:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -1411,7 +1412,7 @@ jobs:
   # 唯一の required check。
   # 待つ job が全部 success なら green。
   gate:
-    needs: [lint, format, linux, windows, macos, web-build, web-verify, web-export, tcs-test, tcs-selfbench, kit, ios]
+    needs: [lint, format, linux, windows, macos, web-build, web-verify, web-export, tcs-test, tcs-selfbench, kit]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1421,8 +1422,7 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS"
-          # ios は tag の push でしか走らないので、skipped も通す
-          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success" and (.key != "ios" or .value.result != "skipped")) | .key')
+          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | .key')
           if [ -n "$bad" ]; then
             echo "failed jobs: $bad" >&2
             exit 1
@@ -1464,7 +1464,7 @@ jobs:
   # `-` を含む tag (v0.2.0-rc.1 など) は prerelease にする (releases/latest の対象にならない)。
   # build の job は第三者の action を動かすので、書き込みの権限はこの job にだけ渡す。
   publish:
-    needs: gate
+    needs: [gate, ios]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
