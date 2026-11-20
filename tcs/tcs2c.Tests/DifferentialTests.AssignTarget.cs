@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 代入先 (受け手 / 添字 / struct の格納先) は右辺より先に 1 回だけ評価し、
 // 式位置の代入の値は代入した値 (左辺を組み直して読まない)。期待値は同じ
 // program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class AssignTargetDifferentialTests
 {
     // 右辺が受け手を差し替えても、式の値は代入した値で受け手は 1 回だけ評価
     [CFact]

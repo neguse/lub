@@ -3,7 +3,7 @@ using System.Globalization;
 namespace TinyCs.Tcs2c.Tests;
 
 // 補間の数値の標準書式 (int の G / E / F / N / D / X / R、float の F / N / R と大きい精度) が .NET の ToString(format) (InvariantCulture) と同じ文字列になる (il-spec §13)
-public partial class DifferentialTests
+public class NumberFormatDifferentialTests
 {
     private static string Holes(string name, string[] formats) =>
         string.Join("|", formats.Select(f => "{" + name + ":" + f + "}"));
@@ -97,10 +97,10 @@ public partial class DifferentialTests
     {
         float[] values =
         [
-            .. FloatFormatTexts.Select(c => c.Value),
+            .. FloatFormatDifferentialTests.FloatFormatTexts.Select(c => c.Value),
             0.5f, 1.5f, 0.05f, 0.06f, 0.95f, 1.25f, 1.75f, 1234.5f, -1234567.9f, 999.995f, 999999.9f, -0.001f, 0.004f, 0.006f, 1.2345678f,
         ];
-        var calls = string.Concat(values.Select(v => $"        Show({FloatLiteral(v)});\n"));
+        var calls = string.Concat(values.Select(v => $"        Show({FloatToStringDifferentialTests.FloatLiteral(v)});\n"));
         var output = Backends.AssertParity("""
             using System;
             public class P

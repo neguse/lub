@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // struct の演算子 (class と同じ範囲) と static member。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class StructOperatorsDifferentialTests
 {
     private const string StructOperatorsProgram = """
         using System;

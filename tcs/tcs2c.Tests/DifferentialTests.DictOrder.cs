@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // Dictionary / HashSet の列挙は挿入順 (support-matrix §18)。C / VM / .NET (TinySystem の Dictionary) が同じ順で列挙し、
 // Dictionary の foreach の途中の追加は全部の経路で止まる
-public partial class DifferentialTests
+public class DictOrderDifferentialTests
 {
     private const string DictOrderProgram = """
         using System;

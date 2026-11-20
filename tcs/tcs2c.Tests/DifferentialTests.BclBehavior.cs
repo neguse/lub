@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // BCL / 言語の .NET 意味論に合わせる 2 backend differential。期待値は
 // CoreCLR (net10.0) の実測 stdout
-public partial class DifferentialTests
+public class BclBehaviorDifferentialTests
 {
     // 空の排他範囲 (Next(0) / Next(n, n)) は .NET と同じく下限を返す。
     // 3 行目は合意 PRNG の列 (il-spec §13) を引き続けた値で、.NET の System.Random とは違う

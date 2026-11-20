@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // 型をまたぐ static initializer の初期化順の 2 backend differential。期待値は
 // 同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class StaticInitOrderDifferentialTests
 {
     // a.cs の initializer が b.cs の型の static を読む。直接の参照のほか、
     // constructor 本文 / static getter / interface 呼び出しの先で読むものも、

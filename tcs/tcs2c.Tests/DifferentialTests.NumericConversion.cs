@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // int ↔ float の数値変換 (il-spec §5 / §6) と int の Sum の overflow (§12。
 // TinySystem.Linq の Sum は checked)。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class NumericConversionDifferentialTests
 {
     [CFact]
     public void NumericConversion_IntToFloatAndBoundaries_MatchDotnet()

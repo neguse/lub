@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // pattern / switch の意味論の 2 backend differential。期待値は同じ program を
 // CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class PatternsDifferentialTests
 {
     // section ごとに同じ名前の pattern 変数 (T283)。C の出力が全ての section で最後の x を参照しないこと
     [CFact]

@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // 単項マイナスのオペランドが `-` で始まっても `--` にしない (Lua では行コメント、C では減算子)。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class UnaryMinusDifferentialTests
 {
     [CFact]
     public void UnaryMinus_OperandStartingWithMinus()

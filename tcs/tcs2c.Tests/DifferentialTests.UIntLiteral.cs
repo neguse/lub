@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // uint の literal (16 進と 2 進の suffix つきも) と、int への cast で受ける bit の並び。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class UIntLiteralDifferentialTests
 {
     [CFact]
     public void UIntLiteral_SuffixAndBitPattern()

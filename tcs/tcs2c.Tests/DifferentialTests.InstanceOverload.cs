@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 同じ名前になり、interface 経由の呼び出しと class 経由の呼び出しが同じ method を選ぶ。
 // static と instance が同じ名前の型、struct の instance method も含む。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class InstanceOverloadDifferentialTests
 {
     [CFact]
     public void InstanceOverload_DispatchesBySignature()

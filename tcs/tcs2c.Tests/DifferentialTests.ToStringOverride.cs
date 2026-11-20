@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // ToString の override (class / record / struct / record struct / generic)。連結 / 補間 / Console.WriteLine は
 // 静的に解決して直接呼ぶ。C# と同じく null の値と ToString が返した null は空文字列、struct の文字列化は copy の上で
 // 呼ぶので書き換えは変数に残らない。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class ToStringOverrideDifferentialTests
 {
     [CFact]
     public void ToStringOverride_MatchesDotnet()

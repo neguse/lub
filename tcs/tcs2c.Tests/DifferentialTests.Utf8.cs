@@ -3,7 +3,7 @@ using System.Text;
 namespace TinyCs.Tcs2c.Tests;
 
 // TinySystem.Text (RuneCount / RuneSubstring / Utf8Bytes) が tcs2c (runtime/utf8)、Lua (tcs_utf8 module)、.NET (TinySystem/Utf8.cs) で同じ結果を返す
-public partial class DifferentialTests
+public class Utf8DifferentialTests
 {
     private static string Utf8Program(string body) => $$"""
         using System;

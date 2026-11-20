@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // `??=` の受け手は右辺より先に確定する: 右辺が受け手の local を差し替えても元の object に書き、式の値は代入した値。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class CoalesceAssignReceiverDifferentialTests
 {
     [CFact]
     public void CoalesceAssignment_RightReplacesLocalReceiver()

@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // 式位置の ++ / -- と operand 評価順の 2 backend differential
-public partial class DifferentialTests
+public class IncrementDifferentialTests
 {
     // 式位置の ++ / --: 前置は更新後、後置は更新前の値。条件 / 引数 / 添字 /
     // 代入右辺 / return / field / custom property / 副作用 receiver / Nullable

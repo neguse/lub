@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // callback が受け手に足しても走査は呼び出した時点の Count まで、空の Min / Max は fault。
 // 期待値は同じ program を CoreCLR で実行した stdout (空の Min は "before" の後に
 // InvalidOperationException で停止する)
-public partial class DifferentialTests
+public class LinqLibraryDifferentialTests
 {
     [CFact]
     public void LinqLibrary_IteratesUpToCountAtCall()

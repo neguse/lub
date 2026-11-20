@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // OrderBy / OrderByDescending は key の selector を要素ごとに 1 回、要素の順に
 // 呼ぶ (CoreCLR と同じ)。selector の副作用 (呼び出し回数・記録・呼ぶたびに
 // 変わる key) で見る。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class OrderByKeyOnceDifferentialTests
 {
     [CFact]
     public void OrderBy_CallsKeySelectorOncePerElement()

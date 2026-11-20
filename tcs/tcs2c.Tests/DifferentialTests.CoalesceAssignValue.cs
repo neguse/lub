@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // 式位置の `a ??= b` の値は代入後の a で、a が `T?` なら型は `T` (C# の ??=)。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class CoalesceAssignValueDifferentialTests
 {
     [CFact]
     public void CoalesceAssignment_ValueIsUnderlyingType()

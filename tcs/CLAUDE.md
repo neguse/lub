@@ -82,6 +82,7 @@ bash run-tests.sh
 ```
 
 `run-tests.sh` / `run-tests.ps1` は `dotnet test`、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics 検証、analyzer nupkg の PackageReference consumer / `.editorconfig` severity override 検証を実行する。Rider helper script (`verify-rider-scripts.sh`) の検証は `run-tests.sh` のみ。
+`run-tests.sh --part <名前>` は一部だけを走らせる (CI は部分ごとの job に分けて並べる。部分の一覧と分け方は `run-tests.sh` の先頭)。
 analyzer / `tcs check` の診断一致は run-tests のこの恒常ゲートで守る（個別タスクにはしない）。
 
 ## 開発ワークフロー

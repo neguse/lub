@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 戻り値の無い文、`T?` に wrap する戻り値 (struct も)、`??` の式、field /
 // auto property / static field / `?.` の連鎖、明示の `f.Invoke(...)` を見る。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class ConditionalInvokeDifferentialTests
 {
     [CFact]
     public void ConditionalInvoke_Delegate()

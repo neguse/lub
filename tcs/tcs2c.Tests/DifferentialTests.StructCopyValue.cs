@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 引数・copy constructor の要素・式位置の代入の値・??= の右辺。Lua 向けに足した
 // copy (copy constructor の __copy 等) を C backend が同じ値意味論のまま受け取る
 // ことも見る
-public partial class DifferentialTests
+public class StructCopyValueDifferentialTests
 {
     [CFact]
     public void StructCopy_ArgumentsAndAssignmentValues()

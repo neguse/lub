@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // nullable の `??` の右辺は左に値が無いときだけ評価する (文、式、field 初期化子、lambda のどの位置でも)。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class NullableCoalesceLazyDifferentialTests
 {
     [CFact]
     public void NullableCoalesce_DoesNotEvaluateUnselectedRight()

@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // struct 型の pattern (型 / 宣言 / 型を書いた property pattern) を struct と
 // `T?` (Nullable の struct) の入力に当てるとき。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class NullablePatternDifferentialTests
 {
     [CFact]
     public void TypedPropertyPattern_NullableInput()

@@ -3,7 +3,7 @@ using System.Globalization;
 namespace TinyCs.Tcs2c.Tests;
 
 // float の既定の文字列化 (WriteLine・連結・補間・ToString・float? の連結・string.Join) が .NET の float.ToString() (InvariantCulture) と同じ文字列になる (il-spec §13)
-public partial class DifferentialTests
+public class FloatToStringDifferentialTests
 {
     // 値と、CoreCLR (InvariantCulture) の float.ToString() の結果
     private static readonly (float Value, string Text)[] FloatTexts =
@@ -120,12 +120,12 @@ public partial class DifferentialTests
         Assert.Equal(DotnetWideRangeHash().ToString(CultureInfo.InvariantCulture), output);
     }
 
-    private static string FloatLiteral(float v) =>
+    internal static string FloatLiteral(float v) =>
         float.IsNaN(v) ? "p / p"
         : float.IsPositiveInfinity(v) ? "1f / p"
         : float.IsNegativeInfinity(v) ? "-1f / p"
         : v == 0f && float.IsNegative(v) ? "-1f * p"
-        : F(v);
+        : MathDeterminismDifferentialTests.F(v);
 
     private static int DotnetWideRangeHash()
     {

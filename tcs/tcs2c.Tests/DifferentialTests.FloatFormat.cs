@@ -3,14 +3,14 @@ using System.Globalization;
 namespace TinyCs.Tcs2c.Tests;
 
 // 補間の float の書式指定 G / E (精度つきも) が .NET の float.ToString(format) (InvariantCulture) と同じ文字列になる (il-spec §13)
-public partial class DifferentialTests
+public class FloatFormatDifferentialTests
 {
     private static readonly string[] FloatFormats =
         ["G", "G0", "G1", "G2", "G3", "G5", "G9", "G10", "G20", "g", "g3", "G03",
          "E", "E0", "E2", "E9", "e", "e3", "E30"];
 
     // 値と、CoreCLR (InvariantCulture) で FloatFormats の書式を順に当てた結果の | 連結
-    private static readonly (float Value, string Texts)[] FloatFormatTexts =
+    internal static readonly (float Value, string Texts)[] FloatFormatTexts =
     [
         (0f, "0|0|0|0|0|0|0|0|0|0|0|0|0.000000E+000|0E+000|0.00E+000|0.000000000E+000|0.000000e+000|0.000e+000|0.000000000000000000000000000000E+000"),
         (-0f, "-0|-0|-0|-0|-0|-0|-0|-0|-0|-0|-0|-0|-0.000000E+000|-0E+000|-0.00E+000|-0.000000000E+000|-0.000000e+000|-0.000e+000|-0.000000000000000000000000000000E+000"),
@@ -56,7 +56,7 @@ public partial class DifferentialTests
             Assert.Equal(texts, string.Join("|", FloatFormats.Select(f => value.ToString(f, CultureInfo.InvariantCulture))));
 
         var holes = string.Join("|", FloatFormats.Select(f => "{f:" + f + "}"));
-        var calls = string.Concat(FloatFormatTexts.Select(c => $"        Show({FloatLiteral(c.Value)});\n"));
+        var calls = string.Concat(FloatFormatTexts.Select(c => $"        Show({FloatToStringDifferentialTests.FloatLiteral(c.Value)});\n"));
         var output = Backends.AssertParity("""
             using System;
             public class P

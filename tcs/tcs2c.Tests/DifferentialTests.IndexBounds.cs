@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // nil で読み、範囲外の key にも書けるので、Lua backend は添字ごとに範囲を見る。
 // TinySystem.Linq の callback が受け手を縮めた場合も、範囲外の読み出しで止まる。
 // 期待値は同じ program を CoreCLR で実行した stdout (どれも "before" の後に例外で停止する)
-public partial class DifferentialTests
+public class IndexBoundsDifferentialTests
 {
     [CTheory]
     [InlineData("var l = new List<int> { 1, 2 }; Console.WriteLine(l[2]);")]

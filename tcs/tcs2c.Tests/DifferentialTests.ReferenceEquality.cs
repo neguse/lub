@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // object / interface / 型引数どうしの ==/!= は参照の比較 (record の値の等価を呼ばない)。
 // 静的型が record なら値の等価。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class ReferenceEqualityDifferentialTests
 {
     [CFact]
     public void ReferenceEquality_ObjectAndInterfaceOperands()
