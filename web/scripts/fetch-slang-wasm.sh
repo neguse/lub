@@ -10,7 +10,7 @@
 # between releases — re-run TypeScript checks after bumping.
 set -euo pipefail
 
-# Pinned release. Bump deliberately: the goldens depend on the compiler output.
+# Pinned release. Bump deliberately: the shaders the page compiles depend on the compiler output.
 SLANG_VER="${SLANG_VER:-v2026.8.1}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

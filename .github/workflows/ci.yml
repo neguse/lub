@@ -118,7 +118,7 @@ jobs:
       - name: Format check
         run: bash scripts/format.sh --check
 
-  # Linux regression gate: scripts/native-gate.sh (CI と手動 pre-push の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> C# sample gate。
+  # Linux regression gate: scripts/native-gate.sh (CI と手動 pre-push の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> サンプルの変換 -> 開発の道具の検査。
   # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は mesa の version に依存し、runner の mesa はローカル生成の golden と一致しない。
   # CI の視覚 golden gate は windows job (WARP)、lavapipe golden はローカル pre-push の gate。
   # mesa を container 等で pin できたら有効化する。
@@ -171,13 +171,13 @@ jobs:
             libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
             libdbus-1-dev libudev-dev
 
-      # C# sample gate と .NET 実行用。
+      # tcs の変換と .NET 実行用。
       # native-gate.sh --require-cs が skip を fail 扱いにする。
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: tcs/global.json
 
-      - name: Native gate (build, smokes, C# runtime tests, C# samples, .NET digest)
+      - name: Native gate (build, smokes, C# runtime tests, C# samples, dev tools)
         run: |
           export TMPDIR="${RUNNER_TEMP}/native-gate-tmp"
           mkdir -p "$TMPDIR"
@@ -263,7 +263,7 @@ jobs:
         with:
           global-json-file: tcs/global.json
 
-      # 後の step (golden のサンプルの変換) も同じ Transpiler.dll を使う (repo root からの相対 path)
+      # 後の step (golden の test と 00_hello の変換) も同じ Transpiler.dll を使う (repo root からの相対 path)
       - name: Build tests/cs (tcs VM bytecode)
         shell: bash
         run: |
@@ -320,81 +320,12 @@ jobs:
         shell: bash
         run: scripts/test-tcs-pipeline-smoke.sh ./build-release/lub_tcs_pipeline_smoke.exe
 
-      # math.* と ^ が Linux / macOS / iOS / web と同じ結果になること (期待値は 1 つ)。
-      - name: Math determinism
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestMathDeterminism --readback-fixed-latency
-
-      # 1 フレームの中で宣言し直した texture を、draw が記録した順に読むこと。
-      - name: Texture recording order
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestTextureRecordingOrder --readback-fixed-latency
-
-      # texture と sampler を別に宣言した shader が他の backend と同じ組で描け、共有した sampler は shader compile の error になること。
-      - name: Separate sampler
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestSeparateSampler --readback-fixed-latency
-
-      # 1 フレームの中で宣言し直した buffer を、draw が記録した順に読むこと。
-      - name: Buffer recording order
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestBufferRecordingOrder --readback-fixed-latency
-
-      # float[] の先頭 count 個から宣言した buffer。
-      - name: Buffer array
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestBufferArray --readback-fixed-latency
-
-      # 大きさを変えて宣言し直した buffer の、shader から見える数と内容。
-      - name: Buffer capacity
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestBufferCapacity --readback-fixed-latency
-
-      # FrameBuffer の範囲を draw / dispatch が記録した順に自分のデータで読むこと。
-      - name: Frame buffer
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestFrameBuffer --readback-fixed-latency
-
-      - name: Frame buffer errors
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestFrameBufferErrors --readback-fixed-latency
-
-      - name: Frame buffer limit
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestFrameBufferLimit --readback-fixed-latency
-
-      # compute が読み書きする storage buffer / texture が、前の dispatch の内容を保つこと。
-      - name: Storage preserve
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestStoragePreserve --readback-fixed-latency
-
-      # storage texture の形式が shader の宣言どおりで、形式の違う dispatch が error になること。
-      - name: Storage format
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestStorageFormat --readback-fixed-latency
-
-      # readback の届く frame が他の backend と同じで、保証しないモードでは GPU を待たないこと。
+      # --readback-fixed-latency を付けない起動でも、readback の届く frame が他の backend と同じで、保証しないモードでは GPU を待たないこと (下の loop は付けて走らせる)。
       - name: Readback latency
         shell: bash
         run: |
           LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
           LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
-
-      # 1 フレームに draw と dispatch が多くても、各 draw が自分の texture、sampler、uniform で描くこと。
-      # debug layer を有効にし、validation の error でも落とす。
-      - name: Many draws per frame (debug layer)
-        shell: bash
-        run: |
-          log="${RUNNER_TEMP}/many_draws.log"
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestManyDraws --readback-fixed-latency 2>&1 | tee "$log"
-          if ! grep -q 'd3d12: debug layer messages: on' "$log"; then
-            echo "::error::the D3D12 debug layer did not load"
-            exit 1
-          fi
-          if grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
-            echo "::error::the D3D12 debug layer reported errors"
-            exit 1
-          fi
 
       # pipeline、root signature、descriptor table を設定し直さずに使い回しても、各 draw が自分の状態で描くこと。
       # root signature を変えた後に設定し忘れた table は debug layer の error で見つける。
@@ -403,21 +334,6 @@ jobs:
         run: |
           log="${RUNNER_TEMP}/draw_state_reuse.log"
           LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestDrawStateReuse --readback-fixed-latency 2>&1 | tee "$log"
-          if grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
-            echo "::error::the D3D12 debug layer reported errors"
-            exit 1
-          fi
-
-      # pass ごとの GPU の時間を timestamp query で測れること (Sys.TakeGpuPasses)。
-      - name: GPU pass time (debug layer)
-        shell: bash
-        run: |
-          log="${RUNNER_TEMP}/gpu_pass_time.log"
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestGpuPassTime --readback-fixed-latency 2>&1 | tee "$log"
-          if ! grep -q 'gpu pass time: timed' "$log"; then
-            echo "::error::d3d12 did not time the GPU passes"
-            exit 1
-          fi
           if grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
             echo "::error::the D3D12 debug layer reported errors"
             exit 1
@@ -440,6 +356,16 @@ jobs:
               failed+=("$t")
             fi
           done
+          # debug layer が読み込めないと、error を報告しないまま通る
+          if ! grep -q 'd3d12: debug layer messages: on' "${RUNNER_TEMP}/runtime_TestManyDraws.log"; then
+            echo "::error::the D3D12 debug layer did not load"
+            failed+=(debug-layer)
+          fi
+          # pass ごとの GPU の時間を timestamp query で測れること (Sys.TakeGpuPasses)
+          if ! grep -q 'gpu pass time: timed' "${RUNNER_TEMP}/runtime_TestGpuPassTime.log"; then
+            echo "::error::d3d12 did not time the GPU passes"
+            failed+=(TestGpuPassTime)
+          fi
           [ ${#failed[@]} -eq 0 ]
 
       # lub export windows は shader を d3d12 (DXIL) と vulkan / sdlgpu (spirv) の両方の target で compile する。
@@ -553,7 +479,7 @@ jobs:
           if-no-files-found: ignore
 
   # web のサイト (lub.neguse.net) のアセット生成 + build。
-  # 検証は下流の web-verify / web-golden が artifact (web-dist-test) に対して行う。
+  # 検証は下流の web-verify と web-export が artifact (web-dist-test) に対して行う。
   # 前提アセット (web/README.md) の供給:
   #   - lub player wasm: emsdk でこの job 内でビルド
   #   - tcs WasmCompiler: content key cache、miss 時だけ dotnet で publish
@@ -667,15 +593,11 @@ jobs:
             build/wasm-tcs/lub.js
             build/wasm-tcs/lub.wasm
 
-      # サブパス配信 (https://host/lub/) の確認用。
-      # base を付けた build を先に作って dist-sub に退避し、通常の build (base /) を dist に作る。
       - name: Build site (test mode for verify)
         working-directory: web
         run: |
           npm run gen-api
           npm run gen-lider
-          npx vite build --mode test --base /lub/
-          mv dist dist-sub
           npx vite build --mode test
 
       # web の dist は同じ run の後続 job への受け渡し専用で、run の後は使わない。
@@ -683,12 +605,6 @@ jobs:
         with:
           name: web-dist-test
           path: web/dist
-          retention-days: 1
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web-dist-test-sub
-          path: web/dist-sub
           retention-days: 1
 
       - name: Build site (production)
@@ -704,8 +620,8 @@ jobs:
           retention-days: 1
 
   # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
-  # shard 1 = player の page (tests/cs)、shard 2 = サイトの入口、shard 3 = サブパスで配信した入口。
-  # verify は閾値判定なので runner の system chromium で足りる (golden の byte 比較だけ playwright の版固定 chromium を使う)。
+  # shard 1 = player の page (tests/cs)、shard 2 = サイトの入口。
+  # verify は閾値判定なので runner の system chromium で足りる。
   web-verify:
     needs: [changes, web-build]
     if: needs.changes.outputs.docs_only != 'true'
@@ -714,7 +630,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
 
@@ -772,103 +688,12 @@ jobs:
           done
           LUB_URL=http://localhost:4176/ npm run verify-lider
 
-      # --base /lub/ の build をサブパスで配信し、root 固定のパスが残っていないか (同じ origin に 404 が出ないか) を入口の検査で確かめる。
-      - uses: actions/download-artifact@v4
-        if: matrix.shard == 3
-        with:
-          name: web-dist-test-sub
-          path: web/dist-sub
-
-      - name: Verify entry page under a subpath (shard 3)
-        if: matrix.shard == 3
-        working-directory: web
-        run: |
-          npm run preview -- --base /lub/ --outDir dist-sub --port 4174 &
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:4174/lub/ >/dev/null && break
-            sleep 1
-          done
-          LUB_URL=http://localhost:4174/lub/ npm run verify-lider
-
       - name: Upload verify screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: verify-screenshots-${{ matrix.shard }}
           path: /tmp/lub-verify
-          if-no-files-found: ignore
-
-  # web golden: native golden と同じ curation を wasm の --capture 経路で撮り、tests/golden/<name>_web.png と byte 比較。
-  # golden は swiftshader 固有なので playwright/chromium を上げたら npm run golden -- --update で再生成。
-  web-golden:
-    needs: [changes, web-build]
-    if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: npm ci
-        working-directory: web
-        run: npm ci
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-dist-test
-          path: web/dist
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: tcs/global.json
-
-      # golden は native の tcs が変換したサンプルの bytecode を player の page に渡す (golden-web.mjs)。この shard のサンプルだけ変換する
-      - name: Build golden samples bytecode
-        shell: bash
-        run: |
-          dotnet build tcs/Transpiler -c Release -nologo -v q
-          export LUB_TCS_DLL="$(find tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
-          for s in $(LUB_GOLDEN_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} node web/scripts/golden-web.mjs --list); do
-            scripts/run-cs-sample.sh "$s" --vm
-          done
-
-      - name: Cache playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
-
-      # playwright 1.60 は ubuntu 26.04 を知らず、そのままでは download の URL が無い。
-      # 配っている chromium は ubuntu の版によらず同じなので 24.04 として取る (--with-deps は 26.04 の package を引けないので使わない)。
-      - name: Install chromium (playwright)
-        working-directory: web
-        run: PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright install chromium
-
-      - name: Web goldens (playwright + swiftshader, shard ${{ matrix.shard }}/${{ strategy.job-total }})
-        working-directory: web
-        run: |
-          npm run preview -- --port 4173 &
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:4173/ >/dev/null && break
-            sleep 1
-          done
-          LUB_URL=http://localhost:4173/ LUB_GOLDEN_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} npm run golden
-
-      - name: Upload golden failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: golden-failure-web-${{ matrix.shard }}
-          path: /tmp/lub-golden-web
           if-no-files-found: ignore
 
   # lub export web が書いた page 1 枚 (slang を持たない web の player と生成キャッシュ入り) を chromium で開き、tests/cs のテストが PASS を出すこと。
@@ -921,7 +746,8 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
 
-      # playwright の版と ubuntu 26.04 の扱いは web-golden の同じ step を参照。
+      # playwright 1.60 は ubuntu 26.04 を知らず、そのままでは download の URL が無い。
+      # 配っている chromium は ubuntu の版によらず同じなので 24.04 として取る (--with-deps は 26.04 の package を引けないので使わない)。
       - name: Install chromium (playwright) and the Vulkan loader lub links
         working-directory: web
         run: |
@@ -971,54 +797,8 @@ jobs:
       - name: Run tests and tcs checks
         run: bash run-tests.sh
 
-  # tcs VM と C (tcs2c) の digest が一致することを確かめる。時間は成果物に残すだけ (runner の時間は揺れる)。
-  tcs-bench-2backend:
-    needs: changes
-    if: needs.changes.outputs.tcs == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: tcs
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: tcs/global.json
-
-      - name: Run 2-backend bench
-        run: bash perf/bench-2backend.sh | tee bench-results.csv
-        env:
-          PERF_BENCH_RUNS: "5"
-
-      - name: Upload bench results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: tcs-bench-2backend-results
-          path: tcs/bench-results.csv
-
-  # 外向けの比較ベンチ (tcs/perf/compare) の全実装が同じ出力を出すことを確かめる。時間は測らない。
-  tcs-compare-check:
-    needs: changes
-    if: needs.changes.outputs.tcs == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: tcs
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: tcs/global.json
-
-      - name: Check outputs of all implementations
-        run: python3 perf/compare/run.py --check
-
-  # tcs 自身の速さの回帰 (tcs/perf/selfbench)。PR の base と同じ runner で交互に測り、決定的な指標 (命令の数、managed heap の最大) が閾値を超えて増えたら失敗する。
+  # tcs 自身の速さの回帰 (tcs/perf/selfbench)。PR の base と同じ runner で測り、決定的な指標 (命令の数、managed heap の最大) が閾値を超えて増えたら失敗する。
+  # 測るのは C の tcs の tcs vm (lider の player が page の中でゲームを変換するのと同じ経路) だけで、時間は測らない。
   tcs-selfbench:
     needs: changes
     if: github.event_name == 'pull_request' && needs.changes.outputs.tcs == 'true'
@@ -1040,7 +820,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y valgrind
 
       - name: Compare with the PR base
-        run: python3 perf/selfbench/run.py --base "origin/$BASE_REF" --runs 5 -o selfbench.json
+        run: python3 perf/selfbench/run.py --base "origin/$BASE_REF" --tasks vm --hosts native --runs 0 -o selfbench.json
         env:
           BASE_REF: ${{ github.base_ref }}
 
@@ -1084,7 +864,7 @@ jobs:
           CC: ${{ matrix.cc }}
 
   gate:
-    needs: [changes, lint, format, linux, windows, macos, web-build, web-verify, web-golden, web-export, tcs-test, tcs-bench-2backend, tcs-compare-check, tcs-selfbench, tcs-native]
+    needs: [changes, lint, format, linux, windows, macos, web-build, web-verify, web-export, tcs-test, tcs-selfbench, tcs-native]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

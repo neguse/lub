@@ -62,8 +62,7 @@ SelfHost/
     ToolText.cs          JSON の escape と数の読み取り
   Native/host.c        C の host
   Web/                 wasm の host (tcs_web.c、JS の入口 tcs.mjs、build.sh、test.mjs)
-  build.sh             C の build と固定点 (§9.1)
-  native.sh            native の tcs と .NET の tcs の比較 (§9.1)
+  native.sh            native の tcs の build、.NET の tcs との比較、固定点 (§9.1)
   SelfHost.csproj      .NET の library としての build
 Transpiler/            .NET の host (DotnetHost.cs、Program.cs)、テストと WasmCompiler の入口 (Checker.cs、IlExport.cs、TcsLibrary.cs)、Roslyn の補完と hover (EditorSession.cs、SemanticQueries.cs)
 tcs2c/                 .NET で tcs c を動かす入口と、テストの文字列の入口 (SelfHostC.cs)
@@ -134,7 +133,6 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 
 ### 9.1 bootstrap と host の一致
 
-- `SelfHost/build.sh` (`run-tests.sh` が C compiler のある環境で走らせる): .NET の tcs が tcs (`SelfHost/Compiler`、`CBackend`、`VmBackend`、`Tool`。`TcsHost.cs` は `--ref`) を `tcs c --lib` で C にし (`out/tcs.c`)、`Native/host.c` と build する (`out/tcs`)。固定点は、`out/tcs` が同じソースを C にした結果が `out/tcs.c` と byte で一致すること。digest kernel の `tcs vm` の `.tcsb` と、tcs 自身の `tcs check` の診断と終了コードも .NET と C で byte で一致させる
 - `SelfHost/native.sh` (CI の native job が Linux、macOS、Windows で走らせる): .NET の tcs2c で C にした native の tcs を作り、.NET の tcs と比べる。samples の `tcs check` と `tcs c` と `tcs vm`、誤りのある入力の診断、tcs 自身の `tcs check` と `tcs vm`、digest kernel の `.tcsb`、reload の batch (`tcs vm --reload-from`)、tcs 自身の C (固定点)
 - `SelfHost/Web/test.mjs` (`SelfHost/Web/build.sh` と `SelfHost/native.sh` の後): wasm の `vmOpen` の module と `vmUpdate` の batch が native の tcs の `tcs vm` と byte で同じこと、誤りのある編集が最後の build を保つこと、live に当てられない編集が restart を返すこと
 

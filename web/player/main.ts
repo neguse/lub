@@ -1,5 +1,5 @@
 // player の page (player.html): エディタを通らずに、渡された bytecode と file で lub の tcs VM の player (wasm/vm/lub.js) を動かす。
-// web の golden (scripts/golden-web.mjs) と tests/cs の検査 (scripts/verify-player.mjs の A9) が、page を開いて postMessage で起動する。
+// tests/cs の検査 (scripts/verify-player.mjs の A9) が、page を開いて postMessage で起動する。
 //   1. slang-wasm (lib/slang-bridge.ts) を起動し、wasm の main の前に window.slangCompile を置く (shader_compile は EM_JS から同期で呼ぶ)。
 //   2. wasm の print / printErr と JS の console を、親の window へ postMessage する (top-level で開いたときは自分)。
 //   3. WebGPU の device を作り、Module.preinitializedWebGPUDevice で lub.js に渡す。
@@ -41,7 +41,7 @@ window._canvasWidth = _cw;
 window._canvasHeight = _ch;
 
 // page の URL は execve 相当の起動境界: ?argv=<token> (繰り返し) を Module.arguments へ、?env=KEY=VALUE (繰り返し) を Module.ENV (preRun) へ機械的に写す。
-// 値の意味づけ (golden 等) は渡す側 — web/scripts/golden-web.mjs — が持ち、ここは機構のみ。
+// 値の意味づけは渡す側 — web/scripts/verify-player.mjs — が持ち、ここは機構のみ。
 // __lubTest と同じく dev/test build 限定で、production には入らない。
 let extraArgv: string[] = [];
 let extraEnv: Array<[string, string]> = [];

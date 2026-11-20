@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Golden image regression test (CPU rasterizer limited).
-# Compiles visual entries to tcs VM bytecode (.tcsb), runs them with --capture
-# under each backend and byte-compares the result to
+# Golden image regression test of the visual tests (cs_visual_tests in
+# scripts/cs-tests.sh, CPU rasterizer limited).
+# Compiles tests/cs to tcs VM bytecode (.tcsb), runs each visual test with
+# --capture under each backend and byte-compares the result to
 # tests/golden/<name>_<backend>.png.
 #
 # Usage:
-#   scripts/run-golden.sh                    # check all visual goldens × backends
+#   scripts/run-golden.sh                    # check all visual tests × backends
 #   scripts/run-golden.sh --update           # regenerate checked goldens
-#   scripts/run-golden.sh --sample 01_triangle
 #   scripts/run-golden.sh --test TestIndexedDraw
-#   scripts/run-golden.sh --tests-only
 #   scripts/run-golden.sh --backend sdlgpu
 #
 # Determinism relies on:
@@ -35,7 +34,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-SAMPLES=(00_hello 00b_clear 00c_buffer 00d_shader 01_triangle 02_vertex_color 03_texture 04_mvp 05_postprocess 06_deferred 07_compute 08_gltf 09_breakout 10_breakout3d 11_shadow 12_sfb 16_box2d 18_coin_pusher 19_sdf 26_renderer3d)
 FRAME=30
 apple=0
 case "$(uname -s)" in
@@ -59,17 +57,13 @@ esac
 GOLDEN_DIR=tests/golden
 
 update=0
-sample_filter=""
 test_filter=""
 backend_filter=""
-tests_only=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --update) update=1 ;;
-        --sample) sample_filter="$2"; shift ;;
         --test) test_filter="$2"; shift ;;
-        --tests-only) tests_only=1 ;;
         --backend) backend_filter="$2"; shift ;;
         -h | --help)
             sed -n '2,/^$/p' "$0" | sed '$d'
@@ -82,11 +76,6 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
-
-if [[ $tests_only -eq 1 && -n "$sample_filter" ]]; then
-    echo "--tests-only cannot be combined with --sample" >&2
-    exit 2
-fi
 
 if [[ ! -x "$BINARY" ]]; then
     echo "binary not built: $BINARY (run: cmake --build build)" >&2
@@ -130,11 +119,6 @@ check_entry() {
     local golden_name="$3"
     local backend="$4"
     local display_num="$5"
-    local frame="$FRAME"
-    case "$golden_name" in
-        16_box2d) frame=120 ;;
-        18_coin_pusher) frame=240 ;;
-    esac
 
     # Linux vulkan shares the sdlgpu goldens: same lavapipe rasterizer,
     # byte-identical output is the contract between them.
@@ -151,27 +135,23 @@ check_entry() {
     local log="$tmpdir/${golden_name}_${backend}.log"
     local status="$tmpdir/${golden_name}_${backend}.status"
 
-    # LUB_GOLDEN=1: sample が golden capture 中と分かるようにする。
-    # debug UI 等の非決定な overlay を描かせないため (例: 19_sdf の imgui パネル)。
     local run_ok=1
     if [[ $windows -eq 1 ]]; then
         # No xvfb/lavapipe on Windows; real windows open, WARP renders.
-        LUB_BACKEND="$backend" LUB_D3D12_WARP=1 LUB_GOLDEN=1 \
-            "$BINARY" \
-            "${entry_args[@]}" --capture "$out" --capture-frame "$frame" \
+        LUB_BACKEND="$backend" LUB_D3D12_WARP=1 "$BINARY" \
+            "${entry_args[@]}" --capture "$out" --capture-frame "$FRAME" \
             --fixed-dt 0.0166666666666667 --readback-fixed-latency \
             >"$log" 2>&1 || run_ok=0
     elif [[ $apple -eq 1 ]]; then
         # Real windows open and the GPU renders.
-        LUB_BACKEND="$backend" LUB_GOLDEN=1 \
-            "$BINARY" \
-            "${entry_args[@]}" --capture "$out" --capture-frame "$frame" \
+        LUB_BACKEND="$backend" "$BINARY" \
+            "${entry_args[@]}" --capture "$out" --capture-frame "$FRAME" \
             --fixed-dt 0.0166666666666667 --readback-fixed-latency \
             >"$log" 2>&1 || run_ok=0
     else
-        LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" LUB_GOLDEN=1 \
+        LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" \
             scripts/run-headless.sh "$BINARY" \
-            "${entry_args[@]}" --capture "$out" --capture-frame "$frame" \
+            "${entry_args[@]}" --capture "$out" --capture-frame "$FRAME" \
             --fixed-dt 0.0166666666666667 --readback-fixed-latency \
             >"$log" 2>&1 || run_ok=0
     fi
@@ -228,7 +208,7 @@ check_entry() {
 }
 
 # Both backends of one entry run serially inside one background job per
-# entry (the captures of one sample share its bytecode).
+# entry.
 run_entry_backends() {
     local label="$1"
     local entry="$2"
@@ -257,61 +237,21 @@ launch_entry() {
     fi
 }
 
-run_samples=1
-run_tests=1
-if [[ $tests_only -eq 1 ]]; then
-    run_samples=0
-elif [[ -n "$sample_filter" && -z "$test_filter" ]]; then
-    run_tests=0
-elif [[ -n "$test_filter" && -z "$sample_filter" ]]; then
-    run_samples=0
-fi
-
-# サンプルは C# (tcs)。
-# 先に tcs vm で samples/<name>/.lub/<Entry>.tcsb を作る (entry class = csproj の basename)。
-entry_args_for() {
-    local sample="$1"
-    local proj
-    proj=$(ls "samples/$sample"/*.csproj | head -1)
-    local cls
-    cls=$(basename "$proj" .csproj)
-    echo "samples/$sample/.lub/$cls.tcsb --entry $cls"
-}
-
-if [[ $run_samples -eq 1 ]]; then
-    for sample in "${SAMPLES[@]}"; do
-        [[ -n "$sample_filter" && "$sample" != "$sample_filter" ]] && continue
-        scripts/run-cs-sample.sh "$sample" --vm >"$tmpdir/${sample}_transpile.log" 2>&1 || {
-            echo "FAIL ${sample}: transpile failed (see $tmpdir/${sample}_transpile.log)"
-            keep_tmpdir=1
-            echo fail >"$tmpdir/${sample}_transpile.status"
-            continue
-        }
+# 描画を golden で見る tests/cs の test。
+# 先に tests/cs 全体を tests/cs/.lub/all.tcsb に変換し、--entry で test を選ぶ。
+# shellcheck source=scripts/cs-tests.sh
+source scripts/cs-tests.sh
+tests_ok=0
+cs_tests_vm_build >"$tmpdir/tests_transpile.log" 2>&1 && tests_ok=1
+if [[ $tests_ok -eq 1 ]]; then
+    for t in "${cs_visual_tests[@]}"; do
+        [[ -n "$test_filter" && "$t" != "$test_filter" ]] && continue
+        launch_entry "$t" "tests/cs/.lub/all.tcsb --entry $t" "$t"
     done
-    for sample in "${SAMPLES[@]}"; do
-        [[ -n "$sample_filter" && "$sample" != "$sample_filter" ]] && continue
-        [[ -f "$tmpdir/${sample}_transpile.status" ]] && continue
-        launch_entry "$sample" "$(entry_args_for "$sample")" "$sample"
-    done
-fi
-
-if [[ $run_tests -eq 1 ]]; then
-    # 描画を golden で見る tests/cs の test。
-    # 先に tests/cs 全体を tests/cs/.lub/all.tcsb に変換し、--entry で test を選ぶ。
-    # shellcheck source=scripts/cs-tests.sh
-    source scripts/cs-tests.sh
-    tests_ok=0
-    cs_tests_vm_build >"$tmpdir/tests_transpile.log" 2>&1 && tests_ok=1
-    if [[ $tests_ok -eq 1 ]]; then
-        for t in "${cs_visual_tests[@]}"; do
-            [[ -n "$test_filter" && "$t" != "$test_filter" ]] && continue
-            launch_entry "$t" "tests/cs/.lub/all.tcsb --entry $t" "$t"
-        done
-    else
-        echo "FAIL tests: transpile failed (see $tmpdir/tests_transpile.log)"
-        keep_tmpdir=1
-        echo fail >"$tmpdir/tests_transpile.status"
-    fi
+else
+    echo "FAIL tests: transpile failed (see $tmpdir/tests_transpile.log)"
+    keep_tmpdir=1
+    echo fail >"$tmpdir/tests_transpile.status"
 fi
 
 wait

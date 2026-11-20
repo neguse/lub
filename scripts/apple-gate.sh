@@ -8,7 +8,7 @@
 #
 # Needs bash 4+ (run-golden.sh uses mapfile / wait -n; macOS ships 3.2, so
 # `brew install bash`), CMake, Ninja, python3, and dotnet
-# (the tests and the golden samples are C#). The iOS
+# (the tests are C#). The iOS
 # step needs Xcode.
 set -euo pipefail
 

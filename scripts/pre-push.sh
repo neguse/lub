@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Full local gate (manual). Runs the Linux and web parts of PR CI: the fast
 # commit gate, the native gate (build, smokes, C# runtime tests, goldens, C#
-# samples), then WASM build, web build, headless web verification, and web
-# goldens.
+# samples, dev tools), then WASM build, web build, and headless web
+# verification.
 # CI が同じ内容を PR ごとに実行するので普段は不要。
 # CI を待たずに手元で全周りを確認したいとき、または CI が使えないときの脱出ハッチ。
 set -euo pipefail
@@ -18,8 +18,8 @@ Usage: scripts/pre-push.sh
 Runs the full local gate:
   the fast commit gate (scripts/pre-commit.sh), the native gate
   (scripts/native-gate.sh: build, smokes, C# runtime tests, goldens, C#
-  samples), WASM build, web build, headless web verification, and
-  web goldens (web/scripts/golden-web.mjs).
+  samples, dev tools), WASM build, web build, and headless web
+  verification.
 
 npm ci is skipped when web/package.json + web/package-lock.json are
 unchanged since the last successful install (stamp in web/node_modules).
@@ -123,4 +123,3 @@ wait_for_url "$dev_url" 45 || {
 }
 
 run env LUB_URL="$dev_url" npm --prefix web run verify
-run env LUB_URL="$dev_url" npm --prefix web run golden

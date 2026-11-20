@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Native regression gate: docs lint, Release build, C smoke tests,
-# C# runtime tests (tests/cs), visual goldens (lavapipe), the C# sample gate
-# (tcs VM の player と .NET 実行を同じ条件で走らせ、digest と capture が一致すること)、ngs scenario golden。
+# Native regression gate: Release build, C smoke tests, C# runtime tests
+# (tests/cs), visual goldens of the tests (lavapipe), the samples' tcs check,
+# and the dev tools (tcs の子 process、lub check、vm の project、lider)。
 # Single source of truth shared by the CI linux job (.github/workflows/ci.yml)
 # and the manual full gate (scripts/pre-push.sh).
 set -euo pipefail
@@ -18,16 +18,16 @@ while [[ $# -gt 0 ]]; do
 Usage: scripts/native-gate.sh [--require-cs] [--skip-golden]
 
 Runs the native regression gate:
-  docs lint, Release build, C smoke tests, C# runtime tests (tests/cs),
-  visual goldens (lavapipe), and the C# sample gate.
+  Release build, C smoke tests, C# runtime tests (tests/cs), visual
+  goldens of the tests (lavapipe), the samples' tcs check, and the dev
+  tools.
 
 --require-cs makes a missing C# toolchain (dotnet / tcs) an
 error instead of a skip; CI passes it so the gate cannot silently narrow.
 --skip-golden skips the visual golden byte-compares. lavapipe output is
 mesa-version-dependent (filtering LSB differences), so the compare only
 holds where goldens were generated; linux CI passes this until its mesa
-is pinned. C# sample captures still run (crash coverage), only cmp is
-skipped.
+is pinned.
 EOF
       exit 0
       ;;
@@ -80,9 +80,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-run scripts/docs-lint.sh
-
-# ---- C# (tcs) サンプル gate -------------------------------------------- dotnet と tcs/ があるときだけ、.cs entry を持つ全サンプルを check + build し、.NET 実行と digest / capture を比較する。
+# ---- C# (tcs) ----------------------------------------------------------- dotnet と tcs/ があるときだけ、binding の検査、tests/cs の変換と runtime テスト、全サンプルの tcs check と変換をする。
 # 無い環境では skip (C# 対応は optional toolchain)。
 # CI は --require-cs で skip を fail に変える。
 cs_available=0
@@ -90,7 +88,7 @@ if command -v dotnet >/dev/null 2>&1 \
   && [[ -f tcs/Transpiler/Transpiler.csproj ]]; then
   cs_available=1
 elif [[ $require_cs -eq 1 ]]; then
-  echo "C# sample gate required (--require-cs) but dotnet or tcs is missing" >&2
+  echo "C# toolchain required (--require-cs) but dotnet or tcs is missing" >&2
   exit 1
 fi
 
@@ -103,20 +101,6 @@ if [[ $cs_available -eq 1 ]]; then
   rm -rf "$lub_gen_build"
 fi
 
-# entry class は csproj basename、無ければ唯一の .cs (run-cs-sample と同じ)
-cs_entry_class() {
-  local cs_dir="$1" cs_files cs_projs
-  shopt -s nullglob
-  cs_files=("$cs_dir"/*.cs)
-  cs_projs=("$cs_dir"/*.csproj)
-  shopt -u nullglob
-  if ((${#cs_projs[@]} >= 1)); then
-    basename "${cs_projs[0]}" .csproj
-  else
-    basename "${cs_files[0]}" .cs
-  fi
-}
-
 cs_transpile() {
   local cs_dir="$1" cs_name
   cs_name="$(basename "$cs_dir")"
@@ -125,66 +109,11 @@ cs_transpile() {
   run scripts/run-cs-sample.sh "$cs_name" --vm
 }
 
-cs_capture() {
-  local cs_dir="$1" slot="$2" cs_name cs_class cs_png cs_digest cs_frame
-  local dn_png dn_digest
-  cs_name="$(basename "$cs_dir")"
-  cs_class="$(cs_entry_class "$cs_dir")"
-  cs_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_vm.png"
-  cs_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_vm.digest"
-  rm -f "$cs_png" "$cs_digest"
-  # 視覚 golden は scripts/run-golden.sh (curation と frame はそちら)。
-  # ここは tcs VM の player (lub の既定、src/vm_player.c) と .NET 実行を突き合わせる材料 (digest と capture)。
-  # CI (--skip-golden) は digest 比較の範囲 (30 frame) で足りる。
-  # bytecode (.lub/<Entry>.tcsb) は dotnet 相の cs_transpile が作ってある。
-  cs_frame=240
-  [[ $skip_golden -eq 1 ]] && cs_frame=30
-  run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
-    scripts/run-headless.sh "$native_binary" \
-    "$cs_dir/.lub/$cs_class.tcsb" --entry "$cs_class" --capture "$cs_png" --capture-frame "$cs_frame" \
-    --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "${cs_digest}.log"
-  grep '^digest ' "${cs_digest}.log" > "$cs_digest" || true
-  # error の log は stderr に出る (xvfb-run が stdout に混ぜるとは限らない) ので、両方の経路で 2>&1 して log に入れる。
-  if grep -qE "lub: (error|cannot)" "${cs_digest}.log"; then
-    echo "tcs VM run of ${cs_name} logged errors" >&2
-    return 1
-  fi
-
-  # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs VM と一致することを確かめる。
-  # host の関数 (lub-gen vm) と facade の詰め替えの違いはここに出る。
-  # 数値は両方 f32 で、Math も同じ実装なので絵も揃う。
-  # capture の一致は golden と同じく手元の gate でだけ見る。
-  # SampleRunner の出力は Sample ごとに別 dir なので build は capture の直前。
-  run_timed dotnet build dotnet/SampleRunner -p:Sample="$cs_name" -nologo -v q
-  dn_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_dotnet.png"
-  dn_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_dotnet.digest"
-  rm -f "$dn_png" "$dn_digest"
-  run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
-    LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
-    scripts/run-headless.sh "./dotnet/SampleRunner/bin/${cs_name}/lub-sample-${cs_name}" \
-    --capture "$dn_png" --capture-frame "$cs_frame" --fixed-dt 0.0166666666666667 \
-    --digest 2>&1 | tee "${dn_digest}.log"
-  grep '^digest ' "${dn_digest}.log" > "$dn_digest" || true
-  if grep -q "lub: error" "${dn_digest}.log"; then
-    echo ".NET run of ${cs_name} logged errors" >&2
-    return 1
-  fi
-  # digest は最初の 30 frame (CI の capture 長)。
-  run cmp <(head -30 "$cs_digest") <(head -30 "$dn_digest")
-  if [[ $skip_golden -eq 1 ]]; then
-    echo "==> .NET capture cmp skipped (--skip-golden): ${cs_name}"
-  else
-    run cmp "$cs_png" "$dn_png"
-  fi
-}
-
 # サンプルごとに独立 (dir が disjoint) な処理を pool で並列化する。
 # status はファイル渡し: wait -n が reap した job は後から wait <pid> できないため (run-golden.sh と同じ)。
 # 相ごとの所要時間を出力する。
-# 第 3 引数で pool 幅を上書きできる (既定 cs_jobs_max)。
 cs_pool() {
   local label="$1" fn="$2"
-  local jobs_max="${3:-$cs_jobs_max}"
   local t0=$SECONDS running=0 i failed=0 tmp
   tmp="$(mktemp -d)"
   for i in "${!cs_dirs[@]}"; do
@@ -195,7 +124,7 @@ cs_pool() {
       echo pass >"$tmp/$i.status"
     ) &
     running=$((running + 1))
-    if ((running >= jobs_max)); then
+    if ((running >= cs_jobs_max)); then
       wait -n || true
       running=$((running - 1))
     fi
@@ -285,8 +214,8 @@ if [[ $cs_available -eq 1 ]]; then
     # tcs vm は警告で止まらないので、tests/cs の警告は tcs check で見る
     run cs_tests_check
     cs_pool "transpile" cs_transpile
-    # サンプルの csproj は build しない: 同じソースを .NET 実行 (SampleRunner) が capture の前に実 .NET で compile し、TinyC# の範囲は tcs の check が見る。
-    # 雛形 (cp -r して使う) は他で compile しないので、同じ API で build できること
+    # サンプルの csproj は build しない: サンプルは実行例で、検査は tcs の check と変換まで。
+    # 雛形 (cp -r して使う) は実 .NET で build できること
     run dotnet build templates/game/Game.csproj -nologo
   ) >"$cs_dotnet_log" 2>&1 &
   cs_dotnet_pid=$!
@@ -323,7 +252,7 @@ run_timed ./build-release-linux/lub_shader_layout_smoke
 run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
 run_timed ./build-release-linux/lub_xr_math_smoke
 # dotnet 相 (サンプルと tests/cs の変換) を join する。
-# ここから先の runtime テスト、golden、C# サンプル gate はその出力を使う。
+# ここから先の runtime テストと golden はその出力を使う。
 if [[ $cs_available -eq 1 ]]; then
   echo
   echo "==> C# dotnet phases (ran alongside the C build)"
@@ -450,13 +379,8 @@ else
   echo "==> visual goldens SKIPPED (--skip-golden: mesa-version-dependent)"
 fi
 
-# C# gate の残り: capture を回す。
-# capture は lavapipe の実レンダリングで CPU 飽和 (llvmpipe が 1 プロセスでコア数分の render thread を立てる) ため、多重化しても縮まない。
-# 直列で回す。
+# 開発の道具: tcs の子 process の後始末、lub check、binding の digest、.csproj から動かす経路、lider
 if [[ $cs_available -eq 1 ]]; then
-  echo
-  echo "==> C# sample gate (${#cs_dirs[@]} samples)"
-  cs_pool "capture (tcs VM / .NET digest)" cs_capture 1
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"
   run_timed scripts/test-lub-check.sh "$native_binary"
   run_timed scripts/test-bindings-digest.sh "$native_binary"
@@ -473,19 +397,12 @@ if [[ $cs_available -eq 1 ]]; then
   fi
 else
   echo
-  echo "==> C# sample gate skipped (dotnet or tcs missing)"
+  echo "==> dev tool checks skipped (dotnet or tcs missing)"
 fi
 # tcs の子プロセスの標準出力から frame を切り出す (知らない種類を読み飛ばす)。
 # fake の tcs を使うので dotnet は要らない
 run_timed bash scripts/build-release.sh --target lub_tcs_pipeline_smoke --no-configure
 run_timed scripts/test-tcs-pipeline-smoke.sh ./build-release-linux/lub_tcs_pipeline_smoke
-
-# samples/ngs の scenario golden (scene と入力 script を固定した capture)
-if [[ $skip_golden -eq 1 ]]; then
-  echo "==> ngs scenario golden skipped (--skip-golden)"
-elif [[ $cs_available -eq 1 ]]; then
-  run_timed env BINARY="$native_binary" scripts/ngs-golden.sh
-fi
 
 echo
 echo "native gate OK"

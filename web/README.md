@@ -7,7 +7,7 @@
   project は MEMFS に置き、保存のたびに IndexedDB に写す。保存された `.cs` は page が整形して書き戻す (`lib/format.ts`)。
   右下のメニューから、Doc の page、サンプル (`#sample=<名前>`)、zip の保存と読み込みを開く。`?gist=<id か URL>` で公開の gist を開く。
 - `player.html` (`player/main.ts`): エディタを通らない tcs VM の player (`build/wasm/vm/lub.js`)。
-  page を開いて postMessage (`setFiles`) で bytecode と file を渡すと起動する。golden と `tests/cs` の検査が使う。
+  page を開いて postMessage (`setFiles`) で bytecode と file を渡すと起動する。`tests/cs` の検査が使う。
 - `docs.html` (`docs/main.ts`): ガイド (`docs/manual/*.md`) と API reference (`cs-lib/lub_stub.cs` の doc comment)。
 - `lider.html`: 前の lider の page の URL。query と hash を付けたまま入口へ移る。
 
@@ -52,7 +52,6 @@ npm run dev               # Vite dev server (http://localhost:5173/)
 npm run build             # 本番ビルド -> dist/
 npm run verify-lider      # 入口の page の検査 (別ターミナルで dev を起動しておく)
 npm run verify            # player の page で tests/cs の runtime テストを動かす
-npm run golden            # web golden (native と同じ curation を wasm の --capture 経路で byte 比較)
 npm run gen-api           # docs サイト用 API reference JSON を再生成 (dev/build にも組み込み済)
 npm run gen-tcs -- --publish  # 整形の .NET wasm を再生成 (tcs 変更時)
 npm run format            # prettier (format:check は CI 用)
@@ -65,10 +64,8 @@ npm run deploy            # build + wrangler deploy
 ブラウザの解決順は `scripts/lib/browser.mjs` (`CHROMIUM_PATH` → playwright の版固定 chromium → system chromium)。
 
 - `npm run verify-lider` (`scripts/verify-lider.mjs`): 入口の page。起動、保存した編集の反映、通らない build の診断、通らない project での起動、並べる表示 (F10)、サンプル、メニューと Doc の page、同じ origin の 404。
-  サブパス配信の確認は、`--base /lub/` でビルドした dist を preview し、`LUB_URL` をそのサブパス (`http://localhost:4174/lub/`) にして走らせる (preview は `appType: "mpa"` なので、base の中の無い path も 404 になる)。
 - `npm run verify` (`scripts/verify-player.mjs`): `tests/cs` の runtime テストを player の page で走らせ、PASS を確認する (A9)。
   事前に `scripts/cs-tests.sh` の `cs_tests_vm_build` で `tests/cs/.lub/all.tcsb` を作っておく。
-- `npm run golden` (`scripts/golden-web.mjs`): サンプルを native の tcs で変換しておき (`scripts/run-cs-sample.sh <name> --vm`。撮るサンプルは `--list`)、player の page で撮って `tests/golden/<name>_web.png` と比べる。
 
 ## Browser requirements
 

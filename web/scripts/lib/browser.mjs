@@ -1,5 +1,5 @@
 // playwright で chromium を立てる共通部。
-// verify / golden / tcs の各スクリプトが同じ解決順で同じブラウザを使う。
+// verify / tcs の各スクリプトが同じ解決順で同じブラウザを使う。
 import fs from "node:fs";
 import { chromium } from "playwright";
 
@@ -22,7 +22,7 @@ export function pickExecutable() {
   return undefined;
 }
 
-/** WebGPU を swiftshader (Vulkan) で有効にする引数。golden と verify の描画契約。 */
+/** WebGPU を swiftshader (Vulkan) で有効にする引数。verify の描画契約。 */
 export const WEBGPU_ARGS = [
   "--enable-unsafe-webgpu",
   "--enable-features=Vulkan,WebGPU",
