@@ -2,8 +2,9 @@
 # Native regression gate: Release build, C smoke tests, C# runtime tests
 # (tests/cs), visual goldens of the tests (lavapipe), the samples' tcs check,
 # and the dev tools (tcs の子 process、lub check、vm の project、lider)。
-# Single source of truth shared by the CI linux job (.github/workflows/ci.yml)
+# Single source of truth shared by the CI linux jobs (.github/workflows/ci.yml)
 # and the manual full gate (scripts/pre-push.sh).
+# CI は --part ごとの job に分けて並べ、手元の gate は全部を順に走らせる。
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,16 +12,26 @@ cd "$repo_root"
 
 require_cs=0
 skip_golden=0
+part=all
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
       cat <<'EOF'
-Usage: scripts/native-gate.sh [--require-cs] [--skip-golden]
+Usage: scripts/native-gate.sh [--require-cs] [--skip-golden] [--part <name>]
 
 Runs the native regression gate:
   Release build, C smoke tests, C# runtime tests (tests/cs), visual
   goldens of the tests (lavapipe), the samples' tcs check, and the dev
   tools.
+
+--part runs one part (all by default):
+  bindings  the tcs and VM bindings, lub-gen (C vs .NET)
+  runtime   the C smoke tests, the C# runtime tests on sdlgpu and vulkan,
+            the .NET runs, export, the goldens
+  tools     the generated files, tests/cs and the samples' tcs check, the
+            template's .NET build, the tcs child processes, lub check, the
+            bindings digest, the vm projects, the tcs pipeline smoke
+  lider     the lider gate (LIDER_SHARD picks a shard of its tests)
 
 --require-cs makes a missing C# toolchain (dotnet / tcs) an
 error instead of a skip; CI passes it so the gate cannot silently narrow.
@@ -37,6 +48,10 @@ EOF
     --skip-golden)
       skip_golden=1
       ;;
+    --part)
+      part="${2:?--part needs a name}"
+      shift
+      ;;
     *)
       echo "unknown arg: $1" >&2
       exit 2
@@ -44,6 +59,20 @@ EOF
   esac
   shift
 done
+
+case "$part" in
+  all | bindings | runtime | tools | lider) ;;
+  *)
+    echo "unknown part: $part" >&2
+    exit 2
+    ;;
+esac
+# want <part>: この起動が <part> を走らせるか
+want() { [[ $part == all || $part == "$1" ]]; }
+if ! want runtime; then
+  # golden は runtime の部分だけが撮る
+  skip_golden=1
+fi
 
 # goldens compare lavapipe captures; without it run-headless.sh would fall
 # back to the machine's GPU driver and every compare would fail.
@@ -92,7 +121,7 @@ elif [[ $require_cs -eq 1 ]]; then
   exit 1
 fi
 
-if [[ $cs_available -eq 1 ]]; then
+if [[ $cs_available -eq 1 ]] && want bindings; then
   run bash scripts/verify-tcs-binding.sh
   run bash scripts/verify-vm-binding.sh
   # lub-gen (TinyC#) を C にした実行ファイルが、.NET の lub-gen と同じ出力を出すこと (release の一式が配る lub-gen と同じ作り方)
@@ -193,7 +222,7 @@ vm_test_argv() { printf '%s\n' "$native_binary" tests/cs/.lub/all.tcsb --entry "
 
 # dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、Transpiler を一度だけ build し、以後は run-cs-sample.sh と scripts/cs-tests.sh が LUB_TCS_DLL の prebuilt DLL を直接実行する。
 cs_dotnet_pid=""
-if [[ $cs_available -eq 1 ]]; then
+if [[ $cs_available -eq 1 ]] && [[ $part != bindings ]]; then
   cs_dotnet_log="$(mktemp)"
   cleanup_files+=("$cs_dotnet_log")
   (
@@ -205,59 +234,65 @@ if [[ $cs_available -eq 1 ]]; then
       exit 1
     fi
     export LUB_TCS_DLL="$repo_root/$tcs_dll"
-    # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (header / tcs VM の host の関数 / API docs / facade) が記述と一致していることの確認。
-    # 差分が出たら scripts/gen-api.sh で再生成する。
-    run scripts/gen-api.sh --check
-    # .NET 実行の facade + host
-    run dotnet build dotnet/Lub -nologo -v q
-    run dotnet run --project tests/dotnet/Bindings -c Release
     # tests/cs を tcs vm で 1 つの bytecode (tests/cs/.lub/all.tcsb) にする。test は --entry で選ぶ
     # shellcheck source=scripts/cs-tests.sh
     source scripts/cs-tests.sh
     run cs_tests_vm_build
-    # tcs vm は警告で止まらないので、tests/cs の警告は tcs check で見る
-    run cs_tests_check
-    cs_pool "transpile" cs_transpile
-    # サンプルの csproj は build しない: サンプルは実行例で、検査は tcs の check と変換まで。
-    # 雛形 (cp -r して使う) は実 .NET で build できること
-    run dotnet build templates/game/Game.csproj -nologo
+    if want tools; then
+      # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (header / tcs VM の host の関数 / API docs / facade) が記述と一致していることの確認。
+      # 差分が出たら scripts/gen-api.sh で再生成する。
+      run scripts/gen-api.sh --check
+      # .NET 実行の facade + host
+      run dotnet build dotnet/Lub -nologo -v q
+      run dotnet run --project tests/dotnet/Bindings -c Release
+      # tcs vm は警告で止まらないので、tests/cs の警告は tcs check で見る
+      run cs_tests_check
+      cs_pool "transpile" cs_transpile
+      # サンプルの csproj は build しない: サンプルは実行例で、検査は tcs の check と変換まで。
+      # 雛形 (cp -r して使う) は実 .NET で build できること
+      run dotnet build templates/game/Game.csproj -nologo
+    fi
   ) >"$cs_dotnet_log" 2>&1 &
   cs_dotnet_pid=$!
 fi
 # ------------------------------------------------------------------------
 
-run_timed bash scripts/build-release.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
-# .NET 実行の共有 library (facade が P/Invoke する)
-run_timed bash scripts/build-release.sh --target lub_shared --no-configure
-run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-configure
-run_timed ./build-release-linux/lub_tcs_sources_smoke
-run_timed bash scripts/build-release.sh --target lub_tcs_resolve_smoke --no-configure
-run_timed ./build-release-linux/lub_tcs_resolve_smoke
-run_timed bash scripts/build-release.sh --target lub_vm_project_smoke --no-configure
-run_timed ./build-release-linux/lub_vm_project_smoke
-# 外の project が find_package(lub) で自前の player を作れること (tests/cmake/player)
-run_timed cmake -S tests/cmake/player -B build-release-linux/export-player -G Ninja -Dlub_DIR="$PWD/build-release-linux"
-run_timed cmake --build build-release-linux/export-player
-run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
-run_timed ./build-release-linux/lub_physics_box2d_smoke
-run_timed bash scripts/build-release.sh --target lub_surfacenets_smoke --no-configure
-run_timed ./build-release-linux/lub_surfacenets_smoke
-run_timed bash scripts/build-release.sh --target lub_sdf_smoke --no-configure
-run_timed ./build-release-linux/lub_sdf_smoke
-run_timed bash scripts/build-release.sh --target lub_resources_smoke --no-configure
-run_timed ./build-release-linux/lub_resources_smoke
-run_timed bash scripts/build-release.sh --target lub_gamepad_smoke --no-configure
-run_timed ./build-release-linux/lub_gamepad_smoke
-run_timed bash scripts/build-release.sh --target lub_window_input_smoke --no-configure
-run_timed ./build-release-linux/lub_window_input_smoke
-run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-configure
-run_timed ./build-release-linux/lub_shader_layout_smoke
-run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
-run_timed ./build-release-linux/lub_xr_math_smoke
+if [[ $part != bindings ]]; then
+  run_timed bash scripts/build-release.sh
+fi
+if want runtime; then
+  # .NET 実行の共有 library (facade が P/Invoke する)
+  run_timed bash scripts/build-release.sh --target lub_shared --no-configure
+  run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-configure
+  run_timed ./build-release-linux/lub_tcs_sources_smoke
+  run_timed bash scripts/build-release.sh --target lub_tcs_resolve_smoke --no-configure
+  run_timed ./build-release-linux/lub_tcs_resolve_smoke
+  run_timed bash scripts/build-release.sh --target lub_vm_project_smoke --no-configure
+  run_timed ./build-release-linux/lub_vm_project_smoke
+  # 外の project が find_package(lub) で自前の player を作れること (tests/cmake/player)
+  run_timed cmake -S tests/cmake/player -B build-release-linux/export-player -G Ninja -Dlub_DIR="$PWD/build-release-linux"
+  run_timed cmake --build build-release-linux/export-player
+  run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
+  run_timed ./build-release-linux/lub_physics_box2d_smoke
+  run_timed bash scripts/build-release.sh --target lub_surfacenets_smoke --no-configure
+  run_timed ./build-release-linux/lub_surfacenets_smoke
+  run_timed bash scripts/build-release.sh --target lub_sdf_smoke --no-configure
+  run_timed ./build-release-linux/lub_sdf_smoke
+  run_timed bash scripts/build-release.sh --target lub_resources_smoke --no-configure
+  run_timed ./build-release-linux/lub_resources_smoke
+  run_timed bash scripts/build-release.sh --target lub_gamepad_smoke --no-configure
+  run_timed ./build-release-linux/lub_gamepad_smoke
+  run_timed bash scripts/build-release.sh --target lub_window_input_smoke --no-configure
+  run_timed ./build-release-linux/lub_window_input_smoke
+  run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-configure
+  run_timed ./build-release-linux/lub_shader_layout_smoke
+  run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
+  run_timed ./build-release-linux/lub_xr_math_smoke
+fi
 # dotnet 相 (サンプルと tests/cs の変換) を join する。
 # ここから先の runtime テストと golden はその出力を使う。
-if [[ $cs_available -eq 1 ]]; then
+if [[ -n $cs_dotnet_pid ]]; then
   echo
   echo "==> C# dotnet phases (ran alongside the C build)"
   cs_dotnet_ok=0
@@ -268,7 +303,7 @@ if [[ $cs_available -eq 1 ]]; then
   fi
 fi
 
-if [[ $cs_available -eq 1 ]]; then
+if [[ $cs_available -eq 1 ]] && want runtime; then
   # shellcheck source=scripts/cs-tests.sh
   source scripts/cs-tests.sh
   run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/all.tcsb --entry TestFixedDt \
@@ -346,26 +381,33 @@ if [[ $cs_available -eq 1 ]]; then
   cleanup_files+=("$blend_vm_log.digest" "$blend_dn_log.digest")
   [[ -s "$blend_vm_log.digest" ]]
   run cmp "$blend_vm_log.digest" "$blend_dn_log.digest"
-else
+elif want runtime; then
   echo
   echo "==> C# runtime tests skipped (dotnet or tcs missing)"
 fi
 
 if [[ $skip_golden -eq 0 ]]; then
   run_timed env BINARY="$native_binary" scripts/run-golden.sh
-else
+elif want runtime; then
   echo
   echo "==> visual goldens SKIPPED (--skip-golden: mesa-version-dependent)"
 fi
 
-# 開発の道具: tcs の子 process の後始末、lub check、binding の digest、.csproj から動かす経路、lider
-if [[ $cs_available -eq 1 ]]; then
+# 開発の道具: tcs の子 process の後始末、lub check、binding の digest、.csproj から動かす経路
+if [[ $cs_available -eq 1 ]] && want tools; then
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"
   run_timed scripts/test-lub-check.sh "$native_binary"
   run_timed scripts/test-bindings-digest.sh "$native_binary"
-  # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、hot reload、OnBuildFailed、App.Use で開いた app の --trace と検査の口)
-  run_timed env LUB_VM="$native_binary" scripts/vm-project-test.sh
-  # lider (lider/README.md): 自前の player の build と、lider の runtime テスト
+  # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、hot reload、OnBuildFailed、App.Use で開いた app の --trace と検査の口)。
+  # tcs は dotnet 相が build した Transpiler.dll を直接動かす (dotnet run は起動のたびに MSBuild の評価が走る。tcs を探す順は lub_tcs_resolve_smoke が見る)
+  tcs_dll="$(find tcs/Transpiler/bin/Release -maxdepth 2 -name Transpiler.dll -print -quit)"
+  run_timed env LUB_VM="$native_binary" LUB_TCS="dotnet $repo_root/$tcs_dll" scripts/vm-project-test.sh
+elif want tools; then
+  echo
+  echo "==> dev tool checks skipped (dotnet or tcs missing)"
+fi
+# lider (lider/README.md): 自前の player の build と、lider の runtime テスト
+if [[ $cs_available -eq 1 ]] && want lider; then
   if command -v cargo >/dev/null; then
     run_timed lider/scripts/gate.sh
   elif [[ $require_cs -eq 1 ]]; then
@@ -374,14 +416,13 @@ if [[ $cs_available -eq 1 ]]; then
   else
     echo "==> lider gate skipped (cargo missing)"
   fi
-else
-  echo
-  echo "==> dev tool checks skipped (dotnet or tcs missing)"
 fi
-# tcs の子プロセスの標準出力から frame を切り出す (知らない種類を読み飛ばす)。
-# fake の tcs を使うので dotnet は要らない
-run_timed bash scripts/build-release.sh --target lub_tcs_pipeline_smoke --no-configure
-run_timed scripts/test-tcs-pipeline-smoke.sh ./build-release-linux/lub_tcs_pipeline_smoke
+if want tools; then
+  # tcs の子プロセスの標準出力から frame を切り出す (知らない種類を読み飛ばす)。
+  # fake の tcs を使うので dotnet は要らない
+  run_timed bash scripts/build-release.sh --target lub_tcs_pipeline_smoke --no-configure
+  run_timed scripts/test-tcs-pipeline-smoke.sh ./build-release-linux/lub_tcs_pipeline_smoke
+fi
 
 echo
-echo "native gate OK"
+echo "native gate OK (part: $part)"
