@@ -44,4 +44,5 @@ runs:
         [ ! -f "$conf" ] || sudo sed -i 's/^update_initramfs=.*/update_initramfs=no/' "$conf"
         shopt -s nullglob
         debs=(~/.cache/lub-apt/*.deb)
-        [ ${#debs[@]} = 0 ] || sudo apt-get install -y --no-install-recommends --no-download "${debs[@]}"
+        # 依存は置いた .deb の中で足りるので、mirror には行かない
+        [ ${#debs[@]} = 0 ] || sudo apt-get install -y --no-install-recommends "${debs[@]}"

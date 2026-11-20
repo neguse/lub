@@ -630,6 +630,45 @@ jobs:
           emcmake cmake -S tests/cmake/player -B build/wasm/export-player -G Ninja -Dlub_DIR="$PWD/build/wasm"
           cmake --build build/wasm/export-player
 
+      # lider の bytecode、tcs wasm assets、tcs2c の web の player に使う
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: tcs/global.json
+
+      # release の一式の job (kit) がこれを待つので、要る物 (lub の player の wasm) ができたらすぐ作って渡す
+      # release の一式の OS によらない物: web の tcs VM の player (サイトが配るものと同じ)、lider の bytecode (サイトの build が作るものと同じ)、かな漢字変換の辞書。
+      # 辞書は build-dict.sh (取る mozc の commit) と jamo の commit から決まるので、それを key にして cache し、無いときだけ作る (linux の lider の job と同じ key)
+      - name: Dictionary key
+        id: dict
+        run: echo "key=mozc-dict-$(git rev-parse HEAD:third_party/jamo)-${{ hashFiles('lider/scripts/build-dict.sh') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the dictionary
+        id: dict-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            lider/data/mozc.dict
+            lider/data/mozc-README.txt
+            lider/data/mozc-LICENSE.txt
+          key: ${{ steps.dict.outputs.key }}
+
+      - name: Common parts of the release kit
+        run: |
+          if [ "${{ steps.dict-cache.outputs.cache-hit }}" != true ]; then
+            bash lider/scripts/build-dict.sh lider/data
+          fi
+          bash lider/scripts/build-module.sh lider/build/web/Lider.tcsb
+          mkdir -p common/wasm/vm common/lider common/dict
+          cp build/wasm/vm/lub.js build/wasm/vm/lub.wasm common/wasm/vm/
+          cp lider/build/web/Lider.tcsb common/lider/
+          cp lider/data/mozc.dict lider/data/mozc-README.txt lider/data/mozc-LICENSE.txt common/dict/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kit-common
+          path: common
+          retention-days: 1
+
       # lider の page (web/lider.html) の player。lub の wasm の build を find_package(lub) で使い、かな漢字変換 (Rust) を静的に link する。
       - name: Build lider player wasm
         run: |
@@ -654,11 +693,6 @@ jobs:
         with:
           path: web/tcs-wasm-assets
           key: tcs-wasm-${{ steps.tcs.outputs.sha }}-${{ hashFiles('web/scripts/gen-tcs-assets.mjs') }}
-
-      # tcs2c の web の player (下の Build tcs2c web player) にも使うので、cache が当たっても入れる。
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: tcs/global.json
 
       # workload は SDK の版ごとに入る。tcs の global.json が選ぶ SDK に入れるために tcs の中で動かす。
       - name: Install wasm-tools workload
@@ -705,38 +739,6 @@ jobs:
         with:
           name: web-dist
           path: web/dist
-          retention-days: 1
-
-      # release の一式の OS によらない物: web の tcs VM の player (サイトが配るものと同じ)、lider の bytecode (サイトの build が作る)、かな漢字変換の辞書。
-      # 辞書は build-dict.sh (取る mozc の commit) と jamo の commit から決まるので、それを key にして cache し、無いときだけ作る (linux の lider の job と同じ key)
-      - name: Dictionary key
-        id: dict
-        run: echo "key=mozc-dict-$(git rev-parse HEAD:third_party/jamo)-${{ hashFiles('lider/scripts/build-dict.sh') }}" >> "$GITHUB_OUTPUT"
-
-      - name: Cache the dictionary
-        id: dict-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            lider/data/mozc.dict
-            lider/data/mozc-README.txt
-            lider/data/mozc-LICENSE.txt
-          key: ${{ steps.dict.outputs.key }}
-
-      - name: Common parts of the release kit
-        run: |
-          if [ "${{ steps.dict-cache.outputs.cache-hit }}" != true ]; then
-            bash lider/scripts/build-dict.sh lider/data
-          fi
-          mkdir -p common/wasm/vm common/lider common/dict
-          cp build/wasm/vm/lub.js build/wasm/vm/lub.wasm common/wasm/vm/
-          cp lider/build/web/Lider.tcsb common/lider/
-          cp lider/data/mozc.dict lider/data/mozc-README.txt lider/data/mozc-LICENSE.txt common/dict/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: kit-common
-          path: common
           retention-days: 1
 
   # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
