@@ -118,6 +118,9 @@ tcs2c の経路でも、entry の callback の fault は `OnError` に渡る (me
 runtime の関数が呼んでいる callback (query の visitor など) の中の fault は、tcs2c の経路では process を止める。
 record の中の callback (`WorldCallbacks` など、runtime が持ち続ける物) は closure を `tvm_hold` で持ち、runtime が手放すとき (`user_release`) に放す。
 その fault は callback ごとに 1 回だけ log に出し、既定の値で続ける。
+.NET の facade も同じく、query の visitor の例外は query を null にして message を log に出し、record の中の callback の例外は callback ごとに 1 回だけ log に出して既定の値で続ける。
+見つからない (`LUB_NOT_FOUND`) 結果は、tcs VM の host の関数、tcs2c の接続コード、.NET の facade のどれでも null (struct の record は 0 の値) で、int / float / bool の戻り値と out は C API が書いた値になる。
+handle の `Version` は ref を返した時の実効 version で、後の宣言では変わらない (3 つの経路とも同じ)。
 `lub-gen vm --source Game.cs` はそのゲームが使う関数だけを出す (`scripts/verify-vm-binding.sh` が偽の C API で使う)。
 
 hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当てる) で、当てられない編集と `.tcsb` の書き直しは
@@ -138,8 +141,9 @@ player は library (`lub_vm_player`、`include/lub/lub_vm.h`) で、`lub` の ma
 自前の player は、lub の build のディレクトリを `lub_DIR` に渡して CMake の `find_package(lub CONFIG)` をし、`lub::lub_vm_player` を link して、自分の main (`include/lub/lub_vm_main.h` の `LUB_VM_MAIN`) で native の拡張を静的に link する (web で native の拡張を使うのはこの形だけ。例は `tests/cmake/player`)。
 web の実行物の設定は `lub_vm_player_link_options(<target> <出力のディレクトリ>)` が付ける。
 `scripts/vm-project-test.sh` が `tests/vm/` の project で確かめる。
-native gate は TestBlendValue を tcs VM の player と .NET 実行で走らせ、frame の digest が一致することを確かめる。
-`tests/cs` の runtime テストは tcs VM の player で走らせる (`tests/cs/.lub/all.tcsb` を `--entry` で選ぶ)。
+`tests/cs` の runtime テストは、tcs VM の player (`tests/cs/.lub/all.tcsb` を `--entry` で選ぶ) と .NET 実行 (`dotnet/SampleRunner` を `-p:Tests=true` で build した `lub-sample-tests` を `--entry` で選ぶ) の両方で走らせる。
+.NET 実行で走らせないもの (`App.Use` のように tcs VM の player だけが持つ口を見るもの) と理由は `scripts/cs-tests.sh` に書く。
+native gate は TestBlendValue と TestBindingsDigest を両方で走らせ、frame の digest が一致することを確かめる。
 golden (`scripts/run-golden.sh`) も tcs VM の player で撮る。
 
 ## 各層の対応

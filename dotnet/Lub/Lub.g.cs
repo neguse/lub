@@ -16,7 +16,7 @@ public sealed class TextureRef
 {
     internal readonly int H;
     internal TextureRef(int h) { H = h; }
-    public int Version => LubRuntime.ResourceVersion(H);
+    public int Version;
 }
 
 /// <summary>Gfx.UseShader / Gfx.UseShaderCompute の不透明ハンドル。 version と寿命の意味は TextureRef と同じ。</summary>
@@ -24,7 +24,7 @@ public sealed class ShaderRef
 {
     internal readonly int H;
     internal ShaderRef(int h) { H = h; }
-    public int Version => LubRuntime.ResourceVersion(H);
+    public int Version;
 }
 
 /// <summary>Gfx.UseBuffer の不透明ハンドル。 version と寿命の意味は TextureRef と同じ。</summary>
@@ -32,7 +32,7 @@ public sealed class BufferRef
 {
     internal readonly int H;
     internal BufferRef(int h) { H = h; }
-    public int Version => LubRuntime.ResourceVersion(H);
+    public int Version;
 }
 
 /// <summary>Gfx.FrameBuffer の結果。返されたフレームの間だけ有効な buffer の範囲で、Bindings.Set で draw / dispatch に渡す。次のフレームの draw / dispatch に渡すと error (Bindings を使い回すときは毎フレーム Set し直す)。</summary>
@@ -2479,11 +2479,7 @@ public static unsafe partial class App
                 LubNative.To_LubConfigOpts(opts, a, _opts);
             }
             var st = LubNative.lub_app_config(LubRuntime.Ctx, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -2527,7 +2523,7 @@ public static unsafe partial class App
             var st = LubNative.lub_app_use(LubRuntime.Ctx, a.Str(key), a.Str(module), a.Str(entry), &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("App.Use: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.H_AppRef(o_out)!;
@@ -2573,11 +2569,7 @@ public static unsafe partial class App
             }
             bool o_out = default;
             var st = LubNative.lub_app_step(LubRuntime.Ctx, app.H, target.H, dt, _input, &o_out);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return false;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return o_out;
         }
         finally
@@ -2596,7 +2588,7 @@ public static unsafe partial class App
             var st = LubNative.lub_app_status(LubRuntime.Ctx, app.H, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("App.Status: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubAppStatus(&o_out);
@@ -2621,11 +2613,7 @@ public static unsafe partial class App
             }
             bool o_out = default;
             var st = LubNative.lub_app_send_event(LubRuntime.Ctx, app.H, _e, &o_out);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return false;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return o_out;
         }
         finally
@@ -2643,12 +2631,7 @@ public static unsafe partial class App
             LubNative.LubStr o_error = default;
             bool o_out = default;
             var st = LubNative.lub_app_save(LubRuntime.Ctx, app.H, slot, &o_error, &o_out);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                error = default!;
-                return false;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             error = LubRuntime.StrOrNull(o_error);
             return o_out;
         }
@@ -2667,12 +2650,7 @@ public static unsafe partial class App
             LubNative.LubStr o_error = default;
             bool o_out = default;
             var st = LubNative.lub_app_load(LubRuntime.Ctx, app.H, slot, &o_error, &o_out);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                error = default!;
-                return false;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             error = LubRuntime.StrOrNull(o_error);
             return o_out;
         }
@@ -2818,11 +2796,7 @@ public static unsafe partial class Gfx
                 LubNative.To_LubPassOpts(opts, a, _opts);
             }
             var st = LubNative.lub_gfx_begin_pass(LubRuntime.Ctx, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -2836,11 +2810,7 @@ public static unsafe partial class Gfx
         try
         {
             var st = LubNative.lub_gfx_end_pass(LubRuntime.Ctx);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -3057,7 +3027,7 @@ public static unsafe partial class Gfx
             var st = LubNative.lub_gfx_frame_buffer(LubRuntime.Ctx, (int)type, _data, _data_n, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Gfx.FrameBuffer: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.H_FrameRange(o_out)!;
@@ -3079,7 +3049,7 @@ public static unsafe partial class Gfx
             var st = LubNative.lub_gfx_frame_buffer_array(LubRuntime.Ctx, (int)type, _data, count, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Gfx.FrameBufferArray: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.H_FrameRange(o_out)!;
@@ -3102,7 +3072,7 @@ public static unsafe partial class Gfx
             var st = LubNative.lub_gfx_frame_buffer_ints(LubRuntime.Ctx, (int)type, _data, _data_n, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Gfx.FrameBufferInts: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.H_FrameRange(o_out)!;
@@ -3232,20 +3202,7 @@ public static unsafe partial class Gfx
             int o_dropped = default;
             LubNative.LubStr o_error = default;
             var st = LubNative.lub_gfx_read_texture(LubRuntime.Ctx, a.Str(rb.Key), tex.H, id.HasValue ? &_id : null, &o_status, &o_bytes, &o_width, &o_height, &o_format, &o_stride, &o_result_id, &o_dropped, &o_error);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                status = default!;
-                bytes = default!;
-                width = default!;
-                height = default!;
-                format = default!;
-                stride = default!;
-                resultId = default!;
-                dropped = default!;
-                error = default!;
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             status = (Lub.Gfx.ReadbackStatus)o_status;
             bytes = LubRuntime.View(o_bytes);
             width = o_width;
@@ -3277,11 +3234,7 @@ public static unsafe partial class Gfx
                 LubNative.To_LubDrawOpts(opts, a, _opts);
             }
             var st = LubNative.lub_gfx_draw_items(LubRuntime.Ctx, count, _bindings, _bindings_n, _opts, instances);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -3352,11 +3305,7 @@ public static unsafe partial class Gfx
                 LubNative.To_LubDispatchOpts(opts, a, _opts);
             }
             var st = LubNative.lub_gfx_dispatch_items(LubRuntime.Ctx, x, y, z, _bindings, _bindings_n, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -3667,15 +3616,7 @@ public static unsafe partial class Io
             int o_status = default;
             LubNative.LubStr o_error = default;
             var st = LubNative.lub_io_load_text(LubRuntime.Ctx, a.Str(path), &o_text, &o_version, &o_status, &o_error);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                text = default!;
-                version = default!;
-                status = default!;
-                error = default!;
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             text = LubRuntime.StrOrNull(o_text);
             version = o_version;
             status = (Lub.Io.Status)o_status;
@@ -3693,11 +3634,7 @@ public static unsafe partial class Io
         try
         {
             var st = LubNative.lub_io_save_text(LubRuntime.Ctx, a.Str(path), a.Str(text));
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -3716,15 +3653,7 @@ public static unsafe partial class Io
             int o_status = default;
             LubNative.LubStr o_error = default;
             var st = LubNative.lub_io_load_bytes(LubRuntime.Ctx, a.Str(path), &o_bytes, &o_version, &o_status, &o_error);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                bytes = default!;
-                version = default!;
-                status = default!;
-                error = default!;
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             bytes = LubRuntime.View(o_bytes);
             version = o_version;
             status = (Lub.Io.Status)o_status;
@@ -3748,15 +3677,7 @@ public static unsafe partial class Io
             int o_status = default;
             LubNative.LubStr o_error = default;
             var st = LubNative.lub_io_load_floats(LubRuntime.Ctx, a.Str(path), &o_data, &o_data_n, &o_version, &o_status, &o_error);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                data = default!;
-                version = default!;
-                status = default!;
-                error = default!;
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             data = (o_data == null ? null : LubRuntime.FloatList(o_data, o_data_n));
             version = o_version;
             status = (Lub.Io.Status)o_status;
@@ -3780,15 +3701,7 @@ public static unsafe partial class Io
             int o_status = default;
             LubNative.LubStr o_error = default;
             var st = LubNative.lub_io_load_gltf(LubRuntime.Ctx, a.Str(path), &o_mesh, &has_mesh, &o_version, &o_status, &o_error);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                mesh = default!;
-                version = default!;
-                status = default!;
-                error = default!;
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             mesh = (!has_mesh ? null : LubNative.From_LubGltfMesh(&o_mesh));
             version = o_version;
             status = (Lub.Io.Status)o_status;
@@ -3817,7 +3730,7 @@ public static unsafe partial class Io
             var st = LubNative.lub_io_interleave_pn(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Io.InterleavePn: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.FloatList(o_out, o_out_n);
@@ -3845,7 +3758,7 @@ public static unsafe partial class Io
             var st = LubNative.lub_io_interleave_pncm(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Io.InterleavePncm: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.FloatList(o_out, o_out_n);
@@ -3873,7 +3786,7 @@ public static unsafe partial class Io
             var st = LubNative.lub_io_interleave_pncmw(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Io.InterleavePncmw: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.FloatList(o_out, o_out_n);
@@ -3901,7 +3814,7 @@ public static unsafe partial class Io
             var st = LubNative.lub_io_interleave_pnu(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Io.InterleavePnu: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.FloatList(o_out, o_out_n);
@@ -3929,7 +3842,7 @@ public static unsafe partial class Io
             var st = LubNative.lub_io_interleave_pnut(LubRuntime.Ctx, _mesh, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Io.InterleavePnut: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.FloatList(o_out, o_out_n);
@@ -4019,7 +3932,7 @@ public static unsafe partial class Mesh
             var st = LubNative.lub_mesh_surface_nets(LubRuntime.Ctx, _grid, _grid_n, nx, ny, nz, cell.HasValue ? &_cell : null, ox.HasValue ? &_ox : null, oy.HasValue ? &_oy : null, oz.HasValue ? &_oz : null, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Mesh.SurfaceNets: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubMeshData(&o_out);
@@ -4043,7 +3956,7 @@ public static unsafe partial class Mesh
             var st = LubNative.lub_mesh_sdf_mesh(LubRuntime.Ctx, _nodes, _nodes_n, root, n, skinK.HasValue ? &_skin_k : null, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Mesh.SdfMesh: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubMeshData(&o_out);
@@ -4070,7 +3983,7 @@ public static unsafe partial class Font
             var st = LubNative.lub_font_metrics(LubRuntime.Ctx, ttf.Ptr, ttf.Length, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Font.Metrics: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubFontMetrics(&o_out);
@@ -4137,11 +4050,7 @@ public static unsafe partial class Font
             LubRuntime.CheckView(ttf.Frame);
             float o_out = default;
             var st = LubNative.lub_font_kern(LubRuntime.Ctx, ttf.Ptr, ttf.Length, cp1, cp2, &o_out);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                throw new LubException("Font.Kern: not found");
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return o_out;
         }
         finally
@@ -4162,11 +4071,7 @@ public static unsafe partial class Ui
         try
         {
             var st = LubNative.lub_ui_render(LubRuntime.Ctx);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -4431,13 +4336,7 @@ public static unsafe partial class Host
             LubNative.LubStr o_topic = default;
             LubNative.LubStr o_payload = default;
             var st = LubNative.lub_host_poll(LubRuntime.Ctx, &o_topic, &o_payload);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                topic = default!;
-                payload = default!;
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             topic = LubRuntime.StrOrNull(o_topic);
             payload = LubRuntime.StrOrNull(o_payload);
         }
@@ -4464,11 +4363,7 @@ public static unsafe partial class Audio
             int o_out = default;
             bool has = false;
             var st = LubNative.lub_audio_snd(LubRuntime.Ctx, a.Str(key), _data, _data_n, channels, rate, version.HasValue ? &_version : null, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (int?)o_out);
         }
         finally
@@ -4489,11 +4384,7 @@ public static unsafe partial class Audio
             int o_out = default;
             bool has = false;
             var st = LubNative.lub_audio_snd_bytes(LubRuntime.Ctx, a.Str(key), _data, data?.Length ?? 0, channels, rate, version.HasValue ? &_version : null, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (int?)o_out);
         }
         finally
@@ -4513,14 +4404,7 @@ public static unsafe partial class Audio
             int o_channels = default;
             int o_rate = default;
             var st = LubNative.lub_audio_decode(LubRuntime.Ctx, data.Ptr, data.Length, &o_bytes, &o_channels, &o_rate);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                bytes = default!;
-                channels = default!;
-                rate = default!;
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             bytes = LubRuntime.View(o_bytes);
             channels = o_channels;
             rate = o_rate;
@@ -5113,11 +4997,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubBeginOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_begin(LubRuntime.Ctx, world.H, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -5337,7 +5217,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_chain_segments(LubRuntime.Ctx, chain.H, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.ChainSegments: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
@@ -5403,7 +5283,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_joint_force(LubRuntime.Ctx, joint.H, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                return default;
+                return default!;
             }
             LubRuntime.Check(st);
             return o_out;
@@ -5421,11 +5301,7 @@ public static unsafe partial class Phys2d
         {
             float o_out = default;
             var st = LubNative.lub_phys2d_joint_torque(LubRuntime.Ctx, joint.H, &o_out);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                throw new LubException("Phys2d.JointTorque: not found");
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return o_out;
         }
         finally
@@ -5442,11 +5318,7 @@ public static unsafe partial class Phys2d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys2d_joint_angle(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -5463,11 +5335,7 @@ public static unsafe partial class Phys2d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys2d_joint_translation(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -5484,11 +5352,7 @@ public static unsafe partial class Phys2d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys2d_joint_speed(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -5505,11 +5369,7 @@ public static unsafe partial class Phys2d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys2d_joint_length(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -5526,11 +5386,7 @@ public static unsafe partial class Phys2d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys2d_joint_motor_force(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -5547,11 +5403,7 @@ public static unsafe partial class Phys2d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys2d_joint_motor_torque(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -5572,11 +5424,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubJointMotorDesc(desc, a, _desc);
             }
             var st = LubNative.lub_phys2d_joint_set_motor(LubRuntime.Ctx, joint.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -5596,11 +5444,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubJointLimitDesc(desc, a, _desc);
             }
             var st = LubNative.lub_phys2d_joint_set_limit(LubRuntime.Ctx, joint.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -5620,11 +5464,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubJointSpringDesc(desc, a, _desc);
             }
             var st = LubNative.lub_phys2d_joint_set_spring(LubRuntime.Ctx, joint.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -5644,11 +5484,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubJointTargetDesc(desc, a, _desc);
             }
             var st = LubNative.lub_phys2d_joint_set_target(LubRuntime.Ctx, joint.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -5665,7 +5501,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_step(LubRuntime.Ctx, world.H, dt, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.Step: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubStepInfo(&o_out);
@@ -5726,7 +5562,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_velocity(LubRuntime.Ctx, body.H, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.Velocity: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubVelocity(&o_out);
@@ -5766,7 +5602,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_center(LubRuntime.Ctx, body.H, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                return default;
+                return default!;
             }
             LubRuntime.Check(st);
             return o_out;
@@ -5786,7 +5622,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_world_point(LubRuntime.Ctx, body.H, localPoint, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                return default;
+                return default!;
             }
             LubRuntime.Check(st);
             return o_out;
@@ -5806,7 +5642,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_local_point(LubRuntime.Ctx, body.H, worldPoint, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                return default;
+                return default!;
             }
             LubRuntime.Check(st);
             return o_out;
@@ -5826,7 +5662,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_velocity_at(LubRuntime.Ctx, body.H, worldPoint, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                return default;
+                return default!;
             }
             LubRuntime.Check(st);
             return o_out;
@@ -5847,7 +5683,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_body_shapes(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.BodyShapes: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
@@ -5868,7 +5704,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_body_joints(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.BodyJoints: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<JointView, LubNative.LubJointView>(o_out, o_out_n, &LubNative.From_LubJointView);
@@ -5889,7 +5725,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_body_contacts(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.BodyContacts: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<ContactData, LubNative.LubContactData>(o_out, o_out_n, &LubNative.From_LubContactData);
@@ -5907,11 +5743,7 @@ public static unsafe partial class Phys2d
         {
             bool o_out = default;
             var st = LubNative.lub_phys2d_shape_test_point(LubRuntime.Ctx, shape.H, point, &o_out);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return false;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return o_out;
         }
         finally
@@ -5956,7 +5788,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_shape_closest_point(LubRuntime.Ctx, shape.H, point, out o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                return default;
+                return default!;
             }
             LubRuntime.Check(st);
             return o_out;
@@ -6019,11 +5851,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubMaterialDesc(desc, a, _desc);
             }
             var st = LubNative.lub_phys2d_shape_set_material(LubRuntime.Ctx, shape.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6043,11 +5871,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubFilterDesc(filter, a, _filter);
             }
             var st = LubNative.lub_phys2d_shape_set_filter(LubRuntime.Ctx, shape.H, _filter);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6067,11 +5891,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubShapeEventsDesc(desc, a, _desc);
             }
             var st = LubNative.lub_phys2d_shape_set_events(LubRuntime.Ctx, shape.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6091,7 +5911,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_contacts(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.Contacts: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<ContactEvent, LubNative.LubContactEvent>(o_out, o_out_n, &LubNative.From_LubContactEvent);
@@ -6112,7 +5932,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_body_events(LubRuntime.Ctx, world.H, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.BodyEvents: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<BodyEvent, LubNative.LubBodyEvent>(o_out, o_out_n, &LubNative.From_LubBodyEvent);
@@ -6134,7 +5954,7 @@ public static unsafe partial class Phys2d
             var st = LubNative.lub_phys2d_sensors(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.Sensors: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<SensorEvent, LubNative.LubSensorEvent>(o_out, o_out_n, &LubNative.From_LubSensorEvent);
@@ -6189,9 +6009,13 @@ public static unsafe partial class Phys2d
             LubNative.LubRayHit* o_out = null;
             int o_out_n = 0;
             var st = LubNative.lub_phys2d_raycast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_RaycastAll_visitor, _visitor_user, &o_out, &o_out_n);
+            if (LubRuntime.VisitorFailed(_visitor_user, "Phys2d.RaycastAll"))
+            {
+                return default!;
+            }
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.RaycastAll: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<RayHit, LubNative.LubRayHit>(o_out, o_out_n, &LubNative.From_LubRayHit);
@@ -6218,9 +6042,13 @@ public static unsafe partial class Phys2d
             LubNative.LubShapeView* o_out = null;
             int o_out_n = 0;
             var st = LubNative.lub_phys2d_overlap_aabb(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_OverlapAabb_visitor, _visitor_user, &o_out, &o_out_n);
+            if (LubRuntime.VisitorFailed(_visitor_user, "Phys2d.OverlapAabb"))
+            {
+                return default!;
+            }
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.OverlapAabb: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView, LubNative.LubShapeView>(o_out, o_out_n, &LubNative.From_LubShapeView);
@@ -6274,9 +6102,13 @@ public static unsafe partial class Phys2d
             LubNative.LubRayHit* o_out = null;
             int o_out_n = 0;
             var st = LubNative.lub_phys2d_shape_cast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_ShapeCastAll_visitor, _visitor_user, &o_out, &o_out_n);
+            if (LubRuntime.VisitorFailed(_visitor_user, "Phys2d.ShapeCastAll"))
+            {
+                return default!;
+            }
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.ShapeCastAll: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<RayHit, LubNative.LubRayHit>(o_out, o_out_n, &LubNative.From_LubRayHit);
@@ -6329,9 +6161,13 @@ public static unsafe partial class Phys2d
             LubNative.LubMoverPlane* o_out = null;
             int o_out_n = 0;
             var st = LubNative.lub_phys2d_collide_mover(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_CollideMover_visitor, _visitor_user, &o_out, &o_out_n);
+            if (LubRuntime.VisitorFailed(_visitor_user, "Phys2d.CollideMover"))
+            {
+                return default!;
+            }
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys2d.CollideMover: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<MoverPlane, LubNative.LubMoverPlane>(o_out, o_out_n, &LubNative.From_LubMoverPlane);
@@ -6354,11 +6190,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubExplosionDesc(desc, a, _desc);
             }
             var st = LubNative.lub_phys2d_explode(LubRuntime.Ctx, world.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6444,11 +6276,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_add_force(LubRuntime.Ctx, body.H, force, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6468,11 +6296,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_add_force_center(LubRuntime.Ctx, body.H, force, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6492,11 +6316,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_add_impulse(LubRuntime.Ctx, body.H, impulse, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6516,11 +6336,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_add_impulse_center(LubRuntime.Ctx, body.H, impulse, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6540,11 +6356,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_add_torque(LubRuntime.Ctx, body.H, torque, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6564,11 +6376,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_add_angular_impulse(LubRuntime.Ctx, body.H, impulse, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6594,11 +6402,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_set_velocity(LubRuntime.Ctx, body.H, _velocity, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6624,11 +6428,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_teleport(LubRuntime.Ctx, body.H, _pose, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6654,11 +6454,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_set_target(LubRuntime.Ctx, body.H, _target, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6684,11 +6480,7 @@ public static unsafe partial class Phys2d
                 LubNative.To_LubCommandOpts(opts, a, _opts);
             }
             var st = LubNative.lub_phys2d_set_mass_data(LubRuntime.Ctx, body.H, _mass_data, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -6839,11 +6631,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubBeginOpts3d(opts, a, _opts);
             }
             var st = LubNative.lub_phys3d_begin(LubRuntime.Ctx, world.H, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7186,7 +6974,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_joint_force(LubRuntime.Ctx, joint.H, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.JointForce: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
@@ -7206,7 +6994,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_joint_torque(LubRuntime.Ctx, joint.H, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.JointTorque: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
@@ -7225,11 +7013,7 @@ public static unsafe partial class Phys3d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys3d_joint_angle(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -7246,11 +7030,7 @@ public static unsafe partial class Phys3d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys3d_joint_translation(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -7267,11 +7047,7 @@ public static unsafe partial class Phys3d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys3d_joint_speed(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -7288,11 +7064,7 @@ public static unsafe partial class Phys3d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys3d_joint_length(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -7309,11 +7081,7 @@ public static unsafe partial class Phys3d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys3d_joint_motor_force(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -7331,11 +7099,7 @@ public static unsafe partial class Phys3d
             float o_out = default;
             bool has = false;
             var st = LubNative.lub_phys3d_joint_motor_torque(LubRuntime.Ctx, joint.H, &o_out, &has);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return null;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             return (!has ? null : (float?)o_out);
         }
         finally
@@ -7378,11 +7142,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubJointMotorDesc3d(desc, a, _desc);
             }
             var st = LubNative.lub_phys3d_joint_set_motor(LubRuntime.Ctx, joint.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7402,11 +7162,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubJointLimitDesc3d(desc, a, _desc);
             }
             var st = LubNative.lub_phys3d_joint_set_limit(LubRuntime.Ctx, joint.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7426,11 +7182,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubJointSpringDesc3d(desc, a, _desc);
             }
             var st = LubNative.lub_phys3d_joint_set_spring(LubRuntime.Ctx, joint.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7450,11 +7202,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubJointTargetDesc3d(desc, a, _desc);
             }
             var st = LubNative.lub_phys3d_joint_set_target(LubRuntime.Ctx, joint.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7472,7 +7220,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_body_joints(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.BodyJoints: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<JointView3d, LubNative.LubJointView3d>(o_out, o_out_n, &LubNative.From_LubJointView3d);
@@ -7525,9 +7273,13 @@ public static unsafe partial class Phys3d
             LubNative.LubMoverPlane3d* o_out = null;
             int o_out_n = 0;
             var st = LubNative.lub_phys3d_collide_mover(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_CollideMover_visitor, _visitor_user, &o_out, &o_out_n);
+            if (LubRuntime.VisitorFailed(_visitor_user, "Phys3d.CollideMover"))
+            {
+                return default!;
+            }
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.CollideMover: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<MoverPlane3d, LubNative.LubMoverPlane3d>(o_out, o_out_n, &LubNative.From_LubMoverPlane3d);
@@ -7547,7 +7299,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_step(LubRuntime.Ctx, world.H, dt, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.Step: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubStepInfo3d(&o_out);
@@ -7608,7 +7360,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_velocity(LubRuntime.Ctx, body.H, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.Velocity: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubVelocity3d(&o_out);
@@ -7648,7 +7400,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_center(LubRuntime.Ctx, body.H, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.Center: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
@@ -7674,7 +7426,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_world_point(LubRuntime.Ctx, body.H, _local_point, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.WorldPoint: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
@@ -7700,7 +7452,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_local_point(LubRuntime.Ctx, body.H, _world_point, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.LocalPoint: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
@@ -7726,7 +7478,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_velocity_at(LubRuntime.Ctx, body.H, _world_point, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.VelocityAt: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
@@ -7755,11 +7507,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubCommandOpts3d(opts, a, _opts);
             }
             var st = LubNative.lub_phys3d_add_force(LubRuntime.Ctx, body.H, _force, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7785,11 +7533,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubCommandOpts3d(opts, a, _opts);
             }
             var st = LubNative.lub_phys3d_add_force_center(LubRuntime.Ctx, body.H, _force, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7815,11 +7559,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubCommandOpts3d(opts, a, _opts);
             }
             var st = LubNative.lub_phys3d_add_impulse(LubRuntime.Ctx, body.H, _impulse, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7845,11 +7585,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubCommandOpts3d(opts, a, _opts);
             }
             var st = LubNative.lub_phys3d_add_impulse_center(LubRuntime.Ctx, body.H, _impulse, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7875,11 +7611,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubCommandOpts3d(opts, a, _opts);
             }
             var st = LubNative.lub_phys3d_add_torque(LubRuntime.Ctx, body.H, _torque, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7905,11 +7637,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubCommandOpts3d(opts, a, _opts);
             }
             var st = LubNative.lub_phys3d_add_angular_impulse(LubRuntime.Ctx, body.H, _impulse, _opts);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7929,11 +7657,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubVelocityDesc3d(desc, a, _desc);
             }
             var st = LubNative.lub_phys3d_set_velocity(LubRuntime.Ctx, body.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7953,11 +7677,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubPoseDesc3d(desc, a, _desc);
             }
             var st = LubNative.lub_phys3d_teleport(LubRuntime.Ctx, body.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -7977,11 +7697,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubTargetDesc3d(desc, a, _desc);
             }
             var st = LubNative.lub_phys3d_set_target(LubRuntime.Ctx, body.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -8001,7 +7717,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_contacts(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.Contacts: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<ContactEvent3d, LubNative.LubContactEvent3d>(o_out, o_out_n, &LubNative.From_LubContactEvent3d);
@@ -8022,7 +7738,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_body_events(LubRuntime.Ctx, world.H, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.BodyEvents: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<BodyEvent3d, LubNative.LubBodyEvent3d>(o_out, o_out_n, &LubNative.From_LubBodyEvent3d);
@@ -8044,7 +7760,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_sensors(LubRuntime.Ctx, world.H, kind.HasValue ? &_kind : null, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.Sensors: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<SensorEvent3d, LubNative.LubSensorEvent3d>(o_out, o_out_n, &LubNative.From_LubSensorEvent3d);
@@ -8065,7 +7781,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_joint_events(LubRuntime.Ctx, world.H, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.JointEvents: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<JointEvent3d, LubNative.LubJointEvent3d>(o_out, o_out_n, &LubNative.From_LubJointEvent3d);
@@ -8120,9 +7836,13 @@ public static unsafe partial class Phys3d
             LubNative.LubRayHit3d* o_out = null;
             int o_out_n = 0;
             var st = LubNative.lub_phys3d_raycast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_RaycastAll_visitor, _visitor_user, &o_out, &o_out_n);
+            if (LubRuntime.VisitorFailed(_visitor_user, "Phys3d.RaycastAll"))
+            {
+                return default!;
+            }
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.RaycastAll: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<RayHit3d, LubNative.LubRayHit3d>(o_out, o_out_n, &LubNative.From_LubRayHit3d);
@@ -8148,9 +7868,13 @@ public static unsafe partial class Phys3d
             LubNative.LubShapeView3d* o_out = null;
             int o_out_n = 0;
             var st = LubNative.lub_phys3d_overlap_aabb(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_OverlapAabb_visitor, _visitor_user, &o_out, &o_out_n);
+            if (LubRuntime.VisitorFailed(_visitor_user, "Phys3d.OverlapAabb"))
+            {
+                return default!;
+            }
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.OverlapAabb: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
@@ -8176,9 +7900,13 @@ public static unsafe partial class Phys3d
             LubNative.LubShapeView3d* o_out = null;
             int o_out_n = 0;
             var st = LubNative.lub_phys3d_overlap_shape(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_OverlapShape_visitor, _visitor_user, &o_out, &o_out_n);
+            if (LubRuntime.VisitorFailed(_visitor_user, "Phys3d.OverlapShape"))
+            {
+                return default!;
+            }
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.OverlapShape: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
@@ -8232,9 +7960,13 @@ public static unsafe partial class Phys3d
             LubNative.LubRayHit3d* o_out = null;
             int o_out_n = 0;
             var st = LubNative.lub_phys3d_shape_cast_all(LubRuntime.Ctx, world.H, _query, visitor == null ? null : &LubNative.Tramp_fn_ShapeCastAll_visitor, _visitor_user, &o_out, &o_out_n);
+            if (LubRuntime.VisitorFailed(_visitor_user, "Phys3d.ShapeCastAll"))
+            {
+                return default!;
+            }
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.ShapeCastAll: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<RayHit3d, LubNative.LubRayHit3d>(o_out, o_out_n, &LubNative.From_LubRayHit3d);
@@ -8255,7 +7987,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_body_shapes(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.BodyShapes: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<ShapeView3d, LubNative.LubShapeView3d>(o_out, o_out_n, &LubNative.From_LubShapeView3d);
@@ -8276,7 +8008,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_body_contacts(LubRuntime.Ctx, body.H, &o_out, &o_out_n);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.BodyContacts: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubRuntime.RecordList<ContactData3d, LubNative.LubContactData3d>(o_out, o_out_n, &LubNative.From_LubContactData3d);
@@ -8329,7 +8061,7 @@ public static unsafe partial class Phys3d
             var st = LubNative.lub_phys3d_shape_closest_point(LubRuntime.Ctx, shape.H, _point, &o_out);
             if (st == LubNative.LUB_NOT_FOUND)
             {
-                throw new LubException("Phys3d.ShapeClosestPoint: not found");
+                return default!;
             }
             LubRuntime.Check(st);
             return LubNative.From_LubVec3d(&o_out);
@@ -8392,11 +8124,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubMaterialDesc3d(desc, a, _desc);
             }
             var st = LubNative.lub_phys3d_shape_set_material(LubRuntime.Ctx, shape.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -8416,11 +8144,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubFilterDesc3d(filter, a, _filter);
             }
             var st = LubNative.lub_phys3d_shape_set_filter(LubRuntime.Ctx, shape.H, _filter);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -8440,11 +8164,7 @@ public static unsafe partial class Phys3d
                 LubNative.To_LubShapeEventsDesc3d(desc, a, _desc);
             }
             var st = LubNative.lub_phys3d_shape_set_events(LubRuntime.Ctx, shape.H, _desc);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -8511,19 +8231,7 @@ public static unsafe partial class Png
             int o_status = default;
             LubNative.LubStr o_error = default;
             var st = LubNative.lub_png_load(LubRuntime.Ctx, a.Str(path), &o_bytes, &o_width, &o_height, &o_format, &o_stride, &o_version, &o_status, &o_error);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                bytes = default!;
-                width = default!;
-                height = default!;
-                format = default!;
-                stride = default!;
-                version = default!;
-                status = default!;
-                error = default!;
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             bytes = LubRuntime.View(o_bytes);
             width = o_width;
             height = o_height;
@@ -8547,11 +8255,7 @@ public static unsafe partial class Png
             LubRuntime.CheckView(bytes.Frame);
             int _stride = (stride ?? default);
             var st = LubNative.lub_png_write(LubRuntime.Ctx, a.Str(path), bytes.Ptr, bytes.Length, width, height, stride.HasValue ? &_stride : null);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
         }
         finally
         {
@@ -8563,11 +8267,11 @@ public static unsafe partial class Png
 
 internal static unsafe partial class LubNative
 {
-    internal static TextureRef? H_TextureRef(int h) => h == 0 ? null : new TextureRef(h);
+    internal static TextureRef? H_TextureRef(int h) => h == 0 ? null : new TextureRef(h) { Version = LubRuntime.ResourceVersion(h) };
 
-    internal static ShaderRef? H_ShaderRef(int h) => h == 0 ? null : new ShaderRef(h);
+    internal static ShaderRef? H_ShaderRef(int h) => h == 0 ? null : new ShaderRef(h) { Version = LubRuntime.ResourceVersion(h) };
 
-    internal static BufferRef? H_BufferRef(int h) => h == 0 ? null : new BufferRef(h);
+    internal static BufferRef? H_BufferRef(int h) => h == 0 ? null : new BufferRef(h) { Version = LubRuntime.ResourceVersion(h) };
 
     internal static FrameRange? H_FrameRange(int h) => h == 0 ? null : new FrameRange(h);
 
@@ -17942,14 +17646,14 @@ internal static unsafe partial class LubNative
     {
         var box = LubRuntime.CallbackBox.From(user);
         var cb = (Func<RayHit, float>?)box.Slots[0];
-        if (cb == null) return 1.0f;
+        if (cb == null || box.Failure != null) return 1.0f;
         try
         {
             return (float)cb(From_LubRayHit(a));
         }
         catch (Exception e)
         {
-            box.Fail(0, "fn_RaycastAll_visitor", e);
+            box.Failure = e;
             return 1.0f;
         }
     }
@@ -17959,14 +17663,14 @@ internal static unsafe partial class LubNative
     {
         var box = LubRuntime.CallbackBox.From(user);
         var cb = (Func<ShapeView, bool>?)box.Slots[0];
-        if (cb == null) return 1;
+        if (cb == null || box.Failure != null) return 1;
         try
         {
             return (byte)(cb(From_LubShapeView(a)) ? 1 : 0);
         }
         catch (Exception e)
         {
-            box.Fail(0, "fn_OverlapAabb_visitor", e);
+            box.Failure = e;
             return 1;
         }
     }
@@ -17976,14 +17680,14 @@ internal static unsafe partial class LubNative
     {
         var box = LubRuntime.CallbackBox.From(user);
         var cb = (Func<RayHit, float>?)box.Slots[0];
-        if (cb == null) return 1.0f;
+        if (cb == null || box.Failure != null) return 1.0f;
         try
         {
             return (float)cb(From_LubRayHit(a));
         }
         catch (Exception e)
         {
-            box.Fail(0, "fn_ShapeCastAll_visitor", e);
+            box.Failure = e;
             return 1.0f;
         }
     }
@@ -17993,14 +17697,14 @@ internal static unsafe partial class LubNative
     {
         var box = LubRuntime.CallbackBox.From(user);
         var cb = (Func<MoverPlane, bool>?)box.Slots[0];
-        if (cb == null) return 1;
+        if (cb == null || box.Failure != null) return 1;
         try
         {
             return (byte)(cb(From_LubMoverPlane(a)) ? 1 : 0);
         }
         catch (Exception e)
         {
-            box.Fail(0, "fn_CollideMover_visitor", e);
+            box.Failure = e;
             return 1;
         }
     }
@@ -18010,14 +17714,14 @@ internal static unsafe partial class LubNative
     {
         var box = LubRuntime.CallbackBox.From(user);
         var cb = (Func<MoverPlane3d, bool>?)box.Slots[0];
-        if (cb == null) return 1;
+        if (cb == null || box.Failure != null) return 1;
         try
         {
             return (byte)(cb(From_LubMoverPlane3d(a)) ? 1 : 0);
         }
         catch (Exception e)
         {
-            box.Fail(0, "fn_CollideMover_visitor", e);
+            box.Failure = e;
             return 1;
         }
     }
@@ -18027,14 +17731,14 @@ internal static unsafe partial class LubNative
     {
         var box = LubRuntime.CallbackBox.From(user);
         var cb = (Func<RayHit3d, float>?)box.Slots[0];
-        if (cb == null) return 1.0f;
+        if (cb == null || box.Failure != null) return 1.0f;
         try
         {
             return (float)cb(From_LubRayHit3d(a));
         }
         catch (Exception e)
         {
-            box.Fail(0, "fn_RaycastAll_visitor", e);
+            box.Failure = e;
             return 1.0f;
         }
     }
@@ -18044,14 +17748,14 @@ internal static unsafe partial class LubNative
     {
         var box = LubRuntime.CallbackBox.From(user);
         var cb = (Func<ShapeView3d, bool>?)box.Slots[0];
-        if (cb == null) return 1;
+        if (cb == null || box.Failure != null) return 1;
         try
         {
             return (byte)(cb(From_LubShapeView3d(a)) ? 1 : 0);
         }
         catch (Exception e)
         {
-            box.Fail(0, "fn_OverlapAabb_visitor", e);
+            box.Failure = e;
             return 1;
         }
     }
@@ -18061,14 +17765,14 @@ internal static unsafe partial class LubNative
     {
         var box = LubRuntime.CallbackBox.From(user);
         var cb = (Func<ShapeView3d, bool>?)box.Slots[0];
-        if (cb == null) return 1;
+        if (cb == null || box.Failure != null) return 1;
         try
         {
             return (byte)(cb(From_LubShapeView3d(a)) ? 1 : 0);
         }
         catch (Exception e)
         {
-            box.Fail(0, "fn_OverlapShape_visitor", e);
+            box.Failure = e;
             return 1;
         }
     }
@@ -18078,14 +17782,14 @@ internal static unsafe partial class LubNative
     {
         var box = LubRuntime.CallbackBox.From(user);
         var cb = (Func<RayHit3d, float>?)box.Slots[0];
-        if (cb == null) return 1.0f;
+        if (cb == null || box.Failure != null) return 1.0f;
         try
         {
             return (float)cb(From_LubRayHit3d(a));
         }
         catch (Exception e)
         {
-            box.Fail(0, "fn_ShapeCastAll_visitor", e);
+            box.Failure = e;
             return 1.0f;
         }
     }

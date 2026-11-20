@@ -32,7 +32,7 @@ C# のゲームは 3 つの経路で動く。
 lub の player は tcs VM の player (tcs vm が作った bytecode を tcs VM で動かす、native と web。hotswap で動かす dev の経路で、`lub export` の snapshot もこれで動かす)。
 tcs2c は tcs2c で C にしたゲームを lub と静的に link する経路 (Android の player など)。
 .NET 実行は実 .NET が `dotnet/Lub` の facade から共有 library の C API を P/Invoke で叩く経路で、host は `App.Run(typeof(Game), args)`。
-同じソースがどれでも通ることが契約で、native gate は TestBlendValue を tcs VM の player と .NET 実行で headless に回し、frame ごとの digest (C API 呼び出しの構造の hash) を突き合わせる。
+同じソースがどれでも通ることが契約で、native gate は `tests/cs` の runtime テストを tcs VM の player と .NET 実行の両方で headless に回し (.NET 実行で回さないものと理由は `scripts/cs-tests.sh`)、TestBlendValue と TestBindingsDigest は frame ごとの digest (C API 呼び出しの構造の hash) を突き合わせる。
 数値は両方 f32 で、Math の超越関数も同じ実装 (次の段落) なので絵も揃う。
 golden 画像 (`tests/golden/<name>_<backend>.png`) は tcs VM の player で撮る。
 

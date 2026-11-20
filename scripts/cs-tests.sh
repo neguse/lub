@@ -117,6 +117,22 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull TestR
 # metal と d3d12 では確かめていない。
 # TestDrawStateReuse は backend の bind の使い回しを見るので、native gate が vulkan で、apple gate が metal で、CI の windows job が d3d12 で、web の verify (A9) が webgpu で走らせる。
 cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestKeyMods TestSaveDir TestXrCapture TestDrawStateReuse TestBindingsDigest TestBlendValue TestUnboundStorage)
+# .NET 実行 (dotnet/SampleRunner を -p:Tests=true で build した lub-sample-tests。test は --entry <Entry> で選ぶ) でも、native gate が runtime テストと TestFixedDt、TestSaveDir、TestReadbackCapture、TestBindingsDigest、TestBlendValue を tcs VM の player と同じ引数で走らせる。
+# runtime テストのうち cs_dotnet_excluded は .NET 実行では走らせない。
+# App.Use (TestOpenApp、TestAppState、TestAppInput、TestAppXr、TestAppObserve、TestInspectSet、TestAppTimeline、TestAppPick) は tcs VM の player だけで使え、.NET 実行では error になる (stub の App.Use)。
+# App.Inputs (TestAppInputs) は .csproj を読める player (lub) だけが集め、.NET 実行では null を返す。
+# TestPick は Gfx.Pick の Site を見る。Site は tcs VM の player だけが作り、.NET 実行では空。
+# native gate が backend を見るために vulkan で走らせ直すもの (TestDrawStateReuse など) は、backend が C の runtime の中にあって .NET 実行も同じ所を通るので、tcs VM の player だけで走らせる。
+# cs_visual_tests の絵は golden (tcs VM の player) で見る。
+cs_dotnet_excluded=(TestOpenApp TestAppInputs TestAppState TestAppInput TestAppXr TestAppObserve TestInspectSet TestAppTimeline TestAppPick TestPick)
+
+# .NET 実行で走らせる runtime テスト (cs_runtime_tests から cs_dotnet_excluded を除いたもの) を 1 行に 1 つ出す。
+cs_dotnet_tests() {
+  local t
+  for t in "${cs_runtime_tests[@]}"; do
+    [[ " ${cs_dotnet_excluded[*]} " == *" $t "* ]] || echo "$t"
+  done
+}
 
 # tests/cs の入力: tests/cs の *.cs 全部と cs-lib の実装ソース。
 cs_tests_sources() {
