@@ -141,8 +141,9 @@ player は library (`lub_vm_player`、`include/lub/lub_vm.h`) で、`lub` の ma
 自前の player は、lub の build のディレクトリを `lub_DIR` に渡して CMake の `find_package(lub CONFIG)` をし、`lub::lub_vm_player` を link して、自分の main (`include/lub/lub_vm_main.h` の `LUB_VM_MAIN`) で native の拡張を静的に link する (web で native の拡張を使うのはこの形だけ。例は `tests/cmake/player`)。
 web の実行物の設定は `lub_vm_player_link_options(<target> <出力のディレクトリ>)` が付ける。
 `scripts/vm-project-test.sh` が `tests/vm/` の project で確かめる。
-native gate は TestBlendValue を tcs VM の player と .NET 実行で走らせ、frame の digest が一致することを確かめる。
-`tests/cs` の runtime テストは tcs VM の player で走らせる (`tests/cs/.lub/all.tcsb` を `--entry` で選ぶ)。
+`tests/cs` の runtime テストは、tcs VM の player (`tests/cs/.lub/all.tcsb` を `--entry` で選ぶ) と .NET 実行 (`dotnet/SampleRunner` を `-p:Tests=true` で build した `lub-sample-tests` を `--entry` で選ぶ) の両方で走らせる。
+.NET 実行で走らせないもの (`App.Use` のように tcs VM の player だけが持つ口を見るもの) と理由は `scripts/cs-tests.sh` に書く。
+native gate は TestBlendValue と TestBindingsDigest を両方で走らせ、frame の digest が一致することを確かめる。
 golden (`scripts/run-golden.sh`) も tcs VM の player で撮る。
 
 ## 各層の対応

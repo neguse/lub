@@ -155,37 +155,40 @@ if [[ $cs_available -eq 1 ]]; then
 fi
 cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
 
-# dotnet 相 (Transpiler prebuild / transpile / 雛形の build) は native binary に依存しないので、C build と並行に回して runtime テストの前で join する。
+# dotnet 相 (Transpiler prebuild / transpile / .NET 実行と雛形の build) は native binary に依存しないので、C build と並行に回して runtime テストの前で join する。
 # tests/cs の runtime テストを並列に走らせ、失敗があれば log を出して終わる。
-# $2 は test の名前から起動の引数 (実行ファイルと入力) を 1 行ずつ出す関数
+# $2 は test の名前から起動の引数 (実行ファイルと入力) を 1 行ずつ出す関数で、test の名前は $3 以降
 run_runtime_tests() {
-  local label=$1 argv_fn=$2 i log failed=0
-  local pids=() logs=() argv=()
+  local label=$1 argv_fn=$2 i log failed=0 t0=$SECONDS
+  shift 2
+  local tests=("$@") pids=() logs=() argv=()
   echo
-  echo "==> $label (${#cs_runtime_tests[@]} in parallel)"
-  for i in "${!cs_runtime_tests[@]}"; do
+  echo "==> $label (${#tests[@]} in parallel)"
+  for i in "${!tests[@]}"; do
     log="$(mktemp)"
     cleanup_files+=("$log")
     logs+=("$log")
-    mapfile -t argv < <("$argv_fn" "${cs_runtime_tests[$i]}")
+    mapfile -t argv < <("$argv_fn" "${tests[$i]}")
     LUB_XVFB_SERVERNUM=$((300 + i)) "${timeout_cmd[@]}" scripts/run-headless.sh \
       "${argv[@]}" "${cs_test_args[@]}" >"$log" 2>&1 &
     pids+=("$!")
   done
-  for i in "${!cs_runtime_tests[@]}"; do
+  for i in "${!tests[@]}"; do
     if wait "${pids[$i]}"; then
-      echo "PASS ${cs_runtime_tests[$i]}"
+      echo "PASS ${tests[$i]}"
     else
-      echo "FAIL ${cs_runtime_tests[$i]}"
+      echo "FAIL ${tests[$i]}"
       sed 's/^/    /' "${logs[$i]}"
       failed=1
     fi
   done
+  echo "==> $label: ${#tests[@]} in $((SECONDS - t0))s"
   if [[ $failed -ne 0 ]]; then
     exit 1
   fi
 }
-vm_test_argv() { printf '%s\n' "$native_binary" tests/cs/.lub/all.tcsb --entry "$1"; }
+vm_test_argv() { printf '%s\n' "${vm_tests[@]}" --entry "$1"; }
+dotnet_test_argv() { printf '%s\n' "${dotnet_tests[@]}" --entry "$1"; }
 
 # dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、Transpiler を一度だけ build し、以後は run-cs-sample.sh と scripts/cs-tests.sh が LUB_TCS_DLL の prebuilt DLL を直接実行する。
 cs_dotnet_pid=""
@@ -207,6 +210,8 @@ if [[ $cs_available -eq 1 ]]; then
     # .NET 実行の facade + host
     run dotnet build dotnet/Lub -nologo -v q
     run dotnet run --project tests/dotnet/Bindings -c Release
+    # tests/cs 全体の .NET 実行 (dotnet/SampleRunner/bin/tests/lub-sample-tests。test は --entry で選ぶ)
+    run dotnet build dotnet/SampleRunner -p:Tests=true -nologo -v q
     # tests/cs を tcs vm で 1 つの bytecode (tests/cs/.lub/all.tcsb) にする。test は --entry で選ぶ
     # shellcheck source=scripts/cs-tests.sh
     source scripts/cs-tests.sh
@@ -226,6 +231,7 @@ run_timed bash scripts/build-release.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
 # .NET 実行の共有 library (facade が P/Invoke する)
 run_timed bash scripts/build-release.sh --target lub_shared --no-configure
+export LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so"
 run_timed bash scripts/build-release.sh --target lub_tcs_sources_smoke --no-configure
 run_timed ./build-release-linux/lub_tcs_sources_smoke
 run_timed bash scripts/build-release.sh --target lub_tcs_resolve_smoke --no-configure
@@ -267,31 +273,39 @@ fi
 if [[ $cs_available -eq 1 ]]; then
   # shellcheck source=scripts/cs-tests.sh
   source scripts/cs-tests.sh
-  run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/all.tcsb --entry TestFixedDt \
-    --fixed-dt 0.0125
-  run_timed scripts/run-headless.sh "$native_binary" tests/cs/.lub/all.tcsb --entry TestFixedDt \
-    --fixed-dt 0.0166666666666667
-  # save/<名前>/ は $XDG_DATA_HOME/<名前>/ に入る
-  save_home="$(mktemp -d)"
-  run_timed env XDG_DATA_HOME="$save_home" scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestSaveDir "${cs_test_args[@]}"
-  saved="$(cat "$save_home/lub-test/scores.txt")"
-  rm -rf "$save_home"
-  if [[ $saved != saved ]]; then
-    echo "TestSaveDir: expected 'saved' in \$XDG_DATA_HOME/lub-test/scores.txt, got '$saved'" >&2
-    exit 1
-  fi
+  # tests/cs の起動の頭。
+  # tcs VM の player は tests/cs 全体の bytecode を、.NET 実行は tests/cs 全体を compile した実行ファイルを動かし、どちらも test を --entry <Entry> で選ぶ。
+  vm_tests=("$native_binary" tests/cs/.lub/all.tcsb)
+  dotnet_tests=(./dotnet/SampleRunner/bin/tests/lub-sample-tests)
   # capture の PNG は test が OnQuit で確かめる (同じ path を env でも渡す)
   readback_capture_png="$(mktemp --suffix=.png)"
   cleanup_files+=("$readback_capture_png")
-  for no_load in 0 1; do
-    run_timed env LUB_BACKEND=sdlgpu \
-      LUB_READBACK_CAPTURE_TEST_OUT="$readback_capture_png" \
-      LUB_READBACK_CAPTURE_TEST_NO_LOAD="$no_load" \
-      scripts/run-headless.sh "$native_binary" tests/cs/.lub/all.tcsb --entry TestReadbackCapture "${cs_test_args[@]}" \
-      --capture "$readback_capture_png" --capture-frame 5 \
-      --fixed-dt 0.0166666666666667
-  done
+  # 起動の引数や env を付けて走らせる test。
+  # $@ は起動の頭 (vm_tests か dotnet_tests)
+  cs_individual_tests() {
+    local save_home saved no_load
+    run_timed scripts/run-headless.sh "$@" --entry TestFixedDt --fixed-dt 0.0125
+    run_timed scripts/run-headless.sh "$@" --entry TestFixedDt --fixed-dt 0.0166666666666667
+    # save/<名前>/ は $XDG_DATA_HOME/<名前>/ に入る
+    save_home="$(mktemp -d)"
+    run_timed env XDG_DATA_HOME="$save_home" scripts/run-headless.sh "$@" --entry TestSaveDir "${cs_test_args[@]}"
+    saved="$(cat "$save_home/lub-test/scores.txt")"
+    rm -rf "$save_home"
+    if [[ $saved != saved ]]; then
+      echo "TestSaveDir: expected 'saved' in \$XDG_DATA_HOME/lub-test/scores.txt, got '$saved'" >&2
+      exit 1
+    fi
+    for no_load in 0 1; do
+      run_timed env LUB_BACKEND=sdlgpu \
+        LUB_READBACK_CAPTURE_TEST_OUT="$readback_capture_png" \
+        LUB_READBACK_CAPTURE_TEST_NO_LOAD="$no_load" \
+        scripts/run-headless.sh "$@" --entry TestReadbackCapture "${cs_test_args[@]}" \
+        --capture "$readback_capture_png" --capture-frame 5 \
+        --fixed-dt 0.0166666666666667
+    done
+  }
+  cs_individual_tests "${vm_tests[@]}"
+  cs_individual_tests "${dotnet_tests[@]}"
   # runtime テストは既定で sdlgpu を通る。
   # descriptor set と pipeline の bind を使い回す Vulkan backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
@@ -344,21 +358,19 @@ if [[ $cs_available -eq 1 ]]; then
   done
   rm -r "$export_dir"
 
-  run_runtime_tests "C# runtime tests" vm_test_argv
-  # .NET 実行の Math (TinySystem.props で TinySystem.Math になる) が、tcs VM と同じ期待値 (tests/cs/TestMathDeterminism.cs の表) を返すこと
-  run_timed dotnet build dotnet/SampleRunner -p:Test=TestMathDeterminism -nologo -v q
-  run_timed env LUB_BACKEND=sdlgpu LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
-    scripts/run-headless.sh ./dotnet/SampleRunner/bin/TestMathDeterminism/lub-sample-TestMathDeterminism
+  run_runtime_tests "C# runtime tests" vm_test_argv "${cs_runtime_tests[@]}"
+  # 同じ runtime テストを .NET 実行でも走らせる (走らせないものと理由は scripts/cs-tests.sh の cs_dotnet_excluded)。
+  # .NET 実行の Math (TinySystem.props で TinySystem.Math になる) が tcs VM と同じ期待値を返すことは TestMathDeterminism が見る
+  mapfile -t dotnet_runtime_tests < <(cs_dotnet_tests)
+  run_runtime_tests "C# runtime tests (.NET)" dotnet_test_argv "${dotnet_runtime_tests[@]}"
   # Blend は値の struct の record。
   # tcs VM の player と .NET 実行の両方で TestBlendValue が通り、frame ごとの digest (draw の Blend を含む) が一致すること
   blend_vm_log="$(mktemp)"
   blend_dn_log="$(mktemp)"
   cleanup_files+=("$blend_vm_log" "$blend_dn_log")
-  run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" tests/cs/.lub/all.tcsb --entry TestBlendValue \
+  run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "${vm_tests[@]}" --entry TestBlendValue \
     "${cs_test_args[@]}" --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "$blend_vm_log"
-  run_timed dotnet build dotnet/SampleRunner -p:Test=TestBlendValue -nologo -v q
-  run_timed env LUB_BACKEND=sdlgpu LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so" \
-    scripts/run-headless.sh ./dotnet/SampleRunner/bin/TestBlendValue/lub-sample-TestBlendValue \
+  run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "${dotnet_tests[@]}" --entry TestBlendValue \
     "${cs_test_args[@]}" --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "$blend_dn_log"
   grep -q '^PASS' "$blend_vm_log"
   grep -q '^PASS' "$blend_dn_log"
@@ -383,7 +395,7 @@ fi
 if [[ $cs_available -eq 1 ]]; then
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"
   run_timed scripts/test-lub-check.sh "$native_binary"
-  run_timed scripts/test-bindings-digest.sh "$native_binary"
+  run_timed scripts/test-bindings-digest.sh "$native_binary" "${dotnet_tests[@]}"
   # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、hot reload、OnBuildFailed、App.Use で開いた app の --trace と検査の口)
   run_timed env LUB_VM="$native_binary" scripts/vm-project-test.sh
   # lider (lider/README.md): 自前の player の build と、lider の runtime テスト

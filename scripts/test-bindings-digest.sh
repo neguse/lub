@@ -1,20 +1,31 @@
 #!/usr/bin/env bash
 # TestBindingsDigest を毎回 new / 使い回し / Clear し直しで走らせ、frame ごとの digest (C API 呼び出しの構造) が一致することを見る。
+# .NET 実行の実行ファイル (dotnet/SampleRunner を -p:Tests=true で build した lub-sample-tests) を渡すと、.NET 実行の Bindings (managed の配列で持つ) でも同じに走らせ、tcs VM の player と digest が一致することも見る (共有 library は LUB_NATIVE_LIB で渡す)。
 # tests/cs/.lub/all.tcsb を先に作っておく (scripts/cs-tests.sh の cs_tests_vm_build)。
-# 使い方: scripts/test-bindings-digest.sh [lub binary]
+# 使い方: scripts/test-bindings-digest.sh [lub binary] [.NET の lub-sample-tests]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 binary="${1:-./build-release-linux/lub}"
+dotnet_tests="${2:-}"
 dir="$(mktemp -d)"
 trap 'rm -rf "$dir"' EXIT
 
-for mode in new reuse clear; do
-  LUB_TEST_BINDINGS_MODE="$mode" scripts/run-headless.sh "$binary" tests/cs/.lub/all.tcsb --entry TestBindingsDigest \
-    --fixed-dt 0.0166666666666667 --digest >"$dir/$mode.log" 2>&1 || { cat "$dir/$mode.log"; echo "FAIL: $mode exited non-zero" >&2; exit 1; }
-  grep '^digest ' "$dir/$mode.log" >"$dir/$mode.digest"
-  [[ -s "$dir/$mode.digest" ]] || { cat "$dir/$mode.log"; echo "FAIL: $mode printed no digest" >&2; exit 1; }
-  echo "$mode: $(wc -l <"$dir/$mode.digest") frames, last $(tail -1 "$dir/$mode.digest")"
+runners=(vm)
+[[ -n $dotnet_tests ]] && runners+=(dotnet)
+for runner in "${runners[@]}"; do
+  if [[ $runner == vm ]]; then
+    cmd=("$binary" tests/cs/.lub/all.tcsb)
+  else
+    cmd=("$dotnet_tests")
+  fi
+  for mode in new reuse clear; do
+    log="$dir/$runner-$mode.log"
+    LUB_TEST_BINDINGS_MODE="$mode" scripts/run-headless.sh "${cmd[@]}" --entry TestBindingsDigest \
+      --fixed-dt 0.0166666666666667 --digest >"$log" 2>&1 || { cat "$log"; echo "FAIL: $runner $mode exited non-zero" >&2; exit 1; }
+    grep '^digest ' "$log" >"$dir/$runner-$mode.digest"
+    [[ -s "$dir/$runner-$mode.digest" ]] || { cat "$log"; echo "FAIL: $runner $mode printed no digest" >&2; exit 1; }
+    echo "$runner $mode: $(wc -l <"$dir/$runner-$mode.digest") frames, last $(tail -1 "$dir/$runner-$mode.digest")"
+    cmp "$dir/vm-new.digest" "$dir/$runner-$mode.digest"
+  done
 done
-cmp "$dir/new.digest" "$dir/reuse.digest"
-cmp "$dir/new.digest" "$dir/clear.digest"
 echo "PASS"
