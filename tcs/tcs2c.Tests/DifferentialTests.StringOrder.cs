@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // UTF-8 の byte の順とは、U+10000 以上 (UTF-16 では surrogate D800-DBFF) と U+E000-U+FFFF の間だけ逆になる。
 // 期待値は同じ program を InvariantGlobalization の CoreCLR で実行した stdout (TinySystem.props と同じ前提)。
 // 表示は words の添字
-public partial class DifferentialTests
+public class StringOrderDifferentialTests
 {
     private const string StringOrderProgram = """
         using System;

@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // HashSet<T>。列挙は挿入順 (support-matrix §18)。期待値は同じ program を TinySystem の HashSet (TinySystem/Collections.cs) で
 // .NET で実行した stdout
-public partial class DifferentialTests
+public class HashSetDifferentialTests
 {
     [CFact]
     public void HashSet_MatchesCoreClr()

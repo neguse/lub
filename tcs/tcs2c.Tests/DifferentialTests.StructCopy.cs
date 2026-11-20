@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // struct の copy 地点 (il-spec §10) のうち専用 lowering を持つ経路の 2 backend
 // differential。Lua 向けに足した copy (lambda 入口 / foreach 変数 / ToList の
 // __copy 引数) を C backend が同じ値意味論のまま受け取ることも見る
-public partial class DifferentialTests
+public class StructCopyDifferentialTests
 {
     [CFact]
     public void StructCopy_LoweredPathsKeepValueSemantics()

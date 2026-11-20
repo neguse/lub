@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // user の型の名前が TinySystem の facade の名前 (Random) や C# の型の keyword (@float) と同じでも、user の型を指す
-public partial class DifferentialTests
+public class UserTypeNamesDifferentialTests
 {
     // global namespace の user の class Random は TinySystem.Random を隠す (C# の名前の引き方と同じ)
     [CFact]

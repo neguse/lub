@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // copy 地点 (宣言の初期値 / 代入 / 引数 / 要素 / return) で受ける。Lua は arm が
 // 格納先の table を返すので copy が要り、C は値渡しのまま同じ出力になる。
 // 期待値は CoreCLR の実行結果
-public partial class DifferentialTests
+public class StructCopyBranchDifferentialTests
 {
     [CFact]
     public void StructCopy_BranchValues()

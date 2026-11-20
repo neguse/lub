@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // NUL を含む string の幅付き補間は NUL の後ろも残す (#420)。C と tcs VM は NUL で切っていた
-public partial class DifferentialTests
+public class NulPaddingDifferentialTests
 {
     [CFact]
     public void Interpolation_WidthKeepsTextAfterNul()

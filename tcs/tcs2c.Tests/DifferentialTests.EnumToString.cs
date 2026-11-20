@@ -5,7 +5,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 値は数値 (#133)。書式 D は数値。uint / byte / sbyte の enum も同じ。同じ値の
 // member と並びは .NET の EnumInfo (値の符号なし昇順) に従う。期待値は同じ
 // program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class EnumToStringDifferentialTests
 {
     [CFact]
     public void Enums_ToStringMatchesDotnet()

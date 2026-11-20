@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // サブセット外の API (TCS1002) は両 backend とも IL を作る前に同じ診断で止まる。
 // MathF は TinySystem の runtime に無い (Lua は global の MathF が nil)
-public partial class DifferentialTests
+public class UnsupportedApiDifferentialTests
 {
     [Theory]
     [InlineData("""var s = "abc"; Console.WriteLine(s.Length);""", "string.Length (use s.RuneCount()")]

@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 補間の D 精度指定 (符号を除いた桁数)、raw 補間文字列の literal brace、
 // int.TryParse の受理する書式 (NumberStyles.Integer: 前後の空白、符号、
 // 10 進数字のみ)。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class FormatParseDifferentialTests
 {
     [CFact]
     public void Interpolation_DPrecisionRawBracesAndIntTryParse_MatchDotnet()

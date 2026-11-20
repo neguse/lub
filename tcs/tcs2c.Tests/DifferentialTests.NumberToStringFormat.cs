@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // int / float の ToString(format) と補間の書式は、標準の書式を .NET と同じ文字列にする。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class NumberToStringFormatDifferentialTests
 {
     [CFact]
     public void NumberToStringFormat_MatchesDotnet()

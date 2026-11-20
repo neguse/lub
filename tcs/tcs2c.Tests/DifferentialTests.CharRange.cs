@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // char は 1 byte の code unit なので、(char)x の x が 0〜255 の外なら fault する (C は使い方を添えた文言)。
 // CoreCLR は UTF-16 の code unit を作って止まらないので、ここだけ意図して違う (codepoint は char.ConvertFromUtf32)。.NET は比べない
-public partial class DifferentialTests
+public class CharRangeDifferentialTests
 {
     private const string CharRangeMessage =
         "(char) cast: value is not in 0-255; use char.ConvertFromUtf32 for a codepoint";

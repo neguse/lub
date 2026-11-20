@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // field と auto-property の初期化子の実行順の 2 backend differential。期待値は
 // 同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class InitializerOrderDifferentialTests
 {
     // C# §15.5.6: 初期化子は field と auto-property の区別なく宣言順に実行する
     // (instance は constructor の冒頭、static は型の初期化)

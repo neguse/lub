@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // x が 1 でなく base が 0 / +∞ のとき NaN。x が 1 なら base 0 / +∞ は -0 / +0。
 // 表は行が x、列が base (最後の列は 1 引数の Log)。9=NaN、-1=-0、0=+0、
 // ±8=±∞、他は (int) の切り捨て。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class MathLogBaseDifferentialTests
 {
     [CFact]
     public void MathLog_BaseSpecialValues_MatchDotnet()

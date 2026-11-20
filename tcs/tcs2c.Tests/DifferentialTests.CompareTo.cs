@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // int / float の CompareTo (-1 / 0 / 1。float の NaN は他のどの値より小さく、
 // NaN 同士は 0) と、それを比較に使う struct の List.Sort。期待値は同じ
 // program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class CompareToDifferentialTests
 {
     [CFact]
     public void Numbers_CompareToAndStructListSort()

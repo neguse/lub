@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // field / return / ??= / 式位置の代入) で受ける。`c ? h.F : null` と `h?.F` の値は
 // 格納先 h.F の値そのもので、Lua は値があれば中の struct を copy する。C は値渡しの
 // まま同じ出力になる。期待値は CoreCLR の実行結果
-public partial class DifferentialTests
+public class StructCopyNullableDifferentialTests
 {
     [CFact]
     public void StructCopy_NullableValues()

@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // record class / record struct の == のうち、Nullable の struct field と
 // field の無い record。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class RecordNullableStructDifferentialTests
 {
     [CFact]
     public void Records_NullableStructFieldsCompareByValue()

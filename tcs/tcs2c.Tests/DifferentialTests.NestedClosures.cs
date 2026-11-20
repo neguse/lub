@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // lambda の中の lambda が外側の lambda の parameter (と外側が捕捉した変数) を
 // 捕捉する。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class NestedClosuresDifferentialTests
 {
     [CFact]
     public void Closures_NestedCaptureOuterLambdaParameter()

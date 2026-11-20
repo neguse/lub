@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // codepoint から文字列を作る手段 (Rune の文字列化と char.ConvertFromUtf32) は UTF-8 の文字列を返す。
 // 期待値は同じ program を CoreCLR で実行した stdout。文字列は byte 単位のままなので Length は比べない
-public partial class DifferentialTests
+public class RuneToStringDifferentialTests
 {
     [CFact]
     public void Rune_ToStringConcatAndInterpolation_AreUtf8()

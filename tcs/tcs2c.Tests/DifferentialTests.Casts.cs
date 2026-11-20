@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // object / interface / 型引数からの cast と型 test。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class CastsDifferentialTests
 {
     private const string CastTypes = """
         using System;

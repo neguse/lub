@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // interface 経由の property は実装の形によらず accessor を通る。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class InterfacePropertiesDifferentialTests
 {
     private const string InterfacePropertyTypes = """
         using System;

@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // static method の overload (引数の型と数、generic の拡張 method、method group、
 // 拡張 method の static の形)。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class StaticOverloadDifferentialTests
 {
     [CFact]
     public void StaticOverload_DispatchesBySignature()

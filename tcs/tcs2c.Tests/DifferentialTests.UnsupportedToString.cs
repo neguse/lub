@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 文字列にできない静的型 (class / record / interface / struct / List / Dictionary) の文字列化は
 // サブセット外。C# は型名や record の member の一覧を書くが、Lua は table のアドレスを書き、
 // C は受け付けないので、両 backend とも同じ TCS1001 で止まる
-public partial class DifferentialTests
+public class UnsupportedToStringDifferentialTests
 {
     [Theory]
     [InlineData("Console.WriteLine(r);", "UnsupportedToString(R)")]

@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // record / record struct の合成 Equals は float field を float.Equals で比べる
 // (NaN 同士は等しく、+0 と -0 も等しい)。struct の ValueType.Equals と
 // T? の Equals も同じ。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class RecordFloatEqualityDifferentialTests
 {
     [CFact]
     public void Records_FloatFieldsCompareWithFloatEquals()

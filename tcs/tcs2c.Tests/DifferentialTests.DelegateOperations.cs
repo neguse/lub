@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // delegate の同一性と合成はサブセット外: Lua は関数の同一性、C は変換のたびに作る closure で、C# と結果を揃えられない。
 // 両 backend とも同じ診断で止まる。null との比較、呼び出し、代入は残す
-public partial class DifferentialTests
+public class DelegateOperationsDifferentialTests
 {
     [Theory]
     [InlineData("Console.WriteLine(a == b);", "TCS1001", "DelegateEquality")]

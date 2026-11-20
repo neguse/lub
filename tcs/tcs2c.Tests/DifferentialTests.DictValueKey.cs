@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 値で比べる key の Dictionary は両 backend とも生成前に止まる (#185)。Lua
 // table は key を同一性で引くので、止めないと等しい値の key で ContainsKey が
 // false になる (CoreCLR は `rs:1:1` / `s:1` / `r:1` / `todict:1`)
-public partial class DifferentialTests
+public class DictValueKeyDifferentialTests
 {
     private const string DictValueKeyProgram = """
         using System;

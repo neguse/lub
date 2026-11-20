@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 補間の D 精度 0 (と 0 を表す精度)。C# は値 0 でも最低 1 桁を出すが、
 // printf の %.0d は値 0 で数字を出さない。期待値は同じ program を CoreCLR
 // で実行した stdout
-public partial class DifferentialTests
+public class FormatDZeroDifferentialTests
 {
     [CFact]
     public void Interpolation_DZeroPrecision_MatchDotnet()

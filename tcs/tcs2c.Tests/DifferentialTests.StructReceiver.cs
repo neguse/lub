@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // struct instance method の receiver と struct place への store の 2 backend
 // differential。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class StructReceiverDifferentialTests
 {
     [CFact]
     public void StructReceiver_EvaluatedOnce()

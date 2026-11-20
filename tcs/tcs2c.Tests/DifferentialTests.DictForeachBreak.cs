@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // Dictionary の foreach の中の break / continue は、ネストした foreach、switch、while と組み合わせても C# どおりにそのループだけを抜ける / 次へ進む。
 // 反復順に依らない値だけを出す。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class DictForeachBreakDifferentialTests
 {
     [CFact]
     public void DictForeach_BreakAndContinue_LeaveOnlyThatLoop()

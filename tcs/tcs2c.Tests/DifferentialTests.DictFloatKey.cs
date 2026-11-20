@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // Dictionary<float, V> はサブセット外 (TCS1001 UnsupportedDictionaryKey(float))。.NET の EqualityComparer<float>.Default は
 // NaN 同士を等しい key とみなす (Lua の table は NaN を key にできなかった)。HashSet<float> (UnsupportedHashSetElement(float)) と同じく
 // 作る地点 (new Dictionary<float, V>()、target-typed new()) で止める
-public partial class DifferentialTests
+public class DictFloatKeyDifferentialTests
 {
     private const string DictNanKeyProgram = """
             using System;

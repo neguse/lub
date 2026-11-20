@@ -5,7 +5,7 @@ namespace TinyCs.Tcs2c.Tests;
 // ループの後の参照は外の local を捕捉する (#182)。宣言子が複数・入れ子・
 // continue・break・ループ変数の捕捉も見る。期待値は同じ program を CoreCLR で
 // 実行した stdout
-public partial class DifferentialTests
+public class ForScopeDifferentialTests
 {
     [CFact]
     public void Closures_WhileForVariableShadowsCapturedOuterLocal()

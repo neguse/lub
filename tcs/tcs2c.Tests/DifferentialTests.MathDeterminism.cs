@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // (TinySystem.Math) で bit 単位で同じ結果を返す。決まった入力列の結果の bit 列を
 // 関数ごとに hash し、3 つの経路と期待値を比べる。期待値は 1 つで、OS や CPU で
 // 変わらない (変わったら実装か build の設定が決定的でなくなっている)
-public partial class DifferentialTests
+public class MathDeterminismDifferentialTests
 {
     // name, 第 1 引数の範囲, 第 2 引数の範囲
     private static readonly (string Name, float Lo, float Hi, float Lo2, float Hi2)[] MathCases =
@@ -124,7 +124,7 @@ public partial class DifferentialTests
         Assert.Equal("3 -2 3", output);
     }
 
-    private static string F(float v) => v.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f";
+    internal static string F(float v) => v.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f";
 
     // 同じ program を .NET の TinySystem.Math で計算した stdout
     private static string DotnetMathHashes()

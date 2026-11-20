@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // Sort / OrderBy の比較関数は、pointer の要素 (string、record) でも const を落とさずに読む。
 // 生成 C を -Werror で compile する。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class SortComparatorConstDifferentialTests
 {
     [CFact]
     public void SortComparators_OfPointerElements_CompileWithoutWarnings()

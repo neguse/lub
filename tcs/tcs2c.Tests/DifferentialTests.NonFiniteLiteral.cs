@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // float.NaN と ±Infinity の定数 (#408)。IL の literal を VM と C の backend が読めずに落ちていた
-public partial class DifferentialTests
+public class NonFiniteLiteralDifferentialTests
 {
     [CFact]
     public void Float_NonFiniteConstants_MatchDotnet()

@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // generic な record / struct / record struct と、generic class の static property、generic method の
 // method group。Lua は型引数の既定値を隠れ引数で受け (struct は zero 値と copy にも持たせる)、
 // C は閉じた copy に特殊化する。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class GenericRecordStructDifferentialTests
 {
     [CFact]
     public void GenericRecordStruct_DefaultsAndSpecialization()

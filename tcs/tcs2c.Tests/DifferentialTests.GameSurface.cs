@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // game source が要求した言語面 (user-defined operator など) の differential。
-public partial class DifferentialTests
+public class GameSurfaceDifferentialTests
 {
     // user-defined operator: IL は素の IlBin / IlUn。C は operand の静的型で
     // overload を選ぶ (Lua は metamethod が実行時型で分岐)。同じ operator の

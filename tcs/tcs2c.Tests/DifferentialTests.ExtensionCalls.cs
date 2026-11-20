@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 拡張メソッドの呼び方 (拡張の形 `x.M()`、static の形 `Ext.M(x)`、`?.` 経由)
 // はどれも同じ静的呼び出しになる。期待値は同じ program を CoreCLR で実行した
 // stdout
-public partial class DifferentialTests
+public class ExtensionCallsDifferentialTests
 {
     [CFact]
     public void Extensions_StaticFormAndConditionalAccess()

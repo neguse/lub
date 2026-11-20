@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // closure が foreach の反復変数を捕捉する。反復変数は反復ごとに別の変数
 // (C# 5 以降)。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class ForeachCaptureDifferentialTests
 {
     [CFact]
     public void Closures_CaptureForeachVariablePerIteration()

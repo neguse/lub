@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // null の string の int.TryParse / float.TryParse は false で、out は 0 (#429)。C は null の fault で止まっていた
-public partial class DifferentialTests
+public class TryParseNullDifferentialTests
 {
     [CFact]
     public void TryParse_Null_ReturnsFalse()

@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // Dictionary.Clear は全ての要素を消し、同じ Dictionary にまた入れられる。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class DictClearDifferentialTests
 {
     [CFact]
     public void DictClear_RemovesAllEntries()

@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // enum を入れた型引数の値と、enum の List / 配列を渡した string.Join の文字列化は member 名
 // (Lua は型を消すので、型引数の既定値と一緒に名前の引き方を渡す)。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class EnumTypeArgToStringDifferentialTests
 {
     [CFact]
     public void EnumTypeArgumentAndJoin_UseMemberNames()
