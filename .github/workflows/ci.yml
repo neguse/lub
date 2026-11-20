@@ -817,13 +817,27 @@ jobs:
         with:
           global-json-file: tcs/global.json
 
+      # base の測定は base の tcs の tree と toolchain (runner の image) だけで決まるので、それを key にして結果を cache する
+      - name: Base of the comparison
+        id: base
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD^1' }}
+        run: |
+          echo "ref=$BASE" >> "$GITHUB_OUTPUT"
+          echo "tree=$(git rev-parse "$BASE:tcs")" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the base results
+        uses: actions/cache@v4
+        with:
+          path: tcs/selfbench-base.json
+          key: selfbench-base-vm-native-${{ steps.base.outputs.tree }}-${{ steps.base.outputs.image }}
+
       - name: Install valgrind
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind
 
-      - name: Compare with the PR base
-        run: python3 perf/selfbench/run.py --base "$BASE" --tasks vm --hosts native --runs 0 -o selfbench.json
-        env:
-          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD^1' }}
+      - name: Compare with the base
+        run: python3 perf/selfbench/run.py --base "${{ steps.base.outputs.ref }}" --tasks vm --hosts native --runs 0 --base-results selfbench-base.json -o selfbench.json
 
       - name: Upload selfbench results
         if: always()
