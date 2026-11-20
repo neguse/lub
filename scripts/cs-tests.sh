@@ -147,3 +147,36 @@ cs_tests_check() {
   mapfile -t sources < <(cs_tests_sources)
   cs_tests_tcs check "${sources[@]}" --ref cs-lib/lub_stub.cs
 }
+
+# test を最大 $1 本ずつ並べて走らせ、test の順に PASS か FAIL を出す。失敗した test は log も出す。
+# 1 本は "$2" <test> <log の file> <test の番号> で走らせ、関数 $2 が log を書く。0 以外を返すと失敗。
+# log は $cs_test_logs (無ければ一時ディレクトリを作る) に <test>.log で残る。
+# 使い方: cs_run_tests 4 run_one "${cs_runtime_tests[@]}"
+cs_run_tests() {
+  local jobs=$1 fn=$2 i t running=0 failed=0
+  shift 2
+  local tests=("$@")
+  cs_test_logs="${cs_test_logs:-$(mktemp -d)}"
+  for i in "${!tests[@]}"; do
+    t="${tests[$i]}"
+    rm -f "$cs_test_logs/$t.status"
+    # 関数は && の左に置くので、中で set -e は効かない。失敗は終了コードで返す
+    ("$fn" "$t" "$cs_test_logs/$t.log" "$i" && echo pass >"$cs_test_logs/$t.status") &
+    running=$((running + 1))
+    if ((running >= jobs)); then
+      wait -n || true
+      running=$((running - 1))
+    fi
+  done
+  wait
+  for t in "${tests[@]}"; do
+    if [[ "$(cat "$cs_test_logs/$t.status" 2>/dev/null)" == pass ]]; then
+      echo "PASS $t"
+    else
+      echo "FAIL $t"
+      sed 's/^/    /' "$cs_test_logs/$t.log" 2>/dev/null || true
+      failed=1
+    fi
+  done
+  return "$failed"
+}

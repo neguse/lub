@@ -314,29 +314,26 @@ jobs:
         shell: bash
         run: |
           source scripts/cs-tests.sh
-          failed=()
-          for t in "${cs_runtime_tests[@]}"; do
-            log="${RUNNER_TEMP}/runtime_$t.log"
-            if ! LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry "$t" "${cs_test_args[@]}" >"$log" 2>&1; then
-              echo "::error::$t failed"
-              cat "$log"
-              failed+=("$t")
-            elif grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
-              echo "::error::$t: the D3D12 debug layer reported errors"
-              failed+=("$t")
-            fi
-          done
+          # 落ちたときと、debug layer が error を報告したときに失敗にする
+          d3d12_test() {
+            LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry "$1" "${cs_test_args[@]}" >"$2" 2>&1 || return 1
+            ! grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$2"
+          }
+          cs_test_logs="${RUNNER_TEMP}/runtime" && mkdir -p "$cs_test_logs"
+          # WARP は CPU で描くので、core の数だけ並べる
+          status=0
+          cs_run_tests "$(nproc)" d3d12_test "${cs_runtime_tests[@]}" || status=1
           # debug layer が読み込めないと、error を報告しないまま通る
-          if ! grep -q 'd3d12: debug layer messages: on' "${RUNNER_TEMP}/runtime_TestManyDraws.log"; then
+          if ! grep -q 'd3d12: debug layer messages: on' "$cs_test_logs/TestManyDraws.log"; then
             echo "::error::the D3D12 debug layer did not load"
-            failed+=(debug-layer)
+            status=1
           fi
           # pass ごとの GPU の時間を timestamp query で測れること (Sys.TakeGpuPasses)
-          if ! grep -q 'gpu pass time: timed' "${RUNNER_TEMP}/runtime_TestGpuPassTime.log"; then
+          if ! grep -q 'gpu pass time: timed' "$cs_test_logs/TestGpuPassTime.log"; then
             echo "::error::d3d12 did not time the GPU passes"
-            failed+=(TestGpuPassTime)
+            status=1
           fi
-          [ ${#failed[@]} -eq 0 ]
+          exit "$status"
 
       # lub export windows は shader を d3d12 (DXIL) と vulkan / sdlgpu (spirv) の両方の target で compile する。
       # snapshot の中で起動した d3d12 (WARP) の絵が、リポジトリから動かしたものと一致すること。

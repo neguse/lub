@@ -103,16 +103,10 @@ if [[ $part != ios ]]; then
   run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestFixedDt --fixed-dt 0.0166666666666667
 
   echo
-  echo "==> C# runtime tests (${#cs_runtime_tests[@]})"
-  for cs_test in "${cs_runtime_tests[@]}"; do
-    if "./$build/lub" tests/cs/.lub/all.tcsb --entry "$cs_test" "${cs_test_args[@]}" >"$work/test.log" 2>&1; then
-      echo "PASS $cs_test"
-    else
-      echo "FAIL $cs_test"
-      sed 's/^/    /' "$work/test.log"
-      exit 1
-    fi
-  done
+  echo "==> C# runtime tests (${#cs_runtime_tests[@]}, $(sysctl -n hw.ncpu) in parallel)"
+  metal_test() { "./$build/lub" tests/cs/.lub/all.tcsb --entry "$1" "${cs_test_args[@]}" >"$2" 2>&1; }
+  cs_test_logs="$work/runtime" && mkdir -p "$cs_test_logs"
+  cs_run_tests "$(sysctl -n hw.ncpu)" metal_test "${cs_runtime_tests[@]}"
   # 束縛しなかった slot に前の draw の texture と storage buffer が残らないこと。
   run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestUnboundAfterBound "${cs_test_args[@]}"
   # encoder に設定済みの pipeline、buffer、texture を設定し直さなくても、各 draw が自分の状態で描くこと。
