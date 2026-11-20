@@ -6,7 +6,7 @@
 #   - 第三者の library (SDL、Box2D、Box3D、OpenXR の loader) の install 先 <build>/deps/ (scripts/deps-cache-key.sh、cmake/LubDeps.cmake)
 #   - tcs wasm assets (content key: tcs/ の tree の hash)
 #   - slang prebuilt、emsdk、playwright browsers、npm
-# lub 自身の source は PR ごとに変わるので、compile は ccache で cache する (Linux、macOS、web)。
+# lub 自身の source は PR ごとに変わるので、compile は ccache で cache する (Linux、macOS、Windows、web)。
 # master push が cache を作り、PR はそれを読む (actions/cache の branch scope)。
 # ccache は PR では保存しない (PR ごとに保存すると cache が増え続ける)。branch で workflow_dispatch した run は、その branch の scope に保存する。
 name: ci
@@ -178,6 +178,10 @@ jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      CCACHE_MAXSIZE: 500M
+      # .NET の SDK は image に無い版を毎回取るので、install 先を決めて cache する
+      DOTNET_INSTALL_DIR: C:\dotnet
     steps:
       - uses: actions/checkout@v4
 
@@ -222,11 +226,45 @@ jobs:
           key: ${{ steps.deps.outputs.key }}
           restore-keys: ${{ steps.deps.outputs.restore }}
 
+      # ccache は MSVC の cl も扱う (Release は debug の情報を持たないので、そのまま cache できる)。
+      # 版を固定して release から取り、hash を確かめる。
+      - name: Install ccache
+        shell: bash
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/ccache.zip" https://github.com/ccache/ccache/releases/download/v4.14.2/ccache-4.14.2-windows-x86_64.zip
+          echo "6993ce645e53192cec592ee23186200b574ac4c59097ecde8d9cfd681b47ae84  $RUNNER_TEMP/ccache.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/ccache.zip" -d "$RUNNER_TEMP"
+          cygpath -w "$RUNNER_TEMP/ccache-4.14.2-windows-x86_64" >> "$GITHUB_PATH"
+          echo "CCACHE_DIR=$(cygpath -w ~/.ccache)" >> "$GITHUB_ENV"
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-windows-${{ github.sha }}
+          restore-keys: ccache-windows-
+
       - name: Configure
-        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         run: cmake --build build-release
+
+      - name: ccache stats
+        run: ccache -s
+
+      - name: Save ccache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-windows-${{ github.sha }}
+
+      - name: Cache .NET
+        uses: actions/cache@v4
+        with:
+          path: C:\dotnet
+          key: dotnet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tcs/global.json') }}
 
       # tests/cs の runtime テストとサンプルの C# は起動前に tcs vm で bytecode にするので dotnet が要る。
       - uses: actions/setup-dotnet@v4
