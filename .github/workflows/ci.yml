@@ -20,9 +20,9 @@ on:
   workflow_dispatch:
 
 # PR は ref ごとに group を分け、同一 PR への連続 push は前の run を止める。
-# PR 以外 (master の push、tag の push、dispatch) の run は互いに待たない。直列にするのは deploy の job だけ。
+# master の run (deploy する) は直列で、止めない。tag や他の branch の run は ref ごとの group で、master の run を待たせない。
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  group: ci-${{ github.ref == 'refs/heads/master' && github.event_name != 'pull_request' && 'deploy' || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -519,7 +519,7 @@ jobs:
 
   # macOS regression gate: scripts/apple-gate.sh --part mac (CI と手動の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> 視覚 golden -> shader cache の往復。
   # Metal は runner の GPU で描くので byte 一致にはならず、golden は Linux の *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
-  # iOS 側 (--part ios、simulator での実行) は ios job (PR 以外) で走る。
+  # iOS 側 (--part ios、simulator での実行) は ios.yml で走る。
   macos:
     name: macos (${{ matrix.shard }})
     strategy:
@@ -1316,101 +1316,12 @@ jobs:
           name: lub-${{ matrix.target }}
           path: dist/lub-${{ matrix.target }}.*
 
-  # tests/cs のうち iOS で走らせるものを、simulator の app で動かす (scripts/apple-gate.sh --part ios)。
-  # PR では走らせず、master の push と tag (v*) の push と workflow_dispatch で走る (hosted の runner は simulator の起動だけで分の単位がかかる)。
-  # gate は待たない: master では deploy を待たせず、落ちたらその commit の run が失敗になって分かる。tag では publish がこれを待つ。
+  # iOS の simulator での実行 (ios.yml)。tag (v*) の push のときだけここから呼び、publish がこれを待つ。
+  # master の push では ios.yml が単独で走り、PR では走らない。
   ios:
-    if: github.event_name != 'pull_request'
-    runs-on: macos-latest
-    timeout-minutes: 60
-    env:
-      CCACHE_MAXSIZE: 500M
-      CMAKE_C_COMPILER_LAUNCHER: ccache
-      CMAKE_CXX_COMPILER_LAUNCHER: ccache
-      CMAKE_OBJC_COMPILER_LAUNCHER: ccache
-    steps:
-      - uses: actions/checkout@v4
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/ios.yml
 
-      # submodule は要るものだけを並べて取る
-      - name: Submodules
-        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr
-
-      - name: Cache slang prebuilts
-        uses: actions/cache@v4
-        with:
-          path: third_party/slang/lib
-          key: slang-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
-
-      # macOS の player (shader cache を埋める) は macos job と同じ deps を使う。iOS の app の deps は別に cache する
-      - name: Deps cache key
-        id: deps
-        run: |
-          bash scripts/deps-cache-key.sh macos >> "$GITHUB_OUTPUT"
-          bash scripts/deps-cache-key.sh ios | sed 's/^/ios_/' >> "$GITHUB_OUTPUT"
-
-      - name: Restore deps (macOS)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            build-mac/deps
-            build-mac-player/deps
-          key: ${{ steps.deps.outputs.key }}
-          restore-keys: ${{ steps.deps.outputs.restore }}
-
-      - name: Cache deps (iOS)
-        uses: actions/cache@v4
-        with:
-          path: build-ios/deps
-          key: ${{ steps.deps.outputs.ios_key }}
-          restore-keys: ${{ steps.deps.outputs.ios_restore }}
-
-      - name: Install tools
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: 1
-          HOMEBREW_NO_INSTALL_CLEANUP: 1
-          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
-        run: brew install bash ninja
-
-      # 版を固定した ccache (scripts/install-ccache.sh)
-      - name: Install ccache
-        run: bash scripts/install-ccache.sh
-
-      - name: Restore ccache
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.ccache
-          key: ccache-ios-${{ github.sha }}
-          restore-keys: ccache-ios-
-
-      # tests/cs の test は C# なので、app に入れる bytecode を tcs で作る。
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: tcs/global.json
-
-      # macOS の player (shader cache を埋める) と iOS の app の build、simulator での実行
-      - name: Apple gate, iOS part (iOS build, simulator)
-        run: |
-          export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
-          mkdir -p "$TMPDIR"
-          bash scripts/apple-gate.sh --part ios
-
-      - name: Save ccache
-        if: github.event_name != 'pull_request'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.ccache
-          key: ccache-ios-${{ github.sha }}
-
-      - name: Upload failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: failure-ios
-          path: ${{ runner.temp }}/apple-gate-tmp
-          if-no-files-found: ignore
-
-  # 唯一の required check。
-  # 待つ job が全部 success なら green。
   gate:
     needs: [lint, format, linux, windows, macos, web-build, web-verify, web-export, tcs-test, tcs-selfbench, kit]
     if: always()
@@ -1436,45 +1347,25 @@ jobs:
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # deploy は 1 つずつ (途中で止めない)
-    concurrency:
-      group: deploy
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
-      # run は互いに待たないので、古い commit の deploy が新しい commit の後になることがある。master の先頭の commit だけを載せる
-      - name: Skip unless this commit is the head of master
-        id: head
-        run: |
-          head="$(git ls-remote origin refs/heads/master | cut -f1)"
-          echo "master is at $head, this run is ${{ github.sha }}"
-          if [ "$head" = "${{ github.sha }}" ]; then
-            echo "current=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "current=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/setup-node@v4
-        if: steps.head.outputs.current == 'true'
         with:
           node-version: 26
           cache: npm
           cache-dependency-path: web/package-lock.json
 
       - name: npm ci
-        if: steps.head.outputs.current == 'true'
         working-directory: web
         run: npm ci
 
       - uses: actions/download-artifact@v4
-        if: steps.head.outputs.current == 'true'
         with:
           name: web-dist
           path: web/dist
 
       - name: Deploy (wrangler)
-        if: steps.head.outputs.current == 'true'
         working-directory: web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

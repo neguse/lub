@@ -1,0 +1,103 @@
+# iOS の simulator での実行: tests/cs のうち iOS で走らせるものを、simulator の app で動かす (scripts/apple-gate.sh --part ios)。
+# hosted の runner は simulator の起動だけで分の単位がかかるので、PR の CI (ci.yml) では走らせない。
+#   - master の push: この workflow が単独で走る。落ちたら、その commit の check が失敗になって分かる (deploy は ci.yml の側で、これを待たない)
+#   - tag (v*) の push: ci.yml がこの workflow を呼び、publish がこれを待つ
+name: ios
+
+on:
+  push:
+    branches: [master]
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      CCACHE_MAXSIZE: 500M
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJC_COMPILER_LAUNCHER: ccache
+    steps:
+      - uses: actions/checkout@v4
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr
+
+      - name: Cache slang prebuilts
+        uses: actions/cache@v4
+        with:
+          path: third_party/slang/lib
+          key: slang-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      # macOS の player (shader cache を埋める) は macos job と同じ deps を使う。iOS の app の deps は別に cache する
+      - name: Deps cache key
+        id: deps
+        run: |
+          bash scripts/deps-cache-key.sh macos >> "$GITHUB_OUTPUT"
+          bash scripts/deps-cache-key.sh ios | sed 's/^/ios_/' >> "$GITHUB_OUTPUT"
+
+      - name: Restore deps (macOS)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build-mac/deps
+            build-mac-player/deps
+          key: ${{ steps.deps.outputs.key }}
+          restore-keys: ${{ steps.deps.outputs.restore }}
+
+      - name: Cache deps (iOS)
+        uses: actions/cache@v4
+        with:
+          path: build-ios/deps
+          key: ${{ steps.deps.outputs.ios_key }}
+          restore-keys: ${{ steps.deps.outputs.ios_restore }}
+
+      - name: Install tools
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+        run: brew install bash ninja
+
+      # 版を固定した ccache (scripts/install-ccache.sh)
+      - name: Install ccache
+        run: bash scripts/install-ccache.sh
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-ios-${{ github.sha }}
+          restore-keys: ccache-ios-
+
+      # tests/cs の test は C# なので、app に入れる bytecode を tcs で作る。
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: tcs/global.json
+
+      # macOS の player (shader cache を埋める) と iOS の app の build、simulator での実行
+      - name: Apple gate, iOS part (iOS build, simulator)
+        run: |
+          export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
+          mkdir -p "$TMPDIR"
+          bash scripts/apple-gate.sh --part ios
+
+      - name: Save ccache
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-ios-${{ github.sha }}
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-ios
+          path: ${{ runner.temp }}/apple-gate-tmp
+          if-no-files-found: ignore
+
+  # 唯一の required check。
+  # 待つ job が全部 success なら green。
