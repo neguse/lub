@@ -156,31 +156,35 @@ fi
 cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
 
 # dotnet 相 (Transpiler prebuild / transpile / 雛形の build) は native binary に依存しないので、C build と並行に回して runtime テストの前で join する。
-# tests/cs の runtime テストを並列に走らせ、失敗があれば log を出して終わる。
+# tests/cs の runtime テストを、Linux の 2 つの backend (sdlgpu と vulkan) で全部並列に走らせ、失敗があれば log を出して終わる。
 # $2 は test の名前から起動の引数 (実行ファイルと入力) を 1 行ずつ出す関数
 run_runtime_tests() {
-  local label=$1 argv_fn=$2 i log failed=0
-  local pids=() logs=() argv=()
+  local label=$1 argv_fn=$2 backend entry i log failed=0 t0=$SECONDS
+  local backends=(sdlgpu vulkan) runs=() pids=() logs=() argv=()
   echo
-  echo "==> $label (${#cs_runtime_tests[@]} in parallel)"
-  for i in "${!cs_runtime_tests[@]}"; do
-    log="$(mktemp)"
-    cleanup_files+=("$log")
-    logs+=("$log")
-    mapfile -t argv < <("$argv_fn" "${cs_runtime_tests[$i]}")
-    LUB_XVFB_SERVERNUM=$((300 + i)) "${timeout_cmd[@]}" scripts/run-headless.sh \
-      "${argv[@]}" "${cs_test_args[@]}" >"$log" 2>&1 &
-    pids+=("$!")
+  echo "==> $label (${#cs_runtime_tests[@]} x ${backends[*]}, in parallel)"
+  for backend in "${backends[@]}"; do
+    for entry in "${cs_runtime_tests[@]}"; do
+      log="$(mktemp)"
+      cleanup_files+=("$log")
+      logs+=("$log")
+      mapfile -t argv < <("$argv_fn" "$entry")
+      LUB_BACKEND=$backend LUB_XVFB_SERVERNUM=$((300 + ${#runs[@]})) "${timeout_cmd[@]}" \
+        scripts/run-headless.sh "${argv[@]}" "${cs_test_args[@]}" >"$log" 2>&1 &
+      pids+=("$!")
+      runs+=("$entry ($backend)")
+    done
   done
-  for i in "${!cs_runtime_tests[@]}"; do
+  for i in "${!runs[@]}"; do
     if wait "${pids[$i]}"; then
-      echo "PASS ${cs_runtime_tests[$i]}"
+      echo "PASS ${runs[$i]}"
     else
-      echo "FAIL ${cs_runtime_tests[$i]}"
+      echo "FAIL ${runs[$i]}"
       sed 's/^/    /' "${logs[$i]}"
       failed=1
     fi
   done
+  echo "==> $label: ${#runs[@]} runs in $((SECONDS - t0))s"
   if [[ $failed -ne 0 ]]; then
     exit 1
   fi
@@ -292,36 +296,11 @@ if [[ $cs_available -eq 1 ]]; then
       --capture "$readback_capture_png" --capture-frame 5 \
       --fixed-dt 0.0166666666666667
   done
-  # runtime テストは既定で sdlgpu を通る。
-  # descriptor set と pipeline の bind を使い回す Vulkan backend でも、1 フレームの draw が多いときに各 draw が自分の binding で描くこと。
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestManyDraws "${cs_test_args[@]}"
+  # TestDrawStateReuse は runtime テストの一覧に無い。
+  # descriptor set と pipeline の bind を使い回す vulkan backend でも、各 draw が自分の状態で描くこと。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/all.tcsb --entry TestDrawStateReuse "${cs_test_args[@]}"
-  # handle を保ったまま実体を作り直しても、使い回した descriptor set が前の実体を読まないこと。
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestBufferRecordingOrder "${cs_test_args[@]}"
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestBufferArray "${cs_test_args[@]}"
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestBufferCapacity "${cs_test_args[@]}"
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestFrameBuffer "${cs_test_args[@]}"
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestFrameBufferErrors "${cs_test_args[@]}"
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestFrameBufferLimit "${cs_test_args[@]}"
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestTextureRecordingOrder "${cs_test_args[@]}"
-  # vulkan backend は texture の束縛を別に組むので、texture と sampler を別に宣言する shader はこちらでも描く。
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestSeparateSampler "${cs_test_args[@]}"
-  # compute が読み書きする storage は、vulkan backend でも前の dispatch の内容を保つ。
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestStoragePreserve "${cs_test_args[@]}"
-  run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
-    tests/cs/.lub/all.tcsb --entry TestStorageFormat "${cs_test_args[@]}"
-  # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
+  # --readback-fixed-latency を付けない起動でも、readback の届く frame は backend によらず、保証しないモードでは GPU を待たない (runtime テストは付けて走らせる)。
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \

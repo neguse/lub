@@ -5,6 +5,7 @@
 # shellcheck shell=bash
 
 # 終了コードで合否が決まるもの。
+# native gate は Linux の sdlgpu と vulkan の両方で、apple gate は metal で、CI の windows job は d3d12 で、全部を走らせる。
 # readback の届く frame を固定するため --readback-fixed-latency を付けて走らせる (cs_test_args)
 cs_runtime_tests=(
   TestPhysicsBox2d
@@ -69,6 +70,7 @@ cs_runtime_tests=(
   TestFrameBufferLimit
   TestBlend
   TestUnboundBindings
+  TestUnboundAfterBound
   TestComputeUniformBlock
   TestStoragePreserve
   TestStorageFormat
@@ -108,10 +110,13 @@ cs_visual_tests=(TestIndexedDraw TestLoadOp TestDepthSample TestVertexPull TestR
 # TestBindingsDigest は digest を scripts/test-bindings-digest.sh が比べる。
 # TestBlendValue は native gate が tcs VM の player と .NET 実行で走らせ、digest を比べる。
 # TestXrCapture は XR セッションが要るので、偽の session を入れられる web の verify (A9) だけが走らせる。
-# TestUnboundStorage は fragment shader から storage texture に書き、native の backend では確かめていないので、web の verify (A9) だけが走らせる。
+# TestUnboundStorage は fragment shader から storage texture に書くので、web の verify (A9) だけが走らせる。
+# sdlgpu は graphics の storage texture を読むことしかできず、fragment shader から書けない。
+# sdlgpu は dispatch で渡さなかった slot を埋めず、SDL の assert で止まる。
+# vulkan backend は graphics の書ける storage texture を pipeline の layout に入れず、SPIR-V ではその binding が StructuredBuffer と重なるので、lavapipe が draw で落ちる。
+# metal と d3d12 では確かめていない。
 # TestDrawStateReuse は backend の bind の使い回しを見るので、native gate が vulkan で、apple gate が metal で、CI の windows job が d3d12 で、web の verify (A9) が webgpu で走らせる。
-# TestUnboundAfterBound は apple gate が metal で、web の verify (A9) が webgpu で走らせる。
-cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestKeyMods TestSaveDir TestXrCapture TestDrawStateReuse TestBindingsDigest TestBlendValue TestUnboundAfterBound TestUnboundStorage)
+cs_all_tests=("${cs_runtime_tests[@]}" "${cs_visual_tests[@]}" TestFixedDt TestReadbackCapture TestUiRender TestGamepad TestKeyMods TestSaveDir TestXrCapture TestDrawStateReuse TestBindingsDigest TestBlendValue TestUnboundStorage)
 
 # tests/cs の入力: tests/cs の *.cs 全部と cs-lib の実装ソース。
 cs_tests_sources() {
