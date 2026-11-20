@@ -203,6 +203,15 @@ internal sealed class FacadeGen
 
     // ------------------------------------------------------ opaque types
 
+    private static bool HasVersion(ApiType t)
+    {
+        foreach (var f in t.Fields)
+        {
+            if (f.Name == "Version") return true;
+        }
+        return false;
+    }
+
     private void EmitOpaque(ApiType t)
     {
         sb.Write(Doc(t.Doc).Replace("    ///", "///"));
@@ -213,7 +222,7 @@ internal sealed class FacadeGen
             sb.Write("    internal " + t.Name + "(int h) { H = h; }\n");
             foreach (var f in t.Fields)
             {
-                if (f.Name == "Version" && f.Type.Kind == LubTypeKind.Int) sb.Write("    public int Version => LubRuntime.ResourceVersion(H);\n");
+                if (f.Name == "Version" && f.Type.Kind == LubTypeKind.Int) sb.Write("    public int Version;\n");
                 else GenError.Report(t.Name + "." + f.Name + ": handle field is not supported by the facade");
             }
             sb.Write("}\n\n");
@@ -408,6 +417,7 @@ internal sealed class FacadeGen
                 b.Write(i3 + fn + "(" + string.Join(", ", args) + ");\n");
                 retExpr = OutValue(r, "out", null);
             }
+            VisitorCheck(ns, f, b, i3);
             foreach (var p in f.Params)
             {
                 if (p.IsOut) post.Write(OutAssign(p, i3, null));
@@ -428,21 +438,22 @@ internal sealed class FacadeGen
                 }
             }
             b.Write(i3 + "var st = " + fn + "(" + string.Join(", ", args) + ");\n");
-            // NOT_FOUND: 戻り値が null を許す (か戻り値が無い) なら null / 既定値、そうでなければ例外
-            var notFound = new Out();
-            notFound.Write(i3 + "if (st == LubNative.LUB_NOT_FOUND)\n" + i3 + "{\n");
-            foreach (var p in f.Params)
+            VisitorCheck(ns, f, b, i3);
+            // 見つからない (LUB_NOT_FOUND) の結果は null で、struct の record は 0 の値。
+            // scalar の戻り値と out は C API が書いたまま (tcs VM と tcs2c と同じ)。
+            if (hasRet && !r.IsScalar)
             {
-                if (p.IsOut) notFound.Write(i3 + "    " + p.Name + " = default!;\n");
+                b.Write(i3 + "if (st == LubNative.LUB_NOT_FOUND)\n" + i3 + "{\n");
+                foreach (var p in f.Params)
+                {
+                    if (!p.IsOut) continue;
+                    if (!p.Type.Nullable && p.Type.IsScalar) b.Write(OutAssign(p, i3 + "    ", null));
+                    else b.Write(i3 + "    " + p.Name + " = default!;\n");
+                }
+                b.Write(i3 + "    return " + (r.Nullable ? "null" : "default!") + ";\n" + i3 + "}\n");
+                b.Write(i3 + "LubRuntime.Check(st);\n");
             }
-            if (!hasRet) notFound.Write(i3 + "    return;\n");
-            else if (r.Nullable) notFound.Write(i3 + "    return null;\n");
-            else if (r.Kind == LubTypeKind.Bool) notFound.Write(i3 + "    return false;\n");
-            else if (r.Kind == LubTypeKind.Struct) notFound.Write(i3 + "    return default;\n");
-            else notFound.Write(i3 + "    throw new LubException(\"" + ns.Name + "." + f.Name + ": not found\");\n");
-            notFound.Write(i3 + "}\n");
-            b.Write(notFound.ToString());
-            b.Write(i3 + "LubRuntime.Check(st);\n");
+            else b.Write(i3 + "if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);\n");
             foreach (var p in f.Params)
             {
                 if (p.IsOut) post.Write(OutAssign(p, i3, p.Type.Kind == LubTypeKind.Record && p.Type.Nullable ? "has_" + p.HostName : null));
@@ -454,6 +465,22 @@ internal sealed class FacadeGen
         b.Write(i2 + "}\n" + i2 + "finally\n" + i2 + "{\n" + i3 + "a.End();\n" + i2 + "}\n");
         sb.Write(b.ToString());
         sb.Write(ind + "}\n\n");
+    }
+
+    // query の visitor (Func の引数) が例外を出した query は、fault にせず null を返し、戻り値と out は 0 にする (message は log に出す)。
+    // tcs VM の player と同じ。
+    private void VisitorCheck(ApiNamespace ns, ApiFunction f, Out b, string ind)
+    {
+        foreach (var v in f.Params)
+        {
+            if (v.IsOut || v.Type.Kind != LubTypeKind.Func) continue;
+            b.Write(ind + "if (LubRuntime.VisitorFailed(_" + v.HostName + "_user, \"" + ns.Name + "." + f.Name + "\"))\n" + ind + "{\n");
+            foreach (var p in f.Params)
+            {
+                if (p.IsOut) b.Write(ind + "    " + p.Name + " = default!;\n");
+            }
+            b.Write(ind + "    return" + (f.Return.Kind == LubTypeKind.Void ? "" : " default!") + ";\n" + ind + "}\n");
+        }
     }
 
     // 入力引数を native の引数列に写す。
@@ -693,7 +720,10 @@ internal sealed class FacadeGen
         sb.Write("internal static unsafe partial class LubNative\n{\n");
         foreach (var t in model.Types)
         {
-            if (t.Kind == "handle") sb.Write("    internal static " + t.Name + "? H_" + t.Name + "(int h) => h == 0 ? null : new " + t.Name + "(h);\n\n");
+            // handle の Version は ref を返した時の実効 version で、後の宣言では変わらない (tcs VM と tcs2c の ref と同じ)
+            if (t.Kind == "handle")
+                sb.Write("    internal static " + t.Name + "? H_" + t.Name + "(int h) => h == 0 ? null : new " + t.Name + "(h)"
+                    + (HasVersion(t) ? " { Version = LubRuntime.ResourceVersion(h) }" : "") + ";\n\n");
         }
         var sorted = SortedRecords();
         foreach (var t in sorted) EmitStruct(t);
@@ -715,7 +745,7 @@ internal sealed class FacadeGen
                 if (f.NoC) continue;
                 foreach (var p in f.Params)
                 {
-                    if (p.Type.Kind == LubTypeKind.Func) EmitTrampoline(TrampName(f, p), p.Type, 0);
+                    if (p.Type.Kind == LubTypeKind.Func) EmitTrampoline(TrampName(f, p), p.Type, 0, true);
                 }
             }
         }
@@ -1141,12 +1171,14 @@ internal sealed class FacadeGen
     {
         string c = C(t.Name);
         var funcs = Funcs(t);
-        for (int i = 0; i < funcs.Count; i++) EmitTrampoline(c + "_" + funcs[i].HostName, funcs[i].Type, i);
+        for (int i = 0; i < funcs.Count; i++) EmitTrampoline(c + "_" + funcs[i].HostName, funcs[i].Type, i, false);
     }
 
     // C から呼ばれる static 関数。
     // user は LubRuntime.CallbackBox の GCHandle。
-    private void EmitTrampoline(string name, TypeRef fn, int slot)
+    // query の visitor (visitor が true) は最初の例外を box に控え、その query の間は以後呼ばずに既定値を返す (query は VisitorCheck で null になる)。
+    // record に置く callback は slot ごとに 1 回だけ log して既定値で続ける。
+    private void EmitTrampoline(string name, TypeRef fn, int slot, bool visitor)
     {
         var ret = fn.FuncReturn!;
         string retC;
@@ -1187,7 +1219,7 @@ internal sealed class FacadeGen
         sb.Write("    internal static " + retC + " Tramp_" + name + "(" + string.Join(", ", args) + ")\n    {\n");
         sb.Write("        var box = LubRuntime.CallbackBox.From(user);\n");
         sb.Write("        var cb = (" + delegateType + "?)box.Slots[" + slot + "];\n");
-        sb.Write("        if (cb == null) return" + (def != "" ? " " + def : "") + ";\n");
+        sb.Write("        if (cb == null" + (visitor ? " || box.Failure != null" : "") + ") return" + (def != "" ? " " + def : "") + ";\n");
         sb.Write("        try\n        {\n");
         string call = "cb(" + string.Join(", ", conv) + ")";
         if (ret.Kind == LubTypeKind.Void) sb.Write("            " + call + ";\n");
@@ -1195,7 +1227,8 @@ internal sealed class FacadeGen
         else if (ret.Kind == LubTypeKind.Double) sb.Write("            return (float)" + call + ";\n");
         else sb.Write("            return " + call + ";\n");
         sb.Write("        }\n        catch (Exception e)\n        {\n");
-        sb.Write("            box.Fail(" + slot + ", \"" + name + "\", e);\n");
+        if (visitor) sb.Write("            box.Failure = e;\n");
+        else sb.Write("            box.Fail(" + slot + ", \"" + name + "\", e);\n");
         if (def != "") sb.Write("            return " + def + ";\n");
         sb.Write("        }\n    }\n\n");
     }

@@ -4,7 +4,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -231,8 +230,14 @@ internal static unsafe class LubRuntime
         var t = s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? s[2..] : s;
         if (t.Length == 0) throw new LubException("bit mask: empty hex string");
         if (t.Length > 16) throw new LubException($"bit mask: more than 16 hex digits '{s}'");
-        if (!ulong.TryParse(t, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var v))
-            throw new LubException($"bit mask: invalid hex '{s}'");
+        // ulong.TryParse は末尾の NUL を読み飛ばすので、桁は 1 文字ずつ見る
+        ulong v = 0;
+        foreach (var c in t)
+        {
+            var d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+            if (d < 0) throw new LubException($"bit mask: invalid hex '{s}'");
+            v = v << 4 | (uint)d;
+        }
         return v;
     }
 
@@ -380,6 +385,10 @@ internal static unsafe class LubRuntime
             logged = new bool[slots.Length];
         }
 
+        // query の visitor の最初の例外。
+        // 控えた後、その query の間は visitor を呼ばない。
+        public Exception? Failure;
+
         public static CallbackBox From(void* user) =>
             (CallbackBox)GCHandle.FromIntPtr((IntPtr)user).Target!;
 
@@ -390,6 +399,15 @@ internal static unsafe class LubRuntime
             logged[slot] = true;
             Console.Error.WriteLine($"lub: callback {name} failed: {e}");
         }
+    }
+
+    // query の visitor が例外を出したら、message を log に出して true を返す (query は fault にせず null を返す。tcs VM の player と同じ)。
+    internal static bool VisitorFailed(void* user, string what)
+    {
+        var e = user == null ? null : CallbackBox.From(user).Failure;
+        if (e == null) return false;
+        Console.Error.WriteLine($"lub: {what} visitor: {e}");
+        return true;
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]

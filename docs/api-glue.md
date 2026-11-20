@@ -118,6 +118,9 @@ tcs2c の経路でも、entry の callback の fault は `OnError` に渡る (me
 runtime の関数が呼んでいる callback (query の visitor など) の中の fault は、tcs2c の経路では process を止める。
 record の中の callback (`WorldCallbacks` など、runtime が持ち続ける物) は closure を `tvm_hold` で持ち、runtime が手放すとき (`user_release`) に放す。
 その fault は callback ごとに 1 回だけ log に出し、既定の値で続ける。
+.NET の facade も同じく、query の visitor の例外は query を null にして message を log に出し、record の中の callback の例外は callback ごとに 1 回だけ log に出して既定の値で続ける。
+見つからない (`LUB_NOT_FOUND`) 結果は、tcs VM の host の関数、tcs2c の接続コード、.NET の facade のどれでも null (struct の record は 0 の値) で、int / float / bool の戻り値と out は C API が書いた値になる。
+handle の `Version` は ref を返した時の実効 version で、後の宣言では変わらない (3 つの経路とも同じ)。
 `lub-gen vm --source Game.cs` はそのゲームが使う関数だけを出す (`scripts/verify-vm-binding.sh` が偽の C API で使う)。
 
 hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当てる) で、当てられない編集と `.tcsb` の書き直しは
