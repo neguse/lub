@@ -1,6 +1,7 @@
 // Sys.ProfileLines で数えている間の、pass ごとの GPU の時間と draw の数 (Sys.TakeGpuPasses)。
-// 毎 frame、MainTex へ draw を 2 つ出す pass を描き、数え始めてから 6 frame 後に、描き先 main、draw 2 つの pass が届くことを見る。
+// 毎 frame、MainTex へ draw を 2 つ出す pass を描き、数え始めてから 6 frame 後から、描き先 main、draw 2 つの pass が届くことを見る。
 // 時間は、測れる backend (vulkan、d3d12、timestamp-query のある webgpu) では 0 以上、測れない backend では -1 で、どちらだったかを "gpu pass time: timed" / "untimed" と出す (CI は d3d12 と web で timed を確かめる)。
+// 測れる backend でも、時刻が届く前に回ってきた frame の pass は -1 で届く (GPU が遅れるほど増える) ので、測れた pass が届くまで waitFrames まで待つ。
 using System;
 using Lub;
 
@@ -14,7 +15,11 @@ public static class TestGpuPassTime
         + "}\n";
     const string Fs = "[shader(\"fragment\")] float4 fs_main() : SV_Target { return float4(0.5, 0.5, 0.5, 1); }\n";
 
+    const int waitFrames = 60;
     static int frame;
+    static int timed;
+    static int untimed;
+    static string got = "";
 
     public static void OnInit()
     {
@@ -35,9 +40,6 @@ public static class TestGpuPassTime
         Gfx.EndPass();
         if (frame < 7)
             return;
-        var timed = 0;
-        var untimed = 0;
-        var got = "";
         foreach (var p in Sys.TakeGpuPasses())
         {
             got += p.Target + " " + p.Ms + "ms " + p.Draws + " draws, ";
@@ -48,10 +50,12 @@ public static class TestGpuPassTime
             else
                 untimed++;
         }
+        if (timed == 0 && frame < waitFrames)
+            return;
         Sys.ProfileLines(false);
-        if (timed + untimed == 0 || (timed > 0 && untimed > 0))
+        if (timed + untimed == 0)
         {
-            Console.WriteLine("FAIL expected passes into main with 2 draws, all timed or all untimed: " + got);
+            Console.WriteLine("FAIL expected passes into main with 2 draws: " + got);
             App.Quit(1);
             return;
         }
