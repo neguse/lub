@@ -8,19 +8,17 @@ inputs:
 runs:
   using: composite
   steps:
-    # 入る .deb は、package の名前と、runner の image に入っている物で決まる。
-    # 同じ時期でも runner によって image の版が違うので、restore-keys は image の版の手前までにし、別の版の image で取った .deb も使う
+    # 入る .deb は、package の名前と、runner の image に入っている物で決まる (image の版が違うと依存の版が合わない)
     - id: key
       shell: bash
       env:
         PACKAGES: ${{ inputs.packages }}
-      run: echo "prefix=apt-${{ runner.arch }}-${ImageOS:-}-$(echo $PACKAGES | git hash-object --stdin)-" >> "$GITHUB_OUTPUT"
+      run: echo "key=apt-${{ runner.arch }}-${ImageOS:-}-${ImageVersion:-}-$(echo $PACKAGES | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
 
     - uses: actions/cache@v4
       with:
         path: ~/.cache/lub-apt
-        key: ${{ steps.key.outputs.prefix }}${{ env.ImageVersion }}
-        restore-keys: ${{ steps.key.outputs.prefix }}
+        key: ${{ steps.key.outputs.key }}
 
     - name: Install the packages
       shell: bash
@@ -35,21 +33,17 @@ runs:
         install() {
           shopt -s nullglob
           local debs=("$dir"/*.deb)
-          [ -f "$dir/done" ] && { [ ${#debs[@]} = 0 ] || sudo dpkg --refuse-downgrade -i "${debs[@]}"; }
+          [ -f "$dir/done" ] && { [ ${#debs[@]} = 0 ] || sudo dpkg -i "${debs[@]}"; }
         }
         install && exit 0
-        # .deb が無いか、この image に合わない (依存が足りない、入っている物より古い) ときは、取り直す
+        # .deb が無いときは mirror から取って入れ、取った .deb を置く
         rm -rf "$dir"
         mkdir -p "$dir"
         # runner の image にある Google Chrome の apt source は、metadata の Hash Sum mismatch を時々出して update ごと落とす。ここでは使わない
         sudo rm -f /etc/apt/sources.list.d/google-chrome*
         sudo apt-get update
         # shellcheck disable=SC2086
-        sudo apt-get install -y --no-install-recommends --fix-broken --download-only -o Dir::Cache::archives="$dir" $PACKAGES
+        sudo apt-get install -y --no-install-recommends --fix-broken -o Dir::Cache::archives="$dir" -o APT::Keep-Downloaded-Packages=true $PACKAGES
         sudo chown -R "$(id -u)" "$dir"
         rm -rf "$dir/partial" "$dir/lock"
         touch "$dir/done"
-        install
-        # dpkg が途中まで入れた物が残っていても、apt の目で揃っていることを確かめる
-        # shellcheck disable=SC2086
-        sudo apt-get install -y --no-install-recommends --no-download $PACKAGES
