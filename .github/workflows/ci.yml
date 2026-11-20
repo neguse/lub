@@ -245,12 +245,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      # 起動したての runner は、compiler を初めて動かすのに 20 秒ほどかかる (configure の最初の compile がそれを払う)。
+      # 後の準備 (submodule、cache の復元) の間に、裏で一度動かしておく
+      - name: Warm up the compilers
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/warm"
+          cd "$RUNNER_TEMP/warm"
+          printf 'int main(void) { return 0; }\n' > warm.c
+          cp warm.c warm.cpp
+          (
+            cl /nologo warm.c /Fe:warm-c.exe
+            cl /nologo warm.cpp /Fe:warm-cxx.exe
+          ) > warm.log 2>&1 &
+
       # submodule は要るものだけを並べて取る
       - name: Submodules
         shell: bash
         run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr
-
-      - uses: ilammy/msvc-dev-cmd@v1
 
       # backend_vulkan.c のビルドに Vulkan headers + loader (vulkan-1.lib) が要る。
       # runner に Vulkan SDK は無いので Khronos リポジトリから該当コンポーネントだけ組み立てる (VULKAN_SDK env を設定し find_package(Vulkan) が拾う)。
@@ -1096,6 +1110,30 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # 一式はこの job で作るので、第三者の action は commit で固定する
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        if: runner.os == 'Windows'
+        with:
+          arch: ${{ matrix.arch }}
+
+      # 起動したての runner は、compiler を初めて動かすのに 20 秒ほどかかる (configure の最初の compile がそれを払う)。
+      # 後の準備 (submodule、cache の復元) の間に、裏で一度動かしておく
+      - name: Warm up the compilers
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/warm"
+          cd "$RUNNER_TEMP/warm"
+          printf 'int main(void) { return 0; }\n' > warm.c
+          cp warm.c warm.cpp
+          (
+            cl /nologo warm.c /Fe:warm-c.exe
+            cl /nologo warm.cpp /Fe:warm-cxx.exe
+            clang-cl /nologo warm.c /Fe:warm-clang-c.exe
+            clang-cl /nologo warm.cpp /Fe:warm-clang-cxx.exe
+            rustc -V
+          ) > warm.log 2>&1 &
+
       # submodule は要るものだけを並べて取る
       - name: Submodules
         run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr third_party/jamo
@@ -1178,12 +1216,6 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: 1
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
         run: brew install bash ninja
-
-      # 一式はこの job で作るので、第三者の action は commit で固定する
-      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
-        if: runner.os == 'Windows'
-        with:
-          arch: ${{ matrix.arch }}
 
       # Windows は image に無い .NET の SDK を毎回取るので、install 先を決めて cache する
       - name: .NET install dir (Windows)
