@@ -10,10 +10,7 @@ runtime は C/C++ と既存ライブラリで組む。
 特定のアセット形式や GUI editor に依存せず、ゲームを構成する状態、描画、
 入力、物理、音、debug 情報をコードから制御できる環境を目指す。
 
-現時点の実装は SDL3 + Slang + tcs VM を基盤にし、GPU backend は
-native がプラットフォーム直接実装 (default — Windows: D3D12、
-Linux: Vulkan、macOS / iOS: Metal) と SDL3 GPU API (`sdlgpu`)、web が
-webgpu.h 直接実装。
+現時点の実装は SDL3 + Slang + tcs VM を基盤にし、GPU backend は native がプラットフォームごとの直接実装 (D3D12、Vulkan、Metal) と SDL3 GPU API (`sdlgpu`)、web が webgpu.h 直接実装。
 対応プラットフォームは Linux x86_64、Windows x86_64、macOS arm64、iOS arm64、Android arm64 (Meta Quest。tcs2c で C にしたゲームだけ。[docs/android.md](docs/android.md))、WebAssembly/WebGPU。
 
 ## ドキュメント
@@ -112,8 +109,7 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
 
 依存:
 - C# の変換は TinyC# (`tcs/`) が行う。
-  lub は実行ファイルの隣の `tcs/tcs` (`scripts/build-tcs-native.sh` が作る C の tcs) を最初に使い、無ければ PATH の dotnet SDK で `tcs/` の compiler を動かす。
-  C の tcs を使うなら実行に dotnet は要らない (作るのには dotnet SDK が要る)。
+  lub がどの tcs を使うか (dotnet が要るかどうか) は [docs/manual/08-csharp.md](docs/manual/08-csharp.md) の「dotnet の無い環境 (C の tcs)」にある。
 
 サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
 (`<Entry>.cs` + `<Entry>.csproj` + `data/`)。
@@ -174,25 +170,20 @@ scripts/run-golden.sh --update    # golden 画像を再生成 (描画意図的�
 scripts/run-golden.sh --test TestIndexedDraw --backend sdlgpu
 ```
 
-Linux と Windows は機材非依存の CPU rasterizer を強制するので capture が
-確定的になり、`cmp -s` で完全一致判定する。Linux は lavapipe + xvfb で
-sdlgpu と vulkan を、Windows (git bash) は WARP (`LUB_D3D12_WARP=1`) で
-d3d12 をチェックする。macOS は metal を実 GPU で描くので、Linux の golden
-(`*_sdlgpu.png`) と許容差で比べる (`scripts/png-diff.py`)。
+OS ごとにどの backend をどう比べるか、byte 一致がどの条件で成り立つかは、`scripts/run-golden.sh` の先頭のコメントにある。
 
 ## Backend 切替
 
 lub は 5 つの GPU backend を持ち、同一 API で動く:
 
-- `d3d12` — Windows の既定。D3D12 直接実装
-  (設計は [docs/d3d12-backend.md](docs/d3d12-backend.md))
-- `vulkan` — Linux の既定。Vulkan 直接実装 (`src/backend_vulkan.c`)。Windows でも
-  Vulkan SDK が見つかる build では選べる。
-  `LUB_BACKEND=openxr` はこの backend で OpenXR の headset に描く (Linux / Android。Android の既定。[docs/manual/07-xr.md](docs/manual/07-xr.md))
-- `metal` — macOS / iOS の既定。Metal 直接実装
-  (設計は [docs/metal-backend.md](docs/metal-backend.md))
+- `d3d12` — D3D12 直接実装 (設計は [docs/d3d12-backend.md](docs/d3d12-backend.md))
+- `vulkan` — Vulkan 直接実装 (`src/backend_vulkan.c`)。
+  `openxr` はこの backend で OpenXR の headset に描く ([docs/manual/07-xr.md](docs/manual/07-xr.md))
+- `metal` — Metal 直接実装 (設計は [docs/metal-backend.md](docs/metal-backend.md))
 - `sdlgpu` — SDL3 GPU API 経由の実装 (Windows / Linux の代替 backend)
-- `webgpu` — web build の実体 (webgpu.h 直接)。web では backend 指定は無視される
+- `webgpu` — web build の実体 (webgpu.h 直接)
+
+どの platform で選べるかと、未指定のときの既定は、API reference の `ConfigOpts.Backend` にある。
 
 設計記録は [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md)、
 整理方針は [docs/log/2026-07-07-backend-consolidation.md](docs/log/2026-07-07-backend-consolidation.md)。

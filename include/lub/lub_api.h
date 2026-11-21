@@ -560,7 +560,7 @@ typedef struct LubXrInput {
 // App.Config のオプション (OnInit 内でのみ有効)。
 typedef struct LubConfigOpts {
   LubStr
-      backend; // len 0 = 無し // GPU backend。 native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) / "sdlgpu"。 web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。
+      backend; // len 0 = 無し // GPU backend。 native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) / "openxr" (vulkan で OpenXR の headset に描く。Linux と Android の build のみで、Android の既定) / "sdlgpu"。 web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。
   bool has_width;
   int32_t width; // ウィンドウ幅 (px)。 `Height` とセットで指定する。
   bool has_height;

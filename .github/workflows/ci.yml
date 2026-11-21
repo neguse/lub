@@ -70,8 +70,8 @@ jobs:
         run: bash scripts/format.sh --check
 
   # Linux regression gate: scripts/native-gate.sh (CI と手動 pre-push の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> サンプルの変換 -> 開発の道具の検査。
-  # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は mesa の version に依存し、runner の mesa はローカル生成の golden と一致しない。
-  # CI の視覚 golden gate は windows job (WARP)、lavapipe golden はローカル pre-push の gate。
+  # 視覚 golden の byte 比較は --skip-golden で外している (理由は scripts/run-golden.sh の先頭のコメント)。
+  # CI の視覚 golden gate は windows job (WARP) と macos job、lavapipe golden はローカル pre-push の gate。
   # mesa を container 等で pin できたら有効化する。
   # native gate を部分 (--part) ごとの job に分けて並べる。lider の runtime テストは 2 つに分ける (LIDER_SHARD)。
   linux:
@@ -372,7 +372,7 @@ jobs:
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 scripts/test-tcs-process-cleanup.sh ./build-release/lub.exe
 
       # どの D3D12 runtime(Agility SDK か inbox か)と WARP が載ったか、backend が見る feature flag を log に残す。
-      # WARP は runner の inbox 版を使う (golden はその出力で撮ってある。NuGet 版は LSB が違う)。
+      # WARP は runner の inbox 版を使う (理由は scripts/run-golden.sh の先頭のコメント)。
       - name: d3d12 runtime info
         if: matrix.part == 'checks'
         shell: bash

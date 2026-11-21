@@ -3,7 +3,7 @@
 lub のゲームコードは C# で書く。
 使うのは [tcs (TinyC#)](https://github.com/neguse/lub/tree/master/tcs) — C# のサブセットを tcs VM の bytecode (`.tcsb`) に変換するコンパイラ (release 向けに C にも変換できる) で、web のサイトの入口ではエディタ (lider) の player に組み込んだ tcs (tcs2c で C にした tcs) がブラウザ内で、native では lub が `tcs` を動かす。
 dotnet が無い環境では、tcs2c で C にした tcs (C の tcs) を使う。
-実行ファイルの隣に C の tcs があれば、dotnet があってもそちらを先に使う (後述)。
+実行ファイルの隣に C の tcs があれば、dotnet があってもそちらを先に使う (探す順は後述)。
 tcs の compiler は TinyC# 自身で書いた 1 つの実装で、dotnet、C の tcs、ブラウザのどれで動かしても同じ出力になる。
 
 「フル C# が動く」わけではない。TinyC# は C# 構文の DSL であり、モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン / nullable 型チェック) を保ちつつ、tcs VM と C に素直に落ちる小さな核だけをサポートする。
@@ -141,7 +141,7 @@ scripts/run-cs-sample.sh 09_breakout --check      # 診断のみ (警告があ�
 scripts/run-cs-sample.sh 09_breakout --vm         # bytecode にする (samples/09_breakout/.lub/Breakout09.tcsb)
 ```
 
-`lub check <entry>.csproj` は `lub <entry>.csproj` と同じ入力 (entry のディレクトリの `*.cs` + cs-lib の実装 + stub) を tcs の `check` に渡す。
+`lub check <entry>.csproj` は `lub <entry>.csproj` と同じ入力 (下の「csproj から lub が読むもの」) と stub を tcs の `check` に渡す。
 診断が無ければ終了コード 0、あれば診断を出して 1 で終わる。
 画面が無い環境でも使える。
 
@@ -149,21 +149,34 @@ scripts/run-cs-sample.sh 09_breakout --vm         # bytecode にする (samples/
 
 tcs は compiler も CLI も TinyC# 自身で書いてあり、tcs2c で C にした実行ファイル (C の tcs) にできる。
 C の tcs は dotnet の tcs と同じ実装で、変換の結果も hot reload の差分も同じになる。
-lub は実行ファイルの隣の `tcs/tcs` を最初に使う。
-release の一式は `bin/tcs/` に入っていて、dotnet は要らない。
+lub が使う tcs は次の順に探す。
 
+1. 環境変数 `LUB_TCS` (tcs を動かす command。空白で区切り、quote は読まない)
+2. 実行ファイルの隣の `tcs/tcs` (C の tcs)
+3. PATH に dotnet があれば、checkout の `tcs/` の compiler を `dotnet run` で動かす
+4. PATH に dotnet が無ければ、checkout の `tcs/SelfHost/out/native/tcs` (tcs の `SelfHost/native.sh` の出力)
+
+release の一式は `bin/tcs/` に C の tcs が入っていて、dotnet は要らない。
 手元の build では `scripts/build-tcs-native.sh <build-dir>` が `<build-dir>/tcs` に作る (作るのに dotnet SDK と C compiler が要る)。
-`tcs/tcs` が無いときは、PATH に dotnet があれば `tcs` を `dotnet run` で動かし、無ければ `tcs/SelfHost/out/native/tcs` (tcs の `SelfHost/native.sh` の出力) を使う。
 
 web のサイトの入口の変換も、同じ C の tcs をエディタ (lider) の player に組み込んだもの (`lider/README.md`) が行い、同じ増分 session で hot reload する。
 何が生きたまま反映されて何が作り直しになるかは「ライフサイクルと hot reload」
 の章を参照。
 
-csproj は lub にとっては entry 指定 (basename = entry class、入力 = 同
-ディレクトリ以下の全 `*.cs`。`bin/` `obj/` と `.` で始まるディレクトリは
-除く) でしかないが、dotnet 側 (Rider / VS Code) では本物のプロジェクトとして
-機能する: stub と TinySystem を参照し、TinyC#
-サブセット逸脱は Roslyn Analyzer が IDE 上で TCS 診断として出す。
+## csproj から lub が読むもの
+
+lub は MSBuild で csproj を評価せず、次のものだけを読む。
+
+- csproj の file 名の basename が entry class (`Breakout09.csproj` なら `Breakout09`)
+- 入力は、csproj のディレクトリの下の `*.cs` 全部 (`bin/`、`obj/` と `.` で始まるディレクトリは除く) と、cs-lib の実装 (`cs-lib/lub/*.cs`、`cs-lib/lubx/*.cs`)
+- `Lub="Source"` を付けた `ProjectReference` の参照先のディレクトリの下の `*.cs` も入力に足す (参照先の参照も辿る。`$(...)` の property を含む path は読まない)
+- `*.ref.cs` は宣言だけの参照 (tcs の `--ref`) として渡す (隣に native の library を置いた native の拡張は `docs/api-glue.md`)
+
+```xml
+<ProjectReference Include="../shared/Shared.csproj" Lub="Source" />
+```
+
+dotnet 側 (Rider / VS Code) では csproj は本物のプロジェクトとして働く: stub と TinySystem を参照し、TinyC# のサブセットから外れた書き方は Roslyn Analyzer が IDE 上で TCS 診断として出す。
 
 ## .NET で実行する
 

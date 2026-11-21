@@ -274,7 +274,7 @@ public class XrInput
 /// <summary>App.Config のオプション (OnInit 内でのみ有効)。</summary>
 public class ConfigOpts
 {
-    /// <summary>GPU backend。 native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) / "sdlgpu"。 web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。</summary>
+    /// <summary>GPU backend。 native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) / "openxr" (vulkan で OpenXR の headset に描く。Linux と Android の build のみで、Android の既定) / "sdlgpu"。 web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。</summary>
     public string? Backend;
     /// <summary>ウィンドウ幅 (px)。 `Height` とセットで指定する。</summary>
     public int? Width;

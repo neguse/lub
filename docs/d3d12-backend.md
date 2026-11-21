@@ -23,8 +23,8 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
   Windows 10 1909 以降。起動時に `d3d12: runtime:` で載った runtime の path、
   `d3d12: enhanced barriers:` で feature flag を log する。
 - WARP: `-DLUB_FETCH_WARP=ON` で NuGet `Microsoft.Direct3D.WARP` の
-  `d3d10warp.dll` を exe の隣に置ける(新しい WARP を試すとき用)。CI と
-  golden は runner の inbox WARP で、NuGet 版とは出力の LSB が違う。
+  `d3d10warp.dll` を exe の隣に置ける(新しい WARP を試すとき用)。
+  golden との関係は `scripts/run-golden.sh` の先頭のコメント。
 - HWND は SDL3 window の `SDL_PROP_WINDOW_WIN32_HWND_POINTER`。
 - Debug build または `LUB_D3D12_DEBUG=1` で debug layer を有効化(Agility SDK
   の device factory にも設定する)。WARNING 以上の validation メッセージを
@@ -122,8 +122,6 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
 
 ## Golden test
 
-`scripts/run-golden.sh` は Windows (git bash) では d3d12 backend を
-WARP(`LUB_D3D12_WARP=1`、Microsoft のソフトウェアラスタライザ)で回し、
-`tests/golden/<name>_d3d12.png` と byte 比較する。lavapipe と同じく
-機材・ドライバ非依存の CPU rasterizer なので `cmp -s` の完全一致が成立する。
+`scripts/run-golden.sh` は Windows (git bash) では d3d12 backend を WARP (`LUB_D3D12_WARP=1`、Microsoft のソフトウェアラスタライザ) で回し、`tests/golden/<name>_d3d12.png` と byte 比較する。
+byte 一致が成り立つ条件は `scripts/run-golden.sh` の先頭のコメントにある。
 実 GPU での動作確認は別途 capture 目視で行う。
