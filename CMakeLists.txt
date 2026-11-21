@@ -366,11 +366,12 @@ if(TARGET lub)
 endif()
 
 # tcs VM の player (src/vm_player.c): tcs vm が作った .tcsb を tcs VM で動かす。
-# VM と、その runtime のうち tcs_runtime に無いもの (書式、並べ替え、型の表)。
+# VM と、その runtime のうち tcs_runtime に無いもの (書式、数の読み取り、並べ替え、型の表)。
 file(GLOB TCSVM_SRC CONFIGURE_DEPENDS tcs/tcsvm/vm/*.c)
 list(FILTER TCSVM_SRC EXCLUDE REGEX "tcsvm_main\\.c$")
 add_library(tcsvm_lib STATIC ${TCSVM_SRC}
   tcs/runtime/fmt/printf.c
+  tcs/runtime/fmt/parse.c
   tcs/runtime/sort/tcs_sort.c
   tcs/runtime/model/tcs_model.c
   tcs/runtime/model/tcs_walk.c)

@@ -1,6 +1,7 @@
-/* TinyC# の数値の文字列化。
+/* TinyC# の数値の文字列化と、文字列の数としての読み取り。
    .NET の float.ToString() と float.ToString(format)、int.ToString(format) (InvariantCulture) と同じ文字列を返す。
-   tcs2c の生成 C と tcs VM が使う。 */
+   int.Parse(string) と float.Parse(string) (InvariantCulture) と同じ文字列を受けて同じ値を返す。
+   tcs2c の生成 C と tcs VM が使う。読み取り (parse.c) は runtime/utf8 を使う。 */
 #ifndef TCS_FMT_H
 #define TCS_FMT_H
 
@@ -50,5 +51,17 @@ enum { TCS_PRINTF_I32 = 0, TCS_PRINTF_F32 = 1, TCS_PRINTF_STR = 2 };
 TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
                                 int32_t i, float f, const char *s, size_t slen,
                                 char *out, const char **error);
+
+/* text の length byte を .NET の int.Parse(string) (NumberStyles.Integer) と同じ規則で読む。
+   前後の空白 (空白と HT、LF、VT、FF、CR)、先頭の符号 1 つ、1 桁以上の 10 進の数字で、末尾の NUL は読み飛ばす。
+   読めて int の範囲に入れば 1 を返して *out に値を書き、それ以外は 0 を返す */
+TCS_FMT_API int tcs_parse_i32(const char *text, size_t length, int32_t *out);
+
+/* text の length byte を .NET の float.Parse(string) (NumberStyles.Float | AllowThousands) と同じ規則で読む。
+   int に加えて小数点 1 つ、指数 (e と符号と数字)、小数点より前で数字の後の桁区切り ','。
+   数として読めなければ、前後の空白 (char.IsWhiteSpace) を除いた Infinity と NaN の綴り (大文字小文字を問わず、前に符号 1 つ)。
+   値は最も近い float (ちょうど中間は仮数が偶数の方、範囲を超えれば ±∞)。
+   読めれば 1 を返して *out に値を書き、それ以外は 0 を返す */
+TCS_FMT_API int tcs_parse_f32(const char *text, size_t length, float *out);
 
 #endif

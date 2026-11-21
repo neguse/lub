@@ -103,11 +103,6 @@ static bool tcs_string_ends_with(TcsString *s, TcsString *suffix) {
                 suffix->length) == 0;
 }
 
-static int tcs_is_space(unsigned char c) {
-  return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' ||
-         c == '\r';
-}
-
 static TcsString *tcs_string_trim(TcsString *s) {
   size_t from;
   size_t to;
@@ -399,77 +394,33 @@ static TcsString *tcs_string_join_enum(TcsString *sep, const int32_t *data,
   return result;
 }
 
-/* int.Parse の 10 進 (前後空白可)。失敗は false を返し、呼んだ側が fault にする */
-static bool tcs_parse_i32(TcsString *s, int32_t *out) {
-  /* NumberStyles.Integer: 前後の空白、先頭の符号、1 桁以上の 10 進数字 */
-  const unsigned char *p;
-  size_t i = 0;
-  size_t digits = 0;
-  long long value = 0;
-  bool negative = false;
-  tcs_nonnull(s);
-  p = s->data;
-  while (i < s->length && tcs_is_space(p[i]))
-    i++;
-  if (i < s->length && (p[i] == '+' || p[i] == '-'))
-    negative = p[i++] == '-';
-  for (; i < s->length && p[i] >= '0' && p[i] <= '9'; i++, digits++) {
-    value = value * 10 + (p[i] - '0');
-    if (value > 2147483648LL)
-      return false;
-  }
-  while (i < s->length && tcs_is_space(p[i]))
-    i++;
-  if (digits == 0 || i != s->length)
-    return false;
-  if (negative)
-    value = -value;
-  if (value > INT32_MAX)
-    return false;
-  *out = (int32_t)value;
-  return true;
-}
-
+/* int.Parse / float.Parse: runtime/fmt の読み取り。読めない文字列は fault */
 static int32_t tcs_parse_i32_or_fault(TcsString *s) {
   int32_t value;
-  if (!tcs_parse_i32(s, &value))
+  tcs_nonnull(s);
+  if (!tcs_parse_i32((const char *)s->data, s->length, &value))
     tcs_fault("number-format");
   return value;
 }
 
-static bool tcs_parse_f32(TcsString *s, float *out) {
-  char buffer[128];
-  char *end;
-  tcs_nonnull(s);
-  if (s->length >= sizeof(buffer))
-    return false;
-  memcpy(buffer, s->data, s->length);
-  buffer[s->length] = '\0';
-  if (strlen(buffer) != s->length)
-    return false;
-  *out = strtof(buffer, &end);
-  while (*end != '\0' && tcs_is_space((unsigned char)*end))
-    end++;
-  return end != buffer && *end == '\0';
-}
-
 static float tcs_parse_f32_or_fault(TcsString *s) {
   float value;
-  if (!tcs_parse_f32(s, &value))
+  tcs_nonnull(s);
+  if (!tcs_parse_f32((const char *)s->data, s->length, &value))
     tcs_fault("number-format");
   return value;
 }
 
 /* int.TryParse / float.TryParse: (found, value or fallback)。null の string は失敗 (Parse は null の fault) */
 static bool tcs_try_parse_i32(TcsString *s, int32_t *out, int32_t fallback) {
-  if (s != NULL && tcs_parse_i32(s, out))
+  if (s != NULL && tcs_parse_i32((const char *)s->data, s->length, out))
     return true;
   *out = fallback;
   return false;
 }
 
 static bool tcs_try_parse_f32(TcsString *s, float *out, float fallback) {
-  if (s != NULL && tcs_parse_f32(s, out))
+  if (s != NULL && tcs_parse_f32((const char *)s->data, s->length, out))
     return true;
   *out = fallback;
   return false;
