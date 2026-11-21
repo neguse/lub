@@ -88,7 +88,6 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
   hash を名前にした `<key>.lubshader` として 1 key = 1 file で保存する。
 - 読む場所は cwd の `cache/shader/`。hit すれば Slang を持つ player もそれを使う。
 - 埋めるのは `lub export ios`(または `macos`)。ゲームの `OnExport` が使った shader を Metal と sdlgpu の target で compile し、snapshot の `cache/shader/` に書く(`docs/manual/03-lifecycle.md`)。MSL はテキストなので、export は Mac でなくても動く。足りない shader は、Slang を持たない player で key を名指しする error になる。
-- 位置付けは `docs/log/2026-07-23-packaging-design.md` の生成キャッシュ。
 
 ## iOS の app
 

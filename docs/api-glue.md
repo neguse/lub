@@ -2,7 +2,8 @@
 
 lub のゲームは TinyC# で書く。tcs の出力と .NET 実行が同じ runtime API
 面を見るための接合部と、その上の実装ライブラリの供給方針をまとめる。
-記述の正は C# stub(`docs/log/2026-09-04-language-architecture-design.md`)。
+記述の正は C# stub(`cs-lib/lub_stub.cs`)。
+C# の struct、整数の enum、out、delegate は C の ABI にほぼ 1 対 1 で対応し、記述の検査は tcs の compiler(stub をそのまま `--ref` で読む)と lub-gen の attribute に任せられる。
 
 ## 層構成
 

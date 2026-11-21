@@ -31,7 +31,7 @@ cmake --build build -j
 ```
 
 macOS (Xcode か Command Line Tools。iOS の app は
-[docs/metal-backend.md](docs/metal-backend.md)):
+[metal-backend.md](metal-backend.md)):
 
 ```sh
 cmake -S . -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -47,7 +47,7 @@ cmake --build build -j
 ```
 
 Release build は手順を固定するため、通常は script 経由で行う
-(詳細は [docs/release-build.md](docs/release-build.md)):
+(詳細は [release-build.md](release-build.md)):
 
 ```sh
 bash scripts/build-release.sh                                              # Linux
@@ -109,7 +109,7 @@ lavapipe が無いときは、その機械の Vulkan driver と `SDL_VIDEO_DRIVE
 lavapipe があって画面も `xvfb-run` も無いときは、lavapipe と `SDL_VIDEO_DRIVER=offscreen` で走らせる。
 Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
 
-スクリーンショット capture (PNG 出力、native のみ):
+スクリーンショット capture (PNG 出力):
 
 ```sh
 # 30 フレーム描画後にキャプチャして即終了
@@ -138,7 +138,7 @@ bash scripts/run-sprites-bench.sh                                              #
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1  # Windows
 ```
 
-score の見方や `-NoBuild` / backend 切替は [docs/sprites-bench.md](docs/sprites-bench.md) を参照。
+score の見方や `-NoBuild` / backend 切替は [sprites-bench.md](sprites-bench.md) を参照。
 
 ### Golden image diff (回帰テスト)
 
@@ -159,17 +159,14 @@ d3d12 をチェックする。macOS は metal を実 GPU で描くので、Linux
 lub は 5 つの GPU backend を持ち、同一 API で動く:
 
 - `d3d12` — Windows の既定。D3D12 直接実装
-  (設計は [docs/d3d12-backend.md](docs/d3d12-backend.md))
+  (設計は [d3d12-backend.md](d3d12-backend.md))
 - `vulkan` — Linux の既定。Vulkan 直接実装 (`src/backend_vulkan.c`)。Windows でも
   Vulkan SDK が見つかる build では選べる。
-  `LUB_BACKEND=openxr` はこの backend で OpenXR の headset に描く (Linux / Android。Android の既定。[docs/manual/07-xr.md](docs/manual/07-xr.md))
+  `LUB_BACKEND=openxr` はこの backend で OpenXR の headset に描く (Linux / Android。Android の既定。[manual/07-xr.md](manual/07-xr.md))
 - `metal` — macOS / iOS の既定。Metal 直接実装
-  (設計は [docs/metal-backend.md](docs/metal-backend.md))
+  (設計は [metal-backend.md](metal-backend.md))
 - `sdlgpu` — SDL3 GPU API 経由の実装 (Windows / Linux の代替 backend)
 - `webgpu` — web build の実体 (webgpu.h 直接)。web では backend 指定は無視される
-
-設計記録は [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md)、
-整理方針は [docs/log/2026-07-07-backend-consolidation.md](docs/log/2026-07-07-backend-consolidation.md)。
 
 切替は `Config` の `Backend`。サンプルは環境変数 `LUB_BACKEND` を読んで
 渡しているので CLI から切り替えられる:
@@ -185,7 +182,7 @@ LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/Triangle01.csproj
 ガイド + API reference の docs サイト (`/docs`) も同じサイトに同居する。
 
 ビルド手順・実行時アーキテクチャ・headless 検証・制約は
-[web/README.md](web/README.md) を参照。
+[web/README.md](../web/README.md) を参照。
 
 ## 外部プロジェクトから使う
 

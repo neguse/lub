@@ -23,7 +23,7 @@ core API にしない方針。既存エンジンとの API 互換も目標にし
 
 `lubx`(`cs-lib/lubx`、namespace `Lubx`)は `Lub.*` の上に純粋な C# で書かれた便利層。
 `SpriteBatch` / `Atlas` / `Shapes` / `Text`(2D 描画)、
-`Renderer3d` / `Mesh3d` / `Shapes3d` / `Bones`(3D レンダラ。設計記録は `docs/log/2026-07-12-renderer3d-design.md`)、
+`Renderer3d` / `Mesh3d` / `Shapes3d` / `Bones`(3D レンダラ)、
 `Camera2d` / `Camera3d`、`Assets`、`Rand`、`Sfx` など。
 
 runtime の機能ではないので、ソースを読めばすべて `Lub.*` の呼び出しに

@@ -48,8 +48,7 @@ golden 画像 (`tests/golden/<name>_<backend>.png`) は tcs VM の player で撮
 - WebGL fallback。web は WebGPU 必須とする。core API が compute / storage buffer を
   一級で持つため WebGL2 には収まらず、対応するなら core API のサブセット化という
   別の決断になる。WebGPU の無い環境 (古い iOS、Vulkan driver がブロックリストに
-  載った Android の Chrome) は配布対象外
-  (経緯: `docs/log/2026-07-07-backend-consolidation.md`)。
+  載った Android の Chrome) は配布対象外。
 - マルチスレッド描画。thread ごとの command buffer、resource の所有の分割、pipeline cache の lock が要り、command queue が 1 本という今の前提を全面的に見直すことになる。
 
 ## Core API Boundary
@@ -102,22 +101,9 @@ flowchart TB
 ```
 
 `RenderBackend` vtable で backend 差分を閉じ込め、core API には漏らさない。
+既定の backend は各 platform の GPU API を直接叩く実装で、sdlgpu は SDL3 GPU を通る代替として残す。
+lub が使う束縛は小さく固定なので、汎用の抽象層を挟むより platform ごとに最短の経路で書くほうが単純になる。
 `pass.c` / `pipeline.c` / `resources.c` / `capture.c` は backend を呼び出す glue に留める。
 
 `diag` は core API に置く。
 log、capture、resource dump、runtime state dump のような情報取得は、人間の debug と自動検証の両方で必要になるため。
-
-## Current Constraints
-
-- backend は `d3d12` (Windows) / `vulkan` (Linux、Android、SDK が見つかる Windows) /
-  `metal` (macOS / iOS) / `sdlgpu` (Windows / Linux の代替) / `webgpu`
-  (web のみ)。未指定時の既定は Windows: d3d12、Linux: vulkan、
-  macOS / iOS: metal、Android (Meta Quest): openxr (vulkan で OpenXR の headset に描く。`docs/android.md`)、web: webgpu。golden は Windows は WARP、Linux は
-  lavapipe で撮る (`docs/d3d12-backend.md`)。macOS と iOS simulator は
-  runner の GPU で描き、Linux の golden と許容差で比べる
-  (`docs/metal-backend.md`)。backend 構成の整理方針は
-  `docs/log/2026-07-07-backend-consolidation.md`。
-- iOS の player は shader compiler と transpiler を持たない。
-  生成済みの bytecode (`.tcsb`) と shader cache を同梱した app として動く (`docs/metal-backend.md`)。
-- swapchain capture (`--capture`) は native と web の両方にある。ゲームが任意の render target を読むのは `Gfx.Readback()`。
-- SDL GPU path は combined image sampler 周辺に制約がある。

@@ -7,8 +7,9 @@
 extern "C" {
 #endif
 
-// 生成キャッシュ (docs/log/2026-07-23-packaging-design.md) のシェーダ分。
+// 生成キャッシュのシェーダ分。
 // shader compile の出力 (blob と reflection) を「生成器の版、target、ソース」の hash で引ける 1 key = 1 file として保存する。
+// 配るための別の変換の仕組みは作らず、export も実行時と同じ compile の経路で埋める (別の仕組みにすると実行時の生成と二重の実装になる)。
 //
 // 読む場所: shader_cache_set_dir があればそこ (export の snapshot)、無ければ cwd の cache/shader/。
 // 書くのは shader_cache_set_dir の時だけ (export が compile のたびに書く)。

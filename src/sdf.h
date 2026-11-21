@@ -1,5 +1,5 @@
 #pragma once
-// SDF tree -> triangle mesh (design: docs/log/2026-07-04-sdf-tree-design.md)。
+// SDF tree -> triangle mesh。
 // 木は C API (include/lub/lub_api.h の LubSdfNodeDesc 配列) で受け、ここで評価用の SdfNode に変換して surface nets で mesh にする。
 // VM には触らない (tcs VM の host の関数は src/gen/vm_api_gen.c)。
 //

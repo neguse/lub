@@ -17,8 +17,7 @@ tcs/
 ├── CLAUDE.md              # このファイル
 ├── objective.md           # プロジェクト目標・設計文書
 ├── q.md                   # 未解決の質問
-├── doc/
-│   └── done.md            # 2026-11-10 までの完了の記録 (追記しない)
+├── doc/                   # 設計と仕様の文書 (support-matrix、IL、tcs VM、hot reload など)
 ├── tcs2c/                 # tcs c (C backend) を .NET で動かす入口と、C の出力のテスト用のスクリプト
 ├── tcs2c.Tests/           # differential (C 通常 + GC stress、tcs VM 通常 + GC stress、.NET の stdout 一致)
 ├── perf/                  # 性能実測ハーネス (kernel 契約 CONTRACT.md + 変種実装 + 実測記録)
@@ -91,7 +90,7 @@ analyzer / `tcs check` の診断一致は run-tests のこの恒常ゲートで�
 2. 実装し、`dotnet test` で全テスト通過を確認
 3. テスト、実装、ドキュメントの更新を 1 つの PR に入れる
 
-仕様の正本は support-matrix / README / design doc。`doc/done.md` は 2026-11-10 までの記録で、追記しない。
+仕様の正本は support-matrix / README / design doc。
 
 ## 進め方
 
