@@ -750,7 +750,8 @@ typedef struct LubInitialState {
 
 // event / query / callback が返す shape の識別。 material は MaterialName (
 // 宣言時の名前) と UserMaterialId (整数) に分かれる。 filter は live な shape
-// のときだけ入る。
+// のときだけ入る。壊した shape の end の event でも Body と Shape には宣言の
+// key が入り、Valid が false になる。
 typedef struct LubShapeView {
   LubStr body;
   LubStr shape;
@@ -1174,7 +1175,9 @@ typedef struct LubJointTargetDesc {
   float angular_offset;
 } LubJointTargetDesc;
 
-// joint の宣言。有効フィールドは type ごとに異なる。
+// joint の宣言。有効フィールドは type ごとに異なる。 body を作り直すとその
+// body の joint は消えるので、joint は毎フレーム両方の body を宣言した後に宣
+// 言する。
 typedef struct LubJointDesc {
   bool has_version;
   int32_t version;
@@ -1808,7 +1811,8 @@ typedef struct LubMotionLocks3d {
   bool angular_z;
 } LubMotionLocks3d;
 
-// event / query / callback が返す shape の識別 (3D)。
+// event / query / callback が返す shape の識別 (3D)。壊した shape の end の
+// event でも Body と Shape には宣言の key が入り、Valid が false になる。
 typedef struct LubShapeView3d {
   LubStr body;
   LubStr shape;
@@ -2423,6 +2427,8 @@ typedef struct LubJointTargetDesc3d {
 } LubJointTargetDesc3d;
 
 // joint の宣言。有効フィールドは type ごとに異なる。 anchor はワールド座標。
+// body を作り直すとその body の joint は消えるので、joint は毎フレーム両方の
+// body を宣言した後に宣言する。
 typedef struct LubJointDesc3d {
   bool has_version;
   int32_t version;
@@ -3333,9 +3339,9 @@ LUB_API LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb,
                                        int32_t *result_id, int32_t *dropped,
                                        LubStr *error);
 
-// count 頂点を instances 個描く。 instances に 0 以下を渡すと draw 自体がス
-// キップされる。値はこの呼び出しの時点のものが使われ、後の Set は前の draw
-// を変えない。
+// count 頂点を instances 個描く (`indices` を Set したときは count が index
+// の数)。 instances に 0 以下を渡すと draw 自体がスキップされる。値はこの呼
+// び出しの時点のものが使われ、後の Set は前の draw を変えない。
 LUB_API LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
                                LubBindings *bindings, const LubDrawOpts *opts,
                                int32_t instances);
@@ -3471,7 +3477,10 @@ LUB_API LubStatus lub_io_load_floats(LubContext *ctx, LubStr path,
                                      int32_t *version, int32_t *status,
                                      LubStr *error);
 
-// glTF (.gltf / .glb) を読む。結果の mesh は interleave 系に渡す。
+// glTF (.gltf / .glb) を読む。結果の mesh は interleave 系に渡す。読み直しと
+// version は .gltf / .glb の本体のファイルだけで決まり、.gltf が参照する外部
+// の .bin だけを書き換えても読み直さない (書き出すツールはふつう .gltf と
+// .bin を一緒に書く)。
 LUB_API LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path,
                                    LubGltfMesh *mesh, bool *has_mesh,
                                    int32_t *version, int32_t *status,
@@ -3801,13 +3810,21 @@ LUB_API void lub_profiler_reset(LubContext *ctx);
 LUB_API void lub_profiler_report(LubContext *ctx, LubStr label);
 
 // ---------------------------------------------------------------- phys2d
-// Box2D の即時モード API。 C API が返す配列 (body の shapes、event、query の
-// 結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの
-// 関数が buffer を共有するかは決めていない (今は例えば RaycastAll と
-// ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、受け取った配列は
-// phys2d の次の関数を呼ぶ前に写す。 visitor の中で呼んだ関数が返した配列は、
-// 外側の関数が戻るときに解放される。 C# の面は受け取った時点で写すので、この
-// 寿命を気にしなくてよい。
+// Box2D の即時モード API。宣言の field には、変えると object を作り直すもの
+// (shape の形と Sensor と Filter、body の Initial、joint の種類と 2 つの body
+// と取り付け位置など) と、宣言のたびに今の object に当てるもの (密度、摩
+// 擦、event の有無、body の Type や damping など) がある。作り直すと接触や
+// sleep の状態は引き継がれないので、Version に frame 番号のような毎フレーム
+// 変わる値を渡さない。 Version を渡すと作り直すかどうかは Version だけで決ま
+// り、同じ Version のまま作り直す側の field を変えても作り直さずに log に 1
+// 回出す (`Gfx.UseBuffer` の version と同じく、同じ Version は同じ中身という
+// 主張)。 Version を省くと、作り直す側の field の hash を Version として使
+// う。 C API が返す配列 (body の shapes、event、query の結果など) は runtime
+// 所有で、同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有す
+// るかは決めていない (今は例えば RaycastAll と ShapeCastAll、BodyShapes と
+// OverlapAabb が共有する) ので、受け取った配列は phys2d の次の関数を呼ぶ前に
+// 写す。 visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放
+// される。 C# の面は受け取った時点で写すので、この寿命を気にしなくてよい。
 
 // key で引く (無ければ null)。 sentinel の再解決にも使う。
 LUB_API LubHandle lub_phys2d_find_world(LubContext *ctx, LubStr key);
@@ -4086,13 +4103,21 @@ LUB_API LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
                                            const LubCommandOpts *opts);
 
 // ---------------------------------------------------------------- phys3d
-// Box3D の即時モード API。 C API が返す配列 (body の shapes、event、query の
-// 結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。どの
-// 関数が buffer を共有するかは決めていない (今は例えば RaycastAll と
-// ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、受け取った配列
-// は phys3d の次の関数を呼ぶ前に写す。 visitor の中で呼んだ関数が返した配列
-// は、外側の関数が戻るときに解放される。 C# の面は受け取った時点で写すので、
-// この寿命を気にしなくてよい。
+// Box3D の即時モード API。宣言の field には、変えると object を作り直すもの
+// (shape の形と Sensor と Filter、body の Initial、joint の種類と 2 つの body
+// と取り付け位置など) と、宣言のたびに今の object に当てるもの (密度、摩
+// 擦、event の有無、body の Type や damping など) がある。作り直すと接触や
+// sleep の状態は引き継がれないので、Version に frame 番号のような毎フレーム
+// 変わる値を渡さない。 Version を渡すと作り直すかどうかは Version だけで決ま
+// り、同じ Version のまま作り直す側の field を変えても作り直さずに log に 1
+// 回出す (`Gfx.UseBuffer` の version と同じく、同じ Version は同じ中身という
+// 主張)。 Version を省くと、作り直す側の field の hash を Version として使
+// う。 C API が返す配列 (body の shapes、event、query の結果など) は runtime
+// 所有で、同じ buffer を使う次の呼び出しまで有効。どの関数が buffer を共有す
+// るかは決めていない (今は例えば RaycastAll と ShapeCastAll、OverlapAabb と
+// OverlapShape が共有する) ので、受け取った配列は phys3d の次の関数を呼ぶ前
+// に写す。 visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解
+// 放される。 C# の面は受け取った時点で写すので、この寿命を気にしなくてよい。
 
 // key で引く (無ければ null)。 sentinel の再解決にも使う。
 LUB_API LubHandle lub_phys3d_find_world(LubContext *ctx, LubStr key);
