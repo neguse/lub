@@ -1,9 +1,9 @@
-# tcs/ の .NET SDK の更新は、tcs/global.json の pin を上げる PR として届く。
+# .NET SDK の更新は、root の global.json の pin を上げる PR として届く。
 # major の版の更新では、SDK と target の版を揃えるため、各 project の TargetFramework と LangVersion、script の bin/<構成>/netN.0 の path も同じ版に上げる。
-# CI が通ってから merge し、各マシンは merge の後に dotnet-install.sh --jsonfile tcs/global.json で合わせる。
+# CI が通ってから merge し、各マシンは merge の後に repo の root で dotnetup sdk install を打って合わせる。
 version: 2
 updates:
   - package-ecosystem: "dotnet-sdk"
-    directory: "/tcs"
+    directory: "/"
     schedule:
       interval: "weekly"

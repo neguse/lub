@@ -57,7 +57,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
       - name: Install clang-format
         run: pipx install clang-format==23.1.3
@@ -151,7 +151,7 @@ jobs:
       # native-gate.sh --require-cs が skip を fail 扱いにする。
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
       # かな漢字変換の辞書 (lider の tests/ime と tests/editor/ime が使う)。入力は build-dict.sh (取る mozc の commit) と jamo の commit なので、それを key にして cache し、無いときだけ作る
       - name: Dictionary key
@@ -325,12 +325,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\dotnet
-          key: dotnet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tcs/global.json') }}
+          key: dotnet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json') }}
 
       # tests/cs の runtime テストとサンプルの C# は起動前に tcs vm で bytecode にするので dotnet が要る。
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
       - name: Configure
         run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -590,7 +590,7 @@ jobs:
       # tests/cs の test とサンプルの C# は起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
       - name: Apple gate, macOS part (build, smokes, C# runtime tests, golden, shader cache)
         run: |
@@ -688,7 +688,7 @@ jobs:
       # lider の bytecode、tcs wasm assets、tcs2c の web の player に使う
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
       # 後の段が使う .NET の tcs (lider の bytecode) と tcs2c (lider の player の tcs.c) の build は、wasm の build と並べて済ませる
       - name: Build lub player wasm
@@ -773,10 +773,9 @@ jobs:
           path: web/tcs-wasm-assets
           key: tcs-wasm-${{ steps.tcs.outputs.sha }}-${{ hashFiles('web/scripts/gen-tcs-assets.mjs') }}
 
-      # workload は SDK の版ごとに入る。tcs の global.json が選ぶ SDK に入れるために tcs の中で動かす。
+      # workload は SDK の版ごとに入る。root の global.json が選ぶ SDK に入れるために repo の中で動かす。
       - name: Install wasm-tools workload
         if: steps.tcs-wasm-cache.outputs.cache-hit != 'true'
-        working-directory: tcs
         run: dotnet workload install wasm-tools
 
       - name: Generate tcs wasm assets
@@ -853,7 +852,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         if: matrix.page == 'player'
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
       - name: Build tests/cs bytecode
         if: matrix.page == 'player'
@@ -987,7 +986,7 @@ jobs:
 
   # ---- tcs/ の中のテスト ----
   # tcs (C# の compiler と VM) 自身のテスト。lub の job は tcs を使う側から確かめ、こちらは tcs の仕様から確かめる。
-  # .NET SDK の版は tcs/global.json で固定する。
+  # .NET SDK の版は root の global.json で固定する。
   # tcs/run-tests.sh を部分 (--part) ごとの job に分けて並べる。部分は dotnet test の class の名前で分け、どの test もどれか 1 つの部分に入る。
   tcs-test:
     name: tcs-test (${{ matrix.part }})
@@ -1011,7 +1010,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
       - name: Run tests and tcs checks
         run: bash run-tests.sh --part ${{ matrix.part }}
@@ -1031,7 +1030,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
       # base の測定は base の tcs の tree と toolchain (runner の image) だけで決まるので、それを key にして結果を cache する
       - name: Base of the comparison
@@ -1228,12 +1227,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\dotnet
-          key: dotnet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tcs/global.json') }}
+          key: dotnet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json') }}
 
       - uses: actions/setup-dotnet@v4
         if: steps.dotnet.outputs.need == 'true'
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
       # build 済みのかな漢字変換 (jamo-core、Rust)。入力は jamo の commit と rustc の版で決まり、当たれば cargo を動かさない (lider/scripts/build-player.sh の JAMO_CACHE)
       - name: jamo cache key

@@ -76,7 +76,7 @@ jobs:
       # tests/cs の test は C# なので、app に入れる bytecode を tcs で作る。
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
       # macOS の player (shader cache を埋める) と iOS の app の build、simulator での実行
       - name: Apple gate, iOS part (iOS build, simulator)

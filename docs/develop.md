@@ -7,6 +7,12 @@
 - C11 / C++17 対応コンパイラ (GCC / Clang / MSVC)
 - Vulkan loader と開発 header (Linux 必須) — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`
 - Vulkan SDK (Windows 任意) — SDK が見つかった場合だけ `vulkan` backend を組み込む
+- .NET SDK — C# の変換 (tcs) と生成物の作り直し (`scripts/gen-api.sh`) に使う
+
+.NET SDK の版は repo の root の [global.json](../global.json) で固定する。
+[dotnetup](https://learn.microsoft.com/dotnet/core/tools/dotnetup) を入れ、repo の root で `dotnetup sdk install` を打つと、その版が入る。
+pin が上がったときも、同じコマンドを打ち直す。
+distro の package の SDK は workload と版がずれるので混ぜない。
 
 Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
 `third_party/slang/lib/` に無ければ GitHub release から自動取得する

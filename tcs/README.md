@@ -13,7 +13,7 @@ tcs と tcs2c は暫定の名前で、名前を変える時期と新しい名前
 
 ## 必要なもの
 
-- .NET 11 SDK (版は `global.json` で固定。導入は `dotnet-install.sh --jsonfile global.json` を推奨 — distro package は workload と版がずれるため混ぜない)
+- .NET 11 SDK (版は repo の root の `global.json` で固定。入れ方は [docs/develop.md](../docs/develop.md) のビルドの依存)
 - CMake 3.12+ (tcsvm のビルド用)
 - C コンパイラ (MSVC / GCC / Clang)
 
