@@ -21,14 +21,14 @@ core API にしない方針。既存エンジンとの API 互換も目標にし
 
 ## lubx — C# ライブラリ層
 
-`lubx`(`cs-lib/lubx`、namespace `Lubx`)は `Lub.*` の上に純粋な C# で書かれた便利層。
+`lubx`(`cs-lib/lubx`、namespace `Lubx`)は `Lub.*` の上に C# で書かれた便利層。
+C のライブラリが要る所 (Ogg Vorbis の decode など) だけは C の実装を持つ (`docs/api-glue.md` の「lubx の C の面」)。
 `SpriteBatch` / `Atlas` / `Shapes` / `Text`(2D 描画)、
 `Renderer3d` / `Mesh3d` / `Shapes3d` / `Bones`(3D レンダラ。設計記録は `docs/log/2026-07-12-renderer3d-design.md`)、
 `Camera2d` / `Camera3d`、`Assets`、`Rand`、`Sfx` など。
 
-runtime の機能ではないので、ソースを読めばすべて `Lub.*` の呼び出しに
-分解できる。挙動を変えたければ自分のプロジェクトに写して改造してよい
-層であり、lubx に無い機能は同じやり方で自作できる。
+runtime の機能ではないので、C の実装を持つ所を除けば、ソースを読むと `Lub.*` の呼び出しに分解できる。
+挙動を変えたければ自分のプロジェクトに写して改造してよい層であり、lubx に無い機能は同じやり方で自作できる。
 
 ## key の付け方
 

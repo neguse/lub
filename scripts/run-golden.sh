@@ -12,11 +12,13 @@
 #   scripts/run-golden.sh --backend sdlgpu
 #
 # Determinism relies on:
-#   - a machine-independent CPU rasterizer  - Linux: lavapipe (CPU Vulkan,
-#     required below; run-headless.sh forces it) / Windows: WARP via
+#   - a CPU rasterizer that does not depend on the GPU - Linux: lavapipe (CPU
+#     Vulkan, required below; run-headless.sh forces it) / Windows: WARP via
 #     LUB_D3D12_WARP=1
 #   - fixed --capture-frame and --fixed-dt  - set below to FRAME and 1/60 s
 #   - --readback-fixed-latency: a readback arrives exactly 2 frames later
+# The rasterizer's output still depends on its version. lavapipe の出力は mesa の版で変わるので、Linux の golden はそれを作った mesa の版でだけ byte 一致し、CI の linux job はこの比較を外す (native-gate.sh --skip-golden)。
+# Windows の golden は CI の runner の inbox の WARP で撮ってあり、NuGet の WARP (-DLUB_FETCH_WARP=ON) とは出力の LSB が違う。
 # Exit code is 0 only if every checked visual golden matches.
 #
 # Platform selects the backend set: Linux checks sdlgpu and vulkan

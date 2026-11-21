@@ -127,7 +127,7 @@ hot reload は `<Entry>.batch` (tcs vm の差分。`tvm_apply_batch` で当て�
 `OnQuit` の後に新しい VM で `OnInit` から始める。`<Entry>.errors` (通らなかった build の診断) があれば、読んで消し、`OnBuildFailed` に渡す (`App.Use` で開いた app では `App.Status` の `BuildError` に入る)。
 web の player の page (`player.html`) はこの player (`build/wasm/vm/lub.js`) を使う。web のサイトの入口 (lider) では、lider が player に組み込んだ tcs でゲームを変換する。
 
-`lub Game.csproj` は入力 (csproj のディレクトリと `Lub="Source"` の参照先の下の `*.cs`、cs-lib の実装。`*.ref.cs` は `--ref`) の一覧を `.lub/<Entry>.inputs` に書き、`tcs vm --watch --inputs-from` を背後に張る (`src/vm_project.c`)。
+`lub Game.csproj` は入力 (何を読むかは `docs/manual/08-csharp.md` の「csproj から lub が読むもの」) の一覧を `.lub/<Entry>.inputs` に書き、`tcs vm --watch --inputs-from` を背後に張る (`src/vm_project.c`)。
 一覧は 0.3 秒ごとに探し直すので、file を足すか消すとそのまま変換し直す。
 差分は `@@tcs_vm_batch` の frame で届き、当ててから entry の `OnReload` を呼ぶ。
 その差分に `@@tcs_reload_notes` の frame (生きている instance に入らない instance の field の初期化子の変更など) が先に届いていれば、`OnReload` の後に `OnReloadNotes(notes)` に渡す。
