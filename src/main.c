@@ -1,5 +1,5 @@
 #define SDL_MAIN_USE_CALLBACKS 1
-#include "tcs_build.h"
+#include "vm_project.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <lub/lub_vm.h>
@@ -128,7 +128,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
       SDL_Log("usage: lub check <entry>.csproj");
       return SDL_APP_FAILURE;
     }
-    return tcs_check(argv[2]) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+    return vm_project_check(argv[2]) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
   }
   if (!resolve_entry(&argc, &argv)) {
     print_usage();
