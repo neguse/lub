@@ -673,18 +673,25 @@ static TvmStatus u8_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 
 /* ---- Math (il-spec §13: 超越関数は runtime/math、ほかは IEEE-754 で決まる) ---- */
 
+/* MathF.Min / Max (IEEE 754:2019 minimum / maximum): どちらの引数の NaN も伝播し、-0 を +0 より小さいとみなす。
+   形は C の runtime の tcs_math_min / max と同じで、x != y (どちらかが NaN のときも) なら NaN か小さい方 / 大きい方を、等しい (+0 と -0 の組も) なら符号で選ぶ */
 static TvmStatus m_min_f(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)vm;
   float x = a[0].f, y = a[1].f;
-  /* MathF.Min (IEEE 754:2019 minimum): NaN を伝播し、-0 を +0 より小さいとみなす */
-  r[0].f = x < y ? x : y < x ? y : (x != x || (x == 0 && signbit(x))) ? x : y;
+  if (x != y)
+    r[0].f = x != x || x < y ? x : y;
+  else
+    r[0].f = signbit(x) ? x : y;
   return TVM_OK;
 }
 
 static TvmStatus m_max_f(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)vm;
   float x = a[0].f, y = a[1].f;
-  r[0].f = x > y ? x : y > x ? y : (x != x || (y == 0 && signbit(y))) ? x : y;
+  if (x != y)
+    r[0].f = x != x || x > y ? x : y;
+  else
+    r[0].f = signbit(y) ? x : y;
   return TVM_OK;
 }
 

@@ -24,8 +24,9 @@ public sealed class FunctionCompiler
     private List<int> _temps = new List<int>();
     private Dictionary<string, List<int>> _freeBlocks = new Dictionary<string, List<int>>();
     private List<BlockUse> _blocksInUse = new List<BlockUse>();
+    // 囲む loop と break スコープ (内側が末尾)
+    // break は末尾の行き先へ、continue は continue を持つ一番内側の loop へ飛ぶ
     private List<LoopLabels> _loops = new List<LoopLabels>();
-    private List<Label> _breakScopes = new List<Label>();
     private List<IifeFrame> _iifes = new List<IifeFrame>();
     /// <summary>return ごとに戻り値の後ろに足す変数 (struct の instance method の self、out の引数)。</summary>
     private List<Var> _extraRets = new List<Var>();
@@ -802,16 +803,23 @@ public sealed class FunctionCompiler
         }
         else if (s is IlBreak)
         {
-            if (_loops.Count == 0 && _breakScopes.Count == 0)
+            if (_loops.Count == 0)
             {
                 CFail.Report("break outside loop");
                 return;
             }
-            Jump(Op.JMP, _breakScopes.Count > 0 ? _breakScopes[_breakScopes.Count - 1] : _loops[_loops.Count - 1].Break);
+            Jump(Op.JMP, _loops[_loops.Count - 1].Break);
         }
         else if (s is IlContinue)
         {
-            Jump(Op.JMP, _loops[_loops.Count - 1].Continue);
+            Label? next = null;
+            for (int i = _loops.Count - 1; i >= 0 && next == null; i--) next = _loops[i].Continue;
+            if (next == null)
+            {
+                CFail.Report("continue outside loop");
+                return;
+            }
+            Jump(Op.JMP, next);
         }
         else if (s is IlReturn iret && _iifes.Count > 0)
         {
@@ -856,9 +864,9 @@ public sealed class FunctionCompiler
         else if (s is IlBreakScope bs)
         {
             var end = new Label();
-            _breakScopes.Add(end);
+            _loops.Add(new LoopLabels(end, null));
             Block(bs.Body);
-            _breakScopes.RemoveAt(_breakScopes.Count - 1);
+            _loops.RemoveAt(_loops.Count - 1);
             Mark(end);
         }
         else
@@ -4196,10 +4204,7 @@ public sealed class FunctionCompiler
         _blocksInUse.Clear();
         var savedLoops = new List<LoopLabels>();
         foreach (var lp in _loops) savedLoops.Add(lp);
-        var savedScopes = new List<Label>();
-        foreach (var bs in _breakScopes) savedScopes.Add(bs);
         _loops.Clear();
-        _breakScopes.Clear();
         var end = new Label();
         _iifes.Add(new IifeFrame(d, end, type));
         _scopes.Add(new Dictionary<string, Var>());
@@ -4208,7 +4213,6 @@ public sealed class FunctionCompiler
         _scopes.RemoveAt(_scopes.Count - 1);
         _iifes.RemoveAt(_iifes.Count - 1);
         foreach (var lp in savedLoops) _loops.Add(lp);
-        foreach (var bs in savedScopes) _breakScopes.Add(bs);
         Mark(end);
         EndStatement();
         foreach (var r in savedTemps) _temps.Add(r);
@@ -5153,13 +5157,13 @@ public sealed class BlockUse
     }
 }
 
-/// <summary>loop の break と continue の行き先。</summary>
+/// <summary>loop と break スコープ (IlBreakScope) の break と continue の行き先。break スコープは continue を持たない (null)。</summary>
 public sealed class LoopLabels
 {
     public Label Break;
-    public Label Continue;
+    public Label? Continue;
 
-    public LoopLabels(Label brk, Label cont)
+    public LoopLabels(Label brk, Label? cont)
     {
         Break = brk;
         Continue = cont;
