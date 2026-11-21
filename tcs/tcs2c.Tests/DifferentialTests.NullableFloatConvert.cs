@@ -40,4 +40,44 @@ public class NullableFloatConvertDifferentialTests
             """, "P");
         Assert.Equal("1\n1\nTrue\nFalse\nTrue\nTrue\nTrue\nFalse\nFalse\nFalse\n1\n1.5\n33554432", output);
     }
+
+    // int (と char) から float? への明示の cast も、暗黙の変換と同じく f32 に丸めてから包む。
+    // 結果は float? として引数、List の要素、補間にそのまま使える
+    [CFact]
+    public void IntToNullableFloatCast_RoundsToFloat32()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using System.Collections.Generic;
+            public class P
+            {
+                static float? Id(float? v) => v;
+                public static void Main()
+                {
+                    int x = 16777217;
+                    float? f = (float?)x;
+                    Console.WriteLine(f);
+                    Console.WriteLine((int)f.Value);
+                    Console.WriteLine((float?)(-x));
+                    Console.WriteLine((float?)16777217);
+                    Console.WriteLine((float?)x == 16777216f);
+                    Console.WriteLine(Id((float?)x));
+                    var list = new List<float?> { (float?)x };
+                    Console.WriteLine(list[0]);
+                    Console.WriteLine($"{(float?)x}");
+                    float? g = null;
+                    g = (float?)x;
+                    Console.WriteLine(g == f);
+                    char c = 'A';
+                    Console.WriteLine((float?)c);
+                    Console.WriteLine((int?)c);
+                    // 対照: 暗黙の変換と、int? を経る cast
+                    float? implicitly = x;
+                    Console.WriteLine(implicitly);
+                    Console.WriteLine((float?)(int?)x);
+                }
+            }
+            """, "P");
+        Assert.Equal("16777216\n16777216\n-16777216\n16777216\nTrue\n16777216\n16777216\n16777216\nTrue\n65\n65\n16777216\n16777216", output);
+    }
 }

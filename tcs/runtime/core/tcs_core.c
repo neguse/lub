@@ -112,12 +112,13 @@ typedef struct TcsClosure {
   void *cells[];
 } TcsClosure;
 
-/* Dictionary: chained hash (bucket 数は count に応じて倍化)。key は
-   i32 / string / host handle (key_is_string == 2: 外部 data class の
-   pointer を key_s に置き、同一性は host_value。host_value が 0 の
-   object は pointer 同一性)、value は node 末尾の value_size byte (struct 値可)。
-   列挙は挿入順 (support-matrix §18): order に足した順に node を並べ、消した node は NULL の穴にして、
-   広げるときに詰める。version は新しい key か Clear で増え、foreach の途中の追加を fault にする。 */
+/* Dictionary: chained hash (bucket 数は count に応じて倍化)。
+   key_kind は key の種別で、HashSet と同じ (0 = i32 を key_i に、1 = string、2 = host handle、3 = class の同一性。1〜3 は pointer を key_s に置く)。
+   2 は外部 data class で、同一性は host_value (host_value が 0 の object は pointer 同一性)。
+   3 の hash は address なので、若い key を入れたまま GC の境界を跨いだら buckets を作り直す。
+   value は node 末尾の value_size byte (struct 値可)。
+   列挙は挿入順 (support-matrix §18): order に足した順に node を並べ、消した node は NULL の穴にして、広げるときに詰める。
+   version は新しい key か Clear で増え、foreach の途中の追加を fault にする。 */
 typedef struct TcsDictNode {
   struct TcsDictNode *next;
   int32_t key_i;
@@ -130,12 +131,14 @@ typedef struct TcsDict {
   struct TcsDictNode **buckets; /* RAW heap buffer */
   size_t bucket_count;
   int32_t count;
-  int32_t key_is_string;
+  int32_t key_kind;
   size_t value_size;
   struct TcsDictNode **order; /* RAW heap buffer (挿入順。穴は NULL) */
   size_t order_len;
   size_t order_cap;
   uint32_t version;
+  bool has_young; /* key_kind 3: frame の間に若い key を入れた */
+  size_t frame;
 } TcsDict;
 
 static _Noreturn void tcs_fault(const char *kind);

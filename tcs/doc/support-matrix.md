@@ -302,7 +302,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `??` (null 合体) | **Y** | 右辺は左辺が null のときだけ評価 |
 | `?.` (null 条件アクセス, C# 6) | **Y** | String/List/Dict の member も可。連鎖 (`x?.M().N()` / `x?.P.Q` / `x?[i].M()`) は一番内側を receiver に対する呼び出し / member にする。delegate の `f?.Invoke(...)` は null でなければ delegate 値を呼ぶ (戻り値は `T?` に wrap) |
 | object への値の変換 (boxing) | **P** | int / float / bool だけ。char / byte / enum などは IL で int と同じ値になるので TCS1001 `ValueBoxing` (文字列連結、補間、`Console.WriteLine` の引数は文字列にするだけなので書ける) |
-| `(T)x` (キャスト) | **Y** | 数値変換は il-spec §5 / §6 の契約: `(int)f` は 0 方向 truncation (`__tcs_trunc`)、整数 (int / uint / short / byte / char など) → float は f32 へ丸める (暗黙変換の代入・引数・return・比較の昇格も同じ。定数は float literal に畳む)。C は `(float)` / `tcs_trunc_f32`。object / interface / 型引数からの cast は実行時に型を確かめ、合わなければ fault する (class / record、generic でない interface、string、bool、int、float)。List / Dictionary / Queue / HashSet / 配列 / delegate / generic な型 / 型引数 `T` / enum / char / byte / `T?` への cast は TCS1001 `UnverifiableCast` |
+| `(T)x` (キャスト) | **Y** | 数値変換は il-spec §5 / §6 の契約: `(int)f` は 0 方向 truncation (`__tcs_trunc`)、整数 (int / uint / short / byte / char など) → float は f32 へ丸める (暗黙変換の代入・引数・return・比較の昇格と、`(float?)x` も同じ。定数は float literal に畳む)。C は `(float)` / `tcs_trunc_f32`。object / interface / 型引数からの cast は実行時に型を確かめ、合わなければ fault する (class / record、generic でない interface、string、bool、int、float)。List / Dictionary / Queue / HashSet / 配列 / delegate / generic な型 / 型引数 `T` / enum / char / byte / `T?` への cast は TCS1001 `UnverifiableCast` |
 | `is null` / `is not null` | **Y** | |
 | `is Type` | **Y** | designation なしの binary 形も対応。判定できる型は §5 の型パターンの行 |
 | `new T(args)` | **Y** | |
@@ -625,7 +625,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `string.CompareOrdinal(a, b)` (static) | **Y** | -1 / 0 / 1。順序は il-spec §11 の ordinal で、null は他のどの string より小さい。値は 0 との比較 (`< 0`、`== 0` など) の operand でだけ使える。.NET の契約は符号だけで、値そのものは 2 文字ずつ比べる位置で変わる (`("", "x")` は -120、`("abc", "ab")` は 1) ので、それ以外の使い方は TCS1001 `CompareOrdinalValue`。範囲つきの overload は TCS1002 |
 | `String.IsNullOrWhiteSpace(s)` (static) | **-** | |
 | `String.Format(fmt, ...)` (static) | **-** | 補間で代替 |
-| `String.Join(sep, ...)` (static) | **Y** | List / 配列の要素は連結と同じく文字列化する (float は .NET と同じ文字列)。C backend の要素は string / int / float / bool |
+| `String.Join(sep, ...)` (static) | **Y** | List / 配列の要素は連結と同じく文字列化する (float は .NET と同じ文字列)。null の separator と要素は空文字列。C backend の要素は string / int / float / bool |
 | `String.Concat(...)` (static) | **-** | |
 | `String.Compare(a, b)` (static) | **-** | |
 | `String.Equals(a, b)` (static) | **-** | |
@@ -834,7 +834,8 @@ float と double の key の Dictionary は対応外。
 HashSet の float の要素 (`UnsupportedHashSetElement(float)`) と同じく、作る地点 (`new Dictionary<float, V>()`、target-typed `new()`) を TCS1001 `UnsupportedDictionaryKey(float)` とし、`tcs vm` / `tcs c` は build を止める (analyzer は warning)。
 key 型が型 parameter の dict (generic method の中で作るもの) は対象外。
 
-user の class の key (参照で比べる) は tcs VM が .NET と同じ結果を出し、C backend は emit で `Dictionary key type not supported` として止まる (`tcs check` は通す)。
+user の class の key は参照で比べる (.NET の `EqualityComparer<K>.Default` と同じ。class は Equals / GetHashCode を override できない)。
+C backend の class の key の hash は address で、若い key を入れたまま GC の境界を跨ぐと次の操作で 1 回作り直す (HashSet の class の要素と同じ)。
 
 値で比べる key (struct / record struct / struct の `T?` / record class) の Dictionary は対応外。
 .NET (`EqualityComparer<K>.Default`) は等しい値の key を同じ key とみなす。
@@ -1021,7 +1022,6 @@ C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収でき
 次は仕様の差ではなく、tcs VM か C が .NET と違う結果を出す不具合。
 
 - `--ref` の型の user operator (`a + b`) は `tcs check` を通るが、`tcs vm` と `tcs c` は型の誤りで止まる
-- user の class を key にした Dictionary は、C backend だけが emit で止まる (§18)
 
 ## 28. 名前規則
 
