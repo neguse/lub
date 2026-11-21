@@ -336,7 +336,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |---|:----:|------|
 | ラムダ (式本体) `x => expr` | **Y** | closure は変数を捕捉する (il-spec §7) |
 | ラムダ (文本体) `(x) => { }` | **Y** | |
-| switch 式 (C# 8) | **Y** | 網羅しない switch 式 (`_` の arm が無い) で一致する arm が無いと、tcs VM と C は結果の型の既定値で続く (.NET は SwitchExpressionException。il-spec §12 は fault と定める)。`tcs check` も診断しない (§27) |
+| switch 式 (C# 8) | **Y** | 網羅しない switch 式 (`_` の arm が無い) で一致する arm が無いと fault (.NET は SwitchExpressionException。il-spec §12) |
 | `this` | **Y** | |
 | `base.Method()` | **N/A** | TCS1001 `BaseMemberAccess` (継承は対象外、§8) |
 | メソッドチェーン (LINQ) | **Y** | |
@@ -609,7 +609,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `.Split()` / `.Split(sep)` | **Y** | 引数なしは whitespace、空 / null の separator は元の文字列 1 要素。空の要素を残す |
 | `.ToUpper()` | **Y** | ASCII の文字だけを変える (.NET は ASCII の外の文字も変える。§27) |
 | `.ToLower()` | **Y** | 同上 |
-| `.ToString()` | **Y** | |
+| `.ToString()` | **Y** | 受け手の string そのもの。null の受け手は fault (.NET は NullReferenceException)。補間・連結・`Console.WriteLine` の null の string は空文字列 |
 | `string + string` | **Y** | |
 | `.IndexOf(c)` / `.IndexOf(s)` | **N/A** | TCS1002。`Contains`、`Split`、`Utf8Bytes` の走査 (§20b) |
 | `.LastIndexOf(c)` / `.LastIndexOf(s)` | **-** | |
@@ -660,8 +660,8 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `Math.PI` | **Y** | |
 | `Math.Min(a, b)` | **Y** | float は MathF.Min と同じく NaN を伝播し、-0 を +0 より小さいとみなす |
 | `Math.Max(a, b)` | **Y** | float は MathF.Max と同じく NaN を伝播し、+0 を -0 より大きいとみなす |
-| `Math.Clamp(v, min, max)` | **Y** | |
-| `Math.Abs(x)` | **Y** | |
+| `Math.Clamp(v, min, max)` | **Y** | `min > max` は fault (.NET は ArgumentException)。float の NaN の境界は比べても偽なので拒まない (.NET と同じ) |
+| `Math.Abs(x)` | **Y** | `Math.Abs(int.MinValue)` は fault (.NET は OverflowException) |
 | `Math.Floor(x)` | **Y** | 結果は float のまま (-0 を保つ) |
 | `Math.Ceiling(x)` | **Y** | 結果は float のまま (-0 を保つ) |
 | `Math.Sqrt(x)` | **Y** | |
@@ -674,9 +674,9 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `Math.Exp(x)` | **Y** | |
 | `Math.Log(x)` / `Math.Log(x, base)` | **Y** | base が 1、または x が 1 でなく base が 0 / +∞ なら NaN (MathF.Log と同じ) |
 | `Math.Log10(x)` / `Math.Log2(x)` | **-** | `Math.Log(x, base)` で代替 |
-| `Math.Round(x)` / `Math.Round(x, digits)` | **Y** | C# と同じ偶数丸め (banker's rounding)。0 に丸めた結果は x の符号を持つ (`Round(-0.25)` は -0) |
+| `Math.Round(x)` / `Math.Round(x, digits)` | **Y** | C# と同じ偶数丸め (banker's rounding)。0 に丸めた結果は x の符号を持つ (`Round(-0.25)` は -0)。負の digits は fault (.NET は ArgumentOutOfRangeException) |
 | `Math.Truncate(x)` | **-** | |
-| `Math.Sign(x)` | **Y** | |
+| `Math.Sign(x)` | **Y** | float の NaN は fault (.NET は ArithmeticException) |
 | `Math.Tan(x)` | **Y** | |
 | `Math.Asin(x)` / `Math.Acos(x)` / `Math.Atan(x)` | **-** | |
 | `Math.Sinh(x)` / `Math.Cosh(x)` / `Math.Tanh(x)` | **-** | |
@@ -702,7 +702,7 @@ BCL の型は既定で通さない。下の一覧で対応している型と mem
 | `new Random()` / `new Random(seed)` | **Y** | `TinySystem.Random` (System.Random と同じ形)。tcs VM と C は同じ xoshiro256** の列を作り、seed 固定時は bit 一致し、`Random.Seed(seed)` 後の `Shared` とも一致 (il-spec §13)。seed 未指定は時刻などから作る seed で予測できるので、敵対的な用途には向かない。instance は GC object |
 | `Random.Shared` (static) | **Y** | |
 | `Random.Seed(seed)` | **Y** | `Shared` の列の固定 (tcs 独自。System.Random に無い) |
-| `r.Next()` / `r.Next(max)` / `r.Next(min, max)` | **Y** | .NET 標準 API (上限は exclusive。空の範囲 `Next(0)` / `Next(n, n)` は下限を返す) |
+| `r.Next()` / `r.Next(max)` / `r.Next(min, max)` | **Y** | .NET 標準 API (上限は exclusive。空の範囲 `Next(0)` / `Next(n, n)` は下限を返す)。負の max と `min > max` は fault (.NET は ArgumentOutOfRangeException) |
 | `r.NextFloat()` / `r.NextSingle()` | **Y** | [0, 1) の float |
 | `r.Range(min, max)` | **Y** | 両端含む整数 (tcs 独自) |
 | `Random.NextDouble()` | **-** | double はサブセット外 |
@@ -1020,7 +1020,6 @@ C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収でき
 
 次は仕様の差ではなく、tcs VM か C が .NET と違う結果を出す不具合。
 
-- 網羅しない switch 式で一致する arm が無いと、tcs VM と C は fault せずに結果の型の既定値で続く (int なら 0)。.NET は SwitchExpressionException (§4)
 - `--ref` の型の user operator (`a + b`) は `tcs check` を通るが、`tcs vm` と `tcs c` は型の誤りで止まる
 - user の class を key にした Dictionary は、C backend だけが emit で止まる (§18)
 

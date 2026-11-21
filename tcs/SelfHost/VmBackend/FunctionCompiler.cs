@@ -1537,6 +1537,7 @@ public sealed class FunctionCompiler
             || callee == "__tcs_csub" || callee == "__tcs_cmul" || callee == "__tcs_cneg" || callee == "Math.CompareTo"
             || callee == "Dict.Count") return VType.Int;
         if (callee == "__tcs_str" || callee == "__tcs_fstr" || callee == "__tcs_bstr" || callee == "__tcs_nstr") return VType.String;
+        if (callee == "__tcs_nonnull") return TypeOf(c.Args[0]);
         if (callee == "__tcs_writeline" || callee == "List.Add") return VType.Void;
         if (callee == "List.Sort" && c.Args.Count == 2) return VType.Void;
         if (callee == "Dict.ContainsKey") return VType.Bool;
@@ -2676,6 +2677,15 @@ public sealed class FunctionCompiler
             Emit(Op.CNEG_I32, d.Reg, v.Reg);
             return d;
         }
+        // 参照の値をそのまま返し、null なら fault
+        if (c.Callee == "__tcs_nonnull")
+        {
+            var v = Expr(c.Args[0], null, false);
+            Emit(Op.NNULL, v.Reg);
+            if (dest == null) return v;
+            Store(dest, v);
+            return dest;
+        }
         if (c.Callee == "__tcs_trunc")
         {
             var v = ExprAs(c.Args[0], VType.Float, null);
@@ -3684,6 +3694,7 @@ public sealed class FunctionCompiler
         if (name == "__tcs_iparse") return new LibCall("int.parse", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "__tcs_char") return new LibCall("char.cast", P4Lists.Types1(I), P4Lists.Types1(I));
         if (name == "__tcs_write") return new LibCall("io.write", P4Lists.Types1(S), none);
+        if (name == "__tcs_nomatch") return new LibCall("switch.nomatch", none, none);
         if (name == "__tcs_getenv") return new LibCall("os.getenv", P4Lists.Types1(S), P4Lists.Types1(S));
         if (name == "TinySystem.Utf8.RuneCount") return new LibCall("utf8.runecount", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "TinySystem.Utf8.RuneSubstring") return new LibCall("utf8.runesubstring", P4Lists.Types3(S, I, I), P4Lists.Types1(S));
