@@ -5293,7 +5293,8 @@ public sealed class Binder
                     }
                     if (p.Text != "")
                     {
-                        var l = new LocalSym(p.Text, t);
+                        // 変数の型は一致したときの入力の型 (型を書かない値型の T? の入力なら T)
+                        var l = new LocalSym(p.Text, p.A == null && t.Kind == TypeKind.Nullable ? t.Elem : t);
                         p.Local = l;
                         DeclareExprLocal(l, p);
                     }

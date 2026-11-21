@@ -672,6 +672,15 @@ public sealed class ConstValue
         return c;
     }
 
+    // float の NaN (NaN だけが自分と等しくない。float.IsNaN は TinyC# に無い)
+    public bool IsNaN()
+    {
+        var f = F;
+#pragma warning disable CS1718
+        return Kind == ConstKind.Float && f != f;
+#pragma warning restore CS1718
+    }
+
     public static ConstValue OfBool(bool v)
     {
         var c = new ConstValue(ConstKind.Bool);

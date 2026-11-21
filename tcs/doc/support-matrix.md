@@ -361,13 +361,13 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 
 | パターン | C# ver | 状態 | 備考 |
 |---------|--------|:----:|------|
-| 定数パターン `is 42`, `is null` | 7 | **Y** | 入力が object で定数が数か bool のもの (`o is 5`、`o is true`) は TCS1001 `BoxedValuePattern(T)` (型パターンの行) |
+| 定数パターン `is 42`, `is null` | 7 | **Y** | C# と同じく定数と入力を object.Equals で比べるので、float の NaN の定数 (`x is (0f / 0f)`、NaN の const) は NaN に一致する (`==` は NaN どうしで false)。入力が object で定数が数か bool のもの (`o is 5`、`o is true`) は TCS1001 `BoxedValuePattern(T)` (型パターンの行) |
 | 型パターン `is MyClass` | 7 | **Y** | 値型 `T` / `T?` の入力 (struct、数、bool、enum) を同じ型 `T` で照合するのは値の有無だけ (`m is int y` は値があれば中の値を y に入れる)。object / interface / 型引数からの List / Dictionary / Queue / HashSet / 配列 / generic な型 / 型引数 `T` / enum / char / byte への型 test は TCS1001 `UnverifiableTypeTest`。実行時表現の無い型 (delegate、`object`、metadata の class、`--ref` の generic な型) への型 test は TCS1001 `TypeTestWithoutRuntimeType`。interface への `is` / `as` / 型 switch は class と record の値を判定する (tcs VM は実行時の型の表、C は型 id の switch)。interface の継承も辿る。次は TCS1001 `InterfaceTypeTest`: 参照型でない入力 (struct、`T?`、`class` 制約の無い `T`。struct は `StructBoxing` で interface に入らない)、generic な interface、metadata と `--ref` の interface。`--ref` の generic でない class / interface への型 test と cast は、`tcs check` と `tcs c` では TCS1001 `RefTypeTest` / `RefCast` / `RefInterfaceTypeTest` で、`tcs vm` は止めずに型の表で判定する (C の module と混ぜるときは型の番号を合わせる、object-model §10.6。`--ref` の interface への型 test は `tcs vm` も変換で止まる)。object の入力の数 (int / float) への型 test (`o is int`、`o is int or float`、`int =>` の arm) と、object に入った数と bool の値を読む pattern (宣言パターン `o is int x` / `b is bool z`、数と bool の定数パターン、`and` で型の test に続く pattern) は TCS1001 `BoxedValuePattern(T)`。IL は object の int と float を見分けず、C backend はこれらを持たない。値は cast (`(int)o`) で取り出す。object の `is bool` と string の pattern、`T?` の入力の pattern は対象外 |
 | `not` パターン `is not null` | 9 | **Y** | |
 | 破棄パターン `_` | 7 | **Y** | `_ when 条件` は条件付きの arm |
 | 宣言パターン `is int i` | 7 | **Y** | if / ternary / 複合条件 / lambda / switch で束縛。struct は入力 (`S?` は中の値) の copy を束縛。入力が object で型が数か bool のもの (`o is int i`) は TCS1001 `BoxedValuePattern(T)` (型パターンの行) |
 | `var` パターン `is var v` | 7 | **-** | |
-| プロパティパターン `is { Name: "x" }` | 8 | **Y** | 型を書かない `{ }` も null を除く。`o is I { W: 1 }` のように型を書くと、型の検査の後に member をその型として読む。`T?` は値の有無を見て中の値の member を読む (`p is Pt { X: 2 }` のように型を書いたときも同じ)。照合が常に一致する (値型の入力の `{ }`、同じ型の型 pattern) ときも is の左辺の式は 1 回評価し、中の member (`{ P: { } }` の P) は照合がその値を要らないので読まない (C# と同じ) |
+| プロパティパターン `is { Name: "x" }` | 8 | **Y** | 型を書かない `{ }` も null を除く。`o is I { W: 1 }` のように型を書くと、型の検査の後に member をその型として読む。`T?` は値の有無を見て中の値の member を読む (`p is Pt { X: 2 }` のように型を書いたときも同じ)。照合が常に一致する (値型の入力の `{ }`、同じ型の型 pattern) ときも is の左辺の式は 1 回評価し、中の member (`{ P: { } }` の P) は照合がその値を要らないので読まない (C# と同じ)。変数を付けた形 (`o is Rect { W: 2 } r`、`case { W: 2 } r:`) は、is の右辺と switch 式 / 文の arm と case の根のパターンで、一致した入力を変数に束縛する (型を書けばその型の値、値型の `T?` の入力なら中の値、struct は copy)。`and` / `or` / `not` の中と property パターンの中の、変数を付けた property パターンは TCS1001 |
 | 位置パターン `is (1, 2)` | 8 | **-** | |
 | タプルパターン `(a, b) is (1, 2)` | 8 | **-** | TCS1001 `TuplePattern` |
 | 関係パターン `is > 0` | 9 | **Y** | |
