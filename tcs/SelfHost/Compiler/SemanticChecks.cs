@@ -232,9 +232,6 @@ public sealed class SemanticChecks
             case NodeKind.Conv:
                 CheckBoxing(n);
                 break;
-            case NodeKind.Foreach:
-                CheckForeachBoxing(n);
-                break;
             case NodeKind.Is:
                 CheckTypeTestPattern(n.B, n.A!.Type);
                 CheckBoxedValuePattern(n.B, n.A!.Type, null);
@@ -580,13 +577,6 @@ public sealed class SemanticChecks
         if (src == null || cast.Type == null) return;
         if (cast.B!.Kind == NodeKind.Conv) return;
         if (IsBoxedStruct(src) && IsReferenceTarget(cast.Type)) Report("StructBoxing", cast);
-    }
-
-    private void CheckForeachBoxing(Node f)
-    {
-        if (f.A == null || f.Local == null || f.B == null || f.B.Type == null) return;
-        var elem = IlTypes.ElementOf(f.B.Type);
-        if (elem != null && IsBoxedStruct(elem) && IsReferenceTarget(f.Local.Type)) Report("StructBoxing", f);
     }
 
     private static bool IsBoxedStruct(TypeSym t)
