@@ -69,6 +69,8 @@ typedef struct P2PreSolve {
 
 // 全部 NULL = callback 無し。
 // 生存期間は次の world 宣言か step まで。
+// callback は step の終わりに手放し、毎フレームの World の宣言で渡し直してもらう。
+// runtime が closure を次のフレームまで持ち越さないので、hot reload の後は次のフレームから新しいコードの callback が呼ばれ、渡すのをやめた callback は呼ばれない。
 typedef struct P2Callbacks {
   void *user;
   void (*release)(void *user); // core が callback を手放すとき (NULL 可)

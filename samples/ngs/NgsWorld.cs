@@ -185,6 +185,8 @@ public class NgsPlayer
     }
 
     // 8方向 (dirX,dirY) → 進行 (sin/cos, 上=angle0)。
+    // 斜めでも移動の速さがほぼ spd になるよう、方向を角度に直して sin / cos で動かす (原典どおり)。
+    // DirX * spd のように軸ごとに足すと、斜めだけ速くなって原典と変わる。
     // 停止時は移動なし。
     public void Update(NgsWorld world, NgsInputSnapshot input)
     {

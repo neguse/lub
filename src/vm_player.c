@@ -21,6 +21,8 @@
 // 作り直すたびに log に 1 行出す (`lub: restarted`)。
 // `lub export <os> <entry> -o <dir>` は、画面も GPU も使わずに起動して OnInit の後に OnExport を 1 回呼び、
 // その OS の player が動かす snapshot を dir に書く (backend_export.c)。
+// 記録するものをゲームの OnExport に一通り使わせるのは、ゲームが使う shader と file の全部を知っているのがゲームだけだから。
+// 決まった数の frame を回しても全部の経路を通る保証は無いので、export は frame を回さない。
 // snapshot の bytecode は <Entry>.tcsb で、player は引数なしで起動すると、実行ファイルの隣の .tcsb を動かす (src/main.c)。
 // 誤り (C# の例外に当たる VM の fault) は log に出し、その frame を失敗にして続ける。
 // fault の処置は、entry class の static ErrorAction OnError(string) に聞く (無ければ Log)。
@@ -307,6 +309,8 @@ static void load_extension(Player *p, const char *path) {
 // .tcsb から VM を作る。
 // 失敗したら VM は無いまま (次の書き直しを待つ)。
 static bool load_module(Player *p) {
+  // mtime は読む前に控える。
+  // 読んだ後に控えると、その間に tcs が書き直した次の .tcsb を読んだことにしてしまい、さらに次の build まで作り直さない。
   p->module_mtime = file_mtime(p->module);
   size_t size = 0;
   void *bytes = SDL_LoadFile(p->module, &size);

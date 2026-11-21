@@ -1,6 +1,8 @@
 // App.Use / App.Step: 同じ process の中に別の app を開き、その絵を texture に描かせる。
 // 開いた app は自分の App (resource の表、物理、音、入力の控え) を持ち、Process (window、backend) を開いた側と分け合う。
 // app の中身 (tcs VM と entry の呼び出し) は player が LubAppHooks で作る。hook が無い host では error。
+// 開いた app を開いた側と同じ VM に入れないのは、作り直し、reload、状態の保存の単位を app の VM 1 つに揃え、どの object がどちらの物かを分ける規則を要らなくするため。
+// 別の process にしないのは、開いた app の絵を開いた側の画面に置き、状態を同じ frame の中の関数呼び出しで読むため (tcs VM の fault は VM の中で止まり、Step が false を返す)。
 #include "api_internal.h"
 #include "backend.h"
 #include "pick.h"

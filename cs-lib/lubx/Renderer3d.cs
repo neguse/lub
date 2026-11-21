@@ -12,6 +12,8 @@
 //   ガードする (cs-lib 慣例)。
 // - viewProj は public フィールド (書くのは begin() だけ、利用側は
 //   読み取り専用扱い)。litUniforms は End() で narrow 済みの vp を引数で受ける。
+// - deferred にしない。
+//   G-buffer を pass の間で memory に書いて読み直す費用が web と mobile の GPU で大きく、光源が平行光源 1 本なら deferred の得が無い。
 
 using System;
 using System.Collections.Generic;
@@ -639,6 +641,8 @@ public class Renderer3d
         """;
 
     // composite: scene * AO + bloom、fog、outline (どちらも opt-in、HDR 空間)。
+    // AO は光を当てた後の色全体に掛ける。
+    // 環境光だけに掛けるには forward の pass の前に depth だけを描く pass が要るので、その pass を足さないための割り切り。
     private static string compositeFs = """
 
         LUB_TEXTURE2D(scene);

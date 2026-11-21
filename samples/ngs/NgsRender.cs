@@ -5,7 +5,8 @@ using Lubx;
 using TinySystem.Text;
 
 /// <summary>playfield の world 座標 → 画面座標。
-/// playfield は画面中央の 240×480。
+/// world 座標は原典の画面座標のままで、playfield は x 200..440 にある。
+/// 原典の座標の値 (出現位置や移動の範囲) をそのまま書けるよう world 座標は変えず、描画するときだけ Sx / Sy で画面座標に直す。
 /// </summary>
 public static class NgsViewport
 {

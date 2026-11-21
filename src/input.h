@@ -1,5 +1,6 @@
 #pragma once
 // 1 frame の入力。Input.* はこれだけを読む (SDL を直接読まない)。
+// SDL を直接読まないのは、App.Step で開いた app に、開いた側が選んだ入力や、控えから再生する入力を見せるため。
 // host が SDL の状態と event から埋める (src/host_api.c)。
 #include <SDL3/SDL.h>
 #include <stdbool.h>

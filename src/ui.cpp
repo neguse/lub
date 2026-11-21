@@ -19,6 +19,8 @@ extern "C" {
 // draw list を「頂点変換 → 単一 vbuf/ibuf アップロード → cmd ごとに scissor + テクスチャ切替 + indexed draw」として lub_gfx_draw と同じ内部 API (pipeline cache / reflection ベースの bindings) で発行する。
 // 頂点は ImDrawVert (pos2f, uv2f, col u32) を 8 float (float2 pos, float2 uv, float4 col) に展開した storage buffer で、shader が頂点 id で読む (vertex pulling)。
 // ImDrawIdx は CMake の ImDrawIdx=unsigned 定義で 32bit (backend の ibuf は u32 固定)。
+// この renderer は font atlas を起動時に 1 回 upload するだけで、texture の作成と更新を renderer に求める ImGui 1.92 以降の仕組み (RendererHasTextures) は受け持たない。
+// ImGui を上げるときは、font の texture の扱いをここで合わせる。
 
 static App *g_app_ui = nullptr;
 static bool g_ctx_ready = false;

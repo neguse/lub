@@ -192,6 +192,8 @@ typedef struct RenderBackend {
   bool (*frame_buffer)(SglBufferType type, const void *data, size_t bytes,
                        BackendFrameRange *out);
 
+  // core API は barrier も resource の state も出さないので、end_pass と dispatch より前に書いた内容を後の draw と dispatch が読めるように順序付けるのは各 backend の仕事。
+  // 同じ dispatch の中で同じ texture を読みと書きの両方に使う形は、api_gfx.c が backend に渡す前に error にする。
   void (*begin_pass)(struct Process *proc, const PassBeginDesc *);
   void (*end_pass)(struct Process *proc);
 

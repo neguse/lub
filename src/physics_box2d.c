@@ -455,6 +455,8 @@ static PhysJoint *joint_get_or_create(PhysWorld *w, const char *key) {
 }
 
 // ------------------------------------------------------------ tombstones
+// prune や作り直しで壊した shape の end の contact / sensor event は、Box2D の id から shape を引けない。
+// shape の key を id ごとに写して残しておき、その event の Body と Shape を埋める (Valid は false)。
 
 static uint32_t shape_tombstone_bucket(uint64_t id_key) {
   return (uint32_t)(id_key ^ (id_key >> 32)) & (PHYS2D_TOMBSTONE_BUCKETS - 1);
@@ -1081,6 +1083,8 @@ static bool world_create_or_recreate(App *app, PhysWorld *w,
   if (needs_create) {
     callbacks_clear(w);
     world_destroy_box2d_and_contents(w);
+    // world に worker (enqueueTask) を渡さず、Box2D は Step を呼んだ thread の上だけで解く。
+    // Filter / PreSolve などの callback はゲームの関数を呼ぶので、worker の thread から呼ばれてはいけない。
     b2WorldDef def = b2DefaultWorldDef();
     def.gravity = gravity;
     def.enableSleep = desc->sleep;

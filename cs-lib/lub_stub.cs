@@ -866,7 +866,7 @@ namespace Lub
             error = null;
         }
 
-        /// <summary>count 頂点を instances 個描く。
+        /// <summary>count 頂点を instances 個描く (`indices` を Set したときは count が index の数)。
         /// instances に 0 以下を渡すと draw 自体がスキップされる。
         /// 値はこの呼び出しの時点のものが使われ、後の Set は前の draw を変えない。
         /// </summary>
@@ -1143,6 +1143,7 @@ namespace Lub
 
         /// <summary>glTF (.gltf / .glb) を読む。
         /// 結果の mesh は interleave 系に渡す。
+        /// 読み直しと version は .gltf / .glb の本体のファイルだけで決まり、.gltf が参照する外部の .bin だけを書き換えても読み直さない (書き出すツールはふつう .gltf と .bin を一緒に書く)。
         /// </summary>
         public static void LoadGltf(string path, out GltfMesh? mesh,
             out int version, out Status status, out string? error)
@@ -1740,6 +1741,10 @@ namespace Lub
     }
 
     /// <summary>Box2D の即時モード API。
+    /// 宣言の field には、変えると object を作り直すもの (shape の形と Sensor と Filter、body の Initial、joint の種類と 2 つの body と取り付け位置など) と、宣言のたびに今の object に当てるもの (密度、摩擦、event の有無、body の Type や damping など) がある。
+    /// 作り直すと接触や sleep の状態は引き継がれないので、Version に frame 番号のような毎フレーム変わる値を渡さない。
+    /// Version を渡すと作り直すかどうかは Version だけで決まり、同じ Version のまま作り直す側の field を変えても作り直さずに log に 1 回出す (`Gfx.UseBuffer` の version と同じく、同じ Version は同じ中身という主張)。
+    /// Version を省くと、作り直す側の field の hash を Version として使う。
     /// C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。
     /// どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、受け取った配列は phys2d の次の関数を呼ぶ前に写す。
     /// visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。
@@ -2179,6 +2184,10 @@ namespace Lub
     }
 
     /// <summary>Box3D の即時モード API。
+    /// 宣言の field には、変えると object を作り直すもの (shape の形と Sensor と Filter、body の Initial、joint の種類と 2 つの body と取り付け位置など) と、宣言のたびに今の object に当てるもの (密度、摩擦、event の有無、body の Type や damping など) がある。
+    /// 作り直すと接触や sleep の状態は引き継がれないので、Version に frame 番号のような毎フレーム変わる値を渡さない。
+    /// Version を渡すと作り直すかどうかは Version だけで決まり、同じ Version のまま作り直す側の field を変えても作り直さずに log に 1 回出す (`Gfx.UseBuffer` の version と同じく、同じ Version は同じ中身という主張)。
+    /// Version を省くと、作り直す側の field の hash を Version として使う。
     /// C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。
     /// どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、受け取った配列は phys3d の次の関数を呼ぶ前に写す。
     /// visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。
@@ -2891,6 +2900,7 @@ namespace Lub
     /// <summary>event / query / callback が返す shape の識別。
     /// material は MaterialName (宣言時の名前) と UserMaterialId (整数) に分かれる。
     /// filter は live な shape のときだけ入る。
+    /// 壊した shape の end の event でも Body と Shape には宣言の key が入り、Valid が false になる。
     /// </summary>
     public class ShapeView
     {
@@ -3274,6 +3284,7 @@ namespace Lub
 
     /// <summary>joint の宣言。
     /// 有効フィールドは type ごとに異なる。
+    /// body を作り直すとその body の joint は消えるので、joint は毎フレーム両方の body を宣言した後に宣言する。
     /// </summary>
     public class JointDesc
     {
@@ -3839,6 +3850,7 @@ namespace Lub
     }
 
     /// <summary>event / query / callback が返す shape の識別 (3D)。
+    /// 壊した shape の end の event でも Body と Shape には宣言の key が入り、Valid が false になる。
     /// </summary>
     public class ShapeView3d
     {
@@ -4382,6 +4394,7 @@ namespace Lub
     /// <summary>joint の宣言。
     /// 有効フィールドは type ごとに異なる。
     /// anchor はワールド座標。
+    /// body を作り直すとその body の joint は消えるので、joint は毎フレーム両方の body を宣言した後に宣言する。
     /// </summary>
     public class JointDesc3d
     {
