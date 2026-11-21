@@ -4310,13 +4310,12 @@ public sealed class CEmitter
                     var sequence = TypeOf(args[1]);
                     var sep = Temp("sep");
                     var seq = Temp("enum_values");
-                    var flags = table.Flags ? "true" : "false";
                     var sepValue = RenderExpr(args[0]);
                     var seqValue = RenderExpr(args[1]);
                     return $"({{ TcsString *{sep} = {sepValue}; " +
                         $"{sequence.CName} {seq} = ({sequence.CName})tcs_nonnull({seqValue}); " +
                         $"tcs_string_join_enum({sep}, (const int32_t *){seq}->data, {seq}->length, " +
-                        $"{table.Names}, {table.Values}, {table.Count}, {flags}); }})";
+                        $"{EnumTableArgs(table)}); }})";
                 }
             case "FormatFloat": return RenderNumberFormat(call, FloatFormatLetters, "tcs_string_f32_spec");
             case "FormatInt": return RenderNumberFormat(call, IntFormatLetters, "tcs_string_i32_spec");
@@ -4800,8 +4799,15 @@ public sealed class CEmitter
     // C# 版の局所関数 Format
     private static string EnumFormatText(string v, EnumTableInfo table)
     {
+        return $"tcs_enum_format({v}, {EnumTableArgs(table)})";
+    }
+
+    // tcs_enum_format の表の引数 (名前、値、個数、Flags、符号なし)
+    private static string EnumTableArgs(EnumTableInfo table)
+    {
         var flags = table.Flags ? "true" : "false";
-        return $"tcs_enum_format({v}, {table.Names}, {table.Values}, {table.Count}, {flags})";
+        var isUnsigned = table.Unsigned ? "true" : "false";
+        return $"{table.Names}, {table.Values}, {table.Count}, {flags}, {isUnsigned}";
     }
 
     private string RenderFormatEnum(IlCall call)
@@ -4823,10 +4829,13 @@ public sealed class CEmitter
         if (_enumTables.TryGetValue(specText, out existing)) return existing;
         // spec は UTF-8 の byte の列のまま読む (',' と ':' は多 byte の文字の中に現れないので、C# 版の文字の分割と同じ)
         var spec = Utf8List(specText);
+        // 先頭の印: `*` は Flags、続く `+` は符号なし (uint の enum)
         var flags = spec.Count > 0 && spec[0] == '*';
+        var segmentStart = flags ? 1 : 0;
+        var isUnsigned = segmentStart < spec.Count && spec[segmentStart] == '+';
+        if (isUnsigned) segmentStart++;
         var entryNames = new List<List<int>>();
         var entryValues = new List<int>();
-        var segmentStart = flags ? 1 : 0;
         for (var i = segmentStart; i <= spec.Count; i++)
         {
             if (i < spec.Count && spec[i] != ',') continue;
@@ -4866,7 +4875,7 @@ public sealed class CEmitter
         var valueList = entryValues.Count == 0 ? "0" : string.Join(", ", valueTexts);
         _literalDecls.Add($"static const int32_t {values}[] = {{ " +
             $"{valueList} }};");
-        var table = new EnumTableInfo(names, values, entryValues.Count, flags);
+        var table = new EnumTableInfo(names, values, entryValues.Count, flags, isUnsigned);
         _enumTables[specText] = table;
         return table;
     }
@@ -8740,13 +8749,16 @@ public sealed class EnumTableInfo
     public string Values;
     public int Count;
     public bool Flags;
+    // uint の enum (表に無い値を符号なしの数で書く)
+    public bool Unsigned;
 
-    public EnumTableInfo(string names, string values, int count, bool flags)
+    public EnumTableInfo(string names, string values, int count, bool flags, bool isUnsigned)
     {
         Names = names;
         Values = values;
         Count = count;
         Flags = flags;
+        Unsigned = isUnsigned;
     }
 }
 

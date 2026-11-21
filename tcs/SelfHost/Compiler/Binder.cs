@@ -1444,7 +1444,8 @@ public sealed class Binder
             if (v.Kind == ConstKind.Null) return v;
             return FoldConversion(v, from, to.Elem);
         }
-        if (v.Kind == ConstKind.Int && (to.Kind == TypeKind.Int || to.Kind == TypeKind.Byte || to.Kind == TypeKind.Char || to.Kind == TypeKind.UInt || to.Kind == TypeKind.Short || to.Kind == TypeKind.Enum || to.Kind == TypeKind.Long)) return v;
+        if (v.Kind == ConstKind.Int && to.Kind == TypeKind.Enum) return EnumConst(v, to);
+        if (v.Kind == ConstKind.Int && (to.Kind == TypeKind.Int || to.Kind == TypeKind.Byte || to.Kind == TypeKind.Char || to.Kind == TypeKind.UInt || to.Kind == TypeKind.Short || to.Kind == TypeKind.Long)) return v;
         if (v.Kind == ConstKind.Float && to.Kind == TypeKind.Float) return v;
         if (v.Kind == ConstKind.String && to.Kind == TypeKind.String) return v;
         if (v.Kind == ConstKind.Bool && to.Kind == TypeKind.Bool) return v;
@@ -1453,6 +1454,15 @@ public sealed class Binder
     }
 
     private static float IntToFloat(int i) => i;
+
+    // enum への変換の整数の定数: 値を基底型の範囲へ wrap する (C# の unchecked の変換。範囲内の値はそのまま)
+    private static ConstValue EnumConst(ConstValue v, TypeSym to)
+    {
+        var b = IlTypes.EnumUnderlying(to);
+        if (b == null) return v;
+        int wrapped = IlTypes.WrapInteger(b, v.I);
+        return wrapped == v.I ? v : ConstValue.OfInt(wrapped);
+    }
 
     // 暗黙の変換の種類。無ければ -1
     private int ImplicitKind(Node? e, TypeSym from, TypeSym to)
@@ -1469,7 +1479,7 @@ public sealed class Binder
         {
             int v = e.Const.I;
             if (to.Kind == TypeKind.Byte && v >= 0 && v <= 255) return ConvKind.Identity;
-            if (to.Kind == TypeKind.Short && v >= -32768 && v <= 32767) return ConvKind.Identity;
+            if (to.Kind == TypeKind.Short && IlTypes.WrapInteger(to, v) == v) return ConvKind.Identity;
             if (to.Kind == TypeKind.UInt && v >= 0) return ConvKind.Identity;
             if (to.Kind == TypeKind.Enum && v == 0) return ConvKind.Identity;
         }
@@ -5030,7 +5040,7 @@ public sealed class Binder
                 if (e.Info == ConvKind.Identity && c.Kind == ConstKind.Int)
                 {
                     e.HasConst = true;
-                    e.Const = c;
+                    e.Const = to.Kind == TypeKind.Enum ? EnumConst(c, to) : c;
                 }
                 else if (e.Info == ConvKind.IntToFloat && c.Kind == ConstKind.Int)
                 {

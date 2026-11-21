@@ -39,6 +39,46 @@ public static class IlTypes
         return false;
     }
 
+    // 整数の型の bit 数。byte と sbyte は 8、short と ushort は 16、それ以外は 32 (値は i32 で持つ)
+    public static int IntegerBits(TypeSym t)
+    {
+        if (t.Kind == TypeKind.Byte) return 8;
+        if (t.Kind == TypeKind.Short) return t.Name == "sbyte" ? 8 : 16;
+        return 32;
+    }
+
+    // 符号なしの整数の型 (byte、ushort、uint)
+    public static bool IsUnsignedInteger(TypeSym t)
+    {
+        return t.Kind == TypeKind.Byte || t.Kind == TypeKind.UInt || (t.Kind == TypeKind.Short && t.Name == "ushort");
+    }
+
+    // v を整数の型 t の範囲へ wrap した値 (C# の unchecked の変換)。符号なしは下位の bit、符号付きは符号拡張。32 bit の型はそのまま
+    public static int WrapInteger(TypeSym t, int v)
+    {
+        int bits = IntegerBits(t);
+        if (bits == 32) return v;
+        if (IsUnsignedInteger(t)) return v & ((1 << bits) - 1);
+        int shift = 32 - bits;
+        return (v << shift) >> shift;
+    }
+
+    // enum (と enum の T?) の基底型。enum でなければ null
+    public static TypeSym? EnumUnderlying(TypeSym? t)
+    {
+        if (t == null) return null;
+        var u = UnwrapNullable(t);
+        if (u.Kind != TypeKind.Enum || u.Decl == null) return null;
+        return u.Decl.EnumBase != null ? u.Decl.EnumBase : TypeSym.IntType;
+    }
+
+    // uint を基底型に持つ enum (と enum の T?)。値は 32 bit の 2 の補数で持ち、大小は符号なしで比べる
+    public static bool IsUIntEnum(TypeSym? t)
+    {
+        var b = EnumUnderlying(t);
+        return b != null && b.Kind == TypeKind.UInt;
+    }
+
     // 整数の元 (char を含む)
     public static bool IsIntegralSource(TypeSym? t)
     {
