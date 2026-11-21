@@ -1,8 +1,7 @@
 namespace TinySystem;
 
-// dotnet 側 facade は System 相当へ委譲する (CLAUDE.md「dotnet側では System
-// 名前空間の型に委譲」)。ユーザーがゲームロジックを dotnet 単体テストで
-// 検証でき、tcs の dotnet differential が facade parity を検証できる。
+// dotnet 側 facade は System 名前空間の型へ委譲する。
+// ユーザーがゲームロジックを dotnet 単体テストで検証でき、tcs の dotnet differential が facade parity を検証できる。
 
 /// <summary>System.Random と同じ形 (instance + `Random.Shared`)。tcs の
 /// 2 backend (C / VM) は同じ PRNG (xoshiro256**、il-spec §13) なので、同じ

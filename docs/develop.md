@@ -73,6 +73,24 @@ scripts/format.sh            # 全ソースを整形
 scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非ゼロ終了で失敗)
 ```
 
+## 開発の流れ
+
+作業はブランチを切って PR にする。
+merge してよいかは、PR の CI(`.github/workflows/ci.yml`)の `gate` の job で決まる。
+
+1. テストを先に書く。lub の挙動は `tests/cs/` の runtime テストと golden で、tcs の挙動は `tcs/` のテスト([tcs/README.md](../tcs/README.md))で見る。
+2. 実装して、テストが通るのを確かめる。
+3. テスト、実装、変えた挙動を書いたドキュメントを 1 つの PR に入れる。
+
+clone したら一度、commit フックを有効にする:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+commit フック(`scripts/pre-commit.sh`)は、変えたファイルの整形、空白、docs-lint を走らせる。
+build とテストは PR の CI が走らせる。同じものを手元で走らせるのは `scripts/pre-push.sh`。
+
 ## 実行
 
 ```sh
