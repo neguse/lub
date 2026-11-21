@@ -1802,10 +1802,17 @@ public sealed class IlBuild
         if (id == "Dict.TryGetValue" && recvNode != null) return BuildDictTryGetValue(call, recvNode, m);
         // int / float の CompareTo (同じ型): -1 / 0 / 1 を返す intrinsic
         if (id == "Math.CompareTo" && recvNode != null)
-        {
-            var cmpRecv = BuildExpr(recvNode);
-            return cmpRecv == null ? null : new IlCall("Math.CompareTo", Prepend(cmpRecv, args), null);
-        }
+            return BuildValueReceiverCall(call, recvNode, args, (r, a) => new IlCall("Math.CompareTo", Prepend(r, a), null));
+        if (id == "Nullable.GetValueOrDefaultValue" && recvNode != null)
+            return BuildValueReceiverCall(call, recvNode, args, (r, a) =>
+            {
+                // method の引数なので常に 1 回評価する (?? と違い遅延しない)
+                var stats = new List<IlStat>();
+                stats.Add(new IlLocal("__tcs_val", r, null, null));
+                stats.Add(new IlLocal("__tcs_fb", a[0], null, null));
+                stats.Add(new IlReturn(new IlNullableGetOrDefault(new IlVar("__tcs_val", null), new IlVar("__tcs_fb", null), null), null));
+                return new IlIife(stats, null);
+            });
         switch (id)
         {
             case "Console.WriteLine":
@@ -1945,15 +1952,6 @@ public sealed class IlBuild
                 return new IlInvoke(recv, callee.Text, args, null);
             case "Nullable.GetValueOrDefault":
                 return new IlNullableGetOrDefault(recv, DefaultIl(IlTypes.UnwrapNullable(recvType!)), null);
-            case "Nullable.GetValueOrDefaultValue":
-                {
-                    // method の引数なので常に 1 回評価する (?? と違い遅延しない)
-                    var stats = new List<IlStat>();
-                    stats.Add(new IlLocal("__tcs_val", recv, null, null));
-                    stats.Add(new IlLocal("__tcs_fb", args[0], null, null));
-                    stats.Add(new IlReturn(new IlNullableGetOrDefault(new IlVar("__tcs_val", null), new IlVar("__tcs_fb", null), null), null));
-                    return new IlIife(stats, null);
-                }
             case "String.Trim":
                 return new IlCall("String.Trim", One(recv), null);
             case "String.ToUpper":
@@ -1992,6 +1990,47 @@ public sealed class IlBuild
                 }
         }
         return Unported("builtin " + id, call);
+    }
+
+    // 値型の変数 (local / field / 配列の要素とその struct の field) を受け手にした組み込みの method。
+    // C# は受け手の格納先を決め (null の object と範囲外の添字はここで fault)、引数を評価してから、その変数の今の値で呼ぶ (C# §12.6.6)。
+    // 引数が格納先を書き換えうるときだけ、参照型の prefix と添字を temp に固定し、格納先を一度読んで検査してから引数を temp に評価し、格納先を読み直して呼ぶ。
+    // property の結果、List の添字、?. の受け手は値の copy で、引数より先に読む
+    private IlExpr? BuildValueReceiverCall(Node call, Node recvNode, List<IlExpr> args, System.Func<IlExpr, List<IlExpr>, IlExpr?> build)
+    {
+        var argNodes = ArgExprs(call);
+        bool argsWrite = false;
+        foreach (var a in argNodes)
+        {
+            if (MayWriteStorage(a)) argsWrite = true;
+        }
+        var path = argsWrite && !(_condBinding != null && recvNode == _subNode) ? StructSlotPath(recvNode) : null;
+        if (path == null)
+        {
+            var recv = BuildExpr(recvNode);
+            return recv == null ? null : build(recv, args);
+        }
+        var stats = new List<IlStat>();
+        IlExpr? root = path.IsVariable ? BuildExpr(path.Base) : FixSlot(path.Base, "__tcs_obj", argNodes, stats);
+        if (root != null && path.Index != null)
+        {
+            var idx = FixSlot(path.Index, "__tcs_idx", argNodes, stats);
+            root = idx != null ? new IlIndex(root, idx, true, IlTypes.HasNilableElements(NaturalType(path.Base)), null) : null;
+        }
+        var place = root == null ? null : RebuildSlot(recvNode, path.Stop, root);
+        if (place == null) return null;
+        if (!path.IsVariable) stats.Add(new IlLocal("_", place, null, null));
+        var temps = new List<IlExpr>();
+        for (int i = 0; i < args.Count; i++)
+        {
+            var name = "__tcs_arg" + i;
+            stats.Add(new IlLocal(name, args[i], null, null));
+            temps.Add(new IlVar(name, null));
+        }
+        var result = build(place, temps);
+        if (result == null) return null;
+        stats.Add(new IlReturn(result, null));
+        return new IlIife(stats, null);
     }
 
     // string の method の char の引数は 1 文字の string にして runtime へ渡す (char は整数の code unit)
@@ -3264,10 +3303,12 @@ public sealed class IlBuild
         var ma = StripConv(assign.A!);
         var path = StructSlotPath(ma.A!)!;
         var stats = new List<IlStat>();
-        IlExpr? root = path.IsVariable ? BuildExpr(path.Base) : FixSlot(path.Base, "__tcs_obj", assign, stats);
+        var later = new List<Node>();
+        later.Add(assign.B!);
+        IlExpr? root = path.IsVariable ? BuildExpr(path.Base) : FixSlot(path.Base, "__tcs_obj", later, stats);
         if (root != null && path.Index != null)
         {
-            var idx = FixSlot(path.Index, "__tcs_idx", assign, stats);
+            var idx = FixSlot(path.Index, "__tcs_idx", later, stats);
             var bt = NaturalType(path.Base);
             root = idx != null ? new IlIndex(root, idx, true, IlTypes.HasNilableElements(bt), null) : null;
         }
@@ -3304,10 +3345,20 @@ public sealed class IlBuild
         return stats;
     }
 
-    private IlExpr? FixSlot(Node e, string temp, Node assign, List<IlStat> stats)
+    // 格納先の prefix / 添字 e を、読み直すと値が変わりうるなら temp に固定する (later は e の後に評価する式)
+    private IlExpr? FixSlot(Node e, string temp, List<Node> later, List<IlStat> stats)
     {
         var built = BuildExpr(e);
-        if (built == null || (IsStableRead(e) && !WritesLocalReadBy(e, assign.B!))) return built;
+        if (built == null) return null;
+        if (IsStableRead(e))
+        {
+            bool written = false;
+            foreach (var n in later)
+            {
+                if (WritesLocalReadBy(e, n)) written = true;
+            }
+            if (!written) return built;
+        }
         stats.Add(new IlLocal(temp, built, null, null));
         return new IlVar(temp, null);
     }
@@ -3905,10 +3956,11 @@ public sealed class IlBuild
     // 型の照合。struct の入力 (S / S?) を同じ struct の型で照合するのは値の有無だけ
     private IlExpr? BuildTypeCheck(IlExpr expr, TypeSym? inputType, TypeSym? patternType, string? typeRef)
     {
-        // 値型の入力 (T / T?) を同じ値型 T で照合するのは値の有無だけ (数と bool と enum も)
+        // 値型の入力 (T / T?) を同じ値型 T で照合するのは値の有無だけ (数と bool と enum も)。
+        // T の入力は常に一致し、入力を読まない (is の左辺の評価は BuildIsPattern が残す)
         if (patternType != null && patternType.IsValueType && inputType != null)
         {
-            if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => IlLiterals.Bool(true));
+            if (TypeSym.Same(inputType, patternType)) return IlLiterals.Bool(true);
             if (IlTypes.IsNullableValueType(inputType) && TypeSym.Same(inputType.Elem, patternType)) return new IlNullableHasValue(expr, null);
         }
         var primTest = PrimTypeTest(expr, patternType);
@@ -4181,7 +4233,16 @@ public sealed class IlBuild
             return new IlIife(stats, null);
         }
         var sub = BuildIsSubPattern(expr, pattern, inputType);
-        return sub == null ? null : new IlParen(sub, null);
+        if (sub == null) return null;
+        // 常に一致する照合 (値型の入力の `{ }`、同じ型の型 pattern) は入力を読まないが、左辺の式は評価する (副作用と fault を残す)
+        if (sub is IlLit && !(expr is IlLit || expr is IlVar))
+        {
+            var stats = new List<IlStat>();
+            stats.Add(new IlLocal("_", expr, null, null));
+            stats.Add(new IlReturn(sub, null));
+            return new IlIife(stats, null);
+        }
+        return new IlParen(sub, null);
     }
 
     // switch 式: IIFE、前束縛、if の連鎖。arm の値は copy 地点
@@ -4728,15 +4789,14 @@ public sealed class IlBuild
         return new IlIife(stats, null);
     }
 
-    // later の評価が earlier の読む local / parameter を書き換えうるか: 代入 / ++ / -- / ref・out の引数の直接の書き込み、
-    // または lambda の中で書かれる (捕捉された) local を読んでいて later が呼び出しを含むとき
+    // later の評価が earlier の読む local / parameter を書き換えうるか: 代入 / ++ / -- / ref・out の引数の直接の書き込み、または lambda の中で書かれる (捕捉された) local を読んでいて later が user のコード (呼び出し、構築、custom property の getter、user の演算子) を動かしうるとき
     private bool WritesLocalReadBy(Node earlier, Node later)
     {
         var read = new List<LocalSym>();
         CollectLocalReads(earlier, read);
         if (read.Count == 0) return false;
         if (WritesAny(later, read)) return true;
-        if (!ContainsCallOrNew(later)) return false;
+        if (!MayWriteStorage(later)) return false;
         var member = ScopeRoots.Count > 0 ? ScopeRoots[0] : null;
         if (member == null) return false;
         foreach (var l in read)
@@ -4752,12 +4812,6 @@ public sealed class IlBuild
     {
         if (n.Kind == NodeKind.Name && n.Info == RefKind.Local && n.Local != null && !into.Contains(n.Local)) into.Add(n.Local);
         VisitChildren(n, c => CollectLocalReads(c, into));
-    }
-
-    private static bool ContainsCallOrNew(Node n)
-    {
-        if (n.Kind == NodeKind.Call || n.Kind == NodeKind.New) return true;
-        return AnyChild(n, c => ContainsCallOrNew(c));
     }
 
     private static bool LambdaWrites(Node n, List<LocalSym> symbols)

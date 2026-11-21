@@ -313,4 +313,63 @@ public class AssignTargetDifferentialTests
             """, "P");
         Assert.Equal("2:1\n7:3\n7:3:2\n1\n3\n65\nab\n-2", output);
     }
+
+    // 右辺の property の getter が、添字に使う捕捉された local を書き換えても、代入先は右辺の前の添字で決まり、式の値は代入した値 (getter は呼び出しと同じく local を書き換えうる)
+    [CFact]
+    public void AssignIndex_RhsGetterChangesCapturedIndex()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            using System.Collections.Generic;
+            public struct Slot { public int N; }
+            public class Trigger { public Func<int> Go; public int Value { get { return Go(); } } }
+            public class P
+            {
+                static Func<int> f;
+                static int Value { get { return f(); } }
+                public static void Main()
+                {
+                    Slot[] slots = new Slot[2];
+                    int i = 0;
+                    var t = new Trigger();
+                    t.Go = () => { i = 1; return 7; };
+                    slots[i].N = t.Value;
+                    Console.WriteLine("struct:" + slots[0].N + "," + slots[1].N + "," + i);
+                    slots = new Slot[2]; i = 0;
+                    int r = (slots[i].N = t.Value);
+                    Console.WriteLine("struct-expr:" + r + "," + slots[0].N + "," + slots[1].N);
+                    slots = new Slot[2]; i = 0;
+                    slots[i].N += t.Value;
+                    Console.WriteLine("struct-compound:" + slots[0].N + "," + slots[1].N);
+                    int[] a = new int[] { 0, 9 };
+                    int j = 0;
+                    f = () => { j = 1; return 7; };
+                    Console.WriteLine("expr:" + (a[j] = Value) + "," + a[0] + "," + a[1]);
+                    a = new int[] { 1, 9 }; j = 0;
+                    a[j] += Value;
+                    Console.WriteLine("compound:" + a[0] + "," + a[1]);
+                    a = new int[] { 1, 9 }; j = 0;
+                    Console.WriteLine("compound-expr:" + (a[j] += Value) + "," + a[0] + "," + a[1]);
+                    var l = new List<int> { 0, 9 }; j = 0;
+                    Console.WriteLine("list:" + (l[j] = Value) + "," + l[0] + "," + l[1]);
+                    j = 0;
+                    Console.WriteLine("binary:" + (j + Value));
+                    a = new int[] { 0, 9 }; j = 0;
+                    a[j] = f();
+                    Console.WriteLine("direct:" + a[0] + "," + a[1]);
+                }
+            }
+            """, "P");
+        Assert.Equal("""
+            struct:7,0,1
+            struct-expr:7,7,0
+            struct-compound:7,0
+            expr:7,7,9
+            compound:8,9
+            compound-expr:8,8,9
+            list:7,7,9
+            binary:7
+            direct:7,9
+            """.ReplaceLineEndings("\n"), output);
+    }
 }
