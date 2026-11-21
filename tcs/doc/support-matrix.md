@@ -274,13 +274,13 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `bool` (`true`/`false`) | **Y** | |
 | `null` | **Y** | |
 | 文字列 (`"hello"`) | **Y** | UTF-8 の byte 列 |
-| 補間文字列 (`$"...{x}..."`) | **Y** | object の hole は中の値で文字列にする (`__tcs_nstr`。値が float なら .NET と同じ文字列、null は `""`。C backend は object の補間を受けない)。float (と `float?`) の書式 `G` / `E` / `F` / `N` / `R`、int (と `int?`) の書式 `G` / `E` / `F` / `N` / `D` / `X` / `R` (小文字・精度つきも) は .NET の `ToString(format)` と同じ文字列 (`String.FormatFloat` / `String.FormatInt`、il-spec §13。`T?` の null は空文字列)。他の書式 (独自の書式 `0.00` / `#,0`、`C`、`P`、object と型引数の穴の書式、enum の `G` / `F` / `D` 以外) は TCS1001 `UnsupportedFormatSpecifier(書式)` (黙って別の文字列にしない)。bool / string / char / Rune と user の型の穴は書式を使わない (.NET も IFormattable でなければ無視する)。raw 補間 (`$$"""..."""`) の `$` の個数より短い brace の連続は文字のまま。書式指定子 `F N D X E G R` の精度に数字以外があれば TCS1001 `MalformedFormatSpecifier` |
+| 補間文字列 (`$"...{x}..."`) | **Y** | object の hole は中の値で文字列にする (`__tcs_nstr`。値が float なら .NET と同じ文字列、null は `""`。C backend は object の補間を受けない)。float (と `float?`) の書式 `G` / `E` / `F` / `N` / `R`、int (と `int?`) の書式 `G` / `E` / `F` / `N` / `D` / `X` / `R` (小文字・精度つきも) は .NET の `ToString(format)` と同じ文字列 (`String.FormatFloat` / `String.FormatInt`、il-spec §13。`T?` の null は空文字列)。他の書式 (独自の書式 `0.00` / `#,0`、`C`、`P`、object と型引数の穴の書式、enum の `G` / `F` / `D` 以外) は TCS1001 `UnsupportedFormatSpecifier(書式)` (黙って別の文字列にしない)。bool / string / char / Rune と user の型の穴は書式を使わない (.NET も IFormattable でなければ無視する)。raw 補間 (`$$"""..."""`) の `$` の個数より短い brace の連続は文字のまま。raw 補間の 1 行か複数行かは raw 文字列と同じく開きの区切りの後ろで決まり、穴の中の改行では変わらない。穴の式は改行をまたいで書け、穴の中のコメント、文字列、文字の `}` と `:` は穴を閉じない。書式指定子 `F N D X E G R` の精度に数字以外があれば TCS1001 `MalformedFormatSpecifier` |
 | 文字 (`'A'`) | **Y** | 整数 code unit (§1.1) |
 | 2進数 (`0b1010`, C# 7) | **Y** | |
 | 16進数 (`0xFF`) | **Y** | |
 | 桁区切り (`1_000_000`, C# 7) | **Y** | |
 | verbatim 文字列 (`@"..."`) | **Y** | |
-| raw 文字列 (`"""..."""`, C# 11) | **Y** | |
+| raw 文字列 (`"""..."""`, C# 11) | **Y** | 開きの区切りの後ろが空白と改行なら複数行の形で、開きの後の改行、閉じの前の改行、各行の頭の閉じの行の字下げを除く (字下げより短い空白だけの行は空の行)。中身の改行は書いたままの bytes で残す (CRLF も CR も LF にしない) |
 | UTF-8 文字列 (`"..."u8`, C# 11) | **N/A** | |
 
 ### 4.2 演算子
@@ -475,6 +475,7 @@ class / record の継承は対象外 (q.md Q15)。多態は interface の実装�
 | `#pragma` | **-** | |
 | `[Attribute]` | **-** | Roslyn はパース、トランスパイラ無視 |
 | caller info 属性 (`[CallerArgumentExpression]` / `[CallerMemberName]` / `[CallerLineNumber]` / `[CallerFilePath]`, C# 5 / 10) | **-** | TCS1001 `CallerInfoAttribute(name)`。C# では呼び出し側でコンパイラが引数を埋めるが tcs は再現せず既定値が渡るため、parameter の属性を構文名で診断する (`Attribute` suffix と `System.Runtime.CompilerServices.` 修飾を許容) |
+| コメント (`//`、`/* */`) | **Y** | `//` のコメントと指令の行は C# の改行 (CR、LF、CRLF、U+0085、U+2028、U+2029) で終わる |
 | `///` XML ドキュメント | **N/A** | |
 
 ---

@@ -29,15 +29,36 @@ public sealed class SourceFile
         IsRef = isRef;
     }
 
+    // p から C# の改行 (CR、LF、CRLF、U+0085、U+2028、U+2029) が始まればその byte 数、でなければ 0
+    public static int NewLineLength(Utf8Bytes b, int p, int end)
+    {
+        if (p >= end) return 0;
+        int c = b[p];
+        if (c == '\n') return 1;
+        if (c == '\r') return p + 1 < end && b[p + 1] == '\n' ? 2 : 1;
+        if (c == 0xC2 && p + 1 < end && b[p + 1] == 0x85) return 2;
+        if (c == 0xE2 && p + 2 < end && b[p + 1] == 0x80 && (b[p + 2] == 0xA8 || b[p + 2] == 0xA9)) return 3;
+        return 0;
+    }
+
+    // 行の頭の位置。行は字句と同じく C# のどの改行でも区切る
     private List<int> LineStarts()
     {
         if (_lineStarts != null) return _lineStarts;
         var starts = new List<int>();
         starts.Add(0);
         int n = Bytes.Length;
-        for (int i = 0; i < n; i++)
+        int i = 0;
+        while (i < n)
         {
-            if (Bytes[i] == 10) starts.Add(i + 1);
+            int nl = NewLineLength(Bytes, i, n);
+            if (nl == 0)
+            {
+                i++;
+                continue;
+            }
+            i += nl;
+            starts.Add(i);
         }
         _lineStarts = starts;
         return starts;
