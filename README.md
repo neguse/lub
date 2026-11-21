@@ -115,10 +115,11 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
   lub は実行ファイルの隣の `tcs/tcs` (`scripts/build-tcs-native.sh` が作る C の tcs) を最初に使い、無ければ PATH の dotnet SDK で `tcs/` の compiler を動かす。
   C の tcs を使うなら実行に dotnet は要らない (作るのには dotnet SDK が要る)。
 
-サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
-(`<Entry>.cs` + `<Entry>.csproj` + `data/`)。
-ゲームの書き方(ライフサイクル、座標系、描画モデル、TinyC# の注意点)は
-[lub.neguse.net/docs](https://lub.neguse.net/docs) のガイドを参照。
+サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く (`<Entry>.cs` + `<Entry>.csproj` + `data/`)。
+csproj の何を読むかは [docs/manual/08-csharp.md](docs/manual/08-csharp.md)、data のパスの規約は [docs/manual/05-io-assets.md](docs/manual/05-io-assets.md)。
+data のうち、サンプルをまたいで使うもの (フォントなど) は `samples/data/` に置き、そのサンプルだけが読むものは `samples/<name>/data/` に置く。
+`lub` に sample の名前 (`lub 01_triangle`) を渡すと、`samples/<name>/` の中の `.csproj` を動かす。
+ゲームの書き方(ライフサイクル、座標系、描画モデル、TinyC# の注意点)は [lub.neguse.net/docs](https://lub.neguse.net/docs) のガイドを参照。
 
 Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
 
@@ -165,6 +166,13 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1  #
 ```
 
 score の見方や `-NoBuild` / backend 切替は [docs/sprites-bench.md](docs/sprites-bench.md) を参照。
+
+### runtime テスト
+
+runtime テストは C# で書き、tcs を通して動かす。
+1 本の test は `tests/cs/<Entry>.cs` と、中身が 1 行の `<Entry>.csproj` の組で、`lub tests/cs/<Entry>.csproj` で 1 本だけ動かせる。
+test の一覧と変換、どの経路と backend で走らせるかは `scripts/cs-tests.sh` にある。
+合否は `tests/cs/Check.cs` で決める (書き方は file の先頭のコメント)。
 
 ### Golden image diff (回帰テスト)
 
