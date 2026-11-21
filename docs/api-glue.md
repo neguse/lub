@@ -163,7 +163,7 @@ golden (`scripts/run-golden.sh`) も tcs VM の player で撮る。
    変えずに使い回す小さな値 (`Blend`、`Vec2d`) は `struct` (`record struct`、`readonly record struct` も) で書ける。
    struct の record の field は int / float / bool / enum と、それだけでできた struct の record に限る (`lub-gen check` が止める)。
    positional な parameter は持てないので、field か `{ get; init; }` の property で書く。
-2. `scripts/gen-api.sh` で header / tcs VM の host の関数 / API docs / facade を再生成
+2. `scripts/gen-api.sh` で header / tcs VM の host の関数 / API docs / facade を再生成(CI は `scripts/gen-api.sh --check` で、生成物が stub に追いついているかを見る)
 3. C runtime に `include/lub/lub_api.h` の関数を実装(`src/`)
 4. 実装ライブラリの機能なら `cs-lib/` に TinyC# で実装する
 

@@ -76,11 +76,19 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
 ## 開発の流れ
 
 作業はブランチを切って PR にする。
+これからやることは GitHub の issue に書き、やったことは PR の本文に書く。
+repo の中に作業の一覧や完了の記録は置かない。
 merge してよいかは、PR の CI(`.github/workflows/ci.yml`)の `gate` の job で決まる。
 
 1. テストを先に書く。lub の挙動は `tests/cs/` の runtime テストと golden で、tcs の挙動は `tcs/` のテスト([tcs/README.md](../tcs/README.md))で見る。
-2. 実装して、テストが通るのを確かめる。
+   runtime テストは C# で `tests/cs/<Entry>.cs` と中身 1 行の `<Entry>.csproj` に書き、判定には `tests/cs/Check.cs` を使う。
+   1 本だけなら `lub tests/cs/<Entry>.csproj` で動かす。
+   全体の一覧は `scripts/cs-tests.sh` にある。
+   サンプルは実行例なので、サンプルにはテストを書かない。
+2. [design.md](design.md) の設計の方針に沿って実装し、テストが通るのを確かめる。
+   API を足したり変えたりするときは、[api-glue.md](api-glue.md) の「新 API を足す手順」に従う。
 3. テスト、実装、変えた挙動を書いたドキュメントを 1 つの PR に入れる。
+   ドキュメントは [docs/README.md](README.md) の方針で書く。
 
 clone したら一度、commit フックを有効にする:
 
@@ -109,8 +117,8 @@ build とテストは PR の CI が走らせる。同じものを手元で走ら
 
 サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
 (`<Entry>.cs` + `<Entry>.csproj` + `data/`)。
-ゲームの書き方(ライフサイクル、座標系、描画モデル、TinyC# の注意点)は
-[lub.neguse.net/docs](https://lub.neguse.net/docs) のガイドを参照。
+複数のサンプルで使う asset (フォントなど) は `samples/data/` に置く。
+ゲームの書き方(ライフサイクル、座標系、描画モデル、TinyC# の注意点)は [manual/](manual/) のガイドにあり、サイトの [lub.neguse.net/docs](https://lub.neguse.net/docs) でも読める。
 
 Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
 
@@ -195,7 +203,7 @@ LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/Triangle01.csproj
 
 ## web のサイト
 
-ブラウザで動くエディタ (lider、`lider/`) を `web/` 配下に同梱し、[lub.neguse.net](https://lub.neguse.net) で公開している。
+ブラウザで動くエディタ (lider、[lider/README.md](../lider/README.md)) を `web/` 配下に同梱し、[lub.neguse.net](https://lub.neguse.net) で公開している。
 `.cs` は lider が player に組み込んだ tcs で tcs VM の bytecode に変換し、hot reload で動いているゲームに反映される。
 ガイド + API reference の docs サイト (`/docs`) も同じサイトに同居する。
 
