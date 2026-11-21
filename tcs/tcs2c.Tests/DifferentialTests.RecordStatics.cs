@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 型をまたぐ初期化順)、
 // struct / record struct の const は使用箇所で値に畳まれる (#154)。期待値は
 // 同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class RecordStaticsDifferentialTests
 {
     [CFact]
     public void Records_StaticFieldsBehaveLikeClassStatics()

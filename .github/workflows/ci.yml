@@ -1,84 +1,35 @@
 # PR のマージ gate と master deploy を 1 workflow に統合した CI。
 # required check は gate job だけ: test job の増減やシャード数の変更で branch protection を触らずに済む。
-#
-# 変更検知 (changes job) は保守的な 2 クラスだけ切る:
-#   - docs のみ (docs/** の manual 以外, *.md, .claude/**, LICENSE) → lint のみ
-#   - web サブツリーのみ (web/, docs/manual/) → native をスキップ
-# それ以外は全 job 実行。
-# tcs/ の中のテスト (tcs-* の job) は、PR では tcs/ かこの workflow を変えたときだけ走る。
-# 依存の閉包が広い (src/ は wasm へ、cs-lib/ は全 golden へ波及する) ので、細かく削るより漏れない側に倒す。
+# 変更した path で job を選ばず、毎回全部を走らせる。
 #
 # cache は入力の内容で key を取り、入力が同じなら同じ物を使う:
 #   - 第三者の library (SDL、Box2D、Box3D、OpenXR の loader) の install 先 <build>/deps/ (scripts/deps-cache-key.sh、cmake/LubDeps.cmake)
 #   - tcs wasm assets (content key: tcs/ の tree の hash)
 #   - slang prebuilt、emsdk、playwright browsers、npm
-# lub 本体は毎回 build する (compile の cache は使わない)。
+# lub 自身の source は PR ごとに変わるので、compile は ccache で cache する (Linux、macOS、Windows、web)。
 # master push が cache を作り、PR はそれを読む (actions/cache の branch scope)。
+# Linux の job は runner の image を ubuntu-26.04 に決める。ubuntu-latest は版が混ざる時期があり、compiler が違うと deps を作り直し、ccache も全部外れる。
+# release の一式 (kit) だけは、古い glibc の環境でも動くよう ubuntu-24.04 で作る。
+# ccache は PR では保存しない (PR ごとに保存すると cache が増え続ける)。branch で workflow_dispatch した run は、その branch の scope に保存する。
 name: ci
 
 on:
   push:
     branches: [master]
+    # tag (v*) の push で、検査を通った release の一式を GitHub の release に載せる (publish job)
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 # PR は ref ごとに group を分け、同一 PR への連続 push は前の run を止める。
-# deploy 系 (master push / dispatch) は直列 (cancel しない)。
+# master の run (deploy する) は直列で、止めない。tag や他の branch の run は ref ごとの group で、master の run を待たせない。
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  group: ci-${{ github.ref == 'refs/heads/master' && github.event_name != 'pull_request' && 'deploy' || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      docs_only: ${{ steps.classify.outputs.docs_only }}
-      web_only: ${{ steps.classify.outputs.web_only }}
-      tcs: ${{ steps.classify.outputs.tcs }}
-    steps:
-      - name: Classify changed paths
-        id: classify
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          docs_only=false
-          web_only=false
-          # tcs/ の中のテスト (tcs-* の job) を走らせるか。PR では tcs/ か この workflow を変えたときだけ
-          tcs=true
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
-              --paginate --jq '.[].filename' > /tmp/changed.txt
-            docs_only=true
-            web_only=true
-            tcs=false
-            while IFS= read -r f; do
-              case "$f" in
-                tcs/* | .github/workflows/ci.yml) tcs=true ;;
-              esac
-              case "$f" in
-                docs/manual/*) docs_only=false ;; # サイトの docs.html に焼き込まれる
-                docs/* | *.md | .claude/* | LICENSE) continue ;;
-                *) docs_only=false ;;
-              esac
-              case "$f" in
-                docs/manual/* | web/*) ;;
-                *) web_only=false ;;
-              esac
-            done < /tmp/changed.txt
-            if [ ! -s /tmp/changed.txt ]; then
-              docs_only=false
-              web_only=false
-              tcs=true
-            fi
-          fi
-          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
-          echo "web_only=$web_only" >> "$GITHUB_OUTPUT"
-          echo "tcs=$tcs" >> "$GITHUB_OUTPUT"
-          echo "docs_only=$docs_only web_only=$web_only tcs=$tcs"
-
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -93,7 +44,7 @@ jobs:
   # clang-format は版で出力が変わるので pip で版を固定する。
   # prettier / stylua は web/package-lock.json の版。
   format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -118,19 +69,41 @@ jobs:
       - name: Format check
         run: bash scripts/format.sh --check
 
-  # Linux regression gate: scripts/native-gate.sh (CI と手動 pre-push の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> C# sample gate。
+  # Linux regression gate: scripts/native-gate.sh (CI と手動 pre-push の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> サンプルの変換 -> 開発の道具の検査。
   # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は mesa の version に依存し、runner の mesa はローカル生成の golden と一致しない。
   # CI の視覚 golden gate は windows job (WARP)、lavapipe golden はローカル pre-push の gate。
   # mesa を container 等で pin できたら有効化する。
+  # native gate を部分 (--part) ごとの job に分けて並べる。lider の runtime テストは 2 つに分ける (LIDER_SHARD)。
   linux:
-    needs: changes
-    if: needs.changes.outputs.web_only != 'true'
-    runs-on: ubuntu-latest
+    name: linux (${{ matrix.part }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: bindings
+          - part: runtime
+          - part: tools
+          - part: lider
+            shard: 1/4
+          - part: lider
+            shard: 2/4
+          - part: lider
+            shard: 3/4
+          - part: lider
+            shard: 4/4
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
+    env:
+      CCACHE_MAXSIZE: 500M
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        shell: bash
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr third_party/jamo
 
       # CMake configure が slang の prebuilt (~150MB) を落とすのでキャッシュする。
       # key は取得 URL を持つ CMakeLists.txt に紐付け。
@@ -148,44 +121,102 @@ jobs:
 
       # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す
       - name: Cache deps
+        id: deps-cache
         uses: actions/cache@v4
         with:
           path: build-release-linux/deps
           key: ${{ steps.deps.outputs.key }}
           restore-keys: ${{ steps.deps.outputs.restore }}
 
-      # SDL3 は vendored build なので X11/Wayland/audio の dev ヘッダが要る。
-      # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓。
-      - name: Install system deps
-        run: |
-          # runner イメージ同梱の Google Chrome の apt source は metadata の Hash Sum mismatch を時々出して update ごと落とす。
-          # ここでは使わない
-          sudo rm -f /etc/apt/sources.list.d/google-chrome*
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ninja-build libvulkan-dev mesa-vulkan-drivers xvfb \
-            libasound2-dev libpulse-dev libpipewire-0.3-dev \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-            libxfixes-dev libxi-dev libxss-dev libxtst-dev \
-            libxkbcommon-dev libwayland-dev libdecor-0-dev \
-            libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
-            libdbus-1-dev libudev-dev
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-linux-${{ github.sha }}
+          restore-keys: ccache-linux-
 
-      # C# sample gate と .NET 実行用。
+      # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓。
+      # SDL3 を build するとき (deps の cache が key で当たらないとき) だけ、SDL3 の build に要る X11/Wayland/audio の dev ヘッダを入れる。
+      - name: Install system deps
+        uses: ./.github/actions/apt-install
+        with:
+          packages: ninja-build libvulkan-dev mesa-vulkan-drivers xvfb ${{ steps.deps-cache.outputs.cache-hit != 'true' && 'libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev' || '' }}
+
+      # 版を固定した ccache (scripts/install-ccache.sh)
+      - name: Install ccache
+        shell: bash
+        run: bash scripts/install-ccache.sh
+
+      # tcs の変換と .NET 実行用。
       # native-gate.sh --require-cs が skip を fail 扱いにする。
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: tcs/global.json
 
-      - name: Native gate (build, smokes, C# runtime tests, C# samples, .NET digest)
+      # かな漢字変換の辞書 (lider の tests/ime と tests/editor/ime が使う)。入力は build-dict.sh (取る mozc の commit) と jamo の commit なので、それを key にして cache し、無いときだけ作る
+      - name: Dictionary key
+        if: matrix.part == 'lider'
+        id: dict
+        run: echo "key=mozc-dict-$(git rev-parse HEAD:third_party/jamo)-${{ hashFiles('lider/scripts/build-dict.sh') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the dictionary
+        if: matrix.part == 'lider'
+        id: dict-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            lider/data/mozc.dict
+            lider/data/mozc-README.txt
+            lider/data/mozc-LICENSE.txt
+          key: ${{ steps.dict.outputs.key }}
+
+      # 辞書が無いと tests/ime は飛ばすので、ここで有ることを確かめる
+      - name: Dictionary
+        if: matrix.part == 'lider'
+        run: |
+          if [ "${{ steps.dict-cache.outputs.cache-hit }}" != true ]; then
+            bash lider/scripts/build-dict.sh lider/data
+          fi
+          test -s lider/data/mozc.dict
+
+      # build 済みのかな漢字変換 (jamo-core、Rust)。入力は jamo の commit と rustc の版で決まり、当たれば cargo を動かさない (lider/scripts/build-player.sh の JAMO_CACHE)
+      - name: jamo cache key
+        if: matrix.part == 'lider'
+        id: jamo
+        run: echo "key=jamo-lib-linux-$(git rev-parse HEAD:third_party/jamo)-$(rustc -V | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache jamo
+        if: matrix.part == 'lider'
+        uses: actions/cache@v4
+        with:
+          path: build-jamo
+          key: ${{ steps.jamo.outputs.key }}
+
+      - name: Native gate (${{ matrix.part }})
+        env:
+          LIDER_SHARD: ${{ matrix.shard }}
+          JAMO_CACHE: ${{ github.workspace }}/build-jamo
         run: |
           export TMPDIR="${RUNNER_TEMP}/native-gate-tmp"
           mkdir -p "$TMPDIR"
-          bash scripts/native-gate.sh --require-cs --skip-golden
+          bash scripts/native-gate.sh --require-cs --skip-golden --part ${{ matrix.part }}
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      # 部分のうち、いちばん多くを build する runtime が保存する
+      - name: Save ccache
+        if: github.event_name != 'pull_request' && matrix.part == 'runtime'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-linux-${{ github.sha }}
 
       # web-export が page を書くのに使う lub と、その共有 library、テストの bytecode。
       # 共有 library は RUNPATH (build の絶対 path) で探すので、同じ path に置き戻す。
       - name: Upload lub for web-export
+        if: matrix.part == 'runtime'
         uses: actions/upload-artifact@v4
         with:
           name: lub-linux
@@ -199,7 +230,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: golden-failure-linux
+          name: native-gate-failure-${{ strategy.job-index }}
           path: ${{ runner.temp }}/native-gate-tmp
           if-no-files-found: ignore
 
@@ -207,16 +238,41 @@ jobs:
   # WARP はソフトウェアラスタライザなので GPU の無い runner でも tests/golden/*_d3d12.png と byte 一致する。
   # vulkan backend は runner に Vulkan driver が無いためビルドのみ検証 (動作は linux job の lavapipe が同じ backend_vulkan.c で runtime テストを通す)。
   windows:
-    needs: changes
-    if: needs.changes.outputs.web_only != 'true'
+    name: windows (${{ matrix.part }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # build の後の検査を 2 つの job に分けて並べる。checks = 個別の検査と export、runtime = tests/cs の runtime テストと golden と .NET 実行
+        part: [checks, runtime]
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      CCACHE_MAXSIZE: 500M
+      # .NET の SDK は image に無い版を毎回取るので、install 先を決めて cache する
+      DOTNET_INSTALL_DIR: C:\dotnet
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: ilammy/msvc-dev-cmd@v1
+
+      # 起動したての runner は、compiler を初めて動かすのに 20 秒ほどかかる (configure の最初の compile がそれを払う)。
+      # 後の準備 (submodule、cache の復元) の間に、裏で一度動かしておく
+      - name: Warm up the compilers
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/warm"
+          cd "$RUNNER_TEMP/warm"
+          printf 'int main(void) { return 0; }\n' > warm.c
+          cp warm.c warm.cpp
+          (
+            cl /nologo warm.c /Fe:warm-c.exe
+            cl /nologo warm.cpp /Fe:warm-cxx.exe
+          ) > warm.log 2>&1 &
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        shell: bash
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr
 
       # backend_vulkan.c のビルドに Vulkan headers + loader (vulkan-1.lib) が要る。
       # runner に Vulkan SDK は無いので Khronos リポジトリから該当コンポーネントだけ組み立てる (VULKAN_SDK env を設定し find_package(Vulkan) が拾う)。
@@ -252,36 +308,73 @@ jobs:
           key: ${{ steps.deps.outputs.key }}
           restore-keys: ${{ steps.deps.outputs.restore }}
 
-      - name: Configure
-        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+      # ccache は MSVC の cl も扱う (Release は debug の情報を持たないので、そのまま cache できる)。
+      # 版を固定した ccache (scripts/install-ccache.sh)
+      - name: Install ccache
+        shell: bash
+        run: bash scripts/install-ccache.sh
 
-      - name: Build
-        run: cmake --build build-release
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-windows-${{ github.sha }}
+          restore-keys: ccache-windows-
+
+      - name: Cache .NET
+        uses: actions/cache@v4
+        with:
+          path: C:\dotnet
+          key: dotnet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tcs/global.json') }}
 
       # tests/cs の runtime テストとサンプルの C# は起動前に tcs vm で bytecode にするので dotnet が要る。
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: tcs/global.json
 
-      # 後の step (golden のサンプルの変換) も同じ Transpiler.dll を使う (repo root からの相対 path)
-      - name: Build tests/cs (tcs VM bytecode)
+      - name: Configure
+        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      # tests/cs の bytecode (.NET の tcs で作る) は lub の build に依らないので、並べて作る。
+      # 後の step (golden の test と 00_hello の変換) も同じ Transpiler.dll を使う (repo root からの相対 path)。
+      # msvc-dev-cmd が設定する Platform=x64 で dotnet の既定の出力先が bin/x64/Release に変わるので、出力先を明示する。
+      - name: Build (lub, and the tests/cs bytecode alongside)
         shell: bash
         run: |
-          # msvc-dev-cmd が設定する Platform=x64 で既定の出力先が bin/x64/Release に変わるので、出力先を明示する。
-          dotnet build tcs/Transpiler -c Release -nologo -v q -o build-tcs
           export LUB_TCS_DLL=build-tcs/Transpiler.dll
-          test -f "$LUB_TCS_DLL"
           echo "LUB_TCS_DLL=$LUB_TCS_DLL" >> "$GITHUB_ENV"
-          source scripts/cs-tests.sh
-          cs_tests_vm_build
+          (
+            dotnet build tcs/Transpiler -c Release -nologo -v q -o build-tcs
+            test -f "$LUB_TCS_DLL"
+            source scripts/cs-tests.sh
+            cs_tests_vm_build
+          ) > "$RUNNER_TEMP/tests-cs.log" 2>&1 &
+          bytecode=$!
+          cmake --build build-release
+          wait "$bytecode" || {
+            cat "$RUNNER_TEMP/tests-cs.log"
+            exit 1
+          }
+
+      - name: ccache stats
+        run: ccache -s
+
+      - name: Save ccache
+        if: github.event_name != 'pull_request' && matrix.part == 'checks'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-windows-${{ github.sha }}
 
       - name: tcs process cleanup
+        if: matrix.part == 'checks'
         shell: bash
         run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 scripts/test-tcs-process-cleanup.sh ./build-release/lub.exe
 
       # どの D3D12 runtime(Agility SDK か inbox か)と WARP が載ったか、backend が見る feature flag を log に残す。
       # WARP は runner の inbox 版を使う (golden はその出力で撮ってある。NuGet 版は LSB が違う)。
       - name: d3d12 runtime info
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           ls -1 build-release/D3D12
@@ -293,6 +386,7 @@ jobs:
       # SDL3.dll は build-release/deps/bin/ にあり、lub.exe 隣への copy は lub の POST_BUILD 頼み。
       # smoke exe と同じ dir に無いと loader が解決できず git-bash では起動前に落ちて exit 127 になるため、ここで明示的に staging。
       - name: Stage runtime DLLs next to smoke tests
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           cd build-release
@@ -305,6 +399,7 @@ jobs:
           echo "== *.dll in build-release (after) =="; ls -1 *.dll 2>/dev/null || echo "(none)"
 
       - name: C smoke tests
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           cd build-release
@@ -317,88 +412,22 @@ jobs:
 
       # Windows の tcs の子プロセス (CreateProcess と Job Object) と標準出力の frame の切り出しは、native-gate の linux とは別に見る。
       - name: tcs pipeline smoke
+        if: matrix.part == 'checks'
         shell: bash
         run: scripts/test-tcs-pipeline-smoke.sh ./build-release/lub_tcs_pipeline_smoke.exe
 
-      # math.* と ^ が Linux / macOS / iOS / web と同じ結果になること (期待値は 1 つ)。
-      - name: Math determinism
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestMathDeterminism --readback-fixed-latency
-
-      # 1 フレームの中で宣言し直した texture を、draw が記録した順に読むこと。
-      - name: Texture recording order
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestTextureRecordingOrder --readback-fixed-latency
-
-      # texture と sampler を別に宣言した shader が他の backend と同じ組で描け、共有した sampler は shader compile の error になること。
-      - name: Separate sampler
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestSeparateSampler --readback-fixed-latency
-
-      # 1 フレームの中で宣言し直した buffer を、draw が記録した順に読むこと。
-      - name: Buffer recording order
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestBufferRecordingOrder --readback-fixed-latency
-
-      # float[] の先頭 count 個から宣言した buffer。
-      - name: Buffer array
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestBufferArray --readback-fixed-latency
-
-      # 大きさを変えて宣言し直した buffer の、shader から見える数と内容。
-      - name: Buffer capacity
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestBufferCapacity --readback-fixed-latency
-
-      # FrameBuffer の範囲を draw / dispatch が記録した順に自分のデータで読むこと。
-      - name: Frame buffer
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestFrameBuffer --readback-fixed-latency
-
-      - name: Frame buffer errors
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestFrameBufferErrors --readback-fixed-latency
-
-      - name: Frame buffer limit
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestFrameBufferLimit --readback-fixed-latency
-
-      # compute が読み書きする storage buffer / texture が、前の dispatch の内容を保つこと。
-      - name: Storage preserve
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestStoragePreserve --readback-fixed-latency
-
-      # storage texture の形式が shader の宣言どおりで、形式の違う dispatch が error になること。
-      - name: Storage format
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestStorageFormat --readback-fixed-latency
-
-      # readback の届く frame が他の backend と同じで、保証しないモードでは GPU を待たないこと。
+      # --readback-fixed-latency を付けない起動でも、readback の届く frame が他の backend と同じで、保証しないモードでは GPU を待たないこと (下の loop は付けて走らせる)。
       - name: Readback latency
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
           LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
 
-      # 1 フレームに draw と dispatch が多くても、各 draw が自分の texture、sampler、uniform で描くこと。
-      # debug layer を有効にし、validation の error でも落とす。
-      - name: Many draws per frame (debug layer)
-        shell: bash
-        run: |
-          log="${RUNNER_TEMP}/many_draws.log"
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestManyDraws --readback-fixed-latency 2>&1 | tee "$log"
-          if ! grep -q 'd3d12: debug layer messages: on' "$log"; then
-            echo "::error::the D3D12 debug layer did not load"
-            exit 1
-          fi
-          if grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
-            echo "::error::the D3D12 debug layer reported errors"
-            exit 1
-          fi
-
       # pipeline、root signature、descriptor table を設定し直さずに使い回しても、各 draw が自分の状態で描くこと。
       # root signature を変えた後に設定し忘れた table は debug layer の error で見つける。
       - name: Draw state reuse (debug layer)
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           log="${RUNNER_TEMP}/draw_state_reuse.log"
@@ -408,43 +437,38 @@ jobs:
             exit 1
           fi
 
-      # pass ごとの GPU の時間を timestamp query で測れること (Sys.TakeGpuPasses)。
-      - name: GPU pass time (debug layer)
-        shell: bash
-        run: |
-          log="${RUNNER_TEMP}/gpu_pass_time.log"
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestGpuPassTime --readback-fixed-latency 2>&1 | tee "$log"
-          if ! grep -q 'gpu pass time: timed' "$log"; then
-            echo "::error::d3d12 did not time the GPU passes"
-            exit 1
-          fi
-          if grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
-            echo "::error::the D3D12 debug layer reported errors"
-            exit 1
-          fi
-
-      # runtime テストは linux job では sdlgpu で走るので、d3d12 でも全部を debug layer 付きで走らせ、validation の error でも落とす。
+      # runtime テストは linux job が sdlgpu と vulkan で、macos job が metal で走らせる。
+      # ここでは d3d12 で全部を debug layer 付きで走らせ、validation の error でも落とす。
       - name: Runtime tests (d3d12, debug layer)
+        if: matrix.part == 'runtime'
         shell: bash
         run: |
           source scripts/cs-tests.sh
-          failed=()
-          for t in "${cs_runtime_tests[@]}"; do
-            log="${RUNNER_TEMP}/runtime_$t.log"
-            if ! LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry "$t" "${cs_test_args[@]}" >"$log" 2>&1; then
-              echo "::error::$t failed"
-              cat "$log"
-              failed+=("$t")
-            elif grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
-              echo "::error::$t: the D3D12 debug layer reported errors"
-              failed+=("$t")
-            fi
-          done
-          [ ${#failed[@]} -eq 0 ]
+          # 落ちたときと、debug layer が error を報告したときに失敗にする
+          d3d12_test() {
+            LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry "$1" "${cs_test_args[@]}" >"$2" 2>&1 || return 1
+            ! grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$2"
+          }
+          cs_test_logs="${RUNNER_TEMP}/runtime" && mkdir -p "$cs_test_logs"
+          # WARP は CPU で描くので、core の数だけ並べる
+          status=0
+          cs_run_tests "$(nproc)" d3d12_test "${cs_runtime_tests[@]}" || status=1
+          # debug layer が読み込めないと、error を報告しないまま通る
+          if ! grep -q 'd3d12: debug layer messages: on' "$cs_test_logs/TestManyDraws.log"; then
+            echo "::error::the D3D12 debug layer did not load"
+            status=1
+          fi
+          # pass ごとの GPU の時間を timestamp query で測れること (Sys.TakeGpuPasses)
+          if ! grep -q 'gpu pass time: timed' "$cs_test_logs/TestGpuPassTime.log"; then
+            echo "::error::d3d12 did not time the GPU passes"
+            status=1
+          fi
+          exit "$status"
 
       # lub export windows は shader を d3d12 (DXIL) と vulkan / sdlgpu (spirv) の両方の target で compile する。
       # snapshot の中で起動した d3d12 (WARP) の絵が、リポジトリから動かしたものと一致すること。
       - name: Export (windows)
+        if: matrix.part == 'checks'
         shell: bash
         run: |
           out="$RUNNER_TEMP/export"
@@ -464,6 +488,7 @@ jobs:
           test "$(ls "$out/TestDepthSample/cache/shader" | wc -l)" -eq 4
 
       - name: Golden image test (d3d12 backend, WARP)
+        if: matrix.part == 'runtime'
         shell: bash
         run: |
           export TMPDIR="${RUNNER_TEMP}/golden-tmp"
@@ -472,6 +497,7 @@ jobs:
 
       # .NET 実行: 共有 library (lub.dll、cmake --build が作る) を facade から P/Invoke で叩き、tcs VM の player と frame digest が一致することを 1 サンプルで確かめる (capture の比較は手元の native gate だけ)。
       - name: .NET run (00_hello, digest vs tcs VM)
+        if: matrix.part == 'runtime'
         shell: bash
         run: |
           export LUB_D3D12_WARP=1
@@ -489,22 +515,34 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: golden-failure-windows
+          name: golden-failure-windows-${{ matrix.part }}
           path: ${{ runner.temp }}/golden-tmp
           if-no-files-found: ignore
 
   # macOS regression gate: scripts/apple-gate.sh --part mac (CI と手動の単一ソース) で Release build -> C smoke tests -> C# runtime テスト -> 視覚 golden -> shader cache の往復。
   # Metal は runner の GPU で描くので byte 一致にはならず、golden は Linux の *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
-  # iOS 側 (--part ios、simulator での実行) は release.yml で走る。
+  # iOS 側 (--part ios、simulator での実行) は ios.yml で走る。
   macos:
-    needs: changes
-    if: needs.changes.outputs.web_only != 'true'
+    name: macos (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # gate を分け前 (APPLE_GATE_SHARD) ごとの job に分けて並べる。runtime テストは runner の GPU で 1 本ずつしか走らせられない
+        shard: [1/3, 2/3, 3/3]
     runs-on: macos-latest
     timeout-minutes: 60
+    env:
+      CCACHE_MAXSIZE: 500M
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJC_COMPILER_LAUNCHER: ccache
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        shell: bash
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr
 
       # CMake configure が slang の prebuilt を落とすのでキャッシュする。
       - name: Cache slang prebuilts
@@ -528,10 +566,26 @@ jobs:
           key: ${{ steps.deps.outputs.key }}
           restore-keys: ${{ steps.deps.outputs.restore }}
 
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-macos-${{ github.sha }}
+          restore-keys: ccache-macos-
+
       # run-golden.sh は bash 4+ (mapfile / wait -n)。
       # macOS 同梱の bash は 3.2。
       - name: Install tools
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
         run: brew install bash ninja
+
+      # 版を固定した ccache (scripts/install-ccache.sh)
+      - name: Install ccache
+        shell: bash
+        run: bash scripts/install-ccache.sh
 
       # tests/cs の test とサンプルの C# は起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4
@@ -542,32 +596,48 @@ jobs:
         run: |
           export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
           mkdir -p "$TMPDIR"
-          bash scripts/apple-gate.sh --part mac
+          APPLE_GATE_SHARD=${{ matrix.shard }} bash scripts/apple-gate.sh --part mac
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      # Slang 無しの player も build する分け前が保存する
+      - name: Save ccache
+        if: github.event_name != 'pull_request' && matrix.shard == '3/3'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-macos-${{ github.sha }}
 
       - name: Upload golden failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: golden-failure-macos
+          name: golden-failure-macos-${{ strategy.job-index }}
           path: ${{ runner.temp }}/apple-gate-tmp
           if-no-files-found: ignore
 
   # web のサイト (lub.neguse.net) のアセット生成 + build。
-  # 検証は下流の web-verify / web-golden が artifact (web-dist-test) に対して行う。
+  # サイトは production の build を 1 回だけ作り、下流の web-verify と web-export が確かめた dist (web-dist) を deploy がそのまま載せる。
   # 前提アセット (web/README.md) の供給:
   #   - lub player wasm: emsdk でこの job 内でビルド
   #   - tcs WasmCompiler: content key cache、miss 時だけ dotnet で publish
   web-build:
-    needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 120
     env:
       EMSDK_VERSION: 5.0.2
+      CCACHE_MAXSIZE: 500M
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        shell: bash
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr third_party/jamo
 
       - name: Resolve tcs tree hash (cache key)
         id: tcs
@@ -603,21 +673,87 @@ jobs:
           key: ${{ steps.deps.outputs.key }}
           restore-keys: ${{ steps.deps.outputs.restore }}
 
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-wasm-${{ github.sha }}
+          restore-keys: ccache-wasm-
+
+      # 版を固定した ccache (scripts/install-ccache.sh)
+      - name: Install ccache
+        shell: bash
+        run: bash scripts/install-ccache.sh
+
+      # lider の bytecode、tcs wasm assets、tcs2c の web の player に使う
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: tcs/global.json
+
+      # 後の段が使う .NET の tcs (lider の bytecode) と tcs2c (lider の player の tcs.c) の build は、wasm の build と並べて済ませる
       - name: Build lub player wasm
         run: |
+          (dotnet build tcs/Transpiler -c Release -nologo -v q && dotnet build tcs/tcs2c -c Release -nologo -v q) > "$RUNNER_TEMP/dotnet-build.log" 2>&1 &
+          dotnet_build=$!
           source "$HOME/emsdk/emsdk_env.sh"
           emcmake cmake --preset wasm-release
           cmake --build build/wasm -j
+          wait "$dotnet_build" || { cat "$RUNNER_TEMP/dotnet-build.log"; exit 1; }
           # 外の project が find_package(lub) で自前の player を作れること
           emcmake cmake -S tests/cmake/player -B build/wasm/export-player -G Ninja -Dlub_DIR="$PWD/build/wasm"
           cmake --build build/wasm/export-player
+
+      # release の一式の job (kit) がこれを待つので、要る物 (lub の player の wasm) ができたらすぐ作って渡す
+      # release の一式の OS によらない物: web の tcs VM の player (サイトが配るものと同じ)、lider の bytecode (サイトの build が作るものと同じ)、かな漢字変換の辞書。
+      # 辞書は build-dict.sh (取る mozc の commit) と jamo の commit から決まるので、それを key にして cache し、無いときだけ作る (linux の lider の job と同じ key)
+      - name: Dictionary key
+        id: dict
+        run: echo "key=mozc-dict-$(git rev-parse HEAD:third_party/jamo)-${{ hashFiles('lider/scripts/build-dict.sh') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the dictionary
+        id: dict-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            lider/data/mozc.dict
+            lider/data/mozc-README.txt
+            lider/data/mozc-LICENSE.txt
+          key: ${{ steps.dict.outputs.key }}
+
+      - name: Common parts of the release kit
+        run: |
+          if [ "${{ steps.dict-cache.outputs.cache-hit }}" != true ]; then
+            bash lider/scripts/build-dict.sh lider/data
+          fi
+          bash lider/scripts/build-module.sh lider/build/web/Lider.tcsb
+          mkdir -p common/wasm/vm common/lider common/dict
+          cp build/wasm/vm/lub.js build/wasm/vm/lub.wasm common/wasm/vm/
+          cp lider/build/web/Lider.tcsb common/lider/
+          cp lider/data/mozc.dict lider/data/mozc-README.txt lider/data/mozc-LICENSE.txt common/dict/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kit-common
+          path: common
+          retention-days: 1
+
+      # build 済みのかな漢字変換 (jamo-core、Rust)。入力は jamo の commit と rustc の版で決まり、当たれば cargo を動かさない (lider/scripts/build-player.sh の JAMO_CACHE)
+      - name: jamo cache key
+        id: jamo
+        run: echo "key=jamo-lib-wasm-$(git rev-parse HEAD:third_party/jamo)-$(rustc -V | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache jamo
+        uses: actions/cache@v4
+        with:
+          path: build-jamo
+          key: ${{ steps.jamo.outputs.key }}
 
       # lider の page (web/lider.html) の player。lub の wasm の build を find_package(lub) で使い、かな漢字変換 (Rust) を静的に link する。
       - name: Build lider player wasm
         run: |
           source "$HOME/emsdk/emsdk_env.sh"
           rustup target add wasm32-unknown-emscripten
-          bash lider/scripts/build-player.sh --web
+          JAMO_CACHE="$PWD/build-jamo" bash lider/scripts/build-player.sh --web
 
       - uses: actions/setup-node@v4
         with:
@@ -637,11 +773,6 @@ jobs:
           path: web/tcs-wasm-assets
           key: tcs-wasm-${{ steps.tcs.outputs.sha }}-${{ hashFiles('web/scripts/gen-tcs-assets.mjs') }}
 
-      # tcs2c の web の player (下の Build tcs2c web player) にも使うので、cache が当たっても入れる。
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: tcs/global.json
-
       # workload は SDK の版ごとに入る。tcs の global.json が選ぶ SDK に入れるために tcs の中で動かす。
       - name: Install wasm-tools workload
         if: steps.tcs-wasm-cache.outputs.cache-hit != 'true'
@@ -652,6 +783,18 @@ jobs:
         if: steps.tcs-wasm-cache.outputs.cache-hit != 'true'
         working-directory: web
         run: npm run gen-tcs -- --publish
+
+      - name: Build site
+        working-directory: web
+        run: npm run build
+
+      # web-verify と web-export がこれを待つので、できたらすぐ渡す。
+      # web の dist は同じ run の後続 job (検査と deploy) への受け渡し専用で、run の後は使わない。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
 
       # src/tcs_host.c の web の player (tests/c/tcs_shutdown.cs)。
       # web-export の job が page で開き、page が player を外す順番を見る。
@@ -667,65 +810,53 @@ jobs:
             build/wasm-tcs/lub.js
             build/wasm-tcs/lub.wasm
 
-      # サブパス配信 (https://host/lub/) の確認用。
-      # base を付けた build を先に作って dist-sub に退避し、通常の build (base /) を dist に作る。
-      - name: Build site (test mode for verify)
-        working-directory: web
-        run: |
-          npm run gen-api
-          npm run gen-lider
-          npx vite build --mode test --base /lub/
-          mv dist dist-sub
-          npx vite build --mode test
+      - name: ccache stats
+        if: always()
+        run: ccache -s
 
-      # web の dist は同じ run の後続 job への受け渡し専用で、run の後は使わない。
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web-dist-test
-          path: web/dist
-          retention-days: 1
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web-dist-test-sub
-          path: web/dist-sub
-          retention-days: 1
-
-      - name: Build site (production)
+      - name: Save ccache
         if: github.event_name != 'pull_request'
-        working-directory: web
-        run: npm run build
-
-      - uses: actions/upload-artifact@v4
-        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
         with:
-          name: web-dist-prod
-          path: web/dist
-          retention-days: 1
+          path: ~/.ccache
+          key: ccache-wasm-${{ github.sha }}
+
 
   # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
-  # shard 1 = player の page (tests/cs)、shard 2 = サイトの入口、shard 3 = サブパスで配信した入口。
-  # verify は閾値判定なので runner の system chromium で足りる (golden の byte 比較だけ playwright の版固定 chromium を使う)。
+  # player = player の page (tests/cs。A9_SHARD で 2 つの job に分ける)、lider = サイトの入口。
+  # verify は閾値判定なので runner の system chromium で足りる。
   web-verify:
-    needs: [changes, web-build]
-    if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
+    name: web-verify (${{ matrix.page }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
+    # web-build の artifact ができるのを待つのに、この run の artifact の一覧を読む
+    permissions:
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        include:
+          - page: player
+            shard: 1/4
+          - page: player
+            shard: 2/4
+          - page: player
+            shard: 3/4
+          - page: player
+            shard: 4/4
+          - page: lider
     steps:
       - uses: actions/checkout@v4
 
-      # player の page の検査 (shard 1) は tests/cs の test を native の tcs で変換した bytecode を流す。
+      # player の page の検査は tests/cs の test を native の tcs で変換した bytecode を流す。
       - uses: actions/setup-dotnet@v4
-        if: matrix.shard == 1
+        if: matrix.page == 'player'
         with:
           global-json-file: tcs/global.json
 
       - name: Build tests/cs bytecode
-        if: matrix.shard == 1
+        if: matrix.page == 'player'
         shell: bash
         run: |
           dotnet build tcs/Transpiler -c Release -nologo -v q
@@ -743,15 +874,18 @@ jobs:
         working-directory: web
         run: npm ci
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-dist-test
-          path: web/dist
+      # 準備を先に済ませ、サイトの dist ができるのをここで待つ (scripts/ci-fetch-artifact.sh)
+      - name: Wait for the site (web-dist)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci-fetch-artifact.sh web-dist web/dist '^web-build$'
 
-      # tests/cs の runtime テストを web の player の page で動かす (verify-player の A9)。
-      - name: Verify player page (shard 1)
-        if: matrix.shard == 1
+      # tests/cs の test を全部 web の player の page で動かす (verify-player の A9)。
+      - name: Verify player page (${{ matrix.shard }})
+        if: matrix.page == 'player'
         working-directory: web
+        env:
+          A9_SHARD: ${{ matrix.shard }}
         run: |
           npm run preview -- --port 4173 &
           for i in $(seq 1 30); do
@@ -760,9 +894,9 @@ jobs:
           done
           LUB_URL=http://localhost:4173/ npm run verify
 
-      # サイトの入口 (lider): 起動、保存した編集の反映、診断、並べる表示、サンプル、メニューと Doc の page (verify-lider)。
-      - name: Verify entry page (shard 2)
-        if: matrix.shard == 2
+      # サイトの入口 (lider): 起動、保存した編集の反映、診断、並べる表示、サンプル、メニューと Doc の page、保存した .cs の整形 (verify-lider)。
+      - name: Verify entry page
+        if: matrix.page == 'lider'
         working-directory: web
         run: |
           npm run preview -- --port 4176 &
@@ -772,112 +906,24 @@ jobs:
           done
           LUB_URL=http://localhost:4176/ npm run verify-lider
 
-      # --base /lub/ の build をサブパスで配信し、root 固定のパスが残っていないか (同じ origin に 404 が出ないか) を入口の検査で確かめる。
-      - uses: actions/download-artifact@v4
-        if: matrix.shard == 3
-        with:
-          name: web-dist-test-sub
-          path: web/dist-sub
-
-      - name: Verify entry page under a subpath (shard 3)
-        if: matrix.shard == 3
-        working-directory: web
-        run: |
-          npm run preview -- --base /lub/ --outDir dist-sub --port 4174 &
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:4174/lub/ >/dev/null && break
-            sleep 1
-          done
-          LUB_URL=http://localhost:4174/lub/ npm run verify-lider
-
       - name: Upload verify screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: verify-screenshots-${{ matrix.shard }}
+          name: verify-screenshots-${{ strategy.job-index }}
           path: /tmp/lub-verify
-          if-no-files-found: ignore
-
-  # web golden: native golden と同じ curation を wasm の --capture 経路で撮り、tests/golden/<name>_web.png と byte 比較。
-  # golden は swiftshader 固有なので playwright/chromium を上げたら npm run golden -- --update で再生成。
-  web-golden:
-    needs: [changes, web-build]
-    if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: npm ci
-        working-directory: web
-        run: npm ci
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-dist-test
-          path: web/dist
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: tcs/global.json
-
-      # golden は native の tcs が変換したサンプルの bytecode を player の page に渡す (golden-web.mjs)。この shard のサンプルだけ変換する
-      - name: Build golden samples bytecode
-        shell: bash
-        run: |
-          dotnet build tcs/Transpiler -c Release -nologo -v q
-          export LUB_TCS_DLL="$(find tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
-          for s in $(LUB_GOLDEN_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} node web/scripts/golden-web.mjs --list); do
-            scripts/run-cs-sample.sh "$s" --vm
-          done
-
-      - name: Cache playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
-
-      # playwright 1.60 は ubuntu 26.04 を知らず、そのままでは download の URL が無い。
-      # 配っている chromium は ubuntu の版によらず同じなので 24.04 として取る (--with-deps は 26.04 の package を引けないので使わない)。
-      - name: Install chromium (playwright)
-        working-directory: web
-        run: PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright install chromium
-
-      - name: Web goldens (playwright + swiftshader, shard ${{ matrix.shard }}/${{ strategy.job-total }})
-        working-directory: web
-        run: |
-          npm run preview -- --port 4173 &
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:4173/ >/dev/null && break
-            sleep 1
-          done
-          LUB_URL=http://localhost:4173/ LUB_GOLDEN_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} npm run golden
-
-      - name: Upload golden failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: golden-failure-web-${{ matrix.shard }}
-          path: /tmp/lub-golden-web
           if-no-files-found: ignore
 
   # lub export web が書いた page 1 枚 (slang を持たない web の player と生成キャッシュ入り) を chromium で開き、tests/cs のテストが PASS を出すこと。
   # export は linux の job が build した lub、player は web-build の wasm を使う。
   # web-build が作った tcs2c の player を page から外す順番もここで見る (chromium があるので)。
   web-export:
-    needs: [changes, linux, web-build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
+    # linux と web-build の artifact ができるのを待つのに、この run の artifact の一覧を読む
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
@@ -890,21 +936,6 @@ jobs:
           key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
           fail-on-cache-miss: true
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: lub-linux
-          path: .
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-dist-test
-          path: web/dist
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-tcs-player
-          path: build/wasm-tcs
-
       - uses: actions/setup-node@v4
         with:
           node-version: 26
@@ -921,14 +952,26 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
 
-      # playwright の版と ubuntu 26.04 の扱いは web-golden の同じ step を参照。
-      - name: Install chromium (playwright) and the Vulkan loader lub links
+      # playwright 1.60 は ubuntu 26.04 を知らず、そのままでは download の URL が無い。
+      # 配っている chromium は ubuntu の版によらず同じなので 24.04 として取る (--with-deps は 26.04 の package を引けないので使わない)。
+      - name: Install chromium (playwright)
         working-directory: web
         run: |
           PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright install chromium
-          sudo rm -f /etc/apt/sources.list.d/google-chrome*
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libvulkan1
+
+      - name: Install the Vulkan loader
+        uses: ./.github/actions/apt-install
+        with:
+          packages: libvulkan1
+
+      # 準備を先に済ませ、linux と web-build が作る物をここで待つ (scripts/ci-fetch-artifact.sh)
+      - name: Wait for lub, the site and the tcs2c web player
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/ci-fetch-artifact.sh lub-linux . '^linux \(runtime\)$'
+          bash scripts/ci-fetch-artifact.sh web-dist web/dist '^web-build$'
+          bash scripts/ci-fetch-artifact.sh web-tcs-player build/wasm-tcs '^web-build$'
 
       - name: Web export gate
         run: |
@@ -942,16 +985,17 @@ jobs:
         working-directory: web
         run: node scripts/tcs-shutdown-check.mjs ../build/wasm-tcs
 
-  # 唯一の required check。
-  # 走った job が全部 success (skipped は changes の判定による意図的な skip) なら green。
-  # changes / lint は必ず走る前提。
   # ---- tcs/ の中のテスト ----
   # tcs (C# の compiler と VM) 自身のテスト。lub の job は tcs を使う側から確かめ、こちらは tcs の仕様から確かめる。
   # .NET SDK の版は tcs/global.json で固定する。
+  # tcs/run-tests.sh を部分 (--part) ごとの job に分けて並べる。部分は dotnet test の class の名前で分け、どの test もどれか 1 つの部分に入る。
   tcs-test:
-    needs: changes
-    if: needs.changes.outputs.tcs == 'true'
-    runs-on: ubuntu-latest
+    name: tcs-test (${{ matrix.part }})
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [transpiler-1, transpiler-2, tcs2c-1, tcs2c-2, tcs2c-3, scripts]
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     defaults:
       run:
@@ -959,70 +1003,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # spec conformance の入力 (C# の仕様の例)
+      # spec conformance の入力 (C# の仕様の例)。Transpiler.Tests だけが読む
       - name: Init csharpstandard
+        if: startsWith(matrix.part, 'transpiler-')
         working-directory: .
-        run: git submodule update --init tcs/deps/csharpstandard
+        run: git submodule update --init --depth 1 tcs/deps/csharpstandard
 
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: tcs/global.json
 
       - name: Run tests and tcs checks
-        run: bash run-tests.sh
+        run: bash run-tests.sh --part ${{ matrix.part }}
 
-  # tcs VM と C (tcs2c) の digest が一致することを確かめる。時間は成果物に残すだけ (runner の時間は揺れる)。
-  tcs-bench-2backend:
-    needs: changes
-    if: needs.changes.outputs.tcs == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: tcs
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: tcs/global.json
-
-      - name: Run 2-backend bench
-        run: bash perf/bench-2backend.sh | tee bench-results.csv
-        env:
-          PERF_BENCH_RUNS: "5"
-
-      - name: Upload bench results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: tcs-bench-2backend-results
-          path: tcs/bench-results.csv
-
-  # 外向けの比較ベンチ (tcs/perf/compare) の全実装が同じ出力を出すことを確かめる。時間は測らない。
-  tcs-compare-check:
-    needs: changes
-    if: needs.changes.outputs.tcs == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: tcs
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: tcs/global.json
-
-      - name: Check outputs of all implementations
-        run: python3 perf/compare/run.py --check
-
-  # tcs 自身の速さの回帰 (tcs/perf/selfbench)。PR の base と同じ runner で交互に測り、決定的な指標 (命令の数、managed heap の最大) が閾値を超えて増えたら失敗する。
+  # tcs 自身の速さの回帰 (tcs/perf/selfbench)。PR の base (push では 1 つ前の commit) と同じ runner で測り、決定的な指標 (命令の数、managed heap の最大) が閾値を超えて増えたら失敗する。
+  # 測るのは C の tcs の tcs vm (lider の player が page の中でゲームを変換するのと同じ経路) だけで、時間は測らない。
   tcs-selfbench:
-    needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.tcs == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     defaults:
       run:
@@ -1036,13 +1033,29 @@ jobs:
         with:
           global-json-file: tcs/global.json
 
-      - name: Install valgrind
-        run: sudo apt-get update && sudo apt-get install -y valgrind
-
-      - name: Compare with the PR base
-        run: python3 perf/selfbench/run.py --base "origin/$BASE_REF" --runs 5 -o selfbench.json
+      # base の測定は base の tcs の tree と toolchain (runner の image) だけで決まるので、それを key にして結果を cache する
+      - name: Base of the comparison
+        id: base
         env:
-          BASE_REF: ${{ github.base_ref }}
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD^1' }}
+        run: |
+          echo "ref=$BASE" >> "$GITHUB_OUTPUT"
+          echo "tree=$(git rev-parse "$BASE:tcs")" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the base results
+        uses: actions/cache@v4
+        with:
+          path: tcs/selfbench-base.json
+          key: selfbench-base-vm-native-${{ steps.base.outputs.tree }}-${{ steps.base.outputs.image }}
+
+      - name: Install valgrind
+        uses: ./.github/actions/apt-install
+        with:
+          packages: valgrind
+
+      - name: Compare with the base
+        run: python3 perf/selfbench/run.py --base "${{ steps.base.outputs.ref }}" --tasks vm --hosts native --runs 0 --base-results selfbench-base.json -o selfbench.json
 
       - name: Upload selfbench results
         if: always()
@@ -1051,42 +1064,270 @@ jobs:
           name: tcs-selfbench-results
           path: tcs/selfbench.json
 
-  # tcs2c で C にした tcs (tcs/SelfHost/native.sh) を 3 OS で作り、.NET の tcs と同じ出力を出すことを確かめる。
-  tcs-native:
-    needs: changes
-    if: needs.changes.outputs.tcs == 'true'
+  # release の一式 (docs/release-kit.md) を target ごとに毎回作り、一式だけを展開した所で雛形を export、check し、lider で開いて動かす。
+  # lub、tcs (tcs2c で C にした tcs。.NET の tcs と同じ出力を出すことも確かめる)、lub-gen、lider の player をその target の上で build し、web-build が作る OS によらない物 (kit-common) と一緒に固める。
+  # tag (v*) の push では、publish job がこれを GitHub の release に載せる。
+  kit:
+    name: kit (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            cc: cc
-          - os: macos-latest
-            cc: clang
-          - os: windows-latest
-            cc: clang
+          # glibc 2.39 の環境 (claude.ai の sandbox など) でも動くよう、Linux は Ubuntu 24.04 で build する
+          - target: linux-x64
+            os: ubuntu-24.04
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+          - target: windows-x64
+            os: windows-latest
+            arch: x64
+          - target: windows-arm64
+            os: windows-11-arm
+            arch: arm64
+          - target: macos-arm64
+            os: macos-latest
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
+    # kit-common の artifact ができるのを待つのに、この run の artifact の一覧を読む
+    permissions:
+      contents: read
+      actions: read
     defaults:
       run:
         shell: bash
-        working-directory: tcs
+    env:
+      CCACHE_MAXSIZE: 500M
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJC_COMPILER_LAUNCHER: ccache
     steps:
+      # Windows の git は既定で行末を CRLF にして取り出す。どの一式もリポジトリのままの行末 (LF) から作る。
+      # CRLF のままだと、C# の複数行の文字列の行末が .NET と tcs で変わり (tcs は LF にする)、lub-gen の検査も通らない
+      - name: Check out without converting line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v4
 
+      # 一式はこの job で作るので、第三者の action は commit で固定する
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        if: runner.os == 'Windows'
+        with:
+          arch: ${{ matrix.arch }}
+
+      # 起動したての runner は、compiler を初めて動かすのに 20 秒ほどかかる (configure の最初の compile がそれを払う)。
+      # 後の準備 (submodule、cache の復元) の間に、裏で一度動かしておく
+      - name: Warm up the compilers
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/warm"
+          cd "$RUNNER_TEMP/warm"
+          printf 'int main(void) { return 0; }\n' > warm.c
+          cp warm.c warm.cpp
+          (
+            cl /nologo warm.c /Fe:warm-c.exe
+            cl /nologo warm.cpp /Fe:warm-cxx.exe
+            clang-cl /nologo warm.c /Fe:warm-clang-c.exe
+            clang-cl /nologo warm.cpp /Fe:warm-clang-cxx.exe
+            rustc -V
+          ) > warm.log 2>&1 &
+
+      # submodule は要るものだけを並べて取る
+      - name: Submodules
+        run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr third_party/jamo
+
+      - name: Cache prebuilts
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/slang/lib
+            third_party/slang/bin
+            third_party/d3d12agility
+          key: release-prebuilt-${{ matrix.target }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Deps cache key
+        id: deps
+        run: bash scripts/deps-cache-key.sh kit >> "$GITHUB_OUTPUT"
+
+      # 第三者の library の install 先。lub の configure は、key (cmake/LubDeps.cmake) が合わないときだけ作り直す
+      - name: Cache deps
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: build-kit/deps
+          key: ${{ steps.deps.outputs.key }}
+          restore-keys: ${{ steps.deps.outputs.restore }}
+
+      - name: Tools cache key
+        id: tools
+        run: |
+          [ "$RUNNER_OS" = Linux ] || export CC=clang
+          bash scripts/kit-tools-cache-key.sh ${{ matrix.target }} >> "$GITHUB_OUTPUT"
+
+      # C の tcs と lub-gen は、入力 (tcs/ など) の内容が同じなら、.NET の版との比較を通った物をそのまま使う (scripts/kit-tools-cache-key.sh)
+      - name: Cache tcs
+        id: tcs-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build-kit/tcs/tcs
+            build-kit/tcs/tcs.exe
+            build-kit/tcs/runtime
+            build-kit/tcs/lib
+          key: ${{ steps.tools.outputs.tcs }}
+
+      - name: Cache lub-gen
+        id: lub-gen-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build-kit/tcs/lub-gen
+            build-kit/tcs/lub-gen.exe
+          key: ${{ steps.tools.outputs.lub-gen }}
+
+      # dotnet は、C の tcs と lub-gen を作るときだけ要る
+      - name: Need .NET
+        id: dotnet
+        run: echo "need=${{ steps.tcs-cache.outputs.cache-hit != 'true' || steps.lub-gen-cache.outputs.cache-hit != 'true' }}" >> "$GITHUB_OUTPUT"
+
+      # 版を固定した ccache (scripts/install-ccache.sh)
+      - name: Install ccache
+        run: bash scripts/install-ccache.sh
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-kit-${{ matrix.target }}-${{ github.sha }}
+          restore-keys: ccache-kit-${{ matrix.target }}-
+
+      # mesa-vulkan-drivers (lavapipe) と xvfb は、一式の lider を描かせて確かめるのに使う。
+      # SDL3 を build するとき (deps の cache が key で当たらないとき) だけ、SDL3 の build に要る dev ヘッダを入れる。
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: ninja-build patchelf libvulkan-dev mesa-vulkan-drivers xvfb ${{ steps.deps-cache.outputs.cache-hit != 'true' && 'libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev' || '' }}
+
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+        run: brew install bash ninja
+
+      # Windows は image に無い .NET の SDK を毎回取るので、install 先を決めて cache する
+      - name: .NET install dir (Windows)
+        if: steps.dotnet.outputs.need == 'true' && runner.os == 'Windows'
+        run: echo "DOTNET_INSTALL_DIR=C:\dotnet" >> "$GITHUB_ENV"
+
+      - name: Cache .NET (Windows)
+        if: steps.dotnet.outputs.need == 'true' && runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: C:\dotnet
+          key: dotnet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tcs/global.json') }}
+
       - uses: actions/setup-dotnet@v4
+        if: steps.dotnet.outputs.need == 'true'
         with:
           global-json-file: tcs/global.json
 
-      - name: Build native tcs and compare with .NET
-        run: bash SelfHost/native.sh
+      # build 済みのかな漢字変換 (jamo-core、Rust)。入力は jamo の commit と rustc の版で決まり、当たれば cargo を動かさない (lider/scripts/build-player.sh の JAMO_CACHE)
+      - name: jamo cache key
+        id: jamo
+        run: echo "key=jamo-lib-${{ matrix.target }}-$(git rev-parse HEAD:third_party/jamo)-$(rustc -V | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache jamo
+        uses: actions/cache@v4
+        with:
+          path: build-jamo
+          key: ${{ steps.jamo.outputs.key }}
+
+      - name: Build lub
+        run: |
+          cmake -S . -B build-kit -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-kit
+
+      # tcs2c で C にした tcs (.NET の tcs と同じ出力を出すことも確かめる)。生成した C は GNU C の文の式を使うので、Linux 以外は clang で build する。
+      # dotnet を使う段では env の Platform を外す。msvc-dev-cmd が置く Platform があると、dotnet build の出力が bin/<Platform>/ に変わり、script が見つけられない
+      - name: Build tcs
+        if: steps.tcs-cache.outputs.cache-hit != 'true'
+        run: |
+          unset Platform
+          [ "$RUNNER_OS" = Linux ] || export CC=clang
+          bash scripts/build-tcs-native.sh build-kit
+
+      # lider の player は、C にした tcs の compiler を含む (C にするのは上の C の tcs)。Windows は MSVC と同じ ABI の clang-cl で build し、MSVC で build した lub と link する
+      - name: Build the lider player
+        run: |
+          unset Platform
+          [ "$RUNNER_OS" = Windows ] && export CC=clang-cl CXX=clang-cl
+          LUB_BUILD="$PWD/build-kit" JAMO_CACHE="$PWD/build-jamo" bash lider/scripts/build-player.sh
+
+      # lub-gen (TinyC#) を C の tcs で C にする (.NET で動かした lub-gen と同じ出力を出すことも確かめる)
+      - name: Build lub-gen
+        if: steps.lub-gen-cache.outputs.cache-hit != 'true'
+        run: |
+          unset Platform
+          [ "$RUNNER_OS" = Linux ] || export CC=clang
+          bash scripts/build-lub-gen.sh --verify build-kit
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      - name: Save ccache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-kit-${{ matrix.target }}-${{ github.sha }}
+
+      # OS によらない物は web-build が作る。needs で待つと、この job の build が web-build の後になるので、artifact ができるのをここで待つ
+      - name: Wait for the common parts (kit-common)
         env:
-          CC: ${{ matrix.cc }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci-fetch-artifact.sh kit-common common '^web-build$'
+
+      - name: Package
+        run: bash scripts/package-release.sh ${{ matrix.target }} build-kit common dist
+
+      # 一式だけを展開した所で、雛形を export、check し、lider で開いて動かす。
+      # 描画は、Linux は lavapipe (CPU の Vulkan) と仮想の画面、Windows は WARP (CPU の D3D12)、macOS は runner の GPU
+      - name: Verify the kit
+        run: |
+          kit=$(ls dist/lub-${{ matrix.target }}.*)
+          case "$RUNNER_OS" in
+            Linux)
+              VK_ICD_FILENAMES="$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)" xvfb-run -a bash scripts/verify-release-kit.sh "$kit"
+              ;;
+            Windows)
+              LUB_D3D12_WARP=1 bash scripts/verify-release-kit.sh "$kit"
+              ;;
+            *)
+              bash scripts/verify-release-kit.sh "$kit"
+              ;;
+          esac
+
+      - name: Upload the kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: lub-${{ matrix.target }}
+          path: dist/lub-${{ matrix.target }}.*
+
+  # iOS の simulator での実行 (ios.yml)。tag (v*) の push のときだけここから呼び、publish がこれを待つ。
+  # master の push では ios.yml が単独で走り、PR では走らない。
+  ios:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/ios.yml
 
   gate:
-    needs: [changes, lint, format, linux, windows, macos, web-build, web-verify, web-golden, web-export, tcs-test, tcs-bench-2backend, tcs-compare-check, tcs-selfbench, tcs-native]
+    needs: [lint, format, linux, windows, macos, web-build, web-verify, web-export, tcs-test, tcs-selfbench, kit]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Check job results
@@ -1094,29 +1335,19 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS"
-          bad=$(echo "$NEEDS" | jq -r 'to_entries[]
-            | select(.value.result != "success" and .value.result != "skipped")
-            | .key')
+          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | .key')
           if [ -n "$bad" ]; then
             echo "failed jobs: $bad" >&2
             exit 1
           fi
-          for must in changes lint format; do
-            if [ "$(echo "$NEEDS" | jq -r --arg j "$must" '.[$j].result')" != "success" ]; then
-              echo "$must did not succeed" >&2
-              exit 1
-            fi
-          done
 
-  # master push / workflow_dispatch のみ。
-  # verify 済み artifact とは別に production build (web-dist-prod) を deploy する。
+  # master の push と、master での workflow_dispatch のときだけ。
+  # web-verify と web-export が確かめた dist (web-dist) をそのまま載せる。
   # local の `cd web && npm run deploy` は脱出ハッチとして残す。
-  # gate が待つ job に skipped (PR だけで走る job) があると、if に状態の関数が無い job は skipped になる。
-  # gate の結果を自分で見る。
   deploy:
-    needs: [gate]
-    if: ${{ !cancelled() && needs.gate.result == 'success' && github.event_name != 'pull_request' }}
-    runs-on: ubuntu-latest
+    needs: gate
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -1133,7 +1364,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: web-dist-prod
+          name: web-dist
           path: web/dist
 
       - name: Deploy (wrangler)
@@ -1141,3 +1372,29 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler deploy
+
+  # tag (v*) の push で、検査を通った一式 (lub-<target>.tar.gz、Windows は lub-<target>.zip) を GitHub の release に載せる。
+  # `-` を含む tag (v0.2.0-rc.1 など) は prerelease にする (releases/latest の対象にならない)。
+  # build の job は第三者の action を動かすので、書き込みの権限はこの job にだけ渡す。
+  publish:
+    needs: [gate, ios]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lub-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=()
+          case "$GITHUB_REF_NAME" in *-*) pre=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes "${pre[@]}"

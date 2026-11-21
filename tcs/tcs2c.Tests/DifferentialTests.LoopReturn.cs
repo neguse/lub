@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // Lua の return は block の最後の文に限られる。loop 本体の末尾の return の後に
 // continue label や for の増分が続く形、到達不能文が続く形を C# どおりに動かす
-public partial class DifferentialTests
+public class LoopReturnDifferentialTests
 {
     [CFact]
     public void Loop_TrailingReturnFollowedByLabelOrStep_MatchesCSharp()

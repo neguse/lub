@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // pattern の括弧は意味を持たない: switch 式 / 文、is の照合と designation は括弧を外した形と同じ。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class ParenthesizedPatternDifferentialTests
 {
     [CFact]
     public void ParenthesizedPattern_IsTransparent()

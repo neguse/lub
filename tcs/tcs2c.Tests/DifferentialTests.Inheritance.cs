@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // class / record の継承は対象外 (q.md Q15)。両 backend とも shared facts の
 // 同じ診断で、IL を作る前に止まる (CoreCLR は `D:2:sq` / `True`)
-public partial class DifferentialTests
+public class InheritanceDifferentialTests
 {
     private const string InheritanceProgram = """
         using System;

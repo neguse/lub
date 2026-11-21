@@ -11,15 +11,72 @@ cleanup_temp_dirs() {
 }
 trap cleanup_temp_dirs EXIT
 
+# 引数が無ければ全部を走らせる。
+# --part <名前> は一部だけを走らせる (CI は部分ごとの job に分けて並べる):
+#   transpiler-1、transpiler-2 (と Analyzers.Tests)、tcs2c-1、tcs2c-2、tcs2c-3 は dotnet test の一部、scripts は dotnet test 以外の検査。
+# dotnet test は class の名前の頭の文字で分ける。最後の部分は前の部分に入らない class 全部なので、どの test もどれか 1 つの部分に入る。
+part=all
+case "${1:-}" in
+  "") ;;
+  --part) part="${2:?usage: run-tests.sh [--part <name>]}" ;;
+  *)
+    echo "usage: run-tests.sh [--part <name>]" >&2
+    exit 2
+    ;;
+esac
+transpiler_1=(A B C D E F G H I J K L)
+tcs2c_1=(A B C D E F G)
+tcs2c_2=(H I J K L M N)
+# 名前空間 $1 の直下で、名前の頭の文字が $2 以降のどれかの class
+filter_in() {
+  local ns=$1 f="" l
+  shift
+  for l in "$@"; do f+="${f:+|}FullyQualifiedName~$ns.$l"; done
+  printf '%s' "$f"
+}
+# 名前空間 $1 の直下で、名前の頭の文字が $2 以降のどれでもない class
+filter_out() {
+  local ns=$1 f="" l
+  shift
+  for l in "$@"; do f+="${f:+&}FullyQualifiedName!~$ns.$l"; done
+  printf '%s' "$f"
+}
+
 # Run dotnet tests (spec conformance sweep と corpus differential 込み。
 # 章別レポートも再生成される — 挙動変更は report/baseline の diff として現れる)
 # 検証は .NET の実行との比較 (TCS_DIFFERENTIAL、TCS_FUZZ) と、Roslyn による C# の受理の判定 (spec conformance)
-echo "Running dotnet tests (with spec conformance + differential)..."
-TCS_SPEC_CONFORMANCE=1 \
-TCS_SPEC_REPORT="$SCRIPT_DIR/doc/spec-conformance-report.md" \
-TCS_DIFFERENTIAL=1 \
-TCS_FUZZ=1 \
-  dotnet test "$SCRIPT_DIR" --verbosity minimal
+export TCS_SPEC_CONFORMANCE=1
+export TCS_SPEC_REPORT="$SCRIPT_DIR/doc/spec-conformance-report.md"
+export TCS_DIFFERENTIAL=1
+export TCS_FUZZ=1
+echo "Running dotnet tests (with spec conformance + differential, part: $part)..."
+case "$part" in
+  all) dotnet test "$SCRIPT_DIR" --verbosity minimal ;;
+  transpiler-1)
+    dotnet test "$SCRIPT_DIR/Transpiler.Tests" --verbosity minimal --filter "$(filter_in TinyCs.Tests "${transpiler_1[@]}")"
+    ;;
+  transpiler-2)
+    # Analyzers.Tests は 1 つの class なので、Transpiler.Tests の残りと並べる。同じ project を同時に build しないよう、先に build する
+    dotnet build "$SCRIPT_DIR/Transpiler.Tests" --verbosity minimal
+    dotnet build "$SCRIPT_DIR/TinyCs.Analyzers.Tests" --verbosity minimal
+    dotnet test "$SCRIPT_DIR/TinyCs.Analyzers.Tests" --no-build --verbosity minimal &
+    analyzers=$!
+    dotnet test "$SCRIPT_DIR/Transpiler.Tests" --no-build --verbosity minimal --filter "$(filter_out TinyCs.Tests "${transpiler_1[@]}")"
+    wait "$analyzers"
+    ;;
+  tcs2c-1) dotnet test "$SCRIPT_DIR/tcs2c.Tests" --verbosity minimal --filter "$(filter_in TinyCs.Tcs2c.Tests "${tcs2c_1[@]}")" ;;
+  tcs2c-2) dotnet test "$SCRIPT_DIR/tcs2c.Tests" --verbosity minimal --filter "$(filter_in TinyCs.Tcs2c.Tests "${tcs2c_2[@]}")" ;;
+  tcs2c-3) dotnet test "$SCRIPT_DIR/tcs2c.Tests" --verbosity minimal --filter "$(filter_out TinyCs.Tcs2c.Tests "${tcs2c_1[@]}" "${tcs2c_2[@]}")" ;;
+  scripts) ;;
+  *)
+    echo "unknown part: $part" >&2
+    exit 2
+    ;;
+esac
+if [ "$part" != all ] && [ "$part" != scripts ]; then
+  echo "All tests passed (part: $part)."
+  exit 0
+fi
 
 echo "Running tcs check on samples..."
 sample_checks=(
@@ -45,8 +102,6 @@ if command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; then
   bash "$SCRIPT_DIR/tcs2c/verify-game-core.sh"
   bash "$SCRIPT_DIR/tcs2c/verify-object-values.sh"
   bash "$SCRIPT_DIR/tcs2c/verify-host.sh"
-  # tcs を C にした tcs が自分を同じ C にする (固定点) ことと、.NET の tcs と同じ .tcsb と check の診断を出すこと
-  bash "$SCRIPT_DIR/SelfHost/build.sh"
   echo "Running tcsvm differential tests..."
   bash "$SCRIPT_DIR/tcsvm/run-tests.sh"
 else

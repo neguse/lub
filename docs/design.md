@@ -32,11 +32,11 @@ C# のゲームは 3 つの経路で動く。
 lub の player は tcs VM の player (tcs vm が作った bytecode を tcs VM で動かす、native と web。hotswap で動かす dev の経路で、`lub export` の snapshot もこれで動かす)。
 tcs2c は tcs2c で C にしたゲームを lub と静的に link する経路 (Android の player など)。
 .NET 実行は実 .NET が `dotnet/Lub` の facade から共有 library の C API を P/Invoke で叩く経路で、host は `App.Run(typeof(Game), args)`。
-同じソースがどれでも通ることが契約で、CI は各サンプルをそれぞれ headless に回し、frame ごとの digest (C API 呼び出しの構造の hash) を突き合わせる。
-数値は両方 f32 で、Math の超越関数も同じ実装 (次の段落) なので絵も揃い、手元の gate では capture 同士を byte 比較する。CI の契約は digest だけ。
+同じソースがどれでも通ることが契約で、native gate は `tests/cs` の runtime テストを tcs VM の player と .NET 実行の両方で headless に回し (.NET 実行で回さないものと理由は `scripts/cs-tests.sh`)、TestBlendValue と TestBindingsDigest は frame ごとの digest (C API 呼び出しの構造の hash) を突き合わせる。
+数値は両方 f32 で、Math の超越関数も同じ実装 (次の段落) なので絵も揃う。
 golden 画像 (`tests/golden/<name>_<backend>.png`) は tcs VM の player で撮る。
 
-ゲームの論理の計算は OS をまたいで決定的にする。数値は f32 で、四則演算と sqrt / floor / fmod などは IEEE-754 で結果が決まる。結果が実装で変わる超越関数 (sin / cos / tan / atan2 / exp / log / pow) は tcs が 1 つの実装 (`tcs/runtime/math`、三角関数系と log10 は CORE-MATH、exp / log / log2 / pow は musl の Arm 由来) を持つ。tcs2c の生成 C はそれを埋め込み、tcs VM は lub が link する同じ実装 (CMake の `tcs_runtime`) を呼び、.NET 実行は TinySystem.Math (同じ手順の C# 版) を呼ぶ。.NET の project は tcs の `TinySystem.props` を Import して、`Math` / `MathF` を TinySystem.Math にする。C のソースは FMA への融合などで結果が変わらないようにコンパイルを固定する。CI は決まった入力列の結果の hash を、Windows / Linux / macOS / iOS / web と tcs2c と .NET の経路で 1 つの期待値と比べる (`tests/cs/TestMathDeterminism.cs`。iOS は release の workflow で走る)。
+ゲームの論理の計算は OS をまたいで決定的にする。数値は f32 で、四則演算と sqrt / floor / fmod などは IEEE-754 で結果が決まる。結果が実装で変わる超越関数 (sin / cos / tan / atan2 / exp / log / pow) は tcs が 1 つの実装 (`tcs/runtime/math`、三角関数系と log10 は CORE-MATH、exp / log / log2 / pow は musl の Arm 由来) を持つ。tcs2c の生成 C はそれを埋め込み、tcs VM は lub が link する同じ実装 (CMake の `tcs_runtime`) を呼び、.NET 実行は TinySystem.Math (同じ手順の C# 版) を呼ぶ。.NET の project は tcs の `TinySystem.props` を Import して、`Math` / `MathF` を TinySystem.Math にする。C のソースは FMA への融合などで結果が変わらないようにコンパイルを固定する。CI は決まった入力列の結果の hash を、Windows / Linux / macOS / iOS / web と tcs2c と .NET の経路で 1 つの期待値と比べる (`tests/cs/TestMathDeterminism.cs`)。
 
 ## Non-Goals
 
@@ -112,12 +112,12 @@ log、capture、resource dump、runtime state dump のような情報取得は�
 - backend は `d3d12` (Windows) / `vulkan` (Linux、Android、SDK が見つかる Windows) /
   `metal` (macOS / iOS) / `sdlgpu` (Windows / Linux の代替) / `webgpu`
   (web のみ)。未指定時の既定は Windows: d3d12、Linux: vulkan、
-  macOS / iOS: metal、Android (Meta Quest): openxr (vulkan で OpenXR の headset に描く。`docs/android.md`)、web: webgpu。CI golden は Windows は WARP、Linux は
-  lavapipe で回す (`docs/d3d12-backend.md`)。macOS と iOS simulator は
+  macOS / iOS: metal、Android (Meta Quest): openxr (vulkan で OpenXR の headset に描く。`docs/android.md`)、web: webgpu。golden は Windows は WARP、Linux は
+  lavapipe で撮る (`docs/d3d12-backend.md`)。macOS と iOS simulator は
   runner の GPU で描き、Linux の golden と許容差で比べる
   (`docs/metal-backend.md`)。backend 構成の整理方針は
   `docs/log/2026-07-07-backend-consolidation.md`。
 - iOS の player は shader compiler と transpiler を持たない。
   生成済みの bytecode (`.tcsb`) と shader cache を同梱した app として動く (`docs/metal-backend.md`)。
-- swapchain capture (`--capture`) は native と web(golden 用)の両方にある。ゲームが任意の render target を読むのは `Gfx.Readback()`。
+- swapchain capture (`--capture`) は native と web の両方にある。ゲームが任意の render target を読むのは `Gfx.Readback()`。
 - SDL GPU path は combined image sampler 周辺に制約がある。

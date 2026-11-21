@@ -169,9 +169,9 @@ score の見方や `-NoBuild` / backend 切替は [docs/sprites-bench.md](docs/s
 ### Golden image diff (回帰テスト)
 
 ```sh
-scripts/run-golden.sh             # 全 sample × backend を tests/golden と cmp
+scripts/run-golden.sh             # 描画を golden で見る tests/cs の test × backend を tests/golden と cmp
 scripts/run-golden.sh --update    # golden 画像を再生成 (描画意図的変更時)
-scripts/run-golden.sh --sample 01_triangle --backend sdlgpu
+scripts/run-golden.sh --test TestIndexedDraw --backend sdlgpu
 ```
 
 Linux と Windows は機材非依存の CPU rasterizer を強制するので capture が

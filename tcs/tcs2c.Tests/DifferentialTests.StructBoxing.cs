@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // table で `is` / interface 経由の呼び出しが効かず、C は受け付けないので、両 backend とも同じ
 // TCS1001 で止まる。interface の制約を持つ型引数に struct を入れるのも、Lua の generic なコードが
 // interface の method を method の呼び出し (`x:Area()`) にするので同じ
-public partial class DifferentialTests
+public class StructBoxingDifferentialTests
 {
     [Theory]
     [InlineData("object o = new M { X = 3 };", "StructBoxing")]

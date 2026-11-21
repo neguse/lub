@@ -23,14 +23,7 @@ public static unsafe partial class Vorbis
             int o_channels = default;
             int o_rate = default;
             var st = LubNative.lubx_vorbis_decode(LubRuntime.Ctx, data.Ptr, data.Length, &o_pcm, &o_channels, &o_rate);
-            if (st == LubNative.LUB_NOT_FOUND)
-            {
-                pcm = default!;
-                channels = default!;
-                rate = default!;
-                return;
-            }
-            LubRuntime.Check(st);
+            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
             pcm = LubRuntime.View(o_pcm);
             channels = o_channels;
             rate = o_rate;

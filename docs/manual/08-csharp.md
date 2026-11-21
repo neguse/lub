@@ -179,6 +179,7 @@ dotnet run --project dotnet/SampleRunner -p:Sample=09_breakout -- --capture out.
 
 共有 library は出力の隣か環境変数 `LUB_NATIVE_LIB` (full path) で見つける。
 引数は `--backend` (player では環境変数 `LUB_BACKEND`) と、player と同じ `--fixed-dt` / `--capture` / `--capture-frame` / `--digest` / `--readback-fixed-latency`。
+入口が `App.Run(assembly, args)` (assembly の中から entry class を探す。SampleRunner) なら、player と同じ `--entry <Class>` で entry class を選べる。
 `Bytes` (view) は `AsSpan()` で読め、frame を跨いで持つと例外になる。
 数値は C# の `float` のまま .NET で計算する(BCL の
 double 演算は `(float)` で丸める)ので、tcs VM の f32 と同じ精度になる。

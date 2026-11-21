@@ -1,9 +1,9 @@
 // player の page (player.html): エディタを通らずに、渡された bytecode と file で lub の tcs VM の player (wasm/vm/lub.js) を動かす。
-// web の golden (scripts/golden-web.mjs) と tests/cs の検査 (scripts/verify-player.mjs の A9) が、page を開いて postMessage で起動する。
+// tests/cs の検査 (scripts/verify-player.mjs の A9) が、page を開いて postMessage で起動する。
 //   1. slang-wasm (lib/slang-bridge.ts) を起動し、wasm の main の前に window.slangCompile を置く (shader_compile は EM_JS から同期で呼ぶ)。
 //   2. wasm の print / printErr と JS の console を、親の window へ postMessage する (top-level で開いたときは自分)。
 //   3. WebGPU の device を作り、Module.preinitializedWebGPUDevice で lub.js に渡す。
-//   4. `setFiles` (起動) と `syncFiles` (起動の後に file を置き直す) を受ける。
+//   4. `setFiles` (起動。file、entry、argv、env) と `syncFiles` (起動の後に file を置き直す) を受ける。
 //   5. サンプルが読み得る file を main の前に MEMFS に置く (runtime の Io は MEMFS しか見ない)。
 // C の側は entry の .batch と module の mtime を毎 frame 見て (src/vm_player.c)、Io は読むときに mtime を見る (src/api_io.c) ので、syncFiles は file を書き直すだけでよい。
 
@@ -24,33 +24,18 @@ declare global {
 }
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-// Render resolution comes from the page URL (?w=&h=). The whole offscreen
-// chain follows this via Gfx.size() on the C side; CSS scales the canvas to fit.
+// URL に ?w=&h= があれば、MainTex をその大きさで描く (src/backend_webgpu.c の wg_target_size)。
+// ゲームの Gfx.Size は SDL の window の大きさ (App.Config の Width / Height) のままで、それとは揃わない。
+// 無ければ export の page と同じく、ゲームの window の大きさで描く。
+// どちらでも CSS が canvas を page に収める。
 const _q = new URLSearchParams(location.search);
-const _cw = Math.max(
-  64,
-  Math.min(4096, parseInt(_q.get("w") || "480", 10) || 480),
-);
-const _ch = Math.max(
-  64,
-  Math.min(4096, parseInt(_q.get("h") || "360", 10) || 360),
-);
-canvas.width = _cw;
-canvas.height = _ch;
-window._canvasWidth = _cw;
-window._canvasHeight = _ch;
-
-// page の URL は execve 相当の起動境界: ?argv=<token> (繰り返し) を Module.arguments へ、?env=KEY=VALUE (繰り返し) を Module.ENV (preRun) へ機械的に写す。
-// 値の意味づけ (golden 等) は渡す側 — web/scripts/golden-web.mjs — が持ち、ここは機構のみ。
-// __lubTest と同じく dev/test build 限定で、production には入らない。
-let extraArgv: string[] = [];
-let extraEnv: Array<[string, string]> = [];
-if (import.meta.env.DEV || import.meta.env.MODE === "test") {
-  extraArgv = _q.getAll("argv");
-  extraEnv = _q.getAll("env").map((kv) => {
-    const i = kv.indexOf("=");
-    return i < 0 ? [kv, "1"] : [kv.slice(0, i), kv.slice(i + 1)];
-  });
+const _cw = parseInt(_q.get("w") || "", 10);
+const _ch = parseInt(_q.get("h") || "", 10);
+if (_cw > 0 && _ch > 0) {
+  canvas.width = _cw;
+  canvas.height = _ch;
+  window._canvasWidth = _cw;
+  window._canvasHeight = _ch;
 }
 
 function relayLog(msg: string, level: "log" | "err" | "warn" = "log") {
@@ -190,6 +175,7 @@ async function initWebGPU(): Promise<any> {
 let pendingFiles: Record<string, string> | null = null;
 let pendingEntry: string | null = null;
 let pendingArgv: string[] | null = null;
+let pendingEnv: Record<string, string> = {};
 let wasmStarted = false;
 // FS (window.FS は wasm main 内で代入) が使えるまでの syncFiles を溜める。
 // 捨てると runtimeReady 前の編集が失われるので queue + flush する。
@@ -261,21 +247,19 @@ async function startWasm() {
     // wasm/vm/lub.wasm. Override to always pull from <base>wasm/vm/.
     locateFile: (path: string) => import.meta.env.BASE_URL + wasmDir + path,
     preRun: [],
-    arguments: [
-      ...(pendingArgv ?? [pendingEntry || "01_triangle"]),
-      ...extraArgv,
-    ],
+    arguments: pendingArgv ?? [pendingEntry || "01_triangle"],
   };
-  if (extraEnv.length > 0) {
+  const env = Object.entries(pendingEnv);
+  if (env.length > 0) {
     // preRun 時点では runtime の ENV が Module に export 済みで、environ の実体化 (main() 前) はまだ。
     // ここで書けば C の getenv に見える。
     moduleConfig.preRun.push(function () {
       const ENV = moduleConfig.ENV;
       if (!ENV) {
-        console.error("[player] ?env= given but ENV is not exported");
+        console.error("[player] env given but ENV is not exported");
         return;
       }
-      for (const [k, v] of extraEnv) ENV[k] = v;
+      for (const [k, v] of env) ENV[k] = v;
     });
   }
   // Overlay the fetched assets and the given files before main().
@@ -318,11 +302,13 @@ window.addEventListener("message", (e: MessageEvent) => {
     files?: Record<string, string>;
     entry?: string;
     argv?: string[];
+    env?: Record<string, string>;
   };
   if (d.type === "setFiles") {
     pendingFiles = d.files || {};
     pendingEntry = d.entry || null;
     pendingArgv = d.argv ?? null;
+    pendingEnv = d.env ?? {};
     startWasm();
   } else if (d.type === "syncFiles") {
     const FS = window.FS;

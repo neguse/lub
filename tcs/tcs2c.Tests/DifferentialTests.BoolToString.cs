@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // bool の文字列化は .NET と同じ `True` / `False` (Console.WriteLine、連結、補間、ToString、
 // bool? (null は空文字列)、string.Join の要素)。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class BoolToStringDifferentialTests
 {
     [CFact]
     public void BoolToString_MatchesDotnet()

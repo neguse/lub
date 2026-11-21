@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // 言語機能別の 2 backend differential (続き): record / Nullable / Random /
 // struct member / シフト / char。DifferentialTests のファイル長上限のため分割
-public partial class DifferentialTests
+public class LanguageDifferentialTests
 {
     [CFact]
     public void Records_EqualityWithAndDeconstruction()

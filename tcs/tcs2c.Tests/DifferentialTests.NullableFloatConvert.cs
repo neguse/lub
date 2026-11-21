@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // int? → float? の暗黙変換 (比較の昇格、代入、引数) も整数を f32 に丸める。値なしは値なしのまま。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class NullableFloatConvertDifferentialTests
 {
     [CFact]
     public void NullableIntToNullableFloat_RoundsToFloat32()

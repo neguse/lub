@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // タプル: 戻り値、分解、入れ替え、保持、List の要素。Lua は分解するなら multi-return、保持するなら
 // struct の table、C は struct。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class TuplesDifferentialTests
 {
     [CFact]
     public void Tuples_ReturnAndDeconstruct()

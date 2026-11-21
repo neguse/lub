@@ -1,7 +1,7 @@
 # lider の player (native/main.c): lub の player の library に、lider の native の拡張 (かな漢字変換、file system の操作、tcs の compiler) を静的に link する。
 # lub の build は find_package(lub) で使う (lub_DIR に lub の build のディレクトリ)。scripts/build-player.sh が呼ぶ。
 # web の出力は build/player-web/web/lub.{js,wasm}。
-# 要るもの: cargo (web は rustup の wasm32-unknown-emscripten)、dotnet (tcs を C にする)、GCC か Clang (tcs の C は GNU C の文の式を使う。Windows は clang-cl)。
+# 要るもの: cargo (web は rustup の wasm32-unknown-emscripten)、dotnet か C の tcs (tcs を C にする)、GCC か Clang (tcs の C は GNU C の文の式を使う。Windows は clang-cl)。
 cmake_minimum_required(VERSION 3.22)
 project(lider_player C CXX)
 
@@ -24,23 +24,29 @@ if(NOT JAMO_TARGET)
     set(JAMO_TARGET "${CMAKE_MATCH_1}")
   endif()
 endif()
-set(JAMO_CARGO_DIR "${CMAKE_CURRENT_BINARY_DIR}/jamo")
-if(WIN32)
-  set(JAMO_LIB "${JAMO_CARGO_DIR}/${JAMO_TARGET}/release/jamo_core.lib")
+# build 済みの jamo-core があれば、それを link する (同じ jamo の commit、Rust の target、rustc から作ったもの。cargo は動かさない)
+set(JAMO_PREBUILT "" CACHE FILEPATH "build 済みの jamo-core の static library (空なら cargo で build する)")
+if(JAMO_PREBUILT)
+  set(JAMO_LIB "${JAMO_PREBUILT}")
+  add_custom_target(lider_jamo_core)
 else()
-  set(JAMO_LIB "${JAMO_CARGO_DIR}/${JAMO_TARGET}/release/libjamo_core.a")
+  set(JAMO_CARGO_DIR "${CMAKE_CURRENT_BINARY_DIR}/jamo")
+  if(WIN32)
+    set(JAMO_LIB "${JAMO_CARGO_DIR}/${JAMO_TARGET}/release/jamo_core.lib")
+  else()
+    set(JAMO_LIB "${JAMO_CARGO_DIR}/${JAMO_TARGET}/release/libjamo_core.a")
+  endif()
+  add_custom_command(OUTPUT "${JAMO_LIB}"
+    COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${JAMO_CARGO_DIR}
+      cargo rustc --manifest-path "${JAMO_ROOT}/Cargo.toml" -p jamo-core --release
+      --target ${JAMO_TARGET} --crate-type staticlib
+    COMMENT "Building jamo-core (${JAMO_TARGET})"
+    VERBATIM)
+  add_custom_target(lider_jamo_core DEPENDS "${JAMO_LIB}")
 endif()
-add_custom_command(OUTPUT "${JAMO_LIB}"
-  COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${JAMO_CARGO_DIR}
-    cargo rustc --manifest-path "${JAMO_ROOT}/Cargo.toml" -p jamo-core --release
-    --target ${JAMO_TARGET} --crate-type staticlib
-  COMMENT "Building jamo-core (${JAMO_TARGET})"
-  VERBATIM)
-add_custom_target(lider_jamo_core DEPENDS "${JAMO_LIB}")
 
 # tcs (tcs/SelfHost) を tcs2c で C にする (tcs.c)。tcs と一緒に配るファイルは header に埋め込む
 set(TCS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../tcs" CACHE PATH "tcs のソース")
-find_program(DOTNET dotnet REQUIRED)
 file(GLOB TCS_SELF_SOURCES CONFIGURE_DEPENDS
   "${TCS_ROOT}/SelfHost/Compiler/*.cs" "${TCS_ROOT}/SelfHost/CBackend/*.cs"
   "${TCS_ROOT}/SelfHost/VmBackend/*.cs" "${TCS_ROOT}/SelfHost/Tool/*.cs")
@@ -48,11 +54,22 @@ list(REMOVE_ITEM TCS_SELF_SOURCES "${TCS_ROOT}/SelfHost/Tool/TcsHost.cs")
 file(GLOB_RECURSE TCS2C_SOURCES CONFIGURE_DEPENDS "${TCS_ROOT}/tcs2c/*.cs" "${TCS_ROOT}/runtime/*.c" "${TCS_ROOT}/runtime/*.h")
 list(FILTER TCS2C_SOURCES EXCLUDE REGEX "/(bin|obj)/")
 set(TCS_C_DIR "${CMAKE_CURRENT_BINARY_DIR}/tcs")
+# C の tcs (scripts/build-tcs-native.sh の出力) があれば、それで C にする (tcs c は .NET の tcs2c と同じ C を出す)。そのとき dotnet は要らない
+set(TCS_NATIVE "" CACHE FILEPATH "C の tcs の実行ファイル (空なら .NET の tcs2c を使う)")
+if(TCS_NATIVE)
+  set(TCS_TO_C COMMAND "${TCS_NATIVE}" c)
+  set(TCS_TO_C_DEPENDS "${TCS_NATIVE}")
+else()
+  find_program(DOTNET dotnet REQUIRED)
+  set(TCS_TO_C
+    COMMAND "${DOTNET}" build "${TCS_ROOT}/tcs2c" -c Release -v q -nologo
+    COMMAND "${DOTNET}" "${TCS_ROOT}/tcs2c/bin/Release/net11.0/tcs2c.dll")
+  set(TCS_TO_C_DEPENDS ${TCS2C_SOURCES})
+endif()
 add_custom_command(OUTPUT "${TCS_C_DIR}/tcs.c"
-  COMMAND "${DOTNET}" build "${TCS_ROOT}/tcs2c" -c Release -v q -nologo
-  COMMAND "${DOTNET}" "${TCS_ROOT}/tcs2c/bin/Release/net11.0/tcs2c.dll" --lib
+  ${TCS_TO_C} --lib
     --ref "${TCS_ROOT}/SelfHost/Tool/TcsHost.cs" ${TCS_SELF_SOURCES} -o "${TCS_C_DIR}/tcs.c"
-  DEPENDS ${TCS_SELF_SOURCES} "${TCS_ROOT}/SelfHost/Tool/TcsHost.cs" ${TCS2C_SOURCES}
+  DEPENDS ${TCS_SELF_SOURCES} "${TCS_ROOT}/SelfHost/Tool/TcsHost.cs" ${TCS_TO_C_DEPENDS}
   COMMENT "Converting tcs to C"
   VERBATIM)
 add_custom_command(OUTPUT "${TCS_C_DIR}/tcs_tool_files.h"

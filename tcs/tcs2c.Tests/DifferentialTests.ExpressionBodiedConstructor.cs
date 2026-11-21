@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // 式の本文の constructor (`C(int x) => X = x;`) は本文を文の位置の式として実行する (class と struct)
-public partial class DifferentialTests
+public class ExpressionBodiedConstructorDifferentialTests
 {
     [CFact]
     public void ExpressionBodiedConstructor_MatchDotnet()

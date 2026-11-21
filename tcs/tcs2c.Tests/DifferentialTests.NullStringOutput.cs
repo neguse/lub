@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // null の string の補間と Console の出力は空文字列 (#415)。C は `nil` を書いていた
-public partial class DifferentialTests
+public class NullStringOutputDifferentialTests
 {
     [CFact]
     public void NullString_InterpolationAndConsole_AreEmpty()

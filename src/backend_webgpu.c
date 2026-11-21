@@ -24,8 +24,8 @@
 #include <string.h>
 
 // ---- EM_JS canvas helpers -------------------------------------------------
-// サイトの page (入口と player の page) は描く解像度を window._canvasWidth / _canvasHeight で決める。
-// それが無い page (export) は、ゲームが Gfx.Size で見る SDL の window の画素数 (App.Config の Width / Height) で描く。
+// サイトの入口の page と、?w=&h= を付けて開いた player の page は、描く解像度を window._canvasWidth / _canvasHeight で決める。
+// それが無い page (export、大きさを付けずに開いた player の page) は、ゲームが Gfx.Size で見る SDL の window の画素数 (App.Config の Width / Height) で描く。
 // clang-format off
 EM_JS(int, wg_canvas_width, (void),
       { return (window._canvasWidth || 0) | 0; })

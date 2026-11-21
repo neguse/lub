@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // 複数の constructor (class / struct / record struct / generic)。呼び出しは Roslyn の選んだ
 // overload を直接呼ぶ。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class MultipleConstructorsDifferentialTests
 {
     [CFact]
     public void MultipleConstructors_MatchDotnet()

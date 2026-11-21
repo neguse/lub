@@ -117,24 +117,18 @@ public static class Sdf19
 
         // debug UI: ツリー (data) から自動生成したパネル。
         // いじったフレームだけ remesh (C 評価 ~10ms なのでドラッグ追従)。
-        // golden capture 中は描画しない (imgui テキストの AA が WARP で ±1 揺れて byte 比較が非決定になるため。
-        // 3D シーン本体は決定的)。
-        // LUB_GOLDEN は scripts/run-golden.sh がセット。
-        if (Environment.GetEnvironmentVariable("LUB_GOLDEN") == null)
+        Ui.SetNextWindow(10, 10, 300, 460);
+        if (Ui.BeginWindow("sdf tuning"))
         {
-            Ui.SetNextWindow(10, 10, 300, 460);
-            if (Ui.BeginWindow("sdf tuning"))
-            {
-                if (SdfPanel.Draw(t))
-                    meshDirty = true;
-                Ui.Separator();
-                waveOn = Ui.Checkbox("wave", waveOn);
-                var md = m.Data;
-                if (m.Ready() && md != null)
-                    Ui.Text("verts: " + md.VertCount);
-            }
-            Ui.EndWindow();
+            if (SdfPanel.Draw(t))
+                meshDirty = true;
+            Ui.Separator();
+            waveOn = Ui.Checkbox("wave", waveOn);
+            var md = m.Data;
+            if (m.Ready() && md != null)
+                Ui.Text("verts: " + md.VertCount);
         }
+        Ui.EndWindow();
 
         if (meshDirty)
             Remesh(m, t);

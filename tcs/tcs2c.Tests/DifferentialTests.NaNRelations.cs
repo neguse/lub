@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // で `!(a < b) && !(a >= b)` から a == b を導き、NaN の組で `!(a == b)` を
 // 消していた。期待値は同じ program を CoreCLR で実行した stdout (NaN を含む組は
 // 2 + 64 + 128 + 256 = 450)
-public partial class DifferentialTests
+public class NaNRelationsDifferentialTests
 {
     [CFact]
     public void Float_RelationsWithNaN_MatchDotnet()

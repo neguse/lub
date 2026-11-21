@@ -1,5 +1,5 @@
 // playwright で chromium を立てる共通部。
-// verify / golden / tcs の各スクリプトが同じ解決順で同じブラウザを使う。
+// verify / tcs の各スクリプトが同じ解決順で同じブラウザを使う。
 import fs from "node:fs";
 import { chromium } from "playwright";
 
@@ -22,7 +22,7 @@ export function pickExecutable() {
   return undefined;
 }
 
-/** WebGPU を swiftshader (Vulkan) で有効にする引数。golden と verify の描画契約。 */
+/** WebGPU を swiftshader (Vulkan) で有効にする引数。verify の描画契約。 */
 export const WEBGPU_ARGS = [
   "--enable-unsafe-webgpu",
   "--enable-features=Vulkan,WebGPU",
@@ -43,7 +43,15 @@ export async function launchChromium({
   return chromium.launch({
     headless,
     executablePath,
-    args: [...(webgpu ? WEBGPU_ARGS : []), "--no-sandbox"],
+    // 音は偽の出力に流す (音の device が無いか応えない機械でも、Web Audio の時計が進む)。
+    // AudioContext の suspend() と resume() は仕様のとおり非同期に済ませる (close() が済んでいない promise を拒否する)。
+    // ブラウザの版や実験の設定で振る舞いが変わらないよう、常に有効にする。
+    args: [
+      ...(webgpu ? WEBGPU_ARGS : []),
+      "--disable-audio-output",
+      "--enable-blink-features=AudioContextAsyncStateTransitions",
+      "--no-sandbox",
+    ],
   });
 }
 

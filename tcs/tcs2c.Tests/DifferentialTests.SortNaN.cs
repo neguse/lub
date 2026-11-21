@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // .NET の既定の comparer と同じく NaN を最小にする。要素型が型 parameter の
 // generic method と、拡張 method の static の形も同じ。
 // 表示の N は NaN、I は ±∞。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class SortNaNDifferentialTests
 {
     [CFact]
     public void DefaultOrder_NaNFirst_MatchDotnet()

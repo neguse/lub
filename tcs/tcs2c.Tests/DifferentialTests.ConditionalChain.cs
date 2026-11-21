@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // `?.` の when-not-null が呼び出し / member の連鎖 (`x?.M().N()`、`x?.M().P`)
 // のとき、連鎖の一番内側は `?.` の receiver に対する呼び出し / member になる。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public partial class ConditionalChainDifferentialTests
 {
     [CFact]
     public void ConditionalAccess_ChainAfterBinding()
@@ -82,7 +82,7 @@ public partial class DifferentialTests
     }
 }
 
-public partial class DifferentialTests
+public partial class ConditionalChainDifferentialTests
 {
     // 連鎖の一番内側が変数 (参照型の receiver の field / 配列要素) なら、
     // struct method の変異はその変数に残る。`T?` receiver の値は copy なので残らない

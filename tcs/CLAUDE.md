@@ -29,8 +29,7 @@ tcs/
 │   ├── Tool/              # CLI の本体 (check、c、vm と --watch、playground の VM の session)。OS に触る所は TcsHost の stub
 │   ├── Native/host.c      # C の host (tcs2c で C にした tcs の main)
 │   ├── Web/               # WebAssembly の host (tcs_web.c と tcs.mjs。playground の VM の増分 session)
-│   ├── native.sh          # tcs2c で C にした tcs を作り、.NET の tcs と出力を比べる
-│   ├── build.sh           # bootstrap (自分を C にして build し、固定点を確かめる)
+│   ├── native.sh          # tcs2c で C にした tcs を作り、.NET の tcs と出力を比べ、固定点を確かめる
 │   └── ...
 ├── Transpiler/            # .NET の host (TcsHost の実装、WasmCompiler とテストのための入口、tcs2c への受け渡し)
 │   ├── Transpiler.csproj
@@ -83,6 +82,7 @@ bash run-tests.sh
 ```
 
 `run-tests.sh` / `run-tests.ps1` は `dotnet test`、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics 検証、analyzer nupkg の PackageReference consumer / `.editorconfig` severity override 検証を実行する。Rider helper script (`verify-rider-scripts.sh`) の検証は `run-tests.sh` のみ。
+`run-tests.sh --part <名前>` は一部だけを走らせる (CI は部分ごとの job に分けて並べる。部分の一覧と分け方は `run-tests.sh` の先頭)。
 analyzer / `tcs check` の診断一致は run-tests のこの恒常ゲートで守る（個別タスクにはしない）。
 
 ## 開発ワークフロー
@@ -124,7 +124,7 @@ analyzer / `tcs check` の診断一致は run-tests のこの恒常ゲートで�
 ### compiler の実装と Roslyn
 
 - compiler はセルフホストの実装 1 つ (`SelfHost/Compiler/`、TinyC# で書く)。字句、構文、宣言、束縛、準拠検査、IL の書き出し、generic の単相化を持つ。C backend (`SelfHost/CBackend/`) と tcs VM の backend (`SelfHost/VmBackend/`) も TinyC# で、`tcs c` と `tcs vm` で動く。.NET、C、wasm のどれでも同じ実装が動く (設計は `doc/self-hosting-design.md`)
-- CLI (`tcs check`、`tcs c`、`tcs vm` と `--watch`、playground の VM の増分 session) も TinyC# (`SelfHost/Tool/`) で、OS に触る所は `TcsHost` の関数にして host が実装する。host は .NET (`Transpiler/DotnetHost.cs`)、C (`SelfHost/Native/host.c`、tcs2c で C にした tcs)、wasm (`SelfHost/Web/tcs_web.c`)。`SelfHost/build.sh` と `SelfHost/native.sh` が .NET と C の経路の出力の一致を確かめる
+- CLI (`tcs check`、`tcs c`、`tcs vm` と `--watch`、playground の VM の増分 session) も TinyC# (`SelfHost/Tool/`) で、OS に触る所は `TcsHost` の関数にして host が実装する。host は .NET (`Transpiler/DotnetHost.cs`)、C (`SelfHost/Native/host.c`、tcs2c で C にした tcs)、wasm (`SelfHost/Web/tcs_web.c`)。`SelfHost/native.sh` が .NET と C の経路の出力の一致を確かめる
 - Roslyn は compiler の外の道具としてだけ使う: IDE の Roslyn Analyzer (`TinyCs.Analyzers`)、playground の補完と hover (`SemanticQueries`)、検証の oracle (C# として正しいかの判定と .NET での実行の比較)
 - Roslyn Analyzer は compiler (`SelfHost/Compiler`、netstandard2.0 で analyzer に入れる) を動かし、`tcs check` と同じ TCS1001〜1003 を報告する (準拠の規則は compiler の 1 か所)。`--ref` の stub は AdditionalFiles の `TinyCsRef="true"` で渡す。TCS1004 (System.Math の超越関数が .NET の実装で動く) だけは analyzer が Roslyn で見る
 - `TCS1001`: 未対応構文 (`try`, `throw`, local function, list pattern, Equals の override など)

@@ -5,7 +5,7 @@ namespace TinyCs.Tcs2c.Tests;
 // killer は McIlroy の adversary (比較の結果を遅延して決め、分割を最悪にする) で、depthLimit に届いて heapsort に落ちる。
 // zeros は比較なしの float の Sort で、NaN を先頭に寄せた後の ±0 の並び (N は NaN、- と + は ±0、a-d は負から正の値)。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class SortTiesDifferentialTests
 {
     [CFact]
     public void SortTies_MatchDotnet()

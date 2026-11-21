@@ -2,7 +2,7 @@
 """tcs の実行経路と他の言語を同じプログラムで比べる (外向けの比較ベンチ)。
 
 使い方:
-  python3 perf/compare/run.py --check          # 小さいサイズで全実装の出力の一致だけ見る (CI 用、時間は測らない)
+  python3 perf/compare/run.py --check          # 小さいサイズで全実装の出力の一致だけ見る (時間は測らない)
   python3 perf/compare/run.py                  # 本番のサイズで計測し results/ に JSON を書く
   python3 perf/compare/run.py -p fib -i c,tcs-c --runs 3
   python3 perf/compare/report.py results/<file>.json   # 表と HTML を作る

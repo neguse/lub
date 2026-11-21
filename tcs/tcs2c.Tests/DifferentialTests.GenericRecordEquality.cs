@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // generic な record / record struct の型 parameter の field も、合成 Equals と
 // 同じく EqualityComparer<T>.Default で比べる (T = float / double は NaN 同士が
 // 等しく、+0 と -0 も等しい)。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class GenericRecordEqualityDifferentialTests
 {
     private const string GenericRecordEqualityProgram = """
         using System;

@@ -42152,7 +42152,8 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
             }
 
             device.webaudio = new (window.AudioContext || window.webkitAudioContext)(audioContextOptions);
-            device.webaudio.suspend();  /* The AudioContext must be created in a suspended state. */
+            device.webaudio.suspend().catch(function() {});  /* The AudioContext must be created in a suspended state. */
+            /* lub: close() は済んでいない suspend() と resume() の promise を拒否する ("AudioContext is closed.")。結果は使わないので、拒否を page の unhandled rejection にしない。 */
             device.state = window.miniaudio.device_state.stopped;
 
             /*
@@ -42267,7 +42268,8 @@ static ma_result ma_device_start__webaudio(ma_device* pDevice)
 
     EM_ASM({
         var device = window.miniaudio.get_device_by_index($0);
-        device.webaudio.resume();
+        /* lub: close() は済んでいない suspend() と resume() の promise を拒否する ("AudioContext is closed.")。結果は使わないので、拒否を page の unhandled rejection にしない。 */
+        device.webaudio.resume().catch(function() {});
         device.state = window.miniaudio.device_state.started;
     }, pDevice->webaudio.deviceIndex);
 
@@ -42289,7 +42291,8 @@ static ma_result ma_device_stop__webaudio(ma_device* pDevice)
     */
     EM_ASM({
         var device = window.miniaudio.get_device_by_index($0);
-        device.webaudio.suspend();
+        /* lub: close() は済んでいない suspend() と resume() の promise を拒否する ("AudioContext is closed.")。結果は使わないので、拒否を page の unhandled rejection にしない。 */
+        device.webaudio.suspend().catch(function() {});
         device.state = window.miniaudio.device_state.stopped;
     }, pDevice->webaudio.deviceIndex);
 

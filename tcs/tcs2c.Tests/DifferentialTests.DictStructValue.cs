@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // Dictionary の値が struct のときの member 読み (foreach の kv.Value.F、d[k].F、
 // 入れ子の struct field)。kv.Value は値の copy なので、その上の mutating method は
 // Dictionary を変えない。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class DictStructValueDifferentialTests
 {
     [CFact]
     public void DictStructValue_MemberReads()

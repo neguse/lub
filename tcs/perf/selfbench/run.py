@@ -6,7 +6,7 @@ C にした tcs (tcs c で自分を C にしたもの) と .NET の tcs で次�
   vm    tcs → tcs VM の .tcsb (tcs vm --export TcsSelf.Cli.* <files> -o out.tcsb)
   c     tcs → C               (tcs c --lib <files> -o out.c)
 指標:
-  time_s        wall の時間の median (揺れるので報告だけ)
+  time_s        wall の時間の median (揺れるので報告だけ。--runs 0 なら測らない)
   instructions  C の tcs の実行した命令の数 (valgrind cachegrind。ほぼ決定的なのでゲートに使う)
   heap_peak     C の tcs の managed heap の段の間の最大 (決定的、ゲートに使う)
   out_bytes     出力の大きさ (決定的。生成するコードの膨らみを見る)
@@ -15,6 +15,9 @@ C にした tcs (tcs c で自分を C にしたもの) と .NET の tcs で次�
   python3 perf/selfbench/run.py                       # 今の tree だけ測る
   python3 perf/selfbench/run.py --base origin/master  # base と交互に測って比べる。決定的な指標が閾値を超えて増えたら exit 1
   python3 perf/selfbench/run.py --no-cachegrind --runs 3
+  python3 perf/selfbench/run.py --base origin/master --tasks vm --hosts native --runs 0  # 決定的な指標だけ (CI)
+--base-results <file> は base の測定の結果を読み書きする: file があれば base を build も測定もせずにそれを使い、無ければ測って書く。
+base の測定は base の tree と toolchain だけで決まるので、CI はそれを key にして file を cache する。時間は比べられないので --runs 0 のときだけ使える。
 --base のときの入力は base の tree のソース (両方の compiler に同じ入力を与えるため)。
 """
 
@@ -48,7 +51,7 @@ def dotnet():
 
 
 def sources(tree):
-    """build.sh と同じ入力 (TcsHost.cs は --ref)"""
+    """SelfHost/native.sh と同じ入力 (TcsHost.cs は --ref)"""
     src = []
     for d in ("Compiler", "CBackend", "VmBackend"):
         src += sorted((tree / "SelfHost" / d).glob("*.cs"))
@@ -72,7 +75,7 @@ class Tcs:
         sh([dotnet(), "build", str(self.tree / "Transpiler" / "Transpiler.csproj"), "-c", "Release",
             "-p:NuGetAudit=false", "-v:minimal", "-o", str(w / "dotnet")])
         self.dll = w / "dotnet" / "Transpiler.dll"
-        # tcs と一緒に配るファイル (build.sh と同じ配置)。C の tcs は実行ファイルの dir から読む
+        # tcs と一緒に配るファイル (SelfHost/native.sh と同じ配置)。C の tcs は実行ファイルの dir から読む
         (w / "runtime").mkdir(exist_ok=True)
         for d in ("core", "math", "fmt", "model", "utf8"):
             (w / "runtime" / d).mkdir(exist_ok=True)
@@ -134,13 +137,19 @@ def median(xs):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base", help="比べる git の ref (例: origin/master)")
-    ap.add_argument("--runs", type=int, default=5)
+    ap.add_argument("--runs", type=int, default=5, help="時間を測る回数。0 なら時間を測らない")
     ap.add_argument("--threshold", type=float, default=3.0, help="決定的な指標がこの %% を超えて増えたら失敗")
     ap.add_argument("--no-cachegrind", action="store_true")
     ap.add_argument("--tasks", default="vm,c")
     ap.add_argument("--hosts", default="native,dotnet")
+    ap.add_argument("--base-results", help="base の測定の結果の JSON (あれば読み、無ければ書く)")
     ap.add_argument("-o", "--out", help="結果の JSON")
     args = ap.parse_args()
+    if args.base_results and (not args.base or args.runs):
+        raise SystemExit("--base-results は --base と --runs 0 のときだけ使える")
+    base_cached = None
+    if args.base_results and Path(args.base_results).exists():
+        base_cached = json.loads(Path(args.base_results).read_text())
 
     work = Path(tempfile.mkdtemp(prefix="tcs-selfbench."))
     trees = [Tcs("head", ROOT, work / "head")]
@@ -150,8 +159,10 @@ def main():
         # tcs が repo の下の dir にあるときは、base の tree でも同じ dir を見る
         prefix = sh(["git", "-C", str(ROOT), "rev-parse", "--show-prefix"]).strip()
         trees.insert(0, Tcs("base", base_tree / prefix, work / "base"))
+    # cache した base は build も測定もしない (base の tree は入力の source として使う)
+    measured = [t for t in trees if not (t.name == "base" and base_cached is not None)]
     try:
-        for t in trees:
+        for t in measured:
             t.build()
         inputs = sources(trees[0].tree)
         use_cg = not args.no_cachegrind and shutil.which("valgrind") is not None
@@ -159,33 +170,47 @@ def main():
             print("valgrind が無いので instructions は測らない", file=sys.stderr)
 
         results = {t.name: {} for t in trees}
+        if base_cached is not None:
+            results["base"] = base_cached
         for task in args.tasks.split(","):
             for host in args.hosts.split(","):
                 key = "%s/%s" % (host, task)
                 print("== " + key, file=sys.stderr)
+                if base_cached is not None and key not in base_cached:
+                    raise SystemExit("--base-results に %s が無い" % key)
                 times = {t.name: [] for t in trees}
-                for t in trees:  # warmup (disk cache と .NET の初回)
-                    timed(t.argv(host, task, inputs, t.work / ("warm." + task)))
+                if args.runs:
+                    for t in trees:  # warmup (disk cache と .NET の初回)
+                        timed(t.argv(host, task, inputs, t.work / ("warm." + task)))
                 for _ in range(args.runs):
                     for t in trees:  # 交互に走らせて、runner の揺れを両方に同じようにかける
                         times[t.name].append(timed(t.argv(host, task, inputs, t.work / ("out." + task))))
-                for t in trees:
-                    r = {"time_s": median(times[t.name]), "time_min_s": min(times[t.name]),
-                         "out_bytes": (t.work / ("out." + task)).stat().st_size}
+                for t in measured:
+                    out = t.work / ("out." + task)
+                    r = {}
+                    if args.runs:
+                        r["time_s"] = median(times[t.name])
+                        r["time_min_s"] = min(times[t.name])
                     if host == "native":
-                        r["heap_peak"] = heap_peak(t.argv(host, task, inputs, t.work / ("heap." + task)))
+                        r["heap_peak"] = heap_peak(t.argv(host, task, inputs, out))
                         if use_cg:
-                            r["instructions"] = instructions(t.argv(host, task, inputs, t.work / ("cg." + task)), t.work)
+                            r["instructions"] = instructions(t.argv(host, task, inputs, out), t.work)
+                    elif not args.runs:
+                        sh(t.argv(host, task, inputs, out))
+                    r["out_bytes"] = out.stat().st_size
                     results[t.name][key] = r
                     print("  %-5s %s" % (t.name, " ".join("%s=%s" % kv for kv in r.items())), file=sys.stderr)
     finally:
         if args.base:
             subprocess.run(["git", "-C", str(ROOT), "worktree", "remove", "--force", str(work / "base-tree")])
 
+    if args.base_results and base_cached is None:
+        Path(args.base_results).write_text(json.dumps(results["base"], indent=1) + "\n")
+
     failures = []
     lines = []
     if args.base:
-        lines += ["## tcs selfbench (base %s と比べる、%d 回の median)" % (args.base, args.runs), "",
+        lines += ["## tcs selfbench (base %s と比べる%s)" % (args.base, "、時間は %d 回の median" % args.runs if args.runs else ""), "",
                   "| 測るもの | 指標 | base | head | 変化 |", "|---|---|---:|---:|---:|"]
         for key in results["head"]:
             b, h = results["base"][key], results["head"][key]
@@ -201,12 +226,13 @@ def main():
                 fb = fmt % b[metric] if metric == "time_s" else fmt.format(b[metric])
                 fh = fmt % h[metric] if metric == "time_s" else fmt.format(h[metric])
                 lines.append("| %s | %s | %s | %s | %+.2f%%%s |" % (key, metric, fb, fh, pct, mark))
-        lines += ["", "instructions と heap_peak は決定的な指標で、%.1f%% を超えて増えると失敗。time_s は報告だけ。" % args.threshold]
+        lines += ["", "instructions と heap_peak は決定的な指標で、%.1f%% を超えて増えると失敗。%s" % (
+            args.threshold, "time_s は報告だけ。" if args.runs else "")]
     else:
-        lines += ["## tcs selfbench (%d 回の median)" % args.runs, "",
+        lines += ["## tcs selfbench%s" % (" (時間は %d 回の median)" % args.runs if args.runs else ""), "",
                   "| 測るもの | time_s | instructions | heap_peak | out_bytes |", "|---|---:|---:|---:|---:|"]
         for key, r in results["head"].items():
-            lines.append("| %s | %.3f | %s | %s | %s |" % (key, r["time_s"], "{:,}".format(r["instructions"]) if r.get(
+            lines.append("| %s | %s | %s | %s | %s |" % (key, "%.3f" % r["time_s"] if "time_s" in r else "-", "{:,}".format(r["instructions"]) if r.get(
                 "instructions") else "-", "{:,}".format(r["heap_peak"]) if r.get("heap_peak") else "-",
                 "{:,}".format(r["out_bytes"])))
     report = "\n".join(lines) + "\n"

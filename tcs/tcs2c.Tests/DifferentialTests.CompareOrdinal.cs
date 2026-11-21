@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // code unit の順、null は他のどの string より小さい) と同じ。UTF-8 の byte の順と
 // UTF-16 の順が逆になる U+E000-U+FFFF と U+10000 以上の組、同じ上位 surrogate を
 // 持つ組を含む。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class CompareOrdinalDifferentialTests
 {
     [CFact]
     public void CompareOrdinal_SignMatchesDotnet()

@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // generic method の nameof は、単相化で雛形の method を消した後も名前の文字列 (#442)
-public partial class DifferentialTests
+public class NameofGenericDifferentialTests
 {
     [CFact]
     public void Nameof_GenericMethod_WithGenericClass()

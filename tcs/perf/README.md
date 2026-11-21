@@ -12,15 +12,15 @@ tcs の実行系 (tcs VM の dev / C の release) の性能と数値一致を実
 - `run.sh` — ビルド → 7-run median 計測 → digest の一致の検証 → 表出力 (stdout)
 - `bench-2backend.sh` — 実パイプライン比較: 同一 TinyC# kernel を
   vm (tcs→IL→tcs2vm→tcsvm。`tcsvm/`、doc/vm-design.md) と release (tcs→IL→tcs2c→C) で実行。
-  digest 相互一致が fail ゲート、ms/frame はレポート (CI の bench-2backend job で毎 push 実行、
-  結果は step summary と workflow artifact `bench-2backend-results` の CSV)
+  digest 相互一致が fail ゲート、ms/frame はレポート。
+  手で走らせる (CI では走らない。digest の一致は `tcsvm/run-tests.sh` が同じ kernel で見る)。
 - `compare/` — 外向けの比較ベンチ。同じ TinyC# のプログラム (Benchmarks Game 由来の 6 本と
   ゲームの 2 本) を tcs の 3 経路 (VM / C / .NET) で動かし、C、Rust、Go、Java、JS、
-  Python の版と並べる。全実装の出力の一致が前提で、CI (compare-check job) は
-  一致だけを見る。測り方と公平さの決まりは `compare/METHODOLOGY.md`、結果は `compare/results/`
+  Python の版と並べる。全実装の出力の一致が前提で、`run.py --check` が一致だけを見る (手で走らせる)。
+  測り方と公平さの決まりは `compare/METHODOLOGY.md`、結果は `compare/results/`
 - `selfbench/` — tcs 自身 (compiler) の速さの回帰。tcs のソースを C の tcs と .NET の tcs で
   tcs VM の .tcsb と C に変換する時間、命令の数 (cachegrind)、managed heap の最大、出力の大きさを測る。
-  PR では base と交互に測り、命令の数と heap の最大が 3% を超えて増えたら失敗する (selfbench job)
+  CI の selfbench job は PR の base と C の tcs の `tcs vm` を比べ、命令の数と heap の最大が 3% を超えて増えたら失敗する (時間は測らない)。
 - `playdate/` — Playdate 実機/シミュレータ用ハーネス。native の変種を
   update 1 回 1 job で実行し、CSV を console log と
   `Data/dev.neguse.tcs.perf/results.csv` (シミュレータでは

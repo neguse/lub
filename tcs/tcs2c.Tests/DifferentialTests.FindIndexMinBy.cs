@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // RemoveAll は各要素に述語を 1 回ずつ先頭から呼び、残す要素の順を保つ。MinBy / MaxBy は
 // key の等しい要素で先に出た方、float の NaN の key は最小、string の key は ordinal で null が最小。
 // 期待値は同じ program を CoreCLR で実行した stdout (空の MinBy は "before" の後に停止する)
-public partial class DifferentialTests
+public class FindIndexMinByDifferentialTests
 {
     [CFact]
     public void FindIndexRemoveAll_MinByMaxBy_MatchDotnet()

@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // object に入った数 (int / float) の型の test と、object に入った数と bool の値を pattern で読む形はサブセット外
 // (TCS1001 BoxedValuePattern(T))。値は cast (`(int)o`) で取り出す。`o is bool`、string と class の pattern、T? の入力の pattern は対象外
-public partial class DifferentialTests
+public class BoxedValuePatternDifferentialTests
 {
     private static string BoxedValueProgram(string statement) => $$"""
         public static class P

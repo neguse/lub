@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // ref / in はサブセットの外。どの形でも何が悪いか読める同じ TCS1001 で止まる
-public partial class DifferentialTests
+public class RefInDifferentialTests
 {
     [Theory]
     [InlineData("static float F(ref V v) { return v.X; }", "var v = new V(); F(ref v);", "RefParameter")]

@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // T? の入力を T の宣言の pattern で照合する形 (#445)。C は値を取り出さずに `cannot assign i32? to i32` で止まっていた
-public partial class DifferentialTests
+public class NullableDesignationDifferentialTests
 {
     [CFact]
     public void NullableInput_DeclarationPattern_UnwrapsValue()

@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // class の interface の検査 (`is I`、`as I`、型 switch)。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class InterfaceTypeTestDifferentialTests
 {
     [CFact]
     public void InterfaceTypeTest_Class()

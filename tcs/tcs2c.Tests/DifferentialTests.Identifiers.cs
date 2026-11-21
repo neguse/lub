@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // user の識別子は C# の綴りのまま両 backend の名前になる (q.md Q16)。生成
 // コードの予約と重なる綴りは、両 backend とも shared facts の同じ診断で IL を作る
 // 前に止まる
-public partial class DifferentialTests
+public class IdentifiersDifferentialTests
 {
     private const string IdentifierProgram = """
         using System;

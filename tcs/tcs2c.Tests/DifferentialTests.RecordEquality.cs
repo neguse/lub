@@ -3,7 +3,7 @@ namespace TinyCs.Tcs2c.Tests;
 // record class の == / != (C# の合成 Equals: EqualityContract の一致 +
 // field ごとの EqualityComparer<T>.Default)。期待値は同じ program を
 // CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class RecordEqualityDifferentialTests
 {
     [CFact]
     public void Records_StructFieldsCompareByValue()

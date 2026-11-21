@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c.Tests;
 // 呼ばれた側が残す値 (field / List / 配列 / 戻り値 / lambda)、呼び出しの間に変わる場所 (field / static /
 // 配列の要素 / lambda が捕捉する local / 後の引数と受け手が書き換える local)。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class StructArgumentCopyDifferentialTests
 {
     [CFact]
     public void StructArguments_KeepValueSemantics()

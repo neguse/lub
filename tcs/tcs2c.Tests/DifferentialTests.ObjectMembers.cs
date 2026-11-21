@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // object の member (Equals / GetHashCode / ReferenceEquals / GetType / MemberwiseClone、record の
 // 合成するものも) は Lua / C に対応物が無く、両 backend とも同じ TCS1002 で止まる。値の比較は ==
-public partial class DifferentialTests
+public class ObjectMembersDifferentialTests
 {
     [Theory]
     [InlineData("Console.WriteLine(c.Equals(c));", "object.Equals")]

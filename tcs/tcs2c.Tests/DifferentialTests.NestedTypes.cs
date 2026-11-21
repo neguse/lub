@@ -2,7 +2,7 @@ namespace TinyCs.Tcs2c.Tests;
 
 // 入れ子の型は外側の型の名前を `_` でつないだ独立の型 (`Outer_Inner`) になる。
 // 期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class NestedTypesDifferentialTests
 {
     [CFact]
     public void NestedTypes_AllKindsAndAccess()

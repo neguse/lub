@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 // List に null を入れても Count と順序は C# と同じ。期待値は同じ program を CoreCLR で実行した stdout
-public partial class DifferentialTests
+public class ListNullDifferentialTests
 {
     private const string ListNullProgram = """
             using System;
