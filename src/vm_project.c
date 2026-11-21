@@ -264,9 +264,9 @@ bool vm_project_open(VmProject *proj, const char *csproj) {
   path_dirname(csproj, dir, sizeof(dir));
   path_absolute(dir, abs_dir, sizeof(abs_dir));
   add_dir(proj, abs_dir);
+  // .lub は一覧を書くとき (vm_project_scan) に作る。lub check は project に何も書かない
   char lub_dir[640];
   SDL_snprintf(lub_dir, sizeof(lub_dir), "%s/.lub", abs_dir);
-  SDL_CreateDirectory(lub_dir);
   SDL_snprintf(proj->out_tcsb, sizeof(proj->out_tcsb), "%s/%s.tcsb", lub_dir,
                proj->entry);
   SDL_snprintf(proj->list_path, sizeof(proj->list_path), "%s/%s.inputs",
@@ -375,12 +375,21 @@ static void find_extensions(VmProject *proj) {
   }
 }
 
+// 入力 (*.cs) と宣言だけの参照 (*.ref.cs) を集める。
+// 戻り値は、csproj と参照先のディレクトリ (cs-lib を除く) に入力があったか。
+static bool collect_sources(const VmProject *proj, TextBuf *inputs,
+                            TextBuf *refs) {
+  for (int i = 0; i < proj->ndirs; i++)
+    scan_dir(proj->dirs[i], inputs, refs, false);
+  bool own = inputs->len > 0;
+  if (proj->cs_lib[0])
+    scan_dir(proj->cs_lib, inputs, refs, true);
+  return own;
+}
+
 bool vm_project_scan(VmProject *proj) {
   TextBuf inputs = {0}, refs = {0};
-  for (int i = 0; i < proj->ndirs; i++)
-    scan_dir(proj->dirs[i], &inputs, &refs, false);
-  if (proj->cs_lib[0])
-    scan_dir(proj->cs_lib, &inputs, &refs, true);
+  collect_sources(proj, &inputs, &refs);
   bool refs_changed = !proj->refs_text ||
                       SDL_strcmp(proj->refs_text, refs.p ? refs.p : "") != 0;
   if (refs_changed && proj->refs_text)
@@ -394,6 +403,9 @@ bool vm_project_scan(VmProject *proj) {
   const char *text = inputs.p ? inputs.p : "";
   bool changed = !proj->list_text || SDL_strcmp(proj->list_text, text) != 0;
   if (changed) {
+    char lub_dir[640];
+    path_dirname(proj->list_path, lub_dir, sizeof(lub_dir));
+    SDL_CreateDirectory(lub_dir);
     SDL_IOStream *io = SDL_IOFromFile(proj->list_path, "wb");
     if (io) {
       SDL_WriteIO(io, text, SDL_strlen(text));
@@ -441,6 +453,62 @@ int vm_project_args(VmProject *proj, const char **args, int max) {
     }
   }
   return n;
+}
+
+// 改行区切りの text を、その場で区切って args[n] 以降に足す (前に prefix を付ける)
+static int split_lines(char *text, const char *prefix, const char **args,
+                       int n) {
+  for (char *line = text; line && *line;) {
+    char *nl = SDL_strchr(line, '\n');
+    if (nl)
+      *nl = '\0';
+    if (prefix)
+      args[n++] = prefix;
+    args[n++] = line;
+    line = nl ? nl + 1 : NULL;
+  }
+  return n;
+}
+
+static int count_lines(const char *text) {
+  int n = 0;
+  for (const char *c = text; c && *c; c++)
+    n += *c == '\n';
+  return n;
+}
+
+bool vm_project_check(const char *csproj) {
+  if (!file_exists(csproj)) {
+    SDL_Log("lub check: %s does not exist", csproj);
+    return false;
+  }
+  VmProject proj;
+  bool ok = vm_project_open(&proj, csproj);
+  TextBuf inputs = {0}, refs = {0};
+  if (!collect_sources(&proj, &inputs, &refs)) {
+    SDL_Log("no .cs sources under %s", proj.dirs[0]);
+    ok = false;
+  }
+  if (ok) {
+    int max = count_lines(inputs.p) + 2 * count_lines(refs.p) + 2;
+    const char **args = (const char **)SDL_malloc(sizeof(*args) * (size_t)max);
+    if (args) {
+      int n = split_lines(inputs.p, NULL, args, 0);
+      if (proj.stub[0]) {
+        args[n++] = "--ref";
+        args[n++] = proj.stub;
+      }
+      n = split_lines(refs.p, "--ref", args, n);
+      ok = tcs_check_run(args, n);
+      SDL_free(args);
+    } else {
+      ok = false;
+    }
+  }
+  SDL_free(inputs.p);
+  SDL_free(refs.p);
+  vm_project_close(&proj);
+  return ok;
 }
 
 void vm_project_close(VmProject *proj) {

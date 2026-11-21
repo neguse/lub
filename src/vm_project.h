@@ -1,5 +1,5 @@
 #pragma once
-// tcs VM の player (src/vm_player.c) が .csproj から動かすときの、入力の集め方。
+// .csproj から動かすとき (src/vm_player.c) と検査するとき (lub check) の、入力の集め方。
 // lub は csproj を MSBuild として評価しない。
 // 読むのは basename (entry class) と、属性 Lub="Source" を付けた ProjectReference だけ。
 // 入力は csproj のディレクトリと参照先のディレクトリの下の全 *.cs と、cs-lib の実装。
@@ -40,3 +40,8 @@ bool vm_project_scan(VmProject *proj);
 // 文字列は proj が持つ (次の vm_project_args まで有効)。
 int vm_project_args(VmProject *proj, const char **args, int max);
 void vm_project_close(VmProject *proj);
+
+// `lub check <csproj>`: tcs vm と同じ入力と --ref を tcs check に渡し、終わるまで待つ。
+// project には何も書かない。
+// 診断が無ければ true。
+bool vm_project_check(const char *csproj);
