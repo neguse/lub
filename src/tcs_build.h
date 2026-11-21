@@ -46,11 +46,12 @@ bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs);
 // Whether tcs is still running.
 bool tcs_pipeline_alive(TcsPipeline *p);
 
-// Passes cs_path (.csproj; inputs = all *.cs under the same dir and the cs-lib
-// implementation, --ref is cs-lib/lub_stub.cs) to tcs check and waits until it
-// finishes. tcs diagnostics go straight to stdout / stderr. true if there are
-// no diagnostics.
-bool tcs_check(const char *cs_path);
+// Runs `tcs check <args>` and waits until it finishes.
+// tcs diagnostics go straight to stdout / stderr.
+// true if there are no diagnostics.
+// vm_project_check (vm_project.h) collects the inputs of a .csproj and passes
+// them.
+bool tcs_check_run(const char *const *args, int nargs);
 
 // List of .cs files in the csproj directory dir (paths relative to dir,
 // '/'-separated, ascending). Following the implicit glob (**/*.cs) of SDK-style

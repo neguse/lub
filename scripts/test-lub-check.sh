@@ -52,6 +52,40 @@ CS
 grep -q "backend selected" "$work/log" && fail "the check started the game"
 [[ -e "$work/good/.lub" ]] && fail "the check wrote a build output"
 
+# Sees the same inputs as lub <csproj>: the .cs of a Lub="Source" reference are inputs too, and *.ref.cs are declaration-only references (--ref)
+mkdir -p "$work/shared" "$work/uses"
+touch "$work/shared/Shared.csproj"
+cat >"$work/shared/Shared.cs" <<'CS'
+public static class Shared
+{
+    public static int Twice(int v) { return v * 2; }
+}
+CS
+cat >"$work/uses/Uses.csproj" <<'XML'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../shared/Shared.csproj" Lub="Source" />
+  </ItemGroup>
+</Project>
+XML
+cat >"$work/uses/Native.ref.cs" <<'CS'
+public static class Native
+{
+    public static int Get() { return 0; }
+}
+CS
+cat >"$work/uses/Uses.cs" <<'CS'
+public static class Uses
+{
+    public static void OnFrame(float dt)
+    {
+        int v = Shared.Twice(Native.Get());
+    }
+}
+CS
+"$binary" check "$work/uses/Uses.csproj" >"$work/log" 2>&1 || fail "an entry with a Lub=\"Source\" reference and a *.ref.cs was rejected"
+[[ -e "$work/uses/.lub" ]] && fail "the check wrote a build output"
+
 mkdir "$work/bad"
 touch "$work/bad/Bad.csproj"
 cat >"$work/bad/Bad.cs" <<'CS'
