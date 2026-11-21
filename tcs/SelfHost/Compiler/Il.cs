@@ -245,8 +245,9 @@ public record IlWhile(IlExpr Cond, IlBlock Body, IlBlock? Trailer, IlPos? Origin
 // do-while (本体の後で Cond を評価し、真なら繰り返す)
 public record IlRepeat(IlBlock Body, IlExpr Cond, IlPos? Origin) : IlStat;
 
-// 数の for (Var = Start から Limit まで 1 ずつ増やす。Limit は 1 回だけ評価する)。制御変数が捕捉されず範囲が変わらないと分かるときだけ builder が作る
-public record IlNumericFor(string Var, IlExpr Start, IlExpr Limit, IlBlock Body, IlPos? Origin) : IlStat;
+// 数の for: int の Var を Start にし、Var < Limit (Inclusive なら Var <= Limit) の間、本文の後に Var を 1 増やして (wrap する) 繰り返す。
+// Limit は Start の後に 1 回だけ評価する。Limit が for の間に変わらず、本文が Var に書かず捕捉もしないと分かるときだけ builder が作る
+public record IlNumericFor(string Var, IlExpr Start, IlExpr Limit, bool Inclusive, IlBlock Body, IlPos? Origin) : IlStat;
 
 // foreach (List / 配列)
 public record IlForeachList(string Var, IlExpr Coll, IlBlock Body, IlPos? Origin) : IlStat;

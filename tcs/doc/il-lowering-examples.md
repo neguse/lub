@@ -95,7 +95,7 @@ IL→C: closure = { 関数ポインタ, 環境 }。捕捉されて脱出する�
 - **capture は変数単位**（by variable）。「for 変数はループ全体で 1 個、
   foreach の反復変数は反復ごと」は脱糖後の scope 構造として IL に現れる
 - **ループ構文は IL に無い**。while + block のみ（il-spec §8）
-- 数値 for (IlNumericFor) は、制御変数が捕捉されず範囲が変わらないと builder が示せたときだけ IL に現れる。backend はこれを素の数値 for にしてよい（観測等価の範囲）
+- 数値 for (IlNumericFor) は、制御変数と比較が int で、制御変数が本文で書かれず捕捉されず、上限が変わらないと builder が示せたときだけ IL に現れる。backend はこれを、比較を C# の `<` / `<=` のまま素の数値 for にしてよい（観測等価の範囲）
 
 ## E3: struct 配列の更新（particles 型 kernel）
 

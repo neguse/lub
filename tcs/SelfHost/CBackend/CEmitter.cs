@@ -2542,7 +2542,7 @@ public sealed class CEmitter
         _indent++;
         Line("int32_t " + start + " = " + RenderExpr(loop.Start) + ";");
         Line("int32_t " + limit + " = " + RenderExpr(loop.Limit) + ";");
-        Line("for (int32_t " + variable.CName + " = " + start + "; " + variable.CName + " <= " + limit + "; " +
+        Line("for (int32_t " + variable.CName + " = " + start + "; " + variable.CName + (loop.Inclusive ? " <= " : " < ") + limit + "; " +
             variable.CName + " = " + variable.CName + " + INT32_C(1)) {");
         _indent++;
         PushScope();

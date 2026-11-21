@@ -3559,16 +3559,21 @@ public sealed class IlBuild
         return true;
     }
 
+    // `for (int i = start; i < limit; i++)` (`<=`、`i += 1` も) を数値 for にする。
+    // 制御変数と比較が int で、limit が for の間に変わらず、本文が制御変数に書かず捕捉もしないと示せるときだけ。
+    // 示せなければ null (一般の for)
     private IlNumericFor? TryBuildSimpleFor(Node forStmt)
     {
         if (forStmt.List == null || forStmt.List.Count != 1 || forStmt.List[0].Kind != NodeKind.LocalDecl) return null;
         var declNode = forStmt.List[0];
         if (declNode.List == null || declNode.List.Count != 1) return null;
         var decl = declNode.List[0];
-        if (decl.A == null) return null;
+        if (decl.A == null || decl.Local == null || !IsIntValueType(decl.Local.Type)) return null;
         var varName = decl.Text;
         var condNode = forStmt.A != null ? StripConv(forStmt.A) : null;
-        if (condNode == null || condNode.Kind != NodeKind.Binary) return null;
+        if (condNode == null || condNode.Kind != NodeKind.Binary || (condNode.Text != "<" && condNode.Text != "<=")) return null;
+        // int どうしの比較だけ (float や T? に広げて比べる for は一般の for)
+        if (!IsIntValueType(condNode.A!.Type) || !IsIntValueType(condNode.B!.Type)) return null;
         var condLeft = StripConv(condNode.A!);
         if (condLeft.Kind != NodeKind.Name || condLeft.Text != varName) return null;
         if (forStmt.Count2 != 1) return null;
@@ -3583,15 +3588,16 @@ public sealed class IlBuild
         if (IsAssignedWithin(forStmt.B!, varName)) return null;
         if (IsCapturedByLambdaWithin(forStmt.B!, varName)) return null;
         var start = BuildExpr(decl.A);
-        var end = BuildExpr(condNode.B!);
+        var limit = BuildExpr(condNode.B!);
         var body = BuildBlock(forStmt.B!);
-        if (start == null || end == null || body == null) return null;
-        IlExpr? limit = null;
-        if (condNode.Text == "<") limit = new IlBin(IlBinOp.Sub, end, IlLiterals.Int(1), null);
-        else if (condNode.Text == "<=") limit = end;
-        if (limit == null) return null;
-        var name = decl.Local != null ? decl.Local.IlName : varName;
-        return new IlNumericFor(name, start, limit, body, null);
+        if (start == null || limit == null || body == null) return null;
+        return new IlNumericFor(decl.Local.IlName, start, limit, condNode.Text == "<=", body, null);
+    }
+
+    // IL で int の値の型 (int、char、enum。T? は含めない)
+    private static bool IsIntValueType(TypeSym? t)
+    {
+        return t != null && (t.Kind == TypeKind.Int || t.Kind == TypeKind.Char || t.Kind == TypeKind.Enum);
     }
 
     private static string SourceText(Node n)
@@ -3599,47 +3605,51 @@ public sealed class IlBuild
         return n.File.Slice(n.Pos, n.End);
     }
 
+    // for の上限が for の間に変わらないか: 定数か、どこからも書かれない局所変数。
+    // 局所変数は捕捉した別の lambda からも書かれうるので、lambda の中の for でも member の本体全体 (lambda を含む) を見る
     private bool IsLoopInvariantBound(Node bound)
     {
         var b = StripConv(bound);
         switch (b.Kind)
         {
             case NodeKind.IntLit:
-            case NodeKind.FloatLit:
-            case NodeKind.StringLit:
             case NodeKind.CharLit:
-            case NodeKind.BoolLit:
-            case NodeKind.NullLit:
                 return true;
         }
-        if (b.Kind != NodeKind.Name || b.Info != RefKind.Local) return false;
-        var scope = ScopeRoots.Count > 0 ? ScopeRoots[ScopeRoots.Count - 1] : bound;
-        return !IsAssignedWithin(scope, b.Text);
+        if (b.Kind != NodeKind.Name || b.Info != RefKind.Local || ScopeRoots.Count == 0) return false;
+        return !IsAssignedWithin(ScopeRoots[0], b.Text);
     }
 
-    // scope の中で name (の綴りの識別子) に代入するか (代入、++ / --、ref / out の引数)
+    // scope の中で name (の綴りの識別子) に書くか (代入と分解の代入の先、++ / --、ref / out / in の引数)
     private static bool IsAssignedWithin(Node scope, string name)
     {
         switch (scope.Kind)
         {
             case NodeKind.Assign:
-                {
-                    var l = scope.A!;
-                    if (l.Kind == NodeKind.Name && l.Text == name) return true;
-                    break;
-                }
             case NodeKind.PostIncDec:
             case NodeKind.PreIncDec:
+                if (IsNameTarget(scope.A!, name)) return true;
+                break;
+            case NodeKind.DeconstructAssign:
+                // 分解の先の並び (入れ子の分解は子の DeconstructAssign として見る)
+                if (scope.List == null) break;
+                foreach (var target in scope.List)
                 {
-                    var o = scope.A!;
-                    if (o.Kind == NodeKind.Name && o.Text == name) return true;
-                    break;
+                    if (IsNameTarget(target, name)) return true;
                 }
+                break;
             case NodeKind.Arg:
-                if ((scope.Has(Mods.Ref) || scope.Has(Mods.Out) || scope.Has(Mods.In)) && scope.A != null && scope.A.Kind == NodeKind.Name && scope.A.Text == name) return true;
+                if ((scope.Has(Mods.Ref) || scope.Has(Mods.Out) || scope.Has(Mods.In)) && scope.A != null && IsNameTarget(scope.A, name)) return true;
                 break;
         }
         return AnyChild(scope, c => IsAssignedWithin(c, name));
+    }
+
+    // 書き込みの先が name の変数か (括弧で囲んだ `(name)` も)
+    private static bool IsNameTarget(Node target, string name)
+    {
+        var t = WithoutParens(StripConv(target));
+        return t.Kind == NodeKind.Name && t.Text == name;
     }
 
     // scope の中の lambda が name (の綴りの識別子) を含むか
