@@ -14,7 +14,7 @@ tcs は lub の repo の `tcs/` にある。作業の流れ (branch、PR、CI、
 
 ```
 tcs/
-├── AGENTS.md              # このファイル (CLAUDE.md はこれを読み込む)
+├── AGENTS.md              # このファイル
 ├── objective.md           # プロジェクト目標・設計文書
 ├── q.md                   # 未解決の質問
 ├── doc/

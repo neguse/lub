@@ -3,7 +3,7 @@
 lub はコード中心のゲームエンジン。C# (TinyC#) で game を書き、tcs VM の bytecode にして hot reload で動かす。
 native (DX12 / Vulkan / Metal 直接実装 + SDL3 GPU) と web (WASM + WebGPU) の両方で動く。
 
-エージェントへの指示はこの file に置く。`CLAUDE.md` はこの file を読み込むだけにする (`tcs/` も同じ)。
+エージェントへの指示はこの file (と `tcs/AGENTS.md`) に置き、`CLAUDE.md` は置かない。Claude Code は、作業のディレクトリとその上に `CLAUDE.md` が無いときに `AGENTS.md` を読む。
 
 ## 現状の source of truth
 
