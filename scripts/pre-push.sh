@@ -3,8 +3,9 @@
 # commit gate, the native gate (build, smokes, C# runtime tests, goldens, C#
 # samples, dev tools), then WASM build, web build, and headless web
 # verification.
-# CI が同じ内容を PR ごとに実行するので普段は不要。
-# CI を待たずに手元で全周りを確認したいとき、または CI が使えないときの脱出ハッチ。
+# PR の CI が走らせる検査の正は .github/workflows/ci.yml で、この script はそのうち手元の Linux で回せる部分を順に走らせる。
+# CI との違い: lavapipe の golden を比べる (CI は runner の mesa の版が合わないので比べない)。wasm は preset (wasm-release) を使わずに configure する。web は player の page の検査 (npm run verify) だけで、入口の page の検査 (verify-lider) と web-export は走らせない。windows、macos、tcs 自身のテスト、release の一式の job に当たるものは無い。
+# CI を待たずに手元で確かめたいとき、または CI が使えないときの脱出ハッチ。
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

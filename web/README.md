@@ -9,6 +9,7 @@
 - `player.html` (`player/main.ts`): エディタを通らない tcs VM の player (`build/wasm/vm/lub.js`)。
   page を開いて postMessage (`setFiles`) で bytecode と file を渡すと起動する。`tests/cs` の検査が使う。
 - `docs.html` (`docs/main.ts`): ガイド (`docs/manual/*.md`) と API reference (`cs-lib/lub_stub.cs` の doc comment)。
+  stub の doc comment は `scripts/gen-api.sh` が `gen/lub-api-docs.json` に固め、`npm run gen-api` (`scripts/gen-api-docs.mjs`。`dev` と `build` も走らせる) がガイドと一緒に HTML にして `public/api-docs.json` (gitignore) に書き、page がそれを描く。
 - `lider.html`: 前の lider の page の URL。query と hash を付けたまま入口へ移る。
 
 ## 前提アセット(ローカルビルド由来・gitignore)
@@ -28,6 +29,8 @@ npm run fetch-slang                     # postinstall でも走る
 npm run gen-tcs -- --publish
 ```
 
+前からある `build/wasm` が Unix Makefiles で configure されていると、preset (Ninja) での configure は generator が合わずに失敗する。
+そのときも `cmake --build build/wasm -j` は前の設定のまま build し直せる。
 lider の bytecode (`../lider/build/web/Lider.tcsb`) は `npm run dev` / `build` が `npm run gen-lider` で作る。
 
 `gen-tcs -- --publish` は AOT を有効にする。
@@ -57,6 +60,8 @@ npm run gen-tcs -- --publish  # 整形の .NET wasm を再生成 (tcs 変更時)
 npm run format            # prettier (format:check は CI 用)
 npm run deploy            # build + wrangler deploy
 ```
+
+player の `lub.js` の構文だけを見るときは、repo の root で `node --check build/wasm/vm/lub.js`。
 
 ## Headless verification
 
