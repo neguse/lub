@@ -45,12 +45,13 @@ TCS_FMT_API size_t tcs_format_i32_spec(int32_t value, char spec,
 /* IL の string.format の変換 1 つ (printf.c)。spec は '%' から変換の文字まで (flags [-+ #0]、幅、精度)。
    値は kind で選ぶ: TCS_PRINTF_I32 は i、TCS_PRINTF_F32 は f、TCS_PRINTF_STR は s と slen (%s だけ)。
    %d / %x などは整数の値 (float は整数の値のときだけ)、%f / %e / %g / %a は double に昇格、%c は byte。
-   out は TCS_PRINTF_MAX(slen) byte。書いた byte 数を返す。値が変換に合わなければ -1 で *error に理由 */
+   snprintf と同じく結果の byte 数を返し、それが cap より小さいときだけ out に結果を書く (out は NULL、cap は 0 でもよい)。
+   呼び出し側は cap を 0 にして長さを得てから、その長さ + 1 byte の out で呼ぶ。
+   値が変換に合わないか、結果が INT32_MAX byte を超えれば -1 で *error に理由 */
 enum { TCS_PRINTF_I32 = 0, TCS_PRINTF_F32 = 1, TCS_PRINTF_STR = 2 };
-#define TCS_PRINTF_MAX(slen) ((size_t)(slen) + 512)
 TCS_FMT_API long tcs_printf_one(const char *spec, size_t speclen, int kind,
                                 int32_t i, float f, const char *s, size_t slen,
-                                char *out, const char **error);
+                                char *out, size_t cap, const char **error);
 
 /* text の length byte を .NET の int.Parse(string) (NumberStyles.Integer) と同じ規則で読む。
    前後の空白 (空白と HT、LF、VT、FF、CR)、先頭の符号 1 つ、1 桁以上の 10 進の数字で、末尾の NUL は読み飛ばす。
