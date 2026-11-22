@@ -1,11 +1,11 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// BCL / 言語の .NET 意味論に合わせる 2 backend differential。期待値は
-// CoreCLR (net10.0) の実測 stdout
+// Two-backend differential tests that match the .NET semantics of the BCL / language. The expected values are the
+// stdout measured on CoreCLR (net10.0)
 public class BclBehaviorDifferentialTests
 {
-    // 空の排他範囲 (Next(0) / Next(n, n)) は .NET と同じく下限を返す。
-    // 3 行目は合意 PRNG の列 (il-spec §13) を引き続けた値で、.NET の System.Random とは違う
+    // An empty exclusive range (Next(0) / Next(n, n)) returns the lower bound, same as .NET.
+    // The third line is a value from continuing to draw from the agreed PRNG sequence (il-spec §13), and differs from .NET's System.Random
     [CFact]
     public void Random_EmptyExclusiveRangeReturnsLowerBound()
     {
@@ -26,7 +26,7 @@ public class BclBehaviorDifferentialTests
         Assert.Equal("0:5:-5:0:0:5\n0:5:-5:-2147483648\n262", output);
     }
 
-    // OrderBy / OrderByDescending は安定 sort (同じ key の要素は元の順)
+    // OrderBy / OrderByDescending are stable sorts (elements with the same key keep their original order)
     [CFact]
     public void Linq_OrderByKeepsOrderOfEqualKeys()
     {
@@ -70,7 +70,7 @@ public class BclBehaviorDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // string.Replace の置換後文字列が null なら一致部分を削除する
+    // If the replacement string of string.Replace is null, the matched parts are removed
     [CFact]
     public void String_ReplaceWithNullDeletes()
     {
@@ -90,8 +90,8 @@ public class BclBehaviorDifferentialTests
         Assert.Equal("result=ba\nabc:none:0", output);
     }
 
-    // 省略引数の既定値は呼び出しが静的に束縛した宣言 (interface) のものを
-    // 使う。実装側の既定値は実装型で呼んだときだけ
+    // Omitted optional arguments use the default values of the declaration (interface) that the call is statically bound
+    // to. The implementation's default values apply only when called through the implementing type
     [CFact]
     public void OptionalArguments_UseStaticallyBoundDeclarationDefault()
     {

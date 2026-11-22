@@ -78,7 +78,7 @@ if not libm or not protocols:
 for source in libm:
     comments(source.relative_to(root).as_posix())
 for source in protocols:
-    # upstream wayland-protocols の一部 (pointer-gestures) は copyright 要素を持たない
+    # Some of upstream wayland-protocols (pointer-gestures) have no copyright element
     text = ET.parse(source).getroot().findtext('copyright', '')
     if text.strip():
         add(source.relative_to(root).as_posix(), text)

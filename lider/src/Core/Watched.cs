@@ -1,5 +1,5 @@
-// lider が見ているゲーム: 保存した版 (GameApp) か、編集中の版 (DraftGame)。
-// ゲームの値、実行の記録、負荷、絵に描いた物は、ここを通して読む (開く前は空を返す)。
+// The game lider is watching: the saved version (GameApp) or the version being edited (DraftGame).
+// Game values, execution records, load, and objects drawn in the picture are read through here (returns empty before opening).
 using System.Collections.Generic;
 using Lub;
 
@@ -7,15 +7,15 @@ namespace LiderCore;
 
 public static class Watched
 {
-    // 見ている版
+    // The version being watched
     public static GameVersion Version = GameVersion.Saved;
-    // 見る版を替えた回数 (版ごとに持つ状態を、替わったときに作り直すのに使う)
+    // Number of times the watched version was switched (used to recreate per-version state when it switches)
     public static int Switches;
 
     static AppRef? Ref => Version == GameVersion.Draft ? DraftGame.Ref : GameApp.Ref;
     static InputMap Map => Version == GameVersion.Draft ? DraftGame.Map : GameApp.Map;
 
-    // 見る版を替える。前の版には、行ごとの負荷を数えるのをやめさせる
+    // Switches the watched version. Makes the previous version stop counting per-line load
     public static void Watch(GameVersion version)
     {
         if (version == Version)
@@ -25,10 +25,10 @@ public static class Watched
         Switches++;
     }
 
-    // 止めている間に、path の値 (Inspect の Path) を text の値に書き換える (Sys.InspectSet)。
-    // 保存した版は、止めた frame を進める前の状態に書き、その frame を作り直す (それより後の控えた frame は捨てる)。
-    // 編集中の版は、止めている間は進めないので、今の状態に書く。
-    // 書けなければ false で、値は変わらず、理由が error に入る
+    // While paused, updates the value at path (Inspect's Path) to the value in text (Sys.InspectSet).
+    // For the saved version, writes to the state before the paused frame is advanced and recreates that frame (discarding the recorded frames after it).
+    // The version being edited does not advance while paused, so it writes to the current state.
+    // Returns false if it cannot write; the value stays unchanged and the reason goes into error
     public static bool Set(string path, string text, out string? error)
     {
         error = "ゲームを止めている間だけ書けます";
@@ -43,15 +43,15 @@ public static class Watched
         return ok;
     }
 
-    // 見ている版の状態を、番号 slot の控えに書く (App.Save)。書けなければ false で、理由が error に入る
+    // Writes the state of the watched version to save slot number slot (App.Save). Returns false if it cannot write, with the reason in error
     public static bool Save(int slot, out string? error)
     {
         error = "ゲームがまだ動いていない";
         return Ref != null && App.Save(Ref, slot, out error);
     }
 
-    // 番号 slot の控えを、見ている版に読み込む (App.Load)。読み込めなければ false で、状態は変わらず、理由が error に入る。
-    // 止めている間に読み込んだら、控えた frame を捨てて、読み込んだ状態から続ける
+    // Loads save slot number slot into the watched version (App.Load). Returns false if it cannot load; the state stays unchanged and the reason goes into error.
+    // If loaded while paused, discards the recorded frames and continues from the loaded state
     public static bool Load(int slot, out string? error)
     {
         error = "ゲームがまだ動いていない";
@@ -62,7 +62,7 @@ public static class Watched
         return true;
     }
 
-    // 絵の中の位置 uv (左上が 0,0、右下が 1,1) に何が描いてあるかを調べる (結果は PickResult)
+    // Finds what is drawn at position uv in the picture (top-left is 0,0, bottom-right is 1,1) (the result is PickResult)
     public static void Pick(Vec2 uv)
     {
         if (Ref != null)

@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// struct の copy 地点 (il-spec §10) のうち専用 lowering を持つ経路の 2 backend
-// differential。Lua 向けに足した copy (lambda 入口 / foreach 変数 / ToList の
-// __copy 引数) を C backend が同じ値意味論のまま受け取ることも見る
+// Two-backend differential tests for the paths among struct copy points (il-spec §10) that have
+// dedicated lowering. Also checks that the C backend accepts the copies added for Lua (lambda entry / foreach variable / ToList's
+// __copy argument) with the same value semantics
 public class StructCopyDifferentialTests
 {
     [CFact]
@@ -56,7 +56,7 @@ public class StructCopyDifferentialTests
         Assert.Equal("2:2:2:2:2:2:2:7:2\n2:2:4:2\n2:True:2:2:1\n3:1", output);
     }
 
-    // static method の method group の struct parameter は copy (Lua は変換地点で copy する wrapper を返す、C は値渡しの thunk)
+    // Struct parameters in a static method's method group are copied (Lua returns a wrapper that copies at the conversion point, C uses a pass-by-value thunk)
     [CFact]
     public void StructCopy_MethodGroupParameter()
     {
@@ -112,7 +112,7 @@ public class StructCopyDifferentialTests
         Assert.Equal("15:1002:2003\n2,1,\n1,2,|1:16", output);
     }
 
-    // 式本体 (=>) の lambda と method の return は struct を copy する (Select は selector の戻り値をそのまま格納する)
+    // Returns from expression-bodied (=>) lambdas and methods copy structs (Select stores the selector's return value as is)
     [CFact]
     public void StructCopy_ExpressionBodyReturn()
     {
@@ -147,7 +147,7 @@ public class StructCopyDifferentialTests
         Assert.Equal("5:5:5:5:7:7:5", output);
     }
 
-    // class の user operator の struct parameter は copy (Lua は呼び出し側で copy を渡す、C は値渡し)
+    // Struct parameters of a class's user operator are copied (Lua passes a copy at the caller, C passes by value)
     [CFact]
     public void StructCopy_ClassOperatorArgument()
     {
@@ -181,7 +181,7 @@ public class StructCopyDifferentialTests
         Assert.Equal("2:6:4:12:5:103:5", output);
     }
 
-    // LINQ と同名の user 拡張 method (ToList(int) / Where(int)) は自前の実装を呼ぶ
+    // User extension methods with the same names as LINQ (ToList(int) / Where(int)) call their own implementations
     [CFact]
     public void StructCopy_UserExtensionNamedLikeLinq()
     {
@@ -213,7 +213,7 @@ public class StructCopyDifferentialTests
         Assert.Equal("1\n12", output);
     }
 
-    // struct の with は値の copy (入れ子の struct も copy する) の上に書く
+    // with on a struct writes on top of a copy of the value (nested structs are also copied)
     [CFact]
     public void StructCopy_WithCopiesNestedStructs()
     {

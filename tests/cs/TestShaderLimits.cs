@@ -1,5 +1,5 @@
-// 1 つの shader が結べる数 (texture 8、storage buffer 4、storage texture 4。vertex と fragment は合計) を超えた宣言は、上限を名指す error になる。
-// 上限ちょうどの shader は作れる。
+// A declaration that exceeds the number of bindings one shader can have (8 textures, 4 storage buffers, 4 storage textures; vertex and fragment combined) is an error that names the limit.
+// A shader exactly at the limit can be created.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -17,7 +17,7 @@ struct VSOut { float4 pos : SV_Position; };
 }
 ";
 
-    // n 枚の texture を宣言して全部を読む fragment shader (名前は prefix0, prefix1, ...)
+    // Fragment shader that declares n textures and reads all of them (names are prefix0, prefix1, ...)
     static string Fs(string prefix, int n)
     {
         string decl = "";
@@ -30,7 +30,7 @@ struct VSOut { float4 pos : SV_Position; };
         return decl + "[shader(\"fragment\")] float4 fs_main() : SV_Target {\n  " + sum + "  return c;\n}\n";
     }
 
-    // 2 枚の texture を読む vertex shader
+    // Vertex shader that reads 2 textures
     const string VsTex = @"
 LUB_TEXTURE2D(vt0);
 LUB_TEXTURE2D(vt1);
@@ -42,7 +42,7 @@ struct VSOut { float4 pos : SV_Position; };
 }
 ";
 
-    // n 個の storage buffer か storage texture に書く compute shader
+    // Compute shader that writes to n storage buffers or storage textures
     static string Cs(bool textures, int n)
     {
         string decl = "";

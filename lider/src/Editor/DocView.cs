@@ -1,6 +1,6 @@
-// doc を描く view (Lite XL の core/docview.lua と core/view.lua を写したもの)。
-// 窓ごとに 1 つと、CommandView の入力欄 (Bar) に 1 つ。
-// 位置は view の中の px。scroll は動きを付けず、すぐ行き先に移す (lider は変わった時だけ描き直す)。
+// View that draws a doc (a port of Lite XL's core/docview.lua and core/view.lua).
+// One per window, and one for the CommandView input field (Bar).
+// Positions are px within the view. Scrolling is not animated and moves to the destination at once (lider redraws only when something changes).
 using System;
 using System.Collections.Generic;
 
@@ -10,7 +10,7 @@ public class DocView
 {
     public int Id;
     public Doc Doc;
-    // CommandView の入力欄か (1 行、gutter に見出し、scroll しない)
+    // Whether this is the CommandView input field (1 line, label in the gutter, no scrolling)
     public readonly bool Bar;
     public string Label = "";
     public float BarGutter;
@@ -23,41 +23,41 @@ public class DocView
     public float ScrollY;
     public float ToX;
     public float ToY;
-    // Host.Scroll の端数 (px)
+    // Fractional part of Host.Scroll (px)
     public float ScrollRest;
 
-    // 前の update の選択 (変わったら cursor が見えるように scroll する)
+    // Selection at the previous update (if it changes, scrolls so the cursor is visible)
     int lastLine1 = -1;
     int lastCol1;
     int lastLine2;
     int lastCol2;
-    // 上下に動く前の x (短い行を通っても前の桁に戻る)
+    // x before moving up or down (returns to the earlier column even after passing short lines)
     int xoLine = -1;
     int xoCol;
     float xoOffset;
 
     public bool HoveringGutter;
-    // 押したまま選んでいる間の、押した所と選び方 (0 は無し、1 は文字、2 は語、3 は行)
+    // While selecting with the button held: the pressed position and the selection mode (0 = none, 1 = character, 2 = word, 3 = line)
     public bool MouseSelecting;
     int msLine;
     int msCol;
     int msSnap;
 
-    // 変換中の文字の中で選んでいる所 (byte)
+    // Selected part within the composing text (byte)
     public bool ImeStatus;
     public int ImeFrom;
     public int ImeSize;
 
-    // 行の上に空ける行の数 (lider が本文でない行を挟む所)。gaps[line] は line 行目 (1 から) の上、gaps[行の数 + 1] は最後の行の下 (無い所は 0)。
-    // gapsThrough[line] は 1 から line 行目までの gaps の和
+    // Number of lines left empty above a line (where lider inserts lines that are not text). gaps[line] is above line line (from 1), gaps[line count + 1] is below the last line (0 where there is none).
+    // gapsThrough[line] is the sum of gaps from line 1 to line line
     int[] gaps = new int[0];
     int[] gapsThrough = new int[0];
-    // gaps が変わるたびに上がる (行の高さが変わるので、描いた物は全部描き直す)
+    // Goes up every time gaps changes (line heights change, so everything drawn is redrawn)
     public int GapsVersion;
 
-    // 最後の Draw で描いた cursor の左上 (x, y の並び)
+    // Top-left of the cursors drawn by the last Draw (a sequence of x, y)
     public readonly List<float> Carets = new List<float>();
-    // 見た目が変わるたびに上がる数と、それを決める文字列
+    // A number that goes up every time the appearance changes, and the string that determines it
     public int Version;
     public string Signature = "";
 
@@ -77,7 +77,7 @@ public class DocView
         return (float)Math.Floor(DrawList.FontHeight() * (Bar ? 1.2f : 1.0f));
     }
 
-    // 行番号を描くか (lider が負荷を見せる間、行番号の所に負荷の数を描くので消す) と、行番号の欄の幅の下限
+    // Whether to draw line numbers (turned off while lider shows load, since it draws the load numbers where the line numbers are), and the minimum width of the line number column
     public static bool LineNumbers = true;
     public static float MinNumberWidth;
 
@@ -103,7 +103,7 @@ public class DocView
         return DrawList.Round(PosY - ScrollY);
     }
 
-    // line 行目の左上 (本文の左の端)
+    // Top-left of line line (the left edge of the text)
     public float LineX()
     {
         return ContentOffsetX() + GutterWidth();
@@ -136,13 +136,13 @@ public class DocView
         GapsVersion++;
     }
 
-    // line 行目の上に空ける行の数
+    // Number of lines left empty above line line
     public int Gap(int line)
     {
         return line >= 1 && line < gaps.Length ? gaps[line] : 0;
     }
 
-    // line 行目の上の端が、内容の上の端から何行目か (空けた行を含む、0 から)
+    // Which line from the top of the content the top edge of line line is at (including empty lines, from 0)
     public int Row(int line)
     {
         if (gapsThrough.Length == 0 || line < 1)
@@ -162,7 +162,7 @@ public class DocView
         return LineHeight() * Row(Doc.Lines.Count + 1) - LineHeight() + SizeY;
     }
 
-    // 下の端が scroll の位置より下にある最初の行
+    // The first line whose bottom edge is below the scroll position
     public int FirstVisibleLine()
     {
         var lh = LineHeight();
@@ -182,7 +182,7 @@ public class DocView
         return lo;
     }
 
-    // 上の端が view の下の端より上にある最後の行
+    // The last line whose top edge is above the bottom edge of the view
     public int LastVisibleLine()
     {
         var lh = LineHeight();
@@ -191,7 +191,7 @@ public class DocView
         return LastLineAbove(ScrollY + SizeY - Style.PaddingY, lh);
     }
 
-    // 上の端 (内容の上の端から、空けた行を含む) が bottom 以下の最後の行 (無ければ 0)
+    // The last line whose top edge (from the top of the content, including empty lines) is at most bottom (0 if none)
     int LastLineAbove(float bottom, float lh)
     {
         var lo = 0;
@@ -207,7 +207,7 @@ public class DocView
         return lo;
     }
 
-    // line 行目の col 桁の前までの幅 (px)。行の末尾の改行は 1 桁に数える
+    // Width (px) of line line before column col. The newline at the end of the line counts as 1 column
     public float ColXOffset(int line, int col)
     {
         if (line < 1 || line > Doc.Lines.Count)
@@ -217,7 +217,7 @@ public class DocView
         if (col <= 1)
             return 0;
         var cells = Str.Cells(Str.Slice(s, 0, Math.Min(col - 1, n)), Style.TabSize);
-        // 文字の途中の桁は、その文字を数える
+        // A column in the middle of a character counts that character
         var at = Math.Min(col - 1, n);
         while (at > 0 && at < n && Str.IsCont(Str.Byte(s, at)))
         {
@@ -229,7 +229,7 @@ public class DocView
         return cells * DrawList.CellW;
     }
 
-    // line 行目の x px の桁 (文字の半分より右なら次の桁)
+    // Column at x px on line line (the next column if right of the middle of the character)
     public int XOffsetCol(int line, float x)
     {
         var s = Doc.Lines[line - 1];
@@ -248,7 +248,7 @@ public class DocView
             i += len;
             at += len;
         }
-        // 改行の 1 桁
+        // 1 column for the newline
         var nw = DrawList.CellW;
         if (xoffset + nw >= x)
             return x <= xoffset + nw / 2 ? i : i + 1;
@@ -257,7 +257,7 @@ public class DocView
 
     public void ResolvePixelPosition(float x, float y, out int line, out int col)
     {
-        // 上の端が y 以下の最後の行 (空けた行の所は、その上の行)
+        // The last line whose top edge is at most y (within empty lines, the line above)
         var l = LastLineAbove(y - ContentOffsetY() - Style.PaddingY, LineHeight());
         l = Math.Max(1, Math.Min(l, Doc.Lines.Count));
         line = l;
@@ -304,8 +304,8 @@ public class DocView
         var xinf = xoffset - xmargin;
         var scrollW = ScrollableSize() > SizeY ? Style.ScrollbarSize : 0;
         var sizeX = Math.Max(0, SizeX - scrollW);
-        // Lite XL は cursor が見えている限り横の scroll を残すが、窓より長い行を出た後も行の頭が欠けたままになるので、
-        // scroll しなくても cursor が見えるなら左の端に戻す
+        // Lite XL keeps the horizontal scroll as long as the cursor is visible, but then the start of a line stays cut off even after leaving a line longer than the window, so
+        // it returns to the left edge if the cursor is visible without scrolling
         if (xsup <= sizeX)
             ToX = 0;
         else if (xsup > ScrollX + sizeX)
@@ -326,7 +326,7 @@ public class DocView
         ToX = Math.Max(ToX, 0);
     }
 
-    // 選択が変わったら cursor が見えるように scroll し、scroll を行き先に移す
+    // When the selection changes, scrolls so the cursor is visible, and moves the scroll to the destination
     public void Update()
     {
         Doc.GetSelection(false, out var l1, out var c1, out var l2, out var c2);
@@ -347,7 +347,7 @@ public class DocView
         ScrollY = ToY;
     }
 
-    // 全部を選んだとき、cursor に合わせて scroll しない
+    // Does not scroll to follow the cursor when everything is selected
     public void ForgetSelection()
     {
         Doc.GetSelection(false, out var l1, out var c1, out var l2, out var c2);
@@ -357,7 +357,7 @@ public class DocView
         lastCol2 = c2;
     }
 
-    // 変換中の文字の範囲を IME の候補を出す位置にする
+    // Uses the range of the composing text as the position for the IME candidates
     public void UpdateImeLocation()
     {
         if (!ImeStatus)
@@ -475,7 +475,7 @@ public class DocView
         msSnap = snap;
     }
 
-    // gutter を押したなら行を選んで true
+    // If the gutter was pressed, selects the line and returns true
     public bool OnMousePressed(float x, float y, int clicks)
     {
         if (!HoveringGutter)
@@ -501,7 +501,7 @@ public class DocView
         MouseSelecting = false;
     }
 
-    // 描く ------------------------------------------------------------------
+    // Drawing ------------------------------------------------------------------
 
     public void Draw()
     {
@@ -601,7 +601,7 @@ public class DocView
 
     void DrawCaret(float x, float y)
     {
-        // 窓の view の cursor は命令にせず、位置だけを覚える (lider が texture の外に描いて滑らせる)
+        // The cursor of a window view is not turned into a command; only its position is recorded (lider draws it outside the texture and slides it)
         if (!Bar)
         {
             Carets.Add(x);

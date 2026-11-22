@@ -3,8 +3,8 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace TinyCs;
 
-// 補完と hover だけのための session。compile はせず、ファイルの今のテキストだけを持つ
-// (playground は変換を tcs の wasm で行い、.NET の wasm はこの session で Roslyn の問い合わせだけに答える)
+// Session only for completion and hover. It does not compile; it only holds the current text of the files
+// (the playground does the conversion with the tcs wasm, and the .NET wasm only answers Roslyn queries with this session)
 public sealed class EditorSession
 {
     private readonly List<string> _paths = [];

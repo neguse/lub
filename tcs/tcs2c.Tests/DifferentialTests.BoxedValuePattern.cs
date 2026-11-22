@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// object に入った数 (int / float) の型の test と、object に入った数と bool の値を pattern で読む形はサブセット外
-// (TCS1001 BoxedValuePattern(T))。値は cast (`(int)o`) で取り出す。`o is bool`、string と class の pattern、T? の入力の pattern は対象外
+// Type tests of numbers (int / float) stored in an object, and patterns that read the value of a number or bool stored in an object, are outside the subset
+// (TCS1001 BoxedValuePattern(T)). Values are extracted with a cast (`(int)o`). `o is bool`, string and class patterns, and patterns on a T? input are not affected
 public class BoxedValuePatternDifferentialTests
 {
     private static string BoxedValueProgram(string statement) => $$"""
@@ -52,7 +52,7 @@ public class BoxedValuePatternDifferentialTests
         }
     }
 
-    // 値は cast で取り出す。class と null と T? の定数の pattern は従来どおり
+    // Values are extracted with a cast. class, null, and T? constant patterns work as before
     [CFact]
     public void BoxedValueByCast_AndReferencePatterns_StillRun()
     {
@@ -75,7 +75,7 @@ public class BoxedValuePatternDifferentialTests
         Assert.Equal("6,2.5,2,True,False", output);
     }
 
-    // T? の入力の pattern、object の bool と string の型の test は対象外。C backend はこれらの型の test を持たないので VM と .NET で見る
+    // Patterns on a T? input and type tests for bool and string in an object are not affected. The C backend does not have these type tests, so they are checked on the VM and .NET
     [CFact]
     public void NullableBoolAndStringPatterns_StillRunOnVm()
     {

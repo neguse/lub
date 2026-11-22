@@ -1,4 +1,4 @@
-// ../TestValues.cs が lider で開くゲーム。毎 frame Count と Thing の A を 1 増やす。Score と Flag は自分では変えない。
+// The game ../TestValues.cs opens in lider. Increases Count and Thing's A by 1 every frame. Does not change Score and Flag itself.
 public class Thing
 {
     public int A = 5;
@@ -15,7 +15,7 @@ public static class Game
     {
         Count++;
         T.A++;
-        // 読まない static は module に入らない
+        // An unread static does not go into the module
         if (Flag && Score < 0)
             Count = 0;
     }

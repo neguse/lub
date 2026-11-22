@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-/// <summary>tcs VM の stdout は、file や pipe に向けても行ごとに出る (Lua の print と同じ)。終わらない program でも行が届く。</summary>
+/// <summary>tcs VM stdout is written line by line even when directed to a file or pipe (same as Lua's print). Lines arrive even from programs that do not terminate.</summary>
 public class VmStdoutTests
 {
     [CFact]

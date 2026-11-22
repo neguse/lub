@@ -1,11 +1,11 @@
-// lub の samples/19_sdf の entry。
-// 実行: lub samples/19_sdf/Sdf19.csproj (transpile + watch + hot reload)
+// Entry for lub's samples/19_sdf.
+// Run: lub samples/19_sdf/Sdf19.csproj (transpile + watch + hot reload)
 //
-// SDF モデリング: Lubx.Sdf の builder でツリーを組み、C 側 (sdf_mesh) が評価 → surface nets でメッシュ化する。
-// Model() を書き換えて保存すれば hot reload で再メッシュされる。
-// 法線と材質 (paint) は SDF から頂点に焼くので、UV は存在しない。
-// 描画は Renderer3d の組み込みの shader (skinned)。
-// (ツリーで書けない SDF は Mesh.SurfaceNets に手埋めの grid を渡す経路もある)
+// SDF modeling: the tree is built with the Lubx.Sdf builder, and the C side (sdf_mesh) evaluates it → meshes it with surface nets.
+// Rewrite Model() and save, and hot reload remeshes it.
+// Normals and materials (paint) are baked into the vertices from the SDF, so there are no UVs.
+// Rendering uses the built-in shader of Renderer3d (skinned).
+// (For SDFs that cannot be written as a tree, there is also a path that passes a hand-filled grid to Mesh.SurfaceNets)
 
 using System;
 using System.Collections.Generic;
@@ -14,12 +14,12 @@ using Lubx;
 
 public static class Sdf19
 {
-    // 最長軸の grid cell 数。
-    // bounds はツリーの AABB から自動で決まる。
+    // Number of grid cells along the longest axis.
+    // The bounds are determined automatically from the AABB of the tree.
     const int n = 64;
 
-    // --- モデル: 雪だるま風 ------------------------------------------------- bone(name, pivot) を付けた部位には skinning 重みが焼かれる。
-    // 動かす腕は mirror だと pivot が片側になるので左右を個別に置く(目は動かないので mirror のまま)。
+    // --- Model: snowman style ------------------------------------------------- Parts with bone(name, pivot) get skinning weights baked in.
+    // The moving arms are placed left and right separately, because mirror would put the pivot on one side only (the eyes do not move, so they stay mirrored).
     static SdfNode Model()
     {
         var body = Sdf.Sphere(0.72f).Move(0, -0.42f, 0)
@@ -32,18 +32,18 @@ public static class Sdf19
         var armR = Sdf.Capsule(new Vec3(-0.56f, -0.32f, 0),
             new Vec3(-1.04f, 0.24f, 0), 0.13f)
             .Bone("arm_r", new Vec3(-0.56f, -0.32f, 0));
-        // 目: 球で smooth にくり抜き (camera は -Z 側)。
-        // 切断面には cutter の材質が出るので、目玉の色は「彫る球の paint」で決まる
+        // Eyes: carved out smoothly with spheres (the camera is on the -Z side).
+        // The cut surface shows the material of the cutter, so the eye color is set by "the paint of the carving sphere"
         var eye = Sdf.Sphere(0.11f).Move(0.17f, 0.56f, -0.40f).MirrorX()
             .Paint(0x1E2130, 0.0f, 0.15f);
         return body.Smin(head, 0.22f).Smin(armL, 0.10f).Smin(armR, 0.10f)
             .Paint(0xE58B52).Ssub(eye, 0.06f);
     }
 
-    // --- アニメーション -------------------------------------------------------
+    // --- Animation -------------------------------------------------------
     static bool waveOn = true;
 
-    // mesh.bones の順で関節の行列を詰める (規約は Lubx.Bones)
+    // Pack the joint matrices in mesh.bones order (the convention is in Lubx.Bones)
     static List<float> PackBones(float t, MeshData? data)
     {
         float wave = waveOn ? (float)Math.Sin(t * 4.0f) * 0.5f : 0.0f;
@@ -64,13 +64,13 @@ public static class Sdf19
         });
     }
 
-    // --- メッシュ化 ---------------------------------------------------------- mesh / ren は onInit で生成。
+    // --- Meshing ---------------------------------------------------------- mesh / ren are created in onInit.
     static Mesh3d? mesh = null;
     static Renderer3d? ren = null;
     static float tAccum = 0.0f;
-    // treeDirty = コードからツリーを再構築 (reload 時)、meshDirty = 再評価 (SdfPanel での編集時)。
-    // パネル編集はツリー (data) に直接乗るので、リロードするまで生きる。
-    // reload は static を保持するため、差分を当てた後に呼ばれる OnReload() で明示的に立てる。
+    // treeDirty = rebuild the tree from code (on reload), meshDirty = re-evaluate (on edits in SdfPanel).
+    // Panel edits apply directly to the tree (data), so they live until the next reload.
+    // reload keeps statics, so the flag is set explicitly in OnReload(), which is called after the diff is applied.
     static SdfNode? tree = null;
     static bool treeDirty = true;
     static bool meshDirty = true;
@@ -107,7 +107,7 @@ public static class Sdf19
 
         if (treeDirty)
         {
-            tree = Model(); // コードが source of truth。reload でパネル編集は破棄
+            tree = Model(); // The code is the source of truth. reload discards panel edits
             treeDirty = false;
             meshDirty = true;
         }
@@ -115,8 +115,8 @@ public static class Sdf19
         if (t == null)
             return;
 
-        // debug UI: ツリー (data) から自動生成したパネル。
-        // いじったフレームだけ remesh (C 評価 ~10ms なのでドラッグ追従)。
+        // debug UI: a panel generated automatically from the tree (data).
+        // Remesh only on frames with edits (C evaluation takes ~10ms, so it keeps up with dragging).
         Ui.SetNextWindow(10, 10, 300, 460);
         if (Ui.BeginWindow("sdf tuning"))
         {

@@ -1,11 +1,12 @@
-/* sinf / cosf (正しく丸める)。CORE-MATH (https://core-math.gitlabpages.inria.fr/)
-   の src/binary32/sin/sinf.c と src/binary32/cos/cosf.c (commit 0bbf26a) を、
-   GCC / Clang の拡張を使わない C に書き直したもの。計算の手順は元のままで、
-   結果は元の実装と全入力で bit 単位で同じ。
-   変更: __int128 の積を tcs_mul64 に、__builtin_roundeven を
-   tcs_roundeven_small に、__builtin_fmaf を tcs_fmaf に置き換え、errno と
-   浮動小数点例外の設定を外した (NaN は TCS_NANF を返す)。2 つのファイルで
-   同じだった引数の縮約と多項式の係数は 1 つにまとめた。
+/* sinf / cosf (correctly rounded). CORE-MATH
+(https://core-math.gitlabpages.inria.fr/) src/binary32/sin/sinf.c and
+src/binary32/cos/cosf.c (commit 0bbf26a), rewritten in C that does not use GCC /
+Clang extensions. The computation steps are unchanged, and the results match the
+original implementation bit for bit on all inputs. Changes: replaced the
+__int128 product with tcs_mul64, __builtin_roundeven with tcs_roundeven_small,
+and __builtin_fmaf with tcs_fmaf, and removed setting errno and floating-point
+exceptions (returns TCS_NANF for NaN). The argument reduction and polynomial
+coefficients that were the same in the two files are merged into one.
 
 Copyright (c) 2022-2025 Alexei Sibidanov.
 Copyright (c) 2022-2023 Alexei Sibidanov.
@@ -34,8 +35,9 @@ SOFTWARE.
 
 #include "tcs_math_internal.h"
 
-/* |x| >= 2^28 の引数の縮約: x * 4/pi = q + z (z は [-1/2, 1/2])。
-   2/pi の 256 bit と仮数の積から、q と z の bit を取り出す */
+/* Argument reduction for |x| >= 2^28: x * 4/pi = q + z (z in [-1/2, 1/2]).
+   Extracts the bits of q and z from the product of 256 bits of 2/pi and the
+   mantissa */
 static double sincos_rbig(uint32_t u, int *q) {
   static const uint64_t ipi[] = {0xfe5163abdebbc562u, 0xdb6295993c439041u,
                                  0xfc2757d1f534ddc0u, 0xa2f9836e4e441529u};
@@ -95,7 +97,7 @@ static const double sincos_b[] = {0x1.3bd3cc9be45dcp-6, -0x1.03c1f081b0833p-14,
 static const double sincos_a[] = {0x1.921fb54442d17p-3, -0x1.4abbce6256a39p-10,
                                   0x1.466bc5a518c16p-19,
                                   -0x1.32bdc61074ff6p-29};
-/* sin(i * pi/16)。cos の表 (tbc) は 8 つずらした cos(i * pi/16) */
+/* sin(i * pi/16). The cos table (tbc) is cos(i * pi/16) shifted by 8 */
 static const double sincos_tb[] = {0x0p+0,
                                    0x1.8f8b83c69a60bp-3,
                                    0x1.87de2a6aea963p-2,
@@ -162,7 +164,8 @@ static const double sincos_tbc[] = {0x1p+0,
                                     0x1.d906bcf328d46p-1,
                                     0x1.f6297cff75cbp-1};
 
-/* 多項式の近似で丸めを誤る入力と、その正しい値 (rh + rl) */
+/* Inputs where the polynomial approximation rounds incorrectly, and their
+ * correct values (rh + rl) */
 static const float sin_arg[] = {0x1.33333p+13f, 0x1.75b8a2p-1f, 0x1.4f0654p+0f,
                                 0x1.2d97c8p+3f};
 static const float sin_rh[] = {-0x1.63f4bap-2f, 0x1.55688ap-1f, 0x1.ee836cp-1f,

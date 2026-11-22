@@ -1,5 +1,5 @@
-// lub の samples/05_postprocess の entry。
-// 実行: lub samples/05_postprocess/Postprocess05.csproj (transpile + watch + hot reload) オフスクリーン RT に三角形を描き、post シェーダで全画面に貼る 2 パス構成。
+// Entry of lub's samples/05_postprocess.
+// Run: lub samples/05_postprocess/Postprocess05.csproj (transpile + watch + hot reload) A 2-pass setup that draws a triangle into an offscreen RT and pastes it over the full screen with the post shader.
 
 using System;
 using System.Collections.Generic;

@@ -1,25 +1,25 @@
-// 実装ライブラリ lubx の Mesh3d。
+// Mesh3d of the implementation library lubx.
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
 /// <summary>
-/// MeshData (Mesh.sdf_mesh / Io.load_gltf / Shapes3d) を GPU buffer にして保持するインスタンス。
-/// rebuild() は version 省略の「変更宣言」で upload するので、呼び側が version を管理する必要はない (hot reload や編集のたびに rebuild() を呼べばよい)。
-/// bones を持つ MeshData は自動で skinned レイアウト (Io.interleave_pncmw、20 float)、それ以外は Io.interleave_pncm (16 float: pos pad nrm pad albedo pad mr pad)。
-/// この頂点レイアウトが Renderer3d の material 契約。
-/// buffer は ready() が呼ばれるたびに前回の version で再主張する (data は読まれない) ので、描き続ける限り sweep されない。
-/// Renderer3d.Draw が ready() を通るので、描画側が再主張を意識する必要はない。
+/// Instance that turns MeshData (Mesh.sdf_mesh / Io.load_gltf / Shapes3d) into GPU buffers and holds them.
+/// rebuild() uploads with a "change declaration" that omits version, so the caller does not need to manage version (just call rebuild() on every hot reload or edit).
+/// MeshData with bones automatically uses the skinned layout (Io.interleave_pncmw, 20 floats), otherwise Io.interleave_pncm (16 floats: pos pad nrm pad albedo pad mr pad).
+/// This vertex layout is the material contract of Renderer3d.
+/// The buffers are re-asserted with the previous version each time ready() is called (data is not read), so they are not swept as long as they keep being drawn.
+/// Renderer3d.Draw goes through ready(), so the drawing side does not need to think about re-asserting.
 /// </summary>
 public class Mesh3d
 {
     private string key;
-    // UseBuffer の key (毎 frame の Ready で作り直さない)
+    // UseBuffer keys (not recreated by every frame's Ready)
     private string vbKey;
     private string ibKey;
-    // rebuild() が組んだ interleaved 頂点と index。
-    // ready() の再主張と、sweep 後の作り直しに使う。
+    // Interleaved vertices and indices built by rebuild().
+    // Used for re-asserting in ready() and for recreating after a sweep.
     private List<float>? verts = null;
     private List<float>? indices = null;
 
@@ -36,8 +36,8 @@ public class Mesh3d
         ibKey = key + "/ib";
     }
 
-    /// <summary>メッシュを差し替える (初回含む)。
-    /// 呼ぶたびに GPU へ再アップロード。
+    /// <summary>Replaces the mesh (including the first time).
+    /// Re-uploads to the GPU on every call.
     /// </summary>
     public void Rebuild(MeshData data)
     {
@@ -45,8 +45,8 @@ public class Mesh3d
         Skinned = data.Bones != null;
         var v = Skinned ? Io.InterleavePncmw(data) : Io.InterleavePncm(data);
         Vb = Gfx.UseBuffer(vbKey, Gfx.BufferType.Storage, v);
-        // use_buffer は List<float> を取るので indices を詰め替える。
-        // INDEX の float 列は runtime が uint32 に写すので、GPU の index は元の整数と同じになる。
+        // use_buffer takes a List<float>, so indices are repacked.
+        // The runtime copies the INDEX float sequence into uint32, so the GPU indices are the same as the original integers.
         var idx = new List<float>();
         foreach (var i in data.Indices)
         {
@@ -58,9 +58,9 @@ public class Mesh3d
         IndexCount = data.IndexCount;
     }
 
-    /// <summary>rebuild 済みで描画可能か。
-    /// 描く frame に毎回呼ぶ (Renderer3d.Draw が呼ぶ)。
-    /// buffer を前回の version で再主張して sweep を防ぐ。
+    /// <summary>Whether it has been rebuilt and can be drawn.
+    /// Call it in every frame that draws (Renderer3d.Draw calls it).
+    /// Re-asserts the buffers with the previous version to prevent sweep.
     /// </summary>
     public bool Ready()
     {

@@ -1,5 +1,5 @@
-// C API (include/lub/lub_api.h) の実装側で共有する helper。
-// LubContext は App そのもの。
+// Helpers shared by the implementation of the C API (include/lub/lub_api.h).
+// LubContext is the App itself.
 #pragma once
 #include "app.h"
 #include "lub/lub_api.h"
@@ -10,11 +10,12 @@
 static inline App *lub_api_app(LubContext *ctx) { return (App *)ctx; }
 static inline LubContext *lub_api_ctx(App *app) { return (LubContext *)app; }
 
-// last_error に message を書いて LUB_ERROR を返す。
+// Write the message to last_error and return LUB_ERROR.
 LubStatus lub_api_fail(App *app, const char *fmt, ...);
 
-// XR の片眼の描画先を指す特別な handle (lub_xr_view が XrView.target に返す)。
-// main_tex (-1) と同じく resource table には無く、begin_pass が解決する。
+// Special handle that refers to the render target of one XR eye (lub_xr_view
+// returns it in XrView.target). Like main_tex (-1), it is not in the resource
+// table, and begin_pass resolves it.
 #define LUB_GFX_XR_EYE_TEX(eye) ((LubHandle)(-2 - (eye)))
 static inline int lub_gfx_xr_eye_of(LubHandle h) {
   return h == -2 || h == -3 ? (int)(-2 - h) : -1;
@@ -30,8 +31,8 @@ static inline bool lub_str_eq(LubStr a, const char *b) {
   return (size_t)a.len == n && memcmp(a.ptr, b, n) == 0;
 }
 
-// NUL 終端の copy。
-// cap に収まらなければ false。
+// NUL-terminated copy.
+// false if it does not fit in cap.
 static inline bool lub_str_copy(LubStr s, char *buf, size_t cap) {
   if (s.len < 0 || (size_t)s.len >= cap)
     return false;
@@ -41,8 +42,9 @@ static inline bool lub_str_copy(LubStr s, char *buf, size_t cap) {
   return true;
 }
 
-// 今の backend が使う target で shader を compile する。
-// export では、export 先の OS の player が使う他の target の分も生成キャッシュに入れる。
+// Compile the shader for the target the current backend uses.
+// On export, also put the output for the other targets used by the player of
+// the export's target OS into the generated cache.
 bool shader_compile_for_backend(const char *vs, const char *fs,
                                 ShaderBlob *out_vs, ShaderBlob *out_fs,
                                 ShaderReflection *out_refl, char *err,
@@ -51,30 +53,35 @@ bool shader_compile_compute_for_backend(const char *cs, ShaderBlob *out_cs,
                                         ShaderReflection *out_refl, char *err,
                                         size_t err_size);
 
-// key の最大の長さ (終端の NUL を含む)。
+// Maximum key length (including the terminating NUL).
 #define LUB_KEY_MAX 256
 
-// frame の終わりに呼ぶ (app_frame_end)。
-// key で宣言する queue / snd の sweep。
+// Called at the end of the frame (app_frame_end).
+// Sweep of queues / snds declared by key.
 void api_gfx_frame_end(App *app);
 void api_audio_frame_end(App *app);
-// 保証するモードで、この frame に渡す readback が GPU から届いているか (app_frame_waits_for_gpu が見る)。
+// In the guaranteed mode, whether the readbacks to deliver this frame have
+// arrived from the GPU (checked by app_frame_waits_for_gpu).
 bool api_gfx_readbacks_due_ready(App *app);
-// frame 有効の view の実体を預ける。
-// app_frame_end が free する。
-// 同じ API を同じ frame で呼び直しても前の view を壊さないよう、view を返す API は結果を使い回さずここに預ける。
+// Hand over the backing data of a frame-scoped view.
+// Freed by app_frame_end.
+// So that calling the same API again in the same frame does not break the
+// previous view, APIs that return views do not reuse results and hand them over
+// here instead.
 void app_frame_garbage_push(App *app, void *ptr);
-// free でない解放関数を要る実体 (stb の bitmap 等) を預ける。
+// Hand over data that needs a release function other than free (stb bitmaps,
+// etc.).
 void app_frame_garbage_push_fn(App *app, void *ptr, void (*free_fn)(void *));
-// 預けた実体を全部解放する (app_frame_end と app_shutdown が呼ぶ)。
+// Release all handed-over data (called by app_frame_end and app_shutdown).
 void app_frame_garbage_drain(App *app);
 
-// api_*.c 所有の状態 (readback queue、decode / poll の view) を解放する。
-// app_shutdown が呼ぶ。
+// Release the state owned by api_*.c (readback queues, decode / poll views).
+// Called by app_shutdown.
 void api_gfx_shutdown(App *app);
 void api_audio_shutdown(App *app);
-// App.Use で開いた app の sweep と、全部を閉じる後始末 (api_app.c)。
-// 検査の API が見る app: handle が 0 なら app 自身、そうでなければ App.Use で開いた app (閉じていれば NULL)
+// Sweep of apps opened with App.Use, and the cleanup that closes all of them
+// (api_app.c). The app the inspection APIs look at: the app itself if handle is
+// 0, otherwise the app opened with App.Use (NULL if closed)
 App *api_app_observed(App *app, LubHandle handle);
 void api_app_frame_end(App *app);
 void api_app_shutdown(App *app);

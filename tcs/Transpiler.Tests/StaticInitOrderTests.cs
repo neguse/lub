@@ -2,10 +2,10 @@ using TinyCs;
 
 namespace TinyCs.Tests;
 
-// static initializer の診断。初期化の順の実行結果は tcs2c.Tests の DifferentialTests.StaticInitOrder.cs (C / VM / .NET)
+// Diagnostics for static initializers. Execution results of initialization order: DifferentialTests.StaticInitOrder.cs in tcs2c.Tests (C / VM / .NET)
 public class StaticInitOrderTests
 {
-    // initializer は型の後にまとめて組み立てるが、その診断も結果に載る
+    // Initializers are built together after the types, but their diagnostics also appear in the result
     [Fact]
     public void DeferredInitializerDiagnosticsAreReported()
     {
@@ -19,7 +19,7 @@ public class StaticInitOrderTests
         Assert.Contains(result.Errors, e => e.Contains("SizeOfExpression"));
     }
 
-    // method の本文の sizeof も同じ診断で止める (IL にできない本文)
+    // sizeof in a method body is also stopped with the same diagnostic (a body that cannot be made into IL)
     [Fact]
     public void MethodBodySizeOfIsReported()
     {

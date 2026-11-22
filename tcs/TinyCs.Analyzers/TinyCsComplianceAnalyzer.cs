@@ -9,12 +9,12 @@ using Microsoft.CodeAnalysis.Text;
 namespace TinyCs.Analyzers;
 
 /// <summary>
-/// TinyC# の準拠の診断。TCS1001〜1003 は tcs の compiler (SelfHost/Compiler、`tcs check` と同じ実装) を
-/// compilation のソースで動かして出す。規則は compiler の 1 か所にあり、analyzer は位置を Roslyn の Location に写すだけ。
-/// TCS1004 (System.Math の超越関数が .NET の実装で動く) は .NET で実行するときだけの話なので、analyzer が Roslyn で見る。
-/// `--ref` の stub (host の API の宣言) は、AdditionalFiles か Compile の項目に `TinyCsRef="true"` を付けて渡す
-/// (`<CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="TinyCsRef" />`、Compile なら Include="Compile" も要る)。
-/// Compile の stub は Roslyn が型の検査に使い、compiler は宣言だけを読む (診断は出さない)。
+/// TinyC# compliance diagnostics. TCS1001 to 1003 come from running the tcs compiler (SelfHost/Compiler, the same implementation as `tcs check`)
+/// on the compilation's sources. The rules live in one place in the compiler, and the analyzer only maps positions to Roslyn Locations.
+/// TCS1004 (System.Math transcendental functions running on the .NET implementation) only matters when running on .NET, so the analyzer checks it with Roslyn.
+/// `--ref` stubs (declarations of the host API) are passed as AdditionalFiles or Compile items with `TinyCsRef="true"`
+/// (`<CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="TinyCsRef" />`; for Compile, Include="Compile" is also needed).
+/// Roslyn uses Compile stubs for type checking, and the compiler reads only the declarations (it reports no diagnostics).
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
@@ -55,8 +55,8 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true,
         description: "Reports System.Math transcendental functions, whose results on .NET differ from the TinyC# runtime/math implementation.");
 
-    // 結果が実装で変わる関数。Abs / Min / Max / Floor / Sqrt / Round などは
-    // IEEE-754 で結果が決まるので対象外
+    // Functions whose results depend on the implementation. Abs / Min / Max / Floor / Sqrt / Round, etc.
+    // have results fixed by IEEE-754, so they are out of scope
     private static readonly ImmutableHashSet<string> DotnetMathNames =
         ImmutableHashSet.Create("Sin", "Cos", "Tan", "Exp", "Log", "Atan2", "Pow");
 
@@ -66,7 +66,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
 
     public override void Initialize(AnalysisContext context)
     {
-        // 生成されたコードも transpiler は変換するので診断する
+        // The transpiler also converts generated code, so it is diagnosed
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.Analyze
             | GeneratedCodeAnalysisFlags.ReportDiagnostics);
         context.EnableConcurrentExecution();
@@ -91,7 +91,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
                     && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
                     refTrees.Add(tree);
             }
-            // compilation の全部のソースを 1 回だけ compiler にかけ、各ソースの診断はその tree の解析で報告する
+            // Runs the compiler only once over all sources of the compilation, and reports each source's diagnostics in the analysis of that tree
             var check = new Lazy<Dictionary<SyntaxTree, List<Diagnostic>>>(
                 () => Check(start.Compilation, refs, refTrees), LazyThreadSafetyMode.ExecutionAndPublication);
             start.RegisterSemanticModelAction(model =>
@@ -107,7 +107,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
     {
         var method = ((IInvocationOperation)context.Operation).TargetMethod;
         var type = method.ContainingType?.ToDisplayString();
-        // MathF は TCS1002 (サブセット外) が出る
+        // MathF gets TCS1002 (outside the subset)
         if (type != "System.Math" || !DotnetMathNames.Contains(method.Name))
         {
             return;
@@ -117,8 +117,8 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             context.Operation.Syntax.GetLocation(), $"{type}.{method.Name}"));
     }
 
-    // TinySystem.props が .NET の project に source で入れる TinySystem の file。Linq / ValueTuple は tcs の library
-    // (下で library として足す)、Collections は .NET の実装 (tcs は読まない) なので、どれも user のソースとして渡さない
+    // TinySystem files that TinySystem.props adds as source to .NET projects. Linq / ValueTuple are tcs libraries
+    // (added below as libraries), and Collections is a .NET implementation (tcs does not read it), so none of them is passed as user source
     private static readonly string[] TinySystemFiles = ["Linq.cs", "ValueTuple.cs", "Collections.cs"];
 
     private static bool IsTinySystemFile(string path)
@@ -128,8 +128,8 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         return dir == "TinySystem" && TinySystemFiles.Contains(Path.GetFileName(path));
     }
 
-    // SDK が obj/ に作る file。GlobalUsings (ImplicitUsings) は名前の解決に要るので compiler に渡すが、
-    // tcs (lub など) の入力には入らない file なので診断は出さない。assembly の属性の file は渡さない
+    // Files the SDK generates in obj/. GlobalUsings (ImplicitUsings) is needed for name resolution, so it is passed to the compiler,
+    // but it is not an input of tcs (lub, etc.), so no diagnostics are reported. Assembly attribute files are not passed
     private static bool IsSdkGlobalUsings(string path) => path.EndsWith(".GlobalUsings.g.cs", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSdkAssemblyInfo(string path) =>
@@ -149,7 +149,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         return result.ToArray();
     });
 
-    // compiler の状態は static を含むので、同じ process の compile は 1 つずつ動かす
+    // Compiler state includes statics, so compiles in the same process run one at a time
     private static readonly object Gate = new();
 
     private static Dictionary<SyntaxTree, List<Diagnostic>> Check(Compilation compilation, List<string> refs,
@@ -168,7 +168,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         lock (Gate)
         {
             var session = new TcsSelf.Session("") { CheckOnly = true };
-            // compiler の診断の path は tree の番号 (path の括弧と重ならない)
+            // Paths in compiler diagnostics are tree indexes (they do not clash with the parentheses of the path)
             for (int i = 0; i < trees.Count; i++)
                 session.Add("tree" + i + ".cs", trees[i].GetText().ToString(), 0);
             foreach (var r in refs) session.Add("", r, 1);
@@ -196,7 +196,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         return byTree;
     }
 
-    // compiler の文 (`unsupported syntax: X`) から、analyzer の文の穴に入れる部分
+    // The part of the compiler message (`unsupported syntax: X`) that goes into the hole of the analyzer message
     private static string Detail(string code, string message)
     {
         var prefix = code switch
@@ -208,7 +208,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         return message.StartsWith(prefix, StringComparison.Ordinal) ? message.Substring(prefix.Length) : message;
     }
 
-    // `tree3.cs(12,5): error TCS1001: message` (列は UTF-8 の byte で数える)
+    // `tree3.cs(12,5): error TCS1001: message` (columns are counted in UTF-8 bytes)
     private static bool TryParse(string line, out int index, out int row, out int column, out string code, out string message)
     {
         index = row = column = 0;
@@ -231,7 +231,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         return true;
     }
 
-    // 行 (1 始まり) と UTF-8 の byte の列 (1 始まり) の token
+    // Token of line (1-based) and UTF-8 byte column (1-based)
     private static Location LocationOf(SyntaxTree tree, int row, int column)
     {
         var text = tree.GetText();

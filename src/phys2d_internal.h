@@ -1,5 +1,7 @@
-// phys2d の core が使う内部の型。
-// 公開 API (include/lub/lub_api.h) は生成物なので core はその desc / view の struct に依存させず、詰め替えは physics_box2d.c の末尾で行う。
+// Internal types used by the phys2d core.
+// The public API (include/lub/lub_api.h) is generated code, so the core does
+// not depend on its desc / view structs; the repacking is done at the end of
+// physics_box2d.c.
 #pragma once
 #include "lub/lub_api.h"
 #include <stdbool.h>
@@ -14,35 +16,40 @@ enum {
 };
 
 // ---------------------------------------------------------------- phys2d
-// Box2D の即時モード API。
-// world / body / shape / chain / joint は key で毎フレーム宣言し、begin から step までに宣言されなかったものは step で prune される (begin の prune=false で抑止)。
-// handle は entry の寿命に結ぶ:
-// prune されるまで同じ値で、prune 後は stale (find で引き直す)。
-// filter の bit は Box2D の 64 bit mask をそのまま持つ (公開 API は hex 文字列)。
+// Immediate-mode API for Box2D.
+// world / body / shape / chain / joint are declared by key every frame, and
+// those not declared between begin and step are pruned in step (suppressed with
+// prune=false in begin). A handle is tied to the lifetime of its entry: it
+// keeps the same value until pruned and is stale after pruning (look it up
+// again with find). Filter bits hold Box2D's 64 bit mask as is (the public API
+// uses hex strings).
 //
-// callback (world desc の callbacks、query の visitor) は呼び出し元と同じ thread で呼ばれ、渡す struct は呼び出しの間だけ有効。
-// callback の中から物理を変える API を呼ぶと LUB_ERROR。
+// Callbacks (callbacks in the world desc, query visitors) are called on the
+// same thread as the caller, and the structs passed are valid only during the
+// call. Calling an API that modifies physics from inside a callback gives
+// LUB_ERROR.
 
 typedef struct P2Filter {
-  uint64_t category_bits; // 既定 1
-  uint64_t mask_bits;     // 既定 全 bit
+  uint64_t category_bits; // Default 1
+  uint64_t mask_bits;     // Default all bits
   int32_t group_index;
 } P2Filter;
 
-// shape の識別。
-// event / query / callback が返す。
-// 文字列は runtime が持ち、その shape (か tombstone) が生きている間有効。
+// Shape identification.
+// Returned by events / queries / callbacks.
+// The runtime owns the strings, which are valid while the shape (or its
+// tombstone) is alive.
 typedef struct P2ShapePart {
-  LubHandle shape; // shape か chain の handle。0 = 無し
+  LubHandle shape; // Handle of the shape or chain. 0 = none
   LubHandle body;
   LubStr body_key;
   LubStr shape_key;
-  LubStr chain_key; // len 0 = chain segment ではない
+  LubStr chain_key; // len 0 = not a chain segment
   LubStr tag;
   LubStr material_name;
   int32_t material_id;
-  int32_t kind; // LubPhys2dShapeKind。0 = 不明
-  bool valid;   // shape が live
+  int32_t kind; // LubPhys2dShapeKind. 0 = unknown
+  bool valid;   // The shape is live
   bool has_material;
   bool has_filter;
   P2Filter filter;
@@ -67,13 +74,17 @@ typedef struct P2PreSolve {
   P2ManifoldPoint points[2];
 } P2PreSolve;
 
-// 全部 NULL = callback 無し。
-// 生存期間は次の world 宣言か step まで。
-// callback は step の終わりに手放し、毎フレームの World の宣言で渡し直してもらう。
-// runtime が closure を次のフレームまで持ち越さないので、hot reload の後は次のフレームから新しいコードの callback が呼ばれ、渡すのをやめた callback は呼ばれない。
+// All NULL = no callbacks.
+// Lifetime lasts until the next world declaration or step.
+// Callbacks are released at the end of step and must be passed again with the
+// World declaration every frame. The runtime does not carry closures over to
+// the next frame, so after a hot reload the new code's callbacks are called
+// from the next frame on, and callbacks that are no longer passed are not
+// called.
 typedef struct P2Callbacks {
   void *user;
-  void (*release)(void *user); // core が callback を手放すとき (NULL 可)
+  void (*release)(
+      void *user); // When the core releases the callbacks (may be NULL)
   bool (*filter)(void *user, const P2ShapePart *a, const P2ShapePart *b);
   bool (*pre_solve)(void *user, const P2PreSolve *contact);
   float (*friction)(void *user, float friction_a, int32_t material_a,
@@ -85,12 +96,12 @@ typedef struct P2Callbacks {
 typedef struct P2WorldDesc {
   bool has_version;
   int32_t version;
-  float gravity_x, gravity_y; // 既定 (0, -9.8)
-  float fixed_dt;             // 既定 1/60
-  int32_t substeps;           // 既定 4
-  int32_t max_steps;          // 既定 4
-  bool sleep;                 // 既定 true
-  bool continuous;            // 既定 true
+  float gravity_x, gravity_y; // Default (0, -9.8)
+  float fixed_dt;             // Default 1/60
+  int32_t substeps;           // Default 4
+  int32_t max_steps;          // Default 4
+  bool sleep;                 // Default true
+  bool continuous;            // Default true
   bool has_hit_event_threshold;
   float hit_event_threshold;
   P2Callbacks callbacks;
@@ -105,26 +116,26 @@ typedef struct P2BodyDesc {
   bool has_enabled, enabled;
   bool has_awake, awake;
   bool has_sleep, sleep;
-  float gravity_scale; // 既定 1
+  float gravity_scale; // Default 1
   float linear_damping, angular_damping;
   bool has_sleep_threshold;
   float sleep_threshold;
-  // initial (再生成のときだけ使う)
+  // initial (used only when recreating)
   float x, y, angle;
   float vx, vy, w;
-  bool initial_awake; // 既定 true
+  bool initial_awake; // Default true
 } P2BodyDesc;
 
 typedef struct P2ShapeDesc {
   bool has_version;
   int32_t version;
   bool has_density;
-  float density;  // 既定 dynamic 1 / それ以外 0
-  float friction; // 既定 0.6
+  float density;  // Default 1 for dynamic / 0 otherwise
+  float friction; // Default 0.6
   float restitution;
   int32_t material_id;
-  LubStr material_name; // len 0 = 無し
-  LubStr tag;           // len 0 = 無し
+  LubStr material_name; // len 0 = none
+  LubStr tag;           // len 0 = none
   bool sensor, contact, hit, sensor_events, pre_solve;
   P2Filter filter;
 } P2ShapeDesc;
@@ -151,7 +162,7 @@ typedef struct P2SegmentDesc {
 
 typedef struct P2PolygonDesc {
   P2ShapeDesc shape;
-  const float *points; // x, y の組。3..8 点
+  const float *points; // x, y pairs. 3..8 points
   int32_t point_count;
   float radius, cx, cy, angle;
 } P2PolygonDesc;
@@ -162,19 +173,20 @@ typedef struct P2SurfaceMaterial {
 } P2SurfaceMaterial;
 
 typedef struct P2ChainDesc {
-  int32_t version;     // 必須 (chain は version 無しの宣言を受けない)
-  const float *points; // x, y の組。4 点以上
+  int32_t
+      version; // Required (chains do not accept declarations without a version)
+  const float *points; // x, y pairs. 4 or more points
   int32_t point_count;
   bool loop;
-  float friction; // 既定 0.6
+  float friction; // Default 0.6
   float restitution;
   int32_t material_id;
   LubStr material_name;
   LubStr tag;
   bool sensor_events;
   P2Filter filter;
-  const P2SurfaceMaterial *materials; // NULL = 無し
-  int32_t material_count;             // 1 か point_count
+  const P2SurfaceMaterial *materials; // NULL = none
+  int32_t material_count;             // 1 or point_count
 } P2ChainDesc;
 
 typedef struct P2JointDesc {
@@ -183,24 +195,24 @@ typedef struct P2JointDesc {
   int32_t type; // LubPhys2dJointType
   LubHandle body_a, body_b;
   LubVec2d local_anchor_a, local_anchor_b;
-  LubVec2d local_axis_a; // 既定 (1, 0)
+  LubVec2d local_axis_a; // Default (1, 0)
   LubVec2d linear_offset;
   LubVec2d target;
   float reference_angle;
-  float length;     // 既定 1
-  float min_length; // 既定 0
-  float max_length; // 既定 1
-  float lower;      // 既定 0
-  float upper;      // 既定 1
+  float length;     // Default 1
+  float min_length; // Default 0
+  float max_length; // Default 1
+  float lower;      // Default 0
+  float upper;      // Default 1
   float target_angle, target_translation, angular_offset;
   float hertz, damping_ratio;
   float linear_hertz, angular_hertz;
   float linear_damping_ratio, angular_damping_ratio;
-  float max_force;  // 既定 1
-  float max_torque; // 既定 1
+  float max_force;  // Default 1
+  float max_torque; // Default 1
   float motor_speed;
-  float correction_factor; // 既定 0.3
-  float draw_size;         // 既定 0.25
+  float correction_factor; // Default 0.3
+  float draw_size;         // Default 0.25
   bool collide_connected, enable_spring, enable_limit, enable_motor;
 } P2JointDesc;
 
@@ -216,7 +228,7 @@ typedef struct P2WorldInfo {
   int32_t pending_commands;
   bool callback_filter, callback_pre_solve, callback_friction,
       callback_restitution;
-  // 以下は valid のとき
+  // The following apply when valid
   float gravity_x, gravity_y;
   bool sleep, continuous, warm_starting;
   float restitution_threshold, hit_event_threshold, maximum_linear_speed;
@@ -264,8 +276,8 @@ typedef struct P2ShapeInfo {
 typedef struct P2JointView {
   LubHandle joint;
   LubStr key;
-  int32_t type; // LubPhys2dJointType。0 = 不明
-  LubStr a, b;  // body の key
+  int32_t type; // LubPhys2dJointType. 0 = unknown
+  LubStr a, b;  // Body keys
   bool valid;
 } P2JointView;
 
@@ -282,14 +294,14 @@ typedef struct P2JointInfo {
   float reference_angle;
 } P2JointInfo;
 
-// step が集めた contact / sensor event。
-// a / b の filter は無い。
+// Contact / sensor events collected by step.
+// There is no filter for a / b.
 typedef struct P2Contact {
-  P2ShapePart a, b; // sensor event では a = sensor、b = visitor
+  P2ShapePart a, b; // For sensor events, a = sensor, b = visitor
   float nx, ny;
   int32_t point_count;
   float x, y;
-  float approach_speed; // hit のとき
+  float approach_speed; // For hits
 } P2Contact;
 
 typedef struct P2BodyEvent {
@@ -299,7 +311,7 @@ typedef struct P2BodyEvent {
   bool fell_asleep;
 } P2BodyEvent;
 
-// body に今触れている contact (live)。
+// Contacts currently touching the body (live).
 typedef struct P2ContactData {
   P2ShapePart a, b;
   float nx, ny;
@@ -310,14 +322,14 @@ typedef struct P2ContactData {
 typedef struct P2Ray {
   float x, y;         // origin
   float dx, dy;       // translation
-  float max_fraction; // 既定 1
+  float max_fraction; // Default 1
 } P2Ray;
 
 typedef struct P2RayHit {
-  P2ShapePart shape; // world query のとき
+  P2ShapePart shape; // For world queries
   float x, y, nx, ny, fraction;
-  int32_t iterations;               // shape raycast のとき
-  int32_t node_visits, leaf_visits; // raycast_closest のとき
+  int32_t iterations;               // For shape raycasts
+  int32_t node_visits, leaf_visits; // For raycast_closest
 } P2RayHit;
 
 typedef struct P2TreeStats {
@@ -325,18 +337,18 @@ typedef struct P2TreeStats {
 } P2TreeStats;
 
 typedef struct P2QueryFilter {
-  uint64_t category_bits; // 既定 1
-  uint64_t mask_bits;     // 既定 全 bit
+  uint64_t category_bits; // Default 1
+  uint64_t mask_bits;     // Default all bits
 } P2QueryFilter;
 
 typedef struct P2ShapeProxy {
   int32_t kind;         // P2_PROXY_*
-  float x, y, angle;    // 配置
-  float r;              // circle / capsule / polygon / box の丸め
-  float cx, cy;         // circle / box の中心
+  float x, y, angle;    // Placement
+  float r;              // Rounding for circle / capsule / polygon / box
+  float cx, cy;         // Center for circle / box
   float ax, ay, bx, by; // capsule / segment
   float hx, hy;         // box
-  const float *points;  // polygon (x, y の組)
+  const float *points;  // polygon (x, y pairs)
   int32_t point_count;
 } P2ShapeProxy;
 
@@ -353,11 +365,11 @@ typedef struct P2MoverPlane {
 typedef struct P2ExplosionDesc {
   float x, y;
   float radius, falloff, impulse_per_length;
-  uint64_t mask_bits; // 既定 全 bit
+  uint64_t mask_bits; // Default all bits
 } P2ExplosionDesc;
 
 typedef struct P2DebugDesc {
-  bool shapes; // 既定 true
+  bool shapes; // Default true
   bool joints, joint_extras, bounds, mass, body_names, contacts, graph_colors,
       contact_normals, contact_impulses, contact_features, friction_impulses,
       islands;
@@ -365,19 +377,19 @@ typedef struct P2DebugDesc {
   P2Aabb drawing_bounds;
 } P2DebugDesc;
 
-// 平らな float 配列。
-// frame の終わりまで有効。
-// 色は r g b a。
+// Flat float arrays.
+// Valid until the end of the frame.
+// Colors are r g b a.
 typedef struct P2DebugData {
-  const float *segments; // x1 y1 x2 y2 + 色
-  int32_t segment_count; // float の個数
-  const float *circles;  // cx cy r + 色
+  const float *segments; // x1 y1 x2 y2 + color
+  int32_t segment_count; // Number of floats
+  const float *circles;  // cx cy r + color
   int32_t circle_count;
-  const float *capsules; // x1 y1 x2 y2 r + 色
+  const float *capsules; // x1 y1 x2 y2 r + color
   int32_t capsule_count;
-  const float *polygons; // n solid + 色 + x0 y0 ... (n 点)
+  const float *polygons; // n solid + color + x0 y0 ... (n points)
   int32_t polygon_count;
-  const float *points; // x y size + 色
+  const float *points; // x y size + color
   int32_t point_count;
 } P2DebugData;
 
@@ -410,7 +422,7 @@ typedef struct P2Teleport {
 typedef struct P2SetTarget {
   bool has_x, has_y, has_angle;
   float x, y, angle;
-  float time_step; // <= 0 で world の fixed_dt
+  float time_step; // <= 0 uses the world's fixed_dt
   bool wake;
 } P2SetTarget;
 
@@ -440,7 +452,7 @@ typedef struct P2JointSpring {
 } P2JointSpring;
 
 typedef struct P2JointTarget {
-  bool has_x, has_y; // mouse。無い成分は今の値
+  bool has_x, has_y; // mouse. Missing components keep the current value
   float x, y;
   bool has_translation; // prismatic
   float translation;
@@ -457,7 +469,7 @@ typedef struct P2MaterialDesc {
       has_material_name;
   float density, friction, restitution;
   int32_t material_id;
-  LubStr material_name; // has_material_name で len 0 = 名前を消す
+  LubStr material_name; // With has_material_name, len 0 = clear the name
 } P2MaterialDesc;
 
 typedef struct P2EventFlags {
@@ -467,10 +479,11 @@ typedef struct P2EventFlags {
   bool has_hit, hit;
 } P2EventFlags;
 
-// query の visitor。
-// false / 0 で打ち切り。
-// raycast は Box2D の規約:
-// -1 = この hit を無視、0 = 打ち切り、fraction = ここまでに詰める、1 = 続行。
+// Query visitor.
+// false / 0 stops the query.
+// raycast follows the Box2D convention:
+// -1 = ignore this hit, 0 = stop, fraction = clip the ray to here, 1 =
+// continue.
 typedef bool (*P2OverlapFn)(void *user, const P2ShapePart *shape);
 typedef float (*P2RayFn)(void *user, const P2RayHit *hit);
 typedef bool (*P2PlaneFn)(void *user, const P2MoverPlane *plane);

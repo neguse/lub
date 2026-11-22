@@ -1,6 +1,6 @@
 using System;
 
-// checked の i32 の加算は範囲外で fault (il-spec §5)
+// checked i32 addition faults when out of range (il-spec §5)
 public class FaultChecked
 {
     public static void Main()

@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-# Arch: lvp_icd.json / Debian・Ubuntu: lvp_icd.x86_64.json
+# Arch: lvp_icd.json / Debian, Ubuntu: lvp_icd.x86_64.json
 ICD="$(compgen -G '/usr/share/vulkan/icd.d/lvp_icd*.json' | head -1 || true)"
 if [[ -n "$ICD" ]]; then
     export VK_ICD_FILENAMES="$ICD"

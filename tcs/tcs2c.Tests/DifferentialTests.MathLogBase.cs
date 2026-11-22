@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// TinySystem.Math.Log(x, base) の特殊値 (System.MathF.Log と同じ): base が 1、
-// x が 1 でなく base が 0 / +∞ のとき NaN。x が 1 なら base 0 / +∞ は -0 / +0。
-// 表は行が x、列が base (最後の列は 1 引数の Log)。9=NaN、-1=-0、0=+0、
-// ±8=±∞、他は (int) の切り捨て。期待値は同じ program を CoreCLR で実行した stdout
+// Special values of TinySystem.Math.Log(x, base) (same as System.MathF.Log): NaN when base is 1,
+// or when x is not 1 and base is 0 / +∞. If x is 1, base 0 / +∞ gives -0 / +0.
+// In the table, rows are x and columns are base (the last column is the one-argument Log). 9=NaN, -1=-0, 0=+0,
+// ±8=±∞, others are truncated with (int). The expected values are the stdout of running the same program on CoreCLR
 public class MathLogBaseDifferentialTests
 {
     [CFact]

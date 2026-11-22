@@ -41,26 +41,26 @@ public static class TestHelper
     }
 
     /// <summary>
-    /// C# の program に `Console.WriteLine(csharpExpr)` の entry を足して tcs VM で走らせ、stdout を返す (VmCorpus.Run)。
-    /// TCS_DIFFERENTIAL=1 なら実 .NET の stdout とも一致を要求する。dotnet: false は .NET と意図して違う program (理由は呼び出し側に書く)。
+    /// Adds an entry `Console.WriteLine(csharpExpr)` to a C# program, runs it on the tcs VM, and returns stdout (VmCorpus.Run).
+    /// If TCS_DIFFERENTIAL=1, also requires a match with the stdout of real .NET. dotnet: false is for programs that intentionally differ from .NET (the caller writes the reason).
     /// </summary>
     public static string CompileAndRunVm(string csharpSource, string csharpExpr, bool dotnet = true) =>
         VmCorpus.Run(csharpSource, csharpExpr, dotnet);
 
-    /// <summary>複数の file の program の CompileAndRunVm。</summary>
+    /// <summary>CompileAndRunVm for a program of multiple files.</summary>
     public static string CompileAndRunVm(string[] csharpSources, string csharpExpr, bool dotnet = true) =>
         VmCorpus.Run(csharpSources, csharpExpr, dotnet);
 
-    /// <summary>本文が mainBody の entry (`TcsEntry.Main`) を足して tcs VM で走らせる。本文が `Console.WriteLine` で結果を書く。</summary>
+    /// <summary>Adds an entry (`TcsEntry.Main`) whose body is mainBody and runs it on the tcs VM. The body writes the result with `Console.WriteLine`.</summary>
     public static string CompileAndRunVmMain(string csharpSource, string mainBody, bool dotnet = true) =>
         VmCorpus.RunMain(csharpSource, mainBody, dotnet);
 
-    /// <summary>program 全体を tcs VM で走らせた stdout。entryClass は static Main を持つ class (null なら top-level 文)。
-    /// TCS_DIFFERENTIAL=1 なら実 .NET の stdout とも一致を要求する。</summary>
+    /// <summary>stdout of running the whole program on the tcs VM. entryClass is the class with static Main (null for top-level statements).
+    /// If TCS_DIFFERENTIAL=1, also requires a match with the stdout of real .NET.</summary>
     public static string CompileAndRunVmProgram(string[] sources, string? entryClass = null, bool dotnet = true) =>
         VmCorpus.RunWhole(sources, entryClass, dotnet);
 
-    /// <summary>top-level 文の program: 最後の top-level 文の後で `Console.WriteLine(csharpExpr)` を走らせる (式は top-level の local を読める)。</summary>
+    /// <summary>Top-level statement program: runs `Console.WriteLine(csharpExpr)` after the last top-level statement (the expression can read top-level locals).</summary>
     public static string CompileAndRunVmTopLevel(string csharpSource, string csharpExpr, bool dotnet = true) =>
         VmCorpus.RunTopLevel(csharpSource, csharpExpr, dotnet);
 }

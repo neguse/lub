@@ -1,20 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- lub の C# entry 兼 IDE 用プロジェクト。
-       lub はこのファイルを MSBuild としては評価せず、basename (= entry class)
-       と同ディレクトリ以下の *.cs だけを読む: lub samples/02_vertex_color/VertexColor02.csproj
-       dotnet 側 (Rider / VS Code) はこの csproj で型チェック・補完・TCS 診断が効く。 -->
+  <!-- lub C# entry and IDE project.
+       lub does not evaluate this file as MSBuild, and reads only the basename (= entry class)
+       and the *.cs files in the same directory and below: lub samples/02_vertex_color/VertexColor02.csproj
+       On the dotnet side (Rider / VS Code), this csproj enables type checking, completion, and TCS diagnostics. -->
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
     <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <OutputType>Library</OutputType>
-    <!-- .lub は lub の生成物の置き場。compile 対象から外す -->
+    <!-- .lub is where lub puts its generated files. Excluded from compilation -->
     <DefaultItemExcludes>$(DefaultItemExcludes);.lub/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="../../cs-lib/lub_stub.cs" Link="lub_stub.cs" />
-    <!-- cs-lib 実装ソース (lubx/*) は全サンプルの compile 入力 (lub CLI と同じ規約) -->
+    <!-- The cs-lib implementation sources (lubx/*) are compile inputs of all samples (same convention as the lub CLI) -->
     <Compile Include="../../cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../../cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
     <ProjectReference Include="$(TcsRoot)/TinySystem/TinySystem.csproj" />

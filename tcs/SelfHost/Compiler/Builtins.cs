@@ -2,8 +2,8 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// BCL と TinySystem の member。Builtin の id は IlBuild が IL の呼び出しに写す。
-// 型の parameter は受け手の型引数 (TypeParam の Index)、method の型引数は IsMethodParam の TypeParam で書く。
+// Members of the BCL and TinySystem. IlBuild maps Builtin ids to IL calls.
+// Type parameters are written as the receiver's type arguments (TypeParam Index), and method type arguments as TypeParam with IsMethodParam.
 public static class Builtins
 {
     private static Dictionary<string, List<Symbol>>? _cache;
@@ -125,7 +125,7 @@ public static class Builtins
             Add(d, owner, P(P(P(Method("Clamp", "Math.Clamp", R, true), "v", R), "min", R), "max", R));
             Add(d, owner, P(Method("Sign", "Math.Sign", I, true), "x", R));
         }
-        // System.Math と TinySystem.Math にある単項の関数 (Asin / Acos / Atan / Log10 / Truncate は無い。TCS1002)
+        // Unary functions in System.Math and TinySystem.Math (Asin / Acos / Atan / Log10 / Truncate are missing; TCS1002)
         var unary = "Floor Ceiling Sqrt Sin Cos Tan Exp Log Round".Split(' ');
         foreach (var name in unary) Add(d, owner, P(Method(name, "Math." + name, R, true), "x", R));
         Add(d, owner, P(P(Method("Atan2", "Math.Atan2", R, true), "y", R), "x", R));
@@ -202,7 +202,7 @@ public static class Builtins
         Add(d, "KeyValuePair", Prop("Key", "KVP.Key", R(0), false));
         Add(d, "KeyValuePair", Prop("Value", "KVP.Value", R(1), false));
 
-        // 配列
+        // Arrays
         Add(d, "Array", Prop("Length", "Array.Length", I, false));
 
         // string
@@ -228,7 +228,7 @@ public static class Builtins
         Add(d, "string.static", P(P(Method("Join", "String.Join", S, true), "separator", S), "values", TypeSym.ArrayOf(S)));
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", TypeSym.ListOf(M(0))));
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", TypeSym.ArrayOf(M(0))));
-        // Dictionary の Keys / Values (.NET の Join(string, IEnumerable<T>)。IL は List に写した値を渡す)
+        // Dictionary Keys / Values (.NET Join(string, IEnumerable<T>); IL passes the value copied into a List)
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", Collection(TypeKind.KeyCollection, M(0), M(1))));
         Add(d, "string.static", P(P(Method("Join", "String.JoinAny", S, true), "separator", S), "values", Collection(TypeKind.ValueCollection, M(0), M(1))));
         var join3 = P(P(P(Method("Join", "String.JoinArgs", S, true), "separator", S), "a", S), "b", S);
@@ -274,7 +274,7 @@ public static class Builtins
         Add(d, "Rune", Method("ToString", "Rune.ToString", S, false));
         Add(d, "Runes", P(Method("RuneCount", "Runes.RuneCountStatic", I, true), "s", S));
         Add(d, "Runes", P(P(P(Method("RuneSubstring", "Runes.RuneSubstringStatic", S, true), "s", S), "start", I), "count", I));
-        // Random (System.Random と TinySystem.Random。VM と C は runtime の Random)
+        // Random (System.Random and TinySystem.Random; the VM and C use the runtime Random)
         var RT = TypeSym.RandomType;
         Add(d, "Random", Method("Next", "Random.Next", I, false));
         Add(d, "Random", P(Method("Next", "Random.Next", I, false), "max", I));
@@ -285,12 +285,12 @@ public static class Builtins
         Add(d, "Random.static", Prop("Shared", "Random.Shared", RT, true));
         Add(d, "Random.static", P(Method("Seed", "Random.Seed", V, true), "seed", I));
 
-        // System.Math は C# と同じく double の関数 (Min / Max / Abs / Clamp / Sign は int / float / double の overload)。
-        // TinySystem.Math (facade) と MathF は float の signature
+        // System.Math has double functions, as in C# (Min / Max / Abs / Clamp / Sign have int / float / double overloads).
+        // TinySystem.Math (facade) and MathF have float signatures
         AddMath(d, "Math", true);
         AddMath(d, "TinySystem.Math", false);
 
-        // TinySystem.List (List<T> の操作の static な facade)
+        // TinySystem.List (static facade for List<T> operations)
         Add(d, "TinySystem.List", P(Method("Sort", "List.SortStatic", V, true), "list", TypeSym.ListOf(M(0))));
         Add(d, "TinySystem.List", P(P(Method("Add", "List.AddStatic", V, true), "list", TypeSym.ListOf(M(0))), "item", M(0)));
         Add(d, "TinySystem.List", P(Method("Count", "List.CountStatic", I, true), "list", TypeSym.ListOf(M(0))));
@@ -298,7 +298,7 @@ public static class Builtins
         Add(d, "TinySystem.List", P(P(Method("IndexOf", "List.IndexOfStatic", I, true), "list", TypeSym.ListOf(M(0))), "item", M(0)));
         Add(d, "TinySystem.List", P(P(Method("Remove", "List.RemoveStatic", B, true), "list", TypeSym.ListOf(M(0))), "item", M(0)));
 
-        // TinySystem.String (string の操作の static な facade。TinySystem/RuntimeFacades.cs)
+        // TinySystem.String (static facade for string operations; TinySystem/RuntimeFacades.cs)
         var TS = "TinySystem.String";
         Add(d, TS, P(P(Method("Contains", "TinySystem.String.Contains", B, true), "str", S), "substr", S));
         Add(d, TS, P(Method("IsNullOrEmpty", "TinySystem.String.IsNullOrEmpty", B, true), "str", S));
@@ -313,7 +313,7 @@ public static class Builtins
         Add(d, TS, P(Method("Trim", "TinySystem.String.Trim", S, true), "str", S));
         Add(d, TS, P(P(Method("Split", "TinySystem.String.Split", TypeSym.ListOf(S), true), "str", S), "sep", S));
 
-        // TinySystem.Dict (Dictionary の操作の static な facade)
+        // TinySystem.Dict (static facade for Dictionary operations)
         var TD = "TinySystem.Dict";
         var DT = TypeSym.DictOf(M(0), M(1));
         Add(d, TD, P(P(P(Method("Add", "TinySystem.Dict.Add", V, true), "dict", DT), "key", M(0)), "value", M(1)));
@@ -348,7 +348,7 @@ public static class Builtins
         return d;
     }
 
-    // 受け手の型の種類から表の key を決める
+    // Determine the table key from the kind of the receiver's type
     public static string? OwnerKey(TypeSym t, bool isStatic)
     {
         switch (t.Kind)
@@ -372,7 +372,7 @@ public static class Builtins
             case TypeKind.Utf8Bytes: return "Utf8Bytes";
             case TypeKind.Nullable: return "Nullable";
             case TypeKind.Rune: return "Rune";
-            // TinySystem の facade (TinySystem.String / List / Dict / Math) は自分の表
+            // TinySystem facades (TinySystem.String / List / Dict / Math) have their own tables
             case TypeKind.StaticRef: return t.Name;
             case TypeKind.Random: return isStatic ? "Random.static" : "Random";
             case TypeKind.TypeParam: return isStatic ? null : "TypeParam";
@@ -381,7 +381,7 @@ public static class Builtins
         return null;
     }
 
-    // 組み込みの表の owner の key に当たる BCL の型の metadata 名 (TinySystem の型と、BCL に無いものは null)
+    // Metadata name of the BCL type corresponding to a built-in table's owner key (null for TinySystem types and anything not in the BCL)
     public static string? BclKey(string? owner)
     {
         switch (owner)
@@ -413,7 +413,7 @@ public static class Builtins
         return null;
     }
 
-    // BCL の型 key の name を宣言した型の表示 (member の一覧を持たない型は型の表示、無ければ null)
+    // Display name of the type that declares name for BCL type key (for types without a member list, the type's display name; null if none)
     public static string? BclMemberOwner(string key, string name)
     {
         string? owner = BclCatalog.MemberOwner(key, name);
@@ -422,8 +422,8 @@ public static class Builtins
         return null;
     }
 
-    // BCL の型 (metadata 名) の member がサブセットにあるか (エディタの補完が候補を絞るのに使う)。
-    // 組み込みの表を持つ型は表に名前があるか、表を持たない BCL の型 (BclCatalog にある) は無い、BCL の外の型はあるとする
+    // Whether a member of a BCL type (metadata name) is in the subset (used by editor completion to filter candidates).
+    // For types with a built-in table, whether the name is in the table; BCL types without a table (those in BclCatalog) have none; types outside the BCL are assumed to have it
     public static bool IsSupportedBclMember(string metadataName, string member, bool isStatic)
     {
         var owners = new List<string>();
@@ -468,7 +468,7 @@ public static class Builtins
         return null;
     }
 
-    // 名前だけで参照する組み込みの static な型 (Math、Console など)
+    // Built-in static types referenced by name alone (Math, Console, etc.)
     public static TypeSym? StaticType(string name)
     {
         switch (name)

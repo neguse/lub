@@ -37,8 +37,8 @@ static TcsString *tcs_format_arg_string(const TcsFormatArg *arg) {
   }
 }
 
-/* IL の string.format: flags [-+ #0]、幅・精度は 2 桁まで。
-   %d は整数、%f/%e/%g は double 昇格、%s は文字列化、%c は byte */
+/* IL string.format: flags [-+ #0], width/precision up to 2 digits.
+   %d is an integer, %f/%e/%g promote to double, %s stringifies, %c is a byte */
 static TcsString *tcs_string_format(TcsString *format, size_t argc,
                                     const TcsFormatArg *argv) {
   size_t capacity = 64;
@@ -88,7 +88,8 @@ static TcsString *tcs_string_format(TcsString *format, size_t argc,
       tcs_fault("bad argument to 'format' (no value)");
     arg = &argv[next++];
     {
-      /* 変換 1 つは runtime/fmt/printf.c (VM と同じ C) */
+      /* Each conversion is done by runtime/fmt/printf.c (the same C as the VM)
+       */
       TcsString *text = c == 's' ? tcs_format_arg_string(arg) : NULL;
       size_t slen = text ? text->length : 0;
       int kind = c == 's'                   ? TCS_PRINTF_STR
@@ -115,10 +116,11 @@ static TcsString *tcs_string_format(TcsString *format, size_t argc,
   return result;
 }
 
-/* ---- Math (TinySystem.Math。tcs VM と同じ意味) ---- */
+/* ---- Math (TinySystem.Math; same semantics as the tcs VM) ---- */
 static int32_t tcs_trunc_f32(float value) {
-  /* i32 の範囲は [-2^31, 2^31)。-2147483649.0f は f32 で -2^31 に丸まる
-       ので、下限は >= で比べる (NaN はどちらの比較も偽で fault) */
+  /* The i32 range is [-2^31, 2^31). -2147483649.0f rounds to -2^31 in f32,
+       so the lower bound is compared with >= (NaN is false in both comparisons
+     and faults) */
   if (!(value >= -2147483648.0f && value < 2147483648.0f))
     tcs_fault("float-to-int");
   return (int32_t)value;
@@ -127,7 +129,8 @@ static int32_t tcs_trunc_f32(float value) {
 static float tcs_math_log(float x, float base, int has_base) {
   if (!has_base)
     return tcs_logf(x);
-  /* MathF.Log(x, base) の特殊値 (logf(x) / logf(base) では出ない) */
+  /* Special values of MathF.Log(x, base) (not produced by logf(x) / logf(base))
+   */
   if (base == 1.0f || (x != 1.0f && (base == 0.0f || base == INFINITY)))
     return NAN;
   if (base == 2.0f)
@@ -137,19 +140,19 @@ static float tcs_math_log(float x, float base, int has_base) {
   return tcs_logf(x) / tcs_logf(base);
 }
 
-/* 指数 2 は乗算 (tcs VM と同じ) */
+/* Exponent 2 is a multiplication (same as the tcs VM) */
 static float tcs_math_pow(float x, float y) {
   return y == 2.0f ? x * x : tcs_powf(x, y);
 }
 
-/* float.Equals (EqualityComparer<float>.Default): == に加えて NaN 同士も
-   等しい */
+/* float.Equals (EqualityComparer<float>.Default): in addition to ==, NaNs are
+   also equal to each other */
 static bool tcs_float_equals(float a, float b) {
   return a == b || (a != a && b != b);
 }
 
-/* MathF.Min / Max (IEEE 754:2019 minimum / maximum): NaN を伝播し、
-   -0 を +0 より小さいとみなす */
+/* MathF.Min / Max (IEEE 754:2019 minimum / maximum): propagate NaN and
+   treat -0 as less than +0 */
 static float tcs_math_min(float a, float b) {
   if (a != b)
     return a != a || a < b ? a : b;
@@ -162,10 +165,12 @@ static float tcs_math_max(float a, float b) {
   return signbit(b) ? a : b;
 }
 
-/* C# Math.Round (banker's)。0 に丸めた結果は x の符号を持つ。
-   digits 付きは .NET の MathF.Round(float, int) と同じく、double に広げて 10^digits を掛けて丸め、10^digits で割って float に戻す。
-   digits に上限は無く、負なら fault。
-   46 以上の digits は、丸めの幅が float の最小の間隔 2^-149 の半分より狭く、どの float も変えない */
+/* C# Math.Round (banker's). A result rounded to 0 keeps the sign of x.
+   With digits, as in .NET's MathF.Round(float, int), it widens to double,
+   multiplies by 10^digits, rounds, divides by 10^digits, and converts back to
+   float. digits has no upper limit; a negative value faults. With 46 or more
+   digits, the rounding step is narrower than half of the smallest float spacing
+   2^-149, so no float changes */
 static float tcs_math_round(float x, int32_t digits, int has_digits) {
   double scale = 1.0;
   double scaled, fl, diff, rounded;
@@ -192,17 +197,18 @@ static float tcs_math_round(float x, int32_t digits, int has_digits) {
 }
 
 /* ---- List sort ----
-   Sort は .NET の List<T>.Sort と同じ introsort (dotnet/runtime の ArraySortHelper<T>) で、同値の要素の並びと比較の呼び出し列まで同じ。
-   OrderBy は安定 merge sort。
-   比較は生成側の lifted 関数 */
+   Sort is the same introsort as .NET's List<T>.Sort (ArraySortHelper<T> in
+   dotnet/runtime), down to the order of equal elements and the sequence of
+   comparison calls. OrderBy is a stable merge sort. The comparison is the
+   lifted function from the generated code */
 typedef int (*TcsCompare)(void *ctx, const void *left, const void *right);
 
 typedef struct TcsSort {
   TcsCompare compare;
   void *ctx;
   size_t es;
-  unsigned char *held; /* pivot、挿入中の要素、DownHeap の要素 */
-  unsigned char *tmp;  /* swap 用 */
+  unsigned char *held; /* pivot, element being inserted, DownHeap element */
+  unsigned char *tmp;  /* for swap */
 } TcsSort;
 
 static void tcs_sort_swap(TcsSort *s, unsigned char *keys, ptrdiff_t i,
@@ -260,8 +266,9 @@ static void tcs_sort_heap(TcsSort *s, unsigned char *keys, ptrdiff_t n) {
   }
 }
 
-/* 比較が不整合だと走査が区間の外に出る。
-   .NET はそこで例外 (IndexOutOfRangeException) を投げるので、同じ位置で fault にする */
+/* An inconsistent comparison makes the scan go outside the range.
+   .NET throws an exception there (IndexOutOfRangeException), so fault at the
+   same position */
 static ptrdiff_t tcs_sort_partition(TcsSort *s, unsigned char *keys,
                                     ptrdiff_t n) {
   size_t es = s->es;
@@ -321,7 +328,8 @@ static void tcs_sort_intro(TcsSort *s, unsigned char *keys, ptrdiff_t n,
   }
 }
 
-/* list[start..] を並べる (比較なしの float は NaN を先頭に寄せた残り) */
+/* Sorts list[start..] (for float without a comparer, the rest after moving NaNs
+ * to the front) */
 static void tcs_list_sort(TcsList *list, size_t start, TcsCompare compare,
                           void *ctx) {
   TcsSort s;
@@ -333,7 +341,8 @@ static void tcs_list_sort(TcsList *list, size_t start, TcsCompare compare,
   n = list->length - start;
   if (n < 2)
     return;
-  /* 作業領域は GC が trace できる List (比較 closure が確保しうる) */
+  /* The work area is a List the GC can trace (the comparison closure may
+   * allocate) */
   scratch = tcs_list_new(list->element_size, TCS_GC_HEADER(list)->layout);
   tcs_list_reserve(scratch, 2);
   scratch->length = 2;
@@ -348,8 +357,8 @@ static void tcs_list_sort(TcsList *list, size_t start, TcsCompare compare,
                  2 * (log2 + 1));
 }
 
-/* 比較なしの float の Sort の前処理 (.NET の SortUtils.MoveNansToFront)。
-   NaN の数を返す */
+/* Preprocessing for Sort of float without a comparer (.NET's
+   SortUtils.MoveNansToFront). Returns the number of NaNs */
 static size_t tcs_list_move_nans_to_front(TcsList *list) {
   float *values;
   size_t left = 0;
@@ -367,7 +376,7 @@ static size_t tcs_list_move_nans_to_front(TcsList *list) {
   return left;
 }
 
-/* copy constructor `new List<T>(source)`: 要素を値で写す */
+/* copy constructor `new List<T>(source)`: copies the elements by value */
 static TcsList *tcs_list_copy(TcsList *list) {
   TcsList *copy;
   tcs_nonnull(list);
@@ -438,7 +447,8 @@ static uint32_t tcs_hashset_hash(const TcsHashSet *set, int32_t key_i,
   return h;
 }
 
-/* slot の要素を (key_i, key_s) にする。要素は i32 か pointer */
+/* Sets the slot's element to (key_i, key_s). The element is an i32 or a pointer
+ */
 static void tcs_hashset_slot_key(const TcsHashSet *set, int32_t slot,
                                  int32_t *key_i, TcsString **key_s) {
   const void *at = (unsigned char *)set->items->data +
@@ -480,7 +490,7 @@ static void tcs_hashset_link(TcsHashSet *set, int32_t slot) {
   set->buckets[bucket] = slot + 1;
 }
 
-/* buckets を作り直す (nexts の free の鎖は残す) */
+/* Rebuild buckets (keeping the free chain in nexts) */
 static void tcs_hashset_rehash(TcsHashSet *set) {
   int32_t slot;
   memset(set->buckets, 0, set->bucket_count * sizeof(*set->buckets));
@@ -522,7 +532,7 @@ static void tcs_hashset_grow(TcsHashSet *set) {
   tcs_hashset_rehash(set);
 }
 
-/* 消した slot の穴を詰める (並びは保つ) */
+/* Compact the holes of removed slots (keeping the order) */
 static void tcs_hashset_compact(TcsHashSet *set) {
   size_t size = set->items->element_size;
   unsigned char *data = set->items->data;
@@ -548,7 +558,8 @@ static bool tcs_hashset_add(TcsHashSet *set, int32_t key_i, TcsString *key_s,
   int32_t slot;
   if (tcs_hashset_find(set, key_i, key_s) >= 0)
     return false;
-  /* 挿入順 (support-matrix §18): 消した slot は使わず末尾に足す。埋まったら穴を詰めてから広げる */
+  /* Insertion order (support-matrix §18): removed slots are not reused; append
+   * at the end. When full, compact the holes before growing */
   if (set->items->length == set->bucket_count && set->free_count > 0)
     tcs_hashset_compact(set);
   if (set->items->length == set->bucket_count)
@@ -604,7 +615,7 @@ static int32_t tcs_hashset_count(TcsHashSet *set) {
   return (int32_t)set->items->length - set->free_count;
 }
 
-/* foreach が反復する今の要素の写し (slot の順) */
+/* Copy of the current elements that foreach iterates (in slot order) */
 static TcsList *tcs_hashset_to_list(TcsHashSet *set) {
   TcsList *list;
   size_t slot;
@@ -667,10 +678,11 @@ static void tcs_dict_clear(TcsDict *dict) {
   dict->count = 0;
 }
 
-/* ---- Random: xoshiro256** (il-spec §13)。整数は 32 bit の演算で範囲に写し、
-   float は上位 24 bit から作る。seed 固定時は tcs VM と同じ列になる ---- */
-/* TinySystem.Random の instance。GC object (pointer slot なし) で、
-   Shared は static 1 個 (heap 外なので GC は触らない) */
+/* ---- Random: xoshiro256** (il-spec §13). Integers are mapped to the range
+   with 32-bit arithmetic, floats are made from the upper 24 bits. With a fixed
+   seed the sequence matches the tcs VM ---- */
+/* Instance of TinySystem.Random. A GC object (no pointer slots);
+   Shared is a single static (outside the heap, so the GC does not touch it) */
 typedef struct TcsRandom {
   uint64_t s[4];
 } TcsRandom;
@@ -697,7 +709,7 @@ static uint64_t tcs_rand_next(TcsRandom *r) {
   return res;
 }
 
-/* seed (n1, n2): state = { n1, 0xff, n2, 0 }、先頭 16 値を捨てる */
+/* seed (n1, n2): state = { n1, 0xff, n2, 0 }, discard the first 16 values */
 static void tcs_rand_seed(TcsRandom *r, uint32_t n1, uint32_t n2) {
   int i;
   r->s[0] = n1;
@@ -708,14 +720,15 @@ static void tcs_rand_seed(TcsRandom *r, uint32_t n1, uint32_t n2) {
     tcs_rand_next(r);
 }
 
-/* seed 未指定: 起動ごと・instance ごとに異なる (時刻由来で予測できる。il-spec §13) */
+/* No seed: differs per startup and per instance (derived from the time and
+ * predictable; il-spec §13) */
 static uint32_t tcs_rand_auto_seed(void) {
   tcs_rand_auto_counter++;
   return (uint32_t)time(NULL) ^ (uint32_t)(uintptr_t)&tcs_rand_shared_state ^
          (tcs_rand_auto_counter * UINT32_C(0x9E3779B1));
 }
 
-/* Random.Shared (初回参照時に seed する) */
+/* Random.Shared (seeded on first reference) */
 static TcsRandom *tcs_random_shared(void) {
   if (!tcs_rand_shared_seeded) {
     tcs_rand_seed(&tcs_rand_shared_state, tcs_rand_auto_seed(), 0);
@@ -734,7 +747,7 @@ static TcsRandom *tcs_random_new_auto(void) {
   return tcs_random_new(tcs_rand_auto_seed());
 }
 
-/* 上位 24 bit から [0, 1) の float */
+/* float in [0, 1) from the upper 24 bits */
 static float tcs_rand_float(TcsRandom *r) {
   uint64_t x;
   int64_t sx;
@@ -757,7 +770,7 @@ static uint32_t tcs_rand_project(TcsRandom *r, uint32_t ran, uint32_t n) {
   return ran;
 }
 
-/* [low, up] の整数 (32bit 演算。空の範囲は fault) */
+/* Integer in [low, up] (32-bit arithmetic; an empty range faults) */
 static int32_t tcs_rand_range(TcsRandom *r, int32_t low, int32_t up) {
   uint64_t rv;
   uint32_t p;
@@ -768,12 +781,14 @@ static int32_t tcs_rand_range(TcsRandom *r, int32_t low, int32_t up) {
   return (int32_t)(p + (uint32_t)low);
 }
 
-/* Random.Next(min, max): 上限は排他。空の範囲 (max == min) は .NET と同じく min */
+/* Random.Next(min, max): the upper bound is exclusive. An empty range (max ==
+ * min) gives min, as in .NET */
 static int32_t tcs_rand_below(TcsRandom *r, int32_t min, int32_t max) {
   return tcs_rand_range(r, min, max == min ? min : max - 1);
 }
 
-/* ---- char (整数 code unit、ASCII 判定 / 変換。tcs VM の Char と同じ表) ---- */
+/* ---- char (integer code unit, ASCII tests / conversion; same table as Char in
+ * the tcs VM) ---- */
 static TcsString *tcs_string_from_byte(int32_t code) {
   unsigned char byte = (unsigned char)code;
   if (code < 0 || code > 255)
@@ -788,7 +803,8 @@ static int32_t tcs_char_cast(int32_t value) {
   return value;
 }
 
-/* char.ConvertFromUtf32 (tcs VM と同じ。範囲外は同じ文言で fault) */
+/* char.ConvertFromUtf32 (same as the tcs VM; out of range faults with the same
+ * message) */
 static TcsString *tcs_string_from_codepoint(int32_t code) {
   unsigned char bytes[4];
   size_t length;
@@ -837,7 +853,7 @@ static int32_t tcs_char_to_lower(int32_t c) {
 
 /* ---- Console.Write / Environment ---- */
 static void tcs_write_string(TcsString *value) {
-  /* null の string は何も書かない */
+  /* A null string writes nothing */
   if (value != NULL && value->length != 0)
     fwrite(value->data, 1, value->length, stdout);
 }

@@ -6,8 +6,8 @@ import (
 	"strconv"
 )
 
-// ゲームの典型: sprite を 1 つずつ確保して []*Sprite に持ち、毎フレーム動かして画面端で跳ね返す
-// 積は float32(...) で包み FMA への融合を止める
+// A typical game workload: allocates sprites one at a time, holds them in []*Sprite, moves them every frame, and bounces them off the screen edges
+// Products are wrapped in float32(...) to prevent fusion into FMA
 type Sprite struct {
 	X, Y, Vx, Vy float32
 	Frame        int32
@@ -95,7 +95,7 @@ func run(frames int32, print bool) int32 {
 
 func main() {
 	n := envInt("BENCH_N", 100)
-	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	// Repeats BENCH_REPS times. Each repetition's input depends on the previous result so the compiler cannot skip repetitions (the result is never -1)
 	reps := envInt("BENCH_REPS", 1)
 	var prev int32
 	for r := int32(0); r < reps; r++ {

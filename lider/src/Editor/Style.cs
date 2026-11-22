@@ -1,6 +1,6 @@
-// エディタの色、余白、font の id。
-// 色は Lite XL の既定の色 (colors/default.lua) に、lider の色 (地は夜の藍、字に暖色を使わない) を重ねたもの。
-// 色は RGBA を 32 bit に詰めた数 (R が上の 8 bit)。
+// Editor colors, padding, and font ids.
+// Colors are Lite XL's default colors (colors/default.lua) with lider's colors layered on top (a night indigo background, no warm colors for text).
+// Colors are numbers with RGBA packed into 32 bits (R in the top 8 bits).
 using System.Collections.Generic;
 using TinySystem.Text;
 
@@ -13,12 +13,12 @@ public static class Style
     public const float DividerSize = 1;
     public const float ScrollbarSize = 4;
     public const float CaretWidth = 2;
-    // tab と字下げの桁
+    // Columns for tabs and indentation
     public const int TabSize = 4;
-    // wheel の 1 notch で動く px
+    // px moved per wheel notch
     public const float WheelScroll = 50;
 
-    // font の id。lider は自分の等幅の font で描くので、名前は見分けにだけ使う
+    // Font ids. lider draws with its own monospace font, so the names are used only to tell them apart
     public const int Font = 1;
     public const int BigFont = 2;
     public const int IconFont = 3;
@@ -36,7 +36,7 @@ public static class Style
         return "";
     }
 
-    // 面には下地を塗らない (奥の層と実行した行の光が透けて見える)
+    // No background is painted on the surface (the back layers and the glow of executed lines show through)
     public static readonly int Background = Rgba(0, 0, 0, 0);
     public static readonly int Background3 = Hex("#252529");
     public static readonly int Text = Hex("#a9b1d0");
@@ -47,14 +47,14 @@ public static class Style
     public static readonly int Selection = Hex("#2f3f6b");
     public static readonly int LineNumber = Hex("#3f4660");
     public static readonly int LineNumber2 = Hex("#8a93b2");
-    // 今の行の帯は薄くする
+    // The current line band is faint
     public static readonly int LineHighlight = Rgba(255, 255, 255, 12);
     public static readonly int Scrollbar = Hex("#3a4260");
-    // 確認の帯は赤く塗らず、地の色に乗せる
+    // The confirmation strip is not painted red; it sits on the background color
     public static readonly int Nagbar = Hex("#1a2142");
     public static readonly int NagbarText = Hex("#e8ecf6");
 
-    // token の種類 (TokenType) ごとの色。琥珀は実行と値に取っておくので、字には暖色を使わない
+    // Colors per token kind (TokenType). Amber is reserved for execution and values, so text uses no warm colors
     static List<int>? syntax;
 
     public static int Syntax(int type)
@@ -81,7 +81,7 @@ public static class Style
         return (r << 24) | (g << 16) | (b << 8) | a;
     }
 
-    // "#rrggbb" か "#rrggbbaa"
+    // "#rrggbb" or "#rrggbbaa"
     public static int Hex(string s)
     {
         var u = new Utf8Bytes(s);

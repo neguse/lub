@@ -37,7 +37,7 @@ public class TernaryTests
     [Fact]
     public void Ternary_FalsyTrueValue()
     {
-        // true 側が 0 でも true 側を選ぶ
+        // The true side is chosen even when it is 0
         var result = TestHelper.CompileAndRunVm("""
             public class T
             {
@@ -51,7 +51,7 @@ public class TernaryTests
         Assert.Equal("0", result);
     }
 
-    // ---- 式位置の条件式 (#25)。値意味論は CompileAndRunVm (dotnet differential 込み) ----
+    // ---- Conditional expressions in expression position (#25). Value semantics are checked by CompileAndRunVm (including the dotnet differential) ----
 
     private static string Run(string cs, string expr) =>
         TestHelper.CompileAndRunVm(cs, expr);
@@ -135,8 +135,8 @@ public class TernaryTests
     [Fact]
     public void Ternary_EvaluationOrder_LeftOperandBeforeCondition()
     {
-        // C# は左 operand を条件より先に評価する。条件や分岐が左 operand を
-        // 書き換えても、読み取り済みの値が使われる
+        // C# evaluates the left operand before the condition. Even if the condition or a branch
+        // rewrites the left operand, the already-read value is used
         var cs = """
             public class T
             {
@@ -396,7 +396,7 @@ public class TernaryTests
     [Fact]
     public void Ternary_ManyInOneBody_TempsStayScoped()
     {
-        // 条件式の temp を多く使う本文も動く
+        // A body that uses many conditional expression temps also works
         var body = string.Join("\n", Enumerable.Range(0, 230)
             .Select(i => $"        sum += (i % 2 == 0 ? {i} : 1) * 2;"));
         var cs = $$"""
@@ -416,7 +416,7 @@ public class TernaryTests
     [Fact]
     public void Coalesce_CallDefault_LazyAndNoClosure()
     {
-        // `??` の右辺が呼び出しを含むときも IIFE ではなく if 文で、nil のときだけ評価する
+        // When the right-hand side of `??` contains a call, it is still an if statement rather than an IIFE, and is evaluated only when nil
         var cs = """
             public class T
             {
@@ -439,7 +439,7 @@ public class TernaryTests
     [Fact]
     public void Ternary_EvaluationOrder_LeftOperandBeforeLaterSideEffect()
     {
-        // 三項より左の兄弟 operand は、その間にある呼び出しの副作用より先に読む
+        // Sibling operands to the left of a ternary are read before the side effects of calls between them
         var cs = """
             using System;
             public class B { public int V; }
@@ -493,7 +493,7 @@ public class TernaryTests
     [Fact]
     public void Ternary_AssignToSelfFieldChain_ReceiverFixedBeforeCondition()
     {
-        // self.Current.V の受け手 self.Current は条件 (Swap()) より先に評価する
+        // The receiver self.Current of self.Current.V is evaluated before the condition (Swap())
         var cs = """
             public class Box { public int V; }
             public class T
@@ -514,7 +514,7 @@ public class TernaryTests
     [Fact]
     public void Ternary_UserOperatorInCondition_LeftOperandReadFirst()
     {
-        // a + b はユーザー定義演算子 (metamethod) を呼ぶので、左の X を先に読む
+        // a + b calls a user-defined operator (metamethod), so the left X is read first
         var cs = """
             public class C
             {

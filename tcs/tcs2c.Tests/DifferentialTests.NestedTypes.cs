@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 入れ子の型は外側の型の名前を `_` でつないだ独立の型 (`Outer_Inner`) になる。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// A nested type becomes an independent type whose name joins the outer type's name with `_` (`Outer_Inner`).
+// The expected values are the stdout of running the same program on CoreCLR
 public class NestedTypesDifferentialTests
 {
     [CFact]

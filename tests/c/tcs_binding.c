@@ -47,7 +47,8 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
   *out = 42;
   return LUB_OK;
 }
-// 偽の Bindings: 最初の block は足りないふりをして、glue が block を大きくしてやり直すことを見る。
+// Fake Bindings: the first block pretends to be too small, to check that the
+// glue enlarges the block and retries.
 struct LubBindings {
   int32_t scale;
   int seen;
@@ -230,7 +231,8 @@ LubHandle lub_phys2d_find_body(LubContext *ctx, LubHandle world, LubStr key) {
   assert(world == 50 && key.len == 1);
   return 60;
 }
-// 値で来た点を写して返す (WorldPoint は (2x, y + 10)、LocalPoint はその逆)
+// Copies and returns the point passed by value (WorldPoint is (2x, y + 10),
+// LocalPoint is its inverse)
 LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body, LubVec2d p,
                                  LubVec2d *out) {
   (void)ctx;

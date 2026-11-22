@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// VM の hot reload (tvm_apply、doc/object-model.md §6) の個別の編集。v1 の Game.Setup が状態を作り、reload の後に v2 の Game.Report が
-/// 移した状態を書く (VmReloadTests の fuzz の scenario が覆わない、overload、struct の static、record struct、enum、namespace、入れ子の型など)。
+/// Individual edits for VM hot reload (tvm_apply, doc/object-model.md §6). v1's Game.Setup creates the state, and after the reload v2's Game.Report
+/// writes the migrated state (overloads, struct statics, record struct, enum, namespaces, nested types etc., which the VmReloadTests fuzz scenarios do not cover).
 /// </summary>
 public class VmReloadCaseTests
 {
@@ -25,7 +25,7 @@ public class VmReloadCaseTests
         return stdout;
     }
 
-    // method の改名: 呼び出し側も同じ build で作り直す
+    // Renaming a method: the callers are also rebuilt in the same build
     [Fact]
     public void MethodRename_CallersUseTheNewMethod()
     {
@@ -48,8 +48,8 @@ public class VmReloadCaseTests
         Assert.Equal("6 2", Reload(v1, v2));
     }
 
-    // static の initializer が自分の class の constructor を呼ぶ。残した static は identity と値を保ち、
-    // 足した static は v2 の initializer で作る (その constructor は残した static を書く)
+    // A static initializer calls the constructor of its own class. Retained statics keep their identity and values, and
+    // added statics are created by v2's initializer (whose constructor writes to the retained statics)
     [Fact]
     public void StaticInitializedFromOwnConstructor_KeepsIdentity_AndAddedStaticRunsItsInitializer()
     {
@@ -82,7 +82,7 @@ public class VmReloadCaseTests
         Assert.Equal("True 9 2 101", Reload(v1, v2));
     }
 
-    // 引数の型の違う constructor も method と同じく差し替える (消した constructor は消える)
+    // Constructors with different argument types are replaced the same way as methods (removed constructors disappear)
     [Fact]
     public void OverloadedConstructors_AreReplaced()
     {
@@ -108,7 +108,7 @@ public class VmReloadCaseTests
         Assert.Equal("10 20 7", Reload(v1, v2));
     }
 
-    // struct の型の static も class と同じく生きている値を残し、足した static は v2 の初期値
+    // Statics of struct type also keep their live values, as for classes, and added statics get v2's initial values
     [Fact]
     public void StructStatics_AreRetainedAndAdded()
     {
@@ -136,8 +136,8 @@ public class VmReloadCaseTests
         Assert.Equal("2 7 9 12", Reload(v1, v2));
     }
 
-    // struct の static の struct の値も、layout が変われば組み直す (持ち主が struct のときも)。
-    // Keep は Vec2 を heap の object にも持たせる
+    // Struct values in struct statics are also rebuilt when the layout changes (also when the owner is a struct).
+    // Keep also makes heap objects hold a Vec2
     [Fact]
     public void StructStaticOfStructType_IsRelaidOut()
     {
@@ -156,7 +156,7 @@ public class VmReloadCaseTests
         Assert.Equal("3 0 5 0 1", Reload(v1, v2));
     }
 
-    // heap の object が struct を持たなくても、static の struct の値は field の名前で組み直す (#451)
+    // Even if heap objects do not hold structs, struct values in statics are rebuilt by field name (#451)
     [Fact]
     public void StructStaticOfStructType_IsRelaidOutWithoutHeapHolder()
     {
@@ -177,7 +177,7 @@ public class VmReloadCaseTests
         Assert.Equal("3 4 0", Reload(v1, added));
     }
 
-    // record struct の positional parameter (field) も組み直す
+    // Positional parameters (fields) of record structs are also rebuilt
     [Fact]
     public void RecordStructField_IsRelaidOut()
     {
@@ -194,7 +194,7 @@ public class VmReloadCaseTests
         Assert.Equal("3 0", Reload(v1, v2));
     }
 
-    // 足した enum と struct の field は既定値
+    // Added enum and struct fields get default values
     [Fact]
     public void AddedEnumAndStructFields_StartAtDefault()
     {
@@ -213,7 +213,7 @@ public class VmReloadCaseTests
         Assert.Equal("10 0 Idle 0 0", Reload(v1, v2));
     }
 
-    // 同じ operator の overload の本文をどちらも差し替える
+    // Replaces the bodies of both overloads of the same operator
     [Fact]
     public void OverloadedOperatorBodies_AreSwapped()
     {
@@ -245,7 +245,7 @@ public class VmReloadCaseTests
         Assert.Equal("30\n531", Reload(v1, v2));
     }
 
-    // 初期化子の無い static の追加は型の既定値。初期化子の無い既存の static は (initializer が書いた値も含めて) 生きている値のまま
+    // An added static without an initializer gets the type's default value. Existing statics without initializers keep their live values (including values written by an initializer)
     [Fact]
     public void AddedStaticWithoutInitializer_GetsDefault()
     {
@@ -272,7 +272,7 @@ public class VmReloadCaseTests
         Assert.Equal("7\n1 False 21", Reload(v1, v2));
     }
 
-    // enum の member の追加は live (保存した値はそのまま)
+    // Adding an enum member is applied live (saved values stay as they are)
     [Fact]
     public void EnumMemberAdded_IsLive()
     {
@@ -283,7 +283,7 @@ public class VmReloadCaseTests
         Assert.Equal("2 B", Reload(v1, v2));
     }
 
-    // 生きている closure の関数の型 (返す struct の layout) が変わると、live に当てずに restart を求める
+    // If the function type of a live closure (the layout of the struct it returns) changes, a restart is requested instead of applying it live
     [Fact]
     public void LiveClosureReturningARelaidOutStruct_RequiresRestart()
     {
@@ -310,7 +310,7 @@ public class VmReloadCaseTests
         Assert.Contains("live closure runs Maker.", stderr);
     }
 
-    // 入れ子の型の method の本文の編集は、その method を持つ型の method だけを替える
+    // Editing the body of a method of a nested type replaces only the methods of the type that has that method
     private const string Nested = """
         public class Outer
         {
@@ -345,7 +345,7 @@ public class VmReloadCaseTests
         Assert.Equal(expected, Reload(v1, v2));
     }
 
-    // 同じ名前の型が別の namespace にあっても、それぞれの instance を移す
+    // Even if types with the same name exist in different namespaces, the instances of each are migrated
     [Fact]
     public void SameNamedTypesInNamespaces_MigrateIndependently()
     {
@@ -378,7 +378,7 @@ public class VmReloadCaseTests
         Assert.Equal("4 0", Reload(v1, v2));
     }
 
-    // namespace の外に同じ simple 名の型があっても、namespace の中の型の本文だけを替える
+    // Even if a type with the same simple name exists outside the namespace, only the bodies of the type inside the namespace are replaced
     [Fact]
     public void BodyEditInQualifiedType_ReplacesThatTypeOnly()
     {
@@ -391,7 +391,7 @@ public class VmReloadCaseTests
         Assert.Equal("1 2\n1 3", Reload(source + Game(report, ""), source.Replace("return 2;", "return 3;") + Game("", report)));
     }
 
-    // 呼ばれた側の本文が struct の parameter を書き始めても、呼んだ側の値は変わらない
+    // Even if the callee's body starts writing to a struct parameter, the caller's value does not change
     [Fact]
     public void CalleeStartsWritingStructParameter_CallerValueIsKept()
     {
@@ -420,12 +420,12 @@ public class VmReloadCaseTests
         Assert.Equal("33\n93", Reload(v1, v2));
     }
 
-    // entry の型の static な OnReload は、最初の読み込みでは呼ばず、reload で 1 回呼ぶ
+    // The static OnReload of the entry type is not called on the first load, and is called once on reload
     [Fact]
     public void EntryStaticOnReload_RunsOncePerReload()
     {
         if (!Backends.VmEnabled) return;
-        // entry (Main) を持つ module では、entry の型の static な OnReload を呼ぶ
+        // In a module that has an entry (Main), call the static OnReload of the entry type
         const string game = """
             public static class Game
             {
@@ -440,7 +440,7 @@ public class VmReloadCaseTests
         Assert.Equal("v2 1", Reload(game.Replace("BODY", "v1"), game.Replace("BODY", "v2")));
     }
 
-    // IL にできない本文 (sizeof) の編集は error で、最後に通った build を保つ (次の編集はその build からの差分)
+    // Editing a body that cannot become IL (sizeof) is an error, and the last successful build is kept (the next edit is a diff from that build)
     [Fact]
     public void Session_IlBuildError_KeepsTheLastGoodBuild()
     {

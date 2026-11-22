@@ -13,8 +13,8 @@
 //   };
 //
 // C API (include/lub/lub_api.h): lub_host_available / lub_host_send /
-// lub_host_poll。
-// C# 面は cs-lib/lub_stub.cs の Host から生成する。
+// lub_host_poll.
+// The C# surface is generated from Host in cs-lib/lub_stub.cs.
 //
 // Native builds have no hosting page: available() is false, send drops,
 // poll returns false.
@@ -114,7 +114,7 @@ LubStatus lub_host_poll(LubContext *ctx, LubStr *topic, LubStr *payload) {
   int payload_len = 0;
   unsigned char *buf = lub_host_poll_js(&topic_len, &payload_len);
   if (buf) {
-    // view の実体は frame の終わりに回収
+    // The view's backing data is reclaimed at the end of the frame
     app_frame_garbage_push(app, buf);
     if (topic) {
       topic->ptr = (const char *)buf;

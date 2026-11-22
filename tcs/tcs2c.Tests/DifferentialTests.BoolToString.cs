@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// bool の文字列化は .NET と同じ `True` / `False` (Console.WriteLine、連結、補間、ToString、
-// bool? (null は空文字列)、string.Join の要素)。期待値は同じ program を CoreCLR で実行した stdout
+// bool is converted to a string as `True` / `False`, same as .NET (Console.WriteLine, concatenation, interpolation, ToString,
+// bool? (null is the empty string), string.Join elements). The expected values are the stdout of running the same program on CoreCLR
 public class BoolToStringDifferentialTests
 {
     [CFact]
@@ -37,7 +37,7 @@ public class BoolToStringDifferentialTests
             """, output);
     }
 
-    // Console.Write (改行なし) は WriteLine と同じ文字列化で、改行を書かない
+    // Console.Write (no newline) uses the same string conversion as WriteLine and writes no newline
     [CFact]
     public void ConsoleWrite_MatchesDotnet()
     {

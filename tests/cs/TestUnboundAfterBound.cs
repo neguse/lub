@@ -1,8 +1,8 @@
-// 同じ pass で、texture と storage buffer を全部束縛した draw の後に、何も束縛しない draw を同じ画素に重ねる。
-// 束縛しなかった slot は backend の仮の resource で埋まり、後の draw は前の draw の resource を読まない。
-// 仮の resource の値は backend ごとに違う (TestUnboundBindings) ので、各 channel が前の draw の値でないことだけを見る。
-// shader は TestUnboundBindings と同じで、R = tex_a、G = tex_b (FS)、B = item (VS)。
-// 後の draw が描いたことは、clear の A = 0 が draw の A = 1 になったことで見る。
+// In the same pass, after a draw that binds all textures and storage buffers, a draw that binds nothing is layered over the same pixel.
+// Unbound slots are filled with placeholder resources of the backend, and the later draw does not read the resources of the earlier draw.
+// The values of the placeholder resources differ per backend (TestUnboundBindings), so it only checks that each channel is not the value of the earlier draw.
+// The shader is the same as in TestUnboundBindings: R = tex_a, G = tex_b (FS), B = item (VS).
+// That the later draw drew is checked by the A = 0 of the clear becoming the A = 1 of the draw.
 using System;
 using System.Collections.Generic;
 using Lub;

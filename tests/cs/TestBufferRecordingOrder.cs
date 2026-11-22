@@ -1,12 +1,12 @@
-// 1 フレームの中で同じ key の buffer を version を省いて違う内容で宣言し直し、それぞれの後に draw する。
-// draw は宣言を記録した順の内容を読むので、どの case も左半分は宣言し直す前の内容、右半分は後の内容で描かれ、左が赤、右が緑になる。
-// 書き込みが記録順を追い越す backend では左も後の内容で描かれる。
-// - storage: draw が読む STORAGE buffer を書き直す。
-// - index: INDEX buffer を書き直す。
-//   前の index は左の quad、後は右の quad を
-//   指す。
-// - compute: compute が赤を書いた buffer を、draw の後に CPU が緑で書き直す。
-// - resize: 大きさの違う内容で宣言し直し、draw が使った buffer を作り直す。
+// Within one frame, redeclares the buffer with the same key with different contents, omitting version, and draws after each declaration.
+// A draw reads the contents in the order the declarations were recorded, so in every case the left half is drawn with the contents before the redeclaration and the right half with the contents after it: the left is red and the right is green.
+// On a backend where writes overtake the recording order, the left is also drawn with the later contents.
+// - storage: rewrites the STORAGE buffer the draw reads.
+// - index: rewrites the INDEX buffer.
+//   The earlier index points to the left quad, and the later one
+//   to the right quad.
+// - compute: after the draw, the CPU rewrites with green the buffer that compute wrote red into.
+// - resize: redeclares with contents of a different size, recreating the buffer the draw used.
 using System;
 using System.Collections.Generic;
 using Lub;

@@ -1,11 +1,11 @@
-// 同じフレームで MainTex を clear → render target の pass → ReadTexture(rt) → MainTex に Load の pass、の後の capture。
-// 読み戻しの後も MainTex は同じ image のままで、capture はこのフレームの clear の色になる。
-// clear の色はフレームごとに変え、前のフレームの image が写ると色がずれる。
-// LUB_READBACK_CAPTURE_TEST_NO_LOAD=1 では最後の Load の pass を省き、読み戻しの後に MainTex の pass が無いフレームも capture できることを確かめる。
-// 読み戻しは遅延を保証するモードで、各フレームに 2 フレーム前の結果が届く。
+// Capture after the following in the same frame: clear MainTex → render target pass → ReadTexture(rt) → pass on MainTex with Load.
+// MainTex stays the same image after the readback, and the capture is the clear color of this frame.
+// The clear color changes per frame, so if the image of the previous frame is copied, the color is off.
+// With LUB_READBACK_CAPTURE_TEST_NO_LOAD=1 the final Load pass is omitted, checking that a frame with no MainTex pass after the readback can also be captured.
+// Readback is in the latency-guaranteeing mode, and each frame receives the result from 2 frames before.
 //
-// --capture <path> と同じ path を LUB_READBACK_CAPTURE_TEST_OUT に渡して走らせる。
-// capture の後に app が終わるので、OnQuit で capture の PNG を確かめる。
+// Run with the same path passed to --capture <path> and to LUB_READBACK_CAPTURE_TEST_OUT.
+// The app exits after the capture, so the captured PNG is checked in OnQuit.
 using System;
 using Lub;
 
@@ -109,7 +109,7 @@ public static class TestReadbackCapture
             Check.Fail("capture " + path + " not loaded: " + status + " " + perr);
             return;
         }
-        // 中央と四隅
+        // Center and four corners
         var px = new int[] { w / 2, 0, w - 1, 0, w - 1 };
         var py = new int[] { h / 2, 0, 0, h - 1, h - 1 };
         for (var k = 0; k < 5; k++)

@@ -1,6 +1,7 @@
-// Box2D の即時モード層。
-// key で宣言する world / body / shape / chain / joint の table と、C API (include/lub/lub_api.h の lub_phys2d_*) の実装。
-// VM には触らない (tcs VM の面は src/gen/vm_api_gen.c、生成物)。
+// Immediate-mode layer for Box2D.
+// Tables of world / body / shape / chain / joint declared by key, and the
+// implementation of the C API (lub_phys2d_* in include/lub/lub_api.h). Does not
+// touch the VM (the tcs VM surface is src/gen/vm_api_gen.c, generated code).
 #include "physics_box2d.h"
 #include "phys2d_internal.h"
 
@@ -205,7 +206,8 @@ struct PhysWorld {
   struct PhysWorld *next;
 };
 
-// friction / restitution の callback は Box2D が context を渡さないので、step 中の world をここに置く。
+// Box2D passes no context to the friction / restitution callbacks, so the world
+// being stepped is stored here.
 static PhysWorld *g_mixer_world = NULL;
 
 static bool body_is_live(PhysBody *b);
@@ -455,8 +457,9 @@ static PhysJoint *joint_get_or_create(PhysWorld *w, const char *key) {
 }
 
 // ------------------------------------------------------------ tombstones
-// prune や作り直しで壊した shape の end の contact / sensor event は、Box2D の id から shape を引けない。
-// shape の key を id ごとに写して残しておき、その event の Body と Shape を埋める (Valid は false)。
+// For contact / sensor end events of shapes destroyed by prune or recreation,
+// the shape cannot be looked up from the Box2D id. Keep a copy of the shape key
+// per id and use it to fill Body and Shape of those events (Valid is false).
 
 static uint32_t shape_tombstone_bucket(uint64_t id_key) {
   return (uint32_t)(id_key ^ (id_key >> 32)) & (PHYS2D_TOMBSTONE_BUCKETS - 1);
@@ -663,7 +666,7 @@ static void command_queue_free(PhysCommandQueue *queue) {
   memset(queue, 0, sizeof(*queue));
 }
 
-// 失敗は NULL (out of memory)。
+// Returns NULL on failure (out of memory).
 static PhysCommand *command_queue_push(PhysWorld *w, PhysBody *b,
                                        PhysCommandKind kind) {
   if (!w || !b || !b->key)
@@ -904,7 +907,7 @@ static PhysJoint *joint_from_handle(App *app, LubHandle h) {
   return (PhysJoint *)handle_get(phys_state(app), h, PHYS_HANDLE_JOINT);
 }
 
-// 変更する API 用: 無ければ LUB_ERROR。
+// For mutating APIs: LUB_ERROR if missing.
 static PhysWorld *check_world(App *app, LubHandle h, const char *fn) {
   PhysWorld *w = world_from_handle(app, h);
   if (!w)
@@ -933,7 +936,7 @@ static PhysJoint *check_joint(App *app, LubHandle h, const char *fn) {
   return j;
 }
 
-// 問い合わせ API 用: live でなければ NULL (LUB_NOT_FOUND)。
+// For query APIs: NULL (LUB_NOT_FOUND) if not live.
 static PhysWorld *query_world(App *app, LubHandle h) {
   PhysWorld *w = world_from_handle(app, h);
   if (!w || B2_IS_NULL(w->id) || !b2World_IsValid(w->id))
@@ -1005,8 +1008,8 @@ static PhysChain *chain_find_by_id(PhysState *state, b2ChainId id) {
   return NULL;
 }
 
-// key の LubStr を NUL 終端の buffer に写す。
-// 長すぎれば false。
+// Copies the key LubStr into a NUL-terminated buffer.
+// Returns false if it is too long.
 static bool key_copy(App *app, LubStr key, char *buf, size_t cap,
                      const char *fn) {
   if (!key.ptr || key.len <= 0) {
@@ -1022,7 +1025,7 @@ static bool key_copy(App *app, LubStr key, char *buf, size_t cap,
 
 // ------------------------------------------------------------ desc init
 
-// desc に既定値を入れる (callbacks / 文字列は空)。
+// Fills desc with default values (callbacks / strings are empty).
 static void p2_world_desc_init(P2WorldDesc *desc) {
   memset(desc, 0, sizeof(*desc));
   desc->gravity_x = 0.0f;
@@ -1083,8 +1086,9 @@ static bool world_create_or_recreate(App *app, PhysWorld *w,
   if (needs_create) {
     callbacks_clear(w);
     world_destroy_box2d_and_contents(w);
-    // world に worker (enqueueTask) を渡さず、Box2D は Step を呼んだ thread の上だけで解く。
-    // Filter / PreSolve などの callback はゲームの関数を呼ぶので、worker の thread から呼ばれてはいけない。
+    // The world gets no worker (enqueueTask), so Box2D solves only on the
+    // thread that called Step. Callbacks such as Filter / PreSolve call game
+    // functions, so they must not be called from a worker thread.
     b2WorldDef def = b2DefaultWorldDef();
     def.gravity = gravity;
     def.enableSleep = desc->sleep;
@@ -1434,9 +1438,9 @@ static void shape_mark_declared(PhysShape *shape, int kind,
   shape_tombstone_update_shape(shape);
 }
 
-// 共通の宣言手順。
-// geometry_hash は kind ごとの constructor field の hash。
-// create は recreated のときだけ呼ばれ、shape->id を作る。
+// Common declaration procedure.
+// geometry_hash is the hash of the per-kind constructor fields.
+// create is called only when recreated, and creates shape->id.
 typedef struct ShapeDeclare {
   const char *fn;
   int kind;
@@ -2323,7 +2327,7 @@ static LubStatus p2_joint_torque(LubContext *ctx, LubHandle joint, float *out) {
   return LUB_OK;
 }
 
-// joint の種類に無い量は has = false。
+// Quantities the joint type does not have get has = false.
 #define JOINT_MEASURE(name, KIND, GET)                                         \
   static LubStatus p2_joint_##name(LubContext *ctx, LubHandle joint,           \
                                    float *out, bool *has) {                    \
@@ -2593,9 +2597,9 @@ static LubStatus add_vector_command(LubContext *ctx, LubHandle body, float x,
   return LUB_OK;
 }
 
-// body への command。
-// 次の step の冒頭でまとめて適用する。
-// point == NULL は重心。
+// Commands to a body.
+// They are applied together at the start of the next step.
+// point == NULL means the center of mass.
 static LubStatus p2_add_force(LubContext *ctx, LubHandle body, float fx,
                               float fy, const LubVec2d *point, bool wake) {
   return add_vector_command(ctx, body, fx, fy, point, wake,
@@ -3040,8 +3044,9 @@ static void capture_body_events(PhysWorld *w) {
   }
 }
 
-// Box2D は b2World_Step の冒頭でイベント配列をクリアする。
-// 1フレームに複数固定ステップ回すときは各ステップ直後に回収しないと最後のステップ以外のイベントが失われる。
+// Box2D clears the event arrays at the start of b2World_Step.
+// When running multiple fixed steps in one frame, events must be collected
+// right after each step, or the events of every step except the last are lost.
 static void capture_step_events(PhysWorld *w) {
   capture_contact_events(w);
   capture_sensor_events(w);
@@ -3092,8 +3097,9 @@ static LubStatus p2_step(LubContext *ctx, LubHandle world, float dt,
     w->accumulator = 0.0;
     dropped = true;
   }
-  // move は最終姿勢だけあればよいので最後のステップぶんのみ。
-  // steps == 0 のフレームで前ステップの残骸を再回収しない。
+  // move only needs the final pose, so only the last step is collected.
+  // On frames with steps == 0, do not collect the leftovers of the previous
+  // step again.
   if (steps > 0)
     capture_body_events(w);
   w->begun = false;
@@ -3225,8 +3231,8 @@ static P2Filter filter_of(b2Filter f) {
   return out;
 }
 
-// live な shape id から識別を組む。
-// chain segment は親 chain の識別になる。
+// Builds the identity from a live shape id.
+// A chain segment gets the identity of its parent chain.
 static void fill_shape_part(PhysState *state, P2ShapePart *out,
                             b2ShapeId shape_id) {
   memset(out, 0, sizeof(*out));
@@ -3273,7 +3279,7 @@ static void fill_shape_part(PhysState *state, P2ShapePart *out,
                          (chain && chain->body && chain->key));
 }
 
-// step の snapshot から識別を組む (filter 無し)。
+// Builds the identity from the step snapshot (no filter).
 static void fill_snapshot_part(P2ShapePart *out, const char *body,
                                const char *shape, const char *tag,
                                const char *material_name, int material_id,
@@ -3761,7 +3767,7 @@ static b2QueryFilter query_filter_of(const P2QueryFilter *f) {
   return out;
 }
 
-// world raycast の translation は max_fraction を掛けたもの。
+// The world raycast translation is multiplied by max_fraction.
 static bool ray_translation(App *app, const P2Ray *ray, b2Vec2 *out,
                             const char *fn) {
   float mf = ray->max_fraction < 0.0f ? 0.0f : ray->max_fraction;
@@ -4224,8 +4230,9 @@ static void debug_draw_point(b2Vec2 p, float size, b2HexColor color,
   debug_push_point((PhysDebugBuffer *)context, p, size, color);
 }
 
-// 描いた配列を frame の終わりまで預けて返す。
-// 同じ frame の次の debug が前の view を書き換えないよう、buffer は次から新しい配列で始める。
+// Returns the drawn array, keeping it alive until the end of the frame.
+// So that the next debug call in the same frame does not overwrite the previous
+// view, the buffer starts with a new array from the next call.
 static float *debug_array_take(App *app, PhysDebugArray *array,
                                int32_t *count) {
   float *items = array->items;

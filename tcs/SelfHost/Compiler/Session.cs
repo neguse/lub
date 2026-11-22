@@ -2,12 +2,12 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// session の 1 つのファイル。parse したままの木を持ち、内容が変わるまで parse し直さない
+// One file of a session. Holds the tree as parsed and does not reparse it until the contents change
 public sealed class SessionFile
 {
     public string Path;
     public string Text;
-    // 0 = user のソース、1 = --ref の宣言、2 = tcs と一緒に配る library
+    // 0 = user source, 1 = --ref declarations, 2 = library shipped with tcs
     public int Role;
     public SourceFile? Source;
     public Node? Unit;
@@ -22,37 +22,37 @@ public sealed class SessionFile
     }
 }
 
-// 増分の compile の session。ファイルを足し、差し替え、外してから compile する。
-// parse は内容が変わったファイルだけをやり直し、宣言、束縛、出力は parse した木の複製で毎回やり直す (束縛は木を書き換える)。
-// compile は Step に分かれる: 変わったファイルの parse を 1 つずつ、準拠検査と木の組み立て、宣言、束縛、出力。
-// 出力は mode で決まる: ExportOnly は IL、CheckOnly は IL の組み立ての検査、どちらでもなければ束縛と準拠の診断だけ。
-// host は Step を繰り返し呼び、Step の間で他の仕事 (新しい編集の受け取り、tcs2c の GC の frame の境界) をはさめる
+// An incremental compile session. Add, replace, and remove files, then compile.
+// Parsing is redone only for files whose contents changed; declaration, binding, and output are redone every time on a copy of the parsed tree (binding modifies the tree).
+// A compile is split into Steps: parsing each changed file one at a time, compliance check and tree assembly, declaration, binding, output.
+// The output depends on the mode: ExportOnly gives IL, CheckOnly checks IL building, and otherwise only binding and compliance diagnostics.
+// The host calls Step repeatedly and can do other work between Steps (receiving new edits, tcs2c GC frame boundaries)
 public sealed class Session
 {
     private readonly List<SessionFile> _files = new List<SessionFile>();
     private string _entry = "";
 
-    // compile の途中の状態
+    // State of an in-progress compile
     private int _phase;
     private Compilation? _c;
     private Declarer? _declarer;
     private CompileResult _result = new CompileResult();
-    // 宣言の前の診断の数
+    // Number of diagnostics before declaration
     private int _bindMark;
-    // 出力の段でだけ報告する準拠検査の診断
+    // Compliance check diagnostics reported only at the output stage
     private List<Diagnostic> _deferred = new List<Diagnostic>();
 
-    // 直前の compile で parse したファイルの数 (増分の効き目を測る)
+    // Number of files parsed in the last compile (measures how well incremental compilation works)
     public int ParsedFiles;
-    // 何回 compile を終えたか
+    // How many compiles have finished
     public int Revision;
-    // tcs c と tcs vm への入力 (型の metadata と本文の IL) を作る
+    // Produce the input for tcs c and tcs vm (type metadata and body IL)
     public bool ExportOnly;
-    // 検査だけ (tcs check と analyzer): IL を返さず、IL を組み立てて、組み立てられない本文、entry class の誤り、組み立ての内部の誤りを診断にする
+    // Check only (tcs check and the analyzer): does not return IL, but builds it and reports bodies that cannot be built, entry class errors, and internal build errors as diagnostics
     public bool CheckOnly;
-    // ExportOnly で、generic を閉じた copy に単相化してから書き出す (C backend と VM)
+    // With ExportOnly, monomorphize generics into closed copies before writing out (C backend and VM)
     public bool Specialize;
-    // 束縛を終えた宣言 (型と member の symbol、構文の木) を Declarations に残す。API の記述を読む道具 (lub-gen) が使う
+    // Keep the bound declarations (type and member symbols, syntax trees) in Declarations. Used by the tool that reads API descriptions (lub-gen)
     public bool KeepDeclarations;
     public Compilation? Declarations;
 
@@ -61,14 +61,14 @@ public sealed class Session
     private const int PhaseDeclare = 3;
     private const int PhaseBind = 4;
     private const int PhaseEmit = 5;
-    // C backend のための単相化 (回ごとに 1 段) と、その後の IL の書き出し
+    // Monomorphization for the C backend (one step per round), followed by writing out the IL
     private const int PhaseSpecialize = 6;
     private const int PhaseExport = 7;
     private Specializer? _specializer;
     private bool _specializeDone;
     private Compilation? _specialized;
     private string _specializeError = "";
-    // 直前の単相化が閉じる copy を作ったか
+    // Whether the last monomorphization created closed copies
     private bool _lastSpecializeCopied;
 
     public Session(string entry)
@@ -80,20 +80,20 @@ public sealed class Session
 
     public bool Busy => _phase != PhaseIdle;
 
-    // user のソースを足すか差し替える (内容が同じなら parse し直さない)
+    // Add or replace a user source (not reparsed if the contents are the same)
     public void SetSource(string path, string text) => Set(path, text, 0);
 
     public void SetReference(string path, string text) => Set(path, text, 1);
 
     public void SetLibrary(string path, string text) => Set(path, text, 2);
 
-    // 同じ path があっても別のファイルとして足す (path を持たない入力を並べる host 用)
+    // Add as a separate file even if the same path exists (for hosts that list inputs without paths)
     public void Add(string path, string text, int role)
     {
         _files.Add(new SessionFile(path, text, role));
     }
 
-    // path のファイルの parse した木 (内容が変わっていれば parse し直す)。無ければ null
+    // The parsed tree of the file at path (reparsed if the contents changed). null if missing
     public Node? ParsedUnit(string path)
     {
         foreach (var f in _files)
@@ -134,7 +134,7 @@ public sealed class Session
         _files.Add(new SessionFile(path, text, role));
     }
 
-    // compile を始める (前の compile の途中なら捨ててやり直す)
+    // Start a compile (if a previous compile is in progress, discard it and start over)
     public void Start()
     {
         _phase = PhaseParse;
@@ -148,7 +148,7 @@ public sealed class Session
         ParsedFiles = 0;
     }
 
-    // compile を 1 段進める。終わったら true を返し、Result に結果を置く
+    // Advance the compile by one step. Returns true when finished and puts the result in Result
     public bool Step()
     {
         switch (_phase)
@@ -162,9 +162,9 @@ public sealed class Session
                     ParseFile(f);
                     return false;
                 }
-                // parse し直すファイルが無くなったら、同じ段で組み立てる
+                // Once there are no files left to reparse, assemble in the same step
                 Assemble();
-                // 構文の誤り (CSxxxx) があれば束縛しない。サブセットの外の構文 (TCS1001) は木を作り直して読んだので、型の検査も続ける
+                // Do not bind if there are syntax errors (CSxxxx). Syntax outside the subset (TCS1001) was read by rebuilding the tree, so type checking continues too
                 _phase = HasSyntaxError(_c!.Diags) ? PhaseEmit : PhaseDeclare;
                 _bindMark = _c.Diags.Items.Count;
                 return false;
@@ -176,8 +176,8 @@ public sealed class Session
             case PhaseBind:
                 new Binder(_c!, _declarer!).BindAll();
                 new SemanticChecks(_c!).CheckAll();
-                // サブセットの外の構文や API があると、宣言と束縛の C# の誤りはその巻き添えのことがある
-                // (読み飛ばした local function の呼び出し、展開しない params の呼び出しなど)。サブセットの診断を先に報告する
+                // When there is syntax or API outside the subset, C# errors in declaration and binding may be side effects of it
+                // (calls to skipped local functions, calls with params that are not expanded, etc.). Subset diagnostics are reported first
                 if (HasSubsetError(_c!.Diags)) DropCSharpErrorsFrom(_c.Diags, _bindMark);
                 if (_c.Diags.ErrorCount == 0)
                 {
@@ -217,7 +217,7 @@ public sealed class Session
         return true;
     }
 
-    // Start から終わりまで Step を回す
+    // Run Step from Start to the end
     public CompileResult Compile()
     {
         Start();
@@ -236,7 +236,7 @@ public sealed class Session
         ParsedFiles++;
     }
 
-    // user のソース、--ref、使われる library の順に、parse した木の複製を compilation に並べる
+    // Put copies of the parsed trees into the compilation in the order: user sources, --ref, used libraries
     private void Assemble()
     {
         var c = new Compilation();
@@ -256,16 +256,16 @@ public sealed class Session
                 if (role == 0)
                 {
                     CollectNamespaces(f.Unit, "", userNamespaces, userUsings);
-                    // using の無いファイルが library の型を修飾した名前で書く (`TinySystem.Linq.Enumerable.Count(...)`)
+                    // A file without usings writes library types with qualified names (`TinySystem.Linq.Enumerable.Count(...)`)
                     CollectQualifiedPrefixes(f.Unit!, userUsings);
                 }
             }
         }
-        // library は user が namespace を using するときだけ読み、user が同じ namespace を宣言するなら読まない
+        // A library is read only when the user has a using for its namespace, and not when the user declares the same namespace
         foreach (var f in _files)
         {
             if (f.Role != 2) continue;
-            // System.ValueTuple の宣言はタプルの構文があるときだけ読む
+            // The System.ValueTuple declaration is read only when tuple syntax is present
             if (f.Source!.Path == "TinySystem/ValueTuple.cs")
             {
                 bool tuples = false;
@@ -297,7 +297,7 @@ public sealed class Session
             c.Units.Add(f.Unit!.CloneTree());
             Merge(c.Diags, f.Diags);
         }
-        // 構文だけで決まる準拠検査 (TCS1001)。--ref の宣言と library は対象外
+        // Compliance checks decided by syntax alone (TCS1001). --ref declarations and libraries are excluded
         var compliance = new Compliance(c.Diags);
         for (int i = 0; i < c.Units.Count; i++)
         {
@@ -322,7 +322,7 @@ public sealed class Session
         diags.Items = kept;
     }
 
-    // 読み飛ばした構文や、写していない API の巻き添えで出うる C# の誤り (名前の解決、overload、変換、到達、実装の不足)
+    // C# errors that can arise as side effects of skipped syntax or unimplemented APIs (name resolution, overload, conversion, reachability, missing implementation)
     private static bool IsCascadeError(string code)
     {
         switch (code)
@@ -374,7 +374,7 @@ public sealed class Session
         return false;
     }
 
-    // タプルの型 / 式の構文 (var (a, b) の宣言の形は含まない)
+    // Tuple type / expression syntax (not including the var (a, b) declaration form)
     private static bool ContainsTupleSyntax(Node n)
     {
         if (n.Kind == NodeKind.TupleType || n.Kind == NodeKind.Tuple) return true;
@@ -423,7 +423,7 @@ public sealed class Session
         into.ErrorCount += from.ErrorCount;
     }
 
-    // 単相化を段に分けて始める (C backend の書き出しで、束縛の結果が書き出せるとき)。始めたら true
+    // Start monomorphization in steps (when writing out for the C backend and the binding result can be written out). true if started
     private bool StartSpecialize()
     {
         var c = _c!;
@@ -434,7 +434,7 @@ public sealed class Session
         return true;
     }
 
-    // 単相化は束縛していない木を書き換える (ファイルの順は compilation と同じ)
+    // Monomorphization rewrites the unbound tree (file order is the same as the compilation)
     private Specializer NewSpecializer(Compilation c)
     {
         var files = new List<SourceFile>();
@@ -453,8 +453,8 @@ public sealed class Session
             }
         }
         var sp = new Specializer(files, units);
-        // 最初の回は session が束縛した木 (c は同じ f.Unit の複製) で、閉じる型も method も無いかを見る (無ければ束縛し直さない)。
-        // 前の compile が閉じる copy を作ったなら、見るだけ無駄なので初めから束縛する
+        // The first round checks, on the tree bound by the session (c is a copy of the same f.Unit), whether there are no types or methods to close (if there are none, it does not rebind).
+        // If the previous compile created closed copies, checking is wasted effort, so it binds from the start
         if (c.Units.Count == units.Count && !_lastSpecializeCopied) sp.Seed(c, origins);
         return sp;
     }
@@ -463,7 +463,7 @@ public sealed class Session
     {
         var c = _c!;
         var result = new CompileResult();
-        // export は C# として誤りの無い入力なら、準拠の誤り (TCS) があっても作る (診断は一緒に返す。tcs VM は --ref の型の検査を許す)
+        // The export is produced for input without C# errors even if there are compliance errors (TCS) (diagnostics are returned with it; the tcs VM allows type checks on --ref types)
         bool exportable = ExportOnly && !HasCSharpErrors(c.Diags);
         if (c.Diags.ErrorCount == 0 || exportable)
         {
@@ -473,7 +473,7 @@ public sealed class Session
                 string specializeError = "";
                 if (Specialize)
                 {
-                    // Step は単相化を前の段で回の数だけ進めておく。Compile 以外の経路 (段を飛ばす呼び出し) はここで続けて回す
+                    // Step advances monomorphization by the number of rounds in earlier steps. Paths other than Compile (calls that skip steps) keep running it here
                     if (!_specializeDone)
                     {
                         var sp = NewSpecializer(c);
@@ -493,7 +493,7 @@ public sealed class Session
                 else
                 {
                     result.Export = new IlExporter(exported).Export();
-                    // 単相化した木の束縛の誤り (調べるため。copy の束縛の取りこぼし)
+                    // Binding errors in the monomorphized tree (for investigation; bindings missed in copies)
                     if (exported != c)
                     {
                         foreach (var d in exported.Diags.Items)
@@ -517,8 +517,8 @@ public sealed class Session
         _declarer = null;
     }
 
-    // IL の書き出しと同じ組み立てを回し、その誤りを結果の診断に足す。誤りがあれば true。
-    // 組み立てられない本文と式 (TCS1001) はファイルと位置の順、次に entry class の誤り、組み立ての内部の誤り
+    // Runs the same building as IL write-out and adds its errors to the result diagnostics. true if there are errors.
+    // Bodies and expressions that cannot be built (TCS1001) come in file and position order, followed by entry class errors and internal build errors
     private bool CheckIl(Compilation c, CompileResult result)
     {
         var exporter = new IlExporter(c);
@@ -528,7 +528,7 @@ public sealed class Session
         {
             if (!nodes.Contains(n)) nodes.Add(n);
         }
-        // 挿入の整列 (同じ位置は記録した順)
+        // Insertion sort (equal positions stay in recorded order)
         for (int i = 1; i < nodes.Count; i++)
         {
             var x = nodes[i];
@@ -552,8 +552,8 @@ public sealed class Session
         return errors.Count > 0;
     }
 
-    // 宣言する namespace と using する namespace
-    // 修飾した名前 (`A.B.C`) とその前の部分 (`A`、`A.B`)。using の別名の先も同じく
+    // Declared namespaces and namespaces with usings
+    // A qualified name (`A.B.C`) and its prefixes (`A`, `A.B`). The same for using alias targets
     private static void CollectQualifiedPrefixes(Node n, HashSet<string> into)
     {
         if (n.Kind == NodeKind.Member || n.Kind == NodeKind.TypeName && n.A != null)

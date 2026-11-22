@@ -3,8 +3,8 @@
 # commit gate, the native gate (build, smokes, C# runtime tests, goldens, C#
 # samples, dev tools), then WASM build, web build, and headless web
 # verification.
-# CI が同じ内容を PR ごとに実行するので普段は不要。
-# CI を待たずに手元で全周りを確認したいとき、または CI が使えないときの脱出ハッチ。
+# CI runs the same thing on every PR, so this is usually not needed.
+# An escape hatch for when you want to check everything locally without waiting for CI, or when CI is not available.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// delegate の同一性と合成はサブセット外: Lua は関数の同一性、C は変換のたびに作る closure で、C# と結果を揃えられない。
-// 両 backend とも同じ診断で止まる。null との比較、呼び出し、代入は残す
+// Delegate identity and composition are outside the subset: Lua uses function identity and C a closure created at every conversion, so the results cannot match C#.
+// Both backends stop with the same diagnostic. Comparison with null, invocation, and assignment are kept
 public class DelegateOperationsDifferentialTests
 {
     [Theory]
@@ -37,7 +37,7 @@ public class DelegateOperationsDifferentialTests
         Assert.Contains(c.Diagnostics, d => d.Contains(id) && d.Contains(rule));
     }
 
-    // 期待値は同じ program を CoreCLR で実行した stdout
+    // The expected values are the stdout of running the same program on CoreCLR
     [CFact]
     public void DelegateOperations_NullComparisonAndCallsRemain()
     {

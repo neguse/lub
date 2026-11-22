@@ -1,4 +1,4 @@
-// TestKeys が lider で開く file。
+// The file TestKeys opens in lider.
 public static class Target
 {
     // 日本語のコメント

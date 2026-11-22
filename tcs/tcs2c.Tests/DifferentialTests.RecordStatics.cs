@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// record class の static field / static auto property は class と同じ (pre-zero +
-// 型をまたぐ初期化順)、
-// struct / record struct の const は使用箇所で値に畳まれる (#154)。期待値は
-// 同じ program を CoreCLR で実行した stdout
+// static fields / static auto properties of record classes behave the same as in classes (pre-zero +
+// initialization order across types),
+// and consts of struct / record struct are folded into values at their use sites (#154). The expected values are the
+// stdout of running the same program on CoreCLR
 public class RecordStaticsDifferentialTests
 {
     [CFact]

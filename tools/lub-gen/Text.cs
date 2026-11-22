@@ -3,16 +3,16 @@ using TinySystem.Text;
 
 namespace LubGen;
 
-/// <summary>文字列の小さな道具 (TinyC# の string は UTF-8 で、位置は byte で数える)。</summary>
+/// <summary>Small string utilities (TinyC# strings are UTF-8 and positions are counted in bytes).</summary>
 public static class Text
 {
-    /// <summary>byte の長さ。</summary>
+    /// <summary>Length in bytes.</summary>
     public static int Len(string s) => new Utf8Bytes(s).Length;
 
-    /// <summary>byte の位置 start から count byte。</summary>
+    /// <summary>count bytes from byte position start.</summary>
     public static string Sub(string s, int start, int count) => new Utf8Bytes(s).Slice(start, count).ToString();
 
-    /// <summary>byte の位置 start から終わりまで。</summary>
+    /// <summary>From byte position start to the end.</summary>
     public static string From(string s, int start)
     {
         var u = new Utf8Bytes(s);
@@ -20,14 +20,14 @@ public static class Text
         return u.Slice(start, u.Length - start).ToString();
     }
 
-    /// <summary>終わりの n byte を除いたもの。</summary>
+    /// <summary>The string without the last n bytes.</summary>
     public static string DropEnd(string s, int n)
     {
         var u = new Utf8Bytes(s);
         return u.Slice(0, u.Length - n).ToString();
     }
 
-    /// <summary>needle の最初の byte の位置 (無ければ -1)。</summary>
+    /// <summary>Byte position of the first occurrence of needle (-1 if none).</summary>
     public static int IndexOf(string s, string needle, int from)
     {
         var u = new Utf8Bytes(s);
@@ -48,7 +48,7 @@ public static class Text
         return -1;
     }
 
-    /// <summary>行に分ける (\n で。\r は行の末に残す)。</summary>
+    /// <summary>Splits into lines (at \n; \r stays at the end of the line).</summary>
     public static List<string> Lines(string text)
     {
         var r = new List<string>();
@@ -76,7 +76,7 @@ public static class Text
         return u.Slice(0, n).ToString();
     }
 
-    /// <summary>open と close の間 (最初の組)。無ければ ""。</summary>
+    /// <summary>The text between open and close (first pair). "" if missing.</summary>
     public static string Between(string s, string open, string close)
     {
         int a = IndexOf(s, open, 0);
@@ -87,7 +87,7 @@ public static class Text
         return Sub(s, start, b - start);
     }
 
-    /// <summary>`<...>` の tag を除く。</summary>
+    /// <summary>Removes `<...>` tags.</summary>
     public static string StripTags(string s)
     {
         var u = new Utf8Bytes(s);
@@ -114,7 +114,7 @@ public static class Text
         return string.Join("", parts);
     }
 
-    /// <summary>doc comment の XML の tag が入れ子で閉じ、実体参照が既知のものか (C# の compiler は整形式でない doc を捨てる)。</summary>
+    /// <summary>Whether the XML tags of a doc comment nest and close properly and its entity references are known ones (the C# compiler discards doc that is not well-formed).</summary>
     public static bool WellFormedXml(string s)
     {
         var u = new Utf8Bytes(s);
@@ -164,7 +164,7 @@ public static class Text
         return stack.Count == 0;
     }
 
-    /// <summary>空白と tab の続きを空白 1 つにする。</summary>
+    /// <summary>Collapses runs of spaces and tabs into a single space.</summary>
     public static string CollapseSpaces(string s)
     {
         var u = new Utf8Bytes(s);
@@ -189,7 +189,7 @@ public static class Text
         return string.Join("", parts);
     }
 
-    /// <summary>C# 版の IsWide (UTF-16 の 1 文字が 0x2E7F より大きく、surrogate でない)。</summary>
+    /// <summary>IsWide from the C# version (a UTF-16 char greater than 0x2E7F that is not a surrogate).</summary>
     public static bool IsWide(int rune) => rune > 0x2E7F && rune < 0x10000;
 
     public static int FirstRune(string s)
@@ -205,7 +205,7 @@ public static class Text
         return last;
     }
 
-    /// <summary>10 進の整数 (読めなければ 0)。</summary>
+    /// <summary>Decimal integer (0 if it cannot be parsed).</summary>
     public static int ParseInt(string s)
     {
         var u = new Utf8Bytes(s);
@@ -226,7 +226,7 @@ public static class Text
         return neg ? -v : v;
     }
 
-    /// <summary>ASCII の小文字を含むか。</summary>
+    /// <summary>Whether it contains ASCII lowercase letters.</summary>
     public static bool HasLower(string s)
     {
         var u = new Utf8Bytes(s);
@@ -237,21 +237,21 @@ public static class Text
         return false;
     }
 
-    /// <summary>先頭の 1 byte を小文字にしたもの (ASCII)。</summary>
+    /// <summary>The string with its first byte lowercased (ASCII).</summary>
     public static string LowerFirst(string s)
     {
         if (s == "") return s;
         return Sub(s, 0, 1).ToLower() + From(s, 1);
     }
 
-    /// <summary>先頭の 1 byte を大文字にしたもの (ASCII)。</summary>
+    /// <summary>The string with its first byte uppercased (ASCII).</summary>
     public static string UpperFirst(string s)
     {
         if (s == "") return s;
         return Sub(s, 0, 1).ToUpper() + From(s, 1);
     }
 
-    /// <summary>s を n 回つないだもの。</summary>
+    /// <summary>s repeated n times.</summary>
     public static string Repeat(string s, int n)
     {
         var parts = new List<string>();
@@ -259,11 +259,11 @@ public static class Text
         return string.Join("", parts);
     }
 
-    /// <summary>行を足していく出力 (C# 版の StringBuilder.AppendLine)。</summary>
+    /// <summary>Output built by appending lines (StringBuilder.AppendLine in the C# version).</summary>
     public static string Joined(List<string> parts) => string.Join("", parts);
 }
 
-/// <summary>出力を貯める (C# 版の StringBuilder)。行は \n で終える。</summary>
+/// <summary>Accumulates output (StringBuilder in the C# version). Lines end with \n.</summary>
 public sealed class Out
 {
     private List<string> _parts = new List<string>();

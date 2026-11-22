@@ -26,7 +26,7 @@ public class DiagnosticTests
         Assert.Contains("error CS", result.Errors[0]);
     }
 
-    // 大文字小文字だけ違う member は別の名前 (`flash` と `Flash`) で共存する
+    // Members that differ only in case coexist as separate names (`flash` and `Flash`)
     [Fact]
     public void MembersDifferingOnlyInCase_Coexist()
     {
@@ -167,7 +167,7 @@ public class DiagnosticTests
     [Fact]
     public void DataStruct_NoDiagnostic()
     {
-        // field のみのデータ struct はサブセット内
+        // Data structs with only fields are inside the subset
         var result = Checker.Check(["""
             public struct Vec2
             {
@@ -180,8 +180,8 @@ public class DiagnosticTests
             w => w.Contains("StructDeclaration"));
     }
 
-    // record struct は対応済み。static member は struct と同じく
-    // サブセット外のまま
+    // record struct is supported. Static members stay outside the subset,
+    // as with struct
     [Fact]
     public void RecordStruct_IsClean_IndexerReportsWarning()
     {
@@ -376,7 +376,7 @@ public class DiagnosticTests
             error => error.Contains("LockStatement"));
     }
 
-    // nameof は C# の定数式 (識別子名) として両 backend が文字列に畳む (T250)
+    // nameof is a C# constant expression (identifier name), and both backends fold it into a string (T250)
     [Fact]
     public void NameOfExpressions_AreConstantStrings()
     {
@@ -540,10 +540,10 @@ public class DiagnosticTests
         Assert.All(collectionNulls, w => Assert.Contains("Dictionary<K,V>", w));
     }
 
-    // #20: 要素の default が nil になる `new T[n]` は Lua で `{}` (Length 0、
-    // foreach 0 回) になるので TCS1003。初期化子の null 要素と `a[i] = null`
-    // も同じ nil 制約。値型要素 (struct / enum / char / bool) は default で
-    // 詰まるので対象外。`default(int)` は int? / object へ変換しても非 null
+    // #20: `new T[n]`, whose element default becomes nil, becomes `{}` in Lua (Length 0,
+    // foreach runs 0 times), so it is TCS1003. Null elements in initializers and `a[i] = null`
+    // have the same nil constraint. Value-type elements (struct / enum / char / bool) are filled with default,
+    // so they are out of scope. `default(int)` is non-null even when converted to int? / object
     public const string ArrayNullSource = """
         using System.Collections.Generic;
         public class Foo { public int V; }

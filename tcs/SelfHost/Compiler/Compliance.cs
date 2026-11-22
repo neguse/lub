@@ -3,17 +3,17 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// 構文だけで決まる準拠検査 (TCS1001)。準拠の規則はこの compiler だけが持ち、IDE の analyzer (TinyCs.Analyzers) も
-// この compiler を動かして同じ診断を出す。名前は `unsupported syntax: <名前>` (Roslyn の構文の種類の名前に揃えたもの)。
-// --ref の宣言と tcs が配る library は対象外
+// Compliance checks decided by syntax alone (TCS1001). Only this compiler holds the compliance rules, and the IDE analyzer (TinyCs.Analyzers) also
+// runs this compiler to report the same diagnostics. Names appear as `unsupported syntax: <name>` (matched to Roslyn syntax kind names).
+// --ref declarations and the libraries tcs ships are excluded
 public sealed class Compliance
 {
     private readonly Diagnostics _diags;
     private SourceFile? _file;
 
-    // 生成コードが class table に置く key (ReservedClassKeys)
+    // Keys the generated code puts in the class table (ReservedClassKeys)
     private static readonly List<string> ReservedClassKeys = SplitWords("new ctor");
-    // runtime が _G に置く名前 (ReservedRuntimeGlobals)
+    // Names the runtime puts in _G (ReservedRuntimeGlobals)
     public static readonly List<string> RuntimeGlobals = SplitWords("TinySystem List Dict Math String TcsQueue TcsHashSet");
     private static readonly List<string> CallerInfoNames = SplitWords("CallerArgumentExpression CallerMemberName CallerLineNumber CallerFilePath");
 
@@ -47,7 +47,7 @@ public sealed class Compliance
         _diags.Error("TCS1001", "unsupported syntax: " + name, at.File, at.Pos);
     }
 
-    // 出力の段でだけ分かる診断 (型の出力の段で報告する)。他に誤りが無いときだけ報告する
+    // Diagnostics known only at the output stage (reported at the type output stage). Reported only when there are no other errors
     public List<Diagnostic> Deferred = new List<Diagnostic>();
 
     private void ReportDeferred(string name, Node at)
@@ -55,7 +55,7 @@ public sealed class Compliance
         Deferred.Add(new Diagnostic("TCS1001", "unsupported syntax: " + name, at.File, at.Pos, true));
     }
 
-    // ---- 宣言 ----
+    // ---- Declarations ----
 
     private void Declaration(Node n, Node? owner, bool inGeneric)
     {
@@ -103,14 +103,14 @@ public sealed class Compliance
         else if (!isInterface && RuntimeGlobals.Contains(n.Text)) Report("RuntimeGlobalIdentifier(" + n.Text + ")", n);
         if (inGeneric) Report("NestedTypeInGenericType", n);
         if (n.Has(Mods.Abstract) && (n.Value == DeclKinds.Class || n.Value == DeclKinds.RecordClass)) Report("AbstractClass", n);
-        // delegate の宣言の parameter (out は method の宣言にだけ書ける)
+        // Parameters of delegate declarations (out can only be written in method declarations)
         if (n.Has(Mods.Delegate))
         {
             if (n.B != null) Params(n.B, false);
             return;
         }
         bool generic = inGeneric || n.Count2 > 0;
-        // record の positional parameter は member になる
+        // Record positional parameters become members
         if (n.A != null && n.A.List != null)
         {
             foreach (var p in n.A.List) MemberName(p.Text, p);
@@ -140,9 +140,9 @@ public sealed class Compliance
             if (inherit != "") Report(inherit, m);
         }
         if (isStruct && m.Kind == NodeKind.Ctor && !m.Has(Mods.Static) && m.Count == 0) Report("StructMember(ConstructorDeclaration)", m);
-        // interface の field は止める
+        // Reject interface fields
         if (owner.Value == DeclKinds.Interface && m.Kind == NodeKind.Field) Report("InterfaceField", m);
-        // record class の本体に書けるのは method、演算子、static な field と auto property、型だけ
+        // A record class body may contain only methods, operators, static fields and auto properties, and types
         if (owner.Value == DeclKinds.RecordClass && !IsRecordClassMember(m)) ReportDeferred("member: " + RoslynMemberKind(m), m);
         Attributes(m.D);
         switch (m.Kind)
@@ -160,7 +160,7 @@ public sealed class Compliance
                 return;
             case NodeKind.Property:
                 MemberName(m.Text, m);
-                // interface の実装付きの member (既定の実装) は止める
+                // Reject interface members with an implementation (default implementations)
                 if (owner.Value == DeclKinds.Interface && (!IsAutoAccessor(m.B) || !IsAutoAccessor(m.C) || m.D != null && m.D.Kind != NodeKind.Attribute))
                     Report("InterfaceDefaultMember", m);
                 if (m.Has(Mods.Static) && inGeneric && IsAutoAccessor(m.B) && IsAutoAccessor(m.C)) Report("GenericStaticField", m);
@@ -218,7 +218,7 @@ public sealed class Compliance
 
     private static bool IsAutoAccessor(Node? acc) => acc == null || acc.A == null && acc.B == null;
 
-    // `public override string ToString()` (sealed は継承の語なので通さない)
+    // `public override string ToString()` (sealed is an inheritance keyword, so it is not allowed)
     private static bool IsToStringOverride(Node m) =>
         m.Kind == NodeKind.Method && m.Text == "ToString" && m.Count == 0 && m.Has(Mods.Override) && !m.Has(Mods.Sealed);
 
@@ -232,7 +232,7 @@ public sealed class Compliance
         return "";
     }
 
-    // 演算子の overload は 2 引数の + - * / % と 1 引数の - だけ
+    // Operator overloads are only binary + - * / % and unary -
     private static bool IsSupportedOperator(string op, int arity)
     {
         if (arity == 2) return op == "+" || op == "-" || op == "*" || op == "/" || op == "%";
@@ -289,16 +289,16 @@ public sealed class Compliance
         if (m.C != null) Walk(m.C);
     }
 
-    // ---- 名前 ----
+    // ---- Names ----
 
-    // 全ての宣言に共通の規則 (`__` で始まる名前)。非 ASCII の名前は lexer が報告する
+    // Rule common to all declarations (names starting with `__`). The lexer reports non-ASCII names
     private static string IdentifierRule(string name)
     {
         if (name.StartsWith("__")) return "DoubleUnderscoreIdentifier(" + name + ")";
         return "";
     }
 
-    // field、property、method、enum の member、record の positional parameter
+    // field, property, method, enum member, record positional parameter
     private void MemberName(string name, Node at)
     {
         string common = IdentifierRule(name);
@@ -307,7 +307,7 @@ public sealed class Compliance
         else if (name == "self") Report("ReservedIdentifier(self)", at);
     }
 
-    // local、parameter、foreach の変数、pattern の変数
+    // local, parameter, foreach variable, pattern variable
     private void LocalName(string name, Node at)
     {
         if (name == "") return;
@@ -318,12 +318,12 @@ public sealed class Compliance
 
     private void Initializer(Node init)
     {
-        // `int[] a = { 1, 2 }` (new の無い配列の初期化子)
+        // `int[] a = { 1, 2 }` (array initializer without new)
         if (init.Kind == NodeKind.ArrayInit) Report("expression: ArrayInitializerExpression", init);
         Walk(init);
     }
 
-    // ---- 文と式 ----
+    // ---- Statements and expressions ----
 
     private void Walk(Node? n)
     {

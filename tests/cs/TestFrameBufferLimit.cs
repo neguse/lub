@@ -1,4 +1,4 @@
-// FrameBuffer の 1 回の上限は 128 MiB で、上限までは描け、超えると error で止まること。
+// The limit for a single FrameBuffer call is 128 MiB; it draws up to the limit and stops with an error beyond it.
 using System;
 using Lub;
 

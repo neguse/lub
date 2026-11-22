@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// --lib が host に出す構造型 id (TCS_TYPE_*)。host は `object` で受けた値の
-// 種別を GC header の type_id で見分け、同じ id を付けて作った値は C# 側の
-// cast (tcs_cast の type_id 検査) を通る
+// Structural type ids (TCS_TYPE_*) that --lib exports to the host. For a value received as `object`, the host tells
+// its kind by the type_id in the GC header, and values created with the same id
+// pass C#-side casts (the type_id check of tcs_cast)
 public class LibTypeIdTests
 {
     [CFact]
@@ -31,7 +31,7 @@ public class LibTypeIdTests
             }
             """;
         var c = Backends.EmitC([source], null, lib: true);
-        // 同じ translation unit に置いて生成 C の内部 ABI (static / TcsList) を直接使う
+        // Placed in the same translation unit to use the internal ABI of the generated C (static / TcsList) directly
         const string host = """
 
             static void check(const char *name, void *value, uint32_t id)

@@ -1,6 +1,6 @@
-// 4 頂点を StructuredBuffer から SV_VertexID で引く (vertex pulling)。
-// 頂点 buffer と入力レイアウトを使わずに TestIndexedDraw と同じ絵になることが確認になる。
-// 合否は描画の golden (tests/golden/TestVertexPull_*.png) で決まる。
+// Fetches 4 vertices from a StructuredBuffer by SV_VertexID (vertex pulling).
+// Producing the same image as TestIndexedDraw without a vertex buffer or input layout verifies it.
+// Pass/fail is decided by the rendering golden (tests/golden/TestVertexPull_*.png).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -12,7 +12,7 @@ public static class TestVertexPull
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
     }
 
-    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    // lub export draws 1 frame and records the shaders and files used
     public static void OnExport() { OnFrame(0); }
 
     public static void OnFrame(float dt)

@@ -1,5 +1,5 @@
-// float[] の先頭 count 個から宣言した buffer が、その count 個だけを持つこと。
-// 配列は count より長くてよく、同じ version の宣言は data を読まず、count が配列を超えると error になる。
+// A buffer declared from the first count elements of a float[] holds only those count elements.
+// The array may be longer than count, a declaration with the same version does not read the data, and a count beyond the array is an error.
 using System;
 using Lub;
 

@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// タプル: 戻り値、分解、入れ替え、保持、List の要素。Lua は分解するなら multi-return、保持するなら
-// struct の table、C は struct。期待値は同じ program を CoreCLR で実行した stdout
+// Tuples: return values, deconstruction, swapping, holding, List elements. Lua uses multi-return when deconstructing and, when holding,
+// a struct table; C uses a struct. The expected values are the stdout of running the same program on CoreCLR
 public class TuplesDifferentialTests
 {
     [CFact]
@@ -236,7 +236,7 @@ public class TuplesDifferentialTests
         Backends.AssertParityLib(source, "P", 5);
     }
 
-    // 右辺の変数の成分へ分解しても、右辺は代入の前の値を読む (#417)
+    // Even when deconstructing into components of a variable on the right side, the right side reads the value from before the assignment (#417)
     [CFact]
     public void Deconstruct_IntoComponentsOfSource()
     {

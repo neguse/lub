@@ -6,14 +6,14 @@ internal sealed record FuzzOutcome(bool Ok, string Details)
 }
 
 /// <summary>
-/// 生成プログラムを tcs VM (tcs2vm → tcsvm、通常と GC stress) と実 .NET の両方で実行し、stdout の行が一致することを要求する (C4)。
-/// C backend は tcs2c.Tests の FuzzDifferentialTests が同じ生成器で見る。失敗時は文単位の greedy 縮小で最小再現を作る。
+/// Runs a generated program on both the tcs VM (tcs2vm → tcsvm, normal and GC stress) and real .NET, and requires the stdout lines to match (C4).
+/// The C backend is covered by FuzzDifferentialTests in tcs2c.Tests with the same generator. On failure, greedy statement-level shrinking produces a minimal repro.
 /// </summary>
 internal sealed class FuzzRunner
 {
     private readonly SpecDotnetExecutor _dotnet = new();
 
-    /// <param name="mutateVm">検出網の自己検証用: VM に渡す C# への故障注入 (.NET には元の source を渡す)</param>
+    /// <param name="mutateVm">For self-verification of the detection net: fault injection into the C# passed to the VM (.NET gets the original source)</param>
     public FuzzOutcome RunOne(string source,
         Func<string, string>? mutateVm = null)
     {
@@ -50,8 +50,8 @@ internal sealed class FuzzRunner
     }
 
     /// <summary>
-    /// 失敗した seed の文 / helper / 型リストを greedy に削って
-    /// 最小再現ソースを返す。
+    /// Greedily removes statements / helpers / types of the failed seed
+    /// and returns a minimal repro source.
     /// </summary>
     public string Reduce(IReadOnlyList<string> statements,
         Func<string, string>? mutateVm = null,
@@ -104,8 +104,8 @@ internal sealed class FuzzRunner
             currentTypes);
     }
 
-    // 使用中の変数/helper を消すと C# として不正になる。その候補を採用すると
-    // semantic bug の再現が compile error へすり替わるため除外する
+    // Removing a variable/helper that is in use makes it invalid C#. Adopting such a candidate would
+    // turn the repro of a semantic bug into a compile error, so it is excluded
     private bool StillFailsSameWay(string source,
         Func<string, string>? mutateVm)
     {

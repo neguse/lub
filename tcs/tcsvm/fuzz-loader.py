@@ -1,7 +1,7 @@
-"""tcsvm の読み込みの頑健さ (doc/vm-design.md §16): .tcsb を変異させても、loader と
-verifier はエラーを返すか、検査を通った命令列を安全に実行するだけで、crash しないこと。
-使い方: python3 -I tcsvm/fuzz-loader.py TCSVM(sanitizer 付き) N SEED file.tcsb ...
-無限ループは時間切れとして数える (検査は停止性を保証しない)。"""
+"""Robustness of tcsvm loading (doc/vm-design.md §16): even when a .tcsb is mutated, the loader and
+verifier only return an error or safely run instruction sequences that passed the checks, and never crash.
+Usage: python3 -I tcsvm/fuzz-loader.py TCSVM(with sanitizer) N SEED file.tcsb ...
+Infinite loops are counted as timeouts (the checks do not guarantee termination)."""
 import os
 import random
 import subprocess

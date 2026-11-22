@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# TestBindingsDigest を毎回 new / 使い回し / Clear し直しで走らせ、frame ごとの digest (C API 呼び出しの構造) が一致することを見る。
-# .NET 実行の実行ファイル (dotnet/SampleRunner を -p:Tests=true で build した lub-sample-tests) を渡すと、.NET 実行の Bindings (managed の配列で持つ) でも同じに走らせ、tcs VM の player と digest が一致することも見る (共有 library は LUB_NATIVE_LIB で渡す)。
-# tests/cs/.lub/all.tcsb を先に作っておく (scripts/cs-tests.sh の cs_tests_vm_build)。
-# 使い方: scripts/test-bindings-digest.sh [lub binary] [.NET の lub-sample-tests]
+# Run TestBindingsDigest with new every time / reuse / re-Clear, and check that the per-frame digests (the structure of the C API calls) match.
+# When given the .NET execution executable (lub-sample-tests built from dotnet/SampleRunner with -p:Tests=true), it also runs the same way with the .NET execution Bindings (held in managed arrays) and checks that the digest matches the tcs VM player (the shared library is passed with LUB_NATIVE_LIB).
+# Build tests/cs/.lub/all.tcsb first (cs_tests_vm_build of scripts/cs-tests.sh).
+# Usage: scripts/test-bindings-digest.sh [lub binary] [.NET lub-sample-tests]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 binary="${1:-./build-release-linux/lub}"

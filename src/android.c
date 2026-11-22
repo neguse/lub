@@ -1,13 +1,18 @@
-// Android の player の起動時の準備。
+// Startup preparation for the Android player.
 //
-// ゲームのデータ (shader cache、音、画像など) は APK の assets に、dev と同じ相対パスで入っている。
-// runtime は file を fopen と stat で読むので (hot reload の mtime もある)、assets は file として読めない。
-// 起動時に assets を内部ストレージの data/ に写し、そこを cwd にする。
+// Game data (shader cache, sounds, images, etc.) is stored in the APK assets
+// under the same relative paths as in dev. The runtime reads files with fopen
+// and stat (hot reload also uses the mtime), so it cannot read assets as files.
+// At startup, copy the assets to data/ in internal storage and make that the
+// cwd.
 //
-// 写す file は assets の lub-files.txt が列挙する。
-// 1 行目は APK の中身の印 (build が付ける hash)、2 行目以降が file の相対パス。
-// 写し終えた印を data/ の lub-files.txt に書き、印が同じなら次の起動では写さない。
-// save/<名前>/ (SDL_GetPrefPath、内部ストレージの直下) とは別の場所なので、写し直しても保存は消えない。
+// The files to copy are listed in lub-files.txt in the assets.
+// Line 1 is a marker for the APK contents (a hash added by the build), and the
+// following lines are relative file paths. After copying, the marker is written
+// to lub-files.txt in data/, and if the marker is the same, the next startup
+// does not copy. This is a different location from save/<name>/
+// (SDL_GetPrefPath, directly under internal storage), so copying again does not
+// erase saves.
 #include "android.h"
 #include <SDL3/SDL.h>
 #include <errno.h>
@@ -42,7 +47,8 @@ static bool write_file(char *path, const void *data, size_t size) {
   return true;
 }
 
-// 相対パスは assets の中だけを指すこと (.. や絶対パスは写さない)。
+// Relative paths must point only inside the assets (.. and absolute paths are
+// not copied).
 static bool path_ok(const char *path) {
   if (!*path || *path == '/')
     return false;
@@ -66,7 +72,7 @@ static bool copy_assets(const char *dir, char *manifest, size_t size) {
   bool ok = true;
   int count = 0;
   char *save = NULL;
-  // 1 行目は印なので飛ばす
+  // Line 1 is the marker, so skip it
   SDL_strtok_r(lines, "\r\n", &save);
   for (char *line = SDL_strtok_r(NULL, "\r\n", &save); line && ok;
        line = SDL_strtok_r(NULL, "\r\n", &save)) {
@@ -76,8 +82,10 @@ static bool copy_assets(const char *dir, char *manifest, size_t size) {
       break;
     }
     size_t len = 0;
-    // 相対パスは内部ストレージの直下を見てから assets を読む (SDL の Android の SDL_IOFromFile)。
-    // 直下にあるのは保存の file だけで、ゲームのデータと同じ名前は置かない。
+    // A relative path is looked up directly under internal storage first, then
+    // read from the assets (SDL_IOFromFile in SDL's Android code). Only save
+    // files are directly under it, and none of them has the same name as game
+    // data.
     void *bytes = SDL_LoadFile(line, &len);
     if (!bytes) {
       SDL_Log("android: reading asset %s failed: %s", line, SDL_GetError());
@@ -112,8 +120,10 @@ static bool same_stamp(const char *a, size_t a_len, const char *b,
 }
 
 bool android_prepare(void) {
-  // OpenXR の session は Activity が止まると STOPPING になり、runtime はそれを処理する frame の loop を要る。
-  // SDL が pause の間 event の処理で止まると session を終われないので、止めずに回す。
+  // When the Activity stops, the OpenXR session goes to STOPPING, and the
+  // runtime needs a frame loop to handle it. If SDL blocks in event handling
+  // while paused, the session cannot end, so keep the loop running without
+  // blocking.
   SDL_SetHint(SDL_HINT_ANDROID_BLOCK_ON_PAUSE, "0");
   const char *internal = SDL_GetAndroidInternalStoragePath();
   if (!internal) {
@@ -139,7 +149,7 @@ bool android_prepare(void) {
     SDL_free(copied_path);
     SDL_free(manifest);
   } else {
-    // 写す file の無い APK (データを持たないゲーム)
+    // An APK with no files to copy (a game without data)
     char *marker = NULL;
     SDL_asprintf(&marker, "%s/.keep", dir);
     ok = marker && make_parents(marker);

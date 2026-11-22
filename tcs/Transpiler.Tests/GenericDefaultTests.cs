@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// generic method の method group は、型引数の既定値を足して呼ぶ closure になる
-// (C を含む 3 経路は DifferentialTests.GenericRecordStruct が押さえる)
+// A method group of a generic method becomes a closure that calls it with the default values of the type arguments added
+// (the three paths including C are covered by DifferentialTests.GenericRecordStruct)
 public class GenericDefaultTests
 {
     [Fact]

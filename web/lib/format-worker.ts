@@ -1,5 +1,5 @@
-// C# の整形 (format.ts) の worker。
-// .NET の wasm (tcs の WasmCompiler) はこの worker に常駐し、整形の要求を順に実行する。
+// Worker for C# formatting (format.ts).
+// The .NET wasm (tcs WasmCompiler) stays resident in this worker and runs formatting requests in order.
 import type { FormatRequest } from "./format";
 
 const ASSET_BASE = import.meta.env.BASE_URL + "tcs-wasm/";
@@ -72,8 +72,8 @@ function ensureRuntime(): Promise<any> {
 }
 
 let queue = Promise.resolve();
-// dotnet.js は import 時の globalThis.onmessage で sidecar worker を判別する。
-// onmessage を代入すると runtime worker と誤認し、create() が完了しない。
+// dotnet.js identifies a sidecar worker by globalThis.onmessage at import time.
+// Assigning onmessage makes it mistake this for a runtime worker, and create() never completes.
 self.addEventListener("message", ({ data }: MessageEvent<FormatRequest>) => {
   queue = queue.then(async () => {
     const { id, content, width } = data;
@@ -81,8 +81,8 @@ self.addEventListener("message", ({ data }: MessageEvent<FormatRequest>) => {
     try {
       exports = await ensureRuntime();
     } catch (error) {
-      // 失敗した dotnet.create() の module は再利用できない。
-      // host が worker を捨てる。
+      // The module of a failed dotnet.create() cannot be reused.
+      // The host discards the worker.
       self.postMessage({ id, error: String(error), fatal: true });
       return;
     }
@@ -92,7 +92,7 @@ self.addEventListener("message", ({ data }: MessageEvent<FormatRequest>) => {
         result: exports.SessionExports.Format(content, width),
       });
     } catch (error) {
-      // wasm の trap は stack が無いと場所が分からない
+      // Without a stack, the location of a wasm trap is unknown
       self.postMessage({
         id,
         error: (error as Error)?.stack ?? String(error),

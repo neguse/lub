@@ -1,5 +1,5 @@
-// phys2d phase3: CastMover / CollideMover / Explode。
-// visitor が失敗した query は結果なし (null) で返り、visitor 内の physics 変更は拒否される。
+// phys2d phase3: CastMover / CollideMover / Explode.
+// A query whose visitor fails returns no result (null), and physics changes inside a visitor are rejected.
 using System;
 using Lub;
 

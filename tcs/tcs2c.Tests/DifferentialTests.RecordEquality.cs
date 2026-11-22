@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// record class の == / != (C# の合成 Equals: EqualityContract の一致 +
-// field ごとの EqualityComparer<T>.Default)。期待値は同じ program を
-// CoreCLR で実行した stdout
+// == / != of record classes (C#'s synthesized Equals: matching EqualityContract +
+// EqualityComparer<T>.Default per field). The expected values are the stdout of running the same program
+// on CoreCLR
 public class RecordEqualityDifferentialTests
 {
     [CFact]

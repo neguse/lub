@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// pattern の括弧は意味を持たない: switch 式 / 文、is の照合と designation は括弧を外した形と同じ。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// Parentheses in patterns have no meaning: switch expressions / statements, is matching, and designations behave the same as without the parentheses.
+// The expected values are the stdout of running the same program on CoreCLR
 public class ParenthesizedPatternDifferentialTests
 {
     [CFact]

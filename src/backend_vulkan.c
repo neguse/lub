@@ -1,5 +1,6 @@
-// Vulkan backend (Windows / Linux / Android)。
-// Linux では既定、Windows では LUB_BACKEND=vulkan / App.Config(new ConfigOpts { Backend = "vulkan" }) で選ぶ。
+// Vulkan backend (Windows / Linux / Android).
+// Default on Linux; on Windows, select it with LUB_BACKEND=vulkan /
+// App.Config(new ConfigOpts { Backend = "vulkan" }).
 //
 // Implements the RenderBackend vtable directly on Vulkan 1.3 — the
 // counterpart of backend_d3d12.cpp, same design:
@@ -9,10 +10,13 @@
 //     synchronization2 and timeline_semaphore. Their commands are loaded
 //     from the device under the core or KHR name, and the code calls them by
 //     the core name (the vkb_* pointers below).
-//   * pass は device が持てば dynamic rendering で描く。
-//     持たない device (Quest 2 の Adreno 650) では、attachment の format の組ごとの VkRenderPass と、pass を始めるたびに作る VkFramebuffer で描く。
-//     pipeline は同じ format の組の VkRenderPass で作り、load op の違う VkRenderPass とも互換になる。
-//     LUB_VK_RENDER_PASS=1 はどの device でもこちらで描き、lavapipe の golden でこの経路を確かめる。
+//   * Passes are drawn with dynamic rendering if the device supports it.
+//     On devices without it (Adreno 650 on Quest 2), draw with a VkRenderPass
+//     per combination of attachment formats and a VkFramebuffer created each
+//     time a pass begins. Pipelines are created with the VkRenderPass for the
+//     same format combination and are also compatible with VkRenderPasses that
+//     differ in load op. LUB_VK_RENDER_PASS=1 draws this way on any device, and
+//     the lavapipe golden tests verify this path.
 //
 //   * Single graphics queue, kFramesInFlight = 2. One command buffer is open
 //     from begin_frame to end_frame; passes, copies and compute all record
@@ -73,7 +77,7 @@ static PFN_vkWaitSemaphores vkb_WaitSemaphores;
 #define KARENA_BASE_CHUNK (4 * 1024 * 1024)
 #define KDESC_POOL_SETS 4096
 #define KSET_MAX_BINDINGS 16
-#define KSET_CACHE_MIN 256 // 2 の冪
+#define KSET_CACHE_MIN 256 // Power of 2
 // How long begin_frame waits for a swapchain image. Longer than any refresh
 // interval, so FIFO pacing never hits it; a compositor that stops returning
 // images (window not shown, display off) then costs one wait per frame instead
@@ -85,8 +89,8 @@ static PFN_vkWaitSemaphores vkb_WaitSemaphores;
 // --- upload arena -----------------------------------------------------------
 // Per-frame transient upload memory (uniforms, buffer/texture updates).
 // Chunked linear allocator over host-visible buffers; reset when the frame
-// slot's timeline value has passed. Chunks the slot's previous frame did not use
-// are released on reset so a one-off spike doesn't pin memory forever.
+// slot's timeline value has passed. Chunks the slot's previous frame did not
+// use are released on reset so a one-off spike doesn't pin memory forever.
 typedef struct VkbBuffer {
   VkBuffer buf;
   uint64_t gen;
@@ -101,7 +105,7 @@ typedef struct ArenaChunk {
   VkDeviceMemory mem;
   uint8_t *map;
   size_t cap, off;
-  VkbBuffer whole; // frame_buffer の範囲が指す先
+  VkbBuffer whole; // What frame_buffer ranges point to
 } ArenaChunk;
 
 typedef struct Arena {
@@ -117,11 +121,13 @@ typedef struct UploadAlloc {
   VkbBuffer *whole;
 } UploadAlloc;
 
-// frame slot の descriptor pool から取った set の map。
-// slot の pool を reset するときに一緒に空にするので、set は 1 フレームの間だけ使い回す。
-// ids は binding ごとの実体の世代と範囲で、LubHandle は実体を作り直しても変わらないため key にできない。
+// Map of sets allocated from the frame slot's descriptor pool.
+// It is emptied together with the slot's pool on reset, so sets are reused only
+// within a single frame. ids are the per-binding object generation and range;
+// LubHandle cannot be the key because it does not change when the object is
+// recreated.
 typedef struct SetCacheEntry {
-  VkDescriptorSet set; // VK_NULL_HANDLE は空き
+  VkDescriptorSet set; // VK_NULL_HANDLE = empty
   VkDescriptorSetLayout dsl;
   int n;
   uint64_t ids[KSET_MAX_BINDINGS * 2];
@@ -139,7 +145,9 @@ typedef struct FrameCtx {
   int desc_pool_cur;
   SetCacheEntry *set_cache; // open addressing
   size_t set_cache_cap, set_cache_count;
-  // GPU の時刻 (gpu_time.h): この slot の frame、書いた番号の数と印、frame の頭で query を reset したか
+  // GPU timestamps (gpu_time.h): this slot's frame, the count of written
+  // indices and their marks, and whether the queries were reset at the start of
+  // the frame
   uint64_t ts_frame;
   uint32_t ts_count;
   uint8_t ts_written[GPU_TIME_STAMPS];
@@ -197,8 +205,9 @@ typedef struct VkbPipeline {
   bool is_compute;
 } VkbPipeline;
 
-// VkRenderPass で描く経路の render pass。
-// attachment の format と load op が key で、depth が VK_FORMAT_UNDEFINED なら depth の attachment は無い。
+// Render pass for the path that draws with VkRenderPass.
+// Keyed by attachment formats and load ops; if depth is VK_FORMAT_UNDEFINED,
+// there is no depth attachment.
 typedef struct RenderPassEntry {
   int n_colors;
   VkFormat colors[SGL_MAX_COLOR_TARGETS];
@@ -217,7 +226,7 @@ typedef struct VkbState {
   VkbImage *xr_depth[2];
   VkPhysicalDevice phys;
   uint32_t api;               // the device's Vulkan version
-  bool dynamic_rendering;     // false なら pass は VkRenderPass で描く
+  bool dynamic_rendering;     // If false, passes are drawn with VkRenderPass
   const char *device_exts[6]; // extensions vkb_init enables on the device
   uint32_t n_device_exts;
   VkDevice device;
@@ -225,16 +234,17 @@ typedef struct VkbState {
   uint32_t qfam;
   VkDeviceSize ub_align;
   VkDeviceSize sb_align;
-  uint64_t last_gen; // 実体を作るたびに進める
+  uint64_t last_gen; // Advanced each time an object is created
 
   VkSemaphore timeline;
   uint64_t fence_next;
   uint64_t last_submit_value;
 
-  // GPU の時刻の query (slot ごとに GPU_TIME_STAMPS 個)。queue が時刻を持たなければ NULL
+  // GPU timestamp queries (GPU_TIME_STAMPS per slot). NULL if the queue has no
+  // timestamps
   VkQueryPool ts_pool;
   double ts_period; // ns / tick
-  uint64_t ts_mask; // 有効な bit
+  uint64_t ts_mask; // Valid bits
 
   FrameCtx frames[KFRAMES_IN_FLIGHT];
   int slot;
@@ -278,7 +288,7 @@ typedef struct VkbState {
   bool pass_has_depth;
   VkFormat pass_color_fmts[SGL_MAX_COLOR_TARGETS];
   VkFormat pass_depth_fmt;
-  VkbImage *pass_targets[SGL_MAX_COLOR_TARGETS]; // offscreen の color target
+  VkbImage *pass_targets[SGL_MAX_COLOR_TARGETS]; // Offscreen color targets
   int pass_n_targets;
 
   RenderPassEntry render_passes[KMAX_RENDER_PASSES];
@@ -297,8 +307,9 @@ static VkbState g;
 // Draw-state globals.
 static VkbPipeline *g_current_pip = NULL;
 static bool g_last_indexed = false;
-// stage (0=vertex 1=fragment)、slot ごとの最後の uniform。
-// d3d12 の root CBV と同じく draw をまたいで残り、dirty のとき dynamic offset で bind し直す。
+// Last uniform per stage (0=vertex 1=fragment) and slot.
+// Like the d3d12 root CBV, it persists across draws and is rebound with a
+// dynamic offset when dirty.
 typedef struct UniformSlot {
   VkBuffer buf;
   uint64_t gen;
@@ -314,7 +325,8 @@ static bool g_uniforms_dirty[2] = {true, true};
 // vkb_draw then skips it rather than read the previous draw's (a failed
 // uniform upload is UniformSlot.failed).
 static bool g_bindings_ok = true;
-// 録画中の command buffer に bind 済みの状態で、同じものを bind し直さないために持つ。
+// State already bound on the command buffer being recorded, kept to avoid
+// binding the same thing again.
 static struct {
   VkPipeline pipe;
   VkPipelineLayout layout;
@@ -658,7 +670,7 @@ static bool vkb_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
     SDL_Log("vk: upload arena chunk cap exceeded");
     return false;
   }
-  // 数に上限があるので、後の chunk ほど大きくする。
+  // The count is limited, so later chunks are made larger.
   size_t base = KARENA_BASE_CHUNK * ((size_t)a->count + 1);
   size_t cap = bytes > base ? bytes : base;
   cap = (cap + 65535) & ~(size_t)65535;
@@ -715,9 +727,10 @@ static void vkb_pass_suspend(void) {
   g.pass_suspended = true;
 }
 
-// format の組と load op の VkRenderPass。
-// 作ったものは shutdown まで持つ。
-// attachment の layout は pass の前後とも ATTACHMENT_OPTIMAL で、遷移は pass の外の barrier が行う。
+// VkRenderPass for a format combination and load ops.
+// Created ones are kept until shutdown.
+// Attachment layouts are ATTACHMENT_OPTIMAL both before and after the pass, and
+// transitions are done by barriers outside the pass.
 static VkRenderPass vkb_render_pass(int n_colors, const VkFormat *colors,
                                     VkFormat depth, VkAttachmentLoadOp load) {
   for (int i = 0; i < g.n_render_passes; ++i) {
@@ -746,7 +759,8 @@ static VkRenderPass vkb_render_pass(int n_colors, const VkFormat *colors,
     color_refs[i] = (VkAttachmentReference){
         (uint32_t)i, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
   }
-  // dynamic rendering の経路と同じく stencil は attach しないので、D24S8 でも stencil の中身は保たない。
+  // As in the dynamic rendering path, stencil is not attached, so stencil
+  // contents are not preserved even with D24S8.
   VkAttachmentReference depth_ref = {
       (uint32_t)n_colors, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
   if (depth != VK_FORMAT_UNDEFINED)
@@ -789,8 +803,9 @@ static VkRenderPass vkb_render_pass(int n_colors, const VkFormat *colors,
   return e->pass;
 }
 
-// VkRenderPass の経路で pass を始める。
-// framebuffer は pass を始めるたびに作り、この frame の submit が終わったら zombie として壊す。
+// Begin a pass on the VkRenderPass path.
+// A framebuffer is created each time a pass begins and destroyed as a zombie
+// once this frame's submit completes.
 static bool vkb_begin_render_pass(bool resume) {
   VkAttachmentLoadOp load = resume                ? VK_ATTACHMENT_LOAD_OP_LOAD
                             : g.pass_n_colors > 0 ? g.pass_colors[0].loadOp
@@ -869,7 +884,7 @@ static void vkb_pass_resume(void) {
   if (!g.in_pass || !g.pass_suspended)
     return;
   if (!vkb_begin_rendering(/*resume=*/true)) {
-    // pass は再開できなかったので、後の draw は記録しない。
+    // The pass could not be resumed, so later draws are not recorded.
     g.in_pass = false;
     g.pass_suspended = false;
     return;
@@ -1235,7 +1250,8 @@ vkb_debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
 
 // The features lub needs, from core 1.2 / 1.3 or from KHR extensions on a
 // 1.1 device. Fills exts with the extensions to enable (not the swapchain).
-// dynamic rendering は無くてもよく、*dynamic に有無を返す。
+// Dynamic rendering is optional, and whether it is available is returned in
+// *dynamic.
 static bool vkb_device_support(VkPhysicalDevice dev, uint32_t api,
                                const char **exts, uint32_t *n_exts,
                                bool *dynamic) {
@@ -1256,7 +1272,8 @@ static bool vkb_device_support(VkPhysicalDevice dev, uint32_t api,
     return false;
   }
   // Extensions the device needs below its version, in dependency order.
-  // optional のもの (dynamic rendering とその依存) は、1 つでも欠ければまとめて使わない。
+  // The optional ones (dynamic rendering and its dependencies) are all left
+  // unused if even one is missing.
   struct {
     const char *name;
     uint32_t core;
@@ -1305,7 +1322,7 @@ static bool vkb_device_support(VkPhysicalDevice dev, uint32_t api,
     return false;
   *dynamic = dynamic_ok && dynamic_features.dynamicRendering;
   if (!*dynamic)
-    *n_exts -= n_optional; // optional のものは最後に並ぶ
+    *n_exts -= n_optional; // The optional ones come last
   return true;
 }
 
@@ -1314,7 +1331,7 @@ static bool vkb_load_device_commands(void) {
     PFN_vkVoidFunction *fn;
     const char *name;
     uint32_t core;
-    bool dynamic_rendering; // dynamic rendering で描くときだけ要る
+    bool dynamic_rendering; // Needed only when drawing with dynamic rendering
   } commands[] = {
       {(PFN_vkVoidFunction *)&vkb_CmdBeginRendering, "vkCmdBeginRendering",
        VK_API_VERSION_1_3, true},
@@ -1812,14 +1829,16 @@ static void vkb_shutdown(Process *proc) {
 // --- vtable: frame
 // -----------------------------------------------------------------
 
-// slot の前の frame の時刻を読んで返す (slot の fence を待った後に呼ぶ)
+// Read and return the timestamps of the slot's previous frame (call after
+// waiting on the slot's fence)
 static void vkb_timestamps_resolve(int slot) {
   FrameCtx *f = &g.frames[slot];
   if (!f->ts_count)
     return;
   uint64_t raw[GPU_TIME_STAMPS][2];
   uint64_t ns[GPU_TIME_STAMPS];
-  // 書かなかった番号は reset のままで、availability が 0 (VK_NOT_READY でも書いた分は読める)
+  // Indices that were not written stay reset with availability 0 (the written
+  // ones can be read even with VK_NOT_READY)
   VkResult r = vkGetQueryPoolResults(
       g.device, g.ts_pool, (uint32_t)slot * GPU_TIME_STAMPS, f->ts_count,
       sizeof raw, raw, sizeof raw[0],
@@ -1839,7 +1858,8 @@ static bool vkb_timestamp(Process *proc, uint32_t index) {
   FrameCtx *f = &g.frames[g.slot];
   if (!g.ts_pool || !g.recording || !f->ts_reset || index >= GPU_TIME_STAMPS)
     return false;
-  // 前は前の command が始まる所、後は pass の command が終わった所
+  // The before stamp is where the previous commands start, and the after stamp
+  // is where the pass's commands have finished
   vkCmdWriteTimestamp(f->cmd,
                       (index & 1) ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
                                   : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -2145,8 +2165,9 @@ static void vkb_end_pass(Process *proc) {
   g.in_pass = false;
   g.pass_suspended = false;
   g_current_pip = NULL;
-  // 描いた color target は後の pass で texture として読まれることが多い。
-  // その draw で遷移すると読む側の pass を中断して attachment を書き出し・読み直すことになるので、ここで読める layout にしておく。
+  // Color targets that were drawn are often read as textures in later passes.
+  // Transitioning at that draw would interrupt the reading pass to store and
+  // reload attachments, so put them in a readable layout here.
   if (ended)
     for (int i = 0; i < g.pass_n_targets; ++i)
       vkb_transition(g.pass_targets[i],
@@ -2570,8 +2591,9 @@ static void vkb_collect_write_set(const ShaderReflection *r, SglShaderStage st,
                        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 }
 
-// graphics は VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC で、draw ごとの uniform を offset だけで切り替える。
-// binding の昇順に並べるのは、dynamic offset を binding 番号の順に渡す決まりのため。
+// graphics uses VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC and switches per-draw
+// uniforms by offset only. Sorted in ascending binding order because the rule
+// is that dynamic offsets are passed in binding number order.
 static void vkb_collect_uniform_set(const ShaderReflection *r,
                                     SglShaderStage st, VkDescriptorType type,
                                     SetInfo *out) {
@@ -2746,7 +2768,7 @@ static void vkb_destroy_shader(BackendShader h) {
 // --- pipelines
 // --------------------------------------------------------------------
 
-// SglBlendFactor / SglBlendOp の値で引く。
+// Indexed by SglBlendFactor / SglBlendOp value.
 static const VkBlendFactor kVkbBlendFactor[] = {
     VK_BLEND_FACTOR_ZERO,
     VK_BLEND_FACTOR_ZERO,
@@ -2920,7 +2942,8 @@ static BackendPipeline vkb_make_pipeline(const PipelineDesc *d) {
           .pName = "main",
       },
   };
-  // VkRenderPass で描くときは、同じ format の組の render pass と互換に作る (load op は互換に関わらない)。
+  // When drawing with VkRenderPass, create it compatible with the render pass
+  // for the same format combination (load ops do not affect compatibility).
   VkRenderPass render_pass = VK_NULL_HANDLE;
   if (!g.dynamic_rendering) {
     render_pass =
@@ -3066,7 +3089,7 @@ static bool vkb_set_cache_grow(FrameCtx *f) {
 }
 
 static void vkb_set_cache_reset(FrameCtx *f) {
-  // 1 回だけ重いフレームの大きさを持ち続けない。
+  // Do not keep the size of a single heavy frame.
   if (f->set_cache_cap > KSET_CACHE_MIN &&
       f->set_cache_count * 8 < f->set_cache_cap) {
     free(f->set_cache);
@@ -3078,8 +3101,9 @@ static void vkb_set_cache_reset(FrameCtx *f) {
   f->set_cache_count = 0;
 }
 
-// このフレームで同じ内容の set を確保済みならそれを返す。
-// 確保したばかりの set は *fresh を立てて返すので、呼び出し側が中身を書く。
+// If a set with the same contents has already been allocated this frame, return
+// it. A freshly allocated set is returned with *fresh set, so the caller writes
+// its contents.
 static VkDescriptorSet vkb_cached_set(VkDescriptorSetLayout dsl,
                                       const uint64_t *ids, int n, bool *fresh) {
   FrameCtx *f = &g.frames[g.slot];
@@ -3109,8 +3133,8 @@ typedef struct SetWrites {
   VkWriteDescriptorSet writes[KSET_MAX_BINDINGS];
   VkDescriptorImageInfo imgs[KSET_MAX_BINDINGS];
   VkDescriptorBufferInfo bufs[KSET_MAX_BINDINGS];
-  uint64_t
-      ids[KSET_MAX_BINDINGS * 2]; // 書く実体の世代と範囲 (SetCacheEntry の key)
+  uint64_t ids[KSET_MAX_BINDINGS * 2]; // Generation and range of the objects to
+                                       // write (the SetCacheEntry key)
   int count;
 } SetWrites;
 
@@ -3196,7 +3220,8 @@ static void vkb_write_set(SetWrites *w, VkDescriptorSet set) {
 static void vkb_bind_set(int set_index, VkDescriptorSet set,
                          const uint32_t *offsets, int n_offsets) {
   VkPipelineLayout layout = g_current_pip->layout;
-  // layout が変わると、前の layout で bind した set は使えると限らない。
+  // When the layout changes, sets bound with the previous layout are not
+  // guaranteed to be usable.
   if (g_bound.layout != layout) {
     g_bound.layout = layout;
     memset(g_bound.sets, 0, sizeof(g_bound.sets));
@@ -3365,7 +3390,8 @@ static bool vkb_flush_uniform_sets(void) {
           g_uniforms[si][slot].failed)
         return false;
     }
-    // set の中身は buffer と大きさだけで、offset は bind ごとに渡す。
+    // The set holds only the buffer and size, and the offset is passed on each
+    // bind.
     SetWrites w;
     w.count = 0;
     uint64_t ids[SGL_MAX_UNIFORM_BLOCKS * 2];

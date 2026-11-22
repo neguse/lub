@@ -1,7 +1,7 @@
 namespace TinySystem;
 
-// log10f: runtime/math/log10f.c の C# 版 (CORE-MATH 由来、MIT。著作権表示と
-// 許諾文は log10f.c の先頭)
+// log10f: C# version of runtime/math/log10f.c (derived from CORE-MATH, MIT. The copyright notice and
+// license text are at the top of log10f.c)
 internal static partial class TcsMath
 {
     static float Log10Special(float x)

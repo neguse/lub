@@ -1,13 +1,13 @@
-// 操作の手応えの動き。
-//   - Spring は 1 秒で目標に収まり、少し (3% から 15%) 行き過ぎる
-//   - 開いた窓の見た目は小さな大きさから始まり、1 秒で窓の大きさになる
-//   - cursor は窓の texture に描かず、別に描く。動かすと飛ばずに滑り、0.3 秒で収まる
-//   - 打った文字は Landing になって Landing.Seconds で面に収まる。消しても Landing はできない
-//   - 本文から文字が消えると (Backspace、選んだ範囲に打って上書き) 粒が散る。何も消えない Backspace では散らない
-//   - Ease.Toward は seconds で目標に着き、それより前は途中にいる
-//   - Alt で大きさを変えている間、窓はつかんだときと同じに浮き、止めると戻る
-//   - 閉じた窓の見た目は WindowMotion.CloseSeconds で消える
-//   - 粒は寿命で消える
+// Motion for operation feedback.
+//   - Spring settles on the target in 1 second and overshoots a little (3% to 15%)
+//   - An opened window starts out looking small and reaches the window size in 1 second
+//   - The cursor is not drawn into the window texture but drawn separately. When moved, it slides instead of jumping and settles in 0.3 seconds
+//   - Typed characters become a Landing and settle onto the surface in Landing.Seconds. Deleting does not create a Landing
+//   - When characters disappear from the text (Backspace, typing over a selected range), particles scatter. A Backspace that deletes nothing does not scatter them
+//   - Ease.Toward reaches the target in seconds, and is partway there before that
+//   - While resizing with Alt, the window floats the same as when grabbed, and comes back when stopped
+//   - A closed window fades out in WindowMotion.CloseSeconds
+//   - Particles disappear at the end of their lifetime
 using System;
 using Lub;
 using LiderCore;
@@ -47,10 +47,10 @@ public static class TestMotion
         App.Config(new ConfigOpts { Width = 320, Height = 180 });
     }
 
-    // 段ごとに 1 frame 待ち、lider が描き直した後に確かめる
+    // Wait 1 frame per stage and check after lider has redrawn
     static void TestFrame(float dt)
     {
-        // lider が 1 frame 描いてから
+        // After lider has drawn 1 frame
         frames++;
         if (failed || frames < 3)
             return;
@@ -110,7 +110,7 @@ public static class TestMotion
         var y = EditorHost.CaretY(id, 0) + EditorHost.ScrollY(id);
         Check(Math.Abs(m.CaretY.Value - y) < 0.5f, "the shown caret is at " + m.CaretY.Value + ", want " + y);
         var fromY = m.CaretY.Value;
-        // 1/60 秒だけ進めると、まだ途中にいる
+        // After advancing by only 1/60 second, it is still partway there
         EditorHost.SetCursor(id, 5, 1);
         EditorHost.Draw(id, PanelView.BasePxW, PanelView.BasePxH);
         var to = EditorHost.CaretY(id, 0) + EditorHost.ScrollY(id);
@@ -124,7 +124,7 @@ public static class TestMotion
         Typed(id);
     }
 
-    // 打って描き直した直後に 1/60 秒だけ進める (frame の間の dt は長いことがある)
+    // Advance by only 1/60 second right after typing and redrawing (the dt between frames can be long)
     static void Typed(int id)
     {
         EditorHost.Text("ab");
@@ -148,7 +148,7 @@ public static class TestMotion
         Check(EditorHost.Line(id, 5).StartsWith("a") && !EditorHost.Line(id, 5).StartsWith("ab"),
             "backspace did not delete: " + EditorHost.Line(id, 5));
 
-        // 先頭の Backspace は何も消さない
+        // Backspace at the start deletes nothing
         for (var t = 0.0f; t < 1; t += 1.0f / 60)
             Lider.Animate(Lider.Work!, 1.0f / 60);
         EditorHost.SetCursor(id, 1, 1);
@@ -158,7 +158,7 @@ public static class TestMotion
         Lider.Animate(Lider.Work!, 1.0f / 60);
         Check(Lider.ParticleCount == 0 && before == 0, "a backspace that deleted nothing scattered particles");
 
-        // 選んだ範囲 (shift + 右) に打って上書きすると、消えた所から散る
+        // Typing over a selected range (shift + right) scatters particles from where the text disappeared
         EditorHost.SetCursor(id, 5, 1);
         EditorHost.Key(225, true);
         EditorHost.Key(79, true);

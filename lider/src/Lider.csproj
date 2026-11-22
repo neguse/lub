@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- lider の entry (class Lider)。`lub Lider.csproj` で起動し、env LIDER_GAME のゲームを開く。
-       dotnet 側 (IDE) の型チェック用に lub の stub と lubx を Compile する。LubRoot は lub のリポジトリの root。 -->
+  <!-- The lider entry (class Lider). Started with `lub Lider.csproj`, it opens the game in env LIDER_GAME.
+       Compiles lub's stubs and lubx for type checking on the dotnet side (IDE). LubRoot is the root of the lub repository. -->
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
     <LangVersion>15</LangVersion>

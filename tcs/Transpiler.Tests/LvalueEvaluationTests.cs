@@ -1,9 +1,9 @@
 namespace TinyCs.Tests;
 
-// 副作用を含む lvalue (receiver / index に呼び出しがある compound
-// assignment、??=、increment、collection mutation) は receiver / index を
-// 一度だけ評価する。C# の評価回数・順序 (receiver → index → read → rhs →
-// write) と一致させる。
+// An lvalue with side effects (a compound
+// assignment, ??=, increment, or collection mutation with a call in the receiver / index) evaluates the receiver / index
+// only once. This matches the C# evaluation count and order (receiver → index → read → rhs →
+// write).
 public class LvalueEvaluationTests
 {
     [Fact]

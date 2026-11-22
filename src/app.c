@@ -16,11 +16,12 @@
 // g_backend->xxx() after that point.
 const RenderBackend *g_backend = NULL;
 
-// 未指定時の既定 backend = そのプラットフォームの最短距離実装。
+// Default backend when unspecified = the most direct implementation for that
+// platform.
 #if defined(_WIN32)
 #define LUB_DEFAULT_BACKEND "d3d12"
 #elif defined(__ANDROID__) && defined(LUB_HAS_OPENXR)
-// Android の player は VR ヘッドセット (Meta Quest) 用
+// The Android player is for VR headsets (Meta Quest)
 #define LUB_DEFAULT_BACKEND "openxr"
 #elif defined(__linux__)
 #define LUB_DEFAULT_BACKEND "vulkan"
@@ -31,9 +32,11 @@ const RenderBackend *g_backend = NULL;
 #endif
 
 #ifndef __EMSCRIPTEN__
-// vulkan / sdlgpu (Vulkan driver) は Vulkan-capable surface を要求する。
-// d3d12 は Vulkan を使わないため flag を外し、Vulkan ICD の無い環境 (GPU 無しの CI 等) でも window を作れるようにする。
-// metal は CAMetalLayer を持つ view を使い、Retina / iPhone の画面を実 pixel で描く。
+// vulkan / sdlgpu (Vulkan driver) require a Vulkan-capable surface.
+// d3d12 does not use Vulkan, so drop the flag so that a window can be created
+// even in environments without a Vulkan ICD (CI without a GPU, etc.). metal
+// uses a view with a CAMetalLayer and draws Retina / iPhone screens at physical
+// pixels.
 static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
   if (strcmp(backend_name, "openxr") == 0)
     return SDL_WINDOW_HIDDEN;
@@ -45,8 +48,8 @@ static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
   else if (strcmp(backend_name, "d3d12") != 0)
     flags |= SDL_WINDOW_VULKAN;
 #ifdef SDL_PLATFORM_IOS
-  // iPhone の window は常に画面全体。
-  // fullscreen にすると status bar が消える。
+  // On iPhone, the window always covers the whole screen.
+  // Making it fullscreen hides the status bar.
   flags |= SDL_WINDOW_FULLSCREEN;
 #endif
   return flags;
@@ -56,8 +59,10 @@ static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
 bool process_init(Process *proc) {
   memset(proc, 0, sizeof(*proc));
   gpu_stats_init_from_env();
-  // backend は App.Config で最終決定される(window 生成より後)が、App.Config で指定しない sample でも harness の backend 選択を尊重できるよう、ここで default を env LUB_BACKEND から決める。
-  // App.Config が明示すれば勝つ。
+  // The backend is finalized by App.Config (after the window is created), but
+  // the default is decided here from env LUB_BACKEND so that the harness's
+  // backend choice is respected even for samples that do not specify it in
+  // App.Config. An explicit setting in App.Config wins.
 #ifdef __EMSCRIPTEN__
   strcpy(proc->backend_name, "webgpu");
 #else
@@ -72,14 +77,16 @@ bool process_init(Process *proc) {
   }
 #endif
 
-  // wasm は canvas-backed default のみ。
+  // wasm has only the canvas-backed default.
 #ifdef __EMSCRIPTEN__
   proc->window = SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W,
                                   LUB_DEFAULT_WINDOW_H, SDL_WINDOW_RESIZABLE);
 #else
   if (export_active()) {
-    // export の window は大きさを持つだけ。
-    // macOS の SDL はグラフィックスの flag が無い window に OpenGL を付け、offscreen の video driver ではそれを読めずに失敗するので、外の context を使う window として作る。
+    // The window for export only has a size.
+    // SDL on macOS adds OpenGL to a window without a graphics flag, and the
+    // offscreen video driver fails because it cannot load it, so create it as a
+    // window that uses an external context.
     SDL_PropertiesID props = SDL_CreateProperties();
     SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "lub");
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER,
@@ -137,8 +144,9 @@ bool app_init(App *app, Process *proc) {
 
 bool app_backend_init(App *app) {
 #ifndef __EMSCRIPTEN__
-  // App.Config が window 生成後に backend を上書きした場合、window に SDL_WINDOW_VULKAN が欠けていることがある。
-  // その時だけ作り直す (逆方向 — flag が余分に付いている — は無害なので放置)。
+  // If App.Config overrides the backend after the window is created, the window
+  // may lack SDL_WINDOW_VULKAN. Recreate it only in that case (the reverse — an
+  // extra flag — is harmless, so leave it).
   SDL_WindowFlags want = window_flags_for_backend(app->proc->backend_name);
   if ((want & SDL_WINDOW_VULKAN) &&
       !(SDL_GetWindowFlags(app->proc->window) & SDL_WINDOW_VULKAN)) {
@@ -153,7 +161,8 @@ bool app_backend_init(App *app) {
   }
 
   if (export_active()) {
-    // export は backend の名前 (環境変数や App.Config) によらない
+    // Export does not depend on the backend name (environment variable or
+    // App.Config)
     g_backend = &g_backend_export;
   } else if (strcmp(app->proc->backend_name, "sdlgpu") == 0) {
     g_backend = &g_backend_sdlgpu;
@@ -220,7 +229,7 @@ void process_frame_begin(Process *proc, int *out_w, int *out_h) {
   proc->last_h = h;
 }
 
-// fps を 1 秒ごとに数え直す
+// Recount fps every second
 static void process_count_fps(Process *proc) {
   uint64_t now_ns;
   if (proc->fixed_frame_dt > 0.0) {
@@ -239,7 +248,8 @@ static void process_count_fps(Process *proc) {
   if (elapsed_ns < 1000000000ULL)
     return;
   if (proc->fixed_frame_dt > 0.0) {
-    // fixed dt は float から来るので 1/dt は 60 や 80 から 1e-6 ほどずれる。1e-3 に丸めて切りのよい値にする
+    // fixed dt comes from a float, so 1/dt is off from 60 or 80 by about 1e-6.
+    // Round to 1e-3 to get a clean value
     proc->actual_fps = floor(1000.0 / proc->fixed_frame_dt + 0.5) / 1000.0;
   } else {
     proc->actual_fps =
@@ -270,7 +280,7 @@ void process_frame_end(Process *proc) {
 bool app_frame_waits_for_gpu(App *app) {
   if (!g_backend || !g_backend->cannot_block_on_gpu)
     return false;
-  // 保証するモードの readback は、この frame に渡す結果が要る
+  // In the guaranteed mode, readback needs the results to deliver in this frame
   return app->readback_fixed_latency && !api_gfx_readbacks_due_ready(app);
 }
 
@@ -280,8 +290,8 @@ static void app_on_shader_release(void *ctx, uintptr_t old_shader) {
 }
 
 void app_frame_end(App *app, bool frame_ok) {
-  // key で宣言する snd / readback queue の sweep。
-  // 退役した snd の PCM 回収はこの後の audio_state_frame_end が行う。
+  // Sweep of snds / readback queues declared by key.
+  // The PCM of retired snds is reclaimed afterwards by audio_state_frame_end.
   api_audio_frame_end(app);
   api_app_frame_end(app);
   api_gfx_frame_end(app);
@@ -296,7 +306,7 @@ void app_frame_end(App *app, bool frame_ok) {
     pipeline_cache_sweep(&app->pip_cache, cf, thr);
     res_table_sweep(&app->res, cf, thr, app_on_shader_release, app);
   }
-  // frame 有効の view の実体を回収する
+  // Reclaim the backing data of frame-scoped views
   app_frame_garbage_drain(app);
   digest_frame_end(app);
   if (frame_ok)
@@ -305,13 +315,14 @@ void app_frame_end(App *app, bool frame_ok) {
 }
 
 void app_shutdown(App *app) {
-  // 開いた app は backend のあるうちに閉じる
+  // Close opened apps while the backend still exists
   api_app_shutdown(app);
   gpu_time_forget(app);
   pick_shutdown(app);
   // Pipelines reference shaders, so destroy pipelines before resources.
   pipeline_cache_shutdown(&app->pip_cache);
-  api_gfx_shutdown(app); // readback queue (backend の readback request を含む)
+  api_gfx_shutdown(
+      app); // readback queues (including the backend's readback requests)
   api_audio_shutdown(app);
   app_frame_garbage_drain(app);
   free(app->frame_garbage);
@@ -329,8 +340,9 @@ int64_t app_file_mtime_ns(const char *path) {
   if (!path)
     return 0;
 #ifdef _WIN32
-  // MSVC の struct _stat64 の st_mtime は秒精度なので、同じ秒の内の 2 回目の保存を取りこぼす。
-  // SDL は GetFileAttributesExW の ftLastWriteTime (100ns 精度) を ns に直して返す。
+  // st_mtime of MSVC's struct _stat64 has one-second precision, so it misses a
+  // second save within the same second. SDL converts ftLastWriteTime of
+  // GetFileAttributesExW (100ns precision) to ns and returns it.
   SDL_PathInfo info;
   if (!SDL_GetPathInfo(path, &info))
     return 0;

@@ -1,7 +1,7 @@
-// Gfx.Pick は、指した画素に一番手前で描いた draw の番号と、その draw を呼んだ所を返す。
-// 4 枚の板を depth を付けて描く: A (全面、z 0.5)、B (左半分、z 0.3)、C (右半分、z 0.7)、D (全面、z 0.9)。
-// 左半分は B が、右半分は A が一番手前に見える。
-// 結果を待たずに次の要求を出すと、前の要求は捨てられる。
+// Gfx.Pick returns the index of the frontmost draw at the given pixel, and the place that called that draw.
+// Draws 4 planes with depth: A (full screen, z 0.5), B (left half, z 0.3), C (right half, z 0.7), D (full screen, z 0.9).
+// B appears frontmost on the left half, and A on the right half.
+// Issuing the next request without waiting for the result discards the previous request.
 using System;
 using Lub;
 
@@ -59,13 +59,13 @@ public static class TestPick
         }
         if (step == 1)
         {
-            // 次の frame で前の要求が流し直され、読み戻しを待っている間に、次の要求を出す
+            // In the next frame the previous request is replayed, and while it waits for the readback, issue the next request
             step = 15;
             return;
         }
         if (step == 15)
         {
-            // 前の要求の結果を待たずに出した要求は、前の要求を捨てる
+            // A request issued without waiting for the result of the previous request discards the previous request
             Gfx.Pick(Gfx.MainTex!, w * 3 / 4, h / 2);
             step = 2;
             return;

@@ -1,10 +1,10 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// List.Sort は .NET と同じ introsort (dotnet/runtime の ArraySortHelper<T>) で、同値の要素の並びと比較の呼び出し列まで同じ。
-// ties は Sort(comparison) の同値の key (m 種類) の並びと、比較の回数と呼び出し列の hash。
-// killer は McIlroy の adversary (比較の結果を遅延して決め、分割を最悪にする) で、depthLimit に届いて heapsort に落ちる。
-// zeros は比較なしの float の Sort で、NaN を先頭に寄せた後の ±0 の並び (N は NaN、- と + は ±0、a-d は負から正の値)。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// List.Sort is the same introsort as .NET (ArraySortHelper<T> in dotnet/runtime), matching even the order of equal elements and the sequence of comparison calls.
+// ties: the order of equal keys (m kinds) with Sort(comparison), plus a hash of the comparison count and call sequence.
+// killer: McIlroy's adversary (decides comparison results lazily to make partitioning worst-case), which reaches depthLimit and falls back to heapsort.
+// zeros: float Sort without a comparison, the order of ±0 after NaNs are moved to the front (N is NaN, - and + are ±0, a-d are values from negative to positive).
+// The expected values are the stdout of running the same program on CoreCLR
 public class SortTiesDifferentialTests
 {
     [CFact]
@@ -173,8 +173,8 @@ public class SortTiesDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // 比較が不整合だと分割の走査が区間の外に出る。
-    // .NET はそこで例外を投げるので、同じ比較の後で fault する
+    // If the comparison is inconsistent, the partition scan goes outside the range.
+    // .NET throws an exception there, so it faults after the same comparison
     [CFact]
     public void SortInconsistentComparison_FaultsLikeDotnet()
     {

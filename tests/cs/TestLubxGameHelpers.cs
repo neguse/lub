@@ -1,12 +1,12 @@
-// Lubx のゲーム向け定型 (Assets.Wav / Assets.RenderTarget / Camera3d.Project / Camera3d.ViewportRay / Ray / Rand.Between / Sfx.Synth) の振る舞いを見る。
-// 純粋な計算は OnInit で、resource を宣言する定型は frame を回して確かめる。
+// Checks the behavior of the game-oriented helpers of Lubx (Assets.Wav / Assets.RenderTarget / Camera3d.Project / Camera3d.ViewportRay / Ray / Rand.Between / Sfx.Synth).
+// Pure computations are checked in OnInit, and helpers that declare resources are checked by running frames.
 using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-// Sfx.Synth に渡す波形。
-// 呼ばれた回数と最初の t、最後の u を覚える
+// Waveform passed to Sfx.Synth.
+// Remembers the call count, the first t, and the last u
 public class TestLubxGameHelpersVoice
 {
     public static int Calls;
@@ -28,7 +28,7 @@ public class TestLubxGameHelpersVoice
 public static class TestLubxGameHelpers
 {
     const int sweepFrames = 2;
-    // Assets.Wav が読む wav
+    // The wav read by Assets.Wav
     const string wavPath = "tests/cs/data/test_audio_decode.wav";
 
     static int frame;
@@ -40,7 +40,7 @@ public static class TestLubxGameHelpers
         Check.That(Math.Abs(a - b) <= eps, message + ": " + a + " vs " + b);
     }
 
-    // Sfx.Synth(constant 0.5, fade) の期待する波形。Audio.Snd は同じ内容を同じ snd に dedupe する
+    // The expected waveform of Sfx.Synth(constant 0.5, fade). Audio.Snd dedupes the same contents into the same snd
     static List<float> ExpectedFade(int n, int fade)
     {
         var expected = new List<float>();
@@ -76,7 +76,7 @@ public static class TestLubxGameHelpers
         Check.That(seen[0] && seen[1] && seen[2] && seen[3], "between must reach both ends");
         Check.That(a.Between(5, 5) == 5, "between(5, 5) must be 5");
         Check.That(a.Between(-2, -1) <= -1, "between must accept negative ranges");
-        // 幅が int に収まらない範囲
+        // A range whose width does not fit in an int
         var wide = new Rand(1);
         bool low = false, high = false;
         for (int i = 0; i < 2000; i++)
@@ -92,7 +92,7 @@ public static class TestLubxGameHelpers
         Check.That(low && high, "between(int.MinValue, int.MaxValue) must reach both sides");
     }
 
-    // ゲームの床のマス選び: 画面の点 -> レイ -> 床 (y = 0) との交点
+    // Picking a floor cell in a game: screen point -> ray -> intersection with the floor (y = 0)
     static Vec3? PickFloor(Mat4 cam, float sx, float sy, float w, float h)
     {
         var ray = Camera3d.ViewportRay(cam, sx, sy, w, h);
@@ -216,7 +216,7 @@ public static class TestLubxGameHelpers
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
         Gfx.EndPass();
 
-        // 宣言を止めて wav と synth の snd を sweep させる
+        // Stop declaring so that the wav and synth snds are swept
         if (frame > 11 && frame < 11 + sweepFrames + 3)
             return;
 

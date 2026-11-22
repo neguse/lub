@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# tcs2c で C にした tcs (tcs/SelfHost/native.sh) を作り、<build-dir>/tcs に置く。
-# lub は実行ファイルの隣の tcs/tcs を最初に使う (src/tcs_build.c)。tcs は一緒に配るファイル (runtime/、lib/) を同じ dir から読む。
-# native.sh は作った tcs が .NET の tcs と同じ出力を出すことも確かめる。作るのに dotnet SDK と C compiler が要る。使うのには要らない。
+# Builds tcs converted to C with tcs2c (tcs/SelfHost/native.sh) and places it in <build-dir>/tcs.
+# lub first uses tcs/tcs next to its executable (src/tcs_build.c). tcs reads the files shipped with it (runtime/, lib/) from the same dir.
+# native.sh also checks that the built tcs produces the same output as the .NET tcs. Building it requires the dotnet SDK and a C compiler. Using it does not.
 #
-# Usage: scripts/build-tcs-native.sh [build-dir]   (既定 build-release-linux)
+# Usage: scripts/build-tcs-native.sh [build-dir]   (default build-release-linux)
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

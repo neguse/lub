@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// --lib の entry は --ref の外部データ class を引数に取れる。
-// host は tcs_new_<型>() で作った record をすぐ entry に渡し、game が保持した record は境界で昇格して残る。
-// user の class を引数に取る method は entry にしない。
+// --lib entries can take external data classes from --ref as arguments.
+// The host passes a record created with tcs_new_<type>() straight to an entry, and records that the game keeps are promoted at the boundary and survive.
+// Methods that take user classes as arguments are not made into entries.
 public class LibRecordEntryTests
 {
     [CFact]
@@ -31,7 +31,7 @@ public class LibRecordEntryTests
         var c = SelfHostC.Emit([source], null, lib: true, referenceSources: [stub]);
         Assert.Contains("tcs_entry_G_OnEv(Tcs_H_Ev * v_e_0)", c);
         Assert.DoesNotContain("tcs_entry_G_OnMine", c);
-        // 境界ごとに nursery を garbage で埋め、昇格しなかった record が壊れる形にする
+        // Fills the nursery with garbage at every boundary so that records that were not promoted get corrupted
         const string host = """
 
             int main(void)

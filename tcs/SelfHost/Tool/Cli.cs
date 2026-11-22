@@ -2,14 +2,14 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// tcs の CLI (`tcs check`、`tcs c`、`tcs vm`)。
-// host (C、.NET、wasm) は Start を 1 回、SetDone が来るまで Step を繰り返し呼ぶ。
-// C の build (tcs2c) は entry から戻るたびに GC の frame の境界になるので、compile は Step ごとに 1 段だけ進める
+// The tcs CLI (`tcs check`, `tcs c`, `tcs vm`).
+// The host (C, .NET, wasm) calls Start once, then Step repeatedly until SetDone arrives.
+// In the C build (tcs2c), each return from an entry is a GC frame boundary, so the compile advances only one step per Step
 public static class Cli
 {
     public const string Version = "0.1.0";
 
-    // 今の仕事 (どれか 1 つ。tcs2c は継承を持たないので型ごとに持つ)
+    // The current job (only one of them; tcs2c has no inheritance, so there is a field per type)
     private static CheckRun? _check;
     private static CRun? _cRun;
     private static VmRun? _vmRun;
@@ -52,7 +52,7 @@ public static class Cli
         TcsHost.SetDone();
     }
 
-    // 終わったなら終了コード、Step で続けるなら -1
+    // The exit code if finished, -1 if continuing with Step
     private static int Begin(List<string> args)
     {
         if (args.Count > 0 && args[0] == "check") return BeginCheck(args);
@@ -68,7 +68,7 @@ public static class Cli
             TcsHost.WriteOut("tcs " + Version + "\n");
             return 0;
         }
-        // subcommand の無い呼び出し (引数なしも)
+        // Invocation without a subcommand (including no arguments)
         TcsHost.WriteErr(Usage());
         return 1;
     }
@@ -101,7 +101,7 @@ public static class Cli
         return -1;
     }
 
-    // `tcs c`: C backend (旧 tcs2c と同じ引数)。SelfHost/Tool/CRun.cs
+    // `tcs c`: C backend (same arguments as the old tcs2c). SelfHost/Tool/CRun.cs
     private static int BeginC(List<string> args)
     {
         var o = new COptions();
@@ -132,7 +132,7 @@ public static class Cli
         return -1;
     }
 
-    // `tcs vm`: tcs VM の .tcsb (旧 tcs2vm と同じ引数)。SelfHost/Tool/VmRun.cs
+    // `tcs vm`: tcs VM .tcsb (same arguments as the old tcs2vm). SelfHost/Tool/VmRun.cs
     private static int BeginVm(List<string> args)
     {
         var o = new VmOptions();
@@ -167,8 +167,8 @@ public static class Cli
         return -1;
     }
 
-    // 旧 tcs2c の誤りの形 (`tcs2c: ...`)
-    // 出力の path が入力 (a か b) のどれかと同じファイルなら、その誤りの文。違えば ""
+    // Error format of the old tcs2c (`tcs2c: ...`)
+    // If the output path is the same file as one of the inputs (a or b), the error message for it. "" otherwise
     public static string InputClash(string output, List<string> a, List<string> b)
     {
         if (output == "") return "";
@@ -226,14 +226,14 @@ public static class Cli
     }
 }
 
-// `tcs check` の引数
+// Arguments of `tcs check`
 public sealed class CheckOptions
 {
     public List<string> InputPaths = new List<string>();
     public List<string> RefPaths = new List<string>();
 }
 
-// tcs check: IL を組み立てて検査する (Session.CheckOnly)。Step の戻りは終了コード、続けるなら -1
+// tcs check: builds and checks the IL (Session.CheckOnly). Step returns the exit code, or -1 to continue
 public sealed class CheckRun
 {
     private static readonly string[] LibraryPaths = "TinySystem/Linq.cs TinySystem/ValueTuple.cs".Split(' ');

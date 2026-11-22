@@ -1,6 +1,7 @@
-// io / png の C API。
-// file cache (mtime の fast path + 内容 hash の version) と loader を runtime が持つ。
-// cache は path を key に runtime が所有し、結果は frame 有効の view で返す。
+// C API for io / png.
+// The runtime owns the file cache (mtime fast path + content-hash version) and
+// the loaders. The runtime owns the cache, keyed by path, and returns results
+// as frame-scoped views.
 #include "api_internal.h"
 #include "backend.h"
 #include "gltf.h"
@@ -22,11 +23,14 @@ uint64_t lub_io_fnv1a64(const void *data, size_t len) {
 }
 
 // -------------------------------------------------------- save directory
-// save/<名前>/<file> はユーザーの保存の場所を指す。
-// native は SDL_GetPrefPath の組織名なしの <名前> (Linux は $XDG_DATA_HOME/<名前>/、Windows は %APPDATA%\<名前>\) の下。
-// web は IndexedDB に同期する /save/<名前>/ の下で、IndexedDB から読み終わるまで Pending になる。
-// IndexedDB を使えないときは、残らない場所に保存させず、読み込みも保存も error にする。
-// 名前と file の各段は空、"."、".." を許さない (保存の場所の外に出さない)。
+// save/<name>/<file> refers to the user's save location.
+// On native, it is under <name> of SDL_GetPrefPath without an organization name
+// (Linux: $XDG_DATA_HOME/<name>/, Windows: %APPDATA%\<name>\). On web, it is
+// under /save/<name>/, which is synced to IndexedDB, and it stays Pending until
+// it has been read from IndexedDB. When IndexedDB is unavailable, saving to a
+// location that does not persist is not allowed, and both loading and saving
+// fail with an error. The name and each file path segment must not be empty,
+// ".", or ".." (to stay inside the save location).
 
 typedef enum SavePath {
   SAVE_NONE,
@@ -54,11 +58,11 @@ EM_JS(void, save_mount_js, (void), {
     Module.lubSave.state = e ? 2 : 1;
   });
 });
-// 0 は読み込み中、1 は使える、2 は使えない。
+// 0 is loading, 1 is available, 2 is unavailable.
 EM_JS(int, save_state_js, (void), {
   return Module.lubSave.state;
 });
-// 書き込み中に次の保存が来たら、終わってからもう一度書く (syncfs は重ねて走らせない)。
+// If another save comes in while writing, write again after the current write finishes (syncfs is not run concurrently).
 EM_JS(void, save_flush_js, (void), {
   var s = Module.lubSave;
   if (s.busy) {
@@ -92,7 +96,7 @@ static bool save_segment_ok(const char *s, size_t n) {
   return true;
 }
 
-// '/' で区切った各段が save_segment_ok なら true。
+// true if every '/'-separated segment passes save_segment_ok.
 static bool save_segments_ok(const char *s) {
   for (;;) {
     const char *end = strchr(s, '/');
@@ -104,7 +108,7 @@ static bool save_segments_ok(const char *s) {
   }
 }
 
-// path が save/ で始まるなら、保存の場所の path を out に書く。
+// If path starts with save/, write the path in the save location to out.
 static SavePath save_resolve(const char *path, char *out, size_t cap) {
   if (strncmp(path, "save/", 5) != 0)
     return SAVE_NONE;
@@ -159,12 +163,12 @@ typedef struct IoEntry {
   IoKind kind;
   int64_t mtime;
   uint64_t hash;
-  bool parsed_ok; // parsed の中身が有効か
-  // parsed (kind ごと)
-  uint8_t *bytes; // TEXT: 内容 (NUL 終端付き)。他: 未使用
+  bool parsed_ok; // Whether the parsed contents are valid
+  // parsed (per kind)
+  uint8_t *bytes; // TEXT: contents (NUL-terminated). Others: unused
   size_t bytes_len;
   GltfMesh *gltf;
-  LubGltfPrimitive *gltf_prims; // gltf の view (gltf の配列を指す)
+  LubGltfPrimitive *gltf_prims; // gltf view (points into the gltf arrays)
   LubGltfMaterial *gltf_mats;
   uint8_t *pixels;
   int32_t w, h, stride;
@@ -195,8 +199,10 @@ static void io_entry_free_parsed(IoEntry *e) {
 
 static void gltf_free_any(void *m) { gltf_free((GltfMesh *)m); }
 
-// 読み直しで中身を差し替える前に、前の中身を frame の終わりまで預ける。
-// 同じ frame で先に返した view (load_bytes / png_load / load_gltf) が読み直しの後も前の中身を指したまま読める。
+// Before replacing the contents on reload, hand the old contents over until the
+// end of the frame. Views returned earlier in the same frame (load_bytes /
+// png_load / load_gltf) still point to the old contents and stay
+// readable after the reload.
 static void io_entry_retire_parsed(App *app, IoEntry *e) {
   app_frame_garbage_push(app, e->bytes);
   app_frame_garbage_push_fn(app, e->gltf, gltf_free_any);
@@ -283,7 +289,8 @@ static uint8_t *read_file(const char *path, size_t *len) {
   return buf;
 }
 
-// export ではゲームが読んだ file を snapshot の同じ相対 path に写す (player は snapshot を cwd にして同じ path で読む)。
+// On export, copy the files the game read to the same relative paths in the
+// snapshot (the player uses the snapshot as cwd and reads the same paths).
 static void export_read(const char *path, const uint8_t *bytes, size_t len) {
 #ifdef __EMSCRIPTEN__
   (void)path;
@@ -306,7 +313,7 @@ static int32_t version_of(uint64_t hash) {
   return (int32_t)(uint32_t)(hash ^ (hash >> 32));
 }
 
-// load_* の (version, status, error) の組。
+// The (version, status, error) tuple of load_*.
 typedef struct IoResult {
   int32_t status; // LubIoStatus
   int32_t version;
@@ -320,8 +327,8 @@ static void io_result(IoResult *r, int32_t status, int32_t version,
   r->error = lub_str_c(error);
 }
 
-// gltf の外部 buffer (.bin / .glb) が全部あれば true (export 中は snapshot に写す)。
-// 無いものがあれば r に書いて false。
+// true if all external gltf buffers (.bin / .glb) exist (copied to the snapshot
+// during export). If any is missing, write to r and return false.
 static bool gltf_deps_ready(const char *path, const uint8_t *src, size_t len,
                             IoResult *r) {
   const char *base_end = strrchr(path, '/');
@@ -414,9 +421,9 @@ static void gltf_build_view(IoEntry *e) {
   }
 }
 
-// 全 loader 共通の refresh。
-// 戻り値は entry (parsed_ok なら中身が使える) か NULL。
-// r には status / version / error が入る。
+// refresh shared by all loaders.
+// Returns the entry (its contents are usable if parsed_ok) or NULL.
+// r receives status / version / error.
 static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   char path[1024];
   if (!lub_str_copy(path_s, path, sizeof(path))) {
@@ -459,12 +466,12 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
               "missing");
     return e->parsed_ok ? e : NULL;
   }
-  // ユーザーの保存は export の snapshot に入れない
+  // Do not put user saves in the export snapshot
   if (save == SAVE_NONE)
     export_read(path, bytes, len);
   uint64_t hash = lub_io_fnv1a64(bytes, len);
   if (e->parsed_ok && e->hash == hash) {
-    e->mtime = mtime; // 内容変わってない、mtime だけ更新
+    e->mtime = mtime; // Contents unchanged, update only mtime
     free(bytes);
     io_result(r, LUB_IO_STATUS_READY, version_of(hash), NULL);
     return e;
@@ -484,7 +491,8 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   case IO_GLTF: {
     size_t pl = strlen(path);
     bool is_json = pl > 5 && strcmp(path + pl - 5, ".gltf") == 0;
-    // save/ の外部 buffer は export しないので下見はせず、gltf_load が保存の場所を出ないか調べて読む
+    // External buffers under save/ are not exported, so skip the pre-check;
+    // gltf_load checks that they do not leave the save location and reads them
     if (save == SAVE_NONE && is_json && !gltf_deps_ready(path, bytes, len, r)) {
       free(bytes);
       return e->parsed_ok ? e : NULL;
@@ -522,7 +530,7 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   }
   free(bytes);
   if (err[0]) {
-    // parse 失敗: cache を更新せず前回値を維持
+    // parse failure: keep the previous value without updating the cache
     io_result(r, LUB_IO_STATUS_ERROR, e->parsed_ok ? version_of(e->hash) : 0,
               err);
     return e->parsed_ok ? e : NULL;
@@ -626,7 +634,7 @@ LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path, LubView *bytes,
   return LUB_OK;
 }
 
-// top-level は primitives[0] の写し + primitives。
+// The top level is a copy of primitives[0] + primitives.
 LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfMesh *mesh,
                            bool *has_mesh, int32_t *version, int32_t *status,
                            LubStr *error) {
@@ -742,7 +750,8 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
   int32_t need = n * stride;
   if (!out || cap < need)
     return need;
-  // 省略可能な配列は個数が足りるときだけ使う (短い / 空の配列は欠損扱い)
+  // Optional arrays are used only when they have enough elements (short / empty
+  // arrays are treated as missing)
   bool has_normals = mesh->normals && mesh->normals_count >= n * 3;
   bool has_uvs = mesh->uvs && mesh->uvs_count >= n * 2;
   bool has_tangents = mesh->tangents && mesh->tangents_count >= n * 4;
@@ -780,7 +789,8 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
       *o++ = 0;
     }
     if (layout == LUB_MESH_LAYOUT_PNUT) {
-      // tangent 欠損時は w=0 にして shader 側が derivative TBN に fallback する
+      // When tangents are missing, set w=0 so the shader falls back to
+      // derivative TBN
       if (has_tangents) {
         const float *t = mesh->tangents + i * 4;
         *o++ = t[0];
@@ -795,7 +805,7 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
       }
     }
     if (layout == LUB_MESH_LAYOUT_PNCM || layout == LUB_MESH_LAYOUT_PNCMW) {
-      // colors 欠損は 0.8 グレー、metal_rough 欠損は (0, 0.8)
+      // Missing colors become 0.8 gray, missing metal_rough becomes (0, 0.8)
       if (has_colors) {
         const float *c = mesh->colors + i * 3;
         *o++ = c[0];
@@ -818,7 +828,7 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
       *o++ = 0;
     }
     if (layout == LUB_MESH_LAYOUT_PNCMW) {
-      // joints/weights 欠損は「bone 0 に重み 1」
+      // Missing joints/weights become "weight 1 on bone 0"
       if (has_skin) {
         *o++ = mesh->joints[i * 2];
         *o++ = mesh->weights[i * 2];
@@ -835,7 +845,8 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
   return need;
 }
 
-// interleave の結果は frame の終わりまで有効な runtime 所有の配列。
+// The interleave result is a runtime-owned array valid until the end of the
+// frame.
 static LubStatus interleave_view(LubContext *ctx, const LubMeshData *mesh,
                                  int32_t layout, const char *fn,
                                  const float **out, int32_t *out_count) {

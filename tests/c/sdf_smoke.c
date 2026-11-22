@@ -3,8 +3,9 @@
 // move+rotate+smin tree stays inside its reported bounds, paint / bones bake
 // per-vertex data, a round cone matches the hull of its two end spheres, the
 // other primitives and operators land on independently derived surfaces, and
-// invalid trees are rejected by the converter instead of passing silently. C core (sdf_tree_convert / sdf_mesh_build) を直接叩く。
-// C# 面 (SdfNodeDesc の木) は tests/cs と golden (19_sdf) が見る。
+// invalid trees are rejected by the converter instead of passing silently.
+// Calls the C core (sdf_tree_convert / sdf_mesh_build) directly. The C# surface
+// (SdfNodeDesc trees) is covered by tests/cs and golden (19_sdf).
 #include "sdf.h"
 
 #include <math.h>
@@ -1075,7 +1076,7 @@ int main(void) {
       return fail("cut face did not take cutter material");
     sdf_mesh_out_free(&m);
   }
-  // bones: 2 部位の重み焼き
+  // bones: weight baking for 2 parts
   {
     float pl[] = {-0.5f, 0, 0};
     float pml[] = {-0.5f, 0, 0};

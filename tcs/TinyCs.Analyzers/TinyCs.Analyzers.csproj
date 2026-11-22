@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\*.cs" LinkBase="Shared" />
-    <!-- 準拠の規則は tcs の compiler の実装をそのまま使う (netstandard2.0 で build できる TinyC# のソース) -->
+    <!-- Compliance rules use the tcs compiler implementation as is (TinyC# sources that build with netstandard2.0) -->
     <Compile Include="..\SelfHost\Compiler\*.cs" LinkBase="Compiler" />
     <Compile Include="..\TinySystem\Utf8.cs" LinkBase="TinySystem" />
     <EmbeddedResource Include="..\TinySystem\Linq.cs" LogicalName="TinySystem/Linq.cs" />

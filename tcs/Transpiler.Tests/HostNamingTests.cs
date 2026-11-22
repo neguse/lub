@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// 名前規則 (HostNames)。user の型の member は C# の識別子のまま、
-// 参照専用型 (--ref、host) は snake_case / UPPER_SNAKE に写し、小文字パスで参照する (IL の foreign の名前、C の host 関数の名前の元)。
+// Naming rules (HostNames). Members of user types stay as C# identifiers,
+// and reference-only types (--ref, host) are mapped to snake_case / UPPER_SNAKE and referenced by lowercase paths (the source of IL foreign names and C host function names).
 public class HostNamingTests
 {
     [Theory]
@@ -112,7 +112,7 @@ public class HostNamingTests
         Assert.Equal("12,3,4", TestHelper.CompileAndRunVm(source, "Geo.Sum() + \",\" + new Point(3, 4).PosX + \",\" + new Point(3, 4).posY"));
     }
 
-    // IL の名前 (tcs2c の C 名の元) も C# の識別子のまま
+    // IL names (the source of tcs2c's C names) also stay as C# identifiers
     [Fact]
     public void IlExport_UsesCSharpNames()
     {
@@ -172,8 +172,8 @@ public class HostNamingTests
         }
         """;
 
-    // --ref の型は host の wire format (snake_case) のまま。user の型 (Game) の
-    // member は C# の名前
+    // --ref types keep the host wire format (snake_case). Members of user types (Game)
+    // use the C# names
     [Fact]
     public void RefType_NestedStaticAccess_LowercasePath()
     {

@@ -1,5 +1,5 @@
-// 見出しの帯: 左からタブと名前、右の端に印 (閉じる印など)。
-// ウィンドウの見出しと、スクリーンの名前の札に使う。
+// Title band: tabs and name from the left, marks at the right end (close mark etc.).
+// Used for window titles and screen name tags.
 using System.Collections.Generic;
 using Lub;
 using Lubx;
@@ -7,28 +7,28 @@ using LiderCore;
 
 public class TitleView
 {
-    // 閉じる印
+    // Close mark
     public const string Close = "×";
 
     readonly string key;
     readonly SpriteBatch batch;
     readonly DeclareGap gap = new DeclareGap();
-    // 並べるタブの名前と、出しているタブ (タブの無い帯は空)
+    // Names of the tabs to lay out, and the shown tab (empty for bands without tabs)
     public List<string> Tabs = new List<string>();
     public int Tab;
-    // タブの後ろに出す名前
+    // Name shown after the tabs
     public string Label = "";
-    // 右の端から左へ並べる印 (1 つが帯の高さの幅を取る)
+    // Marks laid out from the right end to the left (each takes a width equal to the band height)
     public List<string> Marks = new List<string>();
-    // 指している印 (無ければ -1)
+    // Mark being pointed at (-1 if none)
     public int Lit = -1;
-    // focus があるか
+    // Whether it has focus
     public bool Focused;
-    // 帯の幅 (px)
+    // Band width (px)
     public int PxW = 1;
     public TextureRef? Texture;
     string drawn = "";
-    // 最後に描いたタブの左端と幅 (px)
+    // Left ends and widths of the last drawn tabs (px)
     readonly List<float> tabX = new List<float>();
     readonly List<float> tabW = new List<float>();
 
@@ -38,7 +38,7 @@ public class TitleView
         batch = new SpriteBatch(key, 1, PanelView.TitlePx);
     }
 
-    // 帯の中の横の位置 (0..1) にある印 (無ければ "")
+    // Mark at a horizontal position in the band (0..1) ("" if none)
     public string MarkAt(float u)
     {
         var i = MarkIndexAt(u);
@@ -51,19 +51,19 @@ public class TitleView
         return fromRight >= 0 && fromRight < Marks.Count ? (int)fromRight : -1;
     }
 
-    // mark の印の真ん中の、帯の中の横の位置 (0..1)
+    // Horizontal position in the band (0..1) of the middle of mark
     public float MarkU(string mark)
     {
         return 1 - (Marks.IndexOf(mark) + 0.5f) * PanelView.TitlePx / PxW;
     }
 
-    // i 番目のタブの左端 (px。描く前は 0)
+    // Left end of the i-th tab (px; 0 before drawing)
     public float TabX(int i)
     {
         return i < tabX.Count ? tabX[i] : 0;
     }
 
-    // 帯の中の横の位置 (0..1) にあるタブ (無ければ -1)
+    // Tab at a horizontal position in the band (0..1) (-1 if none)
     public int TabAt(float u)
     {
         var x = u * PxW;
@@ -73,7 +73,7 @@ public class TitleView
         return -1;
     }
 
-    // texture を宣言し、内容が変わっていれば描き直す (画面への pass の外で呼ぶ)
+    // Declares the texture and redraws if the content changed (call outside the pass to the display)
     public void Prepare(MonoText text)
     {
         if (gap.Lapsed())
@@ -93,13 +93,13 @@ public class TitleView
         var y = (PanelView.TitlePx - text.LineH) * 0.5f;
         var side = PanelView.TitlePx;
         var right = PxW - side * Marks.Count;
-        // SpriteBatch は atlas を初めて使った順に描くので、指していなくても (透明に) 先に塗る
+        // SpriteBatch draws in the order atlases are first used, so fill first (transparent) even when nothing is pointed at
         batch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
-        // 指している印の下地: 閉じる印は赤、ほかは強調の色
+        // Background of the pointed mark: red for the close mark, the accent color for others
         if (Lit >= 0 && Lit < Marks.Count)
             batch.Rect(PxW - side * (Lit + 1) + 3, 3, side - 6, side - 6,
                 Marks[Lit] == Close ? Color.Rgb(0.9f, 0.3f, 0.35f, 1) : Color.Rgb(Theme.Accent.R, Theme.Accent.G, Theme.Accent.B, 0.8f));
-        // タブは名前を並べ、出しているタブだけ下地を明るくする。後ろに名前を続ける
+        // Tabs lay out their names, and only the shown tab gets a brighter background. The name follows after them
         tabX.Clear();
         tabW.Clear();
         var x = 4.0f;

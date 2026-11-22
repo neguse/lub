@@ -3,7 +3,7 @@ using TcsC;
 
 namespace TcsSelf;
 
-// `tcs c` の引数 (旧 tcs2c と同じ)
+// Arguments of `tcs c` (same as the old tcs2c)
 public sealed class COptions
 {
     public const string Usage = "usage: tcs c [--entry CLASS] [--digest-f32] [--lib [--vm-host]] [--ref STUB.cs] [-o OUTPUT.c] INPUT.cs [INPUT.cs ...]";
@@ -16,7 +16,7 @@ public sealed class COptions
     public bool VmHost;
 }
 
-// IL を C にする: compile (generic を単相化した IL の書き出し) を Session の段ごとに進め、終わったら CEmitter で C にする
+// IL to C: advances the compile (writing out IL with generics monomorphized) one Session step at a time, then converts it to C with CEmitter when done
 public sealed class CRun
 {
     private COptions _o;
@@ -38,7 +38,7 @@ public sealed class CRun
             {
                 if (!TcsHost.FileExists(p)) return Cli.CError("could not find file: " + p);
             }
-            // 入力を出力で上書きしない (何も書かずに止める)
+            // Do not overwrite an input with the output (stop without writing anything)
             string clash = Cli.InputClash(_o.Output, _o.Inputs, _o.References);
             if (clash != "") return Cli.CError(clash);
             var session = new Session("");
@@ -69,8 +69,8 @@ public sealed class CRun
             if (errors.Count == 0) errors.Add("export failed");
             return Cli.CError("TinyC# diagnostics:\n" + string.Join("\n", errors));
         }
-        // IL にできなかった本文と式は null になり、C は呼んだ側で "no IL body" と止まるか、初期化子を既定値にしてしまうので、
-        // ここで理由と場所 (tcs vm と tcs check と同じ文) を出して止める
+        // Bodies and expressions that could not be turned into IL become null, and C would either stop at the caller with "no IL body" or silently use the default value for an initializer,
+        // so stop here and print the reason and location (the same message as tcs vm and tcs check)
         if (result.Export.InternalErrors.Count > 0)
         {
             var internals = new List<string>();
@@ -87,14 +87,14 @@ public sealed class CRun
         CFail.Error = "";
         var emitter = new CEmitter(result.Export, _o.DigestF32, runtime);
         if (_o.VmHost) emitter.VmHostSurface = HostSurface();
-        // compile の木は要らなくなるので離す (次の段の境界で回収される)
+        // The compile tree is no longer needed, so release it (it is collected at the next step boundary)
         _session = null;
         _emitter = emitter;
         if (!emitter.Begin(_o.Entry, _o.Lib)) return Cli.CError(CFail.Error);
         return -1;
     }
 
-    // C の生成を class ごとの段で進める
+    // Advance C generation one class per step
     private int StepEmit()
     {
         var emitter = _emitter!;
@@ -112,7 +112,7 @@ public sealed class CRun
         return 0;
     }
 
-    // C の module が VM に公開する関数 (入力を --ref として読んだ型の、class の公開 static method と interface の method)
+    // Functions the C module exposes to the VM (public static methods of classes and interface methods of the types read from the input as --ref)
     private List<ExHostFunction> HostSurface()
     {
         var session = new Session("");

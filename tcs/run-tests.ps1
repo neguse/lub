@@ -31,7 +31,7 @@ function Assert-ExpectedDiagnosticTexts {
     }
 }
 
-# Run dotnet tests (spec conformance sweep と corpus differential 込み)
+# Run dotnet tests (including the spec conformance sweep and corpus differential)
 Write-Host "Running dotnet tests (with spec conformance + differential)..."
 $env:TCS_SPEC_CONFORMANCE = "1"
 $env:TCS_SPEC_REPORT = Join-Path $ScriptDir "doc\spec-conformance-report.md"
@@ -89,8 +89,8 @@ if ($tcs1001Count -ne 5 -or $tcs1002Count -ne 1 -or $tcs1003Count -ne 1) {
 Assert-ExpectedDiagnosticTexts -Output $analyzerOutput -Label "Analyzer demo"
 
 Write-Host "Running analyzer package consumer build..."
-# MSBuild / NuGet は project の祖先ディレクトリを遡って Directory.Build.props や NuGet.Config を取り込む。
-# 共有の temp dir に作ると、そこに置かれたものを build の一部として実行してしまうため、自分専用の temp root の下に作る。
+# MSBuild / NuGet walk up the project's ancestor directories and pick up Directory.Build.props and NuGet.Config.
+# Creating it in a shared temp dir would run whatever is placed there as part of the build, so it is created under our own temp root.
 . (Join-Path $ScriptDir "samples\analyzer-demo\rider-env.ps1")
 $tempRoot = Get-TcsCacheDir "tmp"
 Initialize-PrivateDir $tempRoot

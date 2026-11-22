@@ -1,5 +1,5 @@
-// 実装ライブラリ lubx の Shapes3d。
-// MeshData は stub (cs-lib/lub_stub.cs) の MeshData class の object initializer で構築。
+// Shapes3d of the implementation library lubx.
+// MeshData is built with an object initializer of the MeshData class in the stub (cs-lib/lub_stub.cs).
 
 using System;
 using System.Collections.Generic;
@@ -7,18 +7,18 @@ using Lub;
 
 namespace Lubx;
 
-/// <summary>単位プリミティブを MeshData 形式 (indexed、positions + normals + 白色) で生成する。
-/// Mesh3d.rebuild() にそのまま渡せて、SDF / glTF メッシュと同じ描画経路に乗る。
-/// 着色は draw 側の tint で (白 × tint = tint がそのまま albedo)。
-/// 既存 Shapes は sfb / 11_shadow 用の非 indexed・Stride 12 生成で、別物。
+/// <summary>Generates unit primitives in MeshData form (indexed, positions + normals + white).
+/// Can be passed to Mesh3d.rebuild() as is, and goes through the same rendering path as SDF / glTF meshes.
+/// Coloring is done with the tint on the draw side (white × tint = the tint is the albedo as is).
+/// The existing Shapes is a separate thing: non-indexed, Stride 12 generation for sfb / 11_shadow.
 /// </summary>
 public static class Shapes3d
 {
     private static MeshData Mesh(List<float> positions, List<float> normals,
         List<int> indices)
     {
-        // 頂点色は白 (interleave 既定は 0.8 グレー)。
-        // draw 側の tint がそのまま albedo になるように。
+        // Vertex color is white (the interleave default is 0.8 gray).
+        // So that the draw-side tint becomes the albedo as is.
         int n = positions.Count / 3;
         var colors = new List<float>();
         for (int i = 0; i < n * 3; i++)
@@ -34,9 +34,9 @@ public static class Shapes3d
         };
     }
 
-    /// <summary>Shapes (Stride 12: pos3 pad normal3 pad rgba) の生成結果を MeshData に変換する。
-    /// 既存の Shapes.box/quad/sphere で組んだジオメトリを Mesh3d / Renderer3d に載せるためのブリッジ。
-    /// alpha は落ちる。
+    /// <summary>Converts the output of Shapes (Stride 12: pos3 pad normal3 pad rgba) into MeshData.
+    /// Bridge for putting geometry built with the existing Shapes.box/quad/sphere onto Mesh3d / Renderer3d.
+    /// alpha is dropped.
     /// </summary>
     public static MeshData FromInterleaved(List<float> v)
     {
@@ -70,15 +70,15 @@ public static class Shapes3d
         };
     }
 
-    /// <summary>辺長 2 の立方体 (中心原点、±1)。
-    /// scale は model 行列で。
+    /// <summary>Cube with side length 2 (centered at the origin, ±1).
+    /// Scale it with the model matrix.
     /// </summary>
     public static MeshData Cube()
     {
         var pos = new List<float>();
         var nrm = new List<float>();
         var indices = new List<int>();
-        // 各面の { 法線 n, 面内基底 u, v } を n.xyz, u.xyz, v.xyz の 9 要素で並べたもの。
+        // { normal n, in-plane basis u, v } of each face, laid out as the 9 elements n.xyz, u.xyz, v.xyz.
         var faces = new List<List<float>>
         {
             new List<float> { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f },
@@ -106,7 +106,7 @@ public static class Shapes3d
         return Mesh(pos, nrm, indices);
     }
 
-    /// <summary>高さ 1 (y = ±0.5)、半径 1 の円柱。
+    /// <summary>Cylinder of height 1 (y = ±0.5) and radius 1.
     /// </summary>
     public static MeshData Cylinder(int sides)
     {
@@ -182,7 +182,7 @@ public static class Shapes3d
         return Mesh(pos, nrm, indices);
     }
 
-    /// <summary>半径 1 の UV 球。
+    /// <summary>UV sphere of radius 1.
     /// </summary>
     public static MeshData Sphere(int stacks, int slices)
     {

@@ -1,9 +1,9 @@
-// lider が使うエディタの core の口 (前の LiteXl.Host と同じ member と意味)。
-// 窓ごとに DocView を 1 つ持ち、id (1 から) で指す。
-// 行は 1 から、桁は byte の位置で 1 から数える。
-// key と文字は、focus のある view にその場で keymap と command を通して入れる。
-// その view から開いた CommandView (検索、行へ移動、file を開く) と NagView (確認) は、view を描くときに一緒に描く (下の帯と上の帯)。
-// command が開く doc (Ctrl+N、Ctrl+O、Ctrl+P) は窓の view として作り、TakeOpened で lider に渡す。
+// Editor core interface used by lider (same members and meanings as the former LiteXl.Host).
+// Holds one DocView per window, referred to by id (from 1).
+// Lines count from 1, and columns count from 1 by byte position.
+// Keys and characters go into the focused view immediately through the keymap and commands.
+// CommandView (find, go to line, open file) and NagView (confirmation) opened from that view are drawn together with the view (the bottom strip and the top strip).
+// Docs opened by commands (Ctrl+N, Ctrl+O, Ctrl+P) are created as window views and passed to lider through TakeOpened.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -12,18 +12,18 @@ namespace LiderEditor;
 
 public static class EditorHost
 {
-    // text が query を含まないときの Fuzzy の点
+    // Fuzzy score when text does not contain query
     public const int NoMatch = LiderEditor.Fuzzy.NoMatch;
 
     static int focused;
-    // 続けて押した回数を数える、前に押した所
+    // The previous press position, used to count consecutive presses
     static int pressView;
     static float pressX;
     static float pressY;
     static float pressAt = -1;
     static int pressClicks;
 
-    // 桁の幅と行の高さ (px) を渡し、初めてならエディタを起こす (2 度目からは寸法だけを変える)。失敗したら error の文 (成功は "")
+    // Passes the column width and line height (px) and starts the editor the first time (from the second time on, only changes the dimensions). Returns the error message on failure ("" on success)
     public static string Init(float cellW, float lineH)
     {
         DrawList.CellW = cellW;
@@ -32,7 +32,7 @@ public static class EditorHost
         return "";
     }
 
-    // file を開いた view の id (1 から)。開けなければ 0
+    // id (from 1) of the view that opened file. 0 if it cannot be opened
     public static int Open(string path)
     {
         if (!EditorCore.Booted)
@@ -58,7 +58,7 @@ public static class EditorHost
         EditorCore.Docs.Remove(view.Doc);
     }
 
-    // command (Ctrl+N、Ctrl+O、Ctrl+P) が開いた doc の view の id を、開いた順に 1 つずつ (無ければ 0)
+    // ids of the views of docs opened by commands (Ctrl+N, Ctrl+O, Ctrl+P), one at a time in the order opened (0 if none)
     public static int TakeOpened()
     {
         while (EditorCore.Opened.Count > 0)
@@ -71,20 +71,20 @@ public static class EditorHost
         return 0;
     }
 
-    // view の doc の file の絶対 path (名前の無い doc は "")
+    // Absolute path of the file of the view's doc ("" for an unnamed doc)
     public static string Path(int id)
     {
         return EditorCore.ViewOf(id)?.Doc.AbsFilename ?? "";
     }
 
-    // CommandView か NagView が、この view から開いたものか
+    // Whether CommandView or NagView was opened from this view
     static bool OwnedOverlay(DocView view)
     {
         return EditorCore.LastActive == view.Id && (EditorCore.Active == EditorCore.CommandId || EditorCore.Active == EditorCore.NagId);
     }
 
-    // key と文字の入力を、この view に入れる。
-    // 変換中の文字は前の view に確定し、前の view の CommandView は閉じる
+    // Sends key and character input to this view.
+    // Commits the composing text to the previous view and closes the previous view's CommandView
     public static void Focus(int id)
     {
         var view = EditorCore.ViewOf(id);
@@ -97,7 +97,7 @@ public static class EditorHost
             EditorCore.SetActive(id);
     }
 
-    // どの view にも key と文字を入れない (focus が Code でないウィンドウにある間)。変換中の文字は前の view に確定する
+    // Sends keys and characters to no view (while focus is on a window that is not Code). Commits the composing text to the previous view
     public static void Blur()
     {
         if (!EditorCore.Booted || focused == 0)
@@ -109,19 +109,19 @@ public static class EditorHost
             EditorCore.SetActive(0);
     }
 
-    // key の名前 (keymap が引く名前。無ければ null)
+    // Name of the key (the name the keymap looks up; null if none)
     public static string? NameOf(int scancode, int plain)
     {
         return plain > 32 && plain < 127 ? ((char)plain).ToString().ToLower() : KeyName(scancode);
     }
 
-    // SDL の scancode の key を押した / 離した。その場で keymap を通る
+    // A key with an SDL scancode was pressed / released. Goes through the keymap immediately
     public static void Key(int scancode, bool down)
     {
         KeyNamed(scancode, down, 0);
     }
 
-    // SDL の scancode から key の名前
+    // Key name from an SDL scancode
     static string? KeyName(int scancode)
     {
         if (scancode >= 4 && scancode <= 29)
@@ -174,8 +174,8 @@ public static class EditorHost
         return null;
     }
 
-    // plain はその key が修飾 key なしで打つ文字。記号の位置は配列で違うので、keymap はこの文字で引く。
-    // ASCII でない配列でも Ctrl+S などが効くよう、ASCII の時だけ使う
+    // plain is the character the key types without modifiers. Symbol positions differ by layout, so the keymap looks up by this character.
+    // It is used only when it is ASCII, so that Ctrl+S and the like work even on non-ASCII layouts
     public static void KeyNamed(int scancode, bool down, int plain)
     {
         var name = NameOf(scancode, plain);
@@ -198,7 +198,7 @@ public static class EditorHost
         }
     }
 
-    // 打った文字 (UTF-8)。すぐ前の key が command になったら捨てる (その key が打った文字)。かなの mode なら IME が受ける
+    // Typed text (UTF-8). Discarded if the immediately preceding key became a command (the text typed by that key). In kana mode, the IME receives it
     public static void Text(string text)
     {
         if (!EditorCore.Booted)
@@ -217,7 +217,7 @@ public static class EditorHost
         EditorCore.TextInput(text);
     }
 
-    // OS の IME の変換中の文字。start と length は文字の数
+    // Composing text of the OS IME. start and length are in characters
     public static void Editing(string text, int start, int length)
     {
         if (!EditorCore.Booted)
@@ -227,15 +227,15 @@ public static class EditorHost
         EditorCore.UpdateViews();
     }
 
-    // 1 frame 分: view を更新する (scroll を cursor に合わせる)
+    // One frame: updates the view (scrolls to the cursor)
     public static void Step()
     {
         if (EditorCore.Booted)
             EditorCore.UpdateViews();
     }
 
-    // view を w x h px に描いた命令の数。命令は Cmd* で引く (i は 0 から)。
-    // この view から開いた CommandView (下の帯)、NagView (上の帯)、IME の候補も描く (どれも行の番号は -1)
+    // Number of commands that drew the view at w x h px. Commands are read with Cmd* (i from 0).
+    // Also draws the CommandView (bottom strip), NagView (top strip), and IME candidates opened from this view (all with line number -1)
     public static int Draw(int id, float w, float h)
     {
         DrawList.Clear(w, h);
@@ -265,7 +265,7 @@ public static class EditorHost
         return DrawList.Count;
     }
 
-    // 1 = rect、2 = text、3 = clip (以降の rect と text を切り抜く範囲)
+    // 1 = rect, 2 = text, 3 = clip (the area that clips the following rects and texts)
     public static int CmdKind(int i)
     {
         return i >= 0 && i < DrawList.Count ? DrawList.Kind[i] : 0;
@@ -291,7 +291,7 @@ public static class EditorHost
         return i >= 0 && i < DrawList.Count ? DrawList.H[i] : 0;
     }
 
-    // RGBA を 32 bit に詰めた色 (R が上の 8 bit)
+    // Color with RGBA packed into 32 bits (R in the top 8 bits)
     public static int CmdColor(int i)
     {
         return i >= 0 && i < DrawList.Count ? DrawList.Color[i] : 0;
@@ -307,19 +307,19 @@ public static class EditorHost
         return i >= 0 && i < DrawList.Count ? DrawList.Font[i] : 0;
     }
 
-    // 命令が描いた本文の行。gutter など行に付かない物は 0、帯と IME の候補は -1
+    // Text line drawn by the command. 0 for things not attached to a line such as the gutter, -1 for the strips and IME candidates
     public static int CmdLine(int i)
     {
         return i >= 0 && i < DrawList.Count ? DrawList.Line[i] : 0;
     }
 
-    // font の id から、元の Lite XL が読んだ file の名前 ("JetBrainsMono-Regular.ttf"、icon は "icons.ttf")
+    // From the font id, the name of the file the original Lite XL loaded ("JetBrainsMono-Regular.ttf", "icons.ttf" for icons)
     public static string FontName(int id)
     {
         return Style.FontName(id);
     }
 
-    // 最後の Draw で描いた cursor の数と、i 番目 (0 から) の左上 (view の中の px)。cursor は命令にしない
+    // Number of cursors drawn by the last Draw, and the top-left of the i-th (from 0) (px within the view). Cursors are not turned into commands
     public static int CaretCount(int id)
     {
         var view = EditorCore.ViewOf(id);
@@ -338,7 +338,7 @@ public static class EditorHost
         return view != null && i * 2 + 1 < view.Carets.Count ? view.Carets[i * 2 + 1] : 0;
     }
 
-    // cursor の幅 (px) と色 (CmdColor と同じ詰め方)
+    // Cursor width (px) and color (packed the same way as CmdColor)
     public static float CaretWidth()
     {
         return Style.CaretWidth;
@@ -349,7 +349,7 @@ public static class EditorHost
         return Style.Caret;
     }
 
-    // 前に呼んでから、どこかに描き直す所ができたか
+    // Whether something somewhere needs redrawing since the previous call
     public static bool TakeRedraw()
     {
         if (!EditorCore.Redraw)
@@ -358,7 +358,7 @@ public static class EditorHost
         return true;
     }
 
-    // view の見た目 (本文、選択、scroll、focus、帯、IME) が変わるたびに上がる数
+    // A number that goes up every time the view's appearance (text, selection, scroll, focus, strips, IME) changes
     public static int Version(int id)
     {
         var view = EditorCore.ViewOf(id);
@@ -387,7 +387,7 @@ public static class EditorHost
         return view.Version;
     }
 
-    // 見えている最初と最後の行 (最後の Draw の大きさと今の scroll で)
+    // First and last visible lines (with the size of the last Draw and the current scroll)
     public static int FirstLine(int id)
     {
         var view = EditorCore.ViewOf(id);
@@ -400,14 +400,14 @@ public static class EditorHost
         return view != null ? view.LastVisibleLine() : 0;
     }
 
-    // line 行目の上の端の y と、本文の左の端の x (view の中の px)
+    // y of the top edge of line line, and x of the left edge of the text (px within the view)
     public static float LineY(int id, int line)
     {
         var view = EditorCore.ViewOf(id);
         return view != null ? view.LineY(line) : 0;
     }
 
-    // line 行目 (1 から、行の数 + 1 は最後の行の下) の上に、本文でない行を gaps[line] 行ずつ空ける (lider がそこに描く)
+    // Leaves gaps[line] non-text lines empty above line line (from 1; line count + 1 is below the last line) (lider draws there)
     public static void SetGaps(int id, int[] gaps)
     {
         var view = EditorCore.ViewOf(id);
@@ -419,7 +419,7 @@ public static class EditorHost
             EditorCore.Redraw = true;
     }
 
-    // 空ける行が変わるたびに上がる数
+    // A number that goes up every time the empty lines change
     public static int GapsVersion(int id)
     {
         var view = EditorCore.ViewOf(id);
@@ -438,8 +438,8 @@ public static class EditorHost
         return view != null ? view.LineHeight() : 0;
     }
 
-    // view の (x, y) px で左ボタンを押す。
-    // 同じ view の近くで 0.4 秒以内に続けて押すと 2 回目は語、3 回目は行を選ぶ
+    // Presses the left button at (x, y) px in the view.
+    // Pressing again near the same spot in the same view within 0.4 seconds selects a word on the second press and a line on the third
     public static void Press(int id, float x, float y)
     {
         var view = EditorCore.ViewOf(id);
@@ -462,7 +462,7 @@ public static class EditorHost
         EditorCore.Redraw = true;
     }
 
-    // 押したまま (x, y) px へ動かす (押した所からそこまでを選ぶ)
+    // Moves to (x, y) px while held (selects from the pressed position to there)
     public static void Drag(int id, float x, float y)
     {
         var view = EditorCore.ViewOf(id);
@@ -481,14 +481,14 @@ public static class EditorHost
         EditorCore.Redraw = true;
     }
 
-    // view の (x, y) px を左 click する (cursor を動かす)
+    // Left-clicks at (x, y) px in the view (moves the cursor)
     public static void Click(int id, float x, float y)
     {
         Press(id, x, y);
         Release(id, x, y);
     }
 
-    // view の先頭に line 行目 (1 から) が来るように scroll する
+    // Scrolls so line line (from 1) is at the top of the view
     public static void ScrollToLine(int id, int line)
     {
         var view = EditorCore.ViewOf(id);
@@ -500,8 +500,8 @@ public static class EditorHost
         EditorCore.Redraw = true;
     }
 
-    // view を wheel の notch で scroll する (正は上へ。小数も可)。
-    // 行き先は整数の px にし、端数は次に回す (lider は scroll した分だけ板の texture をずらすので、半端な px だと文字がぼやける)
+    // Scrolls the view by wheel notches (positive is up; fractions are allowed).
+    // The destination is a whole px and the fraction carries over to the next call (lider shifts the panel texture by the scrolled amount, so fractional px would blur the text)
     public static void Scroll(int id, float notches)
     {
         var view = EditorCore.ViewOf(id);
@@ -514,7 +514,7 @@ public static class EditorHost
         EditorCore.Redraw = true;
     }
 
-    // 今の縦の scroll (px)
+    // Current vertical scroll (px)
     public static float ScrollY(int id)
     {
         var view = EditorCore.ViewOf(id);
@@ -532,7 +532,7 @@ public static class EditorHost
         return doc != null ? doc.Lines.Count : 0;
     }
 
-    // n 行目 (改行を除く)
+    // Line n (excluding the newline)
     public static string Line(int id, int n)
     {
         var doc = DocOf(id);
@@ -574,21 +574,21 @@ public static class EditorHost
         return doc != null && doc.IsDirty();
     }
 
-    // 本文が変わるたびに変わる数 (undo で前の数に戻る)
+    // A number that changes every time the text changes (undo returns it to the earlier number)
     public static int ChangeId(int id)
     {
         var doc = DocOf(id);
         return doc != null ? doc.ChangeId() : 0;
     }
 
-    // 保存した回数 (Ctrl+S も、外の変更を写したのも数える)
+    // Number of saves (counts Ctrl+S and also copying in external changes)
     public static int SaveCount(int id)
     {
         var doc = DocOf(id);
         return doc != null ? doc.Saves : 0;
     }
 
-    // 本文から何かを消した回数 (undo で戻した挿入も数える。変換中の文字の入れ替えは数えない) と、最後に消した所の左上 (view の中の px)
+    // Number of times something was removed from the text (also counts undone insertions; does not count replacing the composing text), and the top-left of the last removed place (px within the view)
     public static int RemovedCount(int id)
     {
         var doc = DocOf(id);
@@ -616,7 +616,7 @@ public static class EditorHost
         DocOf(id)?.SetSelection(line, col);
     }
 
-    // cursor の所に打つ (keymap を通さない)
+    // Types at the cursor (without going through the keymap)
     public static void Insert(int id, string text)
     {
         DocOf(id)?.TextInput(text);
@@ -629,7 +629,7 @@ public static class EditorHost
             EditorCore.Error("no filename set to default to");
     }
 
-    // 今の key をエディタが受けるか (変換中、CommandView、NagView)
+    // Whether the editor takes the current key (composing, CommandView, NagView)
     public static bool Modal()
     {
         if (!EditorCore.Booted)
@@ -637,13 +637,13 @@ public static class EditorHost
         return Ime.Composing || EditorCore.Active == EditorCore.CommandId || EditorCore.Active == EditorCore.NagId;
     }
 
-    // かな漢字変換の辞書を裏で読み始める。jamo が無ければ false
+    // Starts loading the kana-kanji conversion dictionary in the background. false if there is no jamo
     public static bool ImeDict(string path)
     {
         return Ime.SetDict(path);
     }
 
-    // かなの mode を切り替える (Ctrl+Space と同じ)
+    // Toggles kana mode (same as Ctrl+Space)
     public static void ImeToggle()
     {
         Ime.Toggle();
@@ -659,26 +659,26 @@ public static class EditorHost
         return Ime.Composing;
     }
 
-    // text が query の文字を順に含むかの点 (大きいほど良く、含まなければ NoMatch)。空白は読まない
+    // Score of whether text contains the characters of query in order (higher is better; NoMatch if it does not contain them). Whitespace is ignored
     public static int Fuzzy(string text, string query)
     {
         return LiderEditor.Fuzzy.Match(text, query, false);
     }
 
-    // 最後の error (エディタの中で起きた error)
+    // The last error (an error that happened inside the editor)
     public static string LastError()
     {
         return EditorCore.LastError;
     }
 
-    // 確認の帯を出す (答えは LastAnswer)。answers の最初が「はい」、最後が「いいえ」
+    // Shows the confirmation strip (the answer is in LastAnswer). The first of answers is "yes", the last is "no"
     public static void Ask(int id, string title, string message, List<string> answers)
     {
         Focus(id);
         EditorCore.Nag.Show(new NagRequest { Title = title, Message = message, Options = answers, Yes = 1, No = answers.Count });
     }
 
-    // 確認の帯で最後に選んだ答え
+    // The answer last chosen in the confirmation strip
     public static string LastAnswer()
     {
         return EditorCore.Nag.LastAnswer;
@@ -699,7 +699,7 @@ public static class EditorHost
         });
     }
 
-    // view の file を消すか尋ね、消すと答えたら file を消して id を覚える (名前の無い doc は尋ねない)
+    // Asks whether to delete the view's file; if the answer is yes, deletes the file and remembers the id (does not ask for an unnamed doc)
     public static void AskDelete(int id)
     {
         var path = DocOf(id)?.AbsFilename;
@@ -707,7 +707,7 @@ public static class EditorHost
             AskDeletePath(path, NagView.ActionDeleteView, id);
     }
 
-    // 窓の無い file を消すか尋ねる
+    // Asks whether to delete a file that has no window
     public static void AskDeleteFile(string path)
     {
         AskDeletePath(path, NagView.ActionDeleteFile, 0);
@@ -718,7 +718,7 @@ public static class EditorHost
         Paths.Remove(path);
     }
 
-    // 消した file の view の id を 1 つずつ (無ければ 0)
+    // ids of the views of deleted files, one at a time (0 if none)
     public static int TakeDeleted()
     {
         if (EditorCore.Deleted.Count == 0)
@@ -728,8 +728,8 @@ public static class EditorHost
         return id;
     }
 
-    // 編集していない doc の file が外で変わっていたら、変わった行だけ写す。
-    // undo に残し、カーソルは同じ字に留める。保存したのと同じに扱う
+    // If the file of an unedited doc changed on disk, copies in only the changed lines.
+    // Keeps it in undo and keeps the cursor on the same character. Treated the same as a save
     public static void FollowDisk(int id)
     {
         var doc = DocOf(id);
@@ -761,7 +761,7 @@ public static class EditorHost
         var middle = "";
         for (var i = first; i <= lines.Count - tail; i++)
             middle += lines[i - 1] + "\n";
-        // 最後の行の改行は doc が持ち続けるので、残す行が無ければ改行の手前まで入れ替える
+        // The doc keeps the newline of the last line, so if no lines remain, replaces up to just before the newline
         var oldCount = old.Count;
         if (tail > 0)
         {
@@ -782,7 +782,7 @@ public static class EditorHost
         EditorCore.Redraw = true;
     }
 
-    // line, col より前の、空白でない byte の数
+    // Number of non-whitespace bytes before line, col
     static int InkBefore(Doc doc, int line, int col)
     {
         var n = 0;
@@ -797,7 +797,7 @@ public static class EditorHost
         return n;
     }
 
-    // 空白でない byte の数が n になる所
+    // The position where the number of non-whitespace bytes reaches n
     static void InkPosition(Doc doc, int n, out int line, out int col)
     {
         for (var i = 1; i <= doc.Lines.Count; i++)
@@ -820,7 +820,7 @@ public static class EditorHost
         col = doc.LineSize(line);
     }
 
-    // path の本文を、保存していない編集として doc に入れる (undo で今の本文に戻る)。本文が同じか空なら false
+    // Puts the text of path into doc as an unsaved edit (undo returns to the current text). false if the text is the same or empty
     public static bool Restore(int id, string path)
     {
         var doc = DocOf(id);

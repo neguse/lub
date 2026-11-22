@@ -1,10 +1,10 @@
-// gen-tcs-assets.mjs — tcs WasmCompiler (Roslyn と CSharpier 込みの browser-wasm。サイトの入口が C# の整形に使う。web/lib/format.ts) を web のアセットに固める。
-// 出力: web/tcs-wasm-assets/_framework/*(dotnet.js ローダ + wasm 一式)。
-// public/ に置くと vite が「public アセットの import」を拒否するため、vite.config.ts の serveDir が /tcs-wasm として配信する (build は closeBundle で copy)。
+// gen-tcs-assets.mjs — packs tcs WasmCompiler (browser-wasm with Roslyn and CSharpier; the site entry uses it for C# formatting, web/lib/format.ts) into web assets.
+// Output: web/tcs-wasm-assets/_framework/* (dotnet.js loader + the full wasm set).
+// vite rejects "importing public assets" if they are placed in public/, so the serveDir in vite.config.ts serves them as /tcs-wasm (build copies them in closeBundle).
 //   node web/scripts/gen-tcs-assets.mjs [--publish]
 //
-// publish 出力 (tcs/WasmCompiler/bin/Release/.../wwwroot) をコピーする。
-// 出力が無い、または --publish 指定時は dotnet publish を実行する (要 dotnet SDK + wasm-tools workload)。
+// Copies the publish output (tcs/WasmCompiler/bin/Release/.../wwwroot).
+// If there is no output, or --publish is given, runs dotnet publish (requires the dotnet SDK + wasm-tools workload).
 import {
   readdirSync,
   copyFileSync,
@@ -53,8 +53,8 @@ if (
       "-c",
       "Release",
       "-p:RunAOTCompilation=true",
-      // .br/.gz は配信先が圧縮する。
-      // コピーしないファイルの生成を省く。
+      // .br/.gz compression is done by the server the files are deployed to.
+      // Skips generating files that are not copied.
       "-p:CompressionEnabled=false",
     ],
     {
@@ -67,7 +67,7 @@ if (
 rmSync(OUT, { recursive: true, force: true });
 let count = 0;
 let bytes = 0;
-// .br/.gz は vite dev では使わないためコピーしない
+// .br/.gz are not copied because vite dev does not use them
 function copyDir(src, dst) {
   mkdirSync(dst, { recursive: true });
   for (const name of readdirSync(src)) {
@@ -84,9 +84,9 @@ function copyDir(src, dst) {
 }
 copyDir(join(PUBLISH, "_framework"), join(OUT, "_framework"));
 
-// AOT の native wasm は Cloudflare Assets の 25 MiB / file を超える。
-// 8 MiB ごとに分け、worker の resource loader が順に stream として読む。
-// chunk ごとの SRI を fetch に渡し、配信時の内容検証も維持する。
+// The AOT native wasm exceeds the Cloudflare Assets limit of 25 MiB / file.
+// It is split every 8 MiB, and the worker's resource loader reads the parts in order as a stream.
+// The SRI of each chunk is passed to fetch, so content verification on delivery is kept.
 const framework = join(OUT, "_framework");
 const nativePath = join(framework, "dotnet.native.wasm");
 const native = readFileSync(nativePath);

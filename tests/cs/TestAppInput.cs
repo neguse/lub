@@ -1,5 +1,5 @@
-// App.Step の StepInput と App.SendEvent: 開いた app に見せる mouse の位置を決め、event を渡す。
-// TestAppInputChild は、mouse の位置と、最後に届いた KeyDown の key を色にして main を塗る。
+// StepInput of App.Step and App.SendEvent: set the mouse position the opened app sees, and pass events to it.
+// TestAppInputChild paints main with a color made from the mouse position and the key of the last KeyDown received.
 using System;
 using Lub;
 
@@ -46,12 +46,12 @@ public static class TestAppInput
         var child = App.Use("child", "tests/cs/.lub/all.tcsb", "TestAppInputChild");
         if (frame == 0)
         {
-            // まだ開いていない app への event は届かず、失敗もしない
+            // Events sent to an app that is not open yet are not delivered and do not fail
             Check.That(App.SendEvent(child, new EventData { Kind = EventKind.KeyDown, Key = 9 }), "SendEvent before the first Step failed");
         }
         if (frame == sendAt)
             Check.That(App.SendEvent(child, new EventData { Kind = EventKind.KeyDown, Key = 5 }), "SendEvent failed");
-        // frame ごとに違う位置を見せる
+        // Shows a different position each frame
         var mx = 1 + frame % 4;
         var my = 2 + frame % 3;
         Check.That(App.Step(child, rt, dt, new StepInput { MouseX = mx, MouseY = my }), $"frame {frame}: Step failed");

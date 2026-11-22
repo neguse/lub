@@ -1,5 +1,5 @@
-// lub の samples/00d_shader の entry。
-// 実行: lub samples/00d_shader/Shader00d.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/00d_shader.
+// Run: lub samples/00d_shader/Shader00d.csproj (transpile + watch + hot reload)
 using System;
 using Lub;
 

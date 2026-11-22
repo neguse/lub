@@ -59,10 +59,10 @@ public sealed class Plan
     }
 }
 
-/// <summary>reload の計画 (doc/object-model.md §6)。旧版と新版の型記述子 (TcsC.TypeTable) から、
-/// 型ごとの retained / added / reset、static の差分、restart の理由を求め、byte 列 (v1) にする。
-/// VM の tvm_apply と tcs2c の migrator が同じ構造で受ける (C の runtime/model/tcs_walk が読む)。
-/// 型の並びは名前が最初に現れた順 (C# 版の GroupBy と Dictionary の挿入順)。</summary>
+/// <summary>Reload plan (doc/object-model.md §6). From the old and new type descriptors (TcsC.TypeTable),
+/// computes retained / added / reset per type, the static diff, and the restart reasons, and turns them into a byte sequence (v1).
+/// The VM's tvm_apply and tcs2c's migrator receive it with the same structure (read by the C runtime/model/tcs_walk).
+/// Types are ordered by where their name first appears (GroupBy and Dictionary insertion order in the C# version).</summary>
 public static class ReloadPlan
 {
     public const int Same = 0;
@@ -73,7 +73,7 @@ public static class ReloadPlan
     public const int FieldAdded = 1;
     public const int FieldReset = 2;
 
-    // 名前が最初に現れた位置 (同じ名前の 2 つ目からは無視する)
+    // Position where a name first appears (later occurrences of the same name are ignored)
     private static List<string> FirstNames(List<TypeTableEntry> types, Dictionary<string, int> at)
     {
         var order = new List<string>();
@@ -94,7 +94,7 @@ public static class ReloadPlan
     {
         bool c;
         if (changed.TryGetValue(name, out c)) return c;
-        changed[name] = false; // 循環の防ぎ (struct は循環しない)
+        changed[name] = false; // Guards against cycles (structs do not form cycles)
         int oi;
         int ni;
         if (!oldAt.TryGetValue(name, out oi) || !newAt.TryGetValue(name, out ni))
@@ -129,10 +129,10 @@ public static class ReloadPlan
         return false;
     }
 
-    /// <summary>型を名前で対応させる。field は名前で対応させ、種類と型 (の名前) が同じなら retained、違えば reset
-    /// (hot-reload §5.2: 新しい型の 0 の値)、新しい名前は added。struct の field は、その struct の形が変わった
-    /// とき owner も relayout になる (layout hash が展開して伝わるのと同じ)。
-    /// initializers は "型\nfield" → 関数の番号。</summary>
+    /// <summary>Matches types by name. Fields are matched by name: retained if the kind and type (name) are the same, reset if they differ
+    /// (hot-reload §5.2: zero value of the new type), and added for new names. A struct field makes the owner relayout too when the shape of that struct changed
+    /// (same as the layout hash propagating through expansion).
+    /// initializers maps "type\nfield" → function index.</summary>
     public static Plan Compute(List<TypeTableEntry> oldTypes, List<TypeTableEntry> newTypes,
         List<StaticKey> oldStatics, List<StaticKey> newStatics, List<string> restartReasons,
         Dictionary<string, int>? initializers)
@@ -169,7 +169,7 @@ public static class ReloadPlan
             var fields = new List<FieldPlan>();
             foreach (var nf in n.Fields)
             {
-                // ADDED と RESET は initializer があればそれを、無ければ 0 の値
+                // ADDED and RESET use the initializer if there is one, otherwise the zero value
                 int f;
                 int init = initializers != null && initializers.TryGetValue(name + "\n" + nf.Name, out f) ? f + 1 : 0;
                 int at = -1;
@@ -197,7 +197,7 @@ public static class ReloadPlan
             if (!newAt.ContainsKey(name)) types.Add(new TypePlan(name, Removed, new List<FieldPlan>()));
         }
 
-        // static は (型、field) の集合 (足した順。同じ組は 1 つ)
+        // Statics are a set of (type, field) (in insertion order; each pair once)
         var oldKeys = new HashSet<string>();
         var oldItems = new List<StaticKey>();
         foreach (var s in oldStatics)
@@ -226,7 +226,7 @@ public static class ReloadPlan
         return new Plan(reasons, types, statics);
     }
 
-    /// <summary>名前を先に集める (string 表を計画より前に書くため)。</summary>
+    /// <summary>Collects names first (to write the string table before the plan).</summary>
     public static List<string> Names(Plan plan)
     {
         var r = new List<string>();

@@ -1,6 +1,6 @@
 using System;
 
-// 二重ループの float の積和と int の除算。The Computer Language Benchmarks Game の spectral-norm を float (f32) で計算する
+// Float multiply-add in a double loop and int division. Computes spectral-norm of The Computer Language Benchmarks Game in float (f32)
 public class SpectralNorm
 {
     static float A(int i, int j)
@@ -62,8 +62,8 @@ public class SpectralNorm
     {
         string s = Environment.GetEnvironmentVariable("BENCH_N");
         int n = s == null ? 100 : int.Parse(s);
-        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
-        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        // Repeats BENCH_REPS times (run.py uses this to compute the time per repetition).
+        // Each repetition's input depends on the previous result so the compiler cannot skip repetitions or hoist them out (the result is never -1)
         string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
         int reps = rs == null ? 1 : int.Parse(rs);
         int prev = 0;

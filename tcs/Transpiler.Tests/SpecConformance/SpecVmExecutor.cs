@@ -9,8 +9,8 @@ internal sealed record SpecExecutionOutcome(bool Executed, bool Passed,
     bool KnownDifference, string? Details);
 
 /// <summary>
-/// InRun 分類の例を tcs VM (tcs2vm → tcsvm、通常と GC stress) で実行し、仕様が明記する出力 (expectedOutput、C1) か
-/// 実 .NET の出力 (dotnet オラクル、C2) と照合する。
+/// Runs InRun-classified examples on the tcs VM (tcs2vm → tcsvm, normal and GC stress) and checks them against the output stated in the spec (expectedOutput, C1) or
+/// the output of real .NET (dotnet oracle, C2).
 /// </summary>
 internal sealed class SpecVmExecutor
 {
@@ -23,8 +23,8 @@ internal sealed class SpecVmExecutor
             "Transpiler.Tests", "SpecConformance", "known-differences.json"));
     }
 
-    // 出力契約 (expectedOutput / ignoreOutput) が無い InRun 例は dotnet
-    // differential (C2) がオラクルになるため、全 InRun が実行対象。
+    // InRun examples without an output contract (expectedOutput / ignoreOutput) use the dotnet
+    // differential (C2) as the oracle, so all InRun examples are run.
     public static bool IsEligible(ClassifiedSpecExample item) =>
         item.Result.Category == SpecClassification.InRun;
 
@@ -91,8 +91,8 @@ internal sealed class SpecVmExecutor
         return [.. lines];
     }
 
-    // 実行の起点: top-level statements の program は null (VM の TopLevel.Main)。それ以外は static Main を持つ型の IL の名前
-    // (namespace と外側の型を `_` でつなぐ。`N2.Test` は `N2_Test`)。
+    // Entry point: null for a top-level statements program (TopLevel.Main of the VM). Otherwise, the IL name of the type with static Main
+    // (namespace and outer types joined with `_`; `N2.Test` is `N2_Test`).
     internal static string? FindEntryClass(
         IReadOnlyList<SpecSourceFile> sources)
     {

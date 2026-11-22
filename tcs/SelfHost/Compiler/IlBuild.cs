@@ -2,8 +2,8 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// 束縛済みの木 → IL。束縛の結果 (Node の Type / Sym / Info と Conv の node) から IL を作る。
-// 意味の決定 (整数の除算、連結、添字、facade の解決) はここで済ませ、未対応の構文は null を返す
+// Bound tree → IL. Builds IL from the binding results (the Type / Sym / Info of each Node and the Conv nodes).
+// Semantic decisions (integer division, concatenation, indexing, facade resolution) are made here, and unsupported syntax returns null
 public sealed class IlBuild
 {
     private readonly IlContext Ctx;
@@ -13,7 +13,7 @@ public sealed class IlBuild
         Ctx = ctx;
     }
 
-    // 写していない形。内部の誤りに記録する (tcs check と変換が場所と理由を出して止まる)
+    // A shape that is not mapped. Records it as an internal error (tcs check and the compile stop with the location and reason)
     private IlExpr? Unported(string what, Node at)
     {
         Ctx.Internal("IlBuild: " + what + " (" + at.Kind + " at " + at.File.Path + ":" + at.File.LineOf(at.Pos) + ")");
@@ -26,7 +26,7 @@ public sealed class IlBuild
         return false;
     }
 
-    // 構文の位置 (同じ node には同じ IlPos)
+    // Syntax position (the same node gets the same IlPos)
     public static IlPos Origin(Node node)
     {
         if (node.IlOrigin == null)
@@ -37,7 +37,7 @@ public sealed class IlBuild
         return node.IlOrigin;
     }
 
-    // ---- 文 ----
+    // ---- Statements ----
 
     public bool BuildStatsInto(List<Node>? statements, List<IlStat> acc)
     {
@@ -56,26 +56,26 @@ public sealed class IlBuild
         return ok ? new IlBlock(acc) : null;
     }
 
-    // var で宣言した参照型の local は、#nullable enable の文脈では null 許容の注釈が付く (Roslyn の表示)
+    // A reference-type local declared with var gets a nullable annotation in a #nullable enable context (as Roslyn displays it)
     private static TypeSym LocalDisplayType(Node decl, TypeSym t)
     {
         bool isVar = decl.A != null && decl.A.Kind == NodeKind.TypeName && decl.A.Text == "var" && decl.A.A == null && decl.A.List == null;
         if (!isVar) return t;
-        // 無効の文脈の var は注釈を持たない (初期化子の型の注釈も落ちる)
+        // A var in a disabled context has no annotation (the annotation of the initializer's type is dropped too)
         if (!decl.File.NullableEnabled || t.Oblivious) return t.WithoutAnnotation();
         if (t.Annotated) return t;
         if (t.IsValueType && !(t.Kind == TypeKind.TypeParam && !t.IsStructParam) || t.IsError || t.Kind == TypeKind.Null) return t;
         return t.WithAnnotation();
     }
 
-    // out var / is-pattern の designation の前宣言。文と、method の式本体 (=>) の前に置く
+    // Forward declarations for out var / is-pattern designations. Placed before the statement and before a method's expression body (=>)
     private void AddPreDecls(Node node, List<IlStat> acc)
     {
         var origin = Origin(node);
         foreach (var d in CollectPreDecls(node))
         {
             var dl = d.Local;
-            // discard (`out var _`) は型を持たない
+            // A discard (`out var _`) has no type
             acc.Add(new IlLocal(dl != null ? dl.IlName : "_", null, dl != null && d.Text != "_" ? IlTypes.Display(dl.Type) : null, origin));
         }
     }
@@ -112,7 +112,7 @@ public sealed class IlBuild
                         }
                         var name = v.Local != null ? v.Local.IlName : v.Text;
                         var declaredType = v.Local != null ? IlTypes.Display(LocalDisplayType(stmt, v.Local.Type)) : null;
-                        // 初期化子の条件式は文にする (return の位置と同じ方針)
+                        // A conditional expression in an initializer becomes a statement (same policy as in return position)
                         if (init is IlTernary lt)
                         {
                             var varNode = new IlVar(name, null);
@@ -145,8 +145,8 @@ public sealed class IlBuild
                 {
                     var built = BuildIf(stmt);
                     if (built == null) return false;
-                    // root の条件の値を返す IIFE は if の前へ出す (root の条件は無条件に最初に評価されるので評価の順は変わらない。
-                    // elseif の条件は前の条件が偽のときだけ評価されるので対象外)
+                    // An IIFE that returns the value of the root condition is hoisted before the if (the root condition is always evaluated first, so the evaluation order does not change.
+                    // An elseif condition is evaluated only when the previous conditions are false, so it is excluded)
                     if (built.Arms[0].Cond is IlIife condIife)
                     {
                         var shape = TryGetValueChainShape(condIife);
@@ -176,7 +176,7 @@ public sealed class IlBuild
                     return true;
                 }
             case NodeKind.Block:
-                // do..end は挟まず平らにする
+                // Flatten without wrapping in do..end
                 return BuildStatsInto(stmt.List, acc);
             case NodeKind.Break:
                 acc.Add(new IlBreak(origin));
@@ -189,7 +189,7 @@ public sealed class IlBuild
                     var body = BuildBlock(stmt.B!);
                     var cond = BuildExpr(stmt.A!);
                     if (body == null || cond == null) return false;
-                    // 条件は本体の後に自分の位置で評価される (--trace)
+                    // The condition is evaluated after the body, at its own position (--trace)
                     acc.Add(new IlRepeat(body, WithExprOrigin(cond, Origin(stmt.A!)), origin));
                     return true;
                 }
@@ -217,7 +217,7 @@ public sealed class IlBuild
             var cond = BuildExpr(current.A!);
             var body = BuildBlock(current.B!);
             if (cond == null || body == null) return null;
-            // elseif の条件は if 文の位置でなく自分の位置で評価される (--trace)
+            // An elseif condition is evaluated at its own position, not at the position of the if statement (--trace)
             arms.Add(new IlArm(current == ifStmt ? cond : WithExprOrigin(cond, Origin(current.A!)), body));
             if (current.C == null) break;
             if (current.C.Kind == NodeKind.If)
@@ -248,7 +248,7 @@ public sealed class IlBuild
             acc.Add(new IlIf(Arm(ternary.Cond, thenB), elseB, origin));
             return;
         }
-        // switch 式は inline (return がそのまま効く)。else の無いものは値の無い return に変わるのを避けて IIFE のまま
+        // A switch expression is inlined (return works as is). One without an else stays an IIFE to avoid turning into a return without a value
         if (value is IlIife iife)
         {
             var shape = TryGetValueChainShape(iife);
@@ -265,9 +265,9 @@ public sealed class IlBuild
 
     private int _condHoist;
 
-    // 値を返す IIFE の形を認識する。対象は [IlLocal*, IlIf (各 arm = 前置の文* + 末尾の IlReturn、else も同じ形)?, IlReturn?]
-    // (switch 式 / ?. / ?? / TryGetValue / GetValueOrDefault を下ろしたもの)。末尾の IlReturn は else へ正規化する。
-    // Complete = 全経路が値を返す (false なら一致しないとき nil。return の位置では値の無い return になるので使えない)
+    // Recognizes the shape of a value-returning IIFE. The target is [IlLocal*, IlIf (each arm = leading statements* + a trailing IlReturn, else has the same shape)?, IlReturn?]
+    // (lowered from switch expressions / ?. / ?? / TryGetValue / GetValueOrDefault). A trailing IlReturn is normalized into the else.
+    // Complete = every path returns a value (if false, nil when nothing matches; it cannot be used in return position because it becomes a return without a value)
     private static ValueChain? TryGetValueChainShape(IlIife iife)
     {
         var stats = new List<IlStat>();
@@ -278,7 +278,7 @@ public sealed class IlBuild
             trailing = tr;
             stats.RemoveAt(stats.Count - 1);
         }
-        // 線形の形 (分岐なし): [前置の宣言*, return v]
+        // Linear shape (no branches): [leading declarations*, return v]
         if (trailing != null && LeadingOk(stats, stats.Count))
             return new ValueChain(stats, null, trailing.Value, true);
         if (stats.Count == 0 || !(stats[stats.Count - 1] is IlIf tail)) return null;
@@ -296,7 +296,7 @@ public sealed class IlBuild
         return new ValueChain(setup, chain, null, tail.Else != null || trailing != null);
     }
 
-    // 前置の文は無条件に実行する宣言・代入・呼び出しだけ (前へ出しても同じ)
+    // Leading statements are only unconditionally executed declarations, assignments, and calls (hoisting them gives the same result)
     private static bool LeadingOk(List<IlStat> stats, int count)
     {
         for (int i = 0; i < count; i++)
@@ -321,7 +321,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // 各 arm の末尾の return を target への代入にした if の連鎖
+    // An if chain where the trailing return of each arm is turned into an assignment to target
     private static IlIf SwitchChainAsAssigns(IlIf chain, IlExpr target)
     {
         var arms = new List<IlArm>();
@@ -338,8 +338,8 @@ public sealed class IlBuild
         return new IlBlock(stats);
     }
 
-    // 式本体 (=>) の値は return 文の値と同じ copy 地点 (il-spec §10)。void の本体は式文なので copy しない
-    // method の式本体は void でも return の文にする (void の method なら backend は式を評価して捨ててから戻る)。値の copy は void でない本体だけ
+    // The value of an expression body (=>) is a copy point, same as the value of a return statement (il-spec §10). A void body is an expression statement, so it is not copied
+    // A method's expression body becomes a return statement even when void (for a void method the backend evaluates the expression, discards it, then returns). Only non-void bodies copy the value
     public bool BuildReturnInto(Node expr, List<IlStat> acc)
     {
         AddPreDecls(expr, acc);
@@ -351,7 +351,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // 文の位置の式
+    // Expression in statement position
     public bool BuildExprStatInto(Node expr, Node? originNode, List<IlStat> acc)
     {
         IlPos? origin = originNode != null ? Origin(originNode) : null;
@@ -378,7 +378,7 @@ public sealed class IlBuild
                 }
             case NodeKind.Assign:
                 return BuildAssignInto(expr, origin, acc);
-            // `new W();`: constructor の副作用のために作り、値は捨てる
+            // `new W();`: creates it for the constructor's side effects and discards the value
             case NodeKind.New:
                 {
                     var created = BuildExpr(expr);
@@ -390,12 +390,12 @@ public sealed class IlBuild
         return UnportedStat("expression statement", expr);
     }
 
-    // 値の copy 地点 (il-spec §10): 代入 / 引数 / return / 値の文脈の読み。新しい値は他から参照されないので copy しない。
-    // readonly な struct は不変なので copy を省く。struct の T? も、値があれば中の struct を copy する
+    // Value copy points (il-spec §10): assignment / argument / return / read in a value context. A new value is not referenced from anywhere else, so it is not copied.
+    // A readonly struct is immutable, so the copy is skipped. For a T? of a struct, the inner struct is copied too if it has a value
     public IlExpr WrapStructCopy(Node src, IlExpr built)
     {
         if (IsFreshStructIl(built) || IsFreshStructValue(src)) return built;
-        // 式の自然な型 (暗黙の変換の前)。自然な型を持たない式 (target-typed な `c ? h.F : null`) は変換先の型
+        // The natural type of the expression (before implicit conversion). An expression without a natural type (a target-typed `c ? h.F : null`) uses the conversion target type
         var t = StripConv(src).Type;
         if (t == null || t.Kind == TypeKind.Null || t.Kind == TypeKind.Error) t = src.Type;
         if (t == null) return built;
@@ -404,12 +404,12 @@ public sealed class IlBuild
         return CopyIfMutableStruct(t, built);
     }
 
-    // 書き換える / lambda が捕捉する struct の parameter を入口で copy した値 (il-spec §10)。copy しないなら null。
-    // 呼ばれた側の判断を本文の中に閉じるので、本文だけの hot reload で判断が古くならない
+    // The value of a struct parameter that is written to / captured by a lambda, copied at entry (il-spec §10). null if not copied.
+    // The decision stays inside the callee's body, so a body-only hot reload does not leave it stale
     public IlExpr? ParameterEntryCopy(Node fn, Node p)
     {
         if (Ctx.KeepsArgumentCopies) return null;
-        // out parameter は呼び出し元の値を受け取らないので copy する値が無い
+        // An out parameter does not receive the caller's value, so there is nothing to copy
         if (p.Has(Mods.Out) || p.Local == null) return null;
         var t = p.Local.Type;
         if (!CopiesOnEntryWhenWritten(t)) return null;
@@ -417,14 +417,14 @@ public sealed class IlBuild
         return CopyIfMutableStruct(t, new IlVar(IlNames.ParamName(p), null));
     }
 
-    // 入口の copy の対象。generic な struct は呼び出し側だけが型引数の copier を持つので除く
+    // Targets of the entry copy. Generic structs are excluded because only the caller has the copier for the type argument
     private static bool CopiesOnEntryWhenWritten(TypeSym? t)
     {
         if (!IlTypes.IsMutableStruct(t)) return false;
         return t!.Kind == TypeKind.Struct && (t.Args == null || t.Args.Count == 0);
     }
 
-    // n の中に variable を指す識別子があるか
+    // Whether n contains an identifier referring to variable
     private static bool Mentions(Node n, LocalSym variable)
     {
         if (n.Kind == NodeKind.Name && n.Local == variable) return true;
@@ -437,7 +437,7 @@ public sealed class IlBuild
         return AnyChild(scope, c => IsCapturedByLambda(c, variable));
     }
 
-    // n の中に、variable の値を書き換えうる出現があるか。parentIsAssign は n が代入の直接の子であること
+    // Whether n contains an occurrence that may modify the value of variable. parentIsAssign means n is a direct child of an assignment
     private static bool IsWritten(Node n, LocalSym variable, bool parentIsAssign)
     {
         switch (n.Kind)
@@ -466,7 +466,7 @@ public sealed class IlBuild
                 break;
             case NodeKind.Call:
                 {
-                    // readonly でない instance method の呼び出しは受け手を書き換えうる
+                    // A call to a non-readonly instance method may modify the receiver
                     var callee = n.A;
                     if (callee != null && callee.Kind == NodeKind.Member && callee.A != null && n.Sym != null
                         && n.Info != CallKind.Extension && n.Sym.Kind == SymKind.Method && !n.Sym.IsStatic
@@ -476,7 +476,7 @@ public sealed class IlBuild
                     break;
                 }
             case NodeKind.Member:
-                // getter が readonly でない property の読みも受け手を書き換えうる (代入の直接の子は除く)
+                // Reading a property whose getter is not readonly may also modify the receiver (except as a direct child of an assignment)
                 if (!parentIsAssign && n.A != null && n.Sym != null && n.Sym.Kind == SymKind.Property && n.Sym.Builtin == ""
                     && !n.Sym.IsStatic && !n.Sym.IsAuto && !(n.Sym.Decl != null && n.Sym.Decl.Has(Mods.Readonly))
                     && RootsAt(n.A, variable))
@@ -486,7 +486,7 @@ public sealed class IlBuild
         return AnyChild(n, c => IsWritten(c, variable, false));
     }
 
-    // e が variable の値の中の場所か (括弧と、値型の field / 自動実装の property をたどる)
+    // Whether e is a location inside the value of variable (follows parentheses and value-type fields / auto-implemented properties)
     private static bool RootsAt(Node e, LocalSym variable)
     {
         switch (e.Kind)
@@ -506,7 +506,7 @@ public sealed class IlBuild
         return false;
     }
 
-    // 呼び出しの間に変わらない場所 (lambda が捕捉しない local / parameter で、後の引数と受け手に現れないもの) の引数は copy を省く
+    // Skips the copy for an argument at a location that does not change during the call (a local / parameter not captured by a lambda that does not appear in later arguments or the receiver)
     private bool CanShareArgument(Symbol? callee, List<Node> args, int offset, int index, Node? receiver)
     {
         if (Ctx.KeepsArgumentCopies || callee == null || callee.Params == null) return false;
@@ -529,7 +529,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // 呼び出しの引数の式 (Arg の中身)
+    // The expression of a call argument (the contents of Arg)
     private static List<Node> ArgExprs(Node call)
     {
         var r = new List<Node>();
@@ -538,13 +538,13 @@ public sealed class IlBuild
         return r;
     }
 
-    // IL の式としての型にする (C backend は三項と ?? の両側が同じ型であることを求める)
+    // Gives it its type as an IL expression (the C backend requires both sides of a ternary and ?? to have the same type)
     private static IlExpr Ex(IlExpr e)
     {
         return e;
     }
 
-    // ---- 式 ----
+    // ---- Expressions ----
 
     public IlExpr? BuildExpr(Node expr)
     {
@@ -566,7 +566,7 @@ public sealed class IlBuild
                     var inner = BuildExpr(expr.A!);
                     return inner == null ? null : new IlParen(inner, null);
                 }
-            // checked / unchecked は中の演算の文脈 (CheckedIntCall)
+            // checked / unchecked set the context of the inner operations (CheckedIntCall)
             case NodeKind.Checked:
                 {
                     bool outer = _checked;
@@ -632,12 +632,12 @@ public sealed class IlBuild
         return Unported("expression", expr);
     }
 
-    // 暗黙と明示の変換 (Binder の Conv)。数の変換と nullable の変換
+    // Implicit and explicit conversions (the Binder's Conv). Numeric conversions and nullable conversions
     private IlExpr? BuildConversion(Node conv)
     {
         bool promoted = conv == _promotedOperand;
         _promotedOperand = null;
-        // 数の変換は括弧の中の式に掛ける (Roslyn も括弧の中の式に変換先の型を付ける)
+        // A numeric conversion applies to the expression inside the parentheses (Roslyn also attaches the target type to the expression inside the parentheses)
         if ((conv.Info == ConvKind.IntToFloat || conv.Info == ConvKind.NullableIntToFloat) && conv.A!.Kind == NodeKind.Paren && !promoted)
         {
             var innerConv = new Node(NodeKind.Conv, conv.File, conv.Pos);
@@ -655,7 +655,7 @@ public sealed class IlBuild
         switch (conv.Info)
         {
             case ConvKind.Identity:
-                // binder が畳んだ整数の定数の float への変換 (float の literal にする。算術の operand は除く)
+                // Conversion to float of an integer constant folded by the binder (becomes a float literal; arithmetic operands are excluded)
                 if (conv.HasConst && conv.Const != null && conv.Const.Kind == ConstKind.Float && !promoted
                     && IlTypes.UnwrapNullable(conv.Type!).Kind == TypeKind.Float && IlTypes.IsIntegralSource(IlTypes.UnwrapNullable(NaturalType(conv.A!)))
                     && !IsFloatConverted(inner))
@@ -665,7 +665,7 @@ public sealed class IlBuild
                 return inner;
             case ConvKind.NullableIntToFloat:
                 {
-                    // int? → float? は値があるときだけ変換する
+                    // int? → float? converts only when there is a value
                     if (IlTypes.UnwrapNullable(conv.Type!).Kind != TypeKind.Float) return inner;
                     if (IsFloatConverted(inner) || promoted) return inner;
                     if (!IlTypes.IsNullableValueType(NaturalType(conv.A!))) return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", false, null));
@@ -673,7 +673,7 @@ public sealed class IlBuild
                 }
             case ConvKind.IntToFloat:
                 {
-                    // 変換先が float (double ではない) のときだけ明示の変換にする
+                    // Make it an explicit conversion only when the target is float (not double)
                     if (IlTypes.UnwrapNullable(conv.Type!).Kind != TypeKind.Float) return ApplyNullableConversion(conv, inner);
                     if (IsFloatConverted(inner) || promoted) return ApplyNullableConversion(conv, inner);
                     if (conv.A!.HasConst && conv.A.Const != null)
@@ -682,21 +682,21 @@ public sealed class IlBuild
                         float f = c.Kind == ConstKind.Float ? c.F : (float)c.I;
                         return ApplyNullableConversion(conv, FloatLit(f));
                     }
-                    // int → float? は数の変換の後に T? へ包む
+                    // int → float? wraps into T? after the numeric conversion
                     return ApplyNullableConversion(conv, new IlNumericConvert(inner, "float", false, null));
                 }
         }
         return Unported("conversion " + conv.Info, conv);
     }
 
-    // 組み込みの float の算術 (+ - * / %) の operand は VM と C の演算が int を float に揃えるので明示の変換を省く (BuildBinary が印を付ける)
+    // Operands of built-in float arithmetic (+ - * / %) skip the explicit conversion because the VM and C operations promote int to float (BuildBinary marks them)
     private bool IsPromotedArithmeticOperand(Node conv)
     {
         return conv == _promotedOperand;
     }
 
     private Node? _promotedOperand;
-    // checked の文脈の中か (i32 の + - * と単項 - は overflow で fault する helper)
+    // Whether inside a checked context (i32 + - * and unary - become helpers that fault on overflow)
     private bool _checked;
 
     private static bool IsFloatConverted(IlExpr built)
@@ -708,7 +708,7 @@ public sealed class IlBuild
         return false;
     }
 
-    // f32 の literal
+    // f32 literal
     public static IlExpr FloatLit(float value) => IlLiterals.Float(value);
 
     private IlExpr? BuildLiteral(Node lit)
@@ -731,7 +731,7 @@ public sealed class IlBuild
         return Unported("literal", lit);
     }
 
-    // 補間の文字列 (揃えは literal だけ)
+    // Interpolated string (alignment only as a literal)
     private IlExpr? BuildInterpolatedString(Node interp)
     {
         var parts = new List<IlExpr>();
@@ -746,7 +746,7 @@ public sealed class IlBuild
                 }
                 var inner = BuildExpr(content.A!);
                 if (inner == null) return null;
-                // bool / string / char は書式を使わない。Rune と ToString の override を持つ型も書式を無視する
+                // bool / string / char do not use the format. Rune and types that override ToString also ignore the format
                 var holeType = NaturalType(content.A!);
                 var ht = IlTypes.UnwrapNullable(holeType);
                 string? format = content.Text != "" ? content.Text : null;
@@ -772,12 +772,12 @@ public sealed class IlBuild
         if (parts.Count == 0) return IlLiterals.Str("");
         var result = parts[0];
         for (int i = 1; i < parts.Count; i++) result = new IlBin(IlBinOp.Concat, result, parts[i], null);
-        // `..` の連接は atomic でない (IlLen / IlField が先頭の要素にだけ結合する) ので、受け手の位置でも安全なよう括弧で閉じる
+        // A `..` concatenation is not atomic (IlLen / IlField bind only to the first element), so it is wrapped in parentheses to be safe in receiver position too
         return parts.Count == 1 ? result : Ex(new IlParen(result, null));
     }
 
-    // 数 (と T?) の標準の書式は .NET の ToString(format) と同じ文字列にする (String.FormatFloat / String.FormatInt、il-spec §13)。
-    // 精度は 9 桁までの数で、"G03" は "G3" と同じなので数に直して渡す。R は G と同じで、float は精度を使わない
+    // Standard formats of numbers (and T?) produce the same string as .NET's ToString(format) (String.FormatFloat / String.FormatInt, il-spec §13).
+    // The precision is a number of up to 9 digits, and "G03" is the same as "G3", so it is passed as a number. R is the same as G, and float does not use the precision
     private static IlExpr? WrapNumberFormat(TypeSym? type, IlExpr value, string format)
     {
         bool isFloat = IlTypes.IsFloating(type);
@@ -820,7 +820,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // C# の書式指定を string.format の指定 (printf の形。runtime/fmt が読む) に
+    // Converts a C# format specifier to a string.format specifier (printf style, read by runtime/fmt)
     private static string ConvertFormatSpecifier(string fmt)
     {
         if (fmt == "") return "%s";
@@ -831,7 +831,7 @@ public sealed class IlBuild
         {
             case "F": return precision == "" ? "%.6f" : "%." + precision + "f";
             case "N": return precision == "" ? "%.2f" : "%." + precision + "f";
-            // D の精度は符号を除いた最小の桁数 (printf の %.Nd と同じ)。精度 0 は精度なしと同じ
+            // The precision of D is the minimum number of digits excluding the sign (same as printf's %.Nd). Precision 0 is the same as no precision
             case "D": return AllZeros(precision) ? "%d" : "%." + precision + "d";
             case "X":
                 if (first == "X") return precision == "" ? "%X" : "%0" + precision + "X";
@@ -844,10 +844,10 @@ public sealed class IlBuild
         return "%s";
     }
 
-    // ---- 呼び出し ----
+    // ---- Calls ----
 
-    // 式の位置の ++ / --。文の位置と同じ place の解決 (副作用のある受け手 / 添字は temp) で 1 回だけ代入し、
-    // 前置は更新後、後置は更新前の値を返す IIFE
+    // ++ / -- in expression position. An IIFE that assigns once, with the same place resolution as in statement position (receivers / indices with side effects go to a temp),
+    // and returns the updated value for prefix and the old value for postfix
     private IlExpr? BuildIncrementExpr(Node operand, bool increment, bool prefix)
     {
         var stats = new List<IlStat>();
@@ -883,8 +883,8 @@ public sealed class IlBuild
     }
 
     // ---- ?. (il-spec §3) ----
-    // セルフホストの木の ?. は鎖の各 node に CondChain、最も外の node に CondTop、`?.` / `?[` の位置に Value = 1 を持つ。
-    // Roslyn の ConditionalAccess の入れ子 (Expression = 最初の ?. の受け手、WhenNotNull = その上の鎖。鎖の中の次の ?. は入れ子) の形に組み立てる
+    // In the self-hosted tree, ?. has CondChain on each node of the chain, CondTop on the outermost node, and Value = 1 at the `?.` / `?[` positions.
+    // Builds it into the shape of Roslyn's nested ConditionalAccess (Expression = the receiver of the first ?., WhenNotNull = the chain above it; the next ?. in the chain is nested)
 
     private Node? _subNode;
     private IlExpr? _subIl;
@@ -902,7 +902,7 @@ public sealed class IlBuild
         return null;
     }
 
-    // ?. の鎖の外側から内側への node の列 (最後が最初の ?.)
+    // The nodes of a ?. chain from outside to inside (the last one is the first ?.)
     private static List<Node> ChainPath(Node top)
     {
         var path = new List<Node>();
@@ -923,7 +923,7 @@ public sealed class IlBuild
         var path = ChainPath(top);
         var first = path[path.Count - 1];
         if (!IsCondPoint(first) || first.A == null) return Unported("conditional chain", top);
-        // 鎖の中は持ち上げる前の型で組み立てる (Roslyn の WhenNotNull の中の型)
+        // Inside the chain, build with the types before lifting (the types inside Roslyn's WhenNotNull)
         var saved = new List<TypeSym?>();
         foreach (var n in path)
         {
@@ -940,15 +940,15 @@ public sealed class IlBuild
         return result;
     }
 
-    // BuildConditionalCore が作った IIFE (`__tcs_ca = ...; if (__tcs_ca != nil) ...`)
+    // The IIFE built by BuildConditionalCore (`__tcs_ca = ...; if (__tcs_ca != nil) ...`)
     private static bool IsConditionalCore(IlExpr e)
     {
         if (!(e is IlIife iife) || iife.Stats.Count == 0) return false;
         return iife.Stats[0] is IlLocal l && l.Name == "__tcs_ca";
     }
 
-    // receiver を local へ 1 回評価し、null でなければ path[bottom..top] (path[bottom] が ?. の位置) を返す IIFE。
-    // `T?` の receiver は値の有無と中の値の明示の node。結果が値型 (T? でない) なら T? に包む
+    // An IIFE that evaluates receiver once into a local and, if it is not null, returns path[bottom..top] (path[bottom] is the ?. position).
+    // For a `T?` receiver, the has-value check and the inner value are explicit nodes. If the result is a value type (not T?), it is wrapped in T?
     private IlExpr? BuildConditionalCore(IlExpr receiver, TypeSym receiverType, List<Node> path, int bottom, int top)
     {
         bool nullableValue = IlTypes.IsNullableValueType(receiverType);
@@ -957,7 +957,7 @@ public sealed class IlBuild
         var whenNotNull = BuildConditionalWhenNotNull(path, bottom, top, new IlVar(objName, null), underlying);
         if (whenNotNull == null) return null;
         var resultType = path[top].Type;
-        // 内側の ?. (入れ子の IIFE) の結果は既に T? (Roslyn の入れ子の ConditionalAccess の型)
+        // The result of an inner ?. (a nested IIFE) is already T? (the type of Roslyn's nested ConditionalAccess)
         if (resultType != null && resultType.IsValueType && resultType.Kind != TypeKind.Void && !IlTypes.IsNullableValueType(resultType) && !(whenNotNull is IlNullableWrap)
             && !IsConditionalCore(whenNotNull))
             whenNotNull = new IlNullableWrap(whenNotNull, IlTypes.Display(resultType), null);
@@ -974,22 +974,22 @@ public sealed class IlBuild
 
     private IlExpr? BuildConditionalWhenNotNull(List<Node> path, int bottom, int top, IlExpr obj, TypeSym receiverType)
     {
-        // 鎖の中の次の ?. (入れ子の ConditionalAccess)
+        // The next ?. in the chain (a nested ConditionalAccess)
         for (int i = bottom - 1; i >= top; i--)
         {
             if (!IsCondPoint(path[i])) continue;
-            // 入れ子の Expression は path[i].A (= path[i + 1] 以下)
+            // The nested Expression is path[i].A (= path[i + 1] and below)
             var inner = BuildConditionalWhenNotNull(path, bottom, i + 1, obj, receiverType);
             if (inner == null) return null;
             return BuildConditionalCore(inner, NaturalType(path[i].A!), path, i, top);
         }
-        // 最初の ?. の binding (method の binding は呼び出しまで)
+        // The binding of the first ?. (for a method, the binding extends to the call)
         var b = path[bottom];
         int rootIndex = bottom;
         if (b.Kind == NodeKind.Member && bottom - 1 >= top && path[bottom - 1].Kind == NodeKind.Call && path[bottom - 1].A == b) rootIndex = bottom - 1;
         var rootIl = BuildConditionalBinding(path[rootIndex], b, obj, receiverType);
         if (rootIl == null || rootIndex == top) return rootIl;
-        // 鎖の残り: binding を作った IL に置き換えて組み立てる
+        // The rest of the chain: build it with the binding replaced by the built IL
         var outerSub = _subNode;
         var outerSubIl = _subIl;
         _subNode = path[rootIndex];
@@ -1003,11 +1003,11 @@ public sealed class IlBuild
         return built;
     }
 
-    // ?. の位置の binding (`.M` / `.M(args)` / `[i]` / `d?.Invoke(args)`) を、受け手を obj にして組み立てる
+    // Builds the binding at the ?. position (`.M` / `.M(args)` / `[i]` / `d?.Invoke(args)`) with obj as the receiver
     private IlExpr? BuildConditionalBinding(Node root, Node binding, IlExpr obj, TypeSym receiverType)
     {
         var recvNode = binding.A!;
-        // struct の custom property は受け手を copy した値で読む (`S?` の .Value は copy)
+        // A custom property of a struct is read on a copy of the receiver (the .Value of `S?` is a copy)
         if (root == binding && binding.Kind == NodeKind.Member && binding.Sym != null && binding.Sym.Kind == SymKind.Property && IsCustomProperty(binding.Sym) && IlTypes.IsUserStruct(receiverType))
             return new IlCall(TypeRef(binding.Sym.Owner!) + ".get_" + N(binding.Sym), One(ConditionalStructReceiver(obj, receiverType)), null);
         var savedType = recvNode.Type;
@@ -1035,7 +1035,7 @@ public sealed class IlBuild
         return new IlStructCopy(obj, TypeName(type), false, null);
     }
 
-    // ---- タプルと分解。タプルの値は struct (TinySystem/ValueTuple.cs)
+    // ---- Tuples and deconstruction. A tuple value is a struct (TinySystem/ValueTuple.cs)
 
     private int _deconstructTemp;
 
@@ -1066,7 +1066,7 @@ public sealed class IlBuild
         return new IlTable(entries, null, null, false, null, null);
     }
 
-    // ---- 分解。C# の順: 左辺の受け手と添字 → 右辺 → 左から順に代入 ----
+    // ---- Deconstruction. C# order: left-side receivers and indices → right side → assignments from left to right ----
 
     private static DTarget? DeconstructTargetOf(Node target)
     {
@@ -1103,7 +1103,7 @@ public sealed class IlBuild
         return null;
     }
 
-    // 分解できる型の成分: タプル、record (positional な property)
+    // Components of deconstructible types: tuples, records (positional properties)
     private static List<ValueMember>? DeconstructMembers(TypeSym? type, int count)
     {
         if (type == null) return null;
@@ -1162,7 +1162,7 @@ public sealed class IlBuild
         return "__tcs_d" + _deconstructTemp;
     }
 
-    // 宣言だけの分解 (`var (a, b) = ...`) と local への代入は、右辺の値を一度に束縛できる。1 = 組み立てた、0 = 失敗、-1 = 当てはまらない
+    // A declaration-only deconstruction (`var (a, b) = ...`) and an assignment to locals can bind the right-side values at once. 1 = built, 0 = failed, -1 = not applicable
     private int TryBuildFlatDeconstruct(DTarget target, Node rhs, IlPos? origin, List<IlStat> acc)
     {
         bool declare = true;
@@ -1217,7 +1217,7 @@ public sealed class IlBuild
         return -1;
     }
 
-    // 要素を代入する place の受け手と添字を、右辺の評価の前に固定する
+    // Fixes the receivers and indices of the places the elements are assigned to before evaluating the right side
     private bool FixPlaces(DTarget target, List<IlStat> stats)
     {
         if (target.Kind == DTarget.KNested)
@@ -1250,7 +1250,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // BuildLoweredTarget の temp は決まった名前なので、place ごとに別の名前にする
+    // BuildLoweredTarget's temp has a fixed name, so each place gets a different name
     private IlExpr RenameFixedTemps(List<IlStat> setup, IlExpr access, List<IlStat> into)
     {
         var renames = new Dictionary<string, string>();
@@ -1309,7 +1309,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // 値を temp に束縛した上で target へ渡す。入れ子は成分へたどる
+    // Binds the value to a temp and then passes it to target. Nested ones are followed into their components
     private bool BindValue(DTarget target, IlExpr value, TypeSym? type, List<IlStat> stats, List<DAssign> assigns)
     {
         if (target.Kind != DTarget.KNested)
@@ -1320,7 +1320,7 @@ public sealed class IlBuild
         var members = DeconstructMembers(type, target.Items.Count);
         if (members == null || members.Count != target.Items.Count) return false;
         var holder = value;
-        // 分解の temp でない値 (user の変数を含む) は temp に置く。代入先が右辺の変数の成分でも、右辺は代入の前の値を読む
+        // A value that is not a deconstruction temp (including user variables) is put in a temp. Even if an assignment target is a component of a right-side variable, the right side reads the value before the assignment
         if (!(value is IlVar v && v.Name.StartsWith("__tcs_d")))
         {
             var temp = NewDeconstructTemp();
@@ -1334,14 +1334,14 @@ public sealed class IlBuild
         return true;
     }
 
-    // タプルの literal の整数の定数の要素を float の分解の先へ: Roslyn は literal の要素を先の型へ変換する (binder は式の先の型を見ないので変換を持たない)
+    // Integer constant elements of a tuple literal into float deconstruction targets: Roslyn converts literal elements to the target type (the binder does not look at the target type of the expression, so it has no conversion)
     private static bool FoldsToFloatConst(Node el, TypeSym? target)
     {
         if (target == null || IlTypes.UnwrapNullable(target).Kind != TypeKind.Float) return false;
         return el.Kind != NodeKind.Conv && el.HasConst && el.Const != null && el.Const.Kind == ConstKind.Int && IlTypes.IsIntegralSource(el.Type);
     }
 
-    // 分解の成分の暗黙の変換 (`float f; (f, g) = (1, 2)`)
+    // Implicit conversion of deconstruction components (`float f; (f, g) = (1, 2)`)
     private static IlExpr ConvertDeconstructed(IlExpr value, TypeSym? source, TypeSym? target)
     {
         if (target == null || source == null || TypeSym.Same(source, target)) return value;
@@ -1360,7 +1360,7 @@ public sealed class IlBuild
         }
     }
 
-    // `foreach (var (a, b) in list)`: 要素を 1 つの変数で受けて、本体の先頭で分解する
+    // `foreach (var (a, b) in list)`: receives the element in one variable and deconstructs it at the start of the body
     private bool BuildForeachDeconstructInto(Node loop, List<IlStat> acc)
     {
         var collType = NaturalType(loop.B!);
@@ -1393,10 +1393,10 @@ public sealed class IlBuild
         return true;
     }
 
-    // ---- user の演算子 ----
+    // ---- User operators ----
 
-    // user の演算子は呼び出しの場所で選ばれた overload の static 関数を直接呼ぶ (`V.__mul_2(a, b)`)。
-    // --ref の型の演算子は実装が host にあるので呼び出しにしない (IL の演算のまま残る)。struct の引数は呼び出しと同じく copy して渡す
+    // A user operator directly calls the static function of the overload chosen at the call site (`V.__mul_2(a, b)`).
+    // Operators of --ref types are implemented in the host, so they do not become calls (they stay IL operations). Struct arguments are copied and passed, as in calls
     private IlExpr? TryBuildUserOperatorCall(Node expr, List<Node> operands, List<IlExpr> built)
     {
         var op = expr.Sym;
@@ -1413,7 +1413,7 @@ public sealed class IlBuild
         return new IlCall(TypeRef(op.Owner) + "." + name, args, null);
     }
 
-    // generic な型の演算子は static な method と同じく型引数の既定値を末尾に受ける。型引数は自分の型の operand から
+    // Operators of generic types take the default values of the type arguments at the end, like static methods. The type arguments come from the operand of its own type
     private List<IlExpr> OperatorTypeArgDefaults(Symbol op, List<Node> operands)
     {
         var r = new List<IlExpr>();
@@ -1429,15 +1429,15 @@ public sealed class IlBuild
         return r;
     }
 
-    // ---- out 引数 ----
+    // ---- out arguments ----
 
-    // 自作の method の out: 呼び出しは IlMultiAssign (VM は out の値を戻り値の後ろに並べて返し、C はポインタで写す)。受け手の順は parameter の順で、先頭が戻り値
+    // out of user-defined methods: the call is an IlMultiAssign (the VM returns the out values after the return value, and C copies them through pointers). The targets are in parameter order, with the return value first
     private static bool IsUserOutMethod(Symbol? m)
     {
         return m != null && m.Kind == SymKind.Method && m.HasOut && m.Builtin == "" && m.Owner != null && !m.Owner.IsRef;
     }
 
-    // out の引数の受け手 (out var x は x、out _ と書けない場所は _)
+    // The targets of out arguments (x for out var x; _ for out _ and for places that cannot be written)
     private static List<IlExpr> OutTargets(Node call)
     {
         var r = new List<IlExpr>();
@@ -1499,7 +1499,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // --ref の host の method の out (受け手の member の形の呼び出し): 自作の method と同じく IlMultiAssign (受け手は戻り値、out の順)
+    // out of --ref host methods (calls in receiver-member form): an IlMultiAssign like user-defined methods (targets are the return value, then the outs in order)
     private static bool IsRefOutCall(Node call)
     {
         var m = call.Sym;
@@ -1535,12 +1535,12 @@ public sealed class IlBuild
         var outs = new List<IlExpr>();
         var value = BuildRefMultiReturnValue(call, outs);
         if (value == null || outs.Count == 0) return null;
-        // 値の無いものは文の位置だけ
+        // Ones without a value are only in statement position
         if (call.Sym!.Type.Kind == TypeKind.Void) return null;
         return new IlIife(RetMultiAssign(outs, value, call.Sym!.Type), null);
     }
 
-    // 戻り値の local は型を持つ (C と VM は host の関数の戻り値をこの型の変数で受ける)
+    // The return-value local has a type (C and the VM receive the host function's return value in a variable of this type)
     private static List<IlStat> RetMultiAssign(List<IlExpr> outs, IlExpr value, TypeSym ret)
     {
         var targets = new List<IlExpr>();
@@ -1567,7 +1567,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // record / struct の with: 複製の上に member を書く。struct の with は値の copy (入れ子の struct も写す) の上に書く
+    // with on a record / struct: writes the members on a duplicate. with on a struct writes on a copy of the value (nested structs are copied too)
     private IlExpr? BuildWithExpr(Node withExpr)
     {
         var src = BuildExpr(withExpr.A!);
@@ -1610,9 +1610,9 @@ public sealed class IlBuild
         {
             var args0 = BuildArgs(call, null);
             if (args0 == null) return null;
-            // `f?.Invoke(args)`: ?. の受け手 (delegate の値) を呼ぶ
+            // `f?.Invoke(args)`: calls the receiver of ?. (the delegate value)
             if (callee == _subNode && _subIl != null) return new IlDynCall(_subIl, args0, null);
-            // delegate の field / property の直接の呼び出し
+            // Direct call of a delegate field / property
             if (callee.Kind == NodeKind.Member && callee.Sym != null && (callee.Sym.Kind == SymKind.Field || callee.Sym.Kind == SymKind.Property))
             {
                 var recv0 = callee.Sym.IsStatic ? Ex(new IlVar(TypeRef(callee.Sym.Owner!), null)) : BuildExpr(callee.A!);
@@ -1638,7 +1638,7 @@ public sealed class IlBuild
         args = WithOmittedDefaults(call, m, args);
         if (call.Info == CallKind.Extension)
         {
-            // user の拡張メソッド: 静的の呼び出し (受け手が第 1 引数。値型の受け手は値の copy)
+            // User extension method: a static call (the receiver is the first argument; a value-type receiver is a copy of the value)
             if (callee.Kind == NodeKind.Member && callee.A != null && callee.A.Info != RefKind.Type)
             {
                 var extRecv = BuildExpr(callee.A);
@@ -1655,7 +1655,7 @@ public sealed class IlBuild
             var recvNode = callee.A!;
             if (m.IsStatic)
             {
-                // 拡張メソッドを static の形で呼ぶ (`Agg.Total(xs, f)`): 型の関数の静的な呼び出し
+                // Calling an extension method in static form (`Agg.Total(xs, f)`): a static call of the type's function
                 if (m.IsExtension && m.Owner != null) return new IlCall(TypeRef(m.Owner) + "." + N(m), args, null);
                 var recv = BuildExpr(recvNode);
                 if (recv == null) return null;
@@ -1663,7 +1663,7 @@ public sealed class IlBuild
             }
             var r = BuildExpr(recvNode);
             if (r == null) return null;
-            // struct の instance member は自由関数で、静的に呼ぶ (il-spec §10)
+            // Struct instance members are free functions and are called statically (il-spec §10)
             if (IlTypes.IsUserStruct(recvNode.Type))
             {
                 var all = new List<IlExpr>();
@@ -1688,7 +1688,7 @@ public sealed class IlBuild
         return Unported("callee", call);
     }
 
-    // 呼び出しの引数 (out は multi-return の受け手で、引数にならない)
+    // Call arguments (out is a multi-return target and does not become an argument)
     private List<IlExpr>? BuildArgs(Node call, Symbol? m)
     {
         var args = new List<IlExpr>();
@@ -1705,7 +1705,7 @@ public sealed class IlBuild
         return args;
     }
 
-    // 引数は値渡し (il-spec §10 の引数の copy 地点)
+    // Arguments are passed by value (the argument copy point of il-spec §10)
     private IlExpr WrapArgumentCopy(Symbol? callee, Node call, int index, IlExpr built)
     {
         var arg = call.List![index].A!;
@@ -1715,7 +1715,7 @@ public sealed class IlBuild
         return WrapStructCopy(arg, built);
     }
 
-    // C# は省略した引数の既定値を呼び出し側で、静的に束縛した宣言から決める
+    // C# determines the default values of omitted arguments at the caller, from the statically bound declaration
     private List<IlExpr> WithOmittedDefaults(Node call, Symbol m, List<IlExpr> args)
     {
         if (m.Owner == null || m.Owner.IsRef || m.Params == null) return args;
@@ -1724,7 +1724,7 @@ public sealed class IlBuild
         var filled = new List<IlExpr>();
         foreach (var a in args) filled.Add(a);
         int k = 0;
-        // 受け手の形で呼ぶ拡張メソッドは this の parameter を数えない (Roslyn の reduced な method)
+        // An extension method called in receiver form does not count the this parameter (Roslyn's reduced method)
         bool reduced = call.Info == CallKind.Extension && call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null && call.A.A.Info != RefKind.Type;
         int pi = 0;
         foreach (var p in m.Params)
@@ -1747,7 +1747,7 @@ public sealed class IlBuild
         return t.ContainsTypeParam();
     }
 
-    // 呼び出しの側の隠れ引数。宣言の側と同じ順で、型引数ごとの既定値
+    // Hidden arguments on the call side. The default value for each type argument, in the same order as on the declaration side
     private List<IlExpr> TypeArgDefaultArgs(Node call, Symbol m)
     {
         var r = new List<IlExpr>();
@@ -1766,7 +1766,7 @@ public sealed class IlBuild
         return r;
     }
 
-    // 呼び出した member の型の型引数 (`Box<int>.Of` の int、generic な型の中の呼び出しなら自分の型引数、new の型)
+    // Type arguments of the called member's type (the int of `Box<int>.Of`, its own type arguments for a call inside a generic type, the type of a new)
     private static List<TypeSym>? ClassTypeArgsOf(Node call, Symbol m)
     {
         if (m.Owner == null || m.Owner.TypeParams.Count == 0) return null;
@@ -1776,7 +1776,7 @@ public sealed class IlBuild
         return m.Owner.SelfType().Args;
     }
 
-    // 組み込みの method (BCL)
+    // Built-in methods (BCL)
     private IlExpr? BuildBuiltinCall(Node call, Symbol m, List<IlExpr> args)
     {
         var id = m.Builtin;
@@ -1787,7 +1787,7 @@ public sealed class IlBuild
             return new IlCall(callee.A!.Type!.Name + "." + callee.Text, args, null);
         if (id == "Int.TryParse" || id == "Float.TryParse") return BuildNumericTryParse(call, id == "Int.TryParse" ? "Int" : "Float");
         if (id == "Dict.TryGetValue" && recvNode != null) return BuildDictTryGetValue(call, recvNode, m);
-        // int / float の CompareTo (同じ型): -1 / 0 / 1 を返す intrinsic
+        // CompareTo of int / float (same type): an intrinsic that returns -1 / 0 / 1
         if (id == "Math.CompareTo" && recvNode != null)
         {
             var cmpRecv = BuildExpr(recvNode);
@@ -1818,7 +1818,7 @@ public sealed class IlBuild
                     if (args.Count == 2)
                     {
                         var elem = IlTypes.ElementOf(NaturalType(call.List![1].A!));
-                        // enum の要素は member の名前にしてから Join する (Enum.ToString と同じ)
+                        // Enum elements are converted to member names before Join (same as Enum.ToString)
                         var joinSpec = elem != null ? EnumFormatSpec(elem, false) : null;
                         if (joinSpec != null)
                         {
@@ -1839,7 +1839,7 @@ public sealed class IlBuild
             case "Char.ToLower":
             case "Char.ConvertFromUtf32":
                 return new IlCall("Char." + callee.Text, args, null);
-            // TinySystem.Text の static の形 (Runes.RuneCount(s))
+            // Static form of TinySystem.Text (Runes.RuneCount(s))
             case "Runes.RuneCountStatic":
             case "Runes.RuneSubstringStatic":
                 return new IlCall("TinySystem.Utf8." + callee.Text, args, null);
@@ -1856,9 +1856,9 @@ public sealed class IlBuild
         }
         if (id.StartsWith("Math.") && callee.Kind == NodeKind.Member && IsFacadeReceiver(callee.A))
             return new IlCall("TinySystem.Math." + callee.Text, args, null);
-        // TinySystem の facade の static (TinySystem.Random.Seed、TinySystem.List.Contains)
+        // Statics of TinySystem facades (TinySystem.Random.Seed, TinySystem.List.Contains)
         if (id == "Random.Seed") return new IlCall("TinySystem.Random." + callee.Text, args, null);
-        // char の static な method
+        // Static methods of char
         if (id.StartsWith("Char.") && m.IsStatic) return new IlCall("Char." + callee.Text, args, null);
         if (id.StartsWith("Math.") && callee.Kind == NodeKind.Member)
             return new IlCall("Math." + (callee.Text == "Ceiling" ? "Ceil" : callee.Text), args, null);
@@ -1867,7 +1867,7 @@ public sealed class IlBuild
         if (recv == null) return null;
         switch (id)
         {
-            // TinySystem.Text の method は runtime の TinySystem.Utf8 の呼び出し (受け手は第 1 引数)
+            // TinySystem.Text methods are calls to the runtime's TinySystem.Utf8 (the receiver is the first argument)
             case "Runes.RuneCount":
             case "Runes.RuneSubstring":
             case "Utf8.Slice":
@@ -1925,7 +1925,7 @@ public sealed class IlBuild
             case "String.StartsWithChar":
             case "String.EndsWithChar":
                 return new IlCall("String." + callee.Text, Two(recv, WrapCharArgs(call, args)[0]), null);
-            // TinySystem.Random の instance の method
+            // Instance methods of TinySystem.Random
             case "Random.Next":
             case "Random.NextFloat":
             case "Random.Range":
@@ -1934,7 +1934,7 @@ public sealed class IlBuild
                 return new IlNullableGetOrDefault(recv, DefaultIl(IlTypes.UnwrapNullable(recvType!)), null);
             case "Nullable.GetValueOrDefaultValue":
                 {
-                    // method の引数なので常に 1 回評価する (?? と違い遅延しない)
+                    // It is a method argument, so it is always evaluated once (not deferred, unlike ??)
                     var stats = new List<IlStat>();
                     stats.Add(new IlLocal("__tcs_val", recv, null, null));
                     stats.Add(new IlLocal("__tcs_fb", args[0], null, null));
@@ -1962,7 +1962,7 @@ public sealed class IlBuild
                 return WrapFloatToString(recvNode, recv);
             case "Enum.ToStringFormat":
                 {
-                    // enum の書式 ("G" / "F" / "D")
+                    // Enum formats ("G" / "F" / "D")
                     var fa = call.List![0].A!;
                     if (fa.HasConst && fa.Const != null && fa.Const.Kind == ConstKind.String) return WrapEnumFormat(NaturalType(recvNode), recv, fa.Const.S);
                     return null;
@@ -1970,7 +1970,7 @@ public sealed class IlBuild
             case "Float.ToStringFormat":
             case "Int.ToStringFormat":
                 {
-                    // 数の標準の書式 (補間の `{x:F2}` と同じ)。空の書式は書式なしと同じ
+                    // Standard numeric formats (same as `{x:F2}` in interpolation). An empty format is the same as no format
                     var fa = call.List![0].A!;
                     if (!(fa.HasConst && fa.Const != null && fa.Const.Kind == ConstKind.String)) return null;
                     if (fa.Const.S == "") return WrapFloatToString(recvNode, recv);
@@ -1980,7 +1980,7 @@ public sealed class IlBuild
         return Unported("builtin " + id, call);
     }
 
-    // string の method の char の引数は 1 文字の string にして runtime へ渡す (char は整数の code unit)
+    // A char argument of a string method is passed to the runtime as a one-character string (char is an integer code unit)
     private static List<IlExpr> WrapCharArgs(Node call, List<IlExpr> args)
     {
         var r = new List<IlExpr>();
@@ -1992,7 +1992,7 @@ public sealed class IlBuild
         return r;
     }
 
-    // out の引数の受け手 (out var x は前宣言した local、既存の local はそのもの)
+    // The target of an out argument (the forward-declared local for out var x, the local itself for an existing local)
     private static IlExpr? OutTarget(Node arg)
     {
         var a = arg.A!;
@@ -2002,7 +2002,7 @@ public sealed class IlBuild
         return null;
     }
 
-    // int.TryParse(s, out v) / float.TryParse: runtime の Math.TryParseInt / TryParseFloat の (found, value) を受ける
+    // int.TryParse(s, out v) / float.TryParse: receives (found, value) from the runtime's Math.TryParseInt / TryParseFloat
     private IlExpr? BuildNumericTryParse(Node call, string kind)
     {
         if (call.Count != 2) return null;
@@ -2021,7 +2021,7 @@ public sealed class IlBuild
         return new IlIife(stats, null);
     }
 
-    // Dictionary.TryGetValue(key, out v): multi-return の intrinsic (Dict.TryGet)
+    // Dictionary.TryGetValue(key, out v): a multi-return intrinsic (Dict.TryGet)
     private IlExpr? BuildDictTryGetValue(Node call, Node recvNode, Symbol m)
     {
         if (call.Count != 2) return null;
@@ -2043,13 +2043,13 @@ public sealed class IlBuild
         getArgs.Add(key);
         getArgs.Add(defaultValue);
         stats.Add(new IlMultiAssign(targets, One(new IlCall("Dict.TryGet", getArgs, null)), true, null));
-        // out への書き出しは格納した値の copy
+        // The value written to out is a copy of the stored value
         stats.Add(new IlAssign(target, CopyIfMutableStruct(valueType, new IlVar("__tcs_v", null)), null));
         stats.Add(new IlReturn(new IlVar("__tcs_found", null), null));
         return new IlIife(stats, null);
     }
 
-    // Console.WriteLine の引数の文字列化
+    // Stringification of the Console.WriteLine argument
     private IlExpr StringifyForPrint(Node src, IlExpr value)
     {
         var t = NaturalType(src);
@@ -2065,13 +2065,13 @@ public sealed class IlBuild
         return value;
     }
 
-    // List.Add の IL
+    // IL for List.Add
     private static IlCall ListAdd(TypeSym listType, IlExpr recv, List<IlExpr> args)
     {
         return new IlCall("List.Add", Prepend(recv, args), null);
     }
 
-    // List.Clear / Dictionary.Clear: 全ての key を nil に (C と VM の backend はこの形を runtime の clear にする)
+    // List.Clear / Dictionary.Clear: set every key to nil (the C and VM backends turn this shape into the runtime's clear)
     private static IlExpr BuildClear(IlExpr recv)
     {
         var stats = new List<IlStat>();
@@ -2081,7 +2081,7 @@ public sealed class IlBuild
         return new IlIife(stats, null);
     }
 
-    // struct の要素の Contains / IndexOf / Remove は値の等価。型別の op_Equality を末尾の引数で渡す
+    // Contains / IndexOf / Remove on struct elements use value equality. The per-type op_Equality is passed as the last argument
     private List<IlExpr> WithStructElementOps(TypeSym? listType, string methodName, List<IlExpr> args)
     {
         if (methodName != "Contains" && methodName != "IndexOf" && methodName != "Remove") return args;
@@ -2101,7 +2101,7 @@ public sealed class IlBuild
         return r;
     }
 
-    // ---- 生成 ----
+    // ---- Creation ----
 
     private IlExpr? BuildObjectCreation(Node creation)
     {
@@ -2112,7 +2112,7 @@ public sealed class IlBuild
         {
             if (creation.Count == 1)
             {
-                // copy constructor `new List<T>(source)`。変更できる struct の要素なら型別の __copy を渡す
+                // Copy constructor `new List<T>(source)`. For mutable struct elements, passes the per-type __copy
                 var srcArg = creation.List![0];
                 var st = NaturalType(srcArg.A!);
                 if (init != null || srcArg.Has(Mods.Ref) || srcArg.Has(Mods.Out) || !(IlTypes.IsArray(st) || IlTypes.IsList(st) || IlTypes.IsDictCollection(st))) return null;
@@ -2140,7 +2140,7 @@ public sealed class IlBuild
         {
             var created = new IlNewHashSet(IlTypes.Display(t), null);
             if (init == null) return created;
-            // C# と同じく項ごとに Add する
+            // Add each item, as C# does
             var stats = new List<IlStat>();
             stats.Add(new IlLocal("__tcs_set", created, null, null));
             if (init.List != null)
@@ -2184,7 +2184,7 @@ public sealed class IlBuild
             }
             return new IlTable(entries, IlTypes.Display(t.Arg(1)), IlTypes.Display(t.Arg(0)), false, null, null);
         }
-        // `new T()` (T : new()) は受け取った既定値の記述子から新しい値を作る
+        // `new T()` (T : new()) creates a new value from the received default-value descriptor
         if (t.Kind == TypeKind.TypeParam)
         {
             var passed = TypeArgDefaultIl(t);
@@ -2193,7 +2193,7 @@ public sealed class IlBuild
         }
         if (t.Decl != null && t.Decl.IsRef)
         {
-            // --ref の型は名前付きの table (ctor の引数は対象外)
+            // --ref types are named tables (ctor arguments are not supported)
             if (creation.Count > 0) return null;
             return BuildRefTypeTable(init, IlTypes.Display(t));
         }
@@ -2211,7 +2211,7 @@ public sealed class IlBuild
             }
             return new IlCall(uargs.Count == 0 ? "TinySystem.Utf8.Default" : "TinySystem.Utf8.New", uargs, null);
         }
-        // facade の型 (TinySystem.Random) は user の型と同じ名前でもぶつからないよう修飾する
+        // Facade types (TinySystem.Random) are qualified so they do not clash with a user type of the same name
         if (t.Kind == TypeKind.Random)
         {
             var rargs = new List<IlExpr>();
@@ -2246,14 +2246,14 @@ public sealed class IlBuild
             for (int i = args.Count; i < ctor.Params.Count; i++)
             {
                 var p = ctor.Params[i];
-                // 型引数を含む型の既定値は作った型の型引数で決まる既定値
+                // The default value of a type containing type arguments is the default determined by the type arguments of the constructed type
                 IlExpr? d = null;
                 if (p.Default != null) d = ContainsTypeParam(p.Type) ? DefaultIl(p.Type.Subst(t.Args, null)) : BuildExpr(p.Default);
                 if (d != null) args.Add(d);
                 else args.Add(IlLiterals.Null());
             }
         }
-        // generic な型の new / ctor は型引数の既定値を受ける
+        // new / ctor of a generic type receives the default values of the type arguments
         if (ctor != null && IlTypes.PassesTypeArgDefaults(t.Decl))
         {
             foreach (var a in TypeArgDefaultArgs(creation, ctor)) args.Add(a);
@@ -2270,8 +2270,8 @@ public sealed class IlBuild
         return made;
     }
 
-    // object の初期化子: `new T(args) { M = v, Nested = { X = 1 }, Items = { a, b } }` を IIFE に落とす。
-    // 入れ子の初期化子は C# と同じく既存の member への代入 / Add (new はしない)
+    // Object initializer: lowers `new T(args) { M = v, Nested = { X = 1 }, Items = { a, b } }` into an IIFE.
+    // A nested initializer assigns to / calls Add on the existing member, as in C# (no new)
     private IlExpr? BuildObjectInitializerExpr(IlExpr ctor, Node init, TypeSym? created)
     {
         var stats = new List<IlStat>();
@@ -2281,7 +2281,7 @@ public sealed class IlBuild
         return new IlIife(stats, null);
     }
 
-    // owner は初期化する値の型 (member の型の型引数を写す)
+    // owner is the type of the value being initialized (used to map the type arguments of member types)
     private bool AddInitializerStats(IlExpr target, Node init, List<IlStat> stats, TypeSym? owner)
     {
         if (init.List == null) return true;
@@ -2338,7 +2338,7 @@ public sealed class IlBuild
         return new IlTable(entries, null, null, false, type, null);
     }
 
-    // 要素を写す List の操作 (copy constructor、GetRange) に渡す、変更できる struct の要素の型別の __copy
+    // The per-type __copy for mutable struct elements, passed to List operations that copy elements (copy constructor, GetRange)
     private List<IlExpr> ListElementCopier(TypeSym? listType)
     {
         var r = new List<IlExpr>();
@@ -2347,7 +2347,7 @@ public sealed class IlBuild
         return r;
     }
 
-    // ---- 配列 ----
+    // ---- Arrays ----
 
     private IlExpr? BuildNewArray(Node na)
     {
@@ -2359,7 +2359,7 @@ public sealed class IlBuild
         {
             var len = BuildExpr(na.B);
             if (len == null) return null;
-            // 型引数の要素は受け取った既定値 (struct の記述子なら要素ごとに zero 値)
+            // Elements of a type-argument type get the received default value (a zero value per element for a struct descriptor)
             IlExpr? d = elem.Kind == TypeKind.TypeParam ? TypeArgDefaultValue(elem) : DefaultIl(elem);
             return new IlNewArray(elemText!, len, d, null);
         }
@@ -2381,7 +2381,7 @@ public sealed class IlBuild
         return new IlTable(items, elementType, null, true, null, null);
     }
 
-    // ---- 単項演算 ----
+    // ---- Unary operations ----
 
     private IlExpr? BuildPrefixUnary(Node u)
     {
@@ -2419,17 +2419,17 @@ public sealed class IlBuild
     {
         var target = cast.Type!;
         var src = cast.B!;
-        // 暗黙に変換できる cast は binder が式を変換先へ変換している。元の式と型から組み立てる
+        // For a cast that is an implicit conversion, the binder has already converted the expression to the target. Build from the original expression and type
         if (src.Kind == NodeKind.Conv && src.A != null && (src.Info == ConvKind.Identity || src.Info == ConvKind.IntToFloat || src.Info == ConvKind.NullableIntToFloat)) src = src.A;
         var srcType = src.Type;
-        // (int)'a' などの定数の cast は畳む
+        // Constant casts such as (int)'a' are folded
         if (cast.HasConst && cast.Const != null && cast.Const.Kind == ConstKind.Int && IlTypes.IsChar(srcType)) return IlLiterals.Int(cast.Const.I);
         if (IlTypes.IsChar(target) && srcType != null && (IlTypes.IsFloating(srcType) || IlTypes.IsIntegralSource(srcType) || srcType.Kind == TypeKind.Enum) && !IlTypes.IsChar(srcType))
         {
             var c = BuildExpr(src);
             if (c == null) return null;
             if (IlTypes.IsFloating(srcType)) c = new IlCall("__tcs_trunc", One(c), null);
-            // 範囲が分かっている元 (byte、0..255 の定数) は検査を省く
+            // The check is skipped when the source range is known (byte, a constant in 0..255)
             bool small = srcType.Kind == TypeKind.Byte || (cast.HasConst && cast.Const != null && cast.Const.Kind == ConstKind.Int && cast.Const.I >= 0 && cast.Const.I <= 255)
                 || (src.HasConst && src.Const != null && src.Const.Kind == ConstKind.Float && src.Const.F > -1 && src.Const.F < 256);
             return small ? c : Ex(new IlCall("__tcs_char", One(c), null));
@@ -2448,23 +2448,23 @@ public sealed class IlBuild
             if (runtimeTest)
                 return new IlNumericConvert(value, target.Kind == TypeKind.Int ? "int" : "float", true, null);
             bool toInt = target.Kind == TypeKind.Int;
-            // T? は特別な型ではないので変換が残る
+            // T? is not a special type, so the conversion remains
             if (!toInt && IlTypes.IsFloating(srcType) && !IlTypes.IsNullableValueType(srcType)) return value;
             return new IlNumericConvert(value, toInt ? "int" : "float", false, null);
         }
-        // (float?)x で x が int?: 値があるときだけ変換する
+        // (float?)x where x is int?: converts only when there is a value
         if (target.Kind == TypeKind.Nullable && target.Elem.Kind == TypeKind.Float && srcType.Kind == TypeKind.Nullable && IlTypes.IsIntegralSource(srcType.Elem))
             return new IlLiftedUn(IlUnOp.ToFloat, value, null);
-        // (int?)x: 明示の T → T? の変換
+        // (int?)x: an explicit T → T? conversion
         if (target.Kind == TypeKind.Nullable && srcType.Kind != TypeKind.Nullable && srcType.Kind != TypeKind.Null)
             return new IlNullableWrap(value, IlTypes.Display(srcType), null);
-        // user の class への downcast は IlCast (C backend の実行時の検査点。upcast と同じ型は透過)
-        // 元の型は名前の付いた型 (object、interface、class など。型引数と配列を除く。Roslyn の INamedTypeSymbol)
+        // A downcast to a user class is an IlCast (a runtime check point for the C backend; upcasts and same-type casts pass through)
+        // The source type is a named type (object, interface, class, etc.; excluding type arguments and arrays; Roslyn's INamedTypeSymbol)
         bool namedSource = srcType.Kind != TypeKind.TypeParam && srcType.Kind != TypeKind.Array && srcType.Kind != TypeKind.Null;
         if (target.Kind == TypeKind.Class && target.Decl != null && namedSource && !TypeSym.Same(target, srcType) && !(srcType.Decl != null && IsDerivedFrom(srcType.Decl, target.Decl)))
             return new IlCast(value, CheckTypeName(target), null);
         if (!IsReferenceType(target) && target.Kind != TypeKind.Bool && target.Kind != TypeKind.Nullable) return value;
-        // cast の型の `?` の注釈は #nullable enable の文脈だけで残る
+        // The `?` annotation on a cast type remains only in a #nullable enable context
         return new IlRefCast(value, IlTypes.Display(cast.File.NullableEnabled ? target : target.WithoutAnnotation()), null);
     }
 
@@ -2479,7 +2479,7 @@ public sealed class IlBuild
         return false;
     }
 
-    // `x as I` (interface): 型の検査を通れば値、通らなければ nil
+    // `x as I` (interface): the value if the type check passes, nil otherwise
     private IlExpr? BuildAsExpr(Node asExpr)
     {
         var target = asExpr.Type;
@@ -2495,7 +2495,7 @@ public sealed class IlBuild
         });
     }
 
-    // ---- 添字 ----
+    // ---- Indexing ----
 
     private IlExpr? BuildElementAccess(Node ea)
     {
@@ -2517,7 +2517,7 @@ public sealed class IlBuild
         return built is IlNullableWrap;
     }
 
-    // 変換先が T? で式自体が T? でなければ IlNullableWrap (T は変換先の中の型)。null / default の literal はそのまま nil
+    // If the target is T? and the expression itself is not T?, an IlNullableWrap (T is the inner type of the target). A null / default literal stays nil
     private IlExpr ApplyNullableConversion(Node conv, IlExpr built)
     {
         if (IsNullableWrapped(built)) return built;
@@ -2527,7 +2527,7 @@ public sealed class IlBuild
             || src.Kind == TypeKind.Null || src.Kind == TypeKind.Object || src.IsError)
             return built;
         if (StripConv(conv.A).Kind == NodeKind.DefaultLit && StripConv(conv.A).A == null) return built;
-        // 括弧の式は内側を包む (Roslyn は括弧の内側の式にも同じ変換先の型を報告する)
+        // For a parenthesized expression, wrap the inside (Roslyn reports the same target type for the expression inside the parentheses too)
         return WrapInsideParen(built, target.Elem);
     }
 
@@ -2561,7 +2561,7 @@ public sealed class IlBuild
         return null;
     }
 
-    // ++ / -- の値: T? なら lifted の Add / Sub
+    // The value of ++ / --: lifted Add / Sub for T?
     private static IlExpr StepValue(Node operand, IlExpr read, bool increment)
     {
         if (IlTypes.IsNullableValueType(NaturalType(operand)))
@@ -2569,13 +2569,13 @@ public sealed class IlBuild
         return new IlBin(increment ? IlBinOp.AddNum : IlBinOp.Sub, read, IlLiterals.Int(1), null);
     }
 
-    // null との比較 / ?? / lifted の二項演算。当てはまらなければ null (通常の経路へ)
+    // Comparison with null / ?? / lifted binary operations. null if not applicable (falls through to the normal path)
     private IlExpr? TryBuildNullableBinary(Node bin, IlExpr left, IlExpr right)
     {
         var op = bin.Text;
         var leftType = NaturalType(bin.A!);
         var rightType = NaturalType(bin.B!);
-        // 文字列の連結は lifted ではない
+        // String concatenation is not lifted
         if (leftType.Kind == TypeKind.String || rightType.Kind == TypeKind.String || bin.Type!.Kind == TypeKind.String) return null;
         bool leftNullable = IlTypes.IsNullableValueType(leftType);
         bool rightNullable = IlTypes.IsNullableValueType(rightType);
@@ -2585,7 +2585,7 @@ public sealed class IlBuild
             return isEq ? new IlUn(IlUnOp.Not, new IlNullableHasValue(left, null), null) : new IlNullableHasValue(left, null);
         if ((isEq || isNe) && rightNullable && IsNullLiteral(bin.A!))
             return isEq ? new IlUn(IlUnOp.Not, new IlNullableHasValue(right, null), null) : new IlNullableHasValue(right, null);
-        // null 許容でない値の型と null の比較 (常に偽 / 真)。値は T? へ包んで比べる (括弧は内側を包む)
+        // Comparison of a non-nullable value type with null (always false / true). The value is wrapped in T? for the comparison (for parentheses, the inside is wrapped)
         if ((isEq || isNe) && IsNullLiteral(bin.B!) && IsPlainValueType(leftType))
             return new IlBin(isEq ? IlBinOp.Eq : IlBinOp.Ne, WrapInsideParen(left, leftType), right, null);
         if ((isEq || isNe) && IsNullLiteral(bin.A!) && IsPlainValueType(rightType))
@@ -2597,7 +2597,7 @@ public sealed class IlBuild
         var underlying = resultType.Kind == TypeKind.Bool && !comparison ? resultType : IlTypes.UnwrapNullable(leftNullable ? leftType : rightType);
         var lop = LiftedOpFor(op, underlying);
         if (lop == null) return null;
-        // 括弧の式は内側を包む (Roslyn は括弧の内側の式にも同じ変換先の型を報告する)
+        // For a parenthesized expression, wrap the inside (Roslyn reports the same target type for the expression inside the parentheses too)
         var l2 = IsNullableWrapped(left) || leftNullable ? left : WrapInsideParen(left, leftType);
         var r2 = IsNullableWrapped(right) || rightNullable ? right : WrapInsideParen(right, rightType);
         return new IlLiftedBin(lop.Value, l2, r2, null);
@@ -2614,7 +2614,7 @@ public sealed class IlBuild
         return new IlNullableWrap(e, IlTypes.Display(t), null);
     }
 
-    // 文の位置の Dictionary.Add は key への代入 (IlAssign と IlIndex) にする。key が既にあっても上書きし、.NET の ArgumentException に当たる fault は無い
+    // Dictionary.Add in statement position becomes an assignment to the key (IlAssign and IlIndex). It overwrites even if the key already exists; there is no fault corresponding to .NET's ArgumentException
     private bool BuildDictAddStatInto(Node call, IlPos? origin, List<IlStat> acc)
     {
         if (call.Sym == null || call.Sym.Builtin != "Dict.Add" || call.Count != 2) return false;
@@ -2633,7 +2633,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // ---- 代入 ----
+    // ---- Assignment ----
 
     private bool BuildAssignInto(Node assign, IlPos? origin, List<IlStat> acc)
     {
@@ -2657,7 +2657,7 @@ public sealed class IlBuild
             if (target == null || value == null) return false;
             value = WrapStructCopy(assign.B!, value);
             if (target is IlField || target is IlIndex) value = TypeArgStoreCopy(NaturalType(left), value);
-            // target が素の local なら条件式の右辺を if 文へ
+            // If target is a plain local, turn a conditional right side into an if statement
             if (value is IlTernary at && target is IlVar)
             {
                 var thenB = new IlBlock(One(new IlAssign(target, at.T, null)));
@@ -2665,7 +2665,7 @@ public sealed class IlBuild
                 acc.Add(new IlIf(Arm(at.Cond, thenB), elseB, origin));
                 return true;
             }
-            // 一致しないとき値なしの形 (`x = a?.b` の a が null) は、if を代入にすると前の値が残るので IIFE のまま
+            // A shape with no value when nothing matches (`x = a?.b` with a null) stays an IIFE, because turning the if into assignments would leave the previous value
             if (value is IlIife ai && target is IlVar)
             {
                 var shape = TryGetValueChainShape(ai);
@@ -2685,7 +2685,7 @@ public sealed class IlBuild
         var read = BuildExpr(left);
         var right = BuildExpr(assign.B!);
         if (read == null || right == null) return false;
-        // `x op= a ⊕ b` は x = x op (a ⊕ b)。演算子の優先順位に依らず右辺を 1 項として括る
+        // `x op= a ⊕ b` is x = x op (a ⊕ b). The right side is parenthesized as one operand regardless of operator precedence
         if (right is IlBin || right is IlLiftedBin || right is IlTernary) right = new IlParen(right, null);
         IlExpr? applied;
         if (WritesLocalReadBy(left, assign.B!))
@@ -2699,7 +2699,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // 複合代入の演算子の綴り (`..` は連結、`~` は xor)。string の += は `..`。bool の &= / |= / ^= は対象外 (null)
+    // The spelling of compound assignment operators (`..` is concatenation, `~` is xor). += on string is `..`. &= / |= / ^= on bool are not handled (null)
     private static string? CompoundOperator(Node assign)
     {
         var lt = NaturalType(assign.A!);
@@ -2722,7 +2722,7 @@ public sealed class IlBuild
 
     private IlExpr? BuildCompoundValue(Node assign, string op, IlExpr read, IlExpr right)
     {
-        // `x op= y` の user の演算子: 引数の位置なので右辺の括りは外す
+        // User operator for `x op= y`: it is in argument position, so the parentheses around the right side are dropped
         if (assign.Sym != null && assign.Sym.Builtin == "" && assign.Sym.Kind == SymKind.Method)
         {
             var operands = new List<Node>();
@@ -2771,7 +2771,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // custom property (accessor を通す) への代入か
+    // Whether it is an assignment to a custom property (through an accessor)
     private static bool IsCustomPropertyTarget(Node left)
     {
         var x = StripConv(left);
@@ -2779,9 +2779,9 @@ public sealed class IlBuild
         return false;
     }
 
-    // ---- 代入先の格納場所 ----
+    // ---- Storage locations of assignment targets ----
 
-    // 参照型か (Roslyn の IsReferenceType。型引数は制約に依らず参照型としない)
+    // Whether it is a reference type (Roslyn's IsReferenceType; type arguments are not treated as reference types regardless of constraints)
     private static bool IsReferenceType(TypeSym? t)
     {
         if (t == null || t.IsValueType) return false;
@@ -2798,7 +2798,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // 評価が副作用を持ちうる構文 (呼び出し、構築、?.、代入、with、++ / --)
+    // Syntax whose evaluation may have side effects (call, construction, ?., assignment, with, ++ / --)
     private static bool HasSideEffectSyntax(Node n)
     {
         switch (n.Kind)
@@ -2817,22 +2817,22 @@ public sealed class IlBuild
         return AnyChild(n, c => HasSideEffectSyntax(c));
     }
 
-    // n の中に custom property の読みがあるか
+    // Whether n contains a read of a custom property
     private static bool ReadsCustomProperty(Node n)
     {
         if ((n.Kind == NodeKind.Name || n.Kind == NodeKind.Member) && n.Sym != null && n.Sym.Kind == SymKind.Property && IsCustomProperty(n.Sym)) return true;
         return AnyChild(n, c => ReadsCustomProperty(c));
     }
 
-    // lvalue の受け手 / 添字 (evaluated) の評価に副作用があるか。custom property の getter は呼び出しなので含める。
-    // 値型の受け手は temp が copy になり更新が消えるので、参照型の prefix まで struct の field / 配列の要素で辿れるときだけ getter を理由にする
+    // Whether evaluating the receiver / index (evaluated) of an lvalue has side effects. A custom property getter is a call, so it is included.
+    // For a value-type receiver the temp becomes a copy and the update is lost, so the getter counts only when a reference-type prefix can be reached through struct fields / array elements
     private static bool HasLvalueSideEffect(Node evaluated, Node receiver)
     {
         if (HasSideEffectSyntax(evaluated)) return true;
         return (IsReferenceType(NaturalType(receiver)) || StructPlaceBase(receiver) != null) && ReadsCustomProperty(evaluated);
     }
 
-    // 値型の place `prefix.f1.f2` / `prefix[i].f` を struct の field / 配列の要素で辿った先の参照型の prefix。辿れなければ null
+    // The reference-type prefix reached by following a value-type place `prefix.f1.f2` / `prefix[i].f` through struct fields / array elements. null if it cannot be followed
     private static Node? StructPlaceBase(Node place)
     {
         while (true)
@@ -2846,7 +2846,7 @@ public sealed class IlBuild
         }
     }
 
-    // 受け手や添字を先に評価しておく必要がある lvalue (副作用のある受け手 / 添字)
+    // An lvalue whose receiver or index must be evaluated first (a receiver / index with side effects)
     private static bool NeedsLoweredLvalue(Node left)
     {
         var x = StripConv(left);
@@ -2862,8 +2862,8 @@ public sealed class IlBuild
         return null;
     }
 
-    // 代入の受け手 / 添字を temp にする必要があるか。副作用のある lvalue に加え、右辺が書き換える local を受け手 / 添字が読むとき。
-    // 値型の受け手は temp が copy になり代入が消えるので対象外
+    // Whether the receiver / index of an assignment must be put in a temp. Besides lvalues with side effects, this applies when the receiver / index reads a local that the right side modifies.
+    // Value-type receivers are excluded because the temp becomes a copy and the assignment is lost
     private bool NeedsLoweredAssign(Node assign)
     {
         if (assign.Text == "??=") return false;
@@ -2872,7 +2872,7 @@ public sealed class IlBuild
         return recv != null && IsReferenceType(NaturalType(recv)) && WritesLocalReadBy(assign.A!, assign.B!);
     }
 
-    // `??=` の右辺が受け手 / 添字の読む local を書き換えるか
+    // Whether the right side of `??=` modifies a local read by the receiver / index
     private bool CoalesceRightWritesTarget(Node assign)
     {
         if (assign.Text != "??=") return false;
@@ -2880,7 +2880,7 @@ public sealed class IlBuild
         return recv != null && IsReferenceType(NaturalType(recv)) && WritesLocalReadBy(assign.A!, assign.B!);
     }
 
-    // 受け手 / 添字を temp に固定した代入先 (setup の文と、場所の式)。force は副作用が無くても固定する
+    // An assignment target with the receiver / index fixed in temps (the setup statements and the location expression). force fixes them even without side effects
     private LoweredTarget? BuildLoweredTarget(Node left, bool force)
     {
         var x = StripConv(left);
@@ -2906,8 +2906,8 @@ public sealed class IlBuild
         return null;
     }
 
-    // 受け手を 1 回だけ評価する place に固定する。参照型はそのまま temp、値型は参照型の prefix (と配列の添字) だけを temp にして
-    // field / 要素の経路を組み直す (struct を copy すると書き込みが元に届かない)
+    // Fixes the receiver into a place that is evaluated only once. A reference type goes into a temp as is; for a value type, only the reference-type prefix (and array indices) go into temps
+    // and the field / element path is rebuilt (copying the struct would keep writes from reaching the original)
     private LoweredTarget? BuildFixedReceiver(Node recv)
     {
         var baseExpr = StructPlaceBase(recv);
@@ -2927,7 +2927,7 @@ public sealed class IlBuild
         return new LoweredTarget(s, new IlVar("__tcs_obj", null));
     }
 
-    // StructPlaceBase の経路を __tcs_obj (= baseExpr) から組み直す
+    // Rebuilds the StructPlaceBase path from __tcs_obj (= baseExpr)
     private IlExpr? BuildStructPlace(Node place, Node baseExpr, List<IlStat> setup)
     {
         if (place == baseExpr) return new IlVar("__tcs_obj", null);
@@ -2954,8 +2954,8 @@ public sealed class IlBuild
         return null;
     }
 
-    // custom property の代入先 (受け手、名前、static か、struct の所有型 (struct の accessor は自由関数の呼び出し)、static な accessor の型引数の既定値)。
-    // fixUnstable は読み直すと変わりうる参照型の受け手も temp に固定する (式の位置は setter を右辺の後に呼ぶ)
+    // The assignment target of a custom property (receiver, name, whether static, the owning struct type (struct accessors are free-function calls), the default values of the type arguments of a static accessor).
+    // fixUnstable also fixes in a temp a reference-type receiver that may change if read again (in expression position the setter is called after the right side)
     private PropTarget? BuildPropTarget(Node left, bool fixUnstable)
     {
         var x = StripConv(left);
@@ -3010,7 +3010,7 @@ public sealed class IlBuild
         return new IlInvoke(recv, "set_" + name, One(value), null);
     }
 
-    // 文の位置の custom property への代入
+    // Assignment to a custom property in statement position
     private bool BuildPropAssignInto(Node assign, IlPos? origin, List<IlStat> acc)
     {
         var prop = BuildPropTarget(assign.A!, false);
@@ -3021,14 +3021,14 @@ public sealed class IlBuild
         bool needsWrap = prop.Setup.Count > 0;
         if (assign.Text == "=")
         {
-            // setter の value は値渡しの引数
+            // The setter's value is an argument passed by value
             body = new IlCallStat(BuildPropSet(prop, WrapStructCopy(assign.B!, right)), null);
         }
         else if (assign.Text == "??=")
         {
             var setBody = new IlBlock(One(new IlCallStat(BuildPropSet(prop, WrapStructCopy(assign.B!, right)), null)));
             body = new IlIf(Arm(IsNullIl(BuildPropGet(prop), NaturalType(assign.A!)), setBody), null, null);
-            // if の形は常に IIFE で包む
+            // An if shape is always wrapped in an IIFE
             needsWrap = true;
         }
         else
@@ -3051,8 +3051,8 @@ public sealed class IlBuild
         return true;
     }
 
-    // 式の位置の custom property への代入: 受け手を 1 回だけ評価し、代入した値を式の値にする (getter を読み直さない)。
-    // setter の value は値渡しの引数なので copy を渡し、setter が value を書き換えても式の値は変わらない
+    // Assignment to a custom property in expression position: evaluates the receiver only once and uses the assigned value as the value of the expression (does not read the getter again).
+    // The setter's value is an argument passed by value, so a copy is passed, and the value of the expression does not change even if the setter modifies value
     private IlIife? BuildPropAssignExpr(Node assign)
     {
         var prop = BuildPropTarget(assign.A!, true);
@@ -3090,14 +3090,14 @@ public sealed class IlBuild
         return new IlIife(stats, null);
     }
 
-    // null の判定: `T?` は値の有無、参照型は nil との比較
+    // Null check: has-value for `T?`, comparison with nil for reference types
     private static IlExpr IsNullIl(IlExpr e, TypeSym? type)
     {
         if (IlTypes.IsNullableValueType(type)) return new IlUn(IlUnOp.Not, new IlNullableHasValue(e, null), null);
         return new IlBin(IlBinOp.Eq, e, IlLiterals.Null(), null);
     }
 
-    // 受け手 / 添字を temp に固定してから右辺を評価し、代入後の place を値として返す IIFE
+    // An IIFE that fixes the receiver / index in temps, then evaluates the right side, and returns the place after the assignment as the value
     private IlIife? BuildLoweredAssign(Node assign)
     {
         var lowered = BuildLoweredTarget(assign.A!, true);
@@ -3134,7 +3134,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // ++ / -- の custom property / 固定した lvalue の経路
+    // The custom property / fixed lvalue path of ++ / --
     private bool BuildLoweredIncrementInto(Node operand, bool increment, IlPos? origin, List<IlStat> acc)
     {
         var prop = BuildPropTarget(operand, false);
@@ -3160,7 +3160,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // ??= (文の位置、custom property 以外)
+    // ??= (statement position, other than custom properties)
     private bool BuildCoalesceAssignInto(Node assign, IlPos? origin, List<IlStat> acc)
     {
         var built = BuildExpr(assign.B!);
@@ -3182,7 +3182,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // 式の位置の ??= の値。左辺が `T?` なら式の型は `T` なので、代入後の place の中の値にする
+    // The value of ??= in expression position. If the left side is `T?`, the expression type is `T`, so it is the inner value of the place after the assignment
     private static IlExpr CoalesceAssignValue(Node assign, IlExpr assigned)
     {
         if (assign.Text == "??=" && IlTypes.IsNullableValueType(NaturalType(assign.A!)) && !IlTypes.IsNullableValueType(assign.Type))
@@ -3190,7 +3190,7 @@ public sealed class IlBuild
         return assigned;
     }
 
-    // 値型の place の struct の field を辿った起点。辿れなければ null
+    // The starting point reached by following the struct fields of a value-type place. null if it cannot be followed
     private static StructSlot? StructSlotPath(Node place)
     {
         while (true)
@@ -3223,8 +3223,8 @@ public sealed class IlBuild
         }
     }
 
-    // struct の member への代入 (= / op= / ??=) を、右辺の後に経路を辿り直して書く必要があるか。右辺が格納先を書き換えないなら不要。
-    // local / parameter / this の直下の member (`s.X`) は変数そのものが格納先なので不要
+    // Whether an assignment to a struct member (= / op= / ??=) must re-follow the path after the right side before writing. Not needed if the right side does not modify the storage location.
+    // Not needed for a member directly under a local / parameter / this (`s.X`), because the variable itself is the storage location
     private bool NeedsStructSlotAssign(Node assign)
     {
         var ma = StripConv(assign.A!);
@@ -3244,7 +3244,7 @@ public sealed class IlBuild
         return x.Kind == NodeKind.Paren ? Unparen(x.A!) : x;
     }
 
-    // 参照型の prefix と配列の添字を (読み直すと変わりうるなら) temp に固定し、`__tcs_v` に値を置いてから辿り直した place に書く文
+    // Statements that fix the reference-type prefix and array indices in temps (if they may change when read again), put the value in `__tcs_v`, and then write to the re-followed place
     private List<IlStat>? BuildStructSlotAssign(Node assign, bool asValue)
     {
         var ma = StripConv(assign.A!);
@@ -3264,7 +3264,7 @@ public sealed class IlBuild
         string? owner = member.Kind == SymKind.Property && IsCustomProperty(member) ? TypeRef(member.Owner!) : null;
         IlExpr read = owner != null ? PropGet(recv, N(member), false, owner, new List<IlExpr>()) : Ex(new IlField(recv, N(member), null));
         IlExpr v = new IlVar("__tcs_v", null);
-        // 式の値に使う `__tcs_v` を setter の value の書き換えから守る
+        // Protects `__tcs_v`, used as the value of the expression, from the setter modifying value
         IlStat write;
         if (owner != null) write = new IlCallStat(PropSet(recv, N(member), false, asValue ? CopyIfMutableStruct(NaturalType(ma), v) : v, owner, new List<IlExpr>()), null);
         else write = new IlAssign(read, v, null);
@@ -3320,8 +3320,8 @@ public sealed class IlBuild
         return true;
     }
 
-    // 式の位置の代入 (`(i = y) >= 0`、`arr[x = 1]`): 文として代入し、代入した値を式の値にする IIFE。
-    // 変更できる struct の値は格納先の table ではなくその copy。`T?` への ??= の値は中の値
+    // Assignment in expression position (`(i = y) >= 0`, `arr[x = 1]`): an IIFE that assigns as a statement and uses the assigned value as the value of the expression.
+    // The value of a mutable struct is a copy, not the stored table. The value of ??= on a `T?` is the inner value
     private IlExpr? BuildAssignExpr(Node assign)
     {
         IlIife? iife;
@@ -3358,7 +3358,7 @@ public sealed class IlBuild
         return iife with { Stats = rest };
     }
 
-    // 式の位置の代入 (参照型の受け手) の値を、代入の後に左辺を読み直して得ると受け手 / 添字を評価し直すか
+    // Whether getting the value of an assignment in expression position (reference-type receiver) by reading the left side again after the assignment would re-evaluate the receiver / index
     private bool NeedsFixedAssignTarget(Node assign)
     {
         if (NeedsLoweredLvalue(assign.A!) || CoalesceRightWritesTarget(assign)) return true;
@@ -3375,7 +3375,7 @@ public sealed class IlBuild
             && !(IsStableRead(recv) && (index == null || IsStableRead(index)));
     }
 
-    // 右辺が書き換えない限り、読み直しても同じ値になる式 (local / parameter / this / 型名 / 定数とその演算)
+    // Expressions that give the same value when read again, as long as the right side does not modify them (local / parameter / this / type name / constants and operations on them)
     private static bool IsStableRead(Node e)
     {
         switch (e.Kind)
@@ -3412,7 +3412,7 @@ public sealed class IlBuild
         return s != null && s.Kind == SymKind.Method && s.Builtin == "" && s.Owner != null && !s.Owner.IsRef;
     }
 
-    // 評価が既存の格納先 (field / 配列の要素 / 捕捉された local) を書き換えうるか
+    // Whether evaluation may modify an existing storage location (field / array element / captured local)
     private bool MayWriteStorage(Node n)
     {
         switch (n.Kind)
@@ -3441,7 +3441,7 @@ public sealed class IlBuild
         return AnyChild(n, c => MayWriteStorage(c));
     }
 
-    // 呼び出しが状態を書き換えうるか。書き換えないとみなすのは、delegate・out を受けない Math / MathF・数値 / bool / char / string の method
+    // Whether a call may modify state. Treated as not modifying: methods of Math / MathF / numbers / bool / char / string that take no delegate or out
     private bool CallRunsUserCode(Node call)
     {
         var m = call.Sym;
@@ -3461,7 +3461,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // 構築が状態を書き換えうるか。source に無い構築子と struct の暗黙の構築子 (field を zero にするだけ) は書き換えない
+    // Whether a construction may modify state. Constructors not in the source and implicit struct constructors (which only zero the fields) do not
     private static bool NewRunsUserCode(Node creation)
     {
         var t = creation.Type;
@@ -3471,7 +3471,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // 型引数の型の field / 配列の要素への代入は、struct の記述子なら copy する (__tcs_tc)
+    // An assignment to a field / array element of a type-argument type copies when it is a struct descriptor (__tcs_tc)
     private IlExpr TypeArgStoreCopy(TypeSym? storage, IlExpr value)
     {
         if (storage != null && storage.Kind == TypeKind.TypeParam)
@@ -3484,7 +3484,7 @@ public sealed class IlBuild
 
     // ---- for ----
 
-    // 関数の本体の根 (for の範囲の判定に使う。lambda の中は lambda)
+    // The root of the function body (used to determine for ranges; inside a lambda, the lambda)
     public List<Node> ScopeRoots = new List<Node>();
 
     private bool BuildForInto(Node forStmt, List<IlStat> acc)
@@ -3498,7 +3498,7 @@ public sealed class IlBuild
         }
         Node? declaration = null;
         if (forStmt.List != null && forStmt.List.Count == 1 && forStmt.List[0].Kind == NodeKind.LocalDecl) declaration = forStmt.List[0];
-        // 宣言したループ変数は for の中だけの変数 (C# の scope)。宣言のある for は do..end で囲う
+        // A declared loop variable exists only inside the for (C# scope). A for with a declaration is wrapped in do..end
         var loop = declaration != null ? new List<IlStat>() : acc;
         if (declaration == null && forStmt.List != null)
         {
@@ -3518,7 +3518,7 @@ public sealed class IlBuild
                     init = BuildExpr(v.A);
                     if (init == null) return false;
                 }
-                // 宣言型を載せる (`for (float y = -1; ...)` は初期値からは int に見える)
+                // Attach the declared type (`for (float y = -1; ...)` looks like int from the initial value)
                 var name = v.Local != null ? v.Local.IlName : v.Text;
                 loop.Add(new IlLocal(name, init, v.Local != null ? IlTypes.Display(v.Local.Type) : null, origin));
             }
@@ -3562,7 +3562,7 @@ public sealed class IlBuild
         bool isIncByOne = (inc.Kind == NodeKind.PostIncDec && inc.Text == "++")
             || (inc.Kind == NodeKind.Assign && inc.Text == "+=" && StripConv(inc.B!).Kind == NodeKind.IntLit && SourceText(StripConv(inc.B!)) == "1");
         if (!isIncByOne) return null;
-        // 増分の先が loop の変数でなければ (`for (int i = 0; i < n; j++)`) 一般の for
+        // If the increment target is not the loop variable (`for (int i = 0; i < n; j++)`), a general for
         var incTarget = StripConv(inc.A!);
         if (incTarget.Kind != NodeKind.Name || incTarget.Text != varName || incTarget.Local != decl.Local) return null;
         if (!IsLoopInvariantBound(condNode.B!)) return null;
@@ -3603,7 +3603,7 @@ public sealed class IlBuild
         return !IsAssignedWithin(scope, b.Text);
     }
 
-    // scope の中で name (の綴りの識別子) に代入するか (代入、++ / --、ref / out の引数)
+    // Whether name (an identifier with that spelling) is assigned in scope (assignment, ++ / --, ref / out argument)
     private static bool IsAssignedWithin(Node scope, string name)
     {
         switch (scope.Kind)
@@ -3628,7 +3628,7 @@ public sealed class IlBuild
         return AnyChild(scope, c => IsAssignedWithin(c, name));
     }
 
-    // scope の中の lambda が name (の綴りの識別子) を含むか
+    // Whether a lambda in scope contains name (an identifier with that spelling)
     private static bool IsCapturedByLambdaWithin(Node scope, string name)
     {
         if (scope.Kind == NodeKind.Lambda) return ContainsIdentifier(scope, name);
@@ -3671,10 +3671,10 @@ public sealed class IlBuild
         return false;
     }
 
-    // ---- 前宣言 ----
+    // ---- Forward declarations ----
 
-    // 文の前に宣言する局所変数: out の宣言形 (out var x / out _) と、入れ子の文や lambda に入らない is-pattern の designation。
-    // if の elseif の条件の designation も含める
+    // Local variables declared before the statement: the out declaration forms (out var x / out _) and is-pattern designations not inside nested statements or lambdas.
+    // Designations in the elseif conditions of an if are included too
     private List<Node> CollectPreDecls(Node stmt)
     {
         var outs = new List<Node>();
@@ -3733,8 +3733,8 @@ public sealed class IlBuild
         return false;
     }
 
-    // out の宣言形の引数 (この文の直下。入れ子の文と lambda には入らない)
-    // out の引数の最も近い文で決めるので、式本体の lambda の中の out var もこの文の前に宣言する
+    // Arguments in out declaration form (directly in this statement; not inside nested statements or lambdas)
+    // This is decided by the statement nearest to the out argument, so an out var inside an expression-bodied lambda is also declared before this statement
     private void CollectOutDecls(Node n, Node stmt, List<Node> into)
     {
         if (n != stmt && IsStatementKind(n.Kind)) return;
@@ -3746,8 +3746,8 @@ public sealed class IlBuild
         VisitChildren(n, c => CollectOutDecls(c, stmt, into));
     }
 
-    // is-pattern の designation (pattern の根の宣言だけ。入れ子の文と lambda には入らない)
-    // scope 自身は数えない (elseif の条件そのものが is のときはその designation を前宣言しない)
+    // is-pattern designations (only declarations at the pattern root; not inside nested statements or lambdas)
+    // scope itself is not counted (when the elseif condition itself is an is, its designation is not forward-declared)
     private void CollectIsDesignations(Node n, Node scope, List<Node> into)
     {
         if (n != scope && (IsStatementKind(n.Kind) || n.Kind == NodeKind.Lambda)) return;
@@ -3796,16 +3796,16 @@ public sealed class IlBuild
         var body = BuildBlock(f.C!);
         if (coll == null || body == null) return false;
         var collType = NaturalType(collNode);
-        // Dictionary の本体だけ IlForeachDict (KeyValuePair) で反復する。Keys / Values は runtime が配列を返すので List の反復
+        // Only the Dictionary itself is iterated with IlForeachDict (KeyValuePair). For Keys / Values the runtime returns an array, so they use List iteration
         if (IlTypes.IsDict(collType))
         {
             acc.Add(new IlForeachDict(varName, coll, body, origin));
             return true;
         }
-        // Queue / HashSet は今の要素の写しを反復する
+        // Queue / HashSet iterate over a snapshot of the current elements
         if (IlTypes.IsQueue(collType)) coll = new IlCall("TcsQueue.ToList", One(coll), null);
         if (IlTypes.IsHashSet(collType)) coll = new IlCall("TcsHashSet.ToList", One(coll), null);
-        // 反復の変数は要素の copy (struct の要素への変更を元へ残さない)
+        // The iteration variable is a copy of the element (changes to a struct element are not kept in the original)
         var iterVar = new IlVar(varName, null);
         var copied = CopyIfMutableStruct(f.Local != null ? f.Local.Type : null, iterVar);
         if (copied is IlStructCopy)
@@ -3819,7 +3819,7 @@ public sealed class IlBuild
         return true;
     }
 
-    // `s.EnumerateRunes()` なら受け手の s
+    // For `s.EnumerateRunes()`, the receiver s
     private static Node? TryGetEnumerateRunesReceiver(Node expr)
     {
         var x = StripConv(expr);
@@ -3828,12 +3828,12 @@ public sealed class IlBuild
         return x.A.A;
     }
 
-    // ---- パターン ----
+    // ---- Patterns ----
 
     private int _patternTempDepth;
 
-    // 入力の値を 1 回だけ計算して照合する。読み直すと値や副作用が変わりうる入力は temp に評価してから照合する。
-    // field の読みは、照合の途中の getter や演算子が field を書き換えうるので、照合が呼び出しを含むなら temp に置く
+    // Computes the input value only once and matches it. An input whose value or side effects may change when read again is evaluated into a temp before matching.
+    // A field read is put in a temp if the match contains calls, because a getter or operator during the match may modify the field
     private IlExpr? BindPatternInput(IlExpr input, System.Func<IlExpr, IlExpr?> build)
     {
         if (input is IlLit || input is IlVar) return build(input);
@@ -3853,7 +3853,7 @@ public sealed class IlBuild
         return new IlIife(stats, null);
     }
 
-    // 型の参照: source に宣言した型は IL の型の名前、それ以外は書いた名前。名前だけで表せない型は null
+    // Type reference: the IL type name for types declared in the source, the written name otherwise. null for types that cannot be expressed by a name alone
     private string? FormatTypeReference(Node typeNode, TypeSym? t)
     {
         if (t != null && t.Decl != null && !t.Decl.IsRef) return TypeName(t);
@@ -3862,7 +3862,7 @@ public sealed class IlBuild
         return null;
     }
 
-    // プリミティブの型 test の型 (それ以外の型は null)
+    // The type of a primitive type test (null for other types)
     private static IlIsPrimType? PrimTypeTest(IlExpr expr, TypeSym? patternType)
     {
         if (patternType == null) return null;
@@ -3878,10 +3878,10 @@ public sealed class IlBuild
         return IlTypes.IsArray(t) || IlTypes.IsList(t) || IlTypes.IsQueue(t) || IlTypes.IsHashSet(t) || IlTypes.IsDict(t);
     }
 
-    // 型の照合。struct の入力 (S / S?) を同じ struct の型で照合するのは値の有無だけ
+    // Type match. Matching a struct input (S / S?) against the same struct type only checks whether it has a value
     private IlExpr? BuildTypeCheck(IlExpr expr, TypeSym? inputType, TypeSym? patternType, string? typeRef)
     {
-        // 値型の入力 (T / T?) を同じ値型 T で照合するのは値の有無だけ (数と bool と enum も)
+        // Matching a value-type input (T / T?) against the same value type T only checks whether it has a value (also for numbers, bool, and enum)
         if (patternType != null && patternType.IsValueType && inputType != null)
         {
             if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => IlLiterals.Bool(true));
@@ -3895,7 +3895,7 @@ public sealed class IlBuild
             return null;
         }
         if (patternType != null && patternType.Kind == TypeKind.Interface) return new IlIsType(expr, CheckTypeName(patternType), true, null);
-        // --ref の class (tcs check と C は TCS1001 で止め、tcs VM は型の表で判定する、object-model §10.6) は cast と同じ IL の型名で指す
+        // A --ref class (tcs check and C stop with TCS1001, and the tcs VM decides by the type table; object-model §10.6) is referred to by the same IL type name as a cast
         if (patternType != null && patternType.Kind == TypeKind.Class && patternType.Decl != null && patternType.Decl.IsRef) return new IlIsType(expr, CheckTypeName(patternType), false, null);
         if (typeRef == null) return null;
         return new IlIsType(expr, typeRef, false, null);
@@ -3918,7 +3918,7 @@ public sealed class IlBuild
         return new IlParen(new IlBin(bp.Kind == NodeKind.PatAnd ? IlBinOp.And : IlBinOp.Or, l, r, null), null);
     }
 
-    // `and` の右辺の入力は左辺が絞った型。`S?` の入力を左辺が struct の S に絞ったら右辺は中の値を照合する
+    // The input of the right side of `and` has the type narrowed by the left side. If the left side narrows an `S?` input to the struct S, the right side matches the inner value
     private static IlExpr AndRightInput(Node bp, IlExpr input, TypeSym? inputType)
     {
         if (bp.Kind == NodeKind.PatAnd && IlTypes.IsNullableValueType(inputType) && IlTypes.IsUserStruct(PatternNarrowedType(bp.A!, inputType)))
@@ -3932,8 +3932,8 @@ public sealed class IlBuild
         return input;
     }
 
-    // pattern が一致したときに入力が絞られる型 (Roslyn の NarrowedType): 型 / 宣言の pattern はその型、
-    // property pattern は書いた型か、値型の T? の入力なら中の型 (null に一致しない)
+    // The type the input is narrowed to when the pattern matches (Roslyn's NarrowedType): that type for type / declaration patterns,
+    // the written type for property patterns, or the inner type for a value-type T? input (it does not match null)
     private static TypeSym? PatternNarrowedType(Node p, TypeSym? input)
     {
         switch (p.Kind)
@@ -3948,13 +3948,13 @@ public sealed class IlBuild
         return input;
     }
 
-    // 定数のパターンの中の型の参照 (`case Foo:` の Foo が型)
+    // A type reference inside a constant pattern (Foo in `case Foo:` is a type)
     private static bool IsTypeConstant(Node p)
     {
         return p.Kind == NodeKind.PatType;
     }
 
-    // switch の arm / case のパターン
+    // Patterns of switch arms / cases
     private IlExpr? BuildPattern(Node pattern, IlExpr governing, TypeSym? inputType)
     {
         switch (pattern.Kind)
@@ -4002,7 +4002,7 @@ public sealed class IlBuild
         return Unported("pattern", pattern);
     }
 
-    // is 式の sub-pattern
+    // Sub-patterns of an is expression
     private IlExpr? BuildIsSubPattern(IlExpr expr, Node pattern, TypeSym? inputType)
     {
         switch (pattern.Kind)
@@ -4073,7 +4073,7 @@ public sealed class IlBuild
             conditions.Add(check);
         }
         else if (nullCheck) conditions.Add(new IlBin(IlBinOp.Ne, input, IlLiterals.Null(), null));
-        // 型の検査を通った後なので、member は検査した型として読む
+        // This is after the type check passed, so the member is read as the checked type
         IlExpr recv = input;
         if (nullableValue) recv = new IlNullableValue(input, null);
         else if (patternType != null && patternType.IsReferenceLike && subpatterns.Count > 0 && (inputType == null || !TypeSym.Same(inputType, patternType)))
@@ -4095,7 +4095,7 @@ public sealed class IlBuild
         return result;
     }
 
-    // 入力 S / S? に当てた struct S の宣言のパターンと、入力 T? に当てた値型 T の宣言のパターン (値を取り出して束縛する)
+    // A declaration pattern of struct S applied to an S / S? input, and a declaration pattern of value type T applied to a T? input (extracts the value and binds it)
     private static bool IsStructDesignation(Node dp, TypeSym? inputType)
     {
         if (dp.Type == null || inputType == null || !TypeSym.Same(IlTypes.UnwrapNullable(inputType), dp.Type)) return false;
@@ -4109,7 +4109,7 @@ public sealed class IlBuild
         return new IlStructCopy(value, TypeName(declType), false, null);
     }
 
-    // `x is S v` (x: S / S?): 値があれば copy を束縛して true
+    // `x is S v` (x: S / S?): if there is a value, binds a copy and yields true
     private IlExpr BuildStructDeclarationIs(IlVar target, IlExpr expr, TypeSym inputType, TypeSym declType)
     {
         if (!IlTypes.IsNullableValueType(inputType))
@@ -4131,7 +4131,7 @@ public sealed class IlBuild
         })!;
     }
 
-    // switch の designation の前宣言 (class は入力をそのまま束縛し、struct は型だけ宣言する)
+    // Forward declarations of switch designations (a class binds the input as is; a struct only declares the type)
     private IlLocal SwitchDesignationLocal(Node dp, TypeSym? inputType, IlExpr sw)
     {
         var name = dp.Local!.IlName;
@@ -4160,7 +4160,7 @@ public sealed class IlBuild
         return sub == null ? null : new IlParen(sub, null);
     }
 
-    // switch 式: IIFE、前束縛、if の連鎖。arm の値は copy 地点
+    // Switch expression: IIFE, pre-binding, if chain. Arm values are copy points
     private IlExpr? BuildSwitchExpression(Node sx)
     {
         var governing = BuildExpr(sx.A!);
@@ -4207,7 +4207,7 @@ public sealed class IlBuild
         return new IlIife(stats, null);
     }
 
-    // switch 文
+    // Switch statement
     private bool BuildSwitchStatInto(Node switchStmt, List<IlStat> acc)
     {
         var origin = Origin(switchStmt);
@@ -4332,7 +4332,7 @@ public sealed class IlBuild
         else if (last.Kind == NodeKind.Block && last.List != null) CollectTerminalBreaks(last.List, sink);
     }
 
-    // 早期の break (暗黙の終端以外で、内側の loop / switch でなくこの switch に束縛される break) を含むか
+    // Whether it contains an early break (a break other than the implicit end, bound to this switch rather than an inner loop / switch)
     private static bool SwitchNeedsBreakScope(Node switchStmt)
     {
         var terminal = new List<Node>();
@@ -4411,14 +4411,14 @@ public sealed class IlBuild
         return result;
     }
 
-    // ---- 名前と member ----
+    // ---- Names and members ----
 
-    // const (enum の member を除く) は値を inline する
+    // const (except enum members) inlines the value
     public IlExpr? ConstLiteral(Symbol? sym)
     {
         if (sym == null || !sym.IsConst || sym.Kind == SymKind.EnumMember || sym.ConstVal == null) return null;
         var c = sym.ConstVal;
-        // float の const の整数の値は float の literal
+        // An integer value of a float const becomes a float literal
         if (c.Kind == ConstKind.Int && (sym.Type.Kind == TypeKind.Float || sym.Type.Kind == TypeKind.Double)) return IlLiterals.Float((float)c.I);
         return IlLiterals.Of(c);
     }
@@ -4460,10 +4460,10 @@ public sealed class IlBuild
         return Unported("identifier " + id.Info, id);
     }
 
-    // enum の member は型の table の field (--ref の enum は host の path と UPPER_SNAKE の名前)
+    // Enum members are fields of the type's table (a --ref enum uses the host path and UPPER_SNAKE names)
     private IlExpr EnumMemberIl(Symbol sym)
     {
-        // namespace にも型にも属さない --ref の enum は enum 自身の名前の path
+        // A --ref enum that belongs to neither a namespace nor a type uses a path of the enum's own name
         if (sym.Owner != null && sym.Owner.IsRef && sym.Owner.IlName == "") return new IlField(new IlVar(HostNames.HostPathSegment(sym.Owner.Name), null), N(sym), null);
         return new IlField(new IlVar(TypeRef(sym.Owner!), null), N(sym), null);
     }
@@ -4508,7 +4508,7 @@ public sealed class IlBuild
         return Unported("member", ma);
     }
 
-    // 組み込みの member の値 (Count、Length、HasValue など)
+    // Values of built-in members (Count, Length, HasValue, etc.)
     private IlExpr? BuildBuiltinMember(Node ma, Symbol sym)
     {
         var id = sym.Builtin;
@@ -4516,7 +4516,7 @@ public sealed class IlBuild
         if (IsFacadeReceiver(ma.A)) return new IlField(new IlVar(ma.A!.Type!.Name, null), ma.Text, null);
         switch (id)
         {
-            // System.Math の const は double の値を inline する
+            // System.Math consts inline the double value
             case "Math.PI": return IlLiterals.Float(3.141592653589793f);
             case "Math.E": return IlLiterals.Float(2.718281828459045f);
             case "String.Empty": return new IlField(new IlVar("String", null), "Empty", null);
@@ -4550,17 +4550,17 @@ public sealed class IlBuild
         return Unported("builtin member " + id, ma);
     }
 
-    // 自動実装の property (accessor のどれにも本体が無い)
+    // Auto-implemented property (none of the accessors has a body)
     public static bool IsAutoProperty(Node prop)
     {
         if (prop.B == null && prop.C == null) return false;
         if (prop.B != null && (prop.B.A != null || prop.B.B != null)) return false;
         if (prop.C != null && (prop.C.A != null || prop.C.B != null)) return false;
-        // 式本体の property (`int P => e;`) は B に式を持つ get
+        // An expression-bodied property (`int P => e;`) is a get with the expression in B
         return true;
     }
 
-    // body / 式本体を持つ accessor があるか (自動実装の property と組み込みの property は false)
+    // Whether there is an accessor with a body / expression body (false for auto-implemented and built-in properties)
     public static bool IsCustomProperty(Symbol p)
     {
         if (p.Kind != SymKind.Property) return false;
@@ -4570,8 +4570,8 @@ public sealed class IlBuild
         return !IsAutoProperty(d);
     }
 
-    // generic な型の static な property の accessor に渡す型引数の既定値
-    // generic な型の static な property の accessor に渡す型引数の既定値 (受け手の型の型引数。型の中の参照は自分の型引数)
+    // Default values of the type arguments passed to an accessor of a static property of a generic type
+    // Default values of the type arguments passed to an accessor of a static property of a generic type (the type arguments of the receiver type; a reference inside the type uses its own type arguments)
     private List<IlExpr> StaticAccessorArgs(Symbol p, Node? recv)
     {
         var r = new List<IlExpr>();
@@ -4583,9 +4583,9 @@ public sealed class IlBuild
         return r;
     }
 
-    // ---- 名前 ----
+    // ---- Names ----
 
-    // TinySystem の static な facade の受け手か (`TinySystem.Math`、`using TinySystem;` だけの `Math`)
+    // Whether it is a receiver of a static TinySystem facade (`TinySystem.Math`, `Math` with only `using TinySystem;`)
     private bool IsFacadeReceiver(Node? recv)
     {
         if (recv == null || recv.Type == null) return false;
@@ -4594,7 +4594,7 @@ public sealed class IlBuild
         return n == "TinySystem.Math" || n == "TinySystem.String" || n == "TinySystem.List" || n == "TinySystem.Dict";
     }
 
-    // using の印: 1 = TinySystem、2 = System
+    // using flags: 1 = TinySystem, 2 = System
     private static int CollectUsings(Node container)
     {
         int r = 0;
@@ -4611,7 +4611,7 @@ public sealed class IlBuild
         return r;
     }
 
-    // symbol の IL の member 名。--ref の型の member は host の名前 (IlName)、user の型の method は overload の名前
+    // The IL member name of symbol. Members of --ref types use the host name (IlName); methods of user types use the overload name
     public string N(Symbol sym)
     {
         if (sym.Owner != null && sym.Owner.IsRef) return sym.IlName;
@@ -4619,13 +4619,13 @@ public sealed class IlBuild
         return sym.Name;
     }
 
-    // static の参照の型の名前 (--ref の型は host の path)
+    // The type name of a static reference (the host path for --ref types)
     public string TypeRef(TypeDeclSym t)
     {
         return t.IlName;
     }
 
-    // 型の検査 (IlIsType) と cast (IlCast) の型名。--ref の型は host の名前 (`ed.transform`) ではなく C# の global の名前 (`Ed_Transform`。export の class の名前と同じ)
+    // The type name for type checks (IlIsType) and casts (IlCast). For --ref types, the C# global name (`Ed_Transform`, the same as the exported class name) rather than the host name (`ed.transform`)
     private string CheckTypeName(TypeSym t)
     {
         if (t.Decl != null && t.Decl.IsRef) return t.Decl.FullName.Replace(".", "_");
@@ -4641,7 +4641,7 @@ public sealed class IlBuild
 
     // ---- method group ----
 
-    // struct の parameter は値渡し。runtime (LINQ / Sort など) は要素を copy せずに渡すので、受ける側で copy する (il-spec §10)
+    // Struct parameters are passed by value. The runtime (LINQ / Sort, etc.) passes elements without copying, so the receiving side copies (il-spec §10)
     private IlExpr MethodGroup(Symbol method, List<TypeSym>? typeArgs)
     {
         var typeArgDefaults = new List<IlExpr>();
@@ -4669,13 +4669,13 @@ public sealed class IlBuild
         return new IlClosure(parameters, null, groupCall, new List<string>(), null);
     }
 
-    // ---- 二項演算 ----
+    // ---- Binary operations ----
 
     private IlExpr? BuildBinary(Node bin)
     {
         var op = bin.Text;
         if (op == "is" || op == "as") return Unported("is / as", bin);
-        // float の算術の operand の int → float の変換は省く (VM と C の演算が int を float に揃える)
+        // Skip the int → float conversion of float arithmetic operands (the VM and C operations promote int to float)
         bool arithmetic = op == "+" || op == "-" || op == "*" || op == "/" || op == "%";
         bool builtinOp = bin.Sym == null || bin.Sym.Builtin != "";
         if (arithmetic && builtinOp)
@@ -4691,7 +4691,7 @@ public sealed class IlBuild
         return BuildBinaryOperands(bin, left, right);
     }
 
-    // `local __tcs_l = first; return build(__tcs_l)` の IIFE
+    // The IIFE `local __tcs_l = first; return build(__tcs_l)`
     private static IlExpr? SnapshotOperand(IlExpr first, System.Func<IlExpr, IlExpr?> build)
     {
         var applied = build(new IlVar("__tcs_l", null));
@@ -4702,8 +4702,8 @@ public sealed class IlBuild
         return new IlIife(stats, null);
     }
 
-    // later の評価が earlier の読む local / parameter を書き換えうるか: 代入 / ++ / -- / ref・out の引数の直接の書き込み、
-    // または lambda の中で書かれる (捕捉された) local を読んでいて later が呼び出しを含むとき
+    // Whether evaluating later may modify a local / parameter that earlier reads: a direct write by assignment / ++ / -- / ref or out argument,
+    // or when earlier reads a (captured) local written inside a lambda and later contains a call
     private bool WritesLocalReadBy(Node earlier, Node later)
     {
         var read = new List<LocalSym>();
@@ -4774,8 +4774,8 @@ public sealed class IlBuild
         return false;
     }
 
-    // == が参照の比較になり、しかも実行時の値が record でありうる組み合わせ (片方が record の静的型なら record の等価)。
-    // null の literal との比較は値の等価でも参照の比較でも同じ結果なので含めない
+    // Combinations where == is a reference comparison and yet the runtime value may be a record (if one side has a record static type, it is record equality).
+    // Comparison with a null literal is excluded because value equality and reference comparison give the same result
     private static bool IsReferenceEquality(TypeSym lt, TypeSym rt)
     {
         if (lt.Kind == TypeKind.Null || rt.Kind == TypeKind.Null) return false;
@@ -4791,7 +4791,7 @@ public sealed class IlBuild
     private IlExpr? BuildBinaryOperands(Node bin, IlExpr left, IlExpr right)
     {
         var op = bin.Text;
-        // user の演算子は静的に選ばれた overload の直接の呼び出し
+        // A user operator is a direct call of the statically chosen overload
         if (bin.Sym != null && bin.Sym.Builtin == "")
         {
             var operands = new List<Node>();
@@ -4802,20 +4802,20 @@ public sealed class IlBuild
             built.Add(right);
             var userOp = TryBuildUserOperatorCall(bin, operands, built);
             if (userOp != null) return userOp;
-            // --ref の型の演算子は実装が host にあるので、呼び出しにせず IL の演算のまま残す
+            // Operators of --ref types are implemented in the host, so they stay IL operations instead of calls
             if (!(bin.Sym.Owner != null && bin.Sym.Owner.IsRef)) return Unported("user operator", bin);
         }
         var lt = bin.A!.Type!;
         var rt = bin.B!.Type!;
         var resultType = bin.Type!;
-        // record struct の ==/!= は合成の値の等価へ
+        // ==/!= on a record struct goes to the synthesized value equality
         if ((op == "==" || op == "!=") && lt.Decl != null && lt.Decl.IsRecord && IlTypes.IsUserStruct(lt))
         {
             var eqCall = new IlCall(TypeName(lt) + ".op_Equality", Two(left, right), null);
             if (op == "==") return eqCall;
             return new IlParen(new IlUn(IlUnOp.Not, eqCall, null), null);
         }
-        // object / interface / 型引数どうしの ==/!= は C# では参照の比較なので、record の値の等価にせず __tcs_refeq にする
+        // ==/!= between object / interface / type arguments is a reference comparison in C#, so it becomes __tcs_refeq instead of record value equality
         if ((op == "==" || op == "!=") && IsReferenceEquality(lt, rt))
         {
             var refEq = new IlCall("__tcs_refeq", Two(left, right), null);
@@ -4869,9 +4869,9 @@ public sealed class IlBuild
         return null;
     }
 
-    // ---- 文字列化 ----
+    // ---- Stringification ----
 
-    // 変換の前の自然な型 (Roslyn の GetTypeInfo(expr).Type)。Binder の Conv の中の式の型
+    // The natural type before conversion (Roslyn's GetTypeInfo(expr).Type). The type of the expression inside the Binder's Conv
     public static TypeSym NaturalType(Node e)
     {
         while (e.Kind == NodeKind.Conv && e.A != null) e = e.A;
@@ -4884,7 +4884,7 @@ public sealed class IlBuild
         return e;
     }
 
-    // 文字列化 (補間 / ToString)
+    // Stringification (interpolation / ToString)
     private IlExpr? WrapFloatToString(Node src, IlExpr built)
     {
         var t = NaturalType(src);
@@ -4900,8 +4900,8 @@ public sealed class IlBuild
         return new IlCall("__tcs_str", One(built), null);
     }
 
-    // 文字列の連結 (`+` / `+=`) の operand を文字列にする: int 以外の値型と ToString の override はここで文字列化し、
-    // null になりうる string は空文字列にする (int は連結 (IlBinOp.Concat) が 10 進にする)
+    // Converts operands of string concatenation (`+` / `+=`) to strings: value types other than int and ToString overrides are stringified here,
+    // and a string that may be null becomes an empty string (int is converted to decimal by the concatenation (IlBinOp.Concat))
     private IlExpr WrapConcatOperand(Node expr, IlExpr rendered)
     {
         var type = NaturalType(expr);
@@ -4927,7 +4927,7 @@ public sealed class IlBuild
         return new IlParen(new IlBin(IlBinOp.Or, rendered, IlLiterals.Str(""), null), null);
     }
 
-    // ToString を override した型の値の文字列化: 直接呼ぶ (null と、ToString が返した null は空文字列)
+    // Stringification of a value whose type overrides ToString: calls it directly (null, and a null returned by ToString, become an empty string)
     private IlExpr? UserToString(Node src, IlExpr built)
     {
         var t = NaturalType(src);
@@ -4957,13 +4957,13 @@ public sealed class IlBuild
         return new IlParen(new IlBin(IlBinOp.Or, text, IlLiterals.Str(""), null), null);
     }
 
-    // Rune の値は codepoint の整数そのもの
+    // A Rune value is the codepoint integer itself
     private static IlExpr RuneToString(IlExpr rune)
     {
         return new IlCall("Char.ConvertFromUtf32", One(rune), null);
     }
 
-    // 文字列化が値で決まる型 (T?、object、型引数)
+    // Types whose stringification depends on the value (T?, object, type arguments)
     private static bool IsStringifiedByValue(TypeSym t)
     {
         return t.Kind == TypeKind.Nullable || t.Kind == TypeKind.Object || t.Kind == TypeKind.TypeParam;
@@ -4979,8 +4979,8 @@ public sealed class IlBuild
         return new IlCall("__tcs_nstr", One(value), null);
     }
 
-    // enum の値の文字列化 (ToString / 連結 / 補間 / Console.WriteLine)。.NET の Enum.ToString と同じく、定義された値は member の名前、
-    // [Flags] (と書式 "F") は名前の ", " の連結、どちらでも表せない値は数。名前の表は文字列化する場所に置く (String.FormatEnum の第 2 引数)
+    // Stringification of enum values (ToString / concatenation / interpolation / Console.WriteLine). As in .NET's Enum.ToString, a defined value is the member name,
+    // [Flags] (and format "F") join names with ", ", and a value that neither can express is a number. The name table is placed where the stringification happens (the second argument of String.FormatEnum)
     private IlExpr? WrapEnumToString(TypeSym t, IlExpr value)
     {
         return WrapEnumToStringFlags(t, value, false);
@@ -4993,7 +4993,7 @@ public sealed class IlBuild
         return new IlCall("String.FormatEnum", Two(value, IlLiterals.Str(spec)), null);
     }
 
-    // enum の書式 (`e.ToString("G")` と補間の `{e:G}`)。G は名前、F は名前の組み合わせ、D は数。それ以外は null
+    // Enum formats (`e.ToString("G")` and `{e:G}` in interpolation). G is the name, F is a combination of names, D is the number. null otherwise
     private static IlExpr? WrapEnumFormat(TypeSym t, IlExpr value, string format)
     {
         if (format == "G" || format == "g") return WrapEnumToStringFlags(t, value, false);
@@ -5002,9 +5002,9 @@ public sealed class IlBuild
         return null;
     }
 
-    // spec は `名前:値` を `,` で並べた列。Flags (と書式 "F") は先頭に `*` を付け、全 member を .NET の EnumInfo と同じ並び
-    // (値の符号なし昇順。宣言順で整列していればそのまま、でなければ整列) で持つ。それ以外は値ごとに .NET が選ぶ名前を 1 つだけ持つ
-    // (同じ値の member は並びの上で 32 個以下なら最初、それより多ければ二分探索で当たったもの)
+    // spec is a list of `name:value` joined with `,`. Flags (and format "F") are prefixed with `*` and hold all members in the same order as .NET's EnumInfo
+    // (ascending unsigned value; kept as is if already sorted in declaration order, sorted otherwise). Otherwise it holds only the one name .NET picks for each value
+    // (for members with the same value, the first one in that order if there are 32 or fewer, otherwise the one binary search hits)
     public static string? EnumFormatSpec(TypeSym t, bool forceFlags)
     {
         if (t.Kind != TypeKind.Enum || t.Decl == null) return null;
@@ -5032,8 +5032,8 @@ public sealed class IlBuild
         }
         if (!sorted)
         {
-            // .NET の Array.Sort(keys, items) と同じ並べ方 (introsort。16 個以下は挿入の整列で同じ値の並びを保つが、
-            // それより多いと保たない)。key は値、item は宣言の順
+            // Same ordering as .NET's Array.Sort(keys, items) (introsort; 16 or fewer use insertion sort, which keeps the order of equal values,
+            // but more than that does not). The key is the value, the item is the declaration order
             var keys = new List<int>();
             foreach (var v in values) keys.Add(v);
             EnumIntroSort(keys, order, 0, keys.Count, 2 * (Log2(keys.Count) + 1), bits);
@@ -5052,7 +5052,7 @@ public sealed class IlBuild
             if (order.Count <= 32) at = k;
             else
             {
-                // .NET の二分探索 (同じ値のどれに当たるかも同じ)
+                // .NET's binary search (which of the equal values it hits is the same too)
                 int lo = 0;
                 int hi = order.Count - 1;
                 at = k;
@@ -5070,7 +5070,7 @@ public sealed class IlBuild
                 }
             }
             entries.Add(names[order[at]] + ":" + values[order[at]]);
-            // 同じ値を飛ばす
+            // Skip equal values
             int next = k + 1;
             while (next < order.Count && EnumKeyEqual(values[order[next]], key, bits)) next++;
             k = next;
@@ -5089,7 +5089,7 @@ public sealed class IlBuild
         return r;
     }
 
-    // keys[lo..lo+len) と items を .NET の ArraySortHelper<TKey, TValue>.IntroSort と同じ手順で並べる
+    // Sorts keys[lo..lo+len) and items with the same steps as .NET's ArraySortHelper<TKey, TValue>.IntroSort
     private static void EnumIntroSort(List<int> keys, List<int> items, int lo, int len, int depthLimit, int bits)
     {
         int size = len;
@@ -5208,7 +5208,7 @@ public sealed class IlBuild
         items[j] = v;
     }
 
-    // 基底の型の幅で見た符号なしの比較
+    // Unsigned comparison at the width of the underlying type
     private static bool EnumKeyLess(int a, int b, int bits)
     {
         if (bits < 32)
@@ -5229,14 +5229,14 @@ public sealed class IlBuild
         return a == b;
     }
 
-    // ---- 型引数の既定値 ----
+    // ---- Default values of type arguments ----
 
     private static string TypeArgDefaultName(TypeSym p)
     {
         return (p.IsMethodParam ? "__tcs_dm_" : "__tcs_dc_") + p.Name;
     }
 
-    // 型引数の既定値の IL (method の型引数は隠れ引数、型の型引数は self か隠れ引数)
+    // IL for the default value of a type argument (a hidden argument for a method type argument; self or a hidden argument for a type's type argument)
     public IlExpr? TypeArgDefaultIl(TypeSym p)
     {
         var name = TypeArgDefaultName(p);
@@ -5247,7 +5247,7 @@ public sealed class IlBuild
         return Ctx.TypeArgDefaultsOnSelf ? new IlField(new IlVar("self", null), name, null) : new IlVar(name, null);
     }
 
-    // default 値の IL: source の struct は zero 値の IlNewObj、型引数は呼び出し側が渡した既定値、それ以外は literal
+    // IL for a default value: an IlNewObj of the zero value for a source struct, the default passed by the caller for a type argument, a literal otherwise
     public IlExpr DefaultIl(TypeSym? t)
     {
         if (t != null && t.Kind == TypeKind.TypeParam)
@@ -5260,11 +5260,11 @@ public sealed class IlBuild
         return DefaultLiteral(t);
     }
 
-    // literal で書ける default 値 (数、bool、enum。それ以外は null)。source の struct、Utf8Bytes、渡された型引数の既定値は DefaultIl が先に扱う
+    // Default values that can be written as a literal (number, bool, enum; null otherwise). Source structs, Utf8Bytes, and passed type-argument defaults are handled first by DefaultIl
     public static IlLit DefaultLiteral(TypeSym? type)
     {
         if (type == null) return IlLiterals.Null();
-        // enum の default は member の値に依らず 0 (C#: default(E) == 0)
+        // The default of an enum is 0 regardless of member values (C#: default(E) == 0)
         if (type.Kind == TypeKind.Enum) return IlLiterals.Int(0);
         switch (type.Kind)
         {
@@ -5281,7 +5281,7 @@ public sealed class IlBuild
         return IlLiterals.Null();
     }
 
-    // generic な struct の zero 値 (`S.new`) に渡す型引数の既定値
+    // Default values of the type arguments passed to the zero value of a generic struct (`S.new`)
     public List<IlExpr> StructTypeArgDefaults(TypeSym t)
     {
         var r = new List<IlExpr>();
@@ -5297,7 +5297,7 @@ public sealed class IlBuild
         return r;
     }
 
-    // 型引数の既定値として渡す値: 型引数は受け取ったまま、可変な struct は zero 値と copy の作り方 (記述子)、enum は名前の表の記述子
+    // The value passed as a type argument's default: a type argument passes on what it received, a mutable struct passes its zero value and how to copy it (a descriptor), an enum passes a descriptor of its name table
     public IlExpr TypeArgDefaultValue(TypeSym t)
     {
         if (t.Kind == TypeKind.TypeParam)
@@ -5315,7 +5315,7 @@ public sealed class IlBuild
         return DefaultIl(t);
     }
 
-    // 型引数に入れたとき、既定値の値では足りない struct: 可変 (copy の作り方が要る) か、ToString の override を持つ
+    // Structs for which a default value alone is not enough when used as a type argument: mutable (needs a way to copy) or has a ToString override
     public static bool NeedsTypeArgDescriptor(TypeSym t)
     {
         return IlTypes.IsMutableStruct(t) || (IlTypes.IsUserStruct(t) && HasToStringOverride(t));
@@ -5333,16 +5333,16 @@ public sealed class IlBuild
         return false;
     }
 
-    // ---- struct の copy ----
+    // ---- Struct copies ----
 
-    // 元の式を持たない値 (分解の成分 / foreach の変数 / lambda の parameter) の copy
+    // Copy of a value without an original expression (deconstruction component / foreach variable / lambda parameter)
     private IlExpr CopyIfMutableStruct(TypeSym? t, IlExpr value)
     {
         if (IlTypes.IsMutableStruct(t)) return new IlStructCopy(value, TypeName(t!), false, null);
         return value;
     }
 
-    // IL の形で新しい値と分かる値
+    // A value known to be new from its IL shape
     private static bool IsFreshStructIl(IlExpr built)
     {
         switch (built)
@@ -5364,7 +5364,7 @@ public sealed class IlBuild
         return false;
     }
 
-    // 値が他から参照されない式か (生成、with、タプル、代入式、switch 式)
+    // Whether the expression's value is not referenced from anywhere else (creation, with, tuple, assignment expression, switch expression)
     private static bool IsFreshStructValue(Node src)
     {
         switch (src.Kind)
@@ -5383,11 +5383,11 @@ public sealed class IlBuild
         return false;
     }
 
-    // struct の method / accessor の受け手: C# の「変数」(local / param / field / 配列の要素 / this) なら直に渡し、
-    // rvalue (property / List の indexer / 呼び出しの結果など) は copy
+    // Receiver of a struct method / accessor: a C# "variable" (local / param / field / array element / this) is passed directly,
+    // and an rvalue (property / List indexer / call result, etc.) is copied
     private IlExpr StructReceiverArg(Node recvSyntax, IlExpr recv)
     {
-        // ?. の受け手 (`S?` の .Value) は copy した値 (変更は捨てられる)
+        // The receiver of ?. (the .Value of `S?`) is a copied value (changes are discarded)
         if (_condBinding != null && recvSyntax == _subNode) return ConditionalStructReceiver(recv, NaturalType(recvSyntax));
         if (IsStructVariableReceiver(recvSyntax)) return recv;
         return WrapStructCopy(recvSyntax, recv);
@@ -5399,8 +5399,8 @@ public sealed class IlBuild
         {
             case NodeKind.This: return true;
             case NodeKind.Name: return e.Info == RefKind.Local || e.Info == RefKind.Field && IsWritableField(e.Sym);
-            // `x?.F` / `x?[i]` の binding は x が参照型なら変数 (`T?` の x は値の copy)。
-            // struct の field は、持ち主の struct が変数のときだけ変数 (property の結果の field は値)
+            // The binding of `x?.F` / `x?[i]` is a variable if x is a reference type (x of type `T?` is a copy of the value).
+            // A struct field is a variable only when the owning struct is a variable (a field of a property result is a value)
             case NodeKind.Member:
                 if (e.Sym == null || e.Sym.Kind != SymKind.Field || !IsWritableField(e.Sym)) return false;
                 if (e.Value == 1) return IsReferenceType(NaturalType(e.A!));
@@ -5413,7 +5413,7 @@ public sealed class IlBuild
         return false;
     }
 
-    // readonly な field は、宣言した型の constructor (static なら static constructor) の外では値 (C# の防御的 copy)
+    // A readonly field is a value outside the constructor of the declaring type (the static constructor if static) (C#'s defensive copy)
     private bool IsWritableField(Symbol? f)
     {
         if (f == null || !f.IsReadonly) return true;
@@ -5421,7 +5421,7 @@ public sealed class IlBuild
         return fn != null && fn.Kind == SymKind.Ctor && fn.Owner == f.Owner && fn.IsStatic == f.IsStatic;
     }
 
-    // ---- 小道具 ----
+    // ---- Helpers ----
 
     private static List<IlStat> One(IlStat s)
     {
@@ -5452,7 +5452,7 @@ public sealed class IlBuild
         return r;
     }
 
-    // 式の Origin を差し替える (elseif の条件と do-while の条件は自分の位置で評価される)
+    // Replaces the Origin of an expression (elseif conditions and do-while conditions are evaluated at their own position)
     public static IlExpr WithExprOrigin(IlExpr e, IlPos? origin)
     {
         switch (e)
@@ -5496,7 +5496,7 @@ public sealed class IlBuild
     }
 }
 
-// 値を返す IIFE の形 (TryGetValueChainShape)
+// Shape of a value-returning IIFE (TryGetValueChainShape)
 public sealed class ValueChain
 {
     public List<IlStat> Setup;
@@ -5513,7 +5513,7 @@ public sealed class ValueChain
     }
 }
 
-// 受け手 / 添字を temp に固定した代入先
+// An assignment target with the receiver / index fixed in temps
 public sealed class LoweredTarget
 {
     public List<IlStat> Setup;
@@ -5526,7 +5526,7 @@ public sealed class LoweredTarget
     }
 }
 
-// 値型の place の struct の field を辿った起点 (Stop は起点の node、Base は参照型の prefix か変数、Index は配列の添字)
+// The starting point reached by following the struct fields of a value-type place (Stop is the starting node, Base is the reference-type prefix or variable, Index is the array index)
 public sealed class StructSlot
 {
     public Node Stop;
@@ -5543,7 +5543,7 @@ public sealed class StructSlot
     }
 }
 
-// custom property の代入先
+// Assignment target of a custom property
 public sealed class PropTarget
 {
     public List<IlStat> Setup;
@@ -5564,7 +5564,7 @@ public sealed class PropTarget
     }
 }
 
-// 分解の先 (宣言した local、_、代入する場所、入れ子)
+// Deconstruction target (declared local, _, assignment location, nested)
 public sealed class DTarget
 {
     public const int KDeclared = 0;
@@ -5576,7 +5576,7 @@ public sealed class DTarget
     public TypeSym? Type;
     public Node? Place;
     public List<DTarget> Items = new List<DTarget>();
-    // 右辺より先に固定した場所
+    // Location fixed before the right side
     public IlExpr? Fixed;
 
     public static DTarget Declared(string name, TypeSym type)
@@ -5613,7 +5613,7 @@ public sealed class DTarget
     }
 }
 
-// 分解の成分の代入
+// Assignment of a deconstruction component
 public sealed class DAssign
 {
     public DTarget Target;

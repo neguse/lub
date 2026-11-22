@@ -1,4 +1,4 @@
-// tests/windows で開く 1 つ目の file。
+// The first file tests/windows opens.
 public static class WindowsTarget
 {
     public static int One()

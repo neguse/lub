@@ -1,7 +1,8 @@
-/* file system の操作 (src/Fs.ref.cs の関数) を、tcs VM の player の native の拡張として出す。
- * lider の player (native/CMakeLists.txt) は静的に link する (入口の名前は lub_vm_extension_fs)。
- * lub の既製の lub_vm は、scripts/build-native.sh が作る src/Fs.so を読む。
- * web (emscripten) は仮想ファイル (MEMFS) が相手。 */
+/* Exposes file system operations (the functions in src/Fs.ref.cs) as a native
+ * extension of the tcs VM player. The lider player (native/CMakeLists.txt)
+ * links it statically (the entry point is named lub_vm_extension_fs). lub's
+ * stock lub_vm loads src/Fs.so built by scripts/build-native.sh. On the web
+ * (emscripten), it works on virtual files (MEMFS). */
 #include <lub/lub_vm_extension.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,7 +20,7 @@
 
 static const LubVmExtensionApi *api;
 
-/* VM の string を NUL で終わる文字列に写す (呼ぶ側が free) */
+/* Copies a VM string into a NUL-terminated string (the caller frees it) */
 static char *dup_arg(const void *s) {
   size_t len = 0;
   const char *data = s ? api->string_data(s, &len) : NULL;

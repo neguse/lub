@@ -1,4 +1,4 @@
-// tests/search で引く file。
+// The file tests/search looks up.
 public static class Radar
 {
     public static int Range = 3;

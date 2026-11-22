@@ -1,6 +1,6 @@
-// エディタの core (src/Editor) の test が共に使う道具。scripts/test-editor.sh が test ごとに一緒に変換する。
-// key は lider の Workspace と同じ順に渡す: 修飾 key の押し離し、key の押し (EventData.Plain の文字で)、Ctrl を押していなければ打った文字、key の離し。
-// 失敗は最初の 1 つだけを出して App.Quit(1) で終わる。
+// Helpers shared by the tests of the editor core (src/Editor). scripts/test-editor.sh compiles this together with each test.
+// Keys are passed in the same order as lider's Workspace: modifier key press/release, key press (with the EventData.Plain character), the typed character if Ctrl is not held, key release.
+// Only the first failure is reported, and the test exits with App.Quit(1).
 using System;
 using Lub;
 using LiderCore;
@@ -32,7 +32,7 @@ public static class Ed
     static bool ctrl;
     static bool shift;
 
-    // 最初の失敗だけを出して終わる
+    // Report only the first failure and exit
     public static void Check(bool cond, string message)
     {
         if (cond || Failed)
@@ -56,7 +56,7 @@ public static class Ed
         Check(err == "", "Init failed: " + err);
     }
 
-    // 開いて focus を移した view の id
+    // id of the view that was opened and given focus
     public static int Open(string path)
     {
         var id = EditorHost.Open(path);
@@ -108,7 +108,7 @@ public static class Ed
         Mods(false, false);
     }
 
-    // 英小文字と数字と . / を、key を押して打つ
+    // Type lowercase letters, digits, and . / by pressing keys
     public static void Type(string s)
     {
         foreach (var r in s.EnumerateRunes())
@@ -132,7 +132,7 @@ public static class Ed
         }
     }
 
-    // 描いた命令のうち、text の文字の命令 (無ければ -1)。line が 0 でなければ、その行の命令だけを見る
+    // Among the drawn commands, the command for the characters of text (-1 if none). If line is not 0, only the commands of that line are looked at
     public static int Command(int id, string text, int line)
     {
         var n = EditorHost.Draw(id, 640, 360);
@@ -148,7 +148,7 @@ public static class Ed
             "cursor at " + EditorHost.CursorLine(id) + ":" + EditorHost.CursorCol(id) + ", want " + line + ":" + col);
     }
 
-    // test の file を書いて、その path
+    // Write the test file and return its path
     public static string Write(string name, string text)
     {
         var dir = Environment.GetEnvironmentVariable("EDITOR_TEST_DIR") ?? ".";

@@ -1,14 +1,14 @@
-// lub は宣言が途切れた texture を捨てるので、宣言が途切れた板は全部を描き直す。
-//   - 窓を閉じて SweepFrames 待って開き直すと、全部を描き直す
-//   - lider を隠して SweepFrames 待って出し直すと、全部を描き直す
-//   - 途切れていなければ、打っても帯だけを描き直す (打って出る案内の字を、先に atlas へ入れてから測る)
+// lub discards textures whose declarations have stopped, so a board whose declaration stopped is redrawn entirely.
+//   - Closing a window, waiting SweepFrames, and reopening it redraws everything
+//   - Hiding lider, waiting SweepFrames, and showing it again redraws everything
+//   - If the declaration has not stopped, typing redraws only the band (the characters of the hint that typing shows are put into the atlas first, then measured)
 using System;
 using Lub;
 using LiderCore;
 
 public static class TestReopen
 {
-    // lub が捨てるまでの frame より長く待つ
+    // Wait longer than the number of frames until lub discards it
     const int SweepFrames = 130;
     static int frames;
     static int stage;
@@ -21,7 +21,7 @@ public static class TestReopen
     {
         TestInit();
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay layout (code windows lined up in a horizontal row on the cylindrical screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -60,7 +60,7 @@ public static class TestReopen
                 waitUntil = frames + 10;
                 break;
             case 1:
-                // 打つと案内 (F9) が出る。密度 1 では案内と窓が文字の atlas を分け合い、案内に初めて出る字で窓を全部描き直すので、先に出しておく
+                // Typing shows a hint (F9). At density 1, the hint and the window share the glyph atlas, and a character appearing in the hint for the first time redraws the whole window, so it is shown first
                 w.Focus!.Type("x");
                 waitUntil = frames + 3;
                 break;
@@ -75,7 +75,7 @@ public static class TestReopen
                 w.CloseTab();
                 break;
             case 4:
-                // 閉じる動きの間は宣言が続く
+                // Declarations continue during the closing animation
                 if (Lider.MotionOf(closed!) != null)
                     return;
                 Lider.Panel(closed!).RedrawnLines = Untouched;
@@ -106,7 +106,7 @@ public static class TestReopen
         stage++;
     }
 
-    // 描き直していない印
+    // Marker for "not redrawn"
     const int Untouched = -2;
 
     static void Check(bool ok, string message)

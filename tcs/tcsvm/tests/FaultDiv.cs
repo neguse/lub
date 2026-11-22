@@ -1,6 +1,6 @@
 using System;
 
-// fault: 0 除算は決定的に止まる (il-spec §12)。止まる前の出力は残る
+// fault: division by 0 stops deterministically (il-spec §12). Output from before the stop remains
 public class FaultDiv
 {
     static int Div(int a, int b)

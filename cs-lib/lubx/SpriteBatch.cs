@@ -1,6 +1,6 @@
-// 実装ライブラリ lubx の SpriteBatch。
-// バケットは class SpriteBucket、フィールドは ShaderRef / BufferRef の型付き。
-// 頂点は List<float>.Add の逐次追加。
+// SpriteBatch in the implementation library lubx.
+// Buckets are the class SpriteBucket, and fields are typed as ShaderRef / BufferRef.
+// Vertices are appended one by one with List<float>.Add.
 
 using System;
 using System.Collections.Generic;
@@ -8,7 +8,7 @@ using Lub;
 
 namespace Lubx;
 
-/// <summary>アトラスごとの頂点バケット。
+/// <summary>Vertex bucket per atlas.
 /// </summary>
 public class SpriteBucket
 {
@@ -23,17 +23,17 @@ public class SpriteBucket
 }
 
 /// <summary>
-/// 2D スプライトのバッチ描画。
-/// 毎フレーム begin() → sprite()/quad() を積む → pass 内で flush() の順で使う。
-/// 座標は論理解像度 (logicalW x logicalH) のピクセル、左上原点。
-/// アトラスごとに 1 draw にまとめられる。
-/// 重なりは呼んだ順ではなく、Begin の後にそのアトラスが初めて出た順 (同じアトラスの中は呼んだ順)。
-/// 違うアトラスを呼んだ順に重ねたいときは、重ねる層ごとに Begin から Flush までを分ける。
+/// Batched drawing of 2D sprites.
+/// Use it every frame in this order: begin() → queue sprite()/quad() → flush() inside a pass.
+/// Coordinates are pixels in the logical resolution (logicalW x logicalH), with the origin at the top left.
+/// Sprites are combined into 1 draw per atlas.
+/// Overlap follows not the call order but the order in which each atlas first appeared after Begin (call order within the same atlas).
+/// To layer different atlases in call order, use a separate Begin to Flush for each layer.
 /// </summary>
 public class SpriteBatch
 {
-    // 1 要素の float 数。
-    // shader 側 StructuredBuffer の struct と同じ並び (float2 は 8、float4 は 16 byte 境界に置くため pad が入る)。
+    // Number of floats per element.
+    // Same layout as the struct of the StructuredBuffer on the shader side (pad is inserted because float2 is placed on 8 and float4 on 16 byte boundaries).
     public const int LegacyStride = 8; // float2 pos, uv; float4 color
     public const int VertexStride = 4; // float2 corner, uv01
     public const int InstanceStride = 16; // float2 pos, size, rot_cs, pad; float4 uv_rect, color
@@ -92,7 +92,7 @@ public class SpriteBatch
 
     private Dictionary<string, SpriteBucket> buckets =
         new Dictionary<string, SpriteBucket>();
-    // Begin の後に初めて出た順のアトラスの key (Flush が描く順)
+    // Keys of the atlases in the order they first appeared after Begin (the order Flush draws in)
     private List<string> order = new List<string>();
     private string key;
     private bool instanced;
@@ -100,10 +100,10 @@ public class SpriteBatch
     private BufferRef? quadBuf = null;
     private List<float>? quadData = null;
 
-    /// <summary>key の下に buffer を宣言する。
-    /// 中身は定数なので、同じ key の SpriteBatch は resource を共有する。
-    /// shader は key によらず、すべての SpriteBatch で 1 つを共有する。
-    /// instanced 省略で true。
+    /// <summary>Declares the buffer under key.
+    /// The contents are constant, so SpriteBatches with the same key share the resource.
+    /// All SpriteBatches share one shader regardless of key.
+    /// instanced defaults to true when omitted.
     /// </summary>
     public SpriteBatch(string key, int logicalW, int logicalH,
         bool? instanced = null)
@@ -116,7 +116,7 @@ public class SpriteBatch
 
     public bool Ensure()
     {
-        // shader の source は定数なので、batch の key ごとに作らない (作るたびに compile の間だけ止まる)
+        // The shader source is constant, so it is not created per batch key (each creation stalls for the duration of the compile)
         shader = Gfx.UseShader(instanced ? "lubx/sprite/instanced" : "lubx/sprite/legacy",
             instanced ? instancedVs : legacyVs, fs, 1);
         return shader != null;
@@ -135,11 +135,11 @@ public class SpriteBatch
         lastVerts = null;
     }
 
-    // 直前の Quad の atlas と、その頂点の bucket (同じ atlas が続く間は辞書を引かない)
+    // Atlas of the previous Quad and the bucket of its vertices (no dictionary lookup while the same atlas continues)
     private Atlas? lastAtlas;
     private List<float>? lastVerts;
     private static Color white = Color.Rgb(1.0f, 1.0f, 1.0f, 1.0f);
-    // 単色の矩形と円の atlas の中の範囲 (呼ぶたびに作らない)
+    // Ranges in the atlas for solid rectangles and circles (not created on every call)
     private static readonly Rect whiteSrc = new Rect(0, 0, 4, 4);
     private static readonly Rect discSrc = new Rect(0, 0, 64, 64);
 
@@ -185,7 +185,7 @@ public class SpriteBatch
         verts.Add(h);
         verts.Add(cr);
         verts.Add(sr);
-        verts.Add(0.0f); // pad0 (float4 uv_rect は 16 byte 境界)
+        verts.Add(0.0f); // pad0 (float4 uv_rect is on a 16 byte boundary)
         verts.Add(0.0f);
         verts.Add(u0);
         verts.Add(v0);
@@ -231,7 +231,7 @@ public class SpriteBatch
             u, v, r, g, b, alpha);
     }
 
-    /// <summary>アトラスの src 矩形を中心 (cx, cy)・radians 回転で描く。
+    /// <summary>Draws the src rectangle of the atlas centered at (cx, cy), rotated by radians.
     /// </summary>
     public void Sprite(Atlas a, Rect src, float cx, float cy, float w,
         float h, float radians, Color? tint = null)
@@ -241,7 +241,7 @@ public class SpriteBatch
             c.R, c.G, c.B, c.A);
     }
 
-    /// <summary>sprite の cos/sin・色成分ばらし版 (Color 生成を避ける hot path 用)。
+    /// <summary>Version of sprite with cos/sin and color components passed separately (for hot paths that avoid creating a Color).
     /// </summary>
     public void SpriteColor(Atlas a, Rect src, float cx, float cy, float w,
         float h, float cr, float sr, float r, float g, float b,
@@ -272,7 +272,7 @@ public class SpriteBatch
         PushRotColor(verts, cx, cy, -hw, hh, cr, sr, u0, v1, r, g, b, alpha);
     }
 
-    /// <summary>アトラスの src 矩形を左上 (x, y) に無回転で描く。
+    /// <summary>Draws the src rectangle of the atlas with its top left at (x, y), without rotation.
     /// </summary>
     public void Quad(Atlas a, Rect src, float x, float y, float w, float h,
         Color? tint = null)
@@ -325,8 +325,8 @@ public class SpriteBatch
     {
         if (discAtlas == null)
         {
-            // 64x64 の soft disc。
-            // tint で色を付ける。
+            // 64x64 soft disc.
+            // The tint gives it color.
             int n = 64;
             var px = new List<int>();
             for (int y = 0; y < n; y++)
@@ -349,8 +349,8 @@ public class SpriteBatch
         return discAtlas;
     }
 
-    /// <summary>単色矩形。
-    /// (x, y) は左上、座標系は quad と同じ論理 px。
+    /// <summary>Solid-color rectangle.
+    /// (x, y) is the top left; the coordinate system is the same logical px as quad.
     /// </summary>
     public void Rect(float x, float y, float w, float h,
         Color? tint = null)
@@ -358,8 +358,8 @@ public class SpriteBatch
         Quad(EnsureWhiteAtlas(), whiteSrc, x, y, w, h, tint);
     }
 
-    /// <summary>単色の円 (ソフトエッジの disc)。
-    /// (cx, cy) は中心、r は半径 px。
+    /// <summary>Solid-color circle (a soft-edged disc).
+    /// (cx, cy) is the center, r is the radius in px.
     /// </summary>
     public void Disc(float cx, float cy, float r, Color? tint = null)
     {
@@ -382,8 +382,8 @@ public class SpriteBatch
         return quadBuf;
     }
 
-    /// <summary>積んだスプライトをアトラス単位で描画する。
-    /// blend 省略で Blends.Alpha。
+    /// <summary>Draws the queued sprites per atlas.
+    /// blend defaults to Blends.Alpha when omitted.
     /// </summary>
     public void Flush(Blend? blend = null)
     {
@@ -404,7 +404,7 @@ public class SpriteBatch
             var b = buckets[k];
             if (b.Verts.Count == 0)
                 continue;
-            // Begin の後で pixel を変えた atlas (Text が描く途中で足した glyph) は、描く前に upload し直す
+            // Atlases whose pixels changed after Begin (glyphs added by Text while drawing) are uploaded again before drawing
             if (b.Atlas.Changed)
                 b.Atlas.Ensure();
             var tex = b.Atlas.Texture;

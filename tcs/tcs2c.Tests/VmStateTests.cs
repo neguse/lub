@@ -1,14 +1,14 @@
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// VM の状態の保存と読み込み (tvm_state_save / tvm_state_load、doc/vm-design.md §13.4)。
-/// 状態を file に書き、別の process の VM に読み込んで続きを走らせ、止めずに走らせた結果と比べる。
+/// Saving and loading VM state (tvm_state_save / tvm_state_load, doc/vm-design.md §13.4).
+/// Writes the state to a file, loads it into a VM in another process, runs the rest, and compares with the result of running without stopping.
 /// </summary>
 public class VmStateTests
 {
     private const string Header = "using System;\nusing System.Collections.Generic;\nusing Random = TinySystem.Random;\n";
 
-    // class、struct、record、配列、List、Dictionary (string と object の key)、closure、box、null、共有した参照、循環、Random
+    // class, struct, record, arrays, List, Dictionary (string and object keys), closures, box, null, shared references, cycles, Random
     private const string Types = """
         public struct Pt { public int X; public float Y; public bool On; }
         public struct Cell { public Pt At; public Enemy? Who; }
@@ -150,7 +150,7 @@ public class VmStateTests
     public void LoadsIntoAVersionWithEditedBodiesAndOtherStatics()
     {
         if (!Backends.VmEnabled) return;
-        // 関数の中身を変え、static を 1 つ足して 1 つ消した版にも読み込める。足した static は初期化子の値のまま
+        // Can also be loaded into a version that changes function bodies, adds one static, and removes one. The added static keeps its initializer's value
         const string v1 = Header + "public static class Game { static int n; static int gone = 3; public static void Setup() { n = 10; } public static void Frame() { n++; gone++; } public static void Report() { Console.WriteLine(n); } }";
         const string v2 = Header + "public static class Game { static int n; static int fresh = 7; public static void Setup() { n = 10; } public static void Frame() { n += 2; } public static void Report() { Console.WriteLine($\"{n} {fresh}\"); } }";
         var (_, code, stdout, stderr) = Backends.RunVmState([v1], [v2], "Game", 3, 5);
@@ -158,7 +158,7 @@ public class VmStateTests
         Assert.Equal("17 7", stdout);
     }
 
-    // 形を変える編集に使う小さいゲーム。class、struct (field、static、List と Dictionary と配列の要素)、参照の field を持つ
+    // A small game used for shape-changing edits. Has classes, structs (fields, statics, List and Dictionary and array elements), and reference fields
     private const string Small = Header + """
         public struct Pt { public int X; public float Y; }
         public class Item { public int Id; }
@@ -202,30 +202,30 @@ public class VmStateTests
 
     private const string SmallReport = "Console.WriteLine($\"{all[0].Hp} {all[1].Hp}\");";
 
-    /// <summary>形の違う版への読み込みは、reload (doc/object-model.md §6) と同じ決まりで値を移す。
-    /// 同じ編集を、止めずに reload で当てた結果と、状態を保存して新版に読み込んだ結果が同じであること。
-    /// edits は「旧版の文字列 => 新版の文字列」を `@@` で並べたもの、report は新版の Report の中身。</summary>
+    /// <summary>Loading into a version with a different shape migrates values with the same rules as reload (doc/object-model.md §6).
+    /// The result of applying the same edits with reload without stopping must equal the result of saving the state and loading it into the new version.
+    /// edits is a list of "old-version string => new-version string" joined with `@@`, and report is the body of the new version's Report.</summary>
     [Theory]
-    // class に initializer のある field を足す: 足した field は initializer の値
+    // Adding a field with an initializer to a class: the added field gets the initializer's value
     [InlineData("public int Armor = 5;=>public int Armor = 5; public int Mana = 9;",
         "Console.WriteLine($\"{all[0].Hp} {all[0].Armor} {all[0].Mana} {all[1].Mana}\");", "5 9 9 9")]
-    // class の field を消す: 残りの field は値を保つ
+    // Removing a field from a class: the remaining fields keep their values
     [InlineData("public int Armor = 5;=>@@e.Armor += 2; =>",
         "Console.WriteLine($\"{all[0].Hp} {all[0].Pos.X} {all[0].Held!.Id} {all[0].Trail.Count}\");", "5 2 4 2")]
-    // field の型を変える: 値は移さず、initializer の値になる
+    // Changing a field's type: the value is not migrated and becomes the initializer's value
     [InlineData("public int Armor = 5;=>public float Armor = 5.5f;",
         "Console.WriteLine($\"{all[0].Hp} {all[0].Armor} {all[1].Armor}\");", "5 5.5 5.5")]
-    // struct に field を足す: field、static、List と Dictionary と配列の要素のどれも、前の field は値を保ち、足した field は 0
+    // Adding a field to a struct: in fields, statics, and List, Dictionary, and array elements alike, the previous fields keep their values and the added field is 0
     [InlineData("public struct Pt { public int X; public float Y; }=>public struct Pt { public int X; public float Y; public int Z; }",
         "Console.WriteLine($\"{all[0].Pos.X} {all[0].Pos.Y} {all[0].Pos.Z} {origin.X} {origin.Y} {origin.Z} {all[0].Trail[1].Y} {marks[5].X} {grid[1].Y} {grid[1].Z}\");",
         "2 1 0 9 1.5 0 1 2 0.5 0")]
-    // struct の field の順を変える: 名前で対応する
+    // Reordering struct fields: matched by name
     [InlineData("public struct Pt { public int X; public float Y; }=>public struct Pt { public float Y; public int X; }",
         "Console.WriteLine($\"{all[0].Pos.X} {all[0].Pos.Y} {origin.X} {origin.Y} {all[0].Trail[1].X} {marks[5].Y} {grid[1].X}\");", "2 1 9 1.5 2 1 4")]
-    // 参照の field の型を変える: 値は移さない (null)
+    // Changing the type of a reference field: the value is not migrated (null)
     [InlineData("public Item? Held;=>public object? Held;",
         "Console.WriteLine($\"{all[0].Hp} {all[0].Held == null} {all[1].Held == null}\");", "5 True True")]
-    // object を作る initializer の field を足す: instance ごとに別の object
+    // Adding a field whose initializer creates an object: a separate object per instance
     [InlineData("public int Armor = 5;=>public int Armor = 5; public List<int> Log = new List<int>();",
         "Console.WriteLine($\"{all[0].Log.Count} {all[1].Log.Count} {all[0].Log != all[1].Log} {all[0].Armor}\");", "0 0 True 9")]
     public void ChangedShape_MovesLikeAReload(string edits, string report, string expected)
@@ -256,7 +256,7 @@ public class VmStateTests
         const string v2 = Header + "public struct C { public int A; } public static class Game { static List<C> all = new List<C>(); public static void Setup() { all.Add(new C()); } public static void Frame() { } public static void Report() { } }";
         var (_, code, stdout, stderr) = Backends.RunVmState([v1], [v2], "Game", 1, 2);
         Assert.Equal(1, code);
-        // class を struct にすると、それを要素に持つ容器の形も変わる
+        // Turning a class into a struct also changes the shape of the containers that hold it as elements
         Assert.Contains("tvm_state_load: type List<C> has a different element", stderr);
         Assert.Equal("", stdout);
     }
@@ -280,7 +280,7 @@ public class VmStateTests
     public void RefusedLoad_LeavesTheStateAsItWas()
     {
         if (!Backends.VmEnabled) return;
-        // 読み込めない状態 (型が今の版に無い) を読み込もうとしても、読み込む側の static は初期化子の値のまま
+        // Even when trying to load a state that cannot be loaded (its type is not in the current version), the loader's statics keep their initializer values
         const string v1 = Header + "public class C { public int A; } public static class Game { static object c = new C(); static int n = 1; public static void Setup() { n = 50; } public static void Frame() { } public static void Report() { } }";
         const string v2 = Header + "public static class Game { static object c = \"\"; static int n = 1; public static void Setup() { } public static void Frame() { } public static void Report() { } }";
         var (_, code, _, stderr) = Backends.RunVmState([v1], [v2], "Game", 1, 2);
@@ -288,7 +288,7 @@ public class VmStateTests
         Assert.Contains("this version has no type C", stderr);
     }
 
-    // 壊れた byte 列は断るだけで、VM は落ちない (終了コードは 0 か 1)
+    // Corrupted byte sequences are only rejected, and the VM does not crash (the exit code is 0 or 1)
     [Fact]
     public void DamagedState_IsRefusedWithoutCrashing()
     {

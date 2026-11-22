@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// Dictionary の foreach の中の break / continue は、ネストした foreach、switch、while と組み合わせても C# どおりにそのループだけを抜ける / 次へ進む。
-// 反復順に依らない値だけを出す。期待値は同じ program を CoreCLR で実行した stdout
+// break / continue inside a Dictionary foreach exits only that loop / moves to the next iteration as in C#, even combined with nested foreach, switch, and while.
+// Only values that do not depend on iteration order are printed. The expected values are the stdout of running the same program on CoreCLR
 public class DictForeachBreakDifferentialTests
 {
     [CFact]

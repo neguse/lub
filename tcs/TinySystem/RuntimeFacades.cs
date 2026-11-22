@@ -1,13 +1,13 @@
 namespace TinySystem;
 
-// dotnet 側 facade は System 名前空間の型へ委譲する。
-// ユーザーがゲームロジックを dotnet 単体テストで検証でき、tcs の dotnet differential が facade parity を検証できる。
+// The dotnet-side facade delegates to types in the System namespace.
+// Users can verify game logic with dotnet unit tests, and the tcs dotnet differential can verify facade parity.
 
-/// <summary>System.Random と同じ形 (instance + `Random.Shared`)。tcs の
-/// 2 backend (C / VM) は同じ PRNG (xoshiro256**、il-spec §13) なので、同じ
-/// seed なら `new Random(seed)` も `Random.Seed(seed)` 後の `Shared` も列が
-/// bit 一致する。dotnet 側は System.Random に委譲するので列は異なる
-/// (乱数は dotnet differential の対象外)。</summary>
+/// <summary>Same shape as System.Random (instance + `Random.Shared`). The two tcs
+/// backends (C / VM) use the same PRNG (xoshiro256**, il-spec §13), so with the same
+/// seed, both `new Random(seed)` and `Shared` after `Random.Seed(seed)` produce
+/// bit-identical sequences. The dotnet side delegates to System.Random, so its sequences differ
+/// (random numbers are outside the dotnet differential).</summary>
 public sealed class Random
 {
     private readonly global::System.Random _impl;
@@ -15,10 +15,10 @@ public sealed class Random
     public Random() => _impl = new global::System.Random();
     public Random(int seed) => _impl = new global::System.Random(seed);
 
-    /// <summary>共有 instance (System.Random.Shared 相当)。</summary>
+    /// <summary>Shared instance (equivalent to System.Random.Shared).</summary>
     public static Random Shared { get; private set; } = new();
 
-    /// <summary>共有 instance の列を seed で固定する。</summary>
+    /// <summary>Fixes the sequence of the shared instance with a seed.</summary>
     public static void Seed(int seed) => Shared = new Random(seed);
 
     public int Next() => _impl.Next();
@@ -26,7 +26,7 @@ public sealed class Random
     public int Next(int min, int max) => _impl.Next(min, max);
     public float NextFloat() => _impl.NextSingle();
     public float NextSingle() => _impl.NextSingle();
-    /// <summary>[min, max] の整数 (両端含む)。</summary>
+    /// <summary>Integer in [min, max] (both ends inclusive).</summary>
     public int Range(int min, int max) => (int)_impl.NextInt64(min, (long)max + 1);
 }
 
@@ -46,16 +46,16 @@ public static class Math
     public static float Abs(float x) => global::System.MathF.Abs(x);
     public static float Floor(float x) => global::System.MathF.Floor(x);
     public static float Ceil(float x) => global::System.MathF.Ceiling(x);
-    // System.Math.Ceiling と同じ名前 (TinySystem.props の alias で Math を
-    // TinySystem.Math にしても、Math.Ceiling がそのまま通る)
+    // Same name as System.Math.Ceiling (even when the TinySystem.props alias makes Math
+    // TinySystem.Math, Math.Ceiling still works as is)
     public static float Ceiling(float x) => global::System.MathF.Ceiling(x);
     public static float Sqrt(float x) => global::System.MathF.Sqrt(x);
-    // 超越関数は TcsMath (runtime/math と同じ実装) で、tcs の C と VM の経路と
-    // bit 単位で同じ結果を返す
+    // Transcendental functions use TcsMath (the same implementation as runtime/math) and return the same results as the tcs C and VM paths,
+    // bit for bit
     public static float Sin(float x) => TcsMath.Sin(x);
     public static float Cos(float x) => TcsMath.Cos(x);
     public static float Atan2(float y, float x) => TcsMath.Atan2(y, x);
-    // tcs の C と VM と同じく、指数 2 は乗算
+    // As in tcs C and VM, an exponent of 2 is a multiplication
     public static float Pow(float x, float y) => y == 2.0f ? x * x : TcsMath.Pow(x, y);
     public static float Round(float x) => global::System.MathF.Round(x);
     public static float Round(float x, int digits) =>
@@ -64,7 +64,7 @@ public static class Math
     public static int Sign(float x) => global::System.MathF.Sign(x);
     public static float Tan(float x) => TcsMath.Tan(x);
     public static float Log(float x) => TcsMath.Log(x);
-    // MathF.Log(x, newBase) の特殊値と、底 2 / 10 の専用の関数 (tcs2c と同じ)
+    // Special values of MathF.Log(x, newBase), and dedicated functions for bases 2 / 10 (same as tcs2c)
     public static float Log(float x, float newBase)
     {
         if (newBase == 1.0f || (x != 1.0f && (newBase == 0.0f || newBase == float.PositiveInfinity)))
@@ -135,8 +135,8 @@ public static class List
 
 public static class Dict
 {
-    // tcs の Add は代入 (duplicate key は上書き)。
-    // parity のため Dictionary.Add の throw ではなく indexer 代入へ委譲する
+    // tcs Add is an assignment (a duplicate key is overwritten).
+    // For parity, delegates to indexer assignment rather than the throwing Dictionary.Add
     public static void Add<TKey, TValue>(
         global::System.Collections.Generic.Dictionary<TKey, TValue> dict,
         TKey key, TValue value)

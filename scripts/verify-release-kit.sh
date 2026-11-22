@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# release の一式 (scripts/package-release.sh の出力) だけを展開した所で、雛形のゲームを書いて動かす経路を確かめる。
-# リポジトリの tcs や cs-lib は使わない。
-# - lub export web で page にでき、shader の WGSL が入る
-# - dotnet を PATH から外しても、一式の tcs で check でき、一式の lub-gen が接続コードを作れる
-# - lider が雛形のゲームを開いて変換し、動かせる (絵を撮って終わる)。描画できる環境 (GPU か CPU の rasterizer、画面) は呼ぶ側が用意する
+# Checks the path of writing and running the template game in a place where only the release kit (the output of scripts/package-release.sh) is extracted.
+# The tcs and cs-lib of the repository are not used.
+# - lub export web can turn it into a page, and the WGSL of the shaders is included
+# - Even with dotnet removed from PATH, the tcs of the kit can check it, and the lub-gen of the kit can generate the glue code
+# - lider can open the template game, convert it and run it (it ends after capturing a picture). The caller provides an environment that can render (a GPU or CPU rasterizer, and a display)
 #
-# Usage: scripts/verify-release-kit.sh <lub-<target>.tar.gz か lub-<target>.zip>
+# Usage: scripts/verify-release-kit.sh <lub-<target>.tar.gz or lub-<target>.zip>
 set -euo pipefail
 
 archive="$(cd "$(dirname "${1:?archive}")" && pwd)/$(basename "$1")"
@@ -34,15 +34,15 @@ cd "$work/mygame"
 test -s out/index.html
 grep -qa '@fragment' out/cache/shader/*.lubshader
 
-# dotnet を PATH から外しても、一式の tcs で同じ雛形を check できること
+# Even with dotnet removed from PATH, the tcs of the kit can check the same template
 PATH=/usr/bin:/bin ../lub/bin/lub check Game.csproj
-# 一式の lub-gen も dotnet なしで stub を読み、雛形の接続コードを作れること (入力は tcs c と同じく、ゲームの後に cs-lib の実装)
+# The lub-gen of the kit can also read the stub without dotnet and generate the glue code of the template (as with tcs c, the inputs are the game followed by the cs-lib implementation)
 gen_args=()
 for f in Game.cs ../lub/cs-lib/lub/*.cs ../lub/cs-lib/lubx/*.cs; do gen_args+=(--source "$f"); done
 PATH=/usr/bin:/bin ../lub/bin/tcs/lub-gen tcs --stub ../lub/cs-lib/lub_stub.cs "${gen_args[@]}" -o binding.c
 test -s binding.c
 
-# lider が雛形を開き、player に組み込んだ tcs で変換して動かす。変換した module は .lub/Game.tcsb に書く (上の lub が書いた物は消しておく)
+# lider opens the template, converts it with the tcs built into the player, and runs it. The converted module is written to .lub/Game.tcsb (what the lub above wrote is deleted first)
 rm -rf .lub
 if [ "$windows" = 1 ]; then
   ../lub/bin/lider.cmd Game.csproj --capture lider.png --capture-frame 120

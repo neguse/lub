@@ -1,11 +1,11 @@
-// 画面のキーボードの絵: key を並べ、指している key と、効かせている修飾 key を光らせる。
+// On-screen keyboard image: lays out the keys and highlights the pointed key and the active modifier keys.
 using Lub;
 using Lubx;
 using LiderCore;
 
 public class OskView
 {
-    // key 1 つ (幅 1) の大きさ (px)
+    // Size of one key (width 1) (px)
     public const int UnitPx = 56;
     public const int RowPx = 50;
     public const int PxW = 15 * UnitPx;
@@ -18,7 +18,7 @@ public class OskView
         return osk.Rows.Count * RowPx;
     }
 
-    // texture を宣言し、見た目が変わっていれば描き直す (画面への pass の外で呼ぶ)
+    // Declares the texture and redraws if the appearance changed (call outside the pass to the display)
     public void Prepare(Osk osk, MonoText text)
     {
         if (gap.Lapsed())

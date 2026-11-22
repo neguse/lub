@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// int? → float? の暗黙変換 (比較の昇格、代入、引数) も整数を f32 に丸める。値なしは値なしのまま。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// Implicit int? → float? conversions (comparison promotion, assignment, arguments) also round the integer to f32. No value stays no value.
+// The expected values are the stdout of running the same program on CoreCLR
 public class NullableFloatConvertDifferentialTests
 {
     [CFact]

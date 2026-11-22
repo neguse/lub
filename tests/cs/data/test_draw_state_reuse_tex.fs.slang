@@ -1,4 +1,5 @@
-// uniform block を持たないので、test_draw_state_reuse_other.vs.slang と組むと uniform block が 1 つの shader になる。
+// It has no uniform block, so paired with test_draw_state_reuse_other.vs.slang
+// it makes a shader with 1 uniform block.
 LUB_TEXTURE2D(tex);
 
 struct FSIn {

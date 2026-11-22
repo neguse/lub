@@ -1,4 +1,5 @@
-/* host の関数と、host が VM の object を読み書きする API (tcsvm.h、doc/vm-design.md §8.5、§13)。 */
+/* Host functions and the API for the host to read and write VM objects
+ * (tcsvm.h, doc/vm-design.md §8.5, §13). */
 #include "tcsvm_internal.h"
 
 #include <stdio.h>
@@ -13,7 +14,8 @@ static char *dup(const char *s) {
   return p;
 }
 
-/* 種類の列の 1 項 (tcsvm.h): 前に & (out) を付けてよい i f b s o か S{型の名前}。読めたら次の位置、読めなければ NULL */
+/* One term of a kind string (tcsvm.h): i f b s o or S{type name}, optionally
+ * prefixed with & (out). Returns the next position if parsed, otherwise NULL */
 static const char *host_token(const char *p, char *kind, bool *byref,
                               const char **name, size_t *len) {
   *byref = *p == '&';
@@ -38,7 +40,8 @@ static const char *host_token(const char *p, char *kind, bool *byref,
 
 int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets,
              TvmHostFn fn, void *user) {
-  /* 読み込んだ後に足すと、module が持つ host の関数の pointer がずれる */
+  /* Adding after load would shift the host function pointers held by the module
+   */
   if (vm->nfuncs || !name || !params || !rets || !fn)
     return 0;
   char kind;
@@ -48,7 +51,7 @@ int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets,
   for (const char *p = params; *p;)
     if (!(p = host_token(p, &kind, &byref, &tname, &tlen)))
       return 0;
-  /* 戻り値は 1 つだけで、& は付かない (out は & の引数) */
+  /* There is only one return value, and it has no & (out is an & argument) */
   if (*rets) {
     const char *p = host_token(rets, &kind, &byref, &tname, &tlen);
     if (!p || byref || *p)
@@ -84,11 +87,13 @@ TvmStatus tvm_host_fault(TvmVm *vm, const char *message) {
   return tvm_fault_msg(vm, message);
 }
 
-/* ---- struct と out の写し (doc/vm-design.md §8.5) ----
-   register の葉を、型の表の layout (doc/object-model.md §5) の C の struct の塊に写す。
-   塊にする struct の葉は int / float / bool だけ (参照は塊の中で GC から見えない)。 */
+/* ---- Copying structs and out (doc/vm-design.md §8.5) ----
+   Copies register leaves into a block laid out as a C struct with the type
+   table layout (doc/object-model.md §5). The leaves of a struct made into a
+   block are only int / float / bool (references inside a block are invisible to
+   the GC). */
 
-/* S{name} の型: 型の表の struct で、葉に参照が無いもの */
+/* The type for S{name}: a struct in the type table with no reference leaves */
 static const TvmType *plan_struct(TvmVm *vm, const TvmIntrinsic *in,
                                   const char *name, size_t len) {
   for (uint32_t i = 0; i < vm->ntypes; i++) {
@@ -115,7 +120,9 @@ static const TvmType *plan_struct(TvmVm *vm, const TvmIntrinsic *in,
   return NULL;
 }
 
-/* *p の 1 項を解いて進める。葉の register は値なら *in_at、out なら *out_at から、struct の塊は *block から (どれも進める) */
+/* Parses one term at *p and advances. Leaf registers come from *in_at for
+ * values and from *out_at for out, and struct blocks from *block (all are
+ * advanced) */
 static bool plan_arg(TvmVm *vm, const TvmIntrinsic *in, const char **p,
                      TvmHostArg *x, uint32_t *in_at, uint32_t *out_at,
                      uint32_t *block) {
@@ -158,7 +165,8 @@ bool tvm_host_plans(TvmVm *vm) {
   }
   for (uint32_t i = 0; i < vm->nintrinsics; i++) {
     const TvmIntrinsic *in = vm->intrinsics[i];
-    /* 葉の種類の文字だけの関数は register をそのまま渡す (S と & の無い列) */
+    /* Functions with only leaf kind characters get the registers as is (strings
+     * without S and &) */
     if (!in->host || !(strchr(in->params, 'S') || strchr(in->params, '&') ||
                        strchr(in->rets, 'S')))
       continue;
@@ -179,7 +187,8 @@ bool tvm_host_plans(TvmVm *vm) {
     }
     vm->host_plans[i] = plan;
     plan->nargs = n;
-    /* 結果の register: 戻り値の葉、続けて out の葉 (C# の宣言の順)。値の引数の register は a から */
+    /* Result registers: the return value leaves, followed by the out leaves (in
+     * C# declaration order). Registers of value arguments start at a */
     uint32_t in_at = 0, out_at = 0, block = 0;
     const char *r = in->rets;
     if (*r && !plan_arg(vm, in, &r, &plan->ret, &out_at, &out_at, &block))
@@ -203,7 +212,7 @@ static void pack(const TvmType *st, const TvmSlot *r, char *block) {
     case TVM_K_F32:
       memcpy(q, &r[k].f, 4);
       break;
-    default: /* bool は 1 byte */
+    default: /* bool is 1 byte */
       *(uint8_t *)q = r[k].i != 0;
       break;
     }
@@ -230,8 +239,10 @@ static void unpack(const TvmType *st, const char *block, TvmSlot *r) {
 
 TvmStatus tvm_host_call(TvmVm *vm, const TvmIntrinsic *in,
                         const TvmHostPlan *plan, TvmSlot *ra, TvmSlot *rb) {
-  /* 呼び出しの間の領域は VM の stack の今の frame の後ろ (CALLR の SAVE が vm->top に置いた所)。
-     host が tvm_invoke で VM に戻ると、入れ子の frame はこの領域の後ろから積むので、入れ子の host の関数の塊とは重ならない。 */
+  /* The area used during the call is after the current frame on the VM stack
+     (where the SAVE of CALLR placed vm->top). When the host calls back into the
+     VM with tvm_invoke, nested frames are pushed after this area, so they do
+     not overlap the blocks of nested host functions. */
   TvmSlot *base = vm->top;
   if ((size_t)(vm->stack_end - base) < plan->nslots)
     return tvm_fault_msg(vm, "stack overflow");
@@ -242,13 +253,16 @@ TvmStatus tvm_host_call(TvmVm *vm, const TvmIntrinsic *in,
     const TvmHostArg *x = &plan->args[k];
     TvmSlot *r = (x->byref ? rb : ra) + x->reg;
     if (x->st) {
-      /* out の struct は 0 の塊、値の struct は葉を写した塊 */
+      /* An out struct gets a zero block, a value struct gets a block with its
+       * leaves copied */
       if (!x->byref)
         pack(x->st, r, blocks + x->block);
       args[k].p = blocks + x->block;
     } else if (x->byref) {
-      /* out の scalar は結果の register そのもの (int32_t / float / bool / 参照は slot の先頭)。
-         参照は frame の register なので、host が書いた後に VM に戻っても GC の root になる。 */
+      /* An out scalar is the result register itself (int32_t / float / bool / a
+         reference at the start of the slot). References are frame registers, so
+         they stay GC roots even if the host calls back into the VM after
+         writing them. */
       r->u = 0;
       args[k].p = r;
     } else {
@@ -265,7 +279,8 @@ TvmStatus tvm_host_call(TvmVm *vm, const TvmIntrinsic *in,
   vm->top = base;
   if (st != TVM_OK)
     return st;
-  /* 塊を結果の register に戻す。bool の out は 0 / 1 に揃える */
+  /* Copies the blocks back to the result registers. bool outs are normalized to
+   * 0 / 1 */
   if (plan->ret.st)
     unpack(plan->ret.st, blocks + plan->ret.block, rb);
   for (uint32_t k = 0; k < plan->nargs; k++) {
@@ -287,9 +302,10 @@ static const TvmType *find_type(TvmVm *vm, const char *name) {
   return NULL;
 }
 
-/* ---- C の module の型 (doc/object-model.md §10.6) ---- */
+/* ---- Types of C modules (doc/object-model.md §10.6) ---- */
 
-/* VM の型の名前と C の module の型の名前は、namespace の区切り ('.' と '_') の違いを同じと見る */
+/* VM type names and C module type names are treated as equal when they differ
+ * only in the namespace separator ('.' and '_') */
 static bool same_type_name(const char *a, const char *b) {
   for (; *a && *b; a++, b++)
     if (*a != *b && !((*a == '.' || *a == '_') && (*b == '.' || *b == '_')))
@@ -324,7 +340,7 @@ int tvm_host_iface(TvmVm *vm, const char *name, TvmIfaceCheck check) {
 
 bool tvm_bind_host_types(TvmVm *vm) {
   if (!vm->type_ids)
-    return true; /* 型はまだ読んでいない (読み込みが当てる) */
+    return true; /* The types are not loaded yet (the load applies them) */
   for (uint32_t i = 0; i < vm->ntypes; i++) {
     const TvmType *t = &vm->types[i];
     vm->type_ids[i] = TVM_TYPE_ID_VM + i;
@@ -376,7 +392,7 @@ void *tvm_object_new(TvmVm *vm, const char *type) {
 
 const char *tvm_object_type(const void *object) {
   if (!object || GC_HEADER(object)->kind != TVM_KIND_OBJECT)
-    return NULL; /* string と C の module の object */
+    return NULL; /* string and C module objects */
   return TVM_TYPE(((const TvmObject *)object))->name;
 }
 
@@ -386,8 +402,10 @@ const TvmTypeInfo *tvm_type(TvmVm *vm, const char *name) {
 
 uint32_t tvm_types_version(TvmVm *vm) { return vm->types_version; }
 
-/* 型の表の版は、VM をまたいで同じ値を二度配らない。
-   host は版で型の cache を決めるので、VM を作り直したとき前の VM と同じ版になると、捨てた VM の型を使い続ける */
+/* The type table version never hands out the same value twice across VMs.
+   The host decides its type cache by the version, so if a recreated VM got the
+   same version as the previous VM, the host would keep using the types of the
+   discarded VM */
 uint32_t tvm_next_types_version(void) {
   static uint32_t last;
   return ++last;
@@ -441,7 +459,8 @@ bool tvm_list_resize(TvmVm *vm, void *list, int32_t count) {
     memset(l->data + (size_t)l->count * es, 0, (size_t)(count - l->count) * es);
   } else if (count < l->count) {
     memset(l->data + (size_t)count * es, 0,
-           (size_t)(l->count - count) * es); /* 外した参照を GC に見せない */
+           (size_t)(l->count - count) *
+               es); /* Hides the removed references from the GC */
   }
   l->count = count;
   return true;
@@ -537,7 +556,8 @@ TvmStatus tvm_invoke(TvmVm *vm, void *closure, const TvmSlot *args,
                   c->proto->name, c->proto->nparams, c->proto->nret);
     return TVM_LOAD_ERROR;
   }
-  /* 外 (host の frame) から呼ぶときは tvm_call と同じく回収を止める。VM の呼び出しの中なら入れ子 */
+  /* When called from outside (a host frame), stops collection like tvm_call.
+   * Inside a VM call it is nested */
   bool outer = vm->ftop == vm->frames && !vm->depth;
   if (outer) {
     vm->faulting = false;
@@ -567,7 +587,8 @@ TvmStatus tvm_invoke_method(TvmVm *vm, void *object, const char *method,
       f = g;
   }
   if (!f) {
-    /* --ref の module の interface は VM の itable に無いので、型の関数を名前で引く */
+    /* Interfaces of --ref modules are not in the VM itable, so look up the
+     * type's function by name */
     char name[512];
     snprintf(name, sizeof name, "%s.%s", t->name, method);
     int32_t i = tvm_find(vm, name);
@@ -640,7 +661,7 @@ TvmStatus tvm_call_delegate(TvmVm *vm, const TvmClosure *c, const char *sig,
                             const TvmSlot *args, TvmSlot *rets) {
   if (!vm->heap || GC_HEADER(c)->kind == TVM_KIND_OBJECT)
     return tvm_call_closure(vm, c, args, rets);
-  /* C の module の delegate (X-4) */
+  /* C module delegate (X-4) */
   TvmDelegateFn inv = delegate_by_sig(vm, sig);
   if (!inv) {
     tvm_set_error(vm, "fault: no invoke for a C delegate of type %s", sig);

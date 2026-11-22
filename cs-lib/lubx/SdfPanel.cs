@@ -1,30 +1,30 @@
-// 実装ライブラリ lubx の SdfPanel。
-// widget は typed な SdfNode の Params (op ごとの数値列) を in-place に書き換える。
-// フィールド列挙はコード内の固定順なので widget 並びも固定。
+// SdfPanel of the implementation library lubx.
+// Widgets rewrite the Params (per-op number list) of the typed SdfNode in place.
+// Fields are enumerated in a fixed order in the code, so the widget order is fixed too.
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
-/// <summary>SDF ツリーから ImGui のチューニング UI を自動生成する。
-/// widget はノードの Params を in-place に書き換え、どれかが変わったら true を返す (呼び側はそれを remesh のトリガにする)。
-/// hot reload するとコードからツリーが再構築されるので、パネル編集はリロードまでの一時オーバーレイ。
+/// <summary>Automatically generates an ImGui tuning UI from an SDF tree.
+/// Widgets rewrite the node Params in place and return true if any of them changed (the caller uses that to trigger a remesh).
+/// Hot reload rebuilds the tree from code, so panel edits are a temporary overlay until the reload.
 /// <code>
 /// if (SdfPanel.Draw(tree))
 ///     meshDirty = true;
 /// </code></summary>
 public static class SdfPanel
 {
-    /// <summary>ルートから widget 群を描く。
-    /// 編集があれば true。
+    /// <summary>Draws the widgets from the root.
+    /// true if anything was edited.
     /// </summary>
     public static bool Draw(SdfNode root)
     {
         return Node(root, "/");
     }
 
-    // ImGui の ID はツリー内のパスから作る (##/a/c 等)。
-    // 訪問順カウンタだとノードを畳んだとき後続の ID がズレて開閉状態が飛ぶ。
+    // ImGui IDs are built from the path in the tree (##/a/c etc.).
+    // With a visit-order counter, collapsing a node would shift the IDs after it and lose the open/closed state.
     private static bool Num(SdfNode n, int index, string field, float speed,
         string path)
     {
@@ -224,7 +224,7 @@ public static class SdfPanel
                     path);
                 break;
             default:
-                // rotate (quat は直接いじらない) / mirror_x / union / ...
+                // rotate (the quat is not edited directly) / mirror_x / union / ...
                 break;
         }
         return changed;

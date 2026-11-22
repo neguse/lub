@@ -1,6 +1,6 @@
-// focus のある窓の cursor の画面の位置 (Lider.CaretViewport。LIDER_CARET_LOG=1 なら標準出力にも書く)。
-//   - 画面の中にあり、高さは行の高さほど
-//   - 1 行下へ動かすと、同じ x で、行の高さだけ下へ動く
+// Display position of the cursor in the focused panel (Lider.CaretViewport; also written to standard output if LIDER_CARET_LOG=1).
+//   - It is inside the display, and its height is about the line height
+//   - Moving it down 1 line moves it down by the line height, at the same x
 using System;
 using Lub;
 using LiderCore;
@@ -54,7 +54,7 @@ public static class TestCaret
             w.FocusOn(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!);
             w.Focus!.MoveTo(3, 4);
         }
-        // 窓が開いて止まるまで (2 秒) 待つ
+        // Wait until the panel opens and stops (2 seconds)
         if (stage == 0 && frames > 2 && waited > 2)
         {
             stage = 1;

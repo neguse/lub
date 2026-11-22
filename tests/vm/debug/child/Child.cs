@@ -35,7 +35,7 @@ public static class Child
         P.Hp = doubled;
     }
 
-    // native の値 (Bindings は型の印の無い block を field に持つ) も、検査の口で覗ける
+    // Native values (Bindings has a block without type markers as a field) can also be inspected through the inspection interface
     public static Bindings B = MakeBindings();
 
     static Bindings MakeBindings()

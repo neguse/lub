@@ -1,5 +1,7 @@
-// phys3d の core が使う内部の型。
-// 公開 API (include/lub/lub_api.h) は生成物なので core はその desc / view の struct に依存させず、詰め替えは physics_box3d.c の末尾で行う。
+// Internal types used by the phys3d core.
+// The public API (include/lub/lub_api.h) is generated code, so the core does
+// not depend on its desc / view structs; the repacking is done at the end of
+// physics_box3d.c.
 #pragma once
 #include "lub/lub_api.h"
 #include <stdbool.h>
@@ -9,33 +11,33 @@ enum { P3_PROXY_SPHERE = 1, P3_PROXY_BOX = 2, P3_PROXY_CAPSULE = 3 };
 enum { P3_COMPOUND_SPHERE = 1, P3_COMPOUND_CAPSULE = 2, P3_COMPOUND_BOX = 3 };
 
 // ---------------------------------------------------------------- phys3d
-// Box3D の即時モード API。
-// 宣言 / prune / handle / callback の規則は phys2d と同じ。
-// 位置は float (Box3D の倍精度位置は面に出さない)。
-// 回転は正規化した四元数。
+// Immediate-mode API for Box3D.
+// The rules for declaration / prune / handle / callback are the same as phys2d.
+// Positions are float (Box3D's double-precision positions are not exposed in
+// the API surface). Rotations are normalized quaternions.
 
 typedef struct P3Filter {
-  uint64_t category_bits; // 既定 1
-  uint64_t mask_bits;     // 既定 全 bit
+  uint64_t category_bits; // Default 1
+  uint64_t mask_bits;     // Default all bits
   int32_t group_index;
 } P3Filter;
 
 typedef struct P3ShapePart {
-  LubHandle shape; // 0 = 無し
+  LubHandle shape; // 0 = none
   LubHandle body;
   LubStr body_key;
   LubStr shape_key;
   LubStr tag;
   LubStr material_name;
   int32_t material_id;
-  int32_t kind; // LubPhys3dShapeKind。0 = 不明
+  int32_t kind; // LubPhys3dShapeKind. 0 = unknown
   bool valid;
   bool has_material;
   bool has_filter;
   P3Filter filter;
 } P3ShapePart;
 
-// Box3D の pre-solve は manifold を持たず、点と法線が 1 つ。
+// Box3D's pre-solve has no manifold, only one point and one normal.
 typedef struct P3PreSolve {
   P3ShapePart a, b;
   float x, y, z;
@@ -44,7 +46,8 @@ typedef struct P3PreSolve {
 
 typedef struct P3Callbacks {
   void *user;
-  void (*release)(void *user); // core が callback を手放すとき (NULL 可)
+  void (*release)(
+      void *user); // When the core releases the callbacks (may be NULL)
   bool (*filter)(void *user, const P3ShapePart *a, const P3ShapePart *b);
   bool (*pre_solve)(void *user, const P3PreSolve *contact);
   float (*friction)(void *user, float friction_a, int32_t material_a,
@@ -56,8 +59,8 @@ typedef struct P3Callbacks {
 typedef struct P3WorldDesc {
   bool has_version;
   int32_t version;
-  LubVec3d gravity; // 既定 (0, -9.8, 0)
-  float fixed_dt;   // 既定 1/60
+  LubVec3d gravity; // Default (0, -9.8, 0)
+  float fixed_dt;   // Default 1/60
   int32_t substeps;
   int32_t max_steps;
   bool sleep;
@@ -77,16 +80,16 @@ typedef struct P3BodyDesc {
   bool has_enabled, enabled;
   bool has_awake, awake;
   bool has_sleep, sleep;
-  float gravity_scale; // 既定 1
+  float gravity_scale; // Default 1
   float linear_damping, angular_damping;
   bool has_sleep_threshold;
   float sleep_threshold;
-  // initial (再生成のときだけ使う)
+  // initial (used only when recreating)
   LubVec3d position;
-  LubQuat3d rotation; // 既定 identity
+  LubQuat3d rotation; // Default identity
   LubVec3d linear_velocity;
   LubVec3d angular_velocity;
-  bool initial_awake; // 既定 true
+  bool initial_awake; // Default true
 } P3BodyDesc;
 
 typedef struct P3ShapeDesc {
@@ -94,7 +97,7 @@ typedef struct P3ShapeDesc {
   int32_t version;
   bool has_density;
   float density;
-  float friction; // 既定 0.6
+  float friction; // Default 0.6
   float restitution;
   int32_t material_id;
   LubStr material_name;
@@ -126,21 +129,21 @@ typedef struct P3CapsuleDesc {
 typedef struct P3CylinderDesc {
   P3ShapeDesc shape;
   float height, radius;
-  int32_t sides;  // 3..32、既定 16
-  float y_offset; // 既定 -height / 2 (胴を原点中心に)
+  int32_t sides;  // 3..32, default 16
+  float y_offset; // Default -height / 2 (centers the cylinder on the origin)
 } P3CylinderDesc;
 
 typedef struct P3ConeDesc {
   P3ShapeDesc shape;
   float height, radius1, radius2;
-  int32_t slices; // 4..32、既定 16
+  int32_t slices; // 4..32, default 16
 } P3ConeDesc;
 
 typedef struct P3HullDesc {
-  P3ShapeDesc shape;   // version 必須
-  const float *points; // x, y, z の組。4 点以上
+  P3ShapeDesc shape;   // version required
+  const float *points; // x, y, z triples. 4 or more points
   int32_t point_count;
-  int32_t max_vertices; // 既定 255
+  int32_t max_vertices; // Default 255
 } P3HullDesc;
 
 typedef struct P3SurfaceMaterial {
@@ -149,36 +152,36 @@ typedef struct P3SurfaceMaterial {
 } P3SurfaceMaterial;
 
 typedef struct P3MeshDesc {
-  P3ShapeDesc shape;      // version 必須
-  const float *positions; // x, y, z の組
+  P3ShapeDesc shape;      // version required
+  const float *positions; // x, y, z triples
   int32_t vertex_count;
-  const int32_t *indices; // 0 始まり、3 の倍数
+  const int32_t *indices; // 0-based, a multiple of 3
   int32_t index_count;
-  LubVec3d scale; // 既定 (1, 1, 1)
+  LubVec3d scale; // Default (1, 1, 1)
   bool weld_vertices;
   float weld_tolerance;
   bool use_median_split;
-  bool identify_edges;                // 既定 true
-  const P3SurfaceMaterial *materials; // NULL = 無し。1..255
+  bool identify_edges;                // Default true
+  const P3SurfaceMaterial *materials; // NULL = none. 1..255
   int32_t material_count;
-  const int32_t *material_indices; // NULL = 無し。三角形ごと
+  const int32_t *material_indices; // NULL = none. Per triangle
   int32_t material_index_count;
 } P3MeshDesc;
 
 typedef struct P3HeightFieldDesc {
-  P3ShapeDesc shape;        // version 必須
+  P3ShapeDesc shape;        // version required
   int32_t x_count, z_count; // >= 2
   const float *heights;     // x_count * z_count
-  LubVec3d scale;           // 既定 (cell_width, 1, cell_width)
+  LubVec3d scale;           // Default (cell_width, 1, cell_width)
   bool has_min_height, has_max_height;
-  float min_height, max_height; // 無ければ heights から
+  float min_height, max_height; // If missing, taken from heights
   bool clockwise_winding;
 } P3HeightFieldDesc;
 
 typedef struct P3CompoundChild {
   int32_t kind; // P3_COMPOUND_*
   LubVec3d position;
-  LubQuat3d rotation; // 既定 identity
+  LubQuat3d rotation; // Default identity
   P3SurfaceMaterial material;
   float r;          // sphere / capsule
   LubVec3d center;  // sphere
@@ -187,7 +190,7 @@ typedef struct P3CompoundChild {
 } P3CompoundChild;
 
 typedef struct P3CompoundDesc {
-  P3ShapeDesc shape; // version 必須。static body 限定、sensor 不可
+  P3ShapeDesc shape; // version required. static bodies only, no sensors
   const P3CompoundChild *children;
   int32_t child_count;
 } P3CompoundDesc;
@@ -197,8 +200,8 @@ typedef struct P3JointDesc {
   int32_t version;
   int32_t type; // LubPhys3dJointType
   LubHandle body_a, body_b;
-  // 世界座標の axis / anchor から local frame を作る。
-  // frame_a / frame_b を明示すればそちらが勝つ。
+  // Build the local frames from the world-space axis / anchor.
+  // If frame_a / frame_b are given explicitly, they win.
   bool has_axis;
   LubVec3d axis;
   bool has_anchor_a, has_anchor_b;
@@ -206,13 +209,13 @@ typedef struct P3JointDesc {
   bool has_frame_a, has_frame_b;
   LubVec3d frame_a_position, frame_b_position;
   LubQuat3d frame_a_rotation, frame_b_rotation;
-  float force_threshold, torque_threshold; // 既定 FLT_MAX
+  float force_threshold, torque_threshold; // Default FLT_MAX
   bool has_constraint_tuning;
   float constraint_hertz, constraint_damping_ratio;
   bool collide_connected;
-  float length;     // 既定 1
-  float min_length; // 既定 0
-  float max_length; // 既定 FLT_MAX
+  float length;     // Default 1
+  float min_length; // Default 0
+  float max_length; // Default FLT_MAX
   float lower, upper;
   float hertz, damping_ratio;
   float linear_hertz, angular_hertz;
@@ -220,11 +223,11 @@ typedef struct P3JointDesc {
   float max_force, max_torque, motor_speed;
   float target_angle, target_translation;
   bool enable_spring, enable_limit, enable_motor;
-  float lower_spring_force, upper_spring_force; // 既定 -FLT_MAX / FLT_MAX
+  float lower_spring_force, upper_spring_force; // Default -FLT_MAX / FLT_MAX
   LubVec3d linear_velocity, angular_velocity;   // motor
   float max_velocity_force, max_velocity_torque;
   float max_spring_force, max_spring_torque;
-  LubQuat3d target_rotation; // spherical。既定 identity
+  LubQuat3d target_rotation; // spherical. Default identity
   bool enable_cone_limit;
   float cone_angle;
   bool enable_twist_limit;
@@ -282,7 +285,7 @@ typedef struct P3MassData {
   float mass;
   LubVec3d center; // world
   LubVec3d local_center;
-  // 慣性テンソル (local center まわり、対称) の成分
+  // Components of the inertia tensor (about the local center, symmetric)
   float xx, yy, zz, xy, xz, yz;
 } P3MassData;
 
@@ -300,7 +303,7 @@ typedef struct P3ShapeInfo {
 typedef struct P3JointView {
   LubHandle joint;
   LubStr key;
-  int32_t type; // LubPhys3dJointType。0 = 不明
+  int32_t type; // LubPhys3dJointType. 0 = unknown
   LubStr a, b;
   bool valid;
 } P3JointView;
@@ -336,7 +339,7 @@ typedef struct P3BodyEvent {
 
 typedef struct P3JointEvent {
   LubStr joint;
-  int32_t type; // LubPhys3dJointType。0 = 不明
+  int32_t type; // LubPhys3dJointType. 0 = unknown
   LubStr a, b;
   bool valid;
 } P3JointEvent;
@@ -353,17 +356,17 @@ typedef struct P3ContactData {
 
 typedef struct P3Ray {
   LubVec3d origin;
-  LubVec3d translation; // max_fraction を掛けた後の値
+  LubVec3d translation; // Value after multiplying by max_fraction
 } P3Ray;
 
 typedef struct P3RayHit {
-  P3ShapePart shape; // world query のとき
+  P3ShapePart shape; // For world queries
   LubVec3d point, normal;
   float fraction;
-  int32_t iterations; // shape raycast のとき
+  int32_t iterations; // For shape raycasts
   int32_t hit_material_id;
   int32_t triangle_index, child_index;
-  int32_t node_visits, leaf_visits; // raycast_closest のとき
+  int32_t node_visits, leaf_visits; // For raycast_closest
 } P3RayHit;
 
 typedef struct P3TreeStats {
@@ -377,7 +380,7 @@ typedef struct P3QueryFilter {
 
 typedef struct P3ShapeProxy {
   int32_t kind;    // P3_PROXY_*
-  float r;         // sphere / capsule / box の丸め
+  float r;         // Rounding for sphere / capsule / box
   LubVec3d center; // sphere / box
   float hx, hy, hz;
   bool has_rotation;
@@ -437,7 +440,7 @@ typedef struct P3SetTarget {
   LubVec3d position;
   bool has_rotation;
   LubQuat3d rotation;
-  float time_step; // <= 0 で world の fixed_dt
+  float time_step; // <= 0 uses the world's fixed_dt
   bool wake;
 } P3SetTarget;
 
@@ -455,10 +458,10 @@ typedef struct P3JointMotor {
 typedef struct P3JointLimit {
   bool enabled;
   float lower, upper;
-  float min_length, max_length; // distance。max の既定 FLT_MAX
+  float min_length, max_length; // distance. max defaults to FLT_MAX
   bool has_cone_angle;          // spherical
   float cone_angle;
-  bool has_twist; // spherical: lower / upper を twist に使う
+  bool has_twist; // spherical: use lower / upper for twist
 } P3JointLimit;
 
 typedef struct P3JointSpring {

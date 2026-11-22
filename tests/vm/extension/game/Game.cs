@@ -1,4 +1,4 @@
-// tcs VM の player の native の拡張の検査: Ext.ref.cs の関数を、隣の Ext.so が host の関数として登録する。
+// Checks native extensions of the tcs VM player: the neighboring Ext.so registers the functions of Ext.ref.cs as host functions.
 using System;
 using Lub;
 

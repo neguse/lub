@@ -23,7 +23,8 @@ typedef struct ProfileState {
   bool enabled;
   bool recording;
   bool report_frame_done;
-  bool reported; // FRAME / EVERY の report を一度でも出したか
+  bool
+      reported; // Whether a FRAME / EVERY report has been emitted at least once
   uint64_t start_frame;
   uint64_t report_frame;
   uint64_t report_every;
@@ -45,6 +46,7 @@ void profile_frame_end(ProfileState *p, uint64_t frame_index);
 void profile_begin_scope(ProfileState *p, const char *name);
 void profile_end_scope(ProfileState *p, const char *name);
 void profile_report(ProfileState *p, const char *label);
-// 終了時に呼ぶ。
-// FRAME / EVERY の report が一度も出ていなければ label `exit` (LUB_PROFILE_LABEL があればそれ) で出す。
+// Call at exit.
+// If no FRAME / EVERY report has ever been emitted, emits one with label `exit`
+// (or LUB_PROFILE_LABEL if set).
 void profile_report_at_exit(ProfileState *p);

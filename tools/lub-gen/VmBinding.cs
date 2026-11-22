@@ -3,13 +3,13 @@ using TcsSelf;
 
 namespace LubGen;
 
-// tcs VM (tcs/tcsvm) の host の関数を作る: lub の C API を、VM が呼ぶ host の関数 (tvm_host) として登録する C。
-// 登録するのは stub の全部の関数 (player はゲームを選ばない)。--source を渡したときだけ、そのゲームが使う関数に絞る (テスト用)。
-// VM の object の layout は host の data class も tcs2c と同じ C の struct の規則 (tcs の doc/object-model.md §3、§5) なので、
-// record は C の struct の写し (VmLub_<型>) で読み書きする。読み込みと reload の後に vm_lub_verify が offset を VM の型の表と比べる。
-// 引数は C# の順に 1 つずつ渡り (tcs の vm-design §8.5)、out (&) は VM が値を受ける場所の pointer、rets は戻り値だけ。
-// struct の record は VM の中でも C API の struct と同じ layout の値なので、S{Lub_<型>} の塊を C API の struct としてそのまま読み書きする。
-// 変換の規則は tcs2c の接続コード (TcsBinding) と同じ。tcs2c が process を止める誤り (tcs_fault) は、その host の関数の fault にする。
+// Generates the tcs VM (tcs/tcsvm) host functions: C that registers the lub C API as host functions (tvm_host) the VM calls.
+// Registers every function in the stub (the player does not pick a game). Only when --source is given, narrows them to the functions that game uses (for tests).
+// The VM object layout, including host data classes, follows the same C struct rules as tcs2c (tcs doc/object-model.md §3, §5), so
+// records are read and written through C struct mirrors (VmLub_<type>). After loading and after reload, vm_lub_verify compares the offsets against the VM type table.
+// Arguments are passed one by one in C# order (tcs vm-design §8.5), out (&) is a pointer to where the VM receives the value, and rets holds only the return value.
+// Struct records are values with the same layout as the C API struct even inside the VM, so the S{Lub_<type>} block is read and written directly as the C API struct.
+// The conversion rules are the same as the tcs2c glue code (TcsBinding). Errors where tcs2c stops the process (tcs_fault) become a fault of that host function.
 public static class VmBinding
 {
     public static string Generate(ApiModel model, ExportResult? game)
@@ -28,9 +28,9 @@ internal sealed class VmBindingGen
     private HashSet<string> outputs = new HashSet<string>();
     private HashSet<string> inputLists = new HashSet<string>();
     private HashSet<string> outputLists = new HashSet<string>();
-    // VM の型の名前 → C の cache 変数 (vm_lub_type で引く)
+    // VM type name → C cache variable (looked up with vm_lub_type)
     private List<string> typeNames = new List<string>();
-    // 登録する host の関数: IL の名前、引数の葉、戻り値の葉、C の関数
+    // Host functions to register: IL name, argument leaves, return leaves, C function
     private List<string> registrations = new List<string>();
 
     public VmBindingGen(ApiModel model, ExportResult? game)
@@ -62,7 +62,7 @@ internal sealed class VmBindingGen
         return "VmLubOptI32";
     }
 
-    // VM の値の C の型 (field と引数)
+    // C type of a VM value (fields and arguments)
     private static string VmType(TypeRef type)
     {
         switch (type.Kind)
@@ -75,7 +75,7 @@ internal sealed class VmBindingGen
             case LubTypeKind.Enum:
                 return type.Nullable ? Opt(type) : Scalar(type);
             case LubTypeKind.Struct:
-                // struct の record は VM の中でも C の layout の値 (C API の struct と同じ並び。vm_lub_verify が確かめる)
+                // Struct records are values in C layout even inside the VM (same order as the C API struct; vm_lub_verify checks it)
                 return type.Nullable ? Opt(type) : CHeader.TypeName(type.Name);
             case LubTypeKind.Handle:
             case LubTypeKind.View:
@@ -87,7 +87,7 @@ internal sealed class VmBindingGen
         return "void *";
     }
 
-    // VM の型の表の名前 (tcs の VType.Display)
+    // Name in the VM type table (tcs VType.Display)
     private static string VmTypeName(TypeRef type)
     {
         switch (type.Kind)
@@ -116,7 +116,7 @@ internal sealed class VmBindingGen
         return "";
     }
 
-    // 型の cache 変数 (VM の型の名前ごとに 1 つ)
+    // Type cache variables (one per VM type name)
     private string TypeVar(string vmName)
     {
         int at = typeNames.IndexOf(vmName);
@@ -188,7 +188,7 @@ internal sealed class VmBindingGen
         return false;
     }
 
-    // 呼ぶ関数 (ゲームを渡したときはそのゲームが使うものだけ)
+    // Functions to call (when a game is given, only those that game uses)
     private bool Wanted(string hostName)
     {
         if (game == null) return true;
@@ -209,7 +209,7 @@ internal sealed class VmBindingGen
         return false;
     }
 
-    // 外部の型の instance method の IL の名前 ("lub.bytes.get")
+    // IL name of an instance method of a foreign type ("lub.bytes.get")
     private static string MethodHostName(ApiType type, ApiFunction method) =>
         ApiModelLoader.RootNamespace.ToLower() + "." + type.Name.ToLower() + "." + method.HostName;
 
@@ -232,7 +232,7 @@ internal sealed class VmBindingGen
             foreach (var param in function.Params) Record(param.Type, param.IsOut);
             Record(function.Return, true);
         }
-        // OnEvent の引数は host が LubEventData から作る
+        // The OnEvent argument is built by the host from LubEventData
         Record(new TypeRef(LubTypeKind.Record, "EventData", false, null, null, null), true);
         Line("/* Generated from lub_stub.cs by lub-gen vm (the tcs VM host functions). Do not edit. */");
         Line("#include <lub/lub_api.h>");
@@ -309,13 +309,13 @@ internal sealed class VmBindingGen
             }
         }
         output = head;
-        // 型の cache は本文が使う名前が決まってから置く
+        // Type caches are emitted after the names the body uses are known
         Line("static const char *const vm_lub_type_names[" + (typeNames.Count == 0 ? 1 : typeNames.Count) + "] = {");
         foreach (var n in typeNames) Line("  \"" + n + "\",");
         if (typeNames.Count == 0) Line("  \"\",");
         Line("};");
         output.Write(body.ToString());
-        Line("/* 状態を作る (0 で埋めた VmLub に 1 回)。失敗したら 0 */");
+        Line("/* Sets up the state (once, on a zero-filled VmLub). Returns 0 on failure */");
         Line("static int vm_lub_init(VmLub *s, LubContext *ctx) {");
         Line("  size_t n = sizeof(vm_lub_type_names) / sizeof(vm_lub_type_names[0]);");
         Line("  s->ctx = ctx;");
@@ -323,13 +323,13 @@ internal sealed class VmBindingGen
         Line("  if (!s->types) return 0;");
         Line("  for (size_t i = 0; i < n; i++) s->types[i].name = vm_lub_type_names[i];");
         Line("  return 1;\n}");
-        Line("/* EventData を VM の object にする (src/vm_player.c の OnEvent) */");
+        Line("/* Turns EventData into a VM object (OnEvent in src/vm_player.c) */");
         Line("static void *vm_lub_event(VmLub *s, const LubEventData *e) { return vm_lub_from_EventData(s, e); }");
         Line("static const struct { const char *name, *params, *rets; TvmHostFn fn; } vm_lub_hosts[] = {");
         foreach (var r in registrations) Line("  " + r + ",");
         Line("  {NULL, NULL, NULL, NULL},");
         Line("};");
-        Line("/* host の関数を全部登録する (tvm_load の前)。s->vm は呼び出し側が置く。失敗したら 0 */");
+        Line("/* Registers all host functions (before tvm_load). The caller sets s->vm. Returns 0 on failure */");
         Line("static int vm_lub_register(VmLub *s, TvmVm *vm) {");
         Line("  for (int i = 0; vm_lub_hosts[i].name; i++)");
         Line("    if (!tvm_host(vm, vm_lub_hosts[i].name, vm_lub_hosts[i].params, vm_lub_hosts[i].rets, vm_lub_hosts[i].fn, s)) return 0;");
@@ -337,7 +337,7 @@ internal sealed class VmBindingGen
         return output.ToString();
     }
 
-    // [LubNoC] の keyed の作成 (`Readback Gfx.Readback(string key)`): C API は無く、key を host の表に置いた object を返す
+    // Keyed creation for [LubNoC] (`Readback Gfx.Readback(string key)`): there is no C API; returns an object placed in the host table under key
     private static bool IsKeyedMaker(ApiFunction f) =>
         f.NoC && f.Return.Kind == LubTypeKind.Keyed && f.Params.Count == 1 && f.Params[0].Type.Kind == LubTypeKind.String;
 
@@ -354,7 +354,7 @@ internal sealed class VmBindingGen
         registrations.Add("{\"" + ns.HostPath + "." + f.HostName + "\", \"s\", \"o\", " + fn + "}");
     }
 
-    // ---- C の struct の写し ----
+    // ---- C struct mirrors ----
 
     private static bool IsObjectType(ApiType t) =>
         t.Kind == "record" || t.Kind == "handle" || t.Kind == "view" || t.Kind == "native" || t.Kind == "keyed";
@@ -366,7 +366,7 @@ internal sealed class VmBindingGen
             if (IsObjectType(t)) Line("typedef struct " + Struct(t.Name) + " " + Struct(t.Name) + ";");
         }
         var checks = new List<string>();
-        // struct の record は VM の中でも C API の struct と同じ layout の値。T? は { bool has; T v; }
+        // Struct records are values with the same layout as the C API struct even inside the VM. T? is { bool has; T v; }
         foreach (var t in model.Types)
         {
             if (t.Kind != "struct") continue;
@@ -378,7 +378,7 @@ internal sealed class VmBindingGen
         foreach (var t in model.Types)
         {
             if (!IsObjectType(t)) continue;
-            // payload は type_id、8 byte に揃えた host_value、field (基底から)
+            // The payload is type_id, host_value aligned to 8 bytes, then the fields (starting from the base)
             Line("struct " + Struct(t.Name) + " {");
             Line("  uint32_t type_id;");
             Line("  uint64_t host_value;");
@@ -387,7 +387,7 @@ internal sealed class VmBindingGen
                 Line("  " + VmType(fp.Field.Type) + " f_" + fp.Field.HostName + ";");
                 checks.Add("{\"" + Il(t.Name) + "\", \"" + fp.Field.HostName + "\", offsetof(" + Struct(t.Name) + ", f_" + fp.Field.HostName + ")}");
             }
-            // stub の private field (Bindings の blob)
+            // Private fields of the stub (Bindings blob)
             if (t.Kind == "native")
             {
                 Line("  void *f_blob;");
@@ -395,12 +395,12 @@ internal sealed class VmBindingGen
             }
             Line("};");
         }
-        // null になりうる scalar の塊 (引数と戻り値の S{int?}、record の field)
+        // Block of nullable scalars (S{int?} for arguments and return values, record fields)
         OptChecks("int", "VmLubOptI32", checks);
         OptChecks("float", "VmLubOptF32", checks);
         OptChecks("bool", "VmLubOptBool", checks);
         Line("_Static_assert(offsetof(VmLub_Bindings, host_value) == 8, \"the VM puts host_value 8 bytes into the payload\");");
-        Line("/* module が持つ型だけ、VM の型の表の offset と C の struct が同じことを確かめる (読み込みと reload の後) */");
+        Line("/* For the types the module has, checks that the offsets in the VM type table match the C structs (after loading and reload) */");
         Line("static const struct { const char *type, *field; size_t offset; } vm_lub_layout[] = {");
         foreach (var c in checks) Line("  " + c + ",");
         Line("  {NULL, NULL, 0},");
@@ -418,14 +418,14 @@ internal sealed class VmBindingGen
         Line("  return 1;\n}");
     }
 
-    // VM の T? ({ bool HasValue; T Value; }) と C の写しの field
+    // VM T? ({ bool HasValue; T Value; }) and the field of the C mirror
     private static void OptChecks(string scalar, string cType, List<string> checks)
     {
         checks.Add("{\"" + scalar + "?\", \"HasValue\", offsetof(" + cType + ", has)}");
         checks.Add("{\"" + scalar + "?\", \"Value\", offsetof(" + cType + ", v)}");
     }
 
-    // ---- 値の変換 ----
+    // ---- Value conversion ----
 
     private string From(TypeRef type, string value)
     {
@@ -593,7 +593,7 @@ internal sealed class VmBindingGen
             var has = HasPath("source->", path, field);
             if (field.Type.Kind == LubTypeKind.Array)
             {
-                // 配列の field は host が作る (VM の object は field の initializer を走らせない)
+                // Array fields are created by the host (VM objects do not run field initializers)
                 Line("  " + dst + " = vm_lub_array(s, " + TypeVar(VmTypeName(field.Type)) + ", " + field.ArrayLen + ");");
                 Line("  if (" + dst + ") memcpy(tvm_array_data(" + dst + "), " + src + ", sizeof(" + src + "));");
             }
@@ -633,7 +633,7 @@ internal sealed class VmBindingGen
     private void Handle(ApiType type)
     {
         Line("static " + Struct(type.Name) + " *vm_lub_handle_" + type.Name + "(VmLub *s, LubHandle handle) {");
-        // 無効な handle (0) は null
+        // An invalid handle (0) is null
         Line("  if (!handle) return NULL;");
         Line("  " + Struct(type.Name) + " *result = vm_lub_new(s, " + TypeVar(Il(type.Name)) + ", sizeof(*result));");
         Line("  result->host_value = (uint32_t)handle;");
@@ -662,10 +662,10 @@ internal sealed class VmBindingGen
         Line("  return result;\n}");
     }
 
-    // ---- host の関数 ----
+    // ---- Host functions ----
 
-    // 引数か戻り値の 1 項 (tvm_host の params / rets。tcs の tcsvm.h)。
-    // null になりうる scalar は VM の struct ({ bool has; T v; }) なので、C の layout の塊 S{int?} で渡る
+    // One item of the arguments or return values (params / rets of tvm_host; tcs tcsvm.h).
+    // Nullable scalars are VM structs ({ bool has; T v; }), so they are passed as a C-layout block S{int?}
     private static string Token(TypeRef type)
     {
         if (type.Kind == LubTypeKind.Void) return "";
@@ -679,11 +679,11 @@ internal sealed class VmBindingGen
         return "o";
     }
 
-    // scalar の VM の型の名前 (enum は int)
+    // VM type name of a scalar (enum is int)
     private static string ScalarVmName(TypeRef type) =>
         type.Kind == LubTypeKind.Double ? "float" : type.Kind == LubTypeKind.Bool ? "bool" : "int";
 
-    // k 番目の引数 a[k] を C の値にする式
+    // Expression that converts the k-th argument a[k] to a C value
     private static string Unpack(TypeRef type, int k)
     {
         if ((type.IsScalar || type.Kind == LubTypeKind.Struct) && type.Nullable) return "*(const " + Opt(type) + " *)a[" + k + "].p";
@@ -694,7 +694,7 @@ internal sealed class VmBindingGen
         return "a[" + k + "].p";
     }
 
-    // 値を戻り値 r[0] に書く (塊の戻り値は r[0].p の先)
+    // Writes the value to return value r[0] (for a block return value, to where r[0].p points)
     private void PackReturn(TypeRef type, string value)
     {
         if (type.IsScalar && type.Nullable) Line("  *(" + Opt(type) + " *)r[0].p = " + value + ";");
@@ -703,21 +703,21 @@ internal sealed class VmBindingGen
         else Line("  r[0].p = " + value + ";");
     }
 
-    // k 番目の引数の out の場所 (VM が 0 で埋めて渡す)。scalar は C の値の pointer、参照は VM の object を置く slot
+    // Out location of the k-th argument (the VM passes it zero-filled). For scalars a pointer to the C value, for references the slot where the VM object is placed.
     private static string OutPlace(TypeRef type, int k) => Place(type, "a[" + k + "].p");
 
-    // C API が VM の場所に直接書く out (null にならない scalar と struct の record)
+    // Outs that the C API writes directly to the VM location (non-nullable scalars and struct records)
     private static bool Direct(TypeRef type) => !type.Nullable && (type.IsScalar || type.Kind == LubTypeKind.Struct);
 
-    // VM が渡す場所 p を C の型の pointer にする式 (scalar と struct の record は値の場所、他は VM の object を置く slot)
+    // Expression that turns the location p passed by the VM into a pointer of the C type (for scalars and struct records the value location, otherwise the slot where the VM object is placed)
     private static string Place(TypeRef type, string p) =>
         (type.IsScalar ? "(" + Scalar(type) + " *)" : type.Kind == LubTypeKind.Struct ? "(" + CHeader.TypeName(type.Name) + " *)" : "(void **)") + p;
 
-    // 場所を 0 にする式
+    // Expression that zeroes the location
     private static string Zero(TypeRef type) =>
         type.IsScalar ? "0" : type.Kind == LubTypeKind.Struct ? "(" + CHeader.TypeName(type.Name) + "){0}" : "NULL";
 
-    // 外部型の instance method。view の Get(int) は view の byte を読む
+    // Instance method of a foreign type. The view's Get(int) reads a byte of the view
     private void Method(ApiType type, ApiFunction method, string hostName)
     {
         var fn = "vm_host_" + hostName.Replace(".", "_");
@@ -738,7 +738,7 @@ internal sealed class VmBindingGen
         else GenError.Report("unsupported method: " + type.Name + "." + method.Name);
     }
 
-    // C の値で受ける out は変数 n_<name> に受ける。list は pointer と n_<name>_count の 2 つ。null になりうる record は has で受ける
+    // Outs received as C values go into the variable n_<name>. A list uses two: the pointer and n_<name>_count. A record that can be null receives its presence in has
     private void Output(TypeRef type, string n, CallState st)
     {
         Line("  " + NativeType(type) + " " + n + " = {0};");
@@ -764,7 +764,7 @@ internal sealed class VmBindingGen
         var fn = "vm_host_" + name;
         Line("static TvmStatus " + fn + "(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {");
         Line("  (void)a; (void)r; VM_LUB_ENTER();");
-        // 引数は C# の順に 1 つずつ a[k] に来る。out (&) の a[k].p は VM が値を受ける場所
+        // Arguments arrive one by one in a[k] in C# order. For out (&), a[k].p is where the VM receives the value
         var tokens = new List<string>();
         for (int k = 0; k < function.Params.Count; k++)
         {
@@ -847,15 +847,15 @@ internal sealed class VmBindingGen
             }
             else
             {
-                // null を受けない handle は誤り
+                // A null handle where null is not accepted is an error
                 if (type.Kind == LubTypeKind.Handle && !type.Nullable && !(param.Optional && !param.HasDefault))
                     Line("  if (!" + p + ") { vm_lub_fail(s, \"" + hostName + ": " + param.Name + " is null\"); VM_LUB_LEAVE(vm); }");
                 args.Add(To(type, p));
             }
         }
-        // 入力の変換の誤り (配列の長さ、bit mask) は C API を呼ぶ前に止める
+        // Input conversion errors (array length, bit mask) stop before the C API is called
         Line("  if (s->error) VM_LUB_LEAVE(vm);");
-        // scalar と struct の record の out は VM の場所に C API が直接書く。他は C の値で受け、VM の値にして場所に置く
+        // Outs of scalars and struct records are written by the C API directly into the VM location. Others are received as C values, converted to VM values, and placed in the location
         for (int k = 0; k < function.Params.Count; k++)
         {
             var param = function.Params[k];
@@ -877,9 +877,9 @@ internal sealed class VmBindingGen
             return;
         }
         bool has = !function.NoFail && ret.Nullable && (ret.IsScalar || (ret.Kind == LubTypeKind.Record && function.Maybe));
-        // null になりうる scalar の戻り値は r[0].p の塊 ({ bool has; T v; }) で、C API が直接書く
+        // A nullable scalar return value is the block at r[0].p ({ bool has; T v; }), which the C API writes directly
         bool block = has && ret.IsScalar;
-        // struct の record の戻り値も r[0].p の塊で、C API の out に直接書かせる
+        // A struct record return value is also the block at r[0].p, which the C API writes directly as its out
         bool structRet = ret.Kind == LubTypeKind.Struct;
         if (structRet && ret.Nullable)
         {
@@ -909,7 +909,7 @@ internal sealed class VmBindingGen
         if (visits) Line("  bool vm_lub_visitor_outer = s->visitor_failed; s->visitor_failed = false;");
         if (function.NoFail) Line("  " + (byValue ? "result = " : "") + call + ";");
         else Line("  LubStatus status = " + call + ";");
-        // visitor が失敗した query は null (戻り値と out は 0)
+        // A query whose visitor failed is null (return value and outs are 0)
         if (visits)
         {
             Line("  if (s->visitor_failed) {");
@@ -934,7 +934,7 @@ internal sealed class VmBindingGen
             Line("  vm_lub_check(s, status);");
             Line("  if (s->error) VM_LUB_LEAVE(vm);");
         }
-        // 見つからない (LUB_NOT_FOUND) か値の無い結果は null で、struct の record は 0 の値。scalar の out はそのとき C API が書いたまま
+        // A not-found result (LUB_NOT_FOUND) or a result without a value is null, and a struct record is the zero value. Scalar outs then stay as the C API wrote them
         string? missing = null;
         if (!function.NoFail)
         {
@@ -970,17 +970,17 @@ internal sealed class VmBindingGen
         registrations.Add("{\"" + hostName + "\", \"" + string.Join("", tokens) + "\", \"" + Token(ret) + "\", " + fn + "}");
     }
 
-    // Func 引数は C の関数 pointer + user (状態と VM の closure の組) に写す。C API が呼び出しの間だけ呼ぶ
+    // A Func argument maps to a C function pointer + user (a pair of state and the VM closure). The C API calls it only during the call
     private static string CallbackName(string function, ApiParam param) => "vm_lub_" + function + "_" + param.HostName;
 
     private void Callback(string function, ApiParam param) =>
         Trampoline(CallbackName(function, param), param.Type, param.Name, "VmLubVisit *visit = user; VmLub *s = visit->s;", "s->visitor_failed", "visit->closure", "vm_lub_visitor_fail(s)");
 
-    // callback の既定の値 (呼べないか失敗したとき)
+    // Default value of a callback (when it cannot be called or fails)
     private static string CallbackDefault(TypeRef ret) =>
         ret.Kind == LubTypeKind.Bool ? "true" : ret.Kind == LubTypeKind.Double ? "1.0f" : ret.Kind == LubTypeKind.Int ? "1" : "";
 
-    // C の関数 pointer から VM の closure を呼ぶ。prologue が closure を用意し、skip なら呼ばずに既定の値を返す
+    // Calls the VM closure from a C function pointer. The prologue prepares the closure; on skip, returns the default value without calling it
     private void Trampoline(string cname, TypeRef fn, string what, string prologue, string skip, string closure, string onFault)
     {
         var ret = fn.FuncReturn!;
@@ -1019,7 +1019,7 @@ internal sealed class VmBindingGen
         Line("static " + cRet + " " + cname + "(" + string.Join(", ", cParams) + ") {");
         Line("  TvmSlot args[" + (at == 0 ? 1 : at) + "] = {{0}}, rets[1] = {{0}};");
         if (prologue != "") Line("  " + prologue);
-        // 前の呼び出しが失敗したら VM に戻らない
+        // If an earlier call failed, does not go back into the VM
         Line("  if (s->error || " + skip + ") " + giveUp);
         foreach (var st in sets) Line("  " + st);
         Line("  if (tvm_invoke(s->vm, " + closure + ", args, " + at + ", rets, " + (ret.Kind == LubTypeKind.Void ? "0" : "1") + ") != TVM_OK) { " + onFault + "; " + giveUp + " }");
@@ -1029,7 +1029,7 @@ internal sealed class VmBindingGen
         Line("}");
     }
 
-    // Bindings の中身の block は GC の blob に置く (field の blob で辿れるので、手放せば GC が回収する)
+    // The Bindings contents block is placed in a GC blob (it is reachable through the field's blob, so the GC reclaims it once released)
     private void NativeBindings()
     {
         Line("static LubBindings *vm_lub_bindings_alloc(VmLub *s, VmLub_Bindings *owner, int32_t scale) {");
@@ -1048,8 +1048,8 @@ internal sealed class VmBindingGen
         Line("  return grown;\n}");
     }
 
-    // VM_LUB_ENTER / VM_LUB_LEAVE: host の関数の入口と出口。入れ子 (callback から VM、VM から host の関数) の誤りと一時領域を分ける。
-    // 誤りは vm_lub_fail で積み、出口で host の関数の fault (tvm_host_fault) にする
+    // VM_LUB_ENTER / VM_LUB_LEAVE: entry and exit of a host function. Keeps errors and scratch space separate across nesting (callback to VM, VM to host function).
+    // Errors are accumulated with vm_lub_fail and turned into a host function fault (tvm_host_fault) at the exit
     private const string Helpers = """
         #if defined(__GNUC__) || defined(__clang__)
         #define VM_LUB_UNUSED __attribute__((unused))
@@ -1059,26 +1059,26 @@ internal sealed class VmBindingGen
         typedef struct VmLubOptI32 { bool has; int32_t v; } VmLubOptI32;
         typedef struct VmLubOptF32 { bool has; float v; } VmLubOptF32;
         typedef struct VmLubOptBool { bool has; bool v; } VmLubOptBool;
-        /* VM の型 (読み込みと reload で作り直すので版で引き直す) */
+        /* A VM type (loading and reload recreate it, so it is looked up again by version) */
         typedef struct VmLubType { const char *name; uint32_t version; const TvmTypeInfo *type; } VmLubType;
-        /* VM 1 つ分の binding の状態。host の関数には tvm_host の user で渡る */
+        /* Binding state for one VM. Host functions receive it as the tvm_host user */
         typedef struct VmLub {
           LubContext *ctx;
           TvmVm *vm;
-          /* 今の host の関数の誤り (無ければ NULL) と、その文面の置き場 */
+          /* The error of the current host function (NULL if none) and storage for its text */
           const char *error;
           char error_text[1024];
-          /* host の関数の間だけの C の memory */
+          /* C memory that lives only during a host function */
           void **temps;
           size_t ntemps, ctemps;
-          /* query の visitor の fault */
+          /* Fault of a query visitor */
           bool visitor_failed;
           char visitor_text[1024];
           VmLubType *types;
-          /* keyed の object の key (host_value は表の番号 + 1。key は少なく、表は残す) */
+          /* Keys of keyed objects (host_value is the table index + 1. Keys are few, so the table is kept) */
           char **keys;
           uint32_t nkeys;
-          /* view の実体 (frame の終わりまで) */
+          /* View storage (until the end of the frame) */
           LubView *views;
           uint32_t view_count, view_capacity;
           int32_t view_frame;
@@ -1091,17 +1091,17 @@ internal sealed class VmBindingGen
           snprintf(s->error_text, sizeof s->error_text, "%s", message);
           s->error = s->error_text;
         }
-        /* callback の中の VM の fault (trace は tvm_error) */
+        /* A VM fault inside a callback (the trace is in tvm_error) */
         static void vm_lub_fail_vm(VmLub *s) { vm_lub_fail_text(s, tvm_error(s->vm)); }
-        /* query の visitor の fault。query は fault にせず null を返す (message は log に出す) */
+        /* Fault of a query visitor. The query does not fault; it returns null (the message goes to the log) */
         static void vm_lub_visitor_fail(VmLub *s) {
           if (s->visitor_failed) return;
           snprintf(s->visitor_text, sizeof s->visitor_text, "%s", tvm_error(s->vm));
           s->visitor_failed = true;
         }
-        /* record の callback の field (world の Filter など): runtime が持ち続けるので、closure を tvm_hold で持つ。
-           runtime が手放すとき (user_release) に放す。作った VM でなければ呼ばず、放さない */
-        /* query の visitor に渡す user (呼び出しの間だけ) */
+        /* Callback fields of records (such as the world Filter): the runtime keeps them, so the closure is held with tvm_hold.
+           It is released when the runtime releases the callback (user_release). If the VM is not the one that created it, it is neither called nor released */
+        /* The user passed to a query visitor (only during the call) */
         typedef struct VmLubVisit { VmLub *s; void *closure; } VmLubVisit;
         typedef struct VmLubHeld { VmLub *s; TvmVm *vm; int n; TvmHandle h[8]; bool logged[8]; } VmLubHeld;
         static VmLubHeld *vm_lub_held_new(VmLub *s) {
@@ -1122,7 +1122,7 @@ internal sealed class VmBindingGen
           VmLub *s = held->s;
           return held->vm == s->vm && s->vm && held->h[i] ? tvm_handle_get(s->vm, held->h[i]) : NULL;
         }
-        /* fault は callback ごとに 1 回だけ log に出し、既定の値で続ける */
+        /* A fault is logged only once per callback, and execution continues with the default value */
         static void vm_lub_held_fault(VmLubHeld *held, int i) {
           if (held->logged[i]) return;
           held->logged[i] = true;
@@ -1135,7 +1135,7 @@ internal sealed class VmBindingGen
             s->error = s->error_text;
           }
         }
-        /* host の関数の間だけの C の memory (入力の record の list など) */
+        /* C memory that lives only during a host function (such as lists of input records) */
         static void *vm_lub_alloc(VmLub *s, size_t size) {
           if (s->ntemps == s->ctemps) {
             size_t cap = s->ctemps ? s->ctemps * 2 : 16;
@@ -1172,7 +1172,7 @@ internal sealed class VmBindingGen
           }
           return t->type;
         }
-        /* 型が無ければ (誤りは積んである) 捨てる C の memory を返し、呼び出し側の書き込みを受ける */
+        /* If the type is missing (the error is already recorded), returns throwaway C memory that absorbs the caller's writes */
         static void *vm_lub_new(VmLub *s, VmLubType *t, size_t size) {
           const TvmTypeInfo *type = vm_lub_type(s, t);
           void *o = type ? tvm_object_new_of(s->vm, type) : NULL;
@@ -1228,7 +1228,7 @@ internal sealed class VmBindingGen
         }
         """;
 
-    // [LubBits] の 64 bit mask は C# 面では hex 文字列。規則は tcs2c の接続コードと同じ
+    // The 64 bit mask of [LubBits] is a hex string on the C# surface. The rules are the same as the tcs2c glue code
     private const string BitsHelpers = """
         #include <inttypes.h>
         static void vm_lub_bits_fault(VmLub *s, const char *what, LubStr text) {
@@ -1260,7 +1260,7 @@ internal sealed class VmBindingGen
         }
         """;
 
-    // view は frame の終わりまで有効。VM の object は frame を跨いで残りうるので、実体は host の表に置き、host_value は frame と番号
+    // A view is valid until the end of the frame. VM objects can survive across frames, so the actual data is kept in a host table and host_value is the frame and an index
     private const string ViewHelpers = """
         static uint64_t vm_lub_view_store(VmLub *s, LubView value) {
           int32_t frame = lub_frame_index(s->ctx);

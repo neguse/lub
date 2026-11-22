@@ -1,6 +1,6 @@
-// VS と FS が同じ名前の StructuredBuffer と texture を読む。
-// 期待色の内訳: VS が item[0] (red) + tex (green の半分)、
-// FS が item[1] (blue) + tex (green の半分) を足す。
+// VS and FS read a StructuredBuffer and a texture with the same names.
+// Breakdown of the expected color: VS adds item[0] (red) + tex (half of green),
+// and FS adds item[1] (blue) + tex (half of green).
 StructuredBuffer<float4> item;
 LUB_TEXTURE2D(tex);
 

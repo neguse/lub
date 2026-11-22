@@ -1,7 +1,7 @@
-# tcs と一緒に配るファイル (tcs/TinySystem の Linq.cs と ValueTuple.cs) を C の配列にした header を作る (native/tcs/vm_tcs.c が include する)。
+# Generates a header holding the files shipped with tcs (Linq.cs and ValueTuple.cs from tcs/TinySystem) as C arrays (included by native/tcs/vm_tcs.c).
 #   cmake -DTINYSYSTEM=<tcs/TinySystem> -DOUT=<tcs_tool_files.h> -P embed.cmake
 set(names Linq.cs ValueTuple.cs)
-set(text "/* tcs/TinySystem から native/tcs/embed.cmake が作る。手で書き換えない */\n")
+set(text "/* Generated from tcs/TinySystem by native/tcs/embed.cmake. Do not edit by hand. */\n")
 string(APPEND text "#include <stddef.h>\n\ntypedef struct TcsToolFile {\n  const char *name;\n  const unsigned char *data;\n  size_t length;\n} TcsToolFile;\n\n")
 set(table "")
 set(i 0)

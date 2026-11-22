@@ -1,11 +1,11 @@
-// 毎 frame 呼ぶ lider の描画と検索が確保しないこと (Sys.ProfileLines の行ごとの確保で見る)。
-//   - Search.Find は、どの宣言とも合わない名前でも、宣言ごとに文字列を作らない
-//   - MonoText.Draw は、密度が 1 でなくても、1 文字ごとに文字列を作らない (初めて出た文字だけ)
-// 行ごとの負荷は App.Use で .csproj から開いた app にだけ付くので、この entry は lider を動かさず、lider の検索と描画を呼ぶ app (probe/TestAllocProbe.cs) を開いて数える。
-// 開いた app では lider のソースの行も数えるので、lider の中の確保は lider の行に付き、lub の cs-lib の中の確保は呼んだ行に付く。
-// 呼んだ行 (FindLine、DrawLine) にも lider のどの行にも確保が無く、配列を作る行 (ControlLine) には確保があることを見る。
-// frame は開いた app が動き始めてから数える。
-// 行番号は TestAllocProbe.cs の中の位置なので、そこに行を足したら ControlLine、FindLine、DrawLine を合わせる。
+// lider's drawing and search, called every frame, do not allocate (checked with the per-line allocations of Sys.ProfileLines).
+//   - Search.Find does not create a string per declaration, even for a name that matches no declaration
+//   - MonoText.Draw does not create a string per character, even when the density is not 1 (only for characters seen for the first time)
+// Per-line load is attached only to apps opened from a .csproj with App.Use, so this entry does not run lider; it opens an app that calls lider's search and drawing (probe/TestAllocProbe.cs) and counts.
+// The opened app also counts lider source lines, so allocations inside lider are attributed to lider lines, and allocations inside lub's cs-lib to the calling line.
+// Checks that there are no allocations on the calling lines (FindLine, DrawLine) or on any lider line, and that there are allocations on the line that creates an array (ControlLine).
+// Frames are counted from when the opened app starts running.
+// Line numbers are positions in TestAllocProbe.cs, so if lines are added there, update ControlLine, FindLine, and DrawLine.
 using System;
 using Lub;
 
@@ -33,7 +33,7 @@ public static class TestAlloc
         var ok = App.Step(probe, target, dt);
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
         Gfx.EndPass();
-        // build を待つ間は Step が false
+        // Step is false while waiting for the build
         if (!ok)
             return;
         frames++;
@@ -44,7 +44,7 @@ public static class TestAlloc
         int control = 0, find = 0, draw = 0, inside = 0;
         foreach (var p in Sys.TakeProfile(probe))
         {
-            // lider のソースの行
+            // lider source lines
             if (!p.Site.Contains("TestAllocProbe.cs:"))
                 inside += p.Allocs;
             if (p.Site.EndsWith("TestAllocProbe.cs:" + ControlLine))

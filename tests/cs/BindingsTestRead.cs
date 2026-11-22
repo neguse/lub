@@ -1,10 +1,10 @@
-// Bindings の test の readback。
-// tcs2c の経路は Readback に対応していないので BindingsTestUtil と分ける。
+// Readback for the Bindings test.
+// The tcs2c path does not support Readback, so this is kept separate from BindingsTestUtil.
 using Lub;
 
 public static class BindingsTestRead
 {
-    // id の結果が届くまで null。
+    // null until the result for id arrives.
     public static Bytes? Read(Readback rb, TextureRef rt, int? id, out int stride)
     {
         Gfx.ReadTexture(rb, rt, id, out var st, out var bytes, out _, out _, out _, out stride, out var got, out _, out var err);

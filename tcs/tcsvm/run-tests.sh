@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# tcsvm のテスト (doc/vm-design.md §16): tests/*.cs、samples の 6 本、digest kernel を VM (tcs2vm → tcsvm) で走らせ、
-# 期待の stdout (tests/expected/*.txt、samples の期待の文字列、kernel の固定の digest) と一致することを確かめる。
-# C backend (tcs c → cc) が動かせる入力は、C の stdout と成否も VM と一致すること。
-# fault のテスト (Fault*.cs) は fault までの stdout が期待と一致し、VM と C の両方が失敗し、VM の trace が C# の file と行を指すことも見る。
+# tcsvm tests (doc/vm-design.md §16): runs tests/*.cs, the 6 samples, and the digest kernels on the VM (tcs2vm → tcsvm),
+# and checks that they match the expected stdout (tests/expected/*.txt, the expected strings of the samples, the fixed digests of the kernels).
+# For inputs that the C backend (tcs c → cc) can run, the C stdout and success / failure must also match the VM.
+# Fault tests (Fault*.cs) also check that the stdout up to the fault matches the expectation, that both the VM and C fail, and that the VM trace points to the C# file and line.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,11 +21,11 @@ TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net11.0/tcs2c.dll"
 TCSVM="$ROOT/build/tcsvm/tcsvm"
 CC_CMD="${CC:-cc}"
 
-# C backend が動かせない入力 (C の比較を外し、期待の stdout だけで見る)
-#   OutCalls: tcs c が `int.TryParse(s, out _)` の捨てる out を持たない (unbound IL variable: _)
+# Inputs that the C backend cannot run (the C comparison is skipped and only the expected stdout is checked)
+#   OutCalls: tcs c does not handle the discarded out of `int.TryParse(s, out _)` (unbound IL variable: _)
 NO_C=" OutCalls "
 
-# kernel の stdout (1 行に 1 つの float) の FNV-1a digest。Transpiler.Tests/DigestHarnessTests と perf/bench-2backend.sh と同じ計算
+# FNV-1a digest of a kernel's stdout (one float per line). Same computation as Transpiler.Tests/DigestHarnessTests and perf/bench-2backend.sh
 fnv_digest() {
   python3 - "$1" << 'EOF'
 import struct, sys
@@ -44,7 +44,7 @@ EOF
 
 fail=0
 run_case() { # path entry name expect [extra-source]
-  # expect は file:<期待の stdout の file> / text:<期待の stdout> / digest:<stdout の FNV-1a digest>
+  # expect is file:<file with the expected stdout> / text:<expected stdout> / digest:<FNV-1a digest of stdout>
   local src="$1" entry="$2" name="$3" expect="$4" extra="${5:-}"
   local srcs=("$src")
   [ -z "$extra" ] || srcs+=("$extra")
@@ -55,7 +55,7 @@ run_case() { # path entry name expect [extra-source]
     return
   fi
   "$TCSVM" "$WORK/$name.tcsb" > "$WORK/$name.vm.out" 2> "$WORK/$name.vm.err" || vm_rc=$?
-  # GC stress (確保の地点ごとに回収) でも同じ stdout と成否であること。root の漏れは出力の違いで現れる
+  # Under GC stress (a collection at every allocation site), stdout and success / failure must also be the same. Missing roots show up as output differences
   local st_rc=0
   "$TCSVM" --gc-stress "$WORK/$name.tcsb" > "$WORK/$name.st.out" 2> "$WORK/$name.st.err" || st_rc=$?
   if ! cmp -s "$WORK/$name.vm.out" "$WORK/$name.st.out" || [ $(( vm_rc != 0 )) -ne $(( st_rc != 0 )) ]; then
@@ -131,7 +131,7 @@ for src in "$ROOT"/tcsvm/tests/*.cs; do
   name="$(basename "$src" .cs)"
   run_case "$src" "$name" "$name" "file:$ROOT/tcsvm/tests/expected/$name.txt"
 done
-# tcs の samples: tcs2c.Tests の SampleParityTests と同じ entry の式と期待の文字列
+# tcs samples: the same entry expressions and expected strings as SampleParityTests in tcs2c.Tests
 run_sample() { # sample expr expected
   local name="sample_$1"
   printf 'public static class TcsEntry { public static void Main() { System.Console.WriteLine(%s); } }\n' "$2" \
@@ -145,16 +145,16 @@ run_sample entity 'EntitySample.Run()' 'Slime:enemy@6,2 HP=13'
 run_sample statemachine 'StateMachineSample.Run()' 'open,open,locked,closed'
 run_sample collision 'CollisionSample.Run()' 'hit,miss,hit'
 
-# digest kernel: tcs2c/verify-digests.sh と Transpiler.Tests/DigestHarnessTests と同じ固定の digest。
-# particles_struct は particles と同じ演算列なので同じ digest
+# Digest kernels: the same fixed digests as tcs2c/verify-digests.sh and Transpiler.Tests/DigestHarnessTests.
+# particles_struct has the same sequence of operations as particles, so the digest is the same
 KERNELS="$ROOT/Transpiler.Tests/DigestKernels"
 run_case "$KERNELS/sprite_update.cs" SpriteUpdate sprite_update digest:e8814b32
 run_case "$KERNELS/spawn_churn.cs" SpawnChurn spawn_churn digest:9274159d
 run_case "$KERNELS/particles.cs" Particles particles digest:8bf97e09
 run_case "$KERNELS/particles_struct.cs" ParticlesStruct particles_struct digest:8bf97e09
 
-# host 連携 (tests/host): host_test.c が stub.cs の面を host の関数として登録し、Game の entry を呼ぶ。
-# Reject.cs の module では、登録が module の struct と合わないときの読み込みの拒否を見る。
+# Host integration (tests/host): host_test.c registers the stub.cs surface as host functions and calls Game's entries.
+# With the Reject.cs module, checks that loading is rejected when the registration does not match the module's structs.
 HOST="$ROOT/tcsvm/tests/host"
 VM_SRC=()
 for f in "$ROOT"/tcsvm/vm/*.c; do [ "$(basename "$f")" = tcsvm_main.c ] || VM_SRC+=("$f"); done
@@ -174,7 +174,7 @@ else
   done
   [ "$host_ok" = 0 ] || echo "ok   host ($(wc -l < "$HOST/expected.txt") lines)"
 fi
-# --trace の (行, self) の組 (tests/trace): 覚えた object と同じ型の別の object の self で通っただけの行を除いて取り出す
+# (line, self) pairs from --trace (tests/trace): extracts them, excluding lines that were passed only with self being another object of the same type as the remembered object
 TRACE="$ROOT/tcsvm/tests/trace"
 if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/trace_test" "$TRACE/trace_test.c" "${VM_SRC[@]}" \
     "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
@@ -187,7 +187,7 @@ elif ! "$WORK/trace_test" "$WORK/trace.tcsb" > "$WORK/trace.out" 2>&1 || ! cmp -
 else
   echo "ok   trace (行, self) の組"
 fi
-# 大きな配列の一部を見る (tests/inspect): tvm_inspect は頼まれた範囲の外の要素に手間をかけない
+# Viewing part of a large array (tests/inspect): tvm_inspect spends no effort on elements outside the requested range
 INSPECT="$ROOT/tcsvm/tests/inspect"
 if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/inspect_test" "$INSPECT/inspect_test.c" "${VM_SRC[@]}" \
     "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
@@ -200,7 +200,7 @@ elif ! "$WORK/inspect_test" "$WORK/inspect.tcsb" > "$WORK/inspect.out" 2>&1 || !
 else
   echo "ok   inspect (大きな配列の一部)"
 fi
-# 行ごとの負荷 (tests/profile): --trace の行の時間と確保、GC の止まりを、test の時計で決まった値として取り出す
+# Per-line cost (tests/profile): extracts the time and allocations of --trace lines and the GC pauses as fixed values using the test clock
 PROF="$ROOT/tcsvm/tests/profile"
 if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/profile_test" "$PROF/profile_test.c" "${VM_SRC[@]}" \
     "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
@@ -213,7 +213,7 @@ elif ! "$WORK/profile_test" "$WORK/profile.tcsb" > "$WORK/profile.out" 2>&1 || !
 else
   echo "ok   profile (行ごとの負荷)"
 fi
-# mixed-mode の最小の試験 (doc/object-model.md M-4): tcs2c --lib の生成 C の関数が VM の object を読み書きする
+# Minimal mixed-mode test (doc/object-model.md M-4): functions in the C generated by tcs2c --lib read and write VM objects
 MIXED="$ROOT/tcsvm/tests/mixed"
 if ! "$DOTNET" "$TCS2C_DLL" --lib -o "$WORK/mixed.c" "$MIXED/Mixed.cs" 2> "$WORK/mixed.err" \
     || ! "$DOTNET" "$TCS2VM_DLL" --export 'Game.*' "$MIXED/Mixed.cs" -o "$WORK/mixed.tcsb" 2>> "$WORK/mixed.err" \
@@ -226,7 +226,7 @@ elif ! "$WORK/mixed_test" "$WORK/mixed.tcsb" > "$WORK/mixed.out" 2>&1 || ! cmp -
 else
   echo "ok   mixed (tcs2c の関数が VM の object を読み書きする)"
 fi
-# module 単位の混在 (doc/object-model.md §10): editor は tcs2c --lib --vm-host の C、content は VM で reload する
+# Mixing per module (doc/object-model.md §10): the editor is C from tcs2c --lib --vm-host, and the content is reloaded in the VM
 MODS="$ROOT/tcsvm/tests/modules"
 cp "$MODS/ContentV1.cs.txt" "$WORK/Content.cs"
 cp "$MODS/ContentV2.cs.txt" "$WORK/Content2.cs"
@@ -237,7 +237,7 @@ if ! "$DOTNET" "$TCS2C_DLL" --lib --vm-host -o "$WORK/editor.c" "$MODS/Editor.cs
     ; then
   echo "FAIL modules: build"; head -5 "$WORK/modules.err"; fail=1
 else
-  # shared heap (object-model §10.2): 通常と、tcs2c の GC stress (nursery を毒値で埋め、frame ごとに全回収)
+  # shared heap (object-model §10.2): normal, and with tcs2c's GC stress (fills the nursery with poison values and collects everything every frame)
   mods_ok=1
   for mode in "" -DTCS_GC_STRESS; do
     if ! "${CC:-cc}" -std=gnu11 -O1 -g $mode -I"$ROOT/tcsvm/vm" -DEDITOR_C="\"$WORK/editor.c\"" -o "$WORK/modules_test" \
@@ -251,7 +251,7 @@ else
   done
   [ "$mods_ok" = 0 ] || echo "ok   modules (editor は C、content は VM で reload。shared heap)"
 fi
-# watch の stream (tcs2vm --watch → vm_batch → tcsvm --reload-batch、restart_required)
+# watch stream (tcs2vm --watch → vm_batch → tcsvm --reload-batch, restart_required)
 mkdir -p "$WORK/watch"
 if ! python3 -I "$HOST/watch_test.py" "$DOTNET" "$TCS2VM_DLL" "$TCSVM" "$WORK/watch"; then
   echo "FAIL watch"; fail=1

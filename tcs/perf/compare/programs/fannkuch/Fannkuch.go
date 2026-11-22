@@ -18,7 +18,7 @@ func envInt(name string, def int32) int32 {
 	return int32(v)
 }
 
-// 配列の操作と整数の分岐。fannkuch-redux (1 スレッドの版) と同じ手順
+// Array operations and integer branches. Same procedure as fannkuch-redux (single-thread version)
 func run(n int32, print bool) int32 {
 	perm := make([]int32, n)
 	perm1 := make([]int32, n)
@@ -87,7 +87,7 @@ func run(n int32, print bool) int32 {
 
 func main() {
 	n := envInt("BENCH_N", 7)
-	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	// Repeats BENCH_REPS times. Each repetition's input depends on the previous result so the compiler cannot skip repetitions (the result is never -1)
 	reps := envInt("BENCH_REPS", 1)
 	var prev int32
 	for r := int32(0); r < reps; r++ {

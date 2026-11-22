@@ -1,9 +1,9 @@
 namespace TinyCs.Tests;
 
-// 値で比べる key (struct / record struct / struct の T? / record class) の
-// Dictionary はサブセット外。.NET は等しい値の key を同じ key とみなすが、Lua の
-// table は table の同一性で引いたので ContainsKey / 索引が黙って外れた。C backend
-// も受け付けないので、build を止める error、check は exit 1 (#185)
+// A Dictionary with keys compared by value (struct / record struct / T? of struct / record class)
+// is outside the subset. .NET treats keys with equal values as the same key, but Lua
+// tables looked keys up by table identity, so ContainsKey / indexing silently missed. The C backend
+// does not accept them either, so it is a build-stopping error, and check exits 1 (#185)
 [Collection(ConsoleCollection.Name)]
 public class DictValueKeyTests
 {
@@ -64,7 +64,7 @@ public class DictValueKeyTests
         }
     }
 
-    // 同一性で比べる class、数値・文字列・enum の key は従来どおり
+    // Classes compared by identity, and number / string / enum keys, work as before
     [Fact]
     public void ReferenceAndPrimitiveKeys_AreNotDiagnosed()
     {

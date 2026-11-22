@@ -3,8 +3,8 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// class / record の継承は対象外 (q.md Q15)。transpiler は build を止める
-// error、analyzer は他の build を止める診断と同じく warning
+// class / record inheritance is out of scope (q.md Q15). The transpiler reports a build-stopping
+// error; the analyzer reports a warning, like other build-stopping diagnostics
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]

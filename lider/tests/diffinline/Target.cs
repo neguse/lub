@@ -1,4 +1,4 @@
-// tests/diffinline で開いて書き換える file。
+// The file tests/diffinline opens and edits.
 public static class DiffInlineTarget
 {
     public static int Hp;

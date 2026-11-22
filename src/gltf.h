@@ -1,8 +1,9 @@
 #pragma once
-// glTF 2.0 mesh loader (cgltf)。
-// VM には触らず、平らな配列の C 構造に読む。
-// C API の view (LubGltfMesh / LubGltfPrimitive / LubGltfMaterial) は src/api_io.c がこの構造から組み立てる。
-// Triangle primitives required. POSITION required; NORMAL / TEXCOORD_0 / TANGENT / indices optional。
+// glTF 2.0 mesh loader (cgltf).
+// Does not touch the VM; reads into a C structure of flat arrays.
+// src/api_io.c builds the C API views (LubGltfMesh / LubGltfPrimitive /
+// LubGltfMaterial) from this structure. Triangle primitives required. POSITION
+// required; NORMAL / TEXCOORD_0 / TANGENT / indices optional.
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -15,21 +16,21 @@ typedef struct GltfMaterial {
   float alpha_cutoff;
   bool double_sided;
   float normal_scale;
-  char *base_color_path;         // base_dir + uri。NULL = 無し
-  char *metallic_roughness_path; // 同上
-  char *normal_path;             // 同上
-  char *name;                    // NULL = 無し
+  char *base_color_path;         // base_dir + uri. NULL = none
+  char *metallic_roughness_path; // Same as above
+  char *normal_path;             // Same as above
+  char *name;                    // NULL = none
 } GltfMaterial;
 
 typedef struct GltfPrimitive {
   float *positions;  // vec3 * vert_count
-  float *normals;    // vec3 * vert_count。NULL = 無し
-  float *uvs;        // vec2 * vert_count。NULL = 無し
-  float *tangents;   // vec4 * vert_count。NULL = 無し
-  uint32_t *indices; // index_count。NULL = non-indexed
+  float *normals;    // vec3 * vert_count. NULL = none
+  float *uvs;        // vec2 * vert_count. NULL = none
+  float *tangents;   // vec4 * vert_count. NULL = none
+  uint32_t *indices; // index_count. NULL = non-indexed
   int vert_count;
   int index_count;
-  int material_index; // -1 = 無し
+  int material_index; // -1 = none
 } GltfPrimitive;
 
 typedef struct GltfMesh {
@@ -39,13 +40,14 @@ typedef struct GltfMesh {
   int material_count;
 } GltfMesh;
 
-// 外部 buffer の uri (percent を解いたもの) を読んでよいか。
+// Whether the uri (percent-decoded) of an external buffer may be read.
 typedef bool (*GltfUriCheck)(const char *uri);
 
-// file を読む。
-// material の画像の path と err の path は、呼び出し側の呼び名 path を基準に書く。
-// uri_ok があれば、外部 buffer を読む前に uri を渡し、false なら失敗にする。
-// 失敗は NULL を返し err に理由を書く。
+// Read a file.
+// Material image paths and paths in err are written based on path, the name the
+// caller uses. If uri_ok is given, pass it the uri before reading an external
+// buffer, and fail if it returns false. On failure, return NULL and write the
+// reason to err.
 GltfMesh *gltf_load(const char *file, const char *path, GltfUriCheck uri_ok,
                     char *err, size_t err_size);
 void gltf_free(GltfMesh *mesh);

@@ -6,8 +6,8 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// 識別子 (他の言語の予約語と同じ名前 / verbatim / ローカル束縛) の診断。本体は
-// TinyCsComplianceAnalyzerTests.cs。
+// Diagnostics for identifiers (same names as reserved words of other languages / verbatim / local bindings). The main tests are in
+// TinyCsComplianceAnalyzerTests.cs.
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]

@@ -1,6 +1,7 @@
-// Input.Focused と Input.CaptureMouse を SDL の offscreen の window で確かめる。
-// offscreen の window は入力のフォーカスを持ち、相対マウスモードには対応しない。
-// CaptureMouse は適用できなかったことを false で返し、解除は通る。
+// Checks Input.Focused and Input.CaptureMouse with an SDL offscreen window.
+// An offscreen window has input focus and does not support relative mouse mode.
+// CaptureMouse returns false when it could not be applied, and releasing it
+// succeeds.
 #include "api_internal.h"
 #include <lub/lub_host.h>
 #include <stdio.h>

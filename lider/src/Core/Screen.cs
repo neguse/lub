@@ -1,11 +1,11 @@
-// スクリーン: 空間の中に置く面。
-// 上にウィンドウ (Window) を並べ、どこに並べるかは配置の規則 (ILayout) が決める。
-// 形は平面か、視点を通る縦の軸の回りの円筒の一部。固定先は視点か世界。
-// 位置は固定先の座標 (+X 右、+Y 上、+Z 前、単位はメートル) で、スクリーンの真ん中の点を持つ。
-// 円筒の曲がりの半径は Space.R で、動かしても曲がりは変わらない。
-// 真ん中の点が固定先の縦の軸から Space.R の距離にあるとき、円筒の軸は固定先の原点を通る。
-// 真ん中の角度と奥行きは、その点の、軸の回りの向きと軸からの距離で決まる。
-// スクリーンの面の上の場所は、スクリーンの真ん中を原点に、右が +X (円筒では弧に沿った長さ)、上が +Y の、メートルで表す。
+// Screen: a surface placed in space.
+// Windows (Window) are laid out on it, and the arrangement rule (ILayout) decides where.
+// The shape is a plane or part of a cylinder around a vertical axis through the viewpoint. It is anchored to the view or to the world.
+// The position is the screen's center point in the anchor's coordinates (+X right, +Y up, +Z forward, in meters).
+// The cylinder's radius of curvature is Space.R, and moving the screen does not change the curvature.
+// When the center point is Space.R away from the anchor's vertical axis, the cylinder's axis passes through the anchor's origin.
+// The center's angle and depth are given by that point's direction around the axis and its distance from the axis.
+// Positions on the screen surface are in meters with the screen center as the origin, +X to the right (arc length on a cylinder) and +Y up.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -20,9 +20,9 @@ public enum ScreenShape
 
 public enum ScreenAnchor
 {
-    // 視点に固定する (視点が動いても、画面の同じ所に見える)
+    // Anchored to the view (appears at the same place on the display even when the viewpoint moves)
     View,
-    // 世界に固定する
+    // Anchored to the world
     World,
 }
 
@@ -31,24 +31,24 @@ public class Screen
     public readonly string Name;
     public ScreenShape Shape = ScreenShape.Plane;
     public ScreenAnchor Anchor = ScreenAnchor.View;
-    // 真ん中の位置 (固定先の座標)
+    // Center position (in the anchor's coordinates)
     public Vec3 Position = new Vec3(0, 0, 1);
-    // 幅と高さ (メートル)。並べた物で決まるスクリーン (Strip) では使わない
+    // Width and height (meters). Not used for screens sized by their contents (Strip)
     public Vec2 Size = new Vec2(1, 1);
-    // 透過度 (1 で透けない)
+    // Opacity (1 = opaque)
     public float Opacity = 1;
-    // 出しているか (隠している間、上のウィンドウは描かず、入力も届かない)
+    // Whether it is shown (while hidden, its windows are not drawn and receive no input)
     public bool Shown = true;
-    // 利用者がつかんで動かせるか、固定先を替えられるか
+    // Whether users can grab and move it, and change its anchor
     public bool Movable;
     public ILayout Layout = new Full();
-    // ウィンドウ (並べる順)
+    // Windows (in layout order)
     public readonly List<Window> Windows = new List<Window>();
-    // 一つだけを出す規則 (Full) で出すウィンドウ (null なら最初の物)
+    // Window shown by the single-window rule (Full) (the first one if null)
     public Window? Focus;
-    // 横一列の規則 (Strip) で、面の真ん中に置くウィンドウ (null か、ここに無ければ最初の物)
+    // Window placed at the center of the surface by the single-row rule (Strip) (the first one if null or not on this screen)
     public Window? Origin;
-    // つかんで動かしているウィンドウ (配置の規則はこれを動かさず、これの場所で並びを入れ替える)
+    // Window being grabbed and moved (arrangement rules do not move it, and reorder based on its position)
     public Window? Held;
 
     public Screen(string name)
@@ -56,52 +56,52 @@ public class Screen
         Name = name;
     }
 
-    // 視点からの距離。奥のスクリーンから描く
+    // Distance from the viewpoint. Screens further back are drawn first
     public float Distance => (float)Math.Sqrt(Position.X * Position.X + Position.Y * Position.Y + Position.Z * Position.Z);
 
-    // 円筒の真ん中の奥行き (縦の軸からの距離)
+    // Depth of the cylinder's center (distance from the vertical axis)
     public float Radius => (float)Math.Sqrt(Position.X * Position.X + Position.Z * Position.Z);
 
-    // 円筒の真ん中の角度 (+Z が 0、右が正)
+    // Angle of the cylinder's center (+Z is 0, right is positive)
     public float Angle => (float)Math.Atan2(Position.X, Position.Z);
 
-    // 面の上の x の所の、円筒の角度
+    // Cylinder angle at x on the surface
     public float AngleAt(float x)
     {
         return Angle + x / Space.R;
     }
 
-    // 円筒の角度 angle の所の、面の上の x
+    // x on the surface at cylinder angle angle
     public float XAt(float angle)
     {
         return (angle - Angle) * Space.R;
     }
 
-    // 奥行きの範囲 (メートル)
+    // Depth range (meters)
     public const float MinDepth = 0.6f;
     public const float MaxDepth = 6;
 
-    // 円筒のスクリーンを、面に沿って右へ dx、上へ dy メートル動かす (奥行きは今のまま)
+    // Moves a cylinder screen along its surface by dx meters right and dy meters up (depth unchanged)
     public void Shift(float dx, float dy)
     {
         Place(Angle + dx / Space.R, Position.Y + dy, Radius);
     }
 
-    // 円筒のスクリーンの奥行きを depth メートルにする (向きと高さは今のまま)
+    // Sets a cylinder screen's depth to depth meters (direction and height unchanged)
     public void SetDepth(float depth)
     {
         Place(Angle, Position.Y, Math.Max(MinDepth, Math.Min(MaxDepth, depth)));
     }
 
-    // 真ん中の点を、軸の回りの角度 angle、高さ y、軸からの距離 depth に置く (真後ろは越えない)
+    // Places the center point at angle angle around the axis, height y, and distance depth from the axis (does not go past directly behind)
     void Place(float angle, float y, float depth)
     {
         var a = Math.Max(-3, Math.Min(3, angle));
         Position = new Vec3(depth * (float)Math.Sin(a), y, depth * (float)Math.Cos(a));
     }
 
-    // ウィンドウを並べる (配置の規則で)。
-    // しまっているウィンドウ (Window.Away) は、並びから外して規則に渡し、並べた後で元の順番の所に戻す
+    // Lays out the windows (with the arrangement rule).
+    // Stowed windows (Window.Away) are removed from the order before it is passed to the rule, and put back in their original places after layout
     public void Arrange()
     {
         var away = new List<Window>();
@@ -124,7 +124,7 @@ public class Screen
             Windows.Insert(Math.Min(at[i], Windows.Count), away[i]);
     }
 
-    // 今の距離のまま、縦の画角 fov (度) と縦横比 aspect の視野をちょうど覆う大きさにし、正面に置く
+    // Keeping the current distance, sizes it to exactly cover a view with vertical field of view fov (degrees) and aspect ratio aspect, and places it straight ahead
     public void Fill(float fov, float aspect)
     {
         Position = new Vec3(0, 0, Position.Z);
@@ -132,9 +132,9 @@ public class Screen
         Size = new Vec2(height * aspect, height);
     }
 
-    // 平面のスクリーンで、ウィンドウを並べ、画面の上の矩形 (ViewportRect) を決める。
-    // origin は、スクリーンの面の真ん中が写る画面の位置 (画面の座標)、perM は、面の上の 1 メートルが画面の上で覆う長さ。
-    // 見る人の正面を向く平面なので、矩形は軸に揃い、画素に揃える
+    // On a plane screen, lays out the windows and sets their rectangles on the display (ViewportRect).
+    // origin is the display position where the center of the screen surface appears (display coordinates), and perM is the length 1 meter on the surface covers on the display.
+    // It is a plane facing the viewer, so the rectangles are axis-aligned and snapped to pixels
     public void Project(Vec2 origin, float perM)
     {
         Arrange();
@@ -153,14 +153,14 @@ public class Screen
             var x1 = (float)Math.Round(origin.X + (at.X + size.X * 0.5f) * perM);
             var y1 = (float)Math.Round(origin.Y - (at.Y - size.Y * 0.5f) * perM);
             window.ViewportRect = new PixelRect(x0, y0, x1 - x0, y1 - y0);
-            // 見出しの帯は矩形の上の端に取り、中身はその下に収める
+            // The title bar is taken from the top edge of the rectangle, and the content fits below it
             var bar = Math.Min(window.TitleBar, y1 - y0);
             window.ContentRect = new PixelRect(x0, y0 + bar, x1 - x0, y1 - y0 - bar);
         }
     }
 }
 
-// 画面の上の矩形 (左上と大きさ。画面の座標、下が +Y)
+// A rectangle on the display (top left and size; display coordinates, +Y down)
 public class PixelRect
 {
     public readonly float X;
@@ -182,40 +182,40 @@ public class PixelRect
     }
 }
 
-// スクリーンの上に並ぶ矩形。中身 (IContent) を 1 つ映す
+// A rectangle laid out on a screen. Shows one content (IContent)
 public class Window
 {
     public IContent Content;
-    // スクリーンの座標での真ん中の位置 (メートル)。X が右、Y が上、Z が奥 (0 が面の上、負が手前)。
-    // X と Y は配置の規則か、つかんで動かす操作が決める。まだ決めていないか、出さないウィンドウは null
+    // Center position in screen coordinates (meters). X is right, Y is up, Z is depth (0 is on the surface, negative is toward the viewer).
+    // X and Y are set by the arrangement rule or by grabbing and moving. null for windows not placed yet or not shown
     public Vec3? Position;
-    // 幅と高さ (メートル)。Position と一緒に決める
+    // Width and height (meters). Set together with Position
     public Vec2 Size = new Vec2(0, 0);
-    // 画面に投影した場所 (視点に固定した平面のスクリーンだけ。Screen.Project が決める)
+    // Location projected onto the display (only for plane screens anchored to the view; set by Screen.Project)
     public PixelRect? ViewportRect;
-    // ViewportRect のうち、中身を映す所 (見出しの帯を除いた矩形)
+    // The part of ViewportRect that shows the content (the rectangle without the title bar)
     public PixelRect? ContentRect;
-    // 矩形の上の端に取る見出しの帯の高さ (画面の座標。0 なら取らない)。平面のスクリーンの上のゲームの絵に使う
+    // Height of the title bar at the top edge of the rectangle (display coordinates; 0 = none). Used for the game picture on plane screens
     public float TitleBar;
-    // 中身を描く画素の数。利用者が決めた数 (WidthPx、HeightPx) と、今の数 (PxW、PxH。Zen の間だけ違う)
+    // Pixel size the content is drawn at. The size set by the user (WidthPx, HeightPx) and the current size (PxW, PxH; they differ only during Zen)
     public int WidthPx = PanelView.BasePxW;
     public int HeightPx = PanelView.BasePxH;
     public int PxW = PanelView.BasePxW;
     public int PxH = PanelView.BasePxH;
-    // 大きさの倍率 (1 で、BasePxW の画素が PanelView.BaseW メートル)
+    // Size scale (at 1, BasePxW pixels are PanelView.BaseW meters)
     public float Scale = 1;
-    // 非 XR で読める大きさにしたか
+    // Whether it was resized to be readable outside XR
     public bool Sized;
 
     public const int MinPxW = 320;
     public const int MinPxH = 160;
     public const int MaxPx = 2048;
 
-    // しまっているか (並びの順番は保ったまま、並べず、出さない)
+    // Whether it is stowed (keeps its place in the order, but is not laid out or shown)
     public bool Away;
 
-    // 親のウィンドウ (無ければ、スクリーンの並びにある)。
-    // 子は、親の中身が決めた、親の座標 (親の真ん中が原点。メートル。Z が負なら親より手前) に置く。配置の規則は、子を並べない
+    // Parent window (if none, the window is in the screen's order).
+    // A child is placed in the parent's coordinates as decided by the parent's content (origin at the parent's center, meters, negative Z in front of the parent). Arrangement rules do not lay out children
     public Window? Parent;
     public readonly List<Window> Children = new List<Window>();
 
@@ -224,7 +224,7 @@ public class Window
         Content = content;
     }
 
-    // child をこのウィンドウの子にする
+    // Makes child a child of this window
     public void Adopt(Window child)
     {
         child.Parent?.Children.Remove(child);
@@ -232,36 +232,36 @@ public class Window
         Children.Add(child);
     }
 
-    // child を子から外す
+    // Removes child from the children
     public void Disown(Window child)
     {
         if (Children.Remove(child))
             child.Parent = null;
     }
 
-    // 倍率 1 の幅と高さ (メートル。中身を描く画素の数で決まる)
+    // Width and height at scale 1 (meters; determined by the content's pixel size)
     public Vec2 UnscaledSize => new Vec2(PanelView.BaseW * PxW / PanelView.BasePxW, PanelView.BaseW * PxH / PanelView.BasePxW);
 
-    // 奥行き (Position の Z。決めていなければ 0)
+    // Depth (Z of Position; 0 if not set)
     public float Z => Position != null ? Position.Value.Z : 0;
 
-    // 真ん中を、スクリーンの面の上の (x, y) に置く。奥行きと大きさは今のまま
+    // Places the center at (x, y) on the screen surface. Depth and size are unchanged
     public void Place(float x, float y)
     {
         Position = new Vec3(x, y, Z);
     }
 
-    // 奥行きを変える (まだ置いていなければ何もしない)
+    // Changes the depth (does nothing if not placed yet)
     public void SetZ(float z)
     {
         if (Position != null)
             Position = new Vec3(Position.Value.X, Position.Value.Y, z);
     }
 
-    // 中身がコードのときの、その中身
+    // The content, when it is code
     public Code Code => (Code)Content;
 
-    // 利用者の大きさを変える (px)。文字の桁に揃えなくても エディタが桁を決める
+    // Changes the user-set size (px). It does not need to align to character columns; the editor decides the columns
     public void Resize(int pxW, int pxH)
     {
         WidthPx = Math.Max(MinPxW, Math.Min(MaxPx, pxW));

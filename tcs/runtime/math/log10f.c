@@ -1,9 +1,9 @@
-/* log10f (正しく丸める)。CORE-MATH (https://core-math.gitlabpages.inria.fr/)
-   の src/binary32/log10/log10f.c (commit 0bbf26a) を、GCC / Clang の拡張を
-   使わない C に書き直したもの。計算の手順は元のままで、結果は元の実装と
-   全入力で bit 単位で同じ。
-   変更: __builtin_clz を tcs_clz32 に置き換え、errno と浮動小数点例外の
-   設定を外した。
+/* log10f (correctly rounded). CORE-MATH
+(https://core-math.gitlabpages.inria.fr/) src/binary32/log10/log10f.c (commit
+0bbf26a), rewritten in C that does not use GCC / Clang extensions. The
+computation steps are unchanged, and the results match the original
+implementation bit for bit on all inputs. Changes: replaced __builtin_clz with
+tcs_clz32, and removed setting errno and floating-point exceptions.
 
 Copyright (c) 2022-2026 Alexei Sibidanov <sibid@uvic.ca>.
 

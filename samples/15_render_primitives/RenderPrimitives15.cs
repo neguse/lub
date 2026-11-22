@@ -1,5 +1,5 @@
-// lub の samples/15_render_primitives の entry。
-// 実行: lub samples/15_render_primitives/RenderPrimitives15.csproj (transpile + watch + hot reload) R16F/RG16F/R32F の色 target、depth target 付きパス、compute の storage 書き込みを 5 枚のパネルとして main_tex に並べる。
+// Entry of lub's samples/15_render_primitives.
+// Run: lub samples/15_render_primitives/RenderPrimitives15.csproj (transpile + watch + hot reload) Lays out R16F/RG16F/R32F color targets, a pass with a depth target, and compute storage writes as 5 panels on main_tex.
 
 using System;
 using System.Collections.Generic;

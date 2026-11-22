@@ -1,4 +1,4 @@
-// ../TestEdit.cs が lider で開くゲーム。毎 frame 数を 1 増やし、Target.cs の値を読む。
+// The game ../TestEdit.cs opens in lider. Increases the count by 1 every frame and reads the value of Target.cs.
 public static class Game
 {
     public static int Count;

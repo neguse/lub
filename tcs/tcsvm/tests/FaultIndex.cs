@@ -1,6 +1,6 @@
 using System;
 
-// fault: 配列の範囲外 (il-spec §12)
+// fault: array index out of range (il-spec §12)
 public class FaultIndex
 {
     public static void Main()

@@ -1,9 +1,11 @@
-/* atan2f (正しく丸める)。CORE-MATH (https://core-math.gitlabpages.inria.fr/)
-   の src/binary32/atan2/atan2f.c (commit 0bbf26a) を、GCC / Clang の拡張を
-   使わない C に書き直したもの。計算の手順は元のままで、結果は元の実装と
-   bit 単位で同じ。
-   変更: 積の誤差と割り算の剰余を求める __builtin_fma を、同じ値を正確に返す
-   tcs_mul_err / tcs_div_rem に置き換え、errno と浮動小数点例外の設定を外した。
+/* atan2f (correctly rounded). CORE-MATH
+(https://core-math.gitlabpages.inria.fr/) src/binary32/atan2/atan2f.c (commit
+0bbf26a), rewritten in C without the GCC / Clang extensions. The computation
+steps are unchanged, and the results are identical to the original
+   implementation bit for bit.
+   Changes: replaced __builtin_fma, used to get the product error and the
+division remainder, with tcs_mul_err / tcs_div_rem, which return the same values
+exactly, and removed setting errno and floating-point exceptions.
 
 Copyright (c) 2022-2025 Alexei Sibidanov and Paul Zimmermann.
 
@@ -31,7 +33,7 @@ SOFTWARE.
 
 #include "tcs_math_internal.h"
 
-/* (xh + xl) * (ch + cl) を double-double で返す */
+/* Returns (xh + xl) * (ch + cl) as a double-double */
 static double atan2_muldd(double xh, double xl, double ch, double cl,
                           double *l) {
   double ahlh = ch * xl, alhh = cl * xh, ahhh = ch * xh,

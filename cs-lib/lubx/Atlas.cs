@@ -1,12 +1,12 @@
-// 実装ライブラリ lubx の Atlas。
+// Atlas of the implementation library lubx.
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
 /// <summary>
-/// SpriteBatch 用のテクスチャアトラス。
-/// PNG (fromPng) か生ピクセル (fromPixels) から作り、ensure() が true を返したフレームから描画に使える (web ではロード完了まで false)。
+/// Texture atlas for SpriteBatch.
+/// Created from a PNG (fromPng) or raw pixels (fromPixels), and usable for drawing from the frame in which ensure() returns true (on the web, false until loading completes).
 /// </summary>
 public class Atlas
 {
@@ -36,8 +36,8 @@ public class Atlas
     }
 
     /// <summary>
-    /// version は内容から導ける同一性の値があるときだけ渡す (不変内容なら定数)。
-    /// 省略すると「変更宣言 + ref.version 再主張」を Atlas が内部で管理する。
+    /// Pass version only when there is an identity value derivable from the content (a constant for immutable content).
+    /// If omitted, Atlas manages "declaring changes + re-asserting ref.version" internally.
     /// </summary>
     public static Atlas FromPixels(string key, int w, int h, List<int> pixels,
         int? version = null, TextureOpts? opts = null)
@@ -52,12 +52,12 @@ public class Atlas
         return a;
     }
 
-    /// <summary> UpdatePixels の後、まだ ensure() していない (次の ensure() で upload する) か。
+    /// <summary> Whether ensure() has not been called yet since UpdatePixels (the next ensure() uploads).
     /// </summary>
     public bool Changed => pixels != null && dirty;
 
-    /// <summary> 動的 atlas 用: ピクセル配列を差し替えて変更を宣言する。
-    /// 次の ensure() で再アップロードされる (Lubx.Text の glyph 追加が使う)。
+    /// <summary> For dynamic atlases: replaces the pixel array and declares a change.
+    /// Re-uploaded at the next ensure() (used by glyph additions in Lubx.Text).
     /// </summary>
     public void UpdatePixels(List<int> pixels)
     {
@@ -78,11 +78,11 @@ public class Atlas
     {
         if (pixels != null)
         {
-            // caller 提供の同一性の値か、変更が無ければ前回の実効 version
+            // Identity value provided by the caller, or the previous effective version if nothing changed
             int? claim = version;
             if (claim == null && !dirty && Texture != null)
                 claim = Texture.Version;
-            // binding は version を見る前に pixels を全要素変換するので、runtime が同じ version を持っている間は pixels を渡さない
+            // The binding converts every element of pixels before looking at version, so do not pass pixels while the runtime holds the same version
             var live = claim != null ? Gfx.LookupTexture(Key) : null;
             if (live != null && live.Version == claim)
             {
@@ -91,7 +91,7 @@ public class Atlas
             }
             else
             {
-                // 省略した version は変更宣言: runtime が発行して必ず upload
+                // An omitted version declares a change: the runtime issues one and always uploads
                 Texture = Gfx.UseTexture(Key, W, H, format, pixels, version,
                     TextureOpts());
                 dirty = false;

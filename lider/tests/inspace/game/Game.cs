@@ -1,4 +1,4 @@
-// ../TestWhatis.cs が lider で開くゲーム。画面の真ん中に四角を 1 つ描く。
+// The game ../TestWhatis.cs opens in lider. Draws one square in the center of the screen.
 using Lub;
 
 public static class Game

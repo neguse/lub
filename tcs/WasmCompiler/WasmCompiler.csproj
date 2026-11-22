@@ -2,36 +2,36 @@
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
     <LangVersion>15</LangVersion>
-    <!-- JSExport の source generator が unsafe を要求する -->
+    <!-- The JSExport source generator requires unsafe -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- ICU データを落として配信サイズを削る (コンパイラ用途に文化情報は不要) -->
+    <!-- Drop ICU data to reduce download size (culture data is not needed for compiler use) -->
     <InvariantGlobalization>true</InvariantGlobalization>
-    <!-- Roslyn の localized 診断リソースは配信サイズに響くので英語のみ -->
+    <!-- Roslyn's localized diagnostic resources affect download size, so English only -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
-    <!-- IL2104 は Roslyn (Microsoft.CodeAnalysis、外の assembly) の中の trim の警告をまとめたもので、こちらでは直せない。
-         自分のコードの trim の問題は build の解析 (IL2026 など) が誤りにする -->
+    <!-- IL2104 aggregates trim warnings inside Roslyn (Microsoft.CodeAnalysis, an external assembly) and cannot be fixed here.
+         Trim problems in our own code are made errors by the build analysis (IL2026 etc.) -->
     <NoWarn>$(NoWarn);IL2104</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- worker から安定 URL で import するため fingerprint を無効化する
-         (lub 側 gen-tcs-assets.mjs がコピー先で cache bust を担う) -->
+    <!-- Disable fingerprinting so the worker can import from a stable URL
+         (gen-tcs-assets.mjs on the lub side handles cache busting at the copy destination) -->
     <WasmFingerprintAssets>false</WasmFingerprintAssets>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Transpiler は Exe プロジェクトのため ProjectReference 不可 (NETSDK1150)。
-         core ソースを直接取り込む (CLI entry の Program.cs を除く) -->
+    <!-- Transpiler is an Exe project, so it cannot be a ProjectReference (NETSDK1150).
+         The core sources are included directly (excluding Program.cs, the CLI entry) -->
     <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs" />
     <Compile Include="../Shared/*.cs" />
     <Compile Include="../SelfHost/Tool/*.cs" Exclude="../SelfHost/Tool/TcsHost.cs" />
-    <!-- VM の emitter の入口 (VmExports が使う。CLI entry の Program.cs を除く) -->
+    <!-- Entry point of the VM emitter (used by VmExports; excluding Program.cs, the CLI entry) -->
     <Compile Include="../tcsvm/Emitter/*.cs" Exclude="../tcsvm/Emitter/Program.cs" />
     <ProjectReference Include="../TinySystem/TinySystem.csproj" />
-    <!-- compiler の本体 (セルフホストの実装) -->
+    <!-- The compiler itself (the self-host implementation) -->
     <ProjectReference Include="../SelfHost/SelfHost.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="CSharpier.Core" Version="1.2.6" />

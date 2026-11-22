@@ -1,11 +1,11 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 初期化子のない static field の意味論の 2 backend differential。期待値は同じ
-// program を CoreCLR で実行した stdout
+// Two-backend differential tests for the semantics of static fields without initializers. The expected values are the stdout of running the same
+// program on CoreCLR
 public class StaticDefaultsDifferentialTests
 {
-    // C# §15.5.6: static field は全部 default にしてから、初期化子のあるものだけを
-    // 宣言順に実行する。先の初期化子が後ろの初期化子なし field に書いた値は残る
+    // C# §15.5.6: all static fields are first set to default, then only those with initializers are
+    // run in declaration order. Values that an earlier initializer writes to a later field without an initializer remain
     [CFact]
     public void StaticInitializer_KeepsWriteToLaterFieldWithoutInitializer()
     {

@@ -1,6 +1,6 @@
-// Sys.InspectSet: App.Use で開いた app の値を、開いた側から書き換える。
-// int、float、bool、string、参照を null にすること、struct の field、List の要素、class の個体の field を書け、次の frame はその値から動く。
-// 書けない物 (object そのもの、struct そのもの、辿れない path、値として読めない文字) は false で、理由が返り、値は変わらない。
+// Sys.InspectSet: the opener rewrites values of an app opened with App.Use.
+// It can write int, float, bool, string, null for references, struct fields, List elements, and fields of class instances, and the next frame runs from those values.
+// Things that cannot be written (an object itself, a struct itself, a path that cannot be followed, text that cannot be read as a value) return false with a reason, and the value does not change.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -31,7 +31,7 @@ public static class TestInspectSetChild
     public static void OnFrame(float dt)
     {
         counter++;
-        // 読まない static は module に入らないので、全部を読む
+        // Statics that are never read are not included in the module, so read all of them
         if (on && speed > 1000 && label == "" && at.X + at.Y > 1000 && items.Count + thing.Hp > 1000)
             counter = 0;
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
@@ -80,7 +80,7 @@ public static class TestInspectSet
         var child = App.Use("child", "tests/cs/.lub/all.tcsb", Child);
         if (frame == 0)
         {
-            // まだ module を読み込んでいない app には書けない
+            // Cannot write to an app that has not loaded a module yet
             Check.That(!Sys.InspectSet(Child + ".counter", "1", out var early, child) && early != null, "InspectSet before the first Step must fail");
         }
         Check.That(App.Step(child, rt, dt), $"frame {frame}: Step failed");
@@ -106,7 +106,7 @@ public static class TestInspectSet
             Check.That(Read(child, Child + ".items", "[1]") == "20", "items[1] is " + Read(child, Child + ".items", "[1]"));
             Check.That(Read(child, Child + ".thing", "Hp") == "9", "thing.Hp is " + Read(child, Child + ".thing", "Hp"));
             Check.That(Read(child, Child + ".thing.Next", "Name") == "\"b\"", "thing.Next.Name is " + Read(child, Child + ".thing.Next", "Name"));
-            // 書けない物は断り、値は変わらない
+            // Refuses things that cannot be written, and the value does not change
             Refused(child, Child + ".counter", "many", "cannot read");
             Refused(child, Child + ".counter", "1.5", "cannot read");
             Refused(child, Child + ".on", "1", "cannot read");
@@ -116,15 +116,15 @@ public static class TestInspectSet
             Refused(child, Child + ".missing", "5", "no value at");
             Refused(child, Child, "5", "no value at");
             Check.That(Read(child, Child, "counter") == "50", "a refused write changed counter: " + Read(child, Child, "counter"));
-            // 参照は null にできる
+            // References can be set to null
             Set(child, Child + ".thing.Next", "null");
             Check.That(Read(child, Child + ".thing", "Next") == "(none)", "thing.Next is still there");
         }
         if (frame == 2)
         {
-            // 次の frame は、書いた値から動く
+            // The next frame runs from the written values
             Check.That(Read(child, Child, "counter") == "51", "the next frame did not start from the written value: " + Read(child, Child, "counter"));
-            // app を省くと自分 (自分には TestInspectSetChild の static は辿れても、開いた app の値とは別)
+            // Omitting app means the caller itself (the caller can follow the statics of TestInspectSetChild, but they are separate from the values of the opened app)
             Check.That(Sys.InspectSet("TestInspectSet.frame", "2", out var own), "InspectSet on the own app failed: " + own);
             Check.Pass();
         }

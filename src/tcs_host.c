@@ -10,8 +10,8 @@
 #include <SDL3/SDL_timer.h>
 #include <lub/lub_host.h>
 #ifdef __ANDROID__
-// Android では SDL の Activity (SDLActivity) が libmain.so の SDL_main を呼ぶ。
-// SDL_main.h が下の main を SDL_main にする。
+// On Android, the SDL Activity (SDLActivity) calls SDL_main in libmain.so.
+// SDL_main.h turns the main below into SDL_main.
 #include <SDL3/SDL_main.h>
 #endif
 #endif
@@ -23,9 +23,11 @@
     "no entry in binding: pass the game sources (a class with static void OnFrame(float)) to lub-gen tcs, or --entry CLASS; regenerate older bindings"
 #endif
 
-// callback の fault (tcs_fault) は、その callback を打ち切って entry の OnError に処置を聞く (無ければ Log)。
-// OnError 自身が fault するか Log 以外を返したら Abort (終了コード 1 で終わる)。
-// callback の外 (static の初期化) の fault と、runtime の関数が呼んでいる callback (query の visitor など) の中の fault は process を止める。
+// A fault in a callback (tcs_fault) aborts that callback and asks OnError of
+// the entry what to do (Log if there is none). If OnError itself faults or
+// returns anything other than Log, Abort (exits with exit code 1). A fault
+// outside callbacks (static initialization) and a fault inside a callback that
+// a runtime function is calling (a query visitor etc.) stop the process.
 static jmp_buf tcs_fault_jmp;
 static bool tcs_fault_armed;
 static const char *tcs_fault_kind;
@@ -59,8 +61,8 @@ typedef enum {
   TCS_HOOK_QUIT
 } TcsHook;
 
-// callback を 1 つ呼ぶ。
-// fault せずに終われば true。
+// Calls one callback.
+// true if it finishes without a fault.
 static bool tcs_host_call(TcsHook hook, const LubEventData *event, float dt) {
   tcs_fault_armed = true;
   if (setjmp(tcs_fault_jmp) != 0) {
@@ -88,10 +90,12 @@ static bool tcs_host_call(TcsHook hook, const LubEventData *event, float dt) {
 #ifdef __EMSCRIPTEN__
 static bool tcs_shutting_down;
 
-// player を外す前に page が呼ぶ (外されると SDL_AppQuit は呼ばれない)。
-// ループを止め、OnQuit を走らせてから runtime を解放する (SDL の event handler は lub_host_destroy の SDL_Quit が外す)。
-// OnQuit の Host.Send は同期なので、保存の message は context が消える前に page に届く。
-// 2 回目以降と、OnQuit の中から (page が message を受けてその場で呼ぶ) の呼び出しは何もしない。
+// Called by the page before removing the player (once removed, SDL_AppQuit is
+// not called). Stops the loop, runs OnQuit, then releases the runtime (the SDL
+// event handler is removed by SDL_Quit in lub_host_destroy). Host.Send in
+// OnQuit is synchronous, so the save message reaches the page before the
+// context goes away. The second and later calls, and calls from inside OnQuit
+// (the page receives the message and calls this right away), do nothing.
 EMSCRIPTEN_KEEPALIVE void lub_tcs_shutdown(void) {
   if (!tcs_lub_context || tcs_shutting_down)
     return;
@@ -136,7 +140,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
-  // OnEvent が Quit を呼んだ frame は回さない
+  // Do not run the frame in which OnEvent called Quit
   if (lub_host_quit_requested(tcs_lub_context))
     return SDL_APP_SUCCESS;
   float dt;
@@ -188,7 +192,8 @@ int main(int argc, char **argv) {
         break;
       tcs_host_call(TCS_HOOK_EVENT, &event, 0);
     }
-    // Quit を受けた frame と OnEvent が Quit を呼んだ frame は回さない
+    // Do not run the frame that received Quit or the frame in which OnEvent
+    // called Quit
     if (lub_host_quit_requested(tcs_lub_context))
       break;
     float dt;

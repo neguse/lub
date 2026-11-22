@@ -1,4 +1,4 @@
-// TestReloadNotes が窓で書き換える file (ゲームの build に入る)。
+// The file TestReloadNotes edits in a window (goes into the game build).
 public class ReloadNotesTarget
 {
     public int Hp = 40;

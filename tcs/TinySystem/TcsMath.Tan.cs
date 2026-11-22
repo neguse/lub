@@ -1,7 +1,7 @@
 namespace TinySystem;
 
-// tanf: runtime/math/tanf.c の C# 版 (CORE-MATH 由来、MIT。著作権表示と
-// 許諾文は tanf.c の先頭)
+// tanf: C# version of runtime/math/tanf.c (derived from CORE-MATH, MIT. The copyright notice and
+// license text are at the top of tanf.c)
 internal static partial class TcsMath
 {
     static double RltlTan(float z, out int q)
@@ -57,7 +57,7 @@ internal static partial class TcsMath
     static readonly double[] TanCd = [1.0, -1.1389954387488281, 0.1421268437745497, -0.0031314039049681057];
     static readonly double[] TanSw = [0, 1];
 
-    // 有理式の近似で丸めを誤る入力と、その正しい値 (rh + rl)
+    // Inputs that the rational approximation rounds incorrectly, and their correct values (rh + rl)
     static readonly float[] TanArg =
         [1.0790827f, 2.2526088e+08f, 4.7430978e+14f, 4.512996e+15f, 9.3166134e+21f, 6.9559356e+25f, 1.2778496e+26f, 7.1710355e+30f];
     static readonly float[] TanRh =

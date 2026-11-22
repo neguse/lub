@@ -1,5 +1,5 @@
-// lub の samples/08_gltf の entry。
-// 実行: lub samples/08_gltf/Gltf08.csproj (transpile + watch + hot reload) glTF mesh (Box.glb) を法線可視化 shader + Y 軸回転 MVP で描く。
+// Entry of lub's samples/08_gltf.
+// Run: lub samples/08_gltf/Gltf08.csproj (transpile + watch + hot reload) Draws a glTF mesh (Box.glb) with a normal-visualization shader + a Y-axis rotation MVP.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -24,7 +24,7 @@ public static class Gltf08
 
     static List<float> MakeMvp(float t)
     {
-        // model: Y 軸回転
+        // model: Y-axis rotation
         var model = Mat4.RotateY(t);
         // view: translate z = +3 (D3D-style LH: camera at origin looks down +Z;
         // move world +Z so the box sits in front of the camera)

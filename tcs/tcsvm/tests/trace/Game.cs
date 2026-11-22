@@ -1,4 +1,4 @@
-// --trace の (行, self) の組のテスト (trace_test.c が呼ぶ)。
+// Test of --trace (line, self) pairs (called by trace_test.c).
 public class Crate
 {
     public int Hp;

@@ -1,6 +1,6 @@
-// `lub export web` が書いた index.html を、page 1 枚だけ (他の file を置かない) で headless chromium に開き、tests/cs のテストが PASS を出すことを見る。
-// page の player は slang を持たないので、shader は page に入った生成キャッシュからしか来ない。
-// テストが `canvas WxH` の行を出したら、canvas の画素数がそれと同じか (ゲームの見る大きさで描かれているか) も見る。
+// Opens the index.html written by `lub export web` in headless chromium as a single page (no other files placed) and checks that the tests/cs test prints PASS.
+// The page's player has no slang, so shaders come only from the generated cache embedded in the page.
+// If the test prints a `canvas WxH` line, also checks that the canvas pixel size matches it (that it is drawn at the size the game sees).
 //   node scripts/export-page-check.mjs <index.html>...
 import fs from "node:fs";
 import http from "node:http";
@@ -37,7 +37,7 @@ for (const file of pages) {
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const page = await browser.newPage();
-  // ゲームは PASS の後に終わり、SDL が canvas を 0x0 にするので、行が出た時点の画素数を page の中で取っておく
+  // The game ends after PASS and SDL sets the canvas to 0x0, so the pixel size at the time the line appears is recorded inside the page
   await page.addInitScript(() => {
     const log = console.log;
     console.log = (...args) => {

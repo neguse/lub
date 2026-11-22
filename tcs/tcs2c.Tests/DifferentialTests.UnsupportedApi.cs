@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// サブセット外の API (TCS1002) は両 backend とも IL を作る前に同じ診断で止まる。
-// MathF は TinySystem の runtime に無い (Lua は global の MathF が nil)
+// APIs outside the subset (TCS1002) stop on both backends with the same diagnostic before IL is produced.
+// MathF is not in the TinySystem runtime (in Lua the global MathF is nil)
 public class UnsupportedApiDifferentialTests
 {
     [Theory]

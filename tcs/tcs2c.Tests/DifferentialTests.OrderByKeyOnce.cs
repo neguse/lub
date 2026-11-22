@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// OrderBy / OrderByDescending は key の selector を要素ごとに 1 回、要素の順に
-// 呼ぶ (CoreCLR と同じ)。selector の副作用 (呼び出し回数・記録・呼ぶたびに
-// 変わる key) で見る。期待値は同じ program を CoreCLR で実行した stdout
+// OrderBy / OrderByDescending call the key selector once per element, in element order
+// (same as CoreCLR). Checked through the selector's side effects (call count, recording, keys that change on every
+// call). The expected values are the stdout of running the same program on CoreCLR
 public class OrderByKeyOnceDifferentialTests
 {
     [CFact]
@@ -88,8 +88,8 @@ public class OrderByKeyOnceDifferentialTests
     [CFact]
     public void OrderBy_StringKeysSurviveFrames()
     {
-        // 文字列の key を毎フレーム新しく作り、並べた結果を static に残して
-        // 次のフレームで読む (フレーム境界の GC の後も並べた List が残る)
+        // Creates new string keys every frame, keeps the sorted result in a static, and
+        // reads it in the next frame (the sorted List survives frame-boundary GC)
         const string source = """
             using System;
             using System.Collections.Generic;

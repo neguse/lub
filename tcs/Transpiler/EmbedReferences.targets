@@ -1,17 +1,17 @@
 <Project>
-  <!-- TinySystem の source で配る部分 (Transpiler.LibraryTrees) -->
+  <!-- The part of TinySystem distributed as source (Transpiler.LibraryTrees) -->
   <ItemGroup>
     <EmbeddedResource Include="$(MSBuildThisFileDirectory)../TinySystem/Linq.cs" LogicalName="lib/TinySystem/Linq.cs" />
     <EmbeddedResource Include="$(MSBuildThisFileDirectory)../TinySystem/ValueTuple.cs" LogicalName="lib/TinySystem/ValueTuple.cs" />
   </ItemGroup>
 
-  <!-- Roslyn へ渡す参照アセンブリを byte image として埋め込む。browser-wasm と
-       NativeAOT では Assembly.Location が空でファイルから読めないため。
-       version ディレクトリの glob は ref pack が複数版同居する環境 (CI runner 等)
-       で同一 LogicalName が重複して CS1508 になるため、SDK が解決した
-       targeting pack 1版 (ResolvedTargetingPack) から取る。
-       TinySystem は publish -r で出力先が RID 付きに変わるので、ProjectReference
-       が解決した実パスから取る。 -->
+  <!-- Embeds the reference assemblies passed to Roslyn as byte images, because in browser-wasm and
+       NativeAOT Assembly.Location is empty and they cannot be read from files.
+       A glob over version directories would, in environments with several ref pack versions side by side (CI runners etc.),
+       duplicate the same LogicalName and cause CS1508, so they are taken from the single targeting pack version
+       the SDK resolved (ResolvedTargetingPack).
+       The TinySystem output path gains a RID with publish -r, so it is taken from the actual path that the ProjectReference
+       resolved. -->
   <Target Name="EmbedReferenceAssemblies"
           BeforeTargets="AssignTargetPaths"
           DependsOnTargets="ResolveFrameworkReferences;ResolveProjectReferences">

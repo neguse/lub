@@ -1,5 +1,5 @@
-// lub の samples/07_compute の entry。
-// 実行: lub samples/07_compute/Compute07.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/07_compute.
+// Run: lub samples/07_compute/Compute07.csproj (transpile + watch + hot reload)
 //
 // Compute writes 3 vertices (vec4 = position.xy + color.rg) into a storage
 // buffer. The render pass then rebinds the same buffer as a VERTEX buffer

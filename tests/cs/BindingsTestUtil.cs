@@ -1,5 +1,5 @@
-// Bindings の test が共有する shader と描画先。
-// draw は cell の画素を 1 つ塗る (xy = 画素、zw = target の幅と高さ)。
+// Shader and render target shared by the Bindings tests.
+// draw paints one pixel of the cell (xy = pixel, zw = target width and height).
 using Lub;
 
 public static class BindingsTestUtil

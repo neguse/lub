@@ -1,7 +1,7 @@
-// field の初期値を変えて保存すると、ゲームの reload の知らせ (Lider.GameReloadNotes) が届き、その field を宣言した窓の下端に「Shift+F5 で作り直すと入る」と出る。
-// 次の reload が当たると消える。
-// 窓で game/Target.cs (lider が開くゲームの build に入る) を書き換えて保存するので、lub の watch と tcs を通る。
-// 書き換えるのは、ゲームが動き始めてから。
+// When the initial value of a field is changed and saved, the game's reload notice (Lider.GameReloadNotes) arrives, and "Shift+F5 で作り直すと入る" appears at the bottom edge of the window that declares that field.
+// It disappears when the next reload is applied.
+// The window rewrites and saves game/Target.cs (part of the game build lider opens), so this goes through lub's watch and tcs.
+// The rewrite happens after the game starts running.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -52,7 +52,7 @@ public static class TestReloadNotes
             return;
         var w = Lider.Work!;
         waited += dt;
-        // ゲームの build を待つ
+        // Wait for the game build
         if (GameApp.Frames == 0)
         {
             Check(waited < 60, "the game did not start in 60 seconds");
@@ -93,7 +93,7 @@ public static class TestReloadNotes
         App.Quit(0);
     }
 
-    // line の中の from を to に打ち直して保存する
+    // Retype from as to in line, and save
     static void Replace(string line, string from, string to)
     {
         var at = IndexOf(doc!.Lines(), line);

@@ -1,9 +1,9 @@
-// 同じ key の buffer は同じものを指す。
-// 同じ version の宣言は同じ ref を返し、同じフレームの違う version は error になる。
-// 次のフレームの違う version は編集なので作り直し、error で終わったフレームの次もそれができる。
-// version を省いた宣言は内容が変わったという宣言で、同じフレームでも error にしない。
-// data の無い宣言は、一致すれば同じ ref を返す宣言で、外れたら何もしない問い合わせ。
-// 一致も宣言に数えるので、`Use(null, v) ?? Use(data, v)` の形は key が空でも残っていても同じ結果になる。
+// Buffers with the same key refer to the same thing.
+// A declaration with the same version returns the same ref, and a different version in the same frame is an error.
+// A different version in the next frame is an edit, so it is recreated; this also works in the frame after one that ended with an error.
+// A declaration that omits version declares that the contents changed, and is not an error even in the same frame.
+// A declaration without data is a declaration that returns the same ref on a match, and a query that does nothing on a miss.
+// A match also counts as a declaration, so the form `Use(null, v) ?? Use(data, v)` gives the same result whether the key is empty or still present.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -56,10 +56,10 @@ public static class TestBufferKeyConflict
                 break;
             case 4:
                 {
-                    // 前のフレームは error で終わったが、別のフレームの宣言は編集。
+                    // The previous frame ended with an error, but a declaration in a different frame is an edit.
                     var edited = Use(Data(), 4);
                     Check.That(edited != null && edited.Version == 4, "the next frame must accept a new version");
-                    // data の無い宣言は問い合わせなので、外れても矛盾にしない。
+                    // A declaration without data is a query, so a miss is not a conflict.
                     Check.That(Use(null, 104) == null, "a different version without data must be absent");
                     var kept = Use(null, 4);
                     Check.That(kept != null && kept.Version == 4, "a miss must not change the stored version");
@@ -76,13 +76,13 @@ public static class TestBufferKeyConflict
                     break;
                 }
             case 6:
-                // key が空: 1 つ目は外れて data で宣言する。
+                // The key is empty: the first one misses and declares with data.
                 Check.That(Declare("repeat_buf", 1) != null, "the first declaration must succeed");
                 Check.Error("two versions on an empty key must fail", "different versions");
                 Declare("repeat_buf", 2);
                 break;
             case 7:
-                // key に version 1 が残っている: 1 つ目は data 無しで一致する。
+                // Version 1 remains in the key: the first one matches without data.
                 Check.That(Declare("repeat_buf", 1) != null, "the matching declaration must succeed");
                 Check.Error("two versions on a kept key must fail the same way", "different versions");
                 Declare("repeat_buf", 2);

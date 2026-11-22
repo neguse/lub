@@ -1,20 +1,25 @@
-/* tcs2c の GC を、本物の runtime のまま有界に全列挙する harness。
-   GcEnumerationTests が tcs2c --lib の出力 (Node / G の harness program) の
-   末尾に連結して 1 つの translation unit としてコンパイルする。
+/* Harness that exhaustively enumerates the tcs2c GC within bounds, using the
+   real runtime as is. GcEnumerationTests appends it to the end of the tcs2c
+   --lib output (the Node / G harness program) and compiles them as one
+   translation unit.
 
-   - runtime の malloc / calloc / realloc / free は -D で h_* に向け、bump 確保の
-     arena に置く (free は毒値で埋めるだけ)。arena の使用部分 + static 変数を
-     memcpy すれば GC の状態をそのまま snapshot / restore できる
-   - mutator の op (new / root 代入 / field store / List / Dict / frame 境界) を
-     深さ制限 DFS で列挙する。root から到達する構造 (object の flags と dirty
-     登録、List の長さ、Dict の chain 順を含む) が同じ状態は 1 回だけ見る
-   - store は emit された関数 (tcs_m_G_*) を呼ぶので、バリアの置き方は emitter と
-     runtime のものがそのまま検査対象になる。harness が足すのは op の選び方だけ
-   - frame 境界ごとに shadow graph (op を鏡写しした抽象 heap) と実 heap を root
-     から lockstep に歩き、到達可能な slot が shadow と同じ object を指し
-     (NoDangling / NoLostObject)、旧世代の list が到達可能な object とちょうど
-     一致する (OldGenSound) ことを確かめる。違反は最短の op 列 (witness) を
-     印字して exit 1 */
+   - The runtime's malloc / calloc / realloc / free are redirected to h_* with
+   -D and placed in a bump-allocated arena (free only fills memory with poison
+   values). By memcpy-ing the used part of the arena + the static variables, the
+   GC state can be snapshotted / restored as is
+   - Enumerates the mutator ops (new / root assignment / field store / List /
+   Dict / frame boundary) with depth-limited DFS. States with the same structure
+   reachable from the roots (including object flags and dirty registration, List
+   lengths, Dict chain order) are visited only once
+   - Stores call the emitted functions (tcs_m_G_*), so the barrier placement of
+   the emitter and the runtime is checked as is. The harness only adds how ops
+   are chosen
+   - At every frame boundary, walks the shadow graph (an abstract heap that
+   mirrors the ops) and the real heap from the roots in lockstep, and checks
+   that reachable slots point to the same objects as the shadow (NoDangling /
+   NoLostObject) and that the old-generation list matches the reachable objects
+   exactly (OldGenSound). A violation prints the shortest op sequence (witness)
+     and ends with exit 1 */
 
 #ifndef TCS_GC_STRESS
 #error                                                                         \
@@ -24,7 +29,8 @@
 #define H_DEPTH 8
 #endif
 #ifndef H_MAX_NODES
-#define H_MAX_NODES 3 /* 到達可能な Node の上限 (new の適用条件) */
+/* Upper bound of reachable Nodes (condition for applying new) */
+#define H_MAX_NODES 3
 #endif
 #ifndef H_LIST_MAX
 #define H_LIST_MAX 2
@@ -35,7 +41,7 @@
 #define H_ARENA_BYTES ((size_t)1 << 20)
 #define H_DICT_KEYS 2
 #define H_GROW_BASE 100
-#define H_GROW_KEYS 33 /* 33 個目の put で bucket が 16 → 32 に倍化する */
+#define H_GROW_KEYS 33 /* The 33rd put doubles the buckets from 16 → 32 */
 #define H_MAX_IDS (H_DEPTH + 1)
 #define H_KEY_MAX 16384
 #define H_EXPECT_MAX 1024
@@ -101,14 +107,16 @@ typedef struct HNode {
   int has_list;
   int list_len;
   int list_items[H_LIST_MAX];
-  int has_ilist; /* List<int>: 要素 layout が無く、再確保のバリアだけが効く経路 */
-  int ilist_len; /* 要素 i の値は i + 1 */
+  int has_ilist; /* List<int>: a path with no element layout where only the
+                    reallocation barrier applies */
+  int ilist_len; /* The value of element i is i + 1 */
   int has_dict;
   int dict_has[H_DICT_KEYS];
   int dict_val[H_DICT_KEYS];
   int grown;
   int serial;
-  Tcs_Node *real; /* frame 中は確定。境界では check が root から引き直す */
+  Tcs_Node *real; /* Fixed during a frame. At a boundary, check looks it up
+                     again from the roots */
 } HNode;
 
 typedef struct HShadow {
@@ -119,7 +127,7 @@ typedef struct HShadow {
 } HShadow;
 
 static HShadow h_sh;
-static void *h_held; /* host の hold slot (SL_H の実体) */
+static void *h_held; /* The host's hold slot (the actual SL_H) */
 
 static Tcs_Node *h_real(int id) { return id < 0 ? NULL : h_sh.nodes[id].real; }
 
@@ -243,14 +251,15 @@ static void h_describe(const HOp *op, char *out, size_t size) {
   }
 }
 
-/* ---- 探索の状態 ---- */
+/* ---- Search state ---- */
 static const HOp *h_path[H_DEPTH];
 static int h_path_len;
 static size_t h_states, h_frames;
-static size_t h_cov_old_young; /* 旧 object の slot へ若い object を store */
-static size_t h_cov_grow_old;  /* 旧 node を持つ Dict の rehash */
 static size_t
-    h_cov_remove_hazard; /* 旧 owner の link が若い node を指すようになる remove */
+    h_cov_old_young; /* Store of a young object into a slot of an old object */
+static size_t h_cov_grow_old;      /* Rehash of a Dict that holds old nodes */
+static size_t h_cov_remove_hazard; /* remove that makes an old owner's link
+                                      point to a young node */
 
 static void h_fail(const char *reason, int id) {
   int i;
@@ -336,10 +345,11 @@ static int h_is_old(const void *pointer) {
   return pointer != NULL && (TCS_GC_HEADER(pointer)->flags & TCS_GC_OLD) != 0;
 }
 
-/* remove が書き換える link の owner (直前の node か Dict 自身) が旧世代で、
-   新しく指す node が若いなら、バリア無しの store が若い object を旧 object
-   の slot に置いた形。tcs_dict_remove にバリアは無いので、この形が境界で
-   壊れないことが列挙で確かめたい性質 */
+/* If the owner of the link that remove rewrites (the previous node or the Dict
+   itself) is in the old generation and the newly pointed node is young, a store
+   without a barrier has put a young object into a slot of an old object.
+   tcs_dict_remove has no barrier, so the property the enumeration should
+   confirm is that this shape does not break at a boundary */
 static void h_cover_remove(TcsDict *dict, int32_t key) {
   TcsDictNode *node, *prev = NULL;
   const void *owner = dict;
@@ -447,7 +457,7 @@ static void h_apply(const HOp *op) {
     node->grown = 1;
     break;
   default:
-    /* 境界: C# のスタックは空なので local は捨てる */
+    /* Boundary: the C# stack is empty, so locals are dropped */
     h_sh.slot[SL_L0] = h_sh.slot[SL_L1] = -1;
     tcs_lib_gc();
     h_frames++;
@@ -455,7 +465,8 @@ static void h_apply(const HOp *op) {
   }
 }
 
-/* ---- 境界の検査: shadow と実 heap を root から lockstep に歩く ---- */
+/* ---- Boundary check: walk the shadow and the real heap in lockstep from the
+ * roots ---- */
 static TcsGcHeader *h_expect[H_EXPECT_MAX];
 static size_t h_expect_count;
 
@@ -463,7 +474,8 @@ static void h_expect_object(const void *payload, int kind, const char *what,
                             int id) {
   TcsGcHeader *hdr;
   size_t i;
-  /* 毒値や解放済み領域の pointer は header を読む前に止める (crash でなく witness を出す) */
+  /* Stop at poison values and pointers into freed memory before reading the
+   * header (emit a witness instead of crashing) */
   if ((const unsigned char *)payload <
           h_arena + sizeof(HBlock) + sizeof(*hdr) ||
       (const unsigned char *)payload >= h_arena + h_arena_used)
@@ -561,7 +573,8 @@ static void h_check_visit(int id, Tcs_Node *pointer) {
     if (dict->buckets != NULL)
       h_expect_object(dict->buckets, TCS_KIND_RAW, "dict bucket buffer kind",
                       id);
-    /* 挿入順の node の並び (support-matrix §18)。生きている node の数が count と同じこと */
+    /* Nodes in insertion order (support-matrix §18). The number of live nodes
+     * must equal count */
     if (dict->order != NULL) {
       size_t live = 0;
       h_expect_object(dict->order, TCS_KIND_RAW, "dict order buffer kind", id);
@@ -625,7 +638,8 @@ static void h_check(void) {
     h_fail("remembered set was not drained", -1);
 }
 
-/* ---- 状態の key (root からの到達構造 + GC が次に見る flags) ---- */
+/* ---- State key (structure reachable from the roots + the flags the GC looks
+ * at next) ---- */
 static unsigned char h_key[H_KEY_MAX];
 static size_t h_key_len;
 static int h_label[H_MAX_IDS];
@@ -738,7 +752,8 @@ static uint64_t h_fnv(uint64_t hash, uint64_t prime) {
   return hash;
 }
 
-/* 同じ状態を残り深さ以上で既に見ていれば 1 */
+/* 1 if the same state has already been seen with at least the remaining depth
+ */
 static int h_seen(int remaining) {
   uint64_t h1 = h_fnv(UINT64_C(0xcbf29ce484222325), UINT64_C(0x100000001b3));
   uint64_t h2 = h_fnv(UINT64_C(0x9e3779b97f4a7c15), UINT64_C(0x1000193));
@@ -834,7 +849,8 @@ static void h_restore(const HSnap *snap) {
   memcpy(h_arena, snap->arena, snap->arena_used);
 }
 
-/* ---- DFS (反復深化: 違反は最短の witness で出る) ---- */
+/* ---- DFS (iterative deepening: violations come out with the shortest witness)
+ * ---- */
 static void h_dfs(int remaining) {
   HSnap *snap = &h_snaps[h_path_len];
   int i;
@@ -859,7 +875,8 @@ static void h_dfs(int remaining) {
   }
 }
 
-/* runtime 自身が壊れた pointer を踏んで落ちても witness を出す */
+/* Emit a witness even if the runtime itself hits a broken pointer and crashes
+ */
 static void h_on_signal(int sig) {
   char reason[48];
   snprintf(reason, sizeof(reason), "runtime crashed (signal %d)", sig);

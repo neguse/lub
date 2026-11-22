@@ -18,8 +18,8 @@ func envInt(name string, def int32) int32 {
 	return int32(v)
 }
 
-// 内側のループの float の演算と分岐。mandelbrot と同じ範囲と反復 (50 回) を float32 で数える
-// 積は float32(...) で包み FMA への融合を止める
+// Float arithmetic and branches in the inner loop. Counts over the same range and iterations (50) as mandelbrot, in float32
+// Products are wrapped in float32(...) to prevent fusion into FMA
 func run(n int32, print bool) int32 {
 	var inside int32
 	for y := int32(0); y < n; y++ {
@@ -48,7 +48,7 @@ func run(n int32, print bool) int32 {
 
 func main() {
 	n := envInt("BENCH_N", 200)
-	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	// Repeats BENCH_REPS times. Each repetition's input depends on the previous result so the compiler cannot skip repetitions (the result is never -1)
 	reps := envInt("BENCH_REPS", 1)
 	var prev int32
 	for r := int32(0); r < reps; r++ {

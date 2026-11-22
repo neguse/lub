@@ -22,7 +22,7 @@ static SDL_GPURenderPass *g_render_pass = NULL;
 // The GPU device and the per-frame objects. The backend is one per process,
 // like the window it presents to.
 static SDL_GPUDevice *g_device;
-static SDL_GPUTexture *g_swapchain_tex; // current frame の swapchain
+static SDL_GPUTexture *g_swapchain_tex; // swapchain of the current frame
 static SDL_GPUCommandBuffer *g_cmd;     // current frame
 static SDL_GPUTexture *g_depth_tex;     // swapchain-sized depth/stencil target
 static int g_depth_w;
@@ -844,7 +844,7 @@ static void sg_destroy_shader(BackendShader h) {
   free(s);
 }
 
-// SglBlendFactor / SglBlendOp の値で引く。
+// Indexed by SglBlendFactor / SglBlendOp value.
 static const SDL_GPUBlendFactor kSgBlendFactor[] = {
     SDL_GPU_BLENDFACTOR_ZERO,
     SDL_GPU_BLENDFACTOR_ZERO,

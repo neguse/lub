@@ -1,4 +1,4 @@
-// host 連携のテスト (host_test.c が stub.cs の面を登録して呼ぶ)。
+// Host integration test (host_test.c registers the stub.cs surface and calls it).
 using System;
 using System.Collections.Generic;
 using Eng;
@@ -23,7 +23,7 @@ public static class Game
             + " " + sq.Length + " " + sq[3]);
         var ring = Gfx.Ring(2);
         Console.WriteLine(ring.Kind + " " + ring.R + " " + ring.Area());
-        // host が作った --ref の class の object への型 test と cast (tcs vm は型の表で判定する。tcs check と tcs c は TCS1001)
+        // Type tests and casts on objects of --ref classes created by the host (tcs vm decides by the type table; tcs check and tcs c give TCS1001)
         object any = ring;
         object handle = tex;
         Console.WriteLine((any is Circle) + " " + (any is Tex) + " " + (handle is Tex) + " " + ((Circle)any).Kind);
@@ -32,7 +32,7 @@ public static class Game
         Console.WriteLine((int)(float)quad);
     }
 
-    // struct と out を C の layout の塊で host に渡す
+    // Passes structs and out to the host as blocks in C layout
     public static void Structs()
     {
         var a = new Vec2 { X = 1, Y = 2 };
@@ -50,7 +50,7 @@ public static class Game
         Hit? far = Phys.Cast(b, 1);
         Console.WriteLine(near.HasValue + " " + near.Value.Id + " " + near.Value.T + " " + far.HasValue);
         Console.WriteLine(Phys.Score(near, 1) + " " + Phys.Score(far, 1) + " " + Phys.Score(null, 2));
-        // 中の Center の塊が外の Apply の塊を上書きすると、Apply が足す v が (4, 8) に化ける
+        // If the inner Center block overwrote the outer Apply block, the v that Apply adds would turn into (4, 8)
         var moved = Phys.Apply(v => Phys.Center(new Box2 { Min = new Vec2 { X = v.X * 4, Y = v.Y * 4 } }), a);
         Console.WriteLine(moved.X + " " + moved.Y);
     }

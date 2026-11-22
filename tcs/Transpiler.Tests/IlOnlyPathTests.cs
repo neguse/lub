@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// T250: legacy visitor 廃止で IL 経路が唯一になった際に IL 化した構文。
-// 以前は legacy fallback で動いていたもの (実 .NET と一致させる)
+// T250: syntax that was turned into IL when the IL path became the only one after the legacy visitor was removed.
+// Things that used to run through the legacy fallback (made to match real .NET)
 public class IlOnlyPathTests
 {
     [Fact]

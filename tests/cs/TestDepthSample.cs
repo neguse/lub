@@ -1,7 +1,7 @@
-// depth-only pass (color target なし) で Gfx.PixelFormat.Depth32f に三角形を描き、その depth texture を通常の texture としてサンプルして可視化する visual test。
-// 期待: 三角形領域が暗いグレー (z=0.25)、背景が白 (ClearDepth=1.0)。
-// shadow mapping (depth-only pass + depth 直接サンプル) の成立条件そのもの。
-// 合否は描画の golden (tests/golden/TestDepthSample_*.png) で決まる。
+// Visual test that draws a triangle into Gfx.PixelFormat.Depth32f in a depth-only pass (no color target), then samples that depth texture as a normal texture to visualize it.
+// Expected: the triangle area is dark gray (z=0.25) and the background is white (ClearDepth=1.0).
+// This is exactly the precondition for shadow mapping (depth-only pass + direct depth sampling).
+// Pass/fail is decided by the rendering golden (tests/golden/TestDepthSample_*.png).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -13,7 +13,7 @@ public static class TestDepthSample
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
     }
 
-    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    // lub export draws 1 frame and records the shaders and files used
     public static void OnExport() { OnFrame(0); }
 
     public static void OnFrame(float dt)

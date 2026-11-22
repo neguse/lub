@@ -1,5 +1,5 @@
-// 置かれていない file の load は、最初の呼び出しで error ("missing") になり本体は null。
-// native も web も pending を返さない (web は読める file を起動前に MEMFS へ置く)。
+// Loading a file that is not present is an error ("missing") on the first call, and the body is null.
+// Neither native nor web returns pending (web places readable files in MEMFS before startup).
 using System;
 using Lub;
 

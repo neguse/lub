@@ -1,4 +1,4 @@
-// host の関数の登録が module の struct と合わないときの読み込みの拒否 (host_test.c の reject)
+// Rejection of loading when a host function registration does not match the module's structs (reject in host_test.c)
 using Eng;
 
 public static class Reject

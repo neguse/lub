@@ -3,19 +3,19 @@ using TcsSelf;
 
 namespace LubGen;
 
-// lub-gen: cs-lib/lub_stub.cs を記述として読み、面を検査し生成物を作る。
-//   lub-gen check                     記述の検査 (名前の規則・衝突)
-//   lub-gen model [-o out.json]       API model を JSON で出す
-//   lub-gen header [-o file]          C API の header (include/lub/lub_api.h)
-//   lub-gen docs [-o file]            API reference のデータ (web/gen/lub-api-docs.json)
-//   lub-gen facade [-o file]          .NET 実行の facade (dotnet/Lub/Lub.g.cs)
-//   lub-gen facade-lubx [-o file]     namespace Lubx の .NET 実行の facade (dotnet/Lub/Lubx.g.cs)
+// lub-gen: reads cs-lib/lub_stub.cs as the description, checks the surface, and produces the generated files.
+//   lub-gen check                     Checks the description (naming rules, conflicts)
+//   lub-gen model [-o out.json]       Outputs the API model as JSON
+//   lub-gen header [-o file]          C API header (include/lub/lub_api.h)
+//   lub-gen docs [-o file]            API reference data (web/gen/lub-api-docs.json)
+//   lub-gen facade [-o file]          Facade for .NET execution (dotnet/Lub/Lub.g.cs)
+//   lub-gen facade-lubx [-o file]     Facade for .NET execution in namespace Lubx (dotnet/Lub/Lubx.g.cs)
 //   lub-gen tcs --source F.cs ... [--entry CLASS] [-o file]
-//                                     tcs2c 実行の接続コード (entry は src/tcs_host.c 用)
+//                                     Glue code for tcs2c execution (entry is for src/tcs_host.c)
 //   lub-gen vm [--source F.cs ...] [-o file]
-//                                     tcs VM の host の関数 (src/vm_player.c 用)。--source を渡せばそのゲームが使う関数だけ
-// 既定の stub は repo root からの相対パス cs-lib/lub_stub.cs。
-// TinyC# で書き、tcs の compiler (SelfHost/Compiler) と一緒に C (tcs c) か .NET で動かす。OS に触る所は tcs の TcsHost。
+//                                     tcs VM host functions (for src/vm_player.c). With --source, only the functions that game uses
+// The default stub is cs-lib/lub_stub.cs, relative to the repo root.
+// Written in TinyC# and run together with the tcs compiler (SelfHost/Compiler) as C (tcs c) or on .NET. OS access goes through tcs's TcsHost.
 public static class Tool
 {
     public static void Start()
@@ -25,7 +25,7 @@ public static class Tool
         TcsHost.SetDone();
     }
 
-    // 全部を Start で済ませるので、Step は来ない
+    // Everything is done in Start, so Step is never called
     public static void Step()
     {
         TcsHost.SetDone();
@@ -171,10 +171,10 @@ public static class Tool
     }
 }
 
-/// <summary>`lub-gen tcs` のゲームの IL (tcs c と同じ export。generic は単相化する)。</summary>
+/// <summary>IL of the game for `lub-gen tcs` (the same export as tcs c; generics are monomorphized).</summary>
 public static class GameExport
 {
-    // tcs VM が許す準拠の誤り (--ref の型の検査と interface の実装)。C# 版の IlExport.Export と同じく、これだけなら IL を作って診断を付ける
+    // Compliance errors the tcs VM allows (--ref type checks and interface implementations). As in IlExport.Export of the C# version, if these are the only ones, IL is produced with the diagnostics attached
     private static bool VmAllowed(string d)
     {
         foreach (var p in "RefInterfaceImplementation( RefTypeTest( RefCast( RefInterfaceTypeTest(".Split(' '))
@@ -234,7 +234,7 @@ public static class Checks
         var problems = new List<string>();
         foreach (var ns in model.Namespaces)
         {
-            // overload は同じ host の名前 1 つに落ちる (C# 名が同じなら衝突ではない)
+            // Overloads collapse into a single host name (the same C# name is not a conflict)
             var seen = new Dictionary<string, string>();
             var csNames = new HashSet<string>();
             foreach (var f in ns.Functions)
@@ -288,8 +288,8 @@ public static class Checks
         return problems;
     }
 
-    // struct の record は C の layout の値で渡るので、field は int / float / bool / enum と、それだけでできた struct の record に限る。
-    // 使えるのは関数の引数と out と戻り値 (null を許さない)、record の field (null を許す)、struct の record の field。
+    // Struct records are passed as values in C layout, so their fields are limited to int / float / bool / enum and struct records made only of those.
+    // They can be used for function arguments, out, and return values (not nullable), record fields (nullable), and struct record fields.
     private static void StructRecords(ApiModel model, List<string> problems)
     {
         foreach (var t in model.Types)
@@ -356,7 +356,7 @@ public static class Checks
     }
 }
 
-/// <summary>`lub-gen model` の JSON (C# 版の JsonSerializer の WriteIndented と WhenWritingDefault の形)。</summary>
+/// <summary>JSON for `lub-gen model` (the shape JsonSerializer produces with WriteIndented and WhenWritingDefault in the C# version).</summary>
 public static class ModelJson
 {
     private static void Str(JValue o, string key, string? value)

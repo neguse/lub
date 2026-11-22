@@ -1,4 +1,4 @@
-// ../game/Game.cs が App.Use で開く app。赤で塗り、青に数えた frame を出す。
+// The app that ../game/Game.cs opens with App.Use. Fills with red and outputs the counted frames in blue.
 using System;
 using Lub;
 

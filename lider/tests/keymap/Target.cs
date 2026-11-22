@@ -1,4 +1,4 @@
-// TestKeymap が開く file。
+// The file TestKeymap opens.
 public static class Target
 {
     // 0

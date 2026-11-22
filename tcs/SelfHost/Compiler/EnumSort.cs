@@ -2,8 +2,8 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// .NET の ArraySortHelper<TKey, TValue> と同じ introsort (key と並びを一緒に並べる) と二分探索。
-// enum の名前の表を .NET の EnumInfo と同じ並びにするのに使う。key は符号なしで比べる
+// The same introsort as .NET's ArraySortHelper<TKey, TValue> (sorts the keys and the items together) and binary search.
+// Used to put the enum name table in the same order as .NET's EnumInfo. Keys are compared as unsigned
 public static class EnumSort
 {
     public static void IntrospectiveSort(List<int> keys, List<int> values)
@@ -23,7 +23,7 @@ public static class EnumSort
         return r;
     }
 
-    // 符号なしの 32 bit として比べる (C# の enum の並びは underlying の値を符号なしで比べる)
+    // Compare as unsigned 32-bit (C# enum ordering compares the underlying values as unsigned)
     public static bool UnsignedLess(int a, int b) => (a ^ (-2147483647 - 1)) < (b ^ (-2147483647 - 1));
 
     private static bool Less(int a, int b) => UnsignedLess(a, b);
@@ -43,7 +43,7 @@ public static class EnumSort
         if (Less(keys[j], keys[i])) Swap(keys, values, i, j);
     }
 
-    // [lo, lo + size) を並べる
+    // Sort [lo, lo + size)
     private static void IntroSort(List<int> keys, List<int> values, int lo, int size, int depthLimit)
     {
         int partitionSize = size;
@@ -147,7 +147,7 @@ public static class EnumSort
         values[lo + i - 1] = dv;
     }
 
-    // .NET の span の BinarySearch と同じ手順 (同じ値が複数あればどれかの位置)
+    // Same procedure as .NET span BinarySearch (if there are several equal values, the position of one of them)
     public static int BinarySearch(List<int> keys, int value)
     {
         int lo = 0;

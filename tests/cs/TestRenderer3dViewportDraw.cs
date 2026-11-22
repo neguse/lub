@@ -1,7 +1,7 @@
-// Renderer3d.Viewport の visual test。
-// 画面を灰色で消した後、右下の範囲 (48, 32)-(112, 96) だけに Renderer3d で描く。
-// 期待: 範囲の外は灰色のまま残り、範囲の中に背景色 (青) と球が写る。球は範囲の縦横比 (1:1) で丸い。
-// 合否は描画の golden (tests/golden/TestRenderer3dViewportDraw_*.png) で決まる。
+// Visual test of Renderer3d.Viewport.
+// After clearing the screen with gray, draws with Renderer3d only in the bottom-right region (48, 32)-(112, 96).
+// Expected: outside the region stays gray, and the background color (blue) and a sphere appear inside the region. The sphere is round with the aspect ratio of the region (1:1).
+// Pass/fail is decided by the rendering golden (tests/golden/TestRenderer3dViewportDraw_*.png).
 using System;
 using Lub;
 using Lubx;

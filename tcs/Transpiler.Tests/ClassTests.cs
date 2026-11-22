@@ -281,8 +281,8 @@ public class ClassTests
     [Fact]
     public void StaticFieldInitializers_SeeDefaultValuesOfLaterFields()
     {
-        // C# は static field を default 値で事前初期化してから initializer を
-        // 宣言順に実行する (循環参照でも nil にならない)
+        // C# pre-initializes static fields to default values and then runs the initializers
+        // in declaration order (even with circular references, nothing becomes nil)
         var result = TestHelper.CompileAndRunVm("""
             public class T
             {
@@ -296,8 +296,8 @@ public class ClassTests
         Assert.Equal("1,2", result);
     }
 
-    // static initializer は同クラスの constructor / method の後に実行する
-    // (neguse/tcs#15: `static V Zero = new V(1, 2)` が `V.new` 未定義で落ちた)
+    // Static initializers run after the constructors / methods of the same class
+    // (neguse/tcs#15: `static V Zero = new V(1, 2)` crashed because `V.new` was undefined)
     [Fact]
     public void StaticFieldInitializer_CallsOwnConstructor()
     {

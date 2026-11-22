@@ -1,10 +1,10 @@
-/* tanf (正しく丸める)。CORE-MATH (https://core-math.gitlabpages.inria.fr/)
-   の src/binary32/tan/tanf.c (commit 0bbf26a) を、GCC / Clang の拡張を使わない
-   C に書き直したもの。計算の手順は元のままで、結果は元の実装と全入力で
-   bit 単位で同じ。
-   変更: __int128 の積を tcs_mul64 に、__builtin_roundeven を
-   tcs_roundeven_small に、__builtin_fmaf を tcs_fmaf に置き換え、errno と
-   浮動小数点例外の設定を外した (NaN は TCS_NANF を返す)。
+/* tanf (correctly rounded). CORE-MATH (https://core-math.gitlabpages.inria.fr/)
+   src/binary32/tan/tanf.c (commit 0bbf26a), rewritten in C that does not use
+GCC / Clang extensions. The computation steps are unchanged, and the results
+match the original implementation bit for bit on all inputs. Changes: replaced
+the __int128 product with tcs_mul64, __builtin_roundeven with
+   tcs_roundeven_small, and __builtin_fmaf with tcs_fmaf, and removed setting
+errno and floating-point exceptions (returns TCS_NANF for NaN).
 
 Copyright (c) 2022-2025 Alexei Sibidanov.
 
@@ -90,7 +90,8 @@ static const double tan_cd[] = {0x1p+0, -0x1.2395347fb829dp+0,
                                 0x1.2313660f29c36p-3, -0x1.9a707ab98d1c1p-9};
 static const double tan_sw[] = {0, 1};
 
-/* 有理式の近似で丸めを誤る入力と、その正しい値 (rh + rl) */
+/* Inputs where the rational approximation rounds incorrectly, and their correct
+ * values (rh + rl) */
 static const float tan_arg[] = {
     0x1.143ec4p+0f,  0x1.ada6aap+27f, 0x1.af61dap+48f, 0x1.0088bcp+52f,
     0x1.f90dfcp+72f, 0x1.cc4e22p+85f, 0x1.a6ce12p+86f, 0x1.6a0b76p+102f};

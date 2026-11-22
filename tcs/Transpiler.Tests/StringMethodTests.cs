@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// string の method の semantic テスト (tcs VM で走らせる)。
+/// Semantic tests of string methods (run on the tcs VM).
 /// </summary>
 public class StringMethodTests
 {

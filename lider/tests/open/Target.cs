@@ -1,4 +1,4 @@
-// TestOpen が最初に開く file。
+// The file TestOpen opens first.
 public static class Target
 {
 }

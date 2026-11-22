@@ -1,4 +1,4 @@
-// TestAsset が開く file。
+// The file TestAsset opens.
 public static class Target
 {
 }

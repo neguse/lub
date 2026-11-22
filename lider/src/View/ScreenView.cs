@@ -1,13 +1,13 @@
-// スクリーンを画面に描く。
-// 画面を黒で塗り、奥のスクリーンから順に、ウィンドウの中身の絵をウィンドウの画面の上の矩形に写す。
-// 絵の色は透けないものとして写し、スクリーンの透過度で重ねる。
+// Draws screens on the display.
+// Fills the display with black and, starting from the farthest screen, copies each window's content image into the window's rectangle on the display.
+// Image colors are copied as opaque and blended with the screen's opacity.
 using System.Collections.Generic;
 using Lub;
 using LiderCore;
 
 public static class ScreenView
 {
-    // rect は写す先の矩形 (clip 空間の左上の x, y と右下の x, y)、tint.a は透過度
+    // rect is the destination rectangle (top-left x, y and bottom-right x, y in clip space), tint.a is the opacity
     const string Vs = "struct Uniforms { float4 rect; float4 tint; };\n"
         + "ConstantBuffer<Uniforms> u;\n"
         + "struct VSOut { float2 uv : TEXCOORD0; float alpha : COLOR; float4 pos : SV_Position; };\n"
@@ -25,8 +25,8 @@ public static class ScreenView
         + "  return float4(LUB_SAMPLE(tex, i.uv).rgb, i.alpha);\n"
         + "}\n";
 
-    // viewportW と viewportH は画面の大きさ (画面の座標)。
-    // behind は、Space に置いたゲームの絵 (無ければ null)。どのスクリーンよりも奥に、画面いっぱいに写す
+    // viewportW and viewportH are the display size (display coordinates).
+    // behind is the game image placed in Space (null if none). Copied full-screen, behind every screen
     public static void Draw(List<Screen> screens, float viewportW, float viewportH, TextureRef? behind)
     {
         var shader = Gfx.UseShader("lider_screen", Vs, Fs, 1);
@@ -49,7 +49,7 @@ public static class ScreenView
         if (shader != null)
             foreach (var screen in FarFirst(screens))
             {
-                // 平面のスクリーンだけを描く (コードの窓の円筒は DrawScene が描く)
+                // Draw only flat screens (the cylinder of code panels is drawn by DrawScene)
                 if (screen.Shape != ScreenShape.Plane)
                     continue;
                 foreach (var window in screen.Windows)
@@ -81,7 +81,7 @@ public static class ScreenView
         Gfx.EndPass();
     }
 
-    // 視点から遠い順
+    // Farthest from the view first
     static List<Screen> FarFirst(List<Screen> screens)
     {
         var sorted = new List<Screen>(screens);

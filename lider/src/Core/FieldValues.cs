@@ -1,8 +1,8 @@
-// フィールドの宣言の行に出す今の値を、ゲームの今の値 (lub の Sys.Inspect) から引く。
-// static はその値。instance は static から辿って見つけ、1 つならその値、幾つもあれば選んだ個体の値 (選ぶまでは出さない)。
-// 幾つもあれば、class の宣言の行に個体の目印を MaxMarks 個まで並べる。押すと選ぶ。
-// 個体は table のアドレス (InspectNode.Id) で見分ける。並びの順番は要素の増減で変わるので、個体の目印にしない。
-// 選んだ個体は lub に弱く覚えさせ、回収されるか static から辿れなくなったら選択を解く (別の個体へは移らない)。
+// Looks up the current values shown on field declaration lines from the game's current values (lub's Sys.Inspect).
+// For a static, its value. Instances are found by walking from statics: if there is one, its value; if there are several, the value of the selected instance (nothing is shown until one is selected).
+// If there are several, up to MaxMarks instance marks are listed on the class declaration line. Clicking one selects it.
+// Instances are identified by their table address (InspectNode.Id). The index in a list changes as elements are added or removed, so it is not used to mark an instance.
+// lub holds the selected instance weakly, and the selection is cleared when it is collected or no longer reachable from statics (it does not move to another instance).
 using TinySystem.Text;
 using System;
 using System.Collections.Generic;
@@ -10,39 +10,39 @@ using Lub;
 
 namespace LiderCore;
 
-// class の宣言の行の、押せる印 1 つ
+// One clickable mark on a class declaration line
 public class FieldMark
 {
     public string Class = "";
-    // 個体の Id。"" は続きを出す印
+    // Instance Id. "" is the mark that shows more
     public string Id = "";
-    // 出す文字 ("#a3f2"、"… 全 9 個")
+    // Text to show ("#a3f2", "… 全 9 個")
     public string Text = "";
     public bool Selected;
-    // 窓の中で描いた所 (PanelView が描くときに決める)
+    // Where it was drawn in the window (set by PanelView when drawing)
     public float X0;
     public float X1;
 }
 
 public class FieldValue
 {
-    // 行 (1 から)
+    // Line (from 1)
     public int Line;
-    // 値 (class の行は "")
+    // Value ("" for class lines)
     public string Text = "";
-    // 値の節の Path (Watched.Inspect の Path。class の行は "")
+    // Path of the value node (the Path of Watched.Inspect; "" for class lines)
     public string Path = "";
-    // 変わって光る強さ (0 から 1)
+    // Strength of the highlight after a change (0 to 1)
     public float Glow;
-    // 数なら直近の frame の値 (古い順。数でなければ null)
+    // For numbers, the values of recent frames (oldest first; null if not a number)
     public List<float>? History;
-    // フィールドの class か、宣言の class
+    // The field's class, or the class of the declaration
     public string Class = "";
-    // class の行の印 (幾つもある個体の目印と、続きを出す印)
+    // Marks on the class line (marks for the several instances, and the mark that shows more)
     public readonly List<FieldMark> Marks = new List<FieldMark>();
 }
 
-// static から辿って見つけた個体
+// An instance found by walking from statics
 public class FoundInstance
 {
     public string Class = "";
@@ -52,23 +52,23 @@ public class FoundInstance
 
 public class FieldValues
 {
-    // instance を探し直す間隔と、辿る深さと 1 節の子の数の上限
+    // Interval for searching for instances again, and the limits on walk depth and children per node
     const int DiscoverFrames = 15;
     const int MaxDepth = 8;
     const int MaxChildren = 1000;
-    // class の行に並べる個体の数
+    // Number of instances listed on a class line
     const int MaxMarks = 4;
 
-    // class → 見つけた個体 (見つけた順)
+    // class → found instances (in the order found)
     Dictionary<string, List<FoundInstance>> instances = new Dictionary<string, List<FoundInstance>>();
-    // class → 選んだ個体の Id
+    // class → Id of the selected instance
     readonly Dictionary<string, string> selected = new Dictionary<string, string>();
-    // class → 並べている先頭の個体の番号
+    // class → index of the first listed instance
     readonly Dictionary<string, int> pages = new Dictionary<string, int>();
     readonly ValueFlash flash = new ValueFlash();
     int frame;
 
-    // 毎 frame 呼ぶ
+    // Called every frame
     public void Refresh()
     {
         flash.Tick();
@@ -79,17 +79,17 @@ public class FieldValues
         }
     }
 
-    // 数の値の、直近の frame の列 (ゲームが進んだ frame ごとに 1 つ。出している間だけ足す)
+    // History of numeric values over recent frames (one per frame the game advanced; appended only while shown)
     class History
     {
         public List<float> Values = new List<float>();
-        // 最後に足した frame (GameApp.Frames)
+        // The last frame appended (GameApp.Frames)
         public int Frame = -1;
     }
 
     readonly Dictionary<string, History> histories = new Dictionary<string, History>();
 
-    // key の値の列に今の値を足して返す (数でなければ null)
+    // Appends the current value to key's history and returns it (null if not a number)
     List<float>? Sample(string key, string text)
     {
         if (!float.TryParse(text, out var v))
@@ -109,7 +109,7 @@ public class FieldValues
         return h.Values;
     }
 
-    // しばらく出していない値の列を捨てる
+    // Discards histories that have not been shown for a while
     void Forget()
     {
         var gone = new List<string>();
@@ -120,7 +120,7 @@ public class FieldValues
             histories.Remove(key);
     }
 
-    // static から辿って個体を探し (同じ個体は最初に見つけた path で 1 度)、回収されたか辿れなくなった個体の選択を解く
+    // Finds instances by walking from statics (each instance once, at the first path found), and clears the selection of instances that were collected or are no longer reachable
     void Discover()
     {
         instances = new Dictionary<string, List<FoundInstance>>();
@@ -152,7 +152,7 @@ public class FieldValues
         return -1;
     }
 
-    // 宣言のうち first から last 行 (1 から) にあるフィールドの今の値
+    // Current values of the fields among the declarations on lines first to last (from 1)
     public List<FieldValue> For(List<Declaration> declarations, int first, int last)
     {
         var shown = new List<FieldValue>();
@@ -191,23 +191,23 @@ public class FieldValues
                 one = list[IndexOf(list, id)];
             if (one == null)
                 continue;
-            // 探し直すまでの間に並びがずれても、別の個体を読まない
+            // Even if the order shifts before the next search, it does not read a different instance
             var path = Fresh(read, one);
             node = path != "" ? Child(read, path, field) : null;
             if (node == null)
                 continue;
             value.Text = node.Text;
             value.Path = node.Path;
-            // 並びがずれて path が変わっても光らないよう、個体で覚える
+            // Remembered per instance so it does not light up when the order shifts and the path changes
             value.Glow = flash.Track(one.Id + "." + field, node.Text);
-            // 並びがずれても同じ個体を追うよう、個体で覚える
+            // Remembered per instance so it follows the same instance even if the order shifts
             value.History = Sample(one.Id + "." + field, node.Text);
             shown.Add(value);
         }
         return shown;
     }
 
-    // 宣言の名前の、最後の段と、その前の段 (class。段が 1 つなら "")。毎 frame 切り出さないよう名前ごとに覚える
+    // The last part of a declaration name and the part before it (the class; "" if there is only one part). Cached per name to avoid splitting every frame
     class NameParts
     {
         public string Class = "";
@@ -232,7 +232,7 @@ public class FieldValues
         return parts;
     }
 
-    // class の行の印。選んでいる個体は、並べる範囲の外でも必ず入れる
+    // Marks on the class line. The selected instance is always included, even outside the listed range
     FieldValue ClassLine(int line, string cls, List<FoundInstance> list)
     {
         var row = new FieldValue { Line = line, Class = cls };
@@ -250,7 +250,7 @@ public class FieldValues
         return row;
     }
 
-    // 個体の今の path (親の子に同じ Id が無ければ "")
+    // Current path of an instance ("" if the parent has no child with the same Id)
     static string Fresh(Dictionary<string, List<InspectNode>> read, FoundInstance found)
     {
         var path = found.Path;
@@ -281,7 +281,7 @@ public class FieldValues
         return Child(read, path, name) != null;
     }
 
-    // path の子のうち名前が name の節 (引いた子は read に覚える)
+    // The child node of path named name (children looked up are recorded in read)
     static InspectNode? Child(Dictionary<string, List<InspectNode>> read, string path, string name)
     {
         if (!read.TryGetValue(path, out var children))
@@ -303,7 +303,7 @@ public class FieldValues
         return -1;
     }
 
-    // 個体の Id を短くした目印 ("#a3f2")。表示だけに使う (偶然同じになることがある)
+    // A mark made by shortening the instance Id ("#a3f2"). Used only for display (two can match by chance)
     public static string Tag(string id)
     {
         const string digits = "0123456789abcdef";
@@ -318,7 +318,7 @@ public class FieldValues
         return s;
     }
 
-    // static から辿って見つけた個体のうち、Id が id の物 (無ければ null)
+    // The instance found from statics whose Id is id (null if none)
     public FoundInstance? Find(string id)
     {
         foreach (var pair in instances)
@@ -330,7 +330,7 @@ public class FieldValues
         return null;
     }
 
-    // class cls の個体 id の path (並べていなければ "")
+    // Path of instance id of class cls ("" if not listed)
     public string PathOf(string cls, string id)
     {
         if (instances.TryGetValue(cls, out var list) && IndexOf(list, id) >= 0)
@@ -349,7 +349,7 @@ public class FieldValues
         Watched.InspectPin(cls, found.Path);
     }
 
-    // path か、その祖先のうち一番近い個体を選ぶ (インスペクタの行から)
+    // Selects the nearest instance among path and its ancestors (from an inspector line)
     public void Select(string path)
     {
         var at = path;
@@ -367,7 +367,7 @@ public class FieldValues
         }
     }
 
-    // 個体を選ぶ (選んでいれば解く)
+    // Selects an instance (deselects it if already selected)
     public void Toggle(string cls, string id)
     {
         if (!instances.TryGetValue(cls, out var list) || IndexOf(list, id) < 0)
@@ -381,7 +381,7 @@ public class FieldValues
         Choose(cls, list[IndexOf(list, id)]);
     }
 
-    // class の行に、続きの個体を並べる (最後の次は最初)
+    // Lists the next instances on the class line (after the last comes the first)
     public void NextPage(string cls)
     {
         if (!instances.TryGetValue(cls, out var list))
@@ -391,7 +391,7 @@ public class FieldValues
     }
 }
 
-// 値を覚え、しばらく (SteadyFrames) 変わらなかった値が変わると、その後 SteadyFrames の間 光る強さを返す
+// Remembers values, and when a value that has not changed for a while (SteadyFrames) changes, returns a highlight strength for the following SteadyFrames
 public class ValueFlash
 {
     public const int SteadyFrames = 20;
@@ -401,7 +401,7 @@ public class ValueFlash
     public void Tick()
     {
         frame++;
-        // 引かなくなった値は忘れる
+        // Forgets values that are no longer looked up
         if (frame % 60 != 0)
             return;
         var stale = new List<string>();
@@ -435,9 +435,9 @@ public class ValueFlash
 class SeenValue
 {
     public string Text = "";
-    // 今の Text になった frame
+    // The frame when it became the current Text
     public int Since;
-    // しばらく変わらなかった後に変わった frame (-1 は無い)
+    // The frame when it changed after a steady period (-1 = none)
     public int ChangedAt = -1;
     public int LastFrame;
 }

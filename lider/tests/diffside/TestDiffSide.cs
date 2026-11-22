@@ -1,8 +1,8 @@
-// 本文がゲームの動いている版と違う間の、動いている版の板 (左右の形)。
-//   - 違いが無い間は出さない。打って違いができると focus のある窓の左の手前に出す。インスペクタのウィンドウは動かない
-//   - 板の行は、カーソルの近くで対応する行を窓の同じ高さに揃える
-//   - code:diff-side で左右とインラインを切り替え、インラインの間は板を出さない
-//   - reload が当たって違いが無くなると、板を消す
+// The board showing the live version while the text differs from the version the game is running (side-by-side layout).
+//   - Not shown while there is no difference. When typing creates a difference, it appears in front of and to the left of the focused window. The inspector window does not move
+//   - The board aligns the line corresponding to the one near the cursor at the same height as in the window
+//   - code:diff-side toggles between side-by-side and inline, and the board is not shown while inline
+//   - When a reload is applied and the difference goes away, the board is removed
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -13,7 +13,7 @@ public static class TestDiffSide
 {
     static int frames;
     static bool failed;
-    // 打つ前の値の木の板の角度と、動いている版の板と窓の間の幅 (角度)
+    // Angle of the value tree board before typing, and the width (angle) between the live version board and the window
     static float boardBefore;
     static float oldSpan;
 
@@ -52,10 +52,10 @@ public static class TestDiffSide
         var w = Lider.Work!;
         if (frames == 2)
             w.FocusOn(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!);
-        // lider が窓を置いた後に、窓が広がり終わるまで 1 秒分進める (開いた frame の重さで進む分に頼らない)
+        // After lider places the window, advance 1 second until the window finishes expanding (do not rely on the progress made by the heavy frame that opened it)
         if (frames == 4)
             Settle(w);
-        // 窓が開いて動き終わるまで待つ (値の木の板の角度は、窓の動いている角度と大きさから決まる)
+        // Wait until the window has opened and finished moving (the angle of the value tree board is determined by the window's moving angle and size)
         if (frames < 60)
             return;
         var window = w.FocusWindow!;
@@ -65,18 +65,18 @@ public static class TestDiffSide
         {
             Check(!doc.Differs() && !panel.OldShown, "the board is shown before editing");
             boardBefore = Lider.BoardAngle;
-            // Step の '{' (7 行目) の下に 1 行足す
+            // Add one line below the '{' of Step (line 7)
             doc.MoveTo(6, Utf8.Bytes(doc.Text(6)));
             doc.Type("\n        var x = 0;");
             EditorHost.Step();
         }
-        // 動いている版の板が出た後に、板と窓が寄り終わるまで進める
+        // After the live version board appears, advance until the board and the window finish moving into place
         if (frames == 61)
             Settle(w);
         if (frames == 62)
         {
             Check(doc.Differs() && panel.OldShown, "the board is not shown after typing");
-            // カーソルは足した行 (対応しない) にあるので、その上の '{' を揃える
+            // The cursor is on the added line (which has no counterpart), so the '{' above it is aligned
             var lh = EditorHost.LineHeight(window.Code.ViewId);
             Check(Math.Abs(panel.OldTop(doc) + 6 * lh - EditorHost.LineY(window.Code.ViewId, 7)) < 0.5f,
                 "the live line 7 is at " + (panel.OldTop(doc) + 6 * lh) + ", want " + EditorHost.LineY(window.Code.ViewId, 7));
@@ -94,7 +94,7 @@ public static class TestDiffSide
         if (frames == 66)
         {
             Check(PanelView.SideBySide && panel.OldShown, "code:diff-side did not bring the board back");
-            // 板はコードのウィンドウの子で、スクリーンの並びには入らず、親の左の手前にある
+            // The board is a child of the code window, is not in the screen's order, and sits in front of and to the left of its parent
             var board = Lider.DiffOf(window);
             Check(board != null && board.Parent == window && board.Content is Diff, "the board is not a child of the code window");
             Check(board != null && !w.ScreenOf(window)!.Windows.Contains(board), "the board is in the order of the screen");
@@ -129,7 +129,7 @@ public static class TestDiffSide
         App.Quit(1);
     }
 
-    // 窓の動きを 1 秒分進める
+    // Advance the window animation by 1 second
     static void Settle(Workspace w)
     {
         for (var i = 0; i < 60; i++)

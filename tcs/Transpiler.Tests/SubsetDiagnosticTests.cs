@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// spec conformance 由来のサブセット診断 (tuple / args / attribute /
+// Subset diagnostics derived from spec conformance (tuple / args / attribute /
 // interface member / delegate / decimal / Console allowlist)
 public class SubsetDiagnosticTests
 {
@@ -34,7 +34,7 @@ public class SubsetDiagnosticTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("Tuple"));
     }
 
-    // 多次元配列は C と VM のどちらにも写していない (以前は診断なしで通り、Lua で範囲外の error になった)
+    // Multidimensional arrays are mapped to neither C nor the VM (previously they passed without a diagnostic and caused an out-of-range error in Lua)
     [Fact]
     public void MultiDimensionalArray_IsUnsupported()
     {
@@ -47,7 +47,7 @@ public class SubsetDiagnosticTests
         AssertUnsupportedError(result, "MultiDimensionalArray");
     }
 
-    // 数値の static method は Parse / TryParse だけ写す (float.IsNaN は以前は通り、Lua で nil を呼んだ)
+    // Of the numeric static methods, only Parse / TryParse are mapped (float.IsNaN used to pass and called nil in Lua)
     [Theory]
     [InlineData("float.IsNaN(x)", "float.IsNaN")]
     [InlineData("float.IsInfinity(x)", "float.IsInfinity")]
@@ -250,8 +250,8 @@ public class SubsetDiagnosticTests
             w => w.Contains("ParamsParameter"));
     }
 
-    // 名前付き引数は位置渡しに落ちて別の意味で動くので error。
-    // 同じ build の他の未対応も error で並ぶ (#19)
+    // Named arguments fall back to positional passing and run with a different meaning, so they are an error.
+    // Other unsupported constructs in the same build are listed as errors too (#19)
     [Fact]
     public void NamedArgument_IsBuildBlockingError()
     {
@@ -270,7 +270,7 @@ public class SubsetDiagnosticTests
             """]);
 
         Assert.False(result.Success);
-        // 名前付き引数 1 つにつき 1 件 (y: / x:)
+        // One per named argument (y: / x:)
         var named = result.Errors.Where(e => e.Contains(
             "error TCS1001: unsupported syntax: NamedArgument")).ToList();
         Assert.Equal(2, named.Count);
@@ -295,8 +295,8 @@ public class SubsetDiagnosticTests
         AssertUnsupportedError(result, "StaticConstructor");
     }
 
-    // CompareOrdinal の値は符号だけが .NET の契約 (値は 2 文字ずつの比較の位置で
-    // 変わる)。0 との比較以外で値を使うと Lua / C の -1 / 0 / 1 と食い違う
+    // Only the sign of CompareOrdinal's value is the .NET contract (the value changes with the position in
+    // the two-chars-at-a-time comparison). Using the value other than by comparing it with 0 disagrees with the -1 / 0 / 1 of Lua / C
     [Fact]
     public void CompareOrdinalValue_OutsideZeroComparison_IsUnsupported()
     {
@@ -330,8 +330,8 @@ public class SubsetDiagnosticTests
             && e.Contains("string.CompareOrdinal"));
     }
 
-    // checked で対応するのは i32 の + - * と単項 - (と、checked でも意味の変わらない
-    // 除算と float → int の変換)。それ以外の checked な演算は overflow を検出しない
+    // checked supports i32 + - * and unary - (plus division and float → int conversion, whose meaning
+    // does not change under checked). Other checked operations do not detect overflow
     [Fact]
     public void CheckedOperationOtherThanIntArithmetic_IsUnsupported()
     {
@@ -364,7 +364,7 @@ public class SubsetDiagnosticTests
         AssertUnsupportedError(result, "CheckedStatement");
     }
 
-    // C# の static field は閉じた型ごとに別だが、Lua は型を消すので 1 つを共有してしまう
+    // C# static fields are separate per closed type, but Lua erases types, so one ends up shared
     [Fact]
     public void StaticFieldOfGenericType_IsUnsupported()
     {
@@ -415,8 +415,8 @@ public class SubsetDiagnosticTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
     }
 
-    // interface の method を実装する method は interface の method の名前になる。別の interface
-    // から同じ名前の method を 2 つ実装すると Lua / C で同じ key になる
+    // A method that implements an interface method takes the interface method's name. Implementing two methods with the same name from different
+    // interfaces gives them the same key in Lua / C
     [Fact]
     public void ImplementingSameNameFromTwoInterfaces_IsMethodOverload()
     {
@@ -433,7 +433,7 @@ public class SubsetDiagnosticTests
         AssertUnsupportedError(result, "MethodOverload");
     }
 
-    // overload の名前 (`F__int`) と同じ綴りの member は Lua / C で同じ key になる
+    // A member spelled the same as an overload name (`F__int`) gets the same key in Lua / C
     [Fact]
     public void OverloadNameCollidingWithMember_IsMethodOverload()
     {
@@ -449,8 +449,8 @@ public class SubsetDiagnosticTests
         AssertUnsupportedError(result, "MethodOverload");
     }
 
-    // host (`--ref`) の member は名前に型を付けない (snake_case) ので、overload は同じ key になる。
-    // host の宣言の tree は診断しないので呼び出し側で止める
+    // Host (`--ref`) members do not get types in their names (snake_case), so overloads get the same key.
+    // The host declaration tree is not diagnosed, so it is stopped at the caller
     [Fact]
     public void CallingHostOverload_IsMethodOverload()
     {
@@ -473,7 +473,7 @@ public class SubsetDiagnosticTests
         AssertUnsupportedError(result, "MethodOverload");
     }
 
-    // 拡張 method の形の呼び出し、基底の型の同名の method も同じ key になる。private の overload は呼べない
+    // Calls in extension method form and same-name methods of the base type also get the same key. Private overloads cannot be called
     [Theory]
     [InlineData("o.Poke(1);", true)]
     [InlineData("new Host.Derived().Dup(\"s\");", true)]
@@ -511,7 +511,7 @@ public class SubsetDiagnosticTests
             Assert.True(result.Success, string.Join("\n", result.Errors));
     }
 
-    // 一覧に無い BCL の型は、書いた地点でも member の地点でも止まる
+    // A BCL type not in the list is stopped both where it is written and at its member sites
     [Theory]
     [InlineData("System.Text.StringBuilder? F() => null;", "System.Text.StringBuilder")]
     [InlineData("void F(System.Collections.Generic.LinkedList<int> l) { }", "System.Collections.Generic.LinkedList<T>")]
@@ -531,7 +531,7 @@ public class SubsetDiagnosticTests
         Assert.Contains(result.Errors, e => e.Contains($"TCS1002: unsupported API: {api}"));
     }
 
-    // 実行時の表現を持たない型と属性は止めない
+    // Types and attributes without a runtime representation are not stopped
     [Fact]
     public void ListedTypesAndAttributes_AreNotUnsupportedApi()
     {
@@ -563,7 +563,7 @@ public class SubsetDiagnosticTests
         Assert.DoesNotContain(result.Errors, e => e.Contains("TCS1002"));
     }
 
-    // 属性は Lua / C に出ない metadata
+    // Attributes are metadata that does not appear in Lua / C
     [Fact]
     public void AssemblyAttributes_AreNotUnsupportedApi()
     {
@@ -799,7 +799,7 @@ public class SubsetDiagnosticTests
         Assert.Equal(2, result.Errors.Count(e => e.Contains("InterfaceTypeTest")));
     }
 
-    // --ref の generic でない class / interface への型 test と cast は別の名前 (tcs VM は止めない。object-model §10.6)
+    // Type tests and casts to a non-generic --ref class / interface use a different name (the tcs VM does not stop them; object-model §10.6)
     [Fact]
     public void RefTypeTestsAndCasts_HaveRefNames()
     {
@@ -835,7 +835,7 @@ public class SubsetDiagnosticTests
             w => w.Contains("InterfaceTypeTest"));
     }
 
-    // 孤立 surrogate は UTF-8 octet 列への写像を持たない (il-spec §11)
+    // A lone surrogate has no mapping to a UTF-8 octet sequence (il-spec §11)
     [Fact]
     public void LoneSurrogateLiteral_ReportsWarning()
     {
@@ -862,7 +862,7 @@ public class SubsetDiagnosticTests
             w => w.Contains("LoneSurrogateLiteral"));
     }
 
-    // instance method group / 非リテラル alignment は silent wrong-code
+    // Instance method group / non-literal alignment are silent wrong-code
     [Fact]
     public void InstanceMethodGroupAndAlignment_ReportErrors()
     {
@@ -886,7 +886,7 @@ public class SubsetDiagnosticTests
         Assert.Single(result.Errors, e => e.Contains("NonConstantAlignment"));
     }
 
-    // `x?.M()` の `.M` は呼び出し位置 (MemberBinding) — method group 扱いしない
+    // `.M` in `x?.M()` is in invocation position (MemberBinding) — it is not treated as a method group
     [Fact]
     public void ConditionalInvocation_IsNotMethodGroup()
     {
@@ -928,8 +928,8 @@ public class SubsetDiagnosticTests
         Assert.Equal("2:4", result);
     }
 
-    // caller info 属性は C# では呼び出し側でコンパイラが引数を埋めるが、
-    // tcs は再現せず既定値が渡るので error (#17)
+    // For caller info attributes, the C# compiler fills in the argument at the caller,
+    // but tcs does not reproduce this and the default value is passed, so it is an error (#17)
     [Theory]
     [InlineData("CallerArgumentExpression(\"value\")", "CallerArgumentExpression")]
     [InlineData("CallerMemberName", "CallerMemberName")]
@@ -985,7 +985,7 @@ public class SubsetDiagnosticTests
             w => w.Contains("CallerInfoAttribute"));
     }
 
-    // 型パターンの型参照を構文のテキストから作らない
+    // Do not build the type reference of a type pattern from the syntax text
     [Fact]
     public void TypeTestWithoutRuntimeType_IsRejected()
     {
@@ -1064,7 +1064,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void UIntOutsideInt32_IsRejected()
     {
-        // uint は i32 と同じ表現。2^31 以上の定数と、結果が 0〜2^31-1 を出うる演算を止める
+        // uint has the same representation as i32. Rejects constants of 2^31 or more and operations whose result can leave 0 to 2^31-1
         var result = Checker.Check(["""
             public enum U : uint { A = 1, Hi = 0x80000000 }
             public static class T
@@ -1086,7 +1086,7 @@ public class SubsetDiagnosticTests
     [Fact]
     public void UnsupportedFormatSpecifier_IsRejected()
     {
-        // 独自の書式と、Lua / C が .NET と同じ文字列にできない書式は黙って別の文字列にせず止める
+        // Custom formats, and formats Lua / C cannot render as the same string as .NET, are rejected instead of silently producing a different string
         var result = Checker.Check(["""
             public enum E { A }
             public class T

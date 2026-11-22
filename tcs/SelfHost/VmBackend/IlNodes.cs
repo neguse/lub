@@ -1,14 +1,14 @@
-// SelfHost/VmBackend/gen-ilnodes.py が SelfHost/Compiler/Il.cs から作る。手で編集しない
+// Generated from SelfHost/Compiler/Il.cs by SelfHost/VmBackend/gen-ilnodes.py. Do not edit by hand.
 using System.Collections.Generic;
 using TcsSelf;
 
 namespace TcsVm;
 
-/// <summary>IL の node の子 (Children) と診断用のテキスト (Dump)。member は record の宣言の順 (Origin を除く)。
-/// Dump は lambda の本文の指紋 (reload が生きている closure を新版に対応させる鍵) に使う。</summary>
+/// <summary>Child lists (Children) and diagnostic text (Dump) of IL nodes. Members follow the record declaration order (excluding Origin).
+/// Dump is used as the fingerprint of a lambda body (the key that maps live closures to the new version on reload).</summary>
 public static class IlNodes
 {
-    /// <summary>node の子 (IL の式と文、IlBlock、IlTableEntry)。if の腕は条件と本文、with の上書きは値。</summary>
+    /// <summary>Children of a node (IL expressions and statements, IlBlock, IlTableEntry). For an if arm, the condition and the body; for a with override, the value.</summary>
     public static List<object> Children(object node)
     {
         var r = new List<object>();
@@ -301,7 +301,7 @@ public static class IlNodes
         return r;
     }
 
-    /// <summary>node の record の名前 (C# の GetType().Name)。</summary>
+    /// <summary>The record name of a node (GetType().Name in C#).</summary>
     public static string Name(object node)
     {
         if (node is IlLit) return "IlLit";
@@ -672,7 +672,7 @@ public static class IlNodes
         return "[" + string.Join(", ", parts) + "]";
     }
 
-    // if の腕と with の上書きは C# 版では tuple
+    // In the C# version, if arms and with overrides are tuples
     private static string Arms(List<IlArm> items)
     {
         var parts = new List<string>();

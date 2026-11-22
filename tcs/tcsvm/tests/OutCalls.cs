@@ -1,6 +1,6 @@
 using System;
 
-// out 引数の呼び出し: 別の class の static method を class 名で呼ぶ形 (文と式)、同じ class、instance method
+// Calls with out arguments: calling a static method of another class by class name (statement and expression), the same class, instance methods
 public static class Foo
 {
     public static bool Two(int a, out int x, out int y)
@@ -42,7 +42,7 @@ public static class OutCalls
         bool ok = Foo.Two(5, out var p, out var q);
         Console.WriteLine(x + " " + y + " " + z + " " + ok + " " + p + " " + q);
         Local(out var s);
-        // 捨てる out
+        // Discarded out
         Console.WriteLine((float.TryParse("1.5", out _) ? "num" : "no") + " " + (int.TryParse("x", out _) ? "num" : "no"));
         Foo.Two(9, out _, out var only);
         Console.WriteLine(only);

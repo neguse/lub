@@ -1,42 +1,48 @@
 #pragma once
-// tcs VM の player (src/vm_player.c) が .csproj から動かすときの、入力の集め方。
-// lub は csproj を MSBuild として評価しない。
-// 読むのは basename (entry class) と、属性 Lub="Source" を付けた ProjectReference だけ。
-// 入力は csproj のディレクトリと参照先のディレクトリの下の全 *.cs と、cs-lib の実装。
-// *.ref.cs は変換せず、tcs の --ref (型だけの宣言) で渡す。
+// How the tcs VM player (src/vm_player.c) collects inputs when running from a
+// .csproj. lub does not evaluate the csproj as MSBuild. It reads only the
+// basename (entry class) and the ProjectReferences with the attribute
+// Lub="Source". Inputs are all *.cs under the csproj directory and the
+// referenced directories, plus the cs-lib implementation.
+// *.ref.cs are not compiled; they are passed with tcs --ref (type-only
+// declarations).
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 
 #define VM_PROJECT_MAX_DIRS 32
 
 typedef struct VmProject {
-  char entry[256];    // entry class (csproj の basename)
-  char out_tcsb[640]; // <dir>/.lub/<Entry>.tcsb (tcs vm が書く)
-  char list_path
-      [640]; // <dir>/.lub/<Entry>.inputs (入力の一覧。tcs vm --inputs-from)
-  char stub[960];   // cs-lib/lub_stub.cs ("" なら無し)
-  char cs_lib[900]; // cs-lib ("" なら無し)
+  char entry[256];     // entry class (basename of the csproj)
+  char out_tcsb[640];  // <dir>/.lub/<Entry>.tcsb (written by tcs vm)
+  char list_path[640]; // <dir>/.lub/<Entry>.inputs (list of inputs; tcs vm
+                       // --inputs-from)
+  char stub[960];      // cs-lib/lub_stub.cs ("" if none)
+  char cs_lib[900];    // cs-lib ("" if none)
   char dirs[VM_PROJECT_MAX_DIRS]
-           [512]; // ソースを探すディレクトリ (entry が先頭)
+           [512]; // Directories to search for sources (entry first)
   int ndirs;
-  // ゲームのソースを --trace で変換する (App.Use で開く app。開いた側が観察する)
+  // Compile the game source with --trace (an app opened with App.Use; the
+  // opener observes it)
   bool trace;
-  char export_[320]; // vm_project_args が作る --export の値
-  char *list_text;   // 最後に書いた一覧
-  char *refs_text;   // 最後に見つけた *.ref.cs の一覧 (改行区切り)
-  char *refs_split;  // vm_project_args が区切った refs_text の写し
-  // *.ref.cs の隣の native の拡張 (include/lub/lub_vm_extension.h)。最初の scan で探す
+  char export_[320]; // Value of --export built by vm_project_args
+  char *list_text;   // The last written list
+  char *refs_text;   // The last found list of *.ref.cs (newline-separated)
+  char *refs_split;  // Copy of refs_text split by vm_project_args
+  // Native extensions next to *.ref.cs (include/lub/lub_vm_extension.h).
+  // Searched on the first scan
   char extensions[VM_PROJECT_MAX_DIRS][640];
   int nextensions;
 } VmProject;
 
-// csproj を読み、参照を辿る。
-// 印の付いた参照先の csproj が無ければ log を出して false。
+// Reads the csproj and follows the references.
+// If a marked referenced csproj is missing, logs and returns false.
 bool vm_project_open(VmProject *proj, const char *csproj);
-// ディレクトリを探し直し、一覧が変わっていれば書き直して true。
+// Rescans the directories, and if the list changed, rewrites it and returns
+// true.
 bool vm_project_scan(VmProject *proj);
-// tcs vm に渡す引数 (--inputs-from、--ref、-o、--export、--trace) を args に詰め、個数を返す。
-// trace が立っているときは、ソースのディレクトリを --trace にする。
-// 文字列は proj が持つ (次の vm_project_args まで有効)。
+// Puts the arguments for tcs vm (--inputs-from, --ref, -o, --export, --trace)
+// into args and returns the count. When trace is set, the source directories
+// are passed to --trace. The strings are owned by proj (valid until the next
+// vm_project_args).
 int vm_project_args(VmProject *proj, const char **args, int max);
 void vm_project_close(VmProject *proj);

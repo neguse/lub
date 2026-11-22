@@ -3,16 +3,16 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// 型を解決する文脈 (宣言の中の位置)
+// Context for resolving types (position within a declaration)
 public sealed class TypeScope
 {
     public TypeDeclSym? Type;
     public string Namespace;
     public List<string> Usings;
-    // Usings の各要素を書いた namespace ("" は compilation unit)。拡張メソッドを内側の scope から探すのに使う
+    // Namespace in which each Usings element was written ("" is the compilation unit). Used to search extension methods from the inner scope outward
     public List<string>? UsingLevels;
     public List<string>? MethodTypeParams;
-    // method の型引数の where T : struct (MethodTypeParams と同じ順)
+    // where T : struct of method type arguments (same order as MethodTypeParams)
     public List<bool>? MethodTypeParamStruct;
     public SourceFile File;
     // using X = A.B;
@@ -54,7 +54,7 @@ public sealed class TypeScope
     }
 }
 
-// プログラム全体の宣言
+// Declarations of the whole program
 public sealed class Compilation
 {
     public List<SourceFile> Files = new List<SourceFile>();
@@ -63,10 +63,10 @@ public sealed class Compilation
     public List<TypeDeclSym> Types = new List<TypeDeclSym>();
     public Dictionary<string, TypeDeclSym> TypesByFullName = new Dictionary<string, TypeDeclSym>();
     public HashSet<string> Namespaces = new HashSet<string>();
-    // 型宣言ごとの型解決の文脈
-    // static class の拡張メソッド (名前ごと)
+    // Type resolution context per type declaration
+    // Extension methods of static classes (by name)
     public Dictionary<string, List<Symbol>> Extensions = new Dictionary<string, List<Symbol>>();
-    // 型の global 名 (IL で型を指す名前。局所変数の名前がこれを覆い隠さないようにする)
+    // Global type names (names that refer to types in IL; local variable names must not shadow them)
     public HashSet<string> TypeIlNames = new HashSet<string>();
 
     public void Error(string code, string message, Node at)
@@ -85,7 +85,7 @@ public sealed class Declarer
         _c = c;
     }
 
-    // 全てのファイルの global using (別名を除く)
+    // global usings of all files (excluding aliases)
     public List<string> GlobalUsings = new List<string>();
 
     public void DeclareAll()
@@ -125,7 +125,7 @@ public sealed class Declarer
 
     public const string StaticUsingPrefix = "static:";
 
-    // using static で取り込んだ型 (見つからない名前は飛ばす)
+    // Types imported with using static (names that are not found are skipped)
     public List<TypeDeclSym> StaticUsingTypes(TypeScope scope)
     {
         var result = new List<TypeDeclSym>();
@@ -145,14 +145,14 @@ public sealed class Declarer
         {
             if (n.Kind == NodeKind.Using && n.D == null)
             {
-                // using static は "static:" を付けて同じ列に置く (namespace の using とは一致しない)
+                // using static entries go in the same list with a "static:" prefix (so they do not match namespace usings)
                 usings.Add(n.Value == 1 ? StaticUsingPrefix + n.Text : n.Text);
                 levels.Add(level);
             }
         }
     }
 
-    // using X = A.B; の別名 (Using の D に別名の Name)
+    // Alias of using X = A.B; (the alias Name in the Using's D)
     public Dictionary<string, string>? CollectAliases(Node container, Dictionary<string, string>? outer)
     {
         Dictionary<string, string>? result = outer;
@@ -219,7 +219,7 @@ public sealed class Declarer
         string full;
         if (outer != null) full = outer.FullName + "." + n.Text;
         else full = ns == "" ? n.Text : ns + "." + n.Text;
-        // System.ValueTuple (TinySystem/ValueTuple.cs) は型引数の数ごとに別の型で、IL の型の名前も分ける (System_ValueTuple2 など)
+        // System.ValueTuple (TinySystem/ValueTuple.cs) is a separate type per type argument count, and the IL type names are separate too (System_ValueTuple2 etc.)
         if (n.File.IsLibrary && full == "System.ValueTuple" && n.List2 != null) full = full + n.List2.Count;
         var t = new TypeDeclSym(n.Text, full, ns, n.Value, n);
         n.TypeDecl = t;
@@ -234,7 +234,7 @@ public sealed class Declarer
         if (_c.TypesByFullName.ContainsKey(full))
         {
             if (n.Has(Mods.Partial)) _c.Error("TCS1001", "unsupported syntax: PartialTypeDeclaration", n);
-            // 名前が同じで型引数の数が違う型は C# では別の型だが、セルフホストは名前で引くので扱わない
+            // Types with the same name but a different number of type arguments are separate types in C#, but the self-host looks up by name, so they are not handled
             else if (_c.TypesByFullName[full].TypeParams.Count != t.TypeParams.Count) _c.Error("TCS1001", "unsupported syntax: GenericArityOverload(" + t.Name + ")", n);
             else _c.Error("CS0101", "The namespace '" + ns + "' already contains a definition for '" + n.Text + "'", n);
             return;
@@ -256,7 +256,7 @@ public sealed class Declarer
                 if (a.Text == "Flags" || a.Text == "System.Flags" || a.Text == "FlagsAttribute") t.IsFlags = true;
             }
         }
-        // 入れ子の型
+        // Nested types
         if (n.List != null)
         {
             foreach (var m in n.List)
@@ -284,7 +284,7 @@ public sealed class Declarer
         {
             foreach (var b in n.List3)
             {
-                // --ref の属性の宣言 (: Attribute)。属性は名前の解決にだけ使い、IL を出さない
+                // Attribute declarations from --ref (: Attribute). Attributes are used only for name resolution and emit no IL
                 if (t.IsRef && b.Kind == NodeKind.TypeName && b.Text == "Attribute" && (b.A == null || b.A.Text == "System"))
                 {
                     t.IsAttribute = true;
@@ -293,14 +293,14 @@ public sealed class Declarer
                 var bt = ResolveType(b, scope);
                 if (t.IsRef && bt.Decl != null && !bt.Decl.IsInterface && !bt.Decl.IsEnum && t.BaseClass == null)
                 {
-                    // --ref の host の data class の継承 (host の宣言は診断しない)
+                    // Inheritance of --ref host data classes (host declarations are not diagnosed)
                     t.BaseClass = bt.Decl;
                     continue;
                 }
                 if (bt.Kind == TypeKind.Interface) t.Interfaces.Add(bt);
-                // `: object` は基底を書かないのと同じ
+                // `: object` is the same as writing no base
                 else if (bt.Kind == TypeKind.Object && !t.IsInterface) continue;
-                // user の属性の class (System.Attribute の継承)
+                // User attribute classes (inheriting System.Attribute)
                 else if (bt.IsBcl && bt.BclKey == "System.Attribute" && !t.IsInterface)
                     _c.Error("TCS1001", "unsupported syntax: ClassInheritance(System.Attribute)", b);
                 else if (!bt.IsError)
@@ -312,9 +312,9 @@ public sealed class Declarer
         }
     }
 
-    // ---- 型の解決 ----
+    // ---- Type resolution ----
 
-    // 型の構文の node に解決した型を残す (generic の単相化が型の参照の位置を探す)
+    // Record the resolved type on the type syntax node (generic monomorphization looks for the positions of type references)
     public TypeSym ResolveType(Node n, TypeScope scope)
     {
         var t = ResolveTypeCore(n, scope);
@@ -343,7 +343,7 @@ public sealed class Declarer
                     if (inner.IsValueType && inner.Kind != TypeKind.Nullable) return TypeSym.NullableOf(inner);
                     if (inner.Kind == TypeKind.TypeParam)
                     {
-                        // where T : struct の T? は Nullable<T>、それ以外の T? は注釈だけ
+                        // T? with where T : struct is Nullable<T>; any other T? is only an annotation
                         if (inner.IsStructParam) return TypeSym.NullableOf(inner);
                         return inner.WithAnnotation();
                     }
@@ -352,7 +352,7 @@ public sealed class Declarer
                 }
             case NodeKind.TupleType:
                 {
-                    // 8 個以上の要素のタプルは止める (一度だけ報告する)
+                    // Reject tuples with 8 or more elements (reported only once)
                     if (n.Count > 7 && n.Value == 0 && !n.File.IsRef && !n.File.IsLibrary)
                     {
                         n.Value = 1;
@@ -423,7 +423,7 @@ public sealed class Declarer
         int arity = args == null ? 0 : args.Count;
         if (n.A != null)
         {
-            // 修飾された名前: 外側が namespace か型
+            // Qualified name: the outer part is a namespace or a type
             string? qual = QualifiedText(n.A);
             if (qual != null)
             {
@@ -471,7 +471,7 @@ public sealed class Declarer
             if (found.Decl != null) return Instantiate(found.Decl, args, n);
             return found;
         }
-        // TinySystem.Random だけを写す。using System だけで見える Random は System.Random
+        // Only TinySystem.Random is mapped. The Random visible with only using System is System.Random
         if (n.Text == "Random" && arity == 0 && !scope.Usings.Contains("TinySystem") && scope.Usings.Contains("System"))
         {
             _c.Error("TCS1002", "unsupported API: System.Random (use TinySystem.Random)", n);
@@ -485,13 +485,13 @@ public sealed class Declarer
         return TypeSym.ErrorType;
     }
 
-    // BCL と TinySystem の namespace (組み込みの型を修飾できる)
+    // BCL and TinySystem namespaces (they can qualify built-in types)
     public static bool IsLibraryNamespace(string ns)
     {
         return ns == "System" || ns.StartsWith("System.") || ns == "TinySystem" || ns.StartsWith("TinySystem.");
     }
 
-    // global:: で始まる修飾された名前か
+    // Whether it is a qualified name starting with global::
     private static bool IsRooted(Node n)
     {
         var cur = n;
@@ -513,7 +513,7 @@ public sealed class Declarer
 
     private TypeDeclSym? FindTypeInNamespaceOrType(string qual, string name, TypeScope scope)
     {
-        // 修飾の先頭が using の別名なら、別名の先 (namespace か型) に置き換える
+        // If the head of the qualification is a using alias, replace it with the alias target (namespace or type)
         if (scope.Aliases != null)
         {
             var parts = qual.Split('.');
@@ -524,7 +524,7 @@ public sealed class Declarer
             }
         }
         if (_c.TypesByFullName.TryGetValue(qual + "." + name, out var t)) return t;
-        // 現在の namespace からの相対
+        // Relative to the current namespace
         string ns = scope.Namespace;
         while (ns != "")
         {
@@ -543,11 +543,11 @@ public sealed class Declarer
         return string.Join(".", keep);
     }
 
-    // 名前から型を探す: 型引数、外側の型の入れ子、namespace、using の順
-    // BCL の型の metadata 名の最後の部分 (`LinkedList`1`)
+    // Look up a type by name: in the order type arguments, nested types of enclosing types, namespace, usings
+    // Last part of a BCL type's metadata name (`LinkedList`1`)
     public static string BclMetadataName(string name, int arity) => arity == 0 ? name : name + "`" + arity;
 
-    // using した namespace で見える BCL の型の metadata 名 (無ければ null)
+    // Metadata name of the BCL type visible through the used namespaces (null if none)
     public string? BclTypeKey(string name, int arity, TypeScope scope)
     {
         string meta = BclMetadataName(name, arity);
@@ -558,7 +558,7 @@ public sealed class Declarer
         return null;
     }
 
-    // 型の検査にだけ現れてよい BCL の型 (member は TCS1002)
+    // BCL types that may appear only in type tests (members are TCS1002)
     private static bool IsTypeCheckOnlyBcl(string key)
     {
         switch (key)
@@ -576,10 +576,10 @@ public sealed class Declarer
         return false;
     }
 
-    // 型を書いた地点の BCL の型。サブセットに無い型は TCS1002
+    // BCL type at the place where the type is written. Types not in the subset are TCS1002
     private TypeSym BclTypeMention(string key, Node at)
     {
-        // System.ValueTuple の名前はタプルの構文で書く
+        // The System.ValueTuple name is written with tuple syntax
         if (key.StartsWith("System.ValueTuple"))
         {
             _c.Error("TCS1001", "unsupported syntax: ValueTupleName", at);
@@ -589,7 +589,7 @@ public sealed class Declarer
         return TypeSym.Bcl(key);
     }
 
-    // 名前と型引数の数で引く (`Queue` と `Queue<T>` は同じ名前の別の型)
+    // Look up by name and type argument count (`Queue` and `Queue<T>` are different types with the same name)
     private TypeDeclSym? TypeByFullName(string full, int arity)
     {
         if (!_c.TypesByFullName.TryGetValue(full, out var t)) return null;
@@ -657,7 +657,7 @@ public sealed class Declarer
             var t = TypeByFullName(u + "." + name, arity);
             if (t != null && t.Outer == null) return TypeSym.OfDecl(t, null);
         }
-        // using static の型の入れ子の型
+        // Nested types of using static types
         foreach (var st in StaticUsingTypes(scope))
         {
             foreach (var nested in st.Nested)
@@ -676,7 +676,7 @@ public sealed class Declarer
             _c.Error("CS0305", "Using the generic type '" + decl.Name + "' requires " + decl.TypeParams.Count + " type arguments", at);
             return TypeSym.ErrorType;
         }
-        // delegate の宣言 (サブセットの外。宣言は TCS1001) を使う側は、その signature の delegate の型として扱う
+        // Users of a delegate declaration (outside the subset; the declaration is TCS1001) treat it as the delegate type of its signature
         if (decl.Decl.Has(Mods.Delegate) && decl.Decl.C != null && decl.Scope != null) return DelegateOf(decl, args);
         return TypeSym.OfDecl(decl, args);
     }
@@ -696,14 +696,14 @@ public sealed class Declarer
         return TypeSym.Delegate(ps, args != null ? ret.Subst(args, null) : ret);
     }
 
-    // using の別名の先 (user の型か、BCL / TinySystem の型)
+    // Target of a using alias (a user type, or a BCL / TinySystem type)
     public TypeSym? ResolveAlias(string target)
     {
         if (_c.TypesByFullName.TryGetValue(target, out var t)) return TypeSym.OfDecl(t, null);
         var parts = target.Split('.');
         string last = parts[parts.Length - 1];
         string qual = ParentNamespace(target);
-        // TinySystem の facade (`using M = TinySystem.Math;`)
+        // TinySystem facade (`using M = TinySystem.Math;`)
         if (qual == "TinySystem" && (last == "Math" || last == "String" || last == "List" || last == "Dict"))
             return new TypeSym(TypeKind.StaticRef, target);
         if (IsLibraryNamespace(qual))
@@ -716,7 +716,7 @@ public sealed class Declarer
         return null;
     }
 
-    // 修飾しない組み込みの型の名前は、その namespace を using するか、その namespace の中で書いたときだけ見える
+    // An unqualified built-in type name is visible only when its namespace is used or the code is written inside that namespace
     public static bool BuiltinVisible(string name, TypeScope scope)
     {
         switch (name)
@@ -755,7 +755,7 @@ public sealed class Declarer
         return false;
     }
 
-    // 組み込みの型 (BCL と TinySystem)
+    // Built-in types (BCL and TinySystem)
     public TypeSym? BuiltinType(string name, List<TypeSym>? args, Node at, string? qual)
     {
         int arity = args == null ? 0 : args.Count;
@@ -810,7 +810,7 @@ public sealed class Declarer
                 if (arity == 0) return TypeSym.RuneType;
                 break;
             case "Random":
-                // System.Random は TinySystem.Random ではない
+                // System.Random is not TinySystem.Random
                 if (arity == 0 && qual != "System") return TypeSym.RandomType;
                 break;
             case "String":
@@ -835,7 +835,7 @@ public sealed class Declarer
         return null;
     }
 
-    // ---- member の宣言 ----
+    // ---- Member declarations ----
 
     private void DeclareMembers(TypeDeclSym t)
     {
@@ -854,7 +854,7 @@ public sealed class Declarer
                     s.IsConst = true;
                     s.Decl = em;
                     em.Sym = s;
-                    // 値は Binder が定数として畳む。初期化子が無ければ前の値 + 1
+                    // Binder folds the value as a constant. Without an initializer, it is the previous value + 1
                     s.ConstState = em.A == null ? 0 : -1;
                     if (em.A == null) s.ConstVal = null;
                     em.Value = next;
@@ -876,7 +876,7 @@ public sealed class Declarer
                 var prop = new Symbol(SymKind.Property, p.Text, pt);
                 prop.Owner = t;
                 prop.HasGetter = true;
-                // record struct (readonly でない) の positional property は書き換えられる
+                // Positional properties of a (non-readonly) record struct are writable
                 prop.HasSetter = t.DeclKind == DeclKinds.RecordStruct && !n.Has(Mods.Readonly);
                 prop.IsInit = true;
                 prop.IsAuto = true;
@@ -967,14 +967,14 @@ public sealed class Declarer
                             }
                             list.Add(s);
                         }
-                        // --ref の host の宣言は診断しない
-                        // override / virtual / abstract は構文の準拠検査 (Compliance) が報告する
+                        // --ref host declarations are not diagnosed
+                        // override / virtual / abstract are reported by the syntax compliance check (Compliance)
                         var sameName = t.Lookup(s.Name);
                         if (sameName != null)
                         {
                             foreach (var other in sameName)
                             {
-                                // override は基底の signature (型引数の制約を含む) を引き継ぐので、ここでは比べない (override はサブセットの外)
+                                // An override inherits the base signature (including type argument constraints), so it is not compared here (override is outside the subset)
                                 if (other.Kind == SymKind.Method && SameParams(other, s) && !m.Has(Mods.Override) && !(other.Decl != null && other.Decl.Has(Mods.Override)))
                                 {
                                     _c.Error("CS0111", "Type '" + t.Name + "' already defines a member called '" + s.Name + "' with the same parameter types", m);
@@ -1025,7 +1025,7 @@ public sealed class Declarer
         }
     }
 
-    // where T : class の印 (parser が型引数の Value の bit 1 に置く)
+    // Marker for where T : class (the parser puts it in bit 1 of the type argument's Value)
     private static List<bool> ClassFlags(List<Node>? typeParams)
     {
         var result = new List<bool>();
@@ -1080,7 +1080,7 @@ public sealed class Declarer
         return "Unknown";
     }
 
-    // struct の instance の field (auto property の裏の field を含む) が自分の struct を含むと、値の大きさが決まらない (CS0523)
+    // If a struct's instance fields (including auto property backing fields) contain the struct itself, the value size is undetermined (CS0523)
     private void CheckStructCycles()
     {
         foreach (var t in _c.Types)
@@ -1122,7 +1122,7 @@ public sealed class Declarer
         return false;
     }
 
-    // 引数の型の並び (と method の型引数の数) が同じか
+    // Whether the parameter type lists (and the method type argument counts) are the same
     private static bool SameParams(Symbol a, Symbol b)
     {
         int na = a.Params == null ? 0 : a.Params.Count;
@@ -1166,11 +1166,11 @@ public sealed class Declarer
         return result;
     }
 
-    // ---- IL の名前 (IlName) ----
+    // ---- IL names (IlName) ----
 
     private void AssignIlNames(TypeDeclSym t)
     {
-        // 同じ名前の method が複数あれば signature で区別する
+        // If there are several methods with the same name, distinguish them by signature
         foreach (var m in t.Members)
         {
             if (m.Kind != SymKind.Method) continue;
@@ -1182,7 +1182,7 @@ public sealed class Declarer
             }
             m.IlName = methods > 1 ? m.Name + "__" + Signature(m) : m.Name;
         }
-        // constructor (struct の new は既定値を作る関数なので、constructor は ctor)
+        // Constructor (struct new is the function that creates the default value, so the constructor is ctor)
         string ctorBase = t.IsStruct ? "ctor" : "new";
         if (t.Ctors.Count == 1) t.Ctors[0].IlName = ctorBase;
         else
@@ -1211,9 +1211,9 @@ public sealed class Declarer
         if (t.IsRef) AssignHostNames(t);
     }
 
-    // --ref の型 (host) の名前は host の規則で写す:
-    // 型は namespace と入れ子の型を全小文字で . でつなぐ (Lub.Gfx → lub.gfx)。enum は入っている型か namespace の下に平らに置く。
-    // member は snake_case (BeginPass → begin_pass)、enum の member は UPPER_SNAKE (Rgba8 → RGBA8)
+    // Names of --ref types (host) are mapped by the host rules:
+    // types join the namespace and nested types in all lowercase with . (Lub.Gfx → lub.gfx). Enums are placed flat under their containing type or namespace.
+    // members are snake_case (BeginPass → begin_pass), and enum members are UPPER_SNAKE (Rgba8 → RGBA8)
     private static void AssignHostNames(TypeDeclSym t)
     {
         t.IlName = HostPath(t);
@@ -1230,7 +1230,7 @@ public sealed class Declarer
         TypeDeclSym? cur = t.IsEnum ? t.Outer : t;
         if (t.IsEnum && cur == null)
         {
-            // namespace の直下の enum は namespace の下に置く
+            // An enum directly under a namespace is placed under the namespace
             if (t.Namespace == "") return "";
         }
         while (cur != null)
@@ -1286,7 +1286,7 @@ public sealed class Declarer
 
 public static class HostNames
 {
-    // ---- host (--ref) の名前 (lub-gen も同じ関数で写す) ----
+    // ---- host (--ref) names (lub-gen maps them with the same function) ----
 
     public static string HostMember(string name) => ToSnake(name);
 
@@ -1294,8 +1294,8 @@ public static class HostNames
 
     public static string HostPathSegment(string name) => name.ToLower();
 
-    // 小文字を含まない名前 (CLEAR / DEPTH24_STENCIL8) は既に全大文字の snake_case とみなして小文字にする。
-    // それ以外は先頭の _ を残し、2 文字目以降の大文字の前に _ を入れて小文字にする
+    // A name with no lowercase letters (CLEAR / DEPTH24_STENCIL8) is treated as already all-uppercase snake_case and lowercased.
+    // Otherwise, keep a leading _, insert _ before each uppercase letter from the second character on, and lowercase
     private static string ToSnake(string name)
     {
         var b = new Utf8Bytes(name);

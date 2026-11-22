@@ -1,20 +1,30 @@
-/* hot reload の適用 (doc/vm-design.md §12、doc/object-model.md §6、§7)。
-   新版の module を別の VM に読み、計画 (tcs2vm --reload-from が作る。tcs2c の migrator と同じ形) に従って
-   heap と static を新版の型に移し、関数表を差し替える。
+/* Applying a hot reload (doc/vm-design.md §12, doc/object-model.md §6, §7).
+   Loads the new version's module into another VM, and following the plan (made
+   by tcs2vm --reload-from; same form as the tcs2c migrator) moves the heap and
+   statics to the new version's types and swaps the function table.
 
-   段:
-   1. 読み込み: 新版を別の VM で parse / verify / link する。失敗は TVM_LOAD_ERROR (状態は旧版のまま)
-   2. 計画: 型を名前で対応させ、生きている object の型と closure の関数が新版にあるかを確かめる。
-      計画の restart の理由と、対応の付かない object は TVM_RESTART (状態は旧版のまま)
-   3. 反映: layout の変わる object を新しい layout で作り直して (共有の tcs_migrate_value) 旧 object に転送先を書き、
-      ほかの object は型を新版に付け替え、static を名前で移し、module を入れ替え、全部の参照を共有の walker で
-      転送先へ張り替える。ここに失敗の経路は無い (確保の失敗は abort)
-   4. initializer: 足した (と型を変えた) field の initializer を、作り直した instance ごとに走らせる。
-      足した static と評価し直す static の initializer (`型.<reload-static>`) を走らせる
-   5. hook: OnReload を持つ型の生きている instance ごとに OnReload()、続いて entry の型の static の OnReload()
+   Stages:
+   1. Load: parse / verify / link the new version in another VM. Failure is
+   TVM_LOAD_ERROR (the state stays at the old version)
+   2. Plan: match types by name, and check that the types of live objects and
+   the functions of closures exist in the new version. Restart reasons in the
+   plan and objects with no match give TVM_RESTART (the state stays at the old
+   version)
+   3. Apply: recreate objects whose layout changes with the new layout (shared
+   tcs_migrate_value) and write the forwarding target into the old object, move
+   the types of other objects over to the new version, move statics by name,
+   swap the module, and repoint all references with the shared walker to the
+   forwarding targets. There is no failure path here (allocation failure aborts)
+   4. initializer: run the initializers of added (and retyped) fields for each
+   recreated instance. Run the initializers of added statics and re-evaluated
+   statics (`Type.<reload-static>`)
+   5. hook: OnReload() for each live instance of types that have OnReload, then
+   the static OnReload() of the entry type
 
-   initializer は新版の関数なので、反映の後 (型と heap が新版で揃ってから) に走らせる。fault は hook と同じく
-   警告にし (field は 0 の値のまま)、反映は巻き戻さない (doc/object-model.md §6)。 */
+   Initializers are functions of the new version, so they run after the apply
+   (once the types and the heap are consistent with the new version). As with
+   hooks, a fault becomes a warning (the field keeps its zero value), and the
+   apply is not rolled back (doc/object-model.md §6). */
 #include "../../runtime/model/tcs_walk.h"
 #include "tcsvm_internal.h"
 
@@ -26,22 +36,23 @@
 #define NONE 0xFFFFFFFFu
 
 typedef struct Reload {
-  TvmVm *vm; /* 旧版 (反映の後は新版) */
-  TvmVm *nv; /* 新版を読んだ VM (反映の後は旧版の module を持ち、解放する) */
+  TvmVm *vm; /* Old version (the new version after the apply) */
+  TvmVm *nv; /* The VM that loaded the new version (after the apply it holds the
+                module of the old version and releases it) */
   TcsPlan plan;
   char **plan_strings;
   uint32_t nplan_strings;
-  uint32_t *type_map; /* 旧版の型の番号 → 新版の型の番号 (NONE は無し) */
-  uint8_t
-      *rebuild; /* 旧版の型ごと: object (か要素) を新しい layout で作り直す */
-  uint32_t
-      *proto_map; /* 旧版の関数 → 新版の関数 (NONE は未定、NONE - 1 は無し) */
+  uint32_t *type_map; /* Old type number → new type number (NONE means none) */
+  uint8_t *rebuild; /* Per old type: recreate objects (or elements) with the new
+                       layout */
+  uint32_t *proto_map; /* Old function → new function (NONE is undecided, NONE -
+                          1 is none) */
   char warnings[sizeof(((TvmVm *)0)->error)];
 } Reload;
 
 static void *xalloc(void *p) {
   if (!p)
-    abort(); /* 反映の段には失敗の経路を作らない (doc/vm-design.md §12.1) */
+    abort(); /* The apply stage has no failure path (doc/vm-design.md §12.1) */
   return p;
 }
 
@@ -66,7 +77,8 @@ static const char *type_name(const TvmVm *vm, uint16_t t) {
   return t == TVM_NO_TYPE || t >= vm->ntypes ? "" : vm->types[t].name;
 }
 
-/* 旧版と新版の (種類、型) が同じ値か (型は名前で比べる) */
+/* Whether (kind, type) in the old and new versions are the same value (types
+ * are compared by name) */
 static bool same_info(const TvmVm *a, TvmRegInfo x, const TvmVm *b,
                       TvmRegInfo y) {
   return x.kind == y.kind &&
@@ -78,9 +90,10 @@ static bool relayout(const Reload *rl, const char *name) {
   return pt && pt->change == TCS_PLAN_RELAYOUT;
 }
 
-/* ---- 2. 計画 ---- */
+/* ---- 2. Plan ---- */
 
-/* 型の対応と、作り直すかどうか。計画が SAME と言う型の layout が実際に違えば、計画と module の食い違い */
+/* Type mapping and whether to recreate. If the layout of a type the plan calls
+ * SAME actually differs, the plan and the module disagree */
 static const char *plan_types(Reload *rl) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
   rl->type_map =
@@ -139,7 +152,8 @@ static bool same_shape(const TvmVm *vm, const TvmProto *op, const TvmVm *nv,
   return ok;
 }
 
-/* lambda の名前 `外側<lambdaN:指紋>` を外側 (長さ)、番号、指紋に分ける。lambda でなければ false */
+/* Splits a lambda name `outer<lambdaN:fingerprint>` into the outer part
+ * (length), number, and fingerprint. false if it is not a lambda */
 static bool lambda_parts(const char *name, size_t *outer, long *ordinal,
                          const char **print) {
   const char *at = NULL;
@@ -169,10 +183,15 @@ static uint32_t count_lambdas(const TvmVm *vm, const char *name, size_t outer) {
   return n;
 }
 
-/* closure の関数の新版: 引数・戻り値・捕捉の (種類、型) が同じ関数で、
-   1. 同じ名前 (関数、または外側・番号・本文が同じ lambda)
-   2. lambda なら、同じ外側の関数の中で本文の指紋が同じ lambda (前に lambda を足しても番号に依らず対応する)
-   3. lambda で本文を変えたなら、外側の関数の lambda の数が変わらないときだけ同じ番号の lambda */
+/* The new version of a closure's function: a function with the same (kind,
+   type) of arguments, return values, and captures, that is
+   1. the same name (a function, or a lambda with the same outer function,
+   number, and body)
+   2. for a lambda, a lambda in the same outer function with the same body
+   fingerprint (it matches regardless of number even if lambdas were added
+   before it)
+   3. for a lambda whose body changed, the lambda with the same number, only
+   when the number of lambdas in the outer function is unchanged */
 static uint32_t map_proto(Reload *rl, const TvmProto *op) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
   uint32_t oi = (uint32_t)(op - vm->funcs);
@@ -218,8 +237,9 @@ static TvmStatus restart(Reload *rl, const char *fmt, const char *what) {
   return TVM_RESTART;
 }
 
-/* 生きている VM の object (blob と定数を除く) の列。shared heap では frame の境界の回収の後の旧世代から
-   (C の module の object は除く) */
+/* List of live VM objects (excluding blobs and constants). In shared heap,
+   taken from the old generation after the frame-boundary collection (excluding
+   C module objects) */
 typedef struct Objs {
   void **p;
   size_t n, cap;
@@ -250,7 +270,8 @@ static Objs snapshot(TvmVm *vm) {
   return o;
 }
 
-/* 生きている object の型と closure の関数が新版にあること */
+/* The types of live objects and the functions of closures must exist in the new
+ * version */
 static TvmStatus plan_heap(Reload *rl) {
   TvmVm *vm = rl->vm;
   rl->proto_map = (uint32_t *)xalloc(
@@ -285,13 +306,15 @@ static TvmStatus plan_heap(Reload *rl) {
   return TVM_OK;
 }
 
-/* ---- 3. 反映 ---- */
+/* ---- 3. Apply ---- */
 
 static void forward(void *old, void *nw) {
   GC_HEADER(old)->flags |= TVM_GC_RELOADED;
-  GC_HEADER(old)->type = (const TvmType *)nw; /* 旧 object の型はもう読まない */
+  GC_HEADER(old)->type =
+      (const TvmType *)nw; /* The type of the old object is no longer read */
   GC_HEADER(old)->kind =
-      TVM_KIND_BLOB; /* GC が中を辿らない (shared heap では次の回収で消える) */
+      TVM_KIND_BLOB; /* The GC does not walk inside it (in shared heap it
+                        disappears at the next collection) */
 }
 
 static void root(TvmVm *vm, void *p) {
@@ -304,7 +327,8 @@ static void root(TvmVm *vm, void *p) {
   vm->reload_roots[vm->nreload_roots++] = p;
 }
 
-/* 要素 n 個を旧版の struct 型 ot から新版の nt へ (要素の大きさはそれぞれ) */
+/* n elements from old struct type ot to new nt (each with its own element size)
+ */
 static void migrate_elems(Reload *rl, const TvmType *ot, const char *src,
                           uint32_t osize, const TvmType *nt, char *dst,
                           uint32_t nsize, uint32_t n) {
@@ -313,7 +337,8 @@ static void migrate_elems(Reload *rl, const TvmType *ot, const char *src,
                       rl->nv->types, nt, dst + (size_t)i * nsize);
 }
 
-/* object を新版の型に移す。作り直した class の instance は initializer のために root に積む */
+/* Moves an object to the new type. Recreated class instances are pushed as
+ * roots for the initializers */
 static void migrate_object(Reload *rl, void *p) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
   const TvmType *ot = TVM_TYPE(((TvmObject *)p));
@@ -356,7 +381,8 @@ static void migrate_object(Reload *rl, void *p) {
     break;
   }
   case TVM_T_LIST: {
-    /* List の object は同じまま、要素の buffer を新しい要素の大きさで確保し直す */
+    /* The List object stays the same, and the element buffer is reallocated
+     * with the new element size */
     TvmList *l = (TvmList *)p;
     if (l->data) {
       char *data =
@@ -370,7 +396,7 @@ static void migrate_object(Reload *rl, void *p) {
     break;
   }
   case TVM_T_DICT: {
-    /* entry の番号は変えない (bucket はそのまま使える) */
+    /* Entry indices do not change (the buckets can be used as is) */
     TvmDict *d = (TvmDict *)p;
     if (d->entries) {
       uint32_t oe = ot->dict_entry, ne = nt->dict_entry;
@@ -431,7 +457,8 @@ static TvmSlot mem_to_slot(uint8_t kind, const char *p) {
   return s;
 }
 
-/* static を名前で移す。struct の static は葉を値に組み立て、struct の計画で移してから葉に戻す */
+/* Moves statics by name. A struct static has its leaves assembled into a value,
+ * moved with the struct plan, then put back into leaves */
 static void migrate_statics(Reload *rl) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
   for (uint32_t i = 0; i < nv->nstatic_fields; i++) {
@@ -442,7 +469,8 @@ static void migrate_statics(Reload *rl) {
         of = &vm->static_fields[k];
     if (!of || !same_info(vm, (TvmRegInfo){of->kind, of->type}, nv,
                           (TvmRegInfo){nf->kind, nf->type}))
-      continue; /* 足した static (initializer は後で) か、型の変わった static (0 の値) */
+      continue; /* An added static (its initializer runs later) or a static
+                   whose type changed (zero value) */
     if (nf->kind != TVM_K_STRUCT) {
       nv->statics[nf->slot] = vm->statics[of->slot];
       continue;
@@ -462,9 +490,11 @@ static void migrate_statics(Reload *rl) {
   }
 }
 
-/* 状態の控え (tvm_snapshot_take) の static は slot で持つので、名前で新版の slot へ付け替える。
-   初期化子の付いた static を足すと後ろの static の slot がずれるため。
-   消えた static と型の変わった static、葉の並びの変わった struct の static は控えから落とす (書き戻さない) */
+/* Statics in state snapshots (tvm_snapshot_take) are held by slot, so they are
+   moved by name to the slots of the new version. This is because adding a
+   static with an initializer shifts the slots of the statics after it. Removed
+   statics, statics whose type changed, and struct statics whose leaf layout
+   changed are dropped from the snapshot (not written back) */
 static void remap_snapshot_statics(Reload *rl) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
   if (!vm->snapshots)
@@ -509,7 +539,8 @@ static void remap_snapshot_statics(Reload *rl) {
   free(to);
 }
 
-/* module の部分 (strings、定数、型、static、関数) を 2 つの VM の間で入れ替える */
+/* Swaps the module parts (strings, constants, types, statics, functions)
+ * between the two VMs */
 #define SWAP(type, field)                                                      \
   do {                                                                         \
     type tmp_ = a->field;                                                      \
@@ -554,13 +585,14 @@ static void fix_slot(void *ctx, void **slot) {
 
 static void reflect(Reload *rl) {
   TvmVm *vm = rl->vm, *nv = rl->nv;
-  /* 移す前の object の列 (作り直した object は入らない) */
+  /* List of objects before the move (recreated objects are not included) */
   Objs objs = snapshot(vm);
   for (size_t i = 0; i < objs.n; i++)
     migrate_object(rl, objs.p[i]);
   migrate_statics(rl);
   remap_snapshot_statics(rl);
-  /* 旧版の string の定数は heap から指されうるので残し、型を新版の string にする */
+  /* The string constants of the old version may be pointed to from the heap, so
+   * they are kept, with their type set to the string of the new version */
   if (vm->nconsts) {
     TvmString **retired = (TvmString **)xalloc(realloc(
         vm->retired, (vm->nretired + vm->nconsts) * sizeof(TvmString *)));
@@ -575,28 +607,32 @@ static void reflect(Reload *rl) {
     TVM_TYPE(vm->retired[i]) = &nv->types[nv->string_type];
   swap_module(vm, nv);
   vm->types_version = tvm_next_types_version();
-  /* 作り直した object があれば、それより前の状態の控えは戻せない */
+  /* If any object was recreated, state snapshots taken before that cannot be
+   * restored */
   for (uint32_t i = 0; i < objs.n; i++)
     if (GC_HEADER(objs.p[i])->flags & TVM_GC_RELOADED) {
       vm->layout_version++;
       tvm_snapshots_invalidate(vm);
       break;
     }
-  /* 弱く覚えた object も転送先へ */
+  /* Weakly pinned objects also move to the forwarding target */
   for (uint32_t i = 0; i < vm->npinned; i++)
     if (vm->pinned[i].p &&
         (GC_HEADER(vm->pinned[i].p)->flags & TVM_GC_RELOADED))
       vm->pinned[i].p = (void *)GC_HEADER(vm->pinned[i].p)->type;
   tvm_debug_ids_reloaded(vm);
-  /* 新版の host の関数は読み込みに使った nv の写しを指すので、同じ番号の vm の登録へ付け替える */
+  /* The host functions of the new version point to the copy in nv used for
+   * loading, so move them to the registration with the same number in vm */
   for (uint32_t i = 0; i < vm->nintrinsics; i++)
     if (nv->nhosts && vm->intrinsics[i] >= nv->hosts &&
         vm->intrinsics[i] < nv->hosts + nv->nhosts)
       vm->intrinsics[i] = &vm->hosts[vm->intrinsics[i] - nv->hosts];
-  /* 張り替え: 全部の object と static の参照を転送先へ (共有の walker、sink は fix_slot) */
+  /* Repointing: all object and static references go to the forwarding target
+   * (shared walker, sink is fix_slot) */
   if (vm->heap) {
-    /* shared heap: C の module の object と root も (X-3)。作り直した object は nursery にあるので別に辿り、
-       旧 object が新しい object を指すようになったので barrier に載せる */
+    /* shared heap: also C module objects and roots (X-3). Recreated objects are
+       in the nursery, so they are walked separately, and since the old objects
+       now point to the new objects, they are put on the barrier */
     vm->heap->visit_all(fix_slot_heap);
     for (size_t i = 0; i < vm->nreload_roots; i++)
       tvm_object_refs(vm, vm->reload_roots[i], fix_slot, NULL);
@@ -611,10 +647,12 @@ static void reflect(Reload *rl) {
   for (uint32_t i = 0; i < vm->nstatics; i++)
     if (vm->static_info[i].kind == TVM_K_REF)
       fix_slot(NULL, &vm->statics[i].p);
-  /* host が持つ object (C の module の root) も同じ sink で張り替える */
+  /* Objects held by the host (C module roots) are also repointed with the same
+   * sink */
   for (uint32_t i = 0; i < vm->nhandles; i++)
     fix_slot(NULL, &vm->handles[i]);
-  /* 作り直した旧 object はどこからも指されないので、ここで解放する (shared heap では次の回収が消す) */
+  /* Recreated old objects are no longer pointed to from anywhere, so they are
+   * freed here (in shared heap the next collection removes them) */
   TvmGcHeader **link = &vm->objects;
   while (!vm->heap && *link) {
     TvmGcHeader *h = *link;
@@ -626,7 +664,7 @@ static void reflect(Reload *rl) {
   }
 }
 
-/* ---- 4. initializer と 5. hook ---- */
+/* ---- 4. initializer and 5. hook ---- */
 
 static void call_warn(Reload *rl, int32_t func, TvmSlot *args, size_t nargs,
                       TvmSlot *rets, size_t nrets) {
@@ -656,7 +694,7 @@ static void run_initializers(Reload *rl) {
       size_t before = strlen(rl->warnings);
       call_warn(rl, (int32_t)(init - 1), NULL, 0, rets, f->nret);
       if (strlen(rl->warnings) != before)
-        continue; /* fault: 0 の値のまま */
+        continue; /* fault: stays at the zero value */
       if (field->kind == TVM_K_STRUCT) {
         const TvmType *st = &vm->types[field->type];
         for (uint32_t j = 0; j < st->nleaves && j < f->nret; j++)
@@ -666,7 +704,9 @@ static void run_initializers(Reload *rl) {
         slot_to_mem(field->kind, rets[0], (char *)o + field->offset);
     }
   }
-  /* 足した static と評価し直す static: 遅延初期化の型で、まだ初期化していなければ最初の読み書きで全部を初期化するので走らせない */
+  /* Added statics and re-evaluated statics: for a lazily initialized type that
+   * is not initialized yet, the first read or write initializes everything, so
+   * they are not run */
   for (uint32_t i = 0; i < vm->nfuncs; i++) {
     const char *name = vm->funcs[i].name;
     const char *suffix = ".<reload-static>";
@@ -686,10 +726,12 @@ static void run_initializers(Reload *rl) {
 
 static void run_hooks(Reload *rl) {
   TvmVm *vm = rl->vm;
-  /* hook が確保しても対象が変わらないように、先に全部の対象を root に積む */
+  /* Pushes all targets as roots first, so that the targets do not change even
+   * if a hook allocates */
   vm->nreload_roots = 0;
   if (vm->heap)
-    vm->heap->frame(); /* 作り直した object も旧世代に置いてから列挙する */
+    vm->heap->frame(); /* Puts the recreated objects in the old generation too
+                          before enumerating */
   Objs objs = snapshot(vm);
   for (size_t i = 0; i < objs.n; i++) {
     const TvmType *t = TVM_TYPE(objs.p[i]);
@@ -708,7 +750,7 @@ static void run_hooks(Reload *rl) {
     call_warn(rl, f, &self, 1, NULL, 0);
   }
   vm->nreload_roots = 0;
-  /* entry の型の static の OnReload */
+  /* Static OnReload of the entry type */
   if (vm->entry >= 0) {
     const char *entry = vm->funcs[vm->entry].name;
     const char *dot = strrchr(entry, '.');
@@ -743,8 +785,10 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size,
     tvm_set_error(vm, "tvm_apply runs only at a frame boundary");
     return TVM_LOAD_ERROR;
   }
-  /* shared heap: 若い object を旧世代に置いてから辿る (nursery の object は列挙できない)。
-     VM の heap: 届かない object を先に回収する。計画の検査は heap の列を見るので、回収の時期で結果が変わらないようにする */
+  /* shared heap: moves young objects to the old generation before walking
+     (nursery objects cannot be enumerated). VM heap: collects unreachable
+     objects first. The plan check looks at the heap list, so the result must
+     not depend on collection timing */
   if (vm->heap)
     vm->heap->frame();
   else
@@ -755,7 +799,7 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size,
     return TVM_LOAD_ERROR;
   }
   rl->vm = vm;
-  /* 1. 読み込み (新版は実行しないので stack は小さくてよい) */
+  /* 1. Load (the new version is not executed, so a small stack is enough) */
   TvmConfig config = {16, 4, 0};
   rl->nv = tvm_new(&config);
   if (!rl->nv) {
@@ -763,7 +807,9 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size,
     tvm_set_error(vm, "out of memory");
     return TVM_LOAD_ERROR;
   }
-  /* 新版の読み込みも同じ host の関数を引く。新しい VM に登録を写す (反映の後も intrinsics は旧版の vm->hosts を指す) */
+  /* Loading the new version looks up the same host functions. Copies the
+   * registrations to the new VM (after the apply, intrinsics still point to the
+   * old vm->hosts) */
   for (uint32_t i = 0; i < vm->nhosts; i++)
     tvm_host(rl->nv, vm->hosts[i].name, vm->hosts[i].params, vm->hosts[i].rets,
              vm->hosts[i].host, vm->hosts[i].user);
@@ -788,7 +834,7 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size,
     reload_free(rl);
     return TVM_LOAD_ERROR;
   }
-  /* 2. 計画 */
+  /* 2. Plan */
   if (rl->plan.nreasons) {
     tvm_set_error(vm, "restart required:");
     for (uint32_t i = 0; i < rl->plan.nreasons; i++)
@@ -810,10 +856,10 @@ TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size,
     reload_free(rl);
     return st;
   }
-  /* 3. 反映 */
+  /* 3. Apply */
   vm->nreload_roots = 0;
   reflect(rl);
-  /* 4. initializer、5. hook */
+  /* 4. initializer, 5. hook */
   run_initializers(rl);
   run_hooks(rl);
   vm->nreload_roots = 0;

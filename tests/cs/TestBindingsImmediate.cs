@@ -1,5 +1,5 @@
-// 値は Draw の時点で確定する: Draw の後の Set は前の draw の結果を変えない。
-// 画素 0 は red の uniform と red の texture、画素 1 は Set し直した green で描き、最後に blue を Set するが draw しない。
+// Values are fixed at the time of Draw: a Set after Draw does not change the result of the previous draw.
+// Pixel 0 is drawn with the red uniform and red texture, pixel 1 with green Set again, and finally blue is Set but not drawn.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -48,16 +48,16 @@ struct FSIn { float4 pos : SV_Position; };
         b.Set("cell", new Vec4(0, 0, 4, 1));
         b.Set("tint", new Vec4(1, 0, 0, 1));
         Gfx.Draw(6, b, opts);
-        // 前の draw の uniform を書き換える
+        // Rewrite the uniform of the previous draw
         b.Set("cell", new Vec4(1, 0, 4, 1));
         b.Set("tint", new Vec4(0, 1, 0, 1));
         Gfx.Draw(6, b, opts);
-        // 前の draw の texture を差し替える
+        // Replace the texture of the previous draw
         b.Set("cell", new Vec4(2, 0, 4, 1));
         b.Set("tint", new Vec4(1, 1, 1, 1));
         b.Set("tex", cyan);
         Gfx.Draw(6, b, opts);
-        // draw しない Set は何も描かない
+        // A Set without a draw draws nothing
         b.Set("cell", new Vec4(3, 0, 4, 1));
         b.Set("tint", new Vec4(0, 0, 1, 1));
         b.Set("tex", white);

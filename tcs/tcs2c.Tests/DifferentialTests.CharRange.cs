@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// char は 1 byte の code unit なので、(char)x の x が 0〜255 の外なら fault する (C は使い方を添えた文言)。
-// CoreCLR は UTF-16 の code unit を作って止まらないので、ここだけ意図して違う (codepoint は char.ConvertFromUtf32)。.NET は比べない
+// char is a 1-byte code unit, so (char)x faults if x is outside 0 to 255 (C's message includes how to do it instead).
+// CoreCLR creates a UTF-16 code unit and does not stop, so this intentionally differs here (codepoints use char.ConvertFromUtf32). .NET is not compared
 public class CharRangeDifferentialTests
 {
     private const string CharRangeMessage =
@@ -57,7 +57,7 @@ public class CharRangeDifferentialTests
             """, output);
     }
 
-    // cast を通らずに範囲を出た char (`c++`) は文字列化の地点で止まる
+    // A char that goes out of range without a cast (`c++`) stops at the point where it is converted to a string
     [CFact]
     public void CharIncrement_OutOfByteRange_FaultsWhenStringified()
     {

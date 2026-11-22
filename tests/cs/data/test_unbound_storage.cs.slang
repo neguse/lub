@@ -1,5 +1,6 @@
-// dst だけを束ね、tex、src、scratch は渡さない。
-// 渡さなかった resource の値は backend ごとに違うので、dst に書く値には効かせない。
+// Binds only dst; tex, src, and scratch are not passed.
+// The values of resources that are not passed differ per backend, so they do
+// not affect the value written to dst.
 Texture2D tex;
 StructuredBuffer<float4> src;
 RWTexture2D<float4> scratch;

@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 式位置の `a ??= b` の値は代入後の a で、a が `T?` なら型は `T` (C# の ??=)。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// The value of `a ??= b` in expression position is a after the assignment, and if a is `T?` its type is `T` (C#'s ??=).
+// The expected values are the stdout of running the same program on CoreCLR
 public class CoalesceAssignValueDifferentialTests
 {
     [CFact]

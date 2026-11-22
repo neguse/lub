@@ -1,20 +1,20 @@
-// lub の samples/21_iroha の entry。
-// 実行: lub samples/21_iroha/Iroha21.csproj (transpile + watch + hot reload) いろはスイカ: 同じ文字の玉がぶつかると「い→ろ→は→に→ほ→へ→と」の順に育つスイカゲーム風サンプル。
-// 玉の文字は Font.GlyphMesh の三角形化グリフ (MeshText)、HUD は Lubx.Text の動的 glyph atlas。
-// 玉 1 個は class Ball で持つ。
+// Entry for lub's samples/21_iroha.
+// Run: lub samples/21_iroha/Iroha21.csproj (transpile + watch + hot reload) Iroha Suika: a Suika Game-style sample where balls with the same character grow in the order "い→ろ→は→に→ほ→へ→と" when they collide.
+// Ball characters are triangulated glyphs from Font.GlyphMesh (MeshText); the HUD uses the dynamic glyph atlas of Lubx.Text.
+// Each ball is held in class Ball.
 
 using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-/// <summary>玉 1 個。
+/// <summary>One ball.
 /// </summary>
 public class Ball
 {
     public int Id;
     public int Level;
-    public float SpawnX; // 宣言用: initial は不変でないと body が作り直される
+    public float SpawnX; // For the declaration: initial must not change, or the body is recreated
     public float SpawnY;
     public float X;
     public float Y;
@@ -28,23 +28,23 @@ public static class Iroha21
     const int w = 640;
     const int h = 360;
     const float ppm = 100.0f; // physics m -> logical px
-    const float halfW = 1.15f; // 容器の半幅 (m)
-    const float wallTop = 3.2f; // 壁の上端 (m)
-    const float lineY = 2.45f; // ゲームオーバー線 (m)
-    const float dropY = 2.85f; // 投下位置 (m)
+    const float halfW = 1.15f; // Half width of the container (m)
+    const float wallTop = 3.2f; // Top of the walls (m)
+    const float lineY = 2.45f; // Game over line (m)
+    const float dropY = 2.85f; // Drop position (m)
     const int levels = 7;
 
     static string[] chars = new string[]
         { "い", "ろ", "は", "に", "ほ", "へ", "と" };
     static float[] radii = new float[]
         { 0.13f, 0.17f, 0.22f, 0.28f, 0.36f, 0.46f, 0.58f };
-    static Color[]? _colors = null; // onFrame 先頭で遅延生成
+    static Color[]? _colors = null; // Created lazily at the start of onFrame
 
     static Camera2d? cam = null;
 
     static SpriteBatch? batch = null;
-    // ゲームオーバー表示用。
-    // SpriteBatch は atlas バケツ順で描くので、玉の上に帯を重ねるには flush を分ける必要がある。
+    // For the game over display.
+    // SpriteBatch draws in atlas bucket order, so drawing a band over the balls needs a separate flush.
     static SpriteBatch? overlay = null;
     static Text? hud = null;
     static MeshText? mesh = null;
@@ -62,7 +62,7 @@ public static class Iroha21
     static float t = 0.0f;
     static Rand? rng = null;
 
-    // LUB_IROHA_AUTO=1 で自動プレイ (ヘッドレス検証・デモ用)
+    // LUB_IROHA_AUTO=1 enables auto play (for headless verification and demos)
     static bool auto = Environment.GetEnvironmentVariable("LUB_IROHA_AUTO") != null;
 
     public static void OnInit()
@@ -79,7 +79,7 @@ public static class Iroha21
     {
     }
 
-    // --- アセット -----------------------------------------------------------
+    // --- Assets -----------------------------------------------------------
 
     static bool EnsureAssets()
     {
@@ -95,7 +95,7 @@ public static class Iroha21
         return fontLoaded && mesh != null;
     }
 
-    // --- ゲーム -------------------------------------------------------------
+    // --- Game -------------------------------------------------------------
 
     static void Spawn(float x, float y, int level)
     {
@@ -156,7 +156,7 @@ public static class Iroha21
             _colors = colors;
         }
 
-        // --- 入力
+        // --- Input
         var dropR = radii[nextLevel];
         var dropX = camNow.MouseWorld().X;
         if (dropX < -(halfW - dropR))
@@ -184,7 +184,7 @@ public static class Iroha21
             Audio.Play(Sfx.Blip(420, 260, 0.06f, 0.3f));
         }
 
-        // --- 物理 (immediate mode: 生きている玉だけ毎フレーム宣言する)
+        // --- Physics (immediate mode: only the live balls are declared every frame)
         var world = Phys2d.World("iroha", new WorldOpts
         {
             Gravity = new Vec2d { X = 0.0f, Y = -10.0f },
@@ -247,7 +247,7 @@ public static class Iroha21
 
         Phys2d.Step(world, dt);
 
-        // contact の body key ("ball:<id>") からの逆引き用
+        // For reverse lookup from the body key of a contact ("ball:<id>")
         var byKey = new Dictionary<string, Ball>();
         foreach (var ball in balls)
         {
@@ -261,7 +261,7 @@ public static class Iroha21
             ball.Age += dt;
         }
 
-        // --- 合体: 同じ文字同士の contact begin で次の文字へ
+        // --- Merge: a contact begin between the same characters advances to the next character
         if (!over)
         {
             var contacts = Phys2d.Contacts(world, Phys2d.EventKind.Begin);
@@ -298,7 +298,7 @@ public static class Iroha21
             }
         }
 
-        // --- ゲームオーバー判定: 落下直後を除き、線より上に居座ったら終わり
+        // --- Game over check: except right after a drop, the game ends when a ball stays above the line
         if (!over)
         {
             foreach (var ball in balls)
@@ -316,7 +316,7 @@ public static class Iroha21
             }
         }
 
-        // --- 描画
+        // --- Drawing
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
@@ -324,7 +324,7 @@ public static class Iroha21
         });
         batchNow.Begin();
 
-        // 容器
+        // Container
         var wallCol = Color.Rgb(0.35f, 0.32f, 0.42f);
         batchNow.Rect(camNow.Sx(-halfW) - 8, camNow.Sy(wallTop), 8, wallTop * ppm,
             wallCol);
@@ -333,12 +333,12 @@ public static class Iroha21
         batchNow.Rect(camNow.Sx(-halfW) - 8, camNow.OriginY, halfW * 2 * ppm + 16, 8,
             wallCol);
 
-        // ゲームオーバー線
+        // Game over line
         var lineBlink = over ? 1.0f : 0.25f + 0.15f * (float)Math.Sin(t * 4.0f);
         batchNow.Rect(camNow.Sx(-halfW), camNow.Sy(lineY), halfW * 2 * ppm, 2,
             Color.Rgb(0.9f, 0.3f, 0.3f, lineBlink));
 
-        // 玉 (sprite は本体、上に mesh グリフ)
+        // Balls (sprite is the body, mesh glyph on top)
         foreach (var ball in balls)
         {
             var r = radii[ball.Level] * ppm;
@@ -346,7 +346,7 @@ public static class Iroha21
             batchNow.Disc(camNow.Sx(ball.X), camNow.Sy(ball.Y), r, c);
         }
 
-        // 投下プレビュー
+        // Drop preview
         if (!over)
         {
             var r = dropR * ppm;
@@ -355,7 +355,7 @@ public static class Iroha21
                 Color.Rgb(c.R, c.G, c.B, 0.5f + 0.2f * (float)Math.Sin(t * 6.0f)));
         }
 
-        // HUD (bitmap 小サイズレジーム)
+        // HUD (small-size bitmap regime)
         hudNow.Draw(batchNow, "スコア " + score, 12, 26);
         hudNow.Draw(batchNow, "ベスト " + best, 12, 50,
             Color.Rgb(0.8f, 0.8f, 0.8f, 0.8f));
@@ -364,7 +364,7 @@ public static class Iroha21
 
         batchNow.Flush();
 
-        // mesh グリフ (拡大レジーム): 玉の文字は物理の回転ごと描く
+        // mesh glyphs (magnified regime): ball characters are drawn with their physics rotation
         var ink = Color.Rgb(0.12f, 0.10f, 0.14f, 0.9f);
         foreach (var ball in balls)
         {
@@ -378,7 +378,7 @@ public static class Iroha21
 
         if (over)
         {
-            // 帯とメッセージは玉の上に重ねたいので別 batch で flush を分ける
+            // The band and message should be drawn over the balls, so a separate batch splits the flush
             overlayNow.Begin();
             overlayNow.Rect(0, 108, w, 132, Color.Rgb(0.05f, 0.04f, 0.07f, 0.85f));
             var msg = "クリックでもういちど";

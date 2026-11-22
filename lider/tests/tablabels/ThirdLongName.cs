@@ -1,4 +1,4 @@
-// TestTabLabels が開く file。
+// File that TestTabLabels opens.
 public static class ThirdLongName
 {
 }

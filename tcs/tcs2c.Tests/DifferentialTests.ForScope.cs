@@ -1,10 +1,10 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// numeric for に落ちない for (while に脱糖する for) のループ変数は、その for
-// の中だけの変数。lambda の中で外の local と同じ名前のループ変数を宣言しても、
-// ループの後の参照は外の local を捕捉する (#182)。宣言子が複数・入れ子・
-// continue・break・ループ変数の捕捉も見る。期待値は同じ program を CoreCLR で
-// 実行した stdout
+// The loop variable of a for that does not become a numeric for (a for desugared into while) is a variable only inside that
+// for. Even if a lambda declares a loop variable with the same name as an outer local,
+// references after the loop capture the outer local (#182). Also covers multiple declarators, nesting,
+// continue, break, and capturing the loop variable. The expected values are the stdout of running the same program
+// on CoreCLR
 public class ForScopeDifferentialTests
 {
     [CFact]
@@ -58,7 +58,7 @@ public class ForScopeDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // 増分の先が loop の変数でない for は増分を捨てない (#421)
+    // A for whose increment does not target the loop variable does not drop the increment (#421)
     [CFact]
     public void For_IncrementorTargetsOtherVariable()
     {

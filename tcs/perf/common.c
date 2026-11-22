@@ -1,5 +1,5 @@
-/* ホスト CLI 専用部 (POSIX clock / argv / stdout)。
-   OS 非依存の kernel 共通部は core.c */
+/* Host CLI-only part (POSIX clock / argv / stdout).
+   The OS-independent kernel common part is core.c */
 
 #define _POSIX_C_SOURCE 200809L
 

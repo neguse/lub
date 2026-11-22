@@ -1,8 +1,8 @@
-// focus をゲームの絵と Code の間で移すことと、ゲームの絵でないスクリーンを隠すこと。
-//   - F1 で focus がゲームに移る: 入力はゲームに渡り、窓は同じ所に薄く残り、compile error のような窓の中身は描き続ける。もう一度 F1 で Code に戻り、濃く戻る
-//   - focus がゲームにある間は Zen の広げた窓を元の大きさにし、Code に戻ると広げ直す。検索は閉じる
-//   - 命令 screen:hide でゲームの絵でないスクリーンを隠し、もう一度で出す。隠している間に F1 を押すと、出して focus を Code に移す
-//   - ゲームの絵を押すと focus がゲームに移り、窓を押すと Code に戻る
+// Moving focus between the game view and Code, and hiding the screens other than the game view.
+//   - F1 moves focus to the game: input goes to the game, windows stay faintly in the same place, and window contents such as compile errors keep being drawn. F1 again goes back to Code, and the windows become opaque again
+//   - While focus is on the game, Zen's expanded window goes back to its original size, and expands again when going back to Code. Search is closed
+//   - The screen:hide command hides the screens other than the game view, and running it again shows them. Pressing F1 while they are hidden shows them and moves focus to Code
+//   - Pressing the game view moves focus to the game, and pressing a window goes back to Code
 using System;
 using Lub;
 using LiderCore;
@@ -19,7 +19,7 @@ public static class TestStages
     {
         TestInit();
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay layout (code windows lined up in a horizontal row on the cylindrical screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -56,7 +56,7 @@ public static class TestStages
         if (frames < 6)
             return;
         waited += dt;
-        // 窓の濃さが動き終わるのを待つ
+        // Wait until the window opacity animation finishes
         if (waited < 0.6f)
             return;
         waited = 0;
@@ -97,7 +97,7 @@ public static class TestStages
                 Check(!w.OnGame && !Lider.Hidden, "F1 did not return from the game only to editing");
                 break;
             case 5:
-                // ゲームの絵 (窓の無い所) を押すと focus がゲームに移り、窓を押すと Code に戻る
+                // Pressing the game view (where there is no window) moves focus to the game, and pressing a window goes back to Code
                 Click(2, 2);
                 Check(w.OnGame && w.Focused != window, "a click on the game did not move the focus to the game");
                 Check(w.FocusWindow == window, "the code window was forgotten");

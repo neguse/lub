@@ -1,7 +1,9 @@
-/* tcs VM の GC (doc/vm-design.md §10): 動かさない mark-sweep。
-   root は static、VM の frame (register の種類表で ref の register だけを見る)、runtime の pin。
-   object を動かさないので、native の C が持つ pointer は回収の前後で変わらない。
-   回収は interpreter の確保の地点 (frame を保存してから) とフレーム境界 (tvm_frame_end) でだけ起きる。 */
+/* GC of the tcs VM (doc/vm-design.md §10): non-moving mark-sweep.
+   Roots are statics, VM frames (only the ref registers, per the register kind
+   table), and runtime pins. Objects do not move, so pointers held by native C
+   do not change across a collection. Collection happens only at interpreter
+   allocation points (after saving the frame) and at frame boundaries
+   (tvm_frame_end). */
 #include "../../runtime/model/tcs_walk.h"
 #include "tcsvm_internal.h"
 
@@ -11,7 +13,9 @@
 #define GC_MIN_LIMIT ((size_t)1 << 20)
 
 static void *alloc_with_header(TvmVm *vm, size_t size, uint8_t blob) {
-  if (vm->heap) { /* shared heap: tcs2c の runtime の nursery に置く (header は同じ形。持ち越しは数えない) */
+  if (vm->heap) { /* shared heap: allocates in the nursery of the tcs2c runtime
+                     (the header has the same shape; kept objects are not
+                     counted) */
     if (vm->prof_clock)
       tvm_profile_alloc(vm, NULL, size + sizeof(TvmGcHeader));
     return vm->heap->alloc(blob ? TVM_KIND_BLOB : TVM_KIND_OBJECT, size);
@@ -71,7 +75,7 @@ static void push(TvmVm *vm, void *p) {
     size_t cap = vm->capmark ? vm->capmark * 2 : 256;
     void **stack = (void **)realloc(vm->mark_stack, cap * sizeof(void *));
     if (!stack)
-      abort(); /* 回収の途中で止まる手段が無い */
+      abort(); /* There is no way to stop in the middle of a collection */
     vm->mark_stack = stack;
     vm->capmark = cap;
   }
@@ -89,8 +93,9 @@ static void mark(TvmVm *vm, void *p) {
     push(vm, p);
 }
 
-/* 値の中の参照は共有の walker (runtime/model/tcs_walk、doc/object-model.md §7) で辿り、sink だけを替える
-   (GC は mark、reload は転送先への張り替え) */
+/* References inside values are walked by the shared walker
+   (runtime/model/tcs_walk, doc/object-model.md §7), replacing only the sink
+   (mark for the GC, repointing to the forwarding target for reload) */
 void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot),
                      void *ctx) {
   const TvmType *t = TVM_TYPE(((TvmObject *)p));
@@ -134,7 +139,7 @@ void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot),
         fn(ctx, &CLO_CAPS(c)[k].p);
     break;
   }
-  default: /* string、box (中は値) */
+  default: /* string, box (the contents are values) */
     break;
   }
 }
@@ -151,7 +156,8 @@ static void mark_roots(TvmVm *vm) {
   for (uint32_t i = 0; i < vm->nstatics; i++)
     if (vm->static_info[i].kind == TVM_K_REF)
       mark(vm, vm->statics[i].p);
-  /* 保存された frame: interpreter は回収の前と入れ子の呼び出しの前に、今の frame を ftop の下に置く */
+  /* Saved frames: before a collection and before a nested call, the interpreter
+   * puts the current frame below ftop */
   for (TvmFrame *fr = vm->frames; fr < vm->ftop; fr++) {
     const TvmProto *proto = fr->proto;
     if (!proto)
@@ -172,13 +178,13 @@ static void mark_roots(TvmVm *vm) {
       mark_leaves(
           vm, vm->struct_pins[i].base + (size_t)k * vm->struct_pins[i].st->size,
           vm->struct_pins[i].st);
-  /* --trace が控えた値と、状態の控えが持つ object */
+  /* Values recorded by --trace and objects held by state snapshots */
   tvm_debug_mark(vm, mark);
 }
 
 void tvm_gc_collect(TvmVm *vm) {
   if (vm->heap)
-    return; /* shared heap: 回収は tcs2c の runtime が frame の境界で行う */
+    return; /* shared heap: the tcs2c runtime collects at frame boundaries */
   uint64_t t0 = 0;
   if (vm->prof_clock) {
     tvm_profile_gc_begin(vm);
@@ -227,15 +233,16 @@ size_t tvm_gc_live(TvmVm *vm) { return vm->gc_live; }
 
 /* ---- shared heap (doc/object-model.md §10.2) ---- */
 
-static TvmVm *shared_vm; /* shared heap を使う VM (1 process に 1 つ) */
+static TvmVm *shared_vm; /* The VM using the shared heap (one per process) */
 
 void tvm_use_heap(TvmVm *vm, const TvmHeap *heap) {
   vm->heap = heap;
-  vm->gc_limit = (size_t)-1; /* 確保の地点では回収しない */
+  vm->gc_limit = (size_t)-1; /* Does not collect at allocation points */
   shared_vm = vm;
 }
 
-/* runtime/core の GC の root: VM の static、host の handle、reload の途中の object。frame の境界なので VM の frame は無い */
+/* Roots for the runtime/core GC: VM statics, host handles, and objects in the
+ * middle of a reload. This is a frame boundary, so there are no VM frames */
 void tvm_heap_roots(TvmSlotFn fn) {
   TvmVm *vm = shared_vm;
   if (!vm)
@@ -255,7 +262,7 @@ static void slot_fn(void *ctx, void **slot) {
     ((TvmSlotFn)ctx)(slot);
 }
 
-/* runtime/core の GC が VM の object (kind FOREIGN) の中を辿る */
+/* The runtime/core GC walks inside VM objects (kind FOREIGN) */
 void tvm_heap_refs(void *payload, TvmSlotFn fn) {
   if (!shared_vm || !TVM_TYPE(payload))
     return;

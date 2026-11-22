@@ -1,10 +1,10 @@
-// lider の player に組み込んだ tcs (Tcs.ref.cs、TcsSession) で小さなゲームを変換し、App.Use で開いた app に当てる。
-//   - 開くと module を書き、開いた app が動く
-//   - 本文を変えると batch を書き、app は作り直さずに当てる (当てた後の版の module も書くが、それで作り直さない)
-//   - 通らない本文は error で、診断を返し、何も書かない
-//   - static の初期化子を消すと restart で、app は作り直す
-//   - 別の名前の session は、別に変換する
-//   - file を足すのと本文を替えるのを 1 回で変換し、file を外すと (型が消えるので) restart になる
+// Compiles a small game with the tcs built into the lider player (Tcs.ref.cs, TcsSession) and applies it to the app opened with App.Use.
+//   - Opening writes the module, and the opened app runs
+//   - Changing the text writes a batch, which is applied without recreating the app (the module of the applied version is also written, but that does not recreate the app)
+//   - Text that does not compile is an error, returns diagnostics, and writes nothing
+//   - Removing a static initializer is a restart, and the app is recreated
+//   - A session with another name is compiled separately
+//   - Adding a file and replacing text are compiled in one go, and removing a file is a restart (because types disappear)
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -122,7 +122,7 @@ public static class TestTcs
         }
     }
 
-    // ゲームの Count の今の値 (読めなければ -1)
+    // Current value of the game's Count (-1 if it cannot be read)
     static int Count(AppRef app)
     {
         foreach (var n in Sys.Inspect("Tiny", 0, 100, app))
@@ -131,7 +131,7 @@ public static class TestTcs
         return -1;
     }
 
-    // 結果を 1 つだけ受け取り、kind でなければ止める
+    // Receive exactly one result, and stop if it is not kind
     static TcsResult? One(TcsSession s, string kind)
     {
         var got = s.Take();

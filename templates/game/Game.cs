@@ -1,15 +1,15 @@
-// lub のゲームの雛形 (立方体フラッピーバード)。
-// 同じソースが 2 つの実行形で動く:
-//   lub Game.csproj                       tcs VM の player (bytecode に変換 + watch + hot reload)
-//   dotnet run                            .NET 実行 (host/Program.cs、P/Invoke)
-// data/ への path は project のディレクトリ基準 (そこで起動する)。
+// lub game template (cube Flappy Bird).
+// The same source runs in 2 execution modes:
+//   lub Game.csproj                       tcs VM player (compiled to bytecode + watch + hot reload)
+//   dotnet run                            .NET execution (host/Program.cs, P/Invoke)
+// Paths to data/ are relative to the project directory (launch from there).
 
 using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-// data を運ぶ型は readonly record struct にする (readonly なら copy を省ける)。
+// Types that carry data are readonly record structs (readonly lets copies be skipped).
 public readonly record struct Pipe(float X, float GapY);
 
 public static class Game
@@ -75,15 +75,15 @@ public static class Game
         App.Config(new ConfigOpts { Width = 1280, Height = 720 });
     }
 
-    // `lub export` のときだけ、OnInit の後に 1 回呼ばれる (OnFrame は呼ばれない)。
-    // ここで使った shader と file が配る形 (web なら page 1 枚) に入る。
+    // Called once after OnInit, only for `lub export` (OnFrame is not called).
+    // The shaders and files used here go into the distributed form (a single page for web).
     public static void OnExport()
     {
         Assets.Shader("cube_shader", "data/cube.vs.slang", "data/cube.fs.slang");
     }
 
-    // dt は直近 frame の実測秒。
-    // 固定レート前提にせず dt でスケールする。
+    // dt is the measured seconds of the most recent frame.
+    // Scale by dt instead of assuming a fixed rate.
     public static void OnFrame(float dt)
     {
         t = t + dt;
@@ -92,7 +92,7 @@ public static class Game
         var b = Gfx.UseBuffer("cube_verts", Gfx.BufferType.Storage, cubeVerts);
         if (s == null || b == null) return;
 
-        // KeyPressed / MousePressed は frame でラッチされた edge 検出。
+        // KeyPressed / MousePressed are edge detections latched per frame.
         var flap = Input.KeyPressed("space") || Input.MousePressed();
         if (!dead)
         {

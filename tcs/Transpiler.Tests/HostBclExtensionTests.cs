@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// 実 .NET でも通る BCL API を allowlist に足す。IL では
+// Adds BCL APIs that also work on real .NET to the allowlist. In IL:
 //   Environment.GetEnvironmentVariable → __tcs_getenv
 //   int.Parse / float.Parse            → __tcs_iparse / __tcs_fparse
 //   foreach (var r in s.EnumerateRunes()) + r.Value → IlForeachRunes
@@ -28,8 +28,8 @@ public class HostBclExtensionTests
     [Fact]
     public void TryParse_IntAndFloat_OutVarAndExistingLocal()
     {
-        // (found, value or 0) の multi-return。IL 経路 (IIFE + multi-assign) と
-        // legacy 経路の両方が runtime の Math.TryParseInt / TryParseFloat を使う
+        // Multi-return of (found, value or 0). Both the IL path (IIFE + multi-assign) and
+        // the legacy path use the runtime's Math.TryParseInt / TryParseFloat
         var result = TestHelper.CompileAndRunVm("""
             public static class T
             {

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 public class Foreign
 {
     static Resource resource;
-    // host handle (外部 data class) を key にする: 同じ handle の別 wrapper で引ける
+    // Uses a host handle (external data class) as a key: it can be looked up with a different wrapper of the same handle
     static Dictionary<Handle, int> bodies = new Dictionary<Handle, int>();
     public static void Init()
     {
@@ -23,7 +23,7 @@ public class Foreign
         bodies[Api.Body(2)] = 20;
         bodies[Api.Body(2)] = 21;
     }
-    // struct は C の struct の値、out は変数の pointer、struct の戻り値は値で host に渡る
+    // Structs are passed to the host as C struct values, out as a pointer to the variable, and struct return values by value
     public static void Structs()
     {
         var a = new Vec2 { X = 1, Y = 2 };

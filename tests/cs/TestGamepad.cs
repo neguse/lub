@@ -1,6 +1,6 @@
-// web の Gamepad API の pad が Input.Gamepad* に届くこと。
-// pad は web の verify (A9) が navigator.getGamepads を差し替えて用意する (native では走らせない)。
-// 差し替えた pad は standard mapping で、接続の少し後に、左 stick を左に倒し、South と右 trigger と D-pad の上を押す。
+// Pads from the web Gamepad API reach Input.Gamepad*.
+// The pad is prepared by the web verify (A9), which replaces navigator.getGamepads (not run on native).
+// The replaced pad uses the standard mapping, and shortly after connecting it tilts the left stick to the left and presses South, the right trigger, and D-pad up.
 using System;
 using Lub;
 

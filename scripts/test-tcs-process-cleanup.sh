@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# lub <Entry>.csproj (tcs VM の player) が起動した tcs vm --watch が、lub の終了後に残らないことを見る。
-# tcs の起動は 2 通り: 1 process で動く形 (release の一式の Transpiler と同じ) と、Transpiler を子に持つ dotnet run。
-# 終わり方も 2 通り: capture の後の正常終了と、強制終了 (Windows は TerminateProcess、Linux / macOS は SIGKILL)。
-# process は command line に入る entry class の名前で探す。
-# 使い方: scripts/test-tcs-process-cleanup.sh [lub binary]
+# Checks that the tcs vm --watch started by lub <Entry>.csproj (the tcs VM player) does not remain after lub exits.
+# tcs is started in 2 ways: as a single process (the same as the Transpiler of the release kit), and as dotnet run with Transpiler as a child.
+# There are also 2 ways to end: a normal exit after capture, and a forced kill (TerminateProcess on Windows, SIGKILL on Linux / macOS).
+# Processes are found by the entry class name in the command line.
+# Usage: scripts/test-tcs-process-cleanup.sh [lub binary]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 binary="${1:-./build-release-linux/lub}"
@@ -14,16 +14,16 @@ case "$OSTYPE" in
 msys* | cygwin*) windows=1 ;;
 *) windows=0 ;;
 esac
-# Linux の CI には画面が無い。窓は要らない
+# Linux CI has no display. No window is needed
 [[ "$OSTYPE" == linux* ]] && export SDL_VIDEO_DRIVER=offscreen
 
-# LUB_TCS は空白で区切られる。
-# Windows では dotnet に渡す path を MSYS の形にしない
+# LUB_TCS is split on spaces.
+# On Windows, do not turn the path passed to dotnet into MSYS form
 dotnet build tcs/Transpiler -c Release -nologo -v q -o "$work/tcs"
 tcs_dll="$work/tcs/Transpiler.dll"
 [[ $windows -eq 1 ]] && tcs_dll="$(cygpath -m "$tcs_dll")"
 
-# "<pid> <command line>" の行を出す
+# Print lines of "<pid> <command line>"
 processes_of() {
   if [[ $windows -eq 1 ]]; then
     powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -like '*$1*' -and \$_.ProcessId -ne \$PID } | ForEach-Object { '{0} {1}' -f \$_.ProcessId, \$_.CommandLine }" | tr -d '\r'
@@ -40,7 +40,7 @@ force_kill() {
   fi
 }
 
-# $! (MSYS の pid) を force_kill に渡す pid にする
+# Turn $! (the MSYS pid) into the pid passed to force_kill
 os_pid() {
   if [[ $windows -eq 1 ]]; then
     cat "/proc/$1/winpid"
@@ -51,7 +51,7 @@ os_pid() {
 
 failed=0
 
-# $1 = tcs の起動 (direct | dotnet-run), $2 = 終わり方 (exit | kill)
+# $1 = how tcs is started (direct | dotnet-run), $2 = how it ends (exit | kill)
 run_case() {
   local launcher="$1" how="$2" token pid dir out
   token="TcsCleanup$RANDOM$RANDOM"
@@ -73,15 +73,15 @@ public static class $token
     }
 }
 CS
-  # 強制終了の場合は lub が自分で終わらないよう capture を付けない
+  # For a forced kill, do not add capture, so that lub does not exit by itself
   local args=()
   [[ $how == exit ]] && args=(--capture "$dir/out.png" --capture-frame 5 --fixed-dt 0.0166666666666667)
-  # tcs が最初に書く出力 (これが現れたら tcs は動いている)
+  # The first output tcs writes (once it appears, tcs is running)
   out="$dir/.lub/$token.tcsb"
   if [[ $launcher == direct ]]; then
     LUB_TCS="dotnet $tcs_dll" "$binary" "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
   else
-    # LUB_TCS が無ければ lub は cwd の tcs を dotnet run で起動する
+    # Without LUB_TCS, lub starts the tcs in cwd with dotnet run
     env -u LUB_TCS "$binary" "$dir/$token.csproj" "${args[@]}" >"$dir/log" 2>&1 &
   fi
   pid=$!

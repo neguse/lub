@@ -239,7 +239,7 @@ function Get-StdoutDiagnosticCount {
     ).Count
 }
 
-# $Jb は下で実行するので、$ToolDir が自分の所有であることを確かめてから信頼する
+# $Jb is executed below, so trust it only after confirming that $ToolDir is owned by the current user
 Initialize-PrivateDir $ToolDir
 if (-not (Test-Path -LiteralPath $Jb)) {
     Invoke-RequiredExternal `

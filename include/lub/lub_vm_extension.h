@@ -1,9 +1,13 @@
 #pragma once
-// tcs VM の player (lub_vm) の native の拡張。
-// ゲームのソースのディレクトリに置いた X.ref.cs (変換しない型だけの宣言。tcs の --ref で渡る) の関数を、隣の native の library (X.so、X.dylib、X.dll。無ければ libX.*) が VM の host の関数として登録する。
-// library は lub_vm_extension を export し、player は VM を作るたび (module を読む前) にそれを呼ぶ。
-// library は lub の symbol を使わず、渡した表の関数だけを使う (型は tcs の tcsvm.h)。
-// host の関数の名前は IL の host の名前 (class Jamo の LoadUserData なら "jamo.load_user_data")。
+// Native extensions for the tcs VM player (lub_vm).
+// The functions of X.ref.cs placed in the game's source directory (type-only
+// declarations that are not compiled; passed with tcs --ref) are registered as
+// VM host functions by the native library next to it (X.so, X.dylib, X.dll;
+// libX.* if missing). The library exports lub_vm_extension, and the player
+// calls it each time it creates a VM (before loading the module). The library
+// does not use lub symbols, only the functions in the table passed to it (the
+// types are in tcs's tcsvm.h). Host function names are the IL host names
+// ("jamo.load_user_data" for LoadUserData of class Jamo).
 #include "tcsvm.h"
 
 #define LUB_VM_EXTENSION_VERSION 1
@@ -11,8 +15,10 @@
 
 typedef struct LubVmExtensionApi {
   uint32_t version; // LUB_VM_EXTENSION_VERSION
-  // 登録できたら 1、できなければ 0。
-  // 同じ名前を何度登録してもよく、先に登録したものを使う (静的に link した拡張が、読み込んだ拡張より先)
+  // 1 if registered, 0 otherwise.
+  // The same name may be registered any number of times, and the first
+  // registration is used (statically linked extensions come before loaded
+  // extensions)
   int (*host)(TvmVm *vm, const char *name, const char *params, const char *rets,
               TvmHostFn fn, void *user);
   TvmStatus (*host_fault)(TvmVm *vm, const char *message);
@@ -20,7 +26,7 @@ typedef struct LubVmExtensionApi {
   const char *(*string_data)(const void *string, size_t *len);
 } LubVmExtensionApi;
 
-// 登録できたら true (false なら player は VM を作らない)
+// true if registration succeeded (if false, the player does not create the VM)
 typedef bool (*LubVmExtensionFn)(const LubVmExtensionApi *api, TvmVm *vm);
 
 #if defined(_WIN32)

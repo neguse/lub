@@ -1,16 +1,22 @@
-/* --trace の記録と、動いている VM の状態を外から読む口 (tcsvm.h の「検査」)。
-   - 行と値: tcs vm --trace が TRACE (文の頭) と TVAL (代入の後) を置き、module の後ろに行の表と値の場所の表を書く。
-     interpreter は通った行の印と、値の場所ごとの最後の値を持ち、host が take で受け取って空にする。
-   - 値の木 (inspect): --trace のファイルの class の static から辿れる値を、C# の書き方の path で 1 段ずつ返す。
-   - 状態の控え (snapshot): 同じ static から辿れる object の中身を写して持ち、同じ object に書き戻す。
-     控えた object は回収しない (GC の root)。 */
+/* The interface for --trace records and for reading the state of a running VM
+   from outside ("inspection" in tcsvm.h).
+   - Lines and values: tcs vm --trace places TRACE (start of statement) and TVAL
+   (after assignment), and writes a line table and a value location table after
+   the module. The interpreter keeps marks for the lines passed and the last
+   value per value location, and the host receives them with take, which clears
+   them.
+   - Value tree (inspect): returns the values reachable from the statics of
+   classes in --trace files one level at a time, with paths in C# notation.
+   - State snapshot (snapshot): copies and holds the contents of the objects
+   reachable from the same statics, and writes them back to the same objects.
+     Snapshotted objects are not collected (they are GC roots). */
 #include "tcsvm_internal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* ---- module の後ろの表 (tcsvm_load.c が parse の後に呼ぶ) ---- */
+/* ---- Tables after the module (called by tcsvm_load.c after parsing) ---- */
 
 void tvm_debug_free(TvmDebug *d) {
   if (!d)
@@ -50,7 +56,7 @@ bool tvm_debug_read(TvmVm *vm, TcsReader *r) {
   if (!d)
     return false;
   vm->debug = d;
-  if (r->p >= r->end) /* 表の無い module (古い tcs) */
+  if (r->p >= r->end) /* Module without the tables (old tcs) */
     return true;
   uint32_t n = tcs_rd_u32(r);
   if (n != vm->nfuncs || !tcs_rd_count_ok(r, n, 4))
@@ -107,7 +113,7 @@ bool tvm_debug_read(TvmVm *vm, TcsReader *r) {
   return !r->bad;
 }
 
-/* 値の場所の葉 k の種類 (struct なら型の葉) */
+/* Kind of leaf k of the value location (for a struct, the leaf of the type) */
 uint8_t tvm_debug_val_leaf_kind(TvmVm *vm, const TvmTraceVal *v, uint32_t k) {
   if (v->kind == TVM_K_STRUCT)
     return v->type < vm->ntypes && k < vm->types[v->type].nleaves
@@ -134,12 +140,14 @@ void tvm_debug_mark(TvmVm *vm, void (*mark)(TvmVm *vm, void *p)) {
   }
 }
 
-/* ---- 負荷 ---- */
+/* ---- Cost ---- */
 
-/* 知らされた時間 (prof_pending) は tvm_profile_tick が別の thread からも足すので、どの読み書きも不可分にする */
+/* Reported time (prof_pending) is also added by tvm_profile_tick from other
+ * threads, so every read and write is atomic */
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <intrin.h>
-/* 文ごとに覗くので、ロックの付く命令にしない (MSVC の volatile の 64 bit の読みは x64 と ARM64 で裂けない) */
+/* It is checked at every statement, so do not use locked instructions (on MSVC,
+ * a volatile 64-bit read does not tear on x64 and ARM64) */
 static uint64_t pending_peek(TvmVm *vm) { return vm->prof_pending; }
 static uint64_t pending_take(TvmVm *vm) {
   return (uint64_t)_InterlockedExchange64(
@@ -174,7 +182,7 @@ static void prof_add(TvmDebug *d, uint32_t k, uint64_t ns, uint64_t bytes,
   }
 }
 
-/* 知らされた時間を今の行に足す (行の外なら捨てる) */
+/* Adds the reported time to the current line (discards it if outside a line) */
 static void prof_flush(TvmVm *vm) {
   uint64_t ns = pending_take(vm);
   TvmDebug *d = vm->debug;
@@ -191,15 +199,18 @@ void tvm_profile_enable(TvmVm *vm, TvmClockFn clock) {
   tvm_profile_frame_end(vm);
 }
 
-/* 行が変わる前に、それまでに知らされた時間を前の行に足す (知らせが無ければ不可分の読み書きをしない) */
+/* Before the line changes, adds the time reported so far to the previous line
+ * (no atomic read-write if nothing was reported) */
 void tvm_profile_line(TvmVm *vm, uint32_t k) {
   if (pending_peek(vm))
     prof_flush(vm);
   vm->debug->prof_cur = k + 1;
 }
 
-/* 呼んだ先から戻る: それまでに知らされた時間を呼んだ先の行に足し、呼んだときの行に戻す
-   (戻った後の --trace の外の関数の中の時間と確保を、呼んだ行に付ける) */
+/* Returning from a callee: adds the time reported so far to the callee's line,
+   and goes back to the line at the time of the call (so that time and
+   allocations in functions outside --trace after returning are attributed to
+   the calling line) */
 void tvm_profile_return(TvmVm *vm, uint32_t line) {
   TvmDebug *d = vm->debug;
   if (!d || d->prof_cur == line)
@@ -209,8 +220,11 @@ void tvm_profile_return(TvmVm *vm, uint32_t line) {
   d->prof_cur = line;
 }
 
-/* host から一番外の呼び出しに入るときは、それまでに知らされた時間を捨てて行の外から始め、
-   出るときに今の行に足して行の外に戻る (呼び出しの外の時間をどの行にも付けない)。入れ子の呼び出しから出るときは、呼んだときの行に戻る */
+/* When entering the outermost call from the host, discards the time reported so
+   far and starts outside any line, and when leaving, adds it to the current
+   line and goes back to outside any line (time outside calls is attributed to
+   no line). When leaving a nested call, goes back to the line at the time of
+   the call */
 void tvm_profile_enter(TvmVm *vm) {
   if (vm->prof_depth++ > 0)
     return;
@@ -261,7 +275,8 @@ static bool new_grow(TvmDebug *d) {
   return true;
 }
 
-/* p を作った行 (frame の境目の後に作った物でなければ false) */
+/* The line that created p (false unless it was created after the frame
+ * boundary) */
 static bool new_line(const TvmDebug *d, const void *p, uint32_t *line) {
   if (!d->nprof_new)
     return false;
@@ -276,7 +291,9 @@ static bool new_line(const TvmDebug *d, const void *p, uint32_t *line) {
   return false;
 }
 
-/* 確保を今の行に足し、p (shared heap では NULL) を作った行を覚える。回収された物の番地は、同じ番地に作り直すと上書きされる */
+/* Adds the allocation to the current line and records the line that created p
+ * (NULL in shared heap). The address of a collected object is overwritten when
+ * something is created at the same address */
 void tvm_profile_alloc(TvmVm *vm, void *p, size_t bytes) {
   TvmDebug *d = vm->debug;
   if (!d || !d->prof_cur)
@@ -296,7 +313,8 @@ void tvm_profile_alloc(TvmVm *vm, void *p, size_t bytes) {
   GC_HEADER(p)->flags |= TVM_GC_NEW;
 }
 
-/* frame の境目: 作った物を忘れる (TVM_GC_NEW の印は、表に無ければ数えない) */
+/* Frame boundary: forgets the created objects (a TVM_GC_NEW mark is not counted
+ * if it is not in the table) */
 void tvm_profile_frame_end(TvmVm *vm) {
   TvmDebug *d = vm->debug;
   if (!d || !d->nprof_new)
@@ -305,7 +323,9 @@ void tvm_profile_frame_end(TvmVm *vm) {
   d->nprof_new = 0;
 }
 
-/* GC の前までの時間は今の行に足し、GC の間に知らされた時間は捨てる (GC の長さは時計で測って別に持つ) */
+/* Adds the time up to the GC to the current line, and discards the time
+ * reported during the GC (the GC duration is measured by the clock and kept
+ * separately) */
 void tvm_profile_gc_begin(TvmVm *vm) { prof_flush(vm); }
 
 void tvm_profile_gc(TvmVm *vm, uint64_t ns, size_t live) {
@@ -351,14 +371,14 @@ void tvm_profile_take_gc(TvmVm *vm, TvmProfileGcFn fn, void *user) {
   vm->nprof_gc = 0;
 }
 
-/* ---- 行と値の取り出し ---- */
+/* ---- Taking lines and values ---- */
 
 static uint32_t pair_hash(uint32_t k, const void *self) {
   uintptr_t h = (uintptr_t)self >> 3;
   return (uint32_t)(h ^ (h >> 17)) * 2654435761u ^ k * 40503u;
 }
 
-/* 組の表を広げ直す (cap は 2 の冪) */
+/* Regrows the pair table (cap is a power of 2) */
 static bool pairs_grow(TvmDebug *d) {
   uint32_t cap = d->cappairs ? d->cappairs * 2 : 256;
   uint32_t *line = (uint32_t *)realloc(d->pair_line, cap * sizeof(uint32_t));
@@ -424,7 +444,8 @@ void tvm_trace_take_lines_for(TvmVm *vm, const char *key, TvmTraceLineFn fn,
   for (uint32_t i = 0; key && key[0] && i < vm->npinned; i++)
     if (strcmp(vm->pinned[i].key, key) == 0)
       target = vm->pinned[i].p;
-  /* 行ごとに、1 = target を self にして通った、2 = target と同じ型の別の self で通った、4 = 別の型の self で通った */
+  /* Per line: 1 = passed with target as self, 2 = passed with another self of
+   * the same type as target, 4 = passed with a self of another type */
   if (target && !d->line_flags)
     d->line_flags = (uint8_t *)calloc(d->nlines ? d->nlines : 1, 1);
   if (target && d->line_flags)
@@ -479,7 +500,8 @@ static void put_int(Buf *b, int32_t i) {
   puts_(b, tmp);
 }
 
-/* 値は 2 つの置き方のどちらか: packed (object の中の C の layout)、slots (static と register の 1 葉 1 slot) */
+/* A value is stored in one of two ways: packed (C layout inside an object) or
+ * slots (one slot per leaf in statics and registers) */
 typedef struct Loc {
   uint8_t kind;
   uint16_t type;
@@ -522,7 +544,8 @@ static uint32_t kind_leaves(TvmVm *vm, uint8_t kind, uint16_t type) {
                                                    : 1;
 }
 
-/* struct の field i の場所 (packed は offset、slots は先の field の葉の数) */
+/* Location of field i of a struct (offset for packed, the number of leaves of
+ * the preceding fields for slots) */
 static Loc field_loc(TvmVm *vm, const Loc *s, uint32_t i) {
   const TvmType *st = &vm->types[s->type];
   const TcsField *f = &st->fields[i];
@@ -547,7 +570,7 @@ static void put_string(Buf *b, const TvmString *s) {
   size_t n = (size_t)s->len;
   puts_(b, "\"");
   if (n > 40) {
-    /* UTF-8 の文字の途中で切らない */
+    /* Does not cut in the middle of a UTF-8 character */
     n = 40;
     while (n > 0 && ((unsigned char)STR_DATA(s)[n] & 0xC0) == 0x80)
       n--;
@@ -559,7 +582,8 @@ static void put_string(Buf *b, const TvmString *s) {
   }
 }
 
-/* struct と class の中身の短い書き方: field が 4 つ以下で数と bool だけなら {X=1 Y=2} */
+/* Short notation for struct and class contents: {X=1 Y=2} if there are 4 or
+ * fewer fields that are only numbers and bools */
 static void put_fields(TvmVm *vm, Buf *b, const TvmType *t, const Loc *base) {
   if (t->nfields == 0 || t->nfields > 4)
     return;
@@ -578,8 +602,8 @@ static void put_fields(TvmVm *vm, Buf *b, const TvmType *t, const Loc *base) {
   puts_(b, "}");
 }
 
-/* object の型。host が型の印の無い blob を field に置くこと (lub の native の値の block) があるので、
-   blob と型の無い object は NULL */
+/* The type of an object. The host may put a blob without a type mark in a field
+   (a block of lub native values), so blobs and untyped objects are NULL */
 static const TvmType *type_of(void *p) {
   const TvmGcHeader *h = GC_HEADER(p);
   return GC_BLOB(h) ? NULL : h->type;
@@ -688,14 +712,14 @@ void tvm_trace_take_values(TvmVm *vm, TvmTraceValueFn fn, void *user) {
   d->ndirty = 0;
 }
 
-/* ---- 呼び出しの並び ---- */
+/* ---- Call stack ---- */
 
 static uint32_t line_at(const TvmProto *p, const uint64_t *pc) {
   if (!p->nlines || !pc)
     return 0;
   uint32_t at = (uint32_t)(pc - p->code);
   if (at > 0)
-    at--; /* pc は次の命令を指す */
+    at--; /* pc points to the next instruction */
   uint32_t line = p->lines[0].line;
   for (uint32_t k = 0; k < p->nlines && p->lines[k].pc <= at; k++)
     line = p->lines[k].line;
@@ -713,7 +737,7 @@ const char *tvm_func_path(TvmVm *vm, const TvmProto *p) {
 }
 
 void tvm_stack(TvmVm *vm, TvmFrameFn fn, void *user) {
-  /* 今の frame は ftop の 1 つ下 (host の関数の中から呼ぶ) */
+  /* The current frame is one below ftop (called from inside a host function) */
   for (TvmFrame *fr = vm->ftop; fr > vm->frames;) {
     fr--;
     if (fr->proto)
@@ -721,9 +745,10 @@ void tvm_stack(TvmVm *vm, TvmFrameFn fn, void *user) {
   }
 }
 
-/* ---- object の通し番号 ----
-   検査の id は番地でなく通し番号にする。状態を読み込むと object は作り直されて番地が変わるが、番号は状態と一緒に運ばれるので、
-   同じ個体は同じ id のままになる。 */
+/* ---- Object serial numbers ----
+   Inspection ids are serial numbers, not addresses. Loading a state recreates
+   objects and changes their addresses, but the numbers travel with the state,
+   so the same individual keeps the same id. */
 
 static uint32_t id_hash(const void *p) {
   uintptr_t x = (uintptr_t)p >> 4;
@@ -731,7 +756,8 @@ static uint32_t id_hash(const void *p) {
   return (uint32_t)(x * 0x9E3779B1u);
 }
 
-/* p のある所か、入れる空き (表が無ければ UINT32_MAX) */
+/* Where p is, or the free slot to put it in (UINT32_MAX if there is no table)
+ */
 static uint32_t id_find(TvmVm *vm, const void *p) {
   if (!vm->capids)
     return UINT32_MAX;
@@ -779,7 +805,8 @@ static bool id_put(TvmVm *vm, void *p, uint64_t id) {
   return true;
 }
 
-/* p を表から消し、後ろに続く組を詰め直す (空きで探索が切れないように) */
+/* Removes p from the table and compacts the entries that follow (so that
+ * probing does not stop at a gap) */
 static void id_remove(TvmVm *vm, const void *p) {
   uint32_t k = id_find(vm, p);
   if (k == UINT32_MAX || !vm->id_keys[k])
@@ -833,7 +860,8 @@ void tvm_debug_ids_reloaded(TvmVm *vm) {
   vm->id_vals = (uint64_t *)calloc(cap, sizeof(uint64_t));
   vm->nids = 0;
   if (!vm->id_keys || !vm->id_vals) {
-    /* 付け替えられなければ、番号を全部捨てる (次に聞かれたときに振り直す) */
+    /* If the ids cannot be moved over, drops all numbers (they are reassigned
+     * the next time they are requested) */
     free(vm->id_keys);
     free(vm->id_vals);
     vm->id_keys = NULL;
@@ -853,7 +881,8 @@ void tvm_debug_ids_reloaded(TvmVm *vm) {
   free(vals);
 }
 
-/* object の id の文字列 ("#" と通し番号。振れなければ "") */
+/* The id string of an object ("#" and the serial number; "" if one cannot be
+ * assigned) */
 static void put_id(TvmVm *vm, char *buf, size_t size, void *p) {
   uint64_t id = tvm_debug_id(vm, p);
   if (id)
@@ -884,9 +913,9 @@ const char *tvm_traced_class(TvmVm *vm, uint32_t i) {
   return vm->debug && i < vm->debug->nclasses ? vm->debug->classes[i] : "";
 }
 
-/* ---- 値の木 ---- */
+/* ---- Value tree ---- */
 
-/* 根の class: entry が先頭、ほかは --trace の class を名前の順 */
+/* Root classes: entry first, then the --trace classes in name order */
 static uint32_t root_classes(TvmVm *vm, const char *entry, const char **out,
                              uint32_t max) {
   uint32_t n = 0;
@@ -908,7 +937,8 @@ static uint32_t root_classes(TvmVm *vm, const char *entry, const char **out,
   return n;
 }
 
-/* class の static field (名前は "型.field"。初期化の flag の "<init>" は除く) */
+/* Static fields of a class (the name is "type.field"; the initialization flag
+ * "<init>" is excluded) */
 static bool static_of(const TvmStaticField *f, const char *cls) {
   size_t n = strlen(cls);
   return strncmp(f->name, cls, n) == 0 && f->name[n] == '.' &&
@@ -924,19 +954,20 @@ static bool loc_null(const Loc *l) {
   return l->kind == TVM_K_REF && !leaf_ref(l, 0, 0);
 }
 
-/* 子の 1 つ (name は親から見た名前、path に足す形) */
+/* One child (name is the name as seen from the parent, in the form appended to
+ * path) */
 typedef struct Child {
   char name[256];
   Loc loc;
-  int32_t sort_i; /* Dictionary の int の key */
+  int32_t sort_i; /* int key of a Dictionary */
   bool sort_num;
 } Child;
 
 typedef struct Children {
   Child *v;
   uint32_t n, cap;
-  uint32_t
-      first; /* v[0] が子の何番目か (List と配列は頼まれた範囲だけ並べる) */
+  uint32_t first; /* Which child v[0] is (for List and arrays, only the
+                     requested range is listed) */
 } Children;
 
 static Child *child_add(Children *c) {
@@ -960,8 +991,9 @@ static int cmp_child(const void *a, const void *b) {
   return strcmp(x->name, y->name);
 }
 
-/* 値 l の子を out に並べる (null の field と関数は除く)。
-   List と配列は from 番目から count 個だけ並べる (要素の数に比例する手間をかけない)。ほかは全部並べる */
+/* Lists the children of value l into out (excluding null fields and functions).
+   For List and arrays, lists only count children starting at the from-th (no
+   work proportional to the number of elements). Others are listed in full */
 static void children_of(TvmVm *vm, const Loc *l, uint32_t from, uint32_t count,
                         Children *out) {
   out->first = 0;
@@ -1080,7 +1112,7 @@ static void *loc_object(const Loc *l) {
 }
 
 static uint32_t count_children(TvmVm *vm, const Loc *l) {
-  /* List と配列は要素を並べずに数える */
+  /* List and arrays count their elements without listing them */
   void *p = loc_object(l);
   const TvmType *t = p ? type_of(p) : NULL;
   if (t && t->tkind == TVM_T_LIST)
@@ -1093,19 +1125,21 @@ static uint32_t count_children(TvmVm *vm, const Loc *l) {
   return c.n;
 }
 
-/* path を辿る。根の class なら *cls、値なら *loc に置き、祖先の object を anc に並べる。辿れなければ false */
+/* Follows path. Puts a root class in *cls and a value in *loc, and lists the
+ * ancestor objects in anc. false if it cannot be followed */
 typedef struct Walk {
-  const char *cls; /* 根の class の節 (値でない) */
+  const char *cls; /* Node of a root class (not a value) */
   Loc loc;
   void *anc[64];
   uint32_t nanc;
-  /* 最後の段の親 (tvm_snapshot_number が控えから読む): 親が object なら parent、static なら parent_static */
+  /* Parent of the last segment (read from the snapshot by tvm_snapshot_number):
+   * parent if the parent is an object, parent_static if it is a static */
   void *parent;
   const TvmStaticField *parent_static;
-  uint32_t parent_offset; /* parent の payload の中の位置 */
+  uint32_t parent_offset; /* Position inside the payload of parent */
 } Walk;
 
-/* path の段 s (n 文字) が [数] なら、その数を *out に置く */
+/* If segment s of path (n characters) is [number], puts that number in *out */
 static bool path_index(const char *s, size_t n, uint32_t *out) {
   if (n < 3 || s[0] != '[' || s[n - 1] != ']')
     return false;
@@ -1140,13 +1174,13 @@ static bool walk_path(TvmVm *vm, const char *entry, const char *path, Walk *w) {
     return false;
   if (!*rest)
     return true;
-  /* 最初の段は class の static */
+  /* The first segment is a static of a class */
   Children c = {0};
   bool have = false;
   while (*rest) {
     const char *end = rest + 1;
     if (*rest == '[') {
-      /* ["..."] の中の ']' は文字列の中にありうる */
+      /* A ']' inside ["..."] can be part of the string */
       if (end[0] == '"') {
         end++;
         while (*end && !(end[0] == '"' && end[1] == ']'))
@@ -1168,7 +1202,7 @@ static bool walk_path(TvmVm *vm, const char *entry, const char *path, Walk *w) {
       void *o = loc_object(&w->loc);
       if (o && w->nanc < 64)
         w->anc[w->nanc++] = o;
-      /* List と配列の [i] は i 番目だけ並べる */
+      /* For [i] on List and arrays, lists only the i-th */
       uint32_t at;
       if (path_index(rest, n, &at))
         children_of(vm, &w->loc, at, 1, &c);
@@ -1178,7 +1212,7 @@ static bool walk_path(TvmVm *vm, const char *entry, const char *path, Walk *w) {
     bool found = false;
     for (uint32_t i = 0; i < c.n && !found; i++)
       if (strlen(c.v[i].name) == n && strncmp(c.v[i].name, rest, n) == 0) {
-        /* 親を覚える (static か object の payload) */
+        /* Records the parent (a static or an object payload) */
         w->parent = NULL;
         w->parent_static = NULL;
         if (!have) {
@@ -1232,7 +1266,8 @@ static void fill_node(TvmVm *vm, TvmInspectNode *node, const char *parent_path,
   node->count = node->cycle ? 0 : (int32_t)count_children(vm, l);
 }
 
-/* " で囲んだ text を string にする (\\ と \" と \n を戻す)。囲んでいなければ NULL で、*bad に true */
+/* Converts text enclosed in " to a string (unescaping \\ and \" and \n). If it
+ * is not enclosed, NULL with *bad set to true */
 static TvmString *parse_string(TvmVm *vm, const char *text, bool *bad) {
   size_t n = strlen(text);
   *bad = n < 2 || text[0] != '"' || text[n - 1] != '"';
@@ -1377,9 +1412,9 @@ int32_t tvm_inspect(TvmVm *vm, const char *entry, const char *path,
   return written;
 }
 
-/* ---- 個体を探す (tvm_inspect_instances) ---- */
+/* ---- Finding instances (tvm_inspect_instances) ---- */
 
-/* 辿る節: path (paths の中の位置)、値、深さ */
+/* Node to walk: path (position in paths), value, depth */
 typedef struct InstNode {
   size_t path;
   Loc loc;
@@ -1388,11 +1423,11 @@ typedef struct InstNode {
 
 typedef struct InstWalk {
   TvmVm *vm;
-  char *paths; /* NUL で区切った path */
+  char *paths; /* NUL-separated paths */
   size_t npaths, cappaths;
   InstNode *q;
   uint32_t nq, capq;
-  void **seen; /* 印を付けた object (最後に印を消す) */
+  void **seen; /* Marked objects (the marks are cleared at the end) */
   uint32_t nseen, capseen;
   uint32_t max_depth;
   TvmInstanceFn fn;
@@ -1414,7 +1449,8 @@ static bool grow_to(void **p, uint32_t *cap, uint32_t need, size_t size) {
   return true;
 }
 
-/* parent の path に name を足した path を置き、その位置を返す (失敗は SIZE_MAX) */
+/* Stores the path made by appending name to the path of parent, and returns its
+ * position (SIZE_MAX on failure) */
 static size_t inst_path(InstWalk *w, size_t parent, const char *name) {
   size_t pl = parent == SIZE_MAX ? 0 : strlen(w->paths + parent);
   size_t nl = strlen(name);
@@ -1437,7 +1473,8 @@ static size_t inst_path(InstWalk *w, size_t parent, const char *name) {
   return at;
 }
 
-/* 値 l を見つけた: class の instance なら渡し、まだ辿っていなければ辿る節に足す */
+/* Found value l: passes it if it is a class instance, and adds it to the nodes
+ * to walk if it has not been walked yet */
 static void inst_visit(InstWalk *w, size_t parent, const char *name,
                        const Loc *l, uint32_t depth) {
   if (w->failed || (l->kind != TVM_K_REF && l->kind != TVM_K_STRUCT))
@@ -1512,7 +1549,7 @@ void tvm_inspect_instances(TvmVm *vm, const char *entry, uint32_t max_depth,
   free(w.seen);
 }
 
-/* ---- 弱く覚える object ---- */
+/* ---- Weakly pinned objects ---- */
 
 void tvm_inspect_pin(TvmVm *vm, const char *key, const char *entry,
                      const char *path) {
@@ -1520,7 +1557,8 @@ void tvm_inspect_pin(TvmVm *vm, const char *key, const char *entry,
   Walk w;
   if (path && path[0] && walk_path(vm, entry, path, &w) && !w.cls)
     o = loc_object(&w.loc);
-  /* 状態を読み込んだ後も同じ個体を指せるよう、通し番号を振っておく */
+  /* Assigns a serial number so that it still points to the same individual
+   * after a state is loaded */
   if (o)
     tvm_debug_id(vm, o);
   for (uint32_t i = 0; i < vm->npinned; i++)
@@ -1555,7 +1593,8 @@ bool tvm_inspect_pinned(TvmVm *vm, const char *key, const char *id) {
   return false;
 }
 
-/* 回収した object を覚えていたら忘れる (tcsvm_gc.c の sweep が呼ぶ) */
+/* Forgets a collected object if it is pinned (called by the sweep in
+ * tcsvm_gc.c) */
 void tvm_debug_forget(TvmVm *vm, void *p) {
   for (uint32_t i = 0; i < vm->npinned; i++)
     if (vm->pinned[i].p == p)
@@ -1563,7 +1602,7 @@ void tvm_debug_forget(TvmVm *vm, void *p) {
   id_remove(vm, p);
 }
 
-/* ---- 状態の控え ---- */
+/* ---- State snapshots ---- */
 
 typedef struct Seen {
   void **keys;
@@ -1604,7 +1643,8 @@ static bool seen_grow(Seen *s) {
   return true;
 }
 
-/* 見つかれば番号、無ければ足して UINT32_MAX を返す (足せなければ UINT32_MAX - 1) */
+/* Returns the index if found; otherwise adds it and returns UINT32_MAX
+ * (UINT32_MAX - 1 if it cannot be added) */
 static uint32_t seen_put(Seen *s, void *p, uint32_t val) {
   if ((s->n + 1) * 2 > s->cap && !seen_grow(s))
     return UINT32_MAX - 1;
@@ -1646,7 +1686,7 @@ static void snap_add(TakeCtx *t, void *p) {
     return;
   TvmGcHeader *h = GC_HEADER(p);
   if (h->flags & TVM_GC_STATIC)
-    return; /* string の定数 (回収されず、変わらない) */
+    return; /* string constant (never collected and never changes) */
   TvmSnapshot *s = t->s;
   uint32_t r = seen_put(&t->seen, p, s->nobjs);
   if (r == UINT32_MAX - 1) {
@@ -1667,7 +1707,8 @@ static void snap_add(TakeCtx *t, void *p) {
   }
   TvmSnapObj *o = &s->objs[s->nobjs++];
   o->p = p;
-  /* string は中身が変わらないので写さない (生かしておくだけ) */
+  /* Strings are not copied because their contents never change (they are only
+   * kept alive) */
   bool copy = GC_BLOB(h) || !h->type || h->type->tkind != TVM_T_STRING;
   o->size = copy ? h->size : 0;
   o->bytes = o->size ? malloc(o->size) : NULL;
@@ -1677,7 +1718,7 @@ static void snap_add(TakeCtx *t, void *p) {
   }
   if (o->size)
     memcpy(o->bytes, p, o->size);
-  /* blob (List の要素、Dictionary の entry) は持ち主が中を辿る */
+  /* Blobs (List elements, Dictionary entries) are walked by their owner */
   if (GC_BLOB(h) || !h->type)
     return;
   if (t->nstack == t->capstack) {
@@ -1697,7 +1738,7 @@ static void snap_slot(void *ctx, void **slot) {
   snap_add((TakeCtx *)ctx, *slot);
 }
 
-/* 根の class (entry と --trace の class) の static の slot を控える */
+/* Records the static slots of the root classes (entry and --trace classes) */
 static void snap_statics(TakeCtx *t, const char *entry) {
   TvmVm *vm = t->vm;
   const char *roots[256];
@@ -1775,7 +1816,7 @@ void tvm_snapshot_restore(TvmVm *vm, const TvmSnapshot *s) {
     if (!s->objs[i].size)
       continue;
     TvmGcHeader *h = GC_HEADER(s->objs[i].p);
-    /* class の型の番号は reload で変わりうるので、今の番号のまま残す */
+    /* Class type numbers can change on reload, so keep the current number */
     bool cls = !GC_BLOB(h) && h->type && h->type->tkind == TVM_T_CLASS;
     uint32_t type_id = cls ? ((TvmObject *)s->objs[i].p)->type_id : 0;
     memcpy(s->objs[i].p, s->objs[i].bytes, s->objs[i].size);
@@ -1806,7 +1847,7 @@ void tvm_snapshot_free(TvmVm *vm, TvmSnapshot *s) {
 
 uint32_t tvm_layout_version(TvmVm *vm) { return vm->layout_version; }
 
-/* 控えの中の object p の写し (無ければ NULL) */
+/* The copy of object p in the snapshot (NULL if none) */
 static const char *snap_bytes(const TvmSnapshot *s, const void *p) {
   Seen seen = {s->seen_keys, s->seen_vals, s->seen_cap, 0};
   uint32_t i = seen_get(&seen, p);
@@ -1848,9 +1889,10 @@ bool tvm_snapshot_number(TvmVm *vm, const TvmSnapshot *s, const char *entry,
   return true;
 }
 
-/* ---- 持ち越し (tvm_profile_take_kept) ---- */
+/* ---- Kept objects (tvm_profile_take_kept) ---- */
 
-/* 持つ field: static は name だけ ("class.field")、object の field は型の名前と field の名前 */
+/* Holding field: for statics only name ("class.field"), for object fields the
+ * type name and the field name */
 typedef struct KeptAt {
   const char *name, *field;
 } KeptAt;
@@ -1862,7 +1904,8 @@ typedef struct KeptRow {
   uint64_t bytes;
 } KeptRow;
 
-/* 根から幅優先で辿る。objs は辿る順の列で、辿った印を消すのにも使う */
+/* Walks breadth-first from the roots. objs is the list in walk order, also used
+ * to clear the walk marks */
 typedef struct KeptWalk {
   TvmVm *vm;
   void **objs;
@@ -1931,7 +1974,8 @@ static void kept_visit(KeptWalk *w, void *p, KeptAt at) {
   w->n++;
 }
 
-/* 辿っている object の slot の先を、持つ field を決めて辿る */
+/* Follows the targets of the slots of the object being walked, deciding the
+ * holding field */
 static void kept_slot(void *ctx, void **slot) {
   KeptWalk *w = (KeptWalk *)ctx;
   void *p = w->objs[w->cur];
@@ -1971,7 +2015,7 @@ void tvm_profile_take_kept(TvmVm *vm, const char *entry, TvmProfileKeptFn fn,
     }
   for (w.cur = 0; w.cur < w.n && !w.failed; w.cur++) {
     TvmGcHeader *h = GC_HEADER(w.objs[w.cur]);
-    /* blob (List の要素、Dictionary の entry) は持ち主が中を辿る */
+    /* Blobs (List elements, Dictionary entries) are walked by their owner */
     if (!GC_BLOB(h) && h->type)
       tvm_object_refs(vm, w.objs[w.cur], kept_slot, &w);
   }

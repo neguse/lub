@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// 式位置の ++ / -- は「代入しつつ値を返す」(前置は更新後、後置は更新前)。
-// 文位置 (`i++;` / for の更新部) とは別経路なので、条件 / 引数 / 添字 /
-// 代入右辺 / return / field / property / 副作用 receiver / Nullable を網羅する
+// ++ / -- in expression position "assign and return the value" (prefix returns the updated value, postfix the value before the update).
+// This is a separate path from statement position (`i++;` / the update part of for), so this covers conditions / arguments / indexes /
+// assignment right-hand sides / return / field / property / receivers with side effects / Nullable
 public class IncrementExpressionTests
 {
     [Fact]
@@ -158,8 +158,8 @@ public class IncrementExpressionTests
         Assert.Equal("5|7|7|0|0", result);
     }
 
-    // C# は左オペランドを先に評価する。右オペランドの ++ / 代入が同じ local を
-    // 書き換えても左は書き換え前の値で、Lua の local 参照遅延に引きずられない
+    // C# evaluates the left operand first. Even if ++ / assignment in the right operand rewrites the same local,
+    // the left uses the value before the rewrite and is not dragged along by Lua's deferred local reference
     [Fact]
     public void LocalLeftOperand_ReadBeforeRightSideEffect()
     {
@@ -195,7 +195,7 @@ public class IncrementExpressionTests
         Assert.Equal("2,2|3,2|2|1,1.5|6,5|3|11|2|-1,1", result);
     }
 
-    // 添字代入は index を右辺より先に評価する (Dictionary / List / 配列)
+    // Index assignment evaluates the index before the right-hand side (Dictionary / List / array)
     [Fact]
     public void IndexedAssignment_IndexEvaluatedBeforeRhs()
     {
@@ -245,7 +245,7 @@ public class IncrementExpressionTests
         Assert.Empty(result.Warnings);
     }
 
-    // getter 経由の receiver は 1 回だけ評価し、読んだ object を更新する
+    // A receiver reached through a getter is evaluated only once, and the object that was read is updated
     [Fact]
     public void GetterReceiver_EvaluatedOnce()
     {
@@ -272,8 +272,8 @@ public class IncrementExpressionTests
         Assert.Equal("10|11|20|1 11|20|1 15|20|1", result);
     }
 
-    // 式位置の複合代入 / 代入も custom property は accessor を通し、値は
-    // 代入した値 (getter を読み直さない)
+    // Compound assignment / assignment in expression position also goes through the accessor for custom properties, and the value is
+    // the assigned value (the getter is not read again)
     [Fact]
     public void CustomPropertyAssignAsExpression_UsesAccessors()
     {
@@ -306,8 +306,8 @@ public class IncrementExpressionTests
         Assert.Equal("5|7|9|9|2|4|aaa", result);
     }
 
-    // getter → struct field → (struct field) の place は getter を持つ参照型
-    // prefix だけを固定し、struct は copy せず元の field に書き込む
+    // For a getter → struct field → (struct field) place, only the reference-type prefix that has the getter
+    // is fixed, and the struct is not copied but written into the original field
     [Fact]
     public void GetterThroughStructField_EvaluatedOnceAndWritesInPlace()
     {

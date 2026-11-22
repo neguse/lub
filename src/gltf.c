@@ -185,7 +185,8 @@ void gltf_free(GltfMesh *mesh) {
   free(mesh);
 }
 
-// cgltf_load_buffers は uri の percent を解いてから読むので、解いたものを見る。
+// cgltf_load_buffers percent-decodes the uri before reading, so check the
+// decoded one.
 static bool buffer_uris_ok(const cgltf_data *data, GltfUriCheck uri_ok) {
   for (cgltf_size i = 0; i < data->buffers_count; ++i) {
     const char *uri = data->buffers[i].uri;

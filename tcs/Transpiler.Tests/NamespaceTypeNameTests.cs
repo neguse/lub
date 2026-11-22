@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// namespace の中の型は常に namespace 修飾名 (`A_Color`) の IL 名、namespace
-// に属さない型は simple 名にする。型の IL 名が他の型の有無に
-// 左右されない。宣言・参照・IlExport・hot reload の型の対応で同じ名前を使う。
+// A type inside a namespace always gets the namespace-qualified IL name (`A_Color`); a type that does not belong
+// to a namespace gets the simple name. The IL name of a type does not depend on whether other types
+// exist. Declarations, references, IlExport, and hot reload type matching use the same name.
 public class NamespaceTypeNameTests
 {
     private const string TwoColors = """
@@ -154,8 +154,8 @@ public class NamespaceTypeNameTests
             result.Classes.Single(c => c.Name == "NsRepro").DisplayName);
     }
 
-    // 型の IL 名は他ファイルの型に左右されないので、同名型を足しても既存の
-    // 型は改名されない (reload の restart の理由にならない)
+    // The IL name of a type does not depend on types in other files, so adding a type with the same name does not rename
+    // the existing type (it is not a reason for a reload restart).
     [Fact]
     public void AddingSameNamedTypeKeepsTheOtherTypeName()
     {
@@ -171,7 +171,7 @@ public class NamespaceTypeNameTests
         Assert.DoesNotContain(reasons, r => r.Contains("A_Color"));
     }
 
-    // C# のキーワードを `@` で逃がした namespace は、`@` を除いた名前で修飾する
+    // A namespace whose C# keyword is escaped with `@` is qualified with the name without the `@`.
     [Fact]
     public void VerbatimKeywordNamespace_QualifiesWithoutAt()
     {

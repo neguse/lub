@@ -1,5 +1,5 @@
-// lub の samples/12_sfb の entry。
-// 実行: lub samples/12_sfb/Sfb12.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/12_sfb.
+// Run: lub samples/12_sfb/Sfb12.csproj (transpile + watch + hot reload)
 //
 // 3D-game-shaders-for-beginners style showcase.
 //
@@ -42,7 +42,7 @@ public static class Sfb12
     {
     }
 
-    // env 変数の "-1.25" 形式を読む。
+    // Reads env variables in the "-1.25" format.
     static float ParseNum(string s)
     {
         return float.Parse(s);

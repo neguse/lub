@@ -1,4 +1,4 @@
-/* tcs_walk.h の実装 (doc/object-model.md §6、§7)。 */
+/* Implementation of tcs_walk.h (doc/object-model.md §6, §7). */
 #include "tcs_walk.h"
 
 #include <stdlib.h>
@@ -127,7 +127,8 @@ TCS_MODEL_API void tcs_migrate_value(const TcsPlan *plan,
                                      const TcsType *nt, char *dst) {
   const TcsPlanType *pt = tcs_plan_type(plan, nt->name);
   if (!pt || pt->change != TCS_PLAN_RELAYOUT) {
-    /* 形の変わらない型: field を順に写す (struct の field は中の計画で) */
+    /* Types whose shape does not change: copy fields in order (struct fields
+     * via the nested plan) */
     for (uint32_t k = 0; k < nt->nfields && k < ot->nfields; k++)
       copy_field(plan, oldtypes, &ot->fields[k], src, newtypes, &nt->fields[k],
                  dst);

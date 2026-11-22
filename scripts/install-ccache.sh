@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# CI が lub の compile に使う ccache を、版を固定して release から取り、hash を確かめて $GITHUB_PATH に足す。
-# CCACHE_DIR は ~/.ccache にする (CI は同じ path を cache に置く)。
+# Fetches the ccache that CI uses to compile lub from a release with a pinned version, checks its hash, and adds it to $GITHUB_PATH.
+# CCACHE_DIR is ~/.ccache (CI caches the same path).
 set -euo pipefail
 ver=4.14.2
 case "$(uname -s)-$(uname -m)" in

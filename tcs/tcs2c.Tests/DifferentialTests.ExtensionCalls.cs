@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 拡張メソッドの呼び方 (拡張の形 `x.M()`、static の形 `Ext.M(x)`、`?.` 経由)
-// はどれも同じ静的呼び出しになる。期待値は同じ program を CoreCLR で実行した
+// The ways of calling an extension method (extension form `x.M()`, static form `Ext.M(x)`, via `?.`)
+// all become the same static call. The expected values come from running the same program on CoreCLR
 // stdout
 public class ExtensionCallsDifferentialTests
 {

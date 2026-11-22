@@ -1,14 +1,17 @@
-/* float の最短の 10 進表記と、.NET の float.ToString() / float.ToString(format) (InvariantCulture) の組み立て。
-   最短の桁は Ryu (https://github.com/ulfjack/ryu、commit 4c0618b) の ryu/f2s.c の f2d と ryu/f2s_full_table.h の表を、runtime の書き方に起こし直したもの。
-   f2d の手順は元のまま。
-   変更: 表と helper を 1 つのファイルにまとめ、assert と debug 出力を外した。
-   to_chars の代わりに tcs_format_f32 が .NET の書式で組み立てる。
-   精度つきの書式 (tcs_format_f32_spec) の正確な桁と丸めと、int の書式 (tcs_format_i32_spec) は Ryu に無く、ここで書いたもの。
+/* Shortest decimal representation of float, and assembly of .NET
+   float.ToString() / float.ToString(format) (InvariantCulture). The shortest
+   digits come from f2d in ryu/f2s.c and the table in ryu/f2s_full_table.h of
+   Ryu (https://github.com/ulfjack/ryu, commit 4c0618b), rewritten in the
+   runtime's style. The f2d procedure is unchanged. Changes: merged the table
+   and helpers into one file and removed the asserts and debug output. Instead
+   of to_chars, tcs_format_f32 assembles the .NET format. The exact digits and
+   rounding of the precision formats (tcs_format_f32_spec) and the int formats
+   (tcs_format_i32_spec) are not in Ryu and were written here.
 
    Copyright 2018 Ulf Adams
 
-   Ryu は Apache License 2.0 と Boost Software License 1.0 のどちらかで使える。
-   ここでは Boost Software License 1.0 を選ぶ:
+   Ryu can be used under either the Apache License 2.0 or the Boost Software
+   License 1.0. Here we choose the Boost Software License 1.0:
 
    Boost Software License - Version 1.0 - August 17th, 2003
 
@@ -146,7 +149,7 @@ static tcs_f2s_decimal tcs_f2s_f2d(uint32_t ieee_mantissa,
   tcs_f2s_decimal fd;
 
   if (ieee_exponent == 0) {
-    /* 2 を引いて、境界の計算に 2 bit の余裕を作る */
+    /* Subtract 2 to make 2 bits of headroom for the boundary computation */
     e2 = 1 - TCS_F2S_BIAS - TCS_F2S_MANTISSA_BITS - 2;
     m2 = ieee_mantissa;
   } else {
@@ -156,7 +159,8 @@ static tcs_f2s_decimal tcs_f2s_f2d(uint32_t ieee_mantissa,
   even = (m2 & 1u) == 0;
   accept_bounds = even;
 
-  /* 10 進で表せる値の区間 [mm, mp] (4 倍した単位) */
+  /* Interval [mm, mp] of values representable in decimal (in units multiplied
+   * by 4) */
   mv = 4u * m2;
   mp = 4u * m2 + 2u;
   mm_shift = (ieee_mantissa != 0 || ieee_exponent <= 1) ? 1u : 0u;
@@ -178,7 +182,7 @@ static tcs_f2s_decimal tcs_f2s_f2d(uint32_t ieee_mantissa,
                            10u;
     }
     if (q <= 9u) {
-      /* mp・mv・mm のうち 5 の倍数になりうるのは 1 つだけ */
+      /* Of mp, mv, and mm, only one can be a multiple of 5 */
       if (mv % 5u == 0) {
         vr_is_trailing_zeros = tcs_f2s_multiple_of_pow5(mv, q);
       } else if (accept_bounds) {
@@ -202,7 +206,7 @@ static tcs_f2s_decimal tcs_f2s_f2d(uint32_t ieee_mantissa,
           tcs_f2s_mul_shift(mv, tcs_f2s_pow5_split[i + 1], j) % 10u;
     }
     if (q <= 1u) {
-      /* mv = 4 * m2 は下位 2 bit が 0 */
+      /* mv = 4 * m2 has its low 2 bits 0 */
       vr_is_trailing_zeros = true;
       if (accept_bounds) {
         vm_is_trailing_zeros = mm_shift == 1u;
@@ -214,7 +218,7 @@ static tcs_f2s_decimal tcs_f2s_f2d(uint32_t ieee_mantissa,
     }
   }
 
-  /* 区間の中で最短の表記を探す */
+  /* Find the shortest representation in the interval */
   if (vm_is_trailing_zeros || vr_is_trailing_zeros) {
     while (vp / 10u > vm / 10u) {
       vm_is_trailing_zeros = vm_is_trailing_zeros && vm % 10u == 0;
@@ -236,7 +240,7 @@ static tcs_f2s_decimal tcs_f2s_f2d(uint32_t ieee_mantissa,
       }
     }
     if (vr_is_trailing_zeros && last_removed_digit == 5u && vr % 2u == 0) {
-      /* ちょうど ...50..0 のときは偶数へ丸める */
+      /* Round to even when exactly ...50..0 */
       last_removed_digit = 4u;
     }
     output = vr;
@@ -263,8 +267,9 @@ static tcs_f2s_decimal tcs_f2s_f2d(uint32_t ieee_mantissa,
 
 typedef enum { TCS_FMT_FINITE, TCS_FMT_ZERO, TCS_FMT_WRITTEN } tcs_fmt_kind;
 
-/* 負なら '-' (-0 も) を書き、NaN は "NaN"、無限大は "Infinity" を書いて TCS_FMT_WRITTEN を返す。
-   *n は書いた文字数 */
+/* If negative, writes '-' (also for -0); for NaN writes "NaN" and for infinity
+ * "Infinity", and returns TCS_FMT_WRITTEN. n is the number of characters
+ * written */
 static tcs_fmt_kind tcs_fmt_sign(uint32_t bits, char *out, size_t *n) {
   uint32_t ieee_mantissa = bits & 0x7fffffu;
   uint32_t ieee_exponent = (bits >> 23) & 0xffu;
@@ -285,8 +290,9 @@ static tcs_fmt_kind tcs_fmt_sign(uint32_t bits, char *out, size_t *n) {
                                                   : TCS_FMT_FINITE;
 }
 
-/* 桁 digits[0..length) (末尾に 0 は無い) と科学表記の指数 x を、.NET の G の形で書く。
-   -5 < x < limit なら固定小数、それ以外は d.ddd に e ('E' / 'e') と符号付きの 2 桁以上の指数 */
+/* Writes the digits digits[0..length) (no trailing 0) with the scientific
+   exponent x in .NET's G form. Fixed-point if -5 < x < limit; otherwise d.ddd
+   followed by e ('E' / 'e') and a signed exponent of at least 2 digits */
 static size_t tcs_fmt_general(const char *digits, int32_t length, int32_t x,
                               int32_t limit, char e, char *out) {
   size_t n = 0;
@@ -321,9 +327,10 @@ static size_t tcs_fmt_general(const char *digits, int32_t length, int32_t x,
   return n;
 }
 
-/* .NET の float.ToString() と同じ書式: 最短の桁を、科学表記の指数 x が -5 < x < 9 なら固定小数で、それ以外は d.dddE+xx で出す。
-   指数は符号付きの 2 桁以上。
-   -0 は "-0"、NaN は "NaN"、無限大は "Infinity" / "-Infinity" */
+/* Same format as .NET's float.ToString(): the shortest digits, as fixed-point
+   if the scientific exponent x satisfies -5 < x < 9, otherwise as d.dddE+xx.
+   The exponent is signed with at least 2 digits.
+   -0 is "-0", NaN is "NaN", infinity is "Infinity" / "-Infinity" */
 TCS_FMT_API size_t tcs_format_f32(float value, char out[TCS_FORMAT_F32_MAX]) {
   uint32_t bits, m;
   tcs_f2s_decimal fd;
@@ -351,9 +358,10 @@ TCS_FMT_API size_t tcs_format_f32(float value, char out[TCS_FORMAT_F32_MAX]) {
                              out + n);
 }
 
-/* 精度つきの書式は、最短の桁でなく正確な値の桁を丸める。
-   float の値は m * 2^e2 (m < 2^24、-149 <= e2 <= 104) で、e2 < 0 なら m * 5^-e2 * 10^e2 と書けるので、10 進の桁は有限。
-   m * 5^149 < 2^371 なので、桁は 112 桁まで */
+/* Precision formats round the digits of the exact value, not the shortest
+   digits. A float value is m * 2^e2 (m < 2^24, -149 <= e2 <= 104), and if e2 <
+   0 it can be written as m * 5^-e2 * 10^e2, so its decimal digits are finite.
+   m * 5^149 < 2^371, so there are at most 112 digits */
 #define TCS_FMT_EXACT_LIMBS 13
 #define TCS_FMT_EXACT_DIGITS 120
 
@@ -370,8 +378,8 @@ static void tcs_fmt_mul_small(uint32_t *limbs, int32_t *count,
     limbs[(*count)++] = (uint32_t)carry;
 }
 
-/* 有限で 0 でない値の正確な桁 (先頭と末尾に 0 は無い) を digits に書いて桁数を返す。
-   *x は科学表記の指数 */
+/* Writes the exact digits of a finite nonzero value (no leading or trailing 0)
+ * to digits and returns the digit count. x is the scientific exponent */
 static int32_t tcs_fmt_exact_digits(uint32_t ieee_mantissa,
                                     uint32_t ieee_exponent,
                                     char digits[TCS_FMT_EXACT_DIGITS],
@@ -392,7 +400,7 @@ static int32_t tcs_fmt_exact_digits(uint32_t ieee_mantissa,
       tcs_fmt_mul_small(limbs, &count, 1u << (k < 31 ? k : 31));
     e10 = 0;
   } else {
-    /* 5^13 は 32 bit に収まる最大の 5 の冪 */
+    /* 5^13 is the largest power of 5 that fits in 32 bits */
     for (k = -e2; k > 0; k -= 13) {
       uint32_t factor = 1;
       for (i = 0; i < (k < 13 ? k : 13); i++)
@@ -402,7 +410,8 @@ static int32_t tcs_fmt_exact_digits(uint32_t ieee_mantissa,
     e10 = e2;
   }
 
-  /* 10^9 で割った余りを下の桁から 9 桁ずつ書く */
+  /* Write the remainders of division by 10^9, 9 digits at a time from the low
+   * digits */
   while (count > 0) {
     uint64_t remainder = 0;
     for (i = count - 1; i >= 0; i--) {
@@ -427,9 +436,11 @@ static int32_t tcs_fmt_exact_digits(uint32_t ieee_mantissa,
   return length - k;
 }
 
-/* digits[0..length) を有効数字 n 桁 (n >= 1) に丸めて、末尾の 0 を除いた桁数を返す。
-   捨てる桁が 5 だけのときがちょうど中間で、tie_even なら偶数に (.NET の float)、そうでなければ絶対値の大きい方に (.NET の整数) 丸める。
-   9 が続いて桁が上がると *x が 1 増える */
+/* Rounds digits[0..length) to n significant digits (n >= 1) and returns the
+   digit count without trailing 0s. When the discarded digits are just a 5 it is
+   exactly halfway; with tie_even it rounds to even (.NET float), otherwise away
+   from zero (.NET integers). If a run of 9s carries into a new digit, *x
+   increases by 1 */
 static int32_t tcs_fmt_round(char *digits, int32_t length, int32_t n,
                              bool tie_even, int32_t *x) {
   int32_t k;
@@ -456,8 +467,9 @@ static int32_t tcs_fmt_round(char *digits, int32_t length, int32_t n,
   return length;
 }
 
-/* float の正確な桁を小数部 precision 桁に丸める。
-   残る桁が無いときは 0 か 10^-precision で、ちょうど中間は偶数の 0 */
+/* Rounds the exact digits of a float to precision fractional digits.
+   If no digits remain, the result is 0 or 10^-precision, and exactly halfway
+   gives the even 0 */
 static int32_t tcs_fmt_round_fixed(char *digits, int32_t length,
                                    int32_t precision, int32_t *x) {
   int32_t n = *x + 1 + precision;
@@ -473,7 +485,8 @@ static int32_t tcs_fmt_round_fixed(char *digits, int32_t length,
   return 1;
 }
 
-/* d.ddddE+xxx。小数部は precision 桁で、指数は符号付きの 3 桁以上 */
+/* d.ddddE+xxx. precision fractional digits, and the exponent is signed with at
+ * least 3 digits */
 static size_t tcs_fmt_exponential(const char *digits, int32_t length, int32_t x,
                                   int32_t precision, char e, char *out) {
   size_t n = 0;
@@ -495,7 +508,8 @@ static size_t tcs_fmt_exponential(const char *digits, int32_t length, int32_t x,
   return n;
 }
 
-/* 小数部 precision 桁の固定小数。grouped なら整数部を 3 桁ごとに ',' で区切る */
+/* Fixed-point with precision fractional digits. If grouped, the integer part is
+ * separated with ',' every 3 digits */
 static size_t tcs_fmt_fixed(const char *digits, int32_t length, int32_t x,
                             int32_t precision, bool grouped, char *out) {
   size_t n = 0;
@@ -513,11 +527,13 @@ static size_t tcs_fmt_fixed(const char *digits, int32_t length, int32_t x,
   return n;
 }
 
-/* .NET の float.ToString(format) (InvariantCulture) の書式 G / E / F / N。
-   G は精度が無いか 0 なら tcs_format_f32 と同じ最短の桁で、精度 p なら有効数字 p 桁に丸めて -5 < x < p なら固定小数 (末尾の 0 は書かない)。
-   E は小数部 p 桁 (精度が無ければ 6) の d.ddddddE+xxx。
-   F / N は小数部 p 桁 (精度が無ければ 2) の固定小数で、N は整数部を区切る。
-   小文字の書式は指数の文字も小文字 */
+/* Formats G / E / F / N of .NET's float.ToString(format) (InvariantCulture).
+   G with no precision or 0 gives the same shortest digits as tcs_format_f32;
+   with precision p it rounds to p significant digits and is fixed-point if -5 <
+   x < p (trailing 0s are not written). E is d.ddddddE+xxx with p fractional
+   digits (6 if there is no precision). F / N are fixed-point with p fractional
+   digits (2 if there is no precision), and N groups the integer part. Lowercase
+   formats also use a lowercase exponent letter */
 TCS_FMT_API size_t tcs_format_f32_spec(float value, char spec,
                                        int32_t precision, char *out) {
   bool exponential = spec == 'E' || spec == 'e';
@@ -564,9 +580,11 @@ TCS_FMT_API size_t tcs_format_f32_spec(float value, char spec,
   return n + tcs_fmt_general(digits, length, x, precision, e, out + n);
 }
 
-/* .NET の int.ToString(format) (InvariantCulture) の書式 G / E / F / N / D / X。
-   G は精度が無いか 0 なら全部の桁で、精度 p なら float と同じ形。E / F / N も float と同じ形で、丸めのちょうど中間は絶対値の大きい方。
-   D は符号を除いて p 桁以上。X は 32 bit の 2 の補数の 16 進で p 桁以上 */
+/* Formats G / E / F / N / D / X of .NET's int.ToString(format)
+   (InvariantCulture). G with no precision or 0 gives all digits; with precision
+   p it has the same form as float. E / F / N also have the same form as float,
+   and exactly halfway rounds away from zero. D is at least p digits excluding
+   the sign. X is 32-bit two's complement hex with at least p digits */
 TCS_FMT_API size_t tcs_format_i32_spec(int32_t value, char spec,
                                        int32_t precision, char *out) {
   uint32_t magnitude = value < 0 ? 0u - (uint32_t)value : (uint32_t)value;

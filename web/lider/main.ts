@@ -1,60 +1,60 @@
-// サイトの入口 (index.html): ブラウザの中で lider を動かす。
-// lider は build のときに作った bytecode (Lider.tcsb。lider/scripts/build-module.sh) で、lider の player (lider/scripts/build-player.sh --web) が動かす。
-// ゲーム (project) の C# は、lider が player に組み込んだ tcs で変換し、別の app として開く (env LIDER_GAME に project のディレクトリを渡す)。
-// 一緒に変換する lub の cs-lib は MEMFS に置く (env LIDER_CS_LIB)。
-// lider が project の .cs を保存すると MEMFS の mtime が変わるので、page はそれを見て整形して書き戻す (lider はそれを変換し直す)。
-// project の file は保存のたびに IndexedDB に写し、次に開いたときはそこから始める。
-// ?gist=<gist の id か URL> で開くと、公開の gist の file を project にし、lider を出さずにゲームだけで始める (F1 で編集)。
-// その project は gist ごとの key に写し、普段の project には書かない。
-// #sample=<サンプルの名前> で開くと、lub のサンプル (samples/<名前>) を project にする (メニューの「サンプル」)。
-// サンプルは samples/<名前>/data/... のように lub の root からの path で file を読むので、project を MEMFS の同じ場所に置き、ゲームの cwd を root に当たる HOME にする。
-// その project もサンプルごとの key に写す。
+// Site entry (index.html): runs lider in the browser.
+// lider is bytecode built at build time (Lider.tcsb; lider/scripts/build-module.sh), run by the lider player (lider/scripts/build-player.sh --web).
+// The game (project) C# is compiled by the tcs that lider embeds in the player and opened as a separate app (env LIDER_GAME gets the project directory).
+// The lub cs-lib compiled along with it is placed in MEMFS (env LIDER_CS_LIB).
+// When lider saves a project .cs, its MEMFS mtime changes, so the page watches for that, formats the file, and writes it back (lider then recompiles it).
+// Project files are copied to IndexedDB on every save, and the next open starts from there.
+// Opening with ?gist=<gist id or URL> makes the files of the public gist the project and starts with only the game, without showing lider (F1 to edit).
+// That project is copied to a per-gist key and is not written to the regular project.
+// Opening with #sample=<sample name> makes the lub sample (samples/<name>) the project ("サンプル" in the menu).
+// Samples read files by paths from the lub root, like samples/<name>/data/..., so the project is placed at the same location in MEMFS and the game's cwd is set to HOME, which corresponds to the root.
+// That project is also copied to a per-sample key.
 import { unzipSync, zipSync } from "fflate";
 import { initSlang } from "../lib/slang-bridge";
 import { formatCs } from "../lib/format";
 
 const BASE = import.meta.env.BASE_URL;
-// MEMFS に置く file (vite.config.ts の LIDER_TREE) と、その一覧
+// Files placed in MEMFS (LIDER_TREE in vite.config.ts) and their list
 const FS_URL = BASE + "lider-fs/";
 const FS_LIST_URL = BASE + "lider-fs.json";
-// lub のサンプルの file の一覧 (vite.config.ts の sampleAssets)
+// List of lub sample files (sampleAssets in vite.config.ts)
 const SAMPLES_URL = BASE + "sample-assets.json";
-// lider の bytecode と lider の player
+// lider bytecode and the lider player
 const LIDER_MODULE_URL = BASE + "lider-wasm/Lider.tcsb";
 const PLAYER_URL = BASE + "lider-wasm/";
-// lider のディレクトリと同じ形で MEMFS に置く
+// Placed in MEMFS in the same layout as the lider directory
 const HOME = "/lider";
-// ゲームと一緒に変換する lub の cs-lib (lub_stub.cs と実装)
+// lub cs-lib compiled together with the game (lub_stub.cs and the implementation)
 const CS_LIB = `${HOME}/cs-lib`;
 const CS_LIB_FILES = import.meta.glob("../../cs-lib/**/*.cs", {
   query: "?raw",
   import: "default",
   eager: true,
 }) as Record<string, string>;
-// player が動かす entry (lider)
+// Entry the player runs (lider)
 const LIDER = "Lider";
-// 編集する project の場所 (HOME からの path)。サンプルは samples/<名前> に置く
+// Location of the project being edited (path from HOME). Samples are placed in samples/<name>
 let PROJECT_DIR = "project";
 let GAME = `${HOME}/${PROJECT_DIR}`;
-// ゲームが相対の path で file を読む場所。サンプルは lub の root に当たる HOME から読む
+// Where the game reads files by relative path. Samples read from HOME, which corresponds to the lub root
 let CWD = GAME;
 const DRAFTS_DIR = "drafts";
 const DRAFTS = `${HOME}/${DRAFTS_DIR}`;
 const FLAPPY = "samples/flappy/";
 const EMPTY = "samples/empty/";
 const POLL_MS = 50;
-// 窓に収まる桁の数 (右に値を出す余白を残す)
+// Number of columns that fit in the window (leaving room on the right to show values)
 const FORMAT_WIDTH = 88;
 const DB_NAME = "lider";
 const DB_STORE = "projects";
-// 認証せずに呼ぶので、IP ごとに 1 時間に呼べる回数に上限がある
+// Called without authentication, so the number of calls per IP per hour is limited
 const GIST_API = "https://api.github.com/gists";
-// ゲームが相対の path で読む字の font
+// Text font, which the game reads by relative path
 const FONT = "UDEVGothic-Regular.ttf";
 
 type Files = Map<string, Uint8Array>;
 
-// project と下書きを写す IndexedDB の key
+// IndexedDB keys the project and drafts are copied to
 type Keys = { project: string; drafts: string };
 const OWN: Keys = { project: "current", drafts: "drafts" };
 
@@ -66,7 +66,7 @@ function sampleKeys(name: string): Keys {
   return { project: `sample:${name}`, drafts: `sample:${name}:drafts` };
 }
 
-// sample-assets.json: サンプルごとの data (samples) と .cs (sources)、entry class (entries)、サンプルが共通で読む data (shared)。path は lub の root から
+// sample-assets.json: per-sample data (samples) and .cs (sources), entry class (entries), and data shared by all samples (shared). Paths are from the lub root
 type SampleList = {
   shared: string[];
   samples: Record<string, string[]>;
@@ -85,7 +85,7 @@ function fetchSampleList(): Promise<SampleList> {
   return sampleList;
 }
 
-// .cs を持つサンプルの名前 (名前の順)
+// Names of samples that have .cs (in name order)
 async function sampleNames(): Promise<string[]> {
   const list = await fetchSampleList();
   return Object.keys(list.sources)
@@ -93,7 +93,7 @@ async function sampleNames(): Promise<string[]> {
     .sort();
 }
 
-// サンプルの file (.cs と data)。path はサンプルのディレクトリから
+// Files of a sample (.cs and data). Paths are from the sample directory
 async function fetchSample(name: string): Promise<Files> {
   const list = await fetchSampleList();
   if (!list.sources[name]?.length)
@@ -112,7 +112,7 @@ async function fetchSample(name: string): Promise<Files> {
   return new Map(got);
 }
 
-// サンプルが共通で読む file (samples/data)。path は lub の root から
+// Files shared by all samples (samples/data). Paths are from the lub root
 async function fetchShared(): Promise<Files> {
   const list = await fetchSampleList();
   const got = await Promise.all(
@@ -131,14 +131,14 @@ let leaving = false;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const status = document.getElementById("status")!;
 
-// player が動かす lider の module
+// lider module the player runs
 const LIDER_MODULE = `${HOME}/.lub/${LIDER}.tcsb`;
 
 let idleTimer = 0;
 
 function say(text: string) {
   status.textContent = text;
-  // 問題が無ければ、読んだ頃に消す
+  // If there is no problem, clears it after it has had time to be read
   status.classList.remove("idle");
   clearTimeout(idleTimer);
   if (!text.includes("error"))
@@ -209,7 +209,7 @@ function saveFiles(key: string, files: Files) {
   return storeRequest("readwrite", (s) => s.put(files, key));
 }
 
-// OnFrame を持つ class の名前
+// Name of the class that has OnFrame
 function findEntry(files: Files): string | null {
   const text = new TextDecoder();
   for (const [p, b] of [...files].sort(([a], [c]) => (a < c ? -1 : 1))) {
@@ -221,7 +221,7 @@ function findEntry(files: Files): string | null {
   return null;
 }
 
-// ?gist= の値 (gist の id か、https://gist.github.com/<owner>/<id> のような URL) の gist の id。読めなければ null
+// The gist id from a ?gist= value (a gist id, or a URL like https://gist.github.com/<owner>/<id>). null if it cannot be parsed
 function gistId(value: string): string | null {
   let id = value.trim();
   if (id.includes("/")) {
@@ -231,7 +231,7 @@ function gistId(value: string): string | null {
     } catch {
       return null;
     }
-    // /<owner>/<id>/...、/<id>、API の /gists/<id>
+    // /<owner>/<id>/..., /<id>, the API's /gists/<id>
     const parts = path.split("/").filter((s) => s);
     id = (parts.length >= 2 ? parts[1] : parts[0]) ?? "";
   }
@@ -247,8 +247,8 @@ async function fetchGitHub(url: string): Promise<Response> {
   }
 }
 
-// 公開の gist の file (gist の file は dir を持たない)。
-// 中身は API の答えにあるが、大きくて切られた file (truncated) は raw_url から取る
+// Files of a public gist (gist files have no dirs).
+// The contents are in the API response, but large files that were cut off (truncated) are fetched from raw_url
 async function fetchGist(id: string): Promise<Files> {
   const r = await fetchGitHub(`${GIST_API}/${id}`);
   if (r.status === 404)
@@ -306,8 +306,8 @@ function resizeCanvas() {
   (window as any)._canvasHeight = canvas.height;
 }
 
-// lider を動かし、lider に project のゲームを開かせる。
-// active でなければ lider を出さずに始める (F1 で出る)
+// Runs lider and has lider open the project's game.
+// If not active, starts without showing lider (F1 shows it)
 function start(
   device: any,
   tree: Files,
@@ -338,7 +338,7 @@ function start(
           });
           if (active) m.ENV.LIDER_ACTIVE = "1";
           if (entry) m.ENV.LIDER_ENTRY = entry;
-          // project の file を HOME の下に置く (player の data file が preload する path とは重ならないので、その展開を待たない)
+          // Places the project files under HOME (they do not overlap the paths the player's data file preloads, so this does not wait for that unpacking)
           m.FS.mkdirTree(DRAFTS);
           for (const [p, b] of tree) writeFile(m.FS, `${HOME}/${p}`, b);
           for (const [p, text] of Object.entries(CS_LIB_FILES))
@@ -368,7 +368,7 @@ function mtime(FS: any, path: string): number {
   return FS.stat(path).mtime.getTime();
 }
 
-// project の file。'.' で始まるディレクトリ (lider が変換した物を置く .lub) は project に入れない
+// Project files. Directories starting with '.' (.lub, where lider puts its compiled output) are not part of the project
 function readProject(FS: any, dir = GAME, out: Files = new Map()): Files {
   for (const name of FS.readdir(dir)) {
     if (name === "." || name === "..") continue;
@@ -381,8 +381,8 @@ function readProject(FS: any, dir = GAME, out: Files = new Map()): Files {
   return out;
 }
 
-// project の file の mtime ('.' で始まるディレクトリは見ない)。
-// 中身は読まないので、大きい data を持つ project でも変わったかを軽く調べられる
+// mtimes of the project files (directories starting with '.' are skipped).
+// The contents are not read, so changes can be checked cheaply even for projects with large data
 function mtimes(
   FS: any,
   dir = GAME,
@@ -403,7 +403,7 @@ function sameTimes(a: Map<string, number>, b: Map<string, number>) {
   return a.size === b.size && [...a].every(([p, t]) => b.get(p) === t);
 }
 
-// 保存された file を IndexedDB に写す。変換を待たないので、変換の途中で閉じても残る
+// Copies saved files to IndexedDB. Does not wait for compilation, so they persist even if the page is closed mid-compile
 function persist(FS: any, keys: Keys) {
   let seen = mtimes(FS);
   let seenDrafts = draftTimes(FS, readDrafts(FS));
@@ -441,8 +441,8 @@ function draftTimes(FS: any, files: Files) {
   );
 }
 
-// 保存された .cs を整形して書き戻す (lider は書き戻しを窓に写し、変換し直す)。
-// seen は見た file の版
+// Formats saved .cs files and writes them back (lider copies the write-back into its window and recompiles).
+// seen holds the versions of the files already seen
 function watch(m: any, seen: Map<string, number>) {
   const poll = async () => {
     try {
@@ -451,7 +451,7 @@ function watch(m: any, seen: Map<string, number>) {
         .filter(([p, t]) => seen.get(p) !== t && isSource(p))
         .map(([p]) => p);
       for (const p of changed) await format(m, p);
-      // 整形して書き戻した版も見たことにする (整形している間に保存された file は、次の回に見つける)
+      // The formatted, written-back version also counts as seen (a file saved during formatting is found next time)
       const after = mtimes(m.FS);
       for (const p of changed) if (after.has(p)) seen.set(p, after.get(p)!);
       for (const p of [...seen.keys()]) if (!after.has(p)) seen.delete(p);
@@ -465,7 +465,7 @@ function watch(m: any, seen: Map<string, number>) {
 let formatBroken = false;
 
 async function format(m: any, path: string) {
-  // 整形の worker (.NET の wasm) が動かない環境でも、lider の変換は止めない
+  // Even where the formatting worker (.NET wasm) does not run, lider compilation does not stop
   if (formatBroken) return;
   const file = `${GAME}/${path}`;
   const content = m.FS.readFile(file, { encoding: "utf8" });
@@ -477,7 +477,7 @@ async function format(m: any, path: string) {
     console.warn("[lider] 整形できないので、整形しない:", e);
     return;
   }
-  // 整形している間に保存されたら、次の保存の版を整形する
+  // If a save happens during formatting, the version from the next save is formatted
   if (
     formatted !== content &&
     m.FS.readFile(file, { encoding: "utf8" }) === content
@@ -502,7 +502,7 @@ async function fetchTemplate(prefix: string): Promise<Files> {
 }
 
 async function replaceProject(keys: Keys, files: Files) {
-  // 読み直すまでの間に、消す前の project と下書きを書き戻さない
+  // Until the reload, do not write back the project and drafts from before the removal
   leaving = true;
   await saveFiles(keys.project, files);
   await saveFiles(keys.drafts, new Map());
@@ -521,7 +521,7 @@ function bindReset(
   });
 }
 
-// gist を取り直す。取れなければ (回数の上限など) 今の project のまま、わけを出す
+// Refetches the gist. If it cannot be fetched (rate limit etc.), keeps the current project and shows the reason
 async function refetchGist(id: string): Promise<Files> {
   try {
     return await fetchGist(id);
@@ -555,7 +555,7 @@ function download(name: string, bytes: Uint8Array) {
   URL.revokeObjectURL(a.href);
 }
 
-// 壊れた project でも押せるよう、ゲームを起動する前に繋ぐ。m はゲームを起動するまで null
+// Hooked up before starting the game so the buttons work even for a broken project. m is null until the game starts
 function bindTools(
   getModule: () => any,
   keys: Keys,
@@ -566,7 +566,7 @@ function bindTools(
   document
     .getElementById("toggle")!
     .addEventListener("click", () => tools.classList.toggle("open"));
-  // メニューの外を押すか項目を選ぶと閉じる
+  // Clicking outside the menu or choosing an item closes it
   window.addEventListener(
     "pointerdown",
     (e) => {
@@ -588,14 +588,14 @@ function bindTools(
     bindReset("gist", "gist に戻します", keys, () => refetchGist(gist));
   }
   if (sample) {
-    // サンプルの場所で動かしているので、別の project には替えない (自分の project へはメニューから戻る)
+    // Running at the sample location, so it does not switch to another project (return to your own project from the menu)
     for (const id of ["flappy", "empty", "import"])
       document.getElementById(id)!.hidden = true;
     document.getElementById("sample")!.hidden = false;
     document.getElementById("own")!.hidden = false;
     bindReset("sample", "サンプルに戻します", keys, () => fetchSample(sample));
   }
-  // サンプルの一覧 (押すと開き閉じする)。選ぶと #sample= で開き直す
+  // List of samples (click to expand or collapse). Choosing one reopens with #sample=
   const samples = document.getElementById("samples")!;
   document.getElementById("samples-toggle")!.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -648,7 +648,7 @@ function bindTools(
   });
 }
 
-// lider を出さずに始めたので、出し方を見せておく。F1 を押したら消す
+// Started without showing lider, so show how to bring it up. Removed when F1 is pressed
 function showHint() {
   const hint = document.getElementById("hint")!;
   hint.hidden = false;
@@ -673,7 +673,7 @@ async function main() {
     GAME = `${HOME}/${PROJECT_DIR}`;
     CWD = HOME;
   }
-  // 別のサンプル (や自分の project) は開き直して始める
+  // Another sample (or your own project) starts by reopening the page
   window.addEventListener("hashchange", () => location.reload());
   const keys = sample ? sampleKeys(sample) : gist ? gistKeys(gist) : OWN;
   let m: any = null;
@@ -685,7 +685,7 @@ async function main() {
       fetchTree(paths),
       fetchBytes(LIDER_MODULE_URL),
       (navigator as any).gpu.requestAdapter(),
-      // gist とサンプルは、写した物が無ければ元から始める
+      // For gists and samples, start from the original if there is no copy
       loadFiles(keys.project).then(
         (p) =>
           p ??
@@ -707,19 +707,19 @@ async function main() {
   device.addEventListener("uncapturederror", (e: any) => {
     console.error("[webgpu]", e.error?.message ?? e.error);
   });
-  // lider が LIDER_HOME から読む file (font)。ゲームの例は project の雛形で、MEMFS には置かない
+  // Files lider reads from LIDER_HOME (font). The game examples are project templates and are not placed in MEMFS
   const home: Files = new Map(
     [...all].filter(([p]) => !p.startsWith("samples/")),
   );
   const project = saved ?? template(all, FLAPPY);
   if (gist && !project.has(FONT)) project.set(FONT, all.get(`data/${FONT}`)!);
-  // project が変換を通らなくても lider は起動し、compile error を出す (直すとゲームが始まる)。
-  // サンプルの entry は .csproj の basename (OnFrame を持つ class が幾つもあるサンプルがある)
+  // Even if the project does not compile, lider starts and shows the compile error (fixing it starts the game).
+  // The sample entry is the .csproj basename (some samples have several classes with OnFrame)
   const entry = (sample && entries[sample]) || findEntry(project) || "Game";
   resizeCanvas();
-  // 右ドラッグは窓を動かす操作なので、ブラウザのメニューを出さない
+  // Right-drag moves the window, so the browser menu is not shown
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-  // Alt を押した key (ウィンドウの操作)、Ctrl+P (印刷)、Ctrl+- (縮小)、Ctrl+B と Ctrl+E (ブラウザの欄)、F1 (ヘルプ) をブラウザに取られないようにする
+  // Keeps the browser from taking keys pressed with Alt (window operations), Ctrl+P (print), Ctrl+- (zoom out), Ctrl+B and Ctrl+E (browser panels), and F1 (help)
   window.addEventListener(
     "keydown",
     (e) => {
@@ -752,10 +752,10 @@ async function main() {
     lider,
     sample ? entry : null,
   );
-  // SDL の窓は App.Config の大きさで始まるので、canvas の大きさを伝える (Gfx.Size はこれを返す)
+  // The SDL window starts at the App.Config size, so the canvas size is passed in (Gfx.Size returns it)
   window.dispatchEvent(new Event("resize"));
   canvas.focus();
-  // ゲームが相対の path で読む file を探す場所 (lub の起動が終わってから移る)
+  // Where the game looks for files it reads by relative path (switched after lub finishes starting)
   m.FS.chdir(CWD);
   persist(m.FS, keys);
   watch(m, mtimes(m.FS));

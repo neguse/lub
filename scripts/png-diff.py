@@ -62,7 +62,7 @@ def load(path):
 
 
 def rgb(rows, channels):
-    # gray (+alpha) は R = G = B として扱う
+    # gray (+alpha) is treated as R = G = B
     planes = [0, 0, 0] if channels < 3 else [0, 1, 2]
     return [[row[p::channels] for p in planes] for row in rows]
 

@@ -1,6 +1,6 @@
-// App.Config の Width / Height が描画の大きさ (Gfx.Size) になる。
-// 縦長を指定して縦横比を見る (高 DPI の backend では画素数が指定の整数倍になる)。
-// web では `canvas WxH` の行を出し、export した page の検査 (export-page-check.mjs) が canvas の画素数がそれと同じかを見る。
+// Width / Height of App.Config become the rendering size (Gfx.Size).
+// Specifies a portrait size and checks the aspect ratio (on high-DPI backends the pixel count is an integer multiple of the specified size).
+// On web it prints a `canvas WxH` line, and the exported page check (export-page-check.mjs) checks that the canvas pixel count matches it.
 using System;
 using Lub;
 

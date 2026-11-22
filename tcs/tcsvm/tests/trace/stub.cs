@@ -1,4 +1,4 @@
-// trace_test.c が登録する host の関数
+// Host functions registered by trace_test.c
 namespace Probe
 {
     public static class Stack

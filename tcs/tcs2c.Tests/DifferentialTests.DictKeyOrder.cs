@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// Dictionary への store (代入 / 複合代入 / Add / initializer) は key を値より
-// 先に評価する (C# の順序)。期待値は同じ program を CoreCLR で実行した stdout
+// Stores to a Dictionary (assignment / compound assignment / Add / initializer) evaluate the key before
+// the value (C# order). The expected values are the stdout of running the same program on CoreCLR
 public class DictKeyOrderDifferentialTests
 {
     [CFact]

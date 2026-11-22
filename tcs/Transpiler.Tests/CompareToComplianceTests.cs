@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// CompareTo は int / float の同じ型どうし (intrinsic の Math.CompareTo) だけが
-// サブセット。それ以外の形は emit / 実行時に落ちる前に TCS1002 で止める
+// For CompareTo, only same-type int / float comparisons (the intrinsic Math.CompareTo) are
+// in the subset. Other forms are stopped with TCS1002 before they fail at emit / run time
 public class CompareToComplianceTests
 {
     private static string Wrap(string statement) => $$"""

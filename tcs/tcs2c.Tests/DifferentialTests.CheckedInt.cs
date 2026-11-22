@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// checked(expr) の i32 の + - * と単項 - は overflow で fault (C# の OverflowException)。
-// 値は parameter から渡して定数畳み込みを避ける。期待値は同じ program を CoreCLR で
-// 実行した stdout (overflow は "before" の後に OverflowException で停止する)
+// i32 + - * and unary - in checked(expr) fault on overflow (C#'s OverflowException).
+// Values are passed through parameters to avoid constant folding. The expected values are the stdout of running the same program
+// on CoreCLR (overflow stops with OverflowException after "before")
 public class CheckedIntDifferentialTests
 {
     private static string CheckedProgram(string expr) => $$"""

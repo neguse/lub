@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// ±0 と NaN の扱い (il-spec §6 / §13: 規範は TinySystem dotnet facade)。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// Handling of ±0 and NaN (il-spec §6 / §13: the TinySystem dotnet facade is normative).
+// The expected values are the stdout of running the same program on CoreCLR
 public class SignedZeroNaNDifferentialTests
 {
     [CFact]

@@ -1,7 +1,7 @@
-// 操作の手応えの音。素材は持たず、起動したときに波形を合成する。
-// 音量は操作の大きさでなく、使う人への影響の順にする (直った > 反映 > error > 保存 > 移動 > 打鍵)。
-// 波形は振幅の山を 1 に揃え、Play の音量 (1 が一番大きい音) に Loudest を掛けて鳴らす。ゲームの音より目立たせない。
-// 繰り返す音は高さをばらつかせ、どれも出だしを強く、残響を短くする。
+// Feedback sounds for actions. There are no sound assets; waveforms are synthesized at startup.
+// Volume follows the impact on the user, not the size of the action (fixed > applied > error > save > move > keystroke).
+// Waveforms are normalized to a peak amplitude of 1 and played at the Play volume (1 is the loudest sound) multiplied by Loudest. They must not stand out over the game's sounds.
+// Repeated sounds vary in pitch, and all of them have a strong attack and a short tail.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -18,30 +18,30 @@ public static class Cues
     public const string Fixed = "fixed";
     public const string Move = "move";
 
-    // 音量 1 で鳴らした音の振幅の山 (ゲームの音の山はおよそ 0.1〜0.3)
+    // Peak amplitude of a sound played at volume 1 (game sounds peak at about 0.1 to 0.3)
     public const float Loudest = 0.1f;
 
     public static bool Muted;
-    // 最後に鳴らした音の名前 (Muted なら変わらない)
+    // Name of the last sound played (unchanged when Muted)
     public static string Last = "";
     static readonly Dictionary<string, List<float>> waves = new Dictionary<string, List<float>>();
-    // 波形の振幅の山
+    // Peak amplitude of each waveform
     static readonly Dictionary<string, float> wavePeaks = new Dictionary<string, float>();
-    // 鳴らした音の名前ごとの、鳴らした振幅の山の一番大きいもの
+    // Per sound name, the largest peak amplitude played
     public static readonly Dictionary<string, float> Peaks = new Dictionary<string, float>();
     static readonly Dictionary<string, int> handles = new Dictionary<string, int>();
     static int seed = 54321;
-    // 波形を変えたら上げる (lub は VM を作り直しても同じ key と version の音を読み直さない)
+    // Bump when the waveforms change (lub does not reload a sound with the same key and version even when the VM is recreated)
     const int WaveVersion = 2;
 
-    // lider を出している間、毎 frame 呼ぶ (宣言が途切れると捨てられる)
+    // Called every frame while lider is shown (sounds are discarded when the declaration lapses)
     public static void Declare()
     {
         if (waves.Count == 0)
             Build();
         foreach (var pair in waves)
         {
-            // 同じ version なら波形は読まれない。捨てられた後なら渡し直す
+            // With the same version the waveform is not read. If it was discarded, it is passed again
             var snd = Audio.Snd("lider_cue_" + pair.Key, null, 1, Rate, WaveVersion) ?? Audio.Snd("lider_cue_" + pair.Key, pair.Value, 1, Rate, WaveVersion);
             if (snd != null)
                 handles[pair.Key] = snd.Value;
@@ -61,7 +61,7 @@ public static class Cues
             Peaks[name] = peak;
     }
 
-    // 0 から 1 の擬似乱数
+    // Pseudo-random number from 0 to 1
     public static float Random()
     {
         seed = seed * 1664525 + 1013904223;
@@ -93,7 +93,7 @@ public static class Cues
         }
     }
 
-    // 上へ駆け上がる 4 つの音
+    // 4 notes rising upward
     static float Fanfare(float t)
     {
         var notes = new List<float> { 523, 659, 784, 1047 };
@@ -114,7 +114,7 @@ public static class Cues
         for (var i = 0; i < n; i++)
         {
             var v = at((float)i / Rate);
-            // 終わりでぷつっと鳴らない
+            // Avoids a click at the end
             data.Add(v * Math.Min(1, (n - i) / 200.0f));
         }
         return data;

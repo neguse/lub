@@ -3,8 +3,8 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// 値で比べる key の Dictionary (#185)。transpiler は build を止める error、
-// analyzer は warning のまま (.editorconfig で severity を上げられる)
+// Dictionary with keys compared by value (#185). The transpiler reports an error that stops the build,
+// while the analyzer keeps it a warning (the severity can be raised in .editorconfig)
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]

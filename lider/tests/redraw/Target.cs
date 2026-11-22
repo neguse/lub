@@ -1,4 +1,4 @@
-// TestRedraw が窓に描いて、1 文字打つ file。
+// The file TestRedraw draws in a window and types one character into.
 public static class RedrawTarget
 {
     public static int Value0() { return 0; } // コメント 0

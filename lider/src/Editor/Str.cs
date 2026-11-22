@@ -1,6 +1,6 @@
-// エディタの core が使う文字列の道具。
-// 文字列は UTF-8 で、位置は byte で数える (Lite XL と同じ)。
-// Lua の string の関数 (sub、find、rep) と同じ結果を返すものは、名前と引数をそれに合わせる。
+// String tools used by the editor core.
+// Strings are UTF-8 and positions count bytes (same as Lite XL).
+// Functions that return the same results as Lua's string functions (sub, find, rep) match their names and arguments.
 using System;
 using TinySystem.Text;
 using LiderCore;
@@ -9,7 +9,7 @@ namespace LiderEditor;
 
 public static class Str
 {
-    // Lite XL の math.huge の代わり (行と桁の上限)
+    // Replacement for Lite XL's math.huge (upper limit of lines and columns)
     public const int Huge = 1 << 30;
 
     public static int Len(string s)
@@ -17,7 +17,7 @@ public static class Str
         return new Utf8Bytes(s).Length;
     }
 
-    // start byte 目 (0 から) から count byte。範囲の外は切り詰める
+    // count bytes from byte start (from 0). Clamps outside the range
     public static string Slice(string s, int start, int count)
     {
         var u = new Utf8Bytes(s);
@@ -34,13 +34,13 @@ public static class Str
         return u.Slice(start, count).ToString();
     }
 
-    // start byte 目 (0 から) から最後まで
+    // From byte start (from 0) to the end
     public static string From(string s, int start)
     {
         return Slice(s, start, Huge);
     }
 
-    // Lua の string.sub (i と j は 1 から、負は後ろから数える)
+    // Lua's string.sub (i and j from 1, negatives count from the end)
     public static string Sub(string s, int i, int j)
     {
         var n = Len(s);
@@ -57,26 +57,26 @@ public static class Str
         return Slice(s, i - 1, j - i + 1);
     }
 
-    // at byte 目 (0 から) の byte (範囲の外は -1)
+    // The byte at byte at (from 0) (-1 outside the range)
     public static int Byte(string s, int at)
     {
         var u = new Utf8Bytes(s);
         return at >= 0 && at < u.Length ? u[at] : -1;
     }
 
-    // UTF-8 の文字の 2 byte 目より後の byte か
+    // Whether it is a byte from the 2nd byte onward of a UTF-8 character
     public static bool IsCont(int b)
     {
         return b >= 0x80 && b < 0xC0;
     }
 
-    // Lua の %s
+    // Lua's %s
     public static bool IsSpace(int b)
     {
         return b == 32 || (b >= 9 && b <= 13);
     }
 
-    // s の from byte 目 (0 から) より後で、needle が最初に現れる byte の位置 (無ければ -1)
+    // Byte position of the first occurrence of needle in s from byte from (from 0) onward (-1 if none)
     public static int Find(string s, string needle, int from)
     {
         var h = new Utf8Bytes(s);
@@ -99,7 +99,7 @@ public static class Str
         return -1;
     }
 
-    // s が from byte 目 (0 から) に prefix を持つか
+    // Whether s has prefix at byte from (from 0)
     public static bool At(string s, int from, string prefix)
     {
         var h = new Utf8Bytes(s);
@@ -120,7 +120,7 @@ public static class Str
         return r;
     }
 
-    // 先頭の空白と tab の byte の数 (Lua の ^[ \t]*)
+    // Byte count of the leading spaces and tabs (Lua's ^[ \t]*)
     public static int IndentLength(string s)
     {
         var u = new Utf8Bytes(s);
@@ -130,7 +130,7 @@ public static class Str
         return i;
     }
 
-    // from byte 目 (0 から) から後が空白だけか
+    // Whether everything from byte from (from 0) onward is whitespace
     public static bool BlankFrom(string s, int from)
     {
         var u = new Utf8Bytes(s);
@@ -140,7 +140,7 @@ public static class Str
         return true;
     }
 
-    // 最初の空白でない byte の位置 (0 から。無ければ -1)
+    // Position of the first non-whitespace byte (from 0; -1 if none)
     public static int FirstInk(string s)
     {
         var u = new Utf8Bytes(s);
@@ -150,13 +150,13 @@ public static class Str
         return -1;
     }
 
-    // 先頭の byte から、その文字の byte の数
+    // Byte count of a character, from its first byte
     public static int RuneBytes(int lead)
     {
         return Utf8.RuneBytes(lead);
     }
 
-    // u の at byte 目から始まる文字の codepoint
+    // Codepoint of the character starting at byte at of u
     public static int Decode(Utf8Bytes u, int at)
     {
         int lead = u[at];
@@ -169,7 +169,7 @@ public static class Str
         return cp;
     }
 
-    // 桁の数 (tab は tab 桁、全角は 2 桁)
+    // Column count (tab is tab columns, full-width is 2 columns)
     public static int Cells(string s, int tab)
     {
         var u = new Utf8Bytes(s);
@@ -190,7 +190,7 @@ public static class Str
         return cells;
     }
 
-    // tab を tab 桁の空白にする
+    // Turns tabs into tab columns of spaces
     public static string ExpandTabs(string s, int tab)
     {
         if (!s.Contains("\t"))
@@ -198,7 +198,7 @@ public static class Str
         return s.Replace("\t", Repeat(" ", tab));
     }
 
-    // Lua の string.lower (ASCII だけ)
+    // Lua's string.lower (ASCII only)
     public static string Lower(string s)
     {
         return s.ToLower();

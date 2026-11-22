@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 
-// closure は変数を捕捉する (il-spec §7): 書き換えが共有される、foreach の変数は反復ごと、
-// 入れ子の lambda、引数と self の捕捉、static method の method group
+// Closures capture variables (il-spec §7): writes are shared, foreach variables are per iteration,
+// nested lambdas, capturing arguments and self, method groups of static methods
 public class Counter
 {
     public int Count;

@@ -1,4 +1,4 @@
-// WasmCompiler の手元スモーク: hello 相当を tcs VM の module にして、結果を表示する。
+// Local smoke test of WasmCompiler: compiles a hello equivalent into a tcs VM module and shows the result.
 import { dotnet } from "./_framework/dotnet.js";
 
 const out = document.getElementById("out");

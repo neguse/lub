@@ -1,6 +1,6 @@
-// lub の Lubx.Jamo (かな漢字変換) で、かなを漢字に変換して確定する。
-// 辞書は env LIDER_JAMO_DICT、無ければ lider の data/mozc.dict。
-// jamo の無い lub か、辞書が無ければ確かめずに通す。
+// Converts kana to kanji and confirms it with lub's Lubx.Jamo (kana-kanji conversion).
+// The dictionary is env LIDER_JAMO_DICT, or lider's data/mozc.dict if it is not set.
+// With a lub without jamo, or without a dictionary, the test passes without checking.
 using System;
 using Lub;
 using Lubx;

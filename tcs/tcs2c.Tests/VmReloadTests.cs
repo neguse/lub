@@ -3,9 +3,9 @@ using TinyCs.Tests.SpecConformance;
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// VM の hot reload (tvm_apply、doc/object-model.md §6、doc/vm-design.md §12)。
-/// T235 の reload fuzz の scenario を C# の driver で VM に当て、Lua の reload と同じ不変量
-/// (retained の保持、added の initializer、identity、method の差し替え、static、OnReload 1 回) を確かめる。
+/// VM hot reload (tvm_apply, doc/object-model.md §6, doc/vm-design.md §12).
+/// Applies the T235 reload fuzz scenarios to the VM with a C# driver and checks the same invariants as the Lua reload
+/// (retained values kept, added initializers, identity, method replacement, statics, OnReload once).
 /// </summary>
 public class VmReloadTests
 {
@@ -46,7 +46,7 @@ public class VmReloadTests
     {
         var s = new FuzzReloadGenerator(seed).Generate();
         var v1 = Driver(s, s.StateCs, "Console.WriteLine(\"v1\");");
-        // v2 の Setup は走らない (状態は v1 が作る)。消えた field を参照しないよう空にする
+        // v2's Setup does not run (v1 creates the state). It is left empty so that it does not refer to removed fields
         var v2 = Driver(s, "", s.AssertsCs);
         var (code, stdout, stderr) = Backends.RunVmReload([s.V1, v1], [s.V2, v2], "Driver");
         Assert.True(code == 0 && stdout == "ok",
@@ -61,7 +61,7 @@ public class VmReloadTests
             AssertScenario(seed);
     }
 
-    // TCS_FUZZ=1 のときの sweep (run-tests.sh と run-fuzz.sh)。seed は TCS_FUZZ_SEED (既定 1000) から TCS_FUZZ_COUNT (既定 20) 個
+    // Sweep when TCS_FUZZ=1 (run-tests.sh and run-fuzz.sh). TCS_FUZZ_COUNT seeds (default 20) starting from TCS_FUZZ_SEED (default 1000)
     [Fact]
     public void FuzzReloadSweep_ScenariosSatisfyInvariants()
     {
@@ -169,7 +169,7 @@ public class VmReloadTests
             """;
         var (code, stdout, stderr) = Reload(v1, v2, frames: 2);
         Assert.True(code == 0, stderr);
-        // Hp は型が変わった (int → float) ので initializer の値 (Lua の reload と同じ)
+        // The type of Hp changed (int → float), so it gets the initializer's value (same as the Lua reload)
         Assert.Equal("""
             a:1.5/7@2,0,0 log=1
             b:1.5/7@2,0,0 log=1
@@ -183,7 +183,7 @@ public class VmReloadTests
     public void Session_ReturnsModuleThenBatchesAndKeepsTheLastGoodBuild()
     {
         if (!Backends.VmEnabled) return;
-        // web の worker と tcs2vm --watch が使う増分 session (VmSession)
+        // Incremental session (VmSession) used by the web worker and tcs2vm --watch
         var session = new TinyCs.Vm.VmSession(null, ["Game.*"], []);
         const string v1 = Header + "public static class Game { static int n; public static void Frame() { n++; } public static void Report() { Console.WriteLine(\"v1 \" + n); } }";
         const string bad = Header + "public static class Game { static int n; public static void Frame() { n++ } }";
@@ -206,7 +206,7 @@ public class VmReloadTests
     public void Session_NotesAChangedInstanceFieldInitializer()
     {
         if (!Backends.VmEnabled) return;
-        // 生きている instance は今の値を保つので、instance の field の初期化子の変更は restart にせず、host に知らせる
+        // Live instances keep their current values, so a change to the initializer of an instance field does not cause a restart but is reported to the host
         var session = new TinyCs.Vm.VmSession(null, ["Game.*"], []);
         const string v1 = Header + "public class Tree { public int Hp = 40; } public static class Game { static Tree t = new Tree(); public static void Frame() { } public static void Report() { Console.WriteLine(t.Hp + \" \" + new Tree().Hp); } }";
         const string v2 = Header + "public class Tree { public int Hp = 100; } public static class Game { static Tree t = new Tree(); public static void Frame() { } public static void Report() { Console.WriteLine(t.Hp + \" \" + new Tree().Hp); } }";
@@ -223,7 +223,7 @@ public class VmReloadTests
     public void ChangedStaticInitializer_ReevaluatesThatStaticAndItsReaders()
     {
         if (!Backends.VmEnabled) return;
-        // 初期化子を変えた static と const、それを初期化子で読む static だけを評価し直す。ほかの static は今の値を保つ
+        // Only statics and consts whose initializers changed, and statics that read them in their initializers, are re-evaluated. Other statics keep their current values
         const string report = "public static void Frame() { frames++; kept++; } public static void Report() { Console.WriteLine($\"{Speed} {Lives} {Twice} {Half} {frames} {kept} {list.Count}\"); } }";
         const string v1 = Header + "public static class Game { static float Speed = 3f; const int Lives = 3; static int Twice = Lives * 2; static float Half = Speed / 2f; static int frames; static int kept = 10; static List<int> list = new List<int> { 1, 2 }; " + report;
         const string v2 = Header + "public static class Game { static float Speed = 5f; const int Lives = 4; static int Twice = Lives * 2; static float Half = Speed / 2f; static int frames; static int kept = 10; static List<int> list = new List<int> { 1, 2 }; " + report;
@@ -258,7 +258,7 @@ public class VmReloadTests
     public void UnreachableObjectOfATypeTheNewVersionDrops_DoesNotBlockReload()
     {
         if (!Backends.VmEnabled) return;
-        // v2 は Temp を使わないので、v2 の module に Temp の型が無い。v1 が捨てた Temp は届かないので、reload を止めない
+        // v2 does not use Temp, so v2's module has no Temp type. The Temp that v1 discarded is unreachable, so the reload is not stopped
         const string v1 = Header + "public class Temp { public int N; } public static class Game { public static void Setup() { var t = new Temp(); t.N = 1; } public static void Frame() { } public static void Report() { } }";
         const string v2 = Header + "public class Temp { public int N; } public static class Game { public static void Setup() { } public static void Frame() { } public static void Report() { Console.WriteLine(\"ok\"); } }";
         var (code, stdout, stderr) = Reload(v1, v2);
@@ -282,7 +282,7 @@ public class VmReloadTests
     public void LiveClosures_FollowTheirLambda_WhenLambdasAreInsertedOrEdited()
     {
         if (!Backends.VmEnabled) return;
-        // 前に lambda を足しても本文の指紋で対応し、本文を変えた lambda は数が同じなら番号で対応する (新しい本文が効く)
+        // Even if a lambda is added before them, lambdas are matched by body fingerprint, and lambdas whose bodies changed are matched by number if the count is the same (the new body takes effect)
         const string v1 = Header + """
             public static class Game
             {
@@ -327,7 +327,7 @@ public class VmReloadTests
     public void AddedStatics_RunTheirInitializers_UnlessTheOwnerIsStillUninitialized()
     {
         if (!Backends.VmEnabled) return;
-        // Cfg は遅延初期化 (initializer が定数でない)。Used は reload の前に初期化され、Unused はされない
+        // Cfg is lazily initialized (its initializer is not a constant). Used is initialized before the reload, and Unused is not
         const string v1 = Header + """
             public static class Used { public static List<int> Xs = new List<int>(); }
             public static class Unused { public static List<int> Ys = new List<int>(); }
@@ -397,7 +397,7 @@ public class VmReloadTests
                 public static void Report() { }
             }
             """;
-        // 初期化子の付いた static を前に足すと、後ろの static の slot がずれる
+        // Adding a static with an initializer in front shifts the slots of the statics after it
         const string v2 = Header + """
             public static class Game
             {

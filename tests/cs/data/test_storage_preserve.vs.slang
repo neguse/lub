@@ -1,4 +1,4 @@
-// target 全体を覆う三角形。
+// A triangle that covers the whole target.
 struct VSOut {
   float4 pos : SV_Position;
 };

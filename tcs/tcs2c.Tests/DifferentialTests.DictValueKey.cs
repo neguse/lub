@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 値で比べる key の Dictionary は両 backend とも生成前に止まる (#185)。Lua
-// table は key を同一性で引くので、止めないと等しい値の key で ContainsKey が
-// false になる (CoreCLR は `rs:1:1` / `s:1` / `r:1` / `todict:1`)
+// A Dictionary whose keys compare by value stops before generation on both backends (#185). Lua
+// tables look up keys by identity, so without stopping, ContainsKey with a key of equal value would
+// return false (CoreCLR gives `rs:1:1` / `s:1` / `r:1` / `todict:1`)
 public class DictValueKeyDifferentialTests
 {
     private const string DictValueKeyProgram = """
@@ -32,8 +32,8 @@ public class DictValueKeyDifferentialTests
         }
         """;
 
-    // C は従来 `Dictionary key type not supported` で止まっていた。両 backend が
-    // 同じ shared facts の診断で、IL を作る前に止まる
+    // C used to stop with `Dictionary key type not supported`. Both backends
+    // stop with the same shared facts diagnostic before producing IL
     [Fact]
     public void Dict_ValueEqualityKey_BothBackendsStopWithDiagnostic()
     {

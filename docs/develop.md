@@ -66,10 +66,14 @@ CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.ex
 
 ## コードフォーマット
 
-各フォーマッタのデフォルト設定で整形する。既存スタイルに寄せるプロジェクト固有の設定ファイルは置かない。
-例外は `.clang-format` の `ReflowComments: false` だけで、日本語のコメントを和欧の境目で折り返させないためのもの。コメントは 1 文を 1 行に書く。
+各フォーマッタのデフォルト設定で整形する。既存スタイルに寄せるプロジェクト固有の設定ファイルは置かない (`.clang-format` は LLVM を選ぶだけ)。
 
-- C/C++/Slang — `clang-format` (LLVM default にコメントの折り返しだけを止めたもの、Slang は HLSL 扱い)
+コードのコメントは英語で書く。
+`cs-lib/lub_stub.cs` の XML doc だけは、API reference としてガイドと並んでサイトに出るので、ドキュメントと同じく日本語で書く。
+コメントは 1 文を 1 行に書く。
+ただし C、C++、Slang では、80 桁を超えたコメントを clang-format が折り返し、同じ段落の続く行を詰める。
+
+- C/C++/Slang — `clang-format` (LLVM default、Slang は HLSL 扱い)
 - C# — `dotnet format whitespace` (dotnet SDK 付属)
 - Web TS — `prettier` (`web/` で `npm install` 後に利用可)
 

@@ -18,7 +18,8 @@ static void mix(App *app, const void *data, size_t len) {
   app->digest.h = h;
 }
 
-// LUB_DIGEST_TRACE=1 で項目ごとの値も出す (実行形の間で digest が割れたときに、どの呼び出しから違うかを見る)。
+// LUB_DIGEST_TRACE=1 also prints per-item values (to see from which call things
+// differ when the digests diverge between execution forms).
 static bool trace_enabled(void) {
   static int state = -1;
   if (state < 0) {

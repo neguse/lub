@@ -1,29 +1,34 @@
 #pragma once
-// 1 frame の入力。Input.* はこれだけを読む (SDL を直接読まない)。
-// SDL を直接読まないのは、App.Step で開いた app に、開いた側が選んだ入力や、控えから再生する入力を見せるため。
-// host が SDL の状態と event から埋める (src/host_api.c)。
+// Input for one frame. Input.* reads only this (it does not read SDL directly).
+// It does not read SDL directly so that an app opened with App.Step can be
+// shown the input the opener selected, or input replayed from a recording. The
+// host fills it from SDL's state and events (src/host_api.c).
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
 
-// Input.Gamepad* の player の数 (0..3)。
+// Number of players for Input.Gamepad* (0..3).
 #define LUB_GAMEPAD_SLOTS 4
 
 typedef struct InputState {
-  // 今押されているか。event を受けるたびと frame の始めに、SDL の状態から写す
+  // Whether currently held. Copied from SDL's state on each event and at the
+  // start of the frame
   bool keys[SDL_SCANCODE_COUNT];
-  // 押した・離した瞬間。event で立て、OnFrame の後に消す (frame の中で押して離した key も見える)
+  // Press / release edges. Set by events and cleared after OnFrame (keys
+  // pressed and released within a frame are also visible)
   bool key_pressed[SDL_SCANCODE_COUNT];
   bool key_released[SDL_SCANCODE_COUNT];
   uint32_t mouse_buttons;
   uint32_t mouse_pressed_mask;
   uint32_t mouse_released_mask;
-  // main target の左上からの位置 (framebuffer px)
+  // Position from the top-left of the main target (framebuffer px)
   float mouse_x, mouse_y;
-  // その frame の移動の合計 (framebuffer px) と、wheel の合計 (SDL の単位。+y が奥)
+  // Total motion in the frame (framebuffer px), and total wheel (SDL units. +y
+  // is away from the user)
   float mouse_rel_x, mouse_rel_y;
   float mouse_wheel_x, mouse_wheel_y;
-  // gamepad の slot ごと。軸は Input.GamepadAxis の値 (stick は -1..1、trigger は 0..1)
+  // Per gamepad slot. Axes are Input.GamepadAxis values (sticks -1..1, triggers
+  // 0..1)
   bool pad_connected[LUB_GAMEPAD_SLOTS];
   float pad_axes[LUB_GAMEPAD_SLOTS][SDL_GAMEPAD_AXIS_COUNT];
   uint32_t pad_down[LUB_GAMEPAD_SLOTS];
@@ -31,7 +36,7 @@ typedef struct InputState {
   uint32_t pad_released[LUB_GAMEPAD_SLOTS];
 } InputState;
 
-// mouse の button (1 = 左) の mask の bit。範囲の外は 0
+// Mask bit for a mouse button (1 = left). 0 if out of range
 static inline uint32_t input_mouse_bit(int button) {
   return button >= 1 && button <= 32 ? UINT32_C(1) << (button - 1) : 0;
 }

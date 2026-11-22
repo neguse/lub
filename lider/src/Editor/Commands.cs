@@ -1,5 +1,5 @@
-// 編集の command (Lite XL の core/commands/doc.lua、findreplace.lua、command.lua、dialog.lua、core.lua の、lider が使う所)。
-// command は名前で呼び、その時の active の view で効くか (predicate) を見る。効いたら true。
+// Editing commands (the parts lider uses of Lite XL's core/commands/doc.lua, findreplace.lua, command.lua, dialog.lua, and core.lua).
+// Commands are called by name and check whether they apply to the active view at that time (predicate). Returns true if one took effect.
 using System;
 using System.Collections.Generic;
 
@@ -7,7 +7,7 @@ namespace LiderEditor;
 
 public static class Commands
 {
-    // 検索の状態 (findreplace.lua の last_view、last_sel、last_text)
+    // Search state (last_view, last_sel, last_text in findreplace.lua)
     static int lastFindView;
     static List<int> lastSel = new List<int>();
     static string lastText = "";
@@ -22,13 +22,13 @@ public static class Commands
         var command = EditorCore.Active == EditorCore.CommandId;
         var nag = EditorCore.Active == EditorCore.NagId;
 
-        // 表に載せた命令 (lider の操作)
+        // Commands listed in the table (lider operations)
         var listed = CommandTable.Find(name);
         if (listed != null)
         {
             if ((command || nag) && !listed.OverModal)
                 return false;
-            // 繰り返さない命令は、押し続けている間の key を受けるだけで何もしない
+            // Non-repeating commands only take the key while it is held and do nothing
             if (CommandTable.Repeated && !listed.Repeats)
                 return true;
             return listed.Run();
@@ -169,7 +169,7 @@ public static class Commands
             }
         }
 
-        // doc の command は DocView (CommandView の入力欄も) で効く
+        // doc commands work in DocView (including the CommandView input field)
         if (!name.StartsWith("doc:") || dv == null)
             return false;
         var doc = dv.Doc;
@@ -457,7 +457,7 @@ public static class Commands
         doc.MergeCursors();
     }
 
-    // 選択の最後が次の行の先頭なら、前の行の末尾までにする
+    // If the selection ends at the start of the next line, ends it at the end of the previous line instead
     static void MultilineSelection(Doc doc, int idx, out int l1, out int c1, out int l2, out int c2)
     {
         doc.GetSelectionIdx(idx, true, out var a, out var b, out var c, out var d, out _);
@@ -490,7 +490,7 @@ public static class Commands
             var indent = Str.Slice(text, 0, indentLen);
             if (col <= indentLen)
                 indent = Str.Sub(indent, indentLen + 2 - col, -1);
-            // 空白だけの行は空にする
+            // Empties lines that contain only whitespace
             if (text != "" && Str.FirstInk(text) < 0)
                 doc.Remove(line, 1, line, Str.Huge);
             doc.TextInput("\n" + indent, idx);
@@ -505,7 +505,7 @@ public static class Commands
             if (l1 == l2)
                 l2++;
             var text = doc.GetText(l1, 1, l2, Str.Huge);
-            // 改行と次の行の字下げを、空白 1 つにする (空白だけの行の後は空白を足さない)
+            // Turns the newline and the next line's indentation into one space (adds no space after a whitespace-only line)
             var parts = text.Split('\n');
             var joined = parts[0];
             var prevBlank = Str.FirstInk(parts[0]) < 0;
@@ -565,7 +565,7 @@ public static class Commands
     {
         var open = "/*";
         var close = "*/";
-        // 前後の空白を飛ばす
+        // Skips leading and trailing whitespace
         var head = doc.GetText(line1, col1, line1, Str.Huge);
         var ink = Str.FirstInk(head);
         col1 += ink >= 0 ? ink : 0;
@@ -631,7 +631,7 @@ public static class Commands
             }
             else
             {
-                // 選んでいなければ行を丸ごと
+                // The whole line if nothing is selected
                 text = doc.Lines[l1 - 1];
                 full = full == "" ? text + "\n" : text + "\n" + full;
                 whole[idx - 1] = true;
@@ -744,7 +744,7 @@ public static class Commands
                 doc.AddSelection(lines[i], cols[i], lines[i], cols[i]);
     }
 
-    // 保存 ------------------------------------------------------------------
+    // Save ------------------------------------------------------------------
 
     static void SaveDoc(Doc doc, string? filename)
     {
@@ -799,7 +799,7 @@ public static class Commands
         EditorCore.Command.Enter("Open File From Project", CommandView.FindFile, null, false, true);
     }
 
-    // CommandView で Return を押した
+    // Return was pressed in CommandView
     public static void SubmitCommand(int kind, string text, Suggestion? item, string replaceOld, int goToView)
     {
         if (kind == CommandView.Find)
@@ -874,7 +874,7 @@ public static class Commands
         }
     }
 
-    // CommandView を閉じた (explicit は Escape で閉じたか)
+    // CommandView was closed (explicit tells whether it was closed with Escape)
     public static void CancelCommand(int kind, bool explicitly)
     {
         if (kind == CommandView.Find && explicitly)
@@ -888,9 +888,9 @@ public static class Commands
         }
     }
 
-    // 検索 ------------------------------------------------------------------
+    // Search ------------------------------------------------------------------
 
-    // 検索の対象 (CommandView から呼んだなら、検索を始めた view)
+    // Search target (if called from CommandView, the view where the search started)
     static DocView? FindTarget()
     {
         var w = EditorCore.ActiveWindowView();
@@ -917,7 +917,7 @@ public static class Commands
         EditorCore.Command.Enter("Find To Replace Text", CommandView.ReplaceFind, l1 == l2 ? selected : "", true, false);
     }
 
-    // 打った文字を、検索を始めた所から探して選ぶ
+    // Searches for the typed text from where the search started and selects it
     public static void UpdatePreview(string text)
     {
         var view = EditorCore.ViewOf(lastFindView);
@@ -1047,7 +1047,7 @@ public static class Commands
         }
     }
 
-    // 選んだ所 (無ければ全体) の old を new にする (大文字と小文字を区別する)
+    // Replaces old with new within the selection (or the whole text if none) (case-sensitive)
     static void Replace(Doc doc, string old, string with)
     {
         var any = false;

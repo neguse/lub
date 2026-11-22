@@ -1,5 +1,5 @@
-// lub の samples/04_mvp の entry。
-// 実行: lub samples/04_mvp/Mvp04.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/04_mvp.
+// Run: lub samples/04_mvp/Mvp04.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;
 using Lub;

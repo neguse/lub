@@ -1,5 +1,5 @@
-// storage だけの texture (render target でないもの) も Gfx.ReadTexture で読み戻せる。
-// compute が rgba8 の storage texture の各 pixel に x に応じた値を書き、読み戻した値を見る。
+// Storage-only textures (not render targets) can also be read back with Gfx.ReadTexture.
+// Compute writes a value depending on x to each pixel of an rgba8 storage texture, and the test checks the read-back values.
 using System;
 using System.Collections.Generic;
 using Lub;

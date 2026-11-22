@@ -1,6 +1,6 @@
-// 整数列の STORAGE (UseBufferInts と FrameBufferInts) は int のまま詰まり、shader が StructuredBuffer<int> で渡した値を読む。
-// 2^24 を超える値と負の値も変わらない。
-// shader は UseBufferInts の値が合えば R、FrameBufferInts の値が合えば G を 1 にして描き、読み戻して両方を見る。
+// Integer STORAGE (UseBufferInts and FrameBufferInts) is packed as int unchanged, and the shader reads the passed values through StructuredBuffer<int>.
+// Values above 2^24 and negative values also stay unchanged.
+// The shader draws with R = 1 if the UseBufferInts values match and G = 1 if the FrameBufferInts values match, and the test reads it back and checks both.
 using System;
 using System.Collections.Generic;
 using Lub;

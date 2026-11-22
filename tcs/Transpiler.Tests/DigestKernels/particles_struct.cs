@@ -1,7 +1,7 @@
 using System;
 
-// digest kernel: particles の struct 版。演算列は particles.cs
-// (SoA 配列版) と同一で、digest も一致すべき。
+// digest kernel: struct version of particles. The operation sequence is identical to particles.cs
+// (the SoA array version), and the digest must match too.
 public struct Particle
 {
     public float Px;

@@ -1,8 +1,8 @@
-// lubx の描く API が毎 frame の呼び出しで確保しないことの検査 (Sys.ProfileLines の行ごとの確保で見る)。
-// ../child/Child.cs を App.Use で開いて見る。
-// 開いた app の OnFrame は毎 frame、Child.cs:20 で配列を作り (確保が付く対照)、Child.cs:21 で Color.Rgb を作り、Child.cs:24 と Child.cs:25 で Text.Draw で 10 文字ずつ描き、Child.cs:26 と Child.cs:27 で SpriteBatch.Rect を描き、Child.cs:30 で Quat、Child.cs:31 で Rect を作る。
-// 数え始めてから 4 frame の後に、Child.cs:20 に確保が付き、Child.cs:21、Child.cs:25、Child.cs:27、Child.cs:30、Child.cs:31 には付かないことを見る (glyph と kerning は最初の frame で作り終える)。
-// Child.cs:24 と Child.cs:26 は、SpriteBatch が frame の最初にその atlas の texture を宣言し直す分 (Atlas.Ensure) を含むので見ない。
+// Checks that the lubx drawing APIs do not allocate on per-frame calls (checked through the per-line allocations of Sys.ProfileLines).
+// Opens ../child/Child.cs with App.Use and inspects it.
+// Every frame, the OnFrame of the opened app creates an array at Child.cs:20 (a control that allocates), creates a Color.Rgb at Child.cs:21, draws 10 characters each with Text.Draw at Child.cs:24 and Child.cs:25, draws SpriteBatch.Rect at Child.cs:26 and Child.cs:27, and creates a Quat at Child.cs:30 and a Rect at Child.cs:31.
+// 4 frames after counting starts, checks that Child.cs:20 has allocations and that Child.cs:21, Child.cs:25, Child.cs:27, Child.cs:30, and Child.cs:31 have none (glyphs and kerning are all created in the first frame).
+// Child.cs:24 and Child.cs:26 include the SpriteBatch redeclaring its atlas texture at the start of the frame (Atlas.Ensure), so they are not checked.
 using System;
 using Lub;
 
@@ -12,7 +12,7 @@ public static class Game
 
     static string ChildCsproj()
     {
-        // GAME_CS は <dir>/game/Game.cs
+        // GAME_CS is <dir>/game/Game.cs
         var game = Environment.GetEnvironmentVariable("GAME_CS") ?? "";
         return game.Replace("game/Game.cs", "child/Child.csproj");
     }
@@ -36,7 +36,7 @@ public static class Game
             App.Quit(1);
             return;
         }
-        // build を待つ間は Step が false
+        // Step is false while waiting for the build
         if (!ok) return;
         frame++;
         if (frame == 2)

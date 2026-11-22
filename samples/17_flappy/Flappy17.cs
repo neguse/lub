@@ -1,5 +1,5 @@
-// lub の samples/17_flappy 相当を TinyC# で書いた entry。
-// 実行: lub samples/17_flappy/Flappy17.csproj (transpile + watch + hot reload)
+// Entry equivalent to lub's samples/17_flappy, written in TinyC#.
+// Run: lub samples/17_flappy/Flappy17.csproj (transpile + watch + hot reload)
 
 using System;
 using System.Collections.Generic;
@@ -89,8 +89,8 @@ public static class Flappy17
         var b = Gfx.UseBuffer("cube_verts", Gfx.BufferType.Storage, cubeVerts);
         if (s == null || b == null) return;
 
-        // key_pressed / mouse_pressed はフレームラッチされたエッジ検出。
-        // タップ (web) は SDL の合成でマウス左ボタンとして届く。
+        // key_pressed / mouse_pressed are frame-latched edge detection.
+        // A tap (web) arrives as the left mouse button, synthesized by SDL.
 
         var flap = Input.KeyPressed("space") || Input.MousePressed();
         if (!dead)
@@ -128,8 +128,8 @@ public static class Flappy17
                 Audio.Play(Sfx.Noise(0.3f, 0.5f));
             }
 
-            // 落下速度に pitch が追従する風切り音 (毎フレーム宣言する声)。
-            // 宣言をやめれば fade out するので stop 管理は要らない。
+            // Wind noise whose pitch follows the falling speed (a voice declared every frame).
+            // Stopping the declaration fades it out, so no stop management is needed.
             var wind = Math.Min(1.0f, Math.Abs(velocityY) * 0.25f);
             Audio.Voice("wind", Sfx.Noise(0.3f, 0.5f), new VoiceOpts
             {

@@ -5,21 +5,21 @@ using TinySystem.Text;
 
 namespace TcsVm;
 
-/// <summary>1 つの関数を IL から命令列にする (doc/vm-design.md §15)。旧 tcsvm/Emitter/FunctionCompiler.cs (C#) を TinyC# に写したもの。
-/// register の種類は関数の中で固定し (§6.1)、temp は種類と型ごとの空き list で使い回す。
-/// サブセットは partial を持たないので、1 つの class を 1 つのファイルに置く。</summary>
+/// <summary>Turns one function from IL into an instruction sequence (doc/vm-design.md §15). A port of the old tcsvm/Emitter/FunctionCompiler.cs (C#) to TinyC#.
+/// Register kinds are fixed within a function (§6.1), and temps are reused through free lists per kind and type.
+/// The subset has no partial, so each class lives in one file.</summary>
 public sealed class FunctionCompiler
 {
     private ModuleBuilder _m;
     private FunctionDef _f;
     private string _className;
-    // 命令の 64 bit の語の下と上の 32 bit
+    // Lower and upper 32 bits of a 64-bit instruction word
     private List<int> _lo = new List<int>();
     private List<int> _hi = new List<int>();
     private List<Dictionary<string, Var>> _scopes = new List<Dictionary<string, Var>>();
-    // 型を書かない local (`IlLocal("__tcs_ret", null, null)`) の型: 同じ文の列の後の多重代入の左辺から決める
+    // Type of a local without a written type (`IlLocal("__tcs_ret", null, null)`): determined from the left-hand side of a later multiple assignment in the same statement sequence
     private Dictionary<string, VType> _untyped = new Dictionary<string, VType>();
-    // 空いた temp の register (RegInfo.Key() → 積んだ順。最後に積んだものから使う)
+    // Free temp registers (RegInfo.Key() → in push order; the last pushed is used first)
     private Dictionary<string, List<int>> _free = new Dictionary<string, List<int>>();
     private List<int> _temps = new List<int>();
     private Dictionary<string, List<int>> _freeBlocks = new Dictionary<string, List<int>>();
@@ -27,13 +27,13 @@ public sealed class FunctionCompiler
     private List<LoopLabels> _loops = new List<LoopLabels>();
     private List<Label> _breakScopes = new List<Label>();
     private List<IifeFrame> _iifes = new List<IifeFrame>();
-    /// <summary>return ごとに戻り値の後ろに足す変数 (struct の instance method の self、out の引数)。</summary>
+    /// <summary>Variables appended after the return values at each return (the self of a struct instance method, out arguments).</summary>
     private List<Var> _extraRets = new List<Var>();
     private HashSet<int> _labelTargets = new HashSet<int>();
     private HashSet<string> _captured = new HashSet<string>();
     private VType _returnType = VType.Void;
     private int _lastLine = -1;
-    // --trace: 直前の文 (同じ構文から分けた文の列では、先頭でだけ行を記録する)
+    // --trace: the previous statement (in a statement sequence split from the same syntax, the line is recorded only at the first one)
     private IlStat? _prevTraceStat;
     private int _lambdas;
 
@@ -44,10 +44,10 @@ public sealed class FunctionCompiler
         _className = className;
     }
 
-    // 命令の数 (C# 版の _code.Count)
+    // Instruction count (_code.Count in the C# version)
     private int CodeCount => _lo.Count;
 
-    // ---- 入口 ----
+    // ---- Entry points ----
 
     public void CompileMethod(ExMethod method)
     {
@@ -76,8 +76,8 @@ public sealed class FunctionCompiler
         Finish();
     }
 
-    /// <summary>struct の member (il-spec §10)。instance member は self を値で受け、return ごとに self の今の値を
-    /// 戻り値の後ろに返す (呼ぶ側が場所に書き戻す。copy-in / copy-out)。</summary>
+    /// <summary>Struct members (il-spec §10). Instance members receive self by value and, at each return, return the current value of self
+    /// after the return values (the caller writes it back to the location; copy-in / copy-out).</summary>
     public void CompileStructMethod(ExMethod method)
     {
         if (method.Body == null)
@@ -105,7 +105,7 @@ public sealed class FunctionCompiler
         Finish();
     }
 
-    /// <summary>struct の constructor: 0 の値 → field の initializer → 本文、で作った self を返す (il-spec §10)。</summary>
+    /// <summary>Struct constructor: returns self built as zero value → field initializers → body (il-spec §10).</summary>
     public void CompileStructCtor(ExCtor ctor, List<ExField> initializers)
     {
         var selfType = VType.OfStruct(_className);
@@ -137,7 +137,7 @@ public sealed class FunctionCompiler
         Finish();
     }
 
-    /// <summary>constructor: field の initializer、本文の順 (il-spec §9)。field の default は NEW が 0 で埋める。</summary>
+    /// <summary>Constructor: field initializers, then the body (il-spec §9). NEW fills field defaults with 0.</summary>
     public void CompileCtor(ExCtor? ctor, List<ExField> initializers)
     {
         var body = ctor != null && ctor.Body != null ? ctor.Body : new IlBlock(new List<IlStat>());
@@ -163,13 +163,13 @@ public sealed class FunctionCompiler
         Finish();
     }
 
-    /// <summary>class の static field の initializer をまとめた関数 ("C.&lt;static&gt;")。</summary>
+    /// <summary>A function that collects the initializers of a class's static fields ("C.&lt;static&gt;").</summary>
     public void CompileStaticInit(List<ExField> fields, bool lazy)
     {
         _scopes.Add(new Dictionary<string, Var>());
         if (lazy)
         {
-            // 1 回だけ: flag を先に立てるので、循環は初期化中の値 (default) を読む (C# と同じ)
+            // Only once: the flag is set first, so a cycle reads the value under initialization (default) (same as C#)
             int flag = _m.InitFlag(_className);
             var t = Temp(VType.Bool);
             var go = new Label();
@@ -191,8 +191,8 @@ public sealed class FunctionCompiler
         Finish();
     }
 
-    /// <summary>reload で足した instance field の initializer (doc/object-model.md §6)。引数を取らず、field の値を返す
-    /// (C# の field initializer は this を読めない)。</summary>
+    /// <summary>Initializer of an instance field added by reload (doc/object-model.md §6). Takes no arguments and returns the field value
+    /// (a C# field initializer cannot read this).</summary>
     public void CompileFieldInit(ExField field)
     {
         _returnType = _m.Parse(field.Type);
@@ -234,10 +234,10 @@ public sealed class FunctionCompiler
         foreach (var ch in IlNodes.Children(n)) FindPatternType(ch, name);
     }
 
-    /// <summary>lambda: 引数の型は delegate の型 ft から、捕捉は caps の名前と中の型。</summary>
+    /// <summary>Lambda: parameter types come from the delegate type ft, and captures from the names in caps and their inner types.</summary>
     public void CompileLambda(IlClosure c, VType ft, List<NamedType> caps, string file, int line)
     {
-        // 式本体の lambda は位置を持たないことがあるので、作った場所の行から始める
+        // An expression-bodied lambda may have no position, so start from the line where it was created
         _f.File = file;
         if (line > 0) _f.Lines.Add(new LinePc(0, line));
         object body = c.Body != null ? c.Body : c.ExprBody!;
@@ -250,7 +250,7 @@ public sealed class FunctionCompiler
         var ps = new List<VType>();
         foreach (var p in ft.Params) ps.Add(p);
         Prologue(body, null, c.Params, ps, null, false);
-        // pattern の変数 (`o is Circle c`): 型は本文の型 test から
+        // Pattern variables (`o is Circle c`): the type comes from the type test in the body
         foreach (var name in c.PatternLocals) Declare(name, PatternLocalType(body, name), null);
         for (int i = 0; i < caps.Count; i++)
         {
@@ -268,8 +268,8 @@ public sealed class FunctionCompiler
         Finish();
     }
 
-    /// <summary>引数を register に置き、closure が捕捉する引数は cell に移す。outs は out の引数 (local にして
-    /// return ごとに返す)、selfOut は struct の self を return ごとに返す。</summary>
+    /// <summary>Places the parameters in registers and moves parameters captured by closures into cells. outs are the out parameters (made into locals and
+    /// returned at each return), and selfOut returns the struct's self at each return.</summary>
     private void Prologue(object body, VType? selfType, List<string> names, List<VType> types, List<NamedType>? outs, bool selfOut)
     {
         _captured = IlWalk.Captured(body);
@@ -281,7 +281,7 @@ public sealed class FunctionCompiler
         {
             pnames.Add("self");
             pvals.Add(NewVal(selfType));
-            // class の self は呼び出しの間ずっと parameter の register にある (struct の self は値なので個体を持たない)
+            // A class's self stays in the parameter register for the whole call (a struct's self is a value, so it has no identity)
             if (selfType.Tag == VT.Class) _traceSelf = pvals[0].Regs[0] + 1;
         }
         for (int i = 0; i < names.Count; i++)
@@ -296,7 +296,7 @@ public sealed class FunctionCompiler
         }
         for (int i = 0; i < pnames.Count; i++)
             _scopes[0][pnames[i]] = _captured.Contains(pnames[i]) ? NewCell(pvals[i]) : Var.OfReg(pvals[i]);
-        // 戻り値の後に out の値、最後に struct の self (呼ぶ側の StructCall と同じ順)
+        // After the return values come the out values, and last the struct's self (same order as the caller's StructCall)
         if (outs != null)
         {
             foreach (var o in outs)
@@ -325,8 +325,8 @@ public sealed class FunctionCompiler
     private void Finish()
     {
         if (CFail.Failed) return;
-        // 末尾に落ちる経路があれば終端を足す。値を返す関数の末尾には届かない (C# が保証) が、
-        // verifier が通る形にするため型の合う RET を置く
+        // If a path falls off the end, add a terminator. The end of a value-returning function is unreachable (C# guarantees it), but
+        // place a RET of the matching type so the verifier passes.
         if (!EndsFlow())
         {
             if (_returnType.Tag == VT.Void) EmitReturn(null);
@@ -395,7 +395,7 @@ public sealed class FunctionCompiler
         return new Val(t, regs);
     }
 
-    /// <summary>文の終わり: その文の temp と呼び出しの引数の区画を空きに戻す。</summary>
+    /// <summary>End of a statement: returns the statement's temps and call argument blocks to the free pool.</summary>
     private void EndStatement()
     {
         foreach (var r in _temps)
@@ -421,7 +421,7 @@ public sealed class FunctionCompiler
         _blocksInUse.Clear();
     }
 
-    /// <summary>連続する register の区画 (呼び出しの引数と戻り値)。同じ並びの区画を文の間で使い回す。</summary>
+    /// <summary>A block of consecutive registers (call arguments and return values). Blocks with the same layout are reused across statements.</summary>
     private int Block(List<VType> leafTypes)
     {
         if (leafTypes.Count == 0) return 0;
@@ -454,8 +454,8 @@ public sealed class FunctionCompiler
         return r;
     }
 
-    // ---- 命令 ----
-    // 語は op (8 bit) | a (16) << 8 | b (16) << 24 | c (16) << 40 | x (8) << 56。即値の形は op | a << 8 | imm (32) << 24
+    // ---- Instructions ----
+    // A word is op (8 bit) | a (16) << 8 | b (16) << 24 | c (16) << 40 | x (8) << 56. The immediate form is op | a << 8 | imm (32) << 24
 
     private void Emit(Op op, int a = 0, int b = 0, int c = 0, int x = 0)
     {
@@ -530,7 +530,7 @@ public sealed class FunctionCompiler
             _f.Lines.Add(new LinePc(_lo.Count, line));
     }
 
-    // path の最後の部分 (Path.GetFileName)
+    // The last part of a path (Path.GetFileName)
     private static string FileName(string path)
     {
         var u = new Utf8Bytes(path);
@@ -542,7 +542,7 @@ public sealed class FunctionCompiler
         return u.Slice(start, u.Length - start).ToString();
     }
 
-    // ---- 変数 ----
+    // ---- Variables ----
 
     private Var? Lookup(string name)
     {
@@ -553,7 +553,7 @@ public sealed class FunctionCompiler
         return null;
     }
 
-    /// <summary>新しい変数を宣言する。closure が捕捉する名前なら cell に住む。</summary>
+    /// <summary>Declares a new variable. A name captured by a closure lives in a cell.</summary>
     private Var Declare(string name, VType type, IlExpr? init)
     {
         Var v;
@@ -599,18 +599,18 @@ public sealed class FunctionCompiler
         for (int k = 0; k < leaves.Count; k++) Emit(Pick(Op.STF_I32, leaves[k].Kind), cell, v.Regs[k], k);
     }
 
-    // object / interface どうしの参照の比較 (IL の __tcs_refeq。record の値の等価と分けるため IL は __tcs_refeq で書く)。
-    // VM の == は参照の比較なので、Eq の二項演算として読む (無ければ null)
+    // Reference comparison between objects / interfaces (IL's __tcs_refeq. IL writes it as __tcs_refeq to keep it apart from record value equality).
+    // The VM's == compares references, so read it as an Eq binary operation (null if there is none)
     private static IlExpr? RefEq(IlExpr e)
     {
         if (e is IlCall c && c.Callee == "__tcs_refeq" && c.Args.Count == 2) return new IlBin(IlBinOp.Eq, c.Args[0], c.Args[1], null);
         return null;
     }
 
-    // 種類ごとに並んだ命令 (I32、F32、Bool、Ref の順) から kind の命令を選ぶ
+    // Picks the instruction for kind from instructions listed per kind (in the order I32, F32, Bool, Ref)
     private static Op Pick(Op i32, Kind kind) => (Op)((int)i32 + (int)kind);
 
-    // 誤りを記録した後に返す仮の値 (出力は使われない)
+    // Placeholder value returned after recording an error (the output is not used)
     private Val BadVal()
     {
         var regs = new List<int>();
@@ -618,7 +618,7 @@ public sealed class FunctionCompiler
         return new Val(VType.Int, regs);
     }
 
-    // ---- 文 ----
+    // ---- Statements ----
 
     private void Block(IlBlock block, bool newScope = true)
     {
@@ -628,8 +628,8 @@ public sealed class FunctionCompiler
         if (newScope) _scopes.RemoveAt(_scopes.Count - 1);
     }
 
-    /// <summary>型も初期値も無い local は、続く多重代入 (out の呼び出しの結果を受ける) の左辺の位置の型にする。
-    /// 式の中の out の呼び出し (`bool ok = Host.Try(x, out y)`) を IL は IIFE の temp と多重代入にする。</summary>
+    /// <summary>A local with neither a type nor an initial value gets the type of its position on the left-hand side of the following multiple assignment (which receives the result of an out call).
+    /// IL turns an out call inside an expression (`bool ok = Host.Try(x, out y)`) into an IIFE temp and a multiple assignment.</summary>
     private void TypeUntypedLocals(List<IlStat> stats)
     {
         for (int i = 0; i < stats.Count; i++)
@@ -648,11 +648,11 @@ public sealed class FunctionCompiler
         }
     }
 
-    // --trace: 行の印に付ける self の register + 1 (class の instance の method でなければ 0)
+    // --trace: self's register + 1 attached to the line marker (0 unless this is an instance method of a class)
     private int _traceSelf;
 
-    // --trace: 文の頭で行を通った印を置く (class の instance の method なら self も付け、VM が (行, self) の組で記録する)。
-    // builder が 1 つの文を同じ Origin の文の列に分けたときは、列の先頭でだけ置く
+    // --trace: places a marker at the start of a statement saying the line was passed (in an instance method of a class, self is attached too, and the VM records the (line, self) pair).
+    // When the builder split one statement into a sequence of statements with the same Origin, the marker is placed only at the start of the sequence.
     private void TraceStat(IlStat s)
     {
         var origin = s.Origin;
@@ -669,8 +669,8 @@ public sealed class FunctionCompiler
         EmitImm(Op.TRACE, _traceSelf, _m.TraceLine(origin.File, origin.Line));
     }
 
-    // --trace: 代入の後に、代入先の値を控える。
-    // 代入先は副作用無しに読み直せるもの (変数、field、定数か変数の添字) だけで、builder の作った一時変数は除く
+    // --trace: after an assignment, records the value of the target.
+    // Only targets that can be read again without side effects (variables, fields, indexes by a constant or variable), excluding temporaries the builder created
     private void TraceValue(IlExpr target, IlPos? origin)
     {
         if (origin == null || !_m.IsTraced(origin.File)) return;
@@ -683,8 +683,8 @@ public sealed class FunctionCompiler
         for (int k = 0; k < v.Regs.Count; k++) Emit(Op.TVAL, v.Regs[k], k, site);
     }
 
-    // 代入先の C# の書き方 (読み直せないものは "")。
-    // 自分の class の static は class 名を付けずに書く (書いた形に近い)
+    // How the target is written in C# ("" for ones that cannot be read again).
+    // Statics of the class itself are written without the class name (closer to how they were written)
     private string TraceLabel(IlExpr e)
     {
         if (e is IlVar v)
@@ -733,7 +733,7 @@ public sealed class FunctionCompiler
         }
         else if (s is IlAssign discard && discard.Target is IlVar dv && dv.Name == "_" && Lookup("_") == null)
         {
-            // 捨てる out (`out _`): builder は宣言の無い `_` に値を代入する
+            // Discarded out (`out _`): the builder assigns the value to an undeclared `_`
             Expr(discard.Value, null, true);
         }
         else if (s is IlAssign assign)
@@ -766,7 +766,7 @@ public sealed class FunctionCompiler
             var cont = new Label();
             var exit = new Label();
             Mark(top);
-            // 条件は反復ごとに評価するので、毎回行を記録する (先頭の文の印とは別に)
+            // The condition is evaluated on every iteration, so the line is recorded each time (separately from the marker of the first statement)
             if (!(w.Cond is IlLit)) TracePoint(w.Origin);
             Cond(w.Cond, false, exit);
             EndStatement();
@@ -817,7 +817,7 @@ public sealed class FunctionCompiler
         {
             var frame = _iifes[_iifes.Count - 1];
             if (iret.Value != null && frame.Result != null) ExprAs(iret.Value, frame.Type, frame.Result);
-            else if (iret.Value != null) Expr(iret.Value, null, true); // void の IIFE の `return f()` (`a?.M()` の文)
+            else if (iret.Value != null) Expr(iret.Value, null, true); // `return f()` in a void IIFE (the statement `a?.M()`)
             Jump(Op.JMP, frame.End);
         }
         else if (s is IlReturn ret)
@@ -838,7 +838,7 @@ public sealed class FunctionCompiler
         }
         else if (s is IlForPairs fp && P1IsClear(fp))
         {
-            // List.Clear / Dictionary.Clear の lowering (全部の key に null を入れる)
+            // Lowering of List.Clear / Dictionary.Clear (stores null for every key)
             var ct = TypeOf(fp.Coll);
             var coll = Expr(fp.Coll);
             if (ct.Tag == VT.List) Emit(Op.LIST_CLEAR, coll.Reg);
@@ -869,7 +869,7 @@ public sealed class FunctionCompiler
         EndStatement();
     }
 
-    // C# 版の `IlForPairs { VVar: null, Body.Stats: [IlAssign { Target: IlIndex { Recv: IlVar cv, Idx: IlVar ck },
+    // The C# version's `IlForPairs { VVar: null, Body.Stats: [IlAssign { Target: IlIndex { Recv: IlVar cv, Idx: IlVar ck },
     // Value: IlLit { Kind: IlLitKind.Null } }] } fp when fp.Coll is IlVar cv2 && cv2.Name == cv.Name && ck.Name == fp.KVar`
     private static bool P1IsClear(IlForPairs fp)
     {
@@ -881,13 +881,13 @@ public sealed class FunctionCompiler
         return false;
     }
 
-    /// <summary>return: 戻り値の葉に、struct の self と out の引数の今の値を続けて返す。</summary>
+    /// <summary>return: returns the leaves of the return value followed by the current values of the struct's self and the out parameters.</summary>
     private void EmitReturn(IlExpr? value)
     {
         var value0 = value;
         if (value0 != null && _returnType.Tag == VT.Void)
         {
-            // 式本体の void method (`void Push(int v) => items.Add(v);`): 式を評価して捨てる
+            // Expression-bodied void method (`void Push(int v) => items.Add(v);`): evaluates the expression and discards it
             Expr(value0, null, true);
             value0 = null;
         }
@@ -935,8 +935,8 @@ public sealed class FunctionCompiler
         return b;
     }
 
-    /// <summary>数の for (IlNumericFor: v を start から limit まで 1 ずつ増やす)。limit は 1 回だけ評価し、
-    /// v が本文で書き換えられるときは隠れた counter を回す (il-reference: IlNumericFor)。</summary>
+    /// <summary>Numeric for (IlNumericFor: increments v by 1 from start to limit). limit is evaluated only once, and
+    /// when the body rewrites v, a hidden counter drives the loop (il-reference: IlNumericFor).</summary>
     private void NumericFor(IlNumericFor nf)
     {
         _scopes.Add(new Dictionary<string, Var>());
@@ -972,8 +972,8 @@ public sealed class FunctionCompiler
         _scopes.RemoveAt(_scopes.Count - 1);
     }
 
-    /// <summary>foreach (List / 配列)。反復変数は反復ごとに新しい (il-spec §7)。
-    /// 長さは反復ごとに読み直す (本文が足した要素も回る)。</summary>
+    /// <summary>foreach (List / array). The iteration variable is new for each iteration (il-spec §7).
+    /// The length is read again on each iteration (elements the body adds are visited too).</summary>
     private void ForeachList(IlForeachList fl)
     {
         _scopes.Add(new Dictionary<string, Var>());
@@ -1048,7 +1048,7 @@ public sealed class FunctionCompiler
             }
             return false;
         }
-        if (s is IlLocal l) return l.Name == name; // 同名の local が隠す: 保守的に counter を分ける
+        if (s is IlLocal l) return l.Name == name; // A local with the same name shadows it: conservatively use a separate counter
         if (s is IlIf i)
         {
             foreach (var a in i.Arms)
@@ -1066,7 +1066,7 @@ public sealed class FunctionCompiler
         return false;
     }
 
-    // ---- 代入と格納場所 ----
+    // ---- Assignment and storage locations ----
 
     private void Assign(IlExpr target, IlExpr value)
     {
@@ -1077,8 +1077,8 @@ public sealed class FunctionCompiler
             var vr = Lookup(v.Name);
             if (vr != null)
             {
-                // 結果を local へ直接書く。with / 初期化子 / `??` などは dest を書いてから残りを評価するので、
-                // 最後の命令だけが dest を書く形でない右辺が local を読むなら temp を経る
+                // Writes the result straight to the local. with / initializers / `??` and so on write dest before evaluating the rest, so
+                // if a right-hand side that does not write dest only with its last instruction reads the local, go through a temp
                 if (vr.K == VarKind.Reg && (WritesDestLast(value) || !MayRead(value, v.Name)))
                     ExprAs(value, vr.Type, vr.Val!);
                 else if (vr.K == VarKind.Reg)
@@ -1093,7 +1093,7 @@ public sealed class FunctionCompiler
             var dt = TypeOf(di.Recv);
             if (dt.Tag == VT.Dict)
             {
-                // C# と同じく key、値の順に評価してから入れる
+                // As in C#, evaluates the key and then the value before storing
                 var dict = Expr(di.Recv);
                 var key = ExprAs(di.Idx, dt.Key!, null);
                 var dv = ExprAs(value, dt.Value!, null);
@@ -1108,7 +1108,7 @@ public sealed class FunctionCompiler
         StorePlace(place, val);
     }
 
-    // 子を temp に評価してから最後の命令だけで dest を書く式 (dest を子に渡さない)
+    // Expressions that evaluate their children into temps and write dest only with the last instruction (dest is not passed to the children)
     private static bool WritesDestLast(IlExpr e)
     {
         switch (e)
@@ -1127,7 +1127,7 @@ public sealed class FunctionCompiler
         return false;
     }
 
-    // node (IL の式か文) の中に変数 name の出現があるか。名前で数えるので保守的
+    // Whether the variable name occurs inside node (an IL expression or statement). Counts by name, so it is conservative
     private static bool MayRead(object node, string name)
     {
         if (node is IlVar x) return x.Name == name;
@@ -1173,7 +1173,7 @@ public sealed class FunctionCompiler
                 var obj = Expr(f.Recv);
                 return Place.Make(type, "field", 0, obj, null, null, LeafIndex(_m.ObjectLeaves(recvType), f.Name), null);
             }
-            // struct の中の field: 外側の場所の葉の範囲を狭める
+            // A field inside a struct: narrows the leaf range of the outer location
             var outer = PlaceOf(f.Recv);
             var inner = LeafIndex(_m.Leaves(recvType), f.Name);
             var q = outer.Copy();
@@ -1202,7 +1202,7 @@ public sealed class FunctionCompiler
         }
         if (TypeOf(e).IsAggregate)
         {
-            // 値 (呼び出しの結果など) の field: 値を temp に置いて、その中の葉を読む (書いても捨てられる。C# と同じ)
+            // A field of a value (a call result, etc.): puts the value in a temp and reads the leaves in it (writes are discarded, same as C#)
             var tv = CopyToTemp(Expr(e));
             return Place.Make(tv.Type, "local", 0, tv, null, null, 0, null);
         }
@@ -1217,7 +1217,7 @@ public sealed class FunctionCompiler
         return d;
     }
 
-    /// <summary>遅延初期化の型の static に触る前に、その型の initializer を (まだなら) 走らせる。</summary>
+    /// <summary>Before touching a static of a lazily initialized type, runs that type's initializer (if it has not run yet).</summary>
     private void EnsureStaticInit(string owner)
     {
         var owner0 = _m.CanonName(owner);
@@ -1236,7 +1236,7 @@ public sealed class FunctionCompiler
         Mark(done);
     }
 
-    /// <summary>Dictionary の key の entry。読みは無い key で fault (DICT_FIND)、書きは足す (DICT_INS)。</summary>
+    /// <summary>Entry for a Dictionary key. Reading a missing key faults (DICT_FIND); writing adds it (DICT_INS).</summary>
     private Place DictPlace(IlIndex idx, VType d, bool insert)
     {
         var dict = Expr(idx.Recv);
@@ -1328,7 +1328,7 @@ public sealed class FunctionCompiler
             else EmitImm(Op.LDK, v.Regs[k], 0);
     }
 
-    // ---- 型 ----
+    // ---- Types ----
 
     private VType TypeOf(IlExpr e)
     {
@@ -1465,8 +1465,8 @@ public sealed class FunctionCompiler
         return VType.Int;
     }
 
-    /// <summary>`c ? a : b` の型。片方が null ならもう片方、参照型どうしで違えば object (C# の target-typed な条件式で、
-    /// 代入先が object / interface のときだけ通る)。</summary>
+    /// <summary>Type of `c ? a : b`. If one side is null, the other side; if two reference types differ, object (a C# target-typed conditional expression,
+    /// which passes only when the target is object / interface).</summary>
     private static VType TernaryType(VType t, VType f)
     {
         if (t.Tag == VT.Null) return f;
@@ -1479,8 +1479,8 @@ public sealed class FunctionCompiler
         if (t.ElementType == null && t.ObjectType != null)
         {
             var host = _m.Parse(t.ObjectType);
-            if (host.Tag == VT.Class) return host; // host の data class の record
-            if (host.Tag == VT.Struct) return host; // --ref の struct
+            if (host.Tag == VT.Class) return host; // A record of a host data class
+            if (host.Tag == VT.Struct) return host; // A --ref struct
         }
         if (t.ElementType == null)
         {
@@ -1506,7 +1506,7 @@ public sealed class FunctionCompiler
         var op = b.Op;
         if (op == IlBinOp.Eq || op == IlBinOp.Ne || op == IlBinOp.Lt || op == IlBinOp.Le || op == IlBinOp.Gt || op == IlBinOp.Ge)
             return VType.Bool;
-        // IL の `a or b` は、ref の値なら null の合体 (`??`)
+        // IL's `a or b` is null coalescing (`??`) for ref values
         if (op == IlBinOp.And || op == IlBinOp.Or)
         {
             var l = TypeOf(b.L);
@@ -1599,7 +1599,7 @@ public sealed class FunctionCompiler
         return cm;
     }
 
-    // C# 版の `_m.Classes[name].Methods` (無い key は KeyNotFoundException)
+    // `_m.Classes[name].Methods` in the C# version (a missing key throws KeyNotFoundException)
     private List<ExMethod> P1ClassMethods(string cls)
     {
         if (!_m.Classes.TryGetValue(cls, out ExClass? info))
@@ -1610,8 +1610,8 @@ public sealed class FunctionCompiler
         return info.Methods;
     }
 
-    // C# 版の Methods.SingleOrDefault(m => m.Name == name [&& m.IsStatic | && !m.IsStatic])。
-    // staticMode: 0 は static を問わない、1 は static だけ、2 は instance だけ。2 つ以上あれば C# と同じく誤り
+    // Methods.SingleOrDefault(m => m.Name == name [&& m.IsStatic | && !m.IsStatic]) in the C# version.
+    // staticMode: 0 does not care about static, 1 is static only, 2 is instance only. Two or more matches is an error, as in C#
     private static ExMethod? P1SingleMethod(List<ExMethod> methods, string name, int staticMode)
     {
         ExMethod? found = null;
@@ -1630,9 +1630,9 @@ public sealed class FunctionCompiler
         return found;
     }
 
-    // ---- 式 ----
+    // ---- Expressions ----
 
-    /// <summary>型 to の値として評価する。null の literal、lambda、method group は型 to から作る。</summary>
+    /// <summary>Evaluates as a value of type to. A null literal, lambda, or method group is built from type to.</summary>
     private Val ExprAs(IlExpr e, VType to, Val? dest = null)
     {
         while (e is IlParen p) e = p.E;
@@ -1697,7 +1697,7 @@ public sealed class FunctionCompiler
         if (v.Type.Tag == VT.Null && to.Tag == VT.Nullable)
             return ZeroTemp(to);
         if (v.Type.Tag == VT.Nullable && VType.Same(v.Type.Inner, to))
-            return new Val(to, P2Regs.From(v.Regs, 1)); // pattern の変数へ (`some is int x` は値があると確かめた後で x = some)
+            return new Val(to, P2Regs.From(v.Regs, 1)); // Into a pattern variable (`some is int x` sets x = some after checking that it has a value)
         if (v.Type.Tag == VT.Nullable && to.Tag == VT.Nullable && VType.Same(v.Type.Inner, VType.Int)
             && VType.Same(to.Inner, VType.Float))
         {
@@ -1708,7 +1708,7 @@ public sealed class FunctionCompiler
         }
         if (to.Tag == VT.Nullable && !v.Type.IsRef && v.Type.Tag != VT.Nullable)
         {
-            // T → T? (il-spec §3 の IlNullableWrap と同じ)
+            // T → T? (same as IlNullableWrap in il-spec §3)
             var inner = Convert(v, to.Inner!);
             var t = Temp(to);
             EmitImm(Op.LDK, t.Regs[0], 1);
@@ -1717,7 +1717,7 @@ public sealed class FunctionCompiler
         }
         if (to.Tag == VT.Object && v.Type.Tag == VT.Prim)
         {
-            // 値型を object に入れる (box)
+            // Puts a value type into object (box)
             var box = VType.OfBox(v.Type.PKind);
             var t = Temp(to);
             Emit(Pick(Op.BOX_I32, v.Type.PKind), t.Reg, v.Reg, _m.TypeIndex(box));
@@ -1725,7 +1725,7 @@ public sealed class FunctionCompiler
         }
         if (to.Tag == VT.Array && v.Type.Tag == VT.List && VType.Same(v.Type.Elem, to.Elem))
         {
-            // List → 配列 (runtime が List で返す String.Split などを string[] に入れる)。要素を写す
+            // List → array (puts String.Split and other results the runtime returns as List into string[]). Copies the elements
             var lt = v.Type;
             var at = to;
             var arr = Temp(to);
@@ -1750,9 +1750,9 @@ public sealed class FunctionCompiler
             var t = Temp(to);
             if (to.Tag == VT.Object || (to.Tag == VT.Iface && v.Type.Tag == VT.Class) || to.Tag == VT.HostIface
                 || v.Type.Tag == VT.HostIface && to.Tag == VT.Object)
-                Emit(Op.MOV, t.Reg, v.Reg); // 広げる変換は検査が通す
+                Emit(Op.MOV, t.Reg, v.Reg); // Widening conversions pass the check
             else
-                // 狭める暗黙の変換は pattern の local への代入 (`q = s; q is Sq`)。合わなければ null にして型を保つ
+                // An implicit narrowing conversion is an assignment to a pattern local (`q = s; q is Sq`). If it does not match, it becomes null so the type is kept
                 Emit(Op.ASCAST, t.Reg, v.Reg, _m.TypeIndex(to));
             return t;
         }
@@ -1762,7 +1762,7 @@ public sealed class FunctionCompiler
 
     private Val Expr(IlExpr e, Val? dest = null, bool discard = false)
     {
-        // 誤りを報告した後は形 (葉の数) が当てにならないので、続きを作らない (誤りは呼び出し側が出す)
+        // After an error is reported, the shape (leaf count) is unreliable, so nothing more is built (the caller reports the error)
         if (CFail.Failed) return dest != null ? dest : BadVal();
         var refEq = RefEq(e);
         if (refEq != null) return Expr(refEq, dest, discard);
@@ -1805,7 +1805,7 @@ public sealed class FunctionCompiler
                 var fv = _m.ForeignValue(hv);
                 if (fv != null)
                 {
-                    // host の値: enum の定数は literal、ほかは引数の無い host の関数 (getter) で読む
+                    // Host values: enum constants are literals; others are read through a host function with no arguments (getter)
                     if (fv.HasConstant)
                     {
                         var d0 = dest != null ? dest : Temp(VType.Int);
@@ -1841,7 +1841,7 @@ public sealed class FunctionCompiler
             && Lookup(mc.Name) == null)
         {
             var d = dest != null ? dest : Temp(VType.Float);
-            // MathF.PI / MathF.E / MathF.Tau の binary32 の bit の並び (C# 版の BitConverter.SingleToUInt32Bits)
+            // Binary32 bit patterns of MathF.PI / MathF.E / MathF.Tau (BitConverter.SingleToUInt32Bits in the C# version)
             int value;
             if (mf.Name == "PI") value = 0x40490FDB;
             else if (mf.Name == "E") value = 0x402DF854;
@@ -1911,7 +1911,7 @@ public sealed class FunctionCompiler
             return d;
         }
         if (e is IlStructCopy sc)
-            // register は値なので、copy 地点 (il-spec §10) は評価そのもの。`__copy` 関数は要らない
+            // Registers are values, so the copy point (il-spec §10) is the evaluation itself. No `__copy` function is needed
             return Expr(sc.E, dest, false);
         if (e is IlNumericConvert nc)
         {
@@ -1919,14 +1919,14 @@ public sealed class FunctionCompiler
             var v = Expr(nc.Value, null, false);
             if (v.Type.IsRef && to.Tag == VT.Prim)
             {
-                // object からの unbox (実行時の型が違えば fault)
+                // Unbox from object (faults if the runtime type differs)
                 var ud = dest != null ? dest : Temp(to);
                 Emit(Pick(Op.UNBOX_I32, to.PKind), ud.Reg, v.Reg, _m.TypeIndex(VType.OfBox(to.PKind)));
                 return ud;
             }
             if (v.Type.Tag == VT.Nullable && to.Tag == VT.Nullable)
             {
-                // int? → float? (値があれば変換)
+                // int? → float? (converts if there is a value)
                 var nd = dest != null ? dest : Temp(to);
                 var none = new Label();
                 var end = new Label();
@@ -1942,7 +1942,7 @@ public sealed class FunctionCompiler
             }
             if (v.Type.Tag == VT.Nullable && to.Tag != VT.Nullable)
             {
-                // (T)T? は .Value と同じ (null なら fault)。中身を目的の型に変換する
+                // (T)T? is the same as .Value (faults if null). Converts the contents to the target type
                 Emit(Op.NVAL, v.Regs[0]);
                 v = new Val(v.Type.Inner!, P2Regs.From(v.Regs, 1));
             }
@@ -1969,7 +1969,7 @@ public sealed class FunctionCompiler
             var plv = Lookup(pv.Name);
             if (plv == null || plv.Type.Tag != VT.Nullable)
             {
-                // `n is int x` で n が int?: 値があるときだけ x に入れ、結果は値の有無
+                // `n is int x` where n is int?: stores into x only when there is a value; the result is whether there is a value
                 var nv0 = Expr(pa.Value, null, false);
                 var d = dest != null ? dest : Temp(VType.Bool);
                 var skip = new Label();
@@ -1988,7 +1988,7 @@ public sealed class FunctionCompiler
             var d = dest != null ? dest : Temp(VType.Bool);
             if (!v.Type.IsRef)
             {
-                EmitImm(Op.LDK, d.Reg, 0); // 値型は class / interface ではない (TCS1001 が外す形の残り)
+                EmitImm(Op.LDK, d.Reg, 0); // A value type is not a class / interface (what remains of the forms TCS1001 rejects)
                 return d;
             }
             Emit(Op.ISTYPE, d.Reg, v.Reg, _m.TypeIndex(_m.ParseTypeRef(it.TypeRef)));
@@ -1996,7 +1996,7 @@ public sealed class FunctionCompiler
         }
         if (e is IlIsPrimType vlt && (TypeOf(vlt.E).Tag == VT.Nullable || TypeOf(vlt.E).Tag == VT.Prim))
         {
-            // 値型の `x is int` (x が int? なら値の有無、int なら常に true)
+            // `x is int` on a value type (whether there is a value if x is int?, always true if x is int)
             var v = Expr(vlt.E, null, false);
             var d = dest != null ? dest : Temp(VType.Bool);
             if (v.Type.Tag == VT.Nullable) Emit(Op.MOV, d.Reg, v.Regs[0]);
@@ -2005,7 +2005,7 @@ public sealed class FunctionCompiler
         }
         if (e is IlIsPrimType ln && ln.Type == IlPrimType.Number)
         {
-            // object の `is int` / `is float` は IL では number (int と float の箱のどちらか)
+            // `is int` / `is float` on object is number in IL (either an int box or a float box)
             var v = Expr(ln.E, null, false);
             var d = dest != null ? dest : Temp(VType.Bool);
             var end = new Label();
@@ -2041,7 +2041,7 @@ public sealed class FunctionCompiler
             var v = Expr(rc.Value, null, false);
             if (!v.Type.IsRef && v.Type.Tag != VT.Null)
             {
-                // 値型の cast (`(S?)x` で x が S? / S) は変換だけ
+                // A value type cast (`(S?)x` where x is S? / S) is only a conversion
                 var cv = Convert(v, to);
                 if (dest == null) return cv;
                 return Store2(dest, cv);
@@ -2072,7 +2072,7 @@ public sealed class FunctionCompiler
             var d = dest != null ? dest : Temp(VType.Bool);
             if (v.Type.IsRef)
             {
-                // ref の null の判定
+                // Null check of a ref
                 var no = new Label();
                 var end = new Label();
                 Jump(Op.JNULL, no, v.Reg);
@@ -2116,7 +2116,7 @@ public sealed class FunctionCompiler
         return BadVal();
     }
 
-    // literal の値の 32 bit (type は式の静的型。float の位置の整数の literal は float の値にする)
+    // The 32 bits of a literal value (type is the static type of the expression. An integer literal in a float position becomes a float value)
     private static int LitBits(IlLit lit, VType type)
     {
         if (VType.Same(type, VType.Float))
@@ -2134,7 +2134,7 @@ public sealed class FunctionCompiler
                 CFail.Report(_f.Name + ": `and` on references");
                 return BadVal();
             }
-            // null の合体: 左が null でなければ左、null なら右 (右は必要なときだけ評価)
+            // Null coalescing: the left if it is not null, otherwise the right (the right is evaluated only when needed)
             var d = dest != null ? dest : Temp(resultType);
             var end = new Label();
             ExprAs(b.L, resultType, d);
@@ -2145,7 +2145,7 @@ public sealed class FunctionCompiler
         }
         if ((b.Op == IlBinOp.Eq || b.Op == IlBinOp.Ne) && (TypeOf(b.L).Tag == VT.Nullable || TypeOf(b.R).Tag == VT.Nullable))
         {
-            // T? と null の比較は値の有無、T? どうしは lifted の等価 (il-spec §3)
+            // Comparing T? with null checks for a value; comparing two T? is lifted equality (il-spec §3)
             var nullR = P2Regs.IsNil(b.R);
             var nullL = P2Regs.IsNil(b.L);
             if (nullR || nullL)
@@ -2169,7 +2169,7 @@ public sealed class FunctionCompiler
         if (b.Op == IlBinOp.Eq || b.Op == IlBinOp.Ne || b.Op == IlBinOp.Lt || b.Op == IlBinOp.Le || b.Op == IlBinOp.Gt
             || b.Op == IlBinOp.Ge || b.Op == IlBinOp.And || b.Op == IlBinOp.Or)
         {
-            // bool の値: 比較は EQ / LT / LE、論理は分岐で作る
+            // bool values: comparisons use EQ / LT / LE, and logical operators are built with branches
             var d = dest != null ? dest : Temp(VType.Bool);
             if (b.Op == IlBinOp.And || b.Op == IlBinOp.Or)
             {
@@ -2214,9 +2214,9 @@ public sealed class FunctionCompiler
         return ad;
     }
 
-    /// <summary>文字列化 (il-spec §13): int は 10 進、float は runtime/fmt、bool は True / False、string の null は空文字列。</summary>
-    /// <summary>IL の string.format (il-spec §13): 書式の literal を compile 時に文字列の部分と変換に分け、変換ごとに
-    /// runtime の fmt.i / fmt.f / fmt.s (変換 1 つの spec と値) を呼んで連結する。意味は tcs2c の tcs_string_format と同じ。</summary>
+    /// <summary>Stringification (il-spec §13): int is decimal, float uses runtime/fmt, bool is True / False, and a null string is the empty string.</summary>
+    /// <summary>IL string.format (il-spec §13): splits the format literal at compile time into string parts and conversions, and for each conversion
+    /// calls runtime fmt.i / fmt.f / fmt.s (the spec of one conversion and the value) and concatenates the results. The meaning is the same as tcs_string_format in tcs2c.</summary>
     private Val Format(List<int> format, List<IlExpr> args, Val? dest)
     {
         var parts = new List<Val>();
@@ -2303,7 +2303,7 @@ public sealed class FunctionCompiler
         return acc;
     }
 
-    // C# 版の Format の local 関数 Flush: 貯めた文字列の部分を 1 つの値にする
+    // The local function Flush of Format in the C# version: turns the accumulated string parts into one value
     private void FormatFlush(List<Val> parts, List<int> text)
     {
         if (text.Count == 0) return;
@@ -2337,7 +2337,7 @@ public sealed class FunctionCompiler
         if (t.Tag == VT.String || t.Tag == VT.Null) return ExprAs(e, VType.String, null);
         if (t.Tag == VT.Nullable)
         {
-            // T? の値なしは空文字列 (C# の補間と同じ)
+            // A T? with no value is the empty string (same as C# interpolation)
             var nv = Expr(e, null, false);
             var d0 = Temp(VType.String);
             var none = new Label();
@@ -2370,7 +2370,7 @@ public sealed class FunctionCompiler
             }
             if (ts != null)
             {
-                // ToString の override
+                // ToString override
                 return EmitCall(Op.CALL, RequestMethod(t.Name, ts), e, ts, new List<IlExpr>(), null);
             }
         }
@@ -2393,7 +2393,7 @@ public sealed class FunctionCompiler
         return d;
     }
 
-    /// <summary>二項の operand を評価し、int と float が混ざれば int を float に揃える (C# の暗黙変換)。</summary>
+    /// <summary>Evaluates the binary operands and, if int and float are mixed, converts the int to float (C# implicit conversion).</summary>
     private Val Operands(IlBin b, VType? want, out Val r, out VType t)
     {
         var lt = TypeOf(b.L);
@@ -2481,7 +2481,7 @@ public sealed class FunctionCompiler
         return Op.EQ_I32;
     }
 
-    /// <summary>条件分岐: cond が jumpIf のとき target へ跳ぶ。比較は融合した分岐命令にする。</summary>
+    /// <summary>Conditional branch: jumps to target when cond equals jumpIf. Comparisons become fused branch instructions.</summary>
     private void Cond(IlExpr cond, bool jumpIf, Label target)
     {
         var refEq = RefEq(cond);
@@ -2540,7 +2540,7 @@ public sealed class FunctionCompiler
         if (cond is IlBin nb && (nb.Op == IlBinOp.Eq || nb.Op == IlBinOp.Ne)
             && (TypeOf(nb.L).Tag == VT.Nullable || TypeOf(nb.R).Tag == VT.Nullable))
         {
-            // T? の比較は値の bool を作ってから分岐する (Bin が null との比較と lifted の等価を扱う)
+            // A T? comparison builds the bool value first and then branches (Bin handles comparison with null and lifted equality)
             var v = Bin(nb, null);
             Jump(jumpIf ? Op.JT : Op.JF, target, v.Reg);
             return;
@@ -2554,7 +2554,7 @@ public sealed class FunctionCompiler
             {
                 var l = Operands(b, null, out Val r, out VType t);
                 var f = VType.Same(t, VType.Float);
-                // a > b は b < a、a >= b は b <= a (NaN でも同じ)。a != b は !(a == b)
+                // a > b is b < a, a >= b is b <= a (also with NaN). a != b is !(a == b)
                 Op op;
                 var swap = false;
                 var inverted = false;
@@ -2576,12 +2576,12 @@ public sealed class FunctionCompiler
                     op = f ? Op.JT_EQ_F32 : Op.JT_EQ_I32;
                     inverted = true;
                 }
-                // JT_x と JF_x は隣り合う
+                // JT_x and JF_x are adjacent
                 var jop = jumpIf != inverted ? op : (Op)((int)op + 1);
                 Jump(jop, target, swap ? r.Reg : l.Reg, swap ? l.Reg : r.Reg);
                 return;
             }
-            // ref と null の比較は JNULL / JNN
+            // Comparing a ref with null uses JNULL / JNN
             var nullR = P2Regs.IsNil(b.R);
             var nullL = P2Regs.IsNil(b.L);
             if ((b.Op == IlBinOp.Eq || b.Op == IlBinOp.Ne) && nullR != nullL)
@@ -2600,7 +2600,7 @@ public sealed class FunctionCompiler
     {
         if (u.Op == IlUnOp.Neg)
         {
-            // 負の literal は定数にする
+            // Negative literals become constants
             if (u.E is IlLit lit)
             {
                 var t = LitType(lit);
@@ -2639,11 +2639,11 @@ public sealed class FunctionCompiler
         return BadVal();
     }
 
-    // ---- 呼び出し ----
+    // ---- Calls ----
 
     private Val Call(IlCall c, Val? dest, bool discard)
     {
-        // TinySystem.Dict.X / TinySystem.Math.X は Dict.X / Math.X と同じ
+        // TinySystem.Dict.X / TinySystem.Math.X are the same as Dict.X / Math.X
         if (c.Callee.StartsWith("TinySystem.Dict.") || c.Callee.StartsWith("TinySystem.Math."))
             return Call(new IlCall(Strings.From(c.Callee, Strings.ByteLength("TinySystem.")), c.Args, c.Origin), dest, discard);
         if (c.Callee == "__tcs_irem" || c.Callee == "__tcs_idiv" || c.Callee == "__tcs_cadd" || c.Callee == "__tcs_csub"
@@ -2780,7 +2780,7 @@ public sealed class FunctionCompiler
         var index = RequestMethod(cls, method);
         if (!method.IsStatic)
         {
-            // instance method を `C.M(recv, args)` の形で呼ぶ (ToString の override など)
+            // Calls an instance method in the form `C.M(recv, args)` (ToString overrides, etc.)
             var rest = new List<IlExpr>();
             for (int i = 1; i < c.Args.Count; i++) rest.Add(c.Args[i]);
             return EmitCall(Op.CALL, index, c.Args[0], method, rest, dest);
@@ -2788,8 +2788,8 @@ public sealed class FunctionCompiler
         return EmitCall(Op.CALL, index, null, method, c.Args, dest);
     }
 
-    /// <summary>struct / record struct の値の等価 (il-spec §10: 葉ごと。float は Equals と同じく NaN どうしが等しい、
-    /// string は内容、record class は field ごと、ほかの ref は identity)。</summary>
+    /// <summary>Value equality of struct / record struct (il-spec §10: per leaf. For float, NaN equals NaN as with Equals,
+    /// strings compare by content, record classes per field, and other refs by identity).</summary>
     private Val ValueEq(IlExpr a, IlExpr b, VType t, Val? dest)
     {
         var l = ExprAs(a, t, null);
@@ -2814,7 +2814,7 @@ public sealed class FunctionCompiler
             }
             var cmpType = lt.Tag == VT.Class || lt.Tag == VT.Iface || lt.Tag == VT.Object || lt.Tag == VT.Box ? VType.Object : lt;
             Op op = Compare(IlBinOp.Eq, cmpType, out bool swap0, out bool negate0);
-            // record と object / interface の葉は実行時の型の値の等価 (EqualityComparer<T>.Default。中の値が record なら field ごと)
+            // Record and object / interface leaves use value equality of the runtime type (EqualityComparer<T>.Default; if the inner value is a record, per field)
             if (lt.Tag == VT.Class && _m.Classes[lt.Name].IsRecord) op = Op.EQ_REC;
             if (lt.Tag == VT.Object || lt.Tag == VT.Iface || lt.Tag == VT.Box) op = Op.EQ_REC;
             Emit(op, eq.Reg, l.Regs[k], r.Regs[k]);
@@ -2879,15 +2879,15 @@ public sealed class FunctionCompiler
         return Typed(selfT, r, dest);
     }
 
-    /// <summary>itable の関数: 実装の型が selector の関数型と同じならそのまま、違えば (generic な interface の T を int や
-    /// string で実装した) 型を合わせる adapter を作る。</summary>
+    /// <summary>itable function: if the implementing type matches the selector's function type, it is used as is; otherwise (a generic interface's T implemented with int or
+    /// string) builds an adapter that converts the types.</summary>
     private int RequestImpl(string cls, ExMethod method, VType ft)
     {
         if (VType.Same(_m.SelectorType(method), ft)) return RequestMethod(cls, method);
         return _m.Request(cls + "." + method.Name + "<adapter>", def => new FunctionCompiler(_m, def, cls).CompileAdapter(method, ft));
     }
 
-    /// <summary>interface の selector の型で受け、実装の method を呼ぶ (引数は unbox / cast、戻り値は box / 広げる)。</summary>
+    /// <summary>Receives with the type of the interface selector and calls the implementing method (arguments are unboxed / cast, the return value is boxed / widened).</summary>
     public void CompileAdapter(ExMethod impl, VType ft)
     {
         _returnType = ft.Ret!;
@@ -2925,7 +2925,7 @@ public sealed class FunctionCompiler
         return _m.Request(cls + "." + method.Name, def => new FunctionCompiler(_m, def, cls).CompileMethod(method));
     }
 
-    /// <summary>引数を区画に直接書き、CALL を出す。recv は instance method の self (先頭の引数)。</summary>
+    /// <summary>Writes the arguments directly into the block and emits CALL. recv is the self of an instance method (the first argument).</summary>
     private Val EmitCall(Op op, int index, IlExpr? recv, ExMethod method, List<IlExpr> args, Val? dest)
     {
         var paramTypes = new List<VType>();
@@ -2956,7 +2956,7 @@ public sealed class FunctionCompiler
             ExprAs(allE[i], t, new Val(t, P3Regs.Range(at, n)));
             at += n;
         }
-        if (recv != null) Emit(Op.NNULL, block); // C# は引数の評価の後で null を見る
+        if (recv != null) Emit(Op.NNULL, block); // C# checks for null after evaluating the arguments
         return CallTail(op, block, index, _m.Parse(method.ReturnType), dest);
     }
 
@@ -2967,7 +2967,7 @@ public sealed class FunctionCompiler
             Emit(op, block, 0, index);
             return new Val(VType.Void, new List<int>());
         }
-        // 戻り値は連続する register に入る。dest が連続ならそこへ直接
+        // Return values go into consecutive registers. If dest is consecutive, they go there directly
         Val ret;
         if (dest != null && VType.Same(dest.Type, retType) && P3Regs.IsContiguous(dest.Regs))
             ret = dest;
@@ -2988,7 +2988,7 @@ public sealed class FunctionCompiler
         return ret;
     }
 
-    // host の instance method: 受け手を先頭の引数にした host の関数の呼び出し
+    // Host instance method: a call to a host function with the receiver as the first argument
     private Val HostMethodCall(ExForeignMethod fm, VType recvType, IlInvoke inv, Val? dest)
     {
         var withSelf = new ExForeignMethod();
@@ -3011,7 +3011,7 @@ public sealed class FunctionCompiler
         if (recvType.Tag == VT.Random) return RandomCall(inv, dest);
         if (recvType.Tag == VT.HostIface)
         {
-            // --ref の interface の method: C の module の dispatcher を host の関数として呼ぶ (受け手は先頭の引数)
+            // Method of a --ref interface: calls the C module's dispatcher as a host function (the receiver is the first argument)
             var fm = _m.ForeignInterfaceMethod(recvType.Name, inv.Method);
             if (fm == null)
             {
@@ -3022,7 +3022,7 @@ public sealed class FunctionCompiler
         }
         if (recvType.Tag == VT.Class && _m.Classes.TryGetValue(recvType.Name, out ExClass? hostClass) && hostClass.IsExternal)
         {
-            // host の data class の instance method (--ref の class): host の関数を呼ぶ (受け手は先頭の引数)
+            // Instance method of a host data class (a --ref class): calls the host function (the receiver is the first argument)
             var fm = _m.ForeignInterfaceMethod(recvType.Name, inv.Method);
             if (fm == null)
             {
@@ -3080,7 +3080,7 @@ public sealed class FunctionCompiler
         return EmitCall(Op.CALL, index, inv.Recv, method, inv.Args, dest);
     }
 
-    /// <summary>`C.M(...)` が IlDynCall(IlField(IlVar(C), M)) の形で来たときの static method (別の file の class の呼び出し)。</summary>
+    /// <summary>The static method when `C.M(...)` arrives in the form IlDynCall(IlField(IlVar(C), M)) (a call to a class in another file).</summary>
     private string? StaticRef(IlExpr callee, out ExMethod? method)
     {
         method = null;
@@ -3114,7 +3114,7 @@ public sealed class FunctionCompiler
         var info = _m.Classes[cls.Name];
         foreach (var x in info.Fields)
         {
-            if (x.IsStatic && x.Name == f.Name) return null; // delegate 型の static field
+            if (x.IsStatic && x.Name == f.Name) return null; // A static field of a delegate type
         }
         ExMethod? cm = null;
         int count = 0;
@@ -3136,7 +3136,7 @@ public sealed class FunctionCompiler
         return cls.Name;
     }
 
-    /// <summary>host (--ref の stub) の名前: `IlField(IlVar("eng.gfx"), "begin")` → "eng.gfx.begin"。local や型の名前なら null。</summary>
+    /// <summary>Name of a host (a --ref stub): `IlField(IlVar("eng.gfx"), "begin")` → "eng.gfx.begin". null for a local or type name.</summary>
     private string? HostName(IlExpr e)
     {
         IlExpr x = e;
@@ -3146,9 +3146,9 @@ public sealed class FunctionCompiler
         return _m.ForeignMethod(name) != null || _m.ForeignValue(name) != null ? name : null;
     }
 
-    /// <summary>host の関数 (doc/vm-design.md §8.5): runtime の関数と同じ CALLR で、名前は host が tvm_host で登録したもの。
-    /// register では引数と戻り値を葉に展開する (struct は葉の並び、class / string / List は ref)。
-    /// VM が呼ぶときに struct を C の layout の塊に写すので、struct の型は module の型の表に入れる。</summary>
+    /// <summary>Host function (doc/vm-design.md §8.5): the same CALLR as runtime functions, with the name the host registered with tvm_host.
+    /// In registers, arguments and return values are expanded into leaves (a struct is a sequence of leaves; class / string / List are refs).
+    /// When the VM calls it, it maps structs into blocks with the C layout, so struct types go into the module's type table.</summary>
     private Val HostCall(string name, ExForeignMethod m, List<IlExpr> args, Val? dest)
     {
         foreach (var p in m.Parameters)
@@ -3168,14 +3168,14 @@ public sealed class FunctionCompiler
         return dest == null ? rv : Store2(dest, rv);
     }
 
-    /// <summary>host の関数の out (doc/vm-design.md §8.5): `[戻り値?, out...] = host(in...)`。
-    /// 結果の register は戻り値の葉と out の葉の並び (host は out を pointer で受け、VM が呼び出しの後にこの register へ書く)。</summary>
+    /// <summary>out of a host function (doc/vm-design.md §8.5): `[ret?, out...] = host(in...)`.
+    /// The result registers are the leaves of the return value followed by the leaves of the outs (the host receives outs as pointers, and the VM writes them to these registers after the call).</summary>
     private Val HostCallOuts(string name, ExForeignMethod m, List<IlExpr> args)
     {
         return HostCallLeaves(name, m, args, HostOutTypes(m));
     }
 
-    /// <summary>host の関数の結果の型の列 (戻り値があれば先頭、続けて out の型)。</summary>
+    /// <summary>Types of a host function's results (the return value first if there is one, then the out types).</summary>
     private List<VType> HostOutTypes(ExForeignMethod m)
     {
         var rets = new List<VType>();
@@ -3273,11 +3273,11 @@ public sealed class FunctionCompiler
         return CallTail(Op.CALLD, block, _m.TypeIndex(ft), ft.Ret!, dest);
     }
 
-    /// <summary>lambda: 本文を別の関数にし、捕捉する変数の cell を closure に入れる。</summary>
+    /// <summary>lambda: makes the body a separate function and puts the cells of the captured variables into the closure.</summary>
     private Val Closure(IlClosure c, VType ft, Val? dest)
     {
         var free = IlWalk.Free(c);
-        // 名前の順 (ordinal) に並べる (安定な挿入 sort)
+        // Sorts by name (ordinal) (stable insertion sort)
         var sorted = new List<string>();
         foreach (var name in free)
         {
@@ -3301,7 +3301,7 @@ public sealed class FunctionCompiler
                 capVars.Add(v);
             }
         }
-        // 名前は外側の関数、何番目か、本文の指紋 (reload が生きている closure を新版の lambda に対応させる鍵。tcsvm_reload.c)
+        // The name is the enclosing function, the index, and a fingerprint of the body (the key reload uses to map live closures to lambdas in the new version. tcsvm_reload.c)
         var print = VBytes.Sha256Hex8(IlNodes.Dump(c));
         int lambdaNo = _lambdas;
         _lambdas++;
@@ -3320,7 +3320,7 @@ public sealed class FunctionCompiler
         return d;
     }
 
-    /// <summary>static method の method group (il-spec §10): 捕捉の無い closure で、関数そのものを指す。</summary>
+    /// <summary>Method group of a static method (il-spec §10): a closure with no captures that points to the function itself.</summary>
     private Val MethodGroup(IlMethodGroup g, VType ft, Val? dest)
     {
         int index;
@@ -3328,7 +3328,7 @@ public sealed class FunctionCompiler
         string? memberStruct = StructMember(g.TypeRef + "." + g.Method, out ExMethod? memberMethod, out ExCtor? memberCtor);
         if (memberStruct != null && memberMethod != null && memberMethod.IsStatic)
         {
-            // struct の static method (struct の static は class と同じ自由関数)
+            // Static method of a struct (a struct's statics are free functions, same as a class's)
             string st = memberStruct;
             ExMethod sm = memberMethod;
             method = sm;
@@ -3365,7 +3365,7 @@ public sealed class FunctionCompiler
         return d;
     }
 
-    /// <summary>Random.Shared: 隠れた static。null なら作って時刻から seed する。</summary>
+    /// <summary>Random.Shared: a hidden static. If null, creates it and seeds it from the time.</summary>
     private Val SharedRandom(Val? dest)
     {
         var slot = _m.SharedRandomSlot();
@@ -3457,7 +3457,7 @@ public sealed class FunctionCompiler
             Emit(Op.NEW, d.Reg, 0, _m.TypeIndex(type));
             return d;
         }
-        // 引数を評価してから NEW し、その object を先頭の引数にして constructor を呼ぶ
+        // Evaluates the arguments, then does NEW, then calls the constructor with that object as the first argument
         var paramTypes = new List<VType>();
         if (ctor != null)
         {
@@ -3519,7 +3519,7 @@ public sealed class FunctionCompiler
         {
             if (_m.Classes.TryGetValue(type.Name, out ExClass? ci) && ci.IsExternal)
             {
-                // host の data class (--ref の stub の record): 名前つきの entry を field に書き、無い field は initializer
+                // Host data class (a record of a --ref stub): writes named entries to fields, and fields without one get their initializer
                 Emit(Op.NEW, d.Reg, 0, _m.TypeIndex(type));
                 foreach (var field in ci.Fields)
                 {
@@ -3560,7 +3560,7 @@ public sealed class FunctionCompiler
         return BadVal();
     }
 
-    // --ref の struct の object initializer: 0 の値に、書いた順に名前の field を入れる (右辺は代入先を読めるので一時の値に作る)
+    // Object initializer of a --ref struct: puts the named fields into a zero value in the order written (the right-hand side can read the target, so it is built as a temporary value)
     private Val StructTable(IlTable t, VType type, Val? dest)
     {
         var tmp = Temp(type);
@@ -3580,7 +3580,7 @@ public sealed class FunctionCompiler
         return dest == null ? tmp : Store2(dest, tmp);
     }
 
-    // ---- TinySystem の関数 (il-spec §13): runtime の関数 (CALLR) か専用の命令 ----
+    // ---- TinySystem functions (il-spec §13): runtime functions (CALLR) or dedicated instructions ----
 
     private static string LibName(string callee)
     {
@@ -3591,7 +3591,7 @@ public sealed class FunctionCompiler
         return callee;
     }
 
-    // lambda と method group は代入先の型で決まるので、ここでは型を問わない (C# 版の LibPlan の局所関数 A)
+    // Lambdas and method groups are determined by the target type, so their type is not checked here (local function A of LibPlan in the C# version)
     private VType LibPlanArg(IlCall c, int i)
     {
         if (i >= c.Args.Count) return VType.Void;
@@ -3793,7 +3793,7 @@ public sealed class FunctionCompiler
             var fnt = TypeOf(c.Args[0]);
             if (fnt.Tag == VT.Nullable)
             {
-                // T? の値なしは空文字列 (il-spec §13)
+                // A T? with no value is the empty string (il-spec §13)
                 var nv = Expr(c.Args[0]);
                 var d = dest ?? Temp(VType.String);
                 var none = new Label();
@@ -3814,7 +3814,7 @@ public sealed class FunctionCompiler
             var at = TypeOf(c.Args[ai]);
             if (at.Tag == VT.Array)
             {
-                // 配列から List を作ってから渡す
+                // Builds a List from the array before passing it
                 var arr = Expr(c.Args[ai]);
                 var lt = VType.OfList(at.Elem!);
                 var list = Temp(lt);
@@ -3846,7 +3846,7 @@ public sealed class FunctionCompiler
             var rlt = TypeOf(c.Args[0]);
             if (rlt.Tag == VT.List && rlt.Elem!.IsAggregate)
             {
-                // struct の要素の Remove: 値の等価で番号を探し、あれば RemoveAt
+                // Remove of a struct element: finds the index by value equality and, if found, does RemoveAt
                 var list = CopyToTemp(Expr(c.Args[0]));
                 var at = Scoped(list, x => StructFind(new IlCall(c.Callee, P4Lists.ReplaceArg(c.Args, 0, x), c.Origin), rlt, true, null));
                 var d = dest ?? Temp(VType.Bool);
@@ -3889,7 +3889,7 @@ public sealed class FunctionCompiler
             var qt = TypeOf(c.Args[0]);
             if (qt.Tag == VT.List)
             {
-                // 空なら先頭の読みが fault する (Queue empty)
+                // If empty, reading the first element faults (Queue empty)
                 var q = Expr(c.Args[0]);
                 var zero = Temp(VType.Int);
                 EmitImm(Op.LDK, zero.Reg, 0);
@@ -4000,7 +4000,7 @@ public sealed class FunctionCompiler
             var dt = TypeOf(c.Args[0]);
             if (dt.Tag == VT.Dict)
             {
-                // 足した順の key / 値の新しい List
+                // A new List of keys / values in insertion order
                 var keys = callee == "Dict.Keys";
                 var lt = VType.OfList(keys ? dt.Key! : dt.Value!);
                 var dict = Expr(c.Args[0]);
@@ -4048,7 +4048,7 @@ public sealed class FunctionCompiler
         }
         if (callee == "String.Join" && (c.Args.Count != 2 || TypeOf(c.Args[1]).Tag != VT.List))
         {
-            // Join(sep, a, b, ...): 連結
+            // Join(sep, a, b, ...): concatenation
             var sep = ToStr(c.Args[0]);
             var acc = ToStr(c.Args[1]);
             for (var i = 2; i < c.Args.Count; i++)
@@ -4064,7 +4064,7 @@ public sealed class FunctionCompiler
         }
         var plan = LibPlan(c);
         if (plan == null) return null;
-        // 結果を足す List、引数、戻り値の区画
+        // The List that results are added to, the arguments, and the return value block
         var newList = plan.NewList;
         var argTypes = new List<VType>();
         if (newList != null) argTypes.Add(newList);
@@ -4096,7 +4096,7 @@ public sealed class FunctionCompiler
         return dest == null ? result : Store2(dest, result);
     }
 
-    /// <summary>値を一時の名前で IL に渡す (IL の式を組み立て直して同じ経路で emit する)。</summary>
+    /// <summary>Passes a value to IL under a temporary name (rebuilds the IL expression and emits it through the same path).</summary>
     private Val Scoped(Val v, System.Func<IlExpr, Val?> body)
     {
         var name = $"__vm_tmp{_scopes.Count}_{CodeCount}";
@@ -4113,7 +4113,7 @@ public sealed class FunctionCompiler
         return r;
     }
 
-    /// <summary>struct の要素の List.Contains / IndexOf (EqualityComparer&lt;T&gt;.Default と同じ葉ごとの等価)。</summary>
+    /// <summary>List.Contains / IndexOf for struct elements (per-leaf equality, same as EqualityComparer&lt;T&gt;.Default).</summary>
     private Val StructFind(IlCall c, VType lt, bool index, Val? dest)
     {
         var list = Expr(c.Args[0]);
@@ -4144,7 +4144,7 @@ public sealed class FunctionCompiler
         return d;
     }
 
-    /// <summary>foreach (var r in s.EnumerateRunes()): rune (code point の整数) ごと。</summary>
+    /// <summary>foreach (var r in s.EnumerateRunes()): per rune (an integer code point).</summary>
     private void ForeachRunes(IlForeachRunes fr)
     {
         _scopes.Add(new Dictionary<string, Var>());
@@ -4178,16 +4178,16 @@ public sealed class FunctionCompiler
         _scopes.RemoveAt(_scopes.Count - 1);
     }
 
-    // ---- IIFE (式の位置の文の列。switch 式、?. など) ----
+    // ---- IIFE (a statement sequence in expression position: switch expressions, ?., etc.) ----
 
     private Val Iife(IlIife iife, Val? dest)
     {
         var type = IifeType(iife);
-        // 値は temp に作る (dest が中で読む変数のこともある: `q += q++` は q を IIFE の中で読む)
+        // The value is built in a temp (dest may be a variable read inside: `q += q++` reads q inside the IIFE)
         Val? d = null;
         if (type.Tag != VT.Void) d = Temp(type);
-        if (d != null) EmitZero(d); // return に届かない経路は値なし (?. の null 側)
-        // 中の文の temp と区画は外の式の temp と分ける (文の終わりで外の temp を空きに戻さない)
+        if (d != null) EmitZero(d); // A path that does not reach a return has no value (the null side of ?.)
+        // Temps and blocks of the inner statements are kept apart from the outer expression's temps (the end of a statement does not free the outer temps)
         var savedTemps = new List<int>();
         foreach (var r in _temps) savedTemps.Add(r);
         var savedBlocks = new List<BlockUse>();
@@ -4222,7 +4222,7 @@ public sealed class FunctionCompiler
         return new Val(VType.Void, new List<int>());
     }
 
-    /// <summary>IIFE の値の型: 中の local を仮の scope に置いて、最初の値つき return の型を見る。</summary>
+    /// <summary>Value type of an IIFE: puts the inner locals in a temporary scope and looks at the type of the first return with a value.</summary>
     private VType IifeType(IlIife iife)
     {
         _scopes.Add(new Dictionary<string, Var>());
@@ -4287,7 +4287,7 @@ public sealed class FunctionCompiler
         return nullFound;
     }
 
-    // C# 版の ReturnType の局所関数 Scoped: 仮の scope の中で ReturnType
+    // Local function Scoped of ReturnType in the C# version: ReturnType inside a temporary scope
     private VType? ReturnTypeScoped(List<IlStat> inner)
     {
         _scopes.Add(new Dictionary<string, Var>());
@@ -4298,7 +4298,7 @@ public sealed class FunctionCompiler
 
     // ---- Nullable (il-spec §3) ----
 
-    /// <summary>`e ?? d`: d は T (結果 T) か T? (結果 T?)。d は e が値なしのときだけ評価する。</summary>
+    /// <summary>`e ?? d`: d is T (result T) or T? (result T?). d is evaluated only when e has no value.</summary>
     private Val NullableOr(IlNullableGetOrDefault g, Val? dest)
     {
         var type = TypeOf(g);
@@ -4313,7 +4313,7 @@ public sealed class FunctionCompiler
         }
         else
         {
-            // ref の `??`
+            // `??` for refs
             Jump(Op.JNULL, none, e.Reg);
             Store(d, e);
         }
@@ -4350,7 +4350,7 @@ public sealed class FunctionCompiler
         var rt = b.Op == IlLiftedOp.Shl || b.Op == IlLiftedOp.Shr ? VType.OfNullable(VType.Int) : nt;
         if (b.Op == IlLiftedOp.And || b.Op == IlLiftedOp.Or)
         {
-            // bool? の三値論理: And は片方が false なら false、Or は片方が true なら true、ほかは両方に値があれば値
+            // Three-valued logic of bool?: And is false if either side is false, Or is true if either side is true; otherwise there is a value if both sides have values
             var bn = VType.OfNullable(VType.Bool);
             var l0 = ExprAs(b.L, bn);
             var r0 = ExprAs(b.R, bn);
@@ -4360,14 +4360,14 @@ public sealed class FunctionCompiler
             var end0 = new Label();
             var notL = new Label();
             var notR = new Label();
-            // l が値ありで決める値なら
+            // If l has a value and it is the deciding value
             Jump(Op.JF, notL, l0.Regs[0]);
             Jump(decided == 0 ? Op.JF : Op.JT, setDecided, l0.Regs[1]);
             Mark(notL);
             Jump(Op.JF, notR, r0.Regs[0]);
             Jump(decided == 0 ? Op.JF : Op.JT, setDecided, r0.Regs[1]);
             Mark(notR);
-            // どちらも決める値でない: 両方に値があれば !decided、無ければ値なし
+            // Neither is a deciding value: !decided if both have values, otherwise no value
             var none = new Label();
             Jump(Op.JF, none, l0.Regs[0]);
             Jump(Op.JF, none, r0.Regs[0]);
@@ -4390,7 +4390,7 @@ public sealed class FunctionCompiler
         var rv = new Val(rt.Inner!, P5Regs.From(r.Regs, 1));
         if (b.Op == IlLiftedOp.Eq || b.Op == IlLiftedOp.Ne)
         {
-            // 両方値なしで等しい、片方だけ値なしで等しくない、両方値ありは値の比較
+            // Both without a value are equal, only one without a value is not equal, and both with values compare the values
             var d1 = dest ?? Temp(VType.Bool);
             var differ = new Label();
             var end1 = new Label();
@@ -4431,7 +4431,7 @@ public sealed class FunctionCompiler
             Mark(end2);
             return d2;
         }
-        // 算術 / bit / shift: 片方でも値なしなら値なし
+        // Arithmetic / bit / shift: no value if either side has no value
         var d = dest ?? Temp(nt);
         var none2 = new Label();
         var end3 = new Label();
@@ -4494,7 +4494,7 @@ public sealed class FunctionCompiler
         return d;
     }
 
-    // ---- record の with ----
+    // ---- record with ----
 
     private Val With(IlWith w, Val? dest)
     {
@@ -4511,7 +4511,7 @@ public sealed class FunctionCompiler
             }
             return d0;
         }
-        // struct: 値の copy に上書き
+        // struct: overwrite a copy of the value
         var d = NewVal(type);
         Store(d, src);
         foreach (var o in w.Overrides)
@@ -4523,9 +4523,9 @@ public sealed class FunctionCompiler
         return dest == null ? d : Store2(dest, d);
     }
 
-    // ---- 多重代入 (out の引数、分解) ----
+    // ---- Multiple assignment (out arguments, deconstruction) ----
 
-    /// <summary>多重代入の右辺の値の型の列。</summary>
+    /// <summary>Types of the values on the right-hand side of a multiple assignment.</summary>
     private List<VType> MultiTypes(IlMultiAssign ma)
     {
         if (ma.Values.Count == 1 && ma.Values[0] is IlCall c0 && c0.Callee == "Math.TryParseInt")
@@ -4571,8 +4571,8 @@ public sealed class FunctionCompiler
         return types;
     }
 
-    // 別の class の static method を class 名で呼ぶ形 (Foo.Two(...)) は、builder が IlDynCall(IlField(IlVar("Foo"), "Two")) にする。
-    // Foo が変数でなく class なら、名前で呼ぶ IlCall にする (out 引数の多値を同じ経路で受けるため)
+    // The builder turns a call to a static method of another class by class name (Foo.Two(...)) into IlDynCall(IlField(IlVar("Foo"), "Two")).
+    // If Foo is a class and not a variable, turn it into an IlCall by name (to receive the multiple values of out arguments through the same path)
     private IlExpr StaticCallForm(IlExpr e)
     {
         if (e is IlDynCall dc && dc.Callee is IlField f && f.Recv is IlVar owner && Lookup(owner.Name) == null
@@ -4614,7 +4614,7 @@ public sealed class FunctionCompiler
                 var iinfo = OutCall(new IlCall(ict.Name + "." + inv.Method, P5Exprs.Prepend(inv.Recv, inv.Args), null));
                 if (iinfo != null)
                 {
-                    // instance method の out (receiver を先頭の引数にして同じ経路)
+                    // out of an instance method (same path, with the receiver as the first argument)
                     var nv = new List<IlExpr>();
                     nv.Add(new IlCall(ict.Name + "." + inv.Method, P5Exprs.Prepend(inv.Recv, inv.Args), null));
                     ma = new IlMultiAssign(ma.Targets, nv, ma.Declare, ma.Origin);
@@ -4627,7 +4627,7 @@ public sealed class FunctionCompiler
             if (multi.Type.Tag == VT.Tuple)
             {
                 var tu = multi.Type;
-                // interface の method の out: 戻り値と out の値の多値を左へ
+                // out of an interface method: the multiple values of the return value and the outs go to the left
                 var at = 0;
                 for (var i = 0; i < ma.Targets.Count && i < tu.Items.Count; i++)
                 {
@@ -4649,7 +4649,7 @@ public sealed class FunctionCompiler
         }
         if (ma.Values.Count == 1 && ma.Values[0] is IlCall hcall && _m.ForeignMethod(hcall.Callee) != null)
         {
-            // host の関数の out: [戻り値?, out...] = host(in...)
+            // out of a host function: [ret?, out...] = host(in...)
             var hm = _m.ForeignMethod(hcall.Callee)!;
             var htypes = HostOutTypes(hm);
             var hres = HostCallOuts(hcall.Callee, hm, hcall.Args);
@@ -4667,7 +4667,7 @@ public sealed class FunctionCompiler
             var info = OutCall(call);
             if (info != null)
             {
-                // [戻り値?, out...] = call
+                // [ret?, out...] = call
                 var types = new List<VType>();
                 if (info.Ret.Tag != VT.Void) types.Add(info.Ret);
                 foreach (var o in info.Outs) types.Add(o);
@@ -4686,7 +4686,7 @@ public sealed class FunctionCompiler
         }
         if (ma.Targets.Count == ma.Values.Count)
         {
-            // 右辺を全部評価してから左へ (il-spec §10 の分解の順)
+            // Evaluates the whole right-hand side before the left (the deconstruction order in il-spec §10)
             var vals = new List<Val>();
             foreach (var v in ma.Values) vals.Add(CopyToNew(Expr(v)));
             for (var i = 0; i < ma.Targets.Count; i++) AssignTarget(ma.Targets[i], vals[i], ma.Declare);
@@ -4719,7 +4719,7 @@ public sealed class FunctionCompiler
         StorePlace(place, Convert(v, place.Type));
     }
 
-    /// <summary>TryParse / TryGetValue の lowering 先: (見つかったか、値。無ければ既定値)。</summary>
+    /// <summary>Lowering target of TryParse / TryGetValue: (whether it was found, the value, or the default if missing).</summary>
     private Val TryCall(IlCall c, out Val value)
     {
         if (c.Callee == "Dict.TryGet")
@@ -4812,7 +4812,7 @@ public sealed class FunctionCompiler
         return new OutInfo(cls, method, _m.Parse(method.ReturnType), outs, isStruct);
     }
 
-    /// <summary>out を持つ関数の呼び出し: 戻り値の葉と out の葉が並んだ値を返す。</summary>
+    /// <summary>Call of a function with outs: returns a value with the leaves of the return value followed by the leaves of the outs.</summary>
     private Val CallWithOuts(IlCall call, OutInfo info)
     {
         var all = new List<VType>();
@@ -4835,7 +4835,7 @@ public sealed class FunctionCompiler
         return EmitCallTyped(Op.CALL, index, recv, inTypes, args, all);
     }
 
-    /// <summary>引数を区画に直接書き、CALL を出す。戻り値は rets の型の葉が並ぶ。</summary>
+    /// <summary>Writes the arguments directly into the block and emits CALL. The return value is the leaves of the rets types in order.</summary>
     private Val EmitCallTyped(Op op, int index, IlExpr? recv, List<VType> paramTypes, List<IlExpr> args,
         List<VType> rets)
     {
@@ -4872,8 +4872,8 @@ public sealed class FunctionCompiler
         return new Val(VType.Void, P5Regs.Range(rb, retTypes.Count));
     }
 
-    /// <summary>struct の member の呼び出し (il-spec §10): `S.M(recv, args)`。instance member は self を値で渡し、
-    /// 戻ってきた self を recv の場所に書き戻す (recv が変数・field・要素のとき)。extraRets は out の分。</summary>
+    /// <summary>Call of a struct member (il-spec §10): `S.M(recv, args)`. Instance members pass self by value and
+    /// write the returned self back to recv's location (when recv is a variable, field, or element). extraRets is for the outs.</summary>
     private Val StructCall(IlCall call, string st, ExMethod method, List<VType>? extraRets = null, Val? dest = null)
     {
         var index = _m.Request(st + "." + method.Name, def => new FunctionCompiler(_m, def, st).CompileStructMethod(method));
@@ -4898,11 +4898,11 @@ public sealed class FunctionCompiler
         }
         var selfType = VType.OfStruct(st);
         var recvExpr = call.Args[0];
-        // IlStructCopy は copy に対する呼び出し (暗黙の ToString など)。書き戻さない
+        // IlStructCopy is a call on a copy (implicit ToString, etc.). Not written back
         while (recvExpr is IlParen pp) recvExpr = pp.E;
         Place? place = null;
         if (IsVariable(recvExpr)) place = PlaceOf(recvExpr);
-        // place の受け手は C# では参照で渡るので、self の値は引数を評価した後に読む (引数が要素を書き換えても、その後の値に呼ぶ)
+        // In C#, a place receiver is passed by reference, so self's value is read after evaluating the arguments (if the arguments modify the element, the call uses the value after that)
         Val? selfVal = null;
         if (place == null) selfVal = ExprAs(call.Args[0], selfType);
         var allT = new List<VType>();
@@ -4937,8 +4937,8 @@ public sealed class FunctionCompiler
         return extraRets == null && ret.Tag != VT.Void ? Typed(ret, r, dest) : r;
     }
 
-    /// <summary>C# の「変数」か (il-spec §10: local / 引数 / field / 配列の要素 / this)。List / Dictionary の
-    /// indexer と呼び出しの結果は値 (struct の member の変異は捨てられる)。</summary>
+    /// <summary>Whether it is a C# "variable" (il-spec §10: local / parameter / field / array element / this). List / Dictionary
+    /// indexers and call results are values (mutations of struct members are discarded).</summary>
     private bool IsVariable(IlExpr e0)
     {
         var e = e0;
@@ -4956,7 +4956,7 @@ public sealed class FunctionCompiler
         return dest == null ? v : Store2(dest, v);
     }
 
-    // ---- Dictionary の foreach (足した順) ----
+    // ---- Dictionary foreach (insertion order) ----
 
     private void ForeachDict(IlForeachDict fd)
     {
@@ -4973,8 +4973,8 @@ public sealed class FunctionCompiler
         EmitImm(Op.LDK, i.Reg, 0);
         var n = NewVal(VType.Int);
         var live = NewVal(VType.Bool);
-        // 列挙は挿入順 (support-matrix §18)。途中で key を足したら fault (版で見る)
-        // dict と版は loop の間ずっと要るので、文の間で使い回す区画でなく専用の連続する register に置く
+        // Enumeration is in insertion order (support-matrix §18). Adding a key midway faults (detected with the version)
+        // dict and the version are needed for the whole loop, so they live in dedicated consecutive registers rather than in a block reused between statements
         var a0 = NewVal(dt);
         var a1 = NewVal(VType.Int);
         if (a1.Reg != a0.Reg + 1)
@@ -5017,7 +5017,7 @@ public sealed class FunctionCompiler
         _scopes.RemoveAt(_scopes.Count - 1);
     }
 
-    /// <summary>Random の instance method (il-spec §13): Next() は [0, int.MaxValue)、Next(max)、Next(min, max)、Range は両端を含む。</summary>
+    /// <summary>Random instance methods (il-spec §13): Next() is [0, int.MaxValue), Next(max), Next(min, max); Range includes both ends.</summary>
     private Val RandomCall(IlInvoke inv, Val? dest)
     {
         var r = Expr(inv.Recv);
@@ -5053,7 +5053,7 @@ public sealed class FunctionCompiler
         return d;
     }
 
-    /// <summary>List.Add: 1 葉の要素は LIST_ADD、struct は 0 の要素を足してから葉を書く。</summary>
+    /// <summary>List.Add: a one-leaf element uses LIST_ADD; a struct adds a zero element and then writes the leaves.</summary>
     private void ListAdd(Val list, VType lt, Val v)
     {
         if (!lt.Elem!.IsAggregate)
@@ -5098,8 +5098,8 @@ public sealed class FunctionCompiler
     }
 }
 
-/// <summary>値の格納場所 (C# 版の record Place)。Kind は "reg" / "static" / "field" / "elem" / "dict" など (C# 版のまま)。
-/// 作るのは Place.Make (C# 版の名前付きの引数を、この順の位置の引数にする)。</summary>
+/// <summary>Storage location of a value (record Place in the C# version). Kind is "reg" / "static" / "field" / "elem" / "dict", etc. (as in the C# version).
+/// Built by Place.Make (the named arguments of the C# version become positional arguments in this order).</summary>
 public sealed class Place
 {
     public VType Type;
@@ -5129,18 +5129,18 @@ public sealed class Place
         return p;
     }
 
-    // C# 版の `with { ... }` の代わりの写し
+    // Copy that replaces `with { ... }` in the C# version
     public Place Copy() => Make(Type, Kind, Slot, Obj, Arr, Idx, Leaf, Owner);
 }
 
-/// <summary>jump の行き先。Target は命令の番号 (未定なら -1)、Patches は行き先を待つ jump の命令。</summary>
+/// <summary>Jump target. Target is the instruction index (-1 if not decided yet), and Patches are the jump instructions waiting for the target.</summary>
 public sealed class Label
 {
     public int Target = -1;
     public List<int> Patches = new List<int>();
 }
 
-/// <summary>使っている register の区画 (呼び出しの引数と戻り値。文の終わりに空きに戻す)。</summary>
+/// <summary>A register block in use (call arguments and return values; freed at the end of the statement).</summary>
 public sealed class BlockUse
 {
     public string Key;
@@ -5153,7 +5153,7 @@ public sealed class BlockUse
     }
 }
 
-/// <summary>loop の break と continue の行き先。</summary>
+/// <summary>break and continue targets of a loop.</summary>
 public sealed class LoopLabels
 {
     public Label Break;
@@ -5166,7 +5166,7 @@ public sealed class LoopLabels
     }
 }
 
-/// <summary>式の位置の文の列 (IIFE) の結果の置き場所、終わり、型。</summary>
+/// <summary>Result location, end, and type of a statement sequence in expression position (IIFE).</summary>
 public sealed class IifeFrame
 {
     public Val? Result;
@@ -5181,10 +5181,10 @@ public sealed class IifeFrame
     }
 }
 
-/// <summary>式 (P2) の道具: register の列の部分、literal の判定、16 進の数字。</summary>
+/// <summary>Helpers for expressions (P2): parts of register sequences, literal checks, hex digits.</summary>
 public static class P2Regs
 {
-    // C# 版の Regs[start..]
+    // Regs[start..] in the C# version
     public static List<int> From(List<int> regs, int start)
     {
         var r = new List<int>();
@@ -5192,7 +5192,7 @@ public static class P2Regs
         return r;
     }
 
-    // C# 版の bytes[start..end]
+    // bytes[start..end] in the C# version
     public static List<int> Slice(List<int> items, int start, int end)
     {
         var r = new List<int>();
@@ -5205,10 +5205,10 @@ public static class P2Regs
     // PrimT { Kind: Kind.I32 or Kind.F32 }
     public static bool IsNumber(VType t) => t.Tag == VT.Prim && (t.PKind == Kind.I32 || t.PKind == Kind.F32);
 
-    // 書式の flag ("-+ #0" のどれか)
+    // Format flag (one of "-+ #0")
     public static bool IsFormatFlag(int c) => c == '-' || c == '+' || c == ' ' || c == '#' || c == '0';
 
-    // 16 進の数字の値 (数字でなければ -1)
+    // Value of a hex digit (-1 if not a digit)
     public static int HexDigit(int c)
     {
         if (c >= '0' && c <= '9') return c - '0';
@@ -5217,7 +5217,7 @@ public static class P2Regs
         return -1;
     }
 
-    // 16 進の数字列を 32 bit の並びとして読む (C# 版の uint.Parse(.., NumberStyles.HexNumber))
+    // Reads a hex digit string as a 32-bit pattern (uint.Parse(.., NumberStyles.HexNumber) in the C# version)
     public static int ParseHex(string digits)
     {
         var u = new Utf8Bytes(digits);
@@ -5236,10 +5236,10 @@ public static class P2Regs
     }
 }
 
-/// <summary>register の番号の列の道具 (P3: 呼び出し)。</summary>
+/// <summary>Helpers for register index sequences (P3: calls).</summary>
 public static class P3Regs
 {
-    // start から count 個の連続する番号 (C# 版の Enumerable.Range(start, count).ToArray())
+    // count consecutive indexes from start (Enumerable.Range(start, count).ToArray() in the C# version)
     public static List<int> Range(int start, int count)
     {
         var r = new List<int>();
@@ -5247,7 +5247,7 @@ public static class P3Regs
         return r;
     }
 
-    // 番号が先頭から連続しているか
+    // Whether the indexes are consecutive from the first one
     public static bool IsContiguous(List<int> regs)
     {
         for (int k = 0; k < regs.Count; k++)
@@ -5258,8 +5258,8 @@ public static class P3Regs
     }
 }
 
-/// <summary>runtime の関数の呼び出しの形。Params は引数の型 (IL の引数の先頭から)、Rets は戻り値の型。
-/// NewList は結果を足す空の List を先頭の引数として作って渡す (Split など)。</summary>
+/// <summary>Shape of a runtime function call. Params are the parameter types (from the first IL argument), and Rets are the return types.
+/// NewList creates an empty List to add results to and passes it as the first argument (Split, etc.).</summary>
 public sealed class LibCall
 {
     public string Name;
@@ -5276,7 +5276,7 @@ public sealed class LibCall
     }
 }
 
-/// <summary>P4 (TinySystem の関数) の List の組み立て (C# 版の collection 式と範囲の代わり)。</summary>
+/// <summary>List building for P4 (TinySystem functions) (in place of C# collection expressions and ranges).</summary>
 public static class P4Lists
 {
     public static List<VType> Types1(VType a)
@@ -5365,7 +5365,7 @@ public static class P4Lists
     }
 }
 
-/// <summary>out を持つ関数の呼び出しの情報 (C# 版の private record OutInfo)。</summary>
+/// <summary>Information about a call of a function with outs (private record OutInfo in the C# version).</summary>
 public sealed class OutInfo
 {
     public string Class;
@@ -5384,7 +5384,7 @@ public sealed class OutInfo
     }
 }
 
-/// <summary>register の列の部分と連番 (C# 版の Regs[a..]、Skip / Take、Enumerable.Range、[r])。</summary>
+/// <summary>Parts and sequential runs of register sequences (Regs[a..], Skip / Take, Enumerable.Range, [r] in the C# version).</summary>
 public static class P5Regs
 {
     public static List<int> From(List<int> regs, int start)
@@ -5416,7 +5416,7 @@ public static class P5Regs
     }
 }
 
-/// <summary>式の列 (C# 版の [recv, .. args])。</summary>
+/// <summary>Expression sequence ([recv, .. args] in the C# version).</summary>
 public static class P5Exprs
 {
     public static List<IlExpr> Prepend(IlExpr first, List<IlExpr> rest)

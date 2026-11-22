@@ -2,8 +2,8 @@ using TinyCs.Vm;
 
 namespace TinyCs.Tcs2c.Tests;
 
-/// <summary>VM の backend が関数を作れないときの誤りは、他の診断と同じ形 (`path(line,col): error ...`) で、変換していた文の場所を持つ。
-/// 誤りの記録 (TcsC.CFail) は C backend と共有の static なので、並んで動く C の生成に誤りが混ざらないよう、他の test と並べない。</summary>
+/// <summary>Errors when the VM backend cannot build a function have the same form as other diagnostics (`path(line,col): error ...`) and carry the location of the statement being converted.
+/// The error record (TcsC.CFail) is a static shared with the C backend, so this test does not run in parallel with other tests, to keep errors out of C generation running alongside.</summary>
 [Collection(Name)]
 public class VmErrorPositionTests
 {

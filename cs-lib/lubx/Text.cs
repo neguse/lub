@@ -1,13 +1,13 @@
-// 実装ライブラリ lubx の Text。
-// glyph bitmap (gb.Bytes) は view なので Get(src) で byte 走査する。
+// Text in the implementation library lubx.
+// The glyph bitmap (gb.Bytes) is a view, so its bytes are scanned with Get(src).
 using System;
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
-/// <summary>atlas 上のグリフ 1 枠 (内部用)。
-/// u/v は atlas 内の左上 px、xoff/yoff はベースライン原点からの描画オフセット。
+/// <summary>One glyph slot in the atlas (internal).
+/// u/v is the top-left px in the atlas; xoff/yoff is the drawing offset from the baseline origin.
 /// </summary>
 public class TextGlyph
 {
@@ -18,14 +18,14 @@ public class TextGlyph
     public int Xoff;
     public int Yoff;
     public float Advance;
-    // atlas の中の位置 (U, V, W, H)。描くたびに作らない
+    // Position in the atlas (U, V, W, H). Not created on every draw
     public Rect Src = new Rect(0, 0, 0, 0);
-    // 載っている atlas の page
+    // The atlas page it is on
     public int Page;
 }
 
-// Text の atlas の 1 page (glyph を詰める RGBA の pixel 列と、次に置く位置)。
-// glyph を足すと、その page の pixel 列だけを upload し直す
+// One page of the Text atlas (the RGBA pixel array glyphs are packed into, and the position for the next one).
+// Adding a glyph uploads only that page's pixel array again
 public class TextPage
 {
     public Atlas Atlas;
@@ -43,36 +43,36 @@ public class TextPage
     }
 }
 
-/// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。
-/// Font.Glyph をオンデマンドに呼び、使ったグリフだけを atlas (RGBA、白 + coverage α) に詰めて SpriteBatch で描く。
-/// フォントに無い codepoint は黙ってスキップされる (フォールバックチェーンは呼び出し側で Text を重ねる)。
-/// 座標は SpriteBatch と同じ論理 px・左上原点で、draw の y はベースライン位置。
-/// 折返し・禁則はまだ無い。
+/// <summary>Fixed-size dynamic glyph atlas + single-line text drawing.
+/// Calls Font.Glyph on demand, packs only the used glyphs into the atlas (RGBA, white + coverage α), and draws them with SpriteBatch.
+/// Codepoints missing from the font are silently skipped (for a fallback chain, the caller layers Text instances).
+/// Coordinates are the same logical px with a top-left origin as SpriteBatch, and the y of draw is the baseline position.
+/// No line wrapping or line-breaking rules yet.
 /// </summary>
 public class Text
 {
-    /// <summary>1em のピクセル数 (コンストラクタ指定)。
+    /// <summary>Pixels per 1em (given to the constructor).
     /// </summary>
     public float Px;
 
-    /// <summary>ベースラインから上端まで (px、正)。
-    /// 読み取り専用。
+    /// <summary>From the baseline to the top (px, positive).
+    /// Read-only.
     /// </summary>
     public float Ascent;
 
-    /// <summary>ベースラインから下端まで (px、負)。
-    /// 読み取り専用。
+    /// <summary>From the baseline to the bottom (px, negative).
+    /// Read-only.
     /// </summary>
     public float Descent;
 
-    /// <summary>行送り (px)。
-    /// 読み取り専用。
+    /// <summary>Line advance (px).
+    /// Read-only.
     /// </summary>
     public float LineHeight;
 
     private string ttfPath;
     private string key;
-    // atlas は一辺 PageSize までの page に分ける (glyph を足したときの upload を page 1 枚分にする)
+    // The atlas is split into pages of up to PageSize per side (so adding a glyph uploads only 1 page)
     private const int PageSize = 256;
     private int pageSize;
     private int maxPages;
@@ -81,8 +81,8 @@ public class Text
         new Dictionary<int, TextGlyph>();
     private Dictionary<int, bool> missing = new Dictionary<int, bool>();
 
-    /// <summary>ttfPath は Io.LoadBytes で読める font file の path (呼び出しの時点で ready であること)。
-    /// atlasSize 省略で 256。
+    /// <summary>ttfPath is the path of a font file readable with Io.LoadBytes (it must be ready at the time of the call).
+    /// atlasSize defaults to 256 when omitted.
     /// </summary>
     public Text(string key, string ttfPath, float px, int? atlasSize = null)
     {
@@ -90,7 +90,7 @@ public class Text
         this.key = key;
         this.Px = px;
         int size = atlasSize ?? 256;
-        // atlasSize 四方と同じだけの glyph を、一辺 PageSize までの page に分けて持つ
+        // Holds as many glyphs as an atlasSize square, split into pages of up to PageSize per side
         pageSize = Math.Min(size, PageSize);
         maxPages = (size / pageSize) * (size / pageSize);
         var m = Font.Metrics(Ttf());
@@ -100,15 +100,15 @@ public class Text
         pages.Add(new TextPage(key, pageSize));
     }
 
-    // font の byte 列は frame 有効の view なので、使うたびに cache から引く
+    // The font bytes are a view valid for the frame, so they are fetched from the cache on each use
     private Bytes Ttf()
     {
         Io.LoadBytes(ttfPath, out var b, out _, out _, out _);
         return b!;
     }
 
-    // 前の文字 → 次の文字 → kerning (font の単位)。glyph と同じく初めて出た組だけ font から引く
-    // (font の data は frame 有効の view なので持てず、引くたびに読み直すと確保になる)
+    // Previous char → next char → kerning (in font units). Like glyphs, only pairs seen for the first time are looked up in the font
+    // (the font data is a view valid for the frame and cannot be kept, and reloading it on every lookup would allocate)
     private readonly Dictionary<int, Dictionary<int, float>> kerns = new Dictionary<int, Dictionary<int, float>>();
 
     private float Kern(int prev, int cp)
@@ -199,8 +199,8 @@ public class Text
         return g;
     }
 
-    /// <summary>1行の描画幅 (px)。
-    /// scale 省略で 1.0。
+    /// <summary>Drawn width of one line (px).
+    /// scale defaults to 1.0 when omitted.
     /// </summary>
     public float Width(string s, float? scale = null)
     {
@@ -220,9 +220,9 @@ public class Text
         return sum * (scale ?? 1.0f);
     }
 
-    /// <summary>1行描く。
-    /// (x, y) はベースライン左端 (論理 px、左上原点)。
-    /// scale 省略で 1.0。
+    /// <summary>Draws one line.
+    /// (x, y) is the left end of the baseline (logical px, top-left origin).
+    /// scale defaults to 1.0 when omitted.
     /// </summary>
     public void Draw(SpriteBatch batch, string s, float x, float y,
         Color? tint = null, float? scale = null)
@@ -247,10 +247,10 @@ public class Text
         }
     }
 
-    /// <summary>codepoint 1 文字を、kerning を足さずに描く。
-    /// (x, y) はベースライン左端 (論理 px、左上原点)。
-    /// 返り値は送り幅 (px)。font に無い文字は描かずに 0。
-    /// 文字を自分で並べる呼び出し側 (等幅の桁など) が、文字列の分解を省くための口。
+    /// <summary>Draws a single codepoint without adding kerning.
+    /// (x, y) is the left end of the baseline (logical px, top-left origin).
+    /// Returns the advance (px). Characters missing from the font are not drawn and return 0.
+    /// An entry point that lets callers laying out characters themselves (monospaced digits, etc.) skip splitting a string.
     /// </summary>
     public float DrawGlyph(SpriteBatch batch, int cp, float x, float y,
         Color? tint = null)
@@ -263,8 +263,8 @@ public class Text
         return g.Advance;
     }
 
-    /// <summary>atlas の page の texture を宣言し直す。
-    /// lub は宣言の途切れた texture を捨てるので、描かない frame が続いても次に描くときに upload し直さないよう、毎 frame 呼ぶ。
+    /// <summary>Declares the textures of the atlas pages again.
+    /// lub discards textures whose declaration lapses, so call this every frame so that frames without drawing do not force an upload again on the next draw.
     /// </summary>
     public void Ensure()
     {
@@ -272,7 +272,7 @@ public class Text
             p.Atlas.Ensure();
     }
 
-    /// <summary>codepoint 1 文字の送り幅 (px)。font に無い文字は 0。
+    /// <summary>Advance of a single codepoint (px). 0 for characters missing from the font.
     /// </summary>
     public float GlyphAdvance(int cp)
     {

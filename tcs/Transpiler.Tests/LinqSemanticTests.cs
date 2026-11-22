@@ -3,8 +3,8 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace TinyCs.Tests;
 
-// TinySystem.Linq (TinySystem/Linq.cs) を user のコードと一緒に tcs VM で動かす。
-// TestHelper は同じ source を .NET でも実行して結果を比べる
+// Runs TinySystem.Linq (TinySystem/Linq.cs) together with user code on the tcs VM.
+// TestHelper also runs the same source on .NET and compares the results
 public class LinqSemanticTests
 {
     private static string Run(string body, string expr = "T.Test()") =>
@@ -29,8 +29,8 @@ public class LinqSemanticTests
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         Assert.Empty(compilation.GetDiagnostics()
             .Where(d => d.Severity >= DiagnosticSeverity.Warning));
-        // Linq を user のソースとして tcs の compiler にかけても準拠の診断が出ない。ValueTuple は tcs だけが読む宣言
-        // (arity の overload を library にだけ許す) なので library のまま渡す
+        // Running Linq through the tcs compiler as user source produces no compliance diagnostics. ValueTuple is a declaration that only tcs reads
+        // (arity overloads are allowed only in libraries), so it is passed as a library
         var session = new TcsSelf.Session("");
         foreach (var tree in TcsLibrary.LibraryTrees)
             session.Add(tree.FilePath, tree.GetText().ToString(),
@@ -109,7 +109,7 @@ public class LinqSemanticTests
         }
     }
 
-    // string の Min / Max は System.Linq と同じく null を飛ばし、空なら null
+    // string Min / Max skip null as in System.Linq, and give null if empty
     [Fact]
     public void StringMinMax_SkipNullAndReturnNullOnEmpty()
     {
@@ -141,7 +141,7 @@ public class LinqSemanticTests
             """));
     }
 
-    // callback は各要素に 1 回、先頭から順に呼ぶ。走査は呼び出した時点の Count まで
+    // Callbacks are called once per element, in order from the first. Iteration goes up to the Count at the time of the call
     [Fact]
     public void Callback_RunsOncePerElementUpToCountAtCall()
     {
@@ -207,8 +207,8 @@ public class LinqSemanticTests
         Assert.Contains(result.Errors, e => e.Contains("TCS1001") && e.Contains("QueryExpression"));
     }
 
-    // user が渡した TinySystem.Linq (手元の版) は同梱の library より優先する
-    // .NET は同梱の Linq と同じ名前の型を重ねて持てないので VM だけで見る
+    // A TinySystem.Linq that the user passes (a local version) takes precedence over the bundled library
+    // .NET cannot hold types with the same names as the bundled Linq twice, so only the VM is checked
     [Fact]
     public void UserTinySystemLinq_ReplacesBundledLibrary()
     {
@@ -231,7 +231,7 @@ public class LinqSemanticTests
         Assert.Equal("42", output);
     }
 
-    // 入れ子の namespace で書いた手元の版も同じ
+    // The same goes for a local version written in nested namespaces
     [Fact]
     public void UserTinySystemLinq_InNestedNamespace_ReplacesBundledLibrary()
     {

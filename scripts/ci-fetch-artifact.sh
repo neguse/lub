@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# CI の同じ run の別の job が上げる artifact を待って、取ってくる。
-#   scripts/ci-fetch-artifact.sh <artifact の名前> <置く dir> <上げる job の名前の正規表現>
-# needs で待つと、この job は相手が終わるまで始まらない。準備を先に済ませ、要る物ができた所から続けるために、ここで待つ。
-# 上げる job が成功以外で終わったら失敗する。job には permissions の actions: read が要る。env: GH_TOKEN
+# Waits for an artifact uploaded by another job of the same CI run, and fetches it.
+#   scripts/ci-fetch-artifact.sh <artifact name> <destination dir> <regex for the name of the uploading job>
+# Waiting with needs means this job does not start until the other one finishes. The wait is done here so the preparation is finished first and the job continues as soon as what it needs is ready.
+# Fails if the uploading job ends with anything other than success. The job needs actions: read in permissions. env: GH_TOKEN
 set -euo pipefail
 name="$1"
 dir="$2"
 producer="$3"
 api="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-# 上げる job が止まったまま終わらないときに備えて、10 分で諦める
+# Give up after 10 minutes in case the uploading job hangs and never finishes
 for _ in $(seq 1 200); do
   if gh api "$api/artifacts?per_page=100" --jq '.artifacts[].name' | grep -qxF "$name"; then
-    # 一覧に出た直後は、まだ取れないことがある
+    # Right after it appears in the list, it sometimes cannot be fetched yet
     for _ in 1 2 3 4 5; do
       part="$(mktemp -d)"
       if gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$name" --dir "$part"; then

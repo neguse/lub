@@ -3,17 +3,17 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// IL の名前の規則 (user の型の method、constructor、演算子、parameter の名前)。host の型の名前は Declarer.cs の HostNames
+// Rules for IL names (names of user-type methods, constructors, operators, and parameters). Host type names are in HostNames in Declarer.cs
 public static class IlNames
 {
-    // user の型の method の名前。同じ型に同名の method が複数あるときだけ
-    // parameter の型を `__` でつないで付ける。interface の method を実装する method は interface の method の名前
+    // The name of a user-type method. Only when the same type has several methods with the same name
+    // are the parameter types appended, joined with `__`. A method implementing an interface method uses the interface method's name
     public static string MethodName(Symbol m)
     {
         if (m.Kind != SymKind.Method) return m.Name;
         if (m.Owner != null && m.Owner.IsRef) return m.IlName;
         var implemented = ImplementedInterfaceMethod(m);
-        // --ref の interface の method は C# の名前 (host の名前ではない。tcs check は RefInterfaceImplementation で止め、tcs VM と C は C# の名前で呼ぶ)
+        // Methods of a --ref interface use the C# name (not the host name; tcs check stops at RefInterfaceImplementation, and the tcs VM and C call by the C# name)
         if (implemented != null) return implemented.Owner != null && implemented.Owner.IsRef ? implemented.Name : MethodName(implemented);
         var owner = m.Owner;
         if (owner == null) return m.Name;
@@ -37,7 +37,7 @@ public static class IlNames
         return string.Join("", parts);
     }
 
-    // instance method が実装する interface の method (宣言の型の interface から)
+    // The interface method that an instance method implements (from the interfaces of the declaring type)
     private static Symbol? ImplementedInterfaceMethod(Symbol m)
     {
         if (m.IsStatic || m.Owner == null || m.Owner.IsInterface) return null;
@@ -82,8 +82,8 @@ public static class IlNames
         return true;
     }
 
-    // user の型の constructor の名前。class は `new`、struct は `ctor`。constructor が複数ある型は、
-    // 引数のあるものに method の overload と同じ規則で parameter の型を付ける (`new__int__float`)
+    // The name of a user-type constructor. `new` for a class, `ctor` for a struct. For a type with several constructors,
+    // those with parameters get the parameter types appended by the same rule as method overloads (`new__int__float`)
     public static string CtorName(Symbol ctor)
     {
         var owner = ctor.Owner!;
@@ -100,7 +100,7 @@ public static class IlNames
         return string.Join("", parts);
     }
 
-    // 演算子の名前の元 (+ - * / % の 2 項と単項の -)。それ以外は null
+    // The base of an operator name (binary + - * / % and unary -). null otherwise
     private static string? BaseOperatorName(Node op)
     {
         int arity = op.List != null ? op.List.Count : 0;
@@ -119,7 +119,7 @@ public static class IlNames
         return null;
     }
 
-    // 演算子の名前。同じ型に同じ名前の元の演算子が複数あれば宣言の順に `_1` `_2` … を付ける
+    // The operator name. If the same type has several operators with the same base name, `_1` `_2` … are appended in declaration order
     public static string? OperatorName(Node op)
     {
         var mm = BaseOperatorName(op);
@@ -135,13 +135,13 @@ public static class IlNames
         return mm + "_" + (overloads.IndexOf(op) + 1);
     }
 
-    // parameter の名前 (LocalNames が付けた local の名前)
+    // The parameter name (the local name assigned by LocalNames)
     public static string ParamName(Node p)
     {
         return p.Local != null ? p.Local.IlName : p.Text;
     }
 
-    // 型の token: 表示の文字列 (入れ子の型は外側の型の名前も含む) の `[]` を `_arr`、`?` を `_opt` にし、英数字以外の連続を `_` 1 つにする
+    // Type token: in the display string (a nested type includes the outer type's name), `[]` becomes `_arr`, `?` becomes `_opt`, and each run of non-alphanumeric characters becomes a single `_`
     public static string TypeToken(TypeSym type)
     {
         var text = TokenDisplay(type).Replace("[]", "_arr").Replace("?", "_opt");
@@ -166,7 +166,7 @@ public static class IlNames
         return string.Join("", parts);
     }
 
-    // Roslyn の表示 (NameAndContainingTypes、型 parameter を含む、特別な型は keyword) と同じ形
+    // Same form as Roslyn's display (NameAndContainingTypes, including type parameters, keywords for special types)
     public static string TokenDisplay(TypeSym t)
     {
         switch (t.Kind)
@@ -191,7 +191,7 @@ public static class IlNames
                     parts.Add(TokenDisplay(t.Ret));
                     return "Func<" + string.Join(", ", parts) + ">";
                 }
-            // Dictionary の Keys / Values は入れ子の型 (Dictionary<TKey, TValue>.KeyCollection)
+            // Dictionary's Keys / Values are nested types (Dictionary<TKey, TValue>.KeyCollection)
             case TypeKind.KeyCollection:
                 return "Dictionary<" + TokenDisplay(t.Arg(0)) + ", " + TokenDisplay(t.Arg(1)) + ">.KeyCollection";
             case TypeKind.ValueCollection:

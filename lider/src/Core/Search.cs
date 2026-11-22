@@ -1,7 +1,7 @@
-// file と宣言と命令を 1 つの欄で引く、インクリメンタルなあいまい検索。
-// 命令 (CommandTable) は名前で引き、確定すると実行する。">" で始めると命令だけを並べる。
-// 上下で候補を選ぶと、その場所を窓に出す (窓が無ければ仮に開く)。Return で確定し、Escape で開く前に戻す。
-// 確定すると、開いたときにいた場所を Workspace の履歴に残す (Ctrl+- で戻る)。
+// Incremental fuzzy search that looks up files, declarations and commands in one field.
+// Commands (CommandTable) are looked up by name and run when confirmed. Starting with ">" lists only commands.
+// Selecting a candidate with up/down shows that location in a window (opening one temporarily if there is none). Return confirms, and Escape goes back to where it was before opening.
+// On confirm, the location at the time of opening is kept in the Workspace history (Ctrl+- goes back).
 using TinySystem.Text;
 using System;
 using System.Collections.Generic;
@@ -12,41 +12,41 @@ namespace LiderCore;
 
 public class SearchItem
 {
-    // 引く文字 (file は Root からの path、宣言は Outer.Member)
+    // Text to match (the path from Root for files, Outer.Member for declarations)
     public string Text = "";
     public string Path = "";
-    // 宣言の行 (0 から)。file は -1
+    // Declaration line (from 0). -1 for files
     public int Line = -1;
-    // 右に出す場所 (宣言の file と行)
+    // Location shown on the right (the declaration's file and line)
     public string Where = "";
-    // 確定すると、この file を作る
+    // Creates this file on confirm
     public bool Create;
-    // 画像か音の file (窓でなく板に出す)
+    // An image or sound file (shown on a board, not in a window)
     public bool Asset;
-    // 保存していない編集のある file
+    // A file with unsaved edits
     public bool Dirty;
-    // 確定すると実行する命令の名前 (CommandTable。命令でなければ空)
+    // Name of the command run on confirm (CommandTable; empty if not a command)
     public string Command = "";
 }
 
-// file 1 つの宣言と、読んだ時の版
+// Declarations of one file and the version when it was read
 class ScannedFile
 {
     public int Version = -1;
     public int Revision = -1;
-    // 打っている間に変わった版と、それを見つけた時刻
+    // Version that changed while typing, and the time it was noticed
     public int ChangedRevision = -1;
     public float ChangedAt;
     public List<SearchItem> Items = new List<SearchItem>();
     public List<Declaration> Declarations = new List<Declaration>();
 }
 
-// 中身としては、検索の板 (SearchView が描く。画面に写す絵は持たない)
+// As content, the search board (drawn by SearchView; it has no picture to copy to the display)
 public class Search : IContent
 {
-    // 検索を映すウィンドウ (出している間、focus を置く。置く側が決める。無ければ focus は動かさない)
+    // Window showing the search (focus is put on it while shown; set by whoever places it; if none, focus does not move)
     public Window? Window;
-    // 検索を出す前に focus のあった、Code でないウィンドウ
+    // The non-Code window that had focus before the search was shown
     Window? focusFrom;
 
     public TextureRef? Texture()
@@ -54,11 +54,11 @@ public class Search : IContent
         return null;
     }
 
-    // 欄を、決まった入力 (字を打ってもらう、命令を選んでもらう) として出しているときの、何を入れるかの説明 (そうでなければ空)
+    // When the field is shown as a specific prompt (asking for text, or asking to choose a command), a description of what to enter (empty otherwise)
     public string Prompt = "";
     Action<string>? asked;
 
-    // 欄を、字を打ってもらう入力として出す。Return で、打った字 (前後の空白を除く。空なら呼ばない) を done に渡す
+    // Shows the field as a text prompt. On Return, passes the typed text (trimmed; not called if empty) to done
     public void Ask(Workspace w, string prompt, Action<string> done)
     {
         Open(w);
@@ -69,7 +69,7 @@ public class Search : IContent
 
     Action<string>? picked;
 
-    // 欄を、命令を選んでもらう入力として出す。選んだ命令は実行せず、名前を done に渡す
+    // Shows the field as a command prompt. The chosen command is not run; its name is passed to done
     public void Pick(Workspace w, string prompt, Action<string> done)
     {
         Open(w, ">");
@@ -84,26 +84,26 @@ public class Search : IContent
     public int Selected;
     public readonly List<SearchItem> Results = new List<SearchItem>();
     readonly Dictionary<string, ScannedFile> scanned = new Dictionary<string, ScannedFile>();
-    // 検索の前に focus があったタブと、選んで仮に開いたタブ
+    // The tab that had focus before the search, and the tab opened temporarily by selection
     Document? origin;
     Document? opened;
-    // 選んだ候補を出す前の、その file のカーソルと先頭の行
+    // Cursor and top line of that file before the selected candidate was shown
     Document? moved;
     int movedLine;
     int movedCol;
     int movedFirst;
     bool dirty;
-    // 打ち終わるのを待たずに読み直すとき
+    // When to reload without waiting for typing to finish
     bool forced;
     const float QuietSeconds = 0.5f;
-    // 検索を開いたときにいた場所
+    // Location at the time the search was opened
     Place? from;
-    // まだ読み終えていない file があるか
+    // Whether some files have not been read yet
     bool pending;
-    // 定義へ飛ぶ語 (読み終えて宣言が 1 つに決まれば、そのまま飛ぶ)
+    // Word whose definition to jump to (once reading is done and there is exactly one declaration, jumps there directly)
     string? jumpWord;
 
-    // カーソルの語の宣言へ飛ぶ。1 つに決まらなければ、その語を入れた検索を開いたままにする
+    // Jumps to the declaration of the word at the cursor. If there is not exactly one, leaves the search open with that word entered
     public void Jump(Workspace w)
     {
         var doc = w.Focus;
@@ -116,7 +116,7 @@ public class Search : IContent
         Refresh(w);
     }
 
-    // line の col の所 (か、そのすぐ左) の語
+    // The word at col in line (or just left of it)
     public static string WordAt(string line, int col)
     {
         var start = Math.Min(col, Utf8.Bytes(line));
@@ -137,13 +137,13 @@ public class Search : IContent
         return char.IsLetterOrDigit((char)c) || c == '_';
     }
 
-    // path の file の宣言 (読んでいなければ空)
+    // Declarations of the file at path (empty if not read)
     public List<Declaration> DeclarationsIn(string path)
     {
         return scanned.TryGetValue(path, out var file) ? file.Declarations : new List<Declaration>();
     }
 
-    // path の line 行目 (1 から) を含むメソッドの名前 (読んでいないか、メソッドの外なら "")
+    // Name of the method containing line line (from 1) of path ("" if not read or outside a method)
     public string MethodAt(string path, int line)
     {
         var name = "";
@@ -153,11 +153,11 @@ public class Search : IContent
         return name;
     }
 
-    // 名前の宣言 (Outer.Inner の Inner でも引ける)。毎 frame 呼ばれるので、宣言ごとに文字列を作らない
+    // Declarations of a name (Inner of Outer.Inner also matches). Called every frame, so no string is created per declaration
     public SearchItem? Find(string name)
     {
         var n = Utf8.Bytes(name);
-        // Values は値の List を作るので、辞書をそのまま回す
+        // Values creates a List of the values, so the dictionary is iterated directly
         foreach (var pair in scanned)
             foreach (var item in pair.Value.Items)
             {
@@ -170,7 +170,7 @@ public class Search : IContent
         return null;
     }
 
-    // path の line 行目 (0 から。-1 は file を開くだけ) へ飛ぶ
+    // Jumps to line line of path (from 0; -1 just opens the file)
     public void GoToPlace(Workspace w, string path, int line)
     {
         origin = w.Focus;
@@ -179,7 +179,7 @@ public class Search : IContent
         Finish(w);
     }
 
-    // 名前の宣言へ飛ぶ (無ければ何もしない)
+    // Jumps to the declaration of a name (does nothing if there is none)
     public void GoTo(Workspace w, string name)
     {
         forced = true;
@@ -216,7 +216,7 @@ public class Search : IContent
         Refresh(w);
     }
 
-    // 検索を閉じるときに、focus を戻す。確定したら開いた Code に、やめたら検索を出す前のウィンドウに
+    // Restores focus when the search closes: to the opened Code on confirm, or to the window from before the search on cancel
     void Unfocus(Workspace w, bool committed)
     {
         if (Window == null || w.Focused != Window)
@@ -227,7 +227,7 @@ public class Search : IContent
         focusFrom = null;
     }
 
-    // 出している間、毎 frame 呼ぶ (読み終えた file と変わった file の宣言を拾う)
+    // Called every frame while shown (picks up declarations from files that finished reading and from changed files)
     public void Refresh(Workspace w)
     {
         pending = false;
@@ -242,7 +242,7 @@ public class Search : IContent
             TryJump(w, jumpWord);
     }
 
-    // word がちょうど名前の宣言が 1 つなら、そこへ飛ぶ。無いか幾つもあれば、検索を開いたままにする
+    // If exactly one declaration has exactly the name word, jumps there. If there is none or several, leaves the search open
     void TryJump(Workspace w, string word)
     {
         jumpWord = null;
@@ -274,7 +274,7 @@ public class Search : IContent
         {
             if (file.Revision == doc.Revision)
                 return false;
-            // 検索を出していない間は、打ち終わるまで読み直さない (初めて読むときは待たない)
+            // While the search is not shown, does not reload until typing finishes (does not wait on the first read)
             if (file.ChangedRevision != doc.Revision)
             {
                 file.ChangedRevision = doc.Revision;
@@ -302,14 +302,14 @@ public class Search : IContent
         return true;
     }
 
-    // 点の高い順に MaxResults まで残す。字が空なら file だけを並べる
+    // Keeps up to MaxResults, highest score first. If the text is empty, lists only files
     void Filter(Workspace w)
     {
         var scores = new List<int>();
         Results.Clear();
         if (asked != null)
             return;
-        // ">" で始めると、命令だけを並べる
+        // Starting with ">" lists only commands
         if (Query.StartsWith(">"))
         {
             RankCommands(Utf8.Sub(Query, 1).Trim(), scores);
@@ -331,7 +331,7 @@ public class Search : IContent
         Selected = Math.Min(Selected, Math.Max(0, Results.Count - 1));
     }
 
-    // 打った字が新しい file の名前になるなら、作る候補を最後に足す
+    // If the typed text works as a new file name, adds a create candidate at the end
     void OfferCreate(Workspace w)
     {
         var name = Query.Trim();
@@ -358,7 +358,7 @@ public class Search : IContent
         return true;
     }
 
-    // 命令を名前で引く。右に、何をするかと、割り当てた key を出す
+    // Looks up commands by name. Shows what each does and its assigned keys on the right
     void RankCommands(string query, List<int> scores)
     {
         foreach (var command in CommandTable.All)
@@ -410,13 +410,13 @@ public class Search : IContent
     {
         if (Query == "")
             return;
-        // UTF-8 の 1 文字を消す必要は無い (打てるのは ASCII だけ)
+        // No need to delete a whole UTF-8 character (only ASCII can be typed)
         Query = Utf8.Sub(Query, 0, Utf8.Bytes(Query) - 1);
         Selected = 0;
         Filter(w);
     }
 
-    // 候補を 1 つ上か下へ選び、その場所を出す
+    // Selects the candidate one up or down and shows its location
     public void Move(Workspace w, int by)
     {
         if (Results.Count == 0)
@@ -425,7 +425,7 @@ public class Search : IContent
         Preview(w, Results[Selected]);
     }
 
-    // 選んでいる候補へ移って閉じる
+    // Moves to the selected candidate and closes
     public void Commit(Workspace w)
     {
         if (asked != null)
@@ -445,7 +445,7 @@ public class Search : IContent
         var item = Results[Selected];
         if (item.Command != "")
         {
-            // 検索を開く前の所に戻してから、命令を実行する (命令を選んでもらっているなら、名前を渡す)
+            // Goes back to where it was before the search opened, then runs the command (passes the name instead if a command is being chosen)
             var pick = picked;
             Cancel(w);
             if (pick != null)
@@ -485,7 +485,7 @@ public class Search : IContent
         Unfocus(w, false);
     }
 
-    // 開いたときのタブに focus を戻す (もう閉じていれば、今のまま)
+    // Returns focus to the tab from when it was opened (leaves it as is if that tab is already closed)
     void Restore(Workspace w)
     {
         if (origin != null && w.WindowOf(origin) != null)

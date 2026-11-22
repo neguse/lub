@@ -1,4 +1,4 @@
-// ../TestCompare.cs が保存せずに書き換える file。
+// The file ../TestCompare.cs edits without saving.
 public static class Speed
 {
     public static int Of()

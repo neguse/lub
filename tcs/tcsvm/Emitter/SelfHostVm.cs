@@ -1,17 +1,17 @@
 namespace TinyCs.Vm;
 
-/// <summary>VM backend の誤り (CFail に記録したもの)。</summary>
+/// <summary>VM backend error (what was recorded in CFail).</summary>
 internal sealed class VmException(string message) : Exception(message);
 
 /// <summary>
-/// VM backend (SelfHost/VmBackend の TcsVm.VmEmitter) を .NET から文字列で動かす入口 (テストのため)。
-/// IL はセルフホストの compiler の書き出しをそのまま渡す。誤りの記録 (TcsC.CFail) は static なので、並んだ呼び出しは 1 つずつ動かす。
+/// Entry point for driving the VM backend (TcsVm.VmEmitter in SelfHost/VmBackend) from .NET with strings (for tests).
+/// The IL is passed as is from the self-hosted compiler's export. The error record (TcsC.CFail) is static, so concurrent calls run one at a time.
 /// </summary>
 internal static class SelfHostVm
 {
     public static readonly object Gate = new();
 
-    /// <summary>VM が受ける IL。TinyC# の診断は InvalidOperationException。</summary>
+    /// <summary>The IL that the VM receives. TinyC# diagnostics become InvalidOperationException.</summary>
     private static TcsSelf.ExportResult Export(string[] sources, string[]? refs, string[]? paths)
     {
         var diags = new List<string>();
@@ -22,7 +22,7 @@ internal static class SelfHostVm
 
     public static byte[] Bytes(List<int> bytes) => [.. bytes.Select(b => (byte)b)];
 
-    /// <summary>.tcsb を作る。TinyC# の診断は InvalidOperationException、VM の誤りは VmException。</summary>
+    /// <summary>Creates a .tcsb. TinyC# diagnostics become InvalidOperationException, and VM errors become VmException.</summary>
     public static byte[] Emit(string[] sources, string? entryClass, IEnumerable<string>? exports = null,
         string[]? refs = null, string[]? paths = null)
     {
@@ -36,7 +36,7 @@ internal static class SelfHostVm
         }
     }
 
-    /// <summary>reload: 新版の module と計画 (`tcs vm --reload-from` と同じ)。</summary>
+    /// <summary>reload: the new version's module and plan (same as `tcs vm --reload-from`).</summary>
     public static (byte[] Module, byte[] Plan) EmitReload(string[] v1, string[] v2, string? entryClass,
         IEnumerable<string>? exports = null)
     {

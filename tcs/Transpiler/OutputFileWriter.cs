@@ -11,7 +11,7 @@ internal static class OutputFileWriter
 
     public static void WriteAllBytes(string path, byte[] bytes) => Write(path, stream => stream.Write(bytes));
 
-    // 一時ファイルに書いてから置き換える (既にあるファイルの mode を保つ)
+    // Writes to a temporary file and then replaces the target (keeps the mode of an existing file)
     private static void Write(string path, Action<Stream> write)
     {
         var fullPath = Path.GetFullPath(path);

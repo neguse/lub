@@ -1,6 +1,6 @@
-// draw と dispatch の uniform は shader が宣言した field とちょうど一致しなければ error になる。
-// 足りない field、shader に無い名前、値の数の違いを 1 フレームに 1 つずつ確かめ、一致する draw と dispatch は通ることを見る。
-// reflection に入りきらない長さの field の名前は、shader の compile が error になる。
+// The uniforms of draws and dispatches are an error unless they exactly match the fields the shader declared.
+// Checks a missing field, a name the shader does not have, and a different number of values, one per frame, and checks that matching draws and dispatches pass.
+// A field name too long to fit in the reflection makes the shader compile fail with an error.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -13,7 +13,7 @@ ConstantBuffer<FsUniforms> fu;
 struct FSIn { float4 pos : SV_Position; };
 [shader(""fragment"")] float4 fs_main(FSIn i) : SV_Target { return float4(fu.tint.rgb * fu.gain, 1.0); }";
 
-    // 32 文字の field の名前 (上限は 31 文字)
+    // A 32-character field name (the limit is 31 characters)
     const string LongFs = @"
 struct FsUniforms { float4 a_field_name_of_32_characters___; };
 ConstantBuffer<FsUniforms> fu;

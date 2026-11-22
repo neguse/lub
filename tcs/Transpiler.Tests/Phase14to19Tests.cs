@@ -136,7 +136,7 @@ public class Phase14to19Tests
         Assert.Equal("7", result);
     }
 
-    // ===== with expression receiver の一回評価 =====
+    // ===== Single evaluation of the with expression receiver =====
 
     [Fact]
     public void With_SideEffectReceiver_EvaluatedOnce()
@@ -184,7 +184,7 @@ public class Phase14to19Tests
         Assert.Equal("1|10|12", result);
     }
 
-    // ===== deconstruction RHS の一回評価 =====
+    // ===== Single evaluation of the deconstruction RHS =====
 
     [Fact]
     public void Deconstruct_SideEffectRhs_EvaluatedOnce()

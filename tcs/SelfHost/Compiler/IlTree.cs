@@ -2,10 +2,10 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// IL の木の道具 (子の式の列挙と差し替え、位置の差し替え、呼び出しを含まない式の判定)
+// Utilities for the IL tree (enumerating and replacing child expressions, replacing positions, detecting call-free expressions)
 public static class IlTree
 {
-    // Origin だけを差し替えた文
+    // The statement with only its Origin replaced
     public static IlStat WithOrigin(IlStat s, IlPos? origin)
     {
         switch (s)
@@ -143,7 +143,7 @@ public static class IlTree
         return result;
     }
 
-    // 呼び出しを含まない式 (順序を入れ替えて観測できる副作用が無い)。runtime の helper / math / string は純粋なので許す
+    // An expression containing no calls (no side effects observable when reordered). Runtime helpers / math / string are pure, so they are allowed
     public static bool IsCallFree(IlExpr e)
     {
         switch (e)
@@ -155,7 +155,7 @@ public static class IlTree
                 return true;
             case IlField f:
                 return IsCallFree(f.Recv);
-            // List / 配列の要素の読み出しは範囲外で fault するので順序を入れ替えない
+            // Reading a List / array element faults when out of range, so it is not reordered
             case IlIndex ix:
                 return (!ix.PlusOne || ix.Unchecked) && IsCallFree(ix.Recv) && IsCallFree(ix.Idx);
             case IlLen len:
@@ -204,13 +204,13 @@ public static class IlTree
         return false;
     }
 
-    // + - * / % は operand がプリミティブと言えなければ演算子の overload (--ref の型の host の演算子) で、任意のコードを呼びうる
+    // Unless the operands are known to be primitive, + - * / % may be operator overloads (host operators of --ref types) and may call arbitrary code
     private static bool IsOverloadableOp(IlBinOp op)
     {
         return op == IlBinOp.AddNum || op == IlBinOp.Sub || op == IlBinOp.Mul || op == IlBinOp.DivNum || op == IlBinOp.RemNum;
     }
 
-    // 値がプリミティブ (class の instance ではない) と IL の形から言える式。IlVar / field などは型が分からないので false
+    // An expression whose value is known from its IL shape to be primitive (not a class instance). false for IlVar / field etc., since their type is unknown
     private static bool IsPrimitive(IlExpr e)
     {
         if (e is IlLit || e is IlLen || e is IlIsType || e is IlIsPrimType || e is IlNullableHasValue || e is IlNumericConvert) return true;
@@ -232,7 +232,7 @@ public static class IlTree
         return false;
     }
 
-    // 副作用の無い intrinsic (標準出力に書く __tcs_write / __tcs_writeline と、環境変数を読む __tcs_getenv を除く)
+    // Intrinsics without side effects (excluding __tcs_write / __tcs_writeline, which write to standard output, and __tcs_getenv, which reads environment variables)
     private static bool IsPureCallee(string callee)
     {
         if (callee == "__tcs_write" || callee == "__tcs_writeline" || callee == "__tcs_getenv") return false;

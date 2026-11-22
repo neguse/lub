@@ -2,10 +2,10 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// entry class (--entry) の解決。namespace 修飾名か、compile の中で一意な simple 名で引く
+// Resolution of the entry class (--entry). Looked up by namespace-qualified name or by a simple name unique within the compile
 public static class EntryClass
 {
-    // 見つからない、曖昧、--ref の型、class でない、のときは errors に理由を足して null を返す
+    // If not found, ambiguous, a --ref type, or not a class, add the reason to errors and return null
     public static TypeDeclSym? Resolve(Compilation c, string entry, List<string> errors)
     {
         TypeDeclSym? found = null;

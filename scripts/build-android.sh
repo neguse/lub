@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# tcs2c のゲームを Android (Meta Quest) の APK にする (docs/android.md)。
-# player (libmain.so) を NDK で build し、SDL の Java (SDLActivity)、OpenXR の loader、ゲームのデータと一緒に APK に入れて署名する。
-# Gradle は使わず、Android SDK の build-tools (aapt2、d8、zipalign、apksigner) で組む。
+# Turns a tcs2c game into an APK for Android (Meta Quest) (docs/android.md).
+# Builds the player (libmain.so) with the NDK, puts it into the APK together with the Java code of SDL (SDLActivity), the OpenXR loader and the game data, and signs it.
+# Does not use Gradle; assembles it with the build-tools of the Android SDK (aapt2, d8, zipalign, apksigner).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -51,7 +51,7 @@ if [[ -z "$game" || -z "$package" || -z "$label" || -z "$output" ]]; then
   exit 2
 fi
 
-# min は Quest 2 の OS より十分に古い 29 (Android 10)。target は Meta の store の要件に合わせる。
+# min is 29 (Android 10), well older than the OS of Quest 2. target follows the requirements of the Meta store.
 min_sdk=29
 target_sdk=32
 abi=arm64-v8a
@@ -91,7 +91,7 @@ game="$(cd "$game" && pwd)"
 output="$(abs_path "$output")"
 build_dir="$(mkdir -p "$build_dir" && cd "$build_dir" && pwd)"
 
-# --- player (libmain.so) と SDL、OpenXR の loader
+# --- player (libmain.so), SDL, and the OpenXR loader
 cmake -S "$repo_root" -B "$build_dir/native" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$min_sdk" \
@@ -113,7 +113,7 @@ for lib in "${libs[@]}"; do
   "$llvm_bin/llvm-strip" --strip-unneeded -o "$stage/root/lib/$abi/$(basename "$lib")" "$lib"
 done
 
-# --- SDL の Java
+# --- Java code of SDL
 java_src="$repo_root/third_party/SDL/android-project/app/src/main/java"
 find "$java_src" -name '*.java' > "$stage/java-sources.txt"
 "$javac" -nowarn -source 11 -target 11 -encoding UTF-8 \
@@ -124,7 +124,7 @@ find "$stage/classes" -name '*.class' > "$stage/classes.txt"
 "$build_tools/d8" --release --min-api "$min_sdk" --lib "$android_jar" \
   --output "$stage/root" @"$stage/classes.txt"
 
-# --- データ: player は起動時に lub-files.txt が列挙する file を内部ストレージに写す (src/android.c)
+# --- Data: at startup the player copies the files listed in lub-files.txt to internal storage (src/android.c)
 if [[ -n "$assets" ]]; then
   cp -R "$assets"/. "$stage/assets/"
   (
@@ -135,7 +135,7 @@ if [[ -n "$assets" ]]; then
   )
 fi
 
-# --- manifest、署名
+# --- manifest, signing
 sed -e "s|@PACKAGE@|$package|g" -e "s|@LABEL@|$label|g" \
   "$repo_root/src/android/AndroidManifest.xml" > "$stage/AndroidManifest.xml"
 "$build_tools/aapt2" link -o "$stage/base.apk" -I "$android_jar" \

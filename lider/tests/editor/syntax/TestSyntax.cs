@@ -1,5 +1,5 @@
-// C# の色分け: 注釈、keyword、型、文字列、数、関数の名前、ふつうの名前が、描いた命令の色で分かれる。
-// 行をまたぐ注釈と文字列は次の行も同じ色にし、閉じた後は元に戻す。.cs でない file は色分けしない。
+// C# highlighting: comments, keywords, types, strings, numbers, function names, and plain names are told apart by the color of the drawn commands.
+// Comments and strings that span lines give the next line the same color, which returns to normal after they close. Files other than .cs are not highlighted.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -47,9 +47,9 @@ public static class TestSyntax
         Ed.Check(colors.ContainsKey("int") && colors["int"] == colors["string"], "after the block comment: " + (colors.ContainsKey("int") ? "" : "no int"));
         Ed.Check(colors.ContainsKey("#if") && colors["#if"] == colors["public"], "#if is not a keyword");
         Ed.Check(colors.ContainsKey("'\\''") && colors["'\\''"] == colors["\"text\\\"q\""], "the escaped char literal is not a string");
-        // 色分けは行の命令を語ごとに分け、前の空白は語に付く
+        // Highlighting splits a line's commands per word, and leading whitespace belongs to the word
         Ed.Check(Ed.Command(id, "    public", 5) >= 0, "the indent is not merged into 'public'");
-        // 注釈を開くと、後ろの行が注釈の色になる
+        // Opening a comment turns the following lines to the comment color
         EditorHost.SetCursor(id, 3, 1);
         EditorHost.Insert(id, "/*");
         colors = Colors(id);

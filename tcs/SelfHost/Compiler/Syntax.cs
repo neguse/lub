@@ -4,7 +4,7 @@ namespace TcsSelf;
 
 public enum NodeKind
 {
-    // 宣言
+    // Declarations
     CompilationUnit,
     Using,
     Namespace,
@@ -20,18 +20,18 @@ public enum NodeKind
     Param,
     Attribute,
 
-    // 型
+    // Types
     TypeName,
     PredefType,
     ArrayType,
     NullableType,
     TupleType,
 
-    // 文
+    // Statements
     Block,
     LocalDecl,
     DeconstructDecl,
-    // (a, var b, (c, d)) = expr: List = 分解の先 (式、PatDecl、PatDiscard、入れ子の DeconstructAssign)、A = 値
+    // (a, var b, (c, d)) = expr: List = deconstruction targets (expressions, PatDecl, PatDiscard, nested DeconstructAssign), A = value
     DeconstructAssign,
     ExprStmt,
     If,
@@ -49,7 +49,7 @@ public enum NodeKind
     Empty,
     Unsupported,
 
-    // 式
+    // Expressions
     IntLit,
     FloatLit,
     StringLit,
@@ -89,7 +89,7 @@ public enum NodeKind
     Paren,
     Typeof,
     Checked,
-    // Binder が足す変換: A = 値、Info = ConvKind、Type = 変換先
+    // Conversion added by the Binder: A = value, Info = ConvKind, Type = target
     Conv,
 
     // pattern
@@ -106,7 +106,7 @@ public enum NodeKind
     PropSub,
 }
 
-// 修飾子と引数の修飾の bit
+// Bits for modifiers and argument modifiers
 public static class Mods
 {
     public const int Public = 1;
@@ -135,11 +135,11 @@ public static class Mods
     public const int Implicit = 8388608;
     public const int Explicit = 16777216;
     public const int Event = 33554432;
-    // delegate の型の宣言 (サブセットの外。名前だけを class として宣言し、型の検査の診断に使う)
+    // Delegate type declaration (outside the subset; only the name is declared as a class, used for type-checking diagnostics)
     public const int Delegate = 67108864;
 }
 
-// 型宣言の種類 (TypeDecl の Value)
+// Kinds of type declarations (the Value of TypeDecl)
 public static class DeclKinds
 {
     public const int Class = 0;
@@ -150,8 +150,8 @@ public static class DeclKinds
     public const int RecordStruct = 5;
 }
 
-// 構文木のノード。種類ごとに class を分けず、1 つの class の slot を種類ごとの意味で使う。
-// 各種類の slot の意味は Parser の各メソッドの先頭のコメントにある。
+// A syntax tree node. Instead of a class per kind, the slots of one class are used with a meaning per kind.
+// The meaning of each kind's slots is in the comment at the top of each Parser method.
 public sealed class Node
 {
     public NodeKind Kind;
@@ -159,7 +159,7 @@ public sealed class Node
     public int Pos;
     public int End;
     public string Text = "";
-    // ?. の鎖の中で、この受け手を評価済みの値を持つ local の名前
+    // Inside a ?. chain, the name of the local that holds the already-evaluated value of this receiver
     public string? CondRecv;
     public int Value;
     public int Flags;
@@ -171,33 +171,33 @@ public sealed class Node
     public List<Node>? List2;
     public List<Node>? List3;
 
-    // 束縛の結果 (Binder が書く)
+    // Binding results (written by the Binder)
     public TypeSym? Type;
     public Symbol? Sym;
-    // 定数の値 (Binder が畳んだもの)。HasConst のときだけ意味を持つ
+    // Constant value (folded by the Binder). Meaningful only when HasConst
     public bool HasConst;
     public ConstValue? Const;
-    // 束縛の補足 (種類ごとの意味は Binder を参照)
+    // Extra binding info (see the Binder for its meaning per kind)
     public int Info;
     public TypeSym? Type2;
     public Node? Bound;
     public List<TypeSym>? TypeArgs;
     public LocalSym? Local;
-    // method group の候補
+    // Method group candidates
     public List<Symbol>? Cands;
-    // ?. の鎖の中の式 (受け手が null なら鎖全体が null)。CondTop は鎖の最も外の式。
-    // 鎖の中の式の Type は持ち上げた型 (値型は T?)、Type2 は持ち上げる前の型
+    // An expression inside a ?. chain (if the receiver is null, the whole chain is null). CondTop is the outermost expression of the chain.
+    // For expressions inside the chain, Type is the lifted type (T? for value types) and Type2 is the type before lifting
     public bool CondChain;
-    // null と値型の腕の条件式 (自然な型を持たず、変換先の型へ各腕を変換する。target-typed)
+    // A conditional expression with null and value-type arms (it has no natural type, and each arm is converted to the target type; target-typed)
     public bool TargetTyped;
     public bool CondTop;
-    // 拡張メソッドの method group
+    // Method group of extension methods
     public bool ExtGroup;
-    // 文が式の中で宣言する局所変数 (out var と pattern の変数)。Emitter が文の前に宣言する
+    // Locals that a statement declares inside expressions (out var and pattern variables). The Emitter declares them before the statement
     public List<LocalSym>? DeclLocals;
-    // 型の宣言 (TypeDecl) の symbol (Declarer が書く)
+    // The symbol of a type declaration (TypeDecl) (written by the Declarer)
     public TypeDeclSym? TypeDecl;
-    // この構文から作った IL の位置 (同じ構文の IL は同じ IlPos を共有する)
+    // The position of IL built from this syntax (IL from the same syntax shares the same IlPos)
     public IlPos? IlOrigin;
 
     public Node(NodeKind kind, SourceFile file, int pos)
@@ -239,13 +239,13 @@ public sealed class Node
 
     public bool Has(int flag) => (Flags & flag) != 0;
 
-    // parse したままの木を複製する (束縛は木を書き換えるので、session は複製を束縛して元の木を次の compile に残す)
-    // CloneTree の複製の元の node と、束縛した複製 (generic の単相化が束縛の結果を元の木から引く)
+    // Copies the tree as parsed (binding modifies the tree, so the session binds the copy and keeps the original tree for the next compile)
+    // The original node of a CloneTree copy, and the bound copy (generic monomorphization looks up binding results from the original tree)
     public Node? Orig;
     public Node? Mirror;
-    // 単相化が差し込んだ型の構文 (Roslyn では null 許容の文脈を持たない oblivious な型)
+    // Type syntax inserted by monomorphization (an oblivious type with no nullable context, in Roslyn terms)
     public bool Oblivious;
-    // 単相化が型やファイルの終わりに足した閉じた copy の順番 (1 から)。走査は元の位置でなくこの順で copy を後ろに置く
+    // The order (from 1) of closed copies that monomorphization added at the end of a type or file. Traversal places copies at the end in this order rather than by original position
     public int Appended;
 
     public Node CloneTree()

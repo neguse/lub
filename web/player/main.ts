@@ -1,11 +1,11 @@
-// player の page (player.html): エディタを通らずに、渡された bytecode と file で lub の tcs VM の player (wasm/vm/lub.js) を動かす。
-// tests/cs の検査 (scripts/verify-player.mjs の A9) が、page を開いて postMessage で起動する。
-//   1. slang-wasm (lib/slang-bridge.ts) を起動し、wasm の main の前に window.slangCompile を置く (shader_compile は EM_JS から同期で呼ぶ)。
-//   2. wasm の print / printErr と JS の console を、親の window へ postMessage する (top-level で開いたときは自分)。
-//   3. WebGPU の device を作り、Module.preinitializedWebGPUDevice で lub.js に渡す。
-//   4. `setFiles` (起動。file、entry、argv、env) と `syncFiles` (起動の後に file を置き直す) を受ける。
-//   5. サンプルが読み得る file を main の前に MEMFS に置く (runtime の Io は MEMFS しか見ない)。
-// C の側は entry の .batch と module の mtime を毎 frame 見て (src/vm_player.c)、Io は読むときに mtime を見る (src/api_io.c) ので、syncFiles は file を書き直すだけでよい。
+// Player page (player.html): runs the lub tcs VM player (wasm/vm/lub.js) with the given bytecode and files, without going through the editor.
+// The tests/cs check (A9 in scripts/verify-player.mjs) opens the page and starts it with postMessage.
+//   1. Starts slang-wasm (lib/slang-bridge.ts) and sets window.slangCompile before the wasm main (shader_compile calls it synchronously from EM_JS).
+//   2. Sends wasm print / printErr and the JS console to the parent window with postMessage (to itself when opened at top level).
+//   3. Creates the WebGPU device and passes it to lub.js via Module.preinitializedWebGPUDevice.
+//   4. Receives `setFiles` (start: files, entry, argv, env) and `syncFiles` (re-place files after start).
+//   5. Places files a sample may read into MEMFS before main (the runtime's Io only looks at MEMFS).
+// The C side checks the entry's .batch and the module mtime every frame (src/vm_player.c), and Io checks the mtime when reading (src/api_io.c), so syncFiles only needs to rewrite the files.
 
 import { initSlang } from "../lib/slang-bridge";
 
@@ -24,10 +24,10 @@ declare global {
 }
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-// URL に ?w=&h= があれば、MainTex をその大きさで描く (src/backend_webgpu.c の wg_target_size)。
-// ゲームの Gfx.Size は SDL の window の大きさ (App.Config の Width / Height) のままで、それとは揃わない。
-// 無ければ export の page と同じく、ゲームの window の大きさで描く。
-// どちらでも CSS が canvas を page に収める。
+// If the URL has ?w=&h=, MainTex is drawn at that size (wg_target_size in src/backend_webgpu.c).
+// The game's Gfx.Size stays the SDL window size (Width / Height of App.Config) and does not match it.
+// If absent, draws at the game window size, as the export page does.
+// Either way, CSS fits the canvas into the page.
 const _q = new URLSearchParams(location.search);
 const _cw = parseInt(_q.get("w") || "", 10);
 const _ch = parseInt(_q.get("h") || "", 10);
@@ -74,7 +74,7 @@ window.addEventListener("error", (e) => {
   relayLog("[error] " + msg, "err");
 });
 
-// tcs VM の player: wasm/vm/lub.js。module (.tcsb) と reload の batch (.batch) は base64 で届く
+// tcs VM player: wasm/vm/lub.js. The module (.tcsb) and the reload batch (.batch) arrive as base64
 const wasmDir = "wasm/vm/";
 
 function decodeBinary(path: string, content: string | Uint8Array) {
@@ -119,8 +119,8 @@ function writeFileEnsureDir(
 
 type SampleAssets = { shared: string[]; samples: Record<string, string[]> };
 
-// sample-assets.json (vite.config.ts) に載ったサンプルのファイルを取ってくる。
-// 取れなかったファイルは置かずに続ける (読んだ時点で runtime が missing を返す)。
+// Fetches the sample files listed in sample-assets.json (vite.config.ts).
+// Files that cannot be fetched are skipped and loading continues (the runtime returns missing when they are read).
 async function fetchAssets(entry: string): Promise<[string, Uint8Array][]> {
   const base = import.meta.env.BASE_URL;
   let list: SampleAssets;
@@ -177,12 +177,12 @@ let pendingEntry: string | null = null;
 let pendingArgv: string[] | null = null;
 let pendingEnv: Record<string, string> = {};
 let wasmStarted = false;
-// FS (window.FS は wasm main 内で代入) が使えるまでの syncFiles を溜める。
-// 捨てると runtimeReady 前の編集が失われるので queue + flush する。
+// Buffers syncFiles until FS (window.FS is assigned inside the wasm main) is available.
+// Dropping them would lose edits made before runtimeReady, so they are queued and flushed.
 const pendingSyncBatches: Record<string, string>[] = [];
 
-// 編集ファイルは samples/ 相対で届く。
-// "/" 始まりは MEMFS の絶対パスとしてそのまま置く (verify の A9 が tests/cs の bytecode と、test が読むファイルを流し込む経路)。
+// Edited files arrive relative to samples/.
+// Paths starting with "/" are placed as-is as absolute MEMFS paths (the path verify A9 uses to feed in the tests/cs bytecode and the files the test reads).
 function fsPath(p: string): string {
   if (p.startsWith("/")) return p.slice(1);
   return p.startsWith("samples/") ? p : "samples/" + p;
@@ -194,7 +194,7 @@ function writeSyncBatch(FS: any, files: Record<string, string>) {
   }
 }
 
-// wasm main が FS を公開したら runtimeReady を親へ通知し、溜めた sync を流す
+// When the wasm main exposes FS, notifies the parent of runtimeReady and flushes the buffered syncs
 function watchRuntimeReady() {
   const poll = setInterval(() => {
     const FS = (window as any).FS;
@@ -251,8 +251,8 @@ async function startWasm() {
   };
   const env = Object.entries(pendingEnv);
   if (env.length > 0) {
-    // preRun 時点では runtime の ENV が Module に export 済みで、environ の実体化 (main() 前) はまだ。
-    // ここで書けば C の getenv に見える。
+    // At preRun, the runtime's ENV is already exported to Module, and environ has not been materialized yet (before main()).
+    // Writing here makes it visible to C getenv.
     moduleConfig.preRun.push(function () {
       const ENV = moduleConfig.ENV;
       if (!ENV) {
@@ -313,7 +313,7 @@ window.addEventListener("message", (e: MessageEvent) => {
   } else if (d.type === "syncFiles") {
     const FS = window.FS;
     if (!FS) {
-      // wasm 起動前: 捨てずに queue し、runtimeReady 時に flush する
+      // Before wasm starts: queue instead of dropping, and flush on runtimeReady
       pendingSyncBatches.push(d.files || {});
       return;
     }

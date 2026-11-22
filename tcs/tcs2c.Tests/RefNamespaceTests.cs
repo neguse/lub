@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// --ref の別 namespace にある同じ simple 名の型 (A.Opts と B.Opts) は別の外部
-// class として出る
+// Types with the same simple name in different namespaces of --ref (A.Opts and B.Opts) are emitted as separate external
+// classes
 public class RefNamespaceTests
 {
     [CFact]
@@ -28,7 +28,7 @@ public class RefNamespaceTests
         Assert.Equal(["A_Opts", "B_Opts"], exported.Classes.Where(c => c.IsExternal)
             .Select(c => c.Name).OrderBy(n => n, StringComparer.Ordinal));
         var c = SelfHostC.Emit([source], "G", referenceSources: [stub]);
-        // host は生成 C の struct を同じ translation unit で読む
+        // The host reads the structs of the generated C in the same translation unit
         const string host = """
 
             int32_t tcs_host_a_fa_use(Tcs_A_Opts *o) { return o->f_x * 10 + o->f_y; }

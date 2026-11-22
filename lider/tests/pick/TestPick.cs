@@ -1,12 +1,12 @@
-// ゲームの物を click すると、それを描いたコードの行を物の横に開くことを確かめる。
-// ゲーム (game/Game.cs) は画面の中央に板を 1 枚描く (DrawLine の行の Gfx.Draw)。
-// click は lub から届く event と同じに Lider.OnEvent へ流す。
-// lider を隠して中央を click し、その click がゲームのもので lider は何も開かないことを見る。
-// lider を出し、中央を左 click して、拡大した file が game/Game.cs の DrawLine の行になるまで待つ。
-// 板は Quad の個体 (Game.Shown) が自分の Draw で描くので、開くとインスペクタがその個体に絞り込む。
-// 次に開いた板を正面 (板が板の奥を隠す所) に置き、中 click で板の奥の物をもう一度引けるか見る (左 click なら板の上のカーソルが動く)。
-// 行番号は game/Game.cs の中の位置なので、そこに行を足したら DrawLine を合わせる。
-// frame はゲームが動き始めてから数える。
+// Checks that clicking a game object opens the code line that drew it beside the object.
+// The game (game/Game.cs) draws one board in the center of the screen (Gfx.Draw on the DrawLine line).
+// Clicks are fed to Lider.OnEvent, the same as events that come from lub.
+// Hide lider and click the center, and check that the click belongs to the game and lider opens nothing.
+// Show lider, left-click the center, and wait until the enlarged file is at the DrawLine line of game/Game.cs.
+// The board is drawn by a Quad instance (Game.Shown) in its own Draw, so opening it narrows the inspector to that instance.
+// Next, place the opened board in front (where the board hides what is behind it), and check that a middle click can pick the object behind the board again (a left click would move the cursor on the board).
+// The line number is a position in game/Game.cs, so if lines are added there, update DrawLine to match.
+// Frames are counted from when the game starts running.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -49,12 +49,12 @@ public static class TestPick
 
     static void TestFrame(float dt)
     {
-        // ゲームの build を待つ
+        // Wait for the game build
         if (GameApp.Frames == 0 || failed)
             return;
         frames++;
         Gfx.Size(out var w, out var h);
-        // ゲームの絵の真ん中 (配置によって、絵は画面の一部になる)
+        // Middle of the game view (depending on the arrangement, the view covers only part of the screen)
         var picture = Lider.Screens[0].Windows[0].ContentRect;
         var at = picture != null ? new Vec2(picture.X + picture.W * 0.5f, picture.Y + picture.H * 0.5f) : new Vec2(w / 2, h / 2);
         if (frames == 3)
@@ -62,7 +62,7 @@ public static class TestPick
             Lider.FocusGame();
             Click(1, at.X, at.Y);
         }
-        // ゲームの物を指して調べられるのは、止めている間だけ
+        // Game objects can be pointed at and inspected only while paused
         if (frames == 13)
         {
             Lider.FocusCode();
@@ -95,7 +95,7 @@ public static class TestPick
             return;
         if (phase == 0)
         {
-            // 止めている間は毎 frame 状態を読み直すが、個体の id は変わらないので、押した個体に絞り込める
+            // While paused, the state is reloaded every frame, but instance ids do not change, so it can narrow to the pressed instance
             var shown = "";
             foreach (var n in GameApp.Inspect("Game", 0, 10))
                 if (n.Name == "Shown")

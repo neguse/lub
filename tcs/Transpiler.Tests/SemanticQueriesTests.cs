@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// SessionExports 向け補完/hover クエリ (SemanticQueries) の検証。
-// - speculative fork (ForkWithContent) が session のテキストを変えないこと
-// - allowlist フィルタ (「補完に出る = tcs で書ける」) が効くこと
+// Tests of the completion/hover queries (SemanticQueries) for SessionExports.
+// - the speculative fork (ForkWithContent) does not change the session's text
+// - the allowlist filter ("shown in completion = writable in tcs") works
 public class SemanticQueriesTests
 {
     private const string GameSource = """
@@ -29,7 +29,7 @@ public class SemanticQueriesTests
             fork.Value.Compilation, fork.Value.Tree, offset + marker.Length);
     }
 
-    // session に無い path は fork できない。他のファイルのテキストは SetText で今のものに保つ
+    // A path not in the session cannot be forked. The text of other files is kept current with SetText.
     [Fact]
     public void EditorSession_KnowsOnlyItsFiles()
     {
@@ -51,7 +51,7 @@ public class SemanticQueriesTests
             "amount; this.");
         Assert.Contains(items, i => i.Label == "Damage" && i.Kind == "method");
         Assert.Contains(items, i => i.Label == "Health" && i.Kind == "variable");
-        // static は instance receiver に出ない
+        // Statics do not appear on an instance receiver
         Assert.DoesNotContain(items, i => i.Label == "Spawn");
     }
 
@@ -76,10 +76,10 @@ public class SemanticQueriesTests
             "Health = Health - amount; var x = System.Math.");
         var items = CompleteAt(session, "game/Player.cs", content,
             "= System.Math.");
-        // allowlist 内は出る
+        // Members in the allowlist appear
         Assert.Contains(items, i => i.Label == "Min");
         Assert.Contains(items, i => i.Label == "PI");
-        // allowlist 外 (TCS1002 対象) は補完に出さない
+        // Members outside the allowlist (subject to TCS1002) are not shown in completion
         Assert.DoesNotContain(items, i => i.Label == "Cbrt");
         Assert.DoesNotContain(items, i => i.Label == "BigMul");
     }
@@ -94,7 +94,7 @@ public class SemanticQueriesTests
         var items = CompleteAt(session, "game/Player.cs", content, "(); l.");
         Assert.Contains(items, i => i.Label == "Add");
         Assert.Contains(items, i => i.Label == "Count");
-        // List.Reverse は allowlist 外
+        // List.Reverse is outside the allowlist
         Assert.DoesNotContain(items, i => i.Label == "Reverse");
     }
 
@@ -122,7 +122,7 @@ public class SemanticQueriesTests
         var session = Open(GameSource);
         var fork = session.ForkWithContent("game/Player.cs", GameSource);
         Assert.NotNull(fork);
-        // `Health = Health - amount` の参照側 Health に hover
+        // Hover over the referencing Health in `Health = Health - amount`
         var offset = GameSource.IndexOf("Health - amount",
             StringComparison.Ordinal);
         var info = SemanticQueries.Hover(
@@ -138,8 +138,8 @@ public class SemanticQueriesTests
     [Fact]
     public void HoverOnUnresolvedIdentifierReturnsNull()
     {
-        // 未解決識別子で親式 (BinaryExpression) の operator symbol 等を
-        // 拾わないこと (PR #1 レビュー指摘)
+        // On an unresolved identifier, do not pick up the parent expression's (BinaryExpression)
+        // operator symbol etc. (PR #1 review comment)
         var session = Open(GameSource);
         var content = GameSource.Replace(
             "Health = Health - amount;", "Health = undefinedA + 1;");
@@ -157,7 +157,7 @@ public class SemanticQueriesTests
         var session = Open(GameSource);
         var fork = session.ForkWithContent("game/Player.cs", GameSource);
         Assert.NotNull(fork);
-        // メソッド宣言の識別子 (walk なしで GetDeclaredSymbol が引けること)
+        // Identifier of a method declaration (GetDeclaredSymbol resolves it without a walk)
         var offset = GameSource.IndexOf("Damage", StringComparison.Ordinal) + 1;
         var info = SemanticQueries.Hover(
             fork.Value.Compilation, fork.Value.Tree, offset);
@@ -172,7 +172,7 @@ public class SemanticQueriesTests
         var fork = session.ForkWithContent("game/Player.cs", GameSource);
         Assert.NotNull(fork);
         var offset = GameSource.IndexOf(" - amount", StringComparison.Ordinal)
-            + 1; // `-` 演算子
+            + 1; // `-` operator
         var info = SemanticQueries.Hover(
             fork.Value.Compilation, fork.Value.Tree, offset);
         Assert.Null(info);
@@ -184,14 +184,14 @@ public class SemanticQueriesTests
         const string gameFile = "public static class Game { public static int Hp() { return Player.Spawn().Health; } }";
         var session = new EditorSession([("game/Player.cs", GameSource), ("game/Game.cs", gameFile)]);
 
-        // 壊れた speculative 内容でクエリしても session のテキストは変わらない
+        // Querying with broken speculative content does not change the session's text
         var broken = GameSource.Replace(
             "Health = Health - amount;", "Health = thisIsUndefined.");
         var items = CompleteAt(session, "game/Player.cs", broken,
             "thisIsUndefined.");
-        _ = items; // 空でもよい (バインド不能 receiver)
+        _ = items; // May be empty (receiver cannot be bound)
 
-        // 別のファイルの fork は Player.cs の元のテキストを使う
+        // A fork of another file uses the original text of Player.cs
         var other = session.ForkWithContent("game/Game.cs", gameFile)!.Value;
         var player = other.Compilation.SyntaxTrees.Single(t => t.FilePath == "game/Player.cs");
         Assert.Equal(GameSource, player.ToString());
@@ -201,7 +201,7 @@ public class SemanticQueriesTests
     [Fact]
     public void SpeculativeContentIsQueryable()
     {
-        // session が知らない編集途中の内容 (Update 前) でも補完できる
+        // Completion works even with in-progress content the session does not know about (before Update)
         var session = Open(GameSource);
         var content = GameSource.Replace(
             "Health = Health - amount;",

@@ -1,6 +1,6 @@
-// App.Step の StepInput.XrTargets / XrViewProjections / Xr: 開いた app に見せる XR の眼を、開いた側が用意する。
-// Lubx.AppTimeline で進めても、渡した眼はそのまま開いた app に見える。
-// TestAppXrChild は、XR が動いていれば眼ごとに、view-projection の最初の値と眼の幅を色にして眼を塗り、動いていなければ main を青で塗る。
+// StepInput.XrTargets / XrViewProjections / Xr of App.Step: the opener prepares the XR eyes shown to the opened app.
+// Even when advanced with Lubx.AppTimeline, the passed eyes are visible to the opened app as is.
+// If XR is running, TestAppXrChild fills each eye with a color made from the first value of the view-projection and the eye width; if not, it fills main with blue.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -29,7 +29,7 @@ public static class TestAppXrChild
 
 public static class TestAppXr
 {
-    // 0..3: 眼を渡さない、4..7: 眼を渡す、8..11: 眼を渡すが Xr = false、12..15: AppTimeline で進めながら眼を渡す
+    // 0..3: no eyes passed, 4..7: eyes passed, 8..11: eyes passed but Xr = false, 12..15: eyes passed while advancing with AppTimeline
     const int frames = 18;
     static readonly AppTimeline timeline = new AppTimeline(4, 200);
     static Readback? rb;
@@ -77,7 +77,7 @@ public static class TestAppXr
         Check.That(stepped, $"frame {frame}: Step failed");
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
         Gfx.EndPass();
-        // 眼を渡さない間と、Xr = false の間は main の絵、眼を渡している間は、frame ごとに左と右の眼を読む
+        // While no eyes are passed and while Xr = false, reads the main image; while eyes are passed, reads the left and right eyes per frame
         var given = (frame >= 4 && frame < 8) || frame >= 12;
         var read = !given ? rt : (frame % 2 == 0 ? left : right);
         Gfx.ReadTexture(rb!, read, frame, out var st, out var bytes, out _, out _, out _, out _, out var id, out _, out var err);

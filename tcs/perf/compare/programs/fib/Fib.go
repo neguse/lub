@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// 再帰呼び出しの速さ。fib(N) を素朴な二重再帰で計算する
+// Speed of recursive calls. Computes fib(N) with naive double recursion
 func calc(n int32) int32 {
 	if n < 2 {
 		return n
@@ -36,7 +36,7 @@ func run(n int32, print bool) int32 {
 
 func main() {
 	n := envInt("BENCH_N", 30)
-	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	// Repeats BENCH_REPS times. Each repetition's input depends on the previous result so the compiler cannot skip repetitions (the result is never -1)
 	reps := envInt("BENCH_REPS", 1)
 	var prev int32
 	for r := int32(0); r < reps; r++ {

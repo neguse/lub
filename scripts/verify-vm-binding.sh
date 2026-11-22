@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# tcs VM の接続コード (lub-gen vm) を偽の C API (tests/c/tcs_binding.c) で検査する。
-# tests/c/tcs_binding.cs を tcs vm で .tcsb にし、そのゲームが使う関数だけの host の関数 (lub-gen vm --source) と VM を繋ぐ。
-# 出力と誤りは tcs2c の接続コードの検査 (scripts/verify-tcs-binding.sh) と同じ。
+# Checks the tcs VM glue code (lub-gen vm) against a fake C API (tests/c/tcs_binding.c).
+# Builds tests/c/tcs_binding.cs into a .tcsb with tcs vm, and connects the VM with host functions for only the functions that game uses (lub-gen vm --source).
+# The output and errors are the same as in the check of the tcs2c glue code (scripts/verify-tcs-binding.sh).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 work=$(mktemp -d)
@@ -12,7 +12,7 @@ dotnet tcs/Transpiler/bin/Release/net11.0/Transpiler.dll vm --ref cs-lib/lub_stu
   --export 'BindingTest.*' tests/c/tcs_binding.cs -o "$work/game.tcsb"
 dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll vm --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_binding.cs -o "$work/binding.c"
-# tests/c/tcs_binding.c は tcs2c の game.c も include するので、空にする
+# tests/c/tcs_binding.c also includes the game.c of tcs2c, so make it empty
 : > "$work/game.c"
 cat tests/c/tcs_binding.c tests/c/vm_binding_driver.c > "$work/test.c"
 vm=tcs/tcsvm/vm
@@ -23,7 +23,7 @@ rt=tcs/runtime
 [[ "$("$work/test" "$work/game.tcsb" BindingTest.Main | tr -d '\r')" == $'0\n7\n123\n1\nTrue\nTrue\n9\n4\nTrue\n48000\n6\nb\nTrue\n2\n8\nTrue\n10\n3\n3 8 1.5 -2\n1.25 -0.5 4\n2.5\nTrue\nTrue\n11\nTrue\n2\n1\n0000000000000abc\n7\n12.5 -3\nTrue image 7\nFalse True\n0.5 1 1.5' ]]
 echo 'tcs VM binding: the same results as the tcs2c binding'
 
-# 入力の誤りは C API を呼ぶ前に、C# の trace の付いた VM の fault になる
+# Input errors become VM faults with a C# trace before the C API is called
 for fault in 'EmptyMask:bit mask: empty hex string' 'LongMask:bit mask: more than 16 hex digits' 'ArrayCount:count is out of range for the array'; do
   entry=${fault%%:*}
   if "$work/test" "$work/game.tcsb" "BindingTest.$entry" 2> "$work/$entry.err"; then
@@ -36,7 +36,7 @@ for fault in 'EmptyMask:bit mask: empty hex string' 'LongMask:bit mask: more tha
 done
 echo 'tcs VM binding: bad bit masks and a count past the end of the array fault with a C# trace'
 
-# struct の record の書き方と渡り方。tests/c/struct_stub.cs を stub の後ろに足した stub から header と接続コードを作る
+# How struct records are written and passed. Generate the header and glue code from a stub with tests/c/struct_stub.cs appended after the stub
 cat cs-lib/lub_stub.cs tests/c/struct_stub.cs > "$work/struct_stub.cs"
 mkdir -p "$work/struct/lub"
 dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"

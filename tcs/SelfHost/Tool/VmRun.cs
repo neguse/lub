@@ -4,14 +4,14 @@ using TcsVm;
 
 namespace TcsSelf;
 
-// `tcs vm`: tcs VM の .tcsb を作る (旧 tcs2vm と同じ引数)。IL を SelfHost/VmBackend が .tcsb にする
+// `tcs vm`: builds a tcs VM .tcsb (same arguments as the old tcs2vm). SelfHost/VmBackend turns the IL into a .tcsb.
 public sealed class VmOptions
 {
     public const string Usage = "usage: tcs vm [--entry CLASS] [--export CLASS.METHOD|CLASS.*] [--ref HOST_STUB.cs] [--watch [--inputs-from LIST]] [--trace PATH_PREFIX] [--dump-il] [--reload-from OLD.cs ... --plan OUT.plan | --batch OUT.batch] [-o OUT.tcsb] INPUT.cs ...";
     public List<string> Inputs = new List<string>();
-    // --watch の入力の一覧の file (1 行に 1 つの path)。書き換わるたびに読み直す
+    // File listing the --watch inputs (one path per line). Reloaded each time it changes.
     public string InputsFrom = "";
-    // --trace: この path の下のファイルの文と代入を記録する (tcsvm.h の検査)
+    // --trace: records statements and assignments in files under this path (the tcsvm.h check)
     public List<string> Traces = new List<string>();
     public string Output = "";
     public string Entry = "";
@@ -24,15 +24,15 @@ public sealed class VmOptions
     public string BatchOut = "";
 }
 
-/// <summary>VM の増分 session の 1 回の結果。Kind は "module" (最初の build。Module を読み込む)、"batch" (Batch を
-/// tvm_apply_batch で当てる)、"restart" (Module を読み直す。Reasons が理由)、"error" (Errors。最後の build のまま)。</summary>
+/// <summary>The result of one step of an incremental VM session. Kind is "module" (first build; load Module), "batch" (apply Batch with
+/// tvm_apply_batch), "restart" (reload Module; Reasons gives the reasons), or "error" (Errors; the last build stays).</summary>
 public sealed class VmUpdate
 {
     public string Kind;
     public List<int> Module = new List<int>();
     public List<int> Batch = new List<int>();
     public List<string> Reasons = new List<string>();
-    // "batch" のとき、live に当てたが host に知らせたい変化 (ReloadRules.Notes)
+    // For "batch", changes that were applied live but should be reported to the host (ReloadRules.Notes)
     public List<string> Notes = new List<string>();
     public List<string> Errors = new List<string>();
 
@@ -42,21 +42,21 @@ public sealed class VmUpdate
     }
 }
 
-/// <summary>VM の増分 session (doc/vm-design.md §13.3、V5): 最後に通った build を持ち、編集ごとに reload の batch か
-/// restart を返す。`tcs vm --watch` と web の playground の worker が同じものを使う。診断のある編集は最後の build を変えない。</summary>
+/// <summary>Incremental VM session (doc/vm-design.md §13.3, V5): holds the last build that passed and returns a reload batch or
+/// a restart for each edit. `tcs vm --watch` and the web playground worker use the same one. An edit with diagnostics does not change the last build.</summary>
 public sealed class VmSession
 {
     private string _entry;
     private List<string> _exports;
     private List<string> _refs;
     private ExportResult? _last;
-    // 編集を跨いで持つ compile の session (内容の変わらないファイルは parse し直さない)
+    // Compile session kept across edits (files whose contents did not change are not parsed again)
     private Session? _session;
-    // 最後に通った build の型と static の記述 (次の reload の旧版)
+    // Type and static descriptions of the last build that passed (the old version for the next reload)
     private VmDescription? _lastDesc;
-    // session に入れた入力の path (一覧から消えた file を session から外す)
+    // Paths of the inputs added to the session (to remove files that disappeared from the list from the session)
     private List<string> _paths = new List<string>();
-    /// <summary>--trace の path の先頭 (module を作るたびに VmTrace に置く)。</summary>
+    /// <summary>Path prefixes for --trace (set on VmTrace each time a module is built).</summary>
     public List<string> Traces = new List<string>();
 
     public VmSession(string entryClass, List<string> exports, List<string> referenceSources)
@@ -66,7 +66,7 @@ public sealed class VmSession
         _refs = referenceSources;
     }
 
-    /// <summary>入力を compile して VM が受ける IL にする。止める診断があれば null で diagnostics に入れる。</summary>
+    /// <summary>Compiles the inputs into the IL that the VM accepts. If there are blocking diagnostics, returns null and puts them in diagnostics.</summary>
     public static ExportResult? Export(List<string> sources, List<string> paths, List<string> refs, List<string> diagnostics)
     {
         var session = new Session("");
@@ -138,11 +138,11 @@ public sealed class VmSession
         return b;
     }
 
-    /// <summary>live に当てられない編集の理由 (ReloadRules)。</summary>
+    /// <summary>Reasons the edit cannot be applied live (ReloadRules).</summary>
     public static List<string> RestartReasons(ExportResult oldProgram, ExportResult newProgram) =>
         ReloadRules.RestartReasons(ReloadRules.TypesOf(oldProgram), ReloadRules.TypesOf(newProgram));
 
-    /// <summary>reload が評価し直す static (ReloadRules)。</summary>
+    /// <summary>Statics that reload re-evaluates (ReloadRules).</summary>
     public static List<string> ReinitStatics(ExportResult oldProgram, ExportResult newProgram) =>
         ReloadRules.ReinitStatics(ReloadRules.TypesOf(oldProgram), ReloadRules.TypesOf(newProgram));
 
@@ -160,7 +160,7 @@ public sealed class VmRun
     private VmOptions _o;
     private VmSession? _watchSession;
     private string _stamp = "";
-    // --watch で最初の build が通ったか
+    // Whether the first build under --watch passed
     private bool _built;
 
     public VmRun(VmOptions o)
@@ -194,7 +194,7 @@ public sealed class VmRun
         return 1;
     }
 
-    // 出力の path が入力 (入力、--ref、--reload-from、--inputs-from) のどれかと同じファイルなら、その誤りの文
+    // If the output path is the same file as any input (inputs, --ref, --reload-from, --inputs-from), the error message
     private string InputClash(string output)
     {
         var inputs = new List<string>();
@@ -204,7 +204,7 @@ public sealed class VmRun
         return Cli.InputClash(output, _o.Inputs, inputs);
     }
 
-    // 書く前に入力を上書きしないかを確かめる (何も書かずに止める)
+    // Before writing, checks that no input gets overwritten (stops without writing anything)
     private string OutputsClash()
     {
         string clash = InputClash(_o.Output);
@@ -222,7 +222,7 @@ public sealed class VmRun
         return 0;
     }
 
-    // 1 回で終わる仕事は最初の Step で全部行う。--watch は以後の Step で入力の変化を待つ
+    // One-shot work is all done in the first Step. --watch waits for input changes in later Steps.
     public int Step()
     {
         if (_watchSession != null) return StepWatch();
@@ -255,7 +255,7 @@ public sealed class VmRun
         VmTrace.Prefixes = _o.Traces;
         if (_o.ReloadFrom.Count > 0)
         {
-            // reload: 旧版 (--reload-from) と新版から、新版の module と計画 (--plan) を作る (doc/object-model.md §6)
+            // reload: builds the new module and the plan (--plan) from the old version (--reload-from) and the new version (doc/object-model.md §6)
             if (_o.PlanOut == "" && _o.BatchOut == "") return VError("--plan or --batch is required with --reload-from");
             var oldSources = ReadAll(_o.ReloadFrom);
             if (oldSources == null) return VError("could not find file: " + MissingFile(_o.ReloadFrom));
@@ -274,11 +274,11 @@ public sealed class VmRun
         return WriteBytes(_o.Output, bytes);
     }
 
-    // ---- --watch (doc/vm-design.md §13.3): 入力が変わるたびに直前の build からの reload を作り、-o を書き直してから
-    // 標準出力へ `@@tcs_<kind> <byte 数>` の行と本文を書く。kind は vm_batch (本文は batch の base64 の 1 行と改行。
-    // host は tvm_apply_batch で当てる)、restart_required (本文は改行終端の理由の行。host は -o を読み直す)、
-    // reload_notes (vm_batch の前に送る、live に当てたが知らせたい変化。本文は改行終端の行)。
-    // 診断のある編集は stderr に書いて、次の編集を待つ。以後の差分は最後に書いた build から作る ----
+    // ---- --watch (doc/vm-design.md §13.3): each time the inputs change, builds a reload from the previous build, rewrites -o, and then
+    // writes a `@@tcs_<kind> <byte count>` line and the body to standard output. kind is vm_batch (the body is one line of the batch in base64 plus a newline;
+    // the host applies it with tvm_apply_batch), restart_required (the body is newline-terminated reason lines; the host reloads -o), or
+    // reload_notes (sent before vm_batch: changes applied live but worth reporting; the body is newline-terminated lines).
+    // An edit with diagnostics is written to stderr, and the next edit is awaited. Later diffs are built from the last written build ----
 
     private string Stamp()
     {
@@ -288,7 +288,7 @@ public sealed class VmRun
         return string.Join("|", parts);
     }
 
-    // --inputs-from の一覧を読み、_o.Inputs を置き換える
+    // Reads the --inputs-from list and replaces _o.Inputs
     private void ReadInputList()
     {
         if (_o.InputsFrom == "" || !TcsHost.FileExists(_o.InputsFrom)) return;
@@ -301,7 +301,7 @@ public sealed class VmRun
         _o.Inputs = list;
     }
 
-    // 一覧の file のうち、今あるものだけを読む (保存の途中で消えた file は次の変化で読む)
+    // Reads only the listed files that currently exist (a file that vanished mid-save is read on the next change)
     private void ReadPresent(List<string> sources, List<string> paths)
     {
         foreach (var p in _o.Inputs)
@@ -312,7 +312,7 @@ public sealed class VmRun
         }
     }
 
-    // 診断を stderr と、host の stream の build_failed (本文は改行終端の診断の行) に書く
+    // Writes diagnostics to stderr and to build_failed on the host stream (the body is newline-terminated diagnostic lines)
     private static void ReportErrors(List<string> errors)
     {
         TcsHost.WriteErr("tcs2vm: " + string.Join("\n", errors) + "\n");
@@ -344,7 +344,7 @@ public sealed class VmRun
         return BuildWatched(sources, paths);
     }
 
-    // 最初に通るまでは -o を書くだけで、以後は差分を host の stream に書く
+    // Until the first pass, only writes -o; after that, writes diffs to the host stream
     private int BuildWatched(List<string> sources, List<string> paths)
     {
         bool first = !_built;
@@ -365,7 +365,7 @@ public sealed class VmRun
         }
         else
         {
-            // 知らせは当てる前に送る (host は次の OnReload で渡す)
+            // Notes are sent before applying (the host passes them in the next OnReload)
             if (r.Notes.Count > 0)
             {
                 var notes = new List<string>();
@@ -377,7 +377,7 @@ public sealed class VmRun
         return -1;
     }
 
-    // ---- --dump-il: IL の診断用テキスト (非規範) ----
+    // ---- --dump-il: IL text for diagnosis (non-normative) ----
 
     public static string IlProgramText(ExportResult program)
     {

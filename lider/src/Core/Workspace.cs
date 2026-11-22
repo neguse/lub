@@ -1,5 +1,5 @@
-// lider の状態: 対象の file の一覧、開いた Document、コードのスクリーンに並べた窓とどれに focus があるか、入力を取っているか。
-// 編集の key と文字は、focus のある窓の エディタの view に渡す (エディタの keymap が編集、選択、undo、検索をする)。
+// lider state: the list of target files, open Documents, the windows arranged on the code screen and which one has focus, and whether it is taking input.
+// Editing keys and characters go to the editor view of the focused window (the editor keymap does editing, selection, undo, and search).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -7,7 +7,7 @@ using LiderEditor;
 
 namespace LiderCore;
 
-// 飛ぶ前にいた場所
+// The place before a jump
 public class Place
 {
     public string Path = "";
@@ -18,21 +18,21 @@ public class Place
 public class Workspace
 {
     public readonly string Root;
-    // Root の下の .cs (path の ordinal 順)
+    // .cs files under Root (in ordinal order of path)
     public List<string> Files = new List<string>();
-    // 画像と音の file の一覧
+    // List of image and sound files
     public List<string> AssetFiles = new List<string>();
-    // 外で書き換わった file を、編集していない窓に写す (web で保存の後に整形した版)
+    // Copies files changed outside into windows that are not being edited (the version formatted after saving on the web)
     public bool FollowDisk = Environment.GetEnvironmentVariable("LIDER_FOLLOW_DISK") == "1";
-    // 保存していない本文の下書き
+    // Drafts of unsaved text
     public Drafts? Drafts = Environment.GetEnvironmentVariable("LIDER_DRAFTS") != null ? new Drafts(Environment.GetEnvironmentVariable("LIDER_DRAFTS")!) : null;
-    // 板に出している画像か音の file ("" で出さない)
+    // Image or sound file shown on the panel ("" to show none)
     public string ShownAsset = "";
-    // 足した file と消した file を拾うため、Tick はこの秒数ごとに探し直す
+    // Tick rescans every this many seconds to pick up added and deleted files
     public const float RescanSeconds = 2;
     float sinceScan;
     public readonly Dictionary<string, Document> Docs = new Dictionary<string, Document>();
-    // コードの窓を並べるスクリーン: 見る人を軸にした半径 Space.R の円筒に、横一列 (Strip) で並べる。最初の窓の真ん中が角度 0
+    // Screen that arranges the code windows: in a single horizontal row (Strip) on a cylinder of radius Space.R around the viewer. The center of the first window is at angle 0
     public readonly Screen CodeScreen = new Screen("code")
     {
         Shape = ScreenShape.Cylinder,
@@ -41,15 +41,15 @@ public class Workspace
         Layout = new Strip(),
         Movable = true,
     };
-    // コードの窓を置けるスクリーン (最初は CodeScreen だけ。ほかのスクリーンは Lider が足す)
+    // Screens that can hold code windows (only CodeScreen at first; Lider adds the other screens)
     public List<Screen> Screens = new List<Screen>();
-    // 新しく開くコードの窓を置くスクリーン (null なら CodeScreen)
+    // Screen where newly opened code windows go (CodeScreen if null)
     public Screen? Home;
-    // 新しく開くコードの窓は、Home の上のこのウィンドウの前に置く (null か、Home の上に無ければ最後に置く)
+    // Newly opened code windows go before this window on Home (at the end if null or not on Home)
     public Window? HomeBefore;
 
-    // コードの窓 (中身は Code)。Screens の順に、スクリーンの中では並びの順に集めた写し。
-    // 並びを変えるときは、窓のあるスクリーン (ScreenOf) の Windows を変える
+    // Code windows (content is Code). A copy collected in Screens order, and in arrangement order within each screen.
+    // To change the order, change Windows of the screen holding the window (ScreenOf)
     public List<Window> Windows
     {
         get
@@ -63,7 +63,7 @@ public class Workspace
         }
     }
 
-    // window を置いているスクリーン (どこにも無ければ null)
+    // Screen holding window (null if none)
     public Screen? ScreenOf(Window window)
     {
         foreach (var screen in Screens)
@@ -72,14 +72,14 @@ public class Workspace
         return null;
     }
 
-    // Space に置いた GameView のウィンドウ (どの Screen の並びにも居ない。置いていなければ null)。
-    // Space に置いたゲームは、絵でなく場面として出る。置けるのは 1 つ
+    // The GameView window placed in Space (not in any Screen's arrangement; null if none is placed).
+    // A game placed in Space appears as a scene, not as a picture. Only one can be placed
     public Window? InSpace;
-    // Space から戻す先の Screen と、並びの中の位置
+    // The Screen to return to from Space, and the position in its arrangement
     Screen? spaceFrom;
     int spaceAt;
 
-    // GameView の window を、Screen の並びから外して Space に置く。前に置いていた物は、元の Screen に戻す
+    // Removes the GameView window from its Screen's arrangement and places it in Space. Whatever was placed before goes back to its original Screen
     public void PutInSpace(Window window)
     {
         if (window == InSpace || !(window.Content is GameView))
@@ -97,7 +97,7 @@ public class Workspace
         InSpace = window;
     }
 
-    // Space に置いたウィンドウを、元の Screen の並びに戻す (その Screen がもう無ければ、最初の Screen に戻す)
+    // Returns the window placed in Space to the arrangement of its original Screen (to the first Screen if that Screen no longer exists)
     public void TakeFromSpace()
     {
         var window = InSpace;
@@ -110,7 +110,7 @@ public class Workspace
         screen?.Windows.Insert(Math.Min(spaceAt, screen.Windows.Count), window);
     }
 
-    // window を screen の並びの最後に移す (前のスクリーンからは外す)。位置は移した先の配置の規則が決め直す
+    // Moves window to the end of screen's arrangement (removing it from the previous screen). The layout rule of the destination decides its position again
     public void MoveTo(Window window, Screen screen)
     {
         ScreenOf(window)?.Windows.Remove(window);
@@ -119,16 +119,16 @@ public class Workspace
         window.ContentRect = null;
         screen.Windows.Add(window);
     }
-    // focus のある Code のウィンドウ (focus がほかの中身のウィンドウにある間は、最後に focus のあった物)
+    // The focused Code window (while focus is on a window with other content, the one that last had focus)
     public Window? FocusWindow;
-    // focus のある、Code でない中身のウィンドウ (focus が Code にある間は null)
+    // The focused window whose content is not Code (null while focus is on Code)
     Window? other;
-    // キーボードの入力が入るウィンドウ (どのウィンドウにも入らないなら null)
+    // The window that receives keyboard input (null if no window does)
     public Window? Focused => other ?? FocusWindow;
-    // focus がゲームの絵のウィンドウにあるか (その間、キーボードはゲームのもの)
+    // Whether focus is on the game picture window (the keyboard belongs to the game meanwhile)
     public bool OnGame => other != null && other.Content is GameView;
 
-    // window に focus を移す
+    // Moves focus to window
     public void FocusTo(Window window)
     {
         if (window.Content is Code)
@@ -140,14 +140,14 @@ public class Workspace
             other = window;
     }
 
-    // focus を Code のウィンドウに戻す (Code のウィンドウが無ければ、どのウィンドウにも入らない)
+    // Returns focus to the Code window (if there is no Code window, no window gets it)
     public void FocusCode()
     {
         other = null;
     }
     public Document? Focus => FocusWindow?.Code.Doc;
-    // 見ている窓に focus を移すのは、LookSeconds 見続け、その間 QuietSeconds 打っていないとき
-    // (打ちながら脇を見ても移らない)
+    // Focus moves to the window being looked at once it has been looked at for LookSeconds with no typing for QuietSeconds during that time
+    // (glancing aside while typing does not move it)
     public const float LookSeconds = 0.35f;
     public const float QuietSeconds = 0.5f;
     Window? looked;
@@ -157,7 +157,7 @@ public class Workspace
     public bool Shift;
     public bool Ctrl;
     public bool Alt;
-    // 押している key (lub の KeyDown は押しっぱなしの繰り返しも届くので、押し始めと分ける)
+    // Keys held down (lub's KeyDown also delivers auto-repeat while held, so this separates the initial press)
     readonly Dictionary<int, bool> held = new Dictionary<int, bool>();
 
     public Workspace(string root)
@@ -174,7 +174,7 @@ public class Workspace
         Walk(Root, files, 0);
         if (!AssetFiles.Contains(ShownAsset))
             ShownAsset = "";
-        // 挿入ソート (path の ordinal 順)
+        // Insertion sort (in ordinal order of path)
         for (var i = 1; i < files.Count; i++)
         {
             var f = files[i];
@@ -189,7 +189,7 @@ public class Workspace
         Files = files;
     }
 
-    // lider を出している間、毎 frame 呼ぶ
+    // Called every frame while lider is shown
     public void Tick(float dt)
     {
         TakeDeleted();
@@ -205,7 +205,7 @@ public class Workspace
         Rescan();
     }
 
-    // a が b より ordinal (byte) の順で前か
+    // Whether a comes before b in ordinal (byte) order
     static bool Before(string a, string b)
     {
         var n = Math.Min(Utf8.Bytes(a), Utf8.Bytes(b));
@@ -215,7 +215,7 @@ public class Workspace
         return Utf8.Bytes(a) < Utf8.Bytes(b);
     }
 
-    // dotnet の既定と同じく bin / obj と '.' で始まるディレクトリは辿らない
+    // Like the dotnet default, does not descend into bin / obj or directories starting with '.'
     void Walk(string dir, List<string> files, int depth)
     {
         if (depth > 8)
@@ -252,13 +252,13 @@ public class Workspace
         return doc;
     }
 
-    // Root の直下の file の path (Walk と同じ書き方)
+    // Path of a file directly under Root (written the same way as Walk)
     public string PathOf(string name)
     {
         return Root == "." ? name : Root + "/" + name;
     }
 
-    // type の宣言だけの file を作って窓に開く
+    // Creates a file with only a type declaration and opens it in a window
     public void Create(string path, string typeName)
     {
         Io.SaveText(path, "public class " + typeName + "\n{\n}\n");
@@ -266,7 +266,7 @@ public class Workspace
         FocusOn(path);
     }
 
-    // 板に出している file か、focus のある窓の file を消すか尋ねる
+    // Asks whether to delete the file shown on the panel or the file of the focused window
     public void AskDeleteFocus()
     {
         if (ShownAsset != "")
@@ -275,7 +275,7 @@ public class Workspace
             EditorHost.AskDelete(FocusWindow.Code.ViewId);
     }
 
-    // 消すと答えた file の窓と Document を片付ける
+    // Cleans up the windows and Documents of files the user chose to delete
     void TakeDeleted()
     {
         for (var id = EditorHost.TakeDeleted(); id != 0; id = EditorHost.TakeDeleted())
@@ -297,8 +297,8 @@ public class Workspace
         }
     }
 
-    // 開いた Document に エディタの本文の変化と保存を拾わせる。
-    // 名前の無い doc に名前を付けて保存したら、その file の path にする
+    // Makes open Documents pick up text changes and saves from the editor.
+    // When an unnamed doc is saved with a name, uses that file's path
     public void Sync()
     {
         var named = new List<string>();
@@ -308,7 +308,7 @@ public class Workspace
             if (pair.Value.Path == "" && EditorHost.Path(pair.Value.Id) != "")
                 named.Add(pair.Key);
         }
-        // 新しい file は一覧にまだ無いので、探し直してから一覧の path にする
+        // The new file is not in the list yet, so rescans before using the path from the list
         if (named.Count > 0)
             Rescan();
         foreach (var key in named)
@@ -321,7 +321,7 @@ public class Workspace
         }
     }
 
-    // lub が reload chunk を当てた (OnReload)
+    // lub applied a reload chunk (OnReload)
     public void Reloaded()
     {
         foreach (var doc in Docs.Values)
@@ -339,10 +339,10 @@ public class Workspace
         }
     }
 
-    // 当てた差分のうち、動いている個体には入らなかった field の初期値の変更 ("Type.field")。次の reload まで
+    // Changes to field initializers in the applied diff that did not reach running instances ("Type.field"). Until the next reload
     public List<string> InitChanged = new List<string>();
 
-    // lub が差分を当てた後の知らせ (OnReloadNotes。Reloaded の後に呼ばれる)
+    // Notice after lub applies a diff (OnReloadNotes; called after Reloaded)
     public void ReloadNotes(string text)
     {
         const string initChanged = "instance field initializer changed: ";
@@ -352,17 +352,17 @@ public class Workspace
         ErrorsVersion++;
     }
 
-    // 最後に保存した版の compile error (直した版の reload が当たるまで)。
-    // Errors と InitChanged が変わるたびに ErrorsVersion が上がる
+    // Compile errors of the last saved version (until the reload of a fixed version is applied).
+    // ErrorsVersion goes up every time Errors or InitChanged changes
     public List<BuildError> Errors = new List<BuildError>();
     public int ErrorsVersion;
-    // compile error を受けた回数と、error が直って reload が当たった回数
+    // Number of compile errors received, and number of times the errors were fixed and a reload was applied
     public int Failures;
     public int Fixed;
-    // 検索や履歴で別の場所へ飛んだ回数
+    // Number of jumps to another place by search or history
     public int Jumps;
 
-    // lub が tcs の compile error を知らせた (OnBuildFailed)。error の path は一覧の path に直す
+    // lub reported a tcs compile error (OnBuildFailed). Error paths are converted to paths in the list
     public void BuildFailed(string text)
     {
         Errors = BuildError.Parse(text);
@@ -373,7 +373,7 @@ public class Workspace
         Failures++;
     }
 
-    // カーソルのある行の error の、並びの次の error (最後の次は最初。カーソルの行に無ければ最初)。一覧に無い file の error は飛ばす
+    // The error after the one on the cursor line in the list (the first after the last; the first if none is on the cursor line). Errors in files not in the list are skipped
     public BuildError? NextError()
     {
         var places = new List<BuildError>();
@@ -389,7 +389,7 @@ public class Workspace
         return places[0];
     }
 
-    // path の file の error
+    // Errors of the file at path
     public List<BuildError> ErrorsIn(string path)
     {
         var found = new List<BuildError>();
@@ -399,7 +399,7 @@ public class Workspace
         return found;
     }
 
-    // path のタブを出して focus を移す (タブが無ければ開いて、focus のある窓のタブに足す)
+    // Shows the tab of path and moves focus to it (if there is no tab, opens it and adds it to the tabs of the focused window)
     public void FocusOn(string path)
     {
         var doc = Open(path);
@@ -407,7 +407,7 @@ public class Workspace
             Show(doc);
     }
 
-    // doc のタブを出して focus を移す (タブが無ければ focus のある窓の今のタブの右に足す。窓が無ければ窓を作る)
+    // Shows the tab of doc and moves focus to it (if there is no tab, adds it to the right of the current tab of the focused window; creates a window if there is none)
     public void Show(Document doc)
     {
         var window = WindowOf(doc);
@@ -428,14 +428,14 @@ public class Workspace
         FocusWindow.Code.Tab++;
     }
 
-    // 窓を screen の並びの at 番目に足し、focus を移す
+    // Adds the window at position at in screen's arrangement and moves focus to it
     void AddWindow(Window window, Screen screen, int at)
     {
         screen.Windows.Insert(at, window);
         FocusWindow = window;
     }
 
-    // focus のある窓で、by だけ隣のタブを出す (端から反対の端へ回る)
+    // In the focused window, shows the tab by steps away (wrapping from one end to the other)
     public void NextTab(int by)
     {
         var window = FocusWindow;
@@ -443,15 +443,15 @@ public class Workspace
             window.Code.Tab = (window.Code.Tab + by + window.Code.Tabs.Count) % window.Code.Tabs.Count;
     }
 
-    // focus のある窓の今のタブを、by (1 か -1) の側の隣の窓へ移す (端なら新しい窓を作る)。
-    // 空になった窓は閉じる
+    // Moves the current tab of the focused window to the neighboring window on the by side (1 or -1) (creates a new window at the end).
+    // Closes a window that becomes empty
     public void MoveTab(int by)
     {
         var from = FocusWindow;
         var screen = from != null ? ScreenOf(from) : null;
         if (from == null || screen == null)
             return;
-        // 同じスクリーンの中の、コードの窓の並び
+        // Arrangement of the code windows within the same screen
         var row = CodeWindows(screen);
         if (from.Code.Tabs.Count == 1 && (by < 0 ? row.IndexOf(from) == 0 : row.IndexOf(from) == row.Count - 1))
             return;
@@ -473,14 +473,14 @@ public class Workspace
         FocusWindow = to;
     }
 
-    // focus のある窓の今のタブを閉じる
+    // Closes the current tab of the focused window
     public void CloseTab()
     {
         if (FocusWindow != null)
             CloseTab(FocusWindow, FocusWindow.Code.Tab);
     }
 
-    // 窓の i 番目のタブを閉じる (view は Doc が持ち続けるので、未保存の本文は残る)。最後のタブなら窓も閉じる
+    // Closes tab i of the window (Doc keeps the view, so unsaved text remains). Also closes the window if it is the last tab
     public void CloseTab(Window window, int i)
     {
         if (i < 0 || i >= window.Code.Tabs.Count)
@@ -493,7 +493,7 @@ public class Workspace
         RemoveTab(window, i);
     }
 
-    // タブを外す (今のタブなら、右隣 (無ければ左隣) を出す)
+    // Removes the tab (if it is the current tab, shows the one to its right, or to its left if there is none)
     static void RemoveTab(Window window, int i)
     {
         window.Code.Tabs.RemoveAt(i);
@@ -501,18 +501,18 @@ public class Workspace
             window.Code.Tab = Math.Max(0, window.Code.Tab - 1);
     }
 
-    // 飛ぶ前にいた場所 (新しい物が後ろ)
+    // Places before jumps (newest last)
     public readonly List<Place> History = new List<Place>();
     const int MaxHistory = 100;
 
-    // focus のある窓のカーソルの場所
+    // Cursor position of the focused window
     public Place? Here()
     {
         var doc = Focus;
         return doc == null || doc.Path == "" ? null : new Place { Path = doc.Path, Line = doc.Line, Col = doc.Col };
     }
 
-    // 飛ぶ前の場所を覚える
+    // Remembers the place before a jump
     public void Remember(Place? place)
     {
         if (place == null)
@@ -522,7 +522,7 @@ public class Workspace
         History.Add(place);
     }
 
-    // 覚えた場所へ戻る (窓を閉じていれば開き直す)
+    // Goes back to a remembered place (reopens the window if it was closed)
     public void Back()
     {
         if (History.Count == 0)
@@ -537,11 +537,11 @@ public class Workspace
         EditorHost.ScrollToLine(Focus.Id, Math.Max(1, place.Line + 1 - ContextLines));
     }
 
-    // 飛んだ先の行の上に見せる行の数
+    // Number of lines shown above the destination line of a jump
     public const int ContextLines = 5;
 
-    // 窓を並べる (コードのスクリーンの配置の規則で)。
-    // つかんでいる窓 (held) はそのまま指す点に付いていき、隣の窓の真ん中を越えると並びが入れ替わる
+    // Arranges the windows (by the layout rule of the code screen).
+    // The grabbed window (held) keeps following the pointed position, and the order swaps when it passes the center of a neighboring window
     public void Arrange(Window? held)
     {
         foreach (var screen in Screens)
@@ -551,7 +551,7 @@ public class Workspace
         }
     }
 
-    // screen の上のコードの窓 (並びの順)
+    // Code windows on screen (in arrangement order)
     static List<Window> CodeWindows(Screen screen)
     {
         var found = new List<Window>();
@@ -561,7 +561,7 @@ public class Workspace
         return found;
     }
 
-    // focus を by だけ隣の窓へ移す (端では止まる)
+    // Moves focus to the window by steps away (stops at the ends)
     public void FocusBy(int by)
     {
         if (FocusWindow == null)
@@ -571,13 +571,13 @@ public class Workspace
             FocusWindow = Windows[at];
     }
 
-    // focus のある窓を、並びの中で by だけ動かす (端では止まる)
+    // Moves the focused window by steps within the arrangement (stops at the ends)
     public void MoveFocus(int by)
     {
         var screen = FocusWindow != null ? ScreenOf(FocusWindow) : null;
         if (FocusWindow == null || screen == null)
             return;
-        // 同じスクリーンの中で、隣のコードの窓と入れ替える
+        // Swaps with the neighboring code window within the same screen
         var row = CodeWindows(screen);
         var at = row.IndexOf(FocusWindow);
         if (at + by < 0 || at + by >= row.Count)
@@ -588,15 +588,15 @@ public class Workspace
         screen.Windows[b] = FocusWindow;
     }
 
-    // 左から n 番目 (0 から) の窓に focus を移す
+    // Moves focus to the n-th window from the left (from 0)
     public void FocusNth(int n)
     {
         if (n >= 0 && n < Windows.Count)
             FocusWindow = Windows[n];
     }
 
-    // 窓をタブごと閉じる (view は Doc が持ち続けるので、未保存の本文は残る)。
-    // focus があった窓なら、右隣 (無ければ左隣) に focus を移す
+    // Closes the window with all its tabs (Doc keeps the view, so unsaved text remains).
+    // If the window had focus, moves focus to the one to its right (or to its left if there is none)
     public void Close(Window window)
     {
         var at = Windows.IndexOf(window);
@@ -608,13 +608,13 @@ public class Workspace
             FocusWindow = rest.Count > 0 ? rest[Math.Min(at, rest.Count - 1)] : null;
     }
 
-    // 窓の見出しに出す今のタブの名前 (Root からの path と、未保存の印)
+    // Name of the current tab shown in the window title (path from Root and the unsaved mark)
     public string Title(Window window)
     {
         return TabTitle(window.Code.Doc);
     }
 
-    // 窓の見出しに並べるタブの名前
+    // Names of the tabs listed in the window title
     public List<string> TabTitles(Window window)
     {
         var titles = new List<string>();
@@ -629,13 +629,13 @@ public class Workspace
         return EditorHost.Dirty(doc.Id) ? path + " *" : path;
     }
 
-    // Root からの path
+    // Path from Root
     public string Relative(string path)
     {
         return path.StartsWith(Root + "/") ? Utf8.Sub(path, Utf8.Bytes(Root) + 1) : path;
     }
 
-    // doc のタブを持つ窓
+    // Window holding the tab of doc
     public Window? WindowOf(Document doc)
     {
         foreach (var w in Windows)
@@ -644,7 +644,7 @@ public class Workspace
         return null;
     }
 
-    // 毎 frame、今見ている窓 (視線か指している所。無ければ null) を渡す
+    // Passes the window currently being looked at (gaze or pointed position; null if none) every frame
     public void Look(Window? window, float dt)
     {
         if (window != looked)
@@ -658,13 +658,13 @@ public class Workspace
             FocusWindow = window;
     }
 
-    // 一覧にある file で、path と同じもの (選び方は TraceLog.Match)
+    // The file in the list that is the same as path (chosen by TraceLog.Match)
     public string? Resolve(string path)
     {
         return TraceLog.Match(path, Files);
     }
 
-    // key の押し離しを覚え、押したままの間に届いた KeyDown (繰り返し) なら true
+    // Remembers key presses and releases; true for a KeyDown (repeat) that arrived while the key was held
     public bool Repeated(int key, bool down)
     {
         var was = held.TryGetValue(key, out var h) && h;
@@ -672,8 +672,8 @@ public class Workspace
         return down && was;
     }
 
-    // 押されている修飾 key (EventData.Mods) を受け、変わった分を エディタに渡す。
-    // 入力を取っていない間も渡す (押したまま隠して離すと、押したままになる)
+    // Receives the pressed modifier keys (EventData.Mods) and passes the changes to the editor.
+    // Passes them even while not taking input (hiding while a key is held and then releasing it would leave it held)
     public void SetMods(int mods)
     {
         Shift = SetMod(Shift, (mods & Keys.ModShift) != 0, Keys.LeftShift);
@@ -688,19 +688,19 @@ public class Workspace
         return now;
     }
 
-    // US 配列の key として打つ
+    // Types as a key in the US layout
     public bool Key(int key, bool down)
     {
         return Input(key, down, Keys.UsChar(key, Shift), Keys.UsChar(key, false));
     }
 
-    // key を focus のある窓の エディタの view に渡し、印字できる key は文字も渡す (Ctrl を押している間は渡さない)。
-    // typed と plain は EventData の同じ名前の値。
-    // key は表 (Keymap) を通って命令になり、命令にならなかった文字は focus のある Code に入る。
-    // 扱った key なら true
+    // Passes key to the editor view of the focused window, and also passes the character for printable keys (not while Ctrl is held).
+    // typed and plain are the EventData values of the same names.
+    // Keys become commands through the table (Keymap), and characters that did not become commands go into the focused Code.
+    // true if the key was handled
     public bool Input(int key, bool down, int typed, int plain)
     {
-        // 修飾 key の状態は SetMods で受ける (どの物理の key が修飾 key かは lub が知っている)
+        // Modifier key state comes through SetMods (lub knows which physical keys are modifier keys)
         if (key == Keys.LeftShift || key == Keys.RightShift || key == Keys.LeftCtrl || key == Keys.RightCtrl
             || key == Keys.LeftAlt || key == Keys.RightAlt)
             return true;
@@ -711,7 +711,7 @@ public class Workspace
         }
         if (!Document.Booted)
             return false;
-        // key は表を通って命令になる。focus が Code に無い間は、エディタの中の命令が効かないよう、エディタの focus を外す
+        // Keys become commands through the table. While focus is not on Code, removes the editor's focus so the commands inside the editor do not take effect
         var doc = other == null ? Focus : null;
         if (down)
             sinceKey = 0;
@@ -727,8 +727,8 @@ public class Workspace
         return true;
     }
 
-    // エディタの command が開いた doc をタブにして focus を移す。
-    // タブのある file なら、開いた view を閉じてそのタブを出す
+    // Turns docs opened by editor commands into tabs and moves focus to them.
+    // For a file that already has a tab, closes the opened view and shows that tab
     void TakeOpened()
     {
         for (var id = EditorHost.TakeOpened(); id != 0; id = EditorHost.TakeOpened())

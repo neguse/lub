@@ -1,6 +1,6 @@
-// texture を貼った板を 3D に描く。
-// 板は原点中心の 1 x 1 (x 右、y 上、+z を向く) で、model 行列で置く。
-// lider の板はゲームの絵の上に重ねるので depth は使わず、描いた順に重なる (奥から手前へ描く)。
+// Draws a textured board in 3D.
+// The board is 1 x 1 centered on the origin (x right, y up, facing +z), placed by the model matrix.
+// lider's boards are overlaid on the game image, so depth is not used and they overlap in drawing order (drawn from back to front).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -25,16 +25,16 @@ public static class Quad3d
     const string Fs = "LUB_TEXTURE2D(tex);\n"
         + "struct FSIn { float2 uv : TEXCOORD0; float4 tint : COLOR; };\n"
         + "[shader(\"fragment\")] float4 fs_main(FSIn i) : SV_Target {\n"
-        // render target の色はすでに透明度を掛けてあるので、Alpha で重ねる前に戻す (2 回掛かると細い線と光が暗くなる)。掛けていない atlas の白は 1 のまま
+        // Render target colors already have opacity multiplied in, so undo it before blending with Alpha (applying it twice darkens thin lines and glow). White in atlases without it stays 1
         + "  float4 t = LUB_SAMPLE(tex, i.uv);\n"
         + "  float4 c = float4(saturate(t.rgb / max(t.a, 0.004)), t.a) * i.tint;\n"
         + "  if (c.a < 0.004) discard;\n"
         + "  return c;\n"
         + "}\n";
 
-    // 円筒の面に沿って曲げた板。
-    // 頂点は番号から作る (縦の帯を Segments 本の triangle strip)。
-    // shape は (中心の角度、角度の幅、中心の高さ、高さ)、radius は (半径、texture の上の端の v、下の端の v、平面に開くなら 1)
+    // Board curved along the cylinder surface.
+    // Vertices are built from their index (a triangle strip of Segments vertical bands).
+    // shape is (center angle, angle width, center height, height), radius is (radius, v at the texture top edge, v at the bottom edge, 1 to unroll flat)
     const int Segments = 32;
     const string CurvedVs = "struct Uniforms { float4x4 vp; float4 tint; float4 shape; float4 radius; };\n"
         + "ConstantBuffer<Uniforms> u;\n"
@@ -52,7 +52,7 @@ public static class Quad3d
         + "  return o;\n"
         + "}\n";
 
-    // 角を丸めた面。round は (幅、高さ、角の半径、縁をぼかす幅)
+    // Rounded-corner surface. round is (width, height, corner radius, edge blur width)
     const string RoundVs = "struct Uniforms { float4x4 vp; float4 tint; float4 shape; float4 radius; float4 round; };\n"
         + "ConstantBuffer<Uniforms> u;\n"
         + "struct VSOut { float2 uv : TEXCOORD0; float4 tint : COLOR; float4 round : TEXCOORD1; float4 pos : SV_Position; };\n"
@@ -80,14 +80,14 @@ public static class Quad3d
         + "  return c;\n"
         + "}\n";
 
-    // 描く物すべての透明度に掛ける
+    // Multiplied into the opacity of everything drawn
     public static float Opacity = 1;
 
     static ShaderRef? shader;
     static ShaderRef? curved;
     static ShaderRef? round;
     static Atlas? white;
-    // 真ん中が濃く、縁へ 0 に薄れる丸
+    // Circle that is dense in the middle and fades to 0 toward the edge
     static Atlas? soft;
     static readonly List<float> fullUv = new List<float> { 0, 0, 1, 1 };
 
@@ -133,7 +133,7 @@ public static class Quad3d
         Part(mvp, tex, tint, fullUv);
     }
 
-    // texture の uv (左上 u0, v0、右下 u1, v1) の所だけを貼る
+    // Pastes only the part of the texture at uv (top left u0, v0, bottom right u1, v1)
     public static void Part(Mat4 mvp, TextureRef tex, Color tint, List<float> uv)
     {
         if (shader == null)
@@ -153,8 +153,8 @@ public static class Quad3d
         });
     }
 
-    // 円筒 (半径 r) の角度 angle、高さ y を中心に、弧の長さ w、高さ h の曲げた板
-    // v0 から v1 は texture の縦のうち貼る所 (上の端が 0、下の端が 1)
+    // Curved board centered at angle angle and height y on the cylinder (radius r), with arc length w and height h
+    // v0 to v1 is the vertical part of the texture to paste (top edge 0, bottom edge 1)
     public static void Curved(Mat4 vp, TextureRef tex, Color tint, float angle, float y, float r, float w, float h, float v0, float v1)
     {
         if (curved == null)
@@ -175,7 +175,7 @@ public static class Quad3d
         });
     }
 
-    // 円筒に沿った角の丸い面。soft は縁をぼかす幅 (影に使う)
+    // Rounded-corner surface along the cylinder. soft is the edge blur width (used for shadows)
     public static void Round(Mat4 vp, Color color, float angle, float y, float r, float w, float h, float corner, float soft)
     {
         if (round == null)
@@ -202,7 +202,7 @@ public static class Quad3d
             Curved(vp, white.Texture, color, angle, y, r, w, h, 0, 1);
     }
 
-    // 縁へ薄れる丸い光
+    // Round glow fading toward the edge
     public static void Soft(Mat4 mvp, Color color)
     {
         if (soft?.Texture != null)

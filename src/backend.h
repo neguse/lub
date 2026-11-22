@@ -192,8 +192,11 @@ typedef struct RenderBackend {
   bool (*frame_buffer)(SglBufferType type, const void *data, size_t bytes,
                        BackendFrameRange *out);
 
-  // core API は barrier も resource の state も出さないので、end_pass と dispatch より前に書いた内容を後の draw と dispatch が読めるように順序付けるのは各 backend の仕事。
-  // 同じ dispatch の中で同じ texture を読みと書きの両方に使う形は、api_gfx.c が backend に渡す前に error にする。
+  // The core API exposes neither barriers nor resource states, so each backend
+  // is responsible for ordering work so that later draws and dispatches can
+  // read what was written before end_pass and dispatch. Using the same texture
+  // for both reading and writing in the same dispatch is turned into an error
+  // by api_gfx.c before it reaches the backend.
   void (*begin_pass)(struct Process *proc, const PassBeginDesc *);
   void (*end_pass)(struct Process *proc);
 
@@ -242,8 +245,9 @@ typedef struct RenderBackend {
   // The backend binds only whole buffers, so a buffer's capacity is what the
   // shader sees and must equal the declared size.
   bool binds_whole_buffers;
-  // GPU の時刻を、この frame の index 番目として書く (gpu_time.h)。書けたら true。
-  // 測れない backend は NULL。書いた時刻は、その frame を GPU が終えた後に gpu_time_resolved で返す
+  // Write the GPU timestamp as the index-th one of this frame (gpu_time.h).
+  // true if written. NULL for backends that cannot measure. Written timestamps
+  // are returned by gpu_time_resolved after the GPU finishes that frame
   bool (*timestamp)(struct Process *proc, uint32_t index);
 } RenderBackend;
 
@@ -272,9 +276,10 @@ bool export_begin(const char *os, const char *out_dir);
 bool export_active(void);
 const char *export_os(void);
 const char *export_out_dir(void);
-// export_web.c: web への export の最後に、snapshot と web の player を全部埋め込んだ index.html を out_dir に書く。
-// 埋め込む player は tcs VM の player (build/wasm/vm)、start は player に渡す snapshot の entry (<Entry>.tcsb)。
-// false は log 済み。
+// export_web.c: at the end of a web export, write to out_dir an index.html that
+// embeds the snapshot and the whole web player. The embedded player is the tcs
+// VM player (build/wasm/vm), and start is the snapshot entry passed to the
+// player (<Entry>.tcsb). On false, the error is already logged.
 bool export_write_web_page(const char *out_dir, const char *title,
                            const char *start);
 int export_targets(const ShaderTargetBackend **out);

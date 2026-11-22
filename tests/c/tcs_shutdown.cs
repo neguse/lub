@@ -1,8 +1,8 @@
 using System;
 using Lub;
 
-// web の tcs2c の player を page が外すとき (Module._lub_tcs_shutdown) の検査に使うゲーム。
-// web/scripts/tcs-shutdown-check.mjs が log の行を見る。
+// Game used to check what happens when a page unloads the web tcs2c player (Module._lub_tcs_shutdown).
+// web/scripts/tcs-shutdown-check.mjs looks at the log lines.
 static class ShutdownTest
 {
     static int frames;

@@ -1,4 +1,5 @@
-// tests/vm/crash の native の拡張 (scripts/vm-project-test.sh が Crash.so にする)。呼ぶと SIGSEGV で落ちる。
+// The native extension of tests/vm/crash (scripts/vm-project-test.sh builds it
+// into Crash.so). Calling it crashes with SIGSEGV.
 #include <lub/lub_vm_extension.h>
 #include <signal.h>
 

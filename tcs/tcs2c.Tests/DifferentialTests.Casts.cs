@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// object / interface / 型引数からの cast と型 test。期待値は同じ program を CoreCLR で実行した stdout
+// Casts and type tests from object / interface / type parameters. The expected values are the stdout of running the same program on CoreCLR
 public class CastsDifferentialTests
 {
     private const string CastTypes = """
@@ -141,7 +141,7 @@ public class CastsDifferentialTests
         }
     }
 
-    // 文字列化と同じ型への照合は object の値にならない
+    // String conversion and matching against the same type do not turn the value into an object
     [CFact]
     public void Casts_StringifiedValuesStayAllowed()
     {

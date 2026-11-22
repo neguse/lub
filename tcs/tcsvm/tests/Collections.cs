@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using TinySystem.Linq;
 
-// List と Dictionary (int と string の key)、List.Sort の比較、LINQ
+// List and Dictionary (int and string keys), List.Sort comparisons, LINQ
 public class Score
 {
     public string Name;

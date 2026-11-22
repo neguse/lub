@@ -1,12 +1,12 @@
-// lubx の部品は key を最初の引数に取り、resource をその key か key + "/名前" に宣言する。
-// 1 つのアプリで同じ部品を 2 つのパスで使っても衝突せず、同じパスなら同じ resource を指すことを見る。
-// SpriteBatch の shader だけは中身が定数なので、パスによらず 1 つ (lubx/sprite/instanced) を共有する。
+// lubx components take the key as their first argument and declare resources under that key or key + "/name".
+// Checks that using the same component under 2 paths in one app does not conflict, and that the same path refers to the same resource.
+// Only the SpriteBatch shader has constant contents, so a single one (lubx/sprite/instanced) is shared regardless of the path.
 using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-// 1 つのパスの下に部品を一通り持つゲーム
+// A game that has one of each component under one path
 public class TestLubxKeysGame
 {
     public readonly string Root;
@@ -53,7 +53,7 @@ public class TestLubxKeysGame
         Gfx.EndPass();
     }
 
-    // 各部品が宣言する resource のうち代表を引き、生きている数を返す
+    // Looks up a representative of the resources each component declares, and returns how many are alive
     public int Live()
     {
         int n = 0;
@@ -114,7 +114,7 @@ public static class TestLubxKeys
         }
         else if (frame == 2)
         {
-            // 同じパスの部品を作り直すと、同じ resource が更新され、他のパスは変わらない
+            // Recreating the components of the same path updates the same resources, and other paths do not change
             var oldMesh = a!.Mesh.Vb!.Version;
             var oldAtlas = a.Atlas.Texture!.Version;
             var otherMesh = b!.Mesh.Vb!.Version;
@@ -131,7 +131,7 @@ public static class TestLubxKeys
         }
         else if (frame < 3 + sweepFrames + 1)
         {
-            // game_b だけ宣言をやめる
+            // Stop declaring only game_b
             a!.Declare(vsPath);
         }
         else if (frame == 3 + sweepFrames + 1)

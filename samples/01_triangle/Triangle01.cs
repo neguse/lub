@@ -1,5 +1,5 @@
-// lub の samples/01_triangle の entry。
-// 実行: lub samples/01_triangle/Triangle01.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/01_triangle.
+// Run: lub samples/01_triangle/Triangle01.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;
 using Lub;

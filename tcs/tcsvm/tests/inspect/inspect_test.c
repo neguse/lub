@@ -1,8 +1,12 @@
-/* 大きな配列 (Game.Boxes、2^20 要素) の一部を tvm_inspect で見るテスト。
-   子の数、終わり近くの範囲、要素の中の field が正しいことと、頼んだ範囲の外の要素に手間をかけないこと (繰り返しても速いこと) を確かめる。
-   tvm_inspect_instances が static から幅優先で辿った class の個体を、見つけた順に 1 度ずつ、tvm_inspect と同じ path と id で渡すこと、
-   輪を辿り直さず、struct の中も辿り、深さと子の数の上限で止まることも確かめる。
-   個体の id が、状態を保存して読み込んだ後も同じであることも確かめる。 */
+/* Test that views part of a large array (Game.Boxes, 2^20 elements) with
+   tvm_inspect. Checks that the child count, a range near the end, and fields
+   inside elements are correct, and that no effort is spent on elements outside
+   the requested range (repeated calls stay fast). Also checks that
+   tvm_inspect_instances passes the class instances reached breadth-first from
+   statics once each, in the order found, with the same path and id as
+   tvm_inspect, does not revisit cycles, also follows into structs, and stops at
+   the depth and child-count limits. Also checks that instance ids stay the same
+   after saving and loading the state. */
 #include "../../vm/tcsvm.h"
 
 #include <stdio.h>
@@ -57,13 +61,13 @@ int main(int argc, char **argv) {
   TvmInspectNode boxes, tail[4], hp[4];
   double t0 = now_ms();
   for (int k = 0; k < 16; k++) {
-    /* 子の数は要素の数 */
+    /* The child count is the number of elements */
     if (tvm_inspect(vm, "Game", "Game", 0, 1, &boxes) != 1)
       return 1;
-    /* 終わり近くの範囲は、残っている分だけ */
+    /* A range near the end gives only what remains */
     if (tvm_inspect(vm, "Game", "Game.Boxes", N - 2, 4, tail) != 2)
       return 1;
-    /* 要素の中 */
+    /* Inside an element */
     if (tvm_inspect(vm, "Game", last, 0, 4, hp) != 1)
       return 1;
   }
@@ -72,12 +76,14 @@ int main(int argc, char **argv) {
   print(&tail[0]);
   print(&tail[1]);
   print(&hp[0]);
-  /* 範囲の外の要素まで作ると 1 回で数十 ms かかる。頼んだ分だけなら全部で 1 ms もかからない */
+  /* Creating elements outside the range too takes tens of ms per call. Creating
+   * only what was requested takes less than 1 ms in total */
   if (ms < 500)
     printf("fast\n");
   else
     printf("slow: %.0f ms\n", ms);
-  /* 深さ 3 (static field が 1)、子は先頭の 1000 個まで (Boxes の終わりの Box は辿らない) */
+  /* Depth 3 (static fields are 1), children up to the first 1000 (the Box at
+   * the end of Boxes is not followed) */
   printf("instances:\n");
   tvm_inspect_instances(vm, "Game", 3, 1000, instance, NULL);
   TvmInspectNode game[8];
@@ -86,7 +92,8 @@ int main(int argc, char **argv) {
     if (strcmp(game[i].path, "Game.Solo") == 0)
       printf("same id: %s\n",
              strcmp(game[i].id, solo_id) == 0 && solo_id[0] ? "yes" : "no");
-  /* 状態を保存して読み込むと object は作り直されるが、同じ個体の id は変わらない */
+  /* Saving and loading the state recreates the objects, but the ids of the same
+   * instances do not change */
   uint8_t *state = NULL;
   size_t state_size = 0;
   if (tvm_state_save(vm, &state, &state_size) != TVM_OK ||

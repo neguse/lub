@@ -1,4 +1,4 @@
-// TestTabs が開く file。
+// The file TestTabs opens.
 public static class TabTarget
 {
 }

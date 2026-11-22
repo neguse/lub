@@ -1,5 +1,5 @@
-// lub の samples/03_texture の entry。
-// 実行: lub samples/03_texture/Texture03.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/03_texture.
+// Run: lub samples/03_texture/Texture03.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;
 using Lub;

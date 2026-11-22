@@ -1,14 +1,14 @@
-// 1 フレームに 20,000 回 draw し、各 draw が自分の texture、sampler、uniform で描くこと。
-// draw k は画素 k を 1 つ塗る:
-// - R, G は 2 つの texture (k % 256 番目と (k + 2) % 256 番目) を引いた値で、
-//   texture ごとの (filter, wrap) で決まる。sampler の取り違えで値が変わる。
-// - A は 1 つ目の texture の番号、B は fragment の uniform (k % 251)、位置は
-//   vertex の uniform で決まる。
-// descriptor が尽きて直前の draw の table を使うと色か位置がずれ、draw を飛ばすと画素が黒のまま残る。
-// 最初の重いフレームでは draw の半分を描いたところで pass を閉じて compute を 2,500 回 dispatch し (各 dispatch が読む buffer と書く buffer を 1 つずつ持つ)、数え上げた結果を最後の行の画素に描く。
-// D3D12 は frame slot の descriptor heap が初めて埋まるときに dispatch の中で heap を切り替え、後半の draw は前半と同じ texture の組を新しい heap で描く。
-// 2 回目の重いフレームは draw だけ (sdlgpu の Vulkan は uniform を dynamic offset で bind し、lavapipe はその bind ごとに実行時に descriptor set を作る。両方のフレームで dispatch すると CI の lavapipe ではその確保が失敗して落ちる)。
-// 重いフレームの後に軽いフレームを挟み、もう一度重いフレームを確かめる (Vulkan は軽いフレームで余った descriptor pool を返す)。
+// Draws 20,000 times in one frame, and each draw uses its own texture, sampler, and uniforms.
+// Draw k fills one pixel, pixel k:
+// - R, G are the values sampled from 2 textures (number k % 256 and number (k + 2) % 256), and
+//   are determined by the (filter, wrap) of each texture. Mixing up samplers changes the values.
+// - A is the number of the first texture, B is the fragment uniform (k % 251), and the position
+//   is determined by the vertex uniform.
+// If descriptors run out and the table of the previous draw is used, the color or position shifts; if a draw is skipped, the pixel stays black.
+// In the first heavy frame, it closes the pass after half of the draws, dispatches compute 2,500 times (each dispatch has one buffer it reads and one it writes), and draws the counted result into the pixels of the last row.
+// D3D12 switches heaps inside a dispatch when the descriptor heap of the frame slot fills for the first time, and the later draws draw the same set of textures as the earlier half in the new heap.
+// The 2nd heavy frame has draws only (Vulkan in sdlgpu binds uniforms with dynamic offsets, and lavapipe creates a descriptor set at run time for each such bind. Dispatching in both frames makes that allocation fail on the CI lavapipe, and it crashes).
+// A light frame is placed after the heavy frame, then another heavy frame is checked (Vulkan returns surplus descriptor pools in the light frame).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -36,7 +36,7 @@ public static class TestManyDraws
     static int pending;
     static int lightLeft;
 
-    // texture t の (filter, wrap) と、fs の PROBE が返す値 (0..255)。
+    // The (filter, wrap) of texture t, and the value returned by PROBE in fs (0..255).
     static bool Nearest(int t)
     {
         return t % 2 == 0;

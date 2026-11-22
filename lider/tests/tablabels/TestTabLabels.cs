@@ -1,6 +1,6 @@
-// 見出しの帯のタブの名前は、帯の右の方にあるタブでも描く。
-// 4 つの file を開いて最初のタブを出し、見出しの texture を読み戻して、どのタブの名前の所にも文字の画素があることを確かめる
-// (出していないタブの下地は透明なので、名前を描かなければ画素は 0)。
+// Tab names in the title bar are drawn even for tabs toward the right of the bar.
+// Opens 4 files, shows the first tab, reads back the title texture, and checks that every tab name area has text pixels
+// (the background of tabs not shown is transparent, so the pixels are 0 if the name is not drawn).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -59,7 +59,7 @@ public static class TestTabLabels
             Lider.ShowTab(window, 0);
             return;
         }
-        // 文字の atlas が揃って見出しを描き直すまで待つ
+        // Wait until the glyph atlas is complete and the title is redrawn
         if (frames < 20)
             return;
         var panel = Lider.TitleOf(window!);
@@ -86,7 +86,7 @@ public static class TestTabLabels
         var density = tw / panel.PxW;
         for (var i = 1; i < panel.Tabs.Count; i++)
         {
-            // 名前の頭の 3 桁ほど
+            // About the first 3 columns of the name
             var from = (int)(panel.TabX(i) * density);
             var to = from + 32 * density;
             var ink = 0;

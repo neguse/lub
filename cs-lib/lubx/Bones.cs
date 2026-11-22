@@ -1,6 +1,6 @@
-// 実装ライブラリ lubx の Bones。
-// mesh.Bones は typed な List<SdfBone>。
-// 走査は List.Count 上限、resolve は Func<> delegate で受ける。
+// Bones of the implementation library lubx.
+// mesh.Bones is a typed List<SdfBone>.
+// Iteration is bounded by List.Count, and resolve is received as a Func<> delegate.
 
 using System;
 using System.Collections.Generic;
@@ -8,18 +8,18 @@ using Lub;
 
 namespace Lubx;
 
-/// <summary>skinned SDF メッシュ (Sdf の bone() ノード) の bone 行列定型。
-/// 規約: shader は float4x4 bones[16]、行列は mesh.bones の並び順、不足分は単位行列で埋める (Mesh3d の skinned レイアウトとセットで使う)。
-/// アニメーション (どの骨をどう回すか) はゲーム側の仕事のまま。
+/// <summary>Bone matrix boilerplate for skinned SDF meshes (Sdf bone() nodes).
+/// Convention: the shader has float4x4 bones[16], matrices are in mesh.bones order, and missing ones are filled with identity (used together with the Mesh3d skinned layout).
+/// Animation (which bone to rotate and how) remains the game's job.
 /// </summary>
 public static class Bones
 {
-    /// <summary>最大 bone 数 (shader 側の float4x4 bones[16] と対)。
+    /// <summary>Maximum number of bones (paired with float4x4 bones[16] on the shader side).
     /// </summary>
     public const int Max = 16;
 
-    /// <summary>pivot (px, py, pz) 回りの回転 (model 空間)。
-    /// T(p) · R · T(−p)。
+    /// <summary>Rotation around pivot (px, py, pz) (model space).
+    /// T(p) · R · T(−p).
     /// </summary>
     public static Mat4 PivotRot(float px, float py, float pz, Mat4 rot)
     {
@@ -27,9 +27,9 @@ public static class Bones
             * rot * Mat4.Translate(new Vec3(-px, -py, -pz));
     }
 
-    /// <summary>mesh.bones の並び順で resolve(name, x, y, z) が返す行列を mat4 × 16 = 256 float に詰める。
-    /// resolve が null を返した bone は単位行列。
-    /// (x, y, z) はその bone の pivot (pivotRot にそのまま渡せる)。
+    /// <summary>Packs the matrices returned by resolve(name, x, y, z), in mesh.bones order, into mat4 × 16 = 256 floats.
+    /// Bones for which resolve returns null get the identity matrix.
+    /// (x, y, z) is that bone's pivot (can be passed to pivotRot as is).
     /// </summary>
     public static List<float> Pack(MeshData? mesh,
         Func<string, float, float, float, Mat4?> resolve)

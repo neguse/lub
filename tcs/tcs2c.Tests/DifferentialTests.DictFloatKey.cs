@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// Dictionary<float, V> はサブセット外 (TCS1001 UnsupportedDictionaryKey(float))。.NET の EqualityComparer<float>.Default は
-// NaN 同士を等しい key とみなす (Lua の table は NaN を key にできなかった)。HashSet<float> (UnsupportedHashSetElement(float)) と同じく
-// 作る地点 (new Dictionary<float, V>()、target-typed new()) で止める
+// Dictionary<float, V> is outside the subset (TCS1001 UnsupportedDictionaryKey(float)). .NET's EqualityComparer<float>.Default
+// treats two NaNs as equal keys (Lua tables could not use NaN as a key). Like HashSet<float> (UnsupportedHashSetElement(float)),
+// it is stopped at the point of creation (new Dictionary<float, V>(), target-typed new())
 public class DictFloatKeyDifferentialTests
 {
     private const string DictNanKeyProgram = """
@@ -57,7 +57,7 @@ public class DictFloatKeyDifferentialTests
                  })
         {
             var ex = Assert.Throws<InvalidOperationException>(run);
-            // 作る地点 (new と initializer) ごとに 1 つ。型の宣言だけの `Dictionary<float, int> maybe = d;` (33 行) は作らない
+            // One per creation point (new and initializer). `Dictionary<float, int> maybe = d;` (line 33), which only declares the type, does not count
             foreach (var at in new[] { "(10,21)", "(25,24)", "(26,25)", "(30,25)", "(35,21)" })
                 Assert.Contains($"{at}: error TCS1001: unsupported syntax: UnsupportedDictionaryKey(float)", ex.Message);
             Assert.Equal(5, ex.Message.Split("UnsupportedDictionaryKey(float)").Length - 1);

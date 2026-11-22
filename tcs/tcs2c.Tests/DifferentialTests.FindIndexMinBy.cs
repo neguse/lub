@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// List<T>.FindIndex / RemoveAll (BCL の List の member) と TinySystem.Linq の MinBy / MaxBy。
-// RemoveAll は各要素に述語を 1 回ずつ先頭から呼び、残す要素の順を保つ。MinBy / MaxBy は
-// key の等しい要素で先に出た方、float の NaN の key は最小、string の key は ordinal で null が最小。
-// 期待値は同じ program を CoreCLR で実行した stdout (空の MinBy は "before" の後に停止する)
+// List<T>.FindIndex / RemoveAll (members of the BCL List) and MinBy / MaxBy of TinySystem.Linq.
+// RemoveAll calls the predicate once per element from the start and keeps the order of the remaining elements. MinBy / MaxBy pick
+// the earlier element among equal keys; a float NaN key is the smallest; string keys are ordinal with null the smallest.
+// The expected values are the stdout of running the same program on CoreCLR (an empty MinBy stops after "before")
 public class FindIndexMinByDifferentialTests
 {
     [CFact]
@@ -26,13 +26,13 @@ public class FindIndexMinByDifferentialTests
                     foreach (var x in list) rest += x + ",";
                     Console.WriteLine(removed + " " + seen + " " + rest);
                     Console.WriteLine(list.RemoveAll(x => false) + " " + new List<int>().FindIndex(x => true));
-                    // 述語が list を伸ばしても .NET と同じ手順で詰める (長さは毎回読む)
+                    // Even if the predicate grows the list, compacts it with the same steps as .NET (reads the length every time)
                     var grow = new List<int> { 1, 2, 3, 2 };
                     var grown = grow.RemoveAll(x => { if (x == 3) grow.Add(9); return x == 2; });
                     var growRest = "";
                     foreach (var x in grow) growRest += x + ",";
                     Console.WriteLine(grown + " " + growRest);
-                    // 述語が list を空にしても止まらない (.NET は消した要素を数えなおすが、Lua / C は数を返すだけ)
+                    // Does not stop even if the predicate empties the list (.NET recounts the removed elements, but Lua / C just return the count)
                     var shrink = new List<int> { 1, 2, 3, 4 };
                     var shrunk = shrink.RemoveAll(x => { if (x == 3) shrink.Clear(); return x == 2; });
                     Console.WriteLine(shrunk < 0);

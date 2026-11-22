@@ -1,4 +1,4 @@
-// Lubx.Atlas の再主張が version を保つことと、sweep 後に作り直すことを見る。
+// Checks that reasserting a Lubx.Atlas keeps the version, and that it is recreated after a sweep.
 using System;
 using System.Collections.Generic;
 using Lub;

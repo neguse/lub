@@ -1,6 +1,6 @@
 #!/bin/bash
-# semantic テストの corpus (TestHelper.CompileAndRunVm) の dotnet differential (C2 後半、T206)。
-# tcs VM の stdout を、同じ entry を実 .NET で走らせた stdout と突き合わせる。
+# dotnet differential of the semantic test corpus (TestHelper.CompileAndRunVm) (second half of C2, T206).
+# Checks the tcs VM stdout against the stdout of running the same entry on real .NET.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

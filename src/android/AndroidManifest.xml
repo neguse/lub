@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android の player の manifest (scripts/build-android.sh が @...@ を埋める)。
-     Meta Quest の VR app として起動する (docs/android.md)。 -->
+<!-- Manifest for the Android player (scripts/build-android.sh fills in @...@).
+     Launches as a Meta Quest VR app (docs/android.md). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="@PACKAGE@"
     android:installLocation="auto">
 
-    <!-- Vulkan 1.1 (lub の Vulkan backend は 1.1 + KHR 拡張で動く) -->
+    <!-- Vulkan 1.1 (lub's Vulkan backend runs on 1.1 + KHR extensions) -->
     <uses-feature
         android:name="android.hardware.vulkan.version"
         android:version="0x401000"
@@ -14,12 +14,12 @@
         android:name="android.hardware.vr.headtracking"
         android:version="1"
         android:required="true" />
-    <!-- ヘッドセットにタッチスクリーンは無い (無いと faketouch が必須になる) -->
+    <!-- The headset has no touchscreen (without this, faketouch becomes required) -->
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
-    <!-- Khronos の OpenXR loader が runtime を探す (runtime broker) -->
+    <!-- The Khronos OpenXR loader looks up the runtime (runtime broker) -->
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR" />
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR_SYSTEM" />
     <queries>

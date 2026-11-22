@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// float.NaN と ±Infinity の定数 (#408)。IL の literal を VM と C の backend が読めずに落ちていた
+// float.NaN and ±Infinity constants (#408). The VM and C backends could not read the IL literal and failed
 public class NonFiniteLiteralDifferentialTests
 {
     [CFact]

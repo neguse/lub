@@ -1,4 +1,5 @@
-// tests/vm/extension の native の拡張 (scripts/vm-project-test.sh が Ext.so にする)。
+// The native extension of tests/vm/extension (scripts/vm-project-test.sh builds
+// it into Ext.so).
 #include <lub/lub_vm_extension.h>
 #include <stdio.h>
 #include <string.h>
@@ -12,7 +13,8 @@ static TvmStatus add(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   return TVM_OK;
 }
 
-// bool Greet(string name, out string? text): text は VM が渡す場所 (args[1].p) に書き、rets は戻り値だけ
+// bool Greet(string name, out string? text): text is written to the location
+// the VM passes (args[1].p), and rets holds only the return value
 static TvmStatus greet(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   (void)user;
   size_t len = 0;

@@ -1,5 +1,5 @@
-// lub の samples/09_breakout 相当を TinyC# で書いた entry。
-// 実行: lub samples/09_breakout/Breakout09.csproj (transpile + watch + hot reload)
+// Entry equivalent to lub's samples/09_breakout, written in TinyC#.
+// Run: lub samples/09_breakout/Breakout09.csproj (transpile + watch + hot reload)
 
 using System;
 using System.Collections.Generic;

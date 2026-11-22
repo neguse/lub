@@ -49,9 +49,10 @@ typedef enum {
   SGL_BLEND_OP_MIN,
   SGL_BLEND_OP_MAX,
 } SglBlendOp;
-// 描いた値と target の値の混ぜ方 (stub の Blend)。
-// enabled が 0 なら混ぜずに上書きし、ほかの field は 0。
-// 値は SglBlendFactor / SglBlendOp で、pipeline の key に memcmp で入るので padding を持たない。
+// How drawn values are blended with target values (Blend in the stub).
+// If enabled is 0, overwrite without blending, and the other fields are 0.
+// Values are SglBlendFactor / SglBlendOp, and this goes into the pipeline key
+// compared with memcmp, so it has no padding.
 typedef struct SglBlend {
   uint8_t enabled;
   uint8_t src, dst, op;

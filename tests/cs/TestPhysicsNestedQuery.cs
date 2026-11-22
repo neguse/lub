@@ -1,4 +1,4 @@
-// visitor の中から同じ (か結果の buffer を共有する) query を呼んでも、外側の結果が内側の結果で上書きされない。
+// Even when the same query (or one that shares the result buffer) is called from inside a visitor, the outer results are not overwritten by the inner results.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -17,7 +17,7 @@ public static class TestPhysicsNestedQuery
         Check.That(got == want, label + ": got " + got + ", want " + want);
     }
 
-    // 外側の結果の数と、内側の各呼び出しの結果の数を確かめて innerCounts を空にする。
+    // Checks the number of outer results and the result count of each inner call, and empties innerCounts.
     static void Nested(string label, int outer, int wantOuter, int wantInner)
     {
         Expect(label + " outer", outer, wantOuter);
@@ -37,8 +37,8 @@ public static class TestPhysicsNestedQuery
         return new ShapeCastDesc { Kind = Phys2d.ProxyKind.Circle, Radius = 0.05f, X = 0, Y = y, Dx = 5, Dy = 0 };
     }
 
-    // y = 0 の列に 4 個、y = 5 に 1 個の box。
-    // 外側の query は y = 0 の列を、内側の query は y = 5 の 1 個を拾う。
+    // 4 boxes in the row at y = 0 and 1 box at y = 5.
+    // The outer query picks up the row at y = 0, and the inner query the 1 box at y = 5.
     static void Check2d()
     {
         var world = Phys2d.World("nested2d", new WorldOpts { Gravity = new Vec2d { X = 0, Y = 0 } });
@@ -72,7 +72,7 @@ public static class TestPhysicsNestedQuery
         Expect("2d overlap_aabb inner", innerOverlaps, 4);
         Expect("2d body shapes inside overlap_aabb", innerShapes, 4);
 
-        // RaycastAll と ShapeCastAll は結果の buffer を共有する。
+        // RaycastAll and ShapeCastAll share the result buffer.
         var o1 = Phys2d.RaycastAll(world!, Ray(0), h =>
         {
             innerCounts.Add(Phys2d.ShapeCastAll(world!, Cast(5), g => 1).Count);
@@ -92,7 +92,7 @@ public static class TestPhysicsNestedQuery
         });
         Nested("2d shape_cast_all > shape_cast_all", o3.Count, 4, 1);
 
-        // mover の芯が box に入ると plane の法線が決まらず拾われないので、box の上面に少し食い込む高さに置く。
+        // If the core of the mover enters a box, the plane normal is undefined and it is not picked up, so place it at a height that sinks slightly into the top of the box.
         var rowMover = new MoverDesc { Ax = 0.5f, Ay = 0.35f, Bx = 4.5f, By = 0.35f, R = 0.2f };
         var loneMover = new MoverDesc { Ax = 0.8f, Ay = 5.35f, Bx = 1.2f, By = 5.35f, R = 0.2f };
         var o4 = Phys2d.CollideMover(world!, rowMover, p =>
@@ -156,7 +156,7 @@ public static class TestPhysicsNestedQuery
         });
         Nested("3d raycast_all", outer.Count, 4, 1);
 
-        // RaycastAll と ShapeCastAll は結果の buffer を共有する。
+        // RaycastAll and ShapeCastAll share the result buffer.
         var o1 = Phys3d.RaycastAll(world!, Ray3(0), h =>
         {
             innerCounts.Add(EachCast3(5));
@@ -176,7 +176,7 @@ public static class TestPhysicsNestedQuery
         });
         Nested("3d shape_cast_all > shape_cast_all", o3.Count, 4, 1);
 
-        // OverlapAabb、OverlapShape、body の shapes は結果の buffer を共有する。
+        // OverlapAabb, OverlapShape, and the shapes of a body share the result buffer.
         var rowBox = new AabbDesc3d { MinX = 0.5f, MinY = -0.5f, MinZ = -0.5f, MaxX = 4.5f, MaxY = 0.5f, MaxZ = 0.5f };
         var loneBox = new AabbDesc3d { MinX = 0.5f, MinY = 4.5f, MinZ = -0.5f, MaxX = 1.5f, MaxY = 5.5f, MaxZ = 0.5f };
         var rowShape = new ShapeProxyDesc3d { Box = new BoxProxy3d { Hx = 2, Hy = 0.5f, Hz = 0.5f, Center = new Vec3d { X = 2.5f, Y = 0, Z = 0 } } };

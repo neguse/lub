@@ -1,5 +1,5 @@
-// file の path と file system (Lite XL の core の project の dir と common の path の関数を縮めたもの)。
-// project の dir は起こしたときの cwd。
+// File paths and the file system (a reduced version of Lite XL core's project dir and common path functions).
+// The project dir is the cwd at startup.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -32,7 +32,7 @@ public static class Paths
         return st != null && st.IsDir;
     }
 
-    // "." を除き、".." を前の部分と打ち消す
+    // Removes "." and cancels ".." against the preceding part
     public static string Normalize(string path)
     {
         var volume = "";
@@ -62,7 +62,7 @@ public static class Paths
         return volume + npath;
     }
 
-    // project の dir の中なら、そこからの path
+    // If inside the project dir, the path from there
     public static string ToProject(string filename)
     {
         filename = Normalize(filename);
@@ -78,7 +78,7 @@ public static class Paths
         return ProjectDir + "/" + Normalize(filename);
     }
 
-    // path の dir の部分 (無ければ null)
+    // The dir part of path (null if none)
     public static string? Dirname(string path)
     {
         var u = new TinySystem.Text.Utf8Bytes(path);
@@ -88,13 +88,13 @@ public static class Paths
         return null;
     }
 
-    // file を消す。lub に file を消す API が無い間は消せない (false)
+    // Deletes the file. While lub has no API to delete files, it cannot delete (false)
     public static bool Remove(string path)
     {
         return Disk.Remove(path);
     }
 
-    // text の dir の中で、text で始まる file と dir (dir は "/" を付ける)
+    // Files and dirs in text's dir that start with text (dirs get "/")
     public static List<string> Suggest(string text)
     {
         var res = new List<string>();
@@ -130,7 +130,7 @@ public static class Paths
 
     public const int MaxProjectFiles = 2000;
 
-    // project の dir の下の file (project からの path)。多すぎれば null
+    // Files under the project dir (paths from the project). null if there are too many
     public static List<string>? ProjectFiles()
     {
         var files = new List<string>();
@@ -163,7 +163,7 @@ public static class Paths
         return true;
     }
 
-    // Lite XL の config.ignore_files (dir は '.' で始まる物も除く)
+    // Lite XL's config.ignore_files (also excludes dirs starting with '.')
     static bool Ignored(string name, bool dir)
     {
         if (dir)

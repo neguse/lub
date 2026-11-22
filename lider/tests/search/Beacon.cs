@@ -1,4 +1,4 @@
-// tests/search で引く 2 つ目の file。
+// The second file looked up in tests/search.
 public static class Beacon
 {
     public static int Blink()

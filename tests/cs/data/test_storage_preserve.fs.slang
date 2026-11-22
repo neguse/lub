@@ -1,4 +1,4 @@
-// 画素 x: R = img の x 列、G = acc[0].x (数そのもの、0..255)。
+// Pixel x: R = column x of img, G = acc[0].x (the count itself, 0..255).
 LUB_TEXTURE2D(img);
 StructuredBuffer<float4> acc;
 

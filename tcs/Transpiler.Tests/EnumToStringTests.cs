@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// enum の文字列化 (#133)。--ref の host enum も stub の member 名を出す。.NET との一致は tcs2c.Tests の
+// Enum stringification (#133). --ref host enums also print the stub member names. Matching .NET is covered by tcs2c.Tests
 // DifferentialTests.EnumToString
 public class EnumToStringTests
 {
@@ -21,7 +21,7 @@ public class EnumToStringTests
         Assert.Equal("On|5", output);
     }
 
-    // 書式は "G" / "F" / "D" の定数だけ。X 等と定数でない書式は TCS1002
+    // Formats are limited to the constants "G" / "F" / "D". X and other non-constant formats are TCS1002
     [Fact]
     public void UnsupportedFormat_ReportsUnsupportedApi()
     {

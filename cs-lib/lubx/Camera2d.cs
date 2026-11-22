@@ -1,15 +1,15 @@
-// 実装ライブラリ lubx の Camera2d。
-// 座標の戻り値は stub の座標 wire format (Vec2d)。
-// Gfx.size / Input.mouse_pos の multi-return は out 引数で受ける。
+// Camera2d of the implementation library lubx.
+// Coordinate return values use the stub's coordinate wire format (Vec2d).
+// The multi-return of Gfx.size / Input.mouse_pos is received through out arguments.
 
 using Lub;
 
 namespace Lubx;
 
 /// <summary>
-/// 2D ワールド座標 (任意単位, y 上向き) と論理スクリーン px (y 下向き) の相互変換。
-/// ppm は 1 ワールド単位あたりの px。
-/// (originX, originY) はワールド原点のスクリーン位置。
+/// Conversion between 2D world coordinates (arbitrary units, y up) and logical screen px (y down).
+/// ppm is px per world unit.
+/// (originX, originY) is the screen position of the world origin.
 /// </summary>
 public class Camera2d
 {
@@ -53,8 +53,8 @@ public class Camera2d
         return (OriginY - syv) / Ppm;
     }
 
-    /// <summary>マウス位置をワールド座標で。
-    /// 実ウィンドウ px → 論理 px 換算込み。
+    /// <summary>Mouse position in world coordinates.
+    /// Includes the conversion from real window px → logical px.
     /// </summary>
     public Vec2d MouseWorld()
     {

@@ -1,6 +1,6 @@
 using System;
 
-// string: 連結と文字列化 (il-spec §13)、内容の等価、null の扱い、補間、?? と ?:
+// string: concatenation and string conversion (il-spec §13), content equality, null handling, interpolation, ?? and ?:
 public enum Mood { Calm = 0, Angry = 5 }
 
 public class Strings

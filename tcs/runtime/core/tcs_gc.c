@@ -1,4 +1,4 @@
-/* ---- GC: フレーム同期の世代別 ---- */
+/* ---- GC: frame-synchronized generational ---- */
 #ifndef TCS_GC_MIN_THRESHOLD
 #define TCS_GC_MIN_THRESHOLD ((size_t)1 << 20)
 #endif
@@ -22,31 +22,35 @@ typedef struct TcsChunk {
   _Alignas(max_align_t) unsigned char data[];
 } TcsChunk;
 
-static TcsChunk *tcs_gc_nursery;     /* 先頭 chunk (常に 1 個は残す) */
-static TcsChunk *tcs_gc_nursery_cur; /* 確保中の chunk */
-static size_t tcs_gc_nursery_bytes;  /* 今フレームの確保 bytes */
+static TcsChunk *tcs_gc_nursery;     /* first chunk (one always remains) */
+static TcsChunk *tcs_gc_nursery_cur; /* chunk currently being allocated from */
+static size_t tcs_gc_nursery_bytes;  /* bytes allocated this frame */
 static size_t tcs_gc_nursery_chunks;
 
-static TcsGcHeader *tcs_gc_objects; /* 旧世代の連結 list */
+static TcsGcHeader *tcs_gc_objects; /* linked list of the old generation */
 static size_t tcs_gc_object_count;
-static size_t tcs_gc_live_bytes;      /* 直近 mark-sweep 後の生存 bytes */
-static size_t tcs_gc_allocated_since; /* 直近 mark-sweep 以降の昇格 bytes */
+static size_t tcs_gc_live_bytes; /* live bytes after the latest mark-sweep */
+static size_t
+    tcs_gc_allocated_since; /* bytes promoted since the latest mark-sweep */
 static size_t tcs_gc_threshold = TCS_GC_MIN_THRESHOLD;
-static size_t tcs_gc_collections;     /* 旧世代 mark-sweep 回数 */
-static size_t tcs_gc_frames;          /* 境界回数 */
-static size_t tcs_gc_promoted_bytes;  /* 累計昇格 bytes */
-static size_t tcs_gc_old_bytes;       /* 旧世代の現在 bytes (header 込み) */
-static size_t tcs_gc_nursery_objects; /* 今フレームの確保 object 数 */
-static unsigned tcs_gc_call_depth;    /* entry の入れ子深さ (0 = 境界) */
+static size_t tcs_gc_collections;    /* number of old-generation mark-sweeps */
+static size_t tcs_gc_frames;         /* number of boundaries */
+static size_t tcs_gc_promoted_bytes; /* total promoted bytes */
+static size_t
+    tcs_gc_old_bytes; /* current old-generation bytes (including headers) */
+static size_t
+    tcs_gc_nursery_objects;        /* number of objects allocated this frame */
+static unsigned tcs_gc_call_depth; /* entry nesting depth (0 = boundary) */
 static int tcs_gc_collecting;
 
-static TcsGcHeader **tcs_gc_mark_stack; /* mark / 昇格 scan の両方で使う */
+static TcsGcHeader *
+    *tcs_gc_mark_stack; /* used by both mark and the promotion scan */
 static size_t tcs_gc_mark_count;
 static size_t tcs_gc_mark_capacity;
-static TcsGcHeader **tcs_gc_dirty; /* remembered set (旧 object) */
+static TcsGcHeader **tcs_gc_dirty; /* remembered set (old objects) */
 static size_t tcs_gc_dirty_count;
 static size_t tcs_gc_dirty_capacity;
-static void ***tcs_gc_holds; /* host が frame を跨いで持つ slot */
+static void ***tcs_gc_holds; /* slots the host holds across frames */
 static size_t tcs_gc_hold_count;
 static size_t tcs_gc_hold_capacity;
 
@@ -66,7 +70,8 @@ static void tcs_gc_push(TcsGcHeader *hdr) {
   tcs_gc_mark_stack[tcs_gc_mark_count++] = hdr;
 }
 
-/* ---- ライトバリア: 旧 object への store で owner を dirty 登録 ---- */
+/* ---- Write barrier: a store into an old object registers the owner as dirty
+ * ---- */
 static void tcs_wb(const void *owner) {
   TcsGcHeader *hdr;
   if (owner == NULL)
@@ -87,14 +92,16 @@ static void tcs_wb(const void *owner) {
   tcs_gc_dirty[tcs_gc_dirty_count++] = hdr;
 }
 
-/* ---- 旧世代の mark (精密 pointer のみ) ---- */
+/* ---- Old-generation mark (precise pointers only) ---- */
 static void tcs_gc_mark_ptr(const void *pointer) {
   if (pointer != NULL)
     tcs_gc_push(TCS_GC_HEADER(pointer));
 }
 
-/* module 単位の混在 (doc/object-model.md §10.2): tcs VM の object (TCS_KIND_FOREIGN) の参照の場所を辿る関数と、
-   VM の root (static と handle) を辿る関数。tcs2c --vm-host の glue が VM の関数を入れる (無ければ使わない) */
+/* Per-module mixing (doc/object-model.md §10.2): a function that traces the
+   reference locations of tcs VM objects (TCS_KIND_FOREIGN), and a function that
+   traces the VM roots (statics and handles). The tcs2c --vm-host glue installs
+   the VM functions (unused if missing) */
 typedef void (*TcsSlotFn)(void **slot);
 static void (*tcs_gc_foreign_refs)(void *payload, TcsSlotFn fn);
 static void (*tcs_gc_root_hook)(TcsSlotFn fn);
@@ -171,8 +178,8 @@ static void tcs_gc_trace(TcsGcHeader *hdr) {
   }
 }
 
-/* 旧世代の mark-sweep。root は static と host hold (境界なので若い
-   object は存在せず、C stack 上の参照も無い) */
+/* Old-generation mark-sweep. Roots are statics and host holds (at a boundary
+   there are no young objects and no references on the C stack) */
 static void __attribute__((noinline)) tcs_gc_collect(void) {
   TcsGcHeader *hdr;
   TcsGcHeader **link;
@@ -213,7 +220,7 @@ static void __attribute__((noinline)) tcs_gc_collect(void) {
   tcs_gc_collecting = 0;
 }
 
-/* ---- nursery (bump 確保) ---- */
+/* ---- nursery (bump allocation) ---- */
 static TcsChunk *tcs_gc_chunk_new(size_t capacity) {
   TcsChunk *chunk;
   if (capacity < TCS_GC_NURSERY_CHUNK)
@@ -255,9 +262,10 @@ static void *tcs_gc_alloc(uint32_t kind, const TcsLayout *layout, size_t size) {
   return TCS_GC_PAYLOAD(hdr);
 }
 
-/* 境界で nursery を空にする: 先頭 chunk だけ残して zero に戻す。stress では
-   zero でなく毒値で埋め (確保時に zero へ戻す)、境界を跨いだ stale pointer の
-   読みを 0 として通さず出力の差に出す */
+/* Empty the nursery at a boundary: keep only the first chunk and reset it to
+   zero. Under stress, fill it with a poison value instead of zero (reset to
+   zero on allocation), so that reads of stale pointers across a boundary are
+   not passed off as 0 but show up as output differences */
 static void tcs_gc_nursery_reset(void) {
   TcsChunk *chunk;
   if (tcs_gc_nursery == NULL)
@@ -284,7 +292,7 @@ static void tcs_gc_nursery_reset(void) {
   tcs_gc_nursery_objects = 0;
 }
 
-/* ---- 昇格 (若い object を旧世代へ copy、Cheney) ---- */
+/* ---- Promotion (copy young objects to the old generation, Cheney) ---- */
 static void *tcs_gc_promote(void *pointer) {
   TcsGcHeader *hdr;
   TcsGcHeader *copy;
@@ -308,7 +316,7 @@ static void *tcs_gc_promote(void *pointer) {
   tcs_gc_old_bytes += sizeof(*copy) + hdr->size;
   hdr->next = copy;
   hdr->flags |= TCS_GC_FORWARD;
-  /* 中身の slot は後で tcs_gc_forward_object (scan queue) */
+  /* The inner slots are handled later by tcs_gc_forward_object (scan queue) */
   if (tcs_gc_mark_count == tcs_gc_mark_capacity) {
     size_t capacity =
         tcs_gc_mark_capacity == 0 ? 1024 : tcs_gc_mark_capacity * 2;
@@ -339,7 +347,8 @@ static void tcs_gc_forward_value(void *value, const TcsLayout *layout) {
     tcs_gc_forward_slot((unsigned char *)value + layout->offsets[i]);
 }
 
-/* 旧 object (昇格直後 / dirty) の全 pointer slot を昇格先へ書き換える */
+/* Rewrite all pointer slots of an old object (just promoted / dirty) to point
+ * to the promotion targets */
 static void tcs_gc_forward_object(TcsGcHeader *hdr) {
   void *payload = TCS_GC_PAYLOAD(hdr);
   size_t i;
@@ -398,7 +407,7 @@ static void tcs_gc_forward_object(TcsGcHeader *hdr) {
   }
 }
 
-/* フレーム境界: C# のスタックが空のときに host が呼ぶ */
+/* Frame boundary: the host calls this when the C# stack is empty */
 static void __attribute__((noinline)) tcs_gc_frame(void) {
   size_t i;
   tcs_gc_mark_count = 0;
@@ -424,7 +433,8 @@ static void __attribute__((noinline)) tcs_gc_frame(void) {
 #endif
 }
 
-/* host が frame を跨いで持つ pointer の slot (境界で昇格先へ書き換わる) */
+/* Pointer slots the host holds across frames (rewritten to the promotion target
+ * at a boundary) */
 static void tcs_gc_hold(void **slot) {
   if (tcs_gc_hold_count == tcs_gc_hold_capacity) {
     size_t capacity = tcs_gc_hold_capacity == 0 ? 16 : tcs_gc_hold_capacity * 2;

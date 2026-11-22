@@ -1,8 +1,8 @@
-// Phys2d の world callbacks (Filter / PreSolve / Friction / Restitution)。
-// custom Filter と PreSolve が衝突を無効にできること、Friction / Restitution の mixer が呼ばれること、callback に渡る shape の metadata、callback の中での物理の変更が error になること、callback が error になったときの既定の動き、callbacks を省略した宣言が前の callback を外すこと。
+// World callbacks of Phys2d (Filter / PreSolve / Friction / Restitution).
+// Checks that custom Filter and PreSolve can disable collisions, that the Friction / Restitution mixers are called, the shape metadata passed to callbacks, that changing physics inside a callback is an error, the default behavior when a callback errors, and that a declaration omitting callbacks removes the previous callback.
 //
-// callback の中の error は callback の呼び出し元 (binding) が捕まえて log に出し、既定値 (Filter / PreSolve は true、mixer は Box2D の既定の混ぜ方) で続ける。
-// OnFrame / OnError には届かないので、error の検出は「error になるはずの呼び出しの後ろに置いた印が立たないこと」で行う。
+// An error inside a callback is caught by the caller of the callback (binding) and logged, and execution continues with the default values (true for Filter / PreSolve, the Box2D default mixing for mixers).
+// It does not reach OnFrame / OnError, so errors are detected by "the marker placed after the call that should error is not set".
 using System;
 using Lub;
 
@@ -29,8 +29,8 @@ public static class TestPhysicsBox2dCallbacks
         return (a.Body == lhs && b.Body == rhs) || (a.Body == rhs && b.Body == lhs);
     }
 
-    // 物理の変更は callback の中では error になる。
-    // error なら後ろの印は立たない。
+    // Changing physics is an error inside a callback.
+    // If it errors, the marker after it is not set.
     static void IllegalMutation(string key)
     {
         Phys2d.World(key, new WorldOpts());
@@ -40,7 +40,7 @@ public static class TestPhysicsBox2dCallbacks
     static bool OnFilter(ShapeView a, ShapeView b)
     {
         filterCalls++;
-        // error になった呼び出しは既定値 (true) で続くので、ghost と wall の組では試さない (ghost が wall を通る検査を壊す)。
+        // A call that errored continues with the default value (true), so it is not tried on the ghost and wall pair (it would break the check that the ghost passes through the wall).
         if (!mutationAttempted && !Pair(a, b, "ghost", "wall"))
         {
             mutationAttempted = true;

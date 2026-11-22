@@ -49,7 +49,7 @@ public partial class TinyCsComplianceAnalyzerTests
     [Fact]
     public async Task StructDeclaration_InstanceMembersClean_StaticReports()
     {
-        // method / property / ctor は許可、indexer は拒否
+        // method / property / ctor are allowed, indexers are rejected
         var clean = await AnalyzeAsync("""
             public struct Vec2
             {
@@ -76,7 +76,7 @@ public partial class TinyCsComplianceAnalyzerTests
     [Fact]
     public async Task RecordStruct_IsClean_IndexerReports()
     {
-        // record struct は対応済み。member は struct と同じ規則
+        // record struct is supported. Members follow the same rules as struct
         var clean = await AnalyzeAsync("""
             public readonly record struct Vec2(int X, int Y);
             """);
@@ -96,8 +96,8 @@ public partial class TinyCsComplianceAnalyzerTests
     [Fact]
     public async Task NamedArgument_ReportsUnsupportedSyntax()
     {
-        // transpiler は build を止める error、analyzer は warning のまま
-        // (.editorconfig で severity を上げられる)
+        // The transpiler reports a build-stopping error; the analyzer keeps it a warning
+        // (the severity can be raised in .editorconfig)
         var diagnostics = await AnalyzeAsync("""
             public class T
             {
@@ -118,8 +118,8 @@ public partial class TinyCsComplianceAnalyzerTests
     [Fact]
     public async Task TypeNamedLikeRuntimeGlobal_ReportsUnsupportedSyntax()
     {
-        // namespace の中でも simple name で emit され runtime の table を
-        // 上書きする (#21)。transpiler では build を止める error
+        // Even inside a namespace it is emitted with a simple name and overwrites the runtime
+        // table (#21). The transpiler reports a build-stopping error
         var math = await AnalyzeAsync("""
             public class Math
             {
@@ -160,7 +160,7 @@ public partial class TinyCsComplianceAnalyzerTests
     public async Task CallerInfoAttribute_ReportsUnsupportedSyntax(
         string attribute, string kind)
     {
-        // caller info は呼び出し側で埋まる値を tcs が再現しない (#17)
+        // tcs does not reproduce caller info values that are filled in at the call site (#17)
         var type = kind == "CallerLineNumber" ? "int" : "string";
         var dflt = kind == "CallerLineNumber" ? "0" : "\"\"";
         var diagnostics = await AnalyzeAsync($$"""
@@ -268,16 +268,16 @@ public partial class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
             .ToArray();
 
-        // record struct 解禁後は partial record struct も
-        // PartialTypeDeclaration の 1 診断のみ
+        // Now that record struct is allowed, partial record struct also gets
+        // only the single PartialTypeDeclaration diagnostic
         Assert.Equal(2, syntaxDiagnostics.Length);
         Assert.All(syntaxDiagnostics,
             d => Assert.Contains("PartialTypeDeclaration", d.GetMessage()));
         Assert.DoesNotContain(syntaxDiagnostics,
-            d => d.GetMessage().Contains("StructDeclaration')")); // 二重報告なし
+            d => d.GetMessage().Contains("StructDeclaration')")); // No double reporting
     }
 
-    // nameof は定数式として対応 (T250): 診断なし
+    // nameof is supported as a constant expression (T250): no diagnostic
     [Fact]
     public async Task NameOfExpressions_AreSupported()
     {
@@ -658,10 +658,10 @@ public partial class TinyCsComplianceAnalyzerTests
             d => d.Id == TinyCsDiagnosticIds.UnsupportedCollectionNull);
     }
 
-    // #20: 要素の default が nil になる `new T[n]`、初期化子の null 要素、
-    // `a[i] = null` は TCS1003。値型要素の配列と、int? / object へ変換される
-    // `default(int)` は対象外
-    // (transpiler 側の DiagnosticTests.ArrayNullSource と同じ source)
+    // #20: `new T[n]`, whose element default becomes nil, null elements in initializers,
+    // and `a[i] = null` are TCS1003. Arrays of value-type elements, and int? / object conversions of
+    // `default(int)`, are out of scope
+    // (the same source as DiagnosticTests.ArrayNullSource on the transpiler side)
     [Fact]
     public async Task ArrayNulls_ReportUnsupportedCollectionNull()
     {
@@ -774,7 +774,7 @@ public partial class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
             .ToArray();
 
-        // Equals / GetHashCode の override も TCS1001 (継承は対象外、q.md Q15)
+        // Overriding Equals / GetHashCode is TCS1001 too (inheritance is out of scope, q.md Q15)
         Assert.Equal(5, syntaxDiagnostics.Length);
         Assert.Equal(2, syntaxDiagnostics.Count(
             d => d.GetMessage().Contains("'OverrideMember'")));
@@ -929,7 +929,7 @@ public partial class TinyCsComplianceAnalyzerTests
         Assert.Equal(4, messages.Length);
     }
 
-    // transpiler check 側 ApiSignatureComplianceTests と同じケースで
+    // With the same cases as ApiSignatureComplianceTests on the transpiler check side,
     [Theory]
     [InlineData("var n = s.Length;", "string.Length (use s.RuneCount()")]
     [InlineData("var n = s?.Length;", "string.Length (use s.RuneCount()")]
@@ -975,7 +975,7 @@ public partial class TinyCsComplianceAnalyzerTests
             && d.GetMessage().Contains("ByteNarrowing")));
     }
 
-    // Analyzer が同じ TCS1002 判定になることを固定する。
+    // pins down that the Analyzer reaches the same TCS1002 decision.
     private static string WrapApiStatement(string statement) => $$"""
         using System;
         using System.Collections.Generic;
@@ -1058,7 +1058,7 @@ public partial class TinyCsComplianceAnalyzerTests
             options = options.WithSpecificDiagnosticOptions(
                 specificDiagnosticOptions);
 
-        // TinySystem.props で project に入る TinySystem/Linq.cs も一緒にコンパイルする
+        // Also compiles TinySystem/Linq.cs, which TinySystem.props adds to the project
         var compilation = CSharpCompilation.Create(
             "TinyCsAnalyzerTests",
             [tree, LinqTree.Value.WithRootAndOptions(LinqTree.Value.GetRoot(), tree.Options)],
@@ -1067,7 +1067,7 @@ public partial class TinyCsComplianceAnalyzerTests
 
         var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(
             new TinyCsComplianceAnalyzer());
-        // `--ref` の stub は AdditionalFiles の TinyCsRef="true" (CompilerVisibleItemMetadata) で渡す
+        // `--ref` stubs are passed as AdditionalFiles with TinyCsRef="true" (CompilerVisibleItemMetadata)
         var stubs = (refStubs ?? []).Select((text, i) => (AdditionalText)new StubFile($"stub{i}.cs", text))
             .ToImmutableArray();
         var analyzerOptions = new AnalyzerOptions(stubs, new StubOptions(stubs));

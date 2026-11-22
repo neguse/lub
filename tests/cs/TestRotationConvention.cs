@@ -1,6 +1,6 @@
-// 回転の規約がスタック全体で 1 つであることを検査する:
-// Quat.RotateVec3、Quat.ToMat4、Mat4.Rotate、Mat4.RotateX/Y/Z、そして Phys3d (box3d) が pose の quaternion で回すローカル点は全部同じ写像。
-// 期待値は Rodrigues の式で独立に計算する。
+// Checks that there is a single rotation convention across the whole stack:
+// Quat.RotateVec3, Quat.ToMat4, Mat4.Rotate, Mat4.RotateX/Y/Z, and the local points Phys3d (box3d) rotates by the pose quaternion are all the same mapping.
+// The expected values are computed independently with Rodrigues' formula.
 using System;
 using Lub;
 using Lubx;
@@ -20,7 +20,7 @@ public static class TestRotationConvention
 
     static void NearQuat(Quat a, Quat b, string label)
     {
-        // q と -q は同じ回転
+        // q and -q are the same rotation
         var sign = (a.X * b.X + a.Y * b.Y + a.Z * b.Z + a.W * b.W) < 0 ? -1f : 1f;
         var ok = Math.Abs(a.X - sign * b.X) < 1e-5f
             && Math.Abs(a.Y - sign * b.Y) < 1e-5f
@@ -29,8 +29,8 @@ public static class TestRotationConvention
         Check.That(ok, label);
     }
 
-    // 右ねじの能動回転 (Rodrigues)。
-    // axis は正規化済み。
+    // Right-handed active rotation (Rodrigues).
+    // axis is already normalized.
     static Vec3 Rodrigues(Vec3 axis, float angle, Vec3 p)
     {
         var c = (float)Math.Cos(angle);
@@ -56,7 +56,7 @@ public static class TestRotationConvention
         var x = new Vec3(1, 0, 0);
         var y = new Vec3(0, 1, 0);
         var z = new Vec3(0, 0, 1);
-        // 規約の定義そのもの: +Z 回りの +90 度は +X を +Y に、+Y 回りの +90 度は +Z を +X に回す
+        // The definition of the convention itself: +90 degrees around +Z rotates +X to +Y, and +90 degrees around +Y rotates +Z to +X
         Near(Quat.FromAxisAngle(z, (float)Math.PI / 2).RotateVec3(x), y, "Z +90deg maps +X to +Y");
         Near(Mat4.RotateZ((float)Math.PI / 2).MulDir(x), y, "Mat4.RotateZ +90deg maps +X to +Y");
         Near(Mat4.RotateY((float)Math.PI / 2).MulDir(z), x, "Mat4.RotateY +90deg maps +Z to +X");
@@ -83,20 +83,20 @@ public static class TestRotationConvention
             }
         }
 
-        // 合成: a.Mul(b) は b を先に適用。
-        // 行列の積と一致する
+        // Composition: a.Mul(b) applies b first.
+        // Matches the matrix product
         var a = Quat.FromAxisAngle(axes[3], 1.1f);
         var b = Quat.FromAxisAngle(y, -0.6f);
         Near(a.Mul(b).RotateVec3(p), a.RotateVec3(b.RotateVec3(p)), "Quat.Mul applies b first");
         Near(a.Mul(b).ToMat4().MulDir(p), a.ToMat4().Mul(b.ToMat4()).MulDir(p), "Quat.Mul matches Mat4.Mul");
-        // FromEuler: roll (X) → pitch (Y) → yaw (Z) の順に適用
+        // FromEuler: applied in the order roll (X) → pitch (Y) → yaw (Z)
         var e = Quat.FromEuler(0.4f, -0.3f, 0.9f);
         var composed = Quat.FromAxisAngle(z, 0.4f).Mul(Quat.FromAxisAngle(y, -0.3f)).Mul(Quat.FromAxisAngle(x, 0.9f));
         NearQuat(e, composed, "Quat.FromEuler order");
     }
 
-    // 物理 (box3d) が pose の quaternion で回した collider の位置と、PoseMat で描画側が置く頂点位置が一致する。
-    // raycast で実 collider を当てて確かめる。
+    // The collider position rotated by physics (box3d) with the pose quaternion matches the vertex position the rendering side places with PoseMat.
+    // Checked by hitting the real collider with a raycast.
     static void CheckPhysics()
     {
         var p = new Vec3(0.7f, -0.4f, 0.3f);

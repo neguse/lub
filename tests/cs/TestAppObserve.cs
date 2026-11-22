@@ -1,5 +1,5 @@
-// 検査の API (Sys.Inspect など) の app の引数: App.Use で開いた app の static を、開いた側から読む。
-// app を省くと自分を見るので、同じ名前の static でも別の値が返る。
+// The app argument of the inspection APIs (Sys.Inspect and others): the opener reads the statics of an app opened with App.Use.
+// Omitting app inspects the caller itself, so a static with the same name returns a different value.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -47,21 +47,21 @@ public static class TestAppObserve
         var child = App.Use("child", "tests/cs/.lub/all.tcsb", "TestAppObserveChild");
         if (frame == 0)
         {
-            // まだ module を読み込んでいない app は空
+            // An app that has not loaded a module yet is empty
             Check.That(Sys.Inspect("", 0, 10, child).Count == 0, "Inspect before the first Step must be empty");
         }
         Check.That(App.Step(child, rt, dt), $"frame {frame}: Step failed");
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
         Gfx.EndPass();
         frame++;
-        // 開いた app の static
+        // Statics of the opened app
         var theirs = Sys.Inspect("TestAppObserveChild", 0, 10, child);
         Check.That(Text(theirs, "counter") == (100 + frame).ToString(), $"frame {frame}: child counter is {Text(theirs, "counter")}");
         var items = Sys.Inspect("TestAppObserveChild.items", 0, 100, child);
         Check.That(items.Count >= frame, $"frame {frame}: child items has {items.Count} nodes");
-        // 開いた app の個体の一覧にも届く (class の個体は無いので空で、失敗しない)
+        // Also reaches the instance list of the opened app (the class has no instances, so it is empty and does not fail)
         Sys.InspectInstances(4, 100, child);
-        // app を省くと自分
+        // Omitting app means the caller itself
         var mine = Sys.Inspect("TestAppObserve", 0, 10);
         Check.That(Text(mine, "counter") == "7", $"own counter is {Text(mine, "counter")}");
         Check.That(Text(Sys.Inspect("TestAppObserveChild", 0, 10), "counter") != (100 + frame).ToString(),

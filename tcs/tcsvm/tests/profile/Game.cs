@@ -1,4 +1,4 @@
-// 行ごとの負荷のテスト (profile_test.c が呼ぶ)。時間は Probe.Clock.Advance が知らせる分だけ経つ。
+// Per-line cost test (called by profile_test.c). Time advances only by the amount Probe.Clock.Advance reports.
 public static class Game
 {
     static int[]? keep;
@@ -22,7 +22,7 @@ public static class Game
             keep = new int[1000];
     }
 
-    // 持ち越し: static (kept、items、chain) か前からある object の field (held.item) に置いた物だけを数える
+    // Kept: counts only objects placed in statics (kept, items, chain) or in a field of a pre-existing object (held.item)
     static Item? kept;
     static Holder held = new Holder();
     static System.Collections.Generic.List<Item> items = new System.Collections.Generic.List<Item>();
@@ -40,7 +40,7 @@ public static class Game
         chain = h;
     }
 
-    // 別の thread が時間を知らせ終えるまで回る
+    // Spins until another thread finishes reporting time
     public static void Spin()
     {
         while (!Probe.Clock.Done())
@@ -48,13 +48,13 @@ public static class Game
         }
     }
 
-    // 呼んだ先の --trace の関数 (Mark) から戻った後の時間と確保は、呼んだ行に付く
+    // Time and allocations after returning from a called --trace function (Mark) are attributed to the calling line
     public static void Nest()
     {
         Lib.Spend(Mark());
     }
 
-    // host が Mark を入れ子で呼び、戻った後に時間を知らせる
+    // The host calls Mark nested and reports time after it returns
     public static void Around()
     {
         Probe.Clock.Around();
@@ -65,7 +65,7 @@ public static class Game
         return 100;
     }
 
-    // host の関数の中から、それを呼んだ行を引く
+    // Looks up, from inside a host function, the line that called it
     public static void Where()
     {
         Probe.Clock.Where();

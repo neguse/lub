@@ -4,13 +4,13 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
-/// <summary>tcs と一緒に配る library (TinySystem のうち source で配る部分) と、Roslyn で C# として読むときの参照アセンブリ。</summary>
+/// <summary>The library distributed with tcs (the part of TinySystem distributed as source) and the reference assemblies used when Roslyn reads it as C#.</summary>
 public static class TcsLibrary
 {
     private static MetadataReference[]? _references;
 
-    // 参照アセンブリの注入口。未設定なら、build 時に埋め込んだ参照アセンブリ
-    // (EmbedReferences.targets) から遅延構築する。
+    // Injection point for reference assemblies. If unset, they are built lazily from the reference assemblies
+    // embedded at build time (EmbedReferences.targets).
     public static MetadataReference[] References
     {
         get => _references ??= GetDefaultReferences();
@@ -31,11 +31,11 @@ public static class TcsLibrary
             typeof(TcsLibrary).Assembly.GetManifestResourceStream(name)
             ?? throw new InvalidOperationException("missing resource: " + name));
 
-    // TinySystem のうち source で配る部分 (TinySystem.dll には入らない)。user のコードと
-    // 一緒にコンパイルして変換する
+    // The part of TinySystem distributed as source (not included in TinySystem.dll). It is compiled together with
+    // user code and converted
     private static readonly string[] LibraryPaths = ["TinySystem/Linq.cs", ValueTupleLibraryPath];
 
-    /// <summary>tcs の経路だけが読む System.ValueTuple の宣言。.NET は BCL の ValueTuple を使う。</summary>
+    /// <summary>The System.ValueTuple declaration that only the tcs path reads. .NET uses the BCL ValueTuple.</summary>
     public const string ValueTupleLibraryPath = "TinySystem/ValueTuple.cs";
 
     private static readonly Lazy<SyntaxTree[]> LibraryTreesCache = new(() =>
@@ -49,14 +49,14 @@ public static class TcsLibrary
 
     public static SyntaxTree[] LibraryTrees => LibraryTreesCache.Value;
 
-    /// <summary>user の tree と一緒にコンパイルする library。user が library の namespace
-    /// (手元の版の TinySystem.Linq) を渡したときはそちらを使い、同梱の版は入れない。</summary>
+    /// <summary>Library compiled together with the user trees. When the user passes a library namespace
+    /// (a local version of TinySystem.Linq), that one is used and the bundled version is not added.</summary>
     public static SyntaxTree[] LibraryTreesFor(IEnumerable<SyntaxTree> userTrees) =>
         userTrees.Any(DeclaresLibraryNamespace)
             ? [.. LibraryTrees.Where(t => t.FilePath == ValueTupleLibraryPath)]
             : LibraryTrees;
 
-    // namespace の宣言だけをたどる (入れ子の `namespace TinySystem { namespace Linq { } }` も)
+    // Follows only namespace declarations (including nested `namespace TinySystem { namespace Linq { } }`)
     public static bool DeclaresLibraryNamespace(SyntaxTree tree) =>
         tree.GetRoot().DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax)
             .OfType<BaseNamespaceDeclarationSyntax>()
@@ -72,6 +72,6 @@ public static class TcsLibrary
             return (path, reader.ReadToEnd());
         })]);
 
-    /// <summary>tcs と一緒に配る library の (path, 内容)。</summary>
+    /// <summary>(path, content) of the library distributed with tcs.</summary>
     public static (string Path, string Text)[] LibrarySourcesFor() => LibrarySources.Value;
 }

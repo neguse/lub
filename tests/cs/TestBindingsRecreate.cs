@@ -1,6 +1,6 @@
-// Bindings に入れたままの buffer / texture の handle が、作り直された実体を指す。
-// 一度だけ Set し、段階 1 → 2 で buffer と texture の version を上げて大きさを変える (handle は同じで実体が変わる)。
-// 段階 3 は key の宣言を止めて sweep させ、古い handle の draw が error になること、宣言し直した handle を Set すれば描けることを見る。
+// Buffer / texture handles left in Bindings point to the recreated underlying resources.
+// Sets only once, and from stage 1 → 2 raises the version of the buffer and texture and changes their size (the handle stays the same and the underlying resource changes).
+// Stage 3 stops declaring the key and lets it be swept, and checks that a draw with the old handle is an error and that Setting the redeclared handle lets it draw.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -32,7 +32,7 @@ struct FSIn { float4 pos : SV_Position; };
         rb = Gfx.Readback("bindings_recreate");
     }
 
-    // 段階 1: R = 1、G = 0 の小さい実体。段階 2 以降: R = 0、G = 1 の大きい実体。
+    // Stage 1: a small resource with R = 1, G = 0. Stage 2 onward: a large resource with R = 0, G = 1.
     static BufferRef DeclareBuffer(string key, int v)
     {
         var data = new List<float>();
@@ -93,7 +93,7 @@ struct FSIn { float4 pos : SV_Position; };
         }
         else if (stage == 3)
         {
-            // "item" の宣言を止めて sweep を待つ
+            // Stop declaring "item" and wait for the sweep
             sweepWait++;
             BindingsTestUtil.EmptyMainPass();
             if (sweepWait < sweep + 4)
@@ -106,7 +106,7 @@ struct FSIn { float4 pos : SV_Position; };
         }
         else
         {
-            // 同じ key の宣言は別の handle になるので Set し直す
+            // A declaration with the same key gives a different handle, so Set again
             var buf = DeclareBuffer("item", 2);
             var tex = DeclareTexture("tex", 2);
             kept!.Set("item", buf);

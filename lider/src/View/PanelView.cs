@@ -1,21 +1,21 @@
-// 拡大して読み書きする file 1 枚。本文は エディタの view が描いた命令の列 (EditorHost.Draw) を、lider の MonoText で描く。
-// 層ごとに texture を持ち (下地、奥、面、手前)、エディタの view の見た目か Document が変わったときだけ描き直す。
-// 面には下地を塗らず (エディタの下地は透明にしてある)、下地は奥の層より後ろの板にする (面に下地を塗ると奥の層が隠れる)。
-// 変えた行は、保存して reload chunk が当たるまで面から外して手前の層に浮かせる。
-// 奥の層はゲームが動かしている版と違う行があることを印で見せる。
-// 実行した行は面の下に、古いほど薄い帯と行番号の横の印で出す (毎 frame 描き直す)。
-// 代入した値は、その行の本文の右に「代入先 = 値」を手前の層の高さで出す (毎 frame 描き直す)。古いほど薄く、しばらく変わらなかった値が変わると光り、数は直近の値を小さな点の列にする。
-// フィールドの宣言の行には同じ所に今の値を、class の宣言の行には幾つもある個体の印を出す。
-// 負荷 (LoadProfile) は、背景の色 (実行した行) と分けて、どの行も同じ位置に出す: 普段はやばい資源の名前を窓の右の端に、プロファイルを見ている間は選んだ資源の数を行番号の代わりに。
-// 行の位置は エディタの scroll と行の高さから引く (EditorHost.LineY)。
-// エディタの CommandView (検索など) と NagView、IME の候補は手前の層に描く。
-// 保存した版の compile error は、その行を奥の層で赤く塗り、手前の層の下端に error の文を出す。
-// 描き直すときは、前に描いた命令を行ごとに (行の上の端からの位置で) 覚えておき、変わった行が少なければ、その行の帯だけを消して描き直す。
-// scroll したときは、層の texture を scroll した分 (整数の px) だけずらし、出てきた行と変わった行だけを描き直す
-// (行に付かない物、帯、error が変わったとき、帯を半端にまたぐ文字があるときは全部を描き直す)。
-// 行が層を移るとき (打って手前へ浮く、reload が当たって面へ沈む) と compile error の行は、層の板からその行の帯を抜き、帯だけを別に描いて動かす。
-// 非 VR (Flat) では両眼の視差が無いので、層の前後を、手前ほど左上にずらし、手前の層の影を面に落とし、奥の層を薄くして見せる。
-// scrollbar は texture に描かず (ずらすと動かせない)、板の上に別に描く。cursor と打った文字の動きも板の上に描く (Lider が滑らせる)。
+// One file zoomed in for reading and writing. For the body, the list of commands drawn by the editor view (EditorHost.Draw) is drawn with lider's MonoText.
+// Each layer has its own texture (background, back, surface, front), redrawn only when the editor view's appearance or the Document changes.
+// The surface has no background fill (the editor background is made transparent); the background is a board behind the back layer (filling the surface would hide the back layer).
+// Changed lines are taken off the surface and lifted to the front layer until saved and a reload chunk is applied.
+// The back layer shows with marks that there are lines differing from the version the game is running.
+// Executed lines are shown under the surface as bands that fade with age and as marks beside the line numbers (redrawn every frame).
+// Assigned values are shown to the right of the line's text as "target = value" at the front layer's height (redrawn every frame). They fade with age, flash when a value that had not changed for a while changes, and numbers show their recent values as a row of small dots.
+// Field declaration lines show the current value in the same place, and class declaration lines show marks for the many instances.
+// Load (LoadProfile) is shown at the same position on every line, separate from the background color (executed lines): normally the name of a resource in trouble at the right edge of the panel; while viewing the profile, the number for the selected resource in place of the line number.
+// Line positions come from the editor's scroll and line height (EditorHost.LineY).
+// The editor's CommandView (search etc.), NagView, and IME candidates are drawn on the front layer.
+// A compile error of the saved version paints its line red on the back layer and shows the error message at the bottom of the front layer.
+// When redrawing, the previously drawn commands are remembered per line (by position from the line's top edge), and if few lines changed, only those lines' bands are cleared and redrawn.
+// When scrolled, the layer textures are shifted by the scroll amount (integer px), and only lines that came into view and lines that changed are redrawn
+// (everything is redrawn when things not tied to lines, bands, or errors change, or when a character partially straddles a band).
+// When a line moves between layers (lifted to the front by typing, sunk to the surface when a reload is applied), and for compile error lines, the line's band is cut out of the layer board and only the band is drawn separately and moved.
+// Non-VR (Flat) has no binocular parallax, so layer depth is shown by shifting nearer layers toward the top left, casting the front layer's shadow on the surface, and fading the back layer.
+// The scrollbar is not drawn into the texture (it could not be moved when the texture is shifted) but separately on the board. The cursor and typed-character motion are also drawn on the board (Lider slides them).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -26,25 +26,25 @@ namespace LiderCore;
 
 public class PanelView
 {
-    // 文字が 1.6 m 先で 15 px 前後になる密度 (Frame の画素密度と、非 VR の画角 50° の画面に近い)。
-    // texture を画面より細かくすると、mipmap が無いので縮小で細い線が消える
+    // Density at which text is about 15 px at 1.6 m (close to the Frame's pixel density and to a non-VR display with a 50° field of view).
+    // If the texture is finer than the display, thin lines disappear when downscaled, since there are no mipmaps
     public const int BasePxW = 768;
     public const int BasePxH = 614;
     public const float BaseW = 1.1f;
     public const float BaseH = BaseW * BasePxH / BasePxW;
-    // この窓の今の大きさ (px)。文字の密度は変えないので、広げた分だけ桁と行が増える
+    // Current size of this panel (px). The text density does not change, so widening adds columns and lines
     public int PxW = BasePxW;
     public int PxH = BasePxH;
     public float W => BaseW * PxW / BasePxW;
     public float H => BaseW * PxH / BasePxW;
-    // 窓の上に付ける見出しの帯 (file の名前と閉じる印)
+    // Title band attached above the panel (file name and close mark)
     public const int TitlePx = 28;
     public const float TitleH = BaseW * TitlePx / BasePxW;
-    // 層の texture の密度の上限 (texture は幅と高さがこの倍になる)
+    // Upper limit of layer texture density (texture width and height become this many times larger)
     const int MaxDensity = 3;
 
-    // 非 XR で、既定の画角と大きさの窓の 1 論理 px が高さ viewportH の画面で覆う画素を、整数に丸めた密度。
-    // 整数なら scroll でずらしても画素が揃う。少し足りないだけなら上げない (texture の量は 2 乗で増える)
+    // In non-XR, the number of pixels that 1 logical px of a panel with the default field of view and size covers on a display of height viewportH, rounded to an integer density.
+    // With an integer, pixels stay aligned when shifted for scrolling. It is not raised if only slightly short (texture size grows with the square)
     public static int DensityFor(int viewportH)
     {
         var visible = 2 * Space.R * (float)Math.Tan(Space.FlatFov * 0.5f * Math.PI / 180);
@@ -52,13 +52,13 @@ public class PanelView
         return Math.Max(1, Math.Min(MaxDensity, (int)Math.Ceiling(d - 0.25f)));
     }
 
-    // 層の間隔 (m)。
-    // 1.6 m で 0.1° 前後の視差になる
+    // Layer spacing (m).
+    // Gives about 0.1° of parallax at 1.6 m
     public const float FrontGap = 0.06f;
     public const float BackGap = 0.04f;
     public const float PlateGap = 0.08f;
 
-    // 層ごとの render target の key
+    // Render target key per layer
     readonly string faceKey;
     readonly string frontKey;
     readonly string backKey;
@@ -71,31 +71,31 @@ public class PanelView
     int drawnRevision = -1;
     int drawnText = -1;
     int drawnDensity;
-    // 層の texture の密度 (Declare で文字の密度に合わせる)
+    // Layer texture density (matched to the text density in Declare)
     int density = 1;
-    // 描いた命令の数 (Draw の後に Cmd* で引く)
+    // Number of drawn commands (read with Cmd* after Draw)
     int count;
-    // font の id → icon の font か
+    // Font id → whether it is the icon font
     readonly Dictionary<int, bool> icon = new Dictionary<int, bool>();
-    // 今の切り抜き
+    // Current clip
     float clipX;
     float clipY;
     float clipW;
     float clipH;
 
-    // 描く エディタの view
+    // Editor view to draw
     public readonly int View;
-    // 最後に描き直した行の数 (全部を描き直したら -1)
+    // Number of lines last redrawn (-1 if everything was redrawn)
     public int RedrawnLines = -1;
-    // 行の帯だけを描き直すのは、変わった行がこれまでのとき
+    // Only line bands are redrawn when the changed lines are at most this many
     const int MaxPartialLines = 6;
-    // 前に描いた命令の、行ごとの並び (文字以外の hash と文字の列) と、行に付かない物の並びと、その時の scroll
+    // Previously drawn commands per line (non-text hash and text list), the list of things not tied to lines, and the scroll at that time
     float drawnScroll;
-    // 帯を描き直すときに、先に texture をずらす量 (px、正は上へ)
+    // Amount to shift the texture first when redrawing bands (px, positive is up)
     int shiftBy;
-    // 右と下の端のこの幅の、行に付かない rect は scrollbar とみなす
+    // Rects not tied to lines within this width of the right and bottom edges are treated as the scrollbar
     const float ScrollbarColumn = 16;
-    // 描かない命令 (scrollbar) と、板の上に描く scrollbar の rect (x, y, 幅, 高さ) と色
+    // Commands not drawn (scrollbar), and the rect (x, y, width, height) and color of the scrollbar drawn on the board
     bool[] skip = new bool[0];
     readonly List<float> scrollbars = new List<float>();
     readonly List<int> scrollbarColors = new List<int>();
@@ -103,30 +103,30 @@ public class PanelView
     Dictionary<int, List<string>>? drawnTexts;
     int drawnMiscHash;
     List<string> drawnMiscTexts = new List<string>();
-    // この file の compile error と reload の知らせ (Lider.InitNotices)、Workspace.ErrorsVersion (変わったら描き直す)
+    // Compile errors and reload notices for this file (Lider.InitNotices), and Workspace.ErrorsVersion (redraw when it changes)
     public List<BuildError> Errors = new List<BuildError>();
     public List<string> Notices = new List<string>();
     public int ErrorsVersion;
     int drawnErrors = -1;
-    // フィールドの宣言の行に出す今の値 (Lider が毎 frame 決める)
+    // Current values shown on field declaration lines (Lider decides them every frame)
     public List<FieldValue> Fields = new List<FieldValue>();
-    // 行の負荷 (Lider が渡す。出していなければ Enabled が false)
+    // Line loads (passed by Lider; Enabled is false if not shown)
     public LoadProfile? Costs;
 
-    // 本文がゲームの動いている版と違う間に、動いている版をどう見せるか (命令 code:diff-side で切り替える。true は左右、false はインライン)
+    // How to show the running version while the text differs from the version the game is running (switched with the command code:diff-side; true is side by side, false is inline)
     public static bool SideBySide = true;
-    // 動いている版の板 (左右の形) を出すか (Lider が Prepare の前に決める)。出している間、実行した行の光と代入した値はその板に出す
+    // Whether to show the running-version board (side-by-side form) (Lider decides before Prepare). While shown, executed-line glow and assigned values go on that board
     public bool OldShown;
-    // 動いている版の対応しない行を、窓の中の空けた行に挟むか (インラインの形。Lider が Prepare の前に決め、EditorHost.SetGaps で行を空ける)
+    // Whether to insert unmatched lines of the running version into blank lines in the panel (inline form; Lider decides before Prepare, and EditorHost.SetGaps makes the blank lines)
     public bool Inline;
     bool inlineDrawn;
     int drawnGaps = -1;
-    // 動いている版の板の幅 (px)。行の高さと文字の密度は窓と同じ
+    // Width of the running-version board (px). Line height and text density are the same as the panel
     public const int OldPxW = 520;
     public const float OldW = BaseW * OldPxW / BasePxW;
-    // 動いている版の板と窓の間 (メートル)
+    // Gap between the running-version board and the panel (meters)
     public const float OldGap = 0.03f;
-    // 板の右端の、対応する行を結ぶ帯の幅 (px)
+    // Width of the band at the board's right edge that connects corresponding lines (px)
     const int LinkPx = 28;
     readonly string oldKey;
     readonly SpriteBatch oldBatch;
@@ -145,14 +145,14 @@ public class PanelView
         oldBatch = new SpriteBatch(oldKey, OldPxW, PxH);
     }
 
-    // 板の中の位置 (0..1) を、エディタの view の px にして左 click する (cursor を動かす)
+    // Converts a position in the board (0..1) to editor view px and left-clicks there (moves the cursor)
     public static void Click(Document doc, Vec2 uv)
     {
         EditorHost.Click(doc.Id, uv.X * BasePxW, uv.Y * BasePxH);
     }
 
-    // エディタの命令の行の番号 (EditorHost.CmdLine) を、手前の層に描くか。
-    // 帯と IME の候補 (-1) と、ゲームが動かしている版と違う行
+    // Whether an editor command with this line number (EditorHost.CmdLine) is drawn on the front layer.
+    // Bands and IME candidates (-1), and lines that differ from the version the game is running
     public static bool Front(Document doc, int line)
     {
         return line < 0 || (line > 0 && doc.LineChanged(line - 1));
@@ -160,7 +160,7 @@ public class PanelView
 
     readonly DeclareGap gap = new DeclareGap();
 
-    // 見出しの帯の中心の高さ
+    // Height of the center of the title band
     public float TitleY(float y, float scale)
     {
         return y + (H + TitleH) * 0.5f * scale;
@@ -169,7 +169,7 @@ public class PanelView
     TextureRef? face;
     TextureRef? front;
     TextureRef? back;
-    // 層の texture (Prepare の後)
+    // Layer textures (after Prepare)
     public TextureRef? FaceTexture => face;
     public TextureRef? FrontTexture => front;
     public TextureRef? BackTexture => back;
@@ -177,26 +177,26 @@ public class PanelView
     bool traceDrawn;
     TextureRef? values;
     bool valuesDrawn;
-    // 層を移るのにかける秒
+    // Seconds taken to move between layers
     public const float MoveSeconds = 0.3f;
-    // 層を移っている行 (行の番号 → 移り始めてからの秒) と、行き先が手前か
+    // Lines moving between layers (line number → seconds since the move began), and whether the destination is the front
     readonly Dictionary<int, float> moving = new Dictionary<int, float>();
     readonly Dictionary<int, bool> movingToFront = new Dictionary<int, bool>();
-    // 最後に描いたときの、見えていた行が手前か
+    // Whether each visible line was in front when last drawn
     Dictionary<int, bool> drawnFront = new Dictionary<int, bool>();
-    // 最後に面へ沈み終えた行の帯の真ん中 (view の中の px)
+    // Middle of the band of the line that last finished sinking into the surface (px in the view)
     public float SankAt;
-    // 非 VR で描くか (Lider が毎 frame 決める)
+    // Whether drawing for non-VR (Lider decides every frame)
     public bool Flat;
-    // 非 VR で、手前の層 (面から FrontGap) をずらす角度と高さ
+    // In non-VR, the angle and height by which the front layer (FrontGap from the surface) is shifted
     const float FlatShift = 0.0025f;
-    // 枠と下地だけを揺らす量 (本文の文字は揺らさない。Lider が描く前に決める)
+    // Amount by which only the frame and background shake (the body text does not shake; Lider decides before drawing)
     public float FrameAngle;
     public float FrameY;
-    // 今描いている窓の面の半径 (Draw の中で決まる)
+    // Radius of the surface of the panel being drawn (decided inside Draw)
     float faceR = Space.R;
 
-    // 半径 r の物を非 VR で置く角度と高さのずれ (面から手前へ出るほど左上へ)
+    // Angle and height offset for placing something at radius r in non-VR (the further it comes forward from the surface, the more toward the top left)
     float ShiftAngle(float r)
     {
         return Flat ? -FlatShift * (faceR - r) / FrontGap : 0;
@@ -217,7 +217,7 @@ public class PanelView
         return movingToFront.TryGetValue(line, out var f) && f;
     }
 
-    // 層を移る行を dt 進め、面へ沈み終えた行の数を返す (その帯の真ん中は SankAt)
+    // Advances the lines moving between layers by dt and returns the number of lines that finished sinking into the surface (the middle of that band is SankAt)
     public int Step(float dt)
     {
         var lines = new List<int>();
@@ -247,14 +247,14 @@ public class PanelView
         return sank;
     }
 
-    // 板の texture と、描き直しに使う shader と文字の atlas を宣言する。
-    // lub は宣言の途切れた resource を捨てるので、描く frame は毎回呼ぶ (閉じる動きの間の窓のように、描き直さずに描くだけのときも)。
-    // shader と atlas も、しばらく打たないと次に打ったときに compile や upload をし直すことになる
+    // Declares the board textures, and the shader and glyph atlas used for redrawing.
+    // lub discards resources whose declaration lapsed, so call this in every frame that draws (even when only drawing without redrawing, as for a panel in its closing animation).
+    // The shader and atlas too: if nothing is typed for a while, they would be compiled or uploaded again on the next keystroke
     public void Declare(MonoText text)
     {
         if (gap.Lapsed())
         {
-            // 次の Prepare で全部を描き直す
+            // Redraw everything in the next Prepare
             drawnVersion = -1;
             drawnText = -1;
         }
@@ -284,7 +284,7 @@ public class PanelView
         scratch = Assets.RenderTarget("lider_panel_scratch_" + pw + "x" + ph, pw, ph, Gfx.PixelFormat.Rgba8);
     }
 
-    // texture を宣言し、内容が変わっていれば描き直す (画面への pass の外で呼ぶ)
+    // Declares the texture and redraws if the content changed (call outside the pass to the display)
     public bool Prepare(Document doc, MonoText text, TraceLog log)
     {
         Declare(text);
@@ -295,7 +295,7 @@ public class PanelView
         if (version != drawnVersion || doc.Revision != drawnRevision || text.Version != drawnText
             || ErrorsVersion != drawnErrors || density != drawnDensity || gapsVersion != drawnGaps)
         {
-            // 空ける行が変わると行の高さがずれるので、帯だけでは描き直せない
+            // When the blank lines change, line heights shift, so bands alone cannot be redrawn
             var partial = text.Version == drawnText && ErrorsVersion == drawnErrors && Errors.Count == 0 && Notices.Count == 0 && density == drawnDensity
                 && gapsVersion == drawnGaps;
             Render(doc, text, face, front, back, partial);
@@ -323,21 +323,21 @@ public class PanelView
         return true;
     }
 
-    // Prepare した frame の中で、画面への pass に描く。
-    // scale は窓の大きさの倍率、z は奥行き (メートル、負が手前)、glow は縁の光 (0 から 1)、shake は error の行の震え (0 から 1)
+    // Draws into the pass to the display, within the frame that was Prepared.
+    // scale is the panel size factor, z is depth (meters, negative is nearer), glow is the edge glow (0 to 1), shake is the error-line shake (0 to 1)
     public void Draw(Document doc, float angle, float y, float scale, Mat4 vp, float z, float glow, float shake)
     {
         if (face == null || front == null || back == null)
             return;
         var white = Color.Rgb(1, 1, 1);
         var r = Space.R + z;
-        // つかんだ窓の浮き (0 から 1)
+        // Lift of the grabbed panel (0 to 1)
         var lift = -z / Grab.LiftDistance;
         faceR = r;
         var plate = r + PlateGap;
         var k = plate / Space.R;
-        // 見出しと本文を 1 枚の下地に載せる。
-        // focus の縁は細い線と外へ薄れる光で、浮いている間は下地を濃くする
+        // Put the title and body on a single background.
+        // The focus edge is a thin line plus a glow fading outward; while lifted, the background is more opaque
         var plateY = (y + FrameY + TitleH * 0.5f * scale) * k;
         var plateW = W * scale * k;
         var plateH = (H + TitleH) * scale * k;
@@ -353,7 +353,7 @@ public class PanelView
         Layer(vp, back, Flat ? Color.Rgb(1, 1, 1, 0.5f) : white, angle, y, scale, r + BackGap, null);
         if (trace != null)
             Layer(vp, trace, white, angle, y, scale, r, null);
-        // 層を移る行と error の行の帯 (行の番号、texture の上と下の v、手前の層か)
+        // Bands of lines moving between layers and of error lines (line number, top and bottom v in the texture, whether in the front layer)
         var strips = new List<int>();
         var errorLines = new Dictionary<int, bool>();
         foreach (var e in Errors)
@@ -378,7 +378,7 @@ public class PanelView
         }
         Layer(vp, face, white, angle, y, scale, r, faceHoles);
         Scrollbars(vp, angle, y, scale, r);
-        // 層を移る行は、元の層から行き先の層へ動く。error の行は赤く、震えている間は横に揺れる
+        // Lines moving between layers move from the original layer to the destination layer. Error lines are red and sway sideways while shaking
         foreach (var line in strips)
         {
             var top = Math.Max(0, EditorHost.LineY(View, line)) / PxH;
@@ -398,7 +398,7 @@ public class PanelView
                 Piece(vp, Front(doc, line) ? front : face, ErrorTint, a, y, scale, Front(doc, line) ? r - FrontGap : r, top, bottom);
             }
         }
-        // 非 VR では手前の層の影を、面の上の右下に落とす
+        // In non-VR, the front layer's shadow is cast toward the bottom right on the surface
         if (Flat)
             Layer(vp, front, Color.Rgb(0, 0, 0, 0.45f), angle + FlatShift, y - FlatShift, scale, r, frontHoles);
         Layer(vp, front, white, angle, y, scale, r - FrontGap, frontHoles);
@@ -406,38 +406,38 @@ public class PanelView
             Layer(vp, values, white, angle, y, scale, r - FrontGap, null);
     }
 
-    // compile error の行の文字の色
+    // Text color of compile error lines
     static readonly Color ErrorTint = Color.Rgb(1.0f, 0.45f, 0.4f);
 
-    // view の中の x px の、円筒の上の角度
+    // Cylinder angle for x px in the view
     public float AngleAt(float angle, float scale, float x)
     {
         return angle + (x / PxW - 0.5f) * W * scale / Space.R;
     }
 
-    // view の中の py px の、面 (半径 Space.R) の上の高さ
+    // Height on the surface (radius Space.R) for py px in the view
     public float YAt(float y, float scale, float py)
     {
         return y + (0.5f - py / PxH) * H * scale;
     }
 
-    // 最後に DrawCaret が描いた cursor の上の端と下の端 (空間の位置)。描いていなければ CaretDrawn が false
+    // Top and bottom ends of the cursor last drawn by DrawCaret (positions in space). CaretDrawn is false if not drawn
     public static Vec3 CaretTop;
     public static Vec3 CaretBottom;
     public static bool CaretDrawn;
 
-    // 窓の texture の外に描く cursor (x と top は view の中の px)。
-    // 下にある行と同じ層 (手前に浮いた行なら手前) に置く
+    // Cursor drawn outside the panel texture (x and top are px in the view).
+    // Placed on the same layer as the line beneath it (the front if the line is lifted to the front)
     public void DrawCaret(Mat4 vp, Document doc, float angle, float y, float scale, float z, float x, float top)
     {
         var lh = EditorHost.LineHeight(View);
         if (lh <= 0 || top < 0 || top + lh > PxH || x < 0 || x > PxW)
             return;
-        // cursor の上の端と下の端 (画面の外の録画の道具が見る所。LIDER_CARET_LOG)
+        // Top and bottom ends of the cursor (what the off-screen recording tool looks at; LIDER_CARET_LOG)
         CaretTop = Space.At(AngleAt(angle, scale, x), YAt(y, scale, top), Space.R);
         CaretBottom = Space.At(AngleAt(angle, scale, x), YAt(y, scale, top + lh), Space.R);
         CaretDrawn = true;
-        // 上の端が cursor の真ん中より上の最後の行 (空けた行があると、行の高さで割っては求まらない)
+        // The last line whose top edge is above the middle of the cursor (with blank lines, it cannot be found by dividing by the line height)
         var line = EditorHost.FirstLine(View);
         for (var l = line + 1; l <= EditorHost.LastLine(View) && EditorHost.LineY(View, l) <= top + lh * 0.5f; l++)
             line = l;
@@ -448,7 +448,7 @@ public class PanelView
             w / PxW * W * scale * k, lh / PxH * H * scale * k);
     }
 
-    // 打った文字: その行の層の texture の同じ所を、手前に浮かせて大きめに描き、Landing.Seconds で層に収めて消す
+    // Typed characters: draw the same part of that line's layer texture lifted in front and larger, settle it into the layer over Landing.Seconds, then remove it
     public void DrawLanding(Mat4 vp, Document doc, float angle, float y, float scale, float z, Landing l)
     {
         var front = Front(doc, l.Line);
@@ -467,7 +467,7 @@ public class PanelView
             (l.X1 - l.X0) / PxW * W * scale * k * grow, lh / PxH * H * scale * k * grow), tex, Color.Rgb(1, 1, 1, 1 - e), uv);
     }
 
-    // エディタの scrollbar の rect を、面と同じ所に曲げて置く
+    // Places the editor's scrollbar rect curved, at the same place as the surface
     void Scrollbars(Mat4 vp, float angle, float y, float scale, float r)
     {
         var k = r / Space.R;
@@ -484,9 +484,9 @@ public class PanelView
         }
     }
 
-    // 半径 r の層を、見る人 (原点) から面と同じ角度に見える大きさで、円筒に沿って曲げて置く。
-    // 層の差は両眼の視差だけになり、片眼では文字が面と重なる
-    // holes は抜く所 (texture の上からの v の上と下の組、上から並べる)
+    // Places a layer of radius r curved along the cylinder, at a size that spans the same angle from the viewer (origin) as the surface.
+    // The layer difference becomes only binocular parallax, and with one eye the text overlaps the surface
+    // holes are the parts to cut out (pairs of top and bottom v from the texture top, listed from the top)
     void Layer(Mat4 vp, TextureRef tex, Color tint, float angle, float y, float scale, float r, List<float>? holes)
     {
         var at = 0.0f;
@@ -501,7 +501,7 @@ public class PanelView
         Piece(vp, tex, tint, angle, y, scale, r, at, 1);
     }
 
-    // 層の texture の縦の v0 から v1 の帯を、板の同じ所に置く
+    // Places the vertical band v0 to v1 of the layer texture at the same place on the board
     void Piece(Mat4 vp, TextureRef tex, Color tint, float angle, float y, float scale, float r, float v0, float v1)
     {
         if (v1 <= v0)
@@ -526,7 +526,7 @@ public class PanelView
     void RenderTrace(Document doc, MonoText text, TraceLog log, TextureRef target)
     {
         Begin(target);
-        // SpriteBatch は atlas を初めて使った順に描くので、文字より先に (透明に) 塗る
+        // SpriteBatch draws in the order atlases are first used, so fill (transparent) before the text
         batch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
         var lh = EditorHost.LineHeight(View);
         var x0 = EditorHost.TextX(View);
@@ -538,7 +538,7 @@ public class PanelView
         End();
     }
 
-    // 実行した行の光 (行番号の横の印と、本文の下の薄い帯)
+    // Executed-line glow (marks beside the line numbers and faint bands under the text)
     void Glow(float glow, float y, float x0, float lh)
     {
         if (glow <= 0)
@@ -547,7 +547,7 @@ public class PanelView
         batch.Rect(x0 - 6, y, PxW - x0 + 6, lh, Color.Rgb(1.0f, 0.6f, 0.15f, 0.14f * glow));
     }
 
-    // インラインの形: 空けた行に、動いている版の対応しない行を、赤い下地と光と代入した値と一緒に描く
+    // Inline form: draws the unmatched lines of the running version in the blank lines, with a red background, glow, and assigned values
     void RenderInline(Document doc, MonoText text, TraceLog log, float x0, float lh)
     {
         var olds = doc.InlineOld();
@@ -564,10 +564,10 @@ public class PanelView
         }
     }
 
-    // 挟んだ動いている版の行の文字の色 (本文より薄く、赤みを帯びる)
+    // Text color of inserted running-version lines (fainter than the body, reddish)
     static readonly Color InlineInk = Color.Rgb(0.85f, 0.55f, 0.55f);
 
-    // インラインの形で挟んだ i 番目の動いている版の行 (Document.InlineOld の順) の上の端の y (px)
+    // Top edge y (px) of the i-th running-version line inserted in the inline form (in Document.InlineOld order)
     public float InlineY(Document doc, int i)
     {
         var at = doc.InlineAt();
@@ -577,31 +577,31 @@ public class PanelView
         return EditorHost.LineY(View, at[i]) - (doc.InlineGaps()[at[i]] - k) * EditorHost.LineHeight(View);
     }
 
-    // 窓の line 行目 (1 から) を、ゲームが動かしている版で何 frame 前に通ったか (変えた行と足した行、通っていなければ -1)。
-    // 実行した行と値は動いている版の行の番号で届くので、本文の行を動いている版の行に読み替えて引く
+    // How many frames ago the version the game is running executed line line (from 1) of the panel (-1 for changed lines, added lines, and lines not executed).
+    // Executed lines and values arrive with running-version line numbers, so the text line is mapped to the running-version line for lookup
     public static int AgeAt(Document doc, TraceLog log, int line)
     {
         var live = doc.LiveLine(line - 1);
         return live < 0 ? -1 : log.Age(doc.Path, live + 1);
     }
 
-    // 窓の line 行目 (1 から) の、ゲームが動かしている版で代入した値 (変えた行と足した行は無し)
+    // Values assigned by the version the game is running on line line (from 1) of the panel (none for changed and added lines)
     public static List<TracedValue> ValuesAt(Document doc, TraceLog log, int line)
     {
         var live = doc.LiveLine(line - 1);
         return live < 0 ? new List<TracedValue>() : log.ValuesAt(doc.Path, live + 1);
     }
 
-    // 値が変わったときに光る frame の数。
-    // 毎 frame 変わる値が光り続けないよう、前の値がこれだけ続いていたときだけ光る
+    // Number of frames a value glows after it changes.
+    // So that values changing every frame do not glow continuously, it glows only when the previous value lasted this long
     const int ChangeGlowFrames = 20;
-    // 数の値の点の列の幅 (桁)
+    // Width of the dot row for numeric values (characters)
     const int SparkCells = 6;
 
     void RenderValues(Document doc, MonoText text, TraceLog log, TextureRef target)
     {
         Begin(target);
-        // SpriteBatch は atlas を初めて使った順に描くので、文字より先に (透明に) 塗る
+        // SpriteBatch draws in the order atlases are first used, so fill (transparent) before the text
         batch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
         var lh = EditorHost.LineHeight(View);
         var x0 = EditorHost.TextX(View);
@@ -629,18 +629,18 @@ public class PanelView
         End();
     }
 
-    // プロファイルを見ている間に行番号の所に出す数の桁 ("12.3")
+    // Number of characters of the number shown in place of the line number while viewing the profile ("12.3")
     public const int NumberCells = 4;
 
-    // 普段の札の 1 つの幅 (桁)
+    // Width of one normal tag (characters)
     const int TagCells = 3;
 
-    // 描いた負荷の列か札の行と、左右の端 (px)
+    // Lines of the drawn load column or tags, and their left and right edges (px)
     readonly List<int> tagLines = new List<int>();
     readonly List<float> tagLeft = new List<float>();
     readonly List<float> tagRight = new List<float>();
 
-    // 窓の中の位置 (px) が負荷の列か札の上なら、その行 (1 から。無ければ -1)
+    // If a position in the panel (px) is on the load column or a tag, that line (from 1; -1 if none)
     public int CostLineAt(float x, float y)
     {
         var lh = EditorHost.LineHeight(View);
@@ -660,7 +660,7 @@ public class PanelView
         tagRight.Add(right);
     }
 
-    // プロファイルを見ている間: 行番号の所 (エディタは行番号を描かない) に、選んだ資源の数を行番号と同じ右の端に揃えて、下地に右寄せの帯を出す
+    // While viewing the profile: in place of the line number (the editor does not draw line numbers), shows the number for the selected resource aligned to the same right edge as line numbers, with a right-aligned bar in the background
     void DrawColumn(MonoText text, LineCost c, int line, float x0, float y, float lh)
     {
         var p = Costs!;
@@ -676,7 +676,7 @@ public class PanelView
         Hit(line, right - w, right);
     }
 
-    // 普段: やばい資源の名前を CPU、MEM、GPU の順に並べ、窓の右の端に詰めて揃える
+    // Normally: lists the names of resources in trouble in the order CPU, MEM, GPU, packed and aligned to the right edge of the panel
     void DrawTags(MonoText text, LineCost c, int line, float y, float lh)
     {
         var cw = text.CellW;
@@ -698,7 +698,7 @@ public class PanelView
         Hit(line, left - 2, right + 2);
     }
 
-    // 行の本文の右 (x) に「代入先 = 値」を並べる (maxX から先は描かない)。並べた後の右の x を返す
+    // Lays out "target = value" to the right (x) of the line text (nothing is drawn beyond maxX). Returns the right x after laying out
     float DrawValues(SpriteBatch b, MonoText text, TraceLog log, List<TracedValue> shown, float x, float y, float lh, float maxX)
     {
         foreach (var v in shown)
@@ -722,8 +722,8 @@ public class PanelView
         return x;
     }
 
-    // 動いている版の 0 行目 (0 から) を置く窓の高さ (px)。
-    // 動いている版の行は詰めて並べ、カーソルの行か、その近くで対応する行を、窓の同じ高さに揃える
+    // Panel height (px) at which line 0 (from 0) of the running version is placed.
+    // Running-version lines are packed together, and the cursor line or a corresponding line near it is aligned to the same height as in the panel
     public float OldTop(Document doc)
     {
         var lh = EditorHost.LineHeight(View);
@@ -739,13 +739,13 @@ public class PanelView
         return EditorHost.LineY(View, 1);
     }
 
-    // 動いている版の板: 対応しない行 (変えた行と消した行) を赤く、実行した行を光らせ、代入した値を出し、
-    // 右端の帯で、変えた所ごとに動いている版の行の範囲と窓の行の範囲を結ぶ
+    // Running-version board: unmatched lines (changed and deleted lines) are red, executed lines glow, assigned values are shown,
+    // and the band at the right edge connects, for each change, the running-version line range with the panel line range
     void RenderOld(Document doc, MonoText text, TraceLog log, TextureRef target)
     {
         Gfx.BeginPass(new PassOpts { Target = target, ClearColor = new float[] { 0, 0, 0, 0 } });
         oldBatch.Begin();
-        // SpriteBatch は atlas を初めて使った順に描くので、文字より先に (透明に) 塗る
+        // SpriteBatch draws in the order atlases are first used, so fill (transparent) before the text
         oldBatch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
         var lh = EditorHost.LineHeight(View);
         var top = OldTop(doc);
@@ -774,7 +774,7 @@ public class PanelView
             text.Draw(oldBatch, body, x0, y, kept[i] ? Theme.Muted : ErrorTint, 0, maxX);
             DrawValues(oldBatch, text, log, log.ValuesAt(doc.Path, i + 1), x0 + (Utf8.Cells(body, Utf8.Bytes(body)) + 2) * text.CellW, y, lh, maxX);
         }
-        // 窓の行 (0 から) の上の端の高さ (本文の行の外も同じ間隔で延ばす)
+        // Height of the top edge of a panel line (from 0) (extended at the same spacing beyond the text lines)
         var newTop = EditorHost.LineY(View, 1);
         var prevNew = -1;
         var prevOld = -1;
@@ -792,10 +792,10 @@ public class PanelView
         Gfx.EndPass();
     }
 
-    // 変えた行の下地
+    // Background of changed lines
     static readonly Color ChangedTint = Color.Rgb(1.0f, 0.45f, 0.45f, 0.16f);
 
-    // 帯の左の端の高さ old0..old1 と右の端の new0..new1 を結ぶ (無い側は細い線にする)
+    // Connects heights old0..old1 at the band's left edge with new0..new1 at its right edge (a missing side becomes a thin line)
     void Link(float old0, float old1, float new0, float new1, float x0)
     {
         if (Math.Max(old1, new1) < 0 || Math.Min(old0, new0) > PxH)
@@ -810,7 +810,7 @@ public class PanelView
         }
     }
 
-    // 動いている版の板を、真ん中の角度 angle と高さ y、幅 w と高さ h (半径 Space.R の所のメートル) で、半径 r に描く
+    // Draws the running-version board at radius r, with center angle angle and height y, width w and height h (meters at radius Space.R)
     public void DrawOld(Mat4 vp, float angle, float y, float w, float h, float r)
     {
         if (old == null)
@@ -820,8 +820,8 @@ public class PanelView
         Quad3d.Curved(vp, old, Color.Rgb(1, 1, 1, 1), angle, y * k, r, w * k, h * k, 0, 1);
     }
 
-    // 宣言の行の本文の右に、フィールドなら「= 値」、class なら個体の印を出し、印の所を覚える (押して選ぶ)
-    // 値を描いた字の 1 桁の幅 (ValueAt が、描いた所を求めるのに使う)
+    // To the right of declaration line text, shows "= value" for a field or instance marks for a class, and remembers where the marks are (to select by pressing)
+    // Width of one character of the text used to draw values (ValueAt uses it to find where it drew)
     float valueCellW = 1;
 
     void RenderField(Document doc, MonoText text, FieldValue f, float x0, float lh)
@@ -834,7 +834,7 @@ public class PanelView
         {
             var s = "= " + f.Text;
             var w = Math.Min(PxW - x, Utf8.Cells(s, Utf8.Bytes(s)) * text.CellW);
-            // 変わった値は、下地が強く光り、文字が少し跳ねる
+            // A changed value gets a strongly glowing background and its text bounces a little
             batch.Rect(x - 4, y + 1, w + 8, lh - 2, Color.Rgb(0.08f + 0.8f * f.Glow, 0.1f + 0.5f * f.Glow, 0.14f, 0.55f + 0.45f * f.Glow));
             text.Draw(batch, s, x, y - 4 * f.Glow, f.Glow > 0.5f ? Color.Rgb(0.1f, 0.06f, 0.02f) : Theme.Value, 0, PxW);
             if (f.History != null)
@@ -851,7 +851,7 @@ public class PanelView
         }
     }
 
-    // 窓の中の (x, y) px にある、フィールドの値 (行の後ろの "= 値"。無ければ null)
+    // Field value at (x, y) px in the panel (the "= value" after the line; null if none)
     public FieldValue? ValueAt(Document doc, float x, float y)
     {
         var lh = EditorHost.LineHeight(View);
@@ -869,7 +869,7 @@ public class PanelView
         return null;
     }
 
-    // 窓の中の (x, y) px にある、class の行の印
+    // Class line mark at (x, y) px in the panel
     public FieldMark? MarkAt(float x, float y)
     {
         var lh = EditorHost.LineHeight(View);
@@ -885,7 +885,7 @@ public class PanelView
         return null;
     }
 
-    // 数の値の直近 Fade frame を、左を古く (Fade frame 前)、右をこの frame にして、大きさの順に高さを変えた点で描く
+    // Draws the last Fade frames of a numeric value as dots whose heights follow the order of the values, oldest on the left (Fade frames ago), this frame on the right
     void Spark(SpriteBatch b, TracedValue v, int frame, float x, float y, float w, float h, float glow)
     {
         var lo = float.MaxValue;
@@ -908,7 +908,7 @@ public class PanelView
         }
     }
 
-    // フィールドの直近の値を、代入の値と同じ点の列で描く
+    // Draws a field's recent values as the same dot row as assigned values
     void Spark(List<float> history, float x, float y, float w, float h)
     {
         var lo = float.MaxValue;
@@ -940,7 +940,7 @@ public class PanelView
         var x0 = EditorHost.TextX(View);
         var first = EditorHost.FirstLine(View);
         var last = EditorHost.LastLine(View);
-        // 前に描いたときと層が変わった行は、層を移り始める
+        // Lines whose layer changed since the last drawing start moving between layers
         var nowFront = new Dictionary<int, bool>();
         for (var line = first; line <= last; line++)
         {
@@ -953,7 +953,7 @@ public class PanelView
             }
         }
         drawnFront = nowFront;
-        // 行の番号 → 手前に出すか
+        // Line number → whether it goes in front
         var lifted = new Dictionary<int, bool>();
         var layer = new bool[count];
         var barX0 = 1e9f;
@@ -982,7 +982,7 @@ public class PanelView
                 scrollbars.Add(EditorHost.CmdH(i));
                 scrollbarColors.Add(EditorHost.CmdColor(i));
             }
-            // 帯の下地は、帯の命令の外枠 (scrollbar の大きさの無い rect は数えない)
+            // The band background is the bounding box of the band's commands (the scrollbar and size-less rects are not counted)
             if (line < 0 && EditorHost.CmdKind(i) != 3 && EditorHost.CmdW(i) > 0 && EditorHost.CmdH(i) > 0)
             {
                 barX0 = System.Math.Min(barX0, EditorHost.CmdX(i));
@@ -1024,7 +1024,7 @@ public class PanelView
         End();
 
         Begin(front);
-        // 浮かせた行と帯の下地
+        // Lifted lines and band background
         for (var line = first; line <= last; line++)
         {
             if (!doc.LineChanged(line - 1))
@@ -1040,11 +1040,11 @@ public class PanelView
         End();
     }
 
-    // 命令を行ごとの並びにして覚え、前と比べて描き直す行 (line の番号) を返す。
-    // 行の命令は行の上の端からの位置で比べるので、scroll しても中身が同じ行は描き直さない (texture をずらす量は shiftBy)。
-    // 見えている行は命令が無くても、ゲームが動かしている版と違うか (層と印が変わる) を並びに入れる。
-    // gutter の行の番号 (行に付かない命令) は、高さが収まる行の物とみなす。
-    // 帯だけでは描き直せないとき (partial でない、行に付かない物が変わった、scroll が整数の px でないか大きい、描き直す行が多い) は null
+    // Stores the commands as per-line lists, compares them with the previous ones, and returns the lines (line numbers) to redraw.
+    // Line commands are compared by position from the line's top edge, so lines with the same content are not redrawn after scrolling (the texture shift amount is shiftBy).
+    // For visible lines, even without commands, whether they differ from the version the game is running (layer and marks change) is put into the list.
+    // Gutter line numbers (commands not tied to a line) are treated as belonging to the line whose height contains them.
+    // null when bands alone cannot be redrawn (not partial, things not tied to lines changed, scroll is not an integer px or is large, too many lines to redraw)
     List<int>? Changed(Document doc, bool[] layer, bool partial, int first, int last, float lh)
     {
         var scroll = EditorHost.ScrollY(View);
@@ -1068,14 +1068,14 @@ public class PanelView
             var line = EditorHost.CmdLine(i);
             if (line == 0 && kind != 3 && lh > 0)
             {
-                // 上の端が y 以下の最後の行 (空けた行があるので、行の高さで割らずに探す)
+                // The last line whose top edge is at most y (there are blank lines, so search instead of dividing by the line height)
                 var at = first;
                 for (var l = first + 1; l <= last && tops[l] <= y + 0.001f * lh; l++)
                     at = l;
                 if (tops.TryGetValue(at, out var t) && y >= t - 0.01f && y + EditorHost.CmdH(i) <= t + lh + 0.01f)
                     line = at;
             }
-            // 切り抜きと大きさの無い rect は、それだけでは何も描かないので比べない (scroll で並びが変わる)
+            // Clips and size-less rects draw nothing by themselves, so they are not compared (their order changes with scrolling)
             if (line == 0 && (kind == 3 || (kind == 1 && (EditorHost.CmdW(i) <= 0 || EditorHost.CmdH(i) <= 0))))
                 continue;
             var top = line > 0 && tops.TryGetValue(line, out var lineTop) ? lineTop : 0;
@@ -1115,7 +1115,7 @@ public class PanelView
         var redraw = new List<int>();
         foreach (var pair in hashes)
         {
-            // 前に無かった行、中身が変わった行、ずらして出てきた縁 (前は texture の外だった所) に掛かる行
+            // Lines that did not exist before, lines whose content changed, and lines over the edge revealed by shifting (previously outside the texture)
             var top = tops[pair.Key];
             var edge = dy > 0 ? top + lh > PxH - dy : (dy < 0 && top < -dy);
             if (edge || !beforeHashes.TryGetValue(pair.Key, out var was) || was != pair.Value || !Same(texts[pair.Key], beforeTexts[pair.Key]))
@@ -1138,7 +1138,7 @@ public class PanelView
         return true;
     }
 
-    // 帯に掛かる文字の命令が、どれも 1 つの帯に収まっているか (文字は帯で切り抜けない)
+    // Whether every text command over a band fits within one band (text cannot be clipped by a band)
     bool Banded(List<int> changed, float lh)
     {
         foreach (var line in changed)
@@ -1157,7 +1157,7 @@ public class PanelView
         return true;
     }
 
-    // 変わった行の帯を 3 つの層で消し、帯に掛かる命令と行の印だけを描き直す
+    // Clears the changed lines' bands on the 3 layers and redraws only the commands over the bands and the line marks
     void RenderLines(Document doc, MonoText text, TextureRef face, TextureRef front, TextureRef back, bool[] layer, List<int> changed)
     {
         var lh = EditorHost.LineHeight(View);
@@ -1195,8 +1195,8 @@ public class PanelView
         End();
     }
 
-    // texture を上へ dy px ずらして写す shader (写し元の外は透明)。
-    // shift は (dy / PxH、写し元の使う高さの割合)。画素の真ん中を写すので、整数の px なら同じ画素になる
+    // Shader that copies a texture shifted up by dy px (transparent outside the source).
+    // shift is (dy / PxH, fraction of the source height used). It samples pixel centers, so with integer px the pixels stay the same
     const string CopyVs = "struct Uniforms { float4 shift; };\n"
         + "ConstantBuffer<Uniforms> u;\n"
         + "struct VSOut { float2 uv : TEXCOORD0; float limit : TEXCOORD1; float4 pos : SV_Position; };\n"
@@ -1211,16 +1211,16 @@ public class PanelView
     const string CopyFs = "LUB_TEXTURE2D(src);\n"
         + "struct FSIn { float2 uv : TEXCOORD0; float limit : TEXCOORD1; };\n"
         + "[shader(\"fragment\")] float4 fs_main(FSIn i) : SV_Target {\n"
-        // WGSL は分岐の中の sample を許さないので、先に読む
+        // WGSL does not allow sample inside a branch, so read first
         + "  float4 c = LUB_SAMPLE(src, i.uv);\n"
         + "  if (i.uv.y < 0.0 || i.uv.y >= i.limit) return float4(0, 0, 0, 0);\n"
         + "  return c;\n"
         + "}\n";
     static ShaderRef? copy;
-    // ずらすときの写し先 (板で 1 枚を使い回す)
+    // Copy target for shifting (one per board, reused)
     TextureRef? scratch;
 
-    // target の中身を上へ dy px ずらす (scratch へずらして写し、写し戻す)
+    // Shifts the contents of target up by dy px (copies shifted into scratch, then copies back)
     void Shift(TextureRef target, int dy)
     {
         if (copy == null || scratch == null)
@@ -1245,8 +1245,8 @@ public class PanelView
         Gfx.EndPass();
     }
 
-    // 帯を透明に塗る shader (SpriteBatch は透明な所を捨てるので、消すのに使えない)。
-    // rect は帯の左上と右下の clip 座標
+    // Shader that paints bands transparent (SpriteBatch discards transparent parts, so it cannot be used for clearing).
+    // rect is the clip coordinates of the band's top left and bottom right
     const string ClearVs = "struct Uniforms { float4 rect; };\n"
         + "ConstantBuffer<Uniforms> u;\n"
         + "[shader(\"vertex\")] float4 vs_main(uint vid : LUB_VERTEX_ID) : SV_Position {\n"
@@ -1256,14 +1256,14 @@ public class PanelView
     const string ClearFs = "[shader(\"fragment\")] float4 fs_main() : SV_Target { return float4(0, 0, 0, 0); }\n";
     static ShaderRef? clear;
 
-    // 窓の shader を宣言する。lider は窓が無い frame でも毎 frame 呼び、初めて file を開いた frame に作らせない
+    // Declares the panel shaders. lider calls it every frame, even in frames without panels, so they are not created in the frame where a file is first opened
     public static void DeclareShaders()
     {
         clear = Gfx.UseShader("lider_panel_clear", ClearVs, ClearFs, 1);
         copy = Gfx.UseShader("lider_panel_copy", CopyVs, CopyFs, 1);
     }
 
-    // target の前の中身を残し、bands (帯の上の端の y、高さは lh) を透明にしてから描き始める
+    // Keeps the previous contents of target, makes bands transparent (top edge y of each band, height lh), then starts drawing
     void BeginLines(TextureRef target, List<float> bands, float lh)
     {
         Gfx.BeginPass(new PassOpts { Target = target, Load = Gfx.LoadAction.Load });
@@ -1286,7 +1286,7 @@ public class PanelView
 
     float bandH;
 
-    // compile error の文 (3 件まで) を、窓の下端の帯に「行: 文」で出す。error が無ければ reload の知らせを黄色で出す
+    // Shows compile error messages (up to 3) in the band at the bottom of the panel as "line: message". If there are no errors, shows reload notices in yellow
     void ErrorBar(MonoText text)
     {
         var notice = Errors.Count == 0;
@@ -1303,8 +1303,8 @@ public class PanelView
         }
     }
 
-    // 命令の列のうち、手前の層の物 (front) か面の物を描く。切り抜きは全部の命令を追う。
-    // bands があれば、帯 (上の端の y、高さは bandH) に掛かる物だけを、帯で切り抜いて描く
+    // Draws the commands in the list that belong to the front layer (front) or to the surface. Clipping follows all commands.
+    // If bands are given, draws only things over the bands (top edge y, height bandH), clipped to the bands
     void Replay(MonoText text, bool[] layer, bool front, List<float>? bands)
     {
         clipX = 0;
@@ -1344,7 +1344,7 @@ public class PanelView
         }
     }
 
-    // 命令 i (kind 1 は rect、2 は text) を、x は今の切り抜き、y は y0 から y1 までで切り抜いて描く
+    // Draws command i (kind 1 is rect, 2 is text), clipped to the current clip in x and to y0..y1 in y
     void Draw(MonoText text, int kind, int i, float x, float y, float w, float h, Color color, float y0, float y1)
     {
         if (kind == 1)
@@ -1372,7 +1372,7 @@ public class PanelView
         return yes;
     }
 
-    // RGBA を 32 bit に詰めた色 (R が上の 8 bit)
+    // Color packed as RGBA into 32 bits (R in the top 8 bits)
     static Color Unpack(int c)
     {
         return Color.Rgb(((c >> 24) & 255) / 255.0f, ((c >> 16) & 255) / 255.0f, ((c >> 8) & 255) / 255.0f, (c & 255) / 255.0f);

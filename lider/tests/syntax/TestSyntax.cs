@@ -1,5 +1,5 @@
-// lider の窓に開いた .cs を、エディタの core が C# として色分けして描く (src/Editor/Syntax.cs)。
-// 描いた命令の text の色 (前の空白を除いた text ごと) で、注釈、keyword、型、文字列、数が、ふつうの名前 (Target) とも互いとも違う色になり、関数の名前もふつうの名前と違う色になることを見る
+// The editor core highlights a .cs opened in a lider window as C# and draws it (src/Editor/Syntax.cs).
+// Checks, by the color of the text of the drawn commands (per text, excluding leading whitespace), that comments, keywords, types, strings, and numbers get colors different from plain names (Target) and from each other, and that function names also get a color different from plain names
 using System;
 using System.Collections.Generic;
 using Lub;

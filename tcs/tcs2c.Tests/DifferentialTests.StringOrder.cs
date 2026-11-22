@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// string の順序は .NET の ordinal (UTF-16 の code unit の順) と同じ。
-// UTF-8 の byte の順とは、U+10000 以上 (UTF-16 では surrogate D800-DBFF) と U+E000-U+FFFF の間だけ逆になる。
-// 期待値は同じ program を InvariantGlobalization の CoreCLR で実行した stdout (TinySystem.props と同じ前提)。
-// 表示は words の添字
+// String order is the same as .NET's ordinal (UTF-16 code unit order).
+// It is the reverse of UTF-8 byte order only between U+10000 and above (surrogates D800-DBFF in UTF-16) and U+E000-U+FFFF.
+// The expected values are the stdout of running the same program on CoreCLR with InvariantGlobalization (the same assumption as TinySystem.props).
+// The output shows indices into words
 public class StringOrderDifferentialTests
 {
     private const string StringOrderProgram = """

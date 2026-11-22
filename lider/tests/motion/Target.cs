@@ -1,4 +1,4 @@
-// tests/motion で開く file。
+// The file tests/motion opens.
 public static class MotionTarget
 {
     public static int One()

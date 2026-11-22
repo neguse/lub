@@ -2,18 +2,18 @@ using System.Text;
 
 namespace TinyCs.Tests.SpecConformance;
 
-/// <summary>StateCs は v1 の状態を作る文、AssertsCs は reload の後の不変量 (tcs2c.Tests の VmReloadTests が tcs VM の reload に当てる)。
-/// C# の文で、static class Driver の P1, P2 (instance) と B1, B2 (identity の控え) を使い、
-/// 不変量は Ck(条件, 名前) で書く。消えた field と static は新版のコードから参照できないので不変量に無い。</summary>
+/// <summary>StateCs is the statements that build the v1 state, and AssertsCs is the invariants after reload (VmReloadTests in tcs2c.Tests applies them to the tcs VM reload).
+/// They are C# statements that use P1, P2 (instances) and B1, B2 (kept copies for identity) of static class Driver,
+/// and invariants are written as Ck(condition, name). Removed fields and statics cannot be referenced from the new version's code, so they are not in the invariants.</summary>
 public sealed record FuzzReloadScenario(string V1, string V2, string StateCs, string AssertsCs);
 
 /// <summary>
-/// hot reload fuzz の seed 決定的シナリオ生成器。単一 class
-/// (+ 任意で struct 型 field) の v1/v2 ペアと、状態構築・不変量検証の C# の文
-/// を生成する。期待値は生成時に計算する (値は小さく保ち wrap を踏まない)。
-/// 検出網の自己検証のため、毎シナリオ必ず「method body 変更」と
-/// 「added field」を含む。record class / 継承は migration 未対応のため
-/// 生成しない。
+/// Seed-deterministic scenario generator for hot reload fuzz. It generates v1/v2 pairs of a single class
+/// (+ optionally a struct-typed field) and C# statements for state construction and invariant checking.
+/// Expected values are computed at generation time (values are kept small and do not hit wrap).
+/// To self-verify the detection net, every scenario always includes a "method body change" and
+/// an "added field". record class / inheritance are not supported by migration yet, so they are
+/// not generated.
 /// </summary>
 internal sealed class FuzzReloadGenerator(int seed)
 {
@@ -24,7 +24,7 @@ internal sealed class FuzzReloadGenerator(int seed)
 
     public FuzzReloadScenario Generate()
     {
-        // ---- struct (任意) ----
+        // ---- struct (optional) ----
         var hasStruct = _rng.Next(2) == 0;
         var structFields = new List<FieldPlan>();
         var structAdded = new List<string>();
@@ -47,7 +47,7 @@ internal sealed class FuzzReloadGenerator(int seed)
             fields.Add(new FieldPlan("G0", "string", $"\"s{_rng.Next(100)}\"",
                 Retained: _rng.Next(4) != 0));
 
-        // added は必ず 1 つ以上 (検出網の自己検証の前提)
+        // Always at least one added (a premise of the detection net self-verification)
         var added = new List<(string Name, string Type, string Init)>
         {
             ("A0", "int", _rng.Next(1, 100).ToString()),
@@ -65,24 +65,24 @@ internal sealed class FuzzReloadGenerator(int seed)
 
         var hook = _rng.Next(2) == 0;
 
-        // ---- method M0 (両版に存在、body は必ず変更) ----
+        // ---- method M0 (exists in both versions, body always changes) ----
         var retainedInts = fields
             .Where(f => f is { Type: "int", Retained: true }).ToList();
         var m0V1Field = fields.First(f => f.Type == "int").Name;
         var a1 = _rng.Next(2, 6);
         var b1 = _rng.Next(1, 100);
-        // v2 body は v2 に存在する int (retained or added) を参照する
+        // The v2 body references an int that exists in v2 (retained or added)
         var v2Ints = retainedInts.Select(f => f.Name)
             .Concat(added.Where(a => a.Type == "int").Select(a => a.Name))
             .ToList();
         var m0V2Field = v2Ints[_rng.Next(v2Ints.Count)];
-        var a2 = a1 + _rng.Next(1, 4); // 必ず係数が変わる
+        var a2 = a1 + _rng.Next(1, 4); // The coefficient always changes
         var b2 = _rng.Next(1, 100);
         var hasStaticMethod = _rng.Next(2) == 0;
         var smV1 = _rng.Next(1, 1000);
         var smV2 = smV1 + _rng.Next(1, 100);
 
-        // ---- ソース組み立て ----
+        // ---- Source assembly ----
         var v1 = BuildSource(structFields.Select(f => f.Name).ToList(), [],
             hasStruct,
             fields, [], statics, default, hook: false,
@@ -139,7 +139,7 @@ internal sealed class FuzzReloadGenerator(int seed)
             if (hook)
                 assertsCs.AppendLine($"Ck(P{k}.R == 1, \"hook once {k}\");");
 
-            // method swap: v2 body の期待値 (hook は R のみ触るので干渉しない)
+            // method swap: expected value of the v2 body (the hook only touches R, so they do not interfere)
             var fieldValue = live.TryGetValue(m0V2Field, out var lv)
                 ? lv
                 : int.Parse(added.First(a => a.Name == m0V2Field).Init);
@@ -153,7 +153,7 @@ internal sealed class FuzzReloadGenerator(int seed)
         if (hasStaticMethod)
             assertsCs.AppendLine($"Ck(RC0.SM() == {smV2}, \"static method swap\");");
 
-        // reload 後の新規構築は v2 shape
+        // New construction after reload uses the v2 shape
         assertsCs.AppendLine("var q = new RC0();");
         foreach (var (name, _, init) in added)
             assertsCs.AppendLine($"Ck(q.{name} == {init}, \"new added\");");

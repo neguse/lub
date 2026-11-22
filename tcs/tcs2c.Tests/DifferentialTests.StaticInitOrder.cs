@@ -1,12 +1,12 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 型をまたぐ static initializer の初期化順の 2 backend differential。期待値は
-// 同じ program を CoreCLR で実行した stdout
+// Two-backend differential tests for the initialization order of static initializers across types. The expected values are the
+// stdout of running the same program on CoreCLR
 public class StaticInitOrderDifferentialTests
 {
-    // a.cs の initializer が b.cs の型の static を読む。直接の参照のほか、
-    // constructor 本文 / static getter / interface 呼び出しの先で読むものも、
-    // 読まれる型を先に初期化する。ファイルの並びに依存しない
+    // Initializers in a.cs read statics of types in b.cs. Besides direct references,
+    // reads inside constructor bodies / static getters / interface calls also
+    // initialize the read type first. Does not depend on the file order
     private const string InitOrderA = """
         using System;
         public class A
@@ -57,8 +57,8 @@ public class StaticInitOrderDifferentialTests
         Assert.Equal("16\n42,50,22,23\n3,2", output);
     }
 
-    // delegate を作るだけの initializer (method group / lambda) は、その先の
-    // 本文を実行しないので依存にしない (辿ると偽の循環で初期化順が狂う)
+    // Initializers that only create a delegate (method group / lambda) do not run the body
+    // they point to, so they are not dependencies (following them creates false cycles that break the initialization order)
     [CFact]
     public void StaticInitializers_DelegateCreationIsNotADependency()
     {
@@ -83,8 +83,8 @@ public class StaticInitOrderDifferentialTests
         Assert.Equal("300,10\n6,5", output);
     }
 
-    // struct 型の static の zero 値 (pre-zero) は struct の定義より前に評価され
-    // 得るので、struct が後ろのファイルでも落ちない
+    // The zero value (pre-zero) of a static of struct type can be evaluated before the struct definition,
+    // so it does not fail even if the struct is in a later file
     private const string StructStaticA = """
         using System;
         public class A

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# lider の player (native/CMakeLists.txt: lub の player の library に、かな漢字変換と file system の操作を静的に link したもの) を build する。
-#   scripts/build-player.sh        native (build/player/lider_player)。先に lub を build しておく (scripts/build-release.sh)
-#   scripts/build-player.sh --web  web (build/player-web/web/lub.{js,wasm})。先に lub の wasm を build しておく (emcmake cmake --preset wasm-release)。要 emsdk と rustup の wasm32-unknown-emscripten
-# lub の build は find_package(lub) で使う (lub_DIR)。
-# env: LUB_BUILD lub の build のディレクトリ (既定: native は build-release-linux、web は build/wasm)
-#      JAMO_CACHE build 済みの jamo-core を置く dir (CI が cache する。jamo の commit、Rust の target、rustc ごとに分ける)
+# Builds the lider player (native/CMakeLists.txt: the lub player library with kana-kanji conversion and file system operations statically linked in).
+#   scripts/build-player.sh        native (build/player/lider_player). Build lub first (scripts/build-release.sh)
+#   scripts/build-player.sh --web  web (build/player-web/web/lub.{js,wasm}). Build the lub wasm first (emcmake cmake --preset wasm-release). Requires emsdk and rustup's wasm32-unknown-emscripten
+# The lub build is used through find_package(lub) (lub_DIR).
+# env: LUB_BUILD lub build directory (default: build-release-linux for native, build/wasm for the web)
+#      JAMO_CACHE dir for the prebuilt jamo-core (cached by CI; separate per jamo commit, Rust target and rustc)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 lub="$(cd "$root/.." && pwd)"
-# JAMO_CACHE があれば、その dir の build 済みの jamo-core を使い、無ければ build した物をそこに置く
+# If JAMO_CACHE is set, uses the prebuilt jamo-core in that dir; if there is none, puts the built one there
 jamo_args=()
 jamo_cached=""
 if [ -n "${JAMO_CACHE:-}" ]; then
@@ -28,7 +28,7 @@ if [ "${1:-}" = --web ]; then
   keep_jamo "$root/build/player-web"
 else
   lub_build="${LUB_BUILD:-$lub/build-release-linux}"
-  # C の tcs (scripts/build-tcs-native.sh) があれば、tcs を C にするのに使う (dotnet が要らない)
+  # If the C tcs (scripts/build-tcs-native.sh) exists, uses it to convert tcs to C (no dotnet needed)
   tcs_native=""
   for f in "$lub_build/tcs/tcs" "$lub_build/tcs/tcs.exe"; do
     [ -f "$f" ] && tcs_native="$f"

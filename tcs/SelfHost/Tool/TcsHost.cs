@@ -1,30 +1,30 @@
-// tcs の host (SelfHost/Tool) が使う OS の関数の宣言。本体は host ごとに持つ:
-// C の build は SelfHost/Native/host.c (tcs2c の --ref)、wasm は SelfHost/Web/tcs_web.c、.NET は Transpiler/DotnetHost.cs。
-// このファイルは C の build で --ref として渡し、.NET の build には入れない
+// Declarations of the OS functions used by the tcs host (SelfHost/Tool). Each host has its own implementation:
+// the C build uses SelfHost/Native/host.c (--ref of tcs2c), wasm uses SelfHost/Web/tcs_web.c, and .NET uses Transpiler/DotnetHost.cs.
+// This file is passed as --ref in the C build and is not included in the .NET build.
 public static class TcsHost
 {
-    // コマンドラインの引数 (0 番は最初の引数で、実行ファイルの名前を含まない)
+    // Command-line arguments (index 0 is the first argument; the executable name is not included)
     public static int ArgCount() { return 0; }
     public static string Arg(int index) { return ""; }
     public static bool FileExists(string path) { return false; }
-    // 2 つの path が同じ既存のファイルを指すか (link と、大文字小文字を区別しない file system の綴りの違いも)
+    // Whether two paths point to the same existing file (including links and spelling differences on case-insensitive file systems)
     public static bool SameFile(string a, string b) { return false; }
-    // ファイルの内容 (UTF-8)。読めなければ ""
+    // File contents (UTF-8). "" if unreadable
     public static string ReadFile(string path) { return ""; }
-    // 一時ファイルに書いてから置き換える。失敗したら理由を返す (成功は "")
+    // Writes to a temporary file and then replaces the file. Returns the reason on failure ("" on success).
     public static string WriteFileAtomic(string path, string text) { return ""; }
-    // byte 列 (1 文字が 1 byte の 0〜255。.tcsb など) を一時ファイルに書いてから置き換える。失敗したら理由を返す
+    // Writes bytes (one character per byte, 0 to 255; .tcsb and so on) to a temporary file and then replaces the file. Returns the reason on failure.
     public static string WriteBinaryAtomic(string path, string bytes) { return ""; }
     public static void WriteOut(string text) { }
     public static void WriteErr(string text) { }
-    // 標準出力を流す (watch の host への message は書いた順に届ける)
+    // Flushes standard output (messages to the watch host arrive in the order they were written)
     public static void FlushOut() { }
-    // 変わったかを比べる印 (更新時刻と大きさ)。無いファイルは ""
+    // A stamp to compare for changes (modification time and size). "" for a missing file
     public static string FileStamp(string path) { return ""; }
-    // tcs と一緒に配るファイル (`lib/TinySystem/Linq.cs`、`runtime/core/tcs_core.c` など)。無ければ ""
+    // Files shipped with tcs (`lib/TinySystem/Linq.cs`, `runtime/core/tcs_core.c`, etc.). "" if missing
     public static string ToolFile(string name) { return ""; }
     public static void Sleep(int milliseconds) { }
     public static void SetExitCode(int code) { }
-    // 仕事が終わった (host は Step を呼ぶのをやめる)
+    // The work is done (the host stops calling Step)
     public static void SetDone() { }
 }

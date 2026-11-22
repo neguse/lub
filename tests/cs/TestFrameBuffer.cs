@@ -1,12 +1,12 @@
-// 1 フレームの中で FrameBuffer を何度呼んでも、各 draw / dispatch が自分の範囲を読むこと。
-// どの case も左半分は先の範囲、右半分は後の範囲で描き、左が赤、右が緑になる。
-// - storage: Bindings を使い回して STORAGE の範囲を差し替える。
-// - index: INDEX の範囲を差し替える。
-//   前の index は左の quad、後は右の quad を指す。
-// - compute: compute が FrameBuffer の範囲を読んで buffer に写し、その buffer で描く。
-// - stride: 要素の大きさが 12 byte の範囲を、大きさの揃わない範囲の後に作る。
-// - large: chunk より大きい範囲。
-// - array: float[] から作る範囲。
+// However many times FrameBuffer is called within one frame, each draw / dispatch reads its own range.
+// In every case the left half is drawn with the earlier range and the right half with the later range: the left is red and the right is green.
+// - storage: reuses Bindings and replaces the STORAGE range.
+// - index: replaces the INDEX range.
+//   The earlier index points to the left quad, and the later one to the right quad.
+// - compute: compute reads the FrameBuffer range and copies it into a buffer, and the draw uses that buffer.
+// - stride: creates a range with 12-byte elements after a range whose size is not aligned.
+// - large: a range larger than a chunk.
+// - array: a range created from a float[].
 using System;
 using System.Collections.Generic;
 using Lub;

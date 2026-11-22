@@ -1,10 +1,10 @@
 #!/bin/bash
-# tcs の WebAssembly 版を作る (dotnet と Emscripten が要る。source ~/emsdk/emsdk_env.sh)。
-# tcs2c が tcs (SelfHost/Compiler、SelfHost/CBackend、SelfHost/VmBackend、SelfHost/Tool) を C にし、tcs_web.c (host) と一緒に emcc で wasm にする。
-# 出力は SelfHost/out/web/ (git に入れない):
-#   tcs-core.mjs    wasm を埋め込んだ 1 つの ES module
-#   tcs.mjs         JS の入口 (createTcs)
-#   lib/            tcs と一緒に配るファイル (JS が createTcs の toolFiles で渡す)
+# Builds the WebAssembly version of tcs (requires dotnet and Emscripten; source ~/emsdk/emsdk_env.sh).
+# tcs2c turns tcs (SelfHost/Compiler, SelfHost/CBackend, SelfHost/VmBackend, SelfHost/Tool) into C, and emcc builds it into wasm together with tcs_web.c (host).
+# Output goes to SelfHost/out/web/ (not checked into git):
+#   tcs-core.mjs    a single ES module with the wasm embedded
+#   tcs.mjs         JS entry point (createTcs)
+#   lib/            files shipped with tcs (JS passes them through the toolFiles of createTcs)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="$ROOT/SelfHost/out/web"

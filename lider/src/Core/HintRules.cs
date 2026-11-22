@@ -1,34 +1,34 @@
-// 指している物に対して、そのとき効く操作の案内 (ボタンと、押すと何が起きるか)。
-// grip でつかむような、見て分かる操作は出さない。
+// Hints for the actions that work on the pointed thing at that moment (the button, and what pressing it does).
+// Obvious actions, such as grabbing with grip, are not shown.
 using System.Collections.Generic;
 
 namespace LiderCore;
 
 public enum HintIcon
 {
-    // 丸の中に Key の字 (コントローラーの A や X)
+    // The Key letter in a circle (A or X on a controller)
     Face,
-    // trigger を引く操作と、stick を上下か左右に倒す操作。Key は手 (L か R)
+    // Pulling a trigger, and tilting a stick up/down or left/right. Key is the hand (L or R)
     Trigger,
     StickUpDown,
     StickLeftRight,
-    // key cap の中に Key の字
+    // The Key letter in a key cap
     KeyCap,
     MouseLeft,
     MouseWheel,
-    // 絵の無い文字だけの行
+    // A text-only line without an icon
     None,
 }
 
 public enum HintTarget
 {
-    // 何も無い所 (ゲームの物)
+    // An empty spot (the game's objects)
     Nothing,
     Window,
-    // 窓の閉じる印
+    // A window's close mark
     Close,
     Inspect,
-    // 窓の右か下の端
+    // The right or bottom edge of a window
     Edge,
 }
 
@@ -49,28 +49,28 @@ public class Hint
 public class HintContext
 {
     public HintTarget Target;
-    // インスペクタの行を指しているとき、その行を開けるか、開いているか
+    // When pointing at an inspector line, whether that line can be opened and whether it is open
     public bool Openable;
-    // 止めている間に、書き換えられる値を指している
+    // Pointing at a value that can be edited while paused
     public bool Editable;
     public bool Open;
-    // 宣言へ飛ぶ印、絞り込む印、パンくずを指しているか
+    // Whether pointing at a jump-to-declaration mark, a scope-in mark, or a breadcrumb
     public bool Jump;
     public bool Scope;
     public bool Crumb;
-    // 窓の class の行の、個体の印か、続きを出す印を指しているか
+    // Whether pointing at an instance mark or the show-more mark on a class line in the window
     public bool InstanceMark;
     public bool MoreMark;
     public bool InspectShown;
-    // focus のある窓の本文がゲームの動いている版と違うか、動いている版を左右に並べるか
+    // Whether the focused window's text differs from the version the game is running, and whether the running version is shown side by side
     public bool Differs;
     public bool SideBySide;
     public bool Paused;
-    // 飛べる compile error があるか
+    // Whether there is a compile error to jump to
     public bool Errors;
-    // 音と演出の強さ (Lider.Juice)
+    // Strength of sounds and effects (Lider.Juice)
     public int Juice = 2;
-    // 指しているゲームの物を描いたコード (内側から)
+    // Code that drew the pointed game object (innermost first)
     public List<string> What = new List<string>();
     public bool Zen;
     public bool Vr;
@@ -140,8 +140,8 @@ public static class HintRules
             default:
                 foreach (var w in c.What)
                     hints.Add(new Hint(HintIcon.None, "", w));
-                // ゲームの物を調べたり開いたりできるのは、止めている間だけ。
-                // 何かを指しているときは、それが何かと開き方だけを出す
+                // Game objects can be inspected or opened only while paused.
+                // When pointing at something, shows only what it is and how to open it
                 press.Label = c.What.Count > 0 ? "このコードを開く" : "指した物を描いたコードを開く";
                 if (c.Paused || c.What.Count > 0)
                     hints.Add(press);
@@ -167,7 +167,7 @@ public static class HintRules
             hints.Add(new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "code:next-error" }), "エラーの行へ"));
         if (c.Paused)
             hints.Add(c.Vr ? new Hint(HintIcon.StickLeftRight, "L", "1 frame 戻す・進める") : new Hint(HintIcon.KeyCap, KeysOf(new List<string> { "game:step-back", "game:step-forward" }), "1 frame 戻す・進める"));
-        // key を割り当てていない命令の行は出さない
+        // Lines for commands with no key assigned are not shown
         var bound = new List<Hint>();
         foreach (var hint in hints)
             if (hint.Icon != HintIcon.KeyCap || hint.Key != "")
@@ -175,8 +175,8 @@ public static class HintRules
         return bound;
     }
 
-    // 命令に割り当てた key の、案内に出す書き方 (どれにも割り当てが無ければ "")。
-    // 修飾 key が同じ矢印は 1 つにまとめ ("Alt+←→")、修飾 key の無い key は "/" で、ほかは空白でつなぐ
+    // How the keys assigned to commands are written in hints ("" if none is assigned).
+    // Arrows with the same modifiers are combined into one ("Alt+←→"), keys without modifiers are joined with "/", and the others with spaces
     static string KeysOf(List<string> names)
     {
         var text = "";

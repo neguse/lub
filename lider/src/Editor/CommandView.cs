@@ -1,5 +1,5 @@
-// 窓の下の帯の入力欄 (Lite XL の core/commandview.lua)。検索、置き換え、行へ移動、file を開く、名前を付けて保存。
-// 打った文字から候補を作り、上下で選び、Return で決める。Escape で閉じる。
+// Input field in the strip at the bottom of the window (Lite XL's core/commandview.lua). Find, replace, go to line, open file, save as.
+// Builds suggestions from the typed text, selects with up/down, and confirms with Return. Escape closes it.
 using System;
 using System.Collections.Generic;
 
@@ -9,7 +9,7 @@ public class Suggestion
 {
     public string Text = "";
     public string Info = "";
-    // 行へ移動の候補の行 (0 は無し)
+    // Line of the go-to-line suggestion (0 = none)
     public int Line;
 }
 
@@ -40,7 +40,7 @@ public class CommandView
     string lastText = "";
     string? saveSuggestion;
 
-    // 開いた command の材料
+    // Data for the opened command
     public string ReplaceOld = "";
     public int GoToView;
     List<Suggestion>? goToItems;
@@ -76,7 +76,7 @@ public class CommandView
         return text.Replace("\n", "");
     }
 
-    // 入力欄に打った文字 (改行は入れない)
+    // Text typed in the input field (no newlines)
     public void TextInput(string text)
     {
         View.Doc.TextInput(SingleLine(text));
@@ -185,7 +185,7 @@ public class CommandView
         }
     }
 
-    // 今の command の候補 (検索は、ここで見つけた所を選んで見せる)
+    // Suggestions of the current command (search selects and shows the matches found here)
     List<Suggestion> Suggest(string text)
     {
         var res = new List<Suggestion>();
@@ -244,7 +244,7 @@ public class CommandView
         return items;
     }
 
-    // query に合う物を、点の高い順に (同じ点は元の順)
+    // Items matching query, highest score first (ties keep the original order)
     static List<Suggestion> FuzzyItems(List<Suggestion> items, string query, bool files)
     {
         var scored = new List<Suggestion>();
@@ -272,7 +272,7 @@ public class CommandView
             items.Add(new Suggestion { Text = f });
         if (query != "")
             return FuzzyItems(items, query, true);
-        // 空なら最近開いた file (2 番目から、最初の物は最後) の後に全部
+        // If empty, recently opened files (from the second, with the first one last) followed by all files
         var res = new List<Suggestion>();
         var recents = EditorCore.VisitedFiles;
         for (var i = 1; i < recents.Count; i++)
@@ -324,7 +324,7 @@ public class CommandView
         View.SizeY = EditorCore.Active == EditorCore.CommandId ? DrawList.FontHeight() + Style.PaddingY * 2 : 0;
     }
 
-    // 窓の下の端に帯を描く (帯の下地は lider が命令の外枠に塗る)
+    // Draws the strip at the bottom edge of the window (lider paints the strip background in the command frame)
     public void Draw(float w, float h)
     {
         var barH = Math.Max(View.SizeY, DrawList.FontHeight() + Style.PaddingY * 2);
@@ -337,7 +337,7 @@ public class CommandView
         DrawList.PopClip();
     }
 
-    // 帯の上に候補の箱を描く (帯の後に描く)
+    // Draws the suggestion box above the strip (drawn after the strip)
     public void DrawSuggestions()
     {
         if (!ShowSuggestions)

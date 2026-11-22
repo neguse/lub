@@ -2,8 +2,8 @@ namespace TinyCs.Tests;
 
 public class SwitchTests
 {
-    // case 本体を block で包んだ末尾 break は switch の暗黙終端。
-    // Lua の break として素通しすると外側 loop を脱出してしまう
+    // A trailing break of a case body wrapped in a block is the implicit end of the switch.
+    // Passing it through as a Lua break would exit the outer loop
     [Fact]
     public void SwitchStatement_BracedCaseInsideLoop_DoesNotBreakLoop()
     {
@@ -29,7 +29,7 @@ public class SwitchTests
         Assert.Equal("21", result);
     }
 
-    // 条件付き早期 break は switch だけを抜ける (後続 case 本体をスキップ)
+    // A conditional early break exits only the switch (skipping the later case bodies)
     [Fact]
     public void SwitchStatement_ConditionalEarlyBreak_ExitsSwitchOnly()
     {
@@ -60,7 +60,7 @@ public class SwitchTests
         Assert.Equal("2", result);
     }
 
-    // case 内の nested loop の break は loop に束縛され switch は続行する
+    // A break of a nested loop inside a case binds to the loop, and the switch continues
     [Fact]
     public void SwitchStatement_BreakInNestedLoop_BindsToLoop()
     {
@@ -92,7 +92,7 @@ public class SwitchTests
         Assert.Equal("102", result);
     }
 
-    // switch 内の continue は外側 loop に束縛される
+    // continue inside a switch binds to the outer loop
     [Fact]
     public void SwitchStatement_ContinueInsideSwitch_ContinuesOuterLoop()
     {
@@ -250,7 +250,7 @@ public class SwitchTests
         Assert.Equal("running", result);
     }
 
-    // switch の対象式は一度だけ評価される (arm/case 数に依存しない)。
+    // The switch subject expression is evaluated only once (independent of the number of arms/cases).
     [Fact]
     public void SwitchExpression_GoverningExpression_EvaluatedOnce()
     {
@@ -313,8 +313,8 @@ public class SwitchTests
         Assert.Equal("1|mid", result);
     }
 
-    // switch statement のパターンラベル (relational / or / 型) は
-    // 従来空条件の不正 Lua になっていた。case 値ラベルとの混在も含めて動くこと。
+    // Pattern labels in a switch statement (relational / or / type) used to
+    // produce invalid Lua with an empty condition. They must work, including when mixed with case value labels.
     [Fact]
     public void SwitchStatement_PatternAndConstantLabels_Mixed()
     {
@@ -378,8 +378,8 @@ public class SwitchTests
         Assert.Equal("big:10|circle|other", result);
     }
 
-    // 型名だけの arm は syntax 上 ConstantPattern になるが、値比較ではなく
-    // metatable 比較 (型判定) として動くこと。
+    // An arm with only a type name is syntactically a ConstantPattern, but instead of a value comparison
+    // it must work as a metatable comparison (type test).
     [Fact]
     public void SwitchExpression_BareTypePatternArm_MatchesByType()
     {

@@ -1,5 +1,5 @@
-// 画素の列 x に対応する dst[x] - 1 を灰色で出す。dispatch が走らなければ
-// dst は 0 のままで、出力は負値の clamp で黒になる。
+// Outputs dst[x] - 1 for pixel column x as gray. If the dispatch does not run,
+// dst stays 0 and the output is black because the negative value is clamped.
 StructuredBuffer<float> dst;
 
 struct FSIn {

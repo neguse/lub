@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// List.Insert と GetRange。期待値は同じ program を CoreCLR で実行した stdout
+// List.Insert and GetRange. The expected values are the stdout of running the same program on CoreCLR
 public class ListInsertGetRangeDifferentialTests
 {
     [CFact]

@@ -1,5 +1,5 @@
-// ../TestProfile.cs が lider で開くゲーム。毎 frame、足し算を繰り返し、配列を作って static (Game.keep) に置き、MainTex への pass で draw を 2 つ出す。
-// 行番号を ../TestProfile.cs が見るので、行を足したら合わせる。
+// The game ../TestProfile.cs opens in lider. Every frame it repeats additions, makes an array and puts it in a static (Game.keep), and emits two draws in a pass to MainTex.
+// ../TestProfile.cs looks at the line numbers, so keep them in sync if you add lines.
 using Lub;
 
 public static class Game

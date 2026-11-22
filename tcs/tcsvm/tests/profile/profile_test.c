@@ -1,13 +1,23 @@
-/* 行ごとの負荷 (tvm_profile_*) のテスト。時間は、Game の Probe.Clock.Advance が tvm_profile_tick で知らせる分だけ経つ。
-   - 時間は知らせたときの行に付き、--trace の印のある関数の中の時間はその関数の行に、印の無い関数 (Lib.cs) の中の時間は呼んだ行に付く
-   - tvm_call の外で知らせた時間はどの行にも付かない
-   - 確保はした行に付き、GC の止まりは別に数える (test の時計は読むたびに 1000 ns 進み、そのたびに 500 ns を知らせる。
-     GC の長さは時計で測った 1000 ns で、GC の間に知らされた時間はどの行にも付かない)
-   - 持ち越し: 前の frame の境目の後に --trace の行で作り、entry と --trace の class の static から辿れる物を、作った行と持つ field ごとに数える
-   - 別の thread から知らせた時間も欠けずに付く
-   - 呼んだ先の --trace の関数から戻った後 (VM の中の呼び出しと、host からの入れ子の呼び出し) の時間と確保は、呼んだ行に付く
-   - host の関数の中で今の行を引くと、それを呼んだ行 (数えていなければ無い)
-   - 止めると数えない */
+/* Test of per-line cost (tvm_profile_*). Time advances only by the amount
+   Game's Probe.Clock.Advance reports with tvm_profile_tick.
+   - Time is attributed to the line where it is reported; time inside a function
+   marked --trace goes to that function's line, and time inside an unmarked
+   function (Lib.cs) goes to the calling line
+   - Time reported outside tvm_call is attributed to no line
+   - Allocations are attributed to the line that made them, and GC pauses are
+   counted separately (the test clock advances 1000 ns on each read and reports
+   500 ns each time. The GC duration is the 1000 ns measured by the clock, and
+   time reported during GC is attributed to no line)
+   - Kept: objects created on a --trace line after the previous frame boundary
+   and reachable from the entry and the statics of --trace classes are counted
+   per creating line and holding field
+   - Time reported from another thread is also attributed without loss
+   - Time and allocations after returning from a called --trace function (calls
+   inside the VM and nested calls from the host) are attributed to the calling
+   line
+   - Looking up the current line inside a host function gives the line that
+   called it (none when not counting)
+   - Nothing is counted when stopped */
 #include "../../vm/tcsvm.h"
 
 #include <pthread.h>
@@ -32,7 +42,8 @@ static TvmStatus advance(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   return TVM_OK;
 }
 
-/* 別の thread: Spin の中に入ったら THREAD_TICKS 回 1 ns ずつ知らせ、終えたら done にする */
+/* Another thread: once inside Spin, reports 1 ns THREAD_TICKS times, then sets
+ * done */
 #define THREAD_TICKS 200000
 static atomic_int started, done;
 
@@ -219,19 +230,19 @@ int main(int argc, char **argv) {
     fprintf(stderr, "%s\n", tvm_error(vm));
     return 1;
   }
-  /* 数える前に一度呼び、static を作っておく */
+  /* Calls once before counting to create the statics */
   if (!call(vm, "Game.Keep"))
     return 1;
   tvm_profile_enable(vm, fake_clock);
   if (!call(vm, "Game.Step") || !call(vm, "Game.Step"))
     return 1;
-  /* 呼び出しの外で知らせた時間は付かない */
+  /* Time reported outside a call is not attributed */
   tvm_profile_tick(vm, 1000);
   tvm_profile_take_lines(vm, take, NULL);
   print("two steps");
   tvm_profile_take_lines(vm, take, NULL);
   print("taken again");
-  /* 1 MB を超えて確保すると、呼び出しの中で GC が止める */
+  /* Allocating more than 1 MB makes GC pause inside the call */
   if (!call(vm, "Game.Churn"))
     return 1;
   tvm_profile_take_lines(vm, take, NULL);
@@ -241,7 +252,8 @@ int main(int argc, char **argv) {
                          ? (gcs_timed == gcs ? "stopped 1000 ns each"
                                              : "stopped, wrong length")
                          : "none");
-  /* 持ち越し: frame の境目の後に作った物だけを数え、一度数えた物は数えない */
+  /* Kept: counts only objects created after the frame boundary, and never
+   * counts an object twice */
   tvm_frame_end(vm);
   if (!call(vm, "Game.Keep"))
     return 1;
@@ -255,7 +267,7 @@ int main(int argc, char **argv) {
   tvm_frame_end(vm);
   tvm_profile_take_kept(vm, "Game", take_kept, NULL);
   print_kept("kept after frame end");
-  /* 別の thread から知らせた時間 */
+  /* Time reported from another thread */
   tvm_profile_take_lines(vm, sum_ns, NULL);
   thread_ns = 0;
   pthread_t th;
@@ -267,7 +279,7 @@ int main(int argc, char **argv) {
   tvm_profile_take_lines(vm, sum_ns, NULL);
   printf("thread: %s\n",
          thread_ns == THREAD_TICKS ? "all ticks" : "lost ticks");
-  /* 呼んだ先から戻った後 */
+  /* After returning from the callee */
   if (!call(vm, "Game.Nest"))
     return 1;
   tvm_profile_take_lines(vm, take, NULL);
@@ -279,7 +291,7 @@ int main(int argc, char **argv) {
   if (!call(vm, "Game.Where"))
     return 1;
   printf("where: %s\n", where);
-  /* 止めると数えない */
+  /* Nothing is counted when stopped */
   tvm_profile_enable(vm, NULL);
   if (!call(vm, "Game.Step"))
     return 1;

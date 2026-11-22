@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// static method の method group (`Func<int, int> f = Ext.Twice;`) は、型名で
-// 修飾しても (拡張 method でも) 呼び出しと同じ関数の参照になる。期待値は同じ
-// program を CoreCLR で実行した stdout
+// A method group of a static method (`Func<int, int> f = Ext.Twice;`), even when qualified by the type name
+// (even for extension methods), refers to the same function as a call. The expected values are the stdout of running the same
+// program on CoreCLR
 public class StaticMethodGroupDifferentialTests
 {
     [CFact]

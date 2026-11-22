@@ -1,5 +1,5 @@
-// 宣言が途切れて sweep された resource の参照 (古い ref) を draw の bindings や BeginPass の target に渡すと、黙って束縛が外れるのではなく error になる。
-// 同じ key で宣言し直しても古い ref は error のままで、宣言が返した新しい ref を使う。
+// Passing a reference (old ref) to a resource that was swept after its declarations stopped to draw bindings or as a BeginPass target is an error, instead of silently dropping the binding.
+// Even after redeclaring with the same key, the old ref stays an error; use the new ref returned by the declaration.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -41,13 +41,13 @@ public static class TestSweptRefError
             tex = Gfx.UseTexture("swept_tex", 4, 4, Gfx.PixelFormat.Rgba8, null, 1, new TextureOpts { Target = true });
             return;
         }
-        // frame 2..5: 宣言しない (shader だけ毎 frame 宣言して生かす)
+        // frame 2..5: do not declare (only the shader is declared every frame to keep it alive)
         shader = Gfx.UseShader("swept_sh", vs, fs, 1);
         if (frame < 6)
             return;
 
-        // 期待するエラーは 1 回の callback に 1 つ。
-        // error と binding 名を別々に見る
+        // One expected error per callback.
+        // Check the error and the binding name separately
         if (frame == 6)
         {
             Check.Error("draw with a swept buffer must say swept", "swept");
@@ -82,7 +82,7 @@ public static class TestSweptRefError
         }
         else
         {
-            // 宣言が返した新しい ref は使える
+            // The new ref returned by the declaration can be used
             var newBuf = Gfx.UseBuffer("swept_buf", Gfx.BufferType.Storage, verts, 1);
             var newTex = Gfx.UseTexture("swept_tex", 4, 4, Gfx.PixelFormat.Rgba8, null, 1, new TextureOpts { Target = true });
             Gfx.BeginPass(new PassOpts { Target = newTex, ClearColor = new float[] { 0, 0, 0, 1 } });

@@ -1,5 +1,7 @@
-// tcs VM の接続コード (lub-gen vm) の試験の入口 (scripts/verify-vm-binding.sh)。
-// tests/c/tcs_binding.c の偽の C API に、tcs vm が作った tests/c/tcs_binding.cs の .tcsb を host の関数で繋ぎ、argv[2] の関数を呼ぶ。
+// Entry point of the test for the tcs VM glue code (lub-gen vm)
+// (scripts/verify-vm-binding.sh). Connects the .tcsb of tests/c/tcs_binding.cs
+// built by tcs vm to the fake C API of tests/c/tcs_binding.c through host
+// functions, and calls the function in argv[2].
 #include <stdio.h>
 #include <stdlib.h>
 int main(int argc, char **argv) {

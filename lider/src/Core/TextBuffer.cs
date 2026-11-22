@@ -1,12 +1,12 @@
-// 開いていない file の中身を行に分ける (検索が宣言を拾うのに読む)。
-// 開いた file の本文は エディタが持つ (Document)。
+// Splits the contents of a file that is not open into lines (read by search to pick up declarations).
+// The text of open files is held by the editor (Document).
 using System.Collections.Generic;
 
 namespace LiderCore;
 
 public static class TextBuffer
 {
-    // 改行で分けた行 (CRLF の file は行の末尾の CR を除く)
+    // Lines split at newlines (for CRLF files, the trailing CR is removed from each line)
     public static List<string> Lines(string text)
     {
         var lines = new List<string>();

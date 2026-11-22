@@ -24,8 +24,11 @@
 #include <string.h>
 
 // ---- EM_JS canvas helpers -------------------------------------------------
-// サイトの入口の page と、?w=&h= を付けて開いた player の page は、描く解像度を window._canvasWidth / _canvasHeight で決める。
-// それが無い page (export、大きさを付けずに開いた player の page) は、ゲームが Gfx.Size で見る SDL の window の画素数 (App.Config の Width / Height) で描く。
+// The site's entry page and a player page opened with ?w=&h= decide the render
+// resolution from window._canvasWidth / _canvasHeight. Pages without it
+// (export, a player page opened without a size) render at the pixel size of the
+// SDL window that the game sees through Gfx.Size (Width / Height from
+// App.Config).
 // clang-format off
 EM_JS(int, wg_canvas_width, (void),
       { return (window._canvasWidth || 0) | 0; })
@@ -120,7 +123,7 @@ typedef struct WgBuffer {
   SglBufferType type;
   // g_enc_serial of the last encoder that bound this buffer (0 = never).
   uint64_t used_serial;
-  uint64_t gen; // buf を作り直すたびに変わる (wg_next_gen)
+  uint64_t gen; // Changes each time buf is recreated (wg_next_gen)
 } WgBuffer;
 
 typedef struct WgImage {
@@ -137,7 +140,7 @@ typedef struct WgImage {
   // g_enc_serial of the last encoder that bound this texture or rendered to
   // it (0 = never).
   uint64_t used_serial;
-  uint64_t gen; // tex と view を作り直すたびに変わる (wg_next_gen)
+  uint64_t gen; // Changes each time tex and view are recreated (wg_next_gen)
 } WgImage;
 
 typedef struct WgShader {
@@ -156,13 +159,15 @@ typedef struct WgPipeline {
   WGPUBindGroupLayout bgl1; // group 1: textures/samplers/storage
   bool is_compute;
   ShaderReflection refl; // copy for bind group creation
-  uint64_t gen;          // bind group の cache の key で layout を指す
+  uint64_t gen;          // Refers to the layout in bind group cache keys
 } WgPipeline;
 
 // ---- per-frame state -------------------------------------------------------
 
-// bind group の cache の key は handle でなく実体の世代にする。
-// use_buffer は大きさが変わると handle を保ったまま実体を作り直し、解放した実体と同じ address に別の実体ができることもあるため。
+// Bind group cache keys use the object generation, not the handle.
+// This is because use_buffer recreates the object while keeping the handle when
+// the size changes, and another object can be created at the same address as a
+// released one.
 static uint64_t g_last_gen;
 static uint64_t wg_next_gen(void) { return ++g_last_gen; }
 
@@ -240,9 +245,9 @@ static void wg_destroy_retired(void) {
 }
 
 // frame_buffer ranges are written with queue writes into chunks that are reused
-// every frame. A write lands before the open encoder's commands but ranges never
-// overlap, so no command reads another range's data; commands of earlier frames
-// were submitted before the write.
+// every frame. A write lands before the open encoder's commands but ranges
+// never overlap, so no command reads another range's data; commands of earlier
+// frames were submitted before the write.
 #define WG_CHUNK_BYTES (4 * 1024 * 1024)
 #define WG_CHUNK_CAP 32
 #define WG_FRAME_RANGE_ALIGN 256 // minStorageBufferOffsetAlignment
@@ -288,7 +293,7 @@ static bool wg_frame_buffer(SglBufferType type, const void *data, size_t bytes,
   if (!c) {
     if (g_chunk_count == WG_CHUNK_CAP)
       return false;
-    // 数に上限があるので、後の chunk ほど大きくする。
+    // The count is limited, so later chunks are made larger.
     size_t base = WG_CHUNK_BYTES * ((size_t)g_chunk_count + 1);
     size_t cap = bytes > base ? bytes : base;
     WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
@@ -313,38 +318,43 @@ static bool wg_frame_buffer(SglBufferType type, const void *data, size_t bytes,
   return true;
 }
 
-// WebGPU には push constant が無いので、uniform block は slot ごとの ring に置く。
-// フレームの中で書いた block はそれぞれ 256 byte 境界の別の領域に置き、draw は group 0 の dynamic offset で選ぶ。
-// group 0 が変わるのは ring を作り直したときだけになる。
-// ring は CPU で埋め、submit の直前に slot ごとに 1 回の queue write で送る (wg_flush_uniform_rings)。
+// WebGPU has no push constants, so uniform blocks are placed in a ring per
+// slot. Each block written within a frame goes in its own region on a 256-byte
+// boundary, and draws select it with the dynamic offset of group 0. As a
+// result, group 0 changes only when a ring is recreated. The ring is filled on
+// the CPU and sent with one queue write per slot right before submit
+// (wg_flush_uniform_rings).
 #define WG_MAX_UB_SLOTS 2
 #define WG_UB_ALIGN 256 // minUniformBufferOffsetAlignment
-#define WG_UB_SIZE 2048 // uniform block の上限で、binding の大きさ
+#define WG_UB_SIZE 2048 // Upper limit of a uniform block, and the binding size
 #define WG_UB_RING_SIZE (256 * 1024)
 
 typedef struct WgUniformRing {
   WGPUBuffer buf;
-  uint8_t *cpu; // ring の中身
+  uint8_t *cpu; // Ring contents
   uint32_t cap;
-  uint32_t head;    // このフレームで次に書く位置
-  uint32_t flushed; // このフレームで [0, flushed) を buf に送った
-  // draw が読む領域。
-  // このフレームで最後に書いた block で、まだ書いていなければ前のフレームの値が残る ring の先頭。
+  uint32_t head;    // Next write position in this frame
+  uint32_t flushed; // [0, flushed) has been sent to buf this frame
+  // The region draws read.
+  // The last block written this frame, or, if nothing has been written yet, the
+  // start of the ring where the previous frame's values remain.
   uint32_t cur_off;
-  uint32_t cur_bytes; // 0 = このフレームではまだ書いていない
-  uint64_t gen;       // buf を作り直すたびに変わる
+  uint32_t cur_bytes; // 0 = not written yet this frame
+  uint64_t gen;       // Changes each time buf is recreated
 } WgUniformRing;
 
 static WgUniformRing g_ub[WG_MAX_UB_SLOTS];
 static WgPipeline *g_cur_pipeline;
 static bool g_ibuf_bound;
 
-// draw と dispatch が渡さなかった slot を埋める仮の resource。
-// group に欠けた entry があると group が invalid になり、command buffer ごと捨てられる。
-static WgImage *g_dummy_tex;   // 1x1 の白
-static WgBuffer *g_dummy_sbuf; // 0 埋め
+// Placeholder resources that fill the slots draw and dispatch did not provide.
+// A group with a missing entry becomes invalid, and the whole command buffer is
+// discarded.
+static WgImage *g_dummy_tex;   // 1x1 white
+static WgBuffer *g_dummy_sbuf; // Zero-filled
 #define WG_DUMMY_SBUF_BYTES 256
-// storage texture の layout は format を決めるので、format ごとに初めて要るときに作る。
+// A storage texture layout fixes the format, so one is created per format the
+// first time it is needed.
 static WgImage *g_dummy_storage[SGL_PF_RGBA8_SRGB + 1];
 
 static BackendImage wg_make_image(const ImageDesc *d);
@@ -353,8 +363,8 @@ static BackendBuffer wg_make_buffer(SglBufferType type, const void *data,
 static void wg_destroy_image(BackendImage h);
 static void wg_destroy_buffer(BackendBuffer h);
 
-// 開いている render pass に設定済みの状態で、同じ状態は設定し直さない。
-// pass が変わると encoder の状態は消えるので、begin_pass で消す。
+// State already set on the open render pass; the same state is not set again.
+// The encoder state is lost when the pass changes, so clear this in begin_pass.
 static struct {
   uint64_t pipeline_gen;
   WGPUBindGroup groups[2];
@@ -364,10 +374,13 @@ static struct {
 } g_bound;
 
 // ---- bind group cache -----------------------------------------------------
-// key は group の layout を持つ pipeline の世代、group の番号、entry ごとの binding と実体の世代と buffer の範囲。
-// XR は両目で束ねる buffer が交互に変わるので、最後の 1 件でなく map で持つ。
-// 前のフレームと今のフレームのどちらでも使わなかった group は、フレームの先頭 (wg_bg_cache_sweep) で release する。
-// 記録済みの command が使う group は encoder が保持するので、submit 前に release してもよい。
+// The key is the generation of the pipeline that owns the group layout, the
+// group number, and per entry the binding, object generation, and buffer range.
+// In XR, the bound buffers alternate between the two eyes, so keep a map rather
+// than only the last entry. Groups used in neither the previous nor the current
+// frame are released at the start of the frame (wg_bg_cache_sweep). The encoder
+// holds the groups used by recorded commands, so they may be released before
+// submit.
 #define WG_BG_MAX_ENTRIES 32
 #define WG_BG_KEY_MAX (2 + WG_BG_MAX_ENTRIES * 4)
 #define WG_BG_CACHE_MIN 64
@@ -384,8 +397,8 @@ static WgBgCacheEntry *g_bg_cache;
 static size_t g_bg_cap, g_bg_count;
 static uint64_t g_frame_no;
 
-// 1 つの bind group の entry と cache の key。
-// draw ごとに作るので 0 埋めしない。
+// Entries and cache key of one bind group.
+// Created per draw, so it is not zero-filled.
 typedef struct WgBgBuild {
   WGPUBindGroupEntry entries[WG_BG_MAX_ENTRIES];
   uint64_t key[WG_BG_KEY_MAX];
@@ -444,7 +457,7 @@ static void wg_bg_release(WgBgCacheEntry *e) {
   free(e->key);
 }
 
-// 残す entry を cap 個の slot の table に移し、残さない entry は release する。
+// Move the entries to keep into a table of cap slots, and release the others.
 static bool wg_bg_rehash(size_t cap, bool (*keep)(const WgBgCacheEntry *)) {
   WgBgCacheEntry *table = (WgBgCacheEntry *)calloc(cap, sizeof(*table));
   if (!table)
@@ -500,7 +513,7 @@ static void wg_bg_cache_clear(void) {
   g_bg_cap = g_bg_count = 0;
 }
 
-// 返す group は cache が持つので、呼び出し側は release しない。
+// The cache owns the returned group, so the caller does not release it.
 static WGPUBindGroup wg_bg_get(WGPUBindGroupLayout layout, const WgBgBuild *b) {
   if ((g_bg_count + 1) * 2 > g_bg_cap &&
       !wg_bg_rehash(g_bg_cap ? g_bg_cap * 2 : WG_BG_CACHE_MIN, wg_bg_keep_all))
@@ -555,13 +568,15 @@ static void wg_flush_uniform_ring(WgUniformRing *r) {
   r->flushed = r->head;
 }
 
-// queue write は次の submit の command より先に届くので、g_enc を submit する直前に毎回呼ぶ。
+// A queue write lands before the commands of the next submit, so call this
+// every time right before submitting g_enc.
 static void wg_flush_uniform_rings(void) {
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
     wg_flush_uniform_ring(&g_ub[i]);
 }
 
-// 記録済みの command は古い buffer を読むので、古い buffer は submit の後で破棄する (wg_retire)。
+// Recorded commands read the old buffer, so the old buffer is destroyed after
+// submit (wg_retire).
 static bool wg_grow_uniform_ring(WgUniformRing *r) {
   uint32_t cap = r->cap * 2;
   uint8_t *cpu = (uint8_t *)realloc(r->cpu, cap);
@@ -697,7 +712,7 @@ static bool wg_recreate_depth(Process *proc, uint32_t w, uint32_t h) {
 }
 
 static void wg_configure_surface(Process *proc, uint32_t w, uint32_t h) {
-  // CopySrc: wg_capture (golden test) が swapchain texture を readback する。
+  // CopySrc: wg_capture (golden test) reads back the swapchain texture.
   WGPUSurfaceConfiguration cfg = {
       .device = g_dev,
       .format = g_surface_format,
@@ -713,30 +728,33 @@ static void wg_configure_surface(Process *proc, uint32_t w, uint32_t h) {
 
 // ---- init / shutdown -------------------------------------------------------
 
-// ---- GPU の時刻 (gpu_time.h) ------------------------------------------------
-// pass の時刻は pass を作るときに timestampWrites で頼む。frame ごとに WG_TS_FRAMES 組の query を回し、
-// 組の中の k 番目に頼んだ pass は 2k と 2k + 1 に書く。gpu_time の pass i がどの k かは of で引く。
-// 読み出しの map は非同期なので、終わった組を後の begin_frame で読んで返す。
+// ---- GPU timestamps (gpu_time.h)
+// ------------------------------------------------ Pass timestamps are
+// requested with timestampWrites when creating a pass. Each frame rotates
+// through WG_TS_FRAMES sets of queries, and the k-th pass requested in a set
+// writes to 2k and 2k + 1. Which k a gpu_time pass i maps to is looked up with
+// of. Mapping for readback is asynchronous, so finished sets are read and
+// returned in a later begin_frame.
 
 #define WG_TS_FRAMES 4
 #define WG_TS_BYTES ((uint64_t)GPU_TIME_STAMPS * sizeof(uint64_t))
 
 typedef struct WgTsFrame {
   uint64_t frame;
-  uint32_t passes; // 時刻を頼んだ pass の数
-  int16_t of
-      [GPU_TIME_PASSES]; // gpu_time の pass i に頼んだ番号 (-1 は頼んでいない)
-  uint32_t count;        // gpu_time の時刻の番号の数
-  WGPUBuffer read;       // MapRead
-  bool busy;             // 写して map を待っている (読むまで使わない)
+  uint32_t passes;             // Number of passes with timestamps requested
+  int16_t of[GPU_TIME_PASSES]; // Index requested for gpu_time pass i (-1 = not
+                               // requested)
+  uint32_t count;              // Number of gpu_time timestamp indices
+  WGPUBuffer read;             // MapRead
+  bool busy; // Copied and waiting for the map (not reused until read)
   bool mapped, failed;
 } WgTsFrame;
 
 static WGPUQuerySet g_ts_set;
 static WGPUBuffer g_ts_resolve;
 static WgTsFrame g_ts[WG_TS_FRAMES];
-static WgTsFrame *g_ts_cur; // この frame の組 (測らなければ NULL)
-static int g_ts_last = -1;  // 直前に始めた pass に頼んだ番号
+static WgTsFrame *g_ts_cur; // Set for this frame (NULL if not measuring)
+static int g_ts_last = -1; // Index requested for the most recently started pass
 
 static void wg_ts_shutdown(void) {
   for (int r = 0; r < WG_TS_FRAMES; r++) {
@@ -753,7 +771,8 @@ static void wg_ts_shutdown(void) {
   g_ts_cur = NULL;
 }
 
-// device が timestamp-query を持てば (JS が device を作るときに頼む) query と読み出し先を作る
+// If the device has timestamp-query (JS requests it when creating the device),
+// create the queries and readback destinations
 static void wg_ts_init(void) {
   if (!wgpuDeviceHasFeature(g_dev, WGPUFeatureName_TimestampQuery))
     return;
@@ -793,7 +812,7 @@ static void wg_ts_mapped(WGPUMapAsyncStatus status, WGPUStringView message,
     t->failed = true;
 }
 
-// map の終わった組を返し、この frame の組を決める
+// Return the sets whose map has finished and pick the set for this frame
 static void wg_ts_begin_frame(Process *proc) {
   for (int r = 0; r < WG_TS_FRAMES; r++) {
     WgTsFrame *t = &g_ts[r];
@@ -826,7 +845,7 @@ static void wg_ts_begin_frame(Process *proc) {
   g_ts_cur = t;
 }
 
-// 書いた時刻を組の読み出し先へ写す (submit の前)
+// Copy the written timestamps to the set's readback destination (before submit)
 static void wg_ts_resolve(void) {
   WgTsFrame *t = g_ts_cur;
   if (!t || !t->passes || !g_enc)
@@ -840,7 +859,7 @@ static void wg_ts_resolve(void) {
                                        2 * t->passes * sizeof(uint64_t));
 }
 
-// submit の後に読み出し先の map を始める
+// Start mapping the readback destination after submit
 static void wg_ts_map(void) {
   WgTsFrame *t = g_ts_cur;
   g_ts_cur = NULL;
@@ -1234,8 +1253,9 @@ static BackendImage wg_make_image(const ImageDesc *d) {
   bool is_depth = (d->fmt == SGL_PF_DEPTH16 || d->fmt == SGL_PF_DEPTH32F ||
                    d->fmt == SGL_PF_DEPTH24_STENCIL8);
   WGPUTextureUsage usage = WGPUTextureUsage_TextureBinding;
-  // 深度でない texture は render target でなくても (storage だけでも) Gfx.ReadTexture が読み戻す。
-  // CopySrc が無いと読み戻しの CopyTextureToBuffer がその frame の command buffer ごと invalid にする
+  // Gfx.ReadTexture reads back non-depth textures even if they are not render
+  // targets (even storage-only ones). Without CopySrc, the readback's
+  // CopyTextureToBuffer invalidates the whole command buffer of that frame
   if (!is_depth)
     usage |= WGPUTextureUsage_CopySrc;
   if (d->render_target)
@@ -1538,7 +1558,7 @@ static void wg_build_bind_group_layouts(WGPUDevice dev,
 
 // ---- make / destroy pipeline -----------------------------------------------
 
-// SglBlendFactor / SglBlendOp の値で引く。
+// Indexed by SglBlendFactor / SglBlendOp value.
 static const WGPUBlendFactor kWgBlendFactor[] = {
     WGPUBlendFactor_Zero,
     WGPUBlendFactor_Zero,
@@ -2061,7 +2081,8 @@ static void wg_apply_bindings(const BindingsDesc *b) {
     g_ibuf_bound = true;
   }
 
-  // WebKit は pipeline の group を全部束ねることを求めるので、group 1 は entry が無くても束ねる。
+  // WebKit requires all of a pipeline's groups to be bound, so group 1 is bound
+  // even when it has no entries.
   if (!g_cur_pipeline->bgl1)
     return;
   WgBgBuild build;
@@ -2101,7 +2122,8 @@ static void wg_apply_bindings(const BindingsDesc *b) {
   g_bound.groups[1] = bg;
 }
 
-// 今 draw が読む block と同じ中身なら、その領域をそのまま使う。
+// If the contents match the block the draw currently reads, use that region as
+// is.
 static void wg_write_uniform(int slot, const void *data, size_t bytes) {
   if (slot < 0 || slot >= WG_MAX_UB_SLOTS || !data || bytes == 0)
     return;
@@ -2122,16 +2144,19 @@ static void wg_write_uniform(int slot, const void *data, size_t bytes) {
 static void wg_apply_uniforms(SglShaderStage stage, int ub_slot,
                               const void *data, size_t bytes) {
   (void)stage;
-  // pass が無いと続く draw は飛ばされるので、block も書かない。
-  // uniform を渡さない後の draw は、実際に描いた最後の draw の block を読む。
+  // Without a pass, the following draws are skipped, so the block is not
+  // written either. A later draw that passes no uniforms reads the block of the
+  // last draw actually drawn.
   if (!g_rpass)
     return;
   wg_write_uniform(ub_slot, data, bytes);
 }
 
-// pipeline の group 0 で、dynamic offset は slot の今の領域 (WgUniformRing.cur_off) を指す。
-// entry が欠けると group が invalid になり command buffer ごと捨てられるので、uniform を渡さない draw でも pipeline が宣言する uniform block を全部入れる。
-// uniform block の無い pipeline には NULL を返す。
+// Group 0 of the pipeline; the dynamic offsets point to each slot's current
+// region (WgUniformRing.cur_off). A missing entry makes the group invalid and
+// discards the whole command buffer, so even a draw that passes no uniforms
+// includes every uniform block the pipeline declares. Returns NULL for a
+// pipeline with no uniform blocks.
 static WGPUBindGroup wg_uniform_group(const WgPipeline *wp,
                                       uint32_t *dyn_offsets, int *out_count) {
   WgBgBuild build;
@@ -2202,7 +2227,7 @@ static void wg_dispatch(Process *proc, const ComputeDispatchDesc *d) {
   if (!wp->compute)
     return;
 
-  // group 0 は draw と同じ ring と group を使う。
+  // Group 0 uses the same ring and group as draw.
   for (int i = 0; i < d->uniform_count; ++i)
     wg_write_uniform(d->uniforms[i].slot, d->uniforms[i].data,
                      d->uniforms[i].bytes);
@@ -2210,7 +2235,7 @@ static void wg_dispatch(Process *proc, const ComputeDispatchDesc *d) {
   int ub_count = 0;
   WGPUBindGroup bg0 = wg_uniform_group(wp, ub_dyn_offsets, &ub_count);
 
-  // group 1 は dispatch ごとに作る。
+  // Group 1 is created per dispatch.
   WgBgBuild build;
   wg_bg_begin(&build, wp->gen, 1);
   for (int i = 0; i < d->texture_count; ++i) {
@@ -2502,7 +2527,8 @@ static bool wg_capture(Process *proc, BackendReadback *out) {
     SDL_Log("[webgpu] capture: zero extent");
     return false;
   }
-  // A frame missing an eye never reaches the headset, so the capture slips past it.
+  // A frame missing an eye never reaches the headset, so the capture slips past
+  // it.
   bool xr = lubwebxr_active();
   if (xr) {
     if (!g_xr_drawn[0] || !g_xr_drawn[1])

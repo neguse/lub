@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# lider の検査: lider の player を build し、runtime テスト (tests/<name>/) とエディタの core のテスト (tests/editor/) を走らせる。
-# 先に lub を build しておく (scripts/build-release.sh)。要 cargo と dotnet。
-# env: JOBS 同時に走らせる runtime テストの数 (既定 4)
-#   LIDER_SHARD k/n  runtime テストを n 個に分けた k 番目だけを走らせる (既定 1/1。CI は job に分けて並べる)。エディタの core のテストは 1 番目が走らせる
+# lider checks: builds the lider player and runs the runtime tests (tests/<name>/) and the editor core tests (tests/editor/).
+# Build lub first (scripts/build-release.sh). Requires cargo and dotnet.
+# env: JOBS number of runtime tests to run in parallel (default 4)
+#   LIDER_SHARD k/n  runs only the k-th of n parts of the runtime tests (default 1/1; CI splits them into parallel jobs). The editor core tests run in the 1st part
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 "$root/scripts/build-player.sh"

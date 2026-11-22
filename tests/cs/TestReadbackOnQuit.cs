@@ -1,5 +1,5 @@
-// フレームの外 (OnQuit) で積んだ ReadTexture も、次の poll で結果が届く。
-// 後にフレームが来ないので、どちらのモード (ConfigOpts.ReadbackFixedLatency) でも backend はその場で読み戻しを終える (frame N+2 の規則はフレームの中の要求だけ)。
+// A ReadTexture queued outside a frame (OnQuit) also gets its result at the next poll.
+// No frame follows, so in either mode (ConfigOpts.ReadbackFixedLatency) the backend finishes the readback on the spot (the frame N+2 rule applies only to requests within a frame).
 using System;
 using Lub;
 

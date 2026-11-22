@@ -18,7 +18,7 @@ static class EventTest
         Console.WriteLine("event " + (int)e.Kind + " key=" + e.Key + " button=" + e.Button + " x=" + e.X + " y=" + e.Y + " dy=" + e.Dy);
     }
 
-    // 前の frame までに受け取った record を毎 frame 読み直す (GC の後も中身が残ること)
+    // Re-reads every frame the records received up to the previous frame (their contents must survive GC)
     public static void OnFrame(float dt)
     {
         frames++;

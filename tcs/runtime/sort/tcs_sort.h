@@ -1,24 +1,28 @@
-/* List.Sort の並べ替え。.NET の List<T>.Sort と同じ introsort (dotnet/runtime の ArraySortHelper<T>) で、
-   同値の要素の並びと比較の呼び出し列 (回数・順・引数) まで同じ (il-spec §13)。
-   tcsvm が使う。tcs2c は同じ手順を生成 C に持つ (doc/vm-design.md §15.1 で共有に寄せる)。 */
+/* Sorting for List.Sort. The same introsort as .NET's List<T>.Sort
+   (ArraySortHelper<T> in dotnet/runtime), matching even the order of equal
+   elements and the sequence of comparison calls (count, order, arguments)
+   (il-spec §13). Used by tcsvm. tcs2c has the same steps in the generated C (to
+   be shared per doc/vm-design.md §15.1). */
 #ifndef TCS_SORT_H
 #define TCS_SORT_H
 
 #include <stddef.h>
 
-/* 比較。left < right なら負、等しければ 0、大きければ正。
-   比較の中で止まる理由 (fault) が起きたら *stop を 0 以外にする。以後の比較は呼ばれない */
+/* Comparison. Negative if left < right, 0 if equal, positive if greater.
+   If a reason to stop (fault) occurs inside the comparison, set *stop to
+   nonzero. No further comparisons are called */
 typedef int (*TcsSortCompare)(void *ctx, const void *left, const void *right,
                               int *stop);
 
 typedef enum TcsSortStatus {
   TCS_SORT_OK = 0,
-  TCS_SORT_STOPPED = 1, /* 比較が *stop を立てた */
-  TCS_SORT_INCONSISTENT =
-      2, /* 比較が不整合で走査が区間の外に出た (.NET は例外) */
+  TCS_SORT_STOPPED = 1,      /* the comparison set *stop */
+  TCS_SORT_INCONSISTENT = 2, /* the comparison was inconsistent and the scan
+                                went outside the range (.NET throws) */
 } TcsSortStatus;
 
-/* keys[0..n) (要素は es byte) を並べる。scratch は 2 * es byte の作業領域 */
+/* Sorts keys[0..n) (elements of es bytes). scratch is a work area of 2 * es
+ * bytes */
 TcsSortStatus tcs_sort(void *keys, size_t n, size_t es, void *scratch,
                        TcsSortCompare compare, void *ctx);
 

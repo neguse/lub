@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// delegate (Action / Func) への `?.Invoke(...)` は null 判定つきの呼び出し。
-// 戻り値の無い文、`T?` に wrap する戻り値 (struct も)、`??` の式、field /
-// auto property / static field / `?.` の連鎖、明示の `f.Invoke(...)` を見る。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// `?.Invoke(...)` on a delegate (Action / Func) is a call with a null check.
+// Covers statements without a return value, return values wrapped in `T?` (including structs), `??` expressions, field /
+// auto property / static field / `?.` chains, and explicit `f.Invoke(...)`.
+// The expected values are the stdout of running the same program on CoreCLR
 public class ConditionalInvokeDifferentialTests
 {
     [CFact]

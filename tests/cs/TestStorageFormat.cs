@@ -1,7 +1,7 @@
-// compute が書く storage texture の形式は、shader の [format] か、無ければ要素の型 (float4 = rgba32f、float = r32f) で決まる。
-// 各 case は 1x1 の texture に形式でしか表せない値を書き、その値を sample して rt の自分の列に判定を描く。
-// 40001 は 16 bit float に丸められ、1.5 は rgba8 に入らない。
-// texture と shader の形式が違う dispatch は error になる。
+// The format of a storage texture written by compute is determined by the [format] of the shader, or if there is none, by the element type (float4 = rgba32f, float = r32f).
+// Each case writes a value that only that format can represent to a 1x1 texture, samples that value, and draws the verdict in its own column of rt.
+// 40001 is rounded by a 16-bit float, and 1.5 does not fit in rgba8.
+// A dispatch where the formats of the texture and the shader differ is an error.
 using System;
 using System.Collections.Generic;
 using Lub;

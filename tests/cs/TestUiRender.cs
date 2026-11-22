@@ -1,5 +1,5 @@
-// Ui.Render が runtime の UI の shader を使って描く。
-// export の backend では、その shader も export 先の target で compile される (native-gate.sh が見る)。
+// Ui.Render draws using the UI shader of the runtime.
+// On the export backend, that shader is also compiled for the export target (native-gate.sh checks this).
 using System;
 using Lub;
 
@@ -12,7 +12,7 @@ public static class TestUiRender
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
     }
 
-    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    // lub export draws 1 frame and records the shaders and files used
     public static void OnExport() { OnFrame(0); }
 
     public static void OnFrame(float dt)

@@ -1,12 +1,14 @@
-// resource table (src/resources.c) の handle の表: 生きている entry だけを持ち、sweep で縮む。
-// handle は entry の寿命の間は変わらず、sweep 後は stale になり、int32 の上限を越えたら生きている値を飛ばして 1 に戻る。
+// The handle table of the resource table (src/resources.c): holds only live
+// entries and shrinks on sweep. A handle stays the same for the lifetime of its
+// entry, becomes stale after sweep, and wraps back to 1 past the int32 limit,
+// skipping live values.
 #include "backend.h"
 #include "resources.h"
 #include <stdint.h>
 #include <stdio.h>
 
 const RenderBackend *g_backend =
-    NULL; // resources.c が参照する。entry は GPU 資源を持たない
+    NULL; // Referenced by resources.c. Entries hold no GPU resources
 
 static int failures;
 
@@ -21,7 +23,8 @@ static int failures;
 #define KEEP 3
 #define ROUNDS 200
 #define PER_ROUND 1000
-#define MAX_CAP 256 // 生きている数が少ないとき、表がここを越えて残らない
+// When few entries are live, the table does not stay larger than this
+#define MAX_CAP 256
 
 static ResEntry *declare(ResTable *t, const char *fmt, int a, int b,
                          int64_t frame) {
@@ -34,7 +37,8 @@ static ResEntry *declare(ResTable *t, const char *fmt, int a, int b,
   return e;
 }
 
-// 毎 round 新しい key を大量に作って捨てても、表は伸び続けず、生きている key の handle は変わらない。
+// Even if many new keys are created and discarded every round, the table does
+// not keep growing, and the handles of live keys do not change.
 static void test_churn(void) {
   ResTable t;
   int32_t counter = 0;
@@ -66,7 +70,7 @@ static void test_churn(void) {
       CHECK(res_table_get_by_handle(&t, keep_handle[k]) == keep[k]);
     }
   }
-  // 最初の round の handle は stale のまま (別の entry に使い回されない)
+  // Handles from the first round stay stale (not reused for other entries)
   for (int i = 0; i < PER_ROUND; ++i)
     CHECK(res_table_get_by_handle(&t, first_round[i]) == NULL);
   CHECK(res_table_get_by_handle(&t, 0) == NULL);
@@ -74,7 +78,8 @@ static void test_churn(void) {
   res_table_shutdown(&t);
 }
 
-// 一部だけが生き残る sweep の後も、生きている handle は全て引け、消えた handle は全て引けない。
+// After a sweep in which only some survive, every live handle can be looked up
+// and no removed handle can.
 static void test_partial_sweep(void) {
   enum { N = 5000 };
   ResTable t;
@@ -100,17 +105,18 @@ static void test_partial_sweep(void) {
   }
   CHECK(t.handle_count == live);
   CHECK(t.handle_cap >= live * 2);
-  // 残りを全部消すと表は元の大きさまで縮む
+  // Removing all the rest shrinks the table back to its original size
   res_table_sweep(&t, 100, 5, NULL, NULL);
   CHECK(t.handle_count == 0);
   CHECK(t.handle_cap <= MAX_CAP);
-  // 空になった後も宣言できる
+  // Declarations still work after it becomes empty
   ResEntry *e = declare(&t, "after_%d%d", 0, 0, 100);
   CHECK(res_table_get_by_handle(&t, e->handle) == e);
   res_table_shutdown(&t);
 }
 
-// handle が int32 の上限に達したら 1 に戻り、生きている値を飛ばす。
+// When a handle reaches the int32 limit it wraps back to 1, skipping live
+// values.
 static void test_wrap(void) {
   ResTable t;
   int32_t counter = 0;
@@ -123,7 +129,7 @@ static void test_wrap(void) {
   ResEntry *d = declare(&t, "wrap_%d%d", 3, 0, 0);
   ResEntry *e = declare(&t, "wrap_%d%d", 4, 0, 0);
   CHECK(c->handle == INT32_MAX);
-  CHECK(d->handle == 3); // 1 と 2 は生きているので飛ばす
+  CHECK(d->handle == 3); // 1 and 2 are live, so they are skipped
   CHECK(e->handle == 4);
   ResEntry *all[] = {a, b, c, d, e};
   for (int i = 0; i < 5; ++i)
@@ -131,7 +137,8 @@ static void test_wrap(void) {
   res_table_shutdown(&t);
 }
 
-// 同じ counter を使う 2 つの表の handle は重ならず、片方の handle はもう片方では引けない。
+// Handles of 2 tables using the same counter do not overlap, and a handle of
+// one cannot be looked up in the other.
 static void test_shared_counter(void) {
   ResTable a, b;
   int32_t counter = 0;

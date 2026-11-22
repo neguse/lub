@@ -1,5 +1,6 @@
-// gfx の C API (include/lub/lub_api.h)。
-// 検証と resource 解決はここが持ち、各言語の binding は desc への詰め替えだけをする。
+// C API for gfx (include/lub/lub_api.h).
+// Validation and resource resolution live here, and each language binding only
+// repacks into desc.
 #include "api_internal.h"
 #include "backend.h"
 #include "enums.h"
@@ -16,7 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// swapchain を指す特別な handle (lub_gfx_main_tex() が返す)。
+// Special handle that refers to the swapchain (returned by lub_gfx_main_tex()).
 #define LUB_GFX_MAIN_TEX ((LubHandle) - 1)
 #define LUB_GFX_MAX_COLOR_TARGETS SGL_MAX_COLOR_TARGETS
 
@@ -48,8 +49,8 @@ static const char *pixel_format_name(SglPixelFormat fmt) {
   }
 }
 
-// byte 列で初期化できる format の 1 pixel の byte 数。
-// 0 = 初期化不可。
+// Bytes per pixel for formats that can be initialized from a byte array.
+// 0 = cannot be initialized.
 static int bytes_per_pixel(SglPixelFormat fmt) {
   switch (fmt) {
   case SGL_PF_RGBA8:
@@ -69,8 +70,8 @@ static bool is_known_format(int fmt) {
 
 static ShaderTargetBackend shader_target_for_backend(void) {
 #if defined(__EMSCRIPTEN__)
-  // wasm: webgpu backend 一択。
-  // slang-wasm が WGSL を出す。
+  // wasm: webgpu backend only.
+  // slang-wasm emits WGSL.
   return SHADER_TARGET_WGSL;
 #else
   if (export_active()) {
@@ -81,7 +82,8 @@ static ShaderTargetBackend shader_target_for_backend(void) {
 #if defined(_WIN32)
   if (g_backend == &g_backend_d3d12)
     return SHADER_TARGET_D3D12;
-  // vulkan / sdlgpu は SDLGPU target の SPIR-V を食う (descriptor set 規約が SDL_GPU 準拠のため)。
+  // vulkan / sdlgpu consume the SPIR-V of the SDLGPU target (because the
+  // descriptor set convention follows SDL_GPU).
   return SHADER_TARGET_SDLGPU;
 #elif defined(__APPLE__)
   if (g_backend == &g_backend_metal)
@@ -94,8 +96,10 @@ static ShaderTargetBackend shader_target_for_backend(void) {
 }
 
 #ifndef __EMSCRIPTEN__
-// export では、その OS の player が使う残りの target でも compile して生成キャッシュに入れる (出力は使わない)。
-// export ではどの compile の失敗も export の失敗にする (UI の shader の失敗はゲームの error にならない)。
+// On export, also compile for the remaining targets used by that OS's player
+// and put the results in the generated cache (the output is not used). On
+// export, any compile failure fails the export (a UI shader failure does not
+// become a game error).
 static bool export_other_targets(const char *vs, const char *fs, const char *cs,
                                  char *err, size_t err_size) {
   if (!export_active())
@@ -151,9 +155,9 @@ bool shader_compile_compute_for_backend(const char *cs, ShaderBlob *out_cs,
   return ok;
 }
 
-// use_* の version 引数。
-// NULL は「内容が変わった」宣言で runtime が新しい実効 version を発行する。
-// 非 NULL は identity claim。
+// The version argument of use_*.
+// NULL declares "the content changed", and the runtime issues a new effective
+// version. Non-NULL is an identity claim.
 static int64_t effective_version(App *app, const int32_t *version,
                                  bool *declared) {
   if (!version) {
@@ -164,8 +168,10 @@ static int64_t effective_version(App *app, const int32_t *version,
   return (int64_t)*version;
 }
 
-// 同じ key は同じものを指すので、1 回の callback の中で違う version を宣言するのは矛盾。
-// 別の callback の宣言は、同じホストのフレームでも、error で終わった呼び出しの後でも、編集として扱う。
+// The same key refers to the same thing, so declaring different versions within
+// one callback is a contradiction. A declaration in a different callback is
+// treated as an edit, even within the same host frame or after a call that
+// ended in an error.
 static bool declare_conflicts(const App *app, const ResEntry *e, int64_t ver) {
   return e->declared_epoch == app->declare_epoch && e->declared_version != ver;
 }
@@ -181,8 +187,9 @@ static const char *res_kind_name(ResKind kind) {
                               : "shader";
 }
 
-// 引けない handle の error の文面。
-// sweep された記録が残っていれば key と未使用の frame 数を出す。
+// Error message for a handle that cannot be looked up.
+// If a record of the sweep remains, show the key and the number of unused
+// frames.
 static void format_stale_handle(const App *app, char *buf, size_t size,
                                 const char *fn, const char *what, LubHandle h) {
   const ResSwept *s = res_table_find_swept(&app->res, h);
@@ -218,8 +225,9 @@ static ResEntry *entry_from_handle(App *app, LubHandle h, ResKind kind,
   return e;
 }
 
-// backend (renderer) は OnInit の後 (lub_host_start) に起動する。
-// それより前に backend を触る API を呼ぶと g_backend が NULL なので、落ちる代わりに error。
+// The backend (renderer) starts after OnInit (lub_host_start).
+// Calling an API that touches the backend before that finds g_backend NULL, so
+// return an error instead of crashing.
 static bool require_backend(App *app, const char *fn) {
   if (app->proc->phase == APP_PHASE_POST_BACKEND && g_backend)
     return true;
@@ -252,7 +260,7 @@ void lub_gfx_size(LubContext *ctx, int32_t *out_w, int32_t *out_h) {
   App *app = lub_api_app(ctx);
   int x = 0, y = 0, w = 0, h = 0;
   if (app && app->opened_by) {
-    // 開かれた app の main は App.Step の target
+    // The main of an opened app is the App.Step target
     w = app->main_w;
     h = app->main_h;
   } else if (app && app->proc->window) {
@@ -309,8 +317,9 @@ static size_t next_pow2(size_t n) {
   return p;
 }
 
-// bytes < 0 は data を持たない呼び出し。
-// version が一致すれば成功し、一致しなければ何も変えず LUB_NOT_FOUND を返す。
+// bytes < 0 is a call without data.
+// Succeeds if the version matches; otherwise returns LUB_NOT_FOUND without
+// changing anything.
 static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
                                  const void *data, int32_t bytes,
                                  const int32_t *version, LubHandle *out) {
@@ -347,7 +356,8 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
     *out = e->handle;
     return LUB_OK;
   }
-  // data の無い宣言は、外れただけでは宣言にならない (一致は上で宣言に数えた)。
+  // A declaration without data does not count as a declaration when it merely
+  // misses (a match was counted as a declaration above).
   if (deferred)
     return LUB_NOT_FOUND;
   if (!declared && declare_conflicts(app, e, ver))
@@ -362,7 +372,8 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   size_t cap = e->u.buf.capacity_bytes;
   bool resizable = e->u.buf.h != 0 && e->u.buf.type == (SglBufferType)type &&
                    data && !g_backend->binds_whole_buffers;
-  // Gfx.Pick がこの frame の draw を流し直すのに使っていれば、預けて新しく作る
+  // If Gfx.Pick uses it to replay this frame's draws, hand it over and create a
+  // new one
   bool taken = e->u.buf.h != 0 && pick_take_buffer(app, e->u.buf.h);
   if (e->u.buf.h != 0 && e->u.buf.type == (SglBufferType)type && data &&
       !taken &&
@@ -372,7 +383,8 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   } else {
     if (e->u.buf.h != 0 && !taken)
       g_backend->destroy_buffer(e->u.buf.h);
-    // 大きさが変わった buffer は、次の変化を切り上げた分で吸収する。
+    // A resized buffer is rounded up so that the extra room absorbs the next
+    // change.
     cap = resizable ? next_pow2(new_bytes) : new_bytes;
     e->u.buf.h = g_backend->make_buffer((SglBufferType)type,
                                         cap == new_bytes ? data : NULL, cap);
@@ -387,9 +399,10 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   return LUB_OK;
 }
 
-// data == NULL の宣言。
-// version が一致するときだけ成功し、不一致は LUB_NOT_FOUND。
-// version も無い (data_count が LUB_DATA_DEFERRED でない) 呼び出しは error にする。
+// Declaration with data == NULL.
+// Succeeds only when the version matches; a mismatch returns LUB_NOT_FOUND.
+// A call that has no version either (data_count is not LUB_DATA_DEFERRED) is an
+// error.
 static LubStatus use_buffer_no_data(App *app, const char *fn, LubStr key,
                                     int32_t type, int32_t data_count,
                                     const int32_t *version, LubHandle *out) {
@@ -400,7 +413,9 @@ static LubStatus use_buffer_no_data(App *app, const char *fn, LubStr key,
   return st;
 }
 
-// version を渡した宣言は data の中身ではなく version で同一性を決めるので、digest に data の長さは入れない (data を読まない経路と揃える)。
+// A declaration with a version decides identity by the version, not by the data
+// contents, so the data length is not added to the digest (matching the path
+// that does not read the data).
 static void digest_use_buffer(App *app, const char *tag, LubStr key,
                               int32_t type, int32_t data_count,
                               const int32_t *version) {
@@ -411,8 +426,8 @@ static void digest_use_buffer(App *app, const char *tag, LubStr key,
   digest_i32(app, version ? *version : 0);
 }
 
-// data は float 列。
-// INDEX は uint32 に写してから渡す。
+// data is a float array.
+// INDEX is copied to uint32 before being passed.
 static LubStatus use_buffer_floats(App *app, const char *fn, LubStr key,
                                    int32_t type, const float *data,
                                    int32_t data_count, const int32_t *version,
@@ -474,8 +489,8 @@ LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key, int32_t type,
   if (data_count <= 0)
     return lub_api_fail(app, "use_buffer_ints: empty data");
   if (type == SGL_BUFFER_INDEX || type == SGL_BUFFER_STORAGE) {
-    // index は u32、STORAGE は shader の StructuredBuffer<int> / <uint> が読む。
-    // int32 の bit 列をそのまま使う
+    // index is u32, and STORAGE is read by the shader's StructuredBuffer<int> /
+    // <uint>. Use the int32 bit pattern as is
     return use_buffer_impl(app, key, type, data,
                            data_count * (int32_t)sizeof(uint32_t), version,
                            out);
@@ -508,8 +523,9 @@ LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key, int32_t type,
                          version, out);
 }
 
-// frame_buffer の範囲は key を持たず、handle はこのフレームの表の位置を指す。
-// id は通し番号で、前のフレームの範囲の handle はこのフレームの表に当たらない。
+// A frame_buffer range has no key, and its handle points to a position in this
+// frame's table. The id is a serial number, so a handle for a range from a
+// previous frame does not hit this frame's table.
 #define FRAME_RANGE_BIT 0x40000000
 #define FRAME_RANGE_ID_MASK 0x3fffffffu
 
@@ -529,7 +545,7 @@ static bool is_frame_range_handle(LubHandle h) {
   return h > 0 && (h & FRAME_RANGE_BIT) != 0;
 }
 
-// このフレームの範囲でなければ NULL。
+// NULL if it is not a range of this frame.
 static const FrameRangeEntry *frame_range_entry(App *app, LubHandle h) {
   struct GfxFrameRanges *r = app->frame_ranges;
   if (!r || !app->proc->in_frame || r->frame != (int64_t)app->frame_index)
@@ -538,8 +554,10 @@ static const FrameRangeEntry *frame_range_entry(App *app, LubHandle h) {
   return index < (uint32_t)r->count ? &r->items[index] : NULL;
 }
 
-// 1 回の確保の上限。
-// どの backend でも 1 つの範囲を束縛できる大きさで、Vulkan の maxStorageBufferRange と WebGPU の maxStorageBufferBindingSize の保証される最小値。
+// Upper limit of a single allocation.
+// A size at which one range can be bound on every backend: the guaranteed
+// minimum of Vulkan's maxStorageBufferRange and WebGPU's
+// maxStorageBufferBindingSize.
 #define FRAME_BUFFER_MAX_BYTES (128 * 1024 * 1024)
 
 static LubStatus frame_buffer_check(App *app, const char *fn, int32_t type,
@@ -565,7 +583,7 @@ static LubStatus frame_buffer_check(App *app, const char *fn, int32_t type,
   return LUB_OK;
 }
 
-// data は count 個の 4 byte の値。
+// data is count 4-byte values.
 static LubStatus frame_buffer_store(App *app, const char *fn, int32_t type,
                                     const void *data, int32_t count,
                                     LubHandle *out) {
@@ -639,7 +657,8 @@ LubStatus lub_gfx_frame_buffer_ints(LubContext *ctx, int32_t type,
   const char *fn = "frame_buffer_ints";
   if (frame_buffer_check(app, fn, type, data, data_count) != LUB_OK)
     return LUB_ERROR;
-  // index は u32、STORAGE は shader の StructuredBuffer<int> / <uint> が読むので、int32 の bit 列をそのまま使う
+  // index is u32, and STORAGE is read by the shader's StructuredBuffer<int> /
+  // <uint>, so use the int32 bit pattern as is
   if (type == SGL_BUFFER_INDEX || type == SGL_BUFFER_STORAGE)
     return frame_buffer_store(app, fn, type, data, data_count, out);
   float *f = (float *)malloc(sizeof(float) * (size_t)data_count);
@@ -652,8 +671,8 @@ LubStatus lub_gfx_frame_buffer_ints(LubContext *ctx, int32_t type,
   return st;
 }
 
-// use_texture の本体。
-// pixels は呼び出しの間だけ借用。
+// Body of use_texture.
+// pixels is borrowed only for the duration of the call.
 typedef struct TextureDesc {
   int32_t w, h;
   int32_t format;
@@ -661,8 +680,9 @@ typedef struct TextureDesc {
   int32_t pixels_len;
   int32_t filter, wrap;
   bool target, storage;
-  // pixels を持たない問い合わせ。
-  // version が一致すれば成功し、一致しなければ何も変えず LUB_NOT_FOUND。
+  // Query without pixels.
+  // Succeeds if the version matches; otherwise LUB_NOT_FOUND without changing
+  // anything.
   bool deferred;
 } TextureDesc;
 
@@ -763,7 +783,8 @@ static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
 
   bool same_shape = (e->u.tex.h != 0) && (e->u.tex.w == d->w) &&
                     (e->u.tex.h_ == d->h) && (e->u.tex.fmt == fmt);
-  // Gfx.Pick がこの frame の draw を流し直すのに使っていれば、預けて新しく作る
+  // If Gfx.Pick uses it to replay this frame's draws, hand it over and create a
+  // new one
   bool taken = e->u.tex.h != 0 && pick_take_image(app, e->u.tex.h);
   if (same_shape && !sampler_changed && !target_changed && !storage_changed &&
       has_data && new_bytes > 0 && !taken) {
@@ -810,7 +831,9 @@ static void texture_desc_init(TextureDesc *d, int32_t w, int32_t h, int32_t fmt,
   }
 }
 
-// version を渡した宣言は pixels の中身ではなく version で同一性を決めるので、digest に pixels の長さは入れない (pixels を読まない経路と揃える)。
+// A declaration with a version decides identity by the version, not by the
+// pixel contents, so the pixels length is not added to the digest (matching the
+// path that does not read the pixels).
 static void digest_use_texture(App *app, LubStr key, int32_t w, int32_t h,
                                int32_t fmt, int32_t px_len,
                                const int32_t *version) {
@@ -823,7 +846,8 @@ static void digest_use_texture(App *app, LubStr key, int32_t w, int32_t h,
   digest_i32(app, version ? *version : 0);
 }
 
-// px_len が LUB_DATA_DEFERRED で px が NULL なら、version が一致するときだけ成功する問い合わせ (px を持たない宣言とは区別する)。
+// If px_len is LUB_DATA_DEFERRED and px is NULL, this is a query that succeeds
+// only when the version matches (distinguished from a declaration without px).
 static LubStatus use_texture_bytes_digested(App *app, LubStr key, int32_t w,
                                             int32_t h, int32_t fmt,
                                             const uint8_t *px, int32_t px_len,
@@ -853,7 +877,7 @@ LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key, int32_t w,
                                     px_len, version, opts, out);
 }
 
-// px は byte 値 (0..255) の列。
+// px is an array of byte values (0..255).
 LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
                               int32_t fmt, const int32_t *px, int32_t px_count,
                               const int32_t *version,
@@ -875,8 +899,9 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
   return st;
 }
 
-// vs/fs (graphics) か cs (compute) の compile と入れ替え。
-// 失敗時、既存の shader があればそれを保って log だけ、無ければ LUB_ERROR。
+// Compile and swap in vs/fs (graphics) or cs (compute).
+// On failure, keep the existing shader and only log if there is one; otherwise
+// LUB_ERROR.
 static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
                                  LubStr vs, LubStr fs, LubStr cs,
                                  const int32_t *version, LubHandle *out) {
@@ -901,14 +926,16 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
     *out = e->handle;
     return LUB_OK;
   }
-  // 失敗した version は直るまで compile し直さず、古い shader を使い続ける。
+  // A failed version is not recompiled until it is fixed, and the old shader
+  // stays in use.
   if (!declared && e->u.sh.failed && e->u.sh.failed_version == ver &&
       e->u.sh.h != 0) {
     *out = e->handle;
     return LUB_OK;
   }
 
-  // 呼び出しの間だけ借用する source を NUL 終端に写す。
+  // Copy the source, which is borrowed only for the call, into a NUL-terminated
+  // buffer.
   char *vs_s = NULL, *fs_s = NULL, *cs_s = NULL;
   bool compute = cs.ptr != NULL;
   if (compute) {
@@ -930,7 +957,8 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
     memcpy(fs_s, fs.ptr, (size_t)fs.len);
     fs_s[fs.len] = '\0';
   }
-  // Gfx.Pick のために vertex shader の source を残す (入れ替えたら entry へ移す)
+  // Keep the vertex shader source for Gfx.Pick (moved to the entry once swapped
+  // in)
   char *vs_keep = vs_s ? strdup(vs_s) : NULL;
 
   char err[1024];
@@ -1051,8 +1079,9 @@ static ResEntry *color_target_entry(App *app, LubHandle h, int i) {
   return te;
 }
 
-// pass の宣言を平らにしたもの。
-// target / targets / clear_color / clear_colors の組み合わせは opts の読み替えで吸収する。
+// Flattened form of a pass declaration.
+// The combinations of target / targets / clear_color / clear_colors are
+// absorbed by reinterpreting opts.
 typedef struct PassDesc {
   int32_t n_targets;
   LubHandle targets[LUB_GFX_MAX_COLOR_TARGETS];
@@ -1084,7 +1113,7 @@ static LubStatus pass_desc_from_opts(App *app, const LubPassOpts *o,
     d->clear_depth = o->clear_depth;
   if (o->has_load)
     d->load = o->load;
-  // 既定の clear は黒不透明
+  // Default clear is opaque black
   for (int i = 0; i < LUB_GFX_MAX_COLOR_TARGETS; ++i) {
     d->clear_color[i][0] = 0;
     d->clear_color[i][1] = 0;
@@ -1153,13 +1182,15 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
     return lub_api_fail(app, "begin_pass: too many targets (%d > %d)",
                         d->n_targets, SGL_MAX_COLOR_TARGETS);
 
-  // swapchain pass (main_tex、または XR の片眼)
+  // swapchain pass (main_tex, or one XR eye)
   int xr_eye = d->n_targets == 1 ? lub_gfx_xr_eye_of(d->targets[0]) : -1;
   if (d->n_targets == 1 && (d->targets[0] == LUB_GFX_MAIN_TEX || xr_eye >= 0)) {
     const char *what = xr_eye >= 0 ? "an XR eye target" : "main_tex";
-    // 開かれた app も、XR の眼には window に描く app と同じに描く (下の pass)
+    // An opened app also draws to the XR eyes the same way as an app that draws
+    // to the window (the pass below)
     if (app->opened_by && xr_eye < 0) {
-      // 開かれた app の main は、App.Step が渡した target と depth への pass
+      // The main of an opened app is a pass to the target and depth passed by
+      // App.Step
       if (depth_image)
         return lub_api_fail(app, "begin_pass: an opened app draws to main_tex "
                                  "with the default depth buffer");
@@ -1181,8 +1212,9 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
                           "depth_target is only for offscreen passes",
                           what);
     if (xr_eye >= 0 && app->xr_given) {
-      // 開いた app が用意した眼: その描き先と depth への pass。
-      // main と同じ描き先なら、Gfx.Pick は main の pass として扱う
+      // Eyes provided by the opener: a pass to that render target and depth.
+      // If it is the same render target as main, Gfx.Pick treats it as the main
+      // pass
       if (app->xr_color[xr_eye] == app->main_color)
         pick_begin_pass(app, -1);
       pass_state_label(&app->pass, xr_eye == 0 ? "xr0" : "xr1");
@@ -1274,7 +1306,8 @@ LubStatus lub_gfx_end_pass(LubContext *ctx) {
 
 enum { UB_MAX_FLOATS = 512 };
 
-// bindings を種類で分ける (handle の種類は resource table で判定)。
+// Split bindings by kind (the handle kind is determined from the resource
+// table).
 typedef struct BoundBuffer {
   BackendBuffer buf;
   size_t offset, bytes;
@@ -1346,9 +1379,10 @@ static LubStatus split_bindings(App *app, const char *fn,
   return LUB_OK;
 }
 
-// reflection の uniform block を、名前つきの値の列から詰める。
-// field と値の対応は check_uniforms が検査済みで、0 が残るのは field の間の詰め物だけ。
-// 0 で埋めるのは backend に渡す size 分だけで、呼び出し側が size を UB_MAX_FLOATS 以下に検査している。
+// Fill the reflected uniform block from the list of named values.
+// check_uniforms has already validated the mapping of fields to values, so only
+// the padding between fields stays 0. Only the size passed to the backend is
+// zero-filled, and the caller has checked that size is at most UB_MAX_FLOATS.
 static void pack_uniform_block(const ShaderUniformBlock *ub,
                                const LubBinding *const *uniforms, int32_t n,
                                float *dst, int size) {
@@ -1390,7 +1424,8 @@ static void name_list_add(NameList *l, const char *fmt, ...) {
   l->count++;
 }
 
-// draw の shader は vertex と fragment の block、dispatch の shader は compute の block を見る。
+// A draw shader looks at the vertex and fragment blocks, and a dispatch shader
+// looks at the compute block.
 static bool ub_in_scope(const ShaderUniformBlock *ub, bool graphics) {
   return graphics ? ub->stage != SGL_STAGE_COMPUTE
                   : ub->stage == SGL_STAGE_COMPUTE;
@@ -1409,9 +1444,11 @@ refl_uniform_field(const ShaderReflection *refl, bool graphics, LubStr name) {
   return NULL;
 }
 
-// bindings の uniform は、shader が宣言した field とちょうど一致させる。
-// 足りない field (block ごと渡さない場合も)、shader に無い名前、値の数が field の大きさと違うものは、全部を並べて失敗する。
-// 同じ名前の field を vertex と fragment の両方が宣言していれば、1 つの値が両方に入る。
+// Uniforms in bindings must exactly match the fields the shader declares.
+// Missing fields (including when a whole block is not passed), names the shader
+// does not have, and value counts that differ from the field size are all
+// listed in one failure. If both vertex and fragment declare a field with the
+// same name, one value goes into both.
 static LubStatus check_uniforms(App *app, const char *fn, const ResEntry *sh,
                                 const Bindings *bs, bool graphics) {
   const ShaderReflection *refl = &sh->u.sh.refl;
@@ -1423,7 +1460,8 @@ static LubStatus check_uniforms(App *app, const char *fn, const ResEntry *sh,
     for (int m = 0; m < ub->member_count; ++m) {
       const ShaderUniformMember *mem = &ub->members[m];
       LubStr name = {mem->name, (int32_t)strlen(mem->name)};
-      // 前の block か前の field で数えた名前は数えない
+      // Do not count names already counted in a previous block or a previous
+      // field
       if (refl_uniform_field(refl, graphics, name) != mem)
         continue;
       bool found = false;
@@ -1488,8 +1526,9 @@ static bool refl_has_storage_texture(const ShaderReflection *refl,
   return false;
 }
 
-// frame_buffer の範囲は 1 つの buffer を分け合うので、書き込みには束縛できない。
-// D3D12 の view は要素の単位でしか位置を指せないので、大きさは要素の倍数に揃える (どの backend でも同じに止める)。
+// frame_buffer ranges share one buffer, so they cannot be bound for writing.
+// A D3D12 view can only address positions in element units, so the size must be
+// a multiple of the element size (fail the same way on every backend).
 static LubStatus check_frame_range(App *app, const char *fn,
                                    const ShaderReflection *refl,
                                    const LubBinding *b, const BoundBuffer *bb) {
@@ -1512,7 +1551,8 @@ static LubStatus check_frame_range(App *app, const char *fn,
   return LUB_OK;
 }
 
-// bindings の並びは実行形で違いうるので、項目ごとの hash の和で順序に依らない値にする。
+// The order of bindings can differ between execution forms, so use a sum of
+// per-item hashes to get an order-independent value.
 static void digest_bindings(App *app, const LubBinding *bindings,
                             int32_t bindings_count) {
   digest_i32(app, bindings_count);
@@ -1533,10 +1573,11 @@ static void digest_bindings(App *app, const LubBinding *bindings,
   digest_i32(app, (int32_t)(acc >> 32));
 }
 
-// stub の Blend を検査して SglBlend にする。
-// どの backend でも同じ結果になる組だけを通す。
-// alpha の係数に色の係数 (Src / Dst とその反転) は使えない (D3D12 が受け付けない)。
-// Min / Max の係数は One にする (WebGPU の規則。ほかの backend は係数を使わない)。
+// Validate the stub's Blend and convert it to SglBlend.
+// Accept only combinations that give the same result on every backend.
+// Color factors (Src / Dst and their inverses) cannot be used as alpha factors
+// (D3D12 rejects them). Min / Max factors must be One (a WebGPU rule. Other
+// backends do not use the factors).
 static bool blend_factor_ok(int32_t f, bool alpha) {
   if (f < SGL_BLEND_ZERO || f > SGL_BLEND_ONE_MINUS_DST_ALPHA)
     return false;
@@ -1577,7 +1618,7 @@ static LubStatus to_blend(App *app, const LubBlend *b, SglBlend *out) {
   return LUB_OK;
 }
 
-// draw の混ぜ方 (有無と式)。
+// Blending for draw (whether it is on, and the equation).
 static void digest_blend(App *app, const LubDrawOpts *d) {
   bool has = d && d->has_blend;
   digest_i32(app, has);
@@ -1620,7 +1661,8 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
     return LUB_ERROR;
   if (check_uniforms(app, "draw", sh, &bs, true) != LUB_OK)
     return LUB_ERROR;
-  // 0 以下は検証・digest は通常どおり行い、backend の draw だけ skip する (stub の記述どおり)。
+  // For 0 or less, validation and digest run as usual and only the backend draw
+  // is skipped (as the stub describes).
   bool skip_draw = instances <= 0;
   SglBlend blend = {0};
   if (d->has_blend && to_blend(app, &d->blend, &blend) != LUB_OK)
@@ -1637,8 +1679,9 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
   BindingsDesc bind = {0};
   bind.refl = &sh->u.sh.refl;
   uint8_t depth_tex_mask = 0;
-  // buffers: "indices" は index buffer、それ以外は shader が同じ名前で宣言した StructuredBuffer に束縛する (vertex pulling)。
-  // 宣言の無い名前は無視。
+  // buffers: "indices" is the index buffer, and the others are bound to the
+  // StructuredBuffer the shader declares with the same name (vertex pulling).
+  // Names with no declaration are ignored.
   int sbi = 0;
   for (int32_t i = 0; i < bs.n_buffers; ++i) {
     const LubBinding *b = bs.buffers[i];
@@ -1672,10 +1715,10 @@ LubStatus lub_gfx_draw_items(LubContext *ctx, int32_t count,
     ResEntry *te = bs.texture_entries[i];
     if (bind.texture_count >= max_tex)
       return lub_api_fail(app, "draw: too many textures (max %d)", max_tex);
-    // name は shader の reflection 名 (NUL 終端の保証が要る)
+    // name is the shader's reflection name (must be guaranteed NUL-terminated)
     int ti = 0;
     if (!refl_texture_index(&sh->u.sh.refl, t->name, &ti))
-      continue; // shader が使わない texture は無視 (従来どおり)
+      continue; // Ignore textures the shader does not use (as before)
     bind.textures[bind.texture_count].name = sh->u.sh.refl.texs[ti].name;
     bind.textures[bind.texture_count].image = te->u.tex.h;
     bind.texture_count++;
@@ -1824,7 +1867,8 @@ LubStatus lub_gfx_dispatch_items(LubContext *ctx, int32_t x, int32_t y,
       for (int k = 0; k < refl->storage_tex_count; ++k) {
         if (!lub_str_eq(t->name, refl->storage_texs[k].name))
           continue;
-        // WebGPU は不一致を拒否し、Vulkan は未定義なので、どの backend でも同じに止める。
+        // WebGPU rejects a mismatch and Vulkan leaves it undefined, so fail the
+        // same way on every backend.
         if (te->u.tex.fmt != refl->storage_texs[k].access_format)
           return lub_api_fail(
               app,
@@ -1892,8 +1936,8 @@ typedef struct RbItem {
   ReadbackResult rb;
   char *error;
   int32_t token;
-  // 保証するモードで渡せる最初の frame (要求した frame + 2)。
-  // frame の外の要求は 0。
+  // In the guaranteed mode, the first frame at which it can be delivered (the
+  // requested frame + 2). 0 for requests made outside a frame.
   int64_t due_frame;
   enum { RB_EMPTY = 0, RB_PENDING, RB_READY, RB_ERROR } state;
 } RbItem;
@@ -1901,7 +1945,7 @@ typedef struct RbItem {
 typedef struct RbQueue {
   char key[64];
   int depth, head, count;
-  int64_t last_seen_frame; // 最後に poll された frame。途切れたら sweep
+  int64_t last_seen_frame; // Last frame it was polled. Swept when polling stops
   RbItem items[RB_MAX_DEPTH];
 } RbQueue;
 
@@ -1943,7 +1987,7 @@ void api_gfx_shutdown(App *app) {
   app->readbacks = NULL;
 }
 
-// poll が resource_sweep_after_frames の間途切れた queue を捨てる。
+// Drop queues that have not been polled for resource_sweep_after_frames.
 void api_gfx_frame_end(App *app) {
   struct GfxReadbackQueues *qs = app->readbacks;
   if (!qs || app->resource_sweep_after_frames <= 0)
@@ -2000,8 +2044,8 @@ static RbQueue *rb_queue_get(App *app, LubStr key) {
   return q;
 }
 
-// 要求を進める。
-// 完了 (READY / ERROR) なら true。
+// Advance the request.
+// true if complete (READY / ERROR).
 static bool rb_poll_item(RbItem *it, bool wait) {
   if (it->state == RB_READY || it->state == RB_ERROR)
     return true;
@@ -2031,8 +2075,9 @@ static bool rb_poll_item(RbItem *it, bool wait) {
   return true;
 }
 
-// 先頭の要求を渡せるか。
-// 保証するモードでは要求した frame + 2 になるまで渡さず、その frame で終わっていなければ GPU を待つ。
+// Whether the first request can be delivered.
+// In the guaranteed mode, do not deliver until the requested frame + 2, and
+// wait for the GPU if it has not finished by that frame.
 static bool rb_poll_head(App *app, RbItem *it) {
   if (!app->readback_fixed_latency)
     return rb_poll_item(it, false);
@@ -2050,7 +2095,7 @@ bool api_gfx_readbacks_due_ready(App *app) {
     for (int k = 0; k < q->count; ++k) {
       RbItem *it = &q->items[(q->head + k) % RB_MAX_DEPTH];
       if ((int64_t)app->frame_index < it->due_frame)
-        break; // 後ろの要求ほど新しい
+        break; // Later requests are newer
       if (!rb_poll_item(it, false))
         return false;
     }
@@ -2095,7 +2140,8 @@ static void rb_enqueue(App *app, RbQueue *q, LubHandle tex, int32_t token) {
   it->state = RB_PENDING;
 }
 
-// 完了した item を out に写し、view の実体を frame の終わりまで預けて item を空にする。
+// Copy a completed item to out, hand the view's backing data over until the end
+// of the frame, and empty the item.
 typedef struct ReadbackTaken {
   int32_t status;
   LubView pixels;

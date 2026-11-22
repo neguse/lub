@@ -4,25 +4,26 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-struct App; // 前方宣言
+struct App; // Forward declaration
 
 typedef struct PassState {
   bool in_pass;
-  struct App *
-      app; // the context: its Process for backend calls, its pass label for gpu_time
+  struct App *app; // the context: its Process for backend calls, its pass label
+                   // for gpu_time
   int current_n_color_targets;
   SglPixelFormat
       current_color_fmts[SGL_MAX_COLOR_TARGETS]; // valid while in_pass
   bool current_has_depth;                        // valid while in_pass
   SglPixelFormat current_depth_fmt;              // valid when current_has_depth
-  const char
-      *label; // 次の pass の描き先の名前 (GPU の時間に付ける。begin で忘れる)
+  const char *label; // Render target name of the next pass (attached to the GPU
+                     // time. Forgotten at begin)
 } PassState;
 
 void pass_state_init(PassState *p);
 void pass_state_set_app(PassState *p, struct App *app);
 bool pass_state_in_pass(const PassState *p);
-// 次に始める pass の描き先の名前 (文字列は begin まで有効)
+// Render target name of the next pass to begin (the string is valid until
+// begin)
 void pass_state_label(PassState *p, const char *label);
 
 // Begin a pass with one color target (offscreen if target_image != 0, swapchain

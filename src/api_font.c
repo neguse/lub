@@ -1,5 +1,7 @@
-// font の C API。
-// src/font.c の純関数を包み、結果 (bitmap / mesh) は frame の終わりまで有効な view で返す (実体は呼び出しごとに作り、frame garbage に預ける)。
+// C API for fonts.
+// Wraps the pure functions of src/font.c and returns the results (bitmap /
+// mesh) as views valid until the end of the frame (the backing data is created
+// per call and handed to frame garbage).
 #include "api_internal.h"
 #include "font.h"
 #include <stdlib.h>

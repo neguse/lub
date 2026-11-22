@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 式の本文の constructor (`C(int x) => X = x;`) は本文を文の位置の式として実行する (class と struct)
+// An expression-bodied constructor (`C(int x) => X = x;`) runs its body as an expression in statement position (class and struct)
 public class ExpressionBodiedConstructorDifferentialTests
 {
     [CFact]

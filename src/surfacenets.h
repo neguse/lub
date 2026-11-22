@@ -4,7 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Naive surface nets: SDF grid -> triangle mesh. C API は include/lub/lub_api.h の lub_mesh_surface_nets、tcs VM の host の関数は src/gen/vm_api_gen.c。
+// Naive surface nets: SDF grid -> triangle mesh. The C API is
+// lub_mesh_surface_nets in include/lub/lub_api.h, the tcs VM host function is
+// in src/gen/vm_api_gen.c.
 //
 // grid is a flat float array of nx*ny*nz signed distances, x fastest:
 // grid[x + y*nx + z*nx*ny] is the sample at world position

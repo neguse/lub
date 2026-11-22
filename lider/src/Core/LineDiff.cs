@@ -1,6 +1,6 @@
-// 2 つの版の行の対応を、Myers の差分で取る。
-// 前後の同じ行を先に除き、残りの真ん中だけを比べる (打っている間の差分は小さいので、ほとんどはそこで済む)。
-// 真ん中の違いが MaxEdits を超えたら、真ん中の行は全部対応しないとみなす。
+// Matches the lines of two versions with the Myers diff.
+// Strips identical leading and trailing lines first and compares only the remaining middle (diffs while typing are small, so this is usually enough).
+// If the middle differs by more than MaxEdits, all middle lines are treated as unmatched.
 using System.Collections.Generic;
 
 namespace LiderCore;
@@ -9,7 +9,7 @@ public static class LineDiff
 {
     public const int MaxEdits = 400;
 
-    // after の行ごとに、before で同じ行の番号 (どれとも対応しなければ -1)
+    // For each line of after, the index of the same line in before (-1 if it matches none)
     public static int[] Match(List<string> before, List<string> after)
     {
         var n = before.Count;
@@ -34,7 +34,7 @@ public static class LineDiff
         if (a == 0 || b == 0)
             return map;
 
-        // v[k + off]: 対角線 k (x - y) で一番進んだ x。trace[d] は d 回目の編集の前の v の、k が -d..d の所
+        // v[k + off]: the furthest x on diagonal k (x - y). trace[d] is the part of v for k in -d..d before the d-th edit
         var max = a + b;
         var off = max + 1;
         var v = new int[2 * max + 3];
@@ -68,7 +68,7 @@ public static class LineDiff
         if (edits < 0)
             return map;
 
-        // 終わりから、各編集の前の点へ戻りながら、通った対角線の行を対応させる
+        // Walking back from the end to the point before each edit, matches the lines on the diagonals passed
         var cx = a;
         var cy = b;
         for (var d = edits; d > 0; d--)

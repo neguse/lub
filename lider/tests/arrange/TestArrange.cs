@@ -1,8 +1,8 @@
-// 配置を、名前を付けて控えて戻す。
-//   - 起動したときは左右に並ぶ形で、初めから入っている配置 (左右に並ぶ形、重ねる形) に、命令で戻せる
-//   - 今の配置を控えると file に書かれ、ほかの配置にした後で、その名前の配置に戻せる (スクリーンの規則と、ウィンドウの並び)
-//   - 控えるときの名前は、検索の欄に打って決める
-//   - file の行から読み直した配置は、書いた配置と同じ
+// Records arrangements under names and restores them.
+//   - At startup the side-by-side arrangement is used, and the built-in arrangements (side by side, overlay) can be restored with commands
+//   - Recording the current arrangement writes it to a file, and after switching to another arrangement, the arrangement with that name can be restored (the screen rules and the window order)
+//   - The name for recording is decided by typing it in the search field
+//   - An arrangement reloaded from the file's lines is the same as the one written
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -59,7 +59,7 @@ public static class TestArrange
         {
             case 0:
                 Check(Lider.ArrangementName == Lider.SideBySide && Lider.Tiled && w.ScreenOf(code) == backdrop, "not side-by-side at first");
-                // 起動した後に開いたコードの窓も、配置の決めた順 (インスペクタの前) に入る
+                // Code panels opened after startup also go into the order decided by the arrangement (before the inspector)
                 Check(Order(w, backdrop) == "game:saved code:Target.cs inspector", "the order at first: " + Order(w, backdrop));
                 Check(Lider.Run("arrange:" + Lider.Overlay), "arrange:overlay did not run");
                 Check(Lider.ArrangementName == Lider.Overlay && w.ScreenOf(code) == w.CodeScreen && w.ScreenOf(inspector) == w.CodeScreen, "overlay did not move the windows to the code screen");
@@ -68,7 +68,7 @@ public static class TestArrange
                 Check(backdrop.Layout is MainStack && Order(w, backdrop) == "game:saved code:Target.cs inspector", "side-by-side order: " + Order(w, backdrop));
                 break;
             case 1:
-                // 並びを変えて (インスペクタを前へ)、規則も変えてから控える
+                // Change the order (inspector to the front) and the rule too, then record
                 backdrop.Windows.Remove(inspector);
                 backdrop.Windows.Insert(1, inspector);
                 backdrop.Layout = new Even { Rows = true };
@@ -86,7 +86,7 @@ public static class TestArrange
                 Check(Lider.Run("arrange:mine"), "arrange:mine did not run");
                 Check(backdrop.Layout is Even rows && rows.Rows && Order(w, backdrop) == "game:saved inspector code:Target.cs", "mine: " + Order(w, backdrop));
                 Check(Lider.ArrangementName == "mine" && Lider.Tiled, "the home of the code windows did not come back");
-                // 名前は検索の欄に打つ
+                // The name is typed in the search field
                 Check(Lider.Run("arrange:save") && Lider.Search.Shown && Lider.Search.Prompt != "", "arrange:save did not ask for a name");
                 Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = A, Mods = 0, Typed = 'a', Plain = 'a' });
                 Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = Keys.Return, Mods = 0, Typed = 0, Plain = 0 });
@@ -100,7 +100,7 @@ public static class TestArrange
         }
     }
 
-    // スクリーンの上のウィンドウの key を、並びの順に
+    // Keys of the windows on the screen, in list order
     static string Order(Workspace w, Screen screen)
     {
         var keys = new List<string>();

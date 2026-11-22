@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// 前半の 4 本は enum と int の暗黙の変換を書く。C# では compile error で、tcs は受けるので、.NET とは比べない (dotnet: false)
+// The first four tests write implicit conversions between enum and int. C# gives a compile error and tcs accepts them, so they are not compared with .NET (dotnet: false)
 public class EnumTests
 {
     [Fact]
@@ -81,7 +81,7 @@ public class EnumTests
         Assert.Equal("True", result);
     }
 
-    // #14: initializer 無しの enum 型 field / property の既定値は 0 (default(E))
+    // #14: the default value of an enum-typed field / property without an initializer is 0 (default(E))
     [Fact]
     public void EnumField_DefaultIsZero()
     {
@@ -107,7 +107,7 @@ public class EnumTests
         Assert.Equal("True", result);
     }
 
-    // enum の default は member 値に依らず 0 (C# 意味論)
+    // The default of an enum is 0 regardless of the member values (C# semantics)
     [Fact]
     public void EnumField_DefaultIsZero_EvenWithoutZeroMember()
     {

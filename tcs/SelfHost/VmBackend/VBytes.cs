@@ -4,8 +4,8 @@ using TinySystem.Text;
 
 namespace TcsVm;
 
-/// <summary>.tcsb の byte 列の道具。byte は 0〜255 の int の List (little endian の書き込みは TcsC.TypeTable と同じ)。
-/// host へは 1 文字が 1 byte の文字列 (ToByteString) で渡す。</summary>
+/// <summary>Helpers for .tcsb byte sequences. Bytes are a List of int from 0 to 255 (little-endian writes are the same as TcsC.TypeTable).
+/// Passed to the host as a string with one character per byte (ToByteString).</summary>
 public static class VBytes
 {
     public static void U8(List<int> w, int v)
@@ -32,7 +32,7 @@ public static class VBytes
         foreach (var b in bytes) w.Add(b);
     }
 
-    /// <summary>文字列の UTF-8 の byte。</summary>
+    /// <summary>UTF-8 bytes of a string.</summary>
     public static List<int> Utf8(string s)
     {
         var u = new Utf8Bytes(s);
@@ -41,7 +41,7 @@ public static class VBytes
         return r;
     }
 
-    /// <summary>1 文字が 1 byte の文字列 (host の WriteBinaryAtomic と標準出力に渡す形)。</summary>
+    /// <summary>A string with one character per byte (the form passed to the host's WriteBinaryAtomic and to standard output).</summary>
     public static string ToByteString(List<int> bytes)
     {
         var parts = new List<string>();
@@ -63,8 +63,8 @@ public static class VBytes
 
     private static string B64(int i) => new Utf8Bytes(Base64Chars).Slice(i, 1).ToString();
 
-    /// <summary>base64 (RFC 4648、= の埋め草つき。.NET の Convert.ToBase64String と同じ)。</summary>
-    // 12 bit ごとの 2 文字 (4096 個。最初の呼び出しで作る)
+    /// <summary>base64 (RFC 4648, with = padding; same as .NET's Convert.ToBase64String).</summary>
+    // Two characters per 12 bits (4096 entries; built on the first call)
     private static List<string> _base64Pairs = new List<string>();
 
     public static string Base64(List<int> bytes)
@@ -98,7 +98,7 @@ public static class VBytes
 
     private static string HexDigits = "0123456789abcdef";
 
-    /// <summary>32 bit の並びの 16 進 (8 桁、小文字)。</summary>
+    /// <summary>Hex of a 32-bit pattern (8 digits, lowercase).</summary>
     public static string Hex8(int v)
     {
         var parts = new List<string>();
@@ -106,7 +106,7 @@ public static class VBytes
         return string.Join("", parts);
     }
 
-    // ---- SHA-256 (FIPS 180-4)。32 bit の値は int に並びとして入れる (加算は 2 の補数で桁あふれする) ----
+    // ---- SHA-256 (FIPS 180-4). 32-bit values are stored in int as bit patterns (addition overflows in two's complement) ----
 
     private static List<int>? _k;
 
@@ -123,7 +123,7 @@ public static class VBytes
 
     private static int Rotr(int x, int n) => Shr(x, n) | x << (32 - n);
 
-    /// <summary>SHA-256 の 32 byte の digest。</summary>
+    /// <summary>32-byte SHA-256 digest.</summary>
     public static List<int> Sha256(List<int> message)
     {
         var k = K();
@@ -134,7 +134,7 @@ public static class VBytes
         int bitLength = message.Count * 8;
         data.Add(128);
         while (data.Count % 64 != 56) data.Add(0);
-        // 長さは 64 bit の big endian (上の 32 bit は 0: 512MB 未満)
+        // The length is 64-bit big endian (the upper 32 bits are 0: under 512MB)
         for (int i = 0; i < 4; i++) data.Add(0);
         data.Add(bitLength >> 24 & 255);
         data.Add(bitLength >> 16 & 255);
@@ -200,7 +200,7 @@ public static class VBytes
         return digest;
     }
 
-    /// <summary>文字列の SHA-256 の先頭 4 byte の 16 進 (lambda の本文の指紋。C# 版の ToHexString(SHA256)[..8] の小文字)。</summary>
+    /// <summary>Hex of the first 4 bytes of the SHA-256 of a string (the fingerprint of a lambda body; lowercase ToHexString(SHA256)[..8] in the C# version).</summary>
     public static string Sha256Hex8(string text)
     {
         var d = Sha256(Utf8(text));

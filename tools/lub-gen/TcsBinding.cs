@@ -12,7 +12,7 @@ public static class TcsBinding
     }
 }
 
-/// <summary>record の field と、C の struct の中の path (基底の field は base. を前に付ける)。</summary>
+/// <summary>A record field and its path inside the C struct (base fields are prefixed with base.).</summary>
 internal sealed class FieldPath
 {
     public ApiField Field;
@@ -25,7 +25,7 @@ internal sealed class FieldPath
     }
 }
 
-/// <summary>C API の 1 つの関数の接続コードを作る間の状態 (C# 版の局所関数 Output が捕捉したもの)。</summary>
+/// <summary>State while generating the glue code for one C API function (what the local function Output captured in the C# version).</summary>
 internal sealed class CallState
 {
     public List<string> Args = new List<string>();
@@ -39,10 +39,10 @@ internal sealed class TcsBindingGen
     private Out output = new Out();
     private HashSet<string> inputs = new HashSet<string>();
     private HashSet<string> outputs = new HashSet<string>();
-    // list の要素として渡す / 受け取る record (配列との詰め替えを別に生成する)
+    // Records passed or received as list elements (the repacking to and from arrays is generated separately)
     private HashSet<string> inputLists = new HashSet<string>();
     private HashSet<string> outputLists = new HashSet<string>();
-    // struct の record (tcs2c の値の struct と C API の struct を field ごとに写す)
+    // Struct records (the tcs2c value struct and the C API struct are copied field by field)
     private HashSet<string> structInputs = new HashSet<string>();
     private HashSet<string> structOutputs = new HashSet<string>();
 
@@ -55,7 +55,7 @@ internal sealed class TcsBindingGen
 
     private void Line(string text) => output.Line(text);
 
-    // tcs2c の C 記号 (Tcs_ / tcs_new_ / TCS_TYPE_) は namespace 修飾した型名で引く
+    // tcs2c C symbols (Tcs_ / tcs_new_ / TCS_TYPE_) are looked up by the namespace-qualified type name
     private static string Il(string name) => ApiModelLoader.RootNamespace + "_" + name;
 
     private static string Scalar(TypeRef type)
@@ -139,7 +139,7 @@ internal sealed class TcsBindingGen
 
     private void Record(TypeRef type, bool isOutput)
     {
-        // callback の引数は host が作って tcs に渡す
+        // Callback arguments are created by the host and passed to tcs
         if (type.Kind == LubTypeKind.Func)
         {
             foreach (var param in type.FuncParams!) Record(param, true);
@@ -203,7 +203,7 @@ internal sealed class TcsBindingGen
             foreach (var param in function.Params) Record(param.Type, param.IsOut);
             Record(function.Return, true);
         }
-        // OnEvent の引数は host が LubEventData から作る record なので、entry を record の収集より先に決める
+        // The OnEvent argument is a record the host builds from LubEventData, so the entry is resolved before collecting records
         var entry = FindEntry();
         if (GenError.Failed) return "";
         var onEvent = entry == null ? null : EventHook(entry);
@@ -316,11 +316,11 @@ internal sealed class TcsBindingGen
         return null;
     }
 
-    // src/tcs_host.c が呼ぶ入口。
-    // entry class の OnInit / OnFrame / OnQuit / OnEvent を tcs2c --lib の tcs_entry_<Class>_<method> に繋ぎ、無い hook は何もしない。
-    // entry class は --entry (IL 名 MyGame_Game か C# の MyGame.Game)、無ければ static OnFrame を持つ唯一の class。
-    // どちらも static OnFrame が要る。
-    // 見つからない入力 (cs-lib だけの検査など) では何も出さない。
+    // Entry point called by src/tcs_host.c.
+    // Connects OnInit / OnFrame / OnQuit / OnEvent of the entry class to tcs_entry_<Class>_<method> from tcs2c --lib; missing hooks do nothing.
+    // The entry class is --entry (IL name MyGame_Game or C# MyGame.Game), or if missing, the only class with a static OnFrame.
+    // Both cases require a static OnFrame.
+    // Outputs nothing for inputs where it is not found (such as checking cs-lib alone).
     private ExClass? FindEntry()
     {
         if (entryName != null)
@@ -386,8 +386,8 @@ internal sealed class TcsBindingGen
         ErrorHook(entry);
     }
 
-    // fault した callback の処置を entry の OnError に聞く (無ければ Log)。
-    // message は境界を跨がない nursery の string なので、OnError の間は入れ子の深さを上げて境界を止める
+    // Asks the entry's OnError how to handle a faulted callback (Log if there is none).
+    // The message is a nursery string that does not cross the boundary, so during OnError the nesting depth is raised to stop the boundary
     private void ErrorHook(ExClass entry)
     {
         var found = StaticMethod(entry, "OnError");
@@ -480,9 +480,9 @@ internal sealed class TcsBindingGen
         return "";
     }
 
-    // C の list (pointer + <value>_count) を tcs の List に写す。
-    // list があれば (tcs_new が作った field) それを埋め、無ければ新しく作る。
-    // nullable は pointer NULL を null にする
+    // Copies a C list (pointer + <value>_count) into a tcs List.
+    // If a list exists (a field created by tcs_new), fills it; otherwise creates a new one.
+    // When nullable, a NULL pointer becomes null
     private static string ListFrom(TypeRef type, string value, string list, bool nullable)
     {
         var elem = type.Elem!;
@@ -511,7 +511,7 @@ internal sealed class TcsBindingGen
     private static string HasPath(string prefix, string path, ApiField field) =>
         prefix + Text.DropEnd(path, Text.Len(field.HostName)) + "has_" + field.HostName;
 
-    // struct の record: tcs2c の値の struct (field は f_<名前>) と C API の struct を field ごとに写す
+    // Struct record: copies between the tcs2c value struct (fields are f_<name>) and the C API struct field by field
     private void StructInput(ApiType type)
     {
         Line("static Lub" + type.Name + " tcs_lub_to_" + type.Name + "(Tcs_" + Il(type.Name) + " source) {");
@@ -572,7 +572,7 @@ internal sealed class TcsBindingGen
                 if (elem.IsScalar && field.ArrayLen >= 0)
                 {
                     int cap = field.ArrayLen;
-                    // 固定長の配列 field (`T n[cap]; int32_t n_count`): 長さ cap までを写す
+                    // Fixed-length array field (`T n[cap]; int32_t n_count`): copies up to cap elements
                     Line("    if (" + dst + "_count > " + cap + ") tcs_fault(\"lub-array-length\");");
                     Line("    memcpy(" + dst + ", " + src + "->data, (size_t)" + dst + "_count * sizeof(*" + dst + "));");
                 }
@@ -601,8 +601,8 @@ internal sealed class TcsBindingGen
                 Line("  if (" + src + ") { " + has + " = true; " + dst + " = tcs_lub_to_" + field.Type.Name + "(" + src + "); }");
             else if (field.Type.Kind == LubTypeKind.Record)
                 Line("  " + dst + " = tcs_lub_to_" + field.Type.Name + "(" + src + ");");
-            // record に置く callback (WorldCallbacks) は宣言を跨いで runtime が持つので未対応。
-            // null なら C の field も NULL のまま
+            // Callbacks stored in a record (WorldCallbacks) are kept by the runtime across declarations, so they are not supported.
+            // If null, the C field also stays NULL
             else if (field.Type.Kind == LubTypeKind.Func)
                 Line("  if (" + src + ") tcs_fault(\"lub-callback-field: " + type.Name + "." + field.Name + "\");");
             else Line("  " + dst + " = " + To(field.Type, src) + ";");
@@ -657,8 +657,8 @@ internal sealed class TcsBindingGen
         Line("  return list;\n}");
     }
 
-    // 外部型の instance method。
-    // view の Get(int) は view の byte を読む
+    // Instance method of a foreign type.
+    // The view's Get(int) reads a byte of the view
     private void Method(ApiType type, ApiFunction method, string foreignName)
     {
         var name = "tcs_host_" + foreignName.Replace(".", "_");
@@ -673,9 +673,9 @@ internal sealed class TcsBindingGen
         else GenError.Report("unsupported method: " + type.Name + "." + method.Name);
     }
 
-    // C の out は変数 n_<name> に受ける。
-    // list は pointer と n_<name>_count の 2 つ。
-    // null になりうる record は直後の has_<name> で有無を受ける
+    // C out values are received in the variable n_<name>.
+    // A list uses two: the pointer and n_<name>_count.
+    // A record that can be null receives its presence in has_<name> right after it
     private void Output(TypeRef type, string n, CallState st)
     {
         Line("  " + NativeType(type) + " " + n + " = {0};");
@@ -711,7 +711,7 @@ internal sealed class TcsBindingGen
             var p = "p_" + param.HostName;
             var n = "n_" + param.HostName;
             var type = param.Type;
-            // 配列の後ろの [LubCount] の引数 (配列の先頭の count 個を使う)
+            // [LubCount] argument after an array (uses the first count elements of the array)
             ApiParam? countParam = null;
             int at = function.Params.IndexOf(param);
             for (int k = at + 1; k < function.Params.Count; k++)
@@ -779,7 +779,7 @@ internal sealed class TcsBindingGen
         }
         var ret = function.Return;
         bool returned = ret.Kind != LubTypeKind.Void;
-        // NoFail の C API は scalar と handle だけを戻り値で返し、それ以外は out 引数に書く
+        // NoFail C APIs return only scalars and handles as the return value and write everything else to out arguments
         bool byValue = function.NoFail && (ret.IsScalar || ret.Kind == LubTypeKind.Handle);
         if (byValue && ret.IsScalar && ret.Nullable)
         {
@@ -788,7 +788,7 @@ internal sealed class TcsBindingGen
         }
         if (byValue) Line("  " + NativeType(ret) + " result = {0};");
         else if (returned) Output(new TypeRef(ret.Kind, ret.Name, false, ret.Elem, ret.FuncParams, ret.FuncReturn), "result", st);
-        // null になりうる scalar と [LubMaybe] の record は値の有無を has で受ける (CHeader と同じ条件)
+        // Nullable scalars and [LubMaybe] records receive value presence via has (same condition as CHeader)
         bool has = !function.NoFail && ret.Nullable && (ret.IsScalar || (ret.Kind == LubTypeKind.Record && function.Maybe));
         if (has)
         {
@@ -820,8 +820,8 @@ internal sealed class TcsBindingGen
         Line("}");
     }
 
-    // Func 引数は C の関数 pointer + user に写す。
-    // user は tcs の closure で、C API が呼び出しの間だけ呼ぶ (frame の途中なので GC は走らない)
+    // A Func argument maps to a C function pointer + user.
+    // user is the tcs closure, which the C API calls only during the call (GC does not run because it is mid-frame)
     private static string CallbackName(string function, ApiParam param) => "tcs_lub_" + function + "_" + param.HostName;
 
     private void Callback(string function, ApiParam param)
@@ -864,7 +864,7 @@ internal sealed class TcsBindingGen
         Line("}");
     }
 
-    // 中身の block は GC の byte 配列に置く (Bindings の field で辿れるので、手放せば GC が回収する)。
+    // The contents block is placed in a GC byte array (it is reachable through the Bindings field, so the GC reclaims it once released).
     private void NativeBindings()
     {
         Line("static LubBindings *tcs_lub_bindings_alloc(Tcs_Lub_Bindings *owner, int32_t scale) {");
@@ -882,8 +882,8 @@ internal sealed class TcsBindingGen
     }
 
     private const string Helpers = """
-        /* runtime の関数の中から呼ばれている callback の深さ。
-           この間の fault は runtime の frame を跨いで抜けられないので、host は process を止める */
+        /* Depth of callbacks called from inside runtime functions.
+           A fault in this span cannot unwind across the runtime's frames, so the host stops the process */
         static int tcs_lub_callback_depth;
         static void tcs_lub_check(LubStatus status) {
           if (status != LUB_ERROR) return;
@@ -913,8 +913,8 @@ internal sealed class TcsBindingGen
         }
         """;
 
-    // [LubBits] の 64 bit mask は C# 面では hex 文字列 (出すときは 16 桁)。
-    // 読む規則は tcs VM の host の関数 (VmBinding) と同じで、null は値なし、1〜16 桁の hex (0x 付きも可) を読み、空と 17 桁以上は error。
+    // The 64 bit mask of [LubBits] is a hex string on the C# surface (16 digits when output).
+    // The parsing rules are the same as the tcs VM host functions (VmBinding): null means no value, 1 to 16 hex digits (0x prefix allowed) are read, and empty or 17 or more digits is an error.
     private const string BitsHelpers = """
         #include <inttypes.h>
         static _Noreturn void tcs_lub_bits_fault(const char *what, TcsString *text) {
@@ -944,8 +944,8 @@ internal sealed class TcsBindingGen
         }
         """;
 
-    // view は frame の終わりまで有効。
-    // tcs の object は frame を跨いで残りうるので、実体は host 側の表に置き、host_value には frame と番号だけを持たせる。
+    // A view is valid until the end of the frame.
+    // tcs objects can survive across frames, so the actual data is kept in a host-side table and host_value holds only the frame and an index.
     private const string ViewHelpers = """
         static LubView *tcs_lub_views;
         static uint32_t tcs_lub_view_count, tcs_lub_view_capacity;

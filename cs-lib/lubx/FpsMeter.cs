@@ -1,19 +1,19 @@
-// 実装ライブラリ lubx の FpsMeter。
-// fps の read-only 性は field + doc comment で表す。
+// FpsMeter of the implementation library lubx.
+// fps being read-only is expressed by a field + doc comment.
 
 using Lub;
 
 namespace Lubx;
 
 /// <summary>
-/// Sys.actual_fps の値を保持するだけの小物。
-/// 計測が入る前 (起動直後) は initialFps を返し続ける。
-/// 毎フレーム tick() を呼ぶ。
+/// Small helper that only holds the value of Sys.actual_fps.
+/// Keeps returning initialFps until a measurement arrives (right after startup).
+/// Call tick() every frame.
 /// </summary>
 public class FpsMeter
 {
-    /// <summary>直近の実測 FPS。
-    /// tick() が更新する (呼び出し側は読み取り専用)。
+    /// <summary>Most recent measured FPS.
+    /// Updated by tick() (read-only for the caller).
     /// </summary>
     public float Fps;
 

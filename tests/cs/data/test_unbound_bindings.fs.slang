@@ -1,5 +1,5 @@
-// 各 channel を 1 つの resource だけで決める: R = tex_a、G = tex_b、
-// B = item (VS)。
+// Each channel is determined by only one resource: R = tex_a, G = tex_b,
+// B = item (VS).
 LUB_TEXTURE2D(tex_a);
 LUB_TEXTURE2D(tex_b);
 

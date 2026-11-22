@@ -1,6 +1,6 @@
 using System;
 
-// class の field (struct の field を含む)、class の配列、struct の配列、static の struct
+// class fields (including struct fields), arrays of classes, arrays of structs, static structs
 public struct Vec2
 {
     public float X;

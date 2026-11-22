@@ -4,10 +4,10 @@ using TcsSelf;
 
 namespace TcsVm;
 
-// tcs VM の backend (IL を .tcsb にする。旧 tcsvm/Emitter の C# 版を TinyC# に写したもの) の型と値。
-// 誤りは C backend と同じく最初のものを TcsC.CFail に記録し、出力は誤りが無いときだけ使う
+// Types and values of the tcs VM backend (turns IL into .tcsb; a port of the C# version of the old tcsvm/Emitter to TinyC#).
+// As in the C backend, the first error is recorded in TcsC.CFail, and the output is used only when there are no errors
 
-/// <summary>register / static / 葉の種類 (doc/vm-design.md §6.1)。tcsvm_ops.h の TVM_K_* と同じ値。</summary>
+/// <summary>Kinds of registers / statics / leaves (doc/vm-design.md §6.1). Same values as TVM_K_* in tcsvm_ops.h.</summary>
 public enum Kind
 {
     I32 = 0,
@@ -16,7 +16,7 @@ public enum Kind
     Ref = 3,
 }
 
-/// <summary>VType の種類 (C# 版の VType の派生 record)。</summary>
+/// <summary>Kinds of VType (the derived records of VType in the C# version).</summary>
 public enum VT
 {
     Prim,
@@ -41,27 +41,27 @@ public enum VT
     Null,
 }
 
-/// <summary>emitter の静的型。IL の型文字列 (display 名) から作る。
-/// C# 版は record の派生 (PrimT、ClassT ...) で、ここでは種類 (Tag) と中身の field を持つ 1 つの class。
-/// 等価は Same (C# 版の record の等価と同じく、種類と中身で比べる)。</summary>
+/// <summary>Static type in the emitter. Built from IL type strings (display names).
+/// The C# version uses derived records (PrimT, ClassT ...); here it is one class with a kind (Tag) and fields for the contents.
+/// Equality is Same (compares kind and contents, like record equality in the C# version).</summary>
 public sealed class VType
 {
     public VT Tag;
-    // Prim と Box の種類
+    // Kind for Prim and Box
     public Kind PKind;
-    // Prim の名前 (int / float / bool)、Class / Struct / Iface / HostIface の名前
+    // Name of a Prim (int / float / bool), or of a Class / Struct / Iface / HostIface
     public string Name = "";
-    // Array / List の要素
+    // Element of Array / List
     public VType? Elem;
-    // Dict と Kvp の key と value
+    // key and value of Dict and Kvp
     public VType? Key;
     public VType? Value;
-    // Func の引数と戻り値 (Action は Void)
+    // Parameters and return value of Func (Void for Action)
     public List<VType> Params = new List<VType>();
     public VType? Ret;
-    // Tuple の要素
+    // Elements of Tuple
     public List<VType> Items = new List<VType>();
-    // Cell と Nullable の中の型
+    // Inner type of Cell and Nullable
     public VType? Inner;
     private string _key = "";
     private string _display = "";
@@ -169,15 +169,15 @@ public sealed class VType
 
     public static VType Random() => new VType(VT.Random);
 
-    /// <summary>heap の object を指す ref の型か。</summary>
+    /// <summary>Whether it is a ref type pointing to a heap object.</summary>
     public bool IsRef =>
         Tag == VT.Class || Tag == VT.Array || Tag == VT.String || Tag == VT.List || Tag == VT.Dict || Tag == VT.Func
         || Tag == VT.Cell || Tag == VT.Iface || Tag == VT.Object || Tag == VT.Box || Tag == VT.Random || Tag == VT.HostIface;
 
-    /// <summary>葉の並びを持つ値型 (VM では STRUCT の型)。</summary>
+    /// <summary>A value type with a sequence of leaves (a STRUCT type in the VM).</summary>
     public bool IsAggregate => Tag == VT.Struct || Tag == VT.Nullable || Tag == VT.Kvp || Tag == VT.Utf8;
 
-    /// <summary>C# 版の record の ToString と同じ表記。</summary>
+    /// <summary>Same notation as the record ToString in the C# version.</summary>
     public string Display()
     {
         if (_display != "") return _display;
@@ -254,7 +254,7 @@ public sealed class VType
         return d;
     }
 
-    /// <summary>等価の鍵: 種類と中身 (C# 版の record の等価)。Func と Tuple は C# 版と同じく表記で比べる。</summary>
+    /// <summary>Equality key: kind and contents (record equality in the C# version). Func and Tuple compare by notation, as in the C# version.</summary>
     public string Ident()
     {
         if (_key != "") return _key;
@@ -305,7 +305,7 @@ public sealed class VType
         return a.Ident() == b.Ident();
     }
 
-    /// <summary>Kind の C# の名前 (enum の ToString)。</summary>
+    /// <summary>C# name of Kind (enum ToString).</summary>
     public static string KindName(Kind k)
     {
         if (k == Kind.I32) return "I32";
@@ -315,7 +315,7 @@ public sealed class VType
     }
 }
 
-/// <summary>値の葉 (struct は field を再帰的に展開した列)。Type は葉自身の型 (prim か ref)。</summary>
+/// <summary>Leaves of a value (for a struct, the sequence of fields expanded recursively). Type is the leaf's own type (prim or ref).</summary>
 public sealed class Leaf
 {
     public string Path;
@@ -330,7 +330,7 @@ public sealed class Leaf
     public Kind Kind => Type.Tag == VT.Prim ? Type.PKind : Kind.Ref;
 }
 
-/// <summary>register / 戻り値 / 捕捉 / static の種類と型の番号 (C# 版の (Kind Kind, ushort Type))。</summary>
+/// <summary>Kind and type index of a register / return value / capture / static ((Kind Kind, ushort Type) in the C# version).</summary>
 public sealed class RegInfo
 {
     public Kind Kind;
@@ -345,7 +345,7 @@ public sealed class RegInfo
     public string Key() => (int)Kind + "," + Type;
 }
 
-/// <summary>値: 葉ごとの register の列 (prim / ref は 1 つ、struct は葉の数)。</summary>
+/// <summary>Value: the sequence of registers per leaf (one for prim / ref, the number of leaves for a struct).</summary>
 public sealed class Val
 {
     public VType Type;
@@ -375,17 +375,17 @@ public enum VarKind
     Cap,
 }
 
-/// <summary>変数: register に住む値 (Reg)、cell に住む値 (Cell。closure が捕捉する。il-spec §7)、
-/// 自分の closure が捕捉した cell (Cap)。C# 版の RegVar / CellVar / CapVar。Type は値の型 (cell なら中の型)。</summary>
+/// <summary>Variable: a value living in a register (Reg), a value living in a cell (Cell; captured by a closure, il-spec §7),
+/// or a cell captured by the current closure (Cap). RegVar / CellVar / CapVar in the C# version. Type is the value type (for a cell, the inner type).</summary>
 public sealed class Var
 {
     public VarKind K;
     public VType Type;
-    // Reg の値
+    // Value for Reg
     public Val? Val;
-    // Cell の register
+    // Register for Cell
     public int Reg;
-    // Cap の番号
+    // Index for Cap
     public int Index;
 
     public Var(VarKind k, VType type)
@@ -415,11 +415,11 @@ public sealed class Var
         return v;
     }
 
-    // Cell と Cap の中の型 (C# 版の Inner)
+    // Inner type for Cell and Cap (Inner in the C# version)
     public VType Inner => Type;
 }
 
-/// <summary>関数の行の表の 1 項 (pc から始まる行)。</summary>
+/// <summary>One entry of a function's line table (the line starting at pc).</summary>
 public sealed class LinePc
 {
     public int Pc;
@@ -432,12 +432,12 @@ public sealed class LinePc
     }
 }
 
-/// <summary>1 つの関数。命令は 64 bit の語で、下の 32 bit を CodeLo、上の 32 bit を CodeHi に持つ。</summary>
+/// <summary>One function. Instructions are 64-bit words, with the lower 32 bits in CodeLo and the upper 32 bits in CodeHi.</summary>
 public sealed class FunctionDef
 {
     public string Name;
     public string File = "";
-    // ファイルの path ('/' 区切り。--trace と Pick の呼び出し元が使う)
+    // File path ('/'-separated. Used by --trace and the callers of Pick)
     public string Path = "";
     public int NParams;
     public List<RegInfo> Regs = new List<RegInfo>();
@@ -447,7 +447,7 @@ public sealed class FunctionDef
     public List<int> CodeLo = new List<int>();
     public List<int> CodeHi = new List<int>();
     public List<LinePc> Lines = new List<LinePc>();
-    // 最後に変換していた C# の位置 (関数を作れなかったときの誤りの場所)
+    // The C# position last being compiled (the error location when the function could not be built)
     public IlPos? At;
     public System.Action<FunctionDef>? Compile;
 

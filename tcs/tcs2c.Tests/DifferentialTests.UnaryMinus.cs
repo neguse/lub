@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 単項マイナスのオペランドが `-` で始まっても `--` にしない (Lua では行コメント、C では減算子)。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// A unary minus whose operand starts with `-` does not become `--` (a line comment in Lua, the decrement operator in C).
+// The expected values are the stdout of running the same program on CoreCLR
 public class UnaryMinusDifferentialTests
 {
     [CFact]

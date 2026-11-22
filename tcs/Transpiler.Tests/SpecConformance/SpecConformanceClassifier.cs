@@ -6,10 +6,10 @@ namespace TinyCs.Tests.SpecConformance;
 
 internal sealed partial class SpecConformanceClassifier
 {
-    // 分類は analyzer と同じ視点で行う: フル BCL 参照でコンパイルし、サブセット外は
-    // compile error でなく TCS1001/1002/1003 診断として観測する。transpiler 既定の
-    // 最小参照だと template の using (System.IO 等) 自体が CS0234 になり、
-    // サブセット外 API の例がすべて分類不能になる。
+    // Classification uses the same viewpoint as the analyzer: compile with full BCL references, and observe out-of-subset code
+    // as TCS1001/1002/1003 diagnostics rather than compile errors. With the transpiler's default
+    // minimal references, the template's usings (System.IO etc.) themselves become CS0234, and
+    // every out-of-subset API example becomes unclassifiable.
     internal static readonly Lazy<MetadataReference[]> FullReferences = new(() =>
         (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? "")
         .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
@@ -20,9 +20,9 @@ internal sealed partial class SpecConformanceClassifier
             group.First()))
         .ToArray());
 
-    // 公式 template の csproj は ImplicitUsings=enable であり、"-without-using"
-    // template の例は SDK の暗黙 global using を前提にしている。compliance 解析と
-    // emit の対象外になるよう referenceSources として補う。
+    // The official template csproj has ImplicitUsings=enable, and the "-without-using"
+    // template examples assume the SDK's implicit global usings. To keep them out of compliance analysis and
+    // emit, they are supplied as referenceSources.
     internal const string ImplicitUsingsSource = """
         global using System;
         global using System.Collections.Generic;
@@ -45,8 +45,8 @@ internal sealed partial class SpecConformanceClassifier
     public SpecClassificationResult Classify(SpecExample example,
         SpecExpansion expansion) => ClassifyCore(example, expansion);
 
-    // Roslyn は C# として正しいかの判定 (受理の oracle) にだけ使い、検査は tcs の compiler (tcs check と同じ) が行う。
-    // Roslyn が拒否した例は Roslyn の誤り (CSxxxx) で分類し、受理した例を tcs が C# の誤りで拒否したら compiler の不具合
+    // Roslyn is used only to judge whether the code is valid C# (the acceptance oracle); the checks are done by the tcs compiler (same as tcs check).
+    // Examples Roslyn rejects are classified by Roslyn's error (CSxxxx); if tcs rejects an example Roslyn accepted with a C# error, it is a compiler bug
     private static CheckResult CheckWithRoslynOracle(string[] sources)
     {
         var trees = sources.Select(s => CSharpSyntaxTree.ParseText(s))
@@ -90,8 +90,8 @@ internal sealed partial class SpecConformanceClassifier
 
             if (result.Errors.Count > 0)
             {
-                // build を止める TinyC# 診断 (error TCS1001) は C# compile error
-                // ではなくサブセット外の報告なので Diag に数える
+                // A TinyC# diagnostic that stops the build (error TCS1001) is not a C# compile error
+                // but an out-of-subset report, so it is counted as Diag
                 if (expectedErrors is null
                     && result.Errors.All(error =>
                         TinyCsDiagnosticRegex().IsMatch(error)))

@@ -3,8 +3,8 @@ using TinyCs.Tests.SpecConformance;
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// Transpiler.Tests の C4 fuzz の生成器 (FuzzGenerator) の program を、C (通常と GC stress) / VM (通常と GC stress) /
-/// 実 .NET で走らせて stdout を比べる (AssertParity)。seed は TCS_FUZZ_SEED / TCS_FUZZ_COUNT で変えられる。
+/// Runs the programs of the Transpiler.Tests C4 fuzz generator (FuzzGenerator) on C (normal and GC stress) / VM (normal and GC stress) /
+/// real .NET and compares stdout (AssertParity). The seed can be changed with TCS_FUZZ_SEED / TCS_FUZZ_COUNT.
 /// </summary>
 public class FuzzDifferentialTests
 {

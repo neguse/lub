@@ -1,9 +1,11 @@
 #include "foreign.c"
 
-/* host 側の foreign 実装 (生成 C を include して内部 ABI を直接使う):
-   外部 data class は tcs_new_<Class>() で作り host_value に handle を置く。
-   nullable スカラは TcsOpt* の値渡し、配列の要素型は GC header の type tag。
-   entry 中に作った object は static に置けば境界で昇格して生き残る */
+/* Host-side foreign implementation (includes the generated C and uses the
+   internal ABI directly): External data classes are created with
+   tcs_new_<Class>() and a handle is put in host_value. Nullable scalars are
+   passed by value as TcsOpt*, and array element types are the type tag in the
+   GC header. Objects created during an entry survive by being promoted at the
+   boundary if they are put in a static */
 Tcs_Resource *tcs_host_api_current(void) {
   Tcs_Resource *value = tcs_new_Resource();
   value->host_value = 99;
@@ -11,7 +13,8 @@ Tcs_Resource *tcs_host_api_current(void) {
   return value;
 }
 
-/* stub の instance method は host 関数 tcs_host_<Class>_<method>(self, args...) */
+/* Instance methods of the stub are host functions
+ * tcs_host_<Class>_<method>(self, args...) */
 int32_t tcs_host_resource_get(Tcs_Resource *self, int32_t index) {
   return self->host_value == 99 ? 100 + index : -1;
 }
@@ -49,7 +52,8 @@ void tcs_host_api_poll(TcsString **topic, TcsString **payload) {
   *payload = tcs_string_new((const unsigned char *)"payload", 7);
 }
 
-/* struct は生成 C の struct (Tcs_<型>) の値、out は pointer、T? は TcsOpt_S_<型> の値 */
+/* Structs are values of the generated C struct (Tcs_<Type>), out is a pointer,
+ * T? is a value of TcsOpt_S_<Type> */
 float tcs_host_phys_dot(Tcs_Vec2 a, Tcs_Vec2 b) {
   return a.f_x * b.f_x + a.f_y * b.f_y;
 }

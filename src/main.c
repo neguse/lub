@@ -12,20 +12,22 @@
 #include <unistd.h>
 #endif
 
-// lub の実行ファイルの入口。
-// ゲームは tcs VM の player (src/vm_player.c) が動かし、ここは起動の形を振り分けるだけ。
-// `lub check <entry>.csproj` は窓も VM も作らずに tcs check の結果を終了コードにする。
+// Entry point of the lub executable.
+// Games are run by the tcs VM player (src/vm_player.c); this code only
+// dispatches on the kind of launch. `lub check <entry>.csproj` creates neither
+// a window nor a VM and turns the tcs check result into the exit code.
 
 static bool has_extension(const char *path, const char *ext) {
   size_t n = SDL_strlen(path), m = SDL_strlen(ext);
   return n >= m && SDL_strcasecmp(path + n - m, ext) == 0;
 }
 
-// tcs VM の player に渡す entry を決める。
-// entry が sample の名前 (samples/<name>/) なら、その中の .csproj にする。
-// entry が無ければ、実行ファイルの隣 (app bundle では resource の場所) の .tcsb (lub export の snapshot) をそこを cwd にして動かす。
-// *argv を VM の player に渡す引数にする。
-// 動かす entry が無ければ false。
+// Decide the entry to pass to the tcs VM player.
+// If entry is a sample name (samples/<name>/), use the .csproj inside it.
+// If there is no entry, run the .tcsb (a lub export snapshot) next to the
+// executable (the resource location in an app bundle), with that directory as
+// cwd. Set *argv to the arguments to pass to the VM player. false if there is
+// no entry to run.
 static char g_vm_entry[1024];
 static char *g_vm_argv[64];
 static SDL_EnumerationResult SDLCALL find_tcsb(void *out, const char *dir,
@@ -46,7 +48,7 @@ static bool resolve_entry(int *argc, char ***argvp) {
     first = 3;
   int entry = -1;
   for (int i = first; i < n; ++i) {
-    // 値を取る option は値ごと飛ばす
+    // Skip options that take a value together with their value
     if ((strcmp(argv[i], "--capture") == 0 ||
          strcmp(argv[i], "--capture-frame") == 0 ||
          strcmp(argv[i], "--fixed-dt") == 0 ||
@@ -60,7 +62,8 @@ static bool resolve_entry(int *argc, char ***argvp) {
       entry = i;
   }
   if (entry < 0) {
-    // entry の無い起動 (配った snapshot): 実行ファイルの隣の .tcsb
+    // Launch without an entry (a distributed snapshot): the .tcsb next to the
+    // executable
     const char *base = SDL_GetBasePath();
     if (first != 1 || !base || n + 2 > (int)SDL_arraysize(g_vm_argv))
       return false;
@@ -77,7 +80,7 @@ static bool resolve_entry(int *argc, char ***argvp) {
     *argc = n + 1;
     return true;
   }
-  // sample の名前
+  // Sample name
   const char *path = argv[entry];
   if (has_extension(path, ".csproj") || has_extension(path, ".tcsb") ||
       strchr(path, '/') || strchr(path, '\\'))
@@ -102,8 +105,8 @@ static void print_usage(void) {
           "-o <dir>");
 }
 
-// iOS の app は cwd が "/" で始まる。
-// 相対パスは常に bundle 基準にする。
+// iOS apps start with cwd "/".
+// Relative paths are always resolved against the bundle.
 static void enter_bundle(void) {
 #ifdef SDL_PLATFORM_IOS
   const char *base = SDL_GetBasePath();
@@ -115,14 +118,16 @@ static void enter_bundle(void) {
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   (void)appstate;
 
-  // SDL の assertion は既定で message box を開いて利用者の選択を待つ。
-  // headless (Xvfb / CI / bench) ではクリックされないので process が止まり続ける。
-  // dialog を出さず abort させる。
-  // 環境変数 SDL_ASSERT があれば hint よりそちらが優先される (SDL_GetHint は env を先に見る) ので、利用者の設定はそのまま効く。
+  // By default, SDL assertions open a message box and wait for the user's
+  // choice. In headless runs (Xvfb / CI / bench) nobody clicks, so the process
+  // stays stuck. Abort without showing a dialog. If the SDL_ASSERT environment
+  // variable is set, it takes precedence over the hint (SDL_GetHint checks env
+  // first), so the user's setting still applies.
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
 
   enter_bundle();
-  // `lub check <entry>`: 窓も VM も作らず、tcs の結果を終了コードにする
+  // `lub check <entry>`: create neither a window nor a VM, and turn the tcs
+  // result into the exit code
   if (argc > 1 && strcmp(argv[1], "check") == 0) {
     if (argc != 3 || !has_extension(argv[2], ".csproj")) {
       SDL_Log("usage: lub check <entry>.csproj");

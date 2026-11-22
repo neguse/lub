@@ -1,5 +1,5 @@
 struct Uniforms {
-  float4 side; // x = 0 で target の左半分、1 で右半分を覆う
+  float4 side; // x = 0 covers the left half of the target, 1 the right half
 };
 ConstantBuffer<Uniforms> u;
 
@@ -10,7 +10,8 @@ struct VSOut {
   float4 pos : SV_Position;
 };
 
-// vid 6..11 (index の case で後に宣言した index) は右半分の quad。
+// vid 6..11 (the index declared later in the index case) is the right-half
+// quad.
 [shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
   float2 p = quad[vid % 6];
   float x = u.side.x + float(vid / 6);

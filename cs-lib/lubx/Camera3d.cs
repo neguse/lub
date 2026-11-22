@@ -1,14 +1,14 @@
-// 実装ライブラリ lubx の Camera3d。
-// opts は options class (Camera3dOpts) で受ける (stub の PassOpts / DrawOpts と同じ流儀)。
-// optional は nullable フィールド + ?? で受ける。
-// Gfx.size の multi-return は out 引数で受け、aspect の除算は (float) cast で整数除算を避ける。
+// Camera3d of the implementation library lubx.
+// opts are received as an options class (Camera3dOpts) (same style as the stub's PassOpts / DrawOpts).
+// Optional values are received as nullable fields + ??.
+// The multi-return of Gfx.size is received through out arguments, and the aspect division uses a (float) cast to avoid integer division.
 
 using Lub;
 
 namespace Lubx;
 
-/// <summary>Camera3d.vp のオプション。
-/// eye / target は必須、他は省略可。
+/// <summary>Options for Camera3d.vp.
+/// eye / target are required; the rest are optional.
 /// </summary>
 public class Camera3dOpts
 {
@@ -21,13 +21,13 @@ public class Camera3dOpts
     public float? Aspect;
 }
 
-/// <summary>3D カメラ定型。
-/// perspective + lookAt から view-projection を 1発で作る。
+/// <summary>3D camera boilerplate.
+/// Builds the view-projection from perspective + lookAt in one go.
 /// </summary>
 public static class Camera3d
 {
-    /// <summary>fov は度 (default 60)、near 0.1、far 100、up (0,1,0)。
-    /// aspect 省略時は Gfx.size() の実比。
+    /// <summary>fov is in degrees (default 60), near 0.1, far 100, up (0,1,0).
+    /// If aspect is omitted, the actual ratio from Gfx.size() is used.
     /// </summary>
     public static Mat4 Vp(Camera3dOpts opts)
     {
@@ -50,10 +50,10 @@ public static class Camera3d
         return proj * view;
     }
 
-    /// <summary>world 点を画面 px に射影する。
-    /// X / Y は (0,0) 左上から (viewportW, viewportH) 右下の px、Z は depth [0, 1]。
-    /// vp は Vp の結果。
-    /// カメラの後ろ (w が 0.01 以下) なら null。
+    /// <summary>Projects a world point to screen px.
+    /// X / Y are px from (0,0) top-left to (viewportW, viewportH) bottom-right, Z is depth [0, 1].
+    /// vp is the result of Vp.
+    /// null if behind the camera (w is 0.01 or less).
     /// </summary>
     public static Vec3? Project(Mat4 vp, float x, float y, float z,
         float viewportW, float viewportH)
@@ -67,10 +67,10 @@ public static class Camera3d
             (0.5f - c.Y / c.W * 0.5f) * viewportH, c.Z / c.W);
     }
 
-    /// <summary>画面 px (x, y) から出る視線。
-    /// 始点は near 面上の点、方向はそこから far 面上の点へ向かう。
-    /// vp は Vp の結果。
-    /// 床との交点は ViewportRay(...).IntersectPlane(...) で求める。
+    /// <summary>Line of sight from screen px (x, y).
+    /// The origin is a point on the near plane, and the direction points from there to a point on the far plane.
+    /// vp is the result of Vp.
+    /// Get the intersection with the floor with ViewportRay(...).IntersectPlane(...).
     /// </summary>
     public static Ray ViewportRay(Mat4 vp, float x, float y,
         float viewportW, float viewportH)

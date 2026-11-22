@@ -1,8 +1,8 @@
 using System;
 
-// digest kernel: particles (perf/CONTRACT.md kernel 3)。
-// struct を使わず class + 配列フィールドの SoA 形で書く (struct 版は particles_struct.cs)
-// (演算列は CONTRACT と同一)。
+// digest kernel: particles (perf/CONTRACT.md kernel 3).
+// Written in SoA form with class + array fields, without structs (the struct version is particles_struct.cs)
+// (the operation sequence is identical to CONTRACT).
 public class Particles
 {
     static int state = 12345;

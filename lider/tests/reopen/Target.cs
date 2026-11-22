@@ -1,4 +1,4 @@
-// tests/reopen で開く file。
+// The file tests/reopen opens.
 public static class ReopenTarget
 {
     public static int One()

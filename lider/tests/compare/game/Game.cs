@@ -1,4 +1,4 @@
-// ../TestCompare.cs が lider で開くゲーム。毎 frame 数を Speed.Of() だけ増やす。
+// The game ../TestCompare.cs opens in lider. Increases the count by Speed.Of() every frame.
 public static class Game
 {
     public static int Count;

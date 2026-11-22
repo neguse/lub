@@ -1,27 +1,37 @@
-/* 状態の保存と読み込み (doc/vm-design.md §13.4)。
-   static と、そこから届く object を、address と layout に依らない byte 列に書く。
-   読む側は同じ形の型を持つ別の VM (別の process でもよい) で、object を作り直して static に入れる。
+/* Saving and loading state (doc/vm-design.md §13.4).
+   Writes statics and the objects reachable from them into a byte array that
+   does not depend on addresses or layout. The reader is another VM (even in
+   another process) with types of the same shape; it recreates the objects and
+   stores them into statics.
 
-   byte 列 (little endian):
-     u32 magic、u32 版
-     型の表: u32 数、型ごとに 名前、u8 種類、形
-       class / struct: u8 host の値を持つか、u32 field の数、field ごとに 名前、u8 種類、u32 struct の型 (struct の field だけ)、
-         宣言した型の名前 (参照の field だけ)
-       配列 / List / box: u8 要素の種類、u32 要素の struct の型
-       Dictionary: u8 key の種類、u8 値の種類、u32 値の struct の型
-     object の頭: u32 数、object ごとに u32 型、u32 数 (配列と List と Dictionary は要素、string は byte、closure は捕捉)、
-       string は byte 列、closure は関数の名前
-     object の中身: 頭と同じ順
-     static: u32 数、static ごとに 名前、u8 種類、u32 struct の型、宣言した型の名前 (参照の static だけ)、値
-     検査の通し番号: u32 数、組ごとに u32 object の番号、u64 通し番号 (検査が番号を振った object だけ)
-   値は int と float が 4 byte、bool が 1 byte、参照が u32 (object の番号 + 1。0 は null)、struct は field の順。
-   名前は u32 の長さと byte 列。
+   Byte array (little endian):
+     u32 magic, u32 version
+     Type table: u32 count, then per type: name, u8 kind, shape
+       class / struct: u8 whether it has a host value, u32 field count, then per
+   field: name, u8 kind, u32 struct type (struct fields only), declared type
+   name (reference fields only) array / List / box: u8 element kind, u32 element
+   struct type Dictionary: u8 key kind, u8 value kind, u32 value struct type
+     Object headers: u32 count, then per object: u32 type, u32 count (elements
+   for arrays, List, and Dictionary, bytes for string, captures for closure),
+       the bytes for string, the function name for closure
+     Object contents: in the same order as the headers
+     statics: u32 count, then per static: name, u8 kind, u32 struct type,
+   declared type name (reference statics only), value Inspection serial numbers:
+   u32 count, then per pair: u32 object index, u64 serial number (only objects
+   that inspection assigned a number to) Values: int and float are 4 bytes, bool
+   is 1 byte, references are u32 (object index + 1; 0 is null), structs are in
+   field order. Names are a u32 length and bytes.
 
-   読み込みは、型を名前で今の module の型に対応させる。class と struct の形が違えば、reload の計画 (doc/object-model.md §6) と同じ決まりで移す:
-   field を名前で対応させ、種類と型の名前が同じなら状態の値、違えば 0 の値、状態に無い field は 0 の値から initializer、今の型に無い field は読み捨てる。
-   参照の先が置き場所の型に合うこと、closure の関数が関数型に合うことを確かめる。
-   確かめ終わるまで static に触らないので、断ったときは状態は変わらない。
-   host の handle が持つ object は書かない (読み込んだ後も handle は前の object を指す)。 */
+   Loading matches types by name to the types of the current module. If the
+   shape of a class or struct differs, it is migrated by the same rules as the
+   reload plan (doc/object-model.md §6): fields are matched by name; if the kind
+   and type name are the same they get the state value, otherwise the zero
+   value; fields not in the state get the zero value and then their initializer;
+   fields not in the current type are skipped. Checks that reference targets fit
+   the type of their location and that closure functions fit their function
+   type. Statics are not touched until the checks finish, so on rejection the
+   state is unchanged. Objects held by host handles are not written (after
+   loading, the handles still point to the previous objects). */
 #include "tcsvm_internal.h"
 
 #include <stdio.h>
@@ -33,7 +43,7 @@
 #define NONE 0xFFFFFFFFu
 #define NAME_MAX_LEN 1024u
 
-/* ---- 書く ---- */
+/* ---- Writing ---- */
 
 typedef struct Buf {
   uint8_t *p;
@@ -89,12 +99,13 @@ static void put_str(Buf *b, const char *s) {
 typedef struct Save {
   TvmVm *vm;
   Buf heads, bodies, statics, types;
-  uint32_t *type_at; /* VM の型 → 状態の型の番号 (NONE はまだ) */
-  uint16_t *type_of; /* 状態の型の番号 → VM の型 */
+  uint32_t *type_at; /* VM type → state type number (NONE means not yet) */
+  uint16_t *type_of; /* State type number → VM type */
   uint32_t ntypes;
-  void **objs; /* 番号 → object (見つけた順。後ろへ積み、前から書く) */
+  void **objs; /* Index → object (in the order found; pushed at the back,
+                  written from the front) */
   uint32_t nobjs, capobjs;
-  void **seen_keys; /* object → 番号 (open addressing) */
+  void **seen_keys; /* object → index (open addressing) */
   uint32_t *seen_vals;
   uint32_t seen_cap;
   const char *error;
@@ -140,7 +151,8 @@ static bool seen_grow(Save *sv) {
   return true;
 }
 
-/* 参照の値: object の番号 + 1 (初めて見た object は列の後ろへ積む) */
+/* Reference value: object index + 1 (an object seen for the first time is
+ * pushed at the back of the list) */
 static uint32_t save_ref(Save *sv, void *p) {
   if (!p || sv->error)
     return 0;
@@ -174,7 +186,7 @@ static uint32_t save_ref(Save *sv, void *p) {
   return sv->nobjs;
 }
 
-/* register か static の 1 値 */
+/* One value of a register or static */
 static void save_slot(Save *sv, Buf *b, uint8_t kind, TvmSlot s) {
   switch (kind) {
   case TVM_K_I32:
@@ -192,7 +204,7 @@ static void save_slot(Save *sv, Buf *b, uint8_t kind, TvmSlot s) {
   }
 }
 
-/* object の中の値 (field、要素) */
+/* A value inside an object (field, element) */
 static void save_value(Save *sv, Buf *b, uint8_t kind, uint16_t type,
                        const char *mem) {
   switch (kind) {
@@ -289,7 +301,7 @@ static void save_object(Save *sv, void *p) {
   }
 }
 
-/* 参照の置き場所が宣言した型の名前 (型を持たない置き場所は "") */
+/* The declared type name of a reference location ("" for untyped locations) */
 static const char *declared_name(const TvmVm *vm, uint16_t type) {
   return type < vm->ntypes ? vm->types[type].name : "";
 }
@@ -395,7 +407,8 @@ TvmStatus tvm_state_save(TvmVm *vm, uint8_t **bytes, size_t *size) {
     put(&out, sv.heads.p, sv.heads.n);
     put(&out, sv.bodies.p, sv.bodies.n);
     put(&out, sv.statics.p, sv.statics.n);
-    /* 検査が振った通し番号を運ぶ (読み込んだ先で、同じ個体が同じ id になる) */
+    /* Carries the serial numbers assigned by inspection (so that the same
+     * individual gets the same id where it is loaded) */
     uint32_t nids = 0;
     for (uint32_t i = 0; i < sv.nobjs; i++)
       if (tvm_debug_id_peek(vm, sv.objs[i]))
@@ -433,7 +446,7 @@ TvmStatus tvm_state_save(TvmVm *vm, uint8_t **bytes, size_t *size) {
 
 void tvm_state_free(uint8_t *bytes) { free(bytes); }
 
-/* ---- 読む ---- */
+/* ---- Reading ---- */
 
 static void slot_to_mem(uint8_t kind, TvmSlot s, char *p) {
   switch (kind) {
@@ -457,19 +470,23 @@ typedef struct StaticValue {
   TvmSlot value;
 } StaticValue;
 
-/* 状態の class / struct の field。to は今の型の field の番号 (値を移さない field は -1) */
+/* A field of a class / struct in the state. to is the field index in the
+ * current type (-1 for fields whose values are not moved) */
 typedef struct SavedField {
   uint8_t kind;
-  uint32_t st; /* struct の field の、状態の型の番号 */
+  uint32_t st; /* State type number of a struct field */
   int32_t to;
 } SavedField;
 
-/* 状態の型の形。class / struct は field、容器は要素の struct の型 */
+/* Shape of a state type. Fields for class / struct, the element struct type for
+ * containers */
 typedef struct SavedType {
   SavedField *fields;
   uint32_t nfields;
-  uint32_t elem_st; /* 要素が struct の容器の、状態の型の番号 */
-  /* 今の型の field のうち、状態から値を移さなかった物 (class だけ。読み込んだ後に initializer を走らせる) */
+  uint32_t
+      elem_st; /* State type number of a container whose elements are structs */
+  /* Fields of the current type whose values were not moved from the state
+   * (class only; their initializers run after loading) */
   uint32_t *fresh;
   uint32_t nfresh;
 } SavedType;
@@ -478,15 +495,16 @@ typedef struct Load {
   TvmVm *vm;
   TcsReader r;
   uint32_t ntypes;
-  uint16_t *types;   /* 状態の型の番号 → VM の型 */
-  SavedType *shapes; /* 状態の型の番号 → 状態の形 */
-  /* 容器の要素の struct の型の対応を後で確かめる組 (状態の型の番号、VM の型) */
+  uint16_t *types;   /* State type number → VM type */
+  SavedType *shapes; /* State type number → state shape */
+  /* Pairs (state type number, VM type) for checking the element struct type
+   * mapping of containers later */
   uint32_t *check_state;
   uint16_t *check_vm;
   uint32_t nchecks, capchecks;
   uint32_t nobjs;
   void **objs;
-  uint32_t *obj_types; /* object の、状態の型の番号 */
+  uint32_t *obj_types; /* State type number of each object */
   uint32_t *counts;
   StaticValue *statics;
   uint32_t nstatics, capstatics;
@@ -515,7 +533,7 @@ static uint64_t rd_u64(TcsReader *r) {
   return lo | ((uint64_t)tcs_rd_u32(r) << 32);
 }
 
-/* 名前を buf に読む (終端の 0 を付ける) */
+/* Reads a name into buf (with a terminating 0) */
 static bool rd_name(Load *ld, char *buf) {
   uint32_t n = tcs_rd_u32(&ld->r);
   if (ld->r.bad || n >= NAME_MAX_LEN || (size_t)(ld->r.end - ld->r.p) < n)
@@ -544,7 +562,8 @@ static bool load_check(Load *ld, uint32_t state_type, uint16_t vm_type) {
   return true;
 }
 
-/* 要素の種類と struct の型が今の型と同じか */
+/* Whether the element kind and struct type are the same as in the current type
+ */
 static bool load_elem_shape(Load *ld, uint32_t i, const TvmType *t) {
   uint8_t kind = tcs_rd_u8(&ld->r);
   uint32_t st = tcs_rd_u32(&ld->r);
@@ -603,7 +622,8 @@ static bool load_types(Load *ld) {
         sf->to = -1;
         if (ld->r.bad || sf->kind > TVM_K_STRUCT)
           return lfail(ld, "%s", "truncated state");
-        /* 名前で対応させ、種類と型の名前が同じなら値を移す (struct の型は、全部の型を読んでから確かめる) */
+        /* Matches by name, and moves the value if the kind and type name are
+         * the same (struct types are checked after all types are read) */
         for (uint32_t j = 0; j < t->nfields && sf->to < 0; j++)
           if (strcmp(field, t->fields[j].name) == 0 &&
               t->fields[j].kind == sf->kind)
@@ -644,8 +664,9 @@ static bool load_types(Load *ld) {
         ld->types[ld->check_state[i]] != ld->check_vm[i])
       return lfail(ld, "type %s has a different struct inside",
                    vm->types[ld->check_vm[i]].name);
-  /* struct の field は、状態の struct の型が今の field の型に対応するときだけ値を移す。
-     今の class の field のうち値を移さない物を、initializer を走らせる field として覚える */
+  /* A struct field's value is moved only when the state struct type maps to the
+     type of the current field. Fields of the current class whose values are not
+     moved are recorded as fields whose initializers run */
   for (uint32_t i = 0; i < ld->ntypes; i++) {
     SavedType *shape = &ld->shapes[i];
     const TvmType *t = &vm->types[ld->types[i]];
@@ -677,7 +698,8 @@ static bool load_types(Load *ld) {
   return true;
 }
 
-/* 参照を読む。置き場所の型 (TVM_NO_TYPE は任意) に合わない object は断る */
+/* Reads a reference. Objects that do not fit the type of the location
+ * (TVM_NO_TYPE means any) are rejected */
 static bool load_ref(Load *ld, uint16_t type, void **out) {
   uint32_t at = tcs_rd_u32(&ld->r);
   void *unused;
@@ -723,8 +745,9 @@ static bool load_slot(Load *ld, uint8_t kind, uint16_t type, TvmSlot *s) {
 
 static bool load_fields(Load *ld, uint32_t st, char *mem);
 
-/* object の中の値 (field、要素) を読む。kind は状態の種類、st は struct の値の状態の型の番号、type は参照の置き場所の型。
-   mem が NULL なら読み捨てる */
+/* Reads a value inside an object (field, element). kind is the state kind, st
+   is the state type number of a struct value, type is the type of the reference
+   location. If mem is NULL, the value is skipped */
 static bool load_value(Load *ld, uint8_t kind, uint32_t st, uint16_t type,
                        char *mem) {
   switch (kind) {
@@ -757,8 +780,10 @@ static bool load_value(Load *ld, uint8_t kind, uint32_t st, uint16_t type,
   return !ld->r.bad || lfail(ld, "%s", "truncated state");
 }
 
-/* 状態の型 st の class / struct の field を、状態の並びで読み、今の型の field へ移す (移さない field は読み捨てる)。
-   mem は今の型の値の先頭 (NULL なら全部を読み捨てる) */
+/* Reads the fields of the class / struct of state type st in state order and
+   moves them to the fields of the current type (fields not moved are skipped).
+   mem is the start of the value of the current type (if NULL, everything is
+   skipped) */
 static bool load_fields(Load *ld, uint32_t st, char *mem) {
   if (st >= ld->ntypes)
     return lfail(ld, "%s", "a value has a bad type");
@@ -777,7 +802,8 @@ static bool load_fields(Load *ld, uint32_t st, char *mem) {
   return true;
 }
 
-/* object を作る。中身は後で入れる (string だけはここで入れる。Dictionary の key の hash が読む) */
+/* Creates an object. Contents are filled in later (only strings are filled in
+ * here, because Dictionary key hashing reads them) */
 static bool load_heads(Load *ld) {
   TvmVm *vm = ld->vm;
   char name[NAME_MAX_LEN];
@@ -941,9 +967,10 @@ static bool load_static(Load *ld, uint32_t slot, uint8_t kind, uint16_t type,
   return true;
 }
 
-/* struct の static の葉を、状態の型 st の field の並びで読む。
-   root は static の今の struct の型、base は読んでいる struct の値の root の中の offset、slot は static の先頭の slot。
-   keep が false なら読み捨てる */
+/* Reads the leaves of a struct static in the field order of state type st.
+   root is the current struct type of the static, base is the offset within root
+   of the struct value being read, slot is the first slot of the static. If keep
+   is false, they are skipped */
 static bool load_static_struct(Load *ld, uint32_t st, const TvmType *root,
                                uint32_t base, uint32_t slot, bool keep) {
   if (st >= ld->ntypes)
@@ -961,7 +988,7 @@ static bool load_static_struct(Load *ld, uint32_t st, const TvmType *root,
         return false;
       continue;
     }
-    /* 今の field の葉 (root の中の同じ offset の葉) */
+    /* The leaf of the current field (the leaf at the same offset in root) */
     uint32_t leaf = root->nleaves;
     for (uint32_t l = 0; moved && l < root->nleaves && leaf == root->nleaves;
          l++)
@@ -975,7 +1002,9 @@ static bool load_static_struct(Load *ld, uint32_t st, const TvmType *root,
   return true;
 }
 
-/* static を名前で対応させて読む。今の module に無い static と、種類か型の変わった static の値は読み捨てる (今の値のまま残る) */
+/* Reads statics matched by name. Values of statics not in the current module
+ * and of statics whose kind or type changed are skipped (they keep their
+ * current values) */
 static bool load_statics(Load *ld) {
   TvmVm *vm = ld->vm;
   char name[NAME_MAX_LEN], declared[NAME_MAX_LEN];
@@ -1001,7 +1030,7 @@ static bool load_statics(Load *ld) {
       keep = keep && strcmp(declared, declared_name(vm, f->type)) == 0;
     }
     if (kind != TVM_K_STRUCT) {
-      /* 読み捨てる参照は置き場所の型を持たない */
+      /* References being skipped have no location type */
       if (!load_static(ld, keep ? f->slot : 0, kind,
                        keep ? f->type : TVM_NO_TYPE, keep))
         return false;
@@ -1015,15 +1044,19 @@ static bool load_statics(Load *ld) {
   return true;
 }
 
-/* 状態から値を移さなかった class の field (足した field と、種類か型の変わった field) に、initializer の値を入れる。
-   initializer は `型.<init>field` の関数 (引数を取らず field の値を返す)。無い field は 0 の値のまま。
-   fault は警告にして (vm->error に残す)、その field は 0 の値のままにする */
+/* Puts initializer values into class fields whose values were not moved from
+   the state (added fields and fields whose kind or type changed). The
+   initializer is the function `Type.<init>field` (it takes no arguments and
+   returns the field value). Fields without one keep the zero value. A fault
+   becomes a warning (kept in vm->error), and that field keeps the zero value */
 static void run_initializers(Load *ld) {
   TvmVm *vm = ld->vm;
   char name[NAME_MAX_LEN * 2 + 16];
   char warnings[sizeof vm->error];
   warnings[0] = '\0';
-  /* initializer の確保で回収が起きても、static から届かない object (読み捨てた field だけが指していた物) が消えないよう、root に積む */
+  /* Pushes objects onto the root so that objects not reachable from statics
+   * (those pointed to only by skipped fields) do not disappear even if an
+   * initializer's allocation triggers a collection */
   size_t need = 0;
   for (uint32_t i = 0; i < ld->nobjs; i++)
     need += ld->shapes[ld->obj_types[i]].nfresh ? 1 : 0;
@@ -1032,7 +1065,8 @@ static void run_initializers(Load *ld) {
   if (vm->capreload_roots < need) {
     void **roots = (void **)realloc(vm->reload_roots, need * sizeof(void *));
     if (!roots)
-      return; /* initializer を走らせない (field は 0 の値のまま) */
+      return; /* Does not run the initializer (the field keeps the zero value)
+               */
     vm->reload_roots = roots;
     vm->capreload_roots = need;
   }
@@ -1090,7 +1124,8 @@ TvmStatus tvm_state_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
     ok = lfail(&ld, "%s", "not a state of this format");
   ok = ok && load_types(&ld) && load_heads(&ld) && load_bodies(&ld) &&
        load_statics(&ld);
-  /* 検査の通し番号は、確かめ終わってから付ける (ids は byte 列の中の組の始まり) */
+  /* Inspection serial numbers are attached after the checks finish (ids is the
+   * start of the pairs in the byte array) */
   const uint8_t *ids = NULL;
   uint32_t nids = 0;
   if (ok) {
@@ -1106,14 +1141,16 @@ TvmStatus tvm_state_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
   if (ok && ld.r.p != ld.r.end)
     ok = lfail(&ld, "%s", "the state has extra bytes");
   if (ok) {
-    /* ここからは失敗しない。作った object は static から届き、前の object は次の回収で消える */
+    /* Nothing fails from here on. The created objects are reachable from
+     * statics, and the previous objects disappear at the next collection */
     for (uint32_t i = 0; i < ld.nstatics; i++)
       vm->statics[ld.statics[i].slot] = ld.statics[i].value;
     ld.r.p = ids;
     for (uint32_t i = 0; i < nids; i++) {
       uint32_t at = tcs_rd_u32(&ld.r);
       uint64_t id = rd_u64(&ld.r);
-      /* 弱く覚えた object (tvm_inspect_pin) は、同じ番号の作り直した object へ付け替える */
+      /* Weakly pinned objects (tvm_inspect_pin) are moved to the recreated
+       * object with the same number */
       for (uint32_t k = 0; k < vm->npinned; k++)
         if (vm->pinned[k].p && tvm_debug_id_peek(vm, vm->pinned[k].p) == id)
           vm->pinned[k].p = ld.objs[at];

@@ -1,5 +1,5 @@
-// file の窓を 1 枚も開いていないうちから、窓が使う shader を宣言しておく。
-// 初めて file を開いた frame で shader を作り始めると、その frame が作る間だけ止まる。
+// The shaders the windows use are declared before any file window is open.
+// If shader creation starts on the frame that first opens a file, that frame stalls while they are created.
 using System;
 using Lub;
 using LiderCore;

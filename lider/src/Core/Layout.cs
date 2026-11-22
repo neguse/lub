@@ -1,6 +1,6 @@
-// 配置の規則: スクリーンの上にウィンドウを並べる。
-// ウィンドウの順番とスクリーンの大きさから、各ウィンドウの面の上の位置 (Position の X と Y) と大きさ (Size) を決める。
-// 奥行き (Position の Z) は変えない。
+// Arrangement rules: lay out windows on a screen.
+// From the window order and the screen size, determines each window's position on the surface (X and Y of Position) and size (Size).
+// Depth (Z of Position) is not changed.
 using System;
 using Lub;
 
@@ -9,28 +9,28 @@ namespace LiderCore;
 public interface ILayout
 {
     void Arrange(Screen screen);
-    // window の端のうち、引いて大きさを変えられる物 (右なら 1、下なら 2 の和)
+    // Edges of window that can be dragged to resize (sum of 1 for right and 2 for bottom)
     int Edges(Screen screen, Window window);
-    // window の幅を dx、高さを dy メートルだけ大きくする (負なら小さくする)。どの境目を動かすかは、規則が決める
+    // Grows window's width by dx and height by dy meters (shrinks it if negative). The rule decides which boundary moves
     void Grow(Screen screen, Window window, float dx, float dy);
-    // 規則への知らせ (規則ごとの設定を変える)。知らない知らせは何もせず false を返す
+    // A message to the rule (changes per-rule settings). Unknown messages do nothing and return false
     bool Tell(string message);
 }
 
-// 知らせの名前
+// Message names
 public static class LayoutMessage
 {
-    // 先頭に 1 枚ずつ並べるウィンドウを増やす、減らす
+    // Increase or decrease the number of leading windows laid out one per column
     public const string MoreMains = "mains+";
     public const string FewerMains = "mains-";
 }
 
-// 横一列。ウィンドウは自分の大きさ (Window.UnscaledSize と Scale) を持ち、間を Gap だけ空けて左から並べる。
-// Screen.Origin のウィンドウ (無ければ最初のウィンドウ) の真ん中を、スクリーンの真ん中に置く。
-// つかんでいるウィンドウ (Screen.Held) は動かさず、隣のウィンドウの真ん中を越えたら並びを入れ替える
+// A single horizontal row. Windows keep their own size (Window.UnscaledSize and Scale) and are laid out from the left with Gap between them.
+// The center of the Screen.Origin window (the first window if none) is placed at the center of the screen.
+// The held window (Screen.Held) is not moved, and when it crosses the center of a neighboring window they swap places in the order
 public class Strip : ILayout
 {
-    // ウィンドウどうしの間 (メートル)
+    // Gap between windows (meters)
     public const float Gap = 0.06f;
 
     public void Arrange(Screen screen)
@@ -46,7 +46,7 @@ public class Strip : ILayout
             else if (at > 0 && windows[at - 1].Position != null && x < windows[at - 1].Position!.Value.X)
                 Swap(windows, at, at - 1);
         }
-        // 最初のウィンドウの真ん中を 0 として並べたときの、Origin の真ん中
+        // Center of Origin when laid out with the first window's center at 0
         var origin = 0.0f;
         var right = 0.0f;
         for (var i = 0; i < windows.Count; i++)
@@ -72,7 +72,7 @@ public class Strip : ILayout
         }
     }
 
-    // 自分の大きさを持つのは Code のウィンドウ
+    // Code windows are the ones with their own size
     public int Edges(Screen screen, Window window)
     {
         return window.Content is Code ? 3 : 0;
@@ -99,8 +99,8 @@ public class Strip : ILayout
     }
 }
 
-// スクリーンを区画に割る規則が共通に使う: 区画の真ん中と大きさを、並びの順にウィンドウへ割り当てる。
-// つかんでいるウィンドウ (Screen.Held) は動かさず、その真ん中がほかの区画に入ったら、その区画のウィンドウと並びを入れ替える
+// Shared by rules that split the screen into cells: assigns cell centers and sizes to windows in order.
+// The held window (Screen.Held) is not moved, and when its center enters another cell it swaps places in the order with that cell's window
 public static class Tiles
 {
     public static void Assign(Screen screen, System.Collections.Generic.List<Vec2> centers, System.Collections.Generic.List<Vec2> sizes)
@@ -129,7 +129,7 @@ public static class Tiles
     }
 }
 
-// ウィンドウを並べた順に、列 (Rows なら行) に等分して出す
+// Shows windows in order, split evenly into columns (rows with Rows)
 public class Even : ILayout
 {
     public bool Rows;
@@ -164,19 +164,19 @@ public class Even : ILayout
     }
 }
 
-// 先頭の Mains 枚を、左から 1 枚ずつの列に並べ、残りを右の端の列に上から積む。
-// 列の幅と、積んだウィンドウの高さは、重み (Widths、Heights) の割合で分ける。重みを書いていない所は、書いてある重みの平均にする。
-// 残りが無ければ、先頭のウィンドウだけでスクリーンを分ける
+// Lays out the first Mains windows from the left, one per column, and stacks the rest from the top in the rightmost column.
+// Column widths and stacked window heights are divided by weight ratios (Widths, Heights). Where no weight is given, the average of the given weights is used.
+// If there are no remaining windows, the leading windows alone divide the screen
 public class MainStack : ILayout
 {
     public int Mains = 1;
-    // 列の幅の重み (左から)、積んだウィンドウの高さの重み (上から)
+    // Column width weights (from the left) and stacked window height weights (from the top)
     public System.Collections.Generic.List<float> Widths = new System.Collections.Generic.List<float>();
     public System.Collections.Generic.List<float> Heights = new System.Collections.Generic.List<float>();
-    // 1 つの列、1 枚のウィンドウに残す割合の下限
+    // Minimum ratio left to one column or one window
     const float MinShare = 0.1f;
 
-    // 1 枚ずつの列に並べる枚数と、列の数 (積む列も 1 つに数える)
+    // Number of windows laid out one per column, and the number of columns (the stack column counts as one)
     static int MainsOf(int mains, int n)
     {
         return System.Math.Max(0, System.Math.Min(mains, n));
@@ -187,7 +187,7 @@ public class MainStack : ILayout
         return MainsOf(mains, n) + (n > MainsOf(mains, n) ? 1 : 0);
     }
 
-    // 重み weights の先頭 n 個の割合。重みを書いていない所は、書いてある重みの平均 (1 つも無ければ等分) にする
+    // Ratios of the first n weights in weights. Where no weight is given, the average of the given weights is used (an equal split if none is given)
     static System.Collections.Generic.List<float> Shares(System.Collections.Generic.List<float> weights, int n)
     {
         var known = 0.0f;
@@ -241,7 +241,7 @@ public class MainStack : ILayout
         Tiles.Assign(screen, centers, sizes);
     }
 
-    // 右の端を引けるのは、右に列があるウィンドウ。下の端を引けるのは、下にウィンドウが積んであるウィンドウ
+    // The right edge can be dragged on windows with a column to their right. The bottom edge can be dragged on windows with a window stacked below them
     public int Edges(Screen screen, Window window)
     {
         var n = screen.Windows.Count;
@@ -253,7 +253,7 @@ public class MainStack : ILayout
         return (column + 1 < ColumnsOf(Mains, n) ? 1 : 0) + (at >= mains && at + 1 < n ? 2 : 0);
     }
 
-    // 横は、window の列の右の境目を動かす (右の端の列は、左の境目を動かす)。縦は、積んだウィンドウの下の境目を動かす (一番下は、上の境目を動かす)
+    // Horizontally, moves the right boundary of window's column (for the rightmost column, the left boundary). Vertically, moves the bottom boundary of the stacked window (for the bottom one, the top boundary)
     public void Grow(Screen screen, Window window, float dx, float dy)
     {
         var n = screen.Windows.Count;
@@ -269,7 +269,7 @@ public class MainStack : ILayout
             Heights = Moved(Shares(Heights, n - mains), at - mains, dy / screen.Size.Y);
     }
 
-    // at 番目を by (全体に対する割合) だけ大きくし、その分を隣 (次。最後なら前) から取った割合
+    // Ratios after growing the at-th entry by by (a ratio of the whole) and taking that amount from its neighbor (the next one, or the previous one if it is the last)
     static System.Collections.Generic.List<float> Moved(System.Collections.Generic.List<float> shares, int at, float by)
     {
         var other = at + 1 < shares.Count ? at + 1 : at - 1;
@@ -292,13 +292,13 @@ public class MainStack : ILayout
     }
 }
 
-// スクリーンの端から、ウィンドウを縦に積む。大きさは、ウィンドウが持っている物のまま。
-// 横は AlignX (-1 左の端、0 真ん中、1 右の端) に寄せ、縦は FromTop なら上の端から下へ、そうでなければ下の端から上へ積む
+// Stacks windows vertically from a screen edge. Sizes stay as the windows have them.
+// Horizontally aligned by AlignX (-1 left edge, 0 center, 1 right edge); vertically stacked downward from the top edge if FromTop, otherwise upward from the bottom edge
 public class Stack : ILayout
 {
     public float AlignX = 1;
     public bool FromTop;
-    // 端とウィンドウの間、ウィンドウどうしの間
+    // Gap between the edge and windows, and between windows
     public float Margin = 0.03f;
 
     public void Arrange(Screen screen)
@@ -326,7 +326,7 @@ public class Stack : ILayout
     }
 }
 
-// focus のある (無ければ最初の) ウィンドウだけを、スクリーンいっぱいに出す。ほかのウィンドウは出さない
+// Shows only the focused window (the first if none), filling the screen. Other windows are not shown
 public class Full : ILayout
 {
     public void Arrange(Screen screen)

@@ -1,11 +1,11 @@
-// tests/cs の runtime テストに共通の判定。
-// 最初の失敗を出して終了コード 1 で終わる。
-// 全部通ったら Check.Pass() で PASS を出して終了コード 0 で終わる。
+// Common checks for the tests/cs runtime tests.
+// Prints the first failure and exits with exit code 1.
+// If everything passes, Check.Pass() prints PASS and exits with exit code 0.
 //
-// 期待するエラーは Check.Error(what, want) の後に失敗するはずの呼び出しを置く。
-// 呼び出しが失敗すると callback はそこで打ち切られ、entry の OnError (中身は `return Check.OnError(message);`) が message に want が含まれるかを見る。
-// 期待していないエラーは失敗。
-// 呼び出しが通ってしまったら、次の Check.Frame() (OnFrame の頭で呼ぶ) か Check.Pass() が失敗にする。
+// For an expected error, place the call that should fail after Check.Error(what, want).
+// When the call fails, the callback stops there, and the entry's OnError (whose body is `return Check.OnError(message);`) checks whether message contains want.
+// An unexpected error is a failure.
+// If the call succeeds anyway, the next Check.Frame() (called at the start of OnFrame) or Check.Pass() reports a failure.
 using System;
 using Lub;
 
@@ -35,7 +35,7 @@ public static class Check
         Frame();
         if (failed)
             return;
-        // 終了コードを受け取れない web の export の page の検査 (web/scripts/export-page-check.mjs) はこの行で合否を見る
+        // The web export page check (web/scripts/export-page-check.mjs), which cannot receive the exit code, uses this line to decide pass or fail
         Console.WriteLine("PASS");
         App.Quit(0);
     }

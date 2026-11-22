@@ -1,6 +1,6 @@
-// App.Restart の検査: 3 frame 目に呼ぶと、frame の終わりに VM を作り直して OnInit から始め、static は初期値に戻る。
-// 作り直した VM でも、lub が返す object を作れる (型の cache が前の VM の物を使わない)。
-// 作り直しを跨いで残す印は、ゲームの隣の file (Game.cs.restarted) に書く
+// Checks App.Restart: calling it in the 3rd frame recreates the VM at the end of the frame and starts from OnInit, and statics return to their initial values.
+// Objects returned by lub can be created even in the recreated VM (the type cache does not use entries from the previous VM).
+// The marker that survives the recreation is written to a file next to the game (Game.cs.restarted)
 using System;
 using Lub;
 
@@ -29,7 +29,7 @@ public static class Game
     public static void OnFrame(float dt)
     {
         frames++;
-        // 作り直す前から使い、lub の型の cache を埋めておく
+        // Used from before the recreation, to fill the lub type cache
         Sys.TakeTrace();
         if (!second && frames == 3)
         {
@@ -38,7 +38,7 @@ public static class Game
         }
         if (second && frames == 3)
         {
-            // 作り直した VM でも、lub が作って返す object (ここでは List) の型を引き直している
+            // Even in the recreated VM, the type of the object that lub creates and returns (here a List) is looked up again
             if (Sys.TakeTrace() == null)
             {
                 Console.WriteLine("FAIL a list from lub was null after the restart");

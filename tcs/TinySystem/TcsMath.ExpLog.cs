@@ -1,7 +1,7 @@
 namespace TinySystem;
 
-// expf / logf / log2f / powf: runtime/math の expf.c / logf.c / log2f.c /
-// powf.c の C# 版 (musl の Arm 由来、Copyright (c) 2017-2018, Arm Limited.
+// expf / logf / log2f / powf: C# versions of expf.c / logf.c / log2f.c /
+// powf.c in runtime/math (derived from musl's Arm code, Copyright (c) 2017-2018, Arm Limited.
 // SPDX-License-Identifier: MIT)
 internal static partial class TcsMath
 {

@@ -1,9 +1,9 @@
-// インスペクタの行: ゲームの今の値 (lub の Sys.Inspect) と、最近実行したメソッド (TraceLog) を、開いた節だけ辿って並べる。
-// class の下には、そのソースの宣言の順に、メソッド (実行の印) と static のフィールド (値) を並べる。instance の下はフィールドを宣言の順に並べる。
-// 要素が同じ class の instance だけの並び (List と配列) は表にし、1 要素を 1 行、field を列にする。
-// 要素が ChunkSize を超える並びは、ChunkSize ずつの節に区切る。
-// 値は Refresh ごとに引き直し、しばらく (SteadyFrames) 変わらなかった値が変わると、その後 SteadyFrames の間 Glow が立つ。
-// 絞り込み: 全体 / class / 個体 / その下の節。絞り込んだ所の子だけを並べ、パンくず (Crumbs) で上の段に戻る。
+// Inspector lines: lists the game's current values (lub's Sys.Inspect) and recently executed methods (TraceLog), walking only the open nodes.
+// Under a class, methods (with execution marks) and static fields (with values) are listed in the order of declaration in the source. Under an instance, fields are listed in declaration order.
+// Sequences (List and arrays) whose elements are all instances of the same class become a table, with one element per row and fields as columns.
+// Sequences with more than ChunkSize elements are split into nodes of ChunkSize each.
+// Values are looked up again on every Refresh, and when a value that has not changed for a while (SteadyFrames) changes, Glow is set for the following SteadyFrames.
+// Scope: everything / class / instance / a node below it. Only the children of the scoped node are listed, and the breadcrumbs (Crumbs) go back up a level.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -12,36 +12,36 @@ namespace LiderCore;
 
 public class InspectRow
 {
-    // 開閉の key (節の Path、区切りは並びの Path + "#" + 区切りの番号、メソッドは "class.method()")
+    // Key for opening and closing (the node's Path; for a chunk, the sequence's Path + "#" + the chunk index; for a method, "class.method()")
     public string Key = "";
     public int Depth;
     public string Name = "";
-    // instance の個体の Id (それ以外は "")
+    // Id of the instance ("" otherwise)
     public string Id = "";
-    // Id の個体を選んでいるか (InspectView が決める)
+    // Whether the instance with Id is selected (set by InspectView)
     public bool Selected;
-    // 名前と、個体の目印
+    // Name, and the instance mark
     public string Label => Id == "" ? Name : Name + " " + FieldValues.Tag(Id);
     public string Text = "";
-    // 飛ぶ先の宣言の名前 (class と instance は class、field とメソッドは "class.member"。無ければ "")
+    // Name of the declaration to jump to (the class for class and instance, "class.member" for fields and methods; "" if none)
     public string Target = "";
-    // Target の class の file が実行中か (InspectView が決める)
+    // Whether the file of Target's class is executing (set by InspectView)
     public bool Running;
     public bool Openable;
     public bool Open;
-    // 祖先と同じ table (開けない)
+    // The same table as an ancestor (cannot be opened)
     public bool Cycle;
-    // 表の見出しなら列の名前、表の行なら列ごとの値 (無い field は "")。どちらでもなければ null
+    // Column names for a table header, per-column values for a table row ("" for missing fields). null otherwise
     public List<string>? Cells;
     public bool Header;
-    // メソッドの行 (Glow は最近通った強さ)
+    // A method line (Glow is the recent-execution strength)
     public bool Method;
-    // ≫ で絞り込める行 (class、instance、子のある節)
+    // A line that can be scoped into with ≫ (class, instance, node with children)
     public bool Scopable;
-    // Text と Cells の値が変わって光る強さ、メソッドなら最近通った強さ (0 から 1)
+    // Highlight strength from a change in the Text and Cells values, or the recent-execution strength for methods (0 to 1)
     public float Glow;
     public List<float>? CellGlow;
-    // 描いた値 (Text か、表の行の列ごとの値。幅に収まらなかった物は … で終わる。InspectView が決める)
+    // The drawn value (Text, or the per-column values of a table row; values that did not fit the width end with …; set by InspectView)
     public readonly List<string> Shown = new List<string>();
 }
 
@@ -49,7 +49,7 @@ public class InspectTree
 {
     public const int ChunkSize = 100;
     public const int MaxColumns = 8;
-    // 絞り込んだ個体を弱く覚える key (Sys.InspectPin。TraceLog.Take もその個体の分の行を引くのに使う)
+    // Key that weakly holds the scoped instance (Sys.InspectPin; TraceLog.Take also uses it to look up the lines for that instance)
     public const string ScopePin = "lider_scope";
 
     public readonly List<InspectRow> Rows = new List<InspectRow>();
@@ -58,7 +58,7 @@ public class InspectTree
     Workspace? work;
     Search? search;
 
-    // 絞り込み: class (ScopeClass)、個体 (ScopeBase がその Path、ScopeId が Id)、その下の節 (ScopePath)。全体はどれも ""
+    // Scope: class (ScopeClass), instance (ScopeBase is its Path, ScopeId its Id), and a node below it (ScopePath). For everything, all are ""
     public string ScopeClass = "";
     public string ScopeBase = "";
     public string ScopeId = "";
@@ -75,7 +75,7 @@ public class InspectTree
             opened[key] = true;
     }
 
-    // パンくずの名前 (先頭は全体)
+    // Breadcrumb names (the first is everything)
     public List<string> Crumbs()
     {
         var crumbs = new List<string> { "全体" };
@@ -90,7 +90,7 @@ public class InspectTree
         return crumbs;
     }
 
-    // パンくずの i 番目の段に戻る
+    // Goes back to the i-th breadcrumb level
     public void ScopeTo(int i)
     {
         if (i <= 0)
@@ -106,7 +106,7 @@ public class InspectTree
             ScopePath = ScopeBase;
     }
 
-    // 行に絞り込む (class の根は class に、instance は個体に、それ以外の節はその節に)
+    // Scopes into a line (a class root to the class, an instance to the instance, any other node to that node)
     public void Enter(InspectRow row)
     {
         if (!row.Scopable)
@@ -127,7 +127,7 @@ public class InspectTree
         ScopePath = row.Key;
     }
 
-    // path の個体 (class cls、Id id) に絞り込む
+    // Scopes into the instance at path (class cls, Id id)
     public void EnterInstance(string cls, string id, string path)
     {
         ScopeClass = cls;
@@ -137,7 +137,7 @@ public class InspectTree
         Watched.InspectPin(ScopePin, path);
     }
 
-    // 絞り込んだ個体の path が変わった (並びの要素が増減した) ときに、その下の節ごと移す
+    // When the scoped instance's path changes (elements were added to or removed from the sequence), moves the scope along with the node below it
     public void Rebase(string path)
     {
         if (ScopeBase == "" || path == ScopeBase)
@@ -146,20 +146,20 @@ public class InspectTree
         ScopeBase = path;
     }
 
-    // 根から開いた節を辿って Rows を作り直す。
-    // w と search があれば class の下にメソッドを並べ、フィールドを宣言の順にする (無ければ Sys.Inspect の順)
+    // Rebuilds Rows by walking the open nodes from the roots.
+    // With w and search, lists methods under classes and orders fields by declaration (otherwise in Sys.Inspect order)
     public void Refresh(Workspace? w = null, Search? s = null)
     {
         work = w;
         search = s;
         flash.Tick();
         Rows.Clear();
-        // 絞り込んだ個体が回収されるか辿れなくなったら、class に戻す (別の個体へ移らない)
+        // If the scoped instance is collected or no longer reachable, goes back to the class (does not move to another instance)
         if (ScopeId != "" && !Watched.InspectPinned(ScopePin, ScopeId))
             ScopeTo(1);
         if (ScopePath != "")
         {
-            // 個体の下には、その個体で通ったメソッドも並べる (TraceLog はその個体の分の行だけを持つ)
+            // Under an instance, also lists the methods hit on that instance (TraceLog holds only that instance's lines)
             if (ScopePath == ScopeBase)
                 AddMembers(ScopeClass, ScopePath, 0, true);
             else
@@ -175,7 +175,7 @@ public class InspectTree
         }
     }
 
-    // 持ち主の class (owner) の中の節 n を行にする
+    // Turns node n in the owning class (owner) into a line
     void AddNode(InspectNode n, int depth, string owner)
     {
         var root = depth == 0 && ScopeClass == "";
@@ -187,7 +187,7 @@ public class InspectTree
             Name = n.Name,
             Id = n.Type != "" ? n.Id : "",
             Target = target,
-            // 根 (class) の値は class table を短くしたもので、読む所が無い
+            // The value of a root (class) is a shortened class table with nothing worth reading
             Text = root ? "" : n.Text,
             Openable = n.Count > 0 || root,
             Open = (n.Count > 0 || root) && IsOpen(n.Path),
@@ -232,8 +232,8 @@ public class InspectTree
         }
     }
 
-    // class cls の path の節の子を、宣言の順に並べる。methods なら class のメソッドも並べる (実行の印)。
-    // 宣言の見つからないフィールドは後ろに続ける
+    // Lists the children of the node at path of class cls in declaration order. With methods, also lists the class's methods (with execution marks).
+    // Fields whose declaration is not found follow at the end
     void AddMembers(string cls, string path, int depth, bool methods)
     {
         var fields = Watched.Inspect(path, 0, 1000);
@@ -267,8 +267,8 @@ public class InspectTree
                 AddNode(f, depth, cls);
     }
 
-    // class cls の直下の宣言 (メソッドとフィールド。型は除く) を、ソースの順に。
-    // メソッドには最近通った強さを付ける
+    // Direct declarations of class cls (methods and fields, not types), in source order.
+    // Methods get their recent-execution strength
     List<Member> Members(string cls)
     {
         var members = new List<Member>();
@@ -291,8 +291,8 @@ public class InspectTree
         return members;
     }
 
-    // path の宣言ごとの、最近通った強さ (メソッドだけ。それ以外は 0)。
-    // 実行した行は、その行より前で一番近いメソッドに数える (ローカル関数とラムダの中の行は外側のメソッドに数える)
+    // Recent-execution strength per declaration in path (methods only; 0 for others).
+    // An executed line counts toward the nearest method before it (lines in local functions and lambdas count toward the enclosing method)
     public static List<float> MethodGlows(Workspace w, string path, List<Declaration> decls)
     {
         var ages = new List<int>();
@@ -315,7 +315,7 @@ public class InspectTree
         return glows;
     }
 
-    // path の子のうち offset から count 個を、表か木の行にして足す
+    // Adds count children of path starting at offset, as table or tree lines
     void AddRange(string path, int offset, int count, int depth, string owner)
     {
         var children = Watched.Inspect(path, offset, count);
@@ -364,7 +364,7 @@ public class InspectTree
         }
     }
 
-    // 要素の並びで、どの要素も同じ class の instance なら true
+    // true for a sequence whose elements are all instances of the same class
     static bool SameClass(List<InspectNode> children)
     {
         if (children.Count < 2 || children[0].Type == "")
@@ -375,7 +375,7 @@ public class InspectTree
         return true;
     }
 
-    // path の根の class の名前 ("Shelf.Crates[0]" なら "Shelf")
+    // Name of the root class of path ("Shelf" for "Shelf.Crates[0]")
     static string Root(string path)
     {
         var dot = Utf8.IndexOf(path, ".");
@@ -383,7 +383,7 @@ public class InspectTree
     }
 }
 
-// class の直下の宣言と、メソッドなら最近通った強さ
+// A direct declaration of a class and, for methods, its recent-execution strength
 class Member
 {
     public Declaration Decl = new Declaration();

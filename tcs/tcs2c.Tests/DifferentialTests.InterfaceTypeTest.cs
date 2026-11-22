@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// class の interface の検査 (`is I`、`as I`、型 switch)。期待値は同じ program を CoreCLR で実行した stdout
+// Interface checks on classes (`is I`, `as I`, type switch). The expected values are the stdout of running the same program on CoreCLR
 public class InterfaceTypeTestDifferentialTests
 {
     [CFact]

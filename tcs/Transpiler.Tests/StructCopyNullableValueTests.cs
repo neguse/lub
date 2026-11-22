@@ -1,9 +1,9 @@
 namespace TinyCs.Tests;
 
-// struct の T? (S?) の値 (`c ? h.F : null` / `h?.F`) は格納先 h.F の値そのもので、
-// copy 地点 (il-spec §10: 宣言の初期値 / 代入 / 引数 / return / 要素 / field) で
-// 値があれば中の struct を copy する。受けた後に h.F を変えても受けた値は変わらない。
-// 期待値は CoreCLR の実行結果
+// A struct T? (S?) value (`c ? h.F : null` / `h?.F`) is the value of the storage location h.F itself, and
+// at a copy point (il-spec §10: declaration initializer / assignment / argument / return / element / field),
+// the inner struct is copied if there is a value. Changing h.F after receiving it does not change the received value.
+// Expected values are CoreCLR execution results
 public class StructCopyNullableValueTests
 {
     private const string S = """

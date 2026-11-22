@@ -1,5 +1,5 @@
 struct Uniforms {
-  float4 side; // x = 0 で target の左半分、1 で右半分を覆う
+  float4 side; // x = 0 covers the left half of the target, 1 the right half
 };
 ConstantBuffer<Uniforms> u;
 

@@ -3,8 +3,8 @@ namespace TinyCs.Tests;
 
 public class IlForeignTests
 {
-    // C backend へ渡す foreign 関数名も Lua と同じ規則 (namespace を含めた
-    // 小文字パス)
+    // Foreign function names passed to the C backend follow the same rule as Lua (lowercase path
+    // including the namespace)
     [Fact]
     public void NamespacedReferenceStubs_ExportNamespaceQualifiedForeignNames()
     {
@@ -67,8 +67,8 @@ public class IlForeignTests
         Assert.Null(program.ForeignMethods.Single(m => m.Name.EndsWith(".load")).Receiver);
     }
 
-    // Receiver は C backend が class 表を引く名前なので、namespace の中の型でも
-    // 外部 class の IL 名 (namespace 修飾名) と一致させる
+    // Receiver is the name the C backend looks up in the class table, so even for types inside a namespace
+    // it matches the IL name of the external class (the namespace-qualified name)
     [Fact]
     public void NamespacedReferenceStubInstanceMethods_ReceiverMatchesExternalClass()
     {

@@ -1,13 +1,13 @@
 namespace TinyCs.Tests;
 
-// Math.Round / Sign / Tan / Log / Exp と String.IsNullOrEmpty の
-// runtime + facade + allowlist 3点セットを固定する。
+// Pins down, for Math.Round / Sign / Tan / Log / Exp and String.IsNullOrEmpty,
+// the three-piece set of runtime + facade + allowlist.
 public class BclAllowlistExtensionTests
 {
     [Fact]
     public void Math_Round_UsesBankersRounding()
     {
-        // C# Math.Round は MidpointRounding.ToEven (偶数丸め)
+        // C# Math.Round is MidpointRounding.ToEven (round half to even)
         var result = TestHelper.CompileAndRunVm("""
             using System;
             public class T
@@ -69,7 +69,7 @@ public class BclAllowlistExtensionTests
             {
                 public static bool Test() =>
                     Math.Abs(Math.Log(Math.Exp(1.0f)) - 1.0f) < 1e-6f
-                    && Math.Abs(Math.Log(8.0f, 2.0f) - 3.0f) < 1e-6f; // f32 精度
+                    && Math.Abs(Math.Log(8.0f, 2.0f) - 3.0f) < 1e-6f; // f32 precision
             }
             """, "T.Test()");
         Assert.Equal("True", result);

@@ -1,8 +1,8 @@
-// 打って 1 行だけ変わったとき、窓の板は変わった行の帯だけを描き直し、全部を描き直したのと同じ画素になる。
-// 同じ エディタの view を、帯だけを描き直した板と、新しく全部を描いた板で描き、3 つの層の texture を読み戻して比べる。
-// 打たずに lub が使われない resource を捨てる frame の数 (既定 120) より長く待っても、描き直しに使う shader と文字の atlas は残っている (次に打ったときに compile や upload をし直さない)。
-// scroll すると、texture をずらして出てきた行だけを描き直し、新しく全部を描いた板と同じ画素になる。
-// 閉じた窓の板 (閉じる動きの間は描く) は、描き直さずに Declare だけを呼んでも、texture が残る。
+// When typing changes only one line, the window's board redraws only the band of the changed line, and the pixels match a full redraw.
+// The same editor view is drawn on a board that redrew only the band and on a board drawn fully from scratch, and the textures of the 3 layers are read back and compared.
+// Even after waiting without typing for longer than the number of frames after which lub discards unused resources (default 120), the shaders and glyph atlas used for redrawing remain (the next keystroke does not compile or upload them again).
+// Scrolling shifts the texture and redraws only the lines that came into view, and the pixels match a board drawn fully from scratch.
+// The board of a closed window (drawn during the closing animation) keeps its texture even if only Declare is called without redrawing.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -75,7 +75,7 @@ public static class TestRedraw
         }
         if (stableAt == 0)
         {
-            // 文字の atlas が揃う (新しい文字が出なくなる) まで、別の板で描く
+            // Draw on another board until the glyph atlas is complete (no new glyphs appear)
             EditorHost.Step();
             warm!.Prepare(doc!, text!, log);
             if (text!.Version == lastVersion)

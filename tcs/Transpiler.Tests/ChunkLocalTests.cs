@@ -2,7 +2,7 @@ using System.Text;
 
 namespace TinyCs.Tests;
 
-// Math の呼び出し、型の前方参照、多数の型と top-level の local、生成コードの名前と同名のローカル (tcs VM と .NET)
+// Math calls, forward type references, many types and top-level locals, and locals with the same names as names in generated code (tcs VM and .NET)
 public class ChunkLocalTests
 {
     [Fact]
@@ -19,7 +19,7 @@ public class ChunkLocalTests
                     (int)Math.Round(3.5f);
             }
             """;
-        // Round は banker's rounding。Round を含まない式と含む式を別に確かめる
+        // Round is banker's rounding. Expressions without Round and with Round are checked separately
         const string NoRound = """
             using System;
             public class T
@@ -76,7 +76,7 @@ public class ChunkLocalTests
         Assert.Equal("89", TestHelper.CompileAndRunVmProgram([sb.ToString()]));
     }
 
-    // 生成コードが使う名前 (Lua の標準 table、tcs_math、tcs_utf8 など) と同名のローカル
+    // Locals with the same names as names that generated code uses (Lua standard tables, tcs_math, tcs_utf8, etc.)
     [Fact]
     public void LocalsNamedLikeLuaStdGlobals_DoNotShadowEmittedCalls()
     {
@@ -103,8 +103,8 @@ public class ChunkLocalTests
     [Fact]
     public void LocalsNamedTcsMath_DoNotShadowMathModule()
     {
-        // 超越関数の呼び出し先 (host が登録する global の tcs_math) と同名の
-        // 引数・ローカル (#214)
+        // Same name as the transcendental call target (the global tcs_math that the host registers):
+        // parameters and locals (#214)
         const string Source = """
             public class T
             {

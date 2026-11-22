@@ -19,5 +19,5 @@ _Static_assert(FLT_RADIX == 2 && FLT_MANT_DIG == 24,
 #if FLT_EVAL_METHOD != 0
 #error "tcs2c strict mode requires FLT_EVAL_METHOD == 0"
 #endif
-/* runtime prelude は使われない helper を含む */
+/* The runtime prelude contains unused helpers */
 #pragma GCC diagnostic ignored "-Wunused-function"

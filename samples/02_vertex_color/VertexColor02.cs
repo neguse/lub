@@ -1,5 +1,5 @@
-// lub の samples/02_vertex_color の entry。
-// 実行: lub samples/02_vertex_color/VertexColor02.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/02_vertex_color.
+// Run: lub samples/02_vertex_color/VertexColor02.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;
 using Lub;

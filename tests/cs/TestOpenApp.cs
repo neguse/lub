@@ -1,13 +1,13 @@
-// App.Use / App.Step: 同じ process に別の app を開き、その絵を texture で受け取る。
-// TestOpenApp が TestOpenAppChild を同じ bytecode から開き、毎 frame 進めて、描かせた texture を読み戻す。
-// 開かれた app は自分の VM を持つので、static は開いた側と別になる。
-// module の隣に置いた build の診断 (.errors) が、開いた app の Status に入る。
+// App.Use / App.Step: opens another app in the same process and receives its image as a texture.
+// TestOpenApp opens TestOpenAppChild from the same bytecode, advances it every frame, and reads back the texture it drew.
+// The opened app has its own VM, so its statics are separate from those of the opener.
+// Build diagnostics (.errors) placed next to the module go into the Status of the opened app.
 using System;
 using Lub;
 
 public static class TestOpenAppShared
 {
-    // 開いた側だけが書く。開かれた app からは初期値のまま見える
+    // Only the opener writes it. The opened app sees its initial value
     public static int Mark;
 }
 
@@ -15,17 +15,17 @@ public static class TestOpenAppChild
 {
     static int frame;
 
-    // frame k の main の赤
+    // The red of main at frame k
     public static int Red(int k) { return (k % 4) * 64; }
 
     public static void OnFrame(float dt)
     {
         Gfx.Size(out var w, out var h);
-        // 緑は main の大きさが target の大きさか、青は開いた側の static が見えていないか
+        // Green tells whether the size of main is the target size, blue whether the opener's static is invisible
         var green = w == 8 && h == 4 ? 1.0f : 0.0f;
         var blue = TestOpenAppShared.Mark == 0 ? 0.0f : 1.0f;
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { Red(frame) / 255.0f, green, blue, 1.0f } });
-        // 開かれた app の Ui.* は何もしない
+        // Ui.* in the opened app does nothing
         Ui.Text("ignored");
         Ui.Render();
         Gfx.EndPass();
@@ -58,7 +58,7 @@ public static class TestOpenApp
         Check.That(rt != null, "UseTexture failed");
         if (rt == null) return;
         var child = App.Use("child", "tests/cs/.lub/all.tcsb", "TestOpenAppChild");
-        // module の隣に置いた build の診断は、次の Step で開いた app の Status に入り、file は消える
+        // Build diagnostics placed next to the module go into the Status of the opened app at the next Step, and the file is removed
         if (frame == 3)
             Io.SaveText("tests/cs/.lub/all.errors", "Child.cs(1,1): error: boom");
         Check.That(App.Step(child, rt, dt), $"frame {frame}: Step failed");

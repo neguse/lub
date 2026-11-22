@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# lub check <entry> が、窓を開かずゲームも走らせずに C# を検査し、終了コードで答えることを見る。
-# 使い方: scripts/test-lub-check.sh [lub binary]
+# Checks that lub check <entry> checks the C# without opening a window or running the game, and answers with the exit code.
+# Usage: scripts/test-lub-check.sh [lub binary]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 binary="${1:-./build-release-linux/lub}"
@@ -13,7 +13,7 @@ if [[ -z "$tcs_dll" ]]; then
   exit 1
 fi
 export LUB_TCS="dotnet $tcs_dll"
-# 画面が無くても動くこと
+# Must work without a display
 unset DISPLAY WAYLAND_DISPLAY
 
 fail() {
@@ -22,7 +22,7 @@ fail() {
   exit 1
 }
 
-# サブディレクトリの .cs、cs-lib の実装 (Lubx)、stub (Lub) を入力に含むので通る
+# Passes because the inputs include the .cs in subdirectories, the cs-lib implementation (Lubx) and the stub (Lub)
 mkdir -p "$work/good/sub"
 touch "$work/good/Good.csproj"
 cat >"$work/good/Good.cs" <<'CS'

@@ -1,8 +1,8 @@
-// Ctrl+P で file を作り、Alt+Delete で消す。
-//   - 新しい型の名前を打つと候補の最後に「作る」が出て、確定すると型の宣言だけの file を作って開く
-//   - 名前が既にある file か、型の名前にならない字には「作る」を出さない
-//   - 尋ねている間も、帯の下地は窓の全体を覆わない (本文が見える)
-//   - Alt+Delete は尋ねてから消し、消さないと答えれば何も起きない。消すと窓が閉じ、一覧から消える
+// Creates a file with Ctrl+P and deletes it with Alt+Delete.
+//   - Typing a new type name shows a "create" entry at the end of the candidates, and confirming creates and opens a file containing only the type declaration
+//   - No "create" entry for a name whose file already exists, or for characters that cannot form a type name
+//   - Even while asking, the band background does not cover the whole panel (the text stays visible)
+//   - Alt+Delete asks before deleting, and nothing happens if the answer is not to delete. Deleting closes the panel and removes the file from the list
 using System;
 using Lub;
 using LiderCore;

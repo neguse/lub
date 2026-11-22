@@ -1,12 +1,12 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// game source が要求した言語面 (user-defined operator など) の differential。
+// Differential tests for the language surface that game sources required (user-defined operators etc.).
 public class GameSurfaceDifferentialTests
 {
-    // user-defined operator: IL は素の IlBin / IlUn。C は operand の静的型で
-    // overload を選ぶ (Lua は metamethod が実行時型で分岐)。同じ operator の
-    // overload (Vec*Vec / Vec*float / float*Vec)、戻り型違い (dot)、単項 -、
-    // 複合代入、int operand の float 昇格、左→右の評価順
+    // user-defined operator: the IL is a plain IlBin / IlUn. C picks the overload by the static types
+    // of the operands (in Lua the metamethod branches on the runtime type). Overloads of the same operator
+    // (Vec*Vec / Vec*float / float*Vec), different return types (dot), unary -,
+    // compound assignment, float promotion of int operands, left→right evaluation order
     [CFact]
     public void UserOperators_Overloads()
     {
@@ -48,8 +48,8 @@ public class GameSurfaceDifferentialTests
             """, "P");
     }
 
-    // operator の static 関数への IlCall (#23)。複合代入も operator を呼び、
-    // int を返す `/` は整数除算に化けない
+    // IlCall to the operator's static function (#23). Compound assignment also calls the operator, and
+    // `/` returning int does not turn into integer division
     [CFact]
     public void UserOperators_IntResultAndCompoundAssignment()
     {
@@ -84,7 +84,7 @@ public class GameSurfaceDifferentialTests
             """, "P");
     }
 
-    // 三項の片腕が null で結果が T? (`cond ? x : null`): 両腕を結果型へ揃える
+    // One arm of a ternary is null and the result is T? (`cond ? x : null`): both arms are converted to the result type
     [CFact]
     public void Ternary_NullableWithNullArm()
     {
@@ -111,7 +111,7 @@ public class GameSurfaceDifferentialTests
             """, "P");
     }
 
-    // static field initializer の closure (lifted 関数は初期化関数の外に出す)
+    // Closures in static field initializers (lifted functions are moved out of the initialization function)
     [CFact]
     public void StaticFieldInitializer_Closures()
     {
@@ -138,7 +138,7 @@ public class GameSurfaceDifferentialTests
             """, "P");
     }
 
-    // ctor 本体の closure が this / ctor 引数 / ctor local を捕捉する
+    // Closures in a ctor body capture this / ctor arguments / ctor locals
     [CFact]
     public void Constructor_ClosureCaptures()
     {
@@ -176,8 +176,8 @@ public class GameSurfaceDifferentialTests
             """, "P");
     }
 
-    // 非 nullable の bool を null と比べる生成コード由来の式
-    // (`(!(x != null)) != null` は C# では常に true)
+    // Expression from generated code that compares a non-nullable bool with null
+    // (`(!(x != null)) != null` is always true in C#)
     [CFact]
     public void BoolComparedWithNull()
     {
@@ -207,7 +207,7 @@ public class GameSurfaceDifferentialTests
             """, "P");
     }
 
-    // for の制御変数が float で初期値が整数 literal (`for (float y = -1; ...)`)
+    // The for control variable is a float and its initial value is an integer literal (`for (float y = -1; ...)`)
     [CFact]
     public void ForLoop_FloatVariableWithIntInit()
     {

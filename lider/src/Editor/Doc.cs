@@ -1,7 +1,7 @@
-// 開いた file の本文、選択、undo (Lite XL の core/doc/init.lua を写したもの)。
-// 行は 1 から、桁は byte の位置で 1 から数える。行は改行を持たず、行の末尾 (改行の前) の桁は長さ + 1。
-// 選択は 4 つの数 (line1, col1, line2, col2) の並びで、幾つも持てる。line1 と col1 が cursor の側。
-// undo は Lite XL と同じく 0.3 秒の内の編集を 1 つにまとめ、undo の stack の高さを変更の番号にする。
+// Text, selections, and undo of an open file (a port of Lite XL's core/doc/init.lua).
+// Lines count from 1, and columns count from 1 by byte position. Lines do not hold the newline, and the column at the end of a line (before the newline) is the length + 1.
+// A selection is a sequence of 4 numbers (line1, col1, line2, col2), and there can be several. line1 and col1 are the cursor side.
+// As in Lite XL, undo merges edits within 0.3 seconds into one, and uses the height of the undo stack as the change number.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -9,7 +9,7 @@ using TinySystem.Text;
 
 namespace LiderEditor;
 
-// undo の stack の 1 つ (Kind: 0 は選択、1 は挿入、2 は削除)
+// One entry of the undo stack (Kind: 0 = selection, 1 = insert, 2 = remove)
 public class UndoEdit
 {
     public int Kind;
@@ -36,22 +36,22 @@ public class Doc
     public List<UndoEdit> RedoStack = new List<UndoEdit>();
     public int CleanChangeId = 1;
     public bool NewFile;
-    // project の dir からの path (外なら絶対 path) と、絶対 path。名前の無い doc は null
+    // Path from the project dir (absolute path if outside it) and the absolute path. null for an unnamed doc
     public string? Filename;
     public string? AbsFilename;
     public bool Crlf;
     public readonly Highlighter Highlighter;
-    // 保存した回数 (外の変更を写したのも数える)
+    // Number of saves (also counts copying in external changes)
     public int Saves;
-    // 本文から何かを消した回数と、最後に消した所
+    // Number of times something was removed from the text, and the last place removed
     public int Removed;
     public int RemovedLine = 1;
     public int RemovedCol = 1;
-    // 変換中の文字を入れ替える間は、消した回数に数えない
+    // Not counted as a removal while the composing text is being replaced
     public bool Quiet;
-    // 外の file の更新時刻と大きさ (FollowDisk)
+    // Modification time and size of the file on disk (FollowDisk)
     public string DiskStamp = "";
-    // CommandView の入力欄 (改行を入れない)
+    // CommandView input field (no newlines)
     public bool SingleLine;
 
     public Doc()
@@ -59,7 +59,7 @@ public class Doc
         Highlighter = new Highlighter(this);
     }
 
-    // file を開いた doc。file が無ければ名前だけの新しい doc
+    // Doc that opened file. If the file does not exist, a new doc with only the name
     public static Doc Open(string? filename, string? abs, bool newFile)
     {
         var doc = new Doc();
@@ -81,7 +81,7 @@ public class Doc
         Highlighter.SetCSharp(path.EndsWith(".cs") || path.EndsWith(".csx"));
     }
 
-    // file を読む。CRLF の file は行の末尾の CR を除き、保存するときに戻す
+    // Reads the file. For CRLF files, removes the CR at the end of each line and restores it when saving
     public void Load(string path)
     {
         Io.LoadText(path, out var text, out _, out _, out _);
@@ -95,10 +95,10 @@ public class Doc
         Highlighter.Reset();
     }
 
-    // SplitFile が CRLF を見つけたか
+    // Whether SplitFile found CRLF
     public static bool SplitCrlf;
 
-    // file の中身を行に分ける (最後の改行の後に空の行を作らない)
+    // Splits the file contents into lines (does not create an empty line after the last newline)
     public static List<string> SplitFile(string text)
     {
         var crlf = false;
@@ -121,14 +121,14 @@ public class Doc
         return lines;
     }
 
-    // 本文の全体 (保存する形。どの行の後にも改行を置く)
+    // The whole text (in the saved form, with a newline after every line)
     public string Content()
     {
         var nl = Crlf ? "\r\n" : "\n";
         return string.Join(nl, Lines) + nl;
     }
 
-    // filename に保存する (null なら今の名前)。書けなければ false
+    // Saves to filename (the current name if null). false if it cannot write
     public bool Save(string? filename, string? abs)
     {
         if (filename == null)
@@ -167,13 +167,13 @@ public class Doc
         return UndoStack.Count + 1;
     }
 
-    // 行の byte の数 (改行を除く)
+    // Byte count of a line (excluding the newline)
     public int LineLen(int line)
     {
         return Str.Len(Lines[line - 1]);
     }
 
-    // Lite XL の #doc.lines[line] (改行を含む長さ)
+    // Lite XL's #doc.lines[line] (length including the newline)
     public int LineSize(int line)
     {
         return LineLen(line) + 1;
@@ -184,7 +184,7 @@ public class Doc
         return Selections.Count / 4;
     }
 
-    // idx 番目 (1 から) の選択。sort なら前から後ろの順にし、入れ替えたかを swap に返す
+    // Selection number idx (from 1). With sort, orders it front to back and returns in swap whether it was swapped
     public void GetSelectionIdx(int idx, bool sort, out int line1, out int col1, out int line2, out int col2, out bool swap)
     {
         var b = (idx - 1) * 4;
@@ -210,7 +210,7 @@ public class Doc
         return idx >= 1 && idx <= SelectionCount();
     }
 
-    // 最後に足した選択 (無ければ最初)
+    // The last added selection (the first if none)
     public void GetSelection(bool sort, out int line1, out int col1, out int line2, out int col2)
     {
         var idx = HasSelectionIdx(LastSelection) ? LastSelection : 1;
@@ -252,7 +252,7 @@ public class Doc
         }
     }
 
-    // idx 番目 (1 から) に選択を置く。rm は置き換える数の 4 倍 (0 なら差し込む)
+    // Puts a selection at index idx (from 1). rm is 4 times the number to replace (0 to insert)
     public void SetSelections(int idx, int line1, int col1, int line2, int col2, bool swap = false, int rm = 4)
     {
         if (swap)
@@ -324,7 +324,7 @@ public class Doc
         SetSelection(line, col, line, col);
     }
 
-    // 同じ所にある cursor を 1 つにする (idx が 0 でなければ、その選択と重なる物だけ)
+    // Merges cursors at the same place into one (if idx is not 0, only those overlapping that selection)
     public void MergeCursors(int idx = 0)
     {
         var start = idx != 0 ? (idx - 1) * 4 + 1 : Selections.Count - 3;
@@ -382,7 +382,7 @@ public class Doc
         c = Math.Max(Math.Min(col, LineSize(line)), 1);
     }
 
-    // (line, col) から offset byte 進んだ所 (行をまたぐ。改行は 1 byte)
+    // The position offset bytes ahead of (line, col) (crosses lines; a newline is 1 byte)
     public void OffsetBytes(int line, int col, int offset, out int l, out int c)
     {
         SanitizePosition(line, col, out var sl, out var sc);
@@ -403,7 +403,7 @@ public class Doc
         c = rc;
     }
 
-    // (line, col) を move で動かした所
+    // (line, col) moved by move
     public void Translate(Move move, DocView? dv, int line, int col, out int l, out int c)
     {
         LiderEditor.Translate.Run(this, move, dv, line, col);
@@ -418,7 +418,7 @@ public class Doc
         c = rc;
     }
 
-    // (line1, col1) から (line2, col2) の手前まで (行をまたぐと改行を含む)
+    // From (line1, col1) up to just before (line2, col2) (includes newlines when crossing lines)
     public string GetText(int line1, int col1, int line2, int col2)
     {
         SanitizePosition(line1, col1, out var a1, out var b1);
@@ -437,7 +437,7 @@ public class Doc
         return GetText(1, 1, Lines.Count, Str.Huge);
     }
 
-    // (line, col) の byte (行の末尾は改行の 10)
+    // The byte at (line, col) (10 for the newline at the end of a line)
     public int GetChar(int line, int col)
     {
         SanitizePosition(line, col, out var l, out var c);
@@ -453,7 +453,7 @@ public class Doc
         stack.Add(e);
     }
 
-    // stack の最後の編集を戻し、0.3 秒の内に続く編集も続けて戻す。戻した編集は other に積む
+    // Undoes the last edit on the stack, and also undoes the edits that follow within 0.3 seconds. Undone edits are pushed onto other
     void PopUndo(List<UndoEdit> stack, List<UndoEdit> other)
     {
         while (stack.Count > 0)
@@ -477,7 +477,7 @@ public class Doc
         }
     }
 
-    // text の行の並び ("a\nb" は "a" と "b"、"a\n" は "a" と "")
+    // Lines of text ("a\nb" is "a" and "b", "a\n" is "a" and "")
     static List<string> SplitLines(string text)
     {
         var res = new List<string>();
@@ -499,7 +499,7 @@ public class Doc
         for (var i = lines.Count - 1; i >= 0; i--)
             Lines.Insert(line - 1, lines[i]);
 
-        // cursor を挿入の後ろへずらす
+        // Moves the cursor past the insertion
         for (var idx = SelectionCount(); idx >= 1; idx--)
         {
             GetSelectionIdx(idx, true, out var cl1, out var cc1, out var cl2, out var cc2, out _);
@@ -612,7 +612,7 @@ public class Doc
         PopUndo(RedoStack, UndoStack);
     }
 
-    // 選択を text で置き換える (idx が 0 なら全部の選択、後ろから)
+    // Replaces the selection with text (all selections if idx is 0, from the back)
     public void TextInput(string text, int idx = 0)
     {
         var from = idx != 0 ? idx : SelectionCount();
@@ -629,7 +629,7 @@ public class Doc
         }
     }
 
-    // 変換中の文字を選択の所に入れ、入れた文字を選ぶ (cursor は前の端)
+    // Puts the composing text at the selection and selects it (the cursor at the front end)
     public void ImeTextEditing(string text)
     {
         for (var sidx = SelectionCount(); sidx >= 1; sidx--)
@@ -642,7 +642,7 @@ public class Doc
         }
     }
 
-    // 選んだ所を消す。何も選んでいなければ move で動いた所まで消す (idx が 0 なら全部の選択)
+    // Removes the selection. If nothing is selected, removes up to where move moves (all selections if idx is 0)
     public void DeleteToCursor(int idx, Move move, DocView? dv)
     {
         var from = idx != 0 ? idx : 1;
@@ -665,7 +665,7 @@ public class Doc
         MergeCursors(idx);
     }
 
-    // 選んだ所を消す。何も選んでいなければ (行、桁) をずらした所まで消す
+    // Removes the selection. If nothing is selected, removes up to the shifted (line, column)
     public void DeleteToCursorLineCol(int idx, int lineOffset, int colOffset)
     {
         var from = idx != 0 ? idx : 1;
@@ -727,7 +727,7 @@ public class Doc
         MergeCursors(idx);
     }
 
-    // 字下げ (Lite XL の soft の 4 桁)
+    // Indent (Lite XL's soft, 4 columns)
     public const int IndentSize = 4;
 
     public string IndentString()
@@ -735,7 +735,7 @@ public class Doc
         return Str.Repeat(" ", IndentSize);
     }
 
-    // 行の先頭の空白の byte の数 (無ければ 0) と、設定の幅に丸めた字下げ
+    // Byte count of the leading whitespace of a line (0 if none), and the indent rounded to the configured width
     public static int LineIndent(string line, bool roundUp, out string indent)
     {
         var e = Str.IndentLength(line);
@@ -748,7 +748,7 @@ public class Doc
         return e;
     }
 
-    // 字下げを足すか (unindent なら) 減らし、新しい選択を返す
+    // Adds indent (or removes it if unindent) and returns the new selection
     public void IndentText(bool unindent, int line1, int col1, int line2, int col2, out int r1, out int rc1, out int r2, out int rc2)
     {
         var text = IndentString();
@@ -792,8 +792,8 @@ public class Doc
         rc2 = col1 + Str.Len(text);
     }
 
-    // 本文の中を探す (Lite XL の core/doc/search.lua の、正規表現を使わない所)。
-    // (line, col) から text を探し、見つけた範囲を返す。wrap なら端から回り、reverse なら前へ探す
+    // Searches within the text (the non-regex parts of Lite XL's core/doc/search.lua).
+    // Searches for text from (line, col) and returns the found range. With wrap, wraps around from the end; with reverse, searches backward
     public bool Find(int line, int col, string text, bool noCase, bool wrap, bool reverse,
         out int l1, out int c1, out int l2, out int c2)
     {
@@ -819,7 +819,7 @@ public class Doc
             var s = -1;
             if (reverse)
             {
-                // 終わりが col - 1 より前の、最後の一致
+                // The last match that ends before col - 1
                 var limit = col < 0 ? Str.Huge : col - 1;
                 var at = Str.Find(lineText, text, 0);
                 while (at >= 0 && at + len <= limit)

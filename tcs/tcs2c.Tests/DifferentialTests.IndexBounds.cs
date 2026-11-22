@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// List / 配列 / string の添字の範囲外は fault (il-spec §12)。Lua の table は範囲外の key を
-// nil で読み、範囲外の key にも書けるので、Lua backend は添字ごとに範囲を見る。
-// TinySystem.Linq の callback が受け手を縮めた場合も、範囲外の読み出しで止まる。
-// 期待値は同じ program を CoreCLR で実行した stdout (どれも "before" の後に例外で停止する)
+// Out-of-range indexes into a List / array / string fault (il-spec §12). Lua tables read out-of-range keys
+// as nil and can also write to out-of-range keys, so the Lua backend checks the range at each index.
+// Out-of-range reads also stop when a TinySystem.Linq callback shrinks the receiver.
+// The expected values are the stdout of running the same program on CoreCLR (each stops with an exception after "before")
 public class IndexBoundsDifferentialTests
 {
     [CTheory]
@@ -56,7 +56,7 @@ public class IndexBoundsDifferentialTests
         Assert.Equal("1:7:122:2", output);
     }
 
-    // 代入は受け手、添字、値の順に評価してから範囲を見る (C# の順序)
+    // An assignment evaluates the receiver, the index, and the value in that order before checking the range (C# order)
     [CFact]
     public void IndexStore_EvaluatesValueBeforeRangeFault()
     {
@@ -84,7 +84,7 @@ public class IndexBoundsDifferentialTests
             """, "P"));
     }
 
-    // 型引数の要素 (T = bool の false) と、`?[]` で読む null の要素 / false の要素
+    // Elements of a type argument (false for T = bool), and null elements / false elements read with `?[]`
     [CFact]
     public void IndexRead_FalseAndNullElementsThroughGenericAndConditional()
     {
@@ -113,7 +113,7 @@ public class IndexBoundsDifferentialTests
         Assert.Equal("F:null0:x:F", output);
     }
 
-    // 値の呼び出しが受け手や添字の変数を書き換えても、書き込む先は値より先に評価した受け手と添字
+    // Even if the call in the value rewrites the receiver or index variables, the write goes to the receiver and index evaluated before the value
     [CFact]
     public void IndexStore_ValueCallChangingReceiverOrIndex()
     {

@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// generic な record / record struct の型 parameter の field も、合成 Equals と
-// 同じく EqualityComparer<T>.Default で比べる (T = float / double は NaN 同士が
-// 等しく、+0 と -0 も等しい)。期待値は同じ program を CoreCLR で実行した stdout
+// Fields of type-parameter type in a generic record / record struct are also compared, like the synthesized Equals,
+// with EqualityComparer<T>.Default (for T = float / double, two NaNs are
+// equal, and +0 and -0 are also equal). The expected values are the stdout of running the same program on CoreCLR
 public class GenericRecordEqualityDifferentialTests
 {
     private const string GenericRecordEqualityProgram = """

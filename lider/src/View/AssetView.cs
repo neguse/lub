@@ -1,4 +1,4 @@
-// 画像と音の file を出す板。画像はそのまま貼り、音は波形を描いて、出したときに 1 度鳴らす。
+// Board that shows image and sound files. Images are pasted as is; sounds are drawn as waveforms and played once when shown.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -28,7 +28,7 @@ public class AssetView
     string path = "";
     string drawn = "";
     float[]? peaks;
-    // 大きさか長さ、読めなければその旨
+    // Size or length, or a note that it could not be read
     public string Info { get; private set; } = "";
     public bool Played { get; private set; }
 
@@ -47,7 +47,7 @@ public class AssetView
         return name.EndsWith(".wav") || name.EndsWith(".ogg") || name.EndsWith(".mp3");
     }
 
-    // 出す file を読み、板を描き直す (画面への pass の外で毎 frame 呼ぶ。読んだ物の宣言が途切れないように)
+    // Reads the file to show and redraws the board (call every frame outside the pass to the display, so the declaration of what was read does not lapse)
     public void Prepare(string shown, string title, MonoText text)
     {
         if (shown != path)
@@ -75,7 +75,7 @@ public class AssetView
         drawn = key;
         Gfx.BeginPass(new PassOpts { Target = board, ClearColor = new float[] { 0, 0, 0, 0 } });
         batch.Begin();
-        // SpriteBatch は atlas を初めて使った順に描くので、文字より先に塗る
+        // SpriteBatch draws in the order atlases are first used, so fill before the text
         batch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
         text.Draw(batch, title + "  " + Info, Pad * 2, Pad, Theme.Ink, 0, PxW - Pad);
         if (peaks != null)
@@ -143,7 +143,7 @@ public class AssetView
         }
     }
 
-    // f32 の列の、区間ごとの大きさ (0 から 1)
+    // Per-segment magnitude of an f32 sequence (0 to 1)
     static float[] Peaks(Bytes pcm)
     {
         const int Probes = 8;
@@ -159,7 +159,7 @@ public class AssetView
         return result;
     }
 
-    // little endian の f32 の絶対値
+    // Absolute value of a little endian f32
     static float Magnitude(Bytes b, int at)
     {
         var exponent = ((b.Get(at + 3) & 0x7F) << 1) | (b.Get(at + 2) >> 7);
@@ -169,7 +169,7 @@ public class AssetView
         return Math.Min(1, mantissa * (float)Math.Pow(2, exponent - 127));
     }
 
-    // 上の端の真ん中を円筒の (angle, top) にして描く
+    // Drawn with the middle of the top edge at cylinder (angle, top)
     public void Draw(Mat4 vp, float angle, float top, float scale)
     {
         if (path == "" || board == null)
@@ -180,7 +180,7 @@ public class AssetView
         Quad3d.Curved(vp, board, Color.Rgb(1, 1, 1), angle, (top - h * 0.5f) * k, R, W * scale * k, h * k, 0, 1);
         if (image == null || imageW == 0 || imageH == 0)
             return;
-        // 字の下の範囲に、縦横の比を保って収める
+        // Fit into the area below the text, keeping the aspect ratio
         var areaW = W * scale * (PxW - Pad * 2) / PxW;
         var areaH = h * (PxH - RowH - Pad * 2) / PxH;
         var fit = Math.Min(areaW / imageW, areaH / imageH);

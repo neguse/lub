@@ -1,10 +1,14 @@
 #pragma once
-// SDF tree -> triangle mesh。
-// 木は C API (include/lub/lub_api.h の LubSdfNodeDesc 配列) で受け、ここで評価用の SdfNode に変換して surface nets で mesh にする。
-// VM には触らない (tcs VM の host の関数は src/gen/vm_api_gen.c)。
+// SDF tree -> triangle mesh.
+// The tree is received through the C API (LubSdfNodeDesc array in
+// include/lub/lub_api.h), converted here into SdfNode for evaluation, and
+// turned into a mesh with surface nets. Does not touch the VM (the tcs VM host
+// functions are in src/gen/vm_api_gen.c).
 //
 // n = cell count of the longest axis; bounds are derived from a conservative
-// per-node AABB with a one-cell margin, cells stay cubic. bone ノードがあれば頂点ごとに最寄り 2 部位の joints / weights (softmax、blend 幅 skin_k) と bones (name + pivot) も焼く。
+// per-node AABB with a one-cell margin, cells stay cubic. If there are bone
+// nodes, also bakes the per-vertex joints / weights of the two nearest parts
+// (softmax, blend width skin_k) and bones (name + pivot).
 #include "lub/lub_api.h"
 #include "surfacenets.h"
 #include <stdbool.h>
@@ -86,10 +90,13 @@ typedef struct SdfNode {
   float p[10];
 } SdfNode;
 
-// bone ノードが宣言する skinning 部位。
-// path は root からその bone までに通過した xform/mirror ノードの flat index 列で、頂点の部位距離を測るとき同じ点変換を再現するのに使う。
+// Skinning part declared by a bone node.
+// path is the sequence of flat indices of the xform/mirror nodes passed from
+// the root to that bone, used to reproduce the same point transform when
+// measuring the distance of a vertex to the part.
 typedef struct SdfPart {
-  int node; // OP_BONE の flat index (距離評価はここから子へ)
+  int node; // Flat index of OP_BONE (distance evaluation goes from here to the
+            // children)
   char name[32];
   float pivot[3];
   int path[SDF_MAX_DEPTH];
@@ -97,7 +104,7 @@ typedef struct SdfPart {
 } SdfPart;
 
 typedef struct SdfTree {
-  SdfNode *nodes; // malloc、sdf_tree_free で解放
+  SdfNode *nodes; // malloc, freed by sdf_tree_free
   int len;
   int root;
   SdfPart parts[SDF_MAX_PARTS];
@@ -108,20 +115,21 @@ typedef struct SdfMeshOut {
   SnMesh mesh;
   float *colors;      // 3 * vert_count
   float *metal_rough; // 2 * vert_count
-  float *joints;      // 2 * vert_count (part があるとき)
+  float *joints;      // 2 * vert_count (when there are parts)
   float *weights;     // 2 * vert_count
   float mn[3], mx[3];
   float cell;
 } SdfMeshOut;
 
-// 公開形の木を評価用に変換する (検証・精度計算・bone path)。
-// 失敗は false で err に理由。
+// Converts the public form of the tree into the evaluation form (validation,
+// precision calculation, bone paths). On failure, returns false with the reason
+// in err.
 bool sdf_tree_convert(const LubSdfNodeDesc *nodes, int count, int root,
                       SdfTree *out, char *err, size_t err_size);
 void sdf_tree_free(SdfTree *t);
 
-// 木を mesh にする。
-// 失敗は false で err に理由。
+// Turns the tree into a mesh.
+// On failure, returns false with the reason in err.
 bool sdf_mesh_build(const SdfTree *t, int n, float skin_k, SdfMeshOut *out,
                     char *err, size_t err_size);
 void sdf_mesh_out_free(SdfMeshOut *o);

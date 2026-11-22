@@ -1,7 +1,7 @@
-// 同じ key の shader は同じものを指す。
-// 同じ version の宣言は同じ ref を返し、同じフレームの違う version は error になる。
-// 次のフレームの違う version は編集なので作り直し、error で終わったフレームの次もそれができる。
-// compile に失敗した宣言も宣言で、同じ version をもう一度宣言しても矛盾にならず、compile もし直さない。
+// Shaders with the same key refer to the same thing.
+// A declaration with the same version returns the same ref, and a different version in the same frame is an error.
+// A different version in the next frame is an edit, so it is recreated; this also works in the frame after one that ended with an error.
+// A declaration that failed to compile is also a declaration; declaring the same version again is not a conflict and does not recompile.
 using System;
 using Lub;
 
@@ -27,7 +27,7 @@ public static class TestShaderKeyConflict
         }
         if (frame == 5 || frame == 6)
         {
-            // 失敗した version は compile し直さないので、log の "recompile failed" は 1 回だけ出る。
+            // A failed version is not recompiled, so "recompile failed" appears in the log only once.
             var kept = Gfx.UseShader("conflict_sh", "broken", "broken", 105);
             var again = Gfx.UseShader("conflict_sh", "broken", "broken", 105);
             Check.That(kept != null && kept.Version == 4 && again != null && again.Version == 4,

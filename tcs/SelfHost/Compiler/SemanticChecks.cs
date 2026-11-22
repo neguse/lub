@@ -2,18 +2,18 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// 型の決まった木の上の準拠検査 (意味を見る規則。IDE の analyzer もこの compiler の診断を出す)。
-// --ref の宣言と tcs が配る library は対象外
+// Compliance checks on the typed tree (rules that look at semantics; the IDE analyzer also reports this compiler's diagnostics).
+// --ref declarations and the libraries shipped with tcs are excluded
 public sealed class SemanticChecks
 {
     private readonly Compilation _c;
-    // 0 との比較の operand になっている string.CompareOrdinal の呼び出し
+    // string.CompareOrdinal calls that are operands of a comparison with 0
     private readonly List<Node> _comparedWithZero = new List<Node>();
-    // 文字列にする位置の式 (string の + の operand と Console.WriteLine の引数)。値の boxing にならない
+    // Expressions in stringification position (operands of string + and Console.WriteLine arguments). They do not box the value
     private readonly List<Node> _stringified = new List<Node>();
-    // 歩いている型と method の宣言 (型引数の制約を引く)
+    // The type and method declarations being walked (used to look up type argument constraints)
     private Node? _typeDecl;
-    // int / enum への cast の operand の中 (uint の定数を bit の並びとして受ける)
+    // Inside the operand of a cast to int / enum (a uint constant is taken as a bit pattern)
     private bool _uintBits;
 
     private static bool IsUIntType(TypeSym? t) => t != null && IlTypes.UnwrapNullable(t).Kind == TypeKind.UInt;
@@ -44,9 +44,9 @@ public sealed class SemanticChecks
         }
     }
 
-    // ---- 型の宣言 ----
+    // ---- Type declarations ----
 
-    // 基底の並びの中で decl を指す型の構文 (無ければ型の宣言)
+    // The type syntax in the base list that refers to decl (the type declaration if there is none)
     private static Node BaseTypeNode(TypeDeclSym t, TypeDeclSym decl)
     {
         if (t.Decl.List3 != null)
@@ -63,11 +63,11 @@ public sealed class SemanticChecks
     {
         foreach (var i in t.Interfaces)
         {
-            // host (--ref) の interface を user の型で実装すると、host の名前 (snake_case) の呼び出しが実装に届かない
+            // If a user type implements a host (--ref) interface, calls by the host name (snake_case) do not reach the implementation
             if (i.Decl != null && i.Decl.IsRef) Report("RefInterfaceImplementation(" + i.FullDisplay() + ")", BaseTypeNode(t, i.Decl));
         }
         if (!t.IsInterface && !t.IsEnum) CheckInterfaceMembers(t);
-        // Utf8Bytes の field を持つ record は止める (.NET の record の値の等価は Utf8Bytes の中の byte[] を参照で比べる)
+        // Records with a Utf8Bytes field are rejected (.NET record value equality compares the byte[] inside Utf8Bytes by reference)
         if (t.IsRecord && HasUtf8BytesField(t.SelfType())) Report("Utf8BytesInRecord", t.Decl);
         foreach (var m in t.Members)
         {
@@ -75,7 +75,7 @@ public sealed class SemanticChecks
         }
     }
 
-    // interface の member を実装しているか (CS0535)
+    // Whether the interface members are implemented (CS0535)
     private void CheckInterfaceMembers(TypeDeclSym t)
     {
         foreach (var iface in IlTypes.AllInterfaces(t))
@@ -119,7 +119,7 @@ public sealed class SemanticChecks
         return true;
     }
 
-    // overload は名前に parameter の型を付けて別の key にする。その名前が同じ型の他の member と同じ綴りになる宣言は止める
+    // Overloads get a separate key by appending the parameter types to the name. A declaration whose resulting name has the same spelling as another member of the same type is rejected
     private static bool IsCollidingOverload(TypeDeclSym t, Symbol m)
     {
         var name = IlNames.MethodName(m);
@@ -132,7 +132,7 @@ public sealed class SemanticChecks
         return false;
     }
 
-    // ---- 式と文 ----
+    // ---- Expressions and statements ----
 
     private void Walk(Node? n, bool checkedContext)
     {
@@ -181,11 +181,11 @@ public sealed class SemanticChecks
                     CheckStringifiedOperand(n.B!);
                 }
                 CheckEquality(n);
-                // uint は i32 と同じ表現なので、結果が 0〜2^31-1 を出うる演算は .NET と違う値になる
+                // uint has the same representation as i32, so an operation whose result can leave 0 to 2^31-1 gives a different value from .NET
                 if ((n.Text == "+" || n.Text == "-" || n.Text == "*" || n.Text == "<<") && IsUIntType(n.Type)) Report("UIntArithmetic", n);
                 break;
             case NodeKind.IntLit:
-                // 2^31 以上の uint の定数は i32 にならない (int への cast の operand と enum の member の値は 2 の補数の bit として受ける)
+                // A uint constant of 2^31 or more does not fit in i32 (the operand of a cast to int and enum member values are taken as two's-complement bits)
                 if (IsUIntType(n.Type) && n.HasConst && n.Const != null && n.Const.I < 0 && n.Info != 1 && !_uintBits
                     && !(_typeDecl != null && _typeDecl.Value == DeclKinds.Enum))
                     Report("UIntRange", n);
@@ -200,7 +200,7 @@ public sealed class SemanticChecks
             case NodeKind.PreIncDec:
             case NodeKind.PostIncDec:
                 if (checkedContext && IlTypes.IsIntegral(n.A!.Type)) Report("CheckedOperation", n);
-                // byte の ++ / -- と複合代入は 0..255 に丸まらない
+                // ++ / -- and compound assignment on byte do not wrap to 0..255
                 if (IsByteType(n.A!.Type)) Report("ByteNarrowing", n);
                 if (IsUIntType(n.A!.Type)) Report("UIntArithmetic", n);
                 break;
@@ -212,7 +212,7 @@ public sealed class SemanticChecks
                 if (n.Text == "+=" && n.Type != null && n.Type.Kind == TypeKind.String && n.B != null) _stringified.Add(n.B);
                 break;
             case NodeKind.Cast:
-                // int と enum への cast の operand の uint の定数は bit の並びとして受ける (unchecked((int)0xFFFFFFFF))
+                // A uint constant as the operand of a cast to int or enum is taken as a bit pattern (unchecked((int)0xFFFFFFFF))
                 if (n.Type != null && (n.Type.Kind == TypeKind.Int || n.Type.Kind == TypeKind.Enum) && n.B != null && IsUIntType(Unwrap(n.B).Type))
                 {
                     var outerBits = _uintBits;
@@ -292,15 +292,15 @@ public sealed class SemanticChecks
         }
     }
 
-    // ---- 呼び出し ----
+    // ---- Calls ----
 
     private void CheckCall(Node call)
     {
         var m = call.Sym;
         if (m == null) return;
-        // 自作の method の out は、`out var` / `out _` の新しい変数と、宣言済みで lambda に capture されない局所変数だけ受ける。
-        // multi-return は呼び出しが終わってから受け手に書くので、呼び出しの中から見える受け手 (field、配列の要素、parameter、capture された変数) は C# と違って見える
-        // 同じ局所変数を 2 つの out に渡すと、呼び出しの中では 2 つの parameter が別名になるので受けない
+        // out of a user-defined method accepts only new variables from `out var` / `out _` and already-declared locals that are not captured by a lambda.
+        // Multi-return writes to the targets after the call finishes, so targets visible from inside the call (fields, array elements, parameters, captured variables) would look different from C#
+        // Passing the same local to two outs is rejected, because inside the call the two parameters become aliases
         if (m.Kind == SymKind.Method && m.Builtin == "" && m.Owner != null && !m.Owner.IsRef && call.List != null)
         {
             var outLocals = new List<LocalSym>();
@@ -318,9 +318,9 @@ public sealed class SemanticChecks
                 }
             }
         }
-        // Rune? の `?.ToString()` はサブセットの外
+        // `?.ToString()` on Rune? is outside the subset
         if (m.Builtin == "Rune.ToString" && call.A != null && call.A.Kind == NodeKind.Member && call.A.Value == 1) Report("UnsupportedToString(System.Text.Rune)", call);
-        // Console.WriteLine の引数は文字列にする
+        // Console.WriteLine arguments are stringified
         if ((m.Builtin == "Console.WriteLine" || m.Builtin == "Console.Write") && call.List != null)
         {
             foreach (var a in call.List)
@@ -330,23 +330,23 @@ public sealed class SemanticChecks
                 CheckStringifiedOperand(a.A);
             }
         }
-        // string.Join の要素は文字列にできる型だけ
+        // string.Join elements must be of a stringifiable type
         if ((m.Builtin == "String.Join" || m.Builtin == "String.JoinAny") && call.List != null && call.List.Count == 2)
         {
             var values = Unwrap(call.List[1].A!).Type;
-            // Dictionary の Keys / Values は key / value の型
+            // Dictionary's Keys / Values have the key / value type
             var elem = values != null && values.Kind == TypeKind.KeyCollection ? values.Arg(0)
                 : values != null && values.Kind == TypeKind.ValueCollection ? values.Arg(1) : IlTypes.ElementOf(values);
             if (elem != null && !IsStringifiable(elem)) Report("UnsupportedToString(" + elem.FullDisplay() + ")", call.List[1].A!);
         }
-        // Utf8Bytes を含む要素の List の Contains / IndexOf / Remove は止める (.NET の等価は Utf8Bytes の中の byte[] を参照で比べる)
+        // Contains / IndexOf / Remove on a List whose elements contain Utf8Bytes are rejected (.NET equality compares the byte[] inside Utf8Bytes by reference)
         if ((m.Builtin == "List.Contains" || m.Builtin == "List.IndexOf" || m.Builtin == "List.Remove") && call.A != null && call.A.Kind == NodeKind.Member && call.A.A != null)
         {
             var lt = call.A.A.Type;
             if (lt != null && lt.Kind == TypeKind.List && ContainsUtf8Bytes(lt.Elem))
                 _c.Error("TCS1002", "unsupported API: System.Collections.Generic.List<T>." + m.Name, call.A);
         }
-        // interface の制約を持つ型引数に struct を入れる呼び出しは止める
+        // Calls that pass a struct to a type argument with an interface constraint are rejected
         if (m.Kind == SymKind.Method && m.Builtin == "" && m.TypeParams != null && call.TypeArgs != null && m.TypeParamConstraints != null)
         {
             for (int i = 0; i < call.TypeArgs.Count && i < m.TypeParamConstraints.Count; i++)
@@ -354,9 +354,9 @@ public sealed class SemanticChecks
                 if (IsStructForInterface(call.TypeArgs[i], m.TypeParamConstraints[i])) Report("StructInterfaceConstraint(" + call.TypeArgs[i].FullDisplay() + ")", call.A != null ? call.A : call);
             }
         }
-        // string.CompareOrdinal の値は符号だけが契約なので、0 との比較の operand 以外では使えない
+        // Only the sign of string.CompareOrdinal's value is guaranteed, so it can only be used as an operand of a comparison with 0
         if (m.Builtin == "String.CompareOrdinal" && !_comparedWithZero.Contains(call)) Report("CompareOrdinalValue", call);
-        // host (--ref) の型の overload は名前に型を付けないので呼び分けられない
+        // Overloads of host (--ref) types do not get types appended to their names, so they cannot be told apart
         if (m.Kind == SymKind.Method && m.Builtin == "" && m.Owner != null && m.Owner.IsRef && HostOverloadCount(m) > 1) Report("MethodOverload", call.A != null ? call.A : call);
     }
 
@@ -385,9 +385,9 @@ public sealed class SemanticChecks
         if (r.Kind == NodeKind.Call && IsZero(bin.A!)) _comparedWithZero.Add(r);
     }
 
-    // ---- collection の null (TCS1003) ----
+    // ---- null in collections (TCS1003) ----
 
-    // Dictionary の値の null、配列の null の要素、長さで作った配列のうち要素の既定値が null のものを警告する (TCS1003)
+    // Warns about null Dictionary values, null array elements, and arrays created with a length whose element default is null (TCS1003)
     private void CheckCollectionNull(Node n)
     {
         const string dictMessage = "Dictionary<K,V> cannot store null values because nil removes keys";
@@ -449,7 +449,7 @@ public sealed class SemanticChecks
         return false;
     }
 
-    // null か、nil になる型の default (変換の前の型で見る。default(int) は int? / object に変換しても null でない)
+    // null, or the default of a type that becomes nil (judged by the type before conversion; default(int) is not null even when converted to int? / object)
     private static bool IsNilLiteralOrDefault(Node e)
     {
         while ((e.Kind == NodeKind.Paren || e.Kind == NodeKind.Conv) && e.A != null) e = e.A;
@@ -463,7 +463,7 @@ public sealed class SemanticChecks
         return e.Type != null && CanDefaultToNil(e.Type);
     }
 
-    // 既定値が nil になる型 (参照型、Nullable、型引数)
+    // Types whose default value is nil (reference types, Nullable, type arguments)
     private static bool CanDefaultToNil(TypeSym? t)
     {
         if (t == null || t.IsError) return false;
@@ -483,7 +483,7 @@ public sealed class SemanticChecks
 
     // ---- checked ----
 
-    // checked で overflow を検出するのは i32 の + - * / % と単項 - だけ (それ以外の checked な演算は止める)
+    // checked detects overflow only for i32 + - * / % and unary - (other checked operations are rejected)
     private static bool IsCheckedArithmetic(Node bin)
     {
         var op = bin.Text;
@@ -494,8 +494,8 @@ public sealed class SemanticChecks
         return t.Kind != TypeKind.Int;
     }
 
-    // 明示の数の変換は float / double → int だけ (除算と同じく範囲外を fault にする)
-    // C# の暗黙の数値の変換 (値の範囲が広がる)
+    // The only explicit numeric conversion is float / double → int (out-of-range values fault, as with division)
+    // C#'s implicit numeric conversions (the value range widens)
     private static bool IsWideningNumeric(TypeKind from, TypeKind to)
     {
         bool fromIntegral = from == TypeKind.Int || from == TypeKind.UInt || from == TypeKind.Short || from == TypeKind.Byte || from == TypeKind.Char || from == TypeKind.Long;
@@ -518,14 +518,14 @@ public sealed class SemanticChecks
         var src = cast.B != null ? Unwrap(cast.B).Type : null;
         if (target == null || src == null) return false;
         if (!(src.IsNumeric || src.Kind == TypeKind.Enum) || !(target.IsNumeric || target.Kind == TypeKind.Enum)) return false;
-        // 暗黙に変換できる cast (広げる変換) は overflow しない
+        // A cast that is an implicit (widening) conversion does not overflow
         if (TypeSym.Same(src, target) || IsWideningNumeric(src.Kind, target.Kind)) return false;
         return !((src.Kind == TypeKind.Float || src.Kind == TypeKind.Double) && target.Kind == TypeKind.Int);
     }
 
-    // ---- struct の boxing ----
+    // ---- Struct boxing ----
 
-    // struct を object / interface に入れる変換は止める (ToString を override した struct を文字列にする位置は除く)
+    // Conversions that put a struct into object / interface are rejected (except in stringification position for a struct that overrides ToString)
     private void CheckBoxing(Node conv)
     {
         var src = conv.A!.Type;
@@ -536,21 +536,21 @@ public sealed class SemanticChecks
             if (!(!IlTypes.IsNullableValueType(src) && IlBuild.HasToStringOverride(src) && IsStringified(conv))) Report("StructBoxing", conv.A);
             return;
         }
-        // int / float / bool 以外の値型 (char、byte、enum など) を object に入れる変換は止める (文字列にする位置は除く)
+        // Conversions that put value types other than int / float / bool (char, byte, enum, etc.) into object are rejected (except in stringification position)
         var u = IlTypes.UnwrapNullable(src);
         if (!u.IsValueType || u.Kind == TypeKind.Int || u.Kind == TypeKind.Float || u.Kind == TypeKind.Bool) return;
         if (IsStringified(conv)) return;
         Report("ValueBoxing(" + u.FullDisplay() + ")", conv.A);
     }
 
-    // 文字列にする式 (string の + の operand と Console.WriteLine の引数): ToString を持たない struct は boxing、文字列にできない型は止める
+    // Stringified expressions (operands of string + and Console.WriteLine arguments): a struct without ToString is boxing, and non-stringifiable types are rejected
     private void CheckStringifiedOperand(Node e)
     {
         var x = Unwrap(e);
         var t = x.Type;
         if (t == null) return;
         var u = IlTypes.UnwrapNullable(t);
-        // KeyValuePair の文字列化 (C# は [key, value] と書く) は写していない
+        // Stringification of KeyValuePair (C# writes [key, value]) is not implemented
         if (u.Kind == TypeKind.KeyValuePair)
         {
             Report("UnsupportedToString(" + t.FullDisplay() + ")", x);
@@ -561,9 +561,9 @@ public sealed class SemanticChecks
             if (!(e.Kind == NodeKind.Conv && IsReferenceTarget(e.Type!))) Report("StructBoxing", x);
             return;
         }
-        // Rune は値そのものの文字列化だけ (Rune? は外)
+        // Rune is only stringified as the value itself (Rune? is excluded)
         if (u.Kind == TypeKind.Rune && IlTypes.IsNullableValueType(t)) Report("UnsupportedToString(" + t.FullDisplay() + ")", x);
-        // 文字列にできない型 (ToString を持たない class / interface、collection、delegate)
+        // Non-stringifiable types (class / interface without ToString, collections, delegates)
         if ((u.Kind == TypeKind.Class || u.Kind == TypeKind.Interface) && u.Decl != null && !IlBuild.HasToStringOverride(u)) Report("UnsupportedToString(" + t.FullDisplay() + ")", x);
         if (u.Kind == TypeKind.List || u.Kind == TypeKind.Dict || u.Kind == TypeKind.Array || u.Kind == TypeKind.HashSet || u.Kind == TypeKind.Queue || u.Kind == TypeKind.Delegate)
             Report("UnsupportedToString(" + t.FullDisplay() + ")", x);
@@ -600,12 +600,12 @@ public sealed class SemanticChecks
         return t.Kind == TypeKind.Object || t.Kind == TypeKind.Interface;
     }
 
-    // ---- object に入った数と bool の pattern ----
+    // ---- Patterns on numbers and bools stored in object ----
 
-    // object に入った数 (int / float) の型の test と、object に入った数と bool の値を pattern で読む形 (`o is int`、`o is int x`、`o is 5`、
-    // `b is bool z`、`b is true`、`o is bool and true`)。IL は object の int と float を見分けず (どちらも number)、C backend は持たず、
-    // VM は値を取り出せない。値は cast (`(int)o`) で取り出す。`o is bool` と string の pattern は対象外。
-    // boxed は、`and` の左が object の値を bool と確かめた後の右側で、その型
+    // Type tests on numbers (int / float) stored in object, and forms that read number and bool values stored in object with a pattern (`o is int`, `o is int x`, `o is 5`,
+    // `b is bool z`, `b is true`, `o is bool and true`). IL does not distinguish int and float in object (both are number), the C backend does not support them,
+    // and the VM cannot extract the value. Extract the value with a cast (`(int)o`). `o is bool` and string patterns are not covered.
+    // boxed is that type, on the right side of an `and` after the left side has confirmed that the object value is a bool
     private void CheckBoxedValuePattern(Node? p, TypeSym? input, TypeSym? boxed)
     {
         if (p == null || input == null) return;
@@ -635,7 +635,7 @@ public sealed class SemanticChecks
                 {
                     CheckBoxedValuePattern(p.A, input, boxed);
                     bool typeTest = p.A != null && (p.A.Kind == NodeKind.PatType || p.A.Kind == NodeKind.PatDecl);
-                    // 数の型の test は左で報告済み。bool は右の pattern が値を読むときに報告する
+                    // Type tests on numbers were already reported on the left. For bool, it is reported when the right pattern reads the value
                     var narrowed = boxed;
                     if (narrowed == null && fromObject && typeTest && IsBoolType(p.A!.Type)) narrowed = p.A.Type;
                     CheckBoxedValuePattern(p.B, typeTest ? p.A!.Type : input, narrowed);
@@ -655,7 +655,7 @@ public sealed class SemanticChecks
 
     private static bool IsBoolType(TypeSym? t) => t != null && t.Kind == TypeKind.Bool;
 
-    // ---- interface の型の検査 ----
+    // ---- Interface type checks ----
 
     private void CheckTypeTestPattern(Node? p, TypeSym? input)
     {
@@ -691,20 +691,20 @@ public sealed class SemanticChecks
         }
     }
 
-    // class の interface の検査は実装の一覧で判定する。一覧に載らない interface (host、generic) と、一覧を持たない入力 (参照型でない) は止める
+    // An interface check on a class is decided by its implementation list. Interfaces not in the list (host, generic) and inputs without a list (not reference types) are rejected
     private void CheckTypeTest(TypeSym? input, TypeSym? type, Node at)
     {
         if (type == null || type.Kind != TypeKind.Interface) return;
         bool refInput = input != null && (input.Kind == TypeKind.Class || input.Kind == TypeKind.Interface || input.Kind == TypeKind.Object || input.Kind == TypeKind.String
             || input.Kind == TypeKind.TypeParam && IsClassConstrained(input));
         bool generic = type.Decl != null && type.Decl.TypeParams.Count > 0;
-        // --ref の generic でない interface は別の名前 (tcs check と tcs c は止め、tcs VM は型の表で判定する、object-model §10.6)
+        // Non-generic --ref interfaces have a separate name (tcs check and tcs c reject them, and the tcs VM decides by the type table; object-model §10.6)
         if (refInput && !generic && type.Decl != null && type.Decl.IsRef) Report("RefInterfaceTypeTest(" + type.FullDisplay() + ")", at);
         else if (!refInput || generic || type.Decl == null) Report("InterfaceTypeTest", at);
     }
 
-    // --ref の generic でない class (と cast の interface) への型 test と cast。tcs check と tcs c は止め、tcs VM は型の表で判定する。
-    // 値を実行時に調べる (参照型か型引数の入力で、暗黙の変換が無い) ときだけ
+    // Type tests and casts to non-generic --ref classes (and interfaces for casts). tcs check and tcs c reject them, and the tcs VM decides by the type table.
+    // Only when the value is inspected at run time (a reference-type or type-argument input with no implicit conversion)
     private void CheckRefTypeTest(TypeSym? input, TypeSym? type, Node at, bool cast)
     {
         if (input == null || type == null || type.Decl == null || !type.Decl.IsRef || type.Decl.TypeParams.Count > 0) return;
@@ -715,7 +715,7 @@ public sealed class SemanticChecks
         Report((cast ? "RefCast(" : "RefTypeTest(") + type.FullDisplay() + ")", at);
     }
 
-    // 参照の暗黙の変換 (同じ型、基底 class、実装する interface)
+    // Implicit reference conversions (same type, base class, implemented interface)
     private static bool ImplicitReference(TypeSym from, TypeSym to)
     {
         if (TypeSym.Same(from, to)) return true;
@@ -732,7 +732,7 @@ public sealed class SemanticChecks
         return false;
     }
 
-    // 型引数が参照型に制約されているか (`where T : class`)
+    // Whether the type argument is constrained to reference types (`where T : class`)
     private bool IsClassConstrained(TypeSym tp)
     {
         var holder = tp.IsMethodParam ? _method : _typeDecl;
@@ -740,9 +740,9 @@ public sealed class SemanticChecks
         return (holder.List2[tp.Index].Value & 1) != 0;
     }
 
-    // ---- 等価と generic ----
+    // ---- Equality and generics ----
 
-    // delegate の == / != (null との比較を除く) と、Utf8Bytes と null の比較 (Utf8Bytes は struct)
+    // == / != on delegates (except comparison with null), and comparison of Utf8Bytes with null (Utf8Bytes is a struct)
     private void CheckEquality(Node bin)
     {
         if (bin.Text != "==" && bin.Text != "!=") return;
@@ -760,8 +760,8 @@ public sealed class SemanticChecks
         return e.Type != null && e.Type.Kind == TypeKind.Delegate || (e.Kind == NodeKind.Conv && e.A != null && e.A.Type != null && e.A.Type.Kind == TypeKind.Delegate);
     }
 
-    // generic な class への型の検査 / cast は止める
-    // 値を実行時に調べる (参照型か型引数の入力で、暗黙の変換が無い) ときだけ
+    // Type checks / casts to generic classes are rejected
+    // Only when the value is inspected at run time (a reference-type or type-argument input with no implicit conversion)
     private void CheckGenericTypeTest(TypeSym? input, TypeSym? type, Node at, string name)
     {
         if (type == null || type.Kind != TypeKind.Class || type.Decl == null) return;
@@ -778,7 +778,7 @@ public sealed class SemanticChecks
                 cur = cur.BaseClass;
             }
         }
-        // --ref の generic な型は実行時の型の表現を持たない
+        // Generic --ref types have no runtime type representation
         if (name == "UnverifiableTypeTest" && type.Decl != null && type.Decl.IsRef) Report("TypeTestWithoutRuntimeType", at);
         else Report(name + "(" + type.FullDisplay() + ")", at);
     }
@@ -808,13 +808,13 @@ public sealed class SemanticChecks
         return t != null && IlTypes.UnwrapNullable(t).Kind == TypeKind.Byte;
     }
 
-    // 文字列にできる型 (string.Join の要素)
+    // Stringifiable types (string.Join elements)
     private static bool IsStringifiable(TypeSym t)
     {
         var u = IlTypes.UnwrapNullable(t);
         switch (u.Kind)
         {
-            // 要素は runtime が文字列にするので ToString の override を呼べない
+            // The runtime stringifies the elements, so ToString overrides cannot be called
             case TypeKind.Class:
             case TypeKind.Struct:
             case TypeKind.Interface:
@@ -831,7 +831,7 @@ public sealed class SemanticChecks
         return true;
     }
 
-    // 値として Utf8Bytes を中に持つ型
+    // Types that contain Utf8Bytes as a value
     private static bool ContainsUtf8Bytes(TypeSym t)
     {
         var u = IlTypes.UnwrapNullable(t);
@@ -857,9 +857,9 @@ public sealed class SemanticChecks
         return false;
     }
 
-    // ---- 値で比べる key ----
+    // ---- Keys compared by value ----
 
-    // 値で比べる key (struct、タプル、record など) と float の key の Dictionary と HashSet は止める
+    // Dictionary and HashSet with keys compared by value (struct, tuple, record, etc.) or with float keys are rejected
     private void CheckDictionaryKey(Node creation)
     {
         var t = creation.Type;
@@ -873,7 +873,7 @@ public sealed class SemanticChecks
         if (t.Kind != TypeKind.Dict) return;
         var k = t.Arg(0);
         if (HasValueEquality(k)) Report("ValueEqualityDictionaryKey(" + k.FullDisplay() + ")", creation);
-        // float の key は HashSet<float> の要素と同じく対応外 (C backend は持たず、VM は NaN の key と列挙を持たない)
+        // float keys are unsupported, like HashSet<float> elements (the C backend does not support them, and the VM does not support NaN keys and enumeration)
         else if (k.Kind == TypeKind.Float || k.Kind == TypeKind.Double) Report("UnsupportedDictionaryKey(" + k.FullDisplay() + ")", creation);
     }
 

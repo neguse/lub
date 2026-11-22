@@ -1,4 +1,5 @@
-/* OS 非依存の kernel 共通部。Playdate デバイスビルドにもそのまま入る */
+/* OS-independent kernel common part. Goes into the Playdate device build as is
+ */
 
 #include "common.h"
 

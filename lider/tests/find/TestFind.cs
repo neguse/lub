@@ -1,9 +1,9 @@
-// lider の窓で、エディタの CommandView (検索、行へ移動) と NagView を使う。key は Workspace.Key から流す。
-//   - Ctrl+F で検索の帯が窓の下に出て、打った文字で探し、Return で見つけた所を選ぶ。F3 で次を探す
-//   - Ctrl+G で行へ移動する
-//   - 帯が出ている間の Escape は帯を閉じ、窓は閉じない
-//   - NagView は窓の上に出て、key で答えられ、答えると本文に打てる
-//   - 板の上の位置 (uv) を click すると、そこの文字の前に cursor が動く
+// Uses the editor's CommandView (search, go to line) and NagView in lider's window. Keys are fed through Workspace.Key.
+//   - Ctrl+F shows the search bar at the bottom of the window, searches for the typed text, and Return selects the match. F3 finds the next one
+//   - Ctrl+G goes to a line
+//   - Escape while the bar is shown closes the bar, not the window
+//   - NagView appears at the top of the window, can be answered with keys, and after answering, typing goes into the text
+//   - Clicking a position (uv) on the board moves the cursor before the character there
 using System;
 using Lub;
 using LiderCore;
@@ -108,10 +108,10 @@ public static class TestFind
         App.Quit(0);
     }
 
-    // 11 行目 `        return 2;` の r の左の端の近くを click する
+    // Click near the left edge of the r on line 11 `        return 2;`
     static void ClickReturn(Document doc)
     {
-        // 色分けで語ごとの命令になるので、11 行目の、前の字下げを含む "        return" の命令を見る
+        // Highlighting makes per-word commands, so look at the command for "        return" on line 11, including the leading indentation
         var i = Command(doc, "        return", 11);
         Check(i >= 0, "no text command for line 11");
         if (failed)
@@ -123,8 +123,8 @@ public static class TestFind
         Check(doc.Line == 10 && doc.Col == 8, "clicked at " + doc.Line + ":" + doc.Col + ", want 10:8");
     }
 
-    // panel の大きさに描いた命令のうち、text の文字の命令 (無ければ -1)。
-    // line が 0 でなければ、その行 (EditorHost.CmdLine) の命令だけを見る
+    // Among the commands drawn at the panel size, the command for the characters of text (-1 if none).
+    // If line is not 0, only the commands of that line (EditorHost.CmdLine) are looked at
     static int Command(Document doc, string text, int line)
     {
         var n = EditorHost.Draw(doc.Id, PanelView.BasePxW, PanelView.BasePxH);
@@ -134,7 +134,7 @@ public static class TestFind
         return -1;
     }
 
-    // 英小文字と数字を、key を押して打つ
+    // Type lowercase letters and digits by pressing keys
     static void Type(Workspace w, string s)
     {
         foreach (var c in Utf8.ByteList(s))

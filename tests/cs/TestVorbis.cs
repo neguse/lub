@@ -1,7 +1,7 @@
-// Lubx.Vorbis.Decode と Lubx.Assets.Ogg。
-// test_vorbis_decode.ogg は 22050Hz の stereo で 0.2 秒 (4410 frame)、左が振幅 0.5 の 440Hz の正弦波、右が無音。
-// 戻した PCM の channel 数、rate、frame 数と、左右の RMS を見る (正弦波の RMS は 0.5 / sqrt(2))。
-// ogg でない bytes は pcm が null。
+// Lubx.Vorbis.Decode and Lubx.Assets.Ogg.
+// test_vorbis_decode.ogg is 22050Hz stereo, 0.2 seconds (4410 frames); the left is a 440Hz sine wave with amplitude 0.5 and the right is silent.
+// Checks the channel count, rate, and frame count of the returned PCM, and the RMS of left and right (the RMS of the sine wave is 0.5 / sqrt(2)).
+// For bytes that are not ogg, pcm is null.
 using System;
 using Lub;
 using Lubx;
@@ -16,7 +16,7 @@ public static class TestVorbis
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
     }
 
-    // little endian の f32 を bit から組み立てる
+    // Assembles a little endian f32 from its bits
     static float F32(Bytes bytes, int index)
     {
         int bits = bytes.Get(index) | bytes.Get(index + 1) << 8 | bytes.Get(index + 2) << 16 | bytes.Get(index + 3) << 24;

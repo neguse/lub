@@ -1,7 +1,7 @@
-// focus をどのウィンドウにも移せることと、ウィンドウを閉じる操作がどのウィンドウにも同じに効くこと。
-//   - Alt+I (inspector:toggle) は、インスペクタに focus が無ければ focus を移し、あれば閉じる。閉じていれば出して focus を移す
-//   - Ctrl+W は focus のあるウィンドウを閉じる (インスペクタなら focus は Code に戻り、Code ならタブを閉じる)
-//   - インスペクタの本文を押すと focus が移り、見出しの閉じる印を押すと閉じる
+// Focus can be moved to any window, and the close operation works the same on every window.
+//   - Alt+I (inspector:toggle) moves focus to the inspector if it does not have focus, and closes it if it does. If it is closed, shows it and moves focus to it
+//   - Ctrl+W closes the focused window (for the inspector, focus goes back to Code; for Code, it closes the tab)
+//   - Pressing the inspector body moves focus to it, and pressing the close mark in its title closes it
 using System;
 using Lub;
 using LiderCore;
@@ -46,7 +46,7 @@ public static class TestClose
             w.FocusOn(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!);
         if (frames < 6)
             return;
-        // 窓と視点が動き終わるのを待つ
+        // Wait until the panels and the view finish moving
         waited += dt;
         if (waited < 0.6f)
             return;
@@ -77,7 +77,7 @@ public static class TestClose
                 Check(w.Focused == inspector, "a click on the inspector did not move the focus to it");
                 Key(Keys.F1, 0);
                 Key(Keys.F1, 0);
-                // 見出しの帯は板のすぐ上にあり、右の端が閉じる印
+                // The title band is right above the board, and its right end is the close mark
                 Click((board.X + board.Z) * 0.5f, board.Y - 8);
                 Check(Lider.Inspector.Shown && w.Focused == inspector, "a click on the title did not move the focus");
                 Click(board.Z - 8, board.Y - 8);

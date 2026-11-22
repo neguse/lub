@@ -1,4 +1,4 @@
-// --trace を付けないファイル (中の時間は、これを呼んだ Game の行に付く)
+// A file without --trace (time spent inside it is attributed to the Game line that called it)
 public static class Lib
 {
     public static void Work()

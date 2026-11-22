@@ -1,6 +1,6 @@
-// phys2d の C smoke: App を最小限に組み、C API (include/lub/lub_api.h) を直接回す。
-// GPU も window も VM も要らない。
-// key の再宣言 / prune / accumulator の clamp / 落下と接触を確かめる。
+// C smoke test for phys2d: builds a minimal App and drives the C API
+// (include/lub/lub_api.h) directly. Needs no GPU, window, or VM. Checks key
+// redeclaration / prune / accumulator clamp / falling and contact.
 #include "api_internal.h"
 #include "physics_box2d.h"
 
@@ -82,7 +82,8 @@ int main(void) {
   LubStepInfo info;
   LubPose pose;
 
-  // key map: 明示 version の body は同じ version の再宣言で作り直されない
+  // key map: a body with an explicit version is not recreated by a
+  // redeclaration with the same version
   {
     LubHandle w = make_world(ctx, "c_keymap", 0.0f, 1);
     lub_phys2d_begin(ctx, w, &keep);
@@ -112,7 +113,7 @@ int main(void) {
     check(info.steps == 2 && info.dropped, "accumulator clamp did not drop");
   }
 
-  // 落下して接触する
+  // Falls and makes contact
   {
     LubHandle w = make_world(ctx, "c_fall", -9.8f, 4);
     bool touched = false;

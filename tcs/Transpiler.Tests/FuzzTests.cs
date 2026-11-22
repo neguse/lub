@@ -15,7 +15,7 @@ public class FuzzTests
         Assert.NotEqual(first, different);
     }
 
-    // 文法枝が死んでいない (どの seed からも生成されない) ことの検出網
+    // Safety net that detects dead grammar branches (never generated from any seed)
     [Fact]
     public void Generator_CoversExtendedGrammar()
     {
@@ -64,8 +64,8 @@ public class FuzzTests
         Assert.Contains("readonly record struct", corpus);
     }
 
-    // generator は helper の overload を生成しない (static method の overload は
-    // DifferentialTests.StaticOverload が押さえる)
+    // The generator does not generate helper overloads (static method overloads are
+    // covered by DifferentialTests.StaticOverload)
     [Fact]
     public void Generator_NeverProducesOverloadedHelpers()
     {
@@ -79,8 +79,8 @@ public class FuzzTests
         }
     }
 
-    // 生成器の不変条件: 生成物はサブセット内 (診断が出たら生成器のバグ)。
-    // 実行なしの transpile のみで検証する軽量ゲート
+    // Generator invariant: the generated code is inside the subset (a diagnostic means a generator bug).
+    // A lightweight gate verified by transpiling only, without running
     [Fact]
     public void Generator_StaysInsideSubset()
     {
@@ -99,8 +99,8 @@ public class FuzzTests
         }
     }
 
-    // 検出網の自己検証 (design doc §17 C4 gate): VM に渡す program へ故障を注入し、
-    // differential が必ず検出することを確認する
+    // Self-check of the safety net (design doc §17 C4 gate): injects faults into the program passed to the VM
+    // and confirms that the differential always detects them
     private static string InjectFault(string source) => source.ReplaceLineEndings("\n").Replace(
         "    public static void Main()\n    {",
         "    public static void Main()\n    {\n        System.Console.WriteLine(\"FAULT\");",

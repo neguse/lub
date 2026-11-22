@@ -1,7 +1,7 @@
-// VS と FS の両方が同じ名前の StructuredBuffer (item) と texture (tex) を読む draw。
-// どちらの stage にも resource が束縛されれば中央の pixel は (255, 128, 255) になる。
-// 片方の stage だけに束縛される backend では描画そのものが落ちるか色が欠ける。
-// 期待: R = item[0] (VS)、B = item[1] (FS)、G = tex の半分 x 2 (VS + FS)。
+// A draw where both VS and FS read a StructuredBuffer (item) and a texture (tex) with the same names.
+// If the resources are bound to both stages, the center pixel is (255, 128, 255).
+// On a backend that binds them to only one stage, the draw itself fails or colors are missing.
+// Expected: R = item[0] (VS), B = item[1] (FS), G = half of tex x 2 (VS + FS).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -23,7 +23,7 @@ public static class TestDupBinding
         return Math.Abs(v - want) <= tol;
     }
 
-    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    // lub export draws 1 frame and records the shaders and files used
     public static void OnExport() { OnFrame(0); }
 
     public static void OnFrame(float dt)

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace LubGen;
 
-/// <summary>stub の型を C# の表記に戻す (API docs と facade で共有)。
+/// <summary>Converts stub types back to C# notation (shared by the API docs and the facade).
 /// </summary>
 public static class CsNames
 {
@@ -40,7 +40,7 @@ public static class CsNames
     {
         if (v.Kind == ValueKind.String) return "\"" + v.S + "\"";
         if (v.Kind == ValueKind.Bool) return v.B ? "true" : "false";
-        // C# の float リテラル (1 → "1f"、0.5 → "0.5f")
+        // C# float literal (1 → "1f", 0.5 → "0.5f")
         if (v.Kind == ValueKind.Float) return v.F.ToString("R") + "f";
         return v.Text();
     }

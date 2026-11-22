@@ -1,5 +1,5 @@
-// acc[0].x を読んで 1 足して書き、img の u.texel.x 列に 1 を書く。
-// どちらも前の dispatch が書いた内容に重ねる。
+// Reads acc[0].x, adds 1 and writes it back, and writes 1 to column u.texel.x
+// of img. Both build on the contents written by the previous dispatch.
 struct Params {
   float4 texel;
 };

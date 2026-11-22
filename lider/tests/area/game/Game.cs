@@ -1,4 +1,4 @@
-// ../TestArea.cs が lider で開くゲーム。何も描かない。
+// The game ../TestArea.cs opens in lider. Draws nothing.
 public static class Game
 {
     public static void OnFrame(float dt)

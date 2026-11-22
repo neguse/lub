@@ -1,6 +1,7 @@
-// Gamepad 入力を SDL の仮想 gamepad で確かめる (GPU も display も使わない)。
-// slot は抜いても他の slot を動かさず、挿すと空きの最初に入る。
-// 軸の正規化、button の edge、抜いたときの release、範囲外の引数を見る。
+// Checks Gamepad input with SDL virtual gamepads (uses neither GPU nor
+// display). Unplugging does not move other slots, and plugging in takes the
+// first free slot. Checks axis normalization, button edges, release on unplug,
+// and out-of-range arguments.
 #include "api_internal.h"
 #include "host_api.h"
 #include <lub/lub_host.h>
@@ -123,7 +124,8 @@ int main(void) {
             !lub_input_gamepad_connected(ctx, 2),
         "a new pad fills the vacated slot");
 
-  // SDL_Quit (lub_host_destroy の中) が残りの仮想 gamepad も外す
+  // SDL_Quit (inside lub_host_destroy) also detaches the remaining virtual
+  // gamepads
   lub_host_destroy(ctx);
   if (!failures)
     puts("gamepad smoke: PASS");

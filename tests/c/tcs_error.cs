@@ -7,8 +7,8 @@ class Box
     public int Value;
 }
 
-// callback の fault が OnError に届き、Log なら次の callback へ進み、OnError 自身の fault は Abort になること。
-// event の列は tests/c/tcs_event_host.c のもの。
+// A callback fault reaches OnError, Log moves on to the next callback, and a fault in OnError itself becomes Abort.
+// The event sequence comes from tests/c/tcs_event_host.c.
 static class ErrorTest
 {
     static Box none;

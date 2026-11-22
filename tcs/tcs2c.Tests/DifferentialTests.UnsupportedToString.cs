@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 文字列にできない静的型 (class / record / interface / struct / List / Dictionary) の文字列化は
-// サブセット外。C# は型名や record の member の一覧を書くが、Lua は table のアドレスを書き、
-// C は受け付けないので、両 backend とも同じ TCS1001 で止まる
+// Converting values of static types that cannot become strings (class / record / interface / struct / List / Dictionary) to strings is
+// outside the subset. C# writes the type name or the list of record members, but Lua writes the table address and
+// C does not accept it, so both backends stop with the same TCS1001
 public class UnsupportedToStringDifferentialTests
 {
     [Theory]
@@ -49,7 +49,7 @@ public class UnsupportedToStringDifferentialTests
         }
     }
 
-    // 型引数の値の文字列化は object と同じく値で決める (float は .NET と同じ書式、T? の null は空文字列)
+    // String conversion of type-argument values is decided by the value, as for object (float uses the same format as .NET, a null T? gives the empty string)
     [CFact]
     public void TypeParameterToString_FollowsValue()
     {
@@ -70,7 +70,7 @@ public class UnsupportedToStringDifferentialTests
         Assert.Equal("1E+10|1E+10|0.1|0.1|||3|3|s|s", output);
     }
 
-    // bool / string / char の補間の書式は C# と同じく使わない (IFormattable でない)
+    // Interpolation formats for bool / string / char are not used, as in C# (they are not IFormattable)
     [CFact]
     public void InterpolationFormat_IgnoredForBoolStringAndChar()
     {

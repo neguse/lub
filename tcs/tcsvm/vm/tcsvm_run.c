@@ -1,5 +1,7 @@
-/* tcs VM の interpreter。C11 だけで書き、GNU 拡張は computed goto (#if で switch に切り替わる) だけに使う。
-   入れ子に入れる (runtime の List.Sort が比較の closure を呼ぶ)。入れ子の frame は vm->top / vm->ftop から積む。 */
+/* Interpreter of the tcs VM. Written in plain C11; the only GNU extension used
+   is computed goto (#if switches to switch). It can be entered nested (the
+   runtime's List.Sort calls the comparison closure). Nested frames are pushed
+   from vm->top / vm->ftop. */
 #include "tcsvm_internal.h"
 
 #include "../../runtime/fmt/tcs_fmt.h"
@@ -8,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* ---- fault と trace ---- */
+/* ---- fault and trace ---- */
 
 static uint32_t line_of(const TvmProto *f, uint32_t pc) {
   uint32_t line = 0;
@@ -17,14 +19,15 @@ static uint32_t line_of(const TvmProto *f, uint32_t pc) {
   return line;
 }
 
-/* what が NULL なら、入れ子の中で書いた message に、この run の frame を足すだけ */
+/* If what is NULL, just appends the frames of this run to the message written
+ * inside the nested call */
 static TvmStatus fault(TvmVm *vm, TvmFrame *base, TvmFrame *ci,
                        const TvmProto *proto, const uint64_t *pc,
                        const char *what) {
   if (what)
     tvm_set_error(vm, "fault: %s", what);
   vm->faulting = true;
-  /* pc は命令の次を指している */
+  /* pc points past the instruction */
   uint32_t at = (uint32_t)(pc - proto->code) - 1;
   tvm_append_error(vm, "\n  at %s (%s:%u)", proto->name, proto->file,
                    line_of(proto, at));
@@ -37,7 +40,8 @@ static TvmStatus fault(TvmVm *vm, TvmFrame *base, TvmFrame *ci,
   return TVM_FAULT;
 }
 
-/* Console.WriteLine。行ごとに flush する (stdout が file や pipe でも行が溜まらない) */
+/* Console.WriteLine. Flushes per line (lines do not pile up even when stdout is
+ * a file or a pipe) */
 static void print_line(const char *s, size_t n) {
   fwrite(s, 1, n, stdout);
   fputc('\n', stdout);
@@ -87,7 +91,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
     TvmStatus fst_ = fault(vm, base, ci, proto, pc, msg);                      \
     LEAVE(fst_);                                                               \
   } while (0)
-/* 今の frame を ftop の下に保存する (GC の root と、入れ子の呼び出しの土台) */
+/* Saves the current frame below ftop (as a GC root and as the base for nested
+ * calls) */
 #define SAVE()                                                                 \
   do {                                                                         \
     ci->pc = pc;                                                               \
@@ -97,8 +102,10 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
     vm->ftop = ci + 1;                                                         \
     vm->top = R + proto->nregs;                                                \
   } while (0)
-/* 確保の地点: 溜まった確保が閾値を超えていれば、frame を保存して回収する */
-/* shared heap の write barrier: 参照を書いた object (と container) を tcs2c の GC に知らせる (doc/object-model.md §10.2) */
+/* Allocation point: if the accumulated allocations exceed the threshold, saves
+ * the frame and collects */
+/* shared heap write barrier: tells the tcs2c GC about the object (and
+ * container) a reference was written into (doc/object-model.md §10.2) */
 #define WB(owner)                                                              \
   do {                                                                         \
     if (vm->heap && (owner))                                                   \
@@ -520,7 +527,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
     TvmList *l = (TvmList *)RA.p;
     NONNULL(l);
     NONNULL(RB.p);
-    /* 入れ子の呼び出しはこの frame の後ろから積む。この frame は GC の root として保存する */
+    /* Nested calls are pushed after this frame. This frame is saved as a GC
+     * root */
     SAVE();
     TvmStatus st = tvm_list_sort(vm, l, (const TvmClosure *)RB.p);
     if (st != TVM_OK)
@@ -573,7 +581,7 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
     SAFEPOINT();
     if (!tvm_list_insert0(vm, l, l->count))
       FAULT("out of memory");
-    WB(l); /* 広げた buffer */
+    WB(l); /* The grown buffer */
     NEXT;
   }
   CASE(LIST_INSERT0) {
@@ -637,7 +645,7 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
     int32_t at = tvm_dict_insert(vm, d, key);
     if (at < 0)
       FAULT("out of memory");
-    WB(d); /* key と、作り直した entry の列 */
+    WB(d); /* The key and the rebuilt entry list */
     RA.i = at;
     NEXT;
   }
@@ -770,8 +778,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
     if (!c)
       FAULT("out of memory");
     memcpy(c, o, TVM_TYPE(o)->size);
-    TVM_TYPE(c) =
-        TVM_TYPE(o); /* 型は header にあり、payload の copy では写らない */
+    TVM_TYPE(c) = TVM_TYPE(
+        o); /* The type is in the header and is not copied with the payload */
     RA.p = c;
     NEXT;
   }
@@ -787,19 +795,21 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
     NEXT;
   }
   CASE(CALLR) {
-    /* runtime の関数は確保も入れ子の呼び出しもしうるので、frame を保存して回収の地点にする */
+    /* Runtime functions may allocate or make nested calls, so the frame is
+     * saved and this becomes a collection point */
     SAFEPOINT();
     SAVE();
     const TvmIntrinsic *in = vm->intrinsics[OPC];
-    /* host の関数で struct か out を持つものは、引数を C の layout の塊に写して呼ぶ (tvm_host_call) */
+    /* Host functions with structs or outs are called with their arguments
+     * copied into C-layout blocks (tvm_host_call) */
     TvmStatus st = !in->host ? in->fn(vm, &RA, &RB)
                    : vm->host_plans[OPC]
                        ? tvm_host_call(vm, in, vm->host_plans[OPC], &RA, &RB)
                        : in->host(vm, &RA, &RB, in->user);
     if (st != TVM_OK)
       FAULT(NULL);
-    if (vm->heap &&
-        !in->host) /* container を変える runtime の関数 (List / Dictionary / 配列の引数) */
+    if (vm->heap && !in->host) /* Runtime functions that modify a container
+                                  (List / Dictionary / array arguments) */
       for (uint32_t k = 0; in->params[k]; k++)
         if (strchr("LDAr", in->params[k]))
           WB(R[OPA + k].p);
@@ -823,7 +833,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
   CASE(LDCAP) RA = CLO_CAPS(clo)[OPC];
   NEXT;
   CASE(CALL) {
-    /* 新しい frame は caller の frame の後ろ。引数は copy する (doc/vm-design.md §8.1) */
+    /* The new frame follows the caller's frame. Arguments are copied
+     * (doc/vm-design.md §8.1) */
     const TvmProto *g = &vm->funcs[OPC];
     TvmSlot *nR = R + proto->nregs;
     if (nR + g->nregs > vm->stack_end || ci + 1 >= vm->frames_end)
@@ -850,7 +861,8 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
     const TvmClosure *c = (const TvmClosure *)RA.p;
     NONNULL(c);
     if (vm->heap && GC_HEADER(c)->kind != TVM_KIND_OBJECT) {
-      /* C の module の delegate (X-4): 関数型の sig の invoke で呼ぶ */
+      /* C module delegate (X-4): called through the invoke for the sig of the
+       * function type */
       TvmDelegateFn inv = tvm_delegate_for(vm, &vm->types[OPC]);
       if (!inv)
         FAULT("no invoke for a C delegate of this type");
@@ -1024,7 +1036,7 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
       d->hit[k] = 1;
       d->hits[d->nhits++] = k;
     }
-    /* A は class の instance の method の self の register + 1 */
+    /* A is the self register + 1 of a class instance method */
     if (OPA)
       tvm_debug_pair(vm, k, R[OPA - 1].p);
     if (vm->prof_clock)
@@ -1050,7 +1062,8 @@ default:
 #endif
 }
 
-/* 負荷を数えている間は、interpreter に入る・出るを知らせる (host からの一番外の呼び出しの外の時間を行に付けない) */
+/* While counting cost, reports entering / leaving the interpreter (so that time
+ * outside the outermost call from the host is not attributed to lines) */
 static TvmStatus run(TvmVm *vm, const TvmProto *proto, const TvmClosure *clo,
                      const TvmSlot *args, TvmSlot *rets) {
   if (!vm->prof_clock)
@@ -1081,7 +1094,8 @@ TvmStatus tvm_call_closure(TvmVm *vm, const TvmClosure *c, const TvmSlot *args,
   return st;
 }
 
-/* 関数を入れ子で呼ぶ (host が VM の object の interface の method を呼ぶ。tvm_invoke_method) */
+/* Calls a function nested (the host calls an interface method of a VM object;
+ * tvm_invoke_method) */
 TvmStatus tvm_run_nested(TvmVm *vm, const TvmProto *proto, const TvmSlot *args,
                          TvmSlot *rets) {
   if (vm->depth >= TVM_MAX_DEPTH) {

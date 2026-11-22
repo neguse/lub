@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// struct / record struct の static field と static auto property は class と同じ
-// (型の table に pre-zero し、initializer は全型の定義の後)。実行結果は
-// DifferentialTests.StructOperators が押さえる。ここは build の可否
+// Static fields and static auto properties of struct / record struct are the same as for classes
+// (pre-zeroed in the type's table, initializers after all type definitions). Execution results are
+// covered by DifferentialTests.StructOperators. This file checks whether it builds
 public class StructStaticFieldTests
 {
     [Fact]
@@ -22,7 +22,7 @@ public class StructStaticFieldTests
         Assert.Empty(result.Warnings);
     }
 
-    // C# は閉じた型ごとに別の値を持つが、Lua は型を消すので 1 つを共有してしまう
+    // C# has a separate value per closed type, but Lua erases types, so one value ends up shared
     [Fact]
     public void GenericStructStaticField_IsBuildBlockingError()
     {

@@ -1,24 +1,24 @@
-// サイトの入口 (index.html。lider を動かす page) を headless の chromium (WebGPU は swiftshader) で開いて確かめる。
+// Opens and checks the site entry (index.html; the page that runs lider) in headless chromium (WebGPU via swiftshader).
 //
-//   L1. 起動: page が `ready` を出し、canvas が真っ黒でない。
-//   L2. lider とゲーム: 起動したときは lider の窓が出ていて、命令 screen:hide でゲームだけになる (絵が変わる)。
-//   L3. 差分: project の file (Render.cs) の関数の本体を MEMFS で書き換えると、lider が変換して `lider: build saved batch` を出し、ゲームを作り直さずに当てて、ゲームの背景の色が変わる。
-//   L4. compile error: 通らない file を書くと、lider が `lider: build saved error` と診断を出す。動いているゲームは変わらない。
-//   L5. 直す: 通る file に戻すと、また `lider: build saved batch` になり、背景の色が変わる。
-//   L6. 通らない project で開き直す: 通らない file を保存して page を読み直すと、lider は起動して `lider: build saved error` を出し、直すとゲームが始まる (`lider: build saved module`)。
-//   L7. 並べる: 編集の間に Alt+D を押すと、lider が編集中の版を変換し (`lider: build draft module`)、画面の左右に 2 つのゲームが出る (どちらも L6 の緑)。状態を写すので、左右はほぼ同じ絵になる。
-//   L8. サンプル: 前の lider の page の URL (lider.html#sample=17_flappy) で開くと、hash を付けたまま入口に移り、lub のサンプルが project になって起動し (data は samples/17_flappy/data から読める)、サンプルの .cs の書き換えがゲームの絵に出る。
-//   L9. メニュー: Doc の link と、サンプルの一覧 (17_flappy を含む) がある。Doc の page はガイドを描く。
-//   L10. 整形: 空白を詰めて書いた .cs を保存すると、page が .NET の wasm (tcs の WasmCompiler の CSharpier) で整形して書き戻す。整形の worker が動かないという警告を出さない。
+//   L1. Startup: the page shows `ready` and the canvas is not pure black.
+//   L2. lider and game: at startup the lider window is shown, and the command screen:hide leaves only the game (the picture changes).
+//   L3. Diff: when the body of a function in a project file (Render.cs) is rewritten in MEMFS, lider compiles it, prints `lider: build saved batch`, applies it without recreating the game, and the game's background color changes.
+//   L4. compile error: writing a file that does not compile makes lider print `lider: build saved error` and a diagnostic. The running game does not change.
+//   L5. Fix: restoring a file that compiles gives `lider: build saved batch` again, and the background color changes.
+//   L6. Reopen with a failing project: after saving a file that does not compile and reloading the page, lider starts and prints `lider: build saved error`, and fixing it starts the game (`lider: build saved module`).
+//   L7. Side by side: pressing Alt+D while editing makes lider compile the version being edited (`lider: build draft module`), and two games appear on the left and right of the screen (both the green of L6). The state is copied, so left and right show nearly the same picture.
+//   L8. Samples: opening the old lider page URL (lider.html#sample=17_flappy) moves to the entry keeping the hash, the lub sample becomes the project and starts (data can be read from samples/17_flappy/data), and edits to the sample's .cs show up in the game picture.
+//   L9. Menu: there is a Doc link and a list of samples (including 17_flappy). The Doc page renders the guides.
+//   L10. Formatting: saving a .cs written with squeezed whitespace makes the page format it with the .NET wasm (CSharpier in tcs WasmCompiler) and write it back. No warning that the formatting worker does not run is shown.
 //
-// 変換は lider が player に組み込んだ tcs で行い、結果を console に書く (lider の GameBuild)。
-// lider が compile error を窓の中に出すことは見ていない (lider が診断を受け取った所まで)。
+// Compilation is done by the tcs that lider embeds in the player, and the result is written to the console (lider's GameBuild).
+// It does not check that lider shows compile errors in its window (only up to lider receiving the diagnostic).
 //
-// 使い方 (dev server か preview を動かしておく):
+// Usage (keep the dev server or preview running):
 //   cd web && npm run dev
 //   cd web && LUB_URL=http://localhost:5173/ npm run verify-lider
 //
-// 失敗があれば終了コード 1。画面は SCREENSHOT_DIR (既定 /tmp/lub-verify) に残す。
+// Exits with code 1 on any failure. Screenshots are kept in SCREENSHOT_DIR (default /tmp/lub-verify).
 import fs from "node:fs";
 import path from "node:path";
 import { PNG } from "pngjs";
@@ -27,19 +27,19 @@ import { launchChromium, closeAfter } from "./lib/browser.mjs";
 const BASE = process.env.LUB_URL || "http://localhost:5173/";
 const VERBOSE = process.env.VERBOSE === "1";
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR || "/tmp/lub-verify";
-// 起動 (tcs と整形の runtime の読み込み、project の変換) を待つ上限
+// Time limit for startup (loading tcs and the formatting runtime, compiling the project)
 const READY_MS = Number(process.env.LIDER_READY_MS || 180000);
-// 保存から、変換して当たるまでを待つ上限
+// Time limit from a save until it is compiled and applied
 const APPLY_MS = Number(process.env.LIDER_APPLY_MS || 60000);
 const ENTRY = "Flappy";
 const SOURCE = "/lider/project/Render.cs";
 const MODULE = `/lider/project/.lub/${ENTRY}.tcsb`;
 const SAMPLE = "17_flappy";
 const SAMPLE_SOURCE = `/lider/samples/${SAMPLE}/Flappy17.cs`;
-// サンプルの画面の pass の背景
+// Background of the sample's screen pass
 const SAMPLE_BACKGROUND =
   "ClearColor = new float[] { 0.05f, 0.05f, 0.15f, 1.0f }";
-// 非 XR の pass の背景 (Render.Frame の本体にある)
+// Background of the non-XR pass (in the body of Render.Frame)
 const BACKGROUND = "ClearColor = background }";
 
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
@@ -59,7 +59,7 @@ const ctx = await browser.newContext({
   deviceScaleFactor: 1,
 });
 const page = await ctx.newPage();
-// console に出た行 (lider の変換の結果を見る)
+// Lines printed to the console (to see lider's compile results)
 const logs = [];
 page.on("console", (m) => {
   logs.push(m.text());
@@ -77,7 +77,7 @@ function statusText() {
   return page.evaluate(() => document.getElementById("status").textContent);
 }
 
-// page の表示 (#status) が pred を満たすまで待つ。満たした表示を返し、満たさなければ null
+// Waits until the page status (#status) satisfies pred. Returns the status that satisfied it, or null if it never does
 async function waitStatus(pred, ms) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -88,7 +88,7 @@ async function waitStatus(pred, ms) {
   return null;
 }
 
-// logs の from より後に、pred を満たす行が出るのを待つ。出た行の位置を返し、出なければ -1
+// Waits for a line satisfying pred to appear after from in logs. Returns the position of the line, or -1 if it does not appear
 async function waitLog(from, pred, ms) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -98,12 +98,12 @@ async function waitLog(from, pred, ms) {
   return -1;
 }
 
-// lider の保存した版の変換の結果の行 (`lider: build saved <kind> (revision N)`)
+// Line with the compile result of the version lider saved (`lider: build saved <kind> (revision N)`)
 function built(kind) {
   return (t) => t.startsWith(`lider: build saved ${kind} (revision `);
 }
 
-// ゲームの module を読み直して作り直した (差分で当てなかった) 行
+// Line saying the game module was reloaded and the game recreated (not applied as a diff)
 function restarted(from) {
   return logs
     .slice(from)
@@ -116,7 +116,7 @@ async function shot(name) {
   return PNG.sync.read(fs.readFileSync(file));
 }
 
-// pred(r, g, b) を満たす画素の割合
+// Fraction of pixels that satisfy pred(r, g, b)
 function fraction(png, pred) {
   let n = 0;
   for (let i = 0; i < png.data.length; i += 4)
@@ -124,7 +124,7 @@ function fraction(png, pred) {
   return n / (png.data.length / 4);
 }
 
-// 2 枚の絵で色が違う画素の割合
+// Fraction of pixels whose color differs between two images
 function difference(a, b) {
   let n = 0;
   for (let i = 0; i < a.data.length; i += 4)
@@ -138,7 +138,7 @@ function difference(a, b) {
   return n / (a.data.length / 4);
 }
 
-// pred を満たす画素が画面の 3 割を超えるまで待つ。最後に見た割合を返す
+// Waits until pixels satisfying pred exceed 30% of the screen. Returns the last fraction seen
 async function waitColor(name, pred, ms) {
   const end = Date.now() + ms;
   let got = 0;
@@ -178,7 +178,7 @@ try {
   );
   check("L1 page reports ready", ready === "ready", `status: ${ready}`);
   if (ready !== "ready") throw new Error("the page did not start");
-  // 最初の frame が描かれるのを待つ
+  // Wait for the first frame to be drawn
   let first = await shot("start");
   for (
     let i = 0;
@@ -191,7 +191,7 @@ try {
   const lit = fraction(first, (r, g, b) => r + g + b > 24);
   check("L1 canvas is not black", lit >= 0.01, `non-black ${pct(lit)}`);
 
-  // ゲームでないスクリーンを隠す: key を振っていない命令なので、Ctrl+P の検索から名前で呼ぶ
+  // Hide the non-game screens: this command has no key bound, so call it by name from the Ctrl+P search
   const hideLider = async () => {
     await page.keyboard.press("Control+p");
     await page.keyboard.type(">screen:hide");
@@ -271,7 +271,7 @@ try {
   // L6
   await writeSource(edit("nope"));
   await waitLog(logs.length, built("error"), APPLY_MS);
-  // 保存した file が IndexedDB に写るのを待つ
+  // Wait for the saved file to be copied to IndexedDB
   await page.waitForTimeout(1000);
   logs.length = 0;
   await page.reload({ waitUntil: "load" });
@@ -309,7 +309,7 @@ try {
   );
   check("L7 lider builds the draft", at >= 0, logs[at] ?? "");
   await hideLider();
-  // 左と右の半分が、どちらもゲームの緑になるのを待つ
+  // Wait for both the left and right halves to turn the game's green
   const halves = (png) => {
     const half = (x0, x1) => {
       let n = 0;
@@ -336,7 +336,7 @@ try {
     both[0] > 0.3 && both[1] > 0.3,
     `green left ${pct(both[0])}, right ${pct(both[1])}`,
   );
-  // 状態を写したので、左右はほぼ同じ絵になる (どちらも同じ大きさの texture に、同じ縦横比で描く)
+  // The state was copied, so left and right show nearly the same picture (both are drawn into textures of the same size with the same aspect ratio)
   const last = await shot("compare");
   let differ = 0;
   const halfW = last.width >> 1;
@@ -424,7 +424,7 @@ try {
     `${menu.samples.length} samples`,
   );
   check("L9 the menu goes back to the own project from a sample", menu.own);
-  // docs.html は api-docs.json を base 基準で読み、ガイドの section を描く
+  // docs.html reads api-docs.json relative to base and renders the guide sections
   const docs = await ctx.newPage();
   await docs.goto(new URL("docs.html", BASE).href, { waitUntil: "load" });
   const guides = await docs

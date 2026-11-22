@@ -1,15 +1,15 @@
-// readback の結果が届く frame。
-// 毎 frame、render target を frame ごとに違う色で clear して、frame 番号を id にして読み戻す。
-// TestReadbackFixedLatency: 遅延を保証するモード (ConfigOpts.ReadbackFixedLatency) では、frame N の要求はちょうど frame N+2 の poll で Ready になり、それより前の poll は GPU が終えていても Processing のまま。
-// TestReadbackNoWait: 保証しないモードでは readback のために GPU を待たない。
-// frame の command はその frame の終わりまで GPU に出ないので、積んだ frame の中の poll では届かず、後の frame で届く。
+// The frame in which readback results arrive.
+// Every frame, clears a render target with a color that differs per frame, and reads it back with the frame number as the id.
+// TestReadbackFixedLatency: in the latency-guaranteeing mode (ConfigOpts.ReadbackFixedLatency), a request from frame N becomes Ready exactly at the poll in frame N+2, and earlier polls stay Processing even if the GPU has finished.
+// TestReadbackNoWait: in the non-guaranteeing mode, the GPU is not waited for readbacks.
+// The commands of a frame are not sent to the GPU until the end of that frame, so a poll within the frame that queued the request does not get it, and it arrives in a later frame.
 using System;
 using Lub;
 
 public static class TestReadbackLatency
 {
-    // frame k の render target の赤。
-    // 届いた画素がどの frame のものかを見る。
+    // The red of the render target at frame k.
+    // Checks which frame the arrived pixels belong to.
     static int Red(int k) { return (k % 8) * 32; }
 
     public static TextureRef? Draw(int frame)
@@ -69,7 +69,7 @@ public static class TestReadbackFixedLatency
             Check.That(id == frame - 2, $"frame {frame}: got readback {id}, want {frame - 2}");
             TestReadbackLatency.ExpectPixels(bytes!, id);
         }
-        // 次の要求 (frame - 1) は GPU が終えていても、この frame では渡さない
+        // The next request (frame - 1) is not handed over in this frame even if the GPU has finished
         Gfx.ReadTexture(rb!, rt, null, out st, out _, out _, out _, out _, out _, out id, out _, out err);
         Check.That(st == Gfx.ReadbackStatus.Processing, $"frame {frame}: readback {id} came early ({st} {err})");
         frame++;

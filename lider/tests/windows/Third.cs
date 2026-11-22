@@ -1,4 +1,4 @@
-// tests/windows で開く 3 つ目の file。
+// The third file opened in tests/windows.
 public static class WindowsThird
 {
 }

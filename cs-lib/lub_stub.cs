@@ -1,11 +1,11 @@
-// lub core API の参照専用 stub (--ref)。
-// 変換の出力には含めない。
-// C# 側の記述が API 面の正で、tcs が名前を規則で snake_case に写す (Gfx.BeginPass → lub.gfx.begin_pass、enum メンバ Rgba8 → RGBA8)。
-// 実行時は tcs VM の host の関数 (src/gen/vm_api_gen.c、生成物) が同じ名前で C API (include/lub/lub_api.h) を呼ぶ。
-// core の型は namespace Lub にあり、ゲーム側は `using Lub;` で `Gfx.BeginPass(...)` と書く。
-// 末尾の namespace Lubx は、lubx (cs-lib/lubx) が使う C の実装 (src/lubx/) の面で、core API ではない (Lubx.Vorbis.Decode → lubx.vorbis.decode)。
-// API reference (web/gen/lub-api-docs.json) はこの stub の doc comment から生成する。
-// TCS1001 (out パラメータ) は --ref 型の out 引数の契約そのものなのでこの stub に限り抑制する (check の経路は元々 --ref 扱いで無警告)。
+// Reference-only stub of the lub core API (--ref).
+// Not included in the conversion output.
+// The C# declarations are the source of truth for the API surface, and tcs maps the names to snake_case by rule (Gfx.BeginPass → lub.gfx.begin_pass, enum member Rgba8 → RGBA8).
+// At runtime the tcs VM host functions (src/gen/vm_api_gen.c, generated code) call the C API (include/lub/lub_api.h) under the same names.
+// Core types are in namespace Lub, and games write `Gfx.BeginPass(...)` with `using Lub;`.
+// The trailing namespace Lubx is the surface of the C implementation (src/lubx/) used by lubx (cs-lib/lubx), not the core API (Lubx.Vorbis.Decode → lubx.vorbis.decode).
+// The API reference (web/gen/lub-api-docs.json) is generated from this stub's doc comments.
+// TCS1001 (out parameter) is exactly the contract of out arguments in --ref types, so it is suppressed for this stub only (the check path already treats it as --ref and does not warn).
 #pragma warning disable TCS1001
 
 using System;
@@ -13,8 +13,8 @@ using System.Collections.Generic;
 
 namespace Lub
 {
-    // ------------------------------------------------------------- 記述の語彙 tools/lub-gen がこの stub を記述として読むときの注釈。
-    // 面の生成 (header / tcs VM の host の関数 / tcs2c の接続コード / facade / API docs) はこの語彙から導く。
+    // ------------------------------------------------------------- Description vocabulary. Annotations for when tools/lub-gen reads this stub as a description.
+    // Generation of the surfaces (header / tcs VM host functions / tcs2c glue code / facade / API docs) is derived from this vocabulary.
 
     /// <summary>runtime 所有の resource への不透明な参照。
     /// ゲームは key と version だけを持ち、所有 pointer は持たない。
@@ -110,7 +110,7 @@ namespace Lub
     [LubNative]
     public class Bindings
     {
-        // tcs2c の block。GC が辿る。
+        // A tcs2c block. The GC traces it.
 #pragma warning disable CS0169
         private byte[]? blob;
 #pragma warning restore CS0169
@@ -422,9 +422,9 @@ namespace Lub
     }
 
     // -------------------------------------------------------------------- Lub
-    // lub の runtime API。
-    // ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。
-    // host の名前は `lub.gfx.begin_pass`。
+    // lub's runtime API.
+    // Games write `Gfx.BeginPass(...)` with `using Lub;`.
+    // The host name is `lub.gfx.begin_pass`.
 
     public static class Xr
     {

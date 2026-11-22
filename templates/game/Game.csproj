@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- lub のゲームの雛形。lub にとっては entry 指定 (basename = entry class、
-       入力 = このディレクトリ以下の *.cs) で、dotnet にとっては .NET 実行の
-       project。LubRoot は lub の checkout (cp -r で外に出したら書き換える)。 -->
+  <!-- lub game template. For lub it is the entry specification (basename = entry class,
+       input = *.cs under this directory), and for dotnet it is the project for .NET
+       execution. LubRoot is the lub checkout (update it if you copy this out with cp -r). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net11.0</TargetFramework>
@@ -9,16 +9,16 @@
     <Nullable>enable</Nullable>
     <RootNamespace></RootNamespace>
     <LubRoot Condition="'$(LubRoot)' == ''">$(MSBuildThisFileDirectory)../..</LubRoot>
-    <!-- lub の release build に含まれる共有 library の場所 -->
+    <!-- Location of the shared library included in the lub release build -->
     <LubNativeDir Condition="'$(LubNativeDir)' == ''">$(LubRoot)/build-release-linux</LubNativeDir>
     <DefaultItemExcludes>$(DefaultItemExcludes);.lub/**</DefaultItemExcludes>
     <NoWarn>$(NoWarn);CS8981</NoWarn>
   </PropertyGroup>
-  <!-- tcs の場所 ($(TcsRoot))。lub の checkout の中では Directory.Build.props が先に読んでいる -->
+  <!-- Location of tcs ($(TcsRoot)). Inside a lub checkout, Directory.Build.props has already imported it -->
   <Import Project="$(LubRoot)/Lub.props" Condition="'$(TcsRoot)' == ''" />
 
   <ItemGroup>
-    <!-- cs-lib の実装ソース (lub.Math、lubx) は tcs VM の player と同じく compile に含める -->
+    <!-- The implementation sources of cs-lib (lub.Math, lubx) are included in compile, as in the tcs VM player -->
     <Compile Include="$(LubRoot)/cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(LubRoot)/cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
     <ProjectReference Include="$(LubRoot)/dotnet/Lub/Lub.csproj" />
@@ -27,16 +27,16 @@
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
-    <!-- TinyC# の analyzer (tcs check と同じ compiler) に lub の API の宣言を tcs の ref として渡す -->
+    <!-- Passes the lub API declarations as tcs refs to the TinyC# analyzer (the same compiler as tcs check) -->
     <AdditionalFiles Include="$(LubRoot)/cs-lib/lub_stub.cs" TinyCsRef="true" />
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="TinyCsRef" />
-    <!-- 共有 library を出力の隣に置く (DllImport の既定の探索で見つかる) -->
+    <!-- Puts the shared library next to the output (found by the default DllImport search) -->
     <None Include="$(LubNativeDir)/liblub.so" Condition="Exists('$(LubNativeDir)/liblub.so')"
           CopyToOutputDirectory="PreserveNewest" Link="liblub.so" />
     <None Include="$(LubNativeDir)/lub.dll" Condition="Exists('$(LubNativeDir)/lub.dll')"
           CopyToOutputDirectory="PreserveNewest" Link="lub.dll" />
   </ItemGroup>
-  <!-- Math / MathF を TinySystem.Math にし、.NET 実行でも Math の超越関数を
-       tcs VM / tcs2c と bit 単位で同じ結果にする -->
+  <!-- Maps Math / MathF to TinySystem.Math so that, even in .NET execution, the Math transcendental functions
+       give bit-identical results to tcs VM / tcs2c -->
   <Import Project="$(TcsRoot)/TinySystem/TinySystem.props" />
 </Project>

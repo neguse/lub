@@ -1,5 +1,5 @@
-// 描く所。どの物も単位の立方体を伸ばして描き、物は自分の Draw で Gfx.Draw を呼ぶ。
-// 非 VR は main_tex に横から見た camera で描き、XR は眼の pass に、目の前に縮めて置く。
+// Drawing. Every object is drawn as a stretched unit cube, and each object calls Gfx.Draw in its own Draw.
+// Non-VR draws to main_tex with a camera looking from the side; XR draws into the eye passes, scaled down and placed in front of the eyes.
 using System.Collections.Generic;
 using Lub;
 using Lubx;
@@ -44,7 +44,7 @@ public static class Render
     static readonly float[] eyeVp = new float[16];
     static readonly float[] background = new float[] { 0.05f, 0.05f, 0.15f, 1 };
 
-    // 頂点は持たず、vertex の番号から面 (6 頂点ずつ) と角を決める。面ごとに明るさを変える
+    // No vertex data; the face (6 vertices each) and corner are derived from the vertex index. Brightness varies per face
     const string Vs =
         "struct Uniforms { float4x4 mvp; float4 color; };\n"
         + "ConstantBuffer<Uniforms> u;\n"
@@ -103,7 +103,7 @@ public static class Render
             return;
         if (!anchor.IsSet())
             anchor.Recenter(left, right);
-        // 基準の空間は OpenXR と同じく -z が前。ゲームの 1 は 0.18 m で、目の高さの少し下、2.6 m 先に置く
+        // In the reference space, -z is forward, as in OpenXR. 1 game unit is 0.18 m, placed slightly below eye height, 2.6 m ahead
         var world =
             Mat4.Translate(new Vec3(0, -0.15f, -2.6f))
             * Mat4.Scale(new Vec3(0.18f, 0.18f, 0.18f));

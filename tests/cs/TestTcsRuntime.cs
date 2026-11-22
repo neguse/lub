@@ -1,5 +1,5 @@
-// player が持つ tcs の runtime の書式と並べ替え。
-// float の既定の文字列化と int の書式は .NET の ToString と同じ文字列、string の Sort は .NET の ordinal の順になる。
+// Formatting and sorting of the tcs runtime in the player.
+// The default string conversion of float and the formatting of int produce the same strings as .NET ToString, and Sort of string follows the .NET ordinal order.
 using System;
 using System.Collections.Generic;
 using Lub;

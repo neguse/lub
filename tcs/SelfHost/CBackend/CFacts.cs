@@ -26,7 +26,7 @@ public sealed class MethodFact
     public CType ReturnType;
     public List<ParameterFact> Parameters;
     public ExMethod Metadata;
-    // out parameter。C の signature では Parameters の後ろに `T *` で並ぶ
+    // out parameters. In the C signature they follow Parameters as `T *`
     public List<ParameterFact> OutParameters = new List<ParameterFact>();
 
     public MethodFact(string className, string name, bool isStatic, CType returnType, List<ParameterFact> parameters, ExMethod metadata)
@@ -60,13 +60,13 @@ public sealed class FieldFact
     }
 }
 
-// IL の export の metadata を backend の型へ写す。入力は ExportResult だけ
+// Maps IL export metadata to backend types. The only input is ExportResult
 public sealed class ContractFacts
 {
     public Dictionary<string, ExClass> Classes = new Dictionary<string, ExClass>();
     public Dictionary<string, ExStruct> Structs = new Dictionary<string, ExStruct>();
     private Dictionary<string, ExEnum> _enums = new Dictionary<string, ExEnum>();
-    // C# 表示名 (`A.Color`) → IL の型名 (`A_Color`)。IL の型文字列は表示名
+    // C# display name (`A.Color`) → IL type name (`A_Color`). IL type strings are display names
     private Dictionary<string, string> _typeAliases = new Dictionary<string, string>();
     private Dictionary<string, MethodFact> _methods = new Dictionary<string, MethodFact>();
     private Dictionary<string, FieldFact> _fields = new Dictionary<string, FieldFact>();
@@ -103,7 +103,7 @@ public sealed class ContractFacts
             }
             RegisterMethods(cls.Name, cls.Methods);
         }
-        // struct の member も同じ表に載せる (型名で引く)
+        // struct members go in the same table too (looked up by type name)
         foreach (var st in program.Structs)
         {
             RegisterMethods(st.Name, st.Methods);
@@ -148,7 +148,7 @@ public sealed class ContractFacts
         }
     }
 
-    // parameter の名前 / 型 / 省略時の既定値 (末尾の省略は呼び出し側が既定値で補う)
+    // Parameter name / type / default value when omitted (the caller fills omitted trailing arguments with default values)
     public List<ParameterFact> ParameterFacts(List<string> names, List<string> types, List<IlExpr?> defaults)
     {
         var list = new List<ParameterFact>();
@@ -175,7 +175,7 @@ public sealed class ContractFacts
         return new FieldFact(cls, name, CType.Void, false, null, new ExField(name, "void", false, null, null));
     }
 
-    // "A, B<C, D>, E" の形をトップレベルのカンマで分ける
+    // Split a string of the form "A, B<C, D>, E" at top-level commas
     public static List<string> SplitTypeArgs(string text)
     {
         var parts = new List<string>();
@@ -197,7 +197,7 @@ public sealed class ContractFacts
         return parts;
     }
 
-    // UTF-8 の byte の位置 [start, end)
+    // UTF-8 byte positions [start, end)
     public static string Sub(string text, int start, int end) => new Utf8Bytes(text).Slice(start, end - start).ToString();
 
     public static int Len(string text) => new Utf8Bytes(text).Length;
@@ -212,7 +212,7 @@ public sealed class ContractFacts
         return -1;
     }
 
-    // 失敗しても誤りを残さない MapType
+    // MapType that leaves no error on failure
     public CType? TryMapType(string displayName)
     {
         string saved = CFail.Error;
@@ -229,7 +229,7 @@ public sealed class ContractFacts
         if (text.StartsWith("global::")) text = Strings.From(text, 8);
         int n = Len(text);
         if (text.EndsWith("[]")) return CType.Array(MapType(Sub(text, 0, n - 2)));
-        // Nullable<T>: 値型なら T?、参照型の `string?` などは参照そのもの
+        // Nullable<T>: T? for value types; for reference types such as `string?`, the reference itself
         if (text.EndsWith("?")) return MakeNullable(MapType(Sub(text, 0, n - 1)));
         foreach (var prefix in "System.Nullable< Nullable<".Split(' '))
         {
@@ -256,7 +256,7 @@ public sealed class ContractFacts
                 return CType.Closure(args[args.Count - 1], ps);
             }
         }
-        // Predicate<T> / Comparison<T> は Func<T, bool> / Func<T, T, int> と同じ closure (List.FindIndex / Sort などの引数)
+        // Predicate<T> / Comparison<T> are the same closures as Func<T, bool> / Func<T, T, int> (arguments to List.FindIndex / Sort etc.)
         foreach (var prefix in "System.Predicate< Predicate< System.Comparison< Comparison<".Split(' '))
         {
             if (!text.StartsWith(prefix) || !text.EndsWith(">")) continue;
@@ -270,7 +270,7 @@ public sealed class ContractFacts
             }
             return CType.Closure(CType.Bool, ps);
         }
-        // Dictionary の Keys / Values は C でも key / value の List の写し (Dict.Keys / Values)
+        // Dictionary Keys / Values are copies as key / value Lists in C as well (Dict.Keys / Values)
         foreach (var member in ".KeyCollection .ValueCollection".Split(' '))
         {
             if (!text.EndsWith(member)) continue;
@@ -311,7 +311,7 @@ public sealed class ContractFacts
         if (text.StartsWith(genericList) && text.EndsWith(">")) return CType.List(MapType(Sub(text, Len(genericList), n - 1)));
         if (text.StartsWith("List<") && text.EndsWith(">")) return CType.List(MapType(Sub(text, 5, n - 1)));
 
-        // user の型の表示名 (`@float` の class) は、同じ綴りの組み込みの型 (float) より user の class と struct を先に引く
+        // For user type display names (a class named `@float`), user classes and structs are looked up before the built-in type with the same spelling (float)
         string aliased = IlTypeName(text);
         if (aliased != text)
         {
@@ -337,18 +337,18 @@ public sealed class ContractFacts
             case "object":
             case "System.Object":
                 return CType.Object;
-            // char は整数の code unit (il-spec §3)
+            // char is an integer code unit (il-spec §3)
             case "char":
             case "System.Char":
                 return CType.I32;
-            // Utf8Bytes の添字の結果。丸めが起きる式は TCS1001 ByteNarrowing で止まる
+            // Result of indexing Utf8Bytes. Expressions that would truncate are stopped by TCS1001 ByteNarrowing
             case "byte":
             case "System.Byte":
                 return CType.I32;
         }
-        // enum は整数の定数 (C の型は i32。文字列化は IL の String.FormatEnum)
+        // enums are integer constants (C type i32; stringification is IL String.FormatEnum)
         if (_enums.ContainsKey(text)) return CType.I32;
-        // TinySystem.Random の instance (user の class Random は別物)
+        // Instance of TinySystem.Random (a user class Random is a different thing)
         if (text == "TinySystem.Random") return CType.Random;
         if (text == "Random" && !Classes.ContainsKey("Random")) return CType.Random;
         if (text == "TinySystem.Text.Utf8Bytes") return CType.Utf8Bytes;
@@ -359,7 +359,7 @@ public sealed class ContractFacts
         return CType.Void;
     }
 
-    // C# の表示名を IL の型名へ写す (別の namespace の同じ名前の型は修飾名)
+    // Map a C# display name to an IL type name (types with the same name in another namespace use the qualified name)
     public string IlTypeName(string displayName)
     {
         string? name;
@@ -367,13 +367,13 @@ public sealed class ContractFacts
         return displayName;
     }
 
-    // Dictionary の key にできる型: int / string と、host の handle を持つ外部 data class (同一性は host_value)
+    // Types usable as Dictionary keys: int / string and external data classes holding a host handle (identity is host_value)
     public bool IsDictKey(CType key)
     {
         return key.Kind == CTypeKind.I32 || key.Kind == CTypeKind.String || key.Kind == CTypeKind.Ref && IsExternalClass(key.Name!);
     }
 
-    // --ref の stub が宣言した外部 data class 自身か (祖先は見ない)
+    // Whether it is itself an external data class declared by a --ref stub (ancestors are not checked)
     public bool IsDeclaredExternal(string name) => Classes[name].IsExternal;
 
     private bool IsExternalClass(string name)
@@ -391,7 +391,7 @@ public sealed class ContractFacts
     {
         if (element.Kind == CTypeKind.I32 || element.Kind == CTypeKind.F32 || element.Kind == CTypeKind.Bool || element.Kind == CTypeKind.StructVal)
             return CType.Nullable(element);
-        // 参照型の ? は注釈だけ
+        // ? on a reference type is only an annotation
         return element;
     }
 

@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// ToString の override (class / record / struct / record struct / generic)。連結 / 補間 / Console.WriteLine は
-// 静的に解決して直接呼ぶ。C# と同じく null の値と ToString が返した null は空文字列、struct の文字列化は copy の上で
-// 呼ぶので書き換えは変数に残らない。期待値は同じ program を CoreCLR で実行した stdout
+// ToString overrides (class / record / struct / record struct / generic). Concatenation / interpolation / Console.WriteLine
+// resolve them statically and call them directly. As in C#, a null value and a null returned by ToString give the empty string, and string conversion of a struct is called on
+// a copy, so modifications do not remain in the variable. The expected values are the stdout of running the same program on CoreCLR
 public class ToStringOverrideDifferentialTests
 {
     [CFact]
@@ -141,7 +141,7 @@ public class ToStringOverrideDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // `new T()` の値の ToString は、呼ぶたびに同じ変数を書き換える (C# 仕様 structs の例)
+    // ToString on the value of `new T()` rewrites the same variable on every call (the structs example in the C# specification)
     [CFact]
     public void ToStringOverride_OnNewTypeArgumentMutatesTheVariable()
     {
@@ -166,7 +166,7 @@ public class ToStringOverrideDifferentialTests
         Assert.Equal("1\n2", output);
     }
 
-    // Equals / GetHashCode の override は record / record struct で書く。sealed は継承の語
+    // Equals / GetHashCode overrides are written on record / record struct. sealed is an inheritance keyword
     [Theory]
     [InlineData("public class T { public override bool Equals(object o) => true; }")]
     [InlineData("public class T { public override int GetHashCode() => 1; }")]
@@ -188,8 +188,8 @@ public class ToStringOverrideDifferentialTests
         }
     }
 
-    // string.Join の要素は runtime が文字列にするので override を呼べない。S? の値は null の扱いが
-    // 値で決まるので連結 / 補間 / WriteLine に出さない (`?.ToString()` は書ける)
+    // string.Join elements are converted to strings by the runtime, so overrides cannot be called. For S? values, null handling
+    // depends on the value, so they are not output via concatenation / interpolation / WriteLine (`?.ToString()` can be written)
     [Theory]
     [InlineData("Console.WriteLine(string.Join(\",\", new List<C> { new C() }));", "UnsupportedToString(C)")]
     [InlineData("Console.WriteLine(string.Join(\",\", new S[] { new S() }));", "UnsupportedToString(S)")]

@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// generic method の nameof は、単相化で雛形の method を消した後も名前の文字列 (#442)
+// nameof on a generic method is still the name string after monomorphization removes the template method (#442)
 public class NameofGenericDifferentialTests
 {
     [CFact]

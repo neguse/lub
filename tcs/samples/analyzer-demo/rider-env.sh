@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# 作業ディレクトリの既定位置。/tmp のような world-writable な場所に固定名で置くと、
-# 別ユーザーが先回りして中身 (実行される tool を含む) を仕込める。
+# Default location of the work directory. If it is placed under a fixed name in a world-writable location such as /tmp,
+# another user can create it first and plant its contents (including the tool that gets executed).
 tcs_cache_dir() {
   local name="$1"
   printf '%s/tcs/%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}" "$name"
 }
 
-# 自分だけが書けるディレクトリを用意する。他人の所有物や symlink はそのまま使わない。
+# Prepares a directory writable only by the current user. Does not use a directory owned by someone else or a symlink as is.
 ensure_private_dir() {
   local dir="$1"
   if [ -L "$dir" ]; then

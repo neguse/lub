@@ -1,6 +1,6 @@
 using System;
 
-// 再帰呼び出しの速さ。fib(N) を素朴な二重再帰で計算する
+// Speed of recursive calls. Computes fib(N) with naive double recursion
 public class Fib
 {
     static int Calc(int n)
@@ -20,8 +20,8 @@ public class Fib
     {
         string s = Environment.GetEnvironmentVariable("BENCH_N");
         int n = s == null ? 30 : int.Parse(s);
-        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
-        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        // Repeats BENCH_REPS times (run.py uses this to compute the time per repetition).
+        // Each repetition's input depends on the previous result so the compiler cannot skip repetitions or hoist them out (the result is never -1)
         string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
         int reps = rs == null ? 1 : int.Parse(rs);
         int prev = 0;

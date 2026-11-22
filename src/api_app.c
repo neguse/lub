@@ -1,8 +1,14 @@
-// App.Use / App.Step: 同じ process の中に別の app を開き、その絵を texture に描かせる。
-// 開いた app は自分の App (resource の表、物理、音、入力の控え) を持ち、Process (window、backend) を開いた側と分け合う。
-// app の中身 (tcs VM と entry の呼び出し) は player が LubAppHooks で作る。hook が無い host では error。
-// 開いた app を開いた側と同じ VM に入れないのは、作り直し、reload、状態の保存の単位を app の VM 1 つに揃え、どの object がどちらの物かを分ける規則を要らなくするため。
-// 別の process にしないのは、開いた app の絵を開いた側の画面に置き、状態を同じ frame の中の関数呼び出しで読むため (tcs VM の fault は VM の中で止まり、Step が false を返す)。
+// App.Use / App.Step: open another app in the same process and have it draw its
+// picture into a texture. The opened app has its own App (resource table,
+// physics, audio, recorded input) and shares the Process (window, backend) with
+// the opener. The app's internals (tcs VM and entry calls) are created by the
+// player through LubAppHooks. On a host without the hook, this is an error. The
+// opened app is not put in the same VM as the opener so that recreation,
+// reload, and state saving all work on one unit, the app's VM, and no rule is
+// needed to tell which object belongs to which side. It is not a separate
+// process so that the opened app's picture can be placed on the opener's screen
+// and its state read with function calls within the same frame (a tcs VM fault
+// stops inside the VM, and Step returns false).
 #include "api_internal.h"
 #include "backend.h"
 #include "pick.h"
@@ -14,27 +20,27 @@ typedef struct OpenApp {
   char key[LUB_KEY_MAX];
   char module[1024];
   char entry[256];
-  // entry の寿命の間は同じ値 (1 始まりの通し番号)
+  // Same value for the lifetime of the entry (1-based serial number)
   int32_t handle;
   App *app;
-  // player の状態。最初の Step で作る (NULL はまだ開いていない)
+  // Player state. Created on the first Step (NULL = not opened yet)
   void *player;
-  // main の pass の depth。target の大きさに合わせて作り直す
+  // Depth for the main pass. Recreated to match the target size
   BackendImage depth;
   int depth_w, depth_h;
-  // StepInput.XrTargets の眼の depth
+  // Depth for the eyes of StepInput.XrTargets
   BackendImage xr_depth[2];
   int xr_depth_w[2], xr_depth_h[2];
   int64_t last_seen_frame;
 } OpenApp;
 
-// App.Save が書いた状態の控え
+// Kept copy of the state written by App.Save
 typedef struct StateSlot {
   int32_t slot;
-  // App.Save が書いた状態 (無ければ NULL)
+  // State written by App.Save (NULL if none)
   uint8_t *bytes;
   size_t size;
-  // StepInput.Keep が書いた入力 (無ければ NULL)
+  // Input written by StepInput.Keep (NULL if none)
   InputState *input;
 } StateSlot;
 
@@ -44,7 +50,7 @@ struct OpenApps {
   int32_t next_handle;
   StateSlot *states;
   int nstates, capstates;
-  // Save / Load が返す理由 (次の呼び出しまで有効)
+  // Reason returned by Save / Load (valid until the next call)
   char state_error[1024];
 };
 
@@ -89,7 +95,8 @@ LubStatus lub_app_use(LubContext *ctx, LubStr key, LubStr module, LubStr entry,
       o = &s->e[i];
   if (o && (strcmp(o->module, want.module) != 0 ||
             strcmp(o->entry, want.entry) != 0)) {
-    // 同じ key の別の app: 閉じて、同じ場所に開き直す
+    // A different app with the same key: close it and reopen it in the same
+    // slot
     open_app_close(app, o);
     *o = s->e[s->n - 1];
     s->n--;
@@ -119,7 +126,7 @@ LubStatus lub_app_use(LubContext *ctx, LubStr key, LubStr module, LubStr entry,
   return LUB_OK;
 }
 
-// depth を target の大きさに合わせる
+// Match the depth to the target size
 static bool depth_fit(BackendImage *depth, int *depth_w, int *depth_h, int w,
                       int h) {
   if (*depth && *depth_w == w && *depth_h == h)
@@ -139,7 +146,8 @@ static bool depth_fit(BackendImage *depth, int *depth_w, int *depth_h, int w,
   return *depth != 0;
 }
 
-// StepInput.XrTargets の描き先を確かめ、開いた app の XR の眼にする
+// Validate the render targets in StepInput.XrTargets and make them the XR eyes
+// of the opened app
 static LubStatus open_app_xr(App *app, OpenApp *o, const LubStepInput *in) {
   App *child = o->app;
   if (in->xr_targets_count != 2 || in->xr_view_projections_count != 2)
@@ -170,7 +178,7 @@ static LubStatus open_app_xr(App *app, OpenApp *o, const LubStepInput *in) {
   return LUB_OK;
 }
 
-// main の pass の depth を target の大きさに合わせる
+// Match the depth of the main pass to the target size
 static bool open_app_depth(OpenApp *o, int w, int h) {
   if (o->depth && o->depth_w == w && o->depth_h == h)
     return true;
@@ -204,8 +212,9 @@ App *api_app_observed(App *app, LubHandle handle) {
   return o ? o->app : NULL;
 }
 
-// module を読み込み、OnInit を呼ぶ (まだなら)。
-// ImGui の context は開いた側のものなので、開かれた app の Ui.* は何もしない
+// Load the module and call OnInit (if not done yet).
+// The ImGui context belongs to the opener, so Ui.* in the opened app does
+// nothing
 static void open_app_player(App *app, OpenApp *o) {
   if (o->player)
     return;
@@ -221,7 +230,8 @@ static StateSlot *state_find(struct OpenApps *s, int32_t slot) {
   return NULL;
 }
 
-// 番号の控えを探し、無ければ空の控えを作る (memory が無ければ NULL)
+// Find the kept copy for the number, or create an empty one if there is none
+// (NULL if out of memory)
 static StateSlot *state_get(struct OpenApps *s, int32_t slot) {
   StateSlot *st = state_find(s, slot);
   if (st)
@@ -241,7 +251,8 @@ static StateSlot *state_get(struct OpenApps *s, int32_t slot) {
   return st;
 }
 
-// 開いた app に見せる入力: 開いた側の入力から、選ばれなかった種類を「何も押されていない」にする
+// Input shown to the opened app: from the opener's input, the kinds that were
+// not selected are set to "nothing pressed"
 static void step_input(InputState *dst, const InputState *src,
                        const LubStepInput *in) {
   *dst = *src;
@@ -337,7 +348,7 @@ LubStatus lub_app_step(LubContext *ctx, LubHandle handle, LubHandle target,
     child->replaying = false;
     if (pass_state_in_pass(&child->pass))
       pass_state_end(&child->pass);
-    // Gfx.Pick の描き直しは、main の描き先がある間に行う
+    // Redraw for Gfx.Pick while the main render target is still available
     pick_frame_end(child);
     app_frame_end(child, ok);
   }
@@ -386,7 +397,8 @@ LubStatus lub_app_send_event(LubContext *ctx, LubHandle handle,
                              "with App.Use every frame)");
   if (!e)
     return lub_api_fail(app, "app_send_event: the event is null");
-  // まだ開いていない app には届けない (OnInit の前に OnEvent を呼ばない)
+  // Do not deliver to an app that is not opened yet (do not call OnEvent before
+  // OnInit)
   if (!o->player) {
     *out = true;
     return LUB_OK;
@@ -394,7 +406,7 @@ LubStatus lub_app_send_event(LubContext *ctx, LubHandle handle,
   ui_set_enabled(false);
   *out = app->app_hooks->event(o->player, e);
   ui_set_enabled(true);
-  // OnEvent が開いたままにした pass は閉じる
+  // Close any pass that OnEvent left open
   if (pass_state_in_pass(&o->app->pass))
     pass_state_end(&o->app->pass);
   return LUB_OK;

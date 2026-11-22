@@ -70,8 +70,8 @@ public class LambdaTests
     [Fact]
     public void DelegateField_DirectInvocation_InstanceStaticAndUnqualified()
     {
-        // delegate 型 field / auto property を `obj.F()` / `Cls.F()` / 非修飾
-        // `F()` で直接呼ぶ (IL 経路: IlDynCall(IlField))
+        // Calls delegate-typed fields / auto properties directly as `obj.F()` / `Cls.F()` / unqualified
+        // `F()` (IL path: IlDynCall(IlField))
         var result = TestHelper.CompileAndRunVm("""
             using System;
             public class Btn

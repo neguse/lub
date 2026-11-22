@@ -1,7 +1,7 @@
-// lider の窓の中をマウスで選ぶ。event は lub から届くものと同じに Lider.OnEvent へ流す。
-// 窓を正面 (角度 0) に置くので、画面の中央は窓の中央の行の文字に当たる。Target.cs はどの行も同じ。
-//   - 押して下へ動かして離すと、押した所から何行かにわたって選ぶ。離した後に動かしても選びは変わらない
-//   - 続けて 2 回押すと語、3 回押すと行を選ぶ
+// Selects with the mouse inside lider's window. Events are fed to Lider.OnEvent, the same as those that come from lub.
+// The window is placed in front (angle 0), so the center of the display hits a character on the middle line of the window. Every line of Target.cs is the same.
+//   - Pressing, moving down, and releasing selects several lines from the pressed point. Moving after releasing does not change the selection
+//   - Pressing twice in a row selects a word, and three times selects a line
 using System;
 using Lub;
 using LiderEditor;
@@ -13,14 +13,14 @@ public static class TestSelect
     static float next;
     static bool failed;
     static int id;
-    // 窓の開く動きの残り。動きは dt で進むので、重い frame があると実時間で待っても終わらない
+    // Remaining time of the window's opening animation. The animation advances by dt, so with heavy frames it does not finish even when waiting in real time
     static float opening;
 
     public static void OnInit()
     {
         TestInit();
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay layout (code windows lined up in a horizontal row on the cylindrical screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -50,7 +50,7 @@ public static class TestSelect
         opening -= dt;
         if (failed || opening > 0 || Sys.Seconds() < next)
             return;
-        // 0.4 秒より間をあけて、前の stage の押しと続けて押したことにしない
+        // Wait longer than 0.4 seconds so it does not count as a press in a row with the press of the previous stage
         next = Sys.Seconds() + 0.5f;
         Gfx.Size(out var sw, out var sh);
         float cx = sw / 2, cy = sh / 2;
@@ -61,11 +61,11 @@ public static class TestSelect
             Check(w != null && path != null, "LIDER_TEST_FILE or the workspace is missing");
             if (failed)
                 return;
-            // 画面の真ん中に窓を置くため、インスペクタはしまう
+            // Put the inspector away so the window is placed in the middle of the screen
             Lider.Inspector.Shown = false;
             w!.FocusOn(path!);
             id = w.FocusWindow!.Code.ViewId;
-            // 動いている間は、見えている大きさで指す
+            // While it is moving, point at it using its visible size
             opening = 1.5f;
         }
         else if (stage == 1)

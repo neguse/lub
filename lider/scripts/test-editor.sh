@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# エディタの core (src/Editor) の test (tests/editor/<name>/) を、lider を動かさずに単独の entry として走らせる。
-# test ごとに、test の dir の *.cs と tests/editor/EditorTest.cs と src/Editor と src/Core/{Utf8,Keys}.cs と src/Disk.cs を tcs VM に変換して player で動かす。
-# player は scripts/player.sh で決める (かな漢字変換は lider の player に静的に link した jamo か、lub が読む src/Jamo.so)。
-# test は file を書くので、一時ディレクトリを cwd にして起動する。
-# env: PLAYER / LUB_TCS は scripts/player.sh
-#   JAMO_DICT かな漢字変換の辞書 (既定: lider の data/mozc.dict。無ければ IME の test は変換を確かめずに通す)
+# Runs the editor core (src/Editor) tests (tests/editor/<name>/) as standalone entries without running lider.
+# For each test, converts the *.cs in the test dir, tests/editor/EditorTest.cs, src/Editor, src/Core/{Utf8,Keys}.cs and src/Disk.cs to tcs VM and runs them on the player.
+# The player is chosen by scripts/player.sh (kana-kanji conversion is the jamo statically linked into the lider player, or src/Jamo.so loaded by lub).
+# Tests write files, so they are launched with a temporary directory as cwd.
+# env: PLAYER / LUB_TCS are in scripts/player.sh
+#   JAMO_DICT kana-kanji conversion dictionary (default: lider's data/mozc.dict; if missing, IME tests pass without checking conversion)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 source "$root/scripts/player.sh"

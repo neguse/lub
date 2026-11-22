@@ -1,7 +1,10 @@
-/* host 連携のテスト: stub.cs (namespace Eng) の面を host の関数として登録し、Game の OnInit / Structs / OnEvent / OnFrame を host から呼ぶ。
-   host が VM の object の field を名前で引いて読み書きすることも確かめる。
-   struct と out は C の layout の塊と pointer で受ける (C の API を包む host と同じ形)。
-   2 つ目の module (Reject.cs) では、登録が module の struct と合わないときに読み込みが拒否されることを確かめる。 */
+/* Host integration test: registers the stub.cs (namespace Eng) surface as host
+   functions and calls Game's OnInit / Structs / OnEvent / OnFrame from the
+   host. Also checks that the host looks up fields of VM objects by name and
+   reads and writes them. Structs and out are received as C-layout blocks and
+   pointers (the same form as a host that wraps a C API). With a second module
+   (Reject.cs), checks that loading is rejected when the registration does not
+   match the module's structs. */
 #include "../../vm/tcsvm.h"
 
 #include <math.h>
@@ -30,7 +33,7 @@ static TvmStatus make(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   (void)user;
   void *t = tvm_object_new_of(vm, tvm_type(vm, "Eng_Tex"));
   int32_t version = tvm_type_field_offset(tvm_type(vm, "Eng_Tex"), "version");
-  if (!t || version < 16) /* host_value (8 byte) の後 */
+  if (!t || version < 16) /* after host_value (8 bytes) */
     return tvm_host_fault(vm, "make: Tex layout");
   TVM_HOST_VALUE(t) = (uint64_t)a[0].i;
   *(int32_t *)((char *)t + version) = 7;
@@ -103,7 +106,7 @@ static TvmStatus ring(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   int32_t kind = tvm_type_field_offset(t, "kind"),
           radius = tvm_type_field_offset(t, "r");
   void *c = tvm_object_new_of(vm, t);
-  if (!c || kind != 16 || radius != 20) /* host_value の後に field */
+  if (!c || kind != 16 || radius != 20) /* fields after host_value */
     return tvm_host_fault(vm, "ring: Circle layout");
   *(int32_t *)((char *)c + kind) = 3;
   *(float *)((char *)c + radius) = a[0].f;
@@ -139,7 +142,8 @@ static TvmStatus name(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   return r[0].p ? TVM_OK : tvm_host_fault(vm, "out of memory");
 }
 
-/* out は args の pointer の先 (string は参照の slot) に書く */
+/* out is written where the args pointer points (for string, a reference slot)
+ */
 static TvmStatus load(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   (void)r;
   (void)user;
@@ -162,7 +166,8 @@ static TvmStatus try_(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   return TVM_OK;
 }
 
-/* ---- struct: host は C の struct (doc/object-model.md §5 の layout) で読み書きする ---- */
+/* ---- struct: the host reads and writes C structs (the layout of
+ * doc/object-model.md §5) ---- */
 
 typedef struct Vec2 {
   float x, y;
@@ -170,7 +175,7 @@ typedef struct Vec2 {
 typedef struct Box2 {
   Vec2 min, max;
   bool solid;
-  int32_t layer; /* enum は int */
+  int32_t layer; /* enum is int */
 } Box2;
 typedef struct Hit {
   int32_t id;
@@ -181,7 +186,7 @@ typedef struct OptHit { /* Hit? */
   Hit v;
 } OptHit;
 
-/* host が包む C の API (struct を値で受け、out は pointer) */
+/* C API wrapped by the host (takes structs by value, out as a pointer) */
 static float phys_dot(Vec2 a, Vec2 b) { return a.x * b.x + a.y * b.y; }
 static Vec2 phys_center(Box2 b) {
   return (Vec2){(b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2};
@@ -251,7 +256,8 @@ static TvmStatus score(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   return TVM_OK;
 }
 
-/* 入れ子: delegate を呼ぶと、その中で別の struct の host の関数 (center) が呼ばれる。自分の引数の塊はその後も読める */
+/* Nesting: calling the delegate calls another struct's host function (center)
+ * inside it. Its own argument block can still be read afterwards */
 static TvmStatus apply(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
   (void)user;
   const Vec2 *v = (const Vec2 *)a[1].p;
@@ -304,7 +310,8 @@ static int check(TvmVm *vm, TvmStatus st) {
   return 1;
 }
 
-/* 読み込みの拒否: Reject.cs の module を hosts で登録した VM に読ませ、エラーに needle があるかを出す */
+/* Load rejection: has a VM registered with hosts load the Reject.cs module, and
+ * prints whether the error contains needle */
 typedef struct RejectHost {
   const char *name, *params, *rets;
 } RejectHost;
@@ -329,15 +336,15 @@ static void reject(const char *label, const uint8_t *bytes, size_t size,
 }
 
 static void rejects(const uint8_t *bytes, size_t size) {
-  /* 登録の書き方の誤りは tvm_host が断る */
+  /* tvm_host rejects malformed registrations */
   TvmVm *vm = tvm_new(NULL);
   static const char *const bad[][2] = {
-      {"S{Eng_Vec2", "f"}, /* 閉じない */
-      {"S{}", "f"},        /* 名前が無い */
-      {"&&i", ""},         /* & を重ねる */
-      {"i", "&f"},         /* 戻り値に & */
-      {"i", "if"},         /* 戻り値は 1 つ (out は & の引数) */
-      {"x", ""},           /* 知らない種類 */
+      {"S{Eng_Vec2", "f"}, /* not closed */
+      {"S{}", "f"},        /* no name */
+      {"&&i", ""},         /* doubled & */
+      {"i", "&f"},         /* & on the return value */
+      {"i", "if"},         /* only one return value (out is an & argument) */
+      {"x", ""},           /* unknown kind */
   };
   for (size_t k = 0; k < sizeof bad / sizeof bad[0]; k++)
     printf("register %s / %s: %s\n", bad[k][0], bad[k][1],
@@ -345,27 +352,29 @@ static void rejects(const uint8_t *bytes, size_t size) {
                ? "accepted"
                : "refused");
   tvm_free(vm);
-  /* 他の場合の登録 (Named は塊にできないので、weight は葉の種類の列で受ける) */
+  /* Registrations for the other cases (Named cannot be a block, so weight is
+   * received as a sequence of leaf kinds) */
   static const RejectHost dot = {"eng.phys.dot", "S{Eng_Vec2}S{Eng_Vec2}", "f"};
   static const RejectHost weight_leaves = {"eng.phys.weight", "sf", "f"};
   static const RejectHost pick = {"eng.phys.pick", "i&S{Eng_Hit}", "b"};
-  /* module に無い struct の名前 */
+  /* struct name not in the module */
   reject("unknown struct", bytes, size,
          (RejectHost[]){{"eng.phys.dot", "S{Eng_Vec3}S{Eng_Vec2}", "f"},
                         weight_leaves,
                         pick},
          3, "eng.phys.dot: no struct type Eng_Vec3 in the module");
-  /* struct でない型の名前 */
+  /* name of a type that is not a struct */
   reject("not a struct", bytes, size,
          (RejectHost[]){{"eng.phys.dot", "S{string}S{Eng_Vec2}", "f"},
                         weight_leaves,
                         pick},
          3, "eng.phys.dot: string is not a struct");
-  /* 参照の field を持つ struct は塊にできない */
+  /* a struct with reference fields cannot be a block */
   reject("reference field", bytes, size,
          (RejectHost[]){dot, {"eng.phys.weight", "S{Eng_Named}", "f"}, pick}, 3,
          "eng.phys.weight: struct Eng_Named has a reference field");
-  /* 呼び出しの葉と struct の葉が合わない (Hit は int と float、Vec2 は float 2 つ) */
+  /* the leaves of the call and of the struct do not match (Hit is int and
+   * float, Vec2 is two floats) */
   reject("shape", bytes, size,
          (RejectHost[]){{"eng.phys.dot", "S{Eng_Hit}S{Eng_Vec2}", "f"},
                         weight_leaves,
@@ -379,7 +388,7 @@ static void rejects(const uint8_t *bytes, size_t size) {
          3,
          "argument 1 of eng.phys.pick: the call does not pass the leaves of "
          "struct Eng_Vec2");
-  /* 合う登録は読める */
+  /* a matching registration loads */
   reject("matching", bytes, size, (RejectHost[]){dot, weight_leaves, pick}, 3,
          "");
 }
@@ -425,7 +434,7 @@ int main(int argc, char **argv) {
   ok = ok &&
        check(vm, tvm_call(vm, tvm_find(vm, "Game.Structs"), NULL, 0, NULL, 0));
   for (int k = 0; ok && k < 3; k++) {
-    /* host が event の object を作って渡す */
+    /* the host creates an event object and passes it */
     void *ev = tvm_object_new(vm, "Eng_Ev");
     int32_t kind = tvm_field_offset(vm, "Eng_Ev", "kind"),
             x = tvm_field_offset(vm, "Eng_Ev", "x");

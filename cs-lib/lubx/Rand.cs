@@ -1,15 +1,15 @@
-// 実装ライブラリ lubx の Rand。
-// state は int (32bit wrap) で持つ。
-// << は int32 wrap がそのまま xorshift32 の定義どおりで、論理シフト >>> は算術シフト >> と & マスク (17bit シフト後の有効 15bit を 0x7FFF で残す) で再現する。
-// golden はこの列に依存する。
-// float / int は C# の予約語のため NextFloat / NextInt。
+// Rand of the implementation library lubx.
+// state is kept as an int (32-bit wrap).
+// << with int32 wrap matches the xorshift32 definition as is, and the logical shift >>> is reproduced with the arithmetic shift >> and an & mask (0x7FFF keeps the 15 valid bits after the 17-bit shift).
+// The goldens depend on this sequence.
+// float / int are C# reserved words, hence NextFloat / NextInt.
 
 using Lub;
 
 namespace Lubx;
 
-/// <summary> 決定的な xorshift32 乱数。
-/// 固定シードで hot reload / headless 検証でも再現可能 (Math.random は reload のたびに列が変わるので使わない)。
+/// <summary> Deterministic xorshift32 random numbers.
+/// With a fixed seed it is reproducible even across hot reload / headless verification (Math.random is not used because its sequence changes on every reload).
 /// </summary>
 public class Rand
 {
@@ -21,7 +21,7 @@ public class Rand
         state = s == 0 ? 0x12345678 : s;
     }
 
-    /// <summary>[0, 1) の一様乱数。
+    /// <summary>Uniform random number in [0, 1).
     /// </summary>
     public float NextFloat()
     {
@@ -31,24 +31,24 @@ public class Rand
         return (state & 0xffff) / 65536.0f;
     }
 
-    /// <summary>[0, n) の整数。
+    /// <summary>Integer in [0, n).
     /// </summary>
     public int NextInt(int n)
     {
         return (int)System.Math.Floor(NextFloat() * n);
     }
 
-    /// <summary>min 以上 max 以下の整数 (両端を含む)。
-    /// NextInt(n) とは別名 (tcs2c は同名メソッドの overload を扱えない)。
+    /// <summary>Integer from min to max (both ends inclusive).
+    /// A different name from NextInt(n) (tcs2c cannot handle overloads of same-named methods).
     /// </summary>
     public int Between(int min, int max)
     {
         int width = max - min + 1;
         if (width > 0 || max < min)
             return min + NextInt(width);
-        // 幅 (max - min + 1) が int に収まらない。
-        // max - min を 32bit の符号なしの値と見て上位と下位の 16bit に分け、[0, 1) の乱数の 16bit (k / 65536) と幅の積の floor を整数で求める。
-        // 足し算は 32bit で wrap するが、真の値は min 以上 max 以下なので結果も同じ値になる
+        // The width (max - min + 1) does not fit in an int.
+        // Treat max - min as an unsigned 32-bit value, split it into its upper and lower 16 bits, and compute in integers the floor of the product of the width and 16 bits of a [0, 1) random number (k / 65536).
+        // The additions wrap at 32 bits, but the true value is between min and max, so the result is the same value
         int k = (int)(NextFloat() * 65536.0f);
         int d = max - min;
         int hi = (d >> 16) & 0xFFFF;
@@ -56,7 +56,7 @@ public class Rand
         return min + k * hi + (((k * (lo + 1)) >> 16) & 0xFFFF);
     }
 
-    /// <summary>[min, max) の一様乱数。
+    /// <summary>Uniform random number in [min, max).
     /// </summary>
     public float Range(float min, float max)
     {

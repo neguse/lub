@@ -1,4 +1,4 @@
-// native の拡張 (Ext.so、ext.c) が host の関数として登録する。
+// The native extension (Ext.so, ext.c) registers these as host functions.
 public static class Ext
 {
     public static int Add(int a, int b) { return 0; }

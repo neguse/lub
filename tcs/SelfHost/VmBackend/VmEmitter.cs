@@ -4,9 +4,9 @@ using TcsSelf;
 
 namespace TcsVm;
 
-/// <summary>IL の書き出し (TcsSelf.ExportResult) から .tcsb を作る (doc/vm-design.md §15)。
-/// 関数は entry と static initializer から到達するものだけを作る。誤りは CFail に記録し、出力は誤りが無いときだけ使う。</summary>
-/// <summary>module の型と static の記述 (reload の計画で旧版と比べる)。</summary>
+/// <summary>Builds a .tcsb from the IL output (TcsSelf.ExportResult) (doc/vm-design.md §15).
+/// Only functions reachable from the entry and the static initializers are built. Errors are recorded in CFail, and the output is used only when there are no errors.</summary>
+/// <summary>Description of a module's types and statics (compared with the old version in the reload plan).</summary>
 public sealed class VmDescription
 {
     public List<TypeTableEntry> Types = new List<TypeTableEntry>();
@@ -15,9 +15,9 @@ public sealed class VmDescription
 
 public static class VmEmitter
 {
-    /// <summary>VM で止める診断。`--ref` の interface の実装 (RefInterfaceImplementation) は host の名前の写し方 (snake_case) の制約なので、
-    /// C# の名前で呼ぶ VM と tcs2c の module の混在 (X-4) では止めない。`--ref` の class / interface への型 test と cast
-    /// も、VM は型の表で判定できるので止めない (object-model §10.6)。</summary>
+    /// <summary>Diagnostics that stop the VM build. The implementation of a `--ref` interface (RefInterfaceImplementation) is a constraint of how host names are mapped (snake_case), so
+    /// it does not stop a mix of the VM, which calls by C# names, and tcs2c modules (X-4). Type tests and casts to `--ref` classes / interfaces
+    /// are not stopped either, since the VM can decide them with the type table (object-model §10.6).</summary>
     public static List<string> Diagnostics(List<string> diagnostics)
     {
         var allowed = "RefInterfaceImplementation( RefTypeTest( RefCast( RefInterfaceTypeTest(".Split(' ');
@@ -34,8 +34,8 @@ public static class VmEmitter
         return r;
     }
 
-    /// <summary>compile の結果から VM が受ける IL を取り出す。止める診断があれば null で、diagnostics にその診断
-    /// (旧 C# 版の IL の export と VmEmitter.Diagnostics を続けたもの)。</summary>
+    /// <summary>Extracts the IL that the VM accepts from the compile result. If there are blocking diagnostics, returns null and puts those diagnostics in diagnostics
+    /// (the IL export of the old C# version followed by VmEmitter.Diagnostics).</summary>
     public static ExportResult? Exported(CompileResult result, List<string> diagnostics)
     {
         var errors = new List<string>();
@@ -56,7 +56,7 @@ public static class VmEmitter
             foreach (var d in more) diagnostics.Add(d);
             return null;
         }
-        // IL にできなかった本文は null になり、VM は呼んだ側を "no IL body" としか言えないので、ここで理由と場所を出して止める
+        // A body that could not be turned into IL becomes null, and the VM can only say "no IL body" about the caller, so report the reason and location here and stop
         if (result.Export.InternalErrors.Count > 0)
         {
             foreach (var ie in result.Export.InternalErrors) diagnostics.Add("internal: " + ie);
@@ -65,8 +65,8 @@ public static class VmEmitter
         return result.Export;
     }
 
-    /// <param name="entryClass">Main を持つ class (Main が 1 つなら "")</param>
-    /// <param name="exports">entry の他に作る関数 (`C.M`。host が tvm_find で引く)。`C.*` は class C の static method 全部</param>
+    /// <param name="entryClass">The class that has Main ("" if there is only one Main)</param>
+    /// <param name="exports">Functions to build besides the entry (`C.M`; the host looks them up with tvm_find). `C.*` means all static methods of class C</param>
     public static List<int> Emit(ExportResult program, string entryClass, List<string> exports)
     {
         var m = Build(program, entryClass, exports);
@@ -74,14 +74,14 @@ public static class VmEmitter
         return m.Write();
     }
 
-    /// <summary>Emit と同じ。desc に module の型と static の記述 (次の EmitReload の旧版) を返す。</summary>
+    /// <summary>Same as Emit. Returns the description of the module's types and statics (the old version for the next EmitReload) in desc.</summary>
     public static List<int> Emit(ExportResult program, string entryClass, List<string> exports, out VmDescription desc)
     {
         desc = new VmDescription();
         var m = Build(program, entryClass, exports);
         if (CFail.Failed) return new List<int>();
         var module = m.Write();
-        // 記述は書き出す前の module から作る (Describe は builder に型を足しうるので、書き出す module とは別に作る。reload の旧版と同じ)
+        // The description is built from the module before writing (Describe may add types to the builder, so it is built separately from the module being written; same as the old version for reload)
         var d = Build(program, entryClass, exports);
         if (CFail.Failed) return new List<int>();
         desc.Types = d.Describe(out List<StaticKey> statics);
@@ -89,7 +89,7 @@ public static class VmEmitter
         return module;
     }
 
-    /// <summary>batch (watch の stream と tvm_apply_batch の形): u32 の module の長さ、module、u32 の計画の長さ、計画。</summary>
+    /// <summary>batch (the form of the watch stream and tvm_apply_batch): u32 module length, module, u32 plan length, plan.</summary>
     public static List<int> Batch(List<int> module, List<int> plan)
     {
         var w = new List<int>();
@@ -100,10 +100,10 @@ public static class VmEmitter
         return w;
     }
 
-    /// <summary>reload (doc/object-model.md §6): 旧版と新版を同じ entry / exports で作り、新版の module を返す (plan に計画、
-    /// reasons に restart の理由)。計画の byte 列は自分の string 表を前に持つ。restart の理由は ReloadRules の規則
-    /// (ReloadRules。呼ぶ側が求めて restart に渡す)。新版には、足した (と型を変えた) instance field の initializer と、足した static と
-    /// 評価し直す static (reinit。ReloadRules.ReinitStatics) の initializer (`型.&lt;reload-static&gt;`) を関数として足す。</summary>
+    /// <summary>reload (doc/object-model.md §6): builds the old and new versions with the same entry / exports and returns the new module (the plan in plan,
+    /// the restart reasons in reasons). The plan's byte sequence carries its own string table in front. The restart reasons follow the ReloadRules rules
+    /// (ReloadRules; the caller computes them and passes them to restart). As functions, the new version gets the initializers of added (and retyped) instance fields, and of added statics and
+    /// statics to re-evaluate (reinit; ReloadRules.ReinitStatics) (`type.&lt;reload-static&gt;`).</summary>
     public static List<int> EmitReload(ExportResult oldProgram, ExportResult newProgram, string entryClass, List<string> exports,
         List<string> restart, List<string> reinit, out List<int> plan, out List<string> reasons)
     {
@@ -121,7 +121,7 @@ public static class VmEmitter
         return module;
     }
 
-    /// <summary>EmitReload と同じ。旧版は前の Emit / EmitReload が返した記述 (旧版を作り直さない)。newDesc に新版の記述を返す。</summary>
+    /// <summary>Same as EmitReload. The old version is the description returned by the previous Emit / EmitReload (the old version is not rebuilt). Returns the new version's description in newDesc.</summary>
     public static List<int> EmitReload(VmDescription oldDesc, ExportResult newProgram, string entryClass, List<string> exports,
         List<string> restart, List<string> reinit, out List<int> plan, out List<string> reasons, out VmDescription newDesc)
     {
@@ -200,7 +200,7 @@ public static class VmEmitter
     {
         var program = program0;
         string entryClass = entryClass0;
-        // top-level 文は class TopLevel の static Main にする (tcs2c と同じ)
+        // Top-level statements become the static Main of class TopLevel (same as tcs2c)
         if (program0.TopLevel != null)
         {
             program = new ExportResult();
@@ -231,7 +231,7 @@ public static class VmEmitter
         }
         foreach (var c in program.Classes)
         {
-            // --ref の stub の class も同じ (host の data class も継承を持たない)
+            // The same goes for --ref stub classes (host data classes have no inheritance either)
             if (!c.IsInterface && c.BaseName != null)
             {
                 CFail.Report("class inheritance is outside TinyC#" + (c.IsExternal ? " (the --ref class " + c.Name + " has a base class)" : ""));
@@ -239,14 +239,14 @@ public static class VmEmitter
             }
         }
 
-        // --trace: 記録するファイルで宣言した class (method が無く static だけの class も、値の木と状態の控えの根にする)
+        // --trace: classes declared in the recorded files (classes with only statics and no methods also become roots of the value tree and of the state snapshot)
         foreach (var c in classes)
         {
             if (c.File != "" && m.IsTraced(c.File)) m.TraceClass(c.Name);
         }
 
-        // static initializer を先に並べる (VM は並びの順に走らせる)。定数だけの型を先に、遅延の型を後に
-        // (遅延の型の関数は 2 回目以降は何もしない。static の読み書きの前にも呼ぶ)
+        // Static initializers are listed first (the VM runs them in list order). Constant-only types first, lazy types after them
+        // (a lazy type's function does nothing from the second call on. It is also called before static reads and writes)
         var owners = m.StaticOwners();
         for (int pass = 0; pass < 2; pass++)
         {
@@ -325,8 +325,8 @@ public static class VmEmitter
                 m.Request(ec.Name + "." + method.Name, def => new FunctionCompiler(m, def, ec.Name).CompileMethod(method));
             }
         }
-        // module 単位の混在 (X-4): --ref の module の interface を実装する class の instance method は、C の module から
-        // 呼ばれる (tvm_invoke_method) ので、VM の中で到達しなくても作る
+        // Per-module mixing (X-4): instance methods of classes that implement a --ref module's interface are called from the C module
+        // (tvm_invoke_method), so they are built even if they are unreachable inside the VM
         foreach (var c in classes)
         {
             bool hostImpl = false;
@@ -344,8 +344,8 @@ public static class VmEmitter
                 m.Request(hc.Name + "." + method.Name, def => new FunctionCompiler(m, def, hc.Name).CompileMethod(method));
             }
         }
-        // reload の hook (hot-reload §8): instance の OnReload と entry の型の static の OnReload は、
-        // 到達しなくても作る (tvm_apply が呼ぶ)
+        // Reload hooks (hot-reload §8): the instance OnReload and the static OnReload of the entry type
+        // are built even if unreachable (tvm_apply calls them)
         foreach (var c in classes)
         {
             foreach (var x in c.Methods)
@@ -362,9 +362,9 @@ public static class VmEmitter
         return m;
     }
 
-    /// <summary>型の表にある class の instance field の initializer (`型.&lt;init&gt;field`) を、到達しなくても作る。
-    /// 状態の読み込み (doc/vm-design.md §13.4) が、状態に無い field を initializer の値にするのに呼ぶ。
-    /// initializer が新しい class を型の表に足しうるので、足されなくなるまで繰り返す。</summary>
+    /// <summary>Builds the initializers of instance fields of classes in the type table (`type.&lt;init&gt;field`) even if they are unreachable.
+    /// State loading (doc/vm-design.md §13.4) calls them to give fields missing from the state their initializer values.
+    /// An initializer may add new classes to the type table, so this repeats until no more are added.</summary>
     private static void RequestFieldInits(ModuleBuilder m)
     {
         var done = new Dictionary<string, bool>();

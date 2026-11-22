@@ -565,8 +565,8 @@ public class SpecConformanceTests
         Assert.Equal(markerCount, result.Classified.Count);
         Assert.All(result.Classified,
             item => Assert.True(Enum.IsDefined(item.Result.Category)));
-        // Bug ゼロは C1 の完了条件 (baseline の Bug は起票済みタスクの回帰監視下)。
-        // このゲートは「baseline にない新規 Bug / 分類後退がない」を守る。
+        // Zero Bugs is the completion condition of C1 (Bugs in the baseline are under regression watch as filed tasks).
+        // This gate guards "no new Bug not in the baseline / no classification regression".
         Assert.True(result.BaselineDifference is null,
             result.BaselineDifference ?? "");
     }

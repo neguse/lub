@@ -1,7 +1,7 @@
-// 配置: どのスクリーンがどこにどの規則で在り、どのウィンドウがどのスクリーンにどの順で居るか。
-// 名前を付けて控え、戻せる。重ねる形も左右に並ぶ形も、配置の 1 つ。
-// ウィンドウは key で見分ける: コードは "code:" と開いている file (Root からの path を "|" で繋ぐ)、ゲームの絵は "game:saved" と "game:draft"、インスペクタは "inspector"。
-// "code:*" は、ほかの行に無いコードのウィンドウ全部を指し、戻した後に開くコードのウィンドウも、それのあるスクリーンに置く。
+// Arrangement: which screen is where and with which rule, and which window is on which screen in which order.
+// It can be recorded under a name and restored. Both the stacked form and the side-by-side form are arrangements.
+// Windows are identified by key: code is "code:" plus the open file (the path from Root joined with "|"), the game picture is "game:saved" and "game:draft", and the inspector is "inspector".
+// "code:*" means every code window not on another line, and code windows opened after restoring are also put on the screen that has it.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -16,7 +16,7 @@ public class ScreenSpec
     public Vec3 Position = new Vec3(0, 0, 1);
     public Vec2 Size = new Vec2(1, 1);
     public float Opacity = 1;
-    // 規則 (Layouts.Describe の書き方)
+    // Rule (in the Layouts.Describe notation)
     public string Layout = "Full";
     public List<string> Windows = new List<string>();
 }
@@ -27,14 +27,14 @@ public class Arrangement
 
     public string Name = "";
     public List<ScreenSpec> Screens = new List<ScreenSpec>();
-    // Space に置くウィンドウの key (置かなければ空)。戻す先は、Screens の中でこの key を書いた所
+    // Key of the window placed in Space (empty if none). It is restored to the place in Screens where this key is written
     public string Space = "";
 
-    // 今の配置を控える
+    // Records the current arrangement
     public static Arrangement Capture(string name, Workspace w)
     {
         var a = new Arrangement { Name = name };
-        // Space に置いたウィンドウも、戻す先の Screen の並びに入れて控える
+        // The window placed in Space is also recorded in the order of the Screen it returns to
         var spaced = w.InSpace;
         w.TakeFromSpace();
         if (spaced != null)
@@ -42,7 +42,7 @@ public class Arrangement
         var home = w.Home ?? w.CodeScreen;
         foreach (var screen in w.Screens)
         {
-            // 端から積む規則のスクリーン (案内、検索) は、決まった物を出す所なので、控えない
+            // Screens whose rule stacks from an edge (hints, search) show fixed content, so they are not recorded
             if (screen.Layout is Stack)
                 continue;
             var spec = new ScreenSpec
@@ -70,8 +70,8 @@ public class Arrangement
         return a;
     }
 
-    // 配置に戻す。名前の合うスクリーンの形と規則を変え、ウィンドウを控えた順に載せ直す。
-    // 配置に無いウィンドウは、今のスクリーンに居るまま、控えた物の後ろに並ぶ
+    // Restores the arrangement. Changes the shape and rule of screens with matching names and puts the windows back in the recorded order.
+    // Windows not in the arrangement stay on their current screen, after the recorded ones
     public void Apply(Workspace w)
     {
         front.Clear();
@@ -83,10 +83,10 @@ public class Arrangement
                     all.Add(window);
         var placed = new List<Window>();
         Screen? home = null;
-        // "code:*" のすぐ後に並べたウィンドウ (新しく開くコードの窓は、この前に置く)
+        // The window listed right after "code:*" (newly opened code windows go before it)
         Window? after = null;
         var afterAll = false;
-        // key を名指しで控えた行の無いコードのウィンドウは、"code:*" の所に並べる
+        // Code windows with no line recording their key by name are placed at "code:*"
         var named = new List<string>();
         foreach (var spec in Screens)
             foreach (var key in spec.Windows)
@@ -141,8 +141,8 @@ public class Arrangement
                 }
     }
 
-    // windows を、この順に screen の並びへ載せる (ほかのスクリーンに居た物は移す)。
-    // 前に載せた物の後ろに続け、配置に無いウィンドウはその後ろに残る
+    // Puts windows into the screen's order in this order (moving any that were on other screens).
+    // They follow the ones placed before, and windows not in the arrangement remain after them
     void Put(Workspace w, Screen screen, List<Window> windows)
     {
         var at = front.TryGetValue(screen, out var n) ? n : 0;
@@ -157,7 +157,7 @@ public class Arrangement
         front[screen] = at;
     }
 
-    // Apply の間、スクリーンごとに、並びの前から何枚を載せたか
+    // During Apply, per screen, how many windows have been placed from the front of the order
     readonly Dictionary<Screen, int> front = new Dictionary<Screen, int>();
 
     static Screen? ScreenNamed(Workspace w, string name)
@@ -168,7 +168,7 @@ public class Arrangement
         return null;
     }
 
-    // ウィンドウを見分ける key (配置で見分けない中身は "")
+    // Key that identifies a window ("" for content the arrangement does not identify)
     public static string KeyOf(Workspace w, Window window)
     {
         if (window.Content is Code code)
@@ -185,7 +185,7 @@ public class Arrangement
         return "";
     }
 
-    // file に書く行: "arrangement 名前"、Space に置くウィンドウがあれば "space key"、スクリーンごとに "screen 名前 形 固定先 x y z 幅 高さ 透過度 規則"、ウィンドウごとに "window key"
+    // Lines written to the file: "arrangement name", "space key" if a window is placed in Space, "screen name shape anchor x y z width height opacity rule" per screen, and "window key" per window
     public List<string> Lines()
     {
         var lines = new List<string> { "arrangement " + Name };
@@ -201,7 +201,7 @@ public class Arrangement
         return lines;
     }
 
-    // Lines の書き方の行の並びから、配置を読む (読めない行は飛ばす)
+    // Reads arrangements from lines in the Lines format (unreadable lines are skipped)
     public static List<Arrangement> Read(string text)
     {
         var all = new List<Arrangement>();
@@ -249,7 +249,7 @@ public class Arrangement
     }
 }
 
-// 規則と、その書き方 ("MainStack 0.5" のように、名前と値)
+// Rules and their notation (a name and values, like "MainStack 0.5")
 public static class Layouts
 {
     public static string Describe(ILayout layout)
@@ -295,7 +295,7 @@ public static class Layouts
             for (var i = 1; i < f.Length; i++)
             {
                 var pair = f[i].Split('=');
-                // 名前の無い数は、先頭のウィンドウに使う幅の割合 (前の書き方)
+                // A number without a name is the width ratio for the first window (the old notation)
                 if (pair.Length == 1 && float.TryParse(f[i], out var ratio) && ratio > 0 && ratio < 1)
                     main.Widths = new List<float> { ratio, 1 - ratio };
                 else if (pair.Length == 2 && pair[0] == "mains" && int.TryParse(pair[1], out var mains))

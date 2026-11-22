@@ -101,7 +101,7 @@ ResEntry *res_table_get_n(ResTable *t, const char *key, size_t len) {
   return NULL;
 }
 
-// handle の表 (ResTable.by_handle)。
+// Handle table (ResTable.by_handle).
 
 #define RES_HANDLE_MIN_CAP 64
 
@@ -130,7 +130,8 @@ static bool handle_resize(ResTable *t, int32_t cap) {
   return true;
 }
 
-// 生きている entry だけを入れた表が、空きだらけなら縮める (失敗したら今のまま)。
+// Shrinks the table, which holds only live entries, when it is mostly empty
+// (keeps it as is on failure).
 static void handle_shrink(ResTable *t) {
   int32_t cap = RES_HANDLE_MIN_CAP;
   while (cap < t->handle_count * 4)
@@ -149,7 +150,8 @@ static void handle_remove(ResTable *t, const ResEntry *e) {
       return;
     i = (i + 1) & mask;
   }
-  // 後ろの entry を詰めて、probe の列を切らさない (tombstone を持たない)
+  // Shift the following entries back so the probe sequence is not broken (no
+  // tombstones)
   uint32_t hole = i;
   for (uint32_t j = (i + 1) & mask; t->by_handle[j]; j = (j + 1) & mask) {
     uint32_t home = handle_slot(t->by_handle[j]->handle, t->handle_cap);
@@ -180,8 +182,9 @@ static bool res_table_assign_handle(ResTable *t, ResEntry *e) {
     if (!handle_resize(t, cap))
       return false;
   }
-  // 通し番号を進め、int32 の上限を越えたら 1 に戻る。
-  // 生きている値は飛ばす (stale な handle が別の entry を指さないように、死んだ値だけを再利用する)
+  // Advance the serial number, wrapping back to 1 past the int32 maximum.
+  // Skip live values (only dead values are reused, so that a stale handle never
+  // points to another entry)
   int32_t h = *t->next_handle;
   do {
     h = h == INT32_MAX ? 1 : h + 1;
@@ -206,7 +209,7 @@ ResEntry *res_table_get_or_create(ResTable *t, const char *key, ResKind kind) {
   ResEntry *e = res_table_get(t, key);
   if (e) {
     if (e->kind != RES_NONE && e->kind != kind)
-      return NULL; // 種別衝突
+      return NULL; // Kind conflict
     return e;
   }
   uint32_t i = hash_str(key) & (RES_BUCKETS - 1);

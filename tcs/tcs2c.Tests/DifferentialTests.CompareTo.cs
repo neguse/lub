@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// int / float の CompareTo (-1 / 0 / 1。float の NaN は他のどの値より小さく、
-// NaN 同士は 0) と、それを比較に使う struct の List.Sort。期待値は同じ
-// program を CoreCLR で実行した stdout
+// CompareTo of int / float (-1 / 0 / 1. A float NaN is less than any other value,
+// and two NaNs give 0), and List.Sort of structs that use it for comparison. The expected values are the stdout of running the same
+// program on CoreCLR
 public class CompareToDifferentialTests
 {
     [CFact]

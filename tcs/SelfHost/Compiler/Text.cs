@@ -3,20 +3,20 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// 1 つの入力ファイル。位置は UTF-8 の byte offset で持ち、診断に出すときだけ行と列に直す。
+// One input file. Positions are kept as UTF-8 byte offsets and converted to line and column only when reported in diagnostics.
 public sealed class SourceFile
 {
     public int Id;
     public string Path;
     public string Text;
     public Utf8Bytes Bytes;
-    // 宣言だけを読むファイル (--ref)。IL を出さない
+    // A file read for declarations only (--ref). No IL is emitted
     public bool IsRef;
-    // tcs と一緒に配る library (TinySystem/Linq.cs)。使うときだけ出力に含める
+    // A library shipped with tcs (TinySystem/Linq.cs). Included in the output only when used
     public bool IsLibrary;
-    // #nullable enable を書いたファイル
+    // A file that contains #nullable enable
     public bool NullableEnabled;
-    // ファイルに出てくる識別子 (局所変数を改名するときに重ならない名前を選ぶ)
+    // Identifiers that appear in the file (used to pick non-colliding names when renaming locals)
     public HashSet<string> Identifiers = new HashSet<string>();
     private List<int>? _lineStarts;
 
@@ -43,7 +43,7 @@ public sealed class SourceFile
         return starts;
     }
 
-    // 1 始まりの行
+    // 1-based line
     public int LineOf(int pos)
     {
         var starts = LineStarts();
@@ -58,7 +58,7 @@ public sealed class SourceFile
         return lo + 1;
     }
 
-    // 1 始まりの列 (UTF-8 の byte で数える)
+    // 1-based column (counted in UTF-8 bytes)
     public int ColumnOf(int pos)
     {
         var starts = LineStarts();
@@ -105,7 +105,7 @@ public sealed class Diagnostics
         ErrorCount++;
     }
 
-    // 試しに束縛した分の診断を取り消す
+    // Discard the diagnostics from a trial binding
     public void Truncate(int count)
     {
         while (Items.Count > count)
@@ -120,9 +120,9 @@ public sealed class Diagnostics
         Items.Add(new Diagnostic(code, message, file, pos, false));
     }
 
-    // 報告の順: C# として誤っている (CSxxxx) なら、その診断だけをファイルと位置の順に並べる。
-    // そうでなければファイルごとに、構文 (TCS1001)、collection の null (TCS1003)、API (TCS1002) をそれぞれ位置の順に並べ、
-    // 残り (位置を持たないものを含む) は報告した順で後ろに置く
+    // Report order: if the input is invalid C# (CSxxxx), only those diagnostics are listed, in file and position order.
+    // Otherwise, for each file, syntax (TCS1001), null in collections (TCS1003), and API (TCS1002) are each listed in position order,
+    // and the rest (including those without a position) are placed after them in reported order
     public List<Diagnostic> Ordered()
     {
         bool csharp = false;
@@ -143,7 +143,7 @@ public sealed class Diagnostics
             if (d.File != null && Rank(d.Code) < 3) keyed.Add(d);
             else rest.Add(d);
         }
-        // 挿入の sort (同じ key は報告した順を保つ)
+        // Insertion sort (equal keys keep the reported order)
         for (int i = 1; i < keyed.Count; i++)
         {
             var x = keyed[i];

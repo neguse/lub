@@ -1,6 +1,6 @@
-// .NET 実行の facade (Lub.g.cs、生成物) が使う手書きの土台。
-// C API の基本型、呼び出しの間だけ生きる memory (arena)、文字列と view の変換、callback の箱、エラーの例外化。
-// 生成物は C API への詰め替えだけを持つ。
+// Hand-written base used by the .NET execution facade (Lub.g.cs, generated code).
+// C API basic types, memory that lives only during a call (arena), string and view conversion, callback boxes, and turning errors into exceptions.
+// The generated code only does the repacking for the C API.
 #nullable enable
 using System;
 using System.Collections.Generic;
@@ -11,8 +11,8 @@ using System.Text;
 
 namespace Lub;
 
-/// <summary>C API が LUB_ERROR を返した (lub_last_error の message)。
-/// host が callback の境界で捕まえて entry の OnError に渡す。
+/// <summary>The C API returned LUB_ERROR (message from lub_last_error).
+/// The host catches it at the callback boundary and passes it to the entry's OnError.
 /// </summary>
 public sealed class LubException : Exception
 {
@@ -21,8 +21,8 @@ public sealed class LubException : Exception
     }
 }
 
-/// <summary>draw に渡す名前と値の組。
-/// managed の配列だけで持ち、draw の時点で arena に写す。
+/// <summary>A name and value pair passed to draw.
+/// Held only in managed arrays and copied into the arena at draw time.
 /// </summary>
 public sealed unsafe class Bindings
 {
@@ -182,17 +182,17 @@ internal static unsafe class LubRuntime
 {
     internal const string LibName = "lub";
 
-    /// <summary>host が create した context。
-    /// API はこれに対して呼ぶ。
+    /// <summary>The context the host created.
+    /// The API is called on it.
     /// </summary>
     internal static void* Ctx;
 
     private static bool resolverSet;
 
-    // 共有 library の場所: 環境変数 LUB_NATIVE_LIB (full path) が最優先。
-    // 無ければ既定の探索 (実行ファイルの隣、system の library path)。
-    // 最初の P/Invoke より前に host (App.Run) が呼ぶ。
-    // Windows は path を \ 区切りで渡さないと、library の dir から依存の DLL (SDL3.dll 等) を探さないので、GetFullPath で OS の区切りに直す。
+    // Location of the shared library: the environment variable LUB_NATIVE_LIB (full path) takes top priority.
+    // If missing, the default search (next to the executable, the system library path).
+    // The host (App.Run) calls this before the first P/Invoke.
+    // On Windows, unless the path is passed with \ separators, dependent DLLs (SDL3.dll etc.) are not searched for in the library's dir, so GetFullPath converts it to OS separators.
     internal static void EnsureNative()
     {
         if (resolverSet) return;
@@ -206,7 +206,7 @@ internal static unsafe class LubRuntime
         });
     }
 
-    // message は lub_last_error のまま (tcs VM の player の error と同じ文字列)。
+    // The message is lub_last_error as is (the same string as the tcs VM player's error).
     internal static void Check(int status)
     {
         if (status == LubNative.LUB_OK) return;
@@ -222,15 +222,15 @@ internal static unsafe class LubRuntime
 
     internal static string? StrOrNull(LubNative.LubStr s) => s.ptr == null ? null : Str(s);
 
-    // 64 bit の bit mask。
-    // tcs VM と tcs2c の binding と同じ規則で、null は値なし、1〜16 桁の hex (0x 付きも可) を読み、空と 17 桁以上は error。
+    // 64 bit bit mask.
+    // Same rules as the tcs VM and tcs2c bindings: null is no value, 1 to 16 hex digits (0x prefix allowed) are read, and empty or 17 or more digits is an error.
     internal static ulong Bits(string? s)
     {
         if (s == null) return 0;
         var t = s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? s[2..] : s;
         if (t.Length == 0) throw new LubException("bit mask: empty hex string");
         if (t.Length > 16) throw new LubException($"bit mask: more than 16 hex digits '{s}'");
-        // ulong.TryParse は末尾の NUL を読み飛ばすので、桁は 1 文字ずつ見る
+        // ulong.TryParse skips a trailing NUL, so digits are checked one character at a time
         ulong v = 0;
         foreach (var c in t)
         {
@@ -352,8 +352,8 @@ internal static unsafe class LubRuntime
         return a;
     }
 
-    // 固定長配列 (C の T x[n]) に写す。
-    // 読んだ個数を返す。
+    // Copies into a fixed-length array (C's T x[n]).
+    // Returns the number read.
     internal static int FixedFloats(IReadOnlyList<float>? l, float* dst, int cap)
     {
         var n = l == null ? 0 : Math.Min(l.Count, cap);
@@ -370,9 +370,9 @@ internal static unsafe class LubRuntime
 
     // ---------------------------------------------------------- callbacks
 
-    /// <summary>ゲームの delegate を runtime に渡すための箱。
-    /// C の user pointer はこの GCHandle。
-    /// runtime が手放す (user_release) と解放する。
+    /// <summary>A box for passing a game delegate to the runtime.
+    /// The C user pointer is this GCHandle.
+    /// Freed when the runtime releases it (user_release).
     /// </summary>
     internal sealed class CallbackBox
     {
@@ -385,14 +385,14 @@ internal static unsafe class LubRuntime
             logged = new bool[slots.Length];
         }
 
-        // query の visitor の最初の例外。
-        // 控えた後、その query の間は visitor を呼ばない。
+        // The first exception from the query's visitor.
+        // Once it is recorded, the visitor is not called for the rest of that query.
         public Exception? Failure;
 
         public static CallbackBox From(void* user) =>
             (CallbackBox)GCHandle.FromIntPtr((IntPtr)user).Target!;
 
-        // callback の例外は境界で止め、slot ごとに 1 回だけ log して既定値で続行
+        // Callback exceptions are stopped at the boundary, logged only once per slot, and execution continues with the default value
         public void Fail(int slot, string name, Exception e)
         {
             if (logged[slot]) return;
@@ -401,7 +401,7 @@ internal static unsafe class LubRuntime
         }
     }
 
-    // query の visitor が例外を出したら、message を log に出して true を返す (query は fault にせず null を返す。tcs VM の player と同じ)。
+    // If the query's visitor throws, logs the message and returns true (the query returns null instead of faulting; same as the tcs VM player).
     internal static bool VisitorFailed(void* user, string what)
     {
         var e = user == null ? null : CallbackBox.From(user).Failure;
@@ -418,8 +418,8 @@ internal static unsafe class LubRuntime
 
     // -------------------------------------------------------------- arena
 
-    /// <summary>呼び出しの間だけ生きる memory。
-    /// 生成した関数は入口で Begin、出口で End する (入れ子も安全)。
+    /// <summary>Memory that lives only during a call.
+    /// Generated functions call Begin on entry and End on exit (nesting is safe).
     /// </summary>
     internal sealed class Arena
     {
@@ -452,7 +452,7 @@ internal static unsafe class LubRuntime
                 transient.RemoveAt(i);
             }
             transientMarks.RemoveAt(last);
-            // block 単位で戻す (同じ block なら used だけ戻す)
+            // Rewinds per block (within the same block, only rewinds used)
             var blockCount = marksBlocks[last];
             if (blocks.Count == blockCount)
             {
@@ -574,8 +574,8 @@ internal static unsafe class LubRuntime
             return p;
         }
 
-        // List<float[]> を [n][width] の float に写す。
-        // 空の list は無し (NULL) として渡す (C 側は pointer の有無で欠損を見る)。
+        // Copies a List<float[]> into [n][width] floats.
+        // An empty list is passed as none (NULL) (the C side detects absence by whether the pointer is set).
         public float* FloatRows(IReadOnlyList<float[]>? l, out int n, int width)
         {
             if (l == null || l.Count == 0)
@@ -606,7 +606,7 @@ internal static unsafe class LubRuntime
             return p;
         }
 
-        // 配列を写さず、呼び出しの間だけ固定して渡す。
+        // Passes the array without copying, pinned only for the duration of the call.
         public float* PinFloats(float[]? l, int count)
         {
             if (l == null) return null;
@@ -617,8 +617,8 @@ internal static unsafe class LubRuntime
             return (float*)h.AddrOfPinnedObject();
         }
 
-        // 呼び出しの間だけの callback (query の visitor)。
-        // End で解放する。
+        // A callback that lives only during the call (query visitor).
+        // Freed at End.
         public void* Callback(Delegate d)
         {
             var h = GCHandle.Alloc(new CallbackBox(new[] { d }));
@@ -626,8 +626,8 @@ internal static unsafe class LubRuntime
             return (void*)GCHandle.ToIntPtr(h);
         }
 
-        // 宣言型の object に付く callback。
-        // runtime が user_release で解放する。
+        // A callback attached to a declarative object.
+        // The runtime frees it with user_release.
         public void* CallbackBox(Delegate?[] slots)
         {
             var any = false;

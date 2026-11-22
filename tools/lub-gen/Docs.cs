@@ -2,17 +2,17 @@ using System.Collections.Generic;
 
 namespace LubGen;
 
-// API reference のデータ (web/gen/lub-api-docs.json)。
-// web/scripts/gen-api-docs.mjs が読み、doc の markdown を HTML にしてガイドと合わせて web/public/api-docs.json にする。
-// 形は web/docs/main.ts の ApiDocs (guides を除く)。
+// API reference data (web/gen/lub-api-docs.json).
+// web/scripts/gen-api-docs.mjs reads it, converts the doc markdown to HTML, and combines it with the guides into web/public/api-docs.json.
+// The shape is ApiDocs in web/docs/main.ts (excluding guides).
 //
-// - module = stub の namespace (Lub / Gfx / Input / ...)。
-//   主型は namespace 自身、
-//   補助型は namespace の enum と、その namespace の関数から辿れる record / handle
-//   (宣言順の namespace が先に取る)。どの namespace からも辿れない型は root の
-//   Lub に置く。
-// - signature は C# の形。
-// - 型の kind は class で、struct の record は struct。
+// - module = a namespace of the stub (Lub / Gfx / Input / ...).
+//   The main type is the namespace itself,
+//   and the auxiliary types are the enums of the namespace and the records / handles reachable from the functions of that namespace
+//   (namespaces earlier in declaration order take them first). Types not reachable from any namespace go into the root
+//   Lub.
+// - signature is in C# form.
+// - The kind of a type is class, and struct for struct records.
 public static class Docs
 {
     private const string RootModule = ApiModelLoader.RootNamespace;
@@ -59,8 +59,8 @@ public static class Docs
     private static bool Traced(LubTypeKind k) =>
         k == LubTypeKind.Record || k == LubTypeKind.Struct || k == LubTypeKind.Handle || k == LubTypeKind.View || k == LubTypeKind.Keyed;
 
-    // 型がどの namespace の module に載るか。
-    // 宣言順の namespace から関数の引数 / 戻り値 / field を辿って最初に届いた namespace。
+    // Which namespace module a type goes into.
+    // The first namespace reached by following function arguments / return values / fields from the namespaces in declaration order.
     private static Dictionary<string, string> AssignTypes(ApiModel model)
     {
         var owner = new Dictionary<string, string>();

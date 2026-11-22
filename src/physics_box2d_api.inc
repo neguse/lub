@@ -1,8 +1,8 @@
-// phys2d の公開 API (include/lub/lub_api.h、生成物) と core の内部形 (phys2d_internal.h) の詰め替え。
-// physics_box2d.c の末尾から include する (core の static 関数を使うため)。
+// Conversion between the public phys2d API (include/lub/lub_api.h, generated code) and the internal forms of core (phys2d_internal.h).
+// Included from the end of physics_box2d.c (to use the static functions of core).
 //
-// query の結果配列 (raycast_all 等) は runtime 所有で、同じ buffer を使う関数の次の呼び出しまで有効。
-// callback (world の filter 等) は holder に包み、core が手放すときに user_release を呼ぶ。
+// Query result arrays (raycast_all etc.) are owned by the runtime and stay valid until the next call of a function that uses the same buffer.
+// Callbacks (the world filter etc.) are wrapped in a holder, and user_release is called when core releases them.
 
 // ---------------------------------------------------------- growable
 
@@ -26,8 +26,8 @@ static void *grow_push(GrowBuf *g, size_t size) {
   return slot;
 }
 
-// visitor (user のコード) を回す query は、共有の buffer を呼び出しの間だけ借りて自分の結果を溜める。
-// visitor の中で同じ buffer を使う関数を呼んでも外側の結果は壊れない (内側の結果は、外側が buffer を返すときに捨てる)。
+// Queries that run a visitor (user code) borrow the shared buffer only for the duration of the call to accumulate their own results.
+// Calling a function that uses the same buffer inside the visitor does not corrupt the outer results (the inner results are discarded when the outer call returns the buffer).
 static GrowBuf grow_take(GrowBuf *shared) {
   GrowBuf own = *shared;
   own.n = 0;
@@ -64,7 +64,7 @@ static P2QueryFilter qfilter_from(const LubFilterDesc *f, bool has) {
   return q;
 }
 
-// ShapeView の field を持つ record (ShapeView、ShapeInfo、RayHit、MoverPlane) を埋める
+// Fills records that have the ShapeView fields (ShapeView, ShapeInfo, RayHit, MoverPlane)
 #define SHAPE_VIEW_OF(v, p)                                                    \
   do {                                                                         \
     memset(v, 0, sizeof(*v));                                                  \
@@ -345,7 +345,7 @@ LubStatus lub_phys2d_body(LubContext *ctx, LubHandle world, LubStr key,
 
 // ---------------------------------------------------------------- shapes
 
-// shape の Desc (BoxDesc など) は共通の field を同じ名前で持つ (stub に継承は無い)。どの Desc でも同じ body で読む
+// Shape Descs (BoxDesc etc.) have the common fields under the same names (the stubs have no inheritance). The same body reads them for any Desc
 #define SHAPE_DESC_FROM(s, d)                                                  \
   do {                                                                         \
     p2_shape_desc_init(d);                                                     \
@@ -528,7 +528,7 @@ LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
     d.type = s->type;
   d.body_a = s->body_a;
   d.body_b = s->body_b;
-  // anchor_a は local_anchor_a の別名
+  // anchor_a is an alias of local_anchor_a
   if (s->has_local_anchor_a)
     d.local_anchor_a = s->local_anchor_a;
   else if (s->has_anchor_a)
@@ -614,7 +614,7 @@ LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
   return p2_joint(ctx, world, key, &d, out);
 }
 
-// JointView の field を持つ record (JointView、JointInfo) を埋める
+// Fills records that have the JointView fields (JointView, JointInfo)
 #define JOINT_VIEW_OF(v, j)                                                    \
   do {                                                                         \
     memset(v, 0, sizeof(*v));                                                  \
@@ -1110,7 +1110,7 @@ LubStatus lub_phys2d_body_events(LubContext *ctx, LubHandle world,
   LubStatus st = p2_body_events(ctx, world, &items, &count);
   if (st != LUB_OK)
     return st;
-  // 同じ layout なので配列をそのまま返す
+  // Same layout, so return the array as is
   *out = (const LubBodyEvent *)items;
   *out_count = count;
   return LUB_OK;
@@ -1162,7 +1162,7 @@ typedef struct RayShim {
   GrowBuf *buf;
   float (*visitor)(void *user, const LubRayHit *hit);
   void *user;
-  bool closest; // 最寄り 1 件だけを残す
+  bool closest; // Keep only the single closest hit
   bool has_hit;
   LubRayHit best;
 } RayShim;
@@ -1176,7 +1176,7 @@ static float ray_shim_tramp(void *user, const P2RayHit *h) {
       s->best = v;
       s->has_hit = true;
     }
-    return v.fraction; // ここまでに詰める
+    return v.fraction; // Clip the ray up to here
   }
   float r = s->visitor ? s->visitor(s->user, &v) : 1.0f;
   if (r >= 0.0f) {

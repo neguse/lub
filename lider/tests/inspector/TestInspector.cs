@@ -1,13 +1,13 @@
-// インスペクタ: class の下に、宣言の順にフィールド (値) とメソッド (実行の印) が並ぶ。class はゲーム (game/Game.cs) の物。
-//   - 起動したときから出ている
-//   - 通っているメソッドは光り、通っていないメソッドは光らないが行は残る。しばらく通らないと消える
-//   - 行の → を押すと宣言へ飛び、Ctrl+- で戻る
-//   - 行の ≫ で絞り込む: class の行は class に、instance の行は個体に、子のある節はその節に。パンくずを押すとその段に戻る
-//   - 個体に絞ると、エディタでもその個体を選ぶ。エディタの class の行の個体の目印を押すと、インスペクタもその個体に絞る
-//   - 個体に絞ると、その個体の下にメソッドも並び、その個体で通ったメソッドだけが光る
-//   - 絞り込んだ個体が辿れなくなると、class に戻る
-// ゲームは決めた frame で最初の Crate を外し、その後の決めた frame から Tick を通らない。どちらもゲームの値を見て待つ。
-// frame はゲームが動き始めてから数える。
+// Inspector: under each class, fields (values) and methods (execution markers) are listed in declaration order. The classes belong to the game (game/Game.cs).
+//   - Shown from startup
+//   - Methods being run light up, and methods not being run do not light up but their rows remain. They disappear after not being run for a while
+//   - Pressing the → on a row jumps to the declaration, and Ctrl+- goes back
+//   - The ≫ on a row narrows down: a class row to the class, an instance row to the instance, and a node with children to that node. Pressing a breadcrumb goes back to that level
+//   - Narrowing to an instance also selects that instance in the editor. Pressing an instance marker on a class line in the editor also narrows the inspector to that instance
+//   - Narrowing to an instance also lists methods under that instance, and only the methods run by that instance light up
+//   - When the narrowed instance can no longer be traced, it goes back to the class
+// The game removes the first Crate at a fixed frame, and stops running Tick from a later fixed frame. Both are waited for by watching the game's values.
+// Frames are counted from when the game starts running.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -26,7 +26,7 @@ public static class TestInspector
     {
         TestInit();
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay layout (code windows lined up in a horizontal row on the cylindrical screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -53,7 +53,7 @@ public static class TestInspector
 
     static void TestFrame(float dt)
     {
-        // ゲームの build を待つ
+        // Wait for the game build
         if (GameApp.Frames == 0)
             return;
         frames++;
@@ -76,14 +76,14 @@ public static class TestInspector
             Check(Row(tree, "Busy.Tick()")!.Target == "Busy.Tick", "the method row goes to " + Row(tree, "Busy.Tick()")!.Target);
             if (failed)
                 return;
-            // → を押すと宣言へ飛ぶ
+            // Pressing → jumps to the declaration
             w.FocusOn(Environment.GetEnvironmentVariable("LIDER_ROOT") + "/Target.cs");
             var before = w.Focus;
             Press(w, view, tree.Rows.IndexOf(Row(tree, "Busy.Tick()")!), 1 - 0.5f * 32 / InspectView.PxW);
             Check(w.Focus != before && w.Focus!.Path.EndsWith("game/Game.cs") && w.Focus.Text(w.Focus.Line).Contains("void Tick"), "pressing → did not jump to the method");
             w.Back();
             Check(w.Focus == before, "going back did not return");
-            // ≫ で class に絞る
+            // Narrow to the class with ≫
             Press(w, view, tree.Rows.IndexOf(Row(tree, "Busy")!), 1 - 1.5f * 32 / InspectView.PxW);
             Check(string.Join("|", tree.Crumbs()) == "全体|Busy", "the crumbs are " + string.Join("|", tree.Crumbs()));
             return;
@@ -91,7 +91,7 @@ public static class TestInspector
         if (frames == 24)
         {
             Check(Keys(tree, 0, "") == "Busy.Count Busy.Stop Busy.Crates Busy.Tick() Busy.Never()", "the class scope lists " + Keys(tree, 0, ""));
-            // 節に絞る
+            // Narrow to a node
             Lider.EnterScope(Row(tree, "Busy.Crates")!);
             return;
         }
@@ -102,7 +102,7 @@ public static class TestInspector
             Check(crate != null && crate.Depth == 0 && crate.Id != "", "the node scope does not list the crates");
             if (failed)
                 return;
-            // 個体に絞ると、エディタでも選ぶ
+            // Narrowing to an instance also selects it in the editor
             Lider.EnterScope(crate!);
             Check(Lider.Fields.IsSelected("Crate", crate!.Id), "the editor did not select the crate");
             return;
@@ -113,18 +113,18 @@ public static class TestInspector
             Check(string.Join("|", tree.Crumbs()) == "全体|Crate|" + FieldValues.Tag(id), "the instance crumbs are " + string.Join("|", tree.Crumbs()));
             Check(Keys(tree, 0, "") == "Busy.Crates[0].Hp Busy.Crates[0].Name Crate.Hit()", "the instance scope lists " + Keys(tree, 0, ""));
             Check(Row(tree, "Crate.Hit()")!.Glow == 0, "Hit glows for the crate that did not run it");
-            // パンくずの全体を押す
+            // Press the whole breadcrumb
             var uv = view.CrumbCenter(0);
             Lider.Click(w, RayAt(uv), false);
             Check(tree.ScopeClass == "" && tree.ScopeId == "", "pressing the first crumb did not go back to all");
-            // エディタの目印で個体に絞る
+            // Narrow to an instance with the editor's marker
             Lider.ToggleInstance("Crate", id);
             Check(tree.ScopeId == id && tree.ScopeClass == "Crate", "the editor mark did not scope the inspector");
             return;
         }
         if (frames == 29)
         {
-            // Hit を通る 2 つ目の Crate に絞ると、Hit が光る
+            // Narrowing to the second Crate, which runs Hit, makes Hit light up
             first = tree.ScopeId;
             Lider.ScopeToInstance(GameApp.Inspect("Busy.Crates", 1, 1)[0].Id);
             return;
@@ -143,7 +143,7 @@ public static class TestInspector
         }
         if (frames > 34 && removedAt == 0)
         {
-            // ゲームが最初の Crate を外すまで待つ
+            // Wait until the game removes the first Crate
             if (GameApp.Inspect("Busy.Crates", 0, 100).Count == 1)
                 removedAt = frames;
             Check(frames < 600, "the game did not remove the first crate");
@@ -151,14 +151,14 @@ public static class TestInspector
         }
         if (removedAt > 0 && frames == removedAt + 20)
         {
-            // 絞り込んだ個体が辿れなくなると class に戻る (static から辿り直すのは 15 frame ごと)
+            // When the narrowed instance can no longer be traced, it goes back to the class (tracing again from the statics happens every 15 frames)
             Check(tree.ScopeId == "" && tree.ScopeClass == "Crate", "a lost instance did not go back to the class: " + string.Join("|", tree.Crumbs()));
             tree.ScopeTo(0);
             return;
         }
         if (removedAt > 0 && frames > removedAt + 20 && stopAt == 0)
         {
-            // ゲームが Tick を通らなくなるまで待つ
+            // Wait until the game stops running Tick
             if (Row(tree, "Busy.Stop") != null && Row(tree, "Busy.Stop")!.Text == "true")
                 stopAt = frames;
             Check(frames < 600, "the game did not stop");
@@ -174,7 +174,7 @@ public static class TestInspector
         }
     }
 
-    // depth の行のうち key が prefix で始まる物の key
+    // Keys of the rows at depth whose key starts with prefix
     static string Keys(InspectTree tree, int depth, string prefix)
     {
         var keys = new List<string>();
@@ -192,14 +192,14 @@ public static class TestInspector
         return null;
     }
 
-    // 板の i 番目の行の、横 u の所を押す
+    // Press at horizontal position u on the i-th row of the board
     static void Press(Workspace w, InspectView view, int i, float u)
     {
         var lineH = EditorHost.LineHeight(w.FocusWindow != null ? w.FocusWindow.Code.ViewId : 0);
         Lider.Click(w, RayAt(new Vec2(u, (view.RowY(i) + lineH * 0.5f) / InspectView.PxH)), false);
     }
 
-    // 板の中の位置を指す ray
+    // Ray pointing at a position inside the board
     static Ray RayAt(Vec2 uv)
     {
         var scale = Space.Flat ? 1.4f : 1;

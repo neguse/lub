@@ -1,4 +1,4 @@
-// TestTiles が開く file。
+// The file TestTiles opens.
 public static class Target
 {
 }

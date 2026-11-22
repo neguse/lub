@@ -75,9 +75,9 @@ constexpr UINT kSrvHeapMax = 1000000;
 constexpr int kMaxSamplerRegs = 16;
 constexpr UINT kSamplerCount = 4;
 constexpr int kMaxRootParams = SGL_MAX_UNIFORM_BLOCKS + 2 + kMaxSamplerRegs;
-// SRV table の t register の数の上限 (D3D の t0..t127)。
+// Upper limit on the number of t registers in an SRV table (t0..t127 in D3D).
 constexpr int kMaxSrvSlots = D3D12_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT;
-constexpr size_t kTableCacheMin = 256; // 2 の冪
+constexpr size_t kTableCacheMin = 256; // Power of 2
 
 // --- upload arena -----------------------------------------------------------
 // Per-frame transient upload memory (uniforms, buffer/texture updates).
@@ -105,7 +105,7 @@ struct UploadChunk {
   uint8_t *map = nullptr;
   size_t cap = 0;
   size_t off = 0;
-  // frame_buffer の範囲が指す先。chunks が伸びても動かない。
+  // What frame_buffer ranges point to. Does not move when chunks grows.
   std::unique_ptr<DxBuffer> whole;
 };
 
@@ -170,27 +170,29 @@ struct CpuDescHeap {
 
 // --- per-frame context -------------------------------------------------------
 
-// SRV table の t register 1 つに書く view。
-// id は実体の世代で、DxImage / DxBuffer の address は解放の後に別の実体が使い回すため key にできない。
+// The view written to one t register of an SRV table.
+// id is the generation of the underlying object; DxImage / DxBuffer addresses
+// cannot be keys because another object reuses them after release.
 struct SrvSlotKey {
-  uint64_t id;    // 0 は null descriptor
-  uint64_t first; // buffer の FirstElement
-  uint64_t
-      layout; // buffer の NumElements << 32 | StructureByteStride、image は 0
+  uint64_t id;     // 0 is the null descriptor
+  uint64_t first;  // FirstElement of the buffer
+  uint64_t layout; // For buffers NumElements << 32 | StructureByteStride, 0 for
+                   // images
 };
 
-// frame slot の heap に書いた SRV table の map の 1 件。
-// keys は TableCache::keys の key_off から n 個。
+// One entry in the map of SRV tables written to the frame slot's heap.
+// keys are the n items from key_off in TableCache::keys.
 struct TableCacheEntry {
-  uint32_t epoch = 0; // TableCache::epoch と等しいときだけ使用中
+  uint32_t epoch = 0; // In use only when equal to TableCache::epoch
   int n = 0;
   uint64_t hash = 0;
   size_t key_off = 0;
   UINT64 gpu = 0;
 };
 
-// 同じ view の並びの SRV table を 1 フレームの間だけ使い回す (open addressing)。
-// table は frame slot の heap の中にあるので、heap を reset するときと切り替えるときに空にする。
+// Reuse SRV tables with the same sequence of views within a single frame (open
+// addressing). The tables live in the frame slot's heap, so empty this when the
+// heap is reset or switched.
 struct TableCache {
   std::vector<TableCacheEntry> entries;
   std::vector<SrvSlotKey> keys;
@@ -206,7 +208,9 @@ struct FrameCtx {
   UINT srv_cap = 0;
   UINT srv_used = 0;
   TableCache tables;
-  // GPU の時刻 (gpu_time.h): この slot の frame、書いた番号の数と印、時刻を書くか、readback buffer へ写したか
+  // GPU timestamps (gpu_time.h): this slot's frame, the count of written
+  // indices and their marks, whether to write timestamps, and whether they were
+  // copied to the readback buffer
   uint64_t ts_frame = 0;
   uint32_t ts_count = 0;
   uint8_t ts_written[GPU_TIME_STAMPS] = {};
@@ -240,13 +244,14 @@ struct Dx12State {
   ComPtr<IDXGISwapChain3> swapchain;
   ComPtr<ID3D12GraphicsCommandList7> cl;
   bool recording = false;
-  uint64_t last_gen = 0; // 実体を作るたびに進める
+  uint64_t last_gen = 0; // Advanced each time an object is created
 
   ComPtr<ID3D12Fence> fence;
   uint64_t fence_next = 1;
   HANDLE fence_event = nullptr;
 
-  // GPU の時刻の query (slot ごとに GPU_TIME_STAMPS 個) と、slot ごとの読み出し先。queue が時刻を持たなければ空
+  // GPU timestamp queries (GPU_TIME_STAMPS per slot) and the per-slot readback
+  // destinations. Empty if the queue has no timestamps
   ComPtr<ID3D12QueryHeap> ts_heap;
   ComPtr<ID3D12Resource> ts_readback[kFramesInFlight];
   double ts_ns_per_tick = 0;
@@ -426,7 +431,9 @@ void dx_from_depth_write(ID3D12Resource *res) {
 
 // Swapchain buffer: PRESENT (also its copy-source layout for capture) while
 // not being rendered to.
-// 1 フレームに swapchain の pass が複数あると同じ list で何度も出入りするので、SyncBefore に NONE は使えない (前の access がある subresource には無効)。
+// With multiple swapchain passes in one frame, the same list transitions in and
+// out several times, so NONE cannot be used for SyncBefore (it is invalid for a
+// subresource with a prior access).
 void dx_swapchain_to_render_target(ID3D12Resource *res) {
   dx_texture_barrier(
       g.cl.Get(), res, D3D12_BARRIER_SYNC_ALL, D3D12_BARRIER_ACCESS_COMMON,
@@ -891,7 +898,8 @@ void dx_shutdown(Process *proc) {
 
 // --- vtable: frame ----------------------------------------------------------
 
-// slot の前の frame の時刻を読んで返す (slot の fence を待った後に呼ぶ)
+// Read and return the timestamps of the slot's previous frame (call after
+// waiting on the slot's fence)
 static void dx_timestamps_read(int slot) {
   FrameCtx &f = g.frames[slot];
   if (!f.ts_count)
@@ -914,7 +922,8 @@ static void dx_timestamps_read(int slot) {
   f.ts_count = 0;
 }
 
-// 書いた時刻を slot の readback buffer へ写す (command list を閉じる前に呼ぶ)
+// Copy the written timestamps to the slot's readback buffer (call before
+// closing the command list)
 static void dx_timestamps_resolve() {
   FrameCtx &f = g.frames[g.slot];
   if (!f.ts_count || !g.recording)
@@ -1681,7 +1690,7 @@ struct DxPipelineFull {
   bool is_compute = false;
 };
 
-// SglBlendFactor / SglBlendOp の値で引く。
+// Indexed by SglBlendFactor / SglBlendOp value.
 const D3D12_BLEND kDxBlendFactor[] = {
     D3D12_BLEND_ZERO,
     D3D12_BLEND_ZERO,
@@ -1843,20 +1852,22 @@ bool g_last_indexed = false;
 bool g_bindings_ok = true;
 unsigned g_uniforms_failed = 0; // bit per uniform slot
 
-// 録画中の command list に設定済みの graphics の状態で、同じものを設定し直さないために持つ。
+// Graphics state already set on the command list being recorded, kept to avoid
+// setting the same thing again.
 struct BoundState {
   ID3D12PipelineState *pso;
   ID3D12RootSignature *root_sig;
   D3D_PRIMITIVE_TOPOLOGY topology;
   D3D12_INDEX_BUFFER_VIEW ib;
-  UINT64 tables
-      [kMaxRootParams]; // root param ごとの GPU descriptor handle、0 は未設定
+  UINT64 tables[kMaxRootParams]; // GPU descriptor handle per root param, 0 =
+                                 // not set
 };
 BoundState g_bound;
 
 void dx_reset_bound_state() { memset(&g_bound, 0, sizeof(g_bound)); }
 
-// root signature を変えるか descriptor heap を切り替えると、設定済みの table は使えると限らない。
+// After changing the root signature or switching the descriptor heap, tables
+// already set are not guaranteed to be usable.
 void dx_forget_bound_tables() {
   memset(g_bound.tables, 0, sizeof(g_bound.tables));
 }
@@ -2055,7 +2066,7 @@ void dx_write_image_srv(D3D12_CPU_DESCRIPTOR_HANDLE at, DxImage *im) {
 }
 
 void dx_table_cache_reset(TableCache &c, bool shrink) {
-  // 1 回だけ重いフレームの大きさを持ち続けない。
+  // Do not keep the size of a single heavy frame.
   if (shrink && c.entries.size() > kTableCacheMin &&
       c.count * 8 < c.entries.size()) {
     std::vector<TableCacheEntry>().swap(c.entries);
@@ -2080,7 +2091,8 @@ uint64_t dx_table_hash(const SrvSlotKey *keys, int n) {
   return h;
 }
 
-// keys と同じ並びの entry か、無ければ入れる場所の index。
+// Index of the entry with the same sequence as keys, or of the slot to insert
+// into if there is none.
 size_t dx_table_find(const TableCache &c, uint64_t h, const SrvSlotKey *keys,
                      int n) {
   size_t mask = c.entries.size() - 1;
@@ -2123,7 +2135,8 @@ bool dx_srv_table(const SrvSlotKey *keys, int n, bool *fresh,
       return true;
     }
   }
-  // 確保が heap を切り替えると map は空になるので、入れる場所は確保の後に探す。
+  // If the allocation switches the heap, the map becomes empty, so look for the
+  // insert slot after allocating.
   if (!dx_srv_alloc((UINT)n, cpu, gpu))
     return false;
   *fresh = true;
@@ -2149,7 +2162,8 @@ bool dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
   int n = t->srv_count;
 
   if (n > 0) {
-    // t register ごとの view を決めてから、同じ並びの table をこのフレームで書いていればそれを使う。
+    // After deciding the view for each t register, use a table with the same
+    // sequence if one was already written this frame.
     SrvSlotKey keys[kMaxSrvSlots];
     DxImage *ims[kMaxSrvSlots];
     DxBuffer *bufs[kMaxSrvSlots];

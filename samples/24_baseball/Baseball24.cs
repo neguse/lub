@@ -1,33 +1,33 @@
-// lub の samples/24_baseball の entry。
-// 実行: lub samples/24_baseball/Baseball24.csproj (transpile + watch + hot reload)
+// Entry for lub's samples/24_baseball.
+// Run: lub samples/24_baseball/Baseball24.csproj (transpile + watch + hot reload)
 //
-// 全自動野球シミュレーション。
-// ユーザーは観るだけ。
-// - キャラ: SDF モデリング (bone 付き) + vertex shader LBS。
-//   1 体のメッシュを
-//   ボーン行列とチーム色 uniform で全員に使い回す
-// - 物理: 手書き弾道 (重力 + 空気抵抗 + バウンド + フェンス反射)。
-//   球 vs 平面/円筒の解析判定なのですり抜けしない
-// - 試合: state machine で投球→打撃→守備→走塁を全自動進行。
-//   捕球・封殺は
-//   野手と走者の実際の位置と時間で決まる (結果の先取りをしない)
-// - 演出: 投打を固定構図で見せ、打球後は守備と走塁を同じ画面に収める
+// Fully automatic baseball simulation.
+// The user only watches.
+// - Characters: SDF modeling (with bones) + vertex shader LBS.
+//   One character mesh is
+//   reused for everyone with bone matrices and a team color uniform
+// - Physics: hand-written ballistics (gravity + air drag + bounces + fence reflection).
+//   Analytic ball vs plane/cylinder tests, so the ball does not tunnel through
+// - Game: a state machine runs pitch→hit→fielding→baserunning fully automatically.
+//   Catches and force-outs are
+//   decided by the actual positions and timing of fielders and runners (results are not decided in advance)
+// - Presentation: pitching and batting are shown with a fixed composition, and after the hit, fielding and baserunning fit on the same screen
 //
-// boneSlot 表 + 手詰めの packBones は cs-lib の Bones.pack (mesh.bones 順の resolve callback) に置き換え、乱数は Math.random でなく決定的な Rand。
+// The boneSlot table + hand-packed packBones are replaced with Bones.pack of cs-lib (a resolve callback in mesh.bones order), and the random numbers use the deterministic Rand instead of Math.random.
 
 using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-// 走者。
-// 塁 index は 0=本塁(打席) 1..3=各塁 4=生還
+// Runner.
+// Base index: 0=home plate (batter's box) 1..3=each base 4=scored
 public class Runner
 {
     public float X;
     public float Z;
-    public int AtBase; // 今いる/直前の塁 (base は C# 予約語のため AtBase)
-    public int To; // 目標の塁
+    public int AtBase; // Current/previous base (named AtBase because base is a C# reserved word)
+    public int To; // Target base
     public float RunPhase = 0;
 
     public Runner(float x, float z, int atBase, int to)
@@ -39,8 +39,8 @@ public class Runner
     }
 }
 
-// 野手。
-// home* は定位置、(x,z) が現在地
+// Fielder.
+// home* is the fielding position, (x,z) is the current position
 public class Fielder
 {
     public float X;
@@ -62,7 +62,7 @@ public class Fielder
     }
 }
 
-// predictLanding の結果
+// Result of predictLanding
 public class Landing
 {
     public float X;
@@ -98,18 +98,18 @@ public static class Baseball24
     const int h = 540;
     const float tickDt = 1.0f / 60.0f;
 
-    // --- フィールド寸法 (m) -------------------------------------------------
-    const float baseD = 19.4f; // 塁間 27.43m の対角成分
+    // --- Field dimensions (m) -------------------------------------------------
+    const float baseD = 19.4f; // Diagonal component of the 27.43m distance between bases
     const float moundZ = 18.44f;
     const float fenceR = 76.0f;
     const float fenceH = 3.0f;
     const float grav = 9.8f;
     const float ballR = 0.115f;
-    const float dragCoef = 0.0055f; // 打球の空気抵抗 (終端速度 ~42m/s)
-    const float runSpd = 7.2f; // 走者/野手の走速
-    const float catchR = 1.15f; // 捕球半径 (グラブの届く範囲)
+    const float dragCoef = 0.0055f; // Air drag of the batted ball (terminal velocity ~42m/s)
+    const float runSpd = 7.2f; // Running speed of runners/fielders
+    const float catchR = 1.15f; // Catch radius (reach of the glove)
 
-    // --- 試合 state ---------------------------------------------------------
+    // --- Game state ---------------------------------------------------------
     const int stIntro = 0;
     const int stPrepitch = 1;
     const int stWindup = 2;
@@ -119,7 +119,7 @@ public static class Baseball24
     const int stChange = 6;
     const int stEnd = 7;
 
-    // キャラアニメ
+    // Character animation
     public const int AnIdle = 0;
     public const int AnReady = 1;
     public const int AnRun = 2;
@@ -129,11 +129,11 @@ public static class Baseball24
     public const int AnCrouch = 6;
     public const int AnThrow = 7;
 
-    // 打球フェーズ (ST_LIVE 中)
-    const int plFly = 0; // 打球が空中 (ノーバウンド)
+    // Batted ball phase (during ST_LIVE)
+    const int plFly = 0; // Batted ball in the air (no bounce yet)
     const int plTouch1b = 1;
-    const int plThrow1b = 2; // 一塁送球中
-    const int plSettle = 3; // 判定確定、走者が到達するのを待つ
+    const int plThrow1b = 2; // Throw to first in progress
+    const int plSettle = 3; // Call decided, waiting for the runners to arrive
     const int plFoul = 4;
 
     public static void OnInit()
@@ -157,7 +157,7 @@ public static class Baseball24
     {
     }
 
-    // --- 乱数 (決定的 xorshift。Math.random は run ごとに列が変わる) ---------
+    // --- Random numbers (deterministic xorshift. Math.random changes the sequence on every run) ---------
     static Rand? rng = null;
 
     static float Rnd()
@@ -176,8 +176,8 @@ public static class Baseball24
         return a + (b - a) * Rnd();
     }
 
-    // --- キャラメッシュ (SDF + bones) --------------------------------------- 身長 ~1.8m。
-    // ユニフォームをチーム色で焼いた 2 メッシュを使い分ける
+    // --- Character mesh (SDF + bones) --------------------------------------- Height ~1.8m.
+    // Two meshes with the uniforms baked in the team colors are used per team
     static List<Mesh3d>? charMesh = null;
     static int[] teamRgb = new int[] { 0xD94038, 0x4073E0 };
     const float torsoPy = 0.95f;
@@ -557,7 +557,7 @@ public static class Baseball24
         return PoseIdle(t);
     }
 
-    // --- 静的メッシュ (Shapes) ----------------------------------------------
+    // --- Static meshes (Shapes) ----------------------------------------------
     static Mesh3d? fieldMesh = null;
     static Mesh3d? ballMesh = null;
     static Mesh3d? batMesh = null;
@@ -597,11 +597,11 @@ public static class Baseball24
         var wallTop = new List<float> { 0.88f, 0.82f, 0.35f, 1.0f };
         var up = new List<float> { 0, 1, 0 };
 
-        // 地面 (ファウルグラウンド込みの外周)
+        // Ground (outer area including foul territory)
         Shapes.Quad(v, new List<float> { -95, 0, -20 },
             new List<float> { -95, 0, 95 }, new List<float> { 95, 0, 95 },
             new List<float> { 95, 0, -20 }, up, grass);
-        // フェアグラウンドの扇形 (少し明るい緑)
+        // Fan shape of the fair territory (slightly brighter green)
         Fan(v, 0, 0.012f, 0, fenceR, -(float)Math.PI / 4, (float)Math.PI / 4, 24, grassIn);
         for (int band = 0; band < 12; band++)
         {
@@ -614,31 +614,31 @@ public static class Baseball24
                 new List<float> { edge0, 0.016f, z0 }, up,
                 new List<float> { 0.27f, 0.48f, 0.30f, 1 });
         }
-        // 内野ダート (ひし形)
+        // Infield dirt (diamond)
         Shapes.Quad(v, new List<float> { 0, 0.024f, -2.2f },
             new List<float> { 24.5f, 0.024f, baseD },
             new List<float> { 0, 0.024f, 43.0f },
             new List<float> { -24.5f, 0.024f, baseD }, up, dirt);
-        // 内野の芝 (ダートの内側)
+        // Infield grass (inside the dirt)
         Shapes.Quad(v, new List<float> { 0, 0.036f, 4.2f },
             new List<float> { 15.5f, 0.036f, baseD },
             new List<float> { 0, 0.036f, 34.6f },
             new List<float> { -15.5f, 0.036f, baseD }, up, grassIn);
-        // マウンド (つぶれたドーム + ダート円)
+        // Mound (squashed dome + dirt circle)
         Fan(v, 0, 0.048f, moundZ, 2.9f, -(float)Math.PI, (float)Math.PI, 16, dirt);
         Shapes.Sphere(v, 0, -2.35f, moundZ, 2.6f, dirt, 8, 16);
-        // 本塁と各塁
+        // Home plate and the bases
         Shapes.Box(v, 0, 0.03f, 0, 0.55f, 0.05f, 0.55f, lineW);
         Shapes.Box(v, baseD, 0.07f, baseD, 0.55f, 0.13f, 0.55f, lineW);
         Shapes.Box(v, 0, 0.07f, baseD * 2, 0.55f, 0.13f, 0.55f, lineW);
         Shapes.Box(v, -baseD, 0.07f, baseD, 0.55f, 0.13f, 0.55f, lineW);
-        // プレート (マウンド上)
+        // Pitcher's plate (on the mound)
         Shapes.Box(v, 0, 0.30f, moundZ, 0.61f, 0.05f, 0.15f, lineW);
-        // ファウルライン
+        // Foul lines
         var d = 0.70710678f;
         foreach (var s in new List<float> { -1.0f, 1.0f })
         {
-            var nx = -s * d; // ライン直交方向
+            var nx = -s * d; // Direction perpendicular to the line
             var nz = d;
             var half = 0.09f;
             var x0 = s * 1.2f * d;
@@ -652,7 +652,7 @@ public static class Baseball24
                 new List<float> { x0 + nx * half, 0.045f, z0 + nz * half },
                 up, lineW);
         }
-        // 外野フェンス (内向きの壁 + 黄色いトップ)
+        // Outfield fence (inward-facing wall + yellow top)
         int segs = 26;
         for (int i = 0; i < segs; i++)
         {
@@ -673,7 +673,7 @@ public static class Baseball24
                 new List<float> { x1, fenceH + 0.18f, z1 },
                 new List<float> { x1, fenceH, z1 }, n, wallTop);
         }
-        // バックストップ (本塁後方の低い壁)
+        // Backstop (low wall behind home plate)
         int bsegs = 10;
         var bsCol = new List<float> { 0.48f, 0.51f, 0.55f, 1.0f };
         for (int i = 0; i < bsegs; i++)
@@ -747,7 +747,7 @@ public static class Baseball24
             .Paint(0xAD683B, 0, 0.75f), 32));
     }
 
-    // --- ボール ---------------------------------------------------------------
+    // --- Ball ---------------------------------------------------------------
     static float bx = 0.0f;
     static float by = 0.0f;
     static float bz = 0.0f;
@@ -759,8 +759,8 @@ public static class Baseball24
     static bool ballRolling = false;
     static bool isHomeRun = false;
 
-    // 打球の 1 step (共通 integrator)。
-    // 返り値: バウンドしたか
+    // One step of a batted ball (shared integrator).
+    // Returns: whether it bounced
     static bool StepBall(float dt, bool drag)
     {
         if (drag)
@@ -776,7 +776,7 @@ public static class Baseball24
         by += bvy * dt;
         bz += bvz * dt;
         var bounced = false;
-        // 地面
+        // Ground
         if (by < ballR && bvy < 0)
         {
             by = ballR;
@@ -806,8 +806,8 @@ public static class Baseball24
                 bvz *= dec / sp;
             }
         }
-        // フェンス (フェア扇形内の円筒壁)。
-        // 越えたら本塁打
+        // Fence (cylindrical wall within the fair fan).
+        // Clearing it is a home run
         var hr = (float)Math.Sqrt(bx * bx + bz * bz);
         if (!isHomeRun && bz > 0 && Math.Abs(bx) < bz + 2 && hr > fenceR - ballR)
         {
@@ -818,7 +818,7 @@ public static class Baseball24
             }
             else
             {
-                // 半径方向の反射
+                // Radial reflection
                 var nx = bx / hr;
                 var nz = bz / hr;
                 var vr = bvx * nx + bvz * nz;
@@ -835,7 +835,7 @@ public static class Baseball24
         return bounced;
     }
 
-    // 着地予測 (状態を退避してシミュレート)
+    // Landing prediction (saves the state and simulates)
     static Landing PredictLanding()
     {
         var sx = bx;
@@ -871,10 +871,10 @@ public static class Baseball24
         return r;
     }
 
-    // --- チームと選手 -----------------------------------------------------------
+    // --- Teams and players -----------------------------------------------------------
     static string[] teamName = new string[] { "RED", "BLUE" };
 
-    // 9人 (0=P 1=C 2=1B 3=2B 4=3B 5=SS 6=LF 7=CF 8=RF)
+    // 9 players (0=P 1=C 2=1B 3=2B 4=3B 5=SS 6=LF 7=CF 8=RF)
     static List<Fielder>? fielders = null;
     static Fielder? batter = null;
     static List<Runner>? runners = null;
@@ -900,7 +900,7 @@ public static class Baseball24
         if (i == 1) return new List<float> { baseD, baseD };
         if (i == 2) return new List<float> { 0.0f, baseD * 2 };
         if (i == 3) return new List<float> { -baseD, baseD };
-        return new List<float> { 0.0f, 0.0f }; // 0 と 4 は本塁
+        return new List<float> { 0.0f, 0.0f }; // 0 and 4 are home plate
     }
 
     static void ResetActors()
@@ -918,11 +918,11 @@ public static class Baseball24
         ballVisible = false;
     }
 
-    // --- 試合状態 ---------------------------------------------------------------
+    // --- Game state ---------------------------------------------------------------
     static int state = stIntro;
     static float stateT = 0.0f;
     static int inning = 1;
-    static int half = 0; // 0=表 (RED 攻撃) 1=裏
+    static int half = 0; // 0=top (RED bats) 1=bottom
     static List<int> score = new List<int> { 0, 0 };
     static int balls = 0;
     static int strikes = 0;
@@ -938,21 +938,21 @@ public static class Baseball24
         return half == 0 ? 1 : 0;
     }
 
-    // 投球ごとの判定材料
-    static float pitchTX = 0.0f; // 到達点 (x, y)
+    // Inputs for judging each pitch
+    static float pitchTX = 0.0f; // Arrival point (x, y)
     static float pitchTY = 0.0f;
     static bool pitchInZone = false;
     static bool willSwing = false;
-    static int swingOutcome = 0; // 0=空振り 1=ファウル 2=インプレー
+    static int swingOutcome = 0; // 0=swing and miss 1=foul 2=in play
     static float exitSpeed = 0.0f;
     static float exitLaunch = 0.0f;
     static float exitSpray = 0.0f;
     static bool swingStarted = false;
 
-    // ST_LIVE の進行
+    // ST_LIVE progress
     static int playPhase = plFly;
     static int chaser = -1;
-    static int ballHeldBy = -1; // 野手 index (-1 = フリー)
+    static int ballHeldBy = -1; // Fielder index (-1 = loose)
     static float liveT = 0.0f;
     static float homeRunAt = 0.0f;
     static float throwT = 0.0f;
@@ -966,7 +966,7 @@ public static class Baseball24
     static bool batterAtPlate = true;
     static Landing? landing = null;
 
-    // 演出
+    // Presentation
     static float hitstopT = 0.0f;
     static string eventText = "";
     static float eventT = 99.0f;
@@ -986,14 +986,14 @@ public static class Baseball24
         stateT = 0.0f;
     }
 
-    // --- 投球開始 -----------------------------------------------------------------
+    // --- Pitch start -----------------------------------------------------------------
     static void StartPitch()
     {
         var fs = fielders;
         if (fs == null)
             return;
         foreach (var f in fs) f.CatchPose = null;
-        // 目標: ゾーン内/外を先に決めてから座標を出す
+        // Target: decide in/out of the zone first, then compute the coordinates
         pitchInZone = Rnd() < 0.62f;
         if (pitchInZone)
         {
@@ -1002,7 +1002,7 @@ public static class Baseball24
         }
         else
         {
-            // ゾーンの少し外
+            // Slightly outside the zone
             if (Rnd() < 0.5f)
             {
                 pitchTX = (Rnd() < 0.5f ? -1.0f : 1.0f) * Rrange(0.28f, 0.45f);
@@ -1039,7 +1039,7 @@ public static class Baseball24
         fs[0].AnimT = 0;
     }
 
-    // リリース: ボールに初速を与える (重力補償で目標へ届ける)
+    // Release: give the ball its initial velocity (compensating for gravity so it reaches the target)
     static void ReleaseBall()
     {
         var fs = fielders;
@@ -1065,7 +1065,7 @@ public static class Baseball24
         SetState(stPitch);
     }
 
-    // --- 打撃結果の解決 -------------------------------------------------------------
+    // --- Resolving the batting result -------------------------------------------------------------
     static void ResolveContact()
     {
         var fs = fielders;
@@ -1075,7 +1075,7 @@ public static class Baseball24
             return;
         if (!willSwing || swingOutcome == 0)
         {
-            // 見送り or 空振り → カウント
+            // Taken or swung and missed → count
             if (willSwing)
             {
                 strikes++;
@@ -1098,14 +1098,14 @@ public static class Baseball24
             AfterCall();
             return;
         }
-        // 接触を短く止め、振り抜きへつなぐ。
+        // Stop the contact briefly and lead into the follow-through.
         hitstopT = 0.035f;
         var launch = exitLaunch;
         var spray = exitSpray;
         var speed = exitSpeed;
         if (swingOutcome == 1)
         {
-            // ファウル: 打球はラインの外か後方へ
+            // Foul: the batted ball goes outside the lines or backward
             speed = Rrange(16.0f, 34.0f);
             launch = Rrange(15.0f, 70.0f);
             spray = (Rnd() < 0.5f ? -1.0f : 1.0f) * Rrange(50.0f, 130.0f);
@@ -1129,13 +1129,13 @@ public static class Baseball24
             SetState(stLive);
             return;
         }
-        // 打者走者スタート
+        // The batter-runner starts
         var br = new Runner(b.X, b.Z, 0, 1);
         batterRunner = br;
         batterAtPlate = false;
         rns.Add(br);
-        b.Anim = AnSwing; // 走り出しはスイングの続きから
-        // 最寄りの野手が追う
+        b.Anim = AnSwing; // The run starts from the continuation of the swing
+        // The nearest fielder chases
         chaser = NearestFielder(land.X, land.Z);
         firstBaseCover = chaser == 2 ? 0 : 2;
         playPhase = plFly;
@@ -1149,7 +1149,7 @@ public static class Baseball24
             return -1;
         var best = -1;
         var bd = 1e9f;
-        // 投手と捕手は追走から除外 (定位置が近すぎて何でも取ってしまう)
+        // Pitcher and catcher are excluded from chasing (their positions are so close that they would catch everything)
         for (int i = 2; i < 9; i++)
         {
             var f = fs[i];
@@ -1163,8 +1163,8 @@ public static class Baseball24
         return best;
     }
 
-    // 打席の結果が確定 (カウント系)。
-    // 四球/三振/次打者を処理
+    // The result of the plate appearance is decided (count-based).
+    // Handles walk/strikeout/next batter
     static void AfterCall()
     {
         SetState(stCall);
@@ -1181,7 +1181,7 @@ public static class Baseball24
         else if (balls >= 4)
         {
             ShowEvent("WALK", Color.Rgb(0.5f, 0.9f, 1.0f));
-            // 押し出し: 1塁から連続で埋まっている走者だけ 1 つ進む
+            // Forced advance: only runners on consecutively filled bases from first advance one base
             var occ = new Dictionary<int, Runner>();
             foreach (var r in rns)
                 occ[r.To] = r;
@@ -1198,7 +1198,7 @@ public static class Baseball24
 
     static bool newBatterPending = false;
 
-    // --- 野手 AI (ST_LIVE) ------------------------------------------------------------
+    // --- Fielder AI (ST_LIVE) ------------------------------------------------------------
     static bool MoveTowards(Fielder f, float tx, float tz, float dt,
         float spd)
     {
@@ -1258,10 +1258,10 @@ public static class Baseball24
             playPhase = plSettle;
         }
 
-        // 走者更新
+        // Runner update
         UpdateRunners(dt, 1.0f);
 
-        // 野手: 追走者は打球へ、一塁手はベースカバー、他は定位置へ
+        // Fielders: the chaser goes to the ball, the first baseman covers the base, the others go to their positions
         for (int i = 0; i < 9; i++)
         {
             var f = fs[i];
@@ -1269,7 +1269,7 @@ public static class Baseball24
                 break;
             if (i == chaser && ballHeldBy < 0 && playPhase == plFly)
             {
-                // 落下点 (フライ) or 転がるボールの少し先 (ゴロ)
+                // Landing point (fly) or slightly ahead of the rolling ball (grounder)
                 var land = landing;
                 var flying = ballBounces == 0 && !ballRolling;
                 var tx = flying && land != null ? land.X : bx + bvx * 0.35f;
@@ -1302,7 +1302,7 @@ public static class Baseball24
                 }
                 if (flying && bvy < 0 && canCatch)
                 {
-                    // ノーバウンド捕球 → アウト
+                    // Catch on the fly → out
                     FielderCaught(i, true);
                 }
                 else if ((ballBounces > 0 || ballRolling)
@@ -1317,7 +1317,7 @@ public static class Baseball24
             }
             else if (i == firstBaseCover && batterRunner != null)
             {
-                // 一塁手はベースへ (自分が追走者でなければ)
+                // The first baseman goes to the base (if not the chaser)
                 MoveTowards(f, baseD - 0.25f, baseD - 0.25f, dt, runSpd);
             }
             else if (i != chaser)
@@ -1326,7 +1326,7 @@ public static class Baseball24
             }
         }
 
-        // 一塁送球の到達判定
+        // Arrival check of the throw to first
         if (playPhase == plThrow1b)
         {
             throwT += dt;
@@ -1359,7 +1359,7 @@ public static class Baseball24
             float dz = cover.Z - baseD;
             if (dx * dx + dz * dz < 0.36f)
             {
-                // 封殺 or セーフ: 走者の進塁具合と競争
+                // Force out or safe: a race against the progress of the runner
                 var br = batterRunner;
                 if (br != null && br.AtBase < 1)
                 {
@@ -1367,7 +1367,7 @@ public static class Baseball24
                     ShowEvent("OUT!", Color.Rgb(1.0f, 0.5f, 0.3f));
                     retiredRunner = br;
                     rns.Remove(br);
-                    // 他の走者は 1 つ進む
+                    // Other runners advance one base
                     foreach (var r in rns)
                         if (r.To < 3)
                             r.To++;
@@ -1384,7 +1384,7 @@ public static class Baseball24
             }
         }
 
-        // 決着: 走者が全員目標に着いたら打席交代
+        // Done: when all runners reach their targets, the next batter comes up
         if (playPhase == plSettle)
         {
             var settled = true;
@@ -1398,7 +1398,7 @@ public static class Baseball24
                 SetState(stCall);
             }
         }
-        // 保険: 異常に長引いたら打ち切り
+        // Safety net: cut it off if it drags on abnormally long
         if (liveT > 14.0f && playPhase != plSettle)
         {
             ballVisible = false;
@@ -1407,8 +1407,8 @@ public static class Baseball24
         }
     }
 
-    // 捕球した。
-    // fly=ノーバウンド (アウト)
+    // Caught the ball.
+    // fly=no bounce (out)
     static void FielderCaught(int i, bool fly)
     {
         var fs = fielders;
@@ -1424,8 +1424,8 @@ public static class Baseball24
         {
             outs++;
             ShowEvent("CAUGHT!", Color.Rgb(1.0f, 0.6f, 0.3f));
-            // 打者アウト。
-            // 走者は帰塁 (簡略: その場から戻る)
+            // Batter out.
+            // Runners return to their bases (simplified: they go back from where they are)
             var br = batterRunner;
             if (br != null)
             {
@@ -1439,7 +1439,7 @@ public static class Baseball24
             stateT = 0;
             return;
         }
-        // ゴロ/落ちたフライ: 一塁封殺が間に合いそうなら送球、無理ならヒット確定
+        // Grounder/dropped fly: throw if the force out at first looks like it will make it, otherwise the hit is confirmed
         var gatherDist = (float)Math.Sqrt(f.X * f.X + f.Z * f.Z);
         var brg = batterRunner;
         if (brg != null && brg.AtBase < 1 && gatherDist < 34)
@@ -1456,7 +1456,7 @@ public static class Baseball24
             throwT = 0.0f;
             return;
         }
-        // ヒット: 深さと経過時間で進塁数を決める
+        // Hit: the number of bases advanced is decided by depth and elapsed time
         var bases = 1;
         if (gatherDist > 62 || liveT > 4.6f)
             bases = 2;
@@ -1511,7 +1511,7 @@ public static class Baseball24
             }
             else if (r.AtBase > r.To)
             {
-                // 帰塁
+                // Return to base
                 var np = BasePos(r.To);
                 var dx = np[0] - r.X;
                 var dz = np[1] - r.Z;
@@ -1534,7 +1534,7 @@ public static class Baseball24
         }
     }
 
-    // --- state machine 本体 ----------------------------------------------------------
+    // --- state machine main body ----------------------------------------------------------
     static void UpdateGame(float dt)
     {
         stateT += dt;
@@ -1554,7 +1554,7 @@ public static class Baseball24
         }
         else if (state == stPrepitch)
         {
-            // 全員が定位置に戻るのを待つ (テンポ優先で上限 1.4s)
+            // Wait for everyone to return to their positions (capped at 1.4s, prioritizing tempo)
             for (int i = 0; i < 9; i++)
             {
                 var f = fs[i];
@@ -1574,8 +1574,8 @@ public static class Baseball24
                 strikes = 0;
                 newBatterPending = false;
             }
-            // 走者が塁に着くまでは投げない (四球の押し出し等)。
-            // 上限つき
+            // Do not pitch until the runners reach their bases (forced advance on a walk, etc.).
+            // With a cap
             var settled = true;
             foreach (var r in rns)
                 if (r.AtBase != r.To)
@@ -1602,7 +1602,7 @@ public static class Baseball24
         else if (state == stPitch)
         {
             fs[0].AnimT = Math.Min(1.0f, fs[0].AnimT + dt / 1.1f);
-            // 投球は無抵抗の放物線 (短距離なので誤差は無視できる)
+            // The pitch is a parabola without drag (the distance is short, so the error is negligible)
             float contactZ = willSwing && swingOutcome != 0 ? 0.42f : -2.0f;
             float travel = Math.Min(dt, Math.Max(0, (contactZ - bz) / bvz));
             bx += bvx * travel;
@@ -1616,7 +1616,7 @@ public static class Baseball24
             }
             float toCatcher = Math.Max(0, (-2.0f - bz) / bvz);
             fs[1].X = MathUtil.Lerp(fs[1].X, bx + bvx * toCatcher, Math.Min(1, dt * 12));
-            // スイング開始タイミング (ミートの瞬間に SWING_HIT_PH が来るよう逆算)
+            // Swing start timing (computed backward so that SWING_HIT_PH comes at the moment of contact)
             var tToPlate = bvz != 0 ? (0.42f - bz) / bvz : 0.0f;
             if (willSwing && !swingStarted && tToPlate < SwingHitPh * 0.55f)
             {
@@ -1671,8 +1671,8 @@ public static class Baseball24
                 {
                     half = 1;
                 }
-                // 3回終了 (かつ同点でない) で試合終了。
-                // 延長は 5 回まで
+                // The game ends after the 3rd inning (if not tied).
+                // Extra innings up to the 5th
                 var over = (inning > 3 && score[0] != score[1]) || inning > 5;
                 if (over)
                 {
@@ -1698,7 +1698,7 @@ public static class Baseball24
         {
             if (stateT > 5.0f)
             {
-                // 新しい試合を自動で始める
+                // Start a new game automatically
                 inning = 1;
                 half = 0;
                 score = new List<int> { 0, 0 };
@@ -1713,7 +1713,7 @@ public static class Baseball24
         }
     }
 
-    // --- カメラ ---------------------------------------------------------------------
+    // --- Camera ---------------------------------------------------------------------
     static Vec3? camEye = null;
     static Vec3? camTarget = null;
     static float camFov = 34.0f;
@@ -1776,7 +1776,7 @@ public static class Baseball24
                 back = Math.Max(back, p.Z);
             }
             dtg = new Vec3((left + right) * 0.5f, 1.1f, (front + back) * 0.5f);
-            // 送球の始点・走者・受け手を収め、リリース前から判定まで同じ構図を保つ。
+            // Frame the throw origin, the runner and the receiver, and keep the same composition from before the release until the call.
             float distance = 7;
             foreach (var p in points)
             {
@@ -1824,8 +1824,8 @@ public static class Baseball24
         camFov = dfov;
     }
 
-    // --- 描画 -----------------------------------------------------------------------
-    static bool reloaded = true; // hot reload で true に戻る (19_sdf と同じトリック)
+    // --- Drawing -----------------------------------------------------------------------
+    static bool reloaded = true; // Returns to true on hot reload (the same trick as 19_sdf)
     static FixedStep? step = null;
 
     static Renderer3d? ren = null;
@@ -2018,7 +2018,7 @@ public static class Baseball24
     static void SimulateTick()
     {
         tAccum += tickDt;
-        // ヒットストップ: その間シミュレーションだけ止める
+        // Hit stop: only the simulation is paused during it
         if (hitstopT > 0)
         {
             hitstopT -= tickDt;
@@ -2272,7 +2272,7 @@ public static class Baseball24
 
         var t = tAccum;
 
-        // --- 描画 --- 屋外デーゲーム: 高い太陽 + 空色の環境光
+        // --- draw --- Outdoor day game: high sun + sky-colored ambient light
         renNow.Light.Dir = new Vec3(-0.65f, 1.0f, 0.45f);
         renNow.Light.Intensity = 2.2f;
         renNow.Light.Color = Color.Rgb(1.0f, 0.88f, 0.70f);
@@ -2284,7 +2284,7 @@ public static class Baseball24
         renNow.Bloom.Enabled = false;
         renNow.Vignette = 0;
         renNow.Shadow.Size = 512;
-        // 影はカメラターゲット周辺 (フィールド全体 100m は 1 枚に入れない)
+        // Shadows cover the area around the camera target (the whole 100m field does not fit in one map)
         renNow.Shadow.Center = new Vec3(tgtNow.X, 0, tgtNow.Z);
         renNow.Shadow.Extent = 30.0f;
         renNow.Begin(new Camera
@@ -2298,7 +2298,7 @@ public static class Baseball24
 
         renNow.Draw(fieldMesh, Mat4.Identity());
 
-        // 野手 (守備側チーム色)
+        // Fielders (fielding team color)
         var ft = FieldingTeam();
         for (int i = 0; i < 9; i++)
         {
@@ -2309,13 +2309,13 @@ public static class Baseball24
                 && (state != stLive || playPhase != plThrow1b || throwT < 0.24f);
             DrawChar(f.X, f.Z, yaw, ft, pose, true, holding);
         }
-        // 打者 (攻撃側チーム色)。
-        // 走者に切り替わっていない間だけ打席に立つ
+        // Batter (batting team color).
+        // Stands in the batter's box only while not switched to a runner
         var bt = BattingTeam();
         var b = batter;
         if (batterAtPlate && b != null)
         {
-            // 構え = スイングの溜め位相を静止で使う (バットの持ち手と一致する)
+            // Stance = use the wind-up phase of the swing as a still pose (matches the grip on the bat)
             var stance = b.Anim == AnSwing ? b.AnimT : 0.30f;
             var inSwingPose = b.Anim == AnSwing
                 || state == stPrepitch
@@ -2324,12 +2324,12 @@ public static class Baseball24
                 || state == stCall;
             DrawChar(b.X, b.Z, (float)Math.PI / 2, bt,
                 inSwingPose ? PoseSwing(stance) : PoseIdle(t));
-            // バット
+            // Bat
             if (state == stPrepitch || state == stWindup || state == stPitch
                 || state == stCall || b.Anim == AnSwing)
                 renNow.Draw(batMesh, BatMatrix(stance));
         }
-        // 走者 (塁上で止まっているときは待機ポーズ)
+        // Runners (idle pose when stopped on a base)
         var rns = runners;
         if (rns != null)
         {
@@ -2357,7 +2357,7 @@ public static class Baseball24
             DrawChar(retired.X, retired.Z, (float)Math.Atan2(baseD - retired.X, baseD - retired.Z),
                 bt, PoseIdle(t));
 
-        // ボール
+        // Ball
         if (ballVisible && !(ballHeldBy >= 0
             && (state != stLive || playPhase != plThrow1b || throwT < 0.24f)))
         {
@@ -2369,7 +2369,7 @@ public static class Baseball24
 
         renNow.End();
 
-        // HUD は tonemap 後の swapchain に重ね描き (load = LOAD)
+        // HUD is drawn over the swapchain after tonemap (load = LOAD)
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
         DrawHud();
         Gfx.EndPass();

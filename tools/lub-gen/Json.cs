@@ -13,7 +13,7 @@ public enum JKind
     Null,
 }
 
-/// <summary>JSON の値 (System.Text.Json の WriteIndented と同じ形に書く)。</summary>
+/// <summary>JSON value (written in the same form as WriteIndented of System.Text.Json).</summary>
 public sealed class JValue
 {
     public JKind Kind;
@@ -70,8 +70,8 @@ public sealed class JValue
 
 public static class Json
 {
-    /// <summary>indent は 2 つの空白、改行は \n。relaxed は JavaScriptEncoder.UnsafeRelaxedJsonEscaping (ASCII でない文字をそのまま書く)、
-    /// そうでなければ既定の encoder (ASCII でない文字と HTML の文字を \uXXXX にする)。</summary>
+    /// <summary>Indent is 2 spaces, newline is \n. relaxed uses JavaScriptEncoder.UnsafeRelaxedJsonEscaping (writes non-ASCII characters as is),
+    /// otherwise the default encoder (turns non-ASCII characters and HTML characters into \uXXXX).</summary>
     public static string Write(JValue v, bool relaxed)
     {
         var parts = new List<string>();

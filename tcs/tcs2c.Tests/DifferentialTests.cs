@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 言語機能 / runtime 表面ごとの実行系の differential。各 program は
-// Main の stdout を C (通常 + GC stress)、VM、実 .NET で突き合わせる (Backends.AssertParity)。
+// Differential tests of the execution backends per language feature / runtime surface. Each program
+// compares the stdout of Main across C (normal + GC stress), the VM, and real .NET (Backends.AssertParity).
 public class DifferentialTests
 {
     [CFact]
@@ -179,7 +179,7 @@ public class DifferentialTests
                     Console.WriteLine((int)(Math.PI * 1000f));
                     Console.WriteLine((int)2.7f + ":" + (int)-2.7f + ":" + (int)(7f / 2f));
                     Console.WriteLine(7 / 2 + ":" + -7 / 2 + ":" + 7 % 3 + ":" + -7 % 3 + ":" + 7.5f % 2f);
-                    // 正数の >> (負数の >> は DifferentialTests.Language と tcsvm/tests/IntOps)
+                    // >> on positive numbers (>> on negative numbers is in DifferentialTests.Language and tcsvm/tests/IntOps)
                     Console.WriteLine((5 << 2) + ":" + (16 >> 2) + ":" + (6 & 3) + ":" + (6 | 3) + ":" + (6 ^ 3) + ":" + ~5);
                     int big = 2147483647;
                     Console.WriteLine(big + 1);
@@ -190,7 +190,7 @@ public class DifferentialTests
             """, "P");
     }
 
-    // .NET の Math.Round(x, digits) は負の digits だけを拒む
+    // .NET's Math.Round(x, digits) rejects only negative digits
     [CFact]
     public void Math_RoundNegativeDigitsFaults()
     {
@@ -212,7 +212,7 @@ public class DifferentialTests
     [CFact]
     public void Classes_InterfaceDispatchAndTypeTests()
     {
-        // 多態は interface と型による分岐、組み合わせは field (q.md Q15)
+        // Polymorphism is through interfaces and branching on type, composition through fields (q.md Q15)
         Backends.AssertParity("""
             using System;
             using System.Collections.Generic;

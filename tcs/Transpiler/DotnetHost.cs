@@ -1,19 +1,19 @@
 using System.Text;
 
-// tcs の host (SelfHost/Tool) の OS の関数の .NET の実装 (C は SelfHost/Native/host.c、wasm は SelfHost/Web/tcs_web.c)
+// .NET implementation of the OS functions of the tcs host (SelfHost/Tool) (C: SelfHost/Native/host.c, wasm: SelfHost/Web/tcs_web.c)
 public static class TcsHost
 {
     private static string[] _args = [];
     private static int _exitCode;
     private static bool _done;
 
-    // CLI (TcsSelf.Cli) と host の状態は static なので、同じ process で並んで呼ばれたら 1 つずつ動かす (テストは Program.Main を並列に呼ぶ)
+    // The CLI (TcsSelf.Cli) and host state are static, so concurrent calls in the same process run one at a time (tests call Program.Main in parallel)
     private static readonly object Gate = new();
 
-    // CLI を最後まで動かして終了コードを返す
+    // Runs the CLI to completion and returns the exit code
     public static int Run(string[] args) => Run(args, TcsSelf.Cli.Start, TcsSelf.Cli.Step);
 
-    // TcsHost を使う別の TinyC# の program (lub-gen など) を同じ形で動かす: start を 1 回、SetDone まで step を呼ぶ
+    // Runs another TinyC# program that uses TcsHost (lub-gen etc.) the same way: call start once, then step until SetDone
     public static int Run(string[] args, Action start, Action step)
     {
         lock (Gate)
@@ -32,7 +32,7 @@ public static class TcsHost
     public static string Arg(int index) => _args[index];
     public static bool FileExists(string path) => File.Exists(path);
 
-    // 両方が既存のファイルで、link を全部たどった絶対 path が同じか (Windows と macOS は大文字小文字を区別しない)
+    // Whether both are existing files with the same absolute path after following all links (Windows and macOS are case-insensitive)
     public static bool SameFile(string a, string b)
     {
         try
@@ -50,7 +50,7 @@ public static class TcsHost
         }
     }
 
-    // path の各要素の symbolic link をたどった絶対 path
+    // Absolute path with the symbolic links of each path element followed
     private static string ResolvedPath(string path, int depth)
     {
         if (depth > 40) throw new IOException("too many levels of symbolic links: " + path);
@@ -93,7 +93,7 @@ public static class TcsHost
         }
     }
 
-    // 1 文字が 1 byte (0〜255) の文字列を Latin-1 で byte にして書く (C の host の文字列は byte 列そのもの)
+    // Writes a string with one char per byte (0-255) as bytes in Latin-1 (strings in the C host are raw byte sequences)
     public static string WriteBinaryAtomic(string path, string bytes)
     {
         try

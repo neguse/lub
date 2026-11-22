@@ -1,5 +1,5 @@
-// dst[i] = src[i] * 2 + 1。読み戻しの後に積んだ dispatch が実行されたかを
-// rt_b の画素で確かめるための compute。
+// dst[i] = src[i] * 2 + 1. Compute used to check, from the pixels of rt_b,
+// whether a dispatch queued after a readback ran.
 StructuredBuffer<float> src;
 RWStructuredBuffer<float> dst;
 

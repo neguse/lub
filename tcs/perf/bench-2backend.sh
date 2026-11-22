@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# PC 上で同一 TinyC# kernel を 2 つの実行系で実行して比較する:
-#   vm      = tcs → IL → tcs2vm → .tcsb → tcsvm (dev の実行系。doc/vm-design.md)
+# Runs the same TinyC# kernel on two execution backends on a PC and compares them:
+#   vm      = tcs → IL → tcs2vm → .tcsb → tcsvm (the dev execution backend; doc/vm-design.md)
 #   release = tcs → IL → tcs2c → C → cc -O2
-# vm の stdout の digest と release の digest の一致が fail ゲート (数値意味論の一致)。実行時間はレポートのみ
-# (CI runner の絶対時間はぶれるため閾値ゲートにしない)。
-# 環境変数: PERF_BENCH_RUNS (default 7) / PERF_BENCH_FRAMES (default 5000)
+# The fail gate is a match between the vm stdout digest and the release digest (matching numeric semantics). Run time is only reported
+# (absolute times on CI runners fluctuate, so there is no threshold gate).
+# Environment variables: PERF_BENCH_RUNS (default 7) / PERF_BENCH_FRAMES (default 5000)
 
 set -euo pipefail
 
@@ -18,11 +18,11 @@ TCSVM="$ROOT/build/tcsvm/tcsvm"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/perf-bench.XXXXXX")"
 trap 'rm -rf -- "$WORK"' EXIT
 
-# tcsvm (root の CMake)。tcsvm の変更に追従させるため毎回 build する
+# tcsvm (root CMake). Built every time to follow tcsvm changes
 cmake -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release -S "$ROOT" >/dev/null
 cmake --build "$ROOT/build" --target tcsvm --parallel >/dev/null
 
-# tcs2c と tcs2vm は project の参照を build しないので、参照する compiler と library を先に作る
+# tcs2c and tcs2vm do not build their project references, so build the compiler and library they reference first
 "$DOTNET" build "$ROOT/Transpiler/Transpiler.csproj" \
   -p:NuGetAudit=false -v:minimal >/dev/null
 "$DOTNET" restore "$ROOT/tcs2c/tcs2c.csproj" \
@@ -40,8 +40,8 @@ cmake --build "$ROOT/build" --target tcsvm --parallel >/dev/null
 TCS2VM_DLL="$ROOT/tcsvm/Emitter/bin/Debug/net11.0/tcs2vm.dll"
 TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net11.0/tcs2c.dll"
 
-# bench 用コピー: frames を増やしてループ支配にする (digest 期待値は固定せず
-# vm と release の相互一致で検証する)
+# Copy for the bench: increase frames so the loop dominates (the expected digest is not fixed;
+# it is verified by vm and release matching each other)
 sed "s/int n = 256;/int n = 1024;/; s/int frames = 1000;/int frames = $FRAMES;/" \
   "$ROOT/Transpiler.Tests/DigestKernels/sprite_update.cs" > "$WORK/sprite_update.cs"
 for k in spawn_churn particles particles_struct; do
@@ -68,7 +68,7 @@ print(f'{h:08x}')
 EOF
 }
 
-time_runs() { # cmd... -> median 秒を出力
+time_runs() { # cmd... -> prints the median in seconds
   local times=()
   local t0 t1
   for _ in $(seq 1 "$RUNS"); do
@@ -97,7 +97,7 @@ for i in "${!kernels[@]}"; do
   vm_s=$(time_runs "$TCSVM" "$WORK/$k.tcsb")
   vm_ms=$(python3 -c "print('%.6f' % ((float('$vm_s') - float('$vm_base')) * 1000.0 / $FRAMES))")
 
-  # release backend。digest が vm と一致することを要求する
+  # release backend. Requires the digest to match vm
   "$DOTNET" "$TCS2C_DLL" --digest-f32 --entry "$e" "$WORK/$k.cs" -o "$WORK/$k.c"
   "$CC_CMD" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
     "$WORK/$k.c" -o "$WORK/$k.bin"

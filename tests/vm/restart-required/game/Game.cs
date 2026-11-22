@@ -1,6 +1,6 @@
-// 差分で移せない保存の検査: enum の member の値を変えて保存すると、tcs が restart を知らせ、player は VM を作り直して OnInit から始める。
-// 作り直した VM の static は新しい初期化子の値になる。
-// player は作り直すたびに `lub: restarted` を log に出す (../expect.txt)。
+// Checks a save that a diff cannot carry over: changing the value of an enum member and saving makes tcs signal a restart, and the player recreates the VM and starts from OnInit.
+// The statics of the recreated VM get the values of the new initializers.
+// The player logs `lub: restarted` each time it recreates the VM (../expect.txt).
 using System;
 using Lub;
 
@@ -30,7 +30,7 @@ public static class Game
         frames++;
         if (frames == 3)
         {
-            // 置き換える文字列は分けて書き、この行は書き換えない
+            // The strings to replace are written split up, so this line is not rewritten
             string path = Environment.GetEnvironmentVariable("GAME_CS") ?? "";
             Io.LoadText(path, out var text, out _, out _, out _);
             if (text == null)

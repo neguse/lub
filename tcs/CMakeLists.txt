@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.12)
 project(tcs C)
 
-# --- runtime/math: TinyC# の Math の超越関数 ---
-# tcs2c は生成 C に埋め込み、tcsvm は link する。
-# 結果が変わらないよう、積和の融合と fast-math を止めて build する。
+# --- runtime/math: transcendental functions of the TinyC# Math ---
+# tcs2c embeds them into the generated C, and tcsvm links them.
+# Built with fused multiply-add and fast-math disabled so that results do not change.
 file(GLOB TCS_MATH_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/runtime/math/*.c)
 add_library(tcs_math STATIC ${TCS_MATH_SRC})
 if(MSVC)
@@ -12,8 +12,8 @@ else()
     target_compile_options(tcs_math PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
 
-# --- tcsvm: IL から作った bytecode (.tcsb) の VM (doc/vm-design.md) ---
-# f32 の演算を融合させないため、runtime/math と同じ flag で build する。
+# --- tcsvm: VM for the bytecode (.tcsb) built from IL (doc/vm-design.md) ---
+# Built with the same flags as runtime/math so that f32 operations are not fused.
 file(GLOB TCSVM_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tcsvm/vm/*.c)
 add_executable(tcsvm
     ${TCSVM_SRC}

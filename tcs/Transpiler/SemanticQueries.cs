@@ -4,14 +4,14 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
-// エディタ向けの補完/hover クエリ。EditorSession の
-// speculative fork (ForkWithContent) が返す compilation/tree に対する読み取り
-// 専用のクエリで、session 状態には触れない。呼び出しごとに評価し、fork や
-// SemanticModel はキャッシュしない (wasm ホストのメモリ膨張防止)。
+// Completion/hover queries for editors. These are read-only queries on the compilation/tree returned by
+// the speculative fork (ForkWithContent) of EditorSession,
+// and they do not touch session state. They evaluate on every call and do not cache the fork or
+// SemanticModel (to prevent memory growth in the wasm host).
 //
-// 補完候補は tcs の組み込みの表 (TcsSelf.Builtins) で絞り、tcs で書けない
-// BCL member を候補に出さない。Microsoft.CodeAnalysis.Features は使わない
-// (wasm バンドル肥大のため。SemanticModel の Lookup* で足りる範囲に限定)。
+// Completion candidates are filtered by the tcs built-in table (TcsSelf.Builtins), so BCL members that cannot be written
+// in tcs are not offered. Microsoft.CodeAnalysis.Features is not used
+// (because it bloats the wasm bundle; limited to what the Lookup* methods of SemanticModel cover).
 
 public sealed class CompletionItem
 {
@@ -32,10 +32,10 @@ public static class SemanticQueries
 {
     public const int MaxCompletionItems = 200;
 
-    // 補完 detail / hover 表示: `int Add(int amount)` 形。containing type は
-    // hover のみに含める (補完リストでは冗長)。
-    // BCL の member でサブセットに無いもの (tcs の組み込みの表で決める。TcsSelf.Builtins.IsSupportedBclMember)。
-    // source に宣言されたもの (user の型と TinySystem.Linq など) は候補に出す
+    // Completion detail / hover display: the `int Add(int amount)` form. The containing type is
+    // included only in hover (redundant in the completion list).
+    // BCL members not in the subset (decided by the tcs built-in table: TcsSelf.Builtins.IsSupportedBclMember).
+    // Members declared in source (user types, TinySystem.Linq, etc.) are offered
     private static bool IsUnsupportedApi(ISymbol symbol)
     {
         var target = symbol is IMethodSymbol { ReducedFrom: { } from } ? from : symbol;
@@ -97,12 +97,12 @@ public static class SemanticQueries
                 && m.MethodKind is not (MethodKind.Ordinary
                     or MethodKind.ReducedExtension))
                 continue;
-            // tcs allowlist 外の API は候補に出さない
+            // APIs outside the tcs allowlist are not offered
             if (IsUnsupportedApi(s))
                 continue;
             var kind = KindOf(s);
             if (!seen.Add((s.Name, kind)))
-                continue; // overload は名前単位で 1 件
+                continue; // One entry per name for overloads
             items.Add(new CompletionItem
             {
                 Label = s.Name,
@@ -128,10 +128,10 @@ public static class SemanticQueries
         if (!token.IsKind(SyntaxKind.IdentifierToken))
             return null;
 
-        // 識別子の参照 (SimpleName) か宣言ノードだけを対象にする。親式への
-        // walk はしない — BinaryExpression 等の GetSymbolInfo が user-defined
-        // operator method を拾い、未解決識別子の hover に無関係なシンボルが
-        // 出るため (PR #1 レビュー指摘)。
+        // Only identifier references (SimpleName) or declaration nodes are targeted. There is no walk up to the parent
+        // expression — GetSymbolInfo of BinaryExpression etc. picks up the user-defined
+        // operator method, and an unrelated symbol would show up in the hover of an unresolved identifier
+        // (PR #1 review comment).
         ISymbol? sym = token.Parent is SimpleNameSyntax name
             ? model.GetSymbolInfo(name).Symbol
             : token.Parent != null
@@ -150,8 +150,8 @@ public static class SemanticQueries
     }
 
     // ------------------------------------------------------------------
-    // `expr.` / `expr.par` の受け手。member access 文脈でなければ null
-    // (スコープ補完に落ちる)。
+    // Receiver of `expr.` / `expr.par`. null if not in a member access context
+    // (falls back to scope completion).
     private static ExpressionSyntax? FindMemberAccessReceiver(SyntaxToken token)
     {
         if (token.IsKind(SyntaxKind.DotToken))
@@ -174,8 +174,8 @@ public static class SemanticQueries
     private static IEnumerable<ISymbol> LookupMembers(
         SemanticModel model, int position, ExpressionSyntax receiver)
     {
-        // 受け手が型名 (Math.) なら static、namespace (TinySystem.) なら
-        // その配下、それ以外は式の型の instance member + 拡張メソッド。
+        // If the receiver is a type name (Math.), static members; if it is a namespace (TinySystem.),
+        // what is under it; otherwise, instance members of the expression's type + extension methods.
         var recvSymbol = model.GetSymbolInfo(receiver).Symbol;
         if (recvSymbol is INamedTypeSymbol typeRecv)
             return model.LookupStaticMembers(position, typeRecv);
@@ -204,7 +204,7 @@ public static class SemanticQueries
         _ => "text",
     };
 
-    // /// doc comment の <summary> をプレーンテキスト化する。無ければ null。
+    // Converts the <summary> of a /// doc comment to plain text. null if there is none.
     private static string? ExtractDocSummary(ISymbol sym)
     {
         var xml = sym.GetDocumentationCommentXml();

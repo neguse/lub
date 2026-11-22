@@ -1,4 +1,4 @@
-// Gfx.Pick (pick.h)。
+// Gfx.Pick (pick.h).
 #include "pick.h"
 #include "api_internal.h"
 #include "app.h"
@@ -13,10 +13,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-// 流し直しの fragment shader。
-// 頂点の出力は読まず、draw の番号を色にして書く (r が下位 8 bit)。
-// 入力を持たない: D3D12 は vertex shader の出力と fragment shader の入力の register の並びが合わないと pipeline を作らないので、
-// SV_Position だけを読むと、SV_Position の前に他の出力を置く vertex shader と組めない
+// Fragment shader for the replay.
+// It does not read the vertex outputs and writes the draw index as the color (r
+// holds the low 8 bits). It has no inputs: D3D12 does not create the pipeline
+// when the register order of the vertex shader outputs and the fragment shader
+// inputs does not match, so reading only SV_Position would not work with vertex
+// shaders that put other outputs before SV_Position
 static const char PICK_FS[] =
     "struct LubPick { float4 id; };\n"
     "ConstantBuffer<LubPick> lub_pick;\n"
@@ -31,7 +33,7 @@ typedef struct PickUniform {
 } PickUniform;
 
 typedef struct PickDraw {
-  int index; // frame の中の draw の番号
+  int index; // Index of the draw within the frame
   int target;
   int32_t shader; // LubHandle
   BindingsDesc bind;
@@ -44,50 +46,54 @@ typedef struct PickDraw {
 } PickDraw;
 
 typedef struct PickState {
-  // 要求 (次の frame を記録する)
+  // Request (record the next frame)
   bool requested;
   int req_target, req_x, req_y;
-  // 記録中か、流し直し中の要求
+  // Request being recorded or replayed
   int target, x, y;
-  // 記録中の frame
+  // Frame being recorded
   bool recording;
   int pass_target;
   int draw_count;
   PickDraw *draws;
   int n_draws, cap_draws;
-  // 流し直しの先
+  // Replay destination
   BackendImage color, depth;
   int w, h;
-  // 待っている読み戻し。
-  // stale は、その後に新しい要求が来たので結果を捨てる印
+  // Pending readback.
+  // stale marks that a new request came in afterwards, so the result is
+  // discarded
   bool waiting;
   bool stale;
   BackendReadback readback;
   int rb_x, rb_y;
-  // target の大きさが分からず流し直せなかった frame の数 (要求ごと)
+  // Number of frames that could not be replayed because the target size was
+  // unknown (per request)
   int retries;
-  // 結果
+  // Result
   bool ready;
   int result_draw;
   char *result_site;
-  // pick_result が返す、result_site を分けた呼び出し元の並びと、段ごとの self の Id
+  // The call site list split out of result_site and the per-level self Ids,
+  // returned by pick_result
   char *out_site;
   char *out_self;
-  // 読み戻しが届くまでの draw の呼び出し元 (番号で引く)
+  // Call sites of the draws until the readback arrives (looked up by index)
   char **sites;
   int n_sites;
-  // 記録した draw が使っていて、その frame の間に作り直しか書き換えになった buffer と image。
-  // 流し直した後に壊す
+  // Buffers and images used by recorded draws that were recreated or updated
+  // during that frame. Destroyed after the replay
   BackendBuffer *kept_bufs;
   int n_kept_bufs, cap_kept_bufs;
   BackendImage *kept_images;
   int n_kept_images, cap_kept_images;
 } PickState;
 
-// target の大きさが分からないまま記録し直すのは、この frame 数まで (XR の眼が出ないままなど)
+// Re-recording without knowing the target size is done for up to this many
+// frames (e.g. while the XR eyes never appear)
 #define PICK_MAX_RETRIES 120
 
-// 1 つの draw の呼び出し元の並びの長さの上限 (バイト、NUL を含む)
+// Maximum length of the call site list of one draw (bytes, including NUL)
 #define PICK_SITES_MAX 4096
 
 static PickState *state(App *app) {
@@ -118,7 +124,8 @@ void pick_set_sites(App *app, PickSitesFn fn, void *user) {
   app->pick_sites_user = user;
 }
 
-// player の関数に今の呼び出し元を書かせる (malloc、無ければ NULL)
+// Has the player function write the current call sites (malloc, NULL if
+// missing)
 static char *call_sites(App *app) {
   if (!app->pick_sites)
     return NULL;
@@ -133,7 +140,9 @@ void pick_request(App *app, int target, int x, int y) {
   PickState *p = state(app);
   if (!p)
     return;
-  // 前の要求を記録しているか読み戻しを待っていたら、その結果は捨てる (この要求は、それが済んだ後の frame で記録する)
+  // If the previous request is being recorded or its readback is pending, its
+  // result is discarded (this request is recorded in a frame after that
+  // finishes)
   if (p->recording || p->waiting)
     p->stale = true;
   p->requested = true;
@@ -204,7 +213,8 @@ void pick_record_uniform(App *app, int stage, int slot, const float *data,
   if (!p || !p->recording || p->n_draws == 0)
     return;
   PickDraw *d = &p->draws[p->n_draws - 1];
-  // 直前の pick_record_draw が記録しなかった draw の uniform は捨てる
+  // Discard the uniforms of a draw that the preceding pick_record_draw did not
+  // record
   if (d->index != p->draw_count - 1 || stage != SGL_STAGE_VERTEX ||
       d->n_uniforms >= SGL_MAX_UNIFORM_BLOCKS)
     return;
@@ -271,7 +281,8 @@ static void destroy_kept(PickState *p) {
   p->n_kept_images = 0;
 }
 
-// 元の shader の vertex shader と PICK_FS を組んだ shader を作る (一度だけ)
+// Creates the shader that combines the vertex shader of the original shader
+// with PICK_FS (only once)
 static bool ensure_pick_shader(ResEntry *sh) {
   if (sh->u.sh.pick_h)
     return true;
@@ -299,7 +310,8 @@ static bool ensure_pick_shader(ResEntry *sh) {
   return true;
 }
 
-// 元の束縛を pick の shader の reflection で引き直す (fragment shader だけが使う texture は落ちる)
+// Looks up the original bindings again with the reflection of the pick shader
+// (textures used only by the fragment shader are dropped)
 static BindingsDesc rebind(const PickDraw *d, const ShaderReflection *refl) {
   BindingsDesc b = {0};
   b.refl = refl;
@@ -330,7 +342,7 @@ static BindingsDesc rebind(const PickDraw *d, const ShaderReflection *refl) {
 
 static bool target_size(App *app, int target, int *w, int *h) {
   if (target < 0) {
-    // 開かれた app の main は App.Step が渡した target
+    // The main of an opened app is the target passed by App.Step
     *w = app->opened_by ? app->main_w : app->proc->last_w;
     *h = app->opened_by ? app->main_h : app->proc->last_h;
     return *w > 0 && *h > 0;
@@ -364,9 +376,10 @@ static bool ensure_images(PickState *p, int w, int h) {
 }
 
 typedef enum ReplayResult {
-  REPLAY_STARTED, // 読み戻しを待つ
-  REPLAY_RETRY,   // target がこの frame に描かれていない (大きさが無い)
-  REPLAY_NOTHING, // 指した所に何も無い (範囲の外) か、流し直せない
+  REPLAY_STARTED, // Waiting for the readback
+  REPLAY_RETRY,   // The target is not drawn in this frame (no size)
+  REPLAY_NOTHING, // Nothing at the pointed location (out of range), or the
+                  // replay is not possible
 } ReplayResult;
 
 static ReplayResult replay(App *app, PickState *p) {
@@ -415,7 +428,8 @@ static ReplayResult replay(App *app, PickState *p) {
       !g_backend->request_readback_image(app->proc, p->color, w, h,
                                          SGL_PF_RGBA8, &p->readback))
     return REPLAY_NOTHING;
-  // 結果の呼び出し元は draw の番号で引くので、読み戻しが届くまで残す
+  // The result call sites are looked up by draw index, so keep them until the
+  // readback arrives
   free_sites(p);
   p->sites = (char **)calloc((size_t)(p->draw_count ? p->draw_count : 1),
                              sizeof(char *));
@@ -432,7 +446,7 @@ static ReplayResult replay(App *app, PickState *p) {
   return REPLAY_STARTED;
 }
 
-// 指した所に何も無いという結果にする
+// Makes the result "nothing at the pointed location"
 static void deliver_nothing(PickState *p) {
   p->ready = true;
   p->result_draw = -1;
@@ -480,11 +494,13 @@ void pick_frame_end(App *app) {
     free_draws(p);
     destroy_kept(p);
     if (rr != REPLAY_STARTED) {
-      // 記録の間に新しい要求が来ていれば、そちらを次の frame で記録する
+      // If a new request came in during recording, record that one in the next
+      // frame
       bool newer = p->stale;
       p->stale = false;
       if (!newer && rr == REPLAY_RETRY && ++p->retries < PICK_MAX_RETRIES) {
-        // target が描かれなかった frame (swapchain が取れなかったなど) は、同じ要求を次の frame で記録し直す
+        // For a frame where the target was not drawn (e.g. the swapchain could
+        // not be acquired), record the same request again in the next frame
         p->requested = true;
         p->req_target = p->target;
         p->req_x = p->x;
@@ -498,8 +514,9 @@ void pick_frame_end(App *app) {
     poll(p);
 }
 
-// player の書いた呼び出し元の並び (行ごとに "file:line"、self があれば続けて "\t" と Id) を、
-// 並びと段ごとの Id に分ける。どの行にも Id が無ければ、Id の並びは空
+// Splits the call site list written by the player (one "file:line" per line,
+// followed by "\t" and the Id if there is a self) into the list and the
+// per-level Ids. If no line has an Id, the Id list is empty
 static void split_sites(const char *raw, char **site, char **self) {
   size_t n = strlen(raw);
   *site = (char *)malloc(n + 1);

@@ -1,6 +1,6 @@
 use std::env;
 
-// 配列の操作と整数の分岐。fannkuch-redux (1 スレッドの版) と同じ手順
+// Array operations and integer branches. Same procedure as fannkuch-redux (single-thread version)
 fn run(n: i32, print: bool) -> i32 {
     let mut perm = vec![0i32; n as usize];
     let mut perm1 = vec![0i32; n as usize];
@@ -78,7 +78,7 @@ fn env_i32(name: &str, def: i32) -> i32 {
 
 fn main() {
     let n = env_i32("BENCH_N", 7);
-    // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+    // Repeats BENCH_REPS times. Each repetition's input depends on the previous result so the compiler cannot skip repetitions (the result is never -1)
     let reps = env_i32("BENCH_REPS", 1);
     let mut prev: i32 = 0;
     for r in 0..reps {

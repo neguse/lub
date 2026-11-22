@@ -1,5 +1,5 @@
-// u.col.x 列だけに描く。
-// tex の R が u.expect.x から u.expect.y 以内なら R = 1、外れていれば R = 0。
+// Draws only in column u.col.x.
+// R = 1 if the R of tex is within u.expect.y of u.expect.x, R = 0 otherwise.
 struct Params {
   float4 col;
   float4 expect;

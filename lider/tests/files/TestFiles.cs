@@ -1,5 +1,5 @@
-// lider が探す file の一覧を確かめる。
-//   - 足した .cs は、lider を出している間に探し直した一覧に入る
+// Checks the list of files lider searches.
+//   - An added .cs appears in the list searched again while lider is shown
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -66,7 +66,7 @@ public static class TestFiles
         App.Quit(0);
     }
 
-    // 最初の失敗だけを出して終わる
+    // Report only the first failure and exit
     static void Check(bool cond, string message)
     {
         if (cond || failed)

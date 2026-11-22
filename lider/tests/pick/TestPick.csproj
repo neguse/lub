@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- lider のソースを取り込み、test の entry から lider を動かす。dotnet 側は lider の assembly から lub の型と lider の型を見る -->
+  <!-- Includes the lider sources and runs lider from the test entry. The dotnet side sees the lub types and the lider types from the lider assembly -->
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
     <LangVersion>15</LangVersion>

@@ -1,14 +1,14 @@
-// lider でゲームを止め、1 frame ずつ戻り、進み、そこから続けることを確かめる。
-// ゲーム (game/Game.cs) は毎 frame 数を 1 増やす。数は lider がゲームを見るのと同じ道 (GameApp.Inspect) で読む。
-// 止めている間は、止めた frame の状態から作り直すので、数は止めた frame の値のまま。
-// key は lub から届く event と同じに Lider.OnEvent へ流し、次も確かめる。
-//   - F5 を押しっぱなしにして繰り返しの KeyDown が届いても、止めるのは 1 度だけ
-//   - 止めている間は空間が冷える (Lider.Cold が 0 より上がる)
-//   - F6 で戻り、F7 で進む。一番古い frame で F6 を押しても動かない
-//   - 一番新しい frame で F7 を押すと、ゲームを 1 frame 動かして控えに足し、そこで止める
-//   - lider を隠している間の F5 と、控えが無いときの F5 では止めない
-//   - LIDER_REWIND に 0 を渡すと控えない
-// 確かめるのは lider がゲームを進めた後 (Lider.OnFrame の後)。frame はゲームが動き始めてから数える。
+// Checks that lider can pause the game, step back and forward 1 frame at a time, and continue from there.
+// The game (game/Game.cs) increments a count by 1 every frame. The count is read through the same path lider uses to look at the game (GameApp.Inspect).
+// While paused, the game is recreated from the state of the paused frame, so the count stays at the value of the paused frame.
+// Keys are fed to Lider.OnEvent, the same as events that come from lub, and the following are also checked.
+//   - Even if F5 is held down and repeated KeyDowns arrive, it pauses only once
+//   - While paused, the space cools down (Lider.Cold rises above 0)
+//   - F6 goes back and F7 goes forward. Pressing F6 at the oldest frame does not move
+//   - Pressing F7 at the newest frame runs the game for 1 frame, adds it to the recorded frames, and pauses there
+//   - F5 while lider is hidden, and F5 when nothing is recorded, do not pause
+//   - Passing 0 in LIDER_REWIND turns recording off
+// Checks run after lider advances the game (after Lider.OnFrame). Frames are counted from when the game starts running.
 using System;
 using Lub;
 using LiderCore;
@@ -39,13 +39,13 @@ public static class TestRewind
     public static void OnFrame(float dt)
     {
         Lider.OnFrame(dt);
-        // ゲームの build を待つ
+        // Wait for the game build
         if (GameApp.Frames == 0 || failed)
             return;
         Check();
     }
 
-    // ゲームの Count の今の値 (読めなければ -1)
+    // Current value of the game's Count (-1 if it cannot be read)
     static int Count
     {
         get
@@ -87,7 +87,7 @@ public static class TestRewind
         {
             if (Lider.Cold <= 0)
                 fail = "the space did not cool while paused";
-            // 止めている間、控えた frame の帯がゲームの絵の下の端に出る
+            // While paused, the band of recorded frames appears at the bottom edge of the game view
             Gfx.Size(out var sw, out var sh);
             var band = Lider.TimelineViewport();
             if (fail == "" && (band.Z <= band.X || band.W > sh || band.Y < sh - 40))

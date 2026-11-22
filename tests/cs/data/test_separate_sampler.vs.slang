@@ -1,4 +1,5 @@
-// 画面全体を覆う三角形。uv.x は target の左端で 0、右端で 1。
+// A triangle that covers the whole screen. uv.x is 0 at the left edge of the
+// target and 1 at the right edge.
 struct VSOut {
   float2 uv : TEXCOORD0;
   float4 pos : SV_Position;

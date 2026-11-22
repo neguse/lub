@@ -1,5 +1,5 @@
-// FrameBuffer の範囲はそのフレームの中でだけ使え、次のフレームの draw / dispatch に渡すと error になること。
-// error で終わったフレームの次でも、古い範囲は古いままで、作り直した範囲は使えること。
+// A FrameBuffer range can only be used within its frame, and passing it to a draw / dispatch in the next frame is an error.
+// Even in the frame after one that ended with an error, old ranges stay old and recreated ranges can be used.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -51,7 +51,7 @@ public static class TestFrameBufferErrors
                 Draw(kept);
                 break;
             case 3:
-                // error で終わったフレームの次も、前のフレームの範囲は使えない。
+                // Even in the frame after one that ended with an error, a range from the previous frame cannot be used.
                 Check.Error("a range must stay invalid after a failed frame", "earlier frame");
                 Draw(kept);
                 break;

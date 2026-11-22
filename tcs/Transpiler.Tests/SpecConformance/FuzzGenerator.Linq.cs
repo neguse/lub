@@ -1,16 +1,16 @@
 namespace TinyCs.Tests.SpecConformance;
 
 /// <summary>
-/// FuzzGenerator の LINQ 部 (TinySystem.Linq) + Split/Join/IsNullOrEmpty。
-/// fault を踏む形は構造的に排除する: Sum は要素を % 1000 で有界化して
-/// overflow (Sum は checked) を避け、Min/Max は Count ガードつきだけ。
-/// 列挙順が確定しない Dictionary への LINQ も生成しない。
+/// The LINQ part of FuzzGenerator (TinySystem.Linq) + Split/Join/IsNullOrEmpty.
+/// Forms that hit a fault are excluded structurally: Sum bounds the elements with % 1000 to
+/// avoid overflow (Sum is checked), and Min/Max are only generated with a Count guard.
+/// LINQ over a Dictionary, whose enumeration order is not fixed, is not generated either.
 /// </summary>
 internal sealed partial class FuzzGenerator
 {
     private string PickList() => _listVars[_rng.Next(_listVars.Count)];
 
-    // ラムダ述語。たまに外側変数を捕捉して closure emit を踏む
+    // Lambda predicate. Sometimes captures an outer variable to exercise closure emit.
     private string Predicate(string v) => _rng.Next(5) switch
     {
         0 => $"{v} > {NextInt32()}",

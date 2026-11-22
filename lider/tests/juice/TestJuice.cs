@@ -1,10 +1,10 @@
-// 操作の手応え。音は名前で確かめる。
-//   - 保存で save、反映が届くと land が鳴り、枠が揺れ、全面が明滅し、見出しに秒が出る
-//   - 2 秒以内に続けて届くと、明滅せず、揺れも小さい
-//   - compile error で error が鳴り、直って届くと fixed が鳴り、粒が増える (紙吹雪)
-//   - 打つと key、飛ぶと move が鳴り、飛んだ先の窓に印が出る
-//   - juice:cycle で 音なし、演出も抑える、全部の順に変わる。音なしでは鳴らず、抑えると明滅しない
-//   - 鳴らした音の山 (振幅) はゲームの音 (0.1〜0.3) より小さく、大きい順に fixed、land、error、save、move
+// Feedback of operations. Sounds are checked by name.
+//   - Saving plays save, and when the update arrives, land plays, the frame shakes, the whole screen flashes, and the seconds appear in the title
+//   - When updates arrive in a row within 2 seconds, it does not flash and the shake is smaller
+//   - A compile error plays error, and when the fix arrives, fixed plays and the particles increase (confetti)
+//   - Typing plays key, jumping plays move, and a marker appears on the window jumped to
+//   - juice:cycle changes in the order no sound, reduced effects, everything. With no sound nothing plays, and with reduced effects it does not flash
+//   - The peak (amplitude) of the played sounds is lower than the game's sounds (0.1 to 0.3), and from highest to lowest they are fixed, land, error, save, move
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -15,7 +15,7 @@ public static class TestJuice
     static int frames;
     static int stage;
     static bool failed;
-    // lider の音の山の上限 (ゲームの音の山は 0.1〜0.3)
+    // Upper limit of lider's sound peak (the game's sound peak is 0.1 to 0.3)
     const float MaxPeak = 0.1f;
 
     public static void OnInit()

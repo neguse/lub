@@ -1,5 +1,5 @@
-// 文字の密度を上げると、窓の板の層の texture は整数倍になり、窓の中の桁と行の高さは変わらず、文字は同じ所に細かく描かれる。
-// 密度を上げた板でも、打った行の帯だけの描き直しと scroll は、新しく全部を描いた板と同じ画素になる。
+// Raising the text density makes the layer textures of the window's board an integer multiple, keeps the columns and line height in the window unchanged, and draws characters more finely in the same places.
+// Even on a board with raised density, redrawing only the band of the typed line and scrolling give the same pixels as a board drawn fully from scratch.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -86,7 +86,7 @@ public static class TestSharp
         full?.Prepare(doc!, text!, log);
         if (step == 1)
         {
-            // 文字の atlas が揃うまで描き、atlas の届いた frame で描き直す
+            // Draw until the glyph atlas is complete, and redraw on the frame where the atlas arrives
             var stable = text!.Version == lastVersion;
             lastVersion = text.Version;
             if (!stable)
@@ -105,7 +105,7 @@ public static class TestSharp
             Check(widths[0] == PanelView.BasePxW, "the coarse texture is " + widths[0] + " wide");
             Check(widths[1] == PanelView.BasePxW * Density, "the fine texture is " + widths[1] + " wide");
             Check(rights[0] > 40, "the coarse panel drew nothing");
-            // 右の端の文字は同じ所に出る (texture の px で倍。文字の形の差で数 px ずれる)
+            // The character at the right edge appears in the same place (doubled in texture px, off by a few px due to differences in glyph shapes)
             Check(Math.Abs(rights[1] - rights[0] * Density) <= 6, "text ends at " + rights[1] + " and " + rights[0]);
             doc!.Type("1");
             EditorHost.Step();

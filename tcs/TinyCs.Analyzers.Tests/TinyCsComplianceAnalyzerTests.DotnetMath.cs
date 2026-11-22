@@ -2,8 +2,8 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// System.Math の超越関数 (TCS1004)。.NET では .NET の実装が動くので、
-// TinySystem.Math (TinySystem.props が Math をこれに向ける) を通させる。MathF は TCS1002 だけ
+// System.Math transcendental functions (TCS1004). On .NET the .NET implementation runs, so
+// code is made to go through TinySystem.Math (TinySystem.props points Math to it). MathF only gets TCS1002
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Theory]

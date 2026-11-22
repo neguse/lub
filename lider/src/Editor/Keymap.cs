@@ -1,7 +1,7 @@
-// key の名前から command (Lite XL の core/keymap.lua の既定の keymap)。
-// 押した key を修飾 key と合わせた名前 ("ctrl+shift+left") にし、並べた command を効くまで順に試す。
-// key の名前は lub の EventData.Plain (修飾 key なしの文字) で引くので、JIS でも Ctrl+[ は [ の刻印の key で効く。
-// 表は、既定の割り当てに、利用者の変えた分を重ねた物。変えた分は、1 行に「key 命令」を書いたテキストで読み書きする (命令の無い行は、その key を外す)。
+// Commands from key names (the default keymap of Lite XL's core/keymap.lua).
+// Combines the pressed key with the modifier keys into a name ("ctrl+shift+left") and tries the listed commands in order until one takes effect.
+// Key names are looked up by lub's EventData.Plain (the character without modifiers), so even on JIS, Ctrl+[ works with the key labeled [.
+// The table is the default bindings with the user's changes layered on top. The changes are read and written as text with one "key command" per line (a line without a command unbinds that key).
 using System;
 using System.Collections.Generic;
 
@@ -10,7 +10,7 @@ namespace LiderEditor;
 public static class Keymap
 {
     static readonly Dictionary<string, string> map = new Dictionary<string, string>();
-    // 既定の割り当てと、利用者の変えた分 (key から命令の並び。空なら、その key を外す)
+    // Default bindings and the user's changes (key to list of commands; empty unbinds that key)
     static readonly Dictionary<string, string> defaults = new Dictionary<string, string>();
     static readonly Dictionary<string, string> changes = new Dictionary<string, string>();
 
@@ -20,7 +20,7 @@ public static class Keymap
         map[stroke] = commands;
     }
 
-    // 既定の割り当てに、変えた分を重ねる
+    // Layers the changes on top of the default bindings
     static void Rebuild()
     {
         map.Clear();
@@ -32,7 +32,7 @@ public static class Keymap
                 map[pair.Key] = pair.Value;
     }
 
-    // stroke の割り当てを commands にする (空なら外す)。既定と同じになったら、変えた分から除く
+    // Sets the binding of stroke to commands (unbinds if empty). If it becomes the same as the default, removes it from the changes
     static void Change(string stroke, string commands)
     {
         var same = defaults.TryGetValue(stroke, out var was) ? was == commands : commands == "";
@@ -42,7 +42,7 @@ public static class Keymap
             changes[stroke] = commands;
     }
 
-    // 命令 name を stroke に割り当てる。その命令だけを割り当てていたほかの key は外し、stroke に前からあった割り当ては無くなる
+    // Binds command name to stroke. Other keys bound only to that command are unbound, and the previous binding of stroke is gone
     public static void Bind(string stroke, string name)
     {
         Init();
@@ -56,7 +56,7 @@ public static class Keymap
         Rebuild();
     }
 
-    // 変えた分を捨てて、既定の割り当てに戻す
+    // Discards the changes and goes back to the default bindings
     public static void Reset()
     {
         Init();
@@ -64,7 +64,7 @@ public static class Keymap
         Rebuild();
     }
 
-    // 変えた分を、text の行から読み直す
+    // Reloads the changes from the lines of text
     public static void Load(string text)
     {
         Init();
@@ -90,7 +90,7 @@ public static class Keymap
         Rebuild();
     }
 
-    // 変えた分の行
+    // Lines of the changes
     public static List<string> Lines()
     {
         var lines = new List<string>();
@@ -99,15 +99,15 @@ public static class Keymap
         return lines;
     }
 
-    // stroke に割り当てた命令の並び (無ければ "")
+    // List of commands bound to stroke ("" if none)
     public static string CommandsOf(string stroke)
     {
         Init();
         return map.TryGetValue(stroke, out var commands) ? commands : "";
     }
 
-    // 命令に割り当てられる key か。
-    // 修飾なしと Shift だけの key は中身への入力なので、割り当てられるのは、Ctrl か Alt を付けた key と、F key だけ
+    // Whether the key can be bound to a command.
+    // Keys without modifiers or with only Shift are input to the content, so only keys with Ctrl or Alt and F keys can be bound
     public static bool Assignable(string stroke)
     {
         if (stroke.Contains("ctrl+") || stroke.Contains("alt+"))
@@ -116,7 +116,7 @@ public static class Keymap
         return key.StartsWith("f") && int.TryParse(key.Replace("f", ""), out _);
     }
 
-    // 人に見せるときの、key の名前の書き方 (ここに無い名前は大文字にする)
+    // How key names are written when shown to people (names not here are uppercased)
     static readonly Dictionary<string, string> shownNames = new Dictionary<string, string>
     {
         { "ctrl", "Ctrl" }, { "shift", "Shift" }, { "alt", "Alt" }, { "altgr", "AltGr" },
@@ -126,7 +126,7 @@ public static class Keymap
         { "left", "←" }, { "right", "→" }, { "up", "↑" }, { "down", "↓" },
     };
 
-    // stroke を、人に見せる書き方にする ("ctrl+shift+left" は "Ctrl+Shift+←")
+    // Turns stroke into the form shown to people ("ctrl+shift+left" becomes "Ctrl+Shift+←")
     public static string Shown(string stroke)
     {
         if (stroke == "")
@@ -134,7 +134,7 @@ public static class Keymap
         var parts = new List<string>();
         foreach (var part in stroke.Split('+'))
         {
-            // "ctrl++" のように、key が + のとき
+            // When the key is +, as in "ctrl++"
             if (part == "")
             {
                 if (parts.Count == 0 || parts[parts.Count - 1] != "+")
@@ -146,7 +146,7 @@ public static class Keymap
         return string.Join("+", parts);
     }
 
-    // 命令 name を割り当てた key の、人に見せる書き方 (無ければ "")
+    // Display form of the key bound to command name ("" if none)
     public static string ShownOf(string name)
     {
         return Shown(StrokeOf(name));
@@ -156,7 +156,7 @@ public static class Keymap
     {
         if (defaults.Count > 0)
             return;
-        // lider の検索 (file と宣言と命令)。エディタだけで動かすときは、エディタの file の検索になる
+        // lider search (files, declarations, and commands). When running the editor alone, it becomes the editor's file search
         Add("ctrl+p", "search:open core:find-file");
         Add("ctrl+o", "core:open-file");
         Add("ctrl+n", "core:new-doc");
@@ -243,20 +243,20 @@ public static class Keymap
         Add("ctrl+shift+up", "doc:create-cursor-previous-line");
         Add("ctrl+shift+down", "doc:create-cursor-next-line");
 
-        // ゲームの時間と focus (修飾なしの 1 押しで繰り返し押す操作)
+        // Game time and focus (operations pressed repeatedly, bound to a single unmodified key)
         Add("f1", "focus:game");
         Add("f5", "game:pause");
         Add("shift+f5", "game:restart");
         Add("f6", "game:step-back");
         Add("f7", "game:step-forward");
-        // 中身への操作
+        // Operations on the content
         Add("ctrl+b", "code:go-to-definition");
         Add("ctrl+-", "code:back");
         Add("ctrl+e", "code:next-error");
         Add("ctrl+w", "window:close");
         Add("ctrl+tab", "tab:next");
         Add("ctrl+shift+tab", "tab:previous");
-        // ウィンドウとスクリーンへの操作
+        // Operations on windows and screens
         Add("alt+left", "window:focus-left");
         Add("alt+right", "window:focus-right");
         Add("alt+up", "window:focus-up");
@@ -279,11 +279,11 @@ public static class Keymap
         Add("alt+d", "game:compare");
     }
 
-    // 命令 name を割り当てた key (無ければ "")。検索と案内に出す
+    // Key bound to command name ("" if none). Shown in search and help
     public static string StrokeOf(string name)
     {
         Init();
-        // その命令だけを割り当てた key を先に見る
+        // Looks first at keys bound only to that command
         foreach (var pair in map)
             if (pair.Value == name)
                 return pair.Key;
@@ -294,7 +294,7 @@ public static class Keymap
         return "";
     }
 
-    // 今の修飾 key と合わせて key を押すと、命令 name になるか
+    // Whether pressing key with the current modifier keys gives command name
     public static bool Binds(string key, string name)
     {
         Init();
@@ -306,7 +306,7 @@ public static class Keymap
         return false;
     }
 
-    // 修飾 key の名前から状態を変える。修飾 key なら true
+    // Changes state from a modifier key name. true if it is a modifier key
     public static bool TrackModifier(string key, bool down)
     {
         if (key == "left ctrl" || key == "right ctrl")
@@ -318,7 +318,7 @@ public static class Keymap
         else if (key == "right alt")
         {
             EditorCore.AltGr = down;
-            // Windows の AltGr は Ctrl+Alt で届く
+            // AltGr on Windows arrives as Ctrl+Alt
             if (down)
                 EditorCore.Ctrl = false;
         }
@@ -327,7 +327,7 @@ public static class Keymap
         return true;
     }
 
-    // 押している修飾 key を前に付けた名前
+    // Name prefixed with the held modifier keys
     public static string Stroke(string key)
     {
         var s = "";
@@ -342,7 +342,7 @@ public static class Keymap
         return s + key;
     }
 
-    // key を押した。command になったら true
+    // A key was pressed. true if it became a command
     public static bool OnKeyPressed(string key)
     {
         if (TrackModifier(key, true))
@@ -365,7 +365,7 @@ public static class Keymap
         return false;
     }
 
-    // 左 button を押した (clicks は続けて押した数)。command にならなければ true
+    // The left button was pressed (clicks is the number of consecutive presses). true if it did not become a command
     public static bool OnMousePressed(float x, float y, int clicks)
     {
         var n = (clicks - 1) % 3 + 1;

@@ -1,5 +1,5 @@
-// tcs が user のコードと一緒にコンパイルする System.ValueTuple。タプルの構文は Roslyn がこの宣言に結び付くので、
-// C と VM は単相化した struct になる。.NET は BCL の ValueTuple を使い、このファイルを読まない。
+// System.ValueTuple that tcs compiles together with user code. Roslyn binds tuple syntax to this declaration, so
+// in C and VM it becomes a monomorphized struct. .NET uses the BCL ValueTuple and does not read this file.
 namespace System
 {
     public struct ValueTuple<T1, T2>
@@ -13,7 +13,7 @@ namespace System
             Item2 = item2;
         }
 
-        // C の単相化は構文をこの型の呼び出しへ置き換えるので、分解にこの宣言が要る
+        // C monomorphization replaces the syntax with calls to this type, so deconstruction needs this declaration
         public void Deconstruct(out T1 item1, out T2 item2)
         {
             item1 = Item1;
@@ -34,7 +34,7 @@ namespace System
             Item3 = item3;
         }
 
-        // C の単相化は構文をこの型の呼び出しへ置き換えるので、分解にこの宣言が要る
+        // C monomorphization replaces the syntax with calls to this type, so deconstruction needs this declaration
         public void Deconstruct(out T1 item1, out T2 item2, out T3 item3)
         {
             item1 = Item1;
@@ -58,7 +58,7 @@ namespace System
             Item4 = item4;
         }
 
-        // C の単相化は構文をこの型の呼び出しへ置き換えるので、分解にこの宣言が要る
+        // C monomorphization replaces the syntax with calls to this type, so deconstruction needs this declaration
         public void Deconstruct(out T1 item1, out T2 item2, out T3 item3, out T4 item4)
         {
             item1 = Item1;
@@ -85,7 +85,7 @@ namespace System
             Item5 = item5;
         }
 
-        // C の単相化は構文をこの型の呼び出しへ置き換えるので、分解にこの宣言が要る
+        // C monomorphization replaces the syntax with calls to this type, so deconstruction needs this declaration
         public void Deconstruct(out T1 item1, out T2 item2, out T3 item3, out T4 item4, out T5 item5)
         {
             item1 = Item1;
@@ -115,7 +115,7 @@ namespace System
             Item6 = item6;
         }
 
-        // C の単相化は構文をこの型の呼び出しへ置き換えるので、分解にこの宣言が要る
+        // C monomorphization replaces the syntax with calls to this type, so deconstruction needs this declaration
         public void Deconstruct(out T1 item1, out T2 item2, out T3 item3, out T4 item4, out T5 item5, out T6 item6)
         {
             item1 = Item1;
@@ -148,7 +148,7 @@ namespace System
             Item7 = item7;
         }
 
-        // C の単相化は構文をこの型の呼び出しへ置き換えるので、分解にこの宣言が要る
+        // C monomorphization replaces the syntax with calls to this type, so deconstruction needs this declaration
         public void Deconstruct(out T1 item1, out T2 item2, out T3 item3, out T4 item4, out T5 item5, out T6 item6, out T7 item7)
         {
             item1 = Item1;

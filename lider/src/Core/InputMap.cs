@@ -1,29 +1,29 @@
-// 入力の位置を、ゲームの texture の画素に直す。
-// ゲームの絵のウィンドウは、どのスクリーン (画面に貼った平面、空間の円筒) にも置けるので、位置は「絵の中の位置 (0 から 1)」で受け取る。
-// 保存した版と編集中の版を並べて入力を揃えるとき、どちらのゲームも、マウスのあるウィンドウの絵の中の同じ位置を受け取る。
+// Converts input positions to pixels of the game's texture.
+// The game picture window can be placed on any screen (a plane on the display, a cylinder in space), so positions are received as "position within the picture (0 to 1)".
+// When the saved and edited versions are side by side with matched input, both games receive the same position within the picture of the window the mouse is in.
 using Lub;
 
 namespace LiderCore;
 
 public class InputMap
 {
-    // texture の画素の数
+    // Texture size in pixels
     public int W = 1;
     public int H = 1;
-    // 指している、絵の中の位置 (左上が 0,0、右下が 1,1)
+    // Pointed position within the picture (top left is 0,0, bottom right is 1,1)
     float u;
     float v;
-    // 画面の座標の 1 に対する、texture の画素の数 (マウスの移動の量を直す)
+    // Texture pixels per 1 unit of screen coordinates (to convert mouse movement amounts)
     float scale = 1;
 
-    // w と h は texture の画素の数
+    // w and h are the texture size in pixels
     public void Set(int w, int h)
     {
         W = w;
         H = h;
     }
 
-    // uv は指している絵の中の位置、screenW は指しているウィンドウの絵の、画面の上の幅 (画面の座標)
+    // uv is the pointed position within the picture; screenW is the on-screen width of the pointed window's picture (in screen coordinates)
     public void Point(Vec2 uv, float screenW)
     {
         u = uv.X;
@@ -34,7 +34,7 @@ public class InputMap
     public float X => u * W;
     public float Y => v * H;
 
-    // 位置を直した event。マウスの移動の量は、絵の上の画素の数にする
+    // The event with its position converted. Mouse movement amounts become pixels on the picture
     public EventData Event(EventData e)
     {
         var motion = e.Kind == EventKind.MouseMotion;

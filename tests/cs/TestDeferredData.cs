@@ -1,7 +1,7 @@
-// Use* / Snd の「同じ version なら data は読まない」規約。
-// version が一致する宣言では data を変換せず、null でも通る。
-// version を渡して data を省いた宣言は、その version の resource が無ければ (作られていない、sweep 済み、version 違い) 何も変えずに null を返す。
-// version を省いたときは data が要る。
+// The "data is not read if the version is the same" rule of Use* / Snd.
+// A declaration whose version matches does not convert data, and passes even with null.
+// A declaration that passes version and omits data returns null without changing anything if there is no resource with that version (not created, already swept, or a different version).
+// When version is omitted, data is required.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -33,7 +33,7 @@ public static class TestDeferredData
 
     static void BuffersAfter()
     {
-        // version を上げるときは data を渡す
+        // Pass data when raising the version
         var b4 = Gfx.UseBuffer("dd_buf", Gfx.BufferType.Storage, data, 2);
         Check.That(b4 != null && b4.Version == 2, "use_buffer: version bump with data");
 
@@ -53,7 +53,7 @@ public static class TestDeferredData
         var t3 = Gfx.UseTexture("dd_tex", 1, 1, Gfx.PixelFormat.Rgba8, null, 1);
         Check.That(t3 != null, "use_texture: matching version must accept nil px");
 
-        // px null は空 texture の宣言として mismatch でも通る (render target 等)
+        // px null is a declaration of an empty texture and passes even on a mismatch (render targets etc.)
         var rt = Gfx.UseTexture("dd_rt", 1, 1, Gfx.PixelFormat.Rgba8, null, 1, new TextureOpts { Target = true });
         Check.That(rt != null && rt.Version == 1, "use_texture: empty target texture");
         var blank = Gfx.UseTexture("dd_tex", 1, 1, Gfx.PixelFormat.Rgba8, null, 2);
@@ -74,7 +74,7 @@ public static class TestDeferredData
         return true;
     }
 
-    // 保存した file が読めるまで同じ段階に留まる (上限を超えたら失敗)
+    // Stay at the same stage until the saved file can be read (fail if the limit is exceeded)
     static void Wait(int stage)
     {
         step = stage;
@@ -90,7 +90,7 @@ public static class TestDeferredData
         if (s == 0)
         {
             Buffers();
-            // version を省くと常に「変わった」宣言なので data が要る
+            // Omitting version always declares "changed", so data is required
             Check.Error("use_buffer nil data without version", "data");
             Gfx.UseBuffer("dd_buf", Gfx.BufferType.Storage, null);
         }
@@ -98,7 +98,7 @@ public static class TestDeferredData
         {
             BuffersAfter();
             Textures();
-            // key が別の種類で使われているときは data の有無によらず種類の error
+            // When the key is used for a different kind, it is a kind error regardless of whether data is given
             Check.Error("buffer over texture key, nil data", "different kind");
             Gfx.UseBuffer("dd_tex", Gfx.BufferType.Storage, null, 1);
         }
@@ -125,8 +125,8 @@ public static class TestDeferredData
         }
         else if (s == 6)
         {
-            // Audio.SndBytes の data は file から bytes で受ける。
-            // aligned.bin は 4 の倍数の長さ (f32 PCM)、misaligned.bin は 4 の倍数でない長さ
+            // The data of Audio.SndBytes is received as bytes from a file.
+            // aligned.bin has a length that is a multiple of 4 (f32 PCM); misaligned.bin has a length that is not a multiple of 4
             Io.SaveText("tests/cs/.lub/dd_aligned.bin", "abcdabcdabcdabcd");
             Io.SaveText("tests/cs/.lub/dd_misaligned.bin", "RIFFx");
         }
@@ -142,7 +142,7 @@ public static class TestDeferredData
             var b1 = Audio.SndBytes("dd_bytes", aligned, 1, 48000, 1);
             Check.That(b1 != null, "snd_bytes: first declaration");
             Check.That(Audio.SndBytes("dd_bytes", null, 1, 48000, 1) == b1, "snd_bytes: matching version must accept nil data");
-            // 元のファイルの bytes (4 の倍数でない長さ) を渡しても、一致する間は読まれない
+            // Even when the bytes of the original file (length not a multiple of 4) are passed, they are not read while the version matches
             Check.That(Audio.SndBytes("dd_bytes", mis, 1, 48000, 1) == b1, "snd_bytes: matching version must not check the length of data");
             Check.That(Audio.SndBytes("dd_bytes", null, 1, 48000, 2) == null, "snd_bytes: nil data on mismatch must be absent");
             Check.That(Audio.SndBytes("dd_bytes_new", null, 1, 48000, 1) == null, "snd_bytes: nil data, first declaration must be absent");

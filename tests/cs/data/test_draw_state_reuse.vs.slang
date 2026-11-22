@@ -1,9 +1,10 @@
 struct Cell {
-  float4 cell; // xy = この draw が塗る画素、zw = target の幅と高さ
+  float4 cell; // xy = the pixel this draw fills, zw = the width and height of
+               // the target
 };
 ConstantBuffer<Cell> a;
 struct Tint {
-  float4 tint; // xy = G と B に書く値
+  float4 tint; // xy = the values written to G and B
 };
 ConstantBuffer<Tint> b;
 

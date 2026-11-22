@@ -1,17 +1,17 @@
-// backend が前の draw の pipeline、descriptor set、uniform を使い回しても、各 draw が自分の状態で描くこと。
-// draw は 1 列の target に 1 画素ずつ塗り、R は texture、G と B は uniform で決まる。
-// - 同じ pipeline で texture を A, B, A と交互に変える。
-// - 別の layout の shader に移ってから戻る。
-// - uniform block が 1 つの shader と 2 つの shader を交互に使う。
-//   D3D12 では 1 つの shader の texture の table と 2 つの shader の 2 つ目の uniform block が同じ root parameter に来るので、root signature を替えた後も前の table を設定済みとみなすと、texture の代わりに uniform block を読む。
-// - texture を外す。
-//   外した slot は backend の仮の texture で埋まり、その値は backend ごとに違うので (TestUnboundBindings)、R が前の draw の texture の値でないことだけを見る。
-// - 同じ画素を別の texture で塗り直す。
-// - uniform を省いた draw は前の draw の値を使わず error になる。
-// - pass をまたいで同じ pipeline と set で描く。
-// - shader は 1 つの stage に uniform block を 2 つ持ち、取り違えると画素の位置か色がずれる。
-// - 読むフレームの最初の draw は前のフレームの最後の draw と同じ uniform で、その後に前のフレームより多く uniform を書く。
-// 複数のフレームを描いてから読むので、フレームの先頭で bind をやり直さないと描かれない。
+// Each draw draws with its own state even when the backend reuses the pipeline, descriptor set, and uniforms of the previous draw.
+// Each draw fills one pixel of a single-row target; R is determined by the texture, G and B by uniforms.
+// - Alternates the texture A, B, A with the same pipeline.
+// - Moves to a shader with a different layout and comes back.
+// - Alternates between a shader with 1 uniform block and a shader with 2.
+//   On D3D12 the texture table of the 1-block shader and the second uniform block of the 2-block shader land on the same root parameter, so if the previous table is assumed to be still set after switching root signatures, the uniform block is read instead of the texture.
+// - Unbinds a texture.
+//   The unbound slot is filled with the placeholder texture of the backend, whose value differs per backend (TestUnboundBindings), so it only checks that R is not the value of the previous draw's texture.
+// - Repaints the same pixel with a different texture.
+// - A draw that omits uniforms does not use the values of the previous draw and is an error.
+// - Draws with the same pipeline and set across passes.
+// - The shader has 2 uniform blocks in one stage; mixing them up shifts the pixel position or the color.
+// - The first draw of the frame that is read uses the same uniforms as the last draw of the previous frame, and after it more uniforms are written than in the previous frame.
+// Several frames are drawn before reading, so nothing is drawn unless binds are redone at the start of the frame.
 using System;
 using System.Collections.Generic;
 using Lub;

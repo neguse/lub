@@ -1,4 +1,4 @@
-// tcs VM の player の .csproj の入力 (vm_project.h)。
+// .csproj inputs of the tcs VM player (vm_project.h).
 #include "vm_project.h"
 #include "path_util.h"
 #include "tcs_build.h"
@@ -14,9 +14,9 @@ static bool str_ends_with(const char *s, const char *suffix) {
   return ls >= lf && SDL_strcmp(s + ls - lf, suffix) == 0;
 }
 
-// 区切りを '/' に揃え、"." と ".." の段を畳む。
-// 先頭の ".." は畳めないので残す。
-// UNC (\\server\share) の先頭の 2 つの区切りは "//" のまま残す。
+// Normalizes separators to '/' and collapses "." and ".." components.
+// Leading ".." cannot be collapsed, so it is kept.
+// The first two separators of a UNC path (\\server\share) are kept as "//".
 static void path_normalize(const char *in, char *out, size_t outsz) {
   char buf[1024];
   SDL_strlcpy(buf, in, sizeof(buf));
@@ -53,7 +53,8 @@ static bool path_is_absolute(const char *p) {
   return p[0] == '/' || p[0] == '\\' || (p[0] && p[1] == ':');
 }
 
-// 相対 path は cwd に繋いでから畳む (同じ file を書き方によらず比べるため)
+// A relative path is joined to cwd before collapsing (to compare the same file
+// regardless of how it is written)
 static void path_absolute(const char *in, char *out, size_t outsz) {
   char joined[1400];
   char *cwd = path_is_absolute(in) ? NULL : SDL_GetCurrentDirectory();
@@ -66,8 +67,9 @@ static bool xml_space(char c) {
   return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
-// 属性値の文字参照 (&amp; &lt; &gt; &quot; &apos; &#N; &#xN;) を復号して out に書く。
-// 復号できない '&' はそのまま残す。
+// Decodes the character references in an attribute value (&amp; &lt; &gt;
+// &quot; &apos; &#N; &#xN;) and writes the result to out. A '&' that cannot be
+// decoded is kept as is.
 static bool xml_decode(const char *in, size_t len, char *out, size_t outsz) {
   static const struct {
     const char *name;
@@ -144,8 +146,9 @@ static bool xml_decode(const char *in, size_t len, char *out, size_t outsz) {
   return true;
 }
 
-// tag (要素名の直後から '>' の手前まで) から属性 name の値を復号して out に書く。
-// '=' の前後には改行を含む XML の空白を置ける。
+// Decodes the value of attribute name from tag (from right after the element
+// name up to before '>') and writes it to out. XML whitespace, including
+// newlines, may appear before and after '='.
 static bool xml_attr(const char *tag, size_t len, const char *name, char *out,
                      size_t outsz) {
   size_t name_len = SDL_strlen(name);
@@ -185,9 +188,10 @@ static bool add_dir(VmProject *proj, const char *dir) {
   return true;
 }
 
-// csproj の印の付いた ProjectReference を辿る (参照先の参照も、同じ project は 1 回だけ)
+// Follows the marked ProjectReferences of a csproj (including references of the
+// referenced projects; each project only once)
 static bool collect_refs(VmProject *proj, const char *csproj, int depth) {
-  if (depth > 16) // 参照の循環で止まらなくなるのを避ける
+  if (depth > 16) // Prevents an endless loop on reference cycles
     return true;
   size_t len = 0;
   char *text = (char *)SDL_LoadFile(csproj, &len);
@@ -199,7 +203,7 @@ static bool collect_refs(VmProject *proj, const char *csproj, int depth) {
   static const char TAG[] = "<ProjectReference";
   const char *p = text;
   while ((p = SDL_strstr(p, TAG)) != NULL) {
-    // comment (<!-- ... -->) の中の要素は読まない
+    // Elements inside a comment (<!-- ... -->) are not read
     const char *comment = SDL_strstr(text, "<!--");
     bool commented = false;
     while (comment && comment < p) {
@@ -311,7 +315,7 @@ static void text_add(TextBuf *b, const char *s) {
   b->p[b->len] = '\0';
 }
 
-// b に s の行があるか
+// Whether b has the line s
 static bool text_has(const TextBuf *b, const char *s) {
   size_t n = SDL_strlen(s);
   for (const char *line = b->p; line && *line;) {
@@ -324,8 +328,10 @@ static bool text_has(const TextBuf *b, const char *s) {
   return false;
 }
 
-// dir の下の *.cs を、*.ref.cs は refs に、それ以外は inputs に足す。
-// 参照先のディレクトリが別のディレクトリの下にあると同じ file が 2 度見つかるので、足すのは 1 回だけ (dir は絶対 path に揃えてあり、同じ file は同じ文字列になる)
+// Adds *.cs under dir: *.ref.cs to refs, everything else to inputs.
+// If a referenced directory is under another directory, the same file is found
+// twice, so it is added only once (dir is normalized to an absolute path, so
+// the same file gives the same string)
 static void scan_dir(const char *dir, TextBuf *inputs, TextBuf *refs,
                      bool skip_stub) {
   int count = 0;
@@ -344,7 +350,8 @@ static void scan_dir(const char *dir, TextBuf *inputs, TextBuf *refs,
   tcs_free_sources(found, count);
 }
 
-// X.ref.cs の隣の native の library (X.so / X.dylib / X.dll、無ければ libX.*)
+// Native library next to X.ref.cs (X.so / X.dylib / X.dll, or libX.* if
+// missing)
 static void find_extensions(VmProject *proj) {
 #if defined(_WIN32)
   static const char *const suffix = ".dll";
@@ -359,7 +366,7 @@ static void find_extensions(VmProject *proj) {
     if (len > 7 && proj->nextensions < VM_PROJECT_MAX_DIRS) {
       char stem[640], dir[640], cand[700];
       SDL_snprintf(stem, sizeof stem, "%.*s", (int)(len - 7),
-                   line); // ".ref.cs" を除く
+                   line); // Strips ".ref.cs"
       SDL_snprintf(cand, sizeof cand, "%s%s", stem, suffix);
       if (!file_exists(cand)) {
         path_dirname(stem, dir, sizeof dir);
@@ -416,7 +423,8 @@ int vm_project_args(VmProject *proj, const char **args, int max) {
     args[n++] = "--ref";
     args[n++] = proj->stub;
   }
-  // *.ref.cs (改行区切りの refs_text を写して区切り、それを指す)
+  // *.ref.cs (copies the newline-separated refs_text, splits it, and points
+  // into it)
   SDL_free(proj->refs_split);
   proj->refs_split = SDL_strdup(proj->refs_text ? proj->refs_text : "");
   for (char *line = proj->refs_split; line && *line && n < max - 10;) {

@@ -1,7 +1,7 @@
-// 行ごとの負荷 (Lider.Costs、LoadProfile)。lub の Sys.ProfileLines で数えた値を、行ごとに 1 frame あたりで持つ。
-//   - 普段は 30 frame に 1 frame だけ数え、4 回分をならして出す
-//   - ゲーム (game/Game.cs) の足し算を繰り返す行に時間が付き、毎 frame 配列を作って static に置く行に確保と持ち越し (持つ field は Game.keep) が付き、18 行目で始めた MainTex への pass が描き先 main、draw 2 つ、GPU の時間付きで出る (vulkan で走らせる)
-// frame はゲームが動き始めてから数える。
+// Per-line cost (Lider.Costs, LoadProfile). The values counted by lub's Sys.ProfileLines are kept per line, per frame.
+//   - Normally only 1 frame in 30 is counted, and the average over 4 samples is shown
+//   - The line of the game (game/Game.cs) that repeats additions gets a time, the line that creates an array every frame and stores it in a static gets allocations and carry-over (the field that holds it is Game.keep), and the pass to MainTex started on line 18 appears with target main, 2 draws, and the GPU time (run with vulkan)
+// Frames are counted from when the game starts running.
 using System;
 using Lub;
 using LiderCore;
@@ -39,7 +39,7 @@ public static class TestProfile
 
     static void TestFrame(float dt)
     {
-        // ゲームの build を待つ
+        // Wait for the game build
         if (GameApp.Frames == 0)
             return;
         frames++;

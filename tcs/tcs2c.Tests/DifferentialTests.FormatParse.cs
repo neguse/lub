@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 補間の D 精度指定 (符号を除いた桁数)、raw 補間文字列の literal brace、
-// int.TryParse の受理する書式 (NumberStyles.Integer: 前後の空白、符号、
-// 10 進数字のみ)。期待値は同じ program を CoreCLR で実行した stdout
+// D precision specifiers in interpolation (digit count excluding the sign), literal braces in raw interpolated strings,
+// and the formats int.TryParse accepts (NumberStyles.Integer: leading and trailing whitespace, sign,
+// decimal digits only). The expected values are the stdout of running the same program on CoreCLR
 public class FormatParseDifferentialTests
 {
     [CFact]

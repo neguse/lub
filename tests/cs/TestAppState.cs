@@ -1,8 +1,8 @@
-// App.Save / App.Load / App.Drop: 開いた app の状態を控えに書き、同じ app か別の app に読み込む。
-// TestAppStateChild は、乱数の列と積んだ List から決まる色で main を塗る。
-// 開いた側は 2 つの app (a と b) を開き、描かせた texture を読み戻して比べる。
-//   frame 4: a の状態を b に読み込む。その後は a と b が同じ色を描く。
-//   frame 8: a の状態を控える。frame 12 で a と b に読み込むと、frame 8 からの色をもう一度描く。
+// App.Save / App.Load / App.Drop: writes the state of an opened app to a saved copy and loads it into the same app or another app.
+// TestAppStateChild fills main with a color determined by the random number sequence and the accumulated List.
+// The opener opens 2 apps (a and b), reads back the textures they drew, and compares them.
+//   frame 4: loads the state of a into b. After that, a and b draw the same color.
+//   frame 8: saves a copy of the state of a. Loading it into a and b at frame 12 draws the colors from frame 8 again.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -31,7 +31,7 @@ public static class TestAppState
     static Readback? rbA;
     static Readback? rbB;
     static int frame;
-    // 読み戻した色 (frame ごとの赤と緑。-1 はまだ)
+    // Read-back colors (red and green per frame; -1 means not yet)
     static int[] redA = new int[frames];
     static int[] greenA = new int[frames];
     static int[] redB = new int[frames];
@@ -87,7 +87,7 @@ public static class TestAppState
         }
         if (frame == loadAt)
         {
-            // b はまだ Step していない。読み込みが module を開く
+            // b has not Stepped yet. Loading opens the module
             Check.That(App.Save(a, 0, out var e1), $"Save: {e1}");
             Check.That(App.Load(b, 0, out var e2), $"Load into another app: {e2}");
         }
@@ -110,27 +110,27 @@ public static class TestAppState
         Read(rbB!, rtB, redB, greenB);
         frame++;
         if (frame < frames) return;
-        // 最後の 2 frame は読み戻しがまだ届いていない
+        // The read-back of the last 2 frames has not arrived yet
         var last = frames - 2;
         for (var k = 0; k < last; k++)
             Check.That(redA[k] >= 0, $"frame {k}: no readback of a");
-        // 止めずに進めた frame の緑は frame の番号
+        // The green of frames advanced without pausing is the frame number
         for (var k = 0; k < rewindAt; k++)
             Check.That(Math.Abs(greenA[k] - k) <= 1, $"frame {k}: a drew frame {greenA[k]}");
-        // b は a の状態から続く
+        // b continues from the state of a
         for (var k = loadAt; k < last; k++)
         {
             Check.That(redB[k] == redA[k] && greenB[k] == greenA[k],
                 $"frame {k}: b drew {redB[k]},{greenB[k]}, a drew {redA[k]},{greenA[k]}");
         }
-        // 読み込んだ後は、控えた frame からの色をもう一度描く
+        // After loading, draws the colors from the saved frame again
         for (var k = rewindAt; k < last; k++)
         {
             var from = saveAt + (k - rewindAt);
             Check.That(redA[k] == redA[from] && greenA[k] == greenA[from],
                 $"frame {k}: a drew {redA[k]},{greenA[k]}, frame {from} drew {redA[from]},{greenA[from]}");
         }
-        // 色が frame ごとに違うこと (同じ色ばかりなら上の比較は何も見ていない)
+        // Colors differ per frame (if all colors were the same, the comparison above would check nothing)
         var distinct = new HashSet<int>();
         for (var k = 0; k < rewindAt; k++) distinct.Add(redA[k]);
         Check.That(distinct.Count >= 6, $"only {distinct.Count} distinct colors");

@@ -1,9 +1,9 @@
-// 窓のタブ。
-//   - file を開くと focus のある窓のタブに足し、窓は増えない。開いている file はそのタブを出す
-//   - Ctrl+Tab / Ctrl+Shift+Tab で隣のタブへ (端から反対の端へ回る)
-//   - Ctrl+Alt+→ / ← で今のタブを隣の窓へ移す。端なら新しい窓を作る。空になった窓は閉じる
-//   - Ctrl+W と Escape は今のタブを閉じ、最後のタブを閉じると窓も閉じる
-//   - 見出しにタブの名前を並べ、押した所のタブを出す
+// Window tabs.
+//   - Opening a file adds it to the tabs of the focused window, and no window is added. A file that is already open shows its tab
+//   - Ctrl+Tab / Ctrl+Shift+Tab go to the adjacent tab (wrapping around from one end to the other)
+//   - Ctrl+Alt+→ / ← moves the current tab to the adjacent window. At the end, a new window is created. A window left empty is closed
+//   - Ctrl+W and Escape close the current tab, and closing the last tab also closes the window
+//   - Tab names are lined up in the title bar, and pressing one shows that tab
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -83,7 +83,7 @@ public static class TestTabs
         }
         if (frames == 3)
         {
-            // 見出しの 2 つ目のタブを押す (1 frame 描いた後の位置)
+            // Press the second tab in the title bar (its position after 1 frame has been drawn)
             var panel = Lider.TitleOf(first!);
             var labels = panel.Tabs;
             Check(labels.Count == 2 && labels[0] == "Target.cs" && labels[1] == "Second.cs", "the title shows " + string.Join("|", labels));
@@ -103,7 +103,7 @@ public static class TestTabs
         }
     }
 
-    // 窓ごとのタブの名前 (今のタブに *)
+    // Tab names per window (* on the current tab)
     static string Shape(Workspace w)
     {
         var s = "";

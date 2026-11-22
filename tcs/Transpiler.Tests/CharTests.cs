@@ -1,9 +1,9 @@
 namespace TinyCs.Tests;
 
-// T251: char は整数 code unit (il-spec §3)。literal / s[i] / 算術 / 比較 /
-// switch / pattern / 文字列化 (連結・補間・ToString・WriteLine) / Char.* /
-// string method の char 引数 / foreach (char c in s) / List<char> /
-// Dictionary<char, V> / const / default を実 .NET と一致させる
+// T251: char is an integer code unit (il-spec §3). Makes literal / s[i] / arithmetic / comparison /
+// switch / pattern / stringification (concatenation, interpolation, ToString, WriteLine) / Char.* /
+// char arguments of string methods / foreach (char c in s) / List<char> /
+// Dictionary<char, V> / const / default match real .NET
 public class CharTests
 {
     [Fact]
@@ -57,7 +57,7 @@ public class CharTests
             result);
     }
 
-    // 非 ASCII の char literal は 1 byte に写せないので TCS1001 (string literal で書く)
+    // A non-ASCII char literal cannot be mapped to 1 byte, so it is TCS1001 (write it as a string literal)
     [Fact]
     public void NonAsciiCharLiteral_ReportsDiagnostic()
     {

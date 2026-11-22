@@ -1,6 +1,6 @@
-// Renderer3d は End() で描いた後、その frame の描画の命令を持ち続けない (次の frame まで持つと、状態の控えがそれを生かし続ける) ことの検査。
-// ../child/Child.cs を App.Use で開く。
-// App.Step の後に見るので、ここで見る Child.Ren は End() の後。
+// Checks that Renderer3d does not keep holding the draw commands of the frame after drawing them in End() (if it kept them until the next frame, the saved copy of the state would keep them alive).
+// Opens ../child/Child.cs with App.Use.
+// It is checked after App.Step, so the Child.Ren seen here is after End().
 using System;
 using Lub;
 
@@ -11,7 +11,7 @@ public static class Game
 
     static string ChildCsproj()
     {
-        // GAME_CS は <dir>/game/Game.cs
+        // GAME_CS is <dir>/game/Game.cs
         var game = Environment.GetEnvironmentVariable("GAME_CS") ?? "";
         return game.Replace("game/Game.cs", "child/Child.csproj");
     }
@@ -43,7 +43,7 @@ public static class Game
             Finish("FAIL the opened app never drew", 1);
             return;
         }
-        // build を待つ間は Step が false
+        // Step is false while waiting for the build
         if (!ok) return;
         frame++;
         bool drawn = false;

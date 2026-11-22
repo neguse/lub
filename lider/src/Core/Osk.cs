@@ -1,6 +1,6 @@
-// 画面のキーボード: 並んだ key を押すと、つないだキーボードと同じ key の event を作る。
-// Shift、Ctrl、Alt は、押すと次の 1 打に効く (もう一度押すと外れる)。
-// 並びは US 配列で、どの行も幅は Units。
+// On-screen keyboard: pressing a key in the layout produces the same key events as a connected keyboard.
+// Shift, Ctrl and Alt apply to the next keystroke when pressed (pressing again releases them).
+// The layout is US, and every row is Units wide.
 using System.Collections.Generic;
 using Lub;
 
@@ -8,13 +8,13 @@ namespace LiderCore;
 
 public class OskKey
 {
-    // SDL の scancode (修飾 key は 0)
+    // SDL scancode (0 for modifier keys)
     public int Key;
-    // 修飾 key なら、その bit (Keys.ModShift など)
+    // For a modifier key, its bit (Keys.ModShift etc.)
     public int Mod;
-    // 文字でない key の字 (文字の key は空で、US 配列の字を出す)
+    // Label of a non-character key (empty for character keys, which show the US layout character)
     public string Name = "";
-    // 幅 (文字の key 1 つが 1)
+    // Width (1 = one character key)
     public float W = 1;
 }
 
@@ -23,12 +23,12 @@ public class Osk : IContent
     public const int Units = 15;
     public readonly List<List<OskKey>> Rows = new List<List<OskKey>>();
     public bool Shown;
-    // 次の 1 打に効く修飾 key (Keys.Mod* の bit の和)
+    // Modifier keys applied to the next keystroke (sum of Keys.Mod* bits)
     public int Mods;
-    // 指している key (行と、行の中の番号。指していなければ -1)。指す物ごと (左手 0、右手かマウス 1) に持つ
+    // Pointed key (row and index within the row; -1 if none). Held per pointer (left hand 0, right hand or mouse 1)
     public readonly int[] HoverRow = new int[] { -1, -1 };
     public readonly int[] HoverAt = new int[] { -1, -1 };
-    // 描いた絵 (OskView が描く)
+    // The drawn picture (drawn by OskView)
     public TextureRef? Picture;
 
     public Osk()
@@ -89,7 +89,7 @@ public class Osk : IContent
             row.Add(Char(Keys.A + c - 'a'));
     }
 
-    // key に出す字 (文字の key は、今の Shift で打つ字)
+    // Label shown on the key (for character keys, the character typed with the current Shift)
     public string Label(OskKey key)
     {
         if (key.Name != "" || key.Mod != 0 || key.Key == Keys.Space)
@@ -98,7 +98,7 @@ public class Osk : IContent
         return c != 0 ? ((char)c).ToString() : "";
     }
 
-    // 指す物 pointer (左手 0、右手かマウス 1) が、絵の中の位置 (左上が 0,0、右下が 1,1) を指した。その key を光らせる (key の無い所なら、光らせない)
+    // Pointer pointer (left hand 0, right hand or mouse 1) pointed at a position within the picture (top left 0,0, bottom right 1,1). Highlights that key (nothing if there is no key there)
     public void Point(int pointer, float u, float v)
     {
         HoverRow[pointer] = -1;
@@ -120,19 +120,19 @@ public class Osk : IContent
         }
     }
 
-    // 指す物 pointer が指している key (指していなければ null)
+    // The key pointer is pointing at (null if none)
     public OskKey? Hovered(int pointer)
     {
         return HoverRow[pointer] >= 0 ? Rows[HoverRow[pointer]][HoverAt[pointer]] : null;
     }
 
-    // 行 r の i 番目の key を、どれかの指す物が指しているか
+    // Whether any pointer is pointing at the i-th key of row r
     public bool Lit(int r, int i)
     {
         return (HoverRow[0] == r && HoverAt[0] == i) || (HoverRow[1] == r && HoverAt[1] == i);
     }
 
-    // key を押す。修飾 key なら次の 1 打に効かせる (か外す) だけで、ほかの key は、押して離す event の並びを返し、修飾 key を外す
+    // Presses a key. A modifier key is only applied to (or released from) the next keystroke; other keys return the sequence of press and release events and release the modifiers
     public List<EventData> Press(OskKey key)
     {
         var events = new List<EventData>();
@@ -141,7 +141,7 @@ public class Osk : IContent
             Mods ^= key.Mod;
             return events;
         }
-        // Ctrl か Alt と一緒の key は、文字にしない
+        // Keys pressed with Ctrl or Alt do not produce characters
         var plain = Keys.UsChar(key.Key, false);
         var typed = (Mods & (Keys.ModCtrl | Keys.ModAlt)) == 0 ? Keys.UsChar(key.Key, (Mods & Keys.ModShift) != 0) : 0;
         events.Add(new EventData { Kind = EventKind.KeyDown, Key = key.Key, Mods = Mods, Typed = typed, Plain = plain });
@@ -150,7 +150,7 @@ public class Osk : IContent
         return events;
     }
 
-    // 絵は、ほかのウィンドウより手前に Lider が描く (画面に貼る絵としては持たない)
+    // Lider draws the picture in front of the other windows (it is not kept as a picture placed on the display)
     public TextureRef? Texture()
     {
         return null;

@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// Dictionary<string, object> を --ref の関数に渡す program と、その Count と foreach の意味
+// A program that passes Dictionary<string, object> to a --ref function, and the meaning of its Count and foreach
 public class DictionaryWireFormatTests
 {
     private const string HostRefSource = """

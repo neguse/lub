@@ -1,6 +1,6 @@
 using System;
 
-// 配列の操作と整数の分岐。The Computer Language Benchmarks Game の fannkuch-redux (1 スレッドの版) と同じ手順
+// Array operations and integer branches. Same procedure as fannkuch-redux (single-thread version) of The Computer Language Benchmarks Game
 public class Fannkuch
 {
     static int Run(int n, bool print)
@@ -71,8 +71,8 @@ public class Fannkuch
     {
         string s = Environment.GetEnvironmentVariable("BENCH_N");
         int n = s == null ? 7 : int.Parse(s);
-        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
-        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        // Repeats BENCH_REPS times (run.py uses this to compute the time per repetition).
+        // Each repetition's input depends on the previous result so the compiler cannot skip repetitions or hoist them out (the result is never -1)
         string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
         int reps = rs == null ? 1 : int.Parse(rs);
         int prev = 0;

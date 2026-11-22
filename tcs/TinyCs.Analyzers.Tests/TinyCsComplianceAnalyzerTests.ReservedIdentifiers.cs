@@ -4,8 +4,8 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// Lua / 生成コードの予約と重なる識別子 (q.md Q16)。transpiler は build を止める
-// error、analyzer は他の build を止める診断と同じく warning
+// Identifiers that collide with reserved words of Lua / generated code (q.md Q16). The transpiler reports a build-stopping
+// error; the analyzer reports a warning, like other build-stopping diagnostics
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]
@@ -63,8 +63,8 @@ public partial class TinyCsComplianceAnalyzerTests
         Assert.Contains("UnderscoreNamespaceName(Game_Core)", diagnostic.GetMessage());
     }
 
-    // delegate の型名も同じ規則 (DelegateDeclaration 自体も TCS1001 だが、識別子の
-    // 規則が先に当たる)
+    // Delegate type names follow the same rule (DelegateDeclaration itself is TCS1001 too, but the identifier
+    // rule hits first)
     [Fact]
     public async Task DelegateWithUnderscore_Reports()
     {
@@ -72,14 +72,14 @@ public partial class TinyCsComplianceAnalyzerTests
             public delegate void My_Del(int v);
             """);
 
-        // delegate の宣言も TinyC# の外 (tcs の compiler と同じ)
+        // Delegate declarations are also outside TinyC# (same as the tcs compiler)
         Assert.Equal(2, diagnostics.Count);
         Assert.Contains(diagnostics, d => d.GetMessage().Contains("UnderscoreTypeName(My_Del)"));
         Assert.Contains(diagnostics, d => d.GetMessage().Contains("DelegateDeclaration"));
     }
 
-    // host (`--ref` の stub。analyzer には AdditionalFiles の TinyCsRef で渡す) の interface の実装 (q.md Q16)。
-    // BCL の interface は TinyC# の外の API (tcs の compiler と同じ)
+    // Implementations of host interfaces (`--ref` stubs; passed to the analyzer as TinyCsRef in AdditionalFiles) (q.md Q16).
+    // BCL interfaces are APIs outside TinyC# (same as the tcs compiler)
     [Fact]
     public async Task HostInterfaceImplementation_Reports()
     {

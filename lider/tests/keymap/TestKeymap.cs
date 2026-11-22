@@ -1,10 +1,10 @@
-// key の割り当てを変える。
-//   - 命令 keys:set で命令を選ぶと、次に押した key がその命令に割り当たり、前の key は外れる
-//   - 修飾なしの字の key と、focus をゲームへ移す key は、割り当てられない
-//   - Esc で、割り当てずにやめる
-//   - 変えた分は file に書かれ、その行から読み直すと同じ割り当てになる
-//   - 検索と案内には、今の key が出る
-//   - 命令 keys:reset で、既定に戻る
+// Changes key assignments.
+//   - Choosing a command with the keys:set command assigns the next pressed key to that command, and the previous key is removed
+//   - Character keys without modifiers, and the key that moves focus to the game, cannot be assigned
+//   - Esc cancels without assigning
+//   - Changes are written to the file, and reloading from those lines gives the same assignments
+//   - Search and the hints show the current key
+//   - The keys:reset command goes back to the defaults
 using System;
 using Lub;
 using LiderCore;
@@ -13,7 +13,7 @@ using LiderEditor;
 public static class TestKeymap
 {
     const string Toggle = "inspector:toggle";
-    // key の番号は、A からの並びの順
+    // Key numbers are in order starting from A
     const int KeyI = Keys.A + 8;
     const int KeyO = Keys.A + 14;
     static int frames;
@@ -64,10 +64,10 @@ public static class TestKeymap
                 Check(Keymap.StrokeOf(Toggle) == "alt+i" && Keymap.ShownOf(Toggle) == "Alt+I", "the key at first: " + Keymap.StrokeOf(Toggle));
                 Pick(w);
                 Check(Lider.KeyFor == Toggle && search.Shown && search.Prompt.Contains(Toggle) && search.Prompt.Contains("Alt+I"), "not waiting for a key: " + search.Prompt);
-                // 修飾なしの字は割り当てられない
+                // Character keys without modifiers cannot be assigned
                 Key(Keys.A, 0, 'a');
                 Check(Lider.KeyFor == Toggle && search.Prompt.Contains("割り当てられない"), "a plain letter was taken: " + search.Prompt);
-                // focus をゲームへ移す key は取れない
+                // The key that moves focus to the game cannot be taken
                 Key(Keys.F1, 0, 0);
                 Check(Lider.KeyFor == Toggle && Keymap.StrokeOf("focus:game") == "f1", "the key of focus:game was taken");
                 Key(KeyO, Keys.ModAlt, 'o');
@@ -77,30 +77,30 @@ public static class TestKeymap
             case 1:
                 Io.LoadText(Environment.GetEnvironmentVariable("LIDER_KEYS")!, out var text, out _, out _, out _);
                 Check(text != null && text.Contains("alt+o " + Toggle + "\n") && text.Contains("alt+i\n"), "the file: " + text);
-                // 新しい key で効き、前の key では効かない
+                // Works with the new key, and not with the previous key
                 var shown = Lider.Inspector.Shown;
                 var focused = w.Focused;
                 Key(KeyI, Keys.ModAlt, 'i');
                 Check(Lider.Inspector.Shown == shown && w.Focused == focused, "the old key still works");
                 Key(KeyO, Keys.ModAlt, 'o');
                 Check(w.Focused == Lider.InspectWindow, "the new key did not move the focus to the inspector");
-                // 検索の命令の行に、今の key が出る
+                // The current key appears on the command's row in search
                 search.Open(w, ">" + Toggle);
                 Check(search.Results.Count > 0 && search.Results[0].Where.Contains("[Alt+O]"), "the search shows: " + (search.Results.Count > 0 ? search.Results[0].Where : ""));
                 search.Cancel(w);
-                // 案内にも出る
+                // It also appears in the hints
                 var hints = "";
                 foreach (var hint in HintRules.For(new HintContext { Target = HintTarget.Nothing }))
                     hints += hint.Key + "|";
                 Check(hints.Contains("Alt+O|") && !hints.Contains("Alt+I|"), "the hints show: " + hints);
-                // file の行から読み直すと、同じ割り当てになる
+                // Reloading from the file's lines gives the same assignments
                 Keymap.Reset();
                 Check(Keymap.StrokeOf(Toggle) == "alt+i", "Reset did not put the key back");
                 Keymap.Load(text!);
                 Check(Keymap.StrokeOf(Toggle) == "alt+o" && Keymap.CommandsOf("alt+i") == "" && string.Join("\n", Keymap.Lines()) + "\n" == text, "reading the file back gave: " + string.Join(" / ", Keymap.Lines()));
                 break;
             case 2:
-                // Esc は、割り当てずにやめる
+                // Esc cancels without assigning
                 Pick(w);
                 Key(Keys.Escape, 0, 0);
                 Check(Lider.KeyFor == null && !search.Shown && Keymap.StrokeOf(Toggle) == "alt+o", "Esc changed the key: " + Keymap.StrokeOf(Toggle));
@@ -118,7 +118,7 @@ public static class TestKeymap
         }
     }
 
-    // keys:set を呼び、検索の欄で命令を選ぶ
+    // Call keys:set and choose the command in the search field
     static void Pick(Workspace w)
     {
         Check(Lider.Run("keys:set"), "keys:set did not run");

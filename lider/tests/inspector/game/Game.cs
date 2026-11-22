@@ -1,6 +1,6 @@
-// ../TestInspector.cs が lider で開くゲーム。インスペクタに出す class と、通るメソッドと通らないメソッドを持つ。
-// 2 つ目の Crate だけが毎 frame Hit を通る。
-// RemoveFrame 個目の frame で最初の Crate を外し、StopFrame 個目の frame から Tick を通らない。
+// The game ../TestInspector.cs opens in lider. Holds a class to show in the inspector, with a method that runs and a method that does not.
+// Only the second Crate runs Hit every frame.
+// Removes the first Crate on the RemoveFrame-th frame, and stops running Tick from the StopFrame-th frame.
 using System.Collections.Generic;
 
 public class Crate

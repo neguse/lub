@@ -1,6 +1,6 @@
-// 窓より長い行と、窓の横の scroll。
-//   - cursor を窓より長い行の末尾へ動かすと、窓は横に scroll し、cursor は窓の中に見える
-//   - scroll しなくても cursor が見える行へ動かすと、窓は左の端に戻る
+// Lines longer than the window, and horizontal scrolling of the window.
+//   - Moving the cursor to the end of a line longer than the window scrolls the window horizontally, and the cursor is visible inside the window
+//   - Moving to a line where the cursor is visible without scrolling returns the window to the left edge
 using System;
 using Lub;
 using LiderCore;
@@ -8,7 +8,7 @@ using LiderEditor;
 
 public static class TestLongLine
 {
-    // Target.cs の窓より長い行と、その下の短い行 (0 から)
+    // The line of Target.cs that is longer than the window, and the short line below it (0-based)
     const int LongLine = 3;
     const int ShortLine = 4;
     static int frames;
@@ -58,7 +58,7 @@ public static class TestLongLine
             w.Focus!.MoveTo(LongLine, 0);
             return;
         }
-        // 窓が開いて止まるまで (2 秒) 待つ
+        // Wait until the window has opened and stopped (2 seconds)
         if (frames < 3 || waited < 1.5f)
             return;
         var doc = w.Focus!;
@@ -89,7 +89,7 @@ public static class TestLongLine
         waited = 1;
     }
 
-    // focus のある窓の cursor (Lider.CaretViewport) が、窓の左右の端の間にあるか
+    // Whether the cursor of the focused window (Lider.CaretViewport) is between the left and right edges of the window
     static bool InWindow(Workspace w)
     {
         var window = w.FocusWindow!;

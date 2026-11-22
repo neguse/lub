@@ -1,19 +1,19 @@
-# lub が link する第三者の library (third_party/CMakeLists.txt) を、lub の configure の途中で build し、<build>/deps/ に install する。
-# install した物の入力 (submodule の commit と差分、compiler、toolchain と deps の option) は <build>/deps/lub-deps.key に書く。
-# 入力が key と一致すれば build しない。
-# CI は <build>/deps/ を cache に置き、key が一致する限り third_party の build を省く。
-# deps の build の tree は <build>/deps-build/ に残し、入力が変わったときは差分だけ build し直す。
-# submodule の HEAD が動くと、次の build が lub の configure をやり直し、deps も作り直す。
-# submodule の中の file を手で書き換えたときは、lub を configure し直す。
+# Builds the third-party libraries that lub links (third_party/CMakeLists.txt) during lub's configure and installs them into <build>/deps/.
+# The inputs of what was installed (submodule commits and diffs, compiler, toolchain, and deps options) are written to <build>/deps/lub-deps.key.
+# If the inputs match the key, nothing is built.
+# CI keeps <build>/deps/ in the cache and skips the third_party build as long as the key matches.
+# The deps build tree is kept in <build>/deps-build/, and when the inputs change only the difference is rebuilt.
+# When a submodule's HEAD moves, the next build reruns lub's configure and rebuilds the deps too.
+# When a file inside a submodule is edited by hand, reconfigure lub.
 
 set(LUB_DEPS_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/deps")
 set(_lub_deps_build "${CMAKE_CURRENT_BINARY_DIR}/deps-build")
 set(_lub_deps_source "${CMAKE_CURRENT_LIST_DIR}/../third_party")
 cmake_path(NORMAL_PATH _lub_deps_source)
 
-# deps の configure に渡す cache の初期値。
-# toolchain と generator の設定、deps の option (SDL_*、BOX2D_*、BOX3D_*、OpenXR の DYNAMIC_LOADER と BUILD_WITH_*)、Vulkan の場所を、lub の cache から写す。
-# lub の option (LUB_*) は deps に関わらないので写さない (LUB_NO_SLANG の build も同じ deps を使う)。
+# Initial cache values passed to the deps configure.
+# Copy the toolchain and generator settings, the deps options (SDL_*, BOX2D_*, BOX3D_*, OpenXR's DYNAMIC_LOADER and BUILD_WITH_*), and the Vulkan location from lub's cache.
+# lub's options (LUB_*) do not affect the deps, so they are not copied (a LUB_NO_SLANG build also uses the same deps).
 set(_lub_deps_init "")
 string(APPEND _lub_deps_init "set(CMAKE_INSTALL_LIBDIR lib CACHE PATH \"\" FORCE)\n")
 string(APPEND _lub_deps_init "set(CMAKE_C_COMPILER [==[${CMAKE_C_COMPILER}]==] CACHE FILEPATH \"\" FORCE)\n")
@@ -34,8 +34,8 @@ foreach(_var IN LISTS _lub_deps_cache_vars)
   endif()
 endforeach()
 
-# key: 上の初期値に、generator、compiler の版、deps の CMake の記述、submodule の commit と差分を足したもの。
-# install の先の path は入れない (install した CMake の package は自分の場所から相対に読むので、deps/ は別の build のディレクトリに写しても使える)。
+# key: the initial values above plus the generator, the compiler version, the deps CMake code, and the submodule commits and diffs.
+# The install destination path is not included (installed CMake packages are read relative to their own location, so deps/ still works when copied into another build directory).
 set(_lub_deps_key "${_lub_deps_init}")
 string(APPEND _lub_deps_key "generator=${CMAKE_GENERATOR}|${CMAKE_GENERATOR_PLATFORM}|${CMAKE_GENERATOR_TOOLSET}\n")
 string(APPEND _lub_deps_key "c=${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}\n")
@@ -83,7 +83,7 @@ else()
   if(CMAKE_GENERATOR_TOOLSET)
     list(APPEND _generator_args -T "${CMAKE_GENERATOR_TOOLSET}")
   endif()
-  # 前の設定が cache に残らないよう、configure は cache を消してやり直す (object は残るので build は差分だけ)。
+  # So that previous settings do not remain in the cache, configure deletes the cache and starts over (objects remain, so the build is incremental).
   file(MAKE_DIRECTORY "${_lub_deps_build}")
   file(REMOVE "${_lub_deps_build}/CMakeCache.txt")
   file(WRITE "${_lub_deps_build}/lub-deps-init.cmake"
@@ -96,7 +96,7 @@ else()
   execute_process(
     COMMAND "${CMAKE_COMMAND}" --build "${_lub_deps_build}" --config "${_config}" --parallel
     COMMAND_ERROR_IS_FATAL ANY)
-  # 古い版の file が残らないよう、install の先は空にしてから入れる。
+  # So that files from an old version do not remain, the install destination is emptied before installing.
   file(REMOVE_RECURSE "${LUB_DEPS_PREFIX}")
   execute_process(
     COMMAND "${CMAKE_COMMAND}" --install "${_lub_deps_build}" --config "${_config}"

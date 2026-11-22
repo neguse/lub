@@ -1,6 +1,6 @@
 using System;
 
-// i32 の演算 (il-spec §5): wrap、0 方向の除算と剰余、シフトの count & 31、算術右シフト、bit 演算
+// i32 operations (il-spec §5): wrap, division and remainder toward 0, shift count & 31, arithmetic right shift, bit operations
 public class IntOps
 {
     static int Mix(int a, int b)

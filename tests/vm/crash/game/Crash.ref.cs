@@ -1,4 +1,4 @@
-// native の拡張 (Crash.so、crash.c) が host の関数として登録する。
+// The native extension (Crash.so, crash.c) registers these as host functions.
 public static class Crash
 {
     public static void Now() { }

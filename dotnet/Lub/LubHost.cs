@@ -1,6 +1,6 @@
-// .NET 実行の host。
-// lub の host API (include/lub/lub_host.h) の上で loop を回し、entry class の OnInit / OnEvent / OnFrame / OnQuit を呼ぶ。
-// App.Run(typeof(Game), args) が入口 (テンプレート templates/game/host/Program.cs)。
+// Host for .NET execution.
+// Runs the loop on top of the lub host API (include/lub/lub_host.h) and calls OnInit / OnEvent / OnFrame / OnQuit of the entry class.
+// App.Run(typeof(Game), args) is the entry point (template: templates/game/host/Program.cs).
 #nullable enable
 using System;
 using System.Reflection;
@@ -49,11 +49,11 @@ internal static unsafe partial class LubNative
 
 public static unsafe partial class App
 {
-    /// <summary>entry class (static class) の static メソッドで runtime を回す。
-    /// OnFrame は必須、OnInit / OnEvent / OnQuit / OnError は任意。
-    /// args は player と同じ (--backend、--fixed-dt、--capture、--capture-frame、--digest、
-    /// --readback-fixed-latency)。
-    /// 返り値は Quit の終了コード。
+    /// <summary>Runs the runtime with the static methods of the entry class (a static class).
+    /// OnFrame is required; OnInit / OnEvent / OnQuit / OnError are optional.
+    /// args are the same as the player's (--backend, --fixed-dt, --capture, --capture-frame, --digest,
+    /// --readback-fixed-latency).
+    /// Returns the exit code given to Quit.
     /// </summary>
     public static int Run(Type entry, string[]? args = null)
     {
@@ -75,8 +75,8 @@ public static unsafe partial class App
             onError == null ? null : (Func<string, ErrorAction>)Delegate.CreateDelegate(typeof(Func<string, ErrorAction>), onError));
     }
 
-    /// <summary>assembly の中から entry class (static OnFrame を持つ唯一の class) を探して回す。
-    /// args に --entry CLASS (namespace 付きは MyGame.Game) があればその class を回す (tcs VM の player の --entry と同じ)。
+    /// <summary>Finds the entry class (the only class with a static OnFrame) in the assembly and runs it.
+    /// If args contain --entry CLASS (MyGame.Game with a namespace), runs that class (same as --entry of the tcs VM player).
     /// </summary>
     public static int Run(Assembly assembly, string[]? args = null)
     {
@@ -194,10 +194,10 @@ public static unsafe partial class App
         }
     }
 
-    // ゲームの例外は callback の境界で止めて log し、処置を entry の OnError に聞く (無ければ Log)。
-    // OnError 自身が失敗するか Log 以外を返したら Abort (終了コード 1 で終わる)。
-    // tcs VM の player と同じ。
-    // f が最後まで走ったら true。
+    // Game exceptions are stopped at the callback boundary and logged, and the entry's OnError decides what to do (Log if there is none).
+    // If OnError itself fails or returns anything other than Log, Abort (exits with exit code 1).
+    // Same as the tcs VM player.
+    // true if f ran to the end.
     private static bool Guard(Action? f, string what, Func<string, ErrorAction>? onError)
     {
         if (f == null) return true;

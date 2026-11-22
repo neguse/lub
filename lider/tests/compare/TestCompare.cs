@@ -1,10 +1,10 @@
-// Alt+D (game:compare) で、保存した版と編集中の版のゲームを並べる (DraftGame)。
-//   - 背景のスクリーンが左右に等分され、左に保存した版、右に編集中の版が出る
-//   - 編集中の版は、動き始めた時に保存した版の状態を写し、その後は同じ frame を進む (数が同じ)
-//   - 保存せずに書き換えた本文は、編集中の版だけに入る (保存した版と disk の file は変わらない)
-//   - 編集中の版が変換できないと、札が「最後に通った版」を出していると書く
-//   - lider が値を見る版は、最後に focus を置いたゲームの絵のウィンドウの版になる
-//   - もう一度呼ぶか、編集中の版の閉じる印で、保存した版だけに戻る
+// Alt+D (game:compare) shows the saved version and the draft version of the game side by side (DraftGame).
+//   - The backdrop screen is split evenly into left and right, with the saved version on the left and the draft version on the right
+//   - The draft version copies the saved version's state when it starts, and afterwards advances by the same frames (the counts match)
+//   - Text rewritten without saving goes only into the draft version (the saved version and the file on disk do not change)
+//   - If the draft version cannot be compiled, its tag says it is showing "最後に通った版"
+//   - The version whose values lider looks at becomes the version of the game image window that last had focus
+//   - Calling it again, or the draft version's close mark, goes back to the saved version only
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -25,7 +25,7 @@ public static class TestCompare
     {
         App.Config(new ConfigOpts { Width = 640, Height = 360 });
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay arrangement (the code panels laid out in a single row on the cylinder screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -42,7 +42,7 @@ public static class TestCompare
     public static void OnFrame(float dt)
     {
         Lider.OnFrame(dt);
-        // ゲームの build を待つ
+        // Wait for the game build
         if (GameApp.Frames == 0)
             return;
         frames++;
@@ -62,7 +62,7 @@ public static class TestCompare
             var right = windows[1].ViewportRect!;
             Check(left.W > 0 && Math.Abs(left.W - right.W) <= 1 && left.X < right.X && Math.Abs(left.X + left.W - right.X) <= 1,
                 "the windows are not side by side: " + left.X + "+" + left.W + " and " + right.X + "+" + right.W);
-            // 並べている間は、どちらの絵にも見出しの帯が付き、絵はその下に収まる
+            // While side by side, both images get a title band, and each image fits below it
             var body = windows[1].ContentRect!;
             Check(windows[0].TitleBar > 0 && body.Y == right.Y + windows[1].TitleBar && Math.Abs(body.H + windows[1].TitleBar - right.H) <= 1,
                 "the picture is not under the title bar: " + body.Y + "+" + body.H + " in " + right.Y + "+" + right.H);
@@ -71,7 +71,7 @@ public static class TestCompare
         }
         else if (stage == 2)
         {
-            // 写した次の frame (どちらも 1 frame 進んだ所)
+            // The frame after the copy (where both have advanced 1 frame)
             var draft = Count(DraftGame.Ref);
             var saved = Count(GameApp.Ref);
             Check(draft >= 30 && draft == saved, "the draft is not in step with the saved version: draft " + draft + ", saved " + saved + " (copied at " + copiedAt + ")");
@@ -103,12 +103,12 @@ public static class TestCompare
         else if (stage == 5 && DraftGame.Build!.LastKind == "error")
         {
             Check(DraftGame.Label() == "編集中 (変換エラー: 最後に通った版)", "label " + DraftGame.Label());
-            // 編集中の版の見出しを押すと focus が移り、閉じる印を押すと並べるのをやめる。保存した版の見出しに閉じる印は無い
+            // Pressing the draft version's title moves focus to it, and pressing its close mark stops the side-by-side view. The saved version's title has no close mark
             var saved = Lider.Screens[0].Windows[0].ViewportRect!;
             var draft = Lider.Screens[0].Windows[1].ViewportRect!;
-            // 小さい画面では Code のウィンドウがゲームの絵の見出しに重なるので、Code のスクリーンを下へ除ける (手前の見出しが先に押される)
+            // On a small display the Code window overlaps the game image's title, so move the Code screen down out of the way (the nearer title gets pressed first)
             w.CodeScreen.Shift(0, -3);
-            // 右の端は Space へ出す印なので、その左を押す
+            // The right end is the move-to-Space mark, so press to its left
             var bar = Lider.Screens[0].Windows[0].TitleBar;
             Click(saved.X + saved.W - bar * 1.5f, saved.Y + bar * 0.5f);
             Check(DraftGame.Shown && w.Focused == Lider.Screens[0].Windows[0], "a click near the right end of the saved title closed something or did not focus it");
@@ -119,7 +119,7 @@ public static class TestCompare
         }
         else if (stage == 51)
         {
-            // focus を置いた版を、lider が見る: 値は編集中の版の物になり、インスペクタの見出しに版の名前が出る
+            // lider looks at the version that has focus: values come from the draft version, and the version name appears in the inspector title
             var watched = -1;
             foreach (var n in Watched.Inspect("Game", 0, 100))
                 if (n.Name == "Count" && int.TryParse(n.Text, out var count))
@@ -154,7 +154,7 @@ public static class TestCompare
         Lider.OnEvent(new EventData { Kind = EventKind.KeyUp, Key = key, Mods = 0, Typed = 0, Plain = 0 });
     }
 
-    // line の中の from を to に打ち直す (保存しない)
+    // Retypes from as to in line (without saving)
     static void Replace(string line, string from, string to)
     {
         var lines = doc!.Lines();
@@ -173,7 +173,7 @@ public static class TestCompare
         doc.Type(to);
     }
 
-    // ゲームの Count の今の値 (読めなければ -1)
+    // Current value of the game's Count (-1 if it cannot be read)
     static int Count(AppRef? app)
     {
         if (app == null)

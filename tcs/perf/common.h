@@ -41,8 +41,8 @@ float perf_frand(PerfRng *rng, float lo, float hi);
 uint32_t perf_digest_init(void);
 uint32_t perf_digest_float(uint32_t digest, float value);
 
-/* perf_now_seconds はホストでは common.c (POSIX clock)、Playdate では
-   perf/playdate/ の shim が提供する */
+/* perf_now_seconds is provided by common.c (POSIX clock) on the host, and on
+   Playdate by the shim in perf/playdate/ */
 double perf_now_seconds(void);
 int perf_parse_workload(int argc, char **argv, PerfWorkload *workload);
 void perf_print_result(const PerfWorkload *workload, const char *variant,

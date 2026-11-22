@@ -5,13 +5,13 @@ using Microsoft.CodeAnalysis.CSharp;
 namespace TinyCs.Tests;
 
 /// <summary>
-/// セルフホストの compiler が持つ BCL の名前の表 (SelfHost/Compiler/BclCatalog.cs) を、参照アセンブリから作り直して比べる。
-/// 表は「.NET に有るがサブセットに無い API」を TCS1002 と報告するのに使う (無い名前は CSxxxx)。
-/// TCS_UPDATE_BCL=1 で表を書き直す。
+/// Rebuilds the BCL name table that the self-hosted compiler has (SelfHost/Compiler/BclCatalog.cs) from the reference assemblies and compares them.
+/// The table is used to report "APIs that exist in .NET but not in the subset" as TCS1002 (missing names are CSxxxx).
+/// TCS_UPDATE_BCL=1 rewrites the table.
 /// </summary>
 public class BclCatalogTests
 {
-    // 型の名前を集める namespace (user のコードが using しそうなもの)
+    // Namespaces to collect type names from (ones that user code is likely to import with using)
     private static readonly string[] Namespaces =
     [
         "System", "System.Collections", "System.Collections.Generic", "System.Collections.ObjectModel",
@@ -20,13 +20,13 @@ public class BclCatalogTests
         "System.Linq.Expressions", "System.Net.Sockets",
     ];
 
-    // 型の名前だけを集める参照アセンブリ (compiler の参照 TcsLibrary.References に無いもの)
+    // Reference assemblies from which only type names are collected (ones not in the compiler's references TcsLibrary.References)
     private static readonly string[] CatalogOnlyAssemblies =
     [
         "System.Threading.Thread.dll", "System.Linq.Expressions.dll", "System.Net.Sockets.dll", "System.Net.Primitives.dll",
     ];
 
-    // member の名前を集める型 (サブセットが member を絞って通す型と、拡張メソッドの Enumerable)
+    // Types to collect member names from (types the subset passes with a restricted member set, and Enumerable for extension methods)
     private static readonly string[] MemberTypes =
     [
         "System.String", "System.Char", "System.Int32", "System.Single", "System.Math", "System.Console",
@@ -96,7 +96,7 @@ public class BclCatalogTests
                         names[m.Name] = t.OriginalDefinition.ToDisplayString(Display);
                 }
             }
-            // 名前ごとに宣言した型の表示 (継承した member は基底の型の名前で報告する)
+            // Display of the declaring type per name (inherited members are reported with the base type's name)
             var display = type.OriginalDefinition.ToDisplayString(Display);
             members[key] = string.Join(" ", names.Select(kv => kv.Value == display ? kv.Key : kv.Key + "@" + kv.Value));
         }
@@ -107,15 +107,15 @@ public class BclCatalogTests
 
             namespace TcsSelf;
 
-            // 生成物 (Transpiler.Tests/BclCatalogTests.cs、TCS_UPDATE_BCL=1)。手で編集しない。
-            // .NET の参照アセンブリにある BCL の型と、サブセットが member を絞って通す型の member の名前。
-            // 「.NET に有るがサブセットに無い API」を TCS1002 と報告するのに使う
+            // Generated file (Transpiler.Tests/BclCatalogTests.cs, TCS_UPDATE_BCL=1). Do not edit by hand.
+            // BCL types in the .NET reference assemblies, and member names of the types the subset passes with a restricted member set.
+            // Used to report "APIs that exist in .NET but not in the subset" as TCS1002
             public static class BclCatalog
             {
                 private static Dictionary<string, string>? _types;
                 private static Dictionary<string, Dictionary<string, string>>? _members;
 
-                // metadata 名 (`System.IO.File`、`System.Collections.Generic.LinkedList`1`) の型の表示の名前 (無ければ null)
+                // Display name of the type with metadata name (`System.IO.File`, `System.Collections.Generic.LinkedList`1`) (null if none)
                 public static string? TypeDisplay(string metadataName)
                 {
                     if (_types == null) _types = Types();
@@ -124,14 +124,14 @@ public class BclCatalogTests
                     return null;
                 }
 
-                // member の一覧を持つ型か
+                // Whether the type has a member list
                 public static bool HasMembers(string metadataName)
                 {
                     if (_members == null) _members = Members();
                     return _members.ContainsKey(metadataName);
                 }
 
-                // 型 (metadata 名) の member を宣言した型の表示の名前 (無ければ null)
+                // Display name of the type that declared a member of the type (metadata name) (null if none)
                 public static string? MemberOwner(string metadataName, string member)
                 {
                     if (_members == null) _members = Members();
@@ -142,7 +142,7 @@ public class BclCatalogTests
                     return null;
                 }
 
-                // 名前を空白で区切った一覧。継承した member は 名前@宣言した型の表示
+                // Space-separated list of names. An inherited member is name@display name of the declaring type
                 private static void AddMembers(Dictionary<string, Dictionary<string, string>> d, string metadataName, string list)
                 {
                     string own = TypeDisplay(metadataName) ?? metadataName;
@@ -156,7 +156,7 @@ public class BclCatalogTests
                     d[metadataName] = names;
                 }
 
-                // metadata 名 (namespace.Name`arity) と表示の名前 (C# のエラーの書式)
+                // Metadata name (namespace.Name`arity) and display name (C# error format)
                 private static Dictionary<string, string> Types()
                 {
                     var d = new Dictionary<string, string>();

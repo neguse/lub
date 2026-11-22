@@ -1,7 +1,7 @@
-// module 単位の混在の試験の「C で固定する側」(tcs2c --lib --vm-host)。content (VM) はこの source を --ref に取る。
+// The "side fixed in C" of the per-module mixing test (tcs2c --lib --vm-host). content (VM) takes this source as --ref.
 namespace Ed
 {
-    // 境界を越える class (content が作り、editor が読み書きする)。field は scalar と、この module の class だけ
+    // A class that crosses the boundary (content creates it, editor reads and writes it). Fields are only scalars and classes of this module
     public class Transform
     {
         public float X;
@@ -10,7 +10,7 @@ namespace Ed
         public Transform Parent;
     }
 
-    // VM の host の ABI の塊で境界を越える struct (field は scalar と、それだけの struct)
+    // A struct that crosses the boundary as a block in the VM host ABI (fields are scalars and structs made only of those)
     public struct Span
     {
         public float Lo;
@@ -18,7 +18,7 @@ namespace Ed
         public bool Open;
     }
 
-    // X-4: content の class がこの interface を実装し、C の module が呼ぶ
+    // X-4: a content class implements this interface and the C module calls it
     public interface ITool
     {
         string Name();
@@ -36,10 +36,10 @@ namespace Ed
         static System.Collections.Generic.List<ITool> tools = new System.Collections.Generic.List<ITool> { new Ruler() };
 
         public static void Register(ITool tool) { tools.Add(tool); }
-        // C の module が delegate を返し、VM が呼ぶ
+        // The C module returns a delegate and the VM calls it
         public static System.Func<int, int> Scaler(int k) => x => x * k;
         public static System.Func<string, string> Shout() => s => s + "!";
-        // C の delegate を VM の runtime の関数 (List.Sort / FindIndex / RemoveAll) に渡す
+        // Passes a C delegate to VM runtime functions (List.Sort / FindIndex / RemoveAll)
         public static System.Comparison<int> Descending() => (a, b) => b - a;
         public static System.Predicate<int> IsEven() => x => x % 2 == 0;
 
@@ -55,10 +55,10 @@ namespace Ed
 
         static int logged;
         static string last = "";
-        // shared heap (X-2): C の module が VM の object を frame を跨いで持つ
+        // shared heap (X-2): the C module holds VM objects across frames
         static Transform selected;
         static object kept;
-        // X-4: content の delegate を C の module が持って呼ぶ
+        // X-4: the C module holds and calls a content delegate
         static System.Action<int> onTick;
         static System.Func<string, string> decorate;
 
@@ -72,7 +72,7 @@ namespace Ed
         public static int Logged() => logged;
         public static string Last() => last;
 
-        // C の関数が VM の object の field を書く
+        // A C function writes a field of a VM object
         public static void Nudge(Transform t, float dx)
         {
             t.X += dx;
@@ -84,22 +84,22 @@ namespace Ed
 
         public static void Select(Transform t) { selected = t; }
         public static Transform Selected() => selected;
-        // 型の番号 (object-model §10.6): C の型の test が VM で作った object を調べる
+        // Type numbers (object-model §10.6): a C type test inspects an object created in the VM
         public static string Classify(object o)
         {
             if (o is Transform t) return "transform L" + t.Layer;
             if (o is ITool tool) return "tool " + tool.Name();
             return "other";
         }
-        // C で作った object を VM に返す
+        // Returns an object created in C to the VM
         public static Transform Spawn(float x) => new Transform { X = x, Layer = 7 };
-        // C が VM の object に参照を書く (write barrier)
+        // C writes a reference into a VM object (write barrier)
         public static void Attach(Transform child, Transform parent) { child.Parent = parent; }
-        // content の型の object も object として持てる (reload で張り替わる)
+        // Objects of content types can also be held as object (repointed on reload)
         public static void Keep(object o) { kept = o; }
         public static object Kept() => kept;
 
-        // struct の値と戻り値、out と T? (VM は C の layout の塊と pointer で渡す)
+        // Struct values and return values, out and T? (the VM passes C-layout blocks and pointers)
         public static float Width(Span s) => s.Hi - s.Lo;
         public static Span Widen(Span s, float d) => new Span { Lo = s.Lo - d, Hi = s.Hi + d, Open = !s.Open };
         public static bool Find(int key, out string name, out Span span)

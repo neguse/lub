@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-/// <summary>compile の結果から VM が受ける IL を取り出す所 (TcsVm.VmEmitter.Exported)。</summary>
+/// <summary>The place that extracts the IL the VM receives from the compile result (TcsVm.VmEmitter.Exported).</summary>
 public class VmExportTests
 {
     [Fact]

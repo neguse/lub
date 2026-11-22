@@ -1,9 +1,9 @@
-// ゲームの物を指すと、それを描いたコードが What に出る。画面の座標は MainTex の画素に直して引く (web の高 DPI)。
-// 物はゲーム (game/Game.cs) が画面の真ん中に描く四角。
-//   - 画素の比率が 2 なら、ゲームは画面の 2 倍の画素の texture に描き、画面の真ん中はその texture の真ん中を引く (比率を見なければ 1/4 の所を引いて外れる)
-//   - 物を指すと What に「メソッド (file:行)」が内側から並ぶ。何も無い所では空
-//   - 中 click するとその行を開く
-// frame はゲームが動き始めてから数える。
+// Pointing at a game object shows the code that drew it in What. Screen coordinates are converted to MainTex pixels for the lookup (high DPI on the web).
+// The object is a square that the game (game/Game.cs) draws in the middle of the screen.
+//   - If the pixel ratio is 2, the game draws to a texture with twice the screen's pixels, and the middle of the screen looks up the middle of that texture (without the ratio, it would look up the 1/4 point and miss)
+//   - Pointing at the object lists "method (file:line)" entries in What, from the innermost. Empty where there is nothing
+//   - Middle-clicking opens that line
+// Frames are counted from when the game starts running.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -45,9 +45,9 @@ public static class TestWhatis
 
     static void TestFrame(float dt)
     {
-        // 比率は、ゲームの texture が作り直されるよう、指す前に変える
+        // Change the ratio before pointing, so that the game's texture is recreated
         Lider.PixelRatio = 2;
-        // ゲームの build を待つ
+        // Wait for the game build
         if (failed || GameApp.Frames == 0)
             return;
         frames++;
@@ -59,13 +59,13 @@ public static class TestWhatis
         if (frames < nextAt)
             return;
         Gfx.Size(out var w, out var h);
-        // ゲームの絵の真ん中 (配置によって、絵は画面の一部になる)
+        // Middle of the game view (depending on the arrangement, the view covers only part of the screen)
         var picture = Lider.Screens[0].Windows[0].ContentRect;
         var at = picture != null ? new Vec2(picture.X + picture.W * 0.5f, picture.Y + picture.H * 0.5f) : new Vec2(w / 2, h / 2);
         var what = string.Join(" / ", Lider.What);
         if (stage == 0)
         {
-            // 指した物のコードを調べたり開いたりできるのは、ゲームを止めている間だけ
+            // The code of the pointed object can be inspected or opened only while the game is paused
             Lider.TogglePause();
             Lider.HoverAt(at.X, at.Y);
             stage = 1;
@@ -74,7 +74,7 @@ public static class TestWhatis
         {
             Check(what.StartsWith("Game.Quad (game/Game.cs:"), "what: " + what);
             Check(what.Contains(" / ← Game.OnFrame (game/Game.cs:"), "the caller is missing: " + what);
-            // 絵の左上の隅 (物の無い所)
+            // Top-left corner of the view (where there is no object)
             Lider.HoverAt(at.X - (picture != null ? picture.W : w) * 0.5f + 1, at.Y - (picture != null ? picture.H : h) * 0.5f + 1);
             stage = 2;
             nextAt = frames + 10;
@@ -82,7 +82,7 @@ public static class TestWhatis
         else if (stage == 2)
         {
             Check(what == "", "the empty place has a what: " + what);
-            // 足あとの板が前にあるので、奥のゲームの物を引く中 click にする
+            // The footprint board is in front, so use a middle click, which picks the game object behind it
             Lider.OnEvent(new EventData { Kind = EventKind.MouseButtonDown, Button = 2, X = at.X, Y = at.Y });
             stage = 3;
         }

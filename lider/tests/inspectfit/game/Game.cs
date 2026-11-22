@@ -1,4 +1,4 @@
-// ../TestInspectFit.cs が lider で開くゲーム。インスペクタに出す値を 1 つ持つ。
+// The game ../TestInspectFit.cs opens in lider. Holds one value to show in the inspector.
 public static class Stage
 {
     public static int ClearTicks = 4980;

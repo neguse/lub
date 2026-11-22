@@ -1,11 +1,11 @@
-// texture と sampler を別に宣言する shader。
-// 1. `Texture2D left; SamplerState left_sampler; ...` を宣言の順を崩して書き、
-//    Load だけで読む lut も持つ shader が、LUB_TEXTURE2D と同じ絵になる。left
-//    は REPEAT、right は CLAMP の 2x1 texture で、各 texture が自分の sampler
-//    で引けていれば 2x1 の target は (texel 0 of left, texel 1 of right) になる。
-// 2. 1 つの sampler を 2 つの texture で共有する shader と、組になる texture の
-//    無い sampler を使う shader は、描画で落ちるのではなく shader compile の
-//    error になり、error は LUB_TEXTURE2D を案内する。
+// Shaders that declare textures and samplers separately.
+// 1. A shader that writes `Texture2D left; SamplerState left_sampler; ...` with the declarations out of order,
+//    and also has a lut read only with Load, produces the same image as LUB_TEXTURE2D. left
+//    is a REPEAT and right a CLAMP 2x1 texture, and if each texture samples with its own sampler,
+//    the 2x1 target becomes (texel 0 of left, texel 1 of right).
+// 2. A shader that shares one sampler between 2 textures, and a shader that uses a sampler without
+//    a paired texture, produce a shader compile error instead of crashing at draw time,
+//    and the error points to LUB_TEXTURE2D.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -47,8 +47,8 @@ public static class TestSeparateSampler
 
         if (compared)
         {
-            // 期待する error は 1 回の callback に 1 つ。
-            // 段階を進めて 1 つずつ見る
+            // One expected error per callback.
+            // Advance the stage and check them one by one
             var s = errStep;
             errStep++;
             if (s == 0) { Check.Error("shared", "second"); Gfx.UseShader("shared", vs, sharedFs, 1); }
@@ -87,7 +87,7 @@ public static class TestSeparateSampler
 
             if (!got[i])
             {
-                // 最初の 1 回で読み戻しを積み、以後は結果が届くまで poll する
+                // Queue a readback the first time, then poll until the result arrives
                 int? req = requested[i] ? null : 1;
                 requested[i] = true;
                 Gfx.ReadTexture(rbs[i], rt, req, out var st, out var bytes, out var w, out var h, out var fmt,
@@ -97,7 +97,7 @@ public static class TestSeparateSampler
                 {
                     Check.That(w == 2 && h == 1 && fmt == Gfx.PixelFormat.Rgba8 && stride == 8,
                         names[i] + ": unexpected readback shape");
-                    // bytes は frame を跨いで持てないので、この場で比べる
+                    // bytes cannot be kept across frames, so compare them here
                     for (var j = 0; j < 8; j++)
                     {
                         var g = bytes!.Get(j);

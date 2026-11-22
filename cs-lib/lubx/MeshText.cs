@@ -1,12 +1,12 @@
-// 実装ライブラリ lubx の MeshText。
+// MeshText of the implementation library lubx.
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
-/// <summary>MeshText の glyph キャッシュ 1 エントリ (内部用)。
-/// 空グリフは vb/ib = null, count = 0 で advance だけ持つ。
-/// verts / idx は buffer を毎 frame 再主張する (sweep を防ぐ) ために持つ。
+/// <summary>One glyph cache entry of MeshText (internal).
+/// Empty glyphs have vb/ib = null, count = 0 and only hold advance.
+/// verts / idx are kept to re-assert the buffers every frame (to prevent sweep).
 /// </summary>
 public class GlyphEntry
 {
@@ -20,10 +20,10 @@ public class GlyphEntry
     public float Cy;
 }
 
-/// <summary>メッシュグリフ描画 (大サイズレジーム)。
-/// TTF 輪郭を三角形化して描くので拡大しても輪郭が崩れない。
-/// 小サイズ本文は Lubx.Text (bitmap) を使うこと。
-/// 座標は論理解像度 px、y は下向き、(x, y) はベースライン。
+/// <summary>Mesh glyph rendering (large-size regime).
+/// Triangulates the TTF outlines and draws them, so the outlines do not break down when scaled up.
+/// Use Lubx.Text (bitmap) for small body text.
+/// Coordinates are logical resolution px, y points down, and (x, y) is the baseline.
 /// </summary>
 public class MeshText
 {
@@ -74,7 +74,7 @@ public class MeshText
     private Dictionary<int, GlyphEntry> glyphs = new Dictionary<int, GlyphEntry>();
     private ShaderRef? shader = null;
 
-    /// <summary>ttfPath は Io.LoadBytes で読める font file の path。
+    /// <summary>ttfPath is the path of a font file readable with Io.LoadBytes.
     /// </summary>
     public MeshText(string key, string ttfPath, int version, int logicalW,
         int logicalH)
@@ -96,8 +96,8 @@ public class MeshText
     {
         if (glyphs.TryGetValue(cp, out var cached))
         {
-            // version が同じなので data は読まれない。
-            // sweep 済みなら作り直す。
+            // version is the same, so data is not read.
+            // Recreate it if it has been swept.
             if (cached.Vb != null && cached.Ib != null && cached.Verts != null
                 && cached.Idx != null)
             {
@@ -116,7 +116,7 @@ public class MeshText
             return null;
         if (gm.Mesh.VertCount == 0)
         {
-            // 空グリフ (スペース等) も advance を持つのでキャッシュする (vb/ib は field 既定の null のまま)
+            // Empty glyphs (spaces etc.) also have an advance, so cache them (vb/ib stay at the field default null)
             var empty = new GlyphEntry
             {
                 Count = 0,
@@ -134,7 +134,7 @@ public class MeshText
         float maxY = -1e9f;
         for (int i = 0; i < gm.Mesh.VertCount; i++)
         {
-            // vertex i の x, y (stride 3、z は捨てる)
+            // x, y of vertex i (stride 3, z is dropped)
             float x = gm.Mesh.Positions[i * 3];
             float y = gm.Mesh.Positions[i * 3 + 1];
             verts.Add(x);
@@ -148,7 +148,7 @@ public class MeshText
             if (y > maxY)
                 maxY = y;
         }
-        // use_buffer は List<float> を取るので indices を詰め替える
+        // use_buffer takes a List<float>, so indices are repacked
         var idx = new List<float>();
         for (int i = 0; i < gm.Mesh.IndexCount; i++)
             idx.Add(gm.Mesh.Indices[i]);
@@ -172,9 +172,9 @@ public class MeshText
         return c ?? Color.Rgb(1.0f, 1.0f, 1.0f);
     }
 
-    /// <summary>グリフ 1 つ。
-    /// (x, y) は centered=false ならベースライン原点、true なら bbox 中心を (x, y) に置く。
-    /// size は px/em、angle は CCW ラジアン。
+    /// <summary>One glyph.
+    /// (x, y) is the baseline origin if centered=false; if true, the bbox center is placed at (x, y).
+    /// size is px/em, angle is CCW radians.
     /// </summary>
     public void Glyph(int cp, float x, float y, float size,
         float? angle = null, Color? tint = null, bool? centered = null)
@@ -209,8 +209,8 @@ public class MeshText
         });
     }
 
-    /// <summary>文字列の先頭グリフ 1 つを描く。
-    /// glyph() の String 版 (char は C# の予約語のため Char)。
+    /// <summary>Draws the first glyph of a string.
+    /// String version of glyph() (Char because char is a C# reserved word).
     /// </summary>
     public void Char(string s, float x, float y, float size,
         float? angle = null, Color? tint = null, bool? centered = null)
@@ -222,7 +222,7 @@ public class MeshText
         }
     }
 
-    /// <summary>1 行をベースライン左端から。
+    /// <summary>One line from the left end of the baseline.
     /// </summary>
     public void Text(string s, float x, float baselineY, float size,
         Color? tint = null)
@@ -240,7 +240,7 @@ public class MeshText
         }
     }
 
-    /// <summary>1 行を中央揃えで (cx は中心)。
+    /// <summary>One line, centered (cx is the center).
     /// </summary>
     public void TextCentered(string s, float cx, float baselineY, float size,
         Color? tint = null)
@@ -248,8 +248,8 @@ public class MeshText
         Text(s, cx - Width(s, size) * 0.5f, baselineY, size, tint);
     }
 
-    /// <summary>1 行の幅 (px)。
-    /// advance の合計 × size。
+    /// <summary>Width of one line (px).
+    /// Sum of advances × size.
     /// </summary>
     public float Width(string s, float size)
     {

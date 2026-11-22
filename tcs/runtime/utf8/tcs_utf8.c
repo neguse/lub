@@ -27,7 +27,7 @@ TCS_UTF8_API size_t tcs_utf8_decode(const unsigned char *s, size_t length,
     if (c == 0xF0)
       low = 0x90; /* overlong */
     if (c == 0xF4)
-      high = 0x8F; /* U+10FFFF の先 */
+      high = 0x8F; /* beyond U+10FFFF */
   } else {
     *rune = 0xFFFD;
     return 1;
@@ -120,7 +120,7 @@ TCS_UTF8_API int tcs_utf8_find_white_space(const unsigned char *s,
   return 0;
 }
 
-/* 読んだ 1 文字が壊れているか (正しい U+FFFD は 3 byte) */
+/* Whether the one character read is malformed (a valid U+FFFD is 3 bytes) */
 static int tcs_utf8_is_broken(uint32_t rune, const unsigned char *s,
                               size_t used) {
   return rune == 0xFFFD && !(used == 3 && s[0] == 0xEF);

@@ -1,10 +1,10 @@
 #!/bin/bash
-# tcs2c で tcs (SelfHost/Compiler、SelfHost/CBackend、SelfHost/VmBackend、SelfHost/Tool) を C にし、ネイティブの tcs を作る。
-# 出力は SelfHost/out/native/ (tcs と一緒に配るファイル runtime/ と lib/ も置く。git に入れない)。
-# 作った tcs が .NET の tcs と同じ出力を出すことを確かめる: samples と tcs 自身の check の診断と終了コード、
-# samples の C (tcs c)、samples と tcs 自身の tcs VM の .tcsb (tcs vm)、reload の batch (tcs vm --reload-from)。
-# ネイティブの tcs が自分の C (tcs.c) を同じに作れること (固定点) も確かめる。
-# CC で C compiler を選ぶ (既定は cc。GNU C の文の式を使うので MSVC の cl は使えない。Windows は clang)。
+# Converts tcs (SelfHost/Compiler, SelfHost/CBackend, SelfHost/VmBackend, SelfHost/Tool) to C with tcs2c and builds the native tcs.
+# Output goes to SelfHost/out/native/ (the runtime/ and lib/ files shipped with tcs go there too; not checked into git).
+# Checks that the built tcs produces the same output as the .NET tcs: check diagnostics and exit codes for samples and tcs itself,
+# C for samples (tcs c), tcs VM .tcsb for samples and tcs itself (tcs vm), and reload batches (tcs vm --reload-from).
+# Also checks that the native tcs produces its own C (tcs.c) identically (fixed point).
+# CC selects the C compiler (default cc. GNU C statement expressions are used, so MSVC's cl cannot be used. On Windows, clang).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/SelfHost/out/native"
@@ -26,7 +26,7 @@ dotnet build "$ROOT/tcsvm/Emitter/tcs2vm.csproj" -c Release -v q -nologo >/dev/n
 DOTNET_TCS=(dotnet "$ROOT/Transpiler/bin/Release/net11.0/Transpiler.dll")
 TCS2C=(dotnet "$ROOT/tcs2c/bin/Release/net11.0/tcs2c.dll")
 TCS2VM=(dotnet "$ROOT/tcsvm/Emitter/bin/Release/net11.0/tcs2vm.dll")
-# tcs c が生成 C に埋め込む runtime の C
+# Runtime C that tcs c embeds into the generated C
 for d in core math fmt model utf8; do
   mkdir -p "$OUT/runtime/$d"
   cp "$ROOT/runtime/$d"/*.c "$ROOT/runtime/$d"/*.h "$OUT/runtime/$d/"
@@ -41,7 +41,7 @@ done
 ARGS=(--ref SelfHost/Tool/TcsHost.cs "${SRC[@]}")
 "${TCS2C[@]}" --lib "${ARGS[@]}" -o "$OUT/tcs.c"
 
-# 浮動小数の規則 (il-spec 付録 B)。-fexcess-precision=standard を受けない compiler では省く
+# Floating-point rules (il-spec Appendix B). Omitted for compilers that do not accept -fexcess-precision=standard
 FLAGS=(-O2 -ffp-contract=off -fwrapv)
 printf 'int main(void){return 0;}\n' > "$OUT/check/probe.c"
 if "$CC" -fexcess-precision=standard -Werror -c "$OUT/check/probe.c" -o "$OUT/check/probe.o" >/dev/null 2>&1; then
@@ -62,7 +62,7 @@ same() {
   fi
 }
 
-# check の診断と終了コードを比べる (stdout と stderr と終了コードを 1 つのファイルに)
+# Compares check diagnostics and exit codes (stdout, stderr, and the exit code in one file)
 check_same() {
   local name="$1"
   shift
@@ -75,7 +75,7 @@ check_same() {
   same "$OUT/check/$name.check.dotnet.txt" "$OUT/check/$name.check.native.txt" "tcs check $name"
 }
 
-# samples: check、C (tcs c)、tcs VM の .tcsb (tcs vm。entry の class の static method を export する)
+# samples: check, C (tcs c), tcs VM .tcsb (tcs vm; exports the static methods of the entry class)
 for pair in hello:Hello game:Battle inventory:Game entity:EntitySample statemachine:StateMachineSample collision:CollisionSample host_api_game:HostApiSample; do
   name="${pair%%:*}"
   cls="${pair##*:}"
@@ -91,23 +91,23 @@ for pair in hello:Hello game:Battle inventory:Game entity:EntitySample statemach
   same "$OUT/check/$name.dotnet.tcsb" "$OUT/check/$name.native.tcsb" "tcs vm $f"
 done
 
-# check の誤りの診断
+# check error diagnostics
 printf 'public class Bad { public static int F() { try { return 1; } finally { } } }\n' > SelfHost/out/native/check/Bad.cs
 check_same bad SelfHost/out/native/check/Bad.cs
 
-# tcs 自身の check
+# check of tcs itself
 start=$(date +%s)
 check_same self "${ARGS[@]}"
 echo "  tcs check itself: $(( $(date +%s) - start )) s"
 
-# tcs 自身の .tcsb (CLI の入口から届く関数)
+# .tcsb of tcs itself (functions reachable from the CLI entry point)
 "${TCS2VM[@]}" --export 'TcsSelf.Cli.*' "${ARGS[@]}" -o "$OUT/check/self.dotnet.tcsb" 2>/dev/null
 start=$(date +%s)
 "$NATIVE" vm --export 'TcsSelf.Cli.*' "${ARGS[@]}" -o "$OUT/check/self.native.tcsb" 2>/dev/null
 echo "  tcs vm itself: $(( $(date +%s) - start )) s"
 same "$OUT/check/self.dotnet.tcsb" "$OUT/check/self.native.tcsb" "tcs vm itself"
 
-# tcs VM の .tcsb。digest の kernel (entry は Main)
+# tcs VM .tcsb. The digest kernel (entry is Main)
 for k in particles:Particles spawn_churn:SpawnChurn sprite_update:SpriteUpdate; do
   file="Transpiler.Tests/DigestKernels/${k%%:*}.cs"
   "${TCS2VM[@]}" --entry "${k##*:}" "$file" -o "$OUT/check/${k%%:*}.dotnet.tcsb" 2>/dev/null
@@ -115,7 +115,7 @@ for k in particles:Particles spawn_churn:SpawnChurn sprite_update:SpriteUpdate; 
   same "$OUT/check/${k%%:*}.dotnet.tcsb" "$OUT/check/${k%%:*}.native.tcsb" "tcs vm $file"
 done
 
-# reload の module と batch (tcs vm --reload-from)
+# Reload module and batch (tcs vm --reload-from)
 HOST_TESTS=tcsvm/tests/host
 "${TCS2VM[@]}" --export 'Game.*' --reload-from "$HOST_TESTS/ReloadV1.cs.txt" "$HOST_TESTS/ReloadV2.cs.txt" \
   -o "$OUT/check/reload.dotnet.tcsb" --batch "$OUT/check/reload.dotnet.batch" 2>/dev/null

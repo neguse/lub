@@ -7,9 +7,6 @@ obj/
 *.swp
 *~
 
-# ローカルエージェント設定 (agmsg が生成、マシン固有)
-.codex/
-
 # CMake build directory
 build/
 

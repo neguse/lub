@@ -1,8 +1,8 @@
-// 本文の行と、ゲームが動かしている版 (LiveLines) の行の対応を確かめる。
-//   - LineDiff.Match は、足した行、消した行、変えた行があっても、中身が同じ行を前の版の行に対応させる。対応は増える向きで、数は一番多い
-//   - 上に行を足しても、下の行は動いている版の同じ行に対応し、変えた行とみなさない。足した行と変えた行だけが変えた行
-//   - 窓は実行した行と値を動いている版の行の番号から引くので、行を足しても値はその行についてくる。変えた行と足した行には出さない
-//   - reload が当たると、本文の行がそのまま動いている版の行になる
+// Checks the mapping between the lines of the text and the lines of the version the game is running (LiveLines).
+//   - LineDiff.Match maps lines with the same content to lines of the previous version, even with added, removed, and changed lines. The mapping is increasing, and has the largest possible count
+//   - Even when lines are added above, the lines below map to the same lines of the live version and are not treated as changed. Only added and changed lines are changed lines
+//   - The window looks up executed lines and values by the line numbers of the live version, so values follow their line even when lines are added. They are not shown on changed or added lines
+//   - When a reload is applied, the lines of the text become the lines of the live version as they are
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -64,7 +64,7 @@ public static class TestLiveLine
         Same(LineDiff.Match(L(""), L("a")), new int[] { -1 }, "an empty before");
         Same(LineDiff.Match(L("a"), L("")), new int[0], "an empty after");
 
-        // 少ない種類の行を並べた版どうしで、対応が正しく、一番多いか
+        // Between versions made of lines of only a few kinds, whether the mapping is correct and the largest
         var seed = 1;
         for (var round = 0; round < 200 && !failed; round++)
         {
@@ -104,7 +104,7 @@ public static class TestLiveLine
         var text = new MonoText("test_liveline_mono", (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/UDEVGothic-Regular.ttf", 15);
         Document.Boot(text.CellW, text.LineH);
         var doc = Document.Open(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!)!;
-        // 動いている版の 8、9 行目 (1 から) が Hp = 1 と Hp = 2
+        // Lines 8 and 9 (1-based) of the live version are Hp = 1 and Hp = 2
         var log = new TraceLog();
         log.Take();
         log.Hit("Target.cs:8");
@@ -112,7 +112,7 @@ public static class TestLiveLine
         log.Value("Target.cs:9:9:Hp", "2");
         Check(Shown(doc, log, 8) == "1" && Shown(doc, log, 9) == "2", "values before editing are " + Shown(doc, log, 8) + " and " + Shown(doc, log, 9));
 
-        // Step の '{' の下に 1 行足す: Hp = 1 は 9 行目、Hp = 2 は 10 行目になる
+        // Add one line below the '{' of Step: Hp = 1 becomes line 9 and Hp = 2 becomes line 10
         doc.MoveTo(6, Utf8.Bytes(doc.Text(6)));
         doc.Type("\n        var x = 0;");
         EditorHost.Step();
@@ -124,7 +124,7 @@ public static class TestLiveLine
         Check(Shown(doc, log, 9) == "1" && Shown(doc, log, 10) == "2", "values after adding are " + Shown(doc, log, 9) + " and " + Shown(doc, log, 10));
         Check(PanelView.AgeAt(doc, log, 9) == 0 && PanelView.AgeAt(doc, log, 8) == -1, "the hit line 8 did not follow to line 9");
 
-        // Hp = 2 を書き換える: その行には値を出さない
+        // Rewrite Hp = 2: no value is shown on that line
         doc.MoveTo(9, Utf8.Bytes(doc.Text(9)) - 1);
         doc.Type("0");
         EditorHost.Step();
@@ -132,13 +132,13 @@ public static class TestLiveLine
         Check(doc.LineChanged(9) && Shown(doc, log, 10) == "", "the changed line 10 shows " + Shown(doc, log, 10));
         Check(Shown(doc, log, 9) == "1", "the untouched line 9 shows " + Shown(doc, log, 9));
 
-        // reload が当たると、本文がそのまま動いている版になる
+        // When a reload is applied, the text becomes the live version as it is
         doc.Save();
         doc.Reloaded();
         Check(doc.LiveLine(9) == 9 && !doc.LineChanged(7) && !doc.LineChanged(9), "lines are still changed after the reload");
     }
 
-    // 窓の line 行目 (1 から) に出す値 (無ければ "")
+    // Value shown on line line (1-based) of the window ("" if none)
     static string Shown(Document doc, TraceLog log, int line)
     {
         var values = PanelView.ValuesAt(doc, log, line);

@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// user の型の名前が TinySystem の facade の名前 (Random) や C# の型の keyword (@float) と同じでも、user の型を指す
+// Even if the name of a user type is the same as a TinySystem facade name (Random) or a C# type keyword (@float), it refers to the user type
 public class UserTypeNamesDifferentialTests
 {
-    // global namespace の user の class Random は TinySystem.Random を隠す (C# の名前の引き方と同じ)
+    // A user class Random in the global namespace hides TinySystem.Random (same as C# name lookup)
     [CFact]
     public void UserClassNamedRandom_ShadowsTinySystemRandom()
     {
@@ -31,7 +31,7 @@ public class UserTypeNamesDifferentialTests
         Assert.Equal("-1,13,3,True\n0,0", output);
     }
 
-    // TinySystem.Text.Utf8Bytes も同じ (user の class Utf8Bytes が隠す)
+    // The same goes for TinySystem.Text.Utf8Bytes (hidden by the user class Utf8Bytes)
     [CFact]
     public void UserClassNamedUtf8Bytes_ShadowsTinySystemText()
     {
@@ -51,7 +51,7 @@ public class UserTypeNamesDifferentialTests
         Assert.Equal("6,2", output);
     }
 
-    // verbatim identifier の class @float は float ではない。new と型の test と switch の arm
+    // The verbatim identifier class @float is not float. new, type tests, and switch arms
     [CFact]
     public void UserClassNamedFloat_IsTheClass()
     {
@@ -71,7 +71,7 @@ public class UserTypeNamesDifferentialTests
         Assert.Equal("True,1,0,0,1.5", output);
     }
 
-    // @float を変数、引数、戻り値、List の要素の型にする形 (#440。C backend は表示名の `@float` を float に読んでいた)
+    // Forms that use @float as the type of variables, arguments, return values, and List elements (#440. The C backend read the display name `@float` as float)
     [CFact]
     public void UserClassNamedFloat_AsDeclaredType()
     {

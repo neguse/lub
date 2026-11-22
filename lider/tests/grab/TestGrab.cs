@@ -1,10 +1,10 @@
-// 窓をつかんで動かし、両手で広げる (Grab)、高さと大きさを変えた窓の当たり、キーボードでの移動。
-//   - 片手でつかんで指す点を動かすと、つかんだ点と窓の中心の差を保って付いてくる
-//   - 両手の間を 2 倍にすると窓が 2 倍になり、Grab.MaxScale と MinScale で止まる
-//   - 両手から片手に戻すと、その点からつかみ直して動く
-//   - 高さと大きさを変えた窓は、その位置と大きさで ray が当たる
-//   - Alt + PageUp で大きくなる
-//   - 非 XR では円筒を平面に開き、窓は大きく開く。右ドラッグで窓が動き、ドラッグ中のホイールで大きさが変わり、離すと列の位置に戻る。窓の外の右ドラッグは窓をつかまない
+// Grabbing and moving windows, spreading them with both hands (Grab), hit testing of windows whose height and size were changed, and moving with the keyboard.
+//   - Grabbing with one hand and moving the pointed point makes the window follow, keeping the offset between the grabbed point and the window center
+//   - Doubling the distance between both hands doubles the window, stopping at Grab.MaxScale and MinScale
+//   - Going back from both hands to one hand grabs again from that point and moves
+//   - A window whose height and size were changed is hit by the ray at that position and size
+//   - Alt + PageUp makes it larger
+//   - Outside XR, the cylinder is unrolled onto a plane and windows open large. Right-dragging moves a window, the wheel during a drag changes its size, and releasing puts it back at its position in the row. Right-dragging outside a window does not grab the window
 using System;
 using Lub;
 using LiderCore;
@@ -18,7 +18,7 @@ public static class TestGrab
     {
         TestInit();
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay layout (code windows lined up in a horizontal row on the cylindrical screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -67,11 +67,11 @@ public static class TestGrab
         Check(target != null && w != null, "LIDER_TEST_FILE or the workspace is missing");
         if (failed)
             return;
-        // 画面の真ん中に窓を置くため、インスペクタはしまう
+        // Put the inspector away so the window is placed in the middle of the screen
         Lider.Inspector.Shown = false;
         w!.FocusOn(target!);
         var window = w.FocusWindow!;
-        // つかむ位置と動かす先は、コードのスクリーンの面の上の (x, y)
+        // The grab position and the move target are (x, y) on the surface of the code screen
         window.Position = new Vec3(0.2f, 0.1f, 0);
         window.Size = window.UnscaledSize;
 
@@ -98,7 +98,7 @@ public static class TestGrab
         grab.Release();
         Check(!grab.Holding, "still holding after release");
 
-        // 高さ 0.2、大きさ 1.5 の窓の上端の近くは、大きさ 1 なら外れる高さでも当たる
+        // Near the top edge of a window with height 0.2 and size 1.5, the ray hits even at a height that would miss at size 1
         window.Scale = 1.5f;
         var edge = 0.2f + PanelView.BaseH * 1.5f * 0.45f;
         var ray = new Ray(new Vec3(0, 0, 0), new Vec3((float)Math.Sin(0.5f) * Space.R, edge, (float)Math.Cos(0.5f) * Space.R));
@@ -114,7 +114,7 @@ public static class TestGrab
         window.Position = null;
     }
 
-    // lider の frame を 1 度通ると、非 XR の平面で窓が読める大きさになる
+    // After going through one lider frame, the window becomes a readable size on the non-XR plane
     static void Sized()
     {
         var window = Lider.Work!.FocusWindow!;
@@ -122,7 +122,7 @@ public static class TestGrab
         Near(window.Scale, Space.FlatScale, "scale of a window opened without XR");
         window.Scale = 1;
 
-        // 角度 a、高さ y の所は、平面の x = R * a、y
+        // The point at angle a and height y is at x = R * a, y on the plane
         var a = 0.25f;
         var ray = new Ray(new Vec3(0, 0, 0), new Vec3(a * Space.R, 0.2f, Space.R));
         var at = Space.OnCylinderAt(ray, Space.R);

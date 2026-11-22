@@ -48,8 +48,8 @@ public class EntryClassTests
             e => e.Contains("reference-only") && e.Contains("Host"));
     }
 
-    // entry は namespaced 指定・一意な simple 指定の両方で引け、
-    // interface / 曖昧な simple 名は誤り。
+    // The entry can be looked up both by a namespaced name and by a unique simple name,
+    // while an interface / ambiguous simple name is an error.
     private const string NamespacedSource = """
         namespace Game
         {

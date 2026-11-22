@@ -9,15 +9,15 @@ import {
 } from "node:fs";
 import { resolve, extname, sep, basename, dirname } from "node:path";
 
-// dotnet build (bin/obj) と変換の出力 (.lub) は配信物に含めない
+// dotnet build output (bin/obj) and compile output (.lub) are not included in the deployed files
 const ARTIFACT_DIRS = new Set(["bin", "obj", ".lub"]);
 
-// サンプルの file の目録 (sample-assets.json)。
-// runtime の Io は MEMFS にあるファイルしか読まないので、player の page (player/main.ts) と、サンプルを開く入口の page (lider/main.ts) が起動前に MEMFS へ置く。
-//   samples: サンプルが読み得る samples/<name>/** の data (.cs と .csproj を除く)
-//   shared: サンプルが共通で読む samples/data/**
-//   sources: サンプルの .cs (入口の page が project として開く)
-//   entries: サンプルの entry class (<Entry>.csproj の basename)
+// Inventory of sample files (sample-assets.json).
+// The runtime's Io reads only files in MEMFS, so the player page (player/main.ts) and the entry page that opens samples (lider/main.ts) place them into MEMFS before startup.
+//   samples: data under samples/<name>/** that a sample may read (excluding .cs and .csproj)
+//   shared: samples/data/** read by all samples
+//   sources: the sample's .cs (opened as a project by the entry page)
+//   entries: the sample's entry class (basename of <Entry>.csproj)
 function listFiles(
   dir: string,
   rel: string,
@@ -53,8 +53,8 @@ function sampleAssets(): string {
   return JSON.stringify({ shared, samples, sources, entries });
 }
 
-// 入口の page (index.html。lider/main.ts) が MEMFS に置く file (lider/ からの path)。
-// lider が読む font と、project の雛形にするゲームの例。
+// Files the entry page (index.html; lider/main.ts) places in MEMFS (paths from lider/).
+// The font lider reads and the game examples used as project templates.
 const LIDER_ROOT = resolve(__dirname, "../lider");
 const LIDER_TREE = [
   "data/UDEVGothic-Regular.ttf",
@@ -64,8 +64,8 @@ const LIDER_TREE = [
   "samples/flappy/*.cs",
   "samples/empty/*.cs",
 ];
-// lider の player (lider/scripts/build-player.sh --web) と lider の bytecode (npm run gen-lider)。
-// lub の player (wasm/) とは別の場所 (lider-wasm/) で配る。
+// lider player (lider/scripts/build-player.sh --web) and lider bytecode (npm run gen-lider).
+// Served from a different location (lider-wasm/) than the lub player (wasm/).
 const LIDER_WASM: Record<string, string> = {
   "lub.js": resolve(LIDER_ROOT, "build/player-web/web/lub.js"),
   "lub.wasm": resolve(LIDER_ROOT, "build/player-web/web/lub.wasm"),
@@ -89,17 +89,17 @@ function liderTree(): string[] {
 
 export default defineConfig({
   publicDir: "public",
-  // index (lider を動かす入口) / player / docs の 3 page と、前の lider の page の URL から index へ移す lider.html。
-  // 無い path は SPA fallback の 200 (index.html) ではなく 404 にする。
-  // 配信先 (Cloudflare の assets) と同じ挙動で、web verify の strict 404 が base の中の誤った path を拾える。
+  // The 3 pages index (the entry that runs lider) / player / docs, and lider.html, which redirects the old lider page URL to index.
+  // Missing paths return 404 instead of the SPA fallback 200 (index.html).
+  // This matches the behavior of the deployment target (Cloudflare assets), so the strict 404 of web verify can catch wrong paths inside base.
   appType: "mpa",
   server: { fs: { allow: [".."] } },
   build: {
     outDir: "dist",
-    // WebGPU の無いブラウザでも page の script は読めるようにし、使えないことを出す (vite の既定の target は古い Safari より新しいことがある)
+    // Keeps the page script loadable even in browsers without WebGPU so it can report that it is unavailable (vite's default target can be newer than old Safari)
     target: "es2020",
     rollupOptions: {
-      // HTML の入口ごとに script を束ねる (指さないと index.html だけになる)
+      // Bundles scripts per HTML entry (if not specified, only index.html is built)
       input: {
         main: resolve(__dirname, "index.html"),
         player: resolve(__dirname, "player.html"),
@@ -122,7 +122,7 @@ export default defineConfig({
         ]);
         function serveDir(prefix: string, baseDir: string) {
           server.middlewares.use(prefix, (req, res, next) => {
-            // vite の dynamic import は ?import を付けてくるので query は落とす
+            // vite's dynamic import appends ?import, so the query is dropped
             const urlPath = (req.url || "").split("?")[0];
             const filePath = resolve(baseDir, urlPath.slice(1));
             // Path traversal guard: filePath must be inside baseDir.
@@ -145,7 +145,7 @@ export default defineConfig({
             }
           });
         }
-        // --base 付きでも build と同じ URL (<base>samples/ 等) で配る。
+        // Serves at the same URLs as build (<base>samples/ etc.) even with --base.
         const base = server.config.base;
         server.middlewares.use(base + "sample-assets.json", (_req, res) => {
           res.setHeader("Content-Type", "application/json");
@@ -155,7 +155,7 @@ export default defineConfig({
         serveDir(base + "cs-lib", resolve(__dirname, "../cs-lib"));
         serveDir(base + "tcs-wasm", resolve(__dirname, "tcs-wasm-assets"));
         serveDir(base + "wasm", resolve(__dirname, "../build/wasm"));
-        // 入口の page の file は中身をそのまま返す (build の copy と同じ byte 列)
+        // Files of the entry page are returned as they are (the same bytes as the build copy)
         function serveFiles(prefix: string, files: () => Map<string, string>) {
           server.middlewares.use(prefix, (req, res, next) => {
             const file = files().get((req.url || "").split("?")[0].slice(1));
@@ -197,11 +197,11 @@ export default defineConfig({
         });
         if (existsSync("tcs-wasm-assets"))
           cpSync("tcs-wasm-assets", "dist/tcs-wasm", { recursive: true });
-        // tcs VM の player
+        // tcs VM player
         mkdirSync("dist/wasm/vm", { recursive: true });
         for (const f of ["lub.js", "lub.wasm"])
           cpSync(`../build/wasm/vm/${f}`, `dist/wasm/vm/${f}`);
-        // 入口の page
+        // Entry page
         const tree = liderTree();
         for (const p of tree) {
           mkdirSync(dirname(`dist/lider-fs/${p}`), { recursive: true });

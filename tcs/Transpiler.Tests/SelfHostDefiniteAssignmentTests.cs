@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// セルフホストの確実な代入 (CS0165) が Roslyn と同じ判定になるか。
-/// 同じ本体を両方に通し、CS0165 の有無を比べる (条件式の真偽ごとの状態、loop、switch、lambda、到達できない場所)。
+/// Checks that self-host definite assignment (CS0165) decides the same as Roslyn.
+/// Runs the same body through both and compares whether CS0165 is reported (state per true/false of a condition, loop, switch, lambda, unreachable code).
 /// </summary>
 public class SelfHostDefiniteAssignmentTests
 {

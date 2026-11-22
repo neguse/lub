@@ -1,5 +1,5 @@
-// 同じ key の buffer を大きさを変えて宣言し直しても、shader から見える数は宣言した数で、内容は宣言した内容であること。
-// 容量を再利用する backend で範囲を束縛し損ねると、shader の見る数が容量になって末尾の緑を読めない。
+// Even when a buffer with the same key is redeclared with a different size, the count seen by the shader is the declared count and the contents are the declared contents.
+// If a backend that reuses capacity fails to bind the range, the count seen by the shader becomes the capacity and the green at the end cannot be read.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -18,7 +18,7 @@ public static class TestBufferCapacity
         rb = Gfx.Readback("buffer_capacity");
     }
 
-    // 最後の要素だけ緑で、他は赤。
+    // Only the last element is green; the others are red.
     static List<float> Colors(int n)
     {
         var data = new List<float>();

@@ -1,37 +1,37 @@
-// lub の samples/25_bowling の entry。
-// 実行: lub samples/25_bowling/Bowling25.csproj (transpile + watch + hot reload)
+// Entry for lub's samples/25_bowling.
+// Run: lub samples/25_bowling/Bowling25.csproj (transpile + watch + hot reload)
 //
-// 3D ボウリング。
-// 実寸レーンと実重量比のボール/ピンを Phys3d に載せ、補助力なしの物理だけで転がす:
+// 3D bowling.
+// A real-size lane and a ball/pins with realistic weight ratios are put on Phys3d and rolled by physics alone, without assist forces:
 //
-// - レーン: ファウルライン→1番ピン 18.29m、幅 1.066m。
-//   手前 2/3 はオイルで
-//   低摩擦、奥 1/3 はドライ。回転 (フックの軸成分) はオイル上では滑るだけで、
-//   ドライゾーンに入ると摩擦で横に効き始める = 実物のフックの原理そのまま
-// - ボール: 半径 0.108m / 約 6.3kg。
-//   リリース時は転がり不足 (スキッド) +
-//   進行軸回りの回転を与える。指穴の回転が見えるのはこのため
-// - ピン: 高さ 0.38m / 約 1.5kg (ボールの 1/4)。
-//   物理は円柱 + 球 + カプセルの
-//   複数 shape 近似で、重心が実物並みに低い
-// - 入力: ボタン連打の 4 段階 (位置 → 角度 → フック → パワー)。
-//   放置でアトラクトモードが自動投球する
-// - スコア: 10 フレームの正式ルール (ストライク/スペア/10 フレーム目 3 投)
+// - Lane: foul line→1 pin 18.29m, width 1.066m.
+//   The front 2/3 is oiled for
+//   low friction, the back 1/3 is dry. Rotation (the axis component of the hook) only slips on the oil,
+//   and starts to act sideways through friction once it enters the dry zone = exactly the principle of a real hook
+// - Ball: radius 0.108m / about 6.3kg.
+//   At release it gets under-rolling (skid) +
+//   rotation around the travel axis. This is why the finger holes are seen rotating
+// - Pins: height 0.38m / about 1.5kg (1/4 of the ball).
+//   Physics approximates them with multiple shapes of cylinder + sphere + capsule,
+//   and the center of mass is as low as on a real pin
+// - Input: 4 stages of button presses (position → angle → hook → power).
+//   When left idle, attract mode bowls automatically
+// - Score: official 10-frame rules (strike/spare/3 rolls in the 10th frame)
 //
-// ピンは class Pin、アトラクトの乱数は決定的な Lubx.Rand を使う。
+// Pins are class Pin, and the attract random numbers use the deterministic Lubx.Rand.
 
 using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-/// <summary>ピン 1 本。
+/// <summary>One pin.
 /// </summary>
 public class Pin
 {
-    public int Gen; // version (ラック再設置で上げる)
-    public bool Standing; // ラック上に残っている (倒れた分はスイープ済み)
-    public float X; // 定位置 (スポット)
+    public int Gen; // version (bumped when the rack is reset)
+    public bool Standing; // Remaining on the rack (knocked-down pins are already swept)
+    public float X; // Home position (spot)
     public float Z;
 }
 
@@ -41,34 +41,34 @@ public static class Bowling25
     const int h = 540;
     const float tickDt = 1.0f / 60.0f;
 
-    // --- 実寸 (m) ----------------------------------------------------------
-    const float laneHw = 0.533f; // レーン半幅 (41.5in)
-    const float gutterW = 0.235f; // ガター幅
-    const float pinZ = 18.29f; // ファウルライン→1番ピン (60ft)
-    const float pinDx = 0.3048f; // 隣接ピン間隔 (12in)
-    const float rowDz = 0.2639f; // 列間 (12in × sin60°)
-    const float deckEnd = 19.96f; // ピンデッキ末端。ここからピット
-    const float pitEnd = 21.0f; // ピット奥 (クッション)
-    const float oilEnd = 12.2f; // オイルパターン終端 (40ft 相当)
-    const float ballR = 0.108f; // ボール半径 (8.5in 径)
+    // --- Real dimensions (m) ----------------------------------------------------------
+    const float laneHw = 0.533f; // Lane half width (41.5in)
+    const float gutterW = 0.235f; // Gutter width
+    const float pinZ = 18.29f; // Foul line→1 pin (60ft)
+    const float pinDx = 0.3048f; // Spacing of adjacent pins (12in)
+    const float rowDz = 0.2639f; // Row spacing (12in × sin60°)
+    const float deckEnd = 19.96f; // End of the pin deck. The pit starts here
+    const float pitEnd = 21.0f; // Back of the pit (cushion)
+    const float oilEnd = 12.2f; // End of the oil pattern (equivalent to 40ft)
+    const float ballR = 0.108f; // Ball radius (8.5in diameter)
 
-    // 材質。
-    // 摩擦の合成は sqrt(fA×fB) なので、ボール 0.2 に対して実効摩擦はオイル上 ≈ 0.04、ドライ上 ≈ 0.17 と実物のレンジに合わせている
+    // Materials.
+    // Friction is combined as sqrt(fA×fB), so with 0.2 for the ball the effective friction is ≈ 0.04 on oil and ≈ 0.17 on dry, matched to the real range
     const float fricOil = 0.008f;
     const float fricDry = 0.15f;
-    const float ballDensity = 1190.0f; // 約 6.3kg (14lb 球)
-    const float pinDensity = 620.0f; // 約 1.53kg
-    const float skid = 0.5f; // リリース時の転がり率 (1=完全転がり)
+    const float ballDensity = 1190.0f; // About 6.3kg (14lb ball)
+    const float pinDensity = 620.0f; // About 1.53kg
+    const float skid = 0.5f; // Rolling ratio at release (1=fully rolling)
 
-    // --- 状態機械 -----------------------------------------------------------
-    const int stAim = 0; // 立ち位置 (マーカーが往復)
-    const int stAngle = 1; // 投球角度
-    const int stHook = 2; // フック回転量
-    const int stPower = 3; // パワー → 投球
-    const int stRoll = 4; // ボールが転がっている
-    const int stSettle = 5; // ピンが静止するのを待つ
-    const int stScore = 6; // 判定表示 (スイープ済み)
-    const int stEnd = 7; // ゲーム終了
+    // --- State machine -----------------------------------------------------------
+    const int stAim = 0; // Standing position (the marker moves back and forth)
+    const int stAngle = 1; // Throw angle
+    const int stHook = 2; // Hook rotation amount
+    const int stPower = 3; // Power → throw
+    const int stRoll = 4; // The ball is rolling
+    const int stSettle = 5; // Waiting for the pins to settle
+    const int stScore = 6; // Showing the result (already swept)
+    const int stEnd = 7; // Game over
 
     static int state = stAim;
     static int stateT = 0;
@@ -76,10 +76,10 @@ public static class Bowling25
     static FixedStep? step = null;
     static int pendingPresses = 0;
 
-    // 投球パラメータ (各段階でロック)
+    // Throw parameters (locked at each stage)
     static float aimX = 0.0f;
-    static float angle = 0.0f; // rad。+ で右へ
-    static float hook = 0.0f; // rad/s。+ で左に曲がる
+    static float angle = 0.0f; // rad. + goes right
+    static float hook = 0.0f; // rad/s. + curves left
     static float power = 0.0f; // 0..1
     static int throwGen = 0;
     static bool ballLive = false;
@@ -92,7 +92,7 @@ public static class Bowling25
     static bool inGutter = false;
     static int standingBefore = 10;
 
-    // アトラクトモード (放置で自動投球。ヘッドレス検証兼デモ)
+    // Attract mode (bowls automatically when left idle. For headless verification and demos)
     static bool autoPlay = false;
     static int idleT = 0;
     static float autoAimX = 0.0f;
@@ -101,10 +101,10 @@ public static class Bowling25
     static float autoPower = 0.85f;
     static Rand? rng = null;
 
-    // スコア (10 フレーム正式ルール)
+    // Score (official 10-frame rules)
     static List<Pin> pins = new List<Pin>();
     static List<List<int>> fRolls = new List<List<int>>();
-    static int fi = 0; // 現在フレーム (0..9)
+    static int fi = 0; // Current frame (0..9)
     static bool rerackPending = false;
     static bool gameOverPending = false;
 
@@ -122,7 +122,7 @@ public static class Bowling25
     {
     }
 
-    // ピン配置: 1番ピンを頂点に 4 列の三角形
+    // Pin layout: a 4-row triangle with the 1 pin at the apex
     static void EnsurePins()
     {
         if (pins.Count > 0) return;
@@ -150,7 +150,7 @@ public static class Bowling25
         }
     }
 
-    // --- SDF モデル ---------------------------------------------------------- ピン: 物理 shape (declarePinShapes) と寸法を揃えた回転体近似
+    // --- SDF model ---------------------------------------------------------- Pin: a solid-of-revolution approximation with dimensions matching the physics shapes (declarePinShapes)
     static SdfNode PinModel()
     {
         var white = 0xFFF8E9;
@@ -170,7 +170,7 @@ public static class Bowling25
         return stripe1.Union(stripe2).Union(body.Paint(white, 0.0f, 0.18f));
     }
 
-    // ボール: 指穴 3 つ + 飾りリング (回転が見えるように)
+    // Ball: 3 finger holes + a decorative ring (so the rotation is visible)
     static SdfNode BallModel()
     {
         var body = Sdf.Sphere(ballR).Paint(0x194878, 0.35f, 0.12f);
@@ -184,8 +184,8 @@ public static class Bowling25
         return withRing.Ssub(h1, 0.002f).Ssub(h2, 0.002f).Ssub(h3, 0.002f);
     }
 
-    // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は OnReload で立てる。
-    // どちらも再メッシュのトリガ。
+    // native watch resets it to the initial value true by re-running the chunk, and web (module mode) sets it in OnReload.
+    // Both trigger a remesh.
     static bool meshDirty = true;
 
     public static void OnReload()
@@ -197,58 +197,58 @@ public static class Bowling25
     static Mesh3d? cubeMesh = null;
     static Mesh3d? hallMesh = null;
 
-    // --- 物理宣言 ------------------------------------------------------------ 静物: x, y, z, hx, hy, hz, friction, restitution
+    // --- Physics declarations ------------------------------------------------------------ Static objects: x, y, z, hx, hy, hz, friction, restitution
     static List<float[]> statics = new List<float[]>
     {
-        // アプローチ
+        // Approach
         new float[]
             { 0, -0.06f, -1.25f, laneHw + gutterW + 0.12f, 0.06f, 1.25f, 0.3f, 0.1f },
-        // レーン (オイル)
+        // Lane (oil)
         new float[]
             { 0, -0.06f, oilEnd * 0.5f, laneHw, 0.06f, oilEnd * 0.5f, fricOil, 0.08f },
-        // レーン (ドライ) + ピンデッキ
+        // Lane (dry) + pin deck
         new float[]
         {
             0, -0.06f, (oilEnd + deckEnd) * 0.5f, laneHw, 0.06f,
             (deckEnd - oilEnd) * 0.5f, fricDry, 0.08f,
         },
-        // ガター左
+        // Gutter left
         new float[]
         {
             -(laneHw + gutterW * 0.5f), -0.104f, deckEnd * 0.5f, gutterW * 0.5f,
             0.05f, deckEnd * 0.5f, 0.3f, 0.1f,
         },
-        // ガター右
+        // Gutter right
         new float[]
         {
             laneHw + gutterW * 0.5f, -0.104f, deckEnd * 0.5f, gutterW * 0.5f,
             0.05f, deckEnd * 0.5f, 0.3f, 0.1f,
         },
-        // 側壁左
+        // Side wall left
         new float[]
         {
             -(laneHw + gutterW + 0.03f), 0.08f, pitEnd * 0.5f, 0.03f, 0.22f,
             pitEnd * 0.5f, 0.2f, 0.3f,
         },
-        // 側壁右
+        // Side wall right
         new float[]
         {
             laneHw + gutterW + 0.03f, 0.08f, pitEnd * 0.5f, 0.03f, 0.22f,
             pitEnd * 0.5f, 0.2f, 0.3f,
         },
-        // ピット床
+        // Pit floor
         new float[]
         {
             0, -0.58f, (deckEnd + pitEnd) * 0.5f, laneHw + gutterW + 0.06f,
             0.05f, (pitEnd - deckEnd) * 0.5f + 0.2f, 0.9f, 0.02f,
         },
-        // ピットクッション
+        // Pit cushion
         new float[]
         {
             0, -0.15f, pitEnd + 0.05f, laneHw + gutterW + 0.06f, 0.45f, 0.05f,
             0.6f, 0.05f,
         },
-        // マスキング (跳ねたピンが当たる)
+        // Masking (bouncing pins hit it)
         new float[]
             { 0, 0.95f, 19.3f, laneHw + gutterW + 0.06f, 0.35f, 1.0f, 0.3f, 0.1f },
     };
@@ -275,8 +275,8 @@ public static class Bowling25
         }
     }
 
-    // ピンの物理: 円柱の台座 + 腹の球 + 首カプセル + 頭球。
-    // 均一密度でも台座が太いぶん重心は実物並み (床から約 0.16m) に落ちる
+    // Pin physics: cylinder base + belly sphere + neck capsule + head sphere.
+    // Even with uniform density, the thick base lowers the center of mass to a realistic height (about 0.16m above the floor)
     static void DeclarePinShapes(BodyRef3d body, int ver)
     {
         var f = 0.35f;
@@ -371,7 +371,7 @@ public static class Bowling25
         });
     }
 
-    // --- 投球 ----------------------------------------------------------------
+    // --- Throw ----------------------------------------------------------------
     static void ThrowBall()
     {
         throwGen++;
@@ -382,8 +382,8 @@ public static class Bowling25
         var dz = (float)Math.Cos(angle);
         ballVX = dx * spd;
         ballVZ = dz * spd;
-        // 転がり不足 (スキッド) + フック軸回転。
-        // フックはオイル上ではほぼ横滑りのままで、ドライゾーンの摩擦で初めて曲がりに変わる
+        // Under-rolling (skid) + rotation about the hook axis.
+        // On the oil the hook stays almost pure sideways sliding, and only the friction of the dry zone turns it into a curve
         var roll = skid * spd / ballR;
         ballWX = roll * dz + hook * dx;
         ballWZ = -roll * dx + hook * dz;
@@ -416,13 +416,13 @@ public static class Bowling25
             if (Math.Abs(pose.X) > laneHw + 0.02f && pose.Y < 0.09f)
                 inGutter = true;
             var sp = (float)Math.Sqrt(pose.Vx * pose.Vx + pose.Vz * pose.Vz);
-            if (pose.Y < -0.25f) // ピットに落ちた
+            if (pose.Y < -0.25f) // Fell into the pit
             {
                 done = true;
             }
             else if (sp < 0.12f && pose.Z < deckEnd - 0.6f)
             {
-                stallFrames++; // レーン上で失速 (デッドボール)
+                stallFrames++; // Stalled on the lane (dead ball)
                 if (stallFrames > 50) done = true;
             }
             else
@@ -450,8 +450,8 @@ public static class Bowling25
             CountAndScore(world);
     }
 
-    // 倒れた判定 → スイープ → 記録。
-    // ピンは傾き (up ベクトル) と高さで判定し、滑って立ったままのピンは実機同様その場に残す (オフスポット)
+    // Knockdown check → sweep → record.
+    // Pins are judged by tilt (up vector) and height; pins that slid but are still standing stay where they are, as on a real machine (off spot)
     static void CountAndScore(WorldRef3d world)
     {
         var stand = 0;
@@ -500,8 +500,8 @@ public static class Bowling25
         }
         else
         {
-            // 10 フレーム目: ストライク/スペアで最大 3 投。
-            // 全倒で再設置
+            // 10th frame: up to 3 rolls with a strike/spare.
+            // Reset when all pins are down
             var canThird = fr.Count >= 2 && (fr[0] == 10 || fr[0] + fr[1] == 10);
             if (fr.Count >= 3 || (fr.Count == 2 && !canThird))
                 gameOverPending = true;
@@ -512,7 +512,7 @@ public static class Bowling25
         Enter(stScore);
     }
 
-    // --- スコア計算 (正式ルール) ----------------------------------------------
+    // --- Score calculation (official rules) ----------------------------------------------
     static List<int> FlatRolls()
     {
         var a = new List<int>();
@@ -541,7 +541,7 @@ public static class Bowling25
             if (i >= flat.Count) break;
             if (f == 9)
             {
-                // 10 フレーム目はボーナス投球込みの単純加算
+                // The 10th frame is a simple sum including the bonus rolls
                 for (int k = i; k < flat.Count; k++)
                     score += flat[k];
                 break;
@@ -582,7 +582,7 @@ public static class Bowling25
                 s += r[0] + r[1] == 10 ? "/" : RollChar(r[1]);
             return s;
         }
-        // 10 フレーム目: ラックが満杯だった投球の 10 は X、残りを取れば /
+        // 10th frame: a 10 on a roll with a full rack is X, and clearing the rest is /
         var s10 = "";
         var rackFull = true;
         var prev = 0;
@@ -610,7 +610,7 @@ public static class Bowling25
         return s10;
     }
 
-    // --- 状態機械 --------------------------------------------------------------
+    // --- State machine --------------------------------------------------------------
     static void Enter(int s)
     {
         state = s;
@@ -626,7 +626,7 @@ public static class Bowling25
             idleT = 0;
             if (autoPlay)
             {
-                autoPlay = false; // 手動に引き継ぎ (この押下は消費)
+                autoPlay = false; // Hand over to manual (this press is consumed)
                 return false;
             }
         }
@@ -648,7 +648,7 @@ public static class Bowling25
 
     static void StartAuto()
     {
-        // アトラクトの乱数は決定的な Rand
+        // The attract random numbers use the deterministic Rand
         var r = rng;
         if (r == null)
         {
@@ -657,13 +657,13 @@ public static class Bowling25
         }
         autoPlay = true;
         idleT = 0;
-        // 外に出してポケット (±0.075) へ曲げ戻すライン。
-        // 乱数で毎回散らす
+        // A line that goes out and curves back into the pocket (±0.075).
+        // Scattered with random numbers every time
         var side = r.NextFloat() < 0.5f ? 1.0f : -1.0f;
         autoAimX = side * (0.12f + r.NextFloat() * 0.06f);
         autoHook = side * (18.0f + r.NextFloat() * 4.0f);
         autoPower = 0.82f + r.NextFloat() * 0.08f;
-        // バックエンドの曲がり量 (ヘッドレス実測: 約 0.40m @ 球速 8.9m/s、遅いほど増える) から狙い角を逆算し、人間らしい誤差を足す
+        // Work back the aim angle from the amount of curve on the back end (measured headless: about 0.40m @ ball speed 8.9m/s, more when slower) and add a human-like error
         var spd = 5.6f + 3.9f * autoPower;
         var drift = 0.40f + (8.9f - spd) * 0.3f;
         autoAngle = (side * (0.075f + drift) - autoAimX) / 18.3f
@@ -682,7 +682,7 @@ public static class Bowling25
         if (state == stAim)
         {
             if (autoPlay && stateT == 1)
-                StartAuto(); // 投球ごとにラインを再抽選
+                StartAuto(); // Re-draw the line for every throw
             aimX = 0.42f * (float)Math.Sin(stateT * 0.030f);
             if (AutoNear(aimX, autoAimX, 0.02f)) pressed = true;
             if (pressed)
@@ -751,8 +751,8 @@ public static class Bowling25
         }
     }
 
-    // --- カメラ ------------------------------------------------------------------
-    static Vec3? camEye = null; // 初期値は updateCamera が補う (遅延生成)
+    // --- Camera ------------------------------------------------------------------
+    static Vec3? camEye = null; // updateCamera fills in the initial value (lazy creation)
     static Vec3? camTgt = null;
     static float camFov = 38.0f;
 
@@ -799,7 +799,7 @@ public static class Bowling25
         camFov = MathUtil.Lerp(camFov, dfov, k);
     }
 
-    // --- 描画 --------------------------------------------------------------------
+    // --- Drawing --------------------------------------------------------------------
     static Renderer3d? ren = null;
 
     static Mat4 BoxMat(float x, float y, float z, float sx, float sy,
@@ -824,7 +824,7 @@ public static class Bowling25
         r.Draw(cube, model, new Draw3dOpts { Tint = color, Blend = blend });
     }
 
-    // 静的な舞台 (物理 STATICS と目視で寸法を揃える)
+    // Static stage (dimensions matched by eye to the physics STATICS)
     static ShaderRef? SurfaceShader()
     {
         return Gfx.UseShader("bw25_surface", Renderer3d.ShaderUniforms + """
@@ -977,20 +977,20 @@ public static class Bowling25
 
         if (hallMesh != null && ren != null)
             ren.Draw(hallMesh, Mat4.Identity(), new Draw3dOpts { Shader = SurfaceShader() });
-        // 周辺の床 (見た目のみ)
+        // Surrounding floor (visual only)
         DrawBox(BoxMat(0, -0.7f, 9.0f, 6.0f, 0.05f, 14.0f),
             Color.Rgb(0.10f, 0.10f, 0.13f), null);
-        // ガター
+        // Gutters
         DrawBox(BoxMat(-(laneHw + gutterW * 0.5f), -0.104f, deckEnd * 0.5f,
             gutterW * 0.5f, 0.05f, deckEnd * 0.5f), dark, null);
         DrawBox(BoxMat(laneHw + gutterW * 0.5f, -0.104f, deckEnd * 0.5f,
             gutterW * 0.5f, 0.05f, deckEnd * 0.5f), dark, null);
-        // 側壁
+        // Side walls
         DrawBox(BoxMat(-(laneHw + gutterW + 0.03f), 0.08f, pitEnd * 0.5f, 0.03f,
             0.22f, pitEnd * 0.5f), Color.Rgb(0.11f, 0.18f, 0.25f), null);
         DrawBox(BoxMat(laneHw + gutterW + 0.03f, 0.08f, pitEnd * 0.5f, 0.03f,
             0.22f, pitEnd * 0.5f), Color.Rgb(0.11f, 0.18f, 0.25f), null);
-        // ピット (奥の暗がり) とマスキング
+        // Pit (the dark back) and masking
         DrawBox(BoxMat(0, -0.58f, (deckEnd + pitEnd) * 0.5f,
             laneHw + gutterW + 0.06f, 0.05f, (pitEnd - deckEnd) * 0.5f + 0.2f),
             Color.Rgb(0.05f, 0.05f, 0.07f), null);
@@ -998,10 +998,10 @@ public static class Bowling25
             0.45f, 0.05f), Color.Rgb(0.08f, 0.08f, 0.10f), null);
         DrawBox(BoxMat(0, 0.95f, 19.3f, laneHw + gutterW + 0.06f, 0.35f, 1.0f),
             accentRed, null);
-        // ファウルライン
+        // Foul line
         DrawBox(BoxMat(0, 0.001f, 0, laneHw, 0.0015f, 0.012f),
             Color.Rgb(0.15f, 0.15f, 0.17f), null);
-        // ガイド: ドット (2.13m) とアロー (V 字に並ぶひし形)
+        // Guides: dots (2.13m) and arrows (diamonds lined up in a V)
         for (int i = 0; i < 7; i++)
         {
             var x = (i - 3) * 0.1365f;
@@ -1012,7 +1012,7 @@ public static class Bowling25
         }
     }
 
-    // 投球ガイド (目安の点線。物理予測ではなく初速と曲がりの傾向を図示)
+    // Throw guide (an approximate dotted line. Not a physics prediction; it illustrates the tendency of the initial velocity and the curve)
     static void DrawGuide()
     {
         if (state != stAngle && state != stHook && state != stPower)
@@ -1027,7 +1027,7 @@ public static class Bowling25
             DrawBox(BoxMat(x, 0.004f, d, 0.016f, 0.002f, 0.028f),
                 Color.Rgb(1.0f, 1.0f, 1.0f, 0.4f), Blends.Alpha);
         }
-        // パワーメーター (レーン右脇の柱)
+        // Power meter (a pillar at the right side of the lane)
         if (state == stPower)
         {
             DrawBox(BoxMat(0.95f, 0.30f, -0.2f, 0.035f, 0.28f, 0.035f),
@@ -1145,7 +1145,7 @@ public static class Bowling25
     // --- main loop ---------------------------------------------------------------
     public static void OnFrame(float dt)
     {
-        // cs-lib クラスは load 順の都合で遅延生成 (hot reload で null に戻り作り直し → meshDirty 再メッシュも走る)
+        // cs-lib classes are created lazily because of load order (they go back to null on hot reload and are recreated → the meshDirty remesh also runs)
         var pinM = pinMesh ?? new Mesh3d("bw25_pin");
         pinMesh = pinM;
         var ballM = ballMesh ?? new Mesh3d("bw25_ball");
@@ -1207,7 +1207,7 @@ public static class Bowling25
         var eyeNow = camEye.Value;
         var tgtNow = camTgt.Value;
 
-        // --- 描画 --- 暗めの場内 + レーン主体のライティング
+        // --- draw --- A darkish hall + lighting focused on the lane
         renNow.Light.Dir = new Vec3(-0.20f, 1.0f, -0.45f);
         renNow.Light.Color = Color.Rgb(1.0f, 0.88f, 0.70f);
         renNow.Light.Intensity = 2.0f;
@@ -1219,7 +1219,7 @@ public static class Bowling25
         renNow.Ssao.Strength = 0.65f;
         renNow.Bloom.Strength = 0.22f;
         renNow.Vignette = 0.22f;
-        // 影のオルソ範囲は注視点 (カメラターゲット) 周辺に寄せて解像度を稼ぐ
+        // The orthographic shadow range is pulled around the focus point (camera target) to gain resolution
         renNow.Shadow.Center = new Vec3(0, 0,
             MathUtil.Clamp(tgtNow.Z, 3.0f, pinZ));
         renNow.Shadow.Extent = 7.0f;
@@ -1234,7 +1234,7 @@ public static class Bowling25
 
         DrawStage();
 
-        // ピン
+        // Pins
         for (int i = 0; i < pins.Count; i++)
         {
             if (!pins[i].Standing) continue;
@@ -1242,7 +1242,7 @@ public static class Bowling25
             if (pose != null)
                 renNow.Draw(pinM, Renderer3d.PoseMat(pose), new Draw3dOpts { Shader = SurfaceShader() });
         }
-        // ボール (投球前は構え位置のプレビュー)
+        // Ball (before the throw, a preview at the stance position)
         if (ballLive)
         {
             var pose = Phys3d.PoseByKey(world, "ball");
@@ -1258,7 +1258,7 @@ public static class Bowling25
         DrawGuide();
         renNow.End();
 
-        // HUD は tonemap 後の swapchain に重ね描き (load = LOAD)
+        // HUD is drawn over the swapchain after tonemap (load = LOAD)
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
         DrawHud();
         Gfx.EndPass();

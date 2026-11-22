@@ -1,9 +1,11 @@
-/* expf / powf。musl 1.2.6 の src/math/expf.c、powf.c、exp2f_data.c、
-   powf_data.c (Arm の optimized-routines 由来) を、runtime/math の書き方に
-   起こし直したもの。計算の手順は元のままで、結果は元の実装と bit 単位で同じ。
-   変更: 表を struct から配列にし (2^(i/N) の表 exp2f_tab は 2 つで共有)、
-   浮動小数点例外を起こすための式を、同じ値の定数に置き換えた
-   (NaN は TCS_NANF を返す)。signaling NaN は区別しない。
+/* expf / powf. src/math/expf.c, powf.c, exp2f_data.c, and
+   powf_data.c of musl 1.2.6 (derived from Arm's optimized-routines), rewritten
+   in the runtime/math style. The computation steps are unchanged, and the
+   results are identical to the original implementation bit for bit. Changes:
+   the tables were turned from structs into arrays (the 2^(i/N) table exp2f_tab
+   is shared by both), and expressions that raise floating-point exceptions were
+   replaced with constants of the same value (NaN returns TCS_NANF). Signaling
+   NaNs are not distinguished.
 
    Copyright (c) 2017-2018, Arm Limited.
    SPDX-License-Identifier: MIT */

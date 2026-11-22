@@ -1,7 +1,7 @@
-// 同じフレームで ReadTexture の後に Dispatch する (neguse/lub#66)。
-// 読み戻しの後の dispatch も、そのフレームの描画と同じ順で GPU に届く。
-// 毎フレーム: rtA を描く → rtA を読み戻す → dst = src*2+1 を dispatch → dst を読む fragment で rtB を描く → rtB を読み戻す。
-// 届いた rtB の読み戻し (早くても次のフレーム) の 4 列の画素を確かめる。
+// Dispatches after ReadTexture in the same frame (neguse/lub#66).
+// A dispatch after a readback also reaches the GPU in the same order as that frame's drawing.
+// Every frame: draw rtA → read back rtA → dispatch dst = src*2+1 → draw rtB with a fragment that reads dst → read back rtB.
+// Checks the pixels of the 4 columns of the rtB readback once it arrives (the next frame at the earliest).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -36,7 +36,7 @@ public static class TestDispatchAfterReadback
         rbB = Gfx.Readback("b");
     }
 
-    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    // lub export draws 1 frame and records the shaders and files used
     public static void OnExport() { OnFrame(0); }
 
     public static void OnFrame(float dt)
@@ -60,23 +60,23 @@ public static class TestDispatchAfterReadback
         var rtA = Gfx.UseTexture("rt_a", 4, 1, Gfx.PixelFormat.Rgba8, null, 1, opts);
         var rtB = Gfx.UseTexture("rt_b", 4, 1, Gfx.PixelFormat.Rgba8, null, 1, opts);
         var srcBuf = Gfx.UseBuffer("src", Gfx.BufferType.Storage, src, 1);
-        // dst は毎フレーム作り直し (version = frame) て、前フレームの結果が残らないようにする
+        // dst is recreated every frame (version = frame) so that the previous frame's result does not remain
         var dst = Gfx.UseBufferEmpty("dst", Gfx.BufferType.Storage, 4, frame);
         var quad = Gfx.UseBuffer("quad", Gfx.BufferType.Storage, new List<float> { -1, -1, 1, -1, 1, 1, -1, 1 }, 1);
         if (shC == null || shR == null || rtA == null || rtB == null || srcBuf == null || dst == null || quad == null) return;
 
-        // 1. rtA を描く
+        // 1. Draw rtA
         Gfx.BeginPass(new PassOpts { Target = rtA, ClearColor = new float[] { 1.0f, 0.0f, 0.0f, 1.0f } });
         Gfx.EndPass();
-        // 2. 読み戻しを積む (sdlgpu はここでフレームの command buffer を submit する)
+        // 2. Queue the readback (sdlgpu submits the frame's command buffer here)
         Gfx.ReadTexture(rbA!, rtA, frame, out _, out _, out _, out _, out _, out _, out _, out _, out _);
-        // 3. 読み戻しの後に dispatch
+        // 3. Dispatch after the readback
         var bindings = new Bindings();
         bindings.Set("src", srcBuf);
         bindings.Set("dst", dst);
         Gfx.Dispatch(1, 1, 1, bindings,
             new DispatchOpts { Shader = shC });
-        // 4. dst を読んで rtB を描く
+        // 4. Draw rtB reading dst
         Gfx.BeginPass(new PassOpts { Target = rtB, ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f } });
         bindings.Clear();
         bindings.Set("verts", quad);
@@ -85,7 +85,7 @@ public static class TestDispatchAfterReadback
             new DrawOpts { Shader = shR, Depth = false, Cull = Gfx.Cull.None });
         Gfx.EndPass();
 
-        // rtB の読み戻しを毎フレーム積み、届いたものを要求順に確かめる
+        // Queue an rtB readback every frame and check the arrived ones in request order
         Gfx.ReadTexture(rbB!, rtB, frame, out var st, out var bytes, out var w, out var h, out var fmt,
             out var stride, out var id, out _, out var err);
         Check.That(st != Gfx.ReadbackStatus.Error, "read_texture(rt_b) failed: " + err);

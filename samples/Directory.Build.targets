@@ -1,6 +1,6 @@
 <Project>
-  <!-- samples の各 csproj (IDE の型検査用) に共通: Compile に入れた lub の API の宣言 (lub_stub.cs) を、
-       TinyC# の analyzer (tcs check と同じ compiler) に tcs の ref として読ませる。lub もこの file を ref で渡す -->
+  <!-- Common to every csproj in samples (for IDE type checking): the declarations of the lub API put into Compile (lub_stub.cs)
+       are read as a tcs ref by the TinyC# analyzer (the same compiler as tcs check). lub also passes this file as a ref -->
   <ItemGroup>
     <Compile Update="$(MSBuildThisFileDirectory)../cs-lib/lub_stub.cs" TinyCsRef="true" />
     <CompilerVisibleItemMetadata Include="Compile" MetadataName="TinyCsRef" />

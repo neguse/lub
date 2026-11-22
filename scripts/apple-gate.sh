@@ -91,8 +91,8 @@ sys.exit("no iPhone simulator is available")
 
 run bash scripts/build-release.sh --build-dir "$build"
 
-# tests/cs の test は C# なので、tcs vm で tests/cs 全体を 1 つの bytecode (tests/cs/.lub/all.tcsb) にしてから、--entry で test を選んで動かす。
-# iOS の app にも同じ bytecode を入れる。
+# The tests in tests/cs are C#, so tcs vm first builds all of tests/cs into one bytecode (tests/cs/.lub/all.tcsb), and then --entry selects the test to run.
+# The iOS app also gets the same bytecode.
 run dotnet build tcs/Transpiler -c Release -nologo
 LUB_TCS_DLL="$repo_root/tcs/Transpiler/bin/Release/net11.0/Transpiler.dll"
 export LUB_TCS_DLL
@@ -109,7 +109,7 @@ if [[ $part != ios ]]; then
   echo "==> C# runtime tests (${#cs_shard_tests[@]} of ${#cs_runtime_tests[@]}, share $shard)"
   metal_test() { "./$build/lub" tests/cs/.lub/all.tcsb --entry "$1" "${cs_test_args[@]}" >"$2" 2>&1; }
   cs_test_logs="$work/runtime" && mkdir -p "$cs_test_logs"
-  # CI の runner の仮想の GPU (Apple Paravirtual device) は、process を並べると command buffer が GPU hang の error で止まるので、1 本ずつ走らせる
+  # The virtual GPU of the CI runner (Apple Paravirtual device) stops the command buffer with a GPU hang error when processes run in parallel, so run them one at a time
   cs_run_tests 1 metal_test "${cs_shard_tests[@]}"
 fi
 
@@ -123,9 +123,9 @@ if [[ $part != ios ]] && mine 1; then
   run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestFixedDt --fixed-dt 0.0125
   run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestFixedDt --fixed-dt 0.0166666666666667
 
-  # encoder に設定済みの pipeline、buffer、texture を設定し直さなくても、各 draw が自分の状態で描くこと。
+  # Each draw must render with its own state even without re-setting the pipeline, buffer and texture already set on the encoder.
   run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestDrawStateReuse "${cs_test_args[@]}"
-  # readback の届く frame は backend によらず、保証しないモードでは GPU を待たない。
+  # The frame in which a readback arrives is the same regardless of backend, and in the mode without that guarantee it does not wait for the GPU.
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
   run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
 fi
@@ -143,7 +143,7 @@ if [[ $part != ios ]] && mine 3; then
   # shader is missing.
   run bash scripts/build-release.sh --build-dir "$player" -DLUB_NO_SLANG=ON
   player_bin="$PWD/$player/lub"
-  # snapshot の bytecode は <Entry>.tcsb
+  # The bytecode of a snapshot is <Entry>.tcsb
   for cached in TestVertexPull TestDepthSample; do
     run "./$build/lub" export macos tests/cs/.lub/all.tcsb --entry "$cached" -o "$work/export-$cached"
     run "./$build/lub" tests/cs/.lub/all.tcsb --entry "$cached" \
@@ -257,8 +257,8 @@ if [[ $part == mac ]]; then
   echo
   echo "==> iOS build and simulator run SKIPPED (--part mac)"
 else
-  # /usr/bin/python3 などの xcrun 経由の親は SDKROOT に macOS の SDK を入れるので、sysroot は明示する。
-  # simulator 向けは Ninja で build する (Xcode generator は機能検査の try_compile ごとに xcodebuild を起こし、configure だけで数分かかる)。
+  # A parent that goes through xcrun, such as /usr/bin/python3, puts the macOS SDK in SDKROOT, so sysroot is set explicitly.
+  # The simulator build uses Ninja (the Xcode generator starts xcodebuild for every feature-check try_compile, and configure alone takes minutes).
   run env -u SDKROOT cmake -S . -B build-ios -G Ninja \
     -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator \
     -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \

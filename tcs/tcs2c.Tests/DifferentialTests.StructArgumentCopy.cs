@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 可変 struct の引数の copy を省いても、値渡しの意味は変わらない (il-spec §10)。呼ばれた側の書き換え、
-// 呼ばれた側が残す値 (field / List / 配列 / 戻り値 / lambda)、呼び出しの間に変わる場所 (field / static /
-// 配列の要素 / lambda が捕捉する local / 後の引数と受け手が書き換える local)。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// Omitting the copy of mutable struct arguments does not change pass-by-value semantics (il-spec §10). Covers writes in the callee,
+// values the callee keeps (field / List / array / return value / lambda), and locations that change during the call (field / static /
+// array element / local captured by a lambda / local rewritten by later arguments and the receiver).
+// The expected values are the stdout of running the same program on CoreCLR
 public class StructArgumentCopyDifferentialTests
 {
     [CFact]
@@ -93,7 +93,7 @@ public class StructArgumentCopyDifferentialTests
                     var re = M.RetExpr(a); re.X = 14; Console.WriteLine(a.X + " " + re.X);
                     a.X = 15; var cap = M.Cap(a); a.X = 16; Console.WriteLine(cap());
                     var capw = M.CapWrite(a); Console.WriteLine(capw() + " " + a.X);
-                    // 後の引数と受け手が書き換える
+                    // Rewritten by later arguments and the receiver
                     a.X = 1;
                     Console.WriteLine(M.Two(a, a.Mut()) + " " + a.X);
                     a.X = 1;
@@ -101,7 +101,7 @@ public class StructArgumentCopyDifferentialTests
                     a.X = 1;
                     Console.WriteLine(a.Self(a) + " " + a.X);
                     a.X = 1;
-                    // 呼び出しの間に変わる場所
+                    // Locations that change during the call
                     var h = M.H;
                     h.P.X = 1;
                     Console.WriteLine(M.ReadsField(h.P) + " " + h.P.X);
@@ -109,11 +109,11 @@ public class StructArgumentCopyDifferentialTests
                     Console.WriteLine(M.ReadsStatic(Holder.St) + " " + Holder.St.X);
                     h.Arr[0].X = 1;
                     Console.WriteLine(M.ReadsArr(h.Arr[0]) + " " + h.Arr[0].X);
-                    // lambda が捕捉する local
+                    // Locals captured by a lambda
                     var cl = new V(2);
                     Action bump = () => cl.X = 7;
                     Console.WriteLine(M.ViaClosure(cl, bump) + " " + cl.X);
-                    // 連鎖と再帰
+                    // Chains and recursion
                     a.X = 5;
                     Console.WriteLine(M.Chain(a) + " " + M.Recur(a, 3) + " " + a.X);
                     // operator / ctor
@@ -123,7 +123,7 @@ public class StructArgumentCopyDifferentialTests
                     var c = new C(o1); o1.X = 30; Console.WriteLine(c.P.X);
                     var w = new W(o1); Console.WriteLine(w.P.X + " " + o1.X);
                     var w2 = new W(o1, 0); o1.X = 31; Console.WriteLine(w2.P.X);
-                    // interface / 拡張 / delegate / method group
+                    // interface / extension / delegate / method group
                     var fs = new IF[] { new FA(), new FB() };
                     foreach (var f in fs) Console.WriteLine(f.F(a) + " " + a.X);
                     Console.WriteLine(a.E() + " " + a.X + " " + Ext.E(a) + " " + a.X);
@@ -131,7 +131,7 @@ public class StructArgumentCopyDifferentialTests
                     Console.WriteLine(g(a) + " " + a.X);
                     Func<V, int> lam = v => { v.X = 66; return v.X; };
                     Console.WriteLine(lam(a) + " " + a.X);
-                    // foreach の変数、parameter のまま渡す、選ぶ
+                    // foreach variables, passing a parameter as is, selecting
                     var items = new List<V> { new V(1), new V(2) };
                     foreach (var it in items) { Console.WriteLine(M.WriteField(it) + " " + it.X); }
                     Console.WriteLine(items[0].X);

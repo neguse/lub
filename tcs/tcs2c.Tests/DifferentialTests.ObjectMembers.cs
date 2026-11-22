@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// object の member (Equals / GetHashCode / ReferenceEquals / GetType / MemberwiseClone、record の
-// 合成するものも) は Lua / C に対応物が無く、両 backend とも同じ TCS1002 で止まる。値の比較は ==
+// object members (Equals / GetHashCode / ReferenceEquals / GetType / MemberwiseClone, including those
+// synthesized for records) have no counterpart in Lua / C, and both backends stop with the same TCS1002. Values are compared with ==
 public class ObjectMembersDifferentialTests
 {
     [Theory]

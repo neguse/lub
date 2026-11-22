@@ -1,18 +1,18 @@
-// 実装ライブラリ lubx の Assets。
-// 戻り値は stub のハンドル型 (ShaderRef / TextureRef)。
-// Io.load_* の multi-return は out 引数で受ける。
+// Assets of the implementation library lubx.
+// Return values are stub handle types (ShaderRef / TextureRef).
+// The multi-return of Io.load_* is received through out arguments.
 
 using Lub;
 
 namespace Lubx;
 
-/// <summary>アセット読み込みの定型を1行にする。
-/// ready まで null を返す宣言型 (毎フレーム呼んで null の間は描画をスキップする)。
+/// <summary>Turns the asset loading boilerplate into one line.
+/// Declarative style that returns null until ready (call every frame and skip drawing while it is null).
 /// </summary>
 public static class Assets
 {
-    /// <summary>vs/fs の Slang を読んで Gfx.UseShader。
-    /// どちらか未 ready なら null。
+    /// <summary>Reads the vs/fs Slang and calls Gfx.UseShader.
+    /// null if either is not ready.
     /// </summary>
     public static ShaderRef? Shader(string key, string vsPath, string fsPath)
     {
@@ -25,10 +25,10 @@ public static class Assets
         return Gfx.UseShader(key, vs, fs, vsVersion * 31 + fsVersion);
     }
 
-    /// <summary>wav などの音声ファイルを読んで snd を宣言する。
-    /// bytes か decode が未 ready なら null。
-    /// ファイルの version の snd があれば decode せずにそれを返し、無ければ (初回、ファイルの更新、sweep 済み) decode して宣言する。
-    /// 毎フレーム呼んで宣言し続けること。
+    /// <summary>Reads an audio file such as wav and declares a snd.
+    /// null if bytes or decode is not ready.
+    /// If there is a snd for the file's version, returns it without decoding; otherwise (first time, file updated, swept) decodes and declares it.
+    /// Call it every frame to keep declaring it.
     /// </summary>
     public static int? Wav(string key, string path)
     {
@@ -37,7 +37,7 @@ public static class Assets
         {
             return null;
         }
-        // data を渡さない宣言は channels / rate を見ない
+        // A declaration without data does not look at channels / rate
         var snd = Audio.SndBytes(key, null, 0, 0, version);
         if (snd != null)
         {
@@ -51,9 +51,9 @@ public static class Assets
         return Audio.SndBytes(key, pcm, channels, rate, version);
     }
 
-    /// <summary>Ogg Vorbis のファイルを読んで snd を宣言する (Wav と同じ形で、decode は Lubx.Vorbis)。
-    /// bytes か decode が未 ready なら null。
-    /// 毎フレーム呼んで宣言し続けること。
+    /// <summary>Reads an Ogg Vorbis file and declares a snd (same shape as Wav, decoding with Lubx.Vorbis).
+    /// null if bytes or decode is not ready.
+    /// Call it every frame to keep declaring it.
     /// </summary>
     public static int? Ogg(string key, string path)
     {
@@ -62,7 +62,7 @@ public static class Assets
         {
             return null;
         }
-        // data を渡さない宣言は channels / rate を見ない
+        // A declaration without data does not look at channels / rate
         var snd = Audio.SndBytes(key, null, 0, 0, version);
         if (snd != null)
         {
@@ -76,9 +76,9 @@ public static class Assets
         return Audio.SndBytes(key, pcm, channels, rate, version);
     }
 
-    /// <summary>Gfx.UseTexture で render target を宣言する。
-    /// filter 省略時 Linear、wrap 省略時 Clamp。
-    /// version は w, h から決めるので、サイズが変わると作り直される。
+    /// <summary>Declares a render target with Gfx.UseTexture.
+    /// filter defaults to Linear, wrap defaults to Clamp.
+    /// version is derived from w, h, so the target is recreated when the size changes.
     /// </summary>
     public static TextureRef? RenderTarget(string key, int w, int h,
         Gfx.PixelFormat fmt, Gfx.Filter? filter = null, Gfx.Wrap? wrap = null)

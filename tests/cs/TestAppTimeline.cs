@@ -1,9 +1,9 @@
-// Lubx.AppTimeline: 開いた app の frame を控え、止めて戻り、続ける。
-// TestAppTimelineChild は、積んだ値と mouse の位置から決まる色で main を塗る。
-//   frame 0..7: 進める (mouse の位置は frame ごとに違う)。
-//   frame 8..9: 3 個前 (frame 4) で止める。frame 4 と同じ色を描き続ける。
-//   frame 10: 1 個前 (frame 6) で止める。frame 6 と同じ色。
-//   frame 11..: 続ける。frame 6 の状態から、今の入力で進む。
+// Lubx.AppTimeline: records the frames of an opened app, pauses and goes back, and resumes.
+// TestAppTimelineChild fills main with a color determined by the accumulated values and the mouse position.
+//   frame 0..7: advance (the mouse position differs per frame).
+//   frame 8..9: pause 3 back (frame 4). Keeps drawing the same color as frame 4.
+//   frame 10: pause 1 back (frame 6). Same color as frame 6.
+//   frame 11..: resume. Advances from the state of frame 6 with the current input.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -44,7 +44,7 @@ public static class TestAppTimeline
         for (var i = 0; i < frames; i++) red[i] = -1;
     }
 
-    // 止めずに進めたときの、開いた app の frame k の赤 (mouse の x は k % 5)
+    // The red of frame k of the opened app when advanced without pausing (mouse x is k % 5)
     static int Sum(int upTo, int[] xs)
     {
         var s = 0;
@@ -73,7 +73,7 @@ public static class TestAppTimeline
             Check.That(timeline.Position == -1, "Resume must leave the pause");
             Check.That(timeline.Count == 6, $"Count after Resume is {timeline.Count}, want 6");
         }
-        // 止めている間に渡す入力は使われない (控えた入力で作り直す)
+        // Input passed while paused is not used (frames are recreated from the recorded input)
         Check.That(timeline.Step(child, rt, dt, new StepInput { MouseX = frame % 5, MouseY = 0 }), $"frame {frame}: Step failed");
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
         Gfx.EndPass();
@@ -87,7 +87,7 @@ public static class TestAppTimeline
         }
         frame++;
         if (frame < frames) return;
-        // 開いた app が見た mouse の x の列。frame 0..7 はそのまま、続けた後は frame 6 の状態に frame 11.. の入力が続く
+        // The sequence of mouse x seen by the opened app. Frames 0..7 as is; after resuming, the input of frames 11.. follows the state of frame 6
         var xs = new int[frames];
         for (var k = 0; k < 8; k++) xs[k] = k % 5;
         for (var k = 0; k < 8; k++)
@@ -95,7 +95,7 @@ public static class TestAppTimeline
         for (var k = 8; k < 10; k++)
             Check.That(red[k] == red[4] && green[k] == 4, $"paused frame {k}: drew {red[k]},{green[k]}, frame 4 drew {red[4]},4");
         Check.That(red[10] == red[6] && green[10] == 6, $"paused frame 10: drew {red[10]},{green[10]}, frame 6 drew {red[6]},6");
-        // 続けた後: 開いた app の frame 6, 7, 8 を、開いた側の frame 11, 12, 13 の入力で進める
+        // After resuming: advances frames 6, 7, 8 of the opened app with the input of the opener's frames 11, 12, 13
         for (var k = 11; k < frames - 2; k++)
         {
             var childFrame = 6 + (k - 11);
