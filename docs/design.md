@@ -51,12 +51,14 @@ golden 画像 (`tests/golden/<name>_<backend>.png`) は tcs VM の player で撮
   載った Android の Chrome) は配布対象外。
 - マルチスレッド描画。thread ごとの command buffer、resource の所有の分割、pipeline cache の lock が要り、command queue が 1 本という今の前提を全面的に見直すことになる。
 
-## Core API Boundary
+## API
 
-lub core は、runtime が所有しなければ一貫性を保てない primitive だけを持つ。
+lubのAPIは基本となる `Lub` と、典型的な実装パターンをあらかじめ実装した `Lubx` として提供する。
+
+Lub は、runtime が所有しなければ一貫性を保てない primitive だけを持つ。
 それ以外は runtime API にしない。
 
-core が所有するもの:
+Lub が所有するもの:
 
 - 実行の境界: 起動、終了、frame、time step。
 - 外部状態の snapshot: 入力や環境状態を frame 内で一貫して読むための境界。
@@ -64,16 +66,20 @@ core が所有するもの:
 - backend abstraction: platform/backend 差分を core API へ漏らさないための command 境界。
 - diagnostics: runtime 内部状態を観測し、再現と検証に使える情報。
 
-core が所有しないもの:
+Lub が所有しないもの:
 
 - gameplay semantics。
 - content semantics。
 - application workflow。
 - compatibility surface。
 - authoring tools。
+- easyなshorthand
 
 同じ処理が複数箇所で必要になっても、それだけでは core に入れない。
 runtime invariant、resource lifetime、backend abstraction、hot reload、diagnostics のどれかを runtime が守る必要がある場合だけ core API として扱う。
+
+EasyよりSimpleを目指す。
+Lub namespace では小さく少ないAPIのみ提供し
 
 ### Script API 面
 
