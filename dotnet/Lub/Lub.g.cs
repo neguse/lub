@@ -3665,30 +3665,6 @@ public static unsafe partial class Io
         }
     }
 
-    /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。</summary>
-    public static void LoadFloats(string path, out List<float>? data, out int version, out Lub.Io.Status status, out string? error)
-    {
-        var a = LubRuntime.Arena.Begin();
-        try
-        {
-            float* o_data = null;
-            int o_data_n = 0;
-            int o_version = default;
-            int o_status = default;
-            LubNative.LubStr o_error = default;
-            var st = LubNative.lub_io_load_floats(LubRuntime.Ctx, a.Str(path), &o_data, &o_data_n, &o_version, &o_status, &o_error);
-            if (st != LubNative.LUB_NOT_FOUND) LubRuntime.Check(st);
-            data = (o_data == null ? null : LubRuntime.FloatList(o_data, o_data_n));
-            version = o_version;
-            status = (Lub.Io.Status)o_status;
-            error = LubRuntime.StrOrNull(o_error);
-        }
-        finally
-        {
-            a.End();
-        }
-    }
-
     /// <summary>glTF (.gltf / .glb) を読む。結果の mesh は interleave 系に渡す。読み直しと version は .gltf / .glb の本体のファイルだけで決まり、.gltf が参照する外部の .bin だけを書き換えても読み直さない (書き出すツールはふつう .gltf と .bin を一緒に書く)。</summary>
     public static void LoadGltf(string path, out GltfMesh? mesh, out int version, out Lub.Io.Status status, out string? error)
     {
@@ -11254,9 +11230,6 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_load_bytes(void* ctx, LubStr @path, LubView* @bytes, int* @version, int* @status, LubStr* @error);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_io_load_floats(void* ctx, LubStr @path, float** @data, int* @data_count, int* @version, int* @status, LubStr* @error);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_load_gltf(void* ctx, LubStr @path, LubGltfMesh* @mesh, bool* has_mesh, int* @version, int* @status, LubStr* @error);

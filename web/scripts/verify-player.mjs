@@ -250,7 +250,7 @@ if (only.length === 0 && SHARD_K === 1)
 // tests/cs は全部で 1 つの program なので、どの test にも tests/cs の C# の全部が読み得るファイルを渡す。
 // path は C# の文字列リテラル (const の値も含む) から拾い、実行中に作るファイル (tests/cs/.lub/...) のように無いものは渡さない。
 // 中身は bytes のまま渡す (text のファイルも MEMFS には同じ内容が入る)。
-// Io.LoadText / LoadFloats / LoadBytes は cwd (/) 相対の同じパス (tests/cs/data/...) で読む (player/main.ts の fsPath)。
+// Io.LoadText / LoadBytes は cwd (/) 相対の同じパス (tests/cs/data/...) で読む (player/main.ts の fsPath)。
 function csTestFiles() {
   const dir = path.join(REPO, "tests", "cs");
   const files = {};

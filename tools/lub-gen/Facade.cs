@@ -680,7 +680,7 @@ internal sealed class FacadeGen
             case LubTypeKind.Struct:
                 return v;
             case LubTypeKind.List:
-                // nullable の List は C の NULL を null のまま返す (未取得の Io.LoadFloats は空の List と区別する)
+                // nullable の List は C の NULL を null のまま返す (未取得を空の List と区別する)
                 return tr.Nullable ? "(" + v + " == null ? null : " + ListFromNative(tr, v, v + "_n") + ")" : ListFromNative(tr, v, v + "_n");
         }
         GenError.Report("unsupported out / return type " + tr.ToString());

@@ -1,5 +1,5 @@
 // 実装ライブラリ lubx の Assets。
-// 戻り値は stub のハンドル型 (ShaderRef / BufferRef)。
+// 戻り値は stub のハンドル型 (ShaderRef / TextureRef)。
 // Io.load_* の multi-return は out 引数で受ける。
 
 using Lub;
@@ -88,19 +88,5 @@ public static class Assets
         opts.Filter = filter ?? Gfx.Filter.Linear;
         opts.Wrap = wrap ?? Gfx.Wrap.Clamp;
         return Gfx.UseTexture(key, w, h, fmt, null, w * 65536 + h, opts);
-    }
-
-    /// <summary>load_floats + use_buffer。
-    /// data 未 ready なら null。
-    /// usage は Gfx.BufferType.Storage / Index。
-    /// </summary>
-    public static BufferRef? Floats(string key, Gfx.BufferType usage, string path)
-    {
-        Io.LoadFloats(path, out var data, out var version, out _, out _);
-        if (data == null)
-        {
-            return null;
-        }
-        return Gfx.UseBuffer(key, usage, data, version);
     }
 }

@@ -6,6 +6,29 @@ using Lub;
 
 public static class Deferred06
 {
+    // pos.x, pos.y, pos.z, pad0, col0.rgba (primary), col1.rgba (complementary)
+    static List<float> gbufferVerts = new List<float>
+    {
+         0.0f,  0.7f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+        -0.7f, -0.7f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+         0.7f, -0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+    };
+
+    // fullscreen quad (pos.xy, uv.xy). Sample 6's view VS multiplies pos.xy by
+    // a per-draw (scale, offset) uniform so this single vertex buffer renders
+    // left- and right-half quads from two draws.
+    // uv (0,0) is the top-left texel, matching the offscreen pass that writes
+    // at clip y = -1 onto row 0 (Vulkan/SDL_GPU convention, as in samples/05_postprocess).
+    static List<float> viewVerts = new List<float>
+    {
+        -1.0f, -1.0f, 0.0f, 0.0f,
+         1.0f, -1.0f, 1.0f, 0.0f,
+         1.0f,  1.0f, 1.0f, 1.0f,
+        -1.0f, -1.0f, 0.0f, 0.0f,
+         1.0f,  1.0f, 1.0f, 1.0f,
+        -1.0f,  1.0f, 0.0f, 1.0f,
+    };
+
     const int rtW = 256;
     const int rtH = 256;
 
@@ -29,16 +52,11 @@ public static class Deferred06
             out var gvs, out var gvsv, out _, out _);
         Io.LoadText("samples/06_deferred/data/06_gbuffer.fs.slang",
             out var gfs, out var gfsv, out _, out _);
-        Io.LoadFloats("samples/06_deferred/data/06_gbuffer.verts.lua",
-            out var gverts, out var gvv, out _, out _);
         Io.LoadText("samples/06_deferred/data/06_view.vs.slang",
             out var vvs, out var vvsv, out _, out _);
         Io.LoadText("samples/06_deferred/data/06_view.fs.slang",
             out var vfs, out var vfsv, out _, out _);
-        Io.LoadFloats("samples/06_deferred/data/06_view.verts.lua",
-            out var vverts, out var vvv, out _, out _);
-        if (gvs == null || gfs == null || gverts == null
-            || vvs == null || vfs == null || vverts == null)
+        if (gvs == null || gfs == null || vvs == null || vfs == null)
         {
             return;
         }
@@ -52,7 +70,7 @@ public static class Deferred06
 
         // G-buffer pass: MRT write. SV_Target0 -> gbuf0, SV_Target1 -> gbuf1.
         var shG = Gfx.UseShader("gbuf_shader", gvs, gfs, gvsv * 31 + gfsv);
-        var bG = Gfx.UseBuffer("gbuf_verts", Gfx.BufferType.Storage, gverts, gvv);
+        var bG = Gfx.UseBuffer("gbuf_verts", Gfx.BufferType.Storage, gbufferVerts);
         if (shG == null || bG == null) return;
         Gfx.BeginPass(new PassOpts
         {
@@ -73,7 +91,7 @@ public static class Deferred06
         // right half samples gbuf1. Same shader; only the texture binding and
         // the (scale, offset) transform uniform differ.
         var shV = Gfx.UseShader("view_shader", vvs, vfs, vvsv * 31 + vfsv);
-        var bV = Gfx.UseBuffer("view_verts", Gfx.BufferType.Storage, vverts, vvv);
+        var bV = Gfx.UseBuffer("view_verts", Gfx.BufferType.Storage, viewVerts);
         if (shV == null || bV == null) return;
         Gfx.BeginPass(new PassOpts
         {

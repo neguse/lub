@@ -70,7 +70,6 @@ CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.ex
 例外は `.clang-format` の `ReflowComments: false` だけで、日本語のコメントを和欧の境目で折り返させないためのもの。コメントは 1 文を 1 行に書く。
 
 - C/C++/Slang — `clang-format` (LLVM default にコメントの折り返しだけを止めたもの、Slang は HLSL 扱い)
-- Lua の table の data (`*.verts.lua`) — `stylua` (`web/` で `npm install` 後に利用可)
 - C# — `dotnet format whitespace` (dotnet SDK 付属)
 - Web TS — `prettier` (`web/` で `npm install` 後に利用可)
 
@@ -114,7 +113,7 @@ build とテストは PR の CI が走らせる。同じものを手元で走ら
 (Windows は `.\build\lub.exe samples\01_triangle\Triangle01.csproj` 形式)
 
 `.cs` を編集して保存すると、走っている game に即反映される(hot reload)。
-`.slang` / PNG / `*.verts.lua` などの data ファイルも同様に保存で即反映。
+`.slang` / PNG などの data ファイルも同様に保存で即反映。
 
 依存:
 - C# の変換は TinyC# (`tcs/`) が行う。

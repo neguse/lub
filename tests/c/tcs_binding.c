@@ -203,18 +203,6 @@ LubStatus lub_io_interleave_pncm(LubContext *ctx, const LubMeshData *mesh,
   *out_count = 2;
   return LUB_OK;
 }
-LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
-                             int32_t *data_count, int32_t *version,
-                             int32_t *status, LubStr *error) {
-  (void)ctx;
-  (void)path;
-  (void)error;
-  *data = NULL;
-  *data_count = 0;
-  *version = 0;
-  *status = LUB_IO_STATUS_PENDING;
-  return LUB_OK;
-}
 LubStatus lub_font_glyph(LubContext *ctx, const uint8_t *ttf, int32_t ttf_len,
                          int32_t codepoint, float px, LubGlyphBitmap *out,
                          bool *has) {

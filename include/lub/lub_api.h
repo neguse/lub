@@ -3471,12 +3471,6 @@ LUB_API LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path,
                                     LubView *bytes, int32_t *version,
                                     int32_t *status, LubStr *error);
 
-// `return { ... }` 形式の Lua ファイルを float 配列として読む。
-LUB_API LubStatus lub_io_load_floats(LubContext *ctx, LubStr path,
-                                     const float **data, int32_t *data_count,
-                                     int32_t *version, int32_t *status,
-                                     LubStr *error);
-
 // glTF (.gltf / .glb) を読む。結果の mesh は interleave 系に渡す。読み直しと
 // version は .gltf / .glb の本体のファイルだけで決まり、.gltf が参照する外部
 // の .bin だけを書き換えても読み直さない (書き出すツールはふつう .gltf と

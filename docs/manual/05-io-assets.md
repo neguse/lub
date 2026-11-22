@@ -2,7 +2,7 @@
 
 ## Io.Load* — 毎フレーム呼べるファイル入力
 
-`Io.LoadText` / `LoadFloats` / `LoadGltf` は hot reload 前提の即時モード API。
+`Io.LoadText` / `LoadBytes` / `LoadGltf` は hot reload 前提の即時モード API。
 mtime の fast-path + コンテンツハッシュにより、毎フレーム呼んでも安い。
 
 ```csharp
@@ -60,7 +60,7 @@ Io.SaveText("save/mygame/scores.txt", newScores);
 ## ファイル形式
 
 - `LoadText`: 任意のテキスト(シェーダソース、設定など)
-- `LoadFloats`: `return { 1.0, 2.0, ... }` 形式の Lua ファイルを float 配列に
+- `LoadBytes`: 任意のファイルの byte 列(font や音の data のような binary)
 - `LoadGltf`: glTF (.gltf / .glb)。結果は `Io.InterleavePn` 等で頂点列にして
   `Gfx.UseBuffer` へ
 
@@ -72,7 +72,6 @@ PNG 画像は `Png`、TTF フォントは `Font` / `Lubx.Text`、音声は
 `Assets` は読み込みと resource の宣言を 1 行にする。どれも毎フレーム呼んで宣言し続け、未 ready の間は null を返す。
 
 - `Assets.Shader(key, vsPath, fsPath)`: vs / fs を読んで `Gfx.UseShader`
-- `Assets.Floats(key, usage, path)`: `LoadFloats` + `Gfx.UseBuffer`
 - `Assets.Wav(key, path)`: `LoadBytes` + `Audio.Decode` + `Audio.SndBytes`。snd handle を返す。ファイルの version の snd があれば decode せずにそれを返し、無ければ(初回、ファイルの更新、sweep の後)decode して宣言する
 - `Assets.RenderTarget(key, w, h, fmt)`: render target の `Gfx.UseTexture`。filter は既定 Linear、wrap は既定 Clamp。サイズが変わると作り直される
 

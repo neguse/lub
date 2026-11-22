@@ -41,8 +41,6 @@ class BindingTest
         var packed = Io.InterleavePncm(mesh);
         Console.WriteLine(packed.Count);
         Console.WriteLine(packed[1]);
-        Io.LoadFloats("floats", out var floats, out _, out _, out _);
-        Console.WriteLine(floats == null);
         Console.WriteLine(Font.Glyph(bytes, 65, 12) == null);
         var glyph = Font.Glyph(bytes, 66, 12);
         Console.WriteLine(glyph.Bytes.Get(1));

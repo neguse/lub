@@ -5,6 +5,7 @@
 // data/ への path は project のディレクトリ基準 (そこで起動する)。
 
 using System;
+using System.Collections.Generic;
 using Lub;
 using Lubx;
 
@@ -13,6 +14,55 @@ public readonly record struct Pipe(float X, float GapY);
 
 public static class Game
 {
+    // Unit cube: 36 vertices (12 triangles), each vertex = pos(3) + pad(1) + color(4)
+    // (16-byte aligned for StructuredBuffer).
+    // Front face (blue), Back (red), Top (green), Bottom (yellow), Right (cyan), Left (magenta)
+    static List<float> cubeVerts = new List<float>
+    {
+        // Front (z=+0.5) blue
+        -0.5f, -0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+        // Back (z=-0.5) red
+         0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+        -0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+         0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+        -0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+         0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+        // Top (y=+0.5) green
+        -0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+         0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+         0.5f,  0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+        -0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+         0.5f,  0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+        -0.5f,  0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+        // Bottom (y=-0.5) yellow
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+         0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+         0.5f, -0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+         0.5f, -0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+        -0.5f, -0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+        // Right (x=+0.5) cyan
+         0.5f, -0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+         0.5f, -0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+         0.5f,  0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+         0.5f,  0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+        // Left (x=-0.5) magenta
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+    };
+
     static float t = 0;
     static float playerY = 0;
     static float velocityY = 0;
@@ -30,7 +80,6 @@ public static class Game
     public static void OnExport()
     {
         Assets.Shader("cube_shader", "data/cube.vs.slang", "data/cube.fs.slang");
-        Assets.Floats("cube_verts", Gfx.BufferType.Storage, "data/cube.verts.lua");
     }
 
     // dt は直近 frame の実測秒。
@@ -40,7 +89,7 @@ public static class Game
         t = t + dt;
 
         var s = Assets.Shader("cube_shader", "data/cube.vs.slang", "data/cube.fs.slang");
-        var b = Assets.Floats("cube_verts", Gfx.BufferType.Storage, "data/cube.verts.lua");
+        var b = Gfx.UseBuffer("cube_verts", Gfx.BufferType.Storage, cubeVerts);
         if (s == null || b == null) return;
 
         // KeyPressed / MousePressed は frame でラッチされた edge 検出。

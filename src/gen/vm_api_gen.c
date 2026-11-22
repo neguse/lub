@@ -11268,29 +11268,6 @@ static TvmStatus vm_host_lub_io_load_bytes(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   *(void **)a[4].p = vm_lub_string(s, n_error);
   VM_LUB_LEAVE(vm);
 }
-static TvmStatus vm_host_lub_io_load_floats(TvmVm *vm, TvmSlot *a, TvmSlot *r,
-                                            void *user) {
-  (void)a;
-  (void)r;
-  VM_LUB_ENTER();
-  void *p_path = a[0].p;
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  const float *n_data = {0};
-  int32_t n_data_count = 0;
-  LubStr n_error = {0};
-  LubStatus status =
-      lub_io_load_floats(s->ctx, vm_lub_str(p_path), &n_data, &n_data_count,
-                         (int32_t *)a[2].p, (int32_t *)a[3].p, &n_error);
-  vm_lub_check(s, status);
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  *(void **)a[1].p = (n_data ? vm_lub_list(s, &s->types[23], NULL, n_data,
-                                           n_data_count, sizeof(*n_data))
-                             : NULL);
-  *(void **)a[4].p = vm_lub_string(s, n_error);
-  VM_LUB_LEAVE(vm);
-}
 static TvmStatus vm_host_lub_io_load_gltf(TvmVm *vm, TvmSlot *a, TvmSlot *r,
                                           void *user) {
   (void)a;
@@ -16094,7 +16071,6 @@ static const struct {
     {"lub.io.load_text", "s&s&i&i&s", "", vm_host_lub_io_load_text},
     {"lub.io.save_text", "ss", "", vm_host_lub_io_save_text},
     {"lub.io.load_bytes", "s&o&i&i&s", "", vm_host_lub_io_load_bytes},
-    {"lub.io.load_floats", "s&o&i&i&s", "", vm_host_lub_io_load_floats},
     {"lub.io.load_gltf", "s&o&i&i&s", "", vm_host_lub_io_load_gltf},
     {"lub.io.interleave_pn", "o", "o", vm_host_lub_io_interleave_pn},
     {"lub.io.interleave_pncm", "o", "o", vm_host_lub_io_interleave_pncm},

@@ -42,7 +42,7 @@ jobs:
 
   # 整形の検査 (scripts/format.sh --check)。
   # clang-format は版で出力が変わるので pip で版を固定する。
-  # prettier / stylua は web/package-lock.json の版。
+  # prettier は web/package-lock.json の版。
   format:
     runs-on: ubuntu-26.04
     timeout-minutes: 15

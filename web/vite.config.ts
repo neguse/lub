@@ -113,7 +113,6 @@ export default defineConfig({
       name: "serve-samples-and-wasm",
       configureServer(server) {
         const textExts = new Set([
-          ".lua",
           ".cs",
           ".slang",
           ".txt",

@@ -7,7 +7,6 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 #include <SDL3/SDL.h>
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -153,7 +152,7 @@ static SavePath save_resolve(const char *path, char *out, size_t cap) {
 
 // ------------------------------------------------------------ file cache
 
-typedef enum IoKind { IO_TEXT = 1, IO_FLOATS, IO_GLTF, IO_PNG } IoKind;
+typedef enum IoKind { IO_TEXT = 1, IO_GLTF, IO_PNG } IoKind;
 
 typedef struct IoEntry {
   char *path;
@@ -164,8 +163,6 @@ typedef struct IoEntry {
   // parsed (kind ごと)
   uint8_t *bytes; // TEXT: 内容 (NUL 終端付き)。他: 未使用
   size_t bytes_len;
-  float *floats;
-  int32_t float_count;
   GltfMesh *gltf;
   LubGltfPrimitive *gltf_prims; // gltf の view (gltf の配列を指す)
   LubGltfMaterial *gltf_mats;
@@ -184,9 +181,6 @@ static void io_entry_free_parsed(IoEntry *e) {
   free(e->bytes);
   e->bytes = NULL;
   e->bytes_len = 0;
-  free(e->floats);
-  e->floats = NULL;
-  e->float_count = 0;
   gltf_free(e->gltf);
   e->gltf = NULL;
   free(e->gltf_prims);
@@ -202,18 +196,15 @@ static void io_entry_free_parsed(IoEntry *e) {
 static void gltf_free_any(void *m) { gltf_free((GltfMesh *)m); }
 
 // 読み直しで中身を差し替える前に、前の中身を frame の終わりまで預ける。
-// 同じ frame で先に返した view (load_bytes / png_load / load_floats / load_gltf) が読み直しの後も前の中身を指したまま読める。
+// 同じ frame で先に返した view (load_bytes / png_load / load_gltf) が読み直しの後も前の中身を指したまま読める。
 static void io_entry_retire_parsed(App *app, IoEntry *e) {
   app_frame_garbage_push(app, e->bytes);
-  app_frame_garbage_push(app, e->floats);
   app_frame_garbage_push_fn(app, e->gltf, gltf_free_any);
   app_frame_garbage_push(app, e->gltf_prims);
   app_frame_garbage_push(app, e->gltf_mats);
   app_frame_garbage_push_fn(app, e->pixels, stbi_image_free);
   e->bytes = NULL;
   e->bytes_len = 0;
-  e->floats = NULL;
-  e->float_count = 0;
   e->gltf = NULL;
   e->gltf_prims = NULL;
   e->gltf_mats = NULL;
@@ -327,85 +318,6 @@ static void io_result(IoResult *r, int32_t status, int32_t version,
   r->status = status;
   r->version = version;
   r->error = lub_str_c(error);
-}
-
-// `return { n, n, ... }` 形式の Lua ファイルを float 列として読む。
-// 数値と `,` `{` `}` と `--` コメント以外は受け付けない。
-static bool parse_floats(const char *src, size_t len, float **out,
-                         int32_t *out_count, char *err, size_t err_size) {
-  const char *p = src;
-  const char *end = src + len;
-  float *buf = NULL;
-  int32_t n = 0, cap = 0;
-  int depth = 0;
-  bool saw_return = false;
-  while (p < end) {
-    if (isspace((unsigned char)*p)) {
-      p++;
-      continue;
-    }
-    if (p + 1 < end && p[0] == '-' && p[1] == '-') {
-      while (p < end && *p != '\n')
-        p++;
-      continue;
-    }
-    if (!saw_return) {
-      if (end - p >= 6 && strncmp(p, "return", 6) == 0) {
-        p += 6;
-        saw_return = true;
-        continue;
-      }
-      snprintf(err, err_size, "expected 'return'");
-      free(buf);
-      return false;
-    }
-    if (*p == '{') {
-      depth++;
-      p++;
-      continue;
-    }
-    if (*p == '}') {
-      depth--;
-      p++;
-      continue;
-    }
-    if (*p == ',' || *p == ';') {
-      p++;
-      continue;
-    }
-    if (depth != 1) {
-      snprintf(err, err_size, "unexpected '%c'", *p);
-      free(buf);
-      return false;
-    }
-    char *num_end = NULL;
-    double v = strtod(p, &num_end);
-    if (num_end == p) {
-      snprintf(err, err_size, "unexpected '%c' (numbers only)", *p);
-      free(buf);
-      return false;
-    }
-    if (n >= cap) {
-      cap = cap ? cap * 2 : 256;
-      float *grown = (float *)realloc(buf, (size_t)cap * sizeof(float));
-      if (!grown) {
-        free(buf);
-        snprintf(err, err_size, "out of memory");
-        return false;
-      }
-      buf = grown;
-    }
-    buf[n++] = (float)v;
-    p = num_end;
-  }
-  if (!saw_return || depth != 0) {
-    snprintf(err, err_size, "unbalanced table");
-    free(buf);
-    return false;
-  }
-  *out = buf;
-  *out_count = n;
-  return true;
 }
 
 // gltf の外部 buffer (.bin / .glb) が全部あれば true (export 中は snapshot に写す)。
@@ -569,19 +481,6 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
     e->parsed_ok = true;
     break;
   }
-  case IO_FLOATS: {
-    float *f = NULL;
-    int32_t n = 0;
-    if (!parse_floats((const char *)bytes, len, &f, &n, err, sizeof(err))) {
-      SDL_Log("io.load_floats: parse error in %s: %s", path, err);
-      break;
-    }
-    io_entry_retire_parsed(app, e);
-    e->floats = f;
-    e->float_count = n;
-    e->parsed_ok = true;
-    break;
-  }
   case IO_GLTF: {
     size_t pl = strlen(path);
     bool is_json = pl > 5 && strcmp(path + pl - 5, ".gltf") == 0;
@@ -722,22 +621,6 @@ LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path, LubView *bytes,
     bytes->ptr = e->bytes;
     bytes->len = (int32_t)e->bytes_len;
     bytes->frame = (int32_t)app->frame_index;
-  }
-  io_tail(&r, version, status, error);
-  return LUB_OK;
-}
-
-LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
-                             int32_t *data_count, int32_t *version,
-                             int32_t *status, LubStr *error) {
-  App *app = lub_api_app(ctx);
-  IoResult r;
-  *data = NULL;
-  *data_count = 0;
-  IoEntry *e = io_refresh(app, path, IO_FLOATS, &r);
-  if (e) {
-    *data = e->floats;
-    *data_count = e->float_count;
   }
   io_tail(&r, version, status, error);
   return LUB_OK;

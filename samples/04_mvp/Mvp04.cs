@@ -1,10 +1,19 @@
 // lub の samples/04_mvp の entry。
 // 実行: lub samples/04_mvp/Mvp04.csproj (transpile + watch + hot reload)
 using System;
+using System.Collections.Generic;
 using Lub;
 
 public static class Mvp04
 {
+    // pos.x, pos.y, pos.z, pad0, color.r, color.g, color.b, color.a
+    static List<float> verts = new List<float>
+    {
+         0.0f,  0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+        -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+         0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    };
+
     static float t = 0;
 
     public static void OnInit()
@@ -28,12 +37,10 @@ public static class Mvp04
             out var vs, out var vsv, out _, out _);
         Io.LoadText("samples/04_mvp/data/04_mvp.fs.slang",
             out var fs, out var fsv, out _, out _);
-        Io.LoadFloats("samples/04_mvp/data/04_mvp.verts.lua",
-            out var verts, out var vv, out _, out _);
-        if (vs == null || fs == null || verts == null) return;
+        if (vs == null || fs == null) return;
 
         var shader = Gfx.UseShader("mvp_shader", vs, fs, vsv * 31 + fsv);
-        var vbuf = Gfx.UseBuffer("mvp_verts", Gfx.BufferType.Storage, verts, vv);
+        var vbuf = Gfx.UseBuffer("mvp_verts", Gfx.BufferType.Storage, verts);
         if (shader == null || vbuf == null) return;
 
         Gfx.BeginPass(new PassOpts

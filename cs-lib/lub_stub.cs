@@ -1130,17 +1130,6 @@ namespace Lub
             error = null;
         }
 
-        /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。
-        /// </summary>
-        public static void LoadFloats(string path, out List<float>? data,
-            out int version, out Status status, out string? error)
-        {
-            data = null;
-            version = 0;
-            status = Status.Pending;
-            error = null;
-        }
-
         /// <summary>glTF (.gltf / .glb) を読む。
         /// 結果の mesh は interleave 系に渡す。
         /// 読み直しと version は .gltf / .glb の本体のファイルだけで決まり、.gltf が参照する外部の .bin だけを書き換えても読み直さない (書き出すツールはふつう .gltf と .bin を一緒に書く)。

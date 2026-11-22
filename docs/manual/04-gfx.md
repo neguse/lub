@@ -112,6 +112,8 @@ Gfx.EndPass();
   `Gfx.Draw` の `instances` に個数を渡す。`LUB_VERTEX_ID` / `LUB_INSTANCE_ID` は
   lub が target ごとに与える semantic で、`SV_VertexID` を直接書くと SPIR-V
   では base vertex を引く形になり `DrawParameters` を要求してしまう。
+- 手で書く頂点はコードの `List<float>` にして `UseBuffer(key, Gfx.BufferType.Storage, verts)` で宣言する (`samples/01_triangle`)。
+  `version` を省いた宣言は毎フレーム data を送り直すので、配列を書き換えると hot reload ですぐ反映される。
 
 ```slang
 struct V { float3 pos; float pad0; float4 col; };
@@ -251,8 +253,8 @@ struct FSIn { float2 uv : TEXCOORD0; };
 null の間はそのフレームの処理をスキップするのが定型:
 
 ```csharp
-Io.LoadFloats("data/cube.verts.lua", out var verts, out _, out _, out _);
-if (verts == null) return; // pending or error
+Io.LoadText("data/cube.vs.slang", out var vs, out _, out _, out _);
+if (vs == null) return; // pending or error
 ```
 
 この「毎フレーム宣言して、揃うまで待つ」スタイルにより、初期化順や
