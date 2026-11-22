@@ -3,9 +3,11 @@
 # Targets are linux-x64, linux-arm64, macos-arm64 (lub-<target>.tar.gz), windows-x64, windows-arm64 (lub-<target>.zip).
 # Inputs:
 #   <build-dir>   the lub build for this target. <build-dir>/tcs holds tcs and lub-gen (the output of scripts/build-tcs-native.sh and scripts/build-lub-gen.sh)
-#   <common-dir>  OS-independent files: wasm/vm/ (the web player), lider/Lider.tcsb (lider/scripts/build-module.sh), dict/ (lider/scripts/build-dict.sh)
+#   <common-dir>  OS-independent files: wasm/vm/ (the web player), lider/Lider.tcsb (lider/scripts/build-module.sh), dict/ (lider/scripts/build-dict.sh),
+#                 dotnet/ (the .NET assemblies for .NET execution, scripts/build-dotnet-lib.sh)
 # The lider player is taken from lider/build/player (the output of lider/scripts/build-player.sh).
-# Executables load shared libraries from the same directory (RUNPATH is $ORIGIN on Linux, rpath is @executable_path on macOS, and DLLs are placed next to them on Windows).
+# Executables and the shared library of lub (liblub, used by .NET execution) load shared libraries from the same directory
+# (RUNPATH is $ORIGIN on Linux, rpath is @executable_path / @loader_path on macOS, and DLLs are placed next to them on Windows).
 #
 # Usage: scripts/package-release.sh <target> <build-dir> <common-dir> <out-dir>
 set -euo pipefail
@@ -31,7 +33,7 @@ esac
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 kit="$work/lub"
-mkdir -p "$kit/bin/wasm/vm" "$kit/bin/tcs/runtime" "$kit/bin/tcs/lib" "$kit/lider/data" "$kit/manual" \
+mkdir -p "$kit/bin/wasm/vm" "$kit/bin/tcs/runtime" "$kit/bin/tcs/lib" "$kit/lider/data" "$kit/manual" "$kit/dotnet" \
   "$kit/third_party/slang" "$kit/third_party/jamo"
 
 cp "$build/lub$exe" "$kit/bin/"
@@ -39,18 +41,20 @@ cp "$build/lub$exe" "$kit/bin/"
 cp "lider/build/player/lider_player$exe" "$kit/bin/lider-player$exe"
 case "$os" in
   linux)
-    # Shared libraries that lub looks up by name (placed under the same names as NEEDED in readelf). The lider player looks up the same ones
+    # Shared libraries that lub looks up by name (placed under the same names as NEEDED in readelf). The lider player and liblub look up the same ones
     cp -L "$build/deps/lib/libSDL3.so.0" \
       "$build/deps/lib/libopenxr_loader.so.1" \
-      third_party/slang/lib/libslang-compiler.so.0.* "$kit/bin/"
-    for f in lub lider-player; do
+      third_party/slang/lib/libslang-compiler.so.0.* "$build/liblub.so" "$kit/bin/"
+    for f in lub lider-player liblub.so; do
       patchelf --set-rpath '$ORIGIN' "$kit/bin/$f"
     done
     cp lider/kit/lider "$kit/bin/"
     ;;
   macos)
+    cp "$build/liblub.dylib" "$kit/bin/"
+    chmod u+w "$kit/bin/liblub.dylib"
     # Copy the dylibs looked up via @rpath from inside the build to next to the executable (also following what the copied dylibs look up)
-    pending=("$kit/bin/lub" "$kit/bin/lider-player")
+    pending=("$kit/bin/lub" "$kit/bin/lider-player" "$kit/bin/liblub.dylib")
     while [ ${#pending[@]} -gt 0 ]; do
       f="${pending[0]}"
       pending=("${pending[@]:1}")
@@ -73,13 +77,18 @@ case "$os" in
       done
       install_name_tool -add_rpath @executable_path "$kit/bin/$f"
     done
+    # liblub is loaded by dotnet, so it looks next to itself (@loader_path), not next to the executable
+    for p in $(otool -l "$kit/bin/liblub.dylib" | awk '$1 == "cmd" && $2 == "LC_RPATH" { getline; getline; print $2 }'); do
+      install_name_tool -delete_rpath "$p" "$kit/bin/liblub.dylib"
+    done
+    install_name_tool -add_rpath @loader_path "$kit/bin/liblub.dylib"
     # Rewriting removes the signature. Apple silicon does not run unsigned executables, so re-sign ad-hoc
     find "$kit/bin" -maxdepth 1 -type f -exec codesign --force --sign - {} +
     cp lider/kit/lider "$kit/bin/"
     ;;
   windows)
     # DLLs are loaded from next to the executable. slang is slang.dll and slang-compiler.dll, DXIL generation is dxcompiler.dll, and the D3D12 runtime is D3D12/ of the Agility SDK
-    cp "$build/SDL3.dll" "$build/slang.dll" "$build/slang-compiler.dll" "$build/dxcompiler.dll" "$kit/bin/"
+    cp "$build/lub.dll" "$build/SDL3.dll" "$build/slang.dll" "$build/slang-compiler.dll" "$build/dxcompiler.dll" "$kit/bin/"
     mkdir -p "$kit/bin/D3D12" "$kit/third_party/dxc" "$kit/third_party/d3d12agility"
     cp "$build/D3D12/D3D12Core.dll" "$kit/bin/D3D12/"
     for l in LLVM MIT MS; do
@@ -100,6 +109,8 @@ cp "$build/tcs/tcs$exe" "$kit/bin/tcs/"
 cp "$build/tcs/lub-gen$exe" "$kit/bin/tcs/"
 cp -R "$build/tcs/runtime/." "$kit/bin/tcs/runtime/"
 cp -R "$build/tcs/lib/." "$kit/bin/tcs/lib/"
+# .NET execution of templates/game: the prebuilt assemblies it references in the kit, and the sources TinySystem.props compiles into the game
+cp -R "$common/dotnet/." "$kit/dotnet/"
 
 # Files read by lider (LIDER_HOME): fonts, and the kana-kanji conversion dictionary and its display
 cp "$common/lider/Lider.tcsb" "$kit/lider/"

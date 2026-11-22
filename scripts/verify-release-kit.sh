@@ -3,6 +3,7 @@
 # The tcs and cs-lib of the repository are not used.
 # - lub export web can turn it into a page, and the WGSL of the shaders is included
 # - Even with dotnet removed from PATH, the tcs of the kit can check it, and the lub-gen of the kit can generate the glue code
+# - dotnet run builds it with the .NET assemblies of the kit and runs it on the liblub of the kit (it ends after capturing a picture). The caller provides the .NET SDK
 # - lider can open the template game, convert it and run it (it ends after capturing a picture). The caller provides an environment that can render (a GPU or CPU rasterizer, and a display)
 #
 # Usage: scripts/verify-release-kit.sh <lub-<target>.tar.gz or lub-<target>.zip>
@@ -41,6 +42,12 @@ gen_args=()
 for f in Game.cs ../lub/cs-lib/lub/*.cs ../lub/cs-lib/lubx/*.cs; do gen_args+=(--source "$f"); done
 PATH=/usr/bin:/bin ../lub/bin/tcs/lub-gen tcs --stub ../lub/cs-lib/lub_stub.cs "${gen_args[@]}" -o binding.c
 test -s binding.c
+
+# .NET execution. The template was copied out of the kit, so LubRoot points at the kit
+lub_root="$kit"
+[ "$windows" = 1 ] && lub_root="$(cygpath -m "$kit")"
+dotnet run --property:LubRoot="$lub_root" -- --capture dotnet.png --capture-frame 30
+test -s dotnet.png
 
 # lider opens the template, converts it with the tcs built into the player, and runs it. The converted module is written to .lub/Game.tcsb (what the lub above wrote is deleted first)
 rm -rf .lub

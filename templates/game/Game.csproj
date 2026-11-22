@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- lub game template. For lub it is the entry specification (basename = entry class,
        input = *.cs under this directory), and for dotnet it is the project for .NET
-       execution. LubRoot is the lub checkout (update it if you copy this out with cp -r). -->
+       execution. LubRoot is the lub checkout or the extracted release kit (update it if you copy this out with cp -r). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net11.0</TargetFramework>
@@ -9,34 +9,44 @@
     <Nullable>enable</Nullable>
     <RootNamespace></RootNamespace>
     <LubRoot Condition="'$(LubRoot)' == ''">$(MSBuildThisFileDirectory)../..</LubRoot>
-    <!-- Location of the shared library included in the lub release build -->
+    <!-- The release kit has the prebuilt assemblies in dotnet/ instead of the lub projects -->
+    <LubKit Condition="'$(LubKit)' == '' and !Exists('$(LubRoot)/dotnet/Lub/Lub.csproj')">true</LubKit>
+    <!-- Location of the shared library: bin/ of the release kit, or the lub release build of the checkout -->
+    <LubNativeDir Condition="'$(LubNativeDir)' == '' and '$(LubKit)' == 'true'">$(LubRoot)/bin</LubNativeDir>
     <LubNativeDir Condition="'$(LubNativeDir)' == ''">$(LubRoot)/build-release-linux</LubNativeDir>
     <DefaultItemExcludes>$(DefaultItemExcludes);.lub/**</DefaultItemExcludes>
     <NoWarn>$(NoWarn);CS8981</NoWarn>
   </PropertyGroup>
   <!-- Location of tcs ($(TcsRoot)). Inside a lub checkout, Directory.Build.props has already imported it -->
-  <Import Project="$(LubRoot)/Lub.props" Condition="'$(TcsRoot)' == ''" />
+  <Import Project="$(LubRoot)/Lub.props" Condition="'$(TcsRoot)' == '' and '$(LubKit)' != 'true'" />
 
   <ItemGroup>
     <!-- The implementation sources of cs-lib (lub.Math, lubx) are included in compile, as in the tcs VM player -->
     <Compile Include="$(LubRoot)/cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(LubRoot)/cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Passes the lub API declarations as tcs refs to the TinyC# analyzer (the same compiler as tcs check) -->
+    <AdditionalFiles Include="$(LubRoot)/cs-lib/lub_stub.cs" TinyCsRef="true" />
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="TinyCsRef" />
+    <!-- Records the directory of the shared library in the runtime config. The host loads it from there, where it is (dotnet/Lub/LubRuntime.cs) -->
+    <RuntimeHostConfigurationOption Include="Lub.NativeDir"
+                                    Value="$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(LubNativeDir)'))" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(LubKit)' != 'true'">
     <ProjectReference Include="$(LubRoot)/dotnet/Lub/Lub.csproj" />
     <ProjectReference Include="$(TcsRoot)/TinySystem/TinySystem.csproj" />
     <ProjectReference Include="$(TcsRoot)/TinyCs.Analyzers/TinyCs.Analyzers.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
-    <!-- Passes the lub API declarations as tcs refs to the TinyC# analyzer (the same compiler as tcs check) -->
-    <AdditionalFiles Include="$(LubRoot)/cs-lib/lub_stub.cs" TinyCsRef="true" />
-    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="TinyCsRef" />
-    <!-- Puts the shared library next to the output (found by the default DllImport search) -->
-    <None Include="$(LubNativeDir)/liblub.so" Condition="Exists('$(LubNativeDir)/liblub.so')"
-          CopyToOutputDirectory="PreserveNewest" Link="liblub.so" />
-    <None Include="$(LubNativeDir)/lub.dll" Condition="Exists('$(LubNativeDir)/lub.dll')"
-          CopyToOutputDirectory="PreserveNewest" Link="lub.dll" />
+  </ItemGroup>
+  <!-- The same three, built in advance for the release kit (scripts/build-dotnet-lib.sh) -->
+  <ItemGroup Condition="'$(LubKit)' == 'true'">
+    <Reference Include="Lub" HintPath="$(LubRoot)/dotnet/Lub.dll" />
+    <Reference Include="TinySystem" HintPath="$(LubRoot)/dotnet/TinySystem.dll" />
+    <Analyzer Include="$(LubRoot)/dotnet/TinyCs.Analyzers.dll" />
   </ItemGroup>
   <!-- Maps Math / MathF to TinySystem.Math so that, even in .NET execution, the Math transcendental functions
        give bit-identical results to tcs VM / tcs2c -->
-  <Import Project="$(TcsRoot)/TinySystem/TinySystem.props" />
+  <Import Project="$(TcsRoot)/TinySystem/TinySystem.props" Condition="'$(LubKit)' != 'true'" />
+  <Import Project="$(LubRoot)/dotnet/TinySystem/TinySystem.props" Condition="'$(LubKit)' == 'true'" />
 </Project>

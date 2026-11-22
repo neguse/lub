@@ -190,7 +190,9 @@ internal static unsafe class LubRuntime
     private static bool resolverSet;
 
     // Location of the shared library: the environment variable LUB_NATIVE_LIB (full path) takes top priority.
-    // If missing, the default search (next to the executable, the system library path).
+    // Next, the directory the game's project recorded as the runtime config option Lub.NativeDir (LubNativeDir of templates/game/Game.csproj).
+    // The library is loaded where it is, so the libraries it depends on (SDL3, slang) are found next to it.
+    // If neither, the default search (next to the executable, the system library path).
     // The host (App.Run) calls this before the first P/Invoke.
     // On Windows, unless the path is passed with \ separators, dependent DLLs (SDL3.dll etc.) are not searched for in the library's dir, so GetFullPath converts it to OS separators.
     internal static void EnsureNative()
@@ -202,6 +204,12 @@ internal static unsafe class LubRuntime
             if (name != LibName) return IntPtr.Zero;
             var env = Environment.GetEnvironmentVariable("LUB_NATIVE_LIB");
             if (!string.IsNullOrEmpty(env)) return NativeLibrary.Load(Path.GetFullPath(env));
+            if (AppContext.GetData("Lub.NativeDir") is string dir && dir.Length > 0)
+            {
+                var file = OperatingSystem.IsWindows() ? "lub.dll" : OperatingSystem.IsMacOS() ? "liblub.dylib" : "liblub.so";
+                var full = Path.GetFullPath(Path.Combine(dir, file));
+                if (File.Exists(full)) return NativeLibrary.Load(full);
+            }
             return IntPtr.Zero;
         });
     }

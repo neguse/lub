@@ -169,15 +169,17 @@ csproj は lub にとっては entry 指定 (basename = entry class、入力 = �
 
 同じソースを実 .NET で動かせる (.NET Hot Reload や本物のデバッガを使いたい
 とき)。`dotnet/Lub` が lub の C API の facade と host で、共有 library
-(`build-release-linux/liblub.so`、CMake の `lub_shared`) を P/Invoke する。
+(CMake の `lub_shared`。一式では `bin/liblub.so`、macOS は `bin/liblub.dylib`、Windows は `bin/lub.dll`) を P/Invoke する。
 雛形は `templates/game/` (`dotnet run` で .NET 実行、`lub Game.csproj` で tcs VM の player。入口は `App.Run(typeof(Game), args)`)。
+一式の雛形は、一式の `dotnet/` にある build 済みの assembly と `bin/` の共有 library を使うので、.NET SDK のほかに要るものは無い。
+雛形を一式の外に写したときは、`Game.csproj` の `LubRoot` を一式の場所に直す。
 サンプルは runner で回す:
 
 ```
 dotnet run --project dotnet/SampleRunner -p:Sample=09_breakout -- --capture out.png
 ```
 
-共有 library は出力の隣か環境変数 `LUB_NATIVE_LIB` (full path) で見つける。
+共有 library は、環境変数 `LUB_NATIVE_LIB` (full path)、`Game.csproj` の `LubNativeDir` (一式では `bin/`、lub の checkout では `build-release-linux/`)、出力の隣、の順に探す。
 引数は `--backend` (player では環境変数 `LUB_BACKEND`) と、player と同じ `--fixed-dt` / `--capture` / `--capture-frame` / `--digest` / `--readback-fixed-latency`。
 入口が `App.Run(assembly, args)` (assembly の中から entry class を探す。SampleRunner) なら、player と同じ `--entry <Class>` で entry class を選べる。
 `Bytes` (view) は `AsSpan()` で読め、frame を跨いで持つと例外になる。

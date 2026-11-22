@@ -20,11 +20,13 @@ page は外の file を読まないので、claude.ai の artifact にそのま�
 | `bin/lub` | lub 本体 (Slang 込み)。ゲームを動かし (hot reload)、検査し、export する。共有 library は同じディレクトリから読む |
 | `bin/lider` (Windows は `bin/lider.cmd`) | lider を起動する。lider はゲームを動かしたまま、コードを書き直し、調べるエディタ |
 | `bin/lider-player` | lider の player (lub の player に、かな漢字変換と tcs の compiler を入れたもの)。`bin/lider` が起動する |
+| `bin/liblub.so` (macOS は `liblub.dylib`、Windows は `lub.dll`) | lub の共有 library。ゲームを .NET で実行するときに使う (`manual/08-csharp.md` の「.NET で実行する」) |
 | `bin/wasm/vm/` | web の tcs VM の player (`lub export web` が page に埋め込む) |
 | `bin/wasm/xr.mjs` | 自分の page で WebXR を使うときの `createXR` (`manual/10-web.md`) |
 | `bin/tcs/` | C# を tcs VM の bytecode にする tcs (tcs2c で C にした実行ファイル。.NET は要らない)。`tcs c` で C にもできる。`lub-gen tcs` は `tcs c` の C に lub の API の接続コードを作る (同じく C にした実行ファイル) |
 | `lider/` | lider の bytecode (`Lider.tcsb`)、font、かな漢字変換の辞書 (`data/mozc.dict`) |
 | `cs-lib/` | API の stub (`lub_stub.cs`) と、ゲームが使う C# の library (`lubx`) |
+| `dotnet/` | .NET で実行するときに雛形が参照する、build 済みの assembly (`Lub.dll`、`TinySystem.dll`、TinyC# の analyzer) と `TinySystem/` |
 | `manual/` | 利用者向けのガイドと、tcs で使える C# の一覧 (`tcs-support-matrix.md`) |
 | `templates/game/` | ゲームの雛形 |
 | `LICENSE`、`THIRD_PARTY_LICENSES.md`、`third_party/` | lub と、一式に入れた第三者の物のライセンス。lider の font と辞書の表示は `lider/data/` にある |

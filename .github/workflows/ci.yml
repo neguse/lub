@@ -704,7 +704,7 @@ jobs:
           cmake --build build/wasm/export-player
 
       # The release bundle job (kit) waits for this, so build it and hand it over as soon as what it needs (the lub player wasm) is ready
-      # The OS-independent parts of the release bundle: the web tcs VM player (the same one the site serves), the lider bytecode (the same one the site build produces), and the kana-kanji conversion dictionary.
+      # The OS-independent parts of the release bundle: the web tcs VM player (the same one the site serves), the lider bytecode (the same one the site build produces), the kana-kanji conversion dictionary, and the .NET assemblies for .NET execution.
       # The dictionary is determined by build-dict.sh (which fixes the mozc commit to fetch) and the jamo commit, so they are the cache key, and it is built only when missing (same key as the linux lider job)
       - name: Dictionary key
         id: dict
@@ -730,6 +730,7 @@ jobs:
           cp build/wasm/vm/lub.js build/wasm/vm/lub.wasm common/wasm/vm/
           cp lider/build/web/Lider.tcsb common/lider/
           cp lider/data/mozc.dict lider/data/mozc-README.txt lider/data/mozc-LICENSE.txt common/dict/
+          bash scripts/build-dotnet-lib.sh common/dotnet
 
       - uses: actions/upload-artifact@v4
         with:
@@ -1185,11 +1186,6 @@ jobs:
             build-kit/tcs/lub-gen.exe
           key: ${{ steps.tools.outputs.lub-gen }}
 
-      # dotnet is needed only to build the C tcs and lub-gen
-      - name: Need .NET
-        id: dotnet
-        run: echo "need=${{ steps.tcs-cache.outputs.cache-hit != 'true' || steps.lub-gen-cache.outputs.cache-hit != 'true' }}" >> "$GITHUB_OUTPUT"
-
       # Pinned-version ccache (scripts/install-ccache.sh)
       - name: Install ccache
         run: bash scripts/install-ccache.sh
@@ -1217,20 +1213,20 @@ jobs:
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
         run: brew install bash ninja
 
+      # dotnet builds the C tcs and lub-gen (when their caches miss), and the bundle check runs the template with .NET execution
       # On Windows the .NET SDK is not in the image and is fetched every time, so the install directory is fixed and cached
       - name: .NET install dir (Windows)
-        if: steps.dotnet.outputs.need == 'true' && runner.os == 'Windows'
+        if: runner.os == 'Windows'
         run: echo "DOTNET_INSTALL_DIR=C:\dotnet" >> "$GITHUB_ENV"
 
       - name: Cache .NET (Windows)
-        if: steps.dotnet.outputs.need == 'true' && runner.os == 'Windows'
+        if: runner.os == 'Windows'
         uses: actions/cache@v4
         with:
           path: C:\dotnet
           key: dotnet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json') }}
 
       - uses: actions/setup-dotnet@v4
-        if: steps.dotnet.outputs.need == 'true'
         with:
           global-json-file: global.json
 
