@@ -98,11 +98,26 @@ static bool resolve_entry(int *argc, char ***argvp) {
 }
 
 static void print_usage(void) {
-  SDL_Log("usage: lub <Entry>.csproj|<Entry>.tcsb|<sample> [--entry CLASS] "
-          "[--fixed-dt S] [--capture PNG] [--capture-frame N] [--digest]\n"
+  SDL_Log("usage: lub <Entry>.csproj|<Entry>.tcsb|<sample> [options]\n"
           "       lub check <Entry>.csproj\n"
           "       lub export <web|linux|windows|macos|ios|android> <entry> "
-          "-o <dir>");
+          "-o <dir>\n"
+          "\n"
+          "options:\n"
+          "  --entry CLASS              entry class name\n"
+          "  --extension LIB            load a native VM extension library\n"
+          "  --capture PNG              save a frame to PNG and exit\n"
+          "  --capture-frame N          frame number to capture\n"
+          "  --fixed-dt S               fixed frame dt in seconds "
+          "(0 < S <= 0.25, tests/replay)\n"
+          "  --readback-fixed-latency   deliver Gfx.ReadTexture on frame N+2\n"
+          "  --digest                   print per-frame API call digests\n"
+          "  -h, --help                 show this help\n"
+          "\n"
+          "env:\n"
+          "  LUB_BACKEND                d3d12|vulkan|metal|sdlgpu|openxr\n"
+          "  LUB_PROFILE=1              enable CPU profiler "
+          "(LUB_PROFILE_START_FRAME/FRAME/EVERY/LABEL)");
 }
 
 // iOS apps start with cwd "/".
@@ -126,6 +141,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
 
   enter_bundle();
+  if (argc > 1 &&
+      (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)) {
+    print_usage();
+    return SDL_APP_SUCCESS;
+  }
   // `lub check <entry>`: create neither a window nor a VM, and turn the tcs
   // result into the exit code
   if (argc > 1 && strcmp(argv[1], "check") == 0) {
