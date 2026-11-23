@@ -70,7 +70,7 @@ flowchart LR
             dn_game["ゲーム"] ~~~ dn_lubx["Lubx API"] ~~~ dn_ts["TinySystem"] ~~~ dn_facade["dotnet/Lub (P/Invoke)"]
         end
         dn_clr[".NET CLR"]
-        dn_lib["liblub (共有ライブラリ)"]
+        dn_lib["liblub"]
         dn_mod ~~~ dn_clr ~~~ dn_lib
     end
 ```
