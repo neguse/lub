@@ -1,15 +1,44 @@
-// Metal backend (macOS / iOS).
+// Metal backend (macOS / iOS default; Objective-C with ARC).
 //
-// Sequence per frame:
-//   begin_frame: commandBuffer -> nextDrawable
-//   begin_pass : renderCommandEncoder
-//   end_pass   : endEncoding
-//   end_frame  : presentDrawable -> commit
+// Implements the RenderBackend vtable directly on Metal; all Metal-specific
+// concepts stay inside this file. Window creation uses SDL_WINDOW_METAL |
+// SDL_WINDOW_HIGH_PIXEL_DENSITY and renders into SDL_Metal_CreateView's
+// CAMetalLayer (BGRA8Unorm; fullscreen on iOS).
 //
-// One command buffer carries the whole frame, so passes, compute dispatches
-// and blits run in the order they were recorded. Shaders arrive as MSL source
-// (SHADER_TARGET_METAL) and the reflection slots are the [[buffer]] /
-// [[texture]] / [[sampler]] indices of each stage, bound as-is.
+//   * Frame model: one command buffer carries the whole frame
+//     (begin_frame: commandBuffer -> nextDrawable, begin_pass:
+//     renderCommandEncoder, end_pass: endEncoding, end_frame:
+//     presentDrawable -> commit), so passes, compute dispatches, and blits run
+//     in recorded order. If the window is hidden and nextDrawable is nil,
+//     swapchain pass draws are dropped.
+//   * Shaders (SHADER_TARGET_METAL): Slang compiles VS and FS separately to
+//     MSL source (compiled at runtime with newLibraryWithSource; inter-stage
+//     varyings match by [[user(...)]]). Reflection slots are per-stage
+//     [[buffer]] / [[texture]] / [[sampler]] indices bound as-is (uniform
+//     blocks and StructuredBuffers share the [[buffer]] index space). Uniform
+//     data is zero-padded to a 16-byte multiple to match MSL struct rounding.
+//     To keep StructuredBuffer elements packed (float3 = 12 bytes) across
+//     backends, shader.cpp rewrites buffer structs to a <name>_packed variant
+//     using packed_float3 and converts on load; direct expressions like
+//     mul(m, verts[i].nrm) without binding V v = verts[i] first fail MSL
+//     compilation.
+//   * Binding & resources: uniforms use setVertexBytes / setFragmentBytes
+//     under 4 KB and a transient buffer otherwise. Buffer / texture updates
+//     replace the MTLBuffer / MTLTexture instead of writing in place so
+//     already-recorded draws still read the previous contents until commit.
+//     Scissor rects are clamped to the pass viewport; an empty clamp drops
+//     draws until the next set_scissor.
+//   * High pixel density & safe area: rendering uses physical pixels and mouse
+//     coordinates are scaled via lub_host_pixel_density. On notched devices,
+//     the main target is restricted to the safe area (lub_host_main_rect);
+//     swapchain passes clear the full drawable while viewport, scissor,
+//     Gfx.Size, and input origin use the safe area.
+//   * Readback & capture: readback blits to a CPU-readable buffer on the frame
+//     command buffer and polls its completion (waiting only at frame N+2 in
+//     fixed-latency mode; outside a frame commits and waits immediately).
+//     Capture commits and waits synchronously after the blit and opens a new
+//     command buffer for the rest of the frame
+//     (capture_before_end_frame = true).
 #include "app.h"
 #include "backend.h"
 #include "gpu_stats.h"

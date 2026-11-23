@@ -1,229 +1,126 @@
-# lubの開発
+# 開発手順
 
-## ビルド
+## 構成
 
-依存:
-- CMake 3.22+
-- C11 / C++17 対応コンパイラ (GCC / Clang / MSVC)
-- Vulkan loader と開発 header (Linux 必須) — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`
-- Vulkan SDK (Windows 任意) — SDK が見つかった場合だけ `vulkan` backend を組み込む
-- .NET SDK — C# の変換 (tcs) と生成物の作り直し (`scripts/gen-api.sh`) に使う
+`lub` は以下の要素で構成される:
 
-.NET SDK の版は repo の root の [global.json](../global.json) で固定する。
-[dotnetup](https://learn.microsoft.com/dotnet/core/tools/dotnetup) を入れ、repo の root で `dotnetup sdk install` を打つと、その版が入る。
-pin が上がったときも、同じコマンドを打ち直す。
-distro の package の SDK は workload と版がずれるので混ぜない。
+- `liblub` (ライブラリ): `Lub API` の C/C++ 実装ライブラリ (描画・物理・音・入力・IO・グラフィックスバックエンド)
+- `player` (ライブラリ `lub_vm_player`): `liblub` と `tcs VM` でバイトコード (`.tcsb`) を動かす最小限の実行ライブラリ。`lub` CLI・`lider-player`・Web (`lub.wasm`)・外部 CMake プロジェクト (`find_package(lub)`) がリンクして使う
+- `lub` CLI (実行ファイル): プレイヤーの起動と `check` / `export` を持つコマンドライン入口
+- `tcs`: TinyC# コンパイラ (`tcs vm` / `tcs c`) と VM
+- `Lub API` / `Lubx API`: API 定義の正本 (`cs-lib/lub_stub.cs`) と C# 便利層 (`cs-lib/`)
+- `lider` / `web`: ホットリロード対応の専用エディタ (`lider-player` 上で動く TinyC# アプリ) と Web 配信ページ
 
-Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
-`third_party/slang/lib/` に無ければ GitHub release から自動取得する
-(`third_party/slang/{lib,bin}/` は gitignore 対象)。
+TinyC# のゲームは、3 つの実行モード (`tcs VM` / `tcs C` / `.NET`) で共通の `liblub` を呼び出して動く。
 
-コンパイルする依存 (SDL3 / Box2D / Box3D / OpenXR (Linux / Android)) は `third_party/` 配下の
-git submodule なので、clone 後に一度 submodule を取得する:
+```mermaid
+flowchart TB
+    game["ゲームコード (TinyC# + Lubx API)"]
+    player["tcs VM プレイヤー (lub_vm_player: lub CLI / lub.wasm / lider-player)"]
+    tcsc["tcs C (C 変換 + 静的リンク)"]
+    dotnet[".NET 実行 (dotnet/Lub)"]
+    liblub["liblub (描画・物理・音・入力・IO)"]
+    gpu["グラフィックスバックエンド (d3d12 / vulkan / metal / sdlgpu / webgpu)"]
+
+    game -->|"tcs vm (.tcsb)"| player
+    game -->|"tcs c (.c)"| tcsc
+    game -->|"dotnet run"| dotnet
+    player --> liblub
+    tcsc --> liblub
+    dotnet -->|"P/Invoke"| liblub
+    liblub --> gpu
+```
+
+| 場所 | 役割 |
+| --- | --- |
+| `src/`, `include/` | `liblub`、`player` (`lub_vm_player`)、`lub` CLI (`src/main.c`) |
+| `cs-lib/` | `Lub API` の正本 (`lub_stub.cs`) と C# で書いた `Lubx API` (`lub/`, `lubx/`) |
+| `tcs/` | TinyC# コンパイラ (`tcs vm` / `tcs c`)、VM、標準 C 補助 (`tcs/runtime/`) |
+| `tools/lub-gen/` | `lub_stub.cs` から C ヘッダ・VM 連携・`.NET` facade・API docs を生成するツール |
+| `dotnet/` | `.NET` 実行モード用の facade (`dotnet/Lub`) とテストランナー (`SampleRunner`) |
+| `lider/` | ホットリロード対応の専用エディタ (自身も lub 上の TinyC# で動作) |
+| `web/` | ブラウザ版 (`lub.neguse.net`) の配信ページ (lider / player / docs) |
+| `samples/`, `templates/` | 動作サンプルとゲーム雛形 (`templates/game/`) |
+| `tests/` | `lub` 本体のテスト一式 (`cs/`, `golden/`, `c/`, `vm/`, `dotnet/`, `cmake/`) |
+| `scripts/`, `cmake/` | ビルド・検査・パッケージング用のスクリプトと CMake モジュール |
+| `third_party/` | 外部依存 (SDL3、Box2D、Box3D、OpenXR、Slang、jamo 等) |
+
+## 環境準備
+
+必要なもの:
+- 共通
+    - CMake
+    - Ninja
+    - C11 / C++17 対応コンパイラ (GCC / Clang / MSVC)
+    - .NET SDK
+        - [dotnetup](https://learn.microsoft.com/dotnet/core/tools/dotnetup) `dotnetup sdk install`
+- Linux
+    - Vulkan loader と開発ヘッダ
+        - Arch: `vulkan-icd-loader`
+        - Debian/Ubuntu: `libvulkan-dev`
+
+clone 後に一度、submodule の取得と commit フックの有効化を行う:
 
 ```sh
 git submodule update --init
-```
-
-lub の configure は、これらを `third_party/CMakeLists.txt` の project として build し、build のディレクトリの `deps/` に install して使う (`cmake/LubDeps.cmake`)。
-build するのは初めての configure と、submodule の commit か toolchain が変わったときだけ。
-submodule の中の file を手で書き換えたときは、lub を configure し直す。
-
-Linux:
-
-```sh
-cmake -S . -B build
-cmake --build build -j
-```
-
-macOS (Xcode か Command Line Tools。iOS の app は
-[metal-backend.md](metal-backend.md)):
-
-```sh
-cmake -S . -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build-mac
-```
-
-Windows (PowerShell, MSVC + Ninja):
-
-```powershell
-& 'C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat'
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-```
-
-Release build は手順を固定するため、通常は script 経由で行う
-(詳細は [release-build.md](release-build.md)):
-
-```sh
-bash scripts/build-release.sh                                              # Linux
-bash scripts/build-release.sh --build-dir build-mac                        # macOS
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1  # Windows
-```
-
-CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.exe`
-の横にコピーされるので、追加の PATH 設定なしで実行できる。
-
-## コードフォーマット
-
-各フォーマッタのデフォルト設定で整形する。既存スタイルに寄せるプロジェクト固有の設定ファイルは置かない (`.clang-format` は LLVM を選ぶだけ)。
-
-コードのコメントは英語で書く。
-`cs-lib/lub_stub.cs` の XML doc だけは、API reference としてガイドと並んでサイトに出るので、ドキュメントと同じく日本語で書く。
-コメントは 1 文を 1 行に書く。
-ただし C、C++、Slang では、80 桁を超えたコメントを clang-format が折り返し、同じ段落の続く行を詰める。
-
-- C/C++/Slang — `clang-format` (LLVM default、Slang は HLSL 扱い)
-- C# — `dotnet format whitespace` (dotnet SDK 付属)
-- Web TS — `prettier` (`web/` で `npm install` 後に利用可)
-
-```sh
-scripts/format.sh            # 全ソースを整形
-scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非ゼロ終了で失敗)
-```
-
-## 開発の流れ
-
-作業はブランチを切って PR にする。
-これからやることは GitHub の issue に書き、やったことは PR の本文に書く。
-repo の中に作業の一覧や完了の記録は置かない。
-merge してよいかは、PR の CI(`.github/workflows/ci.yml`)の `gate` の job で決まる。
-
-1. テストを先に書く。lub の挙動は `tests/cs/` の runtime テストと golden で、tcs の挙動は `tcs/` のテスト([tcs/README.md](../tcs/README.md))で見る。
-   runtime テストは C# で `tests/cs/<Entry>.cs` と中身 1 行の `<Entry>.csproj` に書き、判定には `tests/cs/Check.cs` を使う。
-   1 本だけなら `lub tests/cs/<Entry>.csproj` で動かす。
-   全体の一覧は `scripts/cs-tests.sh` にある。
-   サンプルは実行例なので、サンプルにはテストを書かない。
-2. [design.md](design.md) の設計の方針に沿って実装し、テストが通るのを確かめる。
-   API を足したり変えたりするときは、[api-glue.md](api-glue.md) の「新 API を足す手順」に従う。
-3. テスト、実装、変えた挙動を書いたドキュメントを 1 つの PR に入れる。
-   ドキュメントは [docs/README.md](README.md) の方針で書く。
-
-clone したら一度、commit フックを有効にする:
-
-```sh
 git config core.hooksPath .githooks
 ```
 
-commit フック(`scripts/pre-commit.sh`)は、変えたファイルの整形、空白、docs-lint を走らせる。
-build とテストは PR の CI が走らせる。同じものを手元で走らせるのは `scripts/pre-push.sh`。
-
-## 実行
+## ビルド
 
 ```sh
-./build/lub samples/01_triangle/Triangle01.csproj
+# Linux, macOS
+cmake -S . -B build -G Ninja
+cmake --build build -j
 ```
 
-(Windows は `.\build\lub.exe samples\01_triangle\Triangle01.csproj` 形式)
+```powershell
+# Windows (PowerShell, MSVC + Ninja)
+& 'C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat'
+cmake -S . -B build -G Ninja
+cmake --build build -j
+```
 
-`.cs` を編集して保存すると、走っている game に即反映される(hot reload)。
-`.slang` / PNG などの data ファイルも同様に保存で即反映。
+Release ビルドにする場合は configure 時に `-DCMAKE_BUILD_TYPE=Release` を付ける。
 
-依存:
-- C# の変換は TinyC# (`tcs/`) が行う。
-  lub は実行ファイルの隣の `tcs/tcs` (`scripts/build-tcs-native.sh` が作る C の tcs) を最初に使い、無ければ PATH の dotnet SDK で `tcs/` の compiler を動かす。
-  C の tcs を使うなら実行に dotnet は要らない (作るのには dotnet SDK が要る)。
+## フォーマットと検査
 
-サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
-(`<Entry>.cs` + `<Entry>.csproj` + `data/`)。
-複数のサンプルで使う asset (フォントなど) は `samples/data/` に置く。
-ゲームの書き方(ライフサイクル、座標系、描画モデル、TinyC# の注意点)は [manual/](manual/) のガイドにあり、サイトの [lub.neguse.net/docs](https://lub.neguse.net/docs) でも読める。
-
-Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
+commit フックにより整形や lint が行われる。
 
 ```sh
-# 事前: sudo pacman -S vulkan-swrast (Arch) / sudo apt install mesa-vulkan-drivers (Debian)
-scripts/run-headless.sh samples/01_triangle/Triangle01.csproj
+# 手動で個別実行する場合
+scripts/format.sh            # 全ソースを整形 (clang-format / dotnet format / prettier)
+scripts/format.sh --check    # 整形確認のみ
+scripts/docs-lint.sh         # bold・リンク切れ・docs/ パスを検査
+scripts/gen-api.sh --check   # API 生成物が stub に追いついているか確認
 ```
 
-`scripts/run-headless.sh` は `VK_ICD_FILENAMES` で lavapipe ICD を強制し、
-`DISPLAY` / `WAYLAND_DISPLAY` が無ければ自動で `xvfb-run` でラップする。
-これにより CI / SSH / コンテナ環境でも native sample を走らせられる
-(Mesa lavapipe / AMD radv 双方で動作)。
-lavapipe が無いときは、その機械の Vulkan driver と `SDL_VIDEO_DRIVER=offscreen` で走らせる。この場合の capture は golden と一致しないことがある。
-lavapipe があって画面も `xvfb-run` も無いときは、lavapipe と `SDL_VIDEO_DRIVER=offscreen` で走らせる。
-Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
+## テスト
 
-スクリーンショット capture (PNG 出力):
+`lub` 本体のテストは `tests/` 配下に目的別で分かれている:
+
+- `tests/cs/` — エンジン API の挙動テスト (C# で書き、`lub` と .NET の両方で動かして終了コードで判定)
+- `tests/golden/` — 描画テスト (`tests/cs/` の一部) の正解画像
+- `tests/c/` — C 内部モジュールの単体テスト (CMake の `lub_*_smoke` ターゲット)
+- `tests/vm/` — ホットリロード・プロジェクト監視・拡張など player 周りの結合テスト (`scripts/vm-project-test.sh`)
+- `tests/dotnet/` / `tests/cmake/` — .NET バインディングと外部 CMake 組み込みの検証
+
+`tests/cs/` のテストは `<Entry>.cs` と 1 行の `<Entry>.csproj` で書き、判定には `tests/cs/Check.cs`、一覧は `scripts/cs-tests.sh` に置く。
 
 ```sh
-# 30 フレーム描画後にキャプチャして即終了
-scripts/run-headless.sh samples/01_triangle/Triangle01.csproj --capture out.png --capture-frame 30
-
-# golden test 用: 各 render frame の dt も 1/60 秒に固定
-scripts/run-headless.sh samples/01_triangle/Triangle01.csproj --capture out.png --capture-frame 30 --fixed-dt 0.0166666666666667
+./build/lub tests/cs/<Entry>.csproj        # tests/cs/ のテストを 1 本実行
+BINARY=./build/lub scripts/run-golden.sh   # 描画テストを tests/golden と比較 (--update で再生成)
 ```
 
-通常の `OnFrame(dt)` と UI には実測のフレーム間隔が渡る。`--capture-frame` は
-capture する render frame 番号だけを固定し、経過時間は固定しない。
-`--fixed-dt <seconds>` は golden / replay テスト専用で、指定すると実測値の代わりに
-同じ `dt` を毎フレーム渡す(有限かつ `0 < dt <= 0.25` の値のみ)。通常プレイの
-速度制限や FPS 制限には使わない。
-`--readback-fixed-latency` は `Gfx.ReadTexture` の結果が届く frame を固定する(frame N の要求はちょうど frame N+2 に届く)。
-ゲームの `ConfigOpts.ReadbackFixedLatency` が指定すればそちらが勝つ。
-golden と tests/cs の runner はこれを付けて走らせる。
+Linux で画面なし実行する場合は `scripts/run-headless.sh` を使う (lavapipe + xvfb / offscreen)。
+一式をまとめて回すゲートスクリプトは `scripts/native-gate.sh` (Linux)、`scripts/apple-gate.sh` (macOS / iOS)、`scripts/pre-push.sh` (Linux + Web)。
 
-ゲーム側から任意の render target を保存する場合は `Gfx.Readback()` を使う
-([API reference](https://lub.neguse.net/docs) 参照)。
+GitHub ActionsのCIにより自動でテスト通過が確認される。
 
-### Sprite benchmark (Release)
+## API の追加と変更
 
-```sh
-bash scripts/run-sprites-bench.sh                                              # Linux
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1  # Windows
-```
+API の正本は `cs-lib/lub_stub.cs` (`tools/lub-gen/Tool.cs` に規則と生成物一覧)。
 
-score の見方や `-NoBuild` / backend 切替は [sprites-bench.md](sprites-bench.md) を参照。
-
-### Golden image diff (回帰テスト)
-
-```sh
-scripts/run-golden.sh             # 描画を golden で見る tests/cs の test × backend を tests/golden と cmp
-scripts/run-golden.sh --update    # golden 画像を再生成 (描画意図的変更時)
-scripts/run-golden.sh --test TestIndexedDraw --backend sdlgpu
-```
-
-Linux と Windows は機材非依存の CPU rasterizer を強制するので capture が
-確定的になり、`cmp -s` で完全一致判定する。Linux は lavapipe + xvfb で
-sdlgpu と vulkan を、Windows (git bash) は WARP (`LUB_D3D12_WARP=1`) で
-d3d12 をチェックする。macOS は metal を実 GPU で描くので、Linux の golden
-(`*_sdlgpu.png`) と許容差で比べる (`scripts/png-diff.py`)。
-
-## Backend 切替
-
-lub は 5 つの GPU backend を持ち、同一 API で動く:
-
-- `d3d12` — Windows の既定。D3D12 直接実装
-  (設計は [d3d12-backend.md](d3d12-backend.md))
-- `vulkan` — Linux の既定。Vulkan 直接実装 (`src/backend_vulkan.c`)。Windows でも
-  Vulkan SDK が見つかる build では選べる。
-  `LUB_BACKEND=openxr` はこの backend で OpenXR の headset に描く (Linux / Android。Android の既定。[manual/07-xr.md](manual/07-xr.md))
-- `metal` — macOS / iOS の既定。Metal 直接実装
-  (設計は [metal-backend.md](metal-backend.md))
-- `sdlgpu` — SDL3 GPU API 経由の実装 (Windows / Linux の代替 backend)
-- `webgpu` — web build の実体 (webgpu.h 直接)。web では backend 指定は無視される
-
-切替は `Config` の `Backend`。サンプルは環境変数 `LUB_BACKEND` を読んで
-渡しているので CLI から切り替えられる:
-
-```sh
-LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/Triangle01.csproj
-```
-
-## web のサイト
-
-ブラウザで動くエディタ (lider、[lider/README.md](../lider/README.md)) を `web/` 配下に同梱し、[lub.neguse.net](https://lub.neguse.net) で公開している。
-`.cs` は lider が player に組み込んだ tcs で tcs VM の bytecode に変換し、hot reload で動いているゲームに反映される。
-ガイド + API reference の docs サイト (`/docs`) も同じサイトに同居する。
-
-ビルド手順・実行時アーキテクチャ・headless 検証・制約は
-[web/README.md](../web/README.md) を参照。
-
-## 外部プロジェクトから使う
-
-別リポのゲームは、雛形の `templates/game/` (C#、tcs VM の player と .NET 実行の両方で動く) を `cp -r` して作り、サンプルと同じく `lub` で動かす。
-
-```sh
-./build/lub mygame/Game.csproj                  # 保存すると hot reload
-./build/lub export web mygame/Game.csproj -o out # web の page 1 枚にする
-```
+1. `cs-lib/lub_stub.cs` に宣言と日本語 XML doc を追加・変更する
+2. `scripts/gen-api.sh` で C ヘッダ・tcs VM host 関数・.NET facade・API docs を再生成する
+3. `liblub` (`src/`) または `Lubx API` (`cs-lib/`) を実装する

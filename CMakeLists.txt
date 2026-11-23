@@ -327,7 +327,7 @@ if((CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID) AND LUB_HAS_VULKAN)
   set(LUB_HAS_OPENXR ON)
 endif()
 if(ANDROID)
-  # Copy the APK data to internal storage (docs/android.md)
+  # Copy the APK data to internal storage (src/android.c)
   list(APPEND LUB_SOURCES src/android.c)
 endif()
 # The runtime itself is gathered into an object library, which both the player (lub) and the shared library (lub_shared, used by the .NET execution host via P/Invoke) link.
@@ -347,7 +347,7 @@ if(LUB_TCS_GAME)
     message(FATAL_ERROR "LUB_TCS_BINDING is required with LUB_TCS_GAME")
   endif()
   if(ANDROID)
-    # libmain.so loaded by SDLActivity (docs/android.md)
+    # libmain.so loaded by SDLActivity (scripts/build-android.sh)
     add_library(lub SHARED "${LUB_TCS_HOST}")
     set_target_properties(lub PROPERTIES OUTPUT_NAME main)
   else()
@@ -399,7 +399,7 @@ elseif(NOT LUB_TCS_GAME)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # The iOS player is an app bundle.
-  # .tcsb and data are placed inside the bundle (docs/metal-backend.md).
+  # .tcsb, data, and cache/shader/ are placed inside the bundle (scripts/apple-gate.sh).
   # Info.plist is written with CMake variables, so both the Xcode and Ninja generators produce the same bundle.
   set_target_properties(lub PROPERTIES
     MACOSX_BUNDLE TRUE
@@ -714,7 +714,7 @@ if(LUB_HAS_SLANG)
 endif()
 
 # Write out the build tree targets so that outside projects can use the player library (lub::lub_vm_player) via find_package(lub).
-# Users pass this build directory as lub_DIR (docs/api-glue.md).
+# Users pass this build directory as lub_DIR (example: tests/cmake/player).
 # lubConfig.cmake searches for the third-party libraries in <build>/deps/.
 set(LUB_EXPORT_TARGETS lub_vm_player lub_objs tcsvm_lib tcs_runtime tess2)
 export(TARGETS ${LUB_EXPORT_TARGETS} NAMESPACE lub:: FILE "${CMAKE_CURRENT_BINARY_DIR}/lubTargets.cmake")

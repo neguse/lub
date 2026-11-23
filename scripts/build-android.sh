@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Turns a tcs2c game into an APK for Android (Meta Quest) (docs/android.md).
+# Turns a tcs2c game into an APK for Android (Meta Quest OpenXR/Vulkan, arm64-v8a).
 # Builds the player (libmain.so) with the NDK, puts it into the APK together with the Java code of SDL (SDLActivity), the OpenXR loader and the game data, and signs it.
 # Does not use Gradle; assembles it with the build-tools of the Android SDK (aapt2, d8, zipalign, apksigner).
+# Prerequisites: Android SDK build-tools 36 (34's d8 hits an internal error on JDK 21 javac output), platform 35, NDK r27+, JDK, CMake, Ninja, zip.
+# Targets minSdkVersion 29, targetSdkVersion 32, ABI arm64-v8a. Install with `adb install -r <apk>` and inspect logs with `adb logcat -s SDL SDL/APP`.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

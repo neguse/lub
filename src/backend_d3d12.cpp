@@ -1,23 +1,57 @@
-// D3D12 backend.
+// D3D12 backend (Windows default, C++ because D3D12 is a COM API; the vtable
+// g_backend_d3d12 is extern "C").
 //
-// Implements the RenderBackend vtable directly on D3D12 (no wrapper lib).
-// Design notes live in docs/d3d12-backend.md. The short version:
+// Implements the RenderBackend vtable directly on D3D12 with no wrapper lib;
+// explicit synchronization, descriptor heaps, and resource layouts stay inside
+// this file.
 //
-//   * Single direct queue, kFramesInFlight = 2. One graphics command list is
-//     open from begin_frame to end_frame; passes, copies and compute all
-//     record into it. In-order execution on the one queue reproduces the
-//     SDL_GPU "cycle" semantics for mid-frame buffer updates: draws recorded
-//     before an update read the old contents.
-//   * Uniforms are suballocated from a per-frame upload arena and bound as
-//     root CBVs (GPU VA, no descriptors) — the moral equivalent of SDL_GPU's
-//     push uniforms.
-//   * Root signatures are built per shader from ShaderReflection; the slots
-//     are Slang's HLSL register indices (see SHADER_TARGET_D3D12).
-//   * Enhanced barriers with no per-resource state: textures rest in
-//     DIRECT_QUEUE_COMMON and change layout only while bound as an
-//     attachment; buffers are ordered by global barriers.
-//
-// C++ because D3D12 is a COM API; the vtable itself is extern "C".
+//   * Runtime: DirectX 12 Agility SDK (NuGet Microsoft.Direct3D.D3D12 fetched
+//     into third_party/d3d12agility/ by CMake). The executable exports
+//     D3D12SDKVersion / D3D12SDKPath and ships D3D12/D3D12Core.dll beside it;
+//     hosts without those exports (.NET execution) request the same SDK via
+//     ID3D12SDKConfiguration1::CreateDeviceFactory and fall back to inbox
+//     D3D12 if unavailable (Windows 10 1909+). -DLUB_FETCH_WARP=ON copies
+//     NuGet d3d10warp.dll next to the exe for testing newer WARP (CI golden
+//     uses inbox WARP). Debug builds or LUB_D3D12_DEBUG=1 enable the debug
+//     layer and drain ID3D12InfoQueue warnings/errors to SDL_Log each frame
+//     and at shutdown.
+//   * Shaders (SHADER_TARGET_D3D12): Slang compiles VS+FS linked into one
+//     program as DXIL (sm_6_0 via dxcompiler.dll; DXC 1.8.2502+ signs DXIL
+//     without dxil.dll) so inter-stage varyings match by register position
+//     (SV_Position must be last in VS output) and b/t/s/u registers are unique
+//     across the program. Reflection slots are HLSL register indices as-is.
+//   * Frame model: single direct queue, kFramesInFlight = 2, DXGI flip-discard
+//     swapchain (3 buffers, R8G8B8A8_UNORM) + default D24_UNORM_S8_UINT depth.
+//     One graphics command list stays open from begin_frame to end_frame;
+//     passes, copies, and compute all record into it so in-order execution
+//     reproduces SDL_GPU "cycle" semantics for mid-frame updates.
+//     pending_resize drains all in-flight frames at the start of begin_frame.
+//   * Binding model: uniforms are 256B-aligned suballocations from the
+//     per-frame upload arena bound as root CBVs (GPU VA). Root signatures are
+//     built per shader from ShaderReflection (root CBVs + SRV table t0..N +
+//     one sampler table per s register from a 4-entry (filter, wrap) heap +
+//     UAV table u0..N for compute, all SHADER_VISIBILITY_ALL). Draw SRV tables
+//     are deduplicated per frame slot by the sequence of (gen, range) views;
+//     the shader-visible CBV_SRV_UAV heap doubles on overflow while keeping
+//     the previous heap alive until frame completion. PSO, root signature,
+//     topology, index buffer, and descriptor tables are skipped when unchanged.
+//     Depth formats use typeless resources with separate DSV/SRV views so
+//     shadow maps can be sampled.
+//   * Resources & sync: Enhanced Barriers via CreateCommittedResource3
+//     (ID3D12Device10; init fails without EnhancedBarriersSupported and falls
+//     back to sdlgpu). Buffers have no layout and are ordered by global
+//     barriers (SYNC_ALL / ACCESS_COMMON). Textures rest in
+//     DIRECT_QUEUE_COMMON for sampling, storage, and copies, transitioning to
+//     RENDER_TARGET / DEPTH_STENCIL_WRITE only inside a pass (swapchain
+//     buffers rest in PRESENT; default depth stays in DEPTH_STENCIL_WRITE).
+//     Destroys are deferred by fence value and drained in begin_frame.
+//   * Readback, capture & GPU timestamps: readback records copies into the
+//     frame list and polls the end_frame fence (waiting only at frame N+2 in
+//     fixed-latency mode; outside a frame uses a one-shot submit). Capture
+//     copies the backbuffer and flushes before present
+//     (capture_before_end_frame = true). Pass timings (Sys.TakeGpuPasses)
+//     bracket passes with timestamp EndQuery, resolve before closing the list,
+//     and read back once begin_frame waits on that slot's fence.
 #include "app.h"
 #include "backend.h"
 #include "gpu_stats.h"

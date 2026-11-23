@@ -15,6 +15,13 @@ namespace LubGen;
 //   lub-gen vm [--source F.cs ...] [-o file]
 //                                     tcs VM host functions (for src/vm_player.c). With --source, only the functions that game uses
 // The default stub is cs-lib/lub_stub.cs, relative to the repo root.
+// Naming is derived by rule with no exception table: C# PascalCase (Gfx.BeginPass,
+// Gfx.PixelFormat.Rgba8) -> VM host snake_case (lub.gfx.begin_pass) -> C API
+// (lub_gfx_begin_pass, LUB_GFX_PIXEL_FORMAT_RGBA8). C-backed lubx helpers live in
+// trailing `namespace Lubx` (static classes only, using Lub types -> lubx.* / lubx_*).
+// Stub classes have no inheritance; struct records hold only int/float/bool/enum
+// and nested struct records (no positional params, non-nullable in params/out/return).
+// LUB_NOT_FOUND maps to null (zero value for struct records) across VM, tcs2c, and .NET.
 // Written in TinyC# and run together with the tcs compiler (SelfHost/Compiler) as C (tcs c) or on .NET. OS access goes through tcs's TcsHost.
 public static class Tool
 {

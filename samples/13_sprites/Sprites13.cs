@@ -1,5 +1,5 @@
 // Entry of lub's samples/13_sprites.
-// Run: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload) See docs/sprites-bench.md for how to run it and how the score line (SPRITES13_SCORE) is handled.
+// Run: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload). For benchmark runs and SPRITES13_SCORE, see scripts/run-sprites-bench.sh.
 
 using System;
 using System.Collections.Generic;

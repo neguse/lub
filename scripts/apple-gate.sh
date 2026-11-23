@@ -7,9 +7,13 @@
 # Mac.
 #
 # Needs bash 4+ (run-golden.sh uses mapfile / wait -n; macOS ships 3.2, so
-# `brew install bash`), CMake, Ninja, python3, and dotnet
-# (the tests are C#). The iOS
-# step needs Xcode.
+# `brew install bash`), CMake, Ninja, python3, and dotnet (the tests are C#).
+# The iOS step needs Xcode. iOS requires SDL 3.4+ (UIScene lifecycle on iOS 27),
+# uses AVAudioSession ambient at 48 kHz, and writes test exit codes to
+# LUB_EXIT_FILE (verified alongside SpringBoard's `Process exited` log).
+# Capture runs size the Metal drawable to the requested ConfigOpts dimensions
+# (default 1280x720) rather than Retina window pixels so comparisons stay
+# independent of display scaling.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

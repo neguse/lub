@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Manifest for the Android player (scripts/build-android.sh fills in @...@).
-     Launches as a Meta Quest VR app (docs/android.md). -->
+     Launches as a Meta Quest VR app. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="@PACKAGE@"
     android:installLocation="auto">

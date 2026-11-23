@@ -98,7 +98,7 @@ public static class Enemies
 runtime API は namespace `Lub` の static class(`Gfx` / `Input` / `App` /
 `Io` / `Phys2d` / ...)にある。`using Lub;` を置くと `Gfx.BeginPass(...)`
 と書ける。lubx の型(`SpriteBatch` など)は namespace `Lubx` にあり、`using Lubx;` で使う
-(`lub Game.csproj` は cs-lib を自動で足す。tcs2c で web 版を作るときは入力に自分で足す。手順は `docs/api-glue.md`)。名前は通常の C# 命名(PascalCase、enum は `Gfx.PixelFormat.Rgba8`)
+(`lub Game.csproj` は cs-lib を自動で足す。tcs2c でビルドするときはゲームの後ろに `cs-lib/lub/*.cs` と `cs-lib/lubx/*.cs` を自分で渡す)。名前は通常の C# 命名(PascalCase、enum は `Gfx.PixelFormat.Rgba8`)
 で、tcs VM の host の関数の名前(`lub.gfx.begin_pass`)には tcs が
 規則で写す。entry callback は `OnInit` / `OnEvent` / `OnFrame` / `OnQuit` / `OnError` / `OnExport`:
 

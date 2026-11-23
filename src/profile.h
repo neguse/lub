@@ -1,3 +1,15 @@
+// Built-in CPU profiler controlled by environment variables:
+//   LUB_PROFILE=1              Enable profiling
+//   LUB_PROFILE_START_FRAME=N  First frame to record
+//   LUB_PROFILE_FRAME=N        Print once at end of frame N
+//   LUB_PROFILE_EVERY=N        Print every N measured frames
+//   LUB_PROFILE_LABEL=STR      Label on printed lines (default: "exit" on exit)
+//
+// Runtime always records: runtime.begin_frame, script.onFrame,
+// runtime.pass_guard, runtime.end_frame. Game code adds scopes via
+// Profiler.BeginScope / EndScope / Report. Prints LUB_PROFILE and
+// LUB_PROFILE_SCOPE lines; if the run ends before FRAME/EVERY fires, flushes
+// once at exit.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
