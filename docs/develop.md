@@ -11,58 +11,66 @@
 - `Lub API` / `Lubx API`: API 定義の正本 (`cs-lib/lub_stub.cs`) と C# 便利層 (`cs-lib/`)
 - `lider` / `web`: ホットリロード対応の専用エディタ (`lider-player` 上で動く TinyC# アプリ) と Web 配信ページ
 
-TinyC# のゲームは、3 つの実行モード (`tcs VM` / `tcs C` / `.NET`) で共通の `liblub` 上に動く。
+### 実行モード
+
+TinyC# のゲームは、用途に応じて 3 つの実行モードで共通の `liblub` 上に動く。
+
+#### `tcs VM` モード
+
+`tcs vm` でバイトコード (`.tcsb`) に変換し、`player` (`lub_vm_player`) 上で動かす。開発時のホットリロードに使う。
 
 ```mermaid
 flowchart LR
-    subgraph vm["tcs VM モード"]
-        subgraph vm_bin["player (lub_vm_player)"]
-            subgraph vm_mod["バイトコード (.tcsb)"]
-                direction TB
-                vm_game["ゲーム"] ~~~ vm_lubx["Lubx API"] ~~~ vm_ts["TinySystem"]
-            end
-            subgraph vm_core["VM 層"]
-                direction TB
-                vm_vm["tcs VM"] ~~~ vm_rt["tcs/runtime"] ~~~ vm_glue["VM 連携"]
-            end
-            vm_lib["liblub"]
-            vm_mod ~~~ vm_core ~~~ vm_lib
+    subgraph vm_bin["player (lub_vm_player)"]
+        subgraph vm_mod["バイトコード (.tcsb)"]
+            direction TB
+            vm_game["ゲーム"] ~~~ vm_lubx["Lubx API"] ~~~ vm_ts["TinySystem"]
         end
+        subgraph vm_core["VM 層"]
+            direction TB
+            vm_vm["tcs VM"] ~~~ vm_rt["tcs/runtime"] ~~~ vm_glue["VM 連携"]
+        end
+        vm_lib["liblub"]
+        vm_mod ~~~ vm_core ~~~ vm_lib
     end
 ```
 
-```mermaid
-flowchart LR
-    subgraph tcsc["tcs C モード"]
-        subgraph c_bin["単一バイナリ"]
-            subgraph c_mod["生成 C"]
-                direction TB
-                c_game["ゲーム"] ~~~ c_lubx["Lubx API"] ~~~ c_ts["TinySystem"]
-            end
-            subgraph c_core["C 実行層"]
-                direction TB
-                c_host["エントリ接続 (tcs_host)"] ~~~ c_glue["C 接続"] ~~~ c_rt["tcs/runtime"]
-            end
-            c_lib["liblub"]
-            c_mod ~~~ c_core ~~~ c_lib
-        end
-    end
-```
+#### `tcs C` モード
+
+`tcs c` で C コードに変換し、`liblub` と静的リンクして単一バイナリにする。実行性能を重視する配布ビルドに使う。
 
 ```mermaid
 flowchart LR
-    subgraph dotnet[".NET モード"]
-        subgraph dn_bin[".NET プロセス"]
-            subgraph dn_mod["アセンブリ"]
-                direction TB
-                dn_game["ゲーム"] ~~~ dn_lubx["Lubx API"] ~~~ dn_ts["TinySystem"] ~~~ dn_facade["dotnet/Lub (P/Invoke)"]
-            end
-            dn_clr[".NET CLR"]
-            dn_mod ~~~ dn_clr
+    subgraph c_bin["単一バイナリ"]
+        subgraph c_mod["生成 C"]
+            direction TB
+            c_game["ゲーム"] ~~~ c_lubx["Lubx API"] ~~~ c_ts["TinySystem"]
         end
-        dn_lib["liblub (共有ライブラリ)"]
-        dn_bin ~~~ dn_lib
+        subgraph c_core["C 実行層"]
+            direction TB
+            c_host["エントリ接続 (tcs_host)"] ~~~ c_glue["C 接続"] ~~~ c_rt["tcs/runtime"]
+        end
+        c_lib["liblub"]
+        c_mod ~~~ c_core ~~~ c_lib
     end
+```
+
+#### `.NET` モード
+
+実 `.NET` 上で動かし、共有ライブラリ `liblub` を P/Invoke で呼ぶ。`.NET` のエコシステムを利用したいとき、および `tcs VM` / `tcs C` の実行結果を本家 C# と比較する検証に使う。
+
+```mermaid
+flowchart LR
+    subgraph dn_bin[".NET プロセス"]
+        subgraph dn_mod["アセンブリ"]
+            direction TB
+            dn_game["ゲーム"] ~~~ dn_lubx["Lubx API"] ~~~ dn_ts["TinySystem"] ~~~ dn_facade["dotnet/Lub (P/Invoke)"]
+        end
+        dn_clr[".NET CLR"]
+        dn_mod ~~~ dn_clr
+    end
+    dn_lib["liblub (共有ライブラリ)"]
+    dn_bin ~~~ dn_lib
 ```
 
 | 場所 | 役割 |
