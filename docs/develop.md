@@ -11,24 +11,54 @@
 - `Lub API` / `Lubx API`: API 定義の正本 (`cs-lib/lub_stub.cs`) と C# 便利層 (`cs-lib/`)
 - `lider` / `web`: ホットリロード対応の専用エディタ (`lider-player` 上で動く TinyC# アプリ) と Web 配信ページ
 
-TinyC# のゲームは、3 つの実行モード (`tcs VM` / `tcs C` / `.NET`) で共通の `liblub` を呼び出して動く。
+TinyC# のゲームは、3 つの実行モード (`tcs VM` / `tcs C` / `.NET`) で共通の `liblub` 上に動く。
 
 ```mermaid
 flowchart TB
-    game["ゲームコード (TinyC# + Lubx API)"]
-    player["tcs VM プレイヤー (lub_vm_player: lub CLI / lub.wasm / lider-player)"]
-    tcsc["tcs C (C 変換 + 静的リンク)"]
-    dotnet[".NET 実行 (dotnet/Lub)"]
-    liblub["liblub (描画・物理・音・入力・IO)"]
-    gpu["グラフィックスバックエンド (d3d12 / vulkan / metal / sdlgpu / webgpu)"]
+    subgraph vm["tcs VM モード"]
+        subgraph vm_bin["player (lub_vm_player)"]
+            subgraph vm_mod["バイトコード (.tcsb)"]
+                vm_game["ゲーム"]
+                vm_lubx["Lubx API"]
+                vm_ts["TinySystem"]
+            end
+            subgraph vm_core["VM 層"]
+                vm_vm["tcs VM"]
+                vm_rt["tcs/runtime"]
+                vm_glue["VM 連携"]
+            end
+            vm_lib["liblub"]
+        end
+    end
 
-    game -->|"tcs vm (.tcsb)"| player
-    game -->|"tcs c (.c)"| tcsc
-    game -->|"dotnet run"| dotnet
-    player --> liblub
-    tcsc --> liblub
-    dotnet -->|"P/Invoke"| liblub
-    liblub --> gpu
+    subgraph tcsc["tcs C モード"]
+        subgraph c_bin["単一バイナリ"]
+            subgraph c_mod["生成 C"]
+                c_game["ゲーム"]
+                c_lubx["Lubx API"]
+                c_ts["TinySystem"]
+            end
+            subgraph c_core["C 実行層"]
+                c_host["エントリ接続 (tcs_host)"]
+                c_glue["C 接続"]
+                c_rt["tcs/runtime"]
+            end
+            c_lib["liblub"]
+        end
+    end
+
+    subgraph dotnet[".NET モード"]
+        subgraph dn_bin[".NET プロセス"]
+            subgraph dn_mod["アセンブリ"]
+                dn_game["ゲーム"]
+                dn_lubx["Lubx API"]
+                dn_ts["TinySystem"]
+                dn_facade["dotnet/Lub (P/Invoke)"]
+            end
+            dn_clr[".NET CLR"]
+        end
+        dn_lib["liblub (共有ライブラリ)"]
+    end
 ```
 
 | 場所 | 役割 |
