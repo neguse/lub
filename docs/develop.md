@@ -21,17 +21,20 @@ TinyC# のゲームは、用途に応じて 3 つの実行モードで共通の 
 
 ```mermaid
 flowchart LR
-    subgraph vm_bin["player (lub_vm_player)"]
+    subgraph vm_proc["プロセス"]
         subgraph vm_mod["バイトコード (.tcsb)"]
             direction TB
             vm_game["ゲーム"] ~~~ vm_lubx["Lubx API"] ~~~ vm_ts["TinySystem"]
         end
-        subgraph vm_core["VM 層"]
-            direction TB
-            vm_vm["tcs VM"] ~~~ vm_rt["tcs/runtime"] ~~~ vm_glue["VM 連携"]
+        subgraph vm_player["player (lub_vm_player)"]
+            subgraph vm_core["VM 層"]
+                direction TB
+                vm_vm["tcs VM"] ~~~ vm_rt["tcs/runtime"] ~~~ vm_glue["VM 連携"]
+            end
+            vm_lib["liblub"]
+            vm_core ~~~ vm_lib
         end
-        vm_lib["liblub"]
-        vm_mod ~~~ vm_core ~~~ vm_lib
+        vm_mod ~~~ vm_player
     end
 ```
 
@@ -41,7 +44,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph c_bin["単一バイナリ"]
+    subgraph c_proc["プロセス"]
         subgraph c_mod["生成 C"]
             direction TB
             c_game["ゲーム"] ~~~ c_lubx["Lubx API"] ~~~ c_ts["TinySystem"]
@@ -61,16 +64,15 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph dn_bin[".NET プロセス"]
+    subgraph dn_proc["プロセス"]
         subgraph dn_mod["アセンブリ"]
             direction TB
             dn_game["ゲーム"] ~~~ dn_lubx["Lubx API"] ~~~ dn_ts["TinySystem"] ~~~ dn_facade["dotnet/Lub (P/Invoke)"]
         end
         dn_clr[".NET CLR"]
-        dn_mod ~~~ dn_clr
+        dn_lib["liblub (共有ライブラリ)"]
+        dn_mod ~~~ dn_clr ~~~ dn_lib
     end
-    dn_lib["liblub (共有ライブラリ)"]
-    dn_bin ~~~ dn_lib
 ```
 
 | 場所 | 役割 |
