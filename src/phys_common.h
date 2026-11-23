@@ -1,6 +1,6 @@
 #pragma once
-// phys2d / phys3d の core が共有する小物: handle table、配列 view の scratch、hash、文字列。
-// VM には触らない。
+// Small helpers shared by the phys2d / phys3d cores: handle table, scratch for
+// array views, hash, strings. Does not touch the VM.
 #include "lub/lub_api.h"
 #include <SDL3/SDL.h>
 #include <stdbool.h>
@@ -18,13 +18,13 @@ typedef enum PhysHandleKind {
 
 typedef struct PhysHandleSlot {
   void *ptr;
-  int kind; // PhysHandleKind。NONE = stale
+  int kind; // PhysHandleKind. NONE = stale
 } PhysHandleSlot;
 
-// handle → object。
-// index = handle。
-// entry の寿命の間は同じ値で、free されたあとは stale。
-// 1 始まりの通し番号。
+// handle → object.
+// index = handle.
+// Same value for the lifetime of the entry, stale after it is freed.
+// 1-based serial number.
 typedef struct PhysHandles {
   PhysHandleSlot *slots;
   int32_t slot_cap;
@@ -72,7 +72,7 @@ static inline void *phys_handle_get(PhysHandles *h, int32_t id, int kind) {
   return h->slots[id].ptr;
 }
 
-// 配列を返す API の scratch (次の呼び出しまで有効)。
+// Scratch for APIs that return arrays (valid until the next call).
 typedef struct PhysScratch {
   void *ptr;
   size_t cap;
@@ -164,8 +164,8 @@ static inline void phys_owned_string_clear(char **dst) {
   *dst = NULL;
 }
 
-// len 0 は「無し」(NULL)。
-// 失敗 (out of memory) は false。
+// len 0 means "none" (NULL).
+// false on failure (out of memory).
 static inline bool phys_owned_string_set(char **dst, LubStr value) {
   phys_owned_string_clear(dst);
   if (!value.ptr || value.len <= 0)

@@ -26,7 +26,7 @@ public class IlObjectValueTests
         var cast = Assert.IsType<IlRefCast>(Assert.IsType<IlReturn>(
             program.Classes.Single().Methods.Single().Body!.Stats.Single()).Value);
         Assert.Equal("string", cast.TargetType);
-        // 配列への cast は Lua で確かめられないので、C backend も同じく受け付けない (受理する言語を backend で揃える)
+        // Casts to arrays cannot be checked in Lua, so the C backend does not accept them either (the backends accept the same language)
         var array = IlExport.Export(["""
             public class Read { public static float[] Values(object value) => (float[])value; }
             """]);

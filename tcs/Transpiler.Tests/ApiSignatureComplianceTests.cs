@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// supported API allowlist は完全シグネチャ単位。メソッド名が同じでも
-// Lua runtime が実装していない overload は TCS1002 になる。System.Linq は namespace ごと
-// TCS1002 で、TinySystem.Linq と両方 using すると受け手が List<T> の TinySystem.Linq が選ばれる
+// The supported API allowlist works per full signature. Even with the same method name,
+// overloads the Lua runtime does not implement are TCS1002. System.Linq is, as a whole namespace,
+// TCS1002, and when both it and TinySystem.Linq are imported with using, TinySystem.Linq, whose receiver is List<T>, is chosen
 public class ApiSignatureComplianceTests
 {
     private static string Wrap(string statement) => $$"""

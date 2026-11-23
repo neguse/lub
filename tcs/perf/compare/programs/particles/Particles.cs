@@ -1,6 +1,6 @@
 using System;
 
-// ゲームの典型: struct の配列の particle に重力と反射と中心への吸い込みをかける。BENCH_N はフレーム数
+// A typical game workload: applies gravity, bouncing, and a pull toward the center to particles in an array of structs. BENCH_N is the number of frames
 public struct Particle
 {
     public float Px, Py, Vx, Vy;
@@ -73,8 +73,8 @@ public class Particles
     {
         string s = Environment.GetEnvironmentVariable("BENCH_N");
         int n = s == null ? 100 : int.Parse(s);
-        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
-        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        // Repeats BENCH_REPS times (run.py uses this to compute the time per repetition).
+        // Each repetition's input depends on the previous result so the compiler cannot skip repetitions or hoist them out (the result is never -1)
         string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
         int reps = rs == null ? 1 : int.Parse(rs);
         int prev = 0;

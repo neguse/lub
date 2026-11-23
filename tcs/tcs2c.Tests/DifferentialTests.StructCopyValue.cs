@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// struct の copy 地点 (il-spec §10) のうち ctor の引数・?. 経由の呼び出しの
-// 引数・copy constructor の要素・式位置の代入の値・??= の右辺。Lua 向けに足した
-// copy (copy constructor の __copy 等) を C backend が同じ値意味論のまま受け取る
-// ことも見る
+// Among the struct copy points (il-spec §10): ctor arguments, arguments of calls
+// through ?., copy constructor elements, values of assignments in expression position, and the right side of ??=. The copies added
+// for Lua (__copy of copy constructors etc.) are accepted by the C backend with the same value semantics,
+// which is also checked
 public class StructCopyValueDifferentialTests
 {
     [CFact]

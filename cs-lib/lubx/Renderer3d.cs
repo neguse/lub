@@ -1,17 +1,19 @@
-// 実装ライブラリ lubx の Renderer3d。
-// 設計メモ:
-// - Draw3dOpts / Camera と light / sky / shadow / ssao / bloom / aa / fog /
-//   outline は options class。optional は nullable フィールド + ??、必須 2
-//   フィールドの fog / outline だけはコンストラクタで受ける。draw 列は
-//   Renderer3dDrawCmd (内部用)。
-// - 差し替え shader の追加 texture は Dictionary<string, TextureRef> の foreach で Bindings に Set する。
-// - Mat4.m (List<float>) は直渡し。
-//   bones は Bones.pack() の返す List<float>
-//   で、mesh が null のときは identityBones() (ダミー resolve の lambda)。
-// - use_texture / use_buffer / mesh.vb の null は早期 return / continue で
-//   ガードする (cs-lib 慣例)。
-// - viewProj は public フィールド (書くのは begin() だけ、利用側は
-//   読み取り専用扱い)。litUniforms は End() で narrow 済みの vp を引数で受ける。
+// Renderer3d of the implementation library lubx.
+// Design notes:
+// - Draw3dOpts / Camera and light / sky / shadow / ssao / bloom / aa / fog /
+//   outline are options classes. Optional values are nullable fields + ??; only fog / outline,
+//   which have 2 required fields, are received in the constructor. The draw list is
+//   Renderer3dDrawCmd (internal).
+// - Extra textures for a replacement shader are Set into Bindings with a foreach over Dictionary<string, TextureRef>.
+// - Mat4.m (List<float>) is passed directly.
+//   bones is the List<float> returned by Bones.pack(),
+//   or identityBones() (a dummy resolve lambda) when mesh is null.
+// - A null from use_texture / use_buffer / mesh.vb is guarded with an early return / continue
+//   (cs-lib convention).
+// - viewProj is a public field (only begin() writes it, and users
+//   treat it as read-only). litUniforms receives the vp already narrowed in End() as an argument.
+// - No deferred rendering.
+//   Writing the G-buffer to memory between passes and reading it back is expensive on web and mobile GPUs, and with a single directional light deferred has no benefit.
 
 using System;
 using System.Collections.Generic;
@@ -19,38 +21,38 @@ using Lub;
 
 namespace Lubx;
 
-/// <summary>`Renderer3d.draw()` の per-draw オプション。
+/// <summary>Per-draw options for `Renderer3d.draw()`.
 /// </summary>
 public class Draw3dOpts
 {
-    /// <summary>頂点色に乗じる色 (省略時白)。
-    /// a &lt; 1 でも自動では blend にならない。
+    /// <summary>Color multiplied with the vertex color (white if omitted).
+    /// Even with a &lt; 1 it does not blend automatically.
     /// </summary>
     public Color? Tint;
 
-    /// <summary>`Blends.Alpha` 等。
-    /// 指定すると opaque 群の後に描かれ、影を落とさない。
+    /// <summary>`Blends.Alpha` etc.
+    /// When set, it is drawn after the opaque group and casts no shadow.
     /// </summary>
     public Blend? Blend;
 
-    /// <summary>skinned メッシュ用。
-    /// `Bones.pack()` の 256 float。
+    /// <summary>For skinned meshes.
+    /// The 256 floats from `Bones.pack()`.
     /// </summary>
     public List<float>? Bones;
 
-    /// <summary>material 差し替え。
-    /// 頂点レイアウトは既定 shader と同じ契約で、vertex と fragment の source の先頭に `Renderer3d.ShaderUniforms` (skinned の mesh は `Renderer3d.SkinnedShaderUniforms`) を付ける。
+    /// <summary>Material replacement.
+    /// The vertex layout follows the same contract as the default shader, and `Renderer3d.ShaderUniforms` (`Renderer3d.SkinnedShaderUniforms` for skinned meshes) is prepended to the vertex and fragment source.
     /// </summary>
     public ShaderRef? Shader;
 
-    /// <summary>差し替え shader 用の追加テクスチャ (名前 → TextureRef)。
+    /// <summary>Extra textures for the replacement shader (name → TextureRef).
     /// </summary>
     public Dictionary<string, TextureRef>? Textures;
 }
 
-/// <summary>`Renderer3d.begin()` のカメラ。
-/// `Camera3d.vp` と同じ形。
-/// eye / target は必須、他は省略可。
+/// <summary>Camera for `Renderer3d.begin()`.
+/// Same shape as `Camera3d.vp`.
+/// eye / target are required; the rest are optional.
 /// </summary>
 public class Camera
 {
@@ -58,24 +60,24 @@ public class Camera
     public Vec3 Target = new Vec3(0, 0, 0);
     public Vec3? Up;
 
-    /// <summary>度。
-    /// 省略時 60。
+    /// <summary>Degrees.
+    /// Defaults to 60.
     /// </summary>
     public float? Fov;
 
-    /// <summary>近い側の clip 面までの距離。
-    /// 省略時 0.1。
+    /// <summary>Distance to the near clip plane.
+    /// Defaults to 0.1.
     /// </summary>
     public float? Near;
 
-    /// <summary>遠い側の clip 面までの距離。
-    /// 省略時 100。
-    /// これより遠い物は描かれない (遠くの背景を置くときは大きくする)。
+    /// <summary>Distance to the far clip plane.
+    /// Defaults to 100.
+    /// Anything farther than this is not drawn (increase it when placing a distant background).
     /// </summary>
     public float? Far;
 }
 
-/// <summary>Renderer3d の per-draw 記録 (内部用)。
+/// <summary>Per-draw record of Renderer3d (internal).
 /// </summary>
 public class Renderer3dDrawCmd
 {
@@ -101,8 +103,8 @@ public class Renderer3dDrawCmd
     }
 }
 
-/// <summary>平行光源。
-/// `dir` は光へ向かうベクトル (正規化不要)。
+/// <summary>Directional light.
+/// `dir` is the vector toward the light (need not be normalized).
 /// </summary>
 public class Renderer3dLight
 {
@@ -111,7 +113,7 @@ public class Renderer3dLight
     public float Intensity = 1.25f;
 }
 
-/// <summary>hemispheric ambient の空色 (上) / 地面色 (下) と強度。
+/// <summary>Hemispheric ambient sky color (top) / ground color (bottom) and intensity.
 /// </summary>
 public class Renderer3dSky
 {
@@ -120,8 +122,8 @@ public class Renderer3dSky
     public float Intensity = 0.55f;
 }
 
-/// <summary>shadow map。
-/// `center`/`extent` は光のオルソ範囲 (world)。
+/// <summary>shadow map.
+/// `center`/`extent` are the light's ortho range (world).
 /// </summary>
 public class Renderer3dShadow
 {
@@ -129,13 +131,13 @@ public class Renderer3dShadow
     public int Size = 2048;
     public Vec3 Center = new Vec3(0, 0, 0);
     public float Extent = 12.0f;
-    /// <summary>影の深度比較で受け面の深度から引く値 (深度 0〜1)。
+    /// <summary>Value subtracted from the receiving surface's depth in the shadow depth comparison (depth 0 to 1).
     /// </summary>
     public float Bias = 0.004f;
 }
 
-/// <summary>SSAO (半解像度、depth 由来)。
-/// `radius` は view 空間。
+/// <summary>SSAO (half resolution, derived from depth).
+/// `radius` is in view space.
 /// </summary>
 public class Renderer3dSsao
 {
@@ -144,8 +146,8 @@ public class Renderer3dSsao
     public float Strength = 0.85f;
 }
 
-/// <summary>bloom。
-/// `threshold` は HDR 輝度、`strength` は合成量。
+/// <summary>bloom.
+/// `threshold` is the HDR luminance, `strength` is the blend amount.
 /// </summary>
 public class Renderer3dBloom
 {
@@ -154,15 +156,15 @@ public class Renderer3dBloom
     public float Strength = 0.35f;
 }
 
-/// <summary>ポスト AA (FXAA)。
+/// <summary>Post AA (FXAA).
 /// </summary>
 public class Renderer3dAa
 {
     public bool Enabled = true;
 }
 
-/// <summary>距離 fog (`Renderer3d.fog` に代入して opt-in)。
-/// `density` は 1/距離スケール。
+/// <summary>Distance fog (opt in by assigning to `Renderer3d.fog`).
+/// `density` is a 1/distance scale.
 /// </summary>
 public class Renderer3dFog
 {
@@ -176,8 +178,8 @@ public class Renderer3dFog
     }
 }
 
-/// <summary>depth エッジの輪郭線 (`Renderer3d.outline` に代入して opt-in)。
-/// `threshold` は view 距離差。
+/// <summary>Outline along depth edges (opt in by assigning to `Renderer3d.outline`).
+/// `threshold` is the view distance difference.
 /// </summary>
 public class Renderer3dOutline
 {
@@ -192,49 +194,49 @@ public class Renderer3dOutline
 }
 
 /// <summary>
-/// forward + HDR の組み込みレンダラ。
-/// 「メッシュを投げたら一発でいい絵」が目標。
+/// Built-in forward + HDR renderer.
+/// The goal is "throw in a mesh and get a good picture in one go".
 ///
 /// <code>
 /// var ren = new Renderer3d("main");
-/// // 毎フレーム:
+/// // Every frame:
 /// ren.begin(new Camera { eye = eye, target = tgt, fov = 38 });
 /// ren.draw(mesh, model);
 /// ren.draw(charMesh, m2, new Draw3dOpts { bones = packed });
 /// ren.End(); // shadow → forward(HDR) → tonemap → swapchain
 /// </code>
 ///
-/// 既定で ON: 平行光源 + hemispheric ambient、shadow (PCF 3×3)、AgX tonemap。
-/// 作風は効果別のフィールドで調整する (`light` / `sky` / `shadow` / `exposure`)。
-/// key の下に宣言する中の絵 (`<key>/ldr`、`<key>/hdr` など) は、ほかのテクスチャと同じく先頭の行が画面の上端で、そのまま SpriteBatch などで貼れる。
+/// On by default: directional light + hemispheric ambient, shadow (PCF 3×3), AgX tonemap.
+/// The look is tuned with per-effect fields (`light` / `sky` / `shadow` / `exposure`).
+/// The intermediate images declared under key (`<key>/ldr`, `<key>/hdr`, etc.) have their first row at the top of the screen like other textures, and can be drawn as is with SpriteBatch and the like.
 ///
-/// `End()` 後の swapchain には `Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load })` で UI やテキストを重ね描きできる。
+/// After `End()`, UI and text can be drawn over the swapchain with `Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load })`.
 /// </summary>
 public class Renderer3d
 {
-    /// <summary>差し替え shader が vertex と fragment の source の先頭に付ける、Renderer3d が渡す uniform の宣言 (static の mesh 用)。
-    /// shader からは `r3d.mvp` のように読む。
-    /// 渡す uniform と宣言は一致していなければならないので、差し替え shader は独自の uniform を持てない (欲しければ Renderer3d を写して拡張する)。
+    /// <summary>Declaration of the uniforms that Renderer3d passes, which a replacement shader prepends to its vertex and fragment source (for static meshes).
+    /// The shader reads them like `r3d.mvp`.
+    /// The passed uniforms and the declaration must match, so a replacement shader cannot have its own uniforms (if needed, copy Renderer3d and extend it).
     /// </summary>
     public static string ShaderUniforms = """
 
         struct Renderer3dUniforms {
-          float4x4 mvp;       // model から clip へ
-          float4x4 model;     // model から world へ
-          float4x4 light_mvp; // world から shadow map の clip へ
+          float4x4 mvp;       // model to clip
+          float4x4 model;     // model to world
+          float4x4 light_mvp; // world to shadow map clip
           float4 tint;        // Draw3dOpts.Tint (sRGB)
-          float4 light_dir;   // 光へ向かう向き (world、正規化済み)
-          float4 light_col;   // 光の色 × 強さ
-          float4 sky_col;     // 半球の環境光の上の色、w = 環境光の強さ
-          float4 ground_col;  // 半球の環境光の下の色
-          float4 cam_pos;     // カメラの位置 (world)
-          float4 shadow_p;    // x = 1 / shadow map の一辺、y = bias、z = 影が有効なら 1
+          float4 light_dir;   // direction toward the light (world, normalized)
+          float4 light_col;   // light color × intensity
+          float4 sky_col;     // upper color of the hemispheric ambient light, w = ambient intensity
+          float4 ground_col;  // lower color of the hemispheric ambient light
+          float4 cam_pos;     // camera position (world)
+          float4 shadow_p;    // x = 1 / shadow map side length, y = bias, z = 1 if shadows are enabled
         };
         ConstantBuffer<Renderer3dUniforms> r3d;
 
         """;
 
-    /// <summary>`ShaderUniforms` に関節の行列 `bones` を足した宣言 (skinned の mesh 用)。
+    /// <summary>Declaration that adds the joint matrices `bones` to `ShaderUniforms` (for skinned meshes).
     /// </summary>
     public static string SkinnedShaderUniforms = """
 
@@ -249,14 +251,14 @@ public class Renderer3d
           float4 ground_col;
           float4 cam_pos;
           float4 shadow_p;
-          float4x4 bones[16]; // Bones.Pack の 16 本
+          float4x4 bones[16]; // the 16 from Bones.Pack
         };
         ConstantBuffer<Renderer3dUniforms> r3d;
 
         """;
 
-    // --- 埋め込み shader (pncm / pncmw 頂点レイアウト契約) ------------------- 頂点は StructuredBuffer `verts` を LUB_VERTEX_ID で引く (vertex pulling)。
-    // 構造体の並びと pad は Io.interleave_pncm / interleave_pncmw の float 列と一致させる (Mesh3d が作る buffer をそのまま読む)。
+    // --- Embedded shaders (pncm / pncmw vertex layout contract) ------------------- Vertices are fetched from StructuredBuffer `verts` with LUB_VERTEX_ID (vertex pulling).
+    // The struct order and padding match the float sequence of Io.interleave_pncm / interleave_pncmw (the buffers built by Mesh3d are read as is).
     private static string pncmVerts = """
 
         struct V {
@@ -330,8 +332,8 @@ public class Renderer3d
           o.wn = mul(u.model, float4(i.normal, 0.0f)).xyz;
           o.wp = wp4.xyz;
           o.lpos = mul(u.light_mvp, wp4);
-          // 頂点色 / tint は sRGB authoring。
-          // ライティングは linear で行い AgX が display に戻す。
+          // Vertex color / tint are sRGB authored.
+          // Lighting is done in linear, and AgX brings it back to display.
           float3 srgb = i.color * u.tint.rgb;
           o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);
           o.mr = i.mr;
@@ -373,18 +375,18 @@ public class Renderer3d
 
         """;
 
-    // 誘電体/金属の分岐は 23_crane_game 由来。
-    // 光方向・環境光を uniform 化し、平行光成分に shadow を掛ける。
-    // 出力は HDR (クランプしない)。
+    // The dielectric/metal branch comes from 23_crane_game.
+    // Light direction and ambient light are uniforms, and shadow is applied to the directional light component.
+    // Output is HDR (not clamped).
     private static string litFs = """
 
         LUB_TEXTURE2D(shadow_map);
         struct FsU {
           float4 light_dir; // world, toward light (normalized)
           float4 light_col; // rgb * intensity
-          float4 sky_col;   // hemispheric ambient (上), w = ambient 強度
-          float4 ground_col; // hemispheric ambient (下)
-          float4 cam_pos;   // world camera (specular 用)
+          float4 sky_col;   // hemispheric ambient (top), w = ambient intensity
+          float4 ground_col; // hemispheric ambient (bottom)
+          float4 cam_pos;   // world camera (for specular)
           float4 shadow_p;  // x = 1/texsize, y = bias, z = enabled
         };
         ConstantBuffer<FsU> f;
@@ -396,7 +398,7 @@ public class Renderer3d
           float4 albedo : COLOR0;
         };
 
-        // 隣接画素との微分を揃えるため、画素ごとに異なる分岐より前に呼ぶ。
+        // Called before any per-pixel divergent branch so that derivatives match those of neighboring pixels.
         float2 shadow_depth_gradient(float4 lpos) {
           float3 p = lpos.xyz / lpos.w;
           p.xy = p.xy * float2(0.5f, -0.5f) + 0.5f;
@@ -418,12 +420,12 @@ public class Renderer3d
               ndc.z > 1.0f)
             return 1.0f;
           float texel = f.shadow_p.x;
-          // 読み取る texel の中心と受け面の深度の位置を揃える。
+          // Align the center of the texel being read with the position of the receiving surface's depth.
           float2 coord = uv / texel - 0.5f;
           float2 base = floor(coord), fracUv = frac(coord);
           float lit = 0.0f;
-          // 3x3 PCF を位置に応じて補間する。
-          // 4x4 の重みの合計は 9。
+          // Interpolate the 3x3 PCF according to the position.
+          // The 4x4 weights sum to 9.
           for (int y = -1; y <= 2; ++y)
             for (int x = -1; x <= 2; ++x) {
               float2 sampleUv = (base + float2(float(x), float(y)) + 0.5f) * texel;
@@ -443,7 +445,7 @@ public class Renderer3d
           float metal = i.mr.x;
           float rough = i.mr.y;
           float ndl = dot(n, l);
-          // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。
+          // Both diffuse and specular apply only on the lit side; the back side is lit by the ambient light.
           float2 shadowGradient = shadow_depth_gradient(i.lpos);
           float sh = ndl > 0.0f ? shadow_factor(i.lpos, shadowGradient) : 0.0f;
           float up = n.y * 0.5f + 0.5f;
@@ -451,14 +453,14 @@ public class Renderer3d
           float3 v = normalize(f.cam_pos.xyz - i.wp);
           float3 hv = normalize(l + v);
 
-          // 誘電体: Lambert + hemispheric ambient + roughness で絞る specular
+          // Dielectric: Lambert + hemispheric ambient + specular narrowed by roughness
           float diff = saturate(ndl);
           float3 direct = f.light_col.rgb * diff * sh;
           float spec =
               pow(max(dot(n, hv), 0.0f), 32.0f) * (1.0f - rough) * 0.5f * sh;
           float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;
 
-          // 金属: 上下グラデ環境 + 強い specular
+          // Metal: top-bottom gradient environment + strong specular
           float3 env = lerp(f.ground_col.rgb * 0.8f, f.sky_col.rgb * 1.6f, up);
           float3 metallic = env * lerp(i.albedo.rgb, float3(1.0f, 1.0f, 1.0f), 0.5f);
           metallic +=
@@ -519,7 +521,7 @@ public class Renderer3d
 
         """;
 
-    // depth-only pass には color attachment が無いので何も出力しない。
+    // The depth-only pass has no color attachment, so it outputs nothing.
     private static string shadowFs = """
 
         [shader("fragment")] void fs_main() {
@@ -527,8 +529,8 @@ public class Renderer3d
 
         """;
 
-    // target 全面を覆う quad (pos, uv)。
-    // clip y = +1 (target の先頭の行) が uv.y = 0 (source の先頭の行) なので、上下を変えずに写す。
+    // Quad covering the entire target (pos, uv).
+    // clip y = +1 (the target's first row) is uv.y = 0 (the source's first row), so it copies without flipping vertically.
     private static List<float> fullQuad = new List<float>
     {
         -1, -1, 0, 1,
@@ -539,9 +541,9 @@ public class Renderer3d
         -1,  1, 0, 0,
     };
 
-    // SSAO: depth から view 位置を復元し、面法線は depth 微分から。
-    // 半解像度。
-    // カーネルは固定 12 サンプルの渦巻き (乱数なし = 決定的)。
+    // SSAO: reconstructs the view position from depth, and the face normal from depth derivatives.
+    // Half resolution.
+    // The kernel is a fixed 12-sample spiral (no randomness = deterministic).
     private static string ssaoFs = """
 
         LUB_TEXTURE2D(depth_tex);
@@ -556,8 +558,8 @@ public class Renderer3d
 
         float3 view_pos(float2 uv) {
           float d = LUB_SAMPLE_LOD(depth_tex, uv).r;
-          // LH 投影 (m10 = A, m11 = B < 0) の逆変換: z = B / (d - A)。
-          // d - A は常に負。
+          // Inverse of the LH projection (m10 = A, m11 = B < 0): z = B / (d - A).
+          // d - A is always negative.
           float vz = f.pp.w / min(d - f.pp.z, -1e-6f);
           float x = (uv.x * 2.0f - 1.0f) * vz / f.pp.x;
           float y = (1.0f - uv.y * 2.0f) * vz / f.pp.y;
@@ -566,11 +568,11 @@ public class Renderer3d
 
         [shader("fragment")] float4 fs_main(FSIn i) : SV_Target {
           float3 p = view_pos(i.uv);
-          // view_pos は x 右・y 上・z 奥。
-          // 画面の下向き微分との外積でカメラ側を向け、面より手前の遮蔽物を数える。
+          // view_pos is x right, y up, z into the screen.
+          // The cross product with the screen's downward derivative makes it face the camera, and occluders in front of the surface are counted.
           float3 n = normalize(cross(ddx(p), ddy(p)));
-          // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール
-          float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // 半径を uv スケールに
+          // 12-point spiral offsets (screen space) scaled by the view radius
+          float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // radius to uv scale
           float occ = 0.0f;
           float ang = 2.399963f; // golden angle
           for (int k = 0; k < 12; ++k) {
@@ -582,7 +584,7 @@ public class Renderer3d
             float3 dq = q - p;
             float dist = length(dq);
             float ndotd = dot(n, dq / max(dist, 1e-6f));
-            // 半径内で手前に張り出す面だけを遮蔽としてカウント
+            // Count as occlusion only surfaces that protrude in front within the radius
             float range = saturate(1.0f - dist / f.ao_p.x);
             occ += saturate(ndotd - 0.02f) * range;
           }
@@ -592,7 +594,7 @@ public class Renderer3d
 
         """;
 
-    // bloom 抽出: soft-knee threshold。
+    // bloom extraction: soft-knee threshold.
     private static string brightFs = """
 
         LUB_TEXTURE2D(scene);
@@ -615,8 +617,8 @@ public class Renderer3d
 
         """;
 
-    // 縮小/拡大 (LINEAR サンプラ + 4 tap tent)。
-    // up は ADDITIVE blend で描く。
+    // Downsample/upsample (LINEAR sampler + 4-tap tent).
+    // up is drawn with ADDITIVE blend.
     private static string blitTentFs = """
 
         LUB_TEXTURE2D(scene);
@@ -638,7 +640,9 @@ public class Renderer3d
 
         """;
 
-    // composite: scene * AO + bloom、fog、outline (どちらも opt-in、HDR 空間)。
+    // composite: scene * AO + bloom, fog, outline (both opt-in, HDR space).
+    // AO is applied to the whole color after lighting.
+    // Applying it only to the ambient light would need a depth-only pass before the forward pass; this is a trade-off to avoid adding that pass.
     private static string compositeFs = """
 
         LUB_TEXTURE2D(scene);
@@ -646,7 +650,7 @@ public class Renderer3d
         LUB_TEXTURE2D(bloom_tex);
         LUB_TEXTURE2D(depth_tex);
         struct FsU {
-          float4 pp;      // m0, m5, A, B (view 復元)
+          float4 pp;      // m0, m5, A, B (view reconstruction)
           float4 en;      // x = ao on, y = bloom strength, z = fog on, w = outline on
           float4 fog_col; // rgb, w = density
           float4 ol;      // rgb = outline color, w = depth threshold (view)
@@ -669,7 +673,7 @@ public class Renderer3d
           c += LUB_SAMPLE_LOD(bloom_tex, i.uv).rgb * f.en.y;
           float vz = view_z(i.uv);
           if (f.en.w > 0.5f) {
-            // depth エッジ検出 (4 近傍)
+            // depth edge detection (4 neighbors)
             float2 t = f.px.xy;
             float zn = view_z(i.uv + float2(0.0f, -t.y));
             float zs = view_z(i.uv + float2(0.0f, t.y));
@@ -688,8 +692,8 @@ public class Renderer3d
 
         """;
 
-    // FXAA (console 風の簡易版)。
-    // LDR に対して。
+    // FXAA (simplified console-style version).
+    // Applied to LDR.
     private static string fxaaFs = """
 
         LUB_TEXTURE2D(scene);
@@ -727,7 +731,7 @@ public class Renderer3d
 
         """;
 
-    // 素の blit (FXAA off 時の present)。
+    // Plain blit (present when FXAA is off).
     private static string presentFs = """
 
         LUB_TEXTURE2D(scene);
@@ -740,8 +744,8 @@ public class Renderer3d
 
         """;
 
-    // 画面への present 用。
-    // quad を target の中の範囲 dst (clip の左, 下, 右, 上) に置く。
+    // For presenting to the screen.
+    // Places the quad in the range dst inside the target (clip left, bottom, right, top).
     private static string presentVs = """
 
         struct Q {
@@ -788,14 +792,14 @@ public class Renderer3d
 
         """;
 
-    // AgX (minimal fit)。
-    // HDR → display。
-    // exposure は stop (2^n)。
+    // AgX (minimal fit).
+    // HDR → display.
+    // exposure is in stops (2^n).
     private static string tonemapFs = """
 
         LUB_TEXTURE2D(scene);
         struct FsU {
-          float4 grade; // x = exposure (stops), y = vignette, z = dither, w = 画面高
+          float4 grade; // x = exposure (stops), y = vignette, z = dither, w = screen height
         };
         ConstantBuffer<FsU> f;
         struct FSIn {
@@ -827,15 +831,15 @@ public class Renderer3d
                             -0.0528968f * v.r + 1.15190f * v.g - 0.0989612f * v.b,
                             -0.0529716f * v.r - 0.0980434f * v.g + 1.15107f * v.b);
           o = saturate(o);
-          // punchy look: わずかな締め + 彩度戻し (AgX は素だと眠い)
+          // punchy look: slight tightening + saturation restore (AgX is dull on its own)
           o = pow(o, float3(1.08f, 1.08f, 1.08f));
           float lum = dot(o, float3(0.2126f, 0.7152f, 0.0722f));
           o = lum + (o - lum) * 1.28f;
-          // vignette (grade.y = 強度)
+          // vignette (grade.y = strength)
           float2 d2 = i.uv - 0.5f;
           o *= 1.0f - dot(d2, d2) * 2.0f * f.grade.y;
-          // triangular dither (grade.z = 1 で on)。
-          // 座標ハッシュなので決定的。
+          // triangular dither (on with grade.z = 1).
+          // It is a coordinate hash, so it is deterministic.
           float h = frac(sin(dot(i.uv * f.grade.w, float2(12.9898f, 78.233f))) * 43758.5453f);
           o += (h - 0.5f) * (2.0f / 255.0f) * f.grade.z;
           return float4(saturate(o), 1.0f);
@@ -843,79 +847,79 @@ public class Renderer3d
 
         """;
 
-    // --- 公開オプション -------------------------------------------------------
+    // --- Public options -------------------------------------------------------
 
-    /// <summary>平行光源。
-    /// `dir` は光へ向かうベクトル (正規化不要)。
+    /// <summary>Directional light.
+    /// `dir` is the vector toward the light (need not be normalized).
     /// </summary>
     public Renderer3dLight Light = new Renderer3dLight();
 
-    /// <summary>hemispheric ambient の空色 (上) / 地面色 (下) と強度。
+    /// <summary>Hemispheric ambient sky color (top) / ground color (bottom) and intensity.
     /// </summary>
     public Renderer3dSky Sky = new Renderer3dSky();
 
-    /// <summary>shadow map。
-    /// `center`/`extent` は光のオルソ範囲 (world)。
+    /// <summary>shadow map.
+    /// `center`/`extent` are the light's ortho range (world).
     /// </summary>
     public Renderer3dShadow Shadow = new Renderer3dShadow();
 
-    /// <summary>露出 (stop)。
-    /// +1 で 2 倍明るい。
+    /// <summary>Exposure (stops).
+    /// +1 is twice as bright.
     /// </summary>
     public float Exposure = 0.0f;
 
-    /// <summary>HDR クリア色 (背景)。
+    /// <summary>HDR clear color (background).
     /// </summary>
     public Color Background = Color.Rgb(0.09f, 0.12f, 0.15f);
 
-    /// <summary>SSAO (半解像度、depth 由来)。
-    /// `radius` は view 空間。
+    /// <summary>SSAO (half resolution, derived from depth).
+    /// `radius` is in view space.
     /// </summary>
     public Renderer3dSsao Ssao = new Renderer3dSsao();
 
-    /// <summary>bloom。
-    /// `threshold` は HDR 輝度、`strength` は合成量。
+    /// <summary>bloom.
+    /// `threshold` is the HDR luminance, `strength` is the blend amount.
     /// </summary>
     public Renderer3dBloom Bloom = new Renderer3dBloom();
 
-    /// <summary>ポスト AA (FXAA)。
+    /// <summary>Post AA (FXAA).
     /// </summary>
     public Renderer3dAa Aa = new Renderer3dAa();
 
-    /// <summary>8bit バンディング対策の triangular dither。
+    /// <summary>Triangular dither against 8-bit banding.
     /// </summary>
     public bool Dither = true;
 
-    /// <summary>周辺減光 0..1 (0 = off)。
+    /// <summary>Vignetting 0..1 (0 = off).
     /// </summary>
     public float Vignette = 0.0f;
 
-    /// <summary>距離 fog (opt-in)。
-    /// `density` は 1/距離スケール。
+    /// <summary>Distance fog (opt-in).
+    /// `density` is a 1/distance scale.
     /// </summary>
     public Renderer3dFog? Fog = null;
 
-    /// <summary>depth エッジの輪郭線 (opt-in)。
-    /// `threshold` は view 距離差。
+    /// <summary>Outline along depth edges (opt-in).
+    /// `threshold` is the view distance difference.
     /// </summary>
     public Renderer3dOutline? Outline = null;
 
-    /// <summary>中間バッファの確認用: "ao" / "bloom" / "hdr" を swapchain に直接出す。
+    /// <summary>For inspecting intermediate buffers: outputs "ao" / "bloom" / "hdr" directly to the swapchain.
     /// </summary>
     public string? DebugView = null;
 
-    /// <summary>画面の中で描く範囲 (`Gfx.Size` と同じ px、左上が原点)。
-    /// null なら画面全体に描き、`End()` は先に画面を消す。
-    /// 指定すると `End()` は画面を消さずに範囲の中だけに描くので、範囲の外は `End()` の前後に自分で描く (消すなら前に pass を開く)。
-    /// `Begin()` が読み、カメラの縦横比は範囲の比、中の絵 (`<key>/ldr` など) は範囲の大きさになる。
-    /// `ViewProj` の clip も範囲の中の座標なので、`Camera3d.Project` には範囲の幅と高さを渡し、結果に範囲の左上を足す。
+    /// <summary>Range to draw in on the screen (same px as `Gfx.Size`, top-left origin).
+    /// If null, it draws to the whole screen and `End()` clears the screen first.
+    /// When set, `End()` draws only inside the range without clearing the screen, so draw outside the range yourself before or after `End()` (to clear it, open a pass before).
+    /// `Begin()` reads it; the camera aspect ratio becomes the ratio of the range, and the intermediate images (`<key>/ldr` etc.) become the size of the range.
+    /// The clip of `ViewProj` is also in coordinates inside the range, so pass the range's width and height to `Camera3d.Project` and add the range's top-left to the result.
     /// </summary>
     public Rect? Viewport = null;
 
-    /// <summary>world → clip。
-    /// スクリーン座標への投影 (HUD 追従等) 用。
-    /// begin() が設定する。
-    /// 利用側は読み取り専用。
+    /// <summary>world → clip.
+    /// For projecting to screen coordinates (HUD following etc.).
+    /// Set by begin().
+    /// Read-only for users.
     /// </summary>
     public Mat4? ViewProj = null;
 
@@ -926,7 +930,7 @@ public class Renderer3d
     private Mat4? vp = null;
     private Vec3 eye = new Vec3(0, 0, 0);
     private BufferRef? quadBuf = null;
-    // Begin() が決めた描く範囲 (画面の px) と画面の大きさ
+    // The draw range (screen px) decided by Begin(), and the screen size
     private int areaX = 0;
     private int areaY = 0;
     private int areaW = 0;
@@ -939,18 +943,18 @@ public class Renderer3d
         this.key = key;
     }
 
-    /// <summary>Phys3d の pose (x,y,z,qx,qy,qz,qw) → model 行列。
+    /// <summary>Phys3d pose (x,y,z,qx,qy,qz,qw) → model matrix.
     /// </summary>
     public static Mat4 PoseMat(Pose3d pose)
     {
-        // box3d の quaternion と Quat.ToMat4 は同じ能動回転。
-        // ここで共役や転置を挟むと物理と描画がずれる (tests/cs/TestRotationConvention.cs)
+        // The box3d quaternion and Quat.ToMat4 are the same active rotation.
+        // Inserting a conjugate or transpose here makes physics and rendering diverge (tests/cs/TestRotationConvention.cs)
         return Mat4.Translate(new Vec3(pose.X, pose.Y, pose.Z))
             * new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw).ToMat4();
     }
 
-    /// <summary>フレーム開始。
-    /// カメラを確定し draw 列を空にする。
+    /// <summary>Frame start.
+    /// Fixes the camera and empties the draw list.
     /// </summary>
     public void Begin(Camera cam)
     {
@@ -964,7 +968,7 @@ public class Renderer3d
         if (Viewport != null)
         {
             var area = Viewport.Value;
-            // 画面の外にはみ出す分は削る
+            // Trim the part that sticks out of the screen
             areaX = Math.Min(Math.Max(area.X, 0), w);
             areaY = Math.Min(Math.Max(area.Y, 0), h);
             areaW = Math.Max(Math.Min(area.X + area.W, w) - areaX, 0);
@@ -984,11 +988,11 @@ public class Renderer3d
         proj = p;
         vp = p * v;
         eye = cam.Eye;
-        // draws を空にする。
+        // Empty draws.
         draws = new List<Renderer3dDrawCmd>();
     }
 
-    /// <summary>描画を記録する (実行は `End()`)。
+    /// <summary>Records a draw (executed in `End()`).
     /// </summary>
     public void Draw(Mesh3d? mesh, Mat4 model, Draw3dOpts? opts = null)
     {
@@ -1022,7 +1026,7 @@ public class Renderer3d
         var leye = new Vec3(Shadow.Center.X + Light.Dir.X * inv * dist,
             Shadow.Center.Y + Light.Dir.Y * inv * dist,
             Shadow.Center.Z + Light.Dir.Z * inv * dist);
-        // dir が真上のときの up 退避
+        // up fallback when dir points straight up
         var up = Math.Abs(Light.Dir.Y) * inv > 0.99f
             ? new Vec3(0, 0, 1)
             : new Vec3(0, 1, 0);
@@ -1031,7 +1035,7 @@ public class Renderer3d
             dist * 2.0f) * lview;
     }
 
-    // mesh が null なら resolve は呼ばれないが、Bones.pack の契約 (resolve 非 null) を保つためダミーを渡す。
+    // If mesh is null, resolve is not called, but a dummy is passed to keep the Bones.pack contract (resolve is non-null).
     private static List<float> IdentityBones()
     {
         return Bones.Pack(null, (name, px, py, pz) => null);
@@ -1045,7 +1049,7 @@ public class Renderer3d
         foreach (var d in draws)
         {
             if (d.Blend != null)
-                continue; // 半透明は影を落とさない
+                continue; // translucent objects do not cast shadows
             var vb = d.Mesh.Vb;
             var ib = d.Mesh.Ib;
             if (vb == null || ib == null)
@@ -1074,7 +1078,7 @@ public class Renderer3d
         bindings.Set("mvp", vp * d.Model);
         bindings.Set("model", d.Model);
         bindings.Set("light_mvp", lmvp);
-        // binding は draw の時点の中身を読むので、draw ごとの値は同じ List を書き換えて渡す
+        // The binding reads the contents as of the draw, so per-draw values are passed by rewriting the same List
         tintTable[0] = d.Tint.R;
         tintTable[1] = d.Tint.G;
         tintTable[2] = d.Tint.B;
@@ -1106,7 +1110,7 @@ public class Renderer3d
         return lightDirTable;
     }
 
-    // target 全面に 1 パス描く。
+    // Draws one pass over the entire target.
     private void Blit(TextureRef target, ShaderRef shader,
         Bindings bindings, Gfx.LoadAction? load = null,
         Blend? blend = null)
@@ -1129,15 +1133,15 @@ public class Renderer3d
         Gfx.EndPass();
     }
 
-    // draw と pass ごとに Clear して使い回す。
+    // Cleared and reused per draw and per pass.
     private readonly Bindings passBindings = new Bindings();
 
-    /// <summary>記録した draw 列を実行して swapchain まで出し、draw 列を空にする。
+    /// <summary>Executes the recorded draw list through to the swapchain and empties the draw list.
     /// </summary>
     public void End()
     {
         Render();
-        // 描いた命令は次の frame に持ち越さない (持ち越すと、状態の控えがそれを生かし続ける)
+        // Drawn commands are not carried over to the next frame (if they were, the saved state would keep them alive)
         draws = new List<Renderer3dDrawCmd>();
     }
 
@@ -1147,7 +1151,7 @@ public class Renderer3d
             return;
         var vp = this.vp.Value;
         var proj = this.proj.Value;
-        // 中の絵は描く範囲の大きさ
+        // The intermediate images are the size of the draw range
         int w = areaW;
         int h = areaH;
         if (w < 1 || h < 1)
@@ -1193,7 +1197,7 @@ public class Renderer3d
         {
             Target = hdr,
             DepthTarget = depth,
-            // background も sRGB authoring → linear で HDR に置く
+            // The background is also sRGB authored → placed in HDR as linear
             ClearColor = new float[]
             {
                 (float)Math.Pow(Background.R, 2.2f),
@@ -1203,7 +1207,7 @@ public class Renderer3d
             },
             ClearDepth = 1.0f,
         });
-        // opaque → blend の順
+        // opaque → blend order
         for (int phase = 0; phase < 2; phase++)
         {
             foreach (var d in draws)
@@ -1243,7 +1247,7 @@ public class Renderer3d
         var projP = new List<float>
             { proj.M00, proj.M11, proj.M22, proj.M23 };
 
-        // SSAO (半解像度)
+        // SSAO (half resolution)
         TextureRef? aoTex = null;
         if (Ssao.Enabled)
         {
@@ -1261,7 +1265,7 @@ public class Renderer3d
             }
         }
 
-        // bloom: bright → 縮小 3 段 → ADDITIVE で逆順に戻す
+        // bloom: bright → 3 downsample levels → back up in reverse order with ADDITIVE
         TextureRef? bloomTex = null;
         if (Bloom.Enabled)
         {
@@ -1312,7 +1316,7 @@ public class Renderer3d
             }
         }
 
-        // composite (AO 乗算 + bloom 加算 + fog / outline)
+        // composite (AO multiply + bloom add + fog / outline)
         var post = Gfx.UseTexture(key + "/post", w, h, Gfx.PixelFormat.Rgba16f, null,
             rtVer, new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
         if (post == null)
@@ -1359,7 +1363,7 @@ public class Renderer3d
         passBindings.Set("grade", new Vec4(Exposure, Vignette, Dither ? 1.0f : 0.0f, h));
         Blit(ldr, tonemap, passBindings);
 
-        // FXAA (or 素通し) → swapchain の描く範囲
+        // FXAA (or passthrough) → the draw range of the swapchain
         var dst = new Vec4((float)areaX / viewportW * 2.0f - 1.0f,
             1.0f - (float)(areaY + h) / viewportH * 2.0f,
             (float)(areaX + w) / viewportW * 2.0f - 1.0f,

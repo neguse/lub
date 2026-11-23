@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// hot reload で live に当てられない編集 (doc/hot-reload-design.md §11 の規則表、SelfHost/Tool/ReloadRules.cs)。
-// tcs VM の reload (tcs vm --reload-from、--watch、VmSession) が IL の型から同じ規則で restart / live に分ける。
-// live の編集の実際の移行は tcs2c.Tests の VmReloadTests と VmReloadCaseTests
+// Edits that hot reload cannot apply live (the rule table in doc/hot-reload-design.md §11, SelfHost/Tool/ReloadRules.cs).
+// The tcs VM reload (tcs vm --reload-from, --watch, VmSession) splits edits into restart / live from the IL types with the same rules.
+// Actual migration of live edits: VmReloadTests and VmReloadCaseTests in tcs2c.Tests
 public class ReloadRulesTests
 {
     private const string Game = """
@@ -39,7 +39,7 @@ public class ReloadRulesTests
     }
 
     [Theory]
-    [InlineData( // 評価し直す式が無い
+    [InlineData( // No expression left to re-evaluate
         "public class G { public static int X = 1; }",
         "public class G { public static int X; }",
         "static initializer removed: G.X")]
@@ -65,16 +65,16 @@ public class ReloadRulesTests
     }
 
     [Theory]
-    [InlineData( // static の値は保持 (initializer は同じ)
+    [InlineData( // Static values are kept (initializer is the same)
         "public class G { public static int X = 1; public int F() { return X; } }",
         "public class G { public static int X = 1; public int F() { return X + 1; } }")]
-    [InlineData( // static の追加・削除
+    [InlineData( // Adding/removing a static
         "public class G { public static int X = 1; public static int Y = 2; }",
         "public class G { public static int X = 1; public static int Z = 4; }")]
-    [InlineData( // instance field の追加・削除 (生きている instance を移す)
+    [InlineData( // Adding/removing an instance field (live instances are migrated)
         "public class G { public int A = 1; }",
         "public class G { public int B = 2; }")]
-    [InlineData( // 型と enum member の追加
+    [InlineData( // Adding a type and an enum member
         "public enum E { One }",
         "public enum E { One, Two } public class N { }")]
     public void LiveEdit_HasNoReason(string v1, string v2)
@@ -82,7 +82,7 @@ public class ReloadRulesTests
         Assert.Empty(RestartReasons(v1, v2));
     }
 
-    // method の改名 (呼び出し側も同じ build で作り直す) は live。名前は C# の識別子のまま
+    // Renaming a method (the caller is also rebuilt in the same build) is live. The name stays the C# identifier.
     [Fact]
     public void MethodRename_WithCallersRebuilt_IsLive()
     {
@@ -92,7 +92,7 @@ public class ReloadRulesTests
         Assert.Empty(RestartReasons(Game, edited));
     }
 
-    // static method に overload を足すと既存の名前に引数の型が付く (`Make` → `Make__int`)。呼び出し側も作り直すので live
+    // Adding an overload to a static method adds the argument types to the existing name (`Make` → `Make__int`). The caller is also rebuilt, so it is live.
     [Fact]
     public void AddingStaticOverload_IsLive()
     {
@@ -125,7 +125,7 @@ public class ReloadRulesTests
         Assert.Contains(reason, RestartReasons(Game, Edit(from, to)));
     }
 
-    // 初期化子か型を変えた static と const は live で、reload が評価し直す。それを初期化子で読む static も評価し直す
+    // A static or const whose initializer or type changed is live, and reload re-evaluates it. A static that reads it in its initializer is also re-evaluated.
     [Theory]
     [InlineData("const int K = 1;", "const int K = 2;", "G.K")]
     [InlineData("static int X = 1;", "static int X = 2;", "G.X")]
@@ -148,7 +148,7 @@ public class ReloadRulesTests
         Assert.Equal(statics, string.Join(" ", TcsSelf.ReloadRules.ReinitStatics(v1, v2).Select(k => k.Replace("\n", "."))));
     }
 
-    // 変えた static を初期化子で読む static は、読む先を辿って評価し直す
+    // A static whose initializer reads a changed static is re-evaluated by following what it reads.
     [Fact]
     public void StaticEdit_ReevaluatesReaders()
     {
@@ -159,7 +159,7 @@ public class ReloadRulesTests
             TcsSelf.ReloadRules.ReinitStatics(TcsSelf.ReloadRules.TypesOf(old), TcsSelf.ReloadRules.TypesOf(next)).Select(k => k.Replace("\n", ".")));
     }
 
-    // initializer は空白・comment・定数の書き方では変わらない
+    // An initializer does not change with whitespace, comments, or how constants are written.
     [Theory]
     [InlineData("1 + 2;\n    public static int Z", "1+2;\n    public static int Z")]
     [InlineData("1 + 2;\n    public static int Z", "3;\n    public static int Z")]
@@ -172,7 +172,7 @@ public class ReloadRulesTests
         Assert.Empty(RestartReasons(Game, Edit(from, to)));
     }
 
-    // instance の形の変更と、副作用のある initializer の static の追加も live (reload が instance を移し、initializer を評価する)
+    // Changing the shape of an instance and adding a static with a side-effecting initializer are also live (reload migrates instances and evaluates the initializer).
     [Theory]
     [InlineData("public int A = 1 + 2;", "public int A = 1 + 2;\n    public int B = 4;")]
     [InlineData("public int A = 1 + 2;", "public float A = 1 + 2;")]
@@ -185,7 +185,7 @@ public class ReloadRulesTests
         Assert.Empty(RestartReasons(Game, Edit(from, to)));
     }
 
-    // instance の field の初期化子の変更は live で、host に知らせる
+    // Changing the initializer of an instance field is live, and the host is notified.
     [Fact]
     public void InstanceFieldInitializerChange_IsANote()
     {

@@ -1,11 +1,16 @@
-/* tcs のネイティブの build の host。
-   tcs2c が SelfHost/Compiler と SelfHost/Tool を C にした tcs.c を include し、SelfHost/Tool/TcsHost.cs の宣言 (tcs2c の --ref) を実装する。
-   CLI の本体は SelfHost/Tool/Cli.cs で、host は Cli.Start を 1 回、TcsHost.SetDone まで Cli.Step を呼ぶ。
-   entry から戻るたびに tcs2c の GC の frame の境界になる。
-   tcs と一緒に配るファイル (lib/TinySystem/*.cs、tcs c が埋め込む runtime/ の C) は環境変数 TCS_HOME の dir か、実行ファイルの dir から読む。
-   compile: cc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard -I <tcs.c の dir> host.c -o tcs -lm
-   TcsHost を使う別の TinyC# の program も同じ host で動かせる: TCS_HOST_SOURCE に生成した C の file 名、
-   TCS_HOST_START と TCS_HOST_STEP に entry の関数 (tcs2c --lib の tcs_entry_<Class>_<method>) を渡す (lub-gen が使う) */
+/* Host for the native build of tcs.
+   Includes tcs.c, which tcs2c generated from SelfHost/Compiler and
+   SelfHost/Tool, and implements the declarations in SelfHost/Tool/TcsHost.cs
+   (tcs2c's --ref). The CLI itself is SelfHost/Tool/Cli.cs; the host calls
+   Cli.Start once and Cli.Step until TcsHost.SetDone. Each return from an entry
+   is a tcs2c GC frame boundary. Files shipped with tcs (lib/TinySystem/*.cs,
+   the C in runtime/ that tcs c embeds) are read from the dir in the TCS_HOME
+   environment variable or from the executable's dir. compile: cc -O2
+   -ffp-contract=off -fwrapv -fexcess-precision=standard -I <dir of tcs.c>
+   host.c -o tcs -lm Other TinyC# programs that use TcsHost can run on the same
+   host: pass the generated C file name in TCS_HOST_SOURCE, and the entry
+   functions (tcs_entry_<Class>_<method> from tcs2c --lib) in TCS_HOST_START and
+   TCS_HOST_STEP (used by lub-gen) */
 #ifndef TCS_HOST_SOURCE
 #define TCS_HOST_SOURCE "tcs.c"
 #endif
@@ -59,7 +64,7 @@ static char *host_cstring(TcsString *s) {
   return p;
 }
 
-/* ファイルの内容。読めなければ NULL */
+/* File contents. NULL if it cannot be read */
 static char *host_read_all(FILE *f, size_t *length) {
   size_t cap = 65536, len = 0;
   char *buf = malloc(cap);
@@ -86,7 +91,7 @@ static TcsString *host_read_path(const char *name) {
   size_t length;
   char *buf = host_read_all(f, &length);
   fclose(f);
-  /* UTF-8 の BOM は .NET の File.ReadAllText と同じく除く */
+  /* Strip a UTF-8 BOM, as .NET's File.ReadAllText does */
   size_t skip = length >= 3 && (unsigned char)buf[0] == 0xEF &&
                         (unsigned char)buf[1] == 0xBB &&
                         (unsigned char)buf[2] == 0xBF
@@ -115,7 +120,9 @@ bool tcs_host_tcshost_file_exists(TcsString *path) {
   return ok != 0;
 }
 
-/* 2 つの path が同じ既存のファイルを指すか: POSIX は device と inode、Windows は volume と file index (link と綴りの違いも同じファイル) */
+/* Whether two paths refer to the same existing file: device and inode on POSIX,
+ * volume and file index on Windows (links and spelling differences count as the
+ * same file) */
 bool tcs_host_tcshost_same_file(TcsString *a, TcsString *b) {
   char *na = host_cstring(a);
   char *nb = host_cstring(b);
@@ -163,9 +170,11 @@ static int host_is_sep(char c) {
 #endif
 }
 
-/* 絶対 path にして `.` と `..` と重なった区切りを除く (.NET の Path.GetFullPath と同じ形)。戻り値は malloc */
+/* Makes the path absolute and removes `.`, `..`, and repeated separators (same
+ * form as .NET's Path.GetFullPath). The return value is malloc'd */
 #ifdef _WIN32
-/* Windows は OS に任せる (drive の無い `\x`、drive 相対の `C:x`、UNC の `\\server\share` も .NET と同じに解く) */
+/* On Windows, leave it to the OS (drive-less `\x`, drive-relative `C:x`, and
+ * UNC `\\server\share` are also resolved the same as .NET) */
 static char *host_full_path(const char *path) {
   DWORD need = GetFullPathNameA(path, 0, NULL, NULL);
   char *out = malloc((need > 0 ? need : strlen(path)) + 2);
@@ -226,7 +235,7 @@ static char *host_full_path(const char *path) {
   if (o == 0)
     out[o++] = '/';
   out[o] = 0;
-  /* 末尾の区切りは .NET と同じく残す */
+  /* Keep a trailing separator, as .NET does */
   if (plen > 0 && host_is_sep(path[plen - 1]) && !host_is_sep(out[o - 1])) {
     out[o++] = path[plen - 1];
     out[o] = 0;
@@ -266,7 +275,8 @@ static TcsString *host_error_text(const char *what, const char *path) {
   return host_cstr(buf);
 }
 
-/* 一時ファイルに書いてから置き換える (書きかけの出力を読ませない)。失敗したら理由を返す */
+/* Write to a temporary file, then replace it (so partially written output is
+ * never read). Returns the reason on failure */
 TcsString *tcs_host_tcshost_write_file_atomic(TcsString *path,
                                               TcsString *text) {
   char *name = host_cstring(path);
@@ -323,7 +333,8 @@ TcsString *tcs_host_tcshost_write_file_atomic(TcsString *path,
   return failure;
 }
 
-/* C の文字列は byte 列そのものなので、byte 列の書き込みは文字列の書き込みと同じ */
+/* A C string is just a byte sequence, so writing bytes is the same as writing a
+ * string */
 TcsString *tcs_host_tcshost_write_binary_atomic(TcsString *path,
                                                 TcsString *bytes) {
   return tcs_host_tcshost_write_file_atomic(path, bytes);
@@ -341,7 +352,8 @@ void tcs_host_tcshost_flush_out(void) { fflush(stdout); }
 
 TcsString *tcs_host_tcshost_file_stamp(TcsString *path) {
 #ifdef _WIN32
-  /* 最終書き込み時刻は 100ns 単位 (stat の st_mtime は秒で、同じ秒の同じ大きさの保存を見落とす) */
+  /* The last write time is in 100 ns units (stat's st_mtime is in seconds and
+   * misses saves of the same size within the same second) */
   char *wname = host_cstring(path);
   WIN32_FILE_ATTRIBUTE_DATA data;
   int found = GetFileAttributesExA(wname, GetFileExInfoStandard, &data) != 0;
@@ -374,7 +386,7 @@ TcsString *tcs_host_tcshost_file_stamp(TcsString *path) {
 #endif
 }
 
-/* tcs と一緒に配るファイルの dir (TCS_HOME か、実行ファイルの dir) */
+/* The dir of the files shipped with tcs (TCS_HOME or the executable's dir) */
 static const char *host_tool_home(void) {
   if (host_home != NULL)
     return host_home;
@@ -439,12 +451,14 @@ void tcs_host_tcshost_set_exit_code(int32_t code) { host_exit_code = code; }
 
 void tcs_host_tcshost_set_done(void) { host_done = 1; }
 
-/* TCS_HEAP=1 なら、段ごとの managed heap の大きさの最大を stderr に出す (entry の間が GC の frame の境界) */
+/* If TCS_HEAP=1, print the maximum managed heap size per step to stderr (the
+ * gap between entries is a GC frame boundary) */
 int main(int argc, char **argv) {
   host_argc = argc;
   host_argv = argv;
 #ifdef _WIN32
-  /* .NET の tcs と同じく改行を変えずに書く (text mode は \n を \r\n にする) */
+  /* Write without converting newlines, as the .NET tcs does (text mode turns \n
+   * into \r\n) */
   _setmode(_fileno(stdin), _O_BINARY);
   _setmode(_fileno(stdout), _O_BINARY);
   _setmode(_fileno(stderr), _O_BINARY);

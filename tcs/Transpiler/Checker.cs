@@ -1,6 +1,6 @@
 namespace TinyCs;
 
-/// <summary>`tcs check` と同じ検査の結果。IL を返さない。</summary>
+/// <summary>Result of the same checks as `tcs check`. Does not return IL.</summary>
 public sealed class CheckResult
 {
     public List<string> Errors { get; init; } = [];
@@ -8,8 +8,8 @@ public sealed class CheckResult
     public bool Success => Errors.Count == 0;
 }
 
-/// <summary>`tcs check` と同じ検査 (TcsSelf.Session.CheckOnly) の .NET の入口 (テストのため)。
-/// 束縛と準拠の検査の後、IL を組み立てられない本文、entry class の誤り、組み立ての内部の誤りも誤りにする。</summary>
+/// <summary>.NET entry point (for tests) to the same checks as `tcs check` (TcsSelf.Session.CheckOnly).
+/// After the binding and compliance checks, bodies that cannot be built into IL, entry class errors, and internal build errors are also errors.</summary>
 public static class Checker
 {
     public static CheckResult Check(string[] csharpSources, string[]? filePaths = null,

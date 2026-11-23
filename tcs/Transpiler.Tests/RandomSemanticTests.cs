@@ -68,12 +68,12 @@ public class RandomSemanticTests
                 }
             }
             """, "T.Test()");
-        // seed 42 の列は Lua 5.5 の math.randomseed(42) と同じ xoshiro256** (C と VM も同じ)
+        // The sequence for seed 42 is the same xoshiro256** as Lua 5.5's math.randomseed(42) (C and the VM match too).
         Assert.StartsWith("True:", result);
     }
 
-    // instance (new Random(seed)) は Shared (Random.Seed) と同じ列。instance
-    // 同士も同 seed で一致し、seed 未指定は instance ごとに異なる
+    // An instance (new Random(seed)) produces the same sequence as Shared (Random.Seed). Instances
+    // with the same seed also match each other, and without a seed each instance differs.
     [Fact]
     public void Random_Instance_MatchesSharedStream()
     {

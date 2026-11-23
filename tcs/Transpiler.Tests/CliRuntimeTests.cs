@@ -25,7 +25,7 @@ public class CliRuntimeTests
         Assert.Empty(result.Stderr);
     }
 
-    // subcommand の無い呼び出しは usage を stderr に書いて exit 1 (入力のファイルを渡しても変換しない)
+    // A call without a subcommand writes usage to stderr and exits 1 (even if input files are given, nothing is converted)
     [Theory]
     [InlineData]
     [InlineData("input.cs")]
@@ -98,7 +98,7 @@ public class CliRuntimeTests
         Assert.False(File.Exists(temp.PathFor("out.tcsb")));
     }
 
-    // -o が入力と同じファイルを指すなら、何も書かずに exit 1 (#459)
+    // If -o points to the same file as an input, exits 1 without writing anything (#459)
     [Fact]
     public void Cli_OutputSameAsInput_RefusesAndKeepsInput()
     {
@@ -153,8 +153,8 @@ public class CliRuntimeTests
         Assert.Empty(result.Stderr);
     }
 
-    // `as` の先が class の式は準拠の検査を通るが IL にできない。check は IL を組み立てて TCS1001 と理由で止め、
-    // tcs c も同じ理由で止める (初期化子を既定値にした C を書かない)
+    // An expression whose `as` target is a class passes the compliance check but cannot become IL. check builds IL and stops with TCS1001 and the reason,
+    // and tcs c stops for the same reason (it does not write C with the initializer set to the default value)
     [Fact]
     public void Cli_CheckAndC_StopOnExpressionsTheIlBuilderCannotBuild()
     {
@@ -291,7 +291,7 @@ public class CliRuntimeTests
         Assert.Contains("Dictionary<K,V>", result.Stderr);
     }
 
-    // 名前は C# の識別子のまま IL に出るので、tcs は命名の流儀を判定しない
+    // Names appear in IL as C# identifiers, so tcs does not judge naming conventions
     [Fact]
     public void Cli_Check_DoesNotJudgeNamingStyle()
     {
@@ -316,7 +316,7 @@ public class CliRuntimeTests
         Assert.Empty(result.Stderr);
     }
 
-    // 警告 (TCS1003) だけでも check は exit 1。tcs c は警告では止めずに書く
+    // check exits 1 even with only warnings (TCS1003). tcs c does not stop on warnings and writes the output
     [Fact]
     public void Cli_Check_FailsOnWarnings_CStillWrites()
     {

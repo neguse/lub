@@ -1,9 +1,9 @@
 namespace TinyCs.Tests;
 
-// user の宣言の識別子は C# の綴りのまま IL の名前になる (q.md Q16)。Lua と
-// 生成コードの予約と重なる綴り (`__` で始まる、非 ASCII、class table の key
-// `new` / `ctor`、型名と namespace 名の `_`) は build を止める TCS1001 で、
-// check は exit 1。--ref の型は対象外
+// Identifiers of user declarations become IL names with their C# spelling (q.md Q16). Spellings that collide with
+// reserved names of Lua and generated code (starting with `__`, non-ASCII, the class table keys
+// `new` / `ctor`, `_` in type and namespace names) are build-stopping TCS1001, and
+// check exits 1. --ref types are out of scope
 [Collection(ConsoleCollection.Name)]
 public class IdentifierDiagnosticTests
 {
@@ -70,7 +70,7 @@ public class IdentifierDiagnosticTests
         }
     }
 
-    // generated temp (`__tcs_*`) と同じ綴りの local も `__` の規則で止まる
+    // A local with the same spelling as a generated temp (`__tcs_*`) is also stopped by the `__` rule
     [Fact]
     public void LocalWithGeneratedTempPrefix_IsError()
     {
@@ -90,8 +90,8 @@ public class IdentifierDiagnosticTests
             "error TCS1001: unsupported syntax: DoubleUnderscoreIdentifier(__tcs_value)"));
     }
 
-    // 旧 temp 名 (`__init` / `__ret`) と同じ綴りの user の local も、`__` の規則で止まる
-    // (以前は通っていた)
+    // A user local with the same spelling as an old temp name (`__init` / `__ret`) is also stopped by the `__` rule
+    // (it used to pass)
     [Fact]
     public void LocalNamedLikeOldInitializerTemp_IsError()
     {
@@ -106,8 +106,8 @@ public class IdentifierDiagnosticTests
             "error TCS1001: unsupported syntax: DoubleUnderscoreIdentifier(__init)"));
     }
 
-    // member 名と local 名の `_`、1 つの `_` で始まる名前、namespace の `.` 区切り、
-    // `new` / `ctor` の local はそのまま書ける
+    // `_` in member and local names, names starting with a single `_`, `.`-separated namespaces,
+    // and `new` / `ctor` locals can be written as is
     [Fact]
     public void UnderscoreMembersAndLocals_AreNotDiagnosed()
     {
@@ -139,7 +139,7 @@ public class IdentifierDiagnosticTests
         Assert.Equal("14", TestHelper.CompileAndRunVm(source, "P.Test()"));
     }
 
-    // --ref の型は host の宣言で、診断の対象にしない
+    // --ref types are host declarations and are not subject to diagnostics
     [Fact]
     public void RefStubIdentifiers_AreNotDiagnosed()
     {

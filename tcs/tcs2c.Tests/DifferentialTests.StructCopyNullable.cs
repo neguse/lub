@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// struct の T? (S?) の値を copy 地点 (宣言の初期値 / 代入 / 引数 / 要素 /
-// field / return / ??= / 式位置の代入) で受ける。`c ? h.F : null` と `h?.F` の値は
-// 格納先 h.F の値そのもので、Lua は値があれば中の struct を copy する。C は値渡しの
-// まま同じ出力になる。期待値は CoreCLR の実行結果
+// Struct T? (S?) values are received at copy points (declaration initializer / assignment / argument / element /
+// field / return / ??= / assignment in expression position). The values of `c ? h.F : null` and `h?.F` are
+// the value of the storage h.F itself, and Lua copies the struct inside if there is a value. C stays pass-by-value
+// and gives the same output. The expected values are the results of running on CoreCLR
 public class StructCopyNullableDifferentialTests
 {
     [CFact]

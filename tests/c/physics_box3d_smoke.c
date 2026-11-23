@@ -1,5 +1,6 @@
-// phys3d の C smoke: App を最小限に組み、C API (include/lub/lub_api.h) を直接回す。
-// 落下と接触、euler の初期回転、raycast を確かめる。
+// C smoke test for phys3d: builds a minimal App and drives the C API
+// (include/lub/lub_api.h) directly. Checks falling and contact, initial euler
+// rotation, and raycast.
 #include "api_internal.h"
 #include "physics_box3d.h"
 
@@ -96,12 +97,13 @@ int main(void) {
   }
   check(touched, "ball never touched the ground");
   check(pose.y < 1.0f, "ball did not fall");
-  // euler.y = 0.5 の初期回転が四元数に写っている (静止 body で確かめる)
+  // The initial rotation euler.y = 0.5 is reflected in the quaternion (checked
+  // on a static body)
   LubPose3d gpose;
   LubHandle ground = lub_phys3d_find_body(ctx, w, S("ground"));
   check(ground != 0 && lub_phys3d_pose(ctx, ground, &gpose) == LUB_OK,
         "ground pose");
-  // Box3D の近似 cos / sin で作った四元数と一致する
+  // Matches the quaternion built with Box3D's approximate cos / sin
   b3Quat expect = b3MakeQuatFromAxisAngle(b3Vec3_axisY, 0.5f);
   if (!(fabsf(gpose.qy - expect.v.y) < 1e-6f &&
         fabsf(gpose.qw - expect.s) < 1e-6f)) {
@@ -110,7 +112,7 @@ int main(void) {
     check(false, "euler initial rotation");
   }
 
-  // 上から下への raycast が地面に当たる
+  // A top-down raycast hits the ground
   LubRaycastDesc3d ray;
   memset(&ray, 0, sizeof(ray));
   ray.has_x = ray.has_y = ray.has_z = true;

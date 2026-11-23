@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// samples/*.cs を C と VM で実行し、stdout が期待の文字列 (Transpiler.Tests/SampleE2ETests と同じ) と
-// 一致することを要求する。entry は wrapper class で与える
+// Runs samples/*.cs on C and the VM and requires stdout to match the expected strings (same as Transpiler.Tests/SampleE2ETests).
+// The entry is given by a wrapper class
 public class SampleParityTests
 {
     private static string Entry(string expr) =>
@@ -26,8 +26,8 @@ public class SampleParityTests
     [CFact]
     public void DigestKernels_MatchFixedDigests()
     {
-        // verify-digests.sh と tcsvm/run-tests.sh と同じ固定の digest。ここでは C 側 (GC 込み) の値を見る。
-        // particles_struct は particles と同じ演算列なので同じ digest
+        // The same fixed digests as verify-digests.sh and tcsvm/run-tests.sh. Here the C-side values (including GC) are checked.
+        // particles_struct has the same sequence of operations as particles, so the digest is the same
         var expected = new Dictionary<string, (string Entry, string Digest)>
         {
             ["sprite_update"] = ("SpriteUpdate", "e8814b32"),

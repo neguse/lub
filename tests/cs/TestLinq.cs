@@ -1,4 +1,4 @@
-// `using TinySystem.Linq;` で書いた LINQ が、readonly record struct の要素と Dictionary の Values で動くこと。
+// LINQ written with `using TinySystem.Linq;` works with readonly record struct elements and Dictionary Values.
 using System;
 using System.Collections.Generic;
 using Lub;

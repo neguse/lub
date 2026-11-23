@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// enum を入れた型引数の値と、enum の List / 配列を渡した string.Join の文字列化は member 名
-// (Lua は型を消すので、型引数の既定値と一緒に名前の引き方を渡す)。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// Type-argument values holding an enum, and string.Join over a List / array of enums, are converted to member names
+// (Lua erases types, so the way to look up names is passed together with the type argument's default value).
+// The expected values are the stdout of running the same program on CoreCLR
 public class EnumTypeArgToStringDifferentialTests
 {
     [CFact]

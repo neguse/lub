@@ -1,8 +1,8 @@
-// Ctrl+E (code:next-error) で compile error の行へ飛ぶ。
-//   - error の並びの順に、今いる error の次へ飛び、最後の次は最初へ戻る。今いる行に error が無ければ最初へ
-//   - タブの無い file の error ならタブを開く
-//   - path の無い error は飛ばす。飛べる error が無ければ動かない
-//   - Ctrl+- で飛ぶ前の場所へ戻る
+// Ctrl+E (code:next-error) jumps to compile error lines.
+//   - Jumps to the error after the current one in the order of the error list, and after the last one goes back to the first. If the current line has no error, goes to the first
+//   - For an error in a file without a tab, opens a tab
+//   - Errors without a path are skipped. If there is no error to jump to, it does not move
+//   - Ctrl+- goes back to the place before the jump
 using System;
 using Lub;
 using LiderCore;

@@ -1,4 +1,4 @@
-// draw が読む col に赤を書く。
+// Writes red to the col that the draw reads.
 RWStructuredBuffer<float4> col;
 
 [shader("compute")][numthreads(1, 1, 1)] void

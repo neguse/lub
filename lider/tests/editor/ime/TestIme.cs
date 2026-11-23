@@ -1,11 +1,11 @@
-// jamo (src/Jamo.ref.cs の native の拡張) で日本語を打つ。辞書は env LIDER_JAMO_DICT (無ければ確かめずに通す)。
-//   - Ctrl+Space でかなの mode にし、ローマ字を打つと、変換中のかなが本文の cursor の所に inline で出る
-//   - Space で変換すると、候補の一覧が帯と同じ手前の層 (行の番号が -1 の命令) に出る
-//   - Return で確定すると、漢字が本文に入る。変換中の文字の入れ替えは、消した回数に数えない
-//   - 変換中の Escape は取り消す (Modal の間は key をエディタが取る)
-//   - 入力中の F7 はカタカナ、F9 は全角英字、F10 は半角英字、F6 はひらがなにする
-//   - 確定すると、学習を env LIDER_JAMO_USER の file に書く
-//   - かなの mode を切ると ASCII を打つ
+// Types Japanese with jamo (the native extension in src/Jamo.ref.cs). The dictionary is env LIDER_JAMO_DICT (if missing, the test passes without checking).
+//   - Ctrl+Space switches to kana mode, and typing romaji shows the kana being converted inline at the cursor in the text
+//   - Converting with Space shows the candidate list on the same front layer as the bars (commands with line number -1)
+//   - Confirming with Return puts the kanji into the text. Replacing characters during conversion does not count toward the removal count
+//   - Escape during conversion cancels it (while Modal, the editor takes the keys)
+//   - During input, F7 converts to katakana, F9 to full-width Latin letters, F10 to half-width Latin letters, and F6 to hiragana
+//   - Confirming writes the learned data to the file in env LIDER_JAMO_USER
+//   - With kana mode turned off, typing produces ASCII
 using System;
 using Lub;
 using LiderEditor;

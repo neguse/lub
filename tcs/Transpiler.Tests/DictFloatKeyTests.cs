@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// float の key の Dictionary はサブセット外 (TCS1001 UnsupportedDictionaryKey(float))。HashSet<float> と同じく作る地点で止める
+// Dictionary with float keys is outside the subset (TCS1001 UnsupportedDictionaryKey(float)). As with HashSet<float>, it is stopped where it is created
 [Collection(ConsoleCollection.Name)]
 public class DictFloatKeyTests
 {

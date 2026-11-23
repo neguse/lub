@@ -1,5 +1,6 @@
-// vertex shader が texture を sample する (neguse/lub#68)。各頂点が自分の uv で
-// tex を引き、色として fragment に渡す。fragment は texture に触らない。
+// A vertex shader samples a texture (neguse/lub#68). Each vertex samples tex
+// with its own uv and passes it to the fragment as a color. The fragment does
+// not touch the texture.
 LUB_TEXTURE2D(tex);
 
 struct V {

@@ -1,10 +1,10 @@
 third_party/** -whitespace
-# 期待する出力の行末の空白に意味がある
+# Trailing whitespace in the expected output is significant.
 tcs/tcs2c.Tests/DifferentialTests.NaNRelations.cs -whitespace
 tcs/tcsvm/tests/modules/expected.txt -whitespace
-# ライセンスの文は、配られている物のまま置く
+# License texts are kept exactly as distributed.
 lider/data/UDEVGothic-LICENSE*.txt -whitespace
-# test が、行末の空白の後ろに打つ
+# The test types after the trailing whitespace.
 lider/tests/ime/Target.cs -whitespace
-# cmd は LF だけの行末で goto と label を読み違えることがあるので、batch file は CRLF で取り出す
+# cmd sometimes misreads goto and labels with LF-only line endings, so batch files are checked out with CRLF.
 *.cmd text eol=crlf

@@ -2,7 +2,7 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// 文字列の byte 単位の道具 (サブセットの string は位置の API を持たない)
+// Byte-level string utilities (the subset's string has no position APIs)
 public static class Strings
 {
     public static int ByteLength(string s)
@@ -10,7 +10,7 @@ public static class Strings
         return new Utf8Bytes(s).Length;
     }
 
-    // start byte 目から後ろ
+    // From byte start onward
     public static string From(string s, int start)
     {
         var u = new Utf8Bytes(s);
@@ -18,7 +18,7 @@ public static class Strings
         return u.Slice(start, u.Length - start).ToString();
     }
 
-    // 先頭の n byte
+    // The first n bytes
     public static string Prefix(string s, int n)
     {
         var u = new Utf8Bytes(s);

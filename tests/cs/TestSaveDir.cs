@@ -1,13 +1,13 @@
-// save/<名前>/... の保存場所。
-// native は保存先が $XDG_DATA_HOME/lub-test/ になることを native gate が見る (1 回の実行で保存して読む)。
-// web は verify (A9) が LUB_SAVE_TEST=write と read で page を 2 回開き、page をまたいで残ることを見る。
-// write は仮想ファイルの /save を先に作っておき、それでも IndexedDB に残ることを見る。
-// LUB_SAVE_TEST=mount-fails と load-fails は保存の場所を用意できない場合で、読み込みも保存も error になることを見る。
-// mount-fails は /save をファイルにし、load-fails は verify が IndexedDB を開けなくする。
-// web の保存場所は IndexedDB から読み終わるまで Pending なので、どちらもまず読み込みが Pending でなくなるのを待つ。
-// glTF は本体と外部の buffer を保存の場所から読み、material の画像の path は save/ の path のままで返す。
-// 外部の buffer の uri が .. や絶対パスなどで保存の場所を出るものは、.gltf でも .glb でも error。
-// 名前の無い path、file の無い path、.. を含む path は error。
+// The save location save/<name>/....
+// On native, the native gate checks that the save destination is $XDG_DATA_HOME/lub-test/ (it saves and reads in one run).
+// On web, the verify (A9) opens the page twice with LUB_SAVE_TEST=write and read, and checks that the data persists across pages.
+// write creates /save in the virtual file system first, and checks that the data still persists in IndexedDB.
+// LUB_SAVE_TEST=mount-fails and load-fails are the cases where the save location cannot be set up, and check that both loading and saving are errors.
+// mount-fails makes /save a file, and for load-fails the verify makes IndexedDB impossible to open.
+// The web save location is Pending until reading from IndexedDB finishes, so both first wait until loading is no longer Pending.
+// glTF reads the main file and external buffers from the save location, and returns the material image paths as save/ paths.
+// An external buffer whose uri leaves the save location (with .., an absolute path, etc.) is an error for both .gltf and .glb.
+// Paths without a name, paths without a file, and paths containing .. are errors.
 using System;
 using Lub;
 using TinySystem.Text;
@@ -79,13 +79,13 @@ public static class TestSaveDir
         }
         else if (frame > 60 || mode == null)
         {
-            // web は IndexedDB への書き込みが終わるまで少し待ってから閉じる
+            // On web, wait a little for the write to IndexedDB to finish before closing
             Check.Pass();
         }
     }
 
-    // 3 頂点の VEC3 (float) の 36 byte。
-    // SaveText で書けるよう、float の各 byte を ASCII にする
+    // 36 bytes: 3 vertices of VEC3 (float).
+    // Make each byte of the floats ASCII so that SaveText can write it
     const string gltfBuffer = "????????????????????????????????????";
 
     static string GltfJson(string bufferUri)
@@ -100,8 +100,8 @@ public static class TestSaveDir
             + "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"material\":0}]}]}";
     }
 
-    // JSON の chunk を 576 byte に詰めた GLB。
-    // SaveText で書けるよう、header の長さの各 byte も ASCII の範囲にしてある (全体 596 = 0x254、chunk 576 = 0x240)。
+    // A GLB with the JSON chunk padded to 576 bytes.
+    // So that SaveText can write it, each byte of the header lengths is also in the ASCII range (total 596 = 0x254, chunk 576 = 0x240).
     static string GltfBinary(string bufferUri)
     {
         var json = GltfJson(bufferUri);

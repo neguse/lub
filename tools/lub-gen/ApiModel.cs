@@ -3,9 +3,9 @@ using TcsSelf;
 
 namespace LubGen;
 
-// cs-lib/lub_stub.cs から読んだ API 面。
-// 名前は C# 名 (中立表記) と、tcs の名前の規則で導いた snake_case の名前 (HostName。C の名前、tcs VM の host の名前、API docs が使う) を両方持つ。
-// C の名前と型は CHeader が規則で導く。
+// API surface read from cs-lib/lub_stub.cs.
+// Names hold both the C# name (neutral notation) and the snake_case name derived by the tcs naming rules (HostName; used for the C name, the tcs VM host name, and the API docs).
+// CHeader derives the C names and types by rule.
 
 public enum LubTypeKind
 {
@@ -23,13 +23,13 @@ public enum LubTypeKind
     Array,
     Func,
     Native,
-    // struct の record (C の layout の値で渡る)
+    // struct record (passed by value in the C layout)
     Struct,
 }
 
-/// <summary>stub の型。
-/// Name は enum なら "Gfx.LoadAction"、class なら class 名。
-/// List / Array は Elem、Func は FuncParams と FuncReturn。
+/// <summary>Type in the stub.
+/// Name is "Gfx.LoadAction" for an enum, and the class name for a class.
+/// List / Array use Elem, Func uses FuncParams and FuncReturn.
 /// </summary>
 public sealed class TypeRef
 {
@@ -58,7 +58,7 @@ public sealed class TypeRef
 
     public bool IsScalar => Kind == LubTypeKind.Int || Kind == LubTypeKind.Double || Kind == LubTypeKind.Bool || Kind == LubTypeKind.Enum;
 
-    // struct の record の field に置ける型 (int / float / bool / enum と、それだけでできた struct の record)
+    // Types that can be placed in fields of a struct record (int / float / bool / enum, and struct records made only of those)
     public bool IsBlittable => !Nullable && (IsScalar || Kind == LubTypeKind.Struct);
 
     public override string ToString()
@@ -76,7 +76,7 @@ public sealed class TypeRef
     }
 }
 
-/// <summary>定数の値 (C# 版の object: int / float / bool / string)。</summary>
+/// <summary>Constant value (object in the C# version: int / float / bool / string).</summary>
 public enum ValueKind
 {
     None,
@@ -129,7 +129,7 @@ public sealed class ConstVal
         return new ConstVal(ValueKind.None);
     }
 
-    /// <summary>C# の値の文字列 (Convert.ToString(v, InvariantCulture) と同じ。float は "R")。</summary>
+    /// <summary>The string of the C# value (same as Convert.ToString(v, InvariantCulture); float uses "R").</summary>
     public string Text()
     {
         if (Kind == ValueKind.Int) return I.ToString();
@@ -148,8 +148,8 @@ public sealed class ConstVal
     }
 }
 
-/// <summary>Optional は省略できる引数。
-/// Default は null 以外の既定値 (`int code = 0` の 0) で、null を既定にする引数 (`int? id = null`) では None。
+/// <summary>Optional is an argument that can be omitted.
+/// Default is a non-null default value (the 0 of `int code = 0`), and None for an argument whose default is null (`int? id = null`).
 /// </summary>
 public sealed class ApiParam
 {
@@ -158,10 +158,10 @@ public sealed class ApiParam
     public TypeRef Type;
     public bool Optional;
     public bool IsOut;
-    // [LubArray(n)] の n (無ければ -1)
+    // The n of [LubArray(n)] (-1 if missing)
     public int ArrayLen;
     public ConstVal Default;
-    // [LubCount]: 直前の配列の引数から使う要素の数 (C と .NET は配列と一緒に渡し、tcs VM と tcs2c の host の関数は別の引数で受ける)
+    // [LubCount]: number of elements used from the preceding array argument (C and .NET pass it together with the array; tcs VM and tcs2c host functions receive it as a separate argument)
     public bool IsCount;
 
     public ApiParam(string name, string hostName, TypeRef type, bool optional, bool isOut, int arrayLen, ConstVal dflt)
@@ -177,7 +177,7 @@ public sealed class ApiParam
 
     public bool HasDefault => Default.Kind != ValueKind.None;
 
-    /// <summary>既定値の C# / C の literal (int / float / bool だけ。他は lub-gen check が止める)。無ければ null。
+    /// <summary>The C# / C literal of the default value (int / float / bool only; lub-gen check stops on others). null if there is none.
     /// </summary>
     public string? DefaultLiteral
     {
@@ -258,14 +258,14 @@ public sealed class ApiField
     public TypeRef Type;
     public bool Optional;
     public string Doc;
-    // [LubArray(n)] の n (無ければ -1)
+    // The n of [LubArray(n)] (-1 if missing)
     public int ArrayLen;
     public bool Bits;
-    // struct の record の property の書き方 ("init" / "set")。field なら ""
+    // How the property of a struct record is written ("init" / "set"). "" for a field
     public string Accessor = "";
-    // struct の record の readonly の field (readonly struct の field)
+    // readonly field of a struct record (field of a readonly struct)
     public bool Readonly;
-    // stub に書いた初期化子の式 (`A = -1` の `-1`)。無ければ ""
+    // The initializer expression written in the stub (the `-1` of `A = -1`). "" if missing
     public string Init = "";
 
     public ApiField(string name, string hostName, TypeRef type, bool optional, string doc, int arrayLen, bool bits)
@@ -296,8 +296,8 @@ public sealed class ApiConst
     }
 }
 
-/// <summary>Line は stub での宣言行 (1 始まり)。
-/// API docs の source link に使う。
+/// <summary>Line is the declaration line in the stub (1-based).
+/// Used for the source link in the API docs.
 /// </summary>
 public sealed class ApiNamespace
 {
@@ -323,11 +323,11 @@ public sealed class ApiNamespace
         Line = line;
     }
 
-    /// <summary>host の名前の根 (lub / lubx)。</summary>
+    /// <summary>Root of the host name (lub / lubx).</summary>
     public string HostRoot => HostPath.Split('.')[0];
 }
 
-/// <summary>Kind: handle (runtime 所有の不透明参照) / view (frame 有効のバイト列) / keyed (key で参照する resource) / record (option table や戻り値の平らな構造) / struct (値で渡る record)。
+/// <summary>Kind: handle (runtime-owned opaque reference) / view (byte sequence valid for the frame) / keyed (resource referenced by key) / record (flat structure for option tables and return values) / struct (record passed by value).
 /// </summary>
 public sealed class ApiType
 {
@@ -337,9 +337,9 @@ public sealed class ApiType
     public List<ApiFunction> Methods;
     public string Doc;
     public int Line;
-    // struct の record の宣言の形 ("struct" / "record struct" / "readonly record struct" など。facade が同じ形で書く)
+    // Declaration form of a struct record ("struct" / "record struct" / "readonly record struct" etc.; the facade writes it in the same form)
     public string Declaration = "";
-    // positional な record の parameter (struct の record では lub-gen check が断る)
+    // Parameters of a positional record (lub-gen check rejects them for struct records)
     public List<string> PositionalParams = new List<string>();
 
     public ApiType(string name, string kind, List<ApiField> fields, List<ApiFunction> methods, string doc, int line)
@@ -386,7 +386,7 @@ public sealed class ApiModel
     }
 }
 
-/// <summary>誤り (C# 版の InvalidOperationException)。最初のものを記録し、呼ぶ側が見て止める。</summary>
+/// <summary>Error (InvalidOperationException in the C# version). Records the first one, and the caller checks it and stops.</summary>
 public static class GenError
 {
     public static string Message = "";
@@ -401,13 +401,13 @@ public static class GenError
 
 public static class ApiModelLoader
 {
-    /// <summary>stub の型が全部入る C# の namespace。
-    /// namespace 直下の enum (EventKind) はパス `lub` の root の段に置く。
+    /// <summary>The C# namespace that contains all types of the stub.
+    /// Enums directly under the namespace (EventKind) are placed at the root level of the path `lub`.
     /// </summary>
     public const string RootNamespace = "Lub";
 
-    /// <summary>lubx が使う C の実装の面 (core API ではない)。
-    /// static class だけを持ち、型と enum は Lub のものを使う。
+    /// <summary>The C implementation surface used by lubx (not the core API).
+    /// It has only static classes, and uses the types and enums of Lub.
     /// </summary>
     public const string LubxNamespace = "Lubx";
 
@@ -415,7 +415,7 @@ public static class ApiModelLoader
 
     private static List<string> _lines = new List<string>();
 
-    /// <summary>stub を tcs の compiler で宣言まで読み (--ref)、API 面を作る。errors に C# の誤り。</summary>
+    /// <summary>Reads the stub with the tcs compiler up to declarations (--ref) and builds the API surface. C# errors go to errors.</summary>
     public static ApiModel Load(string stubPath, string text, List<string> errors)
     {
         _lines = Text.Lines(text);
@@ -465,7 +465,7 @@ public static class ApiModelLoader
         return new ApiModel(namespaces, types);
     }
 
-    // namespace の直下の型 (宣言の順)
+    // Types directly under the namespace (in declaration order)
     private static List<TypeDeclSym> TopLevel(Compilation c, string ns)
     {
         var r = new List<TypeDeclSym>();
@@ -515,7 +515,7 @@ public static class ApiModelLoader
         return new ApiNamespace(cls.Name, hostPath, functions, enums, fields, consts, Doc(cls.Decl), Line(cls.Decl));
     }
 
-    // field の symbol の宣言 (Symbol.Decl は宣言子なので、その外側の field の宣言)
+    // Declaration of the field symbol (Symbol.Decl is the declarator, so this is the enclosing field declaration)
     private static Node? FieldDecl(Symbol f)
     {
         var d = f.Decl;
@@ -565,14 +565,14 @@ public static class ApiModelLoader
                 field.Readonly = t.IsStruct && m.IsReadonly;
                 fields.Add(field);
             }
-            // struct の record の auto property (readonly record struct の { get; init; }) は field と同じく値の並びに入る
+            // Auto properties of struct records ({ get; init; } of a readonly record struct) go into the value layout just like fields
             if (t.IsStruct && m.Kind == SymKind.Property && !m.IsStatic && IsPublic(m.Decl)) fields.Add(LoadProperty(m));
         }
         foreach (var m in t.Members)
         {
             if (m.Kind == SymKind.Method && !m.IsStatic && IsPublic(m.Decl) && !m.Name.StartsWith("op_")) methods.Add(LoadFunction(m));
         }
-        // 継承は TinyC# の外 (stub も同じ)。共通の field は各 class に書き、受け渡す部分は field に持つ
+        // Inheritance is outside TinyC# (the stub too). Common fields are written in each class, and the parts that are passed around are kept in fields
         if (t.BaseClass != null) GenError.Report(t.Name + ": a stub class must not have a base class (" + t.BaseClass.Name + ")");
         var type = new ApiType(t.Name, kind, fields, methods, Doc(t.Decl), Line(t.Decl));
         if (t.IsStruct)
@@ -711,17 +711,17 @@ public static class ApiModelLoader
         return TypeRef.VoidType;
     }
 
-    // ---- doc comment (宣言の前の `///` の行の <summary>) ----
+    // ---- doc comment (the <summary> of the `///` lines before a declaration) ----
 
     private static string Doc(Node decl)
     {
-        // 宣言が行の始まりに無ければ (同じ行の前に別の token がある enum の member など) doc は無い
+        // If the declaration is not at the start of the line (such as an enum member with another token before it on the same line), there is no doc
         int at = decl.File.LineOf(decl.Pos);
         string before = Text.Trim(Text.Sub(_lines[at - 1], 0, decl.File.ColumnOf(decl.Pos) - 1));
         if (before != "" && !before.StartsWith("[")) return "";
-        // 宣言の行から上へ、属性の行を飛ばし、続く `///` の行を集める
+        // From the declaration line upward, skip attribute lines and collect the consecutive `///` lines
         int line = at - 2;
-        // 空行も飛ばす (C# の compiler も、空行を挟んだ doc comment を宣言に付ける)
+        // Also skip blank lines (the C# compiler also attaches a doc comment separated by blank lines to the declaration)
         while (line >= 0 && (Text.Trim(_lines[line]).StartsWith("[") || Text.Trim(_lines[line]) == "")) line--;
         var docs = new List<string>();
         while (line >= 0)
@@ -733,14 +733,14 @@ public static class ApiModelLoader
         }
         if (docs.Count == 0) return "";
         string xml = string.Join("\n", docs);
-        // 整形式でない XML (閉じない tag など) の doc は C# の compiler と同じく無いものとする
+        // A doc with malformed XML (an unclosed tag etc.) is treated as absent, as the C# compiler does
         if (!Text.WellFormedXml(xml)) return "";
         string body = Text.Between(xml, "<summary>", "</summary>");
         if (body == "") return "";
         body = Text.StripTags(body);
         body = body.Replace("&lt;", "<").Replace("&gt;", ">").Replace("&amp;", "&");
-        // 行の継ぎ目は空白 1 つに畳む。
-        // CJK 同士の継ぎ目には空白を入れない。
+        // Line joins are collapsed into a single space.
+        // No space is inserted at a join between two CJK characters.
         var parts = new List<string>();
         int last = 0;
         foreach (var raw in body.Split('\n'))

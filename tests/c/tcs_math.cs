@@ -1,7 +1,7 @@
 using System;
 
-// tests/cs/TestMathDeterminism.cs と同じ入力列と hash を C# の Math で計算する。
-// scripts/verify-tcs-binding.sh が tcs2c で build して、出力を TestMathDeterminism.cs の期待値と比べる。
+// Computes the same input sequence and hash as tests/cs/TestMathDeterminism.cs with C# Math.
+// scripts/verify-tcs-binding.sh builds it with tcs2c and compares the output with the expected values in TestMathDeterminism.cs.
 class MathTest
 {
     const int points = 2000;
@@ -13,9 +13,9 @@ class MathTest
         return lo + (hi - lo) * (((state >> 8) & 0xffffff) / 16777216f);
     }
 
-    // IEEE-754 binary32 の bit 列。
-    // 2 倍と半分は丸めずに済むので、仮数が [2^23, 2^24) に入るまで寄せて指数を数える。
-    // NaN は 1 つの値にまとめる。
+    // IEEE-754 binary32 bit pattern.
+    // Doubling and halving need no rounding, so shift until the mantissa is in [2^23, 2^24) and count the exponent.
+    // NaN is collapsed to a single value.
     static int Bits(float x)
     {
         if (x != x) return 0x7fc00000;

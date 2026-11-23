@@ -1,19 +1,19 @@
 namespace TinyCs.Tcs2c;
 
-/// <summary>C backend の誤り (CFail に記録したもの)。</summary>
+/// <summary>C backend error (what was recorded in CFail).</summary>
 internal sealed class Tcs2cException(string message) : Exception(message);
 
 /// <summary>
-/// C backend (SelfHost/CBackend の TcsC.CEmitter) を .NET から文字列で動かす入口 (テストのため)。
-/// IL はセルフホストの compiler の書き出し (TcsSelf.ExportResult) をそのまま渡し、runtime の C は出力の dir の runtime/ から読む。
-/// 誤りの記録 (TcsC.CFail) は static なので、並んだ呼び出しは 1 つずつ動かす。
+/// Entry point for driving the C backend (TcsC.CEmitter in SelfHost/CBackend) from .NET with strings (for tests).
+/// The IL is passed as is from the self-hosted compiler's export (TcsSelf.ExportResult), and the runtime C is read from runtime/ in the output dir.
+/// The error record (TcsC.CFail) is static, so concurrent calls run one at a time.
 /// </summary>
 internal static class SelfHostC
 {
     private static readonly object Gate = new();
     private static readonly Lazy<Dictionary<string, string>> Runtime = new(LoadRuntime);
 
-    /// <summary>C を生成する。TinyC# の診断は InvalidOperationException、C backend の誤りは Tcs2cException。</summary>
+    /// <summary>Generates C. TinyC# diagnostics become InvalidOperationException, and C backend errors become Tcs2cException.</summary>
     public static string Emit(string[] sources, string? entryClass, bool lib = false, bool digestF32 = false,
         string[]? referenceSources = null)
     {
@@ -29,7 +29,7 @@ internal static class SelfHostC
             .Where(d => !d.Contains(": warning ") && !d.StartsWith("warning ", StringComparison.Ordinal)).ToList();
         if (result.Export == null || errors.Count > 0)
             throw new InvalidOperationException("TinyC# diagnostics:\n" + string.Join("\n", errors.Count > 0 ? errors : ["export failed"]));
-        // IL にできなかった本文と式 (`tcs c` の CRun と同じく止める)
+        // Bodies and expressions that could not become IL (stops, like CRun of `tcs c`)
         if (result.Export.InternalErrors.Count > 0)
             throw new InvalidOperationException("TinyC# diagnostics:\n" + string.Join("\n", result.Export.InternalErrors.Select(e => "internal: " + e)));
         lock (Gate)

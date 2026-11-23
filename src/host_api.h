@@ -1,20 +1,23 @@
-// host API (include/lub/lub_host.h) の実装側で player と共有する部分。
+// The part of the host API (include/lub/lub_host.h) implementation shared with
+// the player.
 #pragma once
 #include "app.h"
 #include "lub/lub_host.h"
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 
-// SDL の event を LubEventData に写し、入力の latch (押した / 離した edge、mouse の移動量) を App に積む。
-// out に書いたら true (無視する event は false)。
-// quit は kind = LUB_EVENT_KIND_QUIT で返し、quit_requested も立てる。
+// Copy an SDL event to LubEventData and accumulate input latches (press /
+// release edges, mouse motion) in App. true if written to out (false for
+// ignored events). quit is returned with kind = LUB_EVENT_KIND_QUIT and also
+// sets quit_requested.
 bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out);
 
-// window 座標 (SDL の mouse) から framebuffer pixel への倍率。
-// 高 pixel 密度の window (metal backend) 以外は 1。
+// Scale from window coordinates (SDL mouse) to framebuffer pixels.
+// 1 except for high pixel density windows (metal backend).
 float lub_host_pixel_density(Process *proc);
 
-// main target の矩形 (framebuffer pixel)。
-// ノッチや home indicator のある端末では safe area で、ゲームの描画と入力の原点はこの左上になる。
-// それ以外は window 全体 (x = y = 0)。
+// Rectangle of the main target (framebuffer pixels).
+// On devices with a notch or home indicator it is the safe area, and the origin
+// for game drawing and input is its top-left corner. Otherwise it is the whole
+// window (x = y = 0).
 void lub_host_main_rect(Process *proc, int *x, int *y, int *w, int *h);

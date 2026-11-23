@@ -18,34 +18,34 @@ public enum TypeKind
     Object,
     Double,
     Long,
-    // user の型 (Decl を持つ)
+    // User type (has Decl)
     Class,
     Struct,
     Interface,
     Enum,
-    // 型引数 (Index は宣言の順。IsMethod なら method の型引数)
+    // Type argument (Index is the declaration order; a method type argument if IsMethod)
     TypeParam,
-    // 組み込みの generic な型 (Args を持つ)
+    // Built-in generic type (has Args)
     List,
     Dict,
     HashSet,
     Queue,
     KeyValuePair,
-    // Dictionary の Keys / Values (Args = K, V)。runtime は要素の写しを返す
+    // Dictionary's Keys / Values (Args = K, V). The runtime returns a copy of the elements
     KeyCollection,
     ValueCollection,
     Array,
     Nullable,
-    // delegate (Action / Func / Comparison / Predicate)。Args = parameter の型、Ret = 戻り型
+    // Delegate (Action / Func / Comparison / Predicate). Args = parameter types, Ret = return type
     Delegate,
     Tuple,
     Utf8Bytes,
     Rune,
     Random,
-    // 型の付かない lambda と method group (変換先が決まるまでの仮の型)
+    // Untyped lambda and method group (a provisional type until the target is known)
     Lambda,
     MethodGroup,
-    // static class の名前などの、値でない型の参照
+    // A type reference that is not a value, such as a static class name
     StaticRef,
 }
 
@@ -58,13 +58,13 @@ public sealed class TypeSym
     public TypeSym? Ret;
     public int Index;
     public bool IsMethodParam;
-    // where T : struct の型引数 (T? は Nullable<T>)
+    // A type argument with where T : struct (T? is Nullable<T>)
     public bool IsStructParam;
-    // Tuple の要素名
+    // Tuple element names
     public List<string>? Names;
-    // 参照型の null 許容の注釈 (`string?`)。意味は変えず、C backend への型の表記 (IlTypes.Display) にだけ出る
+    // Nullable annotation of a reference type (`string?`). It does not change meaning and appears only in the type notation for the C backend (IlTypes.Display)
     public bool Annotated;
-    // null 許容の文脈を持たない型 (単相化が差し込んだ型の構文)。var の local に注釈を付けない
+    // A type without a nullable context (type syntax inserted by monomorphization). Does not annotate var locals
     public bool Oblivious;
 
     public TypeSym(TypeKind kind, string name)
@@ -73,7 +73,7 @@ public sealed class TypeSym
         Name = name;
     }
 
-    // `?` の注釈を外した型
+    // The type with the `?` annotation removed
     public TypeSym WithoutAnnotation()
     {
         if (!Annotated) return this;
@@ -82,7 +82,7 @@ public sealed class TypeSym
         return t;
     }
 
-    // `?` の注釈を付けた copy
+    // A copy with the `?` annotation added
     public TypeSym WithAnnotation()
     {
         var t = new TypeSym(Kind, Name);
@@ -169,7 +169,7 @@ public sealed class TypeSym
 
     public bool IsError => Kind == TypeKind.Error;
 
-    // .NET に有るがサブセットに無い BCL の型 (誤りの型として扱い、member の参照を TCS1002 と報告する)
+    // BCL types that exist in .NET but not in the subset (treated as error types; member references are reported as TCS1002)
     public static TypeSym Bcl(string metadataName) => new TypeSym(TypeKind.Error, "bcl:" + metadataName);
 
     public bool IsBcl => Kind == TypeKind.Error && Name.StartsWith("bcl:");
@@ -178,7 +178,7 @@ public sealed class TypeSym
 
     public bool IsNumeric => Kind == TypeKind.Int || Kind == TypeKind.Float || Kind == TypeKind.Char || Kind == TypeKind.Byte || Kind == TypeKind.UInt || Kind == TypeKind.Short || Kind == TypeKind.Double || Kind == TypeKind.Long;
 
-    // 整数の型
+    // Integer types
     public bool IsIntegral => Kind == TypeKind.Int || Kind == TypeKind.Char || Kind == TypeKind.Byte || Kind == TypeKind.UInt || Kind == TypeKind.Short || Kind == TypeKind.Long;
 
     public bool IsValueType
@@ -209,7 +209,7 @@ public sealed class TypeSym
         }
     }
 
-    // null を値に持てる型
+    // Types that can hold null
     public bool IsNullable => !IsValueType || Kind == TypeKind.Nullable;
 
     public bool IsReferenceLike => !IsValueType && Kind != TypeKind.TypeParam;
@@ -283,7 +283,7 @@ public sealed class TypeSym
         return Name;
     }
 
-    // 診断に書く名前 (C# の表示: BCL と user の型は namespace で修飾し、組み込みの型は keyword)
+    // The name written in diagnostics (C# display: BCL and user types are namespace-qualified, built-in types are keywords)
     public string FullDisplay()
     {
         switch (Kind)
@@ -344,7 +344,7 @@ public sealed class TypeSym
         return string.Join(", ", parts);
     }
 
-    // 型引数を置き換えた型。typeArgs は型の型引数、methodArgs は method の型引数
+    // The type with type arguments substituted. typeArgs are the type's type arguments, methodArgs the method's
     public TypeSym Subst(List<TypeSym>? typeArgs, List<TypeSym>? methodArgs)
     {
         if (Kind == TypeKind.TypeParam)
@@ -406,7 +406,7 @@ public sealed class ParamSym
     public string Name;
     public TypeSym Type;
     public bool IsOut;
-    // ref / in / out の parameter (値の parameter と overload を分ける)
+    // ref / in / out parameter (distinguishes overloads from value parameters)
     public bool IsByRef;
     public Node? Default;
     public bool IsThis;
@@ -418,40 +418,40 @@ public sealed class ParamSym
     }
 }
 
-// member の symbol (field / property / method / ctor / enum member)。組み込みは Builtin を持つ
+// Member symbol (field / property / method / ctor / enum member). Built-ins have Builtin
 public sealed class Symbol
 {
     public SymKind Kind;
     public string Name;
     public TypeDeclSym? Owner;
-    // field / property の型、method の戻り型
+    // Type of a field / property, return type of a method
     public TypeSym Type;
     public bool IsStatic;
     public List<ParamSym>? Params;
     public Node? Decl;
-    // method の型引数の名前
+    // Names of the method's type arguments
     public List<string>? TypeParams;
-    // IL での名前 (method は overload を区別した名前、--ref の型の member は host の名前、local は改名した名前)
+    // Name in IL (overload-distinguished name for methods, host name for members of --ref types, renamed name for locals)
     public string IlName;
     public bool IsConst;
     public ConstValue? ConstVal;
-    // property: accessor の有無と、本体の無い自動実装か
+    // property: which accessors exist, and whether it is auto-implemented without a body
     public bool HasGetter;
     public bool HasSetter;
     public bool IsAuto;
-    // init だけの setter (object 初期化子と with で書ける)
+    // init-only setter (can be written in object initializers and with)
     public bool IsInit;
     public bool IsReadonly;
-    // 組み込みの member の id ("List.Add" など)。user の member は ""
+    // ID of a built-in member ("List.Add", etc.). "" for user members
     public string Builtin = "";
-    // 組み込みの member の持ち主の key (Builtins の表の owner)
+    // Owner key of a built-in member (the owner in the Builtins table)
     public string BuiltinOwner = "";
     public bool IsExtension;
-    // method の型引数の制約 (TypeParams と同じ順)
+    // Constraints of the method's type arguments (same order as TypeParams)
     public List<List<TypeSym>>? TypeParamConstraints;
-    // method の型引数の where T : class (TypeParams と同じ順)
+    // where T : class of the method's type arguments (same order as TypeParams)
     public List<bool>? TypeParamClass;
-    // field の初期化子が束縛済みか (const の循環を検出する)
+    // Whether the field initializer has been bound (detects const cycles)
     public int ConstState;
     public TypeDeclSym? TypeRef;
 
@@ -493,44 +493,44 @@ public sealed class Symbol
     }
 }
 
-// user の型の宣言
+// User type declaration
 public sealed class TypeDeclSym
 {
     public string Name;
-    // 型の中の名前を解決する scope (Declarer が作る)
+    // Scope for resolving names inside the type (created by the Declarer)
     public TypeScope? Scope;
-    // namespace と外側の型を . でつないだ名前
+    // Name with the namespace and outer types joined by .
     public string FullName;
     public string Namespace;
-    // IL の型の名前 (A.B.C → A_B_C。--ref の型は host の path)
+    // IL type name (A.B.C → A_B_C; the host path for --ref types)
     public string IlName;
     public int DeclKind;
     public Node Decl;
     public TypeDeclSym? Outer;
     public bool IsStatic;
     public bool IsRef;
-    // --ref の型の基底 class (host の data class の継承)。user の型は継承を持たない
+    // Base class of a --ref type (inheritance of host data classes). User types have no inheritance
     public TypeDeclSym? BaseClass;
-    // --ref の属性の宣言 (System.Attribute を継承する)。名前の解決にだけ使う
+    // A --ref attribute declaration (inherits System.Attribute). Used only for name resolution
     public bool IsAttribute;
     public List<Symbol> Members = new List<Symbol>();
     public Dictionary<string, List<Symbol>> ByName = new Dictionary<string, List<Symbol>>();
     public List<TypeSym> Interfaces = new List<TypeSym>();
     public List<string> TypeParams = new List<string>();
-    // 型引数の制約 (TypeParams と同じ順)
+    // Type argument constraints (same order as TypeParams)
     public List<List<TypeSym>> TypeParamConstraints = new List<List<TypeSym>>();
-    // 型引数の where T : class (TypeParams と同じ順)
+    // where T : class of the type arguments (same order as TypeParams)
     public List<bool> TypeParamClass = new List<bool>();
     public List<TypeDeclSym> Nested = new List<TypeDeclSym>();
-    // enum の基底型
+    // Underlying type of an enum
     public TypeSym? EnumBase;
     public bool IsFlags;
-    // record の positional parameter
+    // Positional parameters of a record
     public List<ParamSym>? RecordParams;
     public int Order;
     public List<Symbol> Ctors = new List<Symbol>();
     public bool MembersDeclared;
-    // struct の instance の状態を書き換えられない (全ての field が readonly で、set のある自動実装の property が無い)。copy を省ける
+    // The struct instance state cannot be modified (all fields are readonly, and there is no auto-implemented property with set). Copies can be skipped
     public bool IsImmutable;
 
     public TypeDeclSym(string name, string fullName, string ns, int declKind, Node decl)
@@ -565,12 +565,12 @@ public sealed class TypeDeclSym
     public List<Symbol>? Lookup(string name)
     {
         if (ByName.TryGetValue(name, out var list)) return list;
-        // --ref の host の data class は基底の member も持つ
+        // A --ref host data class also has the base members
         if (BaseClass != null) return BaseClass.Lookup(name);
         return null;
     }
 
-    // この型か基底が other か (--ref の host の class の継承)
+    // Whether this type or a base is other (inheritance of --ref host classes)
     public bool DerivesFrom(TypeDeclSym other)
     {
         TypeDeclSym? cur = this;
@@ -609,7 +609,7 @@ public sealed class TypeDeclSym
     }
 }
 
-// 局所変数と parameter
+// Locals and parameters
 public sealed class LocalSym
 {
     public string Name;
@@ -619,9 +619,9 @@ public sealed class LocalSym
     public bool IsOut;
     public bool IsConst;
     public ConstValue? ConstVal;
-    // 初期化子なしで宣言した local (確実な代入の解析が追う)
+    // A local declared without an initializer (tracked by definite assignment analysis)
     public bool Tracked;
-    // lambda の中から書き換えられる、または capture される
+    // Modified from inside a lambda, or captured
     public bool Captured;
     public int Depth;
 

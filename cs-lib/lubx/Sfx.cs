@@ -1,16 +1,16 @@
-// 実装ライブラリ lubx の Sfx。
-// 波形は List<float>.Add で積む。
-// 切り捨ては値が非負なので Math.Floor、i % 16 == 0 は整数剰余を避けて (i & 15) == 0。
+// Sfx of the implementation library lubx.
+// Waveforms are accumulated with List<float>.Add.
+// Truncation uses Math.Floor since the values are non-negative, and i % 16 == 0 is written as (i & 15) == 0 to avoid integer remainder.
 using System;
 using System.Collections.Generic;
 using Lub;
 
 namespace Lubx;
 
-/// <summary> 効果音の即席合成。
-/// 同じパラメータからは常に同じ波形を生成する (決定的) ので、Audio.Snd の内容 dedupe と合わせて hot reload しても snd handle が安定する。
-/// 波形は内部 cache し、呼ぶたびに key で宣言し直す (version が同じなら runtime は波形を読まない) ので毎フレーム宣言的に呼んでよい。
-/// sweep された snd は次に呼んだとき cache の波形から作り直される。
+/// <summary> Quick sound effect synthesis.
+/// The same parameters always produce the same waveform (deterministic), so together with the content dedupe of Audio.Snd the snd handle stays stable across hot reload.
+/// Waveforms are cached internally and re-declared by key on every call (the runtime does not read the waveform if version is the same), so it can be called declaratively every frame.
+/// A swept snd is recreated from the cached waveform on the next call.
 /// </summary>
 public static class Sfx
 {
@@ -19,9 +19,9 @@ public static class Sfx
     private static Dictionary<string, List<float>> cache = new Dictionary<string, List<float>>();
     private static Dictionary<string, int> synthVersions = new Dictionary<string, int>();
 
-    /// <summary>矩形波 blip。
-    /// freq0→freq1 へスイープしつつ指数減衰 (exp(-5u))。
-    /// snd handle を返す。
+    /// <summary>Square-wave blip.
+    /// Sweeps freq0→freq1 with exponential decay (exp(-5u)).
+    /// Returns a snd handle.
     /// </summary>
     public static int Blip(float freq0, float freq1, float dur, float vol)
     {
@@ -45,9 +45,9 @@ public static class Sfx
         return Audio.Snd(key, samples, 1, Rate, 1) ?? 0;
     }
 
-    /// <summary>ノイズバースト。
-    /// 指数減衰 (exp(-4u))、16 sample ごとにホールド更新。
-    /// snd handle を返す。
+    /// <summary>Noise burst.
+    /// Exponential decay (exp(-4u)), with the held value updated every 16 samples.
+    /// Returns a snd handle.
     /// </summary>
     public static int Noise(float dur, float vol, int? seed = null)
     {
@@ -74,16 +74,16 @@ public static class Sfx
         return Audio.Snd(key, samples, 1, Rate, 1) ?? 0;
     }
 
-    /// <summary>任意の波形を合成する枠。
-    /// sample(t, u) は t 秒 (sample の位置) と進行度 u (0..1) を受けて 1 sample を返し、-1..1 に clamp される。
-    /// LP フィルタなどの状態は、呼び出し側が closure に捕まえた変数で持つ (sample は先頭から順に 1 回ずつ呼ばれる)。
-    /// key と version で cache し、同じ version なら sample は呼ばれない。
-    /// 波形の式を変えたら version を上げる。
-    /// fadeSamples を渡すと、末尾のその個数 (dur 全体の sample 数が上限) の sample を最後の 0 に向けて線形に落とす (波形が 0 で終わらないときのクリック音を防ぐ)。
-    /// 省略時は落とさない。
-    /// fadeSamples を変えたら波形の式と同じく version を上げる。
-    /// 毎フレーム呼んで宣言し続ける。
-    /// snd handle を返す。
+    /// <summary>Framework for synthesizing an arbitrary waveform.
+    /// sample(t, u) receives t seconds (the sample position) and progress u (0..1) and returns 1 sample, which is clamped to -1..1.
+    /// State such as LP filters is kept by the caller in variables captured by the closure (sample is called once per sample, in order from the start).
+    /// Cached by key and version; with the same version, sample is not called.
+    /// Raise version when the waveform formula changes.
+    /// With fadeSamples, the last that many samples (capped at the total number of samples in dur) are lowered linearly toward a final 0 (prevents clicks when the waveform does not end at 0).
+    /// When omitted, nothing is lowered.
+    /// When fadeSamples changes, raise version just as for a waveform formula change.
+    /// Call it every frame to keep declaring it.
+    /// Returns a snd handle.
     /// </summary>
     public static int Synth(string key, float dur, int version, Func<float, float, float> sample, int? fadeSamples = null)
     {
@@ -105,9 +105,9 @@ public static class Sfx
         return Audio.Snd(key, samples, 1, Rate, version) ?? 0;
     }
 
-    /// <summary>n sample のうち i 番目の末尾フェードの係数。
-    /// 末尾の fade 個で 1 から 0 へ線形に落ち、最後の sample が 0 になる。
-    /// fade が 0 以下なら常に 1。
+    /// <summary>Tail fade coefficient for the i-th of n samples.
+    /// It falls linearly from 1 to 0 over the last fade samples, and the last sample becomes 0.
+    /// Always 1 if fade is 0 or less.
     /// </summary>
     private static float FadeGain(int i, int n, int fade)
     {

@@ -1,5 +1,5 @@
-// Shift+F5 でゲームを最初から作り直す (lub の App.Restart に開いたゲームを渡す)。
-// 作り直すとゲームの static は初期値に戻る。lider は作り直されないので、開いていた窓は残る。
+// Shift+F5 recreates the game from the start (passes the opened game to lub's App.Restart).
+// Recreating resets the game's statics to their initial values. lider is not recreated, so the open windows remain.
 using System;
 using Lub;
 using LiderCore;
@@ -29,7 +29,7 @@ public static class TestRestart
     public static void OnFrame(float dt)
     {
         Lider.OnFrame(dt);
-        // ゲームの build を待つ
+        // Wait for the game build
         if (GameApp.Frames == 0)
             return;
         frames++;
@@ -62,7 +62,7 @@ public static class TestRestart
         }
     }
 
-    // ゲームの Count の今の値 (読めなければ -1)
+    // Current value of the game's Count (-1 if it cannot be read)
     static int Count()
     {
         foreach (var n in GameApp.Inspect("Game", 0, 100))

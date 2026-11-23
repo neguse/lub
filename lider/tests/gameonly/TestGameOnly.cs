@@ -1,7 +1,7 @@
-// ゲームの絵だけを出す (命令 screen:hide)。
-//   - 左右に並ぶ形では、ゲームの絵と同じスクリーンにコードの窓が並んでいる
-//   - ゲームの絵だけにすると、絵が画面いっぱいになり、ほかのウィンドウは出ず、focus はゲームに移る。並びの順番は変わらない
-//   - focus を Code に戻すと、元の並びで出る
+// Shows only the game view (command screen:hide).
+//   - In the side-by-side layout, the code windows are lined up on the same screen as the game view
+//   - Showing only the game view makes the view fill the screen, hides the other windows, and moves focus to the game. The order is not changed
+//   - Moving focus back to Code shows them in the original order
 using System;
 using Lub;
 using LiderCore;

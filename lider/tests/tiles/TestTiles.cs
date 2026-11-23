@@ -1,11 +1,11 @@
-// 区画に割る規則 (MainStack) の設定を、利用者の操作で変える。
-//   - 起動したときの左右に並ぶ形は、先頭の 1 枚 (ゲームの絵) が左の列、残りが右の列に積まれる
-//   - 命令で、先頭に 1 枚ずつ並べるウィンドウを増やすと、列が増える (ゲームの絵 | Code | Inspector)。減らすと戻る
-//   - 列の境目 (ウィンドウの右の端) をマウスで引くと、列の幅の割合が変わる
-//   - 積んだウィンドウの境目 (下の端) を引くと、高さの割合が変わる
-//   - 命令で、focus のあるウィンドウの幅を変えられる (右の端の列は、左の境目が動く)
-//   - 変えた設定は、規則の書き方に出て、読み直すと同じ並びになる
-//   - 拡大 (ウィンドウの外でのホイール) は、平面のスクリーンを動かさない
+// User operations change the settings of the tiling rule (MainStack).
+//   - In the side-by-side layout at startup, the first window (the game view) is in the left column and the rest are stacked in the right column
+//   - Using a command to increase the number of windows lined up one per column at the front adds columns (game view | Code | Inspector). Decreasing it goes back
+//   - Dragging a column border (the right edge of a window) with the mouse changes the column width ratio
+//   - Dragging the border between stacked windows (the bottom edge) changes the height ratio
+//   - A command can change the width of the focused window (for the rightmost column, the left border moves)
+//   - Changed settings appear in the written form of the rule, and reloading gives the same layout
+//   - Zooming (the wheel outside windows) does not move the flat screen
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -49,7 +49,7 @@ public static class TestTiles
         var backdrop = Lider.Screens[0];
         if (frames == 2)
             w.FocusOn(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!);
-        // 1 つの操作ごとに、並べ直して画面の上の矩形が決まるまで待つ
+        // After each operation, wait until the layout is redone and the rectangles on the display are settled
         if (frames < 10 || frames % 5 != 0)
             return;
         var game = backdrop.Windows[0];
@@ -75,7 +75,7 @@ public static class TestTiles
                 break;
             case 2:
                 Check(Near(g!.W, 600) && Near(c!.H, 300), "back to one main: game " + Show(g) + " code " + Show(c!));
-                // ゲームの絵の右の端のすぐ外を押して、左へ引く
+                // Press just outside the right edge of the game view and drag left
                 Mouse(EventKind.MouseButtonDown, g.X + g.W + 3, 150);
                 Mouse(EventKind.MouseMotion, 450, 150);
                 Mouse(EventKind.MouseButtonUp, 450, 150);
@@ -84,7 +84,7 @@ public static class TestTiles
             case 3:
                 Check(Near(g!.W, 450) && Near(c!.X, 450) && Near(c.W, 750) && Near(i!.W, 750),
                     "after dragging the column edge: game " + Show(g) + " code " + Show(c!) + " inspector " + Show(i!));
-                // Code の下の端のすぐ外を押して、下へ引く
+                // Press just outside the bottom edge of Code and drag down
                 Mouse(EventKind.MouseButtonDown, 800, c.Y + c.H + 3);
                 Mouse(EventKind.MouseMotion, 800, 420);
                 Mouse(EventKind.MouseButtonUp, 800, 420);
@@ -98,14 +98,14 @@ public static class TestTiles
                 backdrop.Layout = Layouts.Parse(text);
                 backdrop.Arrange();
                 Check(Near(game.Size.X / backdrop.Size.X * 1200, before), "the layout read back differs: " + Layouts.Describe(backdrop.Layout));
-                // focus は Code (右の端の列) にある。幅を広げると、左の境目が動く
+                // Focus is on Code (the rightmost column). Widening it moves the left border
                 Lider.Run("window:widen");
                 break;
             case 5:
                 Check(g!.W < 445 && Near(c!.X, g.W) && Near(c.X + c.W, 1200), "after window:widen: game " + Show(g) + " code " + Show(c!));
-                // 拡大 (ウィンドウの外でのホイール) は、平面のスクリーンを動かさない
+                // Zooming (the wheel outside windows) does not move the flat screen
                 kept = g;
-                // テストではマウスの位置を決められない (ホイールは今の位置で受ける) ので、端を引いている間 (マウスの入力を lider が受ける間) に送る
+                // The test cannot set the mouse position (the wheel is received at the current position), so it is sent while dragging an edge (while lider receives the mouse input)
                 Lider.StartEdge(game, 1);
                 Lider.OnEvent(new EventData { Kind = EventKind.MouseWheel, Dy = 3 });
                 Lider.EndEdge();

@@ -1,4 +1,4 @@
-// tests/diffside で開いて書き換える file。
+// The file tests/diffside opens and edits.
 public static class DiffSideTarget
 {
     public static int Hp;

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# CI の cache (actions/cache) に置く <build>/deps/ (cmake/LubDeps.cmake が第三者の library を install する先) の key と restore-keys を、GITHUB_OUTPUT の形で出す。
-#   scripts/deps-cache-key.sh <toolchain の名前> >> "$GITHUB_OUTPUT"
-# key は、toolchain の名前、runner の OS と arch、deps の入力 (deps の CMake の記述と submodule の commit) の hash、runner の image の版 (compiler の版はこれで変わる) を並べる。
-# 名前は同じ runner の上の別の toolchain を分ける (例: native と wasm)。toolchain の版を workflow で決めるもの (emsdk) は、版も名前に入れる。
-# 同じ時期でも runner によって image の版が違うので、restore-keys は image の版の手前までにし、入力が同じで別の image の entry も使う。
-# 使った物の compiler が違えば cmake/LubDeps.cmake の key が合わず、cmake が deps を作り直し、job がその image の key で保存する。
+# Prints, in GITHUB_OUTPUT form, the key and restore-keys for <build>/deps/ (where cmake/LubDeps.cmake installs third-party libraries) stored in the CI cache (actions/cache).
+#   scripts/deps-cache-key.sh <toolchain name> >> "$GITHUB_OUTPUT"
+# The key joins the toolchain name, the OS and arch of the runner, the hash of the deps inputs (the CMake description of deps and the submodule commits), and the version of the runner image (the compiler version changes with it).
+# The name separates different toolchains on the same runner (e.g. native and wasm). For toolchains whose version is set in the workflow (emsdk), the version also goes into the name.
+# Even at the same time, the image version differs between runners, so restore-keys stop just before the image version, and entries with the same inputs from another image are also used.
+# If the compiler of what was restored differs, the key of cmake/LubDeps.cmake does not match, cmake rebuilds deps, and the job saves them under the key of that image.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 name="$1"

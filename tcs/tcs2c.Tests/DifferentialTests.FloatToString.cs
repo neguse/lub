@@ -2,10 +2,10 @@ using System.Globalization;
 
 namespace TinyCs.Tcs2c.Tests;
 
-// float の既定の文字列化 (WriteLine・連結・補間・ToString・float? の連結・string.Join) が .NET の float.ToString() (InvariantCulture) と同じ文字列になる (il-spec §13)
+// The default float string conversion (WriteLine / concatenation / interpolation / ToString / float? concatenation / string.Join) gives the same strings as .NET's float.ToString() (InvariantCulture) (il-spec §13)
 public class FloatToStringDifferentialTests
 {
-    // 値と、CoreCLR (InvariantCulture) の float.ToString() の結果
+    // The value, and the result of float.ToString() on CoreCLR (InvariantCulture)
     private static readonly (float Value, string Text)[] FloatTexts =
     [
         (0f, "0"), (-0f, "-0"), (1f, "1"), (-1f, "-1"), (0.1f, "0.1"), (0.3f, "0.3"),
@@ -54,7 +54,7 @@ public class FloatToStringDifferentialTests
             output);
     }
 
-    // string.Join の要素も連結と同じ文字列化
+    // string.Join elements use the same string conversion as concatenation
     [CFact]
     public void FloatToString_JoinElements()
     {
@@ -78,7 +78,7 @@ public class FloatToStringDifferentialTests
         Assert.Equal("1000000,0.6666667,1.5\n0.1, 1E+10, 1E-05\n2000000,1.3333334,3\n1-2|3\n[]", output);
     }
 
-    // 広い指数の範囲 (非正規化数を含む) の値を文字列にした hash を、テストのプロセスの .NET と比べる
+    // Compares a hash of values over a wide exponent range (including subnormals) converted to strings with the .NET of the test process
     [CFact]
     public void FloatToString_WideRangeHashMatchesDotnet()
     {
@@ -95,7 +95,7 @@ public class FloatToStringDifferentialTests
                     return (state >> 8) & 0xffffff;
                 }
 
-                // [1, 2) の仮数に 2^e (e は -149..127) を掛けて符号を付ける
+                // Multiplies a mantissa in [1, 2) by 2^e (e in -149..127) and applies a sign
                 static float Next()
                 {
                     float x = 1f + (Step() & 0x7fffff) / 8388608f;

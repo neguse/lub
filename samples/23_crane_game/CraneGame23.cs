@@ -1,25 +1,25 @@
-// lub の samples/23_crane_game の entry。
-// 実行: lub samples/23_crane_game/CraneGame23.csproj (transpile + watch + hot reload)
+// Entry for lub's samples/23_crane_game.
+// Run: lub samples/23_crane_game/CraneGame23.csproj (transpile + watch + hot reload)
 //
-// 書き方:
-// - switch は if 連鎖。
-// - Phys3d の body/world 取得は null ガード。
+// Writing style:
+// - switch is written as an if chain.
+// - Getting the body/world of Phys3d is null-guarded.
 //
-// 3D クレーンゲーム (2 本爪プライズ機)。
-// 景品には接触・摩擦・重力だけが作用する。
-// 中央のソレノイド、戻しバネ、リンクで開閉する機構を簡略化している。
+// 3D crane game (two-claw prize machine).
+// Only contact, friction and gravity act on the prizes.
+// The mechanism that opens and closes with a central solenoid, return springs and links is simplified.
 //
-// - ガントリー: キャリッジ (kinematic) が上部レールを X→Z の順に走る。
-//   ボタン 1 押下中に右へ、ボタン 2 押下中に奥へ。離すと戻せない。
-// - ワイヤー吊り: ヘッドはキャリッジからワイヤー 1 本吊り。
-//   distance joint を「バネ力 0 + 上限 limit」でロープ化し、巻き上げ =
-//   maxLength の増減。着地でワイヤーが弛む・移動で振り子揺れするのは実機通り。
-//   着地検出も実機と同じ「張力低下」(= 弛み) で行う。
-// - 爪: 肩の回転関節と 2 本の等長リンクを、中央の可動軸で同時に駆動する。
-//   ソレノイドは可動軸とヘッドに等大反対向きの力を加える。無通電ではバネで開く。
-//   板状の爪先が景品を下から支える。景品への吸着・固定用の拘束は作らない。
-// - ぬいぐるみ: SDF モデリングしたクマ (約 30cm / 約 330g、密度 50kg/m³)。
-//   物理は球 + カプセルの複数 shape 近似。
+// - Gantry: the carriage (kinematic) runs along the top rails in X→Z order.
+//   It moves right while button 1 is held and back while button 2 is held. Once released, it cannot go back.
+// - Wire suspension: the head hangs from the carriage on a single wire.
+//   A distance joint is turned into a rope with "spring force 0 + upper limit", and winding =
+//   changing maxLength. The wire going slack on landing and swinging like a pendulum when moving match the real machine.
+//   Landing is also detected the same way as the real machine, by "tension drop" (= slack).
+// - Claws: the shoulder revolute joints and two equal-length links are driven together by the central movable shaft.
+//   The solenoid applies equal and opposite forces to the movable shaft and the head. Without current, the springs open it.
+//   The plate-shaped claw tips support the prize from below. No constraints for sticking to or fixing the prize are created.
+// - Plush toy: an SDF-modeled bear (about 30cm / about 330g, density 50kg/m³).
+//   Physics approximates it with multiple sphere + capsule shapes.
 
 using System;
 using System.Collections.Generic;
@@ -30,14 +30,14 @@ public class Bear
 {
     public int Gen;
     public int Variant;
-    public int Respawn; // >0 = 獲得済み。0 になったら復活 (店員の補充)
+    public int Respawn; // >0 = won. Revives when it reaches 0 (restocked by staff)
     public float X;
     public float Y;
     public float Z;
     public float Yaw;
 }
 
-/// <summary>フィールド上に生きているクマ (今フレームの物理 body 付き)。
+/// <summary>A bear alive on the field (with the physics body of this frame).
 /// </summary>
 public class LiveBear
 {
@@ -53,7 +53,7 @@ public class LiveBear
     }
 }
 
-/// <summary>クレーン機構の可動 body 一式 (declareMachine の戻り値)。
+/// <summary>The set of movable bodies of the crane mechanism (return value of declareMachine).
 /// </summary>
 public class Machine
 {
@@ -74,36 +74,36 @@ public static class CraneGame23
     const float tickDt = 1.0f / 60.0f;
     const int physicsSubsteps = 8;
 
-    // --- メートル・秒・kg で定義した機構 (フィールド 750×900mm) ---------
-    const float fieldHx = 0.375f; // フィールド半幅 (X)
-    const float fieldHz = 0.45f; // フィールド半奥行 (Z)。+Z が手前
+    // --- Mechanism defined in meters, seconds and kg (field 750×900mm) ---------
+    const float fieldHx = 0.375f; // Field half width (X)
+    const float fieldHz = 0.45f; // Field half depth (Z). +Z is the front
     const float carriageY = 0.78f;
-    const float moveSpeed = 0.15f; // ガントリー移動 (m/s)
-    const float winchSpeed = 0.20f; // 昇降 (m/s)
+    const float moveSpeed = 0.15f; // Gantry movement (m/s)
+    const float winchSpeed = 0.20f; // Raise/lower (m/s)
     const float wireMin = 0.15f;
     const float wireMax = 0.56f;
-    const float openAngle = 0.85f; // 爪の開き角 (rad)
-    const float headTop = 0.06f; // ヘッド原点→ワイヤー取付点
-    const float shoulderX = 0.10f; // 爪の肩関節 (ヘッド原点から)
+    const float openAngle = 0.85f; // Claw opening angle (rad)
+    const float headTop = 0.06f; // Head origin → wire attachment point
+    const float shoulderX = 0.10f; // Claw shoulder joint (from the head origin)
     const float shoulderY = -0.01f;
-    // 左手系のカメラを +Z (手前) に置くので、画面の右は -X。
-    // 左右の語は画面基準
-    const float homeX = 0.16f; // 待機位置 = 獲得口の真上
+    // The left-handed camera is placed at +Z (front), so screen right is -X.
+    // The words left and right are relative to the screen
+    const float homeX = 0.16f; // Home position = right above the prize chute
     const float homeZ = 0.275f;
-    const float minX = -0.15f; // 可動範囲 (店側設定。開いた爪がガラスに触れない位置まで)
+    const float minX = -0.15f; // Movable range (operator setting. Up to the position where the open claws do not touch the glass)
     const float minZ = -0.30f;
-    // 獲得口 (シュート): 手前左の床穴。
-    // 判定に使う内側 2 辺
+    // Prize chute: a floor hole at the front left.
+    // The two inner edges used for the check
     const float chuteX1 = 0.025f;
     const float chuteZ0 = 0.10f;
 
-    // ソレノイドの吸引力 (N)。
-    // 保持中も通電し、弱めると荷重で爪が開く。
+    // Solenoid pull force (N).
+    // Current also flows while holding, and when it is weakened the load opens the claws.
     static float grabForce = 40.0f;
     static float holdForce = 40.0f;
-    const int grabTicks = 100; // 全開から閉じる時間 + 接触が落ち着く時間
+    const int grabTicks = 100; // Time to close from fully open + time for the contacts to settle
 
-    // --- 状態機械 (実機の自動シーケンス) ---------------------------------
+    // --- State machine (the automatic sequence of the real machine) ---------------------------------
     const int stIdle = 0;
     const int stMoveX = 1;
     const int stWait2 = 2;
@@ -138,7 +138,7 @@ public static class CraneGame23
     static int plays = 0;
     static int payoutFlash = 0;
     static int idleT = 0;
-    // attract モード: 放置でクマを狙って自動プレイ (デモ兼ヘッドレス検証用)
+    // attract mode: when left idle, it plays automatically by targeting bears (for demos and headless verification)
     static bool autoPlay = false;
     static bool demoEnabled = false;
     static bool sideView = false;
@@ -164,8 +164,8 @@ public static class CraneGame23
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         App.Config(new ConfigOpts { Backend = backend, Width = 960, Height = 720 });
-        // 初期配置: 可動範囲内 (x <= MAX_X) に散らす。
-        // 座標は固定 (決定論)
+        // Initial placement: scattered within the movable range (x <= MAX_X).
+        // The coordinates are fixed (deterministic)
         bears = new List<Bear>
         {
             new Bear { Gen = 1, Variant = 0, Respawn = 0, X = -0.08f, Y = 0.02f, Z = -0.05f, Yaw = -0.4f },
@@ -184,8 +184,8 @@ public static class CraneGame23
     {
     }
 
-    // --- SDF モデル ------------------------------------------------------- クマ (約 30cm)。
-    // 物理 compound (declareBearShapes) と寸法を揃えている
+    // --- SDF model ------------------------------------------------------- Bear (about 30cm).
+    // Dimensions match the physics compound (declareBearShapes)
     static SdfNode BearModel(int fur, int belly)
     {
         var body = Sdf.Sphere(0.100f).Move(0, 0.100f, 0);
@@ -211,8 +211,8 @@ public static class CraneGame23
             .Ssub(eye, 0.004f);
     }
 
-    // 描画と物理が共有する右爪の寸法。
-    // 左は両方で X を反転する。
+    // Right claw dimensions shared by rendering and physics.
+    // For the left claw, both flip X.
     const float padHx = 0.025f, padHy = 0.004f, padHz = 0.065f;
     const float padX = -0.07f, padY = -0.211f;
     const float leverY = 0.06f;
@@ -224,8 +224,8 @@ public static class CraneGame23
         new float[] { 0, 0, 0, leverY, 0.006f },
     };
 
-    // ヘッド: ドーム + リング。
-    // 原点はリング面の中心
+    // Head: dome + ring.
+    // The origin is the center of the ring face
     static SdfNode HeadModel()
     {
         var dome = Sdf.Sphere(0.105f)
@@ -235,7 +235,7 @@ public static class CraneGame23
         return dome.Smin(rim, 0.015f);
     }
 
-    // --- メッシュ (hot reload 対応: dirty フラグで再メッシュ。native watch は chunk 再実行で初期値 true に戻り、web の module mode は OnReload で立てる) --
+    // --- Mesh (hot reload support: remesh via the dirty flag. native watch resets it to the initial value true by re-running the chunk, and the module mode of web sets it in OnReload) --
     static bool meshDirty = true;
     static bool showLinkage = false;
 
@@ -288,11 +288,11 @@ public static class CraneGame23
         meshDirty = false;
     }
 
-    // --- 物理: クマは球 + カプセルの複数 shape で近似 (SDF と同じ寸法)。
-    // compound は static 専用なので、dynamic body には shape を複数ぶら下げる
+    // --- Physics: the bear is approximated with multiple sphere + capsule shapes (same dimensions as the SDF).
+    // compound is static-only, so multiple shapes are attached to the dynamic body
     static void DeclareBearShapes(BodyRef3d body, int ver)
     {
-        float density = 50.0f; // 密度 50kg/m³ → 約 330g
+        float density = 50.0f; // Density 50kg/m³ → about 330g
         float friction = 0.6f;
         float restitution = 0.02f;
         Phys3d.Sphere(body, "torso", new SphereDesc3d
@@ -355,7 +355,7 @@ public static class CraneGame23
         });
     }
 
-    // 爪 1 本の物理 (右用。左は sign = -1 で X 反転)
+    // Physics of one claw (for the right one. The left one flips X with sign = -1)
     static void DeclareFingerShapes(BodyRef3d body, float sign)
     {
         Phys3d.Box(body, "pad", new BoxDesc3d
@@ -381,22 +381,22 @@ public static class CraneGame23
         }
     }
 
-    // 静物: 床 (獲得口の穴あき) + アクリルフェンス + ガラス壁 + シュート筒
+    // Static objects: floor (with the chute hole) + acrylic fence + glass walls + chute tube
     static List<float[]> statics = new List<float[]>
     {
         // x, y, z, hx, hy, hz
-        new float[] { 0.0f, -0.02f, -0.175f, fieldHx, 0.02f, 0.275f }, // 床 (奥側)
-        new float[] { -0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f }, // 床 (手前右)
-        new float[] { 0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.006f }, // フェンス (穴の奥側)
-        new float[] { 0.025f, 0.07f, 0.275f, 0.006f, 0.07f, 0.175f }, // フェンス (穴の右側)
-        new float[] { -fieldHx - 0.006f, 0.31f, 0.0f, 0.006f, 0.31f, fieldHz }, // ガラス左
-        new float[] { fieldHx + 0.006f, 0.31f, 0.0f, 0.006f, 0.31f, fieldHz }, // ガラス右
-        new float[] { 0.0f, 0.31f, -fieldHz - 0.006f, fieldHx, 0.31f, 0.006f }, // ガラス奥
-        new float[] { 0.0f, 0.31f, fieldHz + 0.006f, fieldHx, 0.31f, 0.006f }, // ガラス手前
-        new float[] { 0.025f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 右
-        new float[] { 0.20f, -0.25f, 0.10f, 0.175f, 0.25f, 0.006f }, // シュート筒 奥
-        new float[] { fieldHx + 0.006f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 左
-        new float[] { 0.20f, -0.25f, fieldHz + 0.006f, 0.175f, 0.25f, 0.006f }, // シュート筒 手前
+        new float[] { 0.0f, -0.02f, -0.175f, fieldHx, 0.02f, 0.275f }, // Floor (back side)
+        new float[] { -0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f }, // Floor (front right)
+        new float[] { 0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.006f }, // Fence (back side of the hole)
+        new float[] { 0.025f, 0.07f, 0.275f, 0.006f, 0.07f, 0.175f }, // Fence (right side of the hole)
+        new float[] { -fieldHx - 0.006f, 0.31f, 0.0f, 0.006f, 0.31f, fieldHz }, // Glass left
+        new float[] { fieldHx + 0.006f, 0.31f, 0.0f, 0.006f, 0.31f, fieldHz }, // Glass right
+        new float[] { 0.0f, 0.31f, -fieldHz - 0.006f, fieldHx, 0.31f, 0.006f }, // Glass back
+        new float[] { 0.0f, 0.31f, fieldHz + 0.006f, fieldHx, 0.31f, 0.006f }, // Glass front
+        new float[] { 0.025f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // Chute tube right
+        new float[] { 0.20f, -0.25f, 0.10f, 0.175f, 0.25f, 0.006f }, // Chute tube back
+        new float[] { fieldHx + 0.006f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // Chute tube left
+        new float[] { 0.20f, -0.25f, fieldHz + 0.006f, 0.175f, 0.25f, 0.006f }, // Chute tube front
     };
 
     static void DeclareStatics(WorldRef3d world)
@@ -423,8 +423,8 @@ public static class CraneGame23
 
     static Machine? DeclareMachine(WorldRef3d world)
     {
-        // キャリッジ: レール上を走るユニット。
-        // kinematic + setTarget で速度を持つ
+        // Carriage: the unit that runs on the rails.
+        // kinematic + setTarget gives it velocity
         var carriage = Phys3d.Body(world, "carriage", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Kinematic,
@@ -439,14 +439,14 @@ public static class CraneGame23
             TimeStep = tickDt,
         });
 
-        // ヘッド: ワイヤー 1 本吊り (実機の主流はワイヤー巻き取り式)。
-        // damping は空力とワイヤー内部摩擦・捩り抵抗による実在の損失の近似
+        // Head: hung from a single wire (wire winding is the mainstream in real machines).
+        // damping approximates real losses from aerodynamics and the internal friction / torsional resistance of the wire
         float headY0 = carriageY - wireMin - headTop;
         var head = Phys3d.Body(world, "head", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Dynamic,
-            // 巻き取り長や爪モーターの宣言更新だけでは、休止した拘束は起きない。
-            // 駆動するヘッドは休止させず、つながる機構の巻き上げを毎 tick 解く。
+            // Only updating the declared winding length or claw motor does not wake a sleeping constraint.
+            // The driven head is kept from sleeping, and the winding of the connected mechanism is solved every tick.
             Sleep = false,
             LinearDamping = 0.15f,
             AngularDamping = 0.5f,
@@ -458,12 +458,12 @@ public static class CraneGame23
             Height = 0.08f,
             Radius = 0.105f,
             YOffset = 0.02f,
-            Density = 400.0f, // ヘッド質量 ≈ 1.1kg
+            Density = 400.0f, // Head mass ≈ 1.1kg
             Friction = 0.3f,
         });
 
-        // ワイヤー: バネ力 0 のバネ + 上限 limit = 引けるが押せないロープ。
-        // 巻き上げ機は maxLength を増減するだけ (実機のスプール相当)
+        // Wire: a spring with spring force 0 + upper limit = a rope that can pull but not push.
+        // The winch only increases/decreases maxLength (equivalent to the spool of the real machine)
         Phys3d.Joint(world, "wire", new JointDesc3d
         {
             Type = Phys3d.JointType.Distance,
@@ -480,10 +480,10 @@ public static class CraneGame23
             Length = wireLen,
         });
 
-        // ハーネス: 実機のヘッドはワイヤーに加えて電源ケーブル束でもつながっており、その曲げ・捩り剛性が回転を抑える。
-        // motor joint の姿勢バネ (トルク上限つき) でモデル化する。
-        // 並進には作用しない。
-        // 上限を超える外力ではちゃんと傾く (着地時など)
+        // Harness: in the real machine, the head is connected by a power cable bundle in addition to the wire, and its bending / torsional stiffness restrains rotation.
+        // Modeled with the attitude spring of a motor joint (with a torque limit).
+        // It does not act on translation.
+        // External forces beyond the limit do tilt it (on landing, for example)
         Phys3d.Joint(world, "harness", new JointDesc3d
         {
             Type = Phys3d.JointType.Motor,
@@ -498,8 +498,8 @@ public static class CraneGame23
             MaxSpringTorque = 2.5f,
         });
 
-        // 肩の回転関節は受動。
-        // 開閉力は中央軸からリンクを通して伝わる。
+        // The shoulder revolute joints are passive.
+        // The opening/closing force is transmitted from the central shaft through the links.
         var fr = Phys3d.Body(world, "finger:r", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Dynamic,
@@ -570,7 +570,7 @@ public static class CraneGame23
             Hx = 0.02f,
             Hy = 0.02f,
             Hz = 0.02f,
-            Density = 3125.0f, // 可動軸の等価質量 0.20 kg
+            Density = 3125.0f, // Equivalent mass of the movable shaft 0.20 kg
             Filter = new FilterDesc3d { MaskBits = "0" }, // inside the head housing
         });
         Phys3d.Joint(world, "actuator", new JointDesc3d
@@ -650,7 +650,7 @@ public static class CraneGame23
                 Type = Phys3d.BodyType.Dynamic,
                 Version = b.Gen,
                 LinearDamping = 0.05f,
-                AngularDamping = 0.5f, // 布と詰め物の内部損失の近似
+                AngularDamping = 0.5f, // Approximation of the internal losses of the cloth and stuffing
                 Initial = new InitialState3d
                 {
                     X = b.X,
@@ -666,12 +666,12 @@ public static class CraneGame23
         return live;
     }
 
-    // --- 状態機械 ----------------------------------------------------------
+    // --- State machine ----------------------------------------------------------
     static bool ButtonHeld()
     {
         if (autoPlay)
         {
-            // attract: 目標座標に届くまで押し続ける動作を合成
+            // attract: synthesize the action of holding the button until the target coordinate is reached
             if (state == stMoveX) return cx > autoX + 0.005f;
             if (state == stMoveZ) return cz > autoZ + 0.005f;
             return false;
@@ -710,7 +710,7 @@ public static class CraneGame23
                 idleT++;
                 if (demoEnabled && idleT > 240)
                 {
-                    // attract: 生きているクマを順繰りに狙う
+                    // attract: target the living bears in turn
                     Bear? target = null;
                     int targetIndex = 0;
                     for (int k = 0; k < bears.Count; k++)
@@ -728,8 +728,8 @@ public static class CraneGame23
                     if (target != null)
                     {
                         var pose = Phys3d.PoseByKey(world, "bear:" + targetIndex);
-                        // 原点は足元。
-                        // 倒れた景品も胴体の中心を狙う。
+                        // The origin is at the feet.
+                        // Fallen prizes are also aimed at the center of the torso.
                         var aim = new Vec3(target.X, target.Y + 0.10f, target.Z);
                         if (pose != null)
                             aim = new Vec3(pose.X, pose.Y, pose.Z)
@@ -756,7 +756,7 @@ public static class CraneGame23
         {
             if (ButtonPressed(tickPressed))
                 Enter(stMoveZ);
-            else if (stateT > 420) // 実機同様、放置でも自動で降下へ
+            else if (stateT > 420) // Like the real machine, it descends automatically even when left alone
                 Enter(stDescend);
         }
         else if (state == stMoveZ)
@@ -768,12 +768,12 @@ public static class CraneGame23
         }
         else if (state == stDescend)
         {
-            // 移動直後の振り子揺れが収まるまで一呼吸置いてから繰り出す
+            // Wait a moment for the pendulum swing right after moving to settle before paying out the wire
             if (stateT > 15)
                 wireLen = Math.Min(wireLen + winchSpeed * tickDt, wireMax);
-            // 着地検出 = ワイヤー張力低下 (実機はテンションセンサー)。
-            // 繰り出し量に対して実距離が短い = 弛み。
-            // 揺れによる瞬間的な弛みを拾わないよう連続フレームでデバウンスする
+            // Landing detection = wire tension drop (the real machine uses a tension sensor).
+            // The actual distance being shorter than the paid-out length = slack.
+            // Debounced over consecutive frames so momentary slack from swinging is not picked up
             var pose = Phys3d.Pose(head);
             if (pose != null)
             {
@@ -824,7 +824,7 @@ public static class CraneGame23
         }
     }
 
-    // 獲得判定: シュート筒の中に落ちたら得点、それ以外の転落は保険で回収
+    // Win check: falling into the chute tube scores; any other fall is recovered as a safety net
     static void UpdatePrizes(List<LiveBear> live)
     {
         foreach (var entry in live)
@@ -850,8 +850,8 @@ public static class CraneGame23
                 b.Respawn--;
                 if (b.Respawn == 0)
                 {
-                    // 補充: フィールド奥へ落とす。
-                    // 位置は決定論的にずらす
+                    // Restock: drop it at the back of the field.
+                    // The position is shifted deterministically
                     b.Gen++;
                     b.X = -0.02f - b.Gen * 53 % 13 * 0.012f;
                     b.Y = 0.35f;
@@ -862,7 +862,7 @@ public static class CraneGame23
         }
     }
 
-    // --- 描画 --------------------------------------------------------------
+    // --- Drawing --------------------------------------------------------------
     static Mat4 BoxMat(float x, float y, float z, float sx, float sy,
         float sz)
     {
@@ -870,7 +870,7 @@ public static class CraneGame23
             * Mat4.Scale(new Vec3(sx, sy, sz));
     }
 
-    // 2 点間に渡す細い箱 (ワイヤーとレール用)
+    // A thin box spanning two points (for wires and rails)
     static Mat4 SegmentMat(Vec3 a, Vec3 b, float r)
     {
         var d = b - a;
@@ -899,8 +899,8 @@ public static class CraneGame23
         r.Draw(cube, model, new Draw3dOpts { Tint = color, Blend = blend });
     }
 
-    // 円柱 + 両端球の和集合で、物理のカプセルを直接描く。
-    // 円周 32 分割・球 16 段の輪郭誤差は最大半径 9 mm に対して 0.1 mm 未満。
+    // Draw the physics capsule directly as the union of a cylinder and spheres at both ends.
+    // With 32 circumferential segments and 16 sphere rings, the outline error is less than 0.1 mm for a maximum radius of 9 mm.
     static void DrawRod(Mat4 pose, Vec3 a, Vec3 b, float radius)
     {
         var r = ren;
@@ -926,8 +926,8 @@ public static class CraneGame23
                 new Vec3(sign * rod[2], rod[3], 0), rod[4]);
     }
 
-    // 機構確認用の破線。
-    // 距離拘束を示す記号であり、金属部品の描画ではない。
+    // Dashed lines for checking the mechanism.
+    // A symbol that shows the distance constraint, not a drawing of a metal part.
     static void DrawLink(Pose3d plunger, Pose3d finger)
     {
         var a = new Vec3(plunger.X, plunger.Y, plunger.Z);
@@ -953,8 +953,8 @@ public static class CraneGame23
 
     static void SimulateTick(WorldRef3d world)
     {
-        // render 側で保持した edge は次の logical tick だけで有効。
-        // 受付外 state の押下を数秒後の IDLE / WAIT2 へ持ち越さない。
+        // An edge kept on the render side is valid only for the next logical tick.
+        // A press in a state that does not accept input is not carried over to IDLE / WAIT2 several seconds later.
         bool tickPressed = pendingPresses > 0;
         pendingPresses = 0;
         if (payoutFlash > 0)
@@ -981,8 +981,8 @@ public static class CraneGame23
             (int)(screenH - 94 * s), (int)(236 * s), (int)(58 * s));
     }
 
-    // 上部バーの view 切替と、下部デッキの demo ボタン。
-    // 描画と当たり判定で共有する
+    // View switching in the top bar and the demo buttons on the bottom deck.
+    // Shared by drawing and hit testing
     static Rect ViewButtonRect()
     {
         float s = hudScale;
@@ -1118,7 +1118,7 @@ public static class CraneGame23
         step = stepNow;
         stepNow.Frame(dt, _ => SimulateTick(world));
 
-        // --- draw --- ゲームセンターの薄暗い環境 + 筐体上部からの光
+        // --- draw --- A dim arcade environment + light from the top of the cabinet
         r.Light.Dir = new Vec3(0.3f, 0.85f, 0.65f);
         r.Light.Intensity = 1.8f;
         r.Sky.Top = Color.Rgb(0.82f, 0.88f, 0.94f);
@@ -1143,26 +1143,26 @@ public static class CraneGame23
             Far = 50.0f,
         });
 
-        // 筐体 (描画のみ): 本体・上部飾り・柱・レール
+        // Cabinet (drawing only): body, top decoration, pillars, rails
         var body = Color.Rgb(0.93f, 0.92f, 0.89f);
         var accent = Color.Rgb(0.83f, 0.22f, 0.35f);
         var dark = Color.Rgb(0.17f, 0.20f, 0.24f);
         var felt = Color.Rgb(0.78f, 0.84f, 0.83f);
-        // ガラスの外側の背面パネル。
-        // 明るい売り場の背景として奥行きの基準を作る。
+        // Back panel outside the glass.
+        // It serves as a bright shop floor background and gives a depth reference.
         DrawBox(BoxMat(0, 0.39f, -0.48f, 0.38f, 0.40f, 0.01f), Color.Rgb(0.40f, 0.56f, 0.60f), null);
         DrawBox(BoxMat(0, 0.61f, -0.465f, 0.37f, 0.006f, 0.003f), body, null);
         DrawBox(BoxMat(0.0f, -0.33f, 0.0f, 0.42f, 0.29f, fieldHz + 0.05f), body, null);
         DrawBox(BoxMat(0.0f, -0.06f, 0.0f, 0.425f, 0.022f, fieldHz + 0.055f), accent, null);
         DrawBox(BoxMat(0.0f, 0.85f, 0.0f, 0.42f, 0.055f, fieldHz + 0.05f), body, null);
         DrawBox(BoxMat(0.0f, 0.80f, fieldHz + 0.046f, 0.42f, 0.008f, 0.006f), accent, null);
-        // 天井照明と操作台。
-        // 人が向き合う筐体の高さ・前後を見分ける手掛かり。
+        // Ceiling lights and control panel.
+        // Cues for telling the height and front/back of the cabinet a person faces.
         DrawBox(BoxMat(0, 0.792f, 0, 0.32f, 0.003f, 0.35f), Color.Rgb(2.1f, 2.0f, 1.85f), null);
         DrawBox(BoxMat(0, -0.105f, 0.49f, 0.435f, 0.035f, 0.13f), body, null);
         DrawBox(BoxMat(0, -0.065f, 0.49f, 0.39f, 0.005f, 0.115f), accent, null);
-        // 獲得口の外側の扉。
-        // 景品の落下経路の手前に枠だけを描く。
+        // Door outside the prize chute.
+        // Only the frame is drawn in front of the falling path of prizes.
         DrawBox(BoxMat(0.20f, -0.285f, 0.506f, 0.15f, 0.095f, 0.003f), dark, null);
         DrawBox(BoxMat(0.20f, -0.19f, 0.512f, 0.16f, 0.006f, 0.006f), accent, null);
         foreach (var sx in new List<int> { -1, 1 })
@@ -1176,27 +1176,27 @@ public static class CraneGame23
         foreach (var sx in new List<int> { -1, 1 })
             DrawBox(BoxMat(sx * 0.375f, 0.39f, -0.455f, 0.003f, 0.38f, 0.004f),
                 Color.Rgb(1.3f, 1.7f, 1.8f), null);
-        // 物理フェンスの上端を細い枠で示し、透明な板の所在を読み取れるようにする。
+        // Show the top edge of the physics fence with a thin frame so the location of the transparent panel can be read.
         DrawBox(BoxMat(0.20f, 0.14f, 0.10f, 0.175f, 0.002f, 0.006f), body, null);
         DrawBox(BoxMat(0.025f, 0.14f, 0.275f, 0.006f, 0.002f, 0.175f), body, null);
-        // 床 (フェルト) と穴の縁
+        // Floor (felt) and the edge of the hole
         DrawBox(BoxMat(0.0f, -0.02f, -0.175f, fieldHx, 0.02f, 0.275f), felt, null);
         DrawBox(BoxMat(-0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f), felt, null);
-        DrawBox(BoxMat(-0.20f, -0.05f, 0.275f, 0.175f, 0.05f, 0.175f), dark, null); // シュート内部
-        // 払い出しの褒め演出: 獲得口の縁が光る (HDR 高輝度で bloom に乗せる)
+        DrawBox(BoxMat(-0.20f, -0.05f, 0.275f, 0.175f, 0.05f, 0.175f), dark, null); // Inside of the chute
+        // Reward effect on payout: the edge of the prize chute glows (HDR high brightness so it catches bloom)
         if (payoutFlash > 0)
         {
             float k = payoutFlash / 60.0f;
             DrawBox(BoxMat(-0.20f, 0.005f, 0.275f, 0.178f, 0.006f + 0.02f * k, 0.178f),
                 Color.Rgb(1.6f, 1.5f, 0.7f + 0.7f * k), null);
         }
-        // レール: 固定 2 本 + キャリッジと動く梁
+        // Rails: 2 fixed + a beam that moves with the carriage
         DrawBox(BoxMat(-0.34f, 0.76f, 0.0f, 0.012f, 0.012f, fieldHz), dark, null);
         DrawBox(BoxMat(0.34f, 0.76f, 0.0f, 0.012f, 0.012f, fieldHz), dark, null);
         DrawBox(BoxMat(0.0f, 0.76f, cz, 0.34f, 0.010f, 0.010f), dark, null);
         DrawBox(BoxMat(cx, 0.775f, cz, 0.05f, 0.025f, 0.05f), accent, null);
 
-        // ワイヤー + ヘッド + 爪 (物理の実 pose で描く)
+        // Wire + head + claws (drawn with the actual physics pose)
         var headPose = Phys3d.PoseByKey(world, "head");
         if (headPose != null)
         {
@@ -1217,14 +1217,14 @@ public static class CraneGame23
         var plungerPose = Phys3d.PoseByKey(world, "plunger");
         if (showLinkage && plungerPose != null)
         {
-            // 非衝突の内部アクチュエーターも、確認表示では橙色の記号にする。
+            // Non-colliding internal actuators are also shown as orange symbols in the check view.
             DrawBox(Renderer3d.PoseMat(plungerPose) * Mat4.Scale(new Vec3(0.01f, 0.01f, 0.01f)),
                 Color.Rgb(2.0f, 1.1f, 0.1f), null);
             if (frPose != null) DrawLink(plungerPose, frPose);
             if (flPose != null) DrawLink(plungerPose, flPose);
         }
 
-        // ぬいぐるみ
+        // Plush toys
         foreach (var i in renderBearIndices)
         {
             var pose = Phys3d.PoseByKey(world, "bear:" + i);
@@ -1238,7 +1238,7 @@ public static class CraneGame23
             DrawContacts(machineView.Fl);
         }
 
-        // ガラスとフェンス (半透明は opaque の後に自動で回る)
+        // Glass and fences (translucent objects are drawn automatically after opaque ones)
         if (!showLinkage)
         {
             var glass = Color.Rgb(0.75f, 0.85f, 0.95f, 0.006f);
@@ -1249,12 +1249,12 @@ public static class CraneGame23
                 glass, Blends.Alpha);
             DrawBox(BoxMat(0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.005f), fence, Blends.Alpha);
             DrawBox(BoxMat(0.025f, 0.07f, 0.275f, 0.005f, 0.07f, 0.175f), fence, Blends.Alpha);
-            // 正面と背面の無色ガラスは面を塗らず、縁と筐体の支柱で見せる。
+            // The colorless glass at the front and back is not filled; it is shown by its edges and the cabinet pillars.
         }
 
         r.End();
 
-        // UI は tonemap 後の swapchain に重ね描き (load = LOAD)
+        // UI is drawn over the swapchain after tonemap (load = LOAD)
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
         DrawHud();
         if (settingsOpen)

@@ -88,7 +88,8 @@ prelude_for_target(ShaderTargetBackend target) {
   }
 }
 
-// draw と dispatch は uniform を field の名前で照合するので、reflection に入りきらない名前は切らずに compile を失敗させる。
+// draw and dispatch match uniforms by field name, so a name that does not fit
+// in the reflection fails the compile instead of being truncated.
 [[maybe_unused]] static bool check_uniform_field_name(const char *name,
                                                       const char *block,
                                                       SglShaderStage stage,
@@ -225,9 +226,10 @@ struct StageSamplers {
 }
 
 #if defined(__EMSCRIPTEN__) || defined(LUB_HAS_SLANG)
-// [format] の無い storage texture の形式。
-// Slang が WGSL に出す形式と同じく要素の型で決める (float4 = rgba32f、float = r32f)。
-// lub の PixelFormat に無い要素の型は false。
+// Format of a storage texture without [format].
+// Decided by the element type, the same as the format Slang emits for WGSL
+// (float4 = rgba32f, float = r32f). false for element types that the lub
+// PixelFormat does not have.
 static bool storage_format_of_element(bool float32, int components,
                                       SglPixelFormat *out) {
   if (float32 && components == 4)
@@ -245,8 +247,9 @@ static const char kStorageFormatUnknown[] =
     "r32f, "
     "rgba16f, rgba32f), or use float4 (rgba32f) or float (r32f) without it";
 
-// lub が 1 つの shader に結ぶ数の上限 (shader.h の SGL_MAX_*) を超えた宣言の error。
-// vertex と fragment の分は 1 つの表に入るので、上限は 2 つの stage の合計。
+// Error for a declaration that exceeds the limit on how many lub binds to one
+// shader (SGL_MAX_* in shader.h). Vertex and fragment entries go into one
+// table, so the limit is the total of the two stages.
 static bool resource_limit_error(const char *what, int max,
                                  SglShaderStage stage, const char *name,
                                  char *err, size_t errsz) {
@@ -266,8 +269,9 @@ static const char kLimitTextures[] = "textures";
 static const char kLimitStorageBufs[] = "storage buffers";
 static const char kLimitStorageTextures[] = "storage textures";
 
-// 1 つの stage の reflection を dst に足しても上限 (SGL_MAX_*) に収まるか。
-// 収まらなければ、溢れた最初の宣言を名指す error を書く。
+// Whether adding the reflection of one stage to dst still fits within the
+// limits (SGL_MAX_*). If not, writes an error naming the first declaration that
+// overflowed.
 static bool merge_fits(const ShaderReflection *dst, const ShaderReflection *src,
                        char *err, size_t errsz) {
   if (dst->tex_count + src->tex_count > SGL_MAX_TEXTURES) {
@@ -494,8 +498,8 @@ int component_count_of(TypeReflection *t) {
   return 0;
 }
 
-// false は reflection に入りきらない field の名前 (err に理由)。
-// layout の読めない block は field を持たないまま残す。
+// false means a field name that does not fit in the reflection (reason in err).
+// Blocks whose layout cannot be read are kept without fields.
 bool fill_uniform_block(VariableLayoutReflection *p, SglShaderStage stage,
                         ShaderUniformBlock *ub, char *err, size_t errsz) {
   copy_name(ub->name, sizeof(ub->name), p->getName());
@@ -2298,12 +2302,12 @@ bool stex_slot_exists(const ShaderReflection *refl, SglShaderStage stage,
 }
 
 // ---------------------------------------------------------------------------
+// clang-format off
 // Reflection schema reference (Slang release v2026.8.1+):
 //
 // Top-level object from ProgramLayout::toJsonObject():
 // {
-//   "parameters": [           // global parameters (UBs, textures, samplers,
-//   storage)
+//   "parameters": [           // global parameters (UBs, textures, samplers, storage)
 //     {
 //       "name": "...",
 //       "binding": { "kind": "descriptorTableSlot", "index": N },
@@ -2311,14 +2315,12 @@ bool stex_slot_exists(const ShaderReflection *refl, SglShaderStage stage,
 //         "kind": "constantBuffer" | "resource" | "samplerState" | ...,
 //         // ConstantBuffer<T>:
 //         "elementType": { "kind": "struct", "name": "...", "fields": [
-//             { "name": "...", "type": { "kind": "vector"|"scalar"|"matrix",
-//             ... },
-//               "binding": { "kind": "uniform", "offset": N_bytes, "size":
-//               M_bytes } }
+//             { "name": "...", "type": { "kind": "vector"|"scalar"|"matrix", ... },
+//               "binding": { "kind": "uniform", "offset": N_bytes, "size": M_bytes } }
 //         ] },
 //         // Resource (texture or structured buffer):
-//         "baseShape": "texture2D" | "structuredBuffer" | "byteAddressBuffer" |
-//         ..., "access": "readWrite" | "read" | ...,  // omitted for read-only
+//         "baseShape": "texture2D" | "structuredBuffer" | "byteAddressBuffer" | ...,
+//         "access": "readWrite" | "read" | ...,  // omitted for read-only
 //         "resultType": { kind: "vector"|"scalar", ... },
 //       }
 //     }
@@ -2332,8 +2334,7 @@ bool stex_slot_exists(const ShaderReflection *refl, SglShaderStage stage,
 //           "name": "...",
 //           "binding": { "kind": "varyingInput", "index": N, "count"?: K },
 //           "type": { "kind": "struct", "fields": [
-//               { "name": "...", "type": {kind:"vector"|"scalar",
-//               elementCount?: 2|3|4},
+//               { "name": "...", "type": {kind:"vector"|"scalar", elementCount?: 2|3|4},
 //                 "binding": { "kind": "varyingInput", "index": N },
 //                 "semanticName": "POSITION" }
 //           ] }
@@ -2356,6 +2357,7 @@ bool stex_slot_exists(const ShaderReflection *refl, SglShaderStage stage,
 //    entry with type.kind=samplerState.
 //  * For RWStructuredBuffer<T>: type.kind=resource, baseShape=structuredBuffer,
 //    access="readWrite". Read-only StructuredBuffer<T> omits the access key.
+// clang-format on
 
 // Map a "type" node from the Slang reflection JSON to a float-component
 // count (mat4 = 16, vec3 = 3, scalar = 1). Returns 0 for unrecognised
@@ -2374,7 +2376,8 @@ int comp_count_of_type_json(const json &t) {
     return rc * cc;
   }
   if (kind == "array") {
-    // e.g. float4x4 bones[8] = 128 floats (native 側 component_count_of と同じく flat な float 数として扱う)
+    // e.g. float4x4 bones[8] = 128 floats (treated as a flat float count, the
+    // same as component_count_of on the native side)
     int ec = t.value("elementCount", 0);
     int inner = t.contains("elementType")
                     ? comp_count_of_type_json(t["elementType"])
@@ -2386,7 +2389,7 @@ int comp_count_of_type_json(const json &t) {
 
 // Populate a ShaderUniformBlock from a top-level parameter whose type is
 // a ConstantBuffer<T>. Reads members from type.elementType.fields[].
-// false は reflection に入りきらない field の名前 (err に理由)。
+// false means a field name that does not fit in the reflection (reason in err).
 bool fill_uniform_block_from_json(const json &p, int slot, SglShaderStage stage,
                                   ShaderUniformBlock *u, char *err,
                                   size_t errsz) {
@@ -2473,8 +2476,8 @@ static bool storage_format_from_json(const json &param, const json &type,
       vector ? rt.value("elementCount", 1) : 1, out);
 }
 
-// 詰めたときの型の大きさ (tight_size_of の reflection JSON 版)。
-// 分からない型は 0。
+// Size of the type when tightly packed (reflection JSON version of
+// tight_size_of). 0 for unknown types.
 int json_tight_size(const json &t) {
   std::string kind = t.value("kind", std::string(""));
   if (kind == "scalar") {

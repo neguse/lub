@@ -1,5 +1,5 @@
-// lub の samples/00b_clear の entry。
-// 実行: lub samples/00b_clear/Clear00b.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/00b_clear.
+// Run: lub samples/00b_clear/Clear00b.csproj (transpile + watch + hot reload)
 using System;
 using Lub;
 

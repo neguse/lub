@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# lider 自身を tcs VM の bytecode (Lider.tcsb) にする。
+# Compiles lider itself into tcs VM bytecode (Lider.tcsb).
 #   scripts/build-module.sh <out.tcsb>
-# player に .csproj でなく .tcsb を渡して lider を動かすとき (web の page。web/lider/main.ts) に使う。
-# 入力は src/ の *.cs (*.ref.cs は参照) と lub の cs-lib の実装。
-# 要るもの: dotnet。
-# env: LUB_TCS tcs の起動コマンド (既定: tcs/ の Transpiler を dotnet で)
+# Used when running lider by passing the player a .tcsb instead of a .csproj (the web page; web/lider/main.ts).
+# The input is the *.cs in src/ (*.ref.cs as references) and the implementation in lub's cs-lib.
+# Requirements: dotnet.
+# env: LUB_TCS tcs launch command (default: the Transpiler in tcs/ via dotnet)
 set -euo pipefail
 [ $# -eq 1 ] || {
   echo "usage: $0 <out.tcsb>" >&2

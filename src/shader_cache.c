@@ -4,8 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-// key に畳む生成器の版。
-// Slang の版 (CMake が渡す) と、shader.cpp の後処理やこのファイル形式を変えたら上げる revision。
+// Generator version folded into the key.
+// The Slang version (passed by CMake) and a revision to bump when the
+// post-processing in shader.cpp or this file format changes.
 #ifndef LUB_SLANG_VERSION
 #define LUB_SLANG_VERSION "unknown"
 #endif
@@ -35,7 +36,7 @@ void shader_cache_key(ShaderTargetBackend target, const char *const *sources,
   uint32_t t = (uint32_t)target;
   h = fnv1a(h, &t, sizeof(t));
   for (int i = 0; i < n_sources; ++i) {
-    // 終端の NUL も含めて、ソースの境界を hash に入れる
+    // Include the source boundaries in the hash, including the terminating NUL
     h = fnv1a(h, sources[i], strlen(sources[i]) + 1);
   }
   SDL_snprintf(out, SHADER_CACHE_KEY_CHARS, "%016llx", (unsigned long long)h);
@@ -89,7 +90,7 @@ bool shader_cache_load(const char *key, ShaderBlob *const *blobs, int n_sources,
     pos += sizeof(bytes);
     if (size - pos < bytes)
       goto done;
-    // MSL / WGSL は text なので NUL 終端を足しておく
+    // MSL / WGSL are text, so append a NUL terminator
     blobs[i]->spirv = (uint32_t *)malloc((size_t)bytes + 1);
     if (!blobs[i]->spirv)
       goto done;

@@ -2,7 +2,7 @@ namespace TinyCs.Tests;
 
 using TinyCs.Tests.SpecConformance;
 
-// hot reload fuzz の生成器。scenario は tcs2c.Tests の VmReloadTests が tcs VM の reload に当てて不変量を確かめる
+// Generator for hot reload fuzzing. VmReloadTests in tcs2c.Tests applies the scenarios to tcs VM reload and checks the invariants
 public class FuzzReloadTests
 {
     [Fact]

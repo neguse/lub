@@ -1,8 +1,8 @@
-// BeginPass の Load = Gfx.LoadAction.Load が color と depth の両方を保持することの visual test。
-// pass 1: 赤クリア + 左に緑 quad (z=0.4)。
-// pass 2: Load = LoadAction.Load で中央に大きな青 quad (z=0.8, depth test あり)。
-// 期待: 背景の赤が残り (color load)、緑 quad が青 quad を遮る (depth load)。
-// 合否は描画の golden (tests/golden/TestLoadOp_*.png) で決まる。
+// Visual test that Load = Gfx.LoadAction.Load in BeginPass keeps both color and depth.
+// pass 1: red clear + green quad on the left (z=0.4).
+// pass 2: Load = LoadAction.Load, large blue quad in the center (z=0.8, with depth test).
+// Expected: the red background remains (color load), and the green quad occludes the blue quad (depth load).
+// Pass/fail is decided by the rendering golden (tests/golden/TestLoadOp_*.png).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -19,7 +19,7 @@ public static class TestLoadOp
         return new List<float> { x0, y0, x1, y0, x1, y1, x0, y0, x1, y1, x0, y1 };
     }
 
-    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    // lub export draws 1 frame and records the shaders and files used
     public static void OnExport() { OnFrame(0); }
 
     public static void OnFrame(float dt)

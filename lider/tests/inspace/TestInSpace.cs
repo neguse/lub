@@ -1,8 +1,8 @@
-// GameView のウィンドウを、Screen の並びから外して Space に置く。
-//   - Alt を押している間は、ゲームの絵が 1 枚だけでも見出しの帯が出て、帯の印を押すと Space に出る
-//   - Space に置いたゲームは、どの Screen の並びにも居ないが、進み続け、画面いっぱいに描かれる
-//   - Alt を押している間に出る Space の札を押すと、元の Screen の同じ順番の所に戻る
-//   - 配置を控えると Space に置いた物も file に書かれ、その配置に戻すと Space に置かれる
+// Takes the GameView window out of the Screen's order and places it in Space.
+//   - While Alt is held, the title bar appears even with only one game view, and pressing the marker on the bar moves it out to Space
+//   - A game placed in Space is in no Screen's order, but it keeps running and is drawn filling the screen
+//   - Pressing the Space tag that appears while Alt is held puts it back at the same position in the order of the original Screen
+//   - Recording the arrangement also writes the things placed in Space to the file, and restoring that arrangement places them in Space
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -40,7 +40,7 @@ public static class TestInSpace
 
     static void TestFrame(float dt)
     {
-        // ゲームの build を待つ
+        // Wait for the game build
         if (failed || GameApp.Frames == 0)
             return;
         frames++;
@@ -63,7 +63,7 @@ public static class TestInSpace
                 Check(bar != null && game.TitleBar > 0, "the game window has no title bar");
                 if (failed)
                     return;
-                // 帯の右の端の印 (保存した版には閉じる印が無いので、右の端が Space へ出す印)
+                // The marker at the right end of the bar (the saved version has no close marker, so the right end is the marker that moves it out to Space)
                 Press(bar!.X + bar.W - game.TitleBar * 0.5f, bar.Y + game.TitleBar * 0.5f);
                 Check(w.InSpace == game && w.ScreenOf(game) == null, "pressing the mark did not put the game in the space");
                 framesBefore = GameApp.Frames;
@@ -74,7 +74,7 @@ public static class TestInSpace
                 Check(spaced.ContentRect != null && spaced.ContentRect.X == 0 && Math.Abs(spaced.ContentRect.W - 1280) <= 1 && Math.Abs(spaced.ContentRect.H - 720) <= 1, "the game in the space does not fill the viewport");
                 Check(GameApp.Map.W == (int)(1280 * Lider.PixelRatio), "the picture is " + GameApp.Map.W + " px wide");
                 Check(Lider.SpaceTagOf() == null, "the space tag is out without Alt");
-                // 配置を控えると、Space に置いた物も書かれる
+                // Recording the arrangement also writes the things placed in Space
                 Lider.SaveArrangement("spaced");
                 Io.LoadText(w.Root + "/.lider/arrangements.txt", out var text, out _, out _, out _);
                 Check(text != null && text.Contains("arrangement spaced\nspace game:saved\n") && text.Contains("window game:saved\n"), "the file: " + text);
@@ -96,7 +96,7 @@ public static class TestInSpace
             case 4:
                 var back = backdrop.Windows[0];
                 Check(back.ContentRect != null && Math.Abs(back.ContentRect.W - 640) <= 1, "the game is not the left half again");
-                // 控えた配置に戻すと、Space に置かれる
+                // Restoring the recorded arrangement places it in Space
                 Check(Lider.Arrange("spaced") && w.InSpace == back && w.ScreenOf(back) == null, "the arrangement did not put the game in the space");
                 Check(Lider.Arrange(Lider.SideBySide) && w.InSpace == null && backdrop.Windows[0] == back, "side-by-side did not take the game out of the space");
                 if (!failed)

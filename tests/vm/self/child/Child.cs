@@ -1,6 +1,6 @@
 using Lub;
 
-// 板 1 枚。自分の Draw で描く
+// A single plane. Drawn by its own Draw
 public class Crate
 {
     public float X0;

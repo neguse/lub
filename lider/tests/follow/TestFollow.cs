@@ -1,7 +1,7 @@
-// 外で書き換わった file (web で保存の後に整形した版) を、編集していない窓に写す。
-//   - 変わった行だけ写し、未保存にならない。カーソルは同じ字に留まる。ゲームの版との差の扱いは保存と同じ
-//   - 編集中の窓には写さない
-//   - LIDER_FOLLOW_DISK が無ければ写さない
+// Copies a file rewritten outside (the version formatted after saving on the web) into a window that has no edits.
+//   - Only the changed lines are copied, and the file does not become unsaved. The cursor stays on the same character. The difference from the game's version is handled the same as on save
+//   - Not copied into a window that is being edited
+//   - Not copied if LIDER_FOLLOW_DISK is not set
 using System;
 using Lub;
 using LiderCore;
@@ -53,7 +53,7 @@ public static class TestFollow
         w.FollowDisk = true;
         w.Tick(0);
 
-        // 空白しか変わらない行の字 b の上にカーソルを置く
+        // Put the cursor on the character b of a line where only whitespace changes
         Check(doc.Find("b)"), "no 'b)'");
         var saved = doc.Saved;
         Io.SaveText(path, Formatted);
@@ -65,7 +65,7 @@ public static class TestFollow
         Check(doc.Saved > saved, "not treated as a save");
         Check(Utf8.At(doc.Text(2), doc.Col) == 'b', "the cursor moved to column " + doc.Col);
 
-        // 編集中の窓には写さない
+        // Not copied into a window that is being edited
         doc.Type("// typing\n");
         var typed = doc.Lines().Count;
         Io.SaveText(path, "public static class Target\n{\n}\n");

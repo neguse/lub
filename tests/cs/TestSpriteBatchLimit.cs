@@ -1,5 +1,5 @@
-// FrameBuffer の上限を超える bucket の Flush は、黙って描かずに error で止まること。
-// 次のフレームは普通に描ける。
+// A Flush of a bucket that exceeds the FrameBuffer limit stops with an error instead of silently not drawing.
+// The next frame draws normally.
 using System;
 using Lub;
 using Lubx;

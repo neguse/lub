@@ -1,4 +1,4 @@
-// TestSyntax が色を見る file
+// File whose syntax colors TestSyntax checks.
 public static class Target
 {
     static string Name = "text";

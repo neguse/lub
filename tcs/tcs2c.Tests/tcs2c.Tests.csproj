@@ -34,7 +34,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- セルフホストの compiler の差分の検査 (TCS_SELFHOST_DIFF=1) を Transpiler.Tests と共有する -->
+    <!-- Shares the self-hosted compiler diff check (TCS_SELFHOST_DIFF=1) with Transpiler.Tests -->
   </ItemGroup>
 
 </Project>

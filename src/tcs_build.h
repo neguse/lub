@@ -1,61 +1,67 @@
 #pragma once
-// tcs (TinyC#) の子プロセス: tcs vm --watch の frame の stream と tcs check。
-// 実装は tcs_build.c。
+// tcs (TinyC#) child process: the frame stream of tcs vm --watch, and tcs
+// check. Implemented in tcs_build.c.
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 
 typedef struct TcsPipeline {
-  SDL_Process *
-      proc; // tcs --watch (Linux / macOS では tcs を見張る sh)。終わるときに止める
-  void *job; // Windows の Job Object (HANDLE)。tcs とその子が入っている
-  // tcs の標準出力 (frame の stream) のうち、まだ切り出していない分
+  SDL_Process *proc; // tcs --watch (on Linux / macOS, the sh that guards tcs).
+                     // Stopped at shutdown
+  void *job; // Windows Job Object (HANDLE). Contains tcs and its children
+  // The part of the tcs stdout (frame stream) not yet cut out
   char *buf;
   size_t len, cap;
 } TcsPipeline;
 
 typedef enum TcsFrameKind {
-  // 差分では移行できない変更。
-  // 本文は改行終端の理由の行で、その build の出力は書き終わっている。
-  // 以後の差分はその出力から起動した VM 向け
+  // A change that cannot be migrated with a diff.
+  // The body is a newline-terminated reason line, and the output of that build
+  // has been fully written.
+  // Later diffs target the VM started from that output
   TCS_FRAME_RESTART_REQUIRED,
-  // tcs vm --watch の差分。
-  // 本文は tvm_apply_batch に渡す batch の base64 の 1 行と改行
+  // A tcs vm --watch diff.
+  // The body is one base64 line of the batch passed to tvm_apply_batch, plus a
+  // newline
   TCS_FRAME_VM_BATCH,
-  // compile error の build。
-  // 本文は改行終端の診断の行で、出力は前の build のまま
+  // A build with compile errors.
+  // The body is newline-terminated diagnostic lines, and the output stays as
+  // the previous build
   TCS_FRAME_BUILD_FAILED,
-  // 次の vm_batch で当てるが、知らせたい変化 (instance の field の初期化子の変更など)。
-  // 本文は改行終端の行
+  // A change applied with the next vm_batch but worth reporting (e.g. a change
+  // to an instance field initializer).
+  // The body is newline-terminated lines
   TCS_FRAME_RELOAD_NOTES,
 } TcsFrameKind;
 
-// 以後の rebuild ごとに tcs が書く frame を、届いた順に 1 つ取り出す (block しない)。
-// 知らない種類の frame は読み飛ばす。
-// *out は SDL_malloc で確保し (NUL 終端)、呼び出し側が SDL_free する。
+// Takes one frame that tcs writes on each subsequent rebuild, in arrival order
+// (does not block). Frames of unknown kinds are skipped. *out is allocated with
+// SDL_malloc (NUL-terminated), and the caller frees it with SDL_free.
 bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
                              size_t *out_len);
 void tcs_pipeline_stop(TcsPipeline *p);
 
-// `tcs vm <args> --watch` を背後に張る (出力を待たない)。
-// frame は tcs_pipeline_next_frame で受ける。
+// Starts `tcs vm <args> --watch` in the background (does not wait for output).
+// Frames are received with tcs_pipeline_next_frame.
 bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs);
-// tcs がまだ動いているか。
+// Whether tcs is still running.
 bool tcs_pipeline_alive(TcsPipeline *p);
 
-// cs_path (.csproj。入力 = 同 dir 以下の全 *.cs と cs-lib の実装、--ref は cs-lib/lub_stub.cs) を tcs check に渡し、終わるまで待つ。
-// tcs の診断は stdout / stderr にそのまま出る。
-// 診断が無ければ true。
+// Passes cs_path (.csproj; inputs = all *.cs under the same dir and the cs-lib
+// implementation, --ref is cs-lib/lub_stub.cs) to tcs check and waits until it
+// finishes. tcs diagnostics go straight to stdout / stderr. true if there are
+// no diagnostics.
 bool tcs_check(const char *cs_path);
 
-// csproj ディレクトリ dir の .cs 一覧 (dir からの相対 path、'/' 区切り、昇順)。
-// SDK-style csproj の implicit glob (**/*.cs) に倣い、サブディレクトリも辿る。
-// bin / obj と、名前が '.' で始まるディレクトリ (.lub を含む) は辿らない。
-// *count に個数を書く。
-// tcs_free_sources で解放する。
+// List of .cs files in the csproj directory dir (paths relative to dir,
+// '/'-separated, ascending). Following the implicit glob (**/*.cs) of SDK-style
+// csproj, subdirectories are also walked. bin / obj and directories whose names
+// start with '.' (including .lub) are not walked. Writes the count to *count.
+// Free with tcs_free_sources.
 char **tcs_glob_sources(const char *dir, int *count);
 void tcs_free_sources(char **sources, int count);
 
-// cs-lib ディレクトリを解決して out に書く。
-// 優先順は LUB_CS_LIB 環境変数 (指定したら fallback しない)、cwd の cs-lib、実行ファイルの 1 階層上の cs-lib。
-// 見つからなければ false。
+// Resolves the cs-lib directory and writes it to out.
+// The priority is the LUB_CS_LIB environment variable (no fallback if set),
+// cs-lib in cwd, then cs-lib one level above the executable. false if not
+// found.
 bool tcs_resolve_cs_lib(char *out, size_t outsz);

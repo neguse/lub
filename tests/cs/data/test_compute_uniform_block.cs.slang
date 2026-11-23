@@ -1,8 +1,8 @@
-// uniform block を持つ compute。tid 0 は uniform の値を out_buf[0] に書き、
-// tid 1 は定数の目印を out_buf[1] に書く。uniform 無しの dispatch
-// (2 group) は目印を、uniform 有りの dispatch (1 group) は値を別々の
-// buffer に残す (前の dispatch の内容を保つことは test_storage_preserve が
-// 見る)。
+// Compute with a uniform block. tid 0 writes the uniform value to out_buf[0],
+// and tid 1 writes a constant marker to out_buf[1]. The dispatch without
+// uniforms (2 groups) leaves the marker, and the dispatch with uniforms (1
+// group) the value, in separate buffers (keeping the contents of the previous
+// dispatch is checked by test_storage_preserve).
 struct Params {
   float4 value;
 };

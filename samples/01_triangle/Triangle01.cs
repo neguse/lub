@@ -1,10 +1,19 @@
-// lub の samples/01_triangle の entry。
-// 実行: lub samples/01_triangle/Triangle01.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/01_triangle.
+// Run: lub samples/01_triangle/Triangle01.csproj (transpile + watch + hot reload)
 using System;
+using System.Collections.Generic;
 using Lub;
 
 public static class Triangle01
 {
+    // pos.x, pos.y, pos.z, pad0
+    static List<float> verts = new List<float>
+    {
+         0.0f,  0.5f, 0.0f, 0.0f,
+        -0.5f, -0.5f, 0.0f, 0.0f,
+         0.5f, -0.5f, 0.0f, 0.0f,
+    };
+
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
@@ -25,12 +34,10 @@ public static class Triangle01
             out var vs, out var vsv, out _, out _);
         Io.LoadText("samples/01_triangle/data/01_triangle.fs.slang",
             out var fs, out var fsv, out _, out _);
-        Io.LoadFloats("samples/01_triangle/data/01_triangle.verts.lua",
-            out var verts, out var vv, out _, out _);
-        if (vs == null || fs == null || verts == null) return;
+        if (vs == null || fs == null) return;
 
         var shader = Gfx.UseShader("tri_shader", vs, fs, vsv * 31 + fsv);
-        var vbuf = Gfx.UseBuffer("tri_verts", Gfx.BufferType.Storage, verts, vv);
+        var vbuf = Gfx.UseBuffer("tri_verts", Gfx.BufferType.Storage, verts);
         if (shader == null || vbuf == null) return;
 
         Gfx.BeginPass(new PassOpts

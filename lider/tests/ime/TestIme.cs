@@ -1,11 +1,11 @@
-// lider の窓で、jamo (かな漢字変換) で日本語を打つ。key は Workspace.Key から流す。
-//   - Ctrl+Space でかなの mode にし、ローマ字を打つと、変換中のかなが本文の cursor の所に inline で出る
-//   - Space で変換すると、候補の一覧が窓の手前の層 (行の番号が -1 の命令) に出る
-//   - Return で確定すると、漢字が本文に入る
-//   - 変換中の Escape は取り消して窓を閉じない。かなの mode を切ると ASCII を打つ
-//   - 入力中の F7 はカタカナ、F9 は全角英字、F10 は半角英字、F6 はひらがなにする。F6 と F7 は lub の event から流し、frame の行き来に取られないことを見る
-//   - 確定すると、学習を env LIDER_JAMO_USER の file に書く
-// 辞書は env LIDER_JAMO_DICT、無ければ lider の data/mozc.dict (scripts/build-native.sh が写す)。
+// Types Japanese with jamo (kana-kanji conversion) in lider's window. Keys are fed through Workspace.Key.
+//   - Ctrl+Space switches to kana mode, and typing romaji shows the kana being converted inline at the cursor in the text
+//   - Converting with Space shows the candidate list on the layer in front of the window (commands with line number -1)
+//   - Confirming with Return puts the kanji into the text
+//   - Escape during conversion cancels it and does not close the window. With kana mode turned off, typing produces ASCII
+//   - During input, F7 converts to katakana, F9 to full-width Latin letters, F10 to half-width Latin letters, and F6 to hiragana. F6 and F7 are fed as lub events, to check that frame stepping does not take them
+//   - Confirming writes the learned data to the file in env LIDER_JAMO_USER
+// The dictionary is env LIDER_JAMO_DICT, or lider's data/mozc.dict if it is not set (copied by scripts/build-native.sh).
 using System;
 using Lub;
 using LiderCore;
@@ -64,7 +64,7 @@ public static class TestIme
             return;
         w!.FocusOn(path!);
         var doc = w.Focus!;
-        // `    // ` の行 (4 行目) の末尾
+        // End of the `    // ` line (line 4)
         doc.MoveTo(3, 0);
         Press(w, End);
         var line = doc.Line;
@@ -119,14 +119,14 @@ public static class TestIme
         App.Quit(0);
     }
 
-    // lub から届く event と同じに、Lider.OnEvent へ key を押して離す
+    // Press and release a key into Lider.OnEvent, the same as the events that come from lub
     static void Fn(int key)
     {
         Lider.OnEvent(new EventData { Kind = EventKind.KeyDown, Key = key, Mods = mods, Typed = Keys.UsChar(key, false), Plain = Keys.UsChar(key, false) });
         Lider.OnEvent(new EventData { Kind = EventKind.KeyUp, Key = key, Mods = mods, Typed = Keys.UsChar(key, false), Plain = Keys.UsChar(key, false) });
     }
 
-    // 英小文字を、key を押して打つ
+    // Type lowercase letters by pressing keys
     static void Type(Workspace w, string s)
     {
         foreach (var c in Utf8.ByteList(s))

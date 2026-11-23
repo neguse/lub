@@ -1,16 +1,16 @@
 namespace TinyCs;
 
-// IL→C backend (tcs c) と VM backend の入力 (doc/il-spec.md、契約の正本は doc/il-reference.md)。
-// IL の型はセルフホストの compiler のもの (SelfHost/Compiler/Il.cs と IlExport.cs の TcsSelf.ExportResult) をそのまま使う。
-// ここは .NET の呼び出し側 (テスト) のための入口で、誤りの扱いを決める。
+// Input of the IL→C backend (tcs c) and the VM backend (doc/il-spec.md; the source of truth for the contract is doc/il-reference.md).
+// The IL types are those of the self-host compiler (TcsSelf.ExportResult in SelfHost/Compiler/Il.cs and IlExport.cs), used as is.
+// This is the entry point for .NET callers (tests), and it decides how errors are handled.
 public static class IlExport
 {
-    // tcs VM が許す準拠の誤り (--ref の型の検査と interface の実装)。これだけなら IL を作って診断を付ける (VmEmitter.Diagnostics と同じ)
+    // Compliance errors the tcs VM allows (--ref type checks and interface implementation). If these are the only errors, IL is built and the diagnostics are attached (same as VmEmitter.Diagnostics)
     private static readonly string[] VmAllowed =
         ["RefInterfaceImplementation(", "RefTypeTest(", "RefCast(", "RefInterfaceTypeTest("];
 
-    /// <summary>誤りのある入力は IL にせず (Classes は空)、Diagnostics に誤りを入れて返す。例外は tcs VM が許す準拠の誤りだけで、
-    /// そのときは IL と一緒に診断として返す (tcs c は診断で止め、VM は許す)。</summary>
+    /// <summary>Input with errors is not made into IL (Classes is empty) and is returned with the errors in Diagnostics. The only exception is compliance errors the tcs VM allows,
+    /// which are returned as diagnostics together with the IL (tcs c stops on the diagnostics, the VM allows them).</summary>
     public static TcsSelf.ExportResult Export(string[] csharpSources, bool specializeGenerics = false,
         string[]? referenceSources = null, string[]? sourcePaths = null)
     {

@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// interface 経由の property は実装の形によらず accessor を通る。期待値は同じ program を CoreCLR で実行した stdout
+// Properties accessed through an interface go through the accessors regardless of how they are implemented. The expected values are the stdout of running the same program on CoreCLR
 public class InterfacePropertiesDifferentialTests
 {
     private const string InterfacePropertyTypes = """
@@ -167,7 +167,7 @@ public class InterfacePropertiesDifferentialTests
             """, "P");
     }
 
-    // getter と setter を別々の interface が求めても、auto-property は両方の accessor を持つ (#432)
+    // Even if the getter and the setter are required by separate interfaces, an auto-property has both accessors (#432)
     [CFact]
     public void InterfaceProperty_AccessorsSplitAcrossInterfaces()
     {

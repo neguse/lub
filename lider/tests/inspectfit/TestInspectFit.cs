@@ -1,7 +1,7 @@
-// インスペクタの値が板の幅に収まらないとき。値はゲーム (game/Game.cs) の Stage.ClearTicks。
-//   - 板を狭めていっても、描いた値 (InspectRow.Shown) は、値の全体か、値の頭に … を付けた物か、何も無いか (値の左で板が尽きた) のどれか。頭だけを … 無しで出さない (4980 を 49 と出さない)
-//   - 狭めていく間に、値の全体を出す幅と、… で切る幅の両方を通る
-// frame はゲームが動き始めてから数える。
+// When an inspector value does not fit in the board width. The value is Stage.ClearTicks of the game (game/Game.cs).
+//   - As the board narrows, the drawn value (InspectRow.Shown) is either the whole value, the head of the value followed by …, or nothing (the board ran out left of the value). Only the head is never shown without … (4980 is not shown as 49)
+//   - While narrowing, it passes through both a width that shows the whole value and a width that cuts it with …
+// Frames are counted from when the game starts running.
 using System;
 using Lub;
 using LiderCore;
@@ -17,7 +17,7 @@ public static class TestInspectFit
     {
         TestInit();
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay layout (code windows lined up in a horizontal row on the cylindrical screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -44,7 +44,7 @@ public static class TestInspectFit
 
     static void TestFrame(float dt)
     {
-        // ゲームの build を待つ
+        // Wait for the game build
         if (GameApp.Frames == 0)
             return;
         frames++;
@@ -73,7 +73,7 @@ public static class TestInspectFit
             cut = true;
         else
             Check(shown == "", "the board " + InspectView.PxW + " px wide drew 4980 as '" + shown + "'");
-        // 1 frame ごとに板を 2 px 狭める (Prepare が次の frame に描き直す)
+        // Narrow the board by 2 px every frame (Prepare redraws it on the next frame)
         if (InspectView.PxW > 160)
         {
             InspectView.PxW = Math.Max(160, InspectView.PxW - 2);

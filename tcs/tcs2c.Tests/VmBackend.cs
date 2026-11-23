@@ -3,10 +3,10 @@ using TinyCs.Vm;
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// tcs VM の実行系 (doc/vm-design.md)。IL → tcs2vm → .tcsb → tcsvm。
-/// AssertParity / AssertFaultParity / AssertParityLib が C と同じ stdout を要求する。
-/// GC stress (nursery を極小にして毎フレーム全回収) でも同じ出力であることを要求する。
-/// TCSVM_PARITY=0 で外せる。
+/// tcs VM execution backend (doc/vm-design.md). IL → tcs2vm → .tcsb → tcsvm.
+/// AssertParity / AssertFaultParity / AssertParityLib require the same stdout as C.
+/// Also requires the same output under GC stress (a tiny nursery and a full collection every frame).
+/// Can be turned off with TCSVM_PARITY=0.
 /// </summary>
 internal static partial class Backends
 {
@@ -14,7 +14,7 @@ internal static partial class Backends
 
     private static readonly Lazy<string> VmExe = new(BuildVm);
 
-    /// <summary>tcsvm を source から 1 回だけ build する (test の process ごと)。</summary>
+    /// <summary>Builds tcsvm from source only once (per test process).</summary>
     private static string BuildVm()
     {
         var compiler = CCompiler ?? throw new InvalidOperationException("no C compiler available");
@@ -76,7 +76,7 @@ internal static partial class Backends
         }
     }
 
-    /// <summary>TCSVM_DUMP=dir なら、VM で失敗した program の source を dir に書く (調べる用)。</summary>
+    /// <summary>If TCSVM_DUMP=dir, writes the source of programs that failed on the VM to dir (for investigation).</summary>
     private static void Dump(string[] sources, string why)
     {
         if (Environment.GetEnvironmentVariable("TCSVM_DUMP") is not { Length: > 0 } dir) return;
@@ -86,8 +86,8 @@ internal static partial class Backends
         File.WriteAllText(Path.Combine(dir, key + ".cs"), $"// {why}\n" + string.Join("\n", sources));
     }
 
-    /// <summary>reload (doc/object-model.md §6): v1 を lib 形で Setup → Frame×frames、後に v2 を tvm_apply で当てて
-    /// Report。plan は tcs vm --reload-from と同じ (TcsVm.VmEmitter.EmitReload)。GC stress でも同じ出力であること。</summary>
+    /// <summary>reload (doc/object-model.md §6): runs v1 in lib form as Setup → Frame×frames, then applies v2 with tvm_apply and runs
+    /// Report. The plan is the same as tcs vm --reload-from (TcsVm.VmEmitter.EmitReload). The output must be the same under GC stress.</summary>
     public static (int ExitCode, string Stdout, string Stderr) RunVmReload(string[] v1, string[] v2, string cls,
         int frames = 1, IEnumerable<string>? vmArgs = null)
     {
@@ -126,10 +126,10 @@ internal static partial class Backends
         }
     }
 
-    /// <summary>状態の保存と読み込み (doc/vm-design.md §13.4)。save を Setup → Frame×saveAt で走らせて状態を file に書き、
-    /// 別の process の load が Setup の代わりにその状態を読み込んで Frame×(total - saveAt) → Report。
-    /// 戻り値の Baseline は save を止めずに Frame×total → Report まで走らせた stdout。tamper は読み込む前の byte 列を変える。
-    /// 読み込む側は GC stress でも同じ出力であること。</summary>
+    /// <summary>Saving and loading state (doc/vm-design.md §13.4). Runs save as Setup → Frame×saveAt and writes the state to a file,
+    /// then a load in another process reads that state instead of running Setup and runs Frame×(total - saveAt) → Report.
+    /// The returned Baseline is the stdout of running save without stopping through Frame×total → Report. tamper changes the bytes before loading.
+    /// The loading side must give the same output under GC stress.</summary>
     public static (string Baseline, int ExitCode, string Stdout, string Stderr) RunVmState(string[] save, string[] load,
         string cls, int saveAt, int total, Func<byte[], byte[]>? tamper = null)
     {
@@ -169,7 +169,7 @@ internal static partial class Backends
         }
     }
 
-    /// <summary>module を lib 形で走らせ、frames 回目のフレームの後に batch (VmSession / tcs2vm --watch の形) を当てる。</summary>
+    /// <summary>Runs a module in lib form and applies a batch (the VmSession / tcs2vm --watch form) after the frames-th frame.</summary>
     public static (int ExitCode, string Stdout, string Stderr) RunVmBatch(byte[] module, byte[] batch, string cls, int frames)
     {
         var dir = Directory.CreateTempSubdirectory("tcsvm-batch-");
@@ -192,10 +192,10 @@ internal static partial class Backends
     public static string RunVm(string[] sources, string entryClass) =>
         RunVmProcess(sources, entryClass, []);
 
-    /// <summary>.tcsb を作るだけで動かさない。TinyC# の診断は InvalidOperationException。</summary>
+    /// <summary>Only creates the .tcsb without running it. TinyC# diagnostics become InvalidOperationException.</summary>
     public static byte[] EmitVm(string[] sources, string? entryClass) => SelfHostVm.Emit(sources, entryClass);
 
-    /// <summary>終わらない program を、stdout を pipe にした tcsvm で動かす。先頭の lines 行か timeout まで読み、止めて、読めた行を返す。</summary>
+    /// <summary>Runs a program that does not terminate on tcsvm with stdout piped. Reads up to the first lines lines or until timeout, stops it, and returns the lines read.</summary>
     public static List<string> FirstVmLines(string source, string entryClass, int lines, TimeSpan timeout)
     {
         var dir = Directory.CreateTempSubdirectory("tcsvm-test-");
@@ -212,7 +212,7 @@ internal static partial class Backends
             });
             reader.Wait(timeout);
             process.Kill(entireProcessTree: true);
-            // 止めると stdout が閉じ、reader は抜ける
+            // Stopping it closes stdout, and the reader exits
             reader.Wait();
             return read;
         }
@@ -222,7 +222,7 @@ internal static partial class Backends
         }
     }
 
-    /// <summary>lib 形: Setup → Frame×N (フレームの後で GC) → Report。</summary>
+    /// <summary>lib form: Setup → Frame×N (GC after each frame) → Report.</summary>
     public static string RunVmLib(string[] sources, string cls, int frames) =>
         RunVmProcess(sources, null, ["--lib", cls, frames.ToString(System.Globalization.CultureInfo.InvariantCulture)],
             [cls + ".*"]);

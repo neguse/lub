@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// nullable の `??` の右辺は左に値が無いときだけ評価する (文、式、field 初期化子、lambda のどの位置でも)。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// The right side of a nullable `??` is evaluated only when the left has no value (in any position: statement, expression, field initializer, lambda).
+// The expected values are the stdout of running the same program on CoreCLR
 public class NullableCoalesceLazyDifferentialTests
 {
     [CFact]

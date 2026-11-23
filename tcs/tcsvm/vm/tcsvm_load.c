@@ -1,4 +1,5 @@
-/* tcs VM の読み込み: parse、layout (doc/vm-design.md §9.3)、検査と link (§9.4)。 */
+/* tcs VM loading: parse, layout (doc/vm-design.md §9.3), verification and link
+ * (§9.4). */
 #include "tcsvm_internal.h"
 
 #include <stdarg.h>
@@ -6,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ---- エラー ---- */
+/* ---- Errors ---- */
 
 void tvm_set_error(TvmVm *vm, const char *fmt, ...) {
   va_list ap;
@@ -27,7 +28,7 @@ void tvm_append_error(TvmVm *vm, const char *fmt, ...) {
 
 const char *tvm_error(TvmVm *vm) { return vm->error; }
 
-/* ---- 生成と解放 ---- */
+/* ---- Creation and release ---- */
 
 TvmVm *tvm_new(const TvmConfig *config) {
   TvmVm *vm = (TvmVm *)calloc(1, sizeof *vm);
@@ -140,7 +141,7 @@ static const char *str_at(TvmVm *vm, uint32_t i) {
   return i < vm->nstrings ? vm->strings[i] : "?";
 }
 
-/* (kind, type) の列 */
+/* Sequence of (kind, type) */
 static TvmRegInfo *rd_infos(Reader *r, uint32_t n) {
   if (!count_ok(r, n, 3))
     return NULL;
@@ -167,7 +168,8 @@ static bool parse(TvmVm *vm, Reader *r) {
     return false;
   }
 
-  /* 個数は表を確保してから vm に入れる (途中で失敗しても tvm_free が確保済みの分だけを解放する) */
+  /* Counts are stored in vm after the tables are allocated (so even on failure
+   * midway, tvm_free releases only what was allocated) */
   uint32_t n = rd_u32(r);
   if (!count_ok(r, n, 4))
     goto bad;
@@ -183,7 +185,8 @@ static bool parse(TvmVm *vm, Reader *r) {
     r->p += len;
   }
 
-  /* string の定数 (literal)。heap の外に置き、VM の寿命の間生きる。型は types の後で付ける */
+  /* String constants (literals). Placed outside the heap and alive for the
+   * lifetime of the VM. Their type is set after types */
   n = rd_u32(r);
   if (!count_ok(r, n, 4))
     goto bad;
@@ -202,7 +205,7 @@ static bool parse(TvmVm *vm, Reader *r) {
     r->p += len;
   }
 
-  /* 型の表 (VM と tcs2c が共有する形。runtime/model) */
+  /* Type table (form shared by the VM and tcs2c; runtime/model) */
   const char *terr = tcs_model_read(r, (const char *const *)vm->strings,
                                     vm->nstrings, &vm->ntypes, &vm->types);
   if (terr) {
@@ -233,7 +236,8 @@ static bool parse(TvmVm *vm, Reader *r) {
     vm->selectors[i].functype = rd_u16(r);
   }
 
-  /* runtime の関数は名前で引く (VM が持たない名前は読み込みエラー) */
+  /* Runtime functions are looked up by name (names the VM does not have are a
+   * load error) */
   n = rd_u32(r);
   if (!count_ok(r, n, 4))
     goto bad;
@@ -320,7 +324,7 @@ static bool parse(TvmVm *vm, Reader *r) {
   vm->entry = (int32_t)rd_u32(r);
   if (r->bad)
     goto bad;
-  /* 関数ごとの path と --trace の表 (tcsvm_debug.c) */
+  /* Per-function paths and --trace tables (tcsvm_debug.c) */
   if (!tvm_debug_read(vm, r)) {
     tvm_set_error(vm, "bad debug tables");
     return false;
@@ -331,7 +335,7 @@ bad:
   return false;
 }
 
-/* ---- layout (VM が決める) ---- */
+/* ---- layout (decided by the VM) ---- */
 
 uint32_t tvm_kind_size(uint8_t kind) {
   switch (kind) {
@@ -362,11 +366,12 @@ static bool layout(TvmVm *vm) {
     tvm_set_error(vm, "string constants without a string type");
     return false;
   }
-  /* C の struct の規則 (doc/object-model.md §5)。class の payload は VM の型の pointer の後から
-     (header を tcs2c と揃えるのは M-4) */
+  /* C struct rules (doc/object-model.md §5). A class payload starts after the
+     VM type pointer (matching the header with tcs2c is M-4) */
   vm->types_version = tvm_next_types_version();
-  /* C の module の class (tvm_host_type に結んだ --ref の class) は C の module の layout で、host_value を持たない
-     (host_value は host の data class だけ。doc/object-model.md §3) */
+  /* C module classes (--ref classes bound with tvm_host_type) use the C module
+     layout and have no host_value (host_value is only for host data classes;
+     doc/object-model.md §3) */
   for (uint32_t i = 0; i < vm->ntypes; i++)
     if (vm->types[i].tkind == TVM_T_CLASS && vm->type_ids[i] < TVM_TYPE_ID_VM)
       vm->types[i].flags &= (uint8_t)~TCS_TYPE_HOST_VALUE;
@@ -404,7 +409,7 @@ static bool layout(TvmVm *vm) {
     if (t->tkind == TVM_T_DICT) {
       t->dict_entry =
           (uint32_t)sizeof(TvmDictEntry) + align_up(t->elem_size, 8);
-      /* key は 1 葉の値 (int / float / bool / ref) */
+      /* key is a 1-leaf value (int / float / bool / ref) */
       TvmRegInfo key = {t->key_kind, t->key_type};
       if (!info_ok(vm, &key))
         goto bad;
@@ -416,8 +421,9 @@ bad:
   return false;
 }
 
-/* ---- 検査 (doc/vm-design.md §9.4) と link ----
-   register の種類が関数の中で固定なので、命令ごとに operand の種類表と照らすだけで済む。 */
+/* ---- Verification (doc/vm-design.md §9.4) and link ----
+   Register kinds are fixed within a function, so checking each instruction
+   against the operand kind table is enough. */
 
 typedef struct Verify {
   TvmVm *vm;
@@ -444,8 +450,9 @@ static bool reg(Verify *v, uint32_t r, uint8_t kind) {
   return true;
 }
 
-/* 型 from の値を型 to の場所に置けるか: 同じ型、to が object、to が interface で from が
-   それを実装する class。TVM_NO_TYPE (null だけを持つ register) はどこにでも置ける */
+/* Whether a value of type from can be placed in a location of type to: same
+   type, to is object, or to is an interface and from is a class implementing
+   it. TVM_NO_TYPE (a register holding only null) can be placed anywhere */
 static bool assignable(TvmVm *vm, uint16_t from, uint16_t to) {
   if (from == to || from == TVM_NO_TYPE)
     return true;
@@ -461,7 +468,7 @@ static bool assignable(TvmVm *vm, uint16_t from, uint16_t to) {
   return false;
 }
 
-/* register r の値を型 type の場所に置けるか */
+/* Whether the value of register r can be placed in a location of type type */
 static bool ref_type(Verify *v, uint32_t r, uint16_t type) {
   if (!reg(v, r, TVM_K_REF))
     return false;
@@ -471,13 +478,14 @@ static bool ref_type(Verify *v, uint32_t r, uint16_t type) {
   return true;
 }
 
-/* register の値が info (kind, type) に合う */
+/* The register value matches info (kind, type) */
 static bool value(Verify *v, uint32_t r, const TvmRegInfo *info) {
   return info->kind == TVM_K_REF ? ref_type(v, r, info->type)
                                  : reg(v, r, info->kind);
 }
 
-/* register に info の値を書ける (ref は register の型に置ける型。null だけの register には書けない) */
+/* A value of info can be written to the register (for ref, a type placeable in
+ * the register's type; registers holding only null cannot be written) */
 static bool dest(Verify *v, uint32_t r, const TvmRegInfo *info) {
   if (!reg(v, r, info->kind))
     return false;
@@ -494,7 +502,8 @@ static bool type_of_kind(TvmVm *vm, uint32_t t, uint8_t tkind) {
 
 static const TvmType *reg_type(Verify *v, uint32_t r, uint8_t tkind);
 
-/* CALLR の引数 / 戻り値の種類の 1 文字 (tcsvm_internal.h の TvmIntrinsic) */
+/* One kind character of a CALLR argument / return value (TvmIntrinsic in
+ * tcsvm_internal.h) */
 static bool spec_ok(Verify *v, uint32_t r, char spec, uint16_t arg0type,
                     bool out) {
   TvmVm *vm = v->vm;
@@ -544,7 +553,8 @@ static bool spec_ok(Verify *v, uint32_t r, char spec, uint16_t arg0type,
   }
 }
 
-/* host の関数の 1 項 (tcsvm_host.c の plan) の葉が register の種類と合う。struct は葉ごと */
+/* The leaves of one host function term (plan in tcsvm_host.c) match the
+ * register kinds. Structs are checked per leaf */
 static bool host_arg_ok(Verify *v, const TvmHostArg *x, uint32_t r, bool out) {
   if (!x->st)
     return spec_ok(v, r, x->kind, TVM_NO_TYPE, out);
@@ -576,7 +586,7 @@ static bool jump(Verify *v, uint64_t ins) {
   return true;
 }
 
-/* 葉の番号を byte offset に書き換える (field の命令の link) */
+/* Rewrites leaf indices to byte offsets (linking field instructions) */
 static uint64_t with_c(uint64_t ins, uint32_t c) {
   return (ins & ~((uint64_t)0xFFFF << 40)) | ((uint64_t)c << 40);
 }
@@ -584,7 +594,7 @@ static uint64_t with_x(uint64_t ins, uint32_t x) {
   return (ins & ~((uint64_t)0xFF << 56)) | ((uint64_t)x << 56);
 }
 
-/* 配列 / List / Dictionary の要素の (kind, type) */
+/* (kind, type) of array / List / Dictionary elements */
 static TvmRegInfo elem_info(const TvmType *t) {
   TvmRegInfo info = {t->elem_kind, t->elem_type};
   return info;
@@ -597,13 +607,15 @@ static TvmRegInfo key_info(const TvmType *t) {
 
 static const uint8_t ld_kind[] = {TVM_K_I32, TVM_K_F32, TVM_K_BOOL, TVM_K_REF};
 
-/* 4 つ組の命令の種類 (I32 / F32 / B / REF) */
+/* Kind of a 4-way instruction (I32 / F32 / B / REF) */
 static uint8_t quad(uint32_t op, uint32_t first) {
-  /* 呼ぶ側の範囲の誤りで表の外を読まないよう、外なら存在しない種類を返して検査を落とす */
+  /* So that a range error on the caller's side does not read outside the table,
+   * returns a nonexistent kind when out of range and fails the verification */
   return op >= first && op - first < 4 ? ld_kind[op - first] : 0xFF;
 }
 
-/* closure を作れる関数か: 引数と戻り値が関数型 t と同じ並び */
+/* Whether a closure can be made from the function: the arguments and return
+ * values are in the same order as function type t */
 bool tvm_proto_matches(const TvmProto *g, const TvmType *t) {
   if (g->nparams != t->nparams || g->nret != t->nrets)
     return false;
@@ -618,8 +630,9 @@ bool tvm_proto_matches(const TvmProto *g, const TvmType *t) {
   return true;
 }
 
-/* 関数の頭 (引数・戻り値・捕捉・register の表)。命令の検査が呼び出し先の表を読むので、
-   全関数の頭を先に検査する */
+/* Function headers (arguments, return values, captures, register table).
+   Instruction verification reads the callee's table, so all function headers
+   are verified first */
 static bool verify_header(TvmVm *vm, TvmProto *f) {
   Verify v = {vm, f, 0};
   if (f->nparams > f->nregs)
@@ -638,7 +651,7 @@ static bool verify_header(TvmVm *vm, TvmProto *f) {
 
 static bool verify_proto(TvmVm *vm, TvmProto *f) {
   Verify v = {vm, f, 0};
-  /* 呼び出し時に null で埋める範囲 */
+  /* Range filled with null on call */
   f->zero_lo = f->zero_hi = f->nparams;
   for (uint32_t k = f->nparams; k < f->nregs; k++)
     if (f->regs[k].kind == TVM_K_REF) {
@@ -974,7 +987,8 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       const TvmType *ft = t ? reg_type(&v, b, TVM_T_FUNC) : NULL;
       if (!ft)
         return false;
-      /* 比較は (要素の葉..., 要素の葉...) → int。struct の要素は葉に展開して渡す */
+      /* The comparison is (element leaves..., element leaves...) → int. struct
+       * elements are expanded into leaves when passed */
       TvmRegInfo one = elem_info(t);
       const TvmLeaf *leaves = NULL;
       uint32_t n = 1;
@@ -1050,7 +1064,8 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
     case TVM_OP_LIST_STF_F32:
     case TVM_OP_LIST_STF_B:
     case TVM_OP_LIST_STF_REF: {
-      /* 要素 / 値の葉: 1 葉の型なら x = 0、struct なら struct の葉 x。x を byte offset に書き換える */
+      /* Element / value leaf: x = 0 for a 1-leaf type, struct leaf x for a
+       * struct. Rewrites x to a byte offset */
       bool dict = op >= TVM_OP_DICT_LDV_I32 && op <= TVM_OP_DICT_STV_REF;
       uint32_t first = dict ? TVM_OP_DICT_LDV_I32 : TVM_OP_LIST_LDF_I32;
       bool load = op < first + 4;
@@ -1140,7 +1155,8 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
       uint16_t arg0 = a < f->nregs ? f->regs[a].type : TVM_NO_TYPE;
       const TvmHostPlan *plan = vm->host_plans[c];
       if (plan) {
-        /* struct か out を写す host の関数: 値の引数の葉は a から、戻り値と out の葉は b から */
+        /* Host functions that copy structs or outs: value argument leaves start
+         * at a, return value and out leaves start at b */
         for (uint32_t k = 0; k < plan->nargs; k++) {
           const TvmHostArg *x = &plan->args[k];
           if (!host_arg_ok(&v, x, (x->byref ? b : a) + x->reg, x->byref))
@@ -1275,7 +1291,7 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
     if (op == TVM_OP_RET0 && f->nret != 0)
       return vfail(&v, "RET0 in a function with results");
   }
-  /* 最後の命令は先へ落ちない */
+  /* The last instruction does not fall through */
   uint32_t last = (uint32_t)(f->code[f->ncode - 1] & 0xFF);
   if (last != TVM_OP_RET && last != TVM_OP_RET0 && last != TVM_OP_JMP) {
     v.pc = f->ncode - 1;
@@ -1288,7 +1304,7 @@ static bool verify_proto(TvmVm *vm, TvmProto *f) {
   return true;
 }
 
-/* ---- 入口 ---- */
+/* ---- Entry ---- */
 
 TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
   if (vm->nfuncs) {
@@ -1298,7 +1314,8 @@ TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size) {
   TvmStatus st = tvm_load_module(vm, bytes, size);
   if (st != TVM_OK)
     return st;
-  /* static initializer: 名前が "<static>" で終わる関数を並びの順に走らせる */
+  /* static initializer: runs the functions whose names end with "<static>" in
+   * order */
   for (uint32_t i = 0; i < vm->nfuncs; i++) {
     const char *name = vm->funcs[i].name;
     size_t len = strlen(name);
@@ -1328,7 +1345,8 @@ TvmStatus tvm_load_module(TvmVm *vm, const uint8_t *bytes, size_t size) {
       tvm_set_error(vm, "selector %u: bad function type", i);
       return TVM_LOAD_ERROR;
     }
-  /* itable: 関数は (class の self, 関数型の引数...) を取り、関数型の戻り値を返す */
+  /* itable: functions take (the class's self, the arguments of the function
+   * type...) and return the return values of the function type */
   for (uint32_t i = 0; i < vm->ntypes; i++) {
     const TvmType *t = &vm->types[i];
     for (uint32_t k = 0; t->tkind == TVM_T_CLASS && k < t->nitable; k++) {
@@ -1361,7 +1379,8 @@ TvmStatus tvm_load_module(TvmVm *vm, const uint8_t *bytes, size_t size) {
     tvm_set_error(vm, "bad entry");
     return TVM_LOAD_ERROR;
   }
-  /* static の field の表: slot と葉の数が static の種類表と合うこと */
+  /* Static field table: slots and leaf counts must match the static kind table
+   */
   for (uint32_t i = 0; i < vm->nstatic_fields; i++) {
     const TvmStaticField *f = &vm->static_fields[i];
     bool ok = f->slot < vm->nstatics;
@@ -1405,7 +1424,8 @@ TvmStatus tvm_call(TvmVm *vm, int32_t func, const TvmSlot *args, size_t nargs,
     return TVM_LOAD_ERROR;
   }
   vm->faulting = false;
-  /* shared heap: VM の呼び出しの間は C の module の関数 (host の関数) から戻っても回収しない */
+  /* shared heap: during a VM call, no collection happens even on returning from
+   * a C module function (host function) */
   if (vm->heap)
     vm->heap->enter();
   TvmStatus st = tvm_run(vm, proto, args, rets);

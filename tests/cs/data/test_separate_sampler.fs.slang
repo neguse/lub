@@ -1,8 +1,10 @@
-// HLSL の普通の書き方: texture と sampler を別に宣言する。名前が texture 名で
-// 始まる sampler は、宣言の順によらずその texture と組になる(right_sampler は
-// texture より前、left_sampler より前に宣言してある)。lut は Load だけで読み、
-// sampler を持たない。u = 1.25 は left の REPEAT なら texel 0、right の CLAMP
-// なら texel 1 に落ちるので、各 texture が自分の sampler で引けたかが分かる。
+// The usual HLSL style: textures and samplers are declared separately. A
+// sampler whose name starts with a texture name pairs with that texture
+// regardless of the declaration order (right_sampler is declared before its
+// texture and before left_sampler). lut is read only with Load and has no
+// sampler. u = 1.25 lands on texel 0 with the REPEAT of left, and with the
+// CLAMP of right on texel 1, so it shows whether each texture sampled with its
+// own sampler.
 SamplerState right_sampler;
 Texture2D left;
 Texture2D right;

@@ -1,6 +1,6 @@
-// 大きな確保で binding の arena が chunk (1 MiB) を移った後でも、interleave の出力が壊れない。
-// positions (12 KB) と normals (約 1 MB) を渡すと次の chunk に移る。
-// 外側が読む uvs が normals を上書きしていれば、出力の normal に uvs の値が混ざる。
+// The interleave output is not corrupted even after a large allocation moves the binding arena to another chunk (1 MiB).
+// Passing positions (12 KB) and normals (about 1 MB) moves it to the next chunk.
+// If the uvs read by the outer side overwrote normals, uvs values would mix into the output normals.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -8,7 +8,7 @@ using Lub;
 public static class TestArenaNestedCall
 {
     const int verts = 1000;
-    const int normalFloats = 260144; // positions と合わせて 1 MiB の chunk に収まらない大きさ
+    const int normalFloats = 260144; // A size that does not fit in a 1 MiB chunk together with positions
     const float normal = 0.25f;
     const float uv = 777.0f;
     const int stride = 8; // PN: position 3 + pad 1 + normal 3 + pad 1

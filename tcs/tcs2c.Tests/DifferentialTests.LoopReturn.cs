@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// Lua の return は block の最後の文に限られる。loop 本体の末尾の return の後に
-// continue label や for の増分が続く形、到達不能文が続く形を C# どおりに動かす
+// Lua's return is limited to the last statement of a block. Forms where the return at the end of a loop body is followed by
+// a continue label or a for increment, and forms followed by unreachable statements, run as in C#
 public class LoopReturnDifferentialTests
 {
     [CFact]

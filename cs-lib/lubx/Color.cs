@@ -1,14 +1,14 @@
-// 実装ライブラリ lubx の Color。
-// static factory (rgb / hex) + 読み取り専用の public フィールド。
-// 毎 frame 大量に作るので、確保の要らない値型 (readonly struct) にする。
+// Color of the implementation library lubx.
+// static factory (rgb / hex) + read-only public fields.
+// Many are created every frame, so it is a value type that needs no allocation (readonly struct).
 
 using Lub;
 
 namespace Lubx;
 
-/// <summary>RGBA カラー (値型)。
-/// 各成分 0..1。
-/// 生成は Color.rgb / Color.hex で。
+/// <summary>RGBA color (value type).
+/// Each component is 0..1.
+/// Create with Color.rgb / Color.hex.
 /// </summary>
 public readonly struct Color
 {
@@ -25,15 +25,15 @@ public readonly struct Color
         this.A = a;
     }
 
-    /// <summary>成分指定 (a 省略で 1.0)。
+    /// <summary>From components (a defaults to 1.0).
     /// </summary>
     public static Color Rgb(float r, float g, float b, float? a = null)
     {
         return new Color(r, g, b, a ?? 1.0f);
     }
 
-    /// <summary>0xRRGGBB (a 省略で 1.0)。
-    /// 例: Color.hex(0xE85C5C)。
+    /// <summary>0xRRGGBB (a defaults to 1.0).
+    /// Example: Color.hex(0xE85C5C).
     /// </summary>
     public static Color Hex(int rgb, float? a = null)
     {

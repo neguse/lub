@@ -1,7 +1,7 @@
 namespace TinySystem;
 
-// sinf / cosf: runtime/math/sincosf.c の C# 版 (CORE-MATH 由来、MIT。
-// 著作権表示と許諾文は sincosf.c の先頭)
+// sinf / cosf: C# version of runtime/math/sincosf.c (derived from CORE-MATH, MIT.
+// The copyright notice and license text are at the top of sincosf.c)
 internal static partial class TcsMath
 {
     static double RbigSinCos(uint u, out int q)
@@ -64,7 +64,7 @@ internal static partial class TcsMath
         [0.019276571095877645, -6.193103220211784e-05, 7.958785981094399e-08, -5.4777514393633976e-11];
     static readonly double[] SinCosA =
         [0.19634954084936204, -0.0012616486279372187, 2.432025854080733e-06, -2.2318367225754577e-09];
-    // sin(i * pi/16)。cos の表 (CosTable) は 8 つずらした cos(i * pi/16)
+    // sin(i * pi/16). The cos table (CosTable) is cos(i * pi/16) shifted by 8
     static readonly double[] SinTable =
     [
         0.0, 0.19509032201612828, 0.3826834323650898, 0.5555702330196022,
@@ -88,7 +88,7 @@ internal static partial class TcsMath
         0.7071067811865476, 0.8314696123025452, 0.9238795325112867, 0.9807852804032304,
     ];
 
-    // 多項式の近似で丸めを誤る入力と、その正しい値 (rh + rl)
+    // Inputs that the polynomial approximation rounds incorrectly, and their correct values (rh + rl)
     static readonly float[] SinArg = [9830.398f, 0.72992426f, 1.3086903f, 9.424778f];
     static readonly float[] SinRh = [-0.34761325f, 0.6668132f, 0.9658464f, -2.384976e-08f];
     static readonly float[] SinRl = [-7.450581e-09f, -1.4901161e-08f, -1.4901161e-08f, -4.440892e-16f];

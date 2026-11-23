@@ -1,5 +1,5 @@
-// 実装ライブラリ lubx の FixedStep。
-// pending 集合は keys と平行な bool の List で持つ。
+// FixedStep of the implementation library lubx.
+// The pending set is kept as a List of bool parallel to keys.
 
 using System;
 using System.Collections.Generic;
@@ -7,16 +7,16 @@ using Lub;
 
 namespace Lubx;
 
-/// <summary> 固定 tick 駆動。
-/// 可変レートの onFrame(dt) から毎フレーム frame() を呼ぶと、ゲーム進行 (フレーム単位のルール・物理・AI) を display refresh 非依存の固定 Hz tick に分離する。
-/// tick は 1 フレームに 0〜maxCatchUp 回走る。
-/// keyPressed などの edge は tick 粒度で配送され、tick 0 回のフレームの edge も失われない。
-/// edge は tick callback の中で読むこと。
-/// callback は保持しない (毎フレーム frame() に渡す) ので、hot reload の live 反映後も次のフレームから新しいコードが呼ばれる。
+/// <summary> Fixed tick driver.
+/// Calling frame() every frame from the variable-rate onFrame(dt) separates game progress (per-frame rules, physics, AI) into fixed-Hz ticks independent of the display refresh.
+/// Ticks run 0 to maxCatchUp times per frame.
+/// Edges such as keyPressed are delivered at tick granularity, and edges in frames with 0 ticks are not lost.
+/// Read edges inside the tick callback.
+/// The callback is not kept (it is passed to frame() every frame), so after a live hot reload the new code is called from the next frame.
 /// </summary>
 public class FixedStep
 {
-    /// <summary>tick callback に渡される固定 dt (= 1/hz) 秒。
+    /// <summary>Fixed dt (= 1/hz) in seconds passed to the tick callback.
     /// </summary>
     public float TickDt;
 
@@ -24,10 +24,10 @@ public class FixedStep
     private float accumulator = 0;
     private bool stopped = false;
 
-    // 最初から毎フレーム走査する key の名前。
-    // ここに無い名前 (f1..f12、別名、SDL の scancode の名前) は、KeyPressed / KeyReleased で初めて聞かれたときに keys に足す。
-    // TODO: runtime が timestamp 付き入力 event を公開したら、この走査を
-    // event 消費に置き換える (公開 API は変えない)。
+    // Key names scanned every frame from the start.
+    // Names not listed here (f1..f12, aliases, SDL scancode names) are added to keys the first time KeyPressed / KeyReleased asks about them.
+    // TODO: once the runtime exposes timestamped input events, replace this scan
+    // with event consumption (without changing the public API).
     private static string[] scanKeys = new string[]
     {
         "space", "enter", "escape", "tab", "backspace",
@@ -37,20 +37,20 @@ public class FixedStep
         "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
     };
 
-    // 走査する key の名前。
-    // scanKeys で始め、聞かれた名前を足していく。
+    // Key names to scan.
+    // Starts with scanKeys, and names that are asked about get added.
     private List<string> keys = new List<string>();
 
-    // tick 粒度 edge の保留分。
-    // 次の tick が消費するまでフレームを跨いで持ち越す。
-    // 要素数は keys と同じ数 (mouse は index 0 を使わない 4) に揃える。
+    // Pending tick-granularity edges.
+    // Carried over across frames until the next tick consumes them.
+    // The element count matches keys (4 for mouse, which does not use index 0).
     private List<bool> pendingKeyPressed = new List<bool>();
     private List<bool> pendingKeyReleased = new List<bool>();
     private List<bool> pendingMousePressed = new List<bool>();
     private List<bool> pendingMouseReleased = new List<bool>();
 
-    /// <summary>hz: tick の周波数 (正の値、省略 = 60)。
-    /// maxCatchUp: 1 回の frame() で走る tick 数の上限 (1 以上、省略 = 8)。
+    /// <summary>hz: tick frequency (positive, default = 60).
+    /// maxCatchUp: upper limit of ticks run in one frame() (1 or more, default = 8).
     /// </summary>
     public FixedStep(float? hz = null, int? maxCatchUp = null)
     {
@@ -69,9 +69,9 @@ public class FixedStep
         }
     }
 
-    /// <summary>onFrame から毎フレーム呼ぶ。
-    /// 実測 dt を積み、固定 tick を 0〜maxCatchUp 回実行する。
-    /// tick は保持されない。
+    /// <summary>Call every frame from onFrame.
+    /// Accumulates the measured dt and runs the fixed tick 0 to maxCatchUp times.
+    /// tick is not kept.
     /// </summary>
     public void Frame(float dt, Action<float> tick)
     {
@@ -95,7 +95,7 @@ public class FixedStep
         }
     }
 
-    /// <summary>tick callback 内から呼ぶと、このフレームの残り catch-up tick と溜まった時間を捨てて frame() を抜ける。
+    /// <summary>When called from inside the tick callback, discards the remaining catch-up ticks and the accumulated time for this frame and exits frame().
     /// </summary>
     public void Stop()
     {
@@ -103,26 +103,26 @@ public class FixedStep
         accumulator = 0;
     }
 
-    /// <summary>前回の tick 以降にキーが押されたか。
-    /// tick callback 内で読む。
-    /// key の名前は Input.KeyPressed と同じものを受ける (大文字と小文字は区別しない)。
-    /// space、enter、escape、tab、backspace、矢印、a..z、0..9 以外の名前は、初めて聞かれたフレームから edge を持ち越す。
+    /// <summary>Whether the key was pressed since the previous tick.
+    /// Read inside the tick callback.
+    /// Accepts the same key names as Input.KeyPressed (case-insensitive).
+    /// Names other than space, enter, escape, tab, backspace, arrows, a..z, 0..9 carry edges over starting from the frame in which they are first asked about.
     /// </summary>
     public bool KeyPressed(string key)
     {
         return pendingKeyPressed[KeyIndex(key)];
     }
 
-    /// <summary>前回の tick 以降にキーが離されたか。
-    /// tick callback 内で読む。
-    /// key の名前は KeyPressed と同じ。
+    /// <summary>Whether the key was released since the previous tick.
+    /// Read inside the tick callback.
+    /// Key names are the same as for KeyPressed.
     /// </summary>
     public bool KeyReleased(string key)
     {
         return pendingKeyReleased[KeyIndex(key)];
     }
 
-    /// <summary>前回の tick 以降にボタンが押されたか (1=左 2=中 3=右、省略 = 左)。
+    /// <summary>Whether the button was pressed since the previous tick (1=left 2=middle 3=right, default = left).
     /// </summary>
     public bool MousePressed(int? button = null)
     {
@@ -130,7 +130,7 @@ public class FixedStep
         return b >= 1 && b <= 3 && pendingMousePressed[b];
     }
 
-    /// <summary>前回の tick 以降にボタンが離されたか (1=左 2=中 3=右、省略 = 左)。
+    /// <summary>Whether the button was released since the previous tick (1=left 2=middle 3=right, default = left).
     /// </summary>
     public bool MouseReleased(int? button = null)
     {
@@ -138,17 +138,17 @@ public class FixedStep
         return b >= 1 && b <= 3 && pendingMouseReleased[b];
     }
 
-    /// <summary>直近の tick から次の tick までの経過割合 (0〜1)。
-    /// 補間用。
+    /// <summary>Fraction of time elapsed from the latest tick to the next tick (0 to 1).
+    /// For interpolation.
     /// </summary>
     public float Alpha()
     {
         return Math.Min(accumulator / TickDt, 1.0f);
     }
 
-    // key の名前の keys の中の位置。
-    // 無ければ足し、このフレームに runtime がラッチした edge をそのまま保留分にする (次のフレームからは LatchEdges が拾う)。
-    // 書き方の違う同じ key ("R" と "r"、"esc" と "escape") は別の行になるが、どちらも Input が同じ key として引く
+    // Position of the key name in keys.
+    // If missing, add it and take the edge the runtime latched this frame as the pending value as is (from the next frame on, LatchEdges picks it up).
+    // The same key written differently ("R" and "r", "esc" and "escape") gets separate rows, but Input looks both up as the same key
     private int KeyIndex(string key)
     {
         for (int i = 0; i < keys.Count; i++)
@@ -164,8 +164,8 @@ public class FixedStep
         return keys.Count - 1;
     }
 
-    // edge は runtime がフレームラッチしたものを毎フレーム吸い上げる。
-    // tick 0 回のフレームでも失わないための持ち越しがここ。
+    // Every frame, pull in the edges the runtime latched for the frame.
+    // This is the carry-over that keeps them from being lost even in frames with 0 ticks.
     private void LatchEdges()
     {
         for (int i = 0; i < keys.Count; i++)

@@ -1,11 +1,11 @@
-// インスペクタ (InspectTree) を、円筒の上の 1 枚の板に出す。
-// 1 行目はパンくずで、押すとその段に戻る。
-// 表 (同じ class の要素の並び) は、見出しの行と要素の行で列の位置を揃える (列の幅は CellMax 桁まで)。
-// 値と列の見出しは、幅に収まらなければ終わりを … にする (切ったことを見せ、切った数を別の数に見せない)。
-// 行を指して押すと開閉し、右の ≫ で絞り込み、右端の → でその行の宣言へ飛び、wheel と stick で scroll する。
-// 実行中の file の class の行と、最近通ったメソッドの行には、左端に印を出す。
-// 負荷 (命令 inspector:load で切り替える) を出している間は、木の代わりに、選んだ資源 (CPU、MEM、GPU) の大きい順に、メソッド (GPU は pass) を並べ、押すとそこへ飛ぶ。
-// 1 行目は GC の止まり、2 行目は資源の見出し (押して選ぶ) と単位。行は名前と数で、下地に値の大きさの帯 (LoadBar) を塗る。
+// Shows the inspector (InspectTree) on a single board on the cylinder.
+// The first line is the breadcrumbs; pressing one goes back to that level.
+// Tables (lists of elements of the same class) align column positions between the header row and the element rows (column width up to CellMax characters).
+// Values and column headers that do not fit the width end in … (to show they were cut, and so a cut number does not look like a different number).
+// Pressing a row expands/collapses it, ≫ on the right narrows to it, → at the right end jumps to the row's declaration, and wheel and stick scroll.
+// Class rows of the running file and rows of recently executed methods get a mark at the left end.
+// While the load (toggled with the command inspector:load) is shown, instead of the tree, methods (passes for GPU) are listed in descending order of the selected resource (CPU, MEM, GPU), and pressing one jumps there.
+// The first line is GC pauses; the second line is the resource headers (press to select) and the unit. Rows are a name and a number, with a bar (LoadBar) for the value's size painted in the background.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -15,16 +15,16 @@ namespace LiderCore;
 
 public class InspectView
 {
-    // 画素の細かさは code の窓 (PanelView) と同じにし、字を同じ大きさで出す
+    // Pixel density is the same as the code panels (PanelView), so text shows at the same size
     const int BasePxW = 520;
     const float BaseW = PanelView.BaseW * BasePxW / PanelView.BasePxW;
-    // 板の大きさ (px)。既定は 520 x 624 で、SetSize で変える (LIDER_AREA)
+    // Board size (px). Default 520 x 624; changed by SetSize (LIDER_AREA)
     public static int PxW = BasePxW;
     public static int PxH = 624;
     public static float W => BaseW * PxW / BasePxW;
     public static float H => W * PxH / PxW;
 
-    // 板の大きさを幅 w、高さ h メートル (InspectScale を掛ける前) にする
+    // Sets the board size to w meters wide and h meters high (before applying InspectScale)
     public static void SetSize(float w, float h)
     {
         PxW = Math.Max(160, (int)(w / BaseW * BasePxW));
@@ -32,33 +32,33 @@ public class InspectView
     }
     const int Pad = 8;
     const int CellMax = 12;
-    // 右端の、宣言へ飛ぶ印と、絞り込む印の幅
+    // Width of the marks at the right end: jump to declaration and narrow
     const int JumpW = 32;
     const int MarksW = 2 * JumpW;
 
     public readonly InspectTree Tree = new InspectTree();
-    // 起動したときから出す (何が動いているかの入口)
+    // Shown from startup (an entry point to what is running)
     public bool Shown = true;
-    // 木の代わりに負荷の一覧を出す
+    // Show the load list instead of the tree
     public bool Load;
     readonly List<LoadRow> loadRows = new List<LoadRow>();
     string loadHead = "";
     int loadHeadLevel;
-    // パンくずの段ごとの左端と幅 (px)
+    // Left end and width of each breadcrumb level (px)
     readonly List<float> crumbX = new List<float>();
     readonly List<float> crumbW = new List<float>();
-    // 一番上に出す行
+    // Row shown at the top
     public float Scroll;
-    // 板の大きさが変わったら作り直す
+    // Recreated when the board size changes
     SpriteBatch batch = new SpriteBatch("lider_inspect_" + BasePxW + "x624", BasePxW, 624);
     int batchW = BasePxW;
     int batchH = 624;
     public TextureRef? Texture;
-    // texture を最後に宣言した frame (DeclareGap.Frame)。宣言が途切れた texture は lub が捨てるので、途切れた後は写さない
+    // Frame in which the texture was last declared (DeclareGap.Frame). lub discards textures whose declaration lapsed, so after a lapse it is not shown
     public int DeclaredAt = -1;
     float lineH = 16;
 
-    // texture を宣言し、出していれば木を引き直して描く (画面への pass の外で呼ぶ)
+    // Declares the texture and, if shown, rebuilds the tree and draws it (call outside the pass to the display)
     public void Prepare(MonoText text, Workspace w, Search search, FieldValues fields, LoadProfile profile)
     {
         if (PxW != batchW || PxH != batchH)
@@ -94,21 +94,21 @@ public class InspectView
 
     List<string> crumbs = new List<string>();
 
-    // 板の中の位置が、宣言へ飛ぶ印の上か
+    // Whether a position in the board is on the jump-to-declaration mark
     public static bool OnJump(Vec2 uv)
     {
         return uv.X * PxW >= PxW - JumpW;
     }
 
-    // 板の中の位置が、絞り込む印の上か
+    // Whether a position in the board is on the narrow mark
     public static bool OnScope(Vec2 uv)
     {
         return uv.X * PxW >= PxW - MarksW && uv.X * PxW < PxW - JumpW;
     }
 
-    // 負荷の一覧の行を、選んだ資源の大きい順に作る。
-    // CPU と MEM はメソッドごとにまとめ (行の値の和)、飛ぶ先はその中で選んだ資源が一番大きい行。どの行かは窓の升で見る。
-    // GPU は pass ごと (始めた行へ飛ぶ)。
+    // Builds the load list rows in descending order of the selected resource.
+    // CPU and MEM are grouped by method (sum of row values), and the jump target is the row within it with the largest value of the selected resource. Which row it is can be seen in the panel's cells.
+    // GPU is per pass (jumps to the line that began it).
     void PrepareLoad(Workspace w, Search search, LoadProfile profile)
     {
         loadRows.Clear();
@@ -171,18 +171,18 @@ public class InspectView
         loadHeadLevel = LoadProfile.StopLevel(stopMs);
     }
 
-    // 一覧の一番大きい値 (帯の長さの基準)
+    // Largest value in the list (the reference for bar length)
     float loadMax = 1;
 
     LoadProfile? loadProfile;
-    // 負荷の一覧の上の、GC と列の見出しの行の数
+    // Number of rows for GC and column headers above the load list
     const int LoadHeadLines = 2;
 
-    // 見出しの、選ぶ物ごとの左端と幅 (px)
+    // Left end and width of each selectable header (px)
     readonly List<float> tabX = new List<float>();
     readonly List<float> tabW = new List<float>();
 
-    // 板の中の位置にある、選ぶ物の見出し (LoadProfile.Time など。無ければ -1)
+    // Selectable header at a position in the board (LoadProfile.Time etc.; -1 if none)
     public int TabAt(Vec2 uv)
     {
         var y = uv.Y * PxH;
@@ -195,7 +195,7 @@ public class InspectView
         return -1;
     }
 
-    // 板の中の位置にある負荷の行 (無ければ null)
+    // Load row at a position in the board (null if none)
     public LoadRow? LoadAt(Vec2 uv)
     {
         var i = (int)Scroll + (int)Math.Floor((uv.Y * PxH - Pad) / lineH) - LoadHeadLines;
@@ -206,7 +206,7 @@ public class InspectView
     {
         Gfx.BeginPass(new PassOpts { Target = Texture, ClearColor = new float[] { Theme.Surface.R, Theme.Surface.G, Theme.Surface.B, 1 } });
         batch.Begin();
-        // SpriteBatch は atlas を初めて使った順に描くので、文字より先に (透明に) 塗る
+        // SpriteBatch draws in the order atlases are first used, so fill (transparent) before the text
         batch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
         var p = loadProfile!;
         var m = p.Metric;
@@ -214,7 +214,7 @@ public class InspectView
         var numberX = PxW - Pad - LoadBar.Cells * cw;
         text.Draw(batch, "Profile", Pad, Pad, Theme.Ink, 0, PxW);
         LoadBar.Right(batch, text, loadHead, PxW - Pad, Pad, Theme.Load(loadHeadLevel));
-        // 選ぶ資源の見出し (選んでいる物は明るく下地を付ける) と、右の端 (数の列の上) に単位
+        // Headers of the selectable resources (the selected one is bright, with a background), and the unit at the right end (above the number column)
         tabX.Clear();
         tabW.Clear();
         var x = (float)Pad;
@@ -239,7 +239,7 @@ public class InspectView
             var y = Pad + (i - top + LoadHeadLines) * lineH;
             var level = LoadProfile.Level(c, m);
             var value = LoadProfile.Value(c, m);
-            // 帯は行の下地に、板の幅いっぱいを一覧の一番大きい値にして、数と同じ右から塗る
+            // The bar is painted in the row background from the right, like the number, with the full board width standing for the largest value in the list
             LoadBar.Fill(batch, level, value, loadMax, 0, y, PxW, lineH, 0.22f);
             var name = row.Place;
             text.Draw(batch, name, Pad, y, level == LoadProfile.Calm ? Theme.Muted : Theme.Ink, 0, numberX - cw);
@@ -247,7 +247,7 @@ public class InspectView
                 text.Draw(batch, row.Sub, Pad + (Utf8.Cells(name, Utf8.Bytes(name)) + 1) * cw, y, Theme.Muted, 0, numberX - cw);
             var number = LoadProfile.Number(value, m);
             LoadBar.Right(batch, text, number, PxW - Pad, y, Theme.Load(level));
-            // MEM は、frame をまたいで持ち越した物があれば数の左に点を付ける (確保が少なくても目立たせる)
+            // For MEM, if anything was carried over across frames, put a dot to the left of the number (so it stands out even if the allocation is small)
             if (m == LoadProfile.Mem && c.Carry > 0)
                 batch.Rect(PxW - Pad - (Utf8.Cells(number, Utf8.Bytes(number)) + 1) * cw, y + lineH * 0.5f - 3, 6, 6, Theme.Load(LoadProfile.Hot));
         }
@@ -255,7 +255,7 @@ public class InspectView
         Gfx.EndPass();
     }
 
-    // 行の上の端 (px。i は Rows の番号)
+    // Top edge of a row (px; i is the index in Rows)
     public float RowY(int i)
     {
         return Pad + (i - (int)Scroll + 1) * lineH;
@@ -266,14 +266,14 @@ public class InspectView
         return (int)((PxH - 2 * Pad) / lineH) - 1;
     }
 
-    // 板の中の位置 (左上 0,0、右下 1,1) にある行 (無ければ null)
+    // Row at a position in the board (top left 0,0, bottom right 1,1) (null if none)
     public InspectRow? RowAt(Vec2 uv)
     {
         var i = (int)Scroll + (int)Math.Floor((uv.Y * PxH - Pad) / lineH) - 1;
         return i >= (int)Scroll && i < Tree.Rows.Count && uv.Y * PxH >= Pad ? Tree.Rows[i] : null;
     }
 
-    // 板の中の位置にあるパンくずの段 (無ければ -1)
+    // Breadcrumb level at a position in the board (-1 if none)
     public int CrumbAt(Vec2 uv)
     {
         var y = uv.Y * PxH;
@@ -286,7 +286,7 @@ public class InspectView
         return -1;
     }
 
-    // パンくずの i 番目の段の真ん中 (板の中の位置。描く前は 0,0)
+    // Middle of the i-th breadcrumb level (position in the board; 0,0 before drawing)
     public Vec2 CrumbCenter(int i)
     {
         return i < crumbX.Count ? new Vec2((crumbX[i] + crumbW[i] * 0.5f) / PxW, (Pad + lineH * 0.5f) / PxH) : new Vec2(0, 0);
@@ -296,14 +296,14 @@ public class InspectView
     {
         Gfx.BeginPass(new PassOpts { Target = Texture, ClearColor = new float[] { Theme.Surface.R, Theme.Surface.G, Theme.Surface.B, 1 } });
         batch.Begin();
-        // SpriteBatch は atlas を初めて使った順に描くので、文字より先に (透明に) 塗る
+        // SpriteBatch draws in the order atlases are first used, so fill (transparent) before the text
         batch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
         var rows = Tree.Rows;
         var top = (int)Scroll;
         Breadcrumb(text);
         var end = Math.Min(rows.Count, top + Visible());
         var cw = text.CellW;
-        // 表の列: 見出しの行の番号 → 名前の列の幅と、列ごとの幅 (どれも桁)
+        // Table columns: header row index → name column width and per-column widths (all in characters)
         var nameW = 0;
         List<int>? widths = null;
         var tableDepth = -1;
@@ -319,7 +319,7 @@ public class InspectView
                 widths = new List<int>();
                 foreach (var c in row.Cells!)
                     widths.Add(Math.Min(CellMax, Utf8.Cells(c, Utf8.Bytes(c))));
-                // 見えている要素の行も見て幅を決める
+                // Also look at the visible element rows to decide the widths
                 for (var j = i + 1; j < rows.Count && j < end; j++)
                 {
                     var r = rows[j];
@@ -379,7 +379,7 @@ public class InspectView
         Gfx.EndPass();
     }
 
-    // 値を幅 w (画素) に収めて描き、描いた文字列を返す。変わったばかりなら下地を光らせる
+    // Draws the value fitted into width w (pixels) and returns the drawn string. Highlights the background if it just changed
     string Cell(MonoText text, string s, float x, float y, float w, float glow)
     {
         var shown = Utf8.Fit(s, Room(text, x, w));
@@ -389,13 +389,13 @@ public class InspectView
         return shown;
     }
 
-    // x から幅 w (画素) の、印の列より左に収まる桁の数
+    // Number of characters that fit within width w (pixels) from x, to the left of the mark column
     int Room(MonoText text, float x, float w)
     {
         return (int)Math.Floor((Math.Min(PxW - MarksW, x + w) - x) / text.CellW + 0.01f);
     }
 
-    // 1 行目に、絞り込んだ段を「全体 > Pipe > #a3f2」と並べる (今の段は明るく)
+    // Lists the narrowed levels on the first line as "全体 > Pipe > #a3f2" (the current level is bright)
     void Breadcrumb(MonoText text)
     {
         crumbX.Clear();
@@ -417,8 +417,8 @@ public class InspectView
     }
 }
 
-// 負荷の一覧の 1 行。Place は名前 (メソッドか pass の描き先)、Sub はその横に薄く出す物 (pass を始めたメソッド)、Where は file か file:行。
-// Path と Line は押したときに飛ぶ先 (lider の path)。Cost は行の値の和
+// One row of the load list. Place is the name (a method, or what a pass draws to), Sub is shown faintly beside it (the method that began the pass), Where is file or file:line.
+// Path and Line are the jump target when pressed (lider path). Cost is the sum of the row values
 public class LoadRow
 {
     public LineCost? Cost;
@@ -428,6 +428,6 @@ public class LoadRow
     public string Sub = "";
     public string Where = "";
     public int Draws;
-    // まとめた行のうち、選んだ資源の一番大きい値
+    // Largest value of the selected resource among the grouped rows
     public float Best = -1;
 }

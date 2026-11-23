@@ -1,6 +1,6 @@
-// 大量の Bindings を作って捨てても、保持している Bindings の中身は GC をまたいで残る。
-// 内蔵の大きさに収まらない Bindings も作り、block を大きくする経路も通す。
-// 中身は host の GC が持つ block だけなので、手放した分の解放は host の GC に任せる。
+// Even when many Bindings are created and discarded, the contents of retained Bindings survive across GC.
+// Also creates Bindings that do not fit in the built-in size, exercising the path that grows the block.
+// The contents are only blocks owned by the host GC, so freeing the released ones is left to the host GC.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -27,7 +27,7 @@ struct FSIn { float4 pos : SV_Position; };
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
         rb = Gfx.Readback("bindings_lifetime");
         big = new List<float>();
-        // big[49] だけが green で、block を大きくしたときに値が写っていれば見える
+        // Only big[49] is green; it is visible if the values were copied when the block grew
         for (int i = 0; i < 200; i++) big.Add(i == 197 ? 1 : 0);
     }
 
@@ -46,7 +46,7 @@ struct FSIn { float4 pos : SV_Position; };
             kept.Set("cell", new Vec4(0, 0, 1, 1));
             kept.Set("tint", new Vec4(1, 0, 0, 1));
             kept.Set("big", big!);
-            // 長い名前は shader の field にできないので、shader が読まない texture として足す
+            // Long names cannot be shader fields, so add them as textures the shader does not read
             for (int j = 0; j < 8; j++) kept.Set("name_longer_than_the_inline_space_" + j, filler);
         }
         for (int i = 0; i < PerFrame; i++)

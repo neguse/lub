@@ -28,7 +28,8 @@ static int run(int n, int print) {
 int main(void) {
   const char *s = getenv("BENCH_N");
   int n = s ? atoi(s) : 200;
-  // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+  // Repeats BENCH_REPS times. Each repetition's input depends on the previous
+  // result so the compiler cannot skip repetitions (the result is never -1)
   const char *rs = getenv("BENCH_REPS");
   int reps = rs ? atoi(rs) : 1;
   int prev = 0;

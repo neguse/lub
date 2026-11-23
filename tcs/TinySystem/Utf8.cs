@@ -2,10 +2,10 @@ using System.Text;
 
 namespace TinySystem.Text;
 
-// tcs の文字列は UTF-8。.NET の string だけが UTF-16 なので、文字と byte の位置はここで揃える。
-// tcs の C と VM は runtime/utf8 の同じ手順の C を呼ぶ (結果の一致は tcs2c.Tests の DifferentialTests.Utf8)。
+// tcs strings are UTF-8. Only the .NET string is UTF-16, so character and byte positions are reconciled here.
+// tcs C and VM call C code with the same steps in runtime/utf8 (matching results are checked by DifferentialTests.Utf8 in tcs2c.Tests).
 
-/// <summary>string の文字 (Unicode scalar value、<c>EnumerateRunes</c> の 1 個) 単位の操作。どれも文字数に比例する時間がかかる。</summary>
+/// <summary>Operations on a string per character (Unicode scalar value, one item of <c>EnumerateRunes</c>). All take time proportional to the number of characters.</summary>
 public static class Runes
 {
     public static int RuneCount(this string s)
@@ -22,10 +22,10 @@ public static class Runes
         return count;
     }
 
-    /// <summary>start 文字目から count 文字。文字列の範囲を出ると ArgumentOutOfRangeException。</summary>
+    /// <summary>count characters from character start. Going outside the string throws ArgumentOutOfRangeException.</summary>
     public static string RuneSubstring(this string s, int start, int count)
     {
-        // netstandard2.0 (TinyC# の analyzer が compiler と一緒に読む) に ThrowIfNegative は無い
+        // netstandard2.0 (which the TinyC# analyzer reads together with the compiler) has no ThrowIfNegative
         if (start < 0) throw new ArgumentOutOfRangeException(nameof(start));
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         int from = Advance(s, 0, start);
@@ -43,9 +43,9 @@ public static class Runes
     }
 }
 
-/// <summary>string の UTF-8 の byte 列の読み取り専用の view。添字は O(1)、Slice は byte を複製しない。
-/// .NET は作るときに 1 度だけ byte[] に変換し、tcs の C と VM は文字列をそのまま指す。
-/// <c>default</c> は長さ 0 の view。</summary>
+/// <summary>Read-only view of the UTF-8 bytes of a string. Indexing is O(1), and Slice does not copy bytes.
+/// .NET converts to byte[] only once at creation, and tcs C and VM point to the string directly.
+/// <c>default</c> is a view of length 0.</summary>
 public readonly struct Utf8Bytes
 {
     private readonly byte[] _bytes;
@@ -77,7 +77,7 @@ public readonly struct Utf8Bytes
         return new Utf8Bytes(_bytes, _start + start, count);
     }
 
-    /// <summary>byte 列の string。文字の途中で切った slice の壊れた並びは U+FFFD になる。</summary>
+    /// <summary>String of the bytes. A broken sequence in a slice cut in the middle of a character becomes U+FFFD.</summary>
     public override string ToString() =>
         Length == 0 ? "" : Encoding.UTF8.GetString(_bytes, _start, Length);
 }

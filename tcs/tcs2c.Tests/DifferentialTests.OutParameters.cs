@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 自作メソッドの out (`out var` / `out _` と、宣言済みで lambda に capture されない局所変数)。Lua は multi-return、C はポインタ。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// out in user-defined methods (`out var` / `out _`, and already declared locals not captured by a lambda). Lua uses multi-return, C uses pointers.
+// The expected values are the stdout of running the same program on CoreCLR
 public class OutParametersDifferentialTests
 {
     [CFact]

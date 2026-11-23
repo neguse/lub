@@ -1,7 +1,8 @@
-// tex と tex2 は 2x1 の texture で、texel 0 の R が 0、texel 1 の R が 255、
-// G はどちらも texture の番号。PROBE は texel の間 (filter で値が変わる) と
-// 右端の外 (wrap で値が変わる) を引いて混ぜ、(filter, wrap) の 4 通りで
-// 違う値になる。
+// tex and tex2 are 2x1 textures; R of texel 0 is 0, R of texel 1 is 255,
+// and G of both is the texture number. PROBE samples between the texels (the
+// value changes with filter) and outside the right edge (the value changes with
+// wrap) and mixes them, so the 4 combinations of (filter, wrap) give different
+// values.
 LUB_TEXTURE2D(tex);
 LUB_TEXTURE2D(tex2);
 
@@ -10,7 +11,7 @@ LUB_TEXTURE2D(tex2);
    0.75 * LUB_SAMPLE(t, float2(1.125, 0.5)).r)
 
 struct FsU {
-  float4 tint; // x = B に書く値
+  float4 tint; // x = the value written to B
 };
 ConstantBuffer<FsU> f;
 

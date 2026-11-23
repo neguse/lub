@@ -681,8 +681,9 @@ static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
   return sdf_prim(n, x, y, z);
 }
 
-// 部位 (bone subtree) までの距離。
-// root からの xform 列を再現して点を部位の局所空間へ落としてから評価する (scale は距離も直す)。
+// Distance to a part (bone subtree).
+// Reproduces the xform sequence from the root to bring the point into the local
+// space of the part, then evaluates (scale also corrects the distance).
 static float sdf_eval_part(const SdfNode *ns, const SdfPart *part, float x,
                            float y, float z) {
   float scale = 1;
@@ -1079,8 +1080,8 @@ static void copy_params(SdfNode *n, const float *q, int count) {
     n->p[k] = q[k];
 }
 
-// in[i] を t->nodes[i] に変換する。
-// 子は再帰 (index はそのまま)。
+// Converts in[i] into t->nodes[i].
+// Children recursively (indices unchanged).
 static bool conv_node(SdfConv *c, int i) {
   if (i < 0 || i >= c->count)
     return conv_fail(c, "sdf_mesh: node index out of range%s", "");
@@ -1582,9 +1583,9 @@ bool sdf_mesh_build(const SdfTree *t, int n, float skin_k, SdfMeshOut *out,
     out->metal_rough[v * 2 + 1] = mat[4];
   }
 
-  // skinning: bone ノードがあれば頂点ごとに最寄り 2 部位の重みを焼く。
-  // w0 = softmax(-d/k) の 2 部位版 = 1 / (1 + e^((d0-d1)/k))。
-  // k が blend 幅。
+  // skinning: if there are bone nodes, bake the weights of the two nearest
+  // parts per vertex. w0 = the two-part version of softmax(-d/k) = 1 / (1 +
+  // e^((d0-d1)/k)). k is the blend width.
   if (t->part_count > 0) {
     if (skin_k <= 0)
       skin_k = 0.1f;

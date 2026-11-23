@@ -1,7 +1,7 @@
-// VM (doc/vm-design.md) の増分 session を JS へ公開する (V5)。playground の worker は Open で最初の module を受け取り、
-// 編集ごとに Update で reload の batch (player が tvm_apply_batch で当てる) か restart (module を読み直す) を受け取る。
-// module と batch は base64 (worker が ArrayBuffer に戻して transferable で player へ送る)。
-// single session 固定。Open のたびに epoch を発行し、応答は epoch を返す (SessionExports と同じ約束)。
+// Exposes the incremental VM session (doc/vm-design.md) to JS (V5). The playground worker receives the first module with Open,
+// and on each edit receives from Update either a reload batch (the player applies it with tvm_apply_batch) or a restart (the module is reloaded).
+// Modules and batches are base64 (the worker turns them back into ArrayBuffers and sends them to the player as transferables).
+// Fixed to a single session. Each Open issues an epoch, and responses return the epoch (same rule as SessionExports).
 using System.Runtime.InteropServices.JavaScript;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -9,26 +9,26 @@ using TinyCs.Vm;
 
 public sealed class VmOpenRequest
 {
-    /// <summary>入力 (path -> source)。</summary>
+    /// <summary>Input (path -> source).</summary>
     public Dictionary<string, string> Files { get; set; } = [];
-    /// <summary>host の stub (--ref 相当)。</summary>
+    /// <summary>Host stubs (equivalent to --ref).</summary>
     public Dictionary<string, string>? Refs { get; set; }
-    /// <summary>--entry 相当 (Main を持つ class)。</summary>
+    /// <summary>Equivalent to --entry (the class with Main).</summary>
     public string? EntryClass { get; set; }
-    /// <summary>--export 相当 (`Game.*` など。host が tvm_find で引く関数)。</summary>
+    /// <summary>Equivalent to --export (`Game.*` etc.; functions the host looks up with tvm_find).</summary>
     public List<string>? Exports { get; set; }
 }
 
 public sealed class VmResponse
 {
     public bool Ok { get; set; }
-    /// <summary>module / batch / restart / error (VmSession.Result.Kind)。</summary>
+    /// <summary>module / batch / restart / error (VmSession.Result.Kind).</summary>
     public string Kind { get; set; } = "error";
     public int Epoch { get; set; }
     public int Revision { get; set; }
-    /// <summary>module (base64)。module と restart のとき。</summary>
+    /// <summary>module (base64). Set for module and restart.</summary>
     public string? Module { get; set; }
-    /// <summary>reload の batch (base64)。batch のとき。</summary>
+    /// <summary>reload batch (base64). Set for batch.</summary>
     public string? Batch { get; set; }
     public List<string> Reasons { get; set; } = [];
     public List<string> Errors { get; set; } = [];

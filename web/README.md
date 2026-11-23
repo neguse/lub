@@ -70,7 +70,7 @@ npm run deploy            # build + wrangler deploy
 
 ## Browser requirements
 
-- 対応ブラウザは `docs/manual/10-web.md`。
+- 対応ブラウザは `docs/manual/11-export-and-run.md`。
 - ローカル開発: Vite dev server が emdawnwebgpu に必要な CORS/MIME 設定を済ませる。
 - production bundle (`npm run build`) は `web/dist/` 配下。資源 (`wasm/`, `slang/`,
   `samples/` など) は `import.meta.env.BASE_URL` 基準で読むので、サブパスに置くときは

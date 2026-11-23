@@ -1,6 +1,6 @@
 namespace TinyCs;
 
-// TinyC# の準拠の診断の id。TCS1001〜1003 は tcs の compiler (SelfHost/Compiler) が出し、analyzer も同じ compiler を動かして出す
+// IDs of TinyC# compliance diagnostics. TCS1001 to 1003 are reported by the tcs compiler (SelfHost/Compiler), and the analyzer reports them by running the same compiler
 public static class TinyCsDiagnosticIds
 {
     public const string UnsupportedSyntax = "TCS1001";
@@ -9,7 +9,7 @@ public static class TinyCsDiagnosticIds
 
     public const string UnsupportedCollectionNull = "TCS1003";
 
-    // analyzer だけが出す、.NET で実行するときの診断: System.Math の
-    // 超越関数は .NET の実装が動き、tcs の経路 (runtime/math) と結果が変わる
+    // Diagnostic reported only by the analyzer, for running on .NET: for System.Math
+    // transcendental functions the .NET implementation runs, and the results differ from the tcs path (runtime/math)
     public const string DotnetMath = "TCS1004";
 }

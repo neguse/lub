@@ -1,10 +1,11 @@
-// lub の host API。
-// runtime を動かす側 (lub の player、.NET 実行の host、tcs2c 実行の host) が使う pull 型の面で、ゲームに見える面 (lub_api.h) とは別。
-// host は
-//   create → ゲームの OnInit → start → { poll_event* → frame_begin →
-//   ゲームの OnFrame → frame_end }* → ゲームの OnQuit → destroy
-// の順に呼ぶ。
-// main thread 限定。
+// The lub host API.
+// A pull-style surface used by whatever drives the runtime (the lub player, the
+// .NET execution host, the tcs2c execution host), separate from the surface the
+// game sees (lub_api.h). The host calls
+//   create → game OnInit → start → { poll_event* → frame_begin →
+//   game OnFrame → frame_end }* → game OnQuit → destroy
+// in this order.
+// Main thread only.
 #pragma once
 #include "lub_api.h"
 
@@ -13,53 +14,60 @@ extern "C" {
 #endif
 
 typedef struct LubHostOpts {
-  // "d3d12" / "vulkan" / "metal" / "openxr" / "sdlgpu"。
-  // len 0 = 環境変数 LUB_BACKEND か既定。
-  // ゲームの Config が指定すればそちらが勝つ。
+  // "d3d12" / "vulkan" / "metal" / "openxr" / "sdlgpu".
+  // len 0 = the environment variable LUB_BACKEND or the default.
+  // If the game's Config specifies one, that wins.
   LubStr backend;
-  // > 0 なら毎 frame この dt を使う (テスト用)。
-  // 0 = 実測。
+  // If > 0, this dt is used every frame (for tests).
+  // 0 = measured.
   float fixed_dt;
-  // len 0 = 無し。
-  // capture_frame 枚目の frame を PNG に書き、以後 lub_host_quit_requested が true を返す。
+  // len 0 = none.
+  // Writes frame number capture_frame to a PNG, after which
+  // lub_host_quit_requested returns true.
   LubStr capture_path;
   int32_t capture_frame;
-  // 各 frame の digest (描画と resource 宣言の構造) を stdout に出す。
+  // Prints a digest of each frame (the structure of draws and resource
+  // declarations) to stdout.
   bool digest;
-  // readback の届く frame を保証するモードの既定 (ゲームの Config の ReadbackFixedLatency が指定すればそちらが勝つ)。
+  // Default for the mode that guarantees the frame in which readbacks arrive
+  // (ReadbackFixedLatency in the game's Config wins if specified).
   bool readback_fixed_latency;
 } LubHostOpts;
 
-// SDL と runtime を初期化して context を作る。
-// 失敗は NULL (log 済み)。
+// Initializes SDL and the runtime and creates a context.
+// NULL on failure (already logged).
 LUB_API LubContext *lub_host_create(const LubHostOpts *opts);
 
-// ゲームの OnInit (Config) の後に呼ぶ。
-// window size を反映して backend を起動する。
+// Call after the game's OnInit (Config).
+// Applies the window size and starts the backend.
 LUB_API LubStatus lub_host_start(LubContext *ctx);
 
-// 溜まった event を 1 件取り出す。
-// 無ければ false。
-// 終了要求は LUB_EVENT_KIND_QUIT で届き、以後 quit_requested が true になる。
+// Takes one pending event.
+// false if there is none.
+// A quit request arrives as LUB_EVENT_KIND_QUIT, after which quit_requested
+// becomes true.
 LUB_API bool lub_host_poll_event(LubContext *ctx, LubEventData *out);
 
-// frame を始めて dt (秒) を返す。
-// false なら描けない frame (window が 0 サイズ、または web でその frame が要る GPU の結果がまだ届いていない) で、host は少し待って次の frame へ進む。
+// Begins a frame and returns dt (seconds).
+// false means a frame that cannot be drawn (the window has 0 size, or on the
+// web the GPU results the frame needs have not arrived yet), and the host waits
+// a little and moves on to the next frame.
 LUB_API bool lub_host_frame_begin(LubContext *ctx, float *dt);
 
-// frame を終える (ゲームの OnFrame の後)。
-// frame_ok はゲームの OnFrame が error なく終わったか。
-// false の frame は resource の sweep までの frame に数えない。
+// Ends the frame (after the game's OnFrame).
+// frame_ok is whether the game's OnFrame finished without an error.
+// Frames with false are not counted toward the frames until the resource sweep.
 LUB_API void lub_host_frame_end(LubContext *ctx, bool frame_ok);
 
-// Quit が呼ばれたか、capture が終わったか、window が閉じられた。
+// Quit was called, the capture finished, or the window was closed.
 LUB_API bool lub_host_quit_requested(LubContext *ctx);
 
-// Quit に渡された終了コード (Quit が無ければ 0)。
+// The exit code passed to Quit (0 if there was no Quit).
 LUB_API int32_t lub_host_exit_code(LubContext *ctx);
 
-// runtime と SDL を終了して context を捨てる。
-// env LUB_EXIT_FILE があれば、その file に終了コードを書く (終了コードを受け取れない iOS simulator と web 用)。
+// Shuts down the runtime and SDL and discards the context.
+// If env LUB_EXIT_FILE is set, writes the exit code to that file (for the iOS
+// simulator and the web, which cannot receive the exit code).
 LUB_API void lub_host_destroy(LubContext *ctx);
 
 #ifdef __cplusplus

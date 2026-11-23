@@ -1,10 +1,10 @@
-// よく使う Blend の組。
-// Blend は値 (struct) なので、組を変数に写して field を書き換えても、組そのものは変わらない。
+// Commonly used Blend presets.
+// Blend is a value (struct), so copying a preset into a variable and updating its fields does not change the preset itself.
 namespace Lub;
 
 public static class Blends
 {
-    // 半透明: 色は描く値の alpha で混ぜ、alpha は重ねた結果の不透明度になる。
+    // Translucent: color is blended by the alpha of the drawn value, and alpha becomes the opacity of the composited result.
     public static readonly Blend Alpha = new Blend
     {
         Src = Gfx.BlendFactor.SrcAlpha,
@@ -15,7 +15,7 @@ public static class Blends
         OpAlpha = Gfx.BlendOp.Add,
     };
 
-    // 加算: 色も alpha も足す。
+    // Additive: adds both color and alpha.
     public static readonly Blend Additive = new Blend
     {
         Src = Gfx.BlendFactor.One,
@@ -26,7 +26,7 @@ public static class Blends
         OpAlpha = Gfx.BlendOp.Add,
     };
 
-    // 乗算: 色も alpha も target の値を掛ける。
+    // Multiply: multiplies both color and alpha by the target value.
     public static readonly Blend Multiply = new Blend
     {
         Src = Gfx.BlendFactor.Dst,

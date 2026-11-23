@@ -1,7 +1,7 @@
-// 実装ライブラリ lubx の Shapes。
-// 頂点は List<float> に push する。
-// push 先の引数名は out が C# の予約語のため dst。
-// Int / Int の除算は C# では切り捨てになるので、実数除算にしたい所は (float) キャストで書く。
+// Shapes of the implementation library lubx.
+// Vertices are pushed to a List<float>.
+// The destination argument is named dst because out is a C# reserved word.
+// Int / Int division truncates in C#, so places that need real division are written with a (float) cast.
 
 using System;
 using System.Collections.Generic;
@@ -9,16 +9,16 @@ using Lub;
 
 namespace Lubx;
 
-/// <summary>手続き 3D プリミティブの頂点生成。
+/// <summary>Vertex generation for procedural 3D primitives.
 /// interleaved
-/// `float3 pos; float pad; float3 nrm; float pad; float4 color;` (Stride=12) を dst に push する。
-/// Gfx.use_buffer にそのまま渡せる。
+/// `float3 pos; float pad; float3 nrm; float pad; float4 color;` (Stride=12) vertices are pushed to dst.
+/// Can be passed to Gfx.use_buffer as is.
 /// </summary>
 public static class Shapes
 {
     public const int Stride = 12; // pos.xyz pad normal.xyz pad color.rgba
 
-    /// <summary>頂点1つ。
+    /// <summary>One vertex.
     /// </summary>
     public static void Vertex(List<float> dst, float x, float y, float z,
         float nx, float ny, float nz, List<float> col)
@@ -37,7 +37,7 @@ public static class Shapes
         dst.Add(col[3]);
     }
 
-    /// <summary>三角形 (a, b, c は [x,y,z]、n は [nx,ny,nz])。
+    /// <summary>Triangle (a, b, c are [x,y,z], n is [nx,ny,nz]).
     /// </summary>
     public static void Tri(List<float> dst, List<float> a, List<float> b,
         List<float> c, List<float> n, List<float> col)
@@ -47,7 +47,7 @@ public static class Shapes
         Vertex(dst, c[0], c[1], c[2], n[0], n[1], n[2], col);
     }
 
-    /// <summary>四角形 = tri(a,b,c) + tri(a,c,d)。
+    /// <summary>Quad = tri(a,b,c) + tri(a,c,d).
     /// </summary>
     public static void Quad(List<float> dst, List<float> a, List<float> b,
         List<float> c, List<float> d, List<float> n, List<float> col)
@@ -56,8 +56,8 @@ public static class Shapes
         Tri(dst, a, c, d, n, col);
     }
 
-    /// <summary>中心 (cx,cy,cz)、辺長 (sx,sy,sz) の直方体。
-    /// 面の順序・法線は固定 (golden 互換)。
+    /// <summary>Box with center (cx,cy,cz) and side lengths (sx,sy,sz).
+    /// The face order and normals are fixed (golden compatibility).
     /// </summary>
     public static void Box(List<float> dst, float cx, float cy, float cz,
         float sx, float sy, float sz, List<float> col)
@@ -96,8 +96,8 @@ public static class Shapes
         return new List<float> { cx + nx * r, cy + ny * r, cz + nz * r, nx, ny, nz };
     }
 
-    /// <summary>UV 球。
-    /// rings/segs のデフォルトと頂点順は固定 (rings=12, segs=24)。
+    /// <summary>UV sphere.
+    /// The defaults for rings/segs and the vertex order are fixed (rings=12, segs=24).
     /// </summary>
     public static void Sphere(List<float> dst, float cx, float cy, float cz,
         float r, List<float> col, int? rings = null, int? segs = null)

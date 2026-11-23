@@ -1,7 +1,7 @@
-# iOS の simulator での実行: tests/cs のうち iOS で走らせるものを、simulator の app で動かす (scripts/apple-gate.sh --part ios)。
-# hosted の runner は simulator の起動だけで分の単位がかかるので、PR の CI (ci.yml) では走らせない。
-#   - master の push: この workflow が単独で走る。落ちたら、その commit の check が失敗になって分かる (deploy は ci.yml の側で、これを待たない)
-#   - tag (v*) の push: ci.yml がこの workflow を呼び、publish がこれを待つ
+# Run on the iOS simulator: run the tests/cs tests meant for iOS in a simulator app (scripts/apple-gate.sh --part ios).
+# On hosted runners just starting the simulator takes minutes, so this does not run in PR CI (ci.yml).
+#   - master push: this workflow runs on its own. If it fails, the check for that commit fails, which makes it visible (deploy is on the ci.yml side and does not wait for this)
+#   - tag (v*) push: ci.yml calls this workflow, and publish waits for it
 name: ios
 
 on:
@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # submodule は要るものだけを並べて取る
+      # Fetch only the needed submodules, in parallel
       - name: Submodules
         run: git submodule update --init --depth 1 --jobs 8 third_party/SDL third_party/box2d third_party/box3d third_party/openxr
 
@@ -32,7 +32,7 @@ jobs:
           path: third_party/slang/lib
           key: slang-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
-      # macOS の player (shader cache を埋める) は macos job と同じ deps を使う。iOS の app の deps は別に cache する
+      # The macOS player (which fills the shader cache) uses the same deps as the macos job. The iOS app deps are cached separately
       - name: Deps cache key
         id: deps
         run: |
@@ -62,7 +62,7 @@ jobs:
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
         run: brew install bash ninja
 
-      # 版を固定した ccache (scripts/install-ccache.sh)
+      # Pinned-version ccache (scripts/install-ccache.sh)
       - name: Install ccache
         run: bash scripts/install-ccache.sh
 
@@ -73,12 +73,12 @@ jobs:
           key: ccache-ios-${{ github.sha }}
           restore-keys: ccache-ios-
 
-      # tests/cs の test は C# なので、app に入れる bytecode を tcs で作る。
+      # The tests/cs tests are C#, so the bytecode to put in the app is built with tcs.
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: tcs/global.json
+          global-json-file: global.json
 
-      # macOS の player (shader cache を埋める) と iOS の app の build、simulator での実行
+      # Build the macOS player (which fills the shader cache) and the iOS app, and run on the simulator
       - name: Apple gate, iOS part (iOS build, simulator)
         run: |
           export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
@@ -99,5 +99,5 @@ jobs:
           path: ${{ runner.temp }}/apple-gate-tmp
           if-no-files-found: ignore
 
-  # 唯一の required check。
-  # 待つ job が全部 success なら green。
+  # The only required check.
+  # Green if all awaited jobs succeed.

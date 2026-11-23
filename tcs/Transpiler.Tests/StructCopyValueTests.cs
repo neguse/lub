@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// il-spec §10 の copy 地点のうち、?. 経由の呼び出しの引数・
-// 式位置の代入の値。期待値は C# の値意味論で、dotnet
-// differential が CoreCLR と突き合わせる
+// Among the copy points of il-spec §10, arguments of calls via ?. and
+// the value of an assignment in expression position. Expected values follow C# value semantics, and the dotnet
+// differential checks them against CoreCLR
 public class StructCopyValueTests
 {
     private const string S = """
@@ -61,8 +61,8 @@ public class StructCopyValueTests
             """));
     }
 
-    // 代入式の値は格納した slot ではなく値の copy。値を受けた側の変更は
-    // 格納先に残らない
+    // The value of an assignment expression is a copy of the value, not the stored slot. Changes made by the receiver
+    // do not affect the storage location
     [Fact]
     public void AssignmentValue_IsCopyOfStoredValue()
     {
@@ -94,8 +94,8 @@ public class StructCopyValueTests
             """));
     }
 
-    // S? の custom property への ??= の値 (型は S) も copy。値を受けた側の
-    // 変更は格納先に残らない
+    // The value of ??= on a custom property of S? (of type S) is also a copy. Changes made by the receiver
+    // do not affect the storage location
     [Fact]
     public void CoalesceAssignToNullableStructProperty_ValueIsCopy()
     {

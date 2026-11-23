@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// class / record の継承は対象外 (q.md Q15)。両 backend とも shared facts の
-// 同じ診断で、IL を作る前に止まる (CoreCLR は `D:2:sq` / `True`)
+// class / record inheritance is not supported (q.md Q15). Both backends stop with the same shared facts
+// diagnostic before producing IL (CoreCLR gives `D:2:sq` / `True`)
 public class InheritanceDifferentialTests
 {
     private const string InheritanceProgram = """

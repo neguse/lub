@@ -1,15 +1,4 @@
 #!/usr/bin/env bash
-# Docs lint: mechanical checks for the documentation policy (docs/README.md).
-#   1. Every docs/*.md is listed in the docs/README.md index.
-#   2. Links in docs/README.md resolve to existing files.
-#   3. docs/log/*.md are named YYYY-MM-DD-<slug>.md.
-#   4. docs/log/*.md carry a leading "> 記録:" banner.
-#   5. Current-state docs do not use ** (bold) emphasis.
-#   6. Every key name src/api_sys.c (scancode_from_name) accepts is listed
-#      in the Input doc of cs-lib/lub_stub.cs (the API reference).
-# Runs in the commit hook (scripts/pre-commit.sh) and in CI (the lint job
-# and scripts/native-gate.sh). Apart from 6, whether a doc's content matches
-# the implementation cannot be checked here; that stays a review concern.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -19,11 +8,10 @@ case "${1:-}" in
   -h|--help)
     cat <<'EOF'
 Usage: scripts/docs-lint.sh
-
-Checks the mechanical part of the documentation policy (docs/README.md):
-index completeness, index link resolution, docs/log/ naming + banner,
-no bold emphasis in current-state docs, and that the Input doc lists
-every key name the runtime accepts.
+Check docs:
+  - no bold emphasis
+  - Markdown links in the docs point to existing files
+  - paths to docs/ written anywhere in the repo (text, code comments) exist
 EOF
     exit 0
     ;;
@@ -41,39 +29,9 @@ err() {
   fail=1
 }
 
-index="docs/README.md"
-
-# 1. Every docs/*.md (top level, README itself excluded) appears in the index.
-for f in docs/*.md; do
-  base="$(basename "$f")"
-  [[ "$base" == "README.md" ]] && continue
-  if ! grep -q "]($base)" "$index"; then
-    err "$f is not listed in $index"
-  fi
-done
-
-# 2. Relative links in the index resolve.
-while IFS= read -r target; do
-  [[ "$target" == http* || "$target" == "#"* ]] && continue
-  if [[ ! -e "docs/$target" ]]; then
-    err "$index links to missing file: $target"
-  fi
-done < <(grep -o '](\([^)]*\))' "$index" | sed 's/^](//; s/)$//')
-
-# 3+4. docs/log/ naming and banner.
-for f in docs/log/*.md; do
-  base="$(basename "$f")"
-  if [[ ! "$base" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]+\.md$ ]]; then
-    err "$f is not named YYYY-MM-DD-<slug>.md"
-  fi
-  if ! head -5 "$f" | grep -q "^> 記録:"; then
-    err "$f has no leading '> 記録:' banner"
-  fi
-done
-
-# 5. Current-state docs ban ** (bold) emphasis. "**/" and "/**" glob
-#    patterns inside code spans are not emphasis and are ignored.
-current_docs=(README.md AGENTS.md CLAUDE.md web/README.md
+# Ban ** (bold) emphasis. "**/" and "/**" glob
+# patterns inside code spans are not emphasis and are ignored.
+current_docs=(README.md AGENTS.md tcs/README.md web/README.md lider/README.md
   docs/*.md docs/manual/*.md)
 for f in "${current_docs[@]}"; do
   [[ -f "$f" ]] || continue
@@ -83,16 +41,84 @@ for f in "${current_docs[@]}"; do
   fi
 done
 
-# 6. Key names: the source of truth is scancode_from_name in src/api_sys.c.
-#    The ranges ("a".."z", "0".."9", "f1".."f12") are written by hand.
-input_doc="$(awk '/<summary>フレームラッチ付きポーリング入力/,/public static class Input/' cs-lib/lub_stub.cs)"
-[[ -n "$input_doc" ]] || err "cs-lib/lub_stub.cs: the Input doc was not found"
-while IFS= read -r name; do
-  if ! grep -qF "\"$name\"" <<<"$input_doc"; then
-    err "key name \"$name\" (src/api_sys.c) is not listed in the Input doc of cs-lib/lub_stub.cs"
+# Markdown links in the docs above must point to existing files.
+# A target is relative to the file (leading "/" = repo root), as on GitHub.
+# URLs, "#anchor"-only targets, code spans, and fenced code are skipped;
+# the "#anchor" part of a target is not checked. As in CommonMark, text
+# in parentheses is a link only when the target is followed by nothing or by
+# a quoted title, so "[0, 1](WebGPU / D3D)" is not a link.
+link_docs=()
+for f in "${current_docs[@]}"; do
+  [[ -f "$f" ]] && link_docs+=("$f")
+done
+while IFS=$'\t' read -r f ln target; do
+  path="${target%%#*}"
+  if [[ "$path" == /* ]]; then
+    resolved="${path#/}"
+  else
+    resolved="$(dirname "$f")/$path"
   fi
-done < <(awk '/^static SDL_Scancode scancode_from_name/,/^}/' src/api_sys.c |
-  grep -o 'strcmp(key, "[^"]*")' | sed 's/^strcmp(key, "//; s/")$//')
+  if [[ ! -e "$resolved" ]]; then
+    err "$f:$ln: link target $target does not exist ($resolved)"
+  fi
+done < <(awk -v q="'" '
+  BEGIN { title_re = "^(\"[^\"]*\"|" q "[^" q "]*" q ")$" }
+  FNR == 1 { fence = 0 }
+  /^[ \t]*(```|~~~)/ { fence = !fence; next }
+  fence { next }
+  {
+    line = $0
+    gsub(/`[^`]*`/, "", line)
+    while (match(line, /\]\([^)]*\)/)) {
+      t = substr(line, RSTART + 2, RLENGTH - 3)
+      line = substr(line, RSTART + RLENGTH)
+      sub(/^[ \t]+/, "", t)
+      sub(/[ \t]+$/, "", t)
+      if (t ~ /^</) {
+        sub(/^</, "", t)
+        sub(/>.*$/, "", t)
+      } else if (t ~ /[ \t]/) {
+        title = t
+        sub(/^[^ \t]*[ \t]+/, "", title)
+        if (title !~ title_re) continue
+        sub(/[ \t].*$/, "", t)
+      }
+      if (t == "" || t ~ /^#/ || t ~ /^[A-Za-z][A-Za-z0-9+.-]*:/) continue
+      print FILENAME "\t" FNR "\t" t
+    }
+  }' "${link_docs[@]}")
+
+# Paths to docs/ written in any tracked file (backticks, plain text, code
+# comments) must exist. A path is looked up from the file's directory up to
+# the repo root, so a path that web/README.md writes relative to web/
+# (web/docs/main.ts) passes.
+# Paths into other directories are not checked: docs mention example paths
+# and install-relative paths (the tcs/tcs next to the executable).
+path_exists_from() {
+  local dir="$1" path="$2"
+  while :; do
+    if [[ "$dir" == "." ]]; then
+      [[ -e "$path" ]] && return 0
+      return 1
+    fi
+    [[ -e "$dir/$path" ]] && return 0
+    dir="$(dirname "$dir")"
+  done
+}
+prev=""
+while IFS= read -r m; do
+  f="${m%%:*}"
+  rest="${m#*:}"
+  ln="${rest%%:*}"
+  path="docs/${rest#*:*docs/}"
+  # A Markdown link repeats the path in its text and target; report it once.
+  [[ "$f:$ln:$path" == "$prev" ]] && continue
+  prev="$f:$ln:$path"
+  if ! path_exists_from "$(dirname "$f")" "$path"; then
+    err "$f:$ln: $path does not exist"
+  fi
+done < <(git grep -nIoE '(^|[^A-Za-z0-9_./-])docs/[A-Za-z0-9_./-]*[A-Za-z0-9_]' \
+  -- ':(exclude)third_party' || true)
 
 if [[ "$fail" -ne 0 ]]; then
   echo "docs-lint: policy is docs/README.md" >&2

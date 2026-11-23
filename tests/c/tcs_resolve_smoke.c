@@ -1,6 +1,6 @@
-// tcs_build の path 解決の smoke。
-// Windows の '\' 区切りは Linux でも文字列として検査できる。
-// リポジトリ root を cwd にして実行する。
+// Smoke test for tcs_build path resolution.
+// Windows '\' separators can be checked as strings even on Linux.
+// Run with the repository root as cwd.
 #include "../../src/path_util.h"
 #include "../../src/tcs_build.h"
 #include <SDL3/SDL.h>
@@ -38,7 +38,8 @@ int main(void) {
   } else {
     expect_str("LUB_CS_LIB", out, "tests/c");
   }
-  // 上書き先が無いときは cwd の cs-lib に黙って fallback しない
+  // When the override target is missing, it does not silently fall back to
+  // cs-lib in cwd
   SDL_setenv_unsafe("LUB_CS_LIB", "no/such/dir", 1);
   if (tcs_resolve_cs_lib(out, sizeof(out))) {
     SDL_Log("FAIL: LUB_CS_LIB=no/such/dir fell back to \"%s\"", out);

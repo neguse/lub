@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// HashSet<T>。列挙は挿入順 (support-matrix §18)。期待値は同じ program を TinySystem の HashSet (TinySystem/Collections.cs) で
-// .NET で実行した stdout
+// HashSet<T>. Enumeration is in insertion order (support-matrix §18). The expected values are the stdout of running the same program with TinySystem's HashSet (TinySystem/Collections.cs)
+// on .NET
 public class HashSetDifferentialTests
 {
     [CFact]
@@ -45,7 +45,7 @@ public class HashSetDifferentialTests
                     s.Add(2);
                     Console.WriteLine(J(s));
 
-                    // 伸ばす経路と free の再利用を混ぜても順が同じ
+                    // The order is the same even when the growth path and reuse of free slots are mixed
                     var big = new HashSet<int>();
                     for (var i = 0; i < 500; i++) big.Add(i * 7);
                     for (var i = 0; i < 500; i += 3) big.Remove(i * 7);
@@ -126,7 +126,7 @@ public class HashSetDifferentialTests
             """.Replace("\r\n", "\n"), output);
     }
 
-    // class の要素の hash は address。GC の境界の昇格で address が変わっても引ける
+    // The hash of a class element is its address. It can still be looked up when promotion at a GC boundary changes the address
     [CFact]
     public void HashSet_SurvivesFrameBoundaries()
     {
@@ -171,11 +171,11 @@ public class HashSetDifferentialTests
                 }
             }
             """, "L", 30);
-        // 列挙は挿入順 (support-matrix §18)
+        // Enumeration is in insertion order (support-matrix §18)
         Assert.Equal("20,20,330\nn11,n12,n13,n14,n15,n16,n17,n18,n19,n20,n21,n22,n23,n24,n25,n26,n27,n28,n29,n30,", output);
     }
 
-    // 値で比べる要素と float は TCS1001 で両 backend とも止まる
+    // Elements compared by value and float stop with TCS1001 on both backends
     [Theory]
     [InlineData("new HashSet<S>()", "UnsupportedHashSetElement(S)")]
     [InlineData("new HashSet<R>()", "UnsupportedHashSetElement(R)")]

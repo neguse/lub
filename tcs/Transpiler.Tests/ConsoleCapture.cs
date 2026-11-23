@@ -1,10 +1,10 @@
 namespace TinyCs.Tests;
 
-// Console.Out/Error はプロセス全域の状態。テストが生の SetOut で差し替えると、
-// 並列中の他テスト (SpecDotnetExecutor の in-proc 実行等) のルーティングを
-// 一時的に無効化してしまう (CI 2 vCPU で顕在化した空 capture の真因)。
-// 全テストはこの AsyncLocal ルーティング経由で capture し、SetOut は
-// ここ以外で呼ばない。
+// Console.Out/Error are process-wide state. If a test replaces them with a raw SetOut,
+// it temporarily disables the routing of other tests running in parallel (in-proc runs of SpecDotnetExecutor, etc.)
+// (the root cause of the empty captures that showed up on CI with 2 vCPUs).
+// All tests capture through this AsyncLocal routing, and SetOut is
+// not called anywhere else.
 internal static class ConsoleCapture
 {
     private static readonly AsyncLocal<StringWriter?> OutCapture = new();
@@ -24,7 +24,7 @@ internal static class ConsoleCapture
         }
     }
 
-    /// <summary>この論理フローの Console.Out を writer へ向ける。</summary>
+    /// <summary>Points Console.Out of this logical flow to writer.</summary>
     public static IDisposable BeginOut(StringWriter writer)
     {
         EnsureInstalled();
@@ -32,7 +32,7 @@ internal static class ConsoleCapture
         return new Scope(OutCapture);
     }
 
-    /// <summary>action の間だけ stdout/stderr を捕捉して返す。</summary>
+    /// <summary>Captures stdout/stderr only while action runs and returns them.</summary>
     public static (int ExitCode, string Stdout, string Stderr) Run(
         Func<int> action)
     {

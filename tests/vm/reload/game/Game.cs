@@ -1,9 +1,9 @@
-// tcs VM の player (lub Game.csproj) の hot reload の検査 (scripts/vm-project-test.sh が一時ディレクトリに写して動かす)。
-// OnFrame が呼ぶ Advance の本文を書き換えると、状態を保ったまま差分が当たり、OnReload が呼ばれる。
-// instance の field の初期化子を変えた保存では、OnReload の後に OnReloadNotes に知らせが届き、生きている instance は今の値のまま。
-// compile error の保存では、OnBuildFailed に診断が届き、前のコードのまま動く。
-// player は差分を当てるたびに `lub: reloaded`、compile error の保存では `lub: reload failed: ...` を log に出す (../expect.txt)。
-// 書き換える文は、この file の中で 1 か所だけに現れるように、探す文字列を分けて書く。
+// Checks hot reload in the tcs VM player (lub Game.csproj) (scripts/vm-project-test.sh copies it to a temporary directory and runs it).
+// Rewriting the body of Advance, which OnFrame calls, applies the diff while keeping the state, and OnReload is called.
+// On a save that changes the initializer of an instance field, a notice reaches OnReloadNotes after OnReload, and live instances keep their current values.
+// On a save with a compile error, the diagnostics reach OnBuildFailed, and the previous code keeps running.
+// The player logs `lub: reloaded` each time it applies a diff, and `lub: reload failed: ...` on a save with a compile error (../expect.txt).
+// The search strings are written split up so that each statement to rewrite appears in only one place in this file.
 using System;
 using Lub;
 

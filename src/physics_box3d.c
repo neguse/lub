@@ -1,6 +1,7 @@
-// Box3D の即時モード層。
-// key で宣言する world / body / shape / joint の table と、C API (include/lub/lub_api.h の lub_phys3d_*) の実装。
-// VM には触らない (tcs VM の面は src/gen/vm_api_gen.c、生成物)。
+// Immediate-mode layer for Box3D.
+// Tables of world / body / shape / joint declared by key, and the
+// implementation of the C API (lub_phys3d_* in include/lub/lub_api.h). Does not
+// touch the VM (the tcs VM surface is src/gen/vm_api_gen.c, generated code).
 #include "physics_box3d.h"
 #include "phys3d_internal.h"
 
@@ -35,8 +36,8 @@ typedef struct Phys3dShape {
   bool constructor_warned;
   int material_id;
   int kind; // LubPhys3dShapeKind
-  // box3d の shape が参照する (copy しない) 重い geometry。
-  // この struct が所有し、box3d の shape を壊したあとに解放する。
+  // Heavy geometry that box3d shapes reference (without copying).
+  // This struct owns it and frees it after destroying the box3d shape.
   b3MeshData *mesh_data;
   b3HeightFieldData *height_field_data;
   b3CompoundData *compound_data;
@@ -237,8 +238,9 @@ static LubVec3d lub_vec3(b3Vec3 v) { return (LubVec3d){v.x, v.y, v.z}; }
 static LubVec3d lub_pos(b3Pos p) {
   return (LubVec3d){(float)p.x, (float)p.y, (float)p.z};
 }
-// 面の四元数は正規化済みが契約 (physics_box3d_api.inc の quat3_normalized で正規化する)。
-// ここで正規化し直すと丸めが変わるので、そのまま使う。
+// Quaternions on the surface are normalized by contract (quat3_normalized in
+// physics_box3d_api.inc normalizes them). Normalizing again here would change
+// the rounding, so they are used as is.
 static b3Quat quat_of(LubQuat3d q) {
   b3Quat out = {{q.x, q.y, q.z}, q.w};
   return out;
@@ -428,6 +430,9 @@ static Phys3dJoint *joint_get_or_create(Phys3dWorld *w, const char *key) {
 }
 
 // ------------------------------------------------------------ tombstones
+// For contact / sensor end events of shapes destroyed by prune or recreation,
+// the shape cannot be looked up from the Box3D id. Keep a copy of the shape key
+// per id and use it to fill Body and Shape of those events (Valid is false).
 
 static uint32_t shape_tombstone_bucket(uint64_t id_key) {
   return (uint32_t)(id_key ^ (id_key >> 32)) & (PHYS3D_TOMBSTONE_BUCKETS - 1);
@@ -574,8 +579,8 @@ static void event_buffer_free(Phys3dEventBuffer *events) {
   memset(events, 0, sizeof(*events));
 }
 
-// 配列の末尾に 1 要素ぶん (zero) を確保する。
-// 失敗は NULL。
+// Reserves one element (zeroed) at the end of the array.
+// Returns NULL on failure.
 static void *event_push_raw(void **items, int *count, int *cap,
                             size_t item_size, int first_cap) {
   if (*count >= *cap) {
@@ -952,7 +957,8 @@ static void p3_shape_desc_init(P3ShapeDesc *desc) {
   desc->filter.mask_bits = UINT64_MAX;
 }
 
-// type ごとの既定値 (parallel / wheel は spring が既定で有効) を入れる。
+// Fills the per-type default values (parallel / wheel have the spring enabled
+// by default).
 static void p3_joint_desc_init(P3JointDesc *desc, int32_t type) {
   memset(desc, 0, sizeof(*desc));
   desc->type = type;
@@ -995,6 +1001,9 @@ static bool world_create_or_recreate(App *app, Phys3dWorld *w,
   if (needs_create) {
     callbacks_clear(w);
     world_destroy_box3d_and_contents(w);
+    // The world gets no worker (enqueueTask), so Box3D solves only on the
+    // thread that called Step. Callbacks such as Filter / PreSolve call game
+    // functions, so they must not be called from a worker thread.
     b3WorldDef def = b3DefaultWorldDef();
     def.gravity = gravity;
     def.enableSleep = desc->sleep;
@@ -1285,8 +1294,9 @@ static b3ShapeDef make_shape_def(const P3ShapeDesc *desc, Phys3dShape *shape) {
   def.baseMaterial.restitution = desc->restitution;
   def.baseMaterial.userMaterialId = (uint64_t)desc->material_id;
   def.isSensor = desc->sensor;
-  // Box3D は shape が opt in したときだけ custom filter を呼ぶ。
-  // phys2d と同じく world の filter callback を全 shape に効かせるので常に opt in (callback が無ければ box3d 側で素通りする)。
+  // Box3D calls the custom filter only when the shape opts in.
+  // As in phys2d, the world filter callback applies to all shapes, so always
+  // opt in (if there is no callback, box3d passes it through).
   def.enableCustomFiltering = true;
   def.enableContactEvents = desc->contact;
   def.enableHitEvents = desc->hit;
@@ -1311,7 +1321,8 @@ static uint64_t shape_base_hash(const P3ShapeDesc *desc, int kind) {
 static void shape_apply_runtime_desc(Phys3dShape *shape,
                                      const P3ShapeDesc *desc) {
   b3Shape_SetDensity(shape->id, desc->density, true);
-  // Box3D には field ごとの setter が無いので surface material をまとめて書き戻す。
+  // Box3D has no per-field setters, so the surface material is written back as
+  // a whole.
   b3SurfaceMaterial material = b3Shape_GetSurfaceMaterial(shape->id);
   material.friction = desc->friction;
   material.restitution = desc->restitution;
@@ -1357,9 +1368,10 @@ static void shape_mark_declared(Phys3dShape *shape, int kind,
   shape_tombstone_update_shape(shape);
 }
 
-// 共通の宣言手順。
-// explicit_version は hull / mesh / height_field / compound (version 必須、geometry の hash では再生成しない)。
-// create は recreated のときだけ呼ばれ、shape->id (と heavy data) を作る。
+// Common declaration procedure.
+// explicit_version is for hull / mesh / height_field / compound (version
+// required, not regenerated by the geometry hash). create is called only when
+// recreated, and creates shape->id (and the heavy data).
 typedef struct ShapeDeclare {
   const char *fn;
   int kind;
@@ -1558,7 +1570,8 @@ static bool create_cylinder(App *app, Phys3dBody *b, Phys3dShape *shape,
     return false;
   }
   shape->id = b3CreateHullShape(b->id, def, hull);
-  // b3CreateHullShape は hull を world 所有の database に copy するので、一時の hull は解放してよい。
+  // b3CreateHullShape copies the hull into a world-owned database, so the
+  // temporary hull can be freed.
   b3DestroyHull(hull);
   return true;
 }
@@ -1621,7 +1634,7 @@ static LubStatus p3_cone(LubContext *ctx, LubHandle body, LubStr key,
   if (desc->slices < 4 || desc->slices > 32)
     return lub_api_fail(app, "phys3d_cone: slices must be between 4 and 32");
   ConeGeom g = {desc->height, desc->radius1, desc->radius2, desc->slices};
-  // b3CreateCone は radius2 > 0 を assert するので、0 は小さな cap に丸める。
+  // b3CreateCone asserts radius2 > 0, so 0 is clamped to a small cap.
   if (g.radius2 <= 0.0f)
     g.radius2 = g.radius1 * 1e-3f;
   uint64_t h = phys_hash_init();
@@ -1644,7 +1657,7 @@ static LubStatus p3_cone(LubContext *ctx, LubHandle body, LubStr key,
 static bool create_hull(App *app, Phys3dBody *b, Phys3dShape *shape,
                         const b3ShapeDef *def, const void *geom) {
   const P3HullDesc *g = (const P3HullDesc *)geom;
-  // b3CreateHull は maxVertexCount を [4, 255] に丸める。
+  // b3CreateHull clamps maxVertexCount to [4, 255].
   b3HullData *hull =
       b3CreateHull((const b3Vec3 *)g->points, g->point_count, g->max_vertices);
   if (!hull) {
@@ -1705,7 +1718,7 @@ static bool create_mesh(App *app, Phys3dBody *b, Phys3dShape *shape,
   int degenerate[16];
   for (int i = 0; i < 16; ++i)
     degenerate[i] = -1;
-  // b3CreateMesh は入力を自前の blob に clone する。
+  // b3CreateMesh clones the input into its own blob.
   b3MeshData *mesh = b3CreateMesh(&mesh_def, degenerate, 16);
   for (int i = 0; i < 16 && degenerate[i] >= 0; ++i)
     SDL_Log("phys3d_mesh('%s/%s'): degenerate triangle %d skipped", b->key,
@@ -1716,12 +1729,13 @@ static bool create_mesh(App *app, Phys3dBody *b, Phys3dShape *shape,
   }
   b3ShapeDef def = *def_in;
   if (g->materials) {
-    // b3CreateShapeInternal は material 配列を shape に copy する。
+    // b3CreateShapeInternal copies the material array into the shape.
     def.materials = g->materials;
     def.materialCount = m->material_count;
   }
   shape->id = b3CreateMeshShape(b->id, &def, mesh, vec3_of(m->scale));
-  // b3CreateMeshShape は mesh の pointer を持つだけなので、この shape が box3d の shape を壊すまで所有する。
+  // b3CreateMeshShape only keeps the mesh pointer, so this shape owns the mesh
+  // until it destroys the box3d shape.
   shape->mesh_data = mesh;
   return true;
 }
@@ -1823,7 +1837,7 @@ static bool create_height_field(App *app, Phys3dBody *b, Phys3dShape *shape,
   hf_def.globalMinimumHeight = g->min_height;
   hf_def.globalMaximumHeight = g->max_height;
   hf_def.clockwiseWinding = g->desc->clockwise_winding;
-  // b3CreateHeightField は heights を量子化して自前の blob に持つ。
+  // b3CreateHeightField quantizes the heights and keeps them in its own blob.
   b3HeightFieldData *hf = b3CreateHeightField(&hf_def);
   if (!hf) {
     lub_api_fail(app, "phys3d_height_field: b3CreateHeightField failed");
@@ -1916,7 +1930,8 @@ static uint64_t hash_transform(uint64_t h, b3Transform t) {
   return hash_quat(h, t.q);
 }
 
-// children を compound の child def に写し、constructor hash を *hash に返す。
+// Copies children into the compound child defs and returns the constructor hash
+// in *hash.
 static bool compound_children_build(App *app, const P3CompoundDesc *desc,
                                     CompoundGeom *g, uint64_t *hash) {
   memset(g, 0, sizeof(*g));
@@ -2023,7 +2038,7 @@ static bool create_compound(App *app, Phys3dBody *b, Phys3dShape *shape,
   compound_def.capsuleCount = g->capsule_count;
   compound_def.hulls = g->hulls;
   compound_def.hullCount = g->hull_count;
-  // b3CreateCompound は入力を全部 clone する。
+  // b3CreateCompound clones all of the input.
   b3CompoundData *compound = b3CreateCompound(&compound_def);
   if (!compound) {
     lub_api_fail(app, "phys3d_compound: b3CreateCompound failed");
@@ -2044,7 +2059,7 @@ static LubStatus p3_compound(LubContext *ctx, LubHandle body, LubStr key,
   if (!desc->shape.has_version)
     return lub_api_fail(app, "phys3d_compound: explicit version is required");
   Phys3dBody *b = body_from_handle(app, body);
-  // Box3D は compound を static で sensor でない body に限る。
+  // Box3D allows compounds only on static, non-sensor bodies.
   if (!body_is_live(b) || b3Body_GetType(b->id) != b3_staticBody)
     return lub_api_fail(app, "phys3d_compound: body must be static");
   if (desc->shape.sensor)
@@ -2129,7 +2144,8 @@ static int joint_type_from_b3(b3JointType type) {
   }
 }
 
-// 軸は joint の正準軸 (slide 軸は frame A の x、hinge / cone 軸は z) を世界座標の axis に回して表す。
+// An axis is expressed by rotating the joint's canonical axis (the slide axis
+// is x of frame A, the hinge / cone axis is z) onto the world-space axis.
 static b3Vec3 joint_canonical_axis(int kind) {
   switch (kind) {
   case LUB_PHYS3D_JOINT_TYPE_PRISMATIC:
@@ -2140,8 +2156,8 @@ static b3Vec3 joint_canonical_axis(int kind) {
   }
 }
 
-// body の local frame: 世界座標の anchor と axis を body の transform で local 化する。
-// 明示の frame があればそれが勝つ。
+// Body local frame: the world-space anchor and axis are made local with the
+// body transform. An explicit frame, if given, wins.
 static b3Transform joint_frame_for_body(Phys3dBody *body, bool has_axis,
                                         b3Quat world_rot, bool has_anchor,
                                         LubVec3d anchor, bool has_frame,
@@ -2647,7 +2663,7 @@ static LubStatus p3_joint_motor_force(LubContext *ctx, LubHandle joint,
   return LUB_OK;
 }
 
-// spherical は vector (has_vector)、revolute / wheel は scalar (has)。
+// spherical uses a vector (has_vector), revolute / wheel use a scalar (has).
 static LubStatus p3_joint_motor_torque(LubContext *ctx, LubHandle joint,
                                        float *out, bool *has, LubVec3d *vector,
                                        bool *has_vector) {
@@ -3247,7 +3263,9 @@ static void snapshot_fill_manifold(Phys3dContactSnapshot *dst,
   dst->point_count = manifold->pointCount;
   if (manifold->pointCount > 0 && B3_IS_NON_NULL(shape_id_a) &&
       b3Shape_IsValid(shape_id_a)) {
-    // manifold の anchor は body の重心相対 (world 向き) なので body A の重心から world の点を作る。
+    // The manifold anchor is relative to the body center of mass (in world
+    // orientation), so the world point is built from the center of mass of body
+    // A.
     b3Pos com = b3Body_GetWorldCenterOfMass(b3Shape_GetBody(shape_id_a));
     b3Vec3 anchor = manifold->points[0].anchorA;
     dst->x = (float)(com.x + anchor.x);
@@ -3266,7 +3284,8 @@ static void capture_contact_events(Phys3dWorld *w) {
       continue;
     fill_shape_snapshot(w, dst, true, src->shapeIdA);
     fill_shape_snapshot(w, dst, false, src->shapeIdB);
-    // Box3D の begin event は manifold を持たないので contact id から引く。
+    // Box3D begin events have no manifold, so it is looked up from the contact
+    // id.
     if (b3Contact_IsValid(src->contactId)) {
       b3ContactData data = b3Contact_GetData(src->contactId);
       if (data.manifoldCount > 0 && data.manifolds)
@@ -3392,8 +3411,9 @@ static void capture_joint_events(Phys3dWorld *w) {
   }
 }
 
-// box3d は b3World_Step の冒頭でイベント配列をクリアする。
-// 1フレームに複数固定ステップ回すときは各ステップ直後に回収しないと最後のステップ以外のイベントが失われる。
+// box3d clears the event arrays at the start of b3World_Step.
+// When running multiple fixed steps in one frame, events must be collected
+// right after each step, or the events of every step except the last are lost.
 static void capture_step_events(Phys3dWorld *w) {
   capture_contact_events(w);
   capture_sensor_events(w);
@@ -3445,7 +3465,7 @@ static LubStatus p3_step(LubContext *ctx, LubHandle world, float dt,
     w->accumulator = 0.0;
     dropped = true;
   }
-  // move は最終姿勢だけあればよいので最後のステップぶんのみ。
+  // move only needs the final pose, so only the last step is collected.
   if (steps > 0)
     capture_body_events(w);
   w->begun = false;
@@ -4086,7 +4106,7 @@ static b3QueryFilter query_filter_of(const P3QueryFilter *f) {
 
 typedef struct QueryCtx {
   Phys3dState *state;
-  b3Pos origin; // collide_mover の plane を world に戻すため
+  b3Pos origin; // To bring collide_mover planes back to world space
   P3OverlapFn overlap;
   P3RayFn ray;
   P3PlaneFn plane;
@@ -4202,7 +4222,8 @@ static LubStatus p3_overlap_aabb(LubContext *ctx, LubHandle world,
 
 #define PHYS3D_PROXY_MAX_POINTS 8
 
-// proxy の点は origin 相対にする (world 原点から遠くても精度を保つ)。
+// Proxy points are made relative to origin (to keep precision even far from the
+// world origin).
 static bool make_proxy(App *app, const P3ShapeProxy *p, const char *fn,
                        b3Vec3 *points, b3ShapeProxy *proxy, b3Pos *origin) {
   switch (p->kind) {
@@ -4365,7 +4386,8 @@ static bool plane_trampoline(b3ShapeId shape_id, const b3PlaneResult *plane,
   P3MoverPlane p;
   memset(&p, 0, sizeof(p));
   fill_shape_part(&p.shape, shape_id);
-  // plane の結果は query の origin 相対なので world に戻す。
+  // Plane results are relative to the query origin, so they are brought back to
+  // world space.
   p.point = (LubVec3d){(float)(q->origin.x + plane->point.x),
                        (float)(q->origin.y + plane->point.y),
                        (float)(q->origin.z + plane->point.z)};

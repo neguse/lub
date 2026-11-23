@@ -1,4 +1,4 @@
-// ウィンドウが映す物 (中身)。
+// What a window shows (its content).
 using System.Collections.Generic;
 using Lub;
 
@@ -6,14 +6,14 @@ namespace LiderCore;
 
 public interface IContent
 {
-    // 映す絵 (無ければ null)
+    // The picture to show (null if none)
     TextureRef? Texture();
 }
 
-// コード: file を開いたタブの並び。出しているタブの本文を、ウィンドウに描く (PanelView。画面に写す絵は持たない)
+// Code: a row of tabs with open files. Draws the text of the shown tab into the window (PanelView; it has no picture to copy to the display)
 public class Code : IContent
 {
-    // タブ (左から) と、出しているタブ
+    // Tabs (from the left) and the shown tab
     public readonly List<Document> Tabs = new List<Document>();
     public int Tab;
 
@@ -23,7 +23,7 @@ public class Code : IContent
     }
 
     public Document Doc => Tabs[Tab];
-    // 出しているタブの エディタの view
+    // Editor view of the shown tab
     public int ViewId => Doc.Id;
 
     public TextureRef? Texture()
@@ -32,7 +32,7 @@ public class Code : IContent
     }
 }
 
-// ゲームの値の木と、負荷の一覧 (InspectView が描いた絵)
+// The game's value tree and the load list (a picture drawn by InspectView)
 public class Inspector : IContent
 {
     public readonly InspectView View;
@@ -44,12 +44,12 @@ public class Inspector : IContent
 
     public TextureRef? Texture()
     {
-        // 前の frame に宣言した絵だけを写す (lider を隠している間は宣言しない)
+        // Copies only pictures declared in the previous frame (nothing is declared while lider is hidden)
         return View.DeclaredAt == DeclareGap.Frame ? View.Texture : null;
     }
 }
 
-// コードの、ゲームの動いている版を左右に並べる板 (PanelView が描く。画面に写す絵は持たない)。コードのウィンドウの子になる
+// A board showing the code next to the version the game is running (drawn by PanelView; it has no picture to copy to the display). It becomes a child of the code window
 public class Diff : IContent
 {
     public readonly Code Code;
@@ -65,7 +65,7 @@ public class Diff : IContent
     }
 }
 
-// 操作の案内 (HintCard が描く。画面に写す絵は持たない)
+// Control hints (drawn by HintCard; it has no picture to copy to the display)
 public class Hints : IContent
 {
     public readonly HintCard Card;
@@ -81,7 +81,7 @@ public class Hints : IContent
     }
 }
 
-// 画像と音の file (AssetView が描く。画面に写す絵は持たない)
+// Image and sound files (drawn by AssetView; it has no picture to copy to the display)
 public class Asset : IContent
 {
     public readonly AssetView View;
@@ -97,14 +97,14 @@ public class Asset : IContent
     }
 }
 
-// ゲームの版: 保存した版 (GameApp) と、編集中の版 (DraftGame。保存していない本文で変換する)
+// Game versions: the saved version (GameApp) and the version being edited (DraftGame; compiled from the unsaved text)
 public enum GameVersion
 {
     Saved,
     Draft,
 }
 
-// ゲームの絵
+// The game picture
 public class GameView : IContent
 {
     public readonly GameVersion Version;

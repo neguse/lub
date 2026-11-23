@@ -1,5 +1,5 @@
-// 実装ライブラリ lubx の AppTimeline。
-// App.Use で開いた app の直近の frame を控え、止めて、過去の frame に戻る。
+// AppTimeline of the implementation library lubx.
+// Records the recent frames of an app opened with App.Use, pauses it, and goes back to past frames.
 
 using System;
 using Lub;
@@ -7,20 +7,20 @@ using Lub;
 namespace Lubx;
 
 /// <summary>
-/// 開いた app を App.Step の代わりに進め、frame ごとに、進める前の状態 (App.Save) と、見せた入力 (StepInput.Keep) と dt を控える。
-/// 止めている間の Step は、止めた frame の状態を読み込み、控えた入力と dt でその frame を作り直して描く (code を直せば、直した code で描き直す)。
-/// 控えは firstSlot から capacity 個の番号を使う。同じ番号をほかの App.Save に使わないこと。
-/// 物理の world、音、file は戻らない (App.Load と同じ)。
+/// Steps the opened app instead of App.Step, and for each frame records the state before stepping (App.Save), the input shown (StepInput.Keep), and dt.
+/// While paused, Step loads the state of the paused frame, recreates that frame with the recorded input and dt, and draws it (if the code is fixed, it redraws with the fixed code).
+/// The records use capacity slot numbers starting at firstSlot. Do not use the same numbers for other App.Save calls.
+/// The physics world, sound, and files are not rolled back (same as App.Load).
 /// </summary>
 public class AppTimeline
 {
     readonly int capacity;
     readonly int firstSlot;
     readonly float[] dts;
-    // 次に書く場所と、控えている数
+    // Next position to write, and the number of recorded frames
     int head;
     int count;
-    // 止めている位置 (何個前か。0 は直近に控えた frame)。止めていなければ -1
+    // Paused position (how many frames back; 0 is the most recently recorded frame). -1 if not paused
     int paused = -1;
 
     public AppTimeline(int capacity, int firstSlot = 0)
@@ -30,17 +30,17 @@ public class AppTimeline
         dts = new float[capacity];
     }
 
-    /// <summary>控えている frame の数。
+    /// <summary>Number of recorded frames.
     /// </summary>
     public int Count => count;
 
-    /// <summary>止めている位置 (何個前か)。止めていなければ -1。
+    /// <summary>Paused position (how many frames back). -1 if not paused.
     /// </summary>
     public int Position => paused;
 
     int Index(int back) => (head - 1 - back + capacity * 2) % capacity;
 
-    /// <summary>back 個前 (0 は直近に控えた frame) の frame で止める。控えている範囲に丸める。控えが無ければ何もしない。
+    /// <summary>Pauses at the frame back frames ago (0 is the most recently recorded frame). Clamped to the recorded range. Does nothing if nothing is recorded.
     /// </summary>
     public void Pause(int back)
     {
@@ -48,23 +48,23 @@ public class AppTimeline
         paused = back < 0 ? 0 : back >= count ? count - 1 : back;
     }
 
-    /// <summary>止めている位置から続ける。それより後の控えは捨てる。
+    /// <summary>Continues from the paused position. Records after it are discarded.
     /// </summary>
     public void Resume()
     {
         if (paused < 0) return;
-        // 止めた frame は次の Step が同じ状態から作り直して控え直す
+        // The next Step recreates the paused frame from the same state and records it again
         head = Index(paused);
         count -= paused + 1;
         resume = true;
         paused = -1;
     }
 
-    // Resume の後の最初の Step は、止めていた frame の状態から始める
+    // The first Step after Resume starts from the state of the paused frame
     bool resume;
 
-    /// <summary>app を 1 frame 進める (止めていれば、止めた frame を作り直す)。
-    /// 戻り値と引数は App.Step と同じ。状態を控えられない app (App.Save が false) は、控えずに進める。
+    /// <summary>Advances the app by 1 frame (if paused, recreates the paused frame).
+    /// The return value and arguments are the same as App.Step. An app whose state cannot be recorded (App.Save returns false) is stepped without recording.
     /// </summary>
     public bool Step(AppRef app, TextureRef target, float dt, StepInput? input = null)
     {
@@ -72,7 +72,7 @@ public class AppTimeline
         {
             var at = Index(paused);
             if (!App.Load(app, firstSlot + at, out _)) return false;
-            // 入力は控えた物を見せ、XR は今の物を見せる (見る人は、止めている間も動く)
+            // Show the recorded input, and the current XR (the viewer keeps moving even while paused)
             return App.Step(app, target, dts[at], new StepInput
             {
                 Xr = input?.Xr,
@@ -107,10 +107,10 @@ public class AppTimeline
         });
     }
 
-    /// <summary>止めている frame の状態を書き換える。
-    /// change は、その frame を進める前の状態を読み込んだ app に、値を書く (Sys.InspectSet など)。書けたら true を返す。
-    /// change が true を返したら、書き換えた状態を控え直し、それより後の控えを捨てる (止めている位置は直近になる)。次の Step は、書き換えた状態から止めた frame を作り直す。
-    /// 止めていないか、状態を読み書きできないか、change が false を返したら、控えは変えずに false。
+    /// <summary>Rewrites the state of the paused frame.
+    /// change writes values (Sys.InspectSet etc.) into the app, which has loaded the state from before that frame was stepped. It returns true if it wrote them.
+    /// If change returns true, the rewritten state is recorded again and the records after it are discarded (the paused position becomes the most recent). The next Step recreates the paused frame from the rewritten state.
+    /// If not paused, if the state cannot be read or written, or if change returns false, returns false without changing the records.
     /// </summary>
     public bool Edit(AppRef app, Func<bool> change)
     {
@@ -125,7 +125,7 @@ public class AppTimeline
         return true;
     }
 
-    /// <summary>控えを全部捨てる。
+    /// <summary>Discards all records.
     /// </summary>
     public void Clear()
     {

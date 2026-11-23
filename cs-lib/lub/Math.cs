@@ -1,17 +1,17 @@
-// lub の数学ライブラリ。
-// 可変 struct + operator オーバーロードで演算子面を出す。
-// スカラー倍は (v * s) / (s * v) の両 overload を明示定義する。
-// モジュール名は System.Math と衝突するため class Math は作らず、Vec2 / Vec3 / Vec4 / Quat / Mat4 / MathUtil をフラットに置く。
-// Phys2d/Phys3d の wire 型 (Vec2d / Vec3d / Quat3d) とは wire() / fromWire() で明示変換する。
+// lub's math library.
+// Exposes the operator surface through mutable structs + operator overloading.
+// Scalar multiplication explicitly defines both overloads (v * s) / (s * v).
+// The module name would collide with System.Math, so there is no class Math; Vec2 / Vec3 / Vec4 / Quat / Mat4 / MathUtil are placed flat.
+// Conversion to and from the Phys2d/Phys3d wire types (Vec2d / Vec3d / Quat3d) is explicit, with wire() / fromWire().
 
 using System;
 using System.Collections.Generic;
 
 namespace Lub;
 
-/// <summary>2 次元ベクトル。
-/// 演算子: a+b / a-b / a*b (成分積) / a*s / s*a / a/b (成分商) / a/s / -a。
-/// 同名メソッド (add / sub / mul / scale / div / negate) も使える。
+/// <summary>2D vector.
+/// Operators: a+b / a-b / a*b (component-wise product) / a*s / s*a / a/b (component-wise quotient) / a/s / -a.
+/// Same-named methods (add / sub / mul / scale / div / negate) are also available.
 /// </summary>
 public struct Vec2
 {
@@ -28,7 +28,7 @@ public struct Vec2
 
     public static Vec2 One() => new Vec2(1, 1);
 
-    /// <summary>全成分が v のベクトル。
+    /// <summary>Vector with all components set to v.
     /// </summary>
     public static Vec2 Splat(float v) => new Vec2(v, v);
 
@@ -36,18 +36,18 @@ public struct Vec2
 
     public readonly Vec2 Sub(Vec2 b) => new Vec2(X - b.X, Y - b.Y);
 
-    /// <summary>スカラー倍。
-    /// 演算子は v * s と s * v の両方が使える。
+    /// <summary>Scalar multiplication.
+    /// Both v * s and s * v work as operators.
     /// </summary>
     public readonly Vec2 Scale(float s) => new Vec2(X * s, Y * s);
 
     public readonly Vec2 Negate() => new Vec2(-X, -Y);
 
-    /// <summary>成分ごとの積 (Hadamard 積)。
+    /// <summary>Component-wise product (Hadamard product).
     /// </summary>
     public readonly Vec2 Mul(Vec2 b) => new Vec2(X * b.X, Y * b.Y);
 
-    /// <summary>成分ごとの商。
+    /// <summary>Component-wise quotient.
     /// </summary>
     public readonly Vec2 Div(Vec2 b) => new Vec2(X / b.X, Y / b.Y);
 
@@ -74,8 +74,8 @@ public struct Vec2
 
     public readonly float Length() => (float)Math.Sqrt(LengthSq());
 
-    /// <summary>正規化。
-    /// 零ベクトルは零ベクトルのまま返す。
+    /// <summary>Normalization.
+    /// A zero vector is returned as a zero vector.
     /// </summary>
     public readonly Vec2 Normalize()
     {
@@ -100,26 +100,26 @@ public struct Vec2
         new Vec2(Math.Max(lo.X, Math.Min(hi.X, X)),
             Math.Max(lo.Y, Math.Min(hi.Y, Y)));
 
-    /// <summary>反時計回りに 90 度回した垂直ベクトル (-y, x)。
+    /// <summary>Perpendicular vector rotated 90 degrees counterclockwise (-y, x).
     /// </summary>
     public readonly Vec2 Perp() => new Vec2(-Y, X);
 
-    /// <summary>+X 軸からの角度 (ラジアン)。
+    /// <summary>Angle from the +X axis (radians).
     /// </summary>
     public readonly float Angle() => (float)Math.Atan2(Y, X);
 
-    /// <summary>Phys2d の wire 型へ変換する。
+    /// <summary>Converts to the Phys2d wire type.
     /// </summary>
     public readonly Vec2d Wire() => new Vec2d { X = this.X, Y = this.Y };
 
-    /// <summary>Phys2d の wire 型から変換する。
+    /// <summary>Converts from the Phys2d wire type.
     /// </summary>
     public static Vec2 FromWire(Vec2d v) => new Vec2(v.X, v.Y);
 }
 
-/// <summary>3 次元ベクトル。
-/// 演算子: a+b / a-b / a*b (成分積) / a*s / s*a / a/b (成分商) / a/s / -a。
-/// 同名メソッド (add / sub / mul / scale / div / negate) も使える。
+/// <summary>3D vector.
+/// Operators: a+b / a-b / a*b (component-wise product) / a*s / s*a / a/b (component-wise quotient) / a/s / -a.
+/// Same-named methods (add / sub / mul / scale / div / negate) are also available.
 /// </summary>
 public struct Vec3
 {
@@ -138,7 +138,7 @@ public struct Vec3
 
     public static Vec3 One() => new Vec3(1, 1, 1);
 
-    /// <summary>全成分が v のベクトル。
+    /// <summary>Vector with all components set to v.
     /// </summary>
     public static Vec3 Splat(float v) => new Vec3(v, v, v);
 
@@ -146,7 +146,7 @@ public struct Vec3
 
     public static Vec3 Right() => new Vec3(1, 0, 0);
 
-    /// <summary>左手系 (lookAtLh / perspectiveLh) の前方 +Z。
+    /// <summary>Forward +Z in the left-handed system (lookAtLh / perspectiveLh).
     /// </summary>
     public static Vec3 Forward() => new Vec3(0, 0, 1);
 
@@ -154,18 +154,18 @@ public struct Vec3
 
     public readonly Vec3 Sub(Vec3 b) => new Vec3(X - b.X, Y - b.Y, Z - b.Z);
 
-    /// <summary>スカラー倍。
-    /// 演算子は v * s と s * v の両方が使える。
+    /// <summary>Scalar multiplication.
+    /// Both v * s and s * v work as operators.
     /// </summary>
     public readonly Vec3 Scale(float s) => new Vec3(X * s, Y * s, Z * s);
 
     public readonly Vec3 Negate() => new Vec3(-X, -Y, -Z);
 
-    /// <summary>成分ごとの積 (Hadamard 積)。
+    /// <summary>Component-wise product (Hadamard product).
     /// </summary>
     public readonly Vec3 Mul(Vec3 b) => new Vec3(X * b.X, Y * b.Y, Z * b.Z);
 
-    /// <summary>成分ごとの商。
+    /// <summary>Component-wise quotient.
     /// </summary>
     public readonly Vec3 Div(Vec3 b) => new Vec3(X / b.X, Y / b.Y, Z / b.Z);
 
@@ -195,8 +195,8 @@ public struct Vec3
 
     public readonly float Length() => (float)Math.Sqrt(LengthSq());
 
-    /// <summary>正規化。
-    /// 零ベクトルは零ベクトルのまま返す。
+    /// <summary>Normalization.
+    /// A zero vector is returned as a zero vector.
     /// </summary>
     public readonly Vec3 Normalize()
     {
@@ -222,21 +222,21 @@ public struct Vec3
             Math.Max(lo.Y, Math.Min(hi.Y, Y)),
             Math.Max(lo.Z, Math.Min(hi.Z, Z)));
 
-    /// <summary>normal (正規化済みであること) に対する反射ベクトル。
+    /// <summary>Reflection vector about normal (which must be normalized).
     /// </summary>
     public readonly Vec3 Reflect(Vec3 normal) => Sub(normal.Scale(2.0f * Dot(normal)));
 
-    /// <summary>Phys3d の wire 型へ変換する。
+    /// <summary>Converts to the Phys3d wire type.
     /// </summary>
     public readonly Vec3d Wire() => new Vec3d { X = this.X, Y = this.Y, Z = this.Z };
 
-    /// <summary>Phys3d の wire 型から変換する。
+    /// <summary>Converts from the Phys3d wire type.
     /// </summary>
     public static Vec3 FromWire(Vec3d v) => new Vec3(v.X, v.Y, v.Z);
 }
 
-/// <summary>4 次元ベクトル (同次座標・色など)。
-/// 演算子: a+b / a-b / a*s / s*a / a/s / -a。
+/// <summary>4D vector (homogeneous coordinates, colors, etc.).
+/// Operators: a+b / a-b / a*s / s*a / a/s / -a.
 /// </summary>
 public struct Vec4
 {
@@ -257,8 +257,8 @@ public struct Vec4
 
     public static Vec4 One() => new Vec4(1, 1, 1, 1);
 
-    /// <summary>w を付与して Vec3 から拡張する。
-    /// 位置なら w=1、方向なら w=0。
+    /// <summary>Extends a Vec3 by adding w.
+    /// w=1 for a position, w=0 for a direction.
     /// </summary>
     public static Vec4 FromVec3(Vec3 v, float w) => new Vec4(v.X, v.Y, v.Z, w);
 
@@ -266,8 +266,8 @@ public struct Vec4
 
     public readonly Vec4 Sub(Vec4 b) => new Vec4(X - b.X, Y - b.Y, Z - b.Z, W - b.W);
 
-    /// <summary>スカラー倍。
-    /// 演算子は v * s と s * v の両方が使える。
+    /// <summary>Scalar multiplication.
+    /// Both v * s and s * v work as operators.
     /// </summary>
     public readonly Vec4 Scale(float s) => new Vec4(X * s, Y * s, Z * s, W * s);
 
@@ -292,8 +292,8 @@ public struct Vec4
 
     public readonly float Length() => (float)Math.Sqrt(LengthSq());
 
-    /// <summary>正規化。
-    /// 零ベクトルは零ベクトルのまま返す。
+    /// <summary>Normalization.
+    /// A zero vector is returned as a zero vector.
     /// </summary>
     public readonly Vec4 Normalize()
     {
@@ -307,9 +307,9 @@ public struct Vec4
     public readonly Vec3 Xyz() => new Vec3(X, Y, Z);
 }
 
-/// <summary>回転を表すクォータニオン (Hamilton 積、右ねじの能動回転。Phys3d と同じ規約)。
-/// 演算子: a * b (回転の合成)、q * v (Vec3 の回転 = rotateVec3)。
-/// 角度は全てラジアン。
+/// <summary>Quaternion representing a rotation (Hamilton product, active rotation by the right-hand rule; same convention as Phys3d).
+/// Operators: a * b (composition of rotations), q * v (rotation of a Vec3 = rotateVec3).
+/// All angles are in radians.
 /// </summary>
 public readonly struct Quat
 {
@@ -328,8 +328,8 @@ public readonly struct Quat
 
     public static Quat Identity() => new Quat(0, 0, 0, 1);
 
-    /// <summary>axis 回りに angle ラジアン回す回転。
-    /// axis は内部で正規化される。
+    /// <summary>Rotation by angle radians around axis.
+    /// axis is normalized internally.
     /// </summary>
     public static Quat FromAxisAngle(Vec3 axis, float angle)
     {
@@ -339,8 +339,8 @@ public readonly struct Quat
         return new Quat(n.X * s, n.Y * s, n.Z * s, (float)Math.Cos(half));
     }
 
-    /// <summary>オイラー角 (ラジアン) から生成。
-    /// 適用順は roll (X) → pitch (Y) → yaw (Z)。
+    /// <summary>Creates from Euler angles (radians).
+    /// Applied in the order roll (X) → pitch (Y) → yaw (Z).
     /// </summary>
     public static Quat FromEuler(float yaw, float pitch, float roll)
     {
@@ -355,8 +355,8 @@ public readonly struct Quat
             cr * cp * cy + sr * sp * sy);
     }
 
-    /// <summary>回転の合成。
-    /// a * b は「b の回転をしてから a の回転」。
+    /// <summary>Composition of rotations.
+    /// a * b means "rotate by b, then by a".
     /// </summary>
     public Quat Mul(Quat b) =>
         new Quat(W * b.X + X * b.W + Y * b.Z - Z * b.Y,
@@ -374,8 +374,8 @@ public readonly struct Quat
 
     public float Length() => (float)Math.Sqrt(LengthSq());
 
-    /// <summary>正規化。
-    /// 零クォータニオンは identity を返す。
+    /// <summary>Normalization.
+    /// A zero quaternion returns identity.
     /// </summary>
     public Quat Normalize()
     {
@@ -397,13 +397,13 @@ public readonly struct Quat
         return Identity();
     }
 
-    /// <summary>成分の線形補間。
-    /// 正規化はしないので必要なら normalize を挟む。
+    /// <summary>Component-wise linear interpolation.
+    /// It does not normalize, so insert normalize if needed.
     /// </summary>
     public Quat Lerp(Quat b, float t) => new Quat(X + (b.X - X) * t,
         Y + (b.Y - Y) * t, Z + (b.Z - Z) * t, W + (b.W - W) * t);
 
-    /// <summary>球面線形補間。
+    /// <summary>Spherical linear interpolation.
     /// </summary>
     public Quat Slerp(Quat b, float t)
     {
@@ -425,7 +425,7 @@ public readonly struct Quat
             return new Quat(X + (bx - X) * t, Y + (by - Y) * t,
                 Z + (bz - Z) * t, W + (bw - W) * t).Normalize();
         }
-        // tcs は Math.Acos 未対応なので等価な atan2 形で書く (acos(d) == atan2(sqrt(1 - d^2), d) for |d| <= 1)
+        // tcs does not support Math.Acos, so this is written in the equivalent atan2 form (acos(d) == atan2(sqrt(1 - d^2), d) for |d| <= 1)
         var theta = (float)Math.Atan2((float)Math.Sqrt(1.0f - d * d), d);
         var sinT = (float)Math.Sin(theta);
         var s0 = (float)Math.Sin((1.0f - t) * theta) / sinT;
@@ -434,8 +434,8 @@ public readonly struct Quat
             W * s0 + bw * s1);
     }
 
-    /// <summary>ベクトルを回転する。
-    /// 演算子 q * v でも呼べる。
+    /// <summary>Rotates a vector.
+    /// Can also be called with the operator q * v.
     /// </summary>
     public Vec3 RotateVec3(Vec3 v)
     {
@@ -445,9 +445,9 @@ public readonly struct Quat
         return v.Add(uv.Scale(2.0f * W).Add(uuv.Scale(2.0f)));
     }
 
-    /// <summary>RotateVec3 と同じ回転を行う行列 (列ベクトルに左から掛ける)。
-    /// 正規化済みの quaternion を渡す。
-    /// box3d / sdf.c と同じ能動回転で、Mat4.RotateX/Y/Z もこれに揃えてある。
+    /// <summary>Matrix that performs the same rotation as RotateVec3 (multiplied from the left onto column vectors).
+    /// Pass a normalized quaternion.
+    /// Same active rotation as box3d / sdf.c, and Mat4.RotateX/Y/Z are aligned to it as well.
     /// </summary>
     public Mat4 ToMat4()
     {
@@ -483,7 +483,7 @@ public readonly struct Quat
         return r;
     }
 
-    /// <summary>回転行列 (ToMat4 と同じ規約) から quaternion を取り出す。
+    /// <summary>Extracts a quaternion from a rotation matrix (same convention as ToMat4).
     /// </summary>
     public static Quat FromMat4(Mat4 m)
     {
@@ -514,20 +514,20 @@ public readonly struct Quat
         }
     }
 
-    /// <summary>Phys3d の wire 型へ変換する。
+    /// <summary>Converts to the Phys3d wire type.
     /// </summary>
     public Quat3d Wire() =>
         new Quat3d { X = this.X, Y = this.Y, Z = this.Z, W = this.W };
 
-    /// <summary>Phys3d の wire 型から変換する。
+    /// <summary>Converts from the Phys3d wire type.
     /// </summary>
     public static Quat FromWire(Quat3d q) => new Quat(q.X, q.Y, q.Z, q.W);
 }
 
-/// <summary>4x4 行列 (行優先 / row-major、m[row * 4 + col])。
-/// 演算子:
-/// a * b (行列積)、m * v (Vec4 との積 = mulVec4)。
-/// MVP 合成は proj * view * model の順。
+/// <summary>4x4 matrix (row-major, m[row * 4 + col]).
+/// Operators:
+/// a * b (matrix product), m * v (product with a Vec4 = mulVec4).
+/// MVP is composed in the order proj * view * model.
 /// </summary>
 public struct Mat4
 {
@@ -548,7 +548,7 @@ public struct Mat4
 
     public static Mat4 Zero() => new Mat4();
 
-    /// <summary>行優先の 16 要素を list の offset から読む。
+    /// <summary>Reads 16 row-major elements from list at offset.
     /// </summary>
     public static Mat4 FromList(List<float> v, int offset)
     {
@@ -572,8 +572,8 @@ public struct Mat4
         return r;
     }
 
-    /// <summary>行優先の 16 要素。
-    /// uniform や buffer に渡すときに使う。
+    /// <summary>The 16 elements in row-major order.
+    /// Used when passing to uniforms or buffers.
     /// </summary>
     public readonly List<float> ToList() => new List<float>
     {
@@ -581,8 +581,8 @@ public struct Mat4
         M20, M21, M22, M23, M30, M31, M32, M33,
     };
 
-    /// <summary>行列積。
-    /// 演算子 a * b でも呼べる。
+    /// <summary>Matrix product.
+    /// Can also be called with the operator a * b.
     /// </summary>
     public readonly Mat4 Mul(Mat4 b)
     {
@@ -610,8 +610,8 @@ public struct Mat4
         return r;
     }
 
-    /// <summary>Vec4 との積。
-    /// 演算子 m * v でも呼べる。
+    /// <summary>Product with a Vec4.
+    /// Can also be called with the operator m * v.
     /// </summary>
     public readonly Vec4 MulVec4(Vec4 v)
     {
@@ -626,7 +626,7 @@ public struct Mat4
 
     public static Vec4 operator *(Mat4 a, Vec4 v) => a.MulVec4(v);
 
-    /// <summary>位置として変換する (w=1 扱い。平行移動が効く)。
+    /// <summary>Transforms as a position (treated as w=1; translation applies).
     /// </summary>
     public readonly Vec3 MulPoint(Vec3 v)
     {
@@ -635,7 +635,7 @@ public struct Mat4
             M20 * v.X + M21 * v.Y + M22 * v.Z + M23);
     }
 
-    /// <summary>方向として変換する (w=0 扱い。平行移動は無視)。
+    /// <summary>Transforms as a direction (treated as w=0; translation is ignored).
     /// </summary>
     public readonly Vec3 MulDir(Vec3 v)
     {
@@ -700,8 +700,8 @@ public struct Mat4
                 + a12 * (a20 * a31 - a21 * a30));
     }
 
-    /// <summary>逆行列。
-    /// 特異行列 (det=0) の場合は単位行列を返す。
+    /// <summary>Inverse matrix.
+    /// Returns the identity matrix for a singular matrix (det=0).
     /// </summary>
     public readonly Mat4 Inverse()
     {
@@ -762,7 +762,7 @@ public struct Mat4
         return r;
     }
 
-    /// <summary>回転 + 平行移動だけの view 行列を、回転転置 + eye 差し替えで逆変換する。
+    /// <summary>Inverts a view matrix that has only rotation + translation, by transposing the rotation + replacing eye.
     /// </summary>
     public readonly Mat4 RigidInverse(Vec3 eye)
     {
@@ -805,7 +805,7 @@ public struct Mat4
         return r;
     }
 
-    /// <summary>均一スケール s + 平行移動 t を 1 つの行列にまとめる。
+    /// <summary>Combines uniform scale s + translation t into one matrix.
     /// </summary>
     public static Mat4 ScaleTrans(float s, Vec3 t)
     {
@@ -820,8 +820,8 @@ public struct Mat4
         return r;
     }
 
-    /// <summary>X 軸回りの回転 (ラジアン)。
-    /// +π/2 は +Y を +Z に回す。
+    /// <summary>Rotation around the X axis (radians).
+    /// +π/2 rotates +Y to +Z.
     /// </summary>
     public static Mat4 RotateX(float angle)
     {
@@ -835,8 +835,8 @@ public struct Mat4
         return r;
     }
 
-    /// <summary>Y 軸回りの回転 (ラジアン)。
-    /// +π/2 は +Z を +X に回す。
+    /// <summary>Rotation around the Y axis (radians).
+    /// +π/2 rotates +Z to +X.
     /// </summary>
     public static Mat4 RotateY(float angle)
     {
@@ -850,8 +850,8 @@ public struct Mat4
         return r;
     }
 
-    /// <summary>Z 軸回りの回転 (ラジアン)。
-    /// +π/2 は +X を +Y に回す。
+    /// <summary>Rotation around the Z axis (radians).
+    /// +π/2 rotates +X to +Y.
     /// </summary>
     public static Mat4 RotateZ(float angle)
     {
@@ -865,15 +865,15 @@ public struct Mat4
         return r;
     }
 
-    /// <summary>任意軸 axis 回りの回転 (ラジアン)。
-    /// Quat.FromAxisAngle と同じ向き。
+    /// <summary>Rotation around an arbitrary axis (radians).
+    /// Same direction as Quat.FromAxisAngle.
     /// </summary>
     public static Mat4 Rotate(float angle, Vec3 axis) =>
         Quat.FromAxisAngle(axis, angle).ToMat4();
 
     public static Mat4 FromQuat(Quat q) => q.ToMat4();
 
-    /// <summary>左手系の view 行列。
+    /// <summary>Left-handed view matrix.
     /// </summary>
     public static Mat4 LookAtLh(Vec3 eye, Vec3 target, Vec3 up)
     {
@@ -900,9 +900,9 @@ public struct Mat4
         return r;
     }
 
-    /// <summary>左手系の透視投影。
-    /// fovDeg は垂直視野角 (度)。
-    /// depth は [0, 1]。
+    /// <summary>Left-handed perspective projection.
+    /// fovDeg is the vertical field of view (degrees).
+    /// depth is [0, 1].
     /// </summary>
     public static Mat4 PerspectiveLh(float fovDeg, float aspect, float nz,
         float fz)
@@ -917,9 +917,9 @@ public struct Mat4
         return r;
     }
 
-    /// <summary>左手系の平行投影。
-    /// w / h は view volume の幅と高さ。
-    /// depth は [0, 1]。
+    /// <summary>Left-handed orthographic projection.
+    /// w / h are the width and height of the view volume.
+    /// depth is [0, 1].
     /// </summary>
     public static Mat4 OrthoLh(float w, float h, float nz, float fz)
     {
@@ -933,8 +933,8 @@ public struct Mat4
     }
 }
 
-/// <summary>始点と方向を持つ半直線。
-/// Dir は正規化して持つ。
+/// <summary>Half-line with an origin and a direction.
+/// Dir is stored normalized.
 /// </summary>
 public readonly struct Ray
 {
@@ -947,12 +947,12 @@ public readonly struct Ray
         this.Dir = dir.Normalize();
     }
 
-    /// <summary>始点から t だけ進んだ点。
+    /// <summary>Point advanced by t from the origin.
     /// </summary>
     public Vec3 At(float t) => Origin + Dir * t;
 
-    /// <summary>平面 (通る点 point、法線 normal) との交点までの距離 t (At(t) が交点)。
-    /// 平面と平行、または交点が始点の後ろなら null。
+    /// <summary>Distance t to the intersection with the plane (point on the plane: point, normal: normal) (At(t) is the intersection).
+    /// null if the ray is parallel to the plane or the intersection is behind the origin.
     /// </summary>
     public float? IntersectPlane(Vec3 point, Vec3 normal)
     {
@@ -970,16 +970,16 @@ public readonly struct Ray
     }
 }
 
-/// <summary>スカラー演算のユーティリティ。
-/// 角度変換以外は GLSL の同名関数と同義。
+/// <summary>Scalar math utilities.
+/// Except for angle conversion, these mean the same as the GLSL functions of the same names.
 /// </summary>
 public static class MathUtil
 {
-    /// <summary>度 → ラジアン。
+    /// <summary>Degrees → radians.
     /// </summary>
     public static float Radians(float deg) => deg * ((float)Math.PI / 180.0f);
 
-    /// <summary>ラジアン → 度。
+    /// <summary>Radians → degrees.
     /// </summary>
     public static float Degrees(float rad) => rad * (180.0f / (float)Math.PI);
 

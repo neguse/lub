@@ -3,10 +3,10 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// tool の文字列の道具 (JSON の文字列の escape と、10 進の数の読み取り)
+// String helpers for the tool (JSON string escaping and decimal number parsing)
 public static class ToolText
 {
-    // .NET の JsonEncodedText.Encode と同じ escape (非 ASCII と HTML で意味を持つ文字は \uXXXX)
+    // Same escaping as .NET's JsonEncodedText.Encode (non-ASCII and characters meaningful in HTML become \uXXXX)
     public static string JsonEscape(string s)
     {
         var u = new Utf8Bytes(s);
@@ -73,7 +73,7 @@ public static class ToolText
         return "\\u" + string.Join("", hex);
     }
 
-    // 10 進の非負の整数 (それ以外は -1)
+    // Non-negative decimal integer (-1 otherwise)
     public static int ParseInt(string s)
     {
         var u = new Utf8Bytes(s);

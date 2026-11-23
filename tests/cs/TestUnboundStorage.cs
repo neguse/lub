@@ -1,10 +1,10 @@
-// shader が宣言した storage texture と compute の resource を渡さない draw と dispatch。
-// 渡さなかった slot は backend が仮の resource で埋めるので、フレームは捨てられずに描ける (TestUnboundBindings の残りの種類)。
-// - draw: fragment shader が書く storage texture を渡さない (draw には storage texture を渡す手段が無い)。
-//   束ねた col の緑で描く。
-// - dispatch: texture、StructuredBuffer、storage texture を渡さず、束ねた dst に緑を書く。
-//   dst を col にして描く。
-// どちらも左半分の画素が緑になる。
+// A draw and a dispatch that do not pass the storage textures and compute resources the shader declared.
+// The backend fills the slots that were not passed with placeholder resources, so the frame is not discarded and draws (the remaining kinds from TestUnboundBindings).
+// - draw: does not pass the storage texture the fragment shader writes (a draw has no way to pass a storage texture).
+//   Draws with the green of the bound col.
+// - dispatch: passes no texture, StructuredBuffer, or storage texture, and writes green to the bound dst.
+//   Draws with dst as col.
+// In both cases the pixels of the left half become green.
 using System;
 using System.Collections.Generic;
 using Lub;

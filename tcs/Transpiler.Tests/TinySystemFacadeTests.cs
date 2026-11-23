@@ -94,8 +94,8 @@ public class TinySystemFacadeTests
         Assert.Equal("True", result);
     }
 
-    // TinySystem.Dict は BCL の Dictionary を受けるので、TinySystem.props が入れる Collections.cs の Dictionary では
-    // .NET の型推論が通らない (CS0411)。.NET とは比べない
+    // TinySystem.Dict takes the BCL Dictionary, so with the Dictionary of the Collections.cs that TinySystem.props adds,
+    // .NET type inference fails (CS0411). Not compared with .NET
     [Fact]
     public void DictFacade_MapsToRuntimeGlobal()
     {

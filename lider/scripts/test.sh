@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# lider の runtime テスト (tests/<name>/) を tcs VM の player (scripts/player.sh) で走らせる。
-# test の entry は lider のソースを取り込み、lider を自分で動かす。tests/<name>/game/Game.csproj があれば、lider がそれをゲームとして開く。
-# test は file を書き換えるので、一時ディレクトリに写して起動する。
-# 引数に test の名前を並べると、それだけを走らせる。
-# env: PLAYER / LUB_TCS は scripts/player.sh
-#   JAMO_DICT  かな漢字変換の辞書 (既定: lider の data/mozc.dict)。無ければ tests/ime は飛ばす
+# Runs lider's runtime tests (tests/<name>/) on the tcs VM player (scripts/player.sh).
+# A test entry pulls in the lider sources and runs lider itself. If tests/<name>/game/Game.csproj exists, lider opens it as the game.
+# Tests rewrite files, so they are copied to a temporary directory and launched there.
+# If test names are given as arguments, only those run.
+# env: PLAYER / LUB_TCS are in scripts/player.sh
+#   JAMO_DICT  kana-kanji conversion dictionary (default: lider's data/mozc.dict). If missing, tests/ime is skipped
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 source "$root/scripts/player.sh"
@@ -20,27 +20,27 @@ if [ $# -gt 0 ]; then
   for name in "$@"; do dirs+=("$root/tests/$name/"); done
 else
   for test_dir in "$root"/tests/*/; do
-    # tests/editor は lider を動かさない test (scripts/test-editor.sh)
+    # tests/editor holds tests that do not run lider (scripts/test-editor.sh)
     [ "$(basename "$test_dir")" = editor ] && continue
     dirs+=("$test_dir")
   done
 fi
 for test_dir in "${dirs[@]}"; do
   name="$(basename "$test_dir")"
-  # かな漢字変換の test は辞書が要る
+  # Kana-kanji conversion tests need the dictionary
   if [ "$name" = ime ] && [ -z "$dict" ]; then
     echo "skip $name (no dictionary: data/mozc.dict)"
     continue
   fi
   dir="$(mktemp -d)"
   cp -r "$test_dir." "$dir/"
-  # 参照は lider のディレクトリを指す (test が開く app の csproj は 1 つ下の dir にある)
+  # References point to the lider directory (the csproj of the app the test opens is one dir below)
   find "$dir" -maxdepth 2 -name '*.csproj' -exec sed -i -E "s#(\.\./)+src/Lider\.csproj#$root/src/Lider.csproj#" {} +
   entry="$(basename "$(ls "$dir"/*.csproj | head -1)")"
-  # lider が開くゲーム (あれば)
+  # The game lider opens (if any)
   game=""
   [ -f "$dir/game/Game.csproj" ] && game="$dir/game/Game.csproj"
-  # test が窓で開いて書き換える file。ゲームの build に入れるなら game/ に置く
+  # Files the test opens in a window and rewrites. Put them in game/ to include them in the game build
   target="$dir/Target.cs"
   [ -f "$dir/game/Target.cs" ] && target="$dir/game/Target.cs"
   echo "==> $name"

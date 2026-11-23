@@ -1,6 +1,6 @@
 namespace TinyCs;
 
-// CLI の本体は SelfHost/Tool/Cli.cs (TinyC#)。.NET の build はその上の host (DotnetHost.cs) を起動するだけ
+// The CLI itself is SelfHost/Tool/Cli.cs (TinyC#). The .NET build only starts the host on top of it (DotnetHost.cs)
 public class Program
 {
     public static int Main(string[] args) => TcsHost.Run(args);

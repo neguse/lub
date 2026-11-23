@@ -1,7 +1,7 @@
-// ゲームの状態を、名前を付けて控えて戻す (state:save、state:load:<名前>)。
-//   - 控えた時点に戻り、そこから動き続ける
-//   - 控えた後に class に field を足して保存しても、その控えに戻せる (前の field は控えの値、足した field は初期化子の値)
-//   - 止めている間に戻すと、戻した状態から動き続ける
+// Records the game state under a name and restores it (state:save, state:load:<name>).
+//   - It goes back to the recorded point and keeps running from there
+//   - Even if a field is added to a class and saved after recording, it can go back to that record (the earlier fields get the recorded values, and the added field gets its initializer's value)
+//   - Restoring while paused keeps running from the restored state
 using System;
 using Lub;
 using LiderCore;
@@ -58,9 +58,9 @@ public static class TestState
         }
         else if (stage == 2 && frames == 3)
         {
-            // 控えた時点に戻り、そこから動き続ける (戻してから 3 frame ほど)
+            // It goes back to the recorded point and keeps running from there (about 3 frames after restoring)
             Back("after loading");
-            // 控えた後に、class に field を足して保存する
+            // After recording, add a field to the class and save
             w.FocusOn(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!);
             var doc = w.Focus!;
             Check(doc.Find("public int A = 5;"), "no field to edit");
@@ -84,7 +84,7 @@ public static class TestState
         {
             Back("after loading into the edited version");
             Check(Read("Game.T", "B") == 7, "the added field is " + Read("Game.T", "B") + ", want its initializer 7");
-            // 止めている間に戻す
+            // Restore while paused
             Lider.Run("game:pause");
             frames = 0;
             stage = 6;
@@ -105,7 +105,7 @@ public static class TestState
         }
     }
 
-    // 控えた時点の少し後に居るか (戻してから数 frame)
+    // Whether it is slightly after the recorded point (a few frames after restoring)
     static void Back(string when)
     {
         var count = Read("Game", "Count");

@@ -14,7 +14,7 @@ class BindingTest
         Gfx.BindingsSetTexture(bindings, "image", texture);
         Gfx.BindingsSetFloatArray(bindings, "color", new float[] { 1, 2, 3, 4 });
         Gfx.BindingsSetFloats(bindings, "scale", new List<float> { 5, 6 });
-        // struct の record は値で渡り、record の field の Blend? は has と値になる
+        // Struct records are passed by value, and the record field Blend? becomes has and value
         var blend = new Blend
         {
             Src = Gfx.BlendFactor.SrcAlpha, Dst = Gfx.BlendFactor.OneMinusSrcAlpha, Op = Gfx.BlendOp.Add,
@@ -41,8 +41,6 @@ class BindingTest
         var packed = Io.InterleavePncm(mesh);
         Console.WriteLine(packed.Count);
         Console.WriteLine(packed[1]);
-        Io.LoadFloats("floats", out var floats, out _, out _, out _);
-        Console.WriteLine(floats == null);
         Console.WriteLine(Font.Glyph(bytes, 65, 12) == null);
         var glyph = Font.Glyph(bytes, 66, 12);
         Console.WriteLine(glyph.Bytes.Get(1));
@@ -76,7 +74,7 @@ class BindingTest
         Console.WriteLine(bits);
         var array = new float[] { 1, 2, 3, 4 };
         Console.WriteLine(Gfx.UseBufferArray("array", Gfx.BufferType.Storage, array, 3)!.Version);
-        // out の引数は各 out の場所に、その out の値が入る
+        // For out arguments, each out location receives the value of that out
         Input.MousePos(out var mouseX, out var mouseY);
         Console.WriteLine(mouseX + " " + mouseY);
         Console.WriteLine(Gfx.ResourceInfo(42, out var key, out var version) + " " + key + " " + version);
@@ -85,15 +83,15 @@ class BindingTest
         Console.WriteLine(newR + " " + newG + " " + newB);
     }
 
-    // count が配列を超える。
-    // binding が C API を呼ぶ前に fault する。
+    // count exceeds the array.
+    // The binding faults before calling the C API.
     public static void ArrayCount()
     {
         Gfx.UseBufferArray("array", Gfx.BufferType.Storage, new float[1], 2);
     }
 
-    // bit mask の文字列の誤り。
-    // binding が C API を呼ぶ前に fault する。
+    // Malformed bit mask string.
+    // The binding faults before calling the C API.
     public static void EmptyMask() => RaycastWithMask("");
     public static void LongMask() => RaycastWithMask("0x1ffffffffffffffff");
 

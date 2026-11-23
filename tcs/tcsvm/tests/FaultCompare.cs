@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-// fault が runtime (List.Sort) の中の closure から起きても、外側の frame まで trace が続く
+// Even if a fault occurs in a closure inside the runtime (List.Sort), the trace continues to the outer frames
 public class FaultCompare
 {
     static int Cmp(int a, int b)

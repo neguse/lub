@@ -1,16 +1,16 @@
-// フィールドの宣言の行に出す今の値と、class の宣言の行の個体の印 (FieldValues)。値と個体はゲーム (game/Game.cs) の物。
-//   - static はその値。const は出さない。範囲の外の行は出さない
-//   - instance が 1 つならその値で、印は出さない
-//   - 幾つもあれば class の行に目印を並べ、選ぶまでフィールドの行には何も出さない。Toggle で選び、もう一度で解く。Select で行の path か祖先の個体を選ぶ
-//   - 4 個を超えると「… 全 N 個」が付き、NextPage で続きを並べ、最後の次は最初。選んだ個体は範囲の外でも入る
-//   - 要素が減って並びがずれても、同じ個体を指し続ける (目印も値も変わらない)。path が変わっても光らない
-//   - 選んだ個体が辿れなくなると選択を解き、別の個体へ移らない
-//   - しばらく変わらなかった値が変わると光り、毎 frame 変わる値は光らない
-//   - 数のフィールドは、出している間のゲームの frame ごとの値を TraceLog.Fade 個まで持つ。文字のフィールドは持たない。個体は要素の並びが変わっても追う
-//   - 窓の class の行に印が出て、印を押すと個体を選ぶ
-//   - 探し直す前に並びがずれても、別の個体の値を出さない
-// ゲームは決めた frame で Depot.Motes と Depot.Calm を変える。test はゲームの値を見て、変わったのを見てから次を確かめる。
-// 見える値は 1 frame 遅れる (lider がゲームを進めるのは TestFrame の後)。
+// Current values shown on field declaration lines, and instance markers on class declaration lines (FieldValues). The values and instances belong to the game (game/Game.cs).
+//   - A static shows its value. A const is not shown. Lines outside the range are not shown
+//   - If there is one instance, its value is shown and no marker is shown
+//   - If there are several, markers are lined up on the class line, and nothing is shown on field lines until one is selected. Toggle selects, and toggling again deselects. Select selects the instance at a line's path or at an ancestor
+//   - With more than 4, "… 全 N 個" is added, NextPage lists the rest, and the page after the last is the first. The selected instance is included even when outside the range
+//   - Even if elements are removed and the order shifts, it keeps pointing at the same instance (the markers and values do not change). It does not flash even if the path changes
+//   - When the selected instance can no longer be traced, the selection is cleared and does not move to another instance
+//   - A value that has not changed for a while flashes when it changes, and a value that changes every frame does not flash
+//   - A numeric field keeps up to TraceLog.Fade values, one per game frame while it is shown. A string field does not keep them. The instance is followed even if the order of elements changes
+//   - Markers appear on the class line in the window, and pressing a marker selects the instance
+//   - Even if the order shifts before the next search, values of another instance are not shown
+// The game changes Depot.Motes and Depot.Calm at fixed frames. The test watches the game's values and checks the next item after it sees the change.
+// Visible values lag by 1 frame (lider advances the game after TestFrame).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -33,10 +33,10 @@ public static class TestFields
     };
     static int frames;
     static bool failed;
-    // 確かめている段と、その段で frame を数え始めた frame (ゲームの変化を見た frame か、段に入った frame。まだなら 0)
+    // The stage being checked, and the frame where counting started for that stage (the frame where the game's change was seen, or where the stage was entered; 0 if not yet)
     static int stage;
     static int seenAt;
-    // 最初の frame の Depot.Ticks と GameApp.Frames
+    // Depot.Ticks and GameApp.Frames of the first frame
     static float firstTicks;
     static int firstGame;
 
@@ -44,7 +44,7 @@ public static class TestFields
     {
         TestInit();
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay layout (code windows lined up in a horizontal row on the cylindrical screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -71,7 +71,7 @@ public static class TestFields
 
     static void TestFrame(float dt)
     {
-        // ゲームの build と、ゲームが最初の個体を置くのを待つ
+        // Wait for the game build and for the game to place the first instance
         if (failed || GameApp.Frames == 0 || (frames == 0 && Count() != 3))
             return;
         frames++;
@@ -80,7 +80,7 @@ public static class TestFields
             Check(false, "stage " + stage + " did not finish: " + Count() + " motes");
             return;
         }
-        // 並びがずれたのを見た frame は、探し直す (Refresh) 前に確かめる
+        // The frame where the order shift was seen is checked before the next search (Refresh)
         if (stage == 0 && frames > 1 && Count() == 2)
         {
             Check(Mote5() == "5:12", "the selection read another instance before rediscovering: " + Mote5());
@@ -107,32 +107,32 @@ public static class TestFields
             Check(Mote5() == "5:12", "Select of a static changed the instance");
             return;
         }
-        // 次に探し直した後 (探し直すのは 15 frame ごと): 同じ個体を指し続ける
+        // After the next search (searched again every 15 frames): it keeps pointing at the same instance
         if (stage == 1 && frames == seenAt + 16)
         {
             Check(Mote5() == "5:12", "the selection did not follow the instance: " + Mote5());
             Check(Marks() == "7:" + Tag(0) + " [" + Tag(1) + "]", "the marks after the shift: " + Marks());
-            // 並びがずれる前の frame も、前の [1] (Hp 11) でなく同じ個体 (Hp 12) の値
-            // 列は、出し始めてからゲームが進んだ frame ごとに 1 つ
+            // The frames before the order shift also hold the values of the same instance (Hp 12), not of the former [1] (Hp 11)
+            // The list has one entry per frame the game advanced since showing started
             var sampled = GameApp.Frames - firstGame + 1;
             var moved = fields.For(decls, 5, 5)[0].History;
             Check(moved != null && moved.Count == sampled, "the history of the instance has " + (moved != null ? moved.Count : -1) + " values, want " + sampled);
             if (moved != null)
                 foreach (var hp in moved)
                     Check(hp == 12, "the history read another instance: " + hp);
-            // Ticks は毎 frame 1 増えるので、最初に見た値から今の値まで続く
+            // Ticks increases by 1 every frame, so the list runs continuously from the first seen value to the current value
             var ticks = shown[1].History;
             Check(ticks != null && ticks.Count == sampled && ticks[0] == firstTicks, "the history of Ticks has " + (ticks != null ? ticks.Count : -1) + " values, want " + sampled + " from " + firstTicks);
             CheckTicks(shown[1]);
             Next();
         }
-        // 選んだ個体 (Hp 12) をゲームが外すと、残るのは 1 つ
+        // When the game removes the selected instance (Hp 12), one remains
         else if (stage == 2 && Waited(1))
         {
             Check(Mote5() == "5:11" && Marks() == "", "the only instance left is not shown plainly: " + Mote5() + " " + Marks());
             Next();
         }
-        // ゲームが個体を足しても、選択は別の個体へ移らない
+        // Even if the game adds an instance, the selection does not move to another instance
         else if (stage == 3 && Waited(2))
         {
             Check(Mote5() == "" && Marks() == "7:" + Tag(0) + " " + Tag(1), "the selection moved to another instance: " + Mote5() + " " + Marks());
@@ -140,7 +140,7 @@ public static class TestFields
             Next();
             seenAt = frames;
         }
-        // lider が窓を置いた後に、窓が広がり終わるまで 1 秒分進める (印を押す位置は、広がり終わった窓で求める)
+        // After lider places the window, advance 1 second until the window finishes expanding (the position for pressing a marker is computed on the fully expanded window)
         else if (stage == 4 && frames == seenAt + 2)
         {
             for (var i = 0; i < 60; i++)
@@ -151,13 +151,13 @@ public static class TestFields
             PressMark();
             Next();
         }
-        // ゲームが Calm を変えたのを見た frame
+        // Frame where the game was seen changing Calm
         else if (stage == 5 && shown[0].Text == "1")
         {
             Check(shown[0].Glow > 0.8f, "a value that changed after a while does not glow: " + shown[0].Glow);
             Check(shown[1].Glow == 0, "a value that changes every frame glows");
             Check(shown[2].Glow == 0, "a value that did not change glows");
-            // 持つ値は TraceLog.Fade 個まで
+            // Up to TraceLog.Fade values are kept
             Check(shown[1].History != null && shown[1].History!.Count == TraceLog.Fade, "the history of Ticks is not capped at " + TraceLog.Fade);
             CheckTicks(shown[1]);
             Next();
@@ -178,14 +178,14 @@ public static class TestFields
         }
     }
 
-    // 次の段へ
+    // Go to the next stage
     static void Next()
     {
         stage++;
         seenAt = 0;
     }
 
-    // ゲームの個体が count 個になったのを見てから、次に探し直した後 (16 frame 後) か
+    // Whether it is after the next search (16 frames later) since the game's instances were seen to reach count
     static bool Waited(int count)
     {
         if (seenAt > 0)
@@ -195,7 +195,7 @@ public static class TestFields
         return false;
     }
 
-    // Ticks の列は 1 ずつ増えて、今の値で終わる
+    // The Ticks list increases by 1 at a time and ends at the current value
     static void CheckTicks(FieldValue ticks)
     {
         var h = ticks.History;
@@ -209,13 +209,13 @@ public static class TestFields
             Check(h[i] == h[i - 1] + 1, "the history of Ticks is not consecutive at " + i + ": " + h[i - 1] + " " + h[i]);
     }
 
-    // ゲームの Depot.Motes の個体の数
+    // Number of instances in the game's Depot.Motes
     static int Count()
     {
         return GameApp.Inspect("Depot.Motes", 0, 100).Count;
     }
 
-    // lider の窓の class Mote の行の最初の印を押す
+    // Press the first marker on the class Mote line of lider's window
     static void PressMark()
     {
         var w = Lider.Work!;

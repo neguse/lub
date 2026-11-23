@@ -3,7 +3,7 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// 名前と member の参照の種類 (Name / Member の Info)
+// Kinds of name and member references (Info of Name / Member)
 public static class RefKind
 {
     public const int None = 0;
@@ -17,7 +17,7 @@ public static class RefKind
     public const int Error = 8;
 }
 
-// 呼び出しの種類 (Call の Info)
+// Kinds of calls (Info of Call)
 public static class CallKind
 {
     public const int Method = 1;
@@ -27,7 +27,7 @@ public static class CallKind
     public const int Nameof = 5;
 }
 
-// new の種類 (New の Info)
+// Kinds of new (Info of New)
 public static class NewKind
 {
     public const int Class = 1;
@@ -42,7 +42,7 @@ public static class NewKind
     public const int TypeParam = 10;
 }
 
-// 変換の種類 (Conv の Info)
+// Kinds of conversions (Info of Conv)
 public static class ConvKind
 {
     public const int Identity = 0;
@@ -57,11 +57,11 @@ public static class ConvKind
     public const int UnboxFloat = 9;
     public const int UnboxBool = 10;
     public const int UnboxString = 11;
-    // int? → float? (null はそのまま)
+    // int? → float? (null stays null)
     public const int NullableIntToFloat = 12;
 }
 
-// foreach の種類 (Foreach の Info)
+// Kinds of foreach (Info of Foreach)
 public static class ForeachKind
 {
     public const int List = 1;
@@ -77,7 +77,7 @@ sealed class LocalScope
 {
     public Dictionary<string, LocalSym> Vars = new Dictionary<string, LocalSym>();
     public LocalScope? Parent;
-    // lambda の境界
+    // Lambda boundary
     public bool IsLambda;
 
     public LocalScope(LocalScope? parent)
@@ -86,7 +86,7 @@ sealed class LocalScope
     }
 }
 
-// lambda の本体を束縛する間の文脈
+// Context while binding a lambda body
 sealed class LambdaFrame
 {
     public TypeSym? Ret;
@@ -103,9 +103,9 @@ public sealed class Binder
     private bool _static;
     private bool _inInitAccessor;
 
-    // instance の field / auto property の初期化子の中か (instance の member と this は使えない)
+    // Whether inside an instance field / auto property initializer (instance members and this cannot be used)
     private bool _instanceFieldInit;
-    // unchecked(...) の中か (定数式の桁あふれの CS0220 を出さない)
+    // Whether inside unchecked(...) (no CS0220 for overflow in constant expressions)
     private bool _unchecked;
     private Symbol? _member;
     private LocalScope? _locals;
@@ -124,7 +124,7 @@ public sealed class Binder
 
     private void Unsupported(string what, Node at) => _c.Error("TCS1001", "unsupported syntax: " + what, at);
 
-    // 型 (と外側の型) が名前の method を持つか (nameof という名前の method は nameof の演算子より優先する)
+    // Whether the type (or an enclosing type) has a method with the name (a method named nameof takes precedence over the nameof operator)
     private static bool HasMethodNamed(TypeDeclSym? t, string name)
     {
         while (t != null)
@@ -142,11 +142,11 @@ public sealed class Binder
         return false;
     }
 
-    // ---- 全体 ----
+    // ---- Whole program ----
 
     public void BindAll()
     {
-        // --ref の enum も値を決める (参照の側は値に畳まず名前で引くが、文字列化の名前の表が値を使う)
+        // Also determine the values of --ref enums (the referencing side looks them up by name instead of folding them to values, but the stringification name table uses the values)
         foreach (var t in _c.Types)
         {
             if (t.IsEnum) BindEnum(t);
@@ -160,7 +160,7 @@ public sealed class Binder
         {
             if (unit.List2 != null) BindTopLevel(unit);
         }
-        // --ref の宣言の parameter の既定値と field の初期化子 (C backend が host の宣言に使う)。宣言だけの file なので誤りは報告しない
+        // Parameter default values and field initializers of --ref declarations (the C backend uses them for host declarations). These files contain only declarations, so errors are not reported
         foreach (var t in _c.Types)
         {
             if (t.IsRef && !t.IsEnum) BindRefDefaults(t);
@@ -189,7 +189,7 @@ public sealed class Binder
         _c.Diags.Truncate(mark);
     }
 
-    // top-level の文 (static な文脈で、型の外)
+    // Top-level statements (in a static context, outside any type)
     private void BindTopLevel(Node unit)
     {
         var usings = new List<string>();
@@ -214,13 +214,13 @@ public sealed class Binder
         _locals = new LocalScope(null);
         _lambda = null;
         _depth = 0;
-        // top-level の return が値を返すなら、入口の戻り値は int (C# の規則)
+        // If a top-level return returns a value, the entry point returns int (C# rule)
         _returnType = HasValueReturn(unit.List2!) ? TypeSym.IntType : TypeSym.VoidType;
         foreach (var st in unit.List2!) BindStatement(st);
         new DefiniteAssignment(_c.Diags).AnalyzeStatements(unit.List2!);
     }
 
-    // 文の列のどこか (lambda の中を除く) に値を返す return があるか
+    // Whether there is a return with a value anywhere in the statement list (excluding inside lambdas)
     private static bool HasValueReturn(List<Node> stmts)
     {
         foreach (var st in stmts)
@@ -272,7 +272,7 @@ public sealed class Binder
         }
     }
 
-    // m の値を決め、次の member の既定値を返す
+    // Determine the value of m, and return the default value for the next member
     private int EnsureEnumValue(Symbol m, int next)
     {
         if (m.ConstVal != null) return m.ConstVal.I + 1;
@@ -299,7 +299,7 @@ public sealed class Binder
         return m.ConstVal.I + 1;
     }
 
-    // enum member の値 (前の member の値に依存するので、その enum の先頭から順に決める)
+    // Value of an enum member (it depends on the previous member's value, so values are determined in order from the start of the enum)
     private ConstValue EnumValue(Symbol m)
     {
         if (m.ConstVal != null) return m.ConstVal;
@@ -382,7 +382,7 @@ public sealed class Binder
         }
         if (t.RecordParams != null && t.Decl.A != null)
         {
-            // record の positional parameter の既定値
+            // Default values of record positional parameters
             EnterType(t, null, true);
             for (int i = 0; i < t.RecordParams.Count; i++)
             {
@@ -424,7 +424,7 @@ public sealed class Binder
         }
     }
 
-    // 確実な代入 (CS0165)。本体を束縛した後に走査する (中の lambda も見る)
+    // Definite assignment (CS0165). Scanned after binding the body (lambdas inside are checked too)
     private void CheckDefiniteAssignment(Node? body)
     {
         if (body == null) return;
@@ -440,7 +440,7 @@ public sealed class Binder
     private void BindAccessor(Node acc, TypeSym ret, LocalSym? value)
     {
         _returnType = ret;
-        // init accessor の中は constructor と同じく readonly の field と init の property に代入できる
+        // Inside an init accessor, as in a constructor, readonly fields and init properties can be assigned
         _inInitAccessor = acc.Text == "init";
         PushScope();
         if (value != null) DeclareLocal(value, acc);
@@ -461,7 +461,7 @@ public sealed class Binder
         _inInitAccessor = false;
     }
 
-    // ファイルが `using TinySystem;` を持ち `using System;` を持たない
+    // The file has `using TinySystem;` and does not have `using System;`
     private bool UsesTinySystemOnly(SourceFile file)
     {
         if (file.Id < 0 || file.Id >= _c.Units.Count) return false;
@@ -500,14 +500,14 @@ public sealed class Binder
         }
     }
 
-    // サブセットの外の local function の本文。中の API と構文の診断を出すためだけに束縛する
+    // Body of a local function outside the subset. Bound only to report the API and syntax diagnostics inside it
     private void BindUnsupportedLocalFunction(Node fn)
     {
         var saveLocals = _locals;
         var saveReturn = _returnType;
         var saveScope = _scope;
         _locals = new LocalScope(_locals);
-        // local function の中の名前は lambda と同じく外側の local を隠せる (C# 8)
+        // Names inside a local function can hide outer locals, as in lambdas (C# 8)
         _locals.IsLambda = true;
         if (fn.List2 != null && _scope != null)
         {
@@ -562,7 +562,7 @@ public sealed class Binder
         }
     }
 
-    // const field の値
+    // Value of a const field
     private ConstValue? ConstOfField(Symbol f)
     {
         if (f.ConstState == 2) return f.ConstVal;
@@ -586,7 +586,7 @@ public sealed class Binder
         {
             decl.A = BindValue(decl.A, f.Type);
             if (decl.A.HasConst) f.ConstVal = decl.A.Const;
-            // double の定数は畳まない (double はサブセットの外で、型の所で報告済み。decimal は型が誤り)
+            // Do not fold double constants (double is outside the subset and already reported at the type; decimal is a type error)
             else if (f.Type.Kind == TypeKind.Double || f.Type.IsError) { }
             else Error("CS0133", "The expression being assigned to '" + f.Name + "' must be constant", decl.A);
         }
@@ -601,7 +601,7 @@ public sealed class Binder
         return f.ConstVal;
     }
 
-    // ---- 局所変数の scope ----
+    // ---- Local variable scopes ----
 
     private void PushScope()
     {
@@ -628,8 +628,8 @@ public sealed class Binder
             if (s.IsLambda) break;
             s = s.Parent;
         }
-        // IL が素の名前で参照する名前 (LocalNames.IsReserved) と、型の global 名 (IL は型を名前で参照する) を避ける。
-        // 改名した名前はファイルの他の識別子と重ならないものにする
+        // Avoid names IL refers to by their bare name (LocalNames.IsReserved) and global type names (IL refers to types by name).
+        // A renamed name must not collide with other identifiers in the file
         string ln = l.Name;
         if (LocalNames.IsReserved(ln) || _c.TypeIlNames.Contains(ln))
         {
@@ -641,7 +641,7 @@ public sealed class Binder
         _locals!.Vars[l.Name] = l;
     }
 
-    // 式の中で宣言する局所変数 (out var と pattern)。文の前で宣言させる
+    // Local variables declared inside expressions (out var and patterns). They are declared before the statement
     private void DeclareExprLocal(LocalSym l, Node at)
     {
         DeclareLocal(l, at);
@@ -669,7 +669,7 @@ public sealed class Binder
         return null;
     }
 
-    // ---- 文 ----
+    // ---- Statements ----
 
     private void BindBlock(Node b)
     {
@@ -685,7 +685,7 @@ public sealed class Binder
 
     private void BindEmbedded(Node s)
     {
-        // 埋め込み文は自分の scope を持つ
+        // An embedded statement has its own scope
         if (s.Kind == NodeKind.Block)
         {
             BindBlock(s);
@@ -847,7 +847,7 @@ public sealed class Binder
                 if (v.A != null && v.A.HasConst) l.ConstVal = v.A.Const;
                 else if (v.A != null && t.Kind != TypeKind.Double && !t.IsError) Error("CS0133", "The expression being assigned to '" + v.Text + "' must be constant", v);
             }
-            // 初期化子の無い local は確実な代入の解析 (DefiniteAssignment) が追う。struct と tuple は field ごとに代入できるので追わない
+            // Locals without an initializer are tracked by definite assignment analysis (DefiniteAssignment). structs and tuples can be assigned per field, so they are not tracked
             if (v.A == null && !l.IsConst && !(t.Decl != null && t.Decl.IsStruct) && t.Kind != TypeKind.Tuple && t.Kind != TypeKind.KeyValuePair) l.Tracked = true;
             v.Local = l;
             DeclareLocal(l, v);
@@ -856,7 +856,7 @@ public sealed class Binder
 
 
 
-    // var (a, b) = expr: record の positional parameter に分ける
+    // var (a, b) = expr: split into the record's positional parameters
     private void BindDeconstructDecl(Node s)
     {
         BindExpr(s.A!, null);
@@ -897,7 +897,7 @@ public sealed class Binder
     // (a, var b, (c, d)) = value
     private void BindDeconstructAssign(Node targets, Node value)
     {
-        // 値: tuple の式なら要素ごとに分解の先の型へ
+        // Value: if it is a tuple expression, convert each element to the deconstruction target's type
         if (value.Kind == NodeKind.Tuple && value.Count == targets.Count)
         {
             var expected = new TypeSym(TypeKind.Tuple, "tuple");
@@ -932,7 +932,7 @@ public sealed class Binder
         targets.Type = vt;
     }
 
-    // 分解の先の型 (宣言なら宣言の型、式なら式の型、var なら null)
+    // Type of a deconstruction target (the declared type for a declaration, the expression type for an expression, null for var)
     private TypeSym? TargetType(Node t)
     {
         if (t.Kind == NodeKind.PatDecl)
@@ -972,7 +972,7 @@ public sealed class Binder
                 }
             case NodeKind.DeconstructAssign:
                 {
-                    // 入れ子: 値の要素をさらに分解する
+                    // Nested: deconstruct the value's element further
                     et = TupleViewOf(et);
                     if (et.Kind != TypeKind.Tuple || et.Args!.Count != tgt.Count)
                     {
@@ -1007,7 +1007,7 @@ public sealed class Binder
         _depth++;
         BindEmbedded(s.B!);
         _depth--;
-        // 更新の式は本体の後に実行されるので、本体の後に束縛する (本体の代入を見てから CS0165 を判定する)
+        // The update expression runs after the body, so it is bound after the body (CS0165 is decided after seeing the body's assignments)
         if (s.List2 != null)
         {
             for (int i = 0; i < s.List2.Count; i++) s.List2[i] = BindExprStatementExpr(s.List2[i]);
@@ -1062,7 +1062,7 @@ public sealed class Binder
         PushScope();
         if (s.List != null)
         {
-            // foreach (var (k, v) in dict) と tuple の列
+            // foreach (var (k, v) in dict) and sequences of tuples
             elem = TupleViewOf(elem);
             bool tupleElems = elem.Kind == TypeKind.Tuple && ct.Kind != TypeKind.Dict;
             if (ct.Kind != TypeKind.Dict && !tupleElems) Unsupported("foreach deconstruction", s);
@@ -1140,8 +1140,8 @@ public sealed class Binder
         }
     }
 
-    // 文の最後が制御を外へ出すか (switch の section の fall through の検査)
-    // struct の値を持つ式が変数 (書き換えられる場所) か: local、parameter、this、変数の struct の field、class の field、配列の要素
+    // Whether the last statement transfers control out (check for fall-through in switch sections)
+    // Whether an expression holding a struct value is a variable (a writable location): local, parameter, this, field of a struct variable, class field, array element
     private static bool IsValueVariable(Node r)
     {
         switch (r.Kind)
@@ -1176,7 +1176,7 @@ public sealed class Binder
         return "expression";
     }
 
-    // host (--ref) の enum の member。C# では定数だが、値は host が持つので定数に畳まない
+    // Member of a host (--ref) enum. It is a constant in C#, but the host holds the value, so it is not folded to a constant
     private static bool IsHostEnumMember(Node e)
     {
         if (e.Kind == NodeKind.Conv && e.A != null) return IsHostEnumMember(e.A);
@@ -1192,12 +1192,12 @@ public sealed class Binder
         return true;
     }
 
-    // ---- 到達可能性 (C# §13.2) ----
+    // ---- Reachability (C# §13.2) ----
 
     private static bool IsConstBool(Node? e, bool value) =>
         e != null && e.HasConst && e.Const != null && e.Const.Kind == ConstKind.Bool && e.Const.B == value;
 
-    // 文 s に到達したとき、s の終わりに到達できるか (束縛した後の木で見る。定数の条件は畳んだ値を見る)
+    // Whether the end of statement s is reachable when s is reached (checked on the bound tree; constant conditions use their folded values)
     private static bool CanComplete(Node s)
     {
         switch (s.Kind)
@@ -1262,7 +1262,7 @@ public sealed class Binder
         return true;
     }
 
-    // s の中に、s を囲む loop / switch から出る break があるか (内側の loop / switch と lambda の中は見ない)
+    // Whether s contains a break that exits the loop / switch enclosing s (inner loops / switches and lambdas are not checked)
     private static bool BreaksOut(Node? s) => ContainsJump(s, NodeKind.Break);
 
     private static bool ContinuesIn(Node? s) => ContainsJump(s, NodeKind.Continue);
@@ -1280,7 +1280,7 @@ public sealed class Binder
             case NodeKind.Lambda:
                 return false;
             case NodeKind.Switch:
-                // switch の中の continue は外側の loop へ出る
+                // continue inside a switch goes out to the outer loop
                 if (jump == NodeKind.Break) return false;
                 break;
         }
@@ -1323,7 +1323,7 @@ public sealed class Binder
         return false;
     }
 
-    // 式文: 代入、呼び出し、++ / --、new だけが書ける
+    // Expression statements: only assignments, calls, ++ / --, and new are allowed
     private Node BindExprStatementExpr(Node e)
     {
         switch (e.Kind)
@@ -1333,7 +1333,7 @@ public sealed class Binder
             case NodeKind.PostIncDec:
             case NodeKind.PreIncDec:
             case NodeKind.New:
-            // サブセットの外の式 (throw 式、await など。構文で報告済み)
+            // Expressions outside the subset (throw expressions, await, etc.; already reported by syntax)
             case NodeKind.Unsupported:
                 break;
             default:
@@ -1345,16 +1345,16 @@ public sealed class Binder
         return e;
     }
 
-    // ---- 式 ----
+    // ---- Expressions ----
 
-    // 式を束縛し、target があればその型へ暗黙に変換したノードを返す
+    // Bind an expression and, if there is a target, return the node implicitly converted to that type
     private Node BindValue(Node e, TypeSym target)
     {
         BindExpr(e, target);
         return Coerce(e, target);
     }
 
-    // 束縛済みなら変換だけ、未束縛なら束縛してから変換する (束縛し直すと入れ子の深さに対して指数的に遅くなる)
+    // If already bound, only convert; if not, bind and then convert (rebinding is exponentially slow in nesting depth)
     private Node BindOrCoerce(Node e, TypeSym to)
     {
         if (e.Type == null) return BindValue(e, to);
@@ -1372,7 +1372,7 @@ public sealed class Binder
         return c;
     }
 
-    // 暗黙の変換。変換できなければ診断を出す
+    // Implicit conversion. Reports a diagnostic if it cannot convert
     private Node Coerce(Node e, TypeSym to)
     {
         var from = e.Type!;
@@ -1387,7 +1387,7 @@ public sealed class Binder
             return ConvertMethodGroup(e, to);
         }
         if (TypeSym.Same(from, to)) return e;
-        // target-typed な条件式は各腕を変換先へ変換する (式全体を変換しない)
+        // A target-typed conditional expression converts each arm to the target (not the whole expression)
         if (e.Kind == NodeKind.Conditional && e.TargetTyped && to.IsNullable && !to.IsError)
         {
             var bArm = e.B!.Kind == NodeKind.Conv && e.B.A != null ? e.B.A : e.B;
@@ -1408,14 +1408,14 @@ public sealed class Binder
         int kind = ImplicitKind(e, from, to);
         if (kind < 0)
         {
-            // 要素の型が違うタプルへの変換 (C# では暗黙に変換できるが、backend は写さない)
+            // Conversion to a tuple with different element types (implicitly convertible in C#, but backends do not map it)
             if (e.Kind != NodeKind.Tuple && IsTupleElementConvertible(from, to)) Error("TCS1001", "unsupported syntax: TupleConversion", e);
             else if (IsExplicitlyConvertible(from, to))
                 Error("CS0266", "Cannot implicitly convert type '" + from.Display() + "' to '" + to.Display() + "'. An explicit conversion exists (are you missing a cast?)", e);
             else Error("CS0029", "Cannot implicitly convert type '" + from.Display() + "' to '" + to.Display() + "'", e);
             return e;
         }
-        // 定数の変換は畳む
+        // Fold constant conversions
         if (e.HasConst)
         {
             var folded = FoldConversion(e.Const!, from, to);
@@ -1429,7 +1429,7 @@ public sealed class Binder
         }
         if (kind == ConvKind.Identity && from.Kind == to.Kind && from.Kind != TypeKind.Null && from.Kind != TypeKind.Nullable && to.Kind != TypeKind.Nullable)
         {
-            // 型だけが変わる (interface への参照変換など)
+            // Only the type changes (reference conversion to an interface etc.)
             var c = MakeConv(e, to, kind);
             return c;
         }
@@ -1454,7 +1454,7 @@ public sealed class Binder
 
     private static float IntToFloat(int i) => i;
 
-    // 暗黙の変換の種類。無ければ -1
+    // Kind of implicit conversion. -1 if there is none
     private int ImplicitKind(Node? e, TypeSym from, TypeSym to)
     {
         if (TypeSym.Same(from, to)) return ConvKind.Identity;
@@ -1464,7 +1464,7 @@ public sealed class Binder
             if (to.IsNullable || to.Kind == TypeKind.TypeParam) return ConvKind.Identity;
             return -1;
         }
-        // 定数の int → byte / char ではない狭い整数型
+        // Constant int → byte / narrow integer types other than char
         if (e != null && e.HasConst && e.Const!.Kind == ConstKind.Int && from.Kind == TypeKind.Int)
         {
             int v = e.Const.I;
@@ -1475,14 +1475,14 @@ public sealed class Binder
         }
         int num = NumericImplicit(from, to);
         if (num >= 0) return num;
-        // tcs の緩和: enum と整数 (char を除く) の暗黙の変換
+        // tcs relaxation: implicit conversion between enums and integers (except char)
         if (from.Kind == TypeKind.Enum && to.IsIntegral && to.Kind != TypeKind.Char) return ConvKind.Identity;
         if (to.Kind == TypeKind.Enum && from.IsIntegral && from.Kind != TypeKind.Char) return ConvKind.Identity;
         if (to.Kind == TypeKind.Nullable)
         {
             if (from.Kind == TypeKind.Nullable)
             {
-                // 持ち上げた変換 (int? → float?)
+                // Lifted conversion (int? → float?)
                 int lifted = ImplicitKind(null, from.Elem, to.Elem);
                 if (lifted == ConvKind.Identity) return ConvKind.Identity;
                 if (lifted == ConvKind.IntToFloat) return ConvKind.NullableIntToFloat;
@@ -1510,7 +1510,7 @@ public sealed class Binder
             if (from.Decl != null && to.Decl != null && from.Decl.Implements(to.Decl)) return ConvKind.Identity;
             return -1;
         }
-        // host (--ref) の data class の派生から基底へ (IL では同じ値のまま)
+        // From a derived host (--ref) data class to its base (the same value in IL)
         if (from.Decl != null && to.Decl != null && from.Decl.BaseClass != null && from.Decl.DerivesFrom(to.Decl)) return ConvKind.Identity;
         if (from.Kind == TypeKind.Tuple && to.Kind == TypeKind.Tuple && from.Args!.Count == to.Args!.Count)
         {
@@ -1559,7 +1559,7 @@ public sealed class Binder
 
     private bool IsImplicitlyConvertible(TypeSym from, TypeSym to) => ImplicitKind(null, from, to) >= 0;
 
-    // 同じ数の要素のタプルで、要素ごとに暗黙に変換できる
+    // Tuples with the same number of elements, each implicitly convertible
     private bool IsTupleElementConvertible(TypeSym from, TypeSym to)
     {
         if (from.Kind != TypeKind.Tuple || to.Kind != TypeKind.Tuple || from.Args == null || to.Args == null || from.Args.Count != to.Args.Count) return false;
@@ -1582,7 +1582,7 @@ public sealed class Binder
         return false;
     }
 
-    // 束縛して Type を付ける。expected は target-typed な式 (lambda、null、new() など) の型
+    // Bind and set Type. expected is the type for target-typed expressions (lambda, null, new(), etc.)
     private void BindExpr(Node e, TypeSym? expected)
     {
         switch (e.Kind)
@@ -1659,7 +1659,7 @@ public sealed class Binder
                 return;
             case NodeKind.Checked:
                 {
-                    // unchecked(...) の中の定数式は桁あふれを誤りにしない (checked(...) は戻す)
+                    // Constant expressions inside unchecked(...) do not treat overflow as an error (checked(...) restores it)
                     bool saveUnchecked = _unchecked;
                     _unchecked = e.Value == 0;
                     BindExpr(e.A!, expected);
@@ -1683,7 +1683,7 @@ public sealed class Binder
         e.Type = TypeSym.ErrorType;
     }
 
-    // (a, b): 要素の型の tuple。対象の tuple 型があれば要素をその型へ変換する
+    // (a, b): a tuple of the element types. If there is a target tuple type, convert the elements to its types
     private void BindTuple(Node e, TypeSym? expected)
     {
         var t = new TypeSym(TypeKind.Tuple, "tuple");
@@ -1704,20 +1704,20 @@ public sealed class Binder
             string name = e.List2 != null && i < e.List2.Count ? e.List2[i].Text : "";
             if (name == "" && !target)
             {
-                // 推論された要素名 (var t = (a, b) の a / b)
+                // Inferred element names (a / b in var t = (a, b))
                 var el = e.Item(i);
                 if (el.Kind == NodeKind.Name) name = el.Text;
                 else if (el.Kind == NodeKind.Member) name = el.Text;
-                // ItemN と Rest は要素の名前として推論しない (C# の規則)
+                // ItemN and Rest are not inferred as element names (C# rule)
                 if (IsReservedTupleName(name)) name = "";
             }
             t.Names.Add(name);
         }
-        // 8 個以上の要素は TupleArity (Compliance が構文で止める)
+        // 8 or more elements is TupleArity (Compliance stops it at the syntax level)
         e.Type = target ? expected! : t;
     }
 
-    // tuple の要素の symbol (名前でも ItemN でも引ける。IL の field は ItemN)
+    // Symbol of a tuple element (can be looked up by name or by ItemN; the IL field is ItemN)
     private static Symbol? TupleElement(TypeSym t, string name)
     {
         for (int i = 0; i < t.Args!.Count; i++)
@@ -1776,8 +1776,8 @@ public sealed class Binder
         }
         else
         {
-            // 10 進は uint の範囲 (4294967295) まで。int を超える値は uint で、値は 32 bit の 2 の補数に写す
-            // (2147483648 は単項 - の operand なら int.MinValue)。int だけで計算する
+            // Decimal literals go up to the uint range (4294967295). Values above int are uint, and the value maps to 32-bit two's complement
+            // (2147483648 is int.MinValue if it is the operand of unary -). Computed with int only
             int high = 0;
             int low = 0;
             int digits = 0;
@@ -1796,7 +1796,7 @@ public sealed class Binder
                     overflow = true;
                     break;
                 }
-                // (high, low) = (上の桁, 下の 5 桁)
+                // (high, low) = (upper digits, lower 5 digits)
                 low = low * 10 + d;
                 high = high * 10 + low / 100000;
                 low = low % 100000;
@@ -1807,12 +1807,12 @@ public sealed class Binder
                 if (high > 42949 || high == 42949 && low > 67295) overflow = true;
                 else if (high > 21474 || high == 21474 && low >= 83648)
                 {
-                    // 2^31 以上: 2^31 = 21474 * 100000 + 83648。w = v - 2^31 を桁あふれせずに求めて int.MinValue に足す
+                    // 2^31 or more: 2^31 = 21474 * 100000 + 83648. Compute w = v - 2^31 without overflow and add it to int.MinValue
                     big = true;
                     int w1 = (high - 21474) * 50000;
                     int w = w1 + (low - 83648 + w1);
                     value = -2147483647 - 1 + w;
-                    // 2147483648 そのもの (単項 - の operand なら int.MinValue)
+                    // Exactly 2147483648 (int.MinValue if it is the operand of unary -)
                     if (w == 0) exactMin = true;
                 }
                 else value = high * 100000 + low;
@@ -1825,7 +1825,7 @@ public sealed class Binder
         e.HasConst = true;
         e.Const = ConstValue.OfInt(value);
         e.Type = unsigned || big ? TypeSym.UIntType : TypeSym.IntType;
-        // L の literal は long (呼び出しの overload の選択で .NET と同じく int の overload に当てない)
+        // An L literal is long (in overload resolution, as in .NET, it does not match int overloads)
         if (isLong && !overflow) e.Type = TypeSym.LongType;
         if (exactMin) e.Info = 1;
     }
@@ -1843,7 +1843,7 @@ public sealed class Binder
         else
         {
             if (last == 'd' || last == 'D' || last == 'm' || last == 'M') digits = u.Slice(0, u.Length - 1).ToString();
-            // decimal と double の literal は止める (tcs の数は i32 と f32)
+            // Reject decimal and double literals (tcs numbers are i32 and f32)
             if (last == 'm' || last == 'M') Error("TCS1001", "unsupported syntax: DecimalLiteral", e);
             else Error("TCS1001", "unsupported syntax: DoubleLiteral (write a float literal with the f suffix)", e);
         }
@@ -1878,7 +1878,7 @@ public sealed class Binder
         switch (t.Kind)
         {
             case TypeKind.TypeParam:
-                // 型引数の既定値は実行時の記述子で決まる
+                // The default value of a type argument is determined by the runtime descriptor
                 return null;
             case TypeKind.Int:
             case TypeKind.Char:
@@ -1906,12 +1906,12 @@ public sealed class Binder
                 {
                     BindExpr(part.A!, null);
                     CheckStringifiable(part.A!);
-                    // 揃えは literal (と負の literal) だけ (式は format の文字列に埋め込めない)
+                    // Alignment must be a literal (or a negative literal) (expressions cannot be embedded in the format string)
                     if (part.B != null && !(part.B.Kind == NodeKind.IntLit || part.B.Kind == NodeKind.Unary && part.B.Text == "-" && part.B.A != null && part.B.A.Kind == NodeKind.IntLit))
                         Error("TCS1001", "unsupported syntax: NonConstantAlignment", part);
-                    // 書式の精度は数字だけ
+                    // Format precision must be digits only
                     if (part.Text != null && IsMalformedFormatSpecifier(part.Text)) Error("TCS1001", "unsupported syntax: MalformedFormatSpecifier", part);
-                    // 写せない書式 (独自の書式 "0.00"、C、P など) は黙って別の文字列にせず止める
+                    // Formats that cannot be mapped (custom formats such as "0.00", C, P, etc.) are rejected rather than silently producing a different string
                     else if (part.Text != null && part.Text != "" && !IsSupportedHoleFormat(part.A!.Type!, part.Text))
                         Error("TCS1001", "unsupported syntax: UnsupportedFormatSpecifier(" + part.Text + ")", part);
                     if (part.B != null) part.B = BindValue(part.B, TypeSym.IntType);
@@ -1922,7 +1922,7 @@ public sealed class Binder
         e.Type = TypeSym.StringType;
     }
 
-    // 補間の穴の書式を .NET と同じ文字列に写せるか。bool / string / char / Rune と ToString を持つ型は書式を使わない (.NET も IFormattable でなければ無視する)
+    // Whether an interpolation hole's format can be mapped to the same string as .NET. bool / string / char / Rune and types with ToString do not use the format (.NET also ignores it unless the type is IFormattable)
     private static bool IsSupportedHoleFormat(TypeSym type, string format)
     {
         var t = IlTypes.UnwrapNullable(type);
@@ -1934,7 +1934,7 @@ public sealed class Binder
         return false;
     }
 
-    // 数の標準の書式で、runtime (String.FormatFloat / String.FormatInt) が .NET と同じ文字列にするもの。精度は 9 桁まで
+    // Standard numeric formats for which the runtime (String.FormatFloat / String.FormatInt) produces the same string as .NET. Precision is up to 9 digits
     public static bool IsSupportedNumberFormat(string format, bool isFloat)
     {
         var u = new Utf8Bytes(format);
@@ -1987,7 +1987,7 @@ public sealed class Binder
         return false;
     }
 
-    // 参照型と決まった型引数 (where T : class、または class の型の制約)。== は参照の比較になる
+    // A type argument known to be a reference type (where T : class, or a class type constraint). == becomes a reference comparison
     private bool IsReferenceTypeParam(TypeSym tp)
     {
         if (tp.Kind != TypeKind.TypeParam || tp.IsStructParam) return false;
@@ -2011,7 +2011,7 @@ public sealed class Binder
         return false;
     }
 
-    // 型引数の制約 (今の method か型の型引数)
+    // Constraints of a type argument (a type argument of the current method or type)
     private List<TypeSym>? ConstraintsOf(TypeSym tp)
     {
         if (tp.Kind != TypeKind.TypeParam) return null;
@@ -2029,14 +2029,14 @@ public sealed class Binder
         return null;
     }
 
-    // ---- 名前 ----
+    // ---- Names ----
 
     private void BindName(Node e)
     {
         string name = e.Text;
         if (e.Value == 1)
         {
-            // int.Parse などの組み込みの型名
+            // Built-in type names, as in int.Parse
             e.Info = RefKind.Type;
             e.Type = PredefStatic(name, e);
             return;
@@ -2063,7 +2063,7 @@ public sealed class Binder
             e.Type = TypeSym.MethodGroupType;
             return;
         }
-        // top-level の文の args (コマンドラインの引数は VM / C に写していない)
+        // args of top-level statements (command-line arguments are not mapped to the VM / C)
         if (_type == null && name == "args" && e.List == null)
         {
             Error("TCS1001", "unsupported syntax: TopLevelArgs", e);
@@ -2071,7 +2071,7 @@ public sealed class Binder
             e.Type = TypeSym.ErrorType;
             return;
         }
-        // 型の member (自分と外側の型)
+        // Type members (own and enclosing types)
         var cur = _type;
         while (cur != null)
         {
@@ -2085,7 +2085,7 @@ public sealed class Binder
             }
             cur = cur.Outer;
         }
-        // 型
+        // Types
         var tsym = _d.LookupTypeByName(name, e.List == null ? 0 : e.List.Count, _scope!);
         if (tsym != null)
         {
@@ -2093,7 +2093,7 @@ public sealed class Binder
             e.Type = tsym.Decl != null && e.List != null ? TypeSym.OfDecl(tsym.Decl, TypeArgsOf(e)) : tsym;
             return;
         }
-        // using static の型の static な member
+        // Static members of using static types
         foreach (var usingType in _d.StaticUsingTypes(_scope!))
         {
             var sms = usingType.Lookup(name);
@@ -2108,7 +2108,7 @@ public sealed class Binder
             return;
         }
         var st = Declarer.BuiltinVisible(name, _scope!) ? Builtins.StaticType(name) : null;
-        // `using TinySystem;` だけのファイルの Math は TinySystem.Math (facade)
+        // In a file with only `using TinySystem;`, Math is TinySystem.Math (facade)
         if (st != null && name == "Math" && UsesTinySystemOnly(e.File)) st = new TypeSym(TypeKind.StaticRef, "TinySystem.Math");
         if (st != null)
         {
@@ -2123,7 +2123,7 @@ public sealed class Binder
             e.Type = bt;
             return;
         }
-        // 型の中の修飾しない ToString() は object.ToString (ToString を override しない型の文字列化はサブセットの外)
+        // An unqualified ToString() inside a type is object.ToString (stringifying a type that does not override ToString is outside the subset)
         if (name == "ToString" && e.List == null && _type != null && !_static)
         {
             Error("TCS1001", "unsupported syntax: UnsupportedToString(" + _type.SelfType().FullDisplay() + ")", e);
@@ -2131,7 +2131,7 @@ public sealed class Binder
             e.Type = TypeSym.ErrorType;
             return;
         }
-        // .NET に有るがサブセットに無い BCL の型 (member の参照が TCS1002 を報告する)
+        // BCL types that exist in .NET but not in the subset (member references report TCS1002)
         string? bclKey = _d.BclTypeKey(name, e.List == null ? 0 : e.List.Count, _scope!);
         if (bclKey != null)
         {
@@ -2174,7 +2174,7 @@ public sealed class Binder
         return TypeSym.ErrorType;
     }
 
-    // member の参照 (receiver は null なら暗黙の this か static)
+    // Member reference (if receiver is null, implicit this or static)
     private void BindMemberRef(Node e, Node? receiver, TypeDeclSym owner, List<Symbol> members, bool instanceOk, bool implicitThis)
     {
         var first = members[0];
@@ -2190,7 +2190,7 @@ public sealed class Binder
         {
             e.Info = RefKind.EnumMember;
             e.Type = first.Type;
-            // host (--ref) の enum の値は host が持つ (数でないこともある)。定数に畳まず、名前で参照する
+            // The host holds the values of host (--ref) enums (they may not be numbers). They are referenced by name instead of being folded to constants
             if (!owner.IsRef)
             {
                 e.HasConst = true;
@@ -2282,13 +2282,13 @@ public sealed class Binder
         }
         if (rt.IsError)
         {
-            // サブセットに無い BCL の型の member
+            // Member of a BCL type not in the subset
             if (rt.IsBcl)
             {
                 string? owner = Builtins.BclMemberOwner(rt.BclKey, name);
                 if (owner == null) owner = BclCatalog.TypeDisplay(rt.BclKey);
                 if (owner != null) Error("TCS1002", "unsupported API: " + owner + "." + name, e);
-                // 値も BCL のもの (組み込みの呼び出しに渡すと .NET の別の overload を選ぶ)
+                // The value is a BCL one too (passing it to a built-in call selects a different .NET overload)
                 e.Type = TypeSym.Bcl("");
                 e.Info = RefKind.Error;
                 return;
@@ -2299,12 +2299,12 @@ public sealed class Binder
         }
         if (recv.Kind == NodeKind.Name && recv.Info != RefKind.Type && rt.Decl != null && rt.Decl.Name == recv.Text && IsStaticMemberOf(rt.Decl, name))
         {
-            // Color Color の規則 (C# §12.8.7.2): 名前と同じ名前の型を持つ値の、型の static な member は型から引く
+            // Color Color rule (C# §12.8.7.2): for a value whose type has the same name as the value, static members of the type are looked up from the type
             recv.Info = RefKind.Type;
             recv.Sym = null;
             recv.Local = null;
             recv.HasConst = false;
-            // static な文脈で instance の member を指した診断 (CS0120) は、型として読むので取り消す
+            // The diagnostic for referring to an instance member in a static context (CS0120) is withdrawn, since it is read as the type
             if (recvFresh) _c.Diags.Truncate(diagMark);
         }
         bool isStatic = recv.Info == RefKind.Type;
@@ -2312,7 +2312,7 @@ public sealed class Binder
         Chain(e, recv);
     }
 
-    // t の name が static な member (const、enum の member、全ての overload が static な method を含む) か入れ子の型か
+    // Whether name in t is a static member (const, enum member, or a method whose overloads are all static) or a nested type
     private static bool IsStaticMemberOf(TypeDeclSym t, string name)
     {
         foreach (var nested in t.Nested)
@@ -2343,7 +2343,7 @@ public sealed class Binder
         return NamespaceText(n.A!) + "." + n.Text;
     }
 
-    // string は UTF-8 で、.NET だけが UTF-16。位置を扱う member の診断に置き換え先を書く
+    // string is UTF-8; only .NET is UTF-16. Diagnostics for members that deal with positions mention the replacement
     private static string StringApiHint(string name)
     {
         switch (name)
@@ -2357,14 +2357,14 @@ public sealed class Binder
         return "";
     }
 
-    // object の member (サブセットは ToString だけを写す)
+    // Members of object (the subset maps only ToString)
     private static bool IsObjectMemberName(string name) =>
         name == "Equals" || name == "GetHashCode" || name == "GetType" || name == "ReferenceEquals" || name == "MemberwiseClone";
 
-    // receiver の型の name が .NET に有るがサブセットに無い member なら、それを宣言した BCL の型の表示 (無ければ null)
+    // If name on the receiver's type is a member that exists in .NET but not in the subset, the display name of the BCL type that declares it (null otherwise)
     private string? BclOwnerOf(TypeSym rt, bool isStatic, string name)
     {
-        // object の member: record は Equals / GetHashCode を自分で持ち、struct は ValueType のもの
+        // Members of object: records have their own Equals / GetHashCode, and structs have ValueType's
         if (IsObjectMemberName(name) && rt.Kind != TypeKind.TypeParam)
         {
             if (rt.Decl != null && rt.Decl.IsRecord && (name == "Equals" || name == "GetHashCode")) return rt.Decl.FullName;
@@ -2379,13 +2379,13 @@ public sealed class Binder
             string? owner = Builtins.BclMemberOwner(key, name);
             if (owner != null) return owner;
         }
-        // using System.Linq の拡張メソッド (System.Linq.Enumerable)
+        // Extension methods from using System.Linq (System.Linq.Enumerable)
         if (!isStatic && _scope != null && _scope.Usings.Contains("System.Linq") && IsSequence(rt))
             return BclCatalog.MemberOwner("System.Linq.Enumerable", name);
         return null;
     }
 
-    // C backend の単相化で閉じた ValueTuple の struct (TcsClosedN_ValueTuple) はタプルと同じに分解する (要素は Item1 ...)
+    // A ValueTuple struct closed by C backend monomorphization (TcsClosedN_ValueTuple) is deconstructed the same as a tuple (elements are Item1 ...)
     internal static TypeSym TupleViewOf(TypeSym t)
     {
         if (t.Decl == null || !t.Decl.IsStruct || !t.Decl.Decl.File.IsLibrary || !t.Decl.Name.EndsWith("_ValueTuple")) return t;
@@ -2414,7 +2414,7 @@ public sealed class Binder
         return u[4] != '0';
     }
 
-    // 組み込みの method (と TinySystem.Linq の拡張メソッド) の名前が .NET の BCL に有れば、それを宣言した型の表示
+    // If the name of a built-in method (or a TinySystem.Linq extension method) exists in the .NET BCL, the display name of the type that declares it
     private string? BclOverloadOwner(Symbol m, Node call)
     {
         if (m.Builtin != "")
@@ -2423,7 +2423,7 @@ public sealed class Binder
             if (key != null) return Builtins.BclMemberOwner(key, m.Name);
             return null;
         }
-        // using System.Linq があれば、TinySystem.Linq に無い overload は System.Linq.Enumerable のもの
+        // With using System.Linq, overloads missing from TinySystem.Linq belong to System.Linq.Enumerable
         if (m.IsExtension && _scope != null && _scope.Usings.Contains("System.Linq") && call.Count > 0)
         {
             var first = call.Item(0).A;
@@ -2445,7 +2445,7 @@ public sealed class Binder
         return f == "G" || f == "g" || f == "F" || f == "f" || f == "D" || f == "d";
     }
 
-    // Dictionary の Keys / Values の要素の型 (それ以外は null)
+    // Element type of Dictionary Keys / Values (null for anything else)
     private static TypeSym? CollectionElement(Node? e)
     {
         if (e == null || e.Type == null || e.Type.Args == null || e.Type.Args.Count < 2) return null;
@@ -2483,7 +2483,7 @@ public sealed class Binder
         }
         if (rt.Kind == TypeKind.TypeParam && !isStatic)
         {
-            // 型引数の member は制約の型から探す
+            // Members of a type argument are looked up in the constraint types
             var cs = ConstraintsOf(rt);
             if (cs != null)
             {
@@ -2495,7 +2495,7 @@ public sealed class Binder
                         return;
                     }
                 }
-                // サブセットに無い BCL の interface の制約 (IComparable<T> など) の member
+                // Members of BCL interface constraints not in the subset (IComparable<T> etc.)
                 foreach (var c in cs)
                 {
                     if (!c.IsBcl) continue;
@@ -2536,7 +2536,7 @@ public sealed class Binder
             }
             if (!isStatic && name == "ToString")
             {
-                // ToString を override しない class / record / struct / interface の文字列化 (C# は型名や record の member を書く)
+                // Stringifying a class / record / struct / interface that does not override ToString (C# writes the type name or the record's members)
                 if (rt.Kind != TypeKind.Enum)
                 {
                     Error("TCS1001", "unsupported syntax: UnsupportedToString(" + rt.FullDisplay() + ")", e);
@@ -2557,7 +2557,7 @@ public sealed class Binder
             }
             if (rt.Kind == TypeKind.Interface && !isStatic)
             {
-                // 継承した interface の member
+                // Members of inherited interfaces
                 foreach (var bi in rt.Decl.Interfaces)
                 {
                     if (bi.Decl != null && (bi.Decl.Lookup(name) != null || HasInheritedMember(bi.Decl, name)))
@@ -2589,7 +2589,7 @@ public sealed class Binder
             }
             return;
         }
-        // 拡張メソッド
+        // Extension methods
         if (!isStatic && _c.Extensions.TryGetValue(name, out var exts))
         {
             e.Info = RefKind.MethodGroup;
@@ -2609,11 +2609,11 @@ public sealed class Binder
         else Error("CS1061", "'" + rt.Display() + "' does not contain a definition for '" + name + "'", e);
         e.Info = RefKind.Error;
         e.Type = TypeSym.ErrorType;
-        // 値の型が分かる BCL の member は、その後の式も検査できるように型を残す (string.Empty の .Length など)
+        // For BCL members whose value type is known, keep the type so the following expression can be checked too (.Length of string.Empty etc.)
         if (bclOwner == "string" && name == "Empty") e.Type = TypeSym.StringType;
     }
 
-    // a?.b: 受け手が null なら null。値型の member は T? になる
+    // a?.b: null if the receiver is null. A value-type member becomes T?
     private void BindConditionalMember(Node e)
     {
         var recv = e.A!;
@@ -2635,24 +2635,24 @@ public sealed class Binder
         Lift(e);
     }
 
-    // ?. の鎖の中の式の型を持ち上げる (値型は T?)
+    // Lift the type of an expression inside a ?. chain (value types become T?)
     private static void Lift(Node e)
     {
         var t = e.Type!;
         e.Type2 = t;
-        // method group は値でない (Call の Info は CallKind なので比べない)
+        // A method group is not a value (Call's Info is a CallKind, so it is not compared)
         if (e.Kind != NodeKind.Call && e.Info == RefKind.MethodGroup) return;
         if (t.IsValueType && t.Kind != TypeKind.Nullable && t.Kind != TypeKind.Void) e.Type = TypeSym.NullableOf(t);
     }
 
-    // 受け手の型 (?. の鎖の中なら持ち上げる前の型)
+    // Type of the receiver (inside a ?. chain, the type before lifting)
     private static TypeSym RecvType(Node recv)
     {
         if (recv.CondChain && recv.Type2 != null) return recv.Type2;
         return recv.Type!;
     }
 
-    // 受け手が ?. の鎖なら、この式も鎖に入れる
+    // If the receiver is a ?. chain, add this expression to the chain too
     private static void Chain(Node e, Node recv)
     {
         if (!recv.CondChain) return;
@@ -2662,13 +2662,13 @@ public sealed class Binder
         Lift(e);
     }
 
-    // ---- 呼び出し ----
+    // ---- Calls ----
 
     private void BindCall(Node e)
     {
         if (e.Text == "with")
         {
-            // record の with: 複製してから member を書き換える
+            // record with: clone, then update the members
             BindExpr(e.A!, null);
             var wt = e.A!.Type!;
             if (!wt.IsError && (wt.Decl == null || !wt.Decl.IsRecord && !wt.Decl.IsStruct))
@@ -2680,7 +2680,7 @@ public sealed class Binder
         var callee = e.A!;
         if (callee.Kind == NodeKind.Member && callee.Text == "Invoke" && callee.List == null)
         {
-            // d.Invoke(x) と d?.Invoke(x) は delegate の呼び出し
+            // d.Invoke(x) and d?.Invoke(x) are delegate invocations
             BindExpr(callee.A!, null);
             if (callee.A!.Type!.Kind == TypeKind.Delegate)
             {
@@ -2690,7 +2690,7 @@ public sealed class Binder
             }
         }
         if (callee.Type == null) BindExpr(callee, null);
-        // list.Count(pred): 呼べない member (property) は拡張メソッドを探す
+        // list.Count(pred): for a member that cannot be called (a property), look for an extension method
         if (callee.Kind == NodeKind.Member && (callee.Info == RefKind.Field || callee.Info == RefKind.Property) && callee.Type != null && callee.Type.Kind != TypeKind.Delegate
             && _c.Extensions.TryGetValue(callee.Text, out var extCands))
         {
@@ -2722,12 +2722,12 @@ public sealed class Binder
                 var extRecv = receiver!;
                 if (extRecv.CondChain && extRecv.Type2 != null)
                 {
-                    // ?. の鎖の中の受け手は持ち上げる前の型で渡す
+                    // A receiver inside a ?. chain is passed with its type before lifting
                     extRecv = MakeConv(extRecv, extRecv.Type2, ConvKind.Identity);
                 }
                 else if (callee.Value == 1 && extRecv.Type != null && extRecv.Type.Kind == TypeKind.Nullable)
                 {
-                    // x?.Ext(): 拡張メソッドには T? の中の値を渡す
+                    // x?.Ext(): the extension method receives the value inside the T?
                     var unwrapped = MakeConv(extRecv, extRecv.Type.Elem, ConvKind.Identity);
                     extRecv = unwrapped;
                 }
@@ -2741,14 +2741,14 @@ public sealed class Binder
                 int diagMark = _c.Diags.Items.Count;
                 m = ResolveCall(cands, e, recvType, callee);
                 if (m != null && m.Builtin != "") e.Info = CallKind.Builtin;
-                // Enum.ToString の書式は定数の "G" / "F" / "D" (小文字も) だけ
+                // Enum.ToString formats are only the constants "G" / "F" / "D" (lowercase too)
                 if (m != null && m.Builtin == "Enum.ToStringFormat" && !IsEnumFormatConstant(e.Item(0).A!))
                     Error("TCS1002", "unsupported API: System.Enum.ToString", receiver != null ? receiver : e);
-                // 数の ToString(format) は定数の標準の書式だけ (補間の書式と同じ)
+                // Numeric ToString(format) accepts only constant standard formats (same as interpolation formats)
                 else if (m != null && (m.Builtin == "Float.ToStringFormat" || m.Builtin == "Int.ToStringFormat") && !IsNumberFormatConstant(e.Item(0).A!, m.Builtin == "Float.ToStringFormat"))
                     Error("TCS1002", "unsupported API: " + (m.Builtin == "Float.ToStringFormat" ? "float" : "int") + ".ToString", receiver != null ? receiver : e);
                 else e.Info = CallKind.Method;
-                // instance の method に当てはまるものが無ければ、拡張メソッドを探す (C# §12.8.10.3)
+                // If no instance method applies, look for extension methods (C# §12.8.10.3)
                 if (m == null && receiver != null && receiver.Info != RefKind.Type && callee.Kind == NodeKind.Member && callee.Value != 1
                     && _c.Extensions.TryGetValue(callee.Text, out var fallback) && AnyVisibleExtension(fallback))
                 {
@@ -2806,7 +2806,7 @@ public sealed class Binder
                 arg.Type = arg.A!.Type;
             }
             e.Type = ct.Ret;
-            // d?.Invoke(): ?. の鎖 (値型の戻り値は T?)
+            // d?.Invoke(): a ?. chain (a value-type return value becomes T?)
             if (e.Value == 1)
             {
                 if (callee.CondChain) callee.CondTop = false;
@@ -2844,7 +2844,7 @@ public sealed class Binder
         {
             int save = _c.Diags.Items.Count;
             BindExpr(arg, null);
-            // nameof は名前を読むだけで API を呼ばない (サブセットに無い BCL の member も書ける)
+            // nameof only reads the name and does not call the API (BCL members not in the subset can be written too)
             var kept = new List<Diagnostic>();
             for (int i = save; i < _c.Diags.Items.Count; i++)
             {
@@ -2863,7 +2863,7 @@ public sealed class Binder
         e.Const = ConstValue.OfString(name);
     }
 
-    // 引数の型が決まらない (target-typed な) 式か
+    // Whether an argument is an expression whose type is not determined on its own (target-typed)
     private static bool IsTargetTyped(Node a)
     {
         switch (a.Kind)
@@ -2882,7 +2882,7 @@ public sealed class Binder
         return false;
     }
 
-    // 引数を先に束縛する (target-typed な式は後で)
+    // Bind arguments first (target-typed expressions later)
     private void PreBindArgs(Node call)
     {
         if (call.List == null) return;
@@ -2912,7 +2912,7 @@ public sealed class Binder
         }
     }
 
-    // 引数 a は parameter 型 p へ渡せるか
+    // Whether argument a can be passed to parameter type p
     private bool ArgApplicable(Node arg, TypeSym p, bool isOut)
     {
         var a = arg.A!;
@@ -2953,8 +2953,8 @@ public sealed class Binder
         return ImplicitKind(a, t, p) >= 0;
     }
 
-    // overload の解決。call の引数 (Arg) を束縛し、選んだ method の parameter 型へ変換する
-    // 呼び出しに明示した型引数 (M<int>(x))。ResolveCall の間だけ有効
+    // Overload resolution. Binds the call's arguments (Arg) and converts them to the chosen method's parameter types
+    // Type arguments given explicitly in the call (M<int>(x)). Valid only during ResolveCall
     private List<TypeSym>? _explicitTypeArgs;
 
     private Symbol? ResolveCall(List<Symbol> cands, Node call, TypeSym? recvType, Node at)
@@ -3004,9 +3004,9 @@ public sealed class Binder
             {
                 if (n <= m.ParamCount && n >= m.RequiredParamCount) anyArity = true;
             }
-            // 組み込みの method の、サブセットに無い overload (.NET には有る)
+            // An overload of a built-in method that is not in the subset (it exists in .NET)
             string? bclOwner = cands.Count > 0 ? BclOverloadOwner(cands[0], call) : null;
-            // string.Join に Dictionary の Keys / Values を渡す: 要素が文字列にできない型なら、その診断を先に出す
+            // Passing Dictionary Keys / Values to string.Join: if the element type cannot be stringified, report that diagnostic first
             var joinElem = cands.Count > 0 && cands[0].Builtin.StartsWith("String.Join") && n == 2 ? CollectionElement(call.Item(1).A) : null;
             if (joinElem != null && (joinElem.Kind == TypeKind.Class || joinElem.Kind == TypeKind.Struct || joinElem.Kind == TypeKind.Interface))
                 Error("TCS1001", "unsupported syntax: UnsupportedToString(" + joinElem.FullDisplay() + ")", call.Item(1).A!);
@@ -3022,7 +3022,7 @@ public sealed class Binder
             int cmp = Better(applicable[i], applicable[best], call, recvType, inferred[i], inferred[best]);
             if (cmp > 0) best = i;
         }
-        // 曖昧さの検査
+        // Ambiguity check
         for (int i = 0; i < applicable.Count; i++)
         {
             if (i == best) continue;
@@ -3033,7 +3033,7 @@ public sealed class Binder
             }
         }
         var chosen = applicable[best];
-        // サブセットに無い BCL の値 (StringComparison.Ordinal、Comparer<T>.Default など) を渡す組み込みの呼び出しは、.NET の別の overload
+        // A built-in call that passes a BCL value not in the subset (StringComparison.Ordinal, Comparer<T>.Default, etc.) is a different .NET overload
         if (AnyBclArg(call))
         {
             string? bclOwner = BclOverloadOwner(chosen, call);
@@ -3087,7 +3087,7 @@ public sealed class Binder
         }
     }
 
-    // 1 なら a が b より良い、-1 なら悪い、0 は決まらない
+    // 1 if a is better than b, -1 if worse, 0 if undecided
     private int Better(Symbol a, Symbol b, Node call, TypeSym? recvType, List<TypeSym>? ia, List<TypeSym>? ib)
     {
         int n = call.Count;
@@ -3106,12 +3106,12 @@ public sealed class Binder
         if (aBetter && !bBetter) return 1;
         if (bBetter && !aBetter) return -1;
         if (aBetter && bBetter) return 0;
-        // 非 generic が良い
+        // Non-generic is better
         bool ag = ia != null;
         bool bg = ib != null;
         if (!ag && bg) return 1;
         if (ag && !bg) return -1;
-        // 宣言の parameter 型が型引数でない方が具体的 (G<string> の Pick(T) と Pick(string))
+        // The one whose declared parameter type is not a type argument is more specific (Pick(T) and Pick(string) in G<string>)
         int ta = 0;
         int tb = 0;
         for (int i = 0; i < n; i++)
@@ -3121,7 +3121,7 @@ public sealed class Binder
         }
         if (ta < tb) return 1;
         if (tb < ta) return -1;
-        // 省略引数を使わない方が良い
+        // Not using omitted arguments is better
         bool aDefaults = a.ParamCount > n;
         bool bDefaults = b.ParamCount > n;
         if (!aDefaults && bDefaults) return 1;
@@ -3139,7 +3139,7 @@ public sealed class Binder
         }
         if (arg.Kind == NodeKind.Lambda && t1.Kind == TypeKind.Delegate && t2.Kind == TypeKind.Delegate)
         {
-            // lambda の推論した戻り型 X: Func<.., X> が良く、そうでなければ戻り型どうしの良い変換
+            // Inferred lambda return type X: Func<.., X> is better; otherwise the better conversion between the return types
             if (t1.Ret == null || t2.Ret == null || TypeSym.Same(t1.Ret, t2.Ret)) return 0;
             var x = LambdaReturnFor(arg, t1);
             if (x != null)
@@ -3163,7 +3163,7 @@ public sealed class Binder
         return 0;
     }
 
-    // 型に現れる method の型引数の index の最大 + 1 (at 以上)
+    // Maximum index + 1 of the method type arguments appearing in the type (at least at)
     private static int MethodParamCount(TypeSym t, int at)
     {
         if (t.Kind == TypeKind.TypeParam && t.IsMethodParam && t.Index + 1 > at) at = t.Index + 1;
@@ -3175,13 +3175,13 @@ public sealed class Binder
         return at;
     }
 
-    // method の型引数を引数から推論する。推論できなければ null
+    // Infer method type arguments from the arguments. null if they cannot be inferred
     private List<TypeSym>? InferTypeArgs(Symbol m, Node call, TypeSym? recvType)
     {
         int count = m.TypeParams != null ? m.TypeParams.Count : 1;
         if (m.TypeParams == null)
         {
-            // 組み込みの generic method (string.Join<T>、TinySystem.Dict の <TKey, TValue>): parameter と戻り値の型引数の数
+            // Built-in generic methods (string.Join<T>, <TKey, TValue> of TinySystem.Dict): number of type arguments in the parameters and return value
             count = MethodParamCount(m.Type, 0);
             if (m.Params != null)
             {
@@ -3192,7 +3192,7 @@ public sealed class Binder
         var result = new List<TypeSym?>();
         for (int i = 0; i < count; i++) result.Add(null);
         int n = call.Count;
-        // 1 段目: lambda 以外の引数
+        // Phase 1: arguments other than lambdas
         for (int i = 0; i < n && i < m.ParamCount; i++)
         {
             var a = call.Item(i).A!;
@@ -3201,7 +3201,7 @@ public sealed class Binder
             var pt = m.Params![i].Type.Subst(recvType != null ? recvType.Args : null, null);
             Unify(pt, a.Type, result);
         }
-        // 2 段目: lambda と method group の戻り型
+        // Phase 2: return types of lambdas and method groups
         for (int i = 0; i < n && i < m.ParamCount; i++)
         {
             var a = call.Item(i).A!;
@@ -3240,7 +3240,7 @@ public sealed class Binder
             var pt = m.Params![i].Type.Subst(recvType != null ? recvType.Args : null, null);
             if (pt.Kind != TypeKind.Delegate || pt.Ret == null) continue;
             if (!ContainsMethodParam(pt.Ret)) continue;
-            // parameter 型が決まっているか
+            // Whether the parameter types are fixed
             bool ready = true;
             var ps = new List<TypeSym>();
             foreach (var pa in pt.Args!)
@@ -3297,7 +3297,7 @@ public sealed class Binder
         if (p.Ret != null && a.Ret != null) Unify(p.Ret, a.Ret, result);
     }
 
-    // lambda を delegate の parameter 型で束縛したときの戻り型 (void は VoidType、分からなければ null)
+    // Return type when the lambda is bound with the delegate's parameter types (VoidType for void, null if unknown)
     private TypeSym? LambdaReturnFor(Node lambda, TypeSym del)
     {
         if (del.Args == null || del.Args.Count != lambda.Count) return null;
@@ -3308,7 +3308,7 @@ public sealed class Binder
         return InferLambdaReturn(lambda, del.Args);
     }
 
-    // lambda をこの delegate に変換できるか (戻り値の型が合うか)
+    // Whether the lambda can be converted to this delegate (whether the return type matches)
     private bool LambdaFits(Node lambda, TypeSym del)
     {
         if (del.Ret == null || del.Ret.ContainsTypeParam()) return true;
@@ -3316,7 +3316,7 @@ public sealed class Binder
         if (x == null || x.IsError) return true;
         if (del.Ret.Kind == TypeKind.Void)
         {
-            // 式本体は式文になれる式だけ (呼び出しなど)。ブロックは return に値が無いこと
+            // An expression body must be an expression that can be an expression statement (a call etc.). A block must have no value in its returns
             if (lambda.A != null) return IsStatementExpression(lambda.A);
             return x.Kind == TypeKind.Void;
         }
@@ -3339,7 +3339,7 @@ public sealed class Binder
         return false;
     }
 
-    // lambda の本体を試しに束縛して戻り型を求める (診断と束縛の結果は捨てる)
+    // Trial-bind the lambda body to find its return type (diagnostics and binding results are discarded)
     private TypeSym? InferLambdaReturn(Node lambda, List<TypeSym> ps)
     {
         int save = _c.Diags.Items.Count;
@@ -3351,7 +3351,7 @@ public sealed class Binder
 
     private Symbol? ResolveExtension(List<Symbol> cands, Node call, Node receiver, Node at)
     {
-        // receiver を最初の引数として解決する
+        // Resolve with the receiver as the first argument
         var recvArg = new Node(NodeKind.Arg, receiver.File, receiver.Pos);
         recvArg.A = receiver;
         var args = new List<Node>();
@@ -3376,7 +3376,7 @@ public sealed class Binder
         }
         var m = ResolveCall(visible, temp, null, at);
         call.TypeArgs = temp.TypeArgs;
-        // receiver の変換を戻す
+        // Undo the receiver conversion
         call.B = recvArg.A;
         return m;
     }
@@ -3390,9 +3390,9 @@ public sealed class Binder
         return false;
     }
 
-    // C# は拡張メソッドを内側の namespace の scope から順に探し、受け手を受け取れる候補のある最初の集合で止まる。
-    // 1 つの scope では、その namespace で宣言した型の集合を先に、その namespace に書いた using が取り込む型の集合を後に見る。
-    // 受け手以外の引数は見ないので、内側の集合の候補が引数で合わないときは (C# なら外側に進むところを) 誤りにする
+    // C# searches extension methods from the innermost namespace scope outward, and stops at the first set that has a candidate accepting the receiver.
+    // Within one scope, it looks first at the set of types declared in that namespace, then at the set of types imported by the usings written in that namespace.
+    // Arguments other than the receiver are not checked, so when the inner set's candidates do not match the arguments, it is an error (where C# would move outward)
     private List<Symbol> InnermostExtensions(List<Symbol> visible, TypeSym? recv)
     {
         if (visible.Count < 2 || recv == null) return visible;
@@ -3420,7 +3420,7 @@ public sealed class Binder
         return visible;
     }
 
-    // level の namespace (compilation unit は "") に書いた using が ns を取り込むか
+    // Whether a using written in the namespace at level (the compilation unit is "") imports ns
     private bool ImportedAt(string ns, string level)
     {
         var levels = _scope!.UsingLevels;
@@ -3449,7 +3449,7 @@ public sealed class Binder
         return false;
     }
 
-    // 選んだ method の parameter へ引数を変換する
+    // Convert the arguments to the chosen method's parameters
     private void ApplyArgs(Symbol m, Node call, TypeSym? recvType, List<TypeSym>? margs)
     {
         int n = call.Count;
@@ -3495,7 +3495,7 @@ public sealed class Binder
                 if ((e.Info == RefKind.Field || e.Info == RefKind.Property) && e.Kind == NodeKind.Member && e.Sym != null && !e.Sym.IsStatic
                     && e.Sym.Owner != null && e.Sym.Owner.IsStruct && !IsValueVariable(e.A!))
                 {
-                    // property や method が返した struct の値の member は書き換えられない
+                    // Members of a struct value returned by a property or method cannot be modified
                     Error("CS1612", "Cannot modify the return value of '" + ValueSourceName(e.A!) + "' because it is not a variable", e);
                     return;
                 }
@@ -3528,7 +3528,7 @@ public sealed class Binder
         Error("CS0131", "The left-hand side of an assignment must be a variable, property or indexer", e);
     }
 
-    // delegate の signature に合う method (parameter は同じ型、戻り値は同じか参照の変換)
+    // Method matching a delegate signature (same parameter types; return value the same or a reference conversion)
     private Symbol? FindMethodForDelegate(List<Symbol> cands, TypeSym del)
     {
         foreach (var m in cands)
@@ -3546,7 +3546,7 @@ public sealed class Binder
         return null;
     }
 
-    // method group を delegate へ変換する
+    // Convert a method group to a delegate
     private Node ConvertMethodGroup(Node e, TypeSym del)
     {
         var cands = e.Cands;
@@ -3558,7 +3558,7 @@ public sealed class Binder
         Symbol? found = FindMethodForDelegate(cands, del);
         if (found == null && e.List != null)
         {
-            // Pick<int> のように型引数を明示した generic な method
+            // A generic method with explicit type arguments, like Pick<int>
             var targs = TypeArgsOf(e)!;
             foreach (var m in cands)
             {
@@ -3581,11 +3581,11 @@ public sealed class Binder
             Error("CS0123", "No overload for '" + cands[0].Name + "' matches delegate '" + del.Display() + "'", e);
             return e;
         }
-        // TinySystem.Text の method は intrinsic で、関数の値を持たない
+        // TinySystem.Text methods are intrinsics and have no function value
         if (found.Builtin != "" && (found.Builtin.StartsWith("Runes.") || found.Builtin.StartsWith("Utf8Bytes.") || found.BuiltinOwner == "Utf8Bytes"))
             Error("TCS1001", "unsupported syntax: TextApiMethodGroup", e);
         else if (found.Builtin != "") Unsupported("method group of a library method", e);
-        // instance の method の値 (bound closure) は写していない
+        // Instance method values (bound closures) are not mapped
         else if (!found.IsStatic && found.Kind == SymKind.Method) Error("TCS1001", "unsupported syntax: InstanceMethodGroup", e);
         e.Sym = found;
         var c = MakeConv(e, del, ConvKind.MethodGroup);
@@ -3600,7 +3600,7 @@ public sealed class Binder
         e.Type = del;
     }
 
-    // del の Ret が ErrorType で infer なら戻り型を推論して返す
+    // If del's Ret is ErrorType and infer is set, infer and return the return type
     private TypeSym? BindLambdaInfer(Node e, TypeSym del, bool infer)
     {
         var ps = del.Args!;
@@ -3678,7 +3678,7 @@ public sealed class Binder
         return result;
     }
 
-    // ---- 添字 ----
+    // ---- Indexers ----
 
     private void BindIndex(Node e)
     {
@@ -3745,7 +3745,7 @@ public sealed class Binder
 
     private void BindNew(Node e, TypeSym? expected)
     {
-        // 匿名型の生成式 (サブセットの外。構文で報告済み)
+        // Anonymous type creation expressions (outside the subset; already reported by syntax)
         if (e.Value == 3)
         {
             e.Type = TypeSym.ErrorType;
@@ -3780,7 +3780,7 @@ public sealed class Binder
                     {
                         if (n == 0 && t.Kind == TypeKind.Struct)
                         {
-                            // 引数なしの struct は既定値 (引数なしの constructor があればそれ)
+                            // A struct with no arguments is the default value (or the parameterless constructor if there is one)
                             Symbol? zero = null;
                             foreach (var c in decl.Ctors)
                             {
@@ -3839,7 +3839,7 @@ public sealed class Binder
                 PreBindArgs(e);
                 break;
             case TypeKind.Delegate:
-                // delegate の生成式 (`new Action<int>(M)`、`new D(lambda)`、`new D(d)`) は引数の delegate への変換と同じ
+                // Delegate creation expressions (`new Action<int>(M)`, `new D(lambda)`, `new D(d)`) are the same as converting the argument to the delegate
                 if (n == 1 && e.B == null && e.Item(0).Text == "")
                 {
                     var value = BindValue(e.Item(0).A!, t);
@@ -3859,7 +3859,7 @@ public sealed class Binder
                 break;
             default:
                 {
-                    // 数値、bool、char、enum の new T() は既定値 (default(T) と同じ)
+                    // new T() for numeric, bool, char, and enum types is the default value (same as default(T))
                     var zero = n == 0 && e.B == null && !t.IsNullable ? DefaultConst(t) : null;
                     if (zero != null)
                     {
@@ -3871,7 +3871,7 @@ public sealed class Binder
                         e.Const = zero;
                         return;
                     }
-                    // object と string の constructor (`new object()`、`new string(chars)`) は .NET にあるがサブセットの外
+                    // object and string constructors (`new object()`, `new string(chars)`) exist in .NET but are outside the subset
                     if (t.Kind == TypeKind.Object || t.Kind == TypeKind.String)
                     {
                         PreBindArgs(e);
@@ -3889,7 +3889,7 @@ public sealed class Binder
     {
         if (init.Kind == NodeKind.ObjectInit)
         {
-            // with { } と new T { } は member を持たない
+            // with { } and new T { } have no members
             if (init.List == null) return;
             foreach (var item in init.List)
             {
@@ -3915,7 +3915,7 @@ public sealed class Binder
                     item.Type = mt;
                     if (item.A!.Kind == NodeKind.ObjectInit || item.A.Kind == NodeKind.CollectionInit)
                     {
-                        // 入れ子の初期化子: 既にある member の object / collection に対して初期化する
+                        // Nested initializer: initializes the existing member's object / collection
                         item.Value = 1;
                         BindObjectInitializer(item.A, mt);
                     }
@@ -3936,7 +3936,7 @@ public sealed class Binder
             if (t.Kind == TypeKind.Dict || t.Kind == TypeKind.List) init.Info = 1;
             return;
         }
-        // collection の初期化子
+        // Collection initializers
         if (init.List == null) return;
         for (int i = 0; i < init.List.Count; i++)
         {
@@ -3976,7 +3976,7 @@ public sealed class Binder
         else if (expected != null && expected.Kind == TypeKind.Array) elem = expected.Elem;
         else
         {
-            // new[] { ... }: 要素の型から
+            // new[] { ... }: from the element types
             elem = TypeSym.ErrorType;
             if (e.C != null && e.C.List != null && e.C.List.Count > 0)
             {
@@ -3989,11 +3989,11 @@ public sealed class Binder
         if (e.C != null) BindArrayElements(e.C, elem);
         if (e.B != null && e.C != null)
         {
-            // new T[n] { ... } の n は定数で、要素の数と同じ
+            // n in new T[n] { ... } is a constant equal to the number of elements
             if (!e.B.HasConst) Error("CS0150", "A constant value is expected", e.B);
             else if (e.B.Const!.Kind == ConstKind.Int && e.B.Const.I != e.C.Count) Error("CS0847", "An array initializer of length '" + e.B.Const.I + "' is expected", e.C);
         }
-        // 要素の null の警告 (TCS1003) は SemanticChecks.CheckCollectionNull
+        // The warning for null elements (TCS1003) is in SemanticChecks.CheckCollectionNull
     }
 
     private Node BindArrayInit(Node init, TypeSym t)
@@ -4020,7 +4020,7 @@ public sealed class Binder
         if (init.List == null) return;
         for (int i = 0; i < init.List.Count; i++)
         {
-            // 多次元の配列の初期化子 (`{{0, 1}, {2, 3}}`。多次元の配列はサブセットの外で、型の所で報告済み) は要素の値だけを調べる
+            // For a multidimensional array initializer (`{{0, 1}, {2, 3}}`; multidimensional arrays are outside the subset and already reported at the type), only the element values are checked
             var x = init.List[i];
             if (x.Kind == NodeKind.ArrayInit && elem.Kind != TypeKind.Array && Reported(x.File, "MultiDimensionalArray"))
             {
@@ -4032,7 +4032,7 @@ public sealed class Binder
         init.Type = TypeSym.ArrayOf(elem);
     }
 
-    // e の位置にサブセットの外の構文 (TCS1001) を報告済みか (読み飛ばした式は null の literal で残る)
+    // Whether out-of-subset syntax (TCS1001) has already been reported at e's position (a skipped expression remains as a null literal)
     private bool ReportedAt(Node e)
     {
         foreach (var d in _c.Diags.Items)
@@ -4042,7 +4042,7 @@ public sealed class Binder
         return false;
     }
 
-    // file にサブセットの外の構文 (TCS1001) として what を報告済みか
+    // Whether what has already been reported as out-of-subset syntax (TCS1001) in file
     private bool Reported(SourceFile file, string what)
     {
         foreach (var d in _c.Diags.Items)
@@ -4070,7 +4070,7 @@ public sealed class Binder
         for (int i = 0; i < e.List.Count; i++) e.List[i] = BindValue(e.List[i], expected.Elem);
     }
 
-    // ---- 演算子 ----
+    // ---- Operators ----
 
     private void BindUnary(Node e)
     {
@@ -4097,7 +4097,7 @@ public sealed class Binder
         }
         if (t.Kind == TypeKind.Nullable && (op == "-" || op == "!" || op == "~" || op == "+"))
         {
-            // 持ち上げた単項演算子
+            // Lifted unary operators
             var inner = op == "!" ? TypeSym.BoolType : Promote(t.Elem);
             if (inner != null && (op != "!" || t.Elem.Kind == TypeKind.Bool))
             {
@@ -4182,7 +4182,7 @@ public sealed class Binder
         e.Type = TypeSym.ErrorType;
     }
 
-    // 単項 / 二項の数値昇格の型
+    // Type of unary / binary numeric promotion
     private static TypeSym? Promote(TypeSym t)
     {
         switch (t.Kind)
@@ -4220,7 +4220,7 @@ public sealed class Binder
         Error("CS0023", "Operator '" + e.Text + "' cannot be applied to operand of type '" + t.Display() + "'", e);
     }
 
-    // 二項の user の演算子の overload の解決 (両方の型の候補から、より良い変換のもの)
+    // Overload resolution for user-defined binary operators (from the candidates of both types, the one with the better conversion)
     private Symbol? ResolveUserOperator(string name, Node a, Node b, TypeSym lt, TypeSym rt)
     {
         var cands = new List<Symbol>();
@@ -4231,7 +4231,7 @@ public sealed class Binder
         foreach (var c in cands)
         {
             if (c.ParamCount != 2) continue;
-            // generic な型の演算子は、その型の型引数で parameter を置き換える
+            // For operators of a generic type, substitute the type's type arguments into the parameters
             var ownerArgs = c.Owner == lt.Decl ? lt.Args : c.Owner == rt.Decl ? rt.Args : null;
             var p0 = c.Params![0].Type.Subst(ownerArgs, null);
             var p1 = c.Params[1].Type.Subst(ownerArgs, null);
@@ -4256,7 +4256,7 @@ public sealed class Binder
         return best;
     }
 
-    // ResolveUserOperator が選んだ演算子の型の型引数
+    // Type arguments of the type of the operator chosen by ResolveUserOperator
     private List<TypeSym>? _operatorOwnerArgs;
 
     private static void AddOperatorCands(TypeSym t, string name, List<Symbol> into)
@@ -4299,7 +4299,7 @@ public sealed class Binder
             }
             return;
         }
-        // == default / != default: default の型は他方の operand から
+        // == default / != default: the type of default comes from the other operand
         if ((op == "==" || op == "!=") && e.A!.Kind == NodeKind.DefaultLit && e.A.A == null)
         {
             BindExpr(e.B!, null);
@@ -4322,14 +4322,14 @@ public sealed class Binder
             e.Type = op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=" ? TypeSym.BoolType : TypeSym.ErrorType;
             return;
         }
-        // delegate の結合 (multicast) は写していない
+        // Delegate combination (multicast) is not mapped
         if ((op == "+" || op == "-") && lt.Kind == TypeKind.Delegate && (rt.Kind == TypeKind.Delegate || rt.Kind == TypeKind.MethodGroup || rt.Kind == TypeKind.Lambda))
         {
             Unsupported("DelegateCombine", e);
             e.Type = lt;
             return;
         }
-        // user の演算子 (両方の operand の型の演算子から、引数に合うものを選ぶ)
+        // User-defined operators (choose the one that matches the arguments from the operators of both operand types)
         if (lt.Decl != null && lt.Kind != TypeKind.Interface && lt.Kind != TypeKind.Enum || rt.Decl != null && rt.Kind != TypeKind.Interface && rt.Kind != TypeKind.Enum)
         {
             var cand = ResolveUserOperator("op_" + Declarer.OperatorName(op, 2), e.A, e.B, lt, rt);
@@ -4418,7 +4418,7 @@ public sealed class Binder
             case "^":
                 if (lt.Kind == TypeKind.Bool && rt.Kind == TypeKind.Bool)
                 {
-                    // 短絡しない bool の & | ^ は VM / C に写していない (and / or は短絡する)
+                    // Non-short-circuit bool & | ^ are not mapped to the VM / C (and / or short-circuit)
                     Error("TCS1001", "unsupported syntax: expression: " + (op == "&" ? "BitwiseAndExpression" : op == "|" ? "BitwiseOrExpression" : "ExclusiveOrExpression"), e);
                     e.Type = TypeSym.BoolType;
                     return;
@@ -4482,7 +4482,7 @@ public sealed class Binder
         e.Type = TypeSym.ErrorType;
     }
 
-    // 定数の int は値が収まれば uint に変換する (C# の暗黙の定数の変換。`h * 16777619` は uint の演算)
+    // A constant int converts to uint if the value fits (C# implicit constant conversion; `h * 16777619` is a uint operation)
     private static TypeSym? BinaryPromoteOperands(Node a, Node b, TypeSym ta, TypeSym tb)
     {
         if (ta.Kind == TypeKind.UInt && IsNonNegativeIntConst(b, tb)) return TypeSym.UIntType;
@@ -4508,7 +4508,7 @@ public sealed class Binder
         return TypeSym.IntType;
     }
 
-    // T? の operand を持つ演算子 (持ち上げた演算子。片方でも null なら null)
+    // Operators with T? operands (lifted operators; null if either side is null)
     private bool TryLifted(Node e, TypeSym lt, TypeSym rt, bool comparison)
     {
         if (lt.Kind != TypeKind.Nullable && rt.Kind != TypeKind.Nullable) return false;
@@ -4598,7 +4598,7 @@ public sealed class Binder
             case ">>": r = a >> (b & 31); break;
             default: return;
         }
-        // int の定数式の桁あふれは compile error (uint などは 32 bit に写した値で畳むだけ)
+        // Overflow in an int constant expression is a compile error (uint etc. just fold to the value mapped to 32 bits)
         if (overflow && !_unchecked && e.Type != null && e.Type.Kind == TypeKind.Int)
             Error("CS0220", "The operation overflows at compile time in checked mode", e);
         e.HasConst = true;
@@ -4664,13 +4664,13 @@ public sealed class Binder
     private void BindEquality(Node e, TypeSym lt, TypeSym rt)
     {
         e.Type = TypeSym.BoolType;
-        // null との比較
+        // Comparison with null
         if (lt.Kind == TypeKind.Null || rt.Kind == TypeKind.Null)
         {
             var other = lt.Kind == TypeKind.Null ? rt : lt;
             if (!other.IsNullable && other.Kind != TypeKind.Null && other.Kind != TypeKind.TypeParam)
             {
-                // int == null は常に false (C# は警告)
+                // int == null is always false (C# warns)
                 if (other.Kind == TypeKind.Struct) Error("CS0019", "Operator '" + e.Text + "' cannot be applied to operands of type '" + other.Display() + "' and '<null>'", e);
             }
             return;
@@ -4693,7 +4693,7 @@ public sealed class Binder
                 var pp = BinaryPromote(inner, innerR);
                 if (pp != null && !(TypeSym.Same(inner, pp) && TypeSym.Same(innerR, pp)))
                 {
-                    // int? == float? などは両方を持ち上げた共通の型にする
+                    // int? == float? etc. use a common type with both sides lifted
                     e.A = Coerce(e.A!, TypeSym.NullableOf(pp));
                     e.B = Coerce(e.B!, TypeSym.NullableOf(pp));
                 }
@@ -4719,7 +4719,7 @@ public sealed class Binder
         }
         if (lt.Kind == TypeKind.Struct && TypeSym.Same(lt, rt) && lt.Decl != null && lt.Decl.IsRecord)
         {
-            // record struct の値の等価
+            // Value equality of record structs
             e.Info = 3;
             return;
         }
@@ -4734,9 +4734,9 @@ public sealed class Binder
             return;
         }
         if (lt.Kind == TypeKind.Enum && e.B!.HasConst && e.B.Const!.Kind == ConstKind.Int && e.B.Const.I == 0) return;
-        // tcs の緩和: enum と整数の == / !=
+        // tcs relaxation: == / != between enums and integers
         if (lt.Kind == TypeKind.Enum && rt.IsIntegral && rt.Kind != TypeKind.Char || rt.Kind == TypeKind.Enum && lt.IsIntegral && lt.Kind != TypeKind.Char) return;
-        // 参照の比較
+        // Reference comparison
         if (lt.IsReferenceLike && rt.IsReferenceLike)
         {
             if (lt.Kind == TypeKind.Struct || rt.Kind == TypeKind.Struct)
@@ -4747,7 +4747,7 @@ public sealed class Binder
             if (TypeSym.Same(lt, rt) || IsImplicitlyConvertible(lt, rt) || IsImplicitlyConvertible(rt, lt)) return;
             if (lt.Kind == TypeKind.Interface || rt.Kind == TypeKind.Interface) return;
         }
-        // 参照型と決まった型引数どうし (where T : class) は参照の比較
+        // Between type arguments known to be reference types (where T : class), it is a reference comparison
         if (lt.Kind == TypeKind.TypeParam && TypeSym.Same(lt, rt) && IsReferenceTypeParam(lt)) return;
         if (lt.Kind == TypeKind.TypeParam || rt.Kind == TypeKind.TypeParam)
         {
@@ -4786,7 +4786,7 @@ public sealed class Binder
             }
             if (ImplicitKind(e.B, rt, inner) < 0 && IsImplicitlyConvertible(inner, rt))
             {
-                // byte? ?? int: 結果は右の型
+                // byte? ?? int: the result has the right-hand type
                 e.A = Coerce(e.A, rt.Kind == TypeKind.Nullable ? rt : TypeSym.NullableOf(rt));
                 e.Type = rt;
                 e.Info = 1;
@@ -4843,7 +4843,7 @@ public sealed class Binder
             BindExpr(e.B!, inner);
             if (tt.Kind == TypeKind.Nullable && e.B!.Type != null && e.B.Type.Kind == TypeKind.Nullable)
             {
-                // a ??= b (b も T?) の値は T?
+                // The value of a ??= b (b also T?) is T?
                 e.B = Coerce(e.B, tt);
                 e.Type = tt;
                 return;
@@ -4852,7 +4852,7 @@ public sealed class Binder
             e.Type = inner;
             return;
         }
-        // 複合代入: a op= b は a = (T)(a op b)
+        // Compound assignment: a op= b is a = (T)(a op b)
         string bop = op.Replace("=", "");
         BindExpr(e.B!, null);
         var rt = e.B!.Type!;
@@ -4951,7 +4951,7 @@ public sealed class Binder
         if (TypeSym.Same(bt, ct)) result = bt;
         else if (bt.Kind == TypeKind.Null && ct.IsNullable) result = ct;
         else if (ct.Kind == TypeKind.Null && bt.IsNullable) result = bt;
-        // null と値型の組は自然な型を持たないので、変換先の型があればそれ (target-typed。各腕を変換先へ変換する)
+        // A pair of null and a value type has no natural type, so use the target type if there is one (target-typed; each arm is converted to the target)
         else if (bt.Kind == TypeKind.Null && ct.IsValueType)
         {
             result = expected != null && expected.IsNullable && IsImplicitlyConvertible(ct, expected) ? expected : TypeSym.NullableOf(ct);
@@ -5008,10 +5008,10 @@ public sealed class Binder
             }
             return;
         }
-        // 明示の変換
+        // Explicit conversion
         if (from.IsNumeric && to.IsNumeric || from.Kind == TypeKind.Enum && to.IsIntegral || from.IsIntegral && to.Kind == TypeKind.Enum || from.Kind == TypeKind.Enum && to.Kind == TypeKind.Enum)
         {
-            // byte への変換は 0..255 の整数の定数だけ (float からの変換も含む)
+            // Conversion to byte is allowed only for integer constants 0..255 (including conversions from float)
             if (to.Kind == TypeKind.Byte && from.Kind == TypeKind.Float && !(e.B.HasConst && e.B.Const!.Kind == ConstKind.Int && e.B.Const.I >= 0 && e.B.Const.I <= 255))
                 Error("TCS1001", "unsupported syntax: ByteNarrowing", e);
             if (from.Kind == TypeKind.Float && to.IsIntegral) e.Info = ConvKind.FloatToInt;
@@ -5094,7 +5094,7 @@ public sealed class Binder
             e.Info = ConvKind.CastInterface;
             return;
         }
-        // 数から byte? への変換は 0..255 に丸まらない
+        // Conversion from a number to byte? is not narrowed to 0..255
         if (to.Kind == TypeKind.Nullable && to.Elem.Kind == TypeKind.Byte && from.IsNumeric)
         {
             Error("TCS1001", "unsupported syntax: ByteNarrowing", e);
@@ -5120,7 +5120,7 @@ public sealed class Binder
         }
     }
 
-    // ---- is と pattern ----
+    // ---- is and patterns ----
 
     private void BindIs(Node e)
     {
@@ -5142,7 +5142,7 @@ public sealed class Binder
         return true;
     }
 
-    // 型として読んだ構文を式に直す (case Color.Red: など)
+    // Turn syntax read as a type back into an expression (case Color.Red: etc.)
     private static Node TypeNodeToExpr(Node t)
     {
         if (t.Kind == NodeKind.TypeName)
@@ -5195,7 +5195,7 @@ public sealed class Binder
                         CheckTypeTest(input, t, p);
                         return p;
                     }
-                    // 定数
+                    // Constant
                     var c = new Node(NodeKind.PatConst, p.File, p.Pos);
                     c.A = TypeNodeToExpr(p.A!);
                     return BindPattern(c, input);
@@ -5304,7 +5304,7 @@ public sealed class Binder
     private void CheckTypeTest(TypeSym input, TypeSym t, Node at)
     {
         if (input.IsError || t.IsError) return;
-        // delegate の型は実行時の型の表現を持たない (VM と C の closure は delegate の型を持たない)
+        // Delegate types have no runtime type representation (VM and C closures do not carry the delegate type)
         if (t.Kind == TypeKind.Delegate || t.Decl != null && t.Decl.Decl.Has(Mods.Delegate))
         {
             Error("TCS1001", "unsupported syntax: TypeTestWithoutRuntimeType", at);
@@ -5326,7 +5326,7 @@ public sealed class Binder
         if (input.Kind == TypeKind.Nullable && TypeSym.Same(input.Elem, t)) return;
         if (input.Kind == TypeKind.Struct || input.IsValueType && !TypeSym.Same(input, t) && input.Kind != TypeKind.Nullable)
         {
-            // interface の型の検査は SemanticChecks (InterfaceTypeTest) が報告する
+            // Interface type tests are reported by SemanticChecks (InterfaceTypeTest)
             if (!TypeSym.Same(input, t) && t.Kind != TypeKind.Interface) Error("CS8121", "An expression of type '" + input.Display() + "' cannot be handled by a pattern of type '" + t.Display() + "'", at);
         }
     }

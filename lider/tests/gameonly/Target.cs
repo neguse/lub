@@ -1,4 +1,4 @@
-// TestGameOnly が開く file。
+// The file TestGameOnly opens.
 public static class Target
 {
     // 0

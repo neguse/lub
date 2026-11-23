@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# tests/c/tcs_shutdown.cs を tcs2c で C にし、src/tcs_host.c の web の player (build/wasm-tcs/lub.js) を作る。
-# 開いて確かめるのは web/scripts/tcs-shutdown-check.mjs。
-# emcc (emsdk の環境) と dotnet が要る。
+# Converts tests/c/tcs_shutdown.cs to C with tcs2c and builds the web player of src/tcs_host.c (build/wasm-tcs/lub.js).
+# web/scripts/tcs-shutdown-check.mjs opens it and checks it.
+# Requires emcc (the emsdk environment) and dotnet.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out=build/wasm-tcs

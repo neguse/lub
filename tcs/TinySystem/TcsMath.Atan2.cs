@@ -1,7 +1,7 @@
 namespace TinySystem;
 
-// atan2f: runtime/math/atan2f.c の C# 版 (CORE-MATH 由来、MIT。著作権表示と
-// 許諾文は atan2f.c の先頭)
+// atan2f: C# version of runtime/math/atan2f.c (derived from CORE-MATH, MIT. The copyright notice and
+// license text are at the top of atan2f.c)
 internal static partial class TcsMath
 {
     static double MulDD(double xh, double xl, double ch, double cl, out double l)

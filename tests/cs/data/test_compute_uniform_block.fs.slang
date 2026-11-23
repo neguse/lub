@@ -1,5 +1,5 @@
-// compute の出力を可視化する: R = 目印 (mark[1].x)、G/B = uniform の値
-// (val[0])。
+// Visualizes the compute output: R = marker (mark[1].x), G/B = uniform value
+// (val[0]).
 StructuredBuffer<float4> mark;
 StructuredBuffer<float4> val;
 

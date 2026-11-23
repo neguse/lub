@@ -1,5 +1,6 @@
-// tcs_glob_sources の smoke。
-// csproj ディレクトリの implicit glob (**/*.cs、bin / obj / 隠しディレクトリを除く) を、実ファイルの fixture で検査する。
+// Smoke test for tcs_glob_sources.
+// Checks the implicit glob of a csproj directory (**/*.cs, excluding bin / obj
+// / hidden directories) with a fixture of real files.
 #include "../../src/tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
@@ -11,8 +12,8 @@ static int cmp_desc(const void *a, const void *b) {
   return strcmp(*(char *const *)b, *(char *const *)a);
 }
 
-// SDL に再帰削除は無い。
-// 降順に並べると子が親より先に来る
+// SDL has no recursive delete.
+// Sorting in descending order puts children before their parents
 static void remove_tree(const char *root) {
   int n = 0;
   char **all = SDL_GlobDirectory(root, NULL, 0, &n);
@@ -46,12 +47,12 @@ int main(void) {
   SDL_snprintf(root, sizeof(root), "%stcs_sources_fixture", SDL_GetBasePath());
   remove_tree(root);
 
-  // 入る
+  // Included
   touch(root, "Game.cs");
   touch(root, "sub/A.cs");
   touch(root, "sub/deep/B.cs");
   touch(root, "Z.cs");
-  // 入らない: 拡張子違い、bin / obj (どの深さでも)、隠しディレクトリ
+  // Excluded: other extensions, bin / obj (at any depth), hidden directories
   touch(root, "Game.csproj");
   touch(root, "sub/notes.txt");
   touch(root, "bin/Debug/X.cs");

@@ -2,25 +2,25 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// local の束縛 (local 変数 / parameter / foreach の変数 / pattern の designation / lambda の parameter) の IL の名前 (IlName)。
-// 型の名前と、IL の callee が素の名前で参照する global と同じ名前は
-// `x` → `x_` に写し、写した先が同じ member の中の識別子か型の名前なら `_` を足す。同じ member の同じ名前は同じ名前に写す
+// IL names (IlName) of local bindings (local variables / parameters / foreach variables / pattern designations / lambda parameters).
+// A name that matches a type name or a global that IL callees reference by bare name
+// is mapped `x` → `x_`, and if the result is an identifier in the same member or a type name, another `_` is added. The same name in the same member maps to the same name
 public static class LocalNames
 {
     private static readonly string[] EmittedGlobalsList = ("_ENV _G assert error getmetatable ipairs load next pairs pcall print rawequal rawget rawlen "
         + "rawset require select setmetatable tonumber tostring type xpcall coroutine debug io math os package string table utf8").Split(' ');
 
-    // runtime の global (Compliance.RuntimeGlobals と同じ)
+    // Runtime globals (same as Compliance.RuntimeGlobals)
     private static readonly string[] RuntimeGlobalsList = "TinySystem List Dict Math String TcsQueue TcsHashSet".Split(' ');
 
-    // runtime の math と UTF-8 の module の global (生成コードが素の名前で引く)
+    // Globals of the runtime's math and UTF-8 modules (generated code looks them up by bare name)
     public const string MathModuleGlobal = "tcs_math";
     public const string Utf8ModuleGlobal = "tcs_utf8";
 
     private static HashSet<string>? _globals;
     private static HashSet<string>? _reserved;
 
-    // pattern の変数の改名 (Binder) が避ける名前 (self と、IL の callee が素の名前で参照する global)
+    // Names avoided when renaming pattern variables (Binder) (self, and globals that IL callees reference by bare name)
     public static bool IsReserved(string name)
     {
         if (_reserved == null)
@@ -47,7 +47,7 @@ public static class LocalNames
         return _globals.Contains(name);
     }
 
-    // local の改名を避ける型の名前 (simple 名、global 名、--ref の型の path の先頭)
+    // Type names that local renaming avoids (simple names, global names, the first segment of --ref type paths)
     public static HashSet<string> ReservedTypeNames(Compilation c)
     {
         var names = new HashSet<string>();
@@ -69,7 +69,7 @@ public static class LocalNames
         return typeNames.Contains(name) || IsGlobal(name);
     }
 
-    // unit の全ての member (入れ子の型を含む) と top-level の文の local の名前を付ける
+    // Assigns local names for all members of the unit (including nested types) and for top-level statements
     public static void AssignUnit(Node unit, HashSet<string> typeNames)
     {
         if (unit.List != null)
@@ -78,7 +78,7 @@ public static class LocalNames
         }
         if (unit.List2 != null && unit.List2.Count > 0)
         {
-            // top-level の文の範囲は compilation unit 全体
+            // The scope of top-level statements is the whole compilation unit
             var decls = new List<Node>();
             foreach (var st in unit.List2) CollectDecls(st, decls);
             Assign(unit, decls, typeNames);
@@ -93,7 +93,7 @@ public static class LocalNames
             case NodeKind.TypeDecl:
                 if (m.Kind == NodeKind.TypeDecl && m.A != null)
                 {
-                    // record の positional parameter は member (対象外)
+                    // Positional parameters of a record are members (not handled here)
                 }
                 if (m.List != null)
                 {
@@ -171,8 +171,8 @@ public static class LocalNames
             taken.Add(name);
             l.IlName = name;
         }
-        // pattern の designation は switch や if の前に前宣言するので、同じ member の中で同じ名前の designation
-        // (`case A x: ... case B x:`) は別の名前にする (C backend は名前で local を引く。T283)
+        // Pattern designations are forward-declared before the switch or if, so designations with the same name in the same member
+        // (`case A x: ... case B x:`) get different names (the C backend looks up locals by name; T283)
         var patternNames = new List<string>();
         foreach (var d in decls)
         {
@@ -201,7 +201,7 @@ public static class LocalNames
         }
     }
 
-    // scope の中の識別子の綴り
+    // Spellings of identifiers in scope
     private static void CollectIdentifiers(Node n, HashSet<string> into)
     {
         switch (n.Kind)

@@ -1,12 +1,12 @@
-// SDL の scancode (EventData.Key)。文字は配列で変わるので EventData.Typed で受ける。
-// lub の KeyDown は押しっぱなしの繰り返しも届く。
+// SDL scancodes (EventData.Key). Characters depend on the keyboard layout, so they are received through EventData.Typed.
+// lub's KeyDown also delivers key repeats while a key is held.
 using TinySystem.Text;
 
 namespace LiderCore;
 
 public static class Keys
 {
-    // EventData.Mods の bit
+    // Bits of EventData.Mods
     public const int ModShift = 1;
     public const int ModCtrl = 2;
     public const int ModAlt = 4;
@@ -49,12 +49,12 @@ public static class Keys
     public const int RightShift = 229;
     public const int RightAlt = 230;
 
-    // scancode 30 から 56 まで。
-    // 40 から 43 (Return、Escape、Backspace、Tab) は文字にしないので 0 の印を置く
+    // Scancodes 30 to 56.
+    // 40 to 43 (Return, Escape, Backspace, Tab) do not produce characters, so a 0 marker is placed there
     const string Plain = "1234567890\0\0\0\0 -=[]\\#;'`,./";
     const string Shifted = "!@#$%^&*()\0\0\0\0 _+{}|~:\"~<>?";
 
-    // US 配列でその key が打つ文字 (印字できない key は 0)。test が keyboard なしで打つのに使う
+    // The character the key types on a US layout (0 for non-printable keys). Used by tests to type without a keyboard
     public static int UsChar(int key, bool shift)
     {
         if (key >= 4 && key <= 29)

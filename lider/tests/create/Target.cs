@@ -1,4 +1,4 @@
-// TestCreate が消す file。
+// The file TestCreate deletes.
 public static class Target
 {
 }

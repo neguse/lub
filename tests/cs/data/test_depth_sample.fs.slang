@@ -1,2 +1,2 @@
-// depth-only pass には color attachment が無いので何も出力しない。
+// A depth-only pass has no color attachment, so it outputs nothing.
 [shader("fragment")] void fs_main() {}

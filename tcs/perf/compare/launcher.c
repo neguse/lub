@@ -1,7 +1,9 @@
-// 子プロセスを 1 回走らせ、wall の時間と peak RSS を測る小さな launcher。
-// Python から直接 fork すると exec の前の Python のメモリが子の peak RSS に入るので、C の小さなプロセスから起動する。
+// Small launcher that runs a child process once and measures its wall time and
+// peak RSS. Forking directly from Python counts the Python memory from before
+// exec in the child's peak RSS, so the child is started from a small C process.
 // usage: launcher RESULT_FILE CPU|-1 PROGRAM [ARGS...]
-// RESULT_FILE に "wall_seconds peak_rss_kib exit_code" を 1 行書く。子の stdout / stderr はそのまま継ぐ
+// Writes one line "wall_seconds peak_rss_kib exit_code" to RESULT_FILE. The
+// child's stdout / stderr are inherited as is
 #define _GNU_SOURCE
 #include <sched.h>
 #include <stdio.h>

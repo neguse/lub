@@ -1,6 +1,6 @@
-// phys3d の公開 API (include/lub/lub_api.h、生成物) と core の内部形 (phys3d_internal.h) の詰め替え。
-// physics_box3d.c の末尾から include する。
-// 回転は quat (正規化して受ける) か euler (XYZ の順に軸回転を合成) で受け、core には正規化済みの四元数を渡す (二重に正規化すると丸めが変わるので core は正規化しない)。
+// Conversion between the public phys3d API (include/lub/lub_api.h, generated code) and the internal forms of core (phys3d_internal.h).
+// Included from the end of physics_box3d.c.
+// Rotation is accepted as quat (normalized on input) or euler (axis rotations composed in XYZ order), and core receives a normalized quaternion (core does not normalize, since normalizing twice changes the rounding).
 
 typedef struct GrowBuf3 {
   void *ptr;
@@ -22,7 +22,7 @@ static void *grow3_push(GrowBuf3 *g, size_t size) {
   return slot;
 }
 
-// visitor (user のコード) を回す query は、共有の buffer を呼び出しの間だけ借りて自分の結果を溜める (physics_box2d_api.inc の grow_take と同じ)。
+// Queries that run a visitor (user code) borrow the shared buffer only for the duration of the call to accumulate their own results (same as grow_take in physics_box2d_api.inc).
 static GrowBuf3 grow3_take(GrowBuf3 *shared) {
   GrowBuf3 own = *shared;
   own.n = 0;
@@ -51,7 +51,7 @@ static LubQuat3d quat3_normalized(LubQuat3d in) {
   return out;
 }
 
-// Box3D に euler の helper は無いので、軸ごとの四元数を XYZ の順で合成する。
+// Box3D has no euler helper, so the per-axis quaternions are composed in XYZ order.
 static LubQuat3d quat3_from_euler(LubVec3d e) {
   b3Quat qx = b3MakeQuatFromAxisAngle(b3Vec3_axisX, e.x);
   b3Quat qy = b3MakeQuatFromAxisAngle(b3Vec3_axisY, e.y);
@@ -61,8 +61,8 @@ static LubQuat3d quat3_from_euler(LubVec3d e) {
   return out;
 }
 
-// quat が優先、次に euler。
-// どちらも無ければ false (out は触らない)。
+// quat takes precedence, then euler.
+// If neither is given, false (out is left untouched).
 static bool rotation_of(bool has_quat, LubQuat3d quat, bool has_euler,
                         LubVec3d euler, LubQuat3d *out) {
   if (has_quat) {
@@ -106,7 +106,7 @@ static P3QueryFilter qfilter3_from(const LubFilterDesc3d *f, bool has) {
   return q;
 }
 
-// ShapeView3d の field を持つ record (ShapeView3d、ShapeInfo3d、RayHit3d、MoverPlane3d) を埋める
+// Fills records that have the ShapeView3d fields (ShapeView3d, ShapeInfo3d, RayHit3d, MoverPlane3d)
 #define SHAPE_VIEW3_OF(v, p)                                                   \
   do {                                                                         \
     memset(v, 0, sizeof(*v));                                                  \
@@ -359,7 +359,7 @@ LubStatus lub_phys3d_body(LubContext *ctx, LubHandle world, LubStr key,
 
 // ---------------------------------------------------------------- shapes
 
-// 3D の shape の Desc は共通の field を同じ名前で持つ (stub に継承は無い)。どの Desc でも同じ body で読む
+// 3D shape Descs have the common fields under the same names (the stubs have no inheritance). The same body reads them for any Desc
 #define SHAPE3_DESC_FROM(s, d)                                                 \
   do {                                                                         \
     p3_shape_desc_init(d);                                                     \
@@ -797,7 +797,7 @@ LubStatus lub_phys3d_joint(LubContext *ctx, LubHandle world, LubStr key,
   return p3_joint(ctx, world, key, &d, out);
 }
 
-// JointView3d の field を持つ record (JointView3d、JointInfo3d、JointEvent3d) を埋める
+// Fills records that have the JointView3d fields (JointView3d, JointInfo3d, JointEvent3d)
 #define JOINT_VIEW3_OF(v, j)                                                   \
   do {                                                                         \
     memset(v, 0, sizeof(*v));                                                  \

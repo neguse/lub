@@ -3,8 +3,8 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// struct / record struct の static member と演算子はサブセットの内側。
-// `==` と変換演算子は class と同じくサブセットの外
+// Static members and operators of struct / record struct are inside the subset.
+// `==` and conversion operators are outside the subset, as with class
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]

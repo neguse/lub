@@ -1,9 +1,12 @@
-// Gfx の Bindings: 名前ごとの handle か float の列を 1 つの block に持ち、draw に渡す。
-// block の確保は host (tcs VM と tcs2c は GC の配列、.NET 実行は managed の配列) が持つので、ここは確保も解放もしない。
-// 足りないときは何も変えずに LUB_BINDINGS_FULL を返し、host が大きい block に写してやり直す。
-// host の GC は block を動かすことがあるので、中の pointer は self と比べて入口で直す。
-// 名前の解決と handle の検査は draw のたびに lub_gfx_draw_items が行う。
-// 解決の結果を覚えないので、shader や resource が作り直されても古い結果を使わない。
+// Gfx Bindings: hold a handle or a float array per name in one block and pass
+// it to draw. The host owns the block allocation (a GC array for tcs VM and
+// tcs2c, a managed array for .NET execution), so this code neither allocates
+// nor frees. When there is not enough room, return LUB_BINDINGS_FULL without
+// changing anything, and the host copies to a larger block and retries. The
+// host GC may move the block, so the inner pointers are compared with self and
+// fixed up on entry. Name resolution and handle validation are done by
+// lub_gfx_draw_items on every draw. Resolution results are not remembered, so
+// stale results are not used even when a shader or resource is recreated.
 #include "api_internal.h"
 #include <string.h>
 
@@ -12,8 +15,8 @@ enum { BASE_ITEMS = 6, BASE_FLOATS = 36, BASE_NAME_BYTES = 64 };
 struct LubBindings {
   LubBindings *self;
   LubBinding *items;
-  int32_t
-      *value_caps; // items と同じ添字。その item が今の場所で持てる float の数
+  int32_t *value_caps; // Same index as items. Number of floats that item can
+                       // hold at its current location
   float *values;
   char *names;
   int32_t scale;
@@ -71,7 +74,8 @@ void lub_bindings_grow_into(LubBindings *dst, LubBindings *src) {
   memcpy(dst->names, src->names, (size_t)src->names_used);
   dst->names_used = src->names_used;
   memcpy(dst->value_caps, src->value_caps, (size_t)src->n * sizeof(int32_t));
-  // 使っている分だけを写す (handle に変わった item などの跡を捨てる)
+  // Copy only the part in use (dropping leftovers such as items that changed to
+  // a handle)
   int32_t used = 0;
   for (int32_t i = 0; i < src->n; ++i) {
     const LubBinding *from = &src->items[i];
@@ -98,7 +102,7 @@ static LubBinding *find(LubBindings *b, LubStr name) {
   return NULL;
 }
 
-// 足りないなら何も変えずに NULL を返す。
+// If there is not enough room, return NULL without changing anything.
 static LubBinding *find_or_add(LubBindings *b, LubStr name) {
   LubBinding *it = find(b, name);
   if (it)
@@ -121,7 +125,7 @@ static LubBinding *find_or_add(LubBindings *b, LubStr name) {
 }
 
 static float *uniform_slot(LubBindings *b, LubStr name, int32_t count) {
-  // 足りなければ追加も書き込みもしない
+  // If there is not enough room, neither add nor write
   LubBinding *it = find(b, name);
   bool place = !it || !it->values || b->value_caps[it - b->items] < count;
   if (place && b->values_used + count > VALUES_CAP(b))

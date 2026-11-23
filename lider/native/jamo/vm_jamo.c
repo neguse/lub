@@ -1,10 +1,14 @@
-/* jamo (かな漢字変換) の session API を、tcs VM の player (lub_vm) の native の拡張として出す (src/Jamo.ref.cs の関数)。
- * lub の include/lub/lub_vm_extension.h の形で、2 つの使い方がある。
- * lider の player (native/CMakeLists.txt、native と web) は静的に link する (入口の名前は lub_vm_extension_jamo)。
- * lub の既製の lub_vm は、scripts/build-native.sh が作る src/Jamo.so を読む。
- * web (emscripten) は thread を使わないので、Preload は何もせず、Open がその場で辞書を読む。
- * engine と session は process にひとつ。IME の状態 (かな入力、変換、候補、文節の伸び縮み、学習) は jamo の session が持ち、ここは渡すだけ。
- * 文節と候補の番号、preedit の中の位置は 0 から。 */
+/* Exposes the jamo (kana-kanji conversion) session API as a native extension of
+ * the tcs VM player (lub_vm) (the functions in src/Jamo.ref.cs). It follows
+ * lub's include/lub/lub_vm_extension.h and can be used in 2 ways. The lider
+ * player (native/CMakeLists.txt, native and web) links it statically (the entry
+ * point is named lub_vm_extension_jamo). lub's stock lub_vm loads src/Jamo.so
+ * built by scripts/build-native.sh. The web (emscripten) does not use threads,
+ * so Preload does nothing and Open loads the dictionary on the spot. There is
+ * one engine and one session per process. The jamo session holds the IME state
+ * (kana input, conversion, candidates, segment resizing, learning), and this
+ * file only passes it through. Segment and candidate indices and positions
+ * within the preedit start at 0. */
 #include <lub/lub_vm_extension.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,8 +24,9 @@ static const LubVmExtensionApi *api;
 static jamo_engine_t *engine;
 static jamo_session_t *session;
 
-/* 辞書の読み込み (mozc.dict で数秒) を裏の thread で先に始める。
- * thread は preload_engine にだけ書き、Open が待ってから読む */
+/* Starts loading the dictionary (a few seconds for mozc.dict) early on a
+ * background thread. The thread writes only to preload_engine, and Open waits
+ * before reading it */
 static int preload_started;
 static jamo_engine_t *preload_engine;
 static char *preload_dict;
@@ -30,7 +35,7 @@ static void preload_run(void) {
   preload_engine = jamo_engine_open(preload_dict);
 }
 
-/* 裏の thread を始める (始められたら 1) と、終わるのを待つ */
+/* Starts the background thread (1 if started) and waits for it to finish */
 #ifdef _WIN32
 static HANDLE preload_thread;
 
@@ -65,7 +70,7 @@ static int preload_start(void) {
 static void preload_join(void) { pthread_join(preload_thread, NULL); }
 #endif
 
-/* VM の string を NUL で終わる文字列に写す (呼ぶ側が free) */
+/* Copies a VM string into a NUL-terminated string (the caller frees it) */
 static char *dup_arg(const void *s) {
   size_t len = 0;
   const char *data = s ? api->string_data(s, &len) : NULL;
@@ -79,8 +84,10 @@ static char *dup_arg(const void *s) {
   return out;
 }
 
-/* jamo の返す文字列 (次の呼び出しまで有効) を、bool と out の string にする */
-// 戻り値は s があるか、out の引数 (string の slot を指す) は s の string
+/* Turns a string returned by jamo (valid until the next call) into a bool and
+ * an out string */
+// The return value is whether s exists; the out argument (pointing to a string
+// slot) gets s as a string
 static void out_str(TvmVm *vm, const char *s, TvmSlot *rets, TvmSlot *out) {
   rets[0].i = s != NULL;
   *(void **)out->p = s ? api->string_new(vm, s, strlen(s)) : NULL;
@@ -115,7 +122,7 @@ FN(f_preload) {
 FN(f_open) {
   UNUSED;
   if (!engine && preload_started) {
-    preload_join(); /* 読んでいる途中ならここで待つ */
+    preload_join(); /* Waits here if loading is still in progress */
     preload_started = 0;
     engine = preload_engine;
     free(preload_dict);

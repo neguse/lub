@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- TestAlloc.cs が App.Use で開く app (entry は TestAllocProbe)。lider のソースを取り込み、lider の検索と描画を呼ぶ。dotnet 側は lider の assembly から lub の型と lider の型を見る -->
+  <!-- The app that TestAlloc.cs opens with App.Use (the entry is TestAllocProbe). It includes lider's sources and calls lider's search and drawing. The dotnet side sees lub's types and lider's types through the lider assembly -->
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
     <LangVersion>15</LangVersion>

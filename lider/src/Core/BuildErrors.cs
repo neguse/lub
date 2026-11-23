@@ -1,16 +1,16 @@
-// tcs が compile error で build を止めたときの error の行 (lub の OnBuildFailed)。
-// 行の形は `path(line,col): error ID: message`。形の違う行は、path の無い error にする
+// Error lines when tcs stops the build with a compile error (lub's OnBuildFailed).
+// The line format is `path(line,col): error ID: message`. Lines in another format become errors without a path
 using System.Collections.Generic;
 
 namespace LiderCore;
 
 public class BuildError
 {
-    // tcs に渡した path (Workspace が一覧の path に直す)。形の違う行は ""
+    // The path passed to tcs (Workspace converts it to the list's path). "" for lines in another format
     public string Path;
-    // 0 から。形の違う行は -1
+    // From 0. -1 for lines in another format
     public readonly int Line;
-    // `error ID: message` の後ろの部分 (形の違う行は行のまま)
+    // The latter part of `error ID: message` (the line as is for lines in another format)
     public readonly string Message;
 
     public BuildError(string path, int line, string message)

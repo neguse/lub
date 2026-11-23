@@ -1,7 +1,7 @@
-// 窓の並びとタブと focus、窓の大きさ、タブごとのカーソルと先頭の行を、VM の作り直し (lub の restart と App.Restart) を跨いで残す。
-// lub は作り直すとき古い VM の OnQuit を呼んでから新しい VM の OnInit を呼び、C# の値は全部消えるので、OnQuit で file に書き、OnInit で読み戻す。
-// OnQuit は lub を終えるときにも呼ばれる。書いた時の Sys.Seconds (lub の process が始まってからの秒) を一緒に書き、
-// 読んだ時の Sys.Seconds がそれより前か、Seconds 秒より後なら (次に起動した lub が読んだ)、使わずに捨てる。
+// Keeps the window order, tabs and focus, window sizes, and each tab's cursor and top line across VM recreation (lub's restart and App.Restart).
+// When recreating, lub calls the old VM's OnQuit and then the new VM's OnInit, and all C# values are lost, so this writes them to a file in OnQuit and reads them back in OnInit.
+// OnQuit is also called when lub exits. The Sys.Seconds at write time (seconds since the lub process started) is written along with it,
+// and if the Sys.Seconds at read time is earlier than that or more than Seconds seconds later (a later lub launch read it), the file is discarded unused.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -11,10 +11,10 @@ namespace LiderCore;
 
 public static class Session
 {
-    // 書いてから読むまで (古い VM の OnQuit から、新しい VM のゲームと lider の OnInit まで) に許す秒
+    // Seconds allowed between writing and reading (from the old VM's OnQuit to the OnInit of the new VM's game and lider)
     public const float Seconds = 10;
 
-    // 戻したタブの view の id と先頭の行 (1 から)。行の高さが決まってから ScrollTops で当てる
+    // View ids and top lines (from 1) of restored tabs. Applied by ScrollTops once the line height is known
     static readonly List<int> topIds = new List<int>();
     static readonly List<int> topLines = new List<int>();
 
@@ -23,8 +23,8 @@ public static class Session
         return w.Root + "/.lub/lider-session.txt";
     }
 
-    // 1 行目は「書いた時の Sys.Seconds focus のある窓の番号」。
-    // 窓ごとに「window 出しているタブ 幅 高さ 倍率 大きさを決めたか」、続けてタブごとに「tab 行 桁 先頭の行 Root からの path」(行と桁は 0 から、先頭の行は 1 から)
+    // Line 1 is "<Sys.Seconds when written> <index of the focused window>".
+    // Per window, "window <shown tab> <width> <height> <scale> <whether the size was set>", followed per tab by "tab <line> <column> <top line> <path from Root>" (line and column from 0, top line from 1)
     public static void Save(Workspace w, float now)
     {
         var lines = new List<string> { now + " " + (w.FocusWindow != null ? w.Windows.IndexOf(w.FocusWindow) : -1) };
@@ -37,8 +37,8 @@ public static class Session
         Io.SaveText(PathIn(w), string.Join("\n", lines));
     }
 
-    // 作り直す前に書いた並びがあれば、窓をその並びにする (file は読んだら消す)。戻したら true。
-    // 開けないタブ (名前の無い doc、消えた file) は飛ばし、タブが 1 つも開けない窓は作らない
+    // If a layout was written before recreation, arranges the windows that way (the file is deleted after reading). true if restored.
+    // Tabs that cannot be opened (unnamed docs, deleted files) are skipped, and windows with no openable tab are not created
     public static bool Restore(Workspace w, float now)
     {
         var path = PathIn(w);
@@ -50,13 +50,13 @@ public static class Session
         var head = lines[0].Split(' ');
         if (head.Length != 2 || !float.TryParse(head[0], out var at) || !int.TryParse(head[1], out var focus) || now < at || now - at > Seconds)
             return false;
-        // 戻す窓は、コードのスクリーンに並べる (ほかのスクリーンに移した並びは控えていない)
+        // Restored windows go on the code screen (placement on other screens is not recorded)
         foreach (var old in w.Windows)
             w.ScreenOf(old)!.Windows.Remove(old);
         w.FocusWindow = null;
         string[]? spec = null;
         var docs = new List<Document>();
-        // 書いた並びの何番目の窓か (タブの開けない窓を飛ばすと、戻した並びの番号とずれる)
+        // Index of the window in the written order (it differs from the index in the restored order when windows without openable tabs are skipped)
         var n = -1;
         var focused = 0;
         for (var i = 1; i <= lines.Length; i++)
@@ -64,11 +64,11 @@ public static class Session
             var f = i < lines.Length ? lines[i].Split(' ') : new string[] { "window" };
             if (f[0] == "tab" && f.Length >= 5 && f[4] != "")
             {
-                // path は空白を含むことがある
+                // The path may contain spaces
                 var rel = f[4];
                 for (var k = 5; k < f.Length; k++)
                     rel += " " + f[k];
-                // Root の外の file は path のまま書いてある
+                // Files outside Root are written with their path as is
                 var doc = w.Open(rel.StartsWith("/") ? rel : w.PathOf(rel));
                 if (doc == null)
                     continue;
@@ -94,7 +94,7 @@ public static class Session
                     focused = w.CodeScreen.Windows.Count;
                 w.CodeScreen.Windows.Add(window);
             }
-            // 次の窓の行 (最後は番兵)
+            // The next window's line (a sentinel at the end)
             spec = f;
             docs = new List<Document>();
         }
@@ -103,7 +103,7 @@ public static class Session
         return true;
     }
 
-    // 戻したタブの先頭の行に scroll する (エディタの行の高さが決まってから、1 度だけ)
+    // Scrolls restored tabs to their top lines (once, after the editor's line height is known)
     public static void ScrollTops()
     {
         for (var i = 0; i < topIds.Count; i++)

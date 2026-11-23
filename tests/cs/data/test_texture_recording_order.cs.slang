@@ -1,4 +1,5 @@
-// storage texture の case が書く先。中身は検査しない。
+// The destination written by the storage texture case. Its contents are not
+// checked.
 RWTexture2D<float4> dst;
 
 [shader("compute")][numthreads(1, 1, 1)] void

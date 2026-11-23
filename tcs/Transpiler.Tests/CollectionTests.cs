@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// List / Dictionary / LINQ / 配列の runtime 表面の semantic テスト (tcs VM で走らせる)。
+/// Semantic tests of the runtime surface of List / Dictionary / LINQ / arrays (run on the tcs VM).
 /// </summary>
 public class CollectionTests
 {

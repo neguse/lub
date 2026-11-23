@@ -1,9 +1,9 @@
-# tcs/ の .NET SDK の更新は、tcs/global.json の pin を上げる PR として届く。
-# major の版の更新では、SDK と target の版を揃えるため、各 project の TargetFramework と LangVersion、script の bin/<構成>/netN.0 の path も同じ版に上げる。
-# CI が通ってから merge し、各マシンは merge の後に dotnet-install.sh --jsonfile tcs/global.json で合わせる。
+# .NET SDK updates arrive as PRs that bump the pin in global.json at the root.
+# For a major version update, to keep the SDK and target versions consistent, also bump each project's TargetFramework and LangVersion, and the bin/<configuration>/netN.0 paths in scripts, to the same version.
+# Merge after CI passes; after the merge, each machine runs dotnetup sdk install at the repo root to catch up.
 version: 2
 updates:
   - package-ecosystem: "dotnet-sdk"
-    directory: "/tcs"
+    directory: "/"
     schedule:
       interval: "weekly"

@@ -1,7 +1,7 @@
-// TestAlloc.cs が App.Use で開く app。毎 frame、lider の検索と等幅の文字の描画を決まった行で呼ぶ。
-// 宣言を読む Search.Refresh は file を読むたびに確保するので、読み終えたら呼ばない。
-// SpriteBatch は Begin の後の最初の四角で確保するので、MonoText.Draw の前に文字を 1 つ描いておく。
-// 行番号を TestAlloc.cs が見るので、行を足したら合わせる。
+// The app that TestAlloc.cs opens with App.Use. Every frame, it calls lider's search and monospace text drawing on fixed lines.
+// Search.Refresh, which reads declarations, allocates every time it reads a file, so it is not called after reading finishes.
+// SpriteBatch allocates on the first quad after Begin, so one character is drawn before MonoText.Draw.
+// TestAlloc.cs looks at the line numbers, so update it when adding lines.
 using System;
 using Lub;
 using Lubx;
@@ -14,7 +14,7 @@ public static class TestAllocProbe
     static SpriteBatch? sb;
     static MonoText? mono;
     static int[]? keep;
-    // 検索が宣言を読み終えたか (TestAlloc.cs が読む)
+    // Whether search has finished reading declarations (read by TestAlloc.cs)
     static bool Scanned;
 
     public static void OnFrame(float dt)

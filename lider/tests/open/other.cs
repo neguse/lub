@@ -1,4 +1,4 @@
-// TestOpen が Ctrl+O と Ctrl+P で開く file。
+// File that TestOpen opens with Ctrl+O and Ctrl+P.
 public static class Other
 {
 }

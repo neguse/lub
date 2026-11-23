@@ -1,7 +1,7 @@
-// 行が層を移るとき (打って手前へ浮く、reload が当たって面へ沈む) は、瞬間に切り替えずに PanelView.MoveSeconds かけて移る。
-//   - 打った行は手前へ移り始め、MoveSeconds で移り終える
-//   - 保存して reload が当たると、その行は面へ移り始め、移り終えた frame の Step が沈み終えた行の数を返す
-//   - 描いたことのない行 (初めて描いたとき、scroll で出てきたとき) は移らない
+// When a line moves between layers (raised to the front by typing, sunk to the surface when a reload is applied), it moves over PanelView.MoveSeconds instead of switching instantly.
+//   - A typed line starts moving to the front and finishes moving after MoveSeconds
+//   - After saving and a reload being applied, the line starts moving to the surface, and Step on the frame where it finishes returns the number of lines that finished sinking
+//   - Lines that were never drawn before (drawn for the first time, or brought into view by scrolling) do not move
 using System;
 using Lub;
 using LiderCore;

@@ -1,7 +1,7 @@
 StructuredBuffer<float4> col;
 
 struct Uniforms {
-  float4 declared; // x = 宣言した要素の数
+  float4 declared; // x = number of declared elements
 };
 ConstantBuffer<Uniforms> u;
 
@@ -9,8 +9,8 @@ struct FSIn {
   float4 pos : SV_Position;
 };
 
-// shader から見える要素の数。
-// Metal の shader は数を問い合わせられない。
+// Number of elements visible from the shader.
+// Metal shaders cannot query the count.
 // clang-format off
 uint element_count() {
   __target_switch {

@@ -1,5 +1,5 @@
-// 1 つの sampler を 2 つの texture で共有する。lub は texture ごとに sampler を
-// 束縛するので表せず、shader compile が error になる。
+// Shares one sampler between 2 textures. lub binds a sampler per texture, so
+// this cannot be expressed, and the shader compile fails with an error.
 Texture2D first;
 Texture2D second;
 SamplerState shared;

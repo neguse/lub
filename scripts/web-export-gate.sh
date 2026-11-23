@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# lub export web の検査。
-# tests/cs のテストを web に export し、生成キャッシュが WGSL だけを持ち、読んだ file がそのまま入ること、書いた page 1 枚 (slang を持たない web の tcs VM の player 入り) を chromium で開くとテストが PASS を出すことを見る。
-# lub の実行ファイルの隣の wasm/vm か build/wasm/vm に web の tcs VM の player が要り、テストの bytecode (tests/cs/.lub/all.tcsb) と web/node_modules (playwright) を先に用意しておく。
+# Check of lub export web.
+# Exports the tests in tests/cs to web, and checks that the generated cache holds only WGSL, that the files read are included as is, and that opening the single written page (containing the web tcs VM player without slang) in chromium makes the test print PASS.
+# The web tcs VM player is needed in wasm/vm next to the lub executable or in build/wasm/vm, and the test bytecode (tests/cs/.lub/all.tcsb) and web/node_modules (playwright) must be prepared first.
 #
 # Usage: scripts/web-export-gate.sh <lub>
 set -euo pipefail
@@ -17,7 +17,7 @@ done
 for f in tests/cs/data/test_depth_sample{,_read}.{vs,fs}.slang; do
   cmp "$f" "$out/TestDepthSample/$f"
 done
-# TestVertexPull 1 つ、TestDepthSample 2 つ、TestUiRender (runtime の UI) 1 つ
+# One TestVertexPull, two TestDepthSample, one TestUiRender (runtime UI)
 wgsl="$(grep -la '@fragment' "$out"/Test{VertexPull,DepthSample,UiRender}/cache/shader/*.lubshader | wc -l)"
 if [[ $wgsl -lt 4 ]]; then
   echo "export web: expected the WGSL of 4 shaders in the shader cache, got $wgsl" >&2
@@ -28,6 +28,6 @@ if [[ -n $other ]]; then
   echo "export web: shader cache entries that are not WGSL: $other" >&2
   exit 1
 fi
-# PASS で終わるテストだけを page で開く (他の 2 つは golden で合否を見る)
+# Only the tests that end with PASS are opened in the page (the other 2 are judged by goldens)
 (cd web && node scripts/export-page-check.mjs "$out/TestUiRender/index.html" \
   "$out/TestDupBinding/index.html" "$out/TestWindowSize/index.html")

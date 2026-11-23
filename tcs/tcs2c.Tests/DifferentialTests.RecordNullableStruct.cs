@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// record class / record struct の == のうち、Nullable の struct field と
-// field の無い record。期待値は同じ program を CoreCLR で実行した stdout
+// == of record class / record struct, for Nullable struct fields and
+// records without fields. The expected values are the stdout of running the same program on CoreCLR
 public class RecordNullableStructDifferentialTests
 {
     [CFact]

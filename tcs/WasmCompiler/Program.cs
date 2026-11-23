@@ -1,6 +1,6 @@
-// browser-wasm 上で tcs の .NET の道具を JS へ公開する entry。
-// JS 側は dotnet.create() → getAssemblyExports("WasmCompiler") → SessionExports (補完、hover、整形) と
-// VmExports (tcs VM の増分 session) を呼ぶ。
+// Entry that exposes the tcs .NET tools to JS on browser-wasm.
+// The JS side calls dotnet.create() → getAssemblyExports("WasmCompiler") → SessionExports (completion, hover, formatting) and
+// VmExports (the incremental tcs VM session).
 using System.Reflection;
 using System.Runtime.InteropServices.JavaScript;
 using System.Text.Json;
@@ -8,19 +8,19 @@ using System.Text.Json.Serialization;
 using Microsoft.CodeAnalysis;
 using TinyCs;
 
-// Main はランタイム常駐のためだけに待機する (実処理は JSExport 側)。
+// Main waits only to keep the runtime resident (the actual work is on the JSExport side).
 await Task.Delay(Timeout.Infinite);
 
 public sealed class CompileRequest
 {
-    /// <summary>入力 (path -> source)。</summary>
+    /// <summary>Input (path -> source).</summary>
     public Dictionary<string, string> Files { get; set; } = [];
 
-    /// <summary>型チェック専用の参照ソース (--ref 相当)。</summary>
+    /// <summary>Reference sources for type checking only (equivalent to --ref).</summary>
     public Dictionary<string, string>? Refs { get; set; }
 }
 
-/// <summary>SessionExports.OpenEditor の応答。</summary>
+/// <summary>Response of SessionExports.OpenEditor.</summary>
 public sealed class SessionOpenResponse
 {
     public bool Ok { get; set; }
@@ -30,7 +30,7 @@ public sealed class SessionOpenResponse
     public int Revision { get; set; }
 }
 
-/// <summary>SessionExports.Complete の応答 (T230)。</summary>
+/// <summary>Response of SessionExports.Complete (T230).</summary>
 public sealed class CompleteResponse
 {
     public bool Ok { get; set; }
@@ -39,7 +39,7 @@ public sealed class CompleteResponse
     public string? Error { get; set; }
 }
 
-/// <summary>SessionExports.Hover の応答 (T230)。</summary>
+/// <summary>Response of SessionExports.Hover (T230).</summary>
 public sealed class HoverResponse
 {
     public bool Ok { get; set; }
@@ -52,7 +52,7 @@ public sealed class HoverResponse
     public string? Error { get; set; }
 }
 
-// wasm では reflection ベースの JsonSerializer が無効のため source generator を使う
+// Reflection-based JsonSerializer is disabled on wasm, so the source generator is used
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     PropertyNameCaseInsensitive = true,
@@ -74,8 +74,8 @@ public static partial class CompilerExports
     private static MetadataReference Ref(string name) =>
         MetadataReference.CreateFromStream(Res(name));
 
-    // Roslyn の compilation (補完と hover) が読む参照アセンブリ。Assembly.Location が空の host なので、
-    // 埋め込んだ参照アセンブリを byte image で注入する。
+    // Reference assemblies read by the Roslyn compilation (completion and hover). The host has an empty Assembly.Location,
+    // so the embedded reference assemblies are injected as byte images.
     internal static void EnsureReferences()
     {
         if (_referencesInjected)
@@ -92,17 +92,17 @@ public static partial class CompilerExports
     }
 }
 
-// 補完と hover の stateful session API。single session 固定。
-// OpenEditor のたびに projectEpoch を発行し、全 response が epoch を echo する。
-// host は現在の epoch と一致しない response を破棄する (sample/言語切替の
-// in-flight response が新 project へ届く事故の防止)。
+// Stateful session API for completion and hover. Fixed to a single session.
+// Each OpenEditor issues a projectEpoch, and every response echoes the epoch.
+// The host discards responses that do not match the current epoch (this prevents in-flight responses
+// from a sample/language switch from reaching the new project).
 public static partial class SessionExports
 {
-    // 補完と hover だけの session (OpenEditor。compile しない)
+    // Session for completion and hover only (OpenEditor; does not compile)
     private static EditorSession? _editor;
     private static int _epoch;
 
-    // 補完と hover だけの session を開く。変換は別の compiler (tcs の wasm) が行い、ここは Roslyn の問い合わせだけに答える
+    // Opens a session for completion and hover only. Conversion is done by a separate compiler (the tcs wasm); this only answers Roslyn queries
     [JSExport]
     public static string OpenEditor(string requestJson)
     {
@@ -132,7 +132,7 @@ public static partial class SessionExports
         }
     }
 
-    // OpenEditor の session のファイルの今のテキスト。失敗は理由を返す (成功は "")
+    // Current text of a file in the OpenEditor session. On failure returns the reason ("" on success)
     [JSExport]
     public static string UpdateText(int epoch, string path, string content)
     {
@@ -140,7 +140,7 @@ public static partial class SessionExports
         return _editor.SetText(path, content) ? "" : $"unknown module: {path}";
     }
 
-    // C# を整形する。構文エラーがあるか失敗したら、content をそのまま返す
+    // Formats C#. If there is a syntax error or formatting fails, returns content unchanged
     [JSExport]
     public static string Format(string content, int width)
     {
@@ -155,9 +155,9 @@ public static partial class SessionExports
         }
     }
 
-    // 補完/hover (T230)。speculative fork への読み取り専用クエリで、session
-    // の revision/artifacts は変えない。エディタの現在バッファを content で
-    // 受け取るため、Update 前の未確定内容でも正しい位置で引ける。
+    // Completion/hover (T230). Read-only queries on a speculative fork that do not change the session's
+    // revision/artifacts. The editor's current buffer is received as content,
+    // so lookups work at the right position even for uncommitted content before Update.
     [JSExport]
     public static string Complete(int epoch, string path, string content,
         int offset)

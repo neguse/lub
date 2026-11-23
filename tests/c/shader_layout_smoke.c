@@ -315,8 +315,8 @@ static void run_wgsl_groups(void) {
   report("wgsl storage texture", ok, NULL, err);
 }
 
-// SPIR-V の storage image の Format operand。
-// reflection と違う値だと Vulkan の書き込みは未定義になる。
+// Format operand of a SPIR-V storage image.
+// If it differs from reflection, Vulkan writes are undefined.
 static int spirv_storage_image_format(const ShaderBlob *b) {
   const uint32_t *w = (const uint32_t *)b->spirv;
   size_t n = b->bytes / 4;
@@ -362,8 +362,9 @@ static void expect_storage_format(ShaderTargetBackend target, const char *decl,
   report(decl, 1, NULL, err);
 }
 
-// storage texture の形式は [format] か要素の型で決まり、shader の宣言と reflection が揃う。
-// lub の PixelFormat に無いものは compile で落ちる。
+// The format of a storage texture is determined by [format] or the element
+// type, and the shader declaration and reflection match. Formats not in lub's
+// PixelFormat fail at compile time.
 static void run_storage_format_target(ShaderTargetBackend target) {
   static const char kFloat4[] = "float4(1, 0, 0, 1)";
   expect_storage_format(target, "RWTexture2D<float4>", kFloat4, SGL_PF_RGBA32F,

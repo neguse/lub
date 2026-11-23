@@ -1,5 +1,5 @@
-// compute の結果を 1 画素に書く: R, G = 数 (下位, 上位 byte)、B, A = 最後の
-// dispatch の番号 (下位, 上位 byte)。
+// Writes the compute result to 1 pixel: R, G = count (low, high byte), B, A =
+// the number of the last dispatch (low, high byte).
 StructuredBuffer<float4> counter;
 
 struct FSIn {

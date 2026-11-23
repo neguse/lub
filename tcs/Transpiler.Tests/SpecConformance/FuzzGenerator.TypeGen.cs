@@ -1,19 +1,19 @@
 namespace TinyCs.Tests.SpecConformance;
 
 /// <summary>
-/// FuzzGenerator の型生成部: class (field / auto property / instance method)
-/// と positional record。継承は対象外 (q.md Q15) なので、型判定は object の
-/// 変数に 2 つの class のどちらかを入れて probe する。ctor は生成しない
-/// (初期化は field initializer と object
-/// initializer)。record の positional prop は init-only なので書き込みは
-/// with 式の再代入のみ。
+/// Type generation part of FuzzGenerator: class (field / auto property / instance method)
+/// and positional record. Inheritance is out of scope (q.md Q15), so type tests probe by putting one of two classes into an object
+/// variable. No ctor is generated
+/// (initialization uses field initializers and object
+/// initializers). The positional props of a record are init-only, so writes are
+/// only reassignment with a with expression.
 /// </summary>
 internal sealed partial class FuzzGenerator
 {
     private sealed class ClassInfo
     {
         public required string Name;
-        // object の変数にこの class の代わりに入りうる別の class
+        // Another class that can go into an object variable instead of this class
         public ClassInfo? Alt;
         public readonly List<(string Name, string Type)> Fields = [];
         public readonly List<string> IntProps = [];
@@ -24,8 +24,8 @@ internal sealed partial class FuzzGenerator
     private sealed record RecordInfo(string Name,
         IReadOnlyList<(string Name, string Type)> Params);
 
-    // struct。member は int のみ — string member は zero 値が null で
-    // 出力時の nil/"" 差 (既知差異) を踏むため生成しない
+    // struct. Members are int only — string members are not generated because their zero value is null and
+    // they would hit the nil/"" difference on output (a known difference)
     private sealed record StructTypeInfo(string Name, bool IsRecord,
         bool IsReadonly, IReadOnlyList<string> IntMembers,
         string? MethodName, bool HasCtor);
@@ -34,7 +34,7 @@ internal sealed partial class FuzzGenerator
     private readonly List<RecordInfo> _records = [];
     private readonly List<StructTypeInfo> _structTypes = [];
     private readonly List<(string Name, ClassInfo Type)> _objVars = [];
-    // object 型の変数と、入りうる 2 つの class (型判定の probe)
+    // An object-typed variable and the two classes it can hold (type test probe)
     private readonly List<(string Name, ClassInfo Type)> _anyVars = [];
     private readonly List<(string Name, RecordInfo Type)> _recordVars = [];
     private readonly List<(string Name, StructTypeInfo Type)> _structVars = [];
@@ -102,7 +102,7 @@ internal sealed partial class FuzzGenerator
         {
             methodName = $"M{_memberCount++}";
             var p = $"p{_paramCount++}";
-            // this を変異させて返す — receiver 規則 (変数/rvalue) を踏む
+            // Mutates this and returns it — exercises the receiver rules (variable/rvalue)
             lines.Add($"public int {methodName}(int {p}) " +
                 $"{{ {fields[0]} += {p}; return {fields[0]}; }}");
         }
@@ -117,7 +117,7 @@ internal sealed partial class FuzzGenerator
         var info = new ClassInfo { Name = $"C{_classCount++}" };
         _classes.Add(info);
         var lines = new List<string>();
-        // is-designation probe 用に int field を必ず 1 つ以上持つ
+        // Always has at least one int field for the is-designation probe
         var intFields = _rng.Next(1, 3);
         foreach (var _ in Enumerable.Range(0, intFields))
         {
@@ -200,8 +200,8 @@ internal sealed partial class FuzzGenerator
             + ");";
     }
 
-    // Main 冒頭のインスタンス宣言。object の変数へ実行時条件で 2 つの class
-    // のどちらかを入れる形が is の実プローブになる
+    // Instance declarations at the start of Main. Putting one of two classes into an object variable
+    // by a runtime condition makes a real probe for is
     private void DeclareObjects(List<string> body)
     {
         if (_classes.Count > 0)
@@ -269,7 +269,7 @@ internal sealed partial class FuzzGenerator
                     body.Add($"var {v} = new {st.Name}();");
                 }
                 _structVars.Add((v, st));
-                // 代入 copy のプローブ: 片方の変異がもう片方に漏れたら検出される
+                // Probe for assignment copy: detected if a mutation of one leaks into the other
                 if (_rng.Next(2) == 0)
                 {
                     var w = NextVar();
@@ -319,8 +319,8 @@ internal sealed partial class FuzzGenerator
             : candidates[_rng.Next(candidates.Count)];
     }
 
-    // struct 変数への文: field 書き込み / method 呼び (this 変異) /
-    // 変数間の再コピー / record の with 再代入
+    // Statements on struct variables: field write / method call (mutating this) /
+    // re-copy between variables / with reassignment of a record
     private string StructStatement()
     {
         if (_structVars.Count == 0)
@@ -336,7 +336,7 @@ internal sealed partial class FuzzGenerator
                 return $"{name} = {src};";
             }
             var member = st.IntMembers[_rng.Next(st.IntMembers.Count)];
-            // readonly は positional set 不可 — with 再代入のみ
+            // readonly cannot do positional set — only with reassignment
             if (st.IsReadonly || _rng.Next(2) == 0)
                 return $"{name} = {name} with {{ {member} = {IntExpr(1)} }};";
             return $"{name}.{member} = {IntExpr(1)};";
@@ -409,7 +409,7 @@ internal sealed partial class FuzzGenerator
             $"? {x}.{field} : {IntExpr(depth - 1)})";
     }
 
-    // 同型の変数ペアから値等価式を作る (record class / record struct 共用)
+    // Builds a value equality expression from a pair of variables of the same type (shared by record class / record struct)
     private string ValueEqualityOrElse(
         IReadOnlyList<(string Name, string TypeKey)> vars,
         Func<string> fallback)

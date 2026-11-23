@@ -1,56 +1,56 @@
-// lub の samples/22_tonton の entry。
-// 実行: lub samples/22_tonton/Tonton22.csproj (transpile + watch + hot reload)
+// Entry for lub's samples/22_tonton.
+// Run: lub samples/22_tonton/Tonton22.csproj (transpile + watch + hot reload)
 //
-// とんとん相撲: AI 力士同士の紙相撲。
-// 人間は土俵をトントンするだけ。
-// ゲーム AI の 3 層をひとつの取組で見せるデモ:
-// - L0 フィードバック制御: 力士は capsule 1 剛体 + 姿勢 PD (倒立振子)。
-//   筋力上限 (balMax) があり、臨界角を超えると本当に倒れる。
-//   土俵も自前 PD 懸架の dynamic cylinder で、トントン (クリック地点への
-//   下向き impulse) の外乱が接触経由で力士に伝わる。
-// - L1 操舵: 相手へ詰める速度サーボ。
-//   押し込み中は前進にブレーキを
-//   かけない = 相手が消えると突っ込むリスクが物理に乗る。
-// - L2 戦術: 押し合いは「相手が支え」の安定構造で、押すだけでは決着
-//   しない。引き・いなしで支えを外した瞬間に勝負が動く。個性 (counter
-//   確率・前傾の深さ) の違いが取り口の違いになる。
+// Tonton sumo: paper sumo between AI wrestlers.
+// The human only taps (tonton) the ring.
+// A demo that shows the three layers of game AI in a single bout:
+// - L0 feedback control: a wrestler is one capsule rigid body + posture PD (inverted pendulum).
+//   It has a muscle strength limit (balMax), and beyond the critical angle it really falls over.
+//   The ring is also a dynamic cylinder with its own PD suspension, and the disturbance from a tonton (a downward
+//   impulse at the clicked point) reaches the wrestlers through contacts.
+// - L1 steering: a velocity servo that closes in on the opponent.
+//   While pushing in, forward motion is not
+//   braked = the risk of lunging forward when the opponent disappears is carried by the physics.
+// - L2 tactics: pushing against each other is a stable structure where "the opponent is the support", so pushing alone does not
+//   decide the bout. The bout moves the moment the support is removed by a pull or an inashi. Differences in personality (counter
+//   probability, lean depth) become differences in fighting style.
 //
-// 力士は class Rikishi、screenPos の戻りは class ScreenPos、Phys3d の desc 匿名構造体は lub_stub の desc class。
-// end() は End()、char() は Char()。
+// Wrestlers are class Rikishi, the return value of screenPos is class ScreenPos, and the anonymous desc structs of Phys3d are the desc classes of lub_stub.
+// end() is End(), char() is Char().
 
 using System;
 using System.Collections.Generic;
 using Lub;
 using Lubx;
 
-/// <summary>力士 1 体。
+/// <summary>One wrestler.
 /// </summary>
 public class Rikishi
 {
-    public int Gen; // 再宣言 (respawn) 用 version
-    public string Name = ""; // 四股名 (かな)
+    public int Gen; // version for redeclaration (respawn)
+    public string Name = ""; // Ring name (shikona, in kana)
     public float HomeX;
     public float[] Color = new float[] { 1.0f, 1.0f, 1.0f, 1.0f };
-    public int BodyRgb; // SDF に焼く体色
+    public int BodyRgb; // Body color baked into the SDF
     public int DownFrames;
-    public int SquashT; // 着地スカッシュの残りフレーム
+    public int SquashT; // Remaining frames of the landing squash
     public float PrevVy;
-    // --- 個性 --- 押し合いは「相手が支え」の安定構造なので、押すだけでは永遠に倒れない。
-    // 決着は支えを外す瞬間 (引き・いなし) に生まれる。
-    // 個性はその使い分け。
-    public float PushK; // 押しの強さ
-    public float LeanK; // 前傾の深さ (リスク: 支えを外されると帰れない)
-    public float PulseHz; // 押しの脈動周期
+    // --- Personality --- Pushing against each other is a stable structure where "the opponent is the support", so pushing alone never topples anyone.
+    // The bout is decided at the moment the support is removed (pull / inashi).
+    // Personality is how each wrestler mixes these.
+    public float PushK; // Push strength
+    public float LeanK; // Lean depth (risk: cannot recover if the support is removed)
+    public float PulseHz; // Pulse period of the push
     public float Phase;
-    public float Pulse; // 脈動の波形 (0..1)。Tick が決め、押し込み力と描画が同じ値を読む
-    public float Counter; // 相手の深い前傾に引き/いなしを合わせる確率
-    // --- 戦術状態 ---
+    public float Pulse; // Pulse waveform (0..1). Tick sets it, and the push force and rendering read the same value
+    public float Counter; // Probability of answering a deep lean of the opponent with a pull/inashi
+    // --- Tactical state ---
     public int Tactic;
     public int TacticUntil;
-    public float SideSign; // いなしの回り込み方向
+    public float SideSign; // Direction to circle around for inashi
 }
 
-/// <summary>world 座標 → 論理スクリーン座標。
+/// <summary>world coordinates → logical screen coordinates.
 /// </summary>
 public class ScreenPos
 {
@@ -67,58 +67,58 @@ public static class Tonton22
 
     const float dohyoR = 2.2f;
     const float dohyoH = 0.4f;
-    const float dohyoY = 0.6f; // 懸架時の中心高
+    const float dohyoY = 0.6f; // Center height while suspended
     const float topY = dohyoY + dohyoH * 0.5f;
     const float capR = 0.35f;
 
-    // 土俵の質量と傾き慣性 (cylinder の解析値)。
-    // 懸架 PD のゲインを「共振周波数 Hz と減衰比」で書くために使う。
+    // Mass and tilt inertia of the ring (analytic values for a cylinder).
+    // Used to write the suspension PD gains as "resonance frequency Hz and damping ratio".
     const float dohyoMass = 3.14159f * dohyoR * dohyoR * dohyoH;
     const float dohyoITilt =
         dohyoMass * (3.0f * dohyoR * dohyoR + dohyoH * dohyoH) / 12.0f;
 
-    // --- 調整パラメータ (hot reload でいじる) ------------------------------
-    static float suspLinHz = 3.0f; // 土俵懸架ばね (上下・水平の戻り)
-    static float suspLinDamp = 0.15f; // 減衰比。小さいほどトントンが弾む
-    static float suspAngHz = 1.4f; // 傾きの戻り
+    // --- Tuning parameters (tweaked with hot reload) ------------------------------
+    static float suspLinHz = 3.0f; // Ring suspension spring (vertical / horizontal return)
+    static float suspLinDamp = 0.15f; // Damping ratio. The smaller it is, the more a tonton bounces
+    static float suspAngHz = 1.4f; // Tilt return
     static float suspAngDamp = 0.2f;
-    static float balKp = 6.0f; // 姿勢 PD: 立て直しトルク
-    static float balKd = 1.2f; // 姿勢 PD: 角速度ダンピング
-    // 筋力上限。
-    // 重力転倒トルク (≈2.7 sinθ) がこれを超える角度 (≈35°) から先は本当に倒れる。
-    // 無限に強いバランスは相撲にならない。
-    // 押しの前傾 (15〜25°) と臨界角の間が薄いほど、トントンと脈動が決定打になる。
+    static float balKp = 6.0f; // Posture PD: righting torque
+    static float balKd = 1.2f; // Posture PD: angular velocity damping
+    // Muscle strength limit.
+    // Beyond the angle (≈35°) where the gravity toppling torque (≈2.7 sinθ) exceeds this, it really falls over.
+    // Infinitely strong balance would not make sumo.
+    // The thinner the margin between the push lean (15-25°) and the critical angle, the more the tonton and the pulse become decisive.
     static float balMax = 1.55f;
-    static float holdK = 1.5f; // 仕切り中の定位置ばね
+    static float holdK = 1.5f; // Home position spring during shikiri
     static float holdKd = 0.8f;
-    static float walkSpeed = 0.9f; // 相手へ詰める速さ (m/s)
-    static float seekK = 1.5f; // 速度サーボの強さ
-    static float tapImpulse = 12.0f; // トントン 1 発の強さ
-    static int tapRepeat = 9; // 押しっぱなし連打の間隔 (frame)
+    static float walkSpeed = 0.9f; // Speed of closing in on the opponent (m/s)
+    static float seekK = 1.5f; // Strength of the velocity servo
+    static float tapImpulse = 12.0f; // Strength of one tonton
+    static int tapRepeat = 9; // Interval of repeated taps while held down (frame)
 
-    // --- 取組フロー ---------------------------------------------------------
-    const int stShikiri = 0; // 仕切り位置へ戻って一呼吸
-    const int stFight = 1; // 勝負 (トントン受付)
-    const int stKimari = 2; // 決着の余韻
+    // --- Bout flow ---------------------------------------------------------
+    const int stShikiri = 0; // Return to the shikiri position and take a breath
+    const int stFight = 1; // The bout (accepts tonton)
+    const int stKimari = 2; // Aftermath of the decision
     static int state = stShikiri;
     static int stateT = 45;
     static int winner = -1;
-    static int[] stars = new int[] { 0, 0 }; // 星取り
-    static string kimarite = ""; // 決まり手 (かな)
-    static int fightStart = 0; // ST_FIGHT に入ったフレーム
-    static bool engagedPrev = false; // 立ち合いのぶつかり音のエッジ検出
+    static int[] stars = new int[] { 0, 0 }; // Win-loss record (stars)
+    static string kimarite = ""; // Winning technique (kimarite, in kana)
+    static int fightStart = 0; // Frame when ST_FIGHT was entered
+    static bool engagedPrev = false; // Edge detection for the collision sound at the tachiai
 
     static int frame = 0;
-    // 戦術
-    const int taOsu = 0; // 押す: 前傾して押し込む (支えがある間は安全)
-    const int taHiki = 1; // 引く: 支えを外して前傾の相手を落とす
-    const int taInashi = 2; // いなす: 横へかわして空振りさせる
-    const int taTame = 3; // ためる: 直立で耐える
-    static float hikiK = 5.0f; // 引きの後退力
-    static float inashiK = 5.5f; // いなしの横力
-    static float hatakiK = 3.2f; // はたき込み (引き際に相手上体を引き倒すトルク)
+    // Tactics
+    const int taOsu = 0; // Osu (push): lean forward and push in (safe while there is support)
+    const int taHiki = 1; // Hiki (pull): remove the support and drop the leaning opponent
+    const int taInashi = 2; // Inashi (deflect): dodge sideways and make the opponent miss
+    const int taTame = 3; // Tame (hold): stand upright and endure
+    static float hikiK = 5.0f; // Backward force of the pull
+    static float inashiK = 5.5f; // Sideways force of inashi
+    static float hatakiK = 3.2f; // Hatakikomi (torque that pulls the opponent's upper body down while pulling back)
 
-    // 赤 = 突貫 (強く深く押すが、引きに合わされやすい) 青 = 後の先 (押しは控えめ、相手の前傾に引き/いなしを合わせる)
+    // Red = all-out charge (pushes hard and deep, but is easily caught by a pull) Blue = go no sen (pushes moderately, answers the opponent's lean with a pull/inashi)
     static List<Rikishi> fighters = new List<Rikishi>
     {
         new Rikishi
@@ -161,10 +161,10 @@ public static class Tonton22
         },
     };
 
-    // LUB_TONTON_AUTO=1 で自動トントン (ヘッドレス検証・デモ自走用)
+    // LUB_TONTON_AUTO=1 enables automatic tonton (for headless verification and self-running demos)
     static bool auto = Environment.GetEnvironmentVariable("LUB_TONTON_AUTO") != null;
 
-    // トントンの見た目フィードバック
+    // Visual feedback for tonton
     static int lastTap = -999;
     static float markerX = 0.0f;
     static float markerY = 0.0f;
@@ -176,8 +176,8 @@ public static class Tonton22
     static int renderFrame = 0;
     static Vec3? renderEye = null;
 
-    // render ごとに取る実入力。
-    // pressed は位置とともに次 tick まで保持する。
+    // Real input taken on each render.
+    // pressed is kept together with its position until the next tick.
     static bool pendingTap = false;
     static float pendingTapX = 0.0f;
     static float pendingTapY = 0.0f;
@@ -185,8 +185,8 @@ public static class Tonton22
     static float pointerX = 0.0f;
     static float pointerY = 0.0f;
 
-    // --- procedural meshes (Shapes3d)。
-    // onFrame で遅延生成 --------------------
+    // --- procedural meshes (Shapes3d).
+    // Created lazily in onFrame --------------------
     static Mesh3d? cubeMesh = null;
     static Mesh3d? cylMesh = null;
     static Renderer3d? ren = null;
@@ -205,14 +205,14 @@ public static class Tonton22
     {
     }
 
-    // --- SDF だるま力士 ----------------------------------------------------- bone 付き SDF ツリーからメッシュ化。
-    // 体色だけ違う 2 体分を焼く。
-    // モデルは -Z (相手の方) を向いて作る。
-    // feet が y=0。
+    // --- SDF daruma wrestlers ----------------------------------------------------- Meshed from an SDF tree with bones.
+    // Bakes two of them that differ only in body color.
+    // The model is built facing -Z (toward the opponent).
+    // feet are at y=0.
     const int sdfN = 56;
     static Mesh3d[]? darumaMesh = null;
-    // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は OnReload で立てる。
-    // どちらも再メッシュのトリガ。
+    // native watch resets it to the initial value true by re-running the chunk, and web (module mode) sets it in OnReload.
+    // Both trigger a remesh.
     static bool darumaDirty = true;
 
     public static void OnReload()
@@ -234,9 +234,9 @@ public static class Tonton22
             .Bone("arm_r", new Vec3(-0.40f, 0.76f, -0.06f));
         var trunk = body.Smin(head, 0.12f).Smin(armL, 0.06f).Smin(armR, 0.06f)
             .Paint(bodyRgb);
-        // 顔: 肌色の球を頭前面に沈めて smin (だるまの顔窓)
+        // Face: sink a skin-colored sphere into the front of the head and smin it (the face window of a daruma)
         var face = Sdf.Sphere(0.20f).Move(0, 1.02f, -0.17f).Paint(0xF2D1AC);
-        // まわし: 白帯の torus
+        // Mawashi: a torus as the white belt
         var mawashi = Sdf.Torus(0.40f, 0.10f).Move(0, 0.24f, 0).Paint(0xF2EEDC);
         var eye = Sdf.Sphere(0.05f).Move(0.10f, 1.08f, -0.30f).MirrorX()
             .Paint(0x241F1F, 0.0f, 0.2f);
@@ -252,9 +252,9 @@ public static class Tonton22
         darumaDirty = false;
     }
 
-    // 手続きボーンアニメ。
-    // 腕 = 戦術で構えが変わる + 転倒でバタバタ、頭 = 押しの脈動でうなずく。
-    // 物理 (傾き・跳ね) は model 行列側。
+    // Procedural bone animation.
+    // Arms = the stance changes with the tactic + flailing when falling, head = nods with the push pulse.
+    // Physics (tilt / bounce) is on the model matrix side.
     static List<float> PackBones(int mi, Rikishi f, bool falling, float pulse,
         int logicalFrame, MeshData? data)
     {
@@ -283,7 +283,7 @@ public static class Tonton22
         });
     }
 
-    // --- テキスト (かなサブセット TTF) --------------------------------------
+    // --- Text (kana subset TTF) --------------------------------------
     const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
     static bool fontLoaded = false;
     static int fontVersion = 0;
@@ -303,7 +303,7 @@ public static class Tonton22
         return mtext;
     }
 
-    // world 座標 → 論理スクリーン座標
+    // world coordinates → logical screen coordinates
     static ScreenPos ScreenPos(Mat4 vp, float wx, float wy, float wz)
     {
         var c = vp.MulVec4(new Vec4(wx, wy, wz, 1.0f));
@@ -334,8 +334,8 @@ public static class Tonton22
         return world;
     }
 
-    // 地面と台座。
-    // 落ちた力士は地面に転がる (respawn は y で検出)。
+    // Ground and base.
+    // Wrestlers that fall off roll on the ground (respawn is detected by y).
     static void DeclareStatics(WorldRef3d world)
     {
         var ground = Phys3d.Body(world, "ground", new BodyDesc3d
@@ -366,10 +366,10 @@ public static class Tonton22
             });
     }
 
-    // 土俵: 懸架ばね付きの dynamic cylinder。
-    // トントンはここに impulse を打つ。
-    // 懸架は joint ではなく自前 PD (力士のバランスと同じ流儀)。
-    // gravityScale 0 なので rest 位置はぴったり home に決まる。
+    // Ring: a dynamic cylinder with suspension springs.
+    // A tonton applies an impulse here.
+    // The suspension is a custom PD, not a joint (the same approach as the wrestlers' balance).
+    // gravityScale is 0, so the rest position lands exactly at home.
     static BodyRef3d? DeclareDohyo(WorldRef3d world)
     {
         var dohyo = Phys3d.Body(world, "dohyo", new BodyDesc3d
@@ -392,9 +392,9 @@ public static class Tonton22
         return dohyo;
     }
 
-    // 懸架 PD。
-    // 位置 (xyz) は home へ、傾きは水平へ、周波数 ω と減衰比 ζ で戻す。
-    // F = m (ω² Δx − 2ζω v)、τ = I (ω² lean − 2ζω w)。
+    // Suspension PD.
+    // Brings position (xyz) back to home and tilt back to level, with frequency ω and damping ratio ζ.
+    // F = m (ω² Δx − 2ζω v), τ = I (ω² lean − 2ζω w).
     static void ControlDohyo(BodyRef3d dohyo)
     {
         var pose = Phys3d.Pose(dohyo);
@@ -429,7 +429,7 @@ public static class Tonton22
             Version = f.Gen,
             LinearDamping = 0.1f,
             AngularDamping = 0.5f,
-            // yaw を封じる: capsule は回転対称なので物理には影響せず、見た目の向き (相手に正対) をレンダリング側で自由に決められる
+            // Lock yaw: the capsule is rotationally symmetric, so this does not affect physics, and the rendering side can freely choose the visual facing (squarely toward the opponent)
             MotionLocks = new MotionLocks3d { AngularY = true },
             Initial = new InitialState3d { X = f.HomeX, Y = topY + 0.02f, Z = 0.0f },
         });
@@ -442,27 +442,27 @@ public static class Tonton22
             B = new Vec3d { X = 0.0f, Y = 0.95f, Z = 0.0f },
             R = capR,
             Density = 1.0f,
-            // 高摩擦: 足が滑るより先に体が傾くように (押し倒しが決まる条件)。
-            // 移動の自由は空中 (トントンで跳ねた瞬間) にある。
+            // High friction: so the body tilts before the feet slide (the condition for a push-down to work).
+            // Freedom of movement comes in the air (the moment a tonton bounces them).
             Friction = 0.85f,
             Contact = true,
         });
         return body;
     }
 
-    // 決定論ハッシュ乱数 (シードは frame と力士 index)。
-    // リプレイ可能。
+    // Deterministic hash random numbers (the seed is the frame and the wrestler index).
+    // Replayable.
     static float Rand01(int n)
     {
         float x = (float)Math.Sin(n * 12.9898f) * 43758.5453f;
         return x - (float)Math.Floor(x);
     }
 
-    // 戦術選択。
-    // 反応間隔 (tacticUntil) ごとに再判断する。
-    // - 相手が深く前傾 → counter 確率で引き/いなし (支えを外す)
-    // - 背中が土俵際 → いなしで軸をずらす
-    // - まれに「ため」、基本は押し
+    // Tactic selection.
+    // Re-decided at every reaction interval (tacticUntil).
+    // - Opponent leans deeply → pull/inashi with the counter probability (removes the support)
+    // - Back at the ring edge → shift the axis with inashi
+    // - Rarely "tame", push by default
     static void Decide(int i, Rikishi f, Pose3d pose, Pose3d op, Vec3 dir,
         bool engaged)
     {
@@ -470,14 +470,14 @@ public static class Tonton22
             return;
         var opQ = new Quat(op.Qx, op.Qy, op.Qz, op.Qw);
         var opUp = opQ * Vec3.Up();
-        float leanToMe = -(opUp.X * dir.X + opUp.Z * dir.Z); // 相手の前傾のこちら成分
-        float pushedBack = -(pose.Vx * dir.X + pose.Vz * dir.Z); // 押し込まれ速度
+        float leanToMe = -(opUp.X * dir.X + opUp.Z * dir.Z); // Component of the opponent's lean toward us
+        float pushedBack = -(pose.Vx * dir.X + pose.Vz * dir.Z); // Speed of being pushed back
         float rr = (float)Math.Sqrt(pose.X * pose.X + pose.Z * pose.Z);
         float backToEdge =
             rr > 0.01f ? -(pose.X * dir.X + pose.Z * dir.Z) / rr : 0.0f;
         float edgeDanger = backToEdge > 0.0f ? rr / dohyoR * backToEdge : 0.0f;
         float r = Rand01(frame * 97 + i * 1013);
-        // 引き/いなしの好機: 相手が前傾している、押し込まれている、または賭け
+        // Chance for a pull/inashi: the opponent is leaning, we are being pushed in, or a gamble
         float chance = (leanToMe > 0.10f ? f.Counter : 0.0f)
             + (pushedBack > 0.12f ? f.Counter * 0.8f : 0.0f) + f.Counter * 0.15f;
         if (engaged && r < chance && edgeDanger < 0.55f)
@@ -504,13 +504,13 @@ public static class Tonton22
         }
     }
 
-    // 姿勢 PD (倒立振子)。
-    // up を world up へ立て直すトルク + 角速度ダンピング。
-    // その上に状態別の操舵: 仕切り中は定位置ばね、勝負中は戦術に従う。
+    // Posture PD (inverted pendulum).
+    // Torque that rights up toward world up + angular velocity damping.
+    // On top of that, per-state steering: a home position spring during shikiri, and the tactic during the bout.
     static void ControlRikishi(int i, Rikishi f, BodyRef3d body, BodyRef3d opp)
     {
-        // 「のこった」の脈動。
-        // 押し込み力と腕の絵が同じ位相を読む
+        // The "nokotta" pulse.
+        // The push force and the arm drawing read the same phase
         f.Pulse = Math.Max(0.0f, (float)Math.Sin(
             frame * tickDt * f.PulseHz * 2.0f * (float)Math.PI + f.Phase));
         var pose = Phys3d.Pose(body);
@@ -518,11 +518,11 @@ public static class Tonton22
             return;
         var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
         var up = q * Vec3.Up();
-        var lean = up.Cross(Vec3.Up()); // |lean| = sin(傾き)、方向 = 立て直す回転軸
+        var lean = up.Cross(Vec3.Up()); // |lean| = sin(tilt), direction = righting rotation axis
         var spring = lean * balKp;
         float mag = spring.Length();
-        // 筋力上限 (超えた傾きは救えない)。
-        // 「ため」中は腰を落として踏ん張る
+        // Muscle strength limit (tilt beyond it cannot be saved).
+        // During "tame", lower the hips and brace
         float maxEff = f.Tactic == taTame && state == stFight
             ? balMax * 1.5f : balMax;
         if (mag > maxEff)
@@ -530,10 +530,10 @@ public static class Tonton22
         Phys3d.AddTorque(body, new Vec3d
         {
             X = spring.X - pose.Wx * balKd,
-            Y = 0.0f, // yaw は motionLocks で封じている
+            Y = 0.0f, // yaw is locked with motionLocks
             Z = spring.Z - pose.Wz * balKd,
         });
-        // 倒れている間は操舵しない (勝敗の余韻でジタバタさせない)
+        // No steering while down (no flailing during the aftermath of the result)
         if (up.Y < 0.5f)
             return;
         if (state == stFight)
@@ -548,20 +548,20 @@ public static class Tonton22
             Decide(i, f, pose, op, dir, engaged);
             if (f.Tactic == taHiki)
             {
-                // 支えを外す。
-                // 前傾した相手はつんのめって落ちる (引き落とし)
+                // Remove the support.
+                // A leaning opponent stumbles forward and falls (hikiotoshi)
                 Phys3d.AddForceCenter(body, new Vec3d
                 {
                     X = (-dir.X * 1.8f - pose.Vx) * hikiK,
                     Y = 0.0f,
                     Z = (-dir.Z * 1.8f - pose.Vz) * hikiK,
                 });
-                // はたき込み: 組んだまま引くときは相手の上体をこちらへ引き倒す
+                // Hatakikomi: when pulling while engaged, pull the opponent's upper body down toward us
                 if (dist < 2.0f * capR + 0.55f)
                 {
                     var opQ = new Quat(op.Qx, op.Qy, op.Qz, op.Qw);
                     var opUp = opQ * Vec3.Up();
-                    var pullAxis = opUp.Cross(-1.0f * dir); // 相手の up をこちらへ倒す軸
+                    var pullAxis = opUp.Cross(-1.0f * dir); // Axis that tips the opponent's up toward us
                     Phys3d.AddTorque(opp, new Vec3d
                     {
                         X = pullAxis.X * hatakiK,
@@ -572,8 +572,8 @@ public static class Tonton22
             }
             else if (f.Tactic == taInashi)
             {
-                // 横へかわす。
-                // 押しの軸を外して空振りさせる
+                // Dodge sideways.
+                // Move off the push axis and make the opponent miss
                 var side = new Vec3(-dir.Z * f.SideSign, 0.0f, dir.X * f.SideSign);
                 Phys3d.AddForceCenter(body, new Vec3d
                 {
@@ -581,7 +581,7 @@ public static class Tonton22
                     Y = 0.0f,
                     Z = (side.Z * 2.3f - pose.Vz) * inashiK,
                 });
-                // かわしながら相手の突進を前へ転がす (突き落とし)
+                // While dodging, roll the opponent's charge forward (tsukiotoshi)
                 if (dist < 2.0f * capR + 0.55f)
                 {
                     var opQ = new Quat(op.Qx, op.Qy, op.Qz, op.Qw);
@@ -597,8 +597,8 @@ public static class Tonton22
             }
             else if (f.Tactic == taTame)
             {
-                // 直立で耐える。
-                // 詰めも押しもしない
+                // Stand upright and endure.
+                // Neither close in nor push
                 Phys3d.AddForceCenter(body, new Vec3d
                 {
                     X = -pose.Vx * seekK,
@@ -608,8 +608,8 @@ public static class Tonton22
             }
             else
             {
-                // 押す: 前進方向にはブレーキをかけない速度サーボ。
-                // 押し込み中に相手が消えても止まれない = 突っ込むリスクが物理に乗る
+                // Push: a velocity servo that does not brake in the forward direction.
+                // Cannot stop even if the opponent disappears while pushing in = the risk of lunging forward is carried by the physics
                 float vAlong = pose.Vx * dir.X + pose.Vz * dir.Z;
                 float drive =
                     vAlong < walkSpeed ? (walkSpeed - vAlong) * seekK : 0.0f;
@@ -623,8 +623,8 @@ public static class Tonton22
                 });
                 if (engaged)
                 {
-                    // 脈動で前傾して押し込む。
-                    // 重心を相手に預ける
+                    // Lean forward with the pulse and push in.
+                    // Put the center of mass on the opponent
                     float pulse = f.Pulse;
                     Phys3d.AddForceCenter(body, new Vec3d
                     {
@@ -632,7 +632,7 @@ public static class Tonton22
                         Y = 0.0f,
                         Z = dir.Z * f.PushK * pulse,
                     });
-                    var leanAxis = up.Cross(dir); // up を dir へ倒す = 前傾
+                    var leanAxis = up.Cross(dir); // Tip up toward dir = lean forward
                     Phys3d.AddTorque(body, new Vec3d
                     {
                         X = leanAxis.X * f.LeanK * pulse,
@@ -653,8 +653,8 @@ public static class Tonton22
         }
     }
 
-    // 勝敗判定と取組フロー。
-    // 負け = 土俵上面から落ちた or 倒れたまま起きない。
+    // Win/loss judgment and bout flow.
+    // Loss = fell off the top of the ring, or stays down without getting up.
     static void Judge(List<BodyRef3d> bodies)
     {
         if (state == stShikiri)
@@ -665,7 +665,7 @@ public static class Tonton22
                 state = stFight;
                 fightStart = frame;
                 engagedPrev = false;
-                Audio.Play(Sfx.Blip(2400, 2100, 0.05f, 0.35f)); // 拍子木
+                Audio.Play(Sfx.Blip(2400, 2100, 0.05f, 0.35f)); // Hyoshigi (wooden clappers)
             }
         }
         else if (state == stFight)
@@ -683,7 +683,7 @@ public static class Tonton22
                     continue;
                 var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
                 var up = q * Vec3.Up();
-                if (up.Y < 0.5f) // 60° = 筋力上限の臨界角より深い。もう戻れない
+                if (up.Y < 0.5f) // 60° = deeper than the critical angle of the muscle strength limit. No way back
                     f.DownFrames++;
                 else
                     f.DownFrames = 0;
@@ -694,7 +694,7 @@ public static class Tonton22
             if (lost[0] || lost[1])
             {
                 winner = lost[0] && lost[1] ? -1 : (lost[0] ? 1 : 0);
-                // 決まり手: 勝者の直前の戦術 × 負け方 (土俵外 or 転倒)
+                // Kimarite: the winner's last tactic × how the loser lost (out of the ring or fallen)
                 if (winner < 0)
                 {
                     kimarite = "とりなおし";
@@ -713,7 +713,7 @@ public static class Tonton22
                 state = stKimari;
                 stateT = 90;
                 shake = 1.0f;
-                Audio.Play(Sfx.Noise(0.7f, 0.28f, 0xbeef)); // 歓声がわり
+                Audio.Play(Sfx.Noise(0.7f, 0.28f, 0xbeef)); // Stand-in for cheering
                 Audio.Play(Sfx.Blip(520, 780, 0.22f, 0.22f));
                 if (auto)
                     Console.WriteLine("tonton: winner=" + winner
@@ -740,13 +740,13 @@ public static class Tonton22
         }
     }
 
-    // --- input ---------------------------------------------------------------- クリック (押しっぱなしは連打) = トントン。
-    // カメラ ray を土俵上面の平面と交差させ、土俵の中なら下向き impulse。
-    // 土俵が傾いていても上面 "あたり" に打てれば十分なので平面近似で済ませる。
+    // --- input ---------------------------------------------------------------- Click (holding repeats) = tonton.
+    // Intersect the camera ray with the plane of the ring top, and apply a downward impulse if it is inside the ring.
+    // Even if the ring is tilted, hitting "around" the top surface is enough, so a plane approximation is used.
     static void TapAt(BodyRef3d dohyo, float px, float pz)
     {
         lastTap = frame;
-        Audio.Play(Sfx.Blip(150, 45, 0.09f, 0.5f)); // トントンの「ドンッ」
+        Audio.Play(Sfx.Blip(150, 45, 0.09f, 0.5f)); // The "thud" of a tonton
         Audio.Play(Sfx.Noise(0.05f, 0.18f));
         Phys3d.AddImpulse(dohyo,
             new Vec3d { X = 0.0f, Y = -tapImpulse, Z = 0.0f },
@@ -784,7 +784,7 @@ public static class Tonton22
     static void UpdateTap(BodyRef3d dohyo, Vec3 eye, Vec3 target, float fovDeg,
         float aspect, float w, float h)
     {
-        // 自動トントン: 決定論の擬似乱数で縁寄りを叩き続ける (勝負中のみ)
+        // Automatic tonton: keeps hitting near the edge with deterministic pseudo-random numbers (only during the bout)
         if (auto)
         {
             if (state != stFight || frame % 24 != 12)
@@ -796,7 +796,7 @@ public static class Tonton22
         }
         if (state != stFight)
         {
-            // 仕切り・余韻中の pressed は次の取組に持ち越さない。
+            // pressed during shikiri / aftermath is not carried over to the next bout.
             pendingTap = false;
             return;
         }
@@ -816,7 +816,7 @@ public static class Tonton22
         var dir = (fwd + right * (ndcX * tanH * aspect) + upv * (ndcY * tanH))
             .Normalize();
         if (dir.Y > -0.001f)
-            return; // 上を向いた ray は土俵に届かない
+            return; // A ray pointing up does not reach the ring
         float t = (topY - eye.Y) / dir.Y;
         var p = eye + dir * t;
         if (p.X * p.X + p.Z * p.Z > dohyoR * dohyoR * 1.1f)
@@ -826,8 +826,8 @@ public static class Tonton22
 
     static void Tick(float aspect, float w, float h)
     {
-        // 従来の render frame 冒頭 / 末尾にあった演出カウントを 60 Hz で進める。
-        // この後の tap / judge で始まる演出は全強度で描く。
+        // Advance at 60 Hz the effect counters that used to be at the start / end of the render frame.
+        // Effects started by the following tap / judge are drawn at full strength.
         if (shake > 0.001f)
             shake = shake * 0.85f;
         if (markerT > 0)
@@ -863,7 +863,7 @@ public static class Tonton22
 
         Phys3d.Step(nextWorld, tickDt);
 
-        // 立ち合いのぶつかり (接触のエッジで音と振動)
+        // Collision at the tachiai (sound and shake on the contact edge)
         {
             var p0 = Phys3d.Pose(bodies[0]);
             var p1 = Phys3d.Pose(bodies[1]);
@@ -884,7 +884,7 @@ public static class Tonton22
             }
         }
 
-        // 着地スカッシュの検出と減衰も logical frame で進める。
+        // Landing squash detection and decay also advance in logical frames.
         for (int i = 0; i < fighters.Count; i++)
         {
             var f = fighters[i];
@@ -935,7 +935,7 @@ public static class Tonton22
         var eyeNow = renderEye ?? new Vec3(0.0f, 3.6f, -5.4f);
         renderEye = eyeNow;
 
-        // --- draw --- 屋外の明るい昼 (だるまの色がよく出るように空色強め)
+        // --- draw --- A bright outdoor day (strong sky color so the daruma colors stand out)
         renNow.Light.Dir = new Vec3(-0.4f, 1.0f, -0.55f);
         renNow.Sky.Top = Color.Rgb(0.45f, 0.52f, 0.62f);
         renNow.Sky.Bottom = Color.Rgb(0.16f, 0.14f, 0.13f);
@@ -951,7 +951,7 @@ public static class Tonton22
             Far = 50.0f,
         });
 
-        // 地面と台座
+        // Ground and base
         renNow.Draw(cubeNow, Mat4.Translate(new Vec3(0, -0.5f, 0))
             * Mat4.Scale(new Vec3(8, 0.5f, 8)),
             new Draw3dOpts { Tint = Color.Rgb(0.10f, 0.10f, 0.13f) });
@@ -959,8 +959,8 @@ public static class Tonton22
             * Mat4.Scale(new Vec3(1.7f, 0.3f, 1.7f)),
             new Draw3dOpts { Tint = Color.Rgb(0.16f, 0.15f, 0.19f) });
 
-        // 土俵 (懸架で傾く)。
-        // 上面に俵の白リングと仕切り線を重ねる。
+        // Ring (tilts on the suspension).
+        // Overlay the white tawara ring and the shikiri lines on the top surface.
         var drawWorld = world;
         Pose3d? dp = null;
         if (drawWorld != null)
@@ -984,8 +984,8 @@ public static class Tonton22
                     new Draw3dOpts { Tint = Color.Rgb(0.92f, 0.88f, 0.78f) });
         }
 
-        // 力士: SDF だるま (skinning + 手続きボーンアニメ)。
-        // 物理の pose に相手への正対 yaw と着地スカッシュを重ねる。
+        // Wrestlers: SDF daruma (skinning + procedural bone animation).
+        // Layer the yaw that squarely faces the opponent and the landing squash on top of the physics pose.
         EnsureDaruma(darumaNow);
         for (int i = 0; i < fighters.Count; i++)
         {
@@ -1000,7 +1000,7 @@ public static class Tonton22
             var op = Phys3d.PoseByKey(drawWorld, "rikishi:" + (1 - i));
             float fx = op != null ? op.X - pose.X : -pose.X;
             float fz = op != null ? op.Z - pose.Z : -pose.Z;
-            float yaw = (float)Math.Atan2(fx, fz); // model の -Z を相手へ向ける
+            float yaw = (float)Math.Atan2(fx, fz); // Point -Z of the model at the opponent
             var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
             var upv = q * Vec3.Up();
             bool falling = upv.Y < 0.6f;
@@ -1013,7 +1013,7 @@ public static class Tonton22
             });
         }
 
-        // トントンのマーカー (打った場所に一瞬リング。高輝度で bloom に乗る)
+        // Tonton marker (a brief ring where it was hit. High brightness so it catches bloom)
         if (markerT > 0)
         {
             float k = markerT / 10.0f;
@@ -1025,7 +1025,7 @@ public static class Tonton22
 
         renNow.End();
 
-        // --- テキスト (かな): tonemap 後の swapchain に重ね描き ---
+        // --- Text (kana): drawn over the swapchain after tonemap ---
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
         var mt = EnsureText();
         if (mt != null)
@@ -1038,7 +1038,7 @@ public static class Tonton22
                 if (renderFrame - fightStart < 50)
                     mt.TextCentered("はっけよい", w * 0.5f, 120, 44,
                         Color.Rgb(0.98f, 0.85f, 0.4f));
-                // 思考の可視化: 頭上に現在の戦術
+                // Visualizing thought: the current tactic above the head
                 for (int i = 0; i < fighters.Count; i++)
                 {
                     if (renNow.ViewProj == null)

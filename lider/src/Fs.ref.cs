@@ -1,12 +1,12 @@
-// file system の操作の宣言 (変換しない。tcs の --ref で渡る)。
-// 中身は native/fs/vm_fs.c で、lider の player (native/CMakeLists.txt、native と web) が静的に link する。
-// lub の既製の lub_vm で動かすときは、隣の Fs.so (scripts/build-native.sh が作る) を native の拡張として読む。
-// web は emscripten の仮想ファイル (MEMFS) が相手。
-// lider は src/Disk.cs の形で使う。
+// Declarations of file system operations (not converted; passed through tcs's --ref).
+// The implementation is native/fs/vm_fs.c, statically linked by the lider player (native/CMakeLists.txt, native and web).
+// When running on lub's prebuilt lub_vm, it loads the neighboring Fs.so (built by scripts/build-native.sh) as a native extension.
+// On the web, the counterpart is emscripten's virtual file system (MEMFS).
+// lider uses it in the form of src/Disk.cs.
 public static class Fs
 {
-    /// <summary>file かディレクトリの種類、大きさ (byte、2^31 - 1 で頭打ち)、更新時刻 (1970 年からの秒)。
-    /// 無ければ false。
+    /// <summary>Kind (file or directory), size (bytes, capped at 2^31 - 1), and modification time (seconds since 1970).
+    /// Returns false if it does not exist.
     /// </summary>
     public static bool Stat(string path, out bool isDir, out int size, out int modified)
     {
@@ -16,9 +16,9 @@ public static class Fs
         return false;
     }
 
-    /// <summary>ディレクトリの中身の名前を、名前の昇順に改行で区切って返す (ディレクトリは名前の後に "/")。
-    /// "." と ".." は返さない。
-    /// ディレクトリでなければ false。
+    /// <summary>Returns the names of the directory contents in ascending order of name, separated by newlines (directories have "/" after the name).
+    /// Does not return "." and "..".
+    /// Returns false if it is not a directory.
     /// </summary>
     public static bool ListDir(string path, out string? names)
     {
@@ -26,8 +26,8 @@ public static class Fs
         return false;
     }
 
-    /// <summary>path を、cwd から辿った "." と ".." の無い絶対 path にする (symlink も辿る)。
-    /// 無い path は false。
+    /// <summary>Turns path into an absolute path resolved from cwd, without "." and ".." (also follows symlinks).
+    /// Returns false for a path that does not exist.
     /// </summary>
     public static bool AbsolutePath(string path, out string? absolute)
     {
@@ -35,8 +35,8 @@ public static class Fs
         return false;
     }
 
-    /// <summary>file か空のディレクトリを消す。
-    /// 消したら true、無いか消せなければ false。
+    /// <summary>Deletes a file or an empty directory.
+    /// Returns true if deleted, false if it does not exist or cannot be deleted.
     /// </summary>
     public static bool Remove(string path) { return false; }
 }

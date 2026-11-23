@@ -1,6 +1,6 @@
-/* Playdate 実機/シミュレータで perf kernel を実測するハーネス。
-   update 1 回につき 1 job (変種×kernel) を実行し、結果 CSV を
-   logToConsole へ出す。出力形式はホスト run.sh と同じ:
+/* Harness that measures perf kernels on Playdate hardware/simulator.
+   Runs 1 job (variant × kernel) per update and writes the result CSV
+   to logToConsole. The output format is the same as the host run.sh:
    kernel,variant,N,ms_per_frame,digest */
 
 #include "pd_api.h"

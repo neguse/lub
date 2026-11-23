@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 文字列の長さの合計は size_t に収まらなければ確保の前に fault する。
-// 実際に作れる大きさでは 32bit の size_t でしか起きないので、長さだけを持つ TcsString を runtime の関数へ直接渡す
+// If the total string length does not fit in size_t, it faults before allocating.
+// At sizes that can actually be created this only happens with a 32-bit size_t, so a TcsString that only has a length is passed directly to the runtime function
 public class StringLengthOverflowTests
 {
     private const string Harness = """

@@ -1,8 +1,8 @@
 using System;
 
-// digest kernel: spawn_churn (perf/CONTRACT.md kernel 2)。
-// 解釈 (perf 実装と統一): 開始時に n 体を充填し、毎フレーム
-// 「spawn 32 (最古を上書き) → 生存全体を最古→最新順に更新」。
+// digest kernel: spawn_churn (perf/CONTRACT.md kernel 2).
+// Interpretation (unified with the perf implementations): fill n entities at the start, and every frame
+// "spawn 32 (overwriting the oldest) → update all live ones from oldest to newest".
 public class Entity
 {
     public float X;
@@ -34,7 +34,7 @@ public class SpawnChurn
         float dt = 1.0f / 50.0f;
 
         var ring = new Entity[n];
-        int head = 0;  // 最古の位置
+        int head = 0;  // Position of the oldest
         int count = 0;
         for (int p = 0; p < n; p++)
         {
@@ -63,7 +63,7 @@ public class SpawnChurn
                 }
                 else
                 {
-                    ring[head] = e;  // 最古を破棄して上書き
+                    ring[head] = e;  // Discard the oldest and overwrite it
                     head = (head + 1) % n;
                 }
             }

@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 既定の順序 (比較なしの List.Sort() と OrderBy / OrderByDescending) は
-// .NET の既定の comparer と同じく NaN を最小にする。要素型が型 parameter の
-// generic method と、拡張 method の static の形も同じ。
-// 表示の N は NaN、I は ±∞。期待値は同じ program を CoreCLR で実行した stdout
+// The default order (List.Sort() without a comparison and OrderBy / OrderByDescending)
+// makes NaN the smallest, like .NET's default comparer. The same goes for generic methods whose element type
+// is a type parameter, and for the static form of extension methods.
+// In the output N is NaN and I is ±∞. The expected values are the stdout of running the same program on CoreCLR
 public class SortNaNDifferentialTests
 {
     [CFact]

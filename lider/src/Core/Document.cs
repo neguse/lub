@@ -1,6 +1,6 @@
-// 開いた file 1 つ。本文、カーソル、編集はエディタの core の view (EditorHost、Id) が持ち、ここは lider の見る所を出す。
-// lider が持つのは、ゲームが動かしている版 (LiveLines) と、保存してまだ reload chunk が当たっていない版。
-// 保存は エディタの Ctrl+S でも Save でも、Sync が エディタの保存した回数の変化で拾う。
+// One open file. The text, cursor and editing are held by the editor core's view (EditorHost, Id), and this exposes what lider looks at.
+// lider holds the version the game is running (LiveLines) and the version that has been saved but not yet applied by a reload chunk.
+// Saves, whether by the editor's Ctrl+S or by Save, are picked up by Sync from changes in the editor's save count.
 using System.Collections.Generic;
 using Lub;
 using LiderEditor;
@@ -10,17 +10,17 @@ namespace LiderCore;
 public class Document
 {
     public string Path;
-    // エディタの view の id
+    // Id of the editor view
     public readonly int Id;
-    // ゲームが動かしている版: 最後に読んだ内容か、保存した後に reload chunk が当たった内容 (奥の層に、変えた行の古い版として出す)
+    // The version the game is running: the last loaded content, or the content applied by a reload chunk after a save (shown in the back layer as the old version of changed lines)
     public List<string> LiveLines;
-    // 保存して、まだ reload chunk が当たっていない内容
+    // Content that has been saved but not yet applied by a reload chunk
     List<string>? saved;
     int saves;
     int changeId;
-    // 本文か LiveLines が変わるたびに上がる (窓の板と検索はそれで読み直す)
+    // Incremented whenever the text or LiveLines changes (the window boards and search reload on it)
     public int Revision;
-    // 保存を拾った回数と、保存した内容がゲームに入った (reload が当たった) 回数
+    // Number of saves picked up, and number of times saved content entered the game (the reload was applied)
     public int Saved;
     public int Landed;
 
@@ -35,8 +35,8 @@ public class Document
 
     public static bool Booted;
 
-    // エディタの core を起こす (2 度目からは桁の幅と行の高さだけを変える)。
-    // かな漢字変換の辞書は env LIDER_JAMO_DICT、無ければ LIDER_HOME の data/mozc.dict を裏で読み始める
+    // Starts the editor core (from the second call on, only changes the column width and line height).
+    // Starts loading the kana-kanji conversion dictionary in the background from env LIDER_JAMO_DICT, or data/mozc.dict under LIDER_HOME if that is missing
     public static void Boot(float cellW, float lineH)
     {
         var err = EditorHost.Init(cellW, lineH);
@@ -51,7 +51,7 @@ public class Document
         EditorHost.ImeDict(dict);
     }
 
-    // エディタが開いた view (id) の doc。名前の無い doc の path は ""
+    // The doc for a view (id) the editor opened. The path of an unnamed doc is ""
     public static Document Adopt(string path, int id)
     {
         return new Document(path, id);
@@ -68,7 +68,7 @@ public class Document
     }
 
     public bool Dirty => EditorHost.Dirty(Id);
-    // カーソルの行と byte の桁 (どちらも 0 から)
+    // Cursor line and byte column (both from 0)
     public int Line => EditorHost.CursorLine(Id) - 1;
     public int Col => EditorHost.CursorCol(Id) - 1;
 
@@ -77,7 +77,7 @@ public class Document
         return EditorHost.LineCount(Id);
     }
 
-    // line 行目 (0 から、改行を除く)
+    // Line number line (from 0, without the newline)
     public string Text(int line)
     {
         return EditorHost.Line(Id, line + 1);
@@ -92,7 +92,7 @@ public class Document
         return lines;
     }
 
-    // エディタの本文の変化と保存を拾う (key を渡した後と、毎 frame)
+    // Picks up changes to the editor's text and saves (after passing keys, and every frame)
     public void Sync()
     {
         var id = EditorHost.ChangeId(Id);
@@ -117,8 +117,8 @@ public class Document
         Sync();
     }
 
-    // lub が reload chunk を当てた (OnReload)。
-    // lub は変換や reload の失敗を知らせないので、保存した後の最初の OnReload で保存した内容がゲームに入ったとみなす
+    // lub applied a reload chunk (OnReload).
+    // lub does not report compile or reload failures, so the first OnReload after a save is taken to mean the saved content entered the game
     public void Reloaded()
     {
         Sync();
@@ -130,11 +130,11 @@ public class Document
         Revision++;
     }
 
-    // 本文の行 → LiveLines の行 (変えた行と足した行は -1)。本文か LiveLines が変わったら作り直す
+    // Text line → LiveLines line (-1 for changed and added lines). Rebuilt when the text or LiveLines changes
     int[] live = new int[0];
     bool differs;
-    // インラインの形で挟む、動いている版の対応しない行 (0 から) と、それを上に挟む本文の行 (1 から、行の数 + 1 は最後の行の下)。
-    // gaps[line] は line 行目の上に挟む行の数
+    // In the inline form, the running version's unmatched lines to insert (from 0), and the text line above which each is inserted (from 1; line count + 1 is below the last line).
+    // gaps[line] is the number of lines inserted above line number line
     readonly List<int> inlineOld = new List<int>();
     readonly List<int> inlineAt = new List<int>();
     int[] gaps = new int[0];
@@ -149,12 +149,12 @@ public class Document
         live = LineDiff.Match(LiveLines, Lines());
         liveChange = change;
         liveLanded = Landed;
-        // 対応は増える向きなので、行の数が同じで全部が対応すれば同じ内容
+        // The mapping is increasing, so if the line counts are equal and every line matches, the content is the same
         differs = live.Length != LiveLines.Count;
         foreach (var l in live)
             if (l < 0)
                 differs = true;
-        // 対応する行の間の、動いている版の対応しない行を、次に対応する行 (無ければ最後の行の下) の側の塊の上に挟む
+        // Unmatched running-version lines between matched lines are inserted above the block on the side of the next matched line (below the last line if there is none)
         inlineOld.Clear();
         inlineAt.Clear();
         gaps = new int[live.Length + 2];
@@ -176,29 +176,29 @@ public class Document
         }
     }
 
-    // line 行目 (0 から) の、ゲームが動かしている版での行 (0 から、変えた行と足した行は -1)。
-    // 行を足したり消したりしても、中身が同じ行は動いている版の同じ行に対応させる
+    // For line number line (from 0), its line in the version the game is running (from 0; -1 for changed and added lines).
+    // Even when lines are added or deleted, lines with the same content map to the same line of the running version
     public int LiveLine(int line)
     {
         MatchLive();
         return line >= 0 && line < live.Length ? live[line] : -1;
     }
 
-    // 本文の全部の行の LiveLine
+    // LiveLine for every line of the text
     public int[] LiveMap()
     {
         MatchLive();
         return live;
     }
 
-    // インラインの形で line 行目 (1 から) の上に挟む行の数 (EditorHost.SetGaps に渡す)
+    // In the inline form, the number of lines inserted above line number line (from 1) (passed to EditorHost.SetGaps)
     public int[] InlineGaps()
     {
         MatchLive();
         return gaps;
     }
 
-    // インラインの形で挟む、動いている版の行 (0 から、上から順) と、それぞれを上に挟む本文の行 (1 から)
+    // In the inline form, the running version's lines to insert (from 0, top to bottom) and the text line above which each is inserted (from 1)
     public List<int> InlineOld()
     {
         MatchLive();
@@ -211,20 +211,20 @@ public class Document
         return inlineAt;
     }
 
-    // 本文がゲームの動いている版と違うか (変えた行、足した行、消した行がある)
+    // Whether the text differs from the version the game is running (has changed, added or deleted lines)
     public bool Differs()
     {
         MatchLive();
         return differs;
     }
 
-    // ゲームが動かしている版と違う行か (変えた行と足した行)
+    // Whether the line differs from the version the game is running (changed and added lines)
     public bool LineChanged(int line)
     {
         return LiveLine(line) < 0;
     }
 
-    // カーソルの所に打つ (改行を含んでよい)
+    // Types at the cursor (may contain newlines)
     public void Type(string s)
     {
         EditorHost.Insert(Id, s);
@@ -236,7 +236,7 @@ public class Document
         EditorHost.SetCursor(Id, line + 1, col + 1);
     }
 
-    // 最初に現れる text の位置へ動く (無ければ false)
+    // Moves to the first occurrence of text (false if there is none)
     public bool Find(string text)
     {
         var n = LineCount();

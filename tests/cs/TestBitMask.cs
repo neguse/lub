@@ -1,5 +1,5 @@
-// bit mask の文字列は 1〜16 桁の hex (0x 付きも可)。
-// 空、17 桁以上、hex でない文字 (NUL を含む) は error (tcs2c と .NET の binding も同じ規則)。
+// A bit mask string is 1 to 16 hex digits (a 0x prefix is allowed).
+// Empty strings, 17 or more digits, and non-hex characters (including NUL) are errors (the tcs2c and .NET bindings follow the same rule).
 using System;
 using Lub;
 
@@ -30,7 +30,7 @@ public static class TestBitMask
         Phys2d.Box(body!, "box", new BoxDesc { Hx = 0.2f, Hy = 0.2f });
         Phys2d.Step(world!, 1.0f / 60.0f);
 
-        // 段階は失敗するはずの呼び出しの前に進める (失敗すると OnFrame はそこで終わる)
+        // Advance the stage before a call that should fail (when it fails, OnFrame ends there)
         var s = step;
         step++;
         if (s == 0)

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""tcs の実行経路と他の言語を同じプログラムで比べる (外向けの比較ベンチ)。
+"""Compares the tcs execution paths and other languages on the same programs (a public-facing comparison benchmark).
 
-使い方:
-  python3 perf/compare/run.py --check          # 小さいサイズで全実装の出力の一致だけ見る (時間は測らない)
-  python3 perf/compare/run.py                  # 本番のサイズで計測し results/ に JSON を書く
+Usage:
+  python3 perf/compare/run.py --check          # only checks that the outputs of all implementations match at a small size (no timing)
+  python3 perf/compare/run.py                  # measures at the full size and writes JSON to results/
   python3 perf/compare/run.py -p fib -i c,tcs-c --runs 3
-  python3 perf/compare/report.py results/<file>.json   # 表と HTML を作る
+  python3 perf/compare/report.py results/<file>.json   # builds the tables and HTML
 
-測り方と公平さの決まりは METHODOLOGY.md。
+The measurement method and fairness rules are in METHODOLOGY.md.
 """
 
 import argparse
@@ -26,8 +26,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 PROGRAMS_DIR = HERE / "programs"
 
-# name: ディレクトリ名、entry: C# の class 名 (各言語のファイル名も同じ)、
-# check / full: BENCH_N に渡すサイズ、float: f32 の演算を含むか (f64 しか無い言語は許容差で比べる)
+# name: directory name, entry: C# class name (the file names in each language are the same),
+# check / full: sizes passed to BENCH_N, float: whether it includes f32 arithmetic (languages with only f64 are compared with a tolerance)
 PROGRAMS = [
     {"name": "startup", "entry": "Startup", "check": 0, "full": 0, "float": False, "reps": False,
      "desc": "何もしないプログラム (起動と終了の時間)"},
@@ -62,7 +62,7 @@ def run_quiet(cmd, cwd=None, env=None):
 def first_line(cmd):
     try:
         p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60)
-        # JVM が環境の JAVA_TOOL_OPTIONS を報告する行 (proxy の設定などが入る) は版ではないので飛ばす
+        # Skip the line where the JVM reports JAVA_TOOL_OPTIONS from the environment (it contains proxy settings etc.), since it is not the version
         lines = [l for l in p.stdout.strip().splitlines() if l.strip() and not l.startswith("Picked up ")]
         return lines[0] if lines else ""
     except (OSError, subprocess.TimeoutExpired):
@@ -70,7 +70,7 @@ def first_line(cmd):
 
 
 class Toolchain:
-    """外部のコマンドの場所。環境変数で上書きできる"""
+    """Locations of external commands. Can be overridden with environment variables"""
 
     def __init__(self):
         self.cc = os.environ.get("CC", "gcc")
@@ -81,7 +81,7 @@ class Toolchain:
         self._native_ready = False
 
     def ensure_native(self):
-        """tcsvm (root の CMake)"""
+        """tcsvm (root CMake)"""
         if self._native_ready:
             return
         run_quiet(["cmake", "-B", str(ROOT / "build"), "-DCMAKE_BUILD_TYPE=Release", "-S", str(ROOT)])
@@ -106,8 +106,8 @@ class Toolchain:
 class Impl:
     id = ""
     label = ""
-    group = ""  # "tcs" か "ref"
-    approx = False  # f32 を持たず f64 で計算する (float のプログラムは許容差で比べる)
+    group = ""  # "tcs" or "ref"
+    approx = False  # Has no f32 and computes in f64 (float programs are compared with a tolerance)
 
     def __init__(self, tc):
         self.tc = tc
@@ -122,7 +122,7 @@ class Impl:
         return None
 
     def build(self, prog, work):
-        """実行の argv を返す"""
+        """Returns the argv for running"""
         raise NotImplementedError
 
 
@@ -173,7 +173,7 @@ class TcsDotnet(TcsImpl):
         return ".NET SDK " + first_line([self.tc.dotnet, "--version"])
 
     def build(self, prog, work):
-        # TinySystem.props で Math と Dictionary を tcs と同じ実装にする (tcs のプログラムを .NET で動かす経路そのもの)
+        # Use TinySystem.props so Math and Dictionary have the same implementation as in tcs (exactly the path for running tcs programs on .NET)
         proj = work / "dotnet"
         proj.mkdir(exist_ok=True)
         entry = prog["entry"]
@@ -319,7 +319,7 @@ def outputs_match(expected, actual, approx):
         return True
     if not approx:
         return False
-    # f64 で計算した実装: 数以外の部分は一致、数は相対 1e-3 以内
+    # Implementations that compute in f64: non-numeric parts match, numbers within relative 1e-3
     if NUM.sub("#", expected) != NUM.sub("#", actual):
         return False
     for a, b in zip(NUM.findall(expected), NUM.findall(actual)):
@@ -330,8 +330,8 @@ def outputs_match(expected, actual, approx):
 
 
 def run_measured(launcher, argv, n, pin, work, reps=1):
-    """1 回走らせ、wall 秒、stdout、peak RSS (KiB) を返す。計測は launcher (launcher.c) が行う。
-    reps は BENCH_REPS (プログラムが本体を何回くり返すか)"""
+    """Runs once and returns wall seconds, stdout, and peak RSS (KiB). Measurement is done by the launcher (launcher.c).
+    reps is BENCH_REPS (how many times the program repeats its body)"""
     env = dict(os.environ, BENCH_N=str(n), BENCH_REPS=str(reps))
     out_path = work / "run.out"
     res_path = work / "run.result"
@@ -354,9 +354,9 @@ def median(xs):
 
 
 def measure(launcher, argv, n, args, d, t1, out, has_reps, failures, pname, iid):
-    """起動から終了までの時間 (BENCH_REPS=1) と、1 回あたりの時間を測る。
-    1 回あたり = (T(BENCH_REPS=k) - T(BENCH_REPS=1)) / (k - 1)。差を取るので起動、JIT の立ち上がり、初期化の分が消える。
-    k は差が --target 秒以上になるよう倍々で探す。T(1) と T(k) は交互に測り、揺れが両方に同じようにかかるようにする"""
+    """Measures the time from startup to exit (BENCH_REPS=1) and the time per repetition.
+    Per repetition = (T(BENCH_REPS=k) - T(BENCH_REPS=1)) / (k - 1). Taking the difference removes startup, JIT warm-up, and initialization.
+    k is searched by doubling until the difference is at least --target seconds. T(1) and T(k) are measured alternately so fluctuation affects both equally"""
     runs = args.runs if t1 <= args.slow else min(args.runs, 3)
     k = 1
     if has_reps:
@@ -383,7 +383,7 @@ def measure(launcher, argv, n, args, d, t1, out, has_reps, failures, pname, iid)
             tks.append(t)
     row = {"runs": runs, "median_s": median(t1s), "min_s": min(t1s), "max_s": max(t1s), "peak_rss_kib": max(rsss)}
     if has_reps:
-        # 組ごとの差から 1 回あたりを出し、その median と範囲を記録する
+        # Compute the per-repetition time from the difference of each pair, and record its median and range
         pairs = sorted((b - a) / (k - 1) for a, b in zip(t1s, tks))
         row.update({"k": k, "per_iter_s": (median(tks) - median(t1s)) / (k - 1),
                     "per_iter_min_s": pairs[0], "per_iter_max_s": pairs[-1]})
@@ -480,9 +480,9 @@ def main():
                 continue
             has_reps = prog.get("reps", True)
             if args.check:
-                # くり返しても出力が変わらないこと (BENCH_REPS の実装の確認)
+                # The output must not change with repetition (checks the BENCH_REPS implementation)
                 if has_reps:
-                    # BENCH_REPS=0 なら何も出さない (くり返しを実装していない版を見つける)
+                    # With BENCH_REPS=0 nothing is printed (finds versions that do not implement repetition)
                     _, out0, _ = run_measured(launcher, argv, n, args.pin, d, reps=0)
                     _, out2, _ = run_measured(launcher, argv, n, args.pin, d, reps=2)
                     if out0 != "":

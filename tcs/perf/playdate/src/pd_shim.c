@@ -1,6 +1,6 @@
-/* common.h の perf_now_seconds と pd_log.h の perf_pd_log を
-   Playdate API で提供する。各 job の直前に resetElapsedTime するため
-   float 精度のタイマーで足りる */
+/* Provides perf_now_seconds of common.h and perf_pd_log of pd_log.h
+   with the Playdate API. resetElapsedTime is called right before each job, so
+   a float-precision timer is enough */
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -14,8 +14,9 @@
 PlaydateAPI *perf_pd;
 
 #if TARGET_PLAYDATE
-/* -nostartfiles のため crt が提供する _init/_fini が無い。newlib の
-   __libc_init_array/__libc_fini_array (exit 経路) が参照するので空定義を置く */
+/* With -nostartfiles there are no _init/_fini provided by crt. newlib's
+   __libc_init_array/__libc_fini_array (exit path) reference them, so empty
+   definitions are provided */
 void _init(void) {}
 
 void _fini(void) {}
@@ -25,9 +26,9 @@ double perf_now_seconds(void) {
   return (double)perf_pd->system->getElapsedTime();
 }
 
-/* console と Data/<bundleID>/results.csv の両方へ出す。ヘッドレスの
-   シミュレータや実機からの結果回収はファイル側が正 (job 毎に append +
-   close して途中クラッシュでも残るようにする) */
+/* Writes to both the console and Data/<bundleID>/results.csv. For collecting
+   results from the headless simulator or hardware, the file is the source of
+   truth (append + close per job so the results survive a crash midway) */
 void perf_pd_log(const char *format, ...) {
   char line[256];
   va_list args;

@@ -1,22 +1,22 @@
 namespace TinyCs.Vm;
 
-/// <summary>VM の増分 session (doc/vm-design.md §13.3、V5) の .NET の入口。本体は TinyC# の TcsSelf.VmSession
-/// (SelfHost/Tool/VmRun.cs、`tcs vm --watch` と同じもの)。web の playground の worker (WasmCompiler の JSExport) とテストが使う。
-/// 診断のある編集は最後の build を変えない。</summary>
+/// <summary>.NET entry point for the VM incremental session (doc/vm-design.md §13.3, V5). The core is TinyC#'s TcsSelf.VmSession
+/// (SelfHost/Tool/VmRun.cs, the same as `tcs vm --watch`). Used by the web playground worker (JSExport of WasmCompiler) and by tests.
+/// Edits with diagnostics do not change the last build.</summary>
 public sealed class VmSession(string? entryClass, IReadOnlyList<string> exports, IReadOnlyList<string> referenceSources)
 {
     private readonly TcsSelf.VmSession _session = new(entryClass ?? "", [.. exports], [.. referenceSources]);
 
-    /// <summary>Kind は "module" (最初の build。Module を読み込む)、"batch" (Batch を tvm_apply_batch で当てる)、
-    /// "restart" (Module を読み直す。Reasons が理由)、"error" (Errors。最後の build のまま)。
-    /// Notes は "batch" のとき、live に当てたが知らせたい変化 (instance の field の初期化子の変更など)。</summary>
+    /// <summary>Kind is "module" (the first build; loads Module), "batch" (applies Batch with tvm_apply_batch),
+    /// "restart" (reloads Module; Reasons gives the reasons), or "error" (Errors; the last build stays).
+    /// Notes, for "batch", are changes that were applied live but should still be reported (such as changes to instance field initializers).</summary>
     public sealed record Result(string Kind, byte[]? Module = null, byte[]? Batch = null,
         IReadOnlyList<string>? Reasons = null, IReadOnlyList<string>? Errors = null, IReadOnlyList<string>? Notes = null);
 
     public Result Update(IReadOnlyList<string> sources, IReadOnlyList<string>? paths = null)
     {
         TcsSelf.VmUpdate r;
-        // 誤りの記録 (TcsC.CFail) は static なので、並んだ呼び出しは 1 つずつ動かす
+        // The error record (TcsC.CFail) is static, so concurrent calls run one at a time
         lock (SelfHostVm.Gate)
             r = _session.Update([.. sources], paths is null ? [] : [.. paths]);
         return r.Kind switch

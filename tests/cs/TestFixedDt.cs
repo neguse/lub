@@ -1,11 +1,11 @@
-// --fixed-dt が指定値をそのまま OnFrame(dt) へ渡し、Sys.ActualFps も fixed dt から決まる (壁時計に依らない) ことを確認する。
-// 起動引数は --fixed-dt 0.0125 か 0.0166666666666667。
+// Checks that --fixed-dt passes the given value as is to OnFrame(dt), and that Sys.ActualFps is also determined by the fixed dt (independent of the wall clock).
+// The launch argument is --fixed-dt 0.0125 or 0.0166666666666667.
 using System;
 using Lub;
 
 public static class TestFixedDt
 {
-    // 実測は 1 秒分の frame (80 か 60) を積んでから出る
+    // The measured value appears after 1 second worth of frames (80 or 60) has accumulated
     const int fpsFrames = 100;
     static int frame;
 

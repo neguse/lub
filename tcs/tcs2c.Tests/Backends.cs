@@ -9,14 +9,14 @@ using TinyCs.Tcs2c;
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// 実行系の差分ハーネス。同じ TinyC# source を tcs2c→C→gcc、tcs VM (VmBackend.cs)、実 .NET で実行し、stdout を突き合わせる。
-/// C の stdout を基準に、C の GC stress と VM (通常 + GC stress) が同じ出力で、実 .NET (TinySystem.props と同じ構成) とも
-/// 一致することを要求する。.NET が意図して違う結果を出す program (System.Random の列、範囲外の (char) が止まらない、
-/// UTF-16 に入らない byte 列) は AssertBackendParity / AssertBackendFaultParity で .NET を外し、期待の stdout を呼び出し側が持つ。
-/// GC はフレーム境界 (lib 出荷形の tcs_lib_gc) でだけ走るので、GC の意味論は lib 形で
-/// Setup / Frame×N / Report を回す AssertParityLib で検証する。C 側の
-/// GC stress (-DTCS_GC_STRESS=1: 毎境界で旧世代 full GC + 256 byte の
-/// nursery chunk) では、root / ライトバリアの漏れは、生きている object が回収 / 上書きされて出力が変わる形で現れる。
+/// Differential harness for execution backends. Runs the same TinyC# source through tcs2c→C→gcc, the tcs VM (VmBackend.cs), and real .NET, and compares stdout.
+/// With the C stdout as the baseline, it requires the C GC stress run and the VM (normal + GC stress) to produce the same output, and also to
+/// match real .NET (same configuration as TinySystem.props). Programs where .NET intentionally gives different results (the System.Random sequence, out-of-range (char) not stopping,
+/// byte sequences that do not fit in UTF-16) exclude .NET via AssertBackendParity / AssertBackendFaultParity, and the caller holds the expected stdout.
+/// GC runs only at frame boundaries (tcs_lib_gc in the shipped lib form), so GC semantics are verified with AssertParityLib, which runs
+/// Setup / Frame×N / Report in lib form. With the C-side
+/// GC stress (-DTCS_GC_STRESS=1: an old-generation full GC at every boundary + 256-byte
+/// nursery chunks), a missing root / write barrier shows up as a live object being collected / overwritten and the output changing.
 /// </summary>
 internal static partial class Backends
 {
@@ -27,7 +27,7 @@ internal static partial class Backends
 
     public static readonly string[] StrictFlags =
         ["-O2", "-ffp-contract=off", "-fwrapv", "-fexcess-precision=standard",
-            // 型記述子 (doc/object-model.md) の offset と生成 struct の offsetof の一致を初期化で確かめる
+            // On initialization, checks that the offsets in the type descriptors (doc/object-model.md) match the offsetof of the generated structs
             "-DTCS_VERIFY_TYPES"];
 
     private static string FindProjectRoot()
@@ -66,13 +66,13 @@ internal static partial class Backends
     public static string Sample(string relative) =>
         File.ReadAllText(Path.Combine(ProjectRoot, relative));
 
-    /// <summary>C source を生成する (emit だけ、compile なし)。</summary>
+    /// <summary>Generates C source (emit only, no compile).</summary>
     public static string EmitC(string[] sources, string? entryClass,
         bool lib = false, bool digestF32 = false) =>
         SelfHostC.Emit(sources, entryClass, lib, digestF32);
 
-    /// <summary>tcs2c → C compiler → 実行 (main 形: Main 全体が 1 フレームで
-    /// GC は走らない)。</summary>
+    /// <summary>tcs2c → C compiler → run (main form: the whole Main is one frame and
+    /// GC does not run).</summary>
     public static string RunC(string[] sources, string? entryClass,
         bool stress = false, IEnumerable<string>? extraFlags = null)
     {
@@ -119,8 +119,8 @@ internal static partial class Backends
         }
     }
 
-    /// <summary>--lib の C を host (別 translation unit) から呼ぶ:
-    /// tcs_lib_init → Setup → (Frame → tcs_lib_gc)×N → Report。</summary>
+    /// <summary>Calls the --lib C from a host (a separate translation unit):
+    /// tcs_lib_init → Setup → (Frame → tcs_lib_gc)×N → Report.</summary>
     public static string RunCLib(string[] sources, string cls, int frames,
         bool stress = false)
     {
@@ -148,7 +148,7 @@ internal static partial class Backends
         return CompileAndRunC(c, stress, extraCSource: host);
     }
 
-    /// <summary>C (通常 + GC stress)、VM、実 .NET の stdout 一致を要求し、その stdout を返す。</summary>
+    /// <summary>Requires stdout to match across C (normal + GC stress), the VM, and real .NET, and returns that stdout.</summary>
     public static string AssertParity(string[] sources, string entryClass)
     {
         var c = AssertBackendParity(sources, entryClass);
@@ -159,8 +159,8 @@ internal static partial class Backends
     public static string AssertParity(string source, string entryClass) =>
         AssertParity([source], entryClass);
 
-    /// <summary>C (通常 + GC stress) と VM の stdout 一致を要求し、C の stdout を返す。.NET を外すのは、
-    /// .NET が意図して違う結果を出す program だけ (期待の stdout は呼び出し側が持つ)。</summary>
+    /// <summary>Requires the stdout of C (normal + GC stress) and the VM to match, and returns the C stdout. .NET is excluded
+    /// only for programs where .NET intentionally gives different results (the caller holds the expected stdout).</summary>
     public static string AssertBackendParity(string[] sources, string entryClass)
     {
         var c = RunC(sources, entryClass);
@@ -172,8 +172,8 @@ internal static partial class Backends
     public static string AssertBackendParity(string source, string entryClass) =>
         AssertBackendParity([source], entryClass);
 
-    /// <summary>C (通常 + GC stress) と VM が fault で止まり、実 .NET が例外で止まり、そこまでの
-    /// stdout が一致することを要求する (il-spec §12)。その stdout を返す。</summary>
+    /// <summary>Requires C (normal + GC stress) and the VM to stop with a fault, real .NET to stop with an exception, and the
+    /// stdout up to that point to match (il-spec §12). Returns that stdout.</summary>
     public static string AssertFaultParity(string source, string entryClass)
     {
         var c = AssertBackendFaultParity(source, entryClass);
@@ -181,8 +181,8 @@ internal static partial class Backends
         return c;
     }
 
-    /// <summary>C (通常 + GC stress) と VM がともに fault で止まり、fault までの stdout が一致することを要求する。
-    /// .NET を外すのは、.NET が止まらない fault (tcs が C# より狭く定める値) だけ。</summary>
+    /// <summary>Requires C (normal + GC stress) and the VM to both stop with a fault, and the stdout up to the fault to match.
+    /// .NET is excluded only for faults where .NET does not stop (values that tcs defines more narrowly than C#).</summary>
     public static string AssertBackendFaultParity(string source, string entryClass)
     {
         var c = FaultedStdout(() => RunC([source], entryClass));
@@ -191,11 +191,11 @@ internal static partial class Backends
         return c;
     }
 
-    /// <summary>同じ source を実 .NET で実行した stdout (Console.Out は process で 1 つなので順に動かす)。
-    /// TinySystem.props と同じ構成で compile する: Math / MathF は TinySystem.Math (超越関数が runtime/math と bit 一致)、
-    /// TinySystem.Linq は source、Dictionary / HashSet は TinySystem の実装 (挿入順)。string の既定の比較は
-    /// test の process の InvariantGlobalization (tcs2c.Tests.csproj) で ordinal。frames を渡すと lib 形
-    /// (Setup → Frame×frames → Report) で呼ぶ。</summary>
+    /// <summary>The stdout of running the same source on real .NET (Console.Out is one per process, so runs are sequential).
+    /// Compiles with the same configuration as TinySystem.props: Math / MathF are TinySystem.Math (transcendental functions bit-identical to runtime/math),
+    /// TinySystem.Linq is source, Dictionary / HashSet are TinySystem's implementations (insertion order). The default string comparison is
+    /// ordinal because of the test process's InvariantGlobalization (tcs2c.Tests.csproj). If frames is passed, calls it in lib form
+    /// (Setup → Frame×frames → Report).</summary>
     public static string RunDotnet(string[] sources, string entryClass, int? frames = null)
     {
         var compilation = CSharpCompilation.Create("TcsDotnetRun",
@@ -243,7 +243,7 @@ internal static partial class Backends
 
     public static string RunDotnet(string source, string entryClass) => RunDotnet([source], entryClass);
 
-    // TinySystem.props が .NET の project に入れるもの
+    // What TinySystem.props adds to a .NET project
     private static readonly Lazy<SyntaxTree[]> DotnetLibrary = new(() =>
     [
         CSharpSyntaxTree.ParseText("global using Math = TinySystem.Math;\nglobal using MathF = TinySystem.Math;\n"),
@@ -274,7 +274,7 @@ internal static partial class Backends
         }
     }
 
-    // 非 0 終了 (fault を含む) の例外。実行できた program の stdout を Data に持つ
+    // Exception for a nonzero exit (including faults). Holds the stdout of the program that ran in Data
     private const string ExitedStdout = "stdout";
 
     private static InvalidOperationException Exited(string message, string stdout)
@@ -284,8 +284,8 @@ internal static partial class Backends
         return error;
     }
 
-    /// <summary>lib 形 (フレーム境界 GC あり) で C (通常 + stress)、VM、実 .NET (同じ順に
-    /// Setup / Frame×N / Report を呼ぶ) の stdout 一致を要求し、その stdout を返す。</summary>
+    /// <summary>In lib form (with frame-boundary GC), requires stdout to match across C (normal + stress), the VM, and real .NET (which calls
+    /// Setup / Frame×N / Report in the same order), and returns that stdout.</summary>
     public static string AssertParityLib(string source, string cls, int frames)
     {
         var c = RunCLib([source], cls, frames);
@@ -329,7 +329,7 @@ internal static partial class Backends
     }
 }
 
-/// <summary>C compiler が無い環境では skip する Fact。</summary>
+/// <summary>A Fact that is skipped in environments without a C compiler.</summary>
 public sealed class CFactAttribute : FactAttribute
 {
     public CFactAttribute()

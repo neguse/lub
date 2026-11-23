@@ -1,5 +1,5 @@
-// 名前の付いた命令の表。
-// エディタの中の命令 (Commands) のほかに、lider の操作もここに載せ、key の表 (Keymap) と検索から、同じ名前で呼ぶ。
+// Table of named commands.
+// Besides the commands inside the editor (Commands), lider operations are also listed here, and the key table (Keymap) and search call them by the same names.
 using System;
 using System.Collections.Generic;
 
@@ -7,15 +7,15 @@ namespace LiderEditor;
 
 public class Command
 {
-    // 表の中の名前 ("window:close")。検索ではこの字で引く
+    // Name in the table ("window:close"). Search looks things up by this text
     public string Name = "";
-    // 何をするか (検索と案内に出す)
+    // What it does (shown in search and help)
     public string Label = "";
-    // 今の focus で効くなら実行して true、効かないなら false (key の表は、次の命令を試す)
+    // If it applies to the current focus, runs it and returns true; otherwise false (the key table tries the next command)
     public Func<bool> Run = () => false;
-    // key を押し続けている間、繰り返すか
+    // Whether it repeats while the key is held
     public bool Repeats;
-    // エディタの入力欄 (CommandView、NagView) が出ている間も効くか
+    // Whether it also works while the editor's input fields (CommandView, NagView) are shown
     public bool OverModal;
 }
 
@@ -23,7 +23,7 @@ public static class CommandTable
 {
     public static readonly List<Command> All = new List<Command>();
     static readonly Dictionary<string, Command> byName = new Dictionary<string, Command>();
-    // 今の key が、押し続けている間の繰り返しか (key を渡す側が決める)
+    // Whether the current key is a repeat while held (decided by whoever passes the key)
     public static bool Repeated;
 
     public static Command Register(string name, string label, Func<bool> run)
@@ -41,7 +41,7 @@ public static class CommandTable
         return byName.TryGetValue(name, out var command) ? command : null;
     }
 
-    // 名前の命令を実行する (表に無いか、効かなければ false)
+    // Runs the named command (false if it is not in the table or does not apply)
     public static bool Run(string name)
     {
         var command = Find(name);

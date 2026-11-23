@@ -1,8 +1,8 @@
-// tcs の WebAssembly 版の検査 (node SelfHost/Web/test.mjs。先に SelfHost/Web/build.sh と SelfHost/native.sh)。
-//   1. vmOpen の module が、C の tcs の `tcs vm --export <entry>.*` (同じ VmSession) と byte で同じ
-//   2. vmUpdate の batch が、C の tcs の `tcs vm --reload-from <v1> <v2> --batch` と byte で同じ
-//   3. 誤りのある編集は ok: false と診断を返し、最後に成功した build を保つ (vmModule が変わらない)
-//   4. live に当てられない編集は restart を返す
+// Tests for the WebAssembly version of tcs (node SelfHost/Web/test.mjs; run SelfHost/Web/build.sh and SelfHost/native.sh first).
+//   1. The vmOpen module is byte-identical to `tcs vm --export <entry>.*` of the C tcs (same VmSession)
+//   2. The vmUpdate batch is byte-identical to `tcs vm --reload-from <v1> <v2> --batch` of the C tcs
+//   3. An edit with errors returns ok: false and diagnostics, and keeps the last successful build (vmModule does not change)
+//   4. An edit that cannot be applied live returns restart
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -23,7 +23,7 @@ const fail = (msg) => {
   throw new Error(msg);
 };
 const work = mkdtempSync(join(tmpdir(), "tcs-web-"));
-// C の tcs を work の下の dir で動かし、出力の byte 列を base64 で返す (入力の path は session と同じ相対 path)
+// Runs the C tcs in a dir under work and returns the output bytes as base64 (input paths are the same relative paths as in the session)
 const nativeVm = (cwd, args, output) => {
   execFileSync(native, ["vm", ...args], { cwd, stdio: ["ignore", "ignore", "pipe"] });
   return readFileSync(join(cwd, output)).toString("base64");
@@ -34,7 +34,7 @@ const put = (dir, files) => {
 };
 
 try {
-  // 1. 最初の build
+  // 1. First build
   const cases = [
     { entry: "Battle", files: { "game.cs": read("samples/game.cs") }, refs: {} },
     { entry: "HostApiSample", files: { "host_api_game.cs": read("samples/host_api_game.cs") }, refs: { "host_api_stub.cs": read("samples/host_api_stub.cs") } },
@@ -52,7 +52,7 @@ try {
     console.log(`  same as native tcs vm: ${c.entry} (${ms.toFixed(0)} ms)`);
   }
 
-  // 2. 本文と field の編集は batch。native の --reload-from の batch と同じ
+  // 2. Body and field edits are a batch. Same as the native --reload-from batch
   const v1 = read("tcsvm/tests/host/ReloadV1.cs.txt");
   const v2 = read("tcsvm/tests/host/ReloadV2.cs.txt");
   const open = tcs.vmOpen("Game", { "Game.cs": v1 }, {});
@@ -67,13 +67,13 @@ try {
   if (update.batch !== batch) fail("wasm batch differs from the native tcs vm --reload-from --batch");
   console.log(`  same as native tcs vm --reload-from: batch (${updateMs.toFixed(0)} ms)`);
 
-  // 3. 誤りのある編集は最後の build を保つ
+  // 3. An edit with errors keeps the last build
   const before = tcs.vmModule();
   const broken = tcs.vmUpdate("Game.cs", v2.replace(/\}\s*$/, "    int Broken( { }\n}\n"));
   if (broken.ok || broken.kind !== "error" || broken.errors.length === 0) fail("broken edit: " + JSON.stringify(broken));
   if (tcs.vmModule() !== before) fail("a failed edit changed the module");
 
-  // 4. static の初期化子の変更は restart
+  // 4. Changing a static initializer is a restart
   const restart = tcs.vmUpdate("Game.cs", v2.replace('"hello v2"', '"hello v3"'));
   if (!restart.ok || restart.kind !== "restart" || restart.restartReasons.length === 0) fail("static initializer edit: " + JSON.stringify(restart));
   console.log(`web: modules and batches match the native tcs, edits keep the last good build and restart when needed`);

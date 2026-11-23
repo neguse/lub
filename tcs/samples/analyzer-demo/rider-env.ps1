@@ -16,12 +16,12 @@ function Get-TcsCacheDir {
     return Join-Path (Join-Path $root "tcs") $Name
 }
 
-# 自分だけが書けるディレクトリを用意する。他人の所有物や symlink はそのまま使わない。
+# Prepares a directory writable only by the current user. Does not use a directory owned by someone else or a symlink as is.
 function Initialize-PrivateDir {
     param([string] $Path)
 
     $onWindows = [System.IO.Path]::DirectorySeparatorChar -eq '\'
-    # DirectoryInfo は symlink を辿らずに属性を返す。リンク先が無い symlink もここで弾く。
+    # DirectoryInfo returns attributes without following symlinks. Symlinks whose target is missing are also rejected here.
     $fullPath = [System.IO.Path]::Combine((Get-Location).Path, $Path).TrimEnd('\', '/')
     $info = [System.IO.DirectoryInfo]::new($fullPath)
     if ([int] $info.Attributes -ne -1) {
@@ -42,7 +42,7 @@ function Initialize-PrivateDir {
     }
 
     New-Item -ItemType Directory -Path $fullPath -Force | Out-Null
-    # Windows は %LOCALAPPDATA% のユーザー専用の ACL を継承するので、権限は変えない。
+    # On Windows the directory inherits the user-only ACL of %LOCALAPPDATA%, so the permissions are not changed.
     if (-not $onWindows) {
         & chmod 700 $fullPath
         if ($LASTEXITCODE -ne 0) {
@@ -51,7 +51,7 @@ function Initialize-PrivateDir {
     }
 }
 
-# Remove-Item は symlink の先を消すことがあるので、消す前にも確かめる。
+# Remove-Item may delete the target of a symlink, so check again before deleting.
 function Reset-PrivateDir {
     param([string] $Path)
 

@@ -1,6 +1,6 @@
 using System;
 
-// 起動と終了の時間。1 行出して終わる
+// Startup and shutdown time. Prints one line and exits
 public class Startup
 {
     public static void Main()

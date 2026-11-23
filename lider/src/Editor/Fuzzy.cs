@@ -1,6 +1,6 @@
-// あいまいな一致の点 (Lite XL の system.fuzzy_match を写したもの)。
-// text が query の文字を順に含むかを、大きいほど良い点にする。空白は読まない。大文字と小文字は区別しない (区別した一致に少し足す)。
-// files なら後ろから比べる (path の名前の側を重く見る)。
+// Fuzzy match score (a port of Lite XL's system.fuzzy_match).
+// Turns whether text contains the characters of query in order into a score where higher is better. Whitespace is ignored. Case-insensitive (adds a little for case-sensitive matches).
+// For files, compares from the end (weighting the name side of the path).
 using System;
 using TinySystem.Text;
 

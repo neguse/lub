@@ -1,5 +1,5 @@
-// App.Inputs: ゲームの .csproj から、変換の入力を集める (lub が .csproj を開くときと同じ規則)。
-// web は .csproj を読めないので null。
+// App.Inputs: collects the compile inputs from the game's .csproj (the same rules as when lub opens a .csproj).
+// null on web, because it cannot read .csproj.
 using System;
 using Lub;
 

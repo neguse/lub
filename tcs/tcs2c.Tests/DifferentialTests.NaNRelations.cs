@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// NaN を含む比較の組み合わせ (#110)。GCC は -O2 の jump threading (threadfull1)
-// で `!(a < b) && !(a >= b)` から a == b を導き、NaN の組で `!(a == b)` を
-// 消していた。期待値は同じ program を CoreCLR で実行した stdout (NaN を含む組は
+// Combinations of comparisons involving NaN (#110). GCC's jump threading at -O2 (threadfull1)
+// derived a == b from `!(a < b) && !(a >= b)` and removed `!(a == b)` for
+// NaN pairs. The expected values are the stdout of running the same program on CoreCLR (the pairs involving NaN are
 // 2 + 64 + 128 + 256 = 450)
 public class NaNRelationsDifferentialTests
 {

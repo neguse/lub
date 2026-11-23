@@ -1,7 +1,10 @@
-/* tcs の WebAssembly の host (Emscripten)。
-   tcs2c が SelfHost/Compiler と SelfHost/Tool を C にした tcs.c を include し、SelfHost/Tool/TcsHost.cs の宣言を実装する。
-   JS (tcs.mjs) は要求を引数に並べて tcs_web_call を呼び、Playground.Call が TcsHost.WriteOut で書いた応答を受け取る。
-   ファイルは無く、tcs と一緒に配るファイル (lib/TinySystem/*.cs) は JS が tcs_web_tool_file で先に渡す。 */
+/* WebAssembly host of tcs (Emscripten).
+   Includes tcs.c, which tcs2c generated from SelfHost/Compiler and
+   SelfHost/Tool, and implements the declarations in SelfHost/Tool/TcsHost.cs.
+   JS (tcs.mjs) puts the request in the arguments and calls tcs_web_call, and
+   receives the reply that Playground.Call wrote with TcsHost.WriteOut. There
+   are no files; JS passes the files shipped with tcs (lib/TinySystem/*.cs) in
+   advance with tcs_web_tool_file. */
 #include "tcs.c"
 
 #include <emscripten.h>
@@ -72,7 +75,9 @@ EMSCRIPTEN_KEEPALIVE void tcs_web_tool_file(const char *name, int name_length,
   host_tool_count++;
 }
 
-/* 要求を 1 つ処理し、応答の先頭を返す (長さは tcs_web_out_length)。entry から戻ると tcs2c の GC の frame の境界になる */
+/* Handles one request and returns the start of the reply (the length is
+ * tcs_web_out_length). Returning from the entry is a frame boundary for the
+ * tcs2c GC */
 EMSCRIPTEN_KEEPALIVE const char *tcs_web_call(void) {
   host_out_length = 0;
   tcs_entry_TcsSelf_Playground_Call();

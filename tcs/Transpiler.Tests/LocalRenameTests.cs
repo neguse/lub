@@ -1,10 +1,10 @@
 namespace TinyCs.Tests;
 
-// 型の名前や IL が素の名前で参照する名前と同名のローカル束縛は、宣言と全参照
-// (closure 内含む) を IL では別の名前 (`V_`、衝突時は `_` を足す) に写す。診断はせず、VM で C# と同じに動く。
-// 他の言語の予約語 (local / end / nil ...) と同名のローカル束縛は、そのままの名前で動く。
-// self は予約のままで、ここでは扱わない (ReservedIdentifier として拒否される。`__` で始まる名前は
-// DoubleUnderscoreIdentifier の error)。
+// A local binding with the same name as a type name or as a name the IL references by its bare name has its declaration and all references
+// (including inside closures) mapped to a different name in IL (`V_`, adding `_` on collision). No diagnostic is reported, and it runs on the VM the same as in C#.
+// A local binding with the same name as a reserved word of another language (local / end / nil ...) works under its own name.
+// self stays reserved and is not handled here (it is rejected as ReservedIdentifier; a name starting with `__` is
+// a DoubleUnderscoreIdentifier error).
 public class LocalRenameTests
 {
     [Fact]
@@ -171,9 +171,9 @@ public class LocalRenameTests
         Assert.Contains(result.Errors, e => e.Contains("ReservedIdentifier(self)"));
     }
 
-    // 型名と同名のローカル束縛は、IL の型参照 (operator の static 呼び
-    // 出し `V.__add(a, b)` / `V.new(...)` / 型内の static member 参照) を
-    // 隠すので、別の名前に写す
+    // A local binding with the same name as a type name hides IL type references (operator static
+    // calls `V.__add(a, b)` / `V.new(...)` / static member references inside the type),
+    // so it is mapped to a different name.
     [Fact]
     public void ParameterNamedLikeOperatorOwnerType_Runs()
     {
@@ -244,7 +244,7 @@ public class LocalRenameTests
         }
         """;
 
-    // #61 の namespace 修飾名も #62 の operator 直呼びを遮蔽する。
+    // The namespace-qualified name of #61 also shadows the direct operator call of #62.
     [Fact]
     public void ParameterNamedLikeQualifiedOperatorOwner_Runs()
     {
@@ -252,7 +252,7 @@ public class LocalRenameTests
             QualifiedOperatorSource, "Runner.One()"));
     }
 
-    // A_V を A_V_ に写すと同じ body の parameter A_V_ と重なるため、更に _ を足す
+    // Mapping A_V to A_V_ would collide with the parameter A_V_ in the same body, so another _ is added.
     [Fact]
     public void QualifiedAliasParameters_ReceiveDistinctReplacementNames()
     {

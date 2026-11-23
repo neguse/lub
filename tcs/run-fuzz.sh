@@ -1,7 +1,7 @@
 #!/bin/bash
-# サブセット内 AST 生成 fuzz (C4、T186)。使い方: run-fuzz.sh [count] [base-seed]
-# 生成 → tcs VM の実行と実 .NET 実行の differential。失敗は縮小済み再現付きで報告。
-# hot reload fuzz (T235: v1/v2 ペア生成 + 不変量検証) も同じ seed 域で tcs VM に当てて回す。
+# In-subset AST generation fuzz (C4, T186). Usage: run-fuzz.sh [count] [base-seed]
+# Generate → differential of tcs VM execution vs real .NET execution. Failures are reported with a shrunk repro.
+# The hot reload fuzz (T235: v1/v2 pair generation + invariant checking) also runs against the tcs VM over the same seed range.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

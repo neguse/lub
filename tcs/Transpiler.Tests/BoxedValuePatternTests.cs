@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// object に入った数の型の test と、object に入った数と bool の値を pattern で読む形はサブセット外 (TCS1001 BoxedValuePattern(T))。
-// check は exit 1 で、tcs vm / tcs c / analyzer も同じ compiler の診断で止まる。値は cast (`(int)o`) で取り出す
+// Type tests on numbers boxed in object, and patterns that read the values of numbers and bools boxed in object, are outside the subset (TCS1001 BoxedValuePattern(T)).
+// check exits 1, and tcs vm / tcs c / the analyzer also stop with the same compiler diagnostic. The value is extracted with a cast (`(int)o`)
 [Collection(ConsoleCollection.Name)]
 public class BoxedValuePatternTests
 {

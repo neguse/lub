@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// int ↔ float の数値変換 (il-spec §5 / §6) と int の Sum の overflow (§12。
-// TinySystem.Linq の Sum は checked)。期待値は同じ program を CoreCLR で実行した stdout
+// int ↔ float numeric conversions (il-spec §5 / §6) and overflow of int Sum (§12.
+// TinySystem.Linq's Sum is checked). The expected values are the stdout of running the same program on CoreCLR
 public class NumericConversionDifferentialTests
 {
     [CFact]
@@ -76,9 +76,9 @@ public class NumericConversionDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // runtime が返す float (Parse / TryParse / 空の Sum) も Lua で float なので、
-    // 組み込みの float 算術で int operand の変換を省いても f32 に丸まる。
-    // uint / short / byte → float も int と同じ変換
+    // floats returned by the runtime (Parse / TryParse / empty Sum) are also floats in Lua, so
+    // they round to f32 even if built-in float arithmetic skips converting int operands.
+    // uint / short / byte → float use the same conversion as int
     [CFact]
     public void NumericConversion_RuntimeFloatsAndOtherIntegrals_MatchDotnet()
     {
@@ -140,7 +140,7 @@ public class NumericConversionDifferentialTests
         }
         """;
 
-    // f32 → i32 の範囲は [-2^31, 2^31) (il-spec §5)。範囲外と NaN は fault
+    // The f32 → i32 range is [-2^31, 2^31) (il-spec §5). Out-of-range values and NaN fault
     [CTheory]
     [InlineData("-2147483904f")]
     [InlineData("2147483648f")]
@@ -179,7 +179,7 @@ public class NumericConversionDifferentialTests
         }
         """;
 
-    // CoreCLR は "before" の後に OverflowException で停止する
+    // CoreCLR stops with OverflowException after "before"
     [CTheory]
     [InlineData("new List<int> { 2147483647, 1 }.Sum()")]
     [InlineData("new List<int> { -2147483647 - 1, -1 }.Sum()")]

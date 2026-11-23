@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// ゲームスクリプティングに近い統合テスト。
-/// objective.md のユースケース検証 (T7-T10) を兼ねる。
+/// Integration tests close to game scripting.
+/// Also serves as use case verification for objective.md (T7-T10).
 /// </summary>
 public class GameScriptTests
 {
@@ -35,7 +35,7 @@ public class GameScriptTests
         Assert.Equal("dead", result);
     }
 
-    // enum と int の暗黙の変換を書く (C# では compile error、tcs は受ける) ので .NET とは比べない
+    // Writes implicit conversions between enum and int (a compile error in C#, accepted by tcs), so it is not compared with .NET
     [Fact]
     public void StateMachine()
     {

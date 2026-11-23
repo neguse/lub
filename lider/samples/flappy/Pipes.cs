@@ -1,4 +1,4 @@
-// 右から流れてくるパイプ。上下の 2 本の間に、鳥が通れる隙間がある。
+// Pipes that scroll in from the right. Between the upper and lower pipe is a gap the bird can pass through.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -53,7 +53,7 @@ public class PipeField
         Pipes.Clear();
     }
 
-    // 流して、鳥を越えたパイプの数を返す
+    // Scrolls the pipes and returns the number of pipes that passed the bird
     public int Step(float dt)
     {
         t += dt;
@@ -74,7 +74,7 @@ public class PipeField
         return passed;
     }
 
-    // 鳥がまだ抜けきっていない一番手前のパイプ
+    // The nearest pipe the bird has not fully passed yet
     public Pipe? Next()
     {
         foreach (var pipe in Pipes)

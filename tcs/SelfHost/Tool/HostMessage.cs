@@ -1,6 +1,6 @@
 namespace TcsSelf;
 
-// host への message (`--watch` の CLI が動いている host に知らせること)。標準出力へ、`@@tcs_<kind> <UTF-8 の byte 数>` の行と本文の組で順に書く
+// Messages to the host (what the `--watch` CLI tells the host it runs in). Written in order to standard output, each as a `@@tcs_<kind> <UTF-8 byte count>` line followed by the body
 public static class HostMessage
 {
     public static void Write(string kind, string text)

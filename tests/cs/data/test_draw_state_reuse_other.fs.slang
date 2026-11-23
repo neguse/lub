@@ -1,4 +1,4 @@
-// tex の binding は test_draw_state_reuse.fs.slang と違う。
+// The tex binding differs from test_draw_state_reuse.fs.slang.
 LUB_TEXTURE2D(tex2);
 LUB_TEXTURE2D(tex);
 

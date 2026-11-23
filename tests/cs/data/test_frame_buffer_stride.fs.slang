@@ -1,4 +1,4 @@
-// 要素の大きさが 16 の倍数でない範囲。
+// A range whose element size is not a multiple of 16.
 struct Rgb {
   float r, g, b;
 };

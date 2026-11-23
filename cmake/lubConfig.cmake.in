@@ -1,11 +1,11 @@
-# find_package(lub) が読む。lub の build の tree を指す (lub_DIR)。
-# lub::lub_vm_player: tcs VM の player の library (include/lub/lub_vm.h)。
-# lub_vm_player_link_options(<target> <出力のディレクトリ>): web の実行物の設定。
+# Read by find_package(lub). Points to a lub build tree (lub_DIR).
+# lub::lub_vm_player: the tcs VM player library (include/lub/lub_vm.h).
+# lub_vm_player_link_options(<target> <output directory>): settings for the web executable.
 set(LUB_HAS_VULKAN @LUB_HAS_VULKAN@)
 if(LUB_HAS_VULKAN AND NOT TARGET Vulkan::Vulkan)
   find_package(Vulkan REQUIRED)
 endif()
-# 第三者の library は、lub の build が作った <build>/deps/ (cmake/LubDeps.cmake) から探す。
+# Third-party libraries are searched for in <build>/deps/ created by the lub build (cmake/LubDeps.cmake).
 set(_lub_deps_prefix "@LUB_DEPS_PREFIX@")
 if(NOT TARGET SDL3::SDL3)
   find_package(SDL3 REQUIRED CONFIG PATHS "${_lub_deps_prefix}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)

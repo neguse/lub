@@ -19,8 +19,8 @@ static TcsString *tcs_string_map_case(TcsString *s, int upper) {
   return result;
 }
 
-/* plain find: s の offset from 以降で sub が現れる最初の位置 (byte、
-   無ければ -1)。空 sub は from 自身 */
+/* plain find: the first position where sub appears in s at or after offset from
+   (in bytes, -1 if none). An empty sub gives from itself */
 static int64_t tcs_string_find(TcsString *s, TcsString *sub, size_t from) {
   size_t i;
   if (from > s->length)
@@ -53,7 +53,7 @@ static TcsString *tcs_string_replace(TcsString *s, TcsString *old,
   tcs_nonnull(old);
   if (old->length == 0)
     tcs_fault("oldValue cannot be empty");
-  /* null の置換後文字列は一致部分の削除 (.NET の String.Replace) */
+  /* A null replacement string deletes the matches (.NET String.Replace) */
   replacement_length = replacement == NULL ? 0 : replacement->length;
   capacity = s->length + 16;
   buffer = malloc(capacity);
@@ -120,9 +120,11 @@ static bool tcs_string_is_null_or_empty(TcsString *s) {
   return s == NULL || s->length == 0;
 }
 
-/* .NET の ordinal (UTF-16 の code unit の順)。
-   UTF-8 の byte の順は code point の順で、UTF-16 の順と違うのは U+10000 以上 (lead byte F0-F4、UTF-16 では surrogate D800-DBFF) と U+E000-U+FFFF (lead byte EE-EF) の間だけ。
-   最初に異なる byte がその 2 つの lead byte のときだけ逆にする */
+/* .NET ordinal (UTF-16 code unit order).
+   UTF-8 byte order is code point order, and it differs from UTF-16 order only
+   between U+10000 and above (lead byte F0-F4, surrogates D800-DBFF in UTF-16)
+   and U+E000-U+FFFF (lead byte EE-EF). Reverse the result only when the first
+   differing bytes are those two kinds of lead byte */
 static int tcs_string_compare(TcsString *left, TcsString *right) {
   size_t n;
   size_t i;
@@ -145,8 +147,9 @@ static int tcs_string_compare(TcsString *left, TcsString *right) {
                                         : 0;
 }
 
-/* string.CompareOrdinal。値は 0 との比較だけで使う (TCS1001 CompareOrdinalValue) ので
-   -1 / 0 / 1 を返す。null は他のどの string より小さい */
+/* string.CompareOrdinal. The value is only used in comparisons with 0 (TCS1001
+   CompareOrdinalValue), so it returns -1 / 0 / 1. null is less than any other
+   string */
 static int32_t tcs_string_compare_ordinal(TcsString *left, TcsString *right) {
   if (left == NULL)
     return right == NULL ? 0 : -1;
@@ -155,8 +158,9 @@ static int32_t tcs_string_compare_ordinal(TcsString *left, TcsString *right) {
   return tcs_string_compare(left, right);
 }
 
-/* String.Split: sep なし → 空白 (char.IsWhiteSpace と同じ集合) 1 文字区切り、sep が空 → {str}。
-   C# の戻りは string[] なので array にして返す */
+/* String.Split: no sep → split on single whitespace chars (the same set as
+   char.IsWhiteSpace), empty sep → {str}. C# returns string[], so it is returned
+   as an array */
 static TcsArray *tcs_string_split(TcsString *s, TcsString *sep, int has_sep) {
   TcsList *result;
   size_t pos = 0;
@@ -204,7 +208,8 @@ static TcsString *tcs_string_rune_substring(TcsString *s, int32_t start,
   return tcs_string_new(s->data + from, to - from);
 }
 
-/* TinySystem.Text.Utf8Bytes: 文字列 text の [start, start + length) を指す値。既定値は text が NULL で長さ 0 */
+/* TinySystem.Text.Utf8Bytes: a value pointing at [start, start + length) of the
+ * string text. The default value has text NULL and length 0 */
 static int32_t tcs_utf8_bytes_text_length(TcsString *s) {
   tcs_nonnull(s);
   if (s->length > INT32_MAX)
@@ -250,7 +255,7 @@ static TcsString *tcs_string_join_items(TcsString *sep, TcsString **items,
   size_t at = 0;
   TcsString *result;
   tcs_nonnull(sep);
-  /* null の要素は空文字列 (.NET と同じ) */
+  /* null elements are empty strings (same as .NET) */
   for (i = 0; i < count; i++) {
     if (items[i] != NULL)
       total = tcs_string_length_add(total, items[i]->length);
@@ -281,7 +286,7 @@ static TcsString *tcs_string_join_array(TcsString *sep, TcsArray *array) {
   return tcs_string_join_items(sep, (TcsString **)array->data, array->length);
 }
 
-/* 文字列化した要素を GC の外に並べる */
+/* Lay out the stringified elements outside the GC */
 static TcsString **tcs_string_join_buffer(size_t count) {
   TcsString **items;
   if (count > SIZE_MAX / sizeof(*items))
@@ -292,7 +297,8 @@ static TcsString **tcs_string_join_buffer(size_t count) {
   return items;
 }
 
-/* 値型の要素の string.Join: 要素を連結と同じく文字列化してから繋ぐ */
+/* string.Join of value-type elements: stringify the elements as in
+ * concatenation, then join them */
 enum { TCS_JOIN_I32, TCS_JOIN_F32, TCS_JOIN_BOOL };
 
 static TcsString *tcs_string_join_values(TcsString *sep, const void *data,
@@ -322,11 +328,12 @@ static TcsString *tcs_string_join_array_values(TcsString *sep, TcsArray *array,
   return tcs_string_join_values(sep, array->data, array->length, kind);
 }
 
-/* enum の文字列化 (Enum.ToString)。names / values は .NET と同じ並び
-   (Flags は全 member を値の符号なし昇順、それ以外は値ごとに 1 つ)。
-   Flags は上位の member から含まれる bit を取り、名前を昇順に ", " で
-   繋ぐ (取る member は 1 bit 以上を消すので 32 個まで)。どちらでも
-   表せない値は数値 */
+/* Enum stringification (Enum.ToString). names / values are in the same order as
+   .NET (Flags: all members in unsigned ascending value order; otherwise one per
+   value). For Flags, the contained bits are taken from the highest member down,
+   and the names are joined in ascending order with ", " (each member taken
+   clears at least 1 bit, so at most 32). A value that neither form can
+   represent is shown as a number */
 static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
                                   const int32_t *values, int32_t count,
                                   bool flags) {
@@ -370,7 +377,7 @@ static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
   return result;
 }
 
-/* enum の要素の Join (要素ごとに tcs_enum_format) */
+/* Join of enum elements (tcs_enum_format per element) */
 static TcsString *tcs_string_join_enum(TcsString *sep, const int32_t *data,
                                        size_t count, TcsString *const *names,
                                        const int32_t *values,
@@ -385,9 +392,11 @@ static TcsString *tcs_string_join_enum(TcsString *sep, const int32_t *data,
   return result;
 }
 
-/* int.Parse の 10 進 (前後空白可)。失敗は false を返し、呼んだ側が fault にする */
+/* Decimal int.Parse (leading/trailing whitespace allowed). On failure returns
+ * false, and the caller faults */
 static bool tcs_parse_i32(TcsString *s, int32_t *out) {
-  /* NumberStyles.Integer: 前後の空白、先頭の符号、1 桁以上の 10 進数字 */
+  /* NumberStyles.Integer: leading/trailing whitespace, a leading sign, one or
+   * more decimal digits */
   const unsigned char *p;
   size_t i = 0;
   size_t digits = 0;
@@ -446,7 +455,8 @@ static float tcs_parse_f32_or_fault(TcsString *s) {
   return value;
 }
 
-/* int.TryParse / float.TryParse: (found, value or fallback)。null の string は失敗 (Parse は null の fault) */
+/* int.TryParse / float.TryParse: (found, value or fallback). A null string
+ * fails (Parse faults on null) */
 static bool tcs_try_parse_i32(TcsString *s, int32_t *out, int32_t fallback) {
   if (s != NULL && tcs_parse_i32(s, out))
     return true;
@@ -461,7 +471,8 @@ static bool tcs_try_parse_f32(TcsString *s, float *out, float fallback) {
   return false;
 }
 
-/* EnumerateRunes: 位置 *pos (byte) から 1 文字読む。壊れた並びは U+FFFD (runtime/utf8) */
+/* EnumerateRunes: reads one char from position *pos (in bytes). Invalid
+ * sequences give U+FFFD (runtime/utf8) */
 static int32_t tcs_utf8_next(TcsString *s, size_t *pos) {
   uint32_t rune;
   *pos += tcs_utf8_decode(s->data + *pos, s->length - *pos, &rune);

@@ -1,12 +1,12 @@
 namespace TinyCs.Tests;
 
-// --ref 型 (host) へのアクセスの IL の形を固定する (C と VM の host 関数の名前の元)。
-// - static の呼び出しは namespace と入れ子の型を含めた小文字パスの foreign 関数
-// - instance method は receiver の型を持つ foreign 関数
-// - field 読みは host の object の field の読み
+// Pins the IL shape of access to --ref (host) types (the source of the host function names in C and the VM).
+// - A static call is a foreign function with a lowercase path including the namespace and nested types
+// - An instance method is a foreign function carrying the receiver's type
+// - A field read is a read of the host object's field
 public class RefTypeAccessTests
 {
-    // namespace の中の参照専用型も、namespace を含めた小文字パスで引く (Lub.Gfx → lub.gfx)
+    // A reference-only type inside a namespace is also looked up by a lowercase path including the namespace (Lub.Gfx → lub.gfx).
     [Fact]
     public void NamespacedRefTypes_UseNamespaceInForeignNames()
     {
@@ -41,7 +41,7 @@ public class RefTypeAccessTests
             result.ForeignMethods.Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal));
     }
 
-    // namespace を写したパスの区切りは小文字にするだけで、他の言語の予約語と同じ綴りでも変えない (End → end)
+    // Segments of a path mapped from a namespace are only lowercased, and are not changed even when spelled the same as a reserved word of another language (End → end).
     [Fact]
     public void RefPathSegment_IsLowercasedOnly()
     {
@@ -55,7 +55,7 @@ public class RefTypeAccessTests
         Assert.Equal("end.api.get", Assert.Single(result.ForeignMethods).Name);
     }
 
-    // --ref パスの先頭 (namespace 由来の hostapi など) と同名のローカルも書ける
+    // A local with the same name as the head of a --ref path (such as hostapi from a namespace) can also be written.
     [Fact]
     public void LocalNamedLikeRefPathRoot_IsAccepted()
     {

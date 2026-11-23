@@ -1,8 +1,9 @@
-/* log2f。musl 1.2.6 の src/math/log2f.c と log2f_data.c (Arm の
-   optimized-routines 由来) を、runtime/math の書き方に起こし直したもの。
-   計算の手順は元のままで、結果は元の実装と全入力で bit 単位で同じ。
-   変更: 表を struct から配列にし、浮動小数点例外を起こすための式を、
-   同じ値の定数に置き換えた (NaN は TCS_NANF を返す)。
+/* log2f. musl 1.2.6 src/math/log2f.c and log2f_data.c (from Arm's
+   optimized-routines), rewritten in the style of runtime/math.
+   The computation steps are unchanged, and the results match the original
+   implementation bit for bit on all inputs. Changes: turned the tables from
+   structs into arrays, and replaced the expressions that raise floating-point
+   exceptions with constants of the same value (returns TCS_NANF for NaN).
 
    Copyright (c) 2017-2018, Arm Limited.
    SPDX-License-Identifier: MIT */

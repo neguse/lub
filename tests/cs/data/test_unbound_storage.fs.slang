@@ -1,4 +1,5 @@
-// col だけを束ね、scratch は渡さない (draw には storage texture を渡す手段が無い)。
+// Binds only col; scratch is not passed (a draw has no way to pass a storage
+// texture).
 StructuredBuffer<float4> col;
 RWTexture2D<float4> scratch;
 

@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// tcs vm --trace の対象のファイル (TcsVm.VmTrace.Matches)。prefix は path の segment 単位で比べ (ファイルそのものか、その directory)、
-// '\' は '/' にし、先頭の `./` と prefix の末尾の `/` は外す (`./` はすべての入力に一致する)。
-// VmTrace.Prefixes は process で 1 つなので、他のテストと並べて動かさない
+// Files targeted by tcs vm --trace (TcsVm.VmTrace.Matches). Prefixes are compared by path segment (the file itself or its directory),
+// '\' becomes '/', and the leading `./` and the trailing `/` of the prefix are removed (`./` matches every input).
+// VmTrace.Prefixes is one per process, so these tests do not run in parallel with other tests
 [Collection(VmTraceCollection.Name)]
 public class VmTracePrefixTests
 {

@@ -3,13 +3,13 @@ using TcsSelf;
 
 namespace TcsVm;
 
-/// <summary>IL の木を辿る小さな道具: closure が捕捉する変数の名前を求める (il-spec §7)。
-/// 名前で数えるので保守的 (同じ名前の別の変数も cell になりうるが、意味は変わらない)。
-/// node の子は IlNodes.Children (record の member の順)。</summary>
+/// <summary>A small helper that walks the IL tree: finds the names of variables captured by closures (il-spec §7).
+/// Counts by name, so it is conservative (another variable with the same name may also become a cell, but the meaning does not change).
+/// A node's children are IlNodes.Children (in the order of the record members).</summary>
 public static class IlWalk
 {
-    /// <summary>closure の自由な名前: 使う位置で、closure の中の外側の scope に宣言が無い名前。
-    /// scope は block、loop の変数、closure の引数 (C# の名前の scope と同じ形)。型の名前も入るので、呼ぶ側が変数に絞る。</summary>
+    /// <summary>Free names of a closure: names that, at the place of use, have no declaration in the enclosing scopes inside the closure.
+    /// Scopes are blocks, loop variables, and closure parameters (the same shape as C# name scopes). Type names are included too, so the caller narrows them down to variables.</summary>
     public static HashSet<string> Free(IlClosure c)
     {
         var free = new HashSet<string>();
@@ -39,7 +39,7 @@ public static class IlWalk
         scopes.RemoveAt(scopes.Count - 1);
     }
 
-    // 名前を 1 つ (または 2 つ) 宣言した scope の中で block を辿る
+    // Walks block inside a scope that declares one (or two) names
     private static void ScopedBlock(string name, string? name2, IlBlock body, List<HashSet<string>> scopes, HashSet<string> free)
     {
         var s = new HashSet<string>();
@@ -79,7 +79,7 @@ public static class IlWalk
         }
         if (node is IlClosure c)
         {
-            // 入れ子の closure: その自由な名前のうち、ここで宣言されていないものが外へ出る
+            // Nested closure: of its free names, those not declared here go outward
             foreach (var name in Free(c))
             {
                 if (!IsDeclared(scopes, name)) free.Add(name);
@@ -127,7 +127,7 @@ public static class IlWalk
         foreach (var ch in IlNodes.Children(node)) Visit(ch, scopes, free);
     }
 
-    /// <summary>node の中のどれかの closure が捕捉する名前。</summary>
+    /// <summary>Names captured by any closure inside node.</summary>
     public static HashSet<string> Captured(object node)
     {
         var set = new HashSet<string>();
@@ -139,7 +139,7 @@ public static class IlWalk
     {
         if (n is IlClosure c)
         {
-            // 中の closure の自由な名前は Free(c) に含まれる
+            // Free names of inner closures are included in Free(c)
             foreach (var name in Free(c)) set.Add(name);
             return;
         }

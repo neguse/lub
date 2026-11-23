@@ -113,7 +113,7 @@ jobs_launched=0
 
 check_entry() {
     local label="$1"
-    # entry は起動の引数 (空白区切り。bytecode と --entry)
+    # entry is the launch arguments (space-separated. The bytecode and --entry)
     local entry_args
     read -r -a entry_args <<<"$2"
     local golden_name="$3"
@@ -237,8 +237,8 @@ launch_entry() {
     fi
 }
 
-# 描画を golden で見る tests/cs の test。
-# 先に tests/cs 全体を tests/cs/.lub/all.tcsb に変換し、--entry で test を選ぶ。
+# tests/cs tests whose rendering is checked against goldens.
+# First convert all of tests/cs into tests/cs/.lub/all.tcsb, then select the test with --entry.
 # shellcheck source=scripts/cs-tests.sh
 source scripts/cs-tests.sh
 tests_ok=0

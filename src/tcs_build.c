@@ -1,7 +1,10 @@
-// tcs (TinyC#) の子プロセス: lub が tcs を起動する。
-// tcs vm --watch を背後に張ると、.cs の保存ごとに tcs が変換し直し、実行中の VM へ当てる差分 (または VM の作り直しを求める restart_required、compile error) を標準出力へ順に書く。
-// lub 側は子プロセスの lifecycle と、その stream からの frame の切り出しを持つ (当てるのは src/vm_player.c)。
-// tcs check は .csproj の入力を集めて起動し、終わるまで待つ。
+// tcs (TinyC#) child process: lub launches tcs.
+// With tcs vm --watch running in the background, tcs recompiles on every .cs
+// save and writes to stdout, in order, the diffs to apply to the running VM (or
+// restart_required, which asks to recreate the VM, or compile errors). The lub
+// side owns the child process lifecycle and cutting frames out of that stream
+// (applying them is in src/vm_player.c). tcs check collects the .csproj inputs,
+// launches, and waits until it finishes.
 #include "tcs_build.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -19,7 +22,7 @@ static bool file_exists(const char *path) {
   return SDL_GetPathInfo(path, &info);
 }
 
-// PATH に dotnet があるか
+// Whether dotnet is on PATH
 static bool dotnet_on_path(void) {
   const char *path = SDL_getenv("PATH");
   if (!path)
@@ -48,15 +51,18 @@ static bool dotnet_on_path(void) {
   return false;
 }
 
-// tcs の起動コマンドを解決する。
-// 優先順:
-//   1. LUB_TCS 環境変数 (space 区切りの command prefix。quote は未対応)
-//   2. <exe>/tcs/tcs              -> tcs2c で C にした tcs (release の一式と、scripts/build-tcs-native.sh が build の dir に置くもの)
-//   3. <cwd>/tcs      -> dotnet run --project ... -- (PATH に dotnet があるとき)
-//   4. <exe>/../tcs   -> 同上
-//   5. tcs/SelfHost/out/native/tcs -> checkout で作った C の tcs (PATH に dotnet が無いとき)
-// 返り値: argv に詰めた個数 (0 = 解決失敗)。
-// storage には strdup 相当で確保。
+// Resolves the command that launches tcs.
+// Priority:
+//   1. LUB_TCS environment variable (space-separated command prefix; quoting
+//      is not supported)
+//   2. <exe>/tcs/tcs -> tcs converted to C with tcs2c (in the release bundle,
+//      and what scripts/build-tcs-native.sh puts in the build dir)
+//   3. <cwd>/tcs -> dotnet run --project ... -- (when dotnet is on PATH)
+//   4. <exe>/../tcs -> same as above
+//   5. tcs/SelfHost/out/native/tcs -> the C tcs built in the checkout (when
+//      dotnet is not on PATH)
+// Returns: the number of entries put into argv (0 = resolution failed).
+// Allocated in storage, equivalent to strdup.
 static int resolve_tcs_cmd(char storage[][512], int max_args,
                            const char **argv) {
   const char *env = SDL_getenv("LUB_TCS");
@@ -88,7 +94,8 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
     path_parent_dir(base_path, exe_root, sizeof(exe_root));
     roots[1] = exe_root;
   }
-  // dotnet が無ければ、checkout で作った C の tcs (tcs/SelfHost/native.sh の出力) を使う
+  // If there is no dotnet, use the C tcs built in the checkout (the output of
+  // tcs/SelfHost/native.sh)
   for (int i = 0; !dotnet_on_path() && i < 2; i++) {
     if (!roots[i])
       continue;
@@ -166,8 +173,8 @@ typedef struct SourceList {
 
 typedef struct SourceWalk {
   SourceList *list;
-  const char *abs; // 走査中ディレクトリ (絶対 / cwd 基準)
-  const char *rel; // dir からの相対 ("" = dir 自身)
+  const char *abs; // Directory being scanned (absolute / relative to cwd)
+  const char *rel; // Relative to dir ("" = dir itself)
   int depth;
 } SourceWalk;
 
@@ -188,8 +195,9 @@ static SDL_EnumerationResult source_entry(void *userdata, const char *dirname,
   if (!SDL_GetPathInfo(abs, &info))
     return SDL_ENUM_CONTINUE;
   if (info.type == SDL_PATHTYPE_DIRECTORY) {
-    // dotnet の DefaultItemExcludes (bin / obj / 隠しディレクトリ)。
-    // bin / obj は入れ子の project の生成物 (obj/*.AssemblyInfo.cs) を拾わないよう深さを問わず除く
+    // DefaultItemExcludes of dotnet (bin / obj / hidden directories).
+    // bin / obj are excluded at any depth so that the generated files of nested
+    // projects (obj/*.AssemblyInfo.cs) are not picked up
     if (fname[0] != '.' && SDL_strcmp(fname, "bin") != 0 &&
         SDL_strcmp(fname, "obj") != 0)
       walk_sources(w->list, abs, rel, w->depth + 1);
@@ -209,7 +217,7 @@ static SDL_EnumerationResult source_entry(void *userdata, const char *dirname,
 
 static void walk_sources(SourceList *list, const char *abs, const char *rel,
                          int depth) {
-  if (depth > 32) // symlink の循環で止まらなくなるのを避ける
+  if (depth > 32) // Prevents an endless loop on symlink cycles
     return;
   SourceWalk w = {list, abs, rel, depth};
   SDL_EnumerateDirectory(abs, source_entry, &w);
@@ -235,10 +243,11 @@ void tcs_free_sources(char **sources, int count) {
 }
 
 #ifdef _WIN32
-// tcs を、handle が閉じると中の process が全部止まる Job Object に入れる。
-// lub がどう終わっても OS が handle を閉じるので、強制終了でも tcs は残らない。
-// 子も同じ Job に入るので、dotnet run の子の Transpiler も止まる。
-// handle は継承しない (tcs が持つと閉じられなくなる)。
+// Puts tcs into a Job Object that stops all processes in it when its handle is
+// closed. However lub ends, the OS closes the handle, so tcs does not survive
+// even a forced termination. Children also join the same Job, so the Transpiler
+// child of dotnet run also stops. The handle is not inherited (if tcs held it,
+// it could not be closed).
 static void *tcs_job_adopt(SDL_Process *proc) {
   HANDLE job = CreateJobObjectW(NULL, NULL);
   if (!job) {
@@ -279,11 +288,13 @@ static void tcs_job_close(TcsPipeline *p) {
 #define TCS_ARGV_MAX 256
 
 #ifndef _WIN32
-// Linux / macOS では tcs を見張りの sh の下で動かす (Windows の Job Object の代わり)。
-// sh の標準入力は lub だけが書き込み口を持つ pipe で、lub がどう終わっても (signal でも SIGKILL でも) OS が閉じる。
-// 閉じたら sh が tcs に SIGTERM を送る (dotnet run は子の Transpiler に伝える)。
-// sh への SIGTERM (tcs_pipeline_stop) も tcs に伝え、tcs が自分で終われば sh も同じ終了コードで終わる。
-// 背後の list の標準入力は /dev/null になるので、pipe は fd 3 に写して見張りに渡す。
+// On Linux / macOS, tcs runs under a guard sh (in place of the Windows Job
+// Object). The stdin of sh is a pipe whose write end only lub holds, and the OS
+// closes it however lub ends (even by a signal or SIGKILL). When it closes, sh
+// sends SIGTERM to tcs (dotnet run forwards it to the Transpiler child).
+// SIGTERM to sh (tcs_pipeline_stop) is also forwarded to tcs, and if tcs exits
+// by itself, sh exits with the same exit code. The stdin of a background list
+// is /dev/null, so the pipe is copied to fd 3 and passed to the guard.
 static const char GUARD_SCRIPT[] =
     "tcs=\n"
     "trap 'kill $tcs 2>/dev/null' INT TERM HUP\n"
@@ -298,8 +309,9 @@ static const char GUARD_SCRIPT[] =
     "exit $status\n";
 #endif
 
-// argv (NULL 終端) を tcs --watch として背後に張る。
-// stdout は frame の stream として受け、stderr (tcs のログと診断) は端末に出す。
+// Runs argv (NULL-terminated) in the background as tcs --watch.
+// stdout is received as the frame stream, and stderr (tcs logs and diagnostics)
+// goes to the terminal.
 static bool spawn_watch(TcsPipeline *p, const char **argv) {
 #ifndef _WIN32
   const char *guarded[TCS_ARGV_MAX + 4];
@@ -334,10 +346,11 @@ static bool spawn_watch(TcsPipeline *p, const char **argv) {
   return true;
 }
 
-// entry (.csproj) の入力を argv[n] 以降に足し、次の空き位置を返す。
-// 入力は dir 以下の全 *.cs (SDK-style csproj の implicit glob に倣う。tcs_glob_sources)、cs-lib の実装、--ref の stub。
-// 足せる入力が無ければ -1。
-// stub は argv から指すので呼び出し側が持つ。
+// Appends the inputs of entry (.csproj) to argv starting at argv[n], and
+// returns the next free position. Inputs are all *.cs under dir (following the
+// implicit glob of SDK-style csproj; tcs_glob_sources), the cs-lib
+// implementation, and the --ref stub. -1 if there are no inputs to add. argv
+// points to the stub, so the caller owns it.
 static int append_inputs(const char *dir, const char **argv, int n, char *stub,
                          size_t stub_sz) {
   char cs_lib[900];
@@ -361,7 +374,8 @@ static int append_inputs(const char *dir, const char **argv, int n, char *stub,
     }
     char full[1400];
     SDL_snprintf(full, sizeof(full), "%s/%s", dir, globbed[i]);
-    argv[n] = SDL_strdup(full); // process 終了まで生存でよい (leak 許容)
+    argv[n] =
+        SDL_strdup(full); // Fine to live until process exit (leak accepted)
     n++;
     inputs++;
   }
@@ -371,8 +385,9 @@ static int append_inputs(const char *dir, const char **argv, int n, char *stub,
     return -1;
   }
 
-  // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律追加する。
-  // stub は宣言のみ (--ref) だが、実装モジュールは検査の対象。
+  // Adds all cs-lib implementation sources (all *.cs except lub_stub.cs)
+  // unconditionally. The stub is declarations only (--ref), but the
+  // implementation modules are subject to the check.
   if (has_cs_lib) {
     int lib_count = 0;
     char **lib = SDL_GlobDirectory(cs_lib, NULL, 0, &lib_count);
@@ -390,7 +405,8 @@ static int append_inputs(const char *dir, const char **argv, int n, char *stub,
           continue;
         char full[1200];
         SDL_snprintf(full, sizeof(full), "%s/%s", cs_lib, lib[i]);
-        argv[n] = SDL_strdup(full); // process 終了まで生存でよい (leak 許容)
+        argv[n] =
+            SDL_strdup(full); // Fine to live until process exit (leak accepted)
         n++;
       }
       SDL_free(lib);
@@ -465,10 +481,12 @@ bool tcs_check(const char *cs_path) {
   return exit_code == 0;
 }
 
-// stream の形式: `@@tcs_<kind> <本文の byte 数>\n` の行と本文の組の列
+// Stream format: a sequence of pairs of a `@@tcs_<kind> <body byte count>\n`
+// line and the body
 static const char FRAME_PREFIX[] = "@@tcs_";
 
-// buf[0..line) (改行を除く) が frame の見出しなら kind と本文の byte 数を返す
+// If buf[0..line) (excluding the newline) is a frame header, returns kind and
+// the body byte count
 static bool parse_frame_header(const char *buf, size_t line, const char **kind,
                                size_t *kind_len, size_t *body) {
   size_t prefix = sizeof(FRAME_PREFIX) - 1;
@@ -528,7 +546,8 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
     const char *name;
     size_t name_len, body;
     if (!parse_frame_header(p->buf, head - 1, &name, &name_len, &body)) {
-      // frame の見出しでない行 (想定外の出力) は捨てて先へ進む
+      // Lines that are not frame headers (unexpected output) are discarded and
+      // skipped
       SDL_Log("tcs: ignoring stdout line: %.*s", (int)(head - 1), p->buf);
       memmove(p->buf, p->buf + head, p->len - head);
       p->len -= head;
@@ -548,8 +567,8 @@ bool tcs_pipeline_next_frame(TcsPipeline *p, TcsFrameKind *kind, char **out,
     else
       known = false;
     if (!known) {
-      // 新しい tcs が足した種類。
-      // 本文ごと読み飛ばす
+      // A kind added by a newer tcs.
+      // Skip it together with its body
       SDL_Log("tcs: skipping unknown frame %.*s (%zu bytes)", (int)name_len,
               name, body);
       memmove(p->buf, p->buf + head + body, p->len - head - body);
@@ -574,7 +593,8 @@ void tcs_pipeline_stop(TcsPipeline *p) {
   if (!p || !p->proc)
     return;
 #ifdef _WIN32
-  // Windows の強制しない kill は console の process には届かない (WM_CLOSE を送るだけで成功を返す)
+  // On Windows, a non-forced kill does not reach console processes (it only
+  // sends WM_CLOSE and returns success)
   SDL_KillProcess(p->proc, true);
 #else
   SDL_KillProcess(p->proc, false);

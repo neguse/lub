@@ -1,9 +1,9 @@
-// 行ごとの負荷 (Sys.ProfileLines、Sys.TakeProfile、Sys.TakeGcPauses、Sys.TakeKept、Sys.TakeGpuPasses) の検査。
-// ../child/Child.cs を App.Use で開いて見る。
-// 開いた app の OnFrame は毎 frame、Child.cs:17 で List を作って Child.Keep に置き、Child.cs:19 で足し算を繰り返し、Child.cs:20 で大きな配列を作って Child.Big に置く (数 frame で GC が走る)。
-// その後、Child.cs:24 で MainTex への pass を始めて draw を 2 つ出す。
-// 数え始めてから 4 frame の後に、その行に確保と時間が付き、GC の止まりが届き、その frame に作って static に置いた物が持ち越しとして届き、
-// GPU が終えた frame の pass が、始めた行、描き先、draw の数、GPU の時間 (この test が走る vulkan では測れる) 付きで届き、止めた後は行の負荷と持ち越しが届かないことを見る。
+// Checks the per-line load (Sys.ProfileLines, Sys.TakeProfile, Sys.TakeGcPauses, Sys.TakeKept, Sys.TakeGpuPasses).
+// Opens ../child/Child.cs with App.Use and inspects it.
+// Every frame, the OnFrame of the opened app creates a List at Child.cs:17 and puts it in Child.Keep, repeats additions at Child.cs:19, and creates a large array at Child.cs:20 and puts it in Child.Big (GC runs every few frames).
+// Then at Child.cs:24 it begins a pass to MainTex and issues 2 draws.
+// 4 frames after counting starts, checks that those lines get allocations and time, that GC pauses arrive, that objects created in that frame and put in statics arrive as carried over,
+// that the passes of frames the GPU has finished arrive with the line that began them, the target, the draw count, and the GPU time (measurable on vulkan, where this test runs), and that after stopping, line load and carry-overs no longer arrive.
 using System;
 using Lub;
 
@@ -14,7 +14,7 @@ public static class Game
 
     static string ChildCsproj()
     {
-        // GAME_CS は <dir>/game/Game.cs
+        // GAME_CS is <dir>/game/Game.cs
         var game = Environment.GetEnvironmentVariable("GAME_CS") ?? "";
         return game.Replace("game/Game.cs", "child/Child.csproj");
     }
@@ -46,7 +46,7 @@ public static class Game
             Finish("FAIL timeout after " + frame + " frames of the opened app", 1);
             return;
         }
-        // build を待つ間は Step が false
+        // Step is false while waiting for the build
         if (!ok) return;
         frame++;
         if (frame == 2)
@@ -99,7 +99,7 @@ public static class Game
         }
         if (frame == 8)
         {
-            // GPU の時間は、その frame を GPU が終えた後に届く
+            // The GPU time arrives after the GPU finishes that frame
             bool timed = false;
             var gpu = "";
             foreach (var g in Sys.TakeGpuPasses(child))

@@ -20,20 +20,20 @@ public sealed class Token
     public TokenKind Kind;
     public int Pos;
     public int End;
-    // Ident: 名前 (verbatim の @ は除く)。Punct: 演算子の文字列。StringLit: 復号した値。
-    // IntLit / FloatLit: '_' を除いた字面 (suffix を含む)。InterpString: 中身の開始と終了 (ContentStart / ContentEnd)
+    // Ident: the name (without the verbatim @). Punct: the operator string. StringLit: the decoded value.
+    // IntLit / FloatLit: the text without '_' (including the suffix). InterpString: the start and end of the contents (ContentStart / ContentEnd)
     public string Text;
     public bool IsKeyword;
-    // CharLit の code unit
+    // The code unit of a CharLit
     public int Value;
-    // 直前に空白か改行があるか (`>` `>` を `>>` にまとめるときに見る)
+    // Whether whitespace or a newline precedes it (checked when merging `>` `>` into `>>`)
     public bool SpaceBefore;
     public int ContentStart;
     public int ContentEnd;
     public bool Verbatim;
-    // raw な補間文字列 ($$ と 3 つ以上の " で囲む) の $ の数 (穴の { } の数)。0 なら raw でない
+    // The number of $ in a raw interpolated string (enclosed by $$ and three or more "), which is the number of { } around a hole. 0 if not raw
     public int RawDollars;
-    // 複数行の raw な文字列の各行から除く字下げ
+    // Indentation removed from each line of a multi-line raw string
     public int RawIndent;
 
     public Token(TokenKind kind, int pos, int end, string text)
@@ -77,7 +77,7 @@ public sealed class Lexer
 
     public int Position => _pos;
 
-    // 補間文字列の中の escape を読む (parser が使う)
+    // Reads escapes inside an interpolated string (used by the parser)
     public string EscapeAt(int pos)
     {
         _pos = pos;
@@ -156,21 +156,21 @@ public sealed class Lexer
         return any;
     }
 
-    // 条件付きの compile (#define / #undef / #if / #elif / #else / #endif) の状態。
-    // 段ごとに、その段が有効か (_condActive) と、既にどれかの枝を取ったか (_condTaken) を持つ
+    // State of conditional compilation (#define / #undef / #if / #elif / #else / #endif).
+    // For each level, holds whether that level is active (_condActive) and whether a branch has already been taken (_condTaken)
     private readonly HashSet<string> _defines = new HashSet<string>();
     private readonly List<bool> _condActive = new List<bool>();
     private readonly List<bool> _condTaken = new List<bool>();
     private readonly List<int> _condPos = new List<int>();
 
-    // ファイルの最初の token を読んだか (#define / #undef はその前にだけ書ける)
+    // Whether the first token of the file has been read (#define / #undef can only be written before it)
     private bool _sawToken;
 
     private bool Active() => _condActive.Count == 0 || _condActive[_condActive.Count - 1];
 
     private bool ParentActive() => _condActive.Count < 2 || _condActive[_condActive.Count - 2];
 
-    // 1 行の指令を処理する。無効な枝に入ったら、次の指令の行まで行ごと読み飛ばす
+    // Processes a one-line directive. On entering an inactive branch, skips whole lines until the next directive line
     private void Directive()
     {
         DirectiveLine();
@@ -191,13 +191,13 @@ public sealed class Lexer
         }
     }
 
-    // #region / #endregion / #nullable / #pragma は読み飛ばす。#error / #warning / #line などはサブセットに無い
+    // #region / #endregion / #nullable / #pragma are skipped. #error / #warning / #line etc. are not in the subset
     private void DirectiveLine()
     {
         int start = _pos;
         while (_pos < _end && _b[_pos] != '\n') _pos++;
         string line = _file.Slice(start, _pos).Trim();
-        // 行末の // の注釈を除く
+        // Strip a trailing // comment
         var lb = new Utf8Bytes(line);
         int cut = lb.Length;
         for (int i = 0; i + 1 < lb.Length; i++)
@@ -214,7 +214,7 @@ public sealed class Lexer
         while (k < cut && IsIdentPart(lb[k])) k++;
         string name = lb.Slice(nameStart, k - nameStart).ToString();
         string rest = lb.Slice(k, cut - k).ToString().Trim();
-        // 無効な枝の中では条件の指令だけを数え、他の指令は読まない
+        // Inside an inactive branch, only conditional directives are counted; other directives are not read
         if (!Active() && name != "if" && name != "elif" && name != "else" && name != "endif") return;
         if ((name == "define" || name == "undef") && _sawToken)
         {
@@ -224,7 +224,7 @@ public sealed class Lexer
         switch (name)
         {
             case "nullable":
-                // 注釈の文脈。C backend への型の表記 (var の参照型の local は `?` 付き) にだけ効く。ファイルの中の範囲は見ない
+                // Annotation context. It affects only the type notation for the C backend (a reference-type var local gets `?`). Ranges within the file are not considered
                 if (rest == "enable") _file.NullableEnabled = true;
                 return;
             case "region":
@@ -273,13 +273,13 @@ public sealed class Lexer
         _diags.Error("TCS1001", "unsupported syntax: preprocessor directive '" + line + "'", _file, start);
     }
 
-    // ファイルの終わりで閉じていない #if
+    // #if not closed at end of file
     public void CheckDirectivesClosed()
     {
         if (_condPos.Count > 0) _diags.Error("CS1027", "#endif directive expected", _file, _condPos[_condPos.Count - 1]);
     }
 
-    // #if の式: || && == != ! ( ) true false と記号
+    // #if expressions: || && == != ! ( ) true false and symbols
     private Utf8Bytes _pp = new Utf8Bytes("");
     private int _ppPos;
     private bool _ppError;
@@ -313,7 +313,7 @@ public sealed class Lexer
         {
             if (_pp[_ppPos + i] != ob[i]) return false;
         }
-        // != は ! と区別する
+        // Distinguish != from !
         if (op == "!" && _ppPos + 1 < _pp.Length && _pp[_ppPos + 1] == '=') return false;
         _ppPos += ob.Length;
         return true;
@@ -421,7 +421,7 @@ public sealed class Lexer
         return Punct(start);
     }
 
-    // \uXXXX か \UXXXXXXXX (識別子の中の Unicode escape)
+    // \uXXXX or \UXXXXXXXX (Unicode escape in an identifier)
     private bool IsUnicodeEscape(int p)
     {
         if (p + 1 >= _end || _b[p] != '\\') return false;
@@ -436,7 +436,7 @@ public sealed class Lexer
 
     private Token Ident(int start, bool verbatim)
     {
-        // escape を含む識別子は escape を解いた文字列にする (keyword にはならない)
+        // An identifier containing escapes becomes the unescaped string (it never becomes a keyword)
         var parts = new List<string>();
         int run = _pos;
         bool escaped = false;
@@ -562,7 +562,7 @@ public sealed class Lexer
         return t;
     }
 
-    // raw な補間文字列。穴は $ と同じ数の { } で囲む
+    // Raw interpolated string. Holes are enclosed by as many { } as there are $
     private Token RawInterp(int start, int dollars)
     {
         _pos += dollars;
@@ -622,7 +622,7 @@ public sealed class Lexer
         return t;
     }
 
-    // raw string literal ("""...""")。複数行のときは閉じの行の字下げを各行から除き、最初と最後の改行を除く
+    // raw string literal ("""..."""). When multi-line, removes the closing line's indentation from each line and removes the first and last newlines
     private Token RawString(int start)
     {
         int quotes = 0;
@@ -661,11 +661,11 @@ public sealed class Lexer
             if (_b[i] == '\n') multiLine = true;
         }
         if (!multiLine) return new Token(TokenKind.StringLit, start, _pos, _file.Slice(contentStart, contentEnd));
-        // 開きの後の改行までを除く
+        // Remove everything up to the newline after the opening
         int first = contentStart;
         while (first < contentEnd && _b[first] != '\n') first++;
         first++;
-        // 閉じの行の字下げ
+        // Indentation of the closing line
         int lastNl = contentEnd - 1;
         while (lastNl > first && _b[lastNl] != '\n') lastNl--;
         int indent = contentEnd - lastNl - 1;
@@ -685,7 +685,7 @@ public sealed class Lexer
         return new Token(TokenKind.StringLit, start, _pos, string.Join("\n", lines));
     }
 
-    // _pos は '\' を指す。読んだ escape の値の文字列を返し、_pos を進める
+    // _pos points at '\'. Returns the string value of the escape read and advances _pos
     private string Escape(int litStart)
     {
         int c = Peek(1);
@@ -776,14 +776,14 @@ public sealed class Lexer
         return t;
     }
 
-    // 補間文字列は中身の範囲だけを覚え、穴の式は parser が同じファイルの範囲を読み直す
+    // For an interpolated string only the range of the contents is recorded; the parser re-reads that range of the same file for the hole expressions
     private Token Interp(int start, int prefix, bool verbatim)
     {
         _pos += prefix + 1;
         int contentStart = _pos;
         int depth = 0;
         int parens = 0;
-        // 穴の書式 (`{x:F2}` の `:` の後ろ) は文字列の字面と同じく escape を持つ
+        // A hole's format (after the `:` in `{x:F2}`) has escapes, like string literal text
         bool inFormat = false;
         while (true)
         {
@@ -847,7 +847,7 @@ public sealed class Lexer
                 _pos++;
                 continue;
             }
-            // 穴の中 (ブロックのコメントの中の引用符と括弧は数えない)
+            // Inside a hole (quotes and brackets inside block comments are not counted)
             if (c == '/' && Peek(1) == '*')
             {
                 _pos += 2;
@@ -898,7 +898,7 @@ public sealed class Lexer
         _pos++;
     }
 
-    // escape の code point の文字。対になっていない surrogate (UTF-8 にできない) と範囲の外は止める
+    // The character of an escape's code point. Unpaired surrogates (which cannot be UTF-8) and out-of-range values are rejected
     private string CodePoint(int v, int litStart)
     {
         if (v >= 0xD800 && v <= 0xDFFF)
@@ -943,7 +943,7 @@ public sealed class Lexer
                 else if (c1 == '=') len = 2;
                 break;
             case '>':
-                // `>>` は parser が隣接する `>` 2 つから作る (generic の閉じ括弧と区別するため)
+                // `>>` is formed by the parser from two adjacent `>` (to distinguish it from generic closing brackets)
                 if (c1 == '=') len = 2;
                 break;
             case '&':

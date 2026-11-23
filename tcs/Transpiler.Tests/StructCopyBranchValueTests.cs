@@ -1,9 +1,9 @@
 namespace TinyCs.Tests;
 
-// 分岐で値を選ぶ式 (switch 式 / ?: / ?? / GetValueOrDefault(x)) の値が struct の
-// 格納先の値のとき、copy 地点 (il-spec §10: 宣言の初期値 / 代入 / 引数 / return /
-// 要素) で受けた値を変えても格納先に残らない。期待値は CoreCLR の実行結果で、
-// dotnet differential (TCS_DIFFERENTIAL=1) が突き合わせる
+// When the value of an expression that selects a value by branching (switch expression / ?: / ?? / GetValueOrDefault(x)) is the value of a struct
+// storage location, changing the value received at a copy point (il-spec §10: declaration initializer / assignment / argument / return /
+// element) does not affect the storage location. Expected values are CoreCLR execution results,
+// checked by the dotnet differential (TCS_DIFFERENTIAL=1).
 public class StructCopyBranchValueTests
 {
     private const string S = """
@@ -93,8 +93,8 @@ public class StructCopyBranchValueTests
             """));
     }
 
-    // switch 式の arm に別の分岐式を入れ子にしても、格納先の値は copy。
-    // 新しく作った値の arm (new / 入れ子の switch) はそのまま受け取れる
+    // Even when another branching expression is nested in a switch expression arm, the value of the storage location is copied.
+    // An arm with a newly created value (new / nested switch) can be received as is.
     [Fact]
     public void NestedBranches_CopyStoredArmValue()
     {

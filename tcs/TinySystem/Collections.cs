@@ -1,17 +1,17 @@
-// tcs の Dictionary / HashSet の仕様 (support-matrix §18: 列挙は挿入順) を .NET で動かすときの実装。
-// TinySystem.props がこの file を .NET の project に source で入れ、BCL の System.Collections.Generic.Dictionary /
-// HashSet を同じ名前のこの型で隠す (source の型が参照の型より優先。CS0436 は props が抑える)。tcs の変換 (C / VM)
-// はこの file を使わない (それぞれの runtime が同じ仕様を持つ)。
+// Implementation of the tcs Dictionary / HashSet spec (support-matrix §18: enumeration in insertion order) for running on .NET.
+// TinySystem.props adds this file as source to .NET projects, and it hides the BCL System.Collections.Generic.Dictionary /
+// HashSet with these types of the same name (source types take precedence over referenced types; the props suppress CS0436). tcs compilation (C / VM)
+// does not use this file (each runtime has the same spec).
 //
-// 仕様:
-// - 列挙 (foreach、Keys、Values) は、今入っている key を最初に入れた順。上書きは位置を変えない。
-//   Remove した key をもう一度足すと末尾
-// - Dictionary の foreach の途中で新しい key を足すか Clear すると InvalidOperationException (tcs の fault と同じ扱い)。
-//   上書きと Remove は許し、消した key はその後の列挙に出ない
-// - HashSet の foreach は始めた時点の要素を挿入順に回る (途中の変更は列挙に影響しない。tcs の lowering と同じ)
+// Spec:
+// - Enumeration (foreach, Keys, Values) is in the order in which the current keys were first inserted. Overwriting does not change the position.
+//   A key added again after Remove goes to the end
+// - Adding a new key or calling Clear during a Dictionary foreach throws InvalidOperationException (treated like a tcs fault).
+//   Overwriting and Remove are allowed, and removed keys do not appear later in the enumeration
+// - HashSet foreach visits the elements present when it started, in insertion order (changes midway do not affect the enumeration; same as the tcs lowering)
 #nullable enable
 #pragma warning disable CS0436
-// .NET の実装なので、ゲームの project に取り込んだときに TinyC# の analyzer の診断を当てない
+// This is a .NET implementation, so TinyC# analyzer diagnostics are not applied when it is pulled into a game project
 #pragma warning disable TCS1001, TCS1002, TCS1003, TCS1004
 
 namespace System.Collections.Generic
@@ -20,13 +20,13 @@ namespace System.Collections.Generic
         where TKey : notnull
     {
         private readonly IEqualityComparer<TKey> _comparer;
-        // entry は挿入順に積む。消した entry は live = false の穴で、広げるときに詰める
+        // Entries are pushed in insertion order. A removed entry is a hole with live = false, compacted when growing
         private TKey[] _keys;
         private TValue[] _values;
         private int[] _hashes;
-        private int[] _next;   // 同じ bucket の次の entry (-1 は末尾)
+        private int[] _next;   // Next entry in the same bucket (-1 is the end)
         private bool[] _live;
-        private int[] _buckets; // bucket → entry + 1 (0 は空)
+        private int[] _buckets; // bucket → entry + 1 (0 is empty)
         private int _used;
         private int _count;
         private int _version;
@@ -172,7 +172,7 @@ namespace System.Collections.Generic
             _version++;
         }
 
-        // 穴を詰めて (並びは保つ) cap に広げる
+        // Compacts the holes (keeping the order) and grows to cap
         private void Rebuild(int cap)
         {
             var keys = new TKey[cap];
@@ -261,7 +261,7 @@ namespace System.Collections.Generic
 
     public class HashSet<T> : IReadOnlyCollection<T>
     {
-        // 値は Dictionary の key (挿入順と穴の詰め方が同じ)。HashSet は null も要素にできるので key を包む
+        // Values are Dictionary keys (same insertion order and hole compaction). HashSet can also have null as an element, so keys are wrapped
         private readonly struct Slot(T value)
         {
             public readonly T Value = value;
@@ -331,7 +331,7 @@ namespace System.Collections.Generic
             return list;
         }
 
-        // 始めた時点の要素を挿入順に回る (途中の変更は列挙に影響しない)
+        // Visits the elements present when it started, in insertion order (changes midway do not affect the enumeration)
         public List<T>.Enumerator GetEnumerator() => ToList().GetEnumerator();
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

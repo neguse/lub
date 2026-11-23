@@ -15,15 +15,23 @@ extern "C" {
 #include <string.h>
 #include <vector>
 
-// ImGui のレンダラ実装。
-// draw list を「頂点変換 → 単一 vbuf/ibuf アップロード → cmd ごとに scissor + テクスチャ切替 + indexed draw」として lub_gfx_draw と同じ内部 API (pipeline cache / reflection ベースの bindings) で発行する。
-// 頂点は ImDrawVert (pos2f, uv2f, col u32) を 8 float (float2 pos, float2 uv, float4 col) に展開した storage buffer で、shader が頂点 id で読む (vertex pulling)。
-// ImDrawIdx は CMake の ImDrawIdx=unsigned 定義で 32bit (backend の ibuf は u32 固定)。
+// ImGui renderer implementation.
+// Issues the draw list as "vertex transform → single vbuf/ibuf upload → per-cmd
+// scissor + texture switch + indexed draw" through the same internal API as
+// lub_gfx_draw (pipeline cache / reflection-based bindings). Vertices are
+// ImDrawVert (pos2f, uv2f, col u32) expanded into a storage buffer of 8 floats
+// (float2 pos, float2 uv, float4 col), which the shader reads by vertex id
+// (vertex pulling). ImDrawIdx is 32-bit through the ImDrawIdx=unsigned
+// definition in CMake (the backend ibuf is fixed to u32). This renderer only
+// uploads the font atlas once at startup, and does not handle the mechanism of
+// ImGui 1.92 and later that asks the renderer to create and update textures
+// (RendererHasTextures). When upgrading ImGui, update the font texture handling
+// here to match.
 
 static App *g_app_ui = nullptr;
 static bool g_ctx_ready = false;
 static bool g_frame_open = false;
-// App.Step が開いた app を動かす間は false (その app の Ui.* は何もしない)
+// false while App.Step runs an opened app (Ui.* of that app does nothing)
 static bool g_enabled = true;
 static bool ui_open() { return g_frame_open && g_enabled; }
 extern "C" void ui_set_enabled(bool on) { g_enabled = on; }
@@ -31,7 +39,7 @@ static bool g_gpu_ready = false;
 static bool g_gpu_failed = false;
 static BackendShader g_shader = 0;
 static ShaderReflection g_refl;
-// Blends.Alpha と同じ式。
+// Same formula as Blends.Alpha.
 static const SglBlend kUiBlend = {1,
                                   SGL_BLEND_SRC_ALPHA,
                                   SGL_BLEND_ONE_MINUS_SRC_ALPHA,
@@ -122,7 +130,8 @@ static bool ui_gpu_init() {
   return true;
 }
 
-// lub_gfx_use_buffer と同じ方針: 同サイズなら in-place 更新、違えば作り直し。
+// Same policy as lub_gfx_use_buffer: update in place if the size is the same,
+// recreate otherwise.
 static bool ensure_buffer(BackendBuffer *buf, size_t *cap, SglBufferType type,
                           const void *data, size_t bytes) {
   if (*buf && *cap == bytes) {
@@ -142,17 +151,18 @@ extern "C" void ui_new_frame(App *app, float dt, int fb_w, int fb_h) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
-    io.IniFilename = nullptr; // 状態ファイルを書かない (決定論 + web)
+    io.IniFilename = nullptr; // Do not write the state file (determinism + web)
     io.BackendPlatformName = "lub";
     io.BackendRendererName = "lub";
-    // NewFrame はフォントアトラスが built であることを要求する (Release では assert が消えて null font を踏む)。
-    // CPU 側の構築だけここでやり、GPU へのアップロードは ui_gpu_init まで遅延する。
+    // NewFrame requires the font atlas to be built (in Release the assert is
+    // gone and it hits a null font). Only the CPU-side build happens here; the
+    // GPU upload is deferred to ui_gpu_init.
     unsigned char *px = nullptr;
     int fw = 0, fh = 0;
     io.Fonts->GetTexDataAsRGBA32(&px, &fw, &fh);
     g_ctx_ready = true;
   }
-  // 前フレームで ui_render が呼ばれなかったら捨てる
+  // Discard if ui_render was not called in the previous frame
   if (g_frame_open)
     ImGui::EndFrame();
 
@@ -162,7 +172,8 @@ extern "C" void ui_new_frame(App *app, float dt, int fb_w, int fb_h) {
   io.DisplaySize = ImVec2((float)w, (float)h);
   io.DeltaTime = dt > 0 ? dt : 1.0f / 60.0f;
 
-  // マウス: window 座標 → framebuffer px (hidpi / canvas スケール補正)
+  // Mouse: window coordinates → framebuffer px (hidpi / canvas scale
+  // correction)
   float mx = 0, my = 0;
   Uint32 buttons = SDL_GetMouseState(&mx, &my);
   int ww = 0, wh = 0;
@@ -205,9 +216,10 @@ extern "C" void ui_shutdown(void) {
 
 // ---- C API (include/lub/lub_api.h) -----------------------------------------
 
-// frame が開いてない時 (new_frame 前 / render 後) は widget 呼び出しを黙って既定値で返す。
-// OnFrame の書き順ミスでクラッシュさせない。
-// ImGui は NUL 終端の文字列を取るので LubStr を scratch に写す。
+// When no frame is open (before new_frame / after render), widget calls
+// silently return default values. So that ordering mistakes in OnFrame do not
+// cause a crash. ImGui takes NUL-terminated strings, so the LubStr is copied
+// into scratch.
 static const char *ui_cstr(LubStr s) {
   static char buf[4][512];
   static int slot = 0;
@@ -229,8 +241,8 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
   if (!pass_state_in_pass(&app->pass))
     return lub_api_fail(app, "ui_render: must be called inside begin_pass");
   if (g_gpu_failed)
-    return LUB_OK; // 一度失敗したら以降は黙って no-op
-                   // (毎フレームのエラー連打回避)
+    return LUB_OK; // After one failure, silently no-op from then on
+                   // (avoids repeating the error every frame)
   if (!g_gpu_ready) {
     if (!ui_gpu_init()) {
       g_gpu_failed = true;
@@ -245,7 +257,7 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
   if (!dd || dd->TotalVtxCount <= 0)
     return LUB_OK;
 
-  // 全 cmd list を単一の float 頂点列 + u32 インデックス列に平坦化
+  // Flatten all cmd lists into a single float vertex array + u32 index array
   static std::vector<float> vstage;
   static std::vector<unsigned int> istage;
   vstage.resize((size_t)dd->TotalVtxCount * 8);
@@ -285,8 +297,8 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
       (int64_t)app->frame_index);
   g_backend->apply_pipeline(pip);
 
-  // 2D ortho (framebuffer px, y down)。
-  // row-major で mul(u.proj, v) 形式 (lub.Math の Mat4 と同じ渡し方)。
+  // 2D ortho (framebuffer px, y down).
+  // Row-major in mul(u.proj, v) form (passed the same way as Mat4 in lub.Math).
   float W = dd->DisplaySize.x > 0 ? dd->DisplaySize.x : 1;
   float H = dd->DisplaySize.y > 0 ? dd->DisplaySize.y : 1;
   const float proj[16] = {
@@ -338,7 +350,8 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
       bind.ibuf = g_ibuf;
       bind.texture_count = 1;
       bind.textures[0].name = "tex";
-      // 初回フレームは NewFrame 時点で font TexID が未設定 (0) のまま draw cmd に乗るので、0 は font atlas に読み替える。
+      // On the first frame, the font TexID is still unset (0) at NewFrame time
+      // and ends up in the draw cmds, so 0 is treated as the font atlas.
       BackendImage img = (BackendImage)(intptr_t)cmd.GetTexID();
       bind.textures[0].image = img ? img : g_font_tex;
       g_backend->apply_bindings(&bind);
@@ -348,7 +361,7 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
     }
     list_idx_base += (size_t)dl->IdxBuffer.Size;
   }
-  g_backend->set_scissor(0, 0, fbw, fbh); // 後続の draw を巻き込まない
+  g_backend->set_scissor(0, 0, fbw, fbh); // Do not affect subsequent draws
   return LUB_OK;
 }
 
@@ -441,8 +454,8 @@ extern "C" void lub_ui_same_line(LubContext *ctx) {
     ImGui::SameLine();
 }
 
-// 階層 UI。
-// true が返ったら子を描いて tree_pop を呼ぶ。
+// Hierarchical UI.
+// If it returns true, draw the children and call tree_pop.
 extern "C" bool lub_ui_tree_node(LubContext *ctx, LubStr label,
                                  const bool *default_open) {
   (void)ctx;
@@ -468,7 +481,7 @@ extern "C" void lub_ui_set_next_window(LubContext *ctx, float x, float y,
   ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_FirstUseEver);
 }
 
-// UI がマウスを取ってる間、ゲーム側はクリックを無視できる。
+// While the UI holds the mouse, the game side can ignore clicks.
 extern "C" bool lub_ui_want_capture_mouse(LubContext *ctx) {
   (void)ctx;
   return g_ctx_ready && ImGui::GetIO().WantCaptureMouse;

@@ -1,7 +1,7 @@
-// 窓のリサイズと Zen。
-//   - Alt+Shift+PageUp と窓の右端を引く操作で、その窓だけ幅が変わる。文字の密度は変わらないので長い行が先まで見える
-//   - 幅と高さには下限がある
-//   - F11 で focus のある窓が画面いっぱいになり、もう一度で利用者の大きさに戻る。隣の窓は変わらない
+// Window resizing and Zen.
+//   - Alt+Shift+PageUp and dragging the right edge of a window change the width of only that window. The text density does not change, so more of long lines is visible
+//   - Width and height have lower limits
+//   - F11 makes the focused window fill the display, and pressing it again returns it to the user's size. Neighboring windows do not change
 using System;
 using Lub;
 using LiderCore;
@@ -16,7 +16,7 @@ public static class TestZen
     {
         TestInit();
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay layout (code windows lined up in a horizontal row on the cylindrical screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -52,11 +52,11 @@ public static class TestZen
             w.FocusOn(path);
         if (frames == 4)
         {
-            // 隣の窓を作る (開くと今の窓のタブに入るので、右の窓へ移す)
+            // Create the neighboring window (opening puts it in the current window's tabs, so move it to the window on the right)
             w.FocusOn(Environment.GetEnvironmentVariable("LIDER_ROOT") + "/TestZen.cs");
             w.MoveTab(1);
         }
-        // lider が 2 つの窓を置いた後に、窓が広がり終わるまで 1 秒分進める (開いた frame の重さで進む分に頼らない)
+        // After lider places the 2 windows, advance 1 second until the windows finish expanding (do not rely on the progress made by the heavy frame that opened them)
         if (frames == 6)
             for (var i = 0; i < 60; i++)
                 Lider.Animate(w, 1.0f / 60);
@@ -76,7 +76,7 @@ public static class TestZen
         {
             Check(window.PxW == PanelView.BasePxW + 64 && Lider.Panel(window).PxW == window.PxW, "the panel width: " + Lider.Panel(window).PxW);
             Check(Longest(window.Code.ViewId, window.PxW) > PanelView.BasePxW, "the long line is cut at the old width");
-            // 右端を引く
+            // Drag the right edge
             var scale = window.Scale;
             var angle = Lider.WindowAngle(w, window);
             var right = angle + (window.UnscaledSize.X * scale * 0.5f + 0.005f) / Space.R;
@@ -118,7 +118,7 @@ public static class TestZen
         Lider.OnEvent(new EventData { Kind = EventKind.KeyUp, Key = key, Mods = 0, Typed = 0, Plain = 0 });
     }
 
-    // 最後の行まで見えるようにして、描く命令の右端を測る
+    // Make it visible down to the last line, and measure the right edge of the draw commands
     static float Longest(int id, int pxW)
     {
         EditorHost.ScrollToLine(id, 90);

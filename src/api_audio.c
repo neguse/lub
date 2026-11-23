@@ -1,7 +1,8 @@
-// audio の C API。
-// raw PCM だけを受ける core 契約。
-// snd は key で宣言し、宣言が途切れたら sweep する。
-// decode は png_load と同格の純関数 utility で snd handle を作らない。
+// C API for audio.
+// Core contract that accepts only raw PCM.
+// A snd is declared by key and swept when its declarations stop.
+// decode is a pure-function utility on par with png_load and does not create a
+// snd handle.
 #include "api_internal.h"
 #include "audio.h"
 #include <stdlib.h>
@@ -13,8 +14,9 @@ static AudioState *audio_lazy(App *app) {
   return app->audio;
 }
 
-// key で宣言する snd の表 (所有権の規則 3)。
-// snd handle 自体は audio.c が内容で dedupe して振るので、複数の key が同じ snd を指しうる。
+// Table of snds declared by key (ownership rule 3).
+// audio.c assigns the snd handles themselves after deduping by content, so
+// multiple keys can point to the same snd.
 typedef struct AudioSndEntry {
   char key[AUDIO_KEY_MAX];
   int32_t snd;
@@ -41,7 +43,7 @@ static AudioSndEntry *snd_entry_find(struct AudioSnds *s, LubStr key) {
   return NULL;
 }
 
-// 他の entry が同じ snd を指していなければ退役させる。
+// Retire it if no other entry points to the same snd.
 static void snd_release(App *app, struct AudioSnds *s, int32_t snd) {
   for (int i = 0; i < s->n; ++i)
     if (s->e[i].snd == snd)
@@ -67,7 +69,7 @@ LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *samples,
     *has = true;
     return LUB_OK;
   }
-  // version が一致しなかった問い合わせ / data 無しの宣言
+  // A query whose version did not match / a declaration without data
   if (!samples && (version || count == LUB_DATA_DEFERRED))
     return LUB_NOT_FOUND;
   if (!samples)
@@ -128,12 +130,12 @@ void api_audio_frame_end(App *app) {
   }
 }
 
-// f32 PCM の byte 列で宣言する (stub の SndBytes)。
+// Declare with a byte array of f32 PCM (SndBytes in the stub).
 LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
                               int32_t data_len, int32_t channels, int32_t rate,
                               const int32_t *version, int32_t *out, bool *has) {
   App *app = lub_api_app(ctx);
-  // version が一致するなら data (の長さ) は見ない
+  // If the version matches, the data (and its length) is not looked at
   if (version) {
     LubStatus st = lub_audio_snd(ctx, key, NULL, LUB_DATA_DEFERRED, channels,
                                  rate, version, out, has);
@@ -162,8 +164,9 @@ LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
   uint32_t frames = 0, ch = 0, r = 0;
   float *out = audio_decode_bytes(data, (size_t)len, &frames, &ch, &r);
   if (!out)
-    return LUB_NOT_FOUND;           // 対応しない / 壊れた data は nil で返す
-  app_frame_garbage_push(app, out); // view の実体は frame の終わりに回収
+    return LUB_NOT_FOUND; // Unsupported / corrupt data returns nil
+  app_frame_garbage_push(
+      app, out); // The view's backing data is reclaimed at the end of the frame
   if (pcm) {
     pcm->ptr = (const uint8_t *)out;
     pcm->len = (int32_t)((size_t)frames * ch * sizeof(float));
@@ -188,7 +191,7 @@ bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
     digest_tag(lub_api_app(ctx), "audio_play");
     digest_i32(lub_api_app(ctx), snd);
   }
-  // 控えた入力で同じ frame を作り直している間は鳴らさない
+  // Do not play while the same frame is being recreated from recorded input
   if (lub_api_app(ctx)->replaying)
     return false;
   AudioState *st = audio_lazy(lub_api_app(ctx));
@@ -206,7 +209,8 @@ bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
     return false;
   char kbuf[AUDIO_KEY_MAX];
   if (!lub_str_copy(key, kbuf, sizeof(kbuf))) {
-    // Voice は error を投げない API なので、切り詰めて別の key と取り違える代わりに鳴らさず log に出す。
+    // Voice is an API that does not throw errors, so instead of truncating and
+    // confusing it with another key, do not play and write to the log.
     SDL_Log("audio_voice: key too long (max %d bytes)", AUDIO_KEY_MAX - 1);
     return false;
   }
@@ -214,7 +218,7 @@ bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
   if (!st)
     return false;
   float volume, pitch, pan;
-  // VoiceOpts は PlayOpts の field に loop を足したもの (stub に継承は無い)
+  // VoiceOpts is the PlayOpts fields plus loop (the stub has no inheritance)
   LubPlayOpts play = {0};
   if (opts) {
     play.has_volume = opts->has_volume;
@@ -230,7 +234,8 @@ bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
 }
 
 void lub_audio_master_volume(LubContext *ctx, float volume) {
-  // 控えた入力で同じ frame を作り直している間は、音の状態を変えない
+  // While the same frame is being recreated from recorded input, do not change
+  // the sound state
   if (lub_api_app(ctx)->replaying)
     return;
   AudioState *st = audio_lazy(lub_api_app(ctx));

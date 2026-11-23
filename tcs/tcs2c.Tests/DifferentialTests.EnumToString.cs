@@ -1,10 +1,10 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// enum の文字列化 (ToString / 文字列連結 / 補間 / Console.WriteLine) は .NET の
-// Enum.ToString と同じく member 名、[Flags] (と書式 F) は名前の ", " 連結、表せない
-// 値は数値 (#133)。書式 D は数値。uint / byte / sbyte の enum も同じ。同じ値の
-// member と並びは .NET の EnumInfo (値の符号なし昇順) に従う。期待値は同じ
-// program を CoreCLR で実行した stdout
+// Enum string conversion (ToString / string concatenation / interpolation / Console.WriteLine) gives, like .NET's
+// Enum.ToString, the member name; for [Flags] (and format F) the names joined with ", "; for values that cannot be represented,
+// the number (#133). Format D gives the number. The same holds for uint / byte / sbyte enums. Members with the same value
+// and their order follow .NET's EnumInfo (values in unsigned ascending order). The expected values are the stdout of running the same
+// program on CoreCLR
 public class EnumToStringDifferentialTests
 {
     [CFact]

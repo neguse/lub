@@ -1,7 +1,7 @@
-// lider の空間: 見る人を原点に、コードを半径 R の円筒の面に並べる。
-// 座標は lub の 3D ワールドと同じ左手系 (+X 右、+Y 上、+Z 前方)、単位はメートル。
-// XR の視点 (右手系、前方 -Z) へは Z を反転して写す。
-// 非 XR では頭を回して読めないので、円筒を平面 z = r に開く。角度 a は x = r * a になる。
+// lider's space: the viewer is at the origin, and code is laid out on the surface of a cylinder of radius R.
+// Coordinates are left-handed like lub's 3D world (+X right, +Y up, +Z forward), in meters.
+// For the XR view (right-handed, forward -Z), Z is flipped.
+// In non-XR you cannot turn your head to read, so the cylinder is unrolled onto the plane z = r. Angle a becomes x = r * a.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -11,37 +11,37 @@ namespace LiderCore;
 
 public static class Space
 {
-    // 円筒の半径 (読む面を置く距離)。
-    // TODO: Frame のピントの距離を測って決める
+    // Cylinder radius (the distance at which the reading surface is placed).
+    // TODO: decide by measuring the Frame's focal distance
     public const float R = 1.6f;
 
-    // 円筒を平面に開いているか (XR でないとき)
+    // Whether the cylinder is unrolled flat (outside XR)
     public static bool Flat;
-    // 平面で開く窓の大きさ。既定の画角で、窓の高さが画面の 9 割になる
+    // Size of panels opened flat. With the default field of view, the panel height is 90% of the display
     public const float FlatScale = 1.5f;
-    // 非 XR の画角の既定 (度)
+    // Default field of view in non-XR (degrees)
     public const float FlatFov = 50;
 
-    // 角度 a、高さ y、半径 r の面の上の点
+    // Point on the surface at angle a, height y, radius r
     public static Vec3 At(float a, float y, float r)
     {
         return Flat ? new Vec3(r * a, y, r) : new Vec3(r * (float)Math.Sin(a), y, r * (float)Math.Cos(a));
     }
 
-    // 角度 a の面の向き (Y 軸の回りの角度)
+    // Facing direction of the surface at angle a (angle around the Y axis)
     public static float Facing(float a)
     {
         return Flat ? 0 : a;
     }
 
-    // 円筒の角度 a (右が正、ラジアン) と高さ y の位置に、幅 w 高さ h の板を半径 r で置く model 行列
+    // Model matrix that places a board of width w and height h at radius r, at cylinder angle a (positive to the right, radians) and height y
     public static Mat4 OnCylinder(float a, float y, float r, float w, float h)
     {
         return Mat4.Translate(At(a, y, r)) * Mat4.RotateY(Facing(a)) * Mat4.Scale(new Vec3(w, h, 1));
     }
 
-    // 円筒上の板を ray で指したときの板の中の位置 (左上 0,0、右下 1,1)。
-    // 当たらなければ null
+    // Position within a board on the cylinder pointed at by a ray (top left 0,0, bottom right 1,1).
+    // null if it does not hit
     public static Vec2? Hit(Ray ray, float a, float y, float r, float w, float h)
     {
         var center = At(a, y, r);
@@ -59,10 +59,10 @@ public static class Space
         return new Vec2(u, v);
     }
 
-    // 円筒 (半径 r) に沿って曲げた板を ray で指したときの板の中の位置 (左上 0,0、右下 1,1)。
-    // 板は角度 angle、高さ y を中心に、弧の長さ w、高さ h。
-    // ray は円筒の内側から出る (見る人は原点の近く)。
-    // 当たらなければ null
+    // Position within a board curved along the cylinder (radius r) pointed at by a ray (top left 0,0, bottom right 1,1).
+    // The board is centered at angle angle and height y, with arc length w and height h.
+    // The ray starts inside the cylinder (the viewer is near the origin).
+    // null if it does not hit
     public static Vec2? HitCurved(Ray ray, float angle, float y, float r, float w, float h)
     {
         var p = OnCylinderAt(ray, r);
@@ -80,8 +80,8 @@ public static class Space
         return new Vec2(u, v);
     }
 
-    // 平面で視点の x を view に置くとき、中心 center、幅の半分 half の窓が画面 (幅の半分 viewport) に入る、一番近い view。
-    // 窓が画面より広ければ窓の真ん中を見る
+    // When the view x is placed at view on the plane, the nearest view at which a panel with center center and half-width half fits on the display (half-width viewport).
+    // If the panel is wider than the display, look at the panel's middle
     public static float FollowX(float view, float center, float half, float viewport)
     {
         if (half >= viewport)
@@ -93,7 +93,7 @@ public static class Space
         return view;
     }
 
-    // 見ている角度 gaze から、角度 target の窓 (幅の半分の角度 half) が視野 (半分の角度 fov) の左 (-1) か右 (1) に外れているか。入っていれば 0
+    // Whether, from the look angle gaze, the panel at angle target (half-angle width half) is off the view (half-angle fov) to the left (-1) or right (1). 0 if inside
     public static int OffView(float gaze, float target, float half, float fov)
     {
         var d = target - gaze;
@@ -106,7 +106,7 @@ public static class Space
         return d > 0 ? 1 : -1;
     }
 
-    // ray が半径 r の円筒に内側から当たる点の角度と高さ (当たらなければ null)
+    // Angle and height of the point where ray hits a cylinder of radius r from inside (null if it does not hit)
     public static CylinderPoint? OnCylinderAt(Ray ray, float r)
     {
         var o = ray.Origin;
@@ -133,7 +133,7 @@ public static class Space
         return new CylinderPoint((float)Math.Atan2(p.X, p.Z), p.Y);
     }
 
-    // XR の眼の行列 (anchor の空間、右手系) を lider の空間で使える形にする
+    // Converts an XR eye matrix (anchor space, right-handed) into a form usable in lider's space
     public static Mat4 FromXr(float[] viewProjection)
     {
         var values = new List<float>();
@@ -144,7 +144,7 @@ public static class Space
     }
 }
 
-// ray が当たった窓と、その中の位置 (左上 0,0、右下 1,1)
+// Panel hit by a ray, and the position within it (top left 0,0, bottom right 1,1)
 public class WindowHit
 {
     public Window Window;
@@ -157,7 +157,7 @@ public class WindowHit
     }
 }
 
-// 円筒の上の点 (角度と高さ)
+// Point on the cylinder (angle and height)
 public class CylinderPoint
 {
     public float Angle;

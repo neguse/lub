@@ -1,5 +1,5 @@
-// Bindings の Set。
-// host の型に overload を置けず、stub から Vec4 / Mat4 を名指しできないので、ここで型ごとの host の関数に振り分ける。
+// Set for Bindings.
+// Host types cannot have overloads and stubs cannot name Vec4 / Mat4, so this dispatches to the per-type host functions.
 using System.Collections.Generic;
 
 namespace Lub;

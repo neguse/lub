@@ -1,27 +1,29 @@
-/* ---- heap object の共通形。全 heap object は TcsGcHeader の直後に
-   payload を置く (GC は CRuntime.Gc 節)。文字列 literal は static
-   object (TCS_GC_STATIC) で、heap list には載らない ---- */
+/* ---- Common shape of heap objects. Every heap object places its payload right
+   after TcsGcHeader (GC is in the CRuntime.Gc section). String literals are
+   static objects (TCS_GC_STATIC) and are not on the heap list ---- */
 typedef struct TcsLayout {
-  uint32_t size;           /* 値 1 個の byte 数 */
-  uint32_t count;          /* pointer slot 数 */
-  const uint32_t *offsets; /* 各 pointer slot の byte offset */
+  uint32_t size;           /* byte count of one value */
+  uint32_t count;          /* number of pointer slots */
+  const uint32_t *offsets; /* byte offset of each pointer slot */
 } TcsLayout;
 
 enum {
-  TCS_KIND_RAW = 0,   /* pointer を含まない (string / buffer) */
-  TCS_KIND_OBJECT,    /* layout 1 個分の値 (class instance / cell) */
-  TCS_KIND_ARRAY,     /* TcsArray + inline 要素 (layout = 要素) */
-  TCS_KIND_LIST,      /* TcsList (layout = 要素) */
-  TCS_KIND_DICT,      /* TcsDict (layout = 値) */
-  TCS_KIND_DICT_NODE, /* TcsDictNode (layout = 値) */
-  TCS_KIND_CLOSURE,   /* TcsClosure (cells は OBJECT) */
-  /* tcs VM の object (doc/object-model.md §10.2)。layout の場所は VM の型記述子で、参照の場所は
-       tcs_gc_foreign_refs (VM の関数) が辿る */
+  TCS_KIND_RAW = 0,   /* contains no pointers (string / buffer) */
+  TCS_KIND_OBJECT,    /* value of one layout (class instance / cell) */
+  TCS_KIND_ARRAY,     /* TcsArray + inline elements (layout = element) */
+  TCS_KIND_LIST,      /* TcsList (layout = element) */
+  TCS_KIND_DICT,      /* TcsDict (layout = value) */
+  TCS_KIND_DICT_NODE, /* TcsDictNode (layout = value) */
+  TCS_KIND_CLOSURE,   /* TcsClosure (cells are OBJECT) */
+  /* tcs VM object (doc/object-model.md §10.2). The layout is in the VM's type
+     descriptor, and the reference locations are traced by tcs_gc_foreign_refs
+     (a VM function) */
   TCS_KIND_FOREIGN = 0x40
 };
-/* flags: MARK = 旧世代 mark-sweep の生存印、STATIC = 静的 object
-   (literal)、OLD = 旧世代 (malloc 個別)、DIRTY = remembered set 登録済み、
-   FORWARD = 昇格済みの若い object (next が昇格先) */
+/* flags: MARK = liveness mark of the old-generation mark-sweep, STATIC = static
+   object (literal), OLD = old generation (individually malloc'ed), DIRTY =
+   registered in the remembered set, FORWARD = promoted young object (next is
+   the promotion target) */
 enum {
   TCS_GC_MARK = 1u,
   TCS_GC_STATIC = 2u,
@@ -36,9 +38,10 @@ typedef struct TcsGcHeader {
   size_t size; /* payload bytes */
   uint16_t kind;
   uint16_t flags;
-  uint32_t type_id; /* 実行時型 tag (object からの cast 検査) */
+  uint32_t type_id; /* runtime type tag (cast check from object) */
 } TcsGcHeader;
-/* 予約 type_id: class は 1..N (DFS 範囲)、構造型は 0x80000000+n */
+/* Reserved type_id: classes are 1..N (DFS range), structural types are
+ * 0x80000000+n */
 #define TCS_TYPE_STRING UINT32_C(0xfffffff1)
 #define TCS_TYPE_BOX_I32 UINT32_C(0xfffffff2)
 #define TCS_TYPE_BOX_F32 UINT32_C(0xfffffff3)
@@ -63,20 +66,22 @@ typedef struct TcsList {
   size_t length;
   size_t capacity;
   size_t element_size;
-  void *data; /* RAW heap buffer (要素は list が trace) */
+  void *data; /* RAW heap buffer (the list traces the elements) */
 } TcsList;
 
-/* Queue: 先頭 head より前は空き (0 で消してある) */
+/* Queue: the space before head is free (cleared with 0) */
 typedef struct TcsQueue {
   TcsList *items;
   size_t head;
 } TcsQueue;
 
-/* HashSet: .NET の HashSet と同じ構造で、列挙の順も同じ。items は slot ごとの要素、
-   buckets は hash → slot + 1 (0 は空)、nexts は鎖 (0 以上は次の slot、-1 は末尾、
-   -2 以下は空いた slot で free の鎖を -3 - 次 で持つ)。key_kind は要素の種別で
-   (0 = i32、1 = string、2 = host handle、3 = class の同一性)、3 の hash は address な
-   ので、若い object を入れたまま GC の境界を跨いだら buckets を作り直す */
+/* HashSet: same structure as .NET's HashSet, with the same enumeration order.
+   items holds the element per slot, buckets maps hash → slot + 1 (0 = empty),
+   nexts is the chain (0 or more = next slot, -1 = end, -2 or less = free slot,
+   holding the free chain as -3 - next). key_kind is the element kind (0 = i32,
+   1 = string, 2 = host handle, 3 = class identity); the hash for 3 is the
+   address, so if a GC boundary is crossed with young objects inside, buckets
+   are rebuilt */
 typedef struct TcsHashSet {
   TcsList *items;
   int32_t *buckets;
@@ -91,7 +96,7 @@ typedef struct TcsHashSet {
 
 static uint32_t tcs_digest;
 
-/* Nullable<T> (il-spec §13): has = 値あり */
+/* Nullable<T> (il-spec §13): has = has a value */
 typedef struct TcsOptI32 {
   bool has;
   int32_t v;
@@ -105,19 +110,22 @@ typedef struct TcsOptBool {
   bool v;
 } TcsOptBool;
 
-/* closure: fnptr + 捕捉変数 cell の配列。capture は変数単位
-   (il-spec §7) — 捕捉される local は heap cell へ box される */
+/* closure: fnptr + array of captured variable cells. Capture is per variable
+   (il-spec §7) — captured locals are boxed into heap cells */
 typedef struct TcsClosure {
   void *fn;
   void *cells[];
 } TcsClosure;
 
-/* Dictionary: chained hash (bucket 数は count に応じて倍化)。key は
-   i32 / string / host handle (key_is_string == 2: 外部 data class の
-   pointer を key_s に置き、同一性は host_value。host_value が 0 の
-   object は pointer 同一性)、value は node 末尾の value_size byte (struct 値可)。
-   列挙は挿入順 (support-matrix §18): order に足した順に node を並べ、消した node は NULL の穴にして、
-   広げるときに詰める。version は新しい key か Clear で増え、foreach の途中の追加を fault にする。 */
+/* Dictionary: chained hash (the bucket count doubles with count). Keys are
+   i32 / string / host handle (key_is_string == 2: the pointer of an external
+   data class is placed in key_s and identity is host_value; an object whose
+   host_value is 0 uses pointer identity), and the value is value_size bytes at
+   the end of the node (struct values allowed). Enumeration is in insertion
+   order (support-matrix §18): nodes are lined up in the order they were added
+   to order, removed nodes become NULL holes, and holes are compacted when
+   growing. version increases on a new key or Clear, making additions during
+   foreach a fault. */
 typedef struct TcsDictNode {
   struct TcsDictNode *next;
   int32_t key_i;
@@ -132,7 +140,8 @@ typedef struct TcsDict {
   int32_t count;
   int32_t key_is_string;
   size_t value_size;
-  struct TcsDictNode **order; /* RAW heap buffer (挿入順。穴は NULL) */
+  struct TcsDictNode *
+      *order; /* RAW heap buffer (insertion order; holes are NULL) */
   size_t order_len;
   size_t order_cap;
   uint32_t version;
@@ -142,10 +151,12 @@ static _Noreturn void tcs_fault(const char *kind);
 static void *tcs_nonnull(void *object);
 static bool tcs_string_equal(TcsString *left, TcsString *right);
 static void *tcs_gc_alloc(uint32_t kind, const TcsLayout *layout, size_t size);
-static void *tcs_alloc(size_t size);      /* RAW (pointer なし) */
-static void tcs_gc_mark_statics(void);    /* 生成側で定義 (旧世代 root) */
-static void tcs_gc_forward_statics(void); /* 生成側で定義 (境界の昇格) */
-static void tcs_wb(const void *owner);    /* ライトバリア */
+static void *tcs_alloc(size_t size); /* RAW (no pointers) */
+static void tcs_gc_mark_statics(
+    void); /* defined by the generated code (old-generation roots) */
+static void tcs_gc_forward_statics(
+    void); /* defined by the generated code (promotion at the boundary) */
+static void tcs_wb(const void *owner); /* write barrier */
 static void *tcs_gc_promote(void *pointer);
 static void tcs_gc_forward_value(void *value, const TcsLayout *layout);
 
@@ -153,8 +164,9 @@ static int tcs_type_in_range(uint32_t type_id, uint32_t first, uint32_t last) {
   return type_id >= first && type_id <= last;
 }
 
-/* 明示 downcast: null はそのまま、型が合わなければ fault。実行時型は
-   GC header の tag (box / 配列などの非 class でも読める) */
+/* Explicit downcast: null passes through, fault if the type does not match. The
+   runtime type is the tag in the GC header (readable even for non-classes such
+   as boxes / arrays) */
 static void *tcs_cast(void *object, uint32_t first, uint32_t last) {
   if (object != NULL &&
       !tcs_type_in_range(TCS_GC_HEADER(object)->type_id, first, last))
@@ -162,7 +174,8 @@ static void *tcs_cast(void *object, uint32_t first, uint32_t last) {
   return object;
 }
 
-/* object: 参照はそのまま (構造型は box 時に tag 付け)、スカラは box */
+/* object: references as is (structural types are tagged when boxed), scalars
+ * are boxed */
 typedef struct TcsBox {
   union {
     int32_t i;
@@ -201,8 +214,8 @@ static void *tcs_box_bool(bool value) {
   return box;
 }
 
-/* unbox は C# と同じく型が一致する box だけ (int の box を float に
-   は戻せない) */
+/* unbox only accepts a box of the matching type, as in C# (a boxed int cannot
+   be unboxed to float) */
 static TcsBox *tcs_unbox(void *object, uint32_t type_id) {
   tcs_nonnull(object);
   if (TCS_GC_HEADER(object)->type_id != type_id)
@@ -216,8 +229,9 @@ static void *tcs_interface_cast(void *object, bool (*matches)(void *)) {
   return object;
 }
 
-/* host が置く fault の受け口 (--lib の tcs_lib_on_fault)。
-   戻らずに host の frame へ longjmp で抜ければ process は続く。戻れば下の exit で終わる */
+/* Receiver for faults that the host installs (tcs_lib_on_fault of --lib).
+   If it does not return and instead longjmps out to the host frame, the process
+   continues. If it returns, the exit below ends it */
 static void (*tcs_fault_handler)(const char *kind);
 
 static _Noreturn void tcs_fault(const char *kind) {
@@ -287,7 +301,8 @@ static TcsString *tcs_string_f32(float value) {
   return tcs_string_new((const unsigned char *)buffer, length);
 }
 
-/* 補間の float の書式 G / E / F / N。精度が大きいときだけ heap に書く */
+/* Interpolation float formats G / E / F / N. Writes to the heap only when the
+ * precision is large */
 static TcsString *tcs_string_f32_spec(float value, char spec,
                                       int32_t precision) {
   char small[TCS_FORMAT_F32_SPEC_MAX('G', 0)];
@@ -304,7 +319,8 @@ static TcsString *tcs_string_f32_spec(float value, char spec,
   return result;
 }
 
-/* 補間の int の書式 G / E / F / N / D / X。精度が大きいときだけ heap に書く */
+/* Interpolation int formats G / E / F / N / D / X. Writes to the heap only when
+ * the precision is large */
 static TcsString *tcs_string_i32_spec(int32_t value, char spec,
                                       int32_t precision) {
   char small[TCS_FORMAT_I32_SPEC_MAX(0)];
@@ -328,7 +344,8 @@ static TcsString *tcs_string_bool(bool value) {
 }
 
 static TcsString *tcs_string_tostring(TcsString *value) {
-  /* null の string は空文字列 (.NET の補間と Console と同じ) */
+  /* A null string is an empty string (same as .NET interpolation and Console)
+   */
   static const unsigned char empty_text[] = "";
   return value == NULL ? tcs_string_new(empty_text, 0) : value;
 }
@@ -349,7 +366,7 @@ static void tcs_print_bool(bool value) {
 }
 
 static void tcs_print_string(TcsString *value) {
-  /* null の string は空行 */
+  /* A null string is an empty line */
   if (value != NULL && value->length != 0)
     fwrite(value->data, 1, value->length, stdout);
   fputc('\n', stdout);
@@ -377,7 +394,8 @@ static int32_t tcs_irem(int32_t left, int32_t right) {
   return left % right;
 }
 
-/* checked(expr) の i32 の + - * と単項 - (il-spec §5)。64 bit で計算して範囲を見る */
+/* i32 + - * and unary - of checked(expr) (il-spec §5). Computes in 64 bits and
+ * checks the range */
 static int32_t tcs_checked_narrow(int64_t value) {
   if (value > INT32_MAX || value < INT32_MIN)
     tcs_fault("arithmetic-overflow");

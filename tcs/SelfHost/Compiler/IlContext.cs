@@ -2,21 +2,21 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// IL の組み立ての文脈。IL を使う側 (IlExporter) が型と member に入るたびに設定し、IlBuild が読む
+// Context for building IL. The IL consumer (IlExporter) sets it each time it enters a type and member, and IlBuild reads it
 public sealed class IlContext
 {
     public readonly IlBuild B;
-    // IL を C backend に渡す経路は引数の copy 地点を残す (C は値渡しで copy が要らない)
+    // The path that passes IL to the C backend keeps the argument copy points (C passes by value and needs no copy)
     public bool KeepsArgumentCopies;
-    // 組み立て中の型
+    // The type being built
     public TypeDeclSym? CurrentDecl;
-    // generic な型の instance の member は型引数の既定値を self から読む
+    // Instance members of a generic type read type-argument defaults from self
     public bool TypeArgDefaultsOnSelf;
-    // 組み立て中の method (式本体が void かを見る)
+    // The method being built (used to check whether the expression body is void)
     public Symbol? CurrentFunction;
-    // 組み立て中の lambda の戻りが void か (0 = lambda の外、1 = void、2 = 値)
+    // Whether the return of the lambda being built is void (0 = outside a lambda, 1 = void, 2 = value)
     public int CurrentLambdaVoid;
-    // IL にできなかった形の記録 (調べるため)
+    // Record of shapes that could not be turned into IL (for investigation)
     public List<string> InternalErrors = new List<string>();
 
     public IlContext()

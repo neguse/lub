@@ -1,5 +1,5 @@
-# lub の外の project が、find_package(lub) で自前の player を作る検査。
-# cmake -S tests/cmake/player -B <out> -Dlub_DIR=<lub の build のディレクトリ>
+# Check that a project outside lub can build its own player with find_package(lub).
+# cmake -S tests/cmake/player -B <out> -Dlub_DIR=<lub build directory>
 cmake_minimum_required(VERSION 3.22)
 project(lub_export_player C CXX)
 find_package(lub REQUIRED CONFIG)

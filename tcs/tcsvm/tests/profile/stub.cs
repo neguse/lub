@@ -1,15 +1,15 @@
-// profile_test.c が登録する host の関数
+// Host functions registered by profile_test.c
 namespace Probe
 {
     public static class Clock
     {
-        // ns だけ時間が経ったことを VM に知らせる (tvm_profile_tick)
+        // Reports to the VM that ns of time has passed (tvm_profile_tick)
         public static void Advance(int ns) { }
-        // 別の thread が時間を知らせ終えたか
+        // Whether the other thread has finished reporting time
         public static bool Done() { return true; }
-        // Game.Mark を入れ子で呼び、戻った後に 5 ns 経ったことを知らせる
+        // Calls Game.Mark nested and reports that 5 ns has passed after it returns
         public static void Around() { }
-        // 今の行 (tvm_profile_site) を控える
+        // Records the current line (tvm_profile_site)
         public static void Where() { }
     }
 }

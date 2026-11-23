@@ -1,7 +1,10 @@
-/* --trace の行の記録を (行, self) の組で取り出すテスト。
-   Game.A を覚えさせ (tvm_inspect_pin)、A と同じ型の別の object (Game.B) を self にして通っただけの行が、
-   tvm_trace_take_lines_for で除かれることを確かめる。別の型の self の行と static の method の行は残る。
-   host の関数の中から tvm_stack_self で、段ごとの self が Game.B であること (static の段は "") も確かめる。 */
+/* Test that takes out the --trace line records as (line, self) pairs.
+   Pins Game.A (tvm_inspect_pin) and checks that lines passed only with another
+   object of the same type as A (Game.B) as self are excluded by
+   tvm_trace_take_lines_for. Lines with a self of another type and lines of
+   static methods remain. Also checks, from inside a host function with
+   tvm_stack_self, that the self of each frame is Game.B ("" for static frames).
+ */
 #include "../../vm/tcsvm.h"
 
 #include <stdio.h>
@@ -33,7 +36,7 @@ static void print(const char *what) {
 
 static char b_id[32];
 
-/* 呼び出しの並びを、self が Game.B なら B、無ければ - として出す */
+/* Prints the call sequence as B if self is Game.B, otherwise as - */
 static void frame(void *user, const char *file, uint32_t line, const char *id) {
   (void)user;
   (void)file;
@@ -87,17 +90,17 @@ int main(int argc, char **argv) {
   tvm_trace_take_lines(vm, take, NULL);
   nlines = 0;
   tvm_inspect_pin(vm, "a", "Game", "Game.A");
-  /* A.Hit と B.Heal: Heal は B だけが通ったので除く */
+  /* A.Hit and B.Heal: Heal is excluded because only B passed through it */
   if (!step(vm, 0))
     return 1;
   tvm_trace_take_lines_for(vm, "a", take, NULL);
   print("pinned A, A.Hit B.Heal");
-  /* B.Hit: Hit は B だけが通ったので除く */
+  /* B.Hit: Hit is excluded because only B passed through it */
   if (!step(vm, 1))
     return 1;
   tvm_trace_take_lines_for(vm, "a", take, NULL);
   print("pinned A, B.Hit");
-  /* 覚えていなければ全部 */
+  /* If nothing is pinned, all lines */
   if (!step(vm, 1))
     return 1;
   tvm_trace_take_lines_for(vm, "none", take, NULL);

@@ -1,6 +1,7 @@
 #pragma once
-// Box3D の即時モード層の状態。
-// API は include/lub/lub_api.h の lub_phys3d_*、tcs VM の面は src/gen/vm_api_gen.c (生成物)。
+// State of the Box3D immediate-mode layer.
+// The API is lub_phys3d_* in include/lub/lub_api.h, the tcs VM surface is
+// src/gen/vm_api_gen.c (generated code).
 #include "phys_common.h"
 #include <stdbool.h>
 #include <stdint.h>

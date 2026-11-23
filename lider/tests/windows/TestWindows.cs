@@ -1,16 +1,16 @@
-// 円筒に並べる窓と、見ている窓への focus。
-//   - タブを右の端の窓から右へ移すと窓が 2 つ並び、2 つ目は 1 つ目の右隣りに置く
-//   - 窓は大きさが変わっても重ならない
-//   - Alt + 左右と Alt + 数字で focus が移り、Alt + Shift + 左右で並びが変わる
-//   - つかんだ窓が隣の中心を越えると並びが入れ替わり、離すと列に収まる
-//   - 閉じると隙間が詰まり、右隣に focus が移る。閉じた窓をもう一度閉じても何も起きない
-//   - lider を隠している間に離した Alt は、出し直した後に押したままにならない
-//   - 平面の視点は focus のある窓が入る所まで動く (Space.FollowX)。XR の向きの印は視野の外だけ (Space.OffView)
-//   - 見ている窓に focus が移るのは、Workspace.LookSeconds 見続けたとき
-//   - 打ってから Workspace.QuietSeconds の間は、見続けても移らない
-//   - タブ 1 つの窓で Escape を押すと窓が閉じ、残りの窓に focus が移る
-//   - 窓の見出しに、Root からの path と未保存の印が出る
-//   - 見出しを押すと focus が移り、閉じる印を押すと閉じる (focus の無い窓でも)。閉じても未保存の本文は残る
+// Windows lined up on the cylinder, and focus on the window being looked at.
+//   - Moving a tab to the right from the rightmost window lines up 2 windows, and the second is placed right next to the first
+//   - Windows do not overlap even when their size changes
+//   - Alt + left/right and Alt + digit move focus, and Alt + Shift + left/right changes the order
+//   - When a grabbed window passes the center of its neighbor, the order swaps, and releasing it settles it into the row
+//   - Closing closes the gap and moves focus to the right neighbor. Closing a closed window again does nothing
+//   - Alt released while lider is hidden does not stay held after lider is shown again
+//   - The flat view moves until the focused window fits in it (Space.FollowX). The XR direction cue appears only outside the field of view (Space.OffView)
+//   - Focus moves to the window being looked at after it has been looked at for Workspace.LookSeconds
+//   - For Workspace.QuietSeconds after typing, focus does not move even when looking
+//   - Pressing Escape in a window with one tab closes the window, and focus moves to a remaining window
+//   - The window title shows the path from Root and the unsaved mark
+//   - Pressing the title moves focus, and pressing the close mark closes the window (even a window without focus). Unsaved text remains after closing
 using System;
 using Lub;
 using LiderCore;
@@ -25,9 +25,9 @@ public static class TestWindows
     {
         TestInit();
         Lider.OnInit();
-        // 最初のコードの窓を列の先頭に置くため、インスペクタはしまう
+        // Put the inspector away so the first code window is at the head of the row
         Lider.Inspector.Shown = false;
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay layout (code windows lined up in a horizontal row on the cylindrical screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -52,7 +52,7 @@ public static class TestWindows
         App.Config(new ConfigOpts { Width = 320, Height = 180 });
     }
 
-    // 時間を進めながら、ずっと window を見る
+    // Keep looking at window while advancing time
     static void LookFor(Workspace w, Window window, float seconds)
     {
         var dt = 0.05f;
@@ -214,7 +214,7 @@ public static class TestWindows
         Check(Math.Abs(got - want) < 0.001f, what + ": " + got + ", want " + want);
     }
 
-    // window の見出しの帯の横 u の所を、見る人の位置から押す
+    // Press at horizontal position u on window's title bar from the viewer's position
     static void Press(Workspace w, Window window, float u)
     {
         var a = Lider.WindowAngle(w, window) + (u - 0.5f) * PanelView.BaseW * window.Scale / Space.R;

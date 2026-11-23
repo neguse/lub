@@ -1,4 +1,4 @@
-// 画面全体の三角形を 1 枚描く。
+// Draws one triangle that covers the whole screen.
 struct VSOut {
   float4 pos : SV_Position;
 };

@@ -8,18 +8,18 @@ namespace TinyCs.Tests.SpecConformance;
 internal sealed record SpecDotnetRun(bool Ok, string Output, string? Error);
 
 /// <summary>
-/// 例を実 .NET で in-memory 実行して stdout を得る differential オラクル (C2)。
-/// 期待値の出所が実 C# 処理系になり、手書き期待値に依存しない。
+/// Differential oracle that runs examples in memory on real .NET to get stdout (C2).
+/// The expected values come from a real C# implementation and do not depend on handwritten expected values.
 /// </summary>
 internal sealed class SpecDotnetExecutor
 {
     private static readonly TimeSpan ExecutionTimeout = TimeSpan.FromSeconds(10);
 
-    // capture は ConsoleCapture (プロセス唯一の AsyncLocal ルーティング) 経由。
-    // 他テストが生 SetOut で router を外すと空 capture になるため、SetOut は
-    // ConsoleCapture 以外で行わない。
+    // Capture goes through ConsoleCapture (the single AsyncLocal routing in the process).
+    // If another test removes the router with a raw SetOut, the capture becomes empty, so SetOut is
+    // never done outside ConsoleCapture.
 
-    // classifier と同じく SDK ImplicitUsings 相当を補う (template csproj 前提)。
+    // As in the classifier, supply the equivalent of SDK ImplicitUsings (assuming the template csproj).
     private const string ImplicitUsingsSource = """
         global using System;
         global using System.Collections.Generic;
@@ -72,8 +72,8 @@ internal sealed class SpecDotnetExecutor
             using var scope = TinyCs.Tests.ConsoleCapture.BeginOut(writer);
             try
             {
-                // AsyncLocal は Task.Run の子へ流れる — この実行の書き込み
-                // だけが writer へ入り、並列テストの出力は fallback へ抜ける
+                // AsyncLocal flows to the Task.Run child — only this run's writes
+                // go to the writer, and output from parallel tests falls through to the fallback
                 var invocation = Task.Run(() => entry.Invoke(null, arguments));
                 if (!invocation.Wait(ExecutionTimeout))
                     return new SpecDotnetRun(false, "",

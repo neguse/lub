@@ -3,7 +3,7 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// 10 進の大きな非負の整数 (下の桁から 1 桁ずつ)。float の正確な 10 進展開に使う
+// A large non-negative decimal integer (one digit at a time, from the lowest digit). Used for the exact decimal expansion of floats
 public sealed class BigDec
 {
     public List<int> D = new List<int>();
@@ -44,7 +44,7 @@ public sealed class BigDec
         Trim();
     }
 
-    // 10^n を掛ける (下に 0 を n 桁足す)
+    // Multiplies by 10^n (appends n zero digits at the bottom)
     public void Shift(int n)
     {
         if (IsZero()) return;
@@ -105,8 +105,8 @@ public sealed class BigDec
     }
 }
 
-// IL の literal (IlLit) の作り方と、診断 (--dump-il、--trace) のための表示。
-// float の値の表記は整数の演算だけで決めるので、tcs を .NET、C、wasm のどれで動かしても同じ文字列になる
+// How IL literals (IlLit) are created, and their display for diagnostics (--dump-il, --trace).
+// The text of a float value is determined with integer arithmetic only, so it is the same string whether tcs runs on .NET, C, or wasm
 public static class IlLiterals
 {
     public static IlLit Null() => new IlLit(IlLitKind.Null, 0, 0f, "", null);
@@ -119,7 +119,7 @@ public static class IlLiterals
 
     public static IlLit Str(string value) => new IlLit(IlLitKind.String, 0, 0f, value, null);
 
-    // binder の定数の literal
+    // Literal for a binder constant
     public static IlLit Of(ConstValue c)
     {
         switch (c.Kind)
@@ -136,7 +136,7 @@ public static class IlLiterals
 
     public static bool IsString(IlExpr? e) => e is IlLit l && l.Kind == IlLitKind.String;
 
-    // 診断のための表示 (null、true / false、10 進の数、引用符で囲んで escape した文字列)
+    // Display for diagnostics (null, true / false, decimal numbers, quoted and escaped strings)
     public static string Display(IlLit lit)
     {
         switch (lit.Kind)
@@ -149,7 +149,7 @@ public static class IlLiterals
         return "null";
     }
 
-    // 文字列を引用符で囲み、backslash、引用符、改行、復帰、tab と制御文字を escape する
+    // Quotes the string and escapes backslashes, quotes, newlines, carriage returns, tabs, and control characters
     public static string QuoteString(string value)
     {
         var u = new Utf8Bytes(value);
@@ -165,7 +165,7 @@ public static class IlLiterals
             else if (c == '\n') esc = "\\n";
             else if (c == '\r') esc = "\\r";
             else if (c == '\t') esc = "\\t";
-            // 制御文字は 2 桁固定の \xXX
+            // Control characters are a fixed two-digit \xXX
             else if (c < 32 || c == 127) esc = "\\x" + Hex2(c);
             if (esc != null)
             {
@@ -186,10 +186,10 @@ public static class IlLiterals
         return d.Slice(c / 16, 1).ToString() + d.Slice(c % 16, 1).ToString();
     }
 
-    // x が NaN か ±∞ なら .NET の float.ToString() と同じ語、有限なら null
+    // The same word as .NET's float.ToString() if x is NaN or ±∞, null if finite
     private static string? NonFiniteText(float x)
     {
-        // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)
+        // Only NaN is not equal to itself (TinyC# has no float.IsNaN)
 #pragma warning disable CS1718
         if (x != x) return "NaN";
 #pragma warning restore CS1718
@@ -198,8 +198,8 @@ public static class IlLiterals
         return null;
     }
 
-    // C# の float の定数を double にして、.NET の double.ToString("R") (往復できる最短の表記) で書く。
-    // 小数点も指数も無ければ ".0" を付ける。NaN と無限は NonFiniteText の語で書く
+    // Converts a C# float constant to double and writes it as .NET's double.ToString("R") does (the shortest round-trippable form).
+    // Appends ".0" if there is neither a decimal point nor an exponent. NaN and infinities are written with the words from NonFiniteText
     public static string FormatDoubleOfFloat(float x)
     {
         var nonFinite = NonFiniteText(x);
@@ -209,18 +209,18 @@ public static class IlLiterals
         return text + ".0";
     }
 
-    // x (float32 の値) を double の値として往復できる最短の 10 進。.NET の double の "R" と同じ形
+    // The shortest decimal that round-trips x (a float32 value) as a double value. Same form as .NET's "R" for double
     public static string RoundTripDoubleText(float x)
     {
         if (x == 0)
         {
-            // -0 は "-0"
+            // -0 is "-0"
             if (1 / x < 0) return "-0";
             return "0";
         }
         bool negative = x < 0;
         float a = negative ? -x : x;
-        // a = m × 2^p (m は 24 bit 以下の整数)。2 倍と半分は float でも正確
+        // a = m × 2^p (m is an integer of at most 24 bits). Doubling and halving are exact even in float
         int p = 0;
         while (a < 8388608f)
         {
@@ -233,7 +233,7 @@ public static class IlLiterals
             p++;
         }
         int m = (int)a;
-        // 下の 0 の bit を外す
+        // Strip the trailing zero bits
         while (m % 2 == 0)
         {
             m = m / 2;
@@ -243,10 +243,10 @@ public static class IlLiterals
         return (negative ? "-" : "") + FormatR(digits, exp10);
     }
 
-    // m × 2^p の、double として往復できる最短の有効数字 (先頭は 0 でない) と、最上位の桁の 10 の冪
+    // The shortest significant digits of m × 2^p that round-trip as a double (the first digit is not 0), and the power of 10 of the most significant digit
     private static string ShortestDigits(int m, int p, out int exp10)
     {
-        // double の指数 E (2^E <= v < 2^(E+1)) と、隣の double との間の半分 (2^(E-53))
+        // The double exponent E (2^E <= v < 2^(E+1)) and half the gap to the neighboring double (2^(E-53))
         int bits = 0;
         int mm = m;
         while (mm > 0)
@@ -256,7 +256,7 @@ public static class IlLiterals
         }
         int e = p + bits - 1;
         bool powerOfTwo = m == 1;
-        // 値を 10^F 倍した整数で比べる。F は v と半分の間の小数の桁の最大
+        // Compare as integers scaled by 10^F. F is the maximum number of fractional digits of v and the half gap
         int fracV = p < 0 ? -p : 0;
         int fracHalf = e - 53 < 0 ? 53 - e : 0;
         int fracLow = e - 54 < 0 ? 54 - e : 0;
@@ -265,18 +265,18 @@ public static class IlLiterals
         if (fracLow > scale) scale = fracLow;
         var v = Scaled(m, p, scale);
         var halfUp = Scaled(1, e - 53, scale);
-        // 2 の冪のすぐ下の double は間隔が半分
+        // The double just below a power of 2 has half the gap
         var halfDown = powerOfTwo ? Scaled(1, e - 54, scale) : halfUp;
-        // v の 10 進の桁 (上から)
+        // The decimal digits of v (from the top)
         var all = new List<int>();
         for (int i = v.D.Count - 1; i >= 0; i--) all.Add(v.D[i]);
         while (all.Count > 1 && all[0] == 0) all.RemoveAt(0);
-        // 最上位の桁の 10 の冪
+        // The power of 10 of the most significant digit
         exp10 = all.Count - 1 - scale;
         for (int n = 1; n <= 17; n++)
         {
             var cand = RoundToDigits(all, n, out int carryExp);
-            // cand × 10^(exp10 + carryExp - n + 1) を 10^scale 倍した整数
+            // The integer cand × 10^(exp10 + carryExp - n + 1) scaled by 10^scale
             int shift = exp10 + carryExp - n + 1 + scale;
             if (shift < 0) continue;
             var c = new BigDec();
@@ -299,7 +299,7 @@ public static class IlLiterals
         return string.Join("", rest);
     }
 
-    // m × 2^p × 10^scale (整数になる)
+    // m × 2^p × 10^scale (it is an integer)
     private static BigDec Scaled(int m, int p, int scale)
     {
         var b = BigDec.Of(m);
@@ -316,7 +316,7 @@ public static class IlLiterals
         return b;
     }
 
-    // 上からの桁 all を n 桁に丸める (四捨五入、ちょうど半分は偶数へ)。繰り上がりで桁が増えたら carryExp = 1
+    // Rounds the digits all (from the top) to n digits (round to nearest, ties to even). If a carry adds a digit, carryExp = 1
     private static List<int> RoundToDigits(List<int> all, int n, out int carryExp)
     {
         carryExp = 0;
@@ -348,7 +348,7 @@ public static class IlLiterals
         return r;
     }
 
-    // .NET の double の "R": 指数が -4 より小さいか 14 より大きければ指数の形 (1.5E-05、1E+15)
+    // .NET's "R" for double: exponent form if the exponent is less than -4 or greater than 14 (1.5E-05, 1E+15)
     private static string FormatR(string digits, int exp10)
     {
         int n = Strings.ByteLength(digits);

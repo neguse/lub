@@ -1,7 +1,7 @@
-// shader を差し替えても Bindings は古い解決結果を使わない。
-// a = red、b = green を一度だけ Set し、同じ key の shader の version を上げて uniform の並びと使う値を変える。
-// version 1 は a を読み、version 2 は並びを入れ替えて a を読み (offset が変わる)、version 3 は b を読む。
-// version 4 は version 3 まで使っていなかった texture の名前を読む。
+// Even when the shader is replaced, Bindings does not use stale resolution results.
+// Sets a = red, b = green only once, then raises the version of the shader with the same key, changing the uniform layout and the values it uses.
+// Version 1 reads a, version 2 reorders the layout and reads a (the offset changes), version 3 reads b.
+// Version 4 reads a texture name that was not used up to version 3.
 using System;
 using System.Collections.Generic;
 using Lub;

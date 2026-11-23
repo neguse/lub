@@ -4,9 +4,9 @@ using Xunit;
 
 namespace TinyCs.Tests;
 
-// browser-wasm 相当の host (Assembly.Location が使えない) を想定した
-// TcsLibrary.References 注入口の契約テスト。runtime pack の DLL を
-// byte image として読み込み、ファイルパス経由なしで補完の session (EditorSession) の compilation が組めること。
+// Contract test, for a host equivalent to browser-wasm (where Assembly.Location is unavailable),
+// of the TcsLibrary.References injection point. It loads the runtime pack DLLs
+// as byte images and checks that a completion session (EditorSession) compilation can be built without going through file paths.
 [Collection(TranspilerReferencesCollection.Name)]
 public class ReferenceInjectionTests
 {
@@ -56,7 +56,7 @@ public class ReferenceInjectionTests
     }
 }
 
-// TcsLibrary.References は process で 1 つなので、差し替えている間は他の test (BclCatalogTests など) を並べて動かさない
+// TcsLibrary.References is one per process, so while it is replaced, other tests (BclCatalogTests etc.) do not run in parallel.
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class TranspilerReferencesCollection
 {

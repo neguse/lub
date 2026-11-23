@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Lub;
 
-// Vec と Mat4 は値で、代入と引数渡しは独立した copy になる。
+// Vec and Mat4 are values; assignment and argument passing make independent copies.
 public static class TestMathValues
 {
     static void Bump(Vec3 v)

@@ -1,10 +1,10 @@
-// インスペクタの行 (InspectTree) を確かめる。行にするのはゲーム (game/Game.cs) の class と値。
-//   - 根はゲームの class で、entry (Game) が先頭。開いた節だけ子の行が続く
-//   - 要素が同じ class の instance だけの並びは、見出しの行 (列は最初の要素の field) と 1 要素 1 行の表になる。無い field は ""
-//   - 要素が ChunkSize を超える並びは ChunkSize ずつの節に区切り、開いた区切りだけ要素が続く
-//   - しばらく変わらなかった値が変わると Glow が立ち、毎 frame 変わる値は立たない
-//   - 行の飛ぶ先は、根と instance は class、field は class.field、要素の値は無し
-// ゲームは最初の frame で並びを作り、決めた frame で Shelf.Calm を変える。Calm が変わったのを見た frame で Glow を確かめる。
+// Checks the inspector rows (InspectTree). The rows are made from the classes and values of the game (game/Game.cs).
+//   - The roots are the game's classes, with the entry (Game) first. Child rows follow only for open nodes
+//   - A list whose elements are all instances of the same class becomes a table with a header row (the columns are the fields of the first element) and one row per element. A missing field is ""
+//   - A list with more than ChunkSize elements is split into nodes of ChunkSize each, and elements follow only for open chunks
+//   - When a value that has not changed for a while changes, Glow is set, and a value that changes every frame does not set it
+//   - The jump target of a row is the class for roots and instances, class.field for fields, and none for element values
+// The game builds the list on the first frame and changes Shelf.Calm at a fixed frame. Glow is checked on the frame where the Calm change is seen.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -45,7 +45,7 @@ public static class TestInspect
 
     static void TestFrame(float dt)
     {
-        // ゲームの build を待つ
+        // Wait for the game build
         if (failed || GameApp.Frames == 0)
             return;
         frames++;
@@ -82,7 +82,7 @@ public static class TestInspect
             tree.Refresh();
         if (failed || Find("Shelf.Calm") < 0)
             return;
-        // ゲームが Calm を変えるまで待つ
+        // Wait until the game changes Calm
         if (tree.Rows[Find("Shelf.Calm")].Text != "1")
         {
             Check(frames < 600, "Shelf.Calm did not change");
@@ -111,7 +111,7 @@ public static class TestInspect
         return at < tree.Rows.Count ? tree.Rows[at].Name : "";
     }
 
-    // 最初の失敗だけを出して終わる
+    // Report only the first failure and exit
     static void Check(bool cond, string message)
     {
         if (cond || failed)

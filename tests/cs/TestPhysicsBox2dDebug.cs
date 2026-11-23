@@ -1,4 +1,4 @@
-// phys2d の debug draw データ (polygons/circles/capsules/segments)、profile、counters が取れる。
+// phys2d debug draw data (polygons/circles/capsules/segments), profile, and counters can be obtained.
 using System;
 using Lub;
 

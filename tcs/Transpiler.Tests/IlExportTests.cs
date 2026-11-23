@@ -1,7 +1,7 @@
 using TcsSelf;
 namespace TinyCs.Tests;
 
-// IL→C backend 向け入力契約 (IlExport) の検証
+// Verification of the input contract for the IL→C backend (IlExport)
 public class IlExportTests
 {
     private const string Source = """
@@ -30,7 +30,7 @@ public class IlExportTests
         Assert.Equal("Player", player.Name);
         Assert.Null(player.BaseName);
 
-        // field と auto property は宣言順 (初期化子の実行順)
+        // Fields and auto properties in declaration order (the order the initializers run)
         Assert.Collection(player.Fields,
             f => { Assert.Equal(("X", "float", false), (f.Name, f.Type, f.IsStatic)); },
             f => { Assert.Equal(("Y", "float", false), (f.Name, f.Type, f.IsStatic)); },
@@ -52,19 +52,19 @@ public class IlExportTests
     public void Export_LayoutHashTracksInstanceFieldsOnly()
     {
         var baseHash = IlExport.Export([Source]).Classes[0].LayoutHash;
-        // static field の変更は layout に影響しない
+        // Changing a static field does not affect the layout
         var staticChanged = IlExport.Export([Source.Replace(
             "public static int Count;", "public static int Count2;")])
             .Classes[0].LayoutHash;
         Assert.Equal(baseHash, staticChanged);
-        // instance field の改名は layout を変える (il-spec §14)
+        // Renaming an instance field changes the layout (il-spec §14)
         var renamed = IlExport.Export([Source.Replace(
             "public float Y;", "public float Y2;")]).Classes[0].LayoutHash;
         Assert.NotEqual(baseHash, renamed);
     }
 
-    // struct 値は reload 時に owner 経由で再直列化されるため (il-design §6)、
-    // struct 内部のレイアウト変更は embed する class の hash に伝播する必要がある
+    // Struct values are re-serialized through their owner on reload (il-design §6), so
+    // layout changes inside a struct must propagate to the hash of the class that embeds it
     [Fact]
     public void Export_LayoutHashExpandsEmbeddedStructLayouts()
     {
@@ -74,24 +74,24 @@ public class IlExportTests
             """;
         var baseHash = IlExport.Export([V1]).Classes[0].LayoutHash;
 
-        // struct への field 追加は owner class の hash を変える
+        // Adding a field to a struct changes the owner class's hash
         var structGrown = IlExport.Export([V1.Replace(
             "public float Y; }", "public float Y; public float Z; }")])
             .Classes[0].LayoutHash;
         Assert.NotEqual(baseHash, structGrown);
 
-        // struct 内 field の改名も伝播する
+        // Renaming a field inside a struct also propagates
         var structRenamed = IlExport.Export([V1.Replace(
             "public float Y; }", "public float Y2; }")])
             .Classes[0].LayoutHash;
         Assert.NotEqual(baseHash, structRenamed);
 
-        // 同一レイアウトなら安定
+        // Stable if the layout is the same
         var same = IlExport.Export([V1]).Classes[0].LayoutHash;
         Assert.Equal(baseHash, same);
     }
 
-    // struct in struct も推移的に伝播する
+    // struct in struct also propagates transitively
     [Fact]
     public void Export_LayoutHashExpandsNestedStructLayouts()
     {
@@ -110,7 +110,7 @@ public class IlExportTests
     [Fact]
     public void Export_UnsupportedSyntaxIsAnError()
     {
-        // instance method group はサブセットの外
+        // Instance method groups are outside the subset
         var result = IlExport.Export(["""
             using System;
             public class T
@@ -124,13 +124,13 @@ public class IlExportTests
                 }
             }
             """]);
-        // 未対応の構文は Lua の出力と同じ error で止める (部分的な IL は返さない)
+        // Unsupported syntax stops with the same error as the Lua output (no partial IL is returned)
         Assert.Empty(result.Classes);
         Assert.Contains(result.Diagnostics,
             d => d.Contains("InstanceMethodGroup"));
     }
 
-    // 型情報・field initializer・配列生成の契約
+    // Contract for type information, field initializers, and array creation
     [Fact]
     public void Export_TypesInitializersAndArrays()
     {
@@ -157,7 +157,7 @@ public class IlExportTests
         Assert.Equal("n", Assert.IsType<IlVar>(arr.Length).Name);
     }
 
-    // class 骨格 (ctor / custom property accessor) の契約
+    // Contract for the class skeleton (ctor / custom property accessors)
     [Fact]
     public void Export_CtorAndAccessorBodies()
     {
@@ -192,7 +192,7 @@ public class IlExportTests
         Assert.IsType<IlAssign>(Assert.Single(setter.Body!.Stats));
     }
 
-    // top-level 文と operator の契約
+    // Contract for top-level statements and operators
     [Fact]
     public void Export_TopLevelAndOperators()
     {
@@ -218,8 +218,8 @@ public class IlExportTests
         Assert.Equal(2, add.ParameterTypes.Count);
     }
 
-    // 同じ operator の overload は宣言順の `__mul_1` / `__mul_2` (Lua 出力と
-    // 同じ名前)。呼び出し箇所は Roslyn が選んだ overload の IlCall になる
+    // Overloads of the same operator are `__mul_1` / `__mul_2` in declaration order (the same names as the Lua
+    // output). Call sites become an IlCall of the overload that Roslyn chose
     [Fact]
     public void Export_OverloadedOperators_HaveUniqueNamesAndStaticCallSites()
     {
@@ -267,9 +267,9 @@ public class IlExportTests
         Assert.Contains(pt.Methods, m => m.Name == "Sum" && m.Body != null);
     }
 
-    // struct / record struct は field (auto property / positional 込み) +
-    // instance member + ctor を契約に載せる (il-spec §10)。record struct の
-    // layout hash は positional parameter を含む
+    // struct / record struct put fields (including auto properties / positional ones) +
+    // instance members + ctor into the contract (il-spec §10). The record struct
+    // layout hash includes positional parameters
     [Fact]
     public void Export_StructContract_IncludesMembersCtorAndRecordStruct()
     {
@@ -312,7 +312,7 @@ public class IlExportTests
             s => Assert.Equal("Y", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name));
         Assert.Contains(point.Methods, m => m.Name == "Manhattan");
 
-        // record struct の positional field 変更は owner class の hash に伝播する
+        // Changing a positional field of a record struct propagates to the owner class's hash
         var ownerHash = Assert.Single(result.Classes, c => c.Name == "Owner").LayoutHash;
         var grown = IlExport.Export(["""
             public record struct Point(int X, int Y, int Z);

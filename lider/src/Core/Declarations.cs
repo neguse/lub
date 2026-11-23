@@ -1,21 +1,21 @@
-// C# のソースから宣言 (型、メソッド、コンストラクタ、プロパティ、フィールド) の名前と行を拾う。
-// 構文だけを見るので、型は調べない。文字列とコメントの中は読まず、メソッドの本体と初期化子の中は飛ばす。
-// enum の要素、演算子、indexer は拾わない。
+// Picks up the names and lines of declarations (types, methods, constructors, properties, fields) from C# source.
+// It only looks at syntax, so it does not check types. It does not read inside strings and comments, and skips method bodies and initializers.
+// Enum members, operators and indexers are not picked up.
 using System.Collections.Generic;
 
 namespace LiderCore;
 
 public class Declaration
 {
-    // "Outer.Inner.Member" (namespace は含めない)
+    // "Outer.Inner.Member" (namespace not included)
     public string Name = "";
-    // 0 から
+    // From 0
     public int Line;
-    // const のフィールド
+    // A const field
     public bool Const;
-    // 型の宣言
+    // A type declaration
     public bool IsType;
-    // 文を持つ宣言 (メソッド、コンストラクタ、本体のあるプロパティ)
+    // A declaration with statements (method, constructor, property with a body)
     public bool IsCode;
 }
 
@@ -23,22 +23,22 @@ public static class Declarations
 {
     static readonly List<string> typeWords = new List<string> { "class", "struct", "interface", "enum", "record" };
     static readonly List<string> skipWords = new List<string> { "using", "namespace", "extern", "global" };
-    // List に null を入れられないので、型でない '{' の印にする
+    // List cannot hold null, so this marks a '{' that is not a type
     const string Body = "{";
 
     public static List<Declaration> Scan(List<string> lines)
     {
         var found = new List<Declaration>();
         var s = string.Join("\n", lines);
-        // 開いている '{' ごとの型の名前 (namespace は ""、本体や初期化子は Body)
+        // Type name for each open '{' ("" for a namespace, Body for bodies and initializers)
         var stack = new List<string>();
         var head = "";
-        // head がまだ空白だけか (毎回 Trim すると、長い file で打つたびに止まる)
+        // Whether head is still only whitespace (calling Trim every time stalls on every keystroke in long files)
         var headEmpty = true;
         var headLine = 0;
         var line = 0;
         var parens = 0;
-        // '=' の後 (';' まで読み飛ばす)
+        // After '=' (skip to ';')
         var skipping = false;
         for (var i = 0; i < Utf8.Bytes(s); i++)
         {
@@ -75,7 +75,7 @@ public static class Declarations
             }
             if (c == '\'')
             {
-                // 閉じる ' まで ('\u0041' のように長いこともある)
+                // Up to the closing ' (it can be long, like '\u0041')
                 i++;
                 while (i < Utf8.Bytes(s) && Utf8.At(s, i) != '\'' && Utf8.At(s, i) != '\n')
                     i += Utf8.At(s, i) == '\\' ? 2 : 1;
@@ -180,13 +180,13 @@ public static class Declarations
                 headLine = line;
                 headEmpty = false;
             }
-            // byte ごとに足す (UTF-8 の文字は、続く byte を足し終わると元に戻る)
+            // Appends byte by byte (a UTF-8 character becomes whole again once its following bytes are appended)
             head += c == '\n' ? " " : Utf8.Sub(s, i, 1);
         }
         return found;
     }
 
-    // s[at] の '"' で始まる文字列の閉じる '"' の位置 (@ の付いた文字列と """ に対応する)
+    // Position of the closing '"' of the string that starts with the '"' at s[at] (handles @ strings and """)
     static int SkipString(string s, int at)
     {
         if (at + 2 < Utf8.Bytes(s) && Utf8.At(s, at + 1) == '"' && Utf8.At(s, at + 2) == '"')
@@ -229,7 +229,7 @@ public static class Declarations
         return Utf8.Sub(t, 0, end);
     }
 
-    // 型の宣言の見出しなら、その型の名前
+    // If it is the header of a type declaration, the name of that type
     static string? TypeName(string head)
     {
         var i = 0;
@@ -253,7 +253,7 @@ public static class Declarations
             start = i;
             while (i < Utf8.Bytes(head) && IsWordChar(Utf8.At(head, i)))
                 i++;
-            // record struct P、record class P
+            // record struct P, record class P
             if (word == "record" && (Utf8.Sub(head, start, i - start) == "struct" || Utf8.Sub(head, start, i - start) == "class"))
             {
                 while (i < Utf8.Bytes(head) && !IsWordChar(Utf8.At(head, i)))
@@ -267,12 +267,12 @@ public static class Declarations
         return null;
     }
 
-    // 型の中のメンバーの見出しから名前を読む ('(' の前の名前か、見出しの最後の名前)
+    // Reads the name from the header of a member inside a type (the name before '(' or the last name in the header)
     static void Member(List<Declaration> found, List<string> stack, string head, int line, bool body)
     {
         if (skipWords.Contains(FirstWord(head)) || stack.Count == 0)
             return;
-        // 引数の括弧は、戻り値の組の型より後ろで、コンストラクタの初期化子 (: base(...)) と where より前
+        // The parameter parentheses come after a tuple return type and before a constructor initializer (: base(...)) and where
         var open = -1;
         var depth = 0;
         for (var i = 0; i < Utf8.Bytes(head); i++)
@@ -289,7 +289,7 @@ public static class Declarations
         var end = open >= 0 ? open : Utf8.Bytes(head);
         while (end > 0 && (Utf8.At(head, end - 1) == ' ' || Utf8.At(head, end - 1) == '\t' || Utf8.At(head, end - 1) == '\r'))
             end--;
-        // generic のメソッドの <T> を除く
+        // Strips the <T> of a generic method
         if (open >= 0 && end > 0 && Utf8.At(head, end - 1) == '>')
         {
             while (end > 0 && Utf8.At(head, end - 1) != '<')

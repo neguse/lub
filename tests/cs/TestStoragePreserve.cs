@@ -1,8 +1,8 @@
-// compute が読み書きする storage buffer と storage texture は、前の dispatch が書いた内容を保つ (neguse/lub#184)。
-// 3 フレーム続けて 1 フレームに 2 回 dispatch し、各 dispatch は acc[0] を読んで 1 足して書き、img の自分の列 (dispatch の番号) に 1 を書く。
-// 最後のフレームで acc と img を rt に描いて読み戻す。
-// 期待: acc は 6、img は 6 列とも 1。
-// 前の内容を捨てて別の領域に差し替える backend では acc が 6 に届かず、前の dispatch の列が消える。
+// Storage buffers and storage textures that compute reads and writes keep the contents written by the previous dispatch (neguse/lub#184).
+// For 3 consecutive frames, dispatches twice per frame; each dispatch reads acc[0], adds 1 and writes it back, and writes 1 to its own column of img (the dispatch number).
+// In the last frame, draws acc and img into rt and reads it back.
+// Expected: acc is 6, and all 6 columns of img are 1.
+// On a backend that discards the previous contents and swaps in another region, acc does not reach 6 and the columns of earlier dispatches disappear.
 using System;
 using System.Collections.Generic;
 using Lub;

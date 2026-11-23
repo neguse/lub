@@ -1,7 +1,7 @@
-// Set に Gfx.MainTex を渡しても Set の時点では何も確定せず、draw の時点で今までと同じように解決する。
-// MainTex は resource table に無い特別な handle なので、draw の binding としては error になる。
-// 同じ error を frame をまたいで毎回返し、Set し直せば同じ Bindings で描けることを見る。
-// XR の片眼の target も同じ特別な handle だが、XR の session が無いとここでは試せない。
+// Passing Gfx.MainTex to Set fixes nothing at Set time; it is resolved at draw time as before.
+// MainTex is a special handle that is not in the resource table, so it is an error as a draw binding.
+// Checks that the same error is returned every time across frames, and that the same Bindings can draw after Setting it again.
+// The single-eye XR target is the same kind of special handle, but it cannot be tested here without an XR session.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -46,7 +46,7 @@ struct FSIn { float4 pos : SV_Position; };
         Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
         if (phase < 3)
         {
-            // Set し直さずに frame をまたいで同じ error
+            // The same error across frames without Setting it again
             phase++;
             Check.Error("MainTex in kept Bindings, frame " + phase, Want);
             Gfx.Draw(6, kept, opts);

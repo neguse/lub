@@ -1,6 +1,8 @@
-/* tcs VM の runtime の関数 (CALLR)。TinySystem の面 (il-spec §13) の C 実装で、意味は tcs2c の runtime と
-   同じ。文字列化・数学関数・UTF-8 は runtime/fmt・runtime/math・runtime/utf8 の
-   同じ C を呼ぶ。引数と戻り値の種類の文字は tcsvm_internal.h の TvmIntrinsic を見よ。 */
+/* Runtime functions of the tcs VM (CALLR). A C implementation of the TinySystem
+   surface (il-spec §13), with the same semantics as the tcs2c runtime. String
+   conversion, math functions, and UTF-8 call the same C code in runtime/fmt,
+   runtime/math, and runtime/utf8. See TvmIntrinsic in tcsvm_internal.h for the
+   kind characters of arguments and return values. */
 #include "tcsvm_internal.h"
 
 #include "../../runtime/fmt/tcs_fmt.h"
@@ -31,9 +33,10 @@ static TvmStatus ret_str(TvmVm *vm, TvmSlot *rets, const char *data,
   if (!(p))                                                                    \
   return tvm_fault_msg(vm, "null reference" what)
 
-/* ---- 文字列化 ---- */
+/* ---- String conversion ---- */
 
-/* 書式 "G"、"E2" など (文字 + 9 桁までの精度) の精度。無ければ -1、形が違えば -2 */
+/* Precision of a format such as "G" or "E2" (a letter + a precision of up to 9
+ * digits). -1 if none, -2 if malformed */
 static int32_t format_precision(const TvmString *spec, const char *letters) {
   if (!spec || spec->len < 1 || spec->len > 10 ||
       !strchr(letters, STR_DATA(spec)[0]))
@@ -84,7 +87,8 @@ static TvmStatus fmt_int(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return st;
 }
 
-/* IL の string.format の変換 1 つ (emitter が書式の literal を分けて呼ぶ。runtime/fmt/printf.c) */
+/* One conversion of IL string.format (the emitter splits off the format
+ * literals and calls it; runtime/fmt/printf.c) */
 static TvmStatus printf_one(TvmVm *vm, TvmSlot *r, const TvmString *spec,
                             int kind, int32_t i, float f, const TvmString *s) {
   size_t slen = s ? (size_t)s->len : 0;
@@ -114,8 +118,9 @@ static TvmStatus fmt_s(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
                     S(a[0]) ? S(a[0]) : &empty);
 }
 
-/* enum の文字列化 (il-spec §13 の String.FormatEnum)。spec は `名前:値` を `,` で並べた列で、
-   Flags は先頭が `*` (値の符号なし昇順に並ぶ) */
+/* Enum to string (String.FormatEnum in il-spec §13). spec is a list of
+   `name:value` joined with `,`, and for Flags it starts with `*` (sorted by
+   value in unsigned ascending order) */
 static TvmStatus fmt_enum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *spec = S(a[1]);
   int32_t v = a[0].i;
@@ -123,7 +128,7 @@ static TvmStatus fmt_enum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   int flags = p < end && *p == '*';
   if (flags)
     p++;
-  /* member を読む */
+  /* Reads a member */
   const char *names[256];
   size_t lens[256];
   int32_t values[256];
@@ -218,7 +223,7 @@ static TvmStatus str_replace(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   if (old->len == 0)
     return tvm_fault_msg(vm, "oldValue cannot be empty");
   size_t nl = nw ? (size_t)nw->len : 0;
-  /* 長さを数えてから書く */
+  /* Counts the length, then writes */
   size_t total = 0;
   const char *p = STR_DATA(s), *end = p + s->len;
   for (;;) {
@@ -286,8 +291,8 @@ static TvmStatus str_empty(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* .NET の ordinal (UTF-16 の code unit の順)。UTF-8 の byte の順と違うのは U+10000 以上と U+E000-U+FFFF の間だけ
-   (tcs2c の runtime と同じ) */
+/* .NET ordinal (UTF-16 code unit order). It differs from UTF-8 byte order only
+   between U+10000 and above and U+E000-U+FFFF (same as the tcs2c runtime) */
 static int compare_utf16(const unsigned char *a, size_t la,
                          const unsigned char *b, size_t lb) {
   size_t n = la < lb ? la : lb;
@@ -317,7 +322,8 @@ static TvmStatus str_compare(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* Join の要素の文字列化 (連結と同じ: float は runtime/fmt、bool は True / False、null は空) */
+/* String conversion of Join elements (same as concatenation: float uses
+ * runtime/fmt, bool is True / False, null is empty) */
 static size_t elem_str(const TvmType *lt, const char *e, char *buf,
                        const char **out) {
   switch (lt->elem_kind) {
@@ -379,7 +385,8 @@ static bool list_push_str(TvmVm *vm, TvmList *l, const char *p, size_t n) {
   return true;
 }
 
-/* Split(sep): a[0] は結果を足す空の List<string> (呼ぶ側が作る)。sep が空なら元の文字列 1 つ */
+/* Split(sep): a[0] is the empty List<string> the results are added to (created
+ * by the caller). If sep is empty, the original string alone */
 static TvmStatus str_split(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)r;
   TvmList *l = (TvmList *)a[0].p;
@@ -399,7 +406,7 @@ static TvmStatus str_split(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   }
 }
 
-/* 引数なしの Split: 空白 (char.IsWhiteSpace) で分ける */
+/* Split without arguments: splits on whitespace (char.IsWhiteSpace) */
 static TvmStatus str_split_ws(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)r;
   TvmList *l = (TvmList *)a[0].p;
@@ -453,7 +460,8 @@ static TvmStatus str_bytelen(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* int.Parse / float.Parse / TryParse (Math.TryParseInt と同じ: 前後の空白、符号、10 進の数字) */
+/* int.Parse / float.Parse / TryParse (same as Math.TryParseInt: leading and
+ * trailing whitespace, sign, decimal digits) */
 static int parse_int(const TvmString *s, int32_t *out) {
   if (!s)
     return 0;
@@ -534,14 +542,15 @@ static TvmStatus io_write(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *s = S(a[0]);
   if (s) {
     fwrite(STR_DATA(s), 1, (size_t)s->len, stdout);
-    /* Console.Write も行を書き終えたら flush する (Console.WriteLine と同じく行ごとに出す) */
+    /* Console.Write also flushes once a line is complete (outputs line by line,
+     * like Console.WriteLine) */
     if (memchr(STR_DATA(s), '\n', (size_t)s->len))
       fflush(stdout);
   }
   return TVM_OK;
 }
 
-/* Environment.GetEnvironmentVariable: 無い名前は null */
+/* Environment.GetEnvironmentVariable: null for a missing name */
 static TvmStatus os_getenv(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *s = S(a[0]);
   NONNULL_ARG(s, "");
@@ -564,7 +573,7 @@ static TvmStatus os_getenv(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* ---- char / UTF-8 (TinySystem.Text、runtime/utf8) ---- */
+/* ---- char / UTF-8 (TinySystem.Text, runtime/utf8) ---- */
 
 static TvmStatus char_cast(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   if ((uint32_t)a[0].i > 255)
@@ -622,7 +631,8 @@ static TvmStatus rune_substring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return ret_str(vm, r, STR_DATA(s) + from, to - from);
 }
 
-/* foreach (var r in s.EnumerateRunes()): a = (s, 位置) → (次の位置, rune) */
+/* foreach (var r in s.EnumerateRunes()): a = (s, position) → (next position,
+ * rune) */
 static TvmStatus rune_next(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *s = S(a[0]);
   NONNULL_ARG(s, "");
@@ -634,7 +644,7 @@ static TvmStatus rune_next(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* Utf8Bytes は (s, o, Length) の値。At は byte (範囲外は fault) */
+/* Utf8Bytes is the value (s, o, Length). At is a byte (out of range faults) */
 static TvmStatus u8_at(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   if ((uint32_t)a[3].i >= (uint32_t)a[2].i)
     return tvm_fault_msg(vm, "index out of range");
@@ -671,12 +681,14 @@ static TvmStatus u8_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* ---- Math (il-spec §13: 超越関数は runtime/math、ほかは IEEE-754 で決まる) ---- */
+/* ---- Math (il-spec §13: transcendental functions use runtime/math, the rest
+ * are determined by IEEE-754) ---- */
 
 static TvmStatus m_min_f(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)vm;
   float x = a[0].f, y = a[1].f;
-  /* MathF.Min (IEEE 754:2019 minimum): NaN を伝播し、-0 を +0 より小さいとみなす */
+  /* MathF.Min (IEEE 754:2019 minimum): propagates NaN and treats -0 as less
+   * than +0 */
   r[0].f = x < y ? x : y < x ? y : (x != x || (x == 0 && signbit(x))) ? x : y;
   return TVM_OK;
 }
@@ -765,7 +777,7 @@ static TvmStatus m_atan2(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 
 static TvmStatus m_pow(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)vm;
-  /* 指数 2 は乗算 (tcs2c と同じ) */
+  /* Exponent 2 is a multiplication (same as tcs2c) */
   r[0].f = a[1].f == 2.0f ? a[0].f * a[0].f : tcs_powf(a[0].f, a[1].f);
   return TVM_OK;
 }
@@ -784,9 +796,12 @@ static TvmStatus m_logb(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* Math.Round: 中間は偶数へ。0 に丸めた結果は x の符号 (.NET と tcs2c と同じ)。
-   digits 付きは .NET の MathF.Round(float, int) と同じく、double に広げて 10^digits を掛けて丸め、10^digits で割って float に戻す。
-   46 以上の digits は、丸めの幅が float の最小の間隔 2^-149 の半分より狭く、どの float も変えない */
+/* Math.Round: midpoints go to even. A result rounded to 0 has the sign of x
+   (same as .NET and tcs2c). With digits, like .NET's MathF.Round(float, int),
+   it widens to double, multiplies by 10^digits, rounds, divides by 10^digits,
+   and converts back to float. digits of 46 or more make the rounding step
+   narrower than half of 2^-149, the smallest float spacing, so no float changes
+ */
 static float round_even(float x, int32_t digits, int has_digits) {
   if (has_digits && digits > 45)
     return x;
@@ -816,7 +831,7 @@ static TvmStatus m_round(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 }
 
 static TvmStatus m_round2(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
-  /* .NET と同じく digits に上限は無く、負だけを拒む */
+  /* As in .NET, digits has no upper limit; only negative values are rejected */
   if (a[1].i < 0)
     return tvm_fault_msg(vm,
                          "Rounding digits must be greater than or equal to 0.");
@@ -855,7 +870,7 @@ static TvmStatus list_copy(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return list_getrange(vm, args, r);
 }
 
-/* IndexOf (EqualityComparer<T>.Default と同じ等価) */
+/* IndexOf (same equality as EqualityComparer<T>.Default) */
 static int32_t index_of(TvmVm *vm, const TvmList *l, const void *item) {
   for (int32_t i = 0; i < l->count; i++)
     if (tvm_value_eq(vm, TVM_TYPE(l)->elem_kind, TVM_TYPE(l)->elem_type,
@@ -931,7 +946,9 @@ static TvmStatus list_findindex(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* RemoveAll: .NET と同じく述語は各要素に 1 回ずつ先頭から呼び、残す要素の順を保つ。長さは毎回読む */
+/* RemoveAll: as in .NET, calls the predicate once per element from the start
+ * and keeps the order of the retained elements. The length is read every time
+ */
 static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   TvmList *l = (TvmList *)a[0].p;
   NONNULL_ARG(l && a[1].p, "");
@@ -978,7 +995,8 @@ static TvmStatus list_removeall(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   }
   int32_t removed = l->count - free_at;
   if (removed < 0) {
-    /* 述語が List を縮めた: tcs2c と同じく数だけを返す (.NET は数えなおす。VM と tcs2c は詰めない) */
+    /* The predicate shrank the List: as in tcs2c, returns only the count (.NET
+     * recounts; the VM and tcs2c do not compact) */
     r[0].i = removed;
     return TVM_OK;
   }
@@ -1004,7 +1022,8 @@ static TvmStatus list_reverse(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* 比較なしの Sort (.NET の既定の順): int / float (NaN を先頭に寄せてから残りを並べる)、string (ordinal) */
+/* Sort without a comparison (.NET default order): int / float (moves NaN to the
+ * front, then sorts the rest), string (ordinal) */
 static int cmp_i32(void *ctx, const void *a, const void *b, int *stop) {
   (void)ctx;
   (void)stop;
@@ -1067,7 +1086,8 @@ static TvmStatus list_sort0(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 
 /* ---- object / Dictionary / char ---- */
 
-/* object の文字列化: box は中の値 (float は f32 の規則)、string はそのまま、null は空文字列 (il-spec §13) */
+/* Object to string: box gives the contained value (float uses the f32 rules),
+ * string as is, null is the empty string (il-spec §13) */
 static TvmStatus obj_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmObject *o = (const TvmObject *)a[0].p;
   char buf[32];
@@ -1095,7 +1115,8 @@ static TvmStatus obj_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   }
 }
 
-/* foreach (Dictionary) の版: 始めに読み、反復ごとに変わっていないことを確かめる (列挙の途中の追加は fault) */
+/* Version for foreach (Dictionary): read at the start and checked to be
+ * unchanged on each iteration (additions during enumeration fault) */
 static TvmStatus dict_version(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmDict *d = (const TvmDict *)a[0].p;
   NONNULL_ARG(d, "");
@@ -1131,7 +1152,8 @@ static TvmStatus dict_clear(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
     r[0].i = (expr);                                                           \
     return TVM_OK;                                                             \
   }
-/* char は 1 byte の code unit (tcs2c の runtime の Char と同じ ASCII の判定) */
+/* char is a 1-byte code unit (same ASCII checks as Char in the tcs2c runtime)
+ */
 CHAR_PRED(ch_digit, c >= 48 && c <= 57)
 CHAR_PRED(ch_upper, c >= 65 && c <= 90)
 CHAR_PRED(ch_lower, c >= 97 && c <= 122)
@@ -1145,7 +1167,8 @@ CHAR_PRED(ch_tolower, c >= 65 && c <= 90 ? c + 32 : c)
 static TvmStatus str_joinenum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmList *l = (const TvmList *)a[1].p;
   NONNULL_ARG(l, "");
-  /* 要素ごとに FormatEnum した名前を sep でつなぐ。途中の string は pin で GC から守る */
+  /* Joins the FormatEnum name of each element with sep. Intermediate strings
+   * are protected from the GC with pin */
   const TvmString *sep = S(a[0]);
   TvmString *acc = tvm_str_new(vm, NULL, 0);
   if (!acc)
@@ -1182,12 +1205,14 @@ static TvmStatus str_joinenum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return st;
 }
 
-/* ---- Random (il-spec §13): xoshiro256** (整数は 32 bit の演算、float は上位 24 bit)。
-   tcs2c の tcs_rand_* と同じ手順。instance は 8 個の int の葉 (64 bit × 4) を持つ object ---- */
+/* ---- Random (il-spec §13): xoshiro256** (integers use 32-bit arithmetic,
+   floats use the upper 24 bits). Same steps as tcs_rand_* in tcs2c. An instance
+   is an object with 8 int leaves (64 bit × 4) ---- */
 
 #include <time.h>
 
-/* 状態は payload の 8 byte 目から (型記述子の pad の後。emitter の RandomT) */
+/* The state starts at byte 8 of the payload (after the pad of the type
+ * descriptor; RandomT in the emitter) */
 static uint64_t *rand_state(void *o) { return (uint64_t *)((char *)o + 8); }
 
 static uint64_t rotl64(uint64_t x, int n) { return (x << n) | (x >> (64 - n)); }
@@ -1252,7 +1277,8 @@ static TvmStatus random_autoseed(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* Next(min, max): 上限は排他。空の範囲 (max == min) は .NET と同じく min */
+/* Next(min, max): the upper bound is exclusive. An empty range (max == min)
+ * gives min, as in .NET */
 static TvmStatus random_next(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   NONNULL_ARG(a[0].p, "");
   int32_t min = a[1].i, max = a[2].i;
@@ -1265,7 +1291,7 @@ static TvmStatus random_range(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return rand_range_(vm, rand_state(a[0].p), a[1].i, a[2].i, &r[0].i);
 }
 
-/* 上位 24 bit から [0, 1) の float */
+/* float in [0, 1) from the upper 24 bits */
 static TvmStatus random_float(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   NONNULL_ARG(a[0].p, "");
   uint64_t x = rand_next(rand_state(a[0].p));
@@ -1277,7 +1303,8 @@ static TvmStatus random_float(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* ---- HashSet<T> (Dictionary<T, bool> の上。.NET の HashSet と同じく null を入れられ、列挙は消した場所を使い回す順) ---- */
+/* ---- HashSet<T> (on top of Dictionary<T, bool>. Like .NET's HashSet, it
+ * accepts null, and the enumeration order reuses removed slots) ---- */
 
 static TvmStatus set_add(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   TvmDict *d = (TvmDict *)a[0].p;
@@ -1306,7 +1333,7 @@ static TvmStatus set_remove(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* ---- 表 ---- */
+/* ---- Table ---- */
 
 const TvmIntrinsic tvm_intrinsics[] = {
     {"string.formatfloat", "fs", "s", fmt_float},

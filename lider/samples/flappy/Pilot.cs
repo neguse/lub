@@ -1,15 +1,15 @@
-// 手で跳ばない間の代わりの操作。次のパイプの隙間の中ほどより下へ落ちかけたら跳ぶ。
+// Stand-in control while nobody jumps by hand. Jumps when about to fall below the middle of the next pipe's gap.
 public class Pilot
 {
-    // 手で最後に跳んでから、代わりに跳びだすまでの秒数
+    // Seconds after the last manual jump before it starts jumping instead
     const float Idle = 3.0f;
 
-    // 隙間の中ほどから、これだけ下で跳ぶ
+    // Jumps this far below the middle of the gap
     const float Below = 0.3f;
 
     public float SinceManual = Idle;
 
-    // 代わりに操作している間は、始めるのとやり直すのも代わりにする
+    // While it is in control, it also starts and restarts the game in the player's place
     public bool InCharge()
     {
         return SinceManual >= Idle;

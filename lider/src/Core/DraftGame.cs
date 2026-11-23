@@ -1,7 +1,7 @@
-// 編集中の版のゲーム: 開いている file の保存していない本文で変換し (GameBuild の draft)、保存した版 (GameApp) と並べて動かす。
-// 本文は、打つのが Settle 秒止まってから変換に渡す。
-// 開いた時と、作り直された時 (最初の module と restart) に、保存した版の状態を写す (App.Save と App.Load)。
-// 保存した版を止めている間は止める。値の木と実行の記録は保存した版だけを見る。
+// The game in its edited version: compiled from the unsaved text of open files (GameBuild's draft) and run next to the saved version (GameApp).
+// The text is passed to the compile after typing has paused for Settle seconds.
+// When opened and when recreated (the first module and restart), copies the state of the saved version (App.Save and App.Load).
+// Paused while the saved version is paused. The value tree and the execution record look only at the saved version.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -10,22 +10,22 @@ namespace LiderCore;
 
 public static class DraftGame
 {
-    // 打つのが止まってから、本文を変換に渡すまでの秒
+    // Seconds after typing stops before the text is passed to the compile
     public const float Settle = 0.3f;
-    // 状態を写す控えの番号 (AppTimeline が使う番号と重ならない所)
+    // Slot number of the saved copy used to copy state (in a range that does not overlap the numbers AppTimeline uses)
     const int StateSlot = 1000000;
 
     public static GameBuild? Build;
     public static AppRef? Ref;
     public static TextureRef? Target;
     public static readonly InputMap Map = new InputMap();
-    // 状態を写せなかったわけ (写せたら空)
+    // Why the state could not be copied (empty if it was copied)
     public static string Notice = "";
-    // 次の Step の前に、保存した版の状態を写す
+    // Copies the saved version's state before the next Step
     public static bool CopyPending;
-    // 状態を写した回数
+    // Number of times the state was copied
     public static int Copies;
-    // 変換に渡した本文と、本文ごとの最後に変わった時からの秒
+    // The text passed to the compile, and per text, the seconds since it last changed
     static readonly Dictionary<string, string> settled = new Dictionary<string, string>();
     static readonly Dictionary<string, string> typing = new Dictionary<string, string>();
     static readonly Dictionary<string, float> quiet = new Dictionary<string, float>();
@@ -34,7 +34,7 @@ public static class DraftGame
 
     public static bool Shown => Build != null;
 
-    // 並べたウィンドウの札 (変換できなければ、そのことも書く)
+    // Label of the side-by-side window (also says so if the compile failed)
     public static string Label()
     {
         if (Build == null || Build.LastKind != "error")
@@ -42,7 +42,7 @@ public static class DraftGame
         return Build.Revision > 0 ? "編集中 (変換エラー: 最後に通った版)" : "編集中 (変換エラー)";
     }
 
-    // 編集中の版を開く (保存した版と同じゲーム)
+    // Opens the edited version (the same game as the saved version)
     public static void Open(string project)
     {
         Build = new GameBuild(project, "draft");
@@ -53,7 +53,7 @@ public static class DraftGame
         Notice = "";
     }
 
-    // 閉じる (宣言をやめるので、app は次の frame に閉じる)
+    // Closes it (it stops declaring, so the app closes on the next frame)
     public static void Close()
     {
         Build = null;
@@ -62,9 +62,9 @@ public static class DraftGame
         Notice = "";
     }
 
-    // 1 frame 進める。docs は開いている file (保存していない本文を使う)。
-    // paused なら進めず (保存した版を止めている)、w と h と keyboard と mouse は GameApp.Step と同じ
-    // Space に置いているか (GameApp.InSpace と同じ)
+    // Advances 1 frame. docs are the open files (their unsaved text is used).
+    // Does not advance if paused (the saved version is paused); w, h, keyboard and mouse are the same as GameApp.Step
+    // Whether it is placed in Space (same as GameApp.InSpace)
     public static bool InSpace;
 
     public static void Step(float dt, bool keyboard, bool mouse, bool paused, int w, int h, Dictionary<string, Document> docs)
@@ -83,9 +83,9 @@ public static class DraftGame
         Target = Gfx.UseTexture("lider_draft", w, h, Gfx.PixelFormat.Rgba8, null, GameApp.SizeVersion(w, h), new TextureOpts { Target = true });
         if (Build.ModulePath == "" || Target == null)
             return;
-        // module の名前 (<Entry>.draft.tcsb) は entry と違うので、entry を渡す
+        // The module name (<Entry>.draft.tcsb) differs from the entry, so the entry is passed
         Ref = App.Use("lider_draft_app", Build.ModulePath, Build.Entry);
-        // 写すのは、保存した版がこの frame を進めた後。写した版はもう同じ frame にいるので、この frame は進めない
+        // The copy happens after the saved version has advanced this frame. The copied version is already at the same frame, so it does not advance this frame
         if (CopyPending && GameApp.Ref != null && running)
         {
             CopyState();
@@ -98,7 +98,7 @@ public static class DraftGame
         input.Mouse = mouse;
         GameApp.ShowViewer(input, InSpace, Target);
         App.Step(Ref, Target, dt, input);
-        // 最初に動いた時と、作り直された時に、保存した版の状態を写す
+        // Copies the saved version's state when it first runs and when it is recreated
         var status = App.Status(Ref);
         if ((status.Running && !running) || status.Restarts != seenRestarts)
             CopyPending = true;
@@ -112,7 +112,7 @@ public static class DraftGame
             App.SendEvent(Ref, Map.Event(e));
     }
 
-    // 保存した版の今の状態を、編集中の版に写す。写せなければ Notice にわけを入れる
+    // Copies the saved version's current state into the edited version. If it cannot, puts the reason in Notice
     static void CopyState()
     {
         CopyPending = false;
@@ -131,7 +131,7 @@ public static class DraftGame
         App.Drop(StateSlot);
     }
 
-    // 保存していない本文のうち、打つのが Settle 秒止まった物を settled に入れる (絶対 path)。保存した file は settled から外す
+    // Puts the unsaved texts whose typing has paused for Settle seconds into settled (absolute paths). Saved files are removed from settled
     static void Settled(float dt, Dictionary<string, Document> docs)
     {
         var dirty = new List<string>();

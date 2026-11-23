@@ -1,12 +1,12 @@
-// 実装ライブラリ lubx の Rect。
-// public フィールド + 位置引数コンストラクタの素直な class。
+// Rect of the implementation library lubx.
+// A plain class with public fields + a positional constructor.
 
 using Lub;
 
 namespace Lubx;
 
-/// <summary>矩形 (px、左上原点)。
-/// SpriteBatch の src 指定 (アトラスの中) と Renderer3d.Viewport (画面の中) に使う。
+/// <summary>Rectangle (px, top-left origin).
+/// Used for the SpriteBatch src (inside the atlas) and Renderer3d.Viewport (inside the screen).
 /// </summary>
 public readonly struct Rect
 {

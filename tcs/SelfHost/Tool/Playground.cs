@@ -3,16 +3,16 @@ using TcsVm;
 
 namespace TcsSelf;
 
-// playground (web の editor) のための tcs VM の増分 session の入口 (VmSession。編集ごとに全体を compile し、直前の build からの差分を作る)。
-// host は要求を TcsHost の引数に並べて Call を呼び、応答を TcsHost.WriteOut で受け取る:
-//   vmopen <entry> <参照の数> [<path> <text>]... [<path> <text>]...  → JSON {ok, kind:"module", module, errors, revision}
+// Entry point of the incremental tcs VM session for the playground (the web editor) (VmSession; compiles everything on each edit and produces the diff from the previous build).
+// The host puts a request in the TcsHost arguments, calls Call, and receives the response through TcsHost.WriteOut:
+//   vmopen <entry> <ref count> [<path> <text>]... [<path> <text>]...  → JSON {ok, kind:"module", module, errors, revision}
 //   vmupdate <path> <text>                                            → JSON {ok, kind, module, batch, restartReasons, errors, revision}
-//   vmmodule                                                          → 最後に通った build の module (base64)
-//   vmconfig <export の数> [<C.M か C.*>]... <trace の数> [<path の先頭>]...  → 次の vmopen が entry の他に作る関数と --trace の path ("ok")
-//   vmremove <path>                                                   → vmupdate と同じ (file を session から外す)
-// kind は module (最初の build)、batch (batch を tvm_apply_batch で当てる)、restart (module を読み直す)、error (最後の build のまま)。
-// module と batch は base64。batch の応答は module を持たない (要るときに vmmodule で受け取る)。entry class の static method を全部 export する
-// 同梱の library は TcsHost.ToolFile で読む
+//   vmmodule                                                          → The module of the last build that passed (base64)
+//   vmconfig <export count> [<C.M or C.*>]... <trace count> [<path prefix>]...  → Functions the next vmopen creates besides entry, and the --trace paths ("ok")
+//   vmremove <path>                                                   → Same as vmupdate (removes the file from the session)
+// kind is module (first build), batch (apply the batch with tvm_apply_batch), restart (reload the module), or error (stay on the last build).
+// module and batch are base64. A batch response has no module (get it with vmmodule when needed). All static methods of the entry class are exported
+// Bundled libraries are read with TcsHost.ToolFile
 public static class Playground
 {
     public static void Call()

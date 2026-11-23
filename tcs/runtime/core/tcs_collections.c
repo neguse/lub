@@ -99,7 +99,8 @@ static void tcs_list_remove_at(TcsList *list, int32_t index) {
          list->element_size);
 }
 
-/* RemoveAll: 前へ詰めた後の末尾を落とす (tcs_list_remove_at と同じく 0 で消す) */
+/* RemoveAll: drops the tail after compacting toward the front (clears with 0,
+ * like tcs_list_remove_at) */
 static void tcs_list_truncate(TcsList *list, size_t length) {
   memset((unsigned char *)list->data + length * list->element_size, 0,
          (list->length - length) * list->element_size);
@@ -165,7 +166,8 @@ static void tcs_queue_enqueue(TcsQueue *queue, const void *value,
   TcsList *items;
   tcs_nonnull(queue);
   items = queue->items;
-  /* buffer が埋まったとき、先頭の空きが半分以上なら詰める (償却 O(1)) */
+  /* When the buffer is full, compact if at least half of it is free space at
+   * the front (amortized O(1)) */
   if (items->length == items->capacity && queue->head != 0 &&
       queue->head * 2 >= items->length) {
     size_t rest = items->length - queue->head;
@@ -232,7 +234,7 @@ static TcsDict *tcs_dict_new(int32_t key_is_string, size_t value_size,
   return dict;
 }
 
-/* 外部 data class の先頭 (type_id の直後が host handle) */
+/* Head of an external data class (the host handle follows type_id) */
 typedef struct TcsHandleObject {
   uint32_t type_id;
   uint64_t host_value;
@@ -297,7 +299,7 @@ static void tcs_dict_grow(TcsDict *dict) {
       TcsDictNode *next = node->next;
       size_t bucket = tcs_dict_hash(dict, node->key_i, node->key_s) % count;
       node->next = buckets[bucket];
-      /* 旧 node の next が若い node を指しうる */
+      /* The next of an old node can point to a young node */
       tcs_wb(node);
       buckets[bucket] = node;
       node = next;
@@ -308,7 +310,7 @@ static void tcs_dict_grow(TcsDict *dict) {
   tcs_wb(dict);
 }
 
-/* order が埋まったら穴を詰めて (並びは保つ) 広げる */
+/* When order is full, compact the holes (keeping the order) and grow */
 static void tcs_dict_order_grow(TcsDict *dict) {
   size_t cap = (size_t)dict->count * 2 > 8 ? (size_t)dict->count * 2 : 8;
   size_t i;
@@ -332,7 +334,8 @@ static void tcs_dict_order_grow(TcsDict *dict) {
 static void *tcs_dict_put(TcsDict *dict, int32_t key_i, TcsString *key_s) {
   TcsDictNode *node = tcs_dict_find(dict, key_i, key_s);
   size_t bucket;
-  /* 返した value slot へ呼び出し側が書く: 既存 node は owner として登録 */
+  /* The caller writes to the returned value slot: an existing node is
+   * registered as owner */
   if (node != NULL) {
     tcs_wb(node);
     return node->value;
@@ -374,9 +377,10 @@ static bool tcs_dict_tryget(TcsDict *dict, int32_t key_i, TcsString *key_s,
   return node != NULL;
 }
 
-/* 繋ぎ替えにバリアは要らない: put は若い node を chain の先頭に足し、grow は
-   全 node を dirty にする。dirty でない旧 node の後ろは旧 node だけなので、
-   旧→若の参照は増えない (put / grow を変えるときはこの前提も保つ) */
+/* No barrier is needed for relinking: put adds young nodes at the head of the
+   chain, and grow marks all nodes dirty. Behind a non-dirty old node there are
+   only old nodes, so old→young references do not increase (keep this premise
+   when changing put / grow) */
 static bool tcs_dict_remove(TcsDict *dict, int32_t key_i, TcsString *key_s) {
   TcsDictNode **link;
   tcs_nonnull(dict);
@@ -396,8 +400,8 @@ static bool tcs_dict_remove(TcsDict *dict, int32_t key_i, TcsString *key_s) {
   return false;
 }
 
-/* node の copy (key と value)。closure が捕捉する foreach の
-   KeyValuePair を、元の Dictionary の変更から切り離す */
+/* Copy of a node (key and value). Detaches the foreach
+   KeyValuePair captured by a closure from changes to the original Dictionary */
 static TcsDictNode *tcs_dict_node_copy(TcsDict *dict, TcsDictNode *node) {
   TcsDictNode *copy =
       tcs_gc_alloc(TCS_KIND_DICT_NODE, TCS_GC_HEADER(dict)->layout,

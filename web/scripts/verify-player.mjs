@@ -1,20 +1,20 @@
-// web の player の page (player.html) の検査。headless の chromium (WebGPU は swiftshader) で開く。
+// Check of the web player page (player.html). It is opened in headless chromium (WebGPU via swiftshader).
 //
-//   A9. tests/cs の test を全部、web の player で動かす。
+//   A9. Runs all tests/cs tests in the web player.
 //
-// test の一覧は scripts/cs-tests.sh の cs_all_tests で、web で走らせない test は同じ file の cs_web_skip_tests に理由と一緒に書く。
-// 合否は native と同じく終了コードで見る。
-// page は終了コードを返さないので、runtime が env LUB_EXIT_FILE の file (MEMFS) に書いた値を読む。
-// 終了コードが 0 でも、WebGPU の validation error か page の error が出たら失敗にする。
+// The test list is cs_all_tests in scripts/cs-tests.sh; tests not run on the web are listed with a reason in cs_web_skip_tests in the same file.
+// Pass/fail is judged by the exit code, as on native.
+// The page does not return an exit code, so the value the runtime wrote to the file in env LUB_EXIT_FILE (MEMFS) is read.
+// Even if the exit code is 0, a WebGPU validation error or a page error counts as a failure.
 //
-// 使い方 (dev server か preview を動かしておく。先に scripts/cs-tests.sh の cs_tests_vm_build で tests/cs/.lub/all.tcsb を作る):
+// Usage (keep the dev server or preview running; first build tests/cs/.lub/all.tcsb with cs_tests_vm_build in scripts/cs-tests.sh):
 //   cd web && npm run dev
 //   cd web && LUB_URL=http://localhost:5173/ npm run verify [-- Test...]
-// test の名前を渡すと、その test だけを走らせる。
-// A9_JOBS は同時に開く page の数 (既定は CPU の数)。
-// A9_SHARD=k/n は test を n 個に分けた k 番目だけを走らせる (既定 1/1。CI は job に分けて並べる)。
+// Passing a test name runs only that test.
+// A9_JOBS is the number of pages open at once (default: the number of CPUs).
+// A9_SHARD=k/n runs only the k-th of n parts of the tests (default 1/1; CI splits them into parallel jobs).
 //
-// 失敗があれば終了コード 1。
+// Exits with code 1 on any failure.
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -28,7 +28,7 @@ const JOBS = Number(process.env.A9_JOBS || os.availableParallelism());
 const TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000);
 const REPO = path.resolve(import.meta.dirname, "..", "..");
 
-// scripts/cs-tests.sh の配列 (無い名前は bash の set -u が失敗にする)
+// Arrays in scripts/cs-tests.sh (bash set -u makes a missing name fail)
 function csTests(name) {
   return execFileSync(
     "bash",
@@ -46,14 +46,14 @@ const VISUAL = new Set(csTests("cs_visual_tests"));
 const SKIP = new Set(csTests("cs_web_skip_tests"));
 const TEST_ARGS = csTests("cs_test_args");
 
-// TestGamepad の pad。
-// standard mapping の pad を 1 つ navigator.getGamepads が返す (SDL は初期化のときに既にある pad を拾う)。
-// 最初に読まれてから 500ms 後に、左 stick を左に倒し、South と右 trigger と D-pad の上を押す。
-// SDL は接続したときの値から変わった入力だけを送るので、接続した後で変える。
-// SDL は timestamp が変わったときだけ状態を読み直すので、timestamp は読むたびに進める。
+// Pad for TestGamepad.
+// navigator.getGamepads returns one pad with the standard mapping (SDL picks up pads that already exist at init).
+// 500ms after it is first read, tilts the left stick to the left and presses South, the right trigger, and D-pad up.
+// SDL sends only inputs that changed from the values at connection, so they are changed after connecting.
+// SDL rereads the state only when the timestamp changes, so the timestamp advances on every read.
 function mockGamepad() {
   let start = 0;
-  // 実際の Gamepad API と同じく、getGamepads の 1 回の結果の中では値を変えない。
+  // As with the real Gamepad API, values do not change within a single getGamepads result.
   navigator.getGamepads = () => {
     if (!start) start = performance.now();
     const moved = performance.now() - start > 500;
@@ -76,9 +76,9 @@ function mockGamepad() {
     ];
   };
 }
-// TestKeyMods の key。
-// CapsLock を Ctrl にした環境のように、key は "Control" で code は "CapsLock" の keydown を流し、続けて Ctrl を押したままの "s" を押して離す。
-// player が window に listener を立てるより前に流した分は届かないので、test が終わるまで毎 frame 流す。
+// Keys for TestKeyMods.
+// As in an environment where CapsLock is mapped to Ctrl, sends a keydown with key "Control" and code "CapsLock", then presses and releases "s" while holding Ctrl.
+// Events sent before the player sets up its listener on window are not delivered, so they are sent every frame until the test ends.
 function mockRemappedCtrl() {
   const send = (type, key, code, ctrl) =>
     window.dispatchEvent(
@@ -104,9 +104,9 @@ function blockIndexedDb() {
     throw new Error("IndexedDB is blocked");
   };
 }
-// TestXrCapture の XR セッション。
-// Emscripten の Module に最初から lubXR を置き、player の起動から XR の経路を通す。
-// 片眼は 32x64 で、page が決める 64x64 の canvas は両眼を並べた大きさ。
+// XR session for TestXrCapture.
+// Puts lubXR on the Emscripten Module from the start, so the XR path is used from player startup.
+// One eye is 32x64, and the 64x64 canvas the page sets is both eyes side by side.
 function mockXr() {
   const transform = {
     position: { x: 0, y: 0, z: 0 },
@@ -136,32 +136,32 @@ function mockXr() {
   });
 }
 
-// capture の PNG が MEMFS に書かれたこと
+// The capture PNG was written to MEMFS
 const CAPTURE = "/capture.png";
 const captured = (r) =>
   r.captureBytes > 0 ? null : `${CAPTURE} was not captured`;
-// 使い終えた GPUBuffer / GPUTexture を destroy で消すこと (release だけで JS の GC 任せなら失敗)
+// Used GPUBuffer / GPUTexture objects are freed with destroy (fails if they are only released and left to the JS GC)
 const destroys = (r) =>
   r.destroyed.buffer > 0 && r.destroyed.texture > 0
     ? null
     : `no destroy: ${JSON.stringify(r.destroyed)}`;
 const FIXED_DT = ["--fixed-dt", "0.0166666666666667"];
 
-// player の page は、MainTex を小さく描くように大きさを決めて開く (swiftshader は描く画素の数だけ時間がかかる)。
-// page が決めた大きさは Gfx.Size に出ないので、Gfx.Size から画素を決める test は大きさを決めずに開く (ゲームの window の大きさで描く)。
+// The player page is opened with a size set so that MainTex is drawn small (swiftshader takes time proportional to the number of pixels drawn).
+// The size the page sets does not show in Gfx.Size, so tests that derive pixels from Gfx.Size are opened without a size (drawn at the game window size).
 const PAGE = "player.html?w=64&h=64";
 const FOLLOW_WINDOW = "player.html";
 
-// 既定と違う run を持つ test。
-// 値は 1 つの context で順に走らせる run の並びで、run は label、argv (cs_test_args の後に足す起動の引数)、env (runtime の環境変数)、page (開く player の page)、init (page の script より先に入れる script)、check (結果から失敗の理由か null を返す)。
-// ここに無い test は cs_test_args だけで 1 回走らせる。
-// 描画を golden で見る test (cs_visual_tests) は native の golden と同じ frame を capture して終わり、絵は native の golden が見る。
+// Tests with runs other than the default.
+// The value is the list of runs executed in order in one context; a run has label, argv (startup arguments added after cs_test_args), env (runtime environment variables), page (the player page to open), init (a script inserted before the page's script), and check (returns a failure reason from the result, or null).
+// Tests not listed here run once with only cs_test_args.
+// Tests that check rendering against golden images (cs_visual_tests) capture the same frame as the native golden and end; the image is checked by the native golden.
 const RUNS = {
   TestFixedDt: ["0.0125", "0.0166666666666667"].map((dt) => ({
     label: dt,
     argv: ["--fixed-dt", dt],
   })),
-  // capture の PNG は test が OnQuit で確かめる (同じ path を env でも渡す)
+  // The test checks the capture PNG in OnQuit (the same path is also passed via env)
   TestReadbackCapture: ["0", "1"].map((noLoad) => ({
     label: `no-load=${noLoad}`,
     argv: ["--capture", "/readback.png", "--capture-frame", "5", ...FIXED_DT],
@@ -176,7 +176,7 @@ const RUNS = {
   })),
   TestTextureRecordingOrder: [{ check: destroys }],
   TestBufferRecordingOrder: [{ check: destroys }],
-  // pass の GPU の時間を timestamp-query で測ること (CI の Chromium の swiftshader は timestamp-query を持つ)
+  // The pass GPU time is measured with timestamp-query (the swiftshader of Chromium in CI has timestamp-query)
   TestGpuPassTime: [
     {
       check: (r) =>
@@ -190,7 +190,7 @@ const RUNS = {
   TestWindowSize: [{ page: FOLLOW_WINDOW }],
   TestGamepad: [{ init: mockGamepad }],
   TestKeyMods: [{ init: mockRemappedCtrl }],
-  // 保存する page と読む page を順に開き、page をまたいで save/ の file が残ることを見る (IndexedDB は同じ context の page で共有)
+  // Opens a saving page and a reading page in order and checks that files in save/ persist across pages (IndexedDB is shared by pages in the same context)
   TestSaveDir: [
     { label: "write", env: { LUB_SAVE_TEST: "write" } },
     { label: "read", env: { LUB_SAVE_TEST: "read" } },
@@ -237,20 +237,20 @@ for (const name of ALL) {
   if (index++ % SHARD_N !== SHARD_K - 1) continue;
   jobs.push({ name, runs: RUNS[name] ?? [{}] });
 }
-// run の多い test から始める (1 つの test の run は順に走るので、後に回すと最後に残る)
+// Start with the tests that have the most runs (the runs of one test run in order, so a test started late would be left at the end)
 jobs.sort((a, b) => b.runs.length - a.runs.length);
-// 判定の経路が通ること: 起動に失敗した player は終了コード 1 を書く (0 を読んで通さない)
+// The judging path works: a player that fails to start writes exit code 1 (so a 0 is not read as a pass)
 if (only.length === 0 && SHARD_K === 1)
   jobs.push({
     name: "TestMissingEntry",
     runs: [{ entry: "TestMissingEntry", exitCode: 1 }],
   });
 
-// test が読むファイル。
-// tests/cs は全部で 1 つの program なので、どの test にも tests/cs の C# の全部が読み得るファイルを渡す。
-// path は C# の文字列リテラル (const の値も含む) から拾い、実行中に作るファイル (tests/cs/.lub/...) のように無いものは渡さない。
-// 中身は bytes のまま渡す (text のファイルも MEMFS には同じ内容が入る)。
-// Io.LoadText / LoadFloats / LoadBytes は cwd (/) 相対の同じパス (tests/cs/data/...) で読む (player/main.ts の fsPath)。
+// Files the tests read.
+// tests/cs is all one program, so every test is given every file that any of the C# in tests/cs may read.
+// Paths are picked from C# string literals (including const values), and files that do not exist, such as those created at run time (tests/cs/.lub/...), are not passed.
+// Contents are passed as bytes (text files also end up with the same contents in MEMFS).
+// Io.LoadText / LoadBytes read them by the same paths relative to cwd (/) (tests/cs/data/...) (fsPath in player/main.ts).
 function csTestFiles() {
   const dir = path.join(REPO, "tests", "cs");
   const files = {};
@@ -266,7 +266,7 @@ function csTestFiles() {
         files["/" + m[1]] = new Uint8Array(fs.readFileSync(abs));
     }
   }
-  // bytecode は tests/cs 全体で 1 つで、test の entry は --entry で選ぶ
+  // There is one bytecode for all of tests/cs, and the test entry is chosen with --entry
   files["/tests/cs/.lub/all.tcsb"] = fs
     .readFileSync(path.join(dir, ".lub", "all.tcsb"))
     .toString("base64");
@@ -275,9 +275,9 @@ function csTestFiles() {
 const FILES = csTestFiles();
 const EXIT_FILE = "/tmp/lub-exit";
 
-// どの page にも先に入れる script。
-// wasm の print / printErr (player/main.ts の relayLog) は top-level の page では自分に postMessage されるので、受けて溜める。
-// WebGPU の device を受け取って validation error を溜め、GPUBuffer / GPUTexture の destroy を数える。
+// Script inserted first into every page.
+// wasm print / printErr (relayLog in player/main.ts) is postMessaged to itself in a top-level page, so it is received and buffered.
+// Receives the WebGPU device, buffers validation errors, and counts GPUBuffer / GPUTexture destroys.
 function instrument() {
   window.__lub = {
     log: [],
@@ -309,7 +309,7 @@ function instrument() {
   }
 }
 
-// 1 回の run: page を開き、setFiles で起動し、終了コードの file が書かれるか page が落ちるまで待つ。
+// One run: opens the page, starts it with setFiles, and waits until the exit code file is written or the page crashes.
 async function runOnce(ctx, name, run) {
   const p = await ctx.newPage();
   const pageErrors = [];
@@ -353,7 +353,7 @@ async function runOnce(ctx, name, run) {
       .then((h) => h.jsonValue())
       .catch(() => null);
     let code = await Promise.race([exited, crashed.then(() => null)]);
-    // page の error で待つのをやめても、終了コードがもう書かれていれば、それで判定する
+    // Even if waiting stops because of a page error, the exit code is used for the verdict if it is already written
     if (code === null)
       code = await p.evaluate((file) => {
         try {
@@ -362,8 +362,8 @@ async function runOnce(ctx, name, run) {
           return null;
         }
       }, EXIT_FILE);
-    // validation error は GPU の process から非同期に届く。
-    // それまでに出した command の error は、queue の仕事の完了より先に届く。
+    // Validation errors arrive asynchronously from the GPU process.
+    // Errors of commands issued before that point arrive before the queue's work completes.
     const r = await p.evaluate(async (capture) => {
       await window.__lub.device?.queue.onSubmittedWorkDone();
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -417,7 +417,7 @@ async function runJob(ctx, { name, runs }) {
 const t0 = Date.now();
 const queue = [...jobs];
 const browser = await launchChromium({ headless: HEAD, webgpu: true });
-// page は 1 つの context で開き、HTTP の cache (slang と player の wasm) を共有する
+// Pages are opened in one context and share the HTTP cache (slang and the player wasm)
 const ctx = await browser.newContext();
 await Promise.all(
   Array.from({ length: Math.min(JOBS, queue.length) }, async () => {

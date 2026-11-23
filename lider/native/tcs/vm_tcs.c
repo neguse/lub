@@ -1,9 +1,14 @@
-/* tcs の compiler (src/Tcs.ref.cs の関数) を、tcs VM の player の native の拡張として出す。
- * tcs (tcs/SelfHost の Compiler、CBackend、VmBackend、Tool) を tcs2c で C にした tcs.c を include し、tcs の host の関数 (tcs/SelfHost/Tool/TcsHost.cs) を実装する。
- * 要求は tcs/SelfHost/Tool/Sessions.cs の形で、Tcs.Arg で引数を並べてから Tcs.Call で処理し、応答の行を受け取る。
- * file の読み書きは C の標準の関数で、web (emscripten) では仮想ファイル (MEMFS) が相手。
- * lider の player (native/CMakeLists.txt) は静的に link する (入口の名前は lub_vm_extension_tcs)。
- * lub の既製の lub_vm は、scripts/build-native.sh が作る src/Tcs.so を読む。 */
+/* Exposes the tcs compiler (the functions in src/Tcs.ref.cs) as a native
+ * extension of the tcs VM player. Includes tcs.c, which is tcs (Compiler,
+ * CBackend, VmBackend and Tool from tcs/SelfHost) converted to C with tcs2c,
+ * and implements the tcs host functions (tcs/SelfHost/Tool/TcsHost.cs).
+ * Requests follow tcs/SelfHost/Tool/Sessions.cs: arguments are queued with
+ * Tcs.Arg, Tcs.Call processes the request, and the response lines are received.
+ * Files are read and written with the standard C functions; on the web
+ * (emscripten) they are virtual files (MEMFS). The lider player
+ * (native/CMakeLists.txt) links it statically (the entry point is named
+ * lub_vm_extension_tcs). lub's stock lub_vm loads src/Tcs.so built by
+ * scripts/build-native.sh. */
 #include "tcs.c"
 
 #include "tcs_tool_files.h"
@@ -54,7 +59,7 @@ static TcsString *host_error(const char *what, const char *path) {
   return s;
 }
 
-/* path の親のディレクトリを作る */
+/* Creates the parent directories of path */
 static void host_mkdirs(const char *path) {
   char *dir = strdup(path);
   if (dir == NULL)
@@ -122,7 +127,8 @@ TcsString *tcs_host_tcshost_read_file(TcsString *path) {
   return text;
 }
 
-/* 同じディレクトリの一時ファイルに書いてから置き換える。失敗したら理由 (成功は "") */
+/* Writes to a temporary file in the same directory, then replaces the target.
+ * Returns the reason on failure ("" on success) */
 TcsString *tcs_host_tcshost_write_file_atomic(TcsString *path,
                                               TcsString *text) {
   char *name = host_cstring(path);
@@ -189,7 +195,8 @@ TcsString *tcs_host_tcshost_file_stamp(TcsString *path) {
   return host_string(stamp, strlen(stamp));
 }
 
-/* tcs と一緒に配るファイル (lib/TinySystem/*.cs)。build のときに埋め込む (tcs_tool_files.h) */
+/* Files shipped with tcs (lib/TinySystem/*.cs). Embedded at build time
+ * (tcs_tool_files.h) */
 TcsString *tcs_host_tcshost_tool_file(TcsString *name) {
   for (size_t i = 0; i < sizeof tcs_tool_files / sizeof tcs_tool_files[0];
        i++) {
@@ -207,7 +214,7 @@ void tcs_host_tcshost_set_exit_code(int32_t code) { (void)code; }
 
 void tcs_host_tcshost_set_done(void) {}
 
-/* VM の string を引数の末尾に足す */
+/* Appends a VM string to the end of the arguments */
 static TvmStatus f_arg(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   (void)vm;
   (void)rets;
@@ -229,7 +236,8 @@ static TvmStatus f_arg(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   return TVM_OK;
 }
 
-/* 並べた引数の要求を 1 つ処理し、応答を返して引数を空にする。entry から戻ると tcs2c の GC の frame の境界になる */
+/* Processes one request with the queued arguments, returns the response and
+ * clears the arguments. Returning from entry is a tcs2c GC frame boundary */
 static TvmStatus f_call(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   (void)user;
   host_out_length = 0;
@@ -249,7 +257,8 @@ LUB_VM_EXTENSION_EXPORT bool lub_vm_extension(const LubVmExtensionApi *a,
   if (a->version != LUB_VM_EXTENSION_VERSION)
     return false;
   api = a;
-  /* player は VM を作るたびに呼ぶ。tcs の状態 (開いた session) は process に 1 つ */
+  /* The player calls this each time it creates a VM. There is one tcs state
+   * (open sessions) per process */
   if (!started) {
     tcs_lib_init();
     started = true;

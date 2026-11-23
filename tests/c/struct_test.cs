@@ -9,7 +9,7 @@ class StructGame
         var hit = StructTest.Make(flag with { On = false },
             new TestOpts { Flag = flag, Hit = new TestHit { Id = 3, T = 0.5f, Near = true, At = new TestPoint { X = 7, Y = 8 } } });
         Console.WriteLine(hit.Id + " " + hit.T + " " + hit.Near + " " + hit.At.X + " " + hit.At.Y);
-        // 見つからない (LUB_NOT_FOUND) struct の戻り値は 0 の値
+        // A struct return value that is not found (LUB_NOT_FOUND) is the zero value
         var none = StructTest.Make(flag, null);
         Console.WriteLine(none.Id + " " + none.Near);
         bool found = StructTest.Find(4, out var h, out var f);

@@ -33,7 +33,7 @@ internal sealed class SpecConformanceSweep
             "SpecConformance", "conformance-baseline.json");
     }
 
-    // report と baseline に載る compiler のメッセージを、生成する環境の言語に依らず同じにする
+    // Make the compiler messages in the report and baseline the same regardless of the language of the generating environment
     public SpecSweepResult Run()
     {
         var uiCulture = System.Globalization.CultureInfo.CurrentUICulture;
@@ -99,8 +99,8 @@ internal sealed class SpecConformanceSweep
         return new SpecSweepResult(examples, classified, difference, execution);
     }
 
-    // InRun の例を tcs VM で実行し、失敗は Bug へ再分類する
-    // (baseline / Bug ゲートに乗せるため)。
+    // Runs InRun examples on the tcs VM and reclassifies failures as Bug
+    // (so that they go through the baseline / Bug gate).
     private SpecExecutionStats ExecuteEligible(
         List<ClassifiedSpecExample> classified,
         IReadOnlyList<SpecExpansion> expansions)
@@ -261,8 +261,8 @@ internal sealed class SpecConformanceSweep
         builder.AppendLine();
         builder.AppendLine("## Unexpected extraction details");
         builder.AppendLine();
-        // unexpected-* は抽出忠実度の問題であり 0 が理想。corpus bump 時の調査効率の
-        // ため先頭エラー行を常設で出す。
+        // unexpected-* is an extraction fidelity issue, and 0 is ideal. For efficient investigation on a corpus bump,
+        // the first error line is always printed.
         var unexpected = items.Where(pair =>
                 pair.Item.Result.Category == SpecClassification.Unextracted &&
                 (pair.Item.Result.Reason?.StartsWith("unexpected-",
@@ -337,9 +337,9 @@ internal sealed class SpecConformanceSweep
         return builder.ToString().TrimEnd();
     }
 
-    // 同一 md ファイル内で name が重複する例 (upstream の実在ケース) は、重複する
-    // 全出現へ :L<行> を付与して衝突を解消する。片側だけの付与は文書順に依存する
-    // ため採らない。
+    // For examples whose name is duplicated within the same md file (a real upstream case), :L<line> is appended to all duplicated
+    // occurrences to resolve the collision. Appending to only one side would depend on document order,
+    // so it is not done.
     internal static IReadOnlyList<(ClassifiedSpecExample Item, string Id)>
         ResolveIds(IEnumerable<ClassifiedSpecExample> classified)
     {

@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// `?.` の when-not-null が呼び出し / member の連鎖 (`x?.M().N()`、`x?.M().P`)
-// のとき、連鎖の一番内側は `?.` の receiver に対する呼び出し / member になる。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// When the when-not-null part of `?.` is a chain of calls / members (`x?.M().N()`, `x?.M().P`),
+// the innermost part of the chain becomes the call / member on the receiver of `?.`.
+// The expected values are the stdout of running the same program on CoreCLR
 public partial class ConditionalChainDifferentialTests
 {
     [CFact]
@@ -84,8 +84,8 @@ public partial class ConditionalChainDifferentialTests
 
 public partial class ConditionalChainDifferentialTests
 {
-    // 連鎖の一番内側が変数 (参照型の receiver の field / 配列要素) なら、
-    // struct method の変異はその変数に残る。`T?` receiver の値は copy なので残らない
+    // If the innermost part of the chain is a variable (a field / array element of a reference-type receiver),
+    // mutations by struct methods remain in that variable. The value of a `T?` receiver is a copy, so they do not remain
     [CFact]
     public void ConditionalAccess_ChainStructVariableReceiver()
     {
@@ -129,7 +129,7 @@ public partial class ConditionalChainDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // `?.` / `?[]` の結果を既存の local に代入すると、受け手が null なら値なしになる (#435)
+    // Assigning the result of `?.` / `?[]` to an existing local gives no value if the receiver is null (#435)
     [CFact]
     public void ConditionalAccess_ReassignLocalToNull()
     {

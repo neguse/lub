@@ -1,4 +1,4 @@
-// netstandard2.0 に無い、compiler のソース (record と init) が使う型
+// Types missing from netstandard2.0 that the compiler sources (record and init) use
 namespace System.Runtime.CompilerServices
 {
     internal static class IsExternalInit

@@ -1,7 +1,9 @@
-// frame ごとの digest。
-// C API 呼び出しの構造 (関数名、key、個数、handle、version、draw の Blend) を FNV-1a で畳み、frame の終わりに stdout へ出す (--digest)。
-// 実行形 (tcs VM の player / .NET 実行) の間で同じゲームが同じ列を出すことを CI が突き合わせる。
-// float の値は混ぜない (実行形の間で float の差を許す)。
+// Per-frame digest.
+// Folds the structure of C API calls (function name, key, count, handle,
+// version, draw Blend) with FNV-1a and prints it to stdout at the end of the
+// frame (--digest). CI checks that the same game produces the same sequence
+// across execution forms (tcs VM player / .NET execution). Float values are not
+// mixed in (float differences between execution forms are allowed).
 #pragma once
 #include "lub/lub_api.h"
 #include <stdbool.h>
@@ -17,5 +19,6 @@ typedef struct DigestState {
 void digest_tag(struct App *app, const char *tag);
 void digest_str(struct App *app, LubStr s);
 void digest_i32(struct App *app, int32_t v);
-// frame の値を出して次の frame へ (app_frame_end が呼ぶ)。
+// Print the frame's value and move on to the next frame (called by
+// app_frame_end).
 void digest_frame_end(struct App *app);

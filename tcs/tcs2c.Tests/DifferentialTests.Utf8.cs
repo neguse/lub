@@ -2,7 +2,7 @@ using System.Text;
 
 namespace TinyCs.Tcs2c.Tests;
 
-// TinySystem.Text (RuneCount / RuneSubstring / Utf8Bytes) が tcs2c (runtime/utf8)、Lua (tcs_utf8 module)、.NET (TinySystem/Utf8.cs) で同じ結果を返す
+// TinySystem.Text (RuneCount / RuneSubstring / Utf8Bytes) returns the same results in tcs2c (runtime/utf8), Lua (tcs_utf8 module), and .NET (TinySystem/Utf8.cs)
 public class Utf8DifferentialTests
 {
     private static string Utf8Program(string body) => $$"""
@@ -56,7 +56,7 @@ public class Utf8DifferentialTests
                 for (int start = 0; start <= u.Length; start++)
                     for (int count = 0; count <= u.Length - start; count++)
                     {
-                        // 文字の途中で切った slice の ToString は、壊れた並びを U+FFFD にする
+                        // ToString of a slice cut in the middle of a character turns the malformed sequence into U+FFFD
                         var slice = u.Slice(start, count);
                         string first = count == 0 ? "-" : "" + slice[0];
                         Console.WriteLine(start + "," + count + "=" + slice.Length + "," + first + "," + slice.ToString() + "," + slice.Slice(0, count).ToString().RuneCount());
@@ -228,7 +228,7 @@ public class Utf8DifferentialTests
         Assert.Contains(expected, ex.Message);
     }
 
-    // Trim と引数なしの Split の空白は .NET の char.IsWhiteSpace と同じ。空白は全部 U+3000 以下
+    // Whitespace for Trim and Split without arguments is the same as .NET's char.IsWhiteSpace. All whitespace is at or below U+3000
     [CFact]
     public void TrimAndSplit_WhiteSpaceMatchesDotnetForEveryRune()
     {
@@ -381,8 +381,8 @@ public class Utf8DifferentialTests
         }
         """;
 
-    // 壊れた列の EnumerateRunes: program の中の string は (char) の 1 byte の連結でだけ壊れる (.NET では別の文字になる) ので、
-    // 同じ byte 列の Encoding.UTF8 の結果を期待値にする
+    // EnumerateRunes on malformed sequences: strings in a program become malformed only by concatenating 1-byte (char) values (in .NET they become different characters), so
+    // the result of Encoding.UTF8 on the same byte sequence is used as the expected value
     [CTheory]
     [InlineData(0xF0, 0x9F)]
     [InlineData(0xF0, 0x9F, 0x98)]
@@ -423,7 +423,7 @@ public class Utf8DifferentialTests
         Assert.Equal(string.Concat(expected.Select(v => v + ",")) + expected.Count + ":" + expected.Count, output);
     }
 
-    // lib 形のフレーム境界 GC を越えて、Utf8Bytes が持つ文字列が生き残る
+    // Strings held by Utf8Bytes survive frame-boundary GC in lib form
     [CFact]
     public void Utf8Bytes_SurvivesFrameBoundaryGc()
     {
@@ -467,7 +467,7 @@ public class Utf8DifferentialTests
         Assert.StartsWith("1175:25:13\n", output);
     }
 
-    // runtime/utf8 の復号が .NET の UTF8 と同じ位置で U+FFFD を出す。tcs の program からは壊れた byte 列を作れないので、C を直接比べる
+    // runtime/utf8 decoding emits U+FFFD at the same positions as .NET's UTF8. A tcs program cannot create malformed byte sequences, so the C is compared directly
     [CFact]
     public void Utf8_RuntimeScrubMatchesDotnetDecoderOnInvalidBytes()
     {

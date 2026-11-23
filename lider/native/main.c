@@ -1,9 +1,12 @@
-// lider の player: lub の tcs VM の player (library) に、lider の native の拡張 (jamo、file system、tcs の compiler) を静的に link したもの。
-// native も web (emscripten) も同じ main で build する (native/CMakeLists.txt)。
-// 引数と動きは lub の lub_vm と同じ (lider_player Game.csproj)。
+// The lider player: lub's tcs VM player (library) with lider's native
+// extensions (jamo, file system, the tcs compiler) linked statically. Native
+// and web (emscripten) are both built from the same main
+// (native/CMakeLists.txt). Arguments and behavior are the same as lub's lub_vm
+// (lider_player Game.csproj).
 #include <lub/lub_vm_main.h>
 
-// native/jamo/vm_jamo.c、native/fs/vm_fs.c、native/tcs/vm_tcs.c (入口の名前は CMake が変える)
+// native/jamo/vm_jamo.c, native/fs/vm_fs.c, native/tcs/vm_tcs.c (CMake renames
+// the entry points)
 bool lub_vm_extension_jamo(const LubVmExtensionApi *api, TvmVm *vm);
 bool lub_vm_extension_fs(const LubVmExtensionApi *api, TvmVm *vm);
 bool lub_vm_extension_tcs(const LubVmExtensionApi *api, TvmVm *vm);

@@ -1,6 +1,6 @@
-// Lubx.Mesh3d と MeshText が GPU buffer を毎 frame 再主張することを見る。
-// ResourceSweepAfterFrames を小さくし、同じ mesh と glyph を sweep 期間より長く描き続けても stale handle の error にならないことを確かめる。
-// その後 cube だけを sweep 期間より長く描かずに sweep させ、Mesh3d が Rebuild で持った頂点と index から buffer を作り直すことも見る。
+// Checks that Lubx.Mesh3d and MeshText reassert their GPU buffers every frame.
+// Makes ResourceSweepAfterFrames small, and checks that drawing the same mesh and glyphs for longer than the sweep period does not cause stale handle errors.
+// Then lets only the cube be swept by not drawing it for longer than the sweep period, and also checks that Mesh3d recreates the buffers from the vertices and indices it kept in Rebuild.
 using System;
 using Lub;
 using Lubx;
@@ -9,7 +9,7 @@ public static class TestLubxMeshReassert
 {
     const int sweepFrames = 2;
     const int frames = 8;
-    // cube を描かない frame の数 (sweep 期間より長い)
+    // Number of frames in which the cube is not drawn (longer than the sweep period)
     const int idleFrames = sweepFrames + 2;
     const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
 
@@ -50,14 +50,14 @@ public static class TestLubxMeshReassert
         frame++;
         if (frame == 1)
         {
-            // gfx は OnInit では使えないので最初の frame で upload する
+            // gfx cannot be used in OnInit, so upload in the first frame
             cube!.Rebuild(Shapes3d.Cube());
             Check.That(cube.Ready(), "cube must be ready after rebuild");
         }
         else if (frame <= frames)
         {
-            // 再主張されていなければ sweep 後の draw は stale handle になる。
-            // draw の前に lookup で見て、落ちる前に message を出す。
+            // If it was not reasserted, the draw after the sweep would use a stale handle.
+            // Check with a lookup before the draw, and print a message before it fails.
             Check.That(Gfx.LookupBuffer("mesh_reassert_cube/vb") != null, "frame " + frame + ": cube vb was swept");
             Check.That(Gfx.LookupBuffer("mesh_reassert_text/v:65") != null, "frame " + frame + ": glyph vb was swept");
         }

@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// 値型・string の型パターンは Lua 側に型 table が無く、
-// `getmetatable(x) == int` (未定義 global = nil 比較) だと nil がマッチする。
-// type() 判定 (number/boolean/string) を emit する。
+// Type patterns for value types / string have no type table on the Lua side,
+// and `getmetatable(x) == int` (comparison with an undefined global = nil) would match nil.
+// A type() check (number/boolean/string) is emitted instead.
 public class TypePatternTests
 {
     [Fact]
@@ -67,7 +67,7 @@ public class TypePatternTests
         Assert.Equal("5|-1", result);
     }
 
-    // 式文脈 (ternary / 複合条件 / lambda) の is-pattern designation 束縛
+    // is-pattern designation bindings in expression contexts (ternary / compound condition / lambda)
     [Fact]
     public void IsPattern_InTernary_BindsDesignation()
     {

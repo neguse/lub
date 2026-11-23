@@ -1,5 +1,6 @@
-// mesh (surface_nets / sdf) の C API。
-// 結果は frame の終わりまで有効な view で返す (実体は呼び出しごとに作り、frame garbage に預ける)。
+// C API for mesh (surface_nets / sdf).
+// Results are returned as views valid until the end of the frame (the backing
+// data is created per call and handed to frame garbage).
 #include "api_internal.h"
 #include "sdf.h"
 #include "surfacenets.h"
@@ -7,15 +8,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-// sdf_mesh の view のうち SdfMeshOut に無いもの (bone、bounds、int の joints)。
+// The parts of the sdf_mesh view that SdfMeshOut does not have (bones, bounds,
+// int joints).
 typedef struct SdfMeshExtra {
   LubSdfBone bones[SDF_MAX_PARTS];
-  SdfPart parts[SDF_MAX_PARTS]; // bones[].name の実体
+  SdfPart parts[SDF_MAX_PARTS]; // Storage for bones[].name
   float bounds_min[3], bounds_max[3];
-  int32_t joints[]; // sdf の joints (float) を int32 に写したもの
+  int32_t joints[]; // The sdf joints (float) copied to int32
 } SdfMeshExtra;
 
-// SnMesh の配列を frame の終わりまで預ける (m は空になる)。
+// Hand the SnMesh arrays over until the end of the frame (m becomes empty).
 void lub_mesh_frame_garbage(App *app, SnMesh *m) {
   app_frame_garbage_push(app, m->positions);
   app_frame_garbage_push(app, m->normals);
@@ -32,7 +34,7 @@ static void sdf_frame_garbage(App *app, SdfMeshOut *o) {
   memset(o, 0, sizeof(*o));
 }
 
-// SnMesh を LubMeshData の view にする (positions / normals / indices)。
+// Turn an SnMesh into a LubMeshData view (positions / normals / indices).
 void lub_mesh_view_from_sn(const SnMesh *m, LubMeshData *out) {
   memset(out, 0, sizeof(*out));
   out->positions = m->positions;
@@ -104,7 +106,7 @@ LubStatus lub_mesh_sdf_mesh(LubContext *ctx, const LubSdfNodeDesc *nodes,
     sdf_tree_free(&tree);
     return lub_api_fail(app, "%s", err);
   }
-  // bone の name は SdfTree の parts が持つので写してから解放する
+  // Bone names are owned by the SdfTree parts, so copy them before freeing
   memcpy(x->parts, tree.parts, sizeof(x->parts));
   int part_count = tree.part_count;
   sdf_tree_free(&tree);

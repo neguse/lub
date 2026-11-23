@@ -1,6 +1,6 @@
-// XR セッションが無い backend での Xr の面。
-// Active / Focused は false、View / Input は null を返し、眼の指定が不正なら error になる。
-// MainTex への pass は通常どおり begin できる。
+// The Xr surface on a backend without an XR session.
+// Active / Focused return false, View / Input return null, and an invalid eye is an error.
+// A pass to MainTex can begin as usual.
 using System;
 using Lub;
 
@@ -16,7 +16,7 @@ public static class TestXrInactive
     public static void OnFrame(float dt)
     {
         Check.Frame();
-        // 段階は失敗するはずの呼び出しの前に進める (失敗すると OnFrame はそこで終わる)
+        // Advance the stage before a call that should fail (when it fails, OnFrame ends there)
         var s = step;
         step++;
         if (s == 0)

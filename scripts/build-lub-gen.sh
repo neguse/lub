@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# tools/lub-gen (TinyC#) を C の tcs (tcs c) で C にし、<build-dir>/tcs/lub-gen を作る。
-# lub-gen は tcs の compiler (tcs/SelfHost/Compiler) で stub とゲームを読むので、そのソースと一緒に C にする。
-# host は tcs と同じ tcs/SelfHost/Native/host.c (entry を lub-gen の Tool に差し替える)。
-# C にするのは scripts/build-tcs-native.sh が置いた <build-dir>/tcs/tcs (と lib/)。それなら dotnet は要らず、C compiler だけ要る。
-# <build-dir>/tcs/tcs が無ければ、.NET の tcs2c (tcs c と同じ実装で、同じ C を出す) で C にし、lib/ を tcs から置く (PR の CI はこちら)。
-# --verify なら、.NET で動かした同じ lub-gen と出力 (gen-api の生成物と tcs の接続コード) が同じことも確かめる (要 dotnet)。
+# Converts tools/lub-gen (TinyC#) to C with the C tcs (tcs c) and builds <build-dir>/tcs/lub-gen.
+# lub-gen reads the stubs and the game with the tcs compiler (tcs/SelfHost/Compiler), so that source is converted to C together with it.
+# The host is tcs/SelfHost/Native/host.c, the same as for tcs (with the entry replaced by the Tool of lub-gen).
+# The C conversion uses <build-dir>/tcs/tcs (and lib/) placed by scripts/build-tcs-native.sh. Then dotnet is not needed, only a C compiler.
+# If <build-dir>/tcs/tcs is missing, it converts to C with the .NET tcs2c (the same implementation as tcs c, producing the same C) and places lib/ from tcs (PR CI takes this path).
+# With --verify, it also checks that the output (the generated files of gen-api and the tcs glue code) matches that of the same lub-gen run on .NET (requires dotnet).
 #
-# Usage: scripts/build-lub-gen.sh [--verify] [build-dir]   (既定 build-release-linux)
+# Usage: scripts/build-lub-gen.sh [--verify] [build-dir]   (default build-release-linux)
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,14 +36,14 @@ if [[ -x "$out/tcs$exe" ]]; then
 else
   dotnet build tcs/tcs2c -c Release -nologo -v q -o "$work/tcs2c" > /dev/null
   tcs_c=(dotnet "$work/tcs2c/tcs2c.dll")
-  # lub-gen tcs は tcs と同じく lib/TinySystem を実行ファイルの dir から読む
+  # lub-gen tcs, like tcs, reads lib/TinySystem from the directory of the executable
   mkdir -p "$out/lib/TinySystem"
   cp tcs/TinySystem/Linq.cs tcs/TinySystem/ValueTuple.cs "$out/lib/TinySystem/"
 fi
 sources=("$host_src"/Compiler/*.cs tools/lub-gen/*.cs)
 "${tcs_c[@]}" --lib --ref "$host_src/Tool/TcsHost.cs" "${sources[@]}" -o "$work/lub-gen.c"
 
-# 浮動小数の規則 (tcs の il-spec 付録 B)。-fexcess-precision=standard を受けない compiler では省く (tcs/SelfHost/native.sh と同じ)
+# Floating-point rules (appendix B of the tcs il-spec). Omitted for compilers that do not accept -fexcess-precision=standard (same as tcs/SelfHost/native.sh)
 cc="${CC:-cc}"
 flags=(-O2 -ffp-contract=off -fwrapv)
 printf 'int main(void){return 0;}\n' > "$work/probe.c"
@@ -65,7 +65,7 @@ same() {
     echo "  same: $3"
   else
     echo "  DIFFERENT: $3" >&2
-    # 最初の違いを出す (行末の \r も見えるように)
+    # Print the first difference (so that a trailing \r is also visible)
     diff "$1" "$2" | head -12 | cat -A | cut -c1-200 >&2 || true
     fail=1
   fi
@@ -79,7 +79,7 @@ lubx_args=()
 for source in cs-lib/lub/*.cs cs-lib/lubx/*.cs samples/13_sprites/Sprites13.cs; do
   lubx_args+=(--source "$source")
 done
-# lub-gen tcs は lib/TinySystem を実行ファイルの dir から読む (tcs と同じ)
+# lub-gen tcs reads lib/TinySystem from the directory of the executable (same as tcs)
 "$native" tcs --stub cs-lib/lub_stub.cs "${lubx_args[@]}" -o "$work/native.tcs"
 "${dotnet_gen[@]}" tcs --stub cs-lib/lub_stub.cs "${lubx_args[@]}" -o "$work/dotnet.tcs"
 same "$work/native.tcs" "$work/dotnet.tcs" "lub-gen tcs (cs-lib + 13_sprites)"

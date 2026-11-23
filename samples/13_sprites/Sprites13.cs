@@ -1,5 +1,5 @@
-// lub の samples/13_sprites の entry。
-// 実行: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload) 実行手順とスコア行 (SPRITES13_SCORE) の扱いは docs/sprites-bench.md。
+// Entry of lub's samples/13_sprites.
+// Run: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload). For benchmark runs and SPRITES13_SCORE, see scripts/run-sprites-bench.sh.
 
 using System;
 using System.Collections.Generic;
@@ -126,10 +126,10 @@ public static class Sprites13
         meter = new FpsMeter(targetFps);
     }
 
-    // 読めたかどうかを返すので手書き。
-    // 先頭の [+-]?digits[.digits] を読み、後続の文字は無視する。
-    // 数字が 1 つも無ければ false (parse 失敗)。
-    // 10 進のみ (hex/指数は無し)。
+    // Hand-written because it returns whether the value could be read.
+    // Reads a leading [+-]?digits[.digits] and ignores the characters after it.
+    // false if there is no digit at all (parse failure).
+    // Decimal only (no hex/exponent).
     static bool ParseDec(string s, out float value, out int intPart)
     {
         value = 0.0f;
@@ -209,8 +209,8 @@ public static class Sprites13
         return s != "0" && s != "false" && s != "FALSE";
     }
 
-    // 線形合同法 (mod 2^32)。
-    // f32 では rng * 1664525 の下位の bit が落ちて値が数種類に潰れるので、32 bit で wrap する整数で計算し、上位 24 bit を [0, 1) にする
+    // Linear congruential generator (mod 2^32).
+    // In f32 the low bits of rng * 1664525 are lost and the values collapse into a few kinds, so compute with an integer that wraps at 32 bits and map the top 24 bits to [0, 1)
     static float Rand01()
     {
         rng = rng * 1664525 + 1013904223;
@@ -241,7 +241,7 @@ public static class Sprites13
                 write = write + 1;
             }
         }
-        // sprites を write 個に縮める (末尾から)
+        // Shrink sprites to write entries (from the end)
         while (sprites.Count > write)
             sprites.RemoveAt(sprites.Count - 1);
 

@@ -1,10 +1,10 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 式位置の ++ / -- と operand 評価順の 2 backend differential
+// Two-backend differential tests for ++ / -- in expression position and operand evaluation order
 public class IncrementDifferentialTests
 {
-    // 式位置の ++ / --: 前置は更新後、後置は更新前の値。条件 / 引数 / 添字 /
-    // 代入右辺 / return / field / custom property / 副作用 receiver / Nullable
+    // ++ / -- in expression position: prefix gives the value after the update, postfix the value before. Condition / argument / index /
+    // assignment right side / return / field / custom property / receiver with side effects / Nullable
     [CFact]
     public void IncrementAsExpression_PrefixAndPostfixValues()
     {
@@ -72,8 +72,8 @@ public class IncrementDifferentialTests
             """, "P");
     }
 
-    // operand は左から評価: 右側の ++ / 代入が書き換える local を左の
-    // operand / 代入先の添字が読んでも書き換え前の値 (C# の結果を固定値で検証)
+    // Operands are evaluated from the left: even if the left operand / assignment target index reads a local
+    // that a ++ / assignment on the right rewrites, it gets the value before the rewrite (C# results verified as fixed values)
     [CFact]
     public void EvaluationOrder_LeftOperandAndIndexBeforeRhsSideEffect()
     {
@@ -130,8 +130,8 @@ public class IncrementDifferentialTests
             output.ReplaceLineEndings("\n"));
     }
 
-    // getter 経由の receiver は 1 回評価、式位置の custom property 代入は
-    // accessor を通す (C# の結果を固定値で検証)
+    // A receiver obtained through a getter is evaluated once, and a custom property assignment in expression position
+    // goes through the accessor (C# results verified as fixed values)
     [CFact]
     public void GetterReceiverAndCustomPropertyAssignAsExpression()
     {
@@ -168,8 +168,8 @@ public class IncrementDifferentialTests
         Assert.Equal("10|11|20|1\n10|3|aaa", output.ReplaceLineEndings("\n"));
     }
 
-    // getter → struct field → (struct field) の place: 参照型 prefix だけを
-    // 1 回評価し、struct を copy せず元の field に書き込む
+    // Place of the form getter → struct field → (struct field): evaluates only the reference-type prefix
+    // once, and writes to the original field without copying the struct
     [CFact]
     public void GetterThroughStructField_EvaluatedOnceAndWritesInPlace()
     {
@@ -231,7 +231,7 @@ public class IncrementDifferentialTests
             output.ReplaceLineEndings("\n").TrimEnd());
     }
 
-    // 式の位置の custom property の ++ / -- は、getter が受け手の field を差し替えても最初に読んだ受け手に書く (#418)
+    // ++ / -- on a custom property in expression position writes to the receiver read first, even if the getter replaces the receiver's field (#418)
     [CFact]
     public void IncrementExpression_CustomPropertyReceiverReadOnce()
     {

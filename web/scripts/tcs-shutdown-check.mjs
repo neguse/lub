@@ -1,8 +1,8 @@
-// src/tcs_host.c の web の player を page が外すときの順番を、headless chromium で見る。
-// page が Module._lub_tcs_shutdown() を呼ぶと、ゲームの OnQuit が一度だけ動き、その後のフレームは回らない。
-// 2 回呼んでも、OnQuit の出力を受けたその場で呼び直しても、OnQuit は 1 回。
-// player は scripts/web-tcs-host-build.sh が作る (tests/c/tcs_shutdown.cs)。
-//   node scripts/tcs-shutdown-check.mjs <lub.js のある directory>
+// Checks with headless chromium the order in which the page tears down the web player of src/tcs_host.c.
+// When the page calls Module._lub_tcs_shutdown(), the game's OnQuit runs exactly once and no frames run after that.
+// Even if it is called twice, or called again right when the OnQuit output is received, OnQuit runs once.
+// The player is built by scripts/web-tcs-host-build.sh (tests/c/tcs_shutdown.cs).
+//   node scripts/tcs-shutdown-check.mjs <directory containing lub.js>
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -14,7 +14,7 @@ if (!dir) {
   process.exit(2);
 }
 
-// player は WebGPU の device を Module.preinitializedWebGPUDevice で受け取る (web/player/main.ts と同じ)
+// The player receives the WebGPU device via Module.preinitializedWebGPUDevice (same as web/player/main.ts)
 const page = `<!doctype html>
 <canvas id="canvas" width="64" height="64"></canvas>
 <script type="module">
@@ -91,11 +91,11 @@ try {
     Module._lub_tcs_shutdown();
     Module._lub_tcs_shutdown();
   });
-  // shutdown の後に届く入力で壊れないこと
+  // Input arriving after shutdown must not break it
   await p.mouse.move(10, 10);
   await p.mouse.click(20, 20);
   await p.keyboard.press("a");
-  // 止まっていなければ、この間にフレームが回る
+  // If it has not stopped, frames run during this time
   await p.waitForTimeout(1000);
   const quits = log.filter((l) => l.startsWith("quit after "));
   const quitAt = log.findIndex((l) => l.startsWith("quit after "));

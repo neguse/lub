@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// struct を object / interface に入れる (boxing) のはサブセット外。Lua の struct は型を持たない
-// table で `is` / interface 経由の呼び出しが効かず、C は受け付けないので、両 backend とも同じ
-// TCS1001 で止まる。interface の制約を持つ型引数に struct を入れるのも、Lua の generic なコードが
-// interface の method を method の呼び出し (`x:Area()`) にするので同じ
+// Putting a struct into object / interface (boxing) is outside the subset. Lua structs are untyped
+// tables, so `is` / calls through an interface do not work, and C does not accept it, so both backends stop with the same
+// TCS1001. Putting a struct into a type argument with an interface constraint is the same, because generic Lua code
+// turns interface methods into method calls (`x:Area()`)
 public class StructBoxingDifferentialTests
 {
     [Theory]

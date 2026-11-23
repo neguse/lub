@@ -1,28 +1,32 @@
 #ifndef LUB_UI_H
 #define LUB_UI_H
 
-// Dear ImGui debug UI. ImGui は backend 抽象 (g_backend) の一利用者として描画するので、統合は 1 系統で sdlgpu / d3d12 / vulkan / metal / webgpu 全部に効く。
+// Dear ImGui debug UI. ImGui draws as one user of the backend abstraction
+// (g_backend), so a single integration works for all of sdlgpu / d3d12 / vulkan
+// / metal / webgpu.
 //
-// - ui_new_frame: 毎フレーム OnFrame の前に呼ぶ (host_api.c の
-//   lub_host_frame_begin)。入力を ImGui に
-//   流して NewFrame する。ゲームが UI を使わないフレームは次の new_frame が
-//   EndFrame で捨てる。
-// - C API (include/lub/lub_api.h の lub_ui_*): begin_window / end_window /
-//   text / button / checkbox / slider_float / ... と render。render は
-//   begin_pass 中に呼ぶこと (draw と同じ内部機構で draw list を発行する)。
-//   tcs VM の host の関数は src/gen/vm_api_gen.c。
-// - 位置づけは debug/dev UI。
-//   ゲーム本編の UI は従来通り自前描画で。
+// - ui_new_frame: call every frame before OnFrame (in host_api.c
+//   lub_host_frame_begin). Feeds input to ImGui
+//   and calls NewFrame. For frames where the game does not use the UI, the next
+//   new_frame discards it with EndFrame.
+// - C API (lub_ui_* in include/lub/lub_api.h): begin_window / end_window /
+//   text / button / checkbox / slider_float / ... and render. render must be
+//   called during begin_pass (it issues the draw list with the same internal
+//   mechanism as draw). The tcs VM host functions are in src/gen/vm_api_gen.c.
+// - Positioned as a debug/dev UI.
+//   The main game UI is drawn by the game itself, as before.
 struct App;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// fb_w/fb_h は process_frame_begin が返した framebuffer サイズ (wasm では SDL_GetWindowSizeInPixels が canvas サイズを返さないため引数で受ける)。
+// fb_w/fb_h is the framebuffer size returned by process_frame_begin (taken as
+// arguments because SDL_GetWindowSizeInPixels does not return the canvas size
+// on wasm).
 void ui_new_frame(struct App *app, float dt, int fb_w, int fb_h);
 void ui_shutdown(void);
-// false の間、lub_ui_* は何もしない (App.Step が開いた app を動かす間)。
+// While false, lub_ui_* does nothing (while App.Step runs an opened app).
 void ui_set_enabled(bool on);
 
 #ifdef __cplusplus

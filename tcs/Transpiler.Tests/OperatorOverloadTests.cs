@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// ユーザー定義演算子オーバーロード (binary + - * / % / unary -) の
-// Lua metamethod (__add/__sub/__mul/__div/__mod/__unm) 写像を固定する。
-// 同一演算子の複数 overload は metamethod 内の実行時型分岐で dispatch する。
+// Pins the mapping of user-defined operator overloads (binary + - * / % / unary -)
+// to Lua metamethods (__add/__sub/__mul/__div/__mod/__unm).
+// Multiple overloads of the same operator are dispatched by runtime type branching inside the metamethod.
 public class OperatorOverloadTests
 {
     private const string Vec2Source = """
@@ -79,8 +79,8 @@ public class OperatorOverloadTests
     [Fact]
     public void MultiplyOverloads_DispatchOnOperandTypes()
     {
-        // Vec2*Vec2 / Vec2*float / float*Vec2 が同じ __mul に共存し、
-        // 実行時の operand 型で正しい overload に分岐する。
+        // Vec2*Vec2 / Vec2*float / float*Vec2 coexist in the same __mul,
+        // and branch to the correct overload by the runtime operand type.
         var result = TestHelper.CompileAndRunVm(Vec2Source + """
             public class T
             {
@@ -246,7 +246,7 @@ public class OperatorOverloadTests
     [Fact]
     public void EqualityOperators_ReportUnsupportedSyntax()
     {
-        // 通常 class の operator == / != はスコープ外 (record __eq のみ対応)。
+        // operator == / != on a regular class is out of scope (only record __eq is supported).
         var result = Checker.Check(["""
             public class Id
             {
@@ -289,7 +289,7 @@ public class OperatorOverloadTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("OperatorDeclaration"));
     }
 
-    // operator を持つ class。呼び出し箇所で operator を直接呼ぶ (#13 / #23)
+    // A class with operators. The operator is called directly at the call site (#13 / #23).
     private const string OperatorClassSource = """
         public class V
         {
@@ -329,8 +329,8 @@ public class OperatorOverloadTests
         Assert.Equal("600630", result);
     }
 
-    // overload は C# が静的に選ぶ。実行時型だけでは区別できない (interface 型の
-    // operand が実体は同じ class) 場合も宣言どおりの overload を呼ぶ
+    // C# picks the overload statically. Even when the runtime type alone cannot tell them apart (interface-typed
+    // operands that are actually the same class), the declared overload is called.
     [Fact]
     public void Overloads_AreChosenByStaticOperandType_NotRuntimeType()
     {
@@ -357,8 +357,8 @@ public class OperatorOverloadTests
         Assert.Equal("3201", result);
     }
 
-    // operator の結果型が int / 引数が string でも、組み込みの整数除算
-    // (__tcs_idiv) や文字列連結 (..) に化けず operator を呼ぶ
+    // Even when the operator's result type is int / an argument is string, the operator is called instead of
+    // turning into the built-in integer division (__tcs_idiv) or string concatenation (..).
     [Fact]
     public void Operators_WithPrimitiveResultOrOperand_CallOperator()
     {
@@ -386,7 +386,7 @@ public class OperatorOverloadTests
         Assert.Equal("3|1|10|n7", result);
     }
 
-    // ==/!= は operator 宣言が無ければ参照比較のまま (null 比較を含む)
+    // ==/!= stays a reference comparison if there is no operator declaration (including null comparisons).
     [Fact]
     public void EqualityOnOperatorClass_StaysReferenceIdentity()
     {
@@ -408,7 +408,7 @@ public class OperatorOverloadTests
         Assert.Equal("FTTFTT", result);
     }
 
-    // interface の static abstract operator は subset 外 (TCS1001)
+    // Static abstract operators in interfaces are outside the subset (TCS1001).
     private const string InterfaceOperatorSource = """
         public interface IAdd<T> where T : IAdd<T> { static abstract T operator +(T a, T b); }
         public class V : IAdd<V>

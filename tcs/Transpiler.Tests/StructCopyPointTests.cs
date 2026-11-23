@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// il-spec §10 の copy 地点のうち、専用の lowering を持つ経路 (initializer /
-// foreach / 分解 / with / setter / LINQ / Dictionary)。期待値は C# の値意味論で、
-// dotnet differential が CoreCLR と突き合わせる
+// Among the copy points of il-spec §10, the paths that have dedicated lowering (initializer /
+// foreach / deconstruction / with / setter / LINQ / Dictionary). Expected values follow C# value semantics,
+// and the dotnet differential checks them against CoreCLR
 public class StructCopyPointTests
 {
     private const string S = """
@@ -283,7 +283,7 @@ public class StructCopyPointTests
             """));
     }
 
-    // static method の method group は runtime に渡しても、delegate 変数や static field を経ても、struct parameter を copy して受ける
+    // A static method's method group receives struct parameters as copies, even when passed to the runtime or going through a delegate variable or static field
     [Fact]
     public void MethodGroup_StructParameterIsCopy()
     {
@@ -336,8 +336,8 @@ public class StructCopyPointTests
             """));
     }
 
-    // module mode は module ごとの define chunk と static initializer の chunk に分かれる。
-    // 別のファイルの method group でも struct の parameter を copy する
+    // Module mode splits into a define chunk per module and a static initializer chunk.
+    // A method group from another file also copies struct parameters
     [Fact]
     public void MethodGroup_CopiesAcrossFiles()
     {
@@ -372,7 +372,7 @@ public class StructCopyPointTests
         Assert.Equal("1", output);
     }
 
-    // 式本体 (=>) の lambda と method も block 本体の return と同じく struct を copy して返す
+    // Expression-bodied (=>) lambdas and methods also return structs as copies, the same as return in a block body
     [Fact]
     public void ExpressionBody_ReturnIsCopy()
     {
@@ -403,7 +403,7 @@ public class StructCopyPointTests
             """));
     }
 
-    // class の user operator の struct parameter は通常の呼び出しと同じく copy を受ける (二項 / 複合代入)
+    // Struct parameters of a user operator on a class receive copies, the same as in a normal call (binary / compound assignment)
     [Fact]
     public void ClassOperator_StructArgumentIsCopy()
     {
@@ -435,7 +435,7 @@ public class StructCopyPointTests
             """));
     }
 
-    // LINQ と同名の user 拡張 method は runtime の List.* ではなく通常の拡張呼び出し
+    // A user extension method with the same name as a LINQ method is a normal extension call, not the runtime List.*
     [Fact]
     public void UserExtensionNamedLikeLinq_IsNotRoutedToRuntime()
     {

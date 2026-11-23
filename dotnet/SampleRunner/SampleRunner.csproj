@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- サンプルを .NET 実行で動かす runner (native gate / CI 用)。
-       dotnet run -p:Sample=09_breakout ‐‐project dotnet/SampleRunner (‐‐ は実際には半角 2 つ)。
-       Sample のディレクトリの *.cs と cs-lib の実装ソースを compile し、entry class (static OnFrame を持つ class) を App.Run が探す。
-       -p:Tests=true は tests/cs の *.cs 全部 (tcs VM の tests/cs/.lub/all.tcsb と同じ入力) を 1 つの実行ファイル (bin/tests/lub-sample-tests) にし、test は起動の引数の ‐‐entry <Entry> で選ぶ。 -->
+  <!-- Runner that runs the samples with .NET execution (for the native gate / CI).
+       dotnet run -p:Sample=09_breakout ‐‐project dotnet/SampleRunner (‐‐ is actually two ASCII hyphens).
+       Compiles the *.cs in the Sample directory and the implementation sources in cs-lib, and App.Run finds the entry class (the class with a static OnFrame).
+       -p:Tests=true builds all *.cs in tests/cs (the same input as the tcs VM's tests/cs/.lub/all.tcsb) into one executable (bin/tests/lub-sample-tests), and the test is chosen with the launch argument ‐‐entry <Entry>. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net11.0</TargetFramework>
@@ -11,24 +11,24 @@
     <AssemblyName>lub-sample-$(Sample)</AssemblyName>
     <RootNamespace></RootNamespace>
     <NoWarn>$(NoWarn);CS1591;CS8981</NoWarn>
-    <!-- サンプルごとに別の出力先 (Sample と中間出力は Directory.Build.props) -->
+    <!-- Separate output directory per sample (Sample and the intermediate output are in Directory.Build.props) -->
     <OutputPath>bin/$(Sample)/</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <!-- tests/cs の警告は tcs check (scripts/cs-tests.sh の cs_tests_check) と IDE (tests/cs の project) が見るので、ここでは .NET の警告を出さない -->
+    <!-- Warnings in tests/cs are checked by tcs check (cs_tests_check in scripts/cs-tests.sh) and the IDE (the tests/cs project), so .NET warnings are not emitted here -->
     <WarningLevel Condition="'$(Tests)' == 'true'">0</WarningLevel>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="../../samples/$(Sample)/*.cs" Link="sample/%(Filename)%(Extension)" Condition="'$(Tests)' != 'true'" />
-    <!-- scripts/cs-tests.sh の cs_tests_sources と同じく bin、obj、. で始まるディレクトリを除く -->
+    <!-- Like cs_tests_sources in scripts/cs-tests.sh, excludes bin, obj, and directories starting with . -->
     <Compile Include="../../tests/cs/**/*.cs" Exclude="../../tests/cs/**/bin/**;../../tests/cs/**/obj/**;../../tests/cs/**/.*/**" Link="test/%(RecursiveDir)%(Filename)%(Extension)" Condition="'$(Tests)' == 'true'" />
     <Compile Include="../../cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../../cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
     <ProjectReference Include="../Lub/Lub.csproj" />
     <ProjectReference Include="$(TcsRoot)/TinySystem/TinySystem.csproj" />
   </ItemGroup>
-  <!-- Math / MathF を TinySystem.Math (tcs VM / tcs2c と同じ実装) にする -->
+  <!-- Maps Math / MathF to TinySystem.Math (the same implementation as tcs VM / tcs2c) -->
   <Import Project="$(TcsRoot)/TinySystem/TinySystem.props" />
 </Project>

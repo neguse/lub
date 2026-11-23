@@ -1,8 +1,8 @@
-// 操作は名前の付いた命令で、key と検索から同じ命令を呼ぶ。
-//   - Ctrl+P の検索に命令が並び、">" で始めると命令だけになる。確定すると実行する
-//   - Alt+矢印で、見た目で隣にあるウィンドウへ focus が移る (インスペクタとゲームの絵も含む)
-//   - focus がゲームにある間は、focus を戻す key のほかは命令にならない
-//   - 検索はスクリーンの上の真ん中のウィンドウで、出している間は focus がそこにあり、やめると前のウィンドウに、確定すると Code に戻る
+// Operations are named commands, and keys and search call the same commands.
+//   - Commands are listed in the Ctrl+P search, and starting with ">" shows only commands. Confirming runs the command
+//   - Alt+arrow moves focus to the visually adjacent window (including the inspector and the game image)
+//   - While focus is on the game, no key other than the one that brings focus back becomes a command
+//   - Search is a window at the top middle of the screen; while it is shown it has focus; canceling returns to the previous window, and confirming returns to Code
 using System;
 using Lub;
 using LiderCore;
@@ -20,7 +20,7 @@ public static class TestCommands
     {
         App.Config(new ConfigOpts { Width = 1280, Height = 720 });
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay arrangement (the code panels laid out in a single row on the cylinder screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -51,7 +51,7 @@ public static class TestCommands
             w.FocusOn(Environment.GetEnvironmentVariable("LIDER_TEST_FILE")!);
         if (frames < 6)
             return;
-        // 窓と視点が動き終わるのを待つ
+        // Wait until the panels and the view finish moving
         waited += dt;
         if (waited < 0.6f)
             return;
@@ -71,14 +71,14 @@ public static class TestCommands
                 Check(!Lider.Search.Shown && w.Focused == inspector, "committing the command did not run it");
                 break;
             case 1:
-                // インスペクタはコードの窓の左にある
+                // The inspector is to the left of the code panel
                 Key(Keys.Right, Keys.ModAlt, 0);
                 Check(w.Focused == w.FocusWindow, "Alt+Right from the inspector did not move to the code");
                 Key(Keys.Left, Keys.ModAlt, 0);
                 Check(w.Focused == inspector, "Alt+Left from the code did not move to the inspector");
                 Key(Keys.F1, 0, 0);
                 Check(w.OnGame, "F1 did not move the focus to the game");
-                // focus がゲームにある間、Alt+I はゲームに渡る
+                // While focus is on the game, Alt+I goes to the game
                 Key(I, Keys.ModAlt, 0);
                 Check(w.OnGame && Lider.Inspector.Shown, "a key other than F1 ran a command while the game had the focus");
                 Key(Keys.F1, 0, 0);
@@ -87,7 +87,7 @@ public static class TestCommands
             case 2:
                 Check(Lider.Run("game:pause") && GameApp.Position >= -1, "game:pause did not run");
                 Check(!Lider.Run("no:such-command"), "an unknown command ran");
-                // 検索はウィンドウで、出している間は focus がそこにある
+                // Search is a window, and while it is shown it has focus
                 Key(I, Keys.ModAlt, 0);
                 Check(w.Focused == inspector, "Alt+I did not move the focus to the inspector");
                 Key(P, Keys.ModCtrl, 0);
@@ -116,7 +116,7 @@ public static class TestCommands
         }
     }
 
-    // 検索の欄に打つ (字ごとに、その字を打った key として渡す)
+    // Types into the search field (each character is passed as the key that types it)
     static void Type(string text)
     {
         foreach (var c in Utf8.ByteList(text))

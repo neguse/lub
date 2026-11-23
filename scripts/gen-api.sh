@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# cs-lib/lub_stub.cs (API の記述) から生成物を作る。
-#   include/lub/lub_api.h        C API の header
-#   src/gen/vm_api_gen.c         tcs VM の host の関数
-#   web/gen/lub-api-docs.json    API reference のデータ (web/scripts/gen-api-docs.mjs が読む)
-#   dotnet/Lub/Lub.g.cs          .NET 実行の facade (P/Invoke)
-#   dotnet/Lub/Lubx.g.cs         namespace Lubx (lubx が使う C の実装) の .NET 実行の facade
-# --check は再生成せず、checkin 済みの生成物との差分を検査する (native gate)。
+# Generates files from cs-lib/lub_stub.cs (the API description).
+#   include/lub/lub_api.h        C API header
+#   src/gen/vm_api_gen.c         host functions of the tcs VM
+#   web/gen/lub-api-docs.json    API reference data (read by web/scripts/gen-api-docs.mjs)
+#   dotnet/Lub/Lub.g.cs          facade for .NET execution (P/Invoke)
+#   dotnet/Lub/Lubx.g.cs         facade for .NET execution of namespace Lubx (the C implementation used by lubx)
+# --check does not regenerate; it checks the diff against the checked-in generated files (native gate).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 check=0
 [ "${1:-}" = "--check" ] && check=1
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-# lub-gen は一度 build して DLL を直接動かす (dotnet run は呼び出しごとに MSBuild の評価が走る)
+# lub-gen is built once and its DLL is run directly (dotnet run evaluates MSBuild on every call)
 dotnet build tools/lub-gen -nologo -v q -o "$tmp/lub-gen" > /dev/null
 gen=(dotnet "$tmp/lub-gen/lub-gen.dll")
 "${gen[@]}" check
@@ -21,8 +21,8 @@ gen=(dotnet "$tmp/lub-gen/lub-gen.dll")
 "${gen[@]}" docs -o "$tmp/lub-api-docs.json"
 "${gen[@]}" facade -o "$tmp/Lub.g.cs"
 "${gen[@]}" facade-lubx -o "$tmp/Lubx.g.cs"
-# checkin 済みの生成物は scripts/format.sh と同じ整形を通した形にする。
-# formatter は 1 回で不動点にならないことがある (CJK の comment の折り返し等) ので、変わらなくなるまで回す。
+# The checked-in generated files are kept in the form produced by the same formatting as scripts/format.sh.
+# The formatter sometimes does not reach a fixed point in one pass (wrapping of CJK comments, etc.), so run it until nothing changes.
 for _ in 1 2 3 4; do
   cp "$tmp/lub_api.h" "$tmp/h.prev"; cp "$tmp/vm_api_gen.c" "$tmp/v.prev"
   clang-format --style=file:.clang-format -i "$tmp/lub_api.h" "$tmp/vm_api_gen.c"
@@ -34,8 +34,8 @@ for pair in "lub_api.h:include/lub/lub_api.h" "vm_api_gen.c:src/gen/vm_api_gen.c
   dst="${pair#*:}"
   if [ "$check" = 1 ]; then
     if ! diff -q "$src" "$dst" > /dev/null; then
-      # C のファイルは clang-format の版で折り返しが変わる。
-      # 内容の差ではないので、空白を落として同じなら通す (他の生成物は完全一致を要求)。
+      # For C files, line wrapping changes with the clang-format version.
+      # That is not a difference in content, so pass if they are the same with whitespace removed (other generated files require an exact match).
       case "$dst" in *.h|*.c) ws_tolerant=1 ;; *) ws_tolerant=0 ;; esac
       if [ "$ws_tolerant" = 1 ] && [ "$(tr -d '[:space:]' < "$src" | sha256sum)" = "$(tr -d '[:space:]' < "$dst" | sha256sum)" ]; then
         echo "gen-api: $dst differs only in formatting (formatter version); ok"

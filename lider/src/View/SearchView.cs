@@ -1,4 +1,4 @@
-// 検索 (Search) の板: 打った字と候補を 1 行ずつ出す。窓より手前に置く。
+// Search (Search) board: shows the typed text and the candidates one per line. Placed in front of the panels.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -20,10 +20,10 @@ public class SearchView
     TextureRef? texture;
     string drawn = "";
     readonly DeclareGap gap = new DeclareGap();
-    // 使う行の数 (打った字と候補)
+    // Number of lines used (typed text and candidates)
     int rows = 1;
 
-    // texture を宣言し、中身が変わっていれば描き直す (画面への pass の外で呼ぶ)
+    // Declares the texture and redraws if the content changed (call outside the pass to the display)
     public void Prepare(Search search, MonoText text)
     {
         batch.Ensure();
@@ -40,14 +40,14 @@ public class SearchView
         drawn = key;
         Gfx.BeginPass(new PassOpts { Target = texture, ClearColor = new float[] { 0, 0, 0, 0 } });
         batch.Begin();
-        // SpriteBatch は atlas を初めて使った順に描くので、文字より先に塗る
+        // SpriteBatch draws in the order atlases are first used, so fill before the text
         batch.Rect(0, 0, 1, 1, Color.Rgb(0, 0, 0, 0));
         var ink = Theme.Ink;
         var dim = Theme.Muted;
         var top = (RowH - text.LineH) * 0.5f;
         text.Draw(batch, ">", Pad * 2, Pad + top, Theme.Accent);
         text.Draw(batch, search.Query + "_", Pad * 2 + text.CellW * 2, Pad + top, ink);
-        // 字を打ってもらう入力のときは、何を打つかを右に出す
+        // For input that asks the user to type text, show what to type on the right
         var asking = Utf8.Cells(search.Prompt, Utf8.Bytes(search.Prompt));
         if (asking > 0)
             text.Draw(batch, search.Prompt, PxW - Pad * 2 - asking * text.CellW, Pad + top, dim);
@@ -66,13 +66,13 @@ public class SearchView
         Gfx.EndPass();
     }
 
-    // 今の行の数での高さ
+    // Height with the current number of lines
     public float Height(float scale)
     {
         return H * ((float)(rows * RowH + Pad * 2) / PxH) * scale;
     }
 
-    // ray が、上の端の真ん中を (angle, top) に置いた板に当たるか
+    // Whether ray hits the board placed with the middle of its top edge at (angle, top)
     public bool Hit(Ray ray, float angle, float top, float scale)
     {
         var k = R / Space.R;
@@ -80,7 +80,7 @@ public class SearchView
         return Space.HitCurved(ray, angle, (top - h * 0.5f) * k, R, W * scale * k, h * k) != null;
     }
 
-    // 上の端の真ん中を円筒の (angle, top) にして描く
+    // Drawn with the middle of the top edge at cylinder (angle, top)
     public void Draw(Mat4 vp, float angle, float top, float scale)
     {
         if (texture == null)

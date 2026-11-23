@@ -1,5 +1,5 @@
-// 窓の上の帯の確認 (Lite XL の core/nagview.lua)。答えるまで key を取る。
-// 左右で答えを選び、Return で決める。y と n でも答えられ、Escape は「いいえ」。
+// Confirmation strip at the top of the window (Lite XL's core/nagview.lua). Takes keys until answered.
+// Left/right selects the answer and Return confirms. y and n also answer, and Escape is "no".
 using System;
 using System.Collections.Generic;
 
@@ -12,7 +12,7 @@ public class NagRequest
     public List<string> Options = new List<string>();
     public int Yes;
     public int No;
-    // 答えたときにすること (0 は何もしない、1 は view の file を消す、2 は file を消す)
+    // What to do on answer (0 = nothing, 1 = delete the view's file, 2 = delete the file)
     public int Action;
     public int View;
     public string Path = "";
@@ -36,7 +36,7 @@ public class NagView
     float showHeight;
     float targetHeight;
     public float SizeX = 800;
-    // 最後に選んだ答え
+    // The last chosen answer
     public string LastAnswer = "";
 
     public void Show(NagRequest request)
@@ -173,7 +173,7 @@ public class NagView
         return (Current != null ? Current.Title : "") + "|" + Hovered;
     }
 
-    // 窓の上の端に描く
+    // Drawn at the top edge of the window
     public void Draw(float w)
     {
         if ((!Visible && showHeight <= 0) || Current == null)
@@ -197,7 +197,7 @@ public class NagView
             DrawList.DrawText(Style.Font, line, ox, oy, Style.NagbarText);
             oy += lh;
         }
-        // 答えの button を右から並べる
+        // Lays out the answer buttons from the right
         var bh = ButtonsHeight();
         var bx = SizeX;
         var by = showHeight - bh - Style.PaddingY;

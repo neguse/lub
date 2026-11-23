@@ -3,7 +3,7 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// object に入った数と bool の pattern (BoxedValuePattern) と float の key の Dictionary。transpiler は build を止める error、analyzer は warning
+// Patterns on numbers and bools boxed in object (BoxedValuePattern), and Dictionary with float keys. The transpiler reports an error that stops the build; the analyzer reports a warning
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]

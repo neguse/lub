@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// ref / in はサブセットの外。どの形でも何が悪いか読める同じ TCS1001 で止まる
+// ref / in are outside the subset. Every form stops with the same TCS1001, which says what is wrong
 public class RefInDifferentialTests
 {
     [Theory]

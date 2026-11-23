@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""tcs 自身 (compiler) の速さの回帰を見るベンチ。
+"""Benchmark that watches for speed regressions of tcs itself (the compiler).
 
-tcs のソース (SelfHost/Compiler、CBackend、VmBackend、Tool。約 4 万行) を入力にして、
-C にした tcs (tcs c で自分を C にしたもの) と .NET の tcs で次を測る:
-  vm    tcs → tcs VM の .tcsb (tcs vm --export TcsSelf.Cli.* <files> -o out.tcsb)
+Taking the tcs sources (SelfHost/Compiler, CBackend, VmBackend, Tool; about 40k lines) as input,
+measures the following with the C tcs (tcs compiled to C with tcs c) and the .NET tcs:
+  vm    tcs → tcs VM .tcsb    (tcs vm --export TcsSelf.Cli.* <files> -o out.tcsb)
   c     tcs → C               (tcs c --lib <files> -o out.c)
-指標:
-  time_s        wall の時間の median (揺れるので報告だけ。--runs 0 なら測らない)
-  instructions  C の tcs の実行した命令の数 (valgrind cachegrind。ほぼ決定的なのでゲートに使う)
-  heap_peak     C の tcs の managed heap の段の間の最大 (決定的、ゲートに使う)
-  out_bytes     出力の大きさ (決定的。生成するコードの膨らみを見る)
+Metrics:
+  time_s        median wall time (fluctuates, so only reported; not measured with --runs 0)
+  instructions  number of instructions executed by the C tcs (valgrind cachegrind; nearly deterministic, so used as a gate)
+  heap_peak     peak managed heap of the C tcs between stages (deterministic, used as a gate)
+  out_bytes     size of the output (deterministic; shows bloat in the generated code)
 
-使い方:
-  python3 perf/selfbench/run.py                       # 今の tree だけ測る
-  python3 perf/selfbench/run.py --base origin/master  # base と交互に測って比べる。決定的な指標が閾値を超えて増えたら exit 1
+Usage:
+  python3 perf/selfbench/run.py                       # measures only the current tree
+  python3 perf/selfbench/run.py --base origin/master  # measures alternately with base and compares. exit 1 if a deterministic metric grows beyond the threshold
   python3 perf/selfbench/run.py --no-cachegrind --runs 3
-  python3 perf/selfbench/run.py --base origin/master --tasks vm --hosts native --runs 0  # 決定的な指標だけ (CI)
---base-results <file> は base の測定の結果を読み書きする: file があれば base を build も測定もせずにそれを使い、無ければ測って書く。
-base の測定は base の tree と toolchain だけで決まるので、CI はそれを key にして file を cache する。時間は比べられないので --runs 0 のときだけ使える。
---base のときの入力は base の tree のソース (両方の compiler に同じ入力を与えるため)。
+  python3 perf/selfbench/run.py --base origin/master --tasks vm --hosts native --runs 0  # deterministic metrics only (CI)
+--base-results <file> reads/writes the base measurement results: if the file exists, it is used without building or measuring base; otherwise base is measured and the file is written.
+The base measurement depends only on the base tree and toolchain, so CI caches the file keyed on them. Times cannot be compared, so this is usable only with --runs 0.
+With --base, the input is the source of the base tree (to give both compilers the same input).
 """
 
 import argparse
@@ -51,7 +51,7 @@ def dotnet():
 
 
 def sources(tree):
-    """SelfHost/native.sh と同じ入力 (TcsHost.cs は --ref)"""
+    """Same input as SelfHost/native.sh (TcsHost.cs is --ref)"""
     src = []
     for d in ("Compiler", "CBackend", "VmBackend"):
         src += sorted((tree / "SelfHost" / d).glob("*.cs"))
@@ -60,7 +60,7 @@ def sources(tree):
 
 
 class Tcs:
-    """1 つの tree から作った tcs (.NET と C)"""
+    """tcs built from one tree (.NET and C)"""
 
     def __init__(self, name, tree, work):
         self.name = name
@@ -71,11 +71,11 @@ class Tcs:
         w = self.work
         w.mkdir(parents=True, exist_ok=True)
         print("[%s] build .NET tcs" % self.name, file=sys.stderr)
-        # 出力先を決めておき、tree ごとの TargetFramework に依らずに dll を見つける
+        # Fix the output directory in advance so the dll can be found regardless of each tree's TargetFramework
         sh([dotnet(), "build", str(self.tree / "Transpiler" / "Transpiler.csproj"), "-c", "Release",
             "-p:NuGetAudit=false", "-v:minimal", "-o", str(w / "dotnet")])
         self.dll = w / "dotnet" / "Transpiler.dll"
-        # tcs と一緒に配るファイル (SelfHost/native.sh と同じ配置)。C の tcs は実行ファイルの dir から読む
+        # Files distributed with tcs (same layout as SelfHost/native.sh). The C tcs reads them from the executable's dir
         (w / "runtime").mkdir(exist_ok=True)
         for d in ("core", "math", "fmt", "model", "utf8"):
             (w / "runtime" / d).mkdir(exist_ok=True)
@@ -156,10 +156,10 @@ def main():
     if args.base:
         base_tree = work / "base-tree"
         sh(["git", "-C", str(ROOT), "worktree", "add", "--detach", str(base_tree), args.base])
-        # tcs が repo の下の dir にあるときは、base の tree でも同じ dir を見る
+        # When tcs is in a dir under the repo, the base tree also looks at the same dir
         prefix = sh(["git", "-C", str(ROOT), "rev-parse", "--show-prefix"]).strip()
         trees.insert(0, Tcs("base", base_tree / prefix, work / "base"))
-    # cache した base は build も測定もしない (base の tree は入力の source として使う)
+    # A cached base is neither built nor measured (the base tree is used as the input source)
     measured = [t for t in trees if not (t.name == "base" and base_cached is not None)]
     try:
         for t in measured:
@@ -180,10 +180,10 @@ def main():
                     raise SystemExit("--base-results に %s が無い" % key)
                 times = {t.name: [] for t in trees}
                 if args.runs:
-                    for t in trees:  # warmup (disk cache と .NET の初回)
+                    for t in trees:  # warmup (disk cache and the first .NET run)
                         timed(t.argv(host, task, inputs, t.work / ("warm." + task)))
                 for _ in range(args.runs):
-                    for t in trees:  # 交互に走らせて、runner の揺れを両方に同じようにかける
+                    for t in trees:  # Run alternately so runner fluctuation affects both equally
                         times[t.name].append(timed(t.argv(host, task, inputs, t.work / ("out." + task))))
                 for t in measured:
                     out = t.work / ("out." + task)

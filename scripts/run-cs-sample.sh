@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# C# (TinyC#) サンプルの check / 変換ヘルパー (主に CI・gate 用)。
-# 対話実行は lub CLI が第一級で対応している:
+# check / conversion helper for C# (TinyC#) samples (mainly for CI and gates).
+# Interactive runs are supported first-class by the lub CLI:
 #   ./build/lub samples/<name>/<Entry>.csproj   # tcs vm --watch + hot reload
 #
-# 使い方:
-#   scripts/run-cs-sample.sh <sample> --check   # tcs check (診断のみ。警告があれば失敗)
-#   scripts/run-cs-sample.sh <sample> --vm      # tcs vm で tcs VM の bytecode にする (samples/<sample>/.lub/<Entry>.tcsb。lub で動かす)
+# Usage:
+#   scripts/run-cs-sample.sh <sample> --check   # tcs check (diagnostics only. Fails if there are warnings)
+#   scripts/run-cs-sample.sh <sample> --vm      # build tcs VM bytecode with tcs vm (samples/<sample>/.lub/<Entry>.tcsb. Run it with lub)
 #
-# entry class は <Entry>.csproj の basename (無ければ唯一の .cs の basename)。
-# 入力は同ディレクトリ以下の *.cs 全部 (bin / obj / 隠しディレクトリを除く) + cs-lib 実装ソース (lub CLI と同じ規約)。
-# 要件: dotnet SDK
+# The entry class is the basename of <Entry>.csproj (if missing, the basename of the only .cs).
+# The inputs are all *.cs under the same directory (excluding bin / obj / hidden directories) + the cs-lib implementation sources (same convention as the lub CLI).
+# Requirements: dotnet SDK
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -42,12 +42,12 @@ else
     exit 1
 fi
 
-# cs-lib の実装ソースを一律追加 (lub_stub.cs は --ref 専用なので除外)
+# Add all the cs-lib implementation sources (lub_stub.cs is excluded because it is --ref only)
 mapfile -t -O "${#CS_FILES[@]}" CS_FILES \
     < <(find cs-lib -name '*.cs' ! -name 'lub_stub.cs' | sort)
 
-# dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒かかる。
-# 呼び出し側 (native-gate.sh) が Transpiler を一度だけ build して LUB_TCS_DLL を渡すと、以後は DLL 直接実行で起動コストを払わない。
+# dotnet run evaluates MSBuild on every call and takes ~5 seconds each time.
+# If the caller (native-gate.sh) builds Transpiler once and passes LUB_TCS_DLL, the DLL is run directly from then on and the startup cost is not paid.
 if [[ -n "${LUB_TCS_DLL:-}" ]]; then
     TCS=(dotnet "$LUB_TCS_DLL")
 else

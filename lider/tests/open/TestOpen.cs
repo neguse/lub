@@ -1,6 +1,6 @@
-// エディタの command が開いた doc (Ctrl+N、Ctrl+O) を、lider の窓のタブにする。key は Workspace.Key から流す。
-//   - Ctrl+N は名前の無い doc のタブを足して出し、打った文字はその doc に入る。Ctrl+S で名前を付けて保存すると、タブの Document の path がその file になる
-//   - Ctrl+O で path を打って Return で、その file のタブを足す。もうタブのある file なら、タブを足さずにそのタブを出す
+// Turns docs opened by editor commands (Ctrl+N, Ctrl+O) into tabs of lider's window. Keys are fed through Workspace.Key.
+//   - Ctrl+N adds and shows a tab for a doc without a name, and typed characters go into that doc. Saving under a name with Ctrl+S sets the path of the tab's Document to that file
+//   - Typing a path after Ctrl+O and pressing Return adds a tab for that file. For a file that already has a tab, it shows that tab without adding one
 using System;
 using Lub;
 using LiderCore;
@@ -95,7 +95,7 @@ public static class TestOpen
         App.Quit(0);
     }
 
-    // Ctrl+O で other.cs を開く
+    // Open other.cs with Ctrl+O
     static void OpenFile(Workspace w)
     {
         Chord(w, Keys.ModCtrl, O);
@@ -106,7 +106,7 @@ public static class TestOpen
         Press(w, Return);
     }
 
-    // 英小文字を、key を押して打つ
+    // Type lowercase letters by pressing keys
     static void Type(Workspace w, string s)
     {
         foreach (var c in Utf8.ByteList(s))

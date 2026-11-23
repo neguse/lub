@@ -1,7 +1,7 @@
-// file system の操作 (native の拡張の Fs、src/Fs.ref.cs を、lider が使う形にしたもの)。
+// File system operations (the native extension Fs, src/Fs.ref.cs, in the form lider uses).
 using System.Collections.Generic;
 
-/// <summary>Disk.Stat の結果。</summary>
+/// <summary>Result of Disk.Stat.</summary>
 public class FileStat
 {
     public bool IsDir;
@@ -9,7 +9,7 @@ public class FileStat
     public int Modified;
 }
 
-/// <summary>Disk.ListDir の 1 件。Name は名前だけ (ディレクトリの path を含まない)。</summary>
+/// <summary>One entry of Disk.ListDir. Name is the name only (without the directory path).</summary>
 public class DirEntry
 {
     public string Name = "";
@@ -18,7 +18,7 @@ public class DirEntry
 
 public static class Disk
 {
-    /// <summary>無ければ null。</summary>
+    /// <summary>Returns null if it does not exist.</summary>
     public static FileStat? Stat(string path)
     {
         if (!Fs.Stat(path, out var isDir, out var size, out var modified))
@@ -30,7 +30,7 @@ public static class Disk
         return st;
     }
 
-    /// <summary>名前の昇順。ディレクトリでなければ空。</summary>
+    /// <summary>In ascending order of name. Empty if not a directory.</summary>
     public static List<DirEntry> ListDir(string path)
     {
         var entries = new List<DirEntry>();
@@ -49,13 +49,13 @@ public static class Disk
         return entries;
     }
 
-    /// <summary>無い path は false。</summary>
+    /// <summary>Returns false for a path that does not exist.</summary>
     public static bool AbsolutePath(string path, out string? absolute)
     {
         return Fs.AbsolutePath(path, out absolute);
     }
 
-    /// <summary>消したら true。</summary>
+    /// <summary>Returns true if deleted.</summary>
     public static bool Remove(string path)
     {
         return Fs.Remove(path);

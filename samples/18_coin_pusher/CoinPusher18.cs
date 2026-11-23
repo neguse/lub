@@ -1,5 +1,5 @@
-// lub の samples/18_coin_pusher の entry。
-// 実行: lub samples/18_coin_pusher/CoinPusher18.csproj (transpile + watch + hot reload) Phys3d の即時モード API で shelf/tray/pusher/coin を毎フレーム宣言し、step 後の pose を Renderer3d (lit + shadow + bloom) で描く。
+// Entry of lub's samples/18_coin_pusher.
+// Run: lub samples/18_coin_pusher/CoinPusher18.csproj (transpile + watch + hot reload) Declares shelf/tray/pusher/coin every frame with the Phys3d immediate-mode API, and draws the poses after step with Renderer3d (lit + shadow + bloom).
 
 using System;
 using System.Collections.Generic;
@@ -11,14 +11,14 @@ public class Coin
     public bool Active;
     public int Gen;
     public int Flash;
-    public int Value; // 1 = 通常, 5 = ボーナス (大型)
-    public int Born; // 投入フレーム。プール満杯時は最古を再利用する
+    public int Value; // 1 = normal, 5 = bonus (large)
+    public int Born; // Drop frame. When the pool is full, the oldest is reused
     public float SpawnX;
     public float SpawnY;
     public float SpawnZ;
 }
 
-/// <summary>declareCoins が返す 1 コイン分。
+/// <summary>One coin returned by declareCoins.
 /// </summary>
 public class LiveCoin
 {
@@ -34,14 +34,14 @@ public class LiveCoin
     }
 }
 
-// コインプッシャー。
-// 遊びの構造:
-// - トレイ前方 1/3 は側面が開いていて、横からこぼれたコインは没収 (リスク)。
-//   前縁から落としたときだけ払い出し (リターン)。
-// - スコアは手前の受け皿に積まれるコインの山で見せる (10 の位 + 1 の位)。
-// - 定期投入の数枚に 1 枚は大型ボーナスコイン (5 点)。
-// - 投入はポインタ位置へ直接 (クリック/タップ = その真下に投入)。
-//   無限に出せる。
+// Coin pusher.
+// Game structure:
+// - The front 1/3 of the tray has open sides, and coins that spill off the sides are forfeited (risk).
+//   Only coins dropped off the front edge pay out (return).
+// - The score is shown as piles of coins stacked in the tray in front (tens + ones).
+// - One in every few periodic drops is a large bonus coin (5 points).
+// - Coins drop directly at the pointer position (click/tap = drop right below it).
+//   Unlimited drops.
 public static class CoinPusher18
 {
     const float tickDt = 1.0f / 60.0f;
@@ -51,7 +51,7 @@ public static class CoinPusher18
     const float bonusR = 0.27f;
     const float bonusH = 0.1f;
     const int autoInterval = 75;
-    const int bonusEvery = 6; // 自動投入の何枚に 1 枚がボーナスか
+    const int bonusEvery = 6; // One in how many auto drops is a bonus
     const float dropY = 1.35f;
     const float dropZ = -1.0f;
 
@@ -67,16 +67,16 @@ public static class CoinPusher18
     static WorldRef3d? world = null;
     static List<int> renderCoinIndices = new List<int>();
 
-    // 壁 {x, y, z, hx, hy, hz}。
-    // 物理と描画で共有する。
-    // トレイ側面は前方 (z > 0.4) が開いていて、そこが側溝 = 没収ゾーン。
+    // Walls {x, y, z, hx, hy, hz}.
+    // Shared by physics and rendering.
+    // The tray sides are open at the front (z > 0.4), and that is the gutter = the forfeit zone.
     static List<float[]> walls = new List<float[]>
     {
-        new float[] { -1.58f, 0.5f, -1.7f, 0.08f, 0.5f, 0.9f }, // shelf 側面 L
-        new float[] { 1.58f, 0.5f, -1.7f, 0.08f, 0.5f, 0.9f }, // shelf 側面 R
-        new float[] { -1.58f, 0.28f, -0.35f, 0.08f, 0.28f, 0.45f }, // tray 側面 L (前方は開放)
-        new float[] { 1.58f, 0.28f, -0.35f, 0.08f, 0.28f, 0.45f }, // tray 側面 R (前方は開放)
-        new float[] { 0.0f, 0.8f, -2.68f, 1.5f, 0.8f, 0.08f }, // 背面
+        new float[] { -1.58f, 0.5f, -1.7f, 0.08f, 0.5f, 0.9f }, // shelf side L
+        new float[] { 1.58f, 0.5f, -1.7f, 0.08f, 0.5f, 0.9f }, // shelf side R
+        new float[] { -1.58f, 0.28f, -0.35f, 0.08f, 0.28f, 0.45f }, // tray side L (open at the front)
+        new float[] { 1.58f, 0.28f, -0.35f, 0.08f, 0.28f, 0.45f }, // tray side R (open at the front)
+        new float[] { 0.0f, 0.8f, -2.68f, 1.5f, 0.8f, 0.08f }, // back
     };
 
     // --- procedural unit meshes (Shapes3d) -----------------------------------
@@ -116,12 +116,12 @@ public static class CoinPusher18
     {
     }
 
-    // 空の台では最初の数分間なにも起きないので、起動時に台を埋めておく。
-    // 決定論のため配置は固定の擬似乱数。
+    // On an empty table nothing happens for the first few minutes, so the table is filled at startup.
+    // For determinism, the placement uses fixed pseudo-random numbers.
     static void PrefillTable()
     {
         int n = 0;
-        // shelf 上 (プッシャーの前) に 2 列
+        // 2 rows on the shelf (in front of the pusher)
         for (int i = 0; i < 10; i++)
         {
             var c = coins[n];
@@ -132,8 +132,8 @@ public static class CoinPusher18
             c.SpawnY = 0.75f + (i / 5) * 0.12f;
             c.SpawnZ = -1.15f + (i / 5) * 0.28f;
         }
-        // tray はカーペット状に敷き詰める (3 列 x 6 枚 + 前縁ぎわ 4 枚)。
-        // 密度があるほど 1 回の落下が前縁まで伝わり、序盤から払い出しが出る。
+        // The tray is covered like a carpet (3 rows x 6 coins + 4 near the front edge).
+        // The denser it is, the more a single drop propagates to the front edge, so payouts happen from early on.
         for (int i = 0; i < 18; i++)
         {
             var c = coins[n];
@@ -177,7 +177,7 @@ public static class CoinPusher18
             Contact = true,
         });
 
-        // Lower tray; its front edge (z = 0.5) is the payout drop. 浅くして山が前縁に届くまでのテンポを上げている。
+        // Lower tray; its front edge (z = 0.5) is the payout drop. It is made shallow to speed up the tempo until the pile reaches the front edge.
         var tray = Phys3d.Body(world, "tray", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Static,
@@ -242,8 +242,8 @@ public static class CoinPusher18
         });
     }
 
-    // 投入。
-    // プールが満杯なら最古のコインを再利用する = 何枚でも出せる。
+    // Drop.
+    // If the pool is full, the oldest coin is reused = any number of coins can be dropped.
     static void SpawnCoin(float x, int value)
     {
         Coin? slot = null;
@@ -309,8 +309,8 @@ public static class CoinPusher18
         return live;
     }
 
-    // --- input --------------------------------------------------------------- スクリーン x → 投入ライン (y=DROP_Y, z=DROP_Z) 上の world x。
-    // world x=±1 を NDC へ射影して線形逆写像するので、カメラの向きに依らず「ポインタの真下」に投入される (左右反転しない)。
+    // --- input --------------------------------------------------------------- Screen x → world x on the drop line (y=DROP_Y, z=DROP_Z).
+    // Projects world x=±1 to NDC and inverts linearly, so coins drop "right below the pointer" regardless of the camera orientation (no left-right flip).
     static float ScreenToSpawnX(float px, Mat4 vp, float screenW)
     {
         var a = vp.MulVec4(new Vec4(-1.0f, dropY, dropZ, 1.0f));
@@ -324,9 +324,9 @@ public static class CoinPusher18
 
     static void CaptureInput(Mat4 vp, float screenW)
     {
-        // ポインタが動いたらマーカーを追従させる。
-        // キー操作 (画面基準:
-        // このカメラでは world +X が画面左) への変換は render ごとに行う。
+        // Make the marker follow the pointer when it moves.
+        // Conversion into key operations (screen-relative:
+        // with this camera, world +X is screen left) is done every render.
         bool mousePressed = Input.MousePressed();
         Input.MouseDelta(out var dx, out var dy);
         if (dx != 0 || dy != 0 || mousePressed)
@@ -335,15 +335,15 @@ public static class CoinPusher18
             spawnX = ScreenToSpawnX(mx, vp, screenW);
         }
 
-        // 0 tick の render frame でも edge を失わないよう、回数で保持する。
-        // 同じ render frame のクリック + スペースは従来どおり 1 回とする。
+        // Keep it as a count so the edge is not lost even on a render frame with 0 ticks.
+        // A click + space in the same render frame counts as 1, as before.
         if (mousePressed || Input.KeyPressed("space"))
             pendingSpawns = pendingSpawns + 1;
     }
 
     static void UpdateTickInput()
     {
-        // held input は 60 Hz tick ごとに適用する。
+        // held input is applied every 60 Hz tick.
         if (Input.KeyDown("left") || Input.KeyDown("a"))
             spawnX = MathUtil.Clamp(spawnX + 0.04f, -1.3f, 1.3f);
         if (Input.KeyDown("right") || Input.KeyDown("d"))
@@ -358,8 +358,8 @@ public static class CoinPusher18
 
     static void Tick()
     {
-        // 前 tick で開始した演出を 60 Hz で進める。
-        // この後に発生した投入パルスと払い出しフラッシュは、最初の描画で全強度になる。
+        // Advance the effects started in the previous tick at 60 Hz.
+        // Drop pulses and payout flashes that occur after this are at full strength on the first draw.
         if (markerPulse > 0)
             markerPulse = markerPulse - 1;
         if (payoutFlash > 0)
@@ -380,8 +380,8 @@ public static class CoinPusher18
         DeclarePusher(nextWorld);
         UpdateTickInput();
 
-        // 定期自動投入。
-        // デモ (と golden capture) が自走し、数枚に 1 枚の大型ボーナスコイン (5 点) が短期目標になる。
+        // Periodic auto drop.
+        // The demo (and golden capture) runs by itself, and the large bonus coin (5 points), one in every few, becomes a short-term goal.
         if (frame % autoInterval == 10)
         {
             autoCount = autoCount + 1;
@@ -406,15 +406,15 @@ public static class CoinPusher18
                     entry.Coin.Flash = 10;
             }
         }
-        // 従来の draw 直前と同じ順序で減衰させる。
+        // Decay in the same order as before, when it ran just before draw.
         foreach (var entry in live)
         {
             if (entry.Coin.Flash > 0)
                 entry.Coin.Flash = entry.Coin.Flash - 1;
         }
 
-        // 台から落ちたコインの判定。
-        // 前縁 (z > 0.45) から落ちたら払い出し、側溝など他の場所からこぼれたら没収 (スコアなし)。
+        // Detection of coins that fell off the table.
+        // Falling from the front edge (z > 0.45) pays out, and spilling from anywhere else, such as the gutter, is forfeited (no score).
         foreach (var entry in live)
         {
             var pose = Phys3d.Pose(entry.Body);
@@ -446,8 +446,8 @@ public static class CoinPusher18
         return Mat4.Translate(new Vec3(x, y, z)) * Mat4.Scale(new Vec3(sx, sy, sz));
     }
 
-    // スコアを受け皿のコインの山として見せる。
-    // 上段 = 10 点コイン (大)、下段 = 1 点コイン (小)。
+    // Show the score as piles of coins in the tray.
+    // Top row = 10-point coins (large), bottom row = 1-point coins (small).
     static void DrawScoreCoins(Renderer3d rn, Mesh3d cyl)
     {
         int tens = score / 10;
@@ -478,7 +478,7 @@ public static class CoinPusher18
             cyl.Rebuild(Shapes3d.Cylinder(24));
         }
 
-        // ゲームセンターの暗がり + 筐体上の照明
+        // Arcade darkness + lighting above the cabinet
         rn.Light.Dir = new Vec3(-0.25f, 1.0f, 0.5f);
         rn.Light.Intensity = 1.2f;
         rn.Sky.Top = Color.Rgb(0.32f, 0.35f, 0.44f);
@@ -487,7 +487,7 @@ public static class CoinPusher18
         rn.Background = Color.Rgb(0.035f, 0.045f, 0.06f);
         rn.Shadow.Center = new Vec3(0, 0, 0);
         rn.Shadow.Extent = 3.0f;
-        // 薄いコインの接地影を保つため、既定値より小さくする。
+        // Smaller than the default, to keep the contact shadows of thin coins.
         rn.Shadow.Bias = 0.0001f;
         rn.Begin(new Camera
         {
@@ -519,7 +519,7 @@ public static class CoinPusher18
             rn.Draw(cube, StaticModel(w[0], w[1], w[2], w[3], w[4], w[5]),
                 new Draw3dOpts { Tint = dark });
         }
-        // 筐体 (描画のみ): 前面パネルと、スコアの山を置く受け皿。
+        // Cabinet (render only): the front panel, and the tray holding the score piles.
         rn.Draw(cube, StaticModel(0.0f, -0.55f, 0.53f, 1.58f, 0.62f, 0.05f),
             new Draw3dOpts { Tint = cabinet });
         rn.Draw(cube, StaticModel(-0.82f, -0.78f, 1.28f, 0.8f, 0.05f, 0.42f),
@@ -552,7 +552,7 @@ public static class CoinPusher18
             }
         }
 
-        // 払い出しの褒め演出: 前縁のバーが光る (HDR 高輝度で bloom に乗る)。
+        // Payout reward effect: the front-edge bar glows (high HDR brightness, so it picks up bloom).
         if (payoutFlash > 0)
         {
             float k = payoutFlash / 45.0f;
@@ -562,8 +562,8 @@ public static class CoinPusher18
 
         DrawScoreCoins(rn, cyl);
 
-        // 投入マーカー: ポインタ追従のゴーストコイン。
-        // 投入時にパルスする。
+        // Drop marker: a ghost coin that follows the pointer.
+        // Pulses on drop.
         float pulse = 1.0f + markerPulse * 0.07f;
         rn.Draw(cyl, StaticModel(spawnX, dropY, dropZ,
             coinR * pulse, coinH * pulse, coinR * pulse),

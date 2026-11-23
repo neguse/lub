@@ -1,7 +1,7 @@
-// 同じ宣言は毎回 new でも使い回しでも Clear し直しても同じ C API の呼び出しになる。
-// env LUB_TEST_BINDINGS_MODE = new / reuse / clear。
-// reuse と clear は同じ Bindings を使い、clear は draw ごとに Clear して全部 Set し直す。
-// digest の比較は scripts/test-bindings-digest.sh が行う。
+// The same declaration makes the same C API calls whether it is new every time, reused, or Cleared again.
+// env LUB_TEST_BINDINGS_MODE = new / reuse / clear.
+// reuse and clear use the same Bindings; clear Clears it for each draw and Sets everything again.
+// scripts/test-bindings-digest.sh compares the digests.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -17,7 +17,7 @@ struct FSIn { float4 pos : SV_Position; };
   return float4(fu.tint.rgb + float3(fu.extra, 0.0) * 0.0, 1.0) * LUB_SAMPLE(tex, float2(0.5, 0.5));
 }";
 
-    // extra が float の shader (同じ名前で値の長さを変える draw 用)
+    // A shader whose extra is a float (for the draw that changes the value length under the same name)
     const string Fs1 = @"
 struct FsUniforms { float4 tint; float extra; };
 ConstantBuffer<FsUniforms> fu;
@@ -37,8 +37,8 @@ struct FSIn { float4 pos : SV_Position; };
         mode = Environment.GetEnvironmentVariable("LUB_TEST_BINDINGS_MODE") ?? "reuse";
     }
 
-    // k 番目の draw。
-    // 奇数の draw は extra を float2 で渡し、偶数の draw は同じ名前で長さを変えて、extra が float の shader で描く。
+    // The k-th draw.
+    // Odd draws pass extra as float2; even draws change the length under the same name and draw with the shader whose extra is a float.
     static void DrawOne(int k, DrawOpts opts2, DrawOpts opts1, TextureRef tex)
     {
         var tint = new Vec4(k * 0.25f, 0, 1, 1);
@@ -62,8 +62,8 @@ struct FSIn { float4 pos : SV_Position; };
         }
     }
 
-    // 名前の組が draw ごとに違う draw (texture を渡さず、既定の texture で描く)。
-    // 同じ Bindings を使い回すなら Clear が要る。
+    // Draws whose set of names differs per draw (no texture is passed; they draw with the default texture).
+    // Reusing the same Bindings requires Clear.
     static void DrawFewer(DrawOpts opts2)
     {
         var b = mode == "new" ? new Bindings() : kept!;

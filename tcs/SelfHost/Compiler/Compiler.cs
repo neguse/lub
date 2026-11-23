@@ -7,14 +7,14 @@ public sealed class CompileResult
     public bool Ok;
     public List<string> Diagnostics = new List<string>();
     public int ErrorCount;
-    // tcs c と tcs vm への入力 (Session.ExportOnly のとき)
+    // Input to tcs c and tcs vm (when Session.ExportOnly)
     public ExportResult? Export;
 }
 
-// セルフホストの compiler の入口
+// Entry point of the self-hosted compiler
 public static class Compiler
 {
-    // 構文解析だけを行い、診断の文字列を返す (速度の測定と構文の検査に使う)
+    // Runs parsing only and returns the diagnostics string (used for speed measurement and syntax checks)
     public static List<string> ParseOnly(List<string> paths, List<string> texts)
     {
         var diags = new Diagnostics();

@@ -1,7 +1,7 @@
-// 保存していない本文の下書き。
-//   - 下書きは保存していないまま窓に戻り、file とゲームの版は変えない。元の file が無い下書きは捨てる
-//   - 打つと書き、保存すると消す。窓を閉じても未保存の間は残り、file を消すと消える
-//   - Ctrl+P の候補に未保存の印が付く
+// Drafts of unsaved text.
+//   - A draft comes back to the window still unsaved, and does not change the file or the game's version. A draft whose original file is missing is discarded
+//   - Written on typing and deleted on saving. Kept while unsaved even if the window is closed, and deleted when the file is deleted
+//   - Ctrl+P candidates get an unsaved mark
 using System;
 using Lub;
 using LiderCore;
@@ -59,7 +59,7 @@ public static class TestDrafts
         Check(Disk.Stat(dir + "/Gone.cs") == null, "kept the draft of a missing file");
         Check(Disk.Stat(draft) != null, "lost the draft on restore");
 
-        // Ctrl+P の印
+        // The Ctrl+P mark
         var search = new Search();
         search.Open(w, "Target.cs");
         Check(Marked(search, "Target.cs"), "no mark on the dirty file");
@@ -67,32 +67,32 @@ public static class TestDrafts
         Check(!Marked(search, "Other.cs"), "a mark on the clean file");
         search.Cancel(w);
 
-        // 打つと、次の Tick で書く
+        // Typing writes it on the next Tick
         var before = Disk.Stat(draft)!.Size;
         doc.Type("// typing\n");
         w.Tick(Drafts.WriteSeconds);
         Check(Disk.Stat(draft)!.Size > before, "the draft did not grow");
 
-        // 窓を閉じても未保存の間は残る
+        // Kept while unsaved even after the window is closed
         w.Close(w.WindowOf(doc)!);
         w.Tick(Drafts.WriteSeconds);
         Check(Disk.Stat(draft) != null, "closing the window dropped the draft");
         w.FocusOn(path);
 
-        // 保存すると消える。file は下書きの本文になる
+        // Saving deletes it. The file gets the draft's text
         doc.Save();
         w.Tick(Drafts.WriteSeconds);
         Check(Disk.Stat(draft) == null, "saving kept the draft");
         Check(!doc.Dirty, "dirty after saving");
 
-        // 深い path の file も、同じ path に戻す。同じ本文の下書きは捨てる
+        // A file with a deep path is also restored to the same path. A draft with the same text is discarded
         Io.SaveText(dir + "/Other.cs", "public static class Other\n{\n}");
         w.Drafts.Restore(w);
         Check(Disk.Stat(dir + "/Other.cs") == null, "kept a draft equal to the file");
         Check(Drafts.NameOf("a/b%c.cs") == "a%2Fb%25c.cs", "name: " + Drafts.NameOf("a/b%c.cs"));
         Check(Drafts.PathOf("a%2Fb%25c.cs") == "a/b%c.cs", "path: " + Drafts.PathOf("a%2Fb%25c.cs"));
 
-        // file を消すと下書きも消える
+        // Deleting the file also deletes the draft
         var other = w.PathOf("Other.cs");
         w.FocusOn(other);
         w.Focus!.Type("// typing\n");

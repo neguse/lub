@@ -1,6 +1,8 @@
-// host API (include/lub/lub_host.h)。
-// tcs VM の player (src/vm_player.c)、.NET 実行の host、tcs2c 実行の host (src/tcs_host.c) が同じ関数で runtime を回す。
-// frame の骨格 (dt、profile、begin / end、入力 latch の clear) はここが唯一の実装。
+// host API (include/lub/lub_host.h).
+// The tcs VM player (src/vm_player.c), the .NET execution host, and the tcs2c
+// execution host (src/tcs_host.c) run the runtime with the same functions. This
+// is the only implementation of the frame skeleton (dt, profile, begin / end,
+// clearing input latches).
 #include "host_api.h"
 #include "api_internal.h"
 #include "backend.h"
@@ -20,17 +22,18 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 
-// EM_JS bodies are JavaScript; keep clang-format away from them (same guard as src/host.c).
+// EM_JS bodies are JavaScript; keep clang-format away from them (same guard as
+// src/host.c).
 // clang-format off
-// SDL は修飾 key を物理の位置 (code) でしか見ないので、CapsLock を Ctrl にした環境の key ("Control"、code は "CapsLock") を
-// 修飾 key と思わない。論理の key から code を直した event を、SDL より先に流し直す。
+// SDL looks at modifier keys only by physical position (code), so on setups where CapsLock is mapped to Ctrl, it does not treat the key ("Control", code "CapsLock")
+// as a modifier. Re-dispatch the event with its code fixed from the logical key before SDL sees it.
 EM_JS(void, lub_web_fix_modifier_codes, (void), {
   const names = {Control: "Control", Shift: "Shift", Alt: "Alt"};
   const side = (e) => (e.location === 2 ? "Right" : "Left");
   const fixedCode = (e) => {
     if (names[e.key])
       return e.code.startsWith(names[e.key]) ? null : names[e.key] + side(e);
-    // 半角/全角の code は US の ` と同じ Backquote なので、そのままだと SDL は ` を打つ key にする
+    // The Hankaku/Zenkaku code is Backquote, the same as ` on US layouts, so left as is, SDL would make it a key that types `
     return e.key === "Zenkaku" || e.key === "Hankaku" ? "Lang5" : null;
   };
   const fix = (e) => {
@@ -61,7 +64,7 @@ static int gamepad_slot(Process *proc, SDL_JoystickID id) {
   return -1;
 }
 
-// 空いている最初の slot に入れる。
+// Put it in the first free slot.
 static void gamepad_add(Process *proc, SDL_JoystickID id) {
   if (gamepad_slot(proc, id) >= 0)
     return;
@@ -74,7 +77,7 @@ static void gamepad_add(Process *proc, SDL_JoystickID id) {
   }
 }
 
-// 押していた button の release は、SDL が REMOVED より先に button の event で送る。
+// SDL sends the releases of held buttons as button events before REMOVED.
 static void gamepad_remove(Process *proc, SDL_JoystickID id) {
   int slot = gamepad_slot(proc, id);
   if (slot < 0)
@@ -97,8 +100,9 @@ static void gamepad_button(App *app, const SDL_GamepadButtonEvent *e) {
     app->input.pad_released[slot] |= bit;
 }
 
-// SDL の軸 (-32768..32767) を Input.GamepadAxis の値にする。
-// stick は両端が -1 と 1 になるように割り、trigger (0..32767) は 0..1 にする。
+// Convert an SDL axis (-32768..32767) to an Input.GamepadAxis value.
+// Sticks are divided so the ends are -1 and 1, and triggers (0..32767) become
+// 0..1.
 static float pad_axis(SDL_Gamepad *pad, int axis) {
   int value = SDL_GetGamepadAxis(pad, (SDL_GamepadAxis)axis);
   if (axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ||
@@ -107,8 +111,9 @@ static float pad_axis(SDL_Gamepad *pad, int axis) {
   return (float)value / (value < 0 ? 32768.0f : 32767.0f);
 }
 
-// 今押されているもの (key、mouse の button と位置、gamepad) を SDL の状態から写す。
-// 押した・離した瞬間と移動の合計は event が積む。
+// Copy what is currently held (keys, mouse buttons and position, gamepads) from
+// SDL's state. Press / release edges and motion totals are accumulated by
+// events.
 static void input_sample(App *app) {
   InputState *in = &app->input;
   int n = 0;
@@ -136,7 +141,8 @@ static void input_sample(App *app) {
   }
 }
 
-// gamepad が使えなくても (subsystem の初期化に失敗しても) runtime は動かす。
+// Keep the runtime running even if gamepads are unavailable (even if subsystem
+// init fails).
 static void gamepads_init(Process *proc) {
   if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
     SDL_Log("gamepad init failed: %s", SDL_GetError());
@@ -158,22 +164,22 @@ static void gamepads_close(Process *proc) {
 }
 
 LubContext *lub_host_create(const LubHostOpts *opts) {
-  // .NET の host (dotnet/Lub) はここが SDL の入口。
-  // player (src/main.c) と同じく assertion を dialog にせず abort させる。
-  // 環境変数 SDL_ASSERT が優先。
+  // For the .NET host (dotnet/Lub), this is the entry point to SDL.
+  // As in the player (src/main.c), make assertions abort instead of showing a
+  // dialog. The SDL_ASSERT environment variable takes precedence.
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
 #ifdef __EMSCRIPTEN__
-  // web の tcs VM の player は、ここを通ってから SDL を立てる
+  // The web tcs VM player goes through here before bringing up SDL
   lub_web_fix_modifier_codes();
 #endif
 #ifdef SDL_PLATFORM_ANDROID
-  // APK のデータを内部ストレージに写して cwd にする
+  // Copy the APK data to internal storage and make it the cwd
   if (!android_prepare())
     return NULL;
 #endif
 #ifndef __EMSCRIPTEN__
-  // export は display を使わない (window は大きさを持つだけ)。
-  // 環境変数 SDL_VIDEO_DRIVER が優先。
+  // Export does not use a display (the window only has a size).
+  // The SDL_VIDEO_DRIVER environment variable takes precedence.
   if (export_active())
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
 #endif
@@ -265,13 +271,14 @@ void lub_host_main_rect(Process *proc, int *x, int *y, int *w, int *h) {
   *h = y1 - y0;
 }
 
-// EventData.Mods の値
+// Values of EventData.Mods
 static int32_t event_mods(SDL_Keymod mod) {
   return ((mod & SDL_KMOD_SHIFT) ? 1 : 0) | ((mod & SDL_KMOD_CTRL) ? 2 : 0) |
          ((mod & SDL_KMOD_ALT) ? 4 : 0);
 }
 
-// EventData.Typed と Plain の値。keymap は native では OS の配列、web では keydown の key から SDL が作る
+// Values of EventData.Typed and Plain. The keymap is the OS layout on native;
+// on web, SDL builds it from the keydown key
 static int32_t event_char(SDL_Scancode scancode, SDL_Keymod mod) {
   SDL_Keycode k = SDL_GetKeyFromScancode(scancode, mod, false);
   if (k < 32 || k == 127 || (k & (SDLK_SCANCODE_MASK | SDLK_EXTENDED_MASK)))
@@ -363,7 +370,7 @@ static bool translate_event(App *app, const SDL_Event *e, LubEventData *out) {
   }
 }
 
-// 変換できた event は OnEvent に渡るので、宣言の区切りを進める。
+// A translated event is passed to OnEvent, so advance the declaration boundary.
 bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out) {
   if (!translate_event(app, e, out))
     return false;
@@ -429,7 +436,7 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   return true;
 }
 
-// 押した・離した瞬間と、移動と wheel の合計を消す (OnFrame の後)
+// Clear press / release edges and the motion and wheel totals (after OnFrame)
 static void input_latch_clear(App *app) {
   InputState *in = &app->input;
   memset(in->key_pressed, 0, sizeof(in->key_pressed));

@@ -1,6 +1,6 @@
-// UTF-8 の byte の桁と、見た目の桁の変換。
-// 東アジアの全角の文字 (Unicode の East Asian Width が W か F) は 2 桁、ほかの文字は 1 桁。
-// エディタの core (src/Editor) の幅と同じ数え方。
+// Conversion between UTF-8 byte columns and display columns.
+// East Asian full-width characters (Unicode East Asian Width W or F) take 2 columns; other characters take 1.
+// Counts the same way as the width in the editor core (src/Editor).
 using System;
 using System.Collections.Generic;
 using TinySystem.Text;
@@ -9,7 +9,7 @@ namespace LiderCore;
 
 public static class Utf8
 {
-    // 先頭の byte から、その文字の byte 数
+    // Byte count of a character, from its first byte
     public static int RuneBytes(int lead)
     {
         if (lead < 0x80)
@@ -23,7 +23,7 @@ public static class Utf8
         return 1;
     }
 
-    // s の at byte 目から始まる文字の codepoint
+    // Codepoint of the character starting at byte at of s
     public static int Decode(string s, int at)
     {
         return Decode(new Utf8Bytes(s), at);
@@ -46,7 +46,7 @@ public static class Utf8
         return char.ConvertFromUtf32(cp);
     }
 
-    // 文字の桁の数 (全角は 2)
+    // Column count of a character (2 for full-width)
     public static int CellWidth(int cp)
     {
         if (cp < 0x1100)
@@ -67,7 +67,7 @@ public static class Utf8
         return 1;
     }
 
-    // s の先頭から byteCol byte までの桁数
+    // Column count from the start of s up to byte byteCol
     public static int Cells(string s, int byteCol)
     {
         var u = new Utf8Bytes(s);
@@ -81,14 +81,14 @@ public static class Utf8
         return cell;
     }
 
-    // s 全体の桁数
+    // Column count of the whole s
     public static int Width(string s)
     {
         return Cells(s, new Utf8Bytes(s).Length);
     }
 
-    // s を cells 桁に収める。
-    // 収まらなければ、cells - 1 桁に収まる頭に … (1 桁) を付け、切ったことを見せる (切った数が別の数に見えないように)
+    // Fits s into cells columns.
+    // If it does not fit, appends … (1 column) to the head that fits in cells - 1 columns, to show it was cut (so a cut number does not look like a different number)
     public static string Fit(string s, int cells)
     {
         if (cells <= 0)
@@ -96,7 +96,7 @@ public static class Utf8
         var u = new Utf8Bytes(s);
         var cell = 0;
         var at = 0;
-        // cells - 1 桁に収まる頭の byte の数
+        // Byte count of the head that fits in cells - 1 columns
         var head = -1;
         while (at < u.Length)
         {
@@ -111,13 +111,13 @@ public static class Utf8
         return s;
     }
 
-    // s の byte の数
+    // Byte count of s
     public static int Bytes(string s)
     {
         return new Utf8Bytes(s).Length;
     }
 
-    // s の byte の並び (ASCII の文字を 1 つずつ見るのに使う)
+    // Bytes of s (used to look at ASCII characters one by one)
     public static List<int> ByteList(string s)
     {
         var u = new Utf8Bytes(s);
@@ -127,26 +127,26 @@ public static class Utf8
         return list;
     }
 
-    // s の i byte 目 (0 から)
+    // Byte i of s (from 0)
     public static int At(string s, int i)
     {
         return new Utf8Bytes(s)[i];
     }
 
-    // s の start byte 目 (0 から) から count byte
+    // count bytes of s from byte start (from 0)
     public static string Sub(string s, int start, int count)
     {
         return new Utf8Bytes(s).Slice(start, count).ToString();
     }
 
-    // s の start byte 目 (0 から) から最後まで
+    // s from byte start (from 0) to the end
     public static string Sub(string s, int start)
     {
         var u = new Utf8Bytes(s);
         return u.Slice(start, u.Length - start).ToString();
     }
 
-    // s の from byte 目より後で needle が最初に現れる byte の位置 (無ければ -1)
+    // Byte position of the first occurrence of needle in s from byte from onward (-1 if none)
     public static int IndexOf(string s, string needle, int from = 0)
     {
         var h = new Utf8Bytes(s);
@@ -164,7 +164,7 @@ public static class Utf8
         return -1;
     }
 
-    // s の中で needle が最後に現れる byte の位置 (無ければ -1)
+    // Byte position of the last occurrence of needle in s (-1 if none)
     public static int LastIndexOf(string s, string needle)
     {
         var at = -1;
@@ -177,7 +177,7 @@ public static class Utf8
         return at;
     }
 
-    // 全角の範囲 (first, last, step) の並び。Lite XL 2.1.8 の src/unidata.h の doublewidth_table と同じ
+    // List of full-width ranges (first, last, step). Same as doublewidth_table in src/unidata.h of Lite XL 2.1.8
     static readonly int[] Wide = new int[]
     {
         0x1100, 0x115F, 0x1,  0x231A, 0x231B, 0x1,  0x2329, 0x232A, 0x1,  0x23E9, 0x23EC, 0x1,

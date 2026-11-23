@@ -1,7 +1,7 @@
-// .NET 実行の入口。
-// tcs VM の player では使わない: lub は Game.csproj 以下の全 *.cs を tcs に渡すので、tcs が定義しない NET シンボルで囲んで空に見せている。
+// Entry point for .NET execution.
+// Not used by the tcs VM player: lub passes every *.cs under Game.csproj to tcs, so this is wrapped in the NET symbol, which tcs does not define, to make it look empty.
 #if NET
-// .NET だけで動く入口なので、TinyC# の analyzer の診断 (top-level の args) は当てはまらない
+// This entry point runs only on .NET, so the TinyC# analyzer diagnostic (top-level args) does not apply
 #pragma warning disable TCS1001
 return Lub.App.Run(typeof(Game), args);
 #endif

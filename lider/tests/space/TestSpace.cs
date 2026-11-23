@@ -1,9 +1,9 @@
-// 円筒に沿って曲げた板を ray で指した位置 (Space.HitCurved)。
-//   - 板の中心の角度へ原点から向けた ray は、板の中心 (0.5, 0.5) に当たる
-//   - 角度だけずらすと、u は角度の幅に比例して動く (平らな板なら tan でずれる所)
-//   - 高さは、当たった点の高さで決まる
-//   - 板の外を向けば当たらない
-//   - 原点から少し離れた所 (眼の位置) から出た ray でも、円筒の上の同じ所に当たる
+// Position where a ray points at a board curved along the cylinder (Space.HitCurved).
+//   - A ray from the origin toward the angle of the board's center hits the board's center (0.5, 0.5)
+//   - Shifting only the angle moves u in proportion to the angle span (where a flat board would shift by tan)
+//   - The height is determined by the height of the hit point
+//   - Pointing outside the board does not hit
+//   - A ray starting slightly away from the origin (at the eye position) also hits the same place on the cylinder
 using System;
 using Lub;
 using LiderCore;

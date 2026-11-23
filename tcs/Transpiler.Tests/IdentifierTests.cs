@@ -1,12 +1,12 @@
 namespace TinyCs.Tests;
 
-// 識別子の扱い:
-// - C# の予約語でない名前 (end、local、nil、repeat など) は、member にも型にも local にも使える
-// - verbatim 識別子 (@float 等) は C# の意味で動く
-// - self、runtime の global と同名の型は TCS1001
+// Handling of identifiers:
+// - Names that are not C# reserved words (end, local, nil, repeat, etc.) can be used for members, types, and locals
+// - Verbatim identifiers (@float, etc.) behave with their C# meaning
+// - self, and types with the same name as runtime globals, are TCS1001
 public class IdentifierTests
 {
-    // tcs VM と C の名前は C# の識別子から作るので、他の言語の予約語と同じ名前に特別な扱いは無い
+    // tcs VM and C names are built from C# identifiers, so names that match reserved words of other languages get no special treatment
     [Fact]
     public void MembersAndTypesNamedLikeOtherLanguageKeywords_HaveNoDiagnostic()
     {
@@ -199,9 +199,9 @@ public class IdentifierTests
         Assert.Equal("9", output);
     }
 
-    // `self` は IL が method の receiver の名前に使う。宣言すると
-    // receiver を壊すため TCS1001 (generated temp の `__tcs_` は `__` で始まる
-    // 識別子の規則、IdentifierDiagnosticTests)。
+    // IL uses `self` as the name of a method's receiver. Declaring it
+    // breaks the receiver, so it is TCS1001 (the generated temp `__tcs_` falls under the rule for identifiers starting with `__`;
+    // see IdentifierDiagnosticTests).
     private static void AssertReservedIdentifierError(CheckResult result,
         string name)
     {
@@ -291,7 +291,7 @@ public class IdentifierTests
         Assert.Equal("2", output);
     }
 
-    // IL が素の名前で参照する runtime の名前 (TinySystem / List / Dict / Math / String など) と同名の型は、build を止める error にしている
+    // Types with the same name as runtime names that IL references by bare name (TinySystem / List / Dict / Math / String, etc.) are made a build-stopping error
     private static void AssertRuntimeGlobalError(CheckResult result,
         string name)
     {
@@ -337,7 +337,7 @@ public class IdentifierTests
     [Fact]
     public void NonGlobalTypeNamesAndInterfaces_HaveNoRuntimeGlobalError()
     {
-        // interface、member 名 (`self.Math`)、enum member (`E.List`)、`Random` は対象外
+        // Interfaces, member names (`self.Math`), enum members (`E.List`), and `Random` are out of scope
         var result = Checker.Check(["""
             namespace Game
             {
@@ -358,7 +358,7 @@ public class IdentifierTests
             w => w.Contains("RuntimeGlobalIdentifier"));
     }
 
-    // 予約する型の名前の集合 (Compliance.RuntimeGlobals) を固定する。どの名前の型も error
+    // Pins down the set of reserved type names (Compliance.RuntimeGlobals). A type with any of these names is an error
     [Fact]
     public void RuntimeGlobals_AreTheReservedTypeNames()
     {

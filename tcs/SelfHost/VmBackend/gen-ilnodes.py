@@ -1,7 +1,7 @@
-"""SelfHost/Compiler/Il.cs の record から SelfHost/VmBackend/IlNodes.cs を作る。
-IL の node の子の列 (Children) と診断用のテキスト (Dump) を、record の member の順 (Origin を除く) で書く。
-Dump の形は旧 C# 版 (tcsvm/Emitter の IlDump.Node、reflection で record を書いたもの) と同じ: lambda の本文の指紋に使う。
-使い方: python3 -I SelfHost/VmBackend/gen-ilnodes.py (Il.cs の record を変えたら走らせる)"""
+"""Generates SelfHost/VmBackend/IlNodes.cs from the records in SelfHost/Compiler/Il.cs.
+Writes the children of IL nodes (Children) and the text for diagnostics (Dump) in the order of the record members (excluding Origin).
+The Dump form is the same as the old C# version (IlDump.Node in tcsvm/Emitter, which wrote records via reflection): it is used for the fingerprint of lambda bodies.
+Usage: python3 -I SelfHost/VmBackend/gen-ilnodes.py (run it after changing the records in Il.cs)"""
 import os
 import re
 
@@ -75,17 +75,17 @@ def dump_expr(typ, f):
 
 
 lines = []
-lines.append('// SelfHost/VmBackend/gen-ilnodes.py が SelfHost/Compiler/Il.cs から作る。手で編集しない')
+lines.append('// Generated from SelfHost/Compiler/Il.cs by SelfHost/VmBackend/gen-ilnodes.py. Do not edit by hand.')
 lines.append('using System.Collections.Generic;')
 lines.append('using TcsSelf;')
 lines.append('')
 lines.append('namespace TcsVm;')
 lines.append('')
-lines.append('/// <summary>IL の node の子 (Children) と診断用のテキスト (Dump)。member は record の宣言の順 (Origin を除く)。')
-lines.append('/// Dump は lambda の本文の指紋 (reload が生きている closure を新版に対応させる鍵) に使う。</summary>')
+lines.append('/// <summary>Child lists (Children) and diagnostic text (Dump) of IL nodes. Members follow the record declaration order (excluding Origin).')
+lines.append('/// Dump is used as the fingerprint of a lambda body (the key that maps live closures to the new version on reload).</summary>')
 lines.append('public static class IlNodes')
 lines.append('{')
-lines.append('    /// <summary>node の子 (IL の式と文、IlBlock、IlTableEntry)。if の腕は条件と本文、with の上書きは値。</summary>')
+lines.append('    /// <summary>Children of a node (IL expressions and statements, IlBlock, IlTableEntry). For an if arm, the condition and the body; for a with override, the value.</summary>')
 lines.append('    public static List<object> Children(object node)')
 lines.append('    {')
 lines.append('        var r = new List<object>();')
@@ -104,7 +104,7 @@ for name, fields in records:
 lines.append('        return r;')
 lines.append('    }')
 lines.append('')
-lines.append('    /// <summary>node の record の名前 (C# の GetType().Name)。</summary>')
+lines.append('    /// <summary>The record name of a node (GetType().Name in C#).</summary>')
 lines.append('    public static string Name(object node)')
 lines.append('    {')
 for name, fields in records:
@@ -122,7 +122,7 @@ for name, fields in records:
     lines.append('        {')
     lines.append(f'            var n = n{name};')
     if name == 'IlLit':
-        # literal は種類と値の表示 (IlLiterals.Display) だけを書く
+        # A literal writes only its kind and display value (IlLiterals.Display)
         lines.append('            return "IlLit(" + IlLitKindName(n.Kind) + ", " + IlLiterals.Display(n) + ")";')
     elif name == 'IlBlock':
         lines.append('            var stats = new List<string>();')
@@ -153,7 +153,7 @@ for kind in ('IlExpr', 'IlStat', 'IlTableEntry'):
     lines.append('        return "[" + string.Join(", ", parts) + "]";')
     lines.append('    }')
     lines.append('')
-lines.append('    // if の腕と with の上書きは C# 版では tuple')
+lines.append('    // In the C# version, if arms and with overrides are tuples')
 lines.append('    private static string Arms(List<IlArm> items)')
 lines.append('    {')
 lines.append('        var parts = new List<string>();')

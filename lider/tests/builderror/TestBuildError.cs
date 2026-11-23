@@ -1,6 +1,6 @@
-// 保存した版が compile error なら、ゲームの build の診断 (Lider.GameBuildFailed) で error が窓の file と行に付き、直した版の reload が当たると消える。
-// 窓で game/Target.cs (lider が開くゲームの build に入る) を書き換えて保存するので、lub の watch と tcs を通る。
-// 書き換えるのは、ゲームが動き始めてから。
+// If the saved version has a compile error, the game build's diagnostics (Lider.GameBuildFailed) attach the error to the panel's file and line, and it disappears when the reload of the fixed version is applied.
+// The panel rewrites and saves game/Target.cs (part of the build of the game lider opens), so it goes through lub's watch and tcs.
+// The rewrite happens after the game starts running.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -52,7 +52,7 @@ public static class TestBuildError
             return;
         var w = Lider.Work!;
         waited += dt;
-        // ゲームの build を待つ
+        // Wait for the game build
         if (GameApp.Frames == 0)
         {
             Check(waited < 60, "the game did not start in 60 seconds");
@@ -95,7 +95,7 @@ public static class TestBuildError
         App.Quit(0);
     }
 
-    // ゲームの Value の今の値 (読めなければ -1)
+    // Current value of the game's Value (-1 if it cannot be read)
     static int Value()
     {
         foreach (var n in GameApp.Inspect("Game", 0, 100))
@@ -104,7 +104,7 @@ public static class TestBuildError
         return -1;
     }
 
-    // line 行目の from を to に打ち直して保存する
+    // Retypes from as to on line line and saves
     static void Replace(int line, string from, string to)
     {
         var col = Utf8.IndexOf(doc!.Text(line), from);

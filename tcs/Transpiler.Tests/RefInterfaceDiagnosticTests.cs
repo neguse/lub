@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// user の型が `--ref` (host) の interface を実装すると、interface 経由の呼び出しは
-// host の名前 (`h:do_thing()`)、実装は C# の名前 (`Impl:DoThing`) になって届かない
-// (q.md Q16)。build を止める TCS1001 で、check は exit 1。user の interface の実装はそのまま書ける
+// When a user type implements a `--ref` (host) interface, calls through the interface
+// use the host name (`h:do_thing()`) while the implementation has the C# name (`Impl:DoThing`), so they do not reach it
+// (q.md Q16). This is TCS1001, which stops the build, and check exits 1. Implementations of user interfaces can be written as is.
 [Collection(ConsoleCollection.Name)]
 public class RefInterfaceDiagnosticTests
 {
@@ -69,7 +69,7 @@ public class RefInterfaceDiagnosticTests
         }
     }
 
-    // C backend も同じ診断を出す (tcs2c は Diagnostics があれば IL を使わずに止まる)
+    // The C backend reports the same diagnostic (tcs2c stops without using the IL when there are Diagnostics).
     [Fact]
     public void IlExport_RefInterfaceImplementationIsError()
     {
@@ -80,8 +80,8 @@ public class RefInterfaceDiagnosticTests
             "error TCS1001: unsupported syntax: RefInterfaceImplementation(IHostHook)"));
     }
 
-    // user の interface は実装も呼び出しも C# の名前で、host の interface を値として
-    // 受け渡すだけ (実装しない) のも従来どおり
+    // A user interface uses C# names for both implementation and calls, and just passing a host interface around as a value
+    // (without implementing it) also works as before.
     [Fact]
     public void UserInterface_IsNotDiagnosed()
     {

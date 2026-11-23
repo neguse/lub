@@ -1,6 +1,6 @@
-// Gfx.Pick の app の引数: App.Use で開いた app の main の画素に、一番手前で描いた draw を引く。
-// TestAppPickChild は 2 枚の板を描く: A (全面、z 0.5)、B (左半分、z 0.3)。左半分は B、右半分は A が手前。
-// 開いた側の draw は、開いた app の記録に入らない。
+// The app argument of Gfx.Pick: picks the frontmost draw at a pixel of the main of an app opened with App.Use.
+// TestAppPickChild draws 2 planes: A (full screen, z 0.5), B (left half, z 0.3). B is in front on the left half, A on the right half.
+// The opener's draws do not go into the opened app's record.
 using System;
 using Lub;
 
@@ -60,7 +60,7 @@ public static class TestAppPick
         if (rt == null || sh == null) return;
         var child = App.Use("child", "tests/cs/.lub/all.tcsb", "TestAppPickChild");
         Check.That(App.Step(child, rt, dt), "Step failed");
-        // 開いた側も自分の main に 3 枚描く (開いた app の draw の番号に混ざらないこと)
+        // The opener also draws 3 planes to its own main (they must not mix into the draw indices of the opened app)
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex });
         TestAppPickChild.Quad(sh, -1, 1, 0.2f);
         TestAppPickChild.Quad(sh, -1, 1, 0.1f);
@@ -69,7 +69,7 @@ public static class TestAppPick
 
         if (step == 0)
         {
-            // 開いた app の main は 16x8。右半分
+            // The opened app's main is 16x8. Right half
             Gfx.Pick(Gfx.MainTex!, 12, 4, child);
             step = 1;
             return;
@@ -82,7 +82,7 @@ public static class TestAppPick
             return;
         }
         waited = 0;
-        // 自分には要求を出していない
+        // No request was issued for the opener itself
         Check.That(Gfx.PickResult() == null, "the opening app has a pick result");
         if (step == 1)
         {
@@ -95,7 +95,7 @@ public static class TestAppPick
         {
             Check.That(hit.Draw == 1, "left half: draw " + hit.Draw + ", want 1 (B)");
             Check.That(hit.Site.Contains("TestAppPick.cs:"), "site '" + hit.Site + "' does not name the caller");
-            // target の外
+            // Outside the target
             Gfx.Pick(Gfx.MainTex!, 100, 4, child);
             step = 3;
             return;

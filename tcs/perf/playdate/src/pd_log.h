@@ -1,4 +1,4 @@
-/* ログの窓口。実装は pd_shim.c */
+/* Logging entry point. Implemented in pd_shim.c */
 
 #ifndef PERF_PD_LOG_H
 #define PERF_PD_LOG_H

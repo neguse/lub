@@ -20,7 +20,7 @@ PACKAGE_REFERENCE_STDOUT_LOG="$OUTPUT_DIR/package-reference.stdout"
 PACKAGE_REFERENCE_OVERRIDE_SARIF="$OUTPUT_DIR/package-reference-severity-override.sarif"
 PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG="$OUTPUT_DIR/package-reference-severity-override.stdout"
 
-# $JB は下で実行するので、TOOL_DIR が自分の所有であることを確かめてから信頼する
+# $JB is executed below, so trust it only after confirming that TOOL_DIR is owned by the current user
 ensure_private_dir "$TOOL_DIR"
 if [ ! -x "$JB" ]; then
   dotnet tool install JetBrains.ReSharper.GlobalTools \

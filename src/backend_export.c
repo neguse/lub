@@ -46,7 +46,7 @@ bool export_begin(const char *os, const char *out_dir) {
     return false;
   }
 #ifndef _WIN32
-  // DXIL を作る dxcompiler は Windows の build にしか無い
+  // dxcompiler, which produces DXIL, exists only in the Windows build
   if (strcmp(os, "windows") == 0) {
     SDL_Log("export: 'windows' needs dxcompiler, which only the Windows "
             "build of lub has");

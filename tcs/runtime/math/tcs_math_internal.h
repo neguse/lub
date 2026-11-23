@@ -1,6 +1,7 @@
-/* runtime/math の実装が共有する helper。GCC / Clang の拡張 (__int128、
-   __builtin_*) を使わず、MSVC でも同じ結果になる形だけで書く。
-   C# 版 (TinySystem/TcsMath.Util.cs) は同じ形を写す。 */
+/* Helpers shared by the runtime/math implementations. Written only in forms
+   that avoid GCC / Clang extensions (__int128,
+   __builtin_*) and give the same results on MSVC too.
+   The C# version (TinySystem/TcsMath.Util.cs) mirrors the same forms. */
 #ifndef TCS_MATH_INTERNAL_H
 #define TCS_MATH_INTERNAL_H
 
@@ -41,17 +42,20 @@ static inline double tcs_asdouble(uint64_t u) {
   return f;
 }
 
-/* 結果に bit の決まった値を返す (0.0f / 0.0f などは CPU で NaN の符号が違う) */
+/* Returns a value with fixed bits as the result (0.0f / 0.0f and the like give
+ * NaNs whose sign differs by CPU) */
 #define TCS_NANF tcs_asfloat(0x7fc00000u)
 #define TCS_INFF tcs_asfloat(0x7f800000u)
 
-/* |x| < 2^51 の x を、偶数への丸めで整数にする (round-to-nearest の加算の丸めを使う) */
+/* Rounds x with |x| < 2^51 to an integer, rounding to even (uses the rounding
+ * of a round-to-nearest addition) */
 static inline double tcs_roundeven_small(double x) {
   const double shift = 0x1.8p52;
   return (x + shift) - shift;
 }
 
-/* 64 bit 同士の積の上位と下位 (unsigned __int128 の積の代わり) */
+/* High and low halves of a 64-bit by 64-bit product (instead of an unsigned
+ * __int128 product) */
 static inline uint64_t tcs_mul64(uint64_t a, uint64_t b, uint64_t *hi) {
   uint64_t al = (uint32_t)a, ah = a >> 32, bl = (uint32_t)b, bh = b >> 32;
   uint64_t ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
@@ -84,10 +88,11 @@ static inline int tcs_clz32(uint32_t x) {
   return n;
 }
 
-/* fmaf(a, b, c) を double の演算だけで正しく丸める。a * b は double で正確で、
-   和の誤差を TwoSum で求め、double へは奇数への丸め (round to odd) で寄せて
-   から float にする (double の精度は float の 24 + 2 bit 以上あるので、
-   2 回の丸めでも正しく丸めた結果と同じになる)。overflow / underflow は起きない */
+/* Correctly rounds fmaf(a, b, c) using only double operations. a * b is exact
+   in double, the error of the sum is computed with TwoSum, and the result is
+   brought to double with round to odd before converting to float (double's
+   precision is at least float's 24 + 2 bits, so the double rounding gives the
+   same result as correct rounding). Overflow / underflow does not occur */
 static inline float tcs_fmaf(float a, float b, float c) {
   double p = (double)a * (double)b;
   double dc = c;
@@ -103,9 +108,9 @@ static inline float tcs_fmaf(float a, float b, float c) {
   return (float)s;
 }
 
-/* a * b を double に丸めた p に対して、a * b - p を正確に返す
-   (fma(a, b, -p) の代わり。Veltkamp の分割と Dekker の積。
-   使う所の値の範囲では overflow / underflow しない) */
+/* For p, a * b rounded to double, returns a * b - p exactly
+   (instead of fma(a, b, -p). Veltkamp splitting and Dekker's product.
+   It does not overflow / underflow in the value ranges where it is used) */
 static inline double tcs_split_hi(double a) {
   double c = 134217729.0 * a; /* 2^27 + 1 */
   return c - (c - a);
@@ -117,8 +122,9 @@ static inline double tcs_mul_err(double a, double b, double p) {
   return (((ah * bh - p) + ah * bl) + al * bh) + al * bl;
 }
 
-/* q = y / x を double に丸めた q に対して、y - q * x を正確に返す
-   (fma(-q, x, y) の代わり。この剰余は double で正確に表せる) */
+/* For q, y / x rounded to double, returns y - q * x exactly
+   (instead of fma(-q, x, y). This remainder is exactly representable in double)
+ */
 static inline double tcs_div_rem(double y, double x, double q) {
   double p = q * x;
   return (y - p) - tcs_mul_err(q, x, p);

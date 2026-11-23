@@ -4,13 +4,16 @@
 #include <SDL3/SDL.h>
 #include <string.h>
 
-// 時刻を待つ frame の数 (backend の frames in flight と非同期の読み出しの遅れより多く)。届かないまま回ってきた frame の pass は時間 -1 で出す
+// Number of frames to wait for timestamps (more than the backend's frames in
+// flight plus the asynchronous readback delay). Passes of a frame that comes
+// around again without its timestamps arriving are output with time -1
 #define GPU_TIME_FRAMES 8
-// 取り出されるまで持つ pass の数 (超えた分は捨てる)
+// Number of passes kept until they are taken (any beyond this are dropped)
 #define GPU_TIME_KEEP 4096
 
 typedef struct GpuPassRec {
-  // pass を始めた app (取り出すときに分ける。比べるだけで読まない)
+  // The app that began the pass (used to separate them when taking. Only
+  // compared, never dereferenced)
   const App *owner;
   char site[160];
   char target[64];
@@ -20,7 +23,7 @@ typedef struct GpuPassRec {
 typedef struct GpuFrame {
   uint64_t frame;
   bool used;
-  bool waiting; // backend が時刻を書いた (gpu_time_resolved を待つ)
+  bool waiting; // The backend wrote timestamps (waiting for gpu_time_resolved)
   uint32_t n;
   GpuPassRec passes[GPU_TIME_PASSES];
 } GpuFrame;
@@ -35,12 +38,14 @@ typedef struct GpuDoneList {
   int32_t n, cap;
 } GpuDoneList;
 
-// 数えている app の数 (App.gpu_time_on)。1 つでもあれば backend が時刻の用意をする
+// Number of apps that are counting (App.gpu_time_on). If there is at least one,
+// the backend prepares timestamps
 static int g_on;
 static GpuFrame g_frames[GPU_TIME_FRAMES];
-static GpuPassRec *g_cur; // 控えている pass (無ければ NULL)
+static GpuPassRec *g_cur; // The pass being recorded (NULL if none)
 static uint32_t g_cur_index;
-// 届いた pass と、渡した pass (渡した文字列は次に取り出すまで有効)
+// Passes that arrived, and passes handed out (handed-out strings are valid
+// until the next take)
 static GpuDoneList g_pending, g_taken;
 static LubGpuPass *g_out;
 static int32_t g_out_cap;
@@ -60,7 +65,8 @@ static void copy_str(char *dst, size_t cap, const char *src) {
   SDL_strlcpy(dst, src ? src : "", cap);
 }
 
-// 描き先の名前の無い pass は lub の中の pass (Gfx.Pick の描き直し)
+// A pass without a render target name is a pass internal to lub (the Gfx.Pick
+// redraw)
 static bool wants(App *app, const char *target) {
   return app->gpu_time_on && app->proc->in_frame && target &&
          app->proc->frame_index >= app->gpu_time_from;
@@ -127,7 +133,7 @@ static void push_done(const GpuPassRec *rec, float ms) {
   l->n++;
 }
 
-// frame の pass を出して、frame を空ける。ns が NULL なら時間は -1
+// Output the frame's passes and free the frame. If ns is NULL, the time is -1
 static void flush(GpuFrame *f, const uint64_t *ns, uint32_t count) {
   for (uint32_t i = 0; i < f->n; i++) {
     uint64_t b = ns && 2 * i < count ? ns[2 * i] : GPU_TIME_NONE;
@@ -135,7 +141,7 @@ static void flush(GpuFrame *f, const uint64_t *ns, uint32_t count) {
     float ms = b != GPU_TIME_NONE && e != GPU_TIME_NONE && e >= b
                    ? (float)((double)(e - b) / 1e6)
                    : -1.0f;
-    // 始めた app がもう無い pass は捨てる
+    // Drop passes whose app no longer exists
     if (f->passes[i].owner)
       push_done(&f->passes[i], ms);
   }
@@ -156,7 +162,8 @@ void gpu_time_resolved(uint64_t frame, const uint64_t *ns, uint32_t count) {
     flush(f, ns, count);
 }
 
-// app の pass を pending から taken に移す (ほかの app の pass は pending に残す)
+// Move the app's passes from pending to taken (other apps' passes stay in
+// pending)
 void gpu_time_take(const App *app, const LubGpuPass **out, int32_t *count) {
   *out = NULL;
   *count = 0;
@@ -198,7 +205,7 @@ void gpu_time_take(const App *app, const LubGpuPass **out, int32_t *count) {
   *count = t->n;
 }
 
-// app が終わる: 数えるのをやめ、まだ取り出していない pass を捨てる
+// The app is ending: stop counting and drop the passes not taken yet
 void gpu_time_forget(App *app) {
   gpu_time_enable(app, false);
   int32_t kept = 0;

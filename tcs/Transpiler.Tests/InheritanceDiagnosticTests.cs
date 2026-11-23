@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// class / record の継承は TinyC# の対象外 (q.md Q15)。基底 class の宣言と、
-// 継承があって初めて意味を持つ member は build を止める TCS1001 で、
-// check は exit 1。interface の実装はそのまま書ける
+// class / record inheritance is out of scope for TinyC# (q.md Q15). Base class declarations and
+// members that only make sense with inheritance are build-stopping TCS1001, and
+// check exits 1. Interface implementations can be written as is
 [Collection(ConsoleCollection.Name)]
 public class InheritanceDiagnosticTests
 {
@@ -72,8 +72,8 @@ public class InheritanceDiagnosticTests
         }
     }
 
-    // interface の実装 (class / record / struct)、sealed class、interface の
-    // 継承、object の明示は従来どおり
+    // Interface implementations (class / record / struct), sealed class, interface
+    // inheritance, and explicit object work as before
     [Fact]
     public void InterfaceImplementation_IsNotDiagnosed()
     {
@@ -105,8 +105,8 @@ public class InheritanceDiagnosticTests
         Assert.Equal("13", TestHelper.CompileAndRunVm(source, "P.Test()"));
     }
 
-    // --ref の型は host の宣言 (lub の `sealed class LubHandleAttribute :
-    // Attribute`、stub の class 継承) で、診断の対象にしない
+    // --ref types are host declarations (lub's `sealed class LubHandleAttribute :
+    // Attribute`, class inheritance in stubs) and are not subject to diagnostics
     [Fact]
     public void RefStubInheritance_IsNotDiagnosed()
     {

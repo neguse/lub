@@ -1,4 +1,4 @@
-// TestScreens が開く file。
+// The file TestScreens opens.
 public static class Target
 {
     // 0

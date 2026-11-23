@@ -1,28 +1,28 @@
-// 実装ライブラリ lubx の XrAnchor。
-// Xr.View が返す視点は OpenXR / WebXR の LOCAL 空間 (起動時の頭の位置が原点、メートル、前方 -Z)。
-// ゲームは自分の空間に置きたいので、基準にする頭の位置と水平方向の向きを取り、以後の眼の行列に掛けて写す。
-// runtime は状態を持たず、どの frame を基準にするかはゲームが決める。
-// 行列は XrView.ViewProjection と同じ行優先の float[16] で受け渡す。
+// XrAnchor in the implementation library lubx.
+// The viewpoint Xr.View returns is in the OpenXR / WebXR LOCAL space (origin at the head position at startup, meters, forward -Z).
+// Games want to place things in their own space, so this takes a reference head position and horizontal orientation and maps later eye matrices by multiplying them in.
+// The runtime holds no state, and the game decides which frame to use as the reference.
+// Matrices are passed as row-major float[16], the same as XrView.ViewProjection.
 
 using System;
 using Lub;
 
 namespace Lubx;
 
-/// <summary>XR の視点を、Recenter した時点の両眼の中点と水平方向の向きを原点・前方 -Z とする空間へ写す。
-/// 毎フレーム ViewProjection に XrView を渡す。
-/// Recenter するまでは LOCAL 空間のまま。
+/// <summary>Maps the XR viewpoint into a space whose origin is the midpoint of both eyes at the time of Recenter and whose forward -Z is the horizontal orientation at that time.
+/// Pass the XrView to ViewProjection every frame.
+/// Stays in LOCAL space until Recenter.
 /// </summary>
 public class XrAnchor
 {
     readonly float[] matrix = new float[] { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
     bool set;
 
-    /// <summary>Recenter 済みか。
+    /// <summary>Whether Recenter has been done.
     /// </summary>
     public bool IsSet() => set;
 
-    /// <summary>両眼の中点と左眼の水平方向の向きを基準に取る。
+    /// <summary>Takes the midpoint of both eyes and the horizontal orientation of the left eye as the reference.
     /// </summary>
     public void Recenter(XrView left, XrView right)
     {
@@ -49,7 +49,7 @@ public class XrAnchor
         set = true;
     }
 
-    /// <summary>基準を捨てて LOCAL 空間に戻す。
+    /// <summary>Discards the reference and returns to LOCAL space.
     /// </summary>
     public void Reset()
     {
@@ -60,12 +60,12 @@ public class XrAnchor
         set = false;
     }
 
-    /// <summary>基準の空間から LOCAL 空間への行列 (行優先、平行移動は [3] [7] [11])。
+    /// <summary>Matrix from the reference space to LOCAL space (row-major, translation in [3] [7] [11]).
     /// </summary>
     public float[] ToLocal() => matrix;
 
-    /// <summary>view の projection * view に基準を掛けた行列を result (16 要素) へ書く。
-    /// 行優先で、基準の空間の座標をそのまま描ける。
+    /// <summary>Writes the view's projection * view multiplied by the reference into result (16 elements).
+    /// Row-major, so coordinates in the reference space can be drawn as is.
     /// </summary>
     public void ViewProjection(XrView view, float[] result)
     {

@@ -59,7 +59,7 @@ public class ComplianceParityTests
         Assert.Equal("ok", TestHelper.CompileAndRunVm(UserNameofSource, "NameDemo.Run()"));
     }
 
-    // #19: 名前付き引数は check でも build でも error。build (tcs c) は出力を書かずに exit 1
+    // #19: Named arguments are an error in both check and build. build (tcs c) exits 1 without writing output
     [Fact]
     public void Check_NamedArgumentReportsError()
     {
@@ -115,7 +115,7 @@ public class ComplianceParityTests
         Assert.Null(result.Output);
     }
 
-    // check なら tcs check、そうでなければ tcs c で output.c に書く (書かなければ Output は null)
+    // For check, runs tcs check; otherwise tcs c writes to output.c (Output is null if nothing is written)
     private static (int ExitCode, string Stdout, string Stderr, string? Output)
         RunCli(string source, bool check)
     {
@@ -174,7 +174,7 @@ public class ComplianceParityTests
         }
         """;
 
-    // neguse/tcs#19 の再現
+    // Reproduction of neguse/tcs#19
     private const string NamedArgumentSource = """
         public static class B1User
         {

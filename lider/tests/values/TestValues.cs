@@ -1,9 +1,9 @@
-// 止めている間に、ゲームの値を書き換える (Lider.SetValue、Lider.EditValue)。
-//   - 書いた値は、止めた frame を進める前の状態に入り、その frame を作り直す (frame が変えない値はそのまま見え、frame が変える値は 1 frame 分だけ進んで見える)
-//   - bool は、押すだけで反転する
-//   - 値として読めない文字は書けず、理由が知らせに出て、値は変わらない
-//   - 続けると、書いた値から動く
-//   - 動いている間は書けない
+// Rewrites game values while paused (Lider.SetValue, Lider.EditValue).
+//   - A written value goes into the state before the paused frame is advanced, and that frame is recreated (values the frame does not change appear as they are, and values the frame changes appear advanced by 1 frame)
+//   - A bool flips with just a press
+//   - Text that cannot be read as a value cannot be written, the reason appears in a notice, and the value does not change
+//   - Continuing runs on from the written value
+//   - Values cannot be written while running
 using System;
 using Lub;
 using LiderCore;
@@ -65,7 +65,7 @@ public static class TestValues
             Check(GameApp.Position == 0, "the game is not paused at the written frame: " + GameApp.Position);
             Check(Read("Game", "Count") == count, "writing a value moved the frame: Count " + Read("Game", "Count") + ", was " + count);
             Check(Read("Game", "Score") == 42, "Score is " + Read("Game", "Score"));
-            // T.A は frame が 1 増やすので、書いた 100 から 1 frame 進んだ値が見える
+            // The frame increments T.A by 1, so the value advanced 1 frame from the written 100 is seen
             Check(Read("Game.T", "A") == 101, "T.A is " + Read("Game.T", "A"));
             Check(Text("Game", "Flag") == "true", "Flag is " + Text("Game", "Flag"));
             Lider.SetValue("Game.Score", "many");

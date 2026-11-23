@@ -1,6 +1,6 @@
 namespace TinySystem;
 
-// powf: runtime/math/powf.c の C# 版 (musl の Arm 由来、Copyright (c)
+// powf: C# version of runtime/math/powf.c (derived from musl's Arm code, Copyright (c)
 // 2017-2018, Arm Limited. SPDX-License-Identifier: MIT)
 internal static partial class TcsMath
 {
@@ -10,7 +10,7 @@ internal static partial class TcsMath
     static readonly double[] PowExp2Poly = [0.05550361559341535, 0.2402284522445722, 0.6931471806916203];
     const uint PowSignBias = 1 << (5 + 11);
 
-    // log2 の表は log2f と同じ (Log2Tab)
+    // The log2 table is the same as log2f's (Log2Tab)
     static double PowLog2Inline(uint ix)
     {
         uint tmp = ix - LogOff;
@@ -50,7 +50,7 @@ internal static partial class TcsMath
         return (float)y;
     }
 
-    // 0: 整数でない、1: 奇数、2: 偶数 (iy は 0 でない有限の値の bit)
+    // 0: not an integer, 1: odd, 2: even (iy is the bits of a nonzero finite value)
     static int PowCheckInt(uint iy)
     {
         int e = (int)(iy >> 23 & 0xff);

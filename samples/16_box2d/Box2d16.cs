@@ -1,5 +1,5 @@
-// lub の samples/16_box2d の entry。
-// 実行: lub samples/16_box2d/Box2d16.csproj (transpile + watch + hot reload) Phys2d の即時モード API で simulation tick ごとに world/body/shape を宣言し、最新 pose を render frame ごとに頂点列へ焼いて 1 draw で描く。
+// Entry of lub's samples/16_box2d.
+// Run: lub samples/16_box2d/Box2d16.csproj (transpile + watch + hot reload) Declares world/body/shape every simulation tick with the Phys2d immediate-mode API, and bakes the latest pose into a vertex list every render frame to draw it in 1 draw.
 using System;
 using System.Collections.Generic;
 using Lub;

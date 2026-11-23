@@ -12,22 +12,23 @@ typedef enum { RES_NONE = 0, RES_BUFFER, RES_TEXTURE, RES_SHADER } ResKind;
 typedef struct ResEntry {
   char *key; // strdup'd
   ResKind kind;
-  // C API の handle (lub_api.h の LubHandle)。
-  // entry の寿命の間は同じ値で、sweep で消えたあとは stale。
-  // 1 始まりの通し番号で、int32 の上限に達したら生きている値を飛ばして 1 に戻る。
+  // C API handle (LubHandle in lub_api.h).
+  // Keeps the same value for the lifetime of the entry, and is stale after the
+  // entry is removed by sweep. A 1-based serial number; when it reaches the
+  // int32 maximum, it wraps back to 1, skipping live values.
   int32_t handle;
   int64_t version;
   int64_t last_seen_frame;
-  // 最後に宣言した App.declare_epoch と、そのときの version。
-  // compile に失敗すると version と食い違う。
+  // The App.declare_epoch of the last declaration, and the version at that
+  // time. Differs from version when compile fails.
   uint64_t declared_epoch;
   int64_t declared_version;
   union {
     struct {
       uintptr_t h;
       SglBufferType type;
-      size_t size_bytes;     // 宣言の大きさ。shader から見える範囲
-      size_t capacity_bytes; // backend の実体の大きさ
+      size_t size_bytes;     // Declared size. The range visible to shaders
+      size_t capacity_bytes; // Size of the backend object
     } buf;
     struct {
       uintptr_t h;
@@ -41,12 +42,14 @@ typedef struct ResEntry {
     struct {
       uintptr_t h;
       ShaderReflection refl;
-      // compile に失敗した version。
-      // 直るまでは同じ version の宣言で compile し直さない。
+      // Version whose compile failed.
+      // Declarations with the same version are not compiled again until it is
+      // fixed.
       bool failed;
       int64_t failed_version;
-      // Gfx.Pick が draw を流し直すための vertex shader の source (graphics の shader だけ)。
-      // pick_h はそれに draw の番号を書く fragment shader を組んだ shader で、最初の Pick のときに作る
+      // Vertex shader source used by Gfx.Pick to replay draws (graphics shaders
+      // only). pick_h is the shader that combines it with a fragment shader
+      // writing the draw index, created on the first Pick
       char *vs_src;
       uintptr_t pick_h;
       ShaderReflection pick_refl;
@@ -55,14 +58,15 @@ typedef struct ResEntry {
   struct ResEntry *next;
 } ResEntry;
 
-// sweep された entry の handle と key の記録 (stale な handle の error に key を出すため)。
-// 新しい順に RES_SWEPT_KEEP 件だけ持ち、古いものは忘れる。
+// Record of the handles and keys of swept entries (to show the key in errors
+// about stale handles). Keeps only the newest RES_SWEPT_KEEP records and
+// forgets older ones.
 #define RES_SWEPT_KEEP 64
 typedef struct ResSwept {
-  int32_t handle; // 0 は空き
+  int32_t handle; // 0 means empty
   ResKind kind;
-  int64_t
-      unused_frames; // sweep された時点で、最後に使われてから経った frame 数
+  int64_t unused_frames; // Number of frames since the last use, at the time of
+                         // the sweep
   char *key;
 } ResSwept;
 
@@ -73,20 +77,22 @@ typedef struct ResTable {
   // both together.
   int64_t revision;
   ResEntry *buckets[RES_BUCKETS];
-  // handle → entry。
-  // 生きている entry だけを持つ open addressing の表 (linear probing、容量は 2 の冪、負荷は 1/2 以下)。
-  // sweep で抜き、空きが増えたら縮める。
+  // handle → entry.
+  // Open addressing table holding only live entries (linear probing, capacity
+  // is a power of 2, load at most 1/2). Entries are removed on sweep, and the
+  // table shrinks when free slots grow.
   ResEntry **by_handle;
   int32_t handle_cap;
   int32_t handle_count;
-  // 最後に発行した handle の場所 (res_table_init の counter)
+  // Location of the last issued handle (the counter of res_table_init)
   int32_t *next_handle;
   ResSwept swept[RES_SWEPT_KEEP];
   int32_t swept_next;
 } ResTable;
 
-// handle の通し番号は counter から取る (counter は表より長く生きること)。
-// 同じ counter を使う表の handle は重ならないので、別の表の handle を渡しても別の entry を指さない。
+// Handle serial numbers come from counter (counter must outlive the table).
+// Tables that share a counter never have overlapping handles, so passing a
+// handle of another table never points to a different entry.
 void res_table_init(ResTable *t, int32_t *counter);
 void res_table_shutdown(ResTable *t);
 
@@ -96,10 +102,10 @@ void res_table_shutdown(ResTable *t);
 int64_t res_table_next_revision(ResTable *t);
 
 ResEntry *res_table_get(ResTable *t, const char *key);
-// key の長さ指定版 (NUL 終端を要求しない LubStr 向け)。
+// Variant that takes the key length (for LubStr that is not NUL-terminated).
 ResEntry *res_table_get_n(ResTable *t, const char *key, size_t len);
 ResEntry *res_table_get_by_handle(ResTable *t, int32_t handle);
-// sweep で消えた handle の記録。覚えていなければ NULL。
+// Record of a handle removed by sweep. NULL if it is not remembered.
 const ResSwept *res_table_find_swept(const ResTable *t, int32_t handle);
 ResEntry *res_table_get_or_create(ResTable *t, const char *key, ResKind kind);
 void res_table_touch(ResEntry *e, int64_t frame_index);

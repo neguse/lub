@@ -1,7 +1,7 @@
-// Draw の instances に 0 以下を渡すと draw 自体が skip される (stub の記述どおり)。
-// 1 なら描く。
-// render target に描いて読み戻して確かめる。
-// 1 フレームに 1 通りずつ描いて読み戻しを積み、結果が届くまで poll する。
+// Passing 0 or less as the instances of Draw skips the draw itself (as the stub describes).
+// With 1 it draws.
+// Draws into a render target and reads it back to check.
+// Draws one case per frame, queues a readback, and polls until the result arrives.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -42,7 +42,7 @@ public static class TestInstanceCountZero
         Io.LoadText("tests/cs/data/test_instance_count_zero.fs.slang", out var fs, out var verFs, out _, out _);
         Check.That(vs != null && fs != null, "shader source missing");
         var s = Gfx.UseShader("ic_sh", vs!, fs!, verVs ^ verFs);
-        // 画面全体を覆う三角形
+        // A triangle that covers the whole screen
         var verts = Gfx.UseBuffer("ic_vb", Gfx.BufferType.Storage, new List<float> { -1, -1, 3, -1, -1, 3 }, 1);
 
         int ci = stage - 1;

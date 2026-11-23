@@ -1,12 +1,12 @@
-// C# の色分け。Lite XL の tokenizer (core/tokenizer.lua) と、lider の language_csharp.lua の pattern を写したもの。
-// pattern は上から順に試し、最初に合った物の種類にする (どれにも合わなければ 1 文字を normal にする)。
+// C# highlighting. A port of the patterns of Lite XL's tokenizer (core/tokenizer.lua) and lider's language_csharp.lua.
+// Patterns are tried from the top, and the kind of the first match is used (if none match, 1 character becomes normal).
 //   //.*                         comment
-//   /* から */                   comment (行をまたぐ)
-//   """ から """                 string (行をまたぐ)
-//   [$@]+" から " (\ で逃がす)   string
-//   " から " (\ で逃がす)        string
-//   ' から ' (\ で逃がす)        string
-//   ^%s*#[%a_][%w_]*             keyword (行の先頭だけ)
+//   /* to */                     comment (spans lines)
+//   """ to """                   string (spans lines)
+//   [$@]+" to " (\ escapes)      string
+//   " to " (\ escapes)           string
+//   ' to ' (\ escapes)           string
+//   ^%s*#[%a_][%w_]*             keyword (only at line start)
 //   0[xX][%x_]+[uUlL]*           number
 //   0[bB][01_]+[uUlL]*           number
 //   %d[%d_]*%.?[%d_]*[eE][%+%-]?%d+[fFdDmM]?  number
@@ -15,10 +15,10 @@
 //   [%+%-=/%*%^%%<>!~|&%?:]      operator
 //   [%a_][%w_]*%f[(]             function
 //   @?[%a_][%w_]*                symbol
-// 名前が keyword の表にあれば、その種類にする。
-// 隣の token が同じ種類か、前の token が空白だけなら 1 つにつなげる (Lite XL の push_token)。
-// 行をまたぐ pattern の途中にいることを、行の終わりの状態 (pattern の番号、0 は無し) で次の行に渡す。
-// 本文は改行を持たないので、行の末尾の改行は token にしない (Lite XL は描くときに除く)。
+// If a name is in the keyword table, uses that kind.
+// Joins adjacent tokens of the same kind, or a token after a whitespace-only token, into one (Lite XL's push_token).
+// Being in the middle of a multi-line pattern is passed to the next line as the end-of-line state (the pattern number, 0 = none).
+// The text has no newlines, so the newline at the end of a line is not made a token (Lite XL removes it when drawing).
 using System;
 using System.Collections.Generic;
 using TinySystem.Text;
@@ -39,7 +39,7 @@ public static class TokenType
     public const int Function = 9;
 }
 
-// 1 行の token の並び
+// Tokens of one line
 public class LineTokens
 {
     public string Text = "";
@@ -49,14 +49,14 @@ public class LineTokens
     public List<string> Texts = new List<string>();
 }
 
-// doc の行ごとの token を、要る所まで作り直して覚える。
-// 編集した行から後は作り直す印を付け、引かれたときに前の行の状態から順に作り直す
+// Rebuilds the tokens of each doc line as far as needed and remembers them.
+// Lines from the edited one onward are marked for rebuilding, and when requested they are rebuilt in order from the previous line's state
 public class Highlighter
 {
     readonly Doc doc;
     readonly List<LineTokens?> lines = new List<LineTokens?>();
     public bool CSharp;
-    // ここから後の行は、前の行の状態が変わったかもしれない
+    // For lines from here on, the previous line's state may have changed
     int firstInvalid = 1;
 
     public Highlighter(Doc doc)
@@ -92,7 +92,7 @@ public class Highlighter
             lines.RemoveAt(line);
     }
 
-    // idx 行目 (1 から) の token
+    // Tokens of line idx (from 1)
     public LineTokens GetLine(int idx)
     {
         while (lines.Count < doc.Lines.Count)
@@ -130,7 +130,7 @@ public class Highlighter
 
 public static class CSharpSyntax
 {
-    // 行をまたぐ pattern の番号 (状態)
+    // Number of the multi-line pattern (state)
     const int BlockComment = 2;
     const int RawString = 3;
     const int MarkedString = 4;
@@ -169,7 +169,7 @@ public static class CSharpSyntax
                 i++;
                 continue;
             }
-            // 全角の空白 (U+3000)
+            // Full-width space (U+3000)
             if (b == 0xE3 && i + 2 < u.Length && u[i + 1] == 0x80 && u[i + 2] == 0x80)
             {
                 i += 3;
@@ -193,7 +193,7 @@ public static class CSharpSyntax
         texts.Add(text);
     }
 
-    // 名前の表にあればその種類、無ければ type
+    // The kind from the name table if present, otherwise type
     static void PushNamed(List<int> types, List<string> texts, int type, string text)
     {
         if (Symbols().TryGetValue(text, out var t))
@@ -211,7 +211,7 @@ public static class CSharpSyntax
         return IsDigit(b) || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F');
     }
 
-    // Lua の %a (ASCII の外は、記号と全角の約物を除いて文字とみなす)
+    // Lua's %a (outside ASCII, treated as a letter except for symbols and full-width punctuation)
     static bool IsAlphaAt(Utf8Bytes u, int at)
     {
         int b = u[at];
@@ -243,7 +243,7 @@ public static class CSharpSyntax
         return Math.Min(n, u.Length - at);
     }
 
-    // at から続く名前の終わり
+    // End of the name continuing from at
     static int IdentEnd(Utf8Bytes u, int at)
     {
         var i = at;
@@ -252,7 +252,7 @@ public static class CSharpSyntax
         return i;
     }
 
-    // at の直前に続く \ の数
+    // Number of \ immediately before at
     static int Backslashes(Utf8Bytes u, int at)
     {
         var count = 0;
@@ -261,7 +261,7 @@ public static class CSharpSyntax
         return count;
     }
 
-    // 状態の pattern の閉じる印と、\ で逃がすか
+    // Closing mark of the state's pattern, and whether \ escapes
     static string Closer(int state)
     {
         if (state == BlockComment)
@@ -283,7 +283,7 @@ public static class CSharpSyntax
         return state == BlockComment ? TokenType.Comment : TokenType.String;
     }
 
-    // from から後で、状態の閉じる印が始まる所 (逃がした物は飛ばす。無ければ -1)
+    // Where the state's closing mark starts from from onward (skips escaped ones; -1 if none)
     static int FindClose(string text, Utf8Bytes u, int state, int from)
     {
         var close = Closer(state);
@@ -293,7 +293,7 @@ public static class CSharpSyntax
         return at;
     }
 
-    // at で始まる数の終わり (数でなければ -1)
+    // End of the number starting at at (-1 if not a number)
     static int NumberEnd(Utf8Bytes u, int at)
     {
         var n = u.Length;
@@ -332,7 +332,7 @@ public static class CSharpSyntax
             while (i < n && (IsDigit(u[i]) || u[i] == '_'))
                 i++;
             var mantissa = i;
-            // 指数のある形
+            // Form with an exponent
             if (i < n && (u[i] == 'e' || u[i] == 'E'))
             {
                 var j = i + 1;
@@ -370,7 +370,7 @@ public static class CSharpSyntax
         return b < 0x80 && "+-=/*^%<>!~|&?:".Contains(((char)b).ToString());
     }
 
-    // text の token を types と texts に足し、行の終わりの状態を返す
+    // Adds the tokens of text to types and texts and returns the end-of-line state
     public static int Tokenize(string text, int state, List<int> types, List<string> texts)
     {
         var u = new Utf8Bytes(text);
@@ -395,7 +395,7 @@ public static class CSharpSyntax
                 continue;
             }
             int b = u[i];
-            // 注釈
+            // Comment
             if (b == '/' && i + 1 < n && u[i + 1] == '/')
             {
                 PushNamed(types, texts, TokenType.Comment, Str.From(text, i));
@@ -408,7 +408,7 @@ public static class CSharpSyntax
                 i += 2;
                 continue;
             }
-            // 文字列
+            // String
             if (Str.At(text, i, "\"\"\""))
             {
                 PushNamed(types, texts, TokenType.String, "\"\"\"");
@@ -436,7 +436,7 @@ public static class CSharpSyntax
                 i++;
                 continue;
             }
-            // 行の先頭の #if など
+            // #if and the like at the start of a line
             if (i == 0)
             {
                 var j = 0;

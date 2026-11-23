@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// 小さな object の確保と GC。node は 1 つずつ確保する (arena は使わない)
+// Small object allocation and GC. Nodes are allocated one at a time (no arena)
 type TreeNode struct {
 	Left, Right *TreeNode
 }
@@ -72,7 +72,7 @@ func run(n int32, print bool) int32 {
 
 func main() {
 	n := envInt("BENCH_N", 10)
-	// BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+	// Repeats BENCH_REPS times. Each repetition's input depends on the previous result so the compiler cannot skip repetitions (the result is never -1)
 	reps := envInt("BENCH_REPS", 1)
 	var prev int32
 	for r := int32(0); r < reps; r++ {

@@ -68,7 +68,7 @@ public class TupleTests
         Assert.False(result.Success);
     }
 
-    // 同梱の ValueTuple は tuple の構文があるときだけ読む
+    // The bundled ValueTuple is read only when there is tuple syntax
     [Fact]
     public void WithoutTuple_LibraryIsNotLoaded()
     {

@@ -1,7 +1,7 @@
-// resource は、key を宣言し続けている間は引け続け、sweep された後は引けなくなる。
-// key を毎フレーム作って捨てる書き方でも、生きている key は変わらない。
-// handle の数値そのものは C# に出ていないので、handle の再利用や stale の検査は key からの引き直し (LookupBuffer) で見る。
-// 表の大きさが伸びないことは tests/c/resources_smoke.c が見る。
+// A resource can be looked up as long as its key keeps being declared, and can no longer be looked up after it is swept.
+// Even code that creates and discards key strings every frame does not change which keys are alive.
+// Handle numbers themselves are not exposed to C#, so handle reuse and staleness are checked by looking up the key again (LookupBuffer).
+// tests/c/resources_smoke.c checks that the table does not grow.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -41,14 +41,14 @@ public static class TestResourceHandles
             keys.Add(key);
         }
 
-        // sweep + 2 frame より前に宣言した key は sweep 済み
+        // Keys declared before sweep + 2 frames have been swept
         int old = frame - sweep - 2;
         if (old >= 1)
         {
             foreach (var key in history[old - 1])
                 Check.That(Gfx.LookupBuffer(key) == null, "swept key " + key + " must not resolve");
         }
-        // 生きている key は引ける
+        // Live keys can be looked up
         Check.That(Gfx.LookupBuffer("handles_keep") != null, "the live key must resolve");
         foreach (var key in keys)
             Check.That(Gfx.LookupBuffer(key) != null, "live key " + key + " must resolve");

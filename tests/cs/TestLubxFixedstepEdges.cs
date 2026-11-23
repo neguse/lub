@@ -1,4 +1,4 @@
-// Lubx.FixedStep を入力が無い headless で動かし、1 frame に 1 tick 走ることと、key / mouse の edge が立たないことを見る。
+// Runs Lubx.FixedStep headless with no input, and checks that 1 tick runs per frame and that no key / mouse edges are raised.
 using System;
 using Lub;
 using Lubx;
@@ -27,7 +27,7 @@ public static class TestLubxFixedstepEdges
         Check.That(!step.KeyPressed("space"), "tick " + ticks + ": key_pressed(space) must stay false");
         Check.That(!step.MousePressed(1), "tick " + ticks + ": mouse_pressed(1) must stay false");
         Check.That(!step.KeyReleased("r"), "tick " + ticks + ": key_released(r) must stay false");
-        // 最初の走査の外の名前 (ファンクションキー、別名、SDL の名前、大文字) も聞ける
+        // Names outside the first scan (function keys, aliases, SDL names, uppercase) can also be queried
         foreach (var key in new string[] { "f1", "f12", "return", "esc", "left shift", "keypad 1", "R" })
         {
             Check.That(!step.KeyPressed(key), "tick " + ticks + ": key_pressed(" + key + ") must stay false");
@@ -41,7 +41,7 @@ public static class TestLubxFixedstepEdges
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0, 0, 0, 1 } });
         Gfx.EndPass();
 
-        // dt = TickDt なので 1 frame に 1 tick 走る
+        // dt = TickDt, so 1 tick runs per frame
         step!.Frame(step.TickDt, Tick);
         Check.That(ticks == frame, "frame " + frame + " must run exactly one tick (ran " + ticks + ")");
         if (frame == 3)

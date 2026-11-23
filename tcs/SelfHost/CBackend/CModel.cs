@@ -3,9 +3,9 @@ using TinySystem.Text;
 
 namespace TcsC;
 
-// tcs の C backend (IL → C、旧 tcs2c/ の C# 版を写したもの) の型と名前。
-// 例外を持たないサブセットなので、誤りは CFail に最初の 1 つを記録し、呼んだ側は既定の値で続ける。
-// 出力は誤りが無いときだけ使う (CEmitter.Emit が CFail.Error を見る)
+// Types and names of the tcs C backend (IL → C, a port of the C# version in the old tcs2c/).
+// The subset has no exceptions, so CFail records the first error, and the caller continues with a default value.
+// Output is used only when there is no error (CEmitter.Emit checks CFail.Error)
 
 public static class CFail
 {
@@ -41,7 +41,7 @@ public enum CTypeKind
     Object,
 }
 
-// C の値の型。構造等価は Key (型の正規の文字列) で比べる (Same)
+// Type of a C value. Structural equality compares Key (the canonical string of the type) (Same)
 public sealed class CType
 {
     public CTypeKind Kind;
@@ -78,16 +78,16 @@ public sealed class CType
     public static readonly CType Bool = new CType(CTypeKind.Bool, null, null, null, null);
     public static readonly CType String = new CType(CTypeKind.String, null, null, null, null);
     public static readonly CType Null = new CType(CTypeKind.Null, null, null, null, null);
-    // TinySystem.Random の instance (runtime の TcsRandom、GC object)
+    // Instance of TinySystem.Random (the runtime TcsRandom, a GC object)
     public static readonly CType Random = new CType(CTypeKind.Random, null, null, null, null);
-    // TinySystem.Text.Utf8Bytes。CEmitter が足す struct (文字列、開始位置、長さ) の値
+    // TinySystem.Text.Utf8Bytes. A value of the struct CEmitter adds (string, start position, length)
     public const string Utf8BytesStruct = "TinySystem_Text_Utf8Bytes";
     public static readonly CType Utf8Bytes = new CType(CTypeKind.StructVal, Utf8BytesStruct, null, null, null);
-    // `object`: 参照型はそのまま、int / float / bool は box (TcsBox)。実行時型 tag (GC header の type_id) で cast を検査する
+    // `object`: reference types as is, int / float / bool are boxed (TcsBox). Casts are checked with the runtime type tag (type_id in the GC header)
     public static readonly CType Object = new CType(CTypeKind.Object, null, null, null, null);
 
     public static CType Ref(string name) => new CType(CTypeKind.Ref, name, null, null, null);
-    // データ struct。C では素の値型 (ポインタなし)
+    // Data struct. A plain value type in C (no pointer)
     public static CType Struct(string name) => new CType(CTypeKind.StructVal, name, null, null, null);
     public static CType Array(CType element) => new CType(CTypeKind.Array, null, element, null, null);
     public static CType List(CType? element) => new CType(CTypeKind.List, null, element, null, null);
@@ -95,9 +95,9 @@ public sealed class CType
     public static CType HashSet(CType element) => new CType(CTypeKind.HashSet, null, element, null, null);
     public static CType Dict(CType key, CType value) => new CType(CTypeKind.Dict, null, value, key, null);
     public static CType Kvp(CType key, CType value) => new CType(CTypeKind.Kvp, null, value, key, null);
-    // 関数値。Element = 戻り型 (void 可)、Parameters = 引数型
+    // Function value. Element = return type (may be void), Parameters = parameter types
     public static CType Closure(CType ret, List<CType> parameters) => new CType(CTypeKind.Closure, null, ret, null, parameters);
-    // Nullable<T> (値型のみ)。C は { bool has; T v; }
+    // Nullable<T> (value types only). In C, { bool has; T v; }
     public static CType Nullable(CType element) => new CType(CTypeKind.Nullable, null, element, null, null);
 
     public static bool Same(CType? a, CType? b)
@@ -179,7 +179,7 @@ public sealed class CType
         || Kind == CTypeKind.Queue || Kind == CTypeKind.HashSet || Kind == CTypeKind.Dict || Kind == CTypeKind.Closure
         || Kind == CTypeKind.Random || Kind == CTypeKind.Object;
 
-    // 誤りの文の表記 (C# 版の CType.ToString)
+    // Notation in error messages (CType.ToString in the C# version)
     public string Display()
     {
         switch (Kind)
@@ -225,7 +225,7 @@ public sealed class CType
 
 public static class Names
 {
-    // C の識別子にできる名前 ([A-Za-z_][A-Za-z0-9_]*)
+    // Names usable as C identifiers ([A-Za-z_][A-Za-z0-9_]*)
     public static string Id(string name)
     {
         var u = new Utf8Bytes(name);
@@ -272,14 +272,14 @@ public static class Constants
 
     public static string F32(float value) => F32Bits(FloatBits(value));
 
-    // binary32 の bit の並び (FloatBits の形) の f32 の定数
+    // f32 constant from a binary32 bit pattern (in FloatBits form)
     public static string F32Bits(int bits) => "tcs_f32(UINT32_C(0x" + Hex8(bits) + "))";
 
-    // binary32 の bit の並び (int に入れた 32 bit。負の数は上位の bit が立つ)。2 倍と 1/2 倍は丸めないので、指数と仮数を正確に取り出せる。
-    // 23 bit の後ろに残りがあれば最も近い偶数へ丸める (float が binary32 の .NET、C、wasm では残りは 0)
+    // binary32 bit pattern (32 bits in an int; negative numbers have the top bit set). Doubling and halving do not round, so the exponent and mantissa can be extracted exactly.
+    // If anything remains beyond the 23 bits, round to nearest even (on .NET, C, and wasm, where float is binary32, the remainder is 0)
     public static int FloatBits(float value)
     {
-        // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)
+        // Only NaN is not equal to itself (TinyC# has no float.IsNaN)
 #pragma warning disable CS1718
         if (value != value) return 0x7fc00000;
 #pragma warning restore CS1718
@@ -305,7 +305,7 @@ public static class Constants
         }
         bool subnormal = m < 1f;
         if (!subnormal) m = m - 1f;
-        // 仮数の 23 bit (subnormal は m * 2^23 の整数部)
+        // The 23 mantissa bits (for subnormals, the integer part of m * 2^23)
         int mantissa = 0;
         for (int i = 0; i < 23; i++)
         {
@@ -317,7 +317,7 @@ public static class Constants
                 m = m - 1f;
             }
         }
-        // 残り m (0 <= m < 1) で丸める: 0.5 より大きいか、ちょうど 0.5 で奇数なら繰り上げる
+        // Round by the remainder m (0 <= m < 1): round up if it is greater than 0.5, or exactly 0.5 and odd
         if (m > 0.5f || m == 0.5f && (mantissa & 1) == 1)
         {
             mantissa = mantissa + 1;

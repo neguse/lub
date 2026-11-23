@@ -2,8 +2,8 @@ using System.Diagnostics;
 
 namespace TinyCs.Tests;
 
-// tcs c が生成 C に埋め込む runtime の C は、バイナリの隣 (runtime/) からだけ読む。
-// 作業ディレクトリとその祖先、バイナリの祖先に置かれたものは読まない
+// The runtime C that tcs c embeds in the generated C is read only from next to the binary (runtime/).
+// Files placed in the working directory and its ancestors, or in the ancestors of the binary, are not read.
 public class RuntimeLocationTests : IDisposable
 {
     private const string Marker = "planted_runtime_marker";
@@ -23,7 +23,7 @@ public class RuntimeLocationTests : IDisposable
                 File.Copy(file, Path.Combine(_bin, Path.GetFileName(file)));
         CopyTree(Path.Combine(built, "runtime"), Path.Combine(_bin, "runtime"));
 
-        // _root は作業ディレクトリとバイナリの両方の祖先。同じ名前の runtime のファイルを marker にして置く
+        // _root is an ancestor of both the working directory and the binary. Runtime files with the same names are placed there as markers.
         foreach (var file in Directory.GetFiles(Path.Combine(_bin, "runtime"), "*", SearchOption.AllDirectories))
         {
             var planted = Path.Combine(_root, Path.GetRelativePath(_bin, file));

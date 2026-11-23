@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// struct instance method の receiver と struct place への store の 2 backend
-// differential。期待値は同じ program を CoreCLR で実行した stdout
+// Two-backend differential tests for struct instance method receivers and stores to struct
+// places. The expected values are the stdout of running the same program on CoreCLR
 public class StructReceiverDifferentialTests
 {
     [CFact]
@@ -66,7 +66,7 @@ public class StructReceiverDifferentialTests
         Assert.Equal("3\n3,1\n4", output);
     }
 
-    // auto-property の先の struct の field、readonly field は C# の「値」なので、method は copy を書き換える (#74 #414)
+    // Struct fields behind an auto-property and readonly fields are "values" in C#, so methods modify a copy (#74 #414)
     [CFact]
     public void StructReceiver_AutoPropertyAndReadonlyFieldMutateCopy()
     {
@@ -109,7 +109,7 @@ public class StructReceiverDifferentialTests
         Assert.Equal("1\n2\n1\n0,2\n1\n1,6", output);
     }
 
-    // 変数の受け手は参照で渡るので、引数が要素を書き換えたら、書き換えた後の要素に呼ぶ (#431)
+    // A variable receiver is passed by reference, so if an argument rewrites the element, the method is called on the rewritten element (#431)
     [CFact]
     public void StructReceiver_ArgumentRewritesElement()
     {

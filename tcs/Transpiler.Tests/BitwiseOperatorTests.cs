@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// 整数ビット演算子とシフトの C# 意味論 (count & 31、>> は算術) を固定する。
-// 幅は i32 (support-matrix 参照)。
+// Pins down the C# semantics of integer bitwise operators and shifts (count & 31, >> is arithmetic).
+// The width is i32 (see support-matrix).
 public class BitwiseOperatorTests
 {
     [Fact]
@@ -31,7 +31,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void BitwiseXor()
     {
-        // C# の ^ は Lua 5.5 の二項 ~ (Lua の ^ は冪乗)
+        // C#'s ^ is Lua 5.5's binary ~ (Lua's ^ is exponentiation)
         var result = TestHelper.CompileAndRunVm("""
             public class T
             {
@@ -80,7 +80,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void Precedence_MatchesCSharp()
     {
-        // C#: & が | より強い → 1 | (2 & 3) = 3。Lua も同じ相対順位
+        // C#: & binds tighter than | → 1 | (2 & 3) = 3. Lua has the same relative precedence
         var result = TestHelper.CompileAndRunVm("""
             public class T
             {
@@ -93,7 +93,7 @@ public class BitwiseOperatorTests
     [Fact]
     public void ShiftWithAdditiveOperand()
     {
-        // C#: 加算がシフトより強い → 1 << (2 + 1) = 8
+        // C#: addition binds tighter than shift → 1 << (2 + 1) = 8
         var result = TestHelper.CompileAndRunVm("""
             public class T
             {
@@ -169,8 +169,8 @@ public class BitwiseOperatorTests
     [Fact]
     public void BoolBitwiseOperators_ReportUnsupported()
     {
-        // Lua の & は boolean に適用できず、and/or への写像は短絡評価で
-        // C# の非短絡 & | と副作用意味論が変わるため未対応 (error) にする
+        // Lua's & cannot be applied to booleans, and mapping to and/or short-circuits, which
+        // changes the side-effect semantics of C#'s non-short-circuit & |, so it is unsupported (error)
         var result = Checker.Check(["""
             public class T
             {
@@ -183,7 +183,7 @@ public class BitwiseOperatorTests
             && e.Contains("BitwiseAndExpression"));
     }
 
-    // C# の int >> は算術シフト (符号拡張)、count は 31 でマスク。実 .NET と一致
+    // C#'s int >> is an arithmetic shift (sign-extending), and count is masked with 31. Matches real .NET
     [Fact]
     public void Shift_NegativeRightShiftIsArithmetic_AndCountIsMasked()
     {
@@ -211,7 +211,7 @@ public class BitwiseOperatorTests
         Assert.Equal("-4|-1|2|-4|-2147483648|-1|-256|12|-1|-4", result);
     }
 
-    // `-2147483648` / int.MinValue が整数のまま演算・表示されること (実 .NET と一致)
+    // `-2147483648` / int.MinValue stays an integer in arithmetic and display (matches real .NET)
     [Fact]
     public void IntMinValue_LiteralStaysInteger()
     {
@@ -231,8 +231,8 @@ public class BitwiseOperatorTests
         Assert.Equal("-2147483648|-2147483648|-2147483648|True|-1|0|True", result);
     }
 
-    // `x op= a ⊕ b` の右辺は 1 項 (Lua の xor / | / shift は + より弱いので、
-    // 括らないと `x + a ~ b` が `(x + a) ~ b` に化ける)
+    // The right-hand side of `x op= a ⊕ b` is one term (Lua's xor / | / shift bind weaker than +, so
+    // without parentheses `x + a ~ b` turns into `(x + a) ~ b`)
     [Fact]
     public void CompoundAssignment_RightOperandIsOneTerm()
     {

@@ -1,6 +1,6 @@
-// DrawOpts.Blend の式が色と alpha の両方にそのまま効くこと。
-// 各 case は 4x4 の target を clear して左半分に 1 回描き、左の画素の rgba を読む。
-// alpha の係数に色の係数を使う組と、係数が One でない Min / Max は error になること。
+// The DrawOpts.Blend equation applies as is to both color and alpha.
+// Each case clears a 4x4 target, draws once on the left half, and reads the rgba of a left pixel.
+// Combinations that use a color factor as the alpha factor, and Min / Max with a factor other than One, are errors.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -42,20 +42,20 @@ public static class TestBlend
         var half = new float[] { 0.5f, 0.5f, 0.5f, 0.5f };
         // rgb = 1 * 0.5, a = 0.5 + 0 * 0.5
         Add("alpha", zero, new float[] { 1, 0, 0, 0.5f }, Blends.Alpha, new int[] { 128, 0, 0, 128 });
-        // alpha にも SrcAlpha を掛けると a = 0.5 * 0.5
+        // Multiplying alpha by SrcAlpha too gives a = 0.5 * 0.5
         Add("alpha_src_alpha", zero, new float[] { 1, 0, 0, 0.5f },
             Make(Gfx.BlendFactor.SrcAlpha, Gfx.BlendFactor.OneMinusSrcAlpha, Gfx.BlendOp.Add,
                 Gfx.BlendFactor.SrcAlpha, Gfx.BlendFactor.OneMinusSrcAlpha, Gfx.BlendOp.Add),
             new int[] { 128, 0, 0, 64 });
         Add("additive", new float[] { 0.25f, 0.25f, 0, 0.25f }, new float[] { 0.5f, 0, 0, 0.5f }, Blends.Additive,
             new int[] { 191, 64, 0, 191 });
-        // 色も alpha も target の値を掛ける
+        // Both color and alpha are multiplied by the target value
         Add("multiply", half, new float[] { 0.5f, 1, 0, 0.5f }, Blends.Multiply, new int[] { 64, 128, 0, 64 });
         Add("max", half, new float[] { 0.25f, 0.75f, 0, 1 },
             Make(Gfx.BlendFactor.One, Gfx.BlendFactor.One, Gfx.BlendOp.Max,
                 Gfx.BlendFactor.One, Gfx.BlendFactor.One, Gfx.BlendOp.Max),
             new int[] { 128, 191, 128, 255 });
-        // target - 描く値
+        // target - drawn value
         Add("reverse_subtract", new float[] { 0.75f, 0.75f, 0.75f, 0.75f }, new float[] { 0.25f, 0.5f, 0, 0.25f },
             Make(Gfx.BlendFactor.One, Gfx.BlendFactor.One, Gfx.BlendOp.ReverseSubtract,
                 Gfx.BlendFactor.One, Gfx.BlendFactor.One, Gfx.BlendOp.ReverseSubtract),
@@ -118,7 +118,7 @@ public static class TestBlend
                 allDone = false;
                 continue;
             }
-            // 2 行目の左端 (左半分に描いた quad の中)
+            // Left end of the 2nd row (inside the quad drawn on the left half)
             var got = new int[4];
             for (var i = 0; i < 4; i++)
                 got[i] = bytes!.Get(stride + i);

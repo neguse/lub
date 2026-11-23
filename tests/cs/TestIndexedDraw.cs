@@ -1,6 +1,6 @@
-// 4 頂点 quad を 6 index で indexed draw する最小テスト。
-// vertex 重複なしで quad を成立させられることが indexed draw の動作確認になる。
-// 合否は描画の golden (tests/golden/TestIndexedDraw_*.png) で決まる。
+// Minimal test that draws a 4-vertex quad as an indexed draw with 6 indices.
+// Forming a quad without duplicated vertices verifies that indexed draw works.
+// Pass/fail is decided by the rendering golden (tests/golden/TestIndexedDraw_*.png).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -12,7 +12,7 @@ public static class TestIndexedDraw
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu" });
     }
 
-    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    // lub export draws 1 frame and records the shaders and files used
     public static void OnExport() { OnFrame(0); }
 
     public static void OnFrame(float dt)

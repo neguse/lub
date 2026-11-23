@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// 入れ子の型の名前の写像と、generic な型の中の型の診断。C、VM、.NET の実行結果は tcs2c.Tests の NestedTypes
+// Name mapping of nested types, and diagnostics for types inside generic types. C, VM, and .NET execution results: NestedTypes in tcs2c.Tests
 public class NestedTypeTests
 {
     [Fact]

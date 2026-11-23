@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <title>lub</title>
     <style>
-      /* 窓の字と同じ書体にし、ページの部品をエディタの一部に見せる。地は夜の藍、押せる物の印は focus の青 */
+      /* Use the same typeface as the window text so the page parts look like part of the editor. The background is night indigo, and things you can press are marked with the focus blue */
       @font-face {
         font-family: "UDEV Gothic";
         src: url("lider-fs/data/UDEVGothic-Regular.ttf");
@@ -53,7 +53,7 @@
       #status.error {
         color: var(--danger);
       }
-      /* lider を出さずに始めたときの、出し方の案内。メニューのボタンの左に置く */
+      /* A hint on how to show lider when the page starts without it. Placed to the left of the menu button */
       #hint {
         position: fixed;
         right: 52px;
@@ -112,7 +112,7 @@
       #menu a:hover {
         background: #8fa8ff33;
       }
-      /* サンプルの一覧。長いので、メニューの中で縦に送る */
+      /* The sample list. It is long, so it scrolls vertically inside the menu */
       #samples {
         display: flex;
         flex-direction: column;

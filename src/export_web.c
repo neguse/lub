@@ -1,15 +1,19 @@
-// export_web.c — `lub export web` の page: snapshot と web の player を全部埋め込んだ index.html を snapshot に書く。
-// 外の file を読めない所 (claude.ai の artifact) でも、この 1 枚で動く。
+// export_web.c — the page for `lub export web`: write into the snapshot an
+// index.html that embeds the snapshot and the whole web player. This single
+// file runs even where external files cannot be loaded (claude.ai artifacts).
 //
-// 埋め込むのは tcs VM の player (wasm/vm/ の lub.js / lub.wasm) と snapshot の file をつないで zlib で縮めて base64 にしたものと、その目録。
-// page の loader が DecompressionStream で展開し、snapshot を MEMFS に書いて、player に渡した引数 (<Entry>.tcsb) で起動する。
+// What is embedded: the tcs VM player (lub.js / lub.wasm in wasm/vm/) and the
+// snapshot files, concatenated, compressed with zlib, and base64-encoded, plus
+// their index. The page's loader decompresses it with DecompressionStream,
+// writes the snapshot to MEMFS, and starts the player with the argument passed
+// to it (<Entry>.tcsb).
 #include "backend.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
 
-// stb_image_write.h (src/stb_impl.c) の zlib 圧縮。
-// free で解放する。
+// zlib compression from stb_image_write.h (src/stb_impl.c).
+// Release with free.
 unsigned char *stbi_zlib_compress(unsigned char *data, int data_len,
                                   int *out_len, int quality);
 
@@ -48,7 +52,9 @@ static bool has_player(const char *dir) {
   return true;
 }
 
-// web の player のディレクトリ: 実行ファイルの隣の wasm/vm (release) か、lub root の build/wasm/vm (実行ファイルが build-*/ にある dev の build)。
+// Directory of the web player: wasm/vm next to the executable (release), or
+// build/wasm/vm under the lub root (dev builds where the executable is in
+// build-*/).
 static bool find_player(char *out, size_t cap) {
   const char *base = SDL_GetBasePath();
   if (!base)
@@ -64,7 +70,8 @@ static int compare_paths(const void *a, const void *b) {
   return strcmp(*(char *const *)a, *(char *const *)b);
 }
 
-// name の file を data に足し、目録に [name, offset, length] を書く。
+// Append the file named name to data and write [name, offset, length] to the
+// index.
 static bool add_file(Buf *data, Buf *index, const char *name,
                      const char *path) {
   if (strpbrk(name, "\"\\<")) {
@@ -105,8 +112,9 @@ static bool base64(Buf *out, const unsigned char *in, size_t n) {
   return true;
 }
 
-// page の loader。
-// player が要る WebGPU の device を先に作って渡す (web/player/main.ts と同じ)。
+// The page's loader.
+// Create the WebGPU device the player needs up front and pass it in (same as
+// web/player/main.ts).
 static const char k_loader_head[] =
     "(async () => {\n"
     "  const status = document.getElementById(\"status\");\n"
@@ -188,7 +196,8 @@ bool export_write_web_page(const char *out_dir, const char *title,
     ok = false;
   }
 #ifdef _WIN32
-  // Windows の SDL_GlobDirectory は区切りを \ で返す。page の中の名前は / で区切り、並びも他の OS と揃える
+  // SDL_GlobDirectory on Windows returns \ as the separator. Names in the page
+  // use / as the separator, and the order also matches other OSes
   for (int i = 0; i < count; ++i)
     for (char *c = paths[i]; *c; ++c)
       if (*c == '\\')

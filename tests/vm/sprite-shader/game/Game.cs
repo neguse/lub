@@ -1,8 +1,8 @@
 using Lub;
 using Lubx;
 
-// key の違う SpriteBatch を 2 つ描いて終わる。
-// 中身の同じ shader を batch ごとに作らないことを、終わりの LUB_GPU_STATS の行の shader の数で見る (expect.txt)。
+// Draws 2 SpriteBatches with different keys and exits.
+// Checks through the shader count in the LUB_GPU_STATS line at exit that a shader with the same contents is not created per batch (expect.txt).
 public static class Game
 {
     static SpriteBatch? a;

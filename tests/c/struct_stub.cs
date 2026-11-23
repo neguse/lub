@@ -1,6 +1,6 @@
-// struct の record の書き方と渡り方の検査 (scripts/verify-vm-binding.sh と verify-tcs-binding.sh)。
-// cs-lib/lub_stub.cs の後ろに足して 1 つの stub にし、lub-gen がそれから header と接続コードを作る。
-// readonly record struct の init の property、readonly struct の readonly の field、record struct の bool の field、入れ子の struct、record の field の T?、値の引数、out、戻り値を通す。
+// Check of struct record notation and passing (scripts/verify-vm-binding.sh and verify-tcs-binding.sh).
+// Appended after cs-lib/lub_stub.cs to form one stub, from which lub-gen generates the header and glue code.
+// Passes readonly record struct init properties, readonly fields of readonly structs, bool fields of record structs, nested structs, T? in record fields, value arguments, out, and return values.
 namespace Lub
 {
     public struct TestPoint

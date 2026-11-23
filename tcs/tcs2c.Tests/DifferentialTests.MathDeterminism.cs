@@ -1,12 +1,12 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// Math の超越関数 (runtime/math) が tcs2c (C)・Lua (tcs_math module)・.NET
-// (TinySystem.Math) で bit 単位で同じ結果を返す。決まった入力列の結果の bit 列を
-// 関数ごとに hash し、3 つの経路と期待値を比べる。期待値は 1 つで、OS や CPU で
-// 変わらない (変わったら実装か build の設定が決定的でなくなっている)
+// Math transcendental functions (runtime/math) return bit-identical results in tcs2c (C), Lua (tcs_math module), and .NET
+// (TinySystem.Math). The bit patterns of the results for a fixed input sequence
+// are hashed per function, and the three paths are compared with the expected values. There is a single expected value, which does not
+// change with the OS or CPU (if it changes, the implementation or the build settings are no longer deterministic)
 public class MathDeterminismDifferentialTests
 {
-    // name, 第 1 引数の範囲, 第 2 引数の範囲
+    // name, range of the first argument, range of the second argument
     private static readonly (string Name, float Lo, float Hi, float Lo2, float Hi2)[] MathCases =
     [
         ("sin", -10f, 10f, 0f, 0f), ("sinbig", -1e9f, 1e9f, 0f, 0f),
@@ -25,14 +25,14 @@ public class MathDeterminismDifferentialTests
         {
             static int state;
 
-            // 線形合同法 (32 bit で wrap する) の上位 24 bit から [lo, hi) の値を作る
+            // Makes a value in [lo, hi) from the upper 24 bits of a linear congruential generator (wrapping at 32 bits)
             static float Next(float lo, float hi)
             {
                 state = state * 1664525 + 1013904223;
                 return lo + (hi - lo) * (((state >> 8) & 0xffffff) / 16777216f);
             }
 
-            // binary32 の bit 列 (NaN は 1 つにまとめる)
+            // binary32 bit pattern (NaNs are merged into one)
             static int Bits(float x)
             {
                 if (x != x) return 0x7fc00000;
@@ -126,7 +126,7 @@ public class MathDeterminismDifferentialTests
 
     internal static string F(float v) => v.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f";
 
-    // 同じ program を .NET の TinySystem.Math で計算した stdout
+    // The stdout of computing the same program with .NET's TinySystem.Math
     private static string DotnetMathHashes()
     {
         var text = new System.Text.StringBuilder();

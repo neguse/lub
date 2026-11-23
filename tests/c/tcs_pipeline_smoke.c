@@ -1,6 +1,9 @@
-// tcs_pipeline_next_frame の smoke。
-// fake の tcs (scripts/test-tcs-pipeline-smoke.sh) は、知らない種類の frame、vm_batch、build_failed を 1 回の write で出す。
-// 知らない frame の本文は frame の見出しに見える行と UTF-8 の多 byte 文字を持つので、本文を byte 数どおりに飛ばさないと、そこから偽の差分が出る。
+// Smoke test for tcs_pipeline_next_frame.
+// The fake tcs (scripts/test-tcs-pipeline-smoke.sh) emits a frame of unknown
+// kind, a vm_batch, and build_failed in a single write. The body of the unknown
+// frame contains lines that look like frame headers and UTF-8 multibyte
+// characters, so unless the body is skipped by its byte count, false diffs
+// appear from there.
 #include "../../src/tcs_build.h"
 #include <SDL3/SDL.h>
 #include <string.h>

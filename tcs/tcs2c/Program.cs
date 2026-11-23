@@ -1,2 +1,2 @@
-// tcs2c は `tcs c` と同じもの: C backend は TinyC# の実装 (SelfHost/CBackend) で、CLI は SelfHost/Tool の Cli が持つ
+// tcs2c is the same as `tcs c`: the C backend is the TinyC# implementation (SelfHost/CBackend), and the CLI is owned by Cli in SelfHost/Tool
 return TcsHost.Run(["c", .. args]);

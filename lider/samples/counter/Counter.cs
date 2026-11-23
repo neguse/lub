@@ -1,7 +1,7 @@
-// lider を重ねて動かすための小さいゲーム。
-// 毎 frame 数を数え、四角を左右に動かす。
-// lider でこの file を書き換えて保存すると、数は巻き戻らずに動きだけが変わる。
-// XR では、同じ絵を texture に描いて、目の前 2 m の板に貼る。
+// A small game for running with lider layered on top.
+// Counts up every frame and moves a square left and right.
+// If you edit and save this file in lider, the count does not rewind and only the motion changes.
+// In XR, the same picture is drawn to a texture and put on a board 2 m in front of the eyes.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -44,7 +44,7 @@ public static class Counter
     {
         Frames++;
         t += dt * Speed();
-        // XR の間は main_tex が無いので、画面の代わりの texture に描く
+        // During XR there is no main_tex, so it draws to a texture in place of the screen
         var xr = Xr.Active();
         var target = xr
             ? Gfx.UseTexture("counter_screen", 1280, 720, Gfx.PixelFormat.Rgba8, null, 1,
@@ -78,7 +78,7 @@ public static class Counter
             return;
         if (!anchor.IsSet())
             anchor.Recenter(left, right);
-        // 基準の空間は OpenXR と同じく -z が前。板は 1.6 m x 0.9 m
+        // In the reference space, -z is forward, as in OpenXR. The board is 1.6 m x 0.9 m
         var model = Mat4.Translate(new Vec3(0, 0, -2)) * Mat4.Scale(new Vec3(1.6f, 0.9f, 1));
         foreach (var view in new[] { left, right })
         {

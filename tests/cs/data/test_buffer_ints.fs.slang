@@ -1,5 +1,6 @@
-// 整数の STORAGE を StructuredBuffer<int> で読み、渡した値 (7、123456、2^24 + 1、-5) と一致すれば 1。
-// R は use_vals (UseBufferInts)、G は frame_vals (FrameBufferInts)。
+// Reads integer STORAGE through StructuredBuffer<int>; 1 if it matches the
+// passed values (7, 123456, 2^24 + 1, -5). R is use_vals (UseBufferInts), G is
+// frame_vals (FrameBufferInts).
 StructuredBuffer<int> use_vals;
 StructuredBuffer<int> frame_vals;
 

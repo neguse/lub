@@ -9,10 +9,10 @@ using TinyCs.Vm;
 namespace TinyCs.Tests;
 
 /// <summary>
-/// semantic テストの実行 (doc/vm-design.md §16 の CompileAndRunVm): C# の program に `Console.WriteLine(式)` の entry を足し、
-/// tcs VM (tcs2vm → tcsvm、通常と GC stress) で走らせた stdout を返す。TCS_DIFFERENTIAL=1 なら同じ entry を実 .NET
-/// (TinySystem.props と同じ構成) でも走らせ、stdout の一致を要求する (dotnet differential)。
-/// TCS_DIFFERENTIAL_LOG に、.NET と比べたか、比べなかった理由を 1 行ずつ足す。
+/// Runs semantic tests (CompileAndRunVm in doc/vm-design.md §16): adds an entry `Console.WriteLine(expr)` to a C# program,
+/// runs it on the tcs VM (tcs2vm → tcsvm, normal and GC stress), and returns stdout. If TCS_DIFFERENTIAL=1, the same entry is also run on real .NET
+/// (with the same setup as TinySystem.props), and the stdout must match (dotnet differential).
+/// Appends one line per run to TCS_DIFFERENTIAL_LOG saying whether it was compared with .NET, or why it was not.
 /// </summary>
 public static class VmCorpus
 {
@@ -22,12 +22,12 @@ public static class VmCorpus
 
     private static bool DifferentialEnabled => Environment.GetEnvironmentVariable("TCS_DIFFERENTIAL") == "1";
 
-    /// <summary>program の型の後に `TcsEntry.Main` を足し、`Console.WriteLine(csharpExpr)` を走らせる。
-    /// dotnet: false は .NET と比べない (.NET と意図して違う意味の program。理由は呼び出し側に書く)。</summary>
+    /// <summary>Adds `TcsEntry.Main` after the program's types and runs `Console.WriteLine(csharpExpr)`.
+    /// dotnet: false skips the comparison with .NET (a program whose meaning intentionally differs from .NET; the caller writes the reason).</summary>
     public static string Run(string csharpSource, string csharpExpr, bool dotnet = true) =>
         Run([csharpSource], csharpExpr, dotnet);
 
-    /// <summary>複数の file の program に `TcsEntry.Main` の file を足す。</summary>
+    /// <summary>Adds a `TcsEntry.Main` file to a program of multiple files.</summary>
     public static string Run(string[] csharpSources, string csharpExpr, bool dotnet = true)
     {
         string[] sources = [.. csharpSources, "public static class TcsEntry { public static void Main() { System.Console.WriteLine("
@@ -37,7 +37,7 @@ public static class VmCorpus
         return vm;
     }
 
-    /// <summary>program の型の後に、本文が mainBody の `TcsEntry.Main` を足して走らせる (本文が stdout に書く)。</summary>
+    /// <summary>Adds `TcsEntry.Main` with mainBody as its body after the program's types and runs it (the body writes to stdout).</summary>
     public static string RunMain(string csharpSource, string mainBody, bool dotnet = true)
     {
         var probe = csharpSource + "\npublic static class TcsEntry { public static void Main() { " + mainBody + " } }\n";
@@ -46,7 +46,7 @@ public static class VmCorpus
         return vm;
     }
 
-    /// <summary>program 全体を走らせる。entryClass は static Main を持つ class (null なら top-level 文)。</summary>
+    /// <summary>Runs the whole program. entryClass is the class with static Main (null for top-level statements).</summary>
     public static string RunWhole(string[] sources, string? entryClass, bool dotnet = true)
     {
         var vm = RunPrograms(sources, entryClass);
@@ -54,8 +54,8 @@ public static class VmCorpus
         return vm;
     }
 
-    /// <summary>top-level 文の program: 最後の top-level 文の後に `Console.WriteLine(csharpExpr)` を足して走らせる
-    /// (式は top-level の local を読める)。</summary>
+    /// <summary>Top-level statement program: adds `Console.WriteLine(csharpExpr)` after the last top-level statement and runs it
+    /// (the expression can read top-level locals).</summary>
     public static string RunTopLevel(string csharpSource, string csharpExpr, bool dotnet = true)
     {
         var root = CSharpSyntaxTree.ParseText(csharpSource).GetRoot();
@@ -68,11 +68,11 @@ public static class VmCorpus
         return vm;
     }
 
-    /// <summary>program を tcs VM で走らせた stdout (通常と GC stress が同じであること)。entryClass が null なら top-level 文。
-    /// TinyC# の診断は InvalidOperationException、VM の誤りは VmException、fault は stderr を持つ InvalidOperationException。</summary>
+    /// <summary>stdout of running the program on the tcs VM (normal and GC stress must match). Top-level statements if entryClass is null.
+    /// TinyC# diagnostics are InvalidOperationException, VM errors are VmException, and faults are InvalidOperationException carrying stderr.</summary>
     public static string RunProgram(string program, string? entryClass) => RunPrograms([program], entryClass);
 
-    /// <param name="refs">--ref と同じく型と宣言だけを渡す source (spec の例の暗黙の global using)</param>
+    /// <param name="refs">Sources passed for types and declarations only, like --ref (the implicit global usings of spec examples)</param>
     public static string RunPrograms(string[] programs, string? entryClass, string[]? refs = null)
     {
         var bytes = SelfHostVm.Emit(programs, entryClass, refs: refs);
@@ -111,7 +111,7 @@ public static class VmCorpus
             Log("skip-flagged", expr);
             return;
         }
-        // System.Random の列は合意 PRNG と違う (il-spec §13)
+        // The System.Random sequence differs from the agreed PRNG (il-spec §13)
         if (programs.Any(p => p.Contains("Random", StringComparison.Ordinal)))
         {
             Log("skip-random", expr);
@@ -126,7 +126,7 @@ public static class VmCorpus
         Log("match", expr);
     }
 
-    // TinySystem.props が .NET の project に入れるもの (Linq.cs は TcsLibrary.LibraryTrees)
+    // What TinySystem.props adds to a .NET project (Linq.cs is in TcsLibrary.LibraryTrees)
     private static readonly Lazy<SyntaxTree[]> DotnetLibrary = new(() =>
     [
         CSharpSyntaxTree.ParseText("global using Math = TinySystem.Math;\nglobal using MathF = TinySystem.Math;\n"),
@@ -134,7 +134,7 @@ public static class VmCorpus
         .. TcsLibrary.LibraryTrees.Where(t => t.FilePath != TcsLibrary.ValueTupleLibraryPath),
     ]);
 
-    /// <summary>実 .NET で entry を走らせた stdout。entryClass が null なら top-level 文の program。</summary>
+    /// <summary>stdout of running the entry on real .NET. A top-level statement program if entryClass is null.</summary>
     public static string RunDotnet(string[] programs, string? entryClass)
     {
         var compilation = CSharpCompilation.Create("TcsVmCorpus",
@@ -158,7 +158,7 @@ public static class VmCorpus
             using var writer = new StringWriter { NewLine = "\n" };
             using (ConsoleCapture.BeginOut(writer))
             {
-                // ConsoleCapture の AsyncLocal は Task.Run の子へ流れる (SpecDotnetExecutor と同じ)
+                // ConsoleCapture's AsyncLocal flows to the Task.Run child (same as SpecDotnetExecutor)
                 var invocation = Task.Run(() => main.Invoke(null, main.GetParameters().Length == 0 ? null : [Array.Empty<string>()]));
                 try
                 {
@@ -192,7 +192,7 @@ public static class VmCorpus
         return (p.ExitCode, stdout.Result, stderr.Result);
     }
 
-    /// <summary>tcsvm を source から 1 回だけ build する。</summary>
+    /// <summary>Builds tcsvm from source only once.</summary>
     private static string Exe()
     {
         lock (Lock)

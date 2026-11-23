@@ -1,6 +1,6 @@
 using System;
 
-// 小さな object の確保と GC。The Computer Language Benchmarks Game の binary-trees (1 スレッドの版) と同じ手順
+// Small object allocation and GC. Same procedure as binary-trees (single-thread version) of The Computer Language Benchmarks Game
 public class TreeNode
 {
     public TreeNode Left;
@@ -55,8 +55,8 @@ public class BinaryTrees
     {
         string s = Environment.GetEnvironmentVariable("BENCH_N");
         int n = s == null ? 10 : int.Parse(s);
-        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
-        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        // Repeats BENCH_REPS times (run.py uses this to compute the time per repetition).
+        // Each repetition's input depends on the previous result so the compiler cannot skip repetitions or hoist them out (the result is never -1)
         string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
         int reps = rs == null ? 1 : int.Parse(rs);
         int prev = 0;

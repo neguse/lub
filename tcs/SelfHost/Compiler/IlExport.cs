@@ -3,8 +3,8 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// IL を読む backend (tcs c と tcs vm) への入力。
-// 検査済みのプログラムの型ごとの metadata と、method の本文の IL を渡す
+// Input to the backends that read IL (tcs c and tcs vm).
+// Passes per-type metadata of the checked program and the IL of method bodies
 
 public sealed class ExField
 {
@@ -13,7 +13,7 @@ public sealed class ExField
     public bool IsStatic;
     public IlExpr? Init;
     public string? InitHash;
-    // static の初期化子が直に読む static と const ("型\nfield")
+    // Statics and consts read directly by static initializers ("type\nfield")
     public List<string> Reads = new List<string>();
 
     public ExField(string name, string type, bool isStatic, IlExpr? init, string? initHash)
@@ -49,7 +49,7 @@ public sealed class ExCtor
     public string Name = "new";
 }
 
-// class / record class / interface / (--ref の) 外部の class
+// class / record class / interface / external class (from --ref)
 public sealed class ExClass
 {
     public string Name = "";
@@ -63,7 +63,7 @@ public sealed class ExClass
     public bool IsInterface;
     public bool IsExternal;
     public string? DisplayName;
-    // 宣言のファイル (--trace がどの class を記録するかを決める)
+    // The declaring file (--trace decides by it which classes to record)
     public string File = "";
 }
 
@@ -109,7 +109,7 @@ public sealed class ExForeignMethod
     public string ReturnType = "";
     public List<ExForeignParameter> Parameters = new List<ExForeignParameter>();
     public string? Receiver;
-    // C# の method の名前 (Name は host の名前)。interface の method (tcs VM が --ref の interface の method を呼ぶ) は Receiver が interface の表示名
+    // The C# method name (Name is the host name). For an interface method (the tcs VM calls methods of a --ref interface), Receiver is the display name of the interface
     public string MethodName = "";
 }
 
@@ -139,13 +139,13 @@ public sealed class ExportResult
     public List<ExEnum> EnumTypes = new List<ExEnum>();
     public List<ExForeignMethod> ForeignMethods = new List<ExForeignMethod>();
     public List<ExForeignValue> ForeignValues = new List<ExForeignValue>();
-    // IL にできなかった本文の理由 (本文は null になる。調べるため)
+    // The reason a body could not be turned into IL (the body becomes null; for investigation)
     public List<string> InternalErrors = new List<string>();
-    // --ref で読んだ型の host の関数の一覧 (HostSurface。module 単位の混在で C の module が VM に公開する)
+    // List of host functions of types read with --ref (HostSurface; in per-module mixing, the C module exposes them to the VM)
     public List<ExHostFunction> HostFunctions = new List<ExHostFunction>();
 }
 
-// --ref の型の host の関数: Name は host の名前、TypeDisplay は型の表示名、Method は C# の method の名前
+// Host function of a --ref type: Name is the host name, TypeDisplay is the type's display name, Method is the C# method name
 public sealed class ExHostFunction
 {
     public string Name;
@@ -160,15 +160,15 @@ public sealed class ExHostFunction
     }
 }
 
-// 束縛済みの compilation から export を作る。IL は引数の copy を残す設定で組み立てる
+// Creates the export from a bound compilation. The IL is built with the setting that keeps argument copies
 public sealed class IlExporter
 {
     private readonly Compilation _c;
     private readonly IlContext Ctx = new IlContext();
     private readonly List<int> _emitted = new List<int>();
-    // struct の型 (表示の名前) → instance の field の (名前, 型)。layout の hash で struct の中へ展開する
+    // Struct type (display name) → (name, type) of instance fields. Used to expand into structs for the layout hash
     private readonly Dictionary<string, List<ExField>> _structLayouts = new Dictionary<string, List<ExField>>();
-    // IL にできなかった本文と式 (文の並びの block、式の本文、初期化子、既定値、base の引数、top-level の文)。tcs check が TCS1001 にする
+    // Bodies and expressions that could not be turned into IL (statement blocks, expression bodies, initializers, default values, base arguments, top-level statements). tcs check reports them as TCS1001
     public readonly List<Node> UnsupportedBodies = new List<Node>();
 
     public IlExporter(Compilation c)
@@ -181,7 +181,7 @@ public sealed class IlExporter
     {
         var result = new ExportResult();
         HostSurface(result);
-        // library は user の型より先
+        // Libraries come before user types
         for (int i = 0; i < _c.Files.Count; i++)
         {
             if (_c.Files[i].IsLibrary) _emitted.Add(i);
@@ -190,11 +190,11 @@ public sealed class IlExporter
         {
             if (!_c.Files[i].IsLibrary && !_c.Files[i].IsRef) _emitted.Add(i);
         }
-        // IL の local の名前を決める (予約語と同じ名前の local の改名、LocalNames)
+        // Decide IL local names (renaming locals that share a name with a reserved word, LocalNames)
         var reserved = LocalNames.ReservedTypeNames(_c);
         foreach (var i in _emitted) LocalNames.AssignUnit(_c.Units[i], reserved);
 
-        // struct / record struct の契約。layout は owner の layout hash へ推移的に展開するので先に全ての struct を集める
+        // Contracts of struct / record struct. The layout is expanded transitively into the owner's layout hash, so all structs are collected first
         var structDecls = new List<TypeDeclSym>();
         foreach (var i in _emitted) CollectTypes(_c.Units[i], structDecls, true, false, false);
         foreach (var t in structDecls)
@@ -208,7 +208,7 @@ public sealed class IlExporter
         }
         foreach (var t in structDecls) result.Structs.Add(ExportStruct(t));
 
-        // enum の定数の表 (値と名前)
+        // Enum constant tables (values and names)
         foreach (var i in _emitted)
         {
             var enums = new List<TypeDeclSym>();
@@ -229,7 +229,7 @@ public sealed class IlExporter
             }
         }
 
-        // class と record class (ファイルの中の順)、次にそのファイルの interface
+        // Classes and record classes (in file order), then the interfaces of that file
         var topLevel = new List<Node>();
         Node? topLevelUnit = null;
         foreach (var i in _emitted)
@@ -262,17 +262,17 @@ public sealed class IlExporter
         return result;
     }
 
-    // ---- --ref (host) の宣言 ----
+    // ---- --ref (host) declarations ----
 
-    // user のコードが使う host の method / static の値 / enum / data class。C は host の関数を extern で宣言する
+    // Host methods / static values / enums / data classes used by user code. C declares host functions as extern
     private readonly Dictionary<string, int> _methodKeys = new Dictionary<string, int>();
-    // 同じ host の method の 2 回目からの使用は書き出し直さない (owner の番号と host の名前 (IlName) → 最初に見た symbol)
+    // The second and later uses of the same host method are not written out again (owner number and host name (IlName) → the first symbol seen)
     private readonly Dictionary<string, Symbol> _methodSeen = new Dictionary<string, Symbol>();
     private readonly List<string> _methodSignatures = new List<string>();
     private readonly Dictionary<string, int> _valueKeys = new Dictionary<string, int>();
     private readonly Dictionary<string, int> _enumKeys = new Dictionary<string, int>();
     private readonly HashSet<int> _visited = new HashSet<int>();
-    // 表に書いた host の enum (同じ型は同じ表なので 1 度だけ作る)
+    // Host enums written to tables (the same type uses the same table, so it is created only once)
     private readonly HashSet<int> _enumsDone = new HashSet<int>();
     private readonly List<TypeDeclSym> _pending = new List<TypeDeclSym>();
 
@@ -287,7 +287,7 @@ public sealed class IlExporter
         var enums = new List<ExEnum>();
         foreach (var i in _emitted)
         {
-            // ファイルの中の位置の順 (同じ位置は外側の式が先)
+            // In order of position in the file (at the same position, the outer expression comes first)
             var nodes = new List<Node>();
             var depths = new List<int>();
             CollectUses(_c.Units[i], 0, nodes, depths);
@@ -304,7 +304,7 @@ public sealed class IlExporter
             k++;
             if (t.IsStruct)
             {
-                // host の struct は field の layout だけ (C の struct の値として host と受け渡す。doc/object-model.md §5)
+                // A host struct has only the field layout (exchanged with the host as a C struct value; doc/object-model.md §5)
                 var st = new ExStruct();
                 st.Name = GlobalName(t);
                 foreach (var f in CollectFields(t, false))
@@ -322,7 +322,7 @@ public sealed class IlExporter
                 continue;
             }
             if (t.DeclKind != DeclKinds.Class) continue;
-            // host の data class は field の layout だけ (本文は host が持つ。--ref の本文は束縛しないので IL にしない)
+            // A host data class has only the field layout (the host owns the bodies; --ref bodies are not bound, so they are not turned into IL)
             var cls = new ExClass();
             cls.Name = GlobalName(t);
             cls.BaseName = t.BaseClass != null ? GlobalName(t.BaseClass) : null;
@@ -366,7 +366,7 @@ public sealed class IlExporter
         }
     }
 
-    // 位置の昇順、同じ位置は浅いものが先 (挿入の整列で同じ key の順を保つ)
+    // Ascending by position; at the same position, shallower first (insertion sort keeps the order of equal keys)
     private static void SortByPosition(List<Node> nodes, List<int> depths)
     {
         for (int i = 1; i < nodes.Count; i++)
@@ -385,10 +385,10 @@ public sealed class IlExporter
         }
     }
 
-    // false: 失敗 (同じ名前の host の overload) で、診断を足して打ち切る
+    // false: failure (a host overload with the same name); adds a diagnostic and aborts
     private bool UseForeign(Node n, ExportResult result, List<ExEnum> enums)
     {
-        // 宣言の型の構文 (field や parameter の型) も host の型を使う
+        // The type syntax of declarations (field and parameter types) also uses host types
         if (n.Kind == NodeKind.TypeName)
         {
             if (n.Type != null && n.Type.Decl != null && n.Type.Decl.IsRef) ForeignType(n.Type, result, enums);
@@ -419,7 +419,7 @@ public sealed class IlExporter
         ForeignType(sym.Owner.SelfType(), result, enums);
         bool interfaceMethod = !sym.IsStatic && sym.Owner.DeclKind == DeclKinds.Interface;
         if (sym.Kind != SymKind.Method || !sym.IsStatic && sym.Owner.DeclKind != DeclKinds.Class && !interfaceMethod) return true;
-        // 書き出した method の 2 回目からの使用 (型も書き出し済み)
+        // Second and later uses of a method already written out (its type is written out too)
         string seenKey = sym.Owner.Order + ":" + sym.IlName;
         Symbol? seen;
         if (_methodSeen.TryGetValue(seenKey, out seen) && seen == sym) return true;
@@ -479,7 +479,7 @@ public sealed class IlExporter
         }
     }
 
-    // 型が host の型なら、enum は定数の表に、class は外部の class として後で書き出す
+    // If the type is a host type, an enum is written later as a constant table and a class as an external class
     private void ForeignType(TypeSym t, ExportResult result, List<ExEnum> enums)
     {
         if (t.Kind == TypeKind.Array || t.Kind == TypeKind.Nullable)
@@ -521,10 +521,10 @@ public sealed class IlExporter
         _pending.Add(d);
     }
 
-    // 型の global の名前 (namespace と外側の型を _ でつなぐ)。host の型も C の側ではこの名前で表す
+    // The global name of a type (namespace and outer types joined with _). Host types are also represented by this name on the C side
     private static string GlobalName(TypeDeclSym t) => t.FullName.Replace(".", "_");
 
-    // host の型の path (namespace と入れ子の型を host の名前の規則で . でつなぐ)。enum は入っている型か namespace の下 (global の enum は自分の名前)
+    // The path of a host type (namespace and nested types joined with . using the host naming rules). An enum goes under its containing type or namespace (a global enum uses its own name)
     public static string RefTypePath(TypeDeclSym t)
     {
         var parts = new List<string>();
@@ -544,9 +544,9 @@ public sealed class IlExporter
         return string.Join(".", parts);
     }
 
-    // ---- 型の収集 (ファイルの中の宣言の順、入れ子の型は外側の型の後) ----
+    // ---- Type collection (in declaration order within the file; nested types after the outer type) ----
 
-    // --ref で読んだ generic でない class と interface の、host の関数 (class の公開 static method と、受け手を先頭の引数に取る interface の method)
+    // Host functions of non-generic classes and interfaces read with --ref (public static methods of classes, and interface methods that take the receiver as the first argument)
     private void HostSurface(ExportResult result)
     {
         for (int i = 0; i < _c.Files.Count; i++)
@@ -600,20 +600,20 @@ public sealed class IlExporter
         }
     }
 
-    // ---- IL の組み立ての文脈 ----
+    // ---- IL build context ----
 
     private void Enter(TypeDeclSym? type, Symbol? function, Node unitOrMember, bool onSelf)
     {
         Ctx.CurrentDecl = type;
         Ctx.CurrentFunction = function;
-        // export は型引数の既定値を常に変数 (constructor と method の引数) から読む。onSelf は使わない
+        // The export always reads type-argument defaults from variables (constructor and method arguments). onSelf is not used
         Ctx.TypeArgDefaultsOnSelf = false;
         Ctx.CurrentLambdaVoid = 0;
         Ctx.B.ScopeRoots.Clear();
         Ctx.B.ScopeRoots.Add(unitOrMember);
     }
 
-    // 文の並びの本文 (block)
+    // A statement-list body (block)
     private IlBlock? Block(Node block)
     {
         var acc = new List<IlStat>();
@@ -625,7 +625,7 @@ public sealed class IlExporter
         return new IlBlock(acc);
     }
 
-    // top-level の文は 1 つずつ組み立て、IL にできない文をそれぞれ記録する
+    // Top-level statements are built one by one, and each statement that cannot be turned into IL is recorded
     private IlBlock? TopLevelStats(List<Node> statements)
     {
         var acc = new List<IlStat>();
@@ -647,7 +647,7 @@ public sealed class IlExporter
         return built;
     }
 
-    // accessor の式の本文: get は値の return (条件式を文に直さない)、set は文の位置の式
+    // Expression body of an accessor: get is a return of the value (the conditional expression is not turned into statements), set is an expression in statement position
     private IlBlock? AccessorExpr(Node expr, bool isGet)
     {
         var acc = new List<IlStat>();
@@ -665,7 +665,7 @@ public sealed class IlExporter
 
     // ---- field ----
 
-    // instance / static の field と自動実装の property。positional な record は parameter が先頭
+    // Instance / static fields and auto-implemented properties. For a positional record, the parameters come first
     private List<ExField> CollectFields(TypeDeclSym t, bool withInitializers)
     {
         var fields = new List<ExField>();
@@ -683,13 +683,13 @@ public sealed class IlExporter
                 foreach (var v in m.List)
                 {
                     var sym = v.Sym;
-                    // struct の const は使う所で値に畳まれ、値の layout に入らない
+                    // A struct const is folded to its value where used and is not part of the value layout
                     if (sym != null && sym.IsConst && t.IsStruct) continue;
                     bool isStatic = sym != null ? sym.IsStatic || sym.IsConst : m.Has(Mods.Static);
                     IlExpr? init = null;
                     if (withInitializers && v.A != null && v.A.Type != null)
                     {
-                        // instance の初期化子は constructor の中で走るので、型引数の既定値は constructor の引数から読む
+                        // Instance initializers run inside the constructor, so type-argument defaults are read from the constructor arguments
                         Enter(t, null, m, false);
                         init = Expr(v.A);
                     }
@@ -717,7 +717,7 @@ public sealed class IlExporter
         return fields;
     }
 
-    // 式の中で名前を引いた static の field、自動実装の property、const を集める
+    // Collects static fields, auto-implemented properties, and consts looked up by name in the expression
     private static void StaticReads(Node? n, List<string> reads)
     {
         if (n == null) return;
@@ -742,7 +742,7 @@ public sealed class IlExporter
         foreach (var n in list) StaticReads(n, reads);
     }
 
-    // accessor が本文を持たない property (式の本文の property も除く)。B = get、C = set / init、D = 初期化子
+    // Properties whose accessors have no body (excluding expression-bodied properties). B = get, C = set / init, D = initializer
     private static bool IsAutoProperty(Node p)
     {
         if (p.Value == 1) return false;
@@ -750,13 +750,13 @@ public sealed class IlExporter
         return (p.B == null || p.B.A == null && p.B.B == null) && (p.C == null || p.C.A == null && p.C.B == null);
     }
 
-    // --ref (host) の型の class は field の名前も host の規則
+    // For classes of --ref (host) types, field names also follow the host rules
     private static string FieldName(TypeDeclSym t, Symbol sym)
     {
         return t.IsRef ? sym.IlName : sym.Name;
     }
 
-    // positional な record の parameter の field (--ref の型は property の host の名前)
+    // Fields for the parameters of a positional record (for --ref types, the host name of the property)
     private static string RecordFieldName(TypeDeclSym t, string name)
     {
         if (!t.IsRef) return name;
@@ -767,7 +767,7 @@ public sealed class IlExporter
         return name;
     }
 
-    // 初期化子の hash (hot reload が既存の static の初期化子の変更を restart と判定する)。定数は値で、それ以外は字面で決める
+    // Hash of an initializer (hot reload treats a change to an existing static initializer as requiring a restart). Constants are hashed by value, everything else by text
     public static string InitializerHash(Node init, bool isConst)
     {
         string kind = isConst ? "const-field " : "";
@@ -787,7 +787,7 @@ public sealed class IlExporter
         return Hash64(kind + text);
     }
 
-    // trivia (空白と comment) を除いた token の列。token の境目は長さで区切る
+    // The token sequence without trivia (whitespace and comments). Token boundaries are marked by length
     private static string NormalizedText(Node init)
     {
         var tokens = new Lexer(init.File, new Diagnostics(), init.Pos, init.End).Tokenize();
@@ -801,7 +801,7 @@ public sealed class IlExporter
         return string.Join("", parts);
     }
 
-    // FNV-1a (32 bit を 2 つ。暗号の強さは要らない)。int の演算は 32 bit で wrap する (C backend は uint を持たない)
+    // FNV-1a (two 32-bit halves; cryptographic strength is not needed). int arithmetic wraps at 32 bits (the C backend has no uint)
     private const int FnvOffset = -2128831035;
     private const int FnvPrime = 16777619;
 
@@ -831,9 +831,9 @@ public sealed class IlExporter
         return string.Join("", parts);
     }
 
-    // ---- layout の hash (il-spec §14) ----
+    // ---- Layout hash (il-spec §14) ----
 
-    // instance の field の (名前, 型) の列の FNV-1a。struct の型の field は中の layout へ推移的に展開する
+    // FNV-1a of the sequence of (name, type) of instance fields. Fields of struct type are expanded transitively into their inner layout
     private string LayoutHash(List<ExField> fields)
     {
         int h = FnvOffset;
@@ -871,7 +871,7 @@ public sealed class IlExporter
         return h;
     }
 
-    // ---- 型 ----
+    // ---- Types ----
 
     private ExClass ExportClass(TypeDeclSym t)
     {
@@ -885,13 +885,13 @@ public sealed class IlExporter
         info.Ctors = BuildCtors(t);
         info.IsRecord = t.DeclKind == DeclKinds.RecordClass;
         foreach (var i in IlTypes.AllInterfaces(t)) info.Interfaces.Add(IlTypes.Display(i));
-        // record は IEquatable<自分> を実装する (C# が合成する)
+        // A record implements IEquatable<T> for itself (synthesized by C#)
         if (info.IsRecord) info.Interfaces.Add("System.IEquatable<" + IlTypes.Display(t.SelfType()) + ">");
         info.DisplayName = IlTypes.Display(t.SelfType());
         return info;
     }
 
-    // struct / record struct: field (positional を含む) と member と constructor
+    // struct / record struct: fields (including positional ones), members, and constructors
     private ExStruct ExportStruct(TypeDeclSym t)
     {
         var info = new ExStruct();
@@ -910,7 +910,7 @@ public sealed class IlExporter
         return info;
     }
 
-    // 派生した interface の型を通しても継承した member を呼べるように、自分の表に写す
+    // Copies inherited members into its own table so they can be called through a derived interface type too
     private ExClass ExportInterface(TypeDeclSym t)
     {
         var info = new ExClass();
@@ -1006,10 +1006,10 @@ public sealed class IlExporter
     {
         var methods = new List<ExMethod>();
         var decl = t.Decl;
-        // interface の property を自動実装の property か field で実装する: accessor を足す (interface 経由の読み書き)
+        // Implements an interface property with an auto-implemented property or a field: adds accessors (for reads and writes through the interface)
         if (!t.IsInterface && !t.IsStruct)
         {
-            // 済みの accessor は "get_X" / "set_X" で数える (getter と setter を別々の interface が求めることがある)
+            // Accessors already added are counted as "get_X" / "set_X" (the getter and setter may be required by different interfaces)
             var done = new List<string>();
             foreach (var i in IlTypes.AllInterfaces(t))
             {
@@ -1046,7 +1046,7 @@ public sealed class IlExporter
             }
         }
         if (decl.List == null) return methods;
-        // accessor が本文を持つ property は get_ / set_ の method
+        // A property whose accessors have bodies becomes get_ / set_ methods
         foreach (var m in decl.List)
         {
             if (m.Kind != NodeKind.Property || IsAutoProperty(m) || m.Value == 1 || (m.B == null && m.C == null)) continue;
@@ -1079,7 +1079,7 @@ public sealed class IlExporter
                 methods.Add(x);
             }
         }
-        // 式の本文の property (`int X => ...`) は getter だけ
+        // An expression-bodied property (`int X => ...`) has only a getter
         foreach (var m in decl.List)
         {
             if (m.Kind != NodeKind.Property || m.Value != 1 || m.B == null || m.B.B == null) continue;
@@ -1092,7 +1092,7 @@ public sealed class IlExporter
             x.Body = AccessorExpr(m.B.B, true);
             methods.Add(x);
         }
-        // user の演算子は IL の名前 (`__add`、overload は `__mul_1` …) の static な method
+        // A user operator is a static method with an IL name (`__add`; overloads are `__mul_1` …)
         foreach (var m in decl.List)
         {
             if (m.Kind != NodeKind.OperatorDecl) continue;
@@ -1144,7 +1144,7 @@ public sealed class IlExporter
         return methods;
     }
 
-    // 型が自分で宣言した、名前の同じ property か field (interface の property の暗黙の実装)
+    // A property or field with the same name declared by the type itself (implicit implementation of an interface property)
     private static Symbol? ImplementingMember(TypeDeclSym t, string name)
     {
         var list = t.Lookup(name);
@@ -1181,7 +1181,7 @@ public sealed class IlExporter
         var decl = t.Decl;
         if (t.IsRecord && decl.A != null && decl.A.List != null && decl.A.List.Count > 0)
         {
-            // positional な constructor: 宣言の順に field へ代入する
+            // Positional constructor: assigns to fields in declaration order
             var ctor = new ExCtor();
             var body = new List<IlStat>();
             for (int i = 0; i < decl.A.List.Count; i++)
@@ -1199,7 +1199,7 @@ public sealed class IlExporter
             return r;
         }
         if (decl.List == null) return r;
-        // struct の引数の無い constructor は準拠検査が止める。引数のある instance の constructor だけ
+        // A parameterless struct constructor is rejected by the compliance check. Only instance constructors with parameters
         foreach (var m in decl.List)
         {
             if (m.Kind != NodeKind.Ctor || m.Has(Mods.Static)) continue;
@@ -1214,7 +1214,7 @@ public sealed class IlExporter
             }
             Enter(t, m.Sym, m, true);
             if (m.B != null) ctor.Body = Block(m.B);
-            // 式の本文 (`C(int x) => X = x;`) は文の位置の式
+            // An expression body (`C(int x) => X = x;`) is an expression in statement position
             else if (m.C != null) ctor.Body = AccessorExpr(m.C, false);
             if (m.D != null && m.D.Text == "base" && m.D.List != null)
             {

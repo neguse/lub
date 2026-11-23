@@ -1,7 +1,7 @@
-// lider を重ねて動かすための、いくつもの file に分けたゲーム。
-// 規則 (重力、跳ぶ力、パイプの速さと隙間) は lub の samples/17_flappy に揃え、パイプを何本も流す。
-// 手で跳ばない間は Pilot が代わりに跳ぶので、lider でコードを書いている間 (lider が入力を取る) も動き続ける。
-// 手で跳ぶのは Space か左 click。
+// A game split into several files, for running with lider layered on top.
+// The rules (gravity, jump strength, pipe speed and gap) match lub's samples/17_flappy, and many pipes scroll by.
+// While the player does not jump by hand, Pilot jumps instead, so the game keeps running while you write code in lider (lider takes the input).
+// Jump by hand with Space or left click.
 using System;
 using Lub;
 
@@ -14,10 +14,10 @@ public enum Phase
 
 public static class Flappy
 {
-    // 鳥がこの高さを越えるか下回ると終わる
+    // The game ends when the bird goes above or below this height
     const float Ceiling = 3.0f;
 
-    // 終わってから次を始められるまでの秒数
+    // Seconds after the end before the next round can start
     const float OverWait = 1.0f;
 
     public static Phase State;

@@ -1,14 +1,14 @@
-// lider に編集操作を流し込んで保存すると、ゲームの状態を保ったまま反映されることを確かめる。
-// ゲーム (game/Game.cs) は毎 frame 数を数え、Target.Value() を読む。数と値は lider がゲームを見るのと同じ道 (GameApp.Inspect) で読む。
-// ゲームが動き始めたら、lider で game/Target.cs の `return 1;` を `return 2;` に書き換えて保存し、reload chunk が当たったら次を確かめる。
-//   - Target.Value() が 2 を返す (反映された)
-//   - lider がゲームの reload を受け取った (Lider.Reloads)
-//   - ゲームの数が初期値に戻っていない
-//   - 保存した file の中身と、Document の保存済みの状態
-//   - 書き換えた行は、保存しても reload chunk が当たるまで浮いたまま (LineChanged、窓の手前の層に描く) で、当たると沈む (面に描く)
-//   - 改行が CRLF の file は、CRLF のまま保存する
-//   - 縮小図は、開いた file の板に打った内容を出す
-// scripts/test.sh が一時ディレクトリに写して起動する (game/Target.cs を書き換えるため)。
+// Checks that edit operations fed into lider and saved are applied while the game keeps its state.
+// The game (game/Game.cs) counts up every frame and reads Target.Value(). The count and the value are read through the same path lider uses to look at the game (GameApp.Inspect).
+// Once the game is running, lider rewrites `return 1;` in game/Target.cs to `return 2;` and saves it, and once the reload chunk is applied, the following are checked.
+//   - Target.Value() returns 2 (the change was applied)
+//   - lider received the game's reload (Lider.Reloads)
+//   - The game's count was not reset to its initial value
+//   - The contents of the saved file, and the saved state of the Document
+//   - The rewritten line stays raised after saving until the reload chunk is applied (LineChanged, drawn on the layer in front of the window), and sinks once it is applied (drawn on the surface)
+//   - A file with CRLF line endings is saved with CRLF
+//   - The minimap shows what was typed on the board of the opened file
+// scripts/test.sh copies this to a temporary directory and starts it (because game/Target.cs gets rewritten).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -54,7 +54,7 @@ public static class TestEdit
         if (failed)
             return;
         waited += dt;
-        // ゲームの build を待つ
+        // Wait for the game build
         if (GameApp.Frames == 0)
         {
             Check(waited < 60, "the game did not start in 60 seconds");
@@ -96,7 +96,7 @@ public static class TestEdit
         var doc = w.Focus;
         Check(doc != null, "cannot open " + path);
         Check(doc!.Find("return 1;"), "no 'return 1;' in " + path);
-        // `return ` の後ろへ動き、1 を消して 2 を打ち、Ctrl+S で保存する
+        // Move after `return `, delete 1, type 2, and save with Ctrl+S
         for (var i = 0; i < 7; i++)
             Press(w, Keys.Right);
         Press(w, Keys.Delete);
@@ -114,7 +114,7 @@ public static class TestEdit
         SaveCrlf(Environment.GetEnvironmentVariable("LIDER_ROOT") + "/crlf.txt");
     }
 
-    // ゲームの static の今の値 (読めなければ -1)
+    // Current value of the game's static (-1 if it cannot be read)
     static int Game(string name)
     {
         foreach (var n in GameApp.Inspect("Game", 0, 100))
@@ -134,8 +134,8 @@ public static class TestEdit
         Check(text == "xa\r\nb\r\n", "saved a CRLF file as " + (text ?? "null").Replace("\r", "\\r").Replace("\n", "\\n"));
     }
 
-    // 窓の大きさに描いた エディタの命令のうち、text を含む行の文字を手前の層に描くか
-    // (色分けで行は語ごとの命令に分かれるので、行の番号で命令を探す)
+    // Whether, among the editor commands drawn at the window size, the characters of the line containing text are drawn on the front layer
+    // (Syntax highlighting splits a line into per-word commands, so commands are looked up by line number)
     static bool InFront(Document doc, string text)
     {
         var line = -1;
@@ -156,7 +156,7 @@ public static class TestEdit
         w.Key(key, false);
     }
 
-    // 最初の失敗だけを出して終わる
+    // Report only the first failure and exit
     static void Check(bool cond, string message)
     {
         if (cond || failed)

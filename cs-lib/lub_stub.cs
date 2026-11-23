@@ -1,11 +1,11 @@
-// lub core API の参照専用 stub (--ref)。
-// 変換の出力には含めない。
-// C# 側の記述が API 面の正で、tcs が名前を規則で snake_case に写す (Gfx.BeginPass → lub.gfx.begin_pass、enum メンバ Rgba8 → RGBA8)。
-// 実行時は tcs VM の host の関数 (src/gen/vm_api_gen.c、生成物) が同じ名前で C API (include/lub/lub_api.h) を呼ぶ。
-// core の型は namespace Lub にあり、ゲーム側は `using Lub;` で `Gfx.BeginPass(...)` と書く。
-// 末尾の namespace Lubx は、lubx (cs-lib/lubx) が使う C の実装 (src/lubx/) の面で、core API ではない (Lubx.Vorbis.Decode → lubx.vorbis.decode)。
-// API reference (web/gen/lub-api-docs.json) はこの stub の doc comment から生成する。
-// TCS1001 (out パラメータ) は --ref 型の out 引数の契約そのものなのでこの stub に限り抑制する (check の経路は元々 --ref 扱いで無警告)。
+// Reference-only stub of the lub core API (--ref).
+// Not included in the conversion output.
+// The C# declarations are the source of truth for the API surface, and tcs maps the names to snake_case by rule (Gfx.BeginPass → lub.gfx.begin_pass, enum member Rgba8 → RGBA8).
+// At runtime the tcs VM host functions (src/gen/vm_api_gen.c, generated code) call the C API (include/lub/lub_api.h) under the same names.
+// Core types are in namespace Lub, and games write `Gfx.BeginPass(...)` with `using Lub;`.
+// The trailing namespace Lubx is the surface of the C implementation (src/lubx/) used by lubx (cs-lib/lubx), not the core API (Lubx.Vorbis.Decode → lubx.vorbis.decode).
+// The API reference (web/gen/lub-api-docs.json) is generated from this stub's doc comments.
+// TCS1001 (out parameter) is exactly the contract of out arguments in --ref types, so it is suppressed for this stub only (the check path already treats it as --ref and does not warn).
 #pragma warning disable TCS1001
 
 using System;
@@ -13,8 +13,8 @@ using System.Collections.Generic;
 
 namespace Lub
 {
-    // ------------------------------------------------------------- 記述の語彙 tools/lub-gen がこの stub を記述として読むときの注釈。
-    // 面の生成 (header / tcs VM の host の関数 / tcs2c の接続コード / facade / API docs) はこの語彙から導く。
+    // ------------------------------------------------------------- Description vocabulary. Annotations for when tools/lub-gen reads this stub as a description.
+    // Generation of the surfaces (header / tcs VM host functions / tcs2c glue code / facade / API docs) is derived from this vocabulary.
 
     /// <summary>runtime 所有の resource への不透明な参照。
     /// ゲームは key と version だけを持ち、所有 pointer は持たない。
@@ -110,7 +110,7 @@ namespace Lub
     [LubNative]
     public class Bindings
     {
-        // tcs2c の block。GC が辿る。
+        // A tcs2c block. The GC traces it.
 #pragma warning disable CS0169
         private byte[]? blob;
 #pragma warning restore CS0169
@@ -422,9 +422,9 @@ namespace Lub
     }
 
     // -------------------------------------------------------------------- Lub
-    // lub の runtime API。
-    // ゲームは `using Lub;` で `Gfx.BeginPass(...)` と書く。
-    // host の名前は `lub.gfx.begin_pass`。
+    // lub's runtime API.
+    // Games write `Gfx.BeginPass(...)` with `using Lub;`.
+    // The host name is `lub.gfx.begin_pass`.
 
     public static class Xr
     {
@@ -866,7 +866,7 @@ namespace Lub
             error = null;
         }
 
-        /// <summary>count 頂点を instances 個描く。
+        /// <summary>count 頂点を instances 個描く (`indices` を Set したときは count が index の数)。
         /// instances に 0 以下を渡すと draw 自体がスキップされる。
         /// 値はこの呼び出しの時点のものが使われ、後の Set は前の draw を変えない。
         /// </summary>
@@ -1130,19 +1130,9 @@ namespace Lub
             error = null;
         }
 
-        /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。
-        /// </summary>
-        public static void LoadFloats(string path, out List<float>? data,
-            out int version, out Status status, out string? error)
-        {
-            data = null;
-            version = 0;
-            status = Status.Pending;
-            error = null;
-        }
-
         /// <summary>glTF (.gltf / .glb) を読む。
         /// 結果の mesh は interleave 系に渡す。
+        /// 読み直しと version は .gltf / .glb の本体のファイルだけで決まり、.gltf が参照する外部の .bin だけを書き換えても読み直さない (書き出すツールはふつう .gltf と .bin を一緒に書く)。
         /// </summary>
         public static void LoadGltf(string path, out GltfMesh? mesh,
             out int version, out Status status, out string? error)
@@ -1740,6 +1730,10 @@ namespace Lub
     }
 
     /// <summary>Box2D の即時モード API。
+    /// 宣言の field には、変えると object を作り直すもの (shape の形と Sensor と Filter、body の Initial、joint の種類と 2 つの body と取り付け位置など) と、宣言のたびに今の object に当てるもの (密度、摩擦、event の有無、body の Type や damping など) がある。
+    /// 作り直すと接触や sleep の状態は引き継がれないので、Version に frame 番号のような毎フレーム変わる値を渡さない。
+    /// Version を渡すと作り直すかどうかは Version だけで決まり、同じ Version のまま作り直す側の field を変えても作り直さずに log に 1 回出す (`Gfx.UseBuffer` の version と同じく、同じ Version は同じ中身という主張)。
+    /// Version を省くと、作り直す側の field の hash を Version として使う。
     /// C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。
     /// どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、BodyShapes と OverlapAabb が共有する) ので、受け取った配列は phys2d の次の関数を呼ぶ前に写す。
     /// visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。
@@ -2179,6 +2173,10 @@ namespace Lub
     }
 
     /// <summary>Box3D の即時モード API。
+    /// 宣言の field には、変えると object を作り直すもの (shape の形と Sensor と Filter、body の Initial、joint の種類と 2 つの body と取り付け位置など) と、宣言のたびに今の object に当てるもの (密度、摩擦、event の有無、body の Type や damping など) がある。
+    /// 作り直すと接触や sleep の状態は引き継がれないので、Version に frame 番号のような毎フレーム変わる値を渡さない。
+    /// Version を渡すと作り直すかどうかは Version だけで決まり、同じ Version のまま作り直す側の field を変えても作り直さずに log に 1 回出す (`Gfx.UseBuffer` の version と同じく、同じ Version は同じ中身という主張)。
+    /// Version を省くと、作り直す側の field の hash を Version として使う。
     /// C API が返す配列 (body の shapes、event、query の結果など) は runtime 所有で、同じ buffer を使う次の呼び出しまで有効。
     /// どの関数が buffer を共有するかは決めていない (今は例えば RaycastAll と ShapeCastAll、OverlapAabb と OverlapShape が共有する) ので、受け取った配列は phys3d の次の関数を呼ぶ前に写す。
     /// visitor の中で呼んだ関数が返した配列は、外側の関数が戻るときに解放される。
@@ -2891,6 +2889,7 @@ namespace Lub
     /// <summary>event / query / callback が返す shape の識別。
     /// material は MaterialName (宣言時の名前) と UserMaterialId (整数) に分かれる。
     /// filter は live な shape のときだけ入る。
+    /// 壊した shape の end の event でも Body と Shape には宣言の key が入り、Valid が false になる。
     /// </summary>
     public class ShapeView
     {
@@ -3274,6 +3273,7 @@ namespace Lub
 
     /// <summary>joint の宣言。
     /// 有効フィールドは type ごとに異なる。
+    /// body を作り直すとその body の joint は消えるので、joint は毎フレーム両方の body を宣言した後に宣言する。
     /// </summary>
     public class JointDesc
     {
@@ -3839,6 +3839,7 @@ namespace Lub
     }
 
     /// <summary>event / query / callback が返す shape の識別 (3D)。
+    /// 壊した shape の end の event でも Body と Shape には宣言の key が入り、Valid が false になる。
     /// </summary>
     public class ShapeView3d
     {
@@ -4382,6 +4383,7 @@ namespace Lub
     /// <summary>joint の宣言。
     /// 有効フィールドは type ごとに異なる。
     /// anchor はワールド座標。
+    /// body を作り直すとその body の joint は消えるので、joint は毎フレーム両方の body を宣言した後に宣言する。
     /// </summary>
     public class JointDesc3d
     {

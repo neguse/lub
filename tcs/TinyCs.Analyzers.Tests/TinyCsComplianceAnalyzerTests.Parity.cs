@@ -7,7 +7,7 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// 意味を見る TCS1001 の規則は、analyzer と transpiler / `tcs check` が同じ位置に同じ名前で出す
+// TCS1001 rules that look at semantics are reported at the same position with the same name by the analyzer and by the transpiler / `tcs check`
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Theory]
@@ -90,7 +90,7 @@ public partial class TinyCsComplianceAnalyzerTests
                 r.ToString() + r + $"{m}" + m.ToString() + string.Join(",", new List<R>()) + $"{xs}";
         }
         """)]
-    // 生成されたコードも transpiler は変換するので、analyzer も診断する
+    // The transpiler also converts generated code, so the analyzer diagnoses it too
     [InlineData("""
         using System.Collections.Generic;
         public readonly record struct K(int A);
@@ -174,7 +174,7 @@ public partial class TinyCsComplianceAnalyzerTests
                 $"{d.Location.GetLineSpan().StartLinePosition.Character + 1}: " +
                 Regex.Match(d.GetMessage(), "'(.*)'").Groups[1].Value)
             .Order().ToList();
-        // tcs check と同じ compiler (SelfHost/Compiler) の診断。analyzer はこれを Roslyn の位置に写す
+        // Diagnostics from the same compiler as tcs check (SelfHost/Compiler). The analyzer maps them to Roslyn positions
         var session = new TcsSelf.Session("");
         session.Add("parity.cs", source, 0);
         session.Add("TinySystem/Linq.cs", LinqTree.Value.GetText().ToString(), 2);

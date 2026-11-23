@@ -1,4 +1,5 @@
-/* Generated from lub_stub.cs by lub-gen vm (the tcs VM host functions). Do not edit. */
+/* Generated from lub_stub.cs by lub-gen vm (the tcs VM host functions). Do not
+ * edit. */
 #include "tcsvm.h"
 #include <lub/lub_api.h>
 #include <stddef.h>
@@ -22,30 +23,33 @@ typedef struct VmLubOptBool {
   bool has;
   bool v;
 } VmLubOptBool;
-/* VM の型 (読み込みと reload で作り直すので版で引き直す) */
+/* A VM type (loading and reload recreate it, so it is looked up again by
+ * version) */
 typedef struct VmLubType {
   const char *name;
   uint32_t version;
   const TvmTypeInfo *type;
 } VmLubType;
-/* VM 1 つ分の binding の状態。host の関数には tvm_host の user で渡る */
+/* Binding state for one VM. Host functions receive it as the tvm_host user */
 typedef struct VmLub {
   LubContext *ctx;
   TvmVm *vm;
-  /* 今の host の関数の誤り (無ければ NULL) と、その文面の置き場 */
+  /* The error of the current host function (NULL if none) and storage for its
+   * text */
   const char *error;
   char error_text[1024];
-  /* host の関数の間だけの C の memory */
+  /* C memory that lives only during a host function */
   void **temps;
   size_t ntemps, ctemps;
-  /* query の visitor の fault */
+  /* Fault of a query visitor */
   bool visitor_failed;
   char visitor_text[1024];
   VmLubType *types;
-  /* keyed の object の key (host_value は表の番号 + 1。key は少なく、表は残す) */
+  /* Keys of keyed objects (host_value is the table index + 1. Keys are few, so
+   * the table is kept) */
   char **keys;
   uint32_t nkeys;
-  /* view の実体 (frame の終わりまで) */
+  /* View storage (until the end of the frame) */
   LubView *views;
   uint32_t view_count, view_capacity;
   int32_t view_frame;
@@ -60,18 +64,21 @@ static void vm_lub_fail_text(VmLub *s, const char *message) {
   snprintf(s->error_text, sizeof s->error_text, "%s", message);
   s->error = s->error_text;
 }
-/* callback の中の VM の fault (trace は tvm_error) */
+/* A VM fault inside a callback (the trace is in tvm_error) */
 static void vm_lub_fail_vm(VmLub *s) { vm_lub_fail_text(s, tvm_error(s->vm)); }
-/* query の visitor の fault。query は fault にせず null を返す (message は log に出す) */
+/* Fault of a query visitor. The query does not fault; it returns null (the
+ * message goes to the log) */
 static void vm_lub_visitor_fail(VmLub *s) {
   if (s->visitor_failed)
     return;
   snprintf(s->visitor_text, sizeof s->visitor_text, "%s", tvm_error(s->vm));
   s->visitor_failed = true;
 }
-/* record の callback の field (world の Filter など): runtime が持ち続けるので、closure を tvm_hold で持つ。
-   runtime が手放すとき (user_release) に放す。作った VM でなければ呼ばず、放さない */
-/* query の visitor に渡す user (呼び出しの間だけ) */
+/* Callback fields of records (such as the world Filter): the runtime keeps
+   them, so the closure is held with tvm_hold. It is released when the runtime
+   releases the callback (user_release). If the VM is not the one that created
+   it, it is neither called nor released */
+/* The user passed to a query visitor (only during the call) */
 typedef struct VmLubVisit {
   VmLub *s;
   void *closure;
@@ -106,7 +113,8 @@ static void *vm_lub_held_get(VmLubHeld *held, int i) {
              ? tvm_handle_get(s->vm, held->h[i])
              : NULL;
 }
-/* fault は callback ごとに 1 回だけ log に出し、既定の値で続ける */
+/* A fault is logged only once per callback, and execution continues with the
+ * default value */
 static void vm_lub_held_fault(VmLubHeld *held, int i) {
   if (held->logged[i])
     return;
@@ -122,7 +130,8 @@ static void vm_lub_check(VmLub *s, LubStatus status) {
     s->error = s->error_text;
   }
 }
-/* host の関数の間だけの C の memory (入力の record の list など) */
+/* C memory that lives only during a host function (such as lists of input
+ * records) */
 static void *vm_lub_alloc(VmLub *s, size_t size) {
   if (s->ntemps == s->ctemps) {
     size_t cap = s->ctemps ? s->ctemps * 2 : 16;
@@ -168,7 +177,8 @@ static const TvmTypeInfo *vm_lub_type(VmLub *s, VmLubType *t) {
   }
   return t->type;
 }
-/* 型が無ければ (誤りは積んである) 捨てる C の memory を返し、呼び出し側の書き込みを受ける */
+/* If the type is missing (the error is already recorded), returns throwaway C
+ * memory that absorbs the caller's writes */
 static void *vm_lub_new(VmLub *s, VmLubType *t, size_t size) {
   const TvmTypeInfo *type = vm_lub_type(s, t);
   void *o = type ? tvm_object_new_of(s->vm, type) : NULL;
@@ -2441,7 +2451,8 @@ struct VmLub_EventData {
 };
 _Static_assert(offsetof(VmLub_Bindings, host_value) == 8,
                "the VM puts host_value 8 bytes into the payload");
-/* module が持つ型だけ、VM の型の表の offset と C の struct が同じことを確かめる (読み込みと reload の後) */
+/* For the types the module has, checks that the offsets in the VM type table
+ * match the C structs (after loading and reload) */
 static const struct {
   const char *type, *field;
   size_t offset;
@@ -11268,29 +11279,6 @@ static TvmStatus vm_host_lub_io_load_bytes(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   *(void **)a[4].p = vm_lub_string(s, n_error);
   VM_LUB_LEAVE(vm);
 }
-static TvmStatus vm_host_lub_io_load_floats(TvmVm *vm, TvmSlot *a, TvmSlot *r,
-                                            void *user) {
-  (void)a;
-  (void)r;
-  VM_LUB_ENTER();
-  void *p_path = a[0].p;
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  const float *n_data = {0};
-  int32_t n_data_count = 0;
-  LubStr n_error = {0};
-  LubStatus status =
-      lub_io_load_floats(s->ctx, vm_lub_str(p_path), &n_data, &n_data_count,
-                         (int32_t *)a[2].p, (int32_t *)a[3].p, &n_error);
-  vm_lub_check(s, status);
-  if (s->error)
-    VM_LUB_LEAVE(vm);
-  *(void **)a[1].p = (n_data ? vm_lub_list(s, &s->types[23], NULL, n_data,
-                                           n_data_count, sizeof(*n_data))
-                             : NULL);
-  *(void **)a[4].p = vm_lub_string(s, n_error);
-  VM_LUB_LEAVE(vm);
-}
 static TvmStatus vm_host_lub_io_load_gltf(TvmVm *vm, TvmSlot *a, TvmSlot *r,
                                           void *user) {
   (void)a;
@@ -15991,7 +15979,7 @@ static TvmStatus vm_host_lubx_vorbis_decode(TvmVm *vm, TvmSlot *a, TvmSlot *r,
   *(void **)a[1].p = vm_lub_view_Bytes(s, n_pcm);
   VM_LUB_LEAVE(vm);
 }
-/* 状態を作る (0 で埋めた VmLub に 1 回)。失敗したら 0 */
+/* Sets up the state (once, on a zero-filled VmLub). Returns 0 on failure */
 static int vm_lub_init(VmLub *s, LubContext *ctx) {
   size_t n = sizeof(vm_lub_type_names) / sizeof(vm_lub_type_names[0]);
   s->ctx = ctx;
@@ -16002,7 +15990,7 @@ static int vm_lub_init(VmLub *s, LubContext *ctx) {
     s->types[i].name = vm_lub_type_names[i];
   return 1;
 }
-/* EventData を VM の object にする (src/vm_player.c の OnEvent) */
+/* Turns EventData into a VM object (OnEvent in src/vm_player.c) */
 static void *vm_lub_event(VmLub *s, const LubEventData *e) {
   return vm_lub_from_EventData(s, e);
 }
@@ -16094,7 +16082,6 @@ static const struct {
     {"lub.io.load_text", "s&s&i&i&s", "", vm_host_lub_io_load_text},
     {"lub.io.save_text", "ss", "", vm_host_lub_io_save_text},
     {"lub.io.load_bytes", "s&o&i&i&s", "", vm_host_lub_io_load_bytes},
-    {"lub.io.load_floats", "s&o&i&i&s", "", vm_host_lub_io_load_floats},
     {"lub.io.load_gltf", "s&o&i&i&s", "", vm_host_lub_io_load_gltf},
     {"lub.io.interleave_pn", "o", "o", vm_host_lub_io_interleave_pn},
     {"lub.io.interleave_pncm", "o", "o", vm_host_lub_io_interleave_pncm},
@@ -16356,7 +16343,8 @@ static const struct {
     {"lubx.vorbis.decode", "o&o&i&i", "", vm_host_lubx_vorbis_decode},
     {NULL, NULL, NULL, NULL},
 };
-/* host の関数を全部登録する (tvm_load の前)。s->vm は呼び出し側が置く。失敗したら 0 */
+/* Registers all host functions (before tvm_load). The caller sets s->vm.
+ * Returns 0 on failure */
 static int vm_lub_register(VmLub *s, TvmVm *vm) {
   for (int i = 0; vm_lub_hosts[i].name; i++)
     if (!tvm_host(vm, vm_lub_hosts[i].name, vm_lub_hosts[i].params,

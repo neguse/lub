@@ -1,5 +1,5 @@
-// Renderer3d が中で持つ絵 (key の下の ldr、hdr など) は、ほかのテクスチャと同じく先頭の行が画面の上端になる。
-// 画面の上の方に置いた cube が、ldr でも上の方 (Camera3d.Project が返す px) に写っていることを readback で見る。
+// The images Renderer3d holds internally (ldr, hdr, etc. under the key) have their first row at the top edge of the screen, like other textures.
+// Checks via readback that a cube placed near the top of the screen also appears near the top in ldr (at the px returned by Camera3d.Project).
 using System;
 using Lub;
 using Lubx;
@@ -31,7 +31,7 @@ public static class TestRenderer3dOrientation
         rb = Gfx.Readback("r3d_orient_rb");
     }
 
-    // ldr の (x, y) の明るさ (r + g + b)
+    // Brightness (r + g + b) at (x, y) of ldr
     static int Lum(Bytes b, int stride, int x, int y)
     {
         var at = y * stride + x * 4;
@@ -43,7 +43,7 @@ public static class TestRenderer3dOrientation
         frame++;
         if (frame == 1)
             cube!.Rebuild(Shapes3d.Cube());
-        // cube は視野の上の方 (world の +Y) に置く
+        // Place the cube near the top of the view (world +Y)
         var at = new Vec3(0, 1.2f, 0);
         ren!.Begin(new Camera { Eye = new Vec3(0, 0, -5), Target = new Vec3(0, 0, 0) });
         ren.Draw(cube, Mat4.Translate(at));

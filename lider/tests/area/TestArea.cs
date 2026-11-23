@@ -1,8 +1,8 @@
-// 非 XR で、インスペクタと focus のある窓を置く画面の範囲 (Lider.SetArea、LIDER_AREA)。
-//   - 窓とインスペクタは範囲の中に収まり、窓の右の端は範囲の右の端に、インスペクタは窓の左に並ぶ
-//   - 縦も範囲に収まる
-//   - 窓が無い間も、インスペクタは範囲の左の端にある
-//   - 止めると、控えた frame の帯と止めた位置の印が、ゲームの絵のうち範囲に入る所の下の端に出る
+// In non-XR, the display area where the inspector and the focused panel are placed (Lider.SetArea, LIDER_AREA).
+//   - The panel and the inspector fit inside the area; the panel's right edge is at the area's right edge, and the inspector is lined up to the left of the panel
+//   - It also fits vertically in the area
+//   - Even while there is no panel, the inspector is at the area's left edge
+//   - When paused, the recorded-frames bar and the paused-position mark appear at the bottom edge of the part of the game image inside the area
 using System;
 using Lub;
 using LiderCore;
@@ -22,7 +22,7 @@ public static class TestArea
     {
         TestInit();
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay arrangement (the code panels laid out in a single row on the cylinder screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -72,7 +72,7 @@ public static class TestArea
             waited = 0;
             return;
         }
-        // 窓が開いて止まるまで (2 秒) 待つ
+        // Wait until the panel opens and stops (2 seconds)
         if (frames < 5 || waited < 2)
             return;
         var window = w.FocusWindow!;
@@ -88,7 +88,7 @@ public static class TestArea
         var board = Lider.BoardViewport();
         Check(board.X >= X - 2 && board.Z <= left.X && board.Y >= Y - 2 && board.W <= Y + H + 2,
             "the inspector is outside the area or over the window: " + board.X + "," + board.Y + " - " + board.Z + "," + board.W + " (window from " + left.X + ")");
-        // 止めるには控えた frame が要るので、ゲームが動き始めるまで待つ
+        // Pausing needs recorded frames, so wait until the game starts running
         if (failed || GameApp.Frames == 0)
             return;
         pausing = true;
@@ -96,7 +96,7 @@ public static class TestArea
 
     static int after;
 
-    // 止めて、控えた frame の帯の場所を確かめる
+    // Pause and check where the recorded-frames bar is
     static void Pause()
     {
         after++;

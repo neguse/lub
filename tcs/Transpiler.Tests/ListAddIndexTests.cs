@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// List.Add の文位置と式位置 (#24)。receiver と引数の評価の順と値の意味を CompileAndRunVm (tcs VM と .NET) で確かめる。
+/// List.Add in statement and expression positions (#24). Checks the evaluation order of the receiver and arguments and the meaning of the values with CompileAndRunVm (tcs VM and .NET).
 /// </summary>
 public class ListAddIndexTests
 {
@@ -120,7 +120,7 @@ public class ListAddIndexTests
     [Fact]
     public void Add_ArgumentWithSideEffect_KeepsCSharpOrder()
     {
-        // C# は引数評価 (Grow が list に 1 要素足す) の後に Add する
+        // C# does the Add after evaluating the arguments (Grow adds one element to list)
         var cs = """
             using System.Collections.Generic;
             public class T
@@ -187,7 +187,7 @@ public class ListAddIndexTests
     [Fact]
     public void Add_BoundArgument_LocalDoesNotLeakIntoFollowingStatements()
     {
-        // 束縛 local が後続の同名参照 (別の Add の束縛) と干渉しないこと
+        // A binding local does not interfere with later references of the same name (the binding of another Add)
         var cs = """
             using System.Collections.Generic;
             public class T

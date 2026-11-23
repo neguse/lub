@@ -1,5 +1,6 @@
-// vm_project (csproj の Lub="Source" の ProjectReference と入力の一覧) の smoke。
-// path の正規化と XML の属性の読み取りは static なので、vm_project.c をそのまま取り込んで呼ぶ。
+// Smoke test for vm_project (the Lub="Source" ProjectReferences of a csproj and
+// the input list). Path normalization and XML attribute reading are static, so
+// vm_project.c is included as is and called.
 #include "../../src/vm_project.c"
 #include <stdlib.h>
 #include <string.h>
@@ -17,8 +18,8 @@ static int cmp_desc(const void *a, const void *b) {
   return strcmp(*(char *const *)b, *(char *const *)a);
 }
 
-// SDL に再帰削除は無い。
-// 降順に並べると子が親より先に来る
+// SDL has no recursive delete.
+// Sorting in descending order puts children before their parents
 static void remove_tree(const char *root) {
   int n = 0;
   char **all = SDL_GlobDirectory(root, NULL, 0, &n);
@@ -100,7 +101,8 @@ int main(void) {
   char root[512];
   SDL_snprintf(root, sizeof(root), "%svm_project_fixture", SDL_GetBasePath());
   remove_tree(root);
-  // ゲームのディレクトリの下の project を絶対 path で参照しても、同じ file は一覧に 1 回だけ載る
+  // Even if a project under the game directory is referenced by absolute path,
+  // the same file appears in the list only once
   char game_csproj[1400];
   SDL_snprintf(
       game_csproj, sizeof(game_csproj),
@@ -111,7 +113,7 @@ int main(void) {
   write_file(root, "game/Game.cs", "");
   write_file(root, "game/lib/Lib.csproj", "<Project />\n");
   write_file(root, "game/lib/Lib.cs", "");
-  // 文字参照を含む path と、'=' の前後の改行
+  // A path containing character references, and line breaks around '='
   write_file(root, "other/Other.csproj",
              "<Project>\n  <ProjectReference Include=\"../A&amp;B/Lib.csproj\" "
              "Lub=\n\"Source\" />\n</Project>\n");

@@ -1,6 +1,6 @@
-// uniform block を持つ compute shader を 2 group (目印を mark に書く) と 1 group (値を val に書く) で dispatch し、両方の storage buffer を draw で可視化して読み戻す。
-// uniform を渡さない dispatch は error になる。
-// 期待: 中央の pixel が (128, 128, 255)。
+// Dispatches a compute shader with a uniform block with 2 groups (writing markers to mark) and 1 group (writing values to val), visualizes both storage buffers with a draw, and reads them back.
+// A dispatch without uniforms is an error.
+// Expected: the center pixel is (128, 128, 255).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -20,7 +20,7 @@ public static class TestComputeUniformBlock
         rb = Gfx.Readback("compute_uniform_block");
     }
 
-    // lub export は 1 frame 分を描いて、使う shader と file を記録する (error を確かめる dispatch は通さない)
+    // lub export draws 1 frame and records the shaders and files used (the dispatch that checks the error is not run)
     public static void OnExport()
     {
         omitted = true;
@@ -53,11 +53,11 @@ public static class TestComputeUniformBlock
             Check.Error("a dispatch without the uniform block must fail", "missing 'value'");
             Gfx.Dispatch(2, 1, 1, bindings, new DispatchOpts { Shader = shC });
         }
-        // tid 1 が目印を書く (tid 0 が書く値は読まない)。
+        // tid 1 writes the marker (the value written by tid 0 is not read).
         bindings.Set("value", new Vec4(0, 0, 0, 0));
         Gfx.Dispatch(2, 1, 1, bindings,
             new DispatchOpts { Shader = shC });
-        // tid 0 が value を書く。
+        // tid 0 writes value.
         bindings.Clear();
         bindings.Set("out_buf", val);
         bindings.Set("value", new Vec4(0, 0.5f, 1, 0));

@@ -2,8 +2,9 @@
 #define XR_USE_GRAPHICS_API_VULKAN
 #include <SDL3/SDL.h>
 #ifdef SDL_PLATFORM_ANDROID
-// Android の loader は app の Java VM と Activity を要る (XR_KHR_loader_init_android と XR_KHR_android_create_instance)。
-// SDL の Activity (SDLActivity) を渡す。
+// The Android loader needs the Java VM and Activity of the app
+// (XR_KHR_loader_init_android and XR_KHR_android_create_instance). Passes the
+// SDL Activity (SDLActivity).
 #include <jni.h>
 #define XR_USE_PLATFORM_ANDROID
 #endif
@@ -28,7 +29,8 @@ static struct {
   XrSpace space;
   XrActionSet actions;
   XrAction stick, trigger, grip, primary, secondary, menu, stick_click;
-  // 手の向き (aim: 指す向き、grip: 握った所) の pose と、手ごとの action space
+  // Poses of the hand directions (aim: pointing direction, grip: where the hand
+  // grips) and the per-hand action spaces
   XrAction aim_pose, grip_pose;
   XrSpace aim_space[2], grip_space[2];
   XrPath hands[2];
@@ -672,8 +674,8 @@ void lubxr_view_projection(const XrPosef *pose, const XrFovf *fov,
     }
 }
 
-// space の、この frame の表示時刻での LOCAL 空間の位置と姿勢 (xyzw)。
-// 位置と向きのどちらかが取れなければ false
+// Position and orientation (xyzw) of space in LOCAL space at the display time
+// of this frame. false if either the position or the orientation is unavailable
 static bool locate(XrSpace space, float *position, float *orientation) {
   XrSpaceLocation loc = {.type = XR_TYPE_SPACE_LOCATION};
   if (!space ||

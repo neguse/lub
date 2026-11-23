@@ -1,6 +1,6 @@
 use std::env;
 
-// 二重ループの float の積和と int の除算。spectral-norm を f32 で計算する
+// Float multiply-add in a double loop and int division. Computes spectral-norm in f32
 fn a(i: i32, j: i32) -> f32 {
     let ij = i + j;
     1.0f32 / (ij * (ij + 1) / 2 + i + 1) as f32
@@ -64,7 +64,7 @@ fn env_i32(name: &str, def: i32) -> i32 {
 
 fn main() {
     let n = env_i32("BENCH_N", 100);
-    // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+    // Repeats BENCH_REPS times. Each repetition's input depends on the previous result so the compiler cannot skip repetitions (the result is never -1)
     let reps = env_i32("BENCH_REPS", 1);
     let mut prev: i32 = 0;
     for r in 0..reps {

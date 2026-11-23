@@ -2,14 +2,14 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// hot reload で live に当てられない編集の規則 (doc/hot-reload-design.md §11 の規則表)。
-// VM の reload が IL の metadata の型をこの形に写して判定する
+// Rules for edits that hot reload cannot apply live (the rule table in doc/hot-reload-design.md §11).
+// The VM reload maps the types in the IL metadata into this shape to decide.
 public sealed class ReloadStatic
 {
     public string Name;
     public string Type;
     public string? InitHash;
-    // 初期化子が直に読む static と const ("型\nfield")
+    // Statics and consts that the initializer reads directly ("type\nfield")
     public List<string> Reads = new List<string>();
 
     public ReloadStatic(string name, string type, string? initHash)
@@ -35,7 +35,7 @@ public sealed class ReloadType
     public string Kind;
     public string BaseName = "";
     public List<ReloadStatic> Statics = new List<ReloadStatic>();
-    // instance の field (Notes が初期化子の変更を見る。restart の判定には使わない)
+    // Instance fields (Notes checks them for initializer changes. Not used to decide a restart)
     public List<ReloadStatic> InstanceFields = new List<ReloadStatic>();
     public List<string> EnumMemberNames = new List<string>();
     public List<int> EnumMemberValues = new List<int>();
@@ -49,8 +49,8 @@ public sealed class ReloadType
 
 public static class ReloadRules
 {
-    // 戻り値は restart の理由で、空なら live。生きている instance の field は reload が移し、新しい static の初期化子は reload が評価するので、
-    // instance の形の変更と static の追加は restart にしない。初期化子か型を変えた static は reload が評価し直す (ReinitStatics)
+    // The return value is the restart reasons; empty means live. Reload moves the fields of live instances and evaluates the initializers of new statics, so
+    // instance shape changes and added statics do not cause a restart. Reload re-evaluates statics whose initializer or type changed (ReinitStatics).
     public static List<string> RestartReasons(List<ReloadType> v1, List<ReloadType> v2)
     {
         var reasons = new List<string>();
@@ -76,7 +76,7 @@ public static class ReloadRules
         return reasons;
     }
 
-    // 初期化子を消した static は、評価し直す式が無いので restart にする (保った値は旧い初期化子のまま)
+    // A static whose initializer was removed has no expression to re-evaluate, so it causes a restart (the kept value would stay that of the old initializer).
     private static void StaticReasons(ReloadType old, ReloadType t, List<string> reasons)
     {
         var oldStatics = new Dictionary<string, ReloadStatic>();
@@ -89,8 +89,8 @@ public static class ReloadRules
         }
     }
 
-    // reload が新しい初期化子で評価し直す static ("型\nfield")。初期化子か型を変えた static と const、
-    // それを初期化子で読む static (読む先を辿る)。ほかの static は今の値を保つ
+    // Statics that reload re-evaluates with the new initializer ("type\nfield"): statics and consts whose initializer or type changed,
+    // and statics whose initializers read them (following what they read). Other statics keep their current values.
     public static List<string> ReinitStatics(List<ReloadType> v1, List<ReloadType> v2)
     {
         var prev = new Dictionary<string, ReloadStatic>();
@@ -137,8 +137,8 @@ public static class ReloadRules
         return order;
     }
 
-    // live に当てられるが、host に知らせたい変化。生きている instance は field の今の値を保つので、
-    // instance の field の初期化子を変えても、生きている instance には入らない (新しく作る instance から入る)
+    // Changes that can be applied live but that the host should be told about. Live instances keep the current values of their fields, so
+    // changing an instance field's initializer does not reach live instances (it applies from newly created instances).
     public static List<string> Notes(List<ReloadType> v1, List<ReloadType> v2)
     {
         var notes = new List<string>();
@@ -160,7 +160,7 @@ public static class ReloadRules
         return notes;
     }
 
-    // 保存した enum の値 (int) は読み替えられない。member の追加だけが live
+    // Saved enum values (int) cannot be remapped. Only adding members is live.
     private static void EnumReasons(ReloadType old, ReloadType t, List<string> reasons)
     {
         var members = new Dictionary<string, int>();
@@ -173,7 +173,7 @@ public static class ReloadRules
         }
     }
 
-    // IL の metadata の型 (--ref の class は host の型、interface は状態を持たないので除く)
+    // Types in the IL metadata (excluding --ref classes, which are host types, and interfaces, which have no state)
     public static List<ReloadType> TypesOf(ExportResult export)
     {
         var types = new List<ReloadType>();

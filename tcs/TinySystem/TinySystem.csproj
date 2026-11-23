@@ -7,8 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <!-- Linq.cs は TinySystem.dll に入れず source のまま配る: tcs は user のコードと一緒に
-       C / VM の IL に変換し、.NET の project は TinySystem.props で自分の assembly にコンパイルする -->
+  <!-- Linq.cs is not put into TinySystem.dll but shipped as source: tcs compiles it together with user code
+       into C / VM IL, and .NET projects compile it into their own assembly through TinySystem.props -->
   <ItemGroup>
     <Compile Remove="Linq.cs" />
     <Compile Remove="ValueTuple.cs" />

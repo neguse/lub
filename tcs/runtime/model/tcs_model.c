@@ -1,4 +1,4 @@
-/* tcs_model.h の実装 (doc/object-model.md §4、§5)。 */
+/* Implementation of tcs_model.h (doc/object-model.md §4, §5). */
 #include "tcs_model.h"
 
 #include <stdlib.h>
@@ -155,7 +155,8 @@ TCS_MODEL_API uint32_t tcs_kind_size(uint8_t kind, uint32_t ref_size) {
 
 static uint32_t align_up(uint32_t v, uint32_t a) { return (v + a - 1) / a * a; }
 
-/* 型 i の layout。struct は field の struct を先に (state: 0 未着手、1 計算中、2 済み)。循環は誤り */
+/* Layout of type i. For a struct, its struct fields are laid out first (state:
+ * 0 not started, 1 in progress, 2 done). A cycle is an error */
 static const char *layout_one(TcsType *ts, uint32_t n, uint32_t i,
                               uint8_t *state, uint32_t class_prefix,
                               uint32_t ref_size) {
@@ -206,11 +207,11 @@ static const char *layout_one(TcsType *ts, uint32_t n, uint32_t i,
       t->size = align_up(off ? off : 1, ca);
     } else {
       t->size = off ? align_up(off, align)
-                    : 1; /* 空の struct は 1 byte (C# と同じ) */
+                    : 1; /* An empty struct is 1 byte (same as C#) */
     }
     if (nleaves > 0xFFFF)
       return "type too large";
-    /* 葉: field を struct まで展開 (宣言の順、深さ優先) */
+    /* Leaves: fields with structs expanded (declaration order, depth-first) */
     t->nleaves = (uint16_t)nleaves;
     t->leaves = (TcsLeaf *)calloc(nleaves ? nleaves : 1, sizeof(TcsLeaf));
     if (!t->leaves)

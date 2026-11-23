@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 型引数の既定値 (`default(T)`、`default`、generic class の initializer の無い field)。
-// Lua は型を消すので、呼び出し側が型引数ごとの既定値を渡す。型引数を受け渡す
-// generic method、lambda、generic class の instance / static method を含む。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// Default values of type arguments (`default(T)`, `default`, fields without an initializer in a generic class).
+// Lua erases types, so the caller passes the default value for each type argument. Includes generic methods that pass
+// type arguments along, lambdas, and instance / static methods of generic classes.
+// The expected values are the stdout of running the same program on CoreCLR
 public class GenericDefaultDifferentialTests
 {
     [CFact]
@@ -82,8 +82,8 @@ public class GenericDefaultDifferentialTests
             """, output);
     }
 
-    // 省略した `T x = default` は callee の型引数の既定値 (generic な呼び出し元の型引数ではない)。
-    // generic な struct の配列の要素と、generic な型の operator の中の既定値
+    // An omitted `T x = default` is the default of the callee's type argument (not of the generic caller's type argument).
+    // Elements of arrays of generic structs, and defaults inside operators of generic types
     [CFact]
     public void GenericDefault_OmittedArgumentArrayAndOperator()
     {
@@ -129,8 +129,8 @@ public class GenericDefaultDifferentialTests
             """, output);
     }
 
-    // ctor の省略した引数は宣言の既定値 (record / record struct の positional parameter、
-    // struct と class の ctor、generic な record の `T b = default`)
+    // Omitted ctor arguments get the declared defaults (positional parameters of record / record struct,
+    // struct and class ctors, `T b = default` of a generic record)
     [CFact]
     public void OmittedConstructorArguments_UseDeclaredDefaults()
     {
@@ -160,8 +160,8 @@ public class GenericDefaultDifferentialTests
         Assert.Equal("7:1:2:s:3:7:1", output);
     }
 
-    // struct を入れた型引数の値は、既定値も field / 配列の要素への代入も別の値 (Lua は型を消すので、
-    // 型引数の既定値と一緒に zero 値と copy の作り方を渡す)
+    // Values of a type argument holding a struct are separate values, both for defaults and for assignments to fields / array elements (Lua erases types, so
+    // how to make the zero value and the copy is passed together with the type argument's default)
     [CFact]
     public void StructTypeArgument_DefaultsAndStoresDoNotAlias()
     {

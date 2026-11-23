@@ -1,4 +1,4 @@
-// tests/c/struct_stub.cs の関数の偽の C API。
+// Fake C API for the functions in tests/c/struct_stub.cs.
 // clang-format off
 #include "game.c"
 #include "binding.c"
@@ -13,7 +13,8 @@ int32_t lub_frame_index(LubContext *ctx) {
   (void)ctx;
   return 1;
 }
-// flag は値で来る。opts は record で、Flag は has と値、Hit は値の field
+// flag comes by value. opts is a record, where Flag is has and value, and Hit
+// is a value field
 LubStatus lub_structtest_make(LubContext *ctx, LubTestFlag flag,
                               const LubTestOpts *opts, LubTestHit *out) {
   (void)ctx;

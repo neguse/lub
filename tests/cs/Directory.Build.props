@@ -1,8 +1,8 @@
 <Project>
-  <!-- tests/cs の各 test の csproj (<Entry>.csproj、中身は空) に共通の設定。
-       lub は csproj を MSBuild として評価せず、basename (= entry class) と
-       このディレクトリ以下の *.cs だけを読む: lub tests/cs/TestBitMask.csproj
-       dotnet 側 (IDE) はここで型チェック・補完・TCS 診断が効く。 -->
+  <!-- Settings shared by the csproj of each test in tests/cs (<Entry>.csproj, which is empty).
+       lub does not evaluate the csproj as MSBuild; it reads only the basename (= entry class) and
+       the *.cs under this directory: lub tests/cs/TestBitMask.csproj
+       On the dotnet side (IDE), type checking, completion, and TCS diagnostics work here. -->
   <Import Project="../../Lub.props" />
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
@@ -22,6 +22,6 @@
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
   </ItemGroup>
-  <!-- Math / MathF を TinySystem.Math (tcs VM / tcs2c と同じ実装) にする -->
+  <!-- Maps Math / MathF to TinySystem.Math (the same implementation as tcs VM / tcs2c) -->
   <Import Project="$(TcsRoot)/TinySystem/TinySystem.props" />
 </Project>

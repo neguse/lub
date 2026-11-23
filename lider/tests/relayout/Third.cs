@@ -1,4 +1,4 @@
-// TestRelayout が開く file。
+// File that TestRelayout opens.
 public static class RelayoutThird
 {
 }

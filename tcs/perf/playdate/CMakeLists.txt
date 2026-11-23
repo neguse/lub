@@ -44,14 +44,14 @@ endif()
 include(${SDK}/C_API/buildsupport/playdate_game.cmake)
 
 target_include_directories(${PERF_TARGET} PRIVATE ${PERF_DIR})
-# f32 決定性フラグは perf/CMakeLists.txt (ホスト測定) と揃える
+# The f32 determinism flags match perf/CMakeLists.txt (host measurement)
 target_compile_options(${PERF_TARGET} PRIVATE
 	-ffp-contract=off -fwrapv -fexcess-precision=standard
 	-Wno-double-promotion)
 target_link_libraries(${PERF_TARGET} PRIVATE m)
 
 if (TOOLCHAIN STREQUAL "armgcc")
-	# newlib の syscall スタブ (stdio 経路のリンク用)。
-	# malloc 系は SDK の setup.c が pd->system->realloc へ接続する
+	# newlib syscall stubs (for linking the stdio path).
+	# The malloc family is connected to pd->system->realloc by the SDK's setup.c
 	target_link_options(${PERF_TARGET} PRIVATE --specs=nosys.specs)
 endif()

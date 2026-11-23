@@ -7,13 +7,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <!-- in-process の .NET オラクル (SpecDotnetExecutor / VmCorpus) を TinySystem.props と同じく string の既定の比較が ordinal の .NET で動かす -->
+    <!-- Runs the in-process .NET oracles (SpecDotnetExecutor / VmCorpus) on a .NET whose default string comparison is ordinal, the same as TinySystem.props -->
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- digest kernel (T215) はトランスパイル入力データであり、
-         test assembly のソースではない (Main が entry point 衝突する) -->
+    <!-- The digest kernel (T215) is transpile input data,
+         not source of the test assembly (its Main would collide as an entry point) -->
     <Compile Remove="DigestKernels/**/*.cs" />
     <None Include="DigestKernels/**/*.cs" />
   </ItemGroup>
@@ -33,7 +33,7 @@
     <ProjectReference Include="..\tcsvm\Emitter\tcs2vm.csproj" />
   </ItemGroup>
 
-  <!-- BCL の名前の表 (BclCatalogTests) を作るときだけ読む参照アセンブリ (compiler の参照には入れない) -->
+  <!-- Reference assemblies read only when building the BCL name table (BclCatalogTests) (not added to the compiler's references) -->
   <Target Name="EmbedCatalogReferences" BeforeTargets="AssignTargetPaths" DependsOnTargets="ResolveFrameworkReferences">
     <PropertyGroup>
       <_CatalogRefDir>@(ResolvedTargetingPack->WithMetadataValue('NuGetPackageId', 'Microsoft.NETCore.App.Ref')->'%(Path)')/ref/net11.0</_CatalogRefDir>

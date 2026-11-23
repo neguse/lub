@@ -1,4 +1,4 @@
-// ../TestReloadNotes.cs が lider で開くゲーム。Target.cs の個体を 1 つ持つ。
+// The game ../TestReloadNotes.cs opens in lider. Holds one instance of Target.cs.
 public static class Game
 {
     public static ReloadNotesTarget Target = new ReloadNotesTarget();

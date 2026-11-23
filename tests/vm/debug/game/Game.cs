@@ -1,6 +1,6 @@
-// tcs VM の player の検査の口 (Sys.TakeTrace / TakeValues / Inspect / InspectPin) の検査。
-// ../child/Child.cs を App.Use で開いて見る。
-// 開いた app のソースは --trace で変換され、開いた側 (この file) は変換されない。
+// Checks the inspection interface of the tcs VM player (Sys.TakeTrace / TakeValues / Inspect / InspectPin).
+// Opens ../child/Child.cs with App.Use and inspects it.
+// The source of the opened app is compiled with --trace, and the opener (this file) is not.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -12,7 +12,7 @@ public static class Game
 
     static string ChildCsproj()
     {
-        // GAME_CS は <dir>/game/Game.cs
+        // GAME_CS is <dir>/game/Game.cs
         var game = Environment.GetEnvironmentVariable("GAME_CS") ?? "";
         return game.Replace("game/Game.cs", "child/Child.csproj");
     }
@@ -54,7 +54,7 @@ public static class Game
             Fail("timeout after " + frame + " frames of the opened app");
             return;
         }
-        // build を待つ間は Step が false
+        // Step is false while waiting for the build
         if (!ok) return;
         frame++;
         var lines = Sys.TakeTrace(child);

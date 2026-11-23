@@ -271,8 +271,8 @@ public class NullConditionalTests
         Assert.Equal("99", result);
     }
 
-    // ?. の receiver は一度だけ評価し、null のときは引数/index を
-    // 評価しない (C# の評価回数・順序と一致させる)。
+    // The receiver of ?. is evaluated only once, and when it is null the arguments/index are
+    // not evaluated (matching the C# evaluation count and order).
     [Fact]
     public void NullConditional_ReceiverWithSideEffect_EvaluatedOnce()
     {

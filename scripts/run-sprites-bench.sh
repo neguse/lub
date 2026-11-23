@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Release sprite benchmark (rsushi-style, samples/13_sprites/Sprites13.csproj).
+# Under LUB_SPRITE_SCORE_FRAME > 0, advances one workload tick per rendered
+# frame (score frame is a rendered-frame workload contract, not wall time).
+# Run on a real desktop GPU for comparable scores (lavapipe/headless is for
+# correctness only). Automation should allow a 2-hour timeout.
 set -euo pipefail
 
 build_dir="build-release-linux"

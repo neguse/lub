@@ -2,12 +2,12 @@ using System.Text.RegularExpressions;
 
 namespace TinyCs.Tcs2c.Tests;
 
-// GC を本物の runtime のまま有界に全列挙する (GcEnumeration.c)。この harness
-// program を --lib で C にし、末尾に harness を連結して 1 つの translation unit
-// として stress build する。mutator の store は全部ここで emit された関数を通る
-// ので、emitter と runtime のバリアの置き方がそのまま検査対象になる。
-// 検査が効いていることは、バリア / root / 昇格 / mark の各 1 箇所を生成 C の
-// 字面で落とした broken variant がすべて witness 付きで赤になることで確かめる。
+// Exhaustively enumerates the GC within bounds, using the real runtime as is (GcEnumeration.c). This harness
+// program is compiled to C with --lib, the harness is appended to its end, and the result is built as one translation unit
+// with stress. All mutator stores go through the functions emitted here,
+// so the barrier placement of the emitter and the runtime is checked as is.
+// The check is confirmed to work by broken variants, each dropping one barrier / root / promotion / mark site from the text of the generated C,
+// all of which turn red with a witness.
 public class GcEnumerationTests
 {
     private const string Program = """
@@ -38,7 +38,7 @@ public class GcEnumerationTests
         }
         """;
 
-    // runtime の確保を harness の arena に向ける (snapshot / restore のため)
+    // Redirects the runtime's allocations to the harness arena (for snapshot / restore)
     private static readonly string[] ArenaFlags =
         ["-Dmalloc=h_malloc", "-Dcalloc=h_calloc", "-Drealloc=h_realloc", "-Dfree=h_free"];
 
@@ -56,15 +56,15 @@ public class GcEnumerationTests
         Assert.StartsWith("ok depth=9 ", output);
         var stats = output.Split(' ').Skip(1).Select(pair => pair.Split('='))
             .ToDictionary(pair => pair[0], pair => long.Parse(pair[1]));
-        // 列挙が性質に関わる形を実際に踏んだこと (常に緑の空検査でないこと)
+        // That the enumeration actually hit the shapes that matter for the properties (so it is not an empty check that is always green)
         Assert.True(stats["frames"] > 0);
         Assert.True(stats["old_young_stores"] > 0, "no store of a young object into an old one");
         Assert.True(stats["grow_old"] > 0, "no rehash of a Dict holding old nodes");
         Assert.True(stats["remove_hazard"] > 0, "no barrier-free remove relinking an old owner to a young node");
     }
 
-    // (名前, 生成 C に 1 回以上ある正規表現, 置換)。runtime 側は runtime/core の C の字面、
-    // emitter 側は SelfHost/CBackend の EmitAssign のバリア temp
+    // (name, regular expression that appears at least once in the generated C, replacement). On the runtime side, the C text of runtime/core;
+    // on the emitter side, the barrier temp of EmitAssign in SelfHost/CBackend
     public static TheoryData<string, string, string> BrokenVariants => new()
     {
         { "emitter: class field store barrier", @"tcs_wb\(__tcs_object_\d+\);", "" },
@@ -72,8 +72,8 @@ public class GcEnumerationTests
         { "tcs_list_add barrier", @"if \(layout != NULL\)\s*tcs_wb\(list\);", "" },
         { "tcs_list_reserve barrier", @"(list->capacity = capacity;)\s*tcs_wb\(list\);", "$1" },
         { "tcs_dict_grow node barrier", @"tcs_wb\(node\);(\s*buckets\[bucket\] = node;)", "$1" },
-        // tcs_dict_grow 末尾の tcs_wb(dict) は唯一の呼び出し元 tcs_dict_put の末尾の
-        // バリアに内包されていて、落としても違反は出ない (README の GC 節)
+        // tcs_wb(dict) at the end of tcs_dict_grow is subsumed by the barrier at the end of its only caller
+        // tcs_dict_put, so dropping it causes no violation (GC section of the README)
         { "tcs_dict_put existing node barrier", @"\{\s*tcs_wb\(node\);\s*return node->value;\s*\}", "{ return node->value; }" },
         { "tcs_dict_put new node barrier", @"(dict->count\+\+;)\s*tcs_wb\(dict\);", "$1" },
         { "boundary: hold slot forwarding", @"tcs_gc_forward_slot\(tcs_gc_holds\[i\]\);", "(void)tcs_gc_holds[i];" },
@@ -84,8 +84,8 @@ public class GcEnumerationTests
         { "forward: list buffer", @"list->data = tcs_gc_promote\(list->data\);", "" },
         { "forward: dict node value", @"tcs_gc_forward_value\(node->value, hdr->layout\);", "" },
         { "mark: list buffer", @"tcs_gc_mark_ptr\(list->data\);", "" },
-        // node の鎖 (node->next) の mark は、挿入順の order が全部の node を辿るので落としても違反は出ない (support-matrix §18)。
-        // 代わりに order の buffer 自身の mark を落とす
+        // Marking of the node chain (node->next) can be dropped without a violation, because the insertion-order order visits every node (support-matrix §18).
+        // Instead, drops the mark of the order buffer itself
         { "mark: dict order buffer", @"tcs_gc_mark_ptr\(dict->order\);", "" },
     };
 

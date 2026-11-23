@@ -62,7 +62,7 @@ public class SampleE2ETests
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.Empty(result.Warnings);
-        // stub の型は IL の class にせず、host の関数として呼ぶ
+        // A stub type is not made an IL class and is called as a host function.
         var export = IlExport.Export([source], referenceSources: [refSource]);
         Assert.Empty(export.Diagnostics);
         Assert.All(export.Classes.Where(c => c.Name.StartsWith("HostApi_", StringComparison.Ordinal)), c => Assert.True(c.IsExternal, c.Name));

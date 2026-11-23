@@ -1,6 +1,6 @@
-"""tcs2vm --watch の stream (doc/vm-design.md §13.3) を host の立場で読む: 起動して最初の出力を待ち、入力を
-v2 に書き換え、届いた vm_batch を tcsvm --reload-batch で当てて、出力が期待と一致することを確かめる。
-次に static の initializer を変え、restart_required が届くことを確かめる。
+"""Reads the tcs2vm --watch stream (doc/vm-design.md §13.3) from the host's point of view: starts it, waits for the first output, rewrites the input
+to v2, applies the received vm_batch with tcsvm --reload-batch, and checks that the output matches the expectation.
+Next, changes a static initializer and checks that restart_required arrives.
 
 usage: watch_test.py DOTNET TCS2VM_DLL TCSVM WORKDIR
 """
@@ -34,7 +34,7 @@ try:
     deadline = time.time() + 60
     while not os.path.exists(out) and time.time() < deadline:
         time.sleep(0.1)
-    # watch の最初の stderr 行 ("watching") を待ってから、v1 の出力を控える
+    # Waits for the first stderr line of watch ("watching") before recording the v1 output
     proc.stderr.readline()
     shutil.copy(out, v1)
     time.sleep(0.2)
@@ -49,7 +49,7 @@ try:
     expected = open(os.path.join(here, "reload_expected.txt")).read()
     if run.returncode != 0 or run.stdout != expected:
         raise SystemExit(f"FAIL watch: reload output\n{run.stdout}\n{run.stderr}")
-    # static の initializer を消す編集は restart
+    # An edit that removes a static initializer is a restart
     time.sleep(0.2)
     with open(src, "w") as f:
         f.write(open(os.path.join(here, "ReloadV2.cs.txt")).read().replace(' = "hello v2"', ''))

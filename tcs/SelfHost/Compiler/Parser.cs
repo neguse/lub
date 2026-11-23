@@ -3,7 +3,7 @@ using TinySystem.Text;
 
 namespace TcsSelf;
 
-// 再帰下降の parser。誤りは診断に積み、読み進める (例外は無い)。
+// Recursive-descent parser. Errors are pushed as diagnostics and parsing continues (no exceptions).
 public sealed class Parser
 {
     private readonly SourceFile _file;
@@ -26,7 +26,7 @@ public sealed class Parser
         return p.CompilationUnit();
     }
 
-    // ---- token の道具 ----
+    // ---- Token helpers ----
 
     private Token Cur => _toks[_i];
 
@@ -39,7 +39,7 @@ public sealed class Parser
 
     private bool IsP(string s) => Cur.Kind == TokenKind.Punct && Cur.Text == s;
 
-    // `<...>(` (generic な method の型引数)
+    // `<...>(` (type arguments of a generic method)
     private bool IsGenericMethodStart()
     {
         int save = _i;
@@ -69,7 +69,7 @@ public sealed class Parser
         return t.Kind == TokenKind.Ident && t.Text == s && t.IsKeyword;
     }
 
-    // 文脈キーワード (var, get, set, record など) も含む素の識別子
+    // A plain identifier, including contextual keywords (var, get, set, record, etc.)
     private bool IsIdent() => Cur.Kind == TokenKind.Ident && !Cur.IsKeyword;
 
     private bool IsIdentAt(int n)
@@ -131,7 +131,7 @@ public sealed class Parser
 
     private void Error(string code, string message)
     {
-        // 同じ位置で誤りを繰り返さない
+        // Do not repeat errors at the same position
         if (_diags.ErrorCount > _errorsAtStart && _lastErrorPos == Cur.Pos) return;
         _lastErrorPos = Cur.Pos;
         _diags.Error(code, message, _file, Cur.Pos);
@@ -141,7 +141,7 @@ public sealed class Parser
 
     private void Unsupported(string what, int pos)
     {
-        // --ref は host の宣言だけを使う (本文は束縛も出力もしないので、サブセットの外の構文も通す)
+        // --ref uses only host declarations (bodies are neither bound nor emitted, so syntax outside the subset is accepted too)
         if (_file.IsRef) return;
         _diags.Error("TCS1001", "unsupported syntax: " + what, _file, pos);
     }
@@ -158,7 +158,7 @@ public sealed class Parser
 
     // ---- compilation unit ----
 
-    // CompilationUnit: List = using と member、List2 = top-level の文
+    // CompilationUnit: List = usings and members, List2 = top-level statements
     private Node CompilationUnit()
     {
         var unit = N(NodeKind.CompilationUnit);
@@ -184,7 +184,7 @@ public sealed class Parser
         return Done(unit);
     }
 
-    // Using: Text = 名前
+    // Using: Text = name
     private void Usings(Node into)
     {
         while (IsKw("using") || IsContextual("global") && IsKwAt(1, "using"))
@@ -198,12 +198,12 @@ public sealed class Parser
                 isGlobal = true;
             }
             Advance();
-            // using static T; (Value = 1): T の static な member と入れ子の型を名前で引ける
+            // using static T; (Value = 1): static members and nested types of T can be looked up by name
             bool isStatic = AcceptKw("static");
             Node? alias = null;
             if (IsIdent() && IsPAt(1, "="))
             {
-                // using X = A.B;  (D = 別名)
+                // using X = A.B;  (D = alias)
                 alias = N(NodeKind.Name);
                 alias.Text = Advance().Text;
                 Advance();
@@ -212,7 +212,7 @@ public sealed class Parser
             u.D = alias;
             u.Text = QualifiedName();
             if (isStatic) u.Value = 1;
-            // global using (Flags = 1) は全てのファイルに効く (--ref で .NET の暗黙の using を与える)
+            // global using (Flags = 1) applies to all files (--ref provides .NET's implicit usings)
             if (isGlobal) u.Flags = 1;
             if (alias != null && IsP("<"))
             {
@@ -236,7 +236,7 @@ public sealed class Parser
         return string.Join(".", parts);
     }
 
-    // Namespace: Text = 名前、List = member、Value = 1 なら file-scoped
+    // Namespace: Text = name, List = members, file-scoped if Value = 1
     private Node? NamespaceMember()
     {
         if (IsKw("namespace"))
@@ -281,7 +281,7 @@ public sealed class Parser
         int pos = Cur.Pos;
         int mods = Modifiers();
         if (IsTypeDeclStart()) return TypeDecl(pos, mods, attrs);
-        // top-level の文はサブセットに無い
+        // Top-level statements are not in the subset
         if (Cur.Kind != TokenKind.End)
         {
             Unsupported("top-level statement", Cur.Pos);
@@ -290,7 +290,7 @@ public sealed class Parser
         return null;
     }
 
-    // top-level の文か (namespace と型の宣言でない)
+    // Whether it is a top-level statement (not a namespace or type declaration)
     private bool IsTopLevelStatementStart()
     {
         if (IsKw("namespace") || IsP("[")) return false;
@@ -309,14 +309,14 @@ public sealed class Parser
         return false;
     }
 
-    // Attribute: Text = 名前、List = 引数の式
+    // Attribute: Text = name, List = argument expressions
     private List<Node>? Attributes()
     {
         List<Node>? result = null;
         while (IsP("["))
         {
             Advance();
-            // 属性の対象 (`[return: X]`、`[field: X]`。return は予約語)
+            // Attribute target (`[return: X]`, `[field: X]`; return is a reserved word)
             if (Cur.Kind == TokenKind.Ident && IsPAt(1, ":"))
             {
                 Advance();
@@ -325,7 +325,7 @@ public sealed class Parser
             while (true)
             {
                 var a = N(NodeKind.Attribute);
-                // global:: は名前の照合に影響しない
+                // global:: does not affect name matching
                 if (IsContextual("global") && IsPAt(1, "::"))
                 {
                     Advance();
@@ -387,7 +387,7 @@ public sealed class Parser
                         case "explicit": m = Mods.Explicit; break;
                         case "event": m = Mods.Event; break;
                         case "ref":
-                            // ref struct (寿命を検査する struct) の宣言
+                            // Declaration of a ref struct (a struct whose lifetime is checked)
                             if (IsKwAt(1, "struct") || PeekTok(1).Text == "partial" && IsKwAt(2, "struct"))
                             {
                                 Unsupported("RefStructDeclaration", Cur.Pos);
@@ -398,7 +398,7 @@ public sealed class Parser
                     }
                 }
                 else if (t == "partial" && (IsKwAt(1, "class") || IsKwAt(1, "struct") || IsKwAt(1, "interface") || IsIdentAt(1) && PeekTok(1).Text == "record" || IsKwAt(1, "void")
-                    // partial method (`partial bool M();`、`partial Task<int> M();`)
+                    // partial method (`partial bool M();`, `partial Task<int> M();`)
                     || IsPredefTypeKeywordAt(1) || IsIdentAt(1) && PeekTok(1).Text != "record" && (IsIdentAt(2) || IsPAt(2, "<"))))
                 {
                     m = Mods.Partial;
@@ -423,8 +423,8 @@ public sealed class Parser
         return mods;
     }
 
-    // TypeDecl: Value = DeclKinds、Text = 名前、Flags = 修飾子、List = member、List2 = 型引数の名前 (Name)、
-    // List3 = 基底の型、A = record の positional parameter (Param の list を List に持つ Node)、D = 属性 (List)
+    // TypeDecl: Value = DeclKinds, Text = name, Flags = modifiers, List = members, List2 = type argument names (Name),
+    // List3 = base types, A = positional parameters of a record (a Node holding the list of Params in List), D = attributes (List)
     private Node TypeDecl(int pos, int mods, List<Node>? attrs)
     {
         var d = NAt(NodeKind.TypeDecl, pos);
@@ -441,14 +441,14 @@ public sealed class Parser
             Advance();
             d.Value = DeclKinds.Class;
             d.Text = "";
-            // 戻りの型、名前、parameter (out の parameter の診断と、型の検査の診断のために名前を残す)
+            // Return type, name, parameters (names are kept for the out-parameter diagnostic and type-checking diagnostics)
             int save = _i;
             var ret = TryType(true);
             if (ret != null && IsIdent())
             {
                 d.Text = ExpectIdent();
                 d.Flags |= Mods.Delegate;
-                // C = 戻りの型、List2 = 型引数の名前 (宣言の外では delegate の型として扱う)
+                // C = return type, List2 = type argument names (treated as a delegate type outside the declaration)
                 d.C = ret;
                 if (Accept("<"))
                 {
@@ -495,7 +495,7 @@ public sealed class Parser
             Advance();
             while (true)
             {
-                // variance (in / out) は interface の型引数だけに書ける。読み捨て、束縛にも IL にも使わない
+                // Variance (in / out) can be written only on interface type arguments. It is read and discarded, and used in neither binding nor IL
                 int vpos = Cur.Pos;
                 if (AcceptKw("in") || AcceptKw("out"))
                 {
@@ -519,7 +519,7 @@ public sealed class Parser
             while (true)
             {
                 var bt = Type();
-                // record の基底の引数は継承 (ClassInheritance) の診断に含める
+                // Arguments to a record's base are included in the inheritance (ClassInheritance) diagnostic
                 if (IsP("(")) SkipBalanced("(", ")");
                 d.Add3(bt);
                 if (!Accept(",")) break;
@@ -560,8 +560,8 @@ public sealed class Parser
         return Done(d);
     }
 
-    // where T : A, B, class, struct, new()。制約の型は型引数の Name の List に、
-    // class / struct / new() は Value の bit (1 / 2 / 4) に入れる
+    // where T : A, B, class, struct, new(). Constraint types go into the List of the type argument's Name,
+    // and class / struct / new() go into bits of Value (1 / 2 / 4)
     private void Constraints(List<Node>? typeParams)
     {
         while (IsContextual("where"))
@@ -662,7 +662,7 @@ public sealed class Parser
             ParamList(c);
             if (IsP(":"))
             {
-                // 初期化子の位置は `:` (Roslyn の ConstructorInitializer と同じ)
+                // The position of the initializer is the `:` (same as Roslyn's ConstructorInitializer)
                 var init = N(NodeKind.Call);
                 Advance();
                 if (AcceptKw("this")) init.Text = "this";
@@ -697,7 +697,7 @@ public sealed class Parser
         if (mods != 0 && (mods & Mods.Event) != 0)
         {
             Unsupported("EventDeclaration", pos);
-            // field の形 (`event D E;`、`event D E = x;`) か、add / remove の block を持つ形
+            // Field form (`event D E;`, `event D E = x;`) or the form with an add / remove block
             while (!IsP(";") && !IsP("}") && Cur.Kind != TokenKind.End)
             {
                 if (IsP("{"))
@@ -711,7 +711,7 @@ public sealed class Parser
             Accept(";");
             return null;
         }
-        // ref の戻り値 (サブセットの外。型は ref を外して読む)
+        // ref return (outside the subset; the type is read without ref)
         if (IsKw("ref"))
         {
             Unsupported("RefType", Cur.Pos);
@@ -754,10 +754,10 @@ public sealed class Parser
             }
             return null;
         }
-        // 明示的な interface の実装 (I.M)
+        // Explicit interface implementation (I.M)
         int namePos = Cur.Pos;
         string name = ExpectIdent();
-        // interface の名前は修飾と型引数を持ちうる (`I<U>.F`、`A.I.M`、`IDictionary<int, T>.this[...]`)
+        // The interface name may have qualifiers and type arguments (`I<U>.F`, `A.I.M`, `IDictionary<int, T>.this[...]`)
         int ifaceSave = _i;
         if (IsP("<"))
         {
@@ -773,7 +773,7 @@ public sealed class Parser
                 Advance();
                 if (IsKw("this"))
                 {
-                    // 明示的な実装の indexer: 読み飛ばす
+                    // Explicitly implemented indexer: skip it
                     Advance();
                     if (IsP("[")) SkipBalanced("[", "]");
                     if (IsP("{")) SkipBalanced("{", "}");
@@ -791,7 +791,7 @@ public sealed class Parser
                 }
                 if (IsP(".")) iface = iface + "." + name;
             }
-            // 同じ名前の普通の member と重ならない名前にする (呼び出しには使えない。宣言はサブセットの外)
+            // Use a name that does not collide with an ordinary member of the same name (it cannot be used in calls; the declaration is outside the subset)
             name = iface + "." + name;
         }
         if (IsP("(") || IsP("<"))
@@ -826,12 +826,12 @@ public sealed class Parser
         {
             if (IsP("=>"))
             {
-                // 式本体の property
+                // Expression-bodied property
                 var p = NAt(NodeKind.Property, pos);
                 p.Flags = mods;
                 p.A = type;
                 p.Text = name;
-                // Value = 1: 式本体の property (accessor の並びを書かない形)
+                // Value = 1: expression-bodied property (the form without an accessor list)
                 p.Value = 1;
                 Advance();
                 var get = N(NodeKind.Accessor);
@@ -908,7 +908,7 @@ public sealed class Parser
     {
         if (IsP("{"))
         {
-            // 配列の初期化子 `int[] a = { 1, 2 }`
+            // Array initializer `int[] a = { 1, 2 }`
             var init = N(NodeKind.ArrayInit);
             Advance();
             while (!IsP("}") && Cur.Kind != TokenKind.End)
@@ -922,13 +922,13 @@ public sealed class Parser
         return Expression();
     }
 
-    // method / ctor の本体: B = Block、C = 式本体
+    // Body of a method / ctor: B = Block, C = expression body
     private void MethodBody(Node m)
     {
         if (IsP("{")) m.B = Block();
         else if (Accept("=>"))
         {
-            // 式の本文の分解の代入 (`=> (X, Y) = (x, y);`) は文の本文と同じに読む
+            // A deconstruction assignment as an expression body (`=> (X, Y) = (x, y);`) is read the same as a statement body
             if (IsP("(") && IsDeconstructionStart())
             {
                 var block = N(NodeKind.Block);
@@ -946,7 +946,7 @@ public sealed class Parser
         else Expect(";");
     }
 
-    // Param: Text = 名前、A = 型 (lambda では null もある)、B = 既定値、Flags = out / ref / in / this / params
+    // Param: Text = name, A = type (may be null in a lambda), B = default value, Flags = out / ref / in / this / params
     private void ParamList(Node into)
     {
         Expect("(");
@@ -954,7 +954,7 @@ public sealed class Parser
         {
             var pattrs = Attributes();
             var p = N(NodeKind.Param);
-            // 属性は D に置く (準拠検査が caller info の属性を見る)
+            // Attributes go in D (the compliance check looks at caller info attributes)
             if (pattrs != null)
             {
                 var holder = NAt(NodeKind.Attribute, p.Pos);
@@ -981,7 +981,7 @@ public sealed class Parser
         Expect(")");
     }
 
-    // ---- 型 ----
+    // ---- Types ----
 
     private static bool IsPredefTypeName(string s)
     {
@@ -1018,14 +1018,14 @@ public sealed class Parser
         return err;
     }
 
-    // speculative = true のときは診断を出さず、型として読めなければ null を返して位置を戻す
+    // When speculative = true, no diagnostics are reported; if it cannot be read as a type, returns null and restores the position
     private Node? TryType(bool speculative)
     {
         int save = _i;
         Node? t = null;
         if (IsP("("))
         {
-            // tuple 型
+            // Tuple type
             var tt = N(NodeKind.TupleType);
             Advance();
             while (true)
@@ -1058,7 +1058,7 @@ public sealed class Parser
         }
         else if (IsIdent())
         {
-            // global::X は global namespace から引く (一番内側の TypeName の Value = 1)
+            // global::X is looked up from the global namespace (Value = 1 on the innermost TypeName)
             bool rooted = false;
             if (IsContextual("global") && IsPAt(1, "::") && IsIdentAt(2))
             {
@@ -1069,7 +1069,7 @@ public sealed class Parser
             Node? alias = null;
             if (!rooted && IsPAt(1, "::") && IsIdentAt(2))
             {
-                // using の別名で修飾した名前 (`S::Socket`、サブセットの外)。`S.Socket` と同じに読む
+                // A name qualified with a using alias (`S::Socket`, outside the subset). Read the same as `S.Socket`
                 if (!speculative) Unsupported("AliasQualifiedName", Cur.Pos);
                 alias = N(NodeKind.TypeName);
                 alias.Text = Advance().Text;
@@ -1101,7 +1101,7 @@ public sealed class Parser
         {
             return null;
         }
-        // suffix: ? と []
+        // Suffixes: ? and []
         while (true)
         {
             if (IsP("?") && !speculative)
@@ -1113,7 +1113,7 @@ public sealed class Parser
             }
             else if (IsP("?") && speculative)
             {
-                // 式の `a ? b : c` と区別する: 型のあとに識別子か > , ) ] が続くときだけ nullable
+                // Distinguish from the expression `a ? b : c`: nullable only when the type is followed by an identifier or > , ) ]
                 var nx = PeekTok(1);
                 bool ok = nx.Kind == TokenKind.Ident && !nx.IsKeyword || nx.Kind == TokenKind.Punct && (nx.Text == ">" || nx.Text == "," || nx.Text == ")" || nx.Text == "[" || nx.Text == "]");
                 if (!ok) break;
@@ -1132,7 +1132,7 @@ public sealed class Parser
             }
             else if (IsP("[") && IsPAt(1, ","))
             {
-                // 多次元配列の型 (Value = 2)。型を解決するときに TCS1001 にする (型引数の中は先読みで読むので、ここでは報告しない)
+                // Multidimensional array type (Value = 2). Reported as TCS1001 when the type is resolved (type arguments are read by lookahead, so it is not reported here)
                 var a = NAt(NodeKind.ArrayType, t.Pos);
                 SkipBalanced("[", "]");
                 a.A = t;
@@ -1144,12 +1144,12 @@ public sealed class Parser
         return t;
     }
 
-    // TypeName: Text = 名前、List = 型引数、A = 修飾 (外側の名前)
+    // TypeName: Text = name, List = type arguments, A = qualifier (the outer name)
     private Node? SimpleTypeName(bool speculative)
     {
         var n = N(NodeKind.TypeName);
         n.Text = Advance().Text;
-        // 型引数を書かない generic の型 (`typeof(X<>)`、`typeof(D<,>)`)。typeof の中だけに書け、typeof はサブセットの外
+        // A generic type without type arguments (`typeof(X<>)`, `typeof(D<,>)`). It can only be written inside typeof, and typeof is outside the subset
         if (IsP("<") && (IsPAt(1, ">") || IsPAt(1, ",")))
         {
             Advance();
@@ -1190,9 +1190,9 @@ public sealed class Parser
         return Done(n);
     }
 
-    // ---- 文 ----
+    // ---- Statements ----
 
-    // Block: List = 文
+    // Block: List = statements
     private Node Block()
     {
         var b = N(NodeKind.Block);
@@ -1228,7 +1228,7 @@ public sealed class Parser
                 case "if": return IfStatement();
                 case "while":
                     {
-                        // While: A = 条件、B = 本体
+                        // While: A = condition, B = body
                         var w = N(NodeKind.While);
                         Advance();
                         Expect("(");
@@ -1239,7 +1239,7 @@ public sealed class Parser
                     }
                 case "do":
                     {
-                        // DoWhile: A = 条件、B = 本体
+                        // DoWhile: A = condition, B = body
                         var d = N(NodeKind.DoWhile);
                         Advance();
                         d.B = EmbeddedStatement();
@@ -1268,7 +1268,7 @@ public sealed class Parser
                     }
                 case "return":
                     {
-                        // Return: A = 値
+                        // Return: A = value
                         var r = N(NodeKind.Return);
                         Advance();
                         if (!IsP(";")) r.A = Expression();
@@ -1302,7 +1302,7 @@ public sealed class Parser
                     }
             }
         }
-        // label の付いた文 (`done: ...`、goto の飛び先): label を報告して文を読む
+        // A labeled statement (`done: ...`, a goto target): report the label and read the statement
         if (Cur.Kind == TokenKind.Ident && !Cur.IsKeyword && IsPAt(1, ":"))
         {
             Unsupported("LabeledStatement", pos);
@@ -1311,7 +1311,7 @@ public sealed class Parser
             if (IsP("}")) return Done(N(NodeKind.Empty));
             return Statement();
         }
-        // scoped の local (ref struct の寿命の注釈)
+        // scoped local (a lifetime annotation for ref structs)
         if (IsContextual("scoped") && (IsIdentAt(1) || IsKwAt(1, "ref")))
         {
             Unsupported("ScopedType", pos);
@@ -1320,7 +1320,7 @@ public sealed class Parser
         }
         if (IsContextual("yield") && (IsKwAt(1, "return") || IsKwAt(1, "break"))) return UnsupportedStatement("yield");
         if (IsContextual("await")) return UnsupportedStatement("await");
-        // ref local (サブセットの外。型は ref を外して読む)
+        // ref local (outside the subset; the type is read without ref)
         if (IsKw("ref") && !IsPAt(1, "("))
         {
             int save = _i;
@@ -1336,7 +1336,7 @@ public sealed class Parser
             }
             _i = save;
         }
-        // static / async の local function (修飾子を読み飛ばして、宣言と同じく報告する)
+        // static / async local function (skip the modifiers and report it the same as the declaration)
         if ((IsKw("static") || IsContextual("async")) && !IsPAt(1, "."))
         {
             int save = _i;
@@ -1344,10 +1344,10 @@ public sealed class Parser
             if (IsLocalDeclarationStart()) return LocalDeclaration(false);
             _i = save;
         }
-        // local function / 宣言 / 式
+        // Local function / declaration / expression
         if (IsContextual("var") && IsPAt(1, "("))
         {
-            // var (a, (b, c)) = ...: 全ての名前を var の宣言にした分解の代入
+            // var (a, (b, c)) = ...: a deconstruction assignment that declares every name with var
             var varTok = Cur;
             Advance();
             var da = VarDeconstructTargets(varTok);
@@ -1379,7 +1379,7 @@ public sealed class Parser
 
     private bool IsSwitchExpressionStatement() => false;
 
-    // ( ... , ... ) = の形 (分解の代入)
+    // The ( ... , ... ) = form (deconstruction assignment)
     private bool IsDeconstructionStart()
     {
         int depth = 0;
@@ -1409,7 +1409,7 @@ public sealed class Parser
         return false;
     }
 
-    // 分解の先の並び: 式、型付きの宣言 (int x / var x)、_、入れ子の ( ... )
+    // List of deconstruction targets: expressions, typed declarations (int x / var x), _, nested ( ... )
     private Node DeconstructTargets()
     {
         var n = N(NodeKind.DeconstructAssign);
@@ -1440,7 +1440,7 @@ public sealed class Parser
         return Done(n);
     }
 
-    // var (a, b) の形 (Roslyn の宣言の式。タプルの構文ではない) は Text = "var"
+    // The var (a, b) form (Roslyn's declaration expression, not tuple syntax) has Text = "var"
     private Node VarDeconstructTargets(Token varTok)
     {
         var n = N(NodeKind.DeconstructAssign);
@@ -1470,7 +1470,7 @@ public sealed class Parser
         return Done(n);
     }
 
-    // 入れ子の分解の先 ((a, b), c) か (括弧で囲んだ式でなく)
+    // Whether it is a nested deconstruction target ((a, b), c) (rather than a parenthesized expression)
     private bool IsNestedTargetList()
     {
         int depth = 0;
@@ -1495,7 +1495,7 @@ public sealed class Parser
         return false;
     }
 
-    // サブセットの外の文の名前 (Roslyn の SyntaxKind の名前に揃える)
+    // Names of statements outside the subset (matching Roslyn's SyntaxKind names)
     private string StatementSyntaxName(string what)
     {
         switch (what)
@@ -1520,7 +1520,7 @@ public sealed class Parser
         var u = N(NodeKind.Unsupported);
         u.Text = what;
         Unsupported(StatementSyntaxName(what), Cur.Pos);
-        // try の block は読む (中のサブセットの外の構文も報告する)。木には残さない
+        // The try block is read (syntax outside the subset inside it is reported too). It is not kept in the tree
         if (what == "try" && IsPAt(1, "{"))
         {
             Advance();
@@ -1544,7 +1544,7 @@ public sealed class Parser
             }
             return Done(u);
         }
-        // 文の終わりまで読み飛ばす
+        // Skip to the end of the statement
         int depth = 0;
         while (Cur.Kind != TokenKind.End)
         {
@@ -1586,7 +1586,7 @@ public sealed class Parser
             var nx = PeekTok(1);
             result = nx.Kind == TokenKind.Punct && (nx.Text == "=" || nx.Text == ";" || nx.Text == "," || nx.Text == "(");
             if (nx.Kind == TokenKind.Ident && nx.Text == "in" && nx.IsKeyword) result = true;
-            // generic な local function (`T M<T>(T a) => a;`)
+            // Generic local function (`T M<T>(T a) => a;`)
             if (!result && nx.Kind == TokenKind.Punct && nx.Text == "<")
             {
                 Advance();
@@ -1598,7 +1598,7 @@ public sealed class Parser
         return result;
     }
 
-    // LocalDecl: A = 型、List = VarDeclarator、Flags = const
+    // LocalDecl: A = type, List = VarDeclarator, Flags = const
     private Node LocalDeclaration(bool isConst)
     {
         var d = N(NodeKind.LocalDecl);
@@ -1609,7 +1609,7 @@ public sealed class Parser
         List<Node>? localTypeParams = null;
         if (IsP("<"))
         {
-            // generic な local function の型引数 (List2 に Name)
+            // Type arguments of a generic local function (Name in List2)
             localTypeParams = new List<Node>();
             Advance();
             while (true)
@@ -1633,7 +1633,7 @@ public sealed class Parser
             MethodBody(dummy);
             var u = NAt(NodeKind.Unsupported, namePos);
             u.Text = "local function";
-            // 本文はサブセットの検査のためだけに束縛する (出力はしない)
+            // The body is bound only for the subset check (it is not emitted)
             u.A = dummy;
             return Done(u);
         }
@@ -1653,7 +1653,7 @@ public sealed class Parser
 
     private Node EmbeddedStatement() => Statement();
 
-    // If: A = 条件、B = then、C = else
+    // If: A = condition, B = then, C = else
     private Node IfStatement()
     {
         var n = N(NodeKind.If);
@@ -1666,7 +1666,7 @@ public sealed class Parser
         return Done(n);
     }
 
-    // For: List = 初期化 (LocalDecl か ExprStmt)、A = 条件、List2 = 更新の式、B = 本体
+    // For: List = initializers (LocalDecl or ExprStmt), A = condition, List2 = update expressions, B = body
     private Node ForStatement()
     {
         var n = N(NodeKind.For);
@@ -1702,7 +1702,7 @@ public sealed class Parser
         return Done(n);
     }
 
-    // Foreach: A = 型、Text = 変数名、B = collection、C = 本体。List = 分解 (var (k, v)) の名前
+    // Foreach: A = type, Text = variable name, B = collection, C = body. List = deconstruction names (var (k, v))
     private Node ForeachStatement()
     {
         var n = N(NodeKind.Foreach);
@@ -1710,7 +1710,7 @@ public sealed class Parser
         Expect("(");
         if (IsContextual("var") && IsPAt(1, "(") || IsP("(") && IsNestedTargetList())
         {
-            // foreach (var (a, b) in ...) / foreach ((int a, int b) in ...): Name の A に型 (var なら null)。var の形は Text = "(var)"
+            // foreach (var (a, b) in ...) / foreach ((int a, int b) in ...): the type is in A of each Name (null for var). The var form has Text = "(var)"
             if (IsContextual("var"))
             {
                 Advance();
@@ -1743,8 +1743,8 @@ public sealed class Parser
         return Done(n);
     }
 
-    // Switch: A = 式、List = SwitchSection。SwitchSection: List = label、List2 = 文。
-    // CaseLabel: A = pattern、B = when。DefaultLabel
+    // Switch: A = expression, List = SwitchSection. SwitchSection: List = labels, List2 = statements.
+    // CaseLabel: A = pattern, B = when. DefaultLabel
     private Node SwitchStatement()
     {
         var n = N(NodeKind.Switch);
@@ -1794,7 +1794,7 @@ public sealed class Parser
         return Done(n);
     }
 
-    // ---- 式 ----
+    // ---- Expressions ----
 
     public Node Expression()
     {
@@ -1821,7 +1821,7 @@ public sealed class Parser
         return false;
     }
 
-    // Assign: Text = 演算子、A = 左辺、B = 右辺
+    // Assign: Text = operator, A = left side, B = right side
     private Node AssignmentExpression()
     {
         if (IsLambdaStart()) return Lambda();
@@ -1829,7 +1829,7 @@ public sealed class Parser
         if (Cur.Kind == TokenKind.Punct)
         {
             string op = Cur.Text;
-            // `>>=` は `>` と `>=` の隣接
+            // `>>=` is an adjacent `>` and `>=`
             if (op == ">" && IsPAt(1, ">=") && !PeekTok(1).SpaceBefore)
             {
                 var a = NAt(NodeKind.Assign, left.Pos);
@@ -1854,7 +1854,7 @@ public sealed class Parser
         return left;
     }
 
-    // switch 式の arm の when の中 (`when b => 1` の => は arm の区切りで、lambda ではない)
+    // Inside the when of a switch expression arm (the => in `when b => 1` is the arm separator, not a lambda)
     private bool _inArmGuard;
 
     private bool IsLambdaStart()
@@ -1863,7 +1863,7 @@ public sealed class Parser
         if (IsIdent() && IsPAt(1, "=>")) return !_inArmGuard;
         if (IsKw("static") && (IsPAt(1, "(") || IsIdentAt(1))) return true;
         if (!IsP("(")) return false;
-        // 対応する ) の後が =>
+        // The matching ) is followed by =>
         int depth = 0;
         int j = _i;
         while (j < _toks.Count)
@@ -1889,7 +1889,7 @@ public sealed class Parser
         return false;
     }
 
-    // Lambda: List = Param、A = 式本体、B = Block
+    // Lambda: List = Params, A = expression body, B = Block
     private Node Lambda()
     {
         var l = N(NodeKind.Lambda);
@@ -1928,7 +1928,7 @@ public sealed class Parser
         return Done(l);
     }
 
-    // Conditional: A = 条件、B = 真、C = 偽
+    // Conditional: A = condition, B = true branch, C = false branch
     private Node ConditionalExpression()
     {
         var cond = NullCoalescing();
@@ -1960,7 +1960,7 @@ public sealed class Parser
         return left;
     }
 
-    // 二項演算子の優先順位 (大きいほど強い)。0 は二項演算子でない
+    // Binary operator precedence (higher binds tighter). 0 means not a binary operator
     private int BinaryPrecedence(out string op)
     {
         op = "";
@@ -2010,7 +2010,7 @@ public sealed class Parser
         return 0;
     }
 
-    // Binary: Text = 演算子、A、B。Is: A = 式、B = pattern。As: A = 式、B = 型
+    // Binary: Text = operator, A, B. Is: A = expression, B = pattern. As: A = expression, B = type
     private Node BinaryExpression(int minPrec)
     {
         var left = UnaryExpression();
@@ -2051,7 +2051,7 @@ public sealed class Parser
         return left;
     }
 
-    // Unary: Text = 演算子、A。PreIncDec: Text、A。Cast: A = 型、B = 式
+    // Unary: Text = operator, A. PreIncDec: Text, A. Cast: A = type, B = expression
     private Node UnaryExpression()
     {
         if (Cur.Kind == TokenKind.Punct)
@@ -2130,7 +2130,7 @@ public sealed class Parser
 
     private Node PrimaryExpression()
     {
-        // query 式 (`from x in xs ...`) は Select / Where の呼び出しに下ろす糖衣で、tcs は下ろさない。式の終わりまで読み飛ばす
+        // A query expression (`from x in xs ...`) is sugar lowered to Select / Where calls, which tcs does not lower. Skip to the end of the expression
         if (IsContextual("from") && IsIdentAt(1) && (IsKwAt(2, "in") || IsIdentAt(2) && IsKwAt(3, "in")))
         {
             Unsupported("QueryExpression", Cur.Pos);
@@ -2149,7 +2149,7 @@ public sealed class Parser
             }
             return Done(q);
         }
-        // 式の global::X.Y は X.Y と同じに読む (user の型と同じ名前の namespace を隠すことは扱わない)
+        // global::X.Y in an expression is read the same as X.Y (hiding a namespace with the same name as a user type is not handled)
         if (IsContextual("global") && IsPAt(1, "::") && IsIdentAt(2))
         {
             Advance();
@@ -2157,7 +2157,7 @@ public sealed class Parser
         }
         else if (IsIdent() && IsPAt(1, "::") && IsIdentAt(2))
         {
-            // using の別名で修飾した名前 (`S::Socket.Create()`、サブセットの外)
+            // A name qualified with a using alias (`S::Socket.Create()`, outside the subset)
             Unsupported("AliasQualifiedName", Cur.Pos);
             Advance();
             Advance();
@@ -2198,7 +2198,7 @@ public sealed class Parser
             case TokenKind.Ident:
                 if (t.IsKeyword) return KeywordPrimary();
                 {
-                    // Name: Text = 名前、List = 型引数
+                    // Name: Text = name, List = type arguments
                     var n = N(NodeKind.Name);
                     n.Text = Advance().Text;
                     TypeArgumentsInExpression(n);
@@ -2211,7 +2211,7 @@ public sealed class Parser
         return Done(err);
     }
 
-    // 式の中の `<`: 型引数として読めて、その後が C# の規則の token なら型引数
+    // `<` in an expression: type arguments if it can be read as type arguments and is followed by a token allowed by the C# rules
     private void TypeArgumentsInExpression(Node n)
     {
         if (!IsP("<")) return;
@@ -2305,7 +2305,7 @@ public sealed class Parser
                 }
             case "default":
                 {
-                    // DefaultLit: A = 型 (default(T))、null なら target-typed
+                    // DefaultLit: A = type (default(T)), target-typed if null
                     var n = N(NodeKind.DefaultLit);
                     Advance();
                     if (Accept("("))
@@ -2329,7 +2329,7 @@ public sealed class Parser
             case "checked":
             case "unchecked":
                 {
-                    // Checked: Value = 1 なら checked、A = 式
+                    // Checked: checked if Value = 1, A = expression
                     var n = N(NodeKind.Checked);
                     n.Value = k == "checked" ? 1 : 0;
                     Advance();
@@ -2344,7 +2344,7 @@ public sealed class Parser
             case "throw":
             case "ref":
                 {
-                    // ref の式 (`ref x`、`ref a[0]`) は ref の型 (RefType) の巻き添えなので、ref の戻り値と ref local の診断に任せる
+                    // A ref expression (`ref x`, `ref a[0]`) comes along with a ref type (RefType), so it is left to the ref return and ref local diagnostics
                     if (k != "ref") Unsupported("expression: " + ExpressionSyntaxName(k), Cur.Pos);
                     var n = N(NodeKind.NullLit);
                     Advance();
@@ -2354,7 +2354,7 @@ public sealed class Parser
                         UnaryExpression();
                         return Done(n);
                     }
-                    // stackalloc T[n] { ... } の要素の型と長さ
+                    // Element type and length of stackalloc T[n] { ... }
                     if (k == "stackalloc")
                     {
                         if (!IsP("[")) TryType(true);
@@ -2368,7 +2368,7 @@ public sealed class Parser
         }
         if (IsPredefTypeName(k))
         {
-            // int.Parse など: Name として扱う
+            // int.Parse etc.: treated as a Name
             var n = N(NodeKind.Name);
             n.Text = Advance().Text;
             n.Value = 1;
@@ -2380,8 +2380,8 @@ public sealed class Parser
         return Done(err);
     }
 
-    // New: A = 型 (null なら target-typed)、List = 引数 (Arg)、B = 初期化子。Value = 1 なら引数の括弧があった
-    // NewArray: A = 要素型 (null なら new[])、B = 長さ、C = ArrayInit
+    // New: A = type (target-typed if null), List = arguments (Arg), B = initializer. Value = 1 if there were argument parentheses
+    // NewArray: A = element type (null for new[]), B = length, C = ArrayInit
     private Node NewExpression()
     {
         var n = N(NodeKind.New);
@@ -2397,7 +2397,7 @@ public sealed class Parser
         }
         if (IsP("("))
         {
-            // new (int, string)[2]: tuple の要素型の配列
+            // new (int, string)[2]: an array of a tuple element type
             int saveTuple = _i;
             var tupleType = TryType(true);
             if (tupleType != null && tupleType.Kind == NodeKind.TupleType && IsP("["))
@@ -2417,11 +2417,11 @@ public sealed class Parser
         {
             Unsupported("AnonymousObjectCreationExpression", Cur.Pos);
             SkipBalanced("{", "}");
-            // Value = 3: 匿名型 (束縛は型を調べない)
+            // Value = 3: anonymous type (binding does not inspect the type)
             n.Value = 3;
             return Done(n);
         }
-        // 配列: new T[n] / new T[] { ... }
+        // Arrays: new T[n] / new T[] { ... }
         var type = TryType(true);
         if (type == null)
         {
@@ -2448,7 +2448,7 @@ public sealed class Parser
                 Advance();
                 Advance();
             }
-            // 長さは最初の [] にだけ書ける (new int[3][1] は C# の誤り)
+            // The length can only be written in the first [] (new int[3][1] is a C# error)
             if (IsP("[") && !IsPAt(1, ",")) Error("CS0178", "Invalid rank specifier: expected ',' or ']'");
             if (IsP("{")) na.C = ArrayInitializer();
             return Done(na);
@@ -2456,7 +2456,7 @@ public sealed class Parser
         if (type.Kind == NodeKind.ArrayType)
         {
             var na = NAt(NodeKind.NewArray, n.Pos);
-            // new T[,] { ... } (多次元の配列)
+            // new T[,] { ... } (multidimensional array)
             if (type.Value == 2) Unsupported("MultiDimensionalArray", type.Pos);
             na.A = type.A;
             na.C = ArrayInitializer();
@@ -2473,7 +2473,7 @@ public sealed class Parser
         return Done(n);
     }
 
-    // ArrayInit: List = 要素
+    // ArrayInit: List = elements
     private Node ArrayInitializer()
     {
         var init = N(NodeKind.ArrayInit);
@@ -2487,8 +2487,8 @@ public sealed class Parser
         return Done(init);
     }
 
-    // ObjectInit: List = MemberInit (Text = 名前、A = 値) か IndexInit (A = key、B = 値)
-    // CollectionInit: List = 要素の式か、{k, v} の ArrayInit
+    // ObjectInit: List = MemberInit (Text = name, A = value) or IndexInit (A = key, B = value)
+    // CollectionInit: List = element expressions or {k, v} ArrayInits
     private Node ObjectOrCollectionInitializer()
     {
         int pos = Cur.Pos;
@@ -2540,7 +2540,7 @@ public sealed class Parser
         return Done(init);
     }
 
-    // CollectionExpr: List = 要素
+    // CollectionExpr: List = elements
     private Node CollectionExpression()
     {
         var n = N(NodeKind.CollectionExpr);
@@ -2559,7 +2559,7 @@ public sealed class Parser
         return Done(n);
     }
 
-    // Paren: A。Tuple: List = 要素、List2 = 要素の名前 (Name。名前の無い要素は Text が空)
+    // Paren: A. Tuple: List = elements, List2 = element names (Name; Text is empty for unnamed elements)
     private Node ParenOrTuple()
     {
         var pos = Cur.Pos;
@@ -2589,7 +2589,7 @@ public sealed class Parser
         return Done(p);
     }
 
-    // tuple の要素の名前 (name: expr)
+    // Tuple element name (name: expr)
     private string TupleElementName()
     {
         if (IsIdent() && IsPAt(1, ":") && !IsPAt(2, ":"))
@@ -2601,10 +2601,10 @@ public sealed class Parser
         return "";
     }
 
-    // Arg: A = 式、Flags = out / ref / in。out var x は A = DeclarationExpr として PatDecl (A = 型、Text = 名前)
+    // Arg: A = expression, Flags = out / ref / in. For out var x, A = a PatDecl as the DeclarationExpr (A = type, Text = name)
     private void Arguments(Node into)
     {
-        // 引数の中は arm の when の外 (`when xs.Any(x => x > 0) => 1` の lambda)
+        // Inside arguments is outside the arm's when (the lambda in `when xs.Any(x => x > 0) => 1`)
         bool saveGuard = _inArmGuard;
         _inArmGuard = false;
         ArgumentList(into);
@@ -2662,9 +2662,9 @@ public sealed class Parser
         return result;
     }
 
-    // Member: A = 式、Text = 名前、List = 型引数、Value = 1 なら ?.
-    // Call: A = callee、List = Arg。Index: A = 式、List = 添字、Value = 1 なら ?[
-    // PostIncDec: Text、A
+    // Member: A = expression, Text = name, List = type arguments, ?. if Value = 1
+    // Call: A = callee, List = Args. Index: A = expression, List = indices, ?[ if Value = 1
+    // PostIncDec: Text, A
     private Node PostfixExpression(Node e)
     {
         while (true)
@@ -2759,7 +2759,7 @@ public sealed class Parser
             }
             else if (IsP("!") && !IsPAt(1, "=") && IsPostfixBangContext())
             {
-                // null 免除 `x!` は型にだけ効く
+                // The null-forgiving `x!` affects only the type
                 Advance();
             }
             else if (IsKw("switch"))
@@ -2772,7 +2772,7 @@ public sealed class Parser
             }
             else if (IsContextual("with") && IsPAt(1, "{"))
             {
-                // With: Text = "with" の Call として A = 式、B = ObjectInit
+                // With: a Call with Text = "with", A = expression, B = ObjectInit
                 var w = NAt(NodeKind.Call, e.Pos);
                 w.Text = "with";
                 w.A = e;
@@ -2811,7 +2811,7 @@ public sealed class Parser
         return nx.Kind == TokenKind.End;
     }
 
-    // SwitchExpr: A = 式、List = SwitchArm (A = pattern、B = when、C = 値)
+    // SwitchExpr: A = expression, List = SwitchArms (A = pattern, B = when, C = value)
     private Node SwitchExpression(Node governing)
     {
         var s = NAt(NodeKind.SwitchExpr, governing.Pos);
@@ -2838,7 +2838,7 @@ public sealed class Parser
         return Done(s);
     }
 
-    // InterpString: List = StringLit (Text = 値) と InterpHole (A = 式、Text = 書式、B = 揃え)
+    // InterpString: List = StringLits (Text = value) and InterpHoles (A = expression, Text = format, B = alignment)
     private Node InterpolatedString(Token t)
     {
         if (t.RawDollars > 0) return RawInterpolatedString(t);
@@ -2894,7 +2894,7 @@ public sealed class Parser
                 while (j < end)
                 {
                     int d = b[j];
-                    // 書式の中は `}` までが字面 (escape を読み飛ばす)
+                    // Inside the format, everything up to `}` is literal text (escapes are skipped)
                     if (formatAt >= 0)
                     {
                         if (d == '}') break;
@@ -2902,7 +2902,7 @@ public sealed class Parser
                         j++;
                         continue;
                     }
-                    // ブロックのコメントの中は数えない
+                    // Do not count inside block comments
                     if (d == '/' && j + 1 < end && b[j + 1] == '*')
                     {
                         j += 2;
@@ -2960,8 +2960,8 @@ public sealed class Parser
         return n;
     }
 
-    // raw な補間文字列: escape は無く、$ と同じ数の { で穴が始まり、同じ数の } で終わる。
-    // それより多い { は文字の { として残す。複数行は各行の字下げを除く
+    // Raw interpolated string: there are no escapes; a hole starts with as many { as there are $ and ends with the same number of }.
+    // Extra { are kept as literal { characters. For multi-line strings, each line's indentation is removed
     private Node RawInterpolatedString(Token t)
     {
         var n = NAt(NodeKind.InterpString, t.Pos);
@@ -2996,7 +2996,7 @@ public sealed class Parser
                     i += braces;
                     continue;
                 }
-                // 余分な { は文字
+                // Extra { are literal characters
                 text.Add(_file.Slice(run, i + braces - dollars));
                 FlushText(n, text, t.Pos);
                 int holeStart = i + braces;
@@ -3050,9 +3050,9 @@ public sealed class Parser
 
     // ---- pattern ----
 
-    // PatOr / PatAnd: A、B。PatNot: A。PatRel: Text = 演算子、A = 式。
-    // PatConst: A = 式。PatType: A = 型。PatDecl: A = 型、Text = 名前。PatVar: Text。PatDiscard。
-    // PatProp: A = 型 (null 可)、List = PropSub (Text = 名前、A = pattern)、Text = 名前 (指定時)
+    // PatOr / PatAnd: A, B. PatNot: A. PatRel: Text = operator, A = expression.
+    // PatConst: A = expression. PatType: A = type. PatDecl: A = type, Text = name. PatVar: Text. PatDiscard.
+    // PatProp: A = type (may be null), List = PropSubs (Text = name, A = pattern), Text = name (when given)
     public Node Pattern() => OrPattern();
 
     private Node OrPattern()
@@ -3106,13 +3106,13 @@ public sealed class Parser
         }
         if (IsP("("))
         {
-            // 括弧の pattern か tuple の定数
+            // Parenthesized pattern or tuple constant
             int save = _i;
             Advance();
             var inner = Pattern();
             if (Accept(")")) return inner;
             _i = save;
-            // tuple の pattern (`(1, 2)`、`(Sum: var s, Count: var c)`)。読み飛ばす (中の pattern の変数は宣言しない)
+            // Tuple pattern (`(1, 2)`, `(Sum: var s, Count: var c)`). Skipped (pattern variables inside it are not declared)
             Unsupported("TuplePattern", Cur.Pos);
             var c = N(NodeKind.PatDiscard);
             SkipBalanced("(", ")");
@@ -3138,7 +3138,7 @@ public sealed class Parser
             v.Text = Advance().Text;
             return Done(v);
         }
-        // 型か定数の式か
+        // A type or a constant expression
         if (Cur.Kind == TokenKind.Ident && (!Cur.IsKeyword || IsPredefTypeName(Cur.Text)))
         {
             int save = _i;
@@ -3167,7 +3167,7 @@ public sealed class Parser
         return Done(cp);
     }
 
-    // 型 pattern として読むかの判定: 型の名前の形 (定数の Member access と同じ形は Binder が決める)
+    // Decides whether to read it as a type pattern: the shape of a type name (the Binder decides for shapes identical to a constant Member access)
     private bool LooksLikeType(Node t) => true;
 
     private bool IsTypePatternEnd()

@@ -1,5 +1,5 @@
-// ../TestInspect.cs が lider で開くゲーム。インスペクタに出す並びと値を持つ。
-// Shelf.Ticks は毎 frame 変わり、Shelf.Calm は CalmFrame 個目の frame で 1 度だけ変わる。
+// The game ../TestInspect.cs opens in lider. Holds the lists and values to show in the inspector.
+// Shelf.Ticks changes every frame, and Shelf.Calm changes only once, on the CalmFrame-th frame.
 using System.Collections.Generic;
 
 public class Crate

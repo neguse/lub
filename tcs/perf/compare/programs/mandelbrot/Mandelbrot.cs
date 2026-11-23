@@ -1,6 +1,6 @@
 using System;
 
-// 内側のループの float の演算と分岐。The Computer Language Benchmarks Game の mandelbrot と同じ範囲と反復 (50 回) を float (f32) で数える
+// Float arithmetic and branches in the inner loop. Counts over the same range and iterations (50) as mandelbrot of The Computer Language Benchmarks Game, in float (f32)
 public class Mandelbrot
 {
     static int Run(int n, bool print)
@@ -36,8 +36,8 @@ public class Mandelbrot
     {
         string s = Environment.GetEnvironmentVariable("BENCH_N");
         int n = s == null ? 200 : int.Parse(s);
-        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
-        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        // Repeats BENCH_REPS times (run.py uses this to compute the time per repetition).
+        // Each repetition's input depends on the previous result so the compiler cannot skip repetitions or hoist them out (the result is never -1)
         string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
         int reps = rs == null ? 1 : int.Parse(rs);
         int prev = 0;

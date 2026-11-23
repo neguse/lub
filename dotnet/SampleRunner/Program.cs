@@ -1,3 +1,3 @@
-// サンプルの entry class (static OnFrame を持つ唯一の class) を探して回す。
-// tests/cs (-p:Tests=true) は entry class が多いので、--entry CLASS で選ぶ。
+// Finds the sample's entry class (the only class with a static OnFrame) and runs it.
+// tests/cs (-p:Tests=true) has many entry classes, so one is chosen with --entry CLASS.
 return Lub.App.Run(typeof(Program).Assembly, args);

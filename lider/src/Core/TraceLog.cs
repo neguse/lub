@@ -1,45 +1,45 @@
-// 実行した行と代入した値の記録。
-// lub の Sys.TakeTraceFor が返す "file:line" と Sys.TakeValues が返す値を毎 frame 受け取り、行ごとに最後に通った frame と、代入先ごとに最後の値を覚える。
-// 古いほど薄く見せるため、Age (何 frame 前か) で引く。
+// Record of executed lines and assigned values.
+// Receives the "file:line" keys returned by lub's Sys.TakeTraceFor and the values returned by Sys.TakeValues every frame, and remembers the last frame each line was passed and the last value of each assignment target.
+// Looked up by Age (how many frames ago) so that older entries can be shown fainter.
 using System;
 using System.Collections.Generic;
 using Lub;
 
 namespace LiderCore;
 
-// trace の key の file 1 つの記録
+// Record of one file in the trace keys
 class TracedFile
 {
-    // 行 → 最後に通った frame
+    // Line → last frame it was passed
     public Dictionary<int, int> Lines = new Dictionary<int, int>();
-    // どこかの行を最後に通った frame
+    // Last frame any line was passed
     public int Last;
-    // 行 → その行の代入先の値
+    // Line → values of the assignment targets on that line
     public readonly Dictionary<int, List<TracedValue>> Values = new Dictionary<int, List<TracedValue>>();
 }
 
-// 代入先 1 つ (Sys.TakeValues の site 1 つ) の値
+// Value of one assignment target (one Sys.TakeValues site)
 public class TracedValue
 {
     public int Line;
     public int Col;
     public string Label = "";
     public string Text = "";
-    // 最後に代入した frame と、Text が変わった frame (変わっていなければ -1)
+    // Last frame it was assigned, and the frame Text changed (-1 if it has not changed)
     public int At;
     public int ChangedAt = -1;
-    // 最後に変わる前の Text が続いた frame の数 (毎 frame 変わる値は 1)
+    // Number of frames the Text before the last change lasted (1 for a value that changes every frame)
     public int Steady;
-    // 今の Text になった frame
+    // Frame the current Text started
     public int Since;
-    // 数なら、代入した値とその frame を Fade 個まで輪に持つ (次に書くのは Next、持っている数は Count)
+    // For numbers, keeps the assigned values and their frames in a ring of up to Fade entries (Next is written next, Count is the number held)
     public readonly float[] Samples = new float[TraceLog.Fade];
     public readonly int[] SampleAt = new int[TraceLog.Fade];
     public int Next;
     public int Count;
 }
 
-// trace の key 1 つ ("file:line") を読んだ結果 (読めない key なら File が null)
+// Result of reading one trace key ("file:line") (File is null for an unreadable key)
 class TraceSite
 {
     public TracedFile? File;
@@ -48,30 +48,30 @@ class TraceSite
 
 public class TraceLog
 {
-    // 何 frame で消えるか
+    // Number of frames until it fades out
     public const int Fade = 90;
 
     public int Frame;
-    // file (trace の key の path) ごとの記録
+    // Record per file (the path in the trace key)
     readonly Dictionary<string, TracedFile> files = new Dictionary<string, TracedFile>();
     readonly List<string> names = new List<string>();
-    // 読んだ key (同じ key が毎 frame 届くので、読むのは初めの 1 度だけ)
+    // Keys already read (the same key arrives every frame, so it is read only the first time)
     readonly Dictionary<string, TraceSite> sites = new Dictionary<string, TraceSite>();
-    // 読んだ値の site (読めない site なら null)
+    // Sites of values already read (null for an unreadable site)
     readonly Dictionary<string, TracedValue?> valueSites = new Dictionary<string, TracedValue?>();
-    // lider の path → trace の path (書き方が違っても後ろが一致すれば同じ file)
+    // lider path → trace path (the same file if the endings match, even when written differently)
     Dictionary<string, string> alias = new Dictionary<string, string>();
 
-    // 絞り込みを替えたとき、それまでの行の印を消す (前の個体で通った印を残さない)。
-    // file と最後に通った frame は残す (実行中の file の印のため)
+    // When the filter changes, clears the marks of earlier lines (so marks from the previous instance do not remain).
+    // Keeps the file and the last frame it was passed (for the mark of the running file)
     public void ForgetLines()
     {
         foreach (var name in names)
             files[name].Lines = new Dictionary<int, int>();
     }
 
-    // pin は個体に絞っているとき、その個体を覚えさせた key (Sys.InspectPin)。
-    // 同じ class の別の個体だけが通った行は、通ったことにしない
+    // When narrowed to one instance, pin is the key that instance was registered with (Sys.InspectPin).
+    // Lines passed only by other instances of the same class do not count as passed
     public void Take(string pin = "")
     {
         Frame++;
@@ -109,7 +109,7 @@ public class TraceLog
         }
     }
 
-    // "file:line:col:代入先" を読む (代入先に ':' は無い)
+    // Reads "file:line:col:target" (the target contains no ':')
     TracedValue? ReadValue(string site)
     {
         var c3 = LastColon(site);
@@ -161,7 +161,7 @@ public class TraceLog
             file = new TracedFile();
             files[name] = file;
             names.Add(name);
-            // 新しい file が来たら、見つからなかった引き当てをやり直す
+            // When a new file arrives, retries the lookups that were not found
             alias = new Dictionary<string, string>();
         }
         site.File = file;
@@ -190,7 +190,7 @@ public class TraceLog
         return files[name];
     }
 
-    // 片方が他方の後ろの部分と '/' の境目で一致するか
+    // Whether one matches the tail of the other at a '/' boundary
     public static bool SamePath(string a, string b)
     {
         if (a == b)
@@ -198,8 +198,8 @@ public class TraceLog
         return Utf8.Bytes(a) > Utf8.Bytes(b) ? a.EndsWith("/" + b) : b.EndsWith("/" + a);
     }
 
-    // paths のうち path と同じ file: 同じ path、無ければ SamePath で一番長く一致する 1 つ。
-    // 一番長く一致するものが 2 つ以上あれば (p/Same.cs と q/Same.cs に対する Same.cs)、どれとも決めない
+    // The entry in paths that is the same file as path: the same path, or if there is none, the one with the longest SamePath match.
+    // If two or more share the longest match (Same.cs against p/Same.cs and q/Same.cs), picks none of them
     public static string? Match(string path, List<string> paths)
     {
         string? best = null;
@@ -226,7 +226,7 @@ public class TraceLog
         return tie ? null : best;
     }
 
-    // 何 frame 前に通ったか (通っていなければ -1、Fade より前も -1)
+    // How many frames ago it was passed (-1 if not passed, also -1 if earlier than Fade)
     public int Age(string path, int line)
     {
         var file = Find(path);
@@ -236,20 +236,20 @@ public class TraceLog
         return age < Fade ? age : -1;
     }
 
-    // この file のどこかを Fade の間に通ったか
+    // Whether any part of this file was passed within Fade
     public bool Active(string path)
     {
         var file = Find(path);
         return file != null && Frame - file.Last < Fade;
     }
 
-    // path の file の、実行した行 → 最後に通った frame (記録が無ければ null)
+    // Executed lines of the file at path → last frame passed (null if there is no record)
     public Dictionary<int, int>? LinesOf(string path)
     {
         return Find(path)?.Lines;
     }
 
-    // line 行目の代入先の、Fade frame の間に代入した値 (桁の順)
+    // Values assigned to the targets on line line within Fade frames (in column order)
     public List<TracedValue> ValuesAt(string path, int line)
     {
         var shown = new List<TracedValue>();
@@ -262,7 +262,7 @@ public class TraceLog
         return shown;
     }
 
-    // 0 (古い) から 1 (この frame) の明るさ
+    // Brightness from 0 (old) to 1 (this frame)
     public static float Glow(int age)
     {
         return age < 0 ? 0 : 1.0f - (float)age / Fade;

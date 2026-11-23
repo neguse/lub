@@ -1,5 +1,5 @@
-// 操作の手応えに使う動き: 目標に spring で寄る値、窓の見た目の位置と大きさ、粒。
-// どれも dt で進め、入力を待たせない (次の目標が来れば、今の動きのまま追いかける)。
+// Motions used for interaction feedback: values that approach a target by spring, panel visual position and size, particles.
+// All advance by dt and never make input wait (when a new target arrives, they chase it from the current motion).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -7,8 +7,8 @@ using Lubx;
 
 namespace LiderCore;
 
-// 目標へ寄る値。
-// 減衰は臨界より少し弱い (減衰比 0.67) ので、軽く行き過ぎてから収まる
+// Value that approaches a target.
+// Damping is a bit below critical (damping ratio 0.67), so it overshoots slightly before settling
 public class Spring
 {
     public float Value;
@@ -23,7 +23,7 @@ public class Spring
 
     public void Step(float target, float dt)
     {
-        // 大きい dt でも暴れないよう、1/120 秒ずつ進める
+        // Advance in 1/120-second steps so it stays stable even with a large dt
         while (dt > 0)
         {
             var h = Math.Min(dt, 1.0f / 120);
@@ -43,7 +43,7 @@ public class Spring
 
 public static class Ease
 {
-    // v を target へ、0 から 1 の幅を seconds で進む速さで寄せる (行き過ぎない)
+    // Moves v toward target at a speed that covers the 0-to-1 range in seconds (no overshoot)
     public static float Toward(float v, float target, float dt, float seconds)
     {
         var step = dt / seconds;
@@ -51,48 +51,48 @@ public static class Ease
     }
 }
 
-// 窓の見た目。
-// 開いたときは小さな大きさから広がり、閉じるとその場で縮んで消える
+// Panel visuals.
+// When opened, it grows from a small size; when closed, it shrinks in place and disappears
 public class WindowMotion
 {
-    // 開く前と閉じた後の大きさ
+    // Size before opening and after closing
     public const float SmallScale = 0.15f;
     public readonly Spring Angle;
     public readonly Spring Y;
     public readonly Spring Scale;
-    // 奥行き (Window の Position の Z を追う。負が手前)
+    // Depth (follows the Z of the Window's Position; negative is nearer)
     public readonly Spring Z = new Spring(0);
-    // focus のある間は 1 (縁が光る)
+    // 1 while focused (the edge glows)
     public readonly Spring Glow = new Spring(0);
-    // 閉じた後、縮みきるまで描く
+    // After closing, drawn until fully shrunk
     public bool Closing;
     public float ClosingFor;
     public const float CloseSeconds = 0.35f;
-    // 保存して反映が届いた時に、枠が揺れる強さと、飛んだ先の行の印 (どれも 1 から 0 へ減る)
+    // Strength of the frame shake when a save is applied, and the mark on the jumped-to line (both decrease from 1 to 0)
     public float Shake;
     public float Arrive;
-    // 保存した時刻と、反映にかかった秒とそれを見出しに出す残りの秒
+    // Time of the save, the seconds the apply took, and the remaining seconds for showing it in the title
     public float SavedAt;
     public float LandSeconds;
     public float LandLabel;
-    // 保存の波 (1 から 0 へ減る) と、打った行の光と、compile error の赤い光
+    // Save wave (decreases from 1 to 0), the typed-line flash, and the red glow for compile errors
     public float Wave;
     public float Pulse;
     public float Alarm;
-    // 行が面に沈み終えた所から広がる波 (1 から 0 へ減る) と、その真ん中 (view の中の px)
+    // Wave spreading from where a line finished sinking into the surface (decreases from 1 to 0), and its center (px in the view)
     public float Ripple;
     public float RippleAt;
-    // cursor の見た目 (x は view の中の px、y は本文の先頭からの px)。
-    // 打つ速さに追いつくよう、行き過ぎずに 0.2 秒ほどで収まる
+    // Cursor visual (x is px in the view, y is px from the start of the text).
+    // Settles in about 0.2 seconds without overshoot, to keep up with typing speed
     public readonly Spring CaretX = Caret();
     public readonly Spring CaretY = Caret();
     public bool CaretShown;
-    // 前の frame の cursor (行と byte の桁) と、その行の byte の長さと、cursor の x
+    // Cursor in the previous frame (line and byte column), the byte length of that line, and the cursor x
     public int TypedLine;
     public int TypedCol;
     public int TypedLength;
     public float TypedX;
-    // Seen* を取った file (タブを替えると変わる)
+    // File the Seen* values were taken from (changes when the tab changes)
     public Document? SeenDoc;
     public int SeenRemoved;
     public int SeenSaved;
@@ -136,8 +136,8 @@ public class WindowMotion
     }
 }
 
-// 打った文字 (Line 行目の X0 から X1 の px、view の中)。
-// 窓の texture の同じ所を、手前に浮かせて大きめに描き、Seconds で面に収める
+// Typed characters (px X0 to X1 on line Line, in the view).
+// The same part of the panel texture is drawn lifted in front and larger, and settles into the surface over Seconds
 public class Landing
 {
     public const float Seconds = 0.2f;
@@ -156,7 +156,7 @@ public class Landing
     }
 }
 
-// 粒 (円筒の角度、高さ、半径と、その速さ)
+// Particle (cylinder angle, height, radius, and their velocities)
 public class Particle
 {
     public float Angle;
@@ -168,7 +168,7 @@ public class Particle
     public float Life;
     public float MaxLife;
     public Color Color;
-    // 大きさの倍率
+    // Size factor
     public float Size = 1;
 
     public Particle(float angle, float y, float radius, Color color, float life)
@@ -182,7 +182,7 @@ public class Particle
     }
 }
 
-// 着弾の所から広がって消える四角い輪 (発光でなく、くっきりした線)
+// Square ring that spreads from the impact point and disappears (a crisp line, not a glow)
 public class Ring
 {
     public const float Seconds = 0.32f;
@@ -198,15 +198,15 @@ public class Particles
     public readonly List<Particle> Live = new List<Particle>();
     int seed = 12345;
 
-    // 0 から 1 の擬似乱数 (同じ順に同じ値)
+    // Pseudo-random number from 0 to 1 (same values in the same order)
     public float Next()
     {
         seed = seed * 1664525 + 1013904223;
         return (float)((seed >> 8) & 0xffff) / 65535.0f;
     }
 
-    // (angle, y, radius) から n 個、速さ speed (m/s) の範囲で散らす。
-    // toward は半径の向きの速さ (負なら見る人の方へ)
+    // Scatters n particles from (angle, y, radius) with speeds within speed (m/s).
+    // toward is the speed in the radial direction (negative means toward the viewer)
     public void Burst(float angle, float y, float radius, int n, float speed, float toward, Color color, float life, float size = 1)
     {
         for (var i = 0; i < n; i++)
@@ -234,7 +234,7 @@ public class Particles
             p.Angle += p.VAngle * dt;
             p.Y += p.VY * dt;
             p.Radius += p.VRadius * dt;
-            // 落ちながら遅くなる
+            // Slows down while falling
             p.VY -= 0.6f * dt;
             p.VAngle *= 1 - 2 * dt;
         }

@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// record / record struct の合成 Equals は float field を float.Equals で比べる
-// (NaN 同士は等しく、+0 と -0 も等しい)。struct の ValueType.Equals と
-// T? の Equals も同じ。期待値は同じ program を CoreCLR で実行した stdout
+// The synthesized Equals of record / record struct compares float fields with float.Equals
+// (two NaNs are equal, and +0 and -0 are also equal). The same goes for a struct's ValueType.Equals and
+// Equals of T?. The expected values are the stdout of running the same program on CoreCLR
 public class RecordFloatEqualityDifferentialTests
 {
     [CFact]

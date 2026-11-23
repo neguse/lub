@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# tcs VM の player が .csproj から動かす経路 (tcs vm --watch、hot reload、OnBuildFailed、App.Use で開いた app の検査の口、native の拡張) の検査。
-# test は file を書き換えるので、tests/vm/<name>/ を一時ディレクトリに写して動かす。test どうしは独立なので、core の数だけ並べる。
-# tests/vm/<name>/env があれば、その行 (NAME=VALUE) を環境に足して動かす。
-# env: LUB_VM (lub の実行ファイル。既定は build-release-linux/lub)、LUB_TCS (tcs の起動コマンド。無ければ lub が探す)
-#   LUB_VM_JOBS (同時に走らせる test の数。既定は core の数)
+# Checks the path where the tcs VM player runs from a .csproj (tcs vm --watch, hot reload, OnBuildFailed, the inspection entry points of apps opened with App.Use, native extensions).
+# Tests rewrite files, so tests/vm/<name>/ is copied to a temporary directory and run there. Tests are independent of each other, so as many run in parallel as there are cores.
+# If tests/vm/<name>/env exists, its lines (NAME=VALUE) are added to the environment for the run.
+# env: LUB_VM (the lub executable. Default build-release-linux/lub), LUB_TCS (the command to start tcs. If missing, lub looks for it)
+#   LUB_VM_JOBS (number of tests run at the same time. Default is the number of cores)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 lub_vm="${LUB_VM:-$root/build-release-linux/lub}"
 # shellcheck source=scripts/cs-tests.sh
 source "$root/scripts/cs-tests.sh"
 
-# 1 本を走らせ、出力を $2 に書く。落ちたら 0 以外を返す
+# Run one test and write its output to $2. Return non-zero if it fails
 vm_project_test() {
   local name=$1 log=$2 test_dir="$root/tests/vm/$1/" dir ref stem src want missing=""
   local test_env=()
   dir="$(mktemp -d)"
   cp -r "$test_dir." "$dir/"
-  # native の拡張の C (<Name>.ref.cs の隣の小文字の .c) を、同じ名前の共有 library にする
+  # Build the C of a native extension (the lowercase .c next to <Name>.ref.cs) into a shared library of the same name
   for ref in "$dir"/game/*.ref.cs; do
     [ -e "$ref" ] || continue
     stem="${ref%.ref.cs}"
@@ -27,7 +27,7 @@ vm_project_test() {
   done
   [ -f "$dir/env" ] && mapfile -t test_env <"$dir/env"
   if [ -f "$dir/expect-crash.txt" ]; then
-    # 落ちることを検査する test: 0 以外で終わり、expect-crash.txt の各行が出力に含まれること
+    # A test that checks for a crash: it must exit non-zero, and each line of expect-crash.txt must appear in the output
     if (cd "$root" && env "${test_env[@]}" GAME_CS="$dir/game/Game.cs" LUB_CS_LIB="$root/cs-lib" SDL_VIDEO_DRIVER="${SDL_VIDEO_DRIVER:-offscreen}" \
       timeout 180 "$lub_vm" "$dir/game/Game.csproj") >>"$log" 2>&1; then
       echo "FAILED $name: did not crash" >>"$log"
@@ -41,7 +41,7 @@ vm_project_test() {
       timeout 180 "$lub_vm" "$dir/game/Game.csproj") >>"$log" 2>&1; then
       return 1
     fi
-    # expect.txt があれば、その各行が出力に含まれること
+    # If expect.txt exists, each of its lines must appear in the output
     if [ -f "$dir/expect.txt" ]; then
       while IFS= read -r want; do
         grep -qF -- "$want" "$log" || missing="$missing [$want]"

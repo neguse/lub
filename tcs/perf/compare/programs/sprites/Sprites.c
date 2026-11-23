@@ -43,7 +43,8 @@ static int run(int frames, int print) {
   state = 12345;
   int count = 1024;
   float dt = 0.02f;
-  // C# の List<Sprite> (参照の列) に合わせ、sprite を 1 つずつ確保してポインタの配列に持つ
+  // To match C#'s List<Sprite> (a sequence of references), sprites are
+  // allocated one at a time and held in an array of pointers
   Sprite **sprites = malloc(count * sizeof(Sprite *));
   for (int i = 0; i < count; i++) {
     Sprite *sp = malloc(sizeof(Sprite));
@@ -75,7 +76,8 @@ static int run(int frames, int print) {
 int main(void) {
   const char *s = getenv("BENCH_N");
   int n = s ? atoi(s) : 100;
-  // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+  // Repeats BENCH_REPS times. Each repetition's input depends on the previous
+  // result so the compiler cannot skip repetitions (the result is never -1)
   const char *rs = getenv("BENCH_REPS");
   int reps = rs ? atoi(rs) : 1;
   int prev = 0;

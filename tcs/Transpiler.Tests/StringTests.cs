@@ -31,8 +31,8 @@ public class StringTests
         Assert.Equal("Hello Alice, age 30", result);
     }
 
-    // 補間文字列は `..` 連接で emit されるが、Lua の `#` は `..` より強く
-    // 結合するため、receiver 位置では括弧が必須
+    // Interpolated strings are emitted as `..` concatenation, but Lua's `#` binds tighter
+    // than `..`, so parentheses are required in receiver position
     [Fact]
     public void InterpolationLengthBindsWholeString()
     {
@@ -136,7 +136,7 @@ public class StringTests
             }
             """,
             "S.Test()");
-        // "\x9Good..." = tab + "Good text" (10 文字)、"\x9Bad..." = U+9BAD + " text" (6 文字)、"\01" = NUL + '1' (2 文字)
+        // "\x9Good..." = tab + "Good text" (10 chars), "\x9Bad..." = U+9BAD + " text" (6 chars), "\01" = NUL + '1' (2 chars)
         Assert.Equal((10 + 6 * 100 + 2 * 10000).ToString(), result);
     }
 
@@ -173,8 +173,8 @@ public class StringTests
         Assert.Equal("True", result);
     }
 
-    // #22: bool operand の `+` は ToString / 補間と同じ tostring で文字列化する
-    // (Lua の `..` は boolean を受けない)
+    // #22: `+` with a bool operand stringifies with tostring, the same as ToString / interpolation
+    // (Lua's `..` does not accept booleans)
     [Fact]
     public void ConcatBoolOperand()
     {
@@ -254,7 +254,7 @@ public class StringTests
         Assert.Equal("b=True,b=False,b=", result);
     }
 
-    // 静的型が object の operand は値で文字列化する (float は .NET の float.ToString() と同じ、null は空文字列)
+    // An operand whose static type is object is stringified by value (float is the same as .NET float.ToString(), null is an empty string)
     [Fact]
     public void ConcatObjectOperand()
     {
@@ -276,7 +276,7 @@ public class StringTests
         Assert.Equal("f=10000001000000,1000000!,i=7|", result);
     }
 
-    // object の補間と ToString() も値で文字列化する (補間の null は空文字列)
+    // Interpolation and ToString() of object also stringify by value (null in interpolation is an empty string)
     [Fact]
     public void InterpolateAndToStringObject()
     {
@@ -297,8 +297,8 @@ public class StringTests
         Assert.Equal("1000000,0.6666667,,7|1000000|0.6666667|[   1000000]", result);
     }
 
-    // object に入れた class / record の値の文字列化はサブセット外 (TCS1001 UnsupportedToString は
-    // 静的型でしか見えない)。Lua は table のアドレスを書かずに fault する
+    // Stringifying a class / record value stored in object is outside the subset (TCS1001 UnsupportedToString
+    // only sees the static type). Lua faults instead of writing the table address
     [Fact]
     public void ObjectHoldingRecord_ToStringFaults()
     {
@@ -312,7 +312,7 @@ public class StringTests
         Assert.Contains("ToString of this value is not supported", ex.Message);
     }
 
-    // 値そのものが "True" の文字列でも、dotnet differential は文字列として比べる
+    // Even if the value itself is the string "True", the dotnet differential compares it as a string
     [Fact]
     public void BoolToStringAsWholeResult()
     {

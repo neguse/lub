@@ -1,11 +1,11 @@
-// lub の samples/26_renderer3d 相当を TinyC# で書いた entry。
-// 実行: lub samples/26_renderer3d/RendererDemo26.csproj (transpile + watch + hot reload)
+// Entry written in TinyC#, equivalent to lub's samples/26_renderer3d.
+// Run: lub samples/26_renderer3d/RendererDemo26.csproj (transpile + watch + hot reload)
 //
-// Lubx.Renderer3d の最小デモ。
-// プリミティブ (床・箱・円柱・球) と skinned SDF キャラを投げるだけで、影 + hemispheric ambient + AgX tonemap の絵が出ることを見せる。
-// ポーズは時刻からの決定的アニメ (乱数なし)。
+// Minimal demo of Lubx.Renderer3d.
+// Shows that just submitting primitives (floor, box, cylinder, sphere) and a skinned SDF character produces a picture with shadows + hemispheric ambient + AgX tonemap.
+// Poses are deterministic animation driven by time (no random numbers).
 //
-// options は Camera / Draw3dOpts / Renderer3dFog / Renderer3dOutline の class で渡す。
+// options are passed as the Camera / Draw3dOpts / Renderer3dFog / Renderer3dOutline classes.
 
 using System;
 using System.Collections.Generic;
@@ -37,8 +37,8 @@ public static class RendererDemo26
     {
     }
 
-    // bone 付き SDF 雪だるま。
-    // 腕を振る。
+    // SDF snowman with bones.
+    // It waves its arms.
     static SdfNode CharaModel()
     {
         var body = Sdf.Sphere(0.5f).Move(0, 0.5f, 0)
@@ -110,11 +110,11 @@ public static class RendererDemo26
             Fov = 42,
         });
 
-        // 床 (薄い箱)
+        // Floor (thin box)
         r.Draw(cubeM, Mat4.Translate(new Vec3(0, -0.1f, 0))
             * Mat4.Scale(new Vec3(5.5f, 0.1f, 5.5f)),
             new Draw3dOpts { Tint = Color.Hex(0x76816F) });
-        // 箱・円柱・球
+        // Box, cylinder, sphere
         r.Draw(cubeM, Mat4.Translate(new Vec3(-2.2f, 0.5f, 1.2f))
             * Mat4.RotateY(-t * 0.7f) * Mat4.Scale(new Vec3(0.5f, 0.5f, 0.5f)),
             new Draw3dOpts { Tint = Color.Hex(0xE8A33D) });
@@ -125,7 +125,7 @@ public static class RendererDemo26
             0.55f + Math.Abs((float)Math.Sin(t * 2.0f)) * 0.8f, -1.6f))
             * Mat4.Scale(new Vec3(0.55f, 0.55f, 0.55f)),
             new Draw3dOpts { Tint = Color.Hex(0xE85C5C) });
-        // 半透明の板
+        // Translucent panel
         r.Draw(cubeM, Mat4.Translate(new Vec3(0, 0.9f, 2.6f))
             * Mat4.Scale(new Vec3(1.6f, 0.9f, 0.04f)),
             new Draw3dOpts
@@ -134,12 +134,12 @@ public static class RendererDemo26
                 Blend = Blends.Alpha,
             });
 
-        // 高輝度ランプ (bloom が拾う)
+        // High-brightness lamp (picked up by bloom)
         r.Draw(sphM, Mat4.Translate(new Vec3(-1.9f, 2.6f, -1.9f))
             * Mat4.Scale(new Vec3(0.22f, 0.22f, 0.22f)),
             new Draw3dOpts { Tint = Color.Rgb(5.0f, 4.2f, 2.4f) });
 
-        // skinned キャラ (腕振り)
+        // skinned character (arm waving)
         float wave = (float)Math.Sin(t * 3.0f) * 0.5f;
         var bones = Bones.Pack(charaM.Data, (name, x, y, z) =>
         {

@@ -1,7 +1,7 @@
-// lider が開いて動かすゲームの、保存した版 (lub の App.Use)。編集中の版は DraftGame。
-// ゲームは lider とは別の VM で動き、ゲームの絵を映すウィンドウ (GameView) と同じ大きさの texture に描く。
-// lider はその texture をウィンドウに写し (ScreenView)、上に自分の物を描く。
-// 止める、戻る、進むは、frame ごとに控えた状態と入力 (Lubx.AppTimeline) で行う。
+// The saved version of the game lider opens and runs (lub's App.Use). The edited version is DraftGame.
+// The game runs in a VM separate from lider and draws to a texture the same size as the window showing the game picture (GameView).
+// lider copies that texture into the window (ScreenView) and draws its own things on top.
+// Pause, step back and step forward use the state and input recorded per frame (Lubx.AppTimeline).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -11,85 +11,85 @@ namespace LiderCore;
 
 public static class GameApp
 {
-    // ゲーム (.csproj、ディレクトリ、変換済みの .tcsb)。空なら開かない
+    // The game (.csproj, directory, or compiled .tcsb). If empty, nothing is opened
     public static string Project = "";
-    // 開く module (.tcsb) の path。Project が .tcsb ならそれ、ほかは Build が変換した物。空なら開かない
+    // Path of the module (.tcsb) to open. If Project is a .tcsb, that; otherwise what Build compiled. If empty, nothing is opened
     public static string Module = "";
-    // 保存した版の変換 (Project が .tcsb なら変換しない)
+    // Compile of the saved version (no compile if Project is a .tcsb)
     public static GameBuild Build = new GameBuild("");
-    // 開いたゲーム (最初の Step まで null)
+    // The opened game (null until the first Step)
     public static AppRef? Ref;
-    // ゲームが描く texture (ゲームを映すウィンドウと同じ大きさ)
+    // Texture the game draws to (same size as the window showing the game)
     public static TextureRef? Target;
-    // ゲームを映すウィンドウの画面の上の矩形 (pick の位置を直す) と、入力の位置をゲームの画素に直す写し方
+    // On-screen rectangle of the window showing the game (to correct pick positions) and the mapping from input positions to game pixels
     public static readonly InputMap Map = new InputMap();
     static AppTimeline? timeline;
-    // reload が当たった回数、作り直した回数、最後の build の診断 (前に見た値。変わったら Changed に出す)
+    // Number of applied reloads, number of recreations, and the diagnostic of the last build (values seen last time; changes are reported in Changed)
     static int seenReloads;
     static int seenRestarts;
     static string seenError = "";
-    // 最後の Step が進めたか (module を読めない、OnFrame が失敗した、で false)
+    // Whether the last Step advanced (false if the module could not be loaded or OnFrame failed)
     public static bool Stepped;
-    // ゲームを進めた frame の数 (止めて作り直している frame は数えない)
+    // Number of frames the game advanced (frames spent paused or recreating are not counted)
     public static int Frames;
 
-    // 控える frame の数を決める (0 で控えない)。前の控えは捨てる
+    // Sets the number of frames to record (0 = no recording). Previous records are discarded
     public static void Keep(int frames)
     {
         timeline?.Clear();
         timeline = frames > 0 ? new AppTimeline(frames) : null;
     }
 
-    // 控えた frame を捨て、止めていれば続ける (外から状態を読み込んだ後に呼ぶ。止めたままだと、止めた frame の状態に戻されてしまう)
+    // Discards the recorded frames and resumes if paused (call after loading state from outside; if it stays paused, the state is reverted to the paused frame's state)
     public static void Forget()
     {
         timeline?.Clear();
     }
 
-    // 止めている frame の状態を書き換える (AppTimeline.Edit)。止めていなければ false
+    // Rewrites the state of the paused frame (AppTimeline.Edit). false if not paused
     public static bool Edit(Func<bool> change)
     {
         return timeline != null && Ref != null && timeline.Edit(Ref, change);
     }
 
-    // 控えている frame の数
+    // Number of recorded frames
     public static int Count => timeline != null ? timeline.Count : 0;
-    // 止めている位置 (何個前か。止めていなければ -1)
+    // Paused position (how many frames back; -1 if not paused)
     public static int Position => timeline != null ? timeline.Position : -1;
 
-    // back 個前の frame で止める (控えが無ければ何もしない)
+    // Pauses at the frame back frames ago (does nothing if there is no record)
     public static void Pause(int back)
     {
         timeline?.Pause(back);
     }
 
-    // 止めた frame から続ける
+    // Resumes from the paused frame
     public static void Resume()
     {
         timeline?.Resume();
     }
 
-    // ゲームを最初から作り直す (次の Step の始めに OnInit から始める)
+    // Recreates the game from scratch (starting from OnInit at the beginning of the next Step)
     public static void Restart()
     {
         if (Ref != null)
             App.Restart(Ref);
     }
 
-    // texture の version。大きさが変わったら作り直す (UseTexture は version が同じなら大きさを変えない)
+    // Texture version. Recreated when the size changes (UseTexture does not change the size if the version is the same)
     public static int SizeVersion(int w, int h)
     {
         return w * 16384 + h;
     }
 
-    // ゲームの OnEvent に event を渡す。位置は、前もって Map.Point で渡した絵の中の位置を texture の画素に直す (Map)
+    // Passes an event to the game's OnEvent. The position is the in-picture position passed earlier with Map.Point, converted to texture pixels (Map)
     public static void Send(EventData e)
     {
         if (Ref != null)
             App.SendEvent(Ref, Map.Event(e));
     }
 
-    // ゲームを開く (Project を決めた後に、Step より前に呼ぶ)
+    // Opens the game (call after setting Project and before Step)
     public static void Open(string project)
     {
         Project = project;
@@ -97,17 +97,17 @@ public static class GameApp
         Module = Build.Needed ? "" : project;
     }
 
-    // ゲームを 1 frame 進める。
-    // w と h は絵の画素の数。マウスの位置は、前もって Map.Point で渡す。
-    // keyboard と mouse は、それぞれをゲームに見せるか
-    // Space に置いているか。
-    // 置いていれば、ゲームには見る人を見せる: XR の間は眼をそのまま、XR でなければ lider のカメラ (SpaceVp) を、絵 (target) を描き先にした眼として渡す。
-    // 置いていなければ、ゲームからは XR が動いていないように見え、自分のカメラで絵に描く
+    // Advances the game 1 frame.
+    // w and h are the picture size in pixels. The mouse position is passed beforehand with Map.Point.
+    // keyboard and mouse say whether each is shown to the game
+    // Whether it is placed in Space.
+    // If it is, the game sees the viewer: during XR the eyes as they are, otherwise lider's camera (SpaceVp), passed as an eye whose render target is the picture (target).
+    // If it is not, XR looks inactive to the game, and the game draws to the picture with its own camera
     public static bool InSpace;
-    // lider が Space を見ているカメラの view-projection (Xr.View と同じ書き方: 行優先、前方 -Z。Lider が毎 frame 決める)
+    // view-projection of the camera with which lider views Space (same format as Xr.View: row-major, forward -Z; Lider sets it every frame)
     public static float[]? SpaceVp;
 
-    // ゲームに見せる見る人を、input に書く
+    // Writes the viewer shown to the game into input
     public static void ShowViewer(StepInput input, bool inSpace, TextureRef target)
     {
         if (!inSpace)
@@ -117,7 +117,7 @@ public static class GameApp
         }
         if (Xr.Active() || SpaceVp == null)
             return;
-        // 眼は 2 つ要るので、右の眼は小さな捨ての描き先にする
+        // Two eyes are required, so the right eye gets a small throwaway render target
         var spare = Gfx.UseTexture("lider_game_spare_eye", 8, 8, Gfx.PixelFormat.Rgba8, null, 1, new TextureOpts { Target = true });
         if (spare == null)
             return;
@@ -151,20 +151,20 @@ public static class GameApp
         }
     }
 
-    // 前に呼んでから、ゲームに起きたこと
+    // What happened to the game since the previous call
     public class Change
     {
-        // reload が当たったか、作り直した (保存した版が動いている)
+        // A reload was applied or the game was recreated (the saved version is running)
         public bool Reloaded;
-        // 作り直した
+        // Recreated
         public bool Restarted;
-        // 当てた差分の知らせ (無ければ空)
+        // Notice about the applied diff (empty if none)
         public string Notes = "";
-        // 新しく届いた build の診断 (無ければ空)
+        // Newly arrived build diagnostic (empty if none)
         public string BuildError = "";
     }
 
-    // Step の後に呼ぶ
+    // Call after Step
     public static Change Changed()
     {
         var change = new Change();
@@ -180,12 +180,12 @@ public static class GameApp
         {
             change.Reloaded = true;
             change.Restarted = true;
-            // 作り直した VM に、前の VM の状態は読み込めない
+            // The previous VM's state cannot be loaded into a recreated VM
             timeline?.Clear();
         }
         if (status.BuildError != seenError && status.BuildError != "")
             change.BuildError = status.BuildError;
-        // lider が変換したときの診断と、当てた差分の知らせ (知らせは、ゲームが差分を読んだ frame に渡す)
+        // Diagnostics from lider's compile and notices about applied diffs (notices are passed on the frame the game read the diff)
         if (Build.PendingErrors != "")
         {
             change.BuildError = Build.PendingErrors;
@@ -202,7 +202,7 @@ public static class GameApp
         return change;
     }
 
-    // 保存した版の値を読む (lider が見る版の値は Watched で読む)
+    // Reads values of the saved version (values of the version lider watches are read with Watched)
     public static List<InspectNode> Inspect(string path, int offset, int count)
     {
         return Ref != null ? Sys.Inspect(path, offset, count, Ref) : new List<InspectNode>();

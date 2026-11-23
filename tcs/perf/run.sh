@@ -121,7 +121,7 @@ for workload_index in "${!kernels[@]}"; do
   done
 done
 
-# 結果は stdout に出す
+# Results go to stdout
 printf '# perf: PC 結果 (native)\n\n'
 printf -- '- 測定: kernel ごとに 7 回実行した median（ms/frame）\n'
 printf -- '- 正当性: 各 workload について全 7 run の FNV-1a digest 一致を確認\n\n'

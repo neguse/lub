@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// string.CompareOrdinal は 0 との比較だけで使い、符号は .NET の ordinal (UTF-16 の
-// code unit の順、null は他のどの string より小さい) と同じ。UTF-8 の byte の順と
-// UTF-16 の順が逆になる U+E000-U+FFFF と U+10000 以上の組、同じ上位 surrogate を
-// 持つ組を含む。期待値は同じ program を CoreCLR で実行した stdout
+// string.CompareOrdinal is used only in comparisons with 0, and its sign matches .NET's ordinal (UTF-16
+// code unit order, null is less than any other string). Includes pairs where UTF-8 byte order and
+// UTF-16 order are reversed (U+E000-U+FFFF against U+10000 and above), and pairs that have the same high surrogate.
+// The expected values are the stdout of running the same program on CoreCLR
 public class CompareOrdinalDifferentialTests
 {
     [CFact]

@@ -1,6 +1,6 @@
-// エディタの core の状態 (Lite XL の core/init.lua の、lider が使う所)。
-// 窓ごとの DocView、どの view に入力が入るか (active)、CommandView と NagView、開いた doc、clipboard を持つ。
-// active の view は番号で持つ: 1 からは窓の view、CommandId は CommandView、NagId は NagView、0 は無し。
+// State of the editor core (the parts lider uses of Lite XL's core/init.lua).
+// Holds the DocView per window, which view receives input (active), CommandView and NagView, open docs, and the clipboard.
+// The active view is held as a number: from 1 for window views, CommandId for CommandView, NagId for NagView, 0 for none.
 using System;
 using System.Collections.Generic;
 
@@ -21,26 +21,26 @@ public static class EditorCore
     static int nextActive = NoView;
     public static CommandView Command = new CommandView();
     public static NagView Nag = new NagView();
-    // command (Ctrl+N、Ctrl+O、Ctrl+P) が開いた doc の view (lider がまだ窓にしていないもの)
+    // Views of docs opened by commands (Ctrl+N, Ctrl+O, Ctrl+P) that lider has not yet put into windows
     public static readonly List<int> Opened = new List<int>();
-    // 消すと答えた file の view
+    // Views of files the user chose to delete
     public static readonly List<int> Deleted = new List<int>();
-    // どこかに描き直す所ができたか
+    // Whether something somewhere needs redrawing
     public static bool Redraw;
     public static string LastError = "";
-    // command view などが新しく開く物の大きさ (最後に描いた大きさ)
+    // Size of things newly opened by the command view and others (the last drawn size)
     public static float RootW = 800;
     public static float RootH = 600;
-    // 押している修飾 key
+    // Modifier keys held down
     public static bool Ctrl;
     public static bool Shift;
     public static bool Alt;
     public static bool AltGr;
-    // OS か jamo の変換中の文字が本文にあるか
+    // Whether the text contains composing text from the OS or jamo
     public static bool ImeEditing;
-    // 前の key が command になったか (その key が打った文字を捨てる)
+    // Whether the previous key became a command (the character typed by that key is discarded)
     public static bool DidKeymap;
-    // 切り取りと貼り付け (選択ごとの物と、全体の文字)
+    // Cut and paste (per selection, and the whole text)
     public static string Clipboard = "";
     public static List<string> CursorClipboard = new List<string>();
     public static List<bool> CursorClipboardWholeLine = new List<bool>();
@@ -70,7 +70,7 @@ public static class EditorCore
         return Active == v.Id && Active > 0;
     }
 
-    // 入力が入る DocView (CommandView の入力欄も含む)
+    // The DocView that receives input (including the CommandView input field)
     public static DocView? ActiveDocView()
     {
         if (Active == CommandId)
@@ -80,7 +80,7 @@ public static class EditorCore
         return null;
     }
 
-    // 入力が入る窓の DocView (CommandView を含まない)
+    // DocView of the window that receives input (not including CommandView)
     public static DocView? ActiveWindowView()
     {
         if (Active > 0 && Views.TryGetValue(Active, out var v))
@@ -97,7 +97,7 @@ public static class EditorCore
 
     public static void SetActive(int view)
     {
-        // 変換中の文字は今の view に確定する
+        // Commits the composing text to the current view
         if (Ime.Composing)
             Ime.Commit();
         else if (ImeEditing)
@@ -117,7 +117,7 @@ public static class EditorCore
         Active = view;
     }
 
-    // NagView が閉じたときに戻る view
+    // View to return to when NagView closes
     public static void RestoreActive()
     {
         SetActive(nextActive != NoView ? nextActive : LastActive);
@@ -129,7 +129,7 @@ public static class EditorCore
         VisitedFiles.Insert(0, filename);
     }
 
-    // file の doc (開いていればそれ、無ければ読む。名前が null なら名前の無い新しい doc)
+    // Doc of file (the open one if any, otherwise reads it; a new unnamed doc if the name is null)
     public static Doc OpenDoc(string? filename)
     {
         var newFile = filename == null || !Paths.Exists(filename);
@@ -158,7 +158,7 @@ public static class EditorCore
         return nextView;
     }
 
-    // command が開いた doc を窓の view にして、lider に渡す
+    // Turns docs opened by commands into window views and passes them to lider
     public static void OpenDocView(Doc doc)
     {
         var id = AddView(doc);
@@ -174,11 +174,11 @@ public static class EditorCore
             pair.Value.Update();
     }
 
-    // key を押した。command になったら true
+    // A key was pressed. true if it became a command
     public static void KeyPressed(string key)
     {
         var res = false;
-        // 変換中の文字があれば、key は変換に使う
+        // If there is composing text, the key is used for the composition
         if (!ImeEditing)
             res = Keymap.OnKeyPressed(key);
         else
@@ -206,7 +206,7 @@ public static class EditorCore
         InsertText(text);
     }
 
-    // 打った文字を active の view に入れる (前の key を見ない)
+    // Inserts typed text into the active view (ignores the previous key)
     public static void InsertText(string text)
     {
         if (Active == NagId)

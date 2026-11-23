@@ -1,1 +1,1 @@
-// TestOsk が開く file。
+// The file TestOsk opens.

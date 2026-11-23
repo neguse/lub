@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// 確保は malloc、解放は木ごとに free (GC の無い言語の素直な書き方)
+// Allocates with malloc and frees per tree (the straightforward way in a
+// language without GC)
 typedef struct Node {
   struct Node *left, *right;
 } Node;
@@ -66,7 +67,8 @@ static int run(int n, int print) {
 int main(void) {
   const char *s = getenv("BENCH_N");
   int n = s ? atoi(s) : 10;
-  // BENCH_REPS 回くり返す。次の回の入力を前の回の結果に依存させ、compiler が回を省けないようにする (結果は -1 にならない)
+  // Repeats BENCH_REPS times. Each repetition's input depends on the previous
+  // result so the compiler cannot skip repetitions (the result is never -1)
   const char *rs = getenv("BENCH_REPS");
   int reps = rs ? atoi(rs) : 1;
   int prev = 0;

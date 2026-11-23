@@ -1,8 +1,8 @@
-// runtime の memory を指す view (Bytes と数値配列) は、返した frame の終わりまで有効。
-// 同じ frame の中で同じ API を呼び直しても、前の呼び出しの view は前の中身のまま読める。
-// 次の frame に持ち越した Bytes は、中身を読むと stale の error になる。
-// Length は作った時の長さを持つ field で、読んでも error にならない。
-// 数値配列は .NET と tcs VM の player が List に写して返すので、持ち越しても読める。
+// Views that point into runtime memory (Bytes and numeric arrays) are valid until the end of the frame that returned them.
+// Even if the same API is called again in the same frame, the view from the previous call can still be read with its previous contents.
+// Reading the contents of Bytes carried over into the next frame is a stale error.
+// Length is a field that holds the length at creation time, and reading it is not an error.
+// .NET and the tcs VM player copy numeric arrays into a List before returning them, so they can be read even when carried over.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -10,7 +10,7 @@ using Lub;
 public static class TestViewLifetime
 {
     const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
-    // "い" と "ほ" の code point
+    // Code points of "い" and "ほ"
     const int cpI = 0x3044;
     const int cpHo = 0x307B;
 
@@ -23,7 +23,7 @@ public static class TestViewLifetime
         App.Config(new ConfigOpts { Backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "sdlgpu", Width = 320, Height = 180 });
     }
 
-    // view の中身を自分の memory に写す (比較用)
+    // Copies the contents of a view into its own memory (for comparison)
     static List<float> Copy(List<float> view)
     {
         var o = new List<float>();
@@ -40,7 +40,7 @@ public static class TestViewLifetime
         return o;
     }
 
-    // ASCII の中身を文字列にする (view の中身を比べるため)
+    // Turns ASCII contents into a string (to compare the contents of views)
     static string Text(Bytes view)
     {
         var o = "";
@@ -136,7 +136,7 @@ public static class TestViewLifetime
         return nodes;
     }
 
-    // frame 1: 同じ API を続けて呼び、前の view が前の中身のまま読めること
+    // frame 1: calls the same API in succession, and checks that the previous view can still be read with its previous contents
     static bool FirstFrame()
     {
         Io.LoadBytes(fontPath, out var ttf, out _, out _, out _);
@@ -202,8 +202,8 @@ public static class TestViewLifetime
             FirstFrame();
             return;
         }
-        // frame 2 以降: 前の frame の view は読むと stale の error。
-        // 期待するエラーは 1 回の callback に 1 つなので、読み方ごとに frame を分ける
+        // frame 2 onward: reading a view from the previous frame is a stale error.
+        // There is one expected error per callback, so each way of reading gets its own frame
         var s = step;
         step++;
         if (s == 0)

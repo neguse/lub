@@ -1,12 +1,12 @@
-// lider の実行した行の記録 (TraceLog) を確かめる。
-//   - "file:line" の key は最後の ':' で分け (file の path に ':' があってもよい)、読めない key は捨てる
-//   - Frame は Take ごとに 1 つ進み、Age は通ってから何 frame か (Fade frame で -1)
-//   - Active は file のどこかを Fade frame の間に通ったか
-//   - 代入した値の site "file:line:col:代入先" は後ろの 3 つの ':' で分け、ValuesAt は行の値を桁の順に返す (Fade frame で消える)。
-//     ChangedAt は文字が変わった frame (初めて来た値は変わったとみなさない)、Steady は変わる前の文字が続いた frame の数。数なら直近 Fade frame の値を Samples に持つ
-//   - 書き方が違っても後ろが '/' の境目で一致すれば同じ file で、後から来た file も引き当て直す
-//   - 一致する file が幾つもあれば、同じ path、一番長く一致する 1 つの順に選び、選べなければどれとも決めない。
-//     縮小図の一覧から引く Workspace.Resolve も同じに選ぶ
+// Checks lider's record of executed lines (TraceLog).
+//   - A "file:line" key is split at the last ':' (the file path may contain ':'), and keys that cannot be read are discarded
+//   - Frame advances by 1 per Take, and Age is how many frames ago the line ran (-1 after Fade frames)
+//   - Active is whether any part of the file ran within Fade frames
+//   - The site "file:line:col:target" of an assigned value is split at the last 3 ':', and ValuesAt returns the values of a line in column order (they disappear after Fade frames).
+//     ChangedAt is the frame where the text changed (a value seen for the first time does not count as changed), and Steady is the number of frames the text before the change lasted. For numbers, the values of the most recent Fade frames are kept in Samples
+//   - Even if written differently, paths whose tails match at '/' boundaries are the same file, and files that come later are matched again
+//   - If several files match, it chooses in the order of the same path, then the single longest match, and if it cannot choose, it picks none of them.
+//     Workspace.Resolve, which looks up from the minimap list, chooses the same way
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -44,7 +44,7 @@ public static class TestTrace
         App.Config(new ConfigOpts { Width = 640, Height = 360 });
     }
 
-    // 最初の frame で 1 度だけ確かめる
+    // Check only once on the first frame
     static void TestFrame(float dt)
     {
         if (ran)
@@ -82,7 +82,7 @@ public static class TestTrace
         Check(log.Age("a/Foo.cs", 3) == -1, "line 3 has age " + log.Age("a/Foo.cs", 3) + " after fading, want -1");
         Check(!log.Active("a/Foo.cs"), "a/Foo.cs is still active after fading");
 
-        // 引き当てられなかった path も、その file が来たら引き当て直す
+        // A path that could not be matched is matched again when its file comes
         Check(log.Age("/r/b/Bar.cs", 1) == -1, "b/Bar.cs has an age before any hit");
         log.Hit("b/Bar.cs:1");
         Check(log.Age("/r/b/Bar.cs", 1) == 0, "b/Bar.cs was not found after its first hit");
@@ -112,14 +112,14 @@ public static class TestTrace
         Check(vs.Count == 2 && vs[1].ChangedAt == log.Frame, "the change to 8.5 is at " + vs[1].ChangedAt + ", want " + log.Frame);
         Check(vs.Count == 2 && vs[1].Steady == 2, "7 lasted " + vs[1].Steady + " frames before the change, want 2");
         Check(vs.Count == 2 && vs[1].Count == 3 && vs[1].Samples[2] == 8.5f && vs[1].SampleAt[2] == log.Frame, "8.5 was not sampled after 7 and 7");
-        // 代入が止まった値は Fade frame で消える。a は frame 1、b.Hp は frame 3 が最後
+        // Values whose assignments stopped disappear after Fade frames. The last frame is frame 1 for a and frame 3 for b.Hp
         for (var i = 0; i < TraceLog.Fade - 2; i++)
             log.Take();
         Check(log.ValuesAt("a/Foo.cs", 3).Count == 1, "line 3 has " + log.ValuesAt("a/Foo.cs", 3).Count + " values after a faded, want 1");
         for (var i = 0; i < 2; i++)
             log.Take();
         Check(log.ValuesAt("a/Foo.cs", 3).Count == 0, "values of line 3 did not fade");
-        // 数の値は Fade 個まで、古いものから上書きする
+        // Numeric values are kept up to Fade, overwriting the oldest first
         for (var i = 0; i < TraceLog.Fade + 5; i++)
         {
             log.Take();
@@ -150,7 +150,7 @@ public static class TestTrace
         Check(w.Resolve("p/Same.cs") == root + "/p/Same.cs", "Resolve took p/Same.cs as " + w.Resolve("p/Same.cs"));
     }
 
-    // 最初の失敗だけを出して終わる
+    // Report only the first failure and exit
     static void Check(bool cond, string message)
     {
         if (cond || failed)

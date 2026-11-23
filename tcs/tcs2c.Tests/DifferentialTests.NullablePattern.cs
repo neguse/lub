@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// struct 型の pattern (型 / 宣言 / 型を書いた property pattern) を struct と
-// `T?` (Nullable の struct) の入力に当てるとき。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// Applying struct-type patterns (type / declaration / property pattern with a type) to struct and
+// `T?` (Nullable struct) inputs.
+// The expected values are the stdout of running the same program on CoreCLR
 public class NullablePatternDifferentialTests
 {
     [CFact]
@@ -79,8 +79,8 @@ public class NullablePatternDifferentialTests
         Assert.Equal("1,0,1\n7,2\n2,109,-1\nzero,pt,none\n4,9\n1,1\n3\n2:1", output);
     }
 
-    // and の右辺は左辺が絞った struct の値を照合する。同名の designation を持つ
-    // arm は arm ごとに copy を束縛する (前の arm の when での変異を見ない)
+    // The right side of and matches the struct value narrowed by the left side. Arms that have
+    // designations with the same name bind a copy per arm (they do not see mutations made in a previous arm's when)
     [CFact]
     public void StructPattern_AndNarrowingAndPerArmCopy()
     {

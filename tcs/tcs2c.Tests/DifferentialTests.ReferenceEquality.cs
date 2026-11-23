@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// object / interface / 型引数どうしの ==/!= は参照の比較 (record の値の等価を呼ばない)。
-// 静的型が record なら値の等価。期待値は同じ program を CoreCLR で実行した stdout
+// ==/!= between object / interface / type arguments is a reference comparison (does not call record value equality).
+// If the static type is a record, it is value equality. The expected values are the stdout of running the same program on CoreCLR
 public class ReferenceEqualityDifferentialTests
 {
     [CFact]

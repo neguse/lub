@@ -47,7 +47,8 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
   *out = 42;
   return LUB_OK;
 }
-// 偽の Bindings: 最初の block は足りないふりをして、glue が block を大きくしてやり直すことを見る。
+// Fake Bindings: the first block pretends to be too small, to check that the
+// glue enlarges the block and retries.
 struct LubBindings {
   int32_t scale;
   int seen;
@@ -203,18 +204,6 @@ LubStatus lub_io_interleave_pncm(LubContext *ctx, const LubMeshData *mesh,
   *out_count = 2;
   return LUB_OK;
 }
-LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
-                             int32_t *data_count, int32_t *version,
-                             int32_t *status, LubStr *error) {
-  (void)ctx;
-  (void)path;
-  (void)error;
-  *data = NULL;
-  *data_count = 0;
-  *version = 0;
-  *status = LUB_IO_STATUS_PENDING;
-  return LUB_OK;
-}
 LubStatus lub_font_glyph(LubContext *ctx, const uint8_t *ttf, int32_t ttf_len,
                          int32_t codepoint, float px, LubGlyphBitmap *out,
                          bool *has) {
@@ -242,7 +231,8 @@ LubHandle lub_phys2d_find_body(LubContext *ctx, LubHandle world, LubStr key) {
   assert(world == 50 && key.len == 1);
   return 60;
 }
-// 値で来た点を写して返す (WorldPoint は (2x, y + 10)、LocalPoint はその逆)
+// Copies and returns the point passed by value (WorldPoint is (2x, y + 10),
+// LocalPoint is its inverse)
 LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body, LubVec2d p,
                                  LubVec2d *out) {
   (void)ctx;

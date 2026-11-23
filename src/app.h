@@ -16,15 +16,16 @@
 
 typedef enum { APP_PHASE_PRE_BACKEND, APP_PHASE_POST_BACKEND } AppPhase;
 
-// App.Config で Width / Height を指定しないときの window の大きさ。
+// Window size when App.Config does not specify Width / Height.
 #define LUB_DEFAULT_WINDOW_W 1280
 #define LUB_DEFAULT_WINDOW_H 720
 
 struct App;
-// 検査の口 (Sys.TakeTrace / TakeValues / Inspect*)。
-// 結果の配列と文字列は次の同じ呼び出しまで有効。
+// Inspection entry points (Sys.TakeTrace / TakeValues / Inspect*).
+// Result arrays and strings are valid until the next call of the same function.
 typedef struct LubDebugHooks {
-  // key に覚えた個体と同じ class の別の個体だけが通った行を除く (key が空なら全部)
+  // Exclude lines passed only by other instances of the same class as the
+  // instance remembered for key (all lines if key is empty)
   void (*take_trace)(struct App *app, LubStr key, const LubStr **out,
                      int32_t *count);
   void (*take_values)(struct App *app, const LubTraceValue **out,
@@ -33,32 +34,37 @@ typedef struct LubDebugHooks {
                   const LubInspectNode **out, int32_t *n);
   void (*inspect_pin)(struct App *app, LubStr key, LubStr path);
   bool (*inspect_pinned)(struct App *app, LubStr key, LubStr id);
-  // path の値を text に書き換える (Sys.InspectSet)。書けなければ false で、理由を error (cap byte) に書く
+  // Update the value at path to text (Sys.InspectSet). If it cannot be written,
+  // return false and write the reason to error (cap bytes)
   bool (*inspect_set)(struct App *app, LubStr path, LubStr text, char *error,
                       int32_t cap);
-  // 行ごとの負荷を数え始める・止める、前に取り出してからの行の負荷と GC の止まり、frame の境目をまたいで持ち越す物
+  // Start / stop counting per-line cost, per-line cost and GC pauses since the
+  // last take, and objects carried over across frame boundaries
   void (*profile_lines)(struct App *app, bool on);
   void (*take_profile)(struct App *app, const LubProfileLine **out,
                        int32_t *count);
   void (*take_gc_pauses)(struct App *app, const LubGcPause **out,
                          int32_t *count);
   void (*take_kept)(struct App *app, const LubKeptObject **out, int32_t *count);
-  // 負荷を数えている間の今の --trace の行 ("file:line")。無ければ false
+  // The current --trace line ("file:line") while cost is being counted. false
+  // if none
   bool (*profile_site)(struct App *app, char *out, int32_t cap);
-  // static から辿れる class の個体 (Sys.InspectInstances)
+  // Class instances reachable from statics (Sys.InspectInstances)
   void (*inspect_instances)(struct App *app, int32_t max_depth,
                             int32_t max_children,
                             const LubInspectInstance **out, int32_t *n);
 } LubDebugHooks;
 
-// process に 1 つの部分: SDL、window と画面の大きさ、backend の選択、gamepad、frame の時計。
-// App (VM ごとの context) は proc でこれを指す。
+// The per-process part: SDL, window and screen size, backend choice, gamepads,
+// frame clock. App (the per-VM context) points to this via proc.
 typedef struct Process {
   SDL_Window *window;
   int last_w, last_h; // last extents seen by process_frame_begin
-  int cfg_w, cfg_h;   // App.Config の Width / Height。0 = 既定維持
-  // > 0: main target をこの大きさで描く (metal backend の capture run)。
-  // 画面より大きい window は縮められ、Retina では pixel が倍になるので、window の実 pixel で描くと capture の大きさが機材で変わる。
+  int cfg_w, cfg_h;   // Width / Height from App.Config. 0 = keep the default
+  // > 0: draw the main target at this size (metal backend capture runs).
+  // A window larger than the screen gets shrunk, and on Retina the pixels are
+  // doubled, so drawing at the window's physical pixels makes the capture size
+  // depend on the machine.
   int fixed_w, fixed_h;
   // Set by lub_host_translate_event on SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED.
   // The backend's begin_frame checks this and rebuilds its swapchain before
@@ -87,51 +93,63 @@ typedef struct Process {
   double fixed_frame_dt;
   uint64_t frame_prev_counter;
   // updated once per second after backend end_frame/present.
-  // --fixed-dt の間は壁時計に依らず、fixed dt の逆数 (1e-3 に丸め) を 1 秒分の frame ごとに更新する。
+  // With --fixed-dt, it does not depend on the wall clock and is updated to the
+  // reciprocal of fixed dt (rounded to 1e-3) every second's worth of frames.
   double actual_fps;
   uint64_t fps_fixed_ns;
   uint64_t fps_last_ns;
   int fps_frame_count;
 
-  // 画面の frame の番号 (backend、画面の capture、GPU の時刻が使う)。
-  // App の frame_index はゲームから見える frame の番号で、別に数える。
+  // Screen frame number (used by the backend, screen capture, and GPU timing).
+  // The App's frame_index is the frame number the game sees and is counted
+  // separately.
   uint64_t frame_index;
-  // process_frame_begin から process_frame_submit までの間 true (backend の begin_frame から end_frame まで)。
+  // true from process_frame_begin until process_frame_submit (from the
+  // backend's begin_frame to end_frame).
   bool in_frame;
-  // 画面の capture (--capture)
+  // Screen capture (--capture)
   CaptureState capture;
-  bool
-      capture_then_exit; // set by process_frame_submit after a successful capture
-  // window の close と XR の session の終わりが立てる (App.Quit は App の quit_requested)
+  bool capture_then_exit; // set by process_frame_submit after a successful
+                          // capture
+  // Set when the window is closed or the XR session ends (App.Quit uses the
+  // App's quit_requested)
   bool quit_requested;
-  // 最後に発行した resource の handle。
-  // 同じ process の app が番号を分け合うので、ある app の handle は別の app の resource を指さない
+  // The last resource handle issued.
+  // Apps in the same process share the numbering, so one app's handle never
+  // points to another app's resource
   int32_t res_next_handle;
 } Process;
 
-// 他の app を開いて動かす口 (App.Use / App.Step、api_app.c)。tcs VM の player が置く。
+// Entry points to open and run other apps (App.Use / App.Step, api_app.c). Set
+// by the tcs VM player.
 typedef struct LubAppHooks {
-  // module (.tcsb) の entry を child の上に開き、OnInit を呼ぶ。
-  // module を読めなくても player の状態は返す (書き直されるのを待つ)。NULL は memory が無いときだけ
+  // Open the entry of the module (.tcsb) on child and call OnInit.
+  // Returns the player state even if the module cannot be loaded (waits for it
+  // to be rewritten). NULL only when out of memory
   void *(*open)(struct App *owner, struct App *child, const char *module,
                 const char *entry);
-  // OnFrame(dt) を呼ぶ。module が無いか OnFrame が失敗したら false
+  // Call OnFrame(dt). false if there is no module or OnFrame fails
   bool (*step)(void *player, float dt);
-  // OnQuit を呼び、player の状態を捨てる
+  // Call OnQuit and discard the player state
   void (*close)(void *player);
-  // OnEvent(e) を呼ぶ。module が無いか OnEvent が無ければ何もせず true。失敗したら false
+  // Call OnEvent(e). If there is no module or no OnEvent, do nothing and return
+  // true. false on failure
   bool (*event)(void *player, const LubEventData *e);
-  // 今の様子 (App.Status)。out は 0 で埋めて渡す。文字列は次の hook の呼び出しまで有効
+  // Current status (App.Status). out is passed zero-filled. Strings are valid
+  // until the next hook call
   void (*status)(void *player, LubAppStatus *out);
-  // 状態を byte 列に書く。bytes は malloc で確保し、呼ぶ側が free する。
-  // 書けなければ false で、理由を error に書く
+  // Write the state to a byte array. bytes is allocated with malloc, and the
+  // caller frees it. If it cannot be written, return false and write the reason
+  // to error
   bool (*save)(void *player, uint8_t **bytes, size_t *size, char *error,
                size_t error_size);
-  // byte 列の状態を読み込む。断ったら false で、状態は変えず、理由を error に書く
+  // Load the state from a byte array. If refused, return false, leave the state
+  // unchanged, and write the reason to error
   bool (*load)(void *player, const uint8_t *bytes, size_t size, char *error,
                size_t error_size);
-  // .csproj の変換の入力を集める (App.Inputs)。
-  // 集められなければ false。文字列は次の呼び出しまで有効。.csproj を読めない player では NULL
+  // Collect the inputs for compiling the .csproj (App.Inputs).
+  // false if they cannot be collected. Strings are valid until the next call.
+  // NULL in players that cannot read .csproj
   bool (*inputs)(const char *csproj, LubProjectInputs *out);
 } LubAppHooks;
 
@@ -143,88 +161,100 @@ typedef struct App {
   ResTable res;
   PhysState phys;
   Phys3dState phys3;
-  // lub_audio_* の初回呼び出しで lazy に生成される (デバイス起動込み)。
-  // NULL のままなら音を一度も使っていない。
+  // Created lazily on the first lub_audio_* call (including starting the
+  // device). If it is still NULL, audio has never been used.
   AudioState *audio;
   PipelineCache pip_cache;
   uint64_t frame_index;
-  // callback (OnFrame / OnEvent) の呼び出しごとに 1 進む数。
-  // 同じ key の違う version の宣言が同じ呼び出しの中か (矛盾か) を見る。
-  // 0 は「まだ宣言していない」に使うので 1 から始める。
+  // A counter that advances by 1 on each callback call (OnFrame / OnEvent).
+  // Used to check whether declarations of different versions for the same key
+  // are in the same call (a contradiction). 0 is used for "not declared yet",
+  // so it starts at 1.
   uint64_t declare_epoch;
-  // resource の寿命を数える frame 番号。
-  // OnFrame が error で終わった frame (VM が無い frame を含む) では進まないので、直している間は sweep されない。
+  // Frame number used to count resource lifetimes.
+  // It does not advance on frames where OnFrame ended in an error (including
+  // frames without a VM), so nothing is swept while the code is being fixed.
   int64_t resource_frame;
 
   DigestState digest;  // --digest (host opts)
-  bool quit_requested; // App.Quit が立てる
-  int32_t exit_code;   // Quit の code (0 = 成功)
-  // App.Restart が立て、player が frame の終わりに作り直す
+  bool quit_requested; // Set by App.Quit
+  int32_t exit_code;   // Quit code (0 = success)
+  // Set by App.Restart; the player recreates it at the end of the frame
   bool restart_requested;
 
-  // Input.* が読む入力 (input.h)。
+  // Input read by Input.* (input.h).
   InputState input;
 
-  // 宣言 (use* / snd / readback の poll) が途切れた resource を何 frame 後に破棄するか。
-  // 既定 120、0 で破棄しない。
-  // app_frame_end が last_seen_frame が (resource_frame - resource_sweep_after_frames) より古い entry を捨てる。
-  // OnInit の Config で変えられる。
+  // How many frames after its declarations (use* / snd / readback poll) stop a
+  // resource is destroyed. Default 120; 0 never destroys. app_frame_end drops
+  // entries whose last_seen_frame is older than (resource_frame -
+  // resource_sweep_after_frames). Can be changed with Config in OnInit.
   int resource_sweep_after_frames;
 
   // Default readback queue depth for Gfx.Readback(key) queues. Configurable
   // via App.Config (ReadbackDepth) during OnInit.
   int readback_depth;
-  // readback の届く frame を保証するモード (ConfigOpts.ReadbackFixedLatency、起動オプション --readback-fixed-latency)。
-  // api_gfx.c が使う。
+  // Mode that guarantees the frame in which readbacks arrive
+  // (ConfigOpts.ReadbackFixedLatency, startup option --readback-fixed-latency).
+  // Used by api_gfx.c.
   bool readback_fixed_latency;
 
-  // C API (include/lub/lub_api.h) の状態。
-  // last_error は直近の LUB_ERROR の message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
+  // State for the C API (include/lub/lub_api.h).
+  // last_error is the message of the latest LUB_ERROR, and readbacks are the
+  // readback queues declared by key (owned by api_gfx.c).
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
   struct GfxFrameRanges
-      *frame_ranges;            // このフレームの FrameBuffer (api_gfx.c 所有)
-  struct AudioSnds *audio_snds; // key で宣言する snd (api_audio.c 所有)
-  struct IoCache *io_cache;     // lub_io_* / lub_png_load の file cache
-  // frame 有効の view の実体 (readback の pixel、audio_decode の PCM、font / mesh の結果など)。
-  // app_frame_end が各 free_fn で解放する。
+      *frame_ranges; // FrameBuffers of this frame (owned by api_gfx.c)
+  struct AudioSnds *audio_snds; // snds declared by key (owned by api_audio.c)
+  struct IoCache *io_cache;     // File cache for lub_io_* / lub_png_load
+  // Backing data of frame-scoped views (readback pixels, audio_decode PCM, font
+  // / mesh results, etc.). app_frame_end releases each with its free_fn.
   struct FrameGarbage *frame_garbage;
   int frame_garbage_count, frame_garbage_cap;
 
-  // VM を作り直した後の OnInit の間だけ true。
-  // backend の後なので、App.Config は backend と window の大きさを変えずに他の項目だけ効かせる
+  // true only during OnInit after the VM is recreated.
+  // This is after the backend starts, so App.Config applies only the other
+  // settings without changing the backend or window size
   bool entry_restarting;
-  // player が持つ検査の口 (tcs VM の player が置く。無ければ Sys.TakeTrace などは空を返す)
+  // Inspection entry points held by the player (set by the tcs VM player. If
+  // missing, Sys.TakeTrace and others return empty)
   const struct LubDebugHooks *debug_hooks;
-  // 検査の口に渡る player の状態 (口の関数が app から引く)
+  // Player state passed to the inspection entry points (the entry point
+  // functions look it up from app)
   void *debug_user;
-  // 開いた側が控えた入力で step している間だけ true (StepInput.Replay)。
-  // 同じ frame を作り直している間なので、音は鳴らさない
+  // true only while the opener steps with recorded input (StepInput.Replay).
+  // The same frame is being recreated, so do not play sound
   bool replaying;
-  // pass の GPU の時間を数えているか (Sys.ProfileLines) と、数え始める画面の frame (src/gpu_time.c)
+  // Whether the GPU time of passes is being counted (Sys.ProfileLines), and the
+  // screen frame where counting starts (src/gpu_time.c)
   bool gpu_time_on;
   uint64_t gpu_time_from;
-  // Gfx.Pick の状態 (pick.c 所有、最初の要求で作る)。
+  // Gfx.Pick state (owned by pick.c, created on the first request).
   struct PickState *pick;
-  // Gfx.Pick が記録する draw の呼び出し元を書く関数と、その引数 (player が pick_set_sites で立てる、pick.h)。
-  // NULL なら PickHit.Site は空。
+  // Function that writes the caller of a draw recorded by Gfx.Pick, and its
+  // argument (set by the player with pick_set_sites, pick.h). If NULL,
+  // PickHit.Site is empty.
   void (*pick_sites)(void *user, char *out, size_t cap);
   void *pick_sites_user;
 
-  // App.Use で開いた app の表 (api_app.c 所有) と、開く口。
+  // Table of apps opened with App.Use (owned by api_app.c), and the entry
+  // points to open them.
   struct OpenApps *open_apps;
   const LubAppHooks *app_hooks;
-  // この app を App.Use で開いた app (window に描く app は NULL)。
+  // The app that opened this app with App.Use (NULL for the app that draws to
+  // the window).
   struct App *opened_by;
-  // 開かれた app の main の描き先 (App.Step の間だけ。それ以外は 0)。
-  // main_w / main_h は最後の Step の target の大きさで、Gfx.Size が返す。
+  // Main render target of an opened app (only during App.Step. 0 otherwise).
+  // main_w / main_h are the target size of the last Step, returned by Gfx.Size.
   uintptr_t main_color, main_depth;
   SglPixelFormat main_fmt;
   int main_w, main_h;
-  // 開かれた app に XR を見せないか (StepInput.Xr が false の Step の間)。
+  // Whether XR is hidden from an opened app (during a Step where StepInput.Xr
+  // is false).
   bool xr_hidden;
-  // 開いた app が用意した XR の眼 (StepInput.XrTargets を渡した Step の間だけ)。
-  // 描き先と depth、大きさ、view-projection。
+  // XR eyes provided by the opener (only during a Step that passed
+  // StepInput.XrTargets). Render target and depth, size, view-projection.
   bool xr_given;
   uintptr_t xr_color[2], xr_depth[2];
   SglPixelFormat xr_fmt[2];
@@ -232,25 +262,30 @@ typedef struct App {
   float xr_vp[2][16];
 } App;
 
-// SDL_Init の後に呼ぶ。backend の既定を決め、window を作る
+// Call after SDL_Init. Decides the default backend and creates the window
 bool process_init(Process *proc);
-// backend を終え、window を壊す (全部の app_shutdown の後、SDL_Quit の前)
+// Shut down the backend and destroy the window (after every app_shutdown,
+// before SDL_Quit)
 void process_shutdown(Process *proc);
 bool app_init(App *app, Process *proc);
 bool app_backend_init(App *app); // call after OnInit has run; returns false
                                  // on backend init failure
-// 画面の frame は process_frame_begin で始まり、context の callback の後に process_frame_submit が backend に渡して見せ、context の app_frame_end の後に process_frame_end で終わる。
-// 画面の capture の readback がまだ届いていなければ true (書いた後は capture_then_exit で終わる)。
-// host はその間 frame を始めない。
+// A screen frame starts with process_frame_begin; after the context callbacks,
+// process_frame_submit hands it to the backend to present, and after the
+// contexts' app_frame_end, it ends with process_frame_end. true if the screen
+// capture readback has not arrived yet (after writing, capture_then_exit
+// exits). The host does not start a frame meanwhile.
 bool process_frame_waits_for_gpu(Process *proc);
 void process_frame_begin(Process *proc, int *out_w, int *out_h);
 void process_frame_submit(Process *proc);
 void process_frame_end(Process *proc);
-// GPU を待てない backend (cannot_block_on_gpu) で、この context の次の frame が要る GPU の結果がまだ届いていなければ true。
-// host はその間 frame を始めない。
+// true on a backend that cannot wait for the GPU (cannot_block_on_gpu) if the
+// GPU results needed by this context's next frame have not arrived yet. The
+// host does not start a frame meanwhile.
 bool app_frame_waits_for_gpu(App *app);
-// context の frame の後始末 (resource の sweep、frame 有効の view の回収、digest)。
-// frame_ok は OnFrame が error なく終わったか (resource_frame を進めるか)。
+// End-of-frame cleanup for a context (resource sweep, reclaiming frame-scoped
+// views, digest). frame_ok is whether OnFrame finished without an error
+// (whether to advance resource_frame).
 void app_frame_end(App *app, bool frame_ok);
 void app_shutdown(App *app);
 

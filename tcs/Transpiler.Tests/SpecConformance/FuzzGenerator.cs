@@ -3,20 +3,20 @@ using System.Text;
 namespace TinyCs.Tests.SpecConformance;
 
 /// <summary>
-/// サブセット内 C# プログラムの seed 決定的生成器 (C4)。診断対象の構文は
-/// 生成しない (生成物に TCS 診断が出たら生成器のバグ)。int32 wrap は .NET と
-/// Lua32 で一致するため、全域の値と wrap をまたぐ loop も生成する。
-/// 文法: 式 / 文 (for, 有界 while, switch 文/式, foreach, break/continue,
-/// 三項) / string 操作 (allowlist 全 API) / List / Dictionary /
-/// static helper メソッド (先行 helper のみ呼べるので再帰なし。
-/// オーバーロードは生成しない)。
-/// 型生成 (FuzzGenerator.TypeGen.cs): class (field / auto property /
-/// instance method / virtual dispatch / 継承) と positional record
-/// (with 式 / 値等価 / pattern)。
-/// 生成しないもの: 文字列は ASCII のみ、Dictionary の列挙 (Lua と順序が
-/// 異なる)、負数 bitwise / shift (support-matrix 記載の既知差異)。
-/// 部分式は常に自己完結 (括弧付き / ガード付き) で、実行時例外を踏む式
-/// (範囲外 RuneSubstring / indexer、ゼロ除算、MinValue/-1) は構造的に排除する。
+/// Seed-deterministic generator of in-subset C# programs (C4). Syntax subject to diagnostics is
+/// not generated (a TCS diagnostic on the generated code is a generator bug). int32 wrap matches between .NET and
+/// Lua32, so values over the full range and loops that cross the wrap are also generated.
+/// Grammar: expressions / statements (for, bounded while, switch statement/expression, foreach, break/continue,
+/// ternary) / string operations (all allowlist APIs) / List / Dictionary /
+/// static helper methods (only earlier helpers can be called, so no recursion;
+/// overloads are not generated).
+/// Type generation (FuzzGenerator.TypeGen.cs): class (field / auto property /
+/// instance method / virtual dispatch / inheritance) and positional record
+/// (with expression / value equality / pattern).
+/// Not generated: strings are ASCII only, Dictionary enumeration (order differs from
+/// Lua), negative bitwise / shift (known differences listed in support-matrix).
+/// Subexpressions are always self-contained (parenthesized / guarded), and expressions that would hit a runtime exception
+/// (out-of-range RuneSubstring / indexer, division by zero, MinValue/-1) are excluded structurally.
 /// </summary>
 internal sealed partial class FuzzGenerator
 {
@@ -28,7 +28,7 @@ internal sealed partial class FuzzGenerator
 
     private static readonly string[] Types = ["int", "bool", "string"];
 
-    // 生成される文字列値 ("s{n}"、"-"、数字連結) に実際に出現しうる検索語
+    // Search terms that can actually appear in generated string values ("s{n}", "-", digit concatenation)
     private static readonly string[] Needles =
         ["s", "-", "0", "1", "2", "s1"];
 
@@ -150,7 +150,7 @@ internal sealed partial class FuzzGenerator
         }
 
         var body = new List<string>();
-        // 式生成器は各型の変数が最低 1 つある前提 — param で足りない型を補う
+        // The expression generator assumes at least one variable of each type — params fill in the missing types
         if (_intVars.Count == 0)
             body.Add(DeclareInt());
         if (_boolVars.Count == 0)
@@ -234,8 +234,8 @@ internal sealed partial class FuzzGenerator
         {
             $"var {name} = new Dictionary<{keyType}, int>();"
         };
-        // Add は重複キーで throw するため pool 先頭から (相異保証)、
-        // 以後の書き込みは upsert (indexer) のみ
+        // Add throws on a duplicate key, so it takes from the head of the pool (distinctness guaranteed),
+        // and later writes are upsert (indexer) only
         foreach (var i in Enumerable.Range(0, _rng.Next(1, 3)))
             parts.Add($"{name}.Add({pool[i]}, {IntExpr(1)});");
         if (_rng.Next(2) == 0)
@@ -282,7 +282,7 @@ internal sealed partial class FuzzGenerator
         var iterations = _rng.Next(1, 33);
         var end = unchecked(start + iterations);
         var parts = new List<string>();
-        // break は短縮のみ、continue は for の増分が回るので終了保証を壊さない
+        // break only shortens, and continue still runs the for increment, so neither breaks the termination guarantee
         if (_rng.Next(3) == 0)
             parts.Add($"if ({BoolExpr(0)}) {{ " +
                 $"{(_rng.Next(2) == 0 ? "break;" : "continue;")} }}");
@@ -295,13 +295,13 @@ internal sealed partial class FuzzGenerator
             $"{{ {string.Join(" ", parts)} }}";
     }
 
-    // カウンタはネスト位置に依らず block 内スコープなので変数表へ登録しない
-    // (登録すると block 外から参照されうる / 再代入で終了保証が壊れる)
+    // The counter is scoped to the block regardless of nesting position, so it is not registered in the variable table
+    // (if registered, it could be referenced from outside the block / reassignment would break the termination guarantee)
     private string WhileLoop(int depth)
     {
         var w = NextVar();
         var limit = _rng.Next(1, 9);
-        // 増分が先頭なので continue しても前進する
+        // The increment comes first, so it still progresses on continue
         var parts = new List<string> { $"{w} += 1;" };
         if (_rng.Next(3) == 0)
             parts.Add($"if ({BoolExpr(0)}) {{ " +
@@ -382,7 +382,7 @@ internal sealed partial class FuzzGenerator
             return SimpleAssign();
         var xs = _listVars[_rng.Next(_listVars.Count)];
         var e = NextVar();
-        // body はリストを変更しない (C# は列挙中変更で throw)
+        // The body does not modify the list (C# throws on modification during enumeration)
         var body = _rng.Next(2) == 0
             ? $"{PickIntVar()} += {e};"
             : $"Console.WriteLine({e});";
@@ -402,12 +402,12 @@ internal sealed partial class FuzzGenerator
             return IntAtom();
         return _rng.Next(14) switch
         {
-            // 片側を変数にして constant folding 時の CS0220 を避けつつ、
-            // 実行時の int32 wrap を踏む。
+            // Making one side a variable avoids CS0220 during constant folding,
+            // while still hitting int32 wrap at runtime.
             0 => $"({PickReadableIntVar()} + {IntExpr(depth - 1)})",
             1 => $"({PickReadableIntVar()} - {IntExpr(depth - 1)})",
             2 => $"({PickReadableIntVar()} * {IntExpr(depth - 1)})",
-            // 除算/剰余は非ゼロ定数除数 (負も含む) — idiv/irem の経路を踏む
+            // Division/remainder use a non-zero constant divisor (including negatives) — exercises the idiv/irem path
             3 => $"({PickReadableIntVar()} / {NonZeroDivisor()})",
             4 => $"({PickReadableIntVar()} % {NonZeroDivisor()})",
             5 => HelperCallOrElse("int", depth, IntAtom),
@@ -424,7 +424,7 @@ internal sealed partial class FuzzGenerator
         };
     }
 
-    // 除数は正数ガード済み変数 — ゼロ除算と MinValue/-1 overflow を両方避ける
+    // The divisor is a variable guarded to be positive — avoids both division by zero and MinValue/-1 overflow
     private string GuardedVarDivision()
     {
         var dividend = PickReadableIntVar();
@@ -453,7 +453,7 @@ internal sealed partial class FuzzGenerator
             $"? {d.Name}[{key}] : {IntExpr(depth - 1)})";
     }
 
-    // 定数 arm を先頭に置く (関係 arm の後に置くと CS8510 包摂エラーの恐れ)
+    // Put constant arms first (placing them after relational arms risks a CS8510 subsumption error)
     private string SwitchExprInt()
     {
         var constant = _rng.Next(-99, 100);
@@ -523,8 +523,8 @@ internal sealed partial class FuzzGenerator
         return $"{d.Name}.ContainsKey({DictKey(d)})";
     }
 
-    // LINQ bool は式木の leaf 到達率が高い atom 側にも注入する
-    // (BoolExpr の depth>0 arm だけでは出現率が枯れる)
+    // LINQ bools are also injected on the atom side, which the leaves of the expression tree reach more often
+    // (with only the depth>0 arm of BoolExpr, their frequency dries up)
     private string BoolAtom()
     {
         if (_rng.Next(5) == 0 && _listVars.Count > 0)
@@ -568,8 +568,8 @@ internal sealed partial class FuzzGenerator
             : $"\"s{_rng.Next(100)}\"";
     }
 
-    // RuneSubstring は範囲外で C# が throw する (サブセットに try はない) ため
-    // 常にガード付き。receiver はガードと本体で 2 回評価するので変数限定
+    // RuneSubstring throws in C# when out of range (the subset has no try), so
+    // it is always guarded. The receiver is evaluated twice, in the guard and in the body, so it is limited to variables
     private string GuardedSubstring()
     {
         var receiver = PickStringVar();
@@ -579,8 +579,8 @@ internal sealed partial class FuzzGenerator
             $"? {receiver}.RuneSubstring({start}, {length}) : {receiver})";
     }
 
-    // hole 内の ':' は format 指定子と解釈されるため、ternary を含みうる式は
-    // 生成器全体で常に括弧付き (GuardedSubstring 参照)
+    // A ':' inside a hole is interpreted as a format specifier, so expressions that may contain a ternary are
+    // always parenthesized throughout the generator (see GuardedSubstring)
     private string Interpolation(int depth) =>
         "$\"i" + _rng.Next(10) + "={" + IntExpr(depth) + "},{"
             + StringExpr(depth) + "}\"";
@@ -618,7 +618,7 @@ internal sealed partial class FuzzGenerator
         _ => _stringVars,
     };
 
-    // 代入先は素の変数のみ (xs.Count のような読み取り専用エントリを除く)
+    // Assignment targets are bare variables only (excluding read-only entries such as xs.Count)
     private string PickIntVar()
     {
         var assignable = _intVars.Where(v => !v.Contains('.')).ToList();

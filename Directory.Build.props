@@ -1,8 +1,8 @@
 <Project>
-  <!-- lub の .NET の project (dotnet/、tools/lub-gen、tests/dotnet、templates/game) に共通: 警告は build を止める。
-       native gate と release が build する所がそのまま gate になる。NuGet の脆弱性の監査 (NU1900〜NU1904) は
-       助言の公開でいつでも増え、コードの誤りではないので警告のままにする。
-       samples/ (IDE の型検査用) は自分の Directory.Build.props を持つのでこれを読まない。tcs も同じ設定を自分で持つ -->
+  <!-- Common to lub's .NET projects (dotnet/, tools/lub-gen, tests/dotnet, templates/game): warnings stop the build.
+       So whatever the native gate and release build acts directly as a gate. The NuGet vulnerability audit (NU1900 to NU1904)
+       can grow at any time as advisories are published and is not a code error, so it stays a warning.
+       samples/ (for IDE type checking) has its own Directory.Build.props and does not read this one. tcs also has the same settings on its own -->
   <Import Project="$(MSBuildThisFileDirectory)Lub.props" />
   <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

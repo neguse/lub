@@ -1,7 +1,7 @@
-// Sys.ProfileLines で数えている間の、pass ごとの GPU の時間と draw の数 (Sys.TakeGpuPasses)。
-// 毎 frame、MainTex へ draw を 2 つ出す pass を描き、数え始めてから 6 frame 後から、描き先 main、draw 2 つの pass が届くことを見る。
-// 時間は、測れる backend (vulkan、d3d12、timestamp-query のある webgpu) では 0 以上、測れない backend では -1 で、どちらだったかを "gpu pass time: timed" / "untimed" と出す (CI は d3d12 と web で timed を確かめる)。
-// 測れる backend でも、時刻が届く前に回ってきた frame の pass は -1 で届く (GPU が遅れるほど増える) ので、測れた pass が届くまで waitFrames まで待つ。
+// Per-pass GPU time and draw count while Sys.ProfileLines is counting (Sys.TakeGpuPasses).
+// Every frame draws a pass that issues 2 draws to MainTex, and checks that from 6 frames after counting starts, a pass with target main and 2 draws arrives.
+// The time is 0 or more on backends that can measure it (vulkan, d3d12, webgpu with timestamp-query) and -1 on backends that cannot, and it prints which one as "gpu pass time: timed" / "untimed" (CI checks timed on d3d12 and web).
+// Even on backends that can measure, passes of frames processed before their timestamps arrive come as -1 (more of them the further the GPU lags), so wait up to waitFrames until a measured pass arrives.
 using System;
 using Lub;
 

@@ -2,7 +2,7 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// int / float の ToString(format) は定数の標準の書式だけ (補間の書式と同じ)
+// int / float ToString(format) accepts only constant standard formats (same as interpolation formats)
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]

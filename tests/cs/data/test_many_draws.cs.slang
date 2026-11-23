@@ -1,7 +1,8 @@
-// dispatch i は src[0].x に 1 を足して dst[0] に書く (i == 0 は 0 から数える)。
-// dispatch が飛ぶか、別の dispatch の table を読むと数がずれる。
+// dispatch i adds 1 to src[0].x and writes it to dst[0] (i == 0 counts from 0).
+// If a dispatch is skipped or reads the table of another dispatch, the count is
+// off.
 struct Params {
-  float4 step; // x = この dispatch の番号
+  float4 step; // x = the number of this dispatch
 };
 ConstantBuffer<Params> u;
 

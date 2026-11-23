@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// user の識別子は C# の綴りのまま両 backend の名前になる (q.md Q16)。生成
-// コードの予約と重なる綴りは、両 backend とも shared facts の同じ診断で IL を作る
-// 前に止まる
+// User identifiers become names in both backends with their C# spelling (q.md Q16). Spellings
+// that collide with names reserved by the generated code stop on both backends with the same shared facts diagnostic before
+// IL is produced
 public class IdentifiersDifferentialTests
 {
     private const string IdentifierProgram = """
@@ -38,7 +38,7 @@ public class IdentifiersDifferentialTests
         }
     }
 
-    // C の entry 名 (`tcs_entry_<Class>_<Method>`) と member の C 名も C# の綴り
+    // The C entry name (`tcs_entry_<Class>_<Method>`) and the C names of members also use the C# spelling
     [Fact]
     public void CSharpNames_ReachBothBackends()
     {
@@ -67,7 +67,7 @@ public class IdentifiersDifferentialTests
         Assert.DoesNotContain("add_hp", c);
     }
 
-    // C# の予約語でない名前は、他の言語 (Lua、C) の予約語と同じ綴りでも member、型、local に使える
+    // Names that are not C# reserved words can be used for members, types, and locals even if spelled the same as reserved words of other languages (Lua, C)
     [Fact]
     public void NamesLikeOtherLanguageKeywords_ReachBothBackends()
     {

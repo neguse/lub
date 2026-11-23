@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// tcs check (Session.CheckOnly) は Lua を出さず、IL を組み立てて、組み立てられない本文と式を TCS1001 にする。
-// `as` の先が class の式は準拠の検査を通るが IL にできない形 (組み立ての内部の誤りに理由が残る)
+// tcs check (Session.CheckOnly) does not output Lua; it builds IL and reports bodies and expressions that cannot be built as TCS1001.
+// An expression whose `as` target is a class passes the compliance check but cannot become IL (the reason remains in the internal error of the build)
 public class CheckTests
 {
     [Fact]
@@ -29,7 +29,7 @@ public class CheckTests
         ], result.Errors);
     }
 
-    // top-level の文は文ごとに組み立て、IL にできない文をそれぞれ報告する
+    // Top-level statements are built one by one, and each statement that cannot become IL is reported
     [Fact]
     public void UnbuildableTopLevelStatements_AreReportedOneByOne()
     {
@@ -47,7 +47,7 @@ public class CheckTests
         Assert.Contains(result.Errors, e => e.StartsWith("Main.cs(4,1): error TCS1001"));
     }
 
-    // 式の本文の constructor も IL にする (組み立てられなければ報告する)
+    // Expression-bodied constructors are turned into IL too (reported if they cannot be built)
     [Fact]
     public void ExpressionBodiedConstructor_IsBuilt()
     {

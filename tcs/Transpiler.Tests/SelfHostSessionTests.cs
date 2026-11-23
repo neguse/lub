@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// セルフホストの増分の session (SelfHost/Compiler/Session.cs)。編集の後の結果 (IL) が 1 から compile した結果と同じで、
-/// parse し直すのは内容が変わったファイルだけ。compile は Step に分かれる。
+/// Self-host incremental session (SelfHost/Compiler/Session.cs). The result (IL) after an edit is the same as compiling from scratch, and
+/// only files whose content changed are parsed again. Compilation is split into Steps.
 /// </summary>
 public class SelfHostSessionTests
 {
@@ -22,7 +22,7 @@ public class SelfHostSessionTests
 
     private static TcsSelf.Session NewSession() => new("") { ExportOnly = true };
 
-    // IL の診断用テキスト (tcs vm --dump-il と同じ)
+    // IL text for diagnostics (same as tcs vm --dump-il)
     private static string Il(TcsSelf.CompileResult result)
     {
         Assert.True(result.Ok, string.Join("\n", result.Diagnostics));
@@ -47,14 +47,14 @@ public class SelfHostSessionTests
         Assert.Equal(2, session.ParsedFiles);
         Assert.Equal(Fresh(("a.cs", A), ("b.cs", B)), Il(first));
 
-        // 本体の編集: a.cs だけ parse し直す
+        // Body edit: only a.cs is parsed again
         var a2 = A.Replace("=> 1;", "=> 5;");
         session.SetSource("a.cs", a2);
         var second = session.Compile();
         Assert.Equal(1, session.ParsedFiles);
         Assert.Equal(Fresh(("a.cs", a2), ("b.cs", B)), Il(second));
 
-        // 変わっていなければ parse しない
+        // Not parsed if unchanged
         var third = session.Compile();
         Assert.Equal(0, session.ParsedFiles);
         Assert.Equal(Il(second), Il(third));
@@ -69,13 +69,13 @@ public class SelfHostSessionTests
         session.SetSource("b.cs", B);
         Assert.True(session.Compile().Ok);
 
-        // a.cs の宣言を変えると b.cs の束縛が失敗する (束縛は毎回やり直す)
+        // Changing a declaration in a.cs makes binding of b.cs fail (binding is redone every time)
         session.SetSource("a.cs", A.Replace("Value()", "Other()"));
         var broken = session.Compile();
         Assert.False(broken.Ok);
         Assert.Contains(broken.Diagnostics, d => d.Contains("b.cs") && d.Contains("Value"));
 
-        // 元に戻すと通る
+        // Reverting it makes it pass
         session.SetSource("a.cs", A);
         Assert.True(session.Compile().Ok);
     }
@@ -102,12 +102,12 @@ public class SelfHostSessionTests
         session.Start();
         int steps = 1;
         while (!session.Step()) steps++;
-        // parse 2 つ + 組み立て + 宣言 + 束縛 + 出力
+        // Two parses + assemble + declare + bind + emit
         Assert.Equal(6, steps);
         Assert.True(session.Result.Ok);
         Assert.False(session.Busy);
 
-        // 途中で編集が来たら、始め直した compile が新しい内容を使う
+        // If an edit arrives midway, the restarted compile uses the new content
         session.SetSource("a.cs", A.Replace("=> 1;", "=> 7;"));
         session.Start();
         session.Step();
@@ -127,7 +127,7 @@ public class SelfHostSessionTests
         session.SetSource("bad.cs", "public static class Bad { public static int F( }");
         var broken = session.Compile();
         Assert.False(broken.Ok);
-        // a.cs を編集しても bad.cs の parse の誤りは残る (parse し直さないが診断は持ち越す)
+        // Editing a.cs keeps the parse error of bad.cs (it is not parsed again, but the diagnostic is carried over)
         session.SetSource("a.cs", A.Replace("=> 1;", "=> 2;"));
         var still = session.Compile();
         Assert.Equal(1, session.ParsedFiles);

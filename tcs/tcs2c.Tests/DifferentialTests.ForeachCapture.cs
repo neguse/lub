@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// closure が foreach の反復変数を捕捉する。反復変数は反復ごとに別の変数
-// (C# 5 以降)。期待値は同じ program を CoreCLR で実行した stdout
+// A closure captures the foreach iteration variable. The iteration variable is a separate variable per iteration
+// (C# 5 and later). The expected values are the stdout of running the same program on CoreCLR
 public class ForeachCaptureDifferentialTests
 {
     [CFact]
@@ -82,7 +82,7 @@ public class ForeachCaptureDifferentialTests
     [CFact]
     public void Closures_CaptureForeachKeyValuePair()
     {
-        // KeyValuePair は値: 反復の後に Dictionary を変えても捕捉した値は変わらない
+        // KeyValuePair is a value: changing the Dictionary after the iteration does not change the captured value
         var output = Backends.AssertParity("""
             using System;
             using System.Collections.Generic;
@@ -105,8 +105,8 @@ public class ForeachCaptureDifferentialTests
     [CFact]
     public void Closures_CaptureForeachVariableSurvivesFrames()
     {
-        // 反復変数を捕捉した closure を static の List に残し、フレーム境界の
-        // GC (stress 含む) をまたいで呼ぶ
+        // Keeps closures that captured the iteration variable in a static List, and calls them across
+        // frame-boundary GC (including stress)
         const string source = """
             using System;
             using System.Collections.Generic;
@@ -143,9 +143,9 @@ public class ForeachCaptureDifferentialTests
     [CFact]
     public void Closures_BoxOnlyVariablesCapturedByInnerClosures()
     {
-        // 捕捉 cell は、その関数の内側の closure が捕捉する変数にだけ作る。
-        // 別の lambda が同じ名前の parameter / local を捕捉させていても、
-        // `x => x > 1` の x と a の t は cell にしない (cs・eq の x・b の t の 3 つ)
+        // A capture cell is created only for variables captured by closures inside that function.
+        // Even if another lambda captures a parameter / local with the same name,
+        // x in `x => x > 1` and t in a are not made cells (the three cells are cs, x in eq, and t in b)
         const string source = """
             using System;
             using System.Collections.Generic;
@@ -170,9 +170,9 @@ public class ForeachCaptureDifferentialTests
     [CFact]
     public void Closures_LoopVariableShadowsCapturedOuterLocal()
     {
-        // lambda の中のループ変数 / block の local が外の local と同じ名前でも、
-        // その scope の外の参照は外の local を捕捉する。ループの入れ子と
-        // break / continue の中の捕捉も見る
+        // Even if a loop variable / block local inside a lambda has the same name as an outer local,
+        // references outside that scope capture the outer local. Also covers nested loops and
+        // captures inside break / continue
         var output = Backends.AssertParity("""
             using System;
             using System.Collections.Generic;
@@ -217,10 +217,10 @@ public class ForeachCaptureDifferentialTests
     [CFact]
     public void Closures_CapturedKeyValuePairSurvivesFrames()
     {
-        // 捕捉した KeyValuePair の copy (string / List / struct の value) を
-        // static に残し、後のフレームで元の Dictionary を上書き / Remove して
-        // フレーム境界の GC (stress 含む) をまたいで読む。List は参照なので
-        // 後の Add が見える
+        // Keeps copies of captured KeyValuePairs (string / List / struct values)
+        // in a static, overwrites / Removes from the original Dictionary in a later frame, and
+        // reads them across frame-boundary GC (including stress). List is a reference, so
+        // later Adds are visible
         const string source = """
             using System;
             using System.Collections.Generic;

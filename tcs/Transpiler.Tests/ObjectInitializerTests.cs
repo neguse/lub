@@ -83,7 +83,7 @@ public class ObjectInitializerTests
 
         var result = Checker.Check([source], null, [refSource]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        // --ref の class は host の型で、IL の class として書き出さない
+        // A --ref class is a host type and is not emitted as an IL class.
         var export = IlExport.Export([source], referenceSources: [refSource]);
         Assert.Empty(export.Diagnostics);
         Assert.All(export.Classes.Where(c => c.Name == "Opts"), c => Assert.True(c.IsExternal));
@@ -115,14 +115,14 @@ public class ObjectInitializerTests
 
         var result = Checker.Check([source], null, [refSource]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        // --ref の class は host の型で、IL の class として書き出さない
+        // A --ref class is a host type and is not emitted as an IL class.
         var export = IlExport.Export([source], referenceSources: [refSource]);
         Assert.Empty(export.Diagnostics);
         Assert.All(export.Classes.Where(c => c.Name == "Opts"), c => Assert.True(c.IsExternal));
     }
 
-    // 入れ子の initializer は C# と同じく既存 member への代入 / Add (new は
-    // しない)。struct member はその場で書く
+    // A nested initializer, as in C#, assigns to / calls Add on the existing member (it does not
+    // call new). A struct member is written in place.
     [Fact]
     public void ObjectInitializer_NestedInitializer_AssignsIntoExistingMembers()
     {

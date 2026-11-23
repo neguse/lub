@@ -1,7 +1,7 @@
-// VmExports (VM の増分 session、doc/vm-design.md V5) の実ブラウザの smoke。publish した wwwroot を配り、chromium で
-// Open (v1) → Update (v2) を呼び、返った module と batch を native の tcsvm で当てて、出力が期待と一致することを確かめる。
-// 前提: dotnet publish WasmCompiler -c Release、build/tcsvm/tcsvm (cmake)、playwright。
-// 実行: node WasmCompiler/vm-smoke.mjs
+// Real-browser smoke test of VmExports (the incremental VM session, doc/vm-design.md V5). Serves the published wwwroot and, in chromium,
+// calls Open (v1) → Update (v2), applies the returned module and batch with the native tcsvm, and checks that the output matches the expectation.
+// Prerequisites: dotnet publish WasmCompiler -c Release, build/tcsvm/tcsvm (cmake), playwright.
+// Run: node WasmCompiler/vm-smoke.mjs
 import { createServer } from "node:http";
 import { readFileSync, writeFileSync, mkdtempSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";

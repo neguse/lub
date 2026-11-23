@@ -1,9 +1,9 @@
-// Math.* の結果が OS をまたいでビット単位で同じことを検査する。
-// 決まった入力列の結果の bit 列を関数ごとに hash し、期待値と比べる。
-// 期待値は 1 つで、OS ごとに分けない。
-// TinySystem に無い Asin / Acos / Atan は tcs が変換できないので見ない。
-// tcs2c の経路は tests/c/tcs_math.cs が同じ入力列と hash で C# の Math を計算し、scripts/verify-tcs-binding.sh がこの表と比べる。
-// .NET の経路は scripts/native-gate.sh が .NET 実行の runtime テスト (dotnet/SampleRunner の -p:Tests=true) としてこのテストを動かす。
+// Checks that the results of Math.* are bit-for-bit identical across OSes.
+// Hashes the bit patterns of the results for a fixed input sequence per function, and compares them with the expected values.
+// There is one set of expected values, not one per OS.
+// Asin / Acos / Atan are missing from TinySystem and tcs cannot compile them, so they are not checked.
+// For the tcs2c path, tests/c/tcs_math.cs computes C# Math with the same input sequence and hash, and scripts/verify-tcs-binding.sh compares it with this table.
+// For the .NET path, scripts/native-gate.sh runs this test as a runtime test of .NET execution (-p:Tests=true of dotnet/SampleRunner).
 using System;
 using Lub;
 
@@ -12,8 +12,8 @@ public static class TestMathDeterminism
     const int points = 2000;
     static int state;
 
-    // 1 行 1 関数の "名前 = hash"。
-    // scripts/verify-tcs-binding.sh は sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p' で読める
+    // "name = hash", one function per line.
+    // scripts/verify-tcs-binding.sh can read it with sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p'
     static readonly string[] expected = new string[]
     {
         "sin = 720166134",
@@ -29,19 +29,19 @@ public static class TestMathDeterminism
         "pow2 = -884350922",
     };
 
-    // 線形合同法 (32bit で wrap する) の上位 24 bit から [lo, hi) の値を作る
+    // Makes a value in [lo, hi) from the upper 24 bits of a linear congruential generator (wrapping at 32 bits)
     static float Next(float lo, float hi)
     {
         state = state * 1664525 + 1013904223;
         return lo + (hi - lo) * (((state >> 8) & 0xffffff) / 16777216f);
     }
 
-    // IEEE-754 binary32 の bit 列。
-    // NaN は CPU で違うので 1 つにまとめる。
-    // 2 倍と半分は丸めずに済むので、仮数が [2^23, 2^24) に入るまで寄せて指数を数える。
+    // The bit pattern of IEEE-754 binary32.
+    // NaN differs by CPU, so all NaNs are folded into one.
+    // Doubling and halving need no rounding, so shift until the mantissa is in [2^23, 2^24) and count the exponent.
     static int Bits(float x)
     {
-        // NaN だけが自分と等しくない (float.IsNaN は TinyC# に無い)
+        // Only NaN is not equal to itself (TinyC# has no float.IsNaN)
 #pragma warning disable CS1718
         if (x != x) return 0x7fc00000;
 #pragma warning restore CS1718
@@ -74,7 +74,7 @@ public static class TestMathDeterminism
         }
     }
 
-    // 1 引数の関数は a の範囲、2 引数の関数は a と b の範囲を並べる
+    // 1-argument functions list the range of a, and 2-argument functions the ranges of a and b
     static void Digest(string name, float[] ranges, bool binary)
     {
         state = 1;

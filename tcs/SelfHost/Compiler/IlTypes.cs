@@ -2,8 +2,8 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// 型の判定 (TypeSym の上で)。
-// タプルは library の System.ValueTuple<...> (TinySystem/ValueTuple.cs) の generic な可変 struct として扱う
+// Type predicates (on TypeSym).
+// Tuples are treated as the library's System.ValueTuple<...> (TinySystem/ValueTuple.cs), a generic mutable struct
 public static class IlTypes
 {
     public static TypeSym UnwrapNullable(TypeSym t)
@@ -39,7 +39,7 @@ public static class IlTypes
         return false;
     }
 
-    // 整数の元 (char を含む)
+    // Integral source type (including char)
     public static bool IsIntegralSource(TypeSym? t)
     {
         if (t == null) return false;
@@ -71,7 +71,7 @@ public static class IlTypes
         return t != null && t.Kind == TypeKind.Dict;
     }
 
-    // Dictionary の Keys / Values (runtime は配列を返す)
+    // Dictionary's Keys / Values (the runtime returns an array)
     public static bool IsDictCollection(TypeSym? t)
     {
         return t != null && (t.Kind == TypeKind.KeyCollection || t.Kind == TypeKind.ValueCollection);
@@ -107,13 +107,13 @@ public static class IlTypes
         return t != null && t.Kind == TypeKind.Tuple;
     }
 
-    // 値型か (Roslyn の ITypeSymbol.IsValueType と同じ)。型引数は値型ではない
+    // Whether it is a value type (same as Roslyn's ITypeSymbol.IsValueType). Type arguments are not value types
     public static bool IsValueType(TypeSym t)
     {
         return t.IsValueType;
     }
 
-    // source に宣言した struct (タプルは library の ValueTuple)
+    // A struct declared in the source (tuples are the library's ValueTuple)
     public static bool IsUserStruct(TypeSym? t)
     {
         if (t == null) return false;
@@ -121,7 +121,7 @@ public static class IlTypes
         return t.Kind == TypeKind.Struct && t.Decl != null;
     }
 
-    // 変更できる struct (readonly でない)
+    // A mutable struct (not readonly)
     public static bool IsMutableStruct(TypeSym? t)
     {
         if (!IsUserStruct(t)) return false;
@@ -129,7 +129,7 @@ public static class IlTypes
         return !t.Decl!.Decl.Has(Mods.Readonly);
     }
 
-    // List / 配列の要素
+    // Element of a List / array
     public static TypeSym? ElementOf(TypeSym? t)
     {
         if (t == null) return null;
@@ -138,7 +138,7 @@ public static class IlTypes
         return null;
     }
 
-    // 要素の default が null の配列 (`new T[n]` の要素が null になりうる。TCS1003)
+    // An array whose element default is null (the elements of `new T[n]` may be null; TCS1003)
     public static bool HasNilableElements(TypeSym? t)
     {
         if (t == null || t.Kind != TypeKind.Array) return false;
@@ -146,7 +146,7 @@ public static class IlTypes
         return !e.IsValueType || e.Kind == TypeKind.TypeParam || e.Kind == TypeKind.Nullable;
     }
 
-    // C# の keyword と同じ綴りの名前は @ を付けて表示する (`@event.C`)
+    // Names spelled like a C# keyword are displayed with @ (`@event.C`)
     private static string EscapedName(string fullName)
     {
         var parts = fullName.Split('.');
@@ -157,7 +157,7 @@ public static class IlTypes
         return string.Join(".", parts);
     }
 
-    // Roslyn の ToDisplayString (C backend の型の表記)
+    // Roslyn's ToDisplayString (the type notation for the C backend)
     public static string Display(TypeSym t)
     {
         if (t.Annotated) return DisplayPlain(t) + "?";
@@ -180,7 +180,7 @@ public static class IlTypes
                 return "System.Collections.Generic.Dictionary<" + Display(t.Arg(0)) + ", " + Display(t.Arg(1)) + ">." + t.Name;
             case TypeKind.Tuple:
                 {
-                    // 要素の名前があれば型の後ろに書く (`(int x, int y)`)
+                    // If elements have names, write them after the type (`(int x, int y)`)
                     var parts = new List<string>();
                     for (int i = 0; i < t.Args!.Count; i++)
                     {
@@ -205,7 +205,7 @@ public static class IlTypes
             case TypeKind.Struct:
             case TypeKind.Interface:
             case TypeKind.Enum:
-                // library の System.ValueTupleN はタプルの構文で表示する (`(T1, T2)`)
+                // The library's System.ValueTupleN is displayed in tuple syntax (`(T1, T2)`)
                 if (t.Decl != null && t.Decl.Decl.File.IsLibrary && t.Decl.FullName.StartsWith("System.ValueTuple"))
                 {
                     var parts = new List<string>();
@@ -239,8 +239,8 @@ public static class IlTypes
         return t.Name;
     }
 
-    // 値を構成する member (field と自動実装の property。positional な property を含む)。
-    // 基底の record から同名の member を継承する positional parameter は property にならない
+    // The members that make up the value (fields and auto-implemented properties, including positional properties).
+    // A positional parameter that inherits a member of the same name from the base record does not become a property
     public static List<ValueMember> ValueMembers(TypeSym? t)
     {
         var r = new List<ValueMember>();
@@ -264,7 +264,7 @@ public static class IlTypes
         return r;
     }
 
-    // Roslyn の AllInterfaces と同じ順 (基底の型から、宣言の逆順に基底の interface を後置で集めて、最後に反転する)
+    // Same order as Roslyn's AllInterfaces (starting from the base type, collect base interfaces in post-order in reverse declaration order, then reverse at the end)
     public static List<TypeSym> AllInterfaces(TypeDeclSym t)
     {
         var result = new List<TypeSym>();
@@ -289,7 +289,7 @@ public static class IlTypes
         result.Add(iface);
     }
 
-    // 型引数の既定値を受ける型 (source の generic な class / struct)
+    // Types that receive type-argument defaults (generic classes / structs in the source)
     public static bool PassesTypeArgDefaults(TypeDeclSym? t)
     {
         if (t == null || t.TypeParams.Count == 0) return false;
@@ -297,7 +297,7 @@ public static class IlTypes
     }
 }
 
-// struct の値を構成する member (名前と型)
+// A member that makes up a struct value (name and type)
 public sealed class ValueMember
 {
     public string Name;

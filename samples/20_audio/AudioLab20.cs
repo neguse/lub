@@ -1,11 +1,11 @@
-// lub の samples/20_audio の entry。
-// 実行: lub samples/20_audio/AudioLab20.csproj (transpile + watch + hot reload) サウンドラボ: ImGui で波形パラメータを調整しながら音を作る。
-// - 波形はコード合成 (raw PCM → Audio.Snd)。
-//   key "lab" で毎フレーム宣言し、
-//   パラメータが変わったら version を進めて作り直す。古い snd は runtime が
-//   退役させ、fade 中の voice が終わってから回収する。
-// - oneshot は play ボタン、継続音は "loop voice" を ON にすると毎フレーム
-//   宣言される。pitch は負値 (逆再生) や 0 (停止) も試せる。
+// Entry for lub's samples/20_audio.
+// Run: lub samples/20_audio/AudioLab20.csproj (transpile + watch + hot reload) Sound lab: make sounds while tuning waveform parameters with ImGui.
+// - Waveforms are synthesized in code (raw PCM → Audio.Snd).
+//   It is declared every frame with key "lab", and
+//   when the parameters change, version is advanced and it is recreated. The runtime
+//   retires the old snd and reclaims it after the voices that are fading out finish.
+// - oneshot uses the play button; the continuous sound is declared every frame
+//   when "loop voice" is ON. pitch can also be tried with negative values (reverse playback) or 0 (stopped).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -15,7 +15,7 @@ public static class AudioLab20
 {
     const int rate = 44100;
 
-    // --- 合成パラメータ (ImGui が直接いじる状態) ---------------------------
+    // --- Synthesis parameters (state that ImGui edits directly) ---------------------------
     static int wave = 0; // 0=square 1=saw 2=triangle 3=sine 4=noise
     static float freq0 = 440.0f;
     static float freq1 = 440.0f;
@@ -23,7 +23,7 @@ public static class AudioLab20
     static float decay = 5.0f;
     static float duty = 0.5f;
 
-    // --- 再生パラメータ ------------------------------------------------------
+    // --- Playback parameters ------------------------------------------------------
     static float volume = 0.5f;
     static float pitch = 1.0f;
     static float pan = 0.0f;
@@ -52,8 +52,8 @@ public static class AudioLab20
         int n = (int)Math.Floor(duration * rate);
         var samples = new List<float>();
         float phase = 0.0f;
-        // xorshift32: int32 wrap の << はそのまま、論理シフト >>> は算術シフト
-        // >> + 有効 15bit の & マスクで再現する (golden はこの列に依存する)
+        // xorshift32: << with int32 wrap is used as is; the logical shift >>> is reproduced with the arithmetic shift
+        // >> plus an & mask of the valid 15 bits (the golden depends on this sequence)
         int seed = 0x2F6E2B1;
         float hold = 0.0f;
         for (int i = 0; i < n; i++)
@@ -64,7 +64,7 @@ public static class AudioLab20
             if (phase >= 1.0f)
             {
                 phase = phase - 1.0f;
-                // noise は周期ごとに LFSR を進める sample & hold (pitched noise)
+                // noise is a sample & hold that advances the LFSR every period (pitched noise)
                 seed = seed ^ (seed << 13);
                 seed = seed ^ ((seed >> 17) & 0x7FFF);
                 seed = seed ^ (seed << 5);
@@ -83,9 +83,9 @@ public static class AudioLab20
         return samples;
     }
 
-    // パラメータが変わっていたら波形を作り直して version を進める。
-    // snd は毎フレーム同じ key で宣言する (version が同じなら runtime は波形を読まない)。
-    // 内容 dedupe があるので同じパラメータに戻せば同じ handle が返る。
+    // If the parameters changed, regenerate the waveform and advance version.
+    // snd is declared with the same key every frame (if version is unchanged, the runtime does not read the waveform).
+    // Content is deduplicated, so returning to the same parameters returns the same handle.
     static bool EnsureSnd()
     {
         string key = $"{wave}:{freq0}:{freq1}:{duration}:{decay}:{duty}";
@@ -116,8 +116,8 @@ public static class AudioLab20
             }
             Ui.Separator();
 
-            // pitch は oneshot では発火時に固定 (負値なら末尾から逆再生)、loop voice では鳴っている間もリアルタイムに追従する。
-            // 0 で停止、負値で逆再生 (ターンテーブルのつもりで)。
+            // pitch is fixed at trigger time for oneshot (a negative value plays in reverse from the end), and for loop voice it follows in real time while playing.
+            // 0 stops, a negative value plays in reverse (think of a turntable).
             volume = Ui.SliderFloat("volume", volume, 0.0f, 1.0f);
             pitch = Ui.SliderFloat("pitch", pitch, -2.0f, 2.0f);
             pan = Ui.SliderFloat("pan", pan, -1.0f, 1.0f);
@@ -136,8 +136,8 @@ public static class AudioLab20
             }
             Ui.Separator();
 
-            // 継続音: ON の間だけ毎フレーム宣言する。
-            // OFF で fade out。
+            // Continuous sound: declared every frame only while ON.
+            // OFF fades it out.
             voiceOn = Ui.Checkbox("loop voice", voiceOn);
             Ui.Separator();
 

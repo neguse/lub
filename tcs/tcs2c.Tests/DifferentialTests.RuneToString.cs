@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// codepoint から文字列を作る手段 (Rune の文字列化と char.ConvertFromUtf32) は UTF-8 の文字列を返す。
-// 期待値は同じ program を CoreCLR で実行した stdout。文字列は byte 単位のままなので Length は比べない
+// The ways of making a string from a codepoint (string conversion of Rune and char.ConvertFromUtf32) return UTF-8 strings.
+// The expected values are the stdout of running the same program on CoreCLR. Strings stay byte-based, so Length is not compared
 public class RuneToStringDifferentialTests
 {
     [CFact]
@@ -70,7 +70,7 @@ public class RuneToStringDifferentialTests
             """, output);
     }
 
-    // CoreCLR は ArgumentOutOfRangeException。tcs は例外がサブセット外なので fault
+    // CoreCLR throws ArgumentOutOfRangeException. Exceptions are outside the subset in tcs, so it faults
     [CTheory]
     [InlineData(-1)]
     [InlineData(0xD800)]
@@ -102,7 +102,7 @@ public class RuneToStringDifferentialTests
                 Assert.Throws<InvalidOperationException>(run).Message);
     }
 
-    // 文字列化の対象は Rune そのものだけで、要素や T? の文字列化はサブセットを広げない
+    // Only Rune itself is converted to a string; string conversion of elements or T? does not extend the subset
     [Theory]
     [InlineData("Console.WriteLine(string.Join(\",\", new List<Rune>()));", "UnsupportedToString(System.Text.Rune)")]
     [InlineData("Rune? n = null; Console.WriteLine(\"\" + n);", "UnsupportedToString(System.Text.Rune?)")]

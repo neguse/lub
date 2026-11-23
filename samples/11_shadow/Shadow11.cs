@@ -1,5 +1,5 @@
-// lub の samples/11_shadow の entry。
-// 実行: lub samples/11_shadow/Shadow11.csproj (transpile + watch + hot reload) Shadow mapping: render light-space depth into an offscreen target with a depth attachment, then use it as a comparison sampler in the scene pass.
+// Entry of lub's samples/11_shadow.
+// Run: lub samples/11_shadow/Shadow11.csproj (transpile + watch + hot reload) Shadow mapping: render light-space depth into an offscreen target with a depth attachment, then use it as a comparison sampler in the scene pass.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -109,7 +109,7 @@ public static class Shadow11
             shadowSize, Gfx.PixelFormat.Depth16, null, 1,
             new TextureOpts { Target = true, Filter = Gfx.Filter.Nearest, Wrap = Gfx.Wrap.Clamp });
 
-        // scene は floor + casters。
+        // scene is floor + casters.
         var casters = new List<float>();
         var scene = new List<float>();
         AddFloor(scene);

@@ -1,4 +1,4 @@
-// TestZen が開く file。
+// The file TestZen opens.
 public static class Target
 {
     // 0

@@ -96,4 +96,4 @@ python3 perf/compare/run.py -p fib,nbody -i c,tcs-c,tcs-vm --runs 3
 python3 perf/compare/report.py perf/compare/results/<file>.json
 ```
 
-必要なもの: gcc、cmake、.NET SDK (`global.json` の版)。他の言語は見つからなければ飛ばす。
+必要なもの: gcc、cmake、.NET SDK (repo の root の `global.json` の版)。他の言語は見つからなければ飛ばす。

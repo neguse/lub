@@ -1,6 +1,6 @@
 <Project>
-  <!-- samples の各 csproj (IDE の型チェック用) に共通: Math / MathF を
-       TinySystem.Math (tcs VM / tcs2c と同じ実装) にする -->
+  <!-- Common to every csproj in samples (for IDE type checking): resolve Math / MathF to
+       TinySystem.Math (the same implementation as the tcs VM / tcs2c) -->
   <Import Project="../Lub.props" />
   <Import Project="$(TcsRoot)/TinySystem/TinySystem.props" />
 </Project>

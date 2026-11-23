@@ -1,13 +1,13 @@
-// jamo (src/Jamo.ref.cs) で日本語を打つ。
-// かなの mode は Ctrl+Space で切り替える (US と JIS のどちらの配列にもある key)。
-// かなの mode で打ったローマ字は jamo に入り、変換中の文字は本文の cursor の所に inline で入る (選んだ状態)。
-//   入力中: Space で変換、Return で確定、Escape で取消、Backspace / Delete / 左右は変換中の文字の中で動く
-//   変換中: Space と Down で次の候補、Up で前の候補、1〜9 で選ぶ、左右で文節を移り Shift と左右で文節を伸び縮み、
-//           Return で確定、Escape と Backspace でかなに戻す。ほかの文字を打つと確定して次を始める
-//   入力中と変換中: F6 でひらがな、F7 でカタカナ、F9 で全角英字、F10 で半角英字にする
-// Ctrl を押すと確定する (変換中の文字は本文に入っているので、Ctrl+S などがそのまま効く)。
-// 学習は env LIDER_JAMO_USER の file (無ければ XDG_DATA_HOME か ~/.local/share の lider-jamo.dat) に、開くときに読み、確定のたびに書く。
-// jamo は src/Jamo.ref.cs の native の拡張で、lider の player が静的に link する (native と web)。
+// Types Japanese with jamo (src/Jamo.ref.cs).
+// Kana mode is toggled with Ctrl+Space (a key on both US and JIS layouts).
+// Romaji typed in kana mode goes into jamo, and the composing text goes inline at the text cursor (selected).
+//   While inputting: Space converts, Return commits, Escape cancels, Backspace / Delete / left/right move within the composing text
+//   While converting: Space and Down for the next candidate, Up for the previous candidate, 1-9 to choose, left/right to move between clauses, Shift+left/right to extend or shrink a clause,
+//           Return commits, Escape and Backspace go back to kana. Typing any other character commits and starts the next
+//   While inputting and converting: F6 for hiragana, F7 for katakana, F9 for full-width Latin, F10 for half-width Latin
+// Pressing Ctrl commits (the composing text is already in the text, so Ctrl+S and the like work as is).
+// Learning data is read on open and written on every commit, in the file given by env LIDER_JAMO_USER (if missing, lider-jamo.dat in XDG_DATA_HOME or ~/.local/share).
+// jamo is the native extension in src/Jamo.ref.cs, statically linked by the lider player (native and web).
 using System;
 using System.Collections.Generic;
 
@@ -25,7 +25,7 @@ public static class Ime
     static bool ctrl;
     static bool shift;
 
-    // 変換中の文字の所 (候補の箱を出す所)
+    // Position of the composing text (where the candidate box goes)
     public static float LocX;
     public static float LocY;
     public static float LocW;
@@ -47,7 +47,7 @@ public static class Ime
         return dir + "/lider-jamo.dat";
     }
 
-    // 辞書の path を受け取り、裏で読み始める。jamo が無ければ false
+    // Receives the dictionary path and starts loading it in the background. false if there is no jamo
     public static bool SetDict(string path)
     {
         if (!Jamo.Available())
@@ -82,7 +82,7 @@ public static class Ime
         LocH = h;
     }
 
-    // OS の IME の変換中の文字 (start と length は文字の数)。jamo の変換中の文字もここを通る
+    // Composing text of the OS IME (start and length are in characters). jamo's composing text also goes through here
     public static void OnTextEditing(string text, int start, int length)
     {
         if (!EditorCore.ImeEditing && text == "")
@@ -111,7 +111,7 @@ public static class Ime
         EditorCore.Redraw = true;
     }
 
-    // n 文字目の前の byte の位置 (文字の数より先は末尾)
+    // Byte position before character n (the end if beyond the character count)
     static int CharOffset(string text, int n)
     {
         var u = new TinySystem.Text.Utf8Bytes(text);
@@ -128,7 +128,7 @@ public static class Ime
 
     static void Sync()
     {
-        // tcs の Lua の出力は、bool を返す host の関数の戻り値を捨てると壊れる (戻り値を使う)
+        // tcs's Lua output breaks when the return value of a host function returning bool is discarded (so the return value is used)
         var text = Jamo.Preedit(out var preedit) ? preedit ?? "" : "";
         if (text == "")
         {
@@ -142,7 +142,7 @@ public static class Ime
         SetPreedit(text, from, len);
     }
 
-    // 確定した文字を本文に入れる (変換中の文字は先に消す)
+    // Inserts committed text into the text (removes the composing text first)
     static void Insert(string text)
     {
         if (Composing)
@@ -184,12 +184,12 @@ public static class Ime
         LogMode();
     }
 
-    // LIDER_IME_LOG=1 なら、変換を始めたときと文節を移すか伸び縮みしたときに、標準出力へ
-    // 「lider_ime 文節の数 focus の文節 候補1<TAB>候補2...」と書く (録画の道具が、打ちたい字の候補を選ぶため)
+    // If LIDER_IME_LOG=1, when conversion starts and when a clause is moved, extended, or shrunk, writes
+    // "lider_ime clause-count focused-clause candidate1<TAB>candidate2..." to standard output (so the recording tool can choose the candidate for the text it wants to type)
     static readonly bool imeLog = Environment.GetEnvironmentVariable("LIDER_IME_LOG") == "1";
 
-    // LIDER_IME_LOG=1 なら、起動したとき (辞書を受け取ったとき) と Ctrl+Space のたびに、かなの mode を標準出力へ
-    // 「lider_ime_mode on」か「lider_ime_mode off」と書く (変わらなかったときも書く。録画の道具が、試し打ちせずに mode を知るため)
+    // If LIDER_IME_LOG=1, at startup (when the dictionary is received) and on every Ctrl+Space, writes the kana mode to standard output
+    // as "lider_ime_mode on" or "lider_ime_mode off" (also when it did not change, so the recording tool knows the mode without test typing)
     static void LogMode()
     {
         if (imeLog)
@@ -296,7 +296,7 @@ public static class Ime
         return true;
     }
 
-    // F6、F7、F9、F10 の書き換え (Jamo.Transform の kind。無ければ -1)
+    // Transforms for F6, F7, F9, F10 (the kind for Jamo.Transform; -1 if none)
     static int TransformOf(string k)
     {
         if (k == "f6")
@@ -310,7 +310,7 @@ public static class Ime
         return -1;
     }
 
-    // key を押した。IME が使った key なら true (エディタには渡さない)
+    // A key was pressed. true if the IME used the key (it is not passed to the editor)
     public static bool Key(string k)
     {
         if (k == "left ctrl" || k == "right ctrl")
@@ -351,7 +351,7 @@ public static class Ime
             shift = false;
     }
 
-    // 変換を始める文字 (英字、数字、ローマ字の表にある記号)
+    // Characters that start conversion (letters, digits, and symbols in the romaji table)
     static bool Starts(string text)
     {
         if (Str.Len(text) != 1)
@@ -362,7 +362,7 @@ public static class Ime
         return ",.-?!/[]~".Contains(text);
     }
 
-    // 打った文字。IME が使った文字なら true
+    // Typed text. true if the IME used it
     public static bool Text(string text, bool viewHasDoc)
     {
         if (!Enabled)
@@ -381,7 +381,7 @@ public static class Ime
         return Composing && Jamo.Converting();
     }
 
-    // 描き直す所が変わったかを見る文字列
+    // String used to check whether anything that needs redrawing changed
     public static string Signature()
     {
         if (!Composing)
@@ -391,7 +391,7 @@ public static class Ime
         return text + "|" + (Jamo.Converting() ? "c" : "i") + "|" + f + "|" + Jamo.Selected(f);
     }
 
-    // 変換中の文節の候補の一覧を、変換中の文字の下 (入らなければ上) に描く
+    // Draws the candidate list of the clause being converted below the composing text (above if it does not fit)
     public static void DrawCandidates(float w, float h)
     {
         if (!Converting())

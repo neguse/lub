@@ -1,4 +1,4 @@
-// ../TestState.cs が lider で開くゲーム。毎 frame 数を 1 増やし、Thing (Target.cs) の値も 1 増やす。
+// The game ../TestState.cs opens in lider. Increases the count by 1 every frame, and also increases the value of Thing (Target.cs) by 1.
 public static class Game
 {
     public static int Count;

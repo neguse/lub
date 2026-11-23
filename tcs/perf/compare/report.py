@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""run.py の結果 (JSON) から markdown の表と HTML のページを作る。
+"""Builds markdown tables and an HTML page from run.py results (JSON).
 
-使い方: python3 perf/compare/report.py results/<file>.json [--html out.html] [--md out.md]
-既定は JSON と同じ場所に同じ名前の .md と .html を書く。
+Usage: python3 perf/compare/report.py results/<file>.json [--html out.html] [--md out.md]
+By default, writes .md and .html with the same name in the same place as the JSON.
 """
 
 import argparse
@@ -11,13 +11,13 @@ import json
 import math
 from pathlib import Path
 
-BASE = "c"  # 倍率の基準
-PER = "per_iter_s"  # 1 回あたり (BENCH_REPS の差から出す、温まった後の速さ)
-E2E = "median_s"  # 起動から終了まで (BENCH_REPS=1 の 1 プロセス)
+BASE = "c"  # Baseline for ratios
+PER = "per_iter_s"  # Per repetition (derived from the BENCH_REPS difference; speed after warm-up)
+E2E = "median_s"  # From startup to exit (one process with BENCH_REPS=1)
 
 
 def val(r, key):
-    """古い結果 (1 回あたりを測っていない) は起動から終了までの値で代える"""
+    """For old results (no per-repetition measurement), the startup-to-exit value is used instead"""
     v = r.get(key)
     return v if v is not None else r["median_s"]
 
@@ -31,7 +31,7 @@ def load(path):
 
 
 def ratios(data, by, key=PER):
-    """program → impl → C 比 (startup は除く)"""
+    """program → impl → ratio to C (excluding startup)"""
     out = {}
     for p in data["programs"]:
         if p["name"] == "startup":
@@ -49,7 +49,7 @@ def geomean(xs):
 
 
 def summary(data, by, key=PER):
-    """impl → 幾何平均の C 比。全プログラムが揃った実装だけ"""
+    """impl → geometric mean of ratios to C. Only implementations that have all programs"""
     rs = ratios(data, by, key)
     out = {}
     for im in data["impls"]:
@@ -122,7 +122,7 @@ def markdown(data, by):
 
 
 CSS = """
-/* layout: 1 列の読み物。まとめのグラフ → プログラムごとの小さなグラフの格子 → 数値の表 */
+/* layout: single-column reading. Summary chart → grid of small per-program charts → table of numbers */
 :root { --bg:#fbfbfd; --fg:#1b1d24; --muted:#5f6472; --grid:#e3e5ec; --card:#f1f2f6;
   --tcs:#2a62c9; --ref:#a2a6b3; --base:#c9731f;
   --font-body:"IBM Plex Sans JP", system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
@@ -161,7 +161,7 @@ ul.note li + li { margin-top: 6px; }
 
 
 def bar_chart(items, unit, width=460):
-    """items: [(label, value, kind)]。log 軸の横棒。value は C 比"""
+    """items: [(label, value, kind)]. Horizontal bars on a log axis. value is the ratio to C"""
     row_h, top, left, right = 22, 8, 190, 52
     h = top + row_h * len(items) + 22
     lo = min(v for _, v, _ in items)

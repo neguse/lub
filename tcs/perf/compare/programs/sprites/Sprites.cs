@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-// ゲームの典型: class の sprite を List に持ち、毎フレーム動かして画面端で跳ね返す。BENCH_N はフレーム数
+// A typical game workload: holds class sprites in a List, moves them every frame, and bounces them off the screen edges. BENCH_N is the number of frames
 public class Sprite
 {
     public float X, Y, Vx, Vy;
@@ -74,8 +74,8 @@ public class Sprites
     {
         string s = Environment.GetEnvironmentVariable("BENCH_N");
         int n = s == null ? 100 : int.Parse(s);
-        // BENCH_REPS 回くり返す (run.py が 1 回あたりの時間を出すのに使う)。
-        // 次の回の入力を前の回の結果に依存させ、compiler が回を省いたり外に出したりできないようにする (結果が -1 になることは無い)
+        // Repeats BENCH_REPS times (run.py uses this to compute the time per repetition).
+        // Each repetition's input depends on the previous result so the compiler cannot skip repetitions or hoist them out (the result is never -1)
         string rs = Environment.GetEnvironmentVariable("BENCH_REPS");
         int reps = rs == null ? 1 : int.Parse(rs);
         int prev = 0;

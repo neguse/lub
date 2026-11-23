@@ -1,7 +1,7 @@
-// どの中身のウィンドウも、どのスクリーンにも置ける。
-//   - ゲームの絵のウィンドウを、空間の円筒のスクリーンへ移しても、ゲームは進み、絵はウィンドウの大きさの画素で描かれる
-//   - 空間に置いたゲームの絵を指すと、その絵の中の位置がゲームに渡る
-//   - インスペクタを別のスクリーンへ移すと、そこに居続ける
+// Windows of any content can be placed on any screen.
+//   - Even when the game image window is moved to the cylinder screen in space, the game advances and the image is drawn with pixels matching the window size
+//   - Pointing at a game image placed in space passes the position within that image to the game
+//   - When the inspector is moved to another screen, it stays there
 using System;
 using Lub;
 using LiderCore;
@@ -18,7 +18,7 @@ public static class TestAnywhere
     {
         App.Config(new ConfigOpts { Width = 1280, Height = 720 });
         Lider.OnInit();
-        // 重ねる形 (コードの窓を、空間の円筒のスクリーンに横一列に並べる形) で確かめる
+        // Check in the overlay arrangement (the code panels laid out in a single row on the cylinder screen in space)
         Lider.Arrange(Lider.Overlay);
     }
 
@@ -40,7 +40,7 @@ public static class TestAnywhere
 
     static void TestFrame()
     {
-        // ゲームの build を待つ
+        // Wait for the game build
         if (failed || GameApp.Frames == 0)
             return;
         frames++;
@@ -61,12 +61,12 @@ public static class TestAnywhere
                 Check(GameApp.Frames > framesBefore, "the game stopped after it moved");
                 var px = (int)(game.Size.X * PanelView.BasePxW / PanelView.BaseW * Lider.PixelRatio);
                 Check(game.Size.X > 0 && GameApp.Map.W == px, "the picture is " + GameApp.Map.W + " px wide, want " + px);
-                // 絵の真ん中より少し右下を指す
+                // Point slightly to the bottom right of the image's middle
                 var at = Lider.ViewportPoint(Space.At(Lider.WindowAngle(w, game) + game.Size.X * 0.25f / Space.R, Lider.WindowY(w, game) - game.Size.Y * 0.25f, Space.R));
                 Lider.OnEvent(new EventData { Kind = EventKind.MouseMotion, X = at.X, Y = at.Y });
                 Near(GameApp.Map.X, GameApp.Map.W * 0.75f, GameApp.Map.W * 0.02f, "the pointed x in the picture");
                 Near(GameApp.Map.Y, GameApp.Map.H * 0.75f, GameApp.Map.H * 0.02f, "the pointed y in the picture");
-                // インスペクタを次のスクリーンへ
+                // Move the inspector to the next screen
                 w.FocusTo(Lider.InspectWindow);
                 Check(Lider.Run("window:move-to-next-screen"), "window:move-to-next-screen did not run");
                 Check(w.ScreenOf(Lider.InspectWindow) == Lider.Screens[0], "the inspector did not move to the backdrop");

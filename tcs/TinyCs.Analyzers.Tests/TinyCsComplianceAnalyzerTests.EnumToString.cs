@@ -2,7 +2,7 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// Enum.ToString の書式は "G" / "F" / "D" の定数だけ (#133)
+// Enum.ToString formats are limited to the constants "G" / "F" / "D" (#133)
 public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]

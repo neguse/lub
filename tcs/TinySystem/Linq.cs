@@ -1,19 +1,19 @@
-// project の nullable の設定に依らず同じ注釈で読む (.NET の project は TinySystem.props で取り込む)
+// Read with the same annotations regardless of the project's nullable setting (.NET projects pull it in through TinySystem.props)
 #nullable enable
 namespace TinySystem.Linq;
 
-// using を namespace の内側に置き、user が global に定義した Func / List より System を先に引く
+// The using is placed inside the namespace so System is looked up before Func / List that users define globally
 using System;
 using System.Collections.Generic;
 
 /// <summary>
-/// <c>List&lt;T&gt;</c> の LINQ。System.Linq と同じ名前の演算を即時評価で持ち、列を返す演算は新しい
-/// <c>List&lt;T&gt;</c> を返す。tcs はこのファイルを user のコードと一緒に C / VM の IL に変換し、.NET は
-/// そのまま実行するので、3 つの経路が同じ実装で動く (q.md Q18)。namespace を TinySystem と分けるのは、
-/// <c>using System;</c> と並べても Math / String / Random が曖昧にならないようにするため。
-/// <para>共通の契約: callback は各要素にちょうど 1 回、先頭から順に呼ぶ。走査するのは呼び出した
-/// 時点の Count までなので、callback が受け手を縮めると範囲外の添字を読む。空の列の
-/// Min / Max (int / float) は fault する。</para>
+/// LINQ for <c>List&lt;T&gt;</c>. It has eagerly evaluated operations with the same names as System.Linq, and operations that return a sequence return a new
+/// <c>List&lt;T&gt;</c>. tcs compiles this file to C / VM IL together with user code, and .NET
+/// runs it as is, so the three paths run the same implementation (q.md Q18). The namespace is separate from TinySystem
+/// so that Math / String / Random do not become ambiguous next to <c>using System;</c>.
+/// <para>Common contract: callbacks are called exactly once per element, in order from the first. Iteration goes up to the Count at the time
+/// of the call, so if a callback shrinks the receiver, out-of-range indexes are read. Min / Max (int / float) of an empty
+/// sequence fault.</para>
 /// </summary>
 public static class Enumerable
 {
@@ -64,11 +64,11 @@ public static class Enumerable
         return count;
     }
 
-    /// <summary>空なら default(T)。</summary>
+    /// <summary>default(T) if empty.</summary>
     public static T FirstOrDefault<T>(this List<T> list) =>
         list.Count > 0 ? list[0] : default!;
 
-    /// <summary>一致する要素が無ければ default(T)。</summary>
+    /// <summary>default(T) if no element matches.</summary>
     public static T FirstOrDefault<T>(this List<T> list, Func<T, bool> predicate)
     {
         int n = list.Count;
@@ -80,7 +80,7 @@ public static class Enumerable
         return default!;
     }
 
-    /// <summary>途中の和が int の範囲を超えれば fault (checked)。</summary>
+    /// <summary>Faults if an intermediate sum goes out of int range (checked).</summary>
     public static int Sum(this List<int> list)
     {
         int sum = 0;
@@ -89,7 +89,7 @@ public static class Enumerable
         return sum;
     }
 
-    /// <summary>途中の和が int の範囲を超えれば fault (checked)。</summary>
+    /// <summary>Faults if an intermediate sum goes out of int range (checked).</summary>
     public static int Sum<T>(this List<T> list, Func<T, int> selector)
     {
         int sum = 0;
@@ -98,7 +98,7 @@ public static class Enumerable
         return sum;
     }
 
-    /// <summary>float のまま先頭から足す (System.Linq は double で足してから float にする)。</summary>
+    /// <summary>Adds from the first element as float (System.Linq adds as double and then converts to float).</summary>
     public static float Sum(this List<float> list)
     {
         float sum = 0f;
@@ -107,7 +107,7 @@ public static class Enumerable
         return sum;
     }
 
-    /// <summary>float のまま先頭から足す (System.Linq は double で足してから float にする)。</summary>
+    /// <summary>Adds from the first element as float (System.Linq adds as double and then converts to float).</summary>
     public static float Sum<T>(this List<T> list, Func<T, float> selector)
     {
         float sum = 0f;
@@ -116,10 +116,10 @@ public static class Enumerable
         return sum;
     }
 
-    // Min / Max は System.Linq と同じ規則: 等しい値は先に出た方を残す。float の NaN は最小の値で、
-    // Min は NaN を見た時点でそれを返し (残りの selector は呼ばない)、Max は NaN 以外が 1 つでも
-    // あればその最大値。string は ordinal の順で、null を飛ばし、null しか無ければ null。
-    // 空の列は int / float が fault (NoElements)、string が null
+    // Min / Max follow the same rules as System.Linq: among equal values the earlier one is kept. float NaN is the smallest value;
+    // Min returns NaN as soon as it sees it (the remaining selectors are not called), and Max is the maximum of the non-NaN values if there is
+    // at least one. string uses ordinal order, skips null, and is null if there is only null.
+    // An empty sequence faults for int / float (NoElements) and gives null for string
 
     public static int Min(this List<int> list) => Min(list, Identity);
 
@@ -213,8 +213,8 @@ public static class Enumerable
         return max;
     }
 
-    // MinBy / MaxBy は key の最小 / 最大の要素 (key の等しい要素は先に出た方)。key は各要素に 1 回
-    // だけ求め、比べ方は OrderBy と同じ。空の列は要素の型に依らず fault (System.Linq は参照型の要素なら null を返す)
+    // MinBy / MaxBy return the element with the minimum / maximum key (among equal keys, the earlier one). The key is computed only once
+    // per element, and comparison is the same as OrderBy. An empty sequence faults regardless of the element type (System.Linq returns null for reference-type elements)
 
     public static T MinBy<T>(this List<T> list, Func<T, int> key) =>
         list[Best(list.Count, i => key(list[i]), (a, b) => a.CompareTo(b) < 0)];
@@ -234,7 +234,7 @@ public static class Enumerable
     public static T MaxBy<T>(this List<T> list, Func<T, string?> key) =>
         list[Best(list.Count, i => key(list[i]), (a, b) => Ordinal(a, b) > 0)];
 
-    // 添字 0..n-1 のうち key が better で最も先に勝つものの添字
+    // The index, among indexes 0..n-1, of the earliest one whose key wins by better
     private static int Best<TKey>(int n, Func<int, TKey> key, Func<TKey, TKey, bool> better)
     {
         if (n == 0) return NoElements();
@@ -252,8 +252,8 @@ public static class Enumerable
         return best;
     }
 
-    // OrderBy / OrderByDescending は安定 sort (key の等しい要素は元の順)。key は各要素に 1 回だけ
-    // 求める。float の key は NaN が最小 (float.CompareTo)、string の key は ordinal で null が最小
+    // OrderBy / OrderByDescending are stable sorts (elements with equal keys keep their original order). The key is computed only once
+    // per element. For float keys NaN is the smallest (float.CompareTo); string keys use ordinal order with null as the smallest
 
     public static List<T> OrderBy<T>(this List<T> list, Func<T, int> key)
     {
@@ -291,8 +291,8 @@ public static class Enumerable
         return Reorder(list, keys.Count, (a, b) => Tie(Ordinal(keys[b], keys[a]), a, b));
     }
 
-    // Dictionary の Keys / Values も受け手にする (q.md Q18)。順序は挿入順 (§18。TinySystem/Collections.cs) で、List に写して
-    // List の版に渡す (C / VM の Keys / Values も List の写し)
+    // Dictionary Keys / Values are also accepted as receivers (q.md Q18). The order is insertion order (§18; TinySystem/Collections.cs); they are copied to a List and
+    // passed to the List version (Keys / Values in C / VM are List copies too)
 
     public static List<TKey> Where<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, bool> predicate)
         where TKey : notnull => new List<TKey>(keys).Where(predicate);
@@ -504,15 +504,15 @@ public static class Enumerable
     public static string? Max<TValue>(this Dictionary<string, TValue>.KeyCollection keys) =>
         new List<string>(keys).Max();
 
-    // 空の列の Min / Max / MinBy / MaxBy は System.Linq と同じく InvalidOperationException 相当の fault。
-    // サブセットに throw は無いので、値の無い Nullable の Value を読んで止める
+    // Min / Max / MinBy / MaxBy of an empty sequence fault, equivalent to InvalidOperationException as in System.Linq.
+    // The subset has no throw, so it stops by reading Value of a Nullable with no value
     private static int NoElements()
     {
         int? none = null;
         return none!.Value;
     }
 
-    // NaN だけが自分と等しくない (float.IsNaN はサブセットに無い)
+    // Only NaN is not equal to itself (float.IsNaN is not in the subset)
 #pragma warning disable CS1718
     private static bool IsNaN(float x) => x != x;
 #pragma warning restore CS1718
@@ -531,7 +531,7 @@ public static class Enumerable
         return keys;
     }
 
-    // 添字 0..n-1 を compare の順に並べ、その順の要素の List を返す
+    // Sorts indexes 0..n-1 in compare order and returns a List of the elements in that order
     private static List<T> Reorder<T>(List<T> list, int n, Func<int, int, int> compare)
     {
         var order = new List<int>();

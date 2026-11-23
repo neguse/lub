@@ -14,9 +14,10 @@
 #define AUDIO_MAX_SNDS 256
 #define AUDIO_MAX_VOICES 64
 
-// voice state machine。
-// FREE→CLAIMED→PLAYING/STOPPING は game thread、PLAYING/STOPPING→FREE は audio thread だけが行う。
-// CLAIMED の間は audio thread が触らないので、game thread はロック無しで初期化できる。
+// voice state machine.
+// Only the game thread does FREE→CLAIMED→PLAYING/STOPPING, and only the audio
+// thread does PLAYING/STOPPING→FREE. The audio thread does not touch it while
+// CLAIMED, so the game thread can initialize it without a lock.
 enum {
   V_FREE = 0,
   V_CLAIMED,
@@ -25,36 +26,41 @@ enum {
 };
 
 typedef struct Snd {
-  float *pcm; // interleaved f32、game thread が確保し frame_end で回収
+  float *pcm; // interleaved f32, allocated by the game thread and reclaimed in
+              // frame_end
   uint32_t frames;
   uint32_t channels; // 1 or 2
   uint32_t rate;
-  uint64_t hash; // 内容 dedupe 用 (bytes + channels + rate)
-  uint32_t gen;  // handle の世代。free で進めて stale handle を弾く
+  uint64_t hash; // For content dedupe (bytes + channels + rate)
+  uint32_t gen;  // Handle generation. Advanced on free to reject stale handles
   bool in_use;
-  bool retired;        // 宣言が切れた。lookup は失敗、voice が離れたら回収
-  SDL_AtomicInt alive; // 0 = freed。audio thread は参照 voice を落とす
-  SDL_AtomicInt refs;  // attach されている voice 数
+  bool retired; // Declarations stopped. lookup fails; reclaimed once the voices
+                // detach
+  SDL_AtomicInt
+      alive; // 0 = freed. The audio thread drops the voices that reference it
+  SDL_AtomicInt refs; // Number of attached voices
 } Snd;
 
 typedef struct Voice {
   SDL_AtomicInt state;
   int snd_idx;
   uint32_t snd_gen;
-  uint32_t spawn_gen; // slot 再利用の識別 (game thread only)
+  uint32_t spawn_gen; // Identifies slot reuse (game thread only)
   bool loop;
-  // targets: game thread が書き audio thread が読む (float bits)
+  // targets: written by the game thread, read by the audio thread (float bits)
   SDL_AtomicU32 t_vol, t_pitch, t_pan;
-  // audio thread owned (CLAIMED の間だけ game thread が初期化する)
-  double pos; // frames 単位の再生位置
+  // audio thread owned (the game thread initializes them only while CLAIMED)
+  double pos; // Playback position in frames
   float c_vol, c_pitch, c_pan;
 } Voice;
 
-// declared voice の game 側台帳。
-// 「同じ key の宣言が続く限り同じ voice」と「自然終了した key は宣言が途切れるまで再発火しない」を守る。
+// Game-side ledger of declared voices.
+// Enforces "the same voice as long as declarations of the same key continue"
+// and "a key that ended naturally does not fire again until its declarations
+// stop".
 typedef struct Declared {
   bool in_use;
-  bool ended; // voice が自然終了した。key が消えるまで tombstone
+  bool ended; // The voice ended naturally. Tombstone until the key goes away
   char key[AUDIO_KEY_MAX];
   int snd_id;
   int voice_idx;
@@ -73,7 +79,7 @@ struct AudioState {
   ma_context context;
   bool context_inited;
   ma_device device;
-  float k_vol, k_pitch; // per-sample one-pole 係数 (tau 5ms / 20ms)
+  float k_vol, k_pitch; // per-sample one-pole coefficients (tau 5ms / 20ms)
   SDL_AtomicU32 master; // float bits
 };
 
@@ -211,9 +217,10 @@ static void audio_ensure_device(AudioState *st) {
 
   ma_result res = MA_ERROR;
 #ifdef SDL_PLATFORM_IOS
-  // miniaudio の既定は playback category で、消音スイッチを無視して鳴る。
-  // ゲームの音は ambient (消音に従い、他の app の音と混ざる) にする。
-  // audio session が決まる前の native rate は当てにならないので 48 kHz を頼む。
+  // miniaudio defaults to the playback category, which plays even when the mute
+  // switch is on. Game audio uses ambient (follows mute and mixes with other
+  // apps' audio). The native rate before the audio session is decided is
+  // unreliable, so request 48 kHz.
   cfg.sampleRate = 48000;
   ma_context_config ctx_cfg = ma_context_config_init();
   ctx_cfg.coreaudio.sessionCategory = ma_ios_session_category_ambient;
@@ -229,7 +236,7 @@ static void audio_ensure_device(AudioState *st) {
   res = ma_device_init(NULL, &cfg, &st->device);
 #endif
   if (res != MA_SUCCESS) {
-    // headless / CI: null backend にフォールバックして mixer は回し続ける
+    // headless / CI: fall back to the null backend and keep the mixer running
     ma_backend null_backend = ma_backend_null;
     if (ma_context_init(&null_backend, 1, NULL, &st->context) == MA_SUCCESS) {
       st->context_inited = true;
@@ -293,7 +300,8 @@ int audio_snd_from_pcm(AudioState *st, const float *interleaved,
     if (SDL_GetAtomicInt(&snd->alive) && snd->hash == h &&
         snd->frames == frames && snd->channels == channels &&
         snd->rate == rate && memcmp(snd->pcm, interleaved, bytes) == 0) {
-      snd->retired = false; // 内容一致 → 同じ handle (hot reload 継続の要)
+      snd->retired = false; // Same contents → same handle (key to continuity
+                            // across hot reload)
       return snd_id(st, snd);
     }
   }
@@ -357,7 +365,7 @@ static bool voice_spawn(AudioState *st, Snd *snd, bool loop, float volume,
   SDL_SetAtomicU32(&v->t_pitch, f2b(pitch));
   SDL_SetAtomicU32(&v->t_pan, f2b(pan));
   v->pos = pitch < 0.0f ? (double)snd->frames - 1.001 : 0.0;
-  v->c_vol = 0.0f; // 立ち上がりは ramp でクリックを防ぐ
+  v->c_vol = 0.0f; // Ramp up the attack to prevent clicks
   v->c_pitch = pitch;
   v->c_pan = pan;
   SDL_AddAtomicInt(&snd->refs, 1);
@@ -369,7 +377,7 @@ static bool voice_spawn(AudioState *st, Snd *snd, bool loop, float volume,
   return true;
 }
 
-// declared 台帳から見て voice がまだ生きているか
+// Whether the voice is still alive according to the declared ledger
 static bool voice_matches(AudioState *st, Declared *d) {
   Voice *v = &st->voices[d->voice_idx];
   int state = SDL_GetAtomicInt(&v->state);
@@ -412,9 +420,11 @@ bool audio_voice(AudioState *st, const char *key, int id, bool loop,
   if (entry) {
     entry->declared_frame = st->frame;
     if (entry->ended)
-      return true; // 自然終了済み。key が消えるまで再発火しない
+      return true; // Already ended naturally. Do not fire again until the key
+                   // goes away
     if (!voice_matches(st, entry)) {
-      entry->ended = true; // サンプル末尾で終わった (非 loop の宣言 voice)
+      entry->ended =
+          true; // Ended at the end of the sample (non-loop declared voice)
       return true;
     }
     Voice *v = &st->voices[entry->voice_idx];
@@ -424,7 +434,7 @@ bool audio_voice(AudioState *st, const char *key, int id, bool loop,
       SDL_SetAtomicU32(&v->t_pan, f2b(pan));
       return true;
     }
-    // snd (または loop) が変わった: 旧 voice を fade out して張り替え
+    // snd (or loop) changed: fade out the old voice and replace it
     SDL_CompareAndSwapAtomicInt(&v->state, V_PLAYING, V_STOPPING);
     entry->snd_id = id;
     return voice_spawn(st, snd, loop, volume, pitch, pan, &entry->voice_idx,
@@ -438,7 +448,8 @@ bool audio_voice(AudioState *st, const char *key, int id, bool loop,
   if (!voice_spawn(st, snd, loop, volume, pitch, pan, &vidx, &vgen))
     return false;
   memset(free_entry, 0, sizeof(*free_entry));
-  // 長さは呼び出し側 (lub_audio_voice) が AUDIO_KEY_MAX 未満に検査済み。
+  // The caller (lub_audio_voice) has already checked that the length is less
+  // than AUDIO_KEY_MAX.
   memcpy(free_entry->key, key, strlen(key) + 1);
   free_entry->in_use = true;
   free_entry->snd_id = id;
@@ -453,7 +464,7 @@ void audio_master_volume(AudioState *st, float volume) {
 }
 
 void audio_state_frame_end(AudioState *st) {
-  // 宣言が途切れた declared voice を fade out へ
+  // Move declared voices whose declarations stopped to fade out
   for (int i = 0; i < AUDIO_MAX_VOICES; i++) {
     Declared *d = &st->declared[i];
     if (!d->in_use)
@@ -466,8 +477,8 @@ void audio_state_frame_end(AudioState *st) {
     }
     d->in_use = false;
   }
-  // 退役した snd の PCM 回収 (attach していた voice が全部離れてから)。
-  // alive を落として gen を進め、handle を完全に無効化する。
+  // Reclaim the PCM of retired snds (after all attached voices have detached).
+  // Clear alive and advance gen to fully invalidate the handle.
   for (int i = 0; i < AUDIO_MAX_SNDS; i++) {
     Snd *snd = &st->snds[i];
     if (snd->in_use && snd->retired && SDL_GetAtomicInt(&snd->refs) == 0) {
@@ -500,7 +511,8 @@ AudioState *audio_state_create(void) {
   if (!st)
     return NULL;
   SDL_SetAtomicU32(&st->master, f2b(1.0f));
-  // device 起動前でも係数がゼロにならないよう既定値 (48kHz 相当)
+  // Default values so the coefficients are not zero even before the device
+  // starts (equivalent to 48kHz)
   st->k_vol = 1.0f - expf(-1.0f / (0.005f * 48000.0f));
   st->k_pitch = 1.0f - expf(-1.0f / (0.020f * 48000.0f));
   return st;
@@ -519,7 +531,7 @@ void audio_state_destroy(AudioState *st) {
 }
 
 // ---------------------------------------------------------------------------
-// decode utility (純関数、snd handle を作らない)
+// decode utility (pure function, does not create a snd handle)
 
 float *audio_decode_bytes(const void *data, size_t len, uint32_t *out_frames,
                           uint32_t *out_channels, uint32_t *out_rate) {

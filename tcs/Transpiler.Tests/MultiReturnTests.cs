@@ -146,7 +146,7 @@ public class MultiReturnTests
             && e.Contains("OutArgumentNotDeclaration"));
     }
 
-    // 同じ局所変数を 2 つの out に渡すと、呼び出しの中で parameter が別名になる (#413)
+    // Passing the same local variable to two out arguments makes the parameters aliases within the call (#413).
     [Fact]
     public void UserMethodOutArgument_SameLocalTwice_ReportsUnsupportedSyntax()
     {
@@ -190,7 +190,7 @@ public class MultiReturnTests
             && e.Contains("OutParameter"));
     }
 
-    // host の --ref メソッドと BCL の TryGetValue は宣言済みの変数を受ける
+    // Host --ref methods and the BCL TryGetValue accept already-declared variables.
     [Fact]
     public void OutArgument_ExistingLocal_StaysAllowedForNonUserMethods()
     {
@@ -231,7 +231,7 @@ public class MultiReturnTests
             && e.Contains("RefParameter"));
     }
 
-    // host の宣言は診断しないので、呼び出しの ref / in で止める
+    // Host declarations are not diagnosed, so the ref / in at the call site is rejected.
     [Theory]
     [InlineData("Io.bump(ref n);", "RefArgument")]
     [InlineData("Io.read(in n);", "InArgument")]

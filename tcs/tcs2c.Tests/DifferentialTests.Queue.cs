@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// Queue<T>。期待値は同じ program を CoreCLR で実行した stdout
+// Queue<T>. The expected values are the stdout of running the same program on CoreCLR
 public class QueueDifferentialTests
 {
     [CFact]
@@ -37,7 +37,7 @@ public class QueueDifferentialTests
                     q.Enqueue(8);
                     Console.WriteLine(q.Peek());
 
-                    // 先頭の空きを詰める経路と伸ばす経路を両方通す
+                    // Goes through both the path that compacts the free space at the front and the growth path
                     var r = new Queue<int>();
                     var total = 0;
                     for (var i = 0; i < 1000; i++)
@@ -129,7 +129,7 @@ public class QueueDifferentialTests
             """.Replace("\r\n", "\n"), output);
     }
 
-    // フレーム境界の GC を跨いでも要素が生きている (nursery から旧世代への昇格、stress の毒値)
+    // Elements stay alive across frame-boundary GC (promotion from the nursery to the old generation, stress poison values)
     [CFact]
     public void Queue_SurvivesFrameBoundaries()
     {
@@ -193,7 +193,7 @@ public class QueueDifferentialTests
             """, "P"));
     }
 
-    // 対応していない member は TCS1002。object への型 test は Lua では止まる (List と同じ)
+    // Unsupported members give TCS1002. Type tests to object stop in Lua (same as List)
     [Theory]
     [InlineData("var q = new Queue<int>(4);", "System.Collections.Generic.Queue<T>")]
     [InlineData("var q = new Queue<int>(); q.TryDequeue(out var v);", "System.Collections.Generic.Queue<T>.TryDequeue")]

@@ -1,54 +1,29 @@
 # ドキュメント方針
 
-lub のドキュメントは「現状ドキュメント」と「記録」の 2 種類に分け、ディレクトリで区別する。
-ファイルの置き場所を見れば扱いが分かる状態を保つ。
+lub のドキュメントは全て「live doc」つまり履歴を含まず lub がどうあるべきかを示している状態を保つ。
+一時的に doc と code のずれ(設計と実装のタイムラグ等)があることは許容するが、極力整合している状態を保つ。
+ドキュメントは平易な語で書く。開発 jargon(spike 等)・圧縮英語・強調記法(bold)は使わない。
+複数個所に同じ内容の記述が出現しないようにする。ただし粒度が違う場合(概要と詳細等)は許容する。
+ドキュメントファイルには実装に直接紐づかない内容(哲学、手順、ベンチマーク結果等)を記述し、実装に紐づく内容はコードコメントとして記述する。
+ドキュメント同士のリンクは入口からの案内に絞り、相互リンクを増やさない。
 
-## 現状ドキュメント — root と `docs/` 直下
+## 用語
 
-今のリポジトリの姿を記述する。実装と食い違ったら直す。
+1 つの概念に 1 つの語を当て、紛らわしい別名や広すぎる語は使わない。
 
-- 置き場所: リポジトリ root(`README.md` / `AGENTS.md` / `CLAUDE.md`)、`docs/` 直下と `docs/manual/`、`web/README.md` のような生きているサブプロジェクトの README。
-- 挙動を変えるコミットでは、その挙動を記述している現状ドキュメントを同じコミットで直す。
-- 平易な語で書く。開発 jargon(spike 等)・完了注記(完遂・GO 確定 等)・
-  強調記法(bold)は使わない。
+| 用語 | 意味 | 使わない・混ぜない表現 |
+| --- | --- | --- |
+| 実行モード (`exec mode`) | C# ゲームの動かし方 (`tcs VM` / `tcs C` / `.NET`) | 実行経路、AOT |
+| `Lub API` / `Lubx API` | エンジンの最小限 API と C# 便利層 | core API、実装ライブラリ |
+| `liblub` | `Lub API` の C/C++ 実装ライブラリ (描画・物理・音・入力・IO・グラフィックスバックエンド) | 単独の `runtime`、`本体` |
+| グラフィックスバックエンド (`graphics backend`) | GPU 描画実装 (`d3d12` / `vulkan` / `metal` / `sdlgpu` / `webgpu`) | 修飾なしの `backend` |
+| プラットフォーム (`platform`) | 動作先 (`Windows` / `macOS` / `Linux` / `iOS` / `Android` / `Web`) | — |
+| ターゲット (`target`) | ビルド・配布の組 (`linux-x64`、`macos-arm64` 等) | — |
+| プレイヤー (`player`) | `liblub` + `tcs VM` でバイトコード (`.tcsb`) を動かす最小限の実行ライブラリ (`lub_vm_player`) | `host` と混ぜない |
+| ホスト (`host`) | プレイヤーを外側から動かす環境との窓口 (Web ページの JS 等、`Lub.Host`) | プレイヤーや VM→C 呼び出しと混ぜない |
 
-## 記録 — `docs/log/`
-
-当時の調査・設計・計画を残すための記録で、最新の状態を反映していることは保証しない。
-
-- 置き場所:
-  - `docs/log/` — 単発の設計・調査・計画記録。ファイル名は `YYYY-MM-DD-<slug>.md`。
-- 先頭に `> 記録:` で始まる引用行を置き、いつ時点の何かを書く。
-
-## 設計ドキュメントの寿命
-
-実装前に書いた設計ドキュメントは、実装が終わったらどちらかにする。中間状態で放置しない。
-
-- 現状ドキュメント化: 現在の使い方・仕組みの記述に書き直し、`docs/` 直下に置く(例: `api-glue.md`)。
-- 記録化: 前書きを付けて `docs/log/` へ日付プレフィックスで移す
-  (例: `log/2026-06-22-native-backend-design.md`)。
+広すぎる語 (`runtime` 単体など) は使わず、`liblub`・`lub` CLI・`tcs/runtime` のように具体的に書く。
 
 ## 検査
 
-`scripts/docs-lint.sh` が機械的に検査できる範囲(索引とファイルの整合、
-`docs/log/` の命名・バナー規約、現状ドキュメントの bold 不使用)を
-commit フックと CI で確認する。
-
-## 索引
-
-現状ドキュメント (`docs/` 直下):
-
-- [design.md](design.md) — lub の why / to-be / 設計原則
-- [manual/](manual/) — 利用者向けガイド(web の `/docs.html` に描画される)
-- [api-glue.md](api-glue.md) — API 面 (C# stub、C、tcs VM、.NET) の binding の構成
-- [d3d12-backend.md](d3d12-backend.md) — D3D12 backend の構成
-- [metal-backend.md](metal-backend.md) — Metal backend (macOS / iOS) の構成と shader cache
-- [android.md](android.md) — Android (Meta Quest) の player と APK の作り方
-- [profile.md](profile.md) — 組み込み CPU profiler
-- [release-build.md](release-build.md) — Release build 手順
-- [release-kit.md](release-kit.md) — release の一式 (Linux、Windows、macOS) と、手元で書いて lider で直し、C# のゲームを web の page 1 枚にする手順
-- [sprites-bench.md](sprites-bench.md) — sprite benchmark
-
-記録:
-
-- [log/](log/) — 単発の設計・調査・計画記録
+`scripts/docs-lint.sh` によりコミット前フックや CI で検査を行う。

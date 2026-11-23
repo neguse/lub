@@ -1,7 +1,7 @@
-// 本文が動いている版と違う間の、インラインの形 (code:diff-side で左右から切り替える)。
-//   - 変えた行の上に、動いている版の対応しない行の数だけ行を空ける。消した行は、その次の行の上に挟む
-//   - 空けた所の下の行は、その分だけ下に描く。押した所の行も、空けた行を数えて決める
-//   - 左右の板は出さない。reload が当たって違いが無くなると、空けた行も無くなる
+// Inline form while the text differs from the running version (switched from side by side with code:diff-side).
+//   - Above changed lines, as many lines are left blank as there are unmatched lines in the running version. Deleted lines are inserted above the next line
+//   - Lines below the blank space are drawn lower by that much. The line at a pressed point is also determined counting the blank lines
+//   - The side-by-side boards are not shown. When a reload is applied and the difference disappears, the blank lines disappear too
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -58,7 +58,7 @@ public static class TestDiffInline
         if (frames == 6)
         {
             Lider.Run("code:diff-side");
-            // Hp = 1 (8 行目) を消し、Hp = 2 を Hp = 20 にする
+            // Delete Hp = 1 (line 8) and change Hp = 2 to Hp = 20
             doc.MoveTo(6, Utf8.Bytes(doc.Text(6)));
             for (var i = 0; i < Utf8.Bytes(doc.Text(7)) + 1; i++)
             {

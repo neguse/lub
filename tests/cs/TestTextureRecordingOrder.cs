@@ -1,11 +1,11 @@
-// 1 フレームの中で同じ key の texture を違う画素で宣言し直し、それぞれの後に draw で sample する。
-// draw は宣言を記録した順の内容を読むので、赤で宣言した後の左半分は赤、緑で宣言し直した後の右半分は緑になる。
-// 書き込みが記録順を追い越す backend では両方とも最後の緑になる。
-// - rewrite: 同じ大きさで書き直す。
-// - resize: 大きさの違う画素で宣言し直し、draw が使った texture を作り直す。
-// 加えて、使った直後の texture を大きさを変えて宣言し直す。
-// color target、depth target、compute が書く storage texture の 3 つ。
-// resize とこれらは GPU が使う前の資源を消すので、消すのが早すぎる backend では validation error になる。
+// Within one frame, redeclares the texture with the same key with different pixels, and samples it in a draw after each declaration.
+// A draw reads the contents in the order the declarations were recorded, so the left half, drawn after declaring red, is red, and the right half, drawn after redeclaring green, is green.
+// On a backend where writes overtake the recording order, both become the final green.
+// - rewrite: rewrites with the same size.
+// - resize: redeclares with pixels of a different size, recreating the texture the draw used.
+// In addition, redeclares textures with a different size right after they are used.
+// The 3 kinds: color target, depth target, and storage texture written by compute.
+// resize and these destroy resources the GPU has not used yet, so a backend that destroys them too early gets a validation error.
 using System;
 using System.Collections.Generic;
 using Lub;

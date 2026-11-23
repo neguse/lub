@@ -1,4 +1,4 @@
-// TestIme が lider で開いて日本語を打つ file。
+// The file TestIme opens in lider to type Japanese.
 public static class Target
 {
     // 

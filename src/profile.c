@@ -90,8 +90,9 @@ void profile_frame_end(ProfileState *p, uint64_t frame_index) {
 }
 
 void profile_report_at_exit(ProfileState *p) {
-  // LUB_PROFILE_FRAME が capture の frame より後だったり、EVERY の周期に届く前に終了したりすると report が一度も出ない。
-  // その場合だけ終了時に一度出す。
+  // If LUB_PROFILE_FRAME is later than the captured frames, or the process
+  // exits before reaching the EVERY period, no report is ever emitted. Only in
+  // that case, emit one at exit.
   if (!p->enabled || p->reported)
     return;
   profile_report(p, p->report_label[0] ? p->report_label : "exit");

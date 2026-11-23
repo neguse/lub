@@ -11,10 +11,10 @@ cleanup_temp_dirs() {
 }
 trap cleanup_temp_dirs EXIT
 
-# 引数が無ければ全部を走らせる。
-# --part <名前> は一部だけを走らせる (CI は部分ごとの job に分けて並べる):
-#   transpiler-1、transpiler-2 (と Analyzers.Tests)、tcs2c-1、tcs2c-2、tcs2c-3 は dotnet test の一部、scripts は dotnet test 以外の検査。
-# dotnet test は class の名前の頭の文字で分ける。最後の部分は前の部分に入らない class 全部なので、どの test もどれか 1 つの部分に入る。
+# With no arguments, runs everything.
+# --part <name> runs only one part (CI splits the parts into separate jobs run in parallel):
+#   transpiler-1, transpiler-2 (and Analyzers.Tests), tcs2c-1, tcs2c-2, tcs2c-3 are parts of dotnet test; scripts is the checks other than dotnet test.
+# dotnet test is split by the first letter of the class name. The last part is all classes not in earlier parts, so every test is in exactly one part.
 part=all
 case "${1:-}" in
   "") ;;
@@ -27,14 +27,14 @@ esac
 transpiler_1=(A B C D E F G H I J K L)
 tcs2c_1=(A B C D E F G)
 tcs2c_2=(H I J K L M N)
-# 名前空間 $1 の直下で、名前の頭の文字が $2 以降のどれかの class
+# Classes directly under namespace $1 whose name starts with one of the letters from $2 on
 filter_in() {
   local ns=$1 f="" l
   shift
   for l in "$@"; do f+="${f:+|}FullyQualifiedName~$ns.$l"; done
   printf '%s' "$f"
 }
-# 名前空間 $1 の直下で、名前の頭の文字が $2 以降のどれでもない class
+# Classes directly under namespace $1 whose name starts with none of the letters from $2 on
 filter_out() {
   local ns=$1 f="" l
   shift
@@ -42,9 +42,9 @@ filter_out() {
   printf '%s' "$f"
 }
 
-# Run dotnet tests (spec conformance sweep と corpus differential 込み。
-# 章別レポートも再生成される — 挙動変更は report/baseline の diff として現れる)
-# 検証は .NET の実行との比較 (TCS_DIFFERENTIAL、TCS_FUZZ) と、Roslyn による C# の受理の判定 (spec conformance)
+# Run dotnet tests (including the spec conformance sweep and corpus differential.
+# The per-chapter reports are also regenerated — behavior changes show up as report/baseline diffs)
+# Verification is comparison with .NET execution (TCS_DIFFERENTIAL, TCS_FUZZ) and judging C# acceptance with Roslyn (spec conformance)
 export TCS_SPEC_CONFORMANCE=1
 export TCS_SPEC_REPORT="$SCRIPT_DIR/doc/spec-conformance-report.md"
 export TCS_DIFFERENTIAL=1
@@ -56,7 +56,7 @@ case "$part" in
     dotnet test "$SCRIPT_DIR/Transpiler.Tests" --verbosity minimal --filter "$(filter_in TinyCs.Tests "${transpiler_1[@]}")"
     ;;
   transpiler-2)
-    # Analyzers.Tests は 1 つの class なので、Transpiler.Tests の残りと並べる。同じ project を同時に build しないよう、先に build する
+    # Analyzers.Tests is a single class, so it runs alongside the rest of Transpiler.Tests. Build first so the same project is not built concurrently
     dotnet build "$SCRIPT_DIR/Transpiler.Tests" --verbosity minimal
     dotnet build "$SCRIPT_DIR/TinyCs.Analyzers.Tests" --verbosity minimal
     dotnet test "$SCRIPT_DIR/TinyCs.Analyzers.Tests" --no-build --verbosity minimal &
@@ -94,7 +94,7 @@ dotnet run --project "$SCRIPT_DIR/Transpiler" -- \
   check "$SCRIPT_DIR/samples/host_api_game.cs" \
   --ref "$SCRIPT_DIR/samples/host_api_stub.cs"
 
-# 2 backend digest 一致 (IL→C backend、cc がある環境のみ)
+# 2-backend digest match (IL→C backend, only where cc is available)
 if command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; then
   echo "Running tcs2c digest verification..."
   bash "$SCRIPT_DIR/tcs2c/verify-digests.sh"
@@ -130,7 +130,7 @@ assert_contains() {
   local label="$1"
   local output="$2"
   local needle="$3"
-  # pipe にすると、grep -q が先に閉じた printf の SIGPIPE を pipefail が失敗として拾う
+  # With a pipe, pipefail would catch as a failure the SIGPIPE of printf after grep -q closes early
   if ! grep -Fq -- "$needle" <<<"$output"; then
     echo "Error: $label did not contain expected diagnostic text: $needle" >&2
     exit 1
@@ -162,9 +162,9 @@ fi
 assert_expected_diagnostic_texts "analyzer demo" "$analyzer_output"
 
 echo "Running analyzer package consumer build..."
-# MSBuild / NuGet は project の祖先ディレクトリを遡って Directory.Build.props や
-# NuGet.Config を取り込む。scratch dir を /tmp 直下に作ると、そこに置かれたものを
-# build の一部として実行してしまうため、自分専用の temp root の下に作る。
+# MSBuild / NuGet walk up the project's ancestor directories and pick up Directory.Build.props and
+# NuGet.Config. Creating the scratch dir directly under /tmp would run whatever is placed there
+# as part of the build, so it is created under our own temp root.
 TEMP_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/tcs/tmp"
 if [ -L "$TEMP_ROOT" ]; then
   echo "Error: $TEMP_ROOT is a symlink; refusing to use it." >&2
@@ -256,8 +256,8 @@ if [ "$override_tcs1001_count" -ne 5 ] || [ "$override_tcs1002_count" -ne 1 ] ||
 fi
 assert_expected_diagnostic_texts "analyzer package severity override" "$override_output"
 
-# VM の web 用の増分 session (WasmCompiler の VmExports) を実ブラウザで確かめる。wasm-tools workload と
-# playwright が要り、publish に時間がかかるので TCS_WASM_SMOKE=1 のときだけ
+# Checks the VM's incremental web session (VmExports of WasmCompiler) in a real browser. It needs the wasm-tools workload and
+# playwright, and publishing takes time, so it runs only when TCS_WASM_SMOKE=1
 if [ "${TCS_WASM_SMOKE:-0}" = 1 ]; then
   echo "Running WasmCompiler VM smoke..."
   dotnet publish "$SCRIPT_DIR/WasmCompiler" -c Release --verbosity quiet

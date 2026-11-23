@@ -1,6 +1,7 @@
 #pragma once
-// Box2D の即時モード層の状態。
-// API は include/lub/lub_api.h の lub_phys2d_*、tcs VM の面は src/gen/vm_api_gen.c (生成物)。
+// State of the Box2D immediate-mode layer.
+// The API is lub_phys2d_* in include/lub/lub_api.h, the tcs VM surface is
+// src/gen/vm_api_gen.c (generated code).
 #include "phys_common.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -27,8 +28,8 @@ typedef struct PhysDebugBuffer {
 typedef struct PhysState {
   PhysWorld *worlds[PHYS2D_WORLD_BUCKETS];
   PhysHandles handles;
-  // callback (filter / pre_solve / friction / restitution / query visitor) の再入深さ。
-  // > 0 の間は物理を変える API を拒む。
+  // Reentry depth of callbacks (filter / pre_solve / friction / restitution /
+  // query visitor). While > 0, APIs that change physics are rejected.
   int callback_depth;
   PhysScratch scratch;
   PhysDebugBuffer debug;

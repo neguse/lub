@@ -1,10 +1,10 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// pattern / switch の意味論の 2 backend differential。期待値は同じ program を
-// CoreCLR で実行した stdout
+// Two-backend differential tests for pattern / switch semantics. The expected values are the stdout of running the same program
+// on CoreCLR
 public class PatternsDifferentialTests
 {
-    // section ごとに同じ名前の pattern 変数 (T283)。C の出力が全ての section で最後の x を参照しないこと
+    // Pattern variables with the same name in each section (T283). The C output must not refer to the last x in every section
     [CFact]
     public void SwitchSections_SameNamePatternVariables()
     {
@@ -177,7 +177,7 @@ public class PatternsDifferentialTests
         Assert.Equal("A\nA\nB\nzero\nbig4\nD5\nbig6\nzero\nbig4\nbig5\nbig6\n2\nloop9\nloop9\nearly9\ngt3", output);
     }
 
-    // field を入力にした照合は、途中の getter が field を差し替えても最初に読んだ object を照合する (#88)
+    // Matching with a field as the input matches the object read first, even if a getter along the way replaces the field (#88)
     [CFact]
     public void PropertyPattern_FieldInputReadOnce()
     {

@@ -1,6 +1,6 @@
 using System;
 
-// f32 の演算と比較 (il-spec §6): 演算ごとの丸め、-0、比較、int との混在
+// f32 operations and comparisons (il-spec §6): rounding per operation, -0, comparison, mixing with int
 public class FloatOps
 {
     static float Half(float x)

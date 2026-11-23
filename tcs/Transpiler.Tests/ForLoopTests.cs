@@ -137,9 +137,9 @@ public class ForLoopTests
     [Fact]
     public void Continue_GeneralFor_LocalDeclaredAfterContinue()
     {
-        // 一般 for lowering は continue label の後に incrementor が続くため、
-        // label が block 末尾に来ない。continue より後で宣言した local がある場合、
-        // goto が local スコープへ飛び込む形になり Lua が load を拒否する回帰の検証
+        // The general for lowering puts the incrementor after the continue label, so
+        // the label does not end up at the end of the block. When a local is declared after continue,
+        // goto jumps into the local's scope and Lua refuses to load it; this verifies that regression
         var result = TestHelper.CompileAndRunVm("""
             public class T
             {
@@ -294,8 +294,8 @@ public class ForLoopTests
         Assert.Equal("5", result);
     }
 
-    // C# の for 条件は毎 iteration 再評価される。bound が動的な場合は
-    // Lua numeric for (limit 一回評価) に落とさず while で再評価する。
+    // A C# for condition is re-evaluated on every iteration. When the bound is dynamic,
+    // it is not lowered to a Lua numeric for (limit evaluated once) but re-evaluated with while.
     [Fact]
     public void For_BoundVariableMutatedInBody_ReevaluatedEachIteration()
     {
@@ -432,9 +432,9 @@ public class ForLoopTests
         Assert.Equal("11", result); // Executes once even though 10 >= 5
     }
 
-    // C# の for 制御変数はループ全体で 1 個であり、closure は全反復で
-    // 同じ変数を共有する (il-spec §7)。Lua numeric for は反復ごとに新しい
-    // 変数のため、捕捉がある場合は while 脱糖で意味論を保つ。
+    // A C# for control variable is a single variable for the whole loop, and closures share
+    // the same variable across all iterations (il-spec §7). A Lua numeric for has a new
+    // variable per iteration, so when there is a capture, while desugaring keeps the semantics.
     [Fact]
     public void CapturedForVariable_SharedAcrossIterations()
     {

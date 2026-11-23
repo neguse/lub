@@ -1,5 +1,6 @@
-// lubx.vorbis (cs-lib/lub_stub.cs の namespace Lubx): Ogg Vorbis の bytes を f32 PCM に戻す。
-// core API ではなく、lubx (cs-lib/lubx/Assets.cs の Ogg) が使う C の実装。
+// lubx.vorbis (namespace Lubx in cs-lib/lub_stub.cs): decodes Ogg Vorbis bytes
+// into f32 PCM. Not a core API; a C implementation used by lubx (Ogg in
+// cs-lib/lubx/Assets.cs).
 #include "api_internal.h"
 #include <stdlib.h>
 
@@ -16,10 +17,12 @@ LubStatus lubx_vorbis_decode(LubContext *ctx, const uint8_t *data,
   int error = 0;
   stb_vorbis *v = stb_vorbis_open_memory(data, data_len, &error, NULL);
   if (!v)
-    return LUB_NOT_FOUND; // Ogg Vorbis でない / 壊れた data は nil で返す
+    return LUB_NOT_FOUND; // Data that is not Ogg Vorbis / is corrupt returns
+                          // nil
   stb_vorbis_info info = stb_vorbis_get_info(v);
   int ch = info.channels;
-  // 長さは末尾の page の granule から分かる。分からない (壊れた) stream は読めないものとして扱う。
+  // The length is known from the granule of the last page. A stream where it is
+  // unknown (corrupt) is treated as unreadable.
   size_t frames = stb_vorbis_stream_length_in_samples(v);
   float *out =
       frames ? (float *)malloc(frames * (size_t)ch * sizeof(float)) : NULL;
@@ -33,7 +36,8 @@ LubStatus lubx_vorbis_decode(LubContext *ctx, const uint8_t *data,
   }
   if (!out)
     return lub_api_fail(app, "vorbis.decode: out of memory");
-  app_frame_garbage_push(app, out); // view の実体は frame の終わりに回収
+  app_frame_garbage_push(
+      app, out); // The view's backing data is reclaimed at the end of the frame
   if (pcm) {
     pcm->ptr = (const uint8_t *)out;
     pcm->len = (int32_t)(frames * (size_t)ch * sizeof(float));

@@ -1,11 +1,13 @@
-// path の basename / dirname (SDL の path API に無い小物)。
+// basename / dirname for paths (small helpers missing from SDL's path API).
 #pragma once
 #include <stddef.h>
 
-// 拡張子を除いた basename を out に写して返す ("a/b/Game.csproj" → "Game")。
+// Copy the basename without its extension to out and return it
+// ("a/b/Game.csproj" → "Game").
 const char *path_basename_noext(const char *path, char *out, size_t outsz);
-// dirname を out に写す ("a/b/x" → "a/b"、"x" → ".")。
+// Copy the dirname to out ("a/b/x" → "a/b", "x" → ".").
 void path_dirname(const char *path, char *out, size_t outsz);
-// 親ディレクトリを out に写す。
-// 末尾の区切りは無視し、'/' と '\' の両方を区切りとして受ける ("C:\x\build\" → "C:\x"、"/a/b/" → "/a"、"x" → ".")。
+// Copy the parent directory to out.
+// Trailing separators are ignored, and both '/' and '\' are accepted as
+// separators ("C:\x\build\" → "C:\x", "/a/b/" → "/a", "x" → ".").
 void path_parent_dir(const char *path, char *out, size_t outsz);

@@ -1,4 +1,4 @@
-// ../game/Game.cs が App.Use で開く app。frame ごとに Score を 3 ずつ増やし、少し確保して行ごとの負荷に出る仕事をする。
+// The app that ../game/Game.cs opens with App.Use. Increases Score by 3 every frame, and does some work that allocates a little and shows up in the per-line load.
 using System;
 using System.Collections.Generic;
 using Lub;

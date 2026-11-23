@@ -1,5 +1,6 @@
 struct Cell {
-  float4 cell; // xy = この draw が塗る画素、zw = target の幅と高さ
+  float4 cell; // xy = the pixel this draw fills, zw = the width and height of
+               // the target
 };
 ConstantBuffer<Cell> a;
 

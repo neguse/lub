@@ -1,6 +1,6 @@
-// vertex shader が LUB_TEXTURE2D を sample する (neguse/lub#68)。
-// 2x1 の texture を vertex shader で引き、左半分の quad は texel 0、右半分の quad は texel 1 の色を頂点色として出す。
-// 2x1 の target を読み戻して確かめる。
+// A vertex shader samples a LUB_TEXTURE2D (neguse/lub#68).
+// Samples a 2x1 texture in the vertex shader, and outputs as the vertex color the color of texel 0 for the left-half quad and of texel 1 for the right-half quad.
+// Reads back the 2x1 target to check.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -13,8 +13,8 @@ public static class TestVertexTexture
 
     static readonly List<int> texels = new List<int> { 255, 64, 0, 255, 0, 128, 255, 255 };
 
-    // 2 三角形 (6 頂点)。
-    // 全頂点が同じ uv なので quad 内は一色になる
+    // 2 triangles (6 vertices).
+    // All vertices have the same uv, so the quad is a single color
     static void Quad(List<float> v, float x0, float x1, float u)
     {
         var xs = new float[] { x0, x1, x1, x0, x1, x0 };
@@ -34,7 +34,7 @@ public static class TestVertexTexture
         rb = Gfx.Readback("test");
     }
 
-    // lub export は 1 frame 分を描いて、使う shader と file を記録する
+    // lub export draws 1 frame and records the shaders and files used
     public static void OnExport() { OnFrame(0); }
 
     public static void OnFrame(float dt)
@@ -72,7 +72,7 @@ public static class TestVertexTexture
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f } });
         Gfx.EndPass();
 
-        // 1 フレーム目に積み、結果が届くまで poll する
+        // Queue it in the 1st frame, then poll until the result arrives
         int? req = frames == 1 ? 1 : null;
         Gfx.ReadTexture(rb!, rt, req, out var st, out var bytes, out var w, out var h, out var fmt,
             out var stride, out var id, out _, out var err);

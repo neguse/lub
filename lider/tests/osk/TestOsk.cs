@@ -1,9 +1,9 @@
-// 画面のキーボード: 並んだ key を押すと、つないだキーボードと同じに効く。
-//   - 命令 keyboard:toggle で出し入れする
-//   - 文字の key を押すと、focus のある Code に字が入る
-//   - Shift は次の 1 打にだけ効く
-//   - Ctrl を押してから P で、検索が開く。Esc で閉じる
-//   - F1 で focus がゲームに移り、その間もキーボードは押せて、もう一度 F1 で戻る
+// On-screen keyboard: pressing its keys works the same as a connected keyboard.
+//   - The keyboard:toggle command shows and hides it
+//   - Pressing a character key puts the character into the focused Code
+//   - Shift applies only to the next keystroke
+//   - Pressing Ctrl and then P opens search. Esc closes it
+//   - F1 moves focus to the game, the keyboard can still be pressed meanwhile, and F1 again goes back
 using System;
 using Lub;
 using LiderCore;
@@ -65,7 +65,7 @@ public static class TestOsk
                 Press("h");
                 Press("Shift");
                 Check((osk.Mods & Keys.ModShift) != 0, "Shift is not held for the next key");
-                // Shift を効かせている間、文字の key の字は大文字になる
+                // While Shift is active, character keys type uppercase characters
                 Press("I");
                 Check(osk.Mods == 0, "Shift is still held after a key");
                 Press("1");
@@ -96,7 +96,7 @@ public static class TestOsk
         }
     }
 
-    // 字が label の key の真ん中を、マウスの左ボタンで押す
+    // Press the middle of the key labeled with the character, with the left mouse button
     static void Press(string label)
     {
         var osk = Lider.Keyboard;

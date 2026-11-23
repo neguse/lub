@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- lub の .NET 実行: C API (共有 library liblub / lub.dll) の facade と host。
-       Lub.g.cs は cs-lib/lub_stub.cs からの生成物 (scripts/gen-api.sh)。
-       ゲームはこの project を参照し、cs-lib/lub と cs-lib/lubx を compile に
-       含める (templates/game/Game.csproj)。 -->
+  <!-- lub .NET execution: the facade and host for the C API (shared library liblub / lub.dll).
+       Lub.g.cs is generated code from cs-lib/lub_stub.cs (scripts/gen-api.sh).
+       Games reference this project and include cs-lib/lub and cs-lib/lubx
+       in the compile (templates/game/Game.csproj). -->
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
     <LangVersion>15</LangVersion>

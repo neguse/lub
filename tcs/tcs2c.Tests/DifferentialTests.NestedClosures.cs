@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// lambda の中の lambda が外側の lambda の parameter (と外側が捕捉した変数) を
-// 捕捉する。期待値は同じ program を CoreCLR で実行した stdout
+// A lambda inside a lambda captures the parameters of the outer lambda (and the variables the outer one captured).
+// The expected values are the stdout of running the same program on CoreCLR
 public class NestedClosuresDifferentialTests
 {
     [CFact]
@@ -51,8 +51,8 @@ public class NestedClosuresDifferentialTests
     [CFact]
     public void Closures_NestedCaptureSurvivesFrames()
     {
-        // 外側の lambda の parameter を捕捉した closure を static の List に
-        // 残し、フレーム境界の GC (stress 含む) をまたいで呼ぶ
+        // Keeps closures that captured a parameter of the outer lambda in a static List,
+        // and calls them across frame-boundary GC (including stress)
         const string source = """
             using System;
             using System.Collections.Generic;

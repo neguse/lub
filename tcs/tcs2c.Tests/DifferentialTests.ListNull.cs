@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// List に null を入れても Count と順序は C# と同じ。期待値は同じ program を CoreCLR で実行した stdout
+// Putting null into a List keeps Count and order the same as in C#. The expected values are the stdout of running the same program on CoreCLR
 public class ListNullDifferentialTests
 {
     private const string ListNullProgram = """
@@ -124,7 +124,7 @@ public class ListNullDifferentialTests
             Backends.AssertParity(ListNullProgram, "P"));
     }
 
-    // 長さの外は null の入った List でも fault。範囲内の null は読み書きできる
+    // Going past the length faults even for a List containing nulls. Nulls within range can be read and written
     [CTheory]
     [InlineData("var l = new List<string> { null }; Console.WriteLine(l[1] == null);")]
     [InlineData("var l = new List<string> { null }; Console.WriteLine(l[-1] == null);")]
@@ -152,7 +152,7 @@ public class ListNullDifferentialTests
             """, "P"));
     }
 
-    // 受け手が式の Add / Count (変数を読み直せない形)、initializer の入れ子、compound
+    // Add / Count on a receiver that is an expression (a form whose variable cannot be reread), nested initializers, compound
     [CFact]
     public void ListNull_ExpressionReceivers()
     {

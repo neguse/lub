@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// Dictionary の Keys / Values を TinySystem.Linq の受け手にする (List に写して List の版に渡す)。
-// 列挙の順序は未規定なので、順序に依らない演算と OrderBy で並べた結果だけを見る。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// Uses Dictionary Keys / Values as TinySystem.Linq receivers (copies them into a List and passes them to the List version).
+// The enumeration order is unspecified, so only order-independent operations and results sorted with OrderBy are checked.
+// The expected values are the stdout of running the same program on CoreCLR
 public class KeysValuesLinqDifferentialTests
 {
     [CFact]

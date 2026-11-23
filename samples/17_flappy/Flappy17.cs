@@ -1,12 +1,62 @@
-// lub の samples/17_flappy 相当を TinyC# で書いた entry。
-// 実行: lub samples/17_flappy/Flappy17.csproj (transpile + watch + hot reload) gameplay は原典の rule (重力 / ジャンプ力 / パイプ間隔 / 当たり判定) を踏襲し、Boot.config 相当 (LUB_BACKEND 補完) は直書きする。
+// Entry equivalent to lub's samples/17_flappy, written in TinyC#.
+// Run: lub samples/17_flappy/Flappy17.csproj (transpile + watch + hot reload)
 
 using System;
+using System.Collections.Generic;
 using Lub;
 using Lubx;
 
 public static class Flappy17
 {
+    // Unit cube: 36 vertices (12 triangles), each vertex = pos(3) + pad(1) + color(4)
+    // (16-byte aligned for StructuredBuffer).
+    // Front face (blue), Back (red), Top (green), Bottom (yellow), Right (cyan), Left (magenta)
+    static List<float> cubeVerts = new List<float>
+    {
+        // Front (z=+0.5) blue
+        -0.5f, -0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 0.3f, 1.0f, 1.0f,
+        // Back (z=-0.5) red
+         0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+        -0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+         0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+        -0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+         0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.3f, 0.2f, 1.0f,
+        // Top (y=+0.5) green
+        -0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+         0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+         0.5f,  0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+        -0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+         0.5f,  0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+        -0.5f,  0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 0.3f, 1.0f,
+        // Bottom (y=-0.5) yellow
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+         0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+         0.5f, -0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+         0.5f, -0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+        -0.5f, -0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f,
+        // Right (x=+0.5) cyan
+         0.5f, -0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+         0.5f, -0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+         0.5f,  0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+         0.5f,  0.5f, -0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f, 0.0f, 0.2f, 1.0f, 1.0f, 1.0f,
+        // Left (x=-0.5) magenta
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.2f, 1.0f, 1.0f,
+    };
+
     static float t = 0;
     static float playerY = 0;
     static float velocityY = 0;
@@ -36,12 +86,11 @@ public static class Flappy17
         var s = Assets.Shader("cube_shader",
             "samples/17_flappy/data/cube.vs.slang",
             "samples/17_flappy/data/cube.fs.slang");
-        var b = Assets.Floats("cube_verts", Gfx.BufferType.Storage,
-            "samples/17_flappy/data/cube.verts.lua");
+        var b = Gfx.UseBuffer("cube_verts", Gfx.BufferType.Storage, cubeVerts);
         if (s == null || b == null) return;
 
-        // key_pressed / mouse_pressed はフレームラッチされたエッジ検出。
-        // タップ (web) は SDL の合成でマウス左ボタンとして届く。
+        // key_pressed / mouse_pressed are frame-latched edge detection.
+        // A tap (web) arrives as the left mouse button, synthesized by SDL.
 
         var flap = Input.KeyPressed("space") || Input.MousePressed();
         if (!dead)
@@ -79,8 +128,8 @@ public static class Flappy17
                 Audio.Play(Sfx.Noise(0.3f, 0.5f));
             }
 
-            // 落下速度に pitch が追従する風切り音 (毎フレーム宣言する声)。
-            // 宣言をやめれば fade out するので stop 管理は要らない。
+            // Wind noise whose pitch follows the falling speed (a voice declared every frame).
+            // Stopping the declaration fades it out, so no stop management is needed.
             var wind = Math.Min(1.0f, Math.Abs(velocityY) * 0.25f);
             Audio.Voice("wind", Sfx.Noise(0.3f, 0.5f), new VoiceOpts
             {

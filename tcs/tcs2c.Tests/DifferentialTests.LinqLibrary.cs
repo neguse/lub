@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// TinySystem.Linq (TinySystem/Linq.cs) を user のコードと一緒に Lua / C へ変換する。
-// callback が受け手に足しても走査は呼び出した時点の Count まで、空の Min / Max は fault。
-// 期待値は同じ program を CoreCLR で実行した stdout (空の Min は "before" の後に
-// InvalidOperationException で停止する)
+// Converts TinySystem.Linq (TinySystem/Linq.cs) to Lua / C together with the user code.
+// Even if a callback adds to the receiver, the scan only goes up to the Count at the time of the call, and an empty Min / Max faults.
+// The expected values are the stdout of running the same program on CoreCLR (an empty Min stops with
+// InvalidOperationException after "before")
 public class LinqLibraryDifferentialTests
 {
     [CFact]

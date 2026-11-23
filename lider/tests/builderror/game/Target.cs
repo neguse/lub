@@ -1,4 +1,4 @@
-// TestBuildError が窓で書き換える file (ゲームの build に入る)。
+// The file TestBuildError edits in a window (goes into the game build).
 public static class BuildErrorTarget
 {
     public static int Value()

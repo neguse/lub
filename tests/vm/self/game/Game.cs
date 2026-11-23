@@ -1,7 +1,7 @@
-// 個体ごとの検査の口 (../child/Child.cs を App.Use で開いて見る)。
-//   - Sys.TakeTraceFor は、覚えた個体 (Sys.InspectPin) と同じ class の別の個体を this にして通っただけの行を返さない (別の class と static の行は返す)
-//   - Gfx.PickResult の Self は、Site と同じ並びの段ごとの this の個体の Id (static の段は空の行)
-//   - Sys.InspectInstances は static から辿れる個体を、Sys.Inspect と同じ path と Id で 1 度ずつ返す
+// Per-instance inspection interface (opens ../child/Child.cs with App.Use and inspects it).
+//   - Sys.TakeTraceFor does not return lines that were only executed with this set to another instance of the same class as the pinned instance (Sys.InspectPin) (it does return lines of other classes and statics)
+//   - Self of Gfx.PickResult is the Id of the this instance for each stack frame, in the same order as Site (an empty line for static frames)
+//   - Sys.InspectInstances returns each instance reachable from statics once, with the same path and Id as Sys.Inspect
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -15,7 +15,7 @@ public static class Game
 
     static string ChildCsproj()
     {
-        // GAME_CS は <dir>/game/Game.cs
+        // GAME_CS is <dir>/game/Game.cs
         var game = Environment.GetEnvironmentVariable("GAME_CS") ?? "";
         return game.Replace("game/Game.cs", "child/Child.csproj");
     }
@@ -57,7 +57,7 @@ public static class Game
             Fail("timeout after " + frame + " frames of the opened app");
             return;
         }
-        // build を待つ間は Step が false
+        // Step is false while waiting for the build
         if (!ok) return;
         frame++;
         if (frame == 3)
@@ -80,14 +80,14 @@ public static class Game
         }
         if (frame == 4)
         {
-            // Draw は Left も通ったので返し、Spin は Right だけが通ったので返さない。static の OnFrame の行は返す
+            // Draw was also executed by Left, so it is returned; Spin was executed only by Right, so it is not. The lines of the static OnFrame are returned
             var lines = Sys.TakeTraceFor("left", child);
             if (!Has(lines, "Child.cs:12") || Has(lines, "Child.cs:19") || !Has(lines, "Child.cs:46"))
                 Fail("TakeTraceFor(left): " + string.Join(" ", lines));
         }
         if (frame == 5)
         {
-            // key が空なら全部
+            // Everything if key is empty
             var all = Sys.TakeTraceFor("", child);
             if (!Has(all, "Child.cs:19"))
                 Fail("TakeTraceFor(\"\") left out a line: " + string.Join(" ", all));

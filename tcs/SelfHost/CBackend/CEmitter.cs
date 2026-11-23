@@ -4,8 +4,8 @@ using TinySystem.Text;
 
 namespace TcsC;
 
-// IL を C にする backend (旧 tcs2c/ の C# 版を TinyC# に写したもの)。生成 C は C# 版と byte で同じ。
-// サブセットは partial を持たないので、1 つの class を 1 つのファイルに置く (節は元のファイルの単位)
+// Backend that turns IL into C (a port of the C# version in the old tcs2c/ to TinyC#). The generated C is byte-identical to the C# version.
+// The subset has no partial, so one class lives in one file (sections follow the original files)
 public sealed class CEmitter
 {
     // ---- Core ----
@@ -16,12 +16,12 @@ public sealed class CEmitter
     private bool _digestF32;
     private List<string> _output = new List<string>();
     private List<Dictionary<string, Variable>> _scopes = new List<Dictionary<string, Variable>>();
-    // scope ごとの名前の宣言順 (Dictionary の列挙順は未規定なので、出力に効く走査はこちらを使う)
+    // Declaration order of names per scope (Dictionary enumeration order is unspecified, so traversals that affect the output use this)
     private List<List<string>> _scopeOrder = new List<List<string>>();
     private List<string?> _continueTargets = new List<string?>();
-    // break の飛び先: ループは null (`break;`)、IlBreakScope は label (`goto`)
+    // Break targets: null for loops (`break;`), a label for IlBreakScope (`goto`)
     private List<string?> _breakTargets = new List<string?>();
-    // goto で飛ばれた break label (使われない label は置かない: -Wunused-label)
+    // Break labels jumped to by goto (unused labels are not emitted: -Wunused-label)
     private HashSet<string> _usedBreakLabels = new HashSet<string>();
     private ExClass _currentClass = new ExClass();
     private ExMethod _currentMethod = new ExMethod();
@@ -35,17 +35,17 @@ public sealed class CEmitter
     private HashSet<string> _capturedNames = new HashSet<string>();
     private int _closureSerial;
 
-    // IIFE の結果の受け手と抜け先 (入れ子の内側が最後)
+    // Result receiver and exit target of each IIFE (innermost nesting last)
     private List<IifeFrame> _iifes = new List<IifeFrame>();
-    // struct の constructor の本体の return が返す値 (StructMembers)
+    // Value returned by return in a struct constructor body (StructMembers)
     private string? _ctorReturnValue;
 
-    // 生成 C に埋め込む runtime の C (runtime/ からの相対の path → 中身)。host が渡す
+    // Runtime C to embed in the generated C (path relative to runtime/ → contents). Passed by the host
     private Dictionary<string, string> _runtime;
 
     public CEmitter(ExportResult program, bool digestF32, Dictionary<string, string> runtimeFiles)
     {
-        // ctor と top-level 文を合成 method として注入し、facts / prototype / EmitMethod の既存機構をそのまま通す
+        // Inject ctors and top-level statements as synthesized methods so they go through the existing facts / prototype / EmitMethod mechanism as is
         _runtime = runtimeFiles;
         _program = Normalize(program);
         _digestF32 = digestF32;
@@ -57,7 +57,7 @@ public sealed class CEmitter
 
     public const string CtorMethodName = "__ctor";
 
-    // ---- 継承: DFS 範囲型 ID と chain 解決 ----
+    // ---- Inheritance: DFS-range type IDs and chain resolution ----
     private Dictionary<string, TypeRange> _typeRange = new Dictionary<string, TypeRange>();
     private Dictionary<string, List<string>> _children = new Dictionary<string, List<string>>();
     private int _nextTypeId;
@@ -122,7 +122,7 @@ public sealed class CEmitter
         return chain;
     }
 
-    // ancestor は base chain 上の class か、chain のどこかが実装する interface
+    // An ancestor is a class on the base chain, or an interface implemented somewhere on the chain
     public bool IsAncestorOrSame(string ancestor, string derived)
     {
         string? cur = derived;
@@ -140,7 +140,7 @@ public sealed class CEmitter
 
     private bool IsInterface(string cls) => _classes[cls].IsInterface;
 
-    // name を宣言する最も近い chain 上の class (自身含む)
+    // Nearest class on the chain (including itself) that declares name
     private string? FindDeclaringClass(string cls, string method)
     {
         string? cur = cls;
@@ -170,7 +170,7 @@ public sealed class CEmitter
         return _facts.Field(cls, name);
     }
 
-    // declaring で宣言された method を strict 子孫が再宣言しているか。interface の method は常に実装側へ dispatch する
+    // Whether a strict descendant redeclares the method declared in declaring. Interface methods always dispatch to the implementation
     private bool IsPolymorphic(string declaring, string method)
     {
         if (IsInterface(declaring)) return true;
@@ -185,7 +185,7 @@ public sealed class CEmitter
         return false;
     }
 
-    // TinySystem.Text.Utf8Bytes は user の struct と同じ C の値にする (GC の layout、T?、List の要素、既定値がそのまま使える)
+    // TinySystem.Text.Utf8Bytes becomes the same kind of C value as a user struct (GC layout, T?, List elements, and default values work as is)
     private static ExStruct Utf8BytesStruct()
     {
         var st = new ExStruct();
@@ -215,7 +215,7 @@ public sealed class CEmitter
             result.Classes.Add(top);
         }
         foreach (var d in program.Diagnostics) result.Diagnostics.Add(d);
-        // --ref の interface の method (VM が呼ぶ。module 単位の混在の X-4) は C の host 関数にしない
+        // Interface methods from --ref (called by the VM; X-4 of per-module mixing) do not become C host functions
         foreach (var m in program.ForeignMethods)
         {
             bool keep = m.Receiver == null;
@@ -233,8 +233,8 @@ public sealed class CEmitter
         return result;
     }
 
-    // 生成を段に分ける (Begin、class ごとの StepMethods、Finish)。host は段の間で GC の frame の境界を作れるので、
-    // 大きな program でも 1 つの段の一時的な割り当てだけで済む。Emit は全部の段を続けて動かす
+    // Split generation into stages (Begin, StepMethods per class, Finish). The host can place GC frame boundaries between stages,
+    // so even a large program only needs the temporary allocations of one stage. Emit runs all stages in sequence
     private bool _emitLib;
     private EntryPoint? _emitEntry;
     private int _emitClass;
@@ -246,7 +246,7 @@ public sealed class CEmitter
         return Finish();
     }
 
-    // 前置き (runtime、型の宣言、prototype、allocator)。誤りなら false
+    // Preamble (runtime, type declarations, prototypes, allocators). Returns false on error
     public bool Begin(string? requestedEntry, bool lib)
     {
         ValidateProgram();
@@ -268,10 +268,10 @@ public sealed class CEmitter
         _output.Add(RuntimeLib());
         if (VmHostSurface != null)
         {
-            // module 単位の混在 (--vm-host): VM の API と、VM (dispatcher と glue が使う)
+            // Per-module mixing (--vm-host): the VM API and the VM (used by dispatchers and glue)
             Line("#include \"tcsvm.h\"");
             Line("static TvmVm *tcs_vmh_vm;");
-            // VM の string は TcsString と同じ byte 並び (shared heap なので写さない。doc/object-model.md §10.6)
+            // A VM string has the same byte layout as TcsString (shared heap, so it is not copied; doc/object-model.md §10.6)
             Line("static TcsString *");
             Line("tcs_vmh_str_in(void *s)");
             Line("{");
@@ -290,7 +290,7 @@ public sealed class CEmitter
         return !CFail.Failed;
     }
 
-    // 次の class の method を書く。全部の class を書き終えたか、誤りなら true
+    // Write the methods of the next class. Returns true when all classes are written or on error
     public bool StepMethods()
     {
         if (CFail.Failed || _emitClass >= _program.Classes.Count) return true;
@@ -306,7 +306,7 @@ public sealed class CEmitter
         return _emitClass >= _program.Classes.Count;
     }
 
-    // 後ろの部分 (struct の member、dispatcher、record の等価、static の初期化、entry) を書き、C の全体を返す。誤りなら ""
+    // Write the trailing part (struct members, dispatchers, record equality, static initialization, entry) and return the whole C. Returns "" on error
     public string Finish()
     {
         if (CFail.Failed) return "";
@@ -372,7 +372,7 @@ public sealed class CEmitter
         }
     }
 
-    // 格納型 (field / parameter / local / 要素): スカラ・string・class 参照・データ struct・Dictionary・closure と、それらを要素とする array / List
+    // Storage types (field / parameter / local / element): scalars, string, class references, data structs, Dictionary, closures, and arrays / Lists of those
     private static void EnsureSupportedStorageType(CType type, string where)
     {
         EnsureSupportedStorageType(type, where, false);
@@ -418,7 +418,7 @@ public sealed class CEmitter
         {
             foreach (var m in c.Methods)
             {
-                // IL の名前は user の member の規則 (C# の識別子のまま) で写像済み
+                // IL names are already mapped by the user member rule (C# identifiers as is)
                 if (m.Name != "Main" || !m.IsStatic || m.Parameters.Count != 0) continue;
                 if (!CType.Same(_facts.Method(c.Name, m.Name).ReturnType, CType.Void)) continue;
                 if (requested != null && c.Name != requested) continue;
@@ -438,7 +438,7 @@ public sealed class CEmitter
 
     private void EmitClassDeclarations()
     {
-        // class の前方 typedef を先に出す (struct の field が class 参照を持てる)
+        // Emit forward typedefs for classes first (so struct fields can hold class references)
         foreach (var cls in _program.Classes)
             Line("typedef struct " + Names.Class(cls.Name) + " " + Names.Class(cls.Name) + ";");
         Line();
@@ -466,14 +466,14 @@ public sealed class CEmitter
             _indent++;
             Line("uint32_t type_id;");
             var chain = ChainRootFirst(cls.Name);
-            // host と共有する外部 data class: host 側の handle (GC は見ない)
+            // External data class shared with the host: a host-side handle (not seen by the GC)
             bool external = false;
             foreach (var c in chain)
             {
                 if (c.IsExternal) external = true;
             }
             if (external) Line("uint64_t host_value;");
-            // 継承 chain を root から平坦化 (先頭 layout 一致で upcast 可能)
+            // Flatten the inheritance chain from the root (a matching leading layout makes upcasts possible)
             foreach (var link in chain)
             {
                 foreach (var field in link.Fields)
@@ -503,7 +503,7 @@ public sealed class CEmitter
             }
         }
         Line();
-        // 遅延初期化 class の static は accessor (lvalue) 経由で触る
+        // Statics of lazily initialized classes are accessed through an accessor (lvalue)
         foreach (var cls in StaticOwners)
         {
             if (!HasLazyStatics(cls)) continue;
@@ -519,7 +519,7 @@ public sealed class CEmitter
         Line();
     }
 
-    // 定数式 (literal の組み合わせ) か。定数でない static initializer を持つ class は C# と同じく最初のアクセスで初期化する (前方参照 / 循環対応)
+    // Whether this is a constant expression (a combination of literals). A class with a non-constant static initializer is initialized on first access, as in C# (handles forward references / cycles)
     private static bool IsConstantExpr(IlExpr expr)
     {
         switch (expr)
@@ -541,7 +541,7 @@ public sealed class CEmitter
         return false;
     }
 
-    // static field の place 式 (遅延 class なら初期化を保証する accessor)
+    // Place expression for a static field (for a lazy class, an accessor that guarantees initialization)
     private string StaticFieldPlace(ExClass cls, string field)
     {
         if (HasLazyStatics(cls)) return "(*" + Names.StaticPlace(cls.Name, field) + "())";
@@ -576,7 +576,7 @@ public sealed class CEmitter
             }
         }
         Line();
-        // dispatcher の前方宣言
+        // Forward declarations of dispatchers
         foreach (var cls in _program.Classes)
         {
             foreach (var method in cls.Methods)
@@ -607,7 +607,7 @@ public sealed class CEmitter
         {
             if (_facts.Structs.ContainsKey(method.ClassName))
             {
-                // struct method: 格納場所へのポインタと、その所有 heap object (stack 上なら NULL。self 経由の参照 store のバリア先)
+                // struct method: a pointer to the storage location and its owning heap object (NULL if on the stack; the barrier target for reference stores through self)
                 parameters.Add(CType.Struct(method.ClassName).CName + " *v_self");
                 parameters.Add("void *v_owner");
             }
@@ -632,7 +632,7 @@ public sealed class CEmitter
         EmitMethodCore(method, fact, fact.IsStatic ? null : new Variable("v_self", CType.Ref(cls.Name)));
     }
 
-    // class / struct 共通の method 本体。self は class なら参照、struct なら格納場所へのポインタ (Boxed = `(*v_self)` で place として現れる)
+    // Method body shared by class / struct. self is a reference for a class and a pointer to the storage location for a struct (Boxed = appears as a place via `(*v_self)`)
     private void EmitMethodCore(ExMethod method, MethodFact fact, Variable? selfVar)
     {
         _currentMethod = method;
@@ -655,10 +655,10 @@ public sealed class CEmitter
         Line("{");
         _indent++;
         BoxCapturedParameters();
-        // out は本体では普通の local で、値は return の位置で呼び出し側へ書く。呼び出し側の受け手は stack の一時変数なのでライトバリアは要らない
+        // An out parameter is a plain local in the body, and its value is written to the caller at each return. The caller's receiver is a stack temporary, so no write barrier is needed
         foreach (var parameter in _currentMethodFact.OutParameters)
             DeclareLocal(parameter.Name, parameter.Type, ZeroInit(parameter.Type));
-        // abstract / interface method: 実体は dispatcher が実装へ飛ばすので本体には到達しない
+        // abstract / interface method: the dispatcher jumps to the implementation, so this body is never reached
         if (method.Body == null) Line("tcs_fault(\"abstract-method\");");
         else
         {
@@ -714,11 +714,11 @@ public sealed class CEmitter
 
     private void EmitLocal(IlLocal local)
     {
-        // discard の前宣言 (`out _`): 受け手は呼び出し側が一時変数で用意する
+        // Pre-declaration of a discard (`out _`): the caller provides the receiver as a temporary
         if (local.Name == "_" && local.Init == null && local.Type == null) return;
         if (local.Init == null)
         {
-            // 型は契約 (IlLocal.Type) から。C の zero 初期化 = default 値
+            // The type comes from the contract (IlLocal.Type). C zero initialization = default value
             if (local.Type == null)
             {
                 CFail.Report("local has no initializer/type: " + _currentMethodFact.ClassName + "." + _currentMethod.Name + "." + local.Name);
@@ -729,7 +729,7 @@ public sealed class CEmitter
             DeclareLocal(local.Name, declared, zero);
             return;
         }
-        // 宣言型が closure なら契約型を使う (IlClosure / method group は単独で型付けできない)
+        // If the declared type is a closure, use the contract type (IlClosure / method groups cannot be typed on their own)
         CType? declaredClosure = null;
         if (local.Type != null)
         {
@@ -737,7 +737,7 @@ public sealed class CEmitter
             if (mapped != null && mapped.Kind == CTypeKind.Closure) declaredClosure = mapped;
         }
         var type = declaredClosure != null ? declaredClosure : TypeOf(local.Init);
-        // 宣言型 (契約) が初期化子の型を受けられるならそちらを local の型にする (`float f = 2` / `string s = null` / `Shape s = new Rect()`)
+        // If the declared type (contract) accepts the initializer's type, use it as the local's type (`float f = 2` / `string s = null` / `Shape s = new Rect()`)
         if (local.Type != null)
         {
             var declaredType = _facts.TryMapType(local.Type);
@@ -753,7 +753,7 @@ public sealed class CEmitter
         DeclareLocal(local.Name, type, RenderCoerced(local.Init, type));
     }
 
-    // local (foreach の反復変数を含む) を宣言する。closure が捕捉する名前は宣言ごとに新しい heap cell にする (反復ごとに別の変数)
+    // Declare a local (including foreach iteration variables). A name captured by a closure gets a new heap cell per declaration (a separate variable per iteration)
     private void DeclareLocal(string name, CType type, string value)
     {
         if (_capturedNames.Contains(name))
@@ -782,7 +782,7 @@ public sealed class CEmitter
                 {
                     var target = Resolve(variable.Name);
                     Line(target.Boxed ? "(*" + target.CName + ") = " + value + ";" : target.CName + " = " + value + ";");
-                    // 捕捉 cell は heap object: 参照の store は owner を dirty に
+                    // A capture cell is a heap object: a reference store marks the owner dirty
                     if (target.Boxed && NeedsBarrier(targetType)) Line("tcs_wb(" + target.CName + ");");
                     return;
                 }
@@ -793,7 +793,7 @@ public sealed class CEmitter
                         Line(staticName + " = " + value + ";");
                         return;
                     }
-                    // struct place への field 書き込み (配列要素・ローカル・class field 経由)。C の lvalue 連鎖でそのまま書ける
+                    // Field write to a struct place (via array element, local, or class field). A C lvalue chain writes it directly
                     if (TypeOf(field.Recv).Kind == CTypeKind.StructVal)
                     {
                         var setup = new List<string>();
@@ -801,7 +801,7 @@ public sealed class CEmitter
                         var member = place + "." + Names.Field(field.Name);
                         if (setup.Count > 0)
                         {
-                            // receiver と添字を値より先に評価する (C# の順序。C の `=` は左右の評価順を決めない)
+                            // Evaluate the receiver and index before the value (C# order; C's `=` does not define the evaluation order of its sides)
                             Line(TrimEndText(string.Join("", setup)));
                             var slot = Temp("slot");
                             Line(targetType.CName + " *" + slot + " = &" + member + ";");
@@ -829,7 +829,7 @@ public sealed class CEmitter
                     {
                         var slotType = RequireDict(index.Recv, out CType dictType);
                         CheckAssignable(slotType, assign.Value, "dict store");
-                        // key を値より先に評価する (C# の順序。C の `=` は左右の評価順を決めない)
+                        // Evaluate the key before the value (C# order; C's `=` does not define the evaluation order of its sides)
                         var dictTemp = Temp("dict");
                         var key = Temp("key");
                         Line("TcsDict *" + dictTemp + " = " + RenderExpr(index.Recv) + ";");
@@ -842,7 +842,7 @@ public sealed class CEmitter
                     var idx = Temp("index");
                     var place = Temp("place");
                     var stored = Temp("stored");
-                    // 受け手、添字、値を評価してから範囲を見る (C# の順序)
+                    // Evaluate the receiver, index, and value before checking the range (C# order)
                     Line(sequenceType.CName + " " + sequence + " = " + RenderExpr(index.Recv) + ";");
                     Line("int32_t " + idx + " = " + RenderExpr(index.Idx) + ";");
                     Line(sequenceType.ElementCName + " " + stored + " = " + value + ";");
@@ -917,7 +917,7 @@ public sealed class CEmitter
 
     private void EmitStaticInitializer()
     {
-        // 定数でない initializer を持つ class: 最初のアクセスで 1 回だけ。flag を先に立てるので循環参照は C# と同じく初期化中の値 (default) を読む
+        // Class with a non-constant initializer: runs once on first access. The flag is set first, so a circular reference reads the in-progress value (default), as in C#
         foreach (var cls in StaticOwners)
         {
             if (!HasLazyStatics(cls)) continue;
@@ -941,7 +941,7 @@ public sealed class CEmitter
         Line("#ifdef TCS_VERIFY_TYPES");
         Line("tcs_verify_types();");
         Line("#endif");
-        // 定数だけの class を先に埋める。遅延 class の initializer は他の class の static を accessor なしで直接読むので、宣言順が後ろの定数 class も読む前に値が入っている必要がある
+        // Fill in constant-only classes first. A lazy class's initializer reads other classes' statics directly without accessors, so constant classes declared later must also have their values before they are read
         foreach (var cls in StaticOwners)
         {
             if (!HasLazyStatics(cls)) EmitStaticFieldInits(cls);
@@ -995,7 +995,7 @@ public sealed class CEmitter
         CFail.Report(message);
     }
 
-    // ---- runtime の C (runtime/、生成 C にそのまま並べる) ----
+    // ---- Runtime C (runtime/, placed as is in the generated C) ----
 
     private string RuntimeFile(string path)
     {
@@ -1005,7 +1005,7 @@ public sealed class CEmitter
         return "";
     }
 
-    // runtime/<dir> の C を埋め込む: 関数は static にし (TCS_*_STATIC)、`#include "..."` の行は除く
+    // Embed the C of runtime/<dir>: functions become static (TCS_*_STATIC), and `#include "..."` lines are dropped
     private string EmbedRuntime(string dir, string staticDefine, string names)
     {
         var parts = new List<string>();
@@ -1014,7 +1014,7 @@ public sealed class CEmitter
         {
             string text = RuntimeFile(dir + "/" + name);
             var lines = text.Split('\n');
-            // ReadLine は末尾の改行の後に空の行を返さない
+            // ReadLine does not return an empty line after the trailing newline
             int count = lines.Length;
             if (count > 0 && lines[count - 1] == "") count--;
             for (int i = 0; i < count; i++)
@@ -1030,19 +1030,19 @@ public sealed class CEmitter
 
     private string RuntimeMath() => EmbedRuntime("math", "TCS_MATH_STATIC", "tcs_math.h tcs_math_internal.h atan2f.c exppowf.c log10f.c log2f.c logf.c sincosf.c tanf.c");
     private string RuntimeFmt() => EmbedRuntime("fmt", "TCS_FMT_STATIC", "tcs_fmt.h f2s.c printf.c");
-    // 型記述子の parser と layout (doc/object-model.md)。TCS_VERIFY_TYPES の build だけが使う
+    // Type descriptor parser and layout (doc/object-model.md). Used only by TCS_VERIFY_TYPES builds
     private string RuntimeModel() => EmbedRuntime("model", "TCS_MODEL_STATIC", "tcs_model.h tcs_model.c");
     private string RuntimeUtf8() => EmbedRuntime("utf8", "TCS_UTF8_STATIC", "tcs_utf8.h tcs_utf8.c");
-    // tcs2c の runtime の本体 (runtime/core。object-model §10.2 の X-2 で VM と共有する C)。生成 C にそのまま並べる断片
+    // Body of the tcs2c runtime (runtime/core; C shared with the VM per X-2 in object-model §10.2). A fragment placed as is in the generated C
     private string RuntimePrelude() => RuntimeFile("core/tcs_prelude.h");
-    // runtime/fmt の tcs_format_f32 を使うので、埋め込む runtime (Math、Fmt、Utf8) の後に置く
+    // Uses tcs_format_f32 from runtime/fmt, so it goes after the embedded runtime (Math, Fmt, Utf8)
     private string RuntimeCore() => RuntimeFile("core/tcs_core.c");
     private string RuntimeGc() => RuntimeFile("core/tcs_gc.c");
     private string RuntimeCollections() => RuntimeFile("core/tcs_collections.c");
     private string RuntimeStrings() => RuntimeFile("core/tcs_strings.c");
     private string RuntimeLib() => RuntimeFile("core/tcs_lib.c");
 
-    // runtime の C のファイルの一覧 (host が読んで CEmitter に渡す。runtime/ からの相対の path)
+    // List of runtime C files (the host reads them and passes them to CEmitter; paths relative to runtime/)
     public static List<string> RuntimeFileNames()
     {
         var list = new List<string>();
@@ -1069,7 +1069,7 @@ public sealed class CEmitter
         return CType.Bool;
     }
 
-    // 明示 downcast: null は素通し、実行時型が範囲外なら fault (C# の InvalidCastException 相当)
+    // Explicit downcast: null passes through; faults if the runtime type is out of range (equivalent to C#'s InvalidCastException)
     private CType TypeOfCast(IlCast cast)
     {
         if (!_classes.ContainsKey(cast.TypeRef))
@@ -1089,7 +1089,7 @@ public sealed class CEmitter
         return "((" + type.CName + ")tcs_cast(" + RenderExpr(cast.E) + ", " + Names.TypeId(cast.TypeRef) + ", " + Names.TypeIdMax(cast.TypeRef) + "))";
     }
 
-    // 数値 cast (int / float 目標)。float → int は IL が __tcs_trunc で明示するので、ここに来るのは int ↔ float の拡大と恒等 (char / enum)、T? / object からの unbox
+    // Numeric cast (int / float target). IL makes float → int explicit with __tcs_trunc, so what reaches here is int ↔ float widening, identity (char / enum), and unboxing from T? / object
     private CType TypeOfNumericConvert(IlNumericConvert convert)
     {
         var target = convert.TargetType == "int" ? CType.I32 : CType.F32;
@@ -1108,7 +1108,7 @@ public sealed class CEmitter
         if (CType.Same(source, CType.Object)) return RenderUnbox(convert.Value, target);
         if (source.Kind == CTypeKind.Nullable)
         {
-            // (int)x で x が T?: 値なしは fault (.Value と同じ)
+            // (int)x where x is T?: no value faults (same as .Value)
             var temp = Temp("opt");
             return "({ " + source.CName + " " + temp + " = " + RenderExpr(convert.Value) + "; "
                 + "if (!" + temp + ".has) tcs_fault(\"nullable-value\"); (" + target.CName + ")" + temp + ".v; })";
@@ -1118,7 +1118,7 @@ public sealed class CEmitter
         return "((float)(" + RenderExpr(convert.Value) + "))";
     }
 
-    // 参照型 / bool / T? / object への cast。user class の downcast は IL が IlCast で明示する。object からは実行時 tag で検査 (C# の InvalidCastException 相当は fault)
+    // Cast to a reference type / bool / T? / object. IL makes user class downcasts explicit with IlCast. Casts from object are checked by the runtime tag (the equivalent of C#'s InvalidCastException is a fault)
     private CType TypeOfRefCast(IlRefCast cast)
     {
         var target = _facts.MapType(cast.TargetType);
@@ -1126,7 +1126,7 @@ public sealed class CEmitter
         if (CType.Same(source, target) || target.CanAssignFrom(source)) return target;
         if (CType.Same(source, CType.Object) && (target.IsNullable || target.Kind == CTypeKind.Nullable || CType.Same(target, CType.Bool)))
             return target;
-        // interface が絡む cast は静的な継承関係が無くても成立しうる (実行時に tcs_interface_cast / tcs_cast が検査する)
+        // A cast involving an interface can succeed even without a static inheritance relation (tcs_interface_cast / tcs_cast check it at runtime)
         if (source.Kind == CTypeKind.Ref && target.Kind == CTypeKind.Ref
             && (IsAncestorOrSame(source.Name!, target.Name!) || IsInterface(source.Name!) || IsInterface(target.Name!)))
             return target;
@@ -1189,7 +1189,7 @@ public sealed class CEmitter
         return Constants.I32(literal.I);
     }
 
-    // 文字列の UTF-8 の byte の列
+    // UTF-8 byte sequence of a string
     private static List<int> Utf8List(string text)
     {
         var u = new Utf8Bytes(text);
@@ -1227,7 +1227,7 @@ public sealed class CEmitter
             if (left.Element == null) return right;
             if (right.Element == null) return left;
         }
-        // 別の class の object どうし (`object v = c ? new C1() : new C0()`、C# の target-typed な条件式) は object
+        // Objects of different classes (`object v = c ? new C1() : new C0()`, a C# target-typed conditional expression) are object
         if (left.Kind == CTypeKind.Ref && right.Kind == CTypeKind.Ref) return CType.Object;
         CFail.Report("incompatible " + where + ": " + left.Display() + ", " + right.Display());
         return left;
@@ -1235,7 +1235,7 @@ public sealed class CEmitter
 
     private void RequireComparable(CType left, CType right, string where)
     {
-        // object: 参照同一性 (box 同士も pointer 比較 = C# と同じ)
+        // object: reference identity (boxes are also compared by pointer, same as C#)
         if (CType.Same(left, CType.Object) && (right.IsNullable || CType.Same(right, CType.Null))
             || CType.Same(right, CType.Object) && (left.IsNullable || CType.Same(left, CType.Null))) return;
         if (left.Kind == CTypeKind.Nullable || right.Kind == CTypeKind.Nullable)
@@ -1263,7 +1263,7 @@ public sealed class CEmitter
         if (!CType.Same(expected, actual)) CFail.Report(where + ": expected " + expected.Display() + ", got " + actual.Display());
     }
 
-    // closure / static method group は単独で型付けできない (target で決まる)
+    // Closures / static method groups cannot be typed on their own (the target decides)
     private static bool IsClosureValue(IlExpr expr) => expr is IlClosure || expr is IlMethodGroup;
 
     private void CheckAssignable(CType target, IlExpr value, string where)
@@ -1275,12 +1275,12 @@ public sealed class CEmitter
     private void RequireAssignable(CType target, CType source, string where)
     {
         if (target.CanAssignFrom(source)) return;
-        // 継承 upcast: Derived → Base (il-spec §9)。downcast (pattern local への代入 / 明示 cast) も C の cast で通す — cast は型消去で透過 (support-matrix)、is-pattern は直後の IlIsType が守る
+        // Inheritance upcast: Derived → Base (il-spec §9). Downcasts (assignment to a pattern local / explicit cast) also go through a C cast — casts are transparent through type erasure (support-matrix), and the following IlIsType guards is-patterns
         if (IsPatternBindable(target, source)) return;
         CFail.Report(where + ": cannot assign " + source.Display() + " to " + target.Display());
     }
 
-    // pattern の designation に束縛できる組。object と interface の入力は、実行時の型で宣言の型に当たる (interface どうしは継承の関係が無くても同じ class が両方を実装できる)
+    // Pairs that can bind to a pattern designation. object and interface inputs can match the declared type by their runtime type (for two interfaces, the same class can implement both even without an inheritance relation)
     private bool IsPatternBindable(CType target, CType source)
     {
         if (target.Kind != CTypeKind.Ref) return false;
@@ -1290,18 +1290,18 @@ public sealed class CEmitter
                 || IsInterface(target.Name!) || IsInterface(source.Name!));
     }
 
-    // upcast が必要なら C の明示 cast を挟んで render する。closure は型付き文脈でのみ生成できる (IlClosure は引数型を持たない)
+    // Render with an explicit C cast if an upcast is needed. Closures can only be generated in a typed context (IlClosure has no parameter types)
     private string RenderCoerced(IlExpr expr, CType target)
     {
         if (CType.Same(target, CType.Object)) return RenderBox(expr);
         if (target.Kind == CTypeKind.Closure)
         {
             if (expr is IlClosure closure) return RenderClosure(closure, target);
-            // 値渡しなので struct parameter の copy (CopyTypes) は要らない
+            // Passed by value, so no struct parameter copy (CopyTypes) is needed
             if (expr is IlMethodGroup group) return RenderStaticGroupThunk(group.TypeRef, group.Method, target);
         }
         var source = TypeOf(expr);
-        // T? への暗黙変換 (IL の IlNullableWrap が無い地点の安全網)
+        // Implicit conversion to T? (a safety net where IL has no IlNullableWrap)
         if (target.Kind == CTypeKind.Nullable && !CType.Same(source, target))
         {
             if (source.Kind == CTypeKind.Null) return "((" + target.CName + "){0})";
@@ -1358,7 +1358,7 @@ public sealed class CEmitter
 
     private Variable? TryResolve(string name)
     {
-        // C# の Stack の列挙は上から: 内側の scope を先に見る
+        // C# Stack enumeration goes from the top: inner scopes are checked first
         for (int i = _scopes.Count - 1; i >= 0; i--)
         {
             Variable? variable;
@@ -1367,7 +1367,7 @@ public sealed class CEmitter
         return null;
     }
 
-    // IL の同じ名前の local の再宣言は後勝ちで束縛を差し替える。C 側は都度別名 (v_..._serial) を発行するため衝突しない
+    // Redeclaring a local with the same name in IL replaces the binding (last one wins). The C side issues a distinct name each time (v_..._serial), so there is no collision
     private void AddVariable(string name, Variable variable)
     {
         var scope = _scopes[_scopes.Count - 1];
@@ -1389,7 +1389,7 @@ public sealed class CEmitter
 
     private string Temp(string role) => "__tcs_" + role + "_" + _serial++;
 
-    // C# 版の `x.GetType().Name` (誤りの文に使う IL の node の名前)
+    // Equivalent of `x.GetType().Name` in the C# version (IL node name used in error messages)
     private static string NodeName(object node)
     {
         switch (node)
@@ -1480,7 +1480,7 @@ public sealed class CEmitter
             case IlNewQueue queue: return RenderNewQueue(queue);
             case IlNewHashSet set: return RenderNewHashSet(set);
             case IlIsType typeTest: return RenderIsType(typeTest);
-            // C の struct 値代入がそのまま copy なので、IL の copy 地点 (il-spec §10) は式をそのまま書く
+            // C struct value assignment is already a copy, so IL copy points (il-spec §10) write the expression as is
             case IlStructCopy copy: return RenderExpr(copy.E);
             case IlCast cast: return RenderCast(cast);
             case IlNumericConvert convert: return RenderNumericConvert(convert);
@@ -1642,7 +1642,7 @@ public sealed class CEmitter
         if (field.Recv is IlVar mathRecv && (mathRecv.Name == "Math" || mathRecv.Name == "MathF") && field.Name == "PI"
             && TryResolve(mathRecv.Name) == null && !_classes.ContainsKey(mathRecv.Name))
         {
-            // Constants.F32((float)Math.PI) の結果 (float の π の bit は 0x40490fdb)
+            // Result of Constants.F32((float)Math.PI) (the bits of float π are 0x40490fdb)
             cName = "tcs_f32(UINT32_C(0x40490fdb))";
             type = CType.F32;
             return true;
@@ -1761,12 +1761,12 @@ public sealed class CEmitter
         var left = RenderExpr(binary.L);
         var right = RenderExpr(binary.R);
 
-        // T? と null / T? / T の ==/!= (IL の null 比較の残りを lifted 等価で受ける)
+        // ==/!= between T? and null / T? / T (lifted equality handles the remaining null comparisons from IL)
         if ((binary.Op == IlBinOp.Eq || binary.Op == IlBinOp.Ne)
             && (leftType.Kind == CTypeKind.Nullable || rightType.Kind == CTypeKind.Nullable))
             return RenderNullableEquality(binary, leftType, rightType);
 
-        // record の ==/!= は構造等価
+        // Record ==/!= is structural equality
         if (binary.Op == IlBinOp.Eq || binary.Op == IlBinOp.Ne)
         {
             var recordType = RecordEqualityType(leftType, rightType);
@@ -1816,7 +1816,7 @@ public sealed class CEmitter
             case IlBinOp.Eq:
                 if (CType.Same(leftType, CType.String) && CType.Same(rightType, CType.String))
                     return "tcs_string_equal(" + left + ", " + right + ")";
-                // 参照の同一性: 関連 class / object / null は型が違っても pointer 比較
+                // Reference identity: related classes / object / null are compared by pointer even if the types differ
                 if (leftType.IsNullable || rightType.IsNullable)
                     return "((void *)" + left + " == (void *)" + right + ")";
                 return "(" + left + " == " + right + ")";
@@ -1848,10 +1848,10 @@ public sealed class CEmitter
         return "";
     }
 
-    // float の大小比較は C99 の isless 系で書く。値は < などと同じ (NaN との比較は
-    // false) だが、GCC の -O2 の jump threading は < などの組から NaN を考えずに
-    // 等式を導き、`!(a == b)` などを消すことがある (#110)。isless 系はこの推論に
-    // 乗らない
+    // Float ordering comparisons are written with the C99 isless family. The result is the same as < and friends (comparisons with NaN are
+    // false), but GCC -O2 jump threading can derive equalities from combinations of < etc. without
+    // considering NaN and remove things like `!(a == b)` (#110). The isless family is not
+    // affected by this inference
     internal static string RenderFloatRelation(IlBinOp op, string left, string right)
     {
         string macro;
@@ -1862,7 +1862,7 @@ public sealed class CEmitter
         return macro + "((float)(" + left + "), (float)(" + right + "))";
     }
 
-    // C# の IlBinOp.ToString() (誤りの文と NumericJoin の where)
+    // Equivalent of C#'s IlBinOp.ToString() (for error messages and NumericJoin's where)
     private static string IlBinOpText(IlBinOp op)
     {
         switch (op)
@@ -1890,7 +1890,7 @@ public sealed class CEmitter
         return "";
     }
 
-    // C# の IlUnOp.ToString() (誤りの文)
+    // Equivalent of C#'s IlUnOp.ToString() (for error messages)
     private static string IlUnOpText(IlUnOp op)
     {
         switch (op)
@@ -1925,7 +1925,7 @@ public sealed class CEmitter
                 }
                 return CType.String;
             case IlBinOp.DivNum:
-                // IL の DivNum は float の除算 (整数の除算は __tcs_idiv)
+                // IL DivNum is float division (integer division is __tcs_idiv)
                 NumericJoin(left, right, "division");
                 return CType.F32;
             case IlBinOp.Eq:
@@ -1962,15 +1962,15 @@ public sealed class CEmitter
         return CType.Void;
     }
 
-    // user-defined operator (単項 - を含む) は IL 上で operator の static 関数への
-    // IlCall なので、ここに来る operand はプリミティブのみ
+    // User-defined operators (including unary -) are IlCalls to the operator's static function
+    // in IL, so operands that reach here are primitives only
     private CType TypeOfUnary(IlUn unary) => TypeOf(unary.E);
 
     private string RenderUnary(IlUn unary)
     {
         var value = RenderExpr(unary.E);
         var type = TypeOf(unary.E);
-        // `--` は C では減算子になるので、`-` で始まるオペランドは括弧で包む
+        // `--` is the decrement operator in C, so operands starting with `-` are wrapped in parentheses
         if (unary.Op == IlUnOp.Neg && (type.Kind == CTypeKind.I32 || type.Kind == CTypeKind.F32))
             return value.StartsWith("-") ? "(-(" + value + "))" : "(-" + value + ")";
         if (unary.Op == IlUnOp.Not && CType.Same(type, CType.Bool)) return "(!" + value + ")";
@@ -1987,7 +1987,7 @@ public sealed class CEmitter
 
     private string RenderTernary(IlTernary ternary)
     {
-        // 両腕を結果型へ揃える (`cond ? x : null` の T? / upcast / int → float)
+        // Coerce both arms to the result type (T? for `cond ? x : null` / upcast / int → float)
         var type = TypeOfTernary(ternary);
         return "(" + RenderExpr(ternary.Cond) + " ? " + RenderCoerced(ternary.T, type) + " : " +
             RenderCoerced(ternary.F, type) + ")";
@@ -1997,7 +1997,7 @@ public sealed class CEmitter
     {
         var foreign = ForeignMethod(call.Callee);
         if (foreign != null) return RenderForeignIlCall(foreign, call.Args);
-        // object / interface どうしの参照の比較 (IL の __tcs_refeq)。C の == は参照の比較なので IlBin の Eq と同じに書く
+        // Reference comparison between object / interface values (IL __tcs_refeq). C's == compares references, so it is written the same as IlBin Eq
         if (call.Callee == "__tcs_refeq")
             return RenderExpr(new IlBin(IlBinOp.Eq, call.Args[0], call.Args[1], null));
         var type = TypeOfCall(call);
@@ -2037,8 +2037,8 @@ public sealed class CEmitter
         if (callee == "Dict.Remove") return RenderDictSimple(call, "tcs_dict_remove");
         if (callee == "Dict.Count")
             return "tcs_dict_count(" + RenderExpr(call.Args[0]) + ")";
-        // f32 と bool の文字列化 (__tcs_fstr / __tcs_bstr) は C の to-string
-        // (f32 は shortest round-trip) に写す
+        // Stringification of f32 and bool (__tcs_fstr / __tcs_bstr) maps to the C to-string
+        // (shortest round-trip for f32)
         if (callee == "__tcs_fstr" || callee == "__tcs_bstr") return RenderToString(call.Args[0]);
         if (callee == "__tcs_nstr") return RenderNullableToString(call.Args[0]);
         if (callee == "List.Add") return RenderListAdd(call);
@@ -2072,7 +2072,7 @@ public sealed class CEmitter
             RequireType(CType.I32, TypeOf(call.Args[1]), call.Callee);
             return CType.I32;
         }
-        // Console.Write (改行なし)
+        // Console.Write (no newline)
         if (call.Callee == "__tcs_write")
         {
             RequireArity("Console.Write", call.Args.Count, 1);
@@ -2152,7 +2152,7 @@ public sealed class CEmitter
         var cls = ParseUserCallee(call.Callee, out string method);
         if (CFail.Failed) return CType.Void;
         var fact = _facts.Method(cls, method);
-        // base 呼び出し (IlCall "Base.M" with self 先頭) は非仮想の直呼び
+        // A base call (IlCall "Base.M" with self first) is a non-virtual direct call
         if (!fact.IsStatic && call.Args.Count >= 1)
         {
             var selfVar = TypeOf(call.Args[0]);
@@ -2169,9 +2169,9 @@ public sealed class CEmitter
         return ValidateMethodCall(fact, null, call.Args);
     }
 
-    // digest は f32 bit を直接食うため、IL の f32 の文字列化 (__tcs_fstr) を剥がして
-    // 元の f32 を見る。通常 print は整形済み文字列のままで良いが、C 側の
-    // f32 印字は元々 shortest round-trip なので剥がして直接印字する (同値)
+    // digest consumes f32 bits directly, so strip IL's f32 stringification (__tcs_fstr) and
+    // look at the original f32. A normal print could keep the formatted string, but C-side
+    // f32 printing is shortest round-trip anyway, so strip it and print directly (same result)
     private static IlExpr UnwrapFstr(IlExpr expr)
     {
         if (expr is IlCall fstr && fstr.Callee == "__tcs_fstr" && fstr.Args.Count == 1) return fstr.Args[0];
@@ -2254,7 +2254,7 @@ public sealed class CEmitter
 
     private string RenderListAdd(IlCall call)
     {
-        // closure 引数は要素型を target とした型付き render (TypeOf 不能)
+        // Closure arguments are rendered typed with the element type as the target (TypeOf cannot type them)
         CType? argType = null;
         if (!IsClosureValue(call.Args[1])) argType = TypeOf(call.Args[1]);
         var listType = RequireListForAdd(call.Args[0], argType);
@@ -2276,7 +2276,7 @@ public sealed class CEmitter
         var fact = _facts.Method(cls, method);
         if (!fact.IsStatic && call.Args.Count >= 1)
         {
-            // base 呼び出し: dispatcher を通さない直呼び
+            // base call: a direct call that bypasses the dispatcher
             var rest = new List<IlExpr>();
             for (int i = 1; i < call.Args.Count; i++) rest.Add(call.Args[i]);
             return RenderMethodCall(fact, call.Args[0], rest);
@@ -2285,7 +2285,7 @@ public sealed class CEmitter
         return RenderMethodCall(fact, null, call.Args);
     }
 
-    // MathF.X(...) (host BCL 経路) は Math.X の intrinsic と同じ扱い
+    // MathF.X(...) (host BCL path) is treated the same as the Math.X intrinsic
     private IlCall? AsMathCall(IlDynCall call)
     {
         if (call.Callee is IlField field && field.Recv is IlVar recv
@@ -2315,14 +2315,14 @@ public sealed class CEmitter
         return ValidateMethodCall(fact, null, call.Args);
     }
 
-    // closure 値の callee (変数/フィールド等) なら closure 型を返す
+    // Returns the closure type if the callee is a closure value (variable/field etc.)
     private CType? TryTypeOfClosureCallee(IlDynCall call)
     {
         if (call.Callee is IlField member && member.Recv is IlVar receiver
             && IsStaticMemberOwner(receiver.Name) && TryResolve(receiver.Name) == null)
         {
-            // 型修飾: closure 型の static field なら closure 呼び、それ以外は
-            // static method 呼び
+            // Type-qualified: a closure call if it is a static field of closure type, otherwise
+            // a static method call
             if (TryStaticField(member, out string staticName, out CType staticType)
                 && staticType.Kind == CTypeKind.Closure)
                 return staticType;
@@ -2452,7 +2452,7 @@ public sealed class CEmitter
         return "({ " + string.Join("", declarations) + function + "(" + string.Join(", ", arguments) + "); })";
     }
 
-    // (Class, Method) の組: Class を返し、Method は out
+    // A (Class, Method) pair: returns Class, with Method as out
     private string ParseUserCallee(string callee, out string method)
     {
         method = "";
@@ -2485,7 +2485,7 @@ public sealed class CEmitter
 
     // ==== CEmitter.Statements.cs ====
 
-    // 制御フロー文の emit (if / while / repeat / numeric for / foreach)。
+    // Emitting control flow statements (if / while / repeat / numeric for / foreach).
 
     private void EmitIf(IlIf conditional)
     {
@@ -2583,7 +2583,7 @@ public sealed class CEmitter
         Line("}");
     }
 
-    // string.EnumerateRunes(): codepoint を順に束縛する
+    // string.EnumerateRunes(): binds each codepoint in order
     private void EmitForeachRunes(IlForeachRunes loop)
     {
         RequireType(CType.String, TypeOf(loop.Str), "EnumerateRunes receiver");
@@ -2609,8 +2609,8 @@ public sealed class CEmitter
         Line("}");
     }
 
-    // List.Clear / Dictionary.Clear の IL の形 (IIFE: local t = recv; IlForPairs で
-    // 全ての key に null を入れる) を認識して runtime 呼びにする
+    // Recognize the IL shape of List.Clear / Dictionary.Clear (IIFE: local t = recv; IlForPairs
+    // sets every key to null) and turn it into a runtime call
     private bool TryEmitClearIife(IlIife iife)
     {
         if (iife.Stats.Count != 2) return false;
@@ -2696,8 +2696,8 @@ public sealed class CEmitter
         Line(target == null ? "continue;" : "goto " + target + ";");
     }
 
-    // Dictionary の foreach。反復順は挿入順 (support-matrix §18)。
-    // bucket と node の二重の for なので、break は外側の for の後へ goto で抜ける
+    // foreach over a Dictionary. Iteration order is insertion order (support-matrix §18).
+    // It is a nested for over buckets and nodes, so break exits with a goto to after the outer for
     private void EmitForeachDict(IlForeachDict loop)
     {
         var valueType = RequireDict(loop.Coll, out CType dictType);
@@ -2710,7 +2710,7 @@ public sealed class CEmitter
         PushScope();
         Line("TcsDict *" + dictTemp + " = ({ TcsDict *d = " +
             RenderExpr(loop.Coll) + "; (TcsDict *)tcs_nonnull(d); });");
-        // 挿入順 (support-matrix §18): order を前から。消した node の穴は飛ばし、途中で key を足したら fault
+        // Insertion order (support-matrix §18): walk order from the front. Holes from removed nodes are skipped, and adding a key midway faults
         var versionTemp = Temp("version");
         Line("uint32_t " + versionTemp + " = " + dictTemp + "->version;");
         Line("for (size_t " + bucketTemp + " = 0; " + bucketTemp + " < " + dictTemp + "->order_len; " + bucketTemp + "++)");
@@ -2723,8 +2723,8 @@ public sealed class CEmitter
         var pairType = CType.Kvp(dictType.KeyType!, valueType);
         if (_capturedNames.Contains(loop.Var))
         {
-            // closure が捕捉する KeyValuePair は値: 反復後の Dictionary の変更を
-            // 映さないよう node を copy する
+            // A KeyValuePair captured by a closure is a value: copy the node so that changes to the Dictionary after the iteration
+            // are not reflected
             var copyName = "c_" + Names.Id(loop.Var) + "_" + _serial;
             _serial++;
             var copy = new Variable(copyName, pairType);
@@ -2747,8 +2747,8 @@ public sealed class CEmitter
         Line("}");
     }
 
-    // IlBreakScope: block の直後に label を置き、スコープ束縛の break は goto で
-    // 抜ける (do { } while (0) だと continue が外側ループへ届かない)
+    // IlBreakScope: put a label right after the block, and a scope-bound break exits with a goto
+    // (with do { } while (0), continue would not reach the outer loop)
     private void EmitBreakScope(IlBreakScope scope)
     {
         var label = "tcs_brk_" + _serial;
@@ -2768,16 +2768,16 @@ public sealed class CEmitter
     // ---- Lists ----
 
     // ==== CEmitter.Lists.cs ====
-    // List.* (TinySystem の List 表面) を要素型ごとの inline loop に展開する。
-    // closure は呼び出し側の要素型で型付けし (IlClosure は引数型を持たない)、戻り型は本体から
-    // 推論する。Sort は runtime の introsort + call site ごとの lifted 比較関数。
-    // LINQ は TinySystem/Linq.cs を user のコードとして変換するのでここには無い
+    // Expand List.* (the List surface of TinySystem) into an inline loop per element type.
+    // Closures are typed with the caller's element type (IlClosure has no parameter types), and the return type is
+    // inferred from the body. Sort is the runtime introsort plus a lifted comparison function per call site.
+    // LINQ is not here, since TinySystem/Linq.cs is compiled as user code
 
     private int _comparatorSerial;
 
     private static bool IsNilLiteral(IlExpr expr) => IlLiterals.IsNull(expr);
 
-    // 戻り値は長さの関数 (Len)、at に要素の関数 (At)
+    // The return value is the length function (Len), and at receives the element function (At)
     private static string SeqFns(CType seq, out string at)
     {
         if (seq.Kind == CTypeKind.Array)
@@ -2800,8 +2800,8 @@ public sealed class CEmitter
         return type;
     }
 
-    // closure 値の戻り型: IlClosure は本体から、static method group は
-    // 契約から、closure 型の変数はその型から
+    // Return type of a closure value: from the body for an IlClosure, for a static method group
+    // from the contract, and for a variable of closure type from that type
     private CType InferClosureResult(IlExpr fn, List<CType> paramTypes)
     {
         switch (fn)
@@ -2838,7 +2838,7 @@ public sealed class CEmitter
         }
     }
 
-    // block 本体の最初の return の型 (local は型だけ登録、emit しない)
+    // Type of the first return in a block body (locals only register their types and are not emitted)
     private CType? ScanReturnType(List<IlStat> stats)
     {
         foreach (var stat in stats)
@@ -2937,7 +2937,7 @@ public sealed class CEmitter
         return null;
     }
 
-    // ScanReturnType の局所関数 Scoped (新しい scope で本体を走査する)
+    // Local function Scoped of ScanReturnType (scans the body in a new scope)
     private CType? ScopedReturnType(List<IlStat> body)
     {
         PushScope();
@@ -2946,9 +2946,9 @@ public sealed class CEmitter
         return t;
     }
 
-    // 式位置の逐次実行 (IlIife) は GNU statement expression。内側の return
-    // は結果変数への代入 + 末尾 label への goto (式の外へは飛ばない)
-    // (_iifes は core の List<IifeFrame>。末尾が top)
+    // Sequential execution in expression position (IlIife) is a GNU statement expression. An inner return
+    // is an assignment to the result variable + a goto to the trailing label (it does not jump out of the expression)
+    // (_iifes is a core List<IifeFrame>; the last element is the top)
 
     private CType TypeOfIife(IlIife iife)
     {
@@ -2994,7 +2994,7 @@ public sealed class CEmitter
             string.Join(", ", all) + ")";
     }
 
-    // List の検索の等価 (EqualityComparer<T>.Default: float は NaN 同士も等しい)
+    // Equality for List searches (EqualityComparer<T>.Default: for float, NaN equals NaN)
     private string EqualExpr(CType type, string left, string right)
     {
         var kind = type.Kind;
@@ -3008,7 +3008,7 @@ public sealed class CEmitter
             || kind == CTypeKind.Random)
             return $"({left} == {right})";
         if (kind == CTypeKind.Nullable) return NullableEqualExpr(type, left, right, true);
-        // struct 値は memberwise (C# の ValueType.Equals / record struct の ==)
+        // Struct values compare memberwise (C# ValueType.Equals / record struct ==)
         if (kind == CTypeKind.StructVal)
             return $"({{ {type.CName} eq_l = {left}; {type.CName} eq_r = {right}; " +
                 $"{Names.StructEq(type.Name!)}(&eq_l, &eq_r); }})";
@@ -3016,7 +3016,7 @@ public sealed class CEmitter
         return "";
     }
 
-    // sort 用の 3 方向比較。float は Single.CompareTo と同じく NaN を最小にする
+    // Three-way comparison for sort. For float, NaN is the smallest, as in Single.CompareTo
     private static string CompareExpr(CType type, string left, string right)
     {
         if (type.Kind == CTypeKind.F32)
@@ -3028,7 +3028,7 @@ public sealed class CEmitter
     private static string LessExpr(CType type, string left, string right)
     {
         if (type.Kind == CTypeKind.I32 || type.Kind == CTypeKind.F32) return $"({left} < {right})";
-        // null は最小 (.NET の既定の comparer)
+        // null is the smallest (the .NET default comparer)
         if (type.Kind == CTypeKind.String) return $"(tcs_string_compare_ordinal({left}, {right}) < 0)";
         CFail.Report($"ordering is not supported for {type.Display()}");
         return "";
@@ -3041,7 +3041,7 @@ public sealed class CEmitter
         return "NULL";
     }
 
-    // tcs_hashset_new の要素の種別 (0 = i32、1 = string、2 = host handle、3 = class の同一性)
+    // Element kind for tcs_hashset_new (0 = i32, 1 = string, 2 = host handle, 3 = class identity)
     private string HashSetKeyKind(CType element) =>
         element.Kind == CTypeKind.Ref && !_facts.IsDictKey(element) ? "3" : DictKeyKind(element);
 
@@ -3131,7 +3131,7 @@ public sealed class CEmitter
             case "Count":
                 RequireArity(call.Callee, call.Args.Count, 1);
                 return CType.I32;
-            // struct 要素では IL が op_Equality の参照を 3 番目に付ける
+            // For struct elements, IL attaches a reference to op_Equality as the third argument
             case "Contains":
                 RequireArity(call.Callee, call.Args.Count, elem.Kind == CTypeKind.StructVal ? 3 : 2);
                 if (CFail.Failed) return CType.Void;
@@ -3202,8 +3202,8 @@ public sealed class CEmitter
         var elem = seq.Element!;
         switch (name)
         {
-            // 変更可能な struct 要素では IL が `S.__copy` の参照を 2 番目に付ける
-            // (C は要素を値で写すので読まない)
+            // For mutable struct elements, IL attaches a reference to `S.__copy` as the second argument
+            // (C copies elements by value, so it is not read)
             case "Copy":
                 if (args.Count != 1 && args.Count != 2)
                 {
@@ -3211,8 +3211,8 @@ public sealed class CEmitter
                     return CType.Void;
                 }
                 return CType.List(elem);
-            // struct 要素では IL が op_Equality の参照を 3 番目に付ける
-            // (C は要素型から memberwise 比較を生成するので読まない)
+            // For struct elements, IL attaches a reference to op_Equality as the third argument
+            // (C generates a memberwise comparison from the element type, so it is not read)
             case "Contains":
                 RequireArity(call.Callee, args.Count, elem.Kind == CTypeKind.StructVal ? 3 : 2);
                 if (CFail.Failed) return CType.Void;
@@ -3234,7 +3234,7 @@ public sealed class CEmitter
                 RequireType(CType.I32, TypeOf(args[1]), "Insert index");
                 if (!IsClosureValue(args[2])) CheckAssignable(elem, args[2], call.Callee);
                 return CType.Void;
-            // 変更可能な struct 要素では IL が `S.__copy` の参照を末尾に付ける
+            // For mutable struct elements, IL attaches a reference to `S.__copy` at the end
             case "GetRange":
                 if (args.Count != 3 && args.Count != 4)
                 {
@@ -3309,7 +3309,7 @@ public sealed class CEmitter
         sb.Add($"{seq.CName} {s} = {RenderExpr(args[0])}; ");
         switch (name)
         {
-            // C# と同じく受け手、添字、値の順に評価してから範囲を見る
+            // As in C#, evaluate the receiver, index, and value in that order before checking the range
             case "Insert":
                 {
                     var index = Temp("index");
@@ -3337,8 +3337,8 @@ public sealed class CEmitter
                     sb.Add(ListLoop($"if ({match}) {{ {r} = {i}; break; }}", false, n, len, s, i, elem, v, at));
                     return $"({{ {JoinParts(sb)}{r}; }})";
                 }
-            // .NET の RemoveAll と同じ手順で、残す要素をその場で前へ詰める (tcs_list_remove_at と
-            // 同じく要素の byte を写す)。述語が list を変えても同じ結果になるよう、長さは毎回読む
+            // Compact the kept elements forward in place with the same steps as .NET RemoveAll (copying element bytes like
+            // tcs_list_remove_at). The length is read every time so the result is the same even if the predicate changes the list
             case "RemoveAll":
                 {
                     var match = ListClosure(sb, args, 1, CType.Bool, new List<CType> { elem }, f, v);
@@ -3350,7 +3350,7 @@ public sealed class CEmitter
                     sb.Add($"if ({free} < {len}({s})) {{ int32_t {current} = {free} + 1; ");
                     sb.Add($"while ({current} < {len}({s})) {{ {ListSkip(current, true, len, s, elem, v, at, match)}");
                     sb.Add($"if ({current} < {len}({s})) {{ {ListElement(elem, at, s, free)} = {ListElement(elem, at, s, current)}; {free}++; {current}++; }} }} ");
-                    // 述語が list を詰めて free より短くした場合は .NET の _size のように伸ばせないので切らない
+                    // If the predicate shrinks the list below free, it cannot be extended like .NET's _size, so it is not truncated
                     sb.Add($"{removed} = {len}({s}) - {free}; if ({removed} > 0) tcs_list_truncate({s}, (size_t){free}); }} ");
                     return $"({{ {JoinParts(sb)}{removed}; }})";
                 }
@@ -3376,7 +3376,7 @@ public sealed class CEmitter
                         return $"({{ {JoinParts(sb)}tcs_list_sort({s}, 0, {comparator}, {f}); }})";
                     }
                     var natural = LiftComparator(elem, null, "natural");
-                    // float は .NET と同じく NaN を先頭に寄せてから残りを並べる
+                    // For float, as in .NET, NaNs are moved to the front before the rest are sorted
                     var start = elem.Kind == CTypeKind.F32 ? $"tcs_list_move_nans_to_front({s})" : "0";
                     return $"({{ {JoinParts(sb)}tcs_list_sort({s}, {start}, {natural}, NULL); }})";
                 }
@@ -3386,10 +3386,10 @@ public sealed class CEmitter
         }
     }
 
-    // StringBuilder の ToString (sb は List<string>)
+    // ToString of a StringBuilder (sb is a List<string>)
     private static string JoinParts(List<string> parts) => string.Join("", parts);
 
-    // RenderListOp の局所関数 Loop (要素を v に読んで body を回す)
+    // Local function Loop of RenderListOp (reads each element into v and runs body)
     private static string ListLoop(string body, bool reverse, string n, string len, string s, string i,
         CType elem, string v, string at)
     {
@@ -3400,7 +3400,7 @@ public sealed class CEmitter
             $"{elem.CName} {v} = *({elem.CName} *){at}({s}, {i}); {body} }} ";
     }
 
-    // RenderListOp の局所関数 Closure (closure を f に束縛する文を sb に足し、v (と v2) での呼び出しを返す)
+    // Local function Closure of RenderListOp (appends a statement binding the closure to f to sb, and returns a call with v (and v2))
     private string ListClosure(List<string> sb, List<IlExpr> args, int index, CType ret, List<CType> parameters,
         string f, string v)
     {
@@ -3413,11 +3413,11 @@ public sealed class CEmitter
         return CallClosure(f, type, callArgs);
     }
 
-    // RenderListOp (RemoveAll) の局所関数 Element
+    // Local function Element of RenderListOp (RemoveAll)
     private static string ListElement(CType elem, string at, string s, string index) =>
         $"*({elem.CName} *){at}({s}, {index})";
 
-    // RenderListOp (RemoveAll) の局所関数 Skip
+    // Local function Skip of RenderListOp (RemoveAll)
     private static string ListSkip(string index, bool matching, string len, string s, CType elem, string v,
         string at, string match)
     {
@@ -3426,7 +3426,7 @@ public sealed class CEmitter
             $"if ({negate}({match})) break; {index}++; }} ";
     }
 
-    // sort 用の lifted 比較関数。mode: natural / comparison (ctx = closure)
+    // Lifted comparison function for sort. mode: natural / comparison (ctx = closure)
     private string LiftComparator(CType elem, CType? closureType, string mode)
     {
         var fnName = "tcs_cmp_" + _comparatorSerial;
@@ -3434,8 +3434,8 @@ public sealed class CEmitter
         _closureDecls.Add($"static int {fnName}(void *, const void *, const void *);");
         var body = new List<string>();
         body.Add($"static int\n{fnName}(void *ctx, const void *a, const void *b)\n{{\n");
-        // const は要素そのものに掛ける (後置)。要素が pointer (TcsString * 等) のとき
-        // 前置の const は指す先に掛かり、x / y への初期化で const が落ちる
+        // Apply const to the element itself (postfix). When the element is a pointer (TcsString * etc.),
+        // a prefix const applies to the pointee, and const is dropped when initializing x / y
         body.Add("    TcsClosure *f = ctx; (void)f;\n");
         body.Add($"    {elem.CName} x = *({elem.CName} const *)a;\n");
         body.Add($"    {elem.CName} y = *({elem.CName} const *)b;\n");
@@ -3465,19 +3465,19 @@ public sealed class CEmitter
 
     // ==== CEmitter.Dict.cs ====
 
-    // dict key を (key_i, key_s) の C 引数対に render する
+    // Render a dict key as the C argument pair (key_i, key_s)
     private string DictKeyArgs(CType keyType, IlExpr key) =>
         DictKeyArgs(keyType, RenderExpr(key));
 
     private static string DictKeyArgs(CType keyType, string rendered)
     {
         if (keyType.Kind == CTypeKind.String) return $"0, {rendered}";
-        // handle key: pointer を key_s の slot で運ぶ (GC が追う)
+        // handle key: the pointer is carried in the key_s slot (traced by the GC)
         if (keyType.Kind == CTypeKind.Ref) return $"0, (TcsString *)(void *){rendered}";
         return $"{rendered}, NULL";
     }
 
-    // tcs_dict_new の key 種別 (0 = i32、1 = string、2 = host handle)
+    // Key kind for tcs_dict_new (0 = i32, 1 = string, 2 = host handle)
     private static string DictKeyKind(CType keyType)
     {
         if (keyType.Kind == CTypeKind.String) return "1";
@@ -3485,7 +3485,7 @@ public sealed class CEmitter
         return "0";
     }
 
-    // 失敗したときは dict に値を持つ型 (int → void) を入れ、void を返す
+    // On failure, set dict to a type that has values (int → void) and return void
     private CType RequireDict(IlExpr recv, out CType dict)
     {
         dict = TypeOf(recv);
@@ -3520,8 +3520,8 @@ public sealed class CEmitter
                 CFail.Report("dict IlTable entry without key");
                 return CType.Void;
             }
-            // 契約の key / value 型があれば各項はそれへ代入可能であれば良い
-            // (object 値の box、派生 → 基底の upcast)。無ければ共通型で推論
+            // If the contract has key / value types, each entry only needs to be assignable to them
+            // (boxing object values, derived → base upcasts). If there are none, infer a common type
             if (table.KeyType != null) CheckAssignable(key!, entry.Key, "dict key");
             else key = key == null ? TypeOf(entry.Key)
                 : CommonType(key, TypeOf(entry.Key), "dict keys");
@@ -3552,7 +3552,7 @@ public sealed class CEmitter
         sb.Add($"TcsDict *{dictTemp} = tcs_typed(tcs_dict_new(" +
             $"{DictKeyKind(type.KeyType!)}, " +
             $"sizeof({type.Element!.CName}), {LayoutRef(type.Element)}), {RuntimeTypeId(type)}); ");
-        // C# と同じく key → 値の順に評価する
+        // Evaluate key → value in that order, as in C#
         foreach (var entry in table.Entries)
         {
             var keyTemp = Temp("dict_key");
@@ -3577,9 +3577,9 @@ public sealed class CEmitter
             $"{function}({dictTemp}, {DictKeyArgs(dictType.KeyType!, call.Args[1])}); }})";
     }
 
-    // (found, value) 形の multi-return intrinsic: Dict.TryGet /
-    // Math.TryParseInt / Math.TryParseFloat (out 引数 multi-return は
-    // ref method 側で別対応)
+    // Multi-return intrinsics of the (found, value) form: Dict.TryGet /
+    // Math.TryParseInt / Math.TryParseFloat (out-parameter multi-return is
+    // handled separately on the ref method side)
     private static CType? TryParseValueType(string callee)
     {
         if (callee == "Math.TryParseInt") return CType.I32;
@@ -3656,8 +3656,8 @@ public sealed class CEmitter
 
     private List<string> _pendingOutArguments = new List<string>();
 
-    // 次に render する method 呼び出しの末尾に足す引数。引数の式の中の呼び出しに渡らないよう、
-    // 引数を render する前に取り出す
+    // Arguments to append to the next rendered method call. They are taken out before rendering the arguments
+    // so they do not go to calls inside the argument expressions
     private List<string> TakeOutArguments()
     {
         var taken = _pendingOutArguments;
@@ -3687,7 +3687,7 @@ public sealed class CEmitter
         return null;
     }
 
-    // UserOutCallee の `Callee.Count(ch => ch == '.')`
+    // `Callee.Count(ch => ch == '.')` in UserOutCallee
     private static int CountDots(string text)
     {
         var u = new Utf8Bytes(text);
@@ -3699,8 +3699,8 @@ public sealed class CEmitter
         return count;
     }
 
-    // 自作メソッドの out の呼び出し: IlMultiAssign([戻り値?, out...], [call])。
-    // 受け手を stack の一時変数にして渡し、呼び出しの後で受け手へ代入する
+    // Call to a user-defined method with out: IlMultiAssign([return value?, out...], [call]).
+    // Pass stack temporaries as receivers, and assign to the receivers after the call
     private bool EmitUserOutCall(IlMultiAssign multi)
     {
         if (multi.Values.Count != 1) return false;
@@ -3734,7 +3734,7 @@ public sealed class CEmitter
         return true;
     }
 
-    // CEmitter.cs の DeclareLocal(name, type, value) とは別の overload (初期値なしで宣言し、変数を返す)
+    // An overload separate from DeclareLocal(name, type, value) in CEmitter.cs (declares without an initial value and returns the variable)
     private Variable DeclareLocal(string name, CType type)
     {
         var variable = new Variable("v_" + Names.Id(name) + "_" + _serial, type);
@@ -3766,8 +3766,8 @@ public sealed class CEmitter
             $"{helper}({text}, &{valuePlace}, {fallback});");
     }
 
-    // 分解代入 `(a, b) = (x, y)` / `var (a, b) = r`: 右辺を全部評価してから
-    // 左から代入
+    // Deconstructing assignment `(a, b) = (x, y)` / `var (a, b) = r`: evaluate the whole right side, then
+    // assign from the left
     private void EmitPairwiseMultiAssign(IlMultiAssign multi)
     {
         var tempNames = new List<string>();
@@ -3803,9 +3803,9 @@ public sealed class CEmitter
     // ---- Intrinsics ----
 
     // ==== CEmitter.Intrinsics ====
-    // TinySystem runtime 表面 (String / Math / Dict.Keys / Values) と IL の callee の
-    // 名前 (string.* / math.* / tonumber / os.getenv / table.remove) の IlCall
-    // を C runtime (CRuntime.Strings / Lib) へ写す。List.* は CEmitter.Linq。
+    // Map IlCalls of the TinySystem runtime surface (String / Math / Dict.Keys / Values) and of IL callee
+    // names (string.* / math.* / tonumber / os.getenv / table.remove)
+    // to the C runtime (CRuntime.Strings / Lib). List.* is in CEmitter.Linq.
 
     private static HashSet<string>? _intrinsicPrefixes;
     private static HashSet<string>? _intrinsicNames;
@@ -3832,7 +3832,7 @@ public sealed class CEmitter
         return _intrinsicNames;
     }
 
-    // facade 経由 (`using TinySystem;`) は "TinySystem.X.Y" で来る
+    // Calls through the facade (`using TinySystem;`) arrive as "TinySystem.X.Y"
     private static string NormalizeCallee(string callee)
     {
         if (callee.StartsWith("TinySystem.")) return Strings.From(callee, Strings.ByteLength("TinySystem."));
@@ -3841,13 +3841,13 @@ public sealed class CEmitter
 
     private bool IsIntrinsicCallee(string rawCallee)
     {
-        // 修飾された名前で来るので、user の class Utf8 とは衝突しない
+        // It arrives as a qualified name, so it does not collide with a user class Utf8
         if (rawCallee.StartsWith("TinySystem.Utf8.")) return true;
         var callee = NormalizeCallee(rawCallee);
         if (IntrinsicNames().Contains(callee)) return true;
         var dot = ContractFacts.IndexOfByte(callee, '.');
         if (dot <= 0) return false;
-        // 同名の user class があればそちらが優先 (user call 経路)
+        // A user class with the same name takes precedence (user call path)
         var head = Strings.Prefix(callee, dot);
         if (_classes.ContainsKey(head)
             || _facts.Structs.ContainsKey(head)) return false;
@@ -3871,7 +3871,7 @@ public sealed class CEmitter
             if (call.Callee == "Char.ConvertFromUtf32") return CType.String;
             return CType.Bool;
         }
-        // List.RemoveAt は下の switch (取り除いた要素を値にする)
+        // List.RemoveAt is in the switch below (its value is the removed element)
         if (call.Callee.StartsWith("List.") && call.Callee != "List.RemoveAt")
             return TypeOfListOp(call);
         if (call.Callee.StartsWith("TcsQueue."))
@@ -3959,7 +3959,7 @@ public sealed class CEmitter
     {
         var call = new IlCall(NormalizeCallee(rawCall.Callee), rawCall.Args, rawCall.Origin);
         var type = TypeOfIntrinsic(call);
-        // 型付けが誤りを記録したら引数を見ない (C# 版は例外で抜けた)
+        // If typing recorded an error, do not look at the arguments (the C# version exited with an exception)
         if (CFail.Failed) return "";
         var args = call.Args;
         if (call.Callee.StartsWith("Random."))
@@ -4055,7 +4055,7 @@ public sealed class CEmitter
         return type;
     }
 
-    // ---- __tcs_format (printf の書式) ----
+    // ---- __tcs_format (printf format) ----
     private static string FormatArgKind(CType type)
     {
         switch (type.Kind)
@@ -4094,8 +4094,8 @@ public sealed class CEmitter
         return $"({{ {string.Join("", sb)}tcs_string_format({format}, {entries.Count}, {array}); }})";
     }
 
-    // String.FormatFloat / String.FormatInt の spec ("G"、"E2" など、il-spec §13) を書式の文字と精度 (無ければ -1) にする
-    // 書式の文字 (1 byte の文字列) を返し、精度は out で返す
+    // Turn a String.FormatFloat / String.FormatInt spec ("G", "E2", etc., il-spec §13) into a format character and precision (-1 if none)
+    // Returns the format character (a 1-byte string), and the precision through out
     private static string NumberFormatSpec(IlExpr spec, string letters, out int precision)
     {
         precision = -1;
@@ -4181,7 +4181,7 @@ public sealed class CEmitter
                 RequireArity(call.Callee, args.Count, 3);
                 if (CFail.Failed) return CType.Void;
                 RequireType(CType.String, TypeOf(args[0]), name); RequireType(CType.String, TypeOf(args[1]), name);
-                // 置換後文字列の null は削除 (runtime が NULL を受ける)
+                // A null replacement string means removal (the runtime accepts NULL)
                 if (TypeOf(args[2]).Kind != CTypeKind.Null) RequireType(CType.String, TypeOf(args[2]), name);
                 return CType.String;
             case "Trim":
@@ -4265,7 +4265,7 @@ public sealed class CEmitter
         }
     }
 
-    // args[0] から count 個を string の引数として順に描く (C# 版の局所関数 Strings)
+    // Render count arguments starting at args[0] as string arguments in order (local function Strings in the C# version)
     private List<TypedValue> StringArgs(List<IlExpr> args, int count)
     {
         var values = new List<TypedValue>();
@@ -4352,7 +4352,7 @@ public sealed class CEmitter
         }
     }
 
-    // 値型の要素の string.Join は要素を連結と同じく文字列化する (runtime の TCS_JOIN_*)
+    // string.Join over value-type elements stringifies the elements the same way as concatenation (runtime TCS_JOIN_*)
     private static string? JoinValueKind(CType element)
     {
         switch (element.Kind)
@@ -4364,7 +4364,7 @@ public sealed class CEmitter
         return null;
     }
 
-    // ---- TinySystem.Text (TinySystem.Utf8.X の呼び出し。runtime の tcs_utf8_* を呼ぶ) ----
+    // ---- TinySystem.Text (calls to TinySystem.Utf8.X; calls the runtime tcs_utf8_*) ----
     private CType TypeOfUtf8Op(IlCall call)
     {
         var name = Strings.From(call.Callee, Strings.ByteLength("Utf8."));
@@ -4423,7 +4423,7 @@ public sealed class CEmitter
                         $"({bytes}){{ .{fieldText} = {text}, .{fieldStart} = 0, .{fieldLength} = {text}_length }}; }})";
                 }
         }
-        // receiver と引数はこの順に 1 度だけ評価する
+        // The receiver and arguments are evaluated once each, in this order
         var u = Temp("utf8");
         var head = $"{bytes} {u} = {RenderExpr(call.Args[0])}; ";
         var view = $"{u}.{fieldText}, {u}.{fieldStart}, {u}.{fieldLength}";
@@ -4449,13 +4449,13 @@ public sealed class CEmitter
         }
     }
 
-    // ---- Random (TinySystem.Random: instance + Shared。il-spec §13 の
-    // xoshiro256** を runtime の TcsRandom が持つ。seed 固定時は tcs VM と同じ列) ----
+    // ---- Random (TinySystem.Random: instance + Shared. The runtime TcsRandom holds the
+    // xoshiro256** of il-spec §13. With a fixed seed it gives the same sequence as the tcs VM) ----
     private bool IsRandomTypeName(string name) =>
         name == "TinySystem.Random"
         || (name == "Random" && !_classes.ContainsKey("Random"));
 
-    // 静的形 IlCall("Random.X"): Seed は Shared の再 seed、他は Shared 経由
+    // Static form IlCall("Random.X"): Seed reseeds Shared, the others go through Shared
     private CType TypeOfRandomOp(IlCall call)
     {
         var name = Strings.From(call.Callee, Strings.ByteLength("Random."));
@@ -4522,7 +4522,7 @@ public sealed class CEmitter
         }
     }
 
-    // receiver は評価順を保つため先に temp へ束縛する
+    // Bind the receiver to a temp first to preserve evaluation order
     private string RenderRandomMethod(string receiver, string name,
         List<IlExpr> args)
     {
@@ -4537,8 +4537,8 @@ public sealed class CEmitter
                 return $"({{ {head}tcs_rand_float({r}); }})";
             case "Next":
                 {
-                    // Next() = tcs_rand_range(0, 2147483646)、Next(max) =
-                    // Next(0, max)、Next(min, max) = tcs_rand_range(min, max - 1) (空の範囲は min)
+                    // Next() = tcs_rand_range(0, 2147483646), Next(max) =
+                    // Next(0, max), Next(min, max) = tcs_rand_range(min, max - 1) (min for an empty range)
                     if (args.Count == 0)
                         return $"({{ {head}tcs_rand_range({r}, 0, INT32_C(2147483646)); }})";
                     if (args.Count == 1)
@@ -4570,7 +4570,7 @@ public sealed class CEmitter
     }
 
     // ---- Math.* (TinySystem.Math) ----
-    // 数値 (i32 / f32) の引数の型 (C# 版の局所関数 Num)
+    // Type of a numeric (i32 / f32) argument (local function Num in the C# version)
     private CType MathNumericArg(string name, List<IlExpr> args, int i)
     {
         var type = TypeOf(args[i]);
@@ -4650,7 +4650,7 @@ public sealed class CEmitter
         }
     }
 
-    // f32 の引数を順に描く (C# 版の局所関数 F)
+    // Render f32 arguments in order (local function F in the C# version)
     private List<TypedValue> MathF32Args(List<IlExpr> args, int count)
     {
         var values = new List<TypedValue>();
@@ -4700,7 +4700,7 @@ public sealed class CEmitter
                 }
             case "CompareTo":
                 {
-                    // -1 / 0 / 1。float の NaN は他のどの値より小さく、NaN 同士は 0
+                    // -1 / 0 / 1. A float NaN is smaller than any other value, and two NaNs give 0
                     var vt = NumericJoin(TypeOf(args[0]), TypeOf(args[1]), name);
                     var a = Temp("cmp_a"); var b = Temp("cmp_b");
                     var unordered = vt.Kind == CTypeKind.F32
@@ -4748,9 +4748,9 @@ public sealed class CEmitter
     }
 
     // ==== CEmitter.EnumNames ====
-    // enum の文字列化 `String.FormatEnum(v, spec)` (il-spec §13)。spec ごとに名前
-    // (string literal) と値の file-scope 表を 1 組だけ作り、runtime の
-    // tcs_enum_format が String.FormatEnum の規則 (il-spec §13) で引く
+    // Enum stringification `String.FormatEnum(v, spec)` (il-spec §13). For each spec, build only one pair of file-scope tables of names
+    // (string literals) and values, and the runtime
+    // tcs_enum_format looks them up by the String.FormatEnum rules (il-spec §13)
 
     private readonly Dictionary<string, EnumTableInfo> _enumTables = new Dictionary<string, EnumTableInfo>();
 
@@ -4772,7 +4772,7 @@ public sealed class CEmitter
         return CType.String;
     }
 
-    // C# 版の局所関数 Format
+    // Local function Format in the C# version
     private static string EnumFormatText(string v, EnumTableInfo table)
     {
         var flags = table.Flags ? "true" : "false";
@@ -4796,7 +4796,7 @@ public sealed class CEmitter
     {
         EnumTableInfo? existing;
         if (_enumTables.TryGetValue(specText, out existing)) return existing;
-        // spec は UTF-8 の byte の列のまま読む (',' と ':' は多 byte の文字の中に現れないので、C# 版の文字の分割と同じ)
+        // Read spec as a UTF-8 byte sequence (',' and ':' never appear inside multi-byte characters, so this matches the character split in the C# version)
         var spec = Utf8List(specText);
         var flags = spec.Count > 0 && spec[0] == '*';
         var entryNames = new List<List<int>>();
@@ -4805,7 +4805,7 @@ public sealed class CEmitter
         for (var i = segmentStart; i <= spec.Count; i++)
         {
             if (i < spec.Count && spec[i] != ',') continue;
-            // 空の要素は飛ばす (StringSplitOptions.RemoveEmptyEntries)
+            // Skip empty entries (StringSplitOptions.RemoveEmptyEntries)
             if (i > segmentStart)
             {
                 var colon = -1;
@@ -4834,7 +4834,7 @@ public sealed class CEmitter
         foreach (var n in entryNames) literals.Add(InternStringLiteral(n));
         var valueTexts = new List<string>();
         foreach (var v in entryValues) valueTexts.Add(I32Literal(v));
-        // 0 個の配列は C で書けないので、member の無い enum も 1 要素を置く
+        // C cannot express a zero-length array, so an enum with no members also gets one element
         var nameList = literals.Count == 0 ? "NULL" : string.Join(", ", literals);
         _literalDecls.Add($"static TcsString *const {names}[] = {{ " +
             $"{nameList} }};");
@@ -4846,8 +4846,8 @@ public sealed class CEmitter
         return table;
     }
 
-    // spec の byte [start, end) の 10 進の整数 (先頭の符号を許す。C# 版の int.Parse(NumberStyles.AllowLeadingSign))。
-    // 負の側で積むので int.MinValue も溢れない
+    // Decimal integer in bytes [start, end) of spec (a leading sign is allowed; int.Parse(NumberStyles.AllowLeadingSign) in the C# version).
+    // Accumulates on the negative side, so even int.MinValue does not overflow
     private static int EnumSpecValue(List<int> spec, int start, int end, string specText)
     {
         var negative = false;
@@ -4884,9 +4884,9 @@ public sealed class CEmitter
     // ==== CEmitter.Closures.cs ====
 
     // ---- closure: capture-by-variable (il-spec §7) ----
-    // 関数 (method / closure) の本体の直下の closure が捕捉する名前を集め、その
-    // 関数の local/param を heap cell (T *) へ box する。名前で判断するので
-    // 同名の別変数も box しうるが、過剰 box は無害 (意味等価)
+    // Collect the names captured by closures directly in the body of a function (method / closure), and box that
+    // function's locals/params into heap cells (T *). The decision is by name, so
+    // a different variable with the same name may also be boxed, but over-boxing is harmless (semantically equivalent)
     private void CollectCapturedNames(IlBlock body)
     {
         _capturedNames.Clear();
@@ -4899,8 +4899,8 @@ public sealed class CEmitter
             _capturedNames.Add(name);
     }
 
-    // 本体の中の closure (その内側の closure は FreeNames が見る) が外から
-    // 参照する名前
+    // Names that closures in the body (FreeNames handles the closures nested inside them) reference from
+    // outside
     private static HashSet<string> CapturedByClosuresIn(List<IlStat> stats,
         IlExpr? exprBody)
     {
@@ -4911,7 +4911,7 @@ public sealed class CEmitter
         return w.CapturedSet;
     }
 
-    // CapturedByClosuresIn の式の訪問 (C# 版の local 関数 E)
+    // Expression visitor of CapturedByClosuresIn (local function E in the C# version)
     private static void CapturedExpr(IlExpr e, ClosureWalk w, HashSet<string> none)
     {
         if (e is IlClosure closure)
@@ -4921,9 +4921,9 @@ public sealed class CEmitter
         else Walk(e, w, none);
     }
 
-    // closure が外の変数として参照する名前 (入れ子の closure が参照するものも
-    // 含む)。初出順。closure の中の local / ループ変数は外の変数と同じ名前に
-    // できる (shadow) ので、宣言は block 単位で束縛する
+    // Names a closure references as outer variables (including those referenced by nested
+    // closures). In order of first appearance. Locals / loop variables inside a closure can have the same name
+    // as an outer variable (shadowing), so declarations are bound per block
     private static List<string> FreeNames(IlClosure closure)
     {
         var w = new ClosureWalk(false);
@@ -4934,7 +4934,7 @@ public sealed class CEmitter
         return w.Free;
     }
 
-    // FreeNames の式の訪問 (C# 版の local 関数 E)
+    // Expression visitor of FreeNames (local function E in the C# version)
     private static void FreeExpr(IlExpr e, ClosureWalk w, HashSet<string> bound)
     {
         switch (e)
@@ -4952,8 +4952,8 @@ public sealed class CEmitter
         }
     }
 
-    // 外の block の束縛は copy して持ち込み、内の宣言を外へ漏らさない
-    // (C# 版の local 関数 Block。declared は 0 から 2 個で、null は宣言なし)
+    // Bring in a copy of the outer block's bindings, and do not leak inner declarations outward
+    // (local function Block in the C# version; declared holds 0 to 2 names, and null means no declaration)
     private static void FreeBlock(List<IlStat> stats, HashSet<string> outer,
         string? declared1, string? declared2, ClosureWalk w)
     {
@@ -4964,7 +4964,7 @@ public sealed class CEmitter
         foreach (var st in stats) FreeStat(st, w, bound);
     }
 
-    // FreeNames の文の訪問 (C# 版の local 関数 S)
+    // Statement visitor of FreeNames (local function S in the C# version)
     private static void FreeStat(IlStat st, ClosureWalk w, HashSet<string> bound)
     {
         switch (st)
@@ -5016,7 +5016,7 @@ public sealed class CEmitter
         }
     }
 
-    // Walk / WalkStat が子の式と文を渡す先 (C# 版の Action<IlExpr> expr / Action<IlStat> stat)
+    // Where Walk / WalkStat pass child expressions and statements (Action<IlExpr> expr / Action<IlStat> stat in the C# version)
     private static void WalkExpr(IlExpr e, ClosureWalk w, HashSet<string> bound)
     {
         if (w.Captured) CapturedExpr(e, w, bound);
@@ -5171,7 +5171,7 @@ public sealed class CEmitter
         return $"{closure.Element!.CName} (*{name})({parameters})";
     }
 
-    // IlClosure → lifted static 関数 + cell 束縛。closure 値は
+    // IlClosure → lifted static function + cell bindings. A closure value is
     // TcsClosure { fn, cells[] }
     private string RenderClosure(IlClosure closure, CType target)
     {
@@ -5182,9 +5182,9 @@ public sealed class CEmitter
             return "";
         }
         var fnName = $"tcs_closure_{_closureSerial++}";
-        // 捕捉 = closure 本体が参照する enclosing の boxed 変数と反復の
-        // KeyValuePair の copy。入れ子の closure が参照するものも、lifted 関数の
-        // cell 経由で中へ渡すので含める
+        // Captures = the enclosing boxed variables referenced by the closure body and copies of iteration
+        // KeyValuePairs. Those referenced by nested closures are included too, since they are passed in through the lifted function's
+        // cells
         var capturedNames = new List<string>();
         var capturedCells = new List<Variable>();
         foreach (var name in FreeNames(closure))
@@ -5197,7 +5197,7 @@ public sealed class CEmitter
             }
         }
 
-        // lifted 関数を側帯へ emit (現在の関数を汚さない)
+        // Emit the lifted function to a side buffer (does not pollute the current function)
         var declParts = new List<string>();
         declParts.Add("void **");
         foreach (var p in targetParams) declParts.Add(p.CName);
@@ -5206,7 +5206,7 @@ public sealed class CEmitter
             $"static {target.Element!.CName} {fnName}({declParams});");
         var saved = _output.Count;
         var savedIndent = _indent;
-        // 外側の IIFE の return 束縛を closure 本体へ持ち込まない
+        // Do not carry the outer IIFE's return binding into the closure body
         var savedIifes = _iifes;
         _iifes = new List<IifeFrame>();
         _indent = 0;
@@ -5235,8 +5235,8 @@ public sealed class CEmitter
             Line($"{pointer}{cellVar.CName} = ({pointer})cells[{i}];");
             AddVariable(name, cellVar);
         }
-        // この closure の内側の closure が捕捉する parameter / local を、method と
-        // 同じく cell にする
+        // Turn parameters / locals captured by closures inside this closure into cells, the same as
+        // for methods
         var outerCaptured = _capturedNames;
         _capturedNames = CapturedByClosuresIn(
             closure.Body != null ? closure.Body.Stats : new List<IlStat>(),
@@ -5284,7 +5284,7 @@ public sealed class CEmitter
 
     private readonly Dictionary<string, string> _groupThunks = new Dictionary<string, string>();
 
-    // static method group → 引数素通しの thunk closure (cells 不使用)
+    // static method group → a thunk closure that passes arguments through (no cells)
     private string RenderStaticGroupThunk(string cls, string method,
         CType target)
     {
@@ -5329,10 +5329,10 @@ public sealed class CEmitter
 
     // ==== CEmitter.Nullable.cs ====
 
-    // Nullable<T> (il-spec §13): C では { bool has; T v; }。IL の明示ノード
-    // (Wrap / HasValue / Value / GetOrDefault / Lifted) を 1 対 1 の statement
-    // expression に落とす。lifted は片方でも値なしなら値なし、比較は false、
-    // Eq / Ne は両方値なしで等しい、bool? の And / Or は三値論理。
+    // Nullable<T> (il-spec §13): { bool has; T v; } in C. Explicit IL nodes
+    // (Wrap / HasValue / Value / GetOrDefault / Lifted) are lowered one-to-one to statement
+    // expressions. A lifted operation has no value if either side has no value, comparisons are false,
+    // Eq / Ne treat two missing values as equal, and bool? And / Or use three-valued logic.
 
     private CType RequireNullable(IlExpr expr, string where)
     {
@@ -5340,7 +5340,7 @@ public sealed class CEmitter
         if (type.Kind != CTypeKind.Nullable)
         {
             CFail.Report($"{where}: operand is not Nullable<T> ({type.Display()})");
-            // 誤りの後も呼んだ側が Element を読めるように
+            // So that the caller can still read Element after an error
             return CType.Nullable(CType.I32);
         }
         return type;
@@ -5433,8 +5433,8 @@ public sealed class CEmitter
             $"{temp}.has ? {helper}({temp}.v) : {InternStringLiteral(new List<int>())}; }})";
     }
 
-    // T? 同士 / T? と T / T? と null の等価。既定は lifted Eq (float は IEEE の
-    // ==)、equals は Nullable<T>.Equals (中の値を EqualityComparer<T>.Default で)
+    // Equality of T? with T? / T? with T / T? with null. The default is lifted Eq (IEEE
+    // == for float); equals is Nullable<T>.Equals (inner values via EqualityComparer<T>.Default)
     private string NullableEqualExpr(CType type, string left, string right,
         bool equals = false)
     {
@@ -5477,7 +5477,7 @@ public sealed class CEmitter
         }
         if (op == IlLiftedOp.Eq || op == IlLiftedOp.Ne)
         {
-            // NumericJoin は数でなければ誤りを記録する (C# 版の operand mismatch の throw は届かない)
+            // NumericJoin records an error if it is not a number (the operand mismatch throw of the C# version is never reached)
             if (!CType.Same(le, re)) NumericJoin(le, re, "lifted equality");
             return CType.Bool;
         }
@@ -5608,13 +5608,13 @@ public sealed class CEmitter
 
     // ==== CEmitter.Objects.cs ====
 
-    // `object` (CType.Object = void *): 参照型はそのまま、int / float / bool は
-    // TcsBox に box する。cast の検査は GC header の type_id (class は tcs_init_C、
-    // string は tcs_string_new、box は tcs_box_*、配列 / List / Dict / closure は
-    // box 時に tcs_typed で構造型 id を付ける) で行う。interface は実装 class の
-    // 集合を切り替える tcs_is_I で判定する。
+    // `object` (CType.Object = void *): reference types stay as they are; int / float / bool are
+    // boxed in TcsBox. Casts are checked with the type_id in the GC header (classes via tcs_init_C,
+    // strings via tcs_string_new, boxes via tcs_box_*, and arrays / List / Dict / closures
+    // get a structural type id from tcs_typed when boxed). Interfaces are tested with tcs_is_I, which switches over the set of
+    // implementing classes.
 
-    // 値は intern した順の番号 (C# 版の uint の id から 0x80000000 を引いたもの)
+    // The value is the number in intern order (the uint id of the C# version minus 0x80000000)
     private readonly Dictionary<string, int> _runtimeTypeIds = new Dictionary<string, int>();
 
     private static string TypeKey(CType type)
@@ -5632,7 +5632,7 @@ public sealed class CEmitter
         return string.Join("", parts);
     }
 
-    // 0x80000000 + index の 10 進 (uint が無いので 2147483648 を下 4 桁と上の桁に分けて足す)
+    // Decimal of 0x80000000 + index (there is no uint, so 2147483648 is split into the low 4 digits and the upper digits and added)
     private static string RuntimeTypeIdText(int index)
     {
         int low = 3648 + index % 10000;
@@ -5642,7 +5642,7 @@ public sealed class CEmitter
         return high.ToString() + pad + low.ToString();
     }
 
-    // 実行時型 tag。class は DFS 範囲の先頭、構造型は program 内で intern
+    // Runtime type tag. For a class, the start of its DFS range; structural types are interned within the program
     private string RuntimeTypeId(CType type)
     {
         if (CType.Same(type, CType.String)) return "TCS_TYPE_STRING";
@@ -5685,7 +5685,7 @@ public sealed class CEmitter
         return "";
     }
 
-    // 値 → object
+    // value → object
     private string RenderBox(IlExpr value)
     {
         var type = TypeOf(value);
@@ -5709,11 +5709,11 @@ public sealed class CEmitter
         return "";
     }
 
-    // object → スカラ (型が一致する box だけ)
+    // object → scalar (only a box of the matching type)
     private string RenderUnbox(IlExpr value, CType target) =>
         $"(tcs_unbox({RenderExpr(value)}, {RuntimeTypeId(target)})->value.{BoxField(target)})";
 
-    // interface ごとの実装判定 (実行時型 tag の switch)
+    // Per-interface implementation test (a switch on the runtime type tag)
     private void EmitInterfaceChecks()
     {
         foreach (var iface in _program.Classes)
@@ -5727,7 +5727,7 @@ public sealed class CEmitter
             foreach (var cls in _program.Classes)
                 if (!cls.IsInterface && IsAncestorOrSame(iface.Name, cls.Name))
                     Line($"case {Names.TypeId(cls.Name)}: return true;");
-            // --vm-host: VM の class もこの interface を実装できる (VM の型の表で引く。object-model §10.6)
+            // --vm-host: VM classes can also implement this interface (looked up in the VM type table; object-model §10.6)
             Line(VmHostSurface == null ? "default: return false;"
                 : $"default: return TCS_GC_HEADER(object)->kind == TCS_KIND_FOREIGN && tvm_implements(tcs_vmh_vm, object, \"{iface.Name}\");");
             Line("}");
@@ -5740,11 +5740,11 @@ public sealed class CEmitter
     // ---- Structs ----
 
     // ==== tcs2c/CEmitter.Structs.cs ====
-    // struct の C 側 emit: typedef 生成。値型はポインタなしの素の
-    // C struct に落ち、copy は値代入で成立する。
+    // C-side emit for structs: typedef generation. Value types lower to plain
+    // C structs without pointers, and copying works by value assignment.
 
-    // struct typedef。struct-in-struct は値埋め込みに完全型が要るため
-    // 内側が先 (struct は循環できないので必ず解ける)
+    // struct typedefs. struct-in-struct needs complete types for value embedding, so
+    // inner ones come first (structs cannot be cyclic, so this always resolves)
     private void EmitStructTypedefs()
     {
         if (_program.Structs.Count == 0)
@@ -5790,11 +5790,11 @@ public sealed class CEmitter
         }
     }
 
-    // receiver を書き換える place (method の self / field への store) の lvalue と、
-    // それを所有する heap object (stack 上の値なら null)。heap object の式は
-    // setup の temp に 1 回だけ評価し、lvalue と owner の両方がその temp を指す。
-    // struct method の本文中の self の owner は呼び出し側から渡る v_owner
-    // (C# 版の (Place, Owner) の tuple は、Place を戻り値、Owner を out で返す)
+    // The lvalue of a place that mutates the receiver (method self / store to a field), and
+    // the heap object that owns it (null for a value on the stack). The heap object expression is
+    // evaluated once into a setup temp, and both the lvalue and the owner refer to that temp.
+    // Inside a struct method body, the owner of self is the v_owner passed from the caller
+    // (the (Place, Owner) tuple of the C# version is returned as Place for the return value and Owner through out)
     private string RenderOwnedStructPlace(IlExpr expr,
         List<string> setup, out string? owner)
     {
@@ -5851,8 +5851,8 @@ public sealed class CEmitter
         return RenderStructPlace(expr);
     }
 
-    // struct 値の lvalue 連鎖。receiver/添字は inline 評価 (temp を挟むと
-    // statement-expression になり lvalue 性が消える)
+    // lvalue chain of a struct value. receiver/index are evaluated inline (going through a temp
+    // makes it a statement-expression and it is no longer an lvalue)
     private string RenderStructPlace(IlExpr expr)
     {
         if (expr is IlVar v)
@@ -5863,7 +5863,7 @@ public sealed class CEmitter
         if (expr is IlIndex dictIndex && !dictIndex.PlusOne
             && TypeOf(dictIndex.Recv).Kind == CTypeKind.Dict)
         {
-            // Dictionary の struct 値 (読みのみ — 書きは C# が CS1612 で拒否)
+            // struct value in a Dictionary (read only — C# rejects writes with CS1612)
             var valueType = RequireDict(dictIndex.Recv, out CType dictType);
             return "(*(" + valueType.CName + " *)tcs_dict_at(" +
                 RenderExpr(dictIndex.Recv) + ", " + DictKeyArgs(dictType.KeyType!, dictIndex.Idx) + "))";
@@ -5888,8 +5888,8 @@ public sealed class CEmitter
                 return "((" + receiverType.CName + ")tcs_nonnull(" +
                     RenderExpr(field.Recv) + "))->" + Names.Field(field.Name);
             if (receiverType.Kind == CTypeKind.Kvp)
-                // KeyValuePair の struct 値 (読みのみ — kv.Value.F への書きは
-                // C# が CS1612 で拒否、mutating method は IsStructPlace が copy に回す)
+                // struct value in a KeyValuePair (read only — C# rejects writes to kv.Value.F
+                // with CS1612, and IsStructPlace sends mutating methods to a copy)
                 return RenderField(field);
             CFail.Report(
                 "unsupported struct place receiver: " + receiverType.Display());
@@ -5899,7 +5899,7 @@ public sealed class CEmitter
             return "(" + RenderStructPlace(paren.E) + ")";
         if (expr is IlNullableValue || expr is IlIife || expr is IlCall || expr is IlInvoke || expr is IlDynCall
             || expr is IlWith || expr is IlStructCopy || expr is IlNewObj || expr is IlTernary)
-            // rvalue の struct (読みのみ。C は rvalue struct の member を読める)
+            // rvalue struct (read only; C can read members of an rvalue struct)
             return "(" + RenderExpr(expr) + ")";
         CFail.Report(
             "unsupported struct place: " + NodeName(expr));
@@ -5907,21 +5907,21 @@ public sealed class CEmitter
     }
 
     // ==== tcs2c/CEmitter.StructMembers.cs ====
-    // struct / record struct の member (il-spec §10): instance method と
-    // accessor は `self` を格納場所へのポインタ (Tcs_S *) で受ける自由関数、
-    // explicit / positional ctor は zero 値から組み立てて値で返す関数、static method と
-    // operator は self の無い自由関数。
-    // 呼び出しサイトは IlCall("S.M", [receiver, args]) の静的ディスパッチで、
-    // receiver が place (変数 / field / 配列要素) ならそのアドレスを渡し (変異が
-    // その場に残る = C# の変数 receiver)、rvalue (copy / 呼び出し結果) なら
-    // 一時値のアドレスを渡す (変異は捨てられる = C# の rvalue receiver)。
+    // Members of struct / record struct (il-spec §10): instance methods and
+    // accessors are free functions taking `self` as a pointer to the storage location (Tcs_S *),
+    // explicit / positional ctors are functions that build from the zero value and return by value, and static methods and
+    // operators are free functions without self.
+    // Call sites are static dispatch of IlCall("S.M", [receiver, args]):
+    // if receiver is a place (variable / field / array element), its address is passed (mutations
+    // stay in place = a C# variable receiver), and if it is an rvalue (copy / call result),
+    // the address of a temporary is passed (mutations are discarded = a C# rvalue receiver).
 
-    // struct ctor 本文の `return;` が返す値 (ctor 以外では null)
-    // (_ctorReturnValue の宣言は core にある)
+    // Value returned by `return;` in a struct ctor body (null outside ctors)
+    // (_ctorReturnValue is declared in core)
 
     private List<ExStruct> StructInfos => _program.Structs;
 
-    // static field を持つ型。struct の static は class の static と同じ置き場と初期化の規則に乗る
+    // Types with static fields. struct statics follow the same storage and initialization rules as class statics
     private List<ExClass> StaticOwners
     {
         get
@@ -5935,7 +5935,7 @@ public sealed class CEmitter
     }
 
     private Dictionary<string, ExClass>? _structStaticOwners;
-    // _structStaticOwners の値を作った順に (Dictionary の列挙の順に頼らない)
+    // Values of _structStaticOwners in creation order (does not rely on Dictionary enumeration order)
     private List<ExClass>? _structStaticOwnerList;
 
     private Dictionary<string, ExClass> StructStaticOwners
@@ -6111,8 +6111,8 @@ public sealed class CEmitter
         }
     }
 
-    // zero 値 → field initializer → 本文 (il-spec §10)。self は
-    // local の値を指すので本文の field 書きはそのまま結果に残る
+    // zero value → field initializers → body (il-spec §10). self points
+    // to the local value, so field writes in the body remain in the result as is
     private void EmitStructCtor(ExStruct st, ExCtor ctor)
     {
         var ctorBody = ctor.Body;
@@ -6312,7 +6312,7 @@ public sealed class CEmitter
         return "({ " + string.Join("", sb) + "})";
     }
 
-    // C# の「変数」receiver (il-spec §10): local / parameter / field / 配列要素
+    // A C# "variable" receiver (il-spec §10): local / parameter / field / array element
     private bool IsStructPlace(IlExpr expr)
     {
         if (expr is IlVar v) return TryResolve(v.Name) != null;
@@ -6320,7 +6320,7 @@ public sealed class CEmitter
         {
             if (TryStaticField(f, out string staticName, out CType staticType)) return true;
             var kind = TypeOf(f.Recv).Kind;
-            // rvalue (property / 呼び出し結果) の field は copy の一部で place ではない
+            // A field of an rvalue (property / call result) is part of a copy and not a place
             if (kind == CTypeKind.StructVal) return IsStructPlace(f.Recv);
             if (kind == CTypeKind.Ref) return true;
             return false;
@@ -6337,7 +6337,7 @@ public sealed class CEmitter
         return source;
     }
 
-    // 値 copy の上に override を書く (record struct の with)
+    // Write overrides on top of a value copy (with on a record struct)
     private string RenderStructWith(IlWith with, CType type)
     {
         var copy = Temp("with_copy");
@@ -6352,8 +6352,8 @@ public sealed class CEmitter
     }
 
     // ==== tcs2c/CEmitter.Records.cs ====
-    // record class: 構造等価 (==/!=) と with 式。C は record 型ごとの比較関数と
-    // runtime layout (実行時型) での copy にする。
+    // record class: structural equality (==/!=) and with expressions. In C these become a comparison function per record type and
+    // a copy using the runtime layout (runtime type).
 
     private bool IsRecordClass(string name)
     {
@@ -6362,7 +6362,7 @@ public sealed class CEmitter
         return cls.IsRecord;
     }
 
-    // ==/!= の両辺が class 参照で、静的型の chain に record があれば構造等価
+    // If both sides of ==/!= are class references and there is a record in the static type's chain, it is structural equality
     private string? RecordEqualityType(CType left, CType right)
     {
         if (left.Kind != CTypeKind.Ref || right.Kind != CTypeKind.Ref) return null;
@@ -6374,7 +6374,7 @@ public sealed class CEmitter
 
     private void EmitRecordEqualityPrototypes()
     {
-        // _facts.Structs の key の順 (= _program.Structs の順。Dictionary の列挙の順に頼らない)
+        // In the order of _facts.Structs keys (= the order of _program.Structs; does not rely on Dictionary enumeration order)
         foreach (var info in _program.Structs)
         {
             var st = info.Name;
@@ -6389,8 +6389,8 @@ public sealed class CEmitter
         }
     }
 
-    // field 1 個の等価式 (a->f と b->f、または a.f と b.f)。C# の合成 Equals /
-    // ValueType.Equals と同じく EqualityComparer<T>.Default で比べる
+    // Equality expression for one field (a->f and b->f, or a.f and b.f). Like C#'s synthesized Equals /
+    // ValueType.Equals, it compares with EqualityComparer<T>.Default
     private string FieldEqualExpr(CType type, string left, string right)
     {
         if (type.Kind == CTypeKind.F32) return $"tcs_float_equals({left}, {right})";
@@ -6399,7 +6399,7 @@ public sealed class CEmitter
             return $"{Names.RecordEq(type.Name!)}({left}, {right})";
         if (type.Kind == CTypeKind.StructVal) return $"{Names.StructEq(type.Name!)}(&{left}, &{right})";
         if (type.Kind == CTypeKind.Nullable) return NullableEqualExpr(type, left, right, true);
-        // object と interface の field は実行時の型で比べる (中の値が record なら値等価)
+        // object and interface fields are compared by runtime type (value equality if the inner value is a record)
         if (IsRuntimeEqualityType(type)) return $"{ObjectEqualName}({left}, {right})";
         return $"({left} == {right})";
     }
@@ -6411,7 +6411,7 @@ public sealed class CEmitter
         return type.Kind == CTypeKind.Object || type.Kind == CTypeKind.Ref && IsInterface(type.Name!);
     }
 
-    // record と struct の field に object か interface の型があるか (tcs_eq_object が要るか)
+    // Whether a record or struct field has an object or interface type (whether tcs_eq_object is needed)
     private bool NeedsObjectEquality()
     {
         foreach (var st in _program.Structs)
@@ -6432,7 +6432,7 @@ public sealed class CEmitter
         return false;
     }
 
-    // object の値の等価 (EqualityComparer<object>.Default): 実行時の型が同じで、string と box は中の値、record は値等価、他の class は参照
+    // Equality of object values (EqualityComparer<object>.Default): the same runtime type, plus the inner value for string and box, value equality for records, and reference equality for other classes
     private void EmitObjectEquality()
     {
         Line("static bool");
@@ -6465,7 +6465,7 @@ public sealed class CEmitter
     private void EmitRecordEquality()
     {
         if (NeedsObjectEquality()) EmitObjectEquality();
-        // データ struct は memberwise (C# の ValueType.Equals と同じ)
+        // Data structs compare memberwise (same as C# ValueType.Equals)
         foreach (var st in _program.Structs)
         {
             var cName = Names.Class(st.Name);
@@ -6493,7 +6493,7 @@ public sealed class CEmitter
             Line("if (a == b) return true;");
             Line("if (a == NULL || b == NULL) return false;");
             Line("if (a->type_id != b->type_id) return false;");
-            // 派生 record は実行時型の比較関数へ (全 field を見る)
+            // Derived records go to the comparison function of the runtime type (checks all fields)
             var derived = new List<ExClass>();
             foreach (var c in _program.Classes)
             {
@@ -6537,7 +6537,7 @@ public sealed class CEmitter
         return source;
     }
 
-    // shallow copy は実行時型の layout で行う (派生 record の with も型を保つ)
+    // The shallow copy uses the runtime type's layout (with on a derived record also keeps the type)
     private string RenderWith(IlWith with)
     {
         var type = TypeOfWith(with);
@@ -6562,11 +6562,11 @@ public sealed class CEmitter
 
     // ==== tcs2c/CEmitter.Construct.cs ====
 
-    // 構築の順:
-    // base init → type_id → 自 class field init → ctor body。
-    // 確保は最派生の tcs_new_C が layout (sizeof(Tcs_C) + pointer map) で 1 回
-    // 行い、tcs_init_C(object, ...) が base の init を prefix 互換の upcast で
-    // 連鎖呼びする (base 側で sizeof(Base) を確保すると派生 field が溢れる)
+    // Construction order:
+    // base init → type_id → own class field init → ctor body.
+    // Allocation is done once by the most-derived tcs_new_C with its layout (sizeof(Tcs_C) + pointer map),
+    // and tcs_init_C(object, ...) chains to the base init through a prefix-compatible upcast
+    // (allocating sizeof(Base) on the base side would overflow the derived fields)
     private void EmitAllocators()
     {
         foreach (var cls in _program.Classes)
@@ -6596,8 +6596,8 @@ public sealed class CEmitter
                 Line($"{Names.Init(symbol)}({parameters})");
                 Line("{");
                 _indent++;
-                // ctor の closure (base 引数 / field initializer / 本文) が捕捉する
-                // this と引数は method と同じく cell へ box する
+                // this and the arguments captured by closures in the ctor (base arguments / field initializers / body)
+                // are boxed into cells, the same as for methods
                 _capturedNames.Clear();
                 if (ctor != null)
                 {
@@ -6617,7 +6617,7 @@ public sealed class CEmitter
                 string? baseName = cls.BaseName;
                 if (baseName != null)
                 {
-                    // 基底 class を持てるのは --ref の型だけで、constructor は 1 つ
+                    // Only --ref types can have a base class, and they have a single constructor
                     var baseParams = CtorParamFacts(CtorsOrDefault(_classes[baseName])[0]);
                     var baseArgs = CompleteArguments(baseParams,
                         ctor != null ? ctor.BaseArgs : new List<IlExpr>(),
@@ -6685,7 +6685,7 @@ public sealed class CEmitter
         }
     }
 
-    // explicit constructor が無い class は default 初期化だけの 1 つ (null)
+    // A class without an explicit constructor has a single one that only does default initialization (null)
     private static List<ExCtor?> CtorsOrDefault(ExClass cls)
     {
         var list = new List<ExCtor?>();
@@ -6698,7 +6698,7 @@ public sealed class CEmitter
         return list;
     }
 
-    // tcs_new_ / tcs_init_ の名前。引数の型が付いた constructor だけ型名の後に足す
+    // Names of tcs_new_ / tcs_init_. Only constructors tagged with parameter types get a suffix after the type name
     private static string CtorSymbol(ExClass cls, ExCtor? ctor) =>
         ctor == null || ctor.Name == "new" ? cls.Name : cls.Name + "_" + ctor.Name;
 
@@ -6714,8 +6714,8 @@ public sealed class CEmitter
             ctor.ParameterDefaults);
     }
 
-    // 末尾の省略引数を既定値 (IL の ParameterDefaults) で補う
-    // (誤りのときは誤りを記録して空の List を返す)
+    // Fill in omitted trailing arguments with default values (IL ParameterDefaults)
+    // (on error, records the error and returns an empty List)
     private static List<IlExpr> CompleteArguments(
         List<ParameterFact> parameters, List<IlExpr> supplied,
         string where)
@@ -6783,9 +6783,9 @@ public sealed class CEmitter
         if (foreign != null)
             return RenderForeignCall(foreign, invoke.Args, invoke.Recv);
         var fact = ResolveInvokeFact(receiver, invoke.Method);
-        // 子孫に再宣言があれば実行時型で dispatch (il-spec §9)
-        // dispatcher は chain 最上位の宣言 class が持つ (receiver が中間 class
-        // 型でも同じ dispatcher を通す)
+        // If a descendant redeclares it, dispatch on the runtime type (il-spec §9)
+        // The dispatcher belongs to the topmost declaring class in the chain (even if the receiver has an intermediate class
+        // type, it goes through the same dispatcher)
         if (IsPolymorphic(fact.ClassName, fact.Name))
         {
             var root = fact.ClassName;
@@ -6805,8 +6805,8 @@ public sealed class CEmitter
         return RenderMethodCall(fact, invoke.Recv, invoke.Args);
     }
 
-    // 実行時型 dispatch: 「chain 最上位で宣言され、strict 子孫が
-    // 再宣言している」method ごとに type_id → 最寄り実装の switch を生成
+    // Runtime type dispatch: for each method "declared at the top of the chain and
+    // redeclared by a strict descendant", generate a switch from type_id → nearest implementation
     private void EmitDispatchers()
     {
         foreach (var cls in _program.Classes)
@@ -6816,7 +6816,7 @@ public sealed class CEmitter
                 string? b = _classes[cls.Name].BaseName;
                 string? declaring = b != null
                     ? FindDeclaringClass(b, method.Name) : null;
-                if (declaring != null) continue; // 再宣言側は root が担当
+                if (declaring != null) continue; // The root handles redeclarations
                 if (!IsPolymorphic(cls.Name, method.Name)) continue;
                 var fact = _facts.Method(cls.Name, method.Name);
                 var parameterParts = new List<string>();
@@ -6834,8 +6834,8 @@ public sealed class CEmitter
                 foreach (var target in _program.Classes)
                 {
                     if (target.IsInterface || !IsAncestorOrSame(cls.Name, target.Name)) continue;
-                    // 同名でもシグネチャが違う宣言は override ではない (C# の別
-                    // method)。一致する最寄りの宣言へ飛ばす
+                    // A declaration with the same name but a different signature is not an override (a separate
+                    // method in C#). Jump to the nearest matching declaration
                     string? impl = null;
                     for (string? cur = target.Name; cur != null && impl == null; cur = _classes[cur].BaseName)
                     {
@@ -6860,7 +6860,7 @@ public sealed class CEmitter
                         (CType.Same(fact.ReturnType, CType.Void)
                             ? call + "; return;" : "return " + call + ";"));
                 }
-                // --vm-host: VM の class が実装した interface の method は VM で走らせる (X-4)
+                // --vm-host: interface methods implemented by a VM class run in the VM (X-4)
                 string? vm = null;
                 if (_classes[cls.Name].IsInterface) vm = VmhDispatchBranch(fact, method.Name);
                 if (vm != null)
@@ -6874,7 +6874,7 @@ public sealed class CEmitter
             }
     }
 
-    // parameter の型の列が同じか (C# 版の Select(p => p.Type).SequenceEqual)
+    // Whether the parameter type lists are the same (Select(p => p.Type).SequenceEqual in the C# version)
     private static bool SameParameterTypes(List<ParameterFact> a, List<ParameterFact> b)
     {
         if (a.Count != b.Count) return false;
@@ -6886,16 +6886,16 @@ public sealed class CEmitter
     }
 
     // ==== tcs2c/CEmitter.Creation.cs ====
-    // 生成式: class / struct の new、List / Dictionary リテラル (IlTable)、
-    // 固定長配列 (IlNewArray)。
+    // Construction expressions: new of class / struct, List / Dictionary literals (IlTable),
+    // fixed-length arrays (IlNewArray).
 
     private string RenderNew(IlNewObj creation)
     {
         if (IsRandomTypeName(creation.TypeName)) return RenderRandomNew(creation);
         if (_facts.Structs.ContainsKey(creation.TypeName))
         {
-            // struct の zero 値。明示 ctor 呼び (S.ctor) は IlCall 経由なので
-            // ここに args 付きでは来ない
+            // Zero value of a struct. Explicit ctor calls (S.ctor) go through IlCall, so
+            // they never arrive here with args
             if (creation.Args.Count != 0)
             {
                 CFail.Report(
@@ -6966,8 +6966,8 @@ public sealed class CEmitter
         if (table.ElementType != null) element = _facts.MapType(table.ElementType);
         foreach (var entry in table.Entries)
         {
-            // 契約の要素型があれば各項はそれへ代入可能 (派生 → 基底の upcast
-            // を含む) であれば良い。無ければ項の共通型で推論する
+            // If the contract has an element type, each item only needs to be assignable to it (including derived → base
+            // upcasts). If there is none, infer the common type of the items
             if (element != null && table.ElementType != null)
             {
                 CheckAssignable(element, entry.Value, "IlTable item");
@@ -6993,7 +6993,7 @@ public sealed class CEmitter
         return CType.List(element);
     }
 
-    // 固定長配列 literal (new T[] { ... }): 要素数で確保して順に store
+    // Fixed-length array literal (new T[] { ... }): allocate by element count and store in order
     private string RenderArrayLiteral(IlTable table, CType type)
     {
         var array = Temp("array");
@@ -7100,12 +7100,12 @@ public sealed class CEmitter
 
     // ==== CEmitter.Foreign.cs ====
 
-    // foreign (--ref の stub 宣言): host が C で実装する static method / static
-    // field / enum 定数と、host と共有するデータ class (IsExternal)。IL には
-    // 署名だけが載り (IlExport.Foreign)、C は `extern` の tcs_host_<path> を宣言
-    // して呼ぶ。out parameter は pointer 渡し、nullable スカラは値 (TcsOpt*)、
-    // 参照型は tcs の object pointer をそのまま渡す (host は呼び出し中だけ借りる。
-    // 境界を跨いで持つなら tcs_lib_hold)。
+    // foreign (stub declarations from --ref): static methods / static
+    // fields / enum constants implemented by the host in C, and data classes shared with the host (IsExternal). IL
+    // carries only the signatures (IlExport.Foreign), and C declares `extern` tcs_host_<path>
+    // and calls it. out parameters are passed by pointer, nullable scalars by value (TcsOpt*),
+    // and reference types pass the tcs object pointer as is (the host only borrows it during the call;
+    // to keep it across boundaries, use tcs_lib_hold).
 
     private static string HostName(string name)
     {
@@ -7123,8 +7123,8 @@ public sealed class CEmitter
         return null;
     }
 
-    // 受け手の class chain を下から辿り、最寄りの宣言が stub のものなら host 関数。
-    // 途中の user class が同名を宣言していれば通常の method 呼び出しに任せる
+    // Walk the receiver's class chain from the bottom; if the nearest declaration is a stub's, it is a host function.
+    // If a user class along the way declares the same name, leave it to a normal method call
     private ExForeignMethod? ForeignInstanceMethod(CType receiver, string method)
     {
         if (receiver.Kind != CTypeKind.Ref) return null;
@@ -7155,8 +7155,8 @@ public sealed class CEmitter
         return ContractFacts.Sub(method.Name, dot + 1, u.Length);
     }
 
-    // IlInvoke は実行時型で解決する (il-reference §9)。stub の instance method を
-    // 同じシグネチャで再宣言する user subclass ごとに、type_id → 最寄り実装
+    // IlInvoke resolves by runtime type (il-reference §9). For each user subclass that redeclares a stub instance method
+    // with the same signature, type_id → nearest implementation
     private List<ForeignOverrider> ForeignOverriders(ExForeignMethod method)
     {
         var result = new List<ForeignOverrider>();
@@ -7312,8 +7312,8 @@ public sealed class CEmitter
         return _facts.MapType(method.ReturnType);
     }
 
-    // IlCall("<class>.<method>", [self, args...]) の instance method は明示的 base
-    // 呼び出し: 先頭引数が receiver で、dispatcher を通さず host 実装へ送る
+    // An instance method in IlCall("<class>.<method>", [self, args...]) is an explicit base
+    // call: the first argument is the receiver, and it goes to the host implementation without the dispatcher
     private IlExpr? SplitForeignCall(ExForeignMethod method, List<IlExpr> args, out List<IlExpr> rest)
     {
         rest = args;
@@ -7361,7 +7361,7 @@ public sealed class CEmitter
         return RenderOrderedCall(callee, result, values);
     }
 
-    // 値の C の式を返し、型を type に置く
+    // Returns the C expression of the value and puts its type in type
     private string RenderForeignValue(ExForeignValue value, out CType type)
     {
         var mapped = _facts.MapType(value.Type);
@@ -7374,7 +7374,7 @@ public sealed class CEmitter
         return HostName(value.Name) + "()";
     }
 
-    // object initializer (new Options { X = ... }) で作る外部 data class
+    // External data class created with an object initializer (new Options { X = ... })
     private string RenderObjectInitializer(IlTable table, CType type)
     {
         if (type.Kind == CTypeKind.StructVal) return RenderStructInitializer(table, type);
@@ -7407,7 +7407,7 @@ public sealed class CEmitter
         return "({ " + string.Join("", text) + name + "; })";
     }
 
-    // object initializer (new Vec2 { X = ... }) で作る --ref の struct の値: 0 の値に、書いた順に field を入れる
+    // Value of a --ref struct created with an object initializer (new Vec2 { X = ... }): start from the zero value and set the fields in the written order
     private string RenderStructInitializer(IlTable table, CType type)
     {
         var name = Temp("value");
@@ -7428,8 +7428,8 @@ public sealed class CEmitter
         return "({ " + string.Join("", text) + name + "; })";
     }
 
-    // out parameter 付きの foreign 呼び出し: (a, b) = api.poll(args)、戻り値があれば (ret, a, b) = api.try(args)。
-    // out は変数の pointer で渡す (C# の T は C の T、out T は T *)
+    // Foreign call with out parameters: (a, b) = api.poll(args), or (ret, a, b) = api.try(args) if there is a return value.
+    // out is passed as a pointer to the variable (C# T is C T, and out T is T *)
     private bool EmitForeignMultiAssign(IlMultiAssign multi)
     {
         ExForeignMethod? method = null;
@@ -7527,20 +7527,20 @@ public sealed class CEmitter
 
     // ==== CEmitter.Host.cs ====
 
-    // 出荷形の入口: --lib の外部 linkage 関数 (init / entry / GC 境界 / hold /
-    // 統計) と、実行形の main。
+    // Entry points of the shipping form: --lib external-linkage functions (init / entry / GC boundary / hold /
+    // stats) and main for the executable form.
 
-    // 静的 link 出荷形 (--lib): main を持たず、初期化と各 static void method
-    // (引数は int / float / bool と外部 data class) を外部 linkage で公開する。entry は
-    // 最外の呼び出しから戻った点 (C# スタックが空) で自動的にフレーム境界
-    // (tcs_gc_frame) を踏む。host が entry の外で持つ tcs の pointer は
-    // tcs_lib_hold した slot 経由でだけ境界を跨げる。
-    // 外部 data class の引数は、host が tcs_new_<型>() で作って field を埋め、境界 (tcs_lib_gc / tcs_lib_collect / 別の entry) を挟まずに渡す (nursery の object は境界で動くか解放される)。
-    // entry から戻った後の host の pointer は無効で、game が保持した record は境界で昇格する
+    // Statically linked shipping form (--lib): has no main, and exports initialization and each static void method
+    // (arguments are int / float / bool and external data classes) with external linkage. An entry
+    // automatically passes a frame boundary at the point where the outermost call returns (the C# stack is empty)
+    // (tcs_gc_frame). A tcs pointer the host holds outside an entry
+    // can cross a boundary only through a slot registered with tcs_lib_hold.
+    // For external data class arguments, the host creates them with tcs_new_<type>(), fills the fields, and passes them without a boundary (tcs_lib_gc / tcs_lib_collect / another entry) in between (nursery objects move or are freed at a boundary).
+    // Host pointers are invalid after returning from an entry, and records kept by the game are promoted at the boundary
     private void EmitLibEntryPoints()
     {
-        // host が foreign 引数の配列 / List / Dict の要素型を確かめ、同じ型の値を
-        // 作るための型 tag
+        // Type tags the host uses to check the element types of array / List / Dict foreign arguments and to create values
+        // of the same type
         Line("#define TCS_TYPE_ARRAY_F32 " + RuntimeTypeId(CType.Array(CType.F32)));
         Line("#define TCS_TYPE_ARRAY_I32 " + RuntimeTypeId(CType.Array(CType.I32)));
         Line("#define TCS_TYPE_LIST_F32 " + RuntimeTypeId(CType.List(CType.F32)));
@@ -7557,7 +7557,7 @@ public sealed class CEmitter
         _indent--;
         Line("}");
         Line();
-        // 明示のフレーム境界 (entry 自動境界の後なら空のフレーム)
+        // Explicit frame boundary (an empty frame if it follows the automatic entry boundary)
         Line("void");
         Line("tcs_lib_gc(void)");
         Line("{");
@@ -7566,7 +7566,7 @@ public sealed class CEmitter
         _indent--;
         Line("}");
         Line();
-        // 境界 + 旧世代 full GC (host が明示的に回収したいとき)
+        // Boundary + full old-generation GC (when the host wants to collect explicitly)
         Line("void");
         Line("tcs_lib_collect(void)");
         Line("{");
@@ -7593,7 +7593,7 @@ public sealed class CEmitter
         _indent--;
         Line("}");
         Line();
-        // host が frame を跨いで持つ tcs object の slot (境界で昇格先に書き換わる)
+        // Slots for tcs objects the host keeps across frames (updated to the promoted location at a boundary)
         Line("void");
         Line("tcs_lib_hold(void **slot)");
         Line("{");
@@ -7610,8 +7610,8 @@ public sealed class CEmitter
         _indent--;
         Line("}");
         Line();
-        // fault の受け口。handler は kind を受け、戻れば process は exit する。
-        // 続けるなら handler は entry を呼んだ host の frame へ longjmp で抜け、次の entry の前に tcs_lib_unwind を呼ぶ
+        // Fault hook. The handler receives kind, and if it returns, the process exits.
+        // To continue, the handler longjmps out to the host frame that called the entry, and calls tcs_lib_unwind before the next entry
         Line("void");
         Line("tcs_lib_on_fault(void (*handler)(const char *kind))");
         Line("{");
@@ -7620,7 +7620,7 @@ public sealed class CEmitter
         _indent--;
         Line("}");
         Line();
-        // fault で打ち切った entry の後始末: C# スタックは空になったので、入れ子の深さを戻して境界を踏む
+        // Cleanup after an entry aborted by a fault: the C# stack is now empty, so reset the nesting depth and pass a boundary
         Line("void");
         Line("tcs_lib_unwind(void)");
         Line("{");
@@ -7678,7 +7678,7 @@ public sealed class CEmitter
         Line("main(void)");
         Line("{");
         _indent++;
-        // 実行形は Main 全体が 1 フレーム (境界が無いので GC は走らない)
+        // In the executable form, all of Main is one frame (there is no boundary, so the GC does not run)
         Line("tcs_init_statics();");
         if (_digestF32) Line("tcs_digest = UINT32_C(2166136261);");
         if (entry != null)
@@ -7692,17 +7692,17 @@ public sealed class CEmitter
 
     // ==== CEmitter.VmHost.cs ====
 
-    // module 単位の混在 (doc/object-model.md §10): --lib --vm-host は、この module (editor など C で固定する側) の公開
-    // static method を tcs VM の host 関数として登録する glue (tcs_vm_register) を出す。VM の module (content) は
-    // この module の source を --ref に取って compile し、同じ名前 (IlExport.HostSurface) で呼ぶ。
-    // heap と GC は 1 つ (shared heap、doc/object-model.md §10.4)。境界を越える値は int / float / bool / enum、string
-    // (写さない。§10.6)、class と object (そのまま。型の番号も合わせる)、delegate と interface (§10.5)。
-    // 塊にできる struct (field が int / float / bool / enum とそれだけの struct) と `T?` は VM の host の ABI の `S{型}` で、out は `&` の項で渡る (doc/vm-design.md §8.5)。
-    // 呼べない形 (参照の field を持つ struct、List / Dictionary、interface の method の out) の method は登録しない (C の comment に理由)。
+    // Per-module mixing (doc/object-model.md §10): --lib --vm-host emits glue (tcs_vm_register) that registers the public
+    // static methods of this module (the side fixed in C, such as the editor) as tcs VM host functions. The VM module (content)
+    // takes this module's source as --ref, compiles it, and calls them by the same names (IlExport.HostSurface).
+    // There is one heap and one GC (shared heap, doc/object-model.md §10.4). Values crossing the boundary are int / float / bool / enum, string
+    // (not copied; §10.6), class and object (as is; type numbers are matched too), delegate and interface (§10.5).
+    // Structs that can be passed as a blob (fields are int / float / bool / enum and structs made only of those) and `T?` pass as `S{type}` in the VM host ABI, and out passes as a `&` item (doc/vm-design.md §8.5).
+    // Methods with shapes that cannot be called (structs with reference fields, List / Dictionary, out on interface methods) are not registered (the reason goes in a C comment).
 
     public List<ExHostFunction>? VmHostSurface;
 
-    // h.TypeDisplay の class (表示名か IL の名前で引く)
+    // The class for h.TypeDisplay (looked up by display name or IL name)
     private ExClass? VmhHostClass(ExHostFunction h)
     {
         foreach (var c in _program.Classes)
@@ -7712,7 +7712,7 @@ public sealed class CEmitter
         return null;
     }
 
-    // name の method があるか (instance も数えるなら anyInstance)
+    // Whether there is a method named name (anyInstance to also count instance methods)
     private static bool VmhHasMethod(ExClass cls, string name, bool anyInstance)
     {
         foreach (var m in cls.Methods)
@@ -7722,7 +7722,7 @@ public sealed class CEmitter
         return false;
     }
 
-    // 登録できない理由 (登録できるなら null)。interface の method は dispatcher を呼ぶので out を持てない
+    // Reason it cannot be registered (null if it can). Interface methods call the dispatcher, so they cannot have out
     private string? VmhWhy(MethodFact fact, bool iface)
     {
         if (iface && fact.OutParameters.Count > 0) return "out";
@@ -7740,9 +7740,9 @@ public sealed class CEmitter
 
     private void EmitVmHost(List<ExHostFunction> surface)
     {
-        Line("/* ---- tcs VM の host 関数 (--vm-host) ---- */");
+        Line("/* ---- tcs VM host functions (--vm-host) ---- */");
         var registered = new List<VmhRegistration>();
-        // VM の delegate を tcs2c の closure に包む (X-4): 関数型ごとに trampoline を作る。cells[0] が VM の closure
+        // Wrap a VM delegate in a tcs2c closure (X-4): a trampoline is made per function type. cells[0] is the VM closure
         _vmhWrappers = new Dictionary<string, string>();
         _vmhInvokers.Clear();
         foreach (var h in surface)
@@ -7760,7 +7760,7 @@ public sealed class CEmitter
         foreach (var h in surface)
         {
             var cls = VmhHostClass(h);
-            // interface の method (X-4): VM が --ref の interface の method を呼ぶ。この module の dispatcher を呼ぶ
+            // Interface method (X-4): the VM calls a method of a --ref interface. It calls this module's dispatcher
             bool iface = cls != null && cls.IsInterface;
             if (cls == null || !VmhHasMethod(cls, h.Method, iface)) continue;
             var fact = _facts.Method(cls.Name, h.Method);
@@ -7772,7 +7772,7 @@ public sealed class CEmitter
             }
             var fn = "tcs_vmh_" + registered.Count;
             int at = iface ? 1 : 0;
-            // 項は C# の宣言の順 (out は & を付ける)。C の関数は値の引数の後ろに out の `T *` を並べる
+            // Items are in C# declaration order (out gets &). The C function lists the out `T *` after the value arguments
             var tokens = new List<string>();
             var argParts = new List<string>();
             var outParts = new List<string>();
@@ -7795,7 +7795,7 @@ public sealed class CEmitter
                     case CTypeKind.Bool: argParts.Add("a[" + k + "].i != 0"); break;
                     case CTypeKind.String: argParts.Add("tcs_vmh_str_in(a[" + k + "].p)"); break;
                     case CTypeKind.Closure: argParts.Add(VmhWrapper(p.Type) + "(a[" + k + "].p)"); break;
-                    // struct と T? は VM が C の layout の塊を指す pointer で渡す
+                    // The VM passes struct and T? as a pointer to a blob in C layout
                     case CTypeKind.StructVal:
                     case CTypeKind.Nullable:
                         argParts.Add("*(const " + p.Type.CName + " *)a[" + k + "].p");
@@ -7816,7 +7816,7 @@ public sealed class CEmitter
             string call = iface
                 ? Names.Dispatch(cls.Name, h.Method) + "((" + Names.Class(cls.Name) + " *)tcs_nonnull(a[0].p)" + (args != "" ? ", " + args : "") + ")"
                 : Names.Method(cls.Name, h.Method) + "(" + args + ")";
-            // 戻り値の string は frame の境界 (nursery が動く) より前に VM の string に写す
+            // A returned string is copied to a VM string before the frame boundary (where the nursery moves)
             switch (fact.ReturnType.Kind)
             {
                 case CTypeKind.Void: Line(call + ";"); break;
@@ -7828,13 +7828,13 @@ public sealed class CEmitter
                     Line("r[0].p = " + call + ";");
                     break;
                 case CTypeKind.Closure: Line("r[0].p = " + call + ";"); break;
-                // struct と T? の戻り値は VM が渡す塊に書く
+                // struct and T? return values are written to the blob the VM passes
                 case CTypeKind.StructVal:
                 case CTypeKind.Nullable:
                     Line("*(" + fact.ReturnType.CName + " *)r[0].p = " + call + ";");
                     break;
                 default:
-                    Line("r[0].p = " + call + "; /* TcsString は VM の string と同じ byte 並び */");
+                    Line("r[0].p = " + call + "; /* TcsString has the same byte layout as a VM string */");
                     break;
             }
             Line("if (--tcs_gc_call_depth == 0) tcs_gc_frame();");
@@ -7845,8 +7845,8 @@ public sealed class CEmitter
             registered.Add(new VmhRegistration(h.Name, ps, rs, fn));
         }
         EmitVmSharedHeap();
-        Line("/* この module の公開 static method を VM の host 関数として登録し、この module の runtime を VM の heap にする");
-        Line("   (shared heap: 1 つの heap と GC。doc/object-model.md §10.2)。tvm_load の前に呼ぶ。登録できた数を返す */");
+        Line("/* Registers the public static methods of this module as VM host functions, and makes this module's runtime use the VM heap");
+        Line("   (shared heap: one heap and one GC. doc/object-model.md §10.2). Call it before tvm_load. Returns the number of registered functions */");
         Line("int");
         Line("tcs_vm_register(TvmVm *vm)");
         Line("{");
@@ -7856,8 +7856,8 @@ public sealed class CEmitter
         Line("tcs_gc_root_hook = tvm_heap_roots;");
         Line("tvm_use_heap(vm, &tcs_vmh_heap);");
         Line("tcs_vmh_vm = vm;");
-        // 型の番号を合わせる (object-model §10.6): この module の class の object は VM で作っても同じ type_id を持ち、
-        // VM の型の test はこの module の interface の実装を tcs_is_* で調べる
+        // Match type numbers (object-model §10.6): objects of this module's classes have the same type_id even when created in the VM,
+        // and VM type tests check implementations of this module's interfaces with tcs_is_*
         foreach (var cls in _program.Classes)
         {
             Line(cls.IsInterface
@@ -7874,7 +7874,7 @@ public sealed class CEmitter
         Line();
     }
 
-    // shared heap: VM の確保と回収をこの module の runtime (nursery と旧世代、write barrier) に任せる関数表
+    // shared heap: function table that delegates VM allocation and collection to this module's runtime (nursery and old generation, write barrier)
     private void EmitVmSharedHeap()
     {
         Line("static void *tcs_vmh_alloc(uint32_t kind, size_t size) { return tcs_gc_alloc(kind, NULL, size); }");
@@ -7882,7 +7882,7 @@ public sealed class CEmitter
         Line("static void tcs_vmh_leave(void) { tcs_gc_call_depth--; }");
         Line("static void tcs_vmh_barrier(const void *owner) { tcs_wb(owner); }");
         Line("static void tcs_vmh_frame(void) { if (tcs_gc_call_depth == 0) tcs_gc_frame(); }");
-        // reload の張り替え (X-3): 旧世代の全部の object と、この module の static と hold の参照の場所を渡す
+        // Rewiring for reload (X-3): passes all old-generation objects and the locations of this module's static and hold references
         Line("static void");
         Line("tcs_vmh_visit_value(void *value, const TcsLayout *layout, TvmSlotFn fn)");
         Line("{");
@@ -7981,7 +7981,7 @@ public sealed class CEmitter
         return "o";
     }
 
-    /// <summary>C の closure (関数型 t) を VM が呼ぶ invoke (X-4)。VM の CALLD が sig で引く。</summary>
+    /// <summary>Invoke through which the VM calls a C closure (function type t) (X-4). The VM's CALLD looks it up by sig.</summary>
     private void VmhInvoker(CType t)
     {
         var letters = new List<string>();
@@ -8022,7 +8022,7 @@ public sealed class CEmitter
             || t.Kind == CTypeKind.Ref && !facts.IsDeclaredExternal(t.Name!);
     }
 
-    /// <summary>C の値 expr を VM の slot a[i] に書く文。</summary>
+    /// <summary>Statement that writes the C value expr to VM slot a[i].</summary>
     private static string VmhToSlot(CType t, string expr, string slot)
     {
         switch (t.Kind)
@@ -8035,7 +8035,7 @@ public sealed class CEmitter
         return slot + ".p = " + expr + ";";
     }
 
-    /// <summary>VM の slot を C の型 t の値にする式。</summary>
+    /// <summary>Expression that turns a VM slot into a value of C type t.</summary>
     private static string VmhFromSlot(CType t, string slot)
     {
         switch (t.Kind)
@@ -8048,7 +8048,7 @@ public sealed class CEmitter
         return "(" + t.CName + ")" + slot + ".p";
     }
 
-    /// <summary>interface の dispatcher の、VM の object (kind FOREIGN) への枝 (X-4)。呼べない形なら null。</summary>
+    /// <summary>Branch of an interface dispatcher to a VM object (kind FOREIGN) (X-4). null if the shape cannot be called.</summary>
     private string? VmhDispatchBranch(MethodFact fact, string method)
     {
         if (VmHostSurface == null || fact.OutParameters.Count > 0) return null;
@@ -8070,7 +8070,7 @@ public sealed class CEmitter
         return string.Join("", sb);
     }
 
-    // 境界を越えられる値の型 (scalar / string / object / 外部 data でない class)
+    // Value types that can cross the boundary (scalar / string / object / classes that are not external data)
     private bool VmhCallableKind(CType p, bool allowVoid)
     {
         return allowVoid && p.Kind == CTypeKind.Void
@@ -8078,7 +8078,7 @@ public sealed class CEmitter
             || p.Kind == CTypeKind.Object || p.Kind == CTypeKind.Ref && !_facts.IsDeclaredExternal(p.Name!);
     }
 
-    /// <summary>VM の delegate を包める関数型 (引数と戻り値が scalar / string / class / object)。</summary>
+    /// <summary>Function types that can wrap a VM delegate (parameters and return value are scalar / string / class / object).</summary>
     private bool VmhCallable(CType t)
     {
         foreach (var p in t.Parameters!)
@@ -8088,7 +8088,7 @@ public sealed class CEmitter
         return VmhCallableKind(t.Element!, true);
     }
 
-    /// <summary>関数型 t の VM の delegate を tcs2c の closure に包む関数の名前 (無ければ trampoline と一緒に出す)。</summary>
+    /// <summary>Name of the function that wraps a VM delegate of function type t in a tcs2c closure (if missing, it is emitted along with the trampoline).</summary>
     private string VmhWrapper(CType t)
     {
         var key = ClosureFnPtrType(t);
@@ -8151,7 +8151,7 @@ public sealed class CEmitter
         return name;
     }
 
-    /// <summary>VM の host 関数の種類の文字。境界を越えられない型は null。</summary>
+    /// <summary>Kind character of a VM host function. null for types that cannot cross the boundary.</summary>
     private string? Letter(CType t, bool ret)
     {
         switch (t.Kind)
@@ -8170,7 +8170,7 @@ public sealed class CEmitter
         return null;
     }
 
-    // VM の型の表の名前 (VM の module はこの module の source を --ref に取るので、struct は同じ IL の名前。T? は後ろに ?)
+    // Name in the VM type table (the VM module takes this module's source as --ref, so structs have the same IL names; T? has a trailing ?)
     private static string VmhStructName(CType t)
     {
         if (t.Kind != CTypeKind.Nullable) return t.Name!;
@@ -8184,7 +8184,7 @@ public sealed class CEmitter
         return inner + "?";
     }
 
-    // VM が C の layout の塊で渡せる値: field が int / float / bool / enum と、それだけでできた struct (T? も)
+    // Values the VM can pass as a blob in C layout: structs whose fields are int / float / bool / enum or structs made only of those (T? too)
     private bool VmhBlittable(CType t, int depth)
     {
         if (depth > 32) return false;
@@ -8221,15 +8221,15 @@ public sealed class CEmitter
 
     // ==== CEmitter.Gc.cs ====
 
-    // GC 向けの生成物: class / struct の pointer map (TcsLayout)、static field
-    // の root 走査関数、string literal の static object 化。runtime 側の
-    // 契約は CRuntime.Gc (kind + layout で精密 trace、stack は保守的走査)。
+    // Generated code for the GC: pointer maps of class / struct (TcsLayout), static field
+    // root scan functions, and string literals as static objects. The runtime-side
+    // contract is CRuntime.Gc (precise trace by kind + layout, conservative scan of the stack).
 
     private const string LiteralsMarker = "/*__TCS2C_LITERALS__*/";
     private Dictionary<string, string> _literals = new Dictionary<string, string>();
     private List<string> _literalDecls = new List<string>();
 
-    // 確保時に runtime へ渡す要素 / 値の layout 参照
+    // Element / value layout reference passed to the runtime at allocation
     private string LayoutRef(CType type)
     {
         switch (type.Kind)
@@ -8266,8 +8266,8 @@ public sealed class CEmitter
             || type.Kind == CTypeKind.Random || type.Kind == CTypeKind.Object;
     }
 
-    // struct 値 1 個の中の pointer slot (byte offset 式)。struct-in-struct は
-    // offsetof の加算で平坦化する
+    // Pointer slots in one struct value (byte offset expressions). struct-in-struct is
+    // flattened by adding offsetof values
     private List<string> StructPointerSlots(string structName)
     {
         var result = new List<string>();
@@ -8337,7 +8337,7 @@ public sealed class CEmitter
             + "{ sizeof(" + cName + "), " + slots.Count + ", " + layoutName + "_offsets };");
     }
 
-    // struct typedef (EmitStructTypedefs) と class 定義の後に呼ぶ
+    // Called after the struct typedefs (EmitStructTypedefs) and class definitions
     private void EmitLayouts()
     {
         foreach (var st in _program.Structs)
@@ -8354,17 +8354,17 @@ public sealed class CEmitter
         Line();
     }
 
-    // 参照を含み得る格納型 (store にライトバリアが要る)
+    // Storage types that can contain references (stores need a write barrier)
     private static bool NeedsBarrier(CType type)
     {
         return IsPointerType(type) || type.Kind == CTypeKind.StructVal
             || type.Kind == CTypeKind.Nullable && type.Element!.Kind == CTypeKind.StructVal;
     }
 
-    // struct method の本文中か (self の所有者は v_owner 引数)
+    // Whether we are inside a struct method body (the owner of self is the v_owner argument)
     private bool _structSelfOwner;
 
-    // static field の root 走査 (旧世代 mark-sweep) と境界の昇格
+    // Root scan of static fields (old-generation mark-sweep) and promotion at boundaries
     private void EmitStaticRoots()
     {
         Line("static void");
@@ -8411,8 +8411,8 @@ public sealed class CEmitter
         Line();
     }
 
-    // string literal は評価ごとに確保せず、TCS_GC_STATIC な file-scope object
-    // を共有する (TcsString と layout 互換の { header; length; data })。bytes は 0〜255 の byte の並び
+    // String literals are not allocated on each evaluation; they share a TCS_GC_STATIC file-scope object
+    // (layout-compatible with TcsString: { header; length; data }). bytes is a sequence of bytes 0-255
     private string InternStringLiteral(List<int> bytes)
     {
         var hex = new List<string>();
@@ -8434,7 +8434,7 @@ public sealed class CEmitter
         return reference;
     }
 
-    // byte の 2 桁の小文字の 16 進 (C# の `{b:x2}`)
+    // A byte as 2 lowercase hex digits (C# `{b:x2}`)
     private static string LiteralHex2(int b)
     {
         string digits = "0123456789abcdef";
@@ -8444,10 +8444,10 @@ public sealed class CEmitter
 
     // ==== CEmitter.TypeTable.cs ====
 
-    // 型記述子 (doc/object-model.md §4) を VM と同じ byte 列で生成 C に置く: tcs_type_table。
-    // TCS_VERIFY_TYPES の build では、初期化で runtime/model がこの表を読み、C の struct の規則 (§5) で求めた
-    // field の offset が、生成した struct の offsetof と一致することを確かめる (M-2)。
-    // 表は heap の walker (§7) と reload の計画 (§6) の入力にもなる。
+    // Put the type descriptors (doc/object-model.md §4) in the generated C as the same byte sequence as the VM: tcs_type_table.
+    // In TCS_VERIFY_TYPES builds, runtime/model reads this table at initialization and checks that the field offsets computed by the C struct rules (§5)
+    // match the offsetof values of the generated structs (M-2).
+    // The table is also an input to the heap walker (§7) and to reload planning (§6).
 
     private void EmitTypeTable()
     {
@@ -8459,7 +8459,7 @@ public sealed class CEmitter
             if (!cls.IsInterface) ClassEntry(b, cls);
         }
 
-        // string 表と型の表 (VM の .tcsb と同じ形)
+        // String table and type table (same shape as the VM's .tcsb)
         var strings = new TypeTableStrings();
         foreach (var name in TypeTable.Names(b.Entries)) strings.Str(name);
         var data = new List<int>();
@@ -8472,7 +8472,7 @@ public sealed class CEmitter
         }
         TypeTable.Write(data, b.Entries, strings);
 
-        Line("/* 型記述子 (doc/object-model.md §4。VM の .tcsb の types と同じ形式) */");
+        Line("/* Type descriptors (doc/object-model.md §4. Same format as the types in a VM .tcsb) */");
         Line("static const unsigned char tcs_type_table[" + (data.Count > 1 ? data.Count : 1) + "] = {");
         _indent++;
         for (int i = 0; i < data.Count; i += 24)
@@ -8502,7 +8502,7 @@ public sealed class CEmitter
         Line("TcsType *types = NULL;");
         Line("const char *err = tcs_model_read_strings(&r, &strings, &nstrings);");
         Line("if (!err) err = tcs_model_read(&r, (const char *const *)strings, nstrings, &ntypes, &types);");
-        // class の payload は type_id (uint32_t) の後から (§3、§5)
+        // A class payload starts after type_id (uint32_t) (§3, §5)
         Line("if (!err) err = tcs_model_layout(types, ntypes, (uint32_t)sizeof(uint32_t), (uint32_t)sizeof(void *));");
         Line("if (err) { fprintf(stderr, \"type table: %s\\n\", err); abort(); }");
         Line("for (size_t i = 0; expect[i].type != 0xFFFF; i++) {");
@@ -8538,7 +8538,7 @@ public sealed class CEmitter
         return new TypeTableInfo(TypeTable.KindRef, TypeTable.NoType);
     }
 
-    /// <summary>値型 (user の struct、T?) の記述子。user の struct は offsetof で検査する。</summary>
+    /// <summary>Descriptor of a value type (user struct, T?). User structs are checked with offsetof.</summary>
     private int StructEntry(TypeTableBuilder b, CType t)
     {
         var key = t.CName;
@@ -8598,7 +8598,7 @@ public sealed class CEmitter
 
     private void ClassEntry(TypeTableBuilder b, ExClass cls)
     {
-        // host と共有する外部 data class は payload の先頭に host_value を持つ (§3、型の表では FlagHostValue)
+        // An external data class shared with the host has host_value at the start of its payload (§3; FlagHostValue in the type table)
         bool external = false;
         foreach (var c in ChainRootFirst(cls.Name))
         {
@@ -8643,7 +8643,7 @@ public sealed class Variable
     public string CName;
     public CType Type;
     public bool Boxed;
-    // foreach の KeyValuePair の copy (GC object の node)。closure は cell を介さずこの pointer を捕捉する
+    // Copy of a foreach KeyValuePair (a node that is a GC object). Closures capture this pointer directly, without a cell
     public bool Snapshot;
 
     public Variable(string cName, CType type)
@@ -8693,7 +8693,7 @@ public sealed class EntryPoint
 
 // ---- Expressions ----
 
-// RenderOrderedCall の引数 (C# の (CType Type, string Value) の組)
+// Argument of RenderOrderedCall (the (CType Type, string Value) pair in C#)
 public sealed class TypedValue
 {
     public CType Type;
@@ -8708,7 +8708,7 @@ public sealed class TypedValue
 
 // ---- Intrinsics ----
 
-// CEmitter.EnumTable の結果 (C# 版の (Names, Values, Count, Flags) の tuple)
+// Result of CEmitter.EnumTable (the (Names, Values, Count, Flags) tuple in the C# version)
 public sealed class EnumTableInfo
 {
     public string Names;
@@ -8727,8 +8727,8 @@ public sealed class EnumTableInfo
 
 // ---- Closures ----
 
-// CEmitter の closure の木の歩き (Walk / WalkStat) の状態。C# 版の local 関数と Action の代わり。
-// Captured は CapturedByClosuresIn (closure が捕捉する名前を CapturedSet に集める)、そうでなければ FreeNames (初出順に Free へ)
+// State of CEmitter's closure tree walk (Walk / WalkStat). Replaces the local functions and Actions of the C# version.
+// Captured means CapturedByClosuresIn (collects names captured by closures into CapturedSet); otherwise FreeNames (into Free in order of first appearance)
 public sealed class ClosureWalk
 {
     public bool Captured;
@@ -8743,7 +8743,7 @@ public sealed class ClosureWalk
 
 // ---- Foreign ----
 
-// CEmitter.ForeignOverriders の 1 つ: Target の type_id を Impl の実装へ送る
+// One entry of CEmitter.ForeignOverriders: sends Target's type_id to Impl's implementation
 public sealed class ForeignOverrider
 {
     public string Target;
@@ -8756,7 +8756,7 @@ public sealed class ForeignOverrider
     }
 }
 
-// CEmitter.EmitVmHost が登録する host 関数 (名前、引数と戻り値の種類の文字、C の関数)
+// Host function registered by CEmitter.EmitVmHost (name, kind characters of the arguments and return value, C function)
 public sealed class VmhRegistration
 {
     public string Name;
@@ -8773,7 +8773,7 @@ public sealed class VmhRegistration
     }
 }
 
-// CEmitter.VmhInvoker が作った invoke (関数型の sig と C の関数)
+// Invoke made by CEmitter.VmhInvoker (sig of the function type and C function)
 public sealed class VmhInvokerEntry
 {
     public string Sig;
@@ -8786,12 +8786,12 @@ public sealed class VmhInvokerEntry
     }
 }
 
-// CEmitter.EmitTypeTable の途中の状態
+// Intermediate state of CEmitter.EmitTypeTable
 public sealed class TypeTableBuilder
 {
     public List<TypeTableEntry> Entries = new List<TypeTableEntry>();
     public Dictionary<string, int> Index = new Dictionary<string, int>();
-    /// <summary>offset の検査: (型の番号、field の番号、C の型の名前、C の field の名前)。</summary>
+    /// <summary>Offset checks: (type number, field number, C type name, C field name).</summary>
     public List<TypeTableCheck> Checks = new List<TypeTableCheck>();
 }
 
@@ -8813,8 +8813,8 @@ public sealed class TypeTableCheck
 
 // ---- Transpiler/Backend/TypeTable.cs ----
 
-/// <summary>VM と tcs2c が共有する型記述子 (doc/object-model.md §4)。backend は自分の型を
-/// この形に写し、<see cref="TypeTable.Write"/> が byte 列 (v1) にする。C の runtime/model が読む。</summary>
+/// <summary>Type descriptors shared by the VM and tcs2c (doc/object-model.md §4). A backend maps its types
+/// to this shape, and <see cref="TypeTable.Write"/> turns them into a byte sequence (v1). The C runtime/model reads it.</summary>
 public static class TypeTable
 {
     public const int KindI32 = 0;
@@ -8834,11 +8834,11 @@ public static class TypeTable
     public const int Box = 10;
     public const int FlagRecord = 1;
     public const int FlagHasOnReload = 2;
-    // host と共有する外部 data class: payload は type_id の後に 8 byte に揃えた uint64_t host_value を持つ (doc/object-model.md §3)
+    // External data class shared with the host: the payload has a uint64_t host_value aligned to 8 bytes after type_id (doc/object-model.md §3)
     public const int FlagHostValue = 4;
     public const int NoType = 0xFFFF;
 
-    /// <summary>IlExport の LayoutHash (8 桁の 16 進) を数に (32 bit の並びを int に入れる)。</summary>
+    /// <summary>Converts IlExport's LayoutHash (8 hex digits) to a number (puts the 32-bit pattern into an int).</summary>
     public static int ParseLayoutHash(string? hex)
     {
         if (hex == null || hex == "") return 0;
@@ -8861,7 +8861,7 @@ public static class TypeTable
         return value;
     }
 
-    /// <summary>型の表を書く。名前は str で string 表の番号にする (表は呼ぶ側が前に書く)。</summary>
+    /// <summary>Writes the type table. Names become string table indices via str (the caller writes that table first).</summary>
     public static void Write(List<int> w, List<TypeTableEntry> types, TypeTableStrings str)
     {
         WriteI32(w, types.Count);
@@ -8915,7 +8915,7 @@ public static class TypeTable
         }
     }
 
-    /// <summary>名前を先に集める (string 表を型の表より前に書くため)。</summary>
+    /// <summary>Collects names first (so the string table is written before the type table).</summary>
     public static List<string> Names(List<TypeTableEntry> types)
     {
         var names = new List<string>();
@@ -8933,7 +8933,7 @@ public static class TypeTable
         WriteU16(w, info.Type);
     }
 
-    // BinaryWriter と同じ little endian の byte (0〜255 の int) を w に足す
+    // Append little-endian bytes (ints 0-255) to w, same as BinaryWriter
     public static void WriteU8(List<int> w, int v)
     {
         w.Add(v & 255);
@@ -8954,7 +8954,7 @@ public static class TypeTable
     }
 }
 
-/// <summary>値の種類と型の番号 (REF の参照先、STRUCT の struct)。(C# 版の TypeTable.Info)</summary>
+/// <summary>Value kind and type number (the referent for REF, the struct for STRUCT). (TypeTable.Info in the C# version)</summary>
 public sealed class TypeTableInfo
 {
     public int Kind;
@@ -8967,7 +8967,7 @@ public sealed class TypeTableInfo
     }
 }
 
-// C# 版の TypeTable.Field
+// TypeTable.Field in the C# version
 public sealed class TypeTableField
 {
     public string Name;
@@ -8980,7 +8980,7 @@ public sealed class TypeTableField
     }
 }
 
-// C# 版の TypeTable.Itable の 1 項 (Selector, Func)
+// One entry (Selector, Func) of TypeTable.Itable in the C# version
 public sealed class TypeTableItable
 {
     public int Selector;
@@ -8993,7 +8993,7 @@ public sealed class TypeTableItable
     }
 }
 
-// C# 版の TypeTable.Entry。init の property は public field
+// TypeTable.Entry in the C# version. init properties are public fields
 public sealed class TypeTableEntry
 {
     public int TKind;
@@ -9015,7 +9015,7 @@ public sealed class TypeTableEntry
     }
 }
 
-// string 表 (名前 → 番号)。TypeTable.Write の str (C# 版の Func<string, int>)
+// String table (name → index). The str of TypeTable.Write (Func<string, int> in the C# version)
 public sealed class TypeTableStrings
 {
     public List<string> Strings = new List<string>();

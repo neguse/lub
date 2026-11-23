@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 複数の constructor (class / struct / record struct / generic)。呼び出しは Roslyn の選んだ
-// overload を直接呼ぶ。期待値は同じ program を CoreCLR で実行した stdout
+// Multiple constructors (class / struct / record struct / generic). Calls directly invoke the
+// overload that Roslyn selected. The expected values are the stdout of running the same program on CoreCLR
 public class MultipleConstructorsDifferentialTests
 {
     [CFact]
@@ -130,7 +130,7 @@ public class MultipleConstructorsDifferentialTests
         }
     }
 
-    // 式文の `new W();` は constructor の副作用のために作って値を捨てる (#444)
+    // The expression statement `new W();` creates the object for the constructor's side effects and discards the value (#444)
     [CFact]
     public void NewAsStatement_RunsConstructor()
     {

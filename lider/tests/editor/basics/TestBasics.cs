@@ -1,12 +1,12 @@
-// エディタの core に key と文字を流し込み、本文、cursor、undo、保存、描いた命令を確かめる (前の TestLiteXl と同じ操作)。
-//   - Ctrl+Home と、続けて打った ASCII と日本語は、同じ frame に積んでも本文に入る
-//   - 上下左右と End で動き、日本語の文字の途中に止まらない
-//   - Shift+End で選んだ所を、打った文字で置き換える
-//   - Ctrl+Z で戻し、Ctrl+Y でやり直す。0.3 秒の内の編集は 1 つにまとまるので、操作の間を 0.4 秒あける
-//   - Ctrl+S で保存した file の中身
-//   - 描いた命令の列に、打った行が gutter の右の 1 行目の位置に、全角を 2 桁とした幅で出る
-//   - wheel の notch で scroll すると、見える最初の行が動く
-// 最後に 1280 x 720 の view の Step と Draw にかかる時間を出す。
+// Feeds keys and characters into the editor core and checks the text, cursor, undo, saving, and drawn commands (the same operations as the former TestLiteXl).
+//   - Ctrl+Home, followed by typed ASCII and Japanese, goes into the text even when queued in the same frame
+//   - Moves with up/down/left/right and End, and does not stop in the middle of a Japanese character
+//   - Typed characters replace the range selected with Shift+End
+//   - Ctrl+Z undoes and Ctrl+Y redoes. Edits within 0.3 seconds are merged into one, so operations are spaced 0.4 seconds apart
+//   - The contents of the file saved with Ctrl+S
+//   - In the list of drawn commands, the typed line appears at the position of line 1 to the right of the gutter, with a width that counts full-width characters as 2 columns
+//   - Scrolling by one wheel notch moves the first visible line
+// Finally, prints the time taken by Step and Draw of a 1280 x 720 view.
 using System;
 using Lub;
 using LiderEditor;
@@ -54,7 +54,7 @@ public static class TestBasics
         }
         else if (stage == 2)
         {
-            // 行の末尾から左へ 2 文字で、本 の前 (byte の位置 11)
+            // 2 characters left from the end of the line, before "本" (byte position 11)
             Ed.Press(Ed.Up);
             Ed.Press(Ed.End);
             Ed.Press(Ed.Left);
@@ -107,7 +107,7 @@ public static class TestBasics
         stage++;
     }
 
-    // 1 行目の text の命令: gutter の右、1 行目の高さ、幅は "// abc " の 7 桁と 日ほんご の 4 文字 x 2 桁
+    // Text command of line 1: right of the gutter, at the height of line 1, with a width of the 7 columns of "// abc " plus the 4 characters of "日ほんご" x 2 columns
     static void CheckDraw()
     {
         var n = EditorHost.Draw(id, 1280, 720);
@@ -122,31 +122,31 @@ public static class TestBasics
         var x = EditorHost.CmdX(found);
         var y = EditorHost.CmdY(found);
         var w = EditorHost.CmdW(found);
-        // gutter は 1 桁の行の番号と左右の余白 14 px
+        // The gutter is a 1-digit line number plus 14 px of left and right padding
         Ed.Check(x == Ed.CellW + 28, "typed line at x " + x);
         Ed.Check(y == 7, "typed line at y " + y);
         Ed.Check(EditorHost.CmdLine(found) == 1, "typed line is tagged " + EditorHost.CmdLine(found));
         Ed.Check(w == 15 * Ed.CellW, "typed line is " + w + " px wide, want " + 15 * Ed.CellW);
         Ed.Check(EditorHost.FontName(EditorHost.CmdFont(found)) == "JetBrainsMono-Regular.ttf", "typed line in font " + EditorHost.FontName(EditorHost.CmdFont(found)));
         Ed.Check(EditorHost.TextX(id) == x && EditorHost.LineY(id, 1) == y && EditorHost.LineHeight(id) == Ed.LineH, "TextX, LineY or LineHeight do not match the command");
-        // 2 行目は 1 行の高さだけ下
+        // Line 2 is one line height lower
         var below = -1;
         for (var i = 0; i < n; i++)
             if (EditorHost.CmdKind(i) == 2 && EditorHost.CmdText(i) == "// TestBasics が開いて書き換える file。")
                 below = i;
         Ed.Check(below >= 0 && EditorHost.CmdY(below) == y + Ed.LineH && EditorHost.CmdX(below) == x, "line 2 is not one line below line 1");
-        // 行の番号は gutter に右揃え、行に付かない
+        // Line numbers are right-aligned in the gutter and are not attached to the line
         var number = -1;
         for (var i = 0; i < n; i++)
             if (EditorHost.CmdKind(i) == 2 && EditorHost.CmdText(i) == "9")
                 number = i;
         Ed.Check(number >= 0 && EditorHost.CmdLine(number) == 0 && EditorHost.CmdX(number) == 14, "the line number 9 is not in the gutter");
-        // cursor は命令にしない (1 行目の 本 の前)
+        // The cursor is not drawn as a command (before "本" on line 1)
         Ed.Check(EditorHost.CaretCount(id) == 1, "carets: " + EditorHost.CaretCount(id));
         Ed.Check(EditorHost.CaretY(id, 0) == y, "caret at y " + EditorHost.CaretY(id, 0));
     }
 
-    // 長い file を 1280 x 720 の view に開き、Step と Draw の 1 回にかかる時間を測る
+    // Open a long file in a 1280 x 720 view and measure the time of one Step and one Draw
     static void Measure()
     {
         var text = "";
@@ -176,7 +176,7 @@ public static class TestBasics
             EditorHost.Draw(big, 1280, 720);
         }
         var t3 = Sys.Seconds();
-        // 末尾へ飛ぶと、そこまでの行を色分けする
+        // Jumping to the end highlights the lines up to there
         Ed.Ctrl(77);
         EditorHost.Step();
         EditorHost.Draw(big, 1280, 720);

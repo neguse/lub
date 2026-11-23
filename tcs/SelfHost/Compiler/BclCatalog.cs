@@ -2,15 +2,15 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// 生成物 (Transpiler.Tests/BclCatalogTests.cs、TCS_UPDATE_BCL=1)。手で編集しない。
-// .NET の参照アセンブリにある BCL の型と、サブセットが member を絞って通す型の member の名前。
-// 「.NET に有るがサブセットに無い API」を TCS1002 と報告するのに使う
+// Generated file (Transpiler.Tests/BclCatalogTests.cs, TCS_UPDATE_BCL=1). Do not edit by hand.
+// BCL types in the .NET reference assemblies, and member names of the types the subset passes with a restricted member set.
+// Used to report "APIs that exist in .NET but not in the subset" as TCS1002
 public static class BclCatalog
 {
     private static Dictionary<string, string>? _types;
     private static Dictionary<string, Dictionary<string, string>>? _members;
 
-    // metadata 名 (`System.IO.File`、`System.Collections.Generic.LinkedList`1`) の型の表示の名前 (無ければ null)
+    // Display name of the type with metadata name (`System.IO.File`, `System.Collections.Generic.LinkedList`1`) (null if none)
     public static string? TypeDisplay(string metadataName)
     {
         if (_types == null) _types = Types();
@@ -19,14 +19,14 @@ public static class BclCatalog
         return null;
     }
 
-    // member の一覧を持つ型か
+    // Whether the type has a member list
     public static bool HasMembers(string metadataName)
     {
         if (_members == null) _members = Members();
         return _members.ContainsKey(metadataName);
     }
 
-    // 型 (metadata 名) の member を宣言した型の表示の名前 (無ければ null)
+    // Display name of the type that declared a member of the type (metadata name) (null if none)
     public static string? MemberOwner(string metadataName, string member)
     {
         if (_members == null) _members = Members();
@@ -37,7 +37,7 @@ public static class BclCatalog
         return null;
     }
 
-    // 名前を空白で区切った一覧。継承した member は 名前@宣言した型の表示
+    // Space-separated list of names. An inherited member is name@display name of the declaring type
     private static void AddMembers(Dictionary<string, Dictionary<string, string>> d, string metadataName, string list)
     {
         string own = TypeDisplay(metadataName) ?? metadataName;
@@ -51,7 +51,7 @@ public static class BclCatalog
         d[metadataName] = names;
     }
 
-    // metadata 名 (namespace.Name`arity) と表示の名前 (C# のエラーの書式)
+    // Metadata name (namespace.Name`arity) and display name (C# error format)
     private static Dictionary<string, string> Types()
     {
         var d = new Dictionary<string, string>();

@@ -1,13 +1,13 @@
-// file と宣言を引く検索 (Search、Declarations)。
-//   - 宣言は型、メソッド、コンストラクタ、プロパティ、フィールドを拾う。文字列、コメント、本体、初期化子の中と、enum の要素は拾わない
-//   - 打つと候補が絞られ、file も宣言も同じ欄で引ける
-//   - 上下で選ぶとタブが仮に開き、Escape で閉じて focus とカーソルが元に戻る
-//   - Return で選んだ宣言の行へ移って閉じ、すでにタブのある file はタブを足さない
-//   - 検索の板の上を押しても、下の窓には届かない
-//   - 候補が無いまま Return すると、Escape と同じく開く前に戻す
-//   - 打っている間は宣言を読み直さず、打ち終わってから読み直す
-//   - GoTo は名前の宣言へ飛び、Ctrl+- で戻れる。無い名前では動かない
-//   - F12 はカーソルの語の宣言が 1 つなら飛び、無ければその語を入れた検索を開く。Ctrl+- で飛ぶ前の場所へ戻る
+// Search for files and declarations (Search, Declarations).
+//   - Declarations pick up types, methods, constructors, properties, and fields. Things inside strings, comments, bodies, and initializers, and enum members, are not picked up
+//   - Typing narrows the candidates, and both files and declarations can be looked up in the same field
+//   - Choosing with up/down opens a tab provisionally, and Escape closes it and restores the focus and cursor
+//   - Return moves to the line of the chosen declaration and closes, and a file that already has a tab does not get another tab
+//   - Pressing on the search board does not reach the window below
+//   - Return with no candidates goes back to the state before opening, the same as Escape
+//   - Declarations are not reloaded while typing, but after typing ends
+//   - GoTo jumps to the declaration of the name, and Ctrl+- goes back. A missing name does not move
+//   - F12 jumps if the word at the cursor has one declaration, and if there is none, opens search with that word entered. Ctrl+- goes back to the place before the jump
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -98,7 +98,7 @@ public static class TestSearch
         s.Cancel(w);
         Check(w.Focus!.Line == line, "Escape did not put the cursor back");
 
-        // 仮に開いたタブは、候補が無くなってから Return しても残らない
+        // A provisionally opened tab does not remain even if Return is pressed after the candidates run out
         s.Open(w);
         TypeIn(w, "bcn blnk");
         s.Move(w, 1);
@@ -106,7 +106,7 @@ public static class TestSearch
         s.Commit(w);
         Check(!s.Shown && w.FocusWindow!.Code.Tabs.Count == count && w.Focus == first, "Return with no results kept the preview");
 
-        // 打った直後は読み直さず、検索を開くと読み直す
+        // Not reloaded right after typing, but reloaded when search is opened
         var lastType = first;
         lastType.MoveTo(0, 0);
         lastType.Type("class Fresh { int Typed; }\n");
@@ -128,12 +128,12 @@ public static class TestSearch
         s.Commit(w);
         Check(!s.Shown && w.Focus == first && w.Focus!.Line == 3, "Return did not move to the declaration");
 
-        // タブを開いて確定すると、タブが残る
+        // Opening a tab and confirming keeps the tab
         s.Open(w);
         TypeIn(w, "bcn");
         s.Commit(w);
         Check(w.FocusWindow!.Code.Tabs.Count == count + 1 && w.Focus!.Path.EndsWith("Beacon.cs"), "Return did not open the file");
-        // Ctrl+- で確定の前の場所へ戻る (タブは開いたまま)
+        // Ctrl+- goes back to the place before confirming (the tab stays open)
         w.Back();
         Check(w.Focus == first && w.Focus!.Line == 3, "going back did not return to the place before Return");
         w.Back();
@@ -163,7 +163,7 @@ public static class TestSearch
         Check(w.Focus!.Path.EndsWith("Beacon.cs") && w.Focus!.Line == 3, "GoTo moved for a missing name");
         w.Back();
         Check(w.Focus == before && before.Line == 0, "going back after GoTo did not return");
-        // 検索の板の上を押すと閉じるだけで、下の窓のカーソルは動かない
+        // Pressing on the search board only closes it, and the cursor of the window below does not move
         s.Open(w);
         boardAt = frames + 3;
     }

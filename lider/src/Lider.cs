@@ -1,30 +1,30 @@
-// lider の entry。
-// `lub Lider.csproj` で起動し、LIDER_GAME のゲームを別の VM で開いて動かす (GameApp)。ゲームの絵を画面に写し、その上にコードの空間を描く。
-// 配置 (どのスクリーンにどのウィンドウをどの規則で並べるか) は、名前で控えて戻せる (Arrangement)。
-// 初めから、左にゲームの絵、右にコードの窓を並べる形と、コードの窓をゲームの絵に重ねる形が入っていて、起動したときは左右に並べる形になる。Alt+L で次の配置へ替える。
-// キーボードは focus のあるウィンドウへ、マウスは指しているウィンドウへ送る。
-// F1 で focus をゲームの絵と Code の間で移す (focus がゲームにある間、窓は同じ所に薄く残る)。押したウィンドウにも focus が移る。
-// 起動したときは、ゲームの絵だけを出していて、focus はゲームにある (命令 screen:hide で、ゲームの絵だけにする / 戻す)。
-// 操作は名前の付いた命令で、key の割り当ては Keymap にあり、Ctrl+P の検索からも名前で呼べる。
-// key の割り当ては、命令 keys:set で変えられる (命令を選び、次に押した key を割り当てる)。変えた分は、利用者ごとの file に書く。命令 keys:reset で既定に戻す。
-// 左 click は窓ならカーソルを置く。ゲームを止めている間は、何も無い所ならゲームの物を描いたコードを開き、中 click は、前にコードがあってもゲームの物を指す。
-// 窓は横一列に並ぶ。非 XR の右ドラッグは、窓の上なら並びを変え (ドラッグ中のホイールで大きさを変える)、窓の外なら列を動かす。
-// Alt を押している間は、スクリーンの輪郭と名前の札が出る。動かせるスクリーンは、札を右ドラッグで面に沿って動かし、ドラッグ中のホイールで手前と奥へ動かす (命令 screen:anchor で、視点に固定するか世界に置くかを替える)。
-// Alt + 矢印で隣のウィンドウへ、Alt + Shift + 矢印で並びを変え、Alt + 数字でその番目の窓へ移る。非 XR では focus のある窓が見える所まで視点が滑る。
+// The lider entry point.
+// Started with `lub Lider.csproj`; it opens and runs the LIDER_GAME game in a separate VM (GameApp). It shows the game image on screen and draws the code space on top of it.
+// Arrangements (which windows go on which screen, by which rule) can be recorded and restored by name (Arrangement).
+// Two are built in: the game image on the left with the code panels on the right, and the code panels overlaid on the game image; at startup the side-by-side one is used. Alt+L switches to the next arrangement.
+// The keyboard goes to the focused window, and the mouse goes to the window it points at.
+// F1 moves focus between the game image and Code (while focus is on the game, the panels stay in place, faded). Focus also moves to a window you press.
+// At startup only the game image is shown and focus is on the game (the command screen:hide switches to the game image only and back).
+// Operations are named commands; key bindings live in Keymap, and commands can also be called by name from the Ctrl+P search.
+// Key bindings can be changed with the command keys:set (pick a command, then the next key pressed is bound to it). Changes are written to a per-user file. The command keys:reset restores the defaults.
+// Left click on a panel places the cursor. While the game is paused, left click on empty space opens the code that drew the game object, and middle click points at the game object even if code is in front of it.
+// Panels are laid out in one horizontal row. In non-XR, right-drag on a panel reorders it (the wheel while dragging resizes it), and right-drag outside the panels moves the row.
+// While Alt is held, screen outlines and name tags are shown. A movable screen is moved along its surface by right-dragging its tag, and nearer or farther with the wheel while dragging (the command screen:anchor switches between fixing it to the view and placing it in the world).
+// Alt + arrow moves to the adjacent window, Alt + Shift + arrow reorders, and Alt + number moves to the panel with that number. In non-XR the view slides until the focused panel is visible.
 // env:
-//   LIDER_GAME    開くゲーム。.csproj か、ディレクトリ (その下の .cs。web) なら lider が変換し (GameBuild)、.tcsb ならそのまま開く
-//   LIDER_CS_LIB  LIDER_GAME がディレクトリのときに一緒に変換する lub の cs-lib のディレクトリ
-//   LIDER_ENTRY   LIDER_GAME がディレクトリのときの entry class (無ければ OnFrame を持つ static class)
-//   LIDER_ROOT    並べる .cs を探すディレクトリ (既定はゲームの .csproj のディレクトリ、LIDER_GAME が無ければ ".")
-//   LIDER_SIZE    画面の大きさ ("幅x高さ")
-//   LIDER_HOME    lider のディレクトリ (font を data/ から読む。既定 ".")
-//   LIDER_ACTIVE  1 なら起動したときからスクリーンを全部出し、focus を Code に置く
-//   LIDER_OPEN    起動したときに拡大する file の path
-//   LIDER_REWIND  控える frame の数 (既定 600、0 で控えない)
-// 時間: F5 でゲームを止める / 続ける、止めている間 F6 で 1 frame 戻り、F7 で 1 frame 進む。Shift+F5 でゲームを最初から作り直す。
-// Ctrl+E で compile error の行へ順に飛ぶ。
-// Alt+D で、保存した版と編集中の版 (保存していない本文で変換した版) のゲームを左右に並べる。もう一度 Alt+D で戻す。
-// 並べている間、入力は両方のゲームに渡し、命令 game:copy-to-draft で保存した版の今の状態を編集中の版に写す (DraftGame)。
+//   LIDER_GAME    Game to open. A .csproj or a directory (the .cs files under it; web) is compiled by lider (GameBuild); a .tcsb is opened as is
+//   LIDER_CS_LIB  Directory of lub's cs-lib, compiled together when LIDER_GAME is a directory
+//   LIDER_ENTRY   Entry class when LIDER_GAME is a directory (if missing, the static class that has OnFrame)
+//   LIDER_ROOT    Directory to search for the .cs files to lay out (default: the directory of the game's .csproj, or "." if LIDER_GAME is missing)
+//   LIDER_SIZE    Screen size ("widthxheight")
+//   LIDER_HOME    lider directory (fonts are read from data/; default ".")
+//   LIDER_ACTIVE  If 1, all screens are shown from startup and focus is put on Code
+//   LIDER_OPEN    Path of the file to zoom into at startup
+//   LIDER_REWIND  Number of frames to record (default 600; 0 disables recording)
+// Time: F5 pauses / resumes the game; while paused, F6 steps back 1 frame and F7 steps forward 1 frame. Shift+F5 recreates the game from the start.
+// Ctrl+E jumps through the compile error lines in order.
+// Alt+D shows the saved version and the draft version (compiled from the unsaved text) of the game side by side. Alt+D again goes back.
+// While they are side by side, input goes to both games, and the command game:copy-to-draft copies the current state of the saved version into the draft version (DraftGame).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -35,156 +35,156 @@ using LiderEditor;
 public static class Lider
 {
     public static Workspace? Work;
-    // OnReload が呼ばれた回数 (reload chunk が当たった印)
+    // Number of times OnReload was called (a sign that a reload chunk was applied)
     public static int Reloads;
     static MonoText? text;
-    // 窓の本文の文字 (密度 → 文字)。text と桁も行の高さも同じ
+    // Glyphs for the panel body text (density → glyphs). Same column width and line height as text
     static readonly Dictionary<int, MonoText> panelTexts = new Dictionary<int, MonoText>();
     static readonly XrAnchor anchor = new XrAnchor();
     static readonly float[] eyeVp = new float[16];
-    // 非 XR の視点の横の位置 (平面の x)。行き先と、行き先を決めたときの focus のある窓
+    // Horizontal position of the non-XR view (x on the plane). The target, and the focused panel at the time the target was set
     static readonly Spring viewX = new Spring(0);
     static float viewTarget;
     static Window? followed;
-    // 非 XR で、インスペクタと focus のある窓を置く画面の範囲 (px、左上が 0,0。LIDER_AREA="x,y,w,h")。
-    // AreaW が 0 なら決めない (窓は既定の大きさで、視点は focus のある窓を追う)
+    // In non-XR, the screen area where the inspector and the focused panel are placed (px, top left is 0,0; LIDER_AREA="x,y,w,h").
+    // If AreaW is 0, no area is set (panels have the default size and the view follows the focused panel)
     public static float AreaX;
     public static float AreaY;
     public static float AreaW;
     public static float AreaH;
-    // 範囲の幅のうち、インスペクタに使う割合
+    // Fraction of the area width used for the inspector
     const float AreaBoard = 0.34f;
-    // 範囲を決めているときの、範囲の真ん中に合わせる高さ。窓の見出しも入れた高さの真ん中
+    // When an area is set, the height aligned with the middle of the area. The middle of the height including the panel title
     static float AreaCenterY => AreaW > 0 ? PanelView.TitleH * Space.FlatScale * 0.5f : 0;
     static float followedAngle;
     static float followedScale;
     static float followedBoard;
     static float followedOld;
-    // 非 VR の縦の画角 (度)。
-    // ホイールで狭めると拡大して読める
+    // Vertical field of view (degrees) outside VR.
+    // Narrowing it with the wheel zooms in for reading
     static float fov = Space.FlatFov;
     static Mat4 lastVp = new Mat4();
-    // lastVp を決めたか (lider の物を 1 度でも描いたか)
+    // Whether lastVp has been set (whether lider's elements have been drawn at least once)
     static bool cameraSet;
     static int viewportW = 1;
     static int viewportH = 1;
     static readonly Dictionary<string, PanelView> panels = new Dictionary<string, PanelView>();
-    // VR のときの頭の向きと、Gfx.Pick に渡す左眼
+    // Head direction in VR, and the left eye passed to Gfx.Pick
     static Ray gaze = new Ray(new Vec3(0, 0, 0), new Vec3(0, 0, 1));
     static XrView? lastEye;
-    // コントローラー: 右手の aim で指し、trigger で click、grip でつかむ (両手で広げる)、右の stick で scroll、止めている間は左の stick で frame を送る
+    // Controllers: point with the right hand's aim, click with trigger, grab with grip (spread with both hands), scroll with the right stick, and step frames with the left stick while paused
     static readonly Grab grab = new Grab();
-    // 手ごと (左 0、右 1) の、引き金を引いているか、指している面と、その面の上の位置
+    // Per hand (left 0, right 1): whether the trigger is pulled, the surface it points at, and the position on that surface
     static readonly bool[] triggerDown = new bool[2];
     static readonly List<Screen?> aimScreen = new List<Screen?> { null, null };
     static readonly List<Vec2> aimAt = new List<Vec2> { new Vec2(0, 0), new Vec2(0, 0) };
-    // 押して引いている手 (押していなければ -1)。押せるのは、片方ずつ
+    // The hand that is pressing (-1 if none). Only one hand can press at a time
     static int activeHand = -1;
-    // 左ボタンか trigger を押した窓 (離すまで、指した所までを選ぶ)
+    // Panel where the left button or trigger was pressed (until release, selects up to the pointed position)
     static Window? pressed;
     static bool rightGrip;
     static bool leftGrip;
     static float stepWait;
     static CylinderPoint? pointer;
-    // 操作の手応え: 窓の見た目の動き、粒、focus が移ったときに流れる光
+    // Interaction feedback: panel visual motion, particles, and the light that flows when focus moves
     static readonly Dictionary<Window, WindowMotion> motions = new Dictionary<Window, WindowMotion>();
     static readonly Particles particles = new Particles();
     static readonly List<Ring> rings = new List<Ring>();
-    // 音と演出の強さ (命令 juice:cycle で 2 全部、1 音なし、0 演出も抑える)
+    // Strength of sound and effects (command juice:cycle: 2 everything, 1 no sound, 0 also tones down effects)
     public static int Juice = 2;
-    // 全面の明滅 (1 から 0 へ減る。最初は暗く、次に明るく)
+    // Full-screen flash (decreases from 1 to 0; dark first, then bright)
     public static float Flash;
     public static float LastLandAt = -100;
     static int seenFixed;
     static int seenJumps;
-    // 続けて保存している間は、演出を短くする秒
+    // Seconds during which effects are shortened while saving repeatedly
     const float RepeatSeconds = 2;
     static Window? shownFocus;
     static float cometFrom;
     static float cometTo;
     static float cometY;
     static float comet = 1;
-    // Alt で並びか大きさを変えた窓と、まだ浮かせておく秒
+    // Panel whose order or size was changed with Alt, and seconds to keep it lifted
     static Window? keyMoved;
     static float keyLift;
-    // 止めている間の空間の冷え (0 から 1) と、控えた frame の帯の上の点の位置
+    // Coldness of the space while paused (0 to 1), and the position of the dot on the bar of recorded frames
     static float cold;
     public static float Cold => cold;
     static readonly Spring timeline = Stiff();
     static bool timelineShown;
-    // 打った文字が面に収まる動き
+    // Motion of typed characters settling into the surface
     public static readonly List<Landing> Landings = new List<Landing>();
     public static int ParticleCount => particles.Live.Count;
-    // ゲームの物を指して Gfx.Pick の結果を待っている間
+    // While pointing at a game object and waiting for the Gfx.Pick result
     static bool pickPending;
     static float pickX;
     static float pickY;
-    // 調べているのが、click でなく指しているだけの物か
+    // Whether the inspected object is only pointed at rather than clicked
     static bool hoverPick;
     static float hoverX;
     static float hoverY;
     static float hoverStill;
-    // 指しているゲームの物を描いたコード (内側から)
+    // Code that drew the pointed game object (innermost first)
     public static List<string> What = new List<string>();
-    // 画面の座標 (web は CSS px) の 1 に対する、MainTex の画素の数
+    // Number of MainTex pixels per 1 unit of screen coordinates (CSS px on web)
     public static float PixelRatio = float.Parse(Environment.GetEnvironmentVariable("LIDER_PIXEL_RATIO") ?? "1");
-    // インスペクタ (Alt+I で出して focus を移し、focus があればしまう。左手の X でも出し入れ)。中身が Inspector のウィンドウで、コードの窓と同じスクリーンに並ぶ。
-    // 重ねる形ではコードのスクリーンの一番左、左右に並ぶ形では背景のスクリーンの最後に置く
+    // Inspector (Alt+I shows it and moves focus to it, or hides it if it has focus; the left hand's X also toggles it). Its content is the Inspector window, placed on the same screen as the code panels.
+    // In the overlay arrangement it goes at the far left of the code screen; in the side-by-side arrangement, at the end of the backdrop screen
     static readonly InspectView inspect = new InspectView();
     public static InspectView Inspector => inspect;
     static Window inspectWindow = new Window(new Inspector(inspect));
     public static Window InspectWindow => inspectWindow;
     static bool TreeVisible => inspect.Shown && !ZenShown && inspectWindow.Position != null;
-    // 窓を画面の幅に広げ、左の板を隠し、ゲームを暗くする。focus がゲームにある間は効かせない (ゲームを遊べるように)
+    // Widens panels to the screen width, hides the left board, and dims the game. Not applied while focus is on the game (so the game can be played)
     public static bool Zen;
     static bool ZenShown => Zen && Work != null && !Work.OnGame;
-    // 空間に置いたスクリーン (奥のゲームの絵と、コードの窓の円筒)。
-    // 視点に固定した平面のスクリーンは ScreenView が先に描き、コードの窓と板は、その手前に DrawScene が描く
+    // Screens placed in space (the game image at the back, and the cylinder of code panels).
+    // Flat screens fixed to the view are drawn first by ScreenView, and the code panels and boards are drawn in front of them by DrawScene
     public static readonly List<Screen> Screens = new List<Screen>();
-    // 画面のキーボード (命令 keyboard:toggle と、左手の Y で出し入れする)。中身が Osk のウィンドウで、最初は正面の下の手前のスクリーン (desk) に出す
+    // On-screen keyboard (toggled with the command keyboard:toggle and the left hand's Y). Its content is the Osk window, first shown on the screen low in front (desk)
     static readonly Osk osk = new Osk();
     public static Osk Keyboard => osk;
     static readonly OskView oskView = new OskView();
     static Window oskWindow = new Window(osk);
     public static Window KeyboardWindow => oskWindow;
     static Screen desk = new Screen("desk");
-    // 画面のキーボードの大きさの倍率 (1 で、窓の本文と同じ画素の大きさ)
+    // Scale of the on-screen keyboard (1 means the same pixel size as panel body text)
     const float OskScale = 0.75f;
     static bool oskButton;
-    // 一番奥のスクリーン: 視野をちょうど覆い、ゲームの絵を映す
+    // Backmost screen: exactly covers the field of view and shows the game image
     static Screen backdrop = new Screen("backdrop");
-    // 保存した版のゲームを映すウィンドウ
+    // Window showing the saved version of the game
     static Window gameWindow = new Window(new GameView());
-    // 編集中の版のゲームを映すウィンドウ (並べている間だけ)
+    // Window showing the draft version of the game (only while side by side)
     static Window? draftWindow;
     const float BackdropDistance = 10;
-    // lider の描く物の濃さ (focus がゲームにある間は GameOpacity へ寄せる)
+    // Opacity of what lider draws (moves toward GameOpacity while focus is on the game)
     public static float Opacity = 1;
     const float GameOpacity = 0.35f;
     static bool inspectButton;
-    // 手前に出す板 (動いている版の板、範囲を決めたときの帯) の半径
+    // Radius of the boards shown in front (the running-version board, the band when an area is set)
     const float InspectR = Space.R - 0.12f;
-    // 非 XR は窓を大きく開くので、インスペクタの字も同じくらいにする
+    // Non-XR opens panels large, so the inspector text is made about the same size
     static float InspectScale => Space.Flat ? 1.4f : 1;
-    // 指している物に対して、そのとき効く操作の案内
+    // Hints for the operations that currently apply to the pointed-at thing
     static readonly HintCard hintCard = new HintCard();
-    // 案内のウィンドウと、それを置くスクリーン (視点に固定した平面。右下の隅に積む)
+    // Hint window and the screen it goes on (a flat screen fixed to the view; stacked in the bottom right corner)
     static Window hintWindow = new Window(new Hints(hintCard));
     static Screen hud = new Screen("hud");
     public static Window HintWindow => hintWindow;
-    // file と宣言を引く検索 (Ctrl+P)。板を置く円筒の角度と上の端の高さ
+    // Search for files and declarations (Ctrl+P). Angle on the cylinder where the board goes, and the height of its top edge
     public static readonly Search Search = new Search();
     static readonly SearchView searchView = new SearchView();
     public static readonly AssetView AssetBoard = new AssetView();
-    // フィールドの宣言の行に出す今の値
+    // Current values shown on field declaration lines
     public static readonly FieldValues Fields = new FieldValues();
-    // 行ごとの負荷 (窓の行の列か札と、インスペクタの板の負荷の一覧に出す)
+    // Per-line load (shown in the panel's line column or tag, and in the load list on the inspector board)
     public static readonly LoadProfile Costs = new LoadProfile();
 
     static int fieldFrames;
-    // 宣言を読み直す間隔
+    // Interval for reloading declarations
     const int ScanFrames = 15;
-    // 検索とアセットのウィンドウと、それを置くスクリーン (視点に固定した平面。上の端の真ん中から下へ積む)
+    // Search and asset windows and the screen they go on (a flat screen fixed to the view; stacked downward from the middle of the top edge)
     static Window searchWindow = new Window(Search);
     static Window assetWindow = new Window(new Asset(AssetBoard));
     static Screen palette = new Screen("palette");
@@ -208,12 +208,12 @@ public static class Lider
         if (area.Length == 4 && float.TryParse(area[0], out var ax) && float.TryParse(area[1], out var ay)
             && float.TryParse(area[2], out var aw) && float.TryParse(area[3], out var ah))
             SetArea(ax, ay, aw, ah);
-        // 本文と動いている版の違いを、最初から窓の中 (インライン) に出す (命令 code:diff-side で切り替えられる)
+        // Show the difference between the text and the running version inside the panel (inline) from the start (can be switched with the command code:diff-side)
         if (Environment.GetEnvironmentVariable("LIDER_DIFF") == "inline")
             PanelView.SideBySide = false;
-        // 止める前の frame へ戻れるよう、lider を出していなくても起動したときから控える。
-        // 控えている間、ゲームを進める前ごとにゲームの状態 (static と、そこから辿れる object) を全部写すので、その分だけ毎 frame 重い。
-        // LIDER_REWIND=0 で控えない
+        // Record from startup, even when lider is not shown, so it can go back to frames before pausing.
+        // While recording, the whole game state (statics and the objects reachable from them) is copied before each game step, so every frame is heavier by that much.
+        // LIDER_REWIND=0 disables recording
         Record(Environment.GetEnvironmentVariable("LIDER_REWIND"));
         Work = new Workspace(Environment.GetEnvironmentVariable("LIDER_ROOT") ?? GameDir());
         Screens.Add(Work.CodeScreen);
@@ -226,16 +226,16 @@ public static class Lider
         hintWindow = new Window(new Hints(hintCard));
         hud.Windows.Add(hintWindow);
         Screens.Add(hud);
-        // 画面のキーボードを置く、正面の下の手前の面 (世界に置く)
+        // Surface low in front where the on-screen keyboard goes (placed in the world)
         desk = new Screen("desk") { Anchor = ScreenAnchor.World, Position = new Vec3(0, -0.3f, 1.1f), Size = new Vec2(1.4f, 0.42f), Layout = new Stack { AlignX = 0 } };
         oskWindow = new Window(osk);
         osk.Shown = false;
         osk.Mods = 0;
         Screens.Add(desk);
-        // スクリーンの一覧は 1 つだけ持つ
+        // Keep only one list of screens
         Work.Screens = Screens;
         backdrop.Layout = new Even();
-        // 起動したときは、ゲームだけを出し、focus もゲームに置く (LIDER_ACTIVE=1 なら、最初から全部出して focus を Code に置く)
+        // At startup show only the game and put focus on the game (with LIDER_ACTIVE=1, show everything from the start and put focus on Code)
         gameHeld = false;
         cameraSet = false;
         SetHidden(true);
@@ -243,10 +243,10 @@ public static class Lider
             FocusCode();
         RegisterCommands();
         BuiltinArrangements(Work);
-        // 起動したときは、左右に並ぶ形にする
+        // At startup use the side-by-side arrangement
         Arrange(SideBySide);
         Work.Drafts?.Restore(Work);
-        // lider の VM を作り直した (lider 自身の static の初期化子の変更) なら、作り直す前の窓に戻す
+        // If lider's VM was recreated (a change to lider's own static initializers), restore the panels from before the recreation
         if (Session.Restore(Work, Sys.Seconds()))
             return;
         var open = Environment.GetEnvironmentVariable("LIDER_OPEN");
@@ -254,14 +254,14 @@ public static class Lider
             Work.FocusOn(open);
     }
 
-    // lub が VM を作り直す前と、終わる前に呼ぶ
+    // Called by lub before it recreates the VM and before it exits
     public static void OnQuit()
     {
         if (Work != null)
             Session.Save(Work, Sys.Seconds());
     }
 
-    // ゲーム (LIDER_GAME) のディレクトリ (LIDER_GAME が無ければ ".")
+    // Directory of the game (LIDER_GAME) ("." if LIDER_GAME is missing)
     static string GameDir()
     {
         var module = GameApp.Project;
@@ -271,21 +271,21 @@ public static class Lider
         return ".";
     }
 
-    // 保存した版がゲームに入った (reload が当たったか、作り直した)
+    // The saved version got into the game (a reload was applied, or the game was recreated)
     public static void GameReloaded()
     {
         Reloads++;
         Work?.Reloaded();
     }
 
-    // 当てた差分に、動いている物には入らない変更があった (GameReloaded の後に呼ぶ)
+    // The applied diff had changes that do not reach the running objects (called after GameReloaded)
     public static void GameReloadNotes(string notes)
     {
         Work?.ReloadNotes(notes);
     }
 
-    // 窓の file で宣言した field の、動いている個体に入らなかった初期値の変更の知らせ。
-    // 宣言が見つからない field は focus のある窓に出す
+    // Notices about changed initial values of fields declared in the panel's file that did not reach the running instances.
+    // Fields whose declaration is not found go to the focused panel
     public static List<string> InitNotices(Workspace w, Window window)
     {
         var notices = new List<string>();
@@ -303,19 +303,19 @@ public static class Lider
         return notices;
     }
 
-    // 保存した版が compile error で、ゲームに入らなかった
+    // The saved version has a compile error and did not get into the game
     public static void GameBuildFailed(string errors)
     {
         Work?.BuildFailed(errors);
     }
 
-    // 控える frame の数 (LIDER_REWIND の値。無いか読めなければ 600、0 で控えない) を決める
+    // Sets the number of frames to record (the LIDER_REWIND value; 600 if missing or unreadable, 0 disables recording)
     public static void Record(string? frames)
     {
         GameApp.Keep(frames != null && int.TryParse(frames, out var n) ? n : 600);
     }
 
-    // focus をゲームの絵のウィンドウに移す (キーボードがゲームに届く)
+    // Moves focus to the game image window (the keyboard reaches the game)
     public static void FocusGame()
     {
         if (Work == null)
@@ -325,7 +325,7 @@ public static class Lider
             Search.Cancel(Work);
     }
 
-    // focus を Code のウィンドウに移す (隠していたスクリーンは出す)
+    // Moves focus to the Code window (hidden screens are shown)
     public static void FocusCode()
     {
         if (Work == null)
@@ -334,11 +334,11 @@ public static class Lider
         Work.FocusCode();
     }
 
-    // ゲームの絵だけを出しているか
+    // Whether only the game image is shown
     public static bool Hidden => Work != null && hidden;
     static bool hidden;
 
-    // ゲームの絵だけを出す / 戻す。ゲームの絵だけにするときは、focus をゲームに移す
+    // Shows only the game image / restores. When switching to the game image only, moves focus to the game
     public static void SetHidden(bool hidden)
     {
         if (Work == null)
@@ -349,8 +349,8 @@ public static class Lider
             FocusGame();
     }
 
-    // 隠している間は、ゲームの絵だけを出す: ゲームの絵の無いスクリーンは出さず、ゲームの絵のあるスクリーンでは、ほかのウィンドウをしまう。
-    // 隠している間に足されたウィンドウにも効くよう、毎 frame 決め直す
+    // While hidden, show only the game image: screens without the game image are not shown, and on screens with the game image, other windows are put away.
+    // Decided again every frame so it also applies to windows added while hidden
     static void PutAway()
     {
         foreach (var screen in Screens)
@@ -370,17 +370,17 @@ public static class Lider
         return false;
     }
 
-    // lider の描く物 (ゲームの絵でないウィンドウ、検索、案内) を出しているか
+    // Whether lider's drawing (windows other than the game image, search, hints) is shown
     static bool LiderShown(Workspace w)
     {
         return !hidden;
     }
 
-    // ゲームの絵の上でマウスのボタンを押し、まだ離していないか (離すまで、マウスの入力はゲームに送る)
+    // Whether a mouse button was pressed on the game image and not released yet (until release, mouse input goes to the game)
     static bool gameHeld;
 
-    // 画面の (x, y) のマウスの入力がゲームのものか。
-    // ゲームが動いている間、lider の物を指していなければゲームに渡す。止めている間は、ゲームの絵の上も lider が受ける (描いたコードを調べる)
+    // Whether mouse input at screen (x, y) belongs to the game.
+    // While the game runs, it goes to the game unless it points at a lider element. While paused, lider takes it over the game image too (to inspect the code that drew it)
     static bool MouseForGame(Workspace w, float x, float y)
     {
         if (!LiderShown(w))
@@ -394,7 +394,7 @@ public static class Lider
         return !OverLider(w, PointerRay(x, y));
     }
 
-    // ray が lider の物 (ウィンドウ、その見出しと端、検索の板) を指しているか
+    // Whether the ray points at a lider element (a window, its title and edges, the search board)
     static bool OverLider(Workspace w, Ray ray)
     {
         return Search.Shown || OskUv(w, ray) != null || TagAt(w, ray) != null || OnSpaceTag(ray) || InspectAt(ray) != null || TitleAt(w, ray) != null || WindowAt(w, ray) != null
@@ -413,7 +413,7 @@ public static class Lider
         var key = e.Kind == EventKind.KeyDown || e.Kind == EventKind.KeyUp;
         var mouse = e.Kind == EventKind.MouseButtonDown || e.Kind == EventKind.MouseButtonUp
             || e.Kind == EventKind.MouseMotion || e.Kind == EventKind.MouseWheel;
-        // キーボードは focus のあるウィンドウへ、マウスは指しているウィンドウへ、そのほか (gamepad など) はゲームへ送る
+        // The keyboard goes to the focused window, the mouse to the pointed window, and everything else (gamepad etc.) to the game
         if (!key && !mouse)
         {
             SendGame(e);
@@ -421,7 +421,7 @@ public static class Lider
         }
         if (key && w.OnGame)
         {
-            // focus がゲームにある間、lider が取る key は、focus を戻す key だけ
+            // While focus is on the game, the only key lider takes is the one that brings focus back
             var name = Document.Booted ? EditorHost.NameOf(e.Key, e.Plain) : null;
             if (name != null && Keymap.Binds(name, "focus:game"))
             {
@@ -429,7 +429,7 @@ public static class Lider
                     CommandTable.Run("focus:game");
                 return;
             }
-            // エディタを起こす前は、表を引けないので F1 で戻す
+            // Before the editor is started, the table cannot be looked up, so F1 brings focus back
             if (!Document.Booted && e.Key == Keys.F1)
             {
                 if (e.Kind == EventKind.KeyDown && !repeated)
@@ -445,7 +445,7 @@ public static class Lider
             var y = e.Y;
             if (e.Kind == EventKind.MouseWheel)
                 Input.MousePos(out x, out y);
-            // 押し始めの行き先は、指している所で決める
+            // Where a press goes is decided by what it points at when it starts
             if (e.Kind == EventKind.MouseButtonDown)
                 gameHeld = false;
             var forGame = MouseForGame(w, x, y);
@@ -455,10 +455,10 @@ public static class Lider
                 gameHeld = false;
             if (forGame)
             {
-                // ゲームの絵を押すと、focus もゲームに移る
+                // Pressing the game image also moves focus to the game
                 if (e.Kind == EventKind.MouseButtonDown)
                 {
-                    // 押した絵のウィンドウに focus を移す (lider が見る版も、その版になる)
+                    // Move focus to the pressed image window (the version lider looks at also becomes that version)
                     PointGames(x, y);
                     if (gamePointed != null && w.Focused != gamePointed)
                         w.FocusTo(gamePointed);
@@ -471,7 +471,7 @@ public static class Lider
         }
         if (Search.Shown && SearchEvent(w, e))
             return;
-        // key は、表 (Keymap) を通って命令になる。命令にならない key は、focus のある Code に入る
+        // Keys become commands through the table (Keymap). Keys that do not become commands go into the focused Code
         if (key)
         {
             CommandTable.Repeated = repeated;
@@ -482,7 +482,7 @@ public static class Lider
             ClickAt(e.X, e.Y);
         else if (e.Kind == EventKind.MouseButtonDown && e.Button == 3 && lastEye == null)
         {
-            // スクリーンの名前の札の上なら、スクリーンをつかむ。ほかは、指しているウィンドウをつかむ
+            // On a screen's name tag, grab the screen. Otherwise, grab the window pointed at
             if (!GrabScreenAt(w, e.X, e.Y))
                 GrabAt(w, e.X, e.Y);
         }
@@ -514,7 +514,7 @@ public static class Lider
             grab.Zoom(e.Dy);
         else if (e.Kind == EventKind.MouseWheel)
         {
-            // 窓の上なら scroll、Ctrl を押していれば画角を変えて拡大する
+            // On a panel, scroll; with Ctrl held, change the field of view to zoom in
             Input.MousePos(out var mx, out var my);
             var hit = w.Ctrl || lastEye != null ? null : WindowAt(w, PointerRay(mx, my));
             if (!w.Ctrl && InspectAt(lastEye != null ? gaze : PointerRay(mx, my)) != null)
@@ -532,12 +532,12 @@ public static class Lider
         Cues.Muted = juice < 2;
     }
 
-    // 検索を出している間の入力 (修飾 key の押し離しは Workspace にも渡す)。扱ったら true
+    // Input while search is shown (modifier key presses and releases are also passed to Workspace). Returns true if handled
     static bool SearchEvent(Workspace w, EventData e)
     {
         if (e.Kind == EventKind.MouseButtonDown)
         {
-            // 板の上を押しても、下の窓には届かない
+            // Pressing on a board does not reach the panel below it
             var onBoard = lastEye == null && searchWindow.ViewportRect != null && searchWindow.ViewportRect.Contains(e.X, e.Y);
             Search.Cancel(w);
             return onBoard;
@@ -549,13 +549,13 @@ public static class Lider
             return false;
         if (e.Kind == EventKind.KeyUp)
             return false;
-        // key を待っている間は、次に押した key を、選んだ命令に割り当てる
+        // While waiting for a key, bind the next pressed key to the selected command
         if (keyFor != null)
         {
             TakeKey(w, e);
             return true;
         }
-        // focus をゲームへ移す key は、検索を出していても効く (検索は閉じる)
+        // The key that moves focus to the game works even while search is shown (search is closed)
         var name = Document.Booted ? EditorHost.NameOf(e.Key, e.Plain) : null;
         if (name != null && Keymap.Binds(name, "focus:game"))
             return false;
@@ -576,7 +576,7 @@ public static class Lider
 
     static float SearchScale => Space.Flat ? Space.FlatScale * 0.8f : 1;
 
-    // 検索とアセットのウィンドウを、出している間だけスクリーンに載せ、板の大きさにして、規則 (上の端の真ん中から下へ) で置く
+    // Put the search and asset windows on the screen only while shown, size them to the board, and place them by the rule (downward from the middle of the top edge)
     static void PlacePalette(Workspace w)
     {
         Show(palette, searchWindow, Search.Shown, 0);
@@ -586,7 +586,7 @@ public static class Lider
         palette.Arrange();
     }
 
-    // window を、shown の間だけ screen の並びの at 番目に載せる
+    // Puts window in screen's list at index at, only while shown
     static void Show(Screen screen, Window window, bool shown, int at)
     {
         var on = screen.Windows.Contains(window);
@@ -599,19 +599,19 @@ public static class Lider
         }
     }
 
-    // ウィンドウの上の端の高さ (板は、上の端の真ん中を決めて描く)
+    // Height of the window's top edge (a board is drawn from the middle of its top edge)
     static float WindowTop(Workspace w, Window window)
     {
         return WindowY(w, window) + window.Size.Y * ViewScale(ScreenFor(w, window)) * 0.5f;
     }
 
-    // スクリーンの輪郭と名前の札: Alt を押している間と、スクリーンをつかんでいる間だけ出す。
-    // 動かせるスクリーンは、札を右ボタンでつかむと面に沿って動き、つかんだままホイールで手前と奥へ動く
+    // Screen outlines and name tags: shown only while Alt is held and while a screen is grabbed.
+    // A movable screen moves along its surface when its tag is grabbed with the right button, and nearer or farther with the wheel while held
     static readonly Dictionary<Screen, TitleView> screenTags = new Dictionary<Screen, TitleView>();
     static Screen? heldScreen;
-    // つかんだ点 (スクリーンの面の上の座標)。動かしている間、指す点がここに重なるようにスクリーンを運ぶ
+    // The grabbed point (coordinates on the screen surface). While moving, the screen is carried so the pointed point stays on it
     static Vec2 heldAt;
-    // 札の文字の大きさ (1 で、窓の本文と同じ)、輪郭の線の太さと、輪郭の外に取る余白 (半径 Space.R の所のメートル)
+    // Tag text size (1 = same as panel body text), outline line width, and margin outside the outline (meters at radius Space.R)
     const float TagScale = Space.FlatScale;
     const float OutlineW = 0.004f;
     const float OutlinePad = 0.02f;
@@ -619,14 +619,14 @@ public static class Lider
     public static bool ScreensLit => Work != null && (heldScreen != null || (Work.Alt && !Work.OnGame && LiderShown(Work)));
     public static Screen? HeldScreen => heldScreen;
 
-    // 面の上の長さを、半径 Space.R の所の同じ見かけの長さにする倍率
+    // Factor that turns a length on the surface into the same apparent length at radius Space.R
     static float Apparent(Screen screen)
     {
         return OnPlane(screen) ? ViewScale(screen) : 1;
     }
 
-    // screen の輪郭 (スクリーンの面の上の矩形: 真ん中の x と y、幅、高さ)。
-    // 大きさを持つスクリーンはその大きさ、並べた物で決まるスクリーンは、出ているウィンドウを囲む矩形
+    // Outline of screen (a rectangle on the screen surface: center x and y, width, height).
+    // A screen with a size uses that size; a screen sized by its contents uses the rectangle around its shown windows
     public static Vec4 OutlineOf(Screen screen)
     {
         if (OnPlane(screen))
@@ -638,7 +638,7 @@ public static class Lider
             if (window.Position == null)
                 continue;
             var at = window.Position.Value;
-            // コードの窓は、本文の上に見出しが乗る
+            // A code panel has its title on top of the body text
             var top = at.Y + window.Size.Y * 0.5f + ((window.Content is Code) ? PanelView.TitleH * window.Scale : 0);
             x0 = any ? Math.Min(x0, at.X - window.Size.X * 0.5f) : at.X - window.Size.X * 0.5f;
             x1 = any ? Math.Max(x1, at.X + window.Size.X * 0.5f) : at.X + window.Size.X * 0.5f;
@@ -651,9 +651,9 @@ public static class Lider
         return new Vec4((x0 + x1) * 0.5f, (y0 + y1) * 0.5f, x1 - x0 + 2 * OutlinePad, y1 - y0 + 2 * OutlinePad);
     }
 
-    // screen の名前の札の矩形 (スクリーンの面の上の、真ん中の x と y、幅、高さ)。札を出していなければ null。
-    // 輪郭の左上の内側に置く。大きさを持つスクリーンは輪郭が重なるので、スクリーンの順に横へ並べる。
-    // ほかのスクリーンは、輪郭が画面からはみ出していても札をつかめるよう、輪郭のうち画面に見えている所の左上に置く
+    // Rectangle of screen's name tag (on the screen surface: center x and y, width, height). null if the tag is not shown.
+    // Placed inside the top left of the outline. Screens with a size have overlapping outlines, so their tags are laid out horizontally in screen order.
+    // Other screens put the tag at the top left of the visible part of the outline, so the tag can be grabbed even if the outline extends off screen
     public static Vec4? TagOf(Screen screen)
     {
         if (!ScreensLit || !screen.Shown || !screenTags.TryGetValue(screen, out var tag))
@@ -672,7 +672,7 @@ public static class Lider
             if (corner != null)
             {
                 left = Math.Min(Math.Max(left, corner.Value.X), box.X + box.Z * 0.5f - w - 2 * pad);
-                // 画面の上の端の 1 段は、大きさを持つスクリーンの札が並ぶので空ける
+                // Leave the top row of the screen free, since the tags of screens with a size are lined up there
                 top = Math.Max(Math.Min(top, corner.Value.Y - h - pad), box.Y - box.W * 0.5f + h + 2 * pad);
             }
             return new Vec4(left + pad + w * 0.5f, top - pad - h * 0.5f, w, h);
@@ -687,11 +687,11 @@ public static class Lider
         return new Vec4(left + pad + w * 0.5f, top - pad - h * 0.5f, w, h);
     }
 
-    // Space の札: Space にゲームを置いている間、スクリーンの名前の札の列の右に出す。押すと、ゲームが元のスクリーンのウィンドウに戻る。
-    // 札は、奥のゲームの絵のスクリーン (backdrop) の面の上に置く
+    // Space tag: while the game is placed in Space, shown to the right of the row of screen name tags. Pressing it returns the game to the window on its original screen.
+    // The tag is placed on the surface of the screen of the game image at the back (backdrop)
     static readonly TitleView spaceTag = new TitleView("lider_space_tag");
 
-    // Space の札の矩形 (backdrop の面の上の、真ん中の x と y、幅、高さ)。出していなければ null
+    // Rectangle of the Space tag (on the backdrop surface: center x and y, width, height). null if not shown
     public static Vec4? SpaceTagOf()
     {
         if (!ScreensLit || Work == null || Work.InSpace == null || !OnPlane(backdrop))
@@ -708,7 +708,7 @@ public static class Lider
         return new Vec4(left + pad + w * 0.5f, backdrop.Size.Y * 0.5f - pad - h * 0.5f, w, h);
     }
 
-    // ray が Space の札を指しているか
+    // Whether ray points at the Space tag
     static bool OnSpaceTag(Ray ray)
     {
         var tag = SpaceTagOf();
@@ -716,7 +716,7 @@ public static class Lider
         return tag != null && at != null && Math.Abs(at.Value.X - tag.Value.X) <= tag.Value.Z * 0.5f && Math.Abs(at.Value.Y - tag.Value.Y) <= tag.Value.W * 0.5f;
     }
 
-    // ray が指している名前の札のスクリーン (手前のスクリーンを先に見る)
+    // Screen whose name tag the ray points at (nearer screens are checked first)
     static Screen? TagAt(Workspace w, Ray ray)
     {
         Screen? found = null;
@@ -733,7 +733,7 @@ public static class Lider
         return found;
     }
 
-    // 画面の (x, y) が、動かせるスクリーンの名前の札の上なら、そのスクリーンをつかむ
+    // If screen (x, y) is on the name tag of a movable screen, grab that screen
     static bool GrabScreenAt(Workspace w, float x, float y)
     {
         var ray = PointerRay(x, y);
@@ -746,7 +746,7 @@ public static class Lider
         return true;
     }
 
-    // つかんでいるスクリーンを、つかんだ点が ray の指す所に来るように、面に沿って動かす
+    // Move the grabbed screen along its surface so the grabbed point comes to where the ray points
     static void DragScreen(Ray ray)
     {
         var at = heldScreen != null ? SurfacePoint(heldScreen, ray) : null;
@@ -754,7 +754,7 @@ public static class Lider
             heldScreen.Shift(at.Value.X - heldAt.X, at.Value.Y - heldAt.Y);
     }
 
-    // 札の texture を、出している間だけ描く (画面への pass の外で呼ぶ)
+    // Draw the tag textures only while shown (call outside the pass to the screen)
     static void PrepareScreenTags(Workspace w, MonoText text)
     {
         if (!ScreensLit)
@@ -767,7 +767,7 @@ public static class Lider
                 screenTags[screen] = tag;
             }
             tag.Label = screen.Name;
-            // 動かせないスクリーンの札は、薄く出す
+            // Tags of screens that cannot be moved are shown faded
             tag.Focused = screen.Movable;
             tag.PxW = (int)(text.CellW * (Utf8.Bytes(screen.Name) + 2)) + 8;
             if (screen.Shown)
@@ -782,7 +782,7 @@ public static class Lider
         }
     }
 
-    // screen の面の上の (x, y) の、最後に描いた frame の画面の px
+    // Screen px, in the last drawn frame, of (x, y) on screen's surface
     public static Vec2 SurfacePx(Screen screen, float x, float y)
     {
         var flat = Space.Flat;
@@ -793,7 +793,7 @@ public static class Lider
         return ViewportOn(screen, p);
     }
 
-    // screen の面の上の矩形 (真ん中の x と y、幅、高さ) を、色か texture で描く
+    // Draw a rectangle on screen's surface (center x and y, width, height) with a color or a texture
     static void SurfaceQuad(Screen screen, Mat4 world, Vec4 rect, Color color, TextureRef? tex)
     {
         var flat = Space.Flat;
@@ -822,7 +822,7 @@ public static class Lider
             var color = screen == heldScreen ? Color.Rgb(Theme.Accent.R, Theme.Accent.G, Theme.Accent.B, 0.95f)
                 : screen.Movable ? Color.Rgb(Theme.Accent.R, Theme.Accent.G, Theme.Accent.B, 0.55f)
                 : Color.Rgb(Theme.Muted.R, Theme.Muted.G, Theme.Muted.B, 0.35f);
-            // 輪郭は、矩形の内側に引く (画面いっぱいのスクリーンでも見える)
+            // The outline is drawn inside the rectangle (visible even for a full-screen screen)
             SurfaceQuad(screen, world, new Vec4(box.X, box.Y + (box.W - line) * 0.5f, box.Z, line), color, null);
             SurfaceQuad(screen, world, new Vec4(box.X, box.Y - (box.W - line) * 0.5f, box.Z, line), color, null);
             SurfaceQuad(screen, world, new Vec4(box.X - (box.Z - line) * 0.5f, box.Y, line, box.W), color, null);
@@ -841,8 +841,8 @@ public static class Lider
         }
     }
 
-    // 指しているウィンドウをマウスでつかむ (どの中身のウィンドウでも、どのスクリーンの上でも)。
-    // ゲームの絵は、見出しの帯でつかむ (絵の上のマウスはゲームのもの)
+    // Grab the window pointed at with the mouse (any window content, on any screen).
+    // The game image is grabbed by its title band (the mouse over the image belongs to the game)
     static void GrabAt(Workspace w, float x, float y)
     {
         var ray = PointerRay(x, y);
@@ -856,11 +856,11 @@ public static class Lider
         if (at == null)
             return;
         grab.Start(window, at.Value.X, at.Value.Y);
-        // 次に並べるときから、配置の規則はこのウィンドウを動かさない
+        // From the next layout on, the arrangement rule does not move this window
         ScreenFor(w, window).Held = window;
     }
 
-    // ray が screen の面に当たる所 (スクリーンの面の上の座標。当たらなければ null)
+    // Where ray hits screen's surface (coordinates on the screen surface; null if it does not hit)
     static Vec2? SurfacePoint(Screen screen, Ray ray)
     {
         var flat = Space.Flat;
@@ -869,13 +869,13 @@ public static class Lider
         Space.Flat = flat;
         if (at == null)
             return null;
-        // 視点に固定した平面は、半径 Space.R の所に同じ見かけの大きさで当てているので、スクリーンの距離の大きさに戻す
+        // Flat screens fixed to the view are hit at radius Space.R with the same apparent size, so scale back to the screen's distance
         if (OnPlane(screen))
             return new Vec2(at.Angle * screen.Position.Z - screen.Position.X, at.Y / ViewScale(screen) - screen.Position.Y);
         return new Vec2(screen.XAt(at.Angle), at.Y);
     }
 
-    // ウィンドウを閉じる (どの中身のウィンドウにも効く)。focus があったら、Code のウィンドウに戻す
+    // Closes a window (works for any window content). If it had focus, focus goes back to the Code window
     public static void Close(Workspace w, Window window)
     {
         if (window.Content is Code)
@@ -894,7 +894,7 @@ public static class Lider
         }
     }
 
-    // focus のあるウィンドウを閉じる (Code では今のタブを閉じ、最後のタブならウィンドウごと閉じる)
+    // Closes the focused window (in Code, closes the current tab, and the whole window if it is the last tab)
     public static void CloseFocused(Workspace w)
     {
         var window = w.Focused;
@@ -906,7 +906,7 @@ public static class Lider
             Close(w, window);
     }
 
-    // インスペクタの行に絞り込む。個体なら、エディタのフィールドの値もその個体にする
+    // Narrows the inspector to a row. For an instance, also makes the editor's field values show that instance
     public static void EnterScope(InspectRow row)
     {
         inspect.Tree.Enter(row);
@@ -914,7 +914,7 @@ public static class Lider
             Fields.Select(row.Key);
     }
 
-    // 絞り込んだ個体を、static から辿って見つけた所 (FieldValues) に追わせる。見つからなくなったら class に戻す
+    // Makes the narrowed instance follow where it was found by tracing from statics (FieldValues). Goes back to the class when it can no longer be found
     static void FollowScope()
     {
         var tree = inspect.Tree;
@@ -927,10 +927,10 @@ public static class Lider
             tree.Rebase(path);
     }
 
-    // 実行の印を引いている個体 (絞り込みの ScopeId。替わったら印を消す)
+    // Instance whose execution marks are drawn (the narrowing ScopeId; the marks are cleared when it changes)
     static string tracedScope = "";
 
-    // id の個体に絞る (static から辿って見つけていなければ何もしない)
+    // Narrows to the instance with id (does nothing if it has not been found by tracing from statics)
     public static void ScopeToInstance(string id)
     {
         var found = Fields.Find(id);
@@ -940,7 +940,7 @@ public static class Lider
         inspect.Tree.EnterInstance(found.Class, id, found.Path);
     }
 
-    // インスペクタをパンくずの i 番目の段に戻す。個体から抜けたら、エディタの個体の選択も解く
+    // Returns the inspector to the i-th level of the breadcrumbs. When leaving an instance, also clears the editor's instance selection
     public static void ScopeTo(int i)
     {
         var cls = inspect.Tree.ScopeClass;
@@ -950,7 +950,7 @@ public static class Lider
             Fields.Toggle(cls, id);
     }
 
-    // エディタの class の行の個体の目印を押した: その個体を選び、インスペクタもその個体に絞り込む (選んでいれば解き、class に戻す)
+    // The instance marker on a class line in the editor was pressed: select that instance and narrow the inspector to it too (if already selected, deselect it and go back to the class)
     public static void ToggleInstance(string cls, string id)
     {
         Fields.Toggle(cls, id);
@@ -961,7 +961,7 @@ public static class Lider
             inspect.Tree.ScopeTo(1);
     }
 
-    // 窓の i 番目のタブを出して focus を移す (見出しのタブを押した)
+    // Shows the panel's i-th tab and moves focus to it (a tab in the title was pressed)
     public static void ShowTab(Window window, int i)
     {
         var w = Work;
@@ -971,11 +971,11 @@ public static class Lider
         w.FocusWindow = window;
     }
 
-    // Alt+Shift+PageUp / PageDown で変える幅 (px、約 8 桁)
-    // key で 1 回に変えるウィンドウの大きさ (メートル。半径 Space.R の所の見かけの長さ)
+    // Width changed by Alt+Shift+PageUp / PageDown (px, about 8 columns)
+    // Window size changed per key press (meters; apparent length at radius Space.R)
     static float SizeStep => 64 * PanelView.BaseW / PanelView.BasePxW * (Space.Flat ? Space.FlatScale : 1);
 
-    // lider の操作を、名前の付いた命令として表に載せる (key の割り当ては Keymap、検索からも同じ名前で呼ぶ)
+    // Registers lider's operations in the table as named commands (key bindings are in Keymap; search calls them by the same names)
     static void RegisterCommands()
     {
         CommandTable.Register("focus:game", "focus をゲームとコードの間で移す", () => With(w =>
@@ -1068,7 +1068,7 @@ public static class Lider
         StateNotice = "";
         CommandTable.Register("inspector:toggle", "インスペクタを開く・focus を移す・閉じる", () => With(w =>
         {
-            // 出していなければ出して focus を移し、focus がほかにあれば focus を移し、focus があれば閉じる
+            // If not shown, show it and move focus; if focus is elsewhere, move focus; if it has focus, close it
             if (inspect.Shown && w.Focused == inspectWindow)
                 Close(w, inspectWindow);
             else
@@ -1085,13 +1085,13 @@ public static class Lider
         CommandTable.Register("juice:cycle", "音と演出の強さを変える", () => With(w => SetJuice((Juice + 2) % 3)));
     }
 
-    // 命令を名前で実行する (検索と test から)
+    // Runs a command by name (from search and tests)
     public static bool Run(string name)
     {
         return CommandTable.Run(name);
     }
 
-    // どの focus でも効く命令
+    // Commands that work with any focus
     static bool With(Action<Workspace> run)
     {
         if (Work == null)
@@ -1100,7 +1100,7 @@ public static class Lider
         return true;
     }
 
-    // focus が Code にあるときだけ効く命令
+    // Commands that work only when focus is on Code
     static bool OnCode(Action<Workspace> run)
     {
         var w = Work;
@@ -1110,7 +1110,7 @@ public static class Lider
         return true;
     }
 
-    // focus のある Code のウィンドウを動かす命令。動かしている間は、つかんだときと同じに浮かせる (key の繰り返しが続く間)
+    // Commands that move the focused Code window. While moving, it is lifted the same as when grabbed (while the key repeat continues)
     static bool Moved(Action<Workspace> run)
     {
         if (!OnCode(run))
@@ -1120,7 +1120,7 @@ public static class Lider
         return true;
     }
 
-    // focus のあるウィンドウから (dx, dy) の向きにある、同じスクリーンの一番近いウィンドウへ focus を移す (+X が右、+Y が上)
+    // Moves focus to the nearest window on the same screen in the (dx, dy) direction from the focused window (+X is right, +Y is up)
     static void FocusToward(Workspace w, int dx, int dy)
     {
         var from = w.Focused;
@@ -1132,7 +1132,7 @@ public static class Lider
         var here = Center(w, from);
         Window? best = null;
         var bestCost = 0.0f;
-        // 同じスクリーンの中で探す (重なっている別のスクリーンのウィンドウとは、隣かどうかを決められない)
+        // Search within the same screen (whether a window on another, overlapping screen is adjacent cannot be decided)
         var on = ScreenFor(w, from);
         foreach (var screen in Screens)
         {
@@ -1145,7 +1145,7 @@ public static class Lider
                 var at = Center(w, window);
                 var along = (at.X - here.X) * dx + (at.Y - here.Y) * dy;
                 var across = Math.Abs((at.X - here.X) * dy) + Math.Abs((at.Y - here.Y) * dx);
-                // 向きの先にあり、横へのずれより先への進みが大きい物
+                // Ones ahead in the direction, whose forward progress is larger than their sideways offset
                 if (along <= 0.001f || across > along)
                     continue;
                 var cost = along + across * 2;
@@ -1160,8 +1160,8 @@ public static class Lider
             w.FocusTo(best);
     }
 
-    // ウィンドウの真ん中の、見た目の位置 (半径 Space.R の所のメートル。視点の正面が 0)。
-    // 視点に固定した平面のスクリーンと、世界に置いた円筒のスクリーンのウィンドウを、同じ物差しで比べる
+    // Apparent position of the window center (meters at radius Space.R; straight ahead of the view is 0).
+    // Compares windows on flat screens fixed to the view and on cylinder screens placed in the world with the same measure
     static Vec2 Center(Workspace w, Window window)
     {
         var screen = ScreenFor(w, window);
@@ -1176,12 +1176,12 @@ public static class Lider
         return Document.Booted && EditorHost.ImeComposing();
     }
 
-    // 一番新しい frame から 1 frame 進めている間、止め直すまでに残る frame の数
+    // While stepping 1 frame from the newest frame, the number of frames left until pausing again
     static int stepping;
-    // 止めているか (1 frame 進めている間も止めているとみなす)
+    // Whether paused (stepping 1 frame also counts as paused)
     static bool Paused => GameApp.Position >= 0 || stepping > 0;
 
-    // ゲームを止める (止めていれば、止めた frame から続ける)
+    // Pauses the game (if paused, resumes from the paused frame)
     public static void TogglePause()
     {
         if (GameApp.Position < 0)
@@ -1191,7 +1191,7 @@ public static class Lider
         stepping = 0;
     }
 
-    // 止めている間、1 frame 前へ
+    // While paused, 1 frame back
     public static void StepBack()
     {
         var at = GameApp.Position;
@@ -1199,9 +1199,9 @@ public static class Lider
             GameApp.Pause(at + 1);
     }
 
-    // 止めている間、1 frame 後へ。
-    // 一番新しい frame なら、ゲームを 1 frame 動かして控えに足し、そこで止める。
-    // 続けると止めた frame を今の入力で作り直すので、2 frame 動かして次の frame で止め直す (進めている間に押すと 1 frame 足す)
+    // While paused, 1 frame forward.
+    // At the newest frame, runs the game 1 frame, adds it to the record, and pauses there.
+    // Resuming recreates the paused frame with the current input, so it runs 2 frames and pauses again on the next frame (pressing while stepping adds 1 frame)
     public static void StepForward()
     {
         var at = GameApp.Position;
@@ -1216,11 +1216,11 @@ public static class Lider
         }
     }
 
-    // LIDER_CARET_LOG=1 なら、focus のある窓の cursor の画面の位置 (px、左上が 0,0) と高さを、変わったときに標準出力へ
-    // 「lider_caret x y h」と書く (録画の編集が、打っている所を追うため)
+    // If LIDER_CARET_LOG=1, writes the screen position (px, top left is 0,0) and height of the cursor in the focused panel to standard output when they change,
+    // as "lider_caret x y h" (so editing of the recording can follow where typing happens)
     static readonly bool caretLog = Environment.GetEnvironmentVariable("LIDER_CARET_LOG") == "1";
     static string loggedCaret = "";
-    // focus のある窓の cursor の上の端の画面の位置 (px) と高さ (Z)。描いていない frame は前のまま
+    // Screen position (px) of the top edge of the cursor in the focused panel, and its height (Z). Unchanged in frames that are not drawn
     public static Vec3 CaretViewport;
 
     static void LogCaret(Mat4 vp)
@@ -1237,9 +1237,9 @@ public static class Lider
         Console.WriteLine(s);
     }
 
-    // LIDER_CARET_LOG=1 なら、打った key が入る file (focus のある窓の今のタブ。lider が入力を取っていないか、
-    // ファイルの検索を出しているか、窓が無ければ空) を、変わったときに標準出力へ「lider_focus PATH」と書く
-    // (録画の道具が、打ち込む前に打つ先の file を確かめるため)
+    // If LIDER_CARET_LOG=1, writes the file that typed keys go into (the current tab of the focused panel; empty if lider is not taking input,
+    // the file search is shown, or there is no panel) to standard output as "lider_focus PATH" when it changes
+    // (so the recording tool can check the target file before typing into it)
     static string? loggedFocus;
 
     static void LogFocus(Workspace w)
@@ -1251,7 +1251,7 @@ public static class Lider
         Console.WriteLine("lider_focus " + focus);
     }
 
-    // インスペクタの板の、最後に描いた frame の画面の px (左, 上, 右, 下)
+    // Screen px of the inspector board in the last drawn frame (left, top, right, bottom)
     public static Vec4 BoardViewport()
     {
         var size = InspectSize();
@@ -1260,39 +1260,39 @@ public static class Lider
         return new Vec4(a.X, a.Y, b.X, b.Y);
     }
 
-    // 控えた frame の帯 (止めた位置の印の高さを含む) の、画面の px (左, 上, 右, 下)。出していなければ全部 0
+    // Screen px of the recorded-frames bar (including the height of the paused-position mark) (left, top, right, bottom). All 0 if not shown
     public static Vec4 TimelineViewport()
     {
         var band = TimelineRect();
         return band != null ? new Vec4(band.X, band.Y, band.X + band.W, band.Y + band.H) : new Vec4(0, 0, 0, 0);
     }
 
-    // コードのスクリーンの上の位置 (基準の置き方の座標) の、最後に描いた frame の画面の px (左上が 0,0)
+    // Screen px (top left is 0,0), in the last drawn frame, of a position on the code screen (in reference layout coordinates)
     public static Vec2 ViewportPoint(Vec3 p)
     {
         return Work != null ? ViewportOn(Work.CodeScreen, p) : ViewportOf(lastVp, p);
     }
 
-    // screen の上の位置 (基準の置き方の座標) の、最後に描いた frame の画面の px
+    // Screen px, in the last drawn frame, of a position on screen (in reference layout coordinates)
     public static Vec2 ViewportOn(Screen screen, Vec3 p)
     {
         return ViewportOf(VpOf(screen, lastVp), p);
     }
 
-    // 空間の位置の、画面の px (左上が 0,0)
+    // Screen px of a position in space (top left is 0,0)
     static Vec2 ViewportOf(Mat4 vp, Vec3 p)
     {
         var c = vp * new Vec4(p.X, p.Y, p.Z, 1);
         return new Vec2((c.X / c.W * 0.5f + 0.5f) * viewportW, (0.5f - c.Y / c.W * 0.5f) * viewportH);
     }
 
-    // 画面の (x, y) (VR では頭の向き) を click する
+    // Clicks at screen (x, y) (in VR, the head direction)
     public static void ClickAt(float x, float y)
     {
         var w = Work;
         if (w == null)
             return;
-        // Space の札を押すと、Space に置いたゲームが、元のスクリーンのウィンドウに戻る
+        // Pressing the Space tag returns the game placed in Space to the window on its original screen
         if (OnSpaceTag(lastEye != null ? gaze : PointerRay(x, y)))
         {
             w.TakeFromSpace();
@@ -1303,7 +1303,7 @@ public static class Lider
         Click(w, lastEye != null ? gaze : PointerRay(x, y), true);
     }
 
-    // コードの板が前にあっても、その奥のゲームの物を描いたコードを探す (中ボタン)。ゲームを止めている間だけ効く
+    // Finds the code that drew the game object behind, even if a code board is in front (middle button). Works only while the game is paused
     public static void PickAt(float x, float y)
     {
         var w = Work;
@@ -1316,13 +1316,13 @@ public static class Lider
         RequestPick(lastEye != null ? gaze : PointerRay(x, y));
     }
 
-    // 指した所で次のどれかをする: 見出しの印ならその操作 (閉じる、Space へ出す)、タブならそのタブを出す、見出しならそのウィンドウに focus を移す、窓ならその窓に focus を移してカーソルを動かす、どれでもなければゲームの物を描いたコードを探す (Gfx.Pick)
+    // At the pointed place, does one of the following: a title mark runs its action (close, move to Space); a tab shows that tab; a title moves focus to that window; a panel moves focus to it and moves the cursor; otherwise finds the code that drew the game object (Gfx.Pick)
     public static void Click(Workspace w, Ray ray, bool pickGame)
     {
         if (PressOsk(w, ray))
             return;
         var uv = InspectAt(ray);
-        // 押したウィンドウに focus が移る (コードへ飛ぶ行を押したら、focus は開いた Code に移る)
+        // Focus moves to the pressed window (if a line that jumps to code is pressed, focus moves to the opened Code)
         if (uv != null)
             w.FocusTo(inspectWindow);
         if (uv != null && inspect.Load)
@@ -1361,7 +1361,7 @@ public static class Lider
         var edged = !Zen && lastEye == null ? EdgeWindow(w, ray) : null;
         if (edged != null)
         {
-            // 自分の大きさを持つ Code のウィンドウは、引くと focus も移る。区画の境目を引いても、focus は動かさない
+            // A Code window with its own size also takes focus when dragged. Dragging a section border does not move focus
             if (edged.Content is Code && ScreenFor(w, edged).Layout is Strip)
                 w.FocusTo(edged);
             StartEdge(edged, foundEdge);
@@ -1395,7 +1395,7 @@ public static class Lider
                     Fields.NextPage(mark.Class);
                 return;
             }
-            // 止めている間は、行の後ろの値を押すと、その値を書き換える
+            // While paused, pressing the value after a line rewrites that value
             var value = Paused ? Panel(hit.Window).ValueAt(hit.Window.Code.Doc, hit.Uv.X * hit.Window.PxW, hit.Uv.Y * hit.Window.PxH) : null;
             if (value != null)
             {
@@ -1410,8 +1410,8 @@ public static class Lider
             RequestPick(ray);
     }
 
-    // ray が指している物に対する操作の案内を、右下の決まった場所に出す (画面への pass の外で呼ぶ)
-    // LIDER_HINTS=0 なら、操作の案内を出さない
+    // Shows hints for operations on what the ray points at, in a fixed place at the bottom right (call outside the pass to the screen)
+    // If LIDER_HINTS=0, operation hints are not shown
     static readonly bool hintsOff = Environment.GetEnvironmentVariable("LIDER_HINTS") == "0";
 
     static void ShowHints(Workspace w, Ray ray)
@@ -1421,7 +1421,7 @@ public static class Lider
             return;
         if (hintsOff)
         {
-            // 操作の案内は出さないが、負荷の札は出す
+            // Operation hints are not shown, but the load tag is
             HideHints();
             var detail = DetailHints(w, ray);
             if (detail.Count > 0)
@@ -1478,7 +1478,7 @@ public static class Lider
         PlaceHints(w);
     }
 
-    // マウスがゲームのものの間の案内: 指している物に依らない操作だけを出す
+    // Hints while the mouse belongs to the game: shows only operations that do not depend on what is pointed at
     static void ShowGameHints(Workspace w)
     {
         if (text == null || hintsOff)
@@ -1493,8 +1493,8 @@ public static class Lider
         PlaceHints(w);
     }
 
-    // 案内のウィンドウを、札の字のある大きさにして、スクリーンの規則 (右下の隅) で置く
-    // 画面のキーボードのウィンドウを、出している間だけスクリーンに載せ、大きさを絵に合わせる。最初に載せる所は desk で、その後は移した先に居る
+    // Size the hint window to fit the tag text and place it by the screen rule (bottom right corner)
+    // Put the on-screen keyboard window on a screen only while shown, and size it to the image. It is first put on desk, and afterwards stays where it was moved
     static void PlaceOsk(Workspace w)
     {
         var on = w.ScreenOf(oskWindow);
@@ -1521,7 +1521,7 @@ public static class Lider
             on.Arrange();
     }
 
-    // ray が画面のキーボードを指している所 (絵の中の 0..1。指していなければ null)
+    // Where the ray points on the on-screen keyboard (0..1 in the image; null if not pointing at it)
     static Vec2? OskUv(Workspace w, Ray ray)
     {
         var on = w.ScreenOf(oskWindow);
@@ -1537,14 +1537,14 @@ public static class Lider
         return new Vec2(u, v);
     }
 
-    // 指す物 pointer (左手 0、右手かマウス 1) の ray の指す key を光らせる (ray が無ければ、光らせない)
+    // Highlights the key that the ray of pointer (left hand 0, right hand or mouse 1) points at (no highlight if there is no ray)
     static void PointOsk(Workspace w, int pointer, Ray? ray)
     {
         var uv = ray != null ? OskUv(w, ray.Value) : null;
         osk.Point(pointer, uv != null ? uv.Value.X : -1, uv != null ? uv.Value.Y : -1);
     }
 
-    // ray が画面のキーボードの key を指していれば、その key を押す (つないだキーボードと同じ event を流す)。キーボードを指していれば true
+    // If the ray points at a key of the on-screen keyboard, presses that key (sends the same event as a connected keyboard). Returns true if it points at the keyboard
     public static bool PressOsk(Workspace w, Ray ray, int pointer = 1)
     {
         var uv = OskUv(w, ray);
@@ -1567,7 +1567,7 @@ public static class Lider
         hintCard.Y = WindowY(w, hintWindow);
     }
 
-    // 負荷の一覧の行か、窓の行の右の負荷を指しているなら、その行の負荷を文字だけの行で (案内の札の上に出す)
+    // If pointing at a row of the load list or at the load to the right of a panel line, shows that line's load as a text-only line (above the hint tag)
     static List<Hint> DetailHints(Workspace w, Ray ray)
     {
         var hints = new List<Hint>();
@@ -1603,7 +1603,7 @@ public static class Lider
         return hints;
     }
 
-    // マウスとコントローラーがゲームのものの間は、指している物の案内と光を消す
+    // While the mouse and controllers belong to the game, clears the hints and highlight for the pointed thing
     static void HideHints()
     {
         hintCard.Shown = false;
@@ -1616,7 +1616,7 @@ public static class Lider
 
     static readonly int[] NoGaps = new int[0];
 
-    // focus のある窓の左の、動いている版の板と窓との間の幅 (面の上のメートル、出していなければ 0)
+    // Width between the focused panel and the running-version board to its left (meters on the surface; 0 if not shown)
     static float OldBoardW
     {
         get
@@ -1629,10 +1629,10 @@ public static class Lider
         }
     }
 
-    // インスペクタのウィンドウを、出しているならスクリーンに置き、しまっているなら外す
+    // Places the inspector window on a screen if shown, and removes it if hidden
     static void PlaceInspector(Workspace w)
     {
-        // 出す間だけスクリーンに載せる。最初に載せる所は、コードの窓を置くスクリーン。その後は、移した先のスクリーンにそのまま居る
+        // Put it on a screen only while shown. It is first put on the screen where the code panels go. Afterwards, it stays on the screen it was moved to
         var on = w.ScreenOf(inspectWindow);
         var home = w.Home ?? w.CodeScreen;
         if (on != null && !inspect.Shown)
@@ -1644,40 +1644,40 @@ public static class Lider
         }
         if (inspect.Shown && on == null)
         {
-            // コードのスクリーン (横一列) では一番左に、ほかのスクリーンでは最後に載せる
+            // Put it leftmost on the code screen (single row), and last on other screens
             if (home == w.CodeScreen)
                 home.Windows.Insert(0, inspectWindow);
             else
                 home.Windows.Add(inspectWindow);
             on = home;
         }
-        // 範囲を決めている間は、focus のある窓のすぐ左に並べる (範囲にこの 2 つを収める)
+        // While an area is set, line it up right to the left of the focused panel (fit these 2 into the area)
         if (on == w.CodeScreen && AreaW > 0 && w.FocusWindow != null && w.ScreenOf(w.FocusWindow) == on)
         {
             on.Windows.Remove(inspectWindow);
             on.Windows.Insert(on.Windows.IndexOf(w.FocusWindow), inspectWindow);
         }
-        // コードのスクリーンの真ん中には、最初のコードの窓を置く (インスペクタはその左に並ぶ)。
-        // 視点に固定している間は、視点を横へ送れないので、focus のあるウィンドウを真ん中に置く
+        // The first code panel goes in the middle of the code screen (the inspector is lined up to its left).
+        // While fixed to the view, the view cannot be moved sideways, so the focused window is put in the middle
         w.CodeScreen.Origin = null;
         if (w.CodeScreen.Anchor == ScreenAnchor.View && w.Focused != null && w.CodeScreen.Windows.Contains(w.Focused))
             w.CodeScreen.Origin = w.Focused;
         foreach (var window in w.CodeScreen.Windows)
             if (window.Content is Code && w.CodeScreen.Origin == null)
                 w.CodeScreen.Origin = window;
-        // 横一列では、インスペクタの画素の数と倍率が大きさを決める
+        // In a single row, the inspector's pixel count and scale decide its size
         inspectWindow.PxW = InspectView.PxW;
         inspectWindow.PxH = InspectView.PxH;
         inspectWindow.Scale = InspectScale;
-        // 平面のスクリーンでは、配置の規則が決めた矩形に収める
+        // On flat screens, fit it into the rectangle decided by the arrangement rule
         if (on != null && OnPlane(on) && inspectWindow.Position != null)
             InspectView.SetSize(inspectWindow.Size.X * ViewScale(on) / InspectScale, (inspectWindow.Size.Y * ViewScale(on) - InspectTitleH) / InspectScale);
-        // 隠れたウィンドウには focus を置かない
+        // Do not put focus on a hidden window
         if (w.Focused == inspectWindow && !TreeVisible)
             w.FocusCode();
     }
 
-    // インスペクタの中心の角度 (インスペクタの所を押すテストが使う)、高さ、大きさ (半径 Space.R の所のメートル)
+    // Inspector's center angle (used by tests that press on the inspector), height, and size (meters at radius Space.R)
     public static float BoardAngle => Work != null ? WindowAngle(Work, inspectWindow) : 0;
 
     static float InspectY()
@@ -1688,13 +1688,13 @@ public static class Lider
     static Vec2 InspectSize()
     {
         var screen = Work != null ? ScreenFor(Work, inspectWindow) : null;
-        // 平面のスクリーンでは、ウィンドウの矩形に見出しも収める
+        // On flat screens, the title also fits in the window rectangle
         return screen != null && OnPlane(screen)
             ? new Vec2(inspectWindow.Size.X * ViewScale(screen), inspectWindow.Size.Y * ViewScale(screen) - InspectTitleH)
             : inspectWindow.Size;
     }
 
-    // インスペクタの見出しの帯の高さと、中心の高さ
+    // Height of the inspector's title band, and the center height
     static float InspectTitleH
     {
         get
@@ -1704,7 +1704,7 @@ public static class Lider
         }
     }
 
-    // 平面のスクリーンで、window の矩形の上の端に取った見出しの帯の高さ (半径 Space.R の所のメートル)
+    // On flat screens, height of the title band taken at the top edge of window's rectangle (meters at radius Space.R)
     static float BarH(Screen screen, Window window)
     {
         var whole = window.ViewportRect;
@@ -1716,21 +1716,21 @@ public static class Lider
         return InspectY() + (InspectSize().Y + InspectTitleH) * 0.5f;
     }
 
-    // インスペクタを指していれば、その中の位置
+    // If pointing at the inspector, the position within it
     static Vec2? InspectAt(Ray ray)
     {
         var w = Work;
         if (w == null || !TreeVisible)
             return null;
         var screen = ScreenFor(w, inspectWindow);
-        // 平面のスクリーンの上の絵は Code より先に描くので、Code の陰になっている所は指せない
+        // Images on flat screens are drawn before Code, so parts hidden behind Code cannot be pointed at
         if (OnPlane(screen) && WindowAt(w, ray) != null)
             return null;
         var size = InspectSize();
         return HitOn(screen, ray, BoardAngle, InspectY(), size.X, size.Y);
     }
 
-    // 押した窓の上を指していれば、押した所からそこまでを選ぶ
+    // If pointing over the pressed panel, select from the pressed point to there
     static void DragTo(Workspace w, Ray ray)
     {
         if (pressed == null || !w.Windows.Contains(pressed))
@@ -1752,7 +1752,7 @@ public static class Lider
     {
         pickPending = true;
         hoverPick = false;
-        // lider が見ている版のゲームの絵を指しているときだけ調べる (XR ではゲームを空間に描いていないので、指せない)
+        // Inspect only when pointing at the game image of the version lider is looking at (in XR the game is not drawn in space, so it cannot be pointed at)
         if (lastEye != null)
             return;
         PointGames(pickX, pickY);
@@ -1760,14 +1760,14 @@ public static class Lider
             Watched.Pick(gameUv);
     }
 
-    // 今の画面に合う密度の、窓の本文の文字
+    // Panel body text glyphs at the density that fits the current screen
     static MonoText PanelText()
     {
         var density = 1;
         if (Space.Flat)
         {
             Gfx.Size(out _, out var sh);
-            // web の Gfx.Size は CSS px なので、ページが画素の比率を渡す
+            // On web, Gfx.Size is in CSS px, so the page passes the pixel ratio
             density = PanelView.DensityFor((int)(sh * PixelRatio));
         }
         if (density == 1)
@@ -1785,7 +1785,7 @@ public static class Lider
         return (Environment.GetEnvironmentVariable("LIDER_HOME") ?? ".") + "/data/UDEVGothic-Regular.ttf";
     }
 
-    // 窓の view ごとの板
+    // Board for each panel view
     public static PanelView Panel(Window window)
     {
         var key = window.Code.ViewId.ToString();
@@ -1802,32 +1802,32 @@ public static class Lider
         return Camera3d.ViewportRay(lastVp, x, y, viewportW, viewportH);
     }
 
-    // window を置いているスクリーン
+    // Screen that window is placed on
     static Screen ScreenFor(Workspace w, Window window)
     {
         return w.ScreenOf(window) ?? w.CodeScreen;
     }
 
-    // 平面のスクリーンか (固定先によらない)。
-    // その上の物は、半径 Space.R の所に、見る人の正面から同じ見かけの大きさになるように描いて当て、Pose でスクリーンの距離へ運ぶ
+    // Whether it is a flat screen (regardless of what it is fixed to).
+    // Things on it are drawn and hit at radius Space.R so they have the same apparent size from straight in front of the viewer, then carried to the screen's distance by Pose
     static bool OnPlane(Screen screen)
     {
         return screen.Shape == ScreenShape.Plane;
     }
 
-    // 視点の座標の view-projection (非 XR は既定の画角のカメラ、XR は描いている眼) と、視点の座標から lider の空間への行列 (非 XR は単位行列)
+    // The view-projection in view coordinates (non-XR: the camera with the default field of view; XR: the eye being drawn), and the matrix from view coordinates to lider's space (identity in non-XR)
     static Mat4 viewVp = Mat4.Identity();
     static Mat4 flatViewVp = Mat4.Identity();
     static Mat4 headToWorld = Mat4.Identity();
 
-    // screen を、見る人の座標で描くか (世界の座標でなく)。
-    // 視点に固定したスクリーンはいつも。XR でないときは、平面のスクリーンも: 視点の横送りと拡大は、円筒のスクリーンの窓の列を読むための物で、平面のスクリーンは動かさない
+    // Whether screen is drawn in viewer coordinates (rather than world coordinates).
+    // Always for screens fixed to the view. Outside XR, flat screens too: sliding and zooming the view is for reading the row of panels on the cylinder screen, and does not move flat screens
     static bool ByViewer(Screen screen)
     {
         return screen.Anchor == ScreenAnchor.View || (lastEye == null && OnPlane(screen));
     }
 
-    // lider の空間の ray を、screen の上の窓を当てる ray にする (視点に固定したスクリーンなら視点の座標の ray)
+    // Turns a ray in lider's space into the ray used to hit panels on screen (a ray in view coordinates for screens fixed to the view)
     static Ray RayOn(Screen screen, Ray ray)
     {
         if (ByViewer(screen))
@@ -1839,7 +1839,7 @@ public static class Lider
             }
             else
             {
-                // 画面の同じ画素を通る、視点の座標の ray
+                // Ray in view coordinates through the same display pixel
                 var px = ViewportOf(lastVp, ray.At(1));
                 ray = Camera3d.ViewportRay(flatViewVp, px.X, px.Y, viewportW, viewportH);
             }
@@ -1848,9 +1848,9 @@ public static class Lider
         return new Ray(back.MulPoint(ray.Origin), back.MulDir(ray.Dir));
     }
 
-    // screen を、基準の置き方 (円筒の軸が固定先の原点を通り、高さが 0) から、今の位置へ運ぶ行列。
-    // スクリーンの上の物は、基準の置き方の座標で描いて当て、この行列で運ぶ。
-    // 平面のスクリーンは、位置を面の上の座標に入れて半径 Space.R の所に描いているので、原点から距離の比で広げて、スクリーンの距離へ運ぶ
+    // Matrix that carries screen from the reference layout (cylinder axis through the anchor's origin, height 0) to its current position.
+    // Things on the screen are drawn and hit in reference layout coordinates, and carried by this matrix.
+    // Flat screens put their position into the surface coordinates and are drawn at radius Space.R, so they are scaled from the origin by the distance ratio and carried to the screen's distance
     static Mat4 Pose(Screen screen)
     {
         if (OnPlane(screen))
@@ -1859,20 +1859,20 @@ public static class Lider
             return Mat4.Scale(new Vec3(far, far, far));
         }
         var deeper = screen.Radius - Space.R;
-        // 円筒を平面に開いている間は、奥へまっすぐ運ぶ
+        // While the cylinder is unrolled flat, carry straight back
         if (!Xr.Active())
             return Mat4.Translate(new Vec3(0, screen.Position.Y, deeper));
         return Mat4.Translate(new Vec3(deeper * (float)Math.Sin(screen.Angle), screen.Position.Y, deeper * (float)Math.Cos(screen.Angle)));
     }
 
-    // screen の上の物を描く view-projection (world は、世界の座標の view-projection)
+    // View-projection for drawing things on screen (world is the view-projection in world coordinates)
     static Mat4 VpOf(Screen screen, Mat4 world)
     {
         return (ByViewer(screen) ? viewVp : world) * Pose(screen);
     }
 
-    // screen の上の、角度 angle、高さ y を中心にした幅 w、高さ h の板を ray で指した所 (板の中の 0..1)。
-    // 平面のスクリーンは XR でも曲げない
+    // Where ray points on the board of width w and height h centered at angle angle and height y on screen (0..1 within the board).
+    // Flat screens are not curved, even in XR
     static Vec2? HitOn(Screen screen, Ray ray, float angle, float y, float w, float h)
     {
         var flat = Space.Flat;
@@ -1882,13 +1882,13 @@ public static class Lider
         return uv;
     }
 
-    // 平面のスクリーン (距離 Position.Z) の上の長さを、半径 Space.R の所の同じ見かけの長さにする倍率
+    // Factor that turns a length on a flat screen (distance Position.Z) into the same apparent length at radius Space.R
     static float ViewScale(Screen screen)
     {
         return Space.R / screen.Position.Z;
     }
 
-    // コードの窓の、円筒の角度 (まだ並べていなければ並べる)
+    // Cylinder angle of a code panel (lays the panels out if not laid out yet)
     public static float WindowAngle(Workspace w, Window window)
     {
         if (window.Position == null)
@@ -1899,7 +1899,7 @@ public static class Lider
         return OnPlane(screen) ? (screen.Position.X + window.Position.Value.X) / screen.Position.Z : screen.AngleAt(window.Position.Value.X);
     }
 
-    // コードのウィンドウの子の、動いている版を左右に並べる板 (無ければ null)
+    // Child board of a code window that shows the running version side by side (null if there is none)
     public static Window? DiffOf(Window window)
     {
         foreach (var child in window.Children)
@@ -1908,7 +1908,7 @@ public static class Lider
         return null;
     }
 
-    // 動いている版の板を、出す間だけコードのウィンドウの子にし、親の左の手前に置く (親の並びは変えない)
+    // Make the running-version board a child of the code window only while shown, and place it in front, to the left of the parent (the parent's order does not change)
     static void PlaceDiff(Window window, bool shown)
     {
         var board = DiffOf(window);
@@ -1927,13 +1927,13 @@ public static class Lider
         board.Position = new Vec3(-(window.UnscaledSize.X * window.Scale * 0.5f + PanelView.OldGap + board.Size.X * 0.5f), 0, InspectR - Space.R);
     }
 
-    // 平面のスクリーンで、ウィンドウの矩形の上の端に、本文と別に描く見出しの帯を収めるウィンドウか
+    // Whether it is a window that, on flat screens, fits a title band drawn separately from the body at the top edge of the window rectangle
     static bool TitleInRect(Window window)
     {
         return window.Content is Code || window.Content is Inspector;
     }
 
-    // コードの窓の本文の真ん中の高さ (横一列に並べた窓は 0。つかんでいる間だけ動く)
+    // Height of the middle of a code panel's body (0 for panels in a single row; changes only while grabbed)
     public static float WindowY(Workspace w, Window window)
     {
         if (window.Position == null)
@@ -1941,13 +1941,13 @@ public static class Lider
         if (window.Position == null)
             return 0;
         var screen = ScreenFor(w, window);
-        // 平面のスクリーンでは、ウィンドウの矩形に見出しも収めるので、本文は見出しの分だけ下がる
+        // On flat screens the title also fits in the window rectangle, so the body moves down by the title height
         return OnPlane(screen)
             ? (screen.Position.Y + window.Position.Value.Y) * ViewScale(screen) - (TitleInRect(window) ? ((window.Content is Inspector) ? BarH(screen, window) : PanelView.TitleH * window.Scale) * 0.5f : 0)
             : window.Position.Value.Y;
     }
 
-    // ray が当たる窓 (focus のある窓を先に見る)
+    // Panel the ray hits (the focused panel is checked first)
     static WindowHit? WindowAt(Workspace w, Ray ray)
     {
         if (w.FocusWindow != null)
@@ -1967,25 +1967,25 @@ public static class Lider
         return null;
     }
 
-    // ray が window に当たる所 (窓の中の 0..1)
+    // Where ray hits window (0..1 within the panel)
     static Vec2? HitWindow(Workspace w, Window window, Ray ray)
     {
-        // 動いている間は、見えている所を指す
+        // While moving, points at where it is visible
         var m = MotionOf(window);
         var scale = m != null ? m.Scale.Value : window.Scale;
         return HitOn(ScreenFor(w, window), ray, m != null ? m.Angle.Value : WindowAngle(w, window), m != null ? m.Y.Value : WindowY(w, window), window.UnscaledSize.X * scale, window.UnscaledSize.Y * scale);
     }
 
-    // ウィンドウの見出しの帯。どの中身のウィンドウにも同じ物を付け、置き場所、当たり、描くのを 1 つの経路で扱う
+    // Window title band. The same one is attached to windows of any content, and placement, hit testing, and drawing are handled in one path
     static readonly Dictionary<Window, TitleView> titles = new Dictionary<Window, TitleView>();
     static int titleCount;
-    // 指している見出しの印 (ウィンドウと、印の番号)
+    // Title mark being pointed at (window and mark number)
     static Window? markHover;
     static int markHoverAt = -1;
-    // Space へ出す印
+    // Mark to move to Space
     public const string SpaceMark = "↑";
 
-    // window の見出しの帯。中身 (タブ、名前、印、幅) は、今のウィンドウの様子から決める
+    // window's title band. Its contents (tabs, name, marks, width) are decided from the current state of the window
     public static TitleView TitleOf(Window window)
     {
         if (!titles.TryGetValue(window, out var title))
@@ -1994,7 +1994,7 @@ public static class Lider
             titles[window] = title;
         }
         var w = Work;
-        // 閉じる動きの間の窓は、中身を変えない
+        // A panel in its closing animation does not change its contents
         if (w == null || (window.Content is Code && !w.Windows.Contains(window)))
             return title;
         title.Marks.Clear();
@@ -2003,14 +2003,14 @@ public static class Lider
             var motion = MotionOf(window);
             title.Tabs = w.TabTitles(window);
             title.Tab = window.Code.Tab;
-            // タブの後ろに、反映にかかった秒を出す
+            // Show the seconds it took to apply the change after the tabs
             title.Label = motion != null && motion.LandLabel > 0 ? (int)(motion.LandSeconds * 100) / 100.0f + "s" : "";
             title.PxW = Panel(window).PxW;
             title.Marks.Add(TitleView.Close);
         }
         else if (window == inspectWindow)
         {
-            // 版を並べている間は、見ている版の名前も出す
+            // While versions are side by side, also show the name of the version being viewed
             title.Label = (inspect.Load ? "Load" : "Inspector") + (DraftGame.Shown ? ": " + (Watched.Version == GameVersion.Draft ? DraftGame.Label() : "保存済み") : "");
             title.PxW = BarPxW(window) ?? InspectView.PxW;
             title.Marks.Add(TitleView.Close);
@@ -2028,7 +2028,7 @@ public static class Lider
         return title;
     }
 
-    // 矩形の上の端に帯の高さを取ったウィンドウの、帯の絵の幅 (px。帯の高さが PanelView.TitlePx になる縮尺。取っていなければ null)
+    // For a window with a band height taken at the top edge of its rectangle, the width of the band image (px, at the scale where the band height is PanelView.TitlePx; null if none is taken)
     static int? BarPxW(Window window)
     {
         if (window.ViewportRect == null || window.TitleBar <= 0)
@@ -2036,7 +2036,7 @@ public static class Lider
         return Math.Max(1, (int)(window.ViewportRect.W * PanelView.TitlePx / window.TitleBar));
     }
 
-    // 見出しの帯の置き場所: スクリーンの上の、中心の角度と高さ、幅、高さ (半径 Space.R の所のメートル) と、描く半径
+    // Title band placement: center angle and height, width, height on the screen (meters at radius Space.R), and the radius to draw at
     class TitlePlace
     {
         public readonly Screen Screen;
@@ -2057,14 +2057,14 @@ public static class Lider
         }
     }
 
-    // window の見出しの帯の置き場所 (帯を出していなければ null)。
-    // 帯は本文の上の端に付く。平面のスクリーンでは、ウィンドウの矩形の上の端に収める
+    // Placement of window's title band (null if the band is not shown).
+    // The band sits at the top edge of the body. On flat screens it fits in the top edge of the window rectangle
     static TitlePlace? TitlePlaceOf(Workspace w, Window window)
     {
         var screen = ScreenFor(w, window);
         if (window.Content is Code)
         {
-            // 動いている間は、見えている所に付ける
+            // While moving, attach it where it is visible
             var m = MotionOf(window);
             if (m == null && window.Position == null)
                 return null;
@@ -2083,14 +2083,14 @@ public static class Lider
         var whole = window.ViewportRect;
         if (whole == null || whole.W <= 0 || window.TitleBar <= 0)
             return null;
-        // 画面の上の帯の高さを、スクリーンの面の上の長さに直す
+        // Convert the band height on the display into a length on the screen surface
         var k = ViewScale(screen);
         var bar = window.TitleBar * window.Size.X / whole.W;
         return new TitlePlace(screen, (screen.Position.X + at.X) / screen.Position.Z, (screen.Position.Y + at.Y + (window.Size.Y - bar) * 0.5f) * k,
             window.Size.X * k, bar * k, Space.R);
     }
 
-    // 見出しの帯を持つウィンドウ。手前に描く順: 平面でないスクリーンの上の絵 (インスペクタ、ゲームの絵)、Code (focus のあるウィンドウが先)、平面のスクリーンの上の絵
+    // Windows with a title band. Order of drawing in front: images on non-flat screens (inspector, game image), Code (focused window first), images on flat screens
     static List<Window> Titled(Workspace w)
     {
         var all = new List<Window>();
@@ -2111,8 +2111,8 @@ public static class Lider
         return all;
     }
 
-    // ray が当たる見出しの帯 (手前に描くウィンドウを先に見る)。
-    // 平面のスクリーンの上の絵は Code より先に描くので、Code の陰になっている帯は指せない
+    // Title band the ray hits (windows drawn in front are checked first).
+    // Images on flat screens are drawn before Code, so bands hidden behind Code cannot be pointed at
     static WindowHit? TitleAt(Workspace w, Ray ray)
     {
         foreach (var window in Titled(w))
@@ -2133,7 +2133,7 @@ public static class Lider
         return place != null ? HitOn(place.Screen, ray, place.Angle, place.Y, place.W, place.H) : null;
     }
 
-    // ray が指している見出しの印を覚える (印の下地を光らせる)
+    // Remembers the title mark the ray points at (its background is highlighted)
     static void HoverMarks(Workspace w, Ray ray)
     {
         markHover = null;
@@ -2146,11 +2146,11 @@ public static class Lider
         markHoverAt = at;
     }
 
-    // 見出しの帯の texture を描き直す (画面への pass の外で呼ぶ)
+    // Redraws the title band textures (call outside the pass to the screen)
     static void PrepareTitles(Workspace w, MonoText text)
     {
         var live = Titled(w);
-        // 閉じる動きの間の窓も、描き続ける
+        // Panels in their closing animation keep being drawn too
         foreach (var pair in motions)
             if (!live.Contains(pair.Key))
                 live.Add(pair.Key);
@@ -2165,7 +2165,7 @@ public static class Lider
                 TitleOf(window).Prepare(text);
     }
 
-    // window の見出しの帯を描く (world は、世界の座標の view-projection)
+    // Draws window's title band (world is the view-projection in world coordinates)
     static void DrawTitle(Workspace w, Window window, Mat4 world)
     {
         var place = TitlePlaceOf(w, window);
@@ -2175,14 +2175,14 @@ public static class Lider
         Space.Flat = flat || OnPlane(place.Screen);
         var on = VpOf(place.Screen, world);
         var k = place.R / Space.R;
-        // Code は、板 (PanelView) が見出しの下地も描く
+        // For Code, the board (PanelView) also draws the title background
         if (!(window.Content is Code))
             Theme.Plate(on, Theme.Surface, place.Angle, place.Y, Space.R, place.W, place.H);
         Quad3d.Curved(on, title.Texture, Color.Rgb(1, 1, 1, 1), place.Angle, place.Y * k, place.R, place.W * k, place.H * k, 0, 1);
         Space.Flat = flat;
     }
 
-    // Gfx.Pick の結果が届いたら、click なら呼び出し元の並びのうち一覧にある最初の file をその行で開き、指しているだけなら What にする
+    // When the Gfx.Pick result arrives: for a click, opens the first file in the caller chain that is in the list, at that line; when only pointing, puts it in What
     static void TakePick(Workspace w)
     {
         if (!pickPending)
@@ -2213,14 +2213,14 @@ public static class Lider
             w.FocusCode();
             w.FocusOn(path);
             w.Focus?.MoveTo(line - 1, 0);
-            // それを描いた個体 (開いた行の段の this) に絞る
+            // Narrow to the instance that drew it (the this of the stack level of the opened line)
             if (i < selves.Length && selves[i] != "")
                 ScopeToInstance(selves[i]);
             return;
         }
     }
 
-    // 呼び出し元の並びのうち一覧にあるものを、「メソッド (file:行)」の行にする (内側から MaxWhat 個)
+    // Turns the callers that are in the list into "method (file:line)" lines (MaxWhat of them, innermost first)
     static List<string> WhatOf(Workspace w, string sites)
     {
         var rows = new List<string>();
@@ -2243,7 +2243,7 @@ public static class Lider
 
     const int MaxWhat = 3;
 
-    // 画面の (x, y) に何が描いてあるかを調べる (click しないで指しているとき)
+    // Inspects what is drawn at screen (x, y) (when pointing without clicking)
     public static void HoverAt(float x, float y)
     {
         pickX = x;
@@ -2252,7 +2252,7 @@ public static class Lider
         hoverPick = true;
     }
 
-    // マウスが止まってゲームの物を指している間、HoverSeconds ごとに何が描いてあるかを調べる。ほかを指すか動かすと消す
+    // While the mouse rests pointing at a game object, inspects what is drawn every HoverSeconds. Cleared when pointing elsewhere or moving
     static void Hover(Workspace w, Ray ray, float mx, float my, float dt)
     {
         var moved = mx != hoverX || my != hoverY;
@@ -2274,8 +2274,8 @@ public static class Lider
 
     const float HoverSeconds = 0.25f;
 
-    // XR でないときの、画面の大きさと、視点に固定した物を描くカメラを決める。
-    // lider の物をまだ描いていなければ (起動してからゲームの絵だけを出している間)、世界を見るカメラは、視点を送っていない既定の物にする
+    // Outside XR, sets the screen size and the camera that draws things fixed to the view.
+    // If lider's elements have not been drawn yet (while only the game image is shown since startup), the camera that views the world is the default one, with the view not slid
     static void SetCameras(int sw, int sh)
     {
         viewportW = sw;
@@ -2309,9 +2309,9 @@ public static class Lider
         var xr = Xr.Active();
         if (!xr)
             SetCameras(sw, sh);
-        // スクリーンは、拡大 (fov) に付いていかない既定の画角で置く
+        // Screens are placed with the default field of view, which does not follow the zoom (fov)
         PutAway();
-        // lider が見るゲームは、最後に focus を置いたゲームの絵のウィンドウの版 (編集中の版を閉じたら、保存した版)
+        // The game lider looks at is the version of the game image window that last had focus (the saved version once the draft version is closed)
         if (Work != null && Work.Focused != null && Work.Focused.Content is GameView seen)
             Watched.Watch(seen.Version);
         if (!DraftGame.Shown)
@@ -2322,8 +2322,8 @@ public static class Lider
         foreach (var screen in Screens)
             if (OnPlane(screen))
             {
-                // スクリーンの面の真ん中が写る画面の位置と、面の上の 1 メートルが画面の上で覆う長さ。
-                // XR には画面が無いので、既定の画角で見たときの物にする (ウィンドウの中の割り付けに使う)
+                // The display position where the middle of the screen surface appears, and the length that 1 meter on the surface covers on the display.
+                // XR has no display, so use the values seen with the default field of view (used for layout inside windows)
                 var perM = sh / (2 * screen.Position.Z * (float)Math.Tan(Space.FlatFov * 0.5f * Math.PI / 180));
                 var origin = new Vec2(sw * 0.5f + screen.Position.X * perM, sh * 0.5f - screen.Position.Y * perM);
                 if (!xr)
@@ -2334,7 +2334,7 @@ public static class Lider
                 SetTitleBars(screen, perM);
                 screen.Project(origin, perM);
             }
-        // Space に置いたゲームは、XR でなければ、画面いっぱいの絵に描かせる (XR では、ゲームが眼に直に描く)
+        // Outside XR, a game placed in Space is drawn as a full-screen image (in XR, the game draws directly to the eyes)
         var spaced = Work?.InSpace;
         if (spaced != null)
         {
@@ -2342,7 +2342,7 @@ public static class Lider
             spaced.ViewportRect = Xr.Active() ? null : new PixelRect(0, 0, sw, sh);
             spaced.ContentRect = spaced.ViewportRect;
         }
-        // Space を見ているカメラ (前の frame の物) を、Xr.View と同じ書き方 (前方 -Z) にして渡す
+        // Pass the camera looking at Space (from the previous frame) in the same form as Xr.View (forward is -Z)
         var eye = lastVp * Mat4.Scale(new Vec3(1, 1, -1));
         GameApp.SpaceVp = new float[]
         {
@@ -2353,17 +2353,17 @@ public static class Lider
         DraftGame.InSpace = spaced != null && !GameApp.InSpace;
         var saved = GameWindow(GameVersion.Saved);
         var draft = GameWindow(GameVersion.Draft);
-        // 入力は、マウスのあるゲームのウィンドウの絵の中の位置で、どちらのゲームにも渡す
+        // Input goes to both games, as the position within the image of the game window the mouse is over
         Input.MousePos(out var mx, out var my);
         PointGames(mx, my);
-        // キーボードは focus がゲームにあるとき、マウスはゲームを指しているときだけ、ゲームに見せる
+        // The keyboard is shown to the game only when focus is on the game, and the mouse only while it points at the game
         var keyboard = Work == null || Work.OnGame;
         var mouse = Work == null || MouseForGame(Work, mx, my);
         if (saved != null)
             GameApp.Step(dt, keyboard, mouse, GamePxW(saved), GamePxH(saved));
         if (draft != null && Work != null)
             DraftGame.Step(dt, keyboard, mouse, GameApp.Position >= 0, GamePxW(draft), GamePxH(draft), Work.Docs);
-        // XR には画面が無い (左右の眼にだけ描ける) ので、画面に貼る絵は、眼への pass の中で空間の面として描く (DrawScene)
+        // XR has no display (it can only draw to the left and right eyes), so images pasted on the display are drawn as surfaces in space inside the pass to the eyes (DrawScene)
         var flat = !xr;
         if (flat)
             ScreenView.Draw(Screens, sw, sh, spaced?.Content.Texture());
@@ -2382,7 +2382,7 @@ public static class Lider
         Frame(dt);
     }
 
-    // version のゲームの絵を映している (画面に出ている) ウィンドウ
+    // Window showing (on the display) the game image of version
     static Window? GameWindow(GameVersion version)
     {
         if (Work != null && Work.InSpace != null && Work.InSpace.Content is GameView spaced && spaced.Version == version)
@@ -2394,7 +2394,7 @@ public static class Lider
         return null;
     }
 
-    // ゲームの絵を描く画素の数。画面に貼った平面のスクリーンでは画面の上の矩形の画素、ほかのスクリーンではウィンドウの大きさに合う画素
+    // Pixel count for drawing the game image. On a flat screen pasted on the display, the pixels of the rectangle on the display; on other screens, pixels that fit the window size
     static int GamePxW(Window window)
     {
         return (int)((window.ContentRect != null ? window.ContentRect.W : window.Size.X * PanelView.BasePxW / PanelView.BaseW) * PixelRatio);
@@ -2405,13 +2405,13 @@ public static class Lider
         return (int)((window.ContentRect != null ? window.ContentRect.H : window.Size.Y * PanelView.BasePxW / PanelView.BaseW) * PixelRatio);
     }
 
-    // マウスが最後に指した、ゲームの絵のウィンドウ (指していなければ null) と、絵の中の位置、絵の画面の上の幅
+    // The game image window the mouse last pointed at (null if none), the position within the image, and the width of the image on the display
     static Window? gamePointed;
     static Vec2 gameUv = new Vec2(0.5f, 0.5f);
     static float gameScreenW = 1;
 
-    // 画面の (x, y) が指している、ゲームの絵の中の位置を、どちらのゲームにも渡す。
-    // どの絵も指していなければ、画面に貼った保存した版の絵の外の位置にする (空間に置いた絵なら、最後に指した位置のまま)
+    // Passes the position within the game image that display (x, y) points at to both games.
+    // If no image is pointed at, uses a position outside the image of the saved version pasted on the display (for an image placed in space, keeps the last pointed position)
     static void PointGames(float x, float y)
     {
         gamePointed = null;
@@ -2436,7 +2436,7 @@ public static class Lider
         DraftGame.Map.Point(gameUv, gameScreenW);
     }
 
-    // 画面の (x, y) が window のゲームの絵を指していれば、絵の中の位置 (左上が 0,0)。指した絵の画面の上の幅を gameScreenW に入れる
+    // If display (x, y) points at window's game image, the position within the image (top left is 0,0). Puts the on-display width of the pointed image in gameScreenW
     static Vec2? GameUv(Window window, float x, float y)
     {
         var at = window.ContentRect;
@@ -2460,13 +2460,13 @@ public static class Lider
         return uv;
     }
 
-    // 画面に貼る絵の上に重ねる字 (控えた frame の帯)
+    // Text drawn over the images pasted on the display (the recorded-frames bar)
     static MonoText? labelText;
     static SpriteBatch? labelBatch;
 
-    // 平面のスクリーンの上の、絵を写すウィンドウ (ゲームの絵、インスペクタ) に、見出しの帯の高さを取る。
-    // 高さは、Code の見出しの帯と同じ見かけの大きさにする (perM は、面の上の 1 メートルが画面の上で覆う長さ)。
-    // lider の物を隠している間 (ゲームだけにしている間) は、帯を出さない
+    // Windows on flat screens that show an image (game image, inspector) get a title band height.
+    // The height has the same apparent size as the Code title band (perM is the length that 1 meter on the surface covers on the display).
+    // While lider's elements are hidden (only the game is shown), the band is not shown
     static void SetTitleBars(Screen screen, float perM)
     {
         var bar = (float)Math.Round(PanelView.TitleH * (Space.Flat ? Space.FlatScale : 1) / ViewScale(screen) * perM);
@@ -2475,7 +2475,7 @@ public static class Lider
                 window.TitleBar = Work != null && LiderShown(Work) ? bar : 0;
     }
 
-    // 閉じられるゲームの絵のウィンドウか (保存した版は閉じられない)
+    // Whether it is a game image window that can be closed (the saved version cannot be closed)
     static bool Closable(Window window)
     {
         return window.Content is GameView view && view.Version == GameVersion.Draft;
@@ -2504,7 +2504,7 @@ public static class Lider
         Gfx.EndPass();
     }
 
-    // ゲームの OnEvent に event を渡す (並べている間は、編集中の版にも)
+    // Passes event to the game's OnEvent (while side by side, to the draft version too)
     static void SendGame(EventData e)
     {
         if (e.Kind == EventKind.MouseButtonDown || e.Kind == EventKind.MouseButtonUp || e.Kind == EventKind.MouseMotion)
@@ -2513,13 +2513,13 @@ public static class Lider
         DraftGame.Send(e);
     }
 
-    // 保存した版と編集中の版を並べる / 戻す (背景のスクリーンを左右に等分する)
+    // Shows / stops showing the saved version and the draft version side by side (splits the backdrop screen evenly into left and right)
     public static void ToggleCompare()
     {
         if (DraftGame.Shown)
         {
             DraftGame.Close();
-            // 閉じるウィンドウに focus があったら、保存した版のウィンドウに移す
+            // If the window being closed has focus, move it to the saved version's window
             if (Work != null && draftWindow != null && Work.Focused == draftWindow)
                 Work.FocusTo(gameWindow);
             if (Work != null && draftWindow != null && Work.InSpace == draftWindow)
@@ -2532,21 +2532,21 @@ public static class Lider
         }
         DraftGame.Open(GameApp.Project);
         draftWindow = new Window(new GameView(GameVersion.Draft));
-        // ゲームの絵は、コードの窓より前に並べる
+        // The game image is placed before the code panels
         backdrop.Windows.Insert(1, draftWindow);
     }
 
-    // コードの窓を、ゲームの絵と同じスクリーン (backdrop) に並べているか。
-    // false なら、コードの窓は手前のコードのスクリーンにあり、ゲームの絵に透けて重なる
+    // Whether the code panels are on the same screen as the game image (backdrop).
+    // If false, the code panels are on the code screen in front, overlaid translucently on the game image
     public static bool Tiled => Work != null && Work.Home == backdrop;
 
-    // 配置: 初めから入っている 2 つ (重ねる形、左右に並ぶ形) と、利用者が控えた物。名前で引く
+    // Arrangements: the 2 built-in ones (overlay, side by side) and the ones users recorded. Looked up by name
     public static readonly List<Arrangement> Arrangements = new List<Arrangement>();
-    // 利用者が控えた配置 (file に書く物)
+    // Arrangements recorded by users (written to a file)
     static readonly List<Arrangement> savedArrangements = new List<Arrangement>();
-    // 最後に戻した配置の名前
+    // Name of the arrangement restored last
     public static string ArrangementName = "";
-    // 控えた配置の file を読み終えたか
+    // Whether the file of recorded arrangements has been read
     static bool arrangementsLoaded;
     public const string Overlay = "overlay";
     public const string SideBySide = "side-by-side";
@@ -2556,15 +2556,15 @@ public static class Lider
         return w.Root + "/.lider/arrangements.txt";
     }
 
-    // 初めから入っている配置を作る (起動したときの、スクリーンの形と位置から)
+    // Creates the built-in arrangements (from the screen shapes and positions at startup)
     static void BuiltinArrangements(Workspace w)
     {
         Arrangements.Clear();
         savedArrangements.Clear();
         arrangementsLoaded = false;
-        // 重ねる形: ゲームの絵が画面いっぱいで、手前のコードのスクリーンに、インスペクタとコードの窓が透けて重なる
+        // Overlay: the game image fills the display, and the inspector and code panels are overlaid translucently on the code screen in front
         var overlay = Arrangement.Capture(Overlay, w);
-        // 左右に並ぶ形: 左にゲームの絵、右にコードの窓とインスペクタを積む
+        // Side by side: the game image on the left, the code panels and inspector stacked on the right
         var side = Arrangement.Capture(SideBySide, w);
         foreach (var a in new List<Arrangement> { overlay, side })
             foreach (var spec in a.Screens)
@@ -2573,7 +2573,7 @@ public static class Lider
                 var tiled = a == side;
                 if (spec.Name == backdrop.Name)
                 {
-                    // 左右に並ぶ形は、世界に置く (XR で頭に付いてこず、頭を回して端まで見られる)
+                    // The side-by-side arrangement is placed in the world (in XR it does not follow the head, and you can turn your head to see to the edges)
                     if (tiled)
                         spec.Anchor = ScreenAnchor.World;
                     spec.Layout = tiled ? "MainStack mains=1" : "Even";
@@ -2597,7 +2597,7 @@ public static class Lider
         RegisterArrangements();
     }
 
-    // 配置ごとに、その配置に戻す命令を載せる
+    // Registers, for each arrangement, a command that restores it
     static void RegisterArrangements()
     {
         foreach (var a in Arrangements)
@@ -2607,11 +2607,11 @@ public static class Lider
         }
     }
 
-    // 控えた配置の file を、読めるようになったら 1 度だけ読む。同じ名前の配置は、控えた物に置き換える
-    // key の割り当て: 利用者が変えた分を、利用者ごとの file に書く (プロジェクトによらない)。
-    // file は env LIDER_KEYS、無ければ XDG_CONFIG_HOME か ~/.config の lider/keys.txt。場所が決まらなければ、変えた分は lider を終えるまで
+    // Reads the file of recorded arrangements once, when it becomes readable. Arrangements with the same name are replaced by the recorded ones
+    // Key bindings: users' changes are written to a per-user file (independent of the project).
+    // The file is env LIDER_KEYS, or if missing, lider/keys.txt in XDG_CONFIG_HOME or ~/.config. If no location can be determined, changes last until lider exits
     static bool keysLoaded;
-    // 次に押した key を割り当てる命令 (待っていなければ null)
+    // Command that the next pressed key is bound to (null if not waiting)
     static string? keyFor;
     public static string? KeyFor => keyFor;
 
@@ -2648,7 +2648,7 @@ public static class Lider
         if (text == null)
             return;
         Keymap.Load(text);
-        // focus をゲームから戻す key は、いつも 1 つは要る
+        // At least one key that brings focus back from the game is always needed
         if (Keymap.StrokeOf("focus:game") == "")
             Keymap.Bind("f1", "focus:game");
     }
@@ -2666,7 +2666,7 @@ public static class Lider
         return name + " の key を押す (今は " + (now != "" ? now : "無し") + "。Esc でやめる)";
     }
 
-    // key を待っている間に押した key を、命令 keyFor に割り当てる。Esc はやめる。割り当てられない key は、理由を出して待ち続ける
+    // Binds the key pressed while waiting to the command keyFor. Esc cancels. For keys that cannot be bound, shows the reason and keeps waiting
     static void TakeKey(Workspace w, EventData e)
     {
         var name = keyFor!;
@@ -2683,7 +2683,7 @@ public static class Lider
             Search.Prompt = Keymap.Shown(stroke) + " は割り当てられない (Ctrl か Alt を付けた key か、F key)";
             return;
         }
-        // focus をゲームから戻す key を、ほかの命令に取らせない
+        // Do not let other commands take the key that brings focus back from the game
         if (name != "focus:game" && Keymap.Binds(key, "focus:game"))
         {
             Search.Prompt = Keymap.Shown(stroke) + " は focus:game の key なので割り当てられない";
@@ -2710,7 +2710,7 @@ public static class Lider
         RegisterArrangements();
     }
 
-    // 控えた配置を一覧に入れる (同じ名前の物は置き換える)
+    // Adds recorded arrangements to the list (ones with the same name are replaced)
     static void Keep(Arrangement a)
     {
         Replace(savedArrangements, a);
@@ -2728,7 +2728,7 @@ public static class Lider
         list.Add(a);
     }
 
-    // 名前の配置に戻す (無ければ false)
+    // Restores the named arrangement (false if missing)
     public static bool Arrange(string name)
     {
         var w = Work;
@@ -2738,15 +2738,15 @@ public static class Lider
         {
             if (a.Name != name)
                 continue;
-            // 出しているインスペクタも、配置の決めた所に並べる
+            // The shown inspector is also placed where the arrangement decides
             PlaceInspector(w);
             a.Apply(w);
             ArrangementName = name;
-            // 視点の横送りは、配置を替えたら戻す
+            // Reset the sideways view slide when the arrangement changes
             viewTarget = 0;
             viewX.Snap(0);
             followed = null;
-            // 移した先では、開いたときと同じに小さな大きさから広がる
+            // At the new place, it grows from a small size, the same as when opened
             motions.Clear();
             PlaceInspector(w);
             return true;
@@ -2754,7 +2754,7 @@ public static class Lider
         return false;
     }
 
-    // 一覧の、今の配置の次の配置に戻す
+    // Restores the arrangement after the current one in the list
     public static void NextArrangement()
     {
         var at = 0;
@@ -2765,7 +2765,7 @@ public static class Lider
             Arrange(Arrangements[(at + 1) % Arrangements.Count].Name);
     }
 
-    // 今の配置を name で控え、file に書く (同じ名前の配置は上書きする)
+    // Records the current arrangement as name and writes it to the file (overwrites an arrangement with the same name)
     public static void SaveArrangement(string name)
     {
         var w = Work;
@@ -2781,14 +2781,14 @@ public static class Lider
         RegisterArrangements();
     }
 
-    // 名前を付けて控えたゲームの状態 (並びの番号が控えの番号)。控えは lider を閉じるまで
+    // Game states recorded with names (the list index is the record number). Records last until lider is closed
     static readonly List<string> savedStates = new List<string>();
-    // 控えの番号の始まり (控えた frame と、編集中の版へ写す控えの番号と重ならない所)
+    // Start of the record numbers (a range that does not overlap the recorded frames or the record numbers copied to the draft version)
     const int StateSlots = 2000000;
-    // 状態を控えられなかった、戻せなかった、値を書けなかった理由 (focus のあるウィンドウに出す。次に通ったら消す)
+    // Reason a state could not be recorded or restored, or a value could not be written (shown in the focused window; cleared the next time it succeeds)
     public static string StateNotice = "";
 
-    // lider が見ている版のゲームの状態を、name で控える (同じ名前なら上書きする)。控えるたびに、戻す命令 state:load:<名前> を載せる
+    // Records the game state of the version lider is looking at as name (overwrites if the name exists). Each time, registers the command state:load:<name> that restores it
     public static void SaveState(string name)
     {
         if (name == "")
@@ -2803,13 +2803,13 @@ public static class Lider
         StateNotice = Watched.Save(StateSlots + at, out var error) ? "" : "状態「" + name + "」を控えられません: " + error;
     }
 
-    // 止めている間に書き換えられる、インスペクタの値の行か (開閉する行、メソッドの行、区切りの行は書けない)
+    // Whether it is an inspector value row that can be rewritten while paused (expand/collapse rows, method rows, and separator rows cannot be written)
     static bool Editable(InspectRow row)
     {
         return Paused && !row.Openable && row.Text != "";
     }
 
-    // 止めている間に、値を押した: bool は反転し、ほかは検索の欄に新しい値を打ってもらう
+    // A value was pressed while paused: a bool is toggled; for anything else, the user types a new value in the search field
     public static void EditValue(Workspace w, string path, string text)
     {
         if (!Paused)
@@ -2820,13 +2820,13 @@ public static class Lider
             Search.Ask(w, path + " (今 " + text + ") =", typed => SetValue(path, typed));
     }
 
-    // lider が見ている版のゲームの、path の値を text の値に書き換える (止めている間だけ)。書けなければ、理由を知らせる
+    // Rewrites the value at path in the game of the version lider is looking at to the value of text (only while paused). If it cannot be written, reports the reason
     public static void SetValue(string path, string text)
     {
         StateNotice = Watched.Set(path, text, out var error) ? "" : path + " に書けません: " + error;
     }
 
-    // name で控えた状態を、lider が見ている版のゲームに読み込む。読み込めなければ、ゲームはそのまま続き、理由を知らせる
+    // Loads the state recorded as name into the game of the version lider is looking at. If it cannot be loaded, the game keeps running as is and the reason is reported
     public static void LoadState(string name)
     {
         var at = savedStates.IndexOf(name);
@@ -2835,8 +2835,8 @@ public static class Lider
         StateNotice = Watched.Load(StateSlots + at, out var error) ? "" : "状態「" + name + "」に戻せません: " + error;
     }
 
-    // window を、次のスクリーンへ移す (ウィンドウを並べるスクリーンを順に回る)。
-    // 端から積む規則のスクリーン (案内、検索) は、決まった物を出す所なので、移す先にしない
+    // Moves window to the next screen (cycles through the screens that lay out windows).
+    // Screens whose rule stacks from an edge (hints, search) are for showing fixed things, so they are not move targets
     public static void MoveToNextScreen(Workspace w, Window window)
     {
         var on = w.ScreenOf(window);
@@ -2849,7 +2849,7 @@ public static class Lider
             if (next.Layout is Stack)
                 continue;
             w.MoveTo(window, next);
-            // 移した先では、開いたときと同じに小さな大きさから広がる
+            // At the new place, it grows from a small size, the same as when opened
             motions.Remove(window);
             if (window.Content is Code)
                 w.Home = next == w.CodeScreen ? null : next;
@@ -2857,7 +2857,7 @@ public static class Lider
         }
     }
 
-    // 窓の大きさを Zen に合わせる。画面に 1 枚が収まる px は、窓の px の大きさ (倍率) と画角で決まる
+    // Fits the panel size to Zen. The px for one panel to fit on the display is decided by the panel's px size (scale) and the field of view
     static void FitWindows()
     {
         var w = Work;
@@ -2880,12 +2880,12 @@ public static class Lider
                     window.PxH = Math.Max(window.PxH, (int)(2 * half * ZenFill / perPx) - PanelView.TitlePx);
                 }
             }
-            // 平面のスクリーンでは、配置の規則が決めた矩形に、見出しと本文をちょうど収める
+            // On flat screens, fit the title and body exactly into the rectangle decided by the arrangement rule
             var screen = ScreenFor(w, window);
             if (OnPlane(screen) && window.Position != null)
             {
                 var perPx = PanelView.BaseW / PanelView.BasePxW * window.Scale / ViewScale(screen);
-                // 矩形からはみ出さないよう、利用者の決める大きさの下限 (Window.MinPxW) は当てない
+                // To avoid overflowing the rectangle, the user-set minimum size (Window.MinPxW) is not applied
                 window.PxW = Math.Max(1, (int)(window.Size.X / perPx));
                 window.PxH = Math.Max(1, (int)(window.Size.Y / perPx) - PanelView.TitlePx);
             }
@@ -2895,7 +2895,7 @@ public static class Lider
         }
     }
 
-    // 指しているか引いている端を光らせる (world は、世界の座標の view-projection)
+    // Highlights the edge being pointed at or dragged (world is the view-projection in world coordinates)
     static void DrawEdge(Workspace w, Mat4 world)
     {
         var window = sizing ?? edgeHoverWindow;
@@ -2912,11 +2912,11 @@ public static class Lider
             SurfaceQuad(screen, world, new Vec4(at.X, at.Y - window.Size.Y * 0.5f - line, window.Size.X, line), color, null);
     }
 
-    // ウィンドウの端の、引いて大きさを変える所の幅 (メートル。半径 Space.R の所の見かけの長さ。ウィンドウの外側)
+    // Width of the part of a window edge that is dragged to resize (meters; apparent length at radius Space.R; outside the window)
     const float EdgeW = 0.018f;
 
-    // 指したウィンドウの端。右なら 1、下なら 2 の和 (当たらなければ 0)。
-    // 引けるのは、ウィンドウを置いているスクリーンの規則が引けると答えた端だけ
+    // Edge of the pointed window. Sum of 1 for right and 2 for bottom (0 if none is hit).
+    // Only edges that the rule of the window's screen allows can be dragged
     public static int EdgeAt(Workspace w, Window window, Ray ray)
     {
         var screen = ScreenFor(w, window);
@@ -2929,13 +2929,13 @@ public static class Lider
         var band = EdgeW / Apparent(screen);
         var x = p.Value.X - (window.Position.Value.X + window.Size.X * 0.5f);
         var y = window.Position.Value.Y - window.Size.Y * 0.5f - p.Value.Y;
-        // 右の端の外側と、下の端の外側 (角は両方)
+        // Outside the right edge and outside the bottom edge (both at the corner)
         if (x < -window.Size.X || x >= band || y < -window.Size.Y || y >= band)
             return 0;
         return ((can & 1) != 0 && x >= 0 ? 1 : 0) + ((can & 2) != 0 && y >= 0 ? 2 : 0);
     }
 
-    // ウィンドウの外側の右か下の端を探す (focus のあるウィンドウを先に見る)。端の向きは foundEdge に置く
+    // Finds an outer right or bottom edge of a window (the focused window is checked first). Puts the edge direction in foundEdge
     static Window? EdgeWindow(Workspace w, Ray ray)
     {
         foundEdge = 0;
@@ -2955,7 +2955,7 @@ public static class Lider
         return null;
     }
 
-    // ray の指す所まで、引いている端を動かす (どの境目がどう動くかは、スクリーンの規則が決める)
+    // Moves the dragged edge to where the ray points (the screen rule decides which borders move and how)
     public static void DragEdge(Workspace w, Ray ray)
     {
         var window = sizing;
@@ -2965,20 +2965,20 @@ public static class Lider
         var p = SurfacePoint(screen, ray);
         if (p == null)
             return;
-        // 大きくした分だけ端が動くとは限らない (真ん中の動かないウィンドウは、両側へ広がる) ので、端が指す所に寄るまで繰り返す
+        // The edge does not necessarily move by as much as the size grew (a non-moving window in the middle expands to both sides), so repeat until the edge comes close to the pointed place
         for (var i = 0; i < 4 && window.Position != null; i++)
         {
             var right = window.Position.Value.X + window.Size.X * 0.5f;
             var bottom = window.Position.Value.Y - window.Size.Y * 0.5f;
             screen.Layout.Grow(screen, window, (sizingEdge & 1) != 0 ? p.Value.X - right : 0, (sizingEdge & 2) != 0 ? bottom - p.Value.Y : 0);
             screen.Arrange();
-            // 並べ直しても端が動かない規則 (大きさが次の frame に決まる) は、次の引きで続きを寄せる
+            // For rules where the edge does not move even after relayout (the size is decided on the next frame), the next drag continues bringing it closer
             if (window.Position == null || (window.Position.Value.X + window.Size.X * 0.5f == right && window.Position.Value.Y - window.Size.Y * 0.5f == bottom))
                 break;
         }
     }
 
-    // focus のあるウィンドウの幅を dx、高さを dy メートル (半径 Space.R の所の見かけの長さ) だけ大きくする
+    // Grows the focused window's width by dx and its height by dy meters (apparent length at radius Space.R)
     static void GrowFocused(Workspace w, float dx, float dy)
     {
         var window = w.Focused;
@@ -2986,7 +2986,7 @@ public static class Lider
             return;
         var screen = ScreenFor(w, window);
         screen.Layout.Grow(screen, window, dx / Apparent(screen), dy / Apparent(screen));
-        // Code のウィンドウは、key で動かしている間、少し浮かせる
+        // A Code window is lifted slightly while it is moved by keys
         if (window == w.FocusWindow)
         {
             keyMoved = window;
@@ -2994,7 +2994,7 @@ public static class Lider
         }
     }
 
-    // focus のあるウィンドウを置いているスクリーンの規則に知らせる
+    // Notifies the rule of the screen that holds the focused window
     static void TellLayout(Workspace w, string message)
     {
         var window = w.Focused ?? w.FocusWindow;
@@ -3019,7 +3019,7 @@ public static class Lider
     static int foundEdge;
     static Window? edgeHoverWindow;
 
-    // Zen の窓が画面に占める割合
+    // Fraction of the display taken by a Zen panel
     const float ZenFill = 0.96f;
 
     static void Frame(float dt)
@@ -3032,11 +3032,11 @@ public static class Lider
         Space.Flat = !Xr.Active();
         LoadArrangements(w);
         LoadKeys();
-        // 検索の欄を閉じたら、key を待つのもやめる
+        // When the search field is closed, also stop waiting for a key
         if (!Search.Shown)
             keyFor = null;
         PlaceInspector(w);
-        // 記録は lider を出していない間も受け取って捨てる (溜めない)
+        // Records are received and discarded even while lider is not shown (not accumulated)
         if (inspect.Tree.ScopeId != tracedScope)
         {
             tracedScope = inspect.Tree.ScopeId;
@@ -3045,7 +3045,7 @@ public static class Lider
         w.Trace.Take(tracedScope != "" ? InspectTree.ScopePin : "");
         Costs.Refresh();
         Costs.Viewing = inspect.Shown && inspect.Load;
-        // プロファイルを見ている間は、行番号の所に負荷の数を出す (行番号は描かず、欄は数の 4 桁が入る幅にする)
+        // While viewing the profile, show load numbers in place of line numbers (line numbers are not drawn, and the column is wide enough for 4 digits)
         var numbersOff = Costs.Enabled && Costs.Viewing;
         DocView.LineNumbers = !numbersOff;
         DocView.MinNumberWidth = numbersOff && text != null ? PanelView.NumberCells * PanelText().CellW : 0;
@@ -3057,7 +3057,7 @@ public static class Lider
         if (text == null)
         {
             text = new MonoText("lider_mono", Ttf(), 15);
-            // エディタの幅と行の高さを、lider の桁に合わせる
+            // Match the editor width and line height to lider's columns
             Document.Boot(text.CellW, text.LineH);
             Session.ScrollTops();
         }
@@ -3072,10 +3072,10 @@ public static class Lider
         Cues.Declare();
         Fields.Refresh();
         FollowScope();
-        // 窓のフィールドとインスペクタのメソッドの宣言を拾う
+        // Collect the field declarations of the panels and the method declarations of the inspector
         if (fieldFrames++ % ScanFrames == 0)
             Search.Refresh(w);
-        // texture の描き直しは画面への pass の外で済ませる
+        // Texture redraws are done outside the pass to the display
         foreach (var window in w.Windows)
         {
             if (Space.Flat && !window.Sized)
@@ -3097,11 +3097,11 @@ public static class Lider
             panel.Prepare(window.Code.Doc, panelText, w.Trace);
         }
         w.Arrange(grab.Window);
-        // 閉じる動きの間の窓は描き直さないが、描くので texture を宣言し続ける
+        // Panels in their closing animation are not redrawn, but they are drawn, so keep declaring the texture
         foreach (var pair in motions)
             if (!w.Windows.Contains(pair.Key))
                 Panel(pair.Key).Declare(panelText);
-        // 窓の本文と別の文字でも、案内と inspect が使うので atlas を残す
+        // Keep the atlas even for text other than the panel body text, since hints and inspect use it
         text.Glyphs.Ensure();
         if (Search.Shown || inspect.Shown)
             Search.Refresh(w);
@@ -3128,17 +3128,17 @@ public static class Lider
             lastEye = left;
             gaze = Gaze(left, right);
             headToWorld = HeadToWorld(left, right);
-            // 指す ray は、押している手、右手、左手の順に、取れた物
+            // The pointing ray is the first available of: the pressing hand, the right hand, the left hand
             var aim = (activeHand >= 0 ? HandRay(activeHand) : null) ?? HandRay(1) ?? HandRay(0) ?? gaze;
             for (var h = 0; h < 2; h++)
                 AimAt(h, HandRay(h));
-            // 左手の Y で、画面のキーボードを出し入れする
+            // The left hand's Y toggles the on-screen keyboard
             var leftHand = Xr.Input(0);
             var y = leftHand != null && leftHand.Secondary;
             if (y && !oskButton)
                 osk.Shown = !osk.Shown;
             oskButton = y;
-            // 画面のキーボードは、両手の指している key がそれぞれ光る
+            // On the on-screen keyboard, the key each hand points at lights up
             for (var h = 0; h < 2; h++)
                 PointOsk(w, h, HandRay(h));
             Triggers(w, w.OnGame);
@@ -3158,7 +3158,7 @@ public static class Lider
         lastEye = null;
 
         Gfx.Size(out var sw, out var sh);
-        // 視点の横送りと、画面に入る幅は、コードのスクリーンの面の上のメートルで数える
+        // The sideways view slide and the width that fits on the display are counted in meters on the code screen surface
         var depth = w.CodeScreen.Radius;
         var halfViewportH = depth * (float)Math.Tan(fov * 0.5f * Math.PI / 180);
         Input.MousePos(out var mx, out var my);
@@ -3175,13 +3175,13 @@ public static class Lider
         else
             FollowFocus(w, halfViewportH * viewportW / viewportH);
         viewX.Step(viewTarget, dt);
-        // 視点を動かすと層の間に視差が出るので、視点は原点のまま、奥行きに比例して横へずらす (どの層も同じ角度だけずれる)。
-        // 範囲を決めていれば、縦も範囲の真ん中に合わせる
+        // Moving the view causes parallax between layers, so the view stays at the origin and things are shifted sideways in proportion to depth (every layer shifts by the same angle).
+        // If an area is set, align vertically with the middle of the area too
         var slide = Mat4.Identity();
         slide.M02 = -viewX.Value / depth;
         if (AreaW > 0)
         {
-            // 窓の見出しは本文の上に乗るので、見出しも入れた高さの真ん中 (面の上の高さ TitleH / 2) を範囲の真ん中に合わせる
+            // The panel title sits above the body, so align the middle of the height including the title (height TitleH / 2 on the surface) with the middle of the area
             slide.M12 = ((viewportH * 0.5f - AreaY - AreaH * 0.5f) / pxPerM - AreaCenterY - w.CodeScreen.Position.Y) / depth;
         }
         lastVp = Camera3d.Vp(new Camera3dOpts
@@ -3211,7 +3211,7 @@ public static class Lider
         Gfx.EndPass();
     }
 
-    // インスペクタと focus のある窓を置く画面の範囲を決める (w が 0 なら決めない)
+    // Sets the display area where the inspector and the focused panel are placed (if w is 0, no area is set)
     public static void SetArea(float x, float y, float w, float h)
     {
         AreaX = x;
@@ -3220,11 +3220,11 @@ public static class Lider
         AreaH = h;
     }
 
-    // 範囲に収まるよう、インスペクタと窓の大きさと視点を決める。
-    // pxPerM は面 (半径 R) の上の 1 メートルの画素。インスペクタは手前 (InspectR) にあるので R / InspectR 倍に見える
+    // Decides the inspector and panel sizes and the view so they fit in the area.
+    // pxPerM is the pixels per 1 meter on the surface (radius R). The inspector is in front (InspectR), so it looks R / InspectR times larger
     static void FitArea(Workspace w, float pxPerM)
     {
-        // インスペクタは、範囲の左に、窓の本文と同じ高さで置く
+        // The inspector goes at the left of the area, at the same height as the panel body
         InspectView.SetSize(AreaW * AreaBoard / pxPerM / InspectScale, (AreaH / pxPerM - PanelView.TitleH * Space.FlatScale) / InspectScale);
         var gap = Strip.Gap * pxPerM;
         foreach (var window in w.Windows)
@@ -3237,7 +3237,7 @@ public static class Lider
         var focus = w.FocusWindow;
         if (focus == null)
         {
-            // 窓が無ければ、インスペクタの左の端を範囲の左の端に合わせる
+            // If there is no panel, align the inspector's left edge with the area's left edge
             if (TreeVisible)
             {
                 viewTarget = BoardAngle * Space.R - InspectSize().X * 0.5f - (AreaX - viewportW * 0.5f) / pxPerM;
@@ -3247,22 +3247,22 @@ public static class Lider
         }
         if (grab.Holding)
             return;
-        // 窓の右の端を範囲の右の端に合わせる
+        // Align the panel's right edge with the area's right edge
         var right = WindowAngle(w, focus) * Space.R + focus.UnscaledSize.X * focus.Scale * 0.5f;
         viewTarget = right - (AreaX + AreaW - viewportW * 0.5f) / pxPerM;
     }
 
-    // focus が移るか窓が動いたら、focus のある窓が見える所まで視点の行き先を動かす (列を動かした後は、次に動くまで追わない)
+    // When focus moves or a panel moves, move the view target until the focused panel is visible (after the row is moved, it does not follow until the next move)
     static void FollowFocus(Workspace w, float halfViewport)
     {
         var window = w.FocusWindow;
-        // コードの窓が無ければ、インスペクタを画面の左の端に寄せる
+        // If there are no code panels, move the inspector to the left edge of the display
         if (window == null && TreeVisible && ScreenFor(w, inspectWindow) == w.CodeScreen)
             viewTarget = BoardAngle * Space.R - InspectSize().X * 0.5f - FollowMargin + halfViewport;
         if (window == null || grab.Holding || ScreenFor(w, window) != w.CodeScreen)
             return;
         var angle = WindowAngle(w, window);
-        // インスペクタが focus のある窓のすぐ左に並んでいれば、インスペクタも見える所へ動かす (その左の端。並んでいなければ 0)
+        // If the inspector is lined up right to the left of the focused panel, move the view so the inspector is visible too (its left edge; 0 if not lined up)
         var row = w.CodeScreen.Windows;
         var beside = TreeVisible && row.IndexOf(inspectWindow) >= 0 && row.IndexOf(inspectWindow) == row.IndexOf(window) - 1;
         var board = beside ? BoardAngle * Space.R - InspectSize().X * 0.5f : 0;
@@ -3274,35 +3274,35 @@ public static class Lider
         followedBoard = board;
         followedOld = OldBoardW;
         var half = window.UnscaledSize.X * window.Scale * 0.5f;
-        // 窓の左の、動いている版の板も入れる
+        // Include the running-version board to the left of the panel
         var left = beside ? Math.Min(board, angle * Space.R - half - OldBoardW) : angle * Space.R - half - OldBoardW;
-        // 板と窓が両方は入らなければ、板の側を見せる (窓の右端は本文が少ない)
+        // If the board and the panel do not both fit, show the board side (the right end of the panel has less text)
         var right = Math.Min(angle * Space.R + half, left + 2 * (halfViewport - FollowMargin));
         viewTarget = Space.FollowX(viewTarget, (left + right) * 0.5f, (right - left) * 0.5f + FollowMargin, halfViewport);
     }
 
-    // 視点が追うときに窓の外に残す幅 (メートル)
+    // Width left outside the panel when the view follows it (meters)
     const float FollowMargin = 0.03f;
 
-    // 窓が光を落とす床の高さと、円筒の軸からの距離 (原点は Recenter した両眼の中点。床の高さは仮)
+    // Height of the floor where panels cast light, and distance from the cylinder axis (the origin is the midpoint of both eyes after Recenter; the floor height is provisional)
     const float FloorY = -1.1f;
     const float FloorR = Space.R * 0.8f;
 
-    // 控えた frame の帯: ゲームの絵のウィンドウの一部で、止めている間だけ、絵の下の端に重ねて出す (絵は縮めない)。
-    // 帯の高さ、止めた位置の印の幅と高さ、絵の端との間 (画面の座標)
+    // Recorded-frames bar: part of the game image window, shown over the bottom edge of the image only while paused (the image is not shrunk).
+    // Bar height, width and height of the paused-position mark, and gap from the image edge (screen coordinates)
     const float TimelineH = 4;
     const float TimelineMarkW = 3;
     const float TimelineMarkH = 14;
     const float TimelineMargin = 12;
 
-    // 控えた frame の at 番目 (0 が直近) の、帯の上の位置 (帯の幅を 1 とし、真ん中が 0、右端が直近)
+    // Position on the bar of the at-th recorded frame (0 is the latest) (the bar width is 1; the middle is 0, the right end is the latest)
     static float TimelineX(int at, int count)
     {
         return 0.5f - (at + 0.5f) / count;
     }
 
-    // 帯を出す矩形 (印の高さを含む。出さなければ null)。
-    // 保存した版のゲームの絵の下の端に置く。範囲 (LIDER_AREA) を決めていれば、絵のうち範囲に入る所の下の端に置く
+    // Rectangle where the bar is shown (including the mark height; null if not shown).
+    // Placed at the bottom edge of the saved version's game image. If an area (LIDER_AREA) is set, at the bottom edge of the part of the image inside the area
     static PixelRect? TimelineRect()
     {
         var at = gameWindow.ContentRect;
@@ -3328,7 +3328,7 @@ public static class Lider
         return s;
     }
 
-    // 止めている間、帯を出し、止めた位置の印を今の frame の所へ滑らせる (lider を隠している間も)
+    // While paused, show the bar and slide the paused-position mark to the current frame (even while lider is hidden)
     static void StepTimeline(float dt)
     {
         if (GameApp.Position >= 0 && GameApp.Count > 0)
@@ -3345,7 +3345,7 @@ public static class Lider
         }
     }
 
-    // ゲームの絵のウィンドウの上に、帯と、止めた位置の印を描く (labelBatch の pass の中で呼ぶ)
+    // Draws the bar and the paused-position mark over the game image window (call inside the labelBatch pass)
     static void DrawTimeline()
     {
         var band = TimelineRect();
@@ -3353,11 +3353,11 @@ public static class Lider
             return;
         var y = band.Y + band.H * 0.5f;
         labelBatch!.Rect(band.X, y - TimelineH * 0.5f, band.W, TimelineH, Color.Rgb(0.3f, 0.35f, 0.45f, 0.6f));
-        // 光の点は frame を送るたびに次の frame の所へ滑る
+        // The light dot slides to the next frame each time a frame is stepped
         labelBatch.Rect(band.X + (0.5f + timeline.Value) * band.W - TimelineMarkW * 0.5f, band.Y, TimelineMarkW, TimelineMarkH, Color.Rgb(1.0f, 0.6f, 0.15f, 1));
     }
 
-    // 頭の座標 (両眼の中点が原点、+Z が前) から lider の空間への行列
+    // Matrix from head coordinates (origin at the midpoint of both eyes, +Z forward) to lider's space
     static Mat4 HeadToWorld(XrView left, XrView right)
     {
         var o = left.Orientation;
@@ -3371,7 +3371,7 @@ public static class Lider
         return flip * Mat4.FromList(values, 0).Inverse() * Mat4.Translate(pos) * Mat4.FromQuat(new Quat(o[0], o[1], o[2], o[3])) * flip;
     }
 
-    // 頭の向き (両眼の中点から、左眼の向きの前方) を lider の空間の ray にする
+    // Turns the head direction (from the midpoint of both eyes, forward along the left eye's direction) into a ray in lider's space
     static Ray Gaze(XrView left, XrView right)
     {
         var o = left.Orientation;
@@ -3381,7 +3381,7 @@ public static class Lider
         return FromLocal(pos, dir);
     }
 
-    // 手 (0 左、1 右) の aim を lider の空間の ray にする (pose が取れなければ null)
+    // Turns a hand's (0 left, 1 right) aim into a ray in lider's space (null if the pose is not available)
     static Ray? HandRay(int hand)
     {
         var h = Xr.Input(hand);
@@ -3392,7 +3392,7 @@ public static class Lider
         return FromLocal(new Vec3(h.AimPosition[0], h.AimPosition[1], h.AimPosition[2]), dir);
     }
 
-    // 手の grip の位置を lider の空間にする (pose が取れなければ null)
+    // Converts the hand's grip position into lider's space (null if the pose is not available)
     static Vec3? GripPoint(int hand)
     {
         var h = Xr.Input(hand);
@@ -3401,22 +3401,22 @@ public static class Lider
         return FromLocal(new Vec3(h.GripPosition[0], h.GripPosition[1], h.GripPosition[2]), new Vec3(0, 0, -1)).Origin;
     }
 
-    // 両手の引き金: 指している所を押し、引いたまま動かすと引く。押して引けるのは片方の手ずつで、先に引いた手が離すまで続く。
-    // oskOnly (focus がゲームにある間) は、画面のキーボードだけを押す (focus を戻す key を打てるように)
+    // Triggers of both hands: press where pointing, and drag by moving while pulled. Only one hand at a time can press and drag; it continues until the hand that pulled first releases.
+    // With oskOnly (while focus is on the game), only the on-screen keyboard is pressed (so the key that brings focus back can be typed)
     static void Triggers(Workspace w, bool oskOnly)
     {
         for (var h = 1; h >= 0; h--)
         {
             var input = Xr.Input(h);
             var ray = HandRay(h);
-            // 押し離しは閾値を分けて、ぶれで繰り返さない
+            // Press and release use separate thresholds so jitter does not repeat them
             var down = input != null && ray != null && (triggerDown[h] ? input.Trigger > 0.3f : input.Trigger > 0.7f);
             if (down && !triggerDown[h] && oskOnly)
                 PressOsk(w, ray!.Value, h);
             else if (down && !triggerDown[h] && activeHand < 0)
             {
                 activeHand = h;
-                // 画面のキーボードは、押した手の指している key を押す
+                // On the on-screen keyboard, press the key the pressing hand points at
                 if (!PressOsk(w, ray!.Value, h))
                     Click(w, ray!.Value, true);
             }
@@ -3431,8 +3431,8 @@ public static class Lider
         }
     }
 
-    // 手 hand の ray が指している面と位置を決める。
-    // 手前のスクリーンから見て、ウィンドウの上に当たっていればそこ、どのウィンドウにも当たっていなければ、当たった一番奥の面
+    // Decides the surface and position that the ray of hand hand points at.
+    // Checking from the nearest screen: if it hits a window, that point; if it hits no window, the farthest surface hit
     static void AimAt(int hand, Ray? ray)
     {
         aimScreen[hand] = null;
@@ -3496,17 +3496,17 @@ public static class Lider
         rightGrip = rGrip;
         leftGrip = lGrip;
 
-        // 左手の X でインスペクタを出し入れする
+        // The left hand's X toggles the inspector
         var x = left != null && left.Primary;
         if (x && !inspectButton)
             inspect.Shown = !inspect.Shown;
         inspectButton = x;
-        // 右の stick で、インスペクタを指していればそれを、でなければ focus のある窓を 1 秒に 6 notch まで scroll する
+        // The right stick scrolls the inspector if it is pointed at, otherwise the focused panel, at up to 6 notches per second
         if (right != null && Math.Abs(right.StickY) > 0.2f && InspectAt(aim) != null)
             inspect.Scroll -= right.StickY * dt * 18;
         else if (right != null && w.FocusWindow != null && Math.Abs(right.StickY) > 0.2f)
             EditorHost.Scroll(w.FocusWindow.Code.ViewId, right.StickY * dt * 6);
-        // 止めている間、左の stick を倒すと frame を送る (倒したままなら 0.12 秒ごと)
+        // While paused, tilting the left stick steps frames (every 0.12 seconds while held)
         stepWait -= dt;
         if (left != null && GameApp.Position >= 0 && Math.Abs(left.StickX) > 0.6f && stepWait <= 0)
         {
@@ -3520,13 +3520,13 @@ public static class Lider
             stepWait = 0;
     }
 
-    // 窓の見た目 (まだ描いていなければ null)
+    // Panel visuals (null if not drawn yet)
     public static WindowMotion? MotionOf(Window window)
     {
         return motions.TryGetValue(window, out var m) ? m : null;
     }
 
-    // 窓の見た目を目標へ寄せ、保存・reload・打鍵・focus の移りに手応えを返す
+    // Moves the panel visuals toward their targets and gives feedback for save, reload, typing, and focus moves
     public static void Animate(Workspace w, float dt)
     {
         var celebrate = w.Fixed != seenFixed;
@@ -3544,7 +3544,7 @@ public static class Lider
         {
             if (!motions.TryGetValue(window, out var m))
             {
-                // 開いた窓は、その場で小さな大きさから広がる
+                // An opened panel grows in place from a small size
                 m = new WindowMotion(WindowAngle(w, window), WindowY(w, window), WindowMotion.SmallScale);
                 m.SeenSaved = window.Code.Doc.Saved;
                 m.SeenLanded = window.Code.Doc.Landed;
@@ -3555,14 +3555,14 @@ public static class Lider
             }
             if (m.SeenDoc != window.Code.Doc)
             {
-                // タブを替えたら、その file の今の状態から追う (替えたことを保存や反映と取り違えない)
+                // When the tab changes, track from the current state of that file (so the switch is not mistaken for a save or an apply)
                 m.SeenDoc = window.Code.Doc;
                 m.SeenSaved = window.Code.Doc.Saved;
                 m.SeenLanded = window.Code.Doc.Landed;
                 m.SeenRevision = window.Code.Doc.Revision;
                 m.SeenRemoved = EditorHost.RemovedCount(window.Code.ViewId);
             }
-            // つかんでいる窓と、Alt で動かしている窓は手前へ出す
+            // Grabbed panels and panels moved with Alt are brought forward
             window.SetZ(grab.Window == window || (keyMoved == window && keyLift > 0) ? -Grab.LiftDistance : 0);
             m.Step(WindowAngle(w, window), WindowY(w, window), window.Z, window.Scale, window == w.FocusWindow, dt);
             if (window == w.FocusWindow)
@@ -3578,7 +3578,7 @@ public static class Lider
             }
             if (window.Code.Doc.Landed != m.SeenLanded)
             {
-                // 保存した内容がゲームに入ると、窓からゲームの空間へ光が飛ぶ
+                // When saved content gets into the game, light flies from the panel into the game space
                 m.SeenLanded = window.Code.Doc.Landed;
                 m.LandSeconds = now - m.SavedAt;
                 m.LandLabel = 2.5f;
@@ -3586,14 +3586,14 @@ public static class Lider
                 celebrate = false;
                 LastLandAt = now;
             }
-            // 行が面に沈み終えると、そこから波が広がる
+            // When a line finishes sinking into the surface, a wave spreads from there
             var panel = Panel(window);
             if (panel.Step(dt) > 0)
             {
                 m.Ripple = 1;
                 m.RippleAt = panel.SankAt;
             }
-            // 本文から文字が消えると、消えた所から粒が散る
+            // When characters disappear from the text, particles scatter from where they were
             var removed = EditorHost.RemovedCount(window.Code.ViewId);
             if (removed != m.SeenRemoved)
             {
@@ -3609,7 +3609,7 @@ public static class Lider
             }
             if (w.Failures != m.SeenFailures)
             {
-                // 保存した版が compile error なら、error のある file の窓が赤く光り、赤い粒がこぼれる
+                // If the saved version has a compile error, the panel of the file with the error glows red and red particles spill
                 m.SeenFailures = w.Failures;
                 if (w.ErrorsIn(window.Code.Doc.Path).Count > 0)
                 {
@@ -3621,10 +3621,10 @@ public static class Lider
                 }
             }
         }
-        // 窓の無い file の error が直ったときは、focus のある窓で祝う
+        // When the error in a file without a panel is fixed, celebrate in the focused panel
         if (celebrate && w.FocusWindow != null && motions.TryGetValue(w.FocusWindow, out var here))
             Land(here, false, true);
-        // 閉じた窓はその場で縮んでから消す
+        // A closed panel shrinks in place before disappearing
         var gone = new List<Window>();
         foreach (var pair in motions)
         {
@@ -3671,8 +3671,8 @@ public static class Lider
         }
     }
 
-    // 保存した内容がゲームに届いた: 窓の枠が揺れ、全面が明滅し、輪と破片が飛ぶ。
-    // 続けて保存している間は短くする。error が直った時は、それより大きく祝う
+    // Saved content reached the game: the panel frame shakes, the whole screen flashes, and rings and fragments fly.
+    // Shortened while saving repeatedly. When an error is fixed, celebrate bigger than that
     static void Land(WindowMotion m, bool repeat, bool celebrate)
     {
         Cues.Play(celebrate ? Cues.Fixed : Cues.Land, celebrate ? 1 : repeat ? 0.45f : 0.8f);
@@ -3691,15 +3691,15 @@ public static class Lider
         }
         if (!celebrate)
             return;
-        // 紙吹雪: 赤く震えていた所が通った、一番の報酬
+        // Confetti: the top reward, when what was shaking red passes
         var colors = new List<Color> { Color.Rgb(1, 0.82f, 0.2f), Color.Rgb(0.4f, 1, 0.55f), Color.Rgb(0.45f, 0.8f, 1), Color.Rgb(1, 0.45f, 0.7f), Color.Rgb(1, 1, 1) };
         foreach (var c in colors)
             particles.Burst(m.Angle.Value, m.Y.Value + PanelView.BaseH * m.Scale.Value * 0.3f, r, 16, 2.4f, -0.8f, c, 1.1f, 3);
         rings.Add(new Ring { Angle = m.Angle.Value, Y = m.Y.Value, Size = PanelView.BaseH * m.Scale.Value * 0.5f, Color = Color.Rgb(1, 0.82f, 0.2f) });
     }
 
-    // focus のある窓の cursor の見た目を、エディタが最後に描いた所へ滑らせる (focus が来たときは、その場に出す)。
-    // 同じ行で cursor が進み、行がその分だけ長くなったら、進んだ所を打った文字として Landing にする
+    // Slides the cursor visual of the focused panel to where the editor last drew it (when focus arrives, shows it in place).
+    // If the cursor advances on the same line and the line got longer by that much, the advanced part becomes a Landing as typed characters
     static void FollowCaret(Window window, WindowMotion m, float dt)
     {
         var id = window.Code.ViewId;
@@ -3732,7 +3732,7 @@ public static class Lider
         m.TypedX = x;
     }
 
-    // カーソルのある行の、円筒の上の高さ
+    // Height on the cylinder of the line with the cursor
     static float CursorY(Window window, WindowMotion m)
     {
         var id = window.Code.ViewId;
@@ -3741,7 +3741,7 @@ public static class Lider
         return m.Y.Value + (0.5f - v) * window.UnscaledSize.Y * m.Scale.Value;
     }
 
-    // 窓の view の中の (x, y) px (行の左上) から粒を散らす (窓の外なら散らさない)
+    // Scatters particles from (x, y) px in the panel's view (top left of the line) (not if outside the panel)
     static void BurstAt(Window window, WindowMotion m, float x, float y, Color color, int n, float life)
     {
         var panel = Panel(window);
@@ -3752,7 +3752,7 @@ public static class Lider
             Space.R - PanelView.FrontGap - 0.01f, n, 0.25f, -0.3f, color, life);
     }
 
-    // XR の LOCAL 空間の点と向きを、lider の空間の ray にする
+    // Turns a point and direction in the XR LOCAL space into a ray in lider's space
     static Ray FromLocal(Vec3 pos, Vec3 dir)
     {
         var m = anchor.ToLocal();
@@ -3769,15 +3769,15 @@ public static class Lider
     static void DrawEye(Workspace w, XrView view)
     {
         anchor.ViewProjection(view, eyeVp);
-        // 視点に固定したスクリーンは、頭の座標で描く
+        // Screens fixed to the view are drawn in head coordinates
         viewVp = Space.FromXr(eyeVp) * headToWorld;
-        // Space に置いたゲームが眼に描いていれば、その上に描き足す。置いていなければ、眼を塗り直してから描く
+        // If a game placed in Space draws to the eyes, draw on top of it. If no game is placed there, clear the eyes first, then draw
         Gfx.BeginPass(new PassOpts { Target = view.Target, Load = w.InSpace != null ? Gfx.LoadAction.Load : Gfx.LoadAction.Clear, ClearColor = new float[] { 0, 0, 0, 1 } });
         DrawScene(w, Space.FromXr(eyeVp));
         Gfx.EndPass();
     }
 
-    // 輪は 4 本の棒で、広がりながら細くなる
+    // A ring is 4 bars that get thinner as they spread
     static void DrawRing(Mat4 vp, Ring ring)
     {
         var t = ring.Age / Ring.Seconds;
@@ -3791,7 +3791,7 @@ public static class Lider
         Quad3d.CurvedSolid(vp, ring.Color, ring.Angle + da, ring.Y, r, bar, size);
     }
 
-    // 全面の明滅: 暗い色を一瞬混ぜてから明るくし、どんな背景でも見えるようにする
+    // Full-screen flash: mix in a dark color for an instant, then brighten, so it is visible on any background
     static void DrawFlash(Mat4 vp)
     {
         if (Flash <= 0)
@@ -3803,7 +3803,7 @@ public static class Lider
         Quad3d.CurvedSolid(vp, color, at.Angle, 0, Space.R - 0.35f, 12, 8);
     }
 
-    // XR で focus のある窓が視野の外なら、その向きへ小さくなる点の列を、見ている所の横に出す
+    // In XR, if the focused panel is outside the view, show a row of dots shrinking toward it beside where you are looking
     static void DrawFocusCue(Workspace w, Mat4 vp)
     {
         var window = w.FocusWindow;
@@ -3819,22 +3819,22 @@ public static class Lider
         }
     }
 
-    // focus のある窓が外れたとみなす視野の半分の角度と、点の列を置く見ている所からの角度
+    // Half-angle of the view outside which the focused panel counts as off view, and the angle from the look direction where the row of dots goes
     const float CueFov = 0.5f;
     const float CueOffset = 0.35f;
 
     static void DrawScene(Workspace w, Mat4 vp)
     {
         Quad3d.Opacity = Opacity;
-        // 止めている間は、空間を冷たい色で包む
+        // While paused, wrap the space in a cold color
         if (cold > 0.001f)
             Quad3d.CurvedSolid(vp, Color.Rgb(0.25f, 0.45f, 1.0f, 0.07f * cold), 0, 0, Space.R + 2, 2 * (float)Math.PI * (Space.R + 2), 6);
         if (ZenShown)
             Quad3d.CurvedSolid(vp, Color.Rgb(0, 0, 0, 0.55f), 0, 0, Space.R + 2, 2 * (float)Math.PI * (Space.R + 2), 40);
-        // 窓が足元に落とす光 (focus のある窓は少し明るい)
+        // Light that panels cast at their feet (the focused panel is a little brighter)
         foreach (var pair in motions)
         {
-            // 床に光を落とすのは、世界に置いた窓だけ
+            // Only panels placed in the world cast light on the floor
             if (OnPlane(ScreenFor(w, pair.Key)))
                 continue;
             var m = pair.Value;
@@ -3846,7 +3846,7 @@ public static class Lider
         }
         var worldVp = vp;
         var worldFlat = Space.Flat;
-        // XR では、平面のスクリーンの上の絵 (ゲームの絵、インスペクタ) を、スクリーンの面として、ほかの物より先に描く (XR でなければ ScreenView が画面に写す)
+        // In XR, images on flat screens (game image, inspector) are drawn as screen surfaces before everything else (outside XR, ScreenView puts them on the display)
         if (lastEye != null)
             foreach (var screen in Screens)
             {
@@ -3859,7 +3859,7 @@ public static class Lider
                     var picture = window.Content.Texture();
                     if (whole == null || part == null || picture == null || window.Position == null || whole.W <= 0)
                         continue;
-                    // 画面の上の矩形のうち中身を映す所を、スクリーンの面の上の矩形に直す
+                    // Convert the part of the rectangle on the display that shows the content into a rectangle on the screen surface
                     var perM = whole.W / window.Size.X;
                     var at = window.Position.Value;
                     var rect = new Vec4(at.X + (part.X + part.W * 0.5f - whole.X - whole.W * 0.5f) / perM,
@@ -3867,7 +3867,7 @@ public static class Lider
                     SurfaceQuad(screen, worldVp, rect, Color.Rgb(1, 1, 1, screen.Opacity), picture);
                 }
             }
-        // 平面のスクリーンの上の絵 (ゲームの絵、インスペクタ) の見出しは、絵と同じく、ほかの物より先に描く
+        // Titles of images on flat screens (game image, inspector) are drawn before everything else, like the images
         foreach (var screen in Screens)
             if (screen.Shown && OnPlane(screen))
                 foreach (var window in screen.Windows)
@@ -3881,7 +3881,7 @@ public static class Lider
             var y = m.Y.Value;
             var scale = m.Scale.Value;
             var panel = Panel(window);
-            // 視点に固定した平面のスクリーンの上の窓は、視点の座標で、曲げずに描く
+            // Panels on flat screens fixed to the view are drawn in view coordinates, without curving
             var onView = OnPlane(ScreenFor(w, window));
             vp = VpOf(ScreenFor(w, window), worldVp);
             Space.Flat = worldFlat || onView;
@@ -3890,7 +3890,7 @@ public static class Lider
             panel.FrameY = (particles.Next() - 0.5f) * 0.05f * m.Shake * m.Shake;
             panel.Draw(window.Code.Doc, angle, y, scale, vp, m.Z.Value, m.Glow.Value, m.Alarm);
             DrawTitle(w, window, worldVp);
-            // 動いている版の板は、コードのウィンドウの子: 親の座標で置き、親より手前に描く
+            // The running-version board is a child of the code window: placed in the parent's coordinates and drawn in front of the parent
             var board = DiffOf(window);
             if (board != null && board.Position != null)
                 panel.DrawOld(vp, angle + board.Position.Value.X * scale / window.Scale / Space.R, y + board.Position.Value.Y, board.Size.X * scale / window.Scale,
@@ -3906,17 +3906,17 @@ public static class Lider
                 panel.DrawCaret(vp, window.Code.Doc, angle, y, scale, m.Z.Value, m.CaretX.Value, m.CaretY.Value - scroll);
                 if (window == w.FocusWindow)
                     LogCaret(vp);
-                // 2 つ目からの cursor (複数の選択) は滑らせない
+                // Cursors from the second one on (multiple selections) do not slide
                 for (var i = 1; i < EditorHost.CaretCount(id); i++)
                     panel.DrawCaret(vp, window.Code.Doc, angle, y, scale, m.Z.Value, EditorHost.CaretX(id, i), EditorHost.CaretY(id, i));
             }
             var r = Space.R + m.Z.Value - PanelView.FrontGap - 0.005f;
             var width = window.UnscaledSize.X * scale * r / Space.R;
-            // 保存の波: 明るい帯が上から下へ流れる
+            // Save wave: a bright band flows from top to bottom
             if (m.Wave > 0)
                 Quad3d.CurvedSolid(vp, Color.Rgb(0.6f, 0.95f, 1.0f, 0.45f * m.Wave), angle,
                     y + window.UnscaledSize.Y * scale * (m.Wave - 0.5f), r, width, 0.025f * scale);
-            // 沈み終えた行から上と下へ広がる波
+            // Wave spreading up and down from the line that finished sinking
             if (m.Ripple > 0)
             {
                 var spread = (1 - m.Ripple) * window.PxH * 0.6f;
@@ -3927,11 +3927,11 @@ public static class Lider
                         Quad3d.CurvedSolid(vp, Color.Rgb(0.6f, 0.95f, 1.0f, 0.5f * m.Ripple), angle,
                             panel.YAt(y, scale, py) * face / Space.R, face, window.UnscaledSize.X * scale * face / Space.R, band);
             }
-            // compile error の赤い光
+            // Red glow for compile errors
             if (m.Alarm > 0)
                 Quad3d.CurvedSolid(vp, Color.Rgb(1.0f, 0.2f, 0.15f, 0.25f * m.Alarm), angle, y, r, width,
                     window.UnscaledSize.Y * scale);
-            // 飛んだ先の行の印: 明るい帯を暗い線で挟む (背景によらず見える)
+            // Mark on the jumped-to line: a bright band between dark lines (visible on any background)
             if (m.Arrive > 0 && text != null && window == w.FocusWindow)
             {
                 var cy = CursorY(window, m);
@@ -3940,13 +3940,13 @@ public static class Lider
                 Quad3d.CurvedSolid(vp, Color.Rgb(0, 0, 0, 0.7f * m.Arrive), angle, cy + bandH * 0.55f, r, width, bandH * 0.1f);
                 Quad3d.CurvedSolid(vp, Color.Rgb(0, 0, 0, 0.7f * m.Arrive), angle, cy - bandH * 0.55f, r, width, bandH * 0.1f);
             }
-            // 打った行が一瞬光る
+            // The typed line flashes briefly
             if (m.Pulse > 0 && text != null && window == w.FocusWindow)
                 Quad3d.CurvedSolid(vp, Color.Rgb(1.0f, 0.85f, 0.4f, 0.18f * m.Pulse), angle,
                     CursorY(window, m), r, width, text.LineH / window.PxH * window.UnscaledSize.Y * scale);
         }
         Space.Flat = worldFlat;
-        // 画面に貼った平面でないスクリーンの上のゲームの絵は、空間の面の上に描く (画面に貼った平面の上の絵は ScreenView が描く)
+        // Game images on screens pasted on the display that are not flat are drawn on surfaces in space (images on flat screens pasted on the display are drawn by ScreenView)
         foreach (var screen in Screens)
         {
             if (!screen.Shown || OnPlane(screen))
@@ -3964,9 +3964,9 @@ public static class Lider
                 DrawTitle(w, window, worldVp);
             }
         }
-        // 窓に付く光と印は、コードのスクリーンと一緒に動く
+        // Lights and marks attached to panels move together with the code screen
         vp = VpOf(w.CodeScreen, worldVp);
-        // focus が移ると、前の窓から次の窓へ光が流れる
+        // When focus moves, light flows from the previous panel to the next
         if (comet < 1)
         {
             var t = comet * comet * (3 - 2 * comet);
@@ -3980,7 +3980,7 @@ public static class Lider
             Quad3d.Solid(vp * Space.OnCylinder(p.Angle, p.Y, p.Radius, size, size),
                 Color.Rgb(p.Color.R, p.Color.G, p.Color.B, p.Life / p.MaxLife));
         }
-        // 平面でないスクリーンの上のインスペクタは、空間の面の上に描く (平面のスクリーンの上の絵は、ゲームの絵と同じ経路で写す)
+        // The inspector on a non-flat screen is drawn on a surface in space (images on flat screens are shown through the same path as the game image)
         if (TreeVisible && inspect.Texture != null && !OnPlane(ScreenFor(w, inspectWindow)))
         {
             var size = InspectSize();
@@ -3994,12 +3994,12 @@ public static class Lider
         DrawFlash(vp);
         DrawFocusCue(w, vp);
         DrawEdge(w, worldVp);
-        // 画面のキーボードは、ほかのウィンドウより手前に描く
+        // The on-screen keyboard is drawn in front of other windows
         var keys = w.ScreenOf(oskWindow);
         if (keys != null && keys.Shown && oskWindow.Position != null && osk.Picture != null)
             SurfaceQuad(keys, worldVp, new Vec4(oskWindow.Position.Value.X, oskWindow.Position.Value.Y, oskWindow.Size.X, oskWindow.Size.Y), Color.Rgb(1, 1, 1, 1), osk.Picture);
         DrawScreenTags(w, worldVp);
-        // コントローラーで指している点 (両手。指している面の上に、見かけが同じ大きさで出す)。画面のキーボードの上にも見えるよう、キーボードの後に描く
+        // Points the controllers point at (both hands; shown on the pointed surface with the same apparent size). Drawn after the keyboard so they are visible over the on-screen keyboard too
         for (var h = 0; lastEye != null && h < 2; h++)
         {
             var on = aimScreen[h];
@@ -4008,11 +4008,11 @@ public static class Lider
             var dot = 0.014f / Apparent(on);
             SurfaceQuad(on, worldVp, new Vec4(aimAt[h].X, aimAt[h].Y, dot, dot), Color.Rgb(0.4f, 0.9f, 1.0f, 0.95f), null);
         }
-        // 案内は、平面のスクリーンの上に、曲げずに描く
+        // Hints are drawn on a flat screen, without curving
         Space.Flat = true;
         hintCard.Draw(VpOf(hud, worldVp));
         Space.Flat = worldFlat;
-        // 検索とアセットも、平面のスクリーンの上に、曲げずに描く
+        // Search and assets are also drawn on a flat screen, without curving
         Space.Flat = true;
         if (assetWindow.Position != null)
             AssetBoard.Draw(VpOf(palette, worldVp), WindowAngle(w, assetWindow), WindowTop(w, assetWindow), SearchScale);

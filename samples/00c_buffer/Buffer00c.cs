@@ -1,5 +1,5 @@
-// lub の samples/00c_buffer の entry。
-// 実行: lub samples/00c_buffer/Buffer00c.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/00c_buffer.
+// Run: lub samples/00c_buffer/Buffer00c.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;
 using Lub;

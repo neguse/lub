@@ -1,5 +1,5 @@
-// view を描いた命令の列 (rect、text、clip)。lider が窓の texture に描く側で読む。
-// font は lider の等幅 font 1 つの寸法で測る: 幅は文字ごとの足し算で、全角の文字は 2 桁、tab は Style.TabSize 桁。
+// List of commands that drew a view (rect, text, clip). Read by lider on the side that draws into the window texture.
+// Fonts are measured with the dimensions of lider's single monospace font: width is the sum per character, full-width characters take 2 columns, and tab takes Style.TabSize columns.
 using System;
 using System.Collections.Generic;
 
@@ -11,7 +11,7 @@ public static class DrawList
     public const int KindText = 2;
     public const int KindClip = 3;
 
-    // 桁の幅と行の高さ (px)
+    // Column width and line height (px)
     public static float CellW = 8;
     public static float LineH = 16;
 
@@ -26,11 +26,11 @@ public static class DrawList
     public static readonly List<int> Font = new List<int>();
     public static readonly List<int> Line = new List<int>();
 
-    // 命令に付ける行の番号 (本文の行を描いている間はその行、ほかは 0)。Overlay の間は -1
+    // Line number attached to commands (the line while drawing a text line, otherwise 0). -1 during Overlay
     public static int Tag;
     public static bool Overlay;
 
-    // 切り抜きの範囲の stack (x, y, w, h の並び)
+    // Stack of clip rectangles (a sequence of x, y, w, h)
     static readonly List<float> clips = new List<float>();
 
     public static void Clear(float w, float h)
@@ -90,7 +90,7 @@ public static class DrawList
         Push(KindClip, x, y, w, h, 0, "", 0);
     }
 
-    // 今の範囲と重なる所に切り抜く
+    // Clips to the part overlapping the current rectangle
     public static void PushClip(float x, float y, float w, float h)
     {
         var n = clips.Count;
@@ -127,7 +127,7 @@ public static class DrawList
         Push(KindRect, x, y, w, h, color, "", 0);
     }
 
-    // 文字を置き、右の端の x を返す。tab は桁の数の空白にして渡す (lider は文字を桁に置くだけ)
+    // Places text and returns the x of the right edge. Tabs are passed as spaces for their column count (lider only places characters on columns)
     public static float DrawText(int font, string text, float x, float y, int color)
     {
         var w = Width(text);
@@ -135,7 +135,7 @@ public static class DrawList
         return x + w;
     }
 
-    // w x h の中に揃えて置く (align: 0 は左、1 は中央、2 は右)
+    // Places it aligned within w x h (align: 0 = left, 1 = center, 2 = right)
     public static float DrawAligned(int font, int color, string text, int align, float x, float y, float w, float h)
     {
         var tw = Width(text);

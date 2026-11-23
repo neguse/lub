@@ -1,4 +1,4 @@
-// sweep された resource の ref を渡した error は、key と未使用の frame 数を含む。
+// The error from passing a ref to a swept resource includes the key and the number of unused frames.
 using System;
 using Lub;
 
@@ -24,7 +24,7 @@ public static class TestResourceSweptMessage
             Check.That(stale != null, "the render target must be declared");
             return;
         }
-        // 宣言を止めて sweep させる
+        // Stop declaring so that it is swept
         if (frame < sweep + 4)
             return;
         if (frame > sweep + 4)

@@ -33,10 +33,10 @@ unsafe
         Check(Name(p[2]) == "gain" && p[2].count == 1 && p[2].values[0] == .25f, "Typed scalar");
         Check(Name(p[3]) == "色" && p[3].count == 4 && p[3].values[2] == .75f, "Typed UTF-8 name and float list");
         Check(Name(p[4]) == "vertices" && p[4].handle == 22 && p[4].values == null, "Typed buffer");
-        // 値は写した時点のもの
+        // The values are those at the time of the copy
         Gfx.BindingsSet4(typed, "gain", 1, .5f, 0, 0, 0);
         Check(p[2].values[0] == .25f, "Later Set must not change the copied values");
-        // 同じ名前で handle と uniform を行き来できる
+        // The same name can switch between a handle and a uniform
         Gfx.BindingsSet4(typed, "image", 2, 3, 4, 0, 0);
         Gfx.BindingsSetBuffer(typed, "gain", new BufferRef(33));
         var q = typed.ToNative(arena, out count);
@@ -69,8 +69,8 @@ unsafe
     }
     Check(GC.GetAllocatedBytesForCurrentThread() == allocated, "Warmed Set and marshalling must not allocate managed objects");
 
-    // bit mask の文字列は 1〜16 桁の hex (0x 付きも可)。
-    // 空と 17 桁以上は error (tcs VM と tcs2c の binding と同じ規則)。
+    // A bit mask string is 1 to 16 hex digits (a 0x prefix is allowed).
+    // Empty strings and 17 or more digits are errors (the same rule as the tcs VM and tcs2c bindings).
     Check(LubRuntime.Bits(null) == 0 && LubRuntime.Bits("0x1F") == 0x1f && LubRuntime.Bits("ffffffffffffffff") == ulong.MaxValue, "Valid bit masks");
     foreach (var (mask, message) in new[] {
         ("", "empty hex string"), ("0x", "empty hex string"),

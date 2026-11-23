@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace TinyCs.Tcs2c.Tests;
 
-// 補間の数値の標準書式 (int の G / E / F / N / D / X / R、float の F / N / R と大きい精度) が .NET の ToString(format) (InvariantCulture) と同じ文字列になる (il-spec §13)
+// Standard numeric formats in interpolation (G / E / F / N / D / X / R for int, F / N / R and large precisions for float) give the same strings as .NET's ToString(format) (InvariantCulture) (il-spec §13)
 public class NumberFormatDifferentialTests
 {
     private static string Holes(string name, string[] formats) =>
@@ -43,7 +43,7 @@ public class NumberFormatDifferentialTests
             + string.Join("\n", IntFormatValues.Select(v => Texts(v, IntFormats))), output);
     }
 
-    // 実行の int は 32 bit (il-spec §3)。2^31 以上の uint の定数は i32 にならないので、どの backend でも変換の時に TCS1001 UIntRange で止める
+    // int at run time is 32-bit (il-spec §3). uint constants of 2^31 or more do not fit in i32, so every backend stops with TCS1001 UIntRange at conversion time
     [CTheory]
     [InlineData("D")]
     [InlineData("X")]
@@ -122,7 +122,7 @@ public class NumberFormatDifferentialTests
     private const string FormatHashFloats = "F|F0|F1|F2|F9|F50|N|N0|N3|R|r";
     private const string FormatHashInts = "G|G1|G3|G5|G9|E|E0|E3|E9|e5|F|F3|N|N0|N2|D|D5|D12|X|x|X10|R";
 
-    // 広い範囲の値を書式つきで文字列にした hash を、テストのプロセスの .NET と比べる
+    // Compares a hash of values over a wide range formatted as strings with the .NET of the test process
     [CFact]
     public void NumberFormat_WideRangeHashMatchesDotnet()
     {
@@ -141,7 +141,7 @@ public class NumberFormatDifferentialTests
                     return (state >> 8) & 0xffffff;
                 }
 
-                // [1, 2) の仮数に 2^e (e は -149..127) を掛けて符号を付ける
+                // Multiplies a mantissa in [1, 2) by 2^e (e in -149..127) and applies a sign
                 static float Next()
                 {
                     float x = 1f + (Step() & 0x7fffff) / 8388608f;
@@ -151,7 +151,7 @@ public class NumberFormatDifferentialTests
                     return (Step() & 1) == 0 ? x : -x;
                 }
 
-                // 桁数がばらけるように上の bit を右シフトで落とす
+                // Drops upper bits with a right shift so that the digit counts vary
                 static int NextInt()
                 {
                     int v = (Step() << 8) ^ Step();

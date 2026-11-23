@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// データ struct の値意味論 (il-spec §10 の copy 地点)
+// Value semantics of data structs (copy points of il-spec §10)
 public class StructSemanticsTests
 {
     private const string Vec = """
@@ -53,8 +53,8 @@ public class StructSemanticsTests
         Assert.Equal("1|11", result);
     }
 
-    // C# の struct 型 field の default は zero 初期化された struct 値
-    // (nil にすると member アクセスが実行時エラーになる)
+    // In C#, the default of a struct-typed field is a zero-initialized struct value
+    // (making it nil turns member access into a runtime error)
     [Fact]
     public void ClassField_DefaultsToZeroedStruct()
     {
@@ -103,7 +103,7 @@ public class StructSemanticsTests
         }
         """;
 
-    // 変数レシーバへのメソッド呼び出しは変数自体を変異させる (C# と一致)
+    // A method call on a variable receiver mutates the variable itself (matching C#)
     [Fact]
     public void StructMethod_MutatesReceiverVariable()
     {
@@ -122,7 +122,7 @@ public class StructSemanticsTests
         Assert.Equal("2|4", result);
     }
 
-    // List indexer は property (rvalue) — コピーへの変異は捨てられる
+    // A List indexer is a property (rvalue) — mutations of the copy are discarded
     [Fact]
     public void StructMethod_OnListIndexer_MutatesCopyOnly()
     {
@@ -143,7 +143,7 @@ public class StructSemanticsTests
         Assert.Equal("0", result);
     }
 
-    // 配列要素は variable — 変異が残る
+    // An array element is a variable — mutations persist
     [Fact]
     public void StructMethod_OnArrayElement_MutatesInPlace()
     {
@@ -162,7 +162,7 @@ public class StructSemanticsTests
         Assert.Equal("1", result);
     }
 
-    // 明示 ctor は zero 初期化後に本文実行。`new S()` は ctor を通らず zero
+    // An explicit ctor runs its body after zero initialization. `new S()` does not go through the ctor and is zero
     [Fact]
     public void StructCtor_InitializesFields_AndNewStaysZero()
     {
@@ -234,7 +234,7 @@ public class StructSemanticsTests
         Assert.Equal("21|42", result);
     }
 
-    // indexer はサブセット外
+    // Indexers are outside the subset
     [Fact]
     public void StructIndexer_ReportsDiagnostic()
     {
@@ -245,8 +245,8 @@ public class StructSemanticsTests
             e => e.Contains("StructMember"));
     }
 
-    // struct-in-struct の copy は再帰的でなければならない (shallow だと
-    // copy 経由の部分書き込みが alias する)
+    // Copying a struct-in-struct must be recursive (with a shallow copy,
+    // partial writes through the copy alias)
     [Fact]
     public void NestedStruct_CopyIsDeep()
     {
@@ -350,7 +350,7 @@ public class StructSemanticsTests
         Assert.Equal("1|5", result);
     }
 
-    // ネストした struct 値は推移的フィールド展開で値比較する
+    // Nested struct values are compared by value via transitive field expansion
     [Fact]
     public void RecordStruct_NestedStructValueEquality()
     {
@@ -377,7 +377,7 @@ public class StructSemanticsTests
         Assert.Equal("True|False", result);
     }
 
-    // ---- readonly struct の copy 省略 ----
+    // ---- Copy elision for readonly struct ----
 
     [Fact]
     public void ReadonlyStruct_ValueFlowStaysCorrect()
@@ -421,7 +421,7 @@ public class StructSemanticsTests
         Assert.Equal("5|True", result);
     }
 
-    // `new S[n]` の要素は zero 値の struct (nil ではない)。Length も n
+    // Elements of `new S[n]` are zero-valued structs (not nil). Length is n too
     [Fact]
     public void NewStructArray_ElementsAreZeroValues()
     {
@@ -442,8 +442,8 @@ public class StructSemanticsTests
         Assert.Equal("0|5|3|7|2|False", result);
     }
 
-    // struct 要素の Contains / IndexOf / Remove は値等価 (C# の
-    // EqualityComparer<T>.Default は memberwise)
+    // Contains / IndexOf / Remove on struct elements use value equality (C#'s
+    // EqualityComparer<T>.Default is memberwise)
     [Fact]
     public void ListOfStruct_ContainsIndexOfRemove_UseValueEquality()
     {

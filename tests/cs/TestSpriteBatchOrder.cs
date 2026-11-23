@@ -1,5 +1,5 @@
-// SpriteBatch の atlas ごとの draw は、Begin の後にその atlas が初めて出た順に重なる。
-// 前の frame で先に出た atlas の順は持ち越さない。
+// The per-atlas draws of a SpriteBatch stack in the order in which each atlas first appeared after Begin.
+// The order of the atlases that appeared first in the previous frame is not carried over.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -48,12 +48,12 @@ public static class TestSpriteBatchOrder
         batch!.Begin();
         if (frame == 1)
         {
-            // 青だけを描く frame
+            // Frame that draws only blue
             batch.Quad(blue!, one, 0, 0, 4, 4);
         }
         else if (frame == 2)
         {
-            // 赤を全面に、その上に青を真ん中に
+            // Red over the whole screen, and blue in the middle on top of it
             batch.Quad(red!, one, 0, 0, 4, 4);
             batch.Quad(blue!, one, 1, 1, 2, 2);
             id = 2;

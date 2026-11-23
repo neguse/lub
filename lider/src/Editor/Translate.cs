@@ -1,4 +1,4 @@
-// cursor の動き (Lite XL の core/doc/translate.lua と、DocView.translate の行と頁の動き)。
+// Cursor movement (Lite XL's core/doc/translate.lua, and the line and page moves of DocView.translate).
 using System;
 
 namespace LiderEditor;
@@ -27,14 +27,14 @@ public enum Move
 
 public static class Translate
 {
-    // Run の結果。tcs VM は別の class の static method の out をまだ受けないので、結果は field で返す (Doc.Translate が out にする)
+    // Result of Run. The tcs VM does not yet accept out on static methods of another class, so results are returned in fields (Doc.Translate turns them into out)
     public static int Line;
     public static int Col;
-    // 中の関数の結果
+    // Results of the inner functions
     static int rl;
     static int rc;
 
-    // 語の区切りの文字 (Lite XL の config.non_word_chars)
+    // Word separator characters (Lite XL's config.non_word_chars)
     const string NonWord = " \t\n/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-";
 
     static bool IsNonWord(int b)
@@ -44,7 +44,7 @@ public static class Translate
         return NonWord.Contains(((char)b).ToString());
     }
 
-    // command の名前の後ろ ("previous-char" など) から動き (無ければ None)
+    // Movement from the tail of the command name ("previous-char" etc.) (None if none)
     public static Move Parse(string name)
     {
         switch (name)
@@ -70,7 +70,7 @@ public static class Translate
         return Move.None;
     }
 
-    // (line, col) を move で動かした所を Line と Col に置く (Doc.position_offset と同じく、先に範囲に収める)
+    // Puts (line, col) moved by move into Line and Col (clamps into range first, like Doc.position_offset)
     public static void Run(Doc doc, Move move, DocView? dv, int line, int col)
     {
         doc.SanitizePosition(line, col, out var sl, out var sc);
@@ -136,7 +136,7 @@ public static class Translate
                 return;
             case Move.StartOfIndentation:
             {
-                // Lite XL の ^%s* は改行も含むので、空白だけの行では長さ + 1 まで
+                // Lite XL's ^%s* also includes the newline, so on a whitespace-only line it goes up to length + 1
                 var s = doc.Lines[line - 1];
                 var e = Str.FirstInk(s);
                 if (e < 0)

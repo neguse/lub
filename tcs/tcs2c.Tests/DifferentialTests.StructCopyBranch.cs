@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 分岐で値を選ぶ式 (switch 式 / ?: / ?? / GetValueOrDefault(x)) の struct の値を
-// copy 地点 (宣言の初期値 / 代入 / 引数 / 要素 / return) で受ける。Lua は arm が
-// 格納先の table を返すので copy が要り、C は値渡しのまま同じ出力になる。
-// 期待値は CoreCLR の実行結果
+// Struct values of expressions that select a value by branching (switch expression / ?: / ?? / GetValueOrDefault(x)) are
+// received at copy points (declaration initializer / assignment / argument / element / return). In Lua the arms
+// return the storage table, so a copy is needed; C stays pass-by-value and gives the same output.
+// The expected values are the results of running on CoreCLR
 public class StructCopyBranchDifferentialTests
 {
     [CFact]

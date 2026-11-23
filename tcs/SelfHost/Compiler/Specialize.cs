@@ -2,31 +2,31 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// tcs VM と C の backend のための generic の単相化。閉じた generic の型 (`Box<int>`、タプル) と
-// generic な method の閉じた呼び出しごとに、型引数を置き換えた copy (`TcsClosed0_Box`) を作り、参照をその名前に書き換える。
-// copy の中に新しい閉じた型が現れるので、増えなくなるまで束縛し直す (最大 128 回)。最後に generic の雛形を消す。
-// 書き換えは束縛していない木 (B) の上で行う。各回は B の複製を束縛し、複製の node から元の node へ (Orig) 束縛の結果を写す (Mirror)
+// Generic monomorphization for the tcs VM and C backends. For each closed generic type (`Box<int>`, tuples) and
+// each closed call of a generic method, creates a copy with the type arguments substituted (`TcsClosed0_Box`) and rewrites references to that name.
+// New closed types appear inside the copies, so it rebinds until no more appear (at most 128 rounds). Finally the generic templates are removed.
+// Rewriting is done on the unbound tree (B). Each round binds a copy of B and copies the binding results from the copy's nodes to the original nodes (Orig) (Mirror)
 public sealed class Specializer
 {
     private int _appended;
     private readonly List<SourceFile> _files;
-    // 束縛していない木 (ファイルごと)。書き換えはこの木に行う
+    // The unbound tree (per file). Rewrites are applied to this tree
     private readonly List<Node> _units;
-    // 閉じた型と method の key → 閉じた名前
+    // Key of a closed type or method → closed name
     private Dictionary<string, string> _names = new Dictionary<string, string>();
 
-    // 閉じた interface の generic method (interface の key、method の名前、型引数の key、閉じた名前)
+    // Closed generic methods of interfaces (interface key, method name, type argument key, closed name)
     private readonly List<string> _ifaceKeys = new List<string>();
     private readonly List<string> _ifaceMethods = new List<string>();
     private readonly List<string> _ifaceArgs = new List<string>();
     private readonly List<string> _ifaceNames = new List<string>();
     private Compilation? _bound;
-    // 最初の回の束縛に使う、同じ木を束縛済みの compilation (session の束縛)。束縛し直さずに Orig を介して Mirror を写す
+    // A compilation that has already bound the same tree, used for the first round's binding (the session's binding). Copies Mirror through Orig without rebinding
     private Compilation? _seed;
     private List<Node>? _seedOrigins;
 
     public string Error = "";
-    // 閉じる copy を作ったか (次の compile で最初の回を session の束縛で済ませるかの目安)
+    // Whether closed copies were created (a hint for whether the next compile can do its first round with the session's binding)
     public bool MadeCopies;
 
     public Specializer(List<SourceFile> files, List<Node> units)
@@ -35,15 +35,15 @@ public sealed class Specializer
         _units = units;
     }
 
-    // 最初の回の束縛を、同じ木 (origins。units はその複製) を束縛した compilation で済ませる。
-    // bound の units も origins の複製で、node の Orig が origins の node を指す
+    // Does the first round's binding with a compilation that bound the same tree (origins; units is a copy of it).
+    // The units of bound are also copies of origins, and each node's Orig points to a node in origins
     public void Seed(Compilation bound, List<Node> origins)
     {
         _seed = bound;
         _seedOrigins = origins;
     }
 
-    // 単相化した compilation (束縛済み)。失敗なら null (Error に理由)
+    // The monomorphized compilation (bound). null on failure (the reason is in Error)
     public Compilation? Run()
     {
         while (!Step())
@@ -52,14 +52,14 @@ public sealed class Specializer
         return Result;
     }
 
-    // 単相化の結果 (Step が true を返した後。失敗なら null で Error に理由)
+    // The monomorphization result (after Step returns true; null on failure, with the reason in Error)
     public Compilation? Result;
     private int _round;
-    // 雛形を消した木の最後の束縛を次の段で行う
+    // The final binding of the tree with the templates removed is done in the next step
     private bool _finalBind;
 
-    // 1 回分 (全体の束縛と、閉じた copy の追加) を進める。終わったか失敗したら true。
-    // host は回の間で GC の frame の境界を作れる (各回の束縛の木は次の回では要らない)
+    // Advances one round (binding everything and adding closed copies). true when finished or failed.
+    // The host can insert a GC frame boundary between rounds (each round's bound tree is not needed in the next round)
     public bool Step()
     {
         if (_finalBind)
@@ -98,12 +98,12 @@ public sealed class Specializer
         {
             if (Error == "" && instances.Count == 0 && methods.Count == 0)
             {
-                // 閉じる型も method も無い: 書き換えは何もしないので、session の束縛から雛形を外して終える (束縛し直さない)
+                // No types or methods to close: rewriting does nothing, so finish by removing the templates from the session's binding (no rebinding)
                 foreach (int i in EmittedOrder()) RemoveTemplates(_bound!.Units[i]);
                 Result = _bound;
                 return true;
             }
-            // 閉じる copy を作るときは、この回を自分の束縛でやり直す (copy は束縛し直した木から作る)
+            // When closed copies are created, this round is redone with its own binding (the copies are created from the rebound tree)
             MadeCopies = true;
             _names = new Dictionary<string, string>();
             _ifaceKeys.Clear();
@@ -125,7 +125,7 @@ public sealed class Specializer
             return false;
         }
         MadeCopies = true;
-        // 閉じた copy (入れ子の型は外側の型に、それ以外はファイルの終わりに足す)
+        // Closed copies (nested types are added to the outer type, others at the end of the file)
         var ownerNodes = new List<Node>();
         var ownerMembers = new List<List<Node>>();
         var fileAdds = new List<List<Node>>();
@@ -144,7 +144,7 @@ public sealed class Specializer
                 {
                     var member = copy.List[m];
                     if (member.Kind == NodeKind.Ctor) member.Text = closedName;
-                    // generic な型の overload は閉じた copy で parameter の型が重なりうるので IL の名前にする
+                    // Overloads in a generic type may end up with the same parameter types in a closed copy, so they use the IL name
                     if (member.Kind == NodeKind.Method && source.List != null && m < source.List.Count)
                     {
                         var overload = OverloadName(source.List[m].Mirror != null ? source.List[m].Mirror!.Sym : null);
@@ -167,7 +167,7 @@ public sealed class Specializer
             var owner = OuterTypeDecl(source);
             if (owner != null) AddMember(ownerNodes, ownerMembers, owner, copy);
         }
-        // copy を雛形の木に足してから、木全体の参照を書き換える (copy の node は雛形の束縛の結果を持つので、もう一度通しても変わらない)
+        // Add the copies to the template tree, then rewrite references across the whole tree (the copies' nodes carry the template's binding results, so passing over them again changes nothing)
         for (int k = 0; k < ownerNodes.Count; k++)
         {
             foreach (var m in ownerMembers[k]) ownerNodes[k].Add(m);
@@ -197,7 +197,7 @@ public sealed class Specializer
         members.Add(list);
     }
 
-    // library を先に、次に user のファイル (IlExporter と同じ順)
+    // Libraries first, then user files (same order as IlExporter)
     private List<int> EmittedOrder()
     {
         var r = new List<int>();
@@ -221,7 +221,7 @@ public sealed class Specializer
         return 0;
     }
 
-    // ---- 束縛 ----
+    // ---- Binding ----
 
     private void Bind()
     {
@@ -248,7 +248,7 @@ public sealed class Specializer
         _seed = null;
         foreach (var u in _units) ClearMirror(u);
         foreach (var u in _seedOrigins!) ClearMirror(u);
-        // 束縛した node → 元の node (origins) → 複製 (units) の順に Mirror を写す
+        // Copy Mirror in the order bound node → original node (origins) → copy (units)
         foreach (var u in c.Units) SetMirror(u);
         foreach (var u in _units) MirrorFromOrigin(u);
         foreach (var u in _seedOrigins) ClearMirror(u);
@@ -321,11 +321,11 @@ public sealed class Specializer
         }
     }
 
-    // ---- 閉じた型と method を集める ----
+    // ---- Collecting closed types and methods ----
 
-    // ファイルの中の位置の順 (同じ位置は外側が先)
-    // 木を Roslyn の DescendantNodes と同じ順 (元の位置の pre-order) に並べる。
-    // node の slot は位置の順でないので兄弟を位置で並べ替え、単相化が足した copy は足した順に後ろへ置く
+    // In order of position in the file (at the same position, the outer one first)
+    // Orders the tree the same as Roslyn's DescendantNodes (pre-order by original position).
+    // Node slots are not in position order, so siblings are sorted by position, and copies added by monomorphization are placed at the end in the order added
     private static void Ordered(Node n, int depth, Node? parent, List<Node> nodes, List<int> depths, List<Node?> parents)
     {
         nodes.Add(n);
@@ -409,7 +409,7 @@ public sealed class Specializer
         }
     }
 
-    // 閉じた copy を作る候補の型。タプルの literal は変換先の型 (T? なら中の型) で決まる
+    // Candidate types for creating closed copies. A tuple literal is decided by its target type (the inner type for T?)
     private static TypeSym? ClosedTypeOf(Node n, List<Node> deconstructed)
     {
         var m = n.Mirror;
@@ -430,7 +430,7 @@ public sealed class Specializer
         return null;
     }
 
-    // 分解の右辺の literal とその中のタプルの literal は要素ごとに代入するのでタプルの値を作らない
+    // A literal on the right side of a deconstruction, and tuple literals inside it, are assigned element by element, so no tuple value is created
     private static void CollectDeconstruction(Node n, List<Node> r)
     {
         if (n.Kind == NodeKind.DeconstructAssign && n.A != null && n.A.Kind == NodeKind.Tuple) AddNestedTuples(n.A, r);
@@ -473,7 +473,7 @@ public sealed class Specializer
         return t.Decl;
     }
 
-    // 閉じた型の雛形の宣言 (束縛していない木の node)
+    // The template declaration of a closed type (a node in the unbound tree)
     private Node? TemplateOf(TypeSym t)
     {
         var d = DeclOf(t);
@@ -490,7 +490,7 @@ public sealed class Specializer
         return OuterTypeDecl(source) != null;
     }
 
-    // node を member に持つ型の宣言 (束縛していない木)
+    // The type declaration that has node as a member (unbound tree)
     private Node? OuterTypeDecl(Node member)
     {
         foreach (var u in _units)
@@ -562,7 +562,7 @@ public sealed class Specializer
 
     private readonly List<List<TypeSym>> _ifaceTypeArgs = new List<List<TypeSym>>();
 
-    // 閉じた interface の generic method を、実装する型に同じ名前で作る
+    // Creates the closed generic method of an interface with the same name in the implementing type
     private void CollectInterfaceImplementations(Node unit, List<Node> methods, List<List<TypeSym>> substs, List<string> names)
     {
         var decls = new List<Node>();
@@ -616,7 +616,7 @@ public sealed class Specializer
         return parent != null && parent.Kind == NodeKind.Call && parent.A == n;
     }
 
-    // class の method が実装する interface の generic method (無ければ自分)
+    // The interface generic method that a class method implements (itself if there is none)
     private static Symbol InterfaceMethod(Symbol m)
     {
         if (m.IsStatic || m.Owner == null || m.Owner.IsInterface) return m;
@@ -630,7 +630,7 @@ public sealed class Specializer
         return m;
     }
 
-    // generic な型の overload の IL の名前 (同じ名前の method が 2 つ以上)。それ以外は null
+    // The IL name of an overload in a generic type (two or more methods with the same name). null otherwise
     private static string? OverloadName(Symbol? m)
     {
         if (m == null || m.Kind != SymKind.Method || m.Owner == null || m.Owner.TypeParams.Count == 0 || m.Decl == null) return null;
@@ -653,7 +653,7 @@ public sealed class Specializer
 
     // ---- key ----
 
-    // タプルの要素の名前は型を分けない
+    // Tuple element names do not make distinct types
     private static string Key(TypeSym t)
     {
         switch (t.Kind)
@@ -720,16 +720,16 @@ public sealed class Specializer
         return false;
     }
 
-    // ---- 書き換え ----
+    // ---- Rewriting ----
 
-    // n の copy (template が null でなければ型の型引数を置き換え、methodArgs が null でなければ method の型引数を置き換える)。
-    // 閉じた型の参照は閉じた名前に、閉じた generic method の呼び出しは閉じた method の名前にする
+    // A copy of n (substitutes the type's type arguments if template is not null, and the method's type arguments if methodArgs is not null).
+    // References to closed types become the closed name, and calls to closed generic methods become the closed method's name
     private Node? Rewrite(Node? n, List<string>? typeParams, List<TypeSym>? typeArgs, Node? parent,
         List<TypeSym>? methodArgs = null, List<string>? methodParams = null)
     {
         if (n == null) return null;
         var m = n.Mirror;
-        // nameof は束縛した名前の文字列にする (generic な method の雛形は最後に消すので、名前を引き直せない)
+        // nameof becomes the string of the bound name (generic method templates are removed at the end, so the name cannot be looked up again)
         if (n.Kind == NodeKind.Call && m != null && m.Info == CallKind.Nameof && m.HasConst && m.Const != null && m.Const.Kind == ConstKind.String)
         {
             var lit = new Node(NodeKind.StringLit, n.File, n.Pos);
@@ -737,7 +737,7 @@ public sealed class Specializer
             lit.Text = m.Const.S;
             return lit;
         }
-        // 型引数の参照
+        // Type argument reference
         if (n.Kind == NodeKind.TypeName && n.A == null && n.List == null && m != null && m.Type != null && m.Type.Kind == TypeKind.TypeParam)
         {
             if (typeArgs != null && typeParams != null && !m.Type.IsMethodParam)
@@ -751,14 +751,14 @@ public sealed class Specializer
                 if (at >= 0 && at < methodArgs.Count) return TypeNode(methodArgs[at], n);
             }
         }
-        // 閉じた型の参照
+        // Closed type reference
         if ((n.Kind == NodeKind.TypeName || n.Kind == NodeKind.TupleType) && m != null && m.Type != null && !ContainsParameter(m.Type))
         {
             string? closed;
             if ((n.List != null || n.Kind == NodeKind.TupleType) && _names.TryGetValue(Key(m.Type), out closed))
             {
                 var r = NameNode(closed!, n);
-                // 型で修飾した入れ子の型 (`Outer.Box<int>`) は copy も外側の型に置くので修飾を残す
+                // A nested type qualified by a type (`Outer.Box<int>`) keeps the qualifier, since the copy is also placed in the outer type
                 if (n.Kind == NodeKind.TypeName && n.A != null && m.Type.Decl != null && m.Type.Decl.Outer != null)
                     r.A = Rewrite(n.A, typeParams, typeArgs, n, methodArgs, methodParams);
                 return r;
@@ -773,8 +773,8 @@ public sealed class Specializer
                 r.Text = closed!;
                 r.List = null;
                 r.End = n.End;
-                // namespace で修飾した閉じた型 (`N.Box<int>`) は global の名前だけにする。
-                // 型で修飾した入れ子の型 (`Outer.Box<int>`) は copy も外側の型に置くので修飾を残す
+                // A closed type qualified by a namespace (`N.Box<int>`) becomes just the global name.
+                // A nested type qualified by a type (`Outer.Box<int>`) keeps the qualifier, since the copy is also placed in the outer type
                 if (n.Kind == NodeKind.Member && (m.Type.Decl == null || m.Type.Decl.Outer == null))
                 {
                     r.Kind = NodeKind.Name;
@@ -783,7 +783,7 @@ public sealed class Specializer
                 return r;
             }
         }
-        // タプルの literal は閉じた struct の生成
+        // A tuple literal is a creation of the closed struct
         if (n.Kind == NodeKind.Tuple && m != null && m.Type != null && n.List != null)
         {
             var t = IlTypes.UnwrapNullable(m.Type);
@@ -807,11 +807,11 @@ public sealed class Specializer
         }
         var r2 = CopyNode(n, typeParams, typeArgs, methodArgs, methodParams);
         {
-            // 名前の付いたタプルの要素 (`t.x`) は閉じた struct の Item の field
+            // A named tuple element (`t.x`) is an Item field of the closed struct
             if (n.Kind == NodeKind.Member && m != null && m.Sym != null && m.Sym.Kind == SymKind.Field && m.Sym.Owner == null && m.A != null && m.A.Type != null
                 && IlTypes.UnwrapNullable(m.A.Type).Kind == TypeKind.Tuple && m.Sym.Name != n.Text && _names.ContainsKey(Key(IlTypes.UnwrapNullable(m.A.Type))))
                 r2.Text = m.Sym.Name;
-            // 閉じた generic method の呼び出しと method group
+            // Calls and method groups of closed generic methods
             if ((n.Kind == NodeKind.Name || n.Kind == NodeKind.Member) && m != null)
             {
                 var callNode = parent != null && parent.Kind == NodeKind.Call && parent.A == n ? parent.Mirror : null;
@@ -827,7 +827,7 @@ public sealed class Specializer
                         if (owner != null) _names.TryGetValue(MethodKey(owner.SelfType(), method, targs), out closed);
                         if (closed == null && sym.Owner != null)
                         {
-                            // 実装する型の閉じた method (interface の method の名前と同じ)
+                            // The closed method of the implementing type (same name as the interface method)
                             var implKey = Key(sym.Owner.SelfType()) + "::" + IlNames.MethodName(sym) + "<" + ArgsKey(targs) + ">";
                             _names.TryGetValue(implKey, out closed);
                         }
@@ -844,7 +844,7 @@ public sealed class Specializer
                     }
                 }
             }
-            // 型引数どうしの ==/!= は参照の比較 (where T : class)。型引数を record に置き換えても値の等価にならないよう、両辺を object にする
+            // ==/!= between type arguments is a reference comparison (where T : class). Both sides are made object so that substituting a record for the type argument does not turn it into value equality
             if (n.Kind == NodeKind.Binary && (n.Text == "==" || n.Text == "!=") && m != null && m.A != null && m.B != null
                 && m.A.Type != null && m.B.Type != null && m.A.Type.Kind == TypeKind.TypeParam && m.B.Type.Kind == TypeKind.TypeParam
                 && (typeArgs != null || methodArgs != null))
@@ -904,7 +904,7 @@ public sealed class Specializer
         return r;
     }
 
-    // 型の構文を作る (型引数の置き換え)。作った node は全て oblivious
+    // Builds type syntax (substituting type arguments). All created nodes are oblivious
     private Node TypeNode(TypeSym t, Node at)
     {
         var n = TypeNodeCore(t, at);
@@ -1023,7 +1023,7 @@ public sealed class Specializer
         return n;
     }
 
-    // global:: から書いた修飾された名前
+    // A qualified name written from global::
     private static Node Qualified(string fullName, Node at)
     {
         var parts = fullName.Split('.');
@@ -1038,7 +1038,7 @@ public sealed class Specializer
         return cur!;
     }
 
-    // 最後の回: generic の雛形 (型と method) を消す
+    // Final round: remove the generic templates (types and methods)
     private static void RemoveTemplates(Node container)
     {
         if (container.List == null) return;

@@ -1,10 +1,10 @@
-// Gfx.Pick の、frame の中の出来事に対する振る舞い。
-// 1. 上下: 画面の上半分と下半分に板を描き、上と下を指すとそれぞれの板が返る (target の px は左上原点)。
-// 2. 記録中の要求: 記録している frame の中で出した要求は、その frame ではなく後の frame から引く。
-//    記録している frame は全面の板 1 枚、後の frame は隅の板と全面の板の 2 枚を描くので、後の frame から引くと 1 が返る。
-// 3. 書き換え: 中央に板を描いた後、同じ frame で同じ buffer を隅を指す頂点に書き換えても (同じ大きさ)、描いた時の頂点で流し直す。
-// 4. 作り直し: 3 と同じことを、大きさの違う頂点で buffer を作り直してする。
-// 5. 範囲の外: target の外を指すと、何も無い (-1) という結果が返る。
+// Behavior of Gfx.Pick with respect to events within a frame.
+// 1. Top and bottom: draws planes on the top and bottom halves of the screen; pointing at the top and at the bottom returns the respective plane (target px has its origin at the top left).
+// 2. Request during recording: a request issued within a frame that is being recorded picks from a later frame, not from that frame.
+//    The recorded frame draws 1 full-screen plane and the later frame draws 2 planes, a corner one and a full-screen one, so picking from the later frame returns 1.
+// 3. Rewrite: after drawing a plane in the center, even if the same buffer is rewritten in the same frame with vertices pointing at a corner (same size), the replay uses the vertices from draw time.
+// 4. Recreate: does the same as 3 by recreating the buffer with vertices of a different size.
+// 5. Out of range: pointing outside the target returns a "nothing" result (-1).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -44,8 +44,8 @@ public static class TestPickFrame
         Gfx.Draw(4, b, new DrawOpts { Shader = sh, Primitive = Gfx.Primitive.TriangleStrip, Cull = Gfx.Cull.None, Depth = false });
     }
 
-    // 中央に板を描いてから、同じ frame で buffer を隅の頂点にする。
-    // version を渡さない宣言は中身が変わった印なので、同じ frame で同じ key を 2 度宣言できる
+    // Draw a plane in the center, then set the buffer to the corner vertices in the same frame.
+    // A declaration without version marks the contents as changed, so the same key can be declared twice in the same frame
     static void PulledThenMoved(ShaderRef pull, string key, List<float> moved)
     {
         var buf = Gfx.UseBuffer(key, Gfx.BufferType.Storage, center);
@@ -55,8 +55,8 @@ public static class TestPickFrame
         Gfx.UseBuffer(key, Gfx.BufferType.Storage, moved);
     }
 
-    // 結果を待つ。
-    // 届いていなければ -2
+    // Wait for the result.
+    // -2 if it has not arrived
     static int Result()
     {
         var hit = Gfx.PickResult();
@@ -81,13 +81,13 @@ public static class TestPickFrame
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex });
         if (step <= 2)
         {
-            // 上半分が 0、下半分が 1 (NDC の y は上が +1)
+            // The top half is 0, the bottom half is 1 (NDC y is +1 at the top)
             Rect(rect!, -1, 0, 1, 1);
             Rect(rect!, -1, -1, 1, 0);
         }
         else if (step == 3)
         {
-            // phaseFrame 1 は要求を記録している frame
+            // phaseFrame 1 is the frame that records the request
             if (phaseFrame == 1)
             {
                 Rect(rect!, -1, -1, 1, 1);
@@ -136,7 +136,7 @@ public static class TestPickFrame
             if (bottom == -2)
                 return;
             Check.That(bottom == 1, "bottom: draw " + bottom + ", want 1");
-            // 次の frame を記録させる
+            // Have the next frame recorded
             Gfx.Pick(Gfx.MainTex!, w / 2, h / 2);
             step = 3;
             phaseFrame = 0;

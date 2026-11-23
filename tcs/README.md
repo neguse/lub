@@ -7,9 +7,13 @@ compiler は TinyC# で書いたセルフホストの実装 1 つ (`SelfHost/`) 
 字句解析から型チェックと準拠検査、IL の組み立てまでを compiler が行い、tcs VM と C の backend は同じ IL を読む。
 Roslyn は compiler の外の道具 (IDE の Roslyn Analyzer、playground の補完と hover、検証の oracle) にだけ使う。
 
+目標は [objective.md](objective.md) にある。
+仕様の正は [doc/support-matrix.md](doc/support-matrix.md)、この README、`doc/*-design.md` の設計の文書。
+tcs と tcs2c は暫定の名前で、名前を変える時期と新しい名前は決まっていない。新しく付ける名前は tcs 系に揃える。
+
 ## 必要なもの
 
-- .NET 11 SDK (版は `global.json` で固定。導入は `dotnet-install.sh --jsonfile global.json` を推奨 — distro package は workload と版がずれるため混ぜない)
+- .NET 11 SDK (版は repo の root の `global.json` で固定。入れ方は [docs/develop.md](../docs/develop.md) のビルドの依存)
 - CMake 3.12+ (tcsvm のビルド用)
 - C コンパイラ (MSVC / GCC / Clang)
 
@@ -59,6 +63,14 @@ Windows (PowerShell):
 
 `run-tests` は `dotnet test` に加え、代表 sample の `tcs check`、Rider helper script、analyzer-demo build の expected diagnostics、analyzer nupkg の PackageReference consumer と `.editorconfig` severity override を検査する。
 GitHub Actions (repo の root の `.github/workflows/ci.yml` の `tcs-test`) でも同じ gate を実行する。
+`run-tests.sh --part <名前>` は一部だけを走らせる (CI は部分ごとの job に分けて並べる。部分の一覧は `run-tests.sh` の先頭)。
+
+テストの書き方:
+
+- C# の入力を tcs VM で動かして結果を確かめる (`TestHelper.CompileAndRunVm(csharpSource, csharpExpr)`、`CompileAndRunVmMain`、`CompileAndRunVmProgram`)。`TCS_DIFFERENTIAL=1` なら実 .NET の結果とも比べる。
+- C backend、tcs VM、.NET の一致は `tcs2c.Tests` の `Backends.AssertParity` で見る。
+- 診断だけを見るテストは `Checker.Check` (`tcs check` と同じ検査) で書く。
+- 出力の完全一致で比べるテストは書かない (出力の形を変えると壊れるため)。
 
 ## 依存と配布
 

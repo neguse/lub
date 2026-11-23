@@ -1,7 +1,7 @@
-// Blend は値の struct なので、Blends の組を変数に写して field を書き換えても、組そのものは変わらない。
-// 写しの Dst / DstAlpha を One (加算) に書き換えてから、写しと組 (Blends.Alpha) のそれぞれで描き、組で描いた画素が Blends.Alpha の式のままであることを readback で見る。
-// DrawOpts.Blend を省いた draw は混ぜずに上書きする。
-// native gate は tcs VM の player と .NET 実行の両方で走らせ、frame ごとの digest (draw の Blend を含む) も比べる。
+// Blend is a value struct, so copying a Blends preset into a variable and rewriting its fields does not change the preset itself.
+// After rewriting Dst / DstAlpha of the copy to One (additive), draws with the copy and with the preset (Blends.Alpha), and checks via readback that the pixel drawn with the preset still follows the Blends.Alpha equation.
+// A draw that omits DrawOpts.Blend overwrites without blending.
+// The native gate runs on both the tcs VM player and .NET execution, and also compares the per-frame digest (including the Blend of each draw).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -36,9 +36,9 @@ public static class TestBlendValue
         var copy = Blends.Alpha;
         copy.Dst = Gfx.BlendFactor.One;
         copy.DstAlpha = Gfx.BlendFactor.One;
-        // 写し: rgb = 描く値 × 0.5 + target、a = 0.5 + 0.25
+        // Copy: rgb = drawn value × 0.5 + target, a = 0.5 + 0.25
         Add("copy", copy, new int[] { 191, 64, 0, 191 });
-        // 組: rgb = 描く値 × 0.5 + target × 0.5、a = 0.5 + 0.25 × 0.5
+        // Preset: rgb = drawn value × 0.5 + target × 0.5, a = 0.5 + 0.25 × 0.5
         Add("preset", Blends.Alpha, new int[] { 159, 32, 0, 159 });
         Add("none", null, new int[] { 255, 0, 0, 128 });
     }
@@ -75,7 +75,7 @@ public static class TestBlendValue
                 allDone = false;
                 continue;
             }
-            // 2 行目の左端 (左半分に描いた quad の中)
+            // Left end of the 2nd row (inside the quad drawn on the left half)
             var got = new int[4];
             for (var i = 0; i < 4; i++)
                 got[i] = bytes!.Get(stride + i);

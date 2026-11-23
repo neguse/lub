@@ -1,6 +1,6 @@
 using System;
 
-// null の receiver の instance method の呼び出しは fault (il-spec §12)
+// Calling an instance method on a null receiver faults (il-spec §12)
 public class Node
 {
     public int V;

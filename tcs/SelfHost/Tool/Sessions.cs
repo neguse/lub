@@ -3,18 +3,18 @@ using TcsVm;
 
 namespace TcsSelf;
 
-// host が名前で持つ、tcs VM の増分 session (VmSession) の入口。
-// 同じ process の中で、別の版の同じ program (保存した版と編集中の版など) を並べて変換するのに使う。
-// host は要求を TcsHost の引数に並べて Call を呼び、応答を TcsHost.WriteOut で受け取る:
-//   open <名前> <entry> <module の path> <batch の path> <export の数> [<C.M か C.*>]... <trace の数> [<path の先頭>]... <参照の数> [<text>]... [<path> <text>]...
-//   update <名前> <外す file の数> [<path>]... [<path> <text>]...   (file を外し、足し、本文を替えて、まとめて 1 回変換する)
-//   close <名前>
-// open は同じ名前の session を開き直す。entry class の static method は全部 export する。
-// 変換が通ると、module (最初の build と restart) か batch (tvm_apply_batch で当てる差分) を、open で指した path に書く (TcsHost.WriteBinaryAtomic)。
-// batch のときも、batch を当てた後の module を module の path に先に書く (作り直すときに読む版を、当てた版に揃える)。
-// 応答は行の並び。1 行目は kind (module、batch、restart、error)、続けて "revision <通った回数>"、"error <診断>"、"reason <restart の理由>"、"note <当てたが知らせたい変化>"。
-// 診断の中の改行は空白にする。
-// 同梱の library は TcsHost.ToolFile で読む
+// Entry point for tcs VM incremental sessions (VmSession) that the host holds by name.
+// Used to compile different versions of the same program side by side in one process (such as the saved version and the version being edited).
+// The host puts the request in the TcsHost arguments, calls Call, and receives the reply through TcsHost.WriteOut:
+//   open <name> <entry> <module path> <batch path> <export count> [<C.M or C.*>]... <trace count> [<path prefix>]... <reference count> [<text>]... [<path> <text>]...
+//   update <name> <number of files to remove> [<path>]... [<path> <text>]...   (removes files, adds files, replaces text, and compiles everything at once)
+//   close <name>
+// open reopens the session with the same name. All static methods of the entry class are exported.
+// When compilation passes, writes the module (first build and restart) or the batch (the diff applied with tvm_apply_batch) to the path given in open (TcsHost.WriteBinaryAtomic).
+// For a batch too, first writes the module after applying the batch to the module path (so the version loaded when recreating matches the applied version).
+// The reply is a sequence of lines. Line 1 is the kind (module, batch, restart, error), followed by "revision <pass count>", "error <diagnostic>", "reason <restart reason>", "note <change that was applied but should be reported>".
+// Newlines inside diagnostics become spaces.
+// Bundled libraries are read with TcsHost.ToolFile.
 public static class Sessions
 {
     private sealed class Open
@@ -67,7 +67,7 @@ public static class Sessions
         i = ReadList(i, n, traces);
         var refs = new List<string>();
         i = ReadList(i, n, refs);
-        // entry class は Main を持たないので、VM の入口でなく export として渡す
+        // The entry class has no Main, so pass it as exports rather than as the VM entry point.
         var vm = new VmSession("", exports, refs);
         vm.Traces = traces;
         var s = new Open(vm, TcsHost.Arg(3), TcsHost.Arg(4));
@@ -81,7 +81,7 @@ public static class Sessions
         Reply(s, vm.Update(s.Texts, s.Paths));
     }
 
-    // 数と、その数の引数を list に足し、次の位置を返す
+    // Adds a count and that many arguments to the list, and returns the next position.
     private static int ReadList(int i, int n, List<string> list)
     {
         int count = i < n ? ToolText.ParseInt(TcsHost.Arg(i)) : 0;

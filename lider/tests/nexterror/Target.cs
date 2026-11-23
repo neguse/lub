@@ -1,4 +1,4 @@
-// TestNextError が error を付ける file。
+// The file TestNextError attaches errors to.
 public static class Target
 {
     // 0

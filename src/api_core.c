@@ -34,7 +34,8 @@ void app_frame_garbage_push_fn(App *app, void *ptr, void (*free_fn)(void *)) {
     struct FrameGarbage *grown = (struct FrameGarbage *)realloc(
         app->frame_garbage, sizeof(*grown) * (size_t)cap);
     if (!grown) {
-      free_fn(ptr); // 預かれなければその場で捨てる (view は既に壊れている)
+      free_fn(ptr); // If it cannot be handed over, free it on the spot (the
+                    // view is already broken)
       return;
     }
     app->frame_garbage = grown;

@@ -1,12 +1,12 @@
-// lub の samples/14_sponza の entry。
-// 実行: lub samples/14_sponza/Sponza14.csproj (transpile + watch + hot reload) glTF シーンのマルチパスレンダラ: shadow → G-buffer (MRT) → SSAO → lighting → fog → bloom → outline → DoF → motion blur → present。
-// Io.LoadGltf の mesh / material は typed な GltfMesh / GltfMaterial で受ける。
+// Entry of lub's samples/14_sponza.
+// Run: lub samples/14_sponza/Sponza14.csproj (transpile + watch + hot reload) Multi-pass renderer for a glTF scene: shadow → G-buffer (MRT) → SSAO → lighting → fog → bloom → outline → DoF → motion blur → present.
+// The mesh / material of Io.LoadGltf are received as the typed GltfMesh / GltfMaterial.
 using System;
 using System.Collections.Generic;
 using Lub;
 using TinySystem.Text;
 
-/// <summary>glTF primitive 1 つ分の GPU リソースと material table。
+/// <summary>GPU resources and material table for one glTF primitive.
 /// </summary>
 public class SponzaPrim
 {
@@ -28,7 +28,7 @@ public static class Sponza14
 
     static List<SponzaPrim> prims = new List<SponzaPrim>();
 
-    // camera state。
+    // camera state.
     static float camEyeX = -1.5f;
     static float camEyeY = 0.25f;
     static float camEyeZ = 0.0f;
@@ -249,8 +249,8 @@ public static class Sponza14
         Present(pShader, quad, outTex);
     }
 
-    // primitive ごとの buffer を毎フレーム宣言する。
-    // 同じ version の buffer が残っていれば頂点を組まずにそれを使い、無ければ (初回、glTF の更新、sweep の後) 組んで宣言する。
+    // Declare the buffers of each primitive every frame.
+    // If a buffer of the same version remains, use it without building the vertices; if there is none (first time, glTF update, after a sweep), build and declare it.
     static void DeclareMesh(GltfMesh mesh, int version)
     {
         prims = new List<SponzaPrim>();
@@ -546,7 +546,7 @@ public static class Sponza14
             fallback, 1, new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Repeat });
     }
 
-    // material 無しは null (default texture)。
+    // null if there is no material (default texture).
     static string? MatBase(GltfMaterial? mat)
     {
         if (mat == null) return null;
@@ -646,8 +646,8 @@ public static class Sponza14
         return (int)(float)n;
     }
 
-    // env 値 ([-+]?digits[.digits]) を読む。
-    // 読めない文字列は null (呼び出し側は代入をスキップする)。
+    // Reads an env value ([-+]?digits[.digits]).
+    // A string that cannot be read gives null (the caller skips the assignment).
     static float? ParseNumber(string s)
     {
         var str = new Utf8Bytes(s.Trim());

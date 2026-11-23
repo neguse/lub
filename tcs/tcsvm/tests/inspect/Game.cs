@@ -1,4 +1,4 @@
-// 大きな配列の一部を tvm_inspect で見て、static から辿れる個体を tvm_inspect_instances で探すテスト (inspect_test.c が呼ぶ)。
+// Test that views part of a large array with tvm_inspect and finds instances reachable from statics with tvm_inspect_instances (called by inspect_test.c).
 public class Box
 {
     public int Hp = 7;
@@ -18,7 +18,7 @@ public struct Spot
 public static class Game
 {
     public static Box[] Boxes = Make();
-    // 個体を探す: Solo は Pair からも辿れるが 1 度だけ、Ring は輪、At は struct の中、Chain は深さの上限で止まる
+    // Finding instances: Solo is also reachable from Pair but appears only once, Ring is a cycle, At is inside a struct, Chain stops at the depth limit
     public static Box Solo = new Box();
     public static System.Collections.Generic.List<Box> Pair = new System.Collections.Generic.List<Box> { Solo, new Box() };
     public static Node Ring = MakeRing();

@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// struct の演算子 (class と同じ範囲) と static member。期待値は同じ program を CoreCLR で実行した stdout
+// Struct operators (same range as classes) and static members. The expected values are the stdout of running the same program on CoreCLR
 public class StructOperatorsDifferentialTests
 {
     private const string StructOperatorsProgram = """
@@ -28,7 +28,7 @@ public class StructOperatorsDifferentialTests
         public struct M
         {
             public int N;
-            // operand は値渡しで、中の書き換えは呼び出し側に見えない
+            // Operands are passed by value, so changes inside are not visible to the caller
             public static M operator +(M a, M b) { a.N += b.N; b.N = 100; return a; }
         }
         public class Holder { public V P; public V[] Items = new V[2]; }
@@ -147,7 +147,7 @@ public class StructOperatorsDifferentialTests
                 b.X = 9f;
                 Console.WriteLine(V.Sum(a, b) + " " + a.X + " " + b.X);
                 Console.WriteLine(Apply(V.Sum, a, b));
-                // static の struct を受ける変数は copy で、static の値は変わらない
+                // A variable that receives a static struct is a copy, so the static value does not change
                 var u = V.Last;
                 u.X = 99f;
                 Console.WriteLine(V.Last.X);

@@ -1,6 +1,6 @@
-// .csproj で開いた app を、開いた側から検査する: 通った行、代入した値、static の木、行ごとの負荷、pass ごとの GPU の時間。
-// 開いた app のソースは --trace で変換される。
-// 開いた側のソースは記録に入らない。
+// The opener inspects an app opened from a .csproj: executed lines, assigned values, the static tree, per-line load, and per-pass GPU time.
+// The source of the opened app is compiled with --trace.
+// The source of the opener is not recorded.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -12,7 +12,7 @@ public static class Game
 
     static string ChildCsproj()
     {
-        // GAME_CS は <dir>/game/Game.cs
+        // GAME_CS is <dir>/game/Game.cs
         var game = Environment.GetEnvironmentVariable("GAME_CS") ?? "";
         return game.Replace("game/Game.cs", "child/Child.csproj");
     }
@@ -43,7 +43,7 @@ public static class Game
             Fail($"line={sawLine} value={sawValue} profile={sawProfile} pass={sawPass} after {stepped} frames of the opened app");
             return;
         }
-        // build を待つ間は Step が false
+        // Step is false while waiting for the build
         if (!ok) return;
         stepped++;
         foreach (var l in Sys.TakeTrace(child))
@@ -63,7 +63,7 @@ public static class Game
         {
             if (g.Target == "main" && g.Site.Contains("Child.cs:")) sawPass = true;
         }
-        // 自分の pass は数えていない
+        // The opener's own passes are not counted
         if (Sys.TakeGpuPasses().Count != 0)
         {
             Fail("the opening app has GPU passes without ProfileLines");
@@ -79,7 +79,7 @@ public static class Game
             Fail($"frame {stepped}: Score of the opened app is {score}");
             return;
         }
-        // 自分の記録は別 (開いた側のソースは --trace で変換されず、空)
+        // The opener's own record is separate (the opener's source is not compiled with --trace, so it is empty)
         if (Sys.TakeTrace().Count != 0)
         {
             Fail("the opening app has its own trace");

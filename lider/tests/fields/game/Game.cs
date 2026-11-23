@@ -1,11 +1,11 @@
-// ../TestFields.cs が lider で開くゲーム。フィールドの行に出す static と個体を持つ。
-// Depot.Ticks は毎 frame 変わる。Depot.Motes と Depot.Calm は、決めた frame で次の順に変わる。
-//   - 最初の frame: Hp が 10、11、12 の 3 個を足す
-//   - ShiftFrame: 先頭 (Hp 10) を外す
-//   - DropFrame: 2 つ目 (Hp 12) を外す
-//   - AddFrame: Hp 20 を足す
-//   - CalmFrame: Calm を 1 にする
-//   - ManyFrame: Hp 30 から 33 の 4 個を足す
+// The game ../TestFields.cs opens in lider. Holds statics and instances to show on the field lines.
+// Depot.Ticks changes every frame. Depot.Motes and Depot.Calm change on set frames in the following order.
+//   - first frame: add 3 instances with Hp 10, 11, 12
+//   - ShiftFrame: remove the first (Hp 10)
+//   - DropFrame: remove the second (Hp 12)
+//   - AddFrame: add Hp 20
+//   - CalmFrame: set Calm to 1
+//   - ManyFrame: add 4 instances with Hp 30 to 33
 using System.Collections.Generic;
 
 public class Mote

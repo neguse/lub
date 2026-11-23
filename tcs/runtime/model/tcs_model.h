@@ -1,19 +1,20 @@
-/* VM と tcs2c が共有する型記述子 (doc/object-model.md §4、§5)。
-   byte 列 (v1) を読み、C の struct の規則で layout を決める。 */
+/* Type descriptors shared by the VM and tcs2c (doc/object-model.md §4, §5).
+   Reads a byte sequence (v1) and determines the layout with C struct rules. */
 #ifndef TCS_MODEL_H
 #define TCS_MODEL_H
 
 #include <stddef.h>
 #include <stdint.h>
 
-/* tcs2c は runtime/model を生成 C に埋め込み、TCS_MODEL_STATIC で static にする */
+/* tcs2c embeds runtime/model into the generated C and makes it static with
+ * TCS_MODEL_STATIC */
 #ifdef TCS_MODEL_STATIC
 #define TCS_MODEL_API static
 #else
 #define TCS_MODEL_API
 #endif
 
-/* 値の種類 (field / 要素 / 葉) */
+/* Kinds of values (field / element / leaf) */
 enum {
   TCS_K_I32 = 0,
   TCS_K_F32 = 1,
@@ -22,10 +23,10 @@ enum {
   TCS_K_STRUCT = 4
 };
 
-/* 型の種類 */
+/* Kinds of types */
 enum {
-  TCS_T_CLASS = 1,  /* class と cell */
-  TCS_T_STRUCT = 2, /* 値型 (struct / T? / tuple / KeyValuePair) */
+  TCS_T_CLASS = 1,  /* class and cell */
+  TCS_T_STRUCT = 2, /* value types (struct / T? / tuple / KeyValuePair) */
   TCS_T_ARRAY = 3,
   TCS_T_STRING = 4,
   TCS_T_LIST = 5,
@@ -39,7 +40,8 @@ enum {
 /* flags */
 #define TCS_TYPE_RECORD 1u
 #define TCS_TYPE_HAS_ON_RELOAD 2u
-/* host と共有する外部 data class: class の prefix の後に 8 byte に揃えた uint64_t host_value (doc/object-model.md §3) */
+/* External data class shared with the host: after the class prefix, a uint64_t
+ * host_value aligned to 8 bytes (doc/object-model.md §3) */
 #define TCS_TYPE_HOST_VALUE 4u
 
 #define TCS_NO_TYPE 0xFFFF
@@ -47,11 +49,13 @@ enum {
 typedef struct TcsField {
   const char *name;
   uint8_t kind;  /* TCS_K_* */
-  uint16_t type; /* REF: 参照先 (TCS_NO_TYPE は任意)、STRUCT: struct の型 */
+  uint16_t type; /* REF: the referenced type (TCS_NO_TYPE means any), STRUCT:
+                    the struct type */
   uint32_t offset;
 } TcsField;
 
-/* 葉: struct を展開した 1 値 (VM の命令の operand、GC の参照の場所、snapshot の 1 値) */
+/* Leaf: one value of an expanded struct (an operand of a VM instruction, a GC
+ * reference location, one value of a snapshot) */
 typedef struct TcsLeaf {
   uint8_t kind;
   uint16_t type;
@@ -76,29 +80,30 @@ typedef struct TcsType {
   /* class / struct */
   uint16_t nfields;
   TcsField *fields;
-  uint16_t nleaves; /* field を struct まで展開した列 (layout が求める) */
+  uint16_t nleaves; /* fields with structs expanded (computed by layout) */
   TcsLeaf *leaves;
-  uint32_t size;  /* class: payload の大きさ、struct: 値の大きさ */
-  uint32_t align; /* struct の alignment */
-  /* 配列 / List / Dictionary の値、box の中 */
+  uint32_t size;  /* class: payload size, struct: value size */
+  uint32_t align; /* struct alignment */
+  /* values of arrays / List / Dictionary, contents of a box */
   uint8_t elem_kind;
   uint16_t elem_type;
   uint32_t elem_size;
-  /* Dictionary の key */
+  /* Dictionary key */
   uint8_t key_kind;
   uint16_t key_type;
-  uint32_t dict_entry; /* Dictionary の entry の大きさ (実装が決めて入れる) */
-  /* 関数型 */
+  uint32_t dict_entry; /* size of a Dictionary entry (decided and set by the
+                          implementation) */
+  /* function types */
   uint16_t nparams, nrets;
   TcsInfo *params, *rets;
-  /* class: 実装する interface と itable (VM だけが使う) */
+  /* class: implemented interfaces and itable (used only by the VM) */
   uint16_t nifaces;
   uint16_t *ifaces;
   uint16_t nitable;
   TcsItable *itable;
 } TcsType;
 
-/* 読む位置。bad は読み過ぎ・形の誤り */
+/* Read position. bad means reading too far or a malformed shape */
 typedef struct TcsReader {
   const uint8_t *p, *end;
   int bad;
@@ -107,17 +112,19 @@ typedef struct TcsReader {
 TCS_MODEL_API uint8_t tcs_rd_u8(TcsReader *r);
 TCS_MODEL_API uint16_t tcs_rd_u16(TcsReader *r);
 TCS_MODEL_API uint32_t tcs_rd_u32(TcsReader *r);
-/* n 個 × unit byte が残っているか (巨大な確保を避ける) */
+/* Whether n × unit bytes remain (avoids huge allocations) */
 TCS_MODEL_API int tcs_rd_count_ok(TcsReader *r, uint32_t n, size_t unit);
 
-/* 型の表を読む。strings は名前の string 表。失敗したら message (static) を返し、types は解放してよい形のまま */
+/* Reads the type table. strings is the string table of names. On failure
+ * returns a message (static) and leaves types in a state that can be freed */
 TCS_MODEL_API const char *tcs_model_read(TcsReader *r,
                                          const char *const *strings,
                                          uint32_t nstrings, uint32_t *ntypes,
                                          TcsType **types);
 
-/* layout (§5): field / 葉の offset、大きさ、要素の大きさ。class の payload は class_prefix byte の後から。
-   ref_size は参照の大きさ */
+/* layout (§5): offsets of fields / leaves, sizes, element sizes. A class
+   payload starts after class_prefix bytes. ref_size is the size of a reference
+ */
 TCS_MODEL_API const char *tcs_model_layout(TcsType *types, uint32_t ntypes,
                                            uint32_t class_prefix,
                                            uint32_t ref_size);
@@ -126,7 +133,8 @@ TCS_MODEL_API void tcs_model_free(TcsType *types, uint32_t ntypes);
 
 TCS_MODEL_API uint32_t tcs_kind_size(uint8_t kind, uint32_t ref_size);
 
-/* string 表 (u32 の数、各 u32 の長さと byte 列)。strings は 1 つの確保で、tcs_model_free_strings で解放する */
+/* String table (u32 count, then a u32 length and bytes for each). strings is
+ * one allocation, freed with tcs_model_free_strings */
 TCS_MODEL_API const char *tcs_model_read_strings(TcsReader *r, char ***strings,
                                                  uint32_t *n);
 TCS_MODEL_API void tcs_model_free_strings(char **strings, uint32_t n);

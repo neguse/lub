@@ -47,7 +47,7 @@ LubStatus lub_xr_view(LubContext *ctx, int32_t eye, float near_plane,
       near_plane <= 0 || far_plane <= near_plane)
     return lub_api_fail(app, "xr.view: invalid eye or clip distances");
   if (app->xr_given) {
-    // 開いた app が用意した眼 (位置は原点、向きは回転なし)
+    // Eyes provided by the opener (position at the origin, no rotation)
     memcpy(out->view_projection, app->xr_vp[eye], sizeof(float) * 16);
     out->width = app->xr_w[eye];
     out->height = app->xr_h[eye];

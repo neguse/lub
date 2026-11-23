@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// custom property (body 付き accessor / expression-bodied) の読み書きは
-// 生成済み get_/set_ を呼ぶ。auto property は raw field のまま。
+// Reads and writes of a custom property (accessor with a body / expression-bodied)
+// call the generated get_/set_. An auto property stays a raw field.
 public class PropertyAccessorTests
 {
     private const string TempClass = """
@@ -191,7 +191,7 @@ public class PropertyAccessorTests
         Assert.Equal("True|False", result);
     }
 
-    // static property は instance 生成に関係なく class table 上で共有される
+    // A static property is shared on the class table regardless of instance creation.
     [Fact]
     public void StaticAutoProperty_InitializerAndWrites_OnClassTable()
     {

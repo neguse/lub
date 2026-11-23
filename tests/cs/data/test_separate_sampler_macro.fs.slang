@@ -1,4 +1,4 @@
-// test_separate_sampler.fs.slang と同じ絵を LUB_TEXTURE2D で書いたもの。
+// The same image as test_separate_sampler.fs.slang, written with LUB_TEXTURE2D.
 LUB_TEXTURE2D(left);
 LUB_TEXTURE2D(right);
 

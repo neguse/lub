@@ -1,6 +1,6 @@
-// Renderer3d.Viewport の検査: 中の絵 (ldr) は範囲の大きさになり、カメラの縦横比は範囲の比になる。
-// 範囲の中に置いた cube が、範囲の幅と高さで Camera3d.Project した px に写っていることを ldr の readback で見る。
-// 画面のどこに出るかは TestRenderer3dViewportDraw (golden) が見る。
+// Check of Renderer3d.Viewport: the internal image (ldr) has the size of the region, and the camera aspect ratio is the ratio of the region.
+// Checks via ldr readback that a cube placed inside the region appears at the px given by Camera3d.Project with the width and height of the region.
+// Where it appears on the screen is checked by TestRenderer3dViewportDraw (golden).
 using System;
 using Lub;
 using Lubx;
@@ -38,7 +38,7 @@ public static class TestRenderer3dViewport
         frame++;
         if (frame == 1)
             cube!.Rebuild(Shapes3d.Cube());
-        // 範囲の右上の方 (縦横比が範囲の比でないと、写る位置がずれる)
+        // Toward the top right of the region (if the aspect ratio is not the ratio of the region, the position shifts)
         var at = new Vec3(2.0f, 0.8f, 0);
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex });
         Gfx.EndPass();

@@ -1,4 +1,5 @@
-// 組になる texture の無い sampler (extra)。shader compile が error になる。
+// A sampler (extra) without a paired texture. The shader compile fails with an
+// error.
 Texture2D tex;
 SamplerState tex_sampler;
 SamplerState extra;

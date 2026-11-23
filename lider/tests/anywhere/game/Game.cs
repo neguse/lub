@@ -1,9 +1,9 @@
-// ../TestPick.cs が lider で開くゲーム。画面の中央に板を 1 枚描く。
-// 板は Quad の個体 (Shown) が自分の Draw で描く。
-// Gfx.Draw の行番号を ../TestPick.cs の DrawLine が見るので、行を足したら合わせる。
+// The game ../TestPick.cs opens in lider. Draws one board in the center of the screen.
+// The board is drawn by a Quad instance (Shown) in its own Draw.
+// ../TestPick.cs's DrawLine looks at the line number of Gfx.Draw, so keep it in sync if you add lines.
 using Lub;
 
-// 板 1 枚。自分の Draw で描く
+// One board. Drawn by its own Draw
 public class Quad
 {
     public void Draw(ShaderRef sh)

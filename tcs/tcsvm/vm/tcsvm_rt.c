@@ -1,4 +1,4 @@
-/* tcs VM の runtime の object: heap、string、List、Dictionary、List.Sort。 */
+/* Runtime objects of the tcs VM: heap, string, List, Dictionary, List.Sort. */
 #include "tcsvm_internal.h"
 
 #include "../../runtime/sort/tcs_sort.h"
@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ---- string: 不変の octet 列 (il-spec §11) ---- */
+/* ---- string: immutable octet sequence (il-spec §11) ---- */
 
 TvmString *tvm_str_new(TvmVm *vm, const char *data, size_t len) {
   if (len > 0x7FFFFFFF)
@@ -21,7 +21,7 @@ TvmString *tvm_str_new(TvmVm *vm, const char *data, size_t len) {
   return s;
 }
 
-/* null は空文字列 (C# の string.Concat と同じ) */
+/* null is the empty string (same as C# string.Concat) */
 TvmString *tvm_str_concat(TvmVm *vm, const TvmString *a, const TvmString *b) {
   size_t la = a ? (size_t)a->len : 0, lb = b ? (size_t)b->len : 0;
   if (la + lb > 0x7FFFFFFF)
@@ -71,11 +71,14 @@ bool tvm_list_grow(TvmVm *vm, TvmList *list) {
   return true;
 }
 
-/* ---- Dictionary: 足した順の entry の列と、番号を引く open addressing の表 ----
-   列挙は足した順 (.NET の Dictionary も消さなければ足した順)。il-spec §11 は列挙の順を未規定とする */
+/* ---- Dictionary: a list of entries in insertion order and an open addressing
+   table that looks up indices ---- Enumeration is in insertion order (.NET's
+   Dictionary is also in insertion order if nothing is removed). il-spec §11
+   leaves the enumeration order unspecified */
 
-/* key の hash と等価 (EqualityComparer<T>.Default と同じ): int / bool は値、float は Equals (NaN どうし、-0 と 0 が等しい)、
-   string は内容、ほかの ref は identity */
+/* Key hash and equality (same as EqualityComparer<T>.Default): int / bool by
+   value, float by Equals (two NaNs are equal, -0 and 0 are equal), string by
+   contents, other refs by identity */
 static bool key_is_string(const TvmVm *vm, const TvmDict *d) {
   return TVM_TYPE(d)->key_kind == TVM_K_REF &&
          TVM_TYPE(d)->key_type == vm->string_type;
@@ -108,7 +111,8 @@ static uint32_t key_hash(const TvmVm *vm, const TvmDict *d, TvmSlot key) {
         for (int32_t i = 0; i < s->len; i++)
           h = (h ^ (uint8_t)STR_DATA(s)[i]) * 16777619u;
     } else {
-      /* 64 bit に広げてから畳む。uintptr_t が 32 bit の target (wasm32) では、幅と同じだけの shift は未定義になる */
+      /* Widens to 64 bits before folding. On targets where uintptr_t is 32 bits
+       * (wasm32), a shift by the full width is undefined */
       uint64_t p = (uint64_t)(uintptr_t)key.p;
       h = (uint32_t)(p ^ (p >> 32)) * 2654435761u;
     }
@@ -138,7 +142,7 @@ TvmDict *tvm_dict_new(TvmVm *vm, const TvmType *type) {
   return d;
 }
 
-/* key の bucket の位置 (見つかった位置か、入れる位置) */
+/* Bucket position for the key (where it was found, or where to insert it) */
 static int32_t probe(const TvmVm *vm, const TvmDict *d, TvmSlot key, uint32_t h,
                      bool *found) {
   uint32_t mask = (uint32_t)d->nbuckets - 1;
@@ -170,7 +174,7 @@ int32_t tvm_dict_find(const TvmVm *vm, const TvmDict *d, TvmSlot key) {
   return found ? d->buckets[i] - 1 : -1;
 }
 
-/* entry の列を詰め直し (消した entry を落とす)、表を作り直す */
+/* Compacts the entry list (dropping removed entries) and rebuilds the table */
 static bool dict_rebuild(TvmVm *vm, TvmDict *d, int32_t cap) {
   uint32_t es = TVM_TYPE(d)->dict_entry;
   char *entries = (char *)tvm_alloc_blob(vm, (size_t)cap * es);
@@ -209,7 +213,8 @@ int32_t tvm_dict_insert(TvmVm *vm, TvmDict *d, TvmSlot key) {
   if (at >= 0)
     return at;
   if (d->used == d->cap) {
-    /* 末尾が埋まったら、消した entry の穴を詰めて (並びは保つ) 広げる */
+    /* When the end is full, compacts the holes of removed entries (keeping the
+     * order) and grows */
     int32_t cap = d->count * 2 > 4 ? d->count * 2 : 4;
     if (cap <= d->count || !dict_rebuild(vm, d, cap))
       return -1;
@@ -217,7 +222,8 @@ int32_t tvm_dict_insert(TvmVm *vm, TvmDict *d, TvmSlot key) {
   uint32_t h = key_hash(vm, d, key);
   bool found;
   int32_t slot = probe(vm, d, key, h, &found);
-  at = d->used++; /* 挿入順: 消した entry の場所は使わず末尾に積む */
+  at = d->used++; /* Insertion order: slots of removed entries are not reused;
+                     new entries are pushed at the end */
   d->version++;
   TvmDictEntry *e = DICT_ENTRY(d, at);
   memset(e, 0, TVM_TYPE(d)->dict_entry);
@@ -238,15 +244,14 @@ bool tvm_dict_remove(TvmVm *vm, TvmDict *d, TvmSlot key) {
     return false;
   int32_t at = d->buckets[slot] - 1;
   TvmDictEntry *e = DICT_ENTRY(d, at);
-  memset(
-      e, 0,
-      TVM_TYPE(d)->dict_entry); /* 穴 (live = 0)。参照を GC が辿らないように */
+  memset(e, 0, TVM_TYPE(d)->dict_entry); /* Hole (live = 0). So that the GC does
+                                            not walk its references */
   d->buckets[slot] = -1;
   d->count--;
   return true;
 }
 
-/* ---- List の挿入と削除 ---- */
+/* ---- List insertion and removal ---- */
 
 bool tvm_list_insert0(TvmVm *vm, TvmList *list, int32_t at) {
   if (list->count == list->cap && !tvm_list_grow(vm, list))
@@ -267,7 +272,8 @@ void tvm_list_remove_at(TvmList *list, int32_t at) {
   memset(list->data + (size_t)list->count * es, 0, es);
 }
 
-/* ---- 値の等価 (il-spec §10: struct と record は field ごと。EqualityComparer<T>.Default と同じ) ---- */
+/* ---- Value equality (il-spec §10: structs and records field by field; same as
+ * EqualityComparer<T>.Default) ---- */
 
 static bool f32_equals(float a, float b) {
   return a == b || (a != a && b != b);
@@ -330,14 +336,17 @@ bool tvm_record_eq(TvmVm *vm, const TvmObject *a, const TvmObject *b) {
   return true;
 }
 
-/* 実行時の型 test (il-spec §9): 継承が無いので class は型の一致、interface は実装の一覧、object は全部 */
+/* Runtime type test (il-spec §9): there is no inheritance, so a class needs a
+ * type match, an interface checks the implementation list, and object matches
+ * everything */
 const TvmType *tvm_type_of(TvmVm *vm, const void *o) {
   const TvmGcHeader *h = GC_HEADER(o);
   if (!vm->heap || h->kind == TVM_KIND_OBJECT)
     return h->type;
   if (h->kind == TVM_KIND_BLOB && vm->string_type != TVM_NO_TYPE)
     return &vm->types[vm->string_type];
-  /* C の module の object: tvm_host_type で番号を合わせた class なら、その VM の型 */
+  /* C module object: if it is a class whose number was matched with
+   * tvm_host_type, that VM type */
   for (uint32_t i = 0; i < vm->ntypes; i++)
     if (vm->type_ids[i] == h->type_id && vm->types[i].tkind == TVM_T_CLASS)
       return &vm->types[i];
@@ -347,7 +356,8 @@ const TvmType *tvm_type_of(TvmVm *vm, const void *o) {
 bool tvm_is_type(TvmVm *vm, const TvmObject *o, const TvmType *t) {
   const TvmType *ot = tvm_type_of(vm, o);
   TvmIfaceCheck check = vm->iface_checks[t - vm->types];
-  if (check) { /* --ref の interface: VM の class は実装の列、C の object は C の module の判定 */
+  if (check) { /* --ref interface: VM classes use the implementation list, C
+                  objects use the C module's check */
     if (GC_HEADER(o)->kind != TVM_KIND_OBJECT)
       return check((void *)o);
     if (!ot || ot->tkind != TVM_T_CLASS)
@@ -374,17 +384,19 @@ TvmStatus tvm_fault_msg(TvmVm *vm, const char *what) {
   return TVM_FAULT;
 }
 
-/* ---- List.Sort: runtime/sort の introsort。比較は VM の closure を入れ子で呼ぶ ---- */
+/* ---- List.Sort: introsort from runtime/sort. Comparisons call the VM closure
+ * nested ---- */
 
 typedef struct SortCtx {
   TvmVm *vm;
   const TvmClosure *compare;
   uint32_t es;
   uint8_t kind;
-  const TvmType *st; /* struct の要素なら、その型 (葉に展開して渡す) */
+  const TvmType *st; /* For struct elements, their type (expanded into leaves
+                        when passed) */
   TvmStatus status;
-  char sig
-      [5]; /* C の module の比較の delegate の sig (struct の要素は '?' で、invoke は無い) */
+  char sig[5]; /* sig of the C module comparison delegate (struct elements are
+                  '?', and there is no invoke) */
 } SortCtx;
 
 static TvmSlot load_elem(const void *p, uint8_t kind) {
@@ -445,9 +457,12 @@ TvmStatus tvm_list_sort(TvmVm *vm, TvmList *list, const TvmClosure *compare) {
       vm, compare, TVM_TYPE(list)->elem_size, TVM_TYPE(list)->elem_kind,
       st, TVM_OK,  {e, e, ':', 'i', 0}};
   TcsSortStatus sorted;
-  /* 作業領域: 要素 2 個分。比較の closure が確保して GC が走っても、作業領域の参照と並べている
-     buffer (比較が List に足して buffer が替わっても、並べるのは元の buffer) は生きていなければならない。
-     要素は並べている間 buffer か作業領域のどちらかにあるので、作業領域も root にする (struct は葉の型で辿る) */
+  /* Work area: room for 2 elements. Even if the comparison closure allocates
+     and the GC runs, the references in the work area and the buffer being
+     sorted (even if the comparison adds to the List and the buffer is replaced,
+     the original buffer is the one being sorted) must stay alive. While
+     sorting, each element is either in the buffer or in the work area, so the
+     work area is also a root (structs are walked by leaf type) */
   void *scratch_small[4] = {NULL, NULL, NULL, NULL};
   void *scratch = scratch_small;
   if (ctx.es * 2 > sizeof scratch_small) {

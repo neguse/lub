@@ -1,6 +1,6 @@
-// Config で ResourceSweepAfterFrames を指定しなくても、宣言が 120 frame 途切れた resource は sweep される。
-// 毎 frame 宣言するものは何 frame 経っても残る。
-// OnFrame が error で終わった frame は、sweep までの frame に数えない。
+// Even if ResourceSweepAfterFrames is not specified in Config, a resource whose declarations stopped for 120 frames is swept.
+// A resource declared every frame remains no matter how many frames pass.
+// Frames in which OnFrame ended with an error are not counted toward the sweep.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -27,7 +27,7 @@ public static class TestResourceSweepDefault
 
         if (frame == 1)
         {
-            // この frame だけ宣言する
+            // Declare only in this frame
             Gfx.UseBuffer("sweep_default_dropped", Gfx.BufferType.Storage, data, 1);
             Check.That(Audio.Snd("sweep_default_snd", data, 1, 48000, 1) != null, "snd must be declared");
             return;
@@ -39,7 +39,7 @@ public static class TestResourceSweepDefault
             return;
         }
 
-        // 宣言しないまま終わった frame の数 (error で終わった frame を除く)
+        // Number of frames that ended without a declaration (excluding frames that ended with an error)
         int ended = frame - 2 - errorFrames;
         bool present = Gfx.LookupBuffer("sweep_default_dropped") != null;
         if (ended <= sweep)

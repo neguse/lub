@@ -1,4 +1,4 @@
-// tests/windows で開く 2 つ目の file。
+// The second file opened in tests/windows.
 public static class WindowsSecond
 {
     public static int Two()

@@ -1,9 +1,9 @@
-// 操作の案内 (HintRules.For) を確かめる。
-//   - 指している物ごとに、そのとき効く操作だけが並ぶ (開けない行では開閉を出さない)
-//   - VR はコントローラーのボタン、非 VR は key とマウス
-//   - インスペクタの出し入れはいつも、frame を送る操作は止めている間だけ
-//   - エラーの行へ飛ぶ操作は、飛べるエラーがある間だけ
-//   - 案内のウィンドウを置く端から積む規則 (Stack) は、大きさを変えずに下から積む
+// Checks the operation hints (HintRules.For).
+//   - For each pointed thing, only the operations that work at that moment are listed (open/close is not shown on lines that cannot be opened)
+//   - VR shows controller buttons, and non-VR shows keys and the mouse
+//   - Showing/hiding the inspector is always listed, and the frame-step operation only while paused
+//   - The jump-to-error-line operation is listed only while there are errors to jump to
+//   - The rule that stacks the hint windows from an edge (Stack) stacks them from the bottom without changing their size
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -70,7 +70,7 @@ public static class TestHints
             "MouseLeft:窓を閉じる|KeyCap Alt+I:インスペクタを出す|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す|KeyCap Ctrl+E:エラーの行へ");
         Expect(new HintContext { Vr = false, Target = HintTarget.Nothing },
             "KeyCap 右ドラッグ:窓の列を動かす|KeyCap Ctrl+P:file と宣言と命令を探す|KeyCap F1:ゲームを触る|KeyCap Alt+I:インスペクタを出す|KeyCap Alt+Enter:窓を画面いっぱいに広げる|KeyCap F5:ゲームを止める|KeyCap Shift+F5:ゲームを最初から作り直す");
-        // 端から積む規則は、右下の隅に寄せると、ウィンドウの大きさを変えずに、端から余白を空けて下から積む
+        // When moved to the bottom-right corner, the edge-stacking rule stacks windows from the bottom with a margin from the edge, without changing their size
         var screen = new Screen("test") { Size = new Vec2(4, 2), Layout = new Stack() };
         var a = new Window(new Hints(new HintCard())) { Size = new Vec2(1, 0.5f) };
         var b = new Window(new Hints(new HintCard())) { Size = new Vec2(0.6f, 0.2f) };
@@ -112,7 +112,7 @@ public static class TestHints
         }
     }
 
-    // 最初の失敗だけを出して終わる
+    // Report only the first failure and exit
     static void Near(float got, float want, string message)
     {
         Check(Math.Abs(got - want) < 0.001f, message + ": " + got + ", want " + want);

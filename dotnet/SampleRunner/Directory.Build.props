@@ -1,8 +1,8 @@
 <Project>
-  <!-- repo の Directory.Build.props (警告を誤りにする) も読む -->
+  <!-- Also read the repo's Directory.Build.props (turns warnings into errors) -->
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
-  <!-- サンプルごとに別の中間出力 (同じ project を Sample 違いで build する)。
-       BaseIntermediateOutputPath は SDK の props (NuGet の restore) より前に決める必要があるので、csproj ではなくここに置く -->
+  <!-- Separate intermediate output per sample (the same project is built with different Sample values).
+       BaseIntermediateOutputPath must be set before the SDK props (NuGet restore), so it lives here rather than in the csproj -->
   <PropertyGroup>
     <Sample Condition="'$(Tests)' == 'true'">tests</Sample>
     <Sample Condition="'$(Sample)' == ''">00_hello</Sample>

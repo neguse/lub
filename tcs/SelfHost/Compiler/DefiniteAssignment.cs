@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// 確実な代入 (C# §9.4.4) の状態: 代入済みの local の集合。到達できない場所は全ての local を代入済みとみなす
+// Definite assignment (C# §9.4.4) state: the set of assigned locals. Unreachable points treat all locals as assigned
 public sealed class DaState
 {
     public bool Unreachable;
@@ -23,7 +23,7 @@ public sealed class DaState
         return s;
     }
 
-    // 合流: 両方の経路で代入済みの local だけが代入済み (到達できない経路は無視する)
+    // Merge: only locals assigned on both paths are assigned (unreachable paths are ignored)
     public static DaState Join(DaState a, DaState b)
     {
         if (a.Unreachable) return b.Copy();
@@ -39,15 +39,15 @@ public sealed class DaState
     public bool Has(LocalSym l) => Unreachable || Assigned.Contains(l);
 }
 
-// 束縛した後の本体を走査して、初期化子なしで宣言した local (LocalSym.Tracked) を代入する前に読んだら CS0165 にする。
-// 条件式は真のときと偽のときの状態を分ける (&& || ! と定数)。loop の本体の始まりは loop に入る前の状態
-// (本体は代入を足すだけなので、戻ってくる経路との合流は入る前の状態と同じ)。
-// pattern と out var の local は宣言した時点で代入済みなので追わない
+// Walks the bound body and reports CS0165 when a local declared without an initializer (LocalSym.Tracked) is read before it is assigned.
+// Conditions split the state into the true and false cases (&& || ! and constants). The start of a loop body has the state before entering the loop
+// (the body only adds assignments, so merging with the path coming back gives the same state as before entering).
+// Locals from patterns and out var are assigned at the point of declaration, so they are not tracked
 public sealed class DefiniteAssignment
 {
     private readonly Diagnostics _diags;
     private DaState _s = new DaState();
-    // break / continue の先 (loop と switch) ごとの、飛んだ時点の状態の合流
+    // Merge of the states at the jump points, per break / continue target (loop and switch)
     private readonly List<DaState?> _breaks = new List<DaState?>();
     private readonly List<DaState?> _continues = new List<DaState?>();
     private readonly List<bool> _isLoop = new List<bool>();
@@ -95,7 +95,7 @@ public sealed class DefiniteAssignment
         return false;
     }
 
-    // ---- 文 ----
+    // ---- Statements ----
 
     private void Stmt(Node s)
     {
@@ -194,7 +194,7 @@ public sealed class DefiniteAssignment
                     PushTarget(true);
                     Stmt(s.C!);
                     PopTarget();
-                    // 本体は 1 度も走らないことがある
+                    // The body may never run
                     _s = before;
                     return;
                 }
@@ -214,7 +214,7 @@ public sealed class DefiniteAssignment
             case NodeKind.Unsupported:
                 return;
         }
-        // DeconstructDecl、文の位置の分解の代入 (DeconstructAssign) など: 式として評価順に見る
+        // DeconstructDecl, deconstructing assignments in statement position (DeconstructAssign), etc.: walked as expressions in evaluation order
         Expr(s);
     }
 
@@ -224,7 +224,7 @@ public sealed class DefiniteAssignment
         var entry = _s.Copy();
         PushTarget(false);
         bool hasDefault = false;
-        // 定数の switch: どの label も値に合わない section は到達できない。合う section があれば、外へ抜ける経路は無い
+        // Constant switch: a section where no label matches the value is unreachable. If a section matches, there is no path that falls out
         var value = s.A!.HasConst ? s.A.Const : null;
         if (s.List != null)
         {
@@ -245,7 +245,7 @@ public sealed class DefiniteAssignment
                         else if (label.A != null && label.A.Kind == NodeKind.PatDiscard && label.B == null) hasDefault = true;
                         if (label.Kind == NodeKind.CaseLabel && label.B != null)
                         {
-                            // when の式は、その label を通るときだけ評価する
+                            // The when expression is evaluated only when passing through that label
                             var t = new DaState();
                             var f = new DaState();
                             var save = _s;
@@ -261,12 +261,12 @@ public sealed class DefiniteAssignment
             }
         }
         var breaks = PopTarget();
-        // どの section にも入らないときは switch の式の後の状態のまま抜ける
+        // If no section is entered, it exits with the state after the switch expression
         _s = hasDefault ? DaState.Dead() : entry;
         if (breaks != null) _s = DaState.Join(_s, breaks);
     }
 
-    // section の label と定数 v: 0 = どれも合わない、1 = 合うかもしれない、2 = 必ず合う
+    // Section labels against constant v: 0 = none match, 1 = may match, 2 = always matches
     private static int SectionMatch(Node sec, ConstValue v)
     {
         int result = 0;
@@ -313,7 +313,7 @@ public sealed class DefiniteAssignment
 
     private static DaState JoinBreaks(DaState? breaks, DaState normal) => breaks == null ? normal : DaState.Join(normal, breaks);
 
-    // break は一番内側の loop / switch、continue は一番内側の loop へ飛ぶ
+    // break jumps to the innermost loop / switch, continue to the innermost loop
     private void Jump(List<DaState?> targets, bool loopOnly)
     {
         int i = targets.Count - 1;
@@ -329,17 +329,17 @@ public sealed class DefiniteAssignment
         _s = DaState.Dead();
     }
 
-    // ---- 式 ----
+    // ---- Expressions ----
 
     private static bool IsConstBool(Node e, bool value) =>
         e.HasConst && e.Const != null && e.Const.Kind == ConstKind.Bool && e.Const.B == value;
 
-    // 条件式: 真のときの状態を whenTrue に、偽のときの状態を whenFalse に入れる
+    // Condition: put the state for true into whenTrue and the state for false into whenFalse
     private void Cond(Node e, DaState whenTrue, DaState whenFalse)
     {
         DaState t;
         DaState f;
-        // 定数の式は定数でない local を読まないので、中を見ない (! && || を畳んだ式を Expr に渡すと Cond に戻ってくる)
+        // A constant expression does not read non-constant locals, so its inside is not walked (passing a folded ! && || expression to Expr would come back to Cond)
         if (IsConstBool(e, true))
         {
             t = _s.Copy();
@@ -420,7 +420,7 @@ public sealed class DefiniteAssignment
                     Expr(e.A);
                     if (e.Text == "??=")
                     {
-                        // 右辺は左辺が null のときだけ評価する
+                        // The right side is evaluated only when the left side is null
                         var before = _s.Copy();
                         Expr(e.B);
                         _s = DaState.Join(before, _s);
@@ -482,7 +482,7 @@ public sealed class DefiniteAssignment
                 Expr(e.A);
                 if (e.Value == 1)
                 {
-                    // ?. ?[ の先は受け手が null でないときだけ評価する
+                    // What follows ?. ?[ is evaluated only when the receiver is not null
                     var before = _s.Copy();
                     ChildrenExceptA(e);
                     _s = DaState.Join(before, _s);
@@ -538,7 +538,7 @@ public sealed class DefiniteAssignment
                 }
                 Expr(a);
             }
-            // out の引数は呼び出しの後で代入済み
+            // out arguments are assigned after the call
             foreach (var arg in e.List)
             {
                 if (arg.A != null && arg.Has(Mods.Out)) MarkAssigned(arg.A);
@@ -549,7 +549,7 @@ public sealed class DefiniteAssignment
 
     private void Lambda(Node e)
     {
-        // lambda の本体は作った時点の状態で見る。本体の代入と jump は外に出ない
+        // A lambda body is checked with the state at the point of creation. Assignments and jumps in the body do not leak out
         var save = _s;
         var saveBreaks = new List<DaState?>(_breaks);
         var saveContinues = new List<DaState?>(_continues);
@@ -593,7 +593,7 @@ public sealed class DefiniteAssignment
         _s = result ?? entry;
     }
 
-    // 分解の先 (入れ子を含む) を代入済みにする
+    // Mark deconstruction targets (including nested ones) as assigned
     private void Targets(Node targets)
     {
         if (targets.List == null) return;
@@ -609,7 +609,7 @@ public sealed class DefiniteAssignment
         }
     }
 
-    // 書き込み先: 名前そのものは読まない。a.F や a[i] の受け手と添字は読む
+    // Write target: the name itself is not read. The receiver and index of a.F or a[i] are read
     private void WriteTarget(Node t)
     {
         if (t.Kind == NodeKind.Name) return;

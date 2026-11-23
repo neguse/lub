@@ -138,8 +138,8 @@ public class NullableValueTypeTests
         Assert.Equal("False", result);
     }
 
-    // Lua の `or` は false も fallback してしまうため、bool? の ?? は
-    // 明示 nil 判定にする。?? の右辺は null のときだけ評価される。
+    // Lua's `or` also falls back on false, so ?? on bool? uses
+    // an explicit nil check. The right-hand side of ?? is evaluated only when the value is null.
     [Fact]
     public void NullableBool_Coalesce_FalseIsNotFallback()
     {
@@ -236,9 +236,9 @@ public class NullableValueTypeTests
         Assert.Equal("1|3", result);
     }
 
-    // lifted 演算子 (C# §12.4.8): 片方でも null なら null、比較は false、
-    // ==/!= は両 null で等しい、bool? の & | は三値論理。dotnet differential
-    // が実 .NET と突き合わせる
+    // Lifted operators (C# §12.4.8): null if either operand is null, comparisons are false,
+    // ==/!= treat two nulls as equal, & | on bool? use three-valued logic. The dotnet differential
+    // checks this against real .NET.
     [Fact]
     public void Lifted_ArithmeticAndComparison()
     {
@@ -314,9 +314,9 @@ public class NullableValueTypeTests
         Assert.Contains("Nullable object must have a value", ex.Message);
     }
 
-    // `?.` の receiver が `S?` のときは .Value (copy) に対する member 参照、
-    // 参照型 receiver の値型 member は T? に wrap。`??=` と bool? の文字列化も
-    // nil 比較を使わない明示ノード経路。実 .NET と一致 (dotnet differential)
+    // When the receiver of `?.` is `S?`, the member access is on .Value (a copy);
+    // a value-type member of a reference-type receiver is wrapped in T?. `??=` and bool? stringification also
+    // use an explicit node path that does not use nil comparison. Matches real .NET (dotnet differential).
     [Fact]
     public void ConditionalAccess_OnNullableStruct_AndCoalesceAssign()
     {

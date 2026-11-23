@@ -1,6 +1,6 @@
-// ゲームの static の初期化子 (game/Target.cs) を消して保存すると、lub はゲームの VM を作り直して OnInit から始める (restart)。作り直しの前後で、lider の窓とタブと focus とカーソルは保つ。
-// lider の VM は作り直されないので、窓は置いたままの物が残る。
-// 作り直しは、ゲームの数 (game/Game.cs が毎 frame 増やす) が初期値に戻り、初期化子を消した static が 0 になることで確かめる。値は lider がゲームを見るのと同じ道 (GameApp.Inspect) で読む。
+// When the initializer of a game static (game/Target.cs) is removed and saved, lub recreates the game's VM and starts from OnInit (restart). lider's windows, tabs, focus, and cursors are kept across the recreation.
+// lider's VM is not recreated, so the windows stay as they were placed.
+// The recreation is checked by the game's count (incremented every frame by game/Game.cs) going back to its initial value, and the static whose initializer was removed becoming 0. Values are read through the same path lider uses to look at the game (GameApp.Inspect).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -51,7 +51,7 @@ public static class TestRelayout
         var root = Environment.GetEnvironmentVariable("LIDER_ROOT")!;
         if (!changed)
         {
-            // ゲームが動き始め、数が初期値から十分に離れるのを待つ
+            // Wait until the game starts running and the count is far enough from its initial value
             Check(waited < 60, "the game did not start in 60 seconds");
             if (Value("Game", "Count") < 30)
                 return;
@@ -68,7 +68,7 @@ public static class TestRelayout
             Check(Value("Target", "Value") == 1, "the game has the initializer " + Value("Target", "Value") + " before the change, want 1");
             before = Value("Game", "Count");
             reloads = Lider.Reloads;
-            // static の初期化子を消す (ゲームの VM の作り直しになる)
+            // Remove the static's initializer (this recreates the game's VM)
             Io.SaveText(target, "// TestRelayout が開き、static の初期化子を消す file (ゲームの build に入る)。\npublic static class Target\n{\n    public static int Value;\n}\n");
             changed = true;
             waited = 0;
@@ -91,7 +91,7 @@ public static class TestRelayout
         App.Quit(0);
     }
 
-    // ゲームの class の static の今の値 (読めなければ -1)
+    // Current value of a static of a game class (-1 if it cannot be read)
     static int Value(string type, string name)
     {
         foreach (var n in GameApp.Inspect(type, 0, 100))
@@ -100,7 +100,7 @@ public static class TestRelayout
         return -1;
     }
 
-    // 窓ごとのタブの名前 (今のタブに *) と、focus のある窓の番号
+    // Tab names per window (* on the current tab), and the index of the focused window
     static string Shape(Workspace w)
     {
         var s = "";

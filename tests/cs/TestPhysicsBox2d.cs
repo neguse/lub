@@ -1,4 +1,4 @@
-// phys2d の smoke: 玉が落ち、地面との contact begin が取れ、body から contact を列挙できる。
+// phys2d smoke: a ball falls, a contact begin with the ground is obtained, and contacts can be enumerated from the body.
 using System;
 using Lub;
 

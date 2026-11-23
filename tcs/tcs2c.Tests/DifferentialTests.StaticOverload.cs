@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// static method の overload (引数の型と数、generic の拡張 method、method group、
-// 拡張 method の static の形)。期待値は同じ program を CoreCLR で実行した stdout
+// Static method overloads (argument types and counts, generic extension methods, method groups,
+// the static form of extension methods). The expected values are the stdout of running the same program on CoreCLR
 public class StaticOverloadDifferentialTests
 {
     [CFact]

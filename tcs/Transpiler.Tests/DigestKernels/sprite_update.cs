@@ -1,7 +1,7 @@
 using System;
 
 // digest kernel: sprite_update (perf/CONTRACT.md kernel 1)
-// 演算列・LCG・定数は CONTRACT と bit 一致必須。digest 対象値を 1 行 1 値で出力。
+// The operation sequence, LCG, and constants must match CONTRACT bit for bit. Prints the digest target values one value per line.
 public class SpriteUpdate
 {
     static int state = 12345;

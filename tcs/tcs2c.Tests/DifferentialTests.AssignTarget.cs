@@ -1,11 +1,11 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 代入先 (受け手 / 添字 / struct の格納先) は右辺より先に 1 回だけ評価し、
-// 式位置の代入の値は代入した値 (左辺を組み直して読まない)。期待値は同じ
-// program を CoreCLR で実行した stdout
+// The assignment target (receiver / index / struct storage location) is evaluated only once, before the right-hand side,
+// and the value of an assignment in expression position is the assigned value (the left side is not rebuilt and read). The expected values are the
+// stdout of running the same program on CoreCLR
 public class AssignTargetDifferentialTests
 {
-    // 右辺が受け手を差し替えても、式の値は代入した値で受け手は 1 回だけ評価
+    // Even if the right side replaces the receiver, the expression value is the assigned value and the receiver is evaluated once
     [CFact]
     public void AssignmentExpression_ValueIsAssignedValue_ReceiverOnce()
     {
@@ -70,8 +70,8 @@ public class AssignTargetDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // 式位置の custom property 代入の受け手、collection の method が変える
-    // 添字 (`A[L.Count] = L.Remove(5) ? ..`) も右辺より先に固定する
+    // The receiver of a custom property assignment in expression position, and an index that a collection method changes
+    // (`A[L.Count] = L.Remove(5) ? ..`), are also fixed before the right side
     [CFact]
     public void AssignmentExpression_PropertyReceiverAndCollectionIndex_FixedBeforeRhs()
     {
@@ -123,8 +123,8 @@ public class AssignTargetDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // 右辺が struct の格納先 (class の field / 配列要素 / static field / this の
-    // field / 捕捉 local の field) を差し替えても、書き込みは今の格納先に届く
+    // Even if the right side replaces a struct's storage location (a class field / array element / static field / a field of
+    // this / a field of a captured local), the write reaches the current storage location
     [CFact]
     public void StructFieldAssign_RhsReplacesStorage_WritesCurrentStorage()
     {
@@ -202,7 +202,7 @@ public class AssignTargetDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // struct の custom property / ??= も今の格納先に書く
+    // custom properties / ??= on a struct also write to the current storage location
     [CFact]
     public void StructMemberAssign_PropertyAndCoalesce_WriteCurrentStorage()
     {
@@ -243,7 +243,7 @@ public class AssignTargetDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // 右辺が struct local 自体を差し替える (`s.X = (s = t).X`)
+    // The right side replaces the struct local itself (`s.X = (s = t).X`)
     [CFact]
     public void StructLocalAssign_RhsReplacesLocal()
     {
@@ -271,7 +271,7 @@ public class AssignTargetDifferentialTests
         Assert.Equal("2,2|2,12|2,3|2,22,22", output.ReplaceLineEndings("\n"));
     }
 
-    // 代入先の local を右辺の with / 初期化子 / `??` が読んでも、右辺が終わるまで local は前の値 (#433)
+    // Even if the right side's with / initializer / `??` reads the target local, the local keeps its previous value until the right side finishes (#433)
     [CFact]
     public void AssignLocal_RightSideReadsTargetBeforeConstruction()
     {

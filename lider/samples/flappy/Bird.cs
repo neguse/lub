@@ -1,4 +1,4 @@
-// 鳥。重力で落ち、跳ぶと上向きの速さを得る。
+// The bird. It falls under gravity and gains upward speed when it jumps.
 using System;
 using Lub;
 
@@ -21,7 +21,7 @@ public class Bird
         Flaps = 0;
     }
 
-    // 始める前は、その場で小さく上下する
+    // Before the start, it bobs up and down slightly in place
     public void Hover(float dt)
     {
         spin += dt;

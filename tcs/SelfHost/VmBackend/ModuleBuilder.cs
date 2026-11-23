@@ -5,7 +5,7 @@ using TinySystem.Text;
 
 namespace TcsVm;
 
-/// <summary>static の field の表の 1 項 ("型.field"、先頭の slot、型)。</summary>
+/// <summary>One entry of the static field table ("type.field", first slot, type).</summary>
 public sealed class StaticField
 {
     public string Name;
@@ -20,7 +20,7 @@ public sealed class StaticField
     }
 }
 
-/// <summary>static field を持つ型と、その static field (C# 版の (Name, Statics))。</summary>
+/// <summary>A type with static fields, and its static fields ((Name, Statics) in the C# version).</summary>
 public sealed class StaticOwner
 {
     public string Name;
@@ -33,7 +33,7 @@ public sealed class StaticOwner
     }
 }
 
-/// <summary>static の (型、field) (reload の計画の入力)。</summary>
+/// <summary>A static (type, field) (input of the reload plan).</summary>
 public sealed class StaticKey
 {
     public string Owner;
@@ -46,7 +46,7 @@ public sealed class StaticKey
     }
 }
 
-/// <summary>interface の method の selector (名前と関数型)。</summary>
+/// <summary>Selector of an interface method (name and function type).</summary>
 public sealed class SelectorInfo
 {
     public string Name;
@@ -59,8 +59,8 @@ public sealed class SelectorInfo
     }
 }
 
-/// <summary>--trace: 記録するファイルの path の先頭 (VmSession と CLI が module を作る前に置く)。
-/// 空なら記録しない。path は '\\' を '/' にして比べる。</summary>
+/// <summary>--trace: path prefixes of the files to record (VmSession and the CLI set them before building a module).
+/// If empty, nothing is recorded. Paths are compared with '\\' changed to '/'.</summary>
 public static class VmTrace
 {
     public static List<string> Prefixes = new List<string>();
@@ -86,7 +86,7 @@ public static class VmTrace
     }
 }
 
-/// <summary>--trace の代入の値の場所 (TVAL の #c)。値は Leaves 個の葉で、型は Type。</summary>
+/// <summary>Location of an assignment value for --trace (#c of TVAL). The value is Leaves leaves of type Type.</summary>
 public sealed class TraceValueSite
 {
     public string File;
@@ -107,7 +107,7 @@ public sealed class TraceValueSite
     }
 }
 
-/// <summary>値型の field (名前と型)。</summary>
+/// <summary>A field of a value type (name and type).</summary>
 public sealed class NamedType
 {
     public string Name;
@@ -120,15 +120,15 @@ public sealed class NamedType
     }
 }
 
-/// <summary>.tcsb の 1 module。型 / 定数 / static / 関数の表を作り、byte 列に書く (形式は tcsvm_load.c の parse)。
-/// 関数は呼ばれた (到達した) ものだけを作る。出力の順は IL の並び (Dictionary は引くだけに使う)。</summary>
+/// <summary>One .tcsb module. Builds the type / constant / static / function tables and writes them to a byte sequence (the format is what tcsvm_load.c parses).
+/// Only functions that are called (reached) are built. Output follows the IL order (Dictionary is used only for lookup).</summary>
 public sealed class ModuleBuilder
 {
     public const int Magic = 0x42534354; // "TCSB"
     public const int Version = 4;
     public const int NoType = 0xFFFF;
 
-    // 引くための表 (列挙はしない。並びは下の List)
+    // Tables for lookup (not enumerated. The order is in the List below)
     public Dictionary<string, ExClass> Classes = new Dictionary<string, ExClass>();
     public Dictionary<string, ExStruct> Structs = new Dictionary<string, ExStruct>();
     private List<string> _classOrder = new List<string>();
@@ -142,14 +142,14 @@ public sealed class ModuleBuilder
     private List<VType> _types = new List<VType>();
     private Dictionary<string, int> _typeIndex = new Dictionary<string, int>();
     private List<RegInfo> _statics = new List<RegInfo>();
-    /// <summary>static の field の表 ("型.field"、先頭の slot、型)。reload は名前で旧版の static と対応させる
-    /// (doc/object-model.md §6)。遅延初期化の flag は "型.&lt;init&gt;"。</summary>
+    /// <summary>Static field table ("type.field", first slot, type). Reload maps them to the old version's statics by name
+    /// (doc/object-model.md §6). The lazy-initialization flag is "type.&lt;init&gt;".</summary>
     private List<StaticField> _staticFields = new List<StaticField>();
-    // "型\nfield" → static の field
+    // "type\nfield" → static field
     private Dictionary<string, StaticField> _staticSlots = new Dictionary<string, StaticField>();
     public List<FunctionDef> Functions = new List<FunctionDef>();
     private Dictionary<string, int> _functionIndex = new Dictionary<string, int>();
-    // --trace: 行の表 ("file:line" → 添字)、代入の値の場所、記録するファイルの class (見つけた順)
+    // --trace: the line table ("file:line" → index), the locations of assignment values, and the classes of the recorded files (in the order found)
     private List<string> _traceLineFiles = new List<string>();
     private List<int> _traceLines = new List<int>();
     private Dictionary<string, int> _traceLineIndex = new Dictionary<string, int>();
@@ -160,7 +160,7 @@ public sealed class ModuleBuilder
     private int _pendingHead;
     public int Entry = -1;
 
-    // host (--ref の stub) の関数と値。名前は IL の host の名前 ("eng.gfx.begin")
+    // Host (--ref stub) functions and values. Names are IL host names ("eng.gfx.begin")
     private Dictionary<string, ExForeignMethod> _foreignMethods = new Dictionary<string, ExForeignMethod>();
     private List<string> _foreignOrder = new List<string>();
     private Dictionary<string, ExForeignValue> _foreignValues = new Dictionary<string, ExForeignValue>();
@@ -192,7 +192,7 @@ public sealed class ModuleBuilder
         }
     }
 
-    /// <summary>module の型の表にある class の名前 (型の表に出す名前)。</summary>
+    /// <summary>Name of a class in the module's type table (the name written to the type table).</summary>
     public List<string> UsedClasses()
     {
         var names = new List<string>();
@@ -217,13 +217,13 @@ public sealed class ModuleBuilder
         return null;
     }
 
-    /// <summary>`--ref` の interface の method (receiver は interface の表示名、method は C# の名前)。</summary>
+    /// <summary>Method of a `--ref` interface (receiver is the interface's display name, method is the C# name).</summary>
     public ExForeignMethod? ForeignInterfaceMethod(string receiver, string method)
     {
         foreach (var name in _foreignOrder)
         {
             var m = _foreignMethods[name];
-            // IL は host の名前 (snake_case) で呼ぶ
+            // IL calls it by the host name (snake_case)
             if (m.Receiver == receiver && (m.MethodName == method || m.Name.EndsWith("." + method))) return m;
         }
         return null;
@@ -249,13 +249,13 @@ public sealed class ModuleBuilder
 
     public bool IsClass(string name) => Classes.ContainsKey(Canon(name));
 
-    /// <summary>static field を持てる型の名前 (class か struct)。</summary>
+    /// <summary>Name of a type that can have static fields (class or struct).</summary>
     public bool IsTypeName(string name) => Classes.ContainsKey(Canon(name)) || Structs.ContainsKey(Canon(name));
 
     public bool IsEnum(string name) => _enums.ContainsKey(Canon(name));
 
-    /// <summary>IlNewObj / IlIsType / IlCast の型の名前。IL はここに user の型の名前を表示名でなく書くので
-    /// (`@float` の class は `float`)、同じ綴りの組み込みの型より user の class と struct を先に引く。</summary>
+    /// <summary>Type name of IlNewObj / IlIsType / IlCast. IL writes user type names here rather than display names
+    /// (the `@float` class is `float`), so user classes and structs are looked up before built-in types with the same spelling.</summary>
     public VType ParseTypeRef(string name)
     {
         string n = Canon(name);
@@ -276,20 +276,20 @@ public sealed class ModuleBuilder
         return 0;
     }
 
-    // ---- 型 ----
+    // ---- Types ----
 
     public VType Parse(string type0)
     {
         string type = type0.Trim();
         int n = ContractFacts.Len(type);
-        // 参照型の nullable 注釈は型を変えない。値型の T? は Nullable で、まだ持たない
+        // A nullable annotation on a reference type does not change the type. A value type's T? is Nullable, which is not held yet
         if (type.EndsWith("?"))
         {
             var inner = Parse(ContractFacts.Sub(type, 0, n - 1));
             return inner.IsRef ? inner : VType.OfNullable(inner);
         }
         if (type.EndsWith("[]")) return VType.OfArray(Parse(ContractFacts.Sub(type, 0, n - 2)));
-        // Dictionary の Keys / Values は VM では足した順の List (LINQ の受け手)
+        // Dictionary Keys / Values are a List in insertion order in the VM (the receiver of LINQ)
         if (type.EndsWith(">.ValueCollection"))
         {
             var vd = Parse(ContractFacts.Sub(type, 0, n - ContractFacts.Len(".ValueCollection")));
@@ -318,7 +318,7 @@ public sealed class ModuleBuilder
                 return VType.OfFunc(ps, args[args.Count - 1]);
             }
             if (head == "System.Action" || head == "Action") return VType.OfFunc(args, VType.Void);
-            // Predicate<T> / Comparison<T> は Func<T, bool> / Func<T, T, int> と同じ関数型 (tcs2c と同じ)
+            // Predicate<T> / Comparison<T> are the same function types as Func<T, bool> / Func<T, T, int> (same as tcs2c)
             if ((head == "System.Predicate" || head == "Predicate") && args.Count == 1)
             {
                 var ps = new List<VType>();
@@ -334,7 +334,7 @@ public sealed class ModuleBuilder
             }
             if ((head == "System.Nullable" || head == "Nullable") && args.Count == 1) return VType.OfNullable(args[0]);
             if ((head == "System.Collections.Generic.KeyValuePair" || head == "KeyValuePair") && args.Count == 2) return VType.OfKvp(args[0], args[1]);
-            // Queue<T> は VM では List (Dequeue は先頭を外す)、HashSet<T> は Dictionary<T, bool> (列挙は .NET と同じ順)
+            // Queue<T> is a List in the VM (Dequeue removes the first element), and HashSet<T> is Dictionary<T, bool> (enumeration is in the same order as .NET)
             if ((head == "System.Collections.Generic.Queue" || head == "Queue") && args.Count == 1) return VType.OfList(args[0]);
             if ((head == "System.Collections.Generic.HashSet" || head == "HashSet") && args.Count == 1) return VType.OfDict(args[0], VType.Bool);
             CFail.Report("type '" + type + "' is not in the VM yet");
@@ -342,7 +342,7 @@ public sealed class ModuleBuilder
         }
         if (type == "int" || type == "uint" || type == "char" || type == "byte" || type == "sbyte" || type == "short" || type == "ushort") return VType.Int;
         if (type == "object") return VType.Object;
-        // TinySystem の facade。修飾の無い名前は、同じ名前の user の型が無いときだけ (user の型が隠す。C backend と同じ)
+        // TinySystem facade. An unqualified name applies only when there is no user type with the same name (the user type shadows it, same as the C backend)
         if (type == "TinySystem.Text.Utf8Bytes" || (type == "Utf8Bytes" && !IsTypeName("Utf8Bytes"))) return VType.Utf8();
         if (type == "TinySystem.Random" || (type == "Random" && !IsTypeName("Random"))) return VType.Random();
         if (type == "float") return VType.Float;
@@ -354,9 +354,9 @@ public sealed class ModuleBuilder
         ExClass? cls;
         if (Classes.TryGetValue(name, out cls)) return cls.IsInterface ? VType.OfIface(name) : VType.OfClass(name);
         if (Structs.ContainsKey(name)) return VType.OfStruct(name);
-        if (_enums.ContainsKey(name)) return VType.Int; // enum は i32 (il-spec §2)
-        // --ref の module の interface (X-4): VM の class が実装し、C の module が呼ぶ。VM の中では object として持つ
-        // IL は型 test で `Ed_ITool`、宣言で `Ed.ITool` と書くので、表示名にそろえて 1 つの型にする
+        if (_enums.ContainsKey(name)) return VType.Int; // An enum is i32 (il-spec §2)
+        // Interface of a --ref module (X-4): implemented by VM classes and called by the C module. Held as object inside the VM
+        // IL writes `Ed_ITool` in type tests and `Ed.ITool` in declarations, so they are unified under the display name as one type
         string? host = null;
         foreach (var cn in _classOrder)
         {
@@ -408,13 +408,13 @@ public sealed class ModuleBuilder
         return list;
     }
 
-    // 型の葉の列 (型ごとに 1 度だけ求める。呼ぶ側は列を書き換えない)
+    // Leaf sequence of a type (computed only once per type. The caller does not modify the sequence)
     private Dictionary<string, List<Leaf>> _leaves = new Dictionary<string, List<Leaf>>();
     private Dictionary<string, List<Leaf>> _objectLeaves = new Dictionary<string, List<Leaf>>();
 
     public List<Leaf> Leaves(VType t)
     {
-        // 表示名では引かない (user の class `@float` と float、user の class Random と TinySystem.Random は同じ表示名)
+        // Not looked up by display name (the user class `@float` and float, and the user class Random and TinySystem.Random, have the same display name)
         string key = t.Ident();
         List<Leaf>? cached;
         if (_leaves.TryGetValue(key, out cached)) return cached;
@@ -470,7 +470,7 @@ public sealed class ModuleBuilder
         CFail.Report("no leaves for " + t.Display());
     }
 
-    /// <summary>class の instance の葉 (instance field を struct まで展開)。cell は中の値の葉。</summary>
+    /// <summary>Leaves of a class instance (instance fields expanded down to structs). A cell gives the leaves of the value inside.</summary>
     public List<Leaf> ObjectLeaves(VType t)
     {
         if (t.Tag == VT.Cell) return Leaves(t.Inner!);
@@ -527,7 +527,7 @@ public sealed class ModuleBuilder
             CFail.Report("too many types");
             return NoType;
         }
-        // 中の型も表に入れる (再帰する class は上で番号を先に取っているので止まる)
+        // Inner types also go into the table (a recursive class stops because it already took its index above)
         switch (t.Tag)
         {
             case VT.Class:
@@ -577,7 +577,7 @@ public sealed class ModuleBuilder
 
     // ---- interface ----
 
-    /// <summary>class が実装する interface (program にあるものだけ)。</summary>
+    /// <summary>Interfaces a class implements (only those in the program).</summary>
     public List<string> Interfaces(string cls)
     {
         var r = new List<string>();
@@ -590,7 +590,7 @@ public sealed class ModuleBuilder
         return r;
     }
 
-    /// <summary>class が実装する --ref の module の interface (X-4)。C の module の interface の判定が名前で引く (object-model §10.6)。</summary>
+    /// <summary>--ref module interfaces a class implements (X-4). The C module's interface check looks them up by name (object-model §10.6).</summary>
     public List<VType> HostInterfaces(string cls)
     {
         var r = new List<VType>();
@@ -603,8 +603,8 @@ public sealed class ModuleBuilder
         return r;
     }
 
-    /// <summary>method の呼び出しの関数型。out の引数は引数から外し、戻り値と out の値を多値 (Tuple) で返す
-    /// (実装の関数は戻り値の葉の後に out の葉を返す)。</summary>
+    /// <summary>Function type of a method call. out parameters are removed from the parameters, and the return value and out values are returned as multiple values (Tuple)
+    /// (the implementing function returns the out leaves after the return value leaves).</summary>
     public VType SelectorType(ExMethod method)
     {
         var types = new List<VType>();
@@ -622,11 +622,11 @@ public sealed class ModuleBuilder
         return VType.OfFunc(ins, VType.OfTuple(outTypes));
     }
 
-    /// <summary>class が interface (継承した interface を含む) を実装するか。</summary>
+    /// <summary>Whether a class implements an interface (including inherited interfaces).</summary>
     private bool Implements(string cls, string iface)
     {
         var seen = new HashSet<string>();
-        // C# の Stack: 積んだ逆の順に取り出す
+        // C# Stack: pops in the reverse order of pushing
         var work = new List<string>();
         foreach (var i in Interfaces(cls)) work.Add(i);
         while (work.Count > 0)
@@ -649,11 +649,11 @@ public sealed class ModuleBuilder
     private Dictionary<string, int> _selectorIndex = new Dictionary<string, int>();
     private Dictionary<string, List<TypeTableItable>> _itables = new Dictionary<string, List<TypeTableItable>>();
 
-    /// <summary>interface の method の selector。実装する class の itable に関数を入れる (到達した class の method だけを作る)。
-    /// requestMethod は (class、実装の method、selector の関数型) から関数の番号を返す。</summary>
+    /// <summary>Selector of an interface method. Puts functions into the itables of implementing classes (builds methods only for reached classes).
+    /// requestMethod returns a function index from (class, implementing method, selector function type).</summary>
     public int Selector(string iface0, ExMethod method, System.Func<string, ExMethod, VType, int> requestMethod)
     {
-        // selector は名前と関数型で 1 つ (特殊化した generic な interface は同じ名前で型が違う: IGen<int> と IGen<string>)
+        // One selector per name and function type (a specialized generic interface has the same name with different types: IGen<int> and IGen<string>)
         var ft = SelectorType(method);
         string key = method.Name + ":" + ft.Display();
         int i;
@@ -677,7 +677,7 @@ public sealed class ModuleBuilder
                 }
             }
             if (impl == null) continue;
-            // 型の違う実装は、この interface を実装する class だけ (adapter で型を合わせる)
+            // Implementations with different types exist only in classes that implement this interface (an adapter matches the types)
             bool same = VType.Same(SelectorType(impl), ft);
             if (!same && !Implements(name, iface)) continue;
             List<TypeTableItable>? table;
@@ -691,7 +691,7 @@ public sealed class ModuleBuilder
         return i;
     }
 
-    // ---- runtime の関数 (CALLR) ----
+    // ---- Runtime functions (CALLR) ----
 
     private List<string> _intrinsics = new List<string>();
     private Dictionary<string, int> _intrinsicIndex = new Dictionary<string, int>();
@@ -706,7 +706,7 @@ public sealed class ModuleBuilder
         return i;
     }
 
-    // ---- 定数 ----
+    // ---- Constants ----
 
     public int Const(List<int> utf8)
     {
@@ -724,7 +724,7 @@ public sealed class ModuleBuilder
 
     // ---- static ----
 
-    /// <summary>static の field の先頭の slot (type に型)。</summary>
+    /// <summary>First slot of a static field (its type goes into type).</summary>
     public int Static(string cls0, string field, out VType type)
     {
         string cls = Canon(cls0);
@@ -769,8 +769,8 @@ public sealed class ModuleBuilder
         return new List<ExField>();
     }
 
-    // ---- static の初期化 (il-spec と tcs2c と同じ): initializer が定数だけの型は最初に、
-    //      ほかの型は最初の static の読み書きで 1 回だけ (C# §15.5.6.2 と同じ。前方参照と循環を扱える) ----
+    // ---- Static initialization (same as il-spec and tcs2c): types whose initializers are only constants are initialized first,
+    //      other types only once, on the first read or write of a static (same as C# §15.5.6.2; handles forward references and cycles) ----
 
     private static bool IsConstantExpr(IlExpr e)
     {
@@ -781,7 +781,7 @@ public sealed class ModuleBuilder
         return false;
     }
 
-    /// <summary>static field を持つ型 (class と struct) を宣言の順に。</summary>
+    /// <summary>Types with static fields (classes and structs) in declaration order.</summary>
     public List<StaticOwner> StaticOwners()
     {
         var r = new List<StaticOwner>();
@@ -821,7 +821,7 @@ public sealed class ModuleBuilder
 
     private Dictionary<string, int> _initFlags = new Dictionary<string, int>();
 
-    /// <summary>遅延初期化の型の「初期化を始めた」flag (bool の static)。</summary>
+    /// <summary>The "initialization started" flag of a lazily initialized type (a bool static).</summary>
     public int InitFlag(string owner0)
     {
         string owner = Canon(owner0);
@@ -836,7 +836,7 @@ public sealed class ModuleBuilder
 
     private int _sharedRandom = -1;
 
-    /// <summary>Random.Shared を置く隠れた static (最初の参照で作って seed する)。</summary>
+    /// <summary>Hidden static that holds Random.Shared (created and seeded on first reference).</summary>
     public int SharedRandomSlot()
     {
         if (_sharedRandom >= 0) return _sharedRandom;
@@ -846,9 +846,9 @@ public sealed class ModuleBuilder
         return _sharedRandom;
     }
 
-    // ---- 関数 ----
+    // ---- Functions ----
 
-    /// <summary>関数の番号を返す。初めてなら作り、compile を待ち行列に入れる。</summary>
+    /// <summary>Returns the function index. If it is new, creates it and queues it for compilation.</summary>
     public int Request(string name, System.Action<FunctionDef> compile)
     {
         int i;
@@ -867,7 +867,7 @@ public sealed class ModuleBuilder
         return i;
     }
 
-    /// <summary>関数の番号 (無ければ -1)。</summary>
+    /// <summary>Function index (-1 if missing).</summary>
     public int FindFunction(string name)
     {
         int i;
@@ -875,7 +875,7 @@ public sealed class ModuleBuilder
         return -1;
     }
 
-    /// <summary>待ち行列が空になるまで compile する (compile が新しい関数を呼べば、それも入る)。</summary>
+    /// <summary>Compiles until the queue is empty (if a compiled function calls new functions, they are queued too).</summary>
     public void CompilePending()
     {
         while (_pendingHead < _pending.Count && !CFail.Failed)
@@ -883,7 +883,7 @@ public sealed class ModuleBuilder
             var def = _pending[_pendingHead];
             _pendingHead++;
             def.Compile!(def);
-            // 誤りに変換していた文の場所を付ける。他の診断と同じ形にして、host が行を示せるようにする
+            // Attaches the location of the statement being compiled to the error. Uses the same form as other diagnostics so the host can show the line
             if (CFail.Failed && def.At != null)
                 CFail.Error = def.At.File + "(" + def.At.Line + "," + def.At.Col + "): error TCS1001: " + CFail.Error;
         }
@@ -902,7 +902,7 @@ public sealed class ModuleBuilder
         return traced;
     }
 
-    /// <summary>行の表の添字 (TRACE の #imm)。</summary>
+    /// <summary>Index into the line table (#imm of TRACE).</summary>
     public int TraceLine(string path, int line)
     {
         string file = VmTrace.Normalize(path);
@@ -916,7 +916,7 @@ public sealed class ModuleBuilder
         return index;
     }
 
-    /// <summary>代入の値の場所の添字 (TVAL の #c)。</summary>
+    /// <summary>Index of an assignment value location (#c of TVAL).</summary>
     public int TraceValue(string path, int line, int col, string label, VType type, int leaves)
     {
         TraceValues.Add(new TraceValueSite(VmTrace.Normalize(path), line, col, label, type, leaves));
@@ -928,12 +928,12 @@ public sealed class ModuleBuilder
         if (!_tracedClasses.Contains(name)) _tracedClasses.Add(name);
     }
 
-    // ---- 書き出し ----
+    // ---- Output ----
 
-    /// <summary>reload の計画の入力: 型記述子の表と static の (型、field)。</summary>
+    /// <summary>Input of the reload plan: the type descriptor table and the static (type, field) pairs.</summary>
     public List<TypeTableEntry> Describe(out List<StaticKey> statics)
     {
-        // Write と同じく static の field の struct の型を表に足す (heap の object が持たない struct も、reload の計画で field の名前で移す)
+        // As in Write, adds the struct types of static fields to the table (structs that no heap object holds are also moved by field name in the reload plan)
         foreach (var s in _staticFields) FieldInfo(s.Type);
         var entries = new List<TypeTableEntry>();
         for (int i = 0; i < _types.Count; i++) entries.Add(TypeEntry(_types[i]));
@@ -965,7 +965,7 @@ public sealed class ModuleBuilder
         }
         foreach (var s in _selectors) Str(s.Name);
         foreach (var name in _intrinsics) Str(name);
-        // --trace の表の名前と、値の場所の型 (型の表より先に決める)
+        // Names of the --trace tables and types of the value locations (decided before the type table)
         foreach (var f in Functions) Str(f.Path);
         foreach (var file in _traceLineFiles) Str(file);
         var traceInfos = new List<TypeTableInfo>();
@@ -976,7 +976,7 @@ public sealed class ModuleBuilder
             traceInfos.Add(FieldInfo(site.Type));
         }
         foreach (var name in _tracedClasses) Str(name);
-        // static の field の表の型は型の表より先に決める (struct の型を表に足す)
+        // Types in the static field table are decided before the type table (struct types are added to the table)
         var staticNames = new List<int>();
         var staticInfos = new List<TypeTableInfo>();
         foreach (var s in _staticFields)
@@ -984,7 +984,7 @@ public sealed class ModuleBuilder
             staticNames.Add(Str(s.Name));
             staticInfos.Add(FieldInfo(s.Type));
         }
-        // 型の表 (doc/object-model.md §4)。名前は string 表に先に入れる
+        // Type table (doc/object-model.md §4). Names go into the string table first
         var entries = new List<TypeTableEntry>();
         for (int i = 0; i < _types.Count; i++) entries.Add(TypeEntry(_types[i]));
         foreach (var name in TypeTable.Names(entries)) Str(name);
@@ -995,7 +995,7 @@ public sealed class ModuleBuilder
         VBytes.I32(w, OpAbi.Hash);
 
         VBytes.I32(w, _strings.Strings.Count);
-        // 書く間に string 表は増えない (名前は上で全部入れた)
+        // The string table does not grow while writing (all names were added above)
         foreach (var s in _strings.Strings)
         {
             var b = VBytes.Utf8(s);
@@ -1064,7 +1064,7 @@ public sealed class ModuleBuilder
             }
         }
         VBytes.I32(w, Entry);
-        // 関数ごとのファイルの path と --trace の表 (tcsvm_load.c の read_debug)
+        // Per-function file paths and --trace tables (read_debug in tcsvm_load.c)
         VBytes.I32(w, Functions.Count);
         foreach (var f in Functions) VBytes.I32(w, Str(f.Path));
         VBytes.I32(w, _traceLines.Count);
@@ -1090,7 +1090,7 @@ public sealed class ModuleBuilder
         return w;
     }
 
-    // ---- 型記述子 (doc/object-model.md §4) ----
+    // ---- Type descriptors (doc/object-model.md §4) ----
 
     private TypeTableInfo FieldInfo(VType t)
     {
@@ -1099,7 +1099,7 @@ public sealed class ModuleBuilder
         return new TypeTableInfo(TypeTable.KindRef, TypeIndex(t));
     }
 
-    /// <summary>値型の field (名前と型)。葉 (Leaves) はこの列を深さ優先で展開した順。</summary>
+    /// <summary>A field of a value type (name and type). The leaves (Leaves) are this sequence expanded depth-first.</summary>
     private List<NamedType> AggregateFields(VType t)
     {
         var r = new List<NamedType>();
@@ -1153,7 +1153,7 @@ public sealed class ModuleBuilder
                         if (m.Name == "OnReload" && !m.IsStatic) hasOnReload = true;
                     }
                     e.Flags = (info.IsRecord ? TypeTable.FlagRecord : 0) | (hasOnReload ? TypeTable.FlagHasOnReload : 0)
-                        | (info.IsExternal ? TypeTable.FlagHostValue : 0); // host と共有する data class は host_value を持つ (doc/object-model.md §3)
+                        | (info.IsExternal ? TypeTable.FlagHostValue : 0); // A data class shared with the host has host_value (doc/object-model.md §3)
                     var fields = new List<NamedType>();
                     foreach (var f in info.Fields)
                     {
@@ -1165,7 +1165,7 @@ public sealed class ModuleBuilder
                     List<TypeTableItable>? table;
                     if (_itables.TryGetValue(t.Name, out table))
                     {
-                        // selector の番号の順 (同じ番号は足した順。C# の OrderBy は安定)
+                        // In selector index order (equal indexes in insertion order; C# OrderBy is stable)
                         var sorted = new List<TypeTableItable>();
                         foreach (var x in table) sorted.Add(x);
                         for (int a = 1; a < sorted.Count; a++)
@@ -1193,8 +1193,8 @@ public sealed class ModuleBuilder
                 }
             case VT.Random:
                 {
-                    // 8 個の int = 64 bit の状態 × 4 (runtime の random.* が読み書きする)。先頭の pad で状態を
-                    // payload の 8 byte 目から置く (type_id の 4 byte の後。64 bit の読み書きを揃える)
+                    // 8 ints = 64-bit state × 4 (read and written by runtime random.*). A leading pad places the state
+                    // from byte 8 of the payload (after the 4-byte type_id; aligns 64-bit reads and writes)
                     var e = new TypeTableEntry(TypeTable.Class, name);
                     var fields = new List<NamedType>();
                     for (int i = 0; i < 9; i++) fields.Add(new NamedType(i == 0 ? "pad" : "s" + (i - 1), VType.Int));

@@ -1,4 +1,4 @@
-// core (config / quit)、input、sys、profiler の C API。
+// C API for core (config / quit), input, sys, and profiler.
 #include "api_internal.h"
 #include "backend.h"
 #include "gpu_time.h"
@@ -16,17 +16,21 @@ LubStatus lub_app_config(LubContext *ctx, const LubConfigOpts *d) {
   App *app = lub_api_app(ctx);
   if (!d)
     return lub_api_fail(app, "config: opts required");
-  // VM を作り直した後の OnInit (entry_restarting) は backend の後なので、backend と window の大きさは変えられない。
-  // 違う値なら log だけ出す
+  // OnInit after the VM is recreated (entry_restarting) runs after the backend
+  // starts, so the backend and window size cannot be changed. If the values
+  // differ, only log
   bool restarting = app->proc->phase != APP_PHASE_PRE_BACKEND;
   if (restarting && !app->entry_restarting)
     return lub_api_fail(app, "config: must be called inside OnInit");
 
-  // backend は d3d12 / vulkan / metal / sdlgpu。
-  // 未指定なら process_init が決めた既定 (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。
+  // backend is d3d12 / vulkan / metal / sdlgpu.
+  // If unspecified, keep the default chosen by process_init (env LUB_BACKEND,
+  // or the platform default if missing).
   char name[16];
 #ifdef __EMSCRIPTEN__
-  // WASM: backend は webgpu 一択なので指定を無視する (native と共用のサンプルが native 向け指定を持っていても壊さない)。
+  // WASM: the backend is always webgpu, so ignore the setting (so that samples
+  // shared with native do not break even if they have a native-specific
+  // setting).
   (void)lub_str_copy(lub_str_c("webgpu"), name, sizeof(name));
   strncpy(app->proc->backend_name, name, sizeof(app->proc->backend_name) - 1);
   app->proc->backend_name[sizeof(app->proc->backend_name) - 1] = '\0';
@@ -161,8 +165,8 @@ bool lub_input_key_released(LubContext *ctx, LubStr key) {
          in->key_released[sc];
 }
 
-// button (省略で 1 = 左) の bit を *bit に書き、読む入力を返す。
-// button が範囲の外なら NULL
+// Write the bit for button (default 1 = left) to *bit and return the input to
+// read. NULL if button is out of range
 static const InputState *mouse_input(LubContext *ctx, const int32_t *button,
                                      uint32_t *bit) {
   App *app = lub_api_app(ctx);
@@ -198,8 +202,8 @@ void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
     *y = in->mouse_y;
 }
 
-// 今 frame の相対移動の合計 (framebuffer px)。
-// frame の中では何度読んでも同じ。
+// Total relative motion in the current frame (framebuffer px).
+// Reading it multiple times within a frame gives the same value.
 void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
   App *app = lub_api_app(ctx);
   const InputState *in = &app->input;
@@ -215,14 +219,15 @@ bool lub_input_focused(LubContext *ctx) {
          (SDL_GetWindowFlags(app->proc->window) & SDL_WINDOW_INPUT_FOCUS) != 0;
 }
 
-// web では SDL が Pointer Lock の要求を次の入力 event まで遅らせる (Pointer Lock はユーザーの操作の中でしか通らない)。
+// On web, SDL defers the Pointer Lock request until the next input event
+// (Pointer Lock is granted only during a user action).
 bool lub_input_capture_mouse(LubContext *ctx, bool captured) {
   App *app = lub_api_app(ctx);
   return app->proc->window &&
          SDL_SetWindowRelativeMouseMode(app->proc->window, captured);
 }
 
-// lub の PadAxis / PadButton は SDL の番号をそのまま使う。
+// lub's PadAxis / PadButton use SDL's numbers as is.
 _Static_assert((int)LUB_INPUT_PAD_AXIS_RIGHT_TRIGGER ==
                    (int)SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,
                "PadAxis follows SDL_GamepadAxis");
@@ -250,7 +255,7 @@ float lub_input_gamepad_axis(LubContext *ctx, int32_t player, int32_t axis) {
              : 0.0f;
 }
 
-// 読む入力。player か button が範囲の外なら NULL
+// The input to read. NULL if player or button is out of range
 static const InputState *pad_input(LubContext *ctx, int32_t player,
                                    int32_t button) {
   const InputState *in = &lub_api_app(ctx)->input;
@@ -280,7 +285,8 @@ float lub_sys_actual_fps(LubContext *ctx) {
   return (float)lub_api_app(ctx)->proc->actual_fps;
 }
 
-// 文字列の FNV-1a 64bit hash を int32 に畳む (version の identity claim 用)。
+// Fold the FNV-1a 64bit hash of a string into int32 (for version identity
+// claims).
 int32_t lub_sys_fnv1a64(LubContext *ctx, LubStr s) {
   (void)ctx;
   uint64_t h =
@@ -335,7 +341,7 @@ float lub_sys_seconds(LubContext *ctx) {
   return (float)((double)SDL_GetTicksNS() / (double)SDL_NS_PER_SECOND);
 }
 
-// ---- 検査 (player の LubDebugHooks。無ければ空) ----
+// ---- Inspection (the player's LubDebugHooks. Empty if none) ----
 
 void lub_sys_take_trace(LubContext *ctx, LubHandle of, const LubStr **out,
                         int32_t *out_count) {
@@ -441,7 +447,7 @@ void lub_sys_inspect_pin(LubContext *ctx, LubStr key, LubStr path,
 
 bool lub_sys_inspect_set(LubContext *ctx, LubStr path, LubStr text,
                          LubHandle of, LubStr *error) {
-  // 理由は次に呼ぶまで残す
+  // Keep the reason until the next call
   static char reason[512];
   App *app = api_app_observed(lub_api_app(ctx), of);
   bool ok = false;

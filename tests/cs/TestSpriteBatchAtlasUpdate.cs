@@ -1,5 +1,5 @@
-// SpriteBatch の Begin から Flush の間に atlas の pixel を変えると、その atlas の Quad はどれも変えた後の pixel で描く。
-// (Text は描く途中で glyph を atlas に足すので、同じ batch で先に描いた glyph があっても、足した glyph が描ける)
+// If the pixels of an atlas change between Begin and Flush of a SpriteBatch, every Quad of that atlas draws with the changed pixels.
+// (Text adds glyphs to the atlas while drawing, so the added glyphs can be drawn even if glyphs were drawn earlier in the same batch)
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -21,7 +21,7 @@ public static class TestSpriteBatchAtlasUpdate
             Width = 320,
             Height = 180,
         });
-        // 2 x 1 の透明な atlas
+        // A 2 x 1 transparent atlas
         for (int i = 0; i < 2 * 4; i++)
             pixels.Add(0);
         atlas = Atlas.FromPixels("sb_update_atlas", 2, 1, pixels);
@@ -42,7 +42,7 @@ public static class TestSpriteBatchAtlasUpdate
         int? id = null;
         if (frame == 1)
         {
-            // 左に atlas の左の画素 (透明) を描いた後で、右の画素を白にして、右に描く
+            // After drawing the left pixel of the atlas (transparent) on the left, make the right pixel white and draw on the right
             Gfx.BeginPass(new PassOpts { Target = rt, ClearColor = new float[] { 0, 0, 0, 1 } });
             batch!.Begin();
             batch.Quad(atlas!, new Rect(0, 0, 1, 1), 0, 0, 2, 2);

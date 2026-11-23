@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # Format first-party source with each formatter's default style.
-# The only config is .clang-format, which keeps LLVM style but turns off comment reflow (Japanese comments would otherwise be broken at odd ASCII/Japanese boundaries).
+# The only config is .clang-format, which selects LLVM style.
 #
 #   clang-format     : C/C++/Objective-C and Slang-as-HLSL (LLVM default)
-#   stylua           : Lua の table の data (*.verts.lua) - `npm --prefix web install`
 #   prettier         : Web TS/MJS/JSON/HTML    - `npm --prefix web install`
-#   dotnet format    : C# (whitespace)         - dotnet SDK 付属
+#   dotnet format    : C# (whitespace)         - bundled with the dotnet SDK
 #
 # Usage:
-#   scripts/format.sh            # 全部整形
-#   scripts/format.sh --check    # 整形が必要か確認のみ (CI の format job, 非ゼロ終了で失敗)
-#   scripts/format.sh --changed  # HEAD から変更のあるファイルだけを対象にする
+#   scripts/format.sh            # format everything
+#   scripts/format.sh --check    # only check whether formatting is needed (CI format job, fails with a non-zero exit)
+#   scripts/format.sh --changed  # only target files changed since HEAD
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,7 +20,7 @@ while [[ $# -gt 0 ]]; do
         --check) check=1 ;;
         --changed) changed=1 ;;
         -h | --help)
-            sed -n '2,15p' "$0"
+            sed -n '2,12p' "$0"
             exit 0
             ;;
         *)
@@ -57,12 +56,11 @@ run_if_any() {
     fi
 }
 
-# git の pathspec は :(glob) 無しだと `*` が `/` を跨ぐ (`**` は `*` 2 つと同じ)。
-# `dir/*.ext` で dir 以下を再帰的に拾えるが、`dir/sub/*.ext` のようにディレクトリを 2 段書くと末尾の `/*.ext` が「もう 1 段下」を要求して直下のファイルに当たらず、さらに上の除外 pathspec と組むと git 2.43 では 1 件も返さない。
-# pattern は 1 段のディレクトリ + `*.ext` に揃える。
+# Without :(glob), `*` in a git pathspec crosses `/` (`**` is the same as two `*`).
+# `dir/*.ext` picks up everything under dir recursively, but writing two directory levels like `dir/sub/*.ext` makes the trailing `/*.ext` require "one more level down", so it does not match files directly inside, and combined with the exclude pathspecs above, git 2.43 returns nothing at all.
+# Patterns are kept to one directory level + `*.ext`.
 mapfile -d '' C_FILES < <(git_files '*.c' '*.cc' '*.cpp' '*.h' '*.hpp' '*.m')
 mapfile -d '' SLANG_FILES < <(git_files 'samples/*.slang' 'tests/*.slang')
-mapfile -d '' LUA_FILES < <(git_files '*.lua')
 mapfile -d '' CS_FILES < <(git_files 'samples/*.cs' 'cs-lib/*.cs' 'dotnet/*.cs' 'templates/*.cs' 'tcs/*.cs')
 mapfile -d '' WEB_FILES < <(git_files \
     'web/*.html' \
@@ -73,13 +71,11 @@ mapfile -d '' WEB_FILES < <(git_files \
 if [[ $check -eq 1 ]]; then
     run_if_any C_FILES clang-format --dry-run --Werror
     run_if_any SLANG_FILES clang-format --assume-filename=shader.hlsl --dry-run --Werror
-    run_if_any LUA_FILES env XDG_CONFIG_HOME=/nonexistent npx --prefix web stylua --no-editorconfig --check --verify
     run_if_any WEB_FILES npx --prefix web prettier --check
     run_if_any CS_FILES dotnet format whitespace . --folder --verify-no-changes --include
 else
     run_if_any C_FILES clang-format -i
     run_if_any SLANG_FILES clang-format --assume-filename=shader.hlsl -i
-    run_if_any LUA_FILES env XDG_CONFIG_HOME=/nonexistent npx --prefix web stylua --no-editorconfig --verify
     run_if_any WEB_FILES npx --prefix web prettier --write
     run_if_any CS_FILES dotnet format whitespace . --folder --include
 fi

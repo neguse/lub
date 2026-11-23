@@ -1,5 +1,5 @@
-// 保存していない本文を下書きの dir に書き、次に起動したら保存していないまま窓に戻す。
-// 下書きは file でないので、ゲームには入らない。env LIDER_DRAFTS が dir (無ければ下書きを作らない)
+// Writes unsaved text to the drafts dir and, on the next launch, puts it back into the windows still unsaved.
+// Drafts are not the files themselves, so they do not enter the game. env LIDER_DRAFTS is the dir (if missing, no drafts are made)
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -12,7 +12,7 @@ public class Drafts
     public const float WriteSeconds = 1;
 
     readonly string dir;
-    // 書いた下書きの file の path と、書いた時の Document.Revision
+    // Path of the written draft file and the Document.Revision at the time of writing
     readonly Dictionary<string, int> written = new Dictionary<string, int>();
     float since;
 
@@ -21,7 +21,7 @@ public class Drafts
         this.dir = dir;
     }
 
-    // dir は 1 段なので、Root からの path の '/' を %2F にした名前で置く
+    // The dir is flat, so each draft is named after its path from Root with '/' replaced by %2F
     public static string NameOf(string relative)
     {
         return relative.Replace("%", "%25").Replace("/", "%2F");
@@ -80,7 +80,7 @@ public class Drafts
         }
     }
 
-    // path の下書きを消す
+    // Deletes the draft for path
     public void Forget(Workspace w, string path)
     {
         written.Remove(path);

@@ -1,6 +1,6 @@
-// C# を整形する。
-// 整形は .NET の wasm (tcs の WasmCompiler の CSharpier。npm run gen-tcs の web/tcs-wasm-assets) が行い、専用の worker (format-worker.ts) に置いて main thread からは非同期に呼ぶ。
-// worker が落ちたら、未完了の要求を失敗にして、次の要求で作り直す。
+// Formats C#.
+// Formatting is done by the .NET wasm (CSharpier in tcs WasmCompiler; web/tcs-wasm-assets from npm run gen-tcs), which runs in a dedicated worker (format-worker.ts) and is called asynchronously from the main thread.
+// If the worker crashes, pending requests fail and it is recreated on the next request.
 
 export type FormatRequest = { id: number; content: string; width: number };
 
@@ -42,7 +42,7 @@ function ensure(): Worker {
   return current;
 }
 
-/** C# を幅 width で整形する。 */
+/** Formats C# to a line width of width. */
 export function formatCs(content: string, width: number): Promise<string> {
   const current = ensure();
   const id = ++nextId;

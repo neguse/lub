@@ -1,31 +1,31 @@
-// ゲームの負荷を、行ごと (trace の key の "file:line") と GPU の pass ごとに持つ。どれも 1 frame あたり。
-// 行は CPU の時間、確保 (MEM)、frame をまたいで持ち越した物の数とそれを持っている field、その行が始めた pass の GPU の時間。
-// pass は描き先の名前、始めた行、GPU の時間、draw の数。GC が止めた frame と時間も持つ。
-// 重さの段は frame の予算 (Budget) に対して決める。窓の行番号の所の数と右の端の札、インスペクタの負荷の一覧、指したときの札に出す。
-// 行の CPU の時間と確保、GC の止まり、持ち越し、pass は lub (Sys.TakeProfile、Sys.TakeGcPauses、Sys.TakeKept、Sys.TakeGpuPasses) から埋める。
-// GPU の時間を測れない backend では、pass の GPU の時間は 0 (一覧に出ない)。
+// Holds the game's load per line (the trace key "file:line") and per GPU pass. All values are per frame.
+// Per line: CPU time, allocations (MEM), the number of objects carried over across frames and the fields holding them, and the GPU time of the passes the line started.
+// Per pass: render target name, the line that started it, GPU time, and draw count. Also holds the frames and durations of GC pauses.
+// Weight levels are relative to the frame budget (Budget). They are shown in the numbers by the line numbers and the labels at the right edge of windows, in the inspector's load list, and in the label shown when pointing.
+// Per-line CPU time and allocations, GC pauses, carry-overs and passes are filled from lub (Sys.TakeProfile, Sys.TakeGcPauses, Sys.TakeKept, Sys.TakeGpuPasses).
+// On backends that cannot measure GPU time, pass GPU time is 0 (not shown in the list).
 using System;
 using System.Collections.Generic;
 using Lub;
 
 namespace LiderCore;
 
-// 行 1 つの負荷
+// Load of one line
 public class LineCost
 {
     public string Path = "";
     public int Line;
-    // CPU の時間 (ms)
+    // CPU time (ms)
     public float Ms;
     public float Bytes;
-    // frame をまたいで持ち越した物の数と、それを持っている field ("型.field")
+    // Number of objects carried over across frames, and the fields holding them ("Type.field")
     public float Carry;
     public string Holder = "";
-    // この行が始めた pass の GPU の時間 (ms)
+    // GPU time of the passes this line started (ms)
     public float Gpu;
 }
 
-// GPU の pass 1 つの負荷
+// Load of one GPU pass
 public class PassCost
 {
     public string Name = "";
@@ -35,7 +35,7 @@ public class PassCost
     public int Draws;
 }
 
-// GC が止めた 1 回
+// One GC pause
 public class GcStop
 {
     public int Frame;
@@ -44,24 +44,24 @@ public class GcStop
 
 public class LoadProfile
 {
-    // 1 frame の予算 (ms)
+    // Budget of 1 frame (ms)
     public const float Budget = 1000.0f / 60;
-    // 重さの段: 普通、気になる、やばい
+    // Weight levels: normal, noticeable, severe
     public const int Calm = 0;
     public const int Warm = 1;
     public const int Hot = 2;
-    // 資源 (一覧の見出しで選び、窓の升はこの順に並べる)
+    // Resources (selected in the list header; the cells in windows are in this order)
     public const int Cpu = 0;
     public const int Mem = 1;
     public const int Gpu = 2;
     public static readonly string[] MetricNames = new string[] { "CPU", "MEM", "GPU" };
-    // GC の止まりを覚えておく frame の数
+    // Number of frames GC pauses are remembered for
     const int StopFrames = 600;
 
     public bool Enabled;
-    // 一覧で選んでいる資源
+    // Resource selected in the list
     public int Metric;
-    // 負荷の一覧を出しているか (窓の札に数も出す。Lider が毎 frame 決める)
+    // Whether the load list is shown (window labels also show numbers; Lider sets it every frame)
     public bool Viewing;
     public int Frame;
     public readonly List<LineCost> Lines = new List<LineCost>();
@@ -69,22 +69,22 @@ public class LoadProfile
     public readonly List<GcStop> Stops = new List<GcStop>();
     readonly Dictionary<string, LineCost> byKey = new Dictionary<string, LineCost>();
     readonly List<string> paths = new List<string>();
-    // lider の path → 負荷の path (TraceLog と同じく、書き方が違っても後ろが一致すれば同じ file)
+    // lider path → load path (as in TraceLog, paths written differently are the same file if their tails match)
     Dictionary<string, string> alias = new Dictionary<string, string>();
 
-    // LIDER_PROFILE=0 なら数えない
+    // Does not count if LIDER_PROFILE=0
     public LoadProfile()
     {
         Enabled = Environment.GetEnvironmentVariable("LIDER_PROFILE") != "0";
     }
 
-    // 時間 (CPU と GPU) の段
+    // Level for time (CPU and GPU)
     public static int MsLevel(float ms)
     {
         return ms >= Budget * 0.1f ? Hot : ms >= Budget * 0.03f ? Warm : Calm;
     }
 
-    // MEM の段 (持ち越しがあればやばい)
+    // Level for MEM (severe if anything is carried over)
     public static int MemLevel(float bytes, float carry)
     {
         return carry > 0 || bytes >= 1024 ? Hot : bytes >= 256 ? Warm : Calm;
@@ -105,13 +105,13 @@ public class LoadProfile
         return metric == Cpu ? MsLevel(c.Ms) : metric == Mem ? MemLevel(c.Bytes, c.Carry) : MsLevel(c.Gpu);
     }
 
-    // 出すほどの値か (小数 1 桁で 0.0 になる物は出さない)
+    // Whether the value is worth showing (values that round to 0.0 at 1 decimal place are not shown)
     public static bool Shows(LineCost c, int metric)
     {
         return metric == Mem ? c.Bytes >= 52 || c.Carry > 0 : Value(c, metric) >= 0.05f;
     }
 
-    // 数 (小数 1 桁。MEM は KB) と単位
+    // Number (1 decimal place; KB for MEM) and unit
     public static string Number(float value, int metric)
     {
         return Dec1(metric == Mem ? value / 1024 : value);
@@ -122,11 +122,11 @@ public class LoadProfile
         return metric == Mem ? "KB" : "ms";
     }
 
-    // 札の 1 行に収まる文字の幅
+    // Width in characters that fits on one line of the label
     const int DetailCells = 44;
 
-    // 指した所の札: 場所と、CPU、MEM、GPU を 1 行ずつ (数は右に揃え、横に補足)。
-    // 持ち越しを持つ field は長いので MEM の下の行に出し、pass の名前 ("a, b") は GPU の行に収まらなければ下の行に折り返す
+    // Label for the pointed spot: the location, then CPU, MEM and GPU one per line (numbers right-aligned, with notes beside them).
+    // Fields holding carry-overs are long, so they go on the line below MEM, and pass names ("a, b") wrap to the next line if they do not fit on the GPU line
     public static List<string> Detail(LineCost c, string place, string passes)
     {
         var lines = new List<string>();
@@ -168,14 +168,14 @@ public class LoadProfile
         return s;
     }
 
-    // 小数 1 桁 (.0 も出して、縦に並べたときに桁を揃える)
+    // 1 decimal place (.0 is also shown, so digits line up when stacked vertically)
     public static string Dec1(float v)
     {
         var t = (int)(v * 10 + 0.5f);
         return t / 10 + "." + t % 10;
     }
 
-    // 選んだ資源の、今の行の中で一番大きい値 (窓の列の帯の長さの基準)
+    // The largest value of the selected resource among the current lines (the reference for bar lengths in the window column)
     public float Max(int metric)
     {
         var max = 0.0001f;
@@ -184,14 +184,14 @@ public class LoadProfile
         return max;
     }
 
-    // 窓の path の line 行目 (ゲームが動かしている版の行) の負荷 (無ければ null)
+    // Load of line line of the window's path (a line of the version the game is running) (null if none)
     public LineCost? At(string path, int line)
     {
         var name = Name(path);
         return name != "" && byKey.TryGetValue(name + ":" + line, out var c) ? c : null;
     }
 
-    // 窓の path の line 行目が始めた pass の名前 ("hdr, bloom"。無ければ "")
+    // Names of the passes started by line line of the window's path ("hdr, bloom"; "" if none)
     public string PassesAt(string path, int line)
     {
         var name = Name(path);
@@ -212,7 +212,7 @@ public class LoadProfile
         return name;
     }
 
-    // 直近の GC の止まりの平均 (ms) と、平均の間隔 (秒)。止まりが無ければ 0
+    // Average of recent GC pauses (ms) and the average interval between them (seconds). 0 if there are no pauses
     public float StopMs()
     {
         var sum = 0.0f;
@@ -226,20 +226,20 @@ public class LoadProfile
         return Stops.Count < 2 ? 0 : (Stops[Stops.Count - 1].Frame - Stops[0].Frame) / (Stops.Count - 1.0f) / 60;
     }
 
-    // 数えた frame の数と、その間に行ごとに足した値 (trace の key → 和)、持ち越しを持つ field ごとの数 (trace の key → field → 和)
+    // Number of frames counted, the per-line sums over them (trace key → sum), and the counts per field holding carry-overs (trace key → field → sum)
     int counted;
     bool counting;
     int seenSwitches;
     readonly Dictionary<string, LineCost> sums = new Dictionary<string, LineCost>();
     readonly List<string> sumKeys = new List<string>();
     readonly Dictionary<string, Dictionary<string, float>> holders = new Dictionary<string, Dictionary<string, float>>();
-    // pass ごとの和 (trace の key と描き先 → 和) と、その順
+    // Sums per pass (trace key and render target → sum) and their order
     readonly Dictionary<string, PassCost> passSums = new Dictionary<string, PassCost>();
     readonly List<string> passKeys = new List<string>();
 
-    // 毎 frame 呼ぶ。数えるのは lub の Sys.ProfileLines で、数えている間はゲームの文が遅くなり、持ち越しを取るたびにゲームの状態を全部辿る。
-    // 普段は SampleEvery frame に 1 frame だけ数え (やばい行の札に使う)、負荷の一覧を出している間は毎 frame 数える。
-    // 数えた値は Window frame 分 (普段は SampleWindow 回分) を足し、1 frame あたりにならして出し直す (数がちらつかないように)。
+    // Called every frame. Counting is done by lub's Sys.ProfileLines; while counting, game statements run slower, and each carry-over collection walks the whole game state.
+    // Normally it counts only 1 frame in every SampleEvery frames (used for the labels on severe lines), and counts every frame while the load list is shown.
+    // Counted values are summed over Window frames (normally SampleWindow samples), then averaged per frame and published again (so the numbers do not flicker).
     const int SampleEvery = 30;
     const int Window = 20;
     const int SampleWindow = 4;
@@ -251,7 +251,7 @@ public class LoadProfile
             return;
         if (counting)
             Take();
-        // 見るゲームが替わったら、新しいゲームに数えさせる所から始める
+        // When the watched game changes, starts over by having the new game count
         if (seenSwitches != Watched.Switches)
         {
             seenSwitches = Watched.Switches;
@@ -269,7 +269,7 @@ public class LoadProfile
             Stops.RemoveAt(0);
     }
 
-    // 前に数え始めてからの 1 frame 分を足す
+    // Adds the 1 frame since counting last started
     void Take()
     {
         counted++;
@@ -318,7 +318,7 @@ public class LoadProfile
             Stops.Add(new GcStop { Frame = Frame, Ms = g.Ms });
     }
 
-    // trace の key ("file:line") の和 (key が読めなければ null)
+    // Sum for the trace key ("file:line") (null if the key cannot be parsed)
     LineCost? SumAt(string site)
     {
         if (sums.TryGetValue(site, out var sum))
@@ -332,7 +332,7 @@ public class LoadProfile
         return sum;
     }
 
-    // 行の持ち越しを一番多く持つ field
+    // The field holding the most carry-overs for the line
     string TopHolder(string site)
     {
         var top = "";
@@ -347,7 +347,7 @@ public class LoadProfile
         return top;
     }
 
-    // 足した値を 1 frame あたりにして出し、足し直す
+    // Publishes the sums averaged per frame and starts summing again
     void Publish()
     {
         Lines.Clear();

@@ -1,5 +1,5 @@
-// voice の key は gfx の key と同じ長さまで区別され、長すぎる key は切り詰めずに鳴らさない (false を返す)。
-// 音を出さないよう volume 0 で鳴らす。
+// Voice keys are distinguished up to the same length as gfx keys; a key that is too long is not truncated but is not played (returns false).
+// Plays at volume 0 so that no sound is output.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -36,7 +36,7 @@ public static class TestAudioVoiceKey
             baseline = Audio.Info().Voices;
             return;
         }
-        // 先頭の 100 文字が同じで、最後の 1 文字だけ違う 2 つの key。
+        // Two keys whose first 100 characters are the same and that differ only in the last character.
         var prefix = "game_a/" + Repeat('x', 93);
         var opts = new VoiceOpts { Loop = true, Volume = 0 };
         Check.That(Audio.Voice(prefix + "1", snd, opts), "the first voice must start");

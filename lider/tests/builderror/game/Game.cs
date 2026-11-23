@@ -1,4 +1,4 @@
-// ../TestBuildError.cs が lider で開くゲーム。毎 frame Target.cs の値を読む。
+// The game ../TestBuildError.cs opens in lider. Reads the value of Target.cs every frame.
 public static class Game
 {
     public static int Value;

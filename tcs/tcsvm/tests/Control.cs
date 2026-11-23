@@ -1,6 +1,6 @@
 using System;
 
-// 制御: if/else 連鎖、while、do-while、break / continue、論理演算の短絡、再帰、bool
+// Control flow: if/else chains, while, do-while, break / continue, short-circuit logical operators, recursion, bool
 public class Control
 {
     static int calls = 0;

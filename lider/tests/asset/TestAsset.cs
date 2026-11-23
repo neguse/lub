@@ -1,7 +1,7 @@
-// 画像と音の file を Ctrl+P から板に出す。
-//   - 画像と音は検索に並び、選ぶと窓を開かず板に出す。画像は大きさ、音は長さを出し、音は 1 度鳴らす
-//   - 確定しても出したままで、Escape で閉じる (窓は閉じない)。検索を取り消すと閉じる
-//   - Alt+Delete は確認して file を消し、板を閉じる
+// Shows image and sound files on a board from Ctrl+P.
+//   - Images and sounds are listed in search, and selecting one shows it on a board without opening a panel. Images show their size and sounds their length, and sounds are played once
+//   - It stays shown after confirming, and Escape closes it (the panel is not closed). Canceling the search closes it
+//   - Alt+Delete asks for confirmation, deletes the file, and closes the board
 using System;
 using System.Collections.Generic;
 using Lub;

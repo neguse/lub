@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// record の interface / object の field は実行時の値で比べる (#419。EqualityComparer<I>.Default は中の record の値等価)。
-// C は参照で比べ、tcs VM は record struct の field だけ参照で比べていた
+// interface / object fields of records are compared by their runtime values (#419. EqualityComparer<I>.Default uses the value equality of the record inside).
+// C compared them by reference, and the tcs VM compared only record struct fields by reference
 public class RecordInterfaceFieldDifferentialTests
 {
     [CFact]

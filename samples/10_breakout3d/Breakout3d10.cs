@@ -1,6 +1,6 @@
-// lub の samples/10_breakout3d 相当を TinyC# で書いた entry。
-// 実行: lub samples/10_breakout3d/Breakout3d10.csproj (transpile + watch + hot reload) gameplay は原典の rule (paddle/ball/bricks, key_down 駆動) を踏襲し、型は Dynamic ではなく class Brick / out 引数の multi-return で表現する。
-// MVP とカメラ揺れはフレーム決定的な cameraT から導出する。
+// Entry equivalent to lub's samples/10_breakout3d, written in TinyC#.
+// Run: lub samples/10_breakout3d/Breakout3d10.csproj (transpile + watch + hot reload)
+// The MVP and the camera shake are derived from the frame-deterministic cameraT.
 
 using System;
 using System.Collections.Generic;

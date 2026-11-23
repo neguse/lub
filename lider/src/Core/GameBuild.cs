@@ -1,9 +1,9 @@
-// ゲームの 1 つの版を、lider の player に組み込んだ tcs (TcsSession) で変換する。
-// 保存した版 (名前 saved) は disk の file を、編集中の版 (名前 draft) は保存していない本文 (Unsaved) を disk の file の代わりに使う。
-// 入力は、ゲームが .csproj なら lub が .csproj を開くときと同じ規則 (App.Inputs) で集め、ディレクトリなら (web) その下の .cs と、env LIDER_CS_LIB の cs-lib にする。
-// module は <ゲームのディレクトリ>/.lub/<Entry>.tcsb (saved 以外は <Entry>.<名前>.tcsb)、差分は隣の .batch に書く。ゲームの app はそれを開いて読む。
-// 毎 frame、入力の file の版 (Io.LoadText の version。更新時刻が変わると読み直す) と保存していない本文を見て、変わった物をまとめて変換し直す。
-// 前の差分をゲームがまだ読んでいなければ、読むまで待つ。
+// Compiles one version of the game with the tcs built into the lider player (TcsSession).
+// The saved version (named saved) uses the files on disk, and the edited version (named draft) uses the unsaved text (Unsaved) in place of the files on disk.
+// If the game is a .csproj, inputs are collected with the same rules lub uses to open a .csproj (App.Inputs); if it is a directory (web), the inputs are the .cs files under it and the cs-lib in env LIDER_CS_LIB.
+// The module goes to <game-dir>/.lub/<Entry>.tcsb (<Entry>.<name>.tcsb for versions other than saved), and diffs go to the .batch next to it. The game app opens and reads them.
+// Every frame, checks the versions of the input files (the Io.LoadText version; reloaded when the modification time changes) and the unsaved texts, and recompiles everything that changed in one batch.
+// If the game has not read the previous diff yet, waits until it does.
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -13,33 +13,33 @@ namespace LiderCore;
 
 public class GameBuild
 {
-    // 入力を探し直す間隔 (秒)
+    // Interval for searching for inputs again (seconds)
     public const float ScanSeconds = 2;
 
-    // ゲーム (.csproj かディレクトリ)
+    // The game (.csproj or directory)
     public readonly string Project;
-    // 版の名前 (saved か draft)
+    // Version name (saved or draft)
     public readonly string Name;
-    // disk の file の代わりに使う本文 (絶対 path → 本文)
+    // Texts used in place of files on disk (absolute path → text)
     public Dictionary<string, string> Unsaved = new Dictionary<string, string>();
     public string Entry = "";
-    // 変換した module の path (GameApp が開く)。入力が集まるまで ""
+    // Path of the compiled module (opened by GameApp). "" until the inputs are collected
     public string ModulePath = "";
     string batchPath = "";
     readonly TcsSession session;
     bool opened;
-    // 変換に渡した file の版 (disk なら "d" と version、保存していない本文なら "u" と本文)
+    // Versions of the files passed to the compile ("d" plus the version for disk, "u" plus the text for unsaved text)
     readonly Dictionary<string, string> sent = new Dictionary<string, string>();
     List<string> sources = new List<string>();
     List<string> refs = new List<string>();
     List<string> traces = new List<string>();
     float sinceScan = ScanSeconds;
-    // まだ渡していない、最後の build の診断と、当てた差分の知らせ
+    // The last build diagnostic and the applied-diff notice not handed over yet
     public string PendingErrors = "";
     public string PendingNotes = "";
-    // 通った回数
+    // Number of successful compiles
     public int Revision;
-    // 受け取った結果の数と、最後の結果の kind
+    // Number of results received, and the kind of the last result
     public int Results;
     public string LastKind = "";
 
@@ -50,10 +50,10 @@ public class GameBuild
         session = new TcsSession(name);
     }
 
-    // ゲームが .tcsb (変換済み) なら、変換しない
+    // If the game is a .tcsb (already compiled), does not compile
     public bool Needed => Project != "" && !Project.EndsWith(".tcsb");
 
-    // 毎 frame 呼ぶ
+    // Called every frame
     public void Tick(float dt)
     {
         if (!Needed)
@@ -72,7 +72,7 @@ public class GameBuild
             Open();
             return;
         }
-        // 前の差分をゲームがまだ読んでいない
+        // The game has not read the previous diff yet
         if (Disk.Stat(batchPath) != null)
             return;
         var paths = new List<string>();
@@ -142,7 +142,7 @@ public class GameBuild
         }
     }
 
-    // 入力を集める。集まらなければ false
+    // Collects the inputs. false if they cannot be collected
     bool Gather()
     {
         if (Project.EndsWith(".csproj"))
@@ -153,7 +153,7 @@ public class GameBuild
             Set(inputs.Entry, Lines(inputs.Sources), Lines(inputs.Refs), Lines(inputs.Dirs), DirOf(Project));
             return true;
         }
-        // ディレクトリ (web): その下の .cs と cs-lib
+        // Directory (web): the .cs files under it and cs-lib
         var found = new List<string>();
         var refFiles = new List<string>();
         Walk(Project, found, refFiles, 0);
@@ -177,7 +177,7 @@ public class GameBuild
 
     void Set(string entry, List<string> found, List<string> refFiles, List<string> dirs, string dir)
     {
-        // entry が変わったら開き直す (動いている版には当てられない)
+        // If the entry changes, reopens (a changed entry cannot be applied to the running version)
         if (opened && entry != Entry)
         {
             opened = false;
@@ -192,7 +192,7 @@ public class GameBuild
         batchPath = stem + ".batch";
     }
 
-    // OnFrame を持つ static class の名前 (path の順で最初の物。無ければ "")
+    // Name of the static class with OnFrame (the first in path order; "" if none)
     static string EntryIn(List<string> paths)
     {
         foreach (var path in paths)
@@ -221,7 +221,7 @@ public class GameBuild
         return "";
     }
 
-    // dotnet の既定と同じく bin / obj と '.' で始まるディレクトリは辿らない
+    // Like the dotnet default, does not descend into bin / obj or directories starting with '.'
     static void Walk(string dir, List<string> found, List<string> refFiles, int depth)
     {
         if (depth > 8)
@@ -258,7 +258,7 @@ public class GameBuild
         return slash > 0 ? Utf8.Sub(path, 0, slash) : ".";
     }
 
-    // path の本文と、変わったかを比べる印。読めなければ null
+    // The text of path and a stamp for checking whether it changed. null if unreadable
     string? Version(string path, out string key)
     {
         if (Unsaved.TryGetValue(path, out var text))

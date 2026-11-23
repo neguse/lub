@@ -1,4 +1,4 @@
-// tests/grab で開く file。
+// The file tests/grab opens.
 public static class GrabTarget
 {
     public static int One()

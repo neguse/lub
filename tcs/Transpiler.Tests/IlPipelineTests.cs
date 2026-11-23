@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// method body の syntax→IL 経路。IL にできる本文は VM で C# と同じに動き、IL にできない本文は TCS1001 で止まる。
-// 挙動そのものは既存 corpus + differential が守る。
+// The syntax→IL path for method bodies. Bodies that can become IL run on the VM the same as in C#, and bodies that cannot stop with TCS1001.
+// The behavior itself is guarded by the existing corpus + differential.
 public class IlPipelineTests
 {
     [Fact]
@@ -54,7 +54,7 @@ public class IlPipelineTests
     [Fact]
     public void UnsupportedConstructBody_IsError()
     {
-        // instance method group は IL 未対応 → TCS1001 で止まる
+        // Instance method groups are not supported in IL → stop with TCS1001
         var result = Checker.Check(["""
             using System;
             public class T
@@ -92,7 +92,7 @@ public class IlPipelineTests
         Assert.Equal("3:13:1", result);
     }
 
-    // local 初期化 / return 位置の条件式
+    // Conditional expressions in local initializer / return positions
     [Fact]
     public void Ternary_InLocalAndReturn_IsStatementized()
     {
@@ -109,7 +109,7 @@ public class IlPipelineTests
         Assert.Equal("y?", result);
     }
 
-    // statement 位置の switch 式
+    // switch expressions in statement position
     [Fact]
     public void SwitchExpr_InStatementPositions_IsStatementized()
     {
@@ -128,7 +128,7 @@ public class IlPipelineTests
         Assert.Equal("ABC", result);
     }
 
-    // statement 位置の ?. / ?? / TryGetValue
+    // ?. / ?? / TryGetValue in statement position
     [Fact]
     public void CondAccessAndCoalesce_InStatementPositions_AreStatementized()
     {
@@ -152,7 +152,7 @@ public class IlPipelineTests
         Assert.Equal("True:7:False:0:True", result);
     }
 
-    // if の条件の TryGetValue
+    // TryGetValue in an if condition
     [Fact]
     public void IfCondition_TryGetValue_IsHoisted()
     {

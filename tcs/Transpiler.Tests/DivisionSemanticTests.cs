@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
-// C# の整数除算は 0 方向 truncation、剰余は被除数の符号。Lua の
-// `/` (実数除算) と floor 由来 `%` をそのまま使うと負数と整数で結果がずれる。
+// C# integer division truncates toward 0, and the remainder has the sign of the dividend. Using Lua's
+// `/` (real division) and floor-based `%` as is gives different results for negative numbers and integers.
 public class DivisionSemanticTests
 {
     [Fact]
@@ -23,8 +23,8 @@ public class DivisionSemanticTests
         Assert.Equal("2|-2|-2|2", result);
     }
 
-    // (int)f は 0 方向 truncation (#13)。Lua 出力から cast が消えると float の
-    // まま残る
+    // (int)f truncates toward 0 (#13). If the cast disappears from the Lua output, the value stays
+    // a float
     [Fact]
     public void FloatToIntCast_TruncatesTowardZero()
     {
@@ -76,7 +76,7 @@ public class DivisionSemanticTests
                     var a = 5.0f;
                     var b = 2.0f;
                     var zero = 0.0f;
-                    var isInf = a / zero > 1e30f; // f32 数値モデルでも成立する閾値
+                    var isInf = a / zero > 1e30f; // A threshold that holds even in the f32 numeric model
                     return $"{a / b}|{isInf}";
                 }
             }

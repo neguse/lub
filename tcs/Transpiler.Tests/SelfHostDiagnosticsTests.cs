@@ -1,14 +1,14 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// セルフホストの compiler (SelfHost/) が C# と同じく拒否する検査 (準拠検査、フロー解析) と、
-/// 拒否してはならない形。検査ごとの代表を固定する。
+/// Checks that the self-host compiler (SelfHost/) rejects the same as C# (compliance checks, flow analysis), and
+/// forms it must not reject. Pins a representative case for each check.
 /// </summary>
 public class SelfHostDiagnosticsTests
 {
     private static List<string> Errors(string source)
     {
-        // 束縛と準拠の検査だけ (IL を組み立てない session の既定の mode)
+        // Only binding and compliance checks (the default mode of a session that does not build IL)
         var session = new TcsSelf.Session("");
         session.Add("input.cs", source, 0);
         var result = session.Compile();
@@ -45,7 +45,7 @@ public class SelfHostDiagnosticsTests
             $"expected {id}, got:\n{string.Join("\n", diagnostics)}");
     }
 
-    // C# が受理する形 (到達できない場所の変数、定数の条件、field ごとの struct の代入、Color Color、using static、#if)
+    // Forms C# accepts (variables in unreachable code, constant conditions, struct assignment per field, Color Color, using static, #if)
     [Theory]
     [InlineData("public static class P { public static int F() { while (true) { } } }")]
     [InlineData("public static class P { public static int F(int k) { switch (k) { case 1: return 1; default: return 2; } } }")]

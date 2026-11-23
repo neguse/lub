@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// constructor の評価順 (field initializer → ctor 本文) と生成した値を tcs VM と .NET で見る
+// Checks the constructor evaluation order (field initializer → ctor body) and the resulting values on the tcs VM and .NET
 public class ConstructorTableTests
 {
     private static string RunVm(string source, string mainBody, bool dotnet = true) => TestHelper.CompileAndRunVmMain(source, mainBody, dotnet);
@@ -60,7 +60,7 @@ public class ConstructorTableTests
                 public W(int p) { Seen = X; X = p; }
             }
             """;
-        // Seen = X は field を読むので畳まれず、X = p より前に実行される
+        // Seen = X reads a field, so it is not folded and runs before X = p
         Assert.Equal("7 3", RunVm(source, "var w = new W(3); System.Console.WriteLine(w.Seen + \" \" + w.X);"));
     }
 
@@ -144,7 +144,7 @@ public class ConstructorTableTests
                 public W(int p) { Q = 10 / p; }
             }
             """;
-        // 0 除算 fault より前に initializer の副作用が起きている
+        // The initializer's side effects happen before the division-by-zero fault
         var ex = Assert.Throws<InvalidOperationException>(() => RunVm(source, "var w = new W(0);"));
         Assert.Contains("fault: division by zero", ex.Message);
         Assert.Contains("stdout:\ninit", ex.Message.ReplaceLineEndings("\n"));
@@ -202,7 +202,7 @@ public class ConstructorTableTests
                 public D(string? key) { M = new Dictionary<string, int> { { key!, 1 } }; }
             }
             """;
-        // null の key の fault より前に initializer の副作用が起きている
+        // The initializer's side effects happen before the null key fault
         var ex = Assert.Throws<InvalidOperationException>(() => RunVm(source, "var d = new D(null);", dotnet: false));
         Assert.Contains("fault:", ex.Message);
         Assert.Contains("stdout:\ninit K", ex.Message.ReplaceLineEndings("\n"));
@@ -222,7 +222,7 @@ public class ConstructorTableTests
         Assert.Equal("5 2", RunVm(source, "var d = new D(5); System.Console.WriteLine(d.M[\"a\"] + \" \" + d.M[\"b\"]);"));
     }
 
-    // user 定義 operator は field initializer の後に走る
+    // User-defined operators run after field initializers
     [Fact]
     public void UserOperator_RunsAfterInitializers()
     {
@@ -245,7 +245,7 @@ public class ConstructorTableTests
         Assert.Equal("initopneg", RunVm(source, "var w = new W(new V(), new V()); System.Console.WriteLine(Log.S);"));
     }
 
-    // --ref の host 型の operator も受け付ける
+    // Operators of --ref host types are accepted too
     [Fact]
     public void HostOperator_IsAccepted()
     {

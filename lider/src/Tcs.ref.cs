@@ -1,16 +1,16 @@
-// tcs の compiler の宣言 (変換しない。tcs の --ref で渡る)。
-// 中身は native/tcs/vm_tcs.c で、lider の player (native/CMakeLists.txt、native と web) が静的に link する。
-// lub の既製の lub_vm で動かすときは、隣の Tcs.so (scripts/build-native.sh が作る) を native の拡張として読む。
-// 要求の形は tcs/SelfHost/Tool/Sessions.cs。
-// lider は src/Core/TcsSession.cs の形で使う。
+// Declarations of the tcs compiler (not compiled; passed with tcs's --ref).
+// The implementation is native/tcs/vm_tcs.c, statically linked by the lider player (native/CMakeLists.txt, native and web).
+// When running on lub's stock lub_vm, the neighboring Tcs.so (built by scripts/build-native.sh) is loaded as a native extension.
+// The request format is in tcs/SelfHost/Tool/Sessions.cs.
+// lider uses it as in src/Core/TcsSession.cs.
 public static class Tcs
 {
-    /// <summary>次の Call に渡す引数を末尾に足す。
+    /// <summary>Appends an argument to pass to the next Call.
     /// </summary>
     public static void Arg(string text) { }
 
-    /// <summary>並べた引数の要求を 1 つ処理し、応答の行を reply に入れて、引数を空にする。
-    /// 処理できたら true。
+    /// <summary>Processes one request made of the queued arguments, puts the response line in reply, and clears the arguments.
+    /// Returns true if it was processed.
     /// </summary>
     public static bool Call(out string? reply)
     {

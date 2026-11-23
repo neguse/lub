@@ -1,11 +1,11 @@
-// 窓の下の帯 (CommandView) と上の帯 (NagView) を確かめる。
-//   - Ctrl+F で検索の帯が窓の下に出て、打った文字で探し、Return で見つけた所を選ぶ。F3 で次を、Shift+F3 で前を探す
-//   - 帯の Escape は帯を閉じ、検索を始めた所の選びに戻す
-//   - Ctrl+G で行へ移動する
-//   - Ctrl+R で置き換える (選んでいなければ全部)
-//   - NagView は窓の上に出て、左右で選んで Return で答え、y と n でも答えられる。答えると本文に打てる
-//   - Ctrl+N は名前の無い doc を開き (TakeOpened)、Ctrl+S は名前を尋ねて保存する
-//   - Ctrl+O で path を打って開き、Ctrl+P で名前の一部を打って開く
+// Checks the bar at the bottom of the window (CommandView) and the bar at the top (NagView).
+//   - Ctrl+F shows the search bar at the bottom of the window, searches for the typed text, and Return selects the match. F3 finds the next one, Shift+F3 the previous one
+//   - Escape in the bar closes the bar and restores the selection from where the search started
+//   - Ctrl+G goes to a line
+//   - Ctrl+R replaces (everything if nothing is selected)
+//   - NagView appears at the top of the window, an answer is chosen with left/right and given with Return, and y and n also answer. After answering, typing goes into the text
+//   - Ctrl+N opens a doc without a name (TakeOpened), and Ctrl+S asks for a name and saves
+//   - Ctrl+O opens a file by typing its path, and Ctrl+P opens one by typing part of its name
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -45,7 +45,7 @@ public static class TestBars
         Ed.Shift(Ed.F3);
         Ed.Check(EditorHost.CursorLine(id) == 5, "Shift+F3 moved to line " + EditorHost.CursorLine(id));
 
-        // Escape は帯を閉じ、選びを戻す
+        // Escape closes the bar and restores the selection
         EditorHost.SetCursor(id, 1, 1);
         Ed.Ctrl(9);
         Ed.Type("int");
@@ -58,19 +58,19 @@ public static class TestBars
         Ed.Press(Ed.Return);
         Ed.CheckCursor(id, 7, 1);
 
-        // 置き換え (選んでいないので全部)
+        // Replace (everything, since nothing is selected)
         EditorHost.SetCursor(id, 1, 1);
         Ed.Ctrl(21);
         Ed.Type("int");
         Ed.Press(Ed.Return);
         Ed.Check(EditorHost.Modal(), "the replace bar did not ask for the new text");
         Ed.Mods(false, false);
-        // 打った int が選ばれているので、打つと置き換わる
+        // The typed int is selected, so typing replaces it
         Ed.Type("long");
         Ed.Press(Ed.Return);
         Ed.Check(EditorHost.Line(id, 3) == "    long F()" && EditorHost.Line(id, 7) == "    long G()", "replaced: " + EditorHost.Line(id, 3) + " / " + EditorHost.Line(id, 7));
 
-        // 確認の帯
+        // The confirmation bar
         EditorHost.Ask(id, "Check", "Answer this?", new List<string> { "Yes", "No" });
         EditorHost.Step();
         Ed.Check(EditorHost.Modal(), "the NagView did not take the keys");
@@ -87,7 +87,7 @@ public static class TestBars
         Ed.Type("x");
         Ed.Check(EditorHost.Line(id, 1) == "xclass A", "typed after the NagView: " + EditorHost.Line(id, 1));
 
-        // Ctrl+N と、名前を付けて保存
+        // Ctrl+N, and saving under a name
         Ed.Ctrl(17);
         var untitled = EditorHost.TakeOpened();
         Ed.Check(untitled > 0 && untitled != id && EditorHost.Path(untitled) == "", "Ctrl+N did not open a new doc");
@@ -101,7 +101,7 @@ public static class TestBars
         Ed.Check(EditorHost.Path(untitled).EndsWith("/made.cs") && !EditorHost.Dirty(untitled), "saved the new doc as '" + EditorHost.Path(untitled) + "'");
         Ed.Check(Ed.Read("made.cs") == "z\n", "made.cs has '" + Ed.Read("made.cs") + "'");
 
-        // Ctrl+O と Ctrl+P
+        // Ctrl+O and Ctrl+P
         EditorHost.Focus(id);
         Ed.Ctrl(18);
         Ed.Check(EditorHost.Modal(), "Ctrl+O did not open the open bar");

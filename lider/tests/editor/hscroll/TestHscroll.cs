@@ -1,6 +1,6 @@
-// 横の scroll。
-//   - cursor が窓の右に出ると、cursor が見える所まで横に scroll する
-//   - cursor が scroll しなくても見える所へ戻ると、行の頭が欠けないよう左の端に戻す
+// Horizontal scrolling.
+//   - When the cursor goes past the right side of the window, scroll horizontally until the cursor is visible
+//   - When the cursor comes back to where it is visible without scrolling, scroll back to the left edge so the start of lines is not cut off
 using System;
 using Lub;
 using LiderEditor;
@@ -23,12 +23,12 @@ public static class TestHscroll
         var text = "using System;\nclass A\n{\n    // xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    int x = 1;\n}\n";
         var id = Ed.Open(Ed.Write("Hscroll.cs", text));
         var left = EditorHost.TextX(id);
-        // 4 行目 (窓より長い行) の末尾へ
+        // To the end of line 4 (a line longer than the window)
         EditorHost.SetCursor(id, 4, 78);
         EditorHost.Step();
         EditorHost.Draw(id, 640, 360);
         Ed.Check(EditorHost.TextX(id) < left, "the end of the long line did not scroll: text at " + EditorHost.TextX(id) + ", left " + left);
-        // 下の短い行の末尾 (9 桁目) へ: scroll しなくても見える
+        // To the end of the short line below (column 9): visible without scrolling
         Ed.Press(Ed.Down);
         EditorHost.Step();
         EditorHost.Draw(id, 640, 360);

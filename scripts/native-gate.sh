@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Native regression gate: Release build, C smoke tests, C# runtime tests
 # (tests/cs), visual goldens of the tests (lavapipe), the samples' tcs check,
-# and the dev tools (tcs の子 process、lub check、vm の project、lider)。
+# and the dev tools (child processes of tcs, lub check, vm projects, lider).
 # Single source of truth shared by the CI linux jobs (.github/workflows/ci.yml)
 # and the manual full gate (scripts/pre-push.sh).
-# CI は --part ごとの job に分けて並べ、手元の gate は全部を順に走らせる。
+# CI splits it into one job per --part and runs them in parallel; the local gate runs everything in order.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -67,10 +67,10 @@ case "$part" in
     exit 2
     ;;
 esac
-# want <part>: この起動が <part> を走らせるか
+# want <part>: whether this invocation runs <part>
 want() { [[ $part == all || $part == "$1" ]]; }
 if ! want runtime; then
-  # golden は runtime の部分だけが撮る
+  # Only the runtime part takes goldens
   skip_golden=1
 fi
 
@@ -109,9 +109,9 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# ---- C# (tcs) ----------------------------------------------------------- dotnet と tcs/ があるときだけ、binding の検査、tests/cs の変換と runtime テスト、全サンプルの tcs check と変換をする。
-# 無い環境では skip (C# 対応は optional toolchain)。
-# CI は --require-cs で skip を fail に変える。
+# ---- C# (tcs) ----------------------------------------------------------- Only when dotnet and tcs/ are present: check the bindings, convert tests/cs and run the runtime tests, and run tcs check and the conversion for all samples.
+# Skipped in environments without them (C# support is an optional toolchain).
+# CI turns the skip into a fail with --require-cs.
 cs_available=0
 if command -v dotnet >/dev/null 2>&1 \
   && [[ -f tcs/Transpiler/Transpiler.csproj ]]; then
@@ -124,7 +124,7 @@ fi
 if [[ $cs_available -eq 1 ]] && want bindings; then
   run bash scripts/verify-tcs-binding.sh
   run bash scripts/verify-vm-binding.sh
-  # lub-gen (TinyC#) を C にした実行ファイルが、.NET の lub-gen と同じ出力を出すこと (release の一式が配る lub-gen と同じ作り方)
+  # The executable built from lub-gen (TinyC#) converted to C must produce the same output as the .NET lub-gen (built the same way as the lub-gen shipped in the release kit)
   lub_gen_build="$(mktemp -d)"
   run bash scripts/build-lub-gen.sh --verify "$lub_gen_build"
   rm -rf "$lub_gen_build"
@@ -133,21 +133,21 @@ fi
 cs_transpile() {
   local cs_dir="$1" cs_name
   cs_name="$(basename "$cs_dir")"
-  # tcs check は警告でも失敗する。tcs vm は警告で止まらないので、check を別に回す
+  # tcs check fails even on warnings. tcs vm does not stop on warnings, so check is run separately
   run scripts/run-cs-sample.sh "$cs_name" --check
   run scripts/run-cs-sample.sh "$cs_name" --vm
 }
 
-# サンプルごとに独立 (dir が disjoint) な処理を pool で並列化する。
-# status はファイル渡し: wait -n が reap した job は後から wait <pid> できないため (run-golden.sh と同じ)。
-# 相ごとの所要時間を出力する。
+# Parallelize the independent per-sample work (disjoint dirs) with a pool.
+# Status is passed through files: a job reaped by wait -n cannot be waited on later with wait <pid> (same as run-golden.sh).
+# Print the time taken by each phase.
 cs_pool() {
   local label="$1" fn="$2"
   local t0=$SECONDS running=0 i failed=0 tmp
   tmp="$(mktemp -d)"
   for i in "${!cs_dirs[@]}"; do
-    # "$fn" を if や || の条件に置くと、関数の中で set -e が効かず途中の失敗が消える。
-    # 条件の外で呼び、途中で落ちたら status を書かずに終わる (status の無い job は失敗)。
+    # Putting "$fn" in the condition of an if or || disables set -e inside the function, and failures in the middle get lost.
+    # Call it outside a condition; if it fails midway, it ends without writing a status (a job without a status is a failure).
     (
       "$fn" "${cs_dirs[$i]}" "$i" >"$tmp/$i.log" 2>&1
       echo pass >"$tmp/$i.status"
@@ -184,9 +184,9 @@ if [[ $cs_available -eq 1 ]]; then
 fi
 cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
 
-# dotnet 相 (Transpiler prebuild / transpile / .NET 実行と雛形の build) は native binary に依存しないので、C build と並行に回して runtime テストの前で join する。
-# tests/cs の runtime テストを、$3 の backend (空白区切り) ごとに全部、並べて走らせ (一度に core の数の 4 倍まで)、失敗があれば log を出して終わる。
-# $2 は test の名前から起動の引数 (実行ファイルと入力) を 1 行ずつ出す関数で、test の名前は $4 以降
+# The dotnet phase (Transpiler prebuild / transpile / .NET execution and the template build) does not depend on the native binary, so it runs in parallel with the C build and joins before the runtime tests.
+# Run all runtime tests of tests/cs in parallel for each backend in $3 (space-separated) (up to 4 times the number of cores at once), and if any fail, print the logs and exit.
+# $2 is a function that prints the launch arguments (executable and input) for a test name, one per line, and the test names are $4 onward
 run_runtime_tests() {
   local label=$1 argv_fn=$2 backend entry i log failed=0 t0=$SECONDS
   local backends=()
@@ -201,7 +201,7 @@ run_runtime_tests() {
       cleanup_files+=("$log")
       logs+=("$log")
       mapfile -t argv < <("$argv_fn" "$entry")
-      # 一度に動かす数を限る。全部を一度に起こすと、lavapipe と Xvfb の memory で機械ごと止まることがある
+      # Limit how many run at once. Starting all of them at once can stop the whole machine because of the memory of lavapipe and Xvfb
       while (($(jobs -rp | wc -l) >= cs_jobs_max * 4)); do
         sleep 0.05
       done
@@ -228,14 +228,14 @@ run_runtime_tests() {
 vm_test_argv() { printf '%s\n' "${vm_tests[@]}" --entry "$1"; }
 dotnet_test_argv() { printf '%s\n' "${dotnet_tests[@]}" --entry "$1"; }
 
-# dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、Transpiler を一度だけ build し、以後は run-cs-sample.sh と scripts/cs-tests.sh が LUB_TCS_DLL の prebuilt DLL を直接実行する。
+# dotnet run evaluates MSBuild on every call and takes ~5 seconds each time, so Transpiler is built only once, and from then on run-cs-sample.sh and scripts/cs-tests.sh run the prebuilt DLL in LUB_TCS_DLL directly.
 cs_dotnet_pid=""
 if [[ $cs_available -eq 1 ]] && [[ $part != bindings ]]; then
   cs_dotnet_log="$(mktemp)"
   cleanup_files+=("$cs_dotnet_log")
   (
     run dotnet build tcs/Transpiler -c Release -nologo
-    # 直前の build の出力 (bin/Release/<framework>/)。RID 付きの古い出力 (bin/Release/<framework>/<rid>/) は拾わない
+    # Output of the previous build (bin/Release/<framework>/). Old outputs with a RID (bin/Release/<framework>/<rid>/) are not picked up
     tcs_dll="$(find tcs/Transpiler/bin/Release -maxdepth 2 -name Transpiler.dll -print -quit)"
     if [[ -z "$tcs_dll" ]]; then
       echo "Transpiler.dll not found under tcs/Transpiler/bin/Release" >&2
@@ -243,25 +243,25 @@ if [[ $cs_available -eq 1 ]] && [[ $part != bindings ]]; then
     fi
     export LUB_TCS_DLL="$repo_root/$tcs_dll"
     if want runtime || want tools; then
-      # tests/cs 全体の .NET 実行 (dotnet/SampleRunner/bin/tests/lub-sample-tests。test は --entry で選ぶ)
+      # .NET execution of all of tests/cs (dotnet/SampleRunner/bin/tests/lub-sample-tests. A test is selected with --entry)
       run dotnet build dotnet/SampleRunner -p:Tests=true -nologo -v q
     fi
-    # tests/cs を tcs vm で 1 つの bytecode (tests/cs/.lub/all.tcsb) にする。test は --entry で選ぶ
+    # Compile tests/cs into one bytecode (tests/cs/.lub/all.tcsb) with tcs vm. A test is selected with --entry
     # shellcheck source=scripts/cs-tests.sh
     source scripts/cs-tests.sh
     run cs_tests_vm_build
     if want tools; then
-      # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (header / tcs VM の host の関数 / API docs / facade) が記述と一致していることの確認。
-      # 差分が出たら scripts/gen-api.sh で再生成する。
+      # Check the description of the API surface (cs-lib/lub_stub.cs), and confirm that the generated files (header / host functions of the tcs VM / API docs / facade) match the description.
+      # If there is a diff, regenerate them with scripts/gen-api.sh.
       run scripts/gen-api.sh --check
-      # .NET 実行の facade + host
+      # Facade + host for .NET execution
       run dotnet build dotnet/Lub -nologo -v q
       run dotnet run --project tests/dotnet/Bindings -c Release
-      # tcs vm は警告で止まらないので、tests/cs の警告は tcs check で見る
+      # tcs vm does not stop on warnings, so warnings in tests/cs are checked with tcs check
       run cs_tests_check
       cs_pool "transpile" cs_transpile
-      # サンプルの csproj は build しない: サンプルは実行例で、検査は tcs の check と変換まで。
-      # 雛形 (cp -r して使う) は実 .NET で build できること
+      # The csproj files of the samples are not built: samples are examples, and the check goes only as far as tcs check and conversion.
+      # The template (used via cp -r) must build with real .NET
       run dotnet build templates/game/Game.csproj -nologo
     fi
   ) >"$cs_dotnet_log" 2>&1 &
@@ -270,15 +270,15 @@ fi
 # ------------------------------------------------------------------------
 
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
-# tests/cs の起動の頭。
-# tcs VM の player は tests/cs 全体の bytecode を、.NET 実行は tests/cs 全体を compile した実行ファイルを動かし、どちらも test を --entry <Entry> で選ぶ。
+# Head of the tests/cs launch command.
+# The tcs VM player runs the bytecode of all of tests/cs, and .NET execution runs the executable compiled from all of tests/cs; both select the test with --entry <Entry>.
 vm_tests=("$native_binary" tests/cs/.lub/all.tcsb)
 dotnet_tests=(./dotnet/SampleRunner/bin/tests/lub-sample-tests)
 if [[ $part != bindings ]]; then
   run_timed bash scripts/build-release.sh
 fi
 if want runtime || want tools; then
-  # .NET 実行の共有 library (facade が P/Invoke する)
+  # Shared library for .NET execution (the facade P/Invokes it)
   run_timed bash scripts/build-release.sh --target lub_shared --no-configure
   export LUB_NATIVE_LIB="$repo_root/build-release-linux/liblub.so"
 fi
@@ -289,7 +289,7 @@ if want runtime; then
   run_timed ./build-release-linux/lub_tcs_resolve_smoke
   run_timed bash scripts/build-release.sh --target lub_vm_project_smoke --no-configure
   run_timed ./build-release-linux/lub_vm_project_smoke
-  # 外の project が find_package(lub) で自前の player を作れること (tests/cmake/player)
+  # An external project can build its own player with find_package(lub) (tests/cmake/player)
   run_timed cmake -S tests/cmake/player -B build-release-linux/export-player -G Ninja -Dlub_DIR="$PWD/build-release-linux"
   run_timed cmake --build build-release-linux/export-player
   run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
@@ -309,8 +309,8 @@ if want runtime; then
   run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
   run_timed ./build-release-linux/lub_xr_math_smoke
 fi
-# dotnet 相 (サンプルと tests/cs の変換) を join する。
-# ここから先の runtime テストと golden はその出力を使う。
+# Join the dotnet phase (conversion of the samples and tests/cs).
+# The runtime tests and goldens from here on use its output.
 if [[ -n $cs_dotnet_pid ]]; then
   echo
   echo "==> C# dotnet phases (ran alongside the C build)"
@@ -325,16 +325,16 @@ fi
 if [[ $cs_available -eq 1 ]] && want runtime; then
   # shellcheck source=scripts/cs-tests.sh
   source scripts/cs-tests.sh
-  # capture の PNG は test が OnQuit で確かめる (同じ path を env でも渡す)
+  # The test checks the capture PNG in OnQuit (the same path is also passed via env)
   readback_capture_png="$(mktemp --suffix=.png)"
   cleanup_files+=("$readback_capture_png")
-  # 起動の引数や env を付けて走らせる test。
-  # $@ は起動の頭 (vm_tests か dotnet_tests)
+  # Tests run with launch arguments or env.
+  # $@ is the head of the launch command (vm_tests or dotnet_tests)
   cs_individual_tests() {
     local save_home saved no_load
     run_timed scripts/run-headless.sh "$@" --entry TestFixedDt --fixed-dt 0.0125
     run_timed scripts/run-headless.sh "$@" --entry TestFixedDt --fixed-dt 0.0166666666666667
-    # save/<名前>/ は $XDG_DATA_HOME/<名前>/ に入る
+    # save/<name>/ goes into $XDG_DATA_HOME/<name>/
     save_home="$(mktemp -d)"
     run_timed env XDG_DATA_HOME="$save_home" scripts/run-headless.sh "$@" --entry TestSaveDir "${cs_test_args[@]}"
     saved="$(cat "$save_home/lub-test/scores.txt")"
@@ -354,17 +354,17 @@ if [[ $cs_available -eq 1 ]] && want runtime; then
   }
   cs_individual_tests "${vm_tests[@]}"
   cs_individual_tests "${dotnet_tests[@]}"
-  # TestDrawStateReuse は runtime テストの一覧に無い。
-  # descriptor set と pipeline の bind を使い回す vulkan backend でも、各 draw が自分の状態で描くこと。
+  # TestDrawStateReuse is not in the runtime test list.
+  # Each draw must render with its own state, even on the vulkan backend, which reuses descriptor set and pipeline binds.
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/all.tcsb --entry TestDrawStateReuse "${cs_test_args[@]}"
-  # --readback-fixed-latency を付けない起動でも、readback の届く frame は backend によらず、保証しないモードでは GPU を待たない (runtime テストは付けて走らせる)。
+  # Even when launched without --readback-fixed-latency, the frame in which a readback arrives is the same regardless of backend, and in the mode without that guarantee it does not wait for the GPU (the runtime tests are run with it).
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
   run_timed env LUB_BACKEND=vulkan scripts/run-headless.sh "$native_binary" \
     tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
-  # lub export は GPU も display も使わず、OnExport で使った shader を export 先の player の target で compile して snapshot の cache/shader/ に入れ、読んだ file と bytecode (<Entry>.tcsb) を同じ相対 path に写す。
-  # linux の snapshot は、その中で player を起動するとリポジトリから動かしたときと同じ絵を描く (web は scripts/web-export-gate.sh)。
+  # lub export uses neither the GPU nor a display; it compiles the shaders used in OnExport for the target of the export destination's player, puts them in cache/shader/ of the snapshot, and copies the files read and the bytecode (<Entry>.tcsb) to the same relative paths.
+  # A linux snapshot draws the same picture when the player is started inside it as when run from the repository (for web, see scripts/web-export-gate.sh).
   export_dir="$(mktemp -d)"
   native_abs="$(realpath "$native_binary")"
   for t in TestVertexPull TestDepthSample; do
@@ -382,13 +382,13 @@ if [[ $cs_available -eq 1 ]] && want runtime; then
   rm -r "$export_dir"
 
   run_runtime_tests "C# runtime tests" vm_test_argv "sdlgpu vulkan" "${cs_runtime_tests[@]}"
-  # 同じ runtime テストを .NET 実行でも走らせる (走らせないものと理由は scripts/cs-tests.sh の cs_dotnet_excluded)。
-  # .NET 実行の Math (TinySystem.props で TinySystem.Math になる) が tcs VM と同じ期待値を返すことは TestMathDeterminism が見る
+  # Run the same runtime tests on .NET execution as well (the ones not run, and why, are in cs_dotnet_excluded of scripts/cs-tests.sh).
+  # TestMathDeterminism checks that the Math of .NET execution (which becomes TinySystem.Math through TinySystem.props) returns the same expected values as the tcs VM
   mapfile -t dotnet_runtime_tests < <(cs_dotnet_tests)
-  # backend は C の runtime の中にあって .NET 実行も同じ所を通るので、.NET 実行は sdlgpu だけで走らせる
+  # The backend is inside the C runtime and .NET execution goes through the same code, so .NET execution runs only on sdlgpu
   run_runtime_tests "C# runtime tests (.NET)" dotnet_test_argv sdlgpu "${dotnet_runtime_tests[@]}"
-  # Blend は値の struct の record。
-  # tcs VM の player と .NET 実行の両方で TestBlendValue が通り、frame ごとの digest (draw の Blend を含む) が一致すること
+  # Blend is a value struct record.
+  # TestBlendValue must pass on both the tcs VM player and .NET execution, and the per-frame digests (including the Blend of draws) must match
   blend_vm_log="$(mktemp)"
   blend_dn_log="$(mktemp)"
   cleanup_files+=("$blend_vm_log" "$blend_dn_log")
@@ -415,20 +415,20 @@ elif want runtime; then
   echo "==> visual goldens SKIPPED (--skip-golden: mesa-version-dependent)"
 fi
 
-# 開発の道具: tcs の子 process の後始末、lub check、binding の digest、.csproj から動かす経路
+# Dev tools: cleanup of tcs child processes, lub check, the bindings digest, the path that runs from a .csproj
 if [[ $cs_available -eq 1 ]] && want tools; then
   run_timed scripts/test-tcs-process-cleanup.sh "$native_binary"
   run_timed scripts/test-lub-check.sh "$native_binary"
   run_timed scripts/test-bindings-digest.sh "$native_binary" "${dotnet_tests[@]}"
-  # tcs VM の player が .csproj から動かす経路 (tcs vm --watch、hot reload、OnBuildFailed、App.Use で開いた app の --trace と検査の口)。
-  # tcs は dotnet 相が build した Transpiler.dll を直接動かす (dotnet run は起動のたびに MSBuild の評価が走る。tcs を探す順は lub_tcs_resolve_smoke が見る)
+  # The path where the tcs VM player runs from a .csproj (tcs vm --watch, hot reload, OnBuildFailed, --trace and the inspection entry points of apps opened with App.Use).
+  # tcs runs the Transpiler.dll built by the dotnet phase directly (dotnet run evaluates MSBuild on every launch. lub_tcs_resolve_smoke checks the order in which tcs is searched for)
   tcs_dll="$(find tcs/Transpiler/bin/Release -maxdepth 2 -name Transpiler.dll -print -quit)"
   run_timed env LUB_VM="$native_binary" LUB_TCS="dotnet $repo_root/$tcs_dll" scripts/vm-project-test.sh
 elif want tools; then
   echo
   echo "==> dev tool checks skipped (dotnet or tcs missing)"
 fi
-# lider (lider/README.md): 自前の player の build と、lider の runtime テスト
+# lider (lider/README.md): building its own player, and the runtime tests of lider
 if [[ $cs_available -eq 1 ]] && want lider; then
   if command -v cargo >/dev/null; then
     run_timed lider/scripts/gate.sh
@@ -440,8 +440,8 @@ if [[ $cs_available -eq 1 ]] && want lider; then
   fi
 fi
 if want tools; then
-  # tcs の子プロセスの標準出力から frame を切り出す (知らない種類を読み飛ばす)。
-  # fake の tcs を使うので dotnet は要らない
+  # Extract frames from the stdout of the tcs child process (skipping unknown kinds).
+  # Uses a fake tcs, so dotnet is not needed
   run_timed bash scripts/build-release.sh --target lub_tcs_pipeline_smoke --no-configure
   run_timed scripts/test-tcs-pipeline-smoke.sh ./build-release-linux/lub_tcs_pipeline_smoke
 fi

@@ -1,6 +1,6 @@
-// web で CapsLock を Ctrl にした環境の key (key は "Control"、code は "CapsLock") が、Ctrl として EventData.Mods に届くこと。
-// key は web の verify (A9) が KeyboardEvent を流して用意する (native では走らせない)。
-// 流すのは、その Ctrl の keydown、"s" の keydown (ctrlKey 付き)、"s" と Ctrl の keyup。
+// On web, a key from an environment where CapsLock is mapped to Ctrl (key is "Control", code is "CapsLock") reaches EventData.Mods as Ctrl.
+// The keys are prepared by the web verify (A9), which dispatches KeyboardEvents (not run on native).
+// It dispatches a keydown of that Ctrl, a keydown of "s" (with ctrlKey), and keyups of "s" and Ctrl.
 using System;
 using Lub;
 

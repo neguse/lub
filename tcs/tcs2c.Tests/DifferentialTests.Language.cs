@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// 言語機能別の 2 backend differential (続き): record / Nullable / Random /
-// struct member / シフト / char。DifferentialTests のファイル長上限のため分割
+// Two-backend differential tests by language feature (continued): record / Nullable / Random /
+// struct members / shifts / char. Split off because of the DifferentialTests file length limit
 public class LanguageDifferentialTests
 {
     [CFact]
@@ -128,9 +128,9 @@ public class LanguageDifferentialTests
     [CFact]
     public void Random_SeededSequencesAreFixed()
     {
-        // 合意 PRNG は Lua 5.5 の math.random (xoshiro256**、LUA_32BITS 構成。il-spec §13) で、C と VM は同じ実装を持つ。
-        // seed 固定の Next / Next(max) / Next(min, max) / Range / NextFloat / NextSingle の列を値で固定する。
-        // new Random(seed) の instance は Random.Seed(seed) の後の Shared と同じ列。.NET の System.Random の列とは違う
+        // The agreed PRNG is Lua 5.5's math.random (xoshiro256**, LUA_32BITS configuration. il-spec §13), and C and the VM have the same implementation.
+        // Fixes the sequences of Next / Next(max) / Next(min, max) / Range / NextFloat / NextSingle with a fixed seed as values.
+        // An instance from new Random(seed) gives the same sequence as Shared after Random.Seed(seed). It differs from the sequence of .NET's System.Random
         var output = Backends.AssertBackendParity("""
             using TinySystem;
             public class P
@@ -175,12 +175,12 @@ public class LanguageDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // struct / record struct の member (il-spec §10): 明示 ctor + field
-    // initializer (`new S()` は zero のまま)、変数 receiver (local / 配列要素
-    // / class field) の method 変異はその場に残り、List indexer (rvalue) は
-    // copy への変異、custom / auto / expression-bodied property、record
-    // struct の positional ctor / ==/!= / with / 入れ子、List.Contains /
-    // IndexOf の値等価、`new S[n]` の zero 要素、default(S)
+    // struct / record struct members (il-spec §10): explicit ctor + field
+    // initializers (`new S()` stays zero), method mutations through a variable receiver (local / array element
+    // / class field) stay in place, a List indexer (rvalue) is
+    // a mutation of a copy, custom / auto / expression-bodied properties, record
+    // struct positional ctor / ==/!= / with / nesting, value equality in List.Contains /
+    // IndexOf, zero elements of `new S[n]`, default(S)
     [CFact]
     public void Structs_MembersCtorPropertiesAndRecordStruct()
     {
@@ -278,9 +278,9 @@ public class LanguageDifferentialTests
             """, "P");
     }
 
-    // `?.` (il-spec §3): `S?` receiver は HasValue / Value の明示ノード
-    // (method は .Value の copy に対して呼ぶ)、参照型 receiver の値型 member は
-    // T? に wrap、nested `?.`、`??=`、bool? の文字列化
+    // `?.` (il-spec §3): an `S?` receiver uses explicit HasValue / Value nodes
+    // (methods are called on a copy of .Value), value-type members of a reference-type receiver are
+    // wrapped in T?, nested `?.`, `??=`, string conversion of bool?
     [CFact]
     public void GenericMethods_Specialized()
     {
@@ -415,9 +415,9 @@ public class LanguageDifferentialTests
             """, "P");
     }
 
-    // Random instance (new Random / new Random(seed)) と Shared: seed 固定で
-    // instance と Shared の列が一致、List / class field に保持した instance
-    // (GC object)、null 比較、Shared の identity。列は合意 PRNG (il-spec §13) の値で固定する
+    // Random instances (new Random / new Random(seed)) and Shared: with a fixed seed
+    // the instance and Shared sequences match, instances held in a List / class field
+    // (GC objects), null comparison, identity of Shared. The sequences are fixed as values of the agreed PRNG (il-spec §13)
     [CFact]
     public void Random_InstancesMatchSharedStream()
     {
@@ -469,7 +469,7 @@ public class LanguageDifferentialTests
             """.ReplaceLineEndings("\n"), output);
     }
 
-    // シフトの C# 意味論 (負数 >> は算術、count は 31 でマスク) を両 backend で
+    // C# shift semantics (>> on negative numbers is arithmetic, the count is masked with 31) on both backends
     [CFact]
     public void Shifts_ArithmeticRightShiftAndMaskedCount()
     {
@@ -492,8 +492,8 @@ public class LanguageDifferentialTests
             """, "P");
     }
 
-    // 16 進 literal の桁 E は float の指数ではない: 直接 / 三項の枝 / const /
-    // 算術の中で i32 のまま
+    // The hex literal digit E is not a float exponent: it stays i32 directly / in ternary branches / in const /
+    // in arithmetic
     [CFact]
     public void HexLiterals_DigitEIsNotExponent()
     {
@@ -515,8 +515,8 @@ public class LanguageDifferentialTests
             """, "P");
     }
 
-    // char は整数 code unit (il-spec §3): literal / s[i] / 算術 / Char.* /
-    // string method の char 引数 / foreach string / 文字列化
+    // char is an integer code unit (il-spec §3): literal / s[i] / arithmetic / Char.* /
+    // char arguments of string methods / foreach over a string / string conversion
     [CFact]
     public void Chars_IntegerCodeUnits()
     {
@@ -563,8 +563,8 @@ public class LanguageDifferentialTests
             """, "P");
     }
 
-    // 別 namespace の同名型 (#18): IL の型名は namespace 修飾名 (A_Color)、
-    // IL の型文字列 (field 型 / 引数型) は C# 表示名 (A.Color) のまま
+    // Types with the same name in different namespaces (#18): the IL type name is the namespace-qualified name (A_Color),
+    // and IL type strings (field types / argument types) stay the C# display name (A.Color)
     [CFact]
     public void Namespaces_SameNamedTypesStayDistinct()
     {

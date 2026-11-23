@@ -1,6 +1,6 @@
-// 操作の案内 (Hints) の札。指している点の右下に、ボタンの絵と、押すと何が起きるかを 1 行ずつ出す。
-// ボタンの絵は起動したときに 1 度だけ距離関数から画素に描き、atlas にする (1 つの絵が Cell 画素の正方形)。
-// 指す所が動いている間は薄く、止まると濃くする (読んでいる code を隠しすぎないため)。
+// Tag for operation hints (Hints). At the bottom right of the pointed point, shows one line per button: the button image and what pressing it does.
+// Button images are drawn once at startup from distance functions into pixels and made into an atlas (each image is a square of Cell pixels).
+// Faded while the pointed place moves, and solid when it stops (so it does not hide too much of the code being read).
 using System;
 using System.Collections.Generic;
 using Lub;
@@ -14,7 +14,7 @@ public class HintCard
     const int RowH = 28;
     const int Pad = 6;
     const int IconS = 22;
-    // 画素の細かさは code の窓 (PanelView) と同じ
+    // Pixel density is the same as the code panels (PanelView)
     const float PerPx = PanelView.BaseW / PanelView.BasePxW;
 
     readonly SpriteBatch batch = new SpriteBatch("lider_hints", 1, 1);
@@ -22,20 +22,20 @@ public class HintCard
     string drawn = "";
     readonly DeclareGap gap = new DeclareGap();
     int rows;
-    // 札の大きさ (px)。出す案内の行の数と、一番長い行で決める
+    // Tag size (px). Decided by the number of hint lines shown and the longest line
     int pxW = 1;
     int pxH = 1;
-    // 絵の大きさ (px)。札が収まらなくなったときだけ広げる (案内が変わるたびに絵を作り直すと、その frame が長くなる)
+    // Image size (px). Grown only when the tag no longer fits (recreating the image every time the hints change would make that frame longer)
     int texW = Grain;
     int texH = Grain;
     const int Grain = 128;
     public TextureRef? Texture;
-    // 札の字のある所の真ん中の角度と高さ (置く側が決める)
+    // Angle and height of the middle of the tag's text area (decided by the placer)
     public float Angle;
     public float Y;
     public bool Shown;
 
-    // texture を宣言し、案内が変わっていれば描き直す (画面への pass の外で呼ぶ)
+    // Declares the texture and redraws if the hints changed (call outside the pass to the display)
     public void Prepare(List<Hint> hints, MonoText text)
     {
         var width = 1f;
@@ -51,7 +51,7 @@ public class HintCard
         Texture = Assets.RenderTarget("lider_hints", texW, texH, Gfx.PixelFormat.Rgba8);
         if (gap.Lapsed())
             drawn = "";
-        // 絵を広げると texture を作り直すので、描き直す
+        // Growing the image recreates the texture, so redraw
         var key = texW + "x" + texH + "\n";
         foreach (var h in hints)
             key += (int)h.Icon + h.Key + "\t" + h.Label + "\n";
@@ -62,13 +62,13 @@ public class HintCard
         Render(hints, text);
     }
 
-    // スクリーンの面 (半径 Space.R) の上に描く
+    // Draws on the screen surface (radius Space.R)
     float Radius()
     {
         return Space.R;
     }
 
-    // 札の幅と高さ (メートル)
+    // Tag width and height (meters)
     public float UsedW()
     {
         return PerPx * pxW;
@@ -84,7 +84,7 @@ public class HintCard
         if (!Shown || Texture == null || rows == 0)
             return;
         Theme.Plate(vp, Color.Rgb(Theme.Surface.R, Theme.Surface.G, Theme.Surface.B, 0.92f), Angle, Y, Radius() + 0.003f, UsedW(), Height());
-        // 絵は左上から札の大きさだけを使うので、札の真ん中が Angle に来るよう、絵の幅の板を右へずらす
+        // The image uses only the tag size from the top left, so shift the image-width board to the right so the tag's middle comes to Angle
         var wide = PerPx * texW;
         Quad3d.Curved(vp, Texture, Color.Rgb(1, 1, 1, 1), Angle + (wide - UsedW()) * 0.5f / Radius(), Y, Radius(), wide, Height(), 0, (float)pxH / texH);
     }
@@ -114,7 +114,7 @@ public class HintCard
             return -8;
         if (h.Icon == HintIcon.KeyCap)
             return Math.Max(IconS, Utf8.Cells(h.Key, Utf8.Bytes(h.Key)) * text.CellW + 12);
-        // 手の字 (L か R) を右下に添える分
+        // Room for the hand letter (L or R) added at the bottom right
         if (h.Icon != HintIcon.Face && h.Key != "")
             return IconS + text.CellW;
         return IconS;
@@ -130,7 +130,7 @@ public class HintCard
             : h.Icon == HintIcon.StickLeftRight ? 3 : h.Icon == HintIcon.KeyCap ? 4 : h.Icon == HintIcon.MouseLeft ? 5 : 6;
         if (h.Icon == HintIcon.KeyCap)
         {
-            // 角の丸い枠を左右の端と、伸ばす真ん中に分けて貼る
+            // Paste the rounded-corner frame split into the left and right ends and the stretched middle
             var edge = IconS * 0.4f;
             var src = (int)(Cell * 0.4f);
             batch.Quad(icons, new Rect(index * Cell, 0, src, Cell), x, y, edge, IconS, light);
@@ -146,7 +146,7 @@ public class HintCard
             text.Draw(batch, h.Key, x + IconS, cy - text.LineH * 0.2f, Color.Rgb(0.6f, 0.75f, 1.0f, 1), 0, pxW);
     }
 
-    // 7 つの絵を横に並べた画素 (RGBA)。白で描き、色は貼るときに付ける
+    // Pixels (RGBA) of the 7 images laid side by side. Drawn in white; color is applied when pasting
     static List<int> IconPixels()
     {
         var px = new List<int>();
@@ -166,7 +166,7 @@ public class HintCard
         return px;
     }
 
-    // 絵 index の (u, v) (0 から 1、下向きが v) の濃さ
+    // Intensity at (u, v) of image index (0 to 1, v points down)
     static float Coverage(int index, float u, float v)
     {
         switch (index)
@@ -174,7 +174,7 @@ public class HintCard
             case 0:
                 return Fill(Circle(u, v, 0.5f, 0.5f, 0.44f));
             case 1:
-                // trigger を横から見た形: 握りの上の縁から、指をかける三日月の板が下がる
+                // Trigger seen from the side: a crescent plate for the finger hangs down from the top rim of the grip
                 var grip = RoundRect(u, v, 0.55f, 0.16f, 0.4f, 0.09f, 0.09f);
                 var blade = Math.Max(Circle(u, v, 0.62f, 0.3f, 0.5f), -Circle(u, v, 0.86f, 0.42f, 0.5f));
                 if (v < 0.2f)
@@ -182,7 +182,7 @@ public class HintCard
                 return Math.Max(Fill(grip), Fill(blade));
             case 2:
             case 3:
-                // stick の頭 (輪と中の丸) と、倒す向きの矢印
+                // Stick head (ring and inner circle) and arrows for the tilt direction
                 var stick = Math.Max(Fill(Math.Abs(Circle(u, v, 0.5f, 0.5f, 0.2f)) - 0.035f), Fill(Circle(u, v, 0.5f, 0.5f, 0.1f)));
                 if (index == 2)
                     return Math.Max(stick, Math.Max(Fill(Arrow(u, v, 0.5f, 0.02f, 0, -1)), Fill(Arrow(u, v, 0.5f, 0.98f, 0, 1))));
@@ -195,7 +195,7 @@ public class HintCard
                 var lines = Math.Max(body, split);
                 if (index == 5)
                 {
-                    // 左のボタンを塗る
+                    // Fill the left button
                     var inside = RoundRect(u, v, 0.5f, 0.5f, 0.3f, 0.45f, 0.28f);
                     if (u < 0.5f && v < 0.44f && inside < 0)
                         return 1;
@@ -205,7 +205,7 @@ public class HintCard
         }
     }
 
-    // 距離 (負が内側、単位は絵の幅) を、縁を 1 画素でぼかした濃さにする
+    // Turns a distance (negative inside, in units of the image width) into intensity with the edge blurred by 1 pixel
     static float Fill(float d)
     {
         return Math.Max(0, Math.Min(1, 0.5f - d * Cell));
@@ -227,14 +227,14 @@ public class HintCard
         return (float)Math.Sqrt(ox * ox + oy * oy) + Math.Min(Math.Max(qx, qy), 0) - r;
     }
 
-    // 先が (tx, ty) で (dx, dy) を向いた三角
+    // Triangle with its tip at (tx, ty), pointing toward (dx, dy)
     static float Arrow(float u, float v, float tx, float ty, float dx, float dy)
     {
-        // 先から 0.2 戻った所を底にし、底の幅は 0.36
+        // The base is 0.2 back from the tip, and the base width is 0.36
         var along = (u - tx) * dx + (v - ty) * dy;
         var side = Math.Abs((u - tx) * -dy + (v - ty) * dx);
         var back = -along - 0.2f;
-        // 斜めの辺: 先からの距離に比べて横に出すぎていないか
+        // Slanted sides: whether it sticks out too far sideways compared with the distance from the tip
         var slant = (side - (-along) * 0.9f) * 0.74f;
         return Math.Max(Math.Max(along, back), slant);
     }

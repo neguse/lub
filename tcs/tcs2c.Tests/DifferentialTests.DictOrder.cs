@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// Dictionary / HashSet の列挙は挿入順 (support-matrix §18)。C / VM / .NET (TinySystem の Dictionary) が同じ順で列挙し、
-// Dictionary の foreach の途中の追加は全部の経路で止まる
+// Dictionary / HashSet enumerate in insertion order (support-matrix §18). C / VM / .NET (TinySystem's Dictionary) enumerate in the same order, and
+// adding during a Dictionary foreach stops on every path
 public class DictOrderDifferentialTests
 {
     private const string DictOrderProgram = """

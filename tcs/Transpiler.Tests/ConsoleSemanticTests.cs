@@ -34,7 +34,7 @@ public class ConsoleSemanticTests
         Assert.Equal("42", result);
     }
 
-    // object の値は float を .NET と同じ文字列に、null を空行にする
+    // object values print float as the same string as .NET, and null as an empty line
     [Fact]
     public void Console_WriteLine_Object()
     {

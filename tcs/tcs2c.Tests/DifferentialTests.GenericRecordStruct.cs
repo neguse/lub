@@ -1,8 +1,8 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// generic な record / struct / record struct と、generic class の static property、generic method の
-// method group。Lua は型引数の既定値を隠れ引数で受け (struct は zero 値と copy にも持たせる)、
-// C は閉じた copy に特殊化する。期待値は同じ program を CoreCLR で実行した stdout
+// Generic record / struct / record struct, static properties of generic classes, and method groups of
+// generic methods. Lua receives the type-argument defaults as hidden arguments (structs also carry the zero value and copy),
+// and C specializes them into closed copies. The expected values are the stdout of running the same program on CoreCLR
 public class GenericRecordStructDifferentialTests
 {
     [CFact]
@@ -65,7 +65,7 @@ public class GenericRecordStructDifferentialTests
             """, output);
     }
 
-    // generic struct の copy は型引数の値も写す (Lua は型引数ごとの copy 関数を呼び出し側が渡す)
+    // Copying a generic struct also copies the type-argument values (in Lua the caller passes a copy function per type argument)
     [CFact]
     public void GenericStructCopy_CopiesTypeArgumentStructs()
     {

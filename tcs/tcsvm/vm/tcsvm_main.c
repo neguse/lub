@@ -1,14 +1,22 @@
-/* tcsvm: .tcsb を読み込み、実行する CLI。
-     tcsvm [--gc-stress] program.tcsb               entry (Main) を走らせる
-     tcsvm [--gc-stress] --entry C.M program.tcsb   引数の無い static method を走らせる
-     tcsvm [--gc-stress] --lib C N program.tcsb     C.Setup → (C.Frame → フレーム境界) × N → C.Report
-     --reload K NEW.tcsb PLAN                       (--lib と) K 回目のフレームの後に新版を当てる (繰り返せる)
-     --reload-batch K BATCH                         同じく、tcs2vm --watch の vm_batch を戻した byte 列を当てる
-     --snapshot K / --restore K                     (--lib と) K 回目のフレームの後 (reload の後) に状態を控える / 控えを書き戻す
-     --save-state K FILE                            (--lib と) K 回目のフレームの後に状態を FILE に書く
-     --load-state K FILE                            (--lib と) K 回目のフレームの後に FILE の状態を読み込む。0 なら Setup の代わりに読み込む
-   --lib は host の形 (tcs2c の lib 形と同じ順)。フレーム境界で GC が回る。
-   reload が restart を求めたら終了コード 3 (理由は stderr)。 */
+/* tcsvm: a CLI that loads and runs .tcsb.
+   - tcsvm [--gc-stress] program.tcsb: runs entry (Main)
+   - tcsvm [--gc-stress] --entry C.M program.tcsb: runs a static method with no
+     arguments
+   - tcsvm [--gc-stress] --lib C N program.tcsb: C.Setup → (C.Frame → frame
+     boundary) × N → C.Report
+   - --reload K NEW.tcsb PLAN: (with --lib) applies the new version after the
+     K-th frame (can be repeated)
+   - --reload-batch K BATCH: likewise, applies the decoded bytes of a tcs2vm
+     --watch vm_batch
+   - --snapshot K / --restore K: (with --lib) after the K-th frame (after
+     reload), takes a state snapshot / writes the snapshot back
+   - --save-state K FILE: (with --lib) writes the state to FILE after the K-th
+     frame
+   - --load-state K FILE: (with --lib) loads the state from FILE after the K-th
+     frame. With 0, loads it instead of Setup
+   --lib is the host shape (same order as the tcs2c lib shape). GC runs at frame
+   boundaries. If reload requests a restart, the exit code is 3 (the reason is
+   on stderr). */
 #include "tcsvm.h"
 
 #include <stdbool.h>
@@ -84,7 +92,7 @@ int main(int argc, char **argv) {
   long frames = 0;
   struct {
     long at;
-    const char *module, *plan; /* plan が NULL なら module は batch */
+    const char *module, *plan; /* If plan is NULL, module is a batch */
   } reloads[MAX_RELOADS];
   int nreloads = 0;
   long snapshot_at = 0, restore_at = 0;

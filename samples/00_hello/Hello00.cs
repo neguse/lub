@@ -1,5 +1,5 @@
-// lub の samples/00_hello の entry。
-// 実行: lub samples/00_hello/Hello00.csproj (transpile + watch + hot reload)
+// Entry of lub's samples/00_hello.
+// Run: lub samples/00_hello/Hello00.csproj (transpile + watch + hot reload)
 using System;
 using Lub;
 

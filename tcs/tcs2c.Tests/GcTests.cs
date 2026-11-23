@@ -1,18 +1,18 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// GC の意味論テスト (T252: フレーム同期の世代別 GC)。GC はフレーム境界
-// (lib 形の entry から戻った点 / tcs_lib_gc) でだけ走るので、lib 形で Setup / Frame×N / Report
-// を回し、各 root (static / host hold) と各 container 種別 / ライトバリア
-// 経路で保持した object がフレームを跨いで生きること、到達不能な garbage が
-// 境界で解放されて heap が有界に保たれることを、stress (毎境界で旧世代 full
-// GC + 256 byte nursery chunk) でも VM と .NET と同じ stdout を要求して検証する。
+// GC semantics tests (T252: frame-synchronized generational GC). GC runs only at frame boundaries
+// (the point of returning from a lib-form entry / tcs_lib_gc), so this runs Setup / Frame×N / Report in lib form
+// and verifies that objects held through each root (static / host hold) and each container kind / write barrier
+// path survive across frames, and that unreachable garbage
+// is freed at boundaries so the heap stays bounded, requiring the same stdout as the VM and .NET even under stress (an old-generation full
+// GC + 256-byte nursery chunks at every boundary).
 public class GcTests
 {
     [CFact]
     public void Churn_KeepsLiveGraph_AcrossFrames()
     {
-        // 毎フレーム大量の garbage を作りつつ static の chain / List を育てる。
-        // chain の先頭 (若い) → 前フレームの先頭 (旧) の参照が境界を跨ぐ
+        // Grows a static chain / List while creating lots of garbage every frame.
+        // References from the chain head (young) → the previous frame's head (old) cross the boundary
         const string source = """
             using TinySystem.Text;
             using System.Collections.Generic;
@@ -74,10 +74,10 @@ public class GcTests
     [CFact]
     public void Roots_AllContainerKinds_SurviveFrames_WithWriteBarriers()
     {
-        // Setup で旧世代へ昇格した graph の各 slot (class field / struct-in-class /
-        // struct 配列 / ref 配列 / List / Dict 値 / 閉包 cell / static struct) へ
-        // 毎フレーム若い object を書く。バリア漏れは次の境界で若い object が
-        // 昇格されず nursery のリセットで消える形で現れる
+        // Into each slot of the graph promoted to the old generation in Setup (class field / struct-in-class /
+        // struct array / ref array / List / Dict value / closure cell / static struct),
+        // writes young objects every frame. A missing barrier shows up as the young object
+        // not being promoted at the next boundary and disappearing when the nursery is reset
         const string source = """
             using TinySystem.Text;
             using System;
@@ -133,7 +133,7 @@ public class GcTests
                 {
                     var g = Static;
                     var f = Frames.ToString();
-                    // 前フレームに書いた若い object を (nursery が再利用された後に) 読む
+                    // Reads the young objects written in the previous frame (after the nursery has been reused)
                     Check = Check + g.Primary.Data.Text.RuneCount() + g.Primary.Name.RuneCount()
                         + g.Slots[1].Data.Text.RuneCount() + g.Slots[2].Name.RuneCount() + g.Refs[0].Text.RuneCount()
                         + g.Items.Count + g.ByName.Count + g.ById[7].Data.Text.RuneCount()
@@ -195,7 +195,7 @@ public class GcTests
     [CFact]
     public void Dictionary_GrowthRehash_KeepsYoungNodesBehindOldOnes()
     {
-        // 旧世代に昇格済みの node を rehash で若い node の前へ繋ぎ直す経路
+        // Path where rehash relinks a node already promoted to the old generation in front of a young node
         const string source = """
             using System;
             using System.Collections.Generic;
@@ -224,8 +224,8 @@ public class GcTests
     [CFact]
     public void Dictionary_Remove_UnlinksBetweenYoungAndOldNodes()
     {
-        // remove はバリアを打たずに next を繋ぎ替える。若い node (今フレームの key) と
-        // 旧 node (前フレームまでの key) が混ざった chain から両方を消し、grow も跨ぐ
+        // remove relinks next without a barrier. Removes both a young node (a key from this frame) and
+        // an old node (a key from earlier frames) from a chain where they are mixed, also across grow
         const string source = """
             using TinySystem.Text;
             using System;
@@ -258,10 +258,10 @@ public class GcTests
     [CFact]
     public void Garbage_IsReclaimed_AtFrameBoundary_HeapStaysBounded()
     {
-        // 毎フレーム ~2 MB の到達不能な確保 + 64 KB の static 保持。entry から
-        // 戻った境界で nursery は chunk 1 個に戻り、昇格は保持分だけ、昇格
-        // bytes が閾値 (1 MiB) を超えた境界で旧世代 mark-sweep が走り生存は
-        // 1 個分に収まる (host 側の統計 tcs_lib_heap_bytes も同じ値を返す)
+        // Every frame, ~2 MB of unreachable allocations + 64 KB held in a static. At the boundary after returning from the
+        // entry, the nursery goes back to one chunk and only the held part is promoted; at the boundary where the promoted
+        // bytes exceed the threshold (1 MiB), an old-generation mark-sweep runs and the survivors
+        // fit in one held part (the host-side statistic tcs_lib_heap_bytes returns the same value)
         const string source = """
             public class Blob { public int[] Data; public Blob(int n) { Data = new int[n]; } }
             public class Program
@@ -289,7 +289,7 @@ public class GcTests
             }
             """;
         var c = Backends.EmitC([source], null, lib: true);
-        // host を同じ translation unit に足して runtime 内部の統計を読む
+        // Adds the host to the same translation unit to read the runtime's internal statistics
         c += """
             int main(void)
             {
@@ -311,15 +311,15 @@ public class GcTests
         var stats = lines[2].Split(' ')
             .Select(kv => kv.Split('='))
             .ToDictionary(kv => kv[0], kv => long.Parse(kv[1]));
-        // init + 50 frame + report の各 entry と明示 collect が境界
+        // The init + 50 frame + report entries and the explicit collect are boundaries
         Assert.Equal(53, stats["frames"]);
         Assert.Equal(1, stats["chunks"]);
         Assert.Equal(0, stats["nursery"]);
-        // 50 × (64 KB + Blob) の昇格 ≈ 3.3 MB (garbage は昇格されない)
+        // 50 × (64 KB + Blob) promoted ≈ 3.3 MB (garbage is not promoted)
         Assert.InRange(stats["promoted"], 50L * 65536, 50L * 65536 + 50 * 1024);
         Assert.True(stats["collections"] >= 2, $"expected old-gen collections, got {stats["collections"]}");
         Assert.True(stats["live"] < 3 * 65536, $"live bytes after last GC too large: {stats["live"]}");
-        // 明示 collect の後は host 統計 = 旧世代の生存 (Last 1 個 + Blob) だけ
+        // After the explicit collect, the host statistic = only the old-generation survivors (one Last + Blob)
         Assert.True(stats["heap"] < 3 * 65536, $"heap bytes too large: {stats["heap"]}");
         Assert.InRange(stats["objects"], 2, 4);
     }
@@ -327,9 +327,9 @@ public class GcTests
     [CFact]
     public void LibMode_EntryBoundaries_CollectAndRetainStatics()
     {
-        // --lib: host (別 translation unit) の main から entry を繰り返し呼ぶ。
-        // static に保持した object は境界を跨いで生き、host は tcs_lib_gc で
-        // 境界を知らせる
+        // --lib: the main of the host (a separate translation unit) calls the entries repeatedly.
+        // Objects held in statics survive across boundaries, and the host signals
+        // boundaries with tcs_lib_gc
         const string source = """
             using TinySystem.Text;
             using System.Collections.Generic;
@@ -378,10 +378,10 @@ public class GcTests
     [CFact]
     public void HostHold_KeepsObjectAcrossFrames_UntilRelease()
     {
-        // host が entry の外で持つ pointer は tcs_lib_hold した slot 経由でだけ
-        // 境界を跨げる (昇格先へ書き換わる)。static から外して hold だけで
-        // 保持し、stress の境界 (旧世代 full GC + nursery 上書き) を複数回
-        // 跨いだ後に戻して読む
+        // Pointers that the host holds outside an entry can cross a boundary only through a slot registered with tcs_lib_hold
+        // (they are rewritten to the promotion target). Removes the object from the static, keeps it only through hold,
+        // crosses stress boundaries (old-generation full GC + nursery overwrite) several
+        // times, then puts it back and reads it
         const string source = """
             using TinySystem.Text;
             public class State
@@ -428,8 +428,8 @@ public class GcTests
     [CFact]
     public void Stress_PoisonsResetNursery_SoStaleReadsDoNotLookValid()
     {
-        // 境界を跨いだ stale pointer (バリア / root の漏れの症状) は、stress では
-        // 0 や元の値ではなく毒値を読む。0 が読めると漏れが出力に現れず見逃す
+        // A stale pointer that crossed a boundary (a symptom of a missing barrier / root) reads, under stress,
+        // a poison value rather than 0 or the original value. If 0 could be read, the leak would not show in the output and would be missed
         const string stub = """
             namespace H { public class Ev { public int Kind; } }
             """;
@@ -486,8 +486,8 @@ public class GcTests
     [CFact]
     public void LibMode_FaultHandlerUnwindsAndTheNextEntryRuns()
     {
-        // host の fault の受け口 (tcs_lib_on_fault) が longjmp で抜け、tcs_lib_unwind の後に次の entry が動く。
-        // fault の前に static へ入れた object は境界の GC を越えて残り、入れ子の深さが戻るので境界は entry ごとに踏まれる
+        // The host's fault handler (tcs_lib_on_fault) exits with longjmp, and the next entry runs after tcs_lib_unwind.
+        // Objects put into statics before the fault survive the boundary GC, and the nesting depth is restored, so the boundary is hit for every entry
         const string source = """
             using System.Collections.Generic;
             public class Program
@@ -531,7 +531,7 @@ public class GcTests
             Assert.Equal("fault divide-by-zero", lines[0]);
             Assert.Equal("fault divide-by-zero", lines[1]);
             Assert.Equal("f0 f1 f2 f3", lines[2]);
-            // init + 4 回の Frame (fault した 2 回は tcs_lib_unwind の境界) + Report
+            // init + 4 Frames (the 2 that faulted are tcs_lib_unwind boundaries) + Report
             Assert.Equal("faults=2 frames=6", lines[3]);
         }
     }

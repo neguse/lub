@@ -1,9 +1,9 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// instance method の overload。interface の method を実装する method は interface の method と
-// 同じ名前になり、interface 経由の呼び出しと class 経由の呼び出しが同じ method を選ぶ。
-// static と instance が同じ名前の型、struct の instance method も含む。
-// 期待値は同じ program を CoreCLR で実行した stdout
+// Instance method overloads. A method that implements an interface method gets the same name as the interface method,
+// and calls through the interface and through the class select the same method.
+// Also includes types with a static and an instance method of the same name, and struct instance methods.
+// The expected values are the stdout of running the same program on CoreCLR
 public class InstanceOverloadDifferentialTests
 {
     [CFact]
@@ -94,8 +94,8 @@ public class InstanceOverloadDifferentialTests
             """, output);
     }
 
-    // 型引数を入れると parameter の型が重なる overload (`M(T)` と `M(string)` の T = string)。
-    // C# は宣言の型で選ぶ (`M("x")` は `M(string)`、T 経由は `M(T)`)
+    // Overloads whose parameter types overlap once type arguments are substituted (T = string for `M(T)` and `M(string)`).
+    // C# selects by the declared types (`M("x")` is `M(string)`, through T it is `M(T)`)
     [CFact]
     public void InstanceOverload_InGenericTypeWithCoincidingTypeArgument()
     {
@@ -130,8 +130,8 @@ public class InstanceOverloadDifferentialTests
             """, output);
     }
 
-    // interface の generic method。C は interface と実装する型に同じ名前の閉じた method を作る
-    // (generic な型の閉じた copy が実装する場合と、generic な interface の場合を含む)
+    // Generic methods of interfaces. C creates closed methods with the same name on the interface and the implementing types
+    // (including when a closed copy of a generic type implements it, and generic interfaces)
     [CFact]
     public void InterfaceGenericMethod_DispatchesThroughInterface()
     {
@@ -158,7 +158,7 @@ public class InstanceOverloadDifferentialTests
         Assert.Equal("3|s|0|7|u", output);
     }
 
-    // generic な型の中の、型引数を書いて呼ぶ generic method の overload (推論できない U)
+    // Overloads of generic methods called with explicit type arguments inside a generic type (U cannot be inferred)
     [CFact]
     public void InstanceOverload_GenericMethodsInGenericTypeWithExplicitTypeArguments()
     {

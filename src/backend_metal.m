@@ -1,15 +1,44 @@
-// Metal backend (macOS / iOS).
+// Metal backend (macOS / iOS default; Objective-C with ARC).
 //
-// Sequence per frame:
-//   begin_frame: commandBuffer -> nextDrawable
-//   begin_pass : renderCommandEncoder
-//   end_pass   : endEncoding
-//   end_frame  : presentDrawable -> commit
+// Implements the RenderBackend vtable directly on Metal; all Metal-specific
+// concepts stay inside this file. Window creation uses SDL_WINDOW_METAL |
+// SDL_WINDOW_HIGH_PIXEL_DENSITY and renders into SDL_Metal_CreateView's
+// CAMetalLayer (BGRA8Unorm; fullscreen on iOS).
 //
-// One command buffer carries the whole frame, so passes, compute dispatches
-// and blits run in the order they were recorded. Shaders arrive as MSL source
-// (SHADER_TARGET_METAL) and the reflection slots are the [[buffer]] /
-// [[texture]] / [[sampler]] indices of each stage, bound as-is.
+//   * Frame model: one command buffer carries the whole frame
+//     (begin_frame: commandBuffer -> nextDrawable, begin_pass:
+//     renderCommandEncoder, end_pass: endEncoding, end_frame:
+//     presentDrawable -> commit), so passes, compute dispatches, and blits run
+//     in recorded order. If the window is hidden and nextDrawable is nil,
+//     swapchain pass draws are dropped.
+//   * Shaders (SHADER_TARGET_METAL): Slang compiles VS and FS separately to
+//     MSL source (compiled at runtime with newLibraryWithSource; inter-stage
+//     varyings match by [[user(...)]]). Reflection slots are per-stage
+//     [[buffer]] / [[texture]] / [[sampler]] indices bound as-is (uniform
+//     blocks and StructuredBuffers share the [[buffer]] index space). Uniform
+//     data is zero-padded to a 16-byte multiple to match MSL struct rounding.
+//     To keep StructuredBuffer elements packed (float3 = 12 bytes) across
+//     backends, shader.cpp rewrites buffer structs to a <name>_packed variant
+//     using packed_float3 and converts on load; direct expressions like
+//     mul(m, verts[i].nrm) without binding V v = verts[i] first fail MSL
+//     compilation.
+//   * Binding & resources: uniforms use setVertexBytes / setFragmentBytes
+//     under 4 KB and a transient buffer otherwise. Buffer / texture updates
+//     replace the MTLBuffer / MTLTexture instead of writing in place so
+//     already-recorded draws still read the previous contents until commit.
+//     Scissor rects are clamped to the pass viewport; an empty clamp drops
+//     draws until the next set_scissor.
+//   * High pixel density & safe area: rendering uses physical pixels and mouse
+//     coordinates are scaled via lub_host_pixel_density. On notched devices,
+//     the main target is restricted to the safe area (lub_host_main_rect);
+//     swapchain passes clear the full drawable while viewport, scissor,
+//     Gfx.Size, and input origin use the safe area.
+//   * Readback & capture: readback blits to a CPU-readable buffer on the frame
+//     command buffer and polls its completion (waiting only at frame N+2 in
+//     fixed-latency mode; outside a frame commits and waits immediately).
+//     Capture commits and waits synchronously after the blit and opens a new
+//     command buffer for the rest of the frame
+//     (capture_before_end_frame = true).
 #include "app.h"
 #include "backend.h"
 #include "gpu_stats.h"
@@ -39,7 +68,7 @@
 @interface MtBuffer : NSObject {
 @public
   id<MTLBuffer> gpu;
-  uint64_t gen; // gpu を作るたびに変わる
+  uint64_t gen; // Changes each time gpu is created
   size_t bytes;
 }
 @end
@@ -49,7 +78,7 @@
 @interface MtImage : NSObject {
 @public
   id<MTLTexture> tex;
-  uint64_t gen; // tex を作るたびに変わる
+  uint64_t gen; // Changes each time tex is created
   id<MTLSamplerState> smp;
   int w, h;
   SglPixelFormat fmt;
@@ -103,8 +132,9 @@
 #define MT_OBJ(type, h) ((__bridge type *)(void *)(h))
 #define MT_RELEASE(h) ((void)(__bridge_transfer id)(void *)(h))
 
-// frame_buffer の範囲を切り出す buffer。
-// 使ったフレームの command buffer が終わると g_free_chunks に戻る (完了の handler は別の thread で動く)。
+// Buffer that frame_buffer ranges are carved out of.
+// Returns to g_free_chunks when the command buffer of the frame that used it
+// completes (the completion handler runs on another thread).
 @interface MtChunk : NSObject {
 @public
   MtBuffer *whole;
@@ -146,25 +176,28 @@ static id<MTLBuffer> g_ibuf;
 static size_t g_ibuf_offset;
 static bool g_scissor_empty;
 
-// render encoder に設定済みの状態の写しで、同じものを設定し直さないために持つ。
-// buffer と texture は実体の世代で比べる (update_* は handle を保ったまま実体を差し替える)。
-// encoder ごとの状態なので begin_pass と end_pass で空にする。
-// stage の添字は 0 が vertex、1 が fragment。
+// Copy of the state already set on the render encoder, kept to avoid setting
+// the same thing again. Buffers and textures are compared by object generation
+// (update_* replaces the object while keeping the handle). This is per-encoder
+// state, so clear it in begin_pass and end_pass. Stage index 0 is vertex and 1
+// is fragment.
 #define MT_BOUND_SLOTS 32
-static uint64_t g_last_gen; // 実体を作るたびに進めるので、0 はどの実体でもない
+static uint64_t g_last_gen; // Advanced each time an object is created, so 0 is
+                            // never an object
 static struct {
   uint64_t pip;
-  int cull; // -1 は未設定
+  int cull; // -1 = not set
   uint64_t buf[2][MT_BOUND_SLOTS];
   NSUInteger buf_off[2][MT_BOUND_SLOTS];
   uint64_t tex[2][MT_BOUND_SLOTS];
-  // sampler は mt_sampler が持ち続けるので pointer で比べられる。
+  // mt_sampler keeps the samplers alive, so they can be compared by pointer.
   const void *smp[2][MT_BOUND_SLOTS];
 } g_bound;
-// uniform を書く chunk で、g_frame_chunks に入っている間だけ使う。
+// Chunk that uniforms are written to, used only while it is in g_frame_chunks.
 static MtChunk *g_uniform_chunk;
-// draw が束縛しなかった texture と storage buffer の slot に置く仮の resource。
-// 値は sdlgpu と vulkan の backend と同じで、texture は 1x1 の白、storage buffer は 0 の 256 byte。
+// Placeholder resources put in texture and storage buffer slots that a draw did
+// not bind. The values match the sdlgpu and vulkan backends: a 1x1 white
+// texture and a 256-byte zero storage buffer.
 static BackendImage g_dummy_tex;
 static BackendBuffer g_dummy_sbuf;
 
@@ -258,30 +291,35 @@ static BackendBuffer mt_make_buffer(SglBufferType type, const void *data,
 static void mt_destroy_image(BackendImage h);
 static void mt_destroy_buffer(BackendBuffer h);
 
-// --- GPU の時刻 (gpu_time.h) --------------------------------------------------
-// Apple silicon は pass の境目でしか時刻を取れないので、pass を作るときに sampleBufferAttachments で頼む
-// (頂点の始まりと fragment の終わり)。frame ごとに MT_TS_FRAMES 組の sample を回し、組の中の k 番目に頼んだ pass は 2k と 2k + 1。
-// gpu_time の pass i がどの k かは of で引く。frame の最後の command buffer が終わった組を、後の begin_frame で読んで返す。
+// --- GPU timestamps (gpu_time.h)
+// -------------------------------------------------- Apple silicon can take
+// timestamps only at pass boundaries, so request them with
+// sampleBufferAttachments when creating a pass (start of vertex and end of
+// fragment). Each frame rotates through MT_TS_FRAMES sets of samples, and the
+// k-th pass requested in a set uses 2k and 2k + 1. Which k a gpu_time pass i
+// maps to is looked up with of. A set whose frame's last command buffer has
+// completed is read and returned in a later begin_frame.
 
 #define MT_TS_FRAMES 4
 
 typedef struct MtTsFrame {
   uint64_t frame;
-  uint32_t passes; // 時刻を頼んだ pass の数
-  int16_t of
-      [GPU_TIME_PASSES]; // gpu_time の pass i に頼んだ番号 (-1 は頼んでいない)
-  uint32_t count;        // gpu_time の時刻の番号の数
-  bool busy;             // command buffer の終わりを待っている
+  uint32_t passes;             // Number of passes with timestamps requested
+  int16_t of[GPU_TIME_PASSES]; // Index requested for gpu_time pass i (-1 = not
+                               // requested)
+  uint32_t count;              // Number of gpu_time timestamp indices
+  bool busy;                   // Waiting for the command buffer to complete
 } MtTsFrame;
 
 static id<MTLCounterSampleBuffer> g_ts_buf API_AVAILABLE(macos(11.0),
                                                          ios(14.0));
 static MtTsFrame g_ts[MT_TS_FRAMES];
 static id<MTLCommandBuffer>
-    g_ts_cmd[MT_TS_FRAMES]; // 組の frame の最後の command buffer
-static MtTsFrame *g_ts_cur; // この frame の組 (測らなければ NULL)
-static int g_ts_last = -1;  // 直前に始めた pass に頼んだ番号
-// GPU の時刻を ns にする比 (init と読むときの CPU と GPU の時刻の組から求める)
+    g_ts_cmd[MT_TS_FRAMES]; // Last command buffer of the set's frame
+static MtTsFrame *g_ts_cur; // Set for this frame (NULL if not measuring)
+static int g_ts_last = -1; // Index requested for the most recently started pass
+// Ratio that converts GPU timestamps to ns (computed from the CPU and GPU
+// timestamp pairs taken at init and at read time)
 static MTLTimestamp g_ts_cpu0, g_ts_gpu0;
 
 static bool mt_ts_on(void) {
@@ -326,7 +364,8 @@ static void mt_ts_shutdown(void) {
   g_ts_cur = NULL;
 }
 
-// command buffer の終わった組を返し、この frame の組を決める
+// Return the sets whose command buffers have completed and pick the set for
+// this frame
 static void mt_ts_begin_frame(Process *proc) {
   if (!mt_ts_on())
     return;
@@ -381,7 +420,8 @@ static void mt_ts_begin_frame(Process *proc) {
   g_ts_cur = t;
 }
 
-// pass の時刻を頼む (pass を作る前に、控える pass だけ)
+// Request timestamps for a pass (before creating the pass, only for passes to
+// be recorded)
 static void mt_ts_attach(bool timed, MTLRenderPassDescriptor *rp) {
   if (!g_ts_cur || g_ts_cur->passes >= GPU_TIME_PASSES || !timed)
     return;
@@ -399,7 +439,7 @@ static void mt_ts_attach(bool timed, MTLRenderPassDescriptor *rp) {
   }
 }
 
-// frame の最後の command buffer を組に覚える (commit の前)
+// Remember the frame's last command buffer in the set (before commit)
 static void mt_ts_end_frame(void) {
   MtTsFrame *t = g_ts_cur;
   g_ts_cur = NULL;
@@ -662,7 +702,7 @@ static void mt_begin_pass(Process *proc, const PassBeginDesc *d) {
                                (NSUInteger)g_pass_x, (NSUInteger)g_pass_y,
                                (NSUInteger)g_pass_w, (NSUInteger)g_pass_h}];
     // Clockwise front faces in every backend: the D3D convention, used with
-    // the left-handed Mat4 (docs/manual/02-coordinates.md).
+    // the left-handed Mat4 (docs/manual/04-coordinates.md).
     [g_pass setFrontFacingWinding:MTLWindingClockwise];
   }
 }
@@ -968,7 +1008,7 @@ static void mt_destroy_shader(BackendShader h) {
   MT_RELEASE(h);
 }
 
-// SglBlendFactor / SglBlendOp の値で引く。
+// Indexed by SglBlendFactor / SglBlendOp value.
 static const MTLBlendFactor kMtBlendFactor[] = {
     MTLBlendFactorZero,
     MTLBlendFactorZero,
@@ -1109,7 +1149,7 @@ static void mt_apply_pipeline(BackendPipeline h) {
   }
 }
 
-// 同じ buffer が設定済みなら offset だけを切り替える。
+// If the same buffer is already set, switch only the offset.
 static void mt_bind_buffer(int si, int slot, MtBuffer *b, NSUInteger offset) {
   bool tracked = slot >= 0 && slot < MT_BOUND_SLOTS;
   if (tracked && g_bound.buf[si][slot] == b->gen) {
@@ -1163,9 +1203,10 @@ static void mt_apply_bindings(const BindingsDesc *b) {
   g_ibuf_offset = b->ibuf_offset;
   if (!b->refl)
     return;
-  // shader が宣言した slot をすべて埋め、bindings に無い slot は仮の resource にする。
-  // 埋めないと前の draw が設定した resource が残り、draw の結果が前の draw に依存する。
-  // 同じ名前を両方の stage が宣言することがあり、宣言ごとに slot が別にある。
+  // Fill every slot the shader declares, and use placeholder resources for
+  // slots not in bindings. Otherwise the resources set by the previous draw
+  // remain, and the draw result depends on the previous draw. Both stages may
+  // declare the same name, and each declaration has its own slot.
   for (int j = 0; j < b->refl->tex_count; ++j) {
     const ShaderTexture *t = &b->refl->texs[j];
     if (t->stage != SGL_STAGE_VERTEX && t->stage != SGL_STAGE_FRAGMENT)
@@ -1213,8 +1254,9 @@ static size_t mt_pad_uniform(const void *data, size_t bytes, uint8_t *out) {
   return padded;
 }
 
-// uniform は frame の chunk に順に置き、同じ chunk の間は buffer の offset だけを切り替える。
-// 置いた範囲はフレームの間書き換えないので、uniform を省いた draw は直前の範囲を読む。
+// Uniforms are placed in order in the frame's chunks, and within the same chunk
+// only the buffer offset is switched. Placed ranges are not overwritten during
+// the frame, so a draw that omits uniforms reads the previous range.
 static void mt_apply_uniforms(SglShaderStage stage, int slot, const void *data,
                               size_t bytes) {
   if (!g_pass || !data || bytes == 0 || slot < 0)
@@ -1242,7 +1284,8 @@ static void mt_apply_uniforms(SglShaderStage stage, int slot, const void *data,
     mt_bind_buffer(si, slot, c->whole, (NSUInteger)off);
     return;
   }
-  // chunk を確保できないときは、小さい uniform だけ encoder に写して描く。
+  // When a chunk cannot be allocated, copy only small uniforms into the encoder
+  // and draw.
   if (bytes + 16 > MT_INLINE_UNIFORM_MAX) {
     SDL_Log("mt_apply_uniforms: no frame chunk for %zu bytes", bytes);
     return;

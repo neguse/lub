@@ -11,7 +11,7 @@ public static class Api
     public static void Poll(out string topic, out string payload) { topic = null; payload = null; }
     public static void Discard(out int count, out string text, out float dt) { count = 0; text = null; dt = 0; }
 }
-// host と C の struct で渡す値: 入れ子の struct、bool と enum の field、record struct、T?
+// Values passed as host and C structs: nested structs, bool and enum fields, record struct, T?
 public enum Layer { Back, Front = 5 }
 public struct Vec2 { public float X; public float Y; }
 public struct Box2 { public Vec2 Min; public Vec2 Max; public bool Solid; public Layer Layer; }

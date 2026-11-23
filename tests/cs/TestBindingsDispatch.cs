@@ -1,6 +1,6 @@
-// Gfx.Dispatch と float[] の Set と Clear。
-// TestComputeUniformBlock と同じ shader で、同じ Bindings を Clear して使い回す。
-// 期待: 中央の pixel が (128, 128, 255)。
+// Gfx.Dispatch, and Set and Clear with float[].
+// Uses the same shader as TestComputeUniformBlock, and Clears and reuses the same Bindings.
+// Expected: the center pixel is (128, 128, 255).
 using System;
 using System.Collections.Generic;
 using Lub;
