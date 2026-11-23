@@ -14,50 +14,54 @@
 TinyC# のゲームは、3 つの実行モード (`tcs VM` / `tcs C` / `.NET`) で共通の `liblub` 上に動く。
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph vm["tcs VM モード"]
         subgraph vm_bin["player (lub_vm_player)"]
             subgraph vm_mod["バイトコード (.tcsb)"]
-                vm_game["ゲーム"]
-                vm_lubx["Lubx API"]
-                vm_ts["TinySystem"]
+                direction TB
+                vm_game["ゲーム"] ~~~ vm_lubx["Lubx API"] ~~~ vm_ts["TinySystem"]
             end
             subgraph vm_core["VM 層"]
-                vm_vm["tcs VM"]
-                vm_rt["tcs/runtime"]
-                vm_glue["VM 連携"]
+                direction TB
+                vm_vm["tcs VM"] ~~~ vm_rt["tcs/runtime"] ~~~ vm_glue["VM 連携"]
             end
             vm_lib["liblub"]
+            vm_mod ~~~ vm_core ~~~ vm_lib
         end
     end
+```
 
+```mermaid
+flowchart LR
     subgraph tcsc["tcs C モード"]
         subgraph c_bin["単一バイナリ"]
             subgraph c_mod["生成 C"]
-                c_game["ゲーム"]
-                c_lubx["Lubx API"]
-                c_ts["TinySystem"]
+                direction TB
+                c_game["ゲーム"] ~~~ c_lubx["Lubx API"] ~~~ c_ts["TinySystem"]
             end
             subgraph c_core["C 実行層"]
-                c_host["エントリ接続 (tcs_host)"]
-                c_glue["C 接続"]
-                c_rt["tcs/runtime"]
+                direction TB
+                c_host["エントリ接続 (tcs_host)"] ~~~ c_glue["C 接続"] ~~~ c_rt["tcs/runtime"]
             end
             c_lib["liblub"]
+            c_mod ~~~ c_core ~~~ c_lib
         end
     end
+```
 
+```mermaid
+flowchart LR
     subgraph dotnet[".NET モード"]
         subgraph dn_bin[".NET プロセス"]
             subgraph dn_mod["アセンブリ"]
-                dn_game["ゲーム"]
-                dn_lubx["Lubx API"]
-                dn_ts["TinySystem"]
-                dn_facade["dotnet/Lub (P/Invoke)"]
+                direction TB
+                dn_game["ゲーム"] ~~~ dn_lubx["Lubx API"] ~~~ dn_ts["TinySystem"] ~~~ dn_facade["dotnet/Lub (P/Invoke)"]
             end
             dn_clr[".NET CLR"]
+            dn_mod ~~~ dn_clr
         end
         dn_lib["liblub (共有ライブラリ)"]
+        dn_bin ~~~ dn_lib
     end
 ```
 
