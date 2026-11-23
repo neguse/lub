@@ -702,7 +702,7 @@ static void mt_begin_pass(Process *proc, const PassBeginDesc *d) {
                                (NSUInteger)g_pass_x, (NSUInteger)g_pass_y,
                                (NSUInteger)g_pass_w, (NSUInteger)g_pass_h}];
     // Clockwise front faces in every backend: the D3D convention, used with
-    // the left-handed Mat4 (docs/manual/02-coordinates.md).
+    // the left-handed Mat4 (docs/manual/04-coordinates.md).
     [g_pass setFrontFacingWinding:MTLWindingClockwise];
   }
 }

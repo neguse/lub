@@ -1810,7 +1810,7 @@ BackendPipeline dx_make_pipeline(const PipelineDesc *d) {
       : (d->cull == SGL_CULL_FRONT) ? D3D12_CULL_MODE_FRONT
                                     : D3D12_CULL_MODE_NONE;
   // Clockwise front faces in every backend: the D3D convention, used with
-  // the left-handed Mat4 (docs/manual/02-coordinates.md).
+  // the left-handed Mat4 (docs/manual/04-coordinates.md).
   pd.RasterizerState.FrontCounterClockwise = FALSE;
   pd.RasterizerState.DepthClipEnable = TRUE;
 

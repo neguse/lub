@@ -101,7 +101,7 @@ esac
 
 # The tcs VM web player (embedded by lub export web)
 cp "$common/wasm/vm/lub.js" "$common/wasm/vm/lub.wasm" "$kit/bin/wasm/vm/"
-# createXR for using WebXR on your own page (docs/manual/10-web.md). Shipped as a pair with the player, from the same commit
+# createXR for using WebXR on your own page (docs/manual/12-xr.md). Shipped as a pair with the player, from the same commit
 cp web/xr.mjs "$kit/bin/wasm/"
 # tcs reads the files shipped with it (runtime/, lib/) from the dir of the executable. tcs c embeds the C in runtime/ (core, math, etc.) into the generated C
 cp "$build/tcs/tcs$exe" "$kit/bin/tcs/"

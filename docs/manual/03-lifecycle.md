@@ -1,56 +1,39 @@
-# ライフサイクルと hot reload
+# ライフサイクルとホットリロード
 
 ## エントリポイント
 
-entry class(static class)は次の static メソッドを持つ(`OnFrame` 以外は任意)。
+エントリクラス (`static class`) には次の static メソッドを定義する (`OnFrame` 以外は任意):
 
 | メソッド | 呼ばれるタイミング |
 | --- | --- |
-| `OnInit()` | 起動時に 1 回だけ。hot reload 後は呼ばれない。`Config` はここでのみ有効 |
+| `OnInit()` | 起動時に 1 回だけ。ホットリロード後は呼ばれない。`App.Config` はここでのみ有効 |
 | `OnEvent(EventData e)` | 入力やウィンドウのイベントごと |
-| `OnFrame(float dt)` | 毎フレーム。`dt` は通常、直近フレームの実測秒 |
+| `OnFrame(float dt)` | 毎フレーム。`dt` は直近フレームの実測秒 |
 | `OnQuit()` | 終了時に 1 回 |
-| `OnError(string message)` | 他の callback が失敗したとき。`ErrorAction` を返す(後述) |
-| `OnReload()` | 編集が生きたまま反映された直後に 1 回(後述) |
-| `OnExport()` | `lub export` のときだけ、`OnInit` の後に 1 回。`OnFrame` は呼ばれない(後述) |
+| `OnError(string message)` | 他のコールバックが失敗したとき。`ErrorAction` を返す |
+| `OnReload()` | 編集が生きたまま反映された直後に 1 回 |
+| `OnExport()` | `lub export` 実行時だけ `OnInit` の直後に 1 回 (`OnFrame` は呼ばれない) |
 
-`dt` は固定レートではない。移動や時間経過は必ず `dt` でスケールする。
-ウィンドウサイズや backend の指定は `Config`(`ConfigOpts`)で行う。
-renderer は `OnInit` の後に起動するので、`OnInit` の中で `Gfx.Use*` /
-`Gfx.BeginPass` / `Gfx.Draw` / `Gfx.Dispatch` を呼ぶと error になる
-(resource の宣言は `OnFrame` で行う)。
+描画は `OnInit` の後に始まるため、`OnInit` 内で `Gfx.Use*` / `BeginPass` / `Draw` / `Dispatch` を呼ぶとエラーになる。リソース宣言と描画は `OnFrame` に書く。
 
-## 失敗したとき
+### エラー時の処置 (`OnError`)
 
-callback の中で error が起きると、その callback はそこで打ち切られる。entry に `OnError` があれば error の message を渡して処置を聞く。
+コールバック内でエラーが起きるとそのコールバックは打ち切られ、`OnError(message)` があれば戻り値で処置を決める:
 
-| 返り値 | 処置 |
-| --- | --- |
-| `ErrorAction.Log` | log に出して次へ進む(`OnError` が無いときもこれ) |
-| `ErrorAction.Abort` | 終了コード 1 で終わる |
+- `ErrorAction.Log`: ログを出して次フレームへ進む (`OnError` が無いときの既定)
+- `ErrorAction.Abort`: 終了コード 1 で終了する
 
-`OnError` 自身が失敗したら `Abort` になる。message は開発中(tcs VM)は C# の trace 付きで、配る build(C にしたもの)は error の種類だけになる。自分で終わるときは `App.Quit()`、終了コードを返すときは `App.Quit(code)`。
+`OnError` 自身が失敗した場合は `Abort` になる。通常の終了は `App.Quit()` (終了コード付きは `App.Quit(code)`) を使う。
 
-## 配る形にする (`lub export`)
+## 毎フレーム宣言モデル (immediate)
 
-`lub export <os> <entry> -o <dir>` は、ゲームを GPU も画面も使わずに起動し、`OnInit` の後に `OnExport` を 1 回だけ呼んで終わる。`<dir>` には、player をそこで起動すれば動く snapshot ができる。
+`Gfx.Use*`・`Audio.Snd`・`Assets.*` などのリソースは「作って解放する」のではなく、使うあいだ毎フレーム同じ `key` で宣言し続ける。
 
-- `<Entry>.tcsb`(ゲームの tcs VM の bytecode)。player を引数なしで起動すると、実行ファイルの隣の `.tcsb` を動かす
-- `OnExport` の中で読んだ file(同じ相対パス)
-- `cache/shader/`: `OnExport` の中で使った shader を、`<os>` の player が使う target で compile したもの。slang を持たない player(web など)は shader をここからしか読めず、無い shader は key を名指しする error になる
-- `index.html`(`web` のときだけ): 上の全部と web の player を埋め込んだ page 1 枚。外の file を読まないので、この 1 枚だけを置けば動く(claude.ai の artifact にもなる)。web の player は lub の実行ファイルの隣の `wasm/vm/` か、lub の checkout の `build/wasm/vm/` から取る。script を書き足すときと、自分の page に載せるときは `manual/10-web.md`
+- 無ければ作り、同じ `key` と `version` ならキャッシュを再利用する。
+- 宣言が `ConfigOpts.ResourceSweepAfterFrames` (既定 120) フレーム途切れたリソースは自動破棄される。破棄済みの参照を使うとエラーになる。
+- `OnFrame` がエラーで終わったフレームや、ホットリロード待ちのフレームは破棄までの数に含めない。
 
-`OnExport` では、ゲームが使う shader と file をふだんの API(`Io.Load*`、`Gfx.UseShader` など)で一通り使う。描画の呼び出しは何もしない。`OnExport` が無いゲームは shader も file も記録しない。`<os>` は `web`、`linux`、`windows`、`macos`、`ios`、`android` のどれかで、その OS の player が使いうる target を全部入れる(`windows` は d3d12 と vulkan / sdlgpu、`macos` と `ios` は metal と sdlgpu、`android` は vulkan)。`windows` への export は、DXIL を作る dxcompiler がある Windows の lub でだけ動く。`<dir>` は空か、まだ無いディレクトリにする。
-
-## リソースの宣言
-
-`Gfx.Use*`、`Audio.Snd`、`Assets.*` の宣言は「無ければ作り、あれば使う」。
-宣言が `ResourceSweepAfterFrames`(既定 120)フレーム途切れたリソースは破棄されるので、使い続けるもの(サウンドバンクを含む)は毎フレーム宣言する。
-一度だけ宣言して ref を持ち続ける書き方はしない。破棄された後にその ref を使うと error になる。
-
-ゲームはリソースを宣言する関数(例えば `LoadResources()`)を 1 つ持ち、`OnFrame` の冒頭で毎フレーム呼ぶ。
-読み込みが終わっていなければ読み込み中の画面だけを描いて return し、終わってからゲーム時間を進める。
-`OnExport` も同じ関数を呼ぶ。
+リソース宣言を 1 つの関数 (例: `LoadResources()`) にまとめ、`OnFrame` の冒頭と `OnExport` の両方から呼ぶのが定型:
 
 ```csharp
 public static void OnFrame(float dt)
@@ -70,146 +53,43 @@ public static void OnExport()
 }
 ```
 
-`OnFrame` が error で終わったフレームと、hot reload で VM を作り直せずに待っている間のフレームは数えない。
-コードを直している間にリソースが破棄されることはない。
+## 可変 `dt` と固定 tick (`FixedStep`)
 
-## 駆動パターン (可変 dt と固定 tick)
-
-見た目だけの連続アニメーションは `angle += radiansPerSecond * dt` のように
-実測時間を直接使う。物理やフレーム単位のゲームルールは、render とは別の
-固定 60 Hz tick にする — `Lubx.FixedStep` がこの分離を担う。
+見た目だけの連続アニメーションは実測の `dt` を使う。
+物理やフレーム単位のゲームルールは描画レートから切り離し、`Lubx.FixedStep` で固定 60 Hz の tick に乗せる:
 
 ```csharp
-static FixedStep? step; // 60 Hz、catch-up 上限 8
+static FixedStep? step; // 既定 60 Hz、catch-up 上限 8
 
 public static void OnFrame(float dt)
 {
     step ??= new FixedStep();
     step.Frame(dt, tickDt => Update(step.KeyPressed("space")));
-    DrawCurrentState(); // render は毎フレーム
+    DrawCurrentState();
 }
 ```
 
-`Frame()` は実測 `dt` を積み、溜まった分だけ tick を 0〜上限回実行する
-(上限超過分は捨てられ、ゲームは実時間よりゆっくり進む)。`step.KeyPressed` /
-`step.MousePressed` などの edge は tick 粒度で配送され、tick が 0 回だった
-render frame の edge も失われない(次の tick が観測する)。tick callback は
-保持されないので、hot reload の live 反映後も次のフレームから新コードが走る。
+- `step.KeyPressed` / `step.MousePressed` などは tick 粒度で配送され、tick が 0 回だったフレームの押下も次の tick まで失われない。
+- 物理 (`Phys2d` / `Phys3d`) は `Begin`・宣言・力や速度の操作・`Step(tickDt)` までを同じ tick コールバック内に置く。描画フレームごとにコマンドを積むと、tick が 0 回だったフレームの操作が重複する。
+- 高頻度の物理 (例: 240 Hz) は tick 内で整数分割 (`for` で 4 回 `Step(tickDt / 4)`)、低頻度の更新 (例: 20 Hz) は tick カウンタの剰余で間引く。
+- クリック時のマウス座標などフレームごとの値が必要な入力は、描画側で座標を保持して tick で消費する。
 
-代表的な構成:
+## ホットリロード
 
-| パターン | 書き方 |
+`tcs VM` モード (`lub Game.csproj` や `lider`) では、ソースを保存するたびに差分が動いているゲームへ反映される。
+
+| 編集内容 | 挙動 |
 | --- | --- |
-| 全部可変(見た目デモ) | FixedStep を使わず素の `OnFrame(dt)` |
-| 固定 game tick + 毎フレーム render | 上のコードの形 |
-| 物理だけ高頻度(例 240 Hz) | tick 内で整数 substep: `for (var i = 0; i < 4; i++) Phys3d.Step(world, tickDt / 4)` |
-| game は可変、物理だけ固定 | FixedStep を物理にだけ使い、game 側は `OnFrame` で `dt` スケール |
-| 低頻度の系(例 20 Hz の AI) | tick カウンタの整数分周: `if (count % 3 == 0) ai()` |
+| メソッド・プロパティ・演算子の中身、メソッド追加・削除、enum メンバ追加 | live 反映 (static / インスタンスの状態を保持。既存インスタンスも次の呼び出しから新コード) |
+| static フィールド追加 (定数・初期化子なし) | live 反映 (追加分だけ初期化) |
+| static フィールド / const の初期値や型の変更 | live 反映 (その static と、それを初期化子で読む static だけ再評価。空白やコメントのみの変更では保持) |
+| インスタンスフィールドの追加・削除 | live 反映 (既存インスタンスを移行。追加は初期化子、削除は破棄) |
+| インスタンスフィールドの初期値変更 | live 反映 (既存インスタンスは今の値のまま。`OnReloadNotes` で通知。全体へ反映したいときは `App.Restart()`) |
+| 型の削除・種別変更・継承変更、static 初期化子の削除、enum メンバ削除・値変更 | 自動リスタート (`OnQuit` → 新 VM で `OnInit`。C# の状態と物理ワールドは初期化) |
+| コンパイルエラー | 何も変えず直前のコードのまま動作継続 (`OnBuildFailed` とログで通知) |
 
-疎な 2 系なら FixedStep を 2 個持ってもよい(それぞれが独立に時間と edge を
-管理する)が、フレーム内の実行順は呼んだ順に「A の全 tick → B の全 tick」に
-なるため、密結合な系は 1 個の master tick からの分周で書く。
-
-physics は `Phys2d.Begin` / `Phys3d.Begin`、body 宣言、force / torque、
-`Step(tickDt)` までを同じ tick callback 内に置く。これらを render ごとに実行して
-`step` だけ固定 tick にすると、物理 step が 0 回だった render の command が
-次の tick へ重複して蓄積する。
-
-マウス位置に依存する入力(タップ座標など)は per-frame の値なので、render 側で
-座標ごと保持して tick で消費する。edge の bool では足りないケース
-(クリック回数・押下時の座標)の実例は `18_coin_pusher` / `22_tonton` を参照。
-
-`--fixed-dt <seconds>` を付けた起動だけは、UI と `OnFrame` に実測値ではなく
-指定した同じ `dt` を毎フレーム渡す。これは capture / golden / replay のための
-テスト専用オプションで、有限かつ `0 < dt <= 0.25` の値を受け付ける。render
-frame の頻度そのものは変えないため、通常プレイの速度や FPS を固定する用途には
-使わない。
-
-## hot reload の仕組み
-
-native では `lub <Entry>.csproj` で起動すると、runtime が `.cs` ソースを watch
-して変更のたびに tcs VM の bytecode に変換し直し(tcs の watch 常駐)、tcs が送る
-差分(前の build からの差分)を実行中の VM に当てる。差分は method を差し替え、
-static 変数と instance の field を移行する。当てた後に entry の `OnReload()` があれば
-呼び、変換が通らなかった保存では `OnBuildFailed(string errors)` があれば呼ぶ。
-log には、差分を当てるたびに `lub: reloaded`、変換が通らなかった保存では `lub: reload failed: the build has errors, the running code is unchanged` を 1 行出す (変換エラーの中身は、その前に tcs が出す)。
-instance の field の初期化子を変えた差分では、`OnReload()` の後に `OnReloadNotes(string notes)` があれば呼ぶ。
-
-差分で移行できない変更は tcs が restart として知らせる(理由は log に出る)。
-runtime は古い VM の `OnQuit` を呼んで閉じ、その build の出力から VM を作り直して
-`OnInit` から始める。
-log には、作り直した VM の `OnInit` の前に `lub: restarted` を 1 行出す (下の `App.Restart()` の作り直しでも同じ)。
-
-- C# の変数(static と instance)はすべて初期値に戻る。物理の world も body ごと捨てる
-- key で宣言する GPU の資源と音は残り、新しい VM が同じ key で宣言すると引き継ぐ。
-  宣言されなくなったものは通常どおり sweep で消える(VM が無い間のフレームは数えない)
-- この `OnInit` は backend の起動後に走る(初回の `OnInit` は起動前)。
-  `App.Config` の backend と window の大きさは lub を起動し直すまで変わらない。
-  他の項目は効く
-- 出力の読み込みでエラーになったときは VM が無いまま待ち、tcs が次に出力を書くと
-  (通る編集のたび)それから作り直す
-
-差分で移せる変更でも、最初からやり直したいとき (instance の field の初期化子を変えて生きている instance にも入れたいときなど) は、`App.Restart()` で同じ作り直しを求められる。
-呼んだ frame の終わりに作り直す。
-tcs2c の release build では何もしない。
-
-web のサイトの入口 (lider) では、lider が player に組み込んだ同じ tcs の増分 session が同じ流れを担う (変換するのは lider で、差分と作り直しの規則は同じ)。
-
-| 変更 | 挙動 |
-| --- | --- |
-| static 変数の値 | 保持される |
-| クラスの形の変更 | field を移行(追加は初期化子、削除は破棄) |
-| instance の field の初期化子の変更 | 生きている instance は今の値のまま(新しく作る instance から新しい初期化子。全部に入れるなら `App.Restart()`) |
-| static の初期化子の変更 | その static と、それを初期化子で読む static だけを評価し直す |
-| static の初期化子の削除 | 自動で作り直し(restart) |
-
-どの変更でも共通:
-
-- コンパイル失敗ではゲームは止まらない。古いコードのまま動き続け、
-  エラーが log に出る。直せばまた反映される。
-- `OnInit` は reload 後には呼ばれない。毎フレームの `OnFrame` に処理を寄せて
-  「コードが常に真」になるように書くのが lub の流儀。
-- GPU リソースやウィンドウ状態は runtime 側に残る(次項)。
-
-GPU resource cache は reload を跨いで生きるので、`Gfx.Use*` に渡す version
-(内容の同一性の主張)は reload を跨いでも過去の値を再利用しないことを
-保証しなければならない。素朴な static / instance のローカル counter は reload
-で初期値に巻き戻ってこの保証を破り、cache に残った値と偶然一致すると更新が
-黙って skip される。保証を自分で持てない(持ちたくない)なら version を
-省略して「内容が変わった」を宣言する — 変更履歴は runtime が cache と同じ
-寿命で管理する。詳細は「描画モデル」章の version 規約を参照。
-
-## 何が生きたまま反映されるか(C#)
-
-「関数の中身」と field の足し引きは生きたまま反映、型を消すか型の種類を変えると自動で作り直し。
-
-| 編集 | 挙動 |
-| --- | --- |
-| メソッド / プロパティ / 演算子の中身 | live 反映。static もインスタンスも、実行中の状態は全部残る。既存インスタンスも次の呼び出しから新コード |
-| メソッドの追加・削除、enum メンバの追加 | live 反映(状態は残る) |
-| enum メンバの削除・値の変更 | 作り直し(保存済みの値が別のメンバを指すため) |
-| static フィールドの追加(定数か初期化子なし) | live 反映。追加分だけ初期化される |
-| static フィールドと const の初期値・型の変更 | live 反映。その static と、それを初期化子で読む static だけが新しい初期値になり、ほかの状態は残る。初期値の空白やコメントだけの変更では値を保つ |
-| static フィールドの初期値の削除 | 作り直し(入れ直す値が無いため) |
-| インスタンスフィールドの追加・削除 | live 反映。既存インスタンスの field を移行する(追加は初期化子、削除は破棄) |
-| インスタンスフィールドの初期値変更 | live 反映。既存インスタンスは今の値のまま(`OnReloadNotes` で知らせる。全部に入れるなら `App.Restart()`) |
-| 継承・クラス種別の変更、クラスの削除 | 作り直し |
-| コンパイルエラー | 何も変えない(直前のコードのまま) |
-
-どちらになったかは log で分かる: `lub: reloaded` = live 反映、`lub: restarted` = 作り直し(ゲーム状態はリセット)。
-
-live 反映では static が保持されるため、「コードを評価して最初に作るデータ」
-(SDF メッシュなど)は自動では作り直されない。その再構築の境界が
-`OnReload()`: live 反映の直後に 1 回呼ばれる。例えば `19_sdf` は `OnReload`
-で `treeDirty = true` を立て、次フレームの `OnFrame` が `Model()` を再評価して
-再メッシュする。
-
-## リソースが reload を生き延びる理由
-
-`Gfx.UseShader` / `UseBuffer` / `UseTexture` などのリソースは、変数への参照
-ではなく 文字列 key + version で識別される。reload 後も同じ key で
-`Use*` を呼べば同じリソースがそのまま返るので、GPU 側の状態はコードの
-入れ替えに影響されない。
-
-宣言が途切れたリソースは `ResourceSweepAfterFrames`(既定 120)フレーム後に自動破棄される。
-「作って解放する」ではなく「毎フレーム宣言する」モデル(「リソースの宣言」と「描画モデル」の章)。
+- ログには live 反映で `lub: reloaded`、リスタートで `lub: restarted` が出る。
+- live 反映の直後には `OnReload()` が 1 回呼ばれる。コードから一度だけ生成したデータ (手続きメッシュ等) を再構築するきっかけに使う。
+- `App.Restart()` を呼ぶとフレーム末尾で手動リスタートできる (`tcs C` モードでは何もしない)。
+- GPU リソースや音は `key` で識別されるため、ホットリロードやリスタートを跨いで引き継がれる (`App.Config` のグラフィックスバックエンドとウィンドウサイズも再起動まで変わらない)。
+- 同じ `key` の異なる内容に、ホットリロードを跨いで同じ `version` を再利用してはならない。単純な static カウンタはリスタートで初期値に戻り衝突するため、内容ハッシュを使うか `version` を省略する (詳細は「描画とシェーダ」章)。
