@@ -55,7 +55,7 @@ public static class TestSyntax
         for (var i = 0; i < n; i++)
             if (EditorHost.CmdKind(i) == 2 && EditorHost.CmdLine(i) > 0)
                 colors[EditorHost.CmdText(i).Trim()] = EditorHost.CmdColor(i);
-        var names = new List<string> { "Target", "// TestSyntax が色を見る file", "public", "string", "\"text\"", "0x1F" };
+        var names = new List<string> { "Target", "// File whose syntax colors TestSyntax checks.", "public", "string", "\"text\"", "0x1F" };
         foreach (var name in names)
             Check(colors.ContainsKey(name), "no text command for '" + name + "'");
         Check(colors.ContainsKey("Value"), "no text command for 'Value'");
