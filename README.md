@@ -12,7 +12,7 @@ lubの目的は、開発における試行の繰り返しの摩擦を極力無�
 ## リファレンス
 
 - [lub.neguse.net](https://lub.neguse.net): 動作するWeb版
-- [lub.neguse.net/manual](https://lub.neguse.net/manual): 利用者むけマニュアル
+- [lub.neguse.net/docs](https://lub.neguse.net/docs): 利用者むけマニュアル
 - [docs/develop.md](docs/develop.md): lub自体の開発方法
 
 ## ライセンス

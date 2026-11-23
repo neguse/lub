@@ -29,11 +29,9 @@ err() {
   fail=1
 }
 
-index="docs/README.md"
-
 # Ban ** (bold) emphasis. "**/" and "/**" glob
 # patterns inside code spans are not emphasis and are ignored.
-current_docs=(README.md AGENTS.md tcs/README.md web/README.md
+current_docs=(README.md AGENTS.md tcs/README.md web/README.md lider/README.md
   docs/*.md docs/manual/*.md)
 for f in "${current_docs[@]}"; do
   [[ -f "$f" ]] || continue

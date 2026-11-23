@@ -1,4 +1,4 @@
-// TestRelayout が開き、static の初期化子を消す file (ゲームの build に入る)。
+// File opened by TestRelayout to remove a static initializer (part of the game build).
 public static class Target
 {
     public static int Value = 1;

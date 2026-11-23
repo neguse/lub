@@ -1294,6 +1294,7 @@ jobs:
       # Rendering: Linux uses lavapipe (CPU Vulkan) and a virtual display, Windows uses WARP (CPU D3D12), macOS uses the runner's GPU
       - name: Verify the kit
         run: |
+          unset Platform
           kit=$(ls dist/lub-${{ matrix.target }}.*)
           case "$RUNNER_OS" in
             Linux)
