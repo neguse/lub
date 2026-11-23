@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Packs the release kit (docs/release-kit.md) for one OS and CPU pair (target).
+# Packs the release archive for one OS and CPU pair (target).
 # Targets are linux-x64, linux-arm64, macos-arm64 (lub-<target>.tar.gz), windows-x64, windows-arm64 (lub-<target>.zip).
 # Inputs:
 #   <build-dir>   the lub build for this target. <build-dir>/tcs holds tcs and lub-gen (the output of scripts/build-tcs-native.sh and scripts/build-lub-gen.sh)
@@ -126,7 +126,6 @@ git ls-files cs-lib templates/game | while read -r f; do
 done
 cp docs/manual/*.md "$kit/manual/"
 cp tcs/doc/support-matrix.md "$kit/manual/tcs-support-matrix.md"
-cp docs/release-kit.md "$kit/README.md"
 cp LICENSE THIRD_PARTY_LICENSES.md "$kit/"
 # Samples are not included in the kit; users get them from GitHub at this commit
 git rev-parse HEAD > "$kit/COMMIT"

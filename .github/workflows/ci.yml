@@ -1064,7 +1064,7 @@ jobs:
           name: tcs-selfbench-results
           path: tcs/selfbench.json
 
-  # Build the release bundle (docs/release-kit.md) per target every time, and in a location where only the bundle is extracted, export and check the template, then open and run it in lider.
+  # Build the release bundle per target every time, and in a location where only the bundle is extracted, export and check the template, then open and run it in lider.
   # Build lub, tcs (tcs converted to C by tcs2c; also checks that it gives the same output as the .NET tcs), lub-gen, and the lider player on that target, and pack them together with the OS-independent parts (kit-common) built by web-build.
   # On a tag (v*) push, the publish job puts this on the GitHub release.
   kit:

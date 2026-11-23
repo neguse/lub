@@ -38,7 +38,7 @@ LUB_URL=http://localhost:5173/ npm run verify-lider
 
 ## Linux arm64 向けに build する
 
-release の一式 (`docs/release-kit.md` の `lub-linux-arm64.tar.gz`) には、arm64 の Linux で build した lider が入っている。
+GitHub の release (`lub-linux-arm64.tar.gz`) には、arm64 の Linux で build した lider が入っている。
 ここは、x86_64 の Linux の上で、Linux arm64 (aarch64、glibc) の機械で動く lider の player を作る手順。
 コンパイラは zig、かな漢字変換 (jamo-core) は Rust の `aarch64-unknown-linux-gnu` で作る。
 

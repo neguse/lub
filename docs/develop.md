@@ -113,13 +113,7 @@ git config core.hooksPath .githooks
 ## ビルド
 
 ```sh
-# Linux, macOS
-cmake -S . -B build -G Ninja
-cmake --build build -j
-```
-
-```powershell
-# Windows (PowerShell, MSVC + Ninja)
+# Windows + Visual Studio の場合
 & 'C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat'
 cmake -S . -B build -G Ninja
 cmake --build build -j
