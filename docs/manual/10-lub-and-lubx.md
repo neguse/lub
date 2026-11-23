@@ -30,7 +30,42 @@ var floor = Assets.Shader("game_a/floor", vsPath, fsPath);
 - 同じ `key` を渡した部品は同じリソースを共有するため、中身の違うものに同じ `key` を渡さない。
 - `Sfx.Blip` / `Sfx.Noise`、`SpriteBatch.Rect` / `Disc`、`SpriteBatch` のシェーダのように内容が固定のものは共通の `key` を使うため、呼び出し側で `key` を指定しない。
 
-## `SpriteBatch` の重なり順
+## 2D 描画 (`SpriteBatch` / `Atlas` / `Text`)
+
+2D の図形・画像・文字は `SpriteBatch` で論理解像度のピクセル座標 (左上原点、+Y 下) にまとめて描く:
+
+```csharp
+static readonly SpriteBatch batch = new SpriteBatch("game/ui", 320, 180);
+static readonly Atlas sheet = Atlas.FromPng("game/sheet", "data/sheet.png");
+static Text? font;
+static float angle;
+
+public static void OnFrame(float dt)
+{
+    angle += dt;
+    if (!sheet.Ensure()) return;
+    // Text は内部で読むため、フォントファイルが読める状態になるまで待つ
+    Io.LoadBytes("data/font.ttf", out var ttf, out _, out _, out _);
+    if (ttf == null) return;
+    font ??= new Text("game/font", "data/font.ttf", 16);
+    font.Ensure();
+
+    Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0.1f, 0.1f, 0.15f, 1 } });
+    batch.Begin();
+    batch.Rect(8, 8, 120, 32, Color.Rgb(0.2f, 0.2f, 0.3f, 0.9f));
+    batch.Disc(280, 90, 12, Color.Rgb(1, 0.8f, 0.2f));
+    batch.Quad(sheet, new Rect(0, 0, 16, 16), 40, 80, 16, 16);
+    batch.Sprite(sheet, new Rect(16, 0, 16, 16), 160, 90, 16, 16, angle);
+    font.Draw(batch, "SCORE 100", 16, 28);
+    batch.Flush();
+    Gfx.EndPass();
+}
+```
+
+- `Begin` → `Rect` / `Disc` / `Quad` (左上指定) / `Sprite` (中心と回転角指定) / `Text.Draw` → `Flush` の順でパス内に書く。
+- `Atlas.Ensure()` と `Text.Ensure()` は毎フレーム呼んでテクスチャ宣言を維持する。
+
+### 重なり順
 
 `SpriteBatch` は `Begin` から `Flush` までに積んだスプライトをアトラス単位で 1 回の draw にまとめる。
 そのため描画の重なり順は、呼んだ順ではなく `Begin` の後に各アトラスが初めて登場した順になる (同じアトラス内は呼んだ順)。

@@ -34,7 +34,9 @@ var pose = Phys2d.Pose(ball);
 ```
 
 - 既定では `Begin(world)` から次の `Step` までの間に宣言されなかった body / shape / joint は自動で削除 (prune) される。自動削除を止めたいフレームは `Begin(world, new BeginOpts { Prune = false })` を使う。
-- 宣言から `Step`・力の適用 (`AddForce` / `AddImpulse` / `SetVelocity` 等) までは、`FixedStep` の固定 tick コールバック内にまとめる (描画フレームごとに呼ぶと、tick が 0 回のフレームで操作が重複する)。
+- 宣言から `Step`・力や速度の操作 (`AddForce` / `AddImpulse` / `SetVelocity` 等) までは、`FixedStep` の固定 tick コールバック内にまとめる (描画フレームごとに呼ぶと、tick が 0 回のフレームで操作が重複する)。
+- 物理だけ高頻度 (例: 240 Hz) で回したいときは、固定 tick 内で整数分割 (`for` で 4 回 `Step(tickDt / 4)`) する。
+- ホットリロードで自動リスタートが起きたときは物理ワールドも破棄されて作り直される。
 
 ## 作り直しと `Version`
 
@@ -59,4 +61,3 @@ body や shape を作り直すと接触状態や sleep はリセットされる�
 - 接触・センサーイベントは `Step` の後に `Contacts(world, kind)` (`Begin` / `End` / `Hit`) やセンサー取得 API で読む。
 - 空間クエリ (`Raycast` / `RaycastAll` / `ShapeCast` / `Overlap*` / `CastMover` 等) はワールドに対して即座に実行できる。
 - 衝突フィルタ (`FilterDesc`) の `CategoryBits` / `MaskBits` は 64 bit の 16 進文字列と `Group` で指定する。
-- ホットリロードで自動リスタートが起きたときは物理ワールドも破棄されて作り直される。

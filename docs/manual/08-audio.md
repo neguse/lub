@@ -5,19 +5,20 @@
 
 ## 音源の宣言と読み込み
 
-音源は `Audio.Snd` (float 配列) または `Audio.SndBytes` (f32 PCM のバイト列) で、毎フレーム同じ `key` と `version` で宣言する:
+ファイルから読む定型は `Assets.Wav` / `Assets.Ogg` を使い、毎フレーム同じ `key` で呼び続ける:
 
 ```csharp
 var se = Assets.Wav("se/jump", "data/jump.wav");
+var bgm = Assets.Ogg("bgm/stage1", "data/stage1.ogg");
 if (se != null && Input.KeyPressed("space"))
 {
     Audio.Play(se, new PlayOpts { Volume = 0.8f });
 }
 ```
 
-- `Assets.Wav(key, path)` は `Io.LoadBytes` + `Audio.Decode` + `Audio.SndBytes` を 1 行にまとめたヘルパ。読み込み前は `null` を返す。
-- 同じ内容の音源はキャッシュされ、宣言が一定フレーム途切れると自動破棄される。内容で重複排除されるため、ホットリロードで再宣言されても再生中の音は途切れない。
-- WAV 以外の形式を手動で扱うときは、`Audio.Decode(bytes, out pcmBytes, out channels, out rate)` や Ogg Vorbis 用の `Lubx.Vorbis.Decode` で PCM に変換して `Audio.SndBytes` に渡す。`Decode` が返す `Bytes` はそのフレーム限り有効。
+- `Assets.Wav(key, path)` は `Io.LoadBytes` + `Audio.Decode` + `Audio.SndBytes`、`Assets.Ogg(key, path)` は `Io.LoadBytes` + `Lubx.Vorbis.Decode` + `Audio.SndBytes` を 1 行にまとめたヘルパ。読み込み前は `null` を返す。
+- 生の PCM や自前デコード結果から直接宣言するときは `Audio.Snd(key, data, channels, rate, version?)` (float 配列) または `Audio.SndBytes(key, pcmBytes, channels, rate, version?)` (f32 PCM のバイト列) を使う。`Audio.Decode` / `Lubx.Vorbis.Decode` が返す `Bytes` はそのフレーム限り有効。
+- 音源は `key` で識別され、ホットリロードやリスタートを跨いで引き継がれる。内容で重複排除されるため、再宣言されても再生中の音は途切れない。宣言が一定フレーム途切れると自動破棄される。
 
 ## 単発再生 (`Audio.Play`)
 
@@ -65,7 +66,7 @@ if (inGame && bgm != null)
 var hit = Sfx.Synth("se/hit", 0.12f, 1, (t, u) =>
 {
     var env = 1.0f - u;
-    return MathF.Sin(t * 220.0f * 6.283185f) * env * env;
+    return (float)Math.Sin(t * 220.0f * 6.283185f) * env * env;
 }, fadeSamples: 64);
 ```
 

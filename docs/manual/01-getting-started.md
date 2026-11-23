@@ -13,20 +13,34 @@ lub は、コード中心でゲームを作るためのゲームエンジン。
 
 GitHub Releases から自分の環境向けアーカイブを展開する。
 
+- Windows: 追加の依存は不要 (アーカイブを展開するだけ)。
 - Linux: Vulkan loader (`libvulkan1` 等) が必要。
 - macOS: ブラウザからダウンロードした場合は展開後に `xattr -dr com.apple.quarantine lub` を実行する。
 
-同梱の雛形 (`templates/game`) をコピーして始める:
+同梱の雛形 (`templates/game`) をコピーして始める。
+
+Windows (PowerShell):
+
+```powershell
+Copy-Item -Recurse lub\templates\game mygame
+cd mygame
+..\lub\bin\lub.exe Game.csproj         # ウィンドウで起動 (保存でホットリロード)
+..\lub\bin\lub.exe check Game.csproj   # 型・サブセット検査のみ (ウィンドウなし)
+..\lub\bin\lider.cmd Game.csproj       # 専用エディタ (lider) で開く
+```
+
+Linux / macOS:
 
 ```sh
 cp -r lub/templates/game mygame
 cd mygame
 ../lub/bin/lub Game.csproj         # ウィンドウで起動 (保存でホットリロード)
 ../lub/bin/lub check Game.csproj   # 型・サブセット検査のみ (ウィンドウなし)
-../lub/bin/lider Game.csproj       # 専用エディタ (lider) で開く (Windows は lider.cmd)
+../lub/bin/lider Game.csproj       # 専用エディタ (lider) で開く
 ```
 
 `Game.csproj` のファイル名 (拡張子なし) がエントリクラス名になる (`Game.csproj` なら `public static class Game`)。
+コピーしたプロジェクトを `dotnet run` (`.NET` モード) でも動かす場合は、`Game.csproj` の `LubRoot` を展開した `lub` ディレクトリに合わせて書き換える (`lub` CLI での実行には不要)。
 
 ## 最小のゲーム
 

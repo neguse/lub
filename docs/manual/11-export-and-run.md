@@ -10,6 +10,27 @@ TinyC# で書いたゲームコードは、同じソースのまま 3 つの実�
 
 `.NET` モードで雛形プロジェクトを動かすときは、`Game.csproj` 内の `LubRoot` に lub アーカイブの展開先パスを指定する (既定では相対パス `../..` を参照する)。
 
+## `lub` CLI のオプションと環境変数
+
+```sh
+lub <Entry>.csproj|<Entry>.tcsb [options]
+lub check <Entry>.csproj
+lub export <web|linux|windows|macos|ios|android> <entry> -o <dir>
+```
+
+| オプション / 環境変数 | 内容 |
+| --- | --- |
+| `--entry CLASS` | エントリクラス名を明示する |
+| `--extension LIB` | ネイティブの VM 拡張ライブラリを読み込む |
+| `--capture PNG` | 指定フレームの描画結果を PNG に保存して終了する |
+| `--capture-frame N` | `--capture` で保存するフレーム番号 |
+| `--fixed-dt S` | 毎フレームの `dt` を固定秒 (`0 < S <= 0.25`) にする (テスト・再現用) |
+| `--readback-fixed-latency` | `Gfx.ReadTexture` の完了を常に 2 フレーム後に固定する |
+| `--digest` | フレームごとの API 呼び出しダイジェストを出力する |
+| `-h`, `--help` | ヘルプを表示して終了する |
+| `LUB_BACKEND` | グラフィックスバックエンド指定 (`d3d12` / `vulkan` / `metal` / `sdlgpu` / `openxr`) |
+| `LUB_PROFILE=1` | CPU プロファイラを有効化 (`LUB_PROFILE_START_FRAME` / `FRAME` / `EVERY` / `LABEL`) |
+
 ## 配布物の書き出し (`lub export`)
 
 `lub export` は GPU やウィンドウを使わずに `OnInit` → `OnExport` を 1 回実行し、対象プラットフォーム向けの配布スナップショットを書き出す:
@@ -40,11 +61,7 @@ Web プレイヤーは `liblub` と `tcs VM` を WASM にしたもの (`lub.js` 
 
 ### 対応ブラウザ
 
-WebGPU が有効なブラウザで動作する:
-
-- Chrome / Edge: 137 以降 (既定で有効)
-- Safari: iPadOS / iOS / macOS 26 以降
-- Firefox Nightly: `about:config` で `dom.webgpu.enabled` を有効化
+WebGPU に対応したブラウザ (Chrome / Edge / Safari / Firefox の WebGPU 有効版) で動作する。
 
 ## Web ページの JS とやり取りする (`Host`)
 

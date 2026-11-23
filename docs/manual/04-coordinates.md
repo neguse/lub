@@ -1,17 +1,18 @@
 # 座標系と数学
 
-lub には役割の異なる座標系が 4 つある。
+lub には役割の異なる座標系が 5 つある。
 
 | 座標系 | 単位 | 原点 / 向き | 主な API |
 | --- | --- | --- | --- |
 | 3D ワールド | 任意 (物理はメートル相当) | 左手系。+X 右、+Y 上、+Z 前方 | `Gfx.Draw`、`Phys3d`、`Camera3d` |
+| XR 空間 | メートル | 右手系。+X 右、+Y 上、-Z 前方 | `Xr.View`、`Lubx.XrAnchor` |
 | 2D ワールド | 任意 (物理はメートル相当) | +X 右、+Y 上 | `Phys2d`、`Camera2d` (world 側) |
 | 論理スクリーン | px (論理解像度) | 左上原点、+Y 下 | `SpriteBatch`、`Text`、`MeshText` |
 | ウィンドウ | px (実ドローアブル) | 左上原点、+Y 下 | `Input.MousePos`、`Gfx.Size` |
 
 ## 3D (左手系、+Y 上、+Z 前方)
 
-`Mat4` の行列生成は左手系で統一されている:
+通常の 3D (`Mat4` / `Camera3d`) は左手系で統一されている (OpenXR / WebXR の規約に従う `Xr.View` / `XrAnchor` だけ右手系・前方 -Z):
 
 - ビュー行列は `Mat4.LookAtLh(eye, target, up)`、投影は `PerspectiveLh` / `OrthoLh`。カメラ前方は +Z (`Vec3.Forward()` = `(0, 0, 1)`)。
 - 深度は `[0, 1]`。クリップ空間 (`SV_Position`) は x 右+ / y 上+ の `[-1, 1]`。

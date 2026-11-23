@@ -12,6 +12,7 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
 ```
 
 - 毎フレーム同じ `key` で呼ぶ。`version` が一致すればキャッシュを返し、変わっていれば作り直す。
+- GPU リソースは `key` で識別され、ホットリロードやリスタートを跨いで引き継がれる。同じ `key` の異なる内容に同じ `version` を再利用してはならない (単純な static カウンタはリスタートで初期値に戻り衝突するため、内容ハッシュを使うか `version` を省略する)。
 - `version` を渡して一致した宣言はデータ (`UseBuffer` の配列など) を読まないため、data に `null` を渡せる。一致するリソースが無ければ何も変えず `null` を返すため、`UseBuffer(key, type, null, v) ?? UseBuffer(key, type, Build(), v)` と書ける (`UseTexture` は `px = null` が空テクスチャ宣言になる点だけ例外)。
 - `version` を省略すると「内容が変わった」宣言になり、毎回アップロードして新しい実効 `version` を発行する (data に `null` は不可)。毎フレーム再アップロードを避けたいときは前回の戻り値参照の `Version` を渡す。
 - 複数ファイルを束ねるときは `a * 31 + b` のように順序依存で結合する (XOR は同一内容や入れ替えで打ち消し合う)。

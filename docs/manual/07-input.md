@@ -55,5 +55,5 @@ if (Input.GamepadConnected(0))
 ## 固定 tick (`FixedStep`) との併用
 
 `KeyPressed` や `MousePressed` のような瞬間イベントは、描画フレームが 1 回進む間に `FixedStep` の tick が 0 回しか走らないと取りこぼす。
-固定 tick 内でゲームロジックを進める場合は、`Input.*` を直接読む代わりに `FixedStep` 側の `step.KeyPressed` / `step.MousePressed` / `step.GamepadPressed` を使う。
-クリック座標のように位置が要る入力は、描画側で保持して次の tick で消費する。
+固定 tick 内でゲームロジックを進める場合は、キーボードとマウスは `FixedStep` 側の `step.KeyPressed` / `step.KeyReleased` / `step.MousePressed` / `step.MouseReleased` を使う。
+ゲームパッドの押下やクリック座標など `FixedStep` が持たない入力は、描画側でフラグや座標を保持して次の tick で消費する。

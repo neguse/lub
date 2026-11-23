@@ -12,6 +12,8 @@
 | `OnQuit()` | 終了時に 1 回 |
 | `OnError(string message)` | 他のコールバックが失敗したとき。`ErrorAction` を返す |
 | `OnReload()` | 編集が生きたまま反映された直後に 1 回 |
+| `OnReloadNotes(string notes)` | `OnReload()` の直後、移行に関する通知事項があるとき (`tcs VM` モード) |
+| `OnBuildFailed(string errors)` | ホットリロード時のビルドが失敗したとき (`tcs VM` モード) |
 | `OnExport()` | `lub export` 実行時だけ `OnInit` の直後に 1 回 (`OnFrame` は呼ばれない) |
 
 描画は `OnInit` の後に始まるため、`OnInit` 内で `Gfx.Use*` / `BeginPass` / `Draw` / `Dispatch` を呼ぶとエラーになる。リソース宣言と描画は `OnFrame` に書く。
@@ -70,8 +72,7 @@ public static void OnFrame(float dt)
 ```
 
 - `step.KeyPressed` / `step.MousePressed` などは tick 粒度で配送され、tick が 0 回だったフレームの押下も次の tick まで失われない。
-- 物理 (`Phys2d` / `Phys3d`) は `Begin`・宣言・力や速度の操作・`Step(tickDt)` までを同じ tick コールバック内に置く。描画フレームごとにコマンドを積むと、tick が 0 回だったフレームの操作が重複する。
-- 高頻度の物理 (例: 240 Hz) は tick 内で整数分割 (`for` で 4 回 `Step(tickDt / 4)`)、低頻度の更新 (例: 20 Hz) は tick カウンタの剰余で間引く。
+- 60 Hz より低い頻度 (例: 20 Hz) で動かしたい更新は、tick カウンタの剰余で間引く。
 - クリック時のマウス座標などフレームごとの値が必要な入力は、描画側で座標を保持して tick で消費する。
 
 ## ホットリロード
@@ -90,6 +91,4 @@ public static void OnFrame(float dt)
 
 - ログには live 反映で `lub: reloaded`、リスタートで `lub: restarted` が出る。
 - live 反映の直後には `OnReload()` が 1 回呼ばれる。コードから一度だけ生成したデータ (手続きメッシュ等) を再構築するきっかけに使う。
-- `App.Restart()` を呼ぶとフレーム末尾で手動リスタートできる (`tcs C` モードでは何もしない)。
-- GPU リソースや音は `key` で識別されるため、ホットリロードやリスタートを跨いで引き継がれる (`App.Config` のグラフィックスバックエンドとウィンドウサイズも再起動まで変わらない)。
-- 同じ `key` の異なる内容に、ホットリロードを跨いで同じ `version` を再利用してはならない。単純な static カウンタはリスタートで初期値に戻り衝突するため、内容ハッシュを使うか `version` を省略する (詳細は「描画とシェーダ」章)。
+- `App.Restart()` を呼ぶとフレーム末尾で手動リスタートできる (`tcs C` モードでは何もしない)。リスタートしても `App.Config` のグラフィックスバックエンドとウィンドウサイズはプロセス再起動まで変わらない。
