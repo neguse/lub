@@ -774,7 +774,7 @@ public partial class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
             .ToArray();
 
-        // Overriding Equals / GetHashCode is TCS1001 too (inheritance is out of scope, q.md Q15)
+        // Overriding Equals / GetHashCode is TCS1001 too (inheritance is out of scope)
         Assert.Equal(5, syntaxDiagnostics.Length);
         Assert.Equal(2, syntaxDiagnostics.Count(
             d => d.GetMessage().Contains("'OverrideMember'")));

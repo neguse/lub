@@ -85,7 +85,6 @@ Benchmarks Game 由来のものは、その 1 スレッドの版と同じ手順�
 - 静かなマシンで、他の重い処理を止めて測る。`--pin <CPU>` で子プロセスを 1 つの CPU に固定できる
 - 可能なら CPU の周波数を固定する (Linux なら governor を performance にする)
 - 結果の JSON には日時、tcs の commit、CPU、OS、各言語の版が入る。`report.py` の表と HTML にもそのまま出る
-- 測ったら `results/` に JSON と、`report.py` で作った md と html を置く
 
 ## 使い方
 

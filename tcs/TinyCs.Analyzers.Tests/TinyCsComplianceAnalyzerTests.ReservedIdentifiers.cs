@@ -4,7 +4,7 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// Identifiers that collide with reserved words of Lua / generated code (q.md Q16). The transpiler reports a build-stopping
+// Identifiers that collide with reserved words of Lua / generated code. The transpiler reports a build-stopping
 // error; the analyzer reports a warning, like other build-stopping diagnostics
 public partial class TinyCsComplianceAnalyzerTests
 {
@@ -78,7 +78,7 @@ public partial class TinyCsComplianceAnalyzerTests
         Assert.Contains(diagnostics, d => d.GetMessage().Contains("DelegateDeclaration"));
     }
 
-    // Implementations of host interfaces (`--ref` stubs; passed to the analyzer as TinyCsRef in AdditionalFiles) (q.md Q16).
+    // Implementations of host interfaces (`--ref` stubs; passed to the analyzer as TinyCsRef in AdditionalFiles).
     // BCL interfaces are APIs outside TinyC# (same as the tcs compiler)
     [Fact]
     public async Task HostInterfaceImplementation_Reports()

@@ -12,7 +12,6 @@ namespace TinyCs.Tests;
 /// Runs semantic tests (CompileAndRunVm in doc/vm-design.md §16): adds an entry `Console.WriteLine(expr)` to a C# program,
 /// runs it on the tcs VM (tcs2vm → tcsvm, normal and GC stress), and returns stdout. If TCS_DIFFERENTIAL=1, the same entry is also run on real .NET
 /// (with the same setup as TinySystem.props), and the stdout must match (dotnet differential).
-/// Appends one line per run to TCS_DIFFERENTIAL_LOG saying whether it was compared with .NET, or why it was not.
 /// </summary>
 public static class VmCorpus
 {
@@ -106,24 +105,12 @@ public static class VmCorpus
     private static void Differential(string[] programs, string? entryClass, string vm, bool dotnet, string expr)
     {
         if (!DifferentialEnabled) return;
-        if (!dotnet)
-        {
-            Log("skip-flagged", expr);
-            return;
-        }
+        if (!dotnet) return;
         // The System.Random sequence differs from the agreed PRNG (il-spec §13)
-        if (programs.Any(p => p.Contains("Random", StringComparison.Ordinal)))
-        {
-            Log("skip-random", expr);
-            return;
-        }
+        if (programs.Any(p => p.Contains("Random", StringComparison.Ordinal))) return;
         var net = RunDotnet(programs, entryClass);
         if (net != vm)
-        {
-            Log("mismatch", expr);
             throw new InvalidOperationException($"dotnet differential mismatch\nexpr:   {expr}\ndotnet: {net}\nvm:     {vm}");
-        }
-        Log("match", expr);
     }
 
     // What TinySystem.props adds to a .NET project (Linq.cs is in TcsLibrary.LibraryTrees)
@@ -216,11 +203,5 @@ public static class VmCorpus
             if (p.ExitCode != 0) throw new InvalidOperationException("tcsvm build failed:\n" + err);
             return _exe = exe;
         }
-    }
-
-    private static void Log(string kind, string expr)
-    {
-        if (Environment.GetEnvironmentVariable("TCS_DIFFERENTIAL_LOG") is not { Length: > 0 } path) return;
-        lock (Lock) File.AppendAllText(path, $"{kind}\t{expr.ReplaceLineEndings(" ")}\n");
     }
 }

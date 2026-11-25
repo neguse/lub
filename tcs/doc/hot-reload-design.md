@@ -114,7 +114,7 @@ migration が到達できる生存状態の全域 (roots):
 | const の値変更 | live | 使う側には埋め込まれる。const 自身も評価し直す |
 | 評価し直す static や const を initializer で読む static | live | 読む先を辿って、同じく評価し直す。辿るのは initializer の式が直に名前を引く static と const で、呼んだ関数の中の読みは辿らない |
 | 既存 static の initializer の削除 | **restart** | 評価し直す式が無く、保持した値は旧い initializer のまま |
-| base class 変更 (再親付け) | **restart** | 継承 field 集合と ctor 連鎖の差分移行は対象外。class / record の継承は TCS1001 で書けない (q.md Q15) |
+| base class 変更 (再親付け) | **restart** | 継承 field 集合と ctor 連鎖の差分移行は対象外。class / record の継承は TCS1001 で書けない |
 | class / record / struct / enum の追加 | live | 新規定義のみ |
 | type の削除・種類の変更 | **restart** | 生きている instance の有無を見ない (§11) |
 | enum member 追加 | live | 保存済みの値はそのまま |

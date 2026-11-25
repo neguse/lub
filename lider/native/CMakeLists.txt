@@ -77,7 +77,7 @@ add_custom_command(OUTPUT "${TCS_C_DIR}/tcs_tool_files.h"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/tcs/embed.cmake"
   DEPENDS "${TCS_ROOT}/TinySystem/Linq.cs" "${TCS_ROOT}/TinySystem/ValueTuple.cs" "${CMAKE_CURRENT_SOURCE_DIR}/tcs/embed.cmake"
   VERBATIM)
-# Conventions for the tcs2c C (same as tcs/SelfHost/Web/build.sh). Warnings for the generated C are suppressed
+# Conventions for the tcs2c C. Warnings for the generated C are suppressed
 # The generated C uses GNU C statement expressions, so MSVC cl cannot build it. On Windows, build with clang-cl
 if(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
   message(FATAL_ERROR "lider の player は MSVC の cl では build できない (tcs2c の C が GNU C の文の式を使う)。clang-cl を使う (-DCMAKE_C_COMPILER=clang-cl)")
@@ -109,7 +109,7 @@ elseif(WIN32)
 endif()
 # The web build uses the same settings and names as the lub player (web/lub.{js,wasm,data})
 lub_vm_player_link_options(lider_player "${CMAKE_CURRENT_BINARY_DIR}/web")
-# The tcs compiler recurses deeply, so the web stack is enlarged (same as tcs/SelfHost/Web/build.sh)
+# The tcs compiler recurses deeply, so the web stack is enlarged
 if(EMSCRIPTEN)
   target_link_options(lider_player PRIVATE -sSTACK_SIZE=8388608)
 endif()

@@ -2,7 +2,7 @@ namespace TinyCs.Tests.SpecConformance;
 
 /// <summary>
 /// Type generation part of FuzzGenerator: class (field / auto property / instance method)
-/// and positional record. Inheritance is out of scope (q.md Q15), so type tests probe by putting one of two classes into an object
+/// and positional record. Inheritance is out of scope, so type tests probe by putting one of two classes into an object
 /// variable. No ctor is generated
 /// (initialization uses field initializers and object
 /// initializers). The positional props of a record are init-only, so writes are

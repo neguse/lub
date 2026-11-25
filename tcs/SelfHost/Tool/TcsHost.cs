@@ -1,5 +1,5 @@
 // Declarations of the OS functions used by the tcs host (SelfHost/Tool). Each host has its own implementation:
-// the C build uses SelfHost/Native/host.c (--ref of tcs2c), wasm uses SelfHost/Web/tcs_web.c, and .NET uses Transpiler/DotnetHost.cs.
+// the C build uses SelfHost/Native/host.c (--ref of tcs2c), and .NET uses Transpiler/DotnetHost.cs.
 // This file is passed as --ref in the C build and is not included in the .NET build.
 public static class TcsHost
 {

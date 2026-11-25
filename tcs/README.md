@@ -3,11 +3,10 @@
 C# サブセットのコンパイラ。ゲームスクリプティング向け。
 出力は tcs VM の bytecode (`tcs vm`、VM は `tcsvm/`。開発と hot reload の実行系) と C のソース (`tcs c`、`tcs2c/`。release の実行系) の 2 つ。
 
-compiler は TinyC# で書いたセルフホストの実装 1 つ (`SelfHost/`) で、.NET、C (tcs2c で C にした tcs)、wasm のどれでも同じ実装が動く。
+compiler は TinyC# で書いたセルフホストの実装 1 つ (`SelfHost/`) で、.NET と C (tcs2c で C にした tcs) のどちらでも同じ実装が動く。
 字句解析から型チェックと準拠検査、IL の組み立てまでを compiler が行い、tcs VM と C の backend は同じ IL を読む。
-Roslyn は compiler の外の道具 (IDE の Roslyn Analyzer、playground の補完と hover、検証の oracle) にだけ使う。
+Roslyn は compiler の外の道具 (IDE の Roslyn Analyzer、検証の oracle) にだけ使う。
 
-目標は [objective.md](objective.md) にある。
 仕様の正は [doc/support-matrix.md](doc/support-matrix.md)、この README、`doc/*-design.md` の設計の文書。
 tcs と tcs2c は暫定の名前で、名前を変える時期と新しい名前は決まっていない。新しく付ける名前は tcs 系に揃える。
 
@@ -56,12 +55,7 @@ Linux:
 ./run-tests.sh
 ```
 
-Windows (PowerShell):
-```powershell
-.\run-tests.ps1
-```
-
-`run-tests` は `dotnet test` に加え、代表 sample の `tcs check`、Rider helper script、analyzer-demo build の expected diagnostics、analyzer nupkg の PackageReference consumer と `.editorconfig` severity override を検査する。
+`run-tests.sh` は `dotnet test` に加え、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics を検査する。
 GitHub Actions (repo の root の `.github/workflows/ci.yml` の `tcs-test`) でも同じ gate を実行する。
 `run-tests.sh --part <名前>` は一部だけを走らせる (CI は部分ごとの job に分けて並べる。部分の一覧は `run-tests.sh` の先頭)。
 
@@ -187,7 +181,6 @@ dotnet build samples/analyzer-demo/analyzer-demo.csproj
 
 demo project 固有の expected diagnostics と Rider 確認手順は
 [`samples/analyzer-demo/README.md`](samples/analyzer-demo/README.md) にも残している。
-`run-tests` は analyzer nupkg を pack し、一時 project から `PackageReference` で参照して同じ診断が出ることと、`.editorconfig` で `TCS1001` / `TCS1002` / `TCS1003` を error にした build が失敗することも検証する。
 [`samples/analyzer-demo/verify-inspectcode.sh`](samples/analyzer-demo/verify-inspectcode.sh) で JetBrains InspectCode 2026.1.3 の headless 実行でも、ProjectReference と local nupkg `PackageReference` consumer の両方で `TCS1001` x5 / `TCS1002` x1 / `TCS1003` x1 が SARIF に出ることを確認できる。さらに PackageReference consumer の `.editorconfig` で `TCS1001` / `TCS1002` / `TCS1003` を error にした場合、InspectCode が同じ件数の error を返すことも検証する。
 
 通常の C# project から package として参照する場合:
@@ -202,15 +195,6 @@ dotnet restore your-project.csproj --source .nupkgs --source https://api.nuget.o
                   Version="0.1.0"
                   PrivateAssets="all" />
 ```
-
-#### analyzer package の release 手順
-
-NuGet 公開は当面行わず、local nupkg の配布のみとする。
-
-1. `TinyCs.Analyzers/TinyCs.Analyzers.csproj` の `PackageVersion` を上げる
-2. `run-tests.sh` 内の consumer 検証と本 README の `PackageReference` 例の `Version` を同じ値に更新する
-3. `dotnet pack TinyCs.Analyzers/TinyCs.Analyzers.csproj -c Release -o .nupkgs` で再生成する
-4. `bash run-tests.sh` を実行し、nupkg consumer build と `.editorconfig` severity override の検証が通ることを確認する
 
 repository 内で直接参照する場合:
 
@@ -231,13 +215,11 @@ dotnet_diagnostic.TCS1003.severity = warning
 
 Rider 実機確認の手順:
 
-1. 必要なら `samples/analyzer-demo/open-rider-demo.sh` で pre-check 後に demo project を Rider で開く。Windows では `.\samples\analyzer-demo\open-rider-demo.ps1` を使う。Rider command を自動検出できない場合は `TCS_RIDER_COMMAND=/path/to/rider.sh`、Windows では `$env:TCS_RIDER_COMMAND = "C:\path\to\rider64.exe"` を指定する
 1. `samples/analyzer-demo/analyzer-demo.csproj` を含む solution/project を Rider で開く
 1. Restore 後、`samples/analyzer-demo/Program.cs` を開く
 1. struct の indexer, local function, `try`, `throw`, `values is [1, 2]`, `System.IO.File.ReadAllText`, `List<string?> { null }` に Roslyn inspection の squiggle が出ることを確認する
 1. Build tool window で `TCS1001` が5件、`TCS1002` が1件、`TCS1003` が1件出ることを確認する
-1. `.editorconfig` の `dotnet_diagnostic.TCS1001/TCS1002/TCS1003.severity` を `error` へ変え、Rider 表示が追従するか確認する（build 上の severity override は `run-tests` で検証済み）
-1. [`samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md`](samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md) に沿って、結果を `q.md` に go / no-go として記録する
+1. `.editorconfig` の `dotnet_diagnostic.TCS1001/TCS1002/TCS1003.severity` を `error` へ変え、Rider 表示が追従するか確認する
 
 ## サポートしている C# 機能
 
@@ -249,23 +231,17 @@ List\<T\>, Queue\<T\>, HashSet\<T\>, Dictionary\<K,V\>, LINQ (`using TinySystem.
 
 詳細は [doc/support-matrix.md](doc/support-matrix.md) 参照。
 
-## 性能
-
-同じプログラムを tcs の各経路と他の言語で動かした比較 (測り方は [perf/compare/METHODOLOGY.md](perf/compare/METHODOLOGY.md)):
-
-- [Ryzen 7 PRO 5750GE (ローカル、専有コア)](perf/compare/results/2026-11-04-ryzen-5750ge.md)
-
 ## プロジェクト構成
 
 ```
 tcs/
-  SelfHost/            # tcs の本体 (TinyC# で書いた compiler、C と tcs VM の backend、CLI、C / wasm の host)
+  SelfHost/            # tcs の本体 (TinyC# で書いた compiler、C と tcs VM の backend、CLI、C の host)
   Transpiler/          # .NET の host と CLI の入口 (CLI の本体は SelfHost/Tool)
   Transpiler.Tests/    # xUnit テスト
   tcsvm/               # tcs VM (`tcs vm` が作る .tcsb を動かす register VM)
   tcs2c/               # tcs c (C backend) を .NET で動かす入口と、C の出力のテスト用のスクリプト
   tcs2c.Tests/         # C backend、tcs VM、.NET の stdout の差分テスト
-  WasmCompiler/        # tcs を .NET の wasm でブラウザに公開する入口
+  WasmCompiler/        # C# の整形 (CSharpier) を .NET の wasm でブラウザに出す入口
   TinyCs.Analyzers/    # Roslyn Analyzer PoC
   TinyCs.Analyzers.Tests/
   Shared/              # 診断の id

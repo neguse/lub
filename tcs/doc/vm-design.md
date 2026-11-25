@@ -77,7 +77,7 @@ C# source
 | 要素 | 場所 | 言語 |
 |---|---|---|
 | VmEmitter | `SelfHost/VmBackend/` (`VmEmitter.cs`、`FunctionCompiler.cs`、`ModuleBuilder.cs`、`ReloadPlan.cs`) | TinyC# |
-| CLI と増分 session | `SelfHost/Tool/VmRun.cs` (`tcs vm`、`VmSession`)、`SelfHost/Tool/Playground.cs` (web の tcs)、`WasmCompiler/VmExports.cs` (.NET の wasm) | TinyC# / C# |
+| CLI と増分 session | `SelfHost/Tool/VmRun.cs` (`tcs vm`、`VmSession`) | TinyC# |
 | VM | `tcsvm/vm/` (`tcsvm.h` が公開 API、`tcsvm_main.c` が CLI の `tcsvm`) | C11 |
 | 共有 runtime | `runtime/fmt`、`runtime/math`、`runtime/utf8`、`runtime/sort`、`runtime/model` (C backend と同じ実装) | C |
 
@@ -236,7 +236,7 @@ IL のノードのいくつかは、添字の写し方の印を持つ、List の
 
 - VM は関数表を持つ。関数は名前を持ち (`型.method`。overload は引数の型を `__` でつなぐ `Game.Add__int__int`、constructor は `型.ctor`、lambda は `外側の関数<lambdaN:本文の指紋>`)、`CALL` の即値は関数表の番号
 - host は関数を名前で引く (`tvm_find`)。hot reload は module ごと新版に入れ替えるので、番号は reload を跨いで保たれない (§13.1)
-- `CALLI` (interface): receiver の型の itable (selector の番号 → 関数表の番号の整列済みの配列) を二分探索で引く。継承が無い (q.md Q15) ので dispatch はこれだけ
+- `CALLI` (interface): receiver の型の itable (selector の番号 → 関数表の番号の整列済みの配列) を二分探索で引く。継承が無い ので dispatch はこれだけ
 
 ### 8.4 closure と method group
 
@@ -527,7 +527,7 @@ reload は module ごと入れ替え、古い関数を残さない (§12.4) の�
 
 ### 15.3 増分 session
 
-- `VmSession` (`SelfHost/Tool/VmRun.cs`) は最後に通った build を持ち、編集ごとに module (最初の build)、reload の batch、restart (新しい module と理由)、error (最後に通った build のまま) のどれかを返す。`tcs vm --watch`、web の tcs (`Playground.cs`、`SelfHost/Web/tcs.mjs` の `vmOpen` / `vmUpdate`)、`WasmCompiler` の `VmExports` が同じものを使う
+- `VmSession` (`SelfHost/Tool/VmRun.cs`) は最後に通った build を持ち、編集ごとに module (最初の build)、reload の batch、restart (新しい module と理由)、error (最後に通った build のまま) のどれかを返す。`tcs vm --watch` と、名前で持つ複数の session (`Sessions.cs`) が同じものを使う
 - 編集を跨いで compile の session を持ち、内容の変わらないファイルは parse し直さない。束縛、IL、特殊化、emit は program 全体でやり直し、module は program 全体で 1 つ作る
 - reload の計画は、最後に通った build の型と static の記述 (`VmDescription`) と新しい build から作る
 
@@ -537,15 +537,13 @@ reload は module ごと入れ替え、古い関数を残さない (§12.4) の�
 
 | ゲート | 内容 |
 |---|---|
-| Transpiler.Tests の semantic テスト | `TestHelper.CompileAndRunVm*` が VM で走らせる。`TCS_DIFFERENTIAL=1` (`run-differential.sh`) なら .NET の stdout とも比べる |
+| Transpiler.Tests の semantic テスト | `TestHelper.CompileAndRunVm*` が VM で走らせる。`TCS_DIFFERENTIAL=1` (`run-tests.sh`) なら .NET の stdout とも比べる |
 | tcs2c.Tests の差分 | `Backends.AssertParity` が C (通常と GC stress)、VM (通常と `--gc-stress`)、.NET の stdout の一致を求める |
 | `tcsvm/run-tests.sh` | `tcsvm/tests/` と `samples/` の 6 本と digest kernel を VM で走らせ、期待の stdout と、C が動かせる入力は C の stdout と比べる。fault のテストは VM の trace が C# の file と行を指すことも見る。host、`--trace`、inspect、profile、mixed、modules、watch の試験も持つ |
 | digest kernel | `tcsvm/run-tests.sh` (VM)、`SampleParityTests` (C)、`tcs2c/verify-digests.sh` の固定の digest |
 | fuzz | `run-fuzz.sh`: 生成した program を VM (通常と GC stress) と .NET で走らせて比べる。hot reload の fuzz の scenario も VM に当てる |
 | hot reload | `VmReloadTests` (fuzz の scenario の不変量、relayout、session)、`VmReloadCaseTests` (個別の編集)、`ReloadRulesTests` (restart と live の規則) |
 | 読み込みの頑健さ | `tcsvm/fuzz-loader.py` が `.tcsb` を変異させ、ASan / UBSan 付きの VM で loader と verifier がエラーを返し crash しないことを見る |
-| web | `WasmCompiler/vm-smoke.mjs` (headless chromium で `VmExports` の module と batch を tcsvm で当てる) |
-| perf | `perf/bench-2backend.sh` が同じ kernel を VM と C で走らせ、digest の一致を fail のゲートにする (ms/frame は報告だけ) |
 
 ## 17. 将来の余地
 
@@ -568,5 +566,5 @@ reload は module ごと入れ替え、古い関数を残さない (§12.4) の�
 - `doc/il-design.md` — 2 backend 構成と lowering の 2 モード
 - `doc/hot-reload-design.md` — reload の契約 (live と restart の分類、hook)
 - `doc/object-model.md` — VM と C が共有する型記述子、layout、reload の計画、heap の walker、module 単位の混在
-- `perf/README.md` — 性能の測定 (`perf/bench-2backend.sh`)
+- `perf/README.md` — 性能の測定
 - `tcs2c/README.md` — 同じ IL を native 表現にする C backend

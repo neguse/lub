@@ -1,6 +1,5 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
@@ -9,13 +8,8 @@ public static class TcsLibrary
 {
     private static MetadataReference[]? _references;
 
-    // Injection point for reference assemblies. If unset, they are built lazily from the reference assemblies
-    // embedded at build time (EmbedReferences.targets).
-    public static MetadataReference[] References
-    {
-        get => _references ??= GetDefaultReferences();
-        set => _references = value;
-    }
+    // Built lazily from the reference assemblies embedded at build time (EmbedReferences.targets).
+    public static MetadataReference[] References => _references ??= GetDefaultReferences();
 
     private static MetadataReference[] GetDefaultReferences() =>
     [
@@ -48,20 +42,6 @@ public static class TcsLibrary
         })]);
 
     public static SyntaxTree[] LibraryTrees => LibraryTreesCache.Value;
-
-    /// <summary>Library compiled together with the user trees. When the user passes a library namespace
-    /// (a local version of TinySystem.Linq), that one is used and the bundled version is not added.</summary>
-    public static SyntaxTree[] LibraryTreesFor(IEnumerable<SyntaxTree> userTrees) =>
-        userTrees.Any(DeclaresLibraryNamespace)
-            ? [.. LibraryTrees.Where(t => t.FilePath == ValueTupleLibraryPath)]
-            : LibraryTrees;
-
-    // Follows only namespace declarations (including nested `namespace TinySystem { namespace Linq { } }`)
-    public static bool DeclaresLibraryNamespace(SyntaxTree tree) =>
-        tree.GetRoot().DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax)
-            .OfType<BaseNamespaceDeclarationSyntax>()
-            .Any(ns => string.Join(".", ns.AncestorsAndSelf().OfType<BaseNamespaceDeclarationSyntax>()
-                .Reverse().Select(n => n.Name.ToString())) == "TinySystem.Linq");
 
     private static readonly Lazy<(string Path, string Text)[]> LibrarySources = new(() =>
         [.. LibraryPaths.Select(path =>

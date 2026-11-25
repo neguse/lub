@@ -13,7 +13,7 @@
 
 ## 2. 何のためにやるか
 
-- 開発ループと配布から .NET を外す。配る tcs は C にした実行ファイルと、一緒に配るファイル (`runtime/` の C、`lib/` の TinySystem のソース) で、dotnet の無い環境でも変換できる。web の playground の変換も同じ C を wasm にしたもので行う (§10)
+- 開発ループと配布から .NET を外す。配る tcs は C にした実行ファイルと、一緒に配るファイル (`runtime/` の C、`lib/` の TinySystem のソース) で、dotnet の無い環境でも変換できる (§10)
 - compiler 自身が最大の TinyC# のプログラムになる。サブセットの書き味、tcs VM と C と .NET の一致、tcs2c の GC を大きな実プログラムで試せる
 - 実装が 1 つなので、受理する言語、診断、IL が host ごとに変わらない
 
@@ -47,24 +47,22 @@ SelfHost/
     Specialize.cs        generic の単相化
     EnumSort.cs          enum の名前の表を .NET と同じ順に並べる (ArraySortHelper の introsort の写し)
     Session.cs           増分の session と Step の driver
-    Compiler.cs          入口
+    Compiler.cs          compile の結果 (CompileResult)
   CBackend/            IL を C にする (tcs c)。CModel.cs (C の型と名前、最初の誤りの記録 CFail)、CFacts.cs (IL から引く型と method の事実)、CEmitter.cs (本体)
   VmBackend/           IL を tcs VM の .tcsb にする (tcs vm)。VModel.cs、ModuleBuilder.cs (型 / 定数 / static / 関数の表と .tcsb の書き出し)、FunctionCompiler.cs (関数を命令列にする)、VmEmitter.cs (module と reload の組み立て)、ReloadPlan.cs、IlNodes.cs (gen-ilnodes.py が Il.cs から作る)、IlWalk.cs、VBytes.cs、Op.cs (tcsvm/gen-ops.py が tcsvm_ops.h から作る)
   Tool/                CLI
     Cli.cs               引数の解釈と tcs check
     CRun.cs              tcs c
     VmRun.cs             tcs vm と、VM の増分 session (VmSession)
-    Playground.cs        playground の要求 (vmopen、vmupdate、vmmodule、vmconfig、vmremove) の入口
     Sessions.cs          名前で持つ複数の VM の増分 session の入口 (open、update、close。結果は host が指す path に書く)
     ReloadRules.cs       hot reload で live に当てられない編集の規則
     HostMessage.cs       --watch の host への message
     TcsHost.cs           host の関数の宣言 (C の build では --ref の stub)
-    ToolText.cs          JSON の escape と数の読み取り
+    ToolText.cs          数の読み取り
   Native/host.c        C の host
-  Web/                 wasm の host (tcs_web.c、JS の入口 tcs.mjs、build.sh、test.mjs)
   native.sh            native の tcs の build、.NET の tcs との比較、固定点 (§9.1)
   SelfHost.csproj      .NET の library としての build
-Transpiler/            .NET の host (DotnetHost.cs、Program.cs)、テストと WasmCompiler の入口 (Checker.cs、IlExport.cs、TcsLibrary.cs)、Roslyn の補完と hover (EditorSession.cs、SemanticQueries.cs)
+Transpiler/            .NET の host (DotnetHost.cs、Program.cs)、テストの入口 (Checker.cs、IlExport.cs、TcsLibrary.cs)
 tcs2c/                 .NET で tcs c を動かす入口と、テストの文字列の入口 (SelfHostC.cs)
 tcsvm/Emitter/         .NET で tcs vm を動かす入口 (tcs2vm)
 ```
@@ -104,7 +102,6 @@ tcsvm/Emitter/         .NET で tcs vm を動かす入口 (tcs2vm)
 - CLI (`Cli`) は OS に触る所を `TcsHost` の関数 (引数、ファイルの読み書きと原子的な置き換え、標準出力と標準エラー、ファイルの更新の印、tcs と一緒に配るファイル、待つ、終了コード、終わりの印) にし、host が実装する
   - .NET: `Transpiler/DotnetHost.cs`。`lib/` は埋め込んだ resource から、`runtime/` は実行ファイルの隣から読む
   - C: `SelfHost/Native/host.c`。tcs と一緒に配るファイルは環境変数 `TCS_HOME` の dir か、実行ファイルの dir から読む。Windows では標準入出力を binary mode にし、.NET と同じ改行を書く
-  - wasm: `SelfHost/Web/tcs_web.c`。ファイルは無く、tcs と一緒に配るファイルは JS が先に渡す
 - host は `Cli.Start` を 1 回、`TcsHost.SetDone` が来るまで `Cli.Step` を繰り返し呼ぶ。C の build (tcs2c) では entry から戻るたびに GC の frame の境界になるので、compile は Step ごとに session の 1 段だけ進め、仕事の状態は static field に置いて段をまたぐ。`tcs vm --watch` の待ちも Step の中の `TcsHost.Sleep` で、host の loop は同じ形のまま
 - 仕事は継承を使わずに型ごとの field (`CheckRun`、`CRun`、`VmRun`) に持って分ける
 
@@ -113,7 +110,7 @@ tcsvm/Emitter/         .NET で tcs vm を動かす入口 (tcs2vm)
 - `Session` はファイルを足し (`SetSource`、`SetReference`、`SetLibrary`)、差し替え、外し (`Remove`)、compile する。parse は内容の変わったファイルだけをやり直し、parse したままの木を持つ。束縛は木を書き換えるので、compile のたびに木の複製 (`Node.CloneTree`) を組み立て、宣言、束縛、出力は全体をやり直す
 - compile は Step に分かれる: 変わったファイルの parse を 1 つずつ、組み立て (構文で決まる準拠検査を含む)、宣言、束縛と型で決まる準拠検査、出力 (C backend と tcs VM のための単相化は回ごとに 1 段)。`Start` は途中の compile を捨てて始め直すので、host は Step の合間に新しい編集を受け取れる
 - 出力は mode で決まる。`ExportOnly` は tcs c と tcs vm への IL、`CheckOnly` は `tcs check` と analyzer の検査 (IL を組み立てて、組み立てられない本文も診断にする)、どちらでもなければ束縛と準拠の診断だけ
-- VM の増分 session (`VmSession`、`SelfHost/Tool/VmRun.cs`) は `Session` の上で、最後に通った build を持ち、編集ごとに reload の batch か restart を返す。診断のある編集は最後の build を変えない。`tcs vm --watch`、wasm の playground (`Playground.Call`)、名前で持つ複数の session (`Sessions.Call`。lub の lider の player が組み込む)、.NET の wasm の `VmExports` が同じものを使う (`doc/vm-design.md`)
+- VM の増分 session (`VmSession`、`SelfHost/Tool/VmRun.cs`) は `Session` の上で、最後に通った build を持ち、編集ごとに reload の batch か restart を返す。診断のある編集は最後の build を変えない。`tcs vm --watch` と、名前で持つ複数の session (`Sessions.Call`。lub の lider の player が組み込む) が同じものを使う (`doc/vm-design.md`)
 
 ## 8. サブセットで compiler を書くことの帰結
 
@@ -121,7 +118,7 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 
 | サブセットの制約 | compiler での書き方 |
 |---|---|
-| 継承が無い (q.md Q15) | 構文木は種類の enum を持つ 1 つの `Node` class。IL のノードは interface (`IlExpr` / `IlStat`) とそれを実装する record で、走査は型 switch |
+| 継承が無い | 構文木は種類の enum を持つ 1 つの `Node` class。IL のノードは interface (`IlExpr` / `IlStat`) とそれを実装する record で、走査は型 switch |
 | 例外が無い | parser と binder は診断を積んで続ける。C と VM の backend は最初の誤りを `CFail` に記録して既定の値を返し、出力は誤りが無いときだけ使う (CLI は誤りを出して 1 で終わる)。compiler 自身の不具合は fault になる |
 | string に位置の API が無い | lexer と書式指定子の解析は `Utf8Bytes` の byte を読む。token の文字列は `Slice(...).ToString()` |
 | StringBuilder が無い (support-matrix §20) | 出力は `List<string>` に積んで `string.Join` |
@@ -134,7 +131,6 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 ### 9.1 bootstrap と host の一致
 
 - `SelfHost/native.sh` (CI の native job が Linux、macOS、Windows で走らせる): .NET の tcs2c で C にした native の tcs を作り、.NET の tcs と比べる。samples の `tcs check` と `tcs c` と `tcs vm`、誤りのある入力の診断、tcs 自身の `tcs check` と `tcs vm`、digest kernel の `.tcsb`、reload の batch (`tcs vm --reload-from`)、tcs 自身の C (固定点)
-- `SelfHost/Web/test.mjs` (`SelfHost/Web/build.sh` と `SelfHost/native.sh` の後): wasm の `vmOpen` の module と `vmUpdate` の batch が native の tcs の `tcs vm` と byte で同じこと、誤りのある編集が最後の build を保つこと、live に当てられない編集が restart を返すこと
 
 ### 9.2 検証の正解
 
@@ -154,11 +150,9 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 | CS1961 | variance (in / out) の妥当性 |
 | CS8125 | tuple の要素の名前 (`Item2` を別の位置に使う) |
 
-## 10. 配布と web
+## 10. 配布
 
 - CI の native job が Linux (cc)、macOS (clang)、Windows (clang) で `SelfHost/native.sh` を走らせ、tcs の実行ファイルと一緒に配るファイル (`runtime/` の C、`lib/`) を成果物 (`tcs-linux-x64` など) にする。生成する C は GNU C の文の式を使うので MSVC の cl では build できず、Windows は clang で build する
-- web: `SelfHost/Web/build.sh` が tcs2c の C と `tcs_web.c` を emcc で 1 つの ES module (`tcs-core.mjs`) にし、JS の入口 `tcs.mjs` (`createTcs`) と `lib/` と一緒に `SelfHost/out/web/` に置く。JS は要求を引数に並べて `Playground.Call` を呼び (`vmOpen`、`vmUpdate`、`vmModule`、`vmConfig`、`vmRemove`)、応答を JSON で受け取る
-- playground の補完と hover は .NET の wasm (`WasmCompiler`) の Roslyn が、compile しない session (`EditorSession`。テキストだけを持ち、問い合わせのたびに Roslyn の compilation を作る) で答える
 - 変換した tcs (C のソースと実行ファイル) は git に入れない (`SelfHost/out/`)
 
 ## 11. 採らなかった案
@@ -171,9 +165,7 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 
 ## 12. 関連文書
 
-- `objective.md` — 目的、選定基準 (特に基準 6)
 - `doc/il-design.md`、`doc/il-spec.md` — IL が意味論の正本であること
 - `doc/vm-design.md` — tcs VM と VM の増分 session
 - `doc/support-matrix.md` — compiler が扱う範囲
-- `doc/spec-conformance-design.md` — 仕様の例と fuzz
 - `tcs2c/README.md` — C backend と GC の frame

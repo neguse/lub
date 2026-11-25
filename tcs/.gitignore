@@ -10,8 +10,5 @@ obj/
 # CMake build directory
 build/
 
-# Playdate build artifacts (perf/playdate)
-perf/playdate/build*/
-perf/playdate/Source/pdex.*
-perf/playdate/*.pdx/
-perf/playdate/*.log
+# Output of perf/compare/run.py and report.py
+perf/compare/results/

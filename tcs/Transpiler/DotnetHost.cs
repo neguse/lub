@@ -1,6 +1,6 @@
 using System.Text;
 
-// .NET implementation of the OS functions of the tcs host (SelfHost/Tool) (C: SelfHost/Native/host.c, wasm: SelfHost/Web/tcs_web.c)
+// .NET implementation of the OS functions of the tcs host (SelfHost/Tool) (C: SelfHost/Native/host.c)
 public static class TcsHost
 {
     private static string[] _args = [];

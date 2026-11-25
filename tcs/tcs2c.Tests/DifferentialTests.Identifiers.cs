@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// User identifiers become names in both backends with their C# spelling (q.md Q16). Spellings
+// User identifiers become names in both backends with their C# spelling. Spellings
 // that collide with names reserved by the generated code stop on both backends with the same shared facts diagnostic before
 // IL is produced
 public class IdentifiersDifferentialTests

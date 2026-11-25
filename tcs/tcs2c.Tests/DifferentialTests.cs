@@ -212,7 +212,7 @@ public class DifferentialTests
     [CFact]
     public void Classes_InterfaceDispatchAndTypeTests()
     {
-        // Polymorphism is through interfaces and branching on type, composition through fields (q.md Q15)
+        // Polymorphism is through interfaces and branching on type, composition through fields
         Backends.AssertParity("""
             using System;
             using System.Collections.Generic;

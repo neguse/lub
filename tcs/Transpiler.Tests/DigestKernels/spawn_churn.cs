@@ -1,7 +1,7 @@
 using System;
 
-// digest kernel: spawn_churn (perf/CONTRACT.md kernel 2).
-// Interpretation (unified with the perf implementations): fill n entities at the start, and every frame
+// digest kernel: spawn_churn.
+// Fill n entities at the start, and every frame
 // "spawn 32 (overwriting the oldest) → update all live ones from oldest to newest".
 public class Entity
 {

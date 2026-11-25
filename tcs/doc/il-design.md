@@ -77,9 +77,7 @@ v0 設計（T210 / T211）で決着した項目は `doc/il-spec.md` を正とす
 
 - `doc/il-spec.md` — IL 意味論仕様 v0（意味論の正本）
 - `doc/il-reference.md` — ノードカタログと IlExport API（backend の入力契約）
-- `doc/il-lowering-examples.md` — 紙の演習（抽象度の決定根拠）
 - `doc/object-model.md` — tcs VM と C が共有する型記述子、layout、reload の計画
 - `doc/vm-design.md` — tcs VM（dev 実行系）の設計
 - `doc/hot-reload-design.md` — hot reload の規則
 - `perf/README.md` — 性能前提 (KPI floor) と実測ハーネス
-- `objective.md` — tcs の目的と実行経路

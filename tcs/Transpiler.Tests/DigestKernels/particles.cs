@@ -1,8 +1,7 @@
 using System;
 
-// digest kernel: particles (perf/CONTRACT.md kernel 3).
-// Written in SoA form with class + array fields, without structs (the struct version is particles_struct.cs)
-// (the operation sequence is identical to CONTRACT).
+// digest kernel: particles.
+// Written in SoA form with class + array fields, without structs (the struct version is particles_struct.cs).
 public class Particles
 {
     static int state = 12345;

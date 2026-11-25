@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
 // When a user type implements a `--ref` (host) interface, calls through the interface
-// use the host name (`h:do_thing()`) while the implementation has the C# name (`Impl:DoThing`), so they do not reach it
-// (q.md Q16). This is TCS1001, which stops the build, and check exits 1. Implementations of user interfaces can be written as is.
+// use the host name (`h:do_thing()`) while the implementation has the C# name (`Impl:DoThing`), so they do not reach it.
+// This is TCS1001, which stops the build, and check exits 1. Implementations of user interfaces can be written as is.
 [Collection(ConsoleCollection.Name)]
 public class RefInterfaceDiagnosticTests
 {

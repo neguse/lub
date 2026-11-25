@@ -9,7 +9,7 @@ using System.Collections.Generic;
 /// <summary>
 /// LINQ for <c>List&lt;T&gt;</c>. It has eagerly evaluated operations with the same names as System.Linq, and operations that return a sequence return a new
 /// <c>List&lt;T&gt;</c>. tcs compiles this file to C / VM IL together with user code, and .NET
-/// runs it as is, so the three paths run the same implementation (q.md Q18). The namespace is separate from TinySystem
+/// runs it as is, so the three paths run the same implementation. The namespace is separate from TinySystem
 /// so that Math / String / Random do not become ambiguous next to <c>using System;</c>.
 /// <para>Common contract: callbacks are called exactly once per element, in order from the first. Iteration goes up to the Count at the time
 /// of the call, so if a callback shrinks the receiver, out-of-range indexes are read. Min / Max (int / float) of an empty
@@ -291,7 +291,7 @@ public static class Enumerable
         return Reorder(list, keys.Count, (a, b) => Tie(Ordinal(keys[b], keys[a]), a, b));
     }
 
-    // Dictionary Keys / Values are also accepted as receivers (q.md Q18). The order is insertion order (§18; TinySystem/Collections.cs); they are copied to a List and
+    // Dictionary Keys / Values are also accepted as receivers. The order is insertion order (§18; TinySystem/Collections.cs); they are copied to a List and
     // passed to the List version (Keys / Values in C / VM are List copies too)
 
     public static List<TKey> Where<TKey, TValue>(this Dictionary<TKey, TValue>.KeyCollection keys, Func<TKey, bool> predicate)

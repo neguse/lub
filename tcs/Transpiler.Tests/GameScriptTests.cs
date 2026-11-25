@@ -2,7 +2,6 @@ namespace TinyCs.Tests;
 
 /// <summary>
 /// Integration tests close to game scripting.
-/// Also serves as use case verification for objective.md (T7-T10).
 /// </summary>
 public class GameScriptTests
 {

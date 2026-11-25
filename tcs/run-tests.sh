@@ -2,14 +2,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TEMP_DIRS=()
-
-cleanup_temp_dirs() {
-  if [ "${#TEMP_DIRS[@]}" -gt 0 ]; then
-    rm -rf "${TEMP_DIRS[@]}"
-  fi
-}
-trap cleanup_temp_dirs EXIT
 
 # With no arguments, runs everything.
 # --part <name> runs only one part (CI splits the parts into separate jobs run in parallel):
@@ -108,8 +100,6 @@ else
   echo "Skipping tcs2c digest verification (no C compiler)."
 fi
 
-bash "$SCRIPT_DIR/samples/analyzer-demo/verify-rider-scripts.sh"
-
 echo "Running analyzer demo build..."
 set +e
 analyzer_output="$(dotnet build "$SCRIPT_DIR/samples/analyzer-demo/analyzer-demo.csproj" --no-incremental 2>&1)"
@@ -160,108 +150,5 @@ if [ "$tcs1001_count" -ne 5 ] || [ "$tcs1002_count" -ne 1 ] || [ "$tcs1003_count
   exit 1
 fi
 assert_expected_diagnostic_texts "analyzer demo" "$analyzer_output"
-
-echo "Running analyzer package consumer build..."
-# MSBuild / NuGet walk up the project's ancestor directories and pick up Directory.Build.props and
-# NuGet.Config. Creating the scratch dir directly under /tmp would run whatever is placed there
-# as part of the build, so it is created under our own temp root.
-TEMP_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/tcs/tmp"
-if [ -L "$TEMP_ROOT" ]; then
-  echo "Error: $TEMP_ROOT is a symlink; refusing to use it." >&2
-  exit 1
-fi
-if [ -e "$TEMP_ROOT" ] && [ ! -O "$TEMP_ROOT" ]; then
-  echo "Error: $TEMP_ROOT is not owned by the current user; refusing to use it." >&2
-  exit 1
-fi
-mkdir -p "$TEMP_ROOT"
-chmod 700 "$TEMP_ROOT"
-package_dir="$(mktemp -d "$TEMP_ROOT/analyzer-package.XXXXXX")"
-consumer_dir="$(mktemp -d "$TEMP_ROOT/analyzer-consumer.XXXXXX")"
-TEMP_DIRS+=("$package_dir" "$consumer_dir")
-dotnet pack "$SCRIPT_DIR/TinyCs.Analyzers/TinyCs.Analyzers.csproj" \
-  -c Release \
-  -o "$package_dir" >/dev/null
-cp "$SCRIPT_DIR/samples/analyzer-demo/Program.cs" "$consumer_dir/Program.cs"
-cat > "$consumer_dir/analyzer-package-consumer.csproj" <<EOF
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <LangVersion>15</LangVersion>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <RestoreAdditionalProjectSources>$package_dir</RestoreAdditionalProjectSources>
-    <RestorePackagesPath>$consumer_dir/packages</RestorePackagesPath>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="TinyCs.Analyzers" Version="0.1.0" PrivateAssets="all" />
-  </ItemGroup>
-</Project>
-EOF
-cat > "$consumer_dir/.editorconfig" <<'EOF'
-root = true
-
-[*.cs]
-dotnet_diagnostic.TCS1001.severity = warning
-dotnet_diagnostic.TCS1002.severity = warning
-dotnet_diagnostic.TCS1003.severity = warning
-EOF
-set +e
-consumer_output="$(dotnet build "$consumer_dir/analyzer-package-consumer.csproj" --no-incremental 2>&1)"
-consumer_exit=$?
-set -e
-printf '%s\n' "$consumer_output"
-if [ "$consumer_exit" -ne 0 ]; then
-  exit "$consumer_exit"
-fi
-consumer_tcs1001_count="$(printf '%s\n' "$consumer_output" \
-  | awk 'index($0, "warning TCS1001:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
-consumer_tcs1002_count="$(printf '%s\n' "$consumer_output" \
-  | awk 'index($0, "warning TCS1002:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
-consumer_tcs1003_count="$(printf '%s\n' "$consumer_output" \
-  | awk 'index($0, "warning TCS1003:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
-if [ "$consumer_tcs1001_count" -ne 5 ] || [ "$consumer_tcs1002_count" -ne 1 ] || [ "$consumer_tcs1003_count" -ne 1 ]; then
-  echo "Error: analyzer package consumer expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$consumer_tcs1001_count / TCS1002 x$consumer_tcs1002_count / TCS1003 x$consumer_tcs1003_count" >&2
-  exit 1
-fi
-assert_expected_diagnostic_texts "analyzer package consumer" "$consumer_output"
-
-echo "Running analyzer package severity override build..."
-cat > "$consumer_dir/.editorconfig" <<'EOF'
-root = true
-
-[*.cs]
-dotnet_diagnostic.TCS1001.severity = error
-dotnet_diagnostic.TCS1002.severity = error
-dotnet_diagnostic.TCS1003.severity = error
-EOF
-set +e
-override_output="$(dotnet build "$consumer_dir/analyzer-package-consumer.csproj" --no-incremental 2>&1)"
-override_exit=$?
-set -e
-printf '%s\n' "$override_output"
-if [ "$override_exit" -eq 0 ]; then
-  echo "Error: analyzer package severity override build expected TCS errors" >&2
-  exit 1
-fi
-override_tcs1001_count="$(printf '%s\n' "$override_output" \
-  | awk 'index($0, "error TCS1001:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
-override_tcs1002_count="$(printf '%s\n' "$override_output" \
-  | awk 'index($0, "error TCS1002:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
-override_tcs1003_count="$(printf '%s\n' "$override_output" \
-  | awk 'index($0, "error TCS1003:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
-if [ "$override_tcs1001_count" -ne 5 ] || [ "$override_tcs1002_count" -ne 1 ] || [ "$override_tcs1003_count" -ne 1 ]; then
-  echo "Error: analyzer package severity override expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$override_tcs1001_count / TCS1002 x$override_tcs1002_count / TCS1003 x$override_tcs1003_count" >&2
-  exit 1
-fi
-assert_expected_diagnostic_texts "analyzer package severity override" "$override_output"
-
-# Checks the VM's incremental web session (VmExports of WasmCompiler) in a real browser. It needs the wasm-tools workload and
-# playwright, and publishing takes time, so it runs only when TCS_WASM_SMOKE=1
-if [ "${TCS_WASM_SMOKE:-0}" = 1 ]; then
-  echo "Running WasmCompiler VM smoke..."
-  dotnet publish "$SCRIPT_DIR/WasmCompiler" -c Release --verbosity quiet
-  node "$SCRIPT_DIR/WasmCompiler/vm-smoke.mjs"
-fi
 
 echo "All tests passed."

@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// Identifiers of user declarations become IL names with their C# spelling (q.md Q16). Spellings that collide with
+// Identifiers of user declarations become IL names with their C# spelling. Spellings that collide with
 // reserved names of Lua and generated code (starting with `__`, non-ASCII, the class table keys
 // `new` / `ctor`, `_` in type and namespace names) are build-stopping TCS1001, and
 // check exits 1. --ref types are out of scope

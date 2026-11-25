@@ -20,8 +20,7 @@ dotnet run --project tcsvm/Emitter -- samples-or-your.cs -o out.tcsb
 build/tcsvm/tcsvm out.tcsb
 ```
 
-`--entry Class` は `Main` を持つ class が複数あるときに選ぶ。性能の比較は
-`perf/bench-2backend.sh` (vm、release = tcs2c の 2 列)。
+`--entry Class` は `Main` を持つ class が複数あるときに選ぶ。性能の比較は `perf/compare/`。
 
 ## hot reload
 

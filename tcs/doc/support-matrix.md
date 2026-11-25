@@ -29,12 +29,12 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |------|:------:|------|
 | 基本型・nullable・リテラル | **Core** | 日常的な C# の型チェックと値表現を保つ |
 | class / enum / interface / record class | **Core** | editor 補完、型チェック、データ表現に必要 |
-| class / record の継承 | **Out** | Go と同じく、多態は interface の実装と型による分岐 (`switch (e) { case Hit h: ... }`)、組み合わせは field で書く (q.md Q15)。基底 class と、継承で意味を持つ member (`virtual` / `abstract` / `override` / `sealed` / `protected` / `new` による隠蔽 / `base`) は build を止める TCS1001 |
+| class / record の継承 | **Out** | Go と同じく、多態は interface の実装と型による分岐 (`switch (e) { case Hit h: ... }`)、組み合わせは field で書く。基底 class と、継承で意味を持つ member (`virtual` / `abstract` / `override` / `sealed` / `protected` / `new` による隠蔽 / `base`) は build を止める TCS1001 |
 | struct / record struct | **Core** | 値セマンティクス対応済み (T219b)。member / static / operator / 値等価 / readonly copy 省略。C backend は素の C struct |
 | if / switch / loop / lambda / pattern | **Core** | ゲームロジックと小さな業務ロジックの表現力として必要 |
 | 演算子オーバーロード (算術) | **Core** | ベクトル/行列など math 型の表現に必要。二項 `+ - * / %` と単項 `-` だけを static 関数へ写像し (呼び出し箇所で overload を静的解決)、変換演算子と `==`/`!=`/比較系は対象外 |
 | LINQ メソッドチェーン | **Core** | `TinySystem.Linq` の `List<T>` の拡張メソッド (`Where`/`Select`/`Any`/`All`/`Count`/`FirstOrDefault`/`OrderBy`/集計) を即時評価で提供 (§19) |
-| ユーザー定義ジェネリクス | **Core** | class / record / struct / method と型制約。tcs VM と C は閉じた型へ特殊化する (§7、q.md Q20)。TinySystem.Linq もこれで書く |
+| ユーザー定義ジェネリクス | **Core** | class / record / struct / method と型制約。tcs VM と C は閉じた型へ特殊化する (§7)。TinySystem.Linq もこれで書く |
 | reflection / dynamic / expression tree | **Out** | compact baseline に合わない |
 | async / Task / threading | **Out** | ホットリロード可能なシングルスレッドの実行 (tcs VM) を基本にする |
 | unsafe / Span / pointer | **Out** | 組み込み backend の低レベル最適化フェーズまで扱わない |
@@ -451,7 +451,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 
 ## 8. 継承
 
-class / record の継承は対象外 (q.md Q15)。多態は interface の実装と型による分岐、組み合わせは field で書く。以下は TCS1001 で build を止める (`tcs check` は exit 1、`tcs vm` / `tcs c` は出力を書かない。analyzer は warning)。`--ref` の型 (host の宣言) は診断の対象にしない。
+class / record の継承は対象外。多態は interface の実装と型による分岐、組み合わせは field で書く。以下は TCS1001 で build を止める (`tcs check` は exit 1、`tcs vm` / `tcs c` は出力を書かない。analyzer は warning)。`--ref` の型 (host の宣言) は診断の対象にしない。
 
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
@@ -867,11 +867,11 @@ C backend の `Dictionary<string, V>` のハッシュは seed を持たない FN
 
 ## 19. LINQ — TinySystem.Linq
 
-LINQ は `TinySystem.Linq.Enumerable` (`TinySystem/Linq.cs`) の `List<T>` の拡張メソッドで、`using TinySystem.Linq;` で使う (q.md Q18)。
+LINQ は `TinySystem.Linq.Enumerable` (`TinySystem/Linq.cs`) の `List<T>` の拡張メソッドで、`using TinySystem.Linq;` で使う。
 tcs のサブセットの C# で書いてあり、tcs は user のコードと一緒に IL にして tcs VM / C で動かし、.NET の project は `TinySystem/TinySystem.props` で同じファイルをコンパイルするので、3 経路が同じ実装で動く。
 意味の正本はそのファイルと doc comment。`System.Linq` は namespace ごと TCS1002 (`using System.Linq;` と並べると、受け手が `List<T>` の TinySystem.Linq が選ばれ、TinySystem.Linq に無い overload は TCS1002)。
 すべて即時評価で、列を返す演算は新しい `List<T>` を返す。callback は各要素にちょうど 1 回、先頭から順に呼び、走査は呼び出した時点の Count まで。メソッドチェーンだけで、クエリ構文 (`from x in ...`) は対象外。
-毎フレームの一時の `List<T>` は作ってよい (int の Where は要素あたり C で約 5 ns、tcs VM で約 30 ns。q.md Q18)。struct の要素を `readonly record struct` にすると IL は lambda の parameter の copy を省くが、測った範囲では tcs VM と C の時間は変わらない。
+毎フレームの一時の `List<T>` は作ってよい (int の Where は要素あたり C で約 5 ns、tcs VM で約 30 ns)。struct の要素を `readonly record struct` にすると IL は lambda の parameter の copy を省くが、測った範囲では tcs VM と C の時間は変わらない。
 
 ### 対応済み
 
@@ -889,7 +889,7 @@ tcs のサブセットの C# で書いてあり、tcs は user のコードと�
 
 ### 未対応
 
-`System.Linq` の他の演算は TCS1002。First / Last / LastOrDefault / Take / Skip / ToList / Count() / ToDictionary は、添字、copy constructor、範囲の loop、foreach で書く (q.md Q18)。
+`System.Linq` の他の演算は TCS1002。First / Last / LastOrDefault / Take / Skip / ToList / Count() / ToDictionary は、添字、copy constructor、範囲の loop、foreach で書く。
 Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).OrderBy(..)`、`d.Values.Sum()`)、List に写して List の版に渡す。列挙の順は挿入順 (§18)。
 配列は LINQ の受け手にならない (`new List<T>(array)` で写す)。遅延評価 (`IEnumerable<T>`) は持たない。
 
@@ -1028,7 +1028,7 @@ C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収でき
 
 名前は表を持たず規則で写す (`SelfHost/Compiler/Declarer.cs` の `HostNames` と `IlNames.cs`)。user の型 (入力の tree に宣言された型) の
 member は C# の識別子をそのまま IL / C の名前にし、`--ref` の型 (host) の member だけ
-host の wire format (snake_case) に写す (q.md Q16)。ユーザ型の型名 (`Player`) は写さない。
+host の wire format (snake_case) に写す。ユーザ型の型名 (`Player`) は写さない。
 `--ref` の型の path は host の関数の名前 (IL の foreign 関数、C の `tcs_host_<path を _ 連結>`) になる。
 
 | C# | IL の名前 | 規則 |

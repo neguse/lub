@@ -1,6 +1,6 @@
 # TinyC# IL 仕様 v0 (T211)
 
-> Status: draft v0 (2026-07-18)。**意味論の正本**。位置づけは `doc/il-design.md`、抽象度の決定根拠は `doc/il-lowering-examples.md`。
+> Status: draft v0 (2026-07-18)。**意味論の正本**。位置づけは `doc/il-design.md`。
 > 本文 §1-§15 は backend に依存せず規範を定める。各 backend の義務は付録。
 
 ## 1. スコープと適合
@@ -104,7 +104,7 @@ goto は無い。例外機構は無い — try / throw はサブセット外（T
 - type test（`is T`、T は class か interface — §2）: 実行時型が T またはその派生、
   T を実装する class なら真。null は常に偽（現行バグ T222 はこの規範で修正）
 - cast: compiler が安全と検査済みの位置では無検査。明示 cast の失敗は fault。object の値への数と bool の型 pattern (`o is int`、`o is bool b` など。BoxedValuePattern) と、`--ref` の generic でない class / interface への型 test と cast (RefTypeTest / RefCast / RefInterfaceTypeTest) はサブセット外（TCS1001。`tcs vm` は `--ref` の型への 3 つを止めない）
-- class / record class の継承は無い（q.md Q15。基底 class、virtual /
+- class / record class の継承は無い（基底 class、virtual /
   abstract / override / sealed / protected / new による隠蔽、base は build を
   止める TCS1001）。多態は interface の実装と type test で書く
 - class の参照比較（operator 定義が無い `==`）は identity 比較

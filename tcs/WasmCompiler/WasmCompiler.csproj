@@ -23,19 +23,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Transpiler is an Exe project, so it cannot be a ProjectReference (NETSDK1150).
-         The core sources are included directly (excluding Program.cs, the CLI entry) -->
-    <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs" />
-    <Compile Include="../Shared/*.cs" />
-    <Compile Include="../SelfHost/Tool/*.cs" Exclude="../SelfHost/Tool/TcsHost.cs" />
-    <!-- Entry point of the VM emitter (used by VmExports; excluding Program.cs, the CLI entry) -->
-    <Compile Include="../tcsvm/Emitter/*.cs" Exclude="../tcsvm/Emitter/Program.cs" />
-    <ProjectReference Include="../TinySystem/TinySystem.csproj" />
-    <!-- The compiler itself (the self-host implementation) -->
-    <ProjectReference Include="../SelfHost/SelfHost.csproj" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="CSharpier.Core" Version="1.2.6" />
   </ItemGroup>
-
-  <Import Project="../Transpiler/EmbedReferences.targets" />
 </Project>

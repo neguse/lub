@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// class / record inheritance is out of scope for TinyC# (q.md Q15). Base class declarations and
+// class / record inheritance is out of scope for TinyC#. Base class declarations and
 // members that only make sense with inheritance are build-stopping TCS1001, and
 // check exits 1. Interface implementations can be written as is
 [Collection(ConsoleCollection.Name)]

@@ -25,7 +25,7 @@ CC_CMD="${CC:-cc}"
 #   OutCalls: tcs c does not handle the discarded out of `int.TryParse(s, out _)` (unbound IL variable: _)
 NO_C=" OutCalls "
 
-# FNV-1a digest of a kernel's stdout (one float per line). Same computation as Transpiler.Tests/DigestHarnessTests and perf/bench-2backend.sh
+# FNV-1a digest of a kernel's stdout (one float per line)
 fnv_digest() {
   python3 - "$1" << 'EOF'
 import struct, sys

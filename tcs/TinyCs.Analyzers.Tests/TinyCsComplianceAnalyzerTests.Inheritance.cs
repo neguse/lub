@@ -3,7 +3,7 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-// class / record inheritance is out of scope (q.md Q15). The transpiler reports a build-stopping
+// class / record inheritance is out of scope. The transpiler reports a build-stopping
 // error; the analyzer reports a warning, like other build-stopping diagnostics
 public partial class TinyCsComplianceAnalyzerTests
 {

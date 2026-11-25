@@ -1,7 +1,7 @@
 using System;
 
-// digest kernel: sprite_update (perf/CONTRACT.md kernel 1)
-// The operation sequence, LCG, and constants must match CONTRACT bit for bit. Prints the digest target values one value per line.
+// digest kernel: sprite_update.
+// Prints the digest target values one value per line.
 public class SpriteUpdate
 {
     static int state = 12345;

@@ -1,6 +1,6 @@
 namespace TinyCs.Tcs2c.Tests;
 
-// class / record inheritance is not supported (q.md Q15). Both backends stop with the same shared facts
+// class / record inheritance is not supported. Both backends stop with the same shared facts
 // diagnostic before producing IL (CoreCLR gives `D:2:sq` / `True`)
 public class InheritanceDifferentialTests
 {
