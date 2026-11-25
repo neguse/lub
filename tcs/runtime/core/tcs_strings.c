@@ -103,11 +103,6 @@ static bool tcs_string_ends_with(TcsString *s, TcsString *suffix) {
                 suffix->length) == 0;
 }
 
-static int tcs_is_space(unsigned char c) {
-  return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' ||
-         c == '\r';
-}
-
 static TcsString *tcs_string_trim(TcsString *s) {
   size_t from;
   size_t to;
@@ -253,20 +248,20 @@ static TcsString *tcs_string_join_items(TcsString *sep, TcsString **items,
   size_t total = 0;
   size_t i;
   size_t at = 0;
+  /* A null separator and null elements are empty strings (same as .NET) */
+  size_t sep_length = sep != NULL ? sep->length : 0;
   TcsString *result;
-  tcs_nonnull(sep);
-  /* null elements are empty strings (same as .NET) */
   for (i = 0; i < count; i++) {
     if (items[i] != NULL)
       total = tcs_string_length_add(total, items[i]->length);
     if (i > 0)
-      total = tcs_string_length_add(total, sep->length);
+      total = tcs_string_length_add(total, sep_length);
   }
   result = tcs_string_new(NULL, total);
   for (i = 0; i < count; i++) {
-    if (i > 0) {
-      memcpy(result->data + at, sep->data, sep->length);
-      at += sep->length;
+    if (i > 0 && sep_length != 0) {
+      memcpy(result->data + at, sep->data, sep_length);
+      at += sep_length;
     }
     if (items[i] == NULL)
       continue;
@@ -328,15 +323,28 @@ static TcsString *tcs_string_join_array_values(TcsString *sep, TcsArray *array,
   return tcs_string_join_values(sep, array->data, array->length, kind);
 }
 
+/* The number for an enum value that no name can represent. A uint enum is
+   written as unsigned */
+static TcsString *tcs_enum_number(int32_t value, bool is_unsigned) {
+  char buffer[16];
+  int written;
+  if (!is_unsigned)
+    return tcs_string_i32(value);
+  written = snprintf(buffer, sizeof(buffer), "%" PRIu32, (uint32_t)value);
+  if (written < 0 || (size_t)written >= sizeof(buffer))
+    tcs_fault("integer-format");
+  return tcs_string_new((const unsigned char *)buffer, (size_t)written);
+}
+
 /* Enum stringification (Enum.ToString). names / values are in the same order as
    .NET (Flags: all members in unsigned ascending value order; otherwise one per
    value). For Flags, the contained bits are taken from the highest member down,
    and the names are joined in ascending order with ", " (each member taken
    clears at least 1 bit, so at most 32). A value that neither form can
-   represent is shown as a number */
+   represent is shown as a number (unsigned when is_unsigned) */
 static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
                                   const int32_t *values, int32_t count,
-                                  bool flags) {
+                                  bool flags, bool is_unsigned) {
   int32_t found[32];
   int32_t found_count = 0;
   uint32_t rest = (uint32_t)value;
@@ -348,7 +356,7 @@ static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
     for (i = 0; i < count; i++)
       if (values[i] == value)
         return names[i];
-    return tcs_string_i32(value);
+    return tcs_enum_number(value, is_unsigned);
   }
   if (value == 0)
     return count > 0 && values[0] == 0 ? names[0] : tcs_string_i32(0);
@@ -363,7 +371,7 @@ static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
     }
   }
   if (rest != 0)
-    return tcs_string_i32(value);
+    return tcs_enum_number(value, is_unsigned);
   result = tcs_string_new(NULL, total);
   for (i = found_count - 1; i >= 0; i--) {
     TcsString *name = names[found[i]];
@@ -381,76 +389,33 @@ static TcsString *tcs_enum_format(int32_t value, TcsString *const *names,
 static TcsString *tcs_string_join_enum(TcsString *sep, const int32_t *data,
                                        size_t count, TcsString *const *names,
                                        const int32_t *values,
-                                       int32_t names_count, bool flags) {
+                                       int32_t names_count, bool flags,
+                                       bool is_unsigned) {
   TcsString **items = tcs_string_join_buffer(count);
   TcsString *result;
   size_t i;
   for (i = 0; i < count; i++)
-    items[i] = tcs_enum_format(data[i], names, values, names_count, flags);
+    items[i] = tcs_enum_format(data[i], names, values, names_count, flags,
+                               is_unsigned);
   result = tcs_string_join_items(sep, items, count);
   free(items);
   return result;
 }
 
-/* Decimal int.Parse (leading/trailing whitespace allowed). On failure returns
- * false, and the caller faults */
-static bool tcs_parse_i32(TcsString *s, int32_t *out) {
-  /* NumberStyles.Integer: leading/trailing whitespace, a leading sign, one or
-   * more decimal digits */
-  const unsigned char *p;
-  size_t i = 0;
-  size_t digits = 0;
-  long long value = 0;
-  bool negative = false;
-  tcs_nonnull(s);
-  p = s->data;
-  while (i < s->length && tcs_is_space(p[i]))
-    i++;
-  if (i < s->length && (p[i] == '+' || p[i] == '-'))
-    negative = p[i++] == '-';
-  for (; i < s->length && p[i] >= '0' && p[i] <= '9'; i++, digits++) {
-    value = value * 10 + (p[i] - '0');
-    if (value > 2147483648LL)
-      return false;
-  }
-  while (i < s->length && tcs_is_space(p[i]))
-    i++;
-  if (digits == 0 || i != s->length)
-    return false;
-  if (negative)
-    value = -value;
-  if (value > INT32_MAX)
-    return false;
-  *out = (int32_t)value;
-  return true;
-}
-
+/* int.Parse / float.Parse: the parsing in runtime/fmt. A string that cannot be
+ * parsed faults */
 static int32_t tcs_parse_i32_or_fault(TcsString *s) {
   int32_t value;
-  if (!tcs_parse_i32(s, &value))
+  tcs_nonnull(s);
+  if (!tcs_parse_i32((const char *)s->data, s->length, &value))
     tcs_fault("number-format");
   return value;
 }
 
-static bool tcs_parse_f32(TcsString *s, float *out) {
-  char buffer[128];
-  char *end;
-  tcs_nonnull(s);
-  if (s->length >= sizeof(buffer))
-    return false;
-  memcpy(buffer, s->data, s->length);
-  buffer[s->length] = '\0';
-  if (strlen(buffer) != s->length)
-    return false;
-  *out = strtof(buffer, &end);
-  while (*end != '\0' && tcs_is_space((unsigned char)*end))
-    end++;
-  return end != buffer && *end == '\0';
-}
-
 static float tcs_parse_f32_or_fault(TcsString *s) {
   float value;
-  if (!tcs_parse_f32(s, &value))
+  tcs_nonnull(s);
+  if (!tcs_parse_f32((const char *)s->data, s->length, &value))
     tcs_fault("number-format");
   return value;
 }
@@ -458,14 +423,14 @@ static float tcs_parse_f32_or_fault(TcsString *s) {
 /* int.TryParse / float.TryParse: (found, value or fallback). A null string
  * fails (Parse faults on null) */
 static bool tcs_try_parse_i32(TcsString *s, int32_t *out, int32_t fallback) {
-  if (s != NULL && tcs_parse_i32(s, out))
+  if (s != NULL && tcs_parse_i32((const char *)s->data, s->length, out))
     return true;
   *out = fallback;
   return false;
 }
 
 static bool tcs_try_parse_f32(TcsString *s, float *out, float fallback) {
-  if (s != NULL && tcs_parse_f32(s, out))
+  if (s != NULL && tcs_parse_f32((const char *)s->data, s->length, out))
     return true;
   *out = fallback;
   return false;

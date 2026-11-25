@@ -165,6 +165,33 @@ static float tcs_math_max(float a, float b) {
   return signbit(b) ? a : b;
 }
 
+/* Math.Clamp: min > max faults (.NET's ArgumentException).
+   A NaN bound is not rejected because the comparison is false (same as .NET) */
+static int32_t tcs_math_clamp_i32(int32_t value, int32_t min, int32_t max) {
+  if (min > max)
+    tcs_fault("clamp-min-greater-than-max");
+  return value < min ? min : value > max ? max : value;
+}
+
+static float tcs_math_clamp_f32(float value, float min, float max) {
+  if (min > max)
+    tcs_fault("clamp-min-greater-than-max");
+  return value < min ? min : value > max ? max : value;
+}
+
+/* Math.Abs(int): int.MinValue cannot change sign, so it faults (.NET's
+   OverflowException) */
+static int32_t tcs_math_abs_i32(int32_t x) {
+  return x < 0 ? tcs_checked_neg(x) : x;
+}
+
+/* Math.Sign(float): NaN faults (.NET's ArithmeticException) */
+static int32_t tcs_math_sign_f32(float x) {
+  if (x != x)
+    tcs_fault("sign-of-nan");
+  return (x > 0) - (x < 0);
+}
+
 /* C# Math.Round (banker's). A result rounded to 0 keeps the sign of x.
    With digits, as in .NET's MathF.Round(float, int), it widens to double,
    multiplies by 10^digits, rounds, divides by 10^digits, and converts back to
@@ -497,7 +524,11 @@ static void tcs_hashset_rehash(TcsHashSet *set) {
   for (slot = 0; (size_t)slot < set->items->length; slot++)
     if (set->nexts[slot] >= -1)
       tcs_hashset_link(set, slot);
-  set->has_young = false;
+  /* After crossing a boundary, all young elements are promoted.
+     When rebuilt (grown, compacted) within the same frame, the mark is kept
+     because the addresses of the young elements inserted change at the next
+     boundary */
+  set->has_young = set->has_young && set->frame == tcs_gc_frames;
   set->frame = tcs_gc_frames;
 }
 
@@ -639,14 +670,14 @@ static TcsList *tcs_dict_keys(TcsDict *dict) {
   TcsList *keys;
   size_t b;
   tcs_nonnull(dict);
-  keys = dict->key_is_string
+  keys = dict->key_kind != 0
              ? tcs_list_new(sizeof(TcsString *), &tcs_layout_ptr)
              : tcs_list_new(sizeof(int32_t), NULL);
   for (b = 0; b < dict->order_len; b++) {
     TcsDictNode *node = dict->order[b];
     if (node == NULL)
       continue;
-    if (dict->key_is_string)
+    if (dict->key_kind != 0)
       tcs_list_add(keys, &node->key_s, sizeof(node->key_s), &tcs_layout_ptr);
     else
       tcs_list_add(keys, &node->key_i, sizeof(node->key_i), NULL);
@@ -676,6 +707,7 @@ static void tcs_dict_clear(TcsDict *dict) {
   dict->order_len = 0;
   dict->version++;
   dict->count = 0;
+  dict->has_young = false;
 }
 
 /* ---- Random: xoshiro256** (il-spec §13). Integers are mapped to the range
@@ -782,9 +814,11 @@ static int32_t tcs_rand_range(TcsRandom *r, int32_t low, int32_t up) {
 }
 
 /* Random.Next(min, max): the upper bound is exclusive. An empty range (max ==
- * min) gives min, as in .NET */
+ * min) gives min, as in .NET.
+ * For max < min, max is passed as the upper end unchanged to make the range
+ * empty, which faults (max - 1 overflows when max is int.MinValue) */
 static int32_t tcs_rand_below(TcsRandom *r, int32_t min, int32_t max) {
-  return tcs_rand_range(r, min, max == min ? min : max - 1);
+  return tcs_rand_range(r, min, max > min ? max - 1 : max);
 }
 
 /* ---- char (integer code unit, ASCII tests / conversion; same table as Char in

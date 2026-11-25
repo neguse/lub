@@ -1,8 +1,8 @@
 /* Runtime functions of the tcs VM (CALLR). A C implementation of the TinySystem
    surface (il-spec §13), with the same semantics as the tcs2c runtime. String
-   conversion, math functions, and UTF-8 call the same C code in runtime/fmt,
-   runtime/math, and runtime/utf8. See TvmIntrinsic in tcsvm_internal.h for the
-   kind characters of arguments and return values. */
+   conversion and number parsing, math functions, and UTF-8 call the same C code
+   in runtime/fmt, runtime/math, and runtime/utf8. See TvmIntrinsic in
+   tcsvm_internal.h for the kind characters of arguments and return values. */
 #include "tcsvm_internal.h"
 
 #include "../../runtime/fmt/tcs_fmt.h"
@@ -118,82 +118,100 @@ static TvmStatus fmt_s(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
                     S(a[0]) ? S(a[0]) : &empty);
 }
 
+/* Reads one member `name:value` of spec ([from, to)). 0 when there is no `:`
+ */
+static int enum_member(const char *from, const char *to, const char **name,
+                       size_t *len, int32_t *value) {
+  const char *colon = memchr(from, ':', (size_t)(to - from));
+  if (!colon)
+    return 0;
+  char num[16] = {0};
+  size_t nl = (size_t)(to - colon - 1) < 15 ? (size_t)(to - colon - 1) : 15;
+  memcpy(num, colon + 1, nl);
+  *name = from;
+  *len = (size_t)(colon - from);
+  *value = (int32_t)strtoll(num, NULL, 10);
+  return 1;
+}
+
 /* Enum to string (String.FormatEnum in il-spec §13). spec is a list of
-   `name:value` joined with `,`, and for Flags it starts with `*` (sorted by
-   value in unsigned ascending order) */
+   `name:value` joined with `,`.
+   A leading `*` is Flags (sorted by value in unsigned ascending order), and a
+   following `+` is a uint enum (a value not in the table is written as
+   unsigned).
+   Members are read from spec one at a time (from the end for Flags), so the
+   number of members has no upper limit */
 static TvmStatus fmt_enum(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   const TvmString *spec = S(a[1]);
   int32_t v = a[0].i;
-  const char *p = STR_DATA(spec), *end = p + spec->len;
-  int flags = p < end && *p == '*';
+  const char *begin = STR_DATA(spec), *end = begin + spec->len;
+  int flags = begin < end && *begin == '*';
   if (flags)
-    p++;
-  /* Reads a member */
-  const char *names[256];
-  size_t lens[256];
-  int32_t values[256];
-  int n = 0;
-  while (p < end && n < 256) {
-    const char *colon = memchr(p, ':', (size_t)(end - p));
-    if (!colon)
-      break;
-    const char *comma = memchr(colon, ',', (size_t)(end - colon));
-    if (!comma)
-      comma = end;
-    names[n] = p;
-    lens[n] = (size_t)(colon - p);
-    char num[16] = {0};
-    size_t nl =
-        (size_t)(comma - colon - 1) < 15 ? (size_t)(comma - colon - 1) : 15;
-    memcpy(num, colon + 1, nl);
-    values[n] = (int32_t)strtoll(num, NULL, 10);
-    n++;
-    p = comma + 1;
-  }
-  char numbuf[16];
-  if (!flags) {
-    for (int i = 0; i < n; i++)
-      if (values[i] == v)
-        return ret_str(vm, r, names[i], lens[i]);
+    begin++;
+  int is_unsigned = begin < end && *begin == '+';
+  if (is_unsigned)
+    begin++;
+  const char *name;
+  size_t len;
+  int32_t value;
+  if (!flags || v == 0) {
+    /* 0 of Flags is a name only when the first member is 0 */
+    for (const char *p = begin; p < end;) {
+      const char *comma = memchr(p, ',', (size_t)(end - p));
+      if (!comma)
+        comma = end;
+      if (enum_member(p, comma, &name, &len, &value) && value == v)
+        return ret_str(vm, r, name, len);
+      if (flags)
+        break;
+      p = comma < end ? comma + 1 : end;
+    }
   } else {
-    if (v == 0) {
-      if (n > 0 && values[0] == 0)
-        return ret_str(vm, r, names[0], lens[0]);
-    } else {
-      uint32_t rest = (uint32_t)v;
-      int found[256], nf = 0;
-      for (int i = n - 1; i >= 0; i--) {
-        uint32_t cur = (uint32_t)values[i];
+    /* Takes the contained bits from the highest member down (each member taken
+       clears at least 1 bit, so at most 32) */
+    const char *found[32];
+    size_t lens[32];
+    int nf = 0;
+    uint32_t rest = (uint32_t)v;
+    for (const char *q = end; q > begin && rest != 0;) {
+      const char *p = q;
+      while (p > begin && p[-1] != ',')
+        p--;
+      if (enum_member(p, q, &name, &len, &value)) {
+        uint32_t cur = (uint32_t)value;
         if (cur != 0 && (rest & cur) == cur) {
           rest &= ~cur;
-          found[nf++] = i;
-          if (rest == 0)
-            break;
+          found[nf] = name;
+          lens[nf] = len;
+          nf++;
         }
       }
-      if (rest == 0) {
-        size_t total = 0;
-        for (int k = 0; k < nf; k++)
-          total += lens[found[k]] + (k ? 2 : 0);
-        char *out = (char *)malloc(total + 1);
-        if (!out)
-          return oom(vm);
-        size_t at = 0;
-        for (int k = nf - 1; k >= 0; k--) {
-          memcpy(out + at, names[found[k]], lens[found[k]]);
-          at += lens[found[k]];
-          if (k) {
-            memcpy(out + at, ", ", 2);
-            at += 2;
-          }
+      q = p > begin ? p - 1 : begin;
+    }
+    if (rest == 0) {
+      size_t total = 0;
+      for (int k = 0; k < nf; k++)
+        total += lens[k] + (k ? 2 : 0);
+      char *out = (char *)malloc(total + 1);
+      if (!out)
+        return oom(vm);
+      size_t at = 0;
+      for (int k = nf - 1; k >= 0; k--) {
+        memcpy(out + at, found[k], lens[k]);
+        at += lens[k];
+        if (k) {
+          memcpy(out + at, ", ", 2);
+          at += 2;
         }
-        TvmStatus st = ret_str(vm, r, out, at);
-        free(out);
-        return st;
       }
+      TvmStatus st = ret_str(vm, r, out, at);
+      free(out);
+      return st;
     }
   }
-  int nn = snprintf(numbuf, sizeof numbuf, "%d", v);
+  char numbuf[16];
+  int nn = is_unsigned ? snprintf(numbuf, sizeof numbuf, "%u", (unsigned)v)
+                       : snprintf(numbuf, sizeof numbuf, "%d", v);
   return ret_str(vm, r, numbuf, (size_t)nn);
 }
 
@@ -460,52 +478,14 @@ static TvmStatus str_bytelen(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
-/* int.Parse / float.Parse / TryParse (same as Math.TryParseInt: leading and
- * trailing whitespace, sign, decimal digits) */
+/* int.Parse / float.Parse / TryParse: the parsing in runtime/fmt. A null string
+ * fails */
 static int parse_int(const TvmString *s, int32_t *out) {
-  if (!s)
-    return 0;
-  const char *p = STR_DATA(s), *end = p + s->len;
-  while (p < end && (*p == ' ' || (*p >= 9 && *p <= 13)))
-    p++;
-  while (end > p && (end[-1] == ' ' || (end[-1] >= 9 && end[-1] <= 13)))
-    end--;
-  int neg = 0;
-  if (p < end && (*p == '+' || *p == '-')) {
-    neg = *p == '-';
-    p++;
-  }
-  if (p == end)
-    return 0;
-  int64_t v = 0;
-  for (; p < end; p++) {
-    if (*p < '0' || *p > '9')
-      return 0;
-    v = v * 10 + (*p - '0');
-    if (v > (int64_t)INT32_MAX + 1)
-      return 0;
-  }
-  v = neg ? -v : v;
-  if (v < INT32_MIN || v > INT32_MAX)
-    return 0;
-  *out = (int32_t)v;
-  return 1;
+  return s != NULL && tcs_parse_i32(STR_DATA(s), (size_t)s->len, out);
 }
 
 static int parse_float(const TvmString *s, float *out) {
-  if (!s || s->len == 0 || s->len > 200)
-    return 0;
-  char buf[256];
-  memcpy(buf, STR_DATA(s), (size_t)s->len);
-  buf[s->len] = '\0';
-  char *end;
-  double d = strtod(buf, &end);
-  while (*end == ' ' || (*end >= 9 && *end <= 13))
-    end++;
-  if (end == buf || *end)
-    return 0;
-  *out = (float)d;
-  return 1;
+  return s != NULL && tcs_parse_f32(STR_DATA(s), (size_t)s->len, out);
 }
 
 static TvmStatus int_parse(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
@@ -684,19 +664,28 @@ static TvmStatus u8_tostring(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 /* ---- Math (il-spec §13: transcendental functions use runtime/math, the rest
  * are determined by IEEE-754) ---- */
 
+/* MathF.Min / Max (IEEE 754:2019 minimum / maximum): propagates a NaN in either
+ * argument and treats -0 as less than +0.
+ * Same shape as tcs_math_min / max in the C runtime: when x != y (also when
+ * either is NaN) picks the NaN or the smaller / larger one, and when they are
+ * equal (including the +0 and -0 pair) picks by sign. */
 static TvmStatus m_min_f(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)vm;
   float x = a[0].f, y = a[1].f;
-  /* MathF.Min (IEEE 754:2019 minimum): propagates NaN and treats -0 as less
-   * than +0 */
-  r[0].f = x < y ? x : y < x ? y : (x != x || (x == 0 && signbit(x))) ? x : y;
+  if (x != y)
+    r[0].f = x != x || x < y ? x : y;
+  else
+    r[0].f = signbit(x) ? x : y;
   return TVM_OK;
 }
 
 static TvmStatus m_max_f(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   (void)vm;
   float x = a[0].f, y = a[1].f;
-  r[0].f = x > y ? x : y > x ? y : (x != x || (y == 0 && signbit(y))) ? x : y;
+  if (x != y)
+    r[0].f = x != x || x > y ? x : y;
+  else
+    r[0].f = signbit(y) ? x : y;
   return TVM_OK;
 }
 
@@ -1278,11 +1267,13 @@ static TvmStatus random_autoseed(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
 }
 
 /* Next(min, max): the upper bound is exclusive. An empty range (max == min)
- * gives min, as in .NET */
+ * gives min, as in .NET.
+ * For max < min, max is passed as the upper end unchanged to make the range
+ * empty, which faults (max - 1 overflows when max is int.MinValue) */
 static TvmStatus random_next(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   NONNULL_ARG(a[0].p, "");
   int32_t min = a[1].i, max = a[2].i;
-  return rand_range_(vm, rand_state(a[0].p), min, max == min ? min : max - 1,
+  return rand_range_(vm, rand_state(a[0].p), min, max > min ? max - 1 : max,
                      &r[0].i);
 }
 
@@ -1333,6 +1324,16 @@ static TvmStatus set_remove(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
   return TVM_OK;
 }
 
+/* ---- switch expression ---- */
+
+/* A switch expression where no arm matches (.NET's SwitchExpressionException)
+ */
+static TvmStatus switch_nomatch(TvmVm *vm, TvmSlot *a, TvmSlot *r) {
+  (void)a;
+  (void)r;
+  return tvm_fault_msg(vm, "switch expression has no matching arm");
+}
+
 /* ---- Table ---- */
 
 const TvmIntrinsic tvm_intrinsics[] = {
@@ -1360,6 +1361,7 @@ const TvmIntrinsic tvm_intrinsics[] = {
     {"float.parse", "s", "f", float_parse},
     {"float.tryparse", "s", "bf", float_tryparse},
     {"io.write", "s", "", io_write},
+    {"switch.nomatch", "", "", switch_nomatch},
     {"os.getenv", "s", "s", os_getenv},
     {"char.cast", "i", "i", char_cast},
     {"char.fromutf32", "i", "s", char_from_utf32},

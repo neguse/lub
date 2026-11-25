@@ -24,8 +24,9 @@ public sealed class FunctionCompiler
     private List<int> _temps = new List<int>();
     private Dictionary<string, List<int>> _freeBlocks = new Dictionary<string, List<int>>();
     private List<BlockUse> _blocksInUse = new List<BlockUse>();
+    // The enclosing loops and break scopes (the innermost is last)
+    // break jumps to the last target, and continue jumps to the innermost loop that has a continue
     private List<LoopLabels> _loops = new List<LoopLabels>();
-    private List<Label> _breakScopes = new List<Label>();
     private List<IifeFrame> _iifes = new List<IifeFrame>();
     /// <summary>Variables appended after the return values at each return (the self of a struct instance method, out arguments).</summary>
     private List<Var> _extraRets = new List<Var>();
@@ -802,16 +803,23 @@ public sealed class FunctionCompiler
         }
         else if (s is IlBreak)
         {
-            if (_loops.Count == 0 && _breakScopes.Count == 0)
+            if (_loops.Count == 0)
             {
                 CFail.Report("break outside loop");
                 return;
             }
-            Jump(Op.JMP, _breakScopes.Count > 0 ? _breakScopes[_breakScopes.Count - 1] : _loops[_loops.Count - 1].Break);
+            Jump(Op.JMP, _loops[_loops.Count - 1].Break);
         }
         else if (s is IlContinue)
         {
-            Jump(Op.JMP, _loops[_loops.Count - 1].Continue);
+            Label? next = null;
+            for (int i = _loops.Count - 1; i >= 0 && next == null; i--) next = _loops[i].Continue;
+            if (next == null)
+            {
+                CFail.Report("continue outside loop");
+                return;
+            }
+            Jump(Op.JMP, next);
         }
         else if (s is IlReturn iret && _iifes.Count > 0)
         {
@@ -856,9 +864,9 @@ public sealed class FunctionCompiler
         else if (s is IlBreakScope bs)
         {
             var end = new Label();
-            _breakScopes.Add(end);
+            _loops.Add(new LoopLabels(end, null));
             Block(bs.Body);
-            _breakScopes.RemoveAt(_breakScopes.Count - 1);
+            _loops.RemoveAt(_loops.Count - 1);
             Mark(end);
         }
         else
@@ -935,8 +943,11 @@ public sealed class FunctionCompiler
         return b;
     }
 
-    /// <summary>Numeric for (IlNumericFor: increments v by 1 from start to limit). limit is evaluated only once, and
-    /// when the body rewrites v, a hidden counter drives the loop (il-reference: IlNumericFor).</summary>
+    /// <summary>Numeric for (IlNumericFor: sets v to start and, while v is less than limit (at most limit when Inclusive), repeats, incrementing v by 1 after the body).
+    /// limit is evaluated only once.
+    /// After the increment it still compares with the C# condition, and the increment wraps (il-reference: IlNumericFor).
+    /// The body does not write to v (the builder guarantees it), so v is the counter register itself.
+    /// Only when the same name is captured in the function or clashes with a local of the body, v in the body is a per-iteration copy of the counter</summary>
     private void NumericFor(IlNumericFor nf)
     {
         _scopes.Add(new Dictionary<string, Var>());
@@ -949,7 +960,7 @@ public sealed class FunctionCompiler
         var top = new Label();
         var cont = new Label();
         var exit = new Label();
-        Jump(Op.JF_LE_I32, exit, counter.Reg, limit.Reg);
+        Jump(nf.Inclusive ? Op.JF_LE_I32 : Op.JF_LT_I32, exit, counter.Reg, limit.Reg);
         Mark(top);
         TracePoint(nf.Origin);
         _scopes.Add(new Dictionary<string, Var>());
@@ -965,9 +976,8 @@ public sealed class FunctionCompiler
         _loops.RemoveAt(_loops.Count - 1);
         _scopes.RemoveAt(_scopes.Count - 1);
         Mark(cont);
-        Jump(Op.JT_EQ_I32, exit, counter.Reg, limit.Reg);
         Emit(Op.ADDI_I32, counter.Reg, counter.Reg, 1);
-        Jump(Op.JMP, top);
+        Jump(nf.Inclusive ? Op.JT_LE_I32 : Op.JT_LT_I32, top, counter.Reg, limit.Reg);
         Mark(exit);
         _scopes.RemoveAt(_scopes.Count - 1);
     }
@@ -1529,6 +1539,7 @@ public sealed class FunctionCompiler
             || callee == "__tcs_csub" || callee == "__tcs_cmul" || callee == "__tcs_cneg" || callee == "Math.CompareTo"
             || callee == "Dict.Count") return VType.Int;
         if (callee == "__tcs_str" || callee == "__tcs_fstr" || callee == "__tcs_bstr" || callee == "__tcs_nstr") return VType.String;
+        if (callee == "__tcs_nonnull") return TypeOf(c.Args[0]);
         if (callee == "__tcs_writeline" || callee == "List.Add") return VType.Void;
         if (callee == "List.Sort" && c.Args.Count == 2) return VType.Void;
         if (callee == "Dict.ContainsKey") return VType.Bool;
@@ -2668,6 +2679,15 @@ public sealed class FunctionCompiler
             Emit(Op.CNEG_I32, d.Reg, v.Reg);
             return d;
         }
+        // Returns the reference value as is, and faults when it is null
+        if (c.Callee == "__tcs_nonnull")
+        {
+            var v = Expr(c.Args[0], null, false);
+            Emit(Op.NNULL, v.Reg);
+            if (dest == null) return v;
+            Store(dest, v);
+            return dest;
+        }
         if (c.Callee == "__tcs_trunc")
         {
             var v = ExprAs(c.Args[0], VType.Float, null);
@@ -3676,6 +3696,7 @@ public sealed class FunctionCompiler
         if (name == "__tcs_iparse") return new LibCall("int.parse", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "__tcs_char") return new LibCall("char.cast", P4Lists.Types1(I), P4Lists.Types1(I));
         if (name == "__tcs_write") return new LibCall("io.write", P4Lists.Types1(S), none);
+        if (name == "__tcs_nomatch") return new LibCall("switch.nomatch", none, none);
         if (name == "__tcs_getenv") return new LibCall("os.getenv", P4Lists.Types1(S), P4Lists.Types1(S));
         if (name == "TinySystem.Utf8.RuneCount") return new LibCall("utf8.runecount", P4Lists.Types1(S), P4Lists.Types1(I));
         if (name == "TinySystem.Utf8.RuneSubstring") return new LibCall("utf8.runesubstring", P4Lists.Types3(S, I, I), P4Lists.Types1(S));
@@ -4196,10 +4217,7 @@ public sealed class FunctionCompiler
         _blocksInUse.Clear();
         var savedLoops = new List<LoopLabels>();
         foreach (var lp in _loops) savedLoops.Add(lp);
-        var savedScopes = new List<Label>();
-        foreach (var bs in _breakScopes) savedScopes.Add(bs);
         _loops.Clear();
-        _breakScopes.Clear();
         var end = new Label();
         _iifes.Add(new IifeFrame(d, end, type));
         _scopes.Add(new Dictionary<string, Var>());
@@ -4208,7 +4226,6 @@ public sealed class FunctionCompiler
         _scopes.RemoveAt(_scopes.Count - 1);
         _iifes.RemoveAt(_iifes.Count - 1);
         foreach (var lp in savedLoops) _loops.Add(lp);
-        foreach (var bs in savedScopes) _breakScopes.Add(bs);
         Mark(end);
         EndStatement();
         foreach (var r in savedTemps) _temps.Add(r);
@@ -5153,13 +5170,13 @@ public sealed class BlockUse
     }
 }
 
-/// <summary>break and continue targets of a loop.</summary>
+/// <summary>break and continue targets of a loop or a break scope (IlBreakScope). A break scope has no continue (null).</summary>
 public sealed class LoopLabels
 {
     public Label Break;
-    public Label Continue;
+    public Label? Continue;
 
-    public LoopLabels(Label brk, Label cont)
+    public LoopLabels(Label brk, Label? cont)
     {
         Break = brk;
         Continue = cont;

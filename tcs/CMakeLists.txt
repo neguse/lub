@@ -22,7 +22,8 @@ add_executable(tcsvm
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/model/tcs_walk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/utf8/tcs_utf8.c
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/fmt/f2s.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/fmt/printf.c)
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/fmt/printf.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/fmt/parse.c)
 target_link_libraries(tcsvm tcs_math)
 set_property(TARGET tcsvm PROPERTY C_STANDARD 11)
 if(MSVC)

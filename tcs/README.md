@@ -111,7 +111,7 @@ subcommand (`check` / `vm` / `c`) の無い呼び出しは usage を stderr に�
 `tcs vm` の option (`--export`、`--watch`、`--reload-from`、`--trace`、`--dump-il` など) は `tcs vm --help` と [`tcsvm/README.md`](tcsvm/README.md)、`tcs c` の option (`--lib`、`--digest-f32`、`--vm-host` など) は `tcs c --help` と [`tcs2c/README.md`](tcs2c/README.md)。
 
 `Math` の超越関数 (Sin / Cos / Tan / Exp / Log / Atan2 / Pow) は `runtime/math` の C 実装で、tcs VM、C、.NET (`TinySystem/TinySystem.props`) で bit 単位で同じ結果になる。
-float の文字列化は `runtime/fmt`、`TinySystem.Text` (`RuneCount` / `RuneSubstring` / `Utf8Bytes`) と `EnumerateRunes` は `runtime/utf8` の実装で、.NET と同じ結果を返す。
+float の文字列化と `int` / `float` の `Parse` / `TryParse` は `runtime/fmt`、`TinySystem.Text` (`RuneCount` / `RuneSubstring` / `Utf8Bytes`) と `EnumerateRunes` は `runtime/utf8` の実装で、.NET と同じ結果を返す。
 
 ### 準拠チェック
 

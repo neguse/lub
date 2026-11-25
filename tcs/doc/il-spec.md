@@ -19,7 +19,10 @@ module / class / record class / enum / interface / method / field。
 
 - property・indexer・event・ループ構文・パターン・式位置の制御フロー・
   文字列補間は IL に存在しない（構築時 lowering 済み。examples 決定 1-2）
-- enum は i32 定数の集合。実行時表現は i32
+- enum は i32 定数の集合。実行時表現は i32。
+  基底型に依る意味は IL を作るときに i32 の演算にする。
+  8 / 16 bit の基底型への変換と演算の結果は基底型の範囲へ wrap する (符号なしは `v & 0xFF` / `v & 0xFFFF`、符号付きは `(v << 24) >> 24` / `(v << 16) >> 16`)。
+  uint の enum の大小比較は両方の operand の符号の bit を反転してから比べ (`(a ^ int.MinValue) < (b ^ int.MinValue)`)、比較なしの `List.Sort` は同じ比べ方の比較関数を渡す `List.Sort(list, comparison)` にする
 - 入れ子の型は外側の型と独立した型で、名前に外側の型の名前を `_` でつなぐ（`Outer_Inner`）
 - interface は値を作らない型。class / record class は実装する interface の一覧を実行時に持ち、
   interface を対象とする type test（IlIsType）はこの一覧で判定する。
@@ -105,6 +108,8 @@ goto は無い。例外機構は無い — try / throw はサブセット外（T
   abstract / override / sealed / protected / new による隠蔽、base は build を
   止める TCS1001）。多態は interface の実装と type test で書く
 - class の参照比較（operator 定義が無い `==`）は identity 比較
+- 呼び出しの受け手 (class の instance method、interface、delegate、TinySystem.Random) の null は、受け手と引数を評価した後の呼び出しで fault する。
+  class の field への代入 (`o.F = v`) の受け手と Dictionary への代入 (`d[k] = v`) の受け手の null も、値を評価した後に fault する (C# と同じ順序)
 
 ## 10. place と値型（struct / record struct。field + member + static + operator +
 ctor。override は ToString だけ、T246 で契約完成）
@@ -144,6 +149,9 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
 - out parameter は呼び出しごとの新しい変数で、呼び出しの正常な完了で値が渡る。自作メソッドの受け手は `out var` / `out _` と、呼び出しの中から見えない局所変数 (lambda に capture されない物) だけなので (TCS1001)、out を別名で観測する手段は無い。IL は method の out parameter を `ExMethod.OutParameters` に並べ (本文は parameter に代入する)、呼び出しを `IlMultiAssign` (受け手は [戻り値, out...]、値は out を除いた引数の呼び出し) で表す。tcs VM は戻り値の後ろの register で、C はポインタで写す
 - struct 配列の要素は互いに独立した place。連続メモリ配置は backend 表現の
   自由であり IL の意味論ではない
+- 値型の変数 (local / field / 配列の要素とその struct の field) を受け手にした組み込みの method (int / float の `CompareTo`、`T?` の `GetValueOrDefault(x)`) は、受け手の格納先を決めてから引数を評価し、その変数の今の値で呼ぶ (C# §12.6.6)。
+  格納先の null の object と範囲外の添字は引数より先に fault する。
+  IL は受け手の値を引数とする `IlCall` なので、引数が格納先を書き換えうるときだけ、参照型の prefix と添字を temp に固定して格納先を一度読み、引数を temp に評価してから格納先を読み直す IIFE にする
 - struct の instance member は静的ディスパッチの自由関数
   `IlCall("S.M", [receiver, args...])`。receiver が C# の「変数」(local /
   parameter / field / 配列要素 / this) なら place をそのまま渡し、変異は
@@ -189,6 +197,8 @@ host は打ち切られた後に次の entry を呼べる: tcs VM は `tvm_call`
   switch 式で一致 arm が無い場合。C# の SwitchExpressionException 相当 —
   例外がサブセット外のため fault として定義）、
   runtime intrinsic が定義する error
+- IL の switch 式の if の連鎖は、discard の arm が無ければ else に `IlCall("__tcs_nomatch")` の文を置く。
+- string の明示の `ToString()` は `IlCall("__tcs_nonnull", [s])` で、参照の値をそのまま返し、null なら fault する (補間・連結・Console の null の string は空文字列のまま)
 - 同一入力・同一プログラムなら、どの backend・どの lowering モードでも
   同一の観測列の後に fault する（fault の位置も観測の一部）
 - fault 時の診断情報（メッセージ、source 位置）は品質事項であり適合条件では
@@ -224,7 +234,16 @@ host は打ち切られた後に次の entry を呼べる: tcs VM は `tvm_call`
   `D` は符号を除いて p 桁以上。`X` は 32 bit の 2 の補数の 16 進で p 桁以上。`T?` の値なしは空文字列。
   runtime/fmt の同じ実装が文字列を作る。
   それ以外の書式は printf の書式に写す（`IlCall("__tcs_format", [fmt, v])`）
+- 文字列→数値（`int.Parse` / `float.Parse` は `IlCall("__tcs_iparse")` / `IlCall("__tcs_fparse")`、TryParse は `Math.TryParseInt` / `Math.TryParseFloat`）は、.NET の `int.Parse(string)` / `float.Parse(string)`（InvariantCulture）と同じ文字列を受けて同じ値を返す。
+  int は NumberStyles.Integer、float は NumberStyles.Float | AllowThousands（小数点、指数、小数点より前で数字の後の桁区切り `,`）。
+  前後の空白は空白と HT、LF、VT、FF、CR で、末尾の NUL は読み飛ばす。
+  float は数として読めなければ、前後の空白（`char.IsWhiteSpace`）を除いた `Infinity` / `NaN` を大文字小文字を問わずに受け、前に符号を 1 つ置ける。
+  float の値は 10 進の正確な値に最も近い f32（ちょうど中間は仮数が偶数の方、範囲を超えれば ±∞）。
+  runtime/fmt の 1 つの C の実装 (tcs VM は link し、C は生成 C に埋め込む) が読む。
+  Parse は読めない文字列と int の範囲を超える値で fault する（.NET は FormatException / OverflowException）
 - enum (と enum の `T?`) の文字列化は `IlCall("String.FormatEnum", [v, spec])`。spec は string literal で、`名前:値` を `,` で並べる。`[Flags]` (と書式 "F") は先頭に `*` を付けて全 member を .NET の EnumInfo と同じ並び (値の符号なし昇順) で持ち、それ以外は値ごとに .NET が選ぶ名前を 1 つ持つ。値は実行時の 32 bit の 2 の補数 (uint の 0x80000000 は int.MinValue)。`T?` の値なしは空文字列
+  uint の enum の spec は名前の表の前 (`*` があればその後) に `+` を置き、表の名前で表せない値を符号なしの 10 進で書く (それ以外の enum は符号付き)。
+  書式 D は名前の表の無い spec (`""`、uint の enum は `"+"`) の `String.FormatEnum` で、値を数で書く
 - List.Sort の結果と比較関数の呼び出し列 (回数・順・引数) は .NET の introsort (dotnet/runtime の ArraySortHelper<T>。比較なしの float は NaN を先頭に寄せてから残りを並べる) と同じで、同値の要素の並びも一致する。
   比較関数が不整合で走査が区間の外に出る位置で、.NET は例外、tcs は fault になる
 - 数学関数は全 backend とプラットフォームでビット一致する。Sqrt / Floor / Ceil / Abs / Round は IEEE-754 で値が決まる。超越関数 (Sin / Cos / Tan / Exp / Log / Atan2 / Pow) は runtime/math の 1 つの C の実装 (tcs VM は link し、C は生成 C に埋め込む。.NET は TinySystem.Math の同じ手順の C# 版) が値を決める。
@@ -235,7 +254,7 @@ host は打ち切られた後に次の entry を呼べる: tcs VM は `tvm_call`
   `String.Trim` と引数なしの `String.Split` の空白も runtime/utf8 が決め、.NET の `char.IsWhiteSpace` と同じ集合
 - Random の合意 PRNG は xoshiro256** (64 bit の状態 4 つ) で、tcs VM (`tcsvm/vm/tcsvm_lib.c`) と C (`runtime/core/tcs_lib.c` の `tcs_rand_*`) が同じ手順を持つ (T245)。
   seed n は状態を `{n, 0xff, 0, 0}` にして先頭の 16 個の出力を捨てる。
-  整数の `[low, up]` は出力の下位 32 bit を `up - low` を覆う最小の `2^k - 1` で mask し、`up - low` を超えたら次の出力で取り直して `low` を足す (32 bit の演算。`low > up` は fault)。`Next()` は `[0, 2147483646]`、`Next(max)` は `Next(0, max)`、`Next(min, max)` は `[min, max - 1]` (空の範囲 `max == min` は min)、`Range(min, max)` は `[min, max]`。
+  整数の `[low, up]` は出力の下位 32 bit を `up - low` を覆う最小の `2^k - 1` で mask し、`up - low` を超えたら次の出力で取り直して `low` を足す (32 bit の演算。`low > up` は fault)。`Next()` は `[0, 2147483646]`、`Next(max)` は `Next(0, max)`、`Next(min, max)` は `[min, max - 1]` (空の範囲 `max == min` は min、`max < min` は fault)、`Range(min, max)` は `[min, max]`。
   float (`NextFloat` / `NextSingle`) は出力の上位 24 bit に 2^-24 を掛けた `[0, 1)` の値。
   `Random` は System.Random と同じ形 (T248): `Random.Shared` は process に 1 つの instance で、`Random.Seed(n)` は Shared を `new Random(n)` と同じ状態にする。`new Random(seed)` は同じアルゴリズムの独立 instance (tcs VM は状態を持つ object、C は GC object `TcsRandom`)。
   IL は `IlNewObj("TinySystem.Random", [seed?])` と `IlInvoke(r, Next | NextFloat | NextSingle | Range, args)`、`IlField(TinySystem.Random, Shared)`、`IlCall("TinySystem.Random.Seed", [n])`。同じ seed なら instance と Shared、tcs VM と C の列が bit 一致する。

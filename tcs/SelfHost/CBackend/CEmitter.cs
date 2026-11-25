@@ -259,8 +259,9 @@ public sealed class CEmitter
 
         _output.Add(RuntimePrelude());
         _output.Add(RuntimeMath());
-        _output.Add(RuntimeFmt());
+        // Number parsing in runtime/fmt uses the whitespace of runtime/utf8, so utf8 goes first
         _output.Add(RuntimeUtf8());
+        _output.Add(RuntimeFmt());
         _output.Add(RuntimeCore());
         _output.Add(RuntimeGc());
         _output.Add(RuntimeCollections());
@@ -817,9 +818,12 @@ public sealed class CEmitter
                         CFail.Report("field receiver is not a class reference");
                         return;
                     }
+                    // Evaluate the receiver and the value before checking the receiver for null (C# order)
                     var temp = Temp("object");
-                    Line(receiverType.CName + " " + temp + " = (" + receiverType.CName + ")tcs_nonnull(" + RenderExpr(field.Recv) + ");");
-                    Line(temp + "->" + Names.Field(field.Name) + " = " + value + ";");
+                    var fieldValue = Temp("stored");
+                    Line(receiverType.CName + " " + temp + " = " + RenderExpr(field.Recv) + ";");
+                    Line(targetType.CName + " " + fieldValue + " = " + value + ";");
+                    Line("((" + receiverType.CName + ")tcs_nonnull(" + temp + "))->" + Names.Field(field.Name) + " = " + fieldValue + ";");
                     if (NeedsBarrier(targetType)) Line("tcs_wb(" + temp + ");");
                     return;
                 }
@@ -829,12 +833,15 @@ public sealed class CEmitter
                     {
                         var slotType = RequireDict(index.Recv, out CType dictType);
                         CheckAssignable(slotType, assign.Value, "dict store");
-                        // Evaluate the key before the value (C# order; C's `=` does not define the evaluation order of its sides)
+                        // Evaluate the receiver, the key and the value before taking the storage location (C# order; C's `=` does not define the evaluation order of its sides).
+                        // tcs_dict_put checks for a null receiver
                         var dictTemp = Temp("dict");
                         var key = Temp("key");
+                        var dictValue = Temp("stored");
                         Line("TcsDict *" + dictTemp + " = " + RenderExpr(index.Recv) + ";");
                         Line(dictType.KeyType!.CName + " " + key + " = " + RenderExpr(index.Idx) + ";");
-                        Line("*(" + slotType.CName + " *)tcs_dict_put(" + dictTemp + ", " + DictKeyArgs(dictType.KeyType!, key) + ") = " + value + ";");
+                        Line(slotType.CName + " " + dictValue + " = " + value + ";");
+                        Line("*(" + slotType.CName + " *)tcs_dict_put(" + dictTemp + ", " + DictKeyArgs(dictType.KeyType!, key) + ") = " + dictValue + ";");
                         return;
                     }
                     var sequenceType = RequireSequence(index);
@@ -1029,13 +1036,13 @@ public sealed class CEmitter
     }
 
     private string RuntimeMath() => EmbedRuntime("math", "TCS_MATH_STATIC", "tcs_math.h tcs_math_internal.h atan2f.c exppowf.c log10f.c log2f.c logf.c sincosf.c tanf.c");
-    private string RuntimeFmt() => EmbedRuntime("fmt", "TCS_FMT_STATIC", "tcs_fmt.h f2s.c printf.c");
+    private string RuntimeFmt() => EmbedRuntime("fmt", "TCS_FMT_STATIC", "tcs_fmt.h f2s.c printf.c parse.c");
     // Type descriptor parser and layout (doc/object-model.md). Used only by TCS_VERIFY_TYPES builds
     private string RuntimeModel() => EmbedRuntime("model", "TCS_MODEL_STATIC", "tcs_model.h tcs_model.c");
     private string RuntimeUtf8() => EmbedRuntime("utf8", "TCS_UTF8_STATIC", "tcs_utf8.h tcs_utf8.c");
     // Body of the tcs2c runtime (runtime/core; C shared with the VM per X-2 in object-model §10.2). A fragment placed as is in the generated C
     private string RuntimePrelude() => RuntimeFile("core/tcs_prelude.h");
-    // Uses tcs_format_f32 from runtime/fmt, so it goes after the embedded runtime (Math, Fmt, Utf8)
+    // Uses tcs_format_f32 from runtime/fmt, so it goes after the embedded runtime (Math, Utf8, Fmt)
     private string RuntimeCore() => RuntimeFile("core/tcs_core.c");
     private string RuntimeGc() => RuntimeFile("core/tcs_gc.c");
     private string RuntimeCollections() => RuntimeFile("core/tcs_collections.c");
@@ -1047,7 +1054,7 @@ public sealed class CEmitter
     {
         var list = new List<string>();
         foreach (var n in "tcs_math.h tcs_math_internal.h atan2f.c exppowf.c log10f.c log2f.c logf.c sincosf.c tanf.c".Split(' ')) list.Add("math/" + n);
-        foreach (var n in "tcs_fmt.h f2s.c printf.c".Split(' ')) list.Add("fmt/" + n);
+        foreach (var n in "tcs_fmt.h f2s.c printf.c parse.c".Split(' ')) list.Add("fmt/" + n);
         foreach (var n in "tcs_model.h tcs_model.c".Split(' ')) list.Add("model/" + n);
         foreach (var n in "tcs_utf8.h tcs_utf8.c".Split(' ')) list.Add("utf8/" + n);
         foreach (var n in "tcs_prelude.h tcs_core.c tcs_gc.c tcs_collections.c tcs_strings.c tcs_lib.c".Split(' ')) list.Add("core/" + n);
@@ -2025,6 +2032,8 @@ public sealed class CEmitter
                 "tcs_checked_" + Strings.From(callee, ContractFacts.Len("__tcs_c")), type, values);
         }
         if (callee == "__tcs_cneg") return "tcs_checked_neg(" + RenderExpr(call.Args[0]) + ")";
+        if (callee == "__tcs_nonnull") return "((" + type.CName + ")tcs_nonnull(" + RenderExpr(call.Args[0]) + "))";
+        if (callee == "__tcs_nomatch") return "tcs_fault(\"switch-no-match\")";
         if (callee == "__tcs_writeline") return RenderPrint(call);
         if (callee == "__tcs_write")
         {
@@ -2062,6 +2071,19 @@ public sealed class CEmitter
             if (CFail.Failed) return CType.I32;
             RequireType(CType.I32, TypeOf(call.Args[0]), call.Callee);
             return CType.I32;
+        }
+        // Returns the reference value as is, and faults when it is null
+        if (call.Callee == "__tcs_nonnull")
+        {
+            RequireArity(call.Callee, call.Args.Count, 1);
+            if (CFail.Failed) return CType.Void;
+            return TypeOf(call.Args[0]);
+        }
+        // The fault when no arm of a switch expression matches
+        if (call.Callee == "__tcs_nomatch")
+        {
+            RequireArity(call.Callee, call.Args.Count, 0);
+            return CType.Void;
         }
         if (call.Callee == "__tcs_idiv" || call.Callee == "__tcs_irem"
             || call.Callee == "__tcs_cadd" || call.Callee == "__tcs_csub" || call.Callee == "__tcs_cmul")
@@ -2344,8 +2366,7 @@ public sealed class CEmitter
             TypeOfDynCall(call);
             if (CFail.Failed) return "";
             var values = new List<TypedValue>();
-            values.Add(new TypedValue(closureType,
-                "(TcsClosure *)tcs_nonnull(" + RenderExpr(call.Callee) + ")"));
+            values.Add(new TypedValue(closureType, "(TcsClosure *)" + RenderExpr(call.Callee)));
             for (var i = 0; i < call.Args.Count; i++)
                 values.Add(new TypedValue(closureType.Parameters![i],
                     RenderCoerced(call.Args[i], closureType.Parameters[i])));
@@ -2363,7 +2384,8 @@ public sealed class CEmitter
             callParts.Add(closTemp + "->cells");
             foreach (var argName in argNames) callParts.Add(argName);
             var callArgs = string.Join(", ", callParts);
-            return "({ " + string.Join("", declarations) +
+            // A null delegate is checked after the arguments are evaluated and before the call (C# order)
+            return "({ " + string.Join("", declarations) + "tcs_nonnull(" + closTemp + "); " +
                 "((" + ClosureFnPtrType(closureType, "") + ")" + closTemp + "->fn)(" + callArgs + "); })";
         }
         var fact = ParseDynCallee(call.Callee);
@@ -2416,7 +2438,7 @@ public sealed class CEmitter
         {
             var receiverType = CType.Ref(fact.ClassName);
             values.Add(new TypedValue(receiverType,
-                "(" + receiverType.CName + ")tcs_nonnull(" + RenderExpr(receiver) + ")"));
+                "(" + receiverType.CName + ")" + RenderExpr(receiver)));
         }
         for (var i = 0; i < complete.Count && i < fact.Parameters.Count; i++)
             values.Add(new TypedValue(fact.Parameters[i].Type,
@@ -2424,12 +2446,14 @@ public sealed class CEmitter
         string target;
         if (function != null) target = function;
         else target = Names.Method(fact.ClassName, fact.Name);
-        return RenderOrderedCall(target, fact.ReturnType, values, outArguments);
+        return RenderOrderedCall(target, fact.ReturnType, values, outArguments, receiver != null);
     }
 
+    // Evaluates the values into temps in order, then calls.
+    // With checkReceiver, the first value (the receiver) is checked for null at the call, after all arguments are evaluated (C# order)
     private string RenderOrderedCall(string function, CType returnType,
         List<TypedValue> values,
-        List<string>? outArguments = null)
+        List<string>? outArguments = null, bool checkReceiver = false)
     {
         if (values.Count == 0 && (outArguments == null || outArguments.Count == 0)) return function + "()";
         var declarations = new List<string>();
@@ -2443,7 +2467,8 @@ public sealed class CEmitter
             declarations.Add(" = ");
             declarations.Add(item.Value);
             declarations.Add("; ");
-            arguments.Add(temp);
+            if (checkReceiver && arguments.Count == 0) arguments.Add("(" + item.Type.CName + ")tcs_nonnull(" + temp + ")");
+            else arguments.Add(temp);
         }
         if (outArguments != null)
         {
@@ -2527,7 +2552,7 @@ public sealed class CEmitter
         _indent++;
         Line("int32_t " + start + " = " + RenderExpr(loop.Start) + ";");
         Line("int32_t " + limit + " = " + RenderExpr(loop.Limit) + ";");
-        Line("for (int32_t " + variable.CName + " = " + start + "; " + variable.CName + " <= " + limit + "; " +
+        Line("for (int32_t " + variable.CName + " = " + start + "; " + variable.CName + (loop.Inclusive ? " <= " : " < ") + limit + "; " +
             variable.CName + " = " + variable.CName + " + INT32_C(1)) {");
         _indent++;
         PushScope();
@@ -3041,10 +3066,6 @@ public sealed class CEmitter
         return "NULL";
     }
 
-    // Element kind for tcs_hashset_new (0 = i32, 1 = string, 2 = host handle, 3 = class identity)
-    private string HashSetKeyKind(CType element) =>
-        element.Kind == CTypeKind.Ref && !_facts.IsDictKey(element) ? "3" : DictKeyKind(element);
-
     private CType TypeOfHashSetOp(IlCall call)
     {
         var name = Strings.From(call.Callee, ContractFacts.Len("TcsHashSet."));
@@ -3472,17 +3493,9 @@ public sealed class CEmitter
     private static string DictKeyArgs(CType keyType, string rendered)
     {
         if (keyType.Kind == CTypeKind.String) return $"0, {rendered}";
-        // handle key: the pointer is carried in the key_s slot (traced by the GC)
+        // class key: the pointer is carried in the key_s slot (traced by the GC)
         if (keyType.Kind == CTypeKind.Ref) return $"0, (TcsString *)(void *){rendered}";
         return $"{rendered}, NULL";
-    }
-
-    // Key kind for tcs_dict_new (0 = i32, 1 = string, 2 = host handle)
-    private static string DictKeyKind(CType keyType)
-    {
-        if (keyType.Kind == CTypeKind.String) return "1";
-        if (keyType.Kind == CTypeKind.Ref) return "2";
-        return "0";
     }
 
     // On failure, set dict to a type that has values (int → void) and return void
@@ -3550,7 +3563,7 @@ public sealed class CEmitter
         var dictTemp = Temp("dict");
         var sb = new List<string>();
         sb.Add($"TcsDict *{dictTemp} = tcs_typed(tcs_dict_new(" +
-            $"{DictKeyKind(type.KeyType!)}, " +
+            $"{_facts.KeyKind(type.KeyType!)}, " +
             $"sizeof({type.Element!.CName}), {LayoutRef(type.Element)}), {RuntimeTypeId(type)}); ");
         // Evaluate key → value in that order, as in C#
         foreach (var entry in table.Entries)
@@ -4286,13 +4299,12 @@ public sealed class CEmitter
                     var sequence = TypeOf(args[1]);
                     var sep = Temp("sep");
                     var seq = Temp("enum_values");
-                    var flags = table.Flags ? "true" : "false";
                     var sepValue = RenderExpr(args[0]);
                     var seqValue = RenderExpr(args[1]);
                     return $"({{ TcsString *{sep} = {sepValue}; " +
                         $"{sequence.CName} {seq} = ({sequence.CName})tcs_nonnull({seqValue}); " +
                         $"tcs_string_join_enum({sep}, (const int32_t *){seq}->data, {seq}->length, " +
-                        $"{table.Names}, {table.Values}, {table.Count}, {flags}); }})";
+                        $"{EnumTableArgs(table)}); }})";
                 }
             case "FormatFloat": return RenderNumberFormat(call, FloatFormatLetters, "tcs_string_f32_spec");
             case "FormatInt": return RenderNumberFormat(call, IntFormatLetters, "tcs_string_i32_spec");
@@ -4470,7 +4482,7 @@ public sealed class CEmitter
     {
         var name = Strings.From(call.Callee, Strings.ByteLength("Random."));
         if (name != "Seed")
-            return RenderRandomMethod("tcs_random_shared()", name, call.Args);
+            return RenderRandomMethod("tcs_random_shared()", false, name, call.Args);
         return $"tcs_rand_seed(tcs_random_shared(), (uint32_t)({RenderExpr(call.Args[0])}), 0)";
     }
 
@@ -4522,38 +4534,40 @@ public sealed class CEmitter
         }
     }
 
-    // Bind the receiver to a temp first to preserve evaluation order
-    private string RenderRandomMethod(string receiver, string name,
+    // Bind the receiver to a temp first to preserve evaluation order.
+    // When nullable (an instance receiver), null is checked after the arguments are evaluated (C# order)
+    private string RenderRandomMethod(string receiver, bool nullable, string name,
         List<IlExpr> args)
     {
         var type = TypeOfRandomMethod(name, args);
         if (CFail.Failed) return "";
         var r = Temp("rng");
         var head = $"TcsRandom *{r} = {receiver}; ";
+        var checkedR = nullable ? $"(TcsRandom *)tcs_nonnull({r})" : r;
         switch (name)
         {
             case "NextFloat":
             case "NextSingle":
-                return $"({{ {head}tcs_rand_float({r}); }})";
+                return $"({{ {head}tcs_rand_float({checkedR}); }})";
             case "Next":
                 {
                     // Next() = tcs_rand_range(0, 2147483646), Next(max) =
-                    // Next(0, max), Next(min, max) = tcs_rand_range(min, max - 1) (min for an empty range)
+                    // Next(0, max), Next(min, max) = tcs_rand_below (the upper bound is exclusive; min for an empty range, a fault for max < min)
                     if (args.Count == 0)
-                        return $"({{ {head}tcs_rand_range({r}, 0, INT32_C(2147483646)); }})";
+                        return $"({{ {head}tcs_rand_range({checkedR}, 0, INT32_C(2147483646)); }})";
                     if (args.Count == 1)
                     {
                         var one = new List<TypedValue>();
                         one.Add(new TypedValue(CType.Random, r));
                         one.Add(new TypedValue(CType.I32, "0"));
                         one.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
-                        return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, one) + "; })";
+                        return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, one, null, nullable) + "; })";
                     }
                     var two = new List<TypedValue>();
                     two.Add(new TypedValue(CType.Random, r));
                     two.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
                     two.Add(new TypedValue(CType.I32, RenderExpr(args[1])));
-                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, two) + "; })";
+                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_below", type, two, null, nullable) + "; })";
                 }
             case "Range":
                 {
@@ -4561,7 +4575,7 @@ public sealed class CEmitter
                     values.Add(new TypedValue(CType.Random, r));
                     values.Add(new TypedValue(CType.I32, RenderExpr(args[0])));
                     values.Add(new TypedValue(CType.I32, RenderExpr(args[1])));
-                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_range", type, values) + "; })";
+                    return $"({{ {head}" + RenderOrderedCall("tcs_rand_range", type, values, null, nullable) + "; })";
                 }
             default:
                 CFail.Report($"unsupported Random member: {name}");
@@ -4682,19 +4696,18 @@ public sealed class CEmitter
                 }
             case "Clamp":
                 {
-                    var v = Temp("clamp_v"); var lo = Temp("clamp_lo"); var hi = Temp("clamp_hi");
-                    return $"({{ {type.CName} {v} = {RenderExpr(args[0])}; {type.CName} {lo} = " +
-                        $"{RenderExpr(args[1])}; {type.CName} {hi} = {RenderExpr(args[2])}; " +
-                        $"{v} < {lo} ? {lo} : {v} > {hi} ? {hi} : {v}; }})";
+                    var values = new List<TypedValue>();
+                    for (var i = 0; i < 3; i++) values.Add(new TypedValue(type, RenderExpr(args[i])));
+                    return RenderOrderedCall(type.Kind == CTypeKind.F32 ? "tcs_math_clamp_f32" : "tcs_math_clamp_i32", type, values);
                 }
             case "Abs":
-                if (type.Kind == CTypeKind.I32)
-                    return $"({{ int32_t __a = {RenderExpr(args[0])}; __a < 0 ? -__a : __a; }})";
+                if (type.Kind == CTypeKind.I32) return $"tcs_math_abs_i32({RenderExpr(args[0])})";
                 return $"fabsf({RenderExpr(args[0])})";
             case "Sign":
                 {
-                    var v = Temp("sign");
                     var vt = TypeOf(args[0]);
+                    if (vt.Kind == CTypeKind.F32) return $"tcs_math_sign_f32({RenderExpr(args[0])})";
+                    var v = Temp("sign");
                     return $"({{ {vt.CName} {v} = {RenderExpr(args[0])}; " +
                         $"{v} > 0 ? INT32_C(1) : {v} < 0 ? -INT32_C(1) : INT32_C(0); }})";
                 }
@@ -4775,8 +4788,15 @@ public sealed class CEmitter
     // Local function Format in the C# version
     private static string EnumFormatText(string v, EnumTableInfo table)
     {
+        return $"tcs_enum_format({v}, {EnumTableArgs(table)})";
+    }
+
+    // The table arguments of tcs_enum_format (names, values, count, Flags, unsigned)
+    private static string EnumTableArgs(EnumTableInfo table)
+    {
         var flags = table.Flags ? "true" : "false";
-        return $"tcs_enum_format({v}, {table.Names}, {table.Values}, {table.Count}, {flags})";
+        var isUnsigned = table.Unsigned ? "true" : "false";
+        return $"{table.Names}, {table.Values}, {table.Count}, {flags}, {isUnsigned}";
     }
 
     private string RenderFormatEnum(IlCall call)
@@ -4798,10 +4818,13 @@ public sealed class CEmitter
         if (_enumTables.TryGetValue(specText, out existing)) return existing;
         // Read spec as a UTF-8 byte sequence (',' and ':' never appear inside multi-byte characters, so this matches the character split in the C# version)
         var spec = Utf8List(specText);
+        // Leading marks: `*` is Flags, and a following `+` is unsigned (a uint enum)
         var flags = spec.Count > 0 && spec[0] == '*';
+        var segmentStart = flags ? 1 : 0;
+        var isUnsigned = segmentStart < spec.Count && spec[segmentStart] == '+';
+        if (isUnsigned) segmentStart++;
         var entryNames = new List<List<int>>();
         var entryValues = new List<int>();
-        var segmentStart = flags ? 1 : 0;
         for (var i = segmentStart; i <= spec.Count; i++)
         {
             if (i < spec.Count && spec[i] != ',') continue;
@@ -4841,7 +4864,7 @@ public sealed class CEmitter
         var valueList = entryValues.Count == 0 ? "0" : string.Join(", ", valueTexts);
         _literalDecls.Add($"static const int32_t {values}[] = {{ " +
             $"{valueList} }};");
-        var table = new EnumTableInfo(names, values, entryValues.Count, flags);
+        var table = new EnumTableInfo(names, values, entryValues.Count, flags, isUnsigned);
         _enumTables[specText] = table;
         return table;
     }
@@ -6777,7 +6800,7 @@ public sealed class CEmitter
         TypeOfInvoke(invoke);
         var receiver = TypeOf(invoke.Recv);
         if (receiver.Kind == CTypeKind.Random)
-            return RenderRandomMethod("tcs_nonnull(" + RenderExpr(invoke.Recv) + ")",
+            return RenderRandomMethod(RenderExpr(invoke.Recv), true,
                 invoke.Method, invoke.Args);
         var foreign = ForeignInstanceMethod(receiver, invoke.Method);
         if (foreign != null)
@@ -7076,7 +7099,7 @@ public sealed class CEmitter
     {
         var type = TypeOfNewHashSet(set);
         if (type.Element == null) return "";
-        return $"tcs_typed(tcs_hashset_new({HashSetKeyKind(type.Element!)}, sizeof({type.Element!.CName}), " +
+        return $"tcs_typed(tcs_hashset_new({_facts.KeyKind(type.Element!)}, sizeof({type.Element!.CName}), " +
             $"{LayoutRef(type.Element!)}), {RuntimeTypeId(type)})";
     }
 
@@ -7352,13 +7375,13 @@ public sealed class CEmitter
         if (receiver != null)
         {
             var type = CType.Ref(method.Receiver!);
-            values.Add(new TypedValue(type, "(" + type.CName + ")tcs_nonnull(" + RenderExpr(receiver) + ")"));
+            values.Add(new TypedValue(type, "(" + type.CName + ")" + RenderExpr(receiver)));
         }
         for (int i = 0; i < args.Count && i < parameters.Count; i++)
             values.Add(new TypedValue(parameters[i].Type, RenderCoerced(args[i], parameters[i].Type)));
         string callee = receiver != null && dispatch && ForeignOverriders(method).Count > 0
             ? Names.Dispatch(method.Receiver!, ShortName(method)) : HostName(method.Name);
-        return RenderOrderedCall(callee, result, values);
+        return RenderOrderedCall(callee, result, values, null, receiver != null);
     }
 
     // Returns the C expression of the value and puts its type in type
@@ -8715,13 +8738,16 @@ public sealed class EnumTableInfo
     public string Values;
     public int Count;
     public bool Flags;
+    // A uint enum (a value not in the table is written as an unsigned number)
+    public bool Unsigned;
 
-    public EnumTableInfo(string names, string values, int count, bool flags)
+    public EnumTableInfo(string names, string values, int count, bool flags, bool isUnsigned)
     {
         Names = names;
         Values = values;
         Count = count;
         Flags = flags;
+        Unsigned = isUnsigned;
     }
 }
 

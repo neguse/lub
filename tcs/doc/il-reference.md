@@ -100,7 +100,7 @@ var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (S
 | IlIf(Arms, Else?) | if/elseif 連鎖 |
 | IlWhile(Cond, Body, Trailer?) | while。Trailer は for 脱糖の incrementors |
 | IlRepeat(Body, Cond) | do-while |
-| IlNumericFor(Var, Start, Limit, Body) | 数値 for 最適化形。「制御変数が捕捉されず bound 不変」と builder が証明済みの場合のみ現れる。backend は素の for にしてよい (while + 単一変数と観測等価。tcs VM は本文が制御変数を書き換えるときは隠れた counter を回す) |
+| IlNumericFor(Var, Start, Limit, Inclusive, Body) | 数値 for 最適化形。int の Var を Start にし、`Var < Limit` (Inclusive なら `Var <= Limit`) の間、本文の後に Var を 1 増やして (wrap する) 繰り返す。Limit は Start の後に 1 回だけ評価する。制御変数と比較が int (char と enum も) で、Limit が for の間に変わらず (定数か、lambda を含む member の本体のどこでも書かれない局所変数)、本文が制御変数に書かず捕捉もしないと builder が示せた場合のみ現れる。backend は比較を C# の条件のまま素の for にしてよい (while + 単一変数と観測等価) |
 | IlForeachList(Var, Coll, Body) | List/array の foreach (反復変数は反復ごと §7) |
 | IlForeachDict(Var, Coll, Body) | Dictionary の foreach (KeyValuePair 相当) |
 | IlForeachRunes(Var, Str, Body) | `string.EnumerateRunes()` の foreach (runtime/utf8 で code point を読む) |

@@ -1092,11 +1092,12 @@ public sealed class Binder
         {
             TypeSym vt = elem;
             bool isVar = s.A!.Kind == NodeKind.TypeName && s.A.Text == "var" && s.A.List == null && s.A.A == null;
+            s.D = null;
             if (!isVar)
             {
                 vt = _d.ResolveType(s.A, _scope!);
                 if (!IsExplicitlyConvertible(elem, vt)) Error("CS0030", "Cannot convert type '" + elem.Display() + "' to '" + vt.Display() + "'", s);
-                if (!TypeSym.Same(elem, vt) && !elem.IsError && !vt.IsError) s.Type2 = vt;
+                else if (!TypeSym.Same(elem, vt) && !elem.IsError && !vt.IsError) s.D = ElementConversion(s, elem, vt);
             }
             var l = new LocalSym(s.Text, vt);
             s.Local = l;
@@ -1106,6 +1107,21 @@ public sealed class Binder
         BindEmbedded(s.C!);
         _depth--;
         PopScope();
+    }
+
+    // The value of a foreach iteration variable: a cast that explicitly converts the element to the type of the variable (the same conversion as C#'s foreach; checked with the same rules as a cast).
+    // The element is an unnamed local, and the IL names it as the iteration temp
+    private Node ElementConversion(Node s, TypeSym elem, TypeSym vt)
+    {
+        var item = new Node(NodeKind.Name, s.File, s.Pos);
+        item.Local = new LocalSym("", elem);
+        item.Info = RefKind.Local;
+        item.Type = elem;
+        var cast = new Node(NodeKind.Cast, s.File, s.Pos);
+        cast.End = s.End;
+        cast.B = item;
+        ConvertExplicitly(cast, vt);
+        return cast;
     }
 
     private void BindSwitch(Node s)
@@ -1444,7 +1460,8 @@ public sealed class Binder
             if (v.Kind == ConstKind.Null) return v;
             return FoldConversion(v, from, to.Elem);
         }
-        if (v.Kind == ConstKind.Int && (to.Kind == TypeKind.Int || to.Kind == TypeKind.Byte || to.Kind == TypeKind.Char || to.Kind == TypeKind.UInt || to.Kind == TypeKind.Short || to.Kind == TypeKind.Enum || to.Kind == TypeKind.Long)) return v;
+        if (v.Kind == ConstKind.Int && to.Kind == TypeKind.Enum) return EnumConst(v, to);
+        if (v.Kind == ConstKind.Int && (to.Kind == TypeKind.Int || to.Kind == TypeKind.Byte || to.Kind == TypeKind.Char || to.Kind == TypeKind.UInt || to.Kind == TypeKind.Short || to.Kind == TypeKind.Long)) return v;
         if (v.Kind == ConstKind.Float && to.Kind == TypeKind.Float) return v;
         if (v.Kind == ConstKind.String && to.Kind == TypeKind.String) return v;
         if (v.Kind == ConstKind.Bool && to.Kind == TypeKind.Bool) return v;
@@ -1453,6 +1470,15 @@ public sealed class Binder
     }
 
     private static float IntToFloat(int i) => i;
+
+    // An integer constant converted to an enum: wraps the value into the range of the underlying type (C#'s unchecked conversion; a value in range is unchanged)
+    private static ConstValue EnumConst(ConstValue v, TypeSym to)
+    {
+        var b = IlTypes.EnumUnderlying(to);
+        if (b == null) return v;
+        int wrapped = IlTypes.WrapInteger(b, v.I);
+        return wrapped == v.I ? v : ConstValue.OfInt(wrapped);
+    }
 
     // Kind of implicit conversion. -1 if there is none
     private int ImplicitKind(Node? e, TypeSym from, TypeSym to)
@@ -1469,7 +1495,7 @@ public sealed class Binder
         {
             int v = e.Const.I;
             if (to.Kind == TypeKind.Byte && v >= 0 && v <= 255) return ConvKind.Identity;
-            if (to.Kind == TypeKind.Short && v >= -32768 && v <= 32767) return ConvKind.Identity;
+            if (to.Kind == TypeKind.Short && IlTypes.WrapInteger(to, v) == v) return ConvKind.Identity;
             if (to.Kind == TypeKind.UInt && v >= 0) return ConvKind.Identity;
             if (to.Kind == TypeKind.Enum && v == 0) return ConvKind.Identity;
         }
@@ -4988,6 +5014,12 @@ public sealed class Binder
     {
         var to = _d.ResolveType(e.A!, _scope!);
         BindExpr(e.B!, to);
+        ConvertExplicitly(e, to);
+    }
+
+    // Converts e.B, the bound expression of the cast e, to to
+    private void ConvertExplicitly(Node e, TypeSym to)
+    {
         var from = e.B!.Type!;
         e.Type = to;
         if (from.IsError || to.IsError) return;
@@ -5030,7 +5062,7 @@ public sealed class Binder
                 if (e.Info == ConvKind.Identity && c.Kind == ConstKind.Int)
                 {
                     e.HasConst = true;
-                    e.Const = c;
+                    e.Const = to.Kind == TypeKind.Enum ? EnumConst(c, to) : c;
                 }
                 else if (e.Info == ConvKind.IntToFloat && c.Kind == ConstKind.Int)
                 {
@@ -5283,7 +5315,8 @@ public sealed class Binder
                     }
                     if (p.Text != "")
                     {
-                        var l = new LocalSym(p.Text, t);
+                        // The type of the variable is the type of the input when it matches (T for a value-type T? input when no type is written)
+                        var l = new LocalSym(p.Text, p.A == null && t.Kind == TypeKind.Nullable ? t.Elem : t);
                         p.Local = l;
                         DeclareExprLocal(l, p);
                     }

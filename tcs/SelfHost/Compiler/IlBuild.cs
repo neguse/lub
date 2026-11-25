@@ -265,9 +265,9 @@ public sealed class IlBuild
 
     private int _condHoist;
 
-    // Recognizes the shape of a value-returning IIFE. The target is [IlLocal*, IlIf (each arm = leading statements* + a trailing IlReturn, else has the same shape)?, IlReturn?]
+    // Recognizes the shape of a value-returning IIFE. The target is [IlLocal*, IlIf (each arm = leading statements* + a trailing IlReturn, else has the same shape or is the no-match fault of a switch expression)?, IlReturn?]
     // (lowered from switch expressions / ?. / ?? / TryGetValue / GetValueOrDefault). A trailing IlReturn is normalized into the else.
-    // Complete = every path returns a value (if false, nil when nothing matches; it cannot be used in return position because it becomes a return without a value)
+    // Complete = every path returns a value or faults (if false, nil when nothing matches; it cannot be used in return position because it becomes a return without a value)
     private static ValueChain? TryGetValueChainShape(IlIife iife)
     {
         var stats = new List<IlStat>();
@@ -288,7 +288,7 @@ public sealed class IlBuild
         {
             if (!IsReturningBlock(a.Body)) return null;
         }
-        if (tail.Else != null && !IsReturningBlock(tail.Else)) return null;
+        if (tail.Else != null && !IsReturningBlock(tail.Else) && !IsNoMatchBlock(tail.Else)) return null;
         var setup = new List<IlStat>();
         for (int i = 0; i < stats.Count - 1; i++) setup.Add(stats[i]);
         IlIf chain = tail;
@@ -321,12 +321,25 @@ public sealed class IlBuild
         return true;
     }
 
-    // An if chain where the trailing return of each arm is turned into an assignment to target
+    // The fault when no arm of a switch expression matches (C#'s SwitchExpressionException)
+    private static IlBlock NoMatchBlock()
+    {
+        return new IlBlock(One(new IlCallStat(new IlCall("__tcs_nomatch", new List<IlExpr>(), null), null)));
+    }
+
+    private static bool IsNoMatchBlock(IlBlock block)
+    {
+        return block.Stats.Count == 1 && block.Stats[0] is IlCallStat s && s.Call is IlCall c && c.Callee == "__tcs_nomatch";
+    }
+
+    // An if chain where the trailing return of each arm is turned into an assignment to target (the no-match fault is kept as is)
     private static IlIf SwitchChainAsAssigns(IlIf chain, IlExpr target)
     {
         var arms = new List<IlArm>();
         foreach (var a in chain.Arms) arms.Add(new IlArm(a.Cond, RewriteReturnAsAssign(a.Body, target)));
-        return new IlIf(arms, chain.Else != null ? RewriteReturnAsAssign(chain.Else, target) : null, chain.Origin);
+        IlBlock? elseBlock = null;
+        if (chain.Else != null) elseBlock = IsNoMatchBlock(chain.Else) ? chain.Else : RewriteReturnAsAssign(chain.Else, target);
+        return new IlIf(arms, elseBlock, chain.Origin);
     }
 
     private static IlBlock RewriteReturnAsAssign(IlBlock body, IlExpr target)
@@ -1784,15 +1797,26 @@ public sealed class IlBuild
         Node? recvNode = callee.Kind == NodeKind.Member && callee.A != null && callee.A.Info != RefKind.Type ? callee.A : null;
         TypeSym? recvType = recvNode != null ? recvNode.Type : null;
         if (callee.Kind == NodeKind.Member && IsFacadeReceiver(callee.A))
-            return new IlCall(callee.A!.Type!.Name + "." + callee.Text, args, null);
+        {
+            var facadeCallee = callee.A!.Type!.Name + "." + callee.Text;
+            if (facadeCallee == "TinySystem.List.Sort") return SortCall(facadeCallee, call.List![0].A!.Type, args);
+            return new IlCall(facadeCallee, args, null);
+        }
         if (id == "Int.TryParse" || id == "Float.TryParse") return BuildNumericTryParse(call, id == "Int.TryParse" ? "Int" : "Float");
         if (id == "Dict.TryGetValue" && recvNode != null) return BuildDictTryGetValue(call, recvNode, m);
         // CompareTo of int / float (same type): an intrinsic that returns -1 / 0 / 1
         if (id == "Math.CompareTo" && recvNode != null)
-        {
-            var cmpRecv = BuildExpr(recvNode);
-            return cmpRecv == null ? null : new IlCall("Math.CompareTo", Prepend(cmpRecv, args), null);
-        }
+            return BuildValueReceiverCall(call, recvNode, args, (r, a) => new IlCall("Math.CompareTo", Prepend(r, a), null));
+        if (id == "Nullable.GetValueOrDefaultValue" && recvNode != null)
+            return BuildValueReceiverCall(call, recvNode, args, (r, a) =>
+            {
+                // It is a method argument, so it is always evaluated once (not deferred, unlike ??)
+                var stats = new List<IlStat>();
+                stats.Add(new IlLocal("__tcs_val", r, null, null));
+                stats.Add(new IlLocal("__tcs_fb", a[0], null, null));
+                stats.Add(new IlReturn(new IlNullableGetOrDefault(new IlVar("__tcs_val", null), new IlVar("__tcs_fb", null), null), null));
+                return new IlIife(stats, null);
+            });
         switch (id)
         {
             case "Console.WriteLine":
@@ -1881,7 +1905,7 @@ public sealed class IlBuild
             case "Dict.Clear":
                 return BuildClear(recv);
             case "List.Sort":
-                return new IlCall("List.Sort", Prepend(recv, args), null);
+                return SortCall("List.Sort", recvType, Prepend(recv, args));
             case "List.Contains":
             case "List.IndexOf":
             case "List.Remove":
@@ -1932,23 +1956,15 @@ public sealed class IlBuild
                 return new IlInvoke(recv, callee.Text, args, null);
             case "Nullable.GetValueOrDefault":
                 return new IlNullableGetOrDefault(recv, DefaultIl(IlTypes.UnwrapNullable(recvType!)), null);
-            case "Nullable.GetValueOrDefaultValue":
-                {
-                    // It is a method argument, so it is always evaluated once (not deferred, unlike ??)
-                    var stats = new List<IlStat>();
-                    stats.Add(new IlLocal("__tcs_val", recv, null, null));
-                    stats.Add(new IlLocal("__tcs_fb", args[0], null, null));
-                    stats.Add(new IlReturn(new IlNullableGetOrDefault(new IlVar("__tcs_val", null), new IlVar("__tcs_fb", null), null), null));
-                    return new IlIife(stats, null);
-                }
             case "String.Trim":
                 return new IlCall("String.Trim", One(recv), null);
             case "String.ToUpper":
                 return new IlCall("__tcs_upper", One(recv), null);
             case "String.ToLower":
                 return new IlCall("__tcs_lower", One(recv), null);
+            // ToString on a string is the receiver itself. A null receiver faults (null in interpolation and concatenation is the empty string, so __tcs_str is not used)
             case "String.ToString":
-                return new IlCall("__tcs_str", One(recv), null);
+                return new IlCall("__tcs_nonnull", One(recv), null);
             case "Int.ToString":
             case "Float.ToString":
             case "Bool.ToString":
@@ -1978,6 +1994,60 @@ public sealed class IlBuild
                 }
         }
         return Unported("builtin " + id, call);
+    }
+
+    // The order of List.Sort without a comparison (and TinySystem.List.Sort) is .NET's default comparer. A uint enum is in unsigned order, so
+    // it becomes a List.Sort that passes a closure with that comparison
+    private static IlExpr SortCall(string callee, TypeSym? listType, List<IlExpr> args)
+    {
+        var elem = IlTypes.ElementOf(listType);
+        if (args.Count != 1 || elem == null || elem.Kind != TypeKind.Enum || !IlTypes.IsUIntEnum(elem)) return new IlCall(callee, args, null);
+        var parameters = new List<string>();
+        parameters.Add("__tcs_a");
+        parameters.Add("__tcs_b");
+        var compare = new IlCall("Math.CompareTo", Two(FlipSignBit(new IlVar("__tcs_a", null)), FlipSignBit(new IlVar("__tcs_b", null))), null);
+        return new IlCall("List.Sort", Two(args[0], new IlClosure(parameters, null, compare, new List<string>(), null)), null);
+    }
+
+    // A built-in method whose receiver is a value-type variable (a local / field / array element and the fields of that struct).
+    // C# fixes the storage location of the receiver (a null object and an out-of-range index fault here), evaluates the arguments, and then calls with the current value of that variable (C# §12.6.6).
+    // Only when the arguments may rewrite the storage location, it pins the reference-type prefix and the index in temps, reads the location once to check it, evaluates the arguments into temps, and reads the location again to call.
+    // A property result, a List index, and a ?. receiver are copies of the value and are read before the arguments
+    private IlExpr? BuildValueReceiverCall(Node call, Node recvNode, List<IlExpr> args, System.Func<IlExpr, List<IlExpr>, IlExpr?> build)
+    {
+        var argNodes = ArgExprs(call);
+        bool argsWrite = false;
+        foreach (var a in argNodes)
+        {
+            if (MayWriteStorage(a)) argsWrite = true;
+        }
+        var path = argsWrite && !(_condBinding != null && recvNode == _subNode) ? StructSlotPath(recvNode) : null;
+        if (path == null)
+        {
+            var recv = BuildExpr(recvNode);
+            return recv == null ? null : build(recv, args);
+        }
+        var stats = new List<IlStat>();
+        IlExpr? root = path.IsVariable ? BuildExpr(path.Base) : FixSlot(path.Base, "__tcs_obj", argNodes, stats);
+        if (root != null && path.Index != null)
+        {
+            var idx = FixSlot(path.Index, "__tcs_idx", argNodes, stats);
+            root = idx != null ? new IlIndex(root, idx, true, IlTypes.HasNilableElements(NaturalType(path.Base)), null) : null;
+        }
+        var place = root == null ? null : RebuildSlot(recvNode, path.Stop, root);
+        if (place == null) return null;
+        if (!path.IsVariable) stats.Add(new IlLocal("_", place, null, null));
+        var temps = new List<IlExpr>();
+        for (int i = 0; i < args.Count; i++)
+        {
+            var name = "__tcs_arg" + i;
+            stats.Add(new IlLocal(name, args[i], null, null));
+            temps.Add(new IlVar(name, null));
+        }
+        var result = build(place, temps);
+        if (result == null) return null;
+        stats.Add(new IlReturn(result, null));
+        return new IlIife(stats, null);
     }
 
     // A char argument of a string method is passed to the runtime as a one-character string (char is an integer code unit)
@@ -2408,7 +2478,7 @@ public sealed class IlBuild
         if (op == "-" && _checked && u.Type != null && u.Type.Kind == TypeKind.Int) return new IlCall("__tcs_cneg", One(operand), null);
         if (op == "-") return new IlUn(IlUnOp.Neg, operand, null);
         if (op == "!") return new IlUn(IlUnOp.Not, operand, null);
-        if (op == "~") return new IlUn(IlUnOp.BitNot, operand, null);
+        if (op == "~") return WrapToEnum(u.A!.Type, new IlUn(IlUnOp.BitNot, operand, null));
         if (op == "+") return operand;
         return null;
     }
@@ -2455,9 +2525,17 @@ public sealed class IlBuild
         // (float?)x where x is int?: converts only when there is a value
         if (target.Kind == TypeKind.Nullable && target.Elem.Kind == TypeKind.Float && srcType.Kind == TypeKind.Nullable && IlTypes.IsIntegralSource(srcType.Elem))
             return new IlLiftedUn(IlUnOp.ToFloat, value, null);
-        // (int?)x: an explicit T → T? conversion
+        // (int?)x / (float?)x: an explicit T → U? conversion converts to U and then wraps (int → float? rounds to f32)
         if (target.Kind == TypeKind.Nullable && srcType.Kind != TypeKind.Nullable && srcType.Kind != TypeKind.Null)
-            return new IlNullableWrap(value, IlTypes.Display(srcType), null);
+        {
+            if (target.Elem.Kind == TypeKind.Float && IlTypes.IsIntegralSource(srcType) && !IsFloatConverted(value))
+                value = new IlNumericConvert(value, "float", false, null);
+            return new IlNullableWrap(CastToEnum(target.Elem, srcType, value), IlTypes.Display(target.Elem), null);
+        }
+        if (target.Kind == TypeKind.Enum) return CastToEnum(target, srcType, value);
+        // (E?)x where x is T?: wraps when there is a value (lifted)
+        if (target.Kind == TypeKind.Nullable && srcType.Kind == TypeKind.Nullable && target.Elem.Kind == TypeKind.Enum && !TypeSym.Same(target.Elem, srcType.Elem))
+            value = WrapToEnum(target, value);
         // A downcast to a user class is an IlCast (a runtime check point for the C backend; upcasts and same-type casts pass through)
         // The source type is a named type (object, interface, class, etc.; excluding type arguments and arrays; Roslyn's INamedTypeSymbol)
         bool namedSource = srcType.Kind != TypeKind.TypeParam && srcType.Kind != TypeKind.Array && srcType.Kind != TypeKind.Null;
@@ -2466,6 +2544,13 @@ public sealed class IlBuild
         if (!IsReferenceType(target) && target.Kind != TypeKind.Bool && target.Kind != TypeKind.Nullable) return value;
         // The `?` annotation on a cast type remains only in a #nullable enable context
         return new IlRefCast(value, IlTypes.Display(cast.File.NullableEnabled ? target : target.WithoutAnnotation()), null);
+    }
+
+    // An explicit conversion from an integer or another enum to an enum wraps the value into the range of the underlying type (unchanged from the same enum)
+    private static IlExpr CastToEnum(TypeSym target, TypeSym srcType, IlExpr value)
+    {
+        if (target.Kind != TypeKind.Enum || TypeSym.Same(target, srcType)) return value;
+        return WrapToEnum(target, value);
     }
 
     private static bool IsDerivedFrom(TypeDeclSym source, TypeDeclSym target)
@@ -2561,12 +2646,64 @@ public sealed class IlBuild
         return null;
     }
 
-    // The value of ++ / --: lifted Add / Sub for T?
+    // The value of ++ / --: lifted Add / Sub for T?. An enum wraps into the range of its underlying type
     private static IlExpr StepValue(Node operand, IlExpr read, bool increment)
     {
-        if (IlTypes.IsNullableValueType(NaturalType(operand)))
+        var type = NaturalType(operand);
+        if (IlTypes.IsNullableValueType(type))
             return new IlLiftedBin(increment ? IlLiftedOp.Add : IlLiftedOp.Sub, read, new IlNullableWrap(IlLiterals.Int(1), "int", null), null);
-        return new IlBin(increment ? IlBinOp.AddNum : IlBinOp.Sub, read, IlLiterals.Int(1), null);
+        return WrapToEnum(type, new IlBin(increment ? IlBinOp.AddNum : IlBinOp.Sub, read, IlLiterals.Int(1), null));
+    }
+
+    // Wraps the value of an enum (and T? of an enum) into the range of its underlying type (same as C#'s unchecked conversion; only 8 / 16 bit underlying types change). A non-enum type is unchanged
+    private static IlExpr WrapToEnum(TypeSym? type, IlExpr value)
+    {
+        var b = IlTypes.EnumUnderlying(type);
+        if (b == null) return value;
+        return WrapToInteger(b, value, IlTypes.IsNullableValueType(type));
+    }
+
+    // Wraps into the range of the integer type b. Unsigned keeps the low bits (`v & mask`), and signed sign-extends (`(v << s) >> s`).
+    // lifted is a T? value (no value stays no value). An int literal is folded
+    private static IlExpr WrapToInteger(TypeSym b, IlExpr value, bool lifted)
+    {
+        int bits = IlTypes.IntegerBits(b);
+        if (bits == 32) return value;
+        var lit = IntLiteral(value);
+        if (!lifted && lit != null) return IlLiterals.Int(IlTypes.WrapInteger(b, lit.I));
+        if (IlTypes.IsUnsignedInteger(b)) return IntOp(IlBinOp.BitAnd, value, (1 << bits) - 1, lifted);
+        int shift = 32 - bits;
+        return IntOp(IlBinOp.Shr, IntOp(IlBinOp.Shl, value, shift, lifted), shift, lifted);
+    }
+
+    // `value op k` (k is an int constant; op is BitAnd / Shl / Shr)
+    private static IlExpr IntOp(IlBinOp op, IlExpr value, int k, bool lifted)
+    {
+        if (!lifted) return new IlParen(new IlBin(op, value, IlLiterals.Int(k), null), null);
+        var lop = op == IlBinOp.BitAnd ? IlLiftedOp.BitAnd : op == IlBinOp.Shl ? IlLiftedOp.Shl : IlLiftedOp.Shr;
+        return new IlParen(new IlLiftedBin(lop, value, new IlNullableWrap(IlLiterals.Int(k), "int", null), null), null);
+    }
+
+    // Ordering comparison of a uint enum: flipping the sign bit of both sides and comparing as signed gives the unsigned order
+    private static IlExpr Relation(IlBinOp op, IlExpr left, IlExpr right, bool isUnsigned)
+    {
+        if (!isUnsigned) return new IlBin(op, left, right, null);
+        return new IlBin(op, FlipSignBit(left), FlipSignBit(right), null);
+    }
+
+    private static IlExpr FlipSignBit(IlExpr value)
+    {
+        var lit = IntLiteral(value);
+        if (lit != null) return IlLiterals.Int(lit.I ^ int.MinValue);
+        return new IlParen(new IlBin(IlBinOp.BitXor, value, IlLiterals.Int(int.MinValue), null), null);
+    }
+
+    // An int literal inside parentheses (a foldable value). null when it is not a literal
+    private static IlLit? IntLiteral(IlExpr value)
+    {
+        var inner = value;
+        while (inner is IlParen p) inner = p.E;
+        return inner is IlLit lit && lit.Kind == IlLitKind.Int ? lit : null;
     }
 
     // Comparison with null / ?? / lifted binary operations. null if not applicable (falls through to the normal path)
@@ -2748,8 +2885,9 @@ public sealed class IlBuild
             return new IlBin(IlBinOp.Concat, new IlParen(new IlBin(IlBinOp.Or, read, IlLiterals.Str(""), null), null), WrapConcatOperand(assign.B!, right), null);
         switch (op)
         {
-            case "+": return new IlBin(IlBinOp.AddNum, read, right, null);
-            case "-": return new IlBin(IlBinOp.Sub, read, right, null);
+            // += / -= on an enum wraps into the range of the underlying type
+            case "+": return WrapToEnum(type, new IlBin(IlBinOp.AddNum, read, right, null));
+            case "-": return WrapToEnum(type, new IlBin(IlBinOp.Sub, read, right, null));
             case "*": return new IlBin(IlBinOp.Mul, read, right, null);
             case "/": return new IlBin(IlBinOp.DivNum, read, right, null);
             case "%": return new IlBin(IlBinOp.RemNum, read, right, null);
@@ -3250,10 +3388,12 @@ public sealed class IlBuild
         var ma = StripConv(assign.A!);
         var path = StructSlotPath(ma.A!)!;
         var stats = new List<IlStat>();
-        IlExpr? root = path.IsVariable ? BuildExpr(path.Base) : FixSlot(path.Base, "__tcs_obj", assign, stats);
+        var later = new List<Node>();
+        later.Add(assign.B!);
+        IlExpr? root = path.IsVariable ? BuildExpr(path.Base) : FixSlot(path.Base, "__tcs_obj", later, stats);
         if (root != null && path.Index != null)
         {
-            var idx = FixSlot(path.Index, "__tcs_idx", assign, stats);
+            var idx = FixSlot(path.Index, "__tcs_idx", later, stats);
             var bt = NaturalType(path.Base);
             root = idx != null ? new IlIndex(root, idx, true, IlTypes.HasNilableElements(bt), null) : null;
         }
@@ -3290,10 +3430,20 @@ public sealed class IlBuild
         return stats;
     }
 
-    private IlExpr? FixSlot(Node e, string temp, Node assign, List<IlStat> stats)
+    // Pins the prefix / index e of the storage location in a temp when reading it again could give a different value (later is the expressions evaluated after e)
+    private IlExpr? FixSlot(Node e, string temp, List<Node> later, List<IlStat> stats)
     {
         var built = BuildExpr(e);
-        if (built == null || (IsStableRead(e) && !WritesLocalReadBy(e, assign.B!))) return built;
+        if (built == null) return null;
+        if (IsStableRead(e))
+        {
+            bool written = false;
+            foreach (var n in later)
+            {
+                if (WritesLocalReadBy(e, n)) written = true;
+            }
+            if (!written) return built;
+        }
         stats.Add(new IlLocal(temp, built, null, null));
         return new IlVar(temp, null);
     }
@@ -3545,16 +3695,21 @@ public sealed class IlBuild
         return true;
     }
 
+    // Turns `for (int i = start; i < limit; i++)` (also `<=` and `i += 1`) into a numeric for.
+    // Only when the control variable and the comparison are int and it can be shown that limit does not change during the for and that the body neither writes to the control variable nor captures it.
+    // null (a general for) when it cannot be shown
     private IlNumericFor? TryBuildSimpleFor(Node forStmt)
     {
         if (forStmt.List == null || forStmt.List.Count != 1 || forStmt.List[0].Kind != NodeKind.LocalDecl) return null;
         var declNode = forStmt.List[0];
         if (declNode.List == null || declNode.List.Count != 1) return null;
         var decl = declNode.List[0];
-        if (decl.A == null) return null;
+        if (decl.A == null || decl.Local == null || !IsIntValueType(decl.Local.Type)) return null;
         var varName = decl.Text;
         var condNode = forStmt.A != null ? StripConv(forStmt.A) : null;
-        if (condNode == null || condNode.Kind != NodeKind.Binary) return null;
+        if (condNode == null || condNode.Kind != NodeKind.Binary || (condNode.Text != "<" && condNode.Text != "<=")) return null;
+        // Only comparisons between ints (a for that widens to float or T? to compare is a general for)
+        if (!IsIntValueType(condNode.A!.Type) || !IsIntValueType(condNode.B!.Type)) return null;
         var condLeft = StripConv(condNode.A!);
         if (condLeft.Kind != NodeKind.Name || condLeft.Text != varName) return null;
         if (forStmt.Count2 != 1) return null;
@@ -3569,15 +3724,16 @@ public sealed class IlBuild
         if (IsAssignedWithin(forStmt.B!, varName)) return null;
         if (IsCapturedByLambdaWithin(forStmt.B!, varName)) return null;
         var start = BuildExpr(decl.A);
-        var end = BuildExpr(condNode.B!);
+        var limit = BuildExpr(condNode.B!);
         var body = BuildBlock(forStmt.B!);
-        if (start == null || end == null || body == null) return null;
-        IlExpr? limit = null;
-        if (condNode.Text == "<") limit = new IlBin(IlBinOp.Sub, end, IlLiterals.Int(1), null);
-        else if (condNode.Text == "<=") limit = end;
-        if (limit == null) return null;
-        var name = decl.Local != null ? decl.Local.IlName : varName;
-        return new IlNumericFor(name, start, limit, body, null);
+        if (start == null || limit == null || body == null) return null;
+        return new IlNumericFor(decl.Local.IlName, start, limit, condNode.Text == "<=", body, null);
+    }
+
+    // Types whose IL value is an int (int, char, enum; T? is not included)
+    private static bool IsIntValueType(TypeSym? t)
+    {
+        return t != null && (t.Kind == TypeKind.Int || t.Kind == TypeKind.Char || t.Kind == TypeKind.Enum);
     }
 
     private static string SourceText(Node n)
@@ -3585,47 +3741,51 @@ public sealed class IlBuild
         return n.File.Slice(n.Pos, n.End);
     }
 
+    // Whether the upper bound of a for stays unchanged during the for: a constant, or a local variable that nothing writes to.
+    // A local variable can also be written from another lambda that captured it, so even for a for inside a lambda the whole member body (including lambdas) is examined
     private bool IsLoopInvariantBound(Node bound)
     {
         var b = StripConv(bound);
         switch (b.Kind)
         {
             case NodeKind.IntLit:
-            case NodeKind.FloatLit:
-            case NodeKind.StringLit:
             case NodeKind.CharLit:
-            case NodeKind.BoolLit:
-            case NodeKind.NullLit:
                 return true;
         }
-        if (b.Kind != NodeKind.Name || b.Info != RefKind.Local) return false;
-        var scope = ScopeRoots.Count > 0 ? ScopeRoots[ScopeRoots.Count - 1] : bound;
-        return !IsAssignedWithin(scope, b.Text);
+        if (b.Kind != NodeKind.Name || b.Info != RefKind.Local || ScopeRoots.Count == 0) return false;
+        return !IsAssignedWithin(ScopeRoots[0], b.Text);
     }
 
-    // Whether name (an identifier with that spelling) is assigned in scope (assignment, ++ / --, ref / out argument)
+    // Whether name (an identifier with that spelling) is written in scope (the target of an assignment or a deconstructing assignment, ++ / --, a ref / out / in argument)
     private static bool IsAssignedWithin(Node scope, string name)
     {
         switch (scope.Kind)
         {
             case NodeKind.Assign:
-                {
-                    var l = scope.A!;
-                    if (l.Kind == NodeKind.Name && l.Text == name) return true;
-                    break;
-                }
             case NodeKind.PostIncDec:
             case NodeKind.PreIncDec:
+                if (IsNameTarget(scope.A!, name)) return true;
+                break;
+            case NodeKind.DeconstructAssign:
+                // The list of deconstruction targets (a nested deconstruction is seen as a child DeconstructAssign)
+                if (scope.List == null) break;
+                foreach (var target in scope.List)
                 {
-                    var o = scope.A!;
-                    if (o.Kind == NodeKind.Name && o.Text == name) return true;
-                    break;
+                    if (IsNameTarget(target, name)) return true;
                 }
+                break;
             case NodeKind.Arg:
-                if ((scope.Has(Mods.Ref) || scope.Has(Mods.Out) || scope.Has(Mods.In)) && scope.A != null && scope.A.Kind == NodeKind.Name && scope.A.Text == name) return true;
+                if ((scope.Has(Mods.Ref) || scope.Has(Mods.Out) || scope.Has(Mods.In)) && scope.A != null && IsNameTarget(scope.A, name)) return true;
                 break;
         }
         return AnyChild(scope, c => IsAssignedWithin(c, name));
+    }
+
+    // Whether the write target is the variable name (also when parenthesized as `(name)`)
+    private static bool IsNameTarget(Node target, string name)
+    {
+        var t = WithoutParens(StripConv(target));
+        return t.Kind == NodeKind.Name && t.Text == name;
     }
 
     // Whether a lambda in scope contains name (an identifier with that spelling)
@@ -3751,7 +3911,7 @@ public sealed class IlBuild
     private void CollectIsDesignations(Node n, Node scope, List<Node> into)
     {
         if (n != scope && (IsStatementKind(n.Kind) || n.Kind == NodeKind.Lambda)) return;
-        if (n != scope && n.Kind == NodeKind.Is && n.B != null && n.B.Kind == NodeKind.PatDecl && n.B.Local != null) into.Add(n.B);
+        if (n != scope && n.Kind == NodeKind.Is && n.B != null && HasDesignation(n.B)) into.Add(n.B);
         VisitChildren(n, c => CollectIsDesignations(c, scope, into));
     }
 
@@ -3795,6 +3955,20 @@ public sealed class IlBuild
         var coll = BuildExpr(collNode);
         var body = BuildBlock(f.C!);
         if (coll == null || body == null) return false;
+        // When the type of the variable differs from the type of the element, the element temp is iterated and the converted value goes into the variable at the head of the body
+        if (f.D != null)
+        {
+            // The element is the local in the cast expression (inside the Conv the binder inserted, for an implicit conversion)
+            var item = StripConv(f.D.B!).Local!;
+            item.IlName = NewDeconstructTemp();
+            var converted = BuildExpr(f.D);
+            if (converted == null) return false;
+            var stats = new List<IlStat>();
+            stats.Add(new IlLocal(varName, CopyIfMutableStruct(f.Local!.Type, converted), IlTypes.Display(f.Local.Type), null));
+            foreach (var st in body.Stats) stats.Add(st);
+            body = new IlBlock(stats);
+            varName = item.IlName;
+        }
         var collType = NaturalType(collNode);
         // Only the Dictionary itself is iterated with IlForeachDict (KeyValuePair). For Keys / Values the runtime returns an array, so they use List iteration
         if (IlTypes.IsDict(collType))
@@ -3807,7 +3981,7 @@ public sealed class IlBuild
         if (IlTypes.IsHashSet(collType)) coll = new IlCall("TcsHashSet.ToList", One(coll), null);
         // The iteration variable is a copy of the element (changes to a struct element are not kept in the original)
         var iterVar = new IlVar(varName, null);
-        var copied = CopyIfMutableStruct(f.Local != null ? f.Local.Type : null, iterVar);
+        var copied = f.D != null ? iterVar : CopyIfMutableStruct(f.Local != null ? f.Local.Type : null, iterVar);
         if (copied is IlStructCopy)
         {
             var stats = new List<IlStat>();
@@ -3881,10 +4055,11 @@ public sealed class IlBuild
     // Type match. Matching a struct input (S / S?) against the same struct type only checks whether it has a value
     private IlExpr? BuildTypeCheck(IlExpr expr, TypeSym? inputType, TypeSym? patternType, string? typeRef)
     {
-        // Matching a value-type input (T / T?) against the same value type T only checks whether it has a value (also for numbers, bool, and enum)
+        // Matching a value-type input (T / T?) against the same value type T only checks whether it has a value (also for numbers, bool, and enum).
+        // A T input always matches and the input is not read (BuildIsPattern keeps the evaluation of the left side of is)
         if (patternType != null && patternType.IsValueType && inputType != null)
         {
-            if (TypeSym.Same(inputType, patternType)) return BindPatternInput(expr, x => IlLiterals.Bool(true));
+            if (TypeSym.Same(inputType, patternType)) return IlLiterals.Bool(true);
             if (IlTypes.IsNullableValueType(inputType) && TypeSym.Same(inputType.Elem, patternType)) return new IlNullableHasValue(expr, null);
         }
         var primTest = PrimTypeTest(expr, patternType);
@@ -3948,6 +4123,23 @@ public sealed class IlBuild
         return input;
     }
 
+    // A constant pattern. C# compares the constant and the input with object.Equals, so a float NaN constant matches NaN (== is false between NaNs).
+    // Whether the input is NaN is checked by its not being equal to itself (for a T? input, only when it has a value)
+    private IlExpr? BuildConstantPattern(IlExpr input, Node constant, TypeSym? inputType)
+    {
+        if (constant.HasConst && constant.Const != null && constant.Const.IsNaN())
+        {
+            return BindPatternInput(input, x =>
+            {
+                if (!IlTypes.IsNullableValueType(inputType)) return new IlBin(IlBinOp.Ne, x, x, null);
+                var value = new IlNullableValue(x, null);
+                return new IlBin(IlBinOp.And, new IlNullableHasValue(x, null), new IlBin(IlBinOp.Ne, value, value, null), null);
+            });
+        }
+        var v = BuildExpr(constant);
+        return v == null ? null : new IlBin(IlBinOp.Eq, input, v, null);
+    }
+
     // A type reference inside a constant pattern (Foo in `case Foo:` is a type)
     private static bool IsTypeConstant(Node p)
     {
@@ -3963,8 +4155,7 @@ public sealed class IlBuild
                 {
                     if (IsNullLiteral(pattern.A!) && IlTypes.IsNullableValueType(inputType))
                         return new IlUn(IlUnOp.Not, new IlNullableHasValue(governing, null), null);
-                    var value = BuildExpr(pattern.A!);
-                    return value == null ? null : new IlBin(IlBinOp.Eq, governing, value, null);
+                    return BuildConstantPattern(governing, pattern.A!, inputType);
                 }
             case NodeKind.PatDiscard:
             case NodeKind.PatVar:
@@ -3982,7 +4173,7 @@ public sealed class IlBuild
             case NodeKind.PatRel:
                 {
                     var v = BuildExpr(pattern.A!);
-                    return v == null ? null : new IlBin(RelationalIlOp(pattern.Text), governing, v, null);
+                    return v == null ? null : Relation(RelationalIlOp(pattern.Text), governing, v, IlTypes.IsUIntEnum(pattern.A!.Type));
                 }
             case NodeKind.PatAnd:
             case NodeKind.PatOr:
@@ -4008,10 +4199,7 @@ public sealed class IlBuild
         switch (pattern.Kind)
         {
             case NodeKind.PatConst:
-                {
-                    var value = BuildExpr(pattern.A!);
-                    return value == null ? null : new IlBin(IlBinOp.Eq, expr, value, null);
-                }
+                return BuildConstantPattern(expr, pattern.A!, inputType);
             case NodeKind.PatType:
             case NodeKind.PatDecl:
                 return BuildTypeCheck(expr, inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
@@ -4023,7 +4211,7 @@ public sealed class IlBuild
             case NodeKind.PatRel:
                 {
                     var v = BuildExpr(pattern.A!);
-                    return v == null ? null : new IlBin(RelationalIlOp(pattern.Text), expr, v, null);
+                    return v == null ? null : Relation(RelationalIlOp(pattern.Text), expr, v, IlTypes.IsUIntEnum(pattern.A!.Type));
                 }
             case NodeKind.PatAnd:
             case NodeKind.PatOr:
@@ -4043,9 +4231,16 @@ public sealed class IlBuild
         return Unported("is sub-pattern", pattern);
     }
 
+    // A property pattern in a nested position. The form with a variable binds only at the root position (the right side of is, a switch arm and case), so it is not built here
     private IlExpr? BuildRecursivePattern(IlExpr expr, Node rp, TypeSym? inputType)
     {
-        if (rp.Text != "") return null;
+        if (rp.Local != null) return null;
+        return BuildPropertyMatch(expr, rp, inputType);
+    }
+
+    // The match of a property pattern (the caller binds the variable)
+    private IlExpr? BuildPropertyMatch(IlExpr expr, Node rp, TypeSym? inputType)
+    {
         var subpatterns = new List<Node>();
         if (rp.List != null)
         {
@@ -4095,11 +4290,18 @@ public sealed class IlBuild
         return result;
     }
 
-    // A declaration pattern of struct S applied to an S / S? input, and a declaration pattern of value type T applied to a T? input (extracts the value and binds it)
+    // A pattern with a variable at its root: a declaration pattern (`T v`) and a property pattern with a variable (`T { ... } v`, `{ ... } v`)
+    private static bool HasDesignation(Node p)
+    {
+        return (p.Kind == NodeKind.PatDecl || p.Kind == NodeKind.PatProp) && p.Local != null;
+    }
+
+    // A variable of struct S applied to an S / S? input, and a variable of value type T applied to a T? input (extracts the value and binds it)
     private static bool IsStructDesignation(Node dp, TypeSym? inputType)
     {
-        if (dp.Type == null || inputType == null || !TypeSym.Same(IlTypes.UnwrapNullable(inputType), dp.Type)) return false;
-        return IlTypes.IsUserStruct(dp.Type) || dp.Type.IsValueType && IlTypes.IsNullableValueType(inputType);
+        var t = dp.Local != null ? dp.Local.Type : dp.Type;
+        if (t == null || inputType == null || !TypeSym.Same(IlTypes.UnwrapNullable(inputType), t)) return false;
+        return IlTypes.IsUserStruct(t) || t.IsValueType && IlTypes.IsNullableValueType(inputType);
     }
 
     private IlExpr DesignationValue(IlExpr input, TypeSym inputType, TypeSym declType)
@@ -4135,8 +4337,26 @@ public sealed class IlBuild
     private IlLocal SwitchDesignationLocal(Node dp, TypeSym? inputType, IlExpr sw)
     {
         var name = dp.Local!.IlName;
-        if (IsStructDesignation(dp, inputType)) return new IlLocal(name, null, IlTypes.Display(dp.Type!), null);
-        return new IlLocal(name, sw, dp.Type != null ? IlTypes.Display(dp.Type) : null, null);
+        if (IsStructDesignation(dp, inputType)) return new IlLocal(name, null, IlTypes.Display(dp.Local.Type), null);
+        return new IlLocal(name, sw, IlTypes.Display(dp.Local.Type), null);
+    }
+
+    // The root pattern of a switch arm and case. A property pattern with a variable matches, for a reference type, against the variable the predeclaration initialized with the input, and
+    // for a value type binds the value after the match succeeds
+    private IlExpr? BuildSwitchPattern(Node pattern, IlExpr sw, TypeSym? inputType)
+    {
+        if (pattern.Kind != NodeKind.PatProp || pattern.Local == null) return BuildPattern(pattern, sw, inputType);
+        if (IsStructDesignation(pattern, inputType)) return BuildStructPropertyDesignation(pattern, sw, inputType!);
+        return BuildPropertyMatch(sw, pattern, inputType);
+    }
+
+    // A property pattern with a value-type variable: when the match succeeds, binds the value (a copy for a struct) to the variable
+    private IlExpr? BuildStructPropertyDesignation(Node pattern, IlExpr input, TypeSym inputType)
+    {
+        var matched = BuildPropertyMatch(input, pattern, inputType);
+        if (matched == null) return null;
+        var bind = BuildStructDeclarationIs(new IlVar(pattern.Local!.IlName, null), input, inputType, pattern.Local.Type);
+        return new IlBin(IlBinOp.And, matched, bind, null);
     }
 
     private IlExpr? BuildIsPattern(Node isNode)
@@ -4145,11 +4365,18 @@ public sealed class IlBuild
         if (expr == null) return null;
         var inputType = NaturalType(isNode.A!);
         var pattern = isNode.B!;
-        if (pattern.Kind == NodeKind.PatDecl && pattern.Local != null)
+        if (HasDesignation(pattern))
         {
-            var name = pattern.Local.IlName;
-            if (IsStructDesignation(pattern, inputType)) return BuildStructDeclarationIs(new IlVar(name, null), expr, inputType, pattern.Type!);
-            var check = BuildTypeCheck(new IlVar(name, null), inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type));
+            var name = pattern.Local!.IlName;
+            if (IsStructDesignation(pattern, inputType))
+            {
+                if (pattern.Kind == NodeKind.PatDecl) return BuildStructDeclarationIs(new IlVar(name, null), expr, inputType, pattern.Type!);
+                return BindPatternInput(expr, input => BuildStructPropertyDesignation(pattern, input, inputType));
+            }
+            // A reference-type variable binds the input first, then the variable is matched
+            var check = pattern.Kind == NodeKind.PatDecl
+                ? BuildTypeCheck(new IlVar(name, null), inputType, pattern.Type, FormatTypeReference(pattern.A!, pattern.Type))
+                : BuildPropertyMatch(new IlVar(name, null), pattern, inputType);
             if (check == null) return null;
             var stats = new List<IlStat>();
             stats.Add(new IlAssign(new IlVar(name, null), expr, null));
@@ -4157,7 +4384,16 @@ public sealed class IlBuild
             return new IlIife(stats, null);
         }
         var sub = BuildIsSubPattern(expr, pattern, inputType);
-        return sub == null ? null : new IlParen(sub, null);
+        if (sub == null) return null;
+        // A match that always succeeds (`{ }` on a value-type input, a type pattern of the same type) does not read the input, but the left side expression is evaluated (its side effects and faults are kept)
+        if (sub is IlLit && !(expr is IlLit || expr is IlVar))
+        {
+            var stats = new List<IlStat>();
+            stats.Add(new IlLocal("_", expr, null, null));
+            stats.Add(new IlReturn(sub, null));
+            return new IlIife(stats, null);
+        }
+        return new IlParen(sub, null);
     }
 
     // Switch expression: IIFE, pre-binding, if chain. Arm values are copy points
@@ -4173,7 +4409,7 @@ public sealed class IlBuild
         {
             foreach (var arm in sx.List)
             {
-                if (arm.A != null && arm.A.Kind == NodeKind.PatDecl && arm.A.Local != null) stats.Add(SwitchDesignationLocal(arm.A, inputType, sw));
+                if (arm.A != null && HasDesignation(arm.A)) stats.Add(SwitchDesignationLocal(arm.A, inputType, sw));
             }
         }
         var arms = new List<IlArm>();
@@ -4190,7 +4426,7 @@ public sealed class IlBuild
                     elseBlock = new IlBlock(One(new IlReturn(value, null)));
                     continue;
                 }
-                var pattern = BuildPattern(arm.A, sw, inputType);
+                var pattern = BuildSwitchPattern(arm.A, sw, inputType);
                 if (pattern == null) return null;
                 if (arm.B != null)
                 {
@@ -4202,6 +4438,8 @@ public sealed class IlBuild
             }
         }
         if (arms.Count == 0 && elseBlock == null) return null;
+        // Without a discard arm, no match is a fault (il-spec §12)
+        if (elseBlock == null) elseBlock = NoMatchBlock();
         if (arms.Count > 0) stats.Add(new IlIf(arms, elseBlock, null));
         else stats.Add(new IlIf(Arm(IlLiterals.Bool(true), elseBlock!), null, null));
         return new IlIife(stats, null);
@@ -4233,7 +4471,7 @@ public sealed class IlBuild
             if (section.List == null) continue;
             foreach (var label in section.List)
             {
-                if (label.Kind == NodeKind.CaseLabel && label.A != null && label.A.Kind == NodeKind.PatDecl && label.A.Local != null)
+                if (label.Kind == NodeKind.CaseLabel && label.A != null && HasDesignation(label.A))
                     products.Add(SwitchDesignationLocal(label.A, inputType, sw) with { Origin = origin });
             }
         }
@@ -4260,11 +4498,7 @@ public sealed class IlBuild
                 else if (constantLabel)
                 {
                     if (IsNullLiteral(pat.A!) && IlTypes.IsNullableValueType(inputType)) one = new IlBin(IlBinOp.Eq, sw, IlLiterals.Null(), null);
-                    else
-                    {
-                        var v = BuildExpr(pat.A!);
-                        one = v == null ? null : new IlBin(IlBinOp.Eq, sw, v, null);
-                    }
+                    else one = BuildConstantPattern(sw, pat.A!, inputType);
                 }
                 else one = BuildPatternLabel(label, sw, inputType);
                 if (one == null) return false;
@@ -4293,7 +4527,7 @@ public sealed class IlBuild
 
     private IlExpr? BuildPatternLabel(Node label, IlExpr sw, TypeSym? inputType)
     {
-        var condition = BuildPattern(label.A!, sw, inputType);
+        var condition = BuildSwitchPattern(label.A!, sw, inputType);
         if (condition == null) return null;
         if (label.B == null) return new IlParen(condition, null);
         var when = BuildExpr(label.B);
@@ -4703,14 +4937,14 @@ public sealed class IlBuild
     }
 
     // Whether evaluating later may modify a local / parameter that earlier reads: a direct write by assignment / ++ / -- / ref or out argument,
-    // or when earlier reads a (captured) local written inside a lambda and later contains a call
+    // or when earlier reads a (captured) local written inside a lambda and later may run user code (a call, a construction, a custom property getter, a user operator)
     private bool WritesLocalReadBy(Node earlier, Node later)
     {
         var read = new List<LocalSym>();
         CollectLocalReads(earlier, read);
         if (read.Count == 0) return false;
         if (WritesAny(later, read)) return true;
-        if (!ContainsCallOrNew(later)) return false;
+        if (!MayWriteStorage(later)) return false;
         var member = ScopeRoots.Count > 0 ? ScopeRoots[0] : null;
         if (member == null) return false;
         foreach (var l in read)
@@ -4726,12 +4960,6 @@ public sealed class IlBuild
     {
         if (n.Kind == NodeKind.Name && n.Info == RefKind.Local && n.Local != null && !into.Contains(n.Local)) into.Add(n.Local);
         VisitChildren(n, c => CollectLocalReads(c, into));
-    }
-
-    private static bool ContainsCallOrNew(Node n)
-    {
-        if (n.Kind == NodeKind.Call || n.Kind == NodeKind.New) return true;
-        return AnyChild(n, c => ContainsCallOrNew(c));
     }
 
     private static bool LambdaWrites(Node n, List<LocalSym> symbols)
@@ -4838,19 +5066,23 @@ public sealed class IlBuild
             return new IlCall(callee, Two(left, right), null);
         }
         bool boolOperand = lt.Kind == TypeKind.Bool || rt.Kind == TypeKind.Bool;
+        bool enumOperand = lt.Kind == TypeKind.Enum || rt.Kind == TypeKind.Enum;
+        // The ordering of a uint enum is unsigned
+        bool unsignedRelation = IlTypes.IsUIntEnum(lt) || IlTypes.IsUIntEnum(rt);
         switch (op)
         {
-            case "+": return new IlBin(IlBinOp.AddNum, left, right, null);
-            case "-": return new IlBin(IlBinOp.Sub, left, right, null);
+            // + / - of an enum and an integer, and - between enums, wrap into the range of the result type (the enum, or the underlying type for - between enums)
+            case "+": return enumOperand ? WrapToResult(resultType, new IlBin(IlBinOp.AddNum, left, right, null)) : new IlBin(IlBinOp.AddNum, left, right, null);
+            case "-": return enumOperand ? WrapToResult(resultType, new IlBin(IlBinOp.Sub, left, right, null)) : new IlBin(IlBinOp.Sub, left, right, null);
             case "*": return new IlBin(IlBinOp.Mul, left, right, null);
             case "/": return new IlBin(IlBinOp.DivNum, left, right, null);
             case "%": return new IlBin(IlBinOp.RemNum, left, right, null);
             case "==": return new IlBin(IlBinOp.Eq, left, right, null);
             case "!=": return new IlBin(IlBinOp.Ne, left, right, null);
-            case "<": return new IlBin(IlBinOp.Lt, left, right, null);
-            case "<=": return new IlBin(IlBinOp.Le, left, right, null);
-            case ">": return new IlBin(IlBinOp.Gt, left, right, null);
-            case ">=": return new IlBin(IlBinOp.Ge, left, right, null);
+            case "<": return Relation(IlBinOp.Lt, left, right, unsignedRelation);
+            case "<=": return Relation(IlBinOp.Le, left, right, unsignedRelation);
+            case ">": return Relation(IlBinOp.Gt, left, right, unsignedRelation);
+            case ">=": return Relation(IlBinOp.Ge, left, right, unsignedRelation);
             case "&&": return new IlBin(IlBinOp.And, left, right, null);
             case "||": return new IlBin(IlBinOp.Or, left, right, null);
             case "??": return new IlBin(IlBinOp.Or, left, right, null);
@@ -4867,6 +5099,12 @@ public sealed class IlBuild
             case ">>": return new IlBin(IlBinOp.Shr, left, right, null);
         }
         return null;
+    }
+
+    private static IlExpr WrapToResult(TypeSym resultType, IlExpr value)
+    {
+        if (resultType.Kind == TypeKind.Enum) return WrapToEnum(resultType, value);
+        return resultType.IsIntegral ? WrapToInteger(resultType, value, false) : value;
     }
 
     // ---- Stringification ----
@@ -4993,28 +5231,40 @@ public sealed class IlBuild
         return new IlCall("String.FormatEnum", Two(value, IlLiterals.Str(spec)), null);
     }
 
-    // Enum formats (`e.ToString("G")` and `{e:G}` in interpolation). G is the name, F is a combination of names, D is the number. null otherwise
+    // Enum formats (`e.ToString("G")` and `{e:G}` in interpolation). G is the name, F is a combination of names, D is the number (String.FormatEnum without a name table).
+    // null for other formats and for non-enum types
     private static IlExpr? WrapEnumFormat(TypeSym t, IlExpr value, string format)
     {
         if (format == "G" || format == "g") return WrapEnumToStringFlags(t, value, false);
         if (format == "F" || format == "f") return WrapEnumToStringFlags(t, value, true);
-        if (format == "D" || format == "d") return new IlCall("__tcs_str", One(value), null);
+        if (format == "D" || format == "d")
+        {
+            var prefix = EnumSpecPrefix(IlTypes.UnwrapNullable(t));
+            return prefix == null ? null : new IlCall("String.FormatEnum", Two(value, IlLiterals.Str(prefix)), null);
+        }
+        return null;
+    }
+
+    // The mark placed before the name table of spec. A uint underlying type is `+` (a value not in the table is written as an unsigned number). null for a type that cannot make a spec
+    private static string? EnumSpecPrefix(TypeSym t)
+    {
+        if (t.Kind != TypeKind.Enum) return null;
+        var b = IlTypes.EnumUnderlying(t);
+        if (b == null) return null;
+        if (b.Kind == TypeKind.UInt) return "+";
+        if (b.Kind == TypeKind.Byte || b.Kind == TypeKind.Short || b.Kind == TypeKind.Int) return "";
         return null;
     }
 
     // spec is a list of `name:value` joined with `,`. Flags (and format "F") are prefixed with `*` and hold all members in the same order as .NET's EnumInfo
     // (ascending unsigned value; kept as is if already sorted in declaration order, sorted otherwise). Otherwise it holds only the one name .NET picks for each value
-    // (for members with the same value, the first one in that order if there are 32 or fewer, otherwise the one binary search hits)
+    // (for members with the same value, the first one in that order if there are 32 or fewer, otherwise the one binary search hits). A uint underlying type puts `+` before the name table
     public static string? EnumFormatSpec(TypeSym t, bool forceFlags)
     {
-        if (t.Kind != TypeKind.Enum || t.Decl == null) return null;
-        var d = t.Decl;
-        var ub = d.EnumBase != null ? d.EnumBase.Kind : TypeKind.Int;
-        int bits = 0;
-        if (ub == TypeKind.Byte) bits = 8;
-        else if (ub == TypeKind.Short) bits = 16;
-        else if (ub == TypeKind.Int || ub == TypeKind.UInt) bits = 32;
-        if (bits == 0) return null;
+        var prefix = EnumSpecPrefix(t);
+        if (prefix == null) return null;
+        var d = t.Decl!;
+        int bits = IlTypes.IntegerBits(IlTypes.EnumUnderlying(t)!);
         var names = new List<string>();
         var values = new List<int>();
         foreach (var m in d.Members)
@@ -5042,7 +5292,7 @@ public sealed class IlBuild
         if (forceFlags || d.IsFlags)
         {
             foreach (var i in order) entries.Add(names[i] + ":" + values[i]);
-            return "*" + string.Join(",", entries);
+            return "*" + prefix + string.Join(",", entries);
         }
         int k = 0;
         while (k < order.Count)
@@ -5075,7 +5325,7 @@ public sealed class IlBuild
             while (next < order.Count && EnumKeyEqual(values[order[next]], key, bits)) next++;
             k = next;
         }
-        return string.Join(",", entries);
+        return prefix + string.Join(",", entries);
     }
 
     private static int Log2(int n)

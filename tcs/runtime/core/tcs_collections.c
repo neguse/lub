@@ -226,11 +226,12 @@ static TcsList *tcs_queue_to_list(TcsQueue *queue) {
   return list;
 }
 
-static TcsDict *tcs_dict_new(int32_t key_is_string, size_t value_size,
+static TcsDict *tcs_dict_new(int32_t key_kind, size_t value_size,
                              const TcsLayout *layout) {
   TcsDict *dict = tcs_gc_alloc(TCS_KIND_DICT, layout, sizeof(*dict));
-  dict->key_is_string = key_is_string;
+  dict->key_kind = key_kind;
   dict->value_size = value_size;
+  dict->frame = tcs_gc_frames;
   return dict;
 }
 
@@ -244,12 +245,13 @@ typedef struct TcsHandleObject {
 
 static uint32_t tcs_dict_hash(TcsDict *dict, int32_t key_i, TcsString *key_s) {
   uint32_t h = 2166136261u;
-  if (dict->key_is_string == 2) {
-    uint64_t value = TCS_HANDLE_VALUE(key_s);
+  if (dict->key_kind == 2 || dict->key_kind == 3) {
+    uint64_t value = dict->key_kind == 2 ? TCS_HANDLE_VALUE(key_s)
+                                         : (uint64_t)(uintptr_t)key_s;
     int i;
     for (i = 0; i < 8; i++)
       h = (h ^ (uint32_t)((value >> (8 * i)) & 0xFF)) * 16777619u;
-  } else if (dict->key_is_string) {
+  } else if (dict->key_kind == 1) {
     size_t i;
     for (i = 0; i < key_s->length; i++)
       h = (h ^ (unsigned char)key_s->data[i]) * 16777619u;
@@ -263,22 +265,53 @@ static uint32_t tcs_dict_hash(TcsDict *dict, int32_t key_i, TcsString *key_s) {
 
 static bool tcs_dict_key_equal(TcsDict *dict, TcsDictNode *node, int32_t key_i,
                                TcsString *key_s) {
-  if (dict->key_is_string == 2)
+  switch (dict->key_kind) {
+  case 0:
+    return node->key_i == key_i;
+  case 1:
+    return tcs_string_equal(node->key_s, key_s);
+  case 2:
     return node->key_s == key_s ||
            (TCS_HANDLE_VALUE(key_s) != 0 &&
             TCS_HANDLE_VALUE(node->key_s) == TCS_HANDLE_VALUE(key_s));
-  return dict->key_is_string ? tcs_string_equal(node->key_s, key_s)
-                             : node->key_i == key_i;
+  default:
+    return node->key_s == key_s;
+  }
+}
+
+/* The hash of key_kind 3 is the address, and a young key changes address when
+   promoted at a boundary.
+   On the first operation after the frame that inserted a young key, buckets
+   are rebuilt with the current addresses.
+   All nodes and keys of a dict that crossed a boundary are promoted, so only
+   old nodes are linked together and no barrier is needed */
+static void tcs_dict_refresh(TcsDict *dict) {
+  size_t i;
+  if (!dict->has_young || dict->frame == tcs_gc_frames)
+    return;
+  memset(dict->buckets, 0, dict->bucket_count * sizeof(*dict->buckets));
+  for (i = 0; i < dict->order_len; i++) {
+    TcsDictNode *node = dict->order[i];
+    size_t bucket;
+    if (node == NULL)
+      continue;
+    bucket = tcs_dict_hash(dict, node->key_i, node->key_s) % dict->bucket_count;
+    node->next = dict->buckets[bucket];
+    dict->buckets[bucket] = node;
+  }
+  dict->has_young = false;
+  dict->frame = tcs_gc_frames;
 }
 
 static TcsDictNode *tcs_dict_find(TcsDict *dict, int32_t key_i,
                                   TcsString *key_s) {
   TcsDictNode *node;
   tcs_nonnull(dict);
-  if (dict->key_is_string)
+  if (dict->key_kind != 0)
     tcs_nonnull(key_s);
   if (dict->bucket_count == 0)
     return NULL;
+  tcs_dict_refresh(dict);
   node = dict->buckets[tcs_dict_hash(dict, key_i, key_s) % dict->bucket_count];
   for (; node != NULL; node = node->next)
     if (tcs_dict_key_equal(dict, node, key_i, key_s))
@@ -346,6 +379,11 @@ static void *tcs_dict_put(TcsDict *dict, int32_t key_i, TcsString *key_s) {
                       sizeof(*node) + dict->value_size);
   node->key_i = key_i;
   node->key_s = key_s;
+  if (dict->key_kind == 3 &&
+      !(TCS_GC_HEADER(key_s)->flags & (TCS_GC_OLD | TCS_GC_STATIC))) {
+    dict->has_young = true;
+    dict->frame = tcs_gc_frames;
+  }
   bucket = tcs_dict_hash(dict, key_i, key_s) % dict->bucket_count;
   node->next = dict->buckets[bucket];
   dict->buckets[bucket] = node;
@@ -384,10 +422,11 @@ static bool tcs_dict_tryget(TcsDict *dict, int32_t key_i, TcsString *key_s,
 static bool tcs_dict_remove(TcsDict *dict, int32_t key_i, TcsString *key_s) {
   TcsDictNode **link;
   tcs_nonnull(dict);
-  if (dict->key_is_string)
+  if (dict->key_kind != 0)
     tcs_nonnull(key_s);
   if (dict->bucket_count == 0)
     return false;
+  tcs_dict_refresh(dict);
   link = &dict->buckets[tcs_dict_hash(dict, key_i, key_s) % dict->bucket_count];
   for (; *link != NULL; link = &(*link)->next) {
     if (tcs_dict_key_equal(dict, *link, key_i, key_s)) {
