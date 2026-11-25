@@ -1,9 +1,11 @@
 #pragma once
-// How the tcs VM player (src/vm_player.c) collects inputs when running from a
-// .csproj. lub does not evaluate the csproj as MSBuild. It reads only the
-// basename (entry class) and the ProjectReferences with the attribute
-// Lub="Source". Inputs are all *.cs under the csproj directory and the
-// referenced directories, plus the cs-lib implementation.
+// How inputs are collected when running from a .csproj (src/vm_player.c) and
+// when checking one (lub check).
+// lub does not evaluate the csproj as MSBuild.
+// It reads only the basename (entry class) and the ProjectReferences with the
+// attribute Lub="Source".
+// Inputs are all *.cs under the csproj directory and the referenced
+// directories, plus the cs-lib implementation.
 // *.ref.cs are not compiled; they are passed with tcs --ref (type-only
 // declarations).
 #include <SDL3/SDL.h>
@@ -46,3 +48,8 @@ bool vm_project_scan(VmProject *proj);
 // vm_project_args).
 int vm_project_args(VmProject *proj, const char **args, int max);
 void vm_project_close(VmProject *proj);
+
+// `lub check <csproj>`: passes the same inputs and --ref as tcs vm to tcs check
+// and waits until it finishes. Writes nothing to the project. true if there are
+// no diagnostics.
+bool vm_project_check(const char *csproj);

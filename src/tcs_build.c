@@ -346,80 +346,6 @@ static bool spawn_watch(TcsPipeline *p, const char **argv) {
   return true;
 }
 
-// Appends the inputs of entry (.csproj) to argv starting at argv[n], and
-// returns the next free position. Inputs are all *.cs under dir (following the
-// implicit glob of SDK-style csproj; tcs_glob_sources), the cs-lib
-// implementation, and the --ref stub. -1 if there are no inputs to add. argv
-// points to the stub, so the caller owns it.
-static int append_inputs(const char *dir, const char **argv, int n, char *stub,
-                         size_t stub_sz) {
-  char cs_lib[900];
-  bool has_cs_lib = tcs_resolve_cs_lib(cs_lib, sizeof(cs_lib));
-  bool has_stub = false;
-  if (has_cs_lib) {
-    SDL_snprintf(stub, stub_sz, "%s/lub_stub.cs", cs_lib);
-    has_stub = file_exists(stub);
-  }
-  if (!has_stub)
-    SDL_Log("cs-lib/lub_stub.cs not found (set LUB_CS_LIB to the cs-lib "
-            "directory); compiling without lub API stub");
-
-  int glob_count = 0;
-  char **globbed = tcs_glob_sources(dir, &glob_count);
-  int inputs = 0;
-  for (int i = 0; i < glob_count; i++) {
-    if (n >= TCS_ARGV_MAX - 16) {
-      SDL_Log("tcs argv full: dropped %d sample source(s)", glob_count - i);
-      break;
-    }
-    char full[1400];
-    SDL_snprintf(full, sizeof(full), "%s/%s", dir, globbed[i]);
-    argv[n] =
-        SDL_strdup(full); // Fine to live until process exit (leak accepted)
-    n++;
-    inputs++;
-  }
-  tcs_free_sources(globbed, glob_count);
-  if (inputs == 0) {
-    SDL_Log("no .cs sources under %s", dir);
-    return -1;
-  }
-
-  // Adds all cs-lib implementation sources (all *.cs except lub_stub.cs)
-  // unconditionally. The stub is declarations only (--ref), but the
-  // implementation modules are subject to the check.
-  if (has_cs_lib) {
-    int lib_count = 0;
-    char **lib = SDL_GlobDirectory(cs_lib, NULL, 0, &lib_count);
-    if (lib) {
-      for (int i = 0; i < lib_count; i++) {
-        if (n >= TCS_ARGV_MAX - 16) {
-          SDL_Log("tcs argv full: dropped remaining cs-lib sources");
-          break;
-        }
-        if (!str_ends_with(lib[i], ".cs"))
-          continue;
-        const char *base = SDL_strrchr(lib[i], '/');
-        base = base ? base + 1 : lib[i];
-        if (SDL_strcmp(base, "lub_stub.cs") == 0)
-          continue;
-        char full[1200];
-        SDL_snprintf(full, sizeof(full), "%s/%s", cs_lib, lib[i]);
-        argv[n] =
-            SDL_strdup(full); // Fine to live until process exit (leak accepted)
-        n++;
-      }
-      SDL_free(lib);
-    }
-  }
-
-  if (has_stub) {
-    argv[n++] = "--ref";
-    argv[n++] = stub;
-  }
-  return n;
-}
-
 bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs) {
   if (!p)
     return false;
@@ -451,26 +377,26 @@ bool tcs_pipeline_alive(TcsPipeline *p) {
   return true;
 }
 
-bool tcs_check(const char *cs_path) {
-  char dir[512];
-  path_dirname(cs_path, dir, sizeof(dir));
-
+bool tcs_check_run(const char *const *args, int nargs) {
   char storage[16][512];
-  const char *argv[TCS_ARGV_MAX];
+  const char **argv =
+      (const char **)SDL_malloc(sizeof(*argv) * (size_t)(16 + nargs + 2));
+  if (!argv)
+    return false;
   int n = resolve_tcs_cmd(storage, 16, argv);
   if (n == 0) {
     SDL_Log("tcs not found: set LUB_TCS, or run from a lub checkout "
             "(tcs/Transpiler/Transpiler.csproj)");
+    SDL_free(argv);
     return false;
   }
   argv[n++] = "check";
-  char stub[960] = "";
-  n = append_inputs(dir, argv, n, stub, sizeof(stub));
-  if (n < 0)
-    return false;
+  for (int i = 0; i < nargs; i++)
+    argv[n++] = args[i];
   argv[n] = NULL;
 
   SDL_Process *proc = SDL_CreateProcess(argv, false);
+  SDL_free(argv);
   if (!proc) {
     SDL_Log("tcs spawn failed: %s", SDL_GetError());
     return false;
