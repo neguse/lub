@@ -213,8 +213,9 @@ jobs:
           path: ~/.ccache
           key: ccache-linux-${{ github.sha }}
 
-      # The lub that web-export uses to write pages, its shared libraries, and the test bytecode.
-      # The shared libraries are found via RUNPATH (absolute build path), so put them back at the same path.
+      # The lub that web-export uses to write pages, the shared libraries it loads, and the test bytecode.
+      # The shared libraries are found via RUNPATH (absolute paths in the checkout), so put them back at the same path.
+      # Of the slang prebuilt, lub loads only the compiler library.
       - name: Upload lub for web-export
         if: matrix.part == 'runtime'
         uses: actions/upload-artifact@v4
@@ -224,6 +225,7 @@ jobs:
             build-release-linux/lub
             build-release-linux/deps/lib/libSDL3.so.0
             build-release-linux/deps/lib/libopenxr_loader.so.1
+            third_party/slang/lib/libslang-compiler.so.*
             tests/cs/.lub/all.tcsb
 
       - name: Upload golden failure artifacts
@@ -926,15 +928,6 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v4
-
-      - name: Restore slang prebuilts
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            third_party/slang/lib
-            third_party/slang/bin
-          key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
-          fail-on-cache-miss: true
 
       - uses: actions/setup-node@v4
         with:
