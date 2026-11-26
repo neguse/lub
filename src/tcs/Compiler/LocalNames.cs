@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // IL names (IlName) of local bindings (local variables / parameters / foreach variables / pattern designations / lambda parameters).
 // A name that matches a type name or a global that IL callees reference by bare name

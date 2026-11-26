@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>15</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>TinyCs.Analyzers</RootNamespace>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compliance rules use the tcs compiler implementation as is (TinyC# sources that build with netstandard2.0) -->
+    <Compile Include="..\tcs\Compiler\*.cs" LinkBase="Compiler" />
+    <Compile Include="..\tcs-system\Utf8.cs" LinkBase="TinySystem" />
+    <EmbeddedResource Include="..\tcs-system\Linq.cs" LogicalName="TinySystem/Linq.cs" />
+    <EmbeddedResource Include="..\tcs-system\ValueTuple.cs" LogicalName="TinySystem/ValueTuple.cs" />
+  </ItemGroup>
+
+</Project>

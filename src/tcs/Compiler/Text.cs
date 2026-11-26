@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using TinySystem.Text;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // One input file. Positions are kept as UTF-8 byte offsets and converted to line and column only when reported in diagnostics.
 public sealed class SourceFile

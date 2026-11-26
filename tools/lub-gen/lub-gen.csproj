@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Generator that reads the lub API description (cs-lib/lub_stub.cs), checks the surface, and produces the generated files.
        The main code is TinyC# (the *.cs in this dir) and reads the stub with the tcs compiler (Compiler).
-       On .NET it runs from host/Program.cs on top of the tcs Transpiler (the .NET implementation of TcsHost and the compiler).
+       On .NET it runs from host/Program.cs on top of the .NET tcs (src/tcs: the .NET implementation of TcsHost and the compiler).
        The C lub-gen is built with tcs c by scripts/build-lub-gen.sh. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -15,6 +15,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="$(TcsRoot)/Transpiler/Transpiler.csproj" />
+    <ProjectReference Include="$(LubRoot)/src/tcs/tcs.csproj" />
   </ItemGroup>
 </Project>

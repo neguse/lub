@@ -163,8 +163,8 @@ static bool parse(TvmVm *vm, Reader *r) {
     return false;
   }
   if (rd_u32(r) != op_abi_hash()) {
-    tvm_set_error(
-        vm, ".tcsb op table mismatch (rebuild tcs2vm and tcsvm together)");
+    tvm_set_error(vm,
+                  ".tcsb op table mismatch (rebuild tcs and tcsvm together)");
     return false;
   }
 

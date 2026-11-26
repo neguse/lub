@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // The tcs CLI (`tcs check`, `tcs c`, `tcs vm`).
 // The host (C, .NET, wasm) calls Start once, then Step repeatedly until SetDone arrives.
@@ -101,7 +101,7 @@ public static class Cli
         return -1;
     }
 
-    // `tcs c`: C backend (same arguments as the old tcs2c). Tool/CRun.cs
+    // `tcs c`: C backend. Tool/CRun.cs
     private static int BeginC(List<string> args)
     {
         var o = new COptions();
@@ -132,7 +132,7 @@ public static class Cli
         return -1;
     }
 
-    // `tcs vm`: tcs VM .tcsb (same arguments as the old tcs2vm). Tool/VmRun.cs
+    // `tcs vm`: tcs VM .tcsb. Tool/VmRun.cs
     private static int BeginVm(List<string> args)
     {
         var o = new VmOptions();
@@ -167,7 +167,6 @@ public static class Cli
         return -1;
     }
 
-    // Error format of the old tcs2c (`tcs2c: ...`)
     // If the output path is the same file as one of the inputs (a or b), the error message for it. "" otherwise
     public static string InputClash(string output, List<string> a, List<string> b)
     {
@@ -185,7 +184,7 @@ public static class Cli
 
     public static int CError(string message)
     {
-        TcsHost.WriteErr("tcs2c: " + message + "\n");
+        TcsHost.WriteErr("tcs c: " + message + "\n");
         return 1;
     }
 

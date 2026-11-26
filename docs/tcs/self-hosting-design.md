@@ -1,14 +1,14 @@
 # tcs のセルフホスト設計
 
-> Status: 実装。tcs の compiler、CLI、C backend、tcs VM の backend は TinyC# で書いた 1 つの実装 (`tcs/` の `Compiler/`、`CBackend/`、`VmBackend/`、`Tool/`) で、.NET、C (tcs2c で tcs 自身を C にしたもの)、wasm で同じソースが動く。gate は bootstrap の固定点と、.NET の tcs と C の tcs の出力の一致 (§9.1)、Roslyn の受理の判定と .NET での実行を正解にした比較 (§9.2)。
+> Status: 実装。tcs の compiler、CLI、C backend、tcs VM の backend は TinyC# で書いた 1 つの実装 (`src/tcs/` の `Compiler/`、`CBackend/`、`VmBackend/`、`Tool/`) で、.NET、C (tcs2c で tcs 自身を C にしたもの)、wasm で同じソースが動く。gate は bootstrap の固定点と、.NET の tcs と C の tcs の出力の一致 (§9.1)、Roslyn の受理の判定と .NET での実行を正解にした比較 (§9.2)。
 >
 > Scope: tcs 自身を TinyC# のサブセットで書き、tcs 自身で C にして動かす構成。
 
 ## 1. 結論
 
 - tcs の実装は TinyC# で書いた 1 つ。字句、構文、宣言、束縛、準拠検査、IL の組み立て、generic の単相化 (`Compiler/`)、IL を C にする backend (`CBackend/`)、IL を tcs VM の `.tcsb` にする backend (`VmBackend/`)、CLI (`Tool/`) のどれも同じサブセットで書く
-- 同じソースが 3 つの host で動く。.NET (`Transpiler/`、`tcs2c/`、`tcsvm/Emitter/` の入口とテスト)、C (tcs2c で tcs 自身を C にした native の tcs)、wasm (同じ C を emcc で build したもの)
-- Roslyn と .NET は compiler の外の道具として使う。IDE の Roslyn Analyzer (`TinyCs.Analyzers` は `Compiler` を netstandard2.0 で取り込み、`tcs check` と同じ診断を出す)、playground の補完と hover、検証の正解 (C# として正しいかの判定と、同じソースを .NET で動かした結果) の 3 つ
+- 同じソースが 3 つの host で動く。.NET (`src/tcs/Dotnet/` の host。出力は `tcs.dll`)、C (tcs2c で tcs 自身を C にした native の tcs)、wasm (同じ C を emcc で build したもの)
+- Roslyn と .NET は compiler の外の道具として使う。IDE の Roslyn Analyzer (`src/tcs-analyzers` は `Compiler` を netstandard2.0 で取り込み、`tcs check` と同じ診断を出す)、playground の補完と hover、検証の正解 (C# として正しいかの判定と、同じソースを .NET で動かした結果) の 3 つ
 - bootstrap の最初の段は .NET の tcs が tcs 自身を C にすること。compiler のソースは常に .NET の build で動くので、seed の binary をリポジトリに置かない
 
 ## 2. 何のためにやるか
@@ -29,7 +29,7 @@ tcs の compiler は自前の型検査器を持ち、基準 6 を次の形で保
 
 ```text
 tcs/
-  Compiler/            compiler (namespace TcsSelf)
+  Compiler/            compiler (namespace Tcs)
     Text.cs              ソース (Utf8Bytes)、行の表、診断
     Lexer.cs             字句 (補間、verbatim、raw、raw の補間を含む)
     Syntax.cs            構文木 (種類の enum と、slot を持つ 1 つの Node class)
@@ -49,22 +49,22 @@ tcs/
     Session.cs           増分の session と Step の driver
     Compiler.cs          compile の結果 (CompileResult)
   CBackend/            IL を C にする (tcs c)。CModel.cs (C の型と名前、最初の誤りの記録 CFail)、CFacts.cs (IL から引く型と method の事実)、CEmitter.cs (本体)
-  VmBackend/           IL を tcs VM の .tcsb にする (tcs vm)。VModel.cs、ModuleBuilder.cs (型 / 定数 / static / 関数の表と .tcsb の書き出し)、FunctionCompiler.cs (関数を命令列にする)、VmEmitter.cs (module と reload の組み立て)、ReloadPlan.cs、IlNodes.cs (gen-ilnodes.py が Il.cs から作る)、IlWalk.cs、VBytes.cs、Op.cs (tcsvm/gen-ops.py が tcsvm_ops.h から作る)
+  VmBackend/           IL を tcs VM の .tcsb にする (tcs vm)。VModel.cs、ModuleBuilder.cs (型 / 定数 / static / 関数の表と .tcsb の書き出し)、FunctionCompiler.cs (関数を命令列にする)、VmEmitter.cs (module と reload の組み立て)、ReloadPlan.cs、ReloadRules.cs (hot reload で live に当てられない編集の規則)、IlNodes.cs (gen-ilnodes.py が Il.cs から作る)、IlWalk.cs、VBytes.cs、Op.cs (src/tcs-vm/gen-ops.py が tcsvm_ops.h から作る)
   Tool/                CLI
     Cli.cs               引数の解釈と tcs check
     CRun.cs              tcs c
-    VmRun.cs             tcs vm と、VM の増分 session (VmSession)
+    VmRun.cs             tcs vm
+    VmSession.cs         VM の増分 session
     Sessions.cs          名前で持つ複数の VM の増分 session の入口 (open、update、close。結果は host が指す path に書く)
-    ReloadRules.cs       hot reload で live に当てられない編集の規則
     HostMessage.cs       --watch の host への message
     TcsHost.cs           host の関数の宣言 (C の build では --ref の stub)
     ToolText.cs          数の読み取り
   Native/host.c        C の host
-  SelfHost/native.sh   native の tcs の build、.NET の tcs との比較、固定点 (§9.1)
-  SelfHost/SelfHost.csproj  .NET の library としての build
-Transpiler/            .NET の host (DotnetHost.cs、Program.cs)、テストの入口 (Checker.cs、IlExport.cs、TcsLibrary.cs)
-tcs2c/                 .NET で tcs c を動かす入口と、テストの文字列の入口 (SelfHostC.cs)
-tcsvm/Emitter/         .NET で tcs vm を動かす入口 (tcs2vm)
+  Dotnet/              .NET の host (DotnetHost.cs、Program.cs)
+  native.sh            native の tcs の build、.NET の tcs との比較、固定点 (§9.1)
+  tcs.csproj           .NET の build (tcs.dll)
+tests/tcs/Entry/       テストが compiler と VM の backend を文字列で動かす入口 (Checker.cs、IlExport.cs、SelfHostVm.cs、VmSession.cs)
+tests/tcs-backends/SelfHostC.cs  テストが C の backend を文字列で動かす入口
 ```
 
 ## 5. compiler の段
@@ -83,7 +83,7 @@ tcsvm/Emitter/         .NET で tcs vm を動かす入口 (tcs2vm)
 
 ### 5.3 宣言と BCL の面
 
-- BCL と TinySystem の member は `Builtins.cs` の表で持つ。.NET に有るがサブセットに無い API を TCS1002 と報告するため、BCL の型と member の名前の表 `BclCatalog.cs` を参照アセンブリから生成して持つ (`Transpiler.Tests/BclCatalogTests.cs`、`TCS_UPDATE_BCL=1` で作り直す)。どちらの表にも無い名前は C# の誤り (CS0103 など)
+- BCL と TinySystem の member は `Builtins.cs` の表で持つ。.NET に有るがサブセットに無い API を TCS1002 と報告するため、BCL の型と member の名前の表 `BclCatalog.cs` を参照アセンブリから生成して持つ (`tests/tcs/BclCatalogTests.cs`、`TCS_UPDATE_BCL=1` で作り直す)。どちらの表にも無い名前は C# の誤り (CS0103 など)
 - TinySystem のうち source で配る部分 (`TinySystem/Linq.cs`、`TinySystem/ValueTuple.cs`) は tcs と一緒に配る library として読む。`--ref` の host の stub は宣言だけを読み、本文は使わない
 - collection (List / Queue / HashSet / Dictionary / 配列)、string、`Utf8Bytes` は binder が型の種類として知り、foreach、collection の初期化、添字を種類ごとの規則で束縛する
 
@@ -100,7 +100,7 @@ tcsvm/Emitter/         .NET で tcs vm を動かす入口 (tcs2vm)
 ## 6. host と Step の driver
 
 - CLI (`Cli`) は OS に触る所を `TcsHost` の関数 (引数、ファイルの読み書きと原子的な置き換え、標準出力と標準エラー、ファイルの更新の印、tcs と一緒に配るファイル、待つ、終了コード、終わりの印) にし、host が実装する
-  - .NET: `Transpiler/DotnetHost.cs`。`lib/` は埋め込んだ resource から、`runtime/` は実行ファイルの隣から読む
+  - .NET: `Dotnet/DotnetHost.cs`。`lib/` は埋め込んだ resource から、`runtime/` は実行ファイルの隣から読む
   - C: `Native/host.c`。tcs と一緒に配るファイルは環境変数 `TCS_HOME` の dir か、実行ファイルの dir から読む。Windows では標準入出力を binary mode にし、.NET と同じ改行を書く
 - host は `Cli.Start` を 1 回、`TcsHost.SetDone` が来るまで `Cli.Step` を繰り返し呼ぶ。C の build (tcs2c) では entry から戻るたびに GC の frame の境界になるので、compile は Step ごとに session の 1 段だけ進め、仕事の状態は static field に置いて段をまたぐ。`tcs vm --watch` の待ちも Step の中の `TcsHost.Sleep` で、host の loop は同じ形のまま
 - 仕事は継承を使わずに型ごとの field (`CheckRun`、`CRun`、`VmRun`) に持って分ける
@@ -130,12 +130,12 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 
 ### 9.1 bootstrap と host の一致
 
-- `SelfHost/native.sh` (CI の native job が Linux、macOS、Windows で走らせる): .NET の tcs2c で C にした native の tcs を作り、.NET の tcs と比べる。samples の `tcs check` と `tcs c` と `tcs vm`、誤りのある入力の診断、tcs 自身の `tcs check` と `tcs vm`、digest kernel の `.tcsb`、reload の batch (`tcs vm --reload-from`)、tcs 自身の C (固定点)
+- `src/tcs/native.sh` (CI の native job が Linux、macOS、Windows で走らせる): .NET の tcs2c で C にした native の tcs を作り、.NET の tcs と比べる。samples の `tcs check` と `tcs c` と `tcs vm`、誤りのある入力の診断、tcs 自身の `tcs check` と `tcs vm`、digest kernel の `.tcsb`、reload の batch (`tcs vm --reload-from`)、tcs 自身の C (固定点)
 
 ### 9.2 検証の正解
 
-- C# として正しいかは Roslyn が決める。C# の仕様の例 (`deps/csharpstandard`、`TCS_SPEC_CONFORMANCE=1`) は Roslyn で受理を判定し、Roslyn が受理した例を tcs が C# の誤り (CSxxxx) で拒否したら compiler の不具合とする (`SpecConformanceClassifier`)
-- 意味の正解は同じソースを .NET で動かした結果。semantic テスト (`TestHelper.CompileAndRunVm` と `TCS_DIFFERENTIAL=1`)、生成した program (`TCS_FUZZ`)、仕様の例の実行は tcs VM と .NET の stdout を比べる。`tcs2c.Tests` は C (通常と GC stress)、tcs VM (通常と GC stress)、.NET の stdout を比べる (`Backends.AssertParity`、`FuzzDifferentialTests`)
+- C# として正しいかは Roslyn が決める。C# の仕様の例 (`third_party/csharpstandard`、`TCS_SPEC_CONFORMANCE=1`) は Roslyn で受理を判定し、Roslyn が受理した例を tcs が C# の誤り (CSxxxx) で拒否したら compiler の不具合とする (`SpecConformanceClassifier`)
+- 意味の正解は同じソースを .NET で動かした結果。semantic テスト (`TestHelper.CompileAndRunVm` と `TCS_DIFFERENTIAL=1`)、生成した program (`TCS_FUZZ`)、仕様の例の実行は tcs VM と .NET の stdout を比べる。`tests/tcs-backends` は C (通常と GC stress)、tcs VM (通常と GC stress)、.NET の stdout を比べる (`Backends.AssertParity`、`FuzzDifferentialTests`)
 
 ### 9.3 Roslyn だけが判定する検査
 
@@ -152,8 +152,8 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 
 ## 10. 配布
 
-- CI の native job が Linux (cc)、macOS (clang)、Windows (clang) で `SelfHost/native.sh` を走らせ、tcs の実行ファイルと一緒に配るファイル (`runtime/` の C、`lib/`) を成果物 (`tcs-linux-x64` など) にする。生成する C は GNU C の文の式を使うので MSVC の cl では build できず、Windows は clang で build する
-- 変換した tcs (C のソースと実行ファイル) は git に入れない (`SelfHost/out/`)
+- CI の native job が Linux (cc)、macOS (clang)、Windows (clang) で `src/tcs/native.sh` を走らせ、tcs の実行ファイルと一緒に配るファイル (`runtime/` の C、`lib/`) を成果物 (`tcs-linux-x64` など) にする。生成する C は GNU C の文の式を使うので MSVC の cl では build できず、Windows は clang で build する
+- 変換した tcs (C のソースと実行ファイル) は git に入れない (`src/tcs/out/`)
 
 ## 11. 採らなかった案
 

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using TcsC;
-using TcsSelf;
+using Tcs;
 using TinySystem.Text;
 
 namespace TcsVm;

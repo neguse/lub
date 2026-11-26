@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Resolution of the entry class (--entry). Looked up by namespace-qualified name or by a simple name unique within the compile
 public static class EntryClass

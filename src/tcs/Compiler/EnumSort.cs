@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // The same introsort as .NET's ArraySortHelper<TKey, TValue> (sorts the keys and the items together) and binary search.
 // Used to put the enum name table in the same order as .NET's EnumInfo. Keys are compared as unsigned

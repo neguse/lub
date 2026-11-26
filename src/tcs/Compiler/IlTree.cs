@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Utilities for the IL tree (enumerating and replacing child expressions, replacing positions, detecting call-free expressions)
 public static class IlTree

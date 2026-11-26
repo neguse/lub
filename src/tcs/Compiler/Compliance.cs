@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using TinySystem.Text;
 
-namespace TcsSelf;
+namespace Tcs;
 
-// Compliance checks decided by syntax alone (TCS1001). Only this compiler holds the compliance rules, and the IDE analyzer (TinyCs.Analyzers) also
+// Compliance checks decided by syntax alone (TCS1001). Only this compiler holds the compliance rules, and the IDE analyzer (src/tcs-analyzers) also
 // runs this compiler to report the same diagnostics. Names appear as `unsupported syntax: <name>` (matched to Roslyn syntax kind names).
 // --ref declarations and the libraries tcs ships are excluded
 public sealed class Compliance

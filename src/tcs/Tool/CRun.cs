@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using TcsC;
 
-namespace TcsSelf;
+namespace Tcs;
 
-// Arguments of `tcs c` (same as the old tcs2c)
+// Arguments of `tcs c`
 public sealed class COptions
 {
     public const string Usage = "usage: tcs c [--entry CLASS] [--digest-f32] [--lib [--vm-host]] [--ref STUB.cs] [-o OUTPUT.c] INPUT.cs [INPUT.cs ...]";

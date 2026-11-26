@@ -488,7 +488,7 @@ byte 列は address と layout に依らないので、別の VM にも、別の
 関数の中身だけが違う版にも、型の形が違う版にも読み込める。
 reload (§12) と違って計画を受け取らないので、`[RenamedFrom]` の引き継ぎと `OnReload` の hook は無く、名前を変えた field は足した field として扱う。
 
-検査は `tcs2c.Tests` の `VmStateTests`。
+検査は `tests/tcs-backends` の `VmStateTests`。
 状態を file に書き、別の process の VM に読み込んで続きを走らせ、止めずに走らせた結果と比べる。
 形の違う版への読み込みが、同じ編集を reload で当てた結果と同じになること、読み込めない版と壊した byte 列を断ることも見る。
 `tcsvm` の `--save-state K FILE` と `--load-state K FILE` が同じことを手で試す口になる。
@@ -537,8 +537,8 @@ reload は module ごと入れ替え、古い関数を残さない (§12.4) の�
 
 | ゲート | 内容 |
 |---|---|
-| Transpiler.Tests の semantic テスト | `TestHelper.CompileAndRunVm*` が VM で走らせる。`TCS_DIFFERENTIAL=1` (`run-tests.sh`) なら .NET の stdout とも比べる |
-| tcs2c.Tests の差分 | `Backends.AssertParity` が C (通常と GC stress)、VM (通常と `--gc-stress`)、.NET の stdout の一致を求める |
+| tests/tcs の semantic テスト | `TestHelper.CompileAndRunVm*` が VM で走らせる。`TCS_DIFFERENTIAL=1` (`run-tests.sh`) なら .NET の stdout とも比べる |
+| tests/tcs-backends の差分 | `Backends.AssertParity` が C (通常と GC stress)、VM (通常と `--gc-stress`)、.NET の stdout の一致を求める |
 | `tcsvm/run-tests.sh` | `tcsvm/tests/` と `samples/` の 6 本と digest kernel を VM で走らせ、期待の stdout と、C が動かせる入力は C の stdout と比べる。fault のテストは VM の trace が C# の file と行を指すことも見る。host、`--trace`、inspect、profile、mixed、modules、watch の試験も持つ |
 | digest kernel | `tcsvm/run-tests.sh` (VM)、`SampleParityTests` (C)、`tcs2c/verify-digests.sh` の固定の digest |
 | fuzz | `run-fuzz.sh`: 生成した program を VM (通常と GC stress) と .NET で走らせて比べる。hot reload の fuzz の scenario も VM に当てる |

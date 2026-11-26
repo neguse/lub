@@ -77,7 +77,7 @@ def dump_expr(typ, f):
 lines = []
 lines.append('// Generated from Compiler/Il.cs by VmBackend/gen-ilnodes.py. Do not edit by hand.')
 lines.append('using System.Collections.Generic;')
-lines.append('using TcsSelf;')
+lines.append('using Tcs;')
 lines.append('')
 lines.append('namespace TcsVm;')
 lines.append('')

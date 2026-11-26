@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using TinySystem.Text;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Recursive-descent parser. Errors are pushed as diagnostics and parsing continues (no exceptions).
 public sealed class Parser

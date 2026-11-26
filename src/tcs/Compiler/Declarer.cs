@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using TinySystem.Text;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Context for resolving types (position within a declaration)
 public sealed class TypeScope

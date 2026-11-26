@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using TinySystem.Text;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // String helpers for the tool (decimal number parsing)
 public static class ToolText

@@ -1,10 +1,10 @@
 using System.Collections.Generic;
 using TcsC;
-using TcsSelf;
+using Tcs;
 
 namespace TcsVm;
 
-/// <summary>Builds a .tcsb from the IL output (TcsSelf.ExportResult) (docs/tcs/vm-design.md §15).
+/// <summary>Builds a .tcsb from the IL output (Tcs.ExportResult) (docs/tcs/vm-design.md §15).
 /// Only functions reachable from the entry and the static initializers are built. Errors are recorded in CFail, and the output is used only when there are no errors.</summary>
 /// <summary>Description of a module's types and statics (compared with the old version in the reload plan).</summary>
 public sealed class VmDescription

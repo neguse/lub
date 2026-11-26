@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using TcsSelf;
+using Tcs;
 using TinySystem.Text;
 
 namespace TcsC;

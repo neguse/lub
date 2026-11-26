@@ -16,12 +16,12 @@
     <Compile Include="../../cs-lib/lub_stub.cs" Link="lub_stub.cs" />
     <Compile Include="../../cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../../cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
-    <ProjectReference Include="$(TcsRoot)/TinySystem/TinySystem.csproj" />
-    <ProjectReference Include="$(TcsRoot)/TinyCs.Analyzers/TinyCs.Analyzers.csproj"
+    <ProjectReference Include="$(LubRoot)/src/tcs-system/tcs-system.csproj" />
+    <ProjectReference Include="$(LubRoot)/src/tcs-analyzers/tcs-analyzers.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
   </ItemGroup>
   <!-- Maps Math / MathF to TinySystem.Math (the same implementation as tcs VM / tcs2c) -->
-  <Import Project="$(TcsRoot)/TinySystem/TinySystem.props" />
+  <Import Project="$(LubRoot)/src/tcs-system/tcs-system.props" />
 </Project>

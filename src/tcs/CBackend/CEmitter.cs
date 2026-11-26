@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using TcsSelf;
+using Tcs;
 using TinySystem.Text;
 
 namespace TcsC;
@@ -8837,7 +8837,7 @@ public sealed class TypeTableCheck
     }
 }
 
-// ---- Transpiler/Backend/TypeTable.cs ----
+// ---- TypeTable ----
 
 /// <summary>Type descriptors shared by the VM and tcs2c (docs/tcs/object-model.md §4). A backend maps its types
 /// to this shape, and <see cref="TypeTable.Write"/> turns them into a byte sequence (v1). The C runtime/model reads it.</summary>

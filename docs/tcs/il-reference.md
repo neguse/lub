@@ -3,10 +3,10 @@
 > 意味論の規範は `docs/tcs/il-spec.md`。本書は in-memory モデル（正規形）のノードカタログと取得 API。
 > tcs VM の backend (`VmBackend`) と C の backend (`CBackend`) は本書 + il-spec の IL を読む。
 
-## 取得 API (`Transpiler` assembly を参照)
+## 取得 API (テストの入口 `tests/tcs/Entry/IlExport.cs`)
 
 ```csharp
-var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (Compiler/IlExport.cs)
+var result = TinyCs.IlExport.Export(csharpSources);   // Tcs.ExportResult (Compiler/IlExport.cs)
 // result.Diagnostics: TCS 診断 (非空なら対象プログラムはサブセット外を含む)
 // result.Classes: List<ExClass>
 //   .Name / .BaseName            — 基底 class。継承は TCS1001 (il-spec §9) なので
@@ -44,7 +44,7 @@ var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (C
 //   C backend は i32 定数へ畳む (T241)
 ```
 
-シリアライズ形式は定義しない（v0 決定 — il-spec §1）。backend は compiler と同じ process で in-memory の IL を読む (tcs VM の `.tcsb` は IL ではなく VM の bytecode)。`Transpiler/IlExport.cs` の `TinyCs.IlExport.Export` は .NET のテストのための入口で、`specializeGenerics` を真にすると tcs VM と C が読むのと同じ単相化した IL を返す。
+シリアライズ形式は定義しない（v0 決定 — il-spec §1）。backend は compiler と同じ process で in-memory の IL を読む (tcs VM の `.tcsb` は IL ではなく VM の bytecode)。`tests/tcs/Entry/IlExport.cs` の `TinyCs.IlExport.Export` は .NET のテストのための入口で、`specializeGenerics` を真にすると tcs VM と C が読むのと同じ単相化した IL を返す。
 
 ## ノードカタログ (`Compiler/Il.cs`)
 
@@ -110,7 +110,7 @@ var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (C
 
 ## C backend が負う義務
 
-il-spec 付録 B（signed wrap、-ffp-contract=off、excess precision 排除、bounds/null/zero check、fault の決定性）。C backend は GNU statement expression（gcc/clang 拡張）に依存する — 対象 toolchain (arm-none-eabi-gcc) では成立するが MSVC 非対応の移植性制約として明記する。object model は `docs/tcs/object-model.md`。digest 検証は `Transpiler.Tests/DigestKernels/` の kernel（期待値は `perf/CONTRACT.md` 末尾）。
+il-spec 付録 B（signed wrap、-ffp-contract=off、excess precision 排除、bounds/null/zero check、fault の決定性）。C backend は GNU statement expression（gcc/clang 拡張）に依存する — 対象 toolchain (arm-none-eabi-gcc) では成立するが MSVC 非対応の移植性制約として明記する。object model は `docs/tcs/object-model.md`。digest 検証は `tests/tcs/DigestKernels/` の kernel（期待値は `perf/CONTRACT.md` 末尾）。
 
 ## tcs VM が負う義務
 

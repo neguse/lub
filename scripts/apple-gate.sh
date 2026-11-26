@@ -97,9 +97,8 @@ run bash scripts/build-release.sh --build-dir "$build"
 
 # The tests in tests/cs are C#, so tcs vm first builds all of tests/cs into one bytecode (tests/cs/.lub/all.tcsb), and then --entry selects the test to run.
 # The iOS app also gets the same bytecode.
-run dotnet build tcs/Transpiler -c Release -nologo
-LUB_TCS_DLL="$repo_root/tcs/Transpiler/bin/Release/net11.0/Transpiler.dll"
-export LUB_TCS_DLL
+LUB_TCS="$(scripts/build-tcs-dotnet.sh)"
+export LUB_TCS
 # shellcheck source=scripts/cs-tests.sh
 source scripts/cs-tests.sh
 run cs_tests_vm_build

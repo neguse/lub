@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Definite assignment (C# §9.4.4) state: the set of assigned locals. Unreachable points treat all locals as assigned
 public sealed class DaState

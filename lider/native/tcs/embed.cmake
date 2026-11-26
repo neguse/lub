@@ -1,7 +1,7 @@
-# Generates a header holding the files shipped with tcs (Linq.cs and ValueTuple.cs from tcs/TinySystem) as C arrays (included by native/tcs/vm_tcs.c).
-#   cmake -DTINYSYSTEM=<tcs/TinySystem> -DOUT=<tcs_tool_files.h> -P embed.cmake
+# Generates a header holding the files shipped with tcs (Linq.cs and ValueTuple.cs from src/tcs-system) as C arrays (included by native/tcs/vm_tcs.c).
+#   cmake -DTINYSYSTEM=<src/tcs-system> -DOUT=<tcs_tool_files.h> -P embed.cmake
 set(names Linq.cs ValueTuple.cs)
-set(text "/* Generated from tcs/TinySystem by native/tcs/embed.cmake. Do not edit by hand. */\n")
+set(text "/* Generated from src/tcs-system by native/tcs/embed.cmake. Do not edit by hand. */\n")
 string(APPEND text "#include <stddef.h>\n\ntypedef struct TcsToolFile {\n  const char *name;\n  const unsigned char *data;\n  size_t length;\n} TcsToolFile;\n\n")
 set(table "")
 set(i 0)

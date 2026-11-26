@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Compliance checks on the typed tree (rules that look at semantics; the IDE analyzer also reports this compiler's diagnostics).
 // --ref declarations and the libraries shipped with tcs are excluded

@@ -144,13 +144,8 @@ cs_tests_sources() {
   find cs-lib -name '*.cs' ! -name 'lub_stub.cs'
 }
 
-# If LUB_TCS_DLL is set, run Transpiler.dll directly (dotnet run spends ~5 seconds on MSBuild evaluation every time).
 cs_tests_tcs() {
-  if [[ -n "${LUB_TCS_DLL:-}" ]]; then
-    dotnet "$LUB_TCS_DLL" "$@"
-  else
-    dotnet run --project tcs/Transpiler -- "$@"
-  fi
+  scripts/tcs.sh "$@"
 }
 
 # Compile all of tests/cs into one bytecode (tests/cs/.lub/all.tcsb) with tcs vm.

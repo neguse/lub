@@ -2,7 +2,7 @@
 # Builds lider's native extensions (the lub player loads src/Jamo.so next to src/Jamo.ref.cs; include/lub/lub_vm_extension.h).
 # Jamo.so: the kana-kanji conversion (third_party/jamo) session API (native/jamo/vm_jamo.c).
 # Fs.so: file system operations (native/fs/vm_fs.c).
-# Tcs.so: the tcs compiler (native/tcs/vm_tcs.c; includes tcs converted to C with tcs2c).
+# Tcs.so: the tcs compiler (native/tcs/vm_tcs.c; includes tcs converted to C with `tcs c`).
 # The lider player (scripts/build-player.sh) has both built in statically, so this is only needed when running with the lub player (lub).
 # Does not use lub symbols (lub passes a function table).
 # Requirements: cargo, dotnet (to convert tcs to C).
@@ -27,16 +27,14 @@ CARGO_TARGET_DIR="$out/cargo" cargo rustc --manifest-path "$jamo/Cargo.toml" \
   -I"$lub/include" -I"$lub/src/tcs-vm" \
   "$root/native/fs/vm_fs.c" -o "$root/src/Fs.so"
 # Converts tcs to C (same as native/CMakeLists.txt) and embeds the files shipped with tcs in a header
-tcs="$lub/tcs"
 tcs_src="$lub/src/tcs"
-dotnet build "$tcs/tcs2c" -c Release -v q -nologo >/dev/null
 self=("$tcs_src"/Compiler/*.cs "$tcs_src"/CBackend/*.cs "$tcs_src"/VmBackend/*.cs)
 for f in "$tcs_src"/Tool/*.cs; do
   [ "$(basename "$f")" = TcsHost.cs ] || self+=("$f")
 done
 mkdir -p "$out/tcs"
-dotnet "$tcs/tcs2c/bin/Release/net11.0/tcs2c.dll" --lib --ref "$tcs_src/Tool/TcsHost.cs" "${self[@]}" -o "$out/tcs/tcs.c"
-cmake -DTINYSYSTEM="$tcs/TinySystem" -DOUT="$out/tcs/tcs_tool_files.h" -P "$root/native/tcs/embed.cmake"
+"$lub/scripts/tcs.sh" c --lib --ref "$tcs_src/Tool/TcsHost.cs" "${self[@]}" -o "$out/tcs/tcs.c"
+cmake -DTINYSYSTEM="$lub/src/tcs-system" -DOUT="$out/tcs/tcs_tool_files.h" -P "$root/native/tcs/embed.cmake"
 "${CC:-cc}" -shared -fPIC -O2 -ffp-contract=off -fwrapv -w \
   -I"$lub/include" -I"$lub/src/tcs-vm" -I"$out/tcs" \
   "$root/native/tcs/vm_tcs.c" -lm -o "$root/src/Tcs.so"

@@ -4,7 +4,7 @@
 #
 # Caches are keyed by the content of their inputs, and the same inputs reuse the same entry:
 #   - Install directory of third-party libraries (SDL, Box2D, Box3D, OpenXR loader) <build>/deps/ (scripts/deps-cache-key.sh, cmake/LubDeps.cmake)
-#   - tcs wasm assets (content key: hash of the tcs/ tree)
+#   - tcs wasm assets (content key: hash of the src/tcs-format tree)
 #   - slang prebuilt, emsdk, playwright browsers, npm
 # lub's own source changes with every PR, so compiles are cached with ccache (Linux, macOS, Windows, web).
 # master pushes create the cache and PRs read it (actions/cache branch scope).
@@ -338,16 +338,14 @@ jobs:
         run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       # The tests/cs bytecode (built by the .NET tcs) does not depend on the lub build, so it is built in parallel.
-      # Later steps (the golden test and the 00_hello conversion) use the same Transpiler.dll (relative path from the repo root).
-      # Platform=x64 set by msvc-dev-cmd changes dotnet's default output directory to bin/x64/Release, so the output directory is given explicitly.
+      # Later steps (the golden test and the 00_hello conversion) use the same tcs.dll (LUB_TCS).
       - name: Build (lub, and the tests/cs bytecode alongside)
         shell: bash
         run: |
-          export LUB_TCS_DLL=build-tcs/Transpiler.dll
-          echo "LUB_TCS_DLL=$LUB_TCS_DLL" >> "$GITHUB_ENV"
           (
-            dotnet build tcs/Transpiler -c Release -nologo -v q -o build-tcs
-            test -f "$LUB_TCS_DLL"
+            LUB_TCS="$(scripts/build-tcs-dotnet.sh)"
+            export LUB_TCS
+            echo "LUB_TCS=$LUB_TCS" >> "$GITHUB_ENV"
             source scripts/cs-tests.sh
             cs_tests_vm_build
           ) > "$RUNNER_TEMP/tests-cs.log" 2>&1 &
@@ -624,7 +622,7 @@ jobs:
   # The site builds production only once, and deploy publishes as is the dist (web-dist) that the downstream web-verify and web-export checked.
   # Supply of the prerequisite assets (web/README.md):
   #   - lub player wasm: built in this job with emsdk
-  #   - tcs WasmCompiler: content key cache, published with dotnet only on a miss
+  #   - tcs-format (the formatting wasm): content key cache, published with dotnet only on a miss
   web-build:
     runs-on: ubuntu-26.04
     timeout-minutes: 120
@@ -643,7 +641,7 @@ jobs:
 
       - name: Resolve tcs tree hash (cache key)
         id: tcs
-        run: echo "sha=$(git rev-parse HEAD:tcs)" >> "$GITHUB_OUTPUT"
+        run: echo "sha=$(git rev-parse HEAD:src/tcs-format)" >> "$GITHUB_OUTPUT"
 
       # emsdk is placed at a fixed path (~/emsdk).
       # The setup-emsdk action extracts to a random temp path on every run, so the compiler path changes and the deps key (cmake/LubDeps.cmake) no longer matches.
@@ -692,10 +690,10 @@ jobs:
         with:
           global-json-file: global.json
 
-      # The builds of the .NET tcs (for the lider bytecode) and tcs2c (for tcs.c of the lider player) that later stages use run in parallel with the wasm build
+      # The build of the .NET tcs (for the lider bytecode and tcs.c of the lider player) that later stages use runs in parallel with the wasm build
       - name: Build lub player wasm
         run: |
-          (dotnet build tcs/Transpiler -c Release -nologo -v q && dotnet build tcs/tcs2c -c Release -nologo -v q) > "$RUNNER_TEMP/dotnet-build.log" 2>&1 &
+          scripts/build-tcs-dotnet.sh > "$RUNNER_TEMP/dotnet-build.log" 2>&1 &
           dotnet_build=$!
           source "$HOME/emsdk/emsdk_env.sh"
           emcmake cmake --preset wasm-release
@@ -768,7 +766,7 @@ jobs:
         working-directory: web
         run: npm ci
 
-      # The only input of the tcs wasm assets is tcs/, so they are cached with a content key, and PRs that do not touch it skip them, dotnet workload included.
+      # The only input of the tcs wasm assets is src/tcs-format, so they are cached with a content key, and PRs that do not touch it skip them, dotnet workload included.
       - name: Cache tcs wasm assets
         id: tcs-wasm-cache
         uses: actions/cache@v4
@@ -861,8 +859,8 @@ jobs:
         if: matrix.page == 'player'
         shell: bash
         run: |
-          dotnet build tcs/Transpiler -c Release -nologo -v q
-          export LUB_TCS_DLL="$(find tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
+          LUB_TCS="$(scripts/build-tcs-dotnet.sh)"
+          export LUB_TCS
           source scripts/cs-tests.sh
           cs_tests_vm_build
 
@@ -978,45 +976,38 @@ jobs:
         working-directory: web
         run: node scripts/tcs-shutdown-check.mjs ../build/wasm-tcs
 
-  # ---- Tests inside tcs/ ----
+  # ---- Tests of tcs ----
   # Tests of tcs itself (the C# compiler and VM). The lub jobs check tcs from the user side; these check it against the tcs spec.
   # The .NET SDK version is pinned by the root global.json.
-  # tcs/run-tests.sh is split into per-part (--part) jobs that run in parallel. Parts are split by dotnet test class name, and every test is in exactly one part.
+  # tests/tcs/run-tests.sh is split into per-part (--part) jobs that run in parallel. Parts are split by dotnet test class name, and every test is in exactly one part.
   tcs-test:
     name: tcs-test (${{ matrix.part }})
     strategy:
       fail-fast: false
       matrix:
-        part: [transpiler-1, transpiler-2, tcs2c-1, tcs2c-2, tcs2c-3, scripts]
+        part: [tcs-1, tcs-2, backends-1, backends-2, backends-3, scripts]
     runs-on: ubuntu-26.04
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: tcs
     steps:
       - uses: actions/checkout@v4
 
-      # Input for spec conformance (examples from the C# spec). Only Transpiler.Tests reads it
+      # Input for spec conformance (examples from the C# spec). Only tests/tcs reads it
       - name: Init csharpstandard
-        if: startsWith(matrix.part, 'transpiler-')
-        working-directory: .
-        run: git submodule update --init --depth 1 tcs/deps/csharpstandard
+        if: startsWith(matrix.part, 'tcs-')
+        run: git submodule update --init --depth 1 third_party/csharpstandard
 
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
       - name: Run tests and tcs checks
-        run: bash run-tests.sh --part ${{ matrix.part }}
+        run: bash tests/tcs/run-tests.sh --part ${{ matrix.part }}
 
-  # Performance regression of tcs itself (tcs/perf/selfbench). Measured on the same runner as the PR base (on push, the previous commit), and fails if the deterministic metrics (instruction count, peak managed heap) increase beyond the threshold.
+  # Performance regression of tcs itself (tests/tcs-perf/selfbench). Measured on the same runner as the PR base (on push, the previous commit), and fails if the deterministic metrics (instruction count, peak managed heap) increase beyond the threshold.
   # Only tcs vm of the C tcs is measured (the same path the lider player uses to convert games inside the page), and time is not measured.
   tcs-selfbench:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: tcs
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1039,7 +1030,7 @@ jobs:
       - name: Cache the base results
         uses: actions/cache@v4
         with:
-          path: tcs/selfbench-base.json
+          path: selfbench-base.json
           key: selfbench-base-vm-native-${{ steps.base.outputs.tree }}-${{ steps.base.outputs.image }}
 
       - name: Install valgrind
@@ -1048,14 +1039,14 @@ jobs:
           packages: valgrind
 
       - name: Compare with the base
-        run: python3 perf/selfbench/run.py --base "${{ steps.base.outputs.ref }}" --tasks vm --hosts native --runs 0 --base-results selfbench-base.json -o selfbench.json
+        run: python3 tests/tcs-perf/selfbench/run.py --base "${{ steps.base.outputs.ref }}" --tasks vm --hosts native --runs 0 --base-results selfbench-base.json -o selfbench.json
 
       - name: Upload selfbench results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tcs-selfbench-results
-          path: tcs/selfbench.json
+          path: selfbench.json
 
   # Build the release bundle per target every time, and in a location where only the bundle is extracted, export and check the template, then open and run it in lider.
   # Build lub, tcs (tcs converted to C by tcs2c; also checks that it gives the same output as the .NET tcs), lub-gen, and the lider player on that target, and pack them together with the OS-independent parts (kit-common) built by web-build.
@@ -1158,7 +1149,7 @@ jobs:
           [ "$RUNNER_OS" = Linux ] || export CC=clang
           bash scripts/kit-tools-cache-key.sh ${{ matrix.target }} >> "$GITHUB_OUTPUT"
 
-      # For the C tcs and lub-gen, if the inputs (tcs/ etc.) have the same content, reuse the build that passed the comparison with the .NET version (scripts/kit-tools-cache-key.sh)
+      # For the C tcs and lub-gen, if the inputs (src/tcs etc.) have the same content, reuse the build that passed the comparison with the .NET version (scripts/kit-tools-cache-key.sh)
       - name: Cache tcs
         id: tcs-cache
         uses: actions/cache@v4

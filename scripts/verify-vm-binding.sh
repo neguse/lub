@@ -6,9 +6,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
-dotnet build tcs/Transpiler/Transpiler.csproj -c Release -nologo -v q
+LUB_TCS="${LUB_TCS:-$(scripts/build-tcs-dotnet.sh)}"
+export LUB_TCS
 dotnet build tools/lub-gen/lub-gen.csproj -c Release -nologo -v q
-dotnet tcs/Transpiler/bin/Release/net11.0/Transpiler.dll vm --ref cs-lib/lub_stub.cs \
+scripts/tcs.sh vm --ref cs-lib/lub_stub.cs \
   --export 'BindingTest.*' tests/c/tcs_binding.cs -o "$work/game.tcsb"
 dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll vm --stub cs-lib/lub_stub.cs \
   --source tests/c/tcs_binding.cs -o "$work/binding.c"
@@ -40,7 +41,7 @@ echo 'tcs VM binding: bad bit masks and a count past the end of the array fault 
 cat cs-lib/lub_stub.cs tests/c/struct_stub.cs > "$work/struct_stub.cs"
 mkdir -p "$work/struct/lub"
 dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll header --stub "$work/struct_stub.cs" -o "$work/struct/lub/lub_api.h"
-dotnet tcs/Transpiler/bin/Release/net11.0/Transpiler.dll vm --ref "$work/struct_stub.cs" \
+scripts/tcs.sh vm --ref "$work/struct_stub.cs" \
   --export 'StructGame.*' tests/c/struct_test.cs -o "$work/struct/game.tcsb"
 dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll vm --stub "$work/struct_stub.cs" \
   --source tests/c/struct_test.cs -o "$work/struct/binding.c"

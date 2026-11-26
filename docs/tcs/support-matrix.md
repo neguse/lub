@@ -825,7 +825,7 @@ C backend の class の要素の hash は address で、若い object を入れ�
 - Dictionary の `foreach` の途中で新しい key を足すのは fault (.NET は `InvalidOperationException`)。値の上書きと
   `Remove` は許し、消した key はその後の列挙に出ない
 - HashSet も挿入順。HashSet の `foreach` は始めた時点の要素を回り、途中の変更は列挙に影響しない
-- C backend、VM、.NET (TinySystem.props が入れる `TinySystem/Collections.cs` の Dictionary / HashSet が BCL の同じ名前の型を隠す) が同じ順になる (`tcs2c.Tests` の `DictOrder_*`)
+- C backend、VM、.NET (tcs-system.props が入れる `src/tcs-system/Collections.cs` の Dictionary / HashSet が BCL の同じ名前の型を隠す) が同じ順になる (`tests/tcs-backends` の `DictOrder_*`)
 
 値の `null` (直接の `null` / 参照型の `default`) は TCS1003 の警告 (`tcs check` は exit 1)。
 tcs VM と C は null の値を持ち、`Count`、`ContainsKey`、`TryGetValue`、列挙は .NET と同じ結果になる。
@@ -868,7 +868,7 @@ C backend の `Dictionary<string, V>` のハッシュは seed を持たない FN
 ## 19. LINQ — TinySystem.Linq
 
 LINQ は `TinySystem.Linq.Enumerable` (`TinySystem/Linq.cs`) の `List<T>` の拡張メソッドで、`using TinySystem.Linq;` で使う。
-tcs のサブセットの C# で書いてあり、tcs は user のコードと一緒に IL にして tcs VM / C で動かし、.NET の project は `TinySystem/TinySystem.props` で同じファイルをコンパイルするので、3 経路が同じ実装で動く。
+tcs のサブセットの C# で書いてあり、tcs は user のコードと一緒に IL にして tcs VM / C で動かし、.NET の project は `src/tcs-system/tcs-system.props` で同じファイルをコンパイルするので、3 経路が同じ実装で動く。
 意味の正本はそのファイルと doc comment。`System.Linq` は namespace ごと TCS1002 (`using System.Linq;` と並べると、受け手が `List<T>` の TinySystem.Linq が選ばれ、TinySystem.Linq に無い overload は TCS1002)。
 すべて即時評価で、列を返す演算は新しい `List<T>` を返す。callback は各要素にちょうど 1 回、先頭から順に呼び、走査は呼び出した時点の Count まで。メソッドチェーンだけで、クエリ構文 (`from x in ...`) は対象外。
 毎フレームの一時の `List<T>` は作ってよい (int の Where は要素あたり C で約 5 ns、tcs VM で約 30 ns)。struct の要素を `readonly record struct` にすると IL は lambda の parameter の copy を省くが、測った範囲では tcs VM と C の時間は変わらない。
@@ -1010,7 +1010,7 @@ Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).Orde
 ## 27. 既知の意味論差 (実行可能な正本)
 
 C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収できない
-例別の受容差異は `Transpiler.Tests/SpecConformance/known-differences.json` に理由付きで
+例別の受容差異は `tests/tcs/SpecConformance/known-differences.json` に理由付きで
 登録し、spec conformance sweep が実行時に参照する (いまは空)。
 
 次は tcs VM と C が .NET と違う結果を出す (各節に書いた仕様の差)。この他に、.NET が例外を投げる所の多くで tcs は fault で止まる (il-spec §12)。

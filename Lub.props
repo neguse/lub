@@ -1,6 +1,6 @@
 <Project>
-  <!-- Location of tcs inside lub. csproj and props files that point to tcs read this file and use $(TcsRoot) -->
+  <!-- The root of the lub checkout. csproj and props files that point into lub read this file and use $(LubRoot) -->
   <PropertyGroup>
-    <TcsRoot Condition="'$(TcsRoot)' == ''">$(MSBuildThisFileDirectory)tcs</TcsRoot>
+    <LubRoot Condition="'$(LubRoot)' == ''">$(MSBuildThisFileDirectory.TrimEnd('/').TrimEnd('\\'))</LubRoot>
   </PropertyGroup>
 </Project>

@@ -17,8 +17,8 @@
     <!-- The cs-lib implementation sources (lubx/*) are compile inputs of all samples (same convention as the lub CLI) -->
     <Compile Include="../../cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../../cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
-    <ProjectReference Include="$(TcsRoot)/TinySystem/TinySystem.csproj" />
-    <ProjectReference Include="$(TcsRoot)/TinyCs.Analyzers/TinyCs.Analyzers.csproj"
+    <ProjectReference Include="$(LubRoot)/src/tcs-system/tcs-system.csproj" />
+    <ProjectReference Include="$(LubRoot)/src/tcs-analyzers/tcs-analyzers.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />

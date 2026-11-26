@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Generic monomorphization for the tcs VM and C backends. For each closed generic type (`Box<int>`, tuples) and
 // each closed call of a generic method, creates a copy with the type arguments substituted (`TcsClosed0_Box`) and rewrites references to that name.

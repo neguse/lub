@@ -26,14 +26,10 @@ dotnet/*/bin/
 dotnet/*/obj/
 templates/game/bin/
 templates/game/obj/
-# dotnet build output and editor files of tcs
-tcs/**/bin/
-tcs/**/obj/
-tcs/**/.vs/
-tcs/**/*.user
-tcs/**/*.suo
-tcs/**/.idea/
-tcs/**/*.swp
-tcs/**/*~
-# Output of tcs/perf/compare/run.py and report.py
-tcs/perf/compare/results/
+# dotnet build output of tcs
+src/tcs*/bin/
+src/tcs*/obj/
+tests/tcs*/bin/
+tests/tcs*/obj/
+# Output of tests/tcs-perf/compare/run.py and report.py
+tests/tcs-perf/compare/results/

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks that the tcs vm --watch started by lub <Entry>.csproj (the tcs VM player) does not remain after lub exits.
-# tcs is started in 2 ways: as a single process (the same as the Transpiler of the release kit), and as dotnet run with Transpiler as a child.
+# tcs is started in 2 ways: as a single process (the same as the tcs of the release kit), and as dotnet run with tcs as a child.
 # There are also 2 ways to end: a normal exit after capture, and a forced kill (TerminateProcess on Windows, SIGKILL on Linux / macOS).
 # Processes are found by the entry class name in the command line.
 # Usage: scripts/test-tcs-process-cleanup.sh [lub binary]
@@ -19,8 +19,8 @@ esac
 
 # LUB_TCS is split on spaces.
 # On Windows, do not turn the path passed to dotnet into MSYS form
-dotnet build tcs/Transpiler -c Release -nologo -v q -o "$work/tcs"
-tcs_dll="$work/tcs/Transpiler.dll"
+dotnet build src/tcs -c Release -nologo -v q -o "$work/tcs"
+tcs_dll="$work/tcs/tcs.dll"
 [[ $windows -eq 1 ]] && tcs_dll="$(cygpath -m "$tcs_dll")"
 
 # Print lines of "<pid> <command line>"

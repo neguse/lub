@@ -6,7 +6,7 @@
      boundary) × N → C.Report
    - --reload K NEW.tcsb PLAN: (with --lib) applies the new version after the
      K-th frame (can be repeated)
-   - --reload-batch K BATCH: likewise, applies the decoded bytes of a tcs2vm
+   - --reload-batch K BATCH: likewise, applies the decoded bytes of a tcs vm
      --watch vm_batch
    - --snapshot K / --restore K: (with --lib) after the K-th frame (after
      reload), takes a state snapshot / writes the snapshot back

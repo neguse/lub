@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Bound tree → IL. Builds IL from the binding results (the Type / Sym / Info of each Node and the Conv nodes).
 // Semantic decisions (integer division, concatenation, indexing, facade resolution) are made here, and unsupported syntax returns null

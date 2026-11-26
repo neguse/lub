@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // One file of a session. Holds the tree as parsed and does not reparse it until the contents change
 public sealed class SessionFile

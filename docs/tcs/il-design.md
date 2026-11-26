@@ -19,7 +19,7 @@ backend が 2 つあると、片方の出力を意味論の正本にした時点
 C# との意味のずれも、どちら側の姿が「本当」か決めずに場当たりで埋めることになる。
 
 IL を正本にすると、tcs VM と C は「同一仕様の 2 実装」として対称になり、C# との差の各項目は「IL の仕様」(`docs/tcs/il-spec.md` §1-§15) と「各 backend の負担」(il-spec 付録 A / B) に分解される。
-2 backend と .NET の一致は semantic テスト (`CompileAndRunVm` 系。`TCS_DIFFERENTIAL=1` で .NET とも比べる)、`tcs2c.Tests` の差分 (C、tcs VM、.NET の stdout 一致)、固定 workload の digest 比較で担保する。
+2 backend と .NET の一致は semantic テスト (`CompileAndRunVm` 系。`TCS_DIFFERENTIAL=1` で .NET とも比べる)、`tests/tcs-backends` の差分 (C、tcs VM、.NET の stdout 一致)、固定 workload の digest 比較で担保する。
 
 ## 3. 全体構成
 

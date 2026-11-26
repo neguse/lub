@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using TinySystem.Text;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Kinds of name and member references (Info of Name / Member)
 public static class RefKind

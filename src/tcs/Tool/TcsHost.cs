@@ -1,5 +1,5 @@
 // Declarations of the OS functions used by the tcs host (Tool). Each host has its own implementation:
-// the C build uses Native/host.c (--ref of tcs2c), and .NET uses Transpiler/DotnetHost.cs.
+// the C build uses Native/host.c (--ref of `tcs c`), and .NET uses Dotnet/DotnetHost.cs.
 // This file is passed as --ref in the C build and is not included in the .NET build.
 public static class TcsHost
 {

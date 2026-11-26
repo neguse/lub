@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // TinyC# IL (docs/tcs/il-spec.md). Intermediate representation of method bodies.
 // The builder makes all semantic decisions, and the backends (VmEmitter and CEmitter) emit output from the IL alone.

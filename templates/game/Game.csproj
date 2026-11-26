@@ -17,8 +17,6 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);.lub/**</DefaultItemExcludes>
     <NoWarn>$(NoWarn);CS8981</NoWarn>
   </PropertyGroup>
-  <!-- Location of tcs ($(TcsRoot)). Inside a lub checkout, Directory.Build.props has already imported it -->
-  <Import Project="$(LubRoot)/Lub.props" Condition="'$(TcsRoot)' == '' and '$(LubKit)' != 'true'" />
 
   <ItemGroup>
     <!-- The implementation sources of cs-lib (lub.Math, lubx) are included in compile, as in the tcs VM player -->
@@ -33,8 +31,8 @@
   </ItemGroup>
   <ItemGroup Condition="'$(LubKit)' != 'true'">
     <ProjectReference Include="$(LubRoot)/dotnet/Lub/Lub.csproj" />
-    <ProjectReference Include="$(TcsRoot)/TinySystem/TinySystem.csproj" />
-    <ProjectReference Include="$(TcsRoot)/TinyCs.Analyzers/TinyCs.Analyzers.csproj"
+    <ProjectReference Include="$(LubRoot)/src/tcs-system/tcs-system.csproj" />
+    <ProjectReference Include="$(LubRoot)/src/tcs-analyzers/tcs-analyzers.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
@@ -42,11 +40,11 @@
   <!-- The same three, built in advance for the release kit (scripts/build-dotnet-lib.sh) -->
   <ItemGroup Condition="'$(LubKit)' == 'true'">
     <Reference Include="Lub" HintPath="$(LubRoot)/dotnet/Lub.dll" />
-    <Reference Include="TinySystem" HintPath="$(LubRoot)/dotnet/TinySystem.dll" />
-    <Analyzer Include="$(LubRoot)/dotnet/TinyCs.Analyzers.dll" />
+    <Reference Include="tcs-system" HintPath="$(LubRoot)/dotnet/tcs-system.dll" />
+    <Analyzer Include="$(LubRoot)/dotnet/tcs-analyzers.dll" />
   </ItemGroup>
   <!-- Maps Math / MathF to TinySystem.Math so that, even in .NET execution, the Math transcendental functions
        give bit-identical results to tcs VM / tcs2c -->
-  <Import Project="$(TcsRoot)/TinySystem/TinySystem.props" Condition="'$(LubKit)' != 'true'" />
-  <Import Project="$(LubRoot)/dotnet/TinySystem/TinySystem.props" Condition="'$(LubKit)' == 'true'" />
+  <Import Project="$(LubRoot)/src/tcs-system/tcs-system.props" Condition="'$(LubKit)' != 'true'" />
+  <Import Project="$(LubRoot)/dotnet/tcs-system/tcs-system.props" Condition="'$(LubKit)' == 'true'" />
 </Project>

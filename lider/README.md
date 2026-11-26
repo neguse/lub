@@ -67,7 +67,7 @@ XR (OpenXR) で動かすには `LUB_BACKEND=openxr` を渡す。
 | 場所 | 中身 |
 |---|---|
 | `src/` | lider の本体。entry は `src/Lider.cs`、ゲームを開いて進めるのは `src/Core/GameApp.cs` |
-| `native/` | lider の player。lub の player の library (`find_package(lub)`) に、かな漢字変換 (`third_party/jamo`)、file system の操作、tcs の compiler (`tcs/` を tcs2c で C にした物) を静的に link する |
+| `native/` | lider の player。lub の player の library (`find_package(lub)`) に、かな漢字変換 (`third_party/jamo`)、file system の操作、tcs の compiler (`src/tcs/` を `tcs c` で C にした物) を静的に link する |
 | `tests/` | runtime テスト。`tests/<name>/` は lider を動かす test、`tests/editor/` はエディタの core だけの test |
 | `samples/` | lider で開くゲームの例 |
 | `data/` | font |

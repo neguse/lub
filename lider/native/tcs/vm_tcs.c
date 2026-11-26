@@ -241,7 +241,7 @@ static TvmStatus f_arg(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
 static TvmStatus f_call(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   (void)user;
   host_out_length = 0;
-  tcs_entry_TcsSelf_Sessions_Call();
+  tcs_entry_Tcs_Sessions_Call();
   for (int i = 0; i < host_arg_count; i++)
     free(host_args[i].data);
   host_arg_count = 0;

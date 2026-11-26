@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Context for building IL. The IL consumer (IlExporter) sets it each time it enters a type and member, and IlBuild reads it
 public sealed class IlContext

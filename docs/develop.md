@@ -78,11 +78,14 @@ flowchart LR
 | 場所 | 役割 |
 | --- | --- |
 | `src/`, `include/` | `liblub`、`player` (`lub_vm_player`)、`lub` CLI (`src/main.c`) |
-| `src/tcs/` | TinyC# コンパイラ (`tcs vm` / `tcs c`) |
+| `src/tcs/` | TinyC# コンパイラ (`tcs vm` / `tcs c`)。.NET では `tcs.dll`、C では `tcs` |
 | `src/tcs-vm/` | tcs VM |
 | `src/tcs-runtime/` | 標準 C 補助 (tcs VM と `tcs c` の出力が使う) |
+| `src/tcs-system/` | `TinySystem` (.NET で動かすときの型と、source で配る LINQ) |
+| `src/tcs-analyzers/` | IDE と `dotnet build` に TinyC# の診断を出す analyzer |
+| `src/tcs-format/` | サイトが C# を整形する wasm |
+| `tests/tcs/`, `tests/tcs-backends/`, `tests/tcs-vm/`, `tests/tcs-analyzers/`, `tests/tcs-perf/` | tcs のテストと性能の計測 (`tests/tcs/run-tests.sh` が全部を回す) |
 | `cs-lib/` | `Lub API` の正本 (`lub_stub.cs`) と C# で書いた `Lubx API` (`lub/`, `lubx/`) |
-| `tcs/` | tcs の .NET の project、テスト、性能の計測 |
 | `tools/lub-gen/` | `lub_stub.cs` から C ヘッダ・VM 連携・`.NET` facade・API docs を生成するツール |
 | `dotnet/` | `.NET` 実行モード用の facade (`dotnet/Lub`) とテストランナー (`SampleRunner`) |
 | `lider/` | ホットリロード対応の専用エディタ (自身も lub 上の TinyC# で動作) |

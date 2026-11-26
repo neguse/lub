@@ -186,7 +186,7 @@ void tcs_migrate_value(const TcsPlan *plan, const TcsType *oldtypes, const TcsTy
 ## 8. 検査
 
 - 型記述子の往復: C# の writer が書いた byte 列を C の parser が読み、同じ名前・offset になる (VM の loader の検査と
-  tcs2c.Tests)
+  tests/tcs-backends)
 - layout の一致: tcs2c の生成 C は、型記述子から求めた field の offset と、生成した struct の `offsetof` が
   一致することを初期化で検査する (test の build で有効にする)
 - 計画の一致: 同じ v1 / v2 の組から、VM の `tvm_apply` と tcs2c の migrator が同じ object の形に移行する
@@ -196,9 +196,9 @@ void tcs_migrate_value(const TcsPlan *plan, const TcsType *oldtypes, const TcsTy
 
 | 段階 | 内容 | 完了条件 |
 |---|---|---|
-| M-1 | 型記述子の byte 列の C# の writer と C の parser / layout (§4、§5) を `Transpiler/Backend/` と `runtime/model/` に置き、VM がそれを使う。VM の layout を C の規則にする | VM の差分テストが通る (済み。VM の loader が往復の検査を兼ねる) |
-| M-2 | tcs2c が同じ byte 列を生成 C に置き、offset の一致を検査する | tcs2c.Tests が検査付きで通る (済み: `tcs_type_table` と `TCS_VERIFY_TYPES` の `tcs_verify_types`。tcs2c.Tests は全部の program をこの検査付きで build する) |
-| M-3 | walker (§7) と reload の計画 (§6)。VM の `tvm_apply` (vm-design V4) をこの上に作る | hot reload の semantic テストと T235 が VM で通る (済み: `tcs2c.Tests` の `VmReloadTests` が T235 の scenario 20 本を C# の driver で VM に当て、reload の不変量 (retained の保持、added の initializer、identity、method の差し替え、static、OnReload 1 回) を GC stress でも確かめる。relayout は class、List / 配列 / Dictionary の struct 値、struct の static まで) |
+| M-1 | 型記述子の byte 列の C# の writer と C の parser / layout (§4、§5) を `src/tcs/CBackend/` (`TypeTable`) と `src/tcs-runtime/model/` に置き、VM がそれを使う。VM の layout を C の規則にする | VM の差分テストが通る (済み。VM の loader が往復の検査を兼ねる) |
+| M-2 | tcs2c が同じ byte 列を生成 C に置き、offset の一致を検査する | tests/tcs-backends が検査付きで通る (済み: `tcs_type_table` と `TCS_VERIFY_TYPES` の `tcs_verify_types`。tests/tcs-backends は全部の program をこの検査付きで build する) |
+| M-3 | walker (§7) と reload の計画 (§6)。VM の `tvm_apply` (vm-design V4) をこの上に作る | hot reload の semantic テストと T235 が VM で通る (済み: `tests/tcs-backends` の `VmReloadTests` が T235 の scenario 20 本を C# の driver で VM に当て、reload の不変量 (retained の保持、added の initializer、identity、method の差し替え、static、OnReload 1 回) を GC stress でも確かめる。relayout は class、List / 配列 / Dictionary の struct 値、struct の static まで) |
 | M-4 | header (§3) と GC を共有し、VM の object を tcs2c と同じ形にする | VM の object を tcs2c の生成 C の関数が読める (mixed-mode の最小の test。1 段目は済み: class の payload と field の offset が同じになり、`tcsvm/tests/mixed` で tcs2c の生成 C の関数が VM の class の object の int / float / bool / 参照の field を読み書きする。残り: header の struct を 1 つにする、type_id の番号、string / List / Dictionary / closure の容器の形、GC と write barrier) |
 | M-5 | (§10 で置き換え) tcs2c の copy migration と snapshot を walker の上に作る | release の reload (hot-reload の D6) は採らない方針。tcs2c 側の walker は §10 の X-3 (C の module の root が VM の reload に参加する) と S (snapshot) で使う |
 

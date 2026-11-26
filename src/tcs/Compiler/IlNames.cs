@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using TinySystem.Text;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Rules for IL names (names of user-type methods, constructors, operators, and parameters). Host type names are in HostNames in Declarer.cs
 public static class IlNames

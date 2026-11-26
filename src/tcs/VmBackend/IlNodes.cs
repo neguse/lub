@@ -1,6 +1,6 @@
 // Generated from Compiler/Il.cs by VmBackend/gen-ilnodes.py. Do not edit by hand.
 using System.Collections.Generic;
-using TcsSelf;
+using Tcs;
 
 namespace TcsVm;
 

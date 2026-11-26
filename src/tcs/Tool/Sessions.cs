@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using TcsVm;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Entry point for tcs VM incremental sessions (VmSession) that the host holds by name.
 // Used to compile different versions of the same program side by side in one process (such as the saved version and the version being edited).

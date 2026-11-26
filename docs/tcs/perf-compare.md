@@ -11,7 +11,7 @@ tcs の経路 (1 つの `<Entry>.cs` から作る):
 |---|---|
 | `tcs-vm` | `tcs vm` → `.tcsb` → `build/tcsvm/tcsvm`。開発と hot reload の経路 |
 | `tcs-c` | `tcs c` → C → gcc -O2。release の経路 |
-| `tcs-dotnet` | 同じソースを .NET (Release、JIT) で動かす。`TinySystem.props` で Math と Dictionary は tcs と同じ実装 |
+| `tcs-dotnet` | 同じソースを .NET (Release、JIT) で動かす。`tcs-system.props` で Math と Dictionary は tcs と同じ実装 |
 
 比べる相手 (`<Entry>.<拡張子>`、手で書く):
 

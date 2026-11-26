@@ -3,7 +3,7 @@
 # lub-gen reads the stubs and the game with the tcs compiler (src/tcs/Compiler), so that source is converted to C together with it.
 # The host is src/tcs/Native/host.c, the same as for tcs (with the entry replaced by the Tool of lub-gen).
 # The C conversion uses <build-dir>/tcs/tcs (and lib/) placed by scripts/build-tcs-native.sh. Then dotnet is not needed, only a C compiler.
-# If <build-dir>/tcs/tcs is missing, it converts to C with the .NET tcs2c (the same implementation as tcs c, producing the same C) and places lib/ from tcs (PR CI takes this path).
+# If <build-dir>/tcs/tcs is missing, it converts to C with the .NET tcs (the same implementation, producing the same C) and places lib/ from tcs (PR CI takes this path).
 # With --verify, it also checks that the output (the generated files of gen-api and the tcs glue code) matches that of the same lub-gen run on .NET (requires dotnet).
 #
 # Usage: scripts/build-lub-gen.sh [--verify] [build-dir]   (default build-release-linux)
@@ -34,16 +34,15 @@ host_src=src/tcs
 if [[ -x "$out/tcs$exe" ]]; then
   tcs_c=("$out/tcs$exe" c)
 else
-  dotnet build tcs/tcs2c -c Release -nologo -v q -o "$work/tcs2c" > /dev/null
-  tcs_c=(dotnet "$work/tcs2c/tcs2c.dll")
+  tcs_c=(scripts/tcs.sh c)
   # lub-gen tcs, like tcs, reads lib/TinySystem from the directory of the executable
   mkdir -p "$out/lib/TinySystem"
-  cp tcs/TinySystem/Linq.cs tcs/TinySystem/ValueTuple.cs "$out/lib/TinySystem/"
+  cp src/tcs-system/Linq.cs src/tcs-system/ValueTuple.cs "$out/lib/TinySystem/"
 fi
 sources=("$host_src"/Compiler/*.cs tools/lub-gen/*.cs)
 "${tcs_c[@]}" --lib --ref "$host_src/Tool/TcsHost.cs" "${sources[@]}" -o "$work/lub-gen.c"
 
-# Floating-point rules (appendix B of the tcs il-spec). Omitted for compilers that do not accept -fexcess-precision=standard (same as tcs/SelfHost/native.sh)
+# Floating-point rules (appendix B of the tcs il-spec). Omitted for compilers that do not accept -fexcess-precision=standard (same as src/tcs/native.sh)
 cc="${CC:-cc}"
 flags=(-O2 -ffp-contract=off -fwrapv)
 printf 'int main(void){return 0;}\n' > "$work/probe.c"

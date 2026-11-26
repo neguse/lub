@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Type predicates (on TypeSym).
 // Tuples are treated as the library's System.ValueTuple<...> (TinySystem/ValueTuple.cs), a generic mutable struct

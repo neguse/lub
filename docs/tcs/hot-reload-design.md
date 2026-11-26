@@ -126,7 +126,7 @@ migration が到達できる生存状態の全域 (roots):
 
 restart は 2 か所で決まる。
 
-1. **compiler** (`ReloadRules`、`Tool/ReloadRules.cs`): 旧版と新版の IL の metadata (型の種類、base、static と const の型と initializer の hash、enum member) を比べる。規則は §11 の表
+1. **compiler** (`ReloadRules`、`VmBackend/ReloadRules.cs`): 旧版と新版の IL の metadata (型の種類、base、static と const の型と initializer の hash、enum member) を比べる。規則は §11 の表
 2. **VM** (`tvm_apply`、vm-design §12.3): 生きている object の型が新版に無い、生きている closure の関数に同じ形 (引数・戻り値・捕捉の種類と型) の対応が無い、旧版が string の定数を持つのに新版に string の型が無い
 
 VM は struct の値の居場所を型で辿れるので、closure の捕捉や容器の中の struct の値を理由に restart にすることは無い。VM の検出は旧版の状態に対して行う — 生存状態は旧版のプログラムが作ったものだから。
@@ -173,7 +173,7 @@ v2 の IL ──┘        │      ── 分類 (live の batch / requiresRest
 
 ## 11. restart の規則表と、本設計との差
 
-restart の規則は `ReloadRules` (`Tool/ReloadRules.cs`。IlExport の metadata) の 1 つで、`tcs vm --watch`、`tcs vm --reload-from`、web の増分 session が同じものを使う。
+restart の規則は `ReloadRules` (`VmBackend/ReloadRules.cs`。IlExport の metadata) の 1 つで、`tcs vm --watch`、`tcs vm --reload-from`、web の増分 session が同じものを使う。
 
 | 編集 | 分類 |
 |---|---|

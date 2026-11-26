@@ -15,10 +15,10 @@
 #define TCS_HOST_SOURCE "tcs.c"
 #endif
 #ifndef TCS_HOST_START
-#define TCS_HOST_START tcs_entry_TcsSelf_Cli_Start
+#define TCS_HOST_START tcs_entry_Tcs_Cli_Start
 #endif
 #ifndef TCS_HOST_STEP
-#define TCS_HOST_STEP tcs_entry_TcsSelf_Cli_Step
+#define TCS_HOST_STEP tcs_entry_Tcs_Cli_Step
 #endif
 #include TCS_HOST_SOURCE
 

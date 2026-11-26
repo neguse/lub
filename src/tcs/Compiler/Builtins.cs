@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Members of the BCL and TinySystem. IlBuild maps Builtin ids to IL calls.
 // Type parameters are written as the receiver's type arguments (TypeParam Index), and method type arguments as TypeParam with IsMethodParam.

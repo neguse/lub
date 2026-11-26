@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- tcs, the TinyC# compiler, as a .NET program (tcs.dll).
+       Compiler/, CBackend/, VmBackend/ and Tool/ are in the tcs subset, and `tcs c` converts the same files to C (native.sh).
+       The OS functions (TcsHost) are per host: Dotnet/ on .NET, Native/host.c in C -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Tcs</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The declaration of TcsHost that `tcs c` reads with -ref. On .NET, Dotnet/DotnetHost.cs is the implementation -->
+    <Compile Remove="Tool/TcsHost.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../tcs-system/tcs-system.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The part of TinySystem shipped as source: tcs compiles it together with user code -->
+    <EmbeddedResource Include="../tcs-system/Linq.cs" LogicalName="lib/TinySystem/Linq.cs" />
+    <EmbeddedResource Include="../tcs-system/ValueTuple.cs" LogicalName="lib/TinySystem/ValueTuple.cs" />
+    <!-- The runtime C that `tcs c` embeds in the generated C -->
+    <Content Include="../tcs-runtime/core/*.c;../tcs-runtime/core/*.h" LinkBase="runtime/core" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../tcs-runtime/math/*.c;../tcs-runtime/math/*.h" LinkBase="runtime/math" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../tcs-runtime/fmt/*.c;../tcs-runtime/fmt/*.h" LinkBase="runtime/fmt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../tcs-runtime/model/*.c;../tcs-runtime/model/*.h" LinkBase="runtime/model" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../tcs-runtime/utf8/*.c;../tcs-runtime/utf8/*.h" LinkBase="runtime/utf8" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

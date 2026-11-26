@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 
-namespace TcsSelf;
+namespace Tcs;
 
-// Generated file (Transpiler.Tests/BclCatalogTests.cs, TCS_UPDATE_BCL=1). Do not edit by hand.
+// Generated file (tests/tcs/BclCatalogTests.cs, TCS_UPDATE_BCL=1). Do not edit by hand.
 // BCL types in the .NET reference assemblies, and member names of the types the subset passes with a restricted member set.
 // Used to report "APIs that exist in .NET but not in the subset" as TCS1002
 public static class BclCatalog

@@ -1,6 +1,6 @@
 using TinySystem.Text;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Byte-level string utilities (the subset's string has no position APIs)
 public static class Strings

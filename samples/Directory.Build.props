@@ -2,5 +2,5 @@
   <!-- Common to every csproj in samples (for IDE type checking): resolve Math / MathF to
        TinySystem.Math (the same implementation as the tcs VM / tcs2c) -->
   <Import Project="../Lub.props" />
-  <Import Project="$(TcsRoot)/TinySystem/TinySystem.props" />
+  <Import Project="$(LubRoot)/src/tcs-system/tcs-system.props" />
 </Project>

@@ -55,11 +55,11 @@ static bool dotnet_on_path(void) {
 // Priority:
 //   1. LUB_TCS environment variable (space-separated command prefix; quoting
 //      is not supported)
-//   2. <exe>/tcs/tcs -> tcs converted to C with tcs2c (in the release bundle,
+//   2. <exe>/tcs/tcs -> tcs converted to C with tcs c (in the release bundle,
 //      and what scripts/build-tcs-native.sh puts in the build dir)
-//   3. <cwd>/tcs -> dotnet run --project ... -- (when dotnet is on PATH)
-//   4. <exe>/../tcs -> same as above
-//   5. tcs/SelfHost/out/native/tcs -> the C tcs built in the checkout (when
+//   3. <cwd>/src/tcs -> dotnet run --project ... -- (when dotnet is on PATH)
+//   4. <exe>/../src/tcs -> same as above
+//   5. src/tcs/out/native/tcs -> the C tcs built in the checkout (when
 //      dotnet is not on PATH)
 // Returns: the number of entries put into argv (0 = resolution failed).
 // Allocated in storage, equivalent to strdup.
@@ -95,15 +95,14 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
     roots[1] = exe_root;
   }
   // If there is no dotnet, use the C tcs built in the checkout (the output of
-  // tcs/SelfHost/native.sh)
+  // src/tcs/native.sh)
   for (int i = 0; !dotnet_on_path() && i < 2; i++) {
     if (!roots[i])
       continue;
 #ifdef _WIN32
-    SDL_snprintf(storage[0], 512, "%s/tcs/SelfHost/out/native/tcs.exe",
-                 roots[i]);
+    SDL_snprintf(storage[0], 512, "%s/src/tcs/out/native/tcs.exe", roots[i]);
 #else
-    SDL_snprintf(storage[0], 512, "%s/tcs/SelfHost/out/native/tcs", roots[i]);
+    SDL_snprintf(storage[0], 512, "%s/src/tcs/out/native/tcs", roots[i]);
 #endif
     if (file_exists(storage[0])) {
       argv[0] = storage[0];
@@ -114,8 +113,7 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
     if (!roots[i])
       continue;
     char proj[768];
-    SDL_snprintf(proj, sizeof(proj), "%s/tcs/Transpiler/Transpiler.csproj",
-                 roots[i]);
+    SDL_snprintf(proj, sizeof(proj), "%s/src/tcs/tcs.csproj", roots[i]);
     if (!file_exists(proj))
       continue;
     SDL_strlcpy(storage[0], "dotnet", 512);
@@ -245,7 +243,7 @@ void tcs_free_sources(char **sources, int count) {
 #ifdef _WIN32
 // Puts tcs into a Job Object that stops all processes in it when its handle is
 // closed. However lub ends, the OS closes the handle, so tcs does not survive
-// even a forced termination. Children also join the same Job, so the Transpiler
+// even a forced termination. Children also join the same Job, so the tcs
 // child of dotnet run also stops. The handle is not inherited (if tcs held it,
 // it could not be closed).
 static void *tcs_job_adopt(SDL_Process *proc) {
@@ -291,7 +289,7 @@ static void tcs_job_close(TcsPipeline *p) {
 // On Linux / macOS, tcs runs under a guard sh (in place of the Windows Job
 // Object). The stdin of sh is a pipe whose write end only lub holds, and the OS
 // closes it however lub ends (even by a signal or SIGKILL). When it closes, sh
-// sends SIGTERM to tcs (dotnet run forwards it to the Transpiler child).
+// sends SIGTERM to tcs (dotnet run forwards it to the tcs child).
 // SIGTERM to sh (tcs_pipeline_stop) is also forwarded to tcs, and if tcs exits
 // by itself, sh exits with the same exit code. The stdin of a background list
 // is /dev/null, so the pipe is copied to fd 3 and passed to the guard.
@@ -355,7 +353,7 @@ bool tcs_vm_pipeline_start(TcsPipeline *p, const char *const *args, int nargs) {
   int n = resolve_tcs_cmd(storage, 16, argv);
   if (n == 0) {
     SDL_Log("tcs not found: set LUB_TCS, or run from a lub checkout "
-            "(tcs/Transpiler/Transpiler.csproj)");
+            "(src/tcs/tcs.csproj)");
     return false;
   }
   argv[n++] = "vm";
@@ -386,7 +384,7 @@ bool tcs_check_run(const char *const *args, int nargs) {
   int n = resolve_tcs_cmd(storage, 16, argv);
   if (n == 0) {
     SDL_Log("tcs not found: set LUB_TCS, or run from a lub checkout "
-            "(tcs/Transpiler/Transpiler.csproj)");
+            "(src/tcs/tcs.csproj)");
     SDL_free(argv);
     return false;
   }

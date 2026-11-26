@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using TinySystem.Text;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // A large non-negative decimal integer (one digit at a time, from the lowest digit). Used for the exact decimal expansion of floats
 public sealed class BigDec

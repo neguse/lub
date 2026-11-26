@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using TinySystem.Text;
 
-namespace TcsSelf;
+namespace Tcs;
 
 // Input to the backends that read IL (tcs c and tcs vm).
 // Passes per-type metadata of the checked program and the IL of method bodies

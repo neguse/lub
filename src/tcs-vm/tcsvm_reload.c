@@ -1,6 +1,6 @@
 /* Applying a hot reload (docs/tcs/vm-design.md §12, docs/tcs/object-model.md
    §6, §7). Loads the new version's module into another VM, and following the
-   plan (made by tcs2vm --reload-from; same form as the tcs2c migrator) moves
+   plan (made by tcs vm --reload-from; same form as the tcs2c migrator) moves
    the heap and statics to the new version's types and swaps the function table.
 
    Stages:

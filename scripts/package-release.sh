@@ -109,7 +109,7 @@ cp "$build/tcs/tcs$exe" "$kit/bin/tcs/"
 cp "$build/tcs/lub-gen$exe" "$kit/bin/tcs/"
 cp -R "$build/tcs/runtime/." "$kit/bin/tcs/runtime/"
 cp -R "$build/tcs/lib/." "$kit/bin/tcs/lib/"
-# .NET execution of templates/game: the prebuilt assemblies it references in the kit, and the sources TinySystem.props compiles into the game
+# .NET execution of templates/game: the prebuilt assemblies it references in the kit, and the sources tcs-system.props compiles into the game
 cp -R "$common/dotnet/." "$kit/dotnet/"
 
 # Files read by lider (LIDER_HOME): fonts, and the kana-kanji conversion dictionary and its display

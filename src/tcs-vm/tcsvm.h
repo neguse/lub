@@ -44,7 +44,7 @@ void tvm_free(TvmVm *vm);
 TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size);
 
 /* hot reload (docs/tcs/vm-design.md §12, docs/tcs/object-model.md §6): applies
-   the module and plan of the new version (made by tcs2vm --reload-from).
+   the module and plan of the new version (made by tcs vm --reload-from).
    Accepted only at a frame boundary (when there is no VM frame). TVM_LOAD_ERROR
    / TVM_RESTART means nothing was applied (the state stays at the old version;
    the reason is in tvm_error). On TVM_OK, a non-empty tvm_error() is a warning
@@ -80,7 +80,7 @@ void tvm_use_heap(TvmVm *vm, const TvmHeap *heap); /* Before tvm_load */
 void tvm_heap_roots(TvmSlotFn fn);
 void tvm_heap_refs(void *payload, TvmSlotFn fn);
 
-/* Applies a vm_batch from the tcs2vm --watch stream (the base64-decoded bytes:
+/* Applies a vm_batch from the tcs vm --watch stream (the base64-decoded bytes:
    u32 module length, module, u32 plan length, plan). Returns the same as
    tvm_apply */
 TvmStatus tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size);

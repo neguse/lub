@@ -21,8 +21,8 @@ if [[ ! -d "$DIR" ]]; then
     echo "sample not found: $DIR" >&2
     exit 1
 fi
-if [[ ! -f tcs/Transpiler/Transpiler.csproj ]]; then
-    echo "tcs/Transpiler/Transpiler.csproj not found (run from the repo root)" >&2
+if [[ ! -f src/tcs/tcs.csproj ]]; then
+    echo "src/tcs/tcs.csproj not found (run from the repo root)" >&2
     exit 1
 fi
 
@@ -46,13 +46,7 @@ fi
 mapfile -t -O "${#CS_FILES[@]}" CS_FILES \
     < <(find cs-lib -name '*.cs' ! -name 'lub_stub.cs' | sort)
 
-# dotnet run evaluates MSBuild on every call and takes ~5 seconds each time.
-# If the caller (native-gate.sh) builds Transpiler once and passes LUB_TCS_DLL, the DLL is run directly from then on and the startup cost is not paid.
-if [[ -n "${LUB_TCS_DLL:-}" ]]; then
-    TCS=(dotnet "$LUB_TCS_DLL")
-else
-    TCS=(dotnet run --project tcs/Transpiler --)
-fi
+TCS=(scripts/tcs.sh)
 
 case "$MODE" in
 --check)
