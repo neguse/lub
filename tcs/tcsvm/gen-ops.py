@@ -1,4 +1,4 @@
-"""Generates SelfHost/VmBackend/Op.cs from TVM_OPS in tcsvm/vm/tcsvm_ops.h.
+"""Generates VmBackend/Op.cs from TVM_OPS in tcsvm/vm/tcsvm_ops.h.
 Usage: python3 -I tcsvm/gen-ops.py (run it when the order changes; a mismatch stops at load time via the abi)"""
 import os
 import re
@@ -30,5 +30,5 @@ public static class OpAbi
     public const int Hash = {signed};
 }}
 '''
-open(os.path.join(os.path.dirname(root), 'SelfHost', 'VmBackend', 'Op.cs'), 'w', encoding='utf-8').write(cs)
+open(os.path.join(os.path.dirname(root), 'VmBackend', 'Op.cs'), 'w', encoding='utf-8').write(cs)
 print(f'{len(names)} ops')

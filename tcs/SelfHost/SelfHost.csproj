@@ -9,13 +9,15 @@
     <RootNamespace>TcsSelf</RootNamespace>
     <!-- Make float stringification culture-independent (same as C and the VM) -->
     <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="out/**" />
-    <!-- The tcs host (CLI, etc.) has OS functions (TcsHost) per host, so it is not included in the compiler library.
+    <!-- The tcs host (Tool/: CLI, etc.) has OS functions (TcsHost) per host, so it is not included in the compiler library.
          On .NET, Transpiler builds it together with Transpiler/DotnetHost.cs -->
-    <Compile Remove="Tool/**" />
+    <Compile Include="../Compiler/*.cs" LinkBase="Compiler" />
+    <Compile Include="../CBackend/*.cs" LinkBase="CBackend" />
+    <Compile Include="../VmBackend/*.cs" LinkBase="VmBackend" />
   </ItemGroup>
 
   <ItemGroup>

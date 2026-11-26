@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Benchmark that watches for speed regressions of tcs itself (the compiler).
 
-Taking the tcs sources (SelfHost/Compiler, CBackend, VmBackend, Tool; about 40k lines) as input,
+Taking the tcs sources (Compiler, CBackend, VmBackend, Tool; about 40k lines) as input,
 measures the following with the C tcs (tcs compiled to C with tcs c) and the .NET tcs:
   vm    tcs → tcs VM .tcsb    (tcs vm --export TcsSelf.Cli.* <files> -o out.tcsb)
   c     tcs → C               (tcs c --lib <files> -o out.c)
@@ -54,9 +54,9 @@ def sources(tree):
     """Same input as SelfHost/native.sh (TcsHost.cs is --ref)"""
     src = []
     for d in ("Compiler", "CBackend", "VmBackend"):
-        src += sorted((tree / "SelfHost" / d).glob("*.cs"))
-    src += sorted(f for f in (tree / "SelfHost" / "Tool").glob("*.cs") if f.name != "TcsHost.cs")
-    return ["--ref", str(tree / "SelfHost" / "Tool" / "TcsHost.cs")] + [str(f) for f in src]
+        src += sorted((tree / d).glob("*.cs"))
+    src += sorted(f for f in (tree / "Tool").glob("*.cs") if f.name != "TcsHost.cs")
+    return ["--ref", str(tree / "Tool" / "TcsHost.cs")] + [str(f) for f in src]
 
 
 class Tcs:
@@ -86,7 +86,7 @@ class Tcs:
             shutil.copy(self.tree / "TinySystem" / f, w / "lib" / "TinySystem" / f)
         print("[%s] build C tcs" % self.name, file=sys.stderr)
         sh([dotnet(), str(self.dll), "c", "--lib", *sources(self.tree), "-o", str(w / "tcs.c")])
-        sh([os.environ.get("CC", "gcc"), *CFLAGS, "-I", str(w), str(self.tree / "SelfHost" / "Native" / "host.c"),
+        sh([os.environ.get("CC", "gcc"), *CFLAGS, "-I", str(w), str(self.tree / "Native" / "host.c"),
             "-o", str(w / "tcs"), "-lm"])
         self.exe = str(w / "tcs")
 

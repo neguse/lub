@@ -4,7 +4,7 @@ namespace TinyCs.Vm;
 internal sealed class VmException(string message) : Exception(message);
 
 /// <summary>
-/// Entry point for driving the VM backend (TcsVm.VmEmitter in SelfHost/VmBackend) from .NET with strings (for tests).
+/// Entry point for driving the VM backend (TcsVm.VmEmitter in VmBackend) from .NET with strings (for tests).
 /// The IL is passed as is from the self-hosted compiler's export. The error record (TcsC.CFail) is static, so concurrent calls run one at a time.
 /// </summary>
 internal static class SelfHostVm

@@ -174,7 +174,7 @@ public partial class TinyCsComplianceAnalyzerTests
                 $"{d.Location.GetLineSpan().StartLinePosition.Character + 1}: " +
                 Regex.Match(d.GetMessage(), "'(.*)'").Groups[1].Value)
             .Order().ToList();
-        // Diagnostics from the same compiler as tcs check (SelfHost/Compiler). The analyzer maps them to Roslyn positions
+        // Diagnostics from the same compiler as tcs check (Compiler). The analyzer maps them to Roslyn positions
         var session = new TcsSelf.Session("");
         session.Add("parity.cs", source, 0);
         session.Add("TinySystem/Linq.cs", LinqTree.Value.GetText().ToString(), 2);

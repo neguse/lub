@@ -45,12 +45,12 @@ else()
   add_custom_target(lider_jamo_core DEPENDS "${JAMO_LIB}")
 endif()
 
-# Converts tcs (tcs/SelfHost) to C with tcs2c (tcs.c). Files shipped with tcs are embedded in a header
+# Converts tcs to C with tcs2c (tcs.c). Files shipped with tcs are embedded in a header
 set(TCS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../tcs" CACHE PATH "tcs のソース")
 file(GLOB TCS_SELF_SOURCES CONFIGURE_DEPENDS
-  "${TCS_ROOT}/SelfHost/Compiler/*.cs" "${TCS_ROOT}/SelfHost/CBackend/*.cs"
-  "${TCS_ROOT}/SelfHost/VmBackend/*.cs" "${TCS_ROOT}/SelfHost/Tool/*.cs")
-list(REMOVE_ITEM TCS_SELF_SOURCES "${TCS_ROOT}/SelfHost/Tool/TcsHost.cs")
+  "${TCS_ROOT}/Compiler/*.cs" "${TCS_ROOT}/CBackend/*.cs"
+  "${TCS_ROOT}/VmBackend/*.cs" "${TCS_ROOT}/Tool/*.cs")
+list(REMOVE_ITEM TCS_SELF_SOURCES "${TCS_ROOT}/Tool/TcsHost.cs")
 file(GLOB_RECURSE TCS2C_SOURCES CONFIGURE_DEPENDS "${TCS_ROOT}/tcs2c/*.cs" "${TCS_ROOT}/runtime/*.c" "${TCS_ROOT}/runtime/*.h")
 list(FILTER TCS2C_SOURCES EXCLUDE REGEX "/(bin|obj)/")
 set(TCS_C_DIR "${CMAKE_CURRENT_BINARY_DIR}/tcs")
@@ -68,8 +68,8 @@ else()
 endif()
 add_custom_command(OUTPUT "${TCS_C_DIR}/tcs.c"
   ${TCS_TO_C} --lib
-    --ref "${TCS_ROOT}/SelfHost/Tool/TcsHost.cs" ${TCS_SELF_SOURCES} -o "${TCS_C_DIR}/tcs.c"
-  DEPENDS ${TCS_SELF_SOURCES} "${TCS_ROOT}/SelfHost/Tool/TcsHost.cs" ${TCS_TO_C_DEPENDS}
+    --ref "${TCS_ROOT}/Tool/TcsHost.cs" ${TCS_SELF_SOURCES} -o "${TCS_C_DIR}/tcs.c"
+  DEPENDS ${TCS_SELF_SOURCES} "${TCS_ROOT}/Tool/TcsHost.cs" ${TCS_TO_C_DEPENDS}
   COMMENT "Converting tcs to C"
   VERBATIM)
 add_custom_command(OUTPUT "${TCS_C_DIR}/tcs_tool_files.h"

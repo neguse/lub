@@ -29,12 +29,12 @@ CARGO_TARGET_DIR="$out/cargo" cargo rustc --manifest-path "$jamo/Cargo.toml" \
 # Converts tcs to C (same as native/CMakeLists.txt) and embeds the files shipped with tcs in a header
 tcs="$lub/tcs"
 dotnet build "$tcs/tcs2c" -c Release -v q -nologo >/dev/null
-self=("$tcs"/SelfHost/Compiler/*.cs "$tcs"/SelfHost/CBackend/*.cs "$tcs"/SelfHost/VmBackend/*.cs)
-for f in "$tcs"/SelfHost/Tool/*.cs; do
+self=("$tcs"/Compiler/*.cs "$tcs"/CBackend/*.cs "$tcs"/VmBackend/*.cs)
+for f in "$tcs"/Tool/*.cs; do
   [ "$(basename "$f")" = TcsHost.cs ] || self+=("$f")
 done
 mkdir -p "$out/tcs"
-dotnet "$tcs/tcs2c/bin/Release/net11.0/tcs2c.dll" --lib --ref "$tcs/SelfHost/Tool/TcsHost.cs" "${self[@]}" -o "$out/tcs/tcs.c"
+dotnet "$tcs/tcs2c/bin/Release/net11.0/tcs2c.dll" --lib --ref "$tcs/Tool/TcsHost.cs" "${self[@]}" -o "$out/tcs/tcs.c"
 cmake -DTINYSYSTEM="$tcs/TinySystem" -DOUT="$out/tcs/tcs_tool_files.h" -P "$root/native/tcs/embed.cmake"
 "${CC:-cc}" -shared -fPIC -O2 -ffp-contract=off -fwrapv -w \
   -I"$lub/include" -I"$lub/tcs/tcsvm/vm" -I"$out/tcs" \

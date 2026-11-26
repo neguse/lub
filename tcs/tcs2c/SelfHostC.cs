@@ -4,7 +4,7 @@ namespace TinyCs.Tcs2c;
 internal sealed class Tcs2cException(string message) : Exception(message);
 
 /// <summary>
-/// Entry point for driving the C backend (TcsC.CEmitter in SelfHost/CBackend) from .NET with strings (for tests).
+/// Entry point for driving the C backend (TcsC.CEmitter in CBackend) from .NET with strings (for tests).
 /// The IL is passed as is from the self-hosted compiler's export (TcsSelf.ExportResult), and the runtime C is read from runtime/ in the output dir.
 /// The error record (TcsC.CFail) is static, so concurrent calls run one at a time.
 /// </summary>

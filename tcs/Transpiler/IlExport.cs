@@ -1,7 +1,7 @@
 namespace TinyCs;
 
 // Input of the IL→C backend (tcs c) and the VM backend (docs/tcs/il-spec.md; the source of truth for the contract is docs/tcs/il-reference.md).
-// The IL types are those of the self-host compiler (TcsSelf.ExportResult in SelfHost/Compiler/Il.cs and IlExport.cs), used as is.
+// The IL types are those of the self-host compiler (TcsSelf.ExportResult in Compiler/Il.cs and IlExport.cs), used as is.
 // This is the entry point for .NET callers (tests), and it decides how errors are handled.
 public static class IlExport
 {

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Converts tcs (SelfHost/Compiler, SelfHost/CBackend, SelfHost/VmBackend, SelfHost/Tool) to C with tcs2c and builds the native tcs.
+# Converts tcs (Compiler, CBackend, VmBackend, Tool) to C with tcs2c and builds the native tcs.
 # Output goes to SelfHost/out/native/ (the runtime/ and lib/ files shipped with tcs go there too; not checked into git).
 # Checks that the built tcs produces the same output as the .NET tcs: check diagnostics and exit codes for samples and tcs itself,
 # C for samples (tcs c), tcs VM .tcsb for samples and tcs itself (tcs vm), and reload batches (tcs vm --reload-from).
@@ -34,11 +34,11 @@ done
 cp "$ROOT/TinySystem/Linq.cs" "$ROOT/TinySystem/ValueTuple.cs" "$OUT/lib/TinySystem/"
 
 cd "$ROOT"
-SRC=(SelfHost/Compiler/*.cs SelfHost/CBackend/*.cs SelfHost/VmBackend/*.cs)
-for f in SelfHost/Tool/*.cs; do
+SRC=(Compiler/*.cs CBackend/*.cs VmBackend/*.cs)
+for f in Tool/*.cs; do
   [ "$(basename "$f")" = TcsHost.cs ] || SRC+=("$f")
 done
-ARGS=(--ref SelfHost/Tool/TcsHost.cs "${SRC[@]}")
+ARGS=(--ref Tool/TcsHost.cs "${SRC[@]}")
 "${TCS2C[@]}" --lib "${ARGS[@]}" -o "$OUT/tcs.c"
 
 # Floating-point rules (il-spec Appendix B). Omitted for compilers that do not accept -fexcess-precision=standard
@@ -47,7 +47,7 @@ printf 'int main(void){return 0;}\n' > "$OUT/check/probe.c"
 if "$CC" -fexcess-precision=standard -Werror -c "$OUT/check/probe.c" -o "$OUT/check/probe.o" >/dev/null 2>&1; then
   FLAGS+=(-fexcess-precision=standard)
 fi
-"$CC" "${FLAGS[@]}" -I "$OUT" SelfHost/Native/host.c -o "$OUT/tcs$EXE" ${LIBM[@]+"${LIBM[@]}"}
+"$CC" "${FLAGS[@]}" -I "$OUT" Native/host.c -o "$OUT/tcs$EXE" ${LIBM[@]+"${LIBM[@]}"}
 NATIVE="$OUT/tcs$EXE"
 echo "native: $NATIVE ($("$NATIVE" --version))"
 

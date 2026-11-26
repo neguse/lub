@@ -101,7 +101,7 @@ public static class Cli
         return -1;
     }
 
-    // `tcs c`: C backend (same arguments as the old tcs2c). SelfHost/Tool/CRun.cs
+    // `tcs c`: C backend (same arguments as the old tcs2c). Tool/CRun.cs
     private static int BeginC(List<string> args)
     {
         var o = new COptions();
@@ -132,7 +132,7 @@ public static class Cli
         return -1;
     }
 
-    // `tcs vm`: tcs VM .tcsb (same arguments as the old tcs2vm). SelfHost/Tool/VmRun.cs
+    // `tcs vm`: tcs VM .tcsb (same arguments as the old tcs2vm). Tool/VmRun.cs
     private static int BeginVm(List<string> args)
     {
         var o = new VmOptions();

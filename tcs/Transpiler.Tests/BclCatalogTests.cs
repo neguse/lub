@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp;
 namespace TinyCs.Tests;
 
 /// <summary>
-/// Rebuilds the BCL name table that the self-hosted compiler has (SelfHost/Compiler/BclCatalog.cs) from the reference assemblies and compares them.
+/// Rebuilds the BCL name table that the self-hosted compiler has (Compiler/BclCatalog.cs) from the reference assemblies and compares them.
 /// The table is used to report "APIs that exist in .NET but not in the subset" as TCS1002 (missing names are CSxxxx).
 /// TCS_UPDATE_BCL=1 rewrites the table.
 /// </summary>
@@ -44,7 +44,7 @@ public class BclCatalogTests
     public void Catalog_IsUpToDate()
     {
         var root = Path.GetDirectoryName(TestHelper.FindProjectFile("tcs.slnx"))!;
-        var path = Path.Combine(root, "SelfHost", "Compiler", "BclCatalog.cs");
+        var path = Path.Combine(root, "Compiler", "BclCatalog.cs");
         var generated = Generate();
         if (Environment.GetEnvironmentVariable("TCS_UPDATE_BCL") == "1")
         {
@@ -52,7 +52,7 @@ public class BclCatalogTests
             return;
         }
         Assert.True(File.Exists(path) && File.ReadAllText(path) == generated,
-            "SelfHost/Compiler/BclCatalog.cs is stale: run TCS_UPDATE_BCL=1 dotnet test --filter BclCatalogTests");
+            "Compiler/BclCatalog.cs is stale: run TCS_UPDATE_BCL=1 dotnet test --filter BclCatalogTests");
     }
 
     private static readonly SymbolDisplayFormat Display = SymbolDisplayFormat.CSharpErrorMessageFormat;

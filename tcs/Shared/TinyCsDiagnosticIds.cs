@@ -1,6 +1,6 @@
 namespace TinyCs;
 
-// IDs of TinyC# compliance diagnostics. TCS1001 to 1003 are reported by the tcs compiler (SelfHost/Compiler), and the analyzer reports them by running the same compiler
+// IDs of TinyC# compliance diagnostics. TCS1001 to 1003 are reported by the tcs compiler (Compiler), and the analyzer reports them by running the same compiler
 public static class TinyCsDiagnosticIds
 {
     public const string UnsupportedSyntax = "TCS1001";

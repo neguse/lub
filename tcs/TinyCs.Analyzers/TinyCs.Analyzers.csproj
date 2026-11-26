@@ -24,7 +24,7 @@
   <ItemGroup>
     <Compile Include="..\Shared\*.cs" LinkBase="Shared" />
     <!-- Compliance rules use the tcs compiler implementation as is (TinyC# sources that build with netstandard2.0) -->
-    <Compile Include="..\SelfHost\Compiler\*.cs" LinkBase="Compiler" />
+    <Compile Include="..\Compiler\*.cs" LinkBase="Compiler" />
     <Compile Include="..\TinySystem\Utf8.cs" LinkBase="TinySystem" />
     <EmbeddedResource Include="..\TinySystem\Linq.cs" LogicalName="TinySystem/Linq.cs" />
     <EmbeddedResource Include="..\TinySystem\ValueTuple.cs" LogicalName="TinySystem/ValueTuple.cs" />

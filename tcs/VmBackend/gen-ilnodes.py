@@ -1,7 +1,7 @@
-"""Generates SelfHost/VmBackend/IlNodes.cs from the records in SelfHost/Compiler/Il.cs.
+"""Generates VmBackend/IlNodes.cs from the records in Compiler/Il.cs.
 Writes the children of IL nodes (Children) and the text for diagnostics (Dump) in the order of the record members (excluding Origin).
 The Dump form is the same as the old C# version (IlDump.Node in tcsvm/Emitter, which wrote records via reflection): it is used for the fingerprint of lambda bodies.
-Usage: python3 -I SelfHost/VmBackend/gen-ilnodes.py (run it after changing the records in Il.cs)"""
+Usage: python3 -I VmBackend/gen-ilnodes.py (run it after changing the records in Il.cs)"""
 import os
 import re
 
@@ -75,7 +75,7 @@ def dump_expr(typ, f):
 
 
 lines = []
-lines.append('// Generated from SelfHost/Compiler/Il.cs by SelfHost/VmBackend/gen-ilnodes.py. Do not edit by hand.')
+lines.append('// Generated from Compiler/Il.cs by VmBackend/gen-ilnodes.py. Do not edit by hand.')
 lines.append('using System.Collections.Generic;')
 lines.append('using TcsSelf;')
 lines.append('')

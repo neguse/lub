@@ -2,7 +2,7 @@
 
 > Status: 実装。
 >
-> Scope: compiler (`SelfHost/Compiler`) の IL と、IL を読む 2 つの backend (tcs VM: `SelfHost/VmBackend` と `tcsvm/`、C: `SelfHost/CBackend` と `runtime/`)。性能前提と実測は `perf/README.md` を参照。
+> Scope: compiler (`Compiler`) の IL と、IL を読む 2 つの backend (tcs VM: `VmBackend` と `tcsvm/`、C: `CBackend` と `runtime/`)。性能前提と実測は `perf/README.md` を参照。
 
 ## 1. 結論
 
@@ -25,7 +25,7 @@ IL を正本にすると、tcs VM と C は「同一仕様の 2 実装」とし�
 
 ```text
 C# source
-  → compiler（SelfHost/Compiler: 字句 / 構文 / 宣言 / 束縛 / 準拠検査）
+  → compiler（Compiler: 字句 / 構文 / 宣言 / 束縛 / 準拠検査）
   → TinyC# IL ── 意味論の正本（generic は閉じた型ごとに単相化）
        ├→ VmBackend（dev。tcs VM の bytecode .tcsb。VM 本体は tcsvm/）
        └→ CBackend（release。C のソース。runtime/ の C を埋め込む）

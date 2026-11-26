@@ -22,7 +22,7 @@ namespace LubGen;
 // Stub classes have no inheritance; struct records hold only int/float/bool/enum
 // and nested struct records (no positional params, non-nullable in params/out/return).
 // LUB_NOT_FOUND maps to null (zero value for struct records) across VM, tcs2c, and .NET.
-// Written in TinyC# and run together with the tcs compiler (SelfHost/Compiler) as C (tcs c) or on .NET. OS access goes through tcs's TcsHost.
+// Written in TinyC# and run together with the tcs compiler (Compiler) as C (tcs c) or on .NET. OS access goes through tcs's TcsHost.
 public static class Tool
 {
     public static void Start()

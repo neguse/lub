@@ -4,7 +4,7 @@ using TcsVm;
 
 namespace TcsSelf;
 
-// `tcs vm`: builds a tcs VM .tcsb (same arguments as the old tcs2vm). SelfHost/VmBackend turns the IL into a .tcsb.
+// `tcs vm`: builds a tcs VM .tcsb (same arguments as the old tcs2vm). VmBackend turns the IL into a .tcsb.
 public sealed class VmOptions
 {
     public const string Usage = "usage: tcs vm [--entry CLASS] [--export CLASS.METHOD|CLASS.*] [--ref HOST_STUB.cs] [--watch [--inputs-from LIST]] [--trace PATH_PREFIX] [--dump-il] [--reload-from OLD.cs ... --plan OUT.plan | --batch OUT.batch] [-o OUT.tcsb] INPUT.cs ...";

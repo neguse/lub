@@ -5,13 +5,13 @@
 
 ## 1. スコープと適合
 
-- IL は compiler (`SelfHost/Compiler`) が検査・診断した TinyC# プログラムの表現。IL は自前の型検査を持たず、型不整合な IL の挙動は未定義
+- IL は compiler (`Compiler`) が検査・診断した TinyC# プログラムの表現。IL は自前の型検査を持たず、型不整合な IL の挙動は未定義
 - TinyC# プログラムの実行意味 = 本仕様が IL に与える意味。backend は
   **観測等価**な実行を提供する義務を負う。観測とは: Console 出力の列、
   エントリポイントの完了または fault (§12)、interop 境界 (§15) を通過する値
 - backend は観測等価を保つ任意の変形を行ってよい。ただし §6 の f32 制約は
   観測等価の定義に含まれる（禁止事項は変形で導入できない）
-- v0 の正規形は in-memory モデル（`SelfHost/Compiler/Il.cs` の object）。テキスト表記は診断用で非規範 (`tcs vm --dump-il`)。シリアライズ形式は決めていない (付録 C)
+- v0 の正規形は in-memory モデル（`Compiler/Il.cs` の object）。テキスト表記は診断用で非規範 (`tcs vm --dump-il`)。シリアライズ形式は決めていない (付録 C)
 
 ## 2. プログラム構造
 

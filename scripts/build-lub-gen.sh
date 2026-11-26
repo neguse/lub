@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Converts tools/lub-gen (TinyC#) to C with the C tcs (tcs c) and builds <build-dir>/tcs/lub-gen.
-# lub-gen reads the stubs and the game with the tcs compiler (tcs/SelfHost/Compiler), so that source is converted to C together with it.
-# The host is tcs/SelfHost/Native/host.c, the same as for tcs (with the entry replaced by the Tool of lub-gen).
+# lub-gen reads the stubs and the game with the tcs compiler (tcs/Compiler), so that source is converted to C together with it.
+# The host is tcs/Native/host.c, the same as for tcs (with the entry replaced by the Tool of lub-gen).
 # The C conversion uses <build-dir>/tcs/tcs (and lib/) placed by scripts/build-tcs-native.sh. Then dotnet is not needed, only a C compiler.
 # If <build-dir>/tcs/tcs is missing, it converts to C with the .NET tcs2c (the same implementation as tcs c, producing the same C) and places lib/ from tcs (PR CI takes this path).
 # With --verify, it also checks that the output (the generated files of gen-api and the tcs glue code) matches that of the same lub-gen run on .NET (requires dotnet).
@@ -30,7 +30,7 @@ mkdir -p "$out"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-host_src=tcs/SelfHost
+host_src=tcs
 if [[ -x "$out/tcs$exe" ]]; then
   tcs_c=("$out/tcs$exe" c)
 else

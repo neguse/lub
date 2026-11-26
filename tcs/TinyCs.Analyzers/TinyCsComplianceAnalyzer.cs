@@ -9,7 +9,7 @@ using Microsoft.CodeAnalysis.Text;
 namespace TinyCs.Analyzers;
 
 /// <summary>
-/// TinyC# compliance diagnostics. TCS1001 to 1003 come from running the tcs compiler (SelfHost/Compiler, the same implementation as `tcs check`)
+/// TinyC# compliance diagnostics. TCS1001 to 1003 come from running the tcs compiler (Compiler, the same implementation as `tcs check`)
 /// on the compilation's sources. The rules live in one place in the compiler, and the analyzer only maps positions to Roslyn Locations.
 /// TCS1004 (System.Math transcendental functions running on the .NET implementation) only matters when running on .NET, so the analyzer checks it with Roslyn.
 /// `--ref` stubs (declarations of the host API) are passed as AdditionalFiles or Compile items with `TinyCsRef="true"`

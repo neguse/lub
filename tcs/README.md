@@ -3,7 +3,7 @@
 C# サブセットのコンパイラ。ゲームスクリプティング向け。
 出力は tcs VM の bytecode (`tcs vm`、VM は `tcsvm/`。開発と hot reload の実行系) と C のソース (`tcs c`、`tcs2c/`。release の実行系) の 2 つ。
 
-compiler は TinyC# で書いたセルフホストの実装 1 つ (`SelfHost/`) で、.NET と C (tcs2c で C にした tcs) のどちらでも同じ実装が動く。
+compiler は TinyC# で書いたセルフホストの実装 1 つ (`Compiler/`、`CBackend/`、`VmBackend/`、`Tool/`) で、.NET と C (tcs2c で C にした tcs) のどちらでも同じ実装が動く。
 字句解析から型チェックと準拠検査、IL の組み立てまでを compiler が行い、tcs VM と C の backend は同じ IL を読む。
 Roslyn は compiler の外の道具 (IDE の Roslyn Analyzer、検証の oracle) にだけ使う。
 
@@ -164,7 +164,7 @@ Rider などの C# IDE 上で tcs 非準拠コードを警告するための Ros
 現時点では struct の indexer、`partial` 型, `lock`, `nameof`, `try/catch`, `throw`, local function, list pattern, 名前付き引数, runtime の global と同名の型 (`class Math` 等), caller info 属性 (`[CallerMemberName]` 等)、未対応 BCL API / 未対応 core library member、配列と Dictionary への null 保存を `TCS1001` / `TCS1002` / `TCS1003` として報告する。
 analyzer だけが、.NET で動かすと .NET の実装が動く `System.Math` / `System.MathF` の超越関数を `TCS1004` として報告する。TinySystem を参照する project は `TinySystem/TinySystem.props` を Import すると、`Math` / `MathF` が `TinySystem.Math` (tcs の C と VM と同じ実装) になる。
 props は `InvariantGlobalization` も有効にし、string の既定の比較 (Sort / OrderBy / Min / Max) を tcs の C と VM と同じ ordinal にする。
-TCS1001 / TCS1002 / TCS1003 は、analyzer が tcs の compiler (`SelfHost/Compiler`、`tcs check` と同じ実装) を project のソースで動かして出す。規則は compiler の 1 か所にあり、analyzer と `tcs check` と `tcs vm` / `tcs c` の判定は同じになる (`tcs check` などでは TCS1001 / TCS1002 は error だが、analyzer では warning。severity は `.editorconfig` で上げられる)。
+TCS1001 / TCS1002 / TCS1003 は、analyzer が tcs の compiler (`Compiler`、`tcs check` と同じ実装) を project のソースで動かして出す。規則は compiler の 1 か所にあり、analyzer と `tcs check` と `tcs vm` / `tcs c` の判定は同じになる (`tcs check` などでは TCS1001 / TCS1002 は error だが、analyzer では warning。severity は `.editorconfig` で上げられる)。
 `--ref` の stub (host の API の宣言) は、AdditionalFiles か Compile の項目に `TinyCsRef="true"` を付けて analyzer に渡す (Roslyn の型の検査にも stub を使うなら Compile)。
 
 ```xml
@@ -236,8 +236,13 @@ List\<T\>, Queue\<T\>, HashSet\<T\>, Dictionary\<K,V\>, LINQ (`using TinySystem.
 
 ```
 tcs/
-  SelfHost/            # tcs の本体 (TinyC# で書いた compiler、C と tcs VM の backend、CLI、C の host)
-  Transpiler/          # .NET の host と CLI の入口 (CLI の本体は SelfHost/Tool)
+  Compiler/            # tcs の compiler (TinyC# で書いた、字句から IL まで)
+  CBackend/            # IL を C にする backend
+  VmBackend/           # IL を tcs VM の .tcsb にする backend
+  Tool/                # CLI
+  Native/              # C の host
+  SelfHost/            # 上を .NET の library にする project と、C の tcs を作る native.sh
+  Transpiler/          # .NET の host と CLI の入口 (CLI の本体は Tool)
   Transpiler.Tests/    # xUnit テスト
   tcsvm/               # tcs VM (`tcs vm` が作る .tcsb を動かす register VM)
   tcs2c/               # tcs c (C backend) を .NET で動かす入口と、C の出力のテスト用のスクリプト

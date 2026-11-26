@@ -64,7 +64,7 @@ public class GcEnumerationTests
     }
 
     // (name, regular expression that appears at least once in the generated C, replacement). On the runtime side, the C text of runtime/core;
-    // on the emitter side, the barrier temp of EmitAssign in SelfHost/CBackend
+    // on the emitter side, the barrier temp of EmitAssign in CBackend
     public static TheoryData<string, string, string> BrokenVariants => new()
     {
         { "emitter: class field store barrier", @"tcs_wb\(__tcs_object_\d+\);", "" },

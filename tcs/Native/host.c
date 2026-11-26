@@ -1,7 +1,7 @@
 /* Host for the native build of tcs.
-   Includes tcs.c, which tcs2c generated from SelfHost/Compiler and
-   SelfHost/Tool, and implements the declarations in SelfHost/Tool/TcsHost.cs
-   (tcs2c's --ref). The CLI itself is SelfHost/Tool/Cli.cs; the host calls
+   Includes tcs.c, which tcs2c generated from Compiler and
+   Tool, and implements the declarations in Tool/TcsHost.cs
+   (tcs2c's --ref). The CLI itself is Tool/Cli.cs; the host calls
    Cli.Start once and Cli.Step until TcsHost.SetDone. Each return from an entry
    is a tcs2c GC frame boundary. Files shipped with tcs (lib/TinySystem/*.cs,
    the C in runtime/ that tcs c embeds) are read from the dir in the TCS_HOME

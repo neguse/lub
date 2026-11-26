@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// Self-host incremental session (SelfHost/Compiler/Session.cs). The result (IL) after an edit is the same as compiling from scratch, and
+/// Self-host incremental session (Compiler/Session.cs). The result (IL) after an edit is the same as compiling from scratch, and
 /// only files whose content changed are parsed again. Compilation is split into Steps.
 /// </summary>
 public class SelfHostSessionTests

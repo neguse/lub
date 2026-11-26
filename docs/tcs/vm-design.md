@@ -1,6 +1,6 @@
 # tcs VM 設計 — IL から直接 bytecode を出す dev 実行系
 
-> Status: 実装 (`tcsvm/`、`SelfHost/VmBackend/`)。命令の正本は `tcsvm/vm/tcsvm_ops.h`、API の正本は `tcsvm/vm/tcsvm.h`。
+> Status: 実装 (`tcsvm/`、`VmBackend/`)。命令の正本は `tcsvm/vm/tcsvm_ops.h`、API の正本は `tcsvm/vm/tcsvm.h`。
 >
 > Scope: tcs の dev 実行系 (開発と hot reload) の bytecode と VM。release は C (`tcs c`) で、この文書の外。VM と C が共有する型記述子、layout の規則、reload の計画、heap の walker、module 単位の混在は `docs/tcs/object-model.md`。hot reload の契約 (live と restart の分類) は `docs/tcs/hot-reload-design.md`。
 
@@ -8,7 +8,7 @@
 
 tcs の IL (`IlExport`) を入力に、型付き register VM 用の bytecode (`.tcsb`) を直接出す。
 
-- compiler の側は TinyC# で書いた `SelfHost/VmBackend/` (VmEmitter) で、`tcs vm` が動かす。.NET、C、wasm のどの tcs でも同じ `.tcsb` を出す
+- compiler の側は TinyC# で書いた `VmBackend/` (VmEmitter) で、`tcs vm` が動かす。.NET、C、wasm のどの tcs でも同じ `.tcsb` を出す
 - 実行系は C11 で書いた小さな VM (`tcsvm/`)。値は型タグを持たない 8 byte の slot で、命令が型を持つ (`ADD_I32` / `ADD_F32`)。il-spec の意味論 (i32 wrap、f32 single rounding、0-based 配列、C# の除算、fault) を命令と runtime の関数でそのまま実装する
 - struct は register では葉の field ごとの連続 register、heap では C と同じ inline 配置。class の field は固定 offset の load / store
 - **register の種類 (i32 / f32 / bool / ref) は関数ごとに固定**する。この 1 つの規則で、読み込み時の型検査 (verifier)、GC の精密な stack 走査、host から状態を読む口 (§14) が同じ表から得られる
@@ -59,9 +59,9 @@ VM が dev を受け持つのは、reload を VM の中で閉じられること 
 
 ```text
 C# source
-  → SelfHost/Compiler: 字句、構文、束縛、準拠検査 (TCS 診断)
+  → Compiler: 字句、構文、束縛、準拠検査 (TCS 診断)
   → IL (IlExport、generic は特殊化済み)                ← C backend と同じ入力
-  → VmEmitter (SelfHost/VmBackend): 式の型 + register 割り当て + 命令選択 + 行の表
+  → VmEmitter (VmBackend): 式の型 + register 割り当て + 命令選択 + 行の表
   → module (.tcsb)  ── program 全体で 1 つ
         │
         ├─ CLI: tcs vm -o game.tcsb、tcs vm --watch が reload の batch を stream (§13.3)
@@ -76,8 +76,8 @@ C# source
 
 | 要素 | 場所 | 言語 |
 |---|---|---|
-| VmEmitter | `SelfHost/VmBackend/` (`VmEmitter.cs`、`FunctionCompiler.cs`、`ModuleBuilder.cs`、`ReloadPlan.cs`) | TinyC# |
-| CLI と増分 session | `SelfHost/Tool/VmRun.cs` (`tcs vm`、`VmSession`) | TinyC# |
+| VmEmitter | `VmBackend/` (`VmEmitter.cs`、`FunctionCompiler.cs`、`ModuleBuilder.cs`、`ReloadPlan.cs`) | TinyC# |
+| CLI と増分 session | `Tool/VmRun.cs` (`tcs vm`、`VmSession`) | TinyC# |
 | VM | `tcsvm/vm/` (`tcsvm.h` が公開 API、`tcsvm_main.c` が CLI の `tcsvm`) | C11 |
 | 共有 runtime | `runtime/fmt`、`runtime/math`、`runtime/utf8`、`runtime/sort`、`runtime/model` (C backend と同じ実装) | C |
 
@@ -177,7 +177,7 @@ field の参照 (`@Particle.Vel.X`) は bytecode では型の葉の番号で、�
 - 固定長なので decode は 1 回の 64 bit load とシフトで済み、jump 先の計算も単純
 - struct の要素の葉の命令 (`LDEF_*`、`LIST_LDF_*` など) は要素の中の byte offset を `x` (8 bit) に持つので、要素の中の offset は 255 まで (超えると読み込みエラー)
 - dispatch は GNU C では computed goto、それ以外 (MSVC など) と `TVM_SWITCH_DISPATCH` では switch (意味は同じ)
-- 命令の並びは `tcsvm_ops.h` が正本で、`SelfHost/VmBackend/Op.cs` はそこから作る (`tcsvm/gen-ops.py`)。並びの食い違いは命令の名前の列の hash (`.tcsb` の header) で読み込み時に止める
+- 命令の並びは `tcsvm_ops.h` が正本で、`VmBackend/Op.cs` はそこから作る (`tcsvm/gen-ops.py`)。並びの食い違いは命令の名前の列の hash (`.tcsb` の header) で読み込み時に止める
 
 ### 7.2 命令の分類
 
@@ -527,7 +527,7 @@ reload は module ごと入れ替え、古い関数を残さない (§12.4) の�
 
 ### 15.3 増分 session
 
-- `VmSession` (`SelfHost/Tool/VmRun.cs`) は最後に通った build を持ち、編集ごとに module (最初の build)、reload の batch、restart (新しい module と理由)、error (最後に通った build のまま) のどれかを返す。`tcs vm --watch` と、名前で持つ複数の session (`Sessions.cs`) が同じものを使う
+- `VmSession` (`Tool/VmRun.cs`) は最後に通った build を持ち、編集ごとに module (最初の build)、reload の batch、restart (新しい module と理由)、error (最後に通った build のまま) のどれかを返す。`tcs vm --watch` と、名前で持つ複数の session (`Sessions.cs`) が同じものを使う
 - 編集を跨いで compile の session を持ち、内容の変わらないファイルは parse し直さない。束縛、IL、特殊化、emit は program 全体でやり直し、module は program 全体で 1 つ作る
 - reload の計画は、最後に通った build の型と static の記述 (`VmDescription`) と新しい build から作る
 

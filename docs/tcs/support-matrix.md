@@ -1026,7 +1026,7 @@ C# と tcs VM の意味論差のうち、正規化 (bool 表記) で吸収でき
 
 ## 28. 名前規則
 
-名前は表を持たず規則で写す (`SelfHost/Compiler/Declarer.cs` の `HostNames` と `IlNames.cs`)。user の型 (入力の tree に宣言された型) の
+名前は表を持たず規則で写す (`Compiler/Declarer.cs` の `HostNames` と `IlNames.cs`)。user の型 (入力の tree に宣言された型) の
 member は C# の識別子をそのまま IL / C の名前にし、`--ref` の型 (host) の member だけ
 host の wire format (snake_case) に写す。ユーザ型の型名 (`Player`) は写さない。
 `--ref` の型の path は host の関数の名前 (IL の foreign 関数、C の `tcs_host_<path を _ 連結>`) になる。

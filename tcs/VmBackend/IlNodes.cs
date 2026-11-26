@@ -1,4 +1,4 @@
-// Generated from SelfHost/Compiler/Il.cs by SelfHost/VmBackend/gen-ilnodes.py. Do not edit by hand.
+// Generated from Compiler/Il.cs by VmBackend/gen-ilnodes.py. Do not edit by hand.
 using System.Collections.Generic;
 using TcsSelf;
 

@@ -1,7 +1,7 @@
 namespace TinyCs.Tests;
 
 /// <summary>
-/// Checks that the self-host compiler (SelfHost/) rejects the same as C# (compliance checks, flow analysis), and
+/// Checks that the self-host compiler (Compiler/) rejects the same as C# (compliance checks, flow analysis), and
 /// forms it must not reject. Pins a representative case for each check.
 /// </summary>
 public class SelfHostDiagnosticsTests

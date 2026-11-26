@@ -5,9 +5,9 @@ TinyC# の IL (`IlExport`) を bytecode (`.tcsb`) にし、型付きの register
 
 | 場所 | 中身 |
 |---|---|
-| `Emitter/` | `tcs2vm` (.NET)。`tcs vm` を動かす入口 (IL → `.tcsb` の本体は TinyC# の `SelfHost/VmBackend/`、CLI は `SelfHost/Tool/VmRun.cs`)。C にした tcs の `tcs vm` も同じ `.tcsb` を出す。`--dump-il` で IL の診断用テキスト |
+| `Emitter/` | `tcs2vm` (.NET)。`tcs vm` を動かす入口 (IL → `.tcsb` の本体は TinyC# の `VmBackend/`、CLI は `Tool/VmRun.cs`)。C にした tcs の `tcs vm` も同じ `.tcsb` を出す。`--dump-il` で IL の診断用テキスト |
 | `vm/` | VM (C11)。`tcsvm.h` が API、`tcsvm_ops.h` が命令の一覧、`tcsvm_load.c` が読み込みと検査、`tcsvm_run.c` が interpreter、`tcsvm_rt.c` が string / List / Dictionary / Sort、`tcsvm_lib.c` が runtime の関数 (`CALLR`)、`tcsvm_host.c` が host の関数と host 向けの API、`tcsvm_gc.c` が GC、`tcsvm_reload.c` が hot reload (`tvm_apply`)、`tcsvm_debug.c` が `--trace` の記録と検査の口、`tcsvm_main.c` が CLI |
-| `gen-ops.py` | `tcsvm_ops.h` から `SelfHost/VmBackend/Op.cs` を作る |
+| `gen-ops.py` | `tcsvm_ops.h` から `VmBackend/Op.cs` を作る |
 | `tests/` | テストの入力。各ファイルの `Main` を VM で走らせ、`tests/expected/` の stdout と比べる (C backend が動かせる入力は C の stdout とも) |
 | `run-tests.sh` | テスト (`tests/`、`samples/` の 6 本、digest kernel の固定の digest、`tests/` の下の host / trace / inspect / profile / mixed / modules / watch の試験)。`run-tests.sh` (root) から呼ばれる |
 | `fuzz-loader.py` | `.tcsb` を変異させて loader と verifier の頑健さを見る |

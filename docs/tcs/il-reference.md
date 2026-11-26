@@ -1,12 +1,12 @@
 # IL リファレンス — backend (tcs VM と C) の入力契約 (T217)
 
 > 意味論の規範は `docs/tcs/il-spec.md`。本書は in-memory モデル（正規形）のノードカタログと取得 API。
-> tcs VM の backend (`SelfHost/VmBackend`) と C の backend (`SelfHost/CBackend`) は本書 + il-spec の IL を読む。
+> tcs VM の backend (`VmBackend`) と C の backend (`CBackend`) は本書 + il-spec の IL を読む。
 
 ## 取得 API (`Transpiler` assembly を参照)
 
 ```csharp
-var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (SelfHost/Compiler/IlExport.cs)
+var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (Compiler/IlExport.cs)
 // result.Diagnostics: TCS 診断 (非空なら対象プログラムはサブセット外を含む)
 // result.Classes: List<ExClass>
 //   .Name / .BaseName            — 基底 class。継承は TCS1001 (il-spec §9) なので
@@ -46,7 +46,7 @@ var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (S
 
 シリアライズ形式は定義しない（v0 決定 — il-spec §1）。backend は compiler と同じ process で in-memory の IL を読む (tcs VM の `.tcsb` は IL ではなく VM の bytecode)。`Transpiler/IlExport.cs` の `TinyCs.IlExport.Export` は .NET のテストのための入口で、`specializeGenerics` を真にすると tcs VM と C が読むのと同じ単相化した IL を返す。
 
-## ノードカタログ (`SelfHost/Compiler/Il.cs`)
+## ノードカタログ (`Compiler/Il.cs`)
 
 意味論は il-spec の該当節に従う。tcs VM と C の backend が読まない field はそう書く。
 
