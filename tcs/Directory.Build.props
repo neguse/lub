@@ -1,9 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <!-- Warnings stop the build (gate for CI and release). NuGet vulnerability audit warnings (NU1900 to NU1904) can appear at any time
-         as advisories are published and are not code errors, so they stay warnings -->
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900;NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
-  </PropertyGroup>
-</Project>

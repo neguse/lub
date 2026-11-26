@@ -37,7 +37,6 @@ def comments(path):
 
 for source in [
     'LICENSE',
-    'tcs/LICENSE',
     'third_party/SDL/LICENSE.txt',
     'third_party/SDL/src/hidapi/LICENSE-bsd.txt',
     'third_party/SDL/src/video/yuv2rgb/LICENSE',
@@ -51,7 +50,7 @@ for source in [
     'third_party/miniaudio/LICENSE',
     'third_party/slang/LICENSE',
     'third_party/slang/THIRD_PARTY_NOTICES.txt',
-    'tcs/THIRD_PARTY_LICENSES.md',
+    'THIRD_PARTY_LICENSES.md',
 ]:
     add(source, (root / source).read_text(encoding='utf-8'))
 

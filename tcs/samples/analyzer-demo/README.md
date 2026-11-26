@@ -11,7 +11,7 @@ Roslyn Analyzer の診断を確かめる project。
 - `TCS1002` x1: `System.IO.File.ReadAllText`
 - `TCS1003` x1: `List<T>` への null 保存
 
-root `.editorconfig` では `TCS1001` / `TCS1002` / `TCS1003` を warning にしているため、build は warning だけで完了する。
+`TCS1001` / `TCS1002` / `TCS1003` の既定は warning で、この project は warning で build を止めないため、build は warning だけで完了する。
 
 ## JetBrains InspectCode
 
@@ -34,5 +34,5 @@ PackageReference consumer は script 内で local nupkg を pack して同じ出
 1. Restore が終わった後、`samples/analyzer-demo/Program.cs` を開く
 1. `struct`, local function, `try`, `throw`, `values is [1, 2]`, `System.IO.File.ReadAllText`, `List<string?> { null }` に inspection / squiggle が出ることを確認する
 1. Build tool window で `TCS1001` x5 / `TCS1002` x1 / `TCS1003` x1 が表示されることを確認する
-1. root `.editorconfig` の `dotnet_diagnostic.TCS1001.severity` / `dotnet_diagnostic.TCS1002.severity` / `dotnet_diagnostic.TCS1003.severity` を一時的に `error` へ変え、Rider 表示が追従することを確認する
-1. 確認後、`.editorconfig` は repository の既定値へ戻す
+1. `samples/analyzer-demo/.editorconfig` を一時的に作って `dotnet_diagnostic.TCS1001.severity` / `dotnet_diagnostic.TCS1002.severity` / `dotnet_diagnostic.TCS1003.severity` を `error` にし、Rider 表示が追従することを確認する
+1. 確認後、作った `.editorconfig` を消す

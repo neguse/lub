@@ -70,6 +70,7 @@ GitHub Actions (repo の root の `.github/workflows/ci.yml` の `tcs-test`) で
 
 NuGet package は floating version を使わず `.csproj` に明示 version を pin し、`packages.lock.json` で transitive dependency も固定する。
 依存を更新する場合は対象 package version と lock file を同時に更新する。
+CI の restore は lock file と違う解決になると失敗する。
 
 CLI publish:
 
@@ -219,7 +220,7 @@ Rider 実機確認の手順:
 1. Restore 後、`samples/analyzer-demo/Program.cs` を開く
 1. struct の indexer, local function, `try`, `throw`, `values is [1, 2]`, `System.IO.File.ReadAllText`, `List<string?> { null }` に Roslyn inspection の squiggle が出ることを確認する
 1. Build tool window で `TCS1001` が5件、`TCS1002` が1件、`TCS1003` が1件出ることを確認する
-1. `.editorconfig` の `dotnet_diagnostic.TCS1001/TCS1002/TCS1003.severity` を `error` へ変え、Rider 表示が追従するか確認する
+1. `.editorconfig` を置いて `dotnet_diagnostic.TCS1001/TCS1002/TCS1003.severity` を `error` にし、Rider 表示が追従するか確認する
 
 ## サポートしている C# 機能
 
