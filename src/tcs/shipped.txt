@@ -1,0 +1,27 @@
+# The files shipped with tcs: the path under the dir of the tcs executable, then the source from the repo root.
+# runtime/ is the C that `tcs c` embeds in the C it generates. lib/ is the library that tcs compiles together with user code.
+runtime/math/tcs_math.h src/tcs-runtime/math/tcs_math.h
+runtime/math/tcs_math_internal.h src/tcs-runtime/math/tcs_math_internal.h
+runtime/math/atan2f.c src/tcs-runtime/math/atan2f.c
+runtime/math/exppowf.c src/tcs-runtime/math/exppowf.c
+runtime/math/log10f.c src/tcs-runtime/math/log10f.c
+runtime/math/log2f.c src/tcs-runtime/math/log2f.c
+runtime/math/logf.c src/tcs-runtime/math/logf.c
+runtime/math/sincosf.c src/tcs-runtime/math/sincosf.c
+runtime/math/tanf.c src/tcs-runtime/math/tanf.c
+runtime/fmt/tcs_fmt.h src/tcs-runtime/fmt/tcs_fmt.h
+runtime/fmt/f2s.c src/tcs-runtime/fmt/f2s.c
+runtime/fmt/printf.c src/tcs-runtime/fmt/printf.c
+runtime/fmt/parse.c src/tcs-runtime/fmt/parse.c
+runtime/model/tcs_model.h src/tcs-runtime/model/tcs_model.h
+runtime/model/tcs_model.c src/tcs-runtime/model/tcs_model.c
+runtime/utf8/tcs_utf8.h src/tcs-runtime/utf8/tcs_utf8.h
+runtime/utf8/tcs_utf8.c src/tcs-runtime/utf8/tcs_utf8.c
+runtime/core/tcs_prelude.h src/tcs-runtime/core/tcs_prelude.h
+runtime/core/tcs_core.c src/tcs-runtime/core/tcs_core.c
+runtime/core/tcs_gc.c src/tcs-runtime/core/tcs_gc.c
+runtime/core/tcs_collections.c src/tcs-runtime/core/tcs_collections.c
+runtime/core/tcs_strings.c src/tcs-runtime/core/tcs_strings.c
+runtime/core/tcs_lib.c src/tcs-runtime/core/tcs_lib.c
+lib/TinySystem/Linq.cs src/tcs-system/Linq.cs
+lib/TinySystem/ValueTuple.cs src/tcs-system/ValueTuple.cs

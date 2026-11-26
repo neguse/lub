@@ -45,41 +45,38 @@ else()
   add_custom_target(lider_jamo_core DEPENDS "${JAMO_LIB}")
 endif()
 
-# Converts tcs to C with `tcs c` (tcs.c). Files shipped with tcs are embedded in a header
+# Converts tcs to C (tcs.c) with src/tcs/to-c.sh. The library shipped with tcs is embedded in a header
 set(LUB_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
-set(TCS_SRC "${LUB_ROOT}/src/tcs")
-set(TCS_SYSTEM "${LUB_ROOT}/src/tcs-system")
 file(GLOB TCS_SELF_SOURCES CONFIGURE_DEPENDS
-  "${TCS_SRC}/Compiler/*.cs" "${TCS_SRC}/CBackend/*.cs"
-  "${TCS_SRC}/VmBackend/*.cs" "${TCS_SRC}/Tool/*.cs")
-list(REMOVE_ITEM TCS_SELF_SOURCES "${TCS_SRC}/Tool/TcsHost.cs")
+  "${LUB_ROOT}/src/tcs/Compiler/*.cs" "${LUB_ROOT}/src/tcs/CBackend/*.cs"
+  "${LUB_ROOT}/src/tcs/VmBackend/*.cs" "${LUB_ROOT}/src/tcs/Tool/*.cs")
 # The runtime C that `tcs c` embeds in tcs.c
 file(GLOB_RECURSE TCS_RUNTIME_SOURCES CONFIGURE_DEPENDS "${LUB_ROOT}/src/tcs-runtime/*.c" "${LUB_ROOT}/src/tcs-runtime/*.h")
 set(TCS_C_DIR "${CMAKE_CURRENT_BINARY_DIR}/tcs")
+find_program(BASH bash REQUIRED)
 # If the C tcs (output of scripts/build-tcs-native.sh) exists, converts to C with it (it emits the same C as the .NET tcs). dotnet is not needed then
 set(TCS_NATIVE "" CACHE FILEPATH "C の tcs の実行ファイル (空なら .NET の tcs を使う)")
 if(TCS_NATIVE)
-  set(TCS_TO_C COMMAND "${TCS_NATIVE}" c)
+  set(TCS_TO_C COMMAND "${CMAKE_COMMAND}" -E env "LUB_TCS=${TCS_NATIVE}" "${BASH}" "${LUB_ROOT}/src/tcs/to-c.sh")
   set(TCS_TO_C_DEPENDS "${TCS_NATIVE}")
 else()
   find_program(DOTNET dotnet REQUIRED)
-  find_program(BASH bash REQUIRED)
-  set(TCS_TO_C COMMAND "${BASH}" "${LUB_ROOT}/scripts/tcs.sh" c)
+  set(TCS_TO_C COMMAND "${BASH}" "${LUB_ROOT}/src/tcs/to-c.sh")
   set(TCS_TO_C_DEPENDS ${TCS_RUNTIME_SOURCES})
 endif()
 add_custom_command(OUTPUT "${TCS_C_DIR}/tcs.c"
-  ${TCS_TO_C} --lib
-    --ref "${TCS_SRC}/Tool/TcsHost.cs" ${TCS_SELF_SOURCES} -o "${TCS_C_DIR}/tcs.c"
-  DEPENDS ${TCS_SELF_SOURCES} "${TCS_SRC}/Tool/TcsHost.cs" ${TCS_TO_C_DEPENDS}
+  ${TCS_TO_C} "${TCS_C_DIR}/tcs.c"
+  DEPENDS ${TCS_SELF_SOURCES} "${LUB_ROOT}/src/tcs/sources.sh" "${LUB_ROOT}/src/tcs/to-c.sh" ${TCS_TO_C_DEPENDS}
   COMMENT "Converting tcs to C"
   VERBATIM)
 add_custom_command(OUTPUT "${TCS_C_DIR}/tcs_tool_files.h"
-  COMMAND "${CMAKE_COMMAND}" -DTINYSYSTEM=${TCS_SYSTEM} -DOUT=${TCS_C_DIR}/tcs_tool_files.h
+  COMMAND "${CMAKE_COMMAND}" -DLUB_ROOT=${LUB_ROOT} -DOUT=${TCS_C_DIR}/tcs_tool_files.h
     -P "${CMAKE_CURRENT_SOURCE_DIR}/tcs/embed.cmake"
-  DEPENDS "${TCS_SYSTEM}/Linq.cs" "${TCS_SYSTEM}/ValueTuple.cs" "${CMAKE_CURRENT_SOURCE_DIR}/tcs/embed.cmake"
+  DEPENDS "${LUB_ROOT}/src/tcs/shipped.txt" "${LUB_ROOT}/src/tcs-system/Linq.cs" "${LUB_ROOT}/src/tcs-system/ValueTuple.cs" "${CMAKE_CURRENT_SOURCE_DIR}/tcs/embed.cmake"
   VERBATIM)
-# Conventions for the C from `tcs c`. Warnings for the generated C are suppressed
+# The flags for the C from `tcs c`, the same as src/tcs/cflags.sh. Warnings for the generated C are suppressed
 # The generated C uses GNU C statement expressions, so MSVC cl cannot build it. On Windows, build with clang-cl
+include(CheckCCompilerFlag)
 if(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
   message(FATAL_ERROR "lider の player は MSVC の cl では build できない (tcs c の C が GNU C の文の式を使う)。clang-cl を使う (-DCMAKE_C_COMPILER=clang-cl)")
 elseif(CMAKE_C_SIMULATE_ID STREQUAL "MSVC")
@@ -87,6 +84,10 @@ elseif(CMAKE_C_SIMULATE_ID STREQUAL "MSVC")
   set(TCS_C_OPTIONS "/O2;/clang:-ffp-contract=off;/clang:-fwrapv;/w")
 else()
   set(TCS_C_OPTIONS "-O2;-ffp-contract=off;-fwrapv;-w")
+  check_c_compiler_flag(-fexcess-precision=standard TCS_C_EXCESS_PRECISION)
+  if(TCS_C_EXCESS_PRECISION)
+    list(APPEND TCS_C_OPTIONS -fexcess-precision=standard)
+  endif()
 endif()
 set_source_files_properties(tcs/vm_tcs.c PROPERTIES
   OBJECT_DEPENDS "${TCS_C_DIR}/tcs.c;${TCS_C_DIR}/tcs_tool_files.h"

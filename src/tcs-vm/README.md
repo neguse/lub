@@ -14,9 +14,9 @@ TinyC# の IL (`IlExport`) を bytecode (`.tcsb`) にし、型付きの register
 ## 使い方
 
 ```bash
-cmake -S tests/tcs-vm -B build-tcs-vm -DCMAKE_BUILD_TYPE=Release && cmake --build build-tcs-vm --target tcsvm
+cmake -S src/tcs-vm -B build-tcs-vm -DCMAKE_BUILD_TYPE=Release && cmake --build build-tcs-vm --target tcsvm
 scripts/tcs.sh vm your.cs -o out.tcsb
-build-tcs-vm/tcsvm/tcsvm out.tcsb
+build-tcs-vm/tcsvm out.tcsb
 ```
 
 `--entry Class` は `Main` を持つ class が複数あるときに選ぶ。性能の比較は `tests/tcs-perf/compare/`。
@@ -29,7 +29,7 @@ build-tcs-vm/tcsvm/tcsvm out.tcsb
 ```bash
 scripts/tcs.sh vm --export 'Game.*' v1.cs -o v1.tcsb
 scripts/tcs.sh vm --export 'Game.*' --reload-from v1.cs --plan v2.plan v2.cs -o v2.tcsb
-build-tcs-vm/tcsvm/tcsvm --lib Game 4 --reload 2 v2.tcsb v2.plan v1.tcsb
+build-tcs-vm/tcsvm --lib Game 4 --reload 2 v2.tcsb v2.plan v1.tcsb
 ```
 
 restart が要る差分 (static の initializer の変更、型の削除、生きている lambda を消した等) は終了コード 3 で、理由を stderr に書く。
@@ -53,8 +53,8 @@ GC は動かさない mark-sweep で、確保の地点 (frame を保存してか
 field の番号を byte offset に書き換える。
 
 ```bash
-gcc -std=c11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all \
-  src/tcs-vm/*.c src/tcs-runtime/sort/*.c src/tcs-runtime/fmt/*.c src/tcs-runtime/math/*.c src/tcs-runtime/utf8/*.c src/tcs-runtime/model/*.c \
-  -o /tmp/tcsvm_asan -lm
-python3 -I tests/tcs-vm/fuzz-loader.py /tmp/tcsvm_asan 3000 1 a.tcsb b.tcsb
+cmake -S src/tcs-vm -B build-tcs-vm-asan -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_C_FLAGS="-O1 -fsanitize=address,undefined -fno-sanitize-recover=all"
+cmake --build build-tcs-vm-asan --target tcsvm
+python3 -I tests/tcs-vm/fuzz-loader.py build-tcs-vm-asan/tcsvm 3000 1 a.tcsb b.tcsb
 ```

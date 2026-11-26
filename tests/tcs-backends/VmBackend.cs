@@ -14,20 +14,21 @@ internal static partial class Backends
 
     private static readonly Lazy<string> VmExe = new(BuildVm);
 
-    /// <summary>Builds tcsvm from source only once (per test process).</summary>
+    /// <summary>Builds tcsvm (src/tcs-vm/CMakeLists.txt) only once (per test process).</summary>
     private static string BuildVm()
     {
-        var compiler = CCompiler ?? throw new InvalidOperationException("no C compiler available");
-        var dir = Directory.CreateTempSubdirectory("tcsvm-bin-");
-        var exe = Path.Combine(dir.FullName, OperatingSystem.IsWindows() ? "tcsvm.exe" : "tcsvm");
-        var args = new List<string> { "-std=c11", "-O1", "-g", "-ffp-contract=off", "-fno-fast-math" };
-        args.AddRange(Directory.GetFiles(Path.Combine(ProjectRoot, "src", "tcs-vm"), "*.c"));
-        foreach (var dep in new[] { "sort", "fmt", "math", "utf8", "model" })
-            args.AddRange(Directory.GetFiles(Path.Combine(ProjectRoot, "src", "tcs-runtime", dep), "*.c"));
-        args.AddRange(["-o", exe, "-lm"]);
-        var build = Run(Start(compiler, args), CompileTimeout);
-        if (build.ExitCode != 0) throw new InvalidOperationException($"tcsvm build failed:\n{build.Stderr}");
-        return exe;
+        var dir = Directory.CreateTempSubdirectory("tcsvm-bin-").FullName;
+        string[][] steps =
+        [
+            ["-S", Path.Combine(ProjectRoot, "src", "tcs-vm"), "-B", dir, "-DCMAKE_BUILD_TYPE=Release"],
+            ["--build", dir, "--target", "tcsvm", "--parallel"],
+        ];
+        foreach (var args in steps)
+        {
+            var build = Run(Start("cmake", args), CompileTimeout);
+            if (build.ExitCode != 0) throw new InvalidOperationException($"tcsvm build failed:\n{build.Stdout}{build.Stderr}");
+        }
+        return Path.Combine(dir, OperatingSystem.IsWindows() ? "tcsvm.exe" : "tcsvm");
     }
 
     private static string RunVmProcess(string[] sources, string? entryClass, IEnumerable<string> vmArgs,

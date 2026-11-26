@@ -75,15 +75,15 @@ class Toolchain:
     def __init__(self):
         self.cc = os.environ.get("CC", "gcc")
         self.dotnet = os.environ.get("DOTNET") or shutil.which("dotnet") or str(Path.home() / ".dotnet" / "dotnet")
-        self.tcsvm = os.environ.get("TCSVM", str(ROOT / "build-tcs-vm" / "tcsvm" / "tcsvm"))
+        self.tcsvm = os.environ.get("TCSVM", str(ROOT / "build-tcs-vm" / "tcsvm"))
         self._tcs = None
         self._native_ready = False
 
     def ensure_native(self):
-        """tcsvm (tests/tcs-vm/CMakeLists.txt)"""
+        """tcsvm (src/tcs-vm/CMakeLists.txt)"""
         if self._native_ready:
             return
-        run_quiet(["cmake", "-B", str(ROOT / "build-tcs-vm"), "-DCMAKE_BUILD_TYPE=Release", "-S", str(ROOT / "tests" / "tcs-vm")])
+        run_quiet(["cmake", "-B", str(ROOT / "build-tcs-vm"), "-DCMAKE_BUILD_TYPE=Release", "-S", str(ROOT / "src" / "tcs-vm")])
         run_quiet(["cmake", "--build", str(ROOT / "build-tcs-vm"), "--target", "tcsvm", "--parallel"])
         self._native_ready = True
 

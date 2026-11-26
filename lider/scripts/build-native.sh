@@ -27,15 +27,10 @@ CARGO_TARGET_DIR="$out/cargo" cargo rustc --manifest-path "$jamo/Cargo.toml" \
   -I"$lub/include" -I"$lub/src/tcs-vm" \
   "$root/native/fs/vm_fs.c" -o "$root/src/Fs.so"
 # Converts tcs to C (same as native/CMakeLists.txt) and embeds the files shipped with tcs in a header
-tcs_src="$lub/src/tcs"
-self=("$tcs_src"/Compiler/*.cs "$tcs_src"/CBackend/*.cs "$tcs_src"/VmBackend/*.cs)
-for f in "$tcs_src"/Tool/*.cs; do
-  [ "$(basename "$f")" = TcsHost.cs ] || self+=("$f")
-done
-mkdir -p "$out/tcs"
-"$lub/scripts/tcs.sh" c --lib --ref "$tcs_src/Tool/TcsHost.cs" "${self[@]}" -o "$out/tcs/tcs.c"
-cmake -DTINYSYSTEM="$lub/src/tcs-system" -DOUT="$out/tcs/tcs_tool_files.h" -P "$root/native/tcs/embed.cmake"
-"${CC:-cc}" -shared -fPIC -O2 -ffp-contract=off -fwrapv -w \
+"$lub/src/tcs/to-c.sh" "$out/tcs/tcs.c"
+cmake -DLUB_ROOT="$lub" -DOUT="$out/tcs/tcs_tool_files.h" -P "$root/native/tcs/embed.cmake"
+mapfile -t tcs_cflags < <("$lub/src/tcs/cflags.sh")
+"${CC:-cc}" -shared -fPIC "${tcs_cflags[@]}" -w \
   -I"$lub/include" -I"$lub/src/tcs-vm" -I"$out/tcs" \
   "$root/native/tcs/vm_tcs.c" -lm -o "$root/src/Tcs.so"
 echo "wrote src/Jamo.so, src/Fs.so and src/Tcs.so ($target)"

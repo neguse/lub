@@ -37,11 +37,11 @@ git submodule update --init --recursive
 CMake でクロスプラットフォームビルド:
 
 ```bash
-cmake -S tests/tcs-vm -B build-tcs-vm -DCMAKE_BUILD_TYPE=Release
+cmake -S src/tcs-vm -B build-tcs-vm -DCMAKE_BUILD_TYPE=Release
 cmake --build build-tcs-vm --config Release --target tcsvm
 ```
 
-ビルド成果物は `build-tcs-vm/tcsvm/tcsvm` に出力される。
+ビルド成果物は `build-tcs-vm/tcsvm` に出力される。
 
 ## テスト実行
 
@@ -95,7 +95,7 @@ scripts/tcs.sh check tests/tcs/samples/hello.cs
 
 # tcs VM の bytecode (.tcsb) にして VM で動かす (entry は static Main を持つ class)
 scripts/tcs.sh vm --entry Game game.cs -o game.tcsb
-build-tcs-vm/tcsvm/tcsvm game.tcsb
+build-tcs-vm/tcsvm game.tcsb
 
 # C にする
 scripts/tcs.sh c --entry Game game.cs -o game.c

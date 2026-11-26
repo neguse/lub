@@ -61,7 +61,12 @@ tcs/
     ToolText.cs          数の読み取り
   Native/host.c        C の host
   Dotnet/              .NET の host (DotnetHost.cs、Program.cs)
-  native.sh            native の tcs の build、.NET の tcs との比較、固定点 (§9.1)
+  sources.sh           tcs 自身の source を渡す引数の一覧
+  to-c.sh              tcs 自身を C にする
+  cflags.sh            tcs c が作る C を compile する flag
+  shipped.txt、ship.sh  tcs と一緒に配る file の一覧と、それを置く script
+  build-native.sh      native の tcs の build
+  native.sh            native の tcs の build と、.NET の tcs との比較、固定点 (§9.1)
   tcs.csproj           .NET の build (tcs.dll)
 tests/tcs/Entry/       テストが compiler と VM の backend を文字列で動かす入口 (Checker.cs、IlExport.cs、SelfHostVm.cs、VmSession.cs)
 tests/tcs-backends/SelfHostC.cs  テストが C の backend を文字列で動かす入口

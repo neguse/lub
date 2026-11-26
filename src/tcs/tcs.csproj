@@ -22,16 +22,21 @@
     <ProjectReference Include="../tcs-system/tcs-system.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- The part of TinySystem shipped as source: tcs compiles it together with user code -->
-    <EmbeddedResource Include="../tcs-system/Linq.cs" LogicalName="lib/TinySystem/Linq.cs" />
-    <EmbeddedResource Include="../tcs-system/ValueTuple.cs" LogicalName="lib/TinySystem/ValueTuple.cs" />
-    <!-- The runtime C that `tcs c` embeds in the generated C -->
-    <Content Include="../tcs-runtime/core/*.c;../tcs-runtime/core/*.h" LinkBase="runtime/core" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../tcs-runtime/math/*.c;../tcs-runtime/math/*.h" LinkBase="runtime/math" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../tcs-runtime/fmt/*.c;../tcs-runtime/fmt/*.h" LinkBase="runtime/fmt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../tcs-runtime/model/*.c;../tcs-runtime/model/*.h" LinkBase="runtime/model" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../tcs-runtime/utf8/*.c;../tcs-runtime/utf8/*.h" LinkBase="runtime/utf8" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
+  <!-- The files shipped with tcs (shipped.txt): runtime/ goes next to tcs.dll, and lib/ is embedded (Dotnet/DotnetHost.cs reads both) -->
+  <Target Name="ShipFiles" BeforeTargets="AssignTargetPaths">
+    <ReadLinesFromFile File="$(MSBuildProjectDirectory)/shipped.txt">
+      <Output TaskParameter="Lines" ItemName="_ShippedLine" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_Shipped Include="@(_ShippedLine)" Condition="!$([System.String]::Copy('%(Identity)').StartsWith('#'))">
+        <Dest>$([System.String]::Copy('%(Identity)').Split(' ')[0])</Dest>
+        <Source>$(MSBuildProjectDirectory)/../../$([System.String]::Copy('%(Identity)').Split(' ')[1])</Source>
+      </_Shipped>
+      <_ShippedRuntime Include="@(_Shipped->'%(Source)')" Condition="$([System.String]::Copy('%(_Shipped.Dest)').StartsWith('runtime/'))" />
+      <_ShippedLibrary Include="@(_Shipped->'%(Source)')" Condition="$([System.String]::Copy('%(_Shipped.Dest)').StartsWith('lib/'))" />
+      <Content Include="@(_ShippedRuntime)" Link="%(_ShippedRuntime.Dest)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <EmbeddedResource Include="@(_ShippedLibrary)" LogicalName="%(_ShippedLibrary.Dest)" />
+    </ItemGroup>
+  </Target>
 
 </Project>

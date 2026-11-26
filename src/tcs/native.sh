@@ -1,51 +1,27 @@
 #!/bin/bash
-# Converts tcs (Compiler, CBackend, VmBackend, Tool) to C with the .NET tcs (`tcs c`) and builds the native tcs.
-# Output goes to src/tcs/out/native/ (the runtime/ and lib/ files shipped with tcs go there too; not checked into git).
-# Checks that the built tcs produces the same output as the .NET tcs: check diagnostics and exit codes for samples and tcs itself,
+# Builds the C tcs (src/tcs/build-native.sh) into src/tcs/out/native/ (not checked into git) and checks it against the .NET tcs.
+# The built tcs must produce the same output as the .NET tcs: check diagnostics and exit codes for samples and tcs itself,
 # C for samples (tcs c), tcs VM .tcsb for samples and tcs itself (tcs vm), and reload batches (tcs vm --reload-from).
-# Also checks that the native tcs produces its own C (tcs.c) identically (fixed point).
-# CC selects the C compiler (default cc. GNU C statement expressions are used, so MSVC's cl cannot be used. On Windows, clang).
+# Also checks that the C tcs produces its own C (tcs.c) identically (fixed point).
+# CC selects the C compiler (see build-native.sh).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="$ROOT/src/tcs/out/native"
-CC="${CC:-cc}"
 EXE=""
-LIBM=(-lm)
 case "$(uname -s)" in
-  MINGW* | MSYS* | CYGWIN*)
-    EXE=".exe"
-    LIBM=()
-    ;;
+  MINGW* | MSYS* | CYGWIN*) EXE=".exe" ;;
 esac
-mkdir -p "$OUT/runtime" "$OUT/lib/TinySystem" "$OUT/check"
+mkdir -p "$OUT/check"
 unset TCS_HOME
 
 # The .NET tcs (scripts/tcs.sh). Built once here unless the caller passes LUB_TCS
 LUB_TCS="${LUB_TCS:-$("$ROOT/scripts/build-tcs-dotnet.sh")}"
 export LUB_TCS
 DOTNET_TCS=("$ROOT/scripts/tcs.sh")
-# Runtime C that tcs c embeds into the generated C
-for d in core math fmt model utf8; do
-  mkdir -p "$OUT/runtime/$d"
-  cp "$ROOT/src/tcs-runtime/$d"/*.c "$ROOT/src/tcs-runtime/$d"/*.h "$OUT/runtime/$d/"
-done
-cp "$ROOT/src/tcs-system/Linq.cs" "$ROOT/src/tcs-system/ValueTuple.cs" "$OUT/lib/TinySystem/"
 
 cd "$ROOT"
-SRC=(src/tcs/Compiler/*.cs src/tcs/CBackend/*.cs src/tcs/VmBackend/*.cs)
-for f in src/tcs/Tool/*.cs; do
-  [ "$(basename "$f")" = TcsHost.cs ] || SRC+=("$f")
-done
-ARGS=(--ref src/tcs/Tool/TcsHost.cs "${SRC[@]}")
-"${DOTNET_TCS[@]}" c --lib "${ARGS[@]}" -o "$OUT/tcs.c"
-
-# Floating-point rules (il-spec Appendix B). Omitted for compilers that do not accept -fexcess-precision=standard
-FLAGS=(-O2 -ffp-contract=off -fwrapv)
-printf 'int main(void){return 0;}\n' > "$OUT/check/probe.c"
-if "$CC" -fexcess-precision=standard -Werror -c "$OUT/check/probe.c" -o "$OUT/check/probe.o" >/dev/null 2>&1; then
-  FLAGS+=(-fexcess-precision=standard)
-fi
-"$CC" "${FLAGS[@]}" -I "$OUT" src/tcs/Native/host.c -o "$OUT/tcs$EXE" ${LIBM[@]+"${LIBM[@]}"}
+src/tcs/build-native.sh "$OUT"
+mapfile -t ARGS < <(src/tcs/sources.sh)
 NATIVE="$OUT/tcs$EXE"
 echo "native: $NATIVE ($("$NATIVE" --version))"
 

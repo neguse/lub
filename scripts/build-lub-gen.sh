@@ -35,20 +35,14 @@ if [[ -x "$out/tcs$exe" ]]; then
   tcs_c=("$out/tcs$exe" c)
 else
   tcs_c=(scripts/tcs.sh c)
-  # lub-gen tcs, like tcs, reads lib/TinySystem from the directory of the executable
-  mkdir -p "$out/lib/TinySystem"
-  cp src/tcs-system/Linq.cs src/tcs-system/ValueTuple.cs "$out/lib/TinySystem/"
+  # lub-gen tcs, like tcs, reads lib/ from the directory of the executable
+  src/tcs/ship.sh "$out"
 fi
 sources=("$host_src"/Compiler/*.cs tools/lub-gen/*.cs)
 "${tcs_c[@]}" --lib --ref "$host_src/Tool/TcsHost.cs" "${sources[@]}" -o "$work/lub-gen.c"
 
-# Floating-point rules (appendix B of the tcs il-spec). Omitted for compilers that do not accept -fexcess-precision=standard (same as src/tcs/native.sh)
 cc="${CC:-cc}"
-flags=(-O2 -ffp-contract=off -fwrapv)
-printf 'int main(void){return 0;}\n' > "$work/probe.c"
-if "$cc" -fexcess-precision=standard -Werror -c "$work/probe.c" -o "$work/probe.o" >/dev/null 2>&1; then
-  flags+=(-fexcess-precision=standard)
-fi
+mapfile -t flags < <(src/tcs/cflags.sh)
 "$cc" "${flags[@]}" -I "$work" -DTCS_HOST_SOURCE='"lub-gen.c"' \
   -DTCS_HOST_START=tcs_entry_LubGen_Tool_Start -DTCS_HOST_STEP=tcs_entry_LubGen_Tool_Step \
   "$host_src/Native/host.c" -o "$out/lub-gen$exe" ${libm[@]+"${libm[@]}"}

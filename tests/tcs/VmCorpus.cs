@@ -179,29 +179,32 @@ public static class VmCorpus
         return (p.ExitCode, stdout.Result, stderr.Result);
     }
 
-    /// <summary>Builds tcsvm from source only once.</summary>
+    /// <summary>Builds tcsvm (src/tcs-vm/CMakeLists.txt) only once.</summary>
     private static string Exe()
     {
         lock (Lock)
         {
             if (_exe is not null) return _exe;
             var root = TestHelper.ProjectRootPath;
-            var dir = Directory.CreateTempSubdirectory("tcsvm-bin-");
-            var exe = Path.Combine(dir.FullName, OperatingSystem.IsWindows() ? "tcsvm.exe" : "tcsvm");
-            var args = new List<string> { "-std=c11", "-O1", "-ffp-contract=off", "-fno-fast-math" };
-            args.AddRange(Directory.GetFiles(Path.Combine(root, "src", "tcs-vm"), "*.c"));
-            foreach (var dep in new[] { "sort", "fmt", "math", "utf8", "model" })
-                args.AddRange(Directory.GetFiles(Path.Combine(root, "src", "tcs-runtime", dep), "*.c"));
-            args.AddRange(["-o", exe, "-lm"]);
-            using var p = Process.Start(new ProcessStartInfo(Environment.GetEnvironmentVariable("CC") ?? "cc", args)
+            var dir = Directory.CreateTempSubdirectory("tcsvm-bin-").FullName;
+            string[][] steps =
+            [
+                ["-S", Path.Combine(root, "src", "tcs-vm"), "-B", dir, "-DCMAKE_BUILD_TYPE=Release"],
+                ["--build", dir, "--target", "tcsvm", "--parallel"],
+            ];
+            foreach (var args in steps)
             {
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-            })!;
-            var err = p.StandardError.ReadToEnd();
-            p.WaitForExit();
-            if (p.ExitCode != 0) throw new InvalidOperationException("tcsvm build failed:\n" + err);
-            return _exe = exe;
+                using var p = Process.Start(new ProcessStartInfo("cmake", args)
+                {
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                })!;
+                var err = p.StandardError.ReadToEndAsync();
+                var output = p.StandardOutput.ReadToEnd();
+                p.WaitForExit();
+                if (p.ExitCode != 0) throw new InvalidOperationException("tcsvm build failed:\n" + output + err.Result);
+            }
+            return _exe = Path.Combine(dir, OperatingSystem.IsWindows() ? "tcsvm.exe" : "tcsvm");
         }
     }
 }

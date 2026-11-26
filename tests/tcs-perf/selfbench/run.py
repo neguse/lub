@@ -54,6 +54,7 @@ class Layout:
     """Where one repo tree keeps tcs. A base tree may still have it under tcs/ (the .NET entry in Transpiler, the namespace TcsSelf)"""
 
     def __init__(self, root):
+        self.root = root
         old = root / "tcs"
         if (root / "src" / "tcs" / "tcs.csproj").is_file():
             self.project = root / "src" / "tcs" / "tcs.csproj"
@@ -71,7 +72,7 @@ class Layout:
             self.namespace = "TcsSelf"
 
     def sources(self):
-        """Same input as src/tcs/native.sh (TcsHost.cs is --ref)"""
+        """Same input as src/tcs/sources.sh (TcsHost.cs is --ref)"""
         src = []
         for d in ("Compiler", "CBackend", "VmBackend"):
             src += sorted((self.body / d).glob("*.cs"))
@@ -90,12 +91,21 @@ class Tcs:
     def build(self):
         w = self.work
         w.mkdir(parents=True, exist_ok=True)
+        root = self.layout.root
+        if (root / "src" / "tcs" / "build-native.sh").is_file():
+            # The tree builds itself: the .NET tcs, then the C tcs with the files shipped with it
+            print("[%s] build .NET tcs" % self.name, file=sys.stderr)
+            self.dotnet = sh([str(root / "scripts" / "build-tcs-dotnet.sh")]).split()
+            print("[%s] build C tcs" % self.name, file=sys.stderr)
+            sh([str(root / "src" / "tcs" / "build-native.sh"), str(w)], env=dict(os.environ, LUB_TCS=" ".join(self.dotnet)))
+            self.exe = str(w / "tcs")
+            return
+        # A tree from before build-native.sh
         print("[%s] build .NET tcs" % self.name, file=sys.stderr)
         # Fix the output directory in advance so the dll can be found regardless of each tree's TargetFramework
         sh([dotnet(), "build", str(self.layout.project), "-c", "Release",
             "-p:NuGetAudit=false", "-v:minimal", "-o", str(w / "dotnet")])
-        self.dll = w / "dotnet" / self.layout.dll
-        # Files distributed with tcs (same layout as src/tcs/native.sh). The C tcs reads them from the executable's dir
+        self.dotnet = [dotnet(), str(w / "dotnet" / self.layout.dll)]
         (w / "runtime").mkdir(exist_ok=True)
         for d in ("core", "math", "fmt", "model", "utf8"):
             (w / "runtime" / d).mkdir(exist_ok=True)
@@ -105,13 +115,13 @@ class Tcs:
         for f in ("Linq.cs", "ValueTuple.cs"):
             shutil.copy(self.layout.system / f, w / "lib" / "TinySystem" / f)
         print("[%s] build C tcs" % self.name, file=sys.stderr)
-        sh([dotnet(), str(self.dll), "c", "--lib", *self.layout.sources(), "-o", str(w / "tcs.c")])
+        sh([*self.dotnet, "c", "--lib", *self.layout.sources(), "-o", str(w / "tcs.c")])
         sh([os.environ.get("CC", "gcc"), *CFLAGS, "-I", str(w), str(self.layout.body / "Native" / "host.c"),
             "-o", str(w / "tcs"), "-lm"])
         self.exe = str(w / "tcs")
 
     def argv(self, host, task, inputs, out):
-        cmd = [self.exe] if host == "native" else [dotnet(), str(self.dll)]
+        cmd = [self.exe] if host == "native" else list(self.dotnet)
         if task == "vm":
             cmd += ["vm", "--export", inputs.namespace + ".Cli.*"]
         elif task == "c":
