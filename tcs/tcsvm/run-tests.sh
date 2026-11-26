@@ -157,10 +157,10 @@ run_case "$KERNELS/particles_struct.cs" ParticlesStruct particles_struct digest:
 # With the Reject.cs module, checks that loading is rejected when the registration does not match the module's structs.
 HOST="$ROOT/tcsvm/tests/host"
 VM_SRC=()
-for f in "$ROOT"/tcsvm/vm/*.c; do [ "$(basename "$f")" = tcsvm_main.c ] || VM_SRC+=("$f"); done
+for f in "$ROOT"/../src/tcs-vm/*.c; do [ "$(basename "$f")" = tcsvm_main.c ] || VM_SRC+=("$f"); done
 if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/host_test" "$HOST/host_test.c" "${VM_SRC[@]}" \
-    "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
-    "$ROOT"/runtime/model/*.c -lm 2> "$WORK/host_test.err"; then
+    "$ROOT"/../src/tcs-runtime/sort/*.c "$ROOT"/../src/tcs-runtime/fmt/*.c "$ROOT"/../src/tcs-runtime/math/*.c "$ROOT"/../src/tcs-runtime/utf8/*.c \
+    "$ROOT"/../src/tcs-runtime/model/*.c -lm 2> "$WORK/host_test.err"; then
   echo "FAIL host: build"; head -5 "$WORK/host_test.err"; fail=1
 elif ! "$DOTNET" "$TCS2VM_DLL" --ref "$HOST/stub.cs" --export 'Game.*' "$HOST/Game.cs" -o "$WORK/host.tcsb" 2> "$WORK/host.emit.err" \
     || ! "$DOTNET" "$TCS2VM_DLL" --ref "$HOST/stub.cs" --export 'Reject.*' "$HOST/Reject.cs" -o "$WORK/reject.tcsb" 2>> "$WORK/host.emit.err"; then
@@ -177,8 +177,8 @@ fi
 # (line, self) pairs from --trace (tests/trace): extracts them, excluding lines that were passed only with self being another object of the same type as the remembered object
 TRACE="$ROOT/tcsvm/tests/trace"
 if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/trace_test" "$TRACE/trace_test.c" "${VM_SRC[@]}" \
-    "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
-    "$ROOT"/runtime/model/*.c -lm 2> "$WORK/trace_test.err"; then
+    "$ROOT"/../src/tcs-runtime/sort/*.c "$ROOT"/../src/tcs-runtime/fmt/*.c "$ROOT"/../src/tcs-runtime/math/*.c "$ROOT"/../src/tcs-runtime/utf8/*.c \
+    "$ROOT"/../src/tcs-runtime/model/*.c -lm 2> "$WORK/trace_test.err"; then
   echo "FAIL trace: build"; head -5 "$WORK/trace_test.err"; fail=1
 elif ! "$DOTNET" "$TCS2VM_DLL" --ref "$TRACE/stub.cs" --export 'Game.*' --trace "$TRACE/Game.cs" "$TRACE/Game.cs" -o "$WORK/trace.tcsb" 2> "$WORK/trace.emit.err"; then
   echo "FAIL trace: $(cat "$WORK/trace.emit.err")"; fail=1
@@ -190,8 +190,8 @@ fi
 # Viewing part of a large array (tests/inspect): tvm_inspect spends no effort on elements outside the requested range
 INSPECT="$ROOT/tcsvm/tests/inspect"
 if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/inspect_test" "$INSPECT/inspect_test.c" "${VM_SRC[@]}" \
-    "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
-    "$ROOT"/runtime/model/*.c -lm 2> "$WORK/inspect_test.err"; then
+    "$ROOT"/../src/tcs-runtime/sort/*.c "$ROOT"/../src/tcs-runtime/fmt/*.c "$ROOT"/../src/tcs-runtime/math/*.c "$ROOT"/../src/tcs-runtime/utf8/*.c \
+    "$ROOT"/../src/tcs-runtime/model/*.c -lm 2> "$WORK/inspect_test.err"; then
   echo "FAIL inspect: build"; head -5 "$WORK/inspect_test.err"; fail=1
 elif ! "$DOTNET" "$TCS2VM_DLL" --export 'Game.*' "$INSPECT/Game.cs" -o "$WORK/inspect.tcsb" 2> "$WORK/inspect.emit.err"; then
   echo "FAIL inspect: $(cat "$WORK/inspect.emit.err")"; fail=1
@@ -203,8 +203,8 @@ fi
 # Per-line cost (tests/profile): extracts the time and allocations of --trace lines and the GC pauses as fixed values using the test clock
 PROF="$ROOT/tcsvm/tests/profile"
 if ! "${CC:-cc}" -std=c11 -O1 -g -ffp-contract=off -o "$WORK/profile_test" "$PROF/profile_test.c" "${VM_SRC[@]}" \
-    "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
-    "$ROOT"/runtime/model/*.c -lm -pthread 2> "$WORK/profile_test.err"; then
+    "$ROOT"/../src/tcs-runtime/sort/*.c "$ROOT"/../src/tcs-runtime/fmt/*.c "$ROOT"/../src/tcs-runtime/math/*.c "$ROOT"/../src/tcs-runtime/utf8/*.c \
+    "$ROOT"/../src/tcs-runtime/model/*.c -lm -pthread 2> "$WORK/profile_test.err"; then
   echo "FAIL profile: build"; head -5 "$WORK/profile_test.err"; fail=1
 elif ! "$DOTNET" "$TCS2VM_DLL" --ref "$PROF/stub.cs" --export 'Game.*' --trace "$PROF/Game.cs" "$PROF/Game.cs" "$PROF/Lib.cs" -o "$WORK/profile.tcsb" 2> "$WORK/profile.emit.err"; then
   echo "FAIL profile: $(cat "$WORK/profile.emit.err")"; fail=1
@@ -218,8 +218,8 @@ MIXED="$ROOT/tcsvm/tests/mixed"
 if ! "$DOTNET" "$TCS2C_DLL" --lib -o "$WORK/mixed.c" "$MIXED/Mixed.cs" 2> "$WORK/mixed.err" \
     || ! "$DOTNET" "$TCS2VM_DLL" --export 'Game.*' "$MIXED/Mixed.cs" -o "$WORK/mixed.tcsb" 2>> "$WORK/mixed.err" \
     || ! "${CC:-cc}" -std=gnu11 -O1 -g -DMIXED_C="\"$WORK/mixed.c\"" -o "$WORK/mixed_test" "$MIXED/mixed_test.c" "${VM_SRC[@]}" \
-      "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c "$ROOT"/runtime/utf8/*.c \
-      "$ROOT"/runtime/model/*.c -lm 2>> "$WORK/mixed.err"; then
+      "$ROOT"/../src/tcs-runtime/sort/*.c "$ROOT"/../src/tcs-runtime/fmt/*.c "$ROOT"/../src/tcs-runtime/math/*.c "$ROOT"/../src/tcs-runtime/utf8/*.c \
+      "$ROOT"/../src/tcs-runtime/model/*.c -lm 2>> "$WORK/mixed.err"; then
   echo "FAIL mixed: build"; head -5 "$WORK/mixed.err"; fail=1
 elif ! "$WORK/mixed_test" "$WORK/mixed.tcsb" > "$WORK/mixed.out" 2>&1 || ! cmp -s "$WORK/mixed.out" "$MIXED/expected.txt"; then
   echo "FAIL mixed"; diff "$MIXED/expected.txt" "$WORK/mixed.out" | head -5; fail=1
@@ -240,9 +240,9 @@ else
   # shared heap (object-model §10.2): normal, and with tcs2c's GC stress (fills the nursery with poison values and collects everything every frame)
   mods_ok=1
   for mode in "" -DTCS_GC_STRESS; do
-    if ! "${CC:-cc}" -std=gnu11 -O1 -g $mode -I"$ROOT/tcsvm/vm" -DEDITOR_C="\"$WORK/editor.c\"" -o "$WORK/modules_test" \
-        "$MODS/modules_test.c" "${VM_SRC[@]}" "$ROOT"/runtime/sort/*.c "$ROOT"/runtime/fmt/*.c "$ROOT"/runtime/math/*.c \
-        "$ROOT"/runtime/utf8/*.c "$ROOT"/runtime/model/*.c -lm 2>> "$WORK/modules.err" \
+    if ! "${CC:-cc}" -std=gnu11 -O1 -g $mode -I"$ROOT/../src/tcs-vm" -DEDITOR_C="\"$WORK/editor.c\"" -o "$WORK/modules_test" \
+        "$MODS/modules_test.c" "${VM_SRC[@]}" "$ROOT"/../src/tcs-runtime/sort/*.c "$ROOT"/../src/tcs-runtime/fmt/*.c "$ROOT"/../src/tcs-runtime/math/*.c \
+        "$ROOT"/../src/tcs-runtime/utf8/*.c "$ROOT"/../src/tcs-runtime/model/*.c -lm 2>> "$WORK/modules.err" \
         || ! "$WORK/modules_test" "$WORK/content1.tcsb" "$WORK/content2.batch" > "$WORK/modules.out" 2>&1 \
         || ! cmp -s "$WORK/modules.out" "$MODS/expected.txt"; then
       echo "FAIL modules${mode:+ ($mode)}"; diff "$MODS/expected.txt" "$WORK/modules.out" | head -5; head -3 "$WORK/modules.err"

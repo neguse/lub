@@ -1,8 +1,8 @@
 /* Exposes the tcs compiler (the functions in src/Tcs.ref.cs) as a native
  * extension of the tcs VM player. Includes tcs.c, which is tcs (Compiler,
- * CBackend, VmBackend and Tool in tcs/) converted to C with tcs2c,
- * and implements the tcs host functions (tcs/Tool/TcsHost.cs).
- * Requests follow tcs/Tool/Sessions.cs: arguments are queued with
+ * CBackend, VmBackend and Tool in src/tcs) converted to C with tcs2c,
+ * and implements the tcs host functions (src/tcs/Tool/TcsHost.cs).
+ * Requests follow src/tcs/Tool/Sessions.cs: arguments are queued with
  * Tcs.Arg, Tcs.Call processes the request, and the response lines are received.
  * Files are read and written with the standard C functions; on the web
  * (emscripten) they are virtual files (MEMFS). The lider player

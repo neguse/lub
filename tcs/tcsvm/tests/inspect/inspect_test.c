@@ -7,7 +7,7 @@
    tvm_inspect, does not revisit cycles, also follows into structs, and stops at
    the depth and child-count limits. Also checks that instance ids stay the same
    after saving and loading the state. */
-#include "../../vm/tcsvm.h"
+#include "../../../../src/tcs-vm/tcsvm.h"
 
 #include <stdio.h>
 #include <stdlib.h>

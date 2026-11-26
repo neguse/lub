@@ -1026,14 +1026,14 @@ jobs:
         with:
           global-json-file: global.json
 
-      # The base measurement depends only on the base tcs tree and the toolchain (the runner image), so the result is cached with them as the key
+      # The base measurement depends only on the base tree and the toolchain (the runner image), so the result is cached with them as the key
       - name: Base of the comparison
         id: base
         env:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD^1' }}
         run: |
           echo "ref=$BASE" >> "$GITHUB_OUTPUT"
-          echo "tree=$(git rev-parse "$BASE:tcs")" >> "$GITHUB_OUTPUT"
+          echo "tree=$(git rev-parse "$BASE^{tree}")" >> "$GITHUB_OUTPUT"
           echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
 
       - name: Cache the base results

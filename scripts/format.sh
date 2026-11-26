@@ -61,7 +61,7 @@ run_if_any() {
 # Patterns are kept to one directory level + `*.ext`.
 mapfile -d '' C_FILES < <(git_files '*.c' '*.cc' '*.cpp' '*.h' '*.hpp' '*.m')
 mapfile -d '' SLANG_FILES < <(git_files 'samples/*.slang' 'tests/*.slang')
-mapfile -d '' CS_FILES < <(git_files 'samples/*.cs' 'cs-lib/*.cs' 'dotnet/*.cs' 'templates/*.cs' 'tcs/*.cs')
+mapfile -d '' CS_FILES < <(git_files 'samples/*.cs' 'cs-lib/*.cs' 'dotnet/*.cs' 'templates/*.cs' 'tcs/*.cs' 'src/*.cs')
 mapfile -d '' WEB_FILES < <(git_files \
     'web/*.html' \
     'web/*.json' \

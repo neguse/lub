@@ -29,7 +29,7 @@ flowchart LR
         subgraph vm_player["player (lub_vm_player)"]
             subgraph vm_core["VM 層"]
                 direction TB
-                vm_vm["tcs VM"] ~~~ vm_rt["tcs/runtime"] ~~~ vm_glue["VM 連携"]
+                vm_vm["tcs VM"] ~~~ vm_rt["tcs-runtime"] ~~~ vm_glue["VM 連携"]
             end
             vm_lib["liblub"]
             vm_core ~~~ vm_lib
@@ -51,7 +51,7 @@ flowchart LR
         end
         subgraph c_core["C 実行層"]
             direction TB
-            c_host["エントリ接続 (tcs_host)"] ~~~ c_glue["C 接続"] ~~~ c_rt["tcs/runtime"]
+            c_host["エントリ接続 (tcs_host)"] ~~~ c_glue["C 接続"] ~~~ c_rt["tcs-runtime"]
         end
         c_lib["liblub"]
         c_mod ~~~ c_core ~~~ c_lib
@@ -78,8 +78,11 @@ flowchart LR
 | 場所 | 役割 |
 | --- | --- |
 | `src/`, `include/` | `liblub`、`player` (`lub_vm_player`)、`lub` CLI (`src/main.c`) |
+| `src/tcs/` | TinyC# コンパイラ (`tcs vm` / `tcs c`) |
+| `src/tcs-vm/` | tcs VM |
+| `src/tcs-runtime/` | 標準 C 補助 (tcs VM と `tcs c` の出力が使う) |
 | `cs-lib/` | `Lub API` の正本 (`lub_stub.cs`) と C# で書いた `Lubx API` (`lub/`, `lubx/`) |
-| `tcs/` | TinyC# コンパイラ (`tcs vm` / `tcs c`)、VM、標準 C 補助 (`tcs/runtime/`) |
+| `tcs/` | tcs の .NET の project、テスト、性能の計測 |
 | `tools/lub-gen/` | `lub_stub.cs` から C ヘッダ・VM 連携・`.NET` facade・API docs を生成するツール |
 | `dotnet/` | `.NET` 実行モード用の facade (`dotnet/Lub`) とテストランナー (`SampleRunner`) |
 | `lider/` | ホットリロード対応の専用エディタ (自身も lub 上の TinyC# で動作) |

@@ -471,8 +471,8 @@ public class Utf8DifferentialTests
     [CFact]
     public void Utf8_RuntimeScrubMatchesDotnetDecoderOnInvalidBytes()
     {
-        var header = Path.Combine(Backends.ProjectRoot, "runtime", "utf8", "tcs_utf8.h").Replace('\\', '/');
-        var impl = Path.Combine(Backends.ProjectRoot, "runtime", "utf8", "tcs_utf8.c").Replace('\\', '/');
+        var header = Path.Combine(Backends.ProjectRoot, "..", "src", "tcs-runtime", "utf8", "tcs_utf8.h").Replace('\\', '/');
+        var impl = Path.Combine(Backends.ProjectRoot, "..", "src", "tcs-runtime", "utf8", "tcs_utf8.c").Replace('\\', '/');
         var driver = $$"""
             #include <stdio.h>
             #include <stdint.h>

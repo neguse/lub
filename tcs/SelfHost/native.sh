@@ -1,5 +1,5 @@
 #!/bin/bash
-# Converts tcs (Compiler, CBackend, VmBackend, Tool) to C with tcs2c and builds the native tcs.
+# Converts tcs (src/tcs: Compiler, CBackend, VmBackend, Tool) to C with tcs2c and builds the native tcs.
 # Output goes to SelfHost/out/native/ (the runtime/ and lib/ files shipped with tcs go there too; not checked into git).
 # Checks that the built tcs produces the same output as the .NET tcs: check diagnostics and exit codes for samples and tcs itself,
 # C for samples (tcs c), tcs VM .tcsb for samples and tcs itself (tcs vm), and reload batches (tcs vm --reload-from).
@@ -29,16 +29,16 @@ TCS2VM=(dotnet "$ROOT/tcsvm/Emitter/bin/Release/net11.0/tcs2vm.dll")
 # Runtime C that tcs c embeds into the generated C
 for d in core math fmt model utf8; do
   mkdir -p "$OUT/runtime/$d"
-  cp "$ROOT/runtime/$d"/*.c "$ROOT/runtime/$d"/*.h "$OUT/runtime/$d/"
+  cp "$ROOT/../src/tcs-runtime/$d"/*.c "$ROOT/../src/tcs-runtime/$d"/*.h "$OUT/runtime/$d/"
 done
 cp "$ROOT/TinySystem/Linq.cs" "$ROOT/TinySystem/ValueTuple.cs" "$OUT/lib/TinySystem/"
 
 cd "$ROOT"
-SRC=(Compiler/*.cs CBackend/*.cs VmBackend/*.cs)
-for f in Tool/*.cs; do
+SRC=(../src/tcs/Compiler/*.cs ../src/tcs/CBackend/*.cs ../src/tcs/VmBackend/*.cs)
+for f in ../src/tcs/Tool/*.cs; do
   [ "$(basename "$f")" = TcsHost.cs ] || SRC+=("$f")
 done
-ARGS=(--ref Tool/TcsHost.cs "${SRC[@]}")
+ARGS=(--ref ../src/tcs/Tool/TcsHost.cs "${SRC[@]}")
 "${TCS2C[@]}" --lib "${ARGS[@]}" -o "$OUT/tcs.c"
 
 # Floating-point rules (il-spec Appendix B). Omitted for compilers that do not accept -fexcess-precision=standard
@@ -47,7 +47,7 @@ printf 'int main(void){return 0;}\n' > "$OUT/check/probe.c"
 if "$CC" -fexcess-precision=standard -Werror -c "$OUT/check/probe.c" -o "$OUT/check/probe.o" >/dev/null 2>&1; then
   FLAGS+=(-fexcess-precision=standard)
 fi
-"$CC" "${FLAGS[@]}" -I "$OUT" Native/host.c -o "$OUT/tcs$EXE" ${LIBM[@]+"${LIBM[@]}"}
+"$CC" "${FLAGS[@]}" -I "$OUT" ../src/tcs/Native/host.c -o "$OUT/tcs$EXE" ${LIBM[@]+"${LIBM[@]}"}
 NATIVE="$OUT/tcs$EXE"
 echo "native: $NATIVE ($("$NATIVE" --version))"
 

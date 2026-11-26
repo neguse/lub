@@ -20,23 +20,24 @@ mkdir -p "$out"
 CARGO_TARGET_DIR="$out/cargo" cargo rustc --manifest-path "$jamo/Cargo.toml" \
   -p jamo-core --release --target "$target" --crate-type staticlib
 "${CC:-cc}" -shared -fPIC -O2 \
-  -I"$lub/include" -I"$lub/tcs/tcsvm/vm" -I"$jamo/jamo-core/include" \
+  -I"$lub/include" -I"$lub/src/tcs-vm" -I"$jamo/jamo-core/include" \
   "$root/native/jamo/vm_jamo.c" "$out/cargo/$target/release/libjamo_core.a" \
   -lpthread -ldl -lm -o "$root/src/Jamo.so"
 "${CC:-cc}" -shared -fPIC -O2 \
-  -I"$lub/include" -I"$lub/tcs/tcsvm/vm" \
+  -I"$lub/include" -I"$lub/src/tcs-vm" \
   "$root/native/fs/vm_fs.c" -o "$root/src/Fs.so"
 # Converts tcs to C (same as native/CMakeLists.txt) and embeds the files shipped with tcs in a header
 tcs="$lub/tcs"
+tcs_src="$lub/src/tcs"
 dotnet build "$tcs/tcs2c" -c Release -v q -nologo >/dev/null
-self=("$tcs"/Compiler/*.cs "$tcs"/CBackend/*.cs "$tcs"/VmBackend/*.cs)
-for f in "$tcs"/Tool/*.cs; do
+self=("$tcs_src"/Compiler/*.cs "$tcs_src"/CBackend/*.cs "$tcs_src"/VmBackend/*.cs)
+for f in "$tcs_src"/Tool/*.cs; do
   [ "$(basename "$f")" = TcsHost.cs ] || self+=("$f")
 done
 mkdir -p "$out/tcs"
-dotnet "$tcs/tcs2c/bin/Release/net11.0/tcs2c.dll" --lib --ref "$tcs/Tool/TcsHost.cs" "${self[@]}" -o "$out/tcs/tcs.c"
+dotnet "$tcs/tcs2c/bin/Release/net11.0/tcs2c.dll" --lib --ref "$tcs_src/Tool/TcsHost.cs" "${self[@]}" -o "$out/tcs/tcs.c"
 cmake -DTINYSYSTEM="$tcs/TinySystem" -DOUT="$out/tcs/tcs_tool_files.h" -P "$root/native/tcs/embed.cmake"
 "${CC:-cc}" -shared -fPIC -O2 -ffp-contract=off -fwrapv -w \
-  -I"$lub/include" -I"$lub/tcs/tcsvm/vm" -I"$out/tcs" \
+  -I"$lub/include" -I"$lub/src/tcs-vm" -I"$out/tcs" \
   "$root/native/tcs/vm_tcs.c" -lm -o "$root/src/Tcs.so"
 echo "wrote src/Jamo.so, src/Fs.so and src/Tcs.so ($target)"

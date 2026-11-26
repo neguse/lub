@@ -4,7 +4,7 @@
    do not change across a collection. Collection happens only at interpreter
    allocation points (after saving the frame) and at frame boundaries
    (tvm_frame_end). */
-#include "../../runtime/model/tcs_walk.h"
+#include "../tcs-runtime/model/tcs_walk.h"
 #include "tcsvm_internal.h"
 
 #include <stdlib.h>

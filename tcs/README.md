@@ -235,16 +235,26 @@ List\<T\>, Queue\<T\>, HashSet\<T\>, Dictionary\<K,V\>, LINQ (`using TinySystem.
 ## プロジェクト構成
 
 ```
+src/
+  tcs/
+    Compiler/          # tcs の compiler (TinyC# で書いた、字句から IL まで)
+    CBackend/          # IL を C にする backend
+    VmBackend/         # IL を tcs VM の .tcsb にする backend
+    Tool/              # CLI
+    Native/            # C の host
+  tcs-vm/              # tcs VM (`tcs vm` が作る .tcsb を動かす register VM)
+  tcs-runtime/
+    core/              # tcs c の C runtime (GC を含む)
+    model/             # tcs VM と tcs2c が共有する型記述子
+    sort/              # List.Sort の C 実装 (tcs VM が使う)
+    math/              # Math の超越関数の C 実装 (tcs2c が埋め込み、tcs VM が link する)
+    fmt/               # float の文字列化の C 実装 (同上)
+    utf8/              # 文字列の操作の C 実装 (同上)
 tcs/
-  Compiler/            # tcs の compiler (TinyC# で書いた、字句から IL まで)
-  CBackend/            # IL を C にする backend
-  VmBackend/           # IL を tcs VM の .tcsb にする backend
-  Tool/                # CLI
-  Native/              # C の host
-  SelfHost/            # 上を .NET の library にする project と、C の tcs を作る native.sh
+  SelfHost/            # compiler を .NET の library にする project と、C の tcs を作る native.sh
   Transpiler/          # .NET の host と CLI の入口 (CLI の本体は Tool)
   Transpiler.Tests/    # xUnit テスト
-  tcsvm/               # tcs VM (`tcs vm` が作る .tcsb を動かす register VM)
+  tcsvm/               # tcs VM のテストと道具
   tcs2c/               # tcs c (C backend) を .NET で動かす入口と、C の出力のテスト用のスクリプト
   tcs2c.Tests/         # C backend、tcs VM、.NET の stdout の差分テスト
   WasmCompiler/        # C# の整形 (CSharpier) を .NET の wasm でブラウザに出す入口
@@ -252,13 +262,6 @@ tcs/
   TinyCs.Analyzers.Tests/
   Shared/              # 診断の id
   TinySystem/          # C# 側の型定義/facade (コンパイル・補完用)
-  runtime/
-    core/              # tcs c の C runtime (GC を含む)
-    model/             # tcs VM と tcs2c が共有する型記述子
-    sort/              # List.Sort の C 実装 (tcs VM が使う)
-    math/              # Math の超越関数の C 実装 (tcs2c が埋め込み、tcs VM が link する)
-    fmt/               # float の文字列化の C 実装 (同上)
-    utf8/              # 文字列の操作の C 実装 (同上)
   perf/                # 性能実測ハーネス
   deps/
     csharpstandard/    # C# の仕様 (spec conformance の例、git submodule)

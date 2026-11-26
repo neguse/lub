@@ -1,6 +1,6 @@
 # tcs VM 設計 — IL から直接 bytecode を出す dev 実行系
 
-> Status: 実装 (`tcsvm/`、`VmBackend/`)。命令の正本は `tcsvm/vm/tcsvm_ops.h`、API の正本は `tcsvm/vm/tcsvm.h`。
+> Status: 実装 (`tcsvm/`、`VmBackend/`)。命令の正本は `src/tcs-vm/tcsvm_ops.h`、API の正本は `src/tcs-vm/tcsvm.h`。
 >
 > Scope: tcs の dev 実行系 (開発と hot reload) の bytecode と VM。release は C (`tcs c`) で、この文書の外。VM と C が共有する型記述子、layout の規則、reload の計画、heap の walker、module 単位の混在は `docs/tcs/object-model.md`。hot reload の契約 (live と restart の分類) は `docs/tcs/hot-reload-design.md`。
 
@@ -78,7 +78,7 @@ C# source
 |---|---|---|
 | VmEmitter | `VmBackend/` (`VmEmitter.cs`、`FunctionCompiler.cs`、`ModuleBuilder.cs`、`ReloadPlan.cs`) | TinyC# |
 | CLI と増分 session | `Tool/VmRun.cs` (`tcs vm`、`VmSession`) | TinyC# |
-| VM | `tcsvm/vm/` (`tcsvm.h` が公開 API、`tcsvm_main.c` が CLI の `tcsvm`) | C11 |
+| VM | `src/tcs-vm/` (`tcsvm.h` が公開 API、`tcsvm_main.c` が CLI の `tcsvm`) | C11 |
 | 共有 runtime | `runtime/fmt`、`runtime/math`、`runtime/utf8`、`runtime/sort`、`runtime/model` (C backend と同じ実装) | C |
 
 ## 6. 値と型の表現

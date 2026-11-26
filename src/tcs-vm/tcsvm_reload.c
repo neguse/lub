@@ -25,7 +25,7 @@
    (once the types and the heap are consistent with the new version). As with
    hooks, a fault becomes a warning (the field keeps its zero value), and the
    apply is not rolled back (docs/tcs/object-model.md §6). */
-#include "../../runtime/model/tcs_walk.h"
+#include "../tcs-runtime/model/tcs_walk.h"
 #include "tcsvm_internal.h"
 
 #include <stdarg.h>

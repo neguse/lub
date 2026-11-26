@@ -18,7 +18,7 @@
    - Looking up the current line inside a host function gives the line that
    called it (none when not counting)
    - Nothing is counted when stopped */
-#include "../../vm/tcsvm.h"
+#include "../../../../src/tcs-vm/tcsvm.h"
 
 #include <pthread.h>
 #include <stdatomic.h>

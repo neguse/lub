@@ -1,4 +1,4 @@
-// A named incremental tcs session (tcs/Tool/Sessions.cs). Opened with the tcs built into the lider player (Tcs.ref.cs).
+// A named incremental tcs session (src/tcs/Tool/Sessions.cs). Opened with the tcs built into the lider player (Tcs.ref.cs).
 // Different versions of the same program (such as the saved and edited versions) can be compiled side by side under different names.
 // When a compile succeeds, writes a module (.tcsb) or a batch (diff) to the path given at open. The game app (App.Use) reads it.
 // Results of requested compiles are received with Take.

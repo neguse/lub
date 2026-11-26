@@ -15,8 +15,8 @@ dotnet tools/lub-gen/bin/Release/net11.0/lub-gen.dll vm --stub cs-lib/lub_stub.c
 # tests/c/tcs_binding.c also includes the game.c of tcs2c, so make it empty
 : > "$work/game.c"
 cat tests/c/tcs_binding.c tests/c/vm_binding_driver.c > "$work/test.c"
-vm=tcs/tcsvm/vm
-rt=tcs/runtime
+vm=src/tcs-vm
+rt=src/tcs-runtime
 "${CC:-cc}" -std=gnu11 -O1 -fwrapv -ffp-contract=off -Iinclude -I"$vm" -I"$work" "$work/test.c" \
   "$vm"/tcsvm_{debug,gc,host,lib,load,reload,rt,run,state}.c "$rt"/sort/*.c "$rt"/fmt/*.c "$rt"/math/*.c "$rt"/utf8/*.c \
   "$rt"/model/*.c -lm -o "$work/test"

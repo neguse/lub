@@ -5,7 +5,7 @@
    static methods remain. Also checks, from inside a host function with
    tvm_stack_self, that the self of each frame is Game.B ("" for static frames).
  */
-#include "../../vm/tcsvm.h"
+#include "../../../../src/tcs-vm/tcsvm.h"
 
 #include <stdio.h>
 #include <stdlib.h>

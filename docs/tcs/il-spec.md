@@ -252,7 +252,7 @@ host は打ち切られた後に次の entry を呼べる: tcs VM は `tvm_call`
   文字の位置と U+FFFD は runtime/utf8 の 1 つの C の実装 (tcs VM は link し、C は生成 C に埋め込む。.NET は TinySystem/Utf8.cs の同じ結果を返す C# 版) が決める。
   壊れた byte 列は .NET の `Encoding.UTF8` と同じく、続けられない位置までを U+FFFD 1 文字に読む。
   `String.Trim` と引数なしの `String.Split` の空白も runtime/utf8 が決め、.NET の `char.IsWhiteSpace` と同じ集合
-- Random の合意 PRNG は xoshiro256** (64 bit の状態 4 つ) で、tcs VM (`tcsvm/vm/tcsvm_lib.c`) と C (`runtime/core/tcs_lib.c` の `tcs_rand_*`) が同じ手順を持つ (T245)。
+- Random の合意 PRNG は xoshiro256** (64 bit の状態 4 つ) で、tcs VM (`src/tcs-vm/tcsvm_lib.c`) と C (`runtime/core/tcs_lib.c` の `tcs_rand_*`) が同じ手順を持つ (T245)。
   seed n は状態を `{n, 0xff, 0, 0}` にして先頭の 16 個の出力を捨てる。
   整数の `[low, up]` は出力の下位 32 bit を `up - low` を覆う最小の `2^k - 1` で mask し、`up - low` を超えたら次の出力で取り直して `low` を足す (32 bit の演算。`low > up` は fault)。`Next()` は `[0, 2147483646]`、`Next(max)` は `Next(0, max)`、`Next(min, max)` は `[min, max - 1]` (空の範囲 `max == min` は min、`max < min` は fault)、`Range(min, max)` は `[min, max]`。
   float (`NextFloat` / `NextSingle`) は出力の上位 24 bit に 2^-24 を掛けた `[0, 1)` の値。

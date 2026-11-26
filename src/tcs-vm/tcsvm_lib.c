@@ -5,10 +5,10 @@
    tcsvm_internal.h for the kind characters of arguments and return values. */
 #include "tcsvm_internal.h"
 
-#include "../../runtime/fmt/tcs_fmt.h"
-#include "../../runtime/math/tcs_math.h"
-#include "../../runtime/sort/tcs_sort.h"
-#include "../../runtime/utf8/tcs_utf8.h"
+#include "../tcs-runtime/fmt/tcs_fmt.h"
+#include "../tcs-runtime/math/tcs_math.h"
+#include "../tcs-runtime/sort/tcs_sort.h"
+#include "../tcs-runtime/utf8/tcs_utf8.h"
 
 #include <math.h>
 #include <stdio.h>

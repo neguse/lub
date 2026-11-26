@@ -51,8 +51,13 @@ def dotnet():
 
 
 def body(tree):
-    """Dir that holds Compiler, CBackend, VmBackend, Tool and Native. A base tree may still have them under SelfHost/"""
-    return tree / "SelfHost" if (tree / "SelfHost" / "Compiler").is_dir() else tree
+    """Dir that holds Compiler, CBackend, VmBackend, Tool and Native (src/tcs). A base tree may still have them under SelfHost/"""
+    return tree / "SelfHost" if (tree / "SelfHost" / "Compiler").is_dir() else tree.parent / "src" / "tcs"
+
+
+def runtime(tree):
+    """Dir of the runtime C (src/tcs-runtime). A base tree may still have it at runtime/"""
+    return tree / "runtime" if (tree / "runtime").is_dir() else tree.parent / "src" / "tcs-runtime"
 
 
 def sources(tree):
@@ -85,7 +90,7 @@ class Tcs:
         (w / "runtime").mkdir(exist_ok=True)
         for d in ("core", "math", "fmt", "model", "utf8"):
             (w / "runtime" / d).mkdir(exist_ok=True)
-            for f in list((self.tree / "runtime" / d).glob("*.c")) + list((self.tree / "runtime" / d).glob("*.h")):
+            for f in list((runtime(self.tree) / d).glob("*.c")) + list((runtime(self.tree) / d).glob("*.h")):
                 shutil.copy(f, w / "runtime" / d / f.name)
         (w / "lib" / "TinySystem").mkdir(parents=True, exist_ok=True)
         for f in ("Linq.cs", "ValueTuple.cs"):

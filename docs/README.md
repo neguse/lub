@@ -22,7 +22,7 @@ lub のドキュメントは全て「live doc」つまり履歴を含まず lub 
 | プレイヤー (`player`) | `liblub` + `tcs VM` でバイトコード (`.tcsb`) を動かす最小限の実行ライブラリ (`lub_vm_player`) | `host` と混ぜない |
 | ホスト (`host`) | プレイヤーを外側から動かす環境との窓口 (Web ページの JS 等、`Lub.Host`) | プレイヤーや VM→C 呼び出しと混ぜない |
 
-広すぎる語 (`runtime` 単体など) は使わず、`liblub`・`lub` CLI・`tcs/runtime` のように具体的に書く。
+広すぎる語 (`runtime` 単体など) は使わず、`liblub`・`lub` CLI・`tcs-runtime` のように具体的に書く。
 
 ## 検査
 

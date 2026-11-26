@@ -15,9 +15,9 @@
   <ItemGroup>
     <!-- The tcs host (Tool/: CLI, etc.) has OS functions (TcsHost) per host, so it is not included in the compiler library.
          On .NET, Transpiler builds it together with Transpiler/DotnetHost.cs -->
-    <Compile Include="../Compiler/*.cs" LinkBase="Compiler" />
-    <Compile Include="../CBackend/*.cs" LinkBase="CBackend" />
-    <Compile Include="../VmBackend/*.cs" LinkBase="VmBackend" />
+    <Compile Include="../../src/tcs/Compiler/*.cs" LinkBase="Compiler" />
+    <Compile Include="../../src/tcs/CBackend/*.cs" LinkBase="CBackend" />
+    <Compile Include="../../src/tcs/VmBackend/*.cs" LinkBase="VmBackend" />
   </ItemGroup>
 
   <ItemGroup>

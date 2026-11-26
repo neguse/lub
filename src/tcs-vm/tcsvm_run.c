@@ -4,7 +4,7 @@
    from vm->top / vm->ftop. */
 #include "tcsvm_internal.h"
 
-#include "../../runtime/fmt/tcs_fmt.h"
+#include "../tcs-runtime/fmt/tcs_fmt.h"
 
 #include <math.h>
 #include <stdio.h>

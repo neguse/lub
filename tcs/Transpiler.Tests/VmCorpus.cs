@@ -189,9 +189,9 @@ public static class VmCorpus
             var dir = Directory.CreateTempSubdirectory("tcsvm-bin-");
             var exe = Path.Combine(dir.FullName, OperatingSystem.IsWindows() ? "tcsvm.exe" : "tcsvm");
             var args = new List<string> { "-std=c11", "-O1", "-ffp-contract=off", "-fno-fast-math" };
-            args.AddRange(Directory.GetFiles(Path.Combine(root, "tcsvm", "vm"), "*.c"));
+            args.AddRange(Directory.GetFiles(Path.Combine(root, "..", "src", "tcs-vm"), "*.c"));
             foreach (var dep in new[] { "sort", "fmt", "math", "utf8", "model" })
-                args.AddRange(Directory.GetFiles(Path.Combine(root, "runtime", dep), "*.c"));
+                args.AddRange(Directory.GetFiles(Path.Combine(root, "..", "src", "tcs-runtime", dep), "*.c"));
             args.AddRange(["-o", exe, "-lm"]);
             using var p = Process.Start(new ProcessStartInfo(Environment.GetEnvironmentVariable("CC") ?? "cc", args)
             {

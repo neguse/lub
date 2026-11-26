@@ -1,7 +1,7 @@
 /* Runtime objects of the tcs VM: heap, string, List, Dictionary, List.Sort. */
 #include "tcsvm_internal.h"
 
-#include "../../runtime/sort/tcs_sort.h"
+#include "../tcs-runtime/sort/tcs_sort.h"
 
 #include <stdlib.h>
 #include <string.h>

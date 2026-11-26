@@ -3,7 +3,7 @@
 #ifndef TCSVM_INTERNAL_H
 #define TCSVM_INTERNAL_H
 
-#include "../../runtime/model/tcs_model.h"
+#include "../tcs-runtime/model/tcs_model.h"
 #include "tcsvm.h"
 #include "tcsvm_ops.h"
 

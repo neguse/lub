@@ -15,9 +15,9 @@ lub bundles or links the following third-party components.
 | stb_truetype | third_party/stb/stb_truetype.h | Public Domain / MIT (dual) | https://github.com/nothings/stb |
 | stb_vorbis (v1.22) | third_party/stb/stb_vorbis.c | Public Domain / MIT (dual) | https://github.com/nothings/stb |
 | libtess2 | third_party/libtess2/ | SGI Free Software License B 2.0 | https://github.com/memononen/libtess2 |
-| CORE-MATH (commit 0bbf26a。tcs の Math の超越関数の元) | tcs/runtime/math/ の sincosf.c、tanf.c、atan2f.c、log10f.c と tcs/TinySystem/TcsMath.*.cs | MIT (下の「tcs が元にしたコードの license」) | https://core-math.gitlabpages.inria.fr/ |
-| musl 1.2.6 の src/math (Arm の optimized-routines 由来。tcs の Math の超越関数の元) | tcs/runtime/math/ の exppowf.c、logf.c、log2f.c と tcs/TinySystem/TcsMath.*.cs | MIT (下の「tcs が元にしたコードの license」) | https://musl.libc.org/ |
-| Ryu (commit 4c0618b の ryu/f2s.c と ryu/f2s_full_table.h。tcs の float の文字列化の元) | tcs/runtime/fmt/f2s.c | Boost-1.0 (Apache-2.0 との選択。下の「tcs が元にしたコードの license」) | https://github.com/ulfjack/ryu |
+| CORE-MATH (commit 0bbf26a。tcs の Math の超越関数の元) | src/tcs-runtime/math/ の sincosf.c、tanf.c、atan2f.c、log10f.c と tcs/TinySystem/TcsMath.*.cs | MIT (下の「tcs が元にしたコードの license」) | https://core-math.gitlabpages.inria.fr/ |
+| musl 1.2.6 の src/math (Arm の optimized-routines 由来。tcs の Math の超越関数の元) | src/tcs-runtime/math/ の exppowf.c、logf.c、log2f.c と tcs/TinySystem/TcsMath.*.cs | MIT (下の「tcs が元にしたコードの license」) | https://musl.libc.org/ |
+| Ryu (commit 4c0618b の ryu/f2s.c と ryu/f2s_full_table.h。tcs の float の文字列化の元) | src/tcs-runtime/fmt/f2s.c | Boost-1.0 (Apache-2.0 との選択。下の「tcs が元にしたコードの license」) | https://github.com/ulfjack/ryu |
 
 ## Fetched at configure/install time (gitignored)
 

@@ -44,7 +44,7 @@ public class BclCatalogTests
     public void Catalog_IsUpToDate()
     {
         var root = Path.GetDirectoryName(TestHelper.FindProjectFile("tcs.slnx"))!;
-        var path = Path.Combine(root, "Compiler", "BclCatalog.cs");
+        var path = Path.Combine(root, "..", "src", "tcs", "Compiler", "BclCatalog.cs");
         var generated = Generate();
         if (Environment.GetEnvironmentVariable("TCS_UPDATE_BCL") == "1")
         {

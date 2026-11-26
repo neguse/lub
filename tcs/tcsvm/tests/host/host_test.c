@@ -5,7 +5,7 @@
    pointers (the same form as a host that wraps a C API). With a second module
    (Reject.cs), checks that loading is rejected when the registration does not
    match the module's structs. */
-#include "../../vm/tcsvm.h"
+#include "../../../../src/tcs-vm/tcsvm.h"
 
 #include <math.h>
 #include <stdbool.h>

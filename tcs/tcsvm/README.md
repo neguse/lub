@@ -55,7 +55,7 @@ field の番号を byte offset に書き換える。
 
 ```bash
 gcc -std=c11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all \
-  tcsvm/vm/*.c runtime/sort/*.c runtime/fmt/*.c runtime/math/*.c runtime/utf8/*.c runtime/model/*.c \
+  ../src/tcs-vm/*.c ../src/tcs-runtime/sort/*.c ../src/tcs-runtime/fmt/*.c ../src/tcs-runtime/math/*.c ../src/tcs-runtime/utf8/*.c ../src/tcs-runtime/model/*.c \
   -o /tmp/tcsvm_asan -lm
 python3 -I tcsvm/fuzz-loader.py /tmp/tcsvm_asan 3000 1 a.tcsb b.tcsb
 ```

@@ -47,11 +47,12 @@ endif()
 
 # Converts tcs to C with tcs2c (tcs.c). Files shipped with tcs are embedded in a header
 set(TCS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../tcs" CACHE PATH "tcs のソース")
+set(TCS_SRC "${TCS_ROOT}/../src/tcs")
 file(GLOB TCS_SELF_SOURCES CONFIGURE_DEPENDS
-  "${TCS_ROOT}/Compiler/*.cs" "${TCS_ROOT}/CBackend/*.cs"
-  "${TCS_ROOT}/VmBackend/*.cs" "${TCS_ROOT}/Tool/*.cs")
-list(REMOVE_ITEM TCS_SELF_SOURCES "${TCS_ROOT}/Tool/TcsHost.cs")
-file(GLOB_RECURSE TCS2C_SOURCES CONFIGURE_DEPENDS "${TCS_ROOT}/tcs2c/*.cs" "${TCS_ROOT}/runtime/*.c" "${TCS_ROOT}/runtime/*.h")
+  "${TCS_SRC}/Compiler/*.cs" "${TCS_SRC}/CBackend/*.cs"
+  "${TCS_SRC}/VmBackend/*.cs" "${TCS_SRC}/Tool/*.cs")
+list(REMOVE_ITEM TCS_SELF_SOURCES "${TCS_SRC}/Tool/TcsHost.cs")
+file(GLOB_RECURSE TCS2C_SOURCES CONFIGURE_DEPENDS "${TCS_ROOT}/tcs2c/*.cs" "${TCS_ROOT}/../src/tcs-runtime/*.c" "${TCS_ROOT}/../src/tcs-runtime/*.h")
 list(FILTER TCS2C_SOURCES EXCLUDE REGEX "/(bin|obj)/")
 set(TCS_C_DIR "${CMAKE_CURRENT_BINARY_DIR}/tcs")
 # If the C tcs (output of scripts/build-tcs-native.sh) exists, converts to C with it (tcs c emits the same C as the .NET tcs2c). dotnet is not needed then
@@ -68,8 +69,8 @@ else()
 endif()
 add_custom_command(OUTPUT "${TCS_C_DIR}/tcs.c"
   ${TCS_TO_C} --lib
-    --ref "${TCS_ROOT}/Tool/TcsHost.cs" ${TCS_SELF_SOURCES} -o "${TCS_C_DIR}/tcs.c"
-  DEPENDS ${TCS_SELF_SOURCES} "${TCS_ROOT}/Tool/TcsHost.cs" ${TCS_TO_C_DEPENDS}
+    --ref "${TCS_SRC}/Tool/TcsHost.cs" ${TCS_SELF_SOURCES} -o "${TCS_C_DIR}/tcs.c"
+  DEPENDS ${TCS_SELF_SOURCES} "${TCS_SRC}/Tool/TcsHost.cs" ${TCS_TO_C_DEPENDS}
   COMMENT "Converting tcs to C"
   VERBATIM)
 add_custom_command(OUTPUT "${TCS_C_DIR}/tcs_tool_files.h"
