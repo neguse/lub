@@ -76,7 +76,7 @@ def markdown(data, by):
              "- 1 回あたり: 本体を k 回くり返したプロセスと 1 回のプロセスの時間の差を k-1 で割ったもの。起動と JIT の立ち上がりを含まない",
              "- 起動から終了まで: 本体を 1 回動かすプロセスの wall の時間の median",
              "- 倍率は C (gcc -O2) を 1 としたもの。小さいほど速い。差が 10% 未満は揺れの範囲として同着とみなす",
-             "- 測り方と公平さの決まりは `perf/compare/METHODOLOGY.md`", ""]
+             "- 測り方と公平さの決まりは `docs/tcs/perf-compare.md`", ""]
     sp, se = summary(data, by, PER), summary(data, by, E2E)
     lines += ["## まとめ (startup を除くプログラムの C 比の幾何平均)", "",
               "| 実装 | 1 回あたり | 起動から終了まで | 版 |", "|---|---:|---:|---|"]
@@ -286,7 +286,7 @@ def page(data, by, fragment=False):
                "<li>数値は int32 と float32 に揃えた (tcs の数値は i32 と f32 だけ)。float32 を持たない言語 (※) は float64 で計算し、出力を相対 1e-3 で比べた</li>"
                "<li>1 スレッド、SIMD と unsafe と自前の pool は使わず、各言語の標準の書き方で書いた</li>"
                "<li>C と tcs の C の出力は gcc -O2 -ffp-contract=off -fwrapv</li>"
-               "<li>詳細は tcs の perf/compare/METHODOLOGY.md</li></ul>")
+               "<li>詳細は lub の docs/tcs/perf-compare.md</li></ul>")
     out.append('<h2>読むときの注意</h2><ul class="note">%s</ul>' % "".join("<li>%s</li>" % html.escape(n) for n in NOTES))
     out.append("<h2>版</h2><div class=\"tablewrap\"><table><tr><th class=\"l\">実装</th><th class=\"l\">版</th></tr>")
     for im in data["impls"]:

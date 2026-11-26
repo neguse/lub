@@ -7,7 +7,7 @@ Usage:
   python3 perf/compare/run.py -p fib -i c,tcs-c --runs 3
   python3 perf/compare/report.py results/<file>.json   # builds the tables and HTML
 
-The measurement method and fairness rules are in METHODOLOGY.md.
+The measurement method and fairness rules are in docs/tcs/perf-compare.md.
 """
 
 import argparse

@@ -35,10 +35,10 @@ filter_out() {
 }
 
 # Run dotnet tests (including the spec conformance sweep and corpus differential.
-# The per-chapter reports are also regenerated — behavior changes show up as report/baseline diffs)
+# The per-chapter report is written under build/ — behavior changes show up as baseline diffs)
 # Verification is comparison with .NET execution (TCS_DIFFERENTIAL, TCS_FUZZ) and judging C# acceptance with Roslyn (spec conformance)
 export TCS_SPEC_CONFORMANCE=1
-export TCS_SPEC_REPORT="$SCRIPT_DIR/../docs/tcs/spec-conformance-report.md"
+export TCS_SPEC_REPORT="$SCRIPT_DIR/build/spec-conformance-report.md"
 export TCS_DIFFERENTIAL=1
 export TCS_FUZZ=1
 echo "Running dotnet tests (with spec conformance + differential, part: $part)..."
