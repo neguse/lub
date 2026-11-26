@@ -105,7 +105,7 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
 /* Allocation point: if the accumulated allocations exceed the threshold, saves
  * the frame and collects */
 /* shared heap write barrier: tells the tcs2c GC about the object (and
- * container) a reference was written into (doc/object-model.md §10.2) */
+ * container) a reference was written into (docs/tcs/object-model.md §10.2) */
 #define WB(owner)                                                              \
   do {                                                                         \
     if (vm->heap && (owner))                                                   \
@@ -834,7 +834,7 @@ static TvmStatus interpret(TvmVm *vm, const TvmProto *proto,
   NEXT;
   CASE(CALL) {
     /* The new frame follows the caller's frame. Arguments are copied
-     * (doc/vm-design.md §8.1) */
+     * (docs/tcs/vm-design.md §8.1) */
     const TvmProto *g = &vm->funcs[OPC];
     TvmSlot *nR = R + proto->nregs;
     if (nR + g->nregs > vm->stack_end || ci + 1 >= vm->frames_end)

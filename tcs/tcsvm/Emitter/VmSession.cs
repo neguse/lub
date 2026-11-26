@@ -1,6 +1,6 @@
 namespace TinyCs.Vm;
 
-/// <summary>.NET entry point for the VM incremental session (doc/vm-design.md §13.3, V5). The core is TinyC#'s TcsSelf.VmSession
+/// <summary>.NET entry point for the VM incremental session (docs/tcs/vm-design.md §13.3, V5). The core is TinyC#'s TcsSelf.VmSession
 /// (SelfHost/Tool/VmRun.cs, the same as `tcs vm --watch`). Used by tests.
 /// Edits with diagnostics do not change the last build.</summary>
 public sealed class VmSession(string? entryClass, IReadOnlyList<string> exports, IReadOnlyList<string> referenceSources)

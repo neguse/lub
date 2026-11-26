@@ -15,9 +15,9 @@ enum {
   TCS_KIND_DICT,      /* TcsDict (layout = value) */
   TCS_KIND_DICT_NODE, /* TcsDictNode (layout = value) */
   TCS_KIND_CLOSURE,   /* TcsClosure (cells are OBJECT) */
-  /* tcs VM object (doc/object-model.md §10.2). The layout is in the VM's type
-     descriptor, and the reference locations are traced by tcs_gc_foreign_refs
-     (a VM function) */
+  /* tcs VM object (docs/tcs/object-model.md §10.2). The layout is in the VM's
+     type descriptor, and the reference locations are traced by
+     tcs_gc_foreign_refs (a VM function) */
   TCS_KIND_FOREIGN = 0x40
 };
 /* flags: MARK = liveness mark of the old-generation mark-sweep, STATIC = static

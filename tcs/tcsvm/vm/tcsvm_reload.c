@@ -1,7 +1,7 @@
-/* Applying a hot reload (doc/vm-design.md §12, doc/object-model.md §6, §7).
-   Loads the new version's module into another VM, and following the plan (made
-   by tcs2vm --reload-from; same form as the tcs2c migrator) moves the heap and
-   statics to the new version's types and swaps the function table.
+/* Applying a hot reload (docs/tcs/vm-design.md §12, docs/tcs/object-model.md
+   §6, §7). Loads the new version's module into another VM, and following the
+   plan (made by tcs2vm --reload-from; same form as the tcs2c migrator) moves
+   the heap and statics to the new version's types and swaps the function table.
 
    Stages:
    1. Load: parse / verify / link the new version in another VM. Failure is
@@ -24,7 +24,7 @@
    Initializers are functions of the new version, so they run after the apply
    (once the types and the heap are consistent with the new version). As with
    hooks, a fault becomes a warning (the field keeps its zero value), and the
-   apply is not rolled back (doc/object-model.md §6). */
+   apply is not rolled back (docs/tcs/object-model.md §6). */
 #include "../../runtime/model/tcs_walk.h"
 #include "tcsvm_internal.h"
 
@@ -52,7 +52,8 @@ typedef struct Reload {
 
 static void *xalloc(void *p) {
   if (!p)
-    abort(); /* The apply stage has no failure path (doc/vm-design.md §12.1) */
+    abort(); /* The apply stage has no failure path (docs/tcs/vm-design.md
+                §12.1) */
   return p;
 }
 

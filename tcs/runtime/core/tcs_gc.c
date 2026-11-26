@@ -98,10 +98,10 @@ static void tcs_gc_mark_ptr(const void *pointer) {
     tcs_gc_push(TCS_GC_HEADER(pointer));
 }
 
-/* Per-module mixing (doc/object-model.md §10.2): a function that traces the
-   reference locations of tcs VM objects (TCS_KIND_FOREIGN), and a function that
-   traces the VM roots (statics and handles). The tcs2c --vm-host glue installs
-   the VM functions (unused if missing) */
+/* Per-module mixing (docs/tcs/object-model.md §10.2): a function that traces
+   the reference locations of tcs VM objects (TCS_KIND_FOREIGN), and a function
+   that traces the VM roots (statics and handles). The tcs2c --vm-host glue
+   installs the VM functions (unused if missing) */
 typedef void (*TcsSlotFn)(void **slot);
 static void (*tcs_gc_foreign_refs)(void *payload, TcsSlotFn fn);
 static void (*tcs_gc_root_hook)(TcsSlotFn fn);

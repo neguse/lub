@@ -9,7 +9,7 @@ using TinyCs.Vm;
 namespace TinyCs.Tests;
 
 /// <summary>
-/// Runs semantic tests (CompileAndRunVm in doc/vm-design.md §16): adds an entry `Console.WriteLine(expr)` to a C# program,
+/// Runs semantic tests (CompileAndRunVm in docs/tcs/vm-design.md §16): adds an entry `Console.WriteLine(expr)` to a C# program,
 /// runs it on the tcs VM (tcs2vm → tcsvm, normal and GC stress), and returns stdout. If TCS_DIFFERENTIAL=1, the same entry is also run on real .NET
 /// (with the same setup as TinySystem.props), and the stdout must match (dotnet differential).
 /// </summary>

@@ -1,4 +1,4 @@
-"""Reads the tcs2vm --watch stream (doc/vm-design.md §13.3) from the host's point of view: starts it, waits for the first output, rewrites the input
+"""Reads the tcs2vm --watch stream (docs/tcs/vm-design.md §13.3) from the host's point of view: starts it, waits for the first output, rewrites the input
 to v2, applies the received vm_batch with tcsvm --reload-batch, and checks that the output matches the expectation.
 Next, changes a static initializer and checks that restart_required arrives.
 

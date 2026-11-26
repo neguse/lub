@@ -1,5 +1,5 @@
 /* Host functions and the API for the host to read and write VM objects
- * (tcsvm.h, doc/vm-design.md §8.5, §13). */
+ * (tcsvm.h, docs/tcs/vm-design.md §8.5, §13). */
 #include "tcsvm_internal.h"
 
 #include <stdio.h>
@@ -87,11 +87,11 @@ TvmStatus tvm_host_fault(TvmVm *vm, const char *message) {
   return tvm_fault_msg(vm, message);
 }
 
-/* ---- Copying structs and out (doc/vm-design.md §8.5) ----
+/* ---- Copying structs and out (docs/tcs/vm-design.md §8.5) ----
    Copies register leaves into a block laid out as a C struct with the type
-   table layout (doc/object-model.md §5). The leaves of a struct made into a
-   block are only int / float / bool (references inside a block are invisible to
-   the GC). */
+   table layout (docs/tcs/object-model.md §5). The leaves of a struct made into
+   a block are only int / float / bool (references inside a block are invisible
+   to the GC). */
 
 /* The type for S{name}: a struct in the type table with no reference leaves */
 static const TvmType *plan_struct(TvmVm *vm, const TvmIntrinsic *in,
@@ -302,7 +302,7 @@ static const TvmType *find_type(TvmVm *vm, const char *name) {
   return NULL;
 }
 
-/* ---- Types of C modules (doc/object-model.md §10.6) ---- */
+/* ---- Types of C modules (docs/tcs/object-model.md §10.6) ---- */
 
 /* VM type names and C module type names are treated as equal when they differ
  * only in the namespace separator ('.' and '_') */

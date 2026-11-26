@@ -1,4 +1,4 @@
-/* Implementation of tcs_walk.h (doc/object-model.md §6, §7). */
+/* Implementation of tcs_walk.h (docs/tcs/object-model.md §6, §7). */
 #include "tcs_walk.h"
 
 #include <stdlib.h>

@@ -2,7 +2,7 @@
    (Op.cs is generated from this list). An order mismatch is stopped at load
    time by the FNV-1a of the name list (abi in the .tcsb header).
 
-   Format (64-bit fixed length, doc/vm-design.md §7.1):
+   Format (64-bit fixed length, docs/tcs/vm-design.md §7.1):
    - | op:8 | a:16 | b:16 | c:16 | x:8 |
    - Immediate form: imm32 is in bits 24..55 (the positions of b and c)
    - Branch: the relative offset is a signed 24-bit value in bits 40..63 (the
@@ -200,7 +200,7 @@ enum {
       TVM_OP_COUNT
 };
 
-/* Kinds of registers, statics, and leaves (doc/vm-design.md §6.1) */
+/* Kinds of registers, statics, and leaves (docs/tcs/vm-design.md §6.1) */
 enum { TVM_K_I32 = 0, TVM_K_F32 = 1, TVM_K_BOOL = 2, TVM_K_REF = 3 };
 
 /* Type kinds */

@@ -2,7 +2,7 @@
 
 > Status: 実装 (`tcsvm/`、`SelfHost/VmBackend/`)。命令の正本は `tcsvm/vm/tcsvm_ops.h`、API の正本は `tcsvm/vm/tcsvm.h`。
 >
-> Scope: tcs の dev 実行系 (開発と hot reload) の bytecode と VM。release は C (`tcs c`) で、この文書の外。VM と C が共有する型記述子、layout の規則、reload の計画、heap の walker、module 単位の混在は `doc/object-model.md`。hot reload の契約 (live と restart の分類) は `doc/hot-reload-design.md`。
+> Scope: tcs の dev 実行系 (開発と hot reload) の bytecode と VM。release は C (`tcs c`) で、この文書の外。VM と C が共有する型記述子、layout の規則、reload の計画、heap の walker、module 単位の混在は `docs/tcs/object-model.md`。hot reload の契約 (live と restart の分類) は `docs/tcs/hot-reload-design.md`。
 
 ## 1. 概要
 
@@ -248,7 +248,7 @@ IL のノードのいくつかは、添字の写し方の印を持つ、List の
 
 - host の関数は runtime の関数と同じ `CALLR a, b, #c` で呼ぶ。host の型は `TvmStatus fn(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user)`。
 - module は使う host の関数を名前で import し、読み込み時に host の登録表 (`tvm_host`) と照合する。名前が無いか、呼び出しの形が登録と合わなければ読み込みエラーにする (stub と runtime の食い違いを実行前に止める)。
-- register の中では値型は葉のまま持つ (`a` からは引数の葉、`b` からは戻り値の葉と out の葉が並び、VM の中の呼び出しと同じ形)。host の境界でだけ、struct を C の layout (doc/object-model.md §5) の塊に写す。
+- register の中では値型は葉のまま持つ (`a` からは引数の葉、`b` からは戻り値の葉と out の葉が並び、VM の中の呼び出しと同じ形)。host の境界でだけ、struct を C の layout (docs/tcs/object-model.md §5) の塊に写す。
 - 登録は、C# の引数の順に並べた項の列と、戻り値の項で書く (書き方は `tcsvm.h`)。項は 1 葉の値 (`i` `f` `b` `s` `o`)、struct の値 `S{型}` (型は IL の型の名前で、`T?` は `S{Eng_Vec2?}`)、前に `&` を付けた out のどれか。
 - 値の struct は、VM が引数の葉を一時の塊に詰めて `args[k].p` に渡す。host は C の struct として読む (`*(const Vec2 *)args[k].p`) ので、C の API を包む host は struct をそのまま値で渡せる。
 - out は、VM が 0 で埋めた場所を `args[k].p` に渡し、host が pointer の先に書く。int / float / bool / 参照の out の場所は結果の register そのもの (slot の先頭の `int32_t` / `float` / 1 byte の `bool` / `void *`) で、host が書いた参照は frame の register にあるので GC の root になる。struct の out の場所は一時の塊で、host から戻ったら VM が結果の register (out の葉) に写す。`rets` は戻り値だけで、out の値は入らない。
@@ -426,7 +426,7 @@ const char *tvm_string_data(const void *string, size_t *len);
 - host の関数の名前は IL の host の名前 (`--ref` の stub の `Eng.Gfx.Begin` は `eng.gfx.begin`、static の値 `Gfx.MainTex` は引数の無い `eng.gfx.main_tex`)。enum の定数は module に literal で入る
 - params は C# の引数の順の項、rets は戻り値の項で書く (`i` int と enum、`f` float、`b` bool、`s` string、`o` ほかの参照、`S{型}` struct の値、params の `&` は out)。struct と out は C の layout の塊と pointer で渡る (§8.5)。module が使う host の関数が無いか、struct の型が module に無いか塊にできないか、呼び出しの形が合わなければ読み込みエラーにする。
 - `--ref` の stub の struct (`record struct` / `readonly record struct` を含む) は module の型の表に入り、VM の中ではほかの struct と同じ値型になる。object initializer の `new Vec2 { X = 1 }` は、0 の値に field を入れる。
-- stub の data class (record) の object は型記述子の layout を持ち、host は field の offset を名前で引いて読み書きする (doc/object-model.md §5)。型の名前は IL の名前 (`Eng_Opts`)、field は IL の名前 (`title`)
+- stub の data class (record) の object は型記述子の layout を持ち、host は field の offset を名前で引いて読み書きする (docs/tcs/object-model.md §5)。型の名前は IL の名前 (`Eng_Opts`)、field は IL の名前 (`title`)
 - 回収は interpreter の地点とフレーム境界だけなので、host の関数の中と、host が object を作って `tvm_call` に渡すまでの間は回収されない
 - `tvm_find` は関数表の番号を返し、reload は番号を保たないので、host は reload の後に引き直す
 - 検査: `tcsvm/tests/host/` (`tcsvm/run-tests.sh`)。host_test.c が stub の面を登録して Game を呼ぶ。struct の値と戻り値、scalar と struct の out、入れ子の struct、`T?`、host から VM に戻る入れ子、登録が module と合わないときの読み込みの拒否 (Reject.cs) を見る。
@@ -477,7 +477,7 @@ byte 列は address と layout に依らないので、別の VM にも、別の
 読み込みの約束:
 
 - 型は名前で今の module の型に対応させる。今の module に無い型、種類 (class か struct か容器か) の違う型、要素か key の種類の違う容器は断る。
-- class と struct の形が違えば、reload の計画 (doc/object-model.md §6) と同じ決まりで値を移す。field を名前で対応させ、種類と型の名前が同じなら状態の値、違えば 0 の値にする。今の型に無い field は読み捨てる。struct の field は、その struct の形で同じに移す (struct の static、List と配列と Dictionary の struct の要素も同じ)。
+- class と struct の形が違えば、reload の計画 (docs/tcs/object-model.md §6) と同じ決まりで値を移す。field を名前で対応させ、種類と型の名前が同じなら状態の値、違えば 0 の値にする。今の型に無い field は読み捨てる。struct の field は、その struct の形で同じに移す (struct の static、List と配列と Dictionary の struct の要素も同じ)。
 - 状態から値を移さなかった class の field (状態に無い field と、種類か型の変わった field) は、0 の値から始めて、確かめ終えた後に initializer を走らせる。initializer は `型.<init>field` の関数で、型の表にある class の全部の field について emitter が作る。initializer の fault は警告で (`tvm_error` に残る)、その field は 0 の値のままになる。
 - 参照の先の object が置き場所の型 (field、要素、key、捕捉、static) に合うことを確かめる。
 - closure の関数は名前で引き、関数型と捕捉の数が合うことを確かめる。
@@ -561,10 +561,10 @@ reload は module ごと入れ替え、古い関数を残さない (§12.4) の�
 
 ## 19. 関連文書
 
-- `doc/il-spec.md` — 意味論の正本。VM はこれを直接実装する
-- `doc/il-reference.md` — IL のノードと IlExport (VmEmitter の入力契約)
-- `doc/il-design.md` — 2 backend 構成と lowering の 2 モード
-- `doc/hot-reload-design.md` — reload の契約 (live と restart の分類、hook)
-- `doc/object-model.md` — VM と C が共有する型記述子、layout、reload の計画、heap の walker、module 単位の混在
+- `docs/tcs/il-spec.md` — 意味論の正本。VM はこれを直接実装する
+- `docs/tcs/il-reference.md` — IL のノードと IlExport (VmEmitter の入力契約)
+- `docs/tcs/il-design.md` — 2 backend 構成と lowering の 2 モード
+- `docs/tcs/hot-reload-design.md` — reload の契約 (live と restart の分類、hook)
+- `docs/tcs/object-model.md` — VM と C が共有する型記述子、layout、reload の計画、heap の walker、module 単位の混在
 - `perf/README.md` — 性能の測定
 - `tcs2c/README.md` — 同じ IL を native 表現にする C backend

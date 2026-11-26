@@ -1,8 +1,8 @@
-/* Heap walker and reload plan (doc/object-model.md §6, §7). The VM and tcs2c
-   use the same code. The walker follows the reference locations inside a value
-   by looking only at the type descriptors. The layout of object containers
-   (arrays / List / Dictionary) is owned by the implementation (to be aligned in
-   M-4), which passes the values inside to this walker. */
+/* Heap walker and reload plan (docs/tcs/object-model.md §6, §7). The VM and
+   tcs2c use the same code. The walker follows the reference locations inside a
+   value by looking only at the type descriptors. The layout of object
+   containers (arrays / List / Dictionary) is owned by the implementation (to be
+   aligned in M-4), which passes the values inside to this walker. */
 #ifndef TCS_WALK_H
 #define TCS_WALK_H
 

@@ -1,5 +1,6 @@
-/* Type descriptors shared by the VM and tcs2c (doc/object-model.md §4, §5).
-   Reads a byte sequence (v1) and determines the layout with C struct rules. */
+/* Type descriptors shared by the VM and tcs2c (docs/tcs/object-model.md §4,
+   §5). Reads a byte sequence (v1) and determines the layout with C struct
+   rules. */
 #ifndef TCS_MODEL_H
 #define TCS_MODEL_H
 
@@ -41,7 +42,7 @@ enum {
 #define TCS_TYPE_RECORD 1u
 #define TCS_TYPE_HAS_ON_RELOAD 2u
 /* External data class shared with the host: after the class prefix, a uint64_t
- * host_value aligned to 8 bytes (doc/object-model.md §3) */
+ * host_value aligned to 8 bytes (docs/tcs/object-model.md §3) */
 #define TCS_TYPE_HOST_VALUE 4u
 
 #define TCS_NO_TYPE 0xFFFF

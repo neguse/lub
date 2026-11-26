@@ -59,7 +59,7 @@ public sealed class Plan
     }
 }
 
-/// <summary>Reload plan (doc/object-model.md §6). From the old and new type descriptors (TcsC.TypeTable),
+/// <summary>Reload plan (docs/tcs/object-model.md §6). From the old and new type descriptors (TcsC.TypeTable),
 /// computes retained / added / reset per type, the static diff, and the restart reasons, and turns them into a byte sequence (v1).
 /// The VM's tvm_apply and tcs2c's migrator receive it with the same structure (read by the C runtime/model/tcs_walk).
 /// Types are ordered by where their name first appears (GroupBy and Dictionary insertion order in the C# version).</summary>

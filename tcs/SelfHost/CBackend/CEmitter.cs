@@ -272,7 +272,7 @@ public sealed class CEmitter
             // Per-module mixing (--vm-host): the VM API and the VM (used by dispatchers and glue)
             Line("#include \"tcsvm.h\"");
             Line("static TvmVm *tcs_vmh_vm;");
-            // A VM string has the same byte layout as TcsString (shared heap, so it is not copied; doc/object-model.md §10.6)
+            // A VM string has the same byte layout as TcsString (shared heap, so it is not copied; docs/tcs/object-model.md §10.6)
             Line("static TcsString *");
             Line("tcs_vmh_str_in(void *s)");
             Line("{");
@@ -1037,7 +1037,7 @@ public sealed class CEmitter
 
     private string RuntimeMath() => EmbedRuntime("math", "TCS_MATH_STATIC", "tcs_math.h tcs_math_internal.h atan2f.c exppowf.c log10f.c log2f.c logf.c sincosf.c tanf.c");
     private string RuntimeFmt() => EmbedRuntime("fmt", "TCS_FMT_STATIC", "tcs_fmt.h f2s.c printf.c parse.c");
-    // Type descriptor parser and layout (doc/object-model.md). Used only by TCS_VERIFY_TYPES builds
+    // Type descriptor parser and layout (docs/tcs/object-model.md). Used only by TCS_VERIFY_TYPES builds
     private string RuntimeModel() => EmbedRuntime("model", "TCS_MODEL_STATIC", "tcs_model.h tcs_model.c");
     private string RuntimeUtf8() => EmbedRuntime("utf8", "TCS_UTF8_STATIC", "tcs_utf8.h tcs_utf8.c");
     // Body of the tcs2c runtime (runtime/core; C shared with the VM per X-2 in object-model §10.2). A fragment placed as is in the generated C
@@ -7715,12 +7715,12 @@ public sealed class CEmitter
 
     // ==== CEmitter.VmHost.cs ====
 
-    // Per-module mixing (doc/object-model.md §10): --lib --vm-host emits glue (tcs_vm_register) that registers the public
+    // Per-module mixing (docs/tcs/object-model.md §10): --lib --vm-host emits glue (tcs_vm_register) that registers the public
     // static methods of this module (the side fixed in C, such as the editor) as tcs VM host functions. The VM module (content)
     // takes this module's source as --ref, compiles it, and calls them by the same names (IlExport.HostSurface).
-    // There is one heap and one GC (shared heap, doc/object-model.md §10.4). Values crossing the boundary are int / float / bool / enum, string
+    // There is one heap and one GC (shared heap, docs/tcs/object-model.md §10.4). Values crossing the boundary are int / float / bool / enum, string
     // (not copied; §10.6), class and object (as is; type numbers are matched too), delegate and interface (§10.5).
-    // Structs that can be passed as a blob (fields are int / float / bool / enum and structs made only of those) and `T?` pass as `S{type}` in the VM host ABI, and out passes as a `&` item (doc/vm-design.md §8.5).
+    // Structs that can be passed as a blob (fields are int / float / bool / enum and structs made only of those) and `T?` pass as `S{type}` in the VM host ABI, and out passes as a `&` item (docs/tcs/vm-design.md §8.5).
     // Methods with shapes that cannot be called (structs with reference fields, List / Dictionary, out on interface methods) are not registered (the reason goes in a C comment).
 
     public List<ExHostFunction>? VmHostSurface;
@@ -7869,7 +7869,7 @@ public sealed class CEmitter
         }
         EmitVmSharedHeap();
         Line("/* Registers the public static methods of this module as VM host functions, and makes this module's runtime use the VM heap");
-        Line("   (shared heap: one heap and one GC. doc/object-model.md §10.2). Call it before tvm_load. Returns the number of registered functions */");
+        Line("   (shared heap: one heap and one GC. docs/tcs/object-model.md §10.2). Call it before tvm_load. Returns the number of registered functions */");
         Line("int");
         Line("tcs_vm_register(TvmVm *vm)");
         Line("{");
@@ -8467,7 +8467,7 @@ public sealed class CEmitter
 
     // ==== CEmitter.TypeTable.cs ====
 
-    // Put the type descriptors (doc/object-model.md §4) in the generated C as the same byte sequence as the VM: tcs_type_table.
+    // Put the type descriptors (docs/tcs/object-model.md §4) in the generated C as the same byte sequence as the VM: tcs_type_table.
     // In TCS_VERIFY_TYPES builds, runtime/model reads this table at initialization and checks that the field offsets computed by the C struct rules (§5)
     // match the offsetof values of the generated structs (M-2).
     // The table is also an input to the heap walker (§7) and to reload planning (§6).
@@ -8495,7 +8495,7 @@ public sealed class CEmitter
         }
         TypeTable.Write(data, b.Entries, strings);
 
-        Line("/* Type descriptors (doc/object-model.md §4. Same format as the types in a VM .tcsb) */");
+        Line("/* Type descriptors (docs/tcs/object-model.md §4. Same format as the types in a VM .tcsb) */");
         Line("static const unsigned char tcs_type_table[" + (data.Count > 1 ? data.Count : 1) + "] = {");
         _indent++;
         for (int i = 0; i < data.Count; i += 24)
@@ -8839,7 +8839,7 @@ public sealed class TypeTableCheck
 
 // ---- Transpiler/Backend/TypeTable.cs ----
 
-/// <summary>Type descriptors shared by the VM and tcs2c (doc/object-model.md §4). A backend maps its types
+/// <summary>Type descriptors shared by the VM and tcs2c (docs/tcs/object-model.md §4). A backend maps its types
 /// to this shape, and <see cref="TypeTable.Write"/> turns them into a byte sequence (v1). The C runtime/model reads it.</summary>
 public static class TypeTable
 {
@@ -8860,7 +8860,7 @@ public static class TypeTable
     public const int Box = 10;
     public const int FlagRecord = 1;
     public const int FlagHasOnReload = 2;
-    // External data class shared with the host: the payload has a uint64_t host_value aligned to 8 bytes after type_id (doc/object-model.md §3)
+    // External data class shared with the host: the payload has a uint64_t host_value aligned to 8 bytes after type_id (docs/tcs/object-model.md §3)
     public const int FlagHostValue = 4;
     public const int NoType = 0xFFFF;
 

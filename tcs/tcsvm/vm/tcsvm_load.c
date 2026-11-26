@@ -1,5 +1,5 @@
-/* tcs VM loading: parse, layout (doc/vm-design.md §9.3), verification and link
- * (§9.4). */
+/* tcs VM loading: parse, layout (docs/tcs/vm-design.md §9.3), verification and
+ * link (§9.4). */
 #include "tcsvm_internal.h"
 
 #include <stdarg.h>
@@ -366,12 +366,12 @@ static bool layout(TvmVm *vm) {
     tvm_set_error(vm, "string constants without a string type");
     return false;
   }
-  /* C struct rules (doc/object-model.md §5). A class payload starts after the
-     VM type pointer (matching the header with tcs2c is M-4) */
+  /* C struct rules (docs/tcs/object-model.md §5). A class payload starts after
+     the VM type pointer (matching the header with tcs2c is M-4) */
   vm->types_version = tvm_next_types_version();
   /* C module classes (--ref classes bound with tvm_host_type) use the C module
      layout and have no host_value (host_value is only for host data classes;
-     doc/object-model.md §3) */
+     docs/tcs/object-model.md §3) */
   for (uint32_t i = 0; i < vm->ntypes; i++)
     if (vm->types[i].tkind == TVM_T_CLASS && vm->type_ids[i] < TVM_TYPE_ID_VM)
       vm->types[i].flags &= (uint8_t)~TCS_TYPE_HOST_VALUE;
@@ -421,7 +421,7 @@ bad:
   return false;
 }
 
-/* ---- Verification (doc/vm-design.md §9.4) and link ----
+/* ---- Verification (docs/tcs/vm-design.md §9.4) and link ----
    Register kinds are fixed within a function, so checking each instruction
    against the operand kind table is enough. */
 

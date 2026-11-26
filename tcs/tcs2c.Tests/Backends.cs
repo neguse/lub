@@ -27,7 +27,7 @@ internal static partial class Backends
 
     public static readonly string[] StrictFlags =
         ["-O2", "-ffp-contract=off", "-fwrapv", "-fexcess-precision=standard",
-            // On initialization, checks that the offsets in the type descriptors (doc/object-model.md) match the offsetof of the generated structs
+            // On initialization, checks that the offsets in the type descriptors (docs/tcs/object-model.md) match the offsetof of the generated structs
             "-DTCS_VERIFY_TYPES"];
 
     private static string FindProjectRoot()

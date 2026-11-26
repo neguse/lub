@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// Individual edits for VM hot reload (tvm_apply, doc/object-model.md §6). v1's Game.Setup creates the state, and after the reload v2's Game.Report
+/// Individual edits for VM hot reload (tvm_apply, docs/tcs/object-model.md §6). v1's Game.Setup creates the state, and after the reload v2's Game.Report
 /// writes the migrated state (overloads, struct statics, record struct, enum, namespaces, nested types etc., which the VmReloadTests fuzz scenarios do not cover).
 /// </summary>
 public class VmReloadCaseTests

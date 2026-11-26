@@ -1,7 +1,7 @@
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// Saving and loading VM state (tvm_state_save / tvm_state_load, doc/vm-design.md §13.4).
+/// Saving and loading VM state (tvm_state_save / tvm_state_load, docs/tcs/vm-design.md §13.4).
 /// Writes the state to a file, loads it into a VM in another process, runs the rest, and compares with the result of running without stopping.
 /// </summary>
 public class VmStateTests
@@ -202,7 +202,7 @@ public class VmStateTests
 
     private const string SmallReport = "Console.WriteLine($\"{all[0].Hp} {all[1].Hp}\");";
 
-    /// <summary>Loading into a version with a different shape migrates values with the same rules as reload (doc/object-model.md §6).
+    /// <summary>Loading into a version with a different shape migrates values with the same rules as reload (docs/tcs/object-model.md §6).
     /// The result of applying the same edits with reload without stopping must equal the result of saving the state and loading it into the new version.
     /// edits is a list of "old-version string => new-version string" joined with `@@`, and report is the body of the new version's Report.</summary>
     [Theory]

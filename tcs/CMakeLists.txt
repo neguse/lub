@@ -12,7 +12,7 @@ else()
     target_compile_options(tcs_math PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
 
-# --- tcsvm: VM for the bytecode (.tcsb) built from IL (doc/vm-design.md) ---
+# --- tcsvm: VM for the bytecode (.tcsb) built from IL (docs/tcs/vm-design.md) ---
 # Built with the same flags as runtime/math so that f32 operations are not fused.
 file(GLOB TCSVM_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tcsvm/vm/*.c)
 add_executable(tcsvm

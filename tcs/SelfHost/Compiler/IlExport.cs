@@ -304,7 +304,7 @@ public sealed class IlExporter
             k++;
             if (t.IsStruct)
             {
-                // A host struct has only the field layout (exchanged with the host as a C struct value; doc/object-model.md §5)
+                // A host struct has only the field layout (exchanged with the host as a C struct value; docs/tcs/object-model.md §5)
                 var st = new ExStruct();
                 st.Name = GlobalName(t);
                 foreach (var f in CollectFields(t, false))

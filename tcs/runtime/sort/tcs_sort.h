@@ -2,7 +2,7 @@
    (ArraySortHelper<T> in dotnet/runtime), matching even the order of equal
    elements and the sequence of comparison calls (count, order, arguments)
    (il-spec §13). Used by tcsvm. tcs2c has the same steps in the generated C (to
-   be shared per doc/vm-design.md §15.1). */
+   be shared per docs/tcs/vm-design.md §15.1). */
 #ifndef TCS_SORT_H
 #define TCS_SORT_H
 

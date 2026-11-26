@@ -1,4 +1,4 @@
-/* Implementation of tcs_model.h (doc/object-model.md §4, §5). */
+/* Implementation of tcs_model.h (docs/tcs/object-model.md §4, §5). */
 #include "tcs_model.h"
 
 #include <stdlib.h>

@@ -94,7 +94,7 @@ tcsvm/Emitter/         .NET で tcs vm を動かす入口 (tcs2vm)
 
 ### 5.5 IL
 
-- 束縛済みの木から IL (`doc/il-spec.md`) を組み立てる (`IlBuild.cs`)。tcs c と tcs vm への入力は `IlExport.cs` が作る
+- 束縛済みの木から IL (`docs/tcs/il-spec.md`) を組み立てる (`IlBuild.cs`)。tcs c と tcs vm への入力は `IlExport.cs` が作る
 - generic は単相化する (`Specialize.cs`)。閉じた generic の型と、generic な method の閉じた呼び出しごとに、型引数を置き換えた copy (`TcsClosed0_Box` の形の名前) を作って参照をその名前に書き換える。copy の中に新しい閉じた型が現れるので、増えなくなるまで束縛し直す (最大 128 回)。C backend と tcs VM はこの IL を読む
 
 ## 6. host と Step の driver
@@ -110,7 +110,7 @@ tcsvm/Emitter/         .NET で tcs vm を動かす入口 (tcs2vm)
 - `Session` はファイルを足し (`SetSource`、`SetReference`、`SetLibrary`)、差し替え、外し (`Remove`)、compile する。parse は内容の変わったファイルだけをやり直し、parse したままの木を持つ。束縛は木を書き換えるので、compile のたびに木の複製 (`Node.CloneTree`) を組み立て、宣言、束縛、出力は全体をやり直す
 - compile は Step に分かれる: 変わったファイルの parse を 1 つずつ、組み立て (構文で決まる準拠検査を含む)、宣言、束縛と型で決まる準拠検査、出力 (C backend と tcs VM のための単相化は回ごとに 1 段)。`Start` は途中の compile を捨てて始め直すので、host は Step の合間に新しい編集を受け取れる
 - 出力は mode で決まる。`ExportOnly` は tcs c と tcs vm への IL、`CheckOnly` は `tcs check` と analyzer の検査 (IL を組み立てて、組み立てられない本文も診断にする)、どちらでもなければ束縛と準拠の診断だけ
-- VM の増分 session (`VmSession`、`SelfHost/Tool/VmRun.cs`) は `Session` の上で、最後に通った build を持ち、編集ごとに reload の batch か restart を返す。診断のある編集は最後の build を変えない。`tcs vm --watch` と、名前で持つ複数の session (`Sessions.Call`。lub の lider の player が組み込む) が同じものを使う (`doc/vm-design.md`)
+- VM の増分 session (`VmSession`、`SelfHost/Tool/VmRun.cs`) は `Session` の上で、最後に通った build を持ち、編集ごとに reload の batch か restart を返す。診断のある編集は最後の build を変えない。`tcs vm --watch` と、名前で持つ複数の session (`Sessions.Call`。lub の lider の player が組み込む) が同じものを使う (`docs/tcs/vm-design.md`)
 
 ## 8. サブセットで compiler を書くことの帰結
 
@@ -165,7 +165,7 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 
 ## 12. 関連文書
 
-- `doc/il-design.md`、`doc/il-spec.md` — IL が意味論の正本であること
-- `doc/vm-design.md` — tcs VM と VM の増分 session
-- `doc/support-matrix.md` — compiler が扱う範囲
+- `docs/tcs/il-design.md`、`docs/tcs/il-spec.md` — IL が意味論の正本であること
+- `docs/tcs/vm-design.md` — tcs VM と VM の増分 session
+- `docs/tcs/support-matrix.md` — compiler が扱う範囲
 - `tcs2c/README.md` — C backend と GC の frame

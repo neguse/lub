@@ -1,4 +1,4 @@
-"""Robustness of tcsvm loading (doc/vm-design.md §16): even when a .tcsb is mutated, the loader and
+"""Robustness of tcsvm loading (docs/tcs/vm-design.md §16): even when a .tcsb is mutated, the loader and
 verifier only return an error or safely run instruction sequences that passed the checks, and never crash.
 Usage: python3 -I tcsvm/fuzz-loader.py TCSVM(with sanitizer) N SEED file.tcsb ...
 Infinite loops are counted as timeouts (the checks do not guarantee termination)."""

@@ -1,7 +1,7 @@
 # tcsvm — IL から直接 bytecode を出す dev 実行系
 
 TinyC# の IL (`IlExport`) を bytecode (`.tcsb`) にし、型付きの register VM で実行する。tcs の dev 実行系 (開発と hot reload) で、release は C (`tcs c`)。
-設計は `doc/vm-design.md`、hot reload の契約は `doc/hot-reload-design.md`、C backend と共有する型記述子と reload の計画は `doc/object-model.md`。
+設計は `docs/tcs/vm-design.md`、hot reload の契約は `docs/tcs/hot-reload-design.md`、C backend と共有する型記述子と reload の計画は `docs/tcs/object-model.md`。
 
 | 場所 | 中身 |
 |---|---|
@@ -24,7 +24,7 @@ build/tcsvm/tcsvm out.tcsb
 
 ## hot reload
 
-`tcs2vm --reload-from` が旧版と新版から新版の module と reload の計画 (`doc/object-model.md` §6) を作り、
+`tcs2vm --reload-from` が旧版と新版から新版の module と reload の計画 (`docs/tcs/object-model.md` §6) を作り、
 `tvm_apply` がフレーム境界で当てる。CLI では `--lib` の形で何フレーム目の後に当てるかを指定する。
 
 ```bash
@@ -34,21 +34,21 @@ build/tcsvm/tcsvm --lib Game 4 --reload 2 v2.tcsb v2.plan v1.tcsb
 ```
 
 restart が要る差分 (static の initializer の変更、型の削除、生きている lambda を消した等) は終了コード 3 で、理由を stderr に書く。
-`tcs vm --watch` は編集ごとに reload の batch を標準出力に流し、`--reload-batch K BATCH` で当てられる (`doc/vm-design.md` §13.3)。
+`tcs vm --watch` は編集ごとに reload の batch を標準出力に流し、`--reload-batch K BATCH` で当てられる (`docs/tcs/vm-design.md` §13.3)。
 テストは `tcs2c.Tests` の `VmReloadTests` と `VmReloadCaseTests`、`tcsvm/tests/host/watch_test.py`。
 
 ## 範囲
 
-VM は C backend と同じ IL を受け、C と .NET との stdout の一致を差分のゲートで確かめる (`doc/vm-design.md` §16)。
+VM は C backend と同じ IL を受け、C と .NET との stdout の一致を差分のゲートで確かめる (`docs/tcs/vm-design.md` §16)。
 VM が受けない IL は `tcs2vm` が `... is not in the VM yet` で止める。
 
 関数は entry、`--export` で選んだ関数、static initializer から到達するものだけを作る (TinySystem.Linq の特殊化を全部は作らない)。
 GC は動かさない mark-sweep で、確保の地点 (frame を保存してから) とフレーム境界で回収する (`--gc-stress` は毎回回収して root の漏れを出力の違いで見つける)。
-型記述子、layout、heap の walker、reload の計画は C backend と共有する (`doc/object-model.md`)。
+型記述子、layout、heap の walker、reload の計画は C backend と共有する (`docs/tcs/object-model.md`)。
 
 ## 読み込みの検査
 
-`.tcsb` は読み込み時に検査する (`doc/vm-design.md` §9.4)。register の種類は関数の
+`.tcsb` は読み込み時に検査する (`docs/tcs/vm-design.md` §9.4)。register の種類は関数の
 中で固定なので、命令ごとに operand の種類表と照らす 1 pass で済む。field と配列の
 命令は operand の register の型 (class / 配列) から field の種類と offset を確かめ、
 field の番号を byte offset に書き換える。

@@ -3,7 +3,7 @@ using TinyCs.Tests.SpecConformance;
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// VM hot reload (tvm_apply, doc/object-model.md §6, doc/vm-design.md §12).
+/// VM hot reload (tvm_apply, docs/tcs/object-model.md §6, docs/tcs/vm-design.md §12).
 /// Applies the T235 reload fuzz scenarios to the VM with a C# driver and checks the same invariants as the Lua reload
 /// (retained values kept, added initializers, identity, method replacement, statics, OnReload once).
 /// </summary>

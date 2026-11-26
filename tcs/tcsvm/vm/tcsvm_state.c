@@ -1,4 +1,4 @@
-/* Saving and loading state (doc/vm-design.md §13.4).
+/* Saving and loading state (docs/tcs/vm-design.md §13.4).
    Writes statics and the objects reachable from them into a byte array that
    does not depend on addresses or layout. The reader is another VM (even in
    another process) with types of the same shape; it recreates the objects and
@@ -24,8 +24,8 @@
 
    Loading matches types by name to the types of the current module. If the
    shape of a class or struct differs, it is migrated by the same rules as the
-   reload plan (doc/object-model.md §6): fields are matched by name; if the kind
-   and type name are the same they get the state value, otherwise the zero
+   reload plan (docs/tcs/object-model.md §6): fields are matched by name; if the
+   kind and type name are the same they get the state value, otherwise the zero
    value; fields not in the state get the zero value and then their initializer;
    fields not in the current type are skipped. Checks that reference targets fit
    the type of their location and that closure functions fit their function

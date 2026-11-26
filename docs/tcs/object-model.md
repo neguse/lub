@@ -2,7 +2,7 @@
 
 > Status: 契約 (2026-11-01)。M-1、M-2、M-3 は実装済み、M-4 は 1 段目 (class の payload の形と型の置き場所) まで (§9)。
 >
-> Scope: tcs VM (`tcsvm/`、doc/vm-design.md) と tcs2c (`tcs2c/`) の heap object の形、
+> Scope: tcs VM (`tcsvm/`、docs/tcs/vm-design.md) と tcs2c (`tcs2c/`) の heap object の形、
 > 型記述子の data、hot reload の計画の構造、heap を辿る walker。
 
 ## 1. なぜ今決めるか

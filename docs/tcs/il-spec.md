@@ -1,6 +1,6 @@
 # TinyC# IL 仕様 v0 (T211)
 
-> Status: draft v0 (2026-07-18)。**意味論の正本**。位置づけは `doc/il-design.md`。
+> Status: draft v0 (2026-07-18)。**意味論の正本**。位置づけは `docs/tcs/il-design.md`。
 > 本文 §1-§15 は backend に依存せず規範を定める。各 backend の義務は付録。
 
 ## 1. スコープと適合
@@ -267,7 +267,7 @@ host は打ち切られた後に次の entry を呼べる: tcs VM は `tvm_call`
 class ごとに: layout version hash / field 列（名前、IL 型、initializer）/
 rename 注釈（`[RenamedFrom]` 相当）/ ユーザーフック（`OnReload` 相当）。
 プロトコルの語彙と適用規則は il-design §6（CLOS 型 eager migration）。
-tcs VM の hot reload は layout hash、field 列 (名前で対応させる)、initializer、`OnReload` を使う。rename 注釈は IL に無い (doc/hot-reload-design.md)。
+tcs VM の hot reload は layout hash、field 列 (名前で対応させる)、initializer、`OnReload` を使う。rename 注釈は IL に無い (docs/tcs/hot-reload-design.md)。
 
 ## 15. interop 境界
 
@@ -283,7 +283,7 @@ tcs VM の hot reload は layout hash、field 列 (名前で対応させる)、i
 - fault の検出は命令が持つ (§12): `DIV` / `REM` の除数 0 と `INT_MIN / -1`、`F2I` の NaN と範囲外、配列 / List の要素の読み書きの範囲外と null の受け手、`CAST` の失敗。呼び出しが slot stack を溢れさせたら資源 fault
 - 値型は葉の register の列で持ち、copy 地点 (§10) は register の move、heap との間は葉の load / store にする。型ごとの copy 関数は無い
 - generic は閉じた型ごとに単相化した IL を読み (§3)、型引数を実行時に持たない
-- hot reload (§14) は heap と static を新しい版の型に移し、関数表の本文を差し替える (doc/hot-reload-design.md)
+- hot reload (§14) は heap と static を新しい版の型に移し、関数表の本文を差し替える (docs/tcs/hot-reload-design.md)
 
 ## 付録 B: C backend の義務（release-lowering）
 
@@ -294,7 +294,7 @@ tcs VM の hot reload は layout hash、field 列 (名前で対応させる)、i
   `-ffinite-math-only` / `-ffast-math` 一括指定は不可（NaN/Inf 意味論を
   壊すため）(§6)
 - bounds / null / 除算 check の生成。省略は観測等価を証明できる場合のみ
-- object model（class 表現・struct 配列表現）は IL-native: class は type id 付きの C の struct、struct は C の値型、配列と List の要素は inline の連続配置 (`doc/object-model.md`)
+- object model（class 表現・struct 配列表現）は IL-native: class は type id 付きの C の struct、struct は C の値型、配列と List の要素は inline の連続配置 (`docs/tcs/object-model.md`)
 - fault の trap 実装（§12 の決定性を満たすこと）
 
 ## 付録 C: 未決事項

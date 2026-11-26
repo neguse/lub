@@ -167,7 +167,7 @@ static TvmStatus try_(TvmVm *vm, TvmSlot *a, TvmSlot *r, void *user) {
 }
 
 /* ---- struct: the host reads and writes C structs (the layout of
- * doc/object-model.md §5) ---- */
+ * docs/tcs/object-model.md §5) ---- */
 
 typedef struct Vec2 {
   float x, y;

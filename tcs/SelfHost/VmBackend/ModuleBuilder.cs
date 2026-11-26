@@ -143,7 +143,7 @@ public sealed class ModuleBuilder
     private Dictionary<string, int> _typeIndex = new Dictionary<string, int>();
     private List<RegInfo> _statics = new List<RegInfo>();
     /// <summary>Static field table ("type.field", first slot, type). Reload maps them to the old version's statics by name
-    /// (doc/object-model.md §6). The lazy-initialization flag is "type.&lt;init&gt;".</summary>
+    /// (docs/tcs/object-model.md §6). The lazy-initialization flag is "type.&lt;init&gt;".</summary>
     private List<StaticField> _staticFields = new List<StaticField>();
     // "type\nfield" → static field
     private Dictionary<string, StaticField> _staticSlots = new Dictionary<string, StaticField>();
@@ -984,7 +984,7 @@ public sealed class ModuleBuilder
             staticNames.Add(Str(s.Name));
             staticInfos.Add(FieldInfo(s.Type));
         }
-        // Type table (doc/object-model.md §4). Names go into the string table first
+        // Type table (docs/tcs/object-model.md §4). Names go into the string table first
         var entries = new List<TypeTableEntry>();
         for (int i = 0; i < _types.Count; i++) entries.Add(TypeEntry(_types[i]));
         foreach (var name in TypeTable.Names(entries)) Str(name);
@@ -1090,7 +1090,7 @@ public sealed class ModuleBuilder
         return w;
     }
 
-    // ---- Type descriptors (doc/object-model.md §4) ----
+    // ---- Type descriptors (docs/tcs/object-model.md §4) ----
 
     private TypeTableInfo FieldInfo(VType t)
     {
@@ -1153,7 +1153,7 @@ public sealed class ModuleBuilder
                         if (m.Name == "OnReload" && !m.IsStatic) hasOnReload = true;
                     }
                     e.Flags = (info.IsRecord ? TypeTable.FlagRecord : 0) | (hasOnReload ? TypeTable.FlagHasOnReload : 0)
-                        | (info.IsExternal ? TypeTable.FlagHostValue : 0); // A data class shared with the host has host_value (doc/object-model.md §3)
+                        | (info.IsExternal ? TypeTable.FlagHostValue : 0); // A data class shared with the host has host_value (docs/tcs/object-model.md §3)
                     var fields = new List<NamedType>();
                     foreach (var f in info.Fields)
                     {

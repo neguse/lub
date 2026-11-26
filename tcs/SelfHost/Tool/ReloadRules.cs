@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// Rules for edits that hot reload cannot apply live (the rule table in doc/hot-reload-design.md §11).
+// Rules for edits that hot reload cannot apply live (the rule table in docs/tcs/hot-reload-design.md §11).
 // The VM reload maps the types in the IL metadata into this shape to decide.
 public sealed class ReloadStatic
 {

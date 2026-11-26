@@ -3,7 +3,7 @@ using TinyCs.Vm;
 namespace TinyCs.Tcs2c.Tests;
 
 /// <summary>
-/// tcs VM execution backend (doc/vm-design.md). IL → tcs2vm → .tcsb → tcsvm.
+/// tcs VM execution backend (docs/tcs/vm-design.md). IL → tcs2vm → .tcsb → tcsvm.
 /// AssertParity / AssertFaultParity / AssertParityLib require the same stdout as C.
 /// Also requires the same output under GC stress (a tiny nursery and a full collection every frame).
 /// Can be turned off with TCSVM_PARITY=0.
@@ -86,7 +86,7 @@ internal static partial class Backends
         File.WriteAllText(Path.Combine(dir, key + ".cs"), $"// {why}\n" + string.Join("\n", sources));
     }
 
-    /// <summary>reload (doc/object-model.md §6): runs v1 in lib form as Setup → Frame×frames, then applies v2 with tvm_apply and runs
+    /// <summary>reload (docs/tcs/object-model.md §6): runs v1 in lib form as Setup → Frame×frames, then applies v2 with tvm_apply and runs
     /// Report. The plan is the same as tcs vm --reload-from (TcsVm.VmEmitter.EmitReload). The output must be the same under GC stress.</summary>
     public static (int ExitCode, string Stdout, string Stderr) RunVmReload(string[] v1, string[] v2, string cls,
         int frames = 1, IEnumerable<string>? vmArgs = null)
@@ -126,7 +126,7 @@ internal static partial class Backends
         }
     }
 
-    /// <summary>Saving and loading state (doc/vm-design.md §13.4). Runs save as Setup → Frame×saveAt and writes the state to a file,
+    /// <summary>Saving and loading state (docs/tcs/vm-design.md §13.4). Runs save as Setup → Frame×saveAt and writes the state to a file,
     /// then a load in another process reads that state instead of running Setup and runs Frame×(total - saveAt) → Report.
     /// The returned Baseline is the stdout of running save without stopping through Frame×total → Report. tamper changes the bytes before loading.
     /// The loading side must give the same output under GC stress.</summary>

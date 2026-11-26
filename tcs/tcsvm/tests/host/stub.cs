@@ -32,7 +32,7 @@ namespace Eng
         public static int[] Squares(int n) => null;
         public static Circle Ring(float r) => null;
     }
-    // Structs passed to and from the host in C layout (doc/object-model.md §5). Nested structs, bool and enum fields, record struct
+    // Structs passed to and from the host in C layout (docs/tcs/object-model.md §5). Nested structs, bool and enum fields, record struct
     public enum Layer { Back, Front = 5 }
     public struct Vec2 { public float X; public float Y; }
     public struct Box2 { public Vec2 Min; public Vec2 Max; public bool Solid; public Layer Layer; }

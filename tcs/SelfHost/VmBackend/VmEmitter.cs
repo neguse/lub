@@ -4,7 +4,7 @@ using TcsSelf;
 
 namespace TcsVm;
 
-/// <summary>Builds a .tcsb from the IL output (TcsSelf.ExportResult) (doc/vm-design.md §15).
+/// <summary>Builds a .tcsb from the IL output (TcsSelf.ExportResult) (docs/tcs/vm-design.md §15).
 /// Only functions reachable from the entry and the static initializers are built. Errors are recorded in CFail, and the output is used only when there are no errors.</summary>
 /// <summary>Description of a module's types and statics (compared with the old version in the reload plan).</summary>
 public sealed class VmDescription
@@ -100,7 +100,7 @@ public static class VmEmitter
         return w;
     }
 
-    /// <summary>reload (doc/object-model.md §6): builds the old and new versions with the same entry / exports and returns the new module (the plan in plan,
+    /// <summary>reload (docs/tcs/object-model.md §6): builds the old and new versions with the same entry / exports and returns the new module (the plan in plan,
     /// the restart reasons in reasons). The plan's byte sequence carries its own string table in front. The restart reasons follow the ReloadRules rules
     /// (ReloadRules; the caller computes them and passes them to restart). As functions, the new version gets the initializers of added (and retyped) instance fields, and of added statics and
     /// statics to re-evaluate (reinit; ReloadRules.ReinitStatics) (`type.&lt;reload-static&gt;`).</summary>
@@ -363,7 +363,7 @@ public static class VmEmitter
     }
 
     /// <summary>Builds the initializers of instance fields of classes in the type table (`type.&lt;init&gt;field`) even if they are unreachable.
-    /// State loading (doc/vm-design.md §13.4) calls them to give fields missing from the state their initializer values.
+    /// State loading (docs/tcs/vm-design.md §13.4) calls them to give fields missing from the state their initializer values.
     /// An initializer may add new classes to the type table, so this repeats until no more are added.</summary>
     private static void RequestFieldInits(ModuleBuilder m)
     {

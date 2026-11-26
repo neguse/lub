@@ -1,5 +1,5 @@
 /* tcs VM — a VM that runs bytecode (.tcsb) built from TinyC# IL.
-   The design is in doc/vm-design.md. */
+   The design is in docs/tcs/vm-design.md. */
 #ifndef TCSVM_H
 #define TCSVM_H
 
@@ -43,16 +43,17 @@ void tvm_free(TvmVm *vm);
    reason. */
 TvmStatus tvm_load(TvmVm *vm, const uint8_t *bytes, size_t size);
 
-/* hot reload (doc/vm-design.md §12, doc/object-model.md §6): applies the module
-   and plan of the new version (made by tcs2vm --reload-from). Accepted only at
-   a frame boundary (when there is no VM frame). TVM_LOAD_ERROR / TVM_RESTART
-   means nothing was applied (the state stays at the old version; the reason is
-   in tvm_error). On TVM_OK, a non-empty tvm_error() is a warning about a fault
-   in an initializer or OnReload (the update is not rolled back). */
+/* hot reload (docs/tcs/vm-design.md §12, docs/tcs/object-model.md §6): applies
+   the module and plan of the new version (made by tcs2vm --reload-from).
+   Accepted only at a frame boundary (when there is no VM frame). TVM_LOAD_ERROR
+   / TVM_RESTART means nothing was applied (the state stays at the old version;
+   the reason is in tvm_error). On TVM_OK, a non-empty tvm_error() is a warning
+   about a fault in an initializer or OnReload (the update is not rolled back).
+ */
 TvmStatus tvm_apply(TvmVm *vm, const uint8_t *module, size_t size,
                     const uint8_t *plan, size_t plan_size);
 
-/* ---- shared heap (doc/object-model.md §10.2) ----
+/* ---- shared heap (docs/tcs/object-model.md §10.2) ----
    Shares one heap and GC with C (tcs2c) modules. Installed by tcs_vm_register
    in the tcs2c --lib --vm-host glue (the host never calls it directly). When
    shared, the tcs2c GC traces VM objects (kind FOREIGN), collection happens
@@ -84,7 +85,7 @@ void tvm_heap_refs(void *payload, TvmSlotFn fn);
    tvm_apply */
 TvmStatus tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size);
 
-/* ---- host (doc/vm-design.md §8.5, §13) ----
+/* ---- host (docs/tcs/vm-design.md §8.5, §13) ----
    Host functions are registered by name before tvm_load.
    The name is the IL host name (for the --ref stub's `Eng.Gfx.Begin` it is
    "eng.gfx.begin"; for the static value `Gfx.MainTex` it is "eng.gfx.main_tex"
@@ -100,7 +101,8 @@ TvmStatus tvm_apply_batch(TvmVm *vm, const uint8_t *batch, size_t size);
    structs made only of those. If the format is wrong, tvm_host returns 0.
    args[k] is the k-th term of params; for
    i / f / b / s / o it is the value, and for S{type} it is a pointer to a block
-   in C layout (doc/object-model.md §5). The host reads the block as a C struct
+   in C layout (docs/tcs/object-model.md §5). The host reads the block as a C
+   struct
    (`*(const Vec2 *)args[k].p`). For &term, args[k].p points to where the host
    writes the value (int32_t *, float *, bool * (1 byte), void ** for a
    reference slot, the block for S{type}). out locations start as 0, and when
@@ -122,8 +124,8 @@ int tvm_host(TvmVm *vm, const char *name, const char *params, const char *rets,
 TvmStatus tvm_host_fault(TvmVm *vm, const char *message);
 
 /* The host reads and writes VM objects. An object's payload uses the layout of
-   the type descriptor (doc/object-model.md §5), and field offsets are looked up
-   by name (the IL name; "title" for the stub's field `Title`). */
+   the type descriptor (docs/tcs/object-model.md §5), and field offsets are
+   looked up by name (the IL name; "title" for the stub's field `Title`). */
 int32_t tvm_field_offset(TvmVm *vm, const char *type,
                          const char *field); /* -1 if missing */
 void *tvm_object_new(
@@ -149,7 +151,7 @@ tvm_object_new_of(TvmVm *vm,
                   const TvmTypeInfo *type); /* Classes only. Fields are 0 */
 
 /* The host value held by objects of external data classes shared with the host
-   (--ref classes) (doc/object-model.md §3). Located after the payload's
+   (--ref classes) (docs/tcs/object-model.md §3). Located after the payload's
    type_id, aligned to 8 bytes */
 #define TVM_HOST_VALUE(object) (*(uint64_t *)((char *)(object) + 8))
 
@@ -172,9 +174,9 @@ int32_t tvm_array_len(const void *array);
 void *tvm_array_data(const void *array);
 
 /* handle: the host (a C module) holds a VM object across frames
-   (doc/object-model.md §10). It is a GC root, and when the object is recreated
-   by a reload, the handle points to the new object. Numbers start at 1 (0 is
-   invalid). */
+   (docs/tcs/object-model.md §10). It is a GC root, and when the object is
+   recreated by a reload, the handle points to the new object. Numbers start at
+   1 (0 is invalid). */
 /* The host calls a VM closure (delegate) (X-4). args / rets are the leaves of
  * the function type. Can be called both inside a VM call (from a host function)
  * and outside */
@@ -197,8 +199,8 @@ typedef TvmStatus (*TvmDelegateFn)(void *closure, const TvmSlot *args,
                                    TvmSlot *rets);
 int tvm_host_delegate(TvmVm *vm, const char *sig, TvmDelegateFn fn);
 
-/* Types of C modules (shared heap, doc/object-model.md §10.6). Register them
-   before tvm_load (they carry over to the new version on reload).
+/* Types of C modules (shared heap, docs/tcs/object-model.md §10.6). Register
+   them before tvm_load (they carry over to the new version on reload).
    - tvm_host_type: attaches the C module's type_id to objects of the VM class
      named name (a --ref class), so that objects of that type created by the C
      module are treated as the same type by VM type tests (`is` / cast). The
@@ -391,8 +393,8 @@ uint32_t tvm_layout_version(TvmVm *vm);
 bool tvm_snapshot_number(TvmVm *vm, const TvmSnapshot *s, const char *entry,
                          const char *path, float *out);
 
-/* ---- Saving and loading state (tcsvm_state.c, doc/vm-design.md §13.4) ----
-   Turns all statics and the objects reachable from them into an
+/* ---- Saving and loading state (tcsvm_state.c, docs/tcs/vm-design.md §13.4)
+   ---- Turns all statics and the objects reachable from them into an
    address-independent byte array. It can be loaded into another VM (even in
    another process) whose types have the same shape. Can be called only at a
    frame boundary. Objects held by host handles (tvm_hold) are not written. */

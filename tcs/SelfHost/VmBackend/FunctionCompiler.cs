@@ -5,7 +5,7 @@ using TinySystem.Text;
 
 namespace TcsVm;
 
-/// <summary>Turns one function from IL into an instruction sequence (doc/vm-design.md §15). A port of the old tcsvm/Emitter/FunctionCompiler.cs (C#) to TinyC#.
+/// <summary>Turns one function from IL into an instruction sequence (docs/tcs/vm-design.md §15). A port of the old tcsvm/Emitter/FunctionCompiler.cs (C#) to TinyC#.
 /// Register kinds are fixed within a function (§6.1), and temps are reused through free lists per kind and type.
 /// The subset has no partial, so each class lives in one file.</summary>
 public sealed class FunctionCompiler
@@ -192,7 +192,7 @@ public sealed class FunctionCompiler
         Finish();
     }
 
-    /// <summary>Initializer of an instance field added by reload (doc/object-model.md §6). Takes no arguments and returns the field value
+    /// <summary>Initializer of an instance field added by reload (docs/tcs/object-model.md §6). Takes no arguments and returns the field value
     /// (a C# field initializer cannot read this).</summary>
     public void CompileFieldInit(ExField field)
     {
@@ -3166,7 +3166,7 @@ public sealed class FunctionCompiler
         return _m.ForeignMethod(name) != null || _m.ForeignValue(name) != null ? name : null;
     }
 
-    /// <summary>Host function (doc/vm-design.md §8.5): the same CALLR as runtime functions, with the name the host registered with tvm_host.
+    /// <summary>Host function (docs/tcs/vm-design.md §8.5): the same CALLR as runtime functions, with the name the host registered with tvm_host.
     /// In registers, arguments and return values are expanded into leaves (a struct is a sequence of leaves; class / string / List are refs).
     /// When the VM calls it, it maps structs into blocks with the C layout, so struct types go into the module's type table.</summary>
     private Val HostCall(string name, ExForeignMethod m, List<IlExpr> args, Val? dest)
@@ -3188,7 +3188,7 @@ public sealed class FunctionCompiler
         return dest == null ? rv : Store2(dest, rv);
     }
 
-    /// <summary>out of a host function (doc/vm-design.md §8.5): `[ret?, out...] = host(in...)`.
+    /// <summary>out of a host function (docs/tcs/vm-design.md §8.5): `[ret?, out...] = host(in...)`.
     /// The result registers are the leaves of the return value followed by the leaves of the outs (the host receives outs as pointers, and the VM writes them to these registers after the call).</summary>
     private Val HostCallOuts(string name, ExForeignMethod m, List<IlExpr> args)
     {

@@ -7,7 +7,7 @@ compiler は TinyC# で書いたセルフホストの実装 1 つ (`SelfHost/`) 
 字句解析から型チェックと準拠検査、IL の組み立てまでを compiler が行い、tcs VM と C の backend は同じ IL を読む。
 Roslyn は compiler の外の道具 (IDE の Roslyn Analyzer、検証の oracle) にだけ使う。
 
-仕様の正は [doc/support-matrix.md](doc/support-matrix.md)、この README、`doc/*-design.md` の設計の文書。
+仕様の正は [docs/tcs/support-matrix.md](../docs/tcs/support-matrix.md)、この README、`docs/tcs/*-design.md` の設計の文書。
 tcs と tcs2c は暫定の名前で、名前を変える時期と新しい名前は決まっていない。新しく付ける名前は tcs 系に揃える。
 
 ## 必要なもの
@@ -110,7 +110,7 @@ float の文字列化と `int` / `float` の `Parse` / `TryParse` は `runtime/f
 
 ### 準拠チェック
 
-出力を書かず、C# compile error と TinyC# 準拠診断だけを返す。警告またはエラーがあれば exit 1、問題がなければ exit 0。未対応の構文 (TCS1001) と API (TCS1002) は error で、`tcs vm` / `tcs c` (`--watch` と増分 session も) も出力を書かずに失敗する。TCS1003 は warning で、`tcs vm` / `tcs c` は止めない。BCL の型は既定で通さない。[support-matrix](doc/support-matrix.md) の一覧に無い型は TCS1002 になる。TinyC#固有の例外はenumと数値整数 (`char`を除く) の変換・等値比較だけで、同じC#エラーIDの通常の型不一致は失敗する。user の型の member 名は C# の識別子のまま IL の名前になる (`OnFrame` → `OnFrame`、enum メンバ `BigValue` → `BigValue`)。`--ref` 型 (host) の member だけ host の wire format に写す (`BeginPass` → `begin_pass`、enum メンバ `DontCare` → `DONT_CARE`、static アクセス `Lub.Gfx` → `lub.gfx`) ので、host の wire format が snake_case でも C# 側は C# の通常の名前で書ける (規則は `doc/support-matrix.md` の「名前規則」)。`self` と同名の宣言、`__` で始まる識別子、非 ASCII の識別子、`new` / `ctor` と同名の member、型名と namespace 名の `_` は TCS1001。名前は C# の識別子のまま IL に出るので、tcs は命名の流儀 (PascalCase / camelCase) を検査しない。
+出力を書かず、C# compile error と TinyC# 準拠診断だけを返す。警告またはエラーがあれば exit 1、問題がなければ exit 0。未対応の構文 (TCS1001) と API (TCS1002) は error で、`tcs vm` / `tcs c` (`--watch` と増分 session も) も出力を書かずに失敗する。TCS1003 は warning で、`tcs vm` / `tcs c` は止めない。BCL の型は既定で通さない。[support-matrix](../docs/tcs/support-matrix.md) の一覧に無い型は TCS1002 になる。TinyC#固有の例外はenumと数値整数 (`char`を除く) の変換・等値比較だけで、同じC#エラーIDの通常の型不一致は失敗する。user の型の member 名は C# の識別子のまま IL の名前になる (`OnFrame` → `OnFrame`、enum メンバ `BigValue` → `BigValue`)。`--ref` 型 (host) の member だけ host の wire format に写す (`BeginPass` → `begin_pass`、enum メンバ `DontCare` → `DONT_CARE`、static アクセス `Lub.Gfx` → `lub.gfx`) ので、host の wire format が snake_case でも C# 側は C# の通常の名前で書ける (規則は `docs/tcs/support-matrix.md` の「名前規則」)。`self` と同名の宣言、`__` で始まる識別子、非 ASCII の識別子、`new` / `ctor` と同名の member、型名と namespace 名の `_` は TCS1001。名前は C# の識別子のまま IL に出るので、tcs は命名の流儀 (PascalCase / camelCase) を検査しない。
 
 ```bash
 dotnet run --project Transpiler -- check samples/hello.cs
@@ -156,7 +156,7 @@ dotnet run --project Transpiler -- check samples/host_api_game.cs --ref samples/
 `tcs vm --watch -o out.tcsb` は入力 (と `--inputs-from` の一覧) を見張り、最初に通った build を `-o` に書く。
 以後の編集ごとに `-o` を書き直してから、前の build からの reload を標準出力へ `@@tcs_<kind> <UTF-8 の byte 数>` の行と本文の組で書く (kind は `vm_batch`、`restart_required`、`reload_notes`、`build_failed`)。
 live に当てられない変更 (既存 static の initializer と型、const の値、型の削除・種類の変更、enum member の削除・値の変更) は `restart_required` と理由の行になる。
-規則は `doc/hot-reload-design.md`、VM の reload は `doc/vm-design.md` の §12 と §13.3。
+規則は `docs/tcs/hot-reload-design.md`、VM の reload は `docs/tcs/vm-design.md` の §12 と §13.3。
 
 ### tcs analyzer PoC
 
@@ -230,7 +230,7 @@ List\<T\>, Queue\<T\>, HashSet\<T\>, Dictionary\<K,V\>, LINQ (`using TinySystem.
 文字列の文字と byte の位置 (`using TinySystem.Text;` の `s.RuneCount()` / `s.RuneSubstring(start, count)` / `Utf8Bytes`),
 文字列補間, null 条件演算子 (`?.`), is パターン, switch 式 など。
 
-詳細は [doc/support-matrix.md](doc/support-matrix.md) 参照。
+詳細は [docs/tcs/support-matrix.md](../docs/tcs/support-matrix.md) 参照。
 
 ## プロジェクト構成
 
@@ -258,8 +258,6 @@ tcs/
   deps/
     csharpstandard/    # C# の仕様 (spec conformance の例、git submodule)
   samples/             # サンプル C# コード
-  doc/
-    support-matrix.md  # サポートマトリクス
   CMakeLists.txt       # tcsvm のクロスプラットフォームビルド
 ```
 

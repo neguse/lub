@@ -1,4 +1,4 @@
-/* GC of the tcs VM (doc/vm-design.md §10): non-moving mark-sweep.
+/* GC of the tcs VM (docs/tcs/vm-design.md §10): non-moving mark-sweep.
    Roots are statics, VM frames (only the ref registers, per the register kind
    table), and runtime pins. Objects do not move, so pointers held by native C
    do not change across a collection. Collection happens only at interpreter
@@ -94,8 +94,8 @@ static void mark(TvmVm *vm, void *p) {
 }
 
 /* References inside values are walked by the shared walker
-   (runtime/model/tcs_walk, doc/object-model.md §7), replacing only the sink
-   (mark for the GC, repointing to the forwarding target for reload) */
+   (runtime/model/tcs_walk, docs/tcs/object-model.md §7), replacing only the
+   sink (mark for the GC, repointing to the forwarding target for reload) */
 void tvm_object_refs(TvmVm *vm, void *p, void (*fn)(void *ctx, void **slot),
                      void *ctx) {
   const TvmType *t = TVM_TYPE(((TvmObject *)p));
@@ -231,7 +231,7 @@ void tvm_frame_end(TvmVm *vm) {
 
 size_t tvm_gc_live(TvmVm *vm) { return vm->gc_live; }
 
-/* ---- shared heap (doc/object-model.md §10.2) ---- */
+/* ---- shared heap (docs/tcs/object-model.md §10.2) ---- */
 
 static TvmVm *shared_vm; /* The VM using the shared heap (one per process) */
 

@@ -1,6 +1,6 @@
 # IL リファレンス — backend (tcs VM と C) の入力契約 (T217)
 
-> 意味論の規範は `doc/il-spec.md`。本書は in-memory モデル（正規形）のノードカタログと取得 API。
+> 意味論の規範は `docs/tcs/il-spec.md`。本書は in-memory モデル（正規形）のノードカタログと取得 API。
 > tcs VM の backend (`SelfHost/VmBackend`) と C の backend (`SelfHost/CBackend`) は本書 + il-spec の IL を読む。
 
 ## 取得 API (`Transpiler` assembly を参照)
@@ -110,7 +110,7 @@ var result = TinyCs.IlExport.Export(csharpSources);   // TcsSelf.ExportResult (S
 
 ## C backend が負う義務
 
-il-spec 付録 B（signed wrap、-ffp-contract=off、excess precision 排除、bounds/null/zero check、fault の決定性）。C backend は GNU statement expression（gcc/clang 拡張）に依存する — 対象 toolchain (arm-none-eabi-gcc) では成立するが MSVC 非対応の移植性制約として明記する。object model は `doc/object-model.md`。digest 検証は `Transpiler.Tests/DigestKernels/` の kernel（期待値は `perf/CONTRACT.md` 末尾）。
+il-spec 付録 B（signed wrap、-ffp-contract=off、excess precision 排除、bounds/null/zero check、fault の決定性）。C backend は GNU statement expression（gcc/clang 拡張）に依存する — 対象 toolchain (arm-none-eabi-gcc) では成立するが MSVC 非対応の移植性制約として明記する。object model は `docs/tcs/object-model.md`。digest 検証は `Transpiler.Tests/DigestKernels/` の kernel（期待値は `perf/CONTRACT.md` 末尾）。
 
 ## tcs VM が負う義務
 

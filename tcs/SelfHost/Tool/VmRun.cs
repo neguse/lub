@@ -42,7 +42,7 @@ public sealed class VmUpdate
     }
 }
 
-/// <summary>Incremental VM session (doc/vm-design.md §13.3, V5): holds the last build that passed and returns a reload batch or
+/// <summary>Incremental VM session (docs/tcs/vm-design.md §13.3, V5): holds the last build that passed and returns a reload batch or
 /// a restart for each edit. `tcs vm --watch` and the web playground worker use the same one. An edit with diagnostics does not change the last build.</summary>
 public sealed class VmSession
 {
@@ -255,7 +255,7 @@ public sealed class VmRun
         VmTrace.Prefixes = _o.Traces;
         if (_o.ReloadFrom.Count > 0)
         {
-            // reload: builds the new module and the plan (--plan) from the old version (--reload-from) and the new version (doc/object-model.md §6)
+            // reload: builds the new module and the plan (--plan) from the old version (--reload-from) and the new version (docs/tcs/object-model.md §6)
             if (_o.PlanOut == "" && _o.BatchOut == "") return VError("--plan or --batch is required with --reload-from");
             var oldSources = ReadAll(_o.ReloadFrom);
             if (oldSources == null) return VError("could not find file: " + MissingFile(_o.ReloadFrom));
@@ -274,7 +274,7 @@ public sealed class VmRun
         return WriteBytes(_o.Output, bytes);
     }
 
-    // ---- --watch (doc/vm-design.md §13.3): each time the inputs change, builds a reload from the previous build, rewrites -o, and then
+    // ---- --watch (docs/tcs/vm-design.md §13.3): each time the inputs change, builds a reload from the previous build, rewrites -o, and then
     // writes a `@@tcs_<kind> <byte count>` line and the body to standard output. kind is vm_batch (the body is one line of the batch in base64 plus a newline;
     // the host applies it with tvm_apply_batch), restart_required (the body is newline-terminated reason lines; the host reloads -o), or
     // reload_notes (sent before vm_batch: changes applied live but worth reporting; the body is newline-terminated lines).

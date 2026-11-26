@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace TcsSelf;
 
-// TinyC# IL (doc/il-spec.md). Intermediate representation of method bodies.
+// TinyC# IL (docs/tcs/il-spec.md). Intermediate representation of method bodies.
 // The builder makes all semantic decisions, and the backends (VmEmitter and CEmitter) emit output from the IL alone.
 // Operation nodes are type-resolved and monomorphic (il-spec §4).
 // Origin is a position for VM line info and --trace, and does not affect semantics.
@@ -103,7 +103,7 @@ public record IlParen(IlExpr E, IlPos? Origin) : IlExpr;
 public record IlTernary(IlExpr Cond, IlExpr T, IlExpr F, IlPos? Origin) : IlExpr;
 
 // Call by resolved callee name: Callee(args).
-// callee is "Math.Min" / "List.Add" / "__tcs_idiv" / "__tcs_writeline" etc. (doc/il-reference.md)
+// callee is "Math.Min" / "List.Add" / "__tcs_idiv" / "__tcs_writeline" etc. (docs/tcs/il-reference.md)
 public record IlCall(string Callee, List<IlExpr> Args, IlPos? Origin) : IlExpr;
 
 // Call of an expression callee: callee(args)

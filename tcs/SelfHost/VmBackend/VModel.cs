@@ -7,7 +7,7 @@ namespace TcsVm;
 // Types and values of the tcs VM backend (turns IL into .tcsb; a port of the C# version of the old tcsvm/Emitter to TinyC#).
 // As in the C backend, the first error is recorded in TcsC.CFail, and the output is used only when there are no errors
 
-/// <summary>Kinds of registers / statics / leaves (doc/vm-design.md §6.1). Same values as TVM_K_* in tcsvm_ops.h.</summary>
+/// <summary>Kinds of registers / statics / leaves (docs/tcs/vm-design.md §6.1). Same values as TVM_K_* in tcsvm_ops.h.</summary>
 public enum Kind
 {
     I32 = 0,
