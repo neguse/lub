@@ -1,5 +1,5 @@
 // Formats C#.
-// Formatting is done by the .NET wasm (CSharpier in tcs WasmCompiler; web/tcs-wasm-assets from npm run gen-tcs), which runs in a dedicated worker (format-worker.ts) and is called asynchronously from the main thread.
+// Formatting is done by the .NET wasm (CSharpier in tcs-format; web/tcs-wasm-assets from npm run gen-tcs), which runs in a dedicated worker (format-worker.ts) and is called asynchronously from the main thread.
 // If the worker crashes, pending requests fail and it is recreated on the next request.
 
 export type FormatRequest = { id: number; content: string; width: number };

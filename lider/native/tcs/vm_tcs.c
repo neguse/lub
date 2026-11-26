@@ -1,8 +1,8 @@
 /* Exposes the tcs compiler (the functions in src/Tcs.ref.cs) as a native
  * extension of the tcs VM player. Includes tcs.c, which is tcs (Compiler,
- * CBackend, VmBackend and Tool from tcs/SelfHost) converted to C with tcs2c,
- * and implements the tcs host functions (tcs/SelfHost/Tool/TcsHost.cs).
- * Requests follow tcs/SelfHost/Tool/Sessions.cs: arguments are queued with
+ * CBackend, VmBackend and Tool in src/tcs) converted to C with tcs2c,
+ * and implements the tcs host functions (src/tcs/Tool/TcsHost.cs).
+ * Requests follow src/tcs/Tool/Sessions.cs: arguments are queued with
  * Tcs.Arg, Tcs.Call processes the request, and the response lines are received.
  * Files are read and written with the standard C functions; on the web
  * (emscripten) they are virtual files (MEMFS). The lider player
@@ -241,7 +241,7 @@ static TvmStatus f_arg(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
 static TvmStatus f_call(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   (void)user;
   host_out_length = 0;
-  tcs_entry_TcsSelf_Sessions_Call();
+  tcs_entry_Tcs_Sessions_Call();
   for (int i = 0; i < host_arg_count; i++)
     free(host_args[i].data);
   host_arg_count = 0;

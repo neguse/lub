@@ -1,17 +1,20 @@
-# Generates a header holding the files shipped with tcs (Linq.cs and ValueTuple.cs from tcs/TinySystem) as C arrays (included by native/tcs/vm_tcs.c).
-#   cmake -DTINYSYSTEM=<tcs/TinySystem> -DOUT=<tcs_tool_files.h> -P embed.cmake
-set(names Linq.cs ValueTuple.cs)
-set(text "/* Generated from tcs/TinySystem by native/tcs/embed.cmake. Do not edit by hand. */\n")
+# Generates a header holding the library shipped with tcs (the lib/ entries of src/tcs/shipped.txt) as C arrays (included by native/tcs/vm_tcs.c).
+#   cmake -DLUB_ROOT=<lub checkout> -DOUT=<tcs_tool_files.h> -P embed.cmake
+file(STRINGS "${LUB_ROOT}/src/tcs/shipped.txt" lines REGEX "^lib/")
+set(text "/* Generated from src/tcs/shipped.txt by native/tcs/embed.cmake. Do not edit by hand. */\n")
 string(APPEND text "#include <stddef.h>\n\ntypedef struct TcsToolFile {\n  const char *name;\n  const unsigned char *data;\n  size_t length;\n} TcsToolFile;\n\n")
 set(table "")
 set(i 0)
-foreach(name IN LISTS names)
-  file(READ "${TINYSYSTEM}/${name}" hex HEX)
+foreach(line IN LISTS lines)
+  string(REPLACE " " ";" parts "${line}")
+  list(GET parts 0 name)
+  list(GET parts 1 source)
+  file(READ "${LUB_ROOT}/${source}" hex HEX)
   string(LENGTH "${hex}" hex_length)
   math(EXPR length "${hex_length} / 2")
   string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," bytes "${hex}")
   string(APPEND text "static const unsigned char tcs_tool_file_${i}[] = {${bytes}0};\n")
-  string(APPEND table "  {\"lib/TinySystem/${name}\", tcs_tool_file_${i}, ${length}},\n")
+  string(APPEND table "  {\"${name}\", tcs_tool_file_${i}, ${length}},\n")
   math(EXPR i "${i} + 1")
 endforeach()
 string(APPEND text "\nstatic const TcsToolFile tcs_tool_files[] = {\n${table}};\n")

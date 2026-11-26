@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="src/tcs/tcs.csproj" />
+  <Project Path="src/tcs-system/tcs-system.csproj" />
+  <Project Path="src/tcs-analyzers/tcs-analyzers.csproj" />
+  <Project Path="tests/tcs/tcs-tests.csproj" />
+  <Project Path="tests/tcs-backends/tcs-backends-tests.csproj" />
+  <Project Path="tests/tcs-analyzers/tcs-analyzers-tests.csproj" />
+</Solution>

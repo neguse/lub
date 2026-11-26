@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- tcs, the TinyC# compiler, as a .NET program (tcs.dll).
+       Compiler/, CBackend/, VmBackend/ and Tool/ are in the tcs subset, and `tcs c` converts the same files to C (native.sh).
+       The OS functions (TcsHost) are per host: Dotnet/ on .NET, Native/host.c in C -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Tcs</RootNamespace>
+    <!-- out/ is the output of native.sh (the C tcs, with a copy of the library sources shipped with it) -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);out/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The declaration of TcsHost that `tcs c` reads with -ref. On .NET, Dotnet/DotnetHost.cs is the implementation -->
+    <Compile Remove="Tool/TcsHost.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../tcs-system/tcs-system.csproj" />
+  </ItemGroup>
+
+  <!-- The files shipped with tcs (shipped.txt): runtime/ goes next to tcs.dll, and lib/ is embedded (Dotnet/DotnetHost.cs reads both) -->
+  <Target Name="ShipFiles" BeforeTargets="AssignTargetPaths">
+    <ReadLinesFromFile File="$(MSBuildProjectDirectory)/shipped.txt">
+      <Output TaskParameter="Lines" ItemName="_ShippedLine" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_Shipped Include="@(_ShippedLine)" Condition="!$([System.String]::Copy('%(Identity)').StartsWith('#'))">
+        <Dest>$([System.String]::Copy('%(Identity)').Split(' ')[0])</Dest>
+        <Source>$(MSBuildProjectDirectory)/../../$([System.String]::Copy('%(Identity)').Split(' ')[1])</Source>
+      </_Shipped>
+      <_ShippedRuntime Include="@(_Shipped->'%(Source)')" Condition="$([System.String]::Copy('%(_Shipped.Dest)').StartsWith('runtime/'))" />
+      <_ShippedLibrary Include="@(_Shipped->'%(Source)')" Condition="$([System.String]::Copy('%(_Shipped.Dest)').StartsWith('lib/'))" />
+      <Content Include="@(_ShippedRuntime)" Link="%(_ShippedRuntime.Dest)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <EmbeddedResource Include="@(_ShippedLibrary)" LogicalName="%(_ShippedLibrary.Dest)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

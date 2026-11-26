@@ -1,5 +1,5 @@
 // Worker for C# formatting (format.ts).
-// The .NET wasm (tcs WasmCompiler) stays resident in this worker and runs formatting requests in order.
+// The .NET wasm (tcs-format) stays resident in this worker and runs formatting requests in order.
 import type { FormatRequest } from "./format";
 
 const ASSET_BASE = import.meta.env.BASE_URL + "tcs-wasm/";

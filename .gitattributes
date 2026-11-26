@@ -1,7 +1,7 @@
 third_party/** -whitespace
 # Trailing whitespace in the expected output is significant.
-tcs/tcs2c.Tests/DifferentialTests.NaNRelations.cs -whitespace
-tcs/tcsvm/tests/modules/expected.txt -whitespace
+tests/tcs-backends/DifferentialTests.NaNRelations.cs -whitespace
+tests/tcs-vm/modules/expected.txt -whitespace
 # License texts are kept exactly as distributed.
 lider/data/UDEVGothic-LICENSE*.txt -whitespace
 # The test types after the trailing whitespace.

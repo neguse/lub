@@ -9,7 +9,7 @@
 //   L7. Side by side: pressing Alt+D while editing makes lider compile the version being edited (`lider: build draft module`), and two games appear on the left and right of the screen (both the green of L6). The state is copied, so left and right show nearly the same picture.
 //   L8. Samples: opening the old lider page URL (lider.html#sample=17_flappy) moves to the entry keeping the hash, the lub sample becomes the project and starts (data can be read from samples/17_flappy/data), and edits to the sample's .cs show up in the game picture.
 //   L9. Menu: there is a Doc link and a list of samples (including 17_flappy). The Doc page renders the guides.
-//   L10. Formatting: saving a .cs written with squeezed whitespace makes the page format it with the .NET wasm (CSharpier in tcs WasmCompiler) and write it back. No warning that the formatting worker does not run is shown.
+//   L10. Formatting: saving a .cs written with squeezed whitespace makes the page format it with the .NET wasm (CSharpier in tcs-format) and write it back. No warning that the formatting worker does not run is shown.
 //
 // Compilation is done by the tcs that lider embeds in the player, and the result is written to the console (lider's GameBuild).
 // It does not check that lider shows compile errors in its window (only up to lider receiving the diagnostic).

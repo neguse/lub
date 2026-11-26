@@ -4,7 +4,7 @@
 # If it is missing, uses the lub player (lub) with src/Jamo.so, src/Fs.so and src/Tcs.so next to src/*.ref.cs (scripts/build-native.sh).
 # env:
 #   PLAYER   player executable (lider_player or lub)
-#   LUB_TCS  tcs launch command (default: the Transpiler in tcs/ via dotnet)
+#   LUB_TCS  tcs launch command (default: the .NET tcs, built by scripts/build-tcs-dotnet.sh of lub)
 lub_root="$(cd "$root/.." && pwd)"
 player="${PLAYER:-}"
 if [ -z "$player" ]; then
@@ -19,10 +19,7 @@ if [ "$(basename "$player")" = lub ] && { [ ! -f "$root/src/Jamo.so" ] || [ ! -f
   echo "src/Jamo.so, src/Fs.so or src/Tcs.so is missing: run scripts/build-player.sh (lider_player) or scripts/build-native.sh (for lub)" >&2
   exit 1
 fi
-if [ -z "${LUB_TCS:-}" ]; then
-  dll="$lub_root/tcs/Transpiler/bin/Release/net11.0/Transpiler.dll"
-  [ -f "$dll" ] || dotnet build "$lub_root/tcs/Transpiler" -c Release >/dev/null
-  export LUB_TCS="dotnet $dll"
-fi
+LUB_TCS="${LUB_TCS:-$("$lub_root/scripts/build-tcs-dotnet.sh")}"
+export LUB_TCS
 # The lider player is not next to the lub executable, so tell it where lub's cs-lib is
 export LUB_CS_LIB="${LUB_CS_LIB:-$lub_root/cs-lib}"

@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>TinyCs.Tests</RootNamespace>
+    <!-- Runs the in-process .NET oracles (SpecDotnetExecutor / VmCorpus) on a .NET whose default string comparison is ordinal, the same as tcs-system.props -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The digest kernel (T215) is transpile input data,
+         not source of the test assembly (its Main would collide as an entry point) -->
+    <Compile Remove="DigestKernels/**/*.cs" />
+    <None Include="DigestKernels/**/*.cs" />
+    <!-- The ids of the diagnostics the analyzer reports. tcs reports the same ids -->
+    <Compile Include="..\..\src\tcs-analyzers\TinyCsDiagnosticIds.cs" Link="TinyCsDiagnosticIds.cs" />
+    <!-- Test input, the same -->
+    <Compile Remove="samples/**/*.cs" />
+    <None Include="samples/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- The .NET oracle: reads test input as C# and runs it on .NET -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\tcs\tcs.csproj" />
+  </ItemGroup>
+
+  <!-- Reference assemblies that the .NET oracle passes to Roslyn (refs/, TcsLibrary.References), and ones read only when building the BCL name table (catalog/, BclCatalogTests).
+       Taken from the single targeting pack version the SDK resolved -->
+  <Target Name="CopyReferenceAssemblies" BeforeTargets="AssignTargetPaths" DependsOnTargets="ResolveFrameworkReferences">
+    <PropertyGroup>
+      <_NetCoreRefDir>@(ResolvedTargetingPack->WithMetadataValue('NuGetPackageId', 'Microsoft.NETCore.App.Ref')->'%(Path)')/ref/$(TargetFramework)</_NetCoreRefDir>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_NetCoreRefDir)/System.Runtime.dll')" Text="Microsoft.NETCore.App.Ref targeting pack not found: $(_NetCoreRefDir)" />
+    <ItemGroup>
+      <_OracleRef Include="$(_NetCoreRefDir)/System.Runtime.dll;$(_NetCoreRefDir)/System.Collections.dll;$(_NetCoreRefDir)/System.Linq.dll;$(_NetCoreRefDir)/System.Console.dll" />
+      <_CatalogRef Include="$(_NetCoreRefDir)/System.Threading.Thread.dll;$(_NetCoreRefDir)/System.Linq.Expressions.dll;$(_NetCoreRefDir)/System.Net.Sockets.dll;$(_NetCoreRefDir)/System.Net.Primitives.dll" />
+      <None Include="@(_OracleRef)" Link="refs/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+      <None Include="@(_CatalogRef)" Link="catalog/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
+</Project>

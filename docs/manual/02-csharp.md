@@ -3,7 +3,7 @@
 lub のゲームコードは、C# のサブセットである TinyC# (`tcs`) で書く。
 `record`・パターンマッチング・ラムダ・LINQ メソッドチェーン・nullable 型チェックなどモダンな C# の書き味を保ちつつ、`tcs VM` / `tcs C` / `.NET` のすべての実行モードで同じ結果になる小さな仕様に絞っている。
 
-サポートする構文と標準 API の一覧は [tcs/doc/support-matrix.md](https://github.com/neguse/lub/blob/master/tcs/doc/support-matrix.md) を参照 (リリースアーカイブにはその版の `manual/tcs-support-matrix.md` を同梱)。
+サポートする構文と標準 API の一覧は [docs/tcs/support-matrix.md](https://github.com/neguse/lub/blob/master/docs/tcs/support-matrix.md) を参照 (リリースアーカイブにはその版の `manual/tcs-support-matrix.md` を同梱)。
 
 ## 使える主な機能
 

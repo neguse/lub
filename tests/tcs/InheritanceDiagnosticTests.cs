@@ -1,0 +1,131 @@
+namespace TinyCs.Tests;
+
+// class / record inheritance is out of scope for TinyC#. Base class declarations and
+// members that only make sense with inheritance are build-stopping TCS1001, and
+// check exits 1. Interface implementations can be written as is
+[Collection(ConsoleCollection.Name)]
+public class InheritanceDiagnosticTests
+{
+    private const string Source = """
+        public abstract class B
+        {
+            protected int X;
+            public virtual int F() => 1;
+            public abstract int G();
+        }
+        public sealed class D : B
+        {
+            public D() : base() { }
+            public override int F() => base.F() + 1;
+            public sealed override int G() => 2;
+            public new int H() => 3;
+        }
+        public record R(int A);
+        public record S(int A, int C) : R(A);
+        public class E
+        {
+            public override int GetHashCode() => 1;
+        }
+        """;
+
+    private static readonly string[] Expected =
+    [
+        "(1,1): error TCS1001: unsupported syntax: AbstractClass",
+        "(3,5): error TCS1001: unsupported syntax: ProtectedMember",
+        "(4,5): error TCS1001: unsupported syntax: VirtualMember",
+        "(5,5): error TCS1001: unsupported syntax: AbstractMember",
+        "(7,25): error TCS1001: unsupported syntax: ClassInheritance(B)",
+        "(9,16): error TCS1001: unsupported syntax: BaseConstructorInitializer",
+        "(10,5): error TCS1001: unsupported syntax: OverrideMember",
+        "(10,32): error TCS1001: unsupported syntax: BaseMemberAccess",
+        "(11,5): error TCS1001: unsupported syntax: OverrideMember",
+        "(12,5): error TCS1001: unsupported syntax: NewMemberHiding",
+        "(15,33): error TCS1001: unsupported syntax: ClassInheritance(R)",
+        "(18,5): error TCS1001: unsupported syntax: OverrideMember",
+    ];
+
+    [Fact]
+    public void Transpile_InheritanceIsBuildBlockingError()
+    {
+        var result = Checker.Check([Source]);
+
+        Assert.Equal(Expected, result.Errors);
+    }
+
+    [Fact]
+    public void Check_InheritanceExits1()
+    {
+        var dir = Directory.CreateTempSubdirectory("tcs_inheritance_");
+        try
+        {
+            var input = Path.Combine(dir.FullName, "input.cs");
+            File.WriteAllText(input, Source);
+            var (exitCode, _, stderr) =
+                ConsoleCapture.Run(() => Tcs.Program.Main(["check", input]));
+            Assert.Equal(1, exitCode);
+            foreach (var line in Expected)
+                Assert.Contains("input.cs" + line, stderr);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    // Interface implementations (class / record / struct), sealed class, interface
+    // inheritance, and explicit object work as before
+    [Fact]
+    public void InterfaceImplementation_IsNotDiagnosed()
+    {
+        const string source = """
+            public interface IShape { int Area(); }
+            public interface ISquare : IShape { int Side(); }
+            public sealed class Sq : ISquare
+            {
+                public int S;
+                public int Area() => S * S;
+                public int Side() => S;
+            }
+            public record R(int A) : IShape { public int Area() => A; }
+            public class O : object { }
+            public static class P
+            {
+                public static int Test()
+                {
+                    IShape a = new Sq { S = 3 };
+                    IShape b = new R(4);
+                    return a.Area() + b.Area();
+                }
+            }
+            """;
+        var result = Checker.Check([source]);
+
+        Assert.Empty(result.Errors);
+        Assert.Empty(result.Warnings);
+        Assert.Equal("13", TestHelper.CompileAndRunVm(source, "P.Test()"));
+    }
+
+    // --ref types are host declarations (lub's `sealed class LubHandleAttribute :
+    // Attribute`, class inheritance in stubs) and are not subject to diagnostics
+    [Fact]
+    public void RefStubInheritance_IsNotDiagnosed()
+    {
+        var result = Checker.Check(["""
+            public static class P
+            {
+                public static int Test() => Host.Make().Size + Host.Make().Extra;
+            }
+            """], referenceSources: ["""
+            using System;
+            [AttributeUsage(AttributeTargets.Class)]
+            public sealed class HostHandleAttribute : Attribute { }
+            public class BaseData { public int Size; }
+            public class MoreData : BaseData { public int Extra; }
+            public abstract class Node { public virtual int F() => 0; }
+            public static class Host { public static extern MoreData Make(); }
+            """]);
+
+        Assert.Empty(result.Errors);
+        Assert.Empty(result.Warnings);
+    }
+}

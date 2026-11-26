@@ -22,7 +22,7 @@ vm_project_test() {
     stem="${ref%.ref.cs}"
     src="$(dirname "$ref")/$(basename "$stem" | tr '[:upper:]' '[:lower:]').c"
     if [ -f "$src" ]; then
-      "${CC:-cc}" -shared -fPIC -O2 -I"$root/include" -I"$root/tcs/tcsvm/vm" "$src" -o "$stem.so" >>"$log" 2>&1 || return 1
+      "${CC:-cc}" -shared -fPIC -O2 -I"$root/include" -I"$root/src/tcs-vm" "$src" -o "$stem.so" >>"$log" 2>&1 || return 1
     fi
   done
   [ -f "$dir/env" ] && mapfile -t test_env <"$dir/env"

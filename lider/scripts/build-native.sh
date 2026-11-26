@@ -2,7 +2,7 @@
 # Builds lider's native extensions (the lub player loads src/Jamo.so next to src/Jamo.ref.cs; include/lub/lub_vm_extension.h).
 # Jamo.so: the kana-kanji conversion (third_party/jamo) session API (native/jamo/vm_jamo.c).
 # Fs.so: file system operations (native/fs/vm_fs.c).
-# Tcs.so: the tcs compiler (native/tcs/vm_tcs.c; includes tcs converted to C with tcs2c).
+# Tcs.so: the tcs compiler (native/tcs/vm_tcs.c; includes tcs converted to C with `tcs c`).
 # The lider player (scripts/build-player.sh) has both built in statically, so this is only needed when running with the lub player (lub).
 # Does not use lub symbols (lub passes a function table).
 # Requirements: cargo, dotnet (to convert tcs to C).
@@ -20,23 +20,17 @@ mkdir -p "$out"
 CARGO_TARGET_DIR="$out/cargo" cargo rustc --manifest-path "$jamo/Cargo.toml" \
   -p jamo-core --release --target "$target" --crate-type staticlib
 "${CC:-cc}" -shared -fPIC -O2 \
-  -I"$lub/include" -I"$lub/tcs/tcsvm/vm" -I"$jamo/jamo-core/include" \
+  -I"$lub/include" -I"$lub/src/tcs-vm" -I"$jamo/jamo-core/include" \
   "$root/native/jamo/vm_jamo.c" "$out/cargo/$target/release/libjamo_core.a" \
   -lpthread -ldl -lm -o "$root/src/Jamo.so"
 "${CC:-cc}" -shared -fPIC -O2 \
-  -I"$lub/include" -I"$lub/tcs/tcsvm/vm" \
+  -I"$lub/include" -I"$lub/src/tcs-vm" \
   "$root/native/fs/vm_fs.c" -o "$root/src/Fs.so"
 # Converts tcs to C (same as native/CMakeLists.txt) and embeds the files shipped with tcs in a header
-tcs="$lub/tcs"
-dotnet build "$tcs/tcs2c" -c Release -v q -nologo >/dev/null
-self=("$tcs"/SelfHost/Compiler/*.cs "$tcs"/SelfHost/CBackend/*.cs "$tcs"/SelfHost/VmBackend/*.cs)
-for f in "$tcs"/SelfHost/Tool/*.cs; do
-  [ "$(basename "$f")" = TcsHost.cs ] || self+=("$f")
-done
-mkdir -p "$out/tcs"
-dotnet "$tcs/tcs2c/bin/Release/net11.0/tcs2c.dll" --lib --ref "$tcs/SelfHost/Tool/TcsHost.cs" "${self[@]}" -o "$out/tcs/tcs.c"
-cmake -DTINYSYSTEM="$tcs/TinySystem" -DOUT="$out/tcs/tcs_tool_files.h" -P "$root/native/tcs/embed.cmake"
-"${CC:-cc}" -shared -fPIC -O2 -ffp-contract=off -fwrapv -w \
-  -I"$lub/include" -I"$lub/tcs/tcsvm/vm" -I"$out/tcs" \
+"$lub/src/tcs/to-c.sh" "$out/tcs/tcs.c"
+cmake -DLUB_ROOT="$lub" -DOUT="$out/tcs/tcs_tool_files.h" -P "$root/native/tcs/embed.cmake"
+mapfile -t tcs_cflags < <("$lub/src/tcs/cflags.sh")
+"${CC:-cc}" -shared -fPIC "${tcs_cflags[@]}" -w \
+  -I"$lub/include" -I"$lub/src/tcs-vm" -I"$out/tcs" \
   "$root/native/tcs/vm_tcs.c" -lm -o "$root/src/Tcs.so"
 echo "wrote src/Jamo.so, src/Fs.so and src/Tcs.so ($target)"

@@ -1,9 +1,9 @@
-// gen-tcs-assets.mjs — packs tcs WasmCompiler (browser-wasm with Roslyn and CSharpier; the site entry uses it for C# formatting, web/lib/format.ts) into web assets.
+// gen-tcs-assets.mjs — packs tcs-format (src/tcs-format: browser-wasm with Roslyn and CSharpier; the site entry uses it for C# formatting, web/lib/format.ts) into web assets.
 // Output: web/tcs-wasm-assets/_framework/* (dotnet.js loader + the full wasm set).
 // vite rejects "importing public assets" if they are placed in public/, so the serveDir in vite.config.ts serves them as /tcs-wasm (build copies them in closeBundle).
 //   node web/scripts/gen-tcs-assets.mjs [--publish]
 //
-// Copies the publish output (tcs/WasmCompiler/bin/Release/.../wwwroot).
+// Copies the publish output (src/tcs-format/bin/Release/.../wwwroot).
 // If there is no output, or --publish is given, runs dotnet publish (requires the dotnet SDK + wasm-tools workload).
 import {
   readdirSync,
@@ -23,20 +23,12 @@ import { execFileSync } from "node:child_process";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, "..");
 const REPO = join(WEB, "..");
-const TCS = join(REPO, "tcs");
-const PUBLISH = join(
-  TCS,
-  "WasmCompiler",
-  "bin",
-  "Release",
-  "net11.0",
-  "publish",
-  "wwwroot",
-);
+const FORMAT = join(REPO, "src", "tcs-format");
+const PUBLISH = join(FORMAT, "bin", "Release", "net11.0", "publish", "wwwroot");
 const OUT = join(WEB, "tcs-wasm-assets");
 
-if (!existsSync(join(TCS, "WasmCompiler", "WasmCompiler.csproj"))) {
-  console.error("tcs/WasmCompiler/WasmCompiler.csproj が無い");
+if (!existsSync(join(FORMAT, "tcs-format.csproj"))) {
+  console.error("src/tcs-format/tcs-format.csproj が無い");
   process.exit(1);
 }
 
@@ -44,12 +36,11 @@ if (
   process.argv.includes("--publish") ||
   !existsSync(join(PUBLISH, "_framework"))
 ) {
-  console.error("dotnet publish WasmCompiler -c Release ...");
+  console.error("dotnet publish src/tcs-format -c Release ...");
   execFileSync(
     "dotnet",
     [
       "publish",
-      "WasmCompiler",
       "-c",
       "Release",
       "-p:RunAOTCompilation=true",
@@ -58,7 +49,7 @@ if (
       "-p:CompressionEnabled=false",
     ],
     {
-      cwd: TCS,
+      cwd: FORMAT,
       stdio: "inherit",
     },
   );

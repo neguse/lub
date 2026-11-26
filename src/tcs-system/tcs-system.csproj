@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>TinySystem</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Linq.cs is not put into tcs-system.dll but shipped as source: tcs compiles it together with user code
+       into C / VM IL, and .NET projects compile it into their own assembly through tcs-system.props -->
+  <ItemGroup>
+    <Compile Remove="Linq.cs" />
+    <Compile Remove="ValueTuple.cs" />
+    <Compile Remove="Collections.cs" />
+  </ItemGroup>
+
+</Project>

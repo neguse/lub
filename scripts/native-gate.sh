@@ -109,12 +109,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# ---- C# (tcs) ----------------------------------------------------------- Only when dotnet and tcs/ are present: check the bindings, convert tests/cs and run the runtime tests, and run tcs check and the conversion for all samples.
+# ---- C# (tcs) ----------------------------------------------------------- Only when dotnet and src/tcs are present: check the bindings, convert tests/cs and run the runtime tests, and run tcs check and the conversion for all samples.
 # Skipped in environments without them (C# support is an optional toolchain).
 # CI turns the skip into a fail with --require-cs.
 cs_available=0
 if command -v dotnet >/dev/null 2>&1 \
-  && [[ -f tcs/Transpiler/Transpiler.csproj ]]; then
+  && [[ -f src/tcs/tcs.csproj ]]; then
   cs_available=1
 elif [[ $require_cs -eq 1 ]]; then
   echo "C# toolchain required (--require-cs) but dotnet or tcs is missing" >&2
@@ -184,7 +184,7 @@ if [[ $cs_available -eq 1 ]]; then
 fi
 cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
 
-# The dotnet phase (Transpiler prebuild / transpile / .NET execution and the template build) does not depend on the native binary, so it runs in parallel with the C build and joins before the runtime tests.
+# The dotnet phase (tcs prebuild / transpile / .NET execution and the template build) does not depend on the native binary, so it runs in parallel with the C build and joins before the runtime tests.
 # Run all runtime tests of tests/cs in parallel for each backend in $3 (space-separated) (up to 4 times the number of cores at once), and if any fail, print the logs and exit.
 # $2 is a function that prints the launch arguments (executable and input) for a test name, one per line, and the test names are $4 onward
 run_runtime_tests() {
@@ -228,20 +228,14 @@ run_runtime_tests() {
 vm_test_argv() { printf '%s\n' "${vm_tests[@]}" --entry "$1"; }
 dotnet_test_argv() { printf '%s\n' "${dotnet_tests[@]}" --entry "$1"; }
 
-# dotnet run evaluates MSBuild on every call and takes ~5 seconds each time, so Transpiler is built only once, and from then on run-cs-sample.sh and scripts/cs-tests.sh run the prebuilt DLL in LUB_TCS_DLL directly.
+# dotnet run evaluates MSBuild on every call and takes ~5 seconds each time, so the .NET tcs is built only once, and from then on run-cs-sample.sh and scripts/cs-tests.sh run the prebuilt tcs.dll through LUB_TCS.
 cs_dotnet_pid=""
 if [[ $cs_available -eq 1 ]] && [[ $part != bindings ]]; then
   cs_dotnet_log="$(mktemp)"
   cleanup_files+=("$cs_dotnet_log")
   (
-    run dotnet build tcs/Transpiler -c Release -nologo
-    # Output of the previous build (bin/Release/<framework>/). Old outputs with a RID (bin/Release/<framework>/<rid>/) are not picked up
-    tcs_dll="$(find tcs/Transpiler/bin/Release -maxdepth 2 -name Transpiler.dll -print -quit)"
-    if [[ -z "$tcs_dll" ]]; then
-      echo "Transpiler.dll not found under tcs/Transpiler/bin/Release" >&2
-      exit 1
-    fi
-    export LUB_TCS_DLL="$repo_root/$tcs_dll"
+    LUB_TCS="$(scripts/build-tcs-dotnet.sh)"
+    export LUB_TCS
     if want runtime || want tools; then
       # .NET execution of all of tests/cs (dotnet/SampleRunner/bin/tests/lub-sample-tests. A test is selected with --entry)
       run dotnet build dotnet/SampleRunner -p:Tests=true -nologo -v q
@@ -383,7 +377,7 @@ if [[ $cs_available -eq 1 ]] && want runtime; then
 
   run_runtime_tests "C# runtime tests" vm_test_argv "sdlgpu vulkan" "${cs_runtime_tests[@]}"
   # Run the same runtime tests on .NET execution as well (the ones not run, and why, are in cs_dotnet_excluded of scripts/cs-tests.sh).
-  # TestMathDeterminism checks that the Math of .NET execution (which becomes TinySystem.Math through TinySystem.props) returns the same expected values as the tcs VM
+  # TestMathDeterminism checks that the Math of .NET execution (which becomes TinySystem.Math through tcs-system.props) returns the same expected values as the tcs VM
   mapfile -t dotnet_runtime_tests < <(cs_dotnet_tests)
   # The backend is inside the C runtime and .NET execution goes through the same code, so .NET execution runs only on sdlgpu
   run_runtime_tests "C# runtime tests (.NET)" dotnet_test_argv sdlgpu "${dotnet_runtime_tests[@]}"
@@ -421,9 +415,8 @@ if [[ $cs_available -eq 1 ]] && want tools; then
   run_timed scripts/test-lub-check.sh "$native_binary"
   run_timed scripts/test-bindings-digest.sh "$native_binary" "${dotnet_tests[@]}"
   # The path where the tcs VM player runs from a .csproj (tcs vm --watch, hot reload, OnBuildFailed, --trace and the inspection entry points of apps opened with App.Use).
-  # tcs runs the Transpiler.dll built by the dotnet phase directly (dotnet run evaluates MSBuild on every launch. lub_tcs_resolve_smoke checks the order in which tcs is searched for)
-  tcs_dll="$(find tcs/Transpiler/bin/Release -maxdepth 2 -name Transpiler.dll -print -quit)"
-  run_timed env LUB_VM="$native_binary" LUB_TCS="dotnet $repo_root/$tcs_dll" scripts/vm-project-test.sh
+  # tcs runs the tcs.dll built by the dotnet phase directly (dotnet run evaluates MSBuild on every launch. lub_tcs_resolve_smoke checks the order in which tcs is searched for)
+  run_timed env LUB_VM="$native_binary" LUB_TCS="$(scripts/build-tcs-dotnet.sh)" scripts/vm-project-test.sh
 elif want tools; then
   echo
   echo "==> dev tool checks skipped (dotnet or tcs missing)"

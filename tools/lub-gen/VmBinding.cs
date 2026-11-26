@@ -1,11 +1,11 @@
 using System.Collections.Generic;
-using TcsSelf;
+using Tcs;
 
 namespace LubGen;
 
-// Generates the tcs VM (tcs/tcsvm) host functions: C that registers the lub C API as host functions (tvm_host) the VM calls.
+// Generates the tcs VM (src/tcs-vm) host functions: C that registers the lub C API as host functions (tvm_host) the VM calls.
 // Registers every function in the stub (the player does not pick a game). Only when --source is given, narrows them to the functions that game uses (for tests).
-// The VM object layout, including host data classes, follows the same C struct rules as tcs2c (tcs doc/object-model.md §3, §5), so
+// The VM object layout, including host data classes, follows the same C struct rules as tcs2c (tcs docs/tcs/object-model.md §3, §5), so
 // records are read and written through C struct mirrors (VmLub_<type>). After loading and after reload, vm_lub_verify compares the offsets against the VM type table.
 // Arguments are passed one by one in C# order (tcs vm-design §8.5), out (&) is a pointer to where the VM receives the value, and rets holds only the return value.
 // Struct records are values with the same layout as the C API struct even inside the VM, so the S{Lub_<type>} block is read and written directly as the C API struct.
