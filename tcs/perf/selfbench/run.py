@@ -50,8 +50,14 @@ def dotnet():
     return os.environ.get("DOTNET") or shutil.which("dotnet") or str(Path.home() / ".dotnet" / "dotnet")
 
 
+def body(tree):
+    """Dir that holds Compiler, CBackend, VmBackend, Tool and Native. A base tree may still have them under SelfHost/"""
+    return tree / "SelfHost" if (tree / "SelfHost" / "Compiler").is_dir() else tree
+
+
 def sources(tree):
     """Same input as SelfHost/native.sh (TcsHost.cs is --ref)"""
+    tree = body(tree)
     src = []
     for d in ("Compiler", "CBackend", "VmBackend"):
         src += sorted((tree / d).glob("*.cs"))
@@ -86,7 +92,7 @@ class Tcs:
             shutil.copy(self.tree / "TinySystem" / f, w / "lib" / "TinySystem" / f)
         print("[%s] build C tcs" % self.name, file=sys.stderr)
         sh([dotnet(), str(self.dll), "c", "--lib", *sources(self.tree), "-o", str(w / "tcs.c")])
-        sh([os.environ.get("CC", "gcc"), *CFLAGS, "-I", str(w), str(self.tree / "Native" / "host.c"),
+        sh([os.environ.get("CC", "gcc"), *CFLAGS, "-I", str(w), str(body(self.tree) / "Native" / "host.c"),
             "-o", str(w / "tcs"), "-lm"])
         self.exe = str(w / "tcs")
 
