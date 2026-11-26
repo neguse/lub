@@ -9,6 +9,8 @@
     <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <RootNamespace>Tcs</RootNamespace>
+    <!-- out/ is the output of native.sh (the C tcs, with a copy of the library sources shipped with it) -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);out/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
