@@ -38,7 +38,9 @@ else
   # lub-gen tcs, like tcs, reads lib/ from the directory of the executable
   src/tcs/ship.sh "$out"
 fi
-sources=("$host_src"/Compiler/*.cs tools/lub-gen/*.cs)
+# The part of the tcs API that needs only the compiler (lub-gen does not generate C or .tcsb)
+api=("$host_src"/Api/TcsResult.cs "$host_src"/Api/TcsInputs.cs "$host_src"/Api/TcsCompile.cs)
+sources=("$host_src"/Compiler/*.cs "${api[@]}" tools/lub-gen/*.cs)
 "${tcs_c[@]}" --lib --ref "$host_src/Tool/TcsHost.cs" "${sources[@]}" -o "$work/lub-gen.c"
 
 cc="${CC:-cc}"

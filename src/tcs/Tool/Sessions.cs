@@ -3,7 +3,7 @@ using TcsVm;
 
 namespace Tcs;
 
-// Entry point for tcs VM incremental sessions (VmSession) that the host holds by name.
+// Entry point for tcs VM sessions (TcsSession) that the host holds by name.
 // Used to compile different versions of the same program side by side in one process (such as the saved version and the version being edited).
 // The host puts the request in the TcsHost arguments, calls Call, and receives the reply through TcsHost.WriteOut:
 //   open <name> <entry> <module path> <batch path> <export count> [<C.M or C.*>]... <trace count> [<path prefix>]... <reference count> [<text>]... [<path> <text>]...
@@ -19,16 +19,14 @@ public static class Sessions
 {
     private sealed class Open
     {
-        public VmSession Vm;
+        public TcsSession Session;
         public string ModulePath;
         public string BatchPath;
-        public List<string> Paths = new List<string>();
-        public List<string> Texts = new List<string>();
         public int Revision;
 
-        public Open(VmSession vm, string modulePath, string batchPath)
+        public Open(TcsSession session, string modulePath, string batchPath)
         {
-            Vm = vm;
+            Session = session;
             ModulePath = modulePath;
             BatchPath = batchPath;
         }
@@ -68,17 +66,18 @@ public static class Sessions
         var refs = new List<string>();
         i = ReadList(i, n, refs);
         // The entry class has no Main, so pass it as exports rather than as the VM entry point.
-        var vm = new VmSession("", exports, refs);
-        vm.Traces = traces;
-        var s = new Open(vm, TcsHost.Arg(3), TcsHost.Arg(4));
+        var session = new TcsSession();
+        session.Exports = exports;
+        session.Traces = traces;
+        foreach (var r in refs) session.Reference(r);
+        var s = new Open(session, TcsHost.Arg(3), TcsHost.Arg(4));
         while (i + 1 < n)
         {
-            s.Paths.Add(TcsHost.Arg(i));
-            s.Texts.Add(TcsHost.Arg(i + 1));
+            session.Source(TcsHost.Arg(i), TcsHost.Arg(i + 1));
             i += 2;
         }
         _open[name] = s;
-        Reply(s, vm.Update(s.Texts, s.Paths));
+        Build(s);
     }
 
     // Adds a count and that many arguments to the list, and returns the next position.
@@ -104,32 +103,31 @@ public static class Sessions
         var s = _open[name];
         var removed = new List<string>();
         int i = ReadList(2, n, removed);
-        foreach (var path in removed)
-        {
-            int at = s.Paths.IndexOf(path);
-            if (at < 0) continue;
-            s.Paths.RemoveAt(at);
-            s.Texts.RemoveAt(at);
-        }
+        foreach (var path in removed) s.Session.Remove(path);
         while (i + 1 < n)
         {
-            string path = TcsHost.Arg(i);
-            int at = s.Paths.IndexOf(path);
-            if (at < 0)
-            {
-                s.Paths.Add(path);
-                s.Texts.Add(TcsHost.Arg(i + 1));
-            }
-            else s.Texts[at] = TcsHost.Arg(i + 1);
+            s.Session.Source(TcsHost.Arg(i), TcsHost.Arg(i + 1));
             i += 2;
         }
-        Reply(s, s.Vm.Update(s.Texts, s.Paths));
+        Build(s);
     }
 
-    private static void Reply(Open s, VmUpdate u)
+    private static void Build(Open s)
+    {
+        s.Session.Start();
+        while (true)
+        {
+            var r = s.Session.Step();
+            if (r == null) continue;
+            Reply(s, r);
+            return;
+        }
+    }
+
+    private static void Reply(Open s, TcsResult u)
     {
         var lines = new List<string>();
-        if (u.Kind != "error")
+        if (!u.Failed)
         {
             string failure = TcsHost.WriteBinaryAtomic(s.ModulePath, VBytes.ToByteString(u.Module));
             if (failure == "" && u.Kind == "batch") failure = TcsHost.WriteBinaryAtomic(s.BatchPath, VBytes.ToByteString(u.Batch));
@@ -142,7 +140,7 @@ public static class Sessions
         }
         lines.Add(u.Kind);
         lines.Add("revision " + s.Revision);
-        foreach (var e in u.Errors) lines.Add("error " + OneLine(e));
+        foreach (var e in u.ErrorLines()) lines.Add("error " + OneLine(e));
         foreach (var r in u.Reasons) lines.Add("reason " + OneLine(r));
         foreach (var t in u.Notes) lines.Add("note " + OneLine(t));
         TcsHost.WriteOut(string.Join("\n", lines) + "\n");

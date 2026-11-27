@@ -59,7 +59,7 @@ public sealed class SelectorInfo
     }
 }
 
-/// <summary>--trace: path prefixes of the files to record (VmSession and the CLI set them before building a module).
+/// <summary>--trace: path prefixes of the files to record (TcsToVm and TcsSession set them before building a module).
 /// If empty, nothing is recorded. Paths are compared with '\\' changed to '/'.</summary>
 public static class VmTrace
 {

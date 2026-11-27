@@ -5,7 +5,8 @@ namespace Tcs;
 public sealed class CompileResult
 {
     public bool Ok;
-    public List<string> Diagnostics = new List<string>();
+    // Errors and warnings in report order
+    public List<Diagnostic> Diagnostics = new List<Diagnostic>();
     public int ErrorCount;
     // Input to tcs c and tcs vm (when Session.ExportOnly)
     public ExportResult? Export;

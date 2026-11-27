@@ -106,8 +106,19 @@ public sealed class Diagnostic
         IsError = isError;
     }
 
+    // A diagnostic that is only text: no code, no position (a failed export, an internal error, an entry class error)
+    public static Diagnostic Plain(string message)
+    {
+        return new Diagnostic("", message, null, 0, true);
+    }
+
+    public string Path => File == null ? "" : File.Path;
+    public int Line => File == null ? 0 : File.LineOf(Pos);
+    public int Column => File == null ? 0 : File.ColumnOf(Pos);
+
     public override string ToString()
     {
+        if (Code == "" && File == null) return Message;
         string where = "";
         if (File != null) where = File.Path + "(" + File.LineOf(Pos) + "," + File.ColumnOf(Pos) + "): ";
         string sev = IsError ? "error" : "warning";

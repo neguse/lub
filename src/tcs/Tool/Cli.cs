@@ -211,18 +211,6 @@ public static class Cli
         lines.Add("       --ref <file.cs>             # type-check only (host API stubs)");
         return string.Join("\n", lines) + "\n";
     }
-
-    public static List<string> ReadAll(List<string> paths)
-    {
-        var texts = new List<string>();
-        foreach (var p in paths) texts.Add(TcsHost.ReadFile(p));
-        return texts;
-    }
-
-    public static bool IsWarning(string d)
-    {
-        return d.Contains(": warning ") || d.StartsWith("warning ");
-    }
 }
 
 // Arguments of `tcs check`
@@ -232,11 +220,10 @@ public sealed class CheckOptions
     public List<string> RefPaths = new List<string>();
 }
 
-// tcs check: builds and checks the IL (Session.CheckOnly). Step returns the exit code, or -1 to continue
+// tcs check: the checks of TcsCompile.Check. Step returns the exit code, or -1 to continue
 public sealed class CheckRun
 {
-    private static readonly string[] LibraryPaths = "TinySystem/Linq.cs TinySystem/ValueTuple.cs".Split(' ');
-    private Session? _session;
+    private TcsCompile? _job;
     private CheckOptions _o;
 
     public CheckRun(CheckOptions o)
@@ -246,31 +233,23 @@ public sealed class CheckRun
 
     public int Step()
     {
-        if (_session == null)
+        if (_job == null)
         {
-            var sources = Cli.ReadAll(_o.InputPaths);
-            var session = new Session("");
-            session.CheckOnly = true;
-            for (int i = 0; i < _o.InputPaths.Count; i++) session.Add(_o.InputPaths[i], sources[i], 0);
-            foreach (var r in Cli.ReadAll(_o.RefPaths)) session.Add("", r, 1);
-            foreach (var lib in LibraryPaths) session.Add(lib, TcsHost.ToolFile("lib/" + lib), 2);
-            session.Start();
-            _session = session;
-            return -1;
+            var job = TcsCompile.Check();
+            foreach (var p in _o.InputPaths) job.Inputs.SourceFile(p);
+            foreach (var p in _o.RefPaths) job.Inputs.ReferenceFile(p);
+            _job = job;
         }
-        if (!_session.Step()) return -1;
-        var result = _session.Result;
-        bool failed = !result.Ok;
-        var errors = new List<string>();
-        var warnings = new List<string>();
+        var result = _job.Step();
+        if (result == null) return -1;
+        int warnings = 0;
+        foreach (var d in result.Blocking) TcsHost.WriteErr(d.ToString() + "\n");
         foreach (var d in result.Diagnostics)
         {
-            if (Cli.IsWarning(d)) warnings.Add(d);
-            else errors.Add(d);
+            if (d.IsError) continue;
+            TcsHost.WriteErr(d.ToString() + "\n");
+            warnings++;
         }
-        if (failed && errors.Count == 0) errors.Add("compile failed");
-        foreach (var e in errors) TcsHost.WriteErr(e + "\n");
-        foreach (var w in warnings) TcsHost.WriteErr(w + "\n");
-        return errors.Count == 0 && warnings.Count == 0 ? 0 : 1;
+        return result.Blocking.Count == 0 && warnings == 0 ? 0 : 1;
     }
 }

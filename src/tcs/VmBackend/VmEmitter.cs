@@ -15,51 +15,45 @@ public sealed class VmDescription
 
 public static class VmEmitter
 {
-    /// <summary>Diagnostics that stop the VM build. The implementation of a `--ref` interface (RefInterfaceImplementation) is a constraint of how host names are mapped (snake_case), so
-    /// it does not stop a mix of the VM, which calls by C# names, and tcs2c modules (X-4). Type tests and casts to `--ref` classes / interfaces
-    /// are not stopped either, since the VM can decide them with the type table (object-model §10.6).</summary>
+    /// <summary>The diagnostics that stop the VM: all but the compliance errors it accepts (VmAccepted).</summary>
     public static List<string> Diagnostics(List<string> diagnostics)
     {
-        var allowed = "RefInterfaceImplementation( RefTypeTest( RefCast( RefInterfaceTypeTest(".Split(' ');
         var r = new List<string>();
         foreach (var d in diagnostics)
         {
-            bool ok = false;
-            foreach (var p in allowed)
-            {
-                if (d.Contains("unsupported syntax: " + p)) ok = true;
-            }
-            if (!ok) r.Add(d);
+            if (!VmAccepted.Is(d)) r.Add(d);
         }
         return r;
     }
 
-    /// <summary>Extracts the IL that the VM accepts from the compile result. If there are blocking diagnostics, returns null and puts those diagnostics in diagnostics
-    /// (the IL export of the old C# version followed by VmEmitter.Diagnostics).</summary>
-    public static ExportResult? Exported(CompileResult result, List<string> diagnostics)
+    /// <summary>Extracts the IL that the VM accepts from the compile result. If there are blocking diagnostics, returns null and puts them in blocking.</summary>
+    public static ExportResult? Exported(CompileResult result, List<Diagnostic> blocking)
     {
-        var errors = new List<string>();
+        int errors = 0;
+        int stop = 0;
         foreach (var d in result.Diagnostics)
         {
-            if (!d.Contains(": warning ") && !d.StartsWith("warning ")) errors.Add(d);
+            if (!d.IsError) continue;
+            errors++;
+            if (VmAccepted.Is(d.ToString())) continue;
+            blocking.Add(d);
+            stop++;
         }
-        var stop = Diagnostics(errors);
-        if (result.Export == null || stop.Count > 0)
+        if (result.Export == null || stop > 0)
         {
-            if (errors.Count == 0) stop.Add("export failed");
-            foreach (var d in stop) diagnostics.Add(d);
+            if (stop == 0) blocking.Add(Diagnostic.Plain("export failed"));
             return null;
         }
         var more = Diagnostics(result.Export.Diagnostics);
         if (more.Count > 0)
         {
-            foreach (var d in more) diagnostics.Add(d);
+            foreach (var d in more) blocking.Add(Diagnostic.Plain(d));
             return null;
         }
         // A body that could not be turned into IL becomes null, and the VM can only say "no IL body" about the caller, so report the reason and location here and stop
         if (result.Export.InternalErrors.Count > 0)
         {
-            foreach (var ie in result.Export.InternalErrors) diagnostics.Add("internal: " + ie);
+            foreach (var ie in result.Export.InternalErrors) blocking.Add(Diagnostic.Plain("internal: " + ie));
             return null;
         }
         return result.Export;

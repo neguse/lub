@@ -275,7 +275,7 @@ public class NumericForDifferentialTests
             """);
         var result = session.Compile();
         Assert.True(result.Ok, string.Join("\n", result.Diagnostics));
-        var il = Tcs.VmRun.IlProgramText(result.Export!);
+        var il = Tcs.TcsToVm.IlText(result.Export!);
         var methods = il.Split("  method ");
         var numeric = methods.Single(m => m.StartsWith("static Numeric("));
         var general = methods.Single(m => m.StartsWith("static General("));

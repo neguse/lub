@@ -65,7 +65,7 @@ C# source
   → module (.tcsb)  ── program 全体で 1 つ
         │
         ├─ CLI: tcs vm -o game.tcsb、tcs vm --watch が reload の batch を stream (§13.3)
-        └─ web: playground の VM の増分 session (VmSession) が module と batch を player へ
+        └─ web: playground の VM の session (TcsSession) が module と batch を player へ
               ↓
   tcsvm (C): load → verify → link → 実行 (reload は tvm_apply / tvm_apply_batch)
         ↑
@@ -77,7 +77,7 @@ C# source
 | 要素 | 場所 | 言語 |
 |---|---|---|
 | VmEmitter | `VmBackend/` (`VmEmitter.cs`、`FunctionCompiler.cs`、`ModuleBuilder.cs`、`ReloadPlan.cs`) | TinyC# |
-| CLI と増分 session | `Tool/VmRun.cs` (`tcs vm`、`VmSession`) | TinyC# |
+| CLI と続く build | `Tool/VmRun.cs` (`tcs vm`)、`Api/TcsToVm.cs`、`Api/TcsSession.cs` | TinyC# |
 | VM | `src/tcs-vm/` (`tcsvm.h` が公開 API、`tcsvm_main.c` が CLI の `tcsvm`) | C11 |
 | 共有 runtime | `runtime/fmt`、`runtime/math`、`runtime/utf8`、`runtime/sort`、`runtime/model` (C backend と同じ実装) | C |
 
@@ -527,7 +527,7 @@ reload は module ごと入れ替え、古い関数を残さない (§12.4) の�
 
 ### 15.3 増分 session
 
-- `VmSession` (`Tool/VmRun.cs`) は最後に通った build を持ち、編集ごとに module (最初の build)、reload の batch、restart (新しい module と理由)、error (最後に通った build のまま) のどれかを返す。`tcs vm --watch` と、名前で持つ複数の session (`Sessions.cs`) が同じものを使う
+- `TcsSession` (`Api/TcsSession.cs`) は最後に通った build を持ち、編集ごとに module (最初の build)、reload の batch、restart (新しい module と理由)、error (最後に通った build のまま) のどれかを返す。`tcs vm --watch` と、名前で持つ複数の session (`Sessions.cs`) が同じものを使う
 - 編集を跨いで compile の session を持ち、内容の変わらないファイルは parse し直さない。束縛、IL、特殊化、emit は program 全体でやり直し、module は program 全体で 1 つ作る
 - reload の計画は、最後に通った build の型と static の記述 (`VmDescription`) と新しい build から作る
 

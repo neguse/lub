@@ -8,11 +8,11 @@ public class VmExportTests
     {
         var result = new Tcs.CompileResult { Export = new Tcs.ExportResult() };
         result.Export.InternalErrors.Add("IlBuild: builtin X.Y (Call at A.cs:9)");
-        var diagnostics = new List<string>();
+        var diagnostics = new List<Tcs.Diagnostic>();
 
         var exported = TcsVm.VmEmitter.Exported(result, diagnostics);
 
         Assert.Null(exported);
-        Assert.Equal(["internal: IlBuild: builtin X.Y (Call at A.cs:9)"], diagnostics);
+        Assert.Equal(["internal: IlBuild: builtin X.Y (Call at A.cs:9)"], diagnostics.Select(d => d.ToString()));
     }
 }

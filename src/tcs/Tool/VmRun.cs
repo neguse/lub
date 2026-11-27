@@ -27,7 +27,9 @@ public sealed class VmOptions
 public sealed class VmRun
 {
     private VmOptions _o;
-    private VmSession? _watchSession;
+    private TcsSession? _watchSession;
+    // Names of the sources in the watch session (to remove the ones that left the input list)
+    private List<string> _watched = new List<string>();
     private string _stamp = "";
     // Whether the first build under --watch passed
     private bool _built;
@@ -35,17 +37,6 @@ public sealed class VmRun
     public VmRun(VmOptions o)
     {
         _o = o;
-    }
-
-    private List<string>? ReadAll(List<string> paths)
-    {
-        var r = new List<string>();
-        foreach (var p in paths)
-        {
-            if (!TcsHost.FileExists(p)) return null;
-            r.Add(TcsHost.ReadFile(p));
-        }
-        return r;
     }
 
     private string MissingFile(List<string> paths)
@@ -101,46 +92,47 @@ public sealed class VmRun
             ReadInputList();
             string watchClash = OutputsClash();
             if (watchClash != "") return VError(watchClash);
-            var watched = ReadAll(_o.Inputs);
-            if (watched == null) return VError("could not find file: " + MissingFile(_o.Inputs));
-            return StartWatch(watched);
+            string watchMissing = MissingFile(_o.Inputs);
+            if (watchMissing != "") return VError("could not find file: " + watchMissing);
+            return StartWatch();
         }
-        var sources = ReadAll(_o.Inputs);
-        if (sources == null) return VError("could not find file: " + MissingFile(_o.Inputs));
+        string missing = MissingFile(_o.Inputs);
+        if (missing != "") return VError("could not find file: " + missing);
         string clash = _o.Dump ? "" : OutputsClash();
         if (clash != "") return VError(clash);
-        var refs = ReadAll(_o.Refs);
-        if (refs == null) return VError("could not find file: " + MissingFile(_o.Refs));
-        var diags = new List<string>();
-        var exported = VmSession.Export(sources, _o.Inputs, refs, diags);
-        if (exported == null) return VError("TinyC# diagnostics:\n" + string.Join("\n", diags));
+        missing = MissingFile(_o.Refs);
+        if (missing != "") return VError("could not find file: " + missing);
+        var job = new TcsToVm();
+        job.Entry = _o.Entry;
+        job.Exports = _o.Exports;
+        job.Traces = _o.Traces;
+        job.DumpIl = _o.Dump;
+        foreach (var p in _o.Inputs) job.Inputs.SourceFile(p);
+        foreach (var p in _o.Refs) job.Inputs.ReferenceFile(p);
+        if (!_o.Dump)
+        {
+            if (_o.Output == "") return VError("-o is required");
+            if (_o.ReloadFrom.Count > 0)
+            {
+                // reload: builds the new module and the plan (--plan) from the old version (--reload-from) and the new version (docs/tcs/object-model.md §6)
+                if (_o.PlanOut == "" && _o.BatchOut == "") return VError("--plan or --batch is required with --reload-from");
+                missing = MissingFile(_o.ReloadFrom);
+                if (missing != "") return VError("could not find file: " + missing);
+                foreach (var p in _o.ReloadFrom) job.OldSources.SourceFile(p);
+            }
+        }
+        var r = job.Step()!;
+        if (r.Failure != "") return VError(r.Failure);
+        if (r.Failed) return VError("TinyC# diagnostics" + (r.OldVersion ? " (old version)" : "") + ":\n" + string.Join("\n", r.ErrorLines()));
         if (_o.Dump)
         {
-            TcsHost.WriteOut(IlProgramText(exported));
+            TcsHost.WriteOut(r.Text);
             return 0;
         }
-        if (_o.Output == "") return VError("-o is required");
-        CFail.Error = "";
-        VmTrace.Prefixes = _o.Traces;
-        if (_o.ReloadFrom.Count > 0)
-        {
-            // reload: builds the new module and the plan (--plan) from the old version (--reload-from) and the new version (docs/tcs/object-model.md §6)
-            if (_o.PlanOut == "" && _o.BatchOut == "") return VError("--plan or --batch is required with --reload-from");
-            var oldSources = ReadAll(_o.ReloadFrom);
-            if (oldSources == null) return VError("could not find file: " + MissingFile(_o.ReloadFrom));
-            var oldDiags = new List<string>();
-            var old = VmSession.Export(oldSources, _o.ReloadFrom, refs, oldDiags);
-            if (old == null) return VError("TinyC# diagnostics (old version):\n" + string.Join("\n", oldDiags));
-            var module = VmEmitter.EmitReload(old, exported, _o.Entry, _o.Exports, VmSession.RestartReasons(old, exported), VmSession.ReinitStatics(old, exported), out List<int> plan, out List<string> reasons);
-            if (CFail.Failed) return VError(CFail.Error);
-            if (WriteBytes(_o.Output, module) != 0) return 1;
-            if (_o.PlanOut != "" && WriteBytes(_o.PlanOut, plan) != 0) return 1;
-            if (_o.BatchOut != "" && WriteBytes(_o.BatchOut, VmEmitter.Batch(module, plan)) != 0) return 1;
-            return 0;
-        }
-        var bytes = VmEmitter.Emit(exported, _o.Entry, _o.Exports);
-        if (CFail.Failed) return VError(CFail.Error);
-        return WriteBytes(_o.Output, bytes);
+        if (WriteBytes(_o.Output, r.Module) != 0) return 1;
+        if (_o.PlanOut != "" && WriteBytes(_o.PlanOut, r.Plan) != 0) return 1;
+        if (_o.BatchOut != "" && WriteBytes(_o.BatchOut, r.Batch) != 0) return 1;
+        return 0;
     }
 
     // ---- --watch (docs/tcs/vm-design.md §13.3): each time the inputs change, builds a reload from the previous build, rewrites -o, and then
@@ -170,17 +162,6 @@ public sealed class VmRun
         _o.Inputs = list;
     }
 
-    // Reads only the listed files that currently exist (a file that vanished mid-save is read on the next change)
-    private void ReadPresent(List<string> sources, List<string> paths)
-    {
-        foreach (var p in _o.Inputs)
-        {
-            if (!TcsHost.FileExists(p)) continue;
-            sources.Add(TcsHost.ReadFile(p));
-            paths.Add(p);
-        }
-    }
-
     // Writes diagnostics to stderr and to build_failed on the host stream (the body is newline-terminated diagnostic lines)
     private static void ReportErrors(List<string> errors)
     {
@@ -190,14 +171,20 @@ public sealed class VmRun
         HostMessage.Write("build_failed", string.Join("", body));
     }
 
-    private int StartWatch(List<string> sources)
+    private int StartWatch()
     {
-        var refs = ReadAll(_o.Refs);
-        _watchSession = new VmSession(_o.Entry, _o.Exports, refs == null ? new List<string>() : refs);
-        _watchSession.Traces = _o.Traces;
+        var session = new TcsSession();
+        session.Entry = _o.Entry;
+        session.Exports = _o.Exports;
+        session.Traces = _o.Traces;
+        if (MissingFile(_o.Refs) == "")
+        {
+            foreach (var p in _o.Refs) session.Reference(TcsHost.ReadFile(p));
+        }
+        _watchSession = session;
         _stamp = Stamp();
         TcsHost.WriteErr("tcs vm: watching\n");
-        return BuildWatched(sources, _o.Inputs);
+        return BuildWatched();
     }
 
     private int StepWatch()
@@ -207,20 +194,40 @@ public sealed class VmRun
         if (now == _stamp) return -1;
         ReadInputList();
         _stamp = Stamp();
-        var sources = new List<string>();
-        var paths = new List<string>();
-        ReadPresent(sources, paths);
-        return BuildWatched(sources, paths);
+        return BuildWatched();
     }
 
-    // Until the first pass, only writes -o; after that, writes diffs to the host stream
-    private int BuildWatched(List<string> sources, List<string> paths)
+    private static TcsResult Run(TcsSession session)
     {
-        bool first = !_built;
-        var r = _watchSession!.Update(sources, paths);
-        if (r.Kind == "error")
+        session.Start();
+        while (true)
         {
-            ReportErrors(r.Errors);
+            var r = session.Step();
+            if (r != null) return r;
+        }
+    }
+
+    // Gives the session the listed files that currently exist (a file that vanished mid-save is read on the next change) and builds.
+    // Until the first pass, only writes -o; after that, writes diffs to the host stream
+    private int BuildWatched()
+    {
+        var session = _watchSession!;
+        var present = new List<string>();
+        foreach (var p in _o.Inputs)
+        {
+            if (TcsHost.FileExists(p)) present.Add(p);
+        }
+        foreach (var old in _watched)
+        {
+            if (!present.Contains(old)) session.Remove(old);
+        }
+        _watched = present;
+        foreach (var p in present) session.Source(p, TcsHost.ReadFile(p));
+        var r = Run(session);
+        bool first = !_built;
+        if (r.Failed)
+        {
+            ReportErrors(r.ErrorLines());
             return -1;
         }
         if (WriteBytes(_o.Output, r.Module) != 0) return -1;
@@ -244,52 +251,5 @@ public sealed class VmRun
             HostMessage.Write("vm_batch", VBytes.Base64(r.Batch) + "\n");
         }
         return -1;
-    }
-
-    // ---- --dump-il: IL text for diagnosis (non-normative) ----
-
-    public static string IlProgramText(ExportResult program)
-    {
-        var lines = new List<string>();
-        foreach (var c in program.Classes)
-        {
-            lines.Add("class " + c.Name);
-            foreach (var f in c.Fields)
-                lines.Add("  field " + (f.IsStatic ? "static " : "") + f.Name + ": " + f.Type + " = " + IlNodes.Dump(f.Init));
-            foreach (var k in c.Ctors)
-            {
-                var ps = new List<string>();
-                for (int i = 0; i < k.Parameters.Count && i < k.ParameterTypes.Count; i++) ps.Add(k.Parameters[i] + ": " + k.ParameterTypes[i]);
-                lines.Add("  ctor " + k.Name + "(" + string.Join(", ", ps) + ")");
-                if (k.Body != null) BlockLines(lines, k.Body, 2);
-            }
-            foreach (var m in c.Methods)
-            {
-                var ps = new List<string>();
-                for (int i = 0; i < m.Parameters.Count; i++) ps.Add(m.Parameters[i] + ": " + (i < m.ParameterTypes.Count ? m.ParameterTypes[i] : "?"));
-                lines.Add("  method " + (m.IsStatic ? "static " : "") + m.Name + "(" + string.Join(", ", ps) + "): " + m.ReturnType);
-                if (m.Body != null) BlockLines(lines, m.Body, 2);
-            }
-        }
-        foreach (var s in program.Structs)
-        {
-            lines.Add("struct " + s.Name);
-            foreach (var f in s.Fields) lines.Add("  field " + f.Name + ": " + f.Type);
-        }
-        if (program.TopLevel != null)
-        {
-            lines.Add("toplevel");
-            BlockLines(lines, program.TopLevel, 1);
-        }
-        var parts = new List<string>();
-        foreach (var l in lines) parts.Add(l + "\n");
-        return string.Join("", parts);
-    }
-
-    private static void BlockLines(List<string> lines, IlBlock b, int depth)
-    {
-        string indent = "";
-        for (int i = 0; i < depth; i++) indent = indent + "  ";
-        foreach (var s in b.Stats) lines.Add(indent + IlNodes.Dump(s));
     }
 }

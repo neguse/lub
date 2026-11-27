@@ -26,7 +26,7 @@ public class SelfHostSessionTests
     private static string Il(Tcs.CompileResult result)
     {
         Assert.True(result.Ok, string.Join("\n", result.Diagnostics));
-        return Tcs.VmRun.IlProgramText(result.Export!);
+        return Tcs.TcsToVm.IlText(result.Export!);
     }
 
     private static string Fresh(params (string Path, string Text)[] files)
@@ -73,7 +73,7 @@ public class SelfHostSessionTests
         session.SetSource("a.cs", A.Replace("Value()", "Other()"));
         var broken = session.Compile();
         Assert.False(broken.Ok);
-        Assert.Contains(broken.Diagnostics, d => d.Contains("b.cs") && d.Contains("Value"));
+        Assert.Contains(broken.Diagnostics, d => d.Path == "b.cs" && d.Message.Contains("Value"));
 
         // Reverting it makes it pass
         session.SetSource("a.cs", A);
@@ -132,7 +132,7 @@ public class SelfHostSessionTests
         var still = session.Compile();
         Assert.Equal(1, session.ParsedFiles);
         Assert.False(still.Ok);
-        Assert.Contains(still.Diagnostics, d => d.Contains("bad.cs"));
+        Assert.Contains(still.Diagnostics, d => d.Path == "bad.cs");
         session.SetSource("bad.cs", "public static class Bad { public static int F() => 0; }");
         Assert.True(session.Compile().Ok);
     }
