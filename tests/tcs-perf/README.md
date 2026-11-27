@@ -8,9 +8,9 @@ tcs の実行系 (tcs VM の dev / C の release) の性能と数値一致を実
   ゲームの 2 本) を tcs の 3 経路 (VM / C / .NET) で動かし、C、Rust、Go、Java、JS、
   Python の版と並べる。全実装の出力の一致が前提で、`run.py --check` が一致だけを見る (手で走らせる)。
   測り方と公平さの決まりは `docs/tcs/perf-compare.md`
-- `selfbench/` — tcs 自身 (compiler) の速さの回帰。tcs のソースを C の tcs と .NET の tcs で
-  tcs VM の .tcsb と C に変換する時間、命令の数 (cachegrind)、managed heap の最大、出力の大きさを測る。
-  CI の selfbench job は PR の base と C の tcs の `tcs vm` を比べ、命令の数と heap の最大が 3% を超えて増えたら失敗する (時間は測らない)。
+- `selfbench/` — tcs 自身 (compiler) の速さの回帰。tcs のソースを tcs VM の .tcsb と C に変換する時間、命令の数 (cachegrind)、managed heap の最大、出力の大きさを測る。
+  tcs を動かす実行モードは 3 つある。`c` (C の tcs) は compiler の処理、`tcs c` の出力、C の runtime の回帰を拾う。`vm` (tcs VM の上の tcs。`tcs_on_vm.c` が tcs 自身の .tcsb を動かす) は VM の interpreter と `tcs vm` の出す bytecode の回帰を拾う。`dotnet` は時間だけを測る。
+  CI の selfbench job は PR の base と、`c` と `vm` で `tcs vm` を比べ、命令の数と heap の最大が 3% を超えて増えたら失敗する (時間は測らない)。
 
 ## KPI floor (il-design の性能前提)
 

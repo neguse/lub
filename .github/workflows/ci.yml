@@ -1004,7 +1004,7 @@ jobs:
         run: bash tests/tcs/run-tests.sh --part ${{ matrix.part }}
 
   # Performance regression of tcs itself (tests/tcs-perf/selfbench). Measured on the same runner as the PR base (on push, the previous commit), and fails if the deterministic metrics (instruction count, peak managed heap) increase beyond the threshold.
-  # Only tcs vm of the C tcs is measured (the same path the lider player uses to convert games inside the page), and time is not measured.
+  # tcs vm is measured with tcs running as C (the same path the lider player uses to convert games inside the page) and on the tcs VM (the interpreter and the bytecode that tcs vm generates), and time is not measured.
   tcs-selfbench:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
@@ -1031,7 +1031,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: selfbench-base.json
-          key: selfbench-base-vm-native-${{ steps.base.outputs.tree }}-${{ steps.base.outputs.image }}
+          key: selfbench-base-vm-c-vm-${{ steps.base.outputs.tree }}-${{ steps.base.outputs.image }}
 
       - name: Install valgrind
         uses: ./.github/actions/apt-install
@@ -1039,7 +1039,7 @@ jobs:
           packages: valgrind
 
       - name: Compare with the base
-        run: python3 tests/tcs-perf/selfbench/run.py --base "${{ steps.base.outputs.ref }}" --tasks vm --hosts native --runs 0 --base-results selfbench-base.json -o selfbench.json
+        run: python3 tests/tcs-perf/selfbench/run.py --base "${{ steps.base.outputs.ref }}" --tasks vm --modes c,vm --runs 0 --base-results selfbench-base.json -o selfbench.json
 
       - name: Upload selfbench results
         if: always()
