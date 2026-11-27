@@ -88,8 +88,8 @@ static TvmStatus f_write(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   const char *data = args[1].p ? tvm_string_data(args[1].p, &len) : "";
   char *failure = tcs_files_write(path, data, len);
   free(path);
-  rets[0].p = tvm_string_new(vm, failure ? failure : "",
-                             failure ? strlen(failure) : 0);
+  rets[0].p =
+      tvm_string_new(vm, failure ? failure : "", failure ? strlen(failure) : 0);
   free(failure);
   return TVM_OK;
 }
