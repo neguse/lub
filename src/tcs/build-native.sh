@@ -21,3 +21,11 @@ mapfile -t flags < <("$here/cflags.sh")
 # Files of an earlier build that are no longer shipped do not stay
 rm -rf "$dir/runtime" "$dir/lib"
 "$here/ship.sh" "$dir"
+# A compiler that returns success without writing the executable stops here, with what it was given and what it left
+if [ ! -f "$dir/tcs$exe" ]; then
+  echo "build-native: ${CC:-cc} returned success but did not write $dir/tcs$exe" >&2
+  command -v "${CC:-cc}" >&2 || true
+  "${CC:-cc}" --version >&2 || true
+  ls -la "$dir" >&2
+  exit 1
+fi
