@@ -77,7 +77,7 @@ C# source
 | 要素 | 場所 | 言語 |
 |---|---|---|
 | VmEmitter | `VmBackend/` (`VmEmitter.cs`、`FunctionCompiler.cs`、`ModuleBuilder.cs`、`ReloadPlan.cs`) | TinyC# |
-| CLI と続く build | `Tool/VmRun.cs` (`tcs vm`)、`Api/TcsToVm.cs`、`Api/TcsSession.cs` | TinyC# |
+| CLI と続く build | `Cli/VmRun.cs` (`tcs vm`)、`Api/TcsToVm.cs`、`Api/TcsSession.cs` | TinyC# |
 | VM | `src/tcs-vm/` (`tcsvm.h` が公開 API、`tcsvm_main.c` が CLI の `tcsvm`) | C11 |
 | 共有 runtime | `runtime/fmt`、`runtime/math`、`runtime/utf8`、`runtime/sort`、`runtime/model` (C backend と同じ実装) | C |
 

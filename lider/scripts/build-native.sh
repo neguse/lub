@@ -31,6 +31,6 @@ CARGO_TARGET_DIR="$out/cargo" cargo rustc --manifest-path "$jamo/Cargo.toml" \
 cmake -DLUB_ROOT="$lub" -DOUT="$out/tcs/tcs_tool_files.h" -P "$root/native/tcs/embed.cmake"
 mapfile -t tcs_cflags < <("$lub/src/tcs/cflags.sh")
 "${CC:-cc}" -shared -fPIC "${tcs_cflags[@]}" -w \
-  -I"$lub/include" -I"$lub/src/tcs-vm" -I"$out/tcs" \
+  -I"$lub/include" -I"$lub/src/tcs-vm" -I"$out/tcs" -I"$lub/src/tcs/Native" \
   "$root/native/tcs/vm_tcs.c" -lm -o "$root/src/Tcs.so"
 echo "wrote src/Jamo.so, src/Fs.so and src/Tcs.so ($target)"

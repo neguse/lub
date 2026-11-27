@@ -3,7 +3,7 @@
 C# サブセットのコンパイラ。ゲームスクリプティング向け。
 出力は tcs VM の bytecode (`tcs vm`、VM は `src/tcs-vm/`。開発と hot reload の実行系) と C のソース (`tcs c`。release の実行系) の 2 つ。
 
-compiler は TinyC# で書いたセルフホストの実装 1 つ (`Compiler/`、`CBackend/`、`VmBackend/`、`Api/`、`Tool/`) で、.NET (`tcs.dll`) と C (`tcs c` で C にした tcs) のどちらでも同じ実装が動く。
+compiler は TinyC# で書いたセルフホストの実装 1 つ (`Compiler/`、`CBackend/`、`VmBackend/`、`Api/`、`Cli/`) で、.NET (`tcs.dll`) と C (`tcs c` で C にした tcs) のどちらでも同じ実装が動く。
 字句解析から型チェックと準拠検査、IL の組み立てまでを compiler が行い、tcs VM と C の backend は同じ IL を読む。
 Roslyn は compiler の外の道具 (IDE の Roslyn Analyzer、検証の oracle) にだけ使う。
 
@@ -217,9 +217,9 @@ src/
     CBackend/          # IL を C にする backend
     VmBackend/         # IL を tcs VM の .tcsb にする backend
     Api/               # tcs を使う側 (CLI、lub-gen、テスト、player) が呼ぶ API
-    Tool/              # CLI
-    Native/            # C の host
-    Dotnet/            # .NET の host
+    Cli/               # CLI
+    Native/            # C の実装 (file の操作、CLI の program)
+    Dotnet/            # .NET の実装 (file の操作、CLI の program)
   tcs-vm/              # tcs VM (`tcs vm` が作る .tcsb を動かす register VM)
   tcs-runtime/
     core/              # tcs c の C runtime (GC を含む)

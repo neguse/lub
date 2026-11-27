@@ -6,10 +6,15 @@ public class SessionsTests
     private const string V1 = "public static class Game { static int n; public static void Frame() { n += 1; } }";
     private const string V2 = "public static class Game { static int n; public static void Frame() { n += 2; } }";
 
-    // Sends one request the way a host does: arguments, then Call. The reply is what Call writes to standard output
-    private static string[] Call(params string[] args)
+    // Sends one request the way a host does: the words, then Call. The reply is what Call writes to standard output
+    private static string[] Call(params string[] words)
     {
-        var (_, stdout, _) = ConsoleCapture.Run(() => TcsHost.Run(args, Tcs.Sessions.Call, TcsHost.SetDone));
+        var (_, stdout, _) = ConsoleCapture.Run(() =>
+        {
+            foreach (var word in words) Tcs.Sessions.Arg(word);
+            Tcs.Sessions.Call();
+            return 0;
+        });
         return stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries);
     }
 

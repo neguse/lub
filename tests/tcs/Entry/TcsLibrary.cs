@@ -27,7 +27,7 @@ public static class TcsLibrary
     private static readonly string[] LibraryPaths = ["TinySystem/Linq.cs", ValueTupleLibraryPath];
 
     private static readonly Lazy<SyntaxTree[]> LibraryTreesCache = new(() =>
-        [.. LibraryPaths.Select(path => CSharpSyntaxTree.ParseText(TcsHost.ToolFile("lib/" + path), path: path))]);
+        [.. LibraryPaths.Select(path => CSharpSyntaxTree.ParseText(TcsFiles.Shipped("lib/" + path)!, path: path))]);
 
     public static SyntaxTree[] LibraryTrees => LibraryTreesCache.Value;
 }

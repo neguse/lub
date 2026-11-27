@@ -72,7 +72,11 @@ class Layout:
             self.namespace = "TcsSelf"
 
     def sources(self):
-        """Same input as src/tcs/sources.sh (TcsHost.cs is --ref)"""
+        """The arguments that give tcs its own source: what the tree's src/tcs/sources.sh prints"""
+        script = self.root / "src" / "tcs" / "sources.sh"
+        if script.is_file():
+            return [a if a.startswith("--") else str(self.root / a) for a in sh([str(script)]).split()]
+        # A tree from before sources.sh (TcsHost.cs is --ref)
         src = []
         for d in ("Compiler", "CBackend", "VmBackend"):
             src += sorted((self.body / d).glob("*.cs"))

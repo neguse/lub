@@ -39,18 +39,19 @@ public sealed class VmRun
         _o = o;
     }
 
+    // The first of paths that is not a file ("" if all are)
     private string MissingFile(List<string> paths)
     {
         foreach (var p in paths)
         {
-            if (!TcsHost.FileExists(p)) return p;
+            if (TcsFiles.Stamp(p) == "") return p;
         }
         return "";
     }
 
     public static int VError(string message)
     {
-        TcsHost.WriteErr("tcs vm: " + message + "\n");
+        CliProcess.Err("tcs vm: " + message + "\n");
         return 1;
     }
 
@@ -77,7 +78,7 @@ public sealed class VmRun
     {
         string clash = InputClash(path);
         if (clash != "") return VError(clash);
-        string failure = TcsHost.WriteBinaryAtomic(path, VBytes.ToByteString(bytes));
+        string failure = TcsFiles.WriteBytes(path, VBytes.ToByteString(bytes));
         if (failure != "") return VError(failure);
         return 0;
     }
@@ -96,19 +97,21 @@ public sealed class VmRun
             if (watchMissing != "") return VError("could not find file: " + watchMissing);
             return StartWatch();
         }
-        string missing = MissingFile(_o.Inputs);
-        if (missing != "") return VError("could not find file: " + missing);
-        string clash = _o.Dump ? "" : OutputsClash();
-        if (clash != "") return VError(clash);
-        missing = MissingFile(_o.Refs);
-        if (missing != "") return VError("could not find file: " + missing);
         var job = new TcsToVm();
         job.Entry = _o.Entry;
         job.Exports = _o.Exports;
         job.Traces = _o.Traces;
         job.DumpIl = _o.Dump;
-        foreach (var p in _o.Inputs) job.Inputs.SourceFile(p);
-        foreach (var p in _o.Refs) job.Inputs.ReferenceFile(p);
+        foreach (var p in _o.Inputs)
+        {
+            if (!job.Inputs.SourceFile(p)) return VError("could not find file: " + p);
+        }
+        string clash = _o.Dump ? "" : OutputsClash();
+        if (clash != "") return VError(clash);
+        foreach (var p in _o.Refs)
+        {
+            if (!job.Inputs.ReferenceFile(p)) return VError("could not find file: " + p);
+        }
         if (!_o.Dump)
         {
             if (_o.Output == "") return VError("-o is required");
@@ -116,9 +119,10 @@ public sealed class VmRun
             {
                 // reload: builds the new module and the plan (--plan) from the old version (--reload-from) and the new version (docs/tcs/object-model.md §6)
                 if (_o.PlanOut == "" && _o.BatchOut == "") return VError("--plan or --batch is required with --reload-from");
-                missing = MissingFile(_o.ReloadFrom);
-                if (missing != "") return VError("could not find file: " + missing);
-                foreach (var p in _o.ReloadFrom) job.OldSources.SourceFile(p);
+                foreach (var p in _o.ReloadFrom)
+                {
+                    if (!job.OldSources.SourceFile(p)) return VError("could not find file: " + p);
+                }
             }
         }
         var r = job.Step()!;
@@ -126,7 +130,7 @@ public sealed class VmRun
         if (r.Failed) return VError("TinyC# diagnostics" + (r.OldVersion ? " (old version)" : "") + ":\n" + string.Join("\n", r.ErrorLines()));
         if (_o.Dump)
         {
-            TcsHost.WriteOut(r.Text);
+            CliProcess.Out(r.Text);
             return 0;
         }
         if (WriteBytes(_o.Output, r.Module) != 0) return 1;
@@ -144,17 +148,19 @@ public sealed class VmRun
     private string Stamp()
     {
         var parts = new List<string>();
-        if (_o.InputsFrom != "") parts.Add(TcsHost.FileStamp(_o.InputsFrom));
-        foreach (var p in _o.Inputs) parts.Add(TcsHost.FileStamp(p));
+        if (_o.InputsFrom != "") parts.Add(TcsFiles.Stamp(_o.InputsFrom));
+        foreach (var p in _o.Inputs) parts.Add(TcsFiles.Stamp(p));
         return string.Join("|", parts);
     }
 
     // Reads the --inputs-from list and replaces _o.Inputs
     private void ReadInputList()
     {
-        if (_o.InputsFrom == "" || !TcsHost.FileExists(_o.InputsFrom)) return;
+        if (_o.InputsFrom == "") return;
+        string? text = TcsFiles.Read(_o.InputsFrom);
+        if (text == null) return;
         var list = new List<string>();
-        foreach (var line in TcsHost.ReadFile(_o.InputsFrom).Split('\n'))
+        foreach (var line in text.Split('\n'))
         {
             string p = line.Trim();
             if (p != "") list.Add(p);
@@ -165,7 +171,7 @@ public sealed class VmRun
     // Writes diagnostics to stderr and to build_failed on the host stream (the body is newline-terminated diagnostic lines)
     private static void ReportErrors(List<string> errors)
     {
-        TcsHost.WriteErr("tcs vm: " + string.Join("\n", errors) + "\n");
+        CliProcess.Err("tcs vm: " + string.Join("\n", errors) + "\n");
         var body = new List<string>();
         foreach (var e in errors) body.Add(e.Replace("\n", " ") + "\n");
         HostMessage.Write("build_failed", string.Join("", body));
@@ -179,17 +185,17 @@ public sealed class VmRun
         session.Traces = _o.Traces;
         if (MissingFile(_o.Refs) == "")
         {
-            foreach (var p in _o.Refs) session.Reference(TcsHost.ReadFile(p));
+            foreach (var p in _o.Refs) session.Reference(TcsFiles.Read(p) ?? "");
         }
         _watchSession = session;
         _stamp = Stamp();
-        TcsHost.WriteErr("tcs vm: watching\n");
+        CliProcess.Err("tcs vm: watching\n");
         return BuildWatched();
     }
 
     private int StepWatch()
     {
-        TcsHost.Sleep(100);
+        CliProcess.Sleep(100);
         string now = Stamp();
         if (now == _stamp) return -1;
         ReadInputList();
@@ -213,16 +219,20 @@ public sealed class VmRun
     {
         var session = _watchSession!;
         var present = new List<string>();
+        var texts = new List<string>();
         foreach (var p in _o.Inputs)
         {
-            if (TcsHost.FileExists(p)) present.Add(p);
+            string? text = TcsFiles.Read(p);
+            if (text == null) continue;
+            present.Add(p);
+            texts.Add(text);
         }
         foreach (var old in _watched)
         {
             if (!present.Contains(old)) session.Remove(old);
         }
         _watched = present;
-        foreach (var p in present) session.Source(p, TcsHost.ReadFile(p));
+        for (int i = 0; i < present.Count; i++) session.Source(present[i], texts[i]);
         var r = Run(session);
         bool first = !_built;
         if (r.Failed)

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds the C tcs (src/tcs/build-native.sh) into src/tcs/out/native/ (not checked into git) and checks it against the .NET tcs.
 # The built tcs must produce the same output as the .NET tcs: check diagnostics and exit codes for samples and tcs itself,
-# C for samples (tcs c), tcs VM .tcsb for samples and tcs itself (tcs vm), and reload batches (tcs vm --reload-from).
+# C for samples (tcs c), tcs VM .tcsb for samples and tcs itself (tcs vm), reload batches (tcs vm --reload-from), and file operations.
 # Also checks that the C tcs produces its own C (tcs.c) identically (fixed point).
 # CC selects the C compiler (see build-native.sh).
 set -euo pipefail
@@ -96,6 +96,80 @@ HOST_TESTS=tests/tcs-vm/host
 "$NATIVE" vm --export 'Game.*' --reload-from "$HOST_TESTS/ReloadV1.cs.txt" "$HOST_TESTS/ReloadV2.cs.txt" \
   -o "$OUT/check/reload.native.tcsb" --batch "$OUT/check/reload.native.batch" 2>/dev/null
 same "$OUT/check/reload.dotnet.batch" "$OUT/check/reload.native.batch" "tcs vm --reload-from (batch)"
+
+# File operations: the C implementation (Native/files.c) and the .NET one (Dotnet/Files.cs) behave the same.
+# Each tcs runs the same command in its own copy of the same files, and the output, the exit code and the files left behind are compared
+FILES="$OUT/check/files"
+rm -rf "$FILES"
+for side in dotnet native; do
+  mkdir -p "$FILES/$side"
+  printf 'public static class A { public static int F() { return 1; } }\n' > "$FILES/$side/a.cs"
+  # A UTF-8 byte order mark is not part of the text
+  printf '\357\273\277public static class Bom { public static int F() { return 2; } }\n' > "$FILES/$side/bom.cs"
+  mkdir "$FILES/$side/dir.cs"
+done
+# files_run NAME ARGS...: runs tcs with ARGS in each copy. The output and the exit code go to NAME.<side>.txt
+files_run() {
+  local name="$1" side
+  shift
+  for side in dotnet native; do
+    set +e
+    if [ "$side" = dotnet ]; then
+      (cd "$FILES/$side" && "${DOTNET_TCS[@]}" "$@") > "$FILES/$name.$side.txt" 2>&1
+    else
+      (cd "$FILES/$side" && "$NATIVE" "$@") > "$FILES/$name.$side.txt" 2>&1
+    fi
+    echo "exit $?" >> "$FILES/$name.$side.txt"
+    set -e
+  done
+}
+files_same() {
+  files_run "$@"
+  same "$FILES/$1.dotnet.txt" "$FILES/$1.native.txt" "files: $1"
+}
+# Only the exit code (the reason of a failed write names the OS error, in words that differ between C and .NET)
+files_same_exit() {
+  files_run "$@"
+  local side
+  for side in dotnet native; do tail -n 1 "$FILES/$1.$side.txt" > "$FILES/$1.$side.exit"; done
+  same "$FILES/$1.dotnet.exit" "$FILES/$1.native.exit" "files: $1 (exit code)"
+}
+files_same_file() {
+  same "$FILES/dotnet/$1" "$FILES/native/$1" "files: $1"
+}
+files_same check-bom check bom.cs
+files_same missing-input c missing.cs -o out.c
+files_same directory-input c dir.cs -o out.c
+files_same output-is-input c a.cs -o a.cs
+files_same_file a.cs
+# The directories of the output path are made
+files_same new-directories vm --export 'A.*' a.cs -o new/deep/a.tcsb
+files_same_file new/deep/a.tcsb
+# No temporary file is left next to the output
+for side in dotnet native; do (cd "$FILES/$side/new/deep" && ls -a) > "$FILES/left.$side.txt"; done
+same "$FILES/left.dotnet.txt" "$FILES/left.native.txt" "files: nothing left next to the output"
+if [ -z "$EXE" ]; then
+  # A link to an input is the same file as the input
+  for side in dotnet native; do ln -s a.cs "$FILES/$side/link.cs"; done
+  files_same output-is-link-to-input c a.cs -o link.cs
+  files_same_file a.cs
+  # Replacing an output keeps its permissions
+  for side in dotnet native; do
+    printf 'old\n' > "$FILES/$side/keep.c"
+    chmod 640 "$FILES/$side/keep.c"
+  done
+  files_same replace c a.cs -o keep.c
+  files_same_file keep.c
+  for side in dotnet native; do ls -l "$FILES/$side/keep.c" | cut -c1-10 > "$FILES/mode.$side.txt"; done
+  same "$FILES/mode.dotnet.txt" "$FILES/mode.native.txt" "files: replacing keeps the permissions"
+  # An output that cannot be written fails, and stays as it was
+  for side in dotnet native; do
+    printf 'locked\n' > "$FILES/$side/locked.c"
+    chmod 444 "$FILES/$side/locked.c"
+  done
+  files_same_exit read-only-output c a.cs -o locked.c
+  files_same_file locked.c
+fi
 
 start=$(date +%s)
 "$NATIVE" c --lib "${ARGS[@]}" -o "$OUT/check/self.native.c" 2>/dev/null

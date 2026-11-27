@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- tcs, the TinyC# compiler, as a .NET program (tcs.dll).
-       Compiler/, CBackend/, VmBackend/, Api/ and Tool/ are in the tcs subset, and `tcs c` converts the same files to C (native.sh).
-       The OS functions (TcsHost) are per host: Dotnet/ on .NET, Native/host.c in C -->
+       Compiler/, CBackend/, VmBackend/, Api/ and Cli/ are in the tcs subset, and `tcs c` converts the same files to C (native.sh).
+       What tcs asks of the outside (Api/TcsFiles.cs, Cli/CliProcess.cs) is implemented per runner: Dotnet/ on .NET, Native/ in C -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net11.0</TargetFramework>
@@ -14,15 +14,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The declaration of TcsHost that `tcs c` reads with -ref. On .NET, Dotnet/DotnetHost.cs is the implementation -->
-    <Compile Remove="Tool/TcsHost.cs" />
+    <!-- The declarations that `tcs c` reads as references. On .NET, Dotnet/Files.cs and Dotnet/Process.cs are the implementations -->
+    <Compile Remove="Api/TcsFiles.cs" />
+    <Compile Remove="Cli/CliProcess.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../tcs-system/tcs-system.csproj" />
   </ItemGroup>
 
-  <!-- The files shipped with tcs (shipped.txt): runtime/ goes next to tcs.dll, and lib/ is embedded (Dotnet/DotnetHost.cs reads both) -->
+  <!-- The files shipped with tcs (shipped.txt): runtime/ goes next to tcs.dll, and lib/ is embedded (Dotnet/Files.cs reads both) -->
   <Target Name="ShipFiles" BeforeTargets="AssignTargetPaths">
     <ReadLinesFromFile File="$(MSBuildProjectDirectory)/shipped.txt">
       <Output TaskParameter="Lines" ItemName="_ShippedLine" />

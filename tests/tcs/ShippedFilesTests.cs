@@ -19,7 +19,7 @@ public class ShippedFilesTests
     {
         var library = Shipped("lib/");
         Assert.Equal(["TinySystem/Linq.cs", "TinySystem/ValueTuple.cs"], library);
-        foreach (var path in library) Assert.NotEqual("", TcsHost.ToolFile("lib/" + path));
+        foreach (var path in library) Assert.NotNull(TcsFiles.Shipped("lib/" + path));
     }
 
     [Fact]

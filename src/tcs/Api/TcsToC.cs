@@ -55,7 +55,7 @@ public sealed class TcsToC
         var runtime = new Dictionary<string, string>();
         foreach (var name in CEmitter.RuntimeFileNames())
         {
-            string text = TcsHost.ToolFile("runtime/" + name);
+            string text = TcsFiles.Shipped("runtime/" + name) ?? "";
             if (text == "") return TcsResult.Fail("TinyC# runtime file not found: runtime/" + name);
             runtime[name] = text;
         }
