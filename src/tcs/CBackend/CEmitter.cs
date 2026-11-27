@@ -7660,19 +7660,23 @@ public sealed class CEmitter
             {
                 if (!method.IsStatic) continue;
                 var fact = _facts.Method(cls.Name, method.Name);
-                if (!CType.Same(fact.ReturnType, CType.Void)
+                if (!IsEntryReturn(fact.ReturnType)
                     || fact.OutParameters.Count > 0
                     || !AllEntryParameters(fact))
                     continue;
-                Line("void");
+                bool returns = !CType.Same(fact.ReturnType, CType.Void);
+                Line(fact.ReturnType.CName);
                 Line("tcs_entry_" + Names.Id(cls.Name) + "_" + Names.Id(method.Name) + "(" + ParameterList(fact) + ")");
                 Line("{");
                 _indent++;
                 Line("tcs_gc_call_depth++;");
                 var argList = new List<string>();
                 for (int i = 0; i < fact.Parameters.Count; i++) argList.Add("v_" + Names.Id(fact.Parameters[i].Name) + "_" + i);
-                Line(Names.Method(cls.Name, method.Name) + "(" + string.Join(", ", argList) + ");");
+                string call = Names.Method(cls.Name, method.Name) + "(" + string.Join(", ", argList) + ");";
+                // The result is a number, so it stays valid across the boundary
+                Line(returns ? fact.ReturnType.CName + " result = " + call : call);
                 Line("if (--tcs_gc_call_depth == 0) tcs_gc_frame();");
+                if (returns) Line("return result;");
                 _indent--;
                 Line("}");
                 Line();
@@ -7689,10 +7693,18 @@ public sealed class CEmitter
         return true;
     }
 
+    // A string and an external data class are created by the host right before the call (they live in the nursery until the entry returns)
     private bool IsEntryParameter(CType type)
     {
         return type.Kind == CTypeKind.I32 || type.Kind == CTypeKind.F32 || type.Kind == CTypeKind.Bool
+            || type.Kind == CTypeKind.String
             || type.Kind == CTypeKind.Ref && _facts.IsDeclaredExternal(type.Name!);
+    }
+
+    // An entry returns nothing or a number: an object would move or be freed at the boundary the entry passes on return
+    private static bool IsEntryReturn(CType type)
+    {
+        return type.Kind == CTypeKind.Void || type.Kind == CTypeKind.I32 || type.Kind == CTypeKind.F32 || type.Kind == CTypeKind.Bool;
     }
 
     private void EmitEntryPoint(EntryPoint? entry)

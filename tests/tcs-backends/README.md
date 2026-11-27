@@ -112,8 +112,8 @@ bash tests/tcs-backends/verify-digests.sh
   を境界を跨いで持つなら、その slot を `tcs_lib_hold(void **)` で登録する
   (境界で昇格先に書き換わる)。`tcs_lib_release` で外す。登録しない pointer
   は境界の後は無効。
-  entry に外部データ class の record を渡すときは、`tcs_new_<型>()` で作って field を埋め、すぐに entry に渡す (作ってから渡すまでに `tcs_lib_gc` / `tcs_lib_collect` や別の entry を挟まない)。
-  entry から戻った後は host の pointer は無効で、game が保持した record は境界で昇格する。
+  entry に string や外部データ class の record を渡すときは、`tcs_string_new()` や `tcs_new_<型>()` で作り、すぐに entry に渡す (作ってから渡すまでに `tcs_lib_gc` / `tcs_lib_collect` や別の entry を挟まない)。
+  entry から戻った後は host の pointer は無効で、game が保持した string と record は境界で昇格する。
   `tcs_lib_collect()` は境界 + 旧世代 full GC、
   `tcs_lib_heap_bytes()` / `tcs_lib_heap_objects()` は managed heap の統計
 - **検証**: `-DTCS_GC_STRESS=1` で毎境界に旧世代 full GC を回し、nursery
@@ -236,7 +236,8 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 - host が entry の外で tcs の pointer を持つなら `tcs_lib_hold(void **)`
   した slot 経由 (境界で昇格先に書き換わる)。それ以外の借用 pointer は
   entry から戻った時点で無効 (string は `tcs_string_new` で managed に写す)
-- `--lib` の entry (`tcs_entry_<Class>_<Method>`、`<Method>` は IL の名前で overload は `F__int` のように引数の型が付く) は、引数が `int` / `float` / `bool` と外部データ class (`--ref` の stub が宣言した class 自身で、`Tcs_<型> *` で受ける) で、戻りが `void` の static method。
+- `--lib` の entry (`tcs_entry_<Class>_<Method>`、`<Method>` は IL の名前で overload は `F__int` のように引数の型が付く) は、引数が `int` / `float` / `bool` / `string` (`TcsString *` で受ける。`string?` の null は `NULL`) と外部データ class (`--ref` の stub が宣言した class 自身で、`Tcs_<型> *` で受ける) で、戻りが `void` / `int` / `float` / `bool` の static method。
+  object を返す method と out の引数を持つ method は entry にならない (entry から戻る点が境界で、返した object は動くか消える)。
   最外の entry から戻った点で自動的にフレーム境界 (`tcs_gc_frame`) を踏む (入れ子の entry は深さで抑止)。
   `tcs_lib_gc()` は明示の境界、`tcs_lib_collect()` は境界 + 旧世代 full GC、
   `tcs_lib_heap_bytes()` / `tcs_lib_heap_objects()` は旧世代 + nursery の
