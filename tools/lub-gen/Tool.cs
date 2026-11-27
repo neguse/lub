@@ -181,45 +181,20 @@ public static class Tool
 /// <summary>IL of the game for `lub-gen tcs` (the same export as tcs c; generics are monomorphized).</summary>
 public static class GameExport
 {
-    // Compliance errors the tcs VM allows (--ref type checks and interface implementations). As in IlExport.Export of the C# version, if these are the only ones, IL is produced with the diagnostics attached
-    private static bool VmAllowed(string d)
-    {
-        foreach (var p in "RefInterfaceImplementation( RefTypeTest( RefCast( RefInterfaceTypeTest(".Split(' '))
-        {
-            if (d.Contains("unsupported syntax: " + p)) return true;
-        }
-        return false;
-    }
-
+    // Compliance errors that the tcs VM accepts do not stop it: the IL comes with the diagnostics attached
     public static ExportResult? Export(List<string> sources, string stub, List<string> diagnostics)
     {
-        var session = new Session("");
-        session.ExportOnly = true;
-        session.Specialize = true;
-        foreach (var s in sources) session.Add("", s, 0);
-        session.Add("", stub, 1);
-        session.Add("TinySystem/Linq.cs", TcsHost.ToolFile("lib/TinySystem/Linq.cs"), 2);
-        session.Add("TinySystem/ValueTuple.cs", TcsHost.ToolFile("lib/TinySystem/ValueTuple.cs"), 2);
-        var result = session.Compile();
-        var errors = new List<string>();
+        var job = TcsCompile.Il(true);
+        foreach (var s in sources) job.Inputs.Source("", s);
+        job.Inputs.Reference(stub);
+        var result = job.Run();
         foreach (var d in result.Diagnostics)
         {
-            if (!d.Contains(": warning ") && !d.StartsWith("warning ")) errors.Add(d);
+            if (d.IsError) diagnostics.Add(d.ToString());
         }
-        bool stop = false;
-        foreach (var e in errors)
-        {
-            if (!VmAllowed(e)) stop = true;
-        }
-        if (result.Export == null || stop)
-        {
-            if (errors.Count == 0) diagnostics.Add("export failed");
-            foreach (var e in errors) diagnostics.Add(e);
-            return null;
-        }
-        foreach (var e in errors) diagnostics.Add(e);
-        foreach (var e in result.Export.Diagnostics) diagnostics.Add(e);
-        return result.Export;
+        if (result.Il == null) return null;
+        foreach (var e in result.Il.Diagnostics) diagnostics.Add(e);
+        return result.Il;
     }
 }
 

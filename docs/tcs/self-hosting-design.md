@@ -1,12 +1,12 @@
 # tcs のセルフホスト設計
 
-> Status: 実装。tcs の compiler、CLI、C backend、tcs VM の backend は TinyC# で書いた 1 つの実装 (`src/tcs/` の `Compiler/`、`CBackend/`、`VmBackend/`、`Tool/`) で、.NET、C (tcs2c で tcs 自身を C にしたもの)、wasm で同じソースが動く。gate は bootstrap の固定点と、.NET の tcs と C の tcs の出力の一致 (§9.1)、Roslyn の受理の判定と .NET での実行を正解にした比較 (§9.2)。
+> Status: 実装。tcs の compiler、CLI、C backend、tcs VM の backend は TinyC# で書いた 1 つの実装 (`src/tcs/` の `Compiler/`、`CBackend/`、`VmBackend/`、`Api/`、`Tool/`) で、.NET、C (tcs2c で tcs 自身を C にしたもの)、wasm で同じソースが動く。gate は bootstrap の固定点と、.NET の tcs と C の tcs の出力の一致 (§9.1)、Roslyn の受理の判定と .NET での実行を正解にした比較 (§9.2)。
 >
 > Scope: tcs 自身を TinyC# のサブセットで書き、tcs 自身で C にして動かす構成。
 
 ## 1. 結論
 
-- tcs の実装は TinyC# で書いた 1 つ。字句、構文、宣言、束縛、準拠検査、IL の組み立て、generic の単相化 (`Compiler/`)、IL を C にする backend (`CBackend/`)、IL を tcs VM の `.tcsb` にする backend (`VmBackend/`)、CLI (`Tool/`) のどれも同じサブセットで書く
+- tcs の実装は TinyC# で書いた 1 つ。字句、構文、宣言、束縛、準拠検査、IL の組み立て、generic の単相化 (`Compiler/`)、IL を C にする backend (`CBackend/`)、IL を tcs VM の `.tcsb` にする backend (`VmBackend/`)、使う側が呼ぶ API (`Api/`)、CLI (`Tool/`) のどれも同じサブセットで書く
 - 同じソースが 3 つの host で動く。.NET (`src/tcs/Dotnet/` の host。出力は `tcs.dll`)、C (tcs2c で tcs 自身を C にした native の tcs)、wasm (同じ C を emcc で build したもの)
 - Roslyn と .NET は compiler の外の道具として使う。IDE の Roslyn Analyzer (`src/tcs-analyzers` は `Compiler` を netstandard2.0 で取り込み、`tcs check` と同じ診断を出す)、playground の補完と hover、検証の正解 (C# として正しいかの判定と、同じソースを .NET で動かした結果) の 3 つ
 - bootstrap の最初の段は .NET の tcs が tcs 自身を C にすること。compiler のソースは常に .NET の build で動くので、seed の binary をリポジトリに置かない
@@ -50,12 +50,18 @@ tcs/
     Compiler.cs          compile の結果 (CompileResult)
   CBackend/            IL を C にする (tcs c)。CModel.cs (C の型と名前、最初の誤りの記録 CFail)、CFacts.cs (IL から引く型と method の事実)、CEmitter.cs (本体)
   VmBackend/           IL を tcs VM の .tcsb にする (tcs vm)。VModel.cs、ModuleBuilder.cs (型 / 定数 / static / 関数の表と .tcsb の書き出し)、FunctionCompiler.cs (関数を命令列にする)、VmEmitter.cs (module と reload の組み立て)、ReloadPlan.cs、ReloadRules.cs (hot reload で live に当てられない編集の規則)、IlNodes.cs (gen-ilnodes.py が Il.cs から作る)、IlWalk.cs、VBytes.cs、Op.cs (src/tcs-vm/gen-ops.py が tcsvm_ops.h から作る)
-  Tool/                CLI
+  Api/                 tcs を使う側 (CLI、lub-gen、テスト、player) が呼ぶ API。入力を受け取り、結果を返す。結果は書かない
+    TcsResult.cs         結果 (種類、診断、理由、注記、生成した C と .tcsb)
+    TcsInputs.cs         入力 (source と参照)。配る library を入れる 1 か所
+    TcsCompile.cs        tcs check の検査と、backend が読む IL
+    TcsToC.cs            C の source
+    TcsToVm.cs           tcs VM の module と、旧版からの reload
+    TcsSession.cs        編集をまたいで続く tcs VM の build
+  Tool/                CLI。引数を API の呼び出しに直し、結果を file、標準出力、標準エラー、終了 code に直す
     Cli.cs               引数の解釈と tcs check
     CRun.cs              tcs c
-    VmRun.cs             tcs vm
-    VmSession.cs         VM の増分 session
-    Sessions.cs          名前で持つ複数の VM の増分 session の入口 (open、update、close。結果は host が指す path に書く)
+    VmRun.cs             tcs vm と --watch
+    Sessions.cs          名前で持つ複数の TcsSession の入口 (open、update、close。結果は host が指す path に書く)
     HostMessage.cs       --watch の host への message
     TcsHost.cs           host の関数の宣言 (C の build では --ref の stub)
     ToolText.cs          数の読み取り
@@ -108,14 +114,14 @@ tests/tcs-backends/SelfHostC.cs  テストが C の backend を文字列で動�
   - .NET: `Dotnet/DotnetHost.cs`。`lib/` は埋め込んだ resource から、`runtime/` は実行ファイルの隣から読む
   - C: `Native/host.c`。tcs と一緒に配るファイルは環境変数 `TCS_HOME` の dir か、実行ファイルの dir から読む。Windows では標準入出力を binary mode にし、.NET と同じ改行を書く
 - host は `Cli.Start` を 1 回、`TcsHost.SetDone` が来るまで `Cli.Step` を繰り返し呼ぶ。C の build (tcs2c) では entry から戻るたびに GC の frame の境界になるので、compile は Step ごとに session の 1 段だけ進め、仕事の状態は static field に置いて段をまたぐ。`tcs vm --watch` の待ちも Step の中の `TcsHost.Sleep` で、host の loop は同じ形のまま
-- 仕事は継承を使わずに型ごとの field (`CheckRun`、`CRun`、`VmRun`) に持って分ける
+- 仕事は継承を使わずに型ごとの field (`CheckRun`、`CRun`、`VmRun`) に持って分ける。どれも API の job を 1 つ持ち、Step ごとに job の `Step` を 1 回呼ぶ
 
 ## 7. 増分 session
 
 - `Session` はファイルを足し (`SetSource`、`SetReference`、`SetLibrary`)、差し替え、外し (`Remove`)、compile する。parse は内容の変わったファイルだけをやり直し、parse したままの木を持つ。束縛は木を書き換えるので、compile のたびに木の複製 (`Node.CloneTree`) を組み立て、宣言、束縛、出力は全体をやり直す
 - compile は Step に分かれる: 変わったファイルの parse を 1 つずつ、組み立て (構文で決まる準拠検査を含む)、宣言、束縛と型で決まる準拠検査、出力 (C backend と tcs VM のための単相化は回ごとに 1 段)。`Start` は途中の compile を捨てて始め直すので、host は Step の合間に新しい編集を受け取れる
 - 出力は mode で決まる。`ExportOnly` は tcs c と tcs vm への IL、`CheckOnly` は `tcs check` と analyzer の検査 (IL を組み立てて、組み立てられない本文も診断にする)、どちらでもなければ束縛と準拠の診断だけ
-- VM の増分 session (`VmSession`、`Tool/VmRun.cs`) は `Session` の上で、最後に通った build を持ち、編集ごとに reload の batch か restart を返す。診断のある編集は最後の build を変えない。`tcs vm --watch` と、名前で持つ複数の session (`Sessions.Call`。lub の lider の player が組み込む) が同じものを使う (`docs/tcs/vm-design.md`)
+- 編集をまたいで続く tcs VM の build (`TcsSession`、`Api/TcsSession.cs`) は `Session` の上で、最後に通った build を持ち、編集ごとに reload の batch か restart を返す。診断のある編集は最後の build を変えない。`tcs vm --watch` と、名前で持つ複数の session (`Sessions.Call`。lub の lider の player が組み込む) が同じものを使う (`docs/tcs/vm-design.md`)
 
 ## 8. サブセットで compiler を書くことの帰結
 

@@ -4,21 +4,12 @@ namespace TinyCs.Vm;
 internal sealed class VmException(string message) : Exception(message);
 
 /// <summary>
-/// Entry point for driving the VM backend (TcsVm.VmEmitter in VmBackend) from .NET with strings (for tests).
-/// The IL is passed as is from the self-hosted compiler's export. The error record (TcsC.CFail) is static, so concurrent calls run one at a time.
+/// Entry point for driving the VM backend from .NET with strings (for tests): Tcs.TcsToVm.
+/// The error record (TcsC.CFail) is static, so concurrent calls run one at a time.
 /// </summary>
 internal static class SelfHostVm
 {
     public static readonly object Gate = new();
-
-    /// <summary>The IL that the VM receives. TinyC# diagnostics become InvalidOperationException.</summary>
-    private static Tcs.ExportResult Export(string[] sources, string[]? refs, string[]? paths)
-    {
-        var diags = new List<string>();
-        var exported = Tcs.VmSession.Export([.. sources], paths is null ? [] : [.. paths], refs is null ? [] : [.. refs], diags);
-        if (exported is null) throw new InvalidOperationException("TinyC# diagnostics:\n" + string.Join("\n", diags));
-        return exported;
-    }
 
     public static byte[] Bytes(List<int> bytes) => [.. bytes.Select(b => (byte)b)];
 
@@ -26,37 +17,36 @@ internal static class SelfHostVm
     public static byte[] Emit(string[] sources, string? entryClass, IEnumerable<string>? exports = null,
         string[]? refs = null, string[]? paths = null)
     {
-        var exported = Export(sources, refs, paths);
-        lock (Gate)
-        {
-            TcsC.CFail.Error = "";
-            var bytes = TcsVm.VmEmitter.Emit(exported, entryClass ?? "", exports?.ToList() ?? []);
-            Throw();
-            return Bytes(bytes);
-        }
+        var job = new Tcs.TcsToVm { Entry = entryClass ?? "", Exports = exports?.ToList() ?? [] };
+        for (var i = 0; i < sources.Length; i++)
+            job.Inputs.Source(paths != null && i < paths.Length ? paths[i] : "", sources[i]);
+        foreach (var r in refs ?? [])
+            job.Inputs.Reference(r);
+        return Bytes(Run(job).Module);
     }
 
     /// <summary>reload: the new version's module and plan (same as `tcs vm --reload-from`).</summary>
     public static (byte[] Module, byte[] Plan) EmitReload(string[] v1, string[] v2, string? entryClass,
         IEnumerable<string>? exports = null)
     {
-        var old = Export(v1, null, null);
-        var next = Export(v2, null, null);
-        lock (Gate)
-        {
-            TcsC.CFail.Error = "";
-            var module = TcsVm.VmEmitter.EmitReload(old, next, entryClass ?? "", exports?.ToList() ?? [],
-                Tcs.VmSession.RestartReasons(old, next), Tcs.VmSession.ReinitStatics(old, next), out var plan, out _);
-            Throw();
-            return (Bytes(module), Bytes(plan));
-        }
+        var job = new Tcs.TcsToVm { Entry = entryClass ?? "", Exports = exports?.ToList() ?? [] };
+        foreach (var source in v2)
+            job.Inputs.Source("", source);
+        foreach (var source in v1)
+            job.OldSources.Source("", source);
+        var result = Run(job);
+        return (Bytes(result.Module), Bytes(result.Plan));
     }
 
-    private static void Throw()
+    private static Tcs.TcsResult Run(Tcs.TcsToVm job)
     {
-        if (!TcsC.CFail.Failed) return;
-        var message = TcsC.CFail.Error;
-        TcsC.CFail.Error = "";
-        throw new VmException(message);
+        Tcs.TcsResult? result = null;
+        lock (Gate)
+        {
+            while (result == null) result = job.Step();
+        }
+        if (result.Failure != "") throw new VmException(result.Failure);
+        if (result.Failed) throw new InvalidOperationException("TinyC# diagnostics:\n" + string.Join("\n", result.ErrorLines()));
+        return result;
     }
 }

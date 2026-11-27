@@ -164,7 +164,7 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             else if (!IsTinySystemFile(tree.FilePath) && !IsSdkAssemblyInfo(tree.FilePath)) trees.Add(tree);
         }
         if (trees.Count == 0) return byTree;
-        List<string> diagnostics;
+        List<Tcs.Diagnostic> diagnostics;
         lock (Gate)
         {
             var session = new Tcs.Session("") { CheckOnly = true };
@@ -175,10 +175,11 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             foreach (var (path, text) in Libraries.Value) session.Add(path, text, 2);
             diagnostics = session.Compile().Diagnostics;
         }
-        foreach (var line in diagnostics)
+        foreach (var d in diagnostics)
         {
-            if (!TryParse(line, out var index, out var row, out var column, out var code, out var message)) continue;
+            if (!TryTreeIndex(d.Path, out var index)) continue;
             if (index < 0 || index >= trees.Count) continue;
+            var code = d.Code;
             var rule = code switch
             {
                 TinyCsDiagnosticIds.UnsupportedSyntax => UnsupportedSyntaxRule,
@@ -189,9 +190,9 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             if (rule == null) continue;
             var tree = trees[index];
             if (IsSdkGlobalUsings(tree.FilePath)) continue;
-            var location = LocationOf(tree, row, column);
+            var location = LocationOf(tree, d.Line, d.Column);
             if (!byTree.TryGetValue(tree, out var list)) byTree[tree] = list = [];
-            list.Add(Diagnostic.Create(rule, location, Detail(code, message)));
+            list.Add(Diagnostic.Create(rule, location, Detail(code, d.Message)));
         }
         return byTree;
     }
@@ -208,27 +209,12 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
         return message.StartsWith(prefix, StringComparison.Ordinal) ? message.Substring(prefix.Length) : message;
     }
 
-    // `tree3.cs(12,5): error TCS1001: message` (columns are counted in UTF-8 bytes)
-    private static bool TryParse(string line, out int index, out int row, out int column, out string code, out string message)
+    // The index in the path of a tree (`tree3.cs`)
+    private static bool TryTreeIndex(string path, out int index)
     {
-        index = row = column = 0;
-        code = message = "";
-        if (!line.StartsWith("tree", StringComparison.Ordinal)) return false;
-        int open = line.IndexOf(".cs(", StringComparison.Ordinal);
-        int close = open < 0 ? -1 : line.IndexOf("): ", open, StringComparison.Ordinal);
-        if (open < 0 || close < 0) return false;
-        if (!int.TryParse(line.Substring(4, open - 4), out index)) return false;
-        var pos = line.Substring(open + 4, close - open - 4).Split(',');
-        if (pos.Length != 2 || !int.TryParse(pos[0], out row) || !int.TryParse(pos[1], out column)) return false;
-        var rest = line.Substring(close + 3);
-        int space = rest.IndexOf(' ');
-        if (space < 0) return false;
-        rest = rest.Substring(space + 1);
-        int colon = rest.IndexOf(": ", StringComparison.Ordinal);
-        if (colon < 0) return false;
-        code = rest.Substring(0, colon);
-        message = rest.Substring(colon + 2);
-        return true;
+        index = 0;
+        return path.StartsWith("tree", StringComparison.Ordinal) && path.EndsWith(".cs", StringComparison.Ordinal)
+            && int.TryParse(path.Substring(4, path.Length - 7), out index);
     }
 
     // Token of line (1-based) and UTF-8 byte column (1-based)

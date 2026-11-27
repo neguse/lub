@@ -12,7 +12,7 @@ public class SelfHostDiagnosticsTests
         var session = new Tcs.Session("");
         session.Add("input.cs", source, 0);
         var result = session.Compile();
-        return result.Diagnostics.Where(d => d.Contains(" error ") || d.Contains(" warning TCS")).ToList();
+        return result.Diagnostics.Select(d => d.ToString()).Where(d => d.Contains(" error ") || d.Contains(" warning TCS")).ToList();
     }
 
     [Theory]

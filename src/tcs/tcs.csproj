@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- tcs, the TinyC# compiler, as a .NET program (tcs.dll).
-       Compiler/, CBackend/, VmBackend/ and Tool/ are in the tcs subset, and `tcs c` converts the same files to C (native.sh).
+       Compiler/, CBackend/, VmBackend/, Api/ and Tool/ are in the tcs subset, and `tcs c` converts the same files to C (native.sh).
        The OS functions (TcsHost) are per host: Dotnet/ on .NET, Native/host.c in C -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

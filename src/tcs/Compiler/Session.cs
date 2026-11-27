@@ -487,7 +487,7 @@ public sealed class Session
                 }
                 if (specializeError != "")
                 {
-                    result.Diagnostics.Add(specializeError);
+                    result.Diagnostics.Add(Diagnostic.Plain(specializeError));
                     c.Diags.ErrorCount++;
                 }
                 else
@@ -508,7 +508,7 @@ public sealed class Session
                 if (CheckIl(c, result)) c.Diags.ErrorCount++;
             }
         }
-        foreach (var diag in c.Diags.Ordered()) result.Diagnostics.Add(diag.ToString());
+        foreach (var diag in c.Diags.Ordered()) result.Diagnostics.Add(diag);
         result.ErrorCount = c.Diags.ErrorCount;
         result.Ok = c.Diags.ErrorCount == 0;
         _result = result;
@@ -540,14 +540,20 @@ public sealed class Session
             }
             nodes[j + 1] = x;
         }
-        var errors = new List<string>();
+        var errors = new List<Diagnostic>();
+        var seen = new List<string>();
         foreach (var n in nodes)
         {
-            var d = new Diagnostic("TCS1001", "unsupported syntax: " + n.Kind, n.File, n.Pos, true).ToString();
-            if (!errors.Contains(d)) errors.Add(d);
+            var d = new Diagnostic("TCS1001", "unsupported syntax: " + n.Kind, n.File, n.Pos, true);
+            string text = d.ToString();
+            if (seen.Contains(text)) continue;
+            seen.Add(text);
+            errors.Add(d);
         }
-        if (_entry != "") EntryClass.Resolve(c, _entry, errors);
-        foreach (var ie in export.InternalErrors) errors.Add("internal: " + ie);
+        var entryErrors = new List<string>();
+        if (_entry != "") EntryClass.Resolve(c, _entry, entryErrors);
+        foreach (var e in entryErrors) errors.Add(Diagnostic.Plain(e));
+        foreach (var ie in export.InternalErrors) errors.Add(Diagnostic.Plain("internal: " + ie));
         foreach (var e in errors) result.Diagnostics.Add(e);
         return errors.Count > 0;
     }

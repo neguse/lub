@@ -425,7 +425,7 @@ public static class ApiModelLoader
         var result = session.Compile();
         foreach (var d in result.Diagnostics)
         {
-            if (!d.Contains(": warning ") && !d.StartsWith("warning ")) errors.Add(d);
+            if (d.IsError) errors.Add(d.ToString());
         }
         var c = session.Declarations;
         var namespaces = new List<ApiNamespace>();

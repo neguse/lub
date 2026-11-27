@@ -49,7 +49,7 @@ endif()
 set(LUB_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 file(GLOB TCS_SELF_SOURCES CONFIGURE_DEPENDS
   "${LUB_ROOT}/src/tcs/Compiler/*.cs" "${LUB_ROOT}/src/tcs/CBackend/*.cs"
-  "${LUB_ROOT}/src/tcs/VmBackend/*.cs" "${LUB_ROOT}/src/tcs/Tool/*.cs")
+  "${LUB_ROOT}/src/tcs/VmBackend/*.cs" "${LUB_ROOT}/src/tcs/Api/*.cs" "${LUB_ROOT}/src/tcs/Tool/*.cs")
 # The runtime C that `tcs c` embeds in tcs.c
 file(GLOB_RECURSE TCS_RUNTIME_SOURCES CONFIGURE_DEPENDS "${LUB_ROOT}/src/tcs-runtime/*.c" "${LUB_ROOT}/src/tcs-runtime/*.h")
 set(TCS_C_DIR "${CMAKE_CURRENT_BINARY_DIR}/tcs")

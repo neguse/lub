@@ -178,10 +178,10 @@ public partial class TinyCsComplianceAnalyzerTests
         var session = new Tcs.Session("");
         session.Add("parity.cs", source, 0);
         session.Add("TinySystem/Linq.cs", LinqTree.Value.GetText().ToString(), 2);
+        const string prefix = "unsupported syntax: ";
         var transpiler = session.Compile().Diagnostics
-            .Select(line => Regex.Match(line, @"\((\d+,\d+)\): error TCS1001: unsupported syntax: (.*)$"))
-            .Where(m => m.Success)
-            .Select(m => $"{m.Groups[1].Value}: {m.Groups[2].Value}")
+            .Where(d => d.IsError && d.Code == "TCS1001" && d.Message.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(d => $"{d.Line},{d.Column}: {d.Message[prefix.Length..]}")
             .Order().ToList();
 
         Assert.NotEmpty(transpiler);

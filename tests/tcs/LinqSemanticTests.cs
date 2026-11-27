@@ -35,7 +35,7 @@ public class LinqSemanticTests
         foreach (var tree in TcsLibrary.LibraryTrees)
             session.Add(tree.FilePath, tree.GetText().ToString(),
                 tree.FilePath.EndsWith("ValueTuple.cs", StringComparison.Ordinal) ? 2 : 0);
-        var unsupported = session.Compile().Diagnostics.Where(d => d.Contains(" TCS")).ToList();
+        var unsupported = session.Compile().Diagnostics.Select(d => d.ToString()).Where(d => d.Contains(" TCS")).ToList();
         Assert.True(unsupported.Count == 0, string.Join("\n", unsupported));
     }
 
