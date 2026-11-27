@@ -17,7 +17,7 @@ case "$(uname -s)" in
 esac
 "$here/to-c.sh" "$dir/tcs.c"
 mapfile -t flags < <("$here/cflags.sh")
-"${CC:-cc}" "${flags[@]}" -I "$dir" "$here/Native/host.c" -o "$dir/tcs$exe" ${libm[@]+"${libm[@]}"}
+"${CC:-cc}" "${flags[@]}" -I "$dir" "$here/Native/main.c" -o "$dir/tcs$exe" ${libm[@]+"${libm[@]}"}
 # Files of an earlier build that are no longer shipped do not stay
 rm -rf "$dir/runtime" "$dir/lib"
 "$here/ship.sh" "$dir"

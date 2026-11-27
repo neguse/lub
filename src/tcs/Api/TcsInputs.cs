@@ -24,18 +24,20 @@ public sealed class TcsInputs
         References.Add(text);
     }
 
-    // Reads the file and adds it as a source. false if it does not exist
+    // Reads the file and adds it as a source. false if it cannot be read
     public bool SourceFile(string path)
     {
-        if (!TcsHost.FileExists(path)) return false;
-        Source(path, TcsHost.ReadFile(path));
+        string? text = TcsFiles.Read(path);
+        if (text == null) return false;
+        Source(path, text);
         return true;
     }
 
     public bool ReferenceFile(string path)
     {
-        if (!TcsHost.FileExists(path)) return false;
-        Reference(TcsHost.ReadFile(path));
+        string? text = TcsFiles.Read(path);
+        if (text == null) return false;
+        Reference(text);
         return true;
     }
 
@@ -49,6 +51,6 @@ public sealed class TcsInputs
     public static void AddReferences(Session session, List<string> references)
     {
         foreach (var r in references) session.Add("", r, 1);
-        foreach (var lib in Library) session.Add(lib, TcsHost.ToolFile("lib/" + lib), 2);
+        foreach (var lib in Library) session.Add(lib, TcsFiles.Shipped("lib/" + lib) ?? "", 2);
     }
 }

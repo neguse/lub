@@ -1,40 +1,10 @@
 using System;
 using System.IO;
-using System.Threading;
 using System.Text;
 
-// .NET implementation of the OS functions of the tcs host (Tool) (C: Native/host.c)
-public static class TcsHost
+// .NET implementation of what tcs asks of the outside about files (the declarations are in Api/TcsFiles.cs; C: Native/files.c)
+public static class TcsFiles
 {
-    private static string[] _args = [];
-    private static int _exitCode;
-    private static bool _done;
-
-    // The CLI (Tcs.Cli) and host state are static, so concurrent calls in the same process run one at a time (tests call Program.Main in parallel)
-    private static readonly object Gate = new();
-
-    // Runs the CLI to completion and returns the exit code
-    public static int Run(string[] args) => Run(args, Tcs.Cli.Start, Tcs.Cli.Step);
-
-    // Runs another TinyC# program that uses TcsHost (lub-gen etc.) the same way: call start once, then step until SetDone
-    public static int Run(string[] args, Action start, Action step)
-    {
-        lock (Gate)
-        {
-            _args = args;
-            _exitCode = 0;
-            _done = false;
-            start();
-            while (!_done) step();
-            Console.Out.Flush();
-            return _exitCode;
-        }
-    }
-
-    public static int ArgCount() => _args.Length;
-    public static string Arg(int index) => _args[index];
-    public static bool FileExists(string path) => File.Exists(path);
-
     // Whether both are existing files with the same absolute path after following all links (Windows and macOS are case-insensitive)
     public static bool SameFile(string a, string b)
     {
@@ -76,13 +46,13 @@ public static class TcsHost
         return Path.TrimEndingDirectorySeparator(current);
     }
 
-    public static string ReadFile(string path)
+    public static string? Read(string path)
     {
-        try { return File.ReadAllText(path); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return ""; }
+        try { return File.Exists(path) ? File.ReadAllText(path) : null; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return null; }
     }
 
-    public static string WriteFileAtomic(string path, string text)
+    public static string WriteText(string path, string text)
     {
         try
         {
@@ -97,7 +67,7 @@ public static class TcsHost
     }
 
     // Writes a string with one char per byte (0-255) as bytes in Latin-1 (strings in the C host are raw byte sequences)
-    public static string WriteBinaryAtomic(string path, string bytes)
+    public static string WriteBytes(string path, string bytes)
     {
         try
         {
@@ -111,11 +81,7 @@ public static class TcsHost
         }
     }
 
-    public static void WriteOut(string text) => Console.Out.Write(text);
-    public static void WriteErr(string text) => Console.Error.Write(text);
-    public static void FlushOut() => Console.Out.Flush();
-
-    public static string FileStamp(string path)
+    public static string Stamp(string path)
     {
         try
         {
@@ -128,20 +94,16 @@ public static class TcsHost
         }
     }
 
-    public static string ToolFile(string name)
+    // lib/ is embedded in the assembly, and runtime/ is next to it
+    public static string? Shipped(string name)
     {
         if (name.StartsWith("lib/", StringComparison.Ordinal))
         {
-            using var stream = typeof(TcsHost).Assembly.GetManifestResourceStream(name);
-            if (stream == null) return "";
+            using var stream = typeof(TcsFiles).Assembly.GetManifestResourceStream(name);
+            if (stream == null) return null;
             using var reader = new StreamReader(stream, Encoding.UTF8);
             return reader.ReadToEnd();
         }
-        var path = Path.Combine(AppContext.BaseDirectory, name);
-        return File.Exists(path) ? File.ReadAllText(path) : "";
+        return Read(Path.Combine(AppContext.BaseDirectory, name));
     }
-
-    public static void Sleep(int milliseconds) => Thread.Sleep(milliseconds);
-    public static void SetExitCode(int code) => _exitCode = code;
-    public static void SetDone() => _done = true;
 }

@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// Edits that hot reload cannot apply live (the rule table in docs/tcs/hot-reload-design.md §11, Tool/ReloadRules.cs).
+// Edits that hot reload cannot apply live (the rule table in docs/tcs/hot-reload-design.md §11, VmBackend/ReloadRules.cs).
 // The tcs VM reload (tcs vm --reload-from, --watch, VmSession) splits edits into restart / live from the IL types with the same rules.
 // Actual migration of live edits: VmReloadTests and VmReloadCaseTests in tests/tcs-backends
 public class ReloadRulesTests

@@ -3,53 +3,49 @@ using System.Collections.Generic;
 namespace Tcs;
 
 // The tcs CLI (`tcs check`, `tcs c`, `tcs vm`).
-// The host (C, .NET, wasm) calls Start once, then Step repeatedly until SetDone arrives.
-// In the C build (tcs2c), each return from an entry is a GC frame boundary, so the compile advances only one step per Step
+// The program that runs it (Native/main.c, Dotnet/Program.cs) gives each command line argument to Arg, then calls Step until it returns the exit code.
+// In the C build, each return from an entry is a GC frame boundary, so the compile advances only one step per Step
 public static class Cli
 {
     public const string Version = "0.1.0";
 
-    // The current job (only one of them; tcs2c has no inheritance, so there is a field per type)
+    private static List<string> _args = new List<string>();
+    private static bool _begun;
+    // The current job (only one of them; tcs has no inheritance, so there is a field per type)
     private static CheckRun? _check;
     private static CRun? _cRun;
     private static VmRun? _vmRun;
 
-    public static void Start()
+    // One command line argument (the executable name is not included)
+    public static void Arg(string text)
     {
-        var args = new List<string>();
-        int n = TcsHost.ArgCount();
-        for (int i = 0; i < n; i++) args.Add(TcsHost.Arg(i));
-        Clear();
-        int code = Begin(args);
-        if (code >= 0) Finish(code);
+        _args.Add(text);
     }
 
-    public static void Step()
+    // The exit code when finished, -1 to continue
+    public static int Step()
     {
         int code;
-        if (_check != null) code = _check.Step();
+        if (!_begun)
+        {
+            _begun = true;
+            code = Begin(_args);
+        }
+        else if (_check != null) code = _check.Step();
         else if (_cRun != null) code = _cRun.Step();
         else if (_vmRun != null) code = _vmRun.Step();
-        else
-        {
-            TcsHost.SetDone();
-            return;
-        }
-        if (code >= 0) Finish(code);
+        else code = 0;
+        if (code >= 0) Clear();
+        return code;
     }
 
     private static void Clear()
     {
+        _args = new List<string>();
+        _begun = false;
         _check = null;
         _cRun = null;
         _vmRun = null;
-    }
-
-    private static void Finish(int code)
-    {
-        Clear();
-        TcsHost.SetExitCode(code);
-        TcsHost.SetDone();
     }
 
     // The exit code if finished, -1 if continuing with Step
@@ -60,16 +56,16 @@ public static class Cli
         if (args.Count > 0 && args[0] == "vm") return BeginVm(args);
         if (args.Count == 1 && (args[0] == "--help" || args[0] == "-h"))
         {
-            TcsHost.WriteOut(Usage());
+            CliProcess.Out(Usage());
             return 0;
         }
         if (args.Count == 1 && args[0] == "--version")
         {
-            TcsHost.WriteOut("tcs " + Version + "\n");
+            CliProcess.Out("tcs " + Version + "\n");
             return 0;
         }
         // Invocation without a subcommand (including no arguments)
-        TcsHost.WriteErr(Usage());
+        CliProcess.Err(Usage());
         return 1;
     }
 
@@ -89,19 +85,20 @@ public static class Cli
             else return Error("unknown option for check: " + a);
         }
         if (o.InputPaths.Count == 0) return Error("no input file specified");
+        var job = TcsCompile.Check();
         foreach (var p in o.InputPaths)
         {
-            if (!TcsHost.FileExists(p)) return Error("file not found: " + p);
+            if (!job.Inputs.SourceFile(p)) return Error("file not found: " + p);
         }
         foreach (var p in o.RefPaths)
         {
-            if (!TcsHost.FileExists(p)) return Error("ref file not found: " + p);
+            if (!job.Inputs.ReferenceFile(p)) return Error("ref file not found: " + p);
         }
-        _check = new CheckRun(o);
+        _check = new CheckRun(job);
         return -1;
     }
 
-    // `tcs c`: C backend. Tool/CRun.cs
+    // `tcs c`: C backend. Cli/CRun.cs
     private static int BeginC(List<string> args)
     {
         var o = new COptions();
@@ -110,7 +107,7 @@ public static class Cli
             string a = args[i];
             if (a == "-h" || a == "--help")
             {
-                TcsHost.WriteOut(COptions.Usage + "\n");
+                CliProcess.Out(COptions.Usage + "\n");
                 return 0;
             }
             if (a == "-o" || a == "--output" || a == "--entry" || a == "--ref")
@@ -132,7 +129,7 @@ public static class Cli
         return -1;
     }
 
-    // `tcs vm`: tcs VM .tcsb. Tool/VmRun.cs
+    // `tcs vm`: tcs VM .tcsb. Cli/VmRun.cs
     private static int BeginVm(List<string> args)
     {
         var o = new VmOptions();
@@ -141,7 +138,7 @@ public static class Cli
             string a = args[i];
             if (a == "-h" || a == "--help")
             {
-                TcsHost.WriteOut(VmOptions.Usage + "\n");
+                CliProcess.Out(VmOptions.Usage + "\n");
                 return 0;
             }
             if (a == "-o" || a == "--entry" || a == "--export" || a == "--reload-from" || a == "--plan" || a == "--batch" || a == "--ref" || a == "--inputs-from" || a == "--trace")
@@ -173,24 +170,24 @@ public static class Cli
         if (output == "") return "";
         foreach (var p in a)
         {
-            if (p == output || TcsHost.SameFile(p, output)) return "output " + output + " is the input file " + p + " (not overwritten)";
+            if (p == output || TcsFiles.SameFile(p, output)) return "output " + output + " is the input file " + p + " (not overwritten)";
         }
         foreach (var p in b)
         {
-            if (p == output || TcsHost.SameFile(p, output)) return "output " + output + " is the input file " + p + " (not overwritten)";
+            if (p == output || TcsFiles.SameFile(p, output)) return "output " + output + " is the input file " + p + " (not overwritten)";
         }
         return "";
     }
 
     public static int CError(string message)
     {
-        TcsHost.WriteErr("tcs c: " + message + "\n");
+        CliProcess.Err("tcs c: " + message + "\n");
         return 1;
     }
 
     public static int Error(string message)
     {
-        TcsHost.WriteErr("Error: " + message + "\n");
+        CliProcess.Err("Error: " + message + "\n");
         return 1;
     }
 
@@ -223,31 +220,23 @@ public sealed class CheckOptions
 // tcs check: the checks of TcsCompile.Check. Step returns the exit code, or -1 to continue
 public sealed class CheckRun
 {
-    private TcsCompile? _job;
-    private CheckOptions _o;
+    private TcsCompile _job;
 
-    public CheckRun(CheckOptions o)
+    public CheckRun(TcsCompile job)
     {
-        _o = o;
+        _job = job;
     }
 
     public int Step()
     {
-        if (_job == null)
-        {
-            var job = TcsCompile.Check();
-            foreach (var p in _o.InputPaths) job.Inputs.SourceFile(p);
-            foreach (var p in _o.RefPaths) job.Inputs.ReferenceFile(p);
-            _job = job;
-        }
         var result = _job.Step();
         if (result == null) return -1;
         int warnings = 0;
-        foreach (var d in result.Blocking) TcsHost.WriteErr(d.ToString() + "\n");
+        foreach (var d in result.Blocking) CliProcess.Err(d.ToString() + "\n");
         foreach (var d in result.Diagnostics)
         {
             if (d.IsError) continue;
-            TcsHost.WriteErr(d.ToString() + "\n");
+            CliProcess.Err(d.ToString() + "\n");
             warnings++;
         }
         return result.Blocking.Count == 0 && warnings == 0 ? 0 : 1;

@@ -1,252 +1,81 @@
 /* Exposes the tcs compiler (the functions in src/Tcs.ref.cs) as a native
  * extension of the tcs VM player. Includes tcs.c, which is tcs (Compiler,
- * CBackend, VmBackend and Tool in src/tcs) converted to C with tcs2c,
- * and implements the tcs host functions (src/tcs/Tool/TcsHost.cs).
- * Requests follow src/tcs/Tool/Sessions.cs: arguments are queued with
- * Tcs.Arg, Tcs.Call processes the request, and the response lines are received.
- * Files are read and written with the standard C functions; on the web
- * (emscripten) they are virtual files (MEMFS). The lider player
- * (native/CMakeLists.txt) links it statically (the entry point is named
- * lub_vm_extension_tcs). lub's stock lub_vm loads src/Tcs.so built by
- * scripts/build-native.sh. */
+ * CBackend, VmBackend, Api and Cli in src/tcs) converted to C with `tcs c`,
+ * and implements what tcs asks of the outside: files with the functions shared
+ * with the tcs CLI (src/tcs/Native/files_tcs.c), and the rest here.
+ * Requests follow src/tcs/Cli/Sessions.cs: the words of a request are given
+ * with Tcs.Arg, Tcs.Call processes the request, and the reply lines are
+ * received. On the web (emscripten) the files are virtual files (MEMFS).
+ * The lider player (native/CMakeLists.txt) links it statically (the entry
+ * point is named lub_vm_extension_tcs). lub's stock lub_vm loads src/Tcs.so
+ * built by scripts/build-native.sh. */
 #include "tcs.c"
 
+#include "files_tcs.c"
 #include "tcs_tool_files.h"
 #include <lub/lub_vm_extension.h>
-#include <string.h>
-#include <sys/stat.h>
-#ifdef _WIN32
-#include <direct.h>
-#else
-#include <unistd.h>
-#endif
 
 static const LubVmExtensionApi *api;
 
-typedef struct HostBytes {
-  char *data;
-  size_t length;
-} HostBytes;
+/* What Sessions.Call wrote: the reply of the request */
+static char *reply;
+static size_t reply_length;
+static size_t reply_capacity;
 
-static HostBytes *host_args;
-static int host_arg_count;
-static int host_arg_capacity;
-static char *host_out;
-static size_t host_out_length;
-static size_t host_out_capacity;
-
-static TcsString *host_string(const char *data, size_t length) {
-  return tcs_string_new((const unsigned char *)data, length);
-}
-
-static char *host_cstring(TcsString *s) {
-  char *out = malloc(s->length + 1);
-  if (out == NULL)
-    tcs_fault("out-of-memory");
-  memcpy(out, s->data, s->length);
-  out[s->length] = 0;
-  return out;
-}
-
-static TcsString *host_error(const char *what, const char *path) {
-  size_t n = strlen(what) + strlen(path) + 3;
-  char *text = malloc(n);
-  if (text == NULL)
-    tcs_fault("out-of-memory");
-  snprintf(text, n, "%s: %s", what, path);
-  TcsString *s = host_string(text, strlen(text));
-  free(text);
-  return s;
-}
-
-/* Creates the parent directories of path */
-static void host_mkdirs(const char *path) {
-  char *dir = strdup(path);
-  if (dir == NULL)
-    tcs_fault("out-of-memory");
-  for (char *p = dir + 1; *p; p++) {
-    if (*p != '/' && *p != '\\')
-      continue;
-    char c = *p;
-    *p = 0;
-#ifdef _WIN32
-    _mkdir(dir);
-#else
-    mkdir(dir, 0777);
-#endif
-    *p = c;
-  }
-  free(dir);
-}
-
-int32_t tcs_host_tcshost_arg_count(void) { return host_arg_count; }
-
-TcsString *tcs_host_tcshost_arg(int32_t index) {
-  return host_string(host_args[index].data, host_args[index].length);
-}
-
-bool tcs_host_tcshost_file_exists(TcsString *path) {
-  char *name = host_cstring(path);
-  struct stat st;
-  bool found = stat(name, &st) == 0 && (st.st_mode & S_IFMT) == S_IFREG;
-  free(name);
-  return found;
-}
-
-bool tcs_host_tcshost_same_file(TcsString *a, TcsString *b) {
-  char *x = host_cstring(a);
-  char *y = host_cstring(b);
-  struct stat sx, sy;
-  bool same = stat(x, &sx) == 0 && stat(y, &sy) == 0;
-#ifdef _WIN32
-  same = same && strcmp(x, y) == 0;
-#else
-  same = same && sx.st_dev == sy.st_dev && sx.st_ino == sy.st_ino;
-#endif
-  free(x);
-  free(y);
-  return same;
-}
-
-TcsString *tcs_host_tcshost_read_file(TcsString *path) {
-  char *name = host_cstring(path);
-  FILE *f = fopen(name, "rb");
-  free(name);
-  if (f == NULL)
-    return host_string("", 0);
-  fseek(f, 0, SEEK_END);
-  long size = ftell(f);
-  fseek(f, 0, SEEK_SET);
-  char *data = malloc(size > 0 ? (size_t)size : 1);
-  if (data == NULL)
-    tcs_fault("out-of-memory");
-  size_t got = size > 0 ? fread(data, 1, (size_t)size, f) : 0;
-  fclose(f);
-  TcsString *text = host_string(data, got);
-  free(data);
-  return text;
-}
-
-/* Writes to a temporary file in the same directory, then replaces the target.
- * Returns the reason on failure ("" on success) */
-TcsString *tcs_host_tcshost_write_file_atomic(TcsString *path,
-                                              TcsString *text) {
-  char *name = host_cstring(path);
-  host_mkdirs(name);
-  size_t n = strlen(name) + 5;
-  char *temp = malloc(n);
-  if (temp == NULL)
-    tcs_fault("out-of-memory");
-  snprintf(temp, n, "%s.tmp", name);
-  TcsString *failure = host_string("", 0);
-  FILE *f = fopen(temp, "wb");
-  if (f == NULL)
-    failure = host_error("cannot write", temp);
-  else {
-    bool ok = fwrite(text->data, 1, text->length, f) == text->length;
-    ok = fclose(f) == 0 && ok;
-#ifdef _WIN32
-    remove(name);
-#endif
-    if (!ok || rename(temp, name) != 0) {
-      remove(temp);
-      failure = host_error("cannot write", name);
-    }
-  }
-  free(temp);
-  free(name);
-  return failure;
-}
-
-TcsString *tcs_host_tcshost_write_binary_atomic(TcsString *path,
-                                                TcsString *bytes) {
-  return tcs_host_tcshost_write_file_atomic(path, bytes);
-}
-
-void tcs_host_tcshost_write_out(TcsString *text) {
-  if (host_out_length + text->length + 1 > host_out_capacity) {
-    size_t cap = host_out_capacity ? host_out_capacity : 4096;
-    while (cap < host_out_length + text->length + 1)
-      cap *= 2;
-    host_out = realloc(host_out, cap);
-    if (host_out == NULL)
-      tcs_fault("out-of-memory");
-    host_out_capacity = cap;
-  }
-  memcpy(host_out + host_out_length, text->data, text->length);
-  host_out_length += text->length;
-  host_out[host_out_length] = 0;
-}
-
-void tcs_host_tcshost_write_err(TcsString *text) {
-  fwrite(text->data, 1, text->length, stderr);
-}
-
-void tcs_host_tcshost_flush_out(void) {}
-
-TcsString *tcs_host_tcshost_file_stamp(TcsString *path) {
-  char *name = host_cstring(path);
-  struct stat st;
-  char stamp[64] = "";
-  if (stat(name, &st) == 0)
-    snprintf(stamp, sizeof stamp, "%lld:%lld", (long long)st.st_mtime,
-             (long long)st.st_size);
-  free(name);
-  return host_string(stamp, strlen(stamp));
-}
-
-/* Files shipped with tcs (lib/TinySystem/*.cs). Embedded at build time
+/* Files shipped with tcs (the library in lib/). Embedded at build time
  * (tcs_tool_files.h) */
-TcsString *tcs_host_tcshost_tool_file(TcsString *name) {
+TcsString *tcs_host_tcsfiles_shipped(TcsString *name) {
   for (size_t i = 0; i < sizeof tcs_tool_files / sizeof tcs_tool_files[0];
        i++) {
     const TcsToolFile *t = &tcs_tool_files[i];
     if (strlen(t->name) == name->length &&
         memcmp(t->name, name->data, name->length) == 0)
-      return host_string((const char *)t->data, t->length);
+      return tcs_files_string((const char *)t->data, t->length);
   }
-  return host_string("", 0);
+  return NULL;
 }
 
-void tcs_host_tcshost_sleep(int32_t milliseconds) { (void)milliseconds; }
+void tcs_host_cliprocess_out(TcsString *text) {
+  if (reply_length + text->length + 1 > reply_capacity) {
+    size_t cap = reply_capacity ? reply_capacity : 4096;
+    while (cap < reply_length + text->length + 1)
+      cap *= 2;
+    reply = realloc(reply, cap);
+    if (reply == NULL)
+      tcs_fault("out-of-memory");
+    reply_capacity = cap;
+  }
+  memcpy(reply + reply_length, text->data, text->length);
+  reply_length += text->length;
+  reply[reply_length] = 0;
+}
 
-void tcs_host_tcshost_set_exit_code(int32_t code) { (void)code; }
+void tcs_host_cliprocess_err(TcsString *text) {
+  fwrite(text->data, 1, text->length, stderr);
+}
 
-void tcs_host_tcshost_set_done(void) {}
+void tcs_host_cliprocess_flush(void) {}
 
-/* Appends a VM string to the end of the arguments */
+void tcs_host_cliprocess_sleep(int32_t milliseconds) { (void)milliseconds; }
+
+/* Gives one word of a request (a VM string) to tcs. Returning from the entry
+ * is a GC frame boundary of the C runtime */
 static TvmStatus f_arg(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   (void)vm;
   (void)rets;
   (void)user;
   size_t len = 0;
   const char *data = args[0].p ? api->string_data(args[0].p, &len) : "";
-  if (host_arg_count == host_arg_capacity) {
-    host_arg_capacity = host_arg_capacity ? host_arg_capacity * 2 : 16;
-    host_args =
-        realloc(host_args, sizeof(HostBytes) * (size_t)host_arg_capacity);
-    if (host_args == NULL)
-      tcs_fault("out-of-memory");
-  }
-  HostBytes b = {malloc(len > 0 ? len : 1), len};
-  if (b.data == NULL)
-    tcs_fault("out-of-memory");
-  memcpy(b.data, data, len);
-  host_args[host_arg_count++] = b;
+  tcs_entry_Tcs_Sessions_Arg(tcs_files_string(data, len));
   return TVM_OK;
 }
 
-/* Processes one request with the queued arguments, returns the response and
- * clears the arguments. Returning from entry is a tcs2c GC frame boundary */
+/* Processes the request made of the words given so far and returns the reply */
 static TvmStatus f_call(TvmVm *vm, TvmSlot *args, TvmSlot *rets, void *user) {
   (void)user;
-  host_out_length = 0;
+  reply_length = 0;
   tcs_entry_Tcs_Sessions_Call();
-  for (int i = 0; i < host_arg_count; i++)
-    free(host_args[i].data);
-  host_arg_count = 0;
-  *(void **)args[0].p =
-      api->string_new(vm, host_out ? host_out : "", host_out_length);
+  *(void **)args[0].p = api->string_new(vm, reply ? reply : "", reply_length);
   rets[0].i = 1;
   return TVM_OK;
 }

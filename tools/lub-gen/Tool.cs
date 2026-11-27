@@ -22,28 +22,31 @@ namespace LubGen;
 // Stub classes have no inheritance; struct records hold only int/float/bool/enum
 // and nested struct records (no positional params, non-nullable in params/out/return).
 // LUB_NOT_FOUND maps to null (zero value for struct records) across VM, tcs2c, and .NET.
-// Written in TinyC# and run together with the tcs compiler (Compiler) as C (tcs c) or on .NET. OS access goes through tcs's TcsHost.
+// Written in TinyC# and run together with the tcs compiler (Compiler) as C (tcs c) or on .NET. OS access goes through tcs's TcsFiles and CliProcess.
 public static class Tool
 {
-    public static void Start()
+    private static List<string> _args = new List<string>();
+
+    // One command line argument
+    public static void Arg(string text)
     {
-        TcsHost.SetExitCode(Run());
-        TcsHost.FlushOut();
-        TcsHost.SetDone();
+        _args.Add(text);
     }
 
-    // Everything is done in Start, so Step is never called
-    public static void Step()
+    // Everything is done in one step. Returns the exit code
+    public static int Step()
     {
-        TcsHost.SetDone();
+        var args = _args;
+        _args = new List<string>();
+        int code = Run(args);
+        CliProcess.Flush();
+        return code;
     }
 
-    private static void Err(string text) => TcsHost.WriteErr(text + "\n");
+    private static void Err(string text) => CliProcess.Err(text + "\n");
 
-    private static int Run()
+    private static int Run(List<string> args)
     {
-        var args = new List<string>();
-        for (int i = 0; i < TcsHost.ArgCount(); i++) args.Add(TcsHost.Arg(i));
         string verb = args.Count > 0 ? args[0] : "check";
         string? outPath = null;
         string stubPath = "cs-lib/lub_stub.cs";
@@ -62,13 +65,13 @@ public static class Tool
             }
         }
 
-        if (!TcsHost.FileExists(stubPath))
+        string? stubText = TcsFiles.Read(stubPath);
+        if (stubText == null)
         {
             Err("stub not found: " + stubPath + " (run from the repo root)");
             return 2;
         }
 
-        string stubText = TcsHost.ReadFile(stubPath);
         var compileErrors = new List<string>();
         var model = ApiModelLoader.Load(stubPath, stubText, compileErrors);
         if (compileErrors.Count > 0)
@@ -87,7 +90,7 @@ public static class Tool
             case "tcs":
             {
                 var texts = new List<string>();
-                foreach (var s in sources) texts.Add(TcsHost.ReadFile(s));
+                foreach (var s in sources) texts.Add(TcsFiles.Read(s) ?? "");
                 var diagnostics = new List<string>();
                 var game = GameExport.Export(texts, stubText, diagnostics);
                 if (game == null || diagnostics.Count != 0)
@@ -109,7 +112,7 @@ public static class Tool
                 if (sources.Count > 0)
                 {
                     var texts = new List<string>();
-                    foreach (var s in sources) texts.Add(TcsHost.ReadFile(s));
+                    foreach (var s in sources) texts.Add(TcsFiles.Read(s) ?? "");
                     var diagnostics = new List<string>();
                     game = GameExport.Export(texts, stubText, diagnostics);
                     if (game == null || diagnostics.Count != 0)
@@ -165,10 +168,10 @@ public static class Tool
         }
         if (path == null)
         {
-            TcsHost.WriteOut(text);
+            CliProcess.Out(text);
             return 0;
         }
-        string error = TcsHost.WriteFileAtomic(path, text);
+        string error = TcsFiles.WriteText(path, text);
         if (error != "")
         {
             Err("lub-gen: " + error);

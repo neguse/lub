@@ -31,20 +31,19 @@ public sealed class CRun
     {
         if (_job == null)
         {
-            foreach (var p in _o.Inputs)
-            {
-                if (!TcsHost.FileExists(p)) return Cli.CError("could not find file: " + p);
-            }
-            // Do not overwrite an input with the output (stop without writing anything)
-            string clash = Cli.InputClash(_o.Output, _o.Inputs, _o.References);
-            if (clash != "") return Cli.CError(clash);
             var job = new TcsToC();
             job.Entry = _o.Entry;
             job.Lib = _o.Lib;
             job.VmHost = _o.VmHost;
             job.DigestF32 = _o.DigestF32;
-            foreach (var p in _o.Inputs) job.Inputs.SourceFile(p);
-            foreach (var r in _o.References) job.Inputs.Reference(TcsHost.ReadFile(r));
+            foreach (var p in _o.Inputs)
+            {
+                if (!job.Inputs.SourceFile(p)) return Cli.CError("could not find file: " + p);
+            }
+            // Do not overwrite an input with the output (stop without writing anything)
+            string clash = Cli.InputClash(_o.Output, _o.Inputs, _o.References);
+            if (clash != "") return Cli.CError(clash);
+            foreach (var r in _o.References) job.Inputs.Reference(TcsFiles.Read(r) ?? "");
             _job = job;
         }
         var result = _job.Step();
@@ -53,10 +52,10 @@ public sealed class CRun
         if (result.Failed) return Cli.CError("TinyC# diagnostics:\n" + string.Join("\n", result.ErrorLines()));
         if (_o.Output == "")
         {
-            TcsHost.WriteOut(result.Text);
+            CliProcess.Out(result.Text);
             return 0;
         }
-        string failure = TcsHost.WriteFileAtomic(_o.Output, result.Text);
+        string failure = TcsFiles.WriteText(_o.Output, result.Text);
         if (failure != "") return Cli.CError(failure);
         return 0;
     }
