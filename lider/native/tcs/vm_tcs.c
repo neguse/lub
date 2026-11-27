@@ -22,7 +22,7 @@ static char *reply;
 static size_t reply_length;
 static size_t reply_capacity;
 
-/* Files shipped with tcs (lib/TinySystem/*.cs). Embedded at build time
+/* Files shipped with tcs (the library in lib/). Embedded at build time
  * (tcs_tool_files.h) */
 TcsString *tcs_host_tcsfiles_shipped(TcsString *name) {
   for (size_t i = 0; i < sizeof tcs_tool_files / sizeof tcs_tool_files[0];

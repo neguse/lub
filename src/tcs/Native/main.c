@@ -5,7 +5,7 @@
    Cli/CliProcess.cs), gives each command line argument to the Arg entry, and
    calls the Step entry until it returns the exit code. Each return from an
    entry is a GC frame boundary of the C runtime.
-   Files shipped with the tool (lib/TinySystem/*.cs, the C in runtime/ that
+   Files shipped with the tool (the library in lib/, the C in runtime/ that
    tcs c embeds) are read from the dir in the TCS_HOME environment variable or
    from the executable's dir.
    compile: cc $(src/tcs/cflags.sh) -I <dir of tcs.c> main.c -o tcs -lm
