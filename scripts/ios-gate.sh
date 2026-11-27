@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# Apple regression gate: macOS Release build -> C smoke tests -> C# runtime
-# tests (tests/cs) -> visual goldens (Metal on the real GPU, within a tolerance of the
-# Linux goldens) -> shader cache round trip through a player without Slang
-# -> iOS build and a run on the simulator. Single source of truth shared by
-# the CI macos and ios jobs (.github/workflows/ci.yml) and manual runs on a
-# Mac.
+# iOS tests: builds the macOS player (it fills the shader cache), builds the iOS
+# app for the simulator, and runs the tests/cs tests meant for iOS there.
+# The CI ios job (.github/workflows/ios.yml) and manual runs on a Mac use it.
+# The macOS tests are run by the test runner (tests/lub-test).
 #
-# Needs bash 4+ (run-golden.sh uses mapfile / wait -n; macOS ships 3.2, so
-# `brew install bash`), CMake, Ninja, python3, and dotnet (the tests are C#).
-# The iOS step needs Xcode. iOS requires SDL 3.4+ (UIScene lifecycle on iOS 27),
+# Needs bash 4+ (mapfile; macOS ships 3.2, so `brew install bash`), CMake,
+# Ninja, python3, dotnet (the tests are C#) and Xcode (not only the Command
+# Line Tools). iOS requires SDL 3.4+ (UIScene lifecycle on iOS 27),
 # uses AVAudioSession ambient at 48 kHz, and writes test exit codes to
 # LUB_EXIT_FILE (verified alongside SpringBoard's `Process exited` log).
 # Capture runs size the Metal drawable to the requested ConfigOpts dimensions
@@ -19,49 +17,6 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-part=all
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --skip-ios)
-      part=mac
-      ;;
-    --part)
-      part="${2:-}"
-      shift
-      [[ $part == mac || $part == ios || $part == all ]] || {
-        echo "--part must be mac, ios or all" >&2
-        exit 2
-      }
-      ;;
-    -h|--help)
-      cat <<'EOF'
-Usage: scripts/apple-gate.sh [--part mac|ios|all] [--skip-ios]
-
-Runs the macOS / iOS regression gate (all parts by default).
-  --part mac   the macOS build, smoke tests, C# runtime tests, goldens and the
-               shader cache round trip (--skip-ios is the same)
-  --part ios   the macOS build (it fills the shader cache), the iOS build and
-               the simulator run. Needs Xcode, not only the Command Line Tools.
-CI runs the mac part in the macos job and the ios part in the ios job (ci.yml).
-EOF
-      exit 0
-      ;;
-    *)
-      echo "unknown arg: $1" >&2
-      exit 2
-      ;;
-  esac
-  shift
-done
-
-# APPLE_GATE_SHARD=k/n runs the k-th of n shares of the mac part (default 1/1,
-# everything; CI runs the shares as separate jobs). The C# runtime tests are
-# dealt out one by one, the other groups of checks one group per share.
-shard="${APPLE_GATE_SHARD:-1/1}"
-shard_k="${shard%/*}"
-shard_n="${shard#*/}"
-mine() { (((($1 - 1) % shard_n) == shard_k - 1)); }
-
 run() {
   echo
   echo "==> $*"
@@ -69,7 +24,6 @@ run() {
 }
 
 build=build-mac
-player=build-mac-player
 export LUB_BACKEND=metal
 # A failed SDL assertion would otherwise sit in a message box nobody clicks.
 export SDL_ASSERT="${SDL_ASSERT:-abort}"
@@ -96,77 +50,9 @@ sys.exit("no iPhone simulator is available")
 run bash scripts/build-release.sh --build-dir "$build"
 
 # The tests in tests/cs are C#, so tcs vm first builds all of tests/cs into one bytecode (tests/cs/.lub/all.tcsb), and then --entry selects the test to run.
-# The iOS app also gets the same bytecode.
 LUB_TCS="$(scripts/build-tcs-dotnet.sh)"
 export LUB_TCS
-# shellcheck source=scripts/cs-tests.sh
-source scripts/cs-tests.sh
-run cs_tests_vm_build
-
-if [[ $part != ios ]]; then
-  cs_shard_tests=()
-  for i in "${!cs_runtime_tests[@]}"; do
-    if ((i % shard_n == shard_k - 1)); then cs_shard_tests+=("${cs_runtime_tests[$i]}"); fi
-  done
-  echo
-  echo "==> C# runtime tests (${#cs_shard_tests[@]} of ${#cs_runtime_tests[@]}, share $shard)"
-  metal_test() { "./$build/lub" tests/cs/.lub/all.tcsb --entry "$1" "${cs_test_args[@]}" >"$2" 2>&1; }
-  cs_test_logs="$work/runtime" && mkdir -p "$cs_test_logs"
-  # The virtual GPU of the CI runner (Apple Paravirtual device) stops the command buffer with a GPU hang error when processes run in parallel, so run them one at a time
-  cs_run_tests 1 metal_test "${cs_shard_tests[@]}"
-fi
-
-if [[ $part != ios ]] && mine 1; then
-  for smoke in lub_physics_box2d_smoke lub_physics_box3d_smoke \
-    lub_surfacenets_smoke lub_sdf_smoke lub_shader_layout_smoke; do
-    run bash scripts/build-release.sh --build-dir "$build" --target "$smoke" --no-configure
-    run "./$build/$smoke"
-  done
-
-  run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestFixedDt --fixed-dt 0.0125
-  run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestFixedDt --fixed-dt 0.0166666666666667
-
-  # Each draw must render with its own state even without re-setting the pipeline, buffer and texture already set on the encoder.
-  run "./$build/lub" tests/cs/.lub/all.tcsb --entry TestDrawStateReuse "${cs_test_args[@]}"
-  # The frame in which a readback arrives is the same regardless of backend, and in the mode without that guarantee it does not wait for the GPU.
-  run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
-  run env LUB_BACKEND=metal "./$build/lub" tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
-fi
-
-if [[ $part != ios ]] && mine 2; then
-  run scripts/test-tcs-process-cleanup.sh "./$build/lub"
-
-  run env BINARY="./$build/lub" scripts/run-golden.sh
-fi
-
-if [[ $part != ios ]] && mine 3; then
-  # Shader cache: `lub export macos` fills a snapshot's cache, a player without
-  # Slang (what an iOS app is) run in the snapshot renders the same frame as
-  # the player with Slang run from the repository, and names the key when a
-  # shader is missing.
-  run bash scripts/build-release.sh --build-dir "$player" -DLUB_NO_SLANG=ON
-  player_bin="$PWD/$player/lub"
-  # The bytecode of a snapshot is <Entry>.tcsb
-  for cached in TestVertexPull TestDepthSample; do
-    run "./$build/lub" export macos tests/cs/.lub/all.tcsb --entry "$cached" -o "$work/export-$cached"
-    run "./$build/lub" tests/cs/.lub/all.tcsb --entry "$cached" \
-      --capture "$work/$cached-slang.png" "${capture[@]}"
-    (cd "$work/export-$cached" && run "$player_bin" "$cached.tcsb" \
-      --capture "$work/$cached-cache.png" "${capture[@]}")
-    run cmp "$work/$cached-slang.png" "$work/$cached-cache.png"
-  done
-  rm -r "$work/export-TestVertexPull/cache"
-  echo
-  echo "==> a missing shader is reported by its cache key"
-  (cd "$work/export-TestVertexPull" && "$player_bin" TestVertexPull.tcsb \
-    --capture "$work/miss.png" --capture-frame 2 --fixed-dt 0.0166666666666667) \
-    >"$work/miss.log" 2>&1 || true
-  if ! grep -q "this player has no shader compiler" "$work/miss.log"; then
-    sed 's/^/    /' "$work/miss.log"
-    echo "expected a shader cache miss error" >&2
-    exit 1
-  fi
-fi
+run scripts/tcs-cs-tests.sh vm
 
 # iOS: build the player app for the simulator and run it there. simctl does
 # not report the app's exit status, so the app writes it to the file named by
@@ -256,10 +142,6 @@ AND eventMessage CONTAINS \"$ios_bundle\" AND ($words)" | tail -n 40 | sed 's/^/
     2>/dev/null)
 }
 
-if [[ $part == mac ]]; then
-  echo
-  echo "==> iOS build and simulator run SKIPPED (--part mac)"
-else
   # A parent that goes through xcrun, such as /usr/bin/python3, puts the macOS SDK in SDKROOT, so sysroot is set explicitly.
   # The simulator build uses Ninja (the Xcode generator starts xcodebuild for every feature-check try_compile, and configure alone takes minutes).
   run env -u SDKROOT cmake -S . -B build-ios -G Ninja \
@@ -327,7 +209,6 @@ else
   if [[ $ios_failed -ne 0 ]]; then
     exit 1
   fi
-fi
 
 echo
-echo "apple gate OK"
+echo "ios gate OK"

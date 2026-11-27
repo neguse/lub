@@ -1,5 +1,5 @@
 // Checks that on a crash (SIGSEGV), the player prints the callback it was running and the frames of the C# call stack.
-// The expected output is ../expect-crash.txt (scripts/vm-project-test.sh compares them)
+// The expected output is ../expect-crash.txt (tests/lub-test compares them)
 using Lub;
 
 public static class Game

@@ -1,4 +1,4 @@
-// Checks hot reload in the tcs VM player (lub Game.csproj) (scripts/vm-project-test.sh copies it to a temporary directory and runs it).
+// Checks hot reload in the tcs VM player (lub Game.csproj) (tests/lub-test copies it to a temporary directory and runs it).
 // Rewriting the body of Advance, which OnFrame calls, applies the diff while keeping the state, and OnReload is called.
 // On a save that changes the initializer of an instance field, a notice reaches OnReloadNotes after OnReload, and live instances keep their current values.
 // On a save with a compile error, the diagnostics reach OnBuildFailed, and the previous code keeps running.

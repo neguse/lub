@@ -2,12 +2,12 @@
 //
 //   A9. Runs all tests/cs tests in the web player.
 //
-// The test list is cs_all_tests in scripts/cs-tests.sh; tests not run on the web are listed with a reason in cs_web_skip_tests in the same file.
+// The test list is tests/cs/tests.json; tests not run on the web are listed with a reason in webSkip in the same file.
 // Pass/fail is judged by the exit code, as on native.
 // The page does not return an exit code, so the value the runtime wrote to the file in env LUB_EXIT_FILE (MEMFS) is read.
 // Even if the exit code is 0, a WebGPU validation error or a page error counts as a failure.
 //
-// Usage (keep the dev server or preview running; first build tests/cs/.lub/all.tcsb with cs_tests_vm_build in scripts/cs-tests.sh):
+// Usage (keep the dev server or preview running; first build tests/cs/.lub/all.tcsb with scripts/tcs-cs-tests.sh vm):
 //   cd web && npm run dev
 //   cd web && LUB_URL=http://localhost:5173/ npm run verify [-- Test...]
 // Passing a test name runs only that test.
@@ -16,7 +16,6 @@
 //
 // Exits with code 1 on any failure.
 
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -28,23 +27,14 @@ const JOBS = Number(process.env.A9_JOBS || os.availableParallelism());
 const TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000);
 const REPO = path.resolve(import.meta.dirname, "..", "..");
 
-// Arrays in scripts/cs-tests.sh (bash set -u makes a missing name fail)
-function csTests(name) {
-  return execFileSync(
-    "bash",
-    [
-      "-c",
-      `source scripts/cs-tests.sh && set -u && printf '%s\\n' "\${${name}[@]}"`,
-    ],
-    { cwd: REPO, encoding: "utf8" },
-  )
-    .split("\n")
-    .filter(Boolean);
-}
-const ALL = csTests("cs_all_tests");
-const VISUAL = new Set(csTests("cs_visual_tests"));
-const SKIP = new Set(csTests("cs_web_skip_tests"));
-const TEST_ARGS = csTests("cs_test_args");
+// The list of the tests in tests/cs (tests/cs/tests.json): the web runs all of runtime, visual and special, except webSkip
+const CS = JSON.parse(
+  fs.readFileSync(path.join(REPO, "tests", "cs", "tests.json"), "utf8"),
+);
+const ALL = [...CS.runtime, ...CS.visual, ...Object.keys(CS.special)];
+const VISUAL = new Set(CS.visual);
+const SKIP = new Set(Object.keys(CS.webSkip));
+const TEST_ARGS = CS.args;
 
 // Pad for TestGamepad.
 // navigator.getGamepads returns one pad with the standard mapping (SDL picks up pads that already exist at init).
@@ -155,7 +145,7 @@ const FOLLOW_WINDOW = "player.html";
 // Tests with runs other than the default.
 // The value is the list of runs executed in order in one context; a run has label, argv (startup arguments added after cs_test_args), env (runtime environment variables), page (the player page to open), init (a script inserted before the page's script), and check (returns a failure reason from the result, or null).
 // Tests not listed here run once with only cs_test_args.
-// Tests that check rendering against golden images (cs_visual_tests) capture the same frame as the native golden and end; the image is checked by the native golden.
+// Tests that check rendering against golden images (visual in tests.json) capture the same frame as the native golden and end; the image is checked by the native golden.
 const RUNS = {
   TestFixedDt: ["0.0125", "0.0166666666666667"].map((dt) => ({
     label: dt,
@@ -219,7 +209,7 @@ for (const name of VISUAL)
 
 const unknown = [...Object.keys(RUNS), ...SKIP].filter((n) => !ALL.includes(n));
 if (unknown.length > 0) {
-  console.error("[verify] not in cs_all_tests:", unknown.join(" "));
+  console.error("[verify] not in tests/cs/tests.json:", unknown.join(" "));
   process.exit(1);
 }
 const only = process.argv.slice(2);
@@ -231,7 +221,7 @@ let index = 0;
 for (const name of ALL) {
   if (only.length > 0 && !only.includes(name)) continue;
   if (SKIP.has(name)) {
-    console.log(`[verify] SKIP A9 ${name} (cs_web_skip_tests)`);
+    console.log(`[verify] SKIP A9 ${name} (webSkip)`);
     continue;
   }
   if (index++ % SHARD_N !== SHARD_K - 1) continue;

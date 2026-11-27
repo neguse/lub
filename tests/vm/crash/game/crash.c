@@ -1,4 +1,4 @@
-// The native extension of tests/vm/crash (scripts/vm-project-test.sh builds it
+// The native extension of tests/vm/crash (tests/lub-test builds it
 // into Crash.so). Calling it crashes with SIGSEGV.
 #include <lub/lub_vm_extension.h>
 #include <signal.h>

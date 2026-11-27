@@ -1,5 +1,5 @@
 // Ui.Render draws using the UI shader of the runtime.
-// On the export backend, that shader is also compiled for the export target (native-gate.sh checks this).
+// On the export backend, that shader is also compiled for the export target (the export tests of tests/lub-test check this).
 using System;
 using Lub;
 

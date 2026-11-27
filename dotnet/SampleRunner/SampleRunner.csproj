@@ -15,14 +15,14 @@
     <OutputPath>bin/$(Sample)/</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <!-- Warnings in tests/cs are checked by tcs check (cs_tests_check in scripts/cs-tests.sh) and the IDE (the tests/cs project), so .NET warnings are not emitted here -->
+    <!-- Warnings in tests/cs are checked by tcs check (scripts/tcs-cs-tests.sh check) and the IDE (the tests/cs project), so .NET warnings are not emitted here -->
     <WarningLevel Condition="'$(Tests)' == 'true'">0</WarningLevel>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="../../samples/$(Sample)/*.cs" Link="sample/%(Filename)%(Extension)" Condition="'$(Tests)' != 'true'" />
-    <!-- Like cs_tests_sources in scripts/cs-tests.sh, excludes bin, obj, and directories starting with . -->
+    <!-- Like scripts/tcs-cs-tests.sh, excludes bin, obj, and directories starting with . -->
     <Compile Include="../../tests/cs/**/*.cs" Exclude="../../tests/cs/**/bin/**;../../tests/cs/**/obj/**;../../tests/cs/**/.*/**" Link="test/%(RecursiveDir)%(Filename)%(Extension)" Condition="'$(Tests)' == 'true'" />
     <Compile Include="../../cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../../cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />

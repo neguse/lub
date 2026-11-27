@@ -5,7 +5,7 @@
     <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- Demo that shows TinyC# diagnostics as warnings (run-tests.sh checks the count). Removes the Directory.Build.props setting that turns warnings into errors -->
+    <!-- Demo that shows TinyC# diagnostics as warnings (tests/lub-test checks the count). Removes the Directory.Build.props setting that turns warnings into errors -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
 
