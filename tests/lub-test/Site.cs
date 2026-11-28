@@ -15,6 +15,9 @@ public sealed class Site
     public string Os => Windows ? "windows" : Mac ? "macos" : "linux";
     public int Jobs { get; }
     public bool UpdateGoldens { get; init; }
+    /// <summary>How many inputs the fuzz tests generate, and the first seed (--fuzz-count, --fuzz-seed). null for the default of each test.</summary>
+    public int? FuzzCount { get; init; }
+    public int? FuzzSeed { get; init; }
     public string Logs { get; }
 
     private readonly ConcurrentDictionary<string, Lazy<Task>> _prepared = new();

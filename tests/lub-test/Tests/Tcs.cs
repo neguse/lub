@@ -20,6 +20,11 @@ public static class Tcs
         yield return Dotnet("tcs.backends.2", "tests/tcs-backends", In("TinyCs.Tcs2c.Tests", Backends2));
         yield return Dotnet("tcs.backends.3", "tests/tcs-backends", Out("TinyCs.Tcs2c.Tests", [.. Backends1, .. Backends2]));
 
+        // The long fuzz sweeps, started by a person (--label fuzz, with --fuzz-count and --fuzz-seed): generated programs on the tcs VM against real .NET,
+        // and generated pairs of versions for hot reload. The shares above run the same sweeps with a small count
+        yield return Sweep("tcs.fuzz.programs", "tests/tcs", "FuzzSweep");
+        yield return Sweep("tcs.fuzz.reload", "tests/tcs-backends", "FuzzReloadSweep");
+
         yield return new Test("tcs.samples-check", ["tcs", "tcs-scripts"], async run =>
         {
             foreach (var sample in new[] { "hello", "game", "inventory", "entity", "statemachine", "collision" })
@@ -38,6 +43,20 @@ public static class Tcs
                          "Dictionary<K,V> cannot store null values" })
                 run.Check(built.Text.Contains(text, StringComparison.Ordinal), "the analyzer output has no " + text);
         });
+
+        Test Sweep(string name, string project, string filter) => new(name, ["fuzz"], async run =>
+        {
+            await run.Site.Need("dotnet-build:" + project, () => run.Must("dotnet", ["build", project, "--verbosity", "minimal"], timeout: TimeSpan.FromMinutes(30)));
+            var env = new Dictionary<string, string?>
+            {
+                ["TCS_FUZZ"] = "1",
+                ["TCS_FUZZ_COUNT"] = (site.FuzzCount ?? 500).ToString(),
+                ["TCS_FUZZ_SEED"] = (site.FuzzSeed ?? 1000).ToString(),
+            };
+            var output = await run.Exec("dotnet", ["test", project, "--no-build", "--verbosity", "minimal", "--filter", filter], env, timeout: TimeSpan.FromHours(6));
+            run.Check(output.Ok, "dotnet test failed");
+        })
+        { Alone = true, OnRequest = true, Timeout = TimeSpan.FromHours(6) };
 
         Test Dotnet(string name, string project, string? filter) => new(name, ["tcs", "tcs-dotnet"], async run =>
         {

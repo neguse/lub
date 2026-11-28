@@ -105,6 +105,7 @@ public static class TcsVm
             }
         });
         yield return new Test("tcs.vm.watch", ["tcs", "tcs-scripts"], Watch);
+        yield return new Test("tcs.vm.fuzz-loader", ["tcs", "tcs-scripts", "fuzz"], FuzzLoader) { Timeout = TimeSpan.FromHours(6) };
 
         Test Program(string name, string[] sources, string entry, Func<Run, Task<string>> expected) =>
             new("tcs.vm." + name, ["tcs", "tcs-scripts"], async run => await RunProgram(run, name, sources, entry, await expected(run), null));
@@ -176,6 +177,83 @@ public static class TcsVm
             for (int i = 0; i < 4; i++) h = unchecked((h ^ ((bits >> (8 * i)) & 0xFF)) * 16777619);
         }
         return h.ToString("x8");
+    }
+
+    /// <summary>The robustness of loading (docs/tcs/vm-design.md §16): when a .tcsb is mutated, the loader and the verifier only return an error, or safely run
+    /// instruction sequences that passed the checks. The VM built with ASan and UBSan must never crash.
+    /// The seeds are the modules of the programs in tests/tcs-vm. An infinite loop is counted as a timeout (the checks do not guarantee termination).
+    /// --fuzz-count and --fuzz-seed give the number of mutations (default 300) and the seed.</summary>
+    private static async Task FuzzLoader(Run run)
+    {
+        var site = run.Site;
+        var build = site.Path_("build-tcs-vm-asan");
+        await site.Need("tcs-vm-asan", async () =>
+        {
+            await run.Must("cmake", ["-S", site.Path_("src", "tcs-vm"), "-B", build, "-DCMAKE_BUILD_TYPE=Debug",
+                "-DCMAKE_C_FLAGS=-O1 -fsanitize=address,undefined -fno-sanitize-recover=all"], timeout: TimeSpan.FromMinutes(10));
+            await run.Must("cmake", ["--build", build, "--target", "tcsvm", "--parallel"], timeout: TimeSpan.FromMinutes(20));
+        });
+        var vm = Path.Combine(build, "tcsvm");
+        var seeds = new List<byte[]>();
+        foreach (var source in Directory.GetFiles(site.Path_("tests", "tcs-vm"), "*.cs").Order(StringComparer.Ordinal))
+        {
+            var module = Path.Combine(run.Temp, Path.GetFileNameWithoutExtension(source) + ".tcsb");
+            await run.MustTcs(["vm", "--entry", Path.GetFileNameWithoutExtension(source), source, "-o", module]);
+            seeds.Add(File.ReadAllBytes(module));
+        }
+        int count = site.FuzzCount ?? 300;
+        var random = new Random(site.FuzzSeed ?? 1);
+        var mutated = Path.Combine(run.Temp, "m.tcsb");
+        int ok = 0, fault = 0, loadError = 0, timeout = 0;
+        var crashes = new List<string>();
+        for (int i = 0; i < count; i++)
+        {
+            var data = (byte[])seeds[random.Next(seeds.Count)].Clone();
+            if (random.NextDouble() < 0.1) data = data[..random.Next(data.Length)];
+            else
+            {
+                int[] changes = [1, 1, 2, 4, 16];
+                for (int k = changes[random.Next(changes.Length)]; k > 0; k--)
+                {
+                    int at = random.Next(data.Length);
+                    data[at] = random.NextDouble() < 0.5 ? (byte)random.Next(256) : (byte)(data[at] ^ (1 << random.Next(8)));
+                }
+            }
+            File.WriteAllBytes(mutated, data);
+            using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(vm, [mutated])
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            })!;
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            try
+            {
+                await process.WaitForExitAsync(limit.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                process.Kill();
+                await process.WaitForExitAsync();
+                timeout++;
+                continue;
+            }
+            await stdout;
+            var error = await stderr;
+            if (process.ExitCode == 0) ok++;
+            else if (process.ExitCode == 1 && error.Contains("fault:", StringComparison.Ordinal)) fault++;
+            else if (process.ExitCode == 1 && !error.Contains("Sanitizer", StringComparison.Ordinal) && !error.Contains("runtime error", StringComparison.Ordinal)) loadError++;
+            else
+            {
+                var kept = Path.Combine(run.Temp, $"crash_{i}.tcsb");
+                File.Copy(mutated, kept);
+                crashes.Add($"{kept}: exit {process.ExitCode}: {error[..Math.Min(error.Length, 400)]}");
+            }
+        }
+        run.Log($"mutations {count}: load error {loadError}, fault {fault}, ok {ok}, timeout {timeout}, crashes {crashes.Count}");
+        foreach (var crash in crashes.Take(5)) run.Log(crash);
+        run.Check(crashes.Count == 0, crashes.Count + " mutated modules crashed the VM");
     }
 
     /// <summary>The stream of tcs vm --watch (docs/tcs/vm-design.md §13.3) as its reader sees it: after the first output, the input is rewritten to v2,
