@@ -3,8 +3,8 @@ using System.Text;
 
 namespace LubTest;
 
-/// <summary>What a process run gave back: Text is stdout and stderr together in the order they came, Stdout is stdout alone.</summary>
-public sealed record Output(int ExitCode, string Text, string Stdout)
+/// <summary>What a process run gave back: Text is stdout and stderr together in the order they came, Stdout and Stderr are each alone.</summary>
+public sealed record Output(int ExitCode, string Text, string Stdout, string Stderr)
 {
     public bool Ok => ExitCode == 0;
 }
@@ -70,6 +70,7 @@ public sealed class Run(Site site, Test test, CancellationToken cancel)
             + (env is { Count: > 0 } ? " " : "") + exe + " " + string.Join(" ", info.ArgumentList));
         var text = new StringBuilder();
         var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
         using var process = new Process { StartInfo = info };
         void Take(string? line, bool isStdout)
         {
@@ -77,7 +78,7 @@ public sealed class Run(Site site, Test test, CancellationToken cancel)
             lock (text)
             {
                 text.Append(line).Append('\n');
-                if (isStdout) stdout.Append(line).Append('\n');
+                (isStdout ? stdout : stderr).Append(line).Append('\n');
             }
             Log(line);
         }
@@ -108,7 +109,7 @@ public sealed class Run(Site site, Test test, CancellationToken cancel)
         }
         // The readers finish after the exit
         process.WaitForExit();
-        lock (text) return new Output(process.ExitCode, text.ToString(), stdout.ToString());
+        lock (text) return new Output(process.ExitCode, text.ToString(), stdout.ToString(), stderr.ToString());
     }
 
     /// <summary>Starts a process and returns at once. The caller waits for it or kills it. Its output goes to the log and to Started.Text.</summary>

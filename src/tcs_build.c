@@ -95,7 +95,7 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
     roots[1] = exe_root;
   }
   // If there is no dotnet, use the C tcs built in the checkout (the output of
-  // src/tcs/native.sh)
+  // scripts/build-tcs-native.sh)
   for (int i = 0; !dotnet_on_path() && i < 2; i++) {
     if (!roots[i])
       continue;

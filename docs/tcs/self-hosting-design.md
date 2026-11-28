@@ -73,7 +73,6 @@ tcs/
   cflags.sh            tcs c が作る C を compile する flag
   shipped.txt、ship.sh  tcs と一緒に配る file の一覧と、それを置く script
   build-native.sh      native の tcs の build
-  native.sh            native の tcs の build と、.NET の tcs との比較、固定点 (§9.1)
   tcs.csproj           .NET の build (tcs.dll)
 tests/tcs/Entry/       テストが compiler と VM の backend を文字列で動かす入口 (Checker.cs、IlExport.cs、SelfHostVm.cs、VmSession.cs)
 tests/tcs-backends/SelfHostC.cs  テストが C の backend を文字列で動かす入口
@@ -120,7 +119,7 @@ tcs は 4 つの層に分かれ、依存は上から下の一方向である。
 | compiler | `Compiler/`、`CBackend/`、`VmBackend/` | 外を呼ばない |
 | file | `Api/TcsFiles.cs` の宣言 | 読む、配る file を読む、同じ file か、変更の印、置き換えて書く。実装は tcs を動かす側が渡す |
 
-- file の実装は C に 1 つ (`Native/files.c`)、.NET に 1 つ (`Dotnet/Files.cs`) で、同じ振る舞いをする (`src/tcs/native.sh` が比べる)
+- file の実装は C に 1 つ (`Native/files.c`)、.NET に 1 つ (`Dotnet/Files.cs`) で、同じ振る舞いをする (テストのランナーの `tcs.native.files` が比べる)
   - C: `files.c` は C の文字列と byte 数で受け渡し、文字列の型に依らない。`files_tcs.c` が、`tcs c` が作る module の文字列 (`TcsString`) との橋渡しをする。CLI の program (`main.c`) と、tcs を組み込む player が同じ 2 つを使う
   - tcs と一緒に配る file の置き場所は program ごとに違う。C の CLI は環境変数 `TCS_HOME` の dir か実行ファイルの dir から、.NET は `lib/` を埋め込んだ resource から、`runtime/` を実行ファイルの隣から読む
 - CLI が process に求めるもの (標準出力、標準エラー、待つ) は `Cli/CliProcess.cs` の宣言で、`Native/main.c` と `Dotnet/Process.cs` が実装する。C の CLI は Windows で標準入出力を binary mode にし、.NET と同じ改行を書く
@@ -154,7 +153,7 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 
 ### 9.1 bootstrap と host の一致
 
-- `src/tcs/native.sh` (CI の native job が Linux、macOS、Windows で走らせる): .NET の tcs2c で C にした native の tcs を作り、.NET の tcs と比べる。samples の `tcs check` と `tcs c` と `tcs vm`、誤りのある入力の診断、tcs 自身の `tcs check` と `tcs vm`、digest kernel の `.tcsb`、reload の batch (`tcs vm --reload-from`)、tcs 自身の C (固定点)
+- テストのランナーの `tcs.native.*` (`tests/lub-test/Tests/TcsNative.cs`。CI の kit の job が Linux、macOS、Windows で走らせる): .NET の tcs で C にした native の tcs (`scripts/build-tcs-native.sh`) を、.NET の tcs と比べる。samples の `tcs check` と `tcs c` と `tcs vm`、誤りのある入力の診断、tcs 自身の `tcs check` と `tcs vm`、digest kernel の `.tcsb`、reload の batch (`tcs vm --reload-from`)、tcs 自身の C (固定点)
 
 ### 9.2 検証の正解
 
@@ -176,7 +175,7 @@ compiler はサブセットで書く最大のプログラムで、書きにく�
 
 ## 10. 配布
 
-- CI の native job が Linux (cc)、macOS (clang)、Windows (clang) で `src/tcs/native.sh` を走らせ、tcs の実行ファイルと一緒に配るファイル (`runtime/` の C、`lib/`) を成果物 (`tcs-linux-x64` など) にする。生成する C は GNU C の文の式を使うので MSVC の cl では build できず、Windows は clang で build する
+- CI の native job が Linux (cc)、macOS (clang)、Windows (clang) で `scripts/build-tcs-native.sh` と `tcs.native.*` のテストを走らせ、tcs の実行ファイルと一緒に配るファイル (`runtime/` の C、`lib/`) を成果物 (`tcs-linux-x64` など) にする。生成する C は GNU C の文の式を使うので MSVC の cl では build できず、Windows は clang で build する
 - 変換した tcs (C のソースと実行ファイル) は git に入れない (`src/tcs/out/`)
 
 ## 11. 採らなかった案

@@ -1135,7 +1135,7 @@ jobs:
           cmake -S . -B build-kit -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build-kit
 
-      # tcs converted to C by tcs2c (also checks that it gives the same output as the .NET tcs). The generated C uses GNU C statement expressions, so targets other than Linux build it with clang.
+      # tcs converted to C by tcs c, and the tests that it gives the same output as the .NET tcs (tcs.native.* of tests/lub-test). The generated C uses GNU C statement expressions, so targets other than Linux build it with clang.
       # Remove Platform from env in steps that use dotnet. If the Platform set by msvc-dev-cmd is present, dotnet build output moves to bin/<Platform>/ and the scripts cannot find it
       - name: Build tcs
         if: steps.tcs-cache.outputs.cache-hit != 'true'
@@ -1143,6 +1143,7 @@ jobs:
           unset Platform
           [ "$RUNNER_OS" = Linux ] || export CC=clang
           bash scripts/build-tcs-native.sh build-kit
+          dotnet run --project tests/lub-test -- --build build-kit --label tcs-native
 
       # The lider player contains the tcs compiler converted to C (converted by the C tcs above). On Windows it is built with clang-cl, which has the same ABI as MSVC, and linked with the MSVC-built lub
       - name: Build the lider player

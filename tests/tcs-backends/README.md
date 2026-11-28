@@ -2,7 +2,7 @@
 
 `tcs c` は TinyC# の source を release 用の GNU C source にする。
 C backend は TinyC# で書いた `src/tcs/CBackend/` (IL → C)。
-.NET の tcs (`tcs.dll`) も、C にした tcs (`src/tcs/native.sh`) も同じ C を出す。
+.NET の tcs (`tcs.dll`) も、C にした tcs (`scripts/build-tcs-native.sh`) も同じ C を出す (テストのランナーの `tcs.native.*`)。
 class は type id 付きの struct、array と `List<int>` / `List<float>` は型付きの連続 buffer にする。
 
 ## 使い方
