@@ -1,9 +1,9 @@
 // Smoke test for tcs_pipeline_next_frame.
-// The fake tcs (scripts/test-tcs-pipeline-smoke.sh) emits a frame of unknown
-// kind, a vm_batch, and build_failed in a single write. The body of the unknown
-// frame contains lines that look like frame headers and UTF-8 multibyte
-// characters, so unless the body is skipped by its byte count, false diffs
-// appear from there.
+// The fake tcs (lub-test fake-tcs, tests/lub-test/Tests/DevTools.cs) emits a
+// frame of unknown kind, a vm_batch, and build_failed in a single write. The
+// body of the unknown frame contains lines that look like frame headers and
+// UTF-8 multibyte characters, so unless the body is skipped by its byte count,
+// false diffs appear from there.
 #include "../../src/tcs_build.h"
 #include <SDL3/SDL.h>
 #include <string.h>

@@ -169,7 +169,9 @@ dotnet run --project tests/lub-test -- --label golden --update-goldens   # 正�
 ほかの option (`--skip-label`、`--shard`、`--jobs`、`--build`、`--logs`) は `tests/lub-test/Program.cs` の先頭にある。
 失敗したテストは、出力と、作った file の置き場所を表示する。
 
-Linux で画面なしで 1 本だけ動かすときは `scripts/run-headless.sh` を使う (lavapipe + xvfb / offscreen)。ランナーも同じ script で起動する。
+ランナーは bash の script を起動しない。画面なしでの起動、tcs の呼び出し、生成物の比較は全部 C# で持つ。
+画面なしで 1 本だけ動かすときは `dotnet run --project tests/lub-test -- headless ./build/lub <args>` を使う (Linux は lavapipe + xvfb / offscreen)。
+lider の player (`lider/scripts/build-player.sh`) と C の lub-gen (`scripts/build-lub-gen.sh`) も、lub の build と同じく先に作っておく。
 iOS の simulator のテストは `scripts/ios-gate.sh`、web の page のテストは `web/README.md`、Linux と web をまとめて回すのは `scripts/pre-push.sh`。
 
 GitHub ActionsのCIにより自動でテスト通過が確認される。

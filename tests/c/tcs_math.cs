@@ -1,7 +1,7 @@
 using System;
 
 // Computes the same input sequence and hash as tests/cs/TestMathDeterminism.cs with C# Math.
-// scripts/verify-tcs-binding.sh builds it with tcs2c and compares the output with the expected values in TestMathDeterminism.cs.
+// The test bindings.tcs.math of tests/lub-test builds it with tcs c and compares the output with the expected values in TestMathDeterminism.cs.
 class MathTest
 {
     const int points = 2000;

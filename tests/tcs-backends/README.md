@@ -70,7 +70,7 @@ il-spec と .NET の実行で、`tests/tcs-backends` が同じ source の C、tc
 `Console.WriteLine` / `Write` (IL の `__tcs_writeline` / `__tcs_write`) は stdout へ書く。digest kernel 回帰用だけは `--digest-f32` を付け、各 f32 の bit 列を FNV-1a へ直接投入する。
 
 ```sh
-bash tests/tcs-backends/verify-digests.sh
+dotnet run --project tests/lub-test -- --name '^tcs\.c\.digest'
 ```
 
 ## GC
@@ -198,9 +198,7 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
   不一致は `tcs_fault("invalid-cast")`。配列の要素型も区別する
   (`(float[])` に `int[]` は fault)。`o is List<float>` / `o is float[]` などの
   型 test も同じ構造型 id を比べる
-- 検証: `bash tests/tcs-backends/verify-game-core.sh` (配列 / 省略引数 / 数値 / 文字列 /
-  generic / static 初期化)、`bash tests/tcs-backends/verify-object-values.sh` (object の
-  root 保持 / interface dispatch / 不正 cast)。期待出力は .NET と同じ
+- 検証: テストのランナーの `tcs.c.game-core`、`tcs.c.generics`、`tcs.c.game-expressions`、`tcs.c.static-initialization` (配列 / 省略引数 / 数値 / 文字列 / generic / static 初期化)、`tcs.c.object-values`、`tcs.c.invalid-cast.*` (object の root 保持 / interface dispatch / 不正 cast)。期待出力は .NET と同じ
   (`4.2949673E+09` 等)
 
 ## host 境界 (`--ref` / `--lib`)
@@ -242,7 +240,4 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
   `tcs_lib_gc()` は明示の境界、`tcs_lib_collect()` は境界 + 旧世代 full GC、
   `tcs_lib_heap_bytes()` / `tcs_lib_heap_objects()` は旧世代 + nursery の
   managed heap 統計 (process のメモリではない)
-- 検証: `bash tests/tcs-backends/verify-host.sh` (typed options / enum / nullable 既定値 /
-  out string / struct の値と戻り値と out / 戻り値のある out / scalar entry 引数 / 条件アクセス / runtime services)、
-  `bash tests/tcs-backends/verify-gc.sh` (host ループでの root 保持 / 循環 garbage の回収 /
-  heap の有界性)
+- 検証: テストのランナーの `tcs.c.foreign`、`tcs.c.nullable-arguments`、`tcs.c.conditional-access`、`tcs.c.runtime-services` (typed options / enum / nullable 既定値 / out string / struct の値と戻り値と out / 戻り値のある out / scalar entry 引数 / 条件アクセス / runtime services)、`tcs.c.gc` (host ループでの root 保持 / 循環 garbage の回収 / heap の有界性)。入力と host は `tests/tcs-backends/c/`、期待の値は `tests/lub-test/Tests/TcsC.cs`

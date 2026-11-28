@@ -13,6 +13,70 @@ using LubTest;
 //   --logs DIR       where the files of failed tests are kept (default: a directory under the temporary directory)
 //   --update-goldens writes the captures of the golden tests as the new goldens
 //   --list           prints the selected tests and their labels without running them
+// lub-test fake-tcs: stands in for `tcs vm --watch` in the test of how lub reads the frames of its tcs child (Tests/DevTools.cs)
+if (args is ["fake-tcs", ..])
+{
+    using var stdout = Console.OpenStandardOutput();
+    var frames = LubTest.Tests.DevTools.FakeTcsOutput();
+    stdout.Write(frames, 0, frames.Length);
+    stdout.Flush();
+    Thread.Sleep(TimeSpan.FromMinutes(10));
+    return 0;
+}
+
+string root = AppContext.BaseDirectory;
+while (!File.Exists(Path.Combine(root, "tcs.slnx")))
+    root = Path.GetDirectoryName(root) ?? throw new InvalidOperationException("the repo root was not found above " + AppContext.BaseDirectory);
+
+// Tools that share code with the tests, for the scripts and for use by hand:
+//   lub-test gen-api                 writes the files generated from the API description (GenApi.cs)
+//   lub-test cs-tests                compiles all of tests/cs into tests/cs/.lub/all.tcsb (what lub runs with --entry <Entry>)
+//   lub-test headless <exe> [args]   runs a program that opens a window where there may be no display (Site.Headless)
+//   lub-test png-diff <a> <b>        compares two captures within the tolerance of the golden tests (PngDiff)
+if (args is ["gen-api"] or ["cs-tests"])
+{
+    var tool = new Site(root, null, 1, null);
+    var work = new Run(tool, new Test(args[0], [], _ => Task.CompletedTask), CancellationToken.None);
+    try
+    {
+        if (args[0] == "gen-api") await GenApi.Generate(work, check: false);
+        else await Prepare.CsTests(work);
+        foreach (var line in work.LogText.Split('\n').Where(l => l.StartsWith("gen-api: ", StringComparison.Ordinal))) Console.WriteLine(line);
+        Directory.Delete(tool.Logs, true);
+        return 0;
+    }
+    catch (TestFailed e)
+    {
+        Console.Error.WriteLine(work.LogText);
+        Console.Error.WriteLine(args[0] + ": " + e.Message);
+        return 1;
+    }
+}
+if (args is ["headless", var program, .. var rest])
+{
+    var tool = new Site(root, null, 1, null);
+    Directory.Delete(tool.Logs, true);
+    var env = new Dictionary<string, string?>();
+    // A failed SDL assertion would otherwise sit in a message box nobody clicks
+    if (Environment.GetEnvironmentVariable("SDL_ASSERT") == null) env["SDL_ASSERT"] = "abort";
+    var (exe, arguments) = tool.Headless(Path.GetFullPath(program), rest, env);
+    var info = new ProcessStartInfo(exe);
+    foreach (var a in arguments) info.ArgumentList.Add(a);
+    foreach (var (key, value) in env)
+    {
+        if (value != null) info.Environment[key] = value;
+    }
+    using var child = Process.Start(info)!;
+    child.WaitForExit();
+    return child.ExitCode;
+}
+if (args is ["png-diff", var first, var second])
+{
+    var (same, metrics) = PngDiff.Compare(first, second);
+    Console.WriteLine(metrics);
+    return same ? 0 : 1;
+}
+
 var labels = new List<string>();
 var skipLabels = new List<string>();
 string? name = null;
@@ -45,9 +109,6 @@ for (int i = 0; i < args.Length; i++)
     }
 }
 
-string root = AppContext.BaseDirectory;
-while (!File.Exists(Path.Combine(root, "tcs.slnx")))
-    root = Path.GetDirectoryName(root) ?? throw new InvalidOperationException("the repo root was not found above " + AppContext.BaseDirectory);
 var site = new Site(root, build, jobs, logs) { UpdateGoldens = update };
 
 var all = Catalog.All(site);

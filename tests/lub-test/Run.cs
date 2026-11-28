@@ -3,8 +3,8 @@ using System.Text;
 
 namespace LubTest;
 
-/// <summary>What a process run gave back.</summary>
-public sealed record Output(int ExitCode, string Text)
+/// <summary>What a process run gave back: Text is stdout and stderr together in the order they came, Stdout is stdout alone.</summary>
+public sealed record Output(int ExitCode, string Text, string Stdout)
 {
     public bool Ok => ExitCode == 0;
 }
@@ -69,15 +69,20 @@ public sealed class Run(Site site, Test test, CancellationToken cancel)
         Log("$ " + string.Join(" ", (env ?? new Dictionary<string, string?>()).Select(kv => kv.Key + "=" + kv.Value))
             + (env is { Count: > 0 } ? " " : "") + exe + " " + string.Join(" ", info.ArgumentList));
         var text = new StringBuilder();
+        var stdout = new StringBuilder();
         using var process = new Process { StartInfo = info };
-        void Take(string? line)
+        void Take(string? line, bool isStdout)
         {
             if (line == null) return;
-            lock (text) text.Append(line).Append('\n');
+            lock (text)
+            {
+                text.Append(line).Append('\n');
+                if (isStdout) stdout.Append(line).Append('\n');
+            }
             Log(line);
         }
-        process.OutputDataReceived += (_, e) => Take(e.Data);
-        process.ErrorDataReceived += (_, e) => Take(e.Data);
+        process.OutputDataReceived += (_, e) => Take(e.Data, true);
+        process.ErrorDataReceived += (_, e) => Take(e.Data, false);
         try
         {
             process.Start();
@@ -103,9 +108,29 @@ public sealed class Run(Site site, Test test, CancellationToken cancel)
         }
         // The readers finish after the exit
         process.WaitForExit();
-        string result;
-        lock (text) result = text.ToString();
-        return new Output(process.ExitCode, result);
+        lock (text) return new Output(process.ExitCode, text.ToString(), stdout.ToString());
+    }
+
+    /// <summary>Starts a process and returns at once. The caller waits for it or kills it. Its output goes to the log and to Started.Text.</summary>
+    public Started Start(string exe, IEnumerable<string> args, IDictionary<string, string?>? env = null, string? cwd = null)
+    {
+        var info = new ProcessStartInfo(exe)
+        {
+            WorkingDirectory = cwd ?? Site.Root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+        };
+        foreach (var a in args) info.ArgumentList.Add(a);
+        foreach (var (key, value) in env ?? new Dictionary<string, string?>())
+        {
+            if (value == null) info.Environment.Remove(key);
+            else info.Environment[key] = value;
+        }
+        Log("$ (started) " + exe + " " + string.Join(" ", info.ArgumentList));
+        var started = new Started(new Process { StartInfo = info }, Log);
+        cancel.Register(started.Kill);
+        return started;
     }
 
     /// <summary>Exec, and the test fails unless the process exits with 0.</summary>
@@ -117,12 +142,23 @@ public sealed class Run(Site site, Test test, CancellationToken cancel)
         return output;
     }
 
-    /// <summary>A bash script of the repo (bash is required on every OS; on Windows it is the one of Git).</summary>
-    public Task<Output> Script(string script, IEnumerable<string> args, IDictionary<string, string?>? env = null, TimeSpan? timeout = null) =>
-        Must(Site.Bash, [Site.ForScript(Path.Combine(Site.Root, script)), .. args], env, timeout: timeout);
+    /// <summary>Runs tcs (the .NET tcs, built once) with the given arguments.</summary>
+    public async Task<Output> Tcs(IEnumerable<string> args, string? cwd = null)
+    {
+        var tcs = await Prepare.Tcs(this);
+        return await Exec(tcs[0], [.. tcs[1..], .. args], cwd: cwd, timeout: TimeSpan.FromMinutes(20));
+    }
+
+    /// <summary>Tcs, and the test fails unless tcs exits with 0.</summary>
+    public async Task<Output> MustTcs(IEnumerable<string> args, string? cwd = null)
+    {
+        var output = await Tcs(args, cwd);
+        if (!output.Ok) Fail("tcs exited with " + output.ExitCode);
+        return output;
+    }
 
     /// <summary>Runs a program that opens a window where there may be no display, on the CPU rasterizer of the OS so that what it draws does not depend on the machine.
-    /// Linux: scripts/run-headless.sh (Mesa lavapipe, and an X server of its own unless a display is already there). Windows: WARP. macOS: the real GPU.</summary>
+    /// Linux: Mesa lavapipe, and an X server of its own (Xvfb) unless a display is already there. Windows: WARP. macOS: the real GPU.</summary>
     public async Task<Output> Headless(string exe, IEnumerable<string> args, string? backend = null, IDictionary<string, string?>? env = null,
         string? cwd = null, TimeSpan? timeout = null)
     {
@@ -131,15 +167,7 @@ public sealed class Run(Site site, Test test, CancellationToken cancel)
         // A failed SDL assertion would otherwise sit in a message box nobody clicks
         if (!all.ContainsKey("SDL_ASSERT") && Environment.GetEnvironmentVariable("SDL_ASSERT") == null) all["SDL_ASSERT"] = "abort";
         timeout ??= TimeSpan.FromMinutes(10);
-        if (Site.Windows)
-        {
-            all.TryAdd("LUB_D3D12_WARP", "1");
-            return await Exec(exe, args, all, cwd, timeout);
-        }
-        if (Site.Mac) return await Exec(exe, args, all, cwd, timeout);
-        // scripts/run-headless.sh picks lavapipe and where the window goes. Its Xvfb gets a display number of this run's own,
-        // because concurrent xvfb-run -a calls can pick the same number
-        all["LUB_XVFB_SERVERNUM"] = Site.TakeDisplay().ToString();
-        return await Exec(Site.Bash, [Path.Combine(Site.Root, "scripts", "run-headless.sh"), Path.GetFullPath(exe, cwd ?? Site.Root), .. args], all, cwd, timeout);
+        var (program, arguments) = Site.Headless(exe, [.. args], all);
+        return await Exec(program, arguments, all, cwd, timeout);
     }
 }

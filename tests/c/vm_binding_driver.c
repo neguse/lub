@@ -1,7 +1,8 @@
 // Entry point of the test for the tcs VM glue code (lub-gen vm)
-// (scripts/verify-vm-binding.sh). Connects the .tcsb of tests/c/tcs_binding.cs
-// built by tcs vm to the fake C API of tests/c/tcs_binding.c through host
-// functions, and calls the function in argv[2].
+// (the test bindings.vm.main of tests/lub-test). Connects the .tcsb of
+// tests/c/tcs_binding.cs built by tcs vm to the fake C API of
+// tests/c/tcs_binding.c through host functions, and calls the function in
+// argv[2].
 #include <stdio.h>
 #include <stdlib.h>
 int main(int argc, char **argv) {

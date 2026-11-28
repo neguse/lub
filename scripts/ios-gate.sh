@@ -4,8 +4,8 @@
 # The CI ios job (.github/workflows/ios.yml) and manual runs on a Mac use it.
 # The macOS tests are run by the test runner (tests/lub-test).
 #
-# Needs bash 4+ (mapfile; macOS ships 3.2, so `brew install bash`), CMake,
-# Ninja, python3, dotnet (the tests are C#) and Xcode (not only the Command
+# Needs CMake, Ninja, python3, dotnet (the tests are C#, and the test runner
+# compiles them and compares the captures) and Xcode (not only the Command
 # Line Tools). iOS requires SDL 3.4+ (UIScene lifecycle on iOS 27),
 # uses AVAudioSession ambient at 48 kHz, and writes test exit codes to
 # LUB_EXIT_FILE (verified alongside SpringBoard's `Process exited` log).
@@ -50,9 +50,7 @@ sys.exit("no iPhone simulator is available")
 run bash scripts/build-release.sh --build-dir "$build"
 
 # The tests in tests/cs are C#, so tcs vm first builds all of tests/cs into one bytecode (tests/cs/.lub/all.tcsb), and then --entry selects the test to run.
-LUB_TCS="$(scripts/build-tcs-dotnet.sh)"
-export LUB_TCS
-run scripts/tcs-cs-tests.sh vm
+run dotnet run --project tests/lub-test -- cs-tests
 
 # iOS: build the player app for the simulator and run it there. simctl does
 # not report the app's exit status, so the app writes it to the file named by
@@ -178,7 +176,7 @@ AND eventMessage CONTAINS \"$ios_bundle\" AND ($words)" | tail -n 40 | sed 's/^/
     rm -f "$ios_data/tmp/$ios_test.png"
     if ios_launch "$work/ios.log" tests/cs/.lub/all.tcsb --entry "$ios_test" \
       --capture "$ios_data/tmp/$ios_test.png" "${capture[@]}" \
-      && metrics="$(python3 scripts/png-diff.py "$ios_data/tmp/$ios_test.png" \
+      && metrics="$(dotnet run --project tests/lub-test -- png-diff "$ios_data/tmp/$ios_test.png" \
         "tests/golden/${ios_test}_sdlgpu.png" 2>&1)"; then
       echo "PASS ios $ios_test $metrics"
     else

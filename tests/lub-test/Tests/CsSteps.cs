@@ -112,8 +112,7 @@ public static class CsSteps
         string[] capture = ["--capture-frame", "30", "--fixed-dt", CsRuntime.FixedDt];
         string playerBuild = site.Path_("build-mac-player");
         string player = Path.Combine(playerBuild, "lub");
-        Task Player(Run run) => site.Need("player-without-slang", () =>
-            run.Script("scripts/build-release.sh", ["--build-dir", playerBuild, "-DLUB_NO_SLANG=ON"], timeout: TimeSpan.FromHours(1)));
+        Task Player(Run run) => site.Need("player-without-slang", () => Prepare.BuildLub(run, playerBuild, "-DLUB_NO_SLANG=ON"));
         async Task<string> Export(Run run, string entry)
         {
             await Prepare.Lub(run);
@@ -153,10 +152,9 @@ public static class CsSteps
         {
             await Prepare.Lub(run);
             await Prepare.Target(run, "lub_shared");
-            var env = await Prepare.TcsEnv(run);
-            await run.Script("scripts/run-cs-sample.sh", ["00_hello", "--vm"], env);
+            var module = await Prepare.SampleModule(run, "00_hello");
             string[] args = ["--capture-frame", "30", "--fixed-dt", CsRuntime.FixedDt, "--digest"];
-            var vm = await CsRuntime.OnVm(run, "Hello00", "d3d12", ["--capture", Path.Combine(run.Temp, "vm.png"), .. args], module: site.Path_("samples", "00_hello", ".lub", "Hello00.tcsb"));
+            var vm = await CsRuntime.OnVm(run, "Hello00", "d3d12", ["--capture", Path.Combine(run.Temp, "vm.png"), .. args], module: module);
             await run.Must("dotnet", ["build", "dotnet/SampleRunner", "-p:Sample=00_hello", "-nologo", "-v", "q"], timeout: TimeSpan.FromMinutes(20));
             var dotnet = await run.Headless(site.Path_("dotnet", "SampleRunner", "bin", "00_hello", "lub-sample-00_hello.exe"),
                 ["--capture", Path.Combine(run.Temp, "dotnet.png"), .. args], "d3d12", Prepare.NativeLib(site));

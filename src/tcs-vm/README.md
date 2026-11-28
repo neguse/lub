@@ -8,7 +8,7 @@ TinyC# の IL (`IlExport`) を bytecode (`.tcsb`) にし、型付きの register
 | `src/tcs-vm/` | VM (C11)。`tcsvm.h` が API、`tcsvm_ops.h` が命令の一覧、`tcsvm_load.c` が読み込みと検査、`tcsvm_run.c` が interpreter、`tcsvm_rt.c` が string / List / Dictionary / Sort、`tcsvm_lib.c` が runtime の関数 (`CALLR`)、`tcsvm_host.c` が host の関数と host 向けの API、`tcsvm_gc.c` が GC、`tcsvm_reload.c` が hot reload (`tvm_apply`)、`tcsvm_debug.c` が `--trace` の記録と検査の口、`tcsvm_main.c` が CLI |
 | `src/tcs-vm/gen-ops.py` | `tcsvm_ops.h` から `src/tcs/VmBackend/Op.cs` を作る |
 | `tests/tcs-vm/` | テストの入力。各ファイルの `Main` を VM で走らせ、`expected/` の stdout と比べる (C backend が動かせる入力は C の stdout とも) |
-| `tests/tcs-vm/run-tests.sh` | テスト (直下の入力、`tests/tcs/samples/` の 6 本、digest kernel の固定の digest、host / trace / inspect / profile / mixed / modules / watch の試験)。`tests/tcs/run-tests.sh` から呼ばれる |
+| `tests/lub-test/Tests/TcsVm.cs` | テスト (直下の入力、`tests/tcs/samples/` の 6 本、digest kernel の固定の digest、host / trace / inspect / profile / mixed / modules / watch の試験)。テストのランナーの `--name '^tcs\.vm\.'` で走る |
 | `tests/tcs-vm/fuzz-loader.py` | `.tcsb` を変異させて loader と verifier の頑健さを見る |
 
 ## 使い方
@@ -34,7 +34,7 @@ build-tcs-vm/tcsvm --lib Game 4 --reload 2 v2.tcsb v2.plan v1.tcsb
 
 restart が要る差分 (static の initializer の変更、型の削除、生きている lambda を消した等) は終了コード 3 で、理由を stderr に書く。
 `tcs vm --watch` は編集ごとに reload の batch を標準出力に流し、`--reload-batch K BATCH` で当てられる (`docs/tcs/vm-design.md` §13.3)。
-テストは `tests/tcs-backends` の `VmReloadTests` と `VmReloadCaseTests`、`tests/tcs-vm/host/watch_test.py`。
+テストは `tests/tcs-backends` の `VmReloadTests` と `VmReloadCaseTests`、テストのランナーの `tcs.vm.watch`。
 
 ## 範囲
 

@@ -198,14 +198,23 @@ jobs:
           path: build-jamo
           key: ${{ steps.jamo.outputs.key }}
 
-      # The bindings part does not use the build of lub
+      # The builds that the tests of the part use. The test runner starts no build script itself
       - name: Build
         if: matrix.part != 'bindings'
         run: bash scripts/build-release.sh
 
-      - name: Tests (${{ matrix.part }})
+      # The C lub-gen, whose output the bindings part compares with lub-gen on .NET
+      - name: Build lub-gen
+        if: matrix.part == 'bindings'
+        run: bash scripts/build-lub-gen.sh build-release-linux
+
+      - name: Build the lider player
+        if: matrix.part == 'lider'
         env:
           JAMO_CACHE: ${{ github.workspace }}/build-jamo
+        run: lider/scripts/build-player.sh
+
+      - name: Tests (${{ matrix.part }})
         run: dotnet run --project tests/lub-test -- --logs "${RUNNER_TEMP}/lub-test-tmp" ${{ matrix.select }}
 
       - name: ccache stats
@@ -407,7 +416,7 @@ jobs:
           if-no-files-found: ignore
 
   # macOS tests: the Release build, then the test runner (tests/lub-test): C smoke tests, C# runtime tests on metal, visual golden, shader cache round trip.
-  # Metal renders on the runner's GPU, so it is not byte-identical, and the golden is a tolerance comparison against Linux *_sdlgpu.png (scripts/png-diff.py).
+  # Metal renders on the runner's GPU, so it is not byte-identical, and the golden is a tolerance comparison against Linux *_sdlgpu.png (PngDiff in tests/lub-test).
   # The iOS side (scripts/ios-gate.sh, running on the simulator) runs in ios.yml.
   macos:
     name: macos (${{ matrix.shard }})
@@ -745,9 +754,7 @@ jobs:
         if: matrix.page == 'player'
         shell: bash
         run: |
-          LUB_TCS="$(scripts/build-tcs-dotnet.sh)"
-          export LUB_TCS
-          scripts/tcs-cs-tests.sh vm
+          dotnet run --project tests/lub-test -- cs-tests
 
       - uses: actions/setup-node@v4
         with:
@@ -1150,7 +1157,8 @@ jobs:
         run: |
           unset Platform
           [ "$RUNNER_OS" = Linux ] || export CC=clang
-          bash scripts/build-lub-gen.sh --verify build-kit
+          bash scripts/build-lub-gen.sh build-kit
+          dotnet run --project tests/lub-test -- --build build-kit --name '^bindings\.lub-gen$'
 
       - name: ccache stats
         if: always()

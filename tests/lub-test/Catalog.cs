@@ -12,10 +12,14 @@ public static class Catalog
         tests.AddRange(Tests.CsSteps.ShaderCache(site));
         tests.AddRange(Tests.CsSteps.DotnetSample(site));
         tests.AddRange(Tests.Golden.All(site));
+        tests.AddRange(Tests.Bindings.All(site));
         tests.AddRange(Tests.Tools.All(site));
+        tests.AddRange(Tests.DevTools.All(site));
         tests.AddRange(Tests.VmProjects.All(site));
         tests.AddRange(Tests.Lider.All(site));
         tests.AddRange(Tests.Tcs.All(site));
+        tests.AddRange(Tests.TcsC.All(site));
+        tests.AddRange(Tests.TcsVm.All(site));
         return tests;
     }
 }

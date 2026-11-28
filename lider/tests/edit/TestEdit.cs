@@ -8,7 +8,7 @@
 //   - The rewritten line stays raised after saving until the reload chunk is applied (LineChanged, drawn on the layer in front of the window), and sinks once it is applied (drawn on the surface)
 //   - A file with CRLF line endings is saved with CRLF
 //   - The minimap shows what was typed on the board of the opened file
-// scripts/test.sh copies this to a temporary directory and starts it (because game/Target.cs gets rewritten).
+// The test runner (tests/lub-test) copies this to a temporary directory and starts it (because game/Target.cs gets rewritten).
 using System;
 using System.Collections.Generic;
 using Lub;

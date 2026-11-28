@@ -7,7 +7,7 @@
 // The page does not return an exit code, so the value the runtime wrote to the file in env LUB_EXIT_FILE (MEMFS) is read.
 // Even if the exit code is 0, a WebGPU validation error or a page error counts as a failure.
 //
-// Usage (keep the dev server or preview running; first build tests/cs/.lub/all.tcsb with scripts/tcs-cs-tests.sh vm):
+// Usage (keep the dev server or preview running; first build tests/cs/.lub/all.tcsb with dotnet run --project tests/lub-test -- cs-tests):
 //   cd web && npm run dev
 //   cd web && LUB_URL=http://localhost:5173/ npm run verify [-- Test...]
 // Passing a test name runs only that test.

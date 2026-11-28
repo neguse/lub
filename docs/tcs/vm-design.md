@@ -453,7 +453,7 @@ VM を組み込む host の流れ:
 | `restart_required` | restart の理由の行 | `-o` を読み直して VM を作り直す。以後の差分はその build から作る |
 | `build_failed` | 診断の行 (stderr にも書く) | 表示する。最後に通った build のまま次の編集を待つ |
 
-どの kind の本文も改行終端のテキスト行。検査は `tcsvm/tests/host/watch_test.py`。
+どの kind の本文も改行終端のテキスト行。検査はテストのランナーの `tcs.vm.watch` (`tests/lub-test/Tests/TcsVm.cs`)。
 
 ### 13.4 状態の保存と読み込み
 
@@ -540,7 +540,7 @@ reload は module ごと入れ替え、古い関数を残さない (§12.4) の�
 | tests/tcs の semantic テスト | `TestHelper.CompileAndRunVm*` が VM で走らせる。`TCS_DIFFERENTIAL=1` (テストのランナーが付ける) なら .NET の stdout とも比べる |
 | tests/tcs-backends の差分 | `Backends.AssertParity` が C (通常と GC stress)、VM (通常と `--gc-stress`)、.NET の stdout の一致を求める |
 | `tcsvm/run-tests.sh` | `tcsvm/tests/` と `samples/` の 6 本と digest kernel を VM で走らせ、期待の stdout と、C が動かせる入力は C の stdout と比べる。fault のテストは VM の trace が C# の file と行を指すことも見る。host、`--trace`、inspect、profile、mixed、modules、watch の試験も持つ |
-| digest kernel | `tcsvm/run-tests.sh` (VM)、`SampleParityTests` (C)、`tcs2c/verify-digests.sh` の固定の digest |
+| digest kernel | テストのランナーの `tcs.vm.digest.*` (VM) と `tcs.c.digest.*` (C)、`SampleParityTests` (C) の固定の digest |
 | fuzz | `run-fuzz.sh`: 生成した program を VM (通常と GC stress) と .NET で走らせて比べる。hot reload の fuzz の scenario も VM に当てる |
 | hot reload | `VmReloadTests` (fuzz の scenario の不変量、relayout、session)、`VmReloadCaseTests` (個別の編集)、`ReloadRulesTests` (restart と live の規則) |
 | 読み込みの頑健さ | `tcsvm/fuzz-loader.py` が `.tcsb` を変異させ、ASan / UBSan 付きの VM で loader と verifier がエラーを返し crash しないことを見る |
