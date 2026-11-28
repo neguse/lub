@@ -173,7 +173,7 @@ dotnet run --project tests/lub-test -- --label fuzz --fuzz-count 500     # 長�
 ランナーは bash の script を起動しない。画面なしでの起動、tcs の呼び出し、生成物の比較は全部 C# で持つ。
 画面なしで 1 本だけ動かすときは `dotnet run --project tests/lub-test -- headless ./build/lub <args>` を使う (Linux は lavapipe + xvfb / offscreen)。
 lider の player (`lider/scripts/build-player.sh`)、C の tcs (`scripts/build-tcs-native.sh`)、C の lub-gen (`scripts/build-lub-gen.sh`) も、lub の build と同じく先に作っておく。
-iOS の simulator のテストは `scripts/ios-gate.sh`、web の page のテストは `web/README.md`、Linux と web をまとめて回すのは `scripts/pre-push.sh`。
+iOS の simulator のテストはランナーの `--label ios` (macOS で、`scripts/build-ios.sh` の後に走らせる)、web の page のテストは `web/README.md`、Linux と web をまとめて回すのは `scripts/pre-push.sh`。
 
 GitHub ActionsのCIにより自動でテスト通過が確認される。
 

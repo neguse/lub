@@ -417,7 +417,7 @@ jobs:
 
   # macOS tests: the Release build, then the test runner (tests/lub-test): C smoke tests, C# runtime tests on metal, visual golden, shader cache round trip.
   # Metal renders on the runner's GPU, so it is not byte-identical, and the golden is a tolerance comparison against Linux *_sdlgpu.png (PngDiff in tests/lub-test).
-  # The iOS side (scripts/ios-gate.sh, running on the simulator) runs in ios.yml.
+  # The iOS side (label ios of the test runner, running on the simulator) runs in ios.yml.
   macos:
     name: macos (${{ matrix.shard }})
     strategy:

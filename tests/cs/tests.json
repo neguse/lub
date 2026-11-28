@@ -134,5 +134,22 @@
     "TestAppInputs": "App.Inputs is collected only by the player that can read a .csproj, and returns null on .NET execution",
     "TestPick": "checks the Site of Gfx.Pick. Only the tcs VM player creates Site"
   },
-  "_dotnetSkip": "Runtime tests not run on .NET execution, with the reason"
+  "_dotnetSkip": "Runtime tests not run on .NET execution, with the reason",
+  "ios": {
+    "capture": [
+      "TestIndexedDraw",
+      "TestLoadOp",
+      "TestDepthSample",
+      "TestVertexPull"
+    ],
+    "exit": [
+      "TestVertexTexture",
+      "TestDupBinding",
+      "TestDispatchAfterReadback",
+      "TestComputeUniformBlock",
+      "TestAudio",
+      "TestMathDeterminism"
+    ]
+  },
+  "_ios": "Tests run in the app on the iOS simulator: capture is compared with the Linux golden within a tolerance, exit is judged by the exit code the app writes"
 }
