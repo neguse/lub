@@ -12,6 +12,7 @@ public static class Catalog
         tests.AddRange(Tests.CsSteps.ShaderCache(site));
         tests.AddRange(Tests.CsSteps.DotnetSample(site));
         tests.AddRange(Tests.Golden.All(site));
+        tests.AddRange(Tests.Ios.All(site));
         tests.AddRange(Tests.Bindings.All(site));
         tests.AddRange(Tests.Tools.All(site));
         tests.AddRange(Tests.DevTools.All(site));

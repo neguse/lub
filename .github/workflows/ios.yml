@@ -1,4 +1,4 @@
-# Run on the iOS simulator: run the tests/cs tests meant for iOS in a simulator app (scripts/ios-gate.sh).
+# Run on the iOS simulator: run the tests/cs tests meant for iOS in a simulator app (label ios of tests/lub-test).
 # On hosted runners just starting the simulator takes minutes, so this does not run in PR CI (ci.yml).
 #   - master push: this workflow runs on its own. If it fails, the check for that commit fails, which makes it visible (deploy is on the ci.yml side and does not wait for this)
 #   - tag (v*) push: ci.yml calls this workflow, and publish waits for it
@@ -78,12 +78,15 @@ jobs:
         with:
           global-json-file: global.json
 
-      # Build the macOS player (which fills the shader cache) and the iOS app, and run on the simulator
-      - name: iOS gate (iOS build, simulator)
-        run: |
-          export TMPDIR="${RUNNER_TEMP}/ios-gate-tmp"
-          mkdir -p "$TMPDIR"
-          bash scripts/ios-gate.sh
+      # The macOS player writes the shader caches that go into the app
+      - name: Build (macOS)
+        run: bash scripts/build-release.sh --build-dir build-mac
+
+      - name: Build (iOS simulator)
+        run: bash scripts/build-ios.sh
+
+      - name: Tests on the simulator
+        run: dotnet run --project tests/lub-test -- --logs "${RUNNER_TEMP}/lub-test-tmp" --label ios
 
       - name: Save ccache
         uses: actions/cache/save@v4
@@ -96,7 +99,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: failure-ios
-          path: ${{ runner.temp }}/ios-gate-tmp
+          path: ${{ runner.temp }}/lub-test-tmp
           if-no-files-found: ignore
 
   # The only required check.
