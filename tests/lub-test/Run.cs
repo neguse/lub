@@ -139,15 +139,7 @@ public sealed class Run(Site site, Test test, CancellationToken cancel)
         if (Site.Mac) return await Exec(exe, args, all, cwd, timeout);
         // scripts/run-headless.sh picks lavapipe and where the window goes. Its Xvfb gets a display number of this run's own,
         // because concurrent xvfb-run -a calls can pick the same number
-        int number = Site.TakeDisplay();
-        try
-        {
-            all["LUB_XVFB_SERVERNUM"] = number.ToString();
-            return await Exec(Site.Bash, [Path.Combine(Site.Root, "scripts", "run-headless.sh"), Path.GetFullPath(exe, cwd ?? Site.Root), .. args], all, cwd, timeout);
-        }
-        finally
-        {
-            Site.ReturnDisplay(number);
-        }
+        all["LUB_XVFB_SERVERNUM"] = Site.TakeDisplay().ToString();
+        return await Exec(Site.Bash, [Path.Combine(Site.Root, "scripts", "run-headless.sh"), Path.GetFullPath(exe, cwd ?? Site.Root), .. args], all, cwd, timeout);
     }
 }

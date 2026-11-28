@@ -19,7 +19,7 @@ public sealed class Site
 
     private readonly ConcurrentDictionary<string, Lazy<Task>> _prepared = new();
     private readonly SemaphoreSlim _cmake = new(1, 1);
-    private readonly ConcurrentBag<int> _displays = [];
+    private int _display = 300;
     private string? _lavapipe;
     private bool _lavapipeLooked;
 
@@ -30,8 +30,6 @@ public sealed class Site
         Jobs = jobs;
         Logs = Path.GetFullPath(logs ?? Path.Combine(Path.GetTempPath(), "lub-test-" + Environment.ProcessId));
         Directory.CreateDirectory(Logs);
-        // X display numbers for Xvfb: one per job slot, so that concurrent servers never share a number
-        for (int i = 0; i < jobs * 4 + 8; i++) _displays.Add(300 + i);
     }
 
     public string Path_(params string[] parts) => Path.Combine([Root, .. parts]);
@@ -63,13 +61,8 @@ public sealed class Site
         finally { _cmake.Release(); }
     }
 
-    public int TakeDisplay()
-    {
-        if (!_displays.TryTake(out int n)) throw new InvalidOperationException("no free X display number");
-        return n;
-    }
-
-    public void ReturnDisplay(int n) => _displays.Add(n);
+    /// <summary>An X display number for an Xvfb of one run. Never given twice: a server that is still shutting down holds its number, and a new one with the same number fails to start.</summary>
+    public int TakeDisplay() => Interlocked.Increment(ref _display);
 
     /// <summary>The Mesa lavapipe ICD file (the CPU Vulkan the Linux captures are defined by). null if not installed.</summary>
     public string? Lavapipe
