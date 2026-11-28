@@ -11,6 +11,8 @@ using LubTest;
 //   --jobs N         how many tests run at the same time (default: the number of cores)
 //   --build DIR      the build directory of lub (default: build-release-linux, build-mac or build-release, by OS)
 //   --logs DIR       where the files of failed tests are kept (default: a directory under the temporary directory)
+//   --fuzz-count N   how many inputs the fuzz tests generate (default: a small number for each test; the long sweeps of label fuzz default to 500)
+//   --fuzz-seed N    the first seed of the fuzz tests
 //   --update-goldens writes the captures of the golden tests as the new goldens
 //   --list           prints the selected tests and their labels without running them
 // lub-test fake-tcs: stands in for `tcs vm --watch` in the test of how lub reads the frames of its tcs child (Tests/DevTools.cs)
@@ -82,6 +84,7 @@ var skipLabels = new List<string>();
 string? name = null;
 string? build = null;
 string? logs = null;
+int? fuzzCount = null, fuzzSeed = null;
 int shardK = 1, shardN = 1;
 int jobs = Environment.ProcessorCount;
 bool list = false, update = false;
@@ -95,6 +98,8 @@ for (int i = 0; i < args.Length; i++)
         case "--name": name = Value(); break;
         case "--build": build = Value(); break;
         case "--logs": logs = Value(); break;
+        case "--fuzz-count": fuzzCount = int.Parse(Value()); break;
+        case "--fuzz-seed": fuzzSeed = int.Parse(Value()); break;
         case "--jobs": jobs = int.Parse(Value()); break;
         case "--shard":
             var parts = Value().Split('/');
@@ -109,7 +114,7 @@ for (int i = 0; i < args.Length; i++)
     }
 }
 
-var site = new Site(root, build, jobs, logs) { UpdateGoldens = update };
+var site = new Site(root, build, jobs, logs) { UpdateGoldens = update, FuzzCount = fuzzCount, FuzzSeed = fuzzSeed };
 
 var all = Catalog.All(site);
 var duplicate = all.GroupBy(t => t.Name).FirstOrDefault(g => g.Count() > 1);
@@ -118,6 +123,7 @@ var selected = all
     .Where(t => labels.Count == 0 || t.Labels.Any(labels.Contains))
     .Where(t => !t.Labels.Any(skipLabels.Contains))
     .Where(t => name == null || Regex.IsMatch(t.Name, name))
+    .Where(t => !t.OnRequest || labels.Count > 0 || name != null)
     .Where((_, index) => index % shardN == shardK - 1)
     .ToList();
 if (list)

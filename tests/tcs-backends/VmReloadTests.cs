@@ -61,7 +61,7 @@ public class VmReloadTests
             AssertScenario(seed);
     }
 
-    // Sweep when TCS_FUZZ=1 (the test runner and run-fuzz.sh). TCS_FUZZ_COUNT seeds (default 20) starting from TCS_FUZZ_SEED (default 1000)
+    // Sweep when TCS_FUZZ=1 (the test runner; the long sweep is --label fuzz). TCS_FUZZ_COUNT seeds (default 20) starting from TCS_FUZZ_SEED (default 1000)
     [Fact]
     public void FuzzReloadSweep_ScenariosSatisfyInvariants()
     {

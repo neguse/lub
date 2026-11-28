@@ -10,6 +10,8 @@ public sealed class Test(string name, string[] labels, Func<Run, Task> body)
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(20);
     /// <summary>How many of the job slots it takes (a test that itself uses every core takes them all).</summary>
     public bool Alone { get; init; }
+    /// <summary>Run only when a --label or --name selects it (a long run that a person starts), not when everything is run.</summary>
+    public bool OnRequest { get; init; }
 }
 
 public sealed class TestFailed(string message) : Exception(message);

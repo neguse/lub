@@ -163,6 +163,7 @@ dotnet run --project tests/lub-test --                           # 全部
 dotnet run --project tests/lub-test -- --label cs                # label で選ぶ (smoke、cs、golden、tools、bindings、vm、lider、tcs など)
 dotnet run --project tests/lub-test -- --name TestFixedDt        # 名前の正規表現で選ぶ
 dotnet run --project tests/lub-test -- --label golden --update-goldens   # 正解画像を作り直す
+dotnet run --project tests/lub-test -- --label fuzz --fuzz-count 500     # 長い fuzz (全部を回すときには走らない)
 ./build/lub tests/cs/<Entry>.csproj                              # tests/cs/ のテストを 1 本、手で実行
 ```
 

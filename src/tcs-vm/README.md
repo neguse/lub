@@ -9,7 +9,6 @@ TinyC# の IL (`IlExport`) を bytecode (`.tcsb`) にし、型付きの register
 | `src/tcs-vm/gen-ops.py` | `tcsvm_ops.h` から `src/tcs/VmBackend/Op.cs` を作る |
 | `tests/tcs-vm/` | テストの入力。各ファイルの `Main` を VM で走らせ、`expected/` の stdout と比べる (C backend が動かせる入力は C の stdout とも) |
 | `tests/lub-test/Tests/TcsVm.cs` | テスト (直下の入力、`tests/tcs/samples/` の 6 本、digest kernel の固定の digest、host / trace / inspect / profile / mixed / modules / watch の試験)。テストのランナーの `--name '^tcs\.vm\.'` で走る |
-| `tests/tcs-vm/fuzz-loader.py` | `.tcsb` を変異させて loader と verifier の頑健さを見る |
 
 ## 使い方
 
@@ -53,8 +52,7 @@ GC は動かさない mark-sweep で、確保の地点 (frame を保存してか
 field の番号を byte offset に書き換える。
 
 ```bash
-cmake -S src/tcs-vm -B build-tcs-vm-asan -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_C_FLAGS="-O1 -fsanitize=address,undefined -fno-sanitize-recover=all"
-cmake --build build-tcs-vm-asan --target tcsvm
-python3 -I tests/tcs-vm/fuzz-loader.py build-tcs-vm-asan/tcsvm 3000 1 a.tcsb b.tcsb
+dotnet run --project tests/lub-test -- --name tcs.vm.fuzz-loader --fuzz-count 3000 --fuzz-seed 1
 ```
+
+テストのランナーの `tcs.vm.fuzz-loader` が、ASan と UBSan を付けた VM (`build-tcs-vm-asan/`) を作り、`tests/tcs-vm` の program の `.tcsb` を変異させて読ませる。CI は少ない数で回す。
