@@ -1,5 +1,11 @@
 // Entry of lub's samples/13_sprites.
-// Run: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload). For benchmark runs and SPRITES13_SCORE, see scripts/run-sprites-bench.sh.
+// Run: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload).
+// Benchmark: LUB_SPRITE_SCORE_FRAME=3600 lub samples/13_sprites/Sprites13.csproj prints SPRITES13_SCORE at that frame and quits.
+// With a score frame, one workload tick advances per rendered frame (the score frame is a count of rendered frames, not wall time).
+// Run it with a Release build on a real desktop GPU for comparable scores (lavapipe is for correctness only).
+// Settings (environment variables): LUB_SPRITE_TARGET_FPS (the FPS to keep, default 60), LUB_SPRITE_BURST (sprites spawned per accepted spawn tick, default 1),
+// LUB_SPRITE_MAX (the most live sprites, default 200000), LUB_SPRITE_INSTANCED (default true), LUB_BACKEND.
+// CPU profile of the frames before the score: LUB_PROFILE=1 LUB_PROFILE_START_FRAME=3300 LUB_PROFILE_FRAME=3600 LUB_PROFILE_LABEL=sprites13.
 
 using System;
 using System.Collections.Generic;
