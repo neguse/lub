@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Builds tcs converted to C with `tcs c` (src/tcs/native.sh) and places it in <build-dir>/tcs.
+# Builds tcs converted to C with `tcs c` (src/tcs/build-native.sh) and places it in <build-dir>/tcs.
 # lub first uses tcs/tcs next to its executable (src/tcs_build.c). tcs reads the files shipped with it (runtime/, lib/) from the same dir.
-# native.sh also checks that the built tcs produces the same output as the .NET tcs. Building it requires the dotnet SDK and a C compiler. Using it does not.
+# The tests tcs.native.* (tests/lub-test) check that the built tcs produces the same output as the .NET tcs. Building it requires the dotnet SDK and a C compiler. Using it does not.
 #
 # Usage: scripts/build-tcs-native.sh [build-dir]   (default build-release-linux)
 set -euo pipefail
@@ -12,7 +12,7 @@ build="${1:-build-release-linux}"
 native=src/tcs/out/native
 out="$build/tcs"
 
-bash src/tcs/native.sh
+src/tcs/build-native.sh "$native"
 rm -rf "$out"
 mkdir -p "$out"
 for f in tcs tcs.exe; do

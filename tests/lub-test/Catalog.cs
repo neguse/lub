@@ -20,6 +20,7 @@ public static class Catalog
         tests.AddRange(Tests.Tcs.All(site));
         tests.AddRange(Tests.TcsC.All(site));
         tests.AddRange(Tests.TcsVm.All(site));
+        tests.AddRange(Tests.TcsNative.All(site));
         return tests;
     }
 }

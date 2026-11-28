@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- tcs, the TinyC# compiler, as a .NET program (tcs.dll).
-       Compiler/, CBackend/, VmBackend/, Api/ and Cli/ are in the tcs subset, and `tcs c` converts the same files to C (native.sh).
+       Compiler/, CBackend/, VmBackend/, Api/ and Cli/ are in the tcs subset, and `tcs c` converts the same files to C (build-native.sh).
        What tcs asks of the outside (Api/TcsFiles.cs, Cli/CliProcess.cs) is implemented per runner: Dotnet/ on .NET, Native/ in C -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -9,7 +9,7 @@
     <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <RootNamespace>Tcs</RootNamespace>
-    <!-- out/ is the output of native.sh (the C tcs, with a copy of the library sources shipped with it) -->
+    <!-- out/ is where scripts/build-tcs-native.sh builds the C tcs (with a copy of the library sources shipped with it) -->
     <DefaultItemExcludes>$(DefaultItemExcludes);out/**</DefaultItemExcludes>
   </PropertyGroup>
 
