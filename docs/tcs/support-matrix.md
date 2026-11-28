@@ -979,7 +979,7 @@ Dictionary の `Keys` / `Values` も受け手にでき (`d.Values.Where(..).Orde
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |
 | namespace 解決 | **Y** | namespace の中の型は修飾名 (§ namespace ブロック行)。entry class は `A.Color` / simple 名 (一意なら) で引ける (`tcs vm --entry` / `tcs c --entry` は IL 名 `A_Color`) |
 | CLI | **Y** | `tcs check a.cs b.cs [--ref stub.cs]`, `tcs vm ... -o out.tcsb`, `tcs c ... -o out.c`, `--help`, `--version`。subcommand の無い呼び出しは usage と exit 1 |
-| CI gate | **Y** | GitHub Actions で `run-tests.sh` / sample `tcs check` / analyzer demo / analyzer pack |
+| CI gate | **Y** | GitHub Actions でテストのランナーの label `tcs` (`dotnet test`、sample の `tcs check`、analyzer demo) |
 | 実行 trace | **Y** | `tcs vm --trace <path-prefix>` で対象ファイルの文と代入を記録する (prefix は path の segment 単位。README) |
 | watch モード | **Y** | `tcs vm --watch` でファイル監視、reload の batch か restart を標準出力に書く (README) |
 | 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + `tcs c` が埋め込む runtime の C |

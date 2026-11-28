@@ -1,7 +1,7 @@
 // The same declaration makes the same C API calls whether it is new every time, reused, or Cleared again.
 // env LUB_TEST_BINDINGS_MODE = new / reuse / clear.
 // reuse and clear use the same Bindings; clear Clears it for each draw and Sets everything again.
-// scripts/test-bindings-digest.sh compares the digests.
+// The test runner (tests/lub-test, cs.TestBindingsDigest) compares the digests.
 using System;
 using System.Collections.Generic;
 using Lub;

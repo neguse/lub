@@ -84,7 +84,7 @@ flowchart LR
 | `src/tcs-system/` | `TinySystem` (.NET で動かすときの型と、source で配る LINQ) |
 | `src/tcs-analyzers/` | IDE と `dotnet build` に TinyC# の診断を出す analyzer |
 | `src/tcs-format/` | サイトが C# を整形する wasm |
-| `tests/tcs/`, `tests/tcs-backends/`, `tests/tcs-vm/`, `tests/tcs-analyzers/`, `tests/tcs-perf/` | tcs のテストと性能の計測 (`tests/tcs/run-tests.sh` が全部を回す) |
+| `tests/tcs/`, `tests/tcs-backends/`, `tests/tcs-vm/`, `tests/tcs-analyzers/`, `tests/tcs-perf/` | tcs のテストと性能の計測 (ランナーの label `tcs` が全部を回す) |
 | `cs-lib/` | `Lub API` の正本 (`lub_stub.cs`) と C# で書いた `Lubx API` (`lub/`, `lubx/`) |
 | `tools/lub-gen/` | `lub_stub.cs` から C ヘッダ・VM 連携・`.NET` facade・API docs を生成するツール |
 | `dotnet/` | `.NET` 実行モード用の facade (`dotnet/Lub`) とテストランナー (`SampleRunner`) |
@@ -141,23 +141,36 @@ scripts/gen-api.sh --check   # API 生成物が stub に追いついているか
 
 ## テスト
 
-`lub` 本体のテストは `tests/` 配下に目的別で分かれている:
+テストは `tests/` の下に目的別に分かれている。
 
 - `tests/cs/` — エンジン API の挙動テスト (C# で書き、`lub` と .NET の両方で動かして終了コードで判定)
 - `tests/golden/` — 描画テスト (`tests/cs/` の一部) の正解画像
 - `tests/c/` — C 内部モジュールの単体テスト (CMake の `lub_*_smoke` ターゲット)
-- `tests/vm/` — ホットリロード・プロジェクト監視・拡張など player 周りの結合テスト (`scripts/vm-project-test.sh`)
+- `tests/vm/` — ホットリロード・プロジェクト監視・拡張など player 周りの結合テスト
 - `tests/dotnet/` / `tests/cmake/` — .NET バインディングと外部 CMake 組み込みの検証
+- `tests/tcs*/` — tcs 自身のテスト
+- `tests/lub-test/` — テストを走らせるランナー
 
-`tests/cs/` のテストは `<Entry>.cs` と 1 行の `<Entry>.csproj` で書き、判定には `tests/cs/Check.cs`、一覧は `scripts/cs-tests.sh` に置く。
+`tests/cs/` のテストは `<Entry>.cs` と 1 行の `<Entry>.csproj` で書き、判定には `tests/cs/Check.cs`、一覧は `tests/cs/tests.json` に置く。
+
+テストは全部、ランナー (`tests/lub-test`) から走らせる。
+ランナーは、どのテストを、どの OS の、どの backend で走らせるかの宣言 (`tests/lub-test/Tests/`) を 1 か所に持ち、並列、timeout、絞り込み、分割、画面なしでの起動を受け持つ。
+lub の build は先に済ませておく (`scripts/build-release.sh`)。dotnet は必須。
 
 ```sh
-./build/lub tests/cs/<Entry>.csproj        # tests/cs/ のテストを 1 本実行
-BINARY=./build/lub scripts/run-golden.sh   # 描画テストを tests/golden と比較 (--update で再生成)
+dotnet run --project tests/lub-test -- --list                    # テストの一覧と label
+dotnet run --project tests/lub-test --                           # 全部
+dotnet run --project tests/lub-test -- --label cs                # label で選ぶ (smoke、cs、golden、tools、bindings、vm、lider、tcs など)
+dotnet run --project tests/lub-test -- --name TestFixedDt        # 名前の正規表現で選ぶ
+dotnet run --project tests/lub-test -- --label golden --update-goldens   # 正解画像を作り直す
+./build/lub tests/cs/<Entry>.csproj                              # tests/cs/ のテストを 1 本、手で実行
 ```
 
-Linux で画面なし実行する場合は `scripts/run-headless.sh` を使う (lavapipe + xvfb / offscreen)。
-一式をまとめて回すゲートスクリプトは `scripts/native-gate.sh` (Linux)、`scripts/apple-gate.sh` (macOS / iOS)、`scripts/pre-push.sh` (Linux + Web)。
+ほかの option (`--skip-label`、`--shard`、`--jobs`、`--build`、`--logs`) は `tests/lub-test/Program.cs` の先頭にある。
+失敗したテストは、出力と、作った file の置き場所を表示する。
+
+Linux で画面なしで 1 本だけ動かすときは `scripts/run-headless.sh` を使う (lavapipe + xvfb / offscreen)。ランナーも同じ script で起動する。
+iOS の simulator のテストは `scripts/ios-gate.sh`、web の page のテストは `web/README.md`、Linux と web をまとめて回すのは `scripts/pre-push.sh`。
 
 GitHub ActionsのCIにより自動でテスト通過が確認される。
 

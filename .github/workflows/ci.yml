@@ -69,28 +69,35 @@ jobs:
       - name: Format check
         run: bash scripts/format.sh --check
 
-  # Linux regression gate: scripts/native-gate.sh (the single source for CI and manual pre-push) runs Release build -> C smoke tests -> C# runtime tests -> sample conversion -> development tool checks.
-  # Byte comparison of visual goldens is disabled with --skip-golden: lavapipe output depends on the mesa version, and the runner's mesa does not match the locally generated goldens.
-  # The CI visual golden gate is the windows job (WARP); the lavapipe golden is the local pre-push gate.
-  # Enable it once mesa can be pinned (e.g. with a container).
-  # The native gate is split into per-part (--part) jobs that run in parallel. lider runtime tests are split in two (LIDER_SHARD).
+  # Linux tests: the Release build, then the tests of each part with the test runner (tests/lub-test; docs/develop.md).
+  # The parts run as separate jobs in parallel, and the lider tests are split into shares (--shard).
+  # The golden images are not compared here: lavapipe output depends on the mesa version, and the runner's mesa does not match the goldens.
+  # The golden comparison in CI is the windows job (WARP). Enable it here once mesa can be pinned (e.g. with a container).
   linux:
     name: linux (${{ matrix.part }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
     strategy:
       fail-fast: false
       matrix:
         include:
+          # select is the options of the test runner. The runtime tests mostly wait for the GPU and the display, so more of them run than there are cores
           - part: bindings
+            select: --label bindings
           - part: runtime
+            select: --label smoke --label cs --jobs 16
           - part: tools
+            select: --label tools
           - part: lider
             shard: 1/4
+            select: --label lider --jobs 4 --shard 1/4
           - part: lider
             shard: 2/4
+            select: --label lider --jobs 4 --shard 2/4
           - part: lider
             shard: 3/4
+            select: --label lider --jobs 4 --shard 3/4
           - part: lider
             shard: 4/4
+            select: --label lider --jobs 4 --shard 4/4
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
@@ -147,8 +154,7 @@ jobs:
         shell: bash
         run: bash scripts/install-ccache.sh
 
-      # For tcs conversion and .NET execution.
-      # native-gate.sh --require-cs treats a skip as a failure.
+      # For the test runner, tcs conversion and .NET execution.
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
@@ -192,14 +198,15 @@ jobs:
           path: build-jamo
           key: ${{ steps.jamo.outputs.key }}
 
-      - name: Native gate (${{ matrix.part }})
+      # The bindings part does not use the build of lub
+      - name: Build
+        if: matrix.part != 'bindings'
+        run: bash scripts/build-release.sh
+
+      - name: Tests (${{ matrix.part }})
         env:
-          LIDER_SHARD: ${{ matrix.shard }}
           JAMO_CACHE: ${{ github.workspace }}/build-jamo
-        run: |
-          export TMPDIR="${RUNNER_TEMP}/native-gate-tmp"
-          mkdir -p "$TMPDIR"
-          bash scripts/native-gate.sh --require-cs --skip-golden --part ${{ matrix.part }}
+        run: dotnet run --project tests/lub-test -- --logs "${RUNNER_TEMP}/lub-test-tmp" ${{ matrix.select }}
 
       - name: ccache stats
         if: always()
@@ -228,15 +235,15 @@ jobs:
             third_party/slang/lib/libslang-compiler.so.*
             tests/cs/.lub/all.tcsb
 
-      - name: Upload golden failure artifacts
+      - name: Upload the files of failed tests
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: native-gate-failure-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/native-gate-tmp
+          name: lub-test-failure-linux-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/lub-test-tmp
           if-no-files-found: ignore
 
-  # Windows regression gate: build -> C smoke tests -> WARP golden.
+  # Windows tests: the build, then the test runner (tests/lub-test): C smoke tests, C# runtime tests on d3d12, WARP golden.
   # WARP is a software rasterizer, so it matches tests/golden/*_d3d12.png byte for byte even on runners without a GPU.
   # The vulkan backend is only build-verified because the runner has no Vulkan driver (for behavior, the linux job runs the runtime tests on lavapipe with the same backend_vulkan.c).
   windows:
@@ -337,24 +344,8 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-      # The tests/cs bytecode (built by the .NET tcs) does not depend on the lub build, so it is built in parallel.
-      # Later steps (the golden test and the 00_hello conversion) use the same tcs.dll (LUB_TCS).
-      - name: Build (lub, and the tests/cs bytecode alongside)
-        shell: bash
-        run: |
-          (
-            LUB_TCS="$(scripts/build-tcs-dotnet.sh)"
-            export LUB_TCS
-            echo "LUB_TCS=$LUB_TCS" >> "$GITHUB_ENV"
-            source scripts/cs-tests.sh
-            cs_tests_vm_build
-          ) > "$RUNNER_TEMP/tests-cs.log" 2>&1 &
-          bytecode=$!
-          cmake --build build-release
-          wait "$bytecode" || {
-            cat "$RUNNER_TEMP/tests-cs.log"
-            exit 1
-          }
+      - name: Build
+        run: cmake --build build-release
 
       - name: ccache stats
         run: ccache -s
@@ -365,22 +356,6 @@ jobs:
         with:
           path: ~/.ccache
           key: ccache-windows-${{ github.sha }}
-
-      - name: tcs process cleanup
-        if: matrix.part == 'checks'
-        shell: bash
-        run: LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 scripts/test-tcs-process-cleanup.sh ./build-release/lub.exe
-
-      # Log which D3D12 runtime (Agility SDK or inbox) and WARP were loaded, and the feature flags the backend sees.
-      # WARP uses the runner's inbox version (the goldens were captured with its output; the NuGet version differs in the LSB).
-      - name: d3d12 runtime info
-        if: matrix.part == 'checks'
-        shell: bash
-        run: |
-          ls -1 build-release/D3D12
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestIndexedDraw \
-            --capture "$RUNNER_TEMP/info.png" --capture-frame 1 --fixed-dt 0.0166666666666667 2>&1 \
-            | grep -E '^d3d12:'
 
       # The smoke test exe links against SDL3 (shared).
       # SDL3.dll is in build-release/deps/bin/, and copying it next to lub.exe relies on lub's POST_BUILD.
@@ -398,136 +373,48 @@ jobs:
           fi
           echo "== *.dll in build-release (after) =="; ls -1 *.dll 2>/dev/null || echo "(none)"
 
-      - name: C smoke tests
+      # The tests run on d3d12 with WARP (a software rasterizer, so the captures match tests/golden/*_d3d12.png byte for byte even on runners without a GPU)
+      # and with the debug layer, whose errors fail a test (tests/lub-test).
+      # checks: the C smoke tests, the tests with particular launch arguments, export, the tcs child processes.
+      # runtime: the tests/cs runtime tests, the golden images, .NET execution of one sample.
+      - name: Tests (checks)
         if: matrix.part == 'checks'
         shell: bash
-        run: |
-          cd build-release
-          ./lub_shader_d3d12_smoke.exe
-          ./lub_shader_layout_smoke.exe
-          ./lub_sdf_smoke.exe
-          ./lub_surfacenets_smoke.exe
-          ./lub_physics_box2d_smoke.exe
-          ./lub_physics_box3d_smoke.exe
+        run: dotnet run --project tests/lub-test -- --logs "${RUNNER_TEMP}/lub-test-tmp" --label smoke --label cs-steps --label export --label process
 
-      # Windows tcs child processes (CreateProcess and Job Object) and splitting frames out of stdout are checked separately from native-gate on linux.
-      - name: tcs pipeline smoke
-        if: matrix.part == 'checks'
-        shell: bash
-        run: scripts/test-tcs-pipeline-smoke.sh ./build-release/lub_tcs_pipeline_smoke.exe
-
-      # Even when launched without --readback-fixed-latency, readback arrives on the same frame as on other backends, and in the non-guaranteeing mode it does not wait for the GPU (the loop below runs with the flag).
-      - name: Readback latency
-        if: matrix.part == 'checks'
-        shell: bash
-        run: |
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestReadbackFixedLatency
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestReadbackNoWait
-
-      # Even when the pipeline, root signature, and descriptor tables are reused without being set again, each draw renders with its own state.
-      # A table that is not set again after changing the root signature is caught by a debug layer error.
-      - name: Draw state reuse (debug layer)
-        if: matrix.part == 'checks'
-        shell: bash
-        run: |
-          log="${RUNNER_TEMP}/draw_state_reuse.log"
-          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestDrawStateReuse --readback-fixed-latency 2>&1 | tee "$log"
-          if grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$log"; then
-            echo "::error::the D3D12 debug layer reported errors"
-            exit 1
-          fi
-
-      # Runtime tests run on sdlgpu and vulkan in the linux job and on metal in the macos job.
-      # Here all of them run on d3d12 with the debug layer, and validation errors also fail.
-      - name: Runtime tests (d3d12, debug layer)
+      - name: Tests (runtime)
         if: matrix.part == 'runtime'
         shell: bash
-        run: |
-          source scripts/cs-tests.sh
-          # Fail on crashes and when the debug layer reports an error
-          d3d12_test() {
-            LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 LUB_D3D12_DEBUG=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry "$1" "${cs_test_args[@]}" >"$2" 2>&1 || return 1
-            ! grep -E 'd3d12\[[^]]*\] (CORRUPTION|ERROR):' "$2"
-          }
-          cs_test_logs="${RUNNER_TEMP}/runtime" && mkdir -p "$cs_test_logs"
-          # WARP renders on the CPU, so run as many in parallel as there are cores
-          status=0
-          cs_run_tests "$(nproc)" d3d12_test "${cs_runtime_tests[@]}" || status=1
-          # If the debug layer cannot be loaded, the run passes without reporting errors
-          if ! grep -q 'd3d12: debug layer messages: on' "$cs_test_logs/TestManyDraws.log"; then
-            echo "::error::the D3D12 debug layer did not load"
-            status=1
-          fi
-          # GPU time per pass can be measured with timestamp queries (Sys.TakeGpuPasses)
-          if ! grep -q 'gpu pass time: timed' "$cs_test_logs/TestGpuPassTime.log"; then
-            echo "::error::d3d12 did not time the GPU passes"
-            status=1
-          fi
-          exit "$status"
+        run: dotnet run --project tests/lub-test -- --logs "${RUNNER_TEMP}/lub-test-tmp" --label cs-vm --label golden --label dotnet-digest
 
-      # lub export windows compiles shaders for both the d3d12 (DXIL) and vulkan / sdlgpu (spirv) targets.
-      # The d3d12 (WARP) image launched inside the snapshot matches the one run from the repository.
-      - name: Export (windows)
-        if: matrix.part == 'checks'
+      # Log which D3D12 runtime (Agility SDK or inbox) and WARP were loaded, and the feature flags the backend sees.
+      # WARP uses the runner's inbox version (the goldens were captured with its output; the NuGet version differs in the LSB).
+      - name: d3d12 runtime info
+        if: always() && matrix.part == 'checks'
         shell: bash
         run: |
-          out="$RUNNER_TEMP/export"
-          lub="$PWD/build-release/lub.exe"
-          capture=(--capture-frame 5 --fixed-dt 0.0166666666666667)
-          # The snapshot bytecode is <Entry>.tcsb
-          for t in TestVertexPull TestDepthSample; do
-            "$lub" export windows tests/cs/.lub/all.tcsb --entry "$t" -o "$out/$t"
-            LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 "$lub" tests/cs/.lub/all.tcsb --entry "$t" \
-              --capture "$out/$t-repo.png" "${capture[@]}"
-            (cd "$out/$t" && LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 "$lub" "$t.tcsb" \
-              --capture "$out/$t-snapshot.png" "${capture[@]}")
-            cmp "$out/$t-repo.png" "$out/$t-snapshot.png"
-          done
-          # 2 targets per shader (TestVertexPull has 1 shader, TestDepthSample has 2)
-          test "$(ls "$out/TestVertexPull/cache/shader" | wc -l)" -eq 2
-          test "$(ls "$out/TestDepthSample/cache/shader" | wc -l)" -eq 4
-
-      - name: Golden image test (d3d12 backend, WARP)
-        if: matrix.part == 'runtime'
-        shell: bash
-        run: |
-          export TMPDIR="${RUNNER_TEMP}/golden-tmp"
-          mkdir -p "$TMPDIR"
-          scripts/run-golden.sh
-
-      # .NET execution: call the shared library (lub.dll, built by cmake --build) via P/Invoke from the facade, and check with one sample that the frame digest matches the tcs VM player (capture comparison is only in the local native gate).
-      - name: .NET run (00_hello, digest vs tcs VM)
-        if: matrix.part == 'runtime'
-        shell: bash
-        run: |
-          export LUB_D3D12_WARP=1
-          export LUB_NATIVE_LIB="$(cygpath -m "$PWD/build-release/lub.dll")"
-          scripts/run-cs-sample.sh 00_hello --vm
-          ./build-release/lub.exe samples/00_hello/.lub/Hello00.tcsb --entry Hello00 --capture "$RUNNER_TEMP/cs.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/cs.digest"
-          dotnet build dotnet/SampleRunner -p:Sample=00_hello -nologo -v q
-          # On failure, print all output to see what happened
-          ./dotnet/SampleRunner/bin/00_hello/lub-sample-00_hello.exe --capture "$RUNNER_TEMP/dn.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest > "$RUNNER_TEMP/dn.log" 2>&1 || { cat "$RUNNER_TEMP/dn.log"; exit 1; }
-          grep -E '^d3d12:' "$RUNNER_TEMP/dn.log" || true
-          grep '^digest ' "$RUNNER_TEMP/dn.log" > "$RUNNER_TEMP/dn.digest" || { cat "$RUNNER_TEMP/dn.log"; exit 1; }
-          cmp "$RUNNER_TEMP/cs.digest" "$RUNNER_TEMP/dn.digest"
+          ls -1 build-release/D3D12
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/cs/.lub/all.tcsb --entry TestIndexedDraw \
+            --capture "$RUNNER_TEMP/info.png" --capture-frame 1 --fixed-dt 0.0166666666666667 2>&1 \
+            | grep -E '^d3d12:'
 
       - name: Upload golden failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: golden-failure-windows-${{ matrix.part }}
-          path: ${{ runner.temp }}/golden-tmp
+          name: lub-test-failure-windows-${{ matrix.part }}
+          path: ${{ runner.temp }}/lub-test-tmp
           if-no-files-found: ignore
 
-  # macOS regression gate: scripts/apple-gate.sh --part mac (the single source for CI and manual runs) runs Release build -> C smoke tests -> C# runtime tests -> visual golden -> shader cache round trip.
+  # macOS tests: the Release build, then the test runner (tests/lub-test): C smoke tests, C# runtime tests on metal, visual golden, shader cache round trip.
   # Metal renders on the runner's GPU, so it is not byte-identical, and the golden is a tolerance comparison against Linux *_sdlgpu.png (scripts/png-diff.py).
-  # The iOS side (--part ios, running on the simulator) runs in ios.yml.
+  # The iOS side (scripts/ios-gate.sh, running on the simulator) runs in ios.yml.
   macos:
     name: macos (${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        # The gate is split into per-shard (APPLE_GATE_SHARD) jobs that run in parallel. Runtime tests can only run one at a time on the runner's GPU
+        # The tests are split into shares (--shard) that run as parallel jobs. Tests can only run one at a time on the runner's GPU
         shard: [1/3, 2/3, 3/3]
     runs-on: macos-latest
     timeout-minutes: 60
@@ -573,8 +460,7 @@ jobs:
           key: ccache-macos-${{ github.sha }}
           restore-keys: ccache-macos-
 
-      # run-golden.sh requires bash 4+ (mapfile / wait -n).
-      # The bash bundled with macOS is 3.2.
+      # The scripts of the repo require bash 4+ (mapfile). The bash bundled with macOS is 3.2.
       - name: Install tools
         env:
           HOMEBREW_NO_AUTO_UPDATE: 1
@@ -592,17 +478,17 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Apple gate, macOS part (build, smokes, C# runtime tests, golden, shader cache)
-        run: |
-          export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
-          mkdir -p "$TMPDIR"
-          APPLE_GATE_SHARD=${{ matrix.shard }} bash scripts/apple-gate.sh --part mac
+      - name: Build
+        run: bash scripts/build-release.sh --build-dir build-mac
+
+      # The virtual GPU of the CI runner (Apple Paravirtual device) stops the command buffer with a GPU hang error when processes run in parallel, so one test runs at a time
+      - name: Tests (smokes, C# runtime tests on metal, golden, shader cache, tcs child processes)
+        run: dotnet run --project tests/lub-test -- --logs "${RUNNER_TEMP}/lub-test-tmp" --label smoke --label cs --label golden --label process --jobs 1 --shard ${{ matrix.shard }}
 
       - name: ccache stats
         if: always()
         run: ccache -s
 
-      # The shard that also builds the player without Slang saves it
       - name: Save ccache
         if: github.event_name != 'pull_request' && matrix.shard == '3/3'
         uses: actions/cache/save@v4
@@ -614,8 +500,8 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: golden-failure-macos-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/apple-gate-tmp
+          name: lub-test-failure-macos-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/lub-test-tmp
           if-no-files-found: ignore
 
   # Asset generation + build for the web site (lub.neguse.net).
@@ -861,8 +747,7 @@ jobs:
         run: |
           LUB_TCS="$(scripts/build-tcs-dotnet.sh)"
           export LUB_TCS
-          source scripts/cs-tests.sh
-          cs_tests_vm_build
+          scripts/tcs-cs-tests.sh vm
 
       - uses: actions/setup-node@v4
         with:
@@ -979,13 +864,26 @@ jobs:
   # ---- Tests of tcs ----
   # Tests of tcs itself (the C# compiler and VM). The lub jobs check tcs from the user side; these check it against the tcs spec.
   # The .NET SDK version is pinned by the root global.json.
-  # tests/tcs/run-tests.sh is split into per-part (--part) jobs that run in parallel. Parts are split by dotnet test class name, and every test is in exactly one part.
+  # The tests of tcs itself (label tcs of the test runner), split into parts that run as parallel jobs.
+  # The dotnet test projects are split into shares by class name, and every test is in exactly one share (tests/lub-test/Tests/Tcs.cs)
   tcs-test:
     name: tcs-test (${{ matrix.part }})
     strategy:
       fail-fast: false
       matrix:
-        part: [tcs-1, tcs-2, backends-1, backends-2, backends-3, scripts]
+        include:
+          - part: tcs-1
+            select: --name '^tcs\.tests\.1$'
+          - part: tcs-2
+            select: --name '^tcs\.(tests\.2|analyzers)$'
+          - part: backends-1
+            select: --name '^tcs\.backends\.1$'
+          - part: backends-2
+            select: --name '^tcs\.backends\.2$'
+          - part: backends-3
+            select: --name '^tcs\.backends\.3$'
+          - part: scripts
+            select: --label tcs-scripts
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
@@ -1000,8 +898,8 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Run tests and tcs checks
-        run: bash tests/tcs/run-tests.sh --part ${{ matrix.part }}
+      - name: Tests
+        run: dotnet run --project tests/lub-test -- ${{ matrix.select }}
 
   # Performance regression of tcs itself (tests/tcs-perf/selfbench). Measured on the same runner as the PR base (on push, the previous commit), and fails if the deterministic metrics (instruction count, peak managed heap) increase beyond the threshold.
   # tcs vm is measured with tcs running as C (the same path the lider player uses to convert games inside the page) and on the tcs VM (the interpreter and the bytecode that tcs vm generates), and time is not measured.

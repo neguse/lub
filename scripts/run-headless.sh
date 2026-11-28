@@ -6,8 +6,8 @@
 #   else to SDL_VIDEO_DRIVER=offscreen.
 # - Without lavapipe lub runs on the machine's Vulkan driver with
 #   SDL_VIDEO_DRIVER=offscreen, so nothing waits on a compositor. Captures then
-#   come from that driver and don't match the goldens (run-golden.sh and
-#   native-gate.sh refuse to compare them).
+#   come from that driver and don't match the goldens (the golden tests of
+#   tests/lub-test refuse to compare them).
 #
 # Usage:
 #   scripts/run-headless.sh [args passed to ./build/lub]

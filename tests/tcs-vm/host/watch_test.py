@@ -22,6 +22,14 @@ proc = subprocess.Popen([tcs, "vm", "--watch", "--export", "Game.*", src, "-o", 
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
+def save(text):
+    """Replaces the input in one step, as an editor's save does: a watch that reads in the middle of a plain write sees a truncated file"""
+    tmp = src + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.replace(tmp, src)
+
+
 def read_message():
     header = proc.stdout.readline().decode()
     if not header.startswith("@@tcs_"):
@@ -38,7 +46,8 @@ try:
     proc.stderr.readline()
     shutil.copy(out, v1)
     time.sleep(0.2)
-    shutil.copy(os.path.join(here, "ReloadV2.cs.txt"), src)
+    v2 = open(os.path.join(here, "ReloadV2.cs.txt")).read()
+    save(v2)
     kind, body = read_message()
     if kind != "vm_batch":
         raise SystemExit(f"FAIL watch: expected vm_batch, got {kind}: {body}")
@@ -51,8 +60,7 @@ try:
         raise SystemExit(f"FAIL watch: reload output\n{run.stdout}\n{run.stderr}")
     # An edit that removes a static initializer is a restart
     time.sleep(0.2)
-    with open(src, "w") as f:
-        f.write(open(os.path.join(here, "ReloadV2.cs.txt")).read().replace(' = "hello v2"', ''))
+    save(v2.replace(' = "hello v2"', ''))
     kind, body = read_message()
     if kind != "restart_required" or "static initializer removed: Game.banner" not in body:
         raise SystemExit(f"FAIL watch: expected restart_required, got {kind}: {body}")

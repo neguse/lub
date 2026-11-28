@@ -537,7 +537,7 @@ reload は module ごと入れ替え、古い関数を残さない (§12.4) の�
 
 | ゲート | 内容 |
 |---|---|
-| tests/tcs の semantic テスト | `TestHelper.CompileAndRunVm*` が VM で走らせる。`TCS_DIFFERENTIAL=1` (`run-tests.sh`) なら .NET の stdout とも比べる |
+| tests/tcs の semantic テスト | `TestHelper.CompileAndRunVm*` が VM で走らせる。`TCS_DIFFERENTIAL=1` (テストのランナーが付ける) なら .NET の stdout とも比べる |
 | tests/tcs-backends の差分 | `Backends.AssertParity` が C (通常と GC stress)、VM (通常と `--gc-stress`)、.NET の stdout の一致を求める |
 | `tcsvm/run-tests.sh` | `tcsvm/tests/` と `samples/` の 6 本と digest kernel を VM で走らせ、期待の stdout と、C が動かせる入力は C の stdout と比べる。fault のテストは VM の trace が C# の file と行を指すことも見る。host、`--trace`、inspect、profile、mixed、modules、watch の試験も持つ |
 | digest kernel | `tcsvm/run-tests.sh` (VM)、`SampleParityTests` (C)、`tcs2c/verify-digests.sh` の固定の digest |

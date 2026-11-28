@@ -49,14 +49,12 @@ cmake --build build-tcs-vm --config Release --target tcsvm
 dotnet test tcs.slnx
 ```
 
-Linux:
 ```bash
-tests/tcs/run-tests.sh
+dotnet run --project tests/lub-test -- --label tcs
 ```
 
-`run-tests.sh` は `dotnet test` に加え、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics を検査する。
-GitHub Actions (repo の root の `.github/workflows/ci.yml` の `tcs-test`) でも同じ gate を実行する。
-`run-tests.sh --part <名前>` は一部だけを走らせる (CI は部分ごとの job に分けて並べる。部分の一覧は `run-tests.sh` の先頭)。
+テストのランナー (`docs/develop.md`) の label `tcs` が、`dotnet test` に加え、代表 sample の `tcs check`、C だけの検査、tcs VM のテスト、analyzer-demo の診断の数を検査する。
+GitHub Actions (repo の root の `.github/workflows/ci.yml` の `tcs-test`) も同じものを、部分ごとの job に分けて並べて走らせる (分け方は `tests/lub-test/Tests/Tcs.cs`)。
 
 テストの書き方:
 
@@ -232,7 +230,7 @@ src/
   tcs-analyzers/       # Roslyn Analyzer
   tcs-format/          # C# の整形 (CSharpier) を .NET の wasm でブラウザに出す入口
 tests/
-  tcs/                 # xUnit テスト、テストの入力 (samples/)、run-tests.sh
+  tcs/                 # xUnit テスト、テストの入力 (samples/)
   tcs-backends/        # C backend、tcs VM、.NET の stdout の差分テストと、C の出力だけを見る script
   tcs-vm/              # tcs VM のテスト
   tcs-analyzers/       # analyzer のテスト

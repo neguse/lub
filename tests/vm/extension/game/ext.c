@@ -1,4 +1,4 @@
-// The native extension of tests/vm/extension (scripts/vm-project-test.sh builds
+// The native extension of tests/vm/extension (tests/lub-test builds
 // it into Ext.so).
 #include <lub/lub_vm_extension.h>
 #include <stdio.h>

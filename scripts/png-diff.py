@@ -4,7 +4,7 @@
 Usage: scripts/png-diff.py <a.png> <b.png> [--mean 3.0] [--outliers 1.0]
 
 A real GPU does not reproduce a software rasterizer byte for byte, so the
-macOS golden check (scripts/run-golden.sh) compares against the Linux
+macOS golden check (tests/lub-test) compares against the Linux
 goldens with this instead of cmp. A pixel's difference is the largest
 absolute difference over R, G and B. The images match when the mean
 difference is at most --mean and at most --outliers percent of the pixels

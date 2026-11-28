@@ -31,5 +31,7 @@ src/tcs*/bin/
 src/tcs*/obj/
 tests/tcs*/bin/
 tests/tcs*/obj/
+tests/lub-test/bin/
+tests/lub-test/obj/
 # Output of tests/tcs-perf/compare/run.py and report.py
 tests/tcs-perf/compare/results/

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Full local gate (manual). Runs the Linux and web parts of PR CI: the fast
-# commit gate, the native gate (build, smokes, C# runtime tests, goldens, C#
-# samples, dev tools), then WASM build, web build, and headless web
-# verification.
+# commit gate, the Release build and the tests of lub (tests/lub-test: smokes,
+# C# runtime tests, goldens, C# samples, dev tools, lider), then WASM build,
+# web build, and headless web verification.
 # CI runs the same thing on every PR, so this is usually not needed.
 # An escape hatch for when you want to check everything locally without waiting for CI, or when CI is not available.
 set -euo pipefail
@@ -16,10 +16,9 @@ case "${1:-}" in
 Usage: scripts/pre-push.sh
 
 Runs the full local gate:
-  the fast commit gate (scripts/pre-commit.sh), the native gate
-  (scripts/native-gate.sh: build, smokes, C# runtime tests, goldens, C#
-  samples, dev tools), WASM build, web build, and headless web
-  verification.
+  the fast commit gate (scripts/pre-commit.sh), the Release build and the
+  tests of lub (tests/lub-test, all but the tests of tcs itself), WASM
+  build, web build, and headless web verification.
 
 npm ci is skipped when web/package.json + web/package-lock.json are
 unchanged since the last successful install (stamp in web/node_modules).
@@ -78,7 +77,8 @@ wait_for_url() {
 }
 
 run bash scripts/pre-commit.sh
-run bash scripts/native-gate.sh
+run_timed bash scripts/build-release.sh
+run_timed dotnet run --project tests/lub-test -- --skip-label tcs
 
 if [[ -f "$HOME/emsdk/emsdk_env.sh" ]]; then
   echo

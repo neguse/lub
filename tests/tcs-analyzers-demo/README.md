@@ -12,7 +12,7 @@ analyzer (`src/tcs-analyzers`) の診断を確かめる project。
 - `TCS1003` x1: `List<T>` への null の保存
 
 `TCS1001`、`TCS1002`、`TCS1003` の既定は warning で、この project は warning で build を止めないので、build は warning だけで終わる。
-`tests/tcs/run-tests.sh` がこの数を確かめる。
+テストのランナー (`tests/lub-test` の `tcs.analyzer-demo`) がこの数を確かめる。
 
 ## JetBrains InspectCode
 

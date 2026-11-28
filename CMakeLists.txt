@@ -376,7 +376,7 @@ elseif(NOT LUB_TCS_GAME)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # The iOS player is an app bundle.
-  # .tcsb, data, and cache/shader/ are placed inside the bundle (scripts/apple-gate.sh).
+  # .tcsb, data, and cache/shader/ are placed inside the bundle (scripts/ios-gate.sh).
   # Info.plist is written with CMake variables, so both the Xcode and Ninja generators produce the same bundle.
   set_target_properties(lub PROPERTIES
     MACOSX_BUNDLE TRUE

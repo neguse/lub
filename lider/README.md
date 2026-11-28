@@ -76,7 +76,7 @@ XR (OpenXR) で動かすには `LUB_BACKEND=openxr` を渡す。
 ## テスト
 
 ```
-lider/scripts/gate.sh
+dotnet run --project tests/lub-test -- --label lider
 ```
 
 かな漢字変換の辞書 (`data/mozc.dict`) はリポジトリに無い。`scripts/build-dict.sh data` で作る (要 cargo と curl)。無いと `tests/ime` は飛ばす。
