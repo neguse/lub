@@ -2,7 +2,7 @@
 // Hashes the bit patterns of the results for a fixed input sequence per function, and compares them with the expected values.
 // There is one set of expected values, not one per OS.
 // Asin / Acos / Atan are missing from TinySystem and tcs cannot compile them, so they are not checked.
-// For the tcs2c path, tests/c/tcs_math.cs computes C# Math with the same input sequence and hash, and scripts/verify-tcs-binding.sh compares it with this table.
+// For the tcs2c path, tests/c/tcs_math.cs computes C# Math with the same input sequence and hash, and the test bindings.tcs.math of tests/lub-test compares it with this table.
 // For the .NET path, the test runner (tests/lub-test) runs this test as a runtime test of .NET execution (-p:Tests=true of dotnet/SampleRunner).
 using System;
 using Lub;
@@ -13,7 +13,7 @@ public static class TestMathDeterminism
     static int state;
 
     // "name = hash", one function per line.
-    // scripts/verify-tcs-binding.sh can read it with sed -nE 's/^ *"([a-z0-9]+ = -?[0-9]+)",$/\1/p'
+    // The test bindings.tcs.math reads the lines of this form: "name = digest",
     static readonly string[] expected = new string[]
     {
         "sin = 720166134",

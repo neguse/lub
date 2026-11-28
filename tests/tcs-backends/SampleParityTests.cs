@@ -26,7 +26,7 @@ public class SampleParityTests
     [CFact]
     public void DigestKernels_MatchFixedDigests()
     {
-        // The same fixed digests as verify-digests.sh and tests/tcs-vm/run-tests.sh. Here the C-side values (including GC) are checked.
+        // The same fixed digests as the tcs.c.digest and tcs.vm.digest tests of tests/lub-test. Here the C-side values (including GC) are checked.
         // particles_struct has the same sequence of operations as particles, so the digest is the same
         var expected = new Dictionary<string, (string Entry, string Digest)>
         {

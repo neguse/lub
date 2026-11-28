@@ -1,4 +1,4 @@
-// Check of struct record notation and passing (scripts/verify-vm-binding.sh and verify-tcs-binding.sh).
+// Check of struct record notation and passing (the bindings tests of tests/lub-test).
 // Appended after cs-lib/lub_stub.cs to form one stub, from which lub-gen generates the header and glue code.
 // Passes readonly record struct init properties, readonly fields of readonly structs, bool fields of record structs, nested structs, T? in record fields, value arguments, out, and return values.
 namespace Lub

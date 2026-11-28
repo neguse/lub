@@ -1,4 +1,4 @@
-// Helpers shared by the tests of the editor core (src/Editor). scripts/test-editor.sh compiles this together with each test.
+// Helpers shared by the tests of the editor core (src/Editor). The test runner (tests/lub-test) compiles this together with each test.
 // Keys are passed in the same order as lider's Workspace: modifier key press/release, key press (with the EventData.Plain character), the typed character if Ctrl is not held, key release.
 // Only the first failure is reported, and the test exits with App.Quit(1).
 using System;

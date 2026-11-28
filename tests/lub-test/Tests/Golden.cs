@@ -4,7 +4,7 @@ namespace LubTest.Tests;
 /// A capture is the same on every machine because the frame and the frame time are fixed, a readback arrives exactly 2 frames later (--readback-fixed-latency),
 /// and the rasterizer is the CPU one of the OS (Linux: lavapipe, Windows: WARP).
 /// On Linux both backends render through lavapipe and must give the same bytes, so vulkan is compared with the sdlgpu goldens.
-/// macOS has no machine-independent rasterizer and no goldens of its own: the capture of the real GPU is compared with the sdlgpu golden within a tolerance (scripts/png-diff.py).
+/// macOS has no machine-independent rasterizer and no goldens of its own: the capture of the real GPU is compared with the sdlgpu golden within a tolerance (PngDiff).
 /// --update-goldens writes the captures as the new goldens (never from macOS, and only from the backend that owns the golden).</summary>
 public static class Golden
 {
@@ -38,8 +38,9 @@ public static class Golden
         run.Check(File.Exists(golden), golden + " is missing (run with --update-goldens to create it)");
         if (site.Mac)
         {
-            var diff = await run.Exec("python3", [site.Path_("scripts", "png-diff.py"), capture, golden]);
-            run.Check(diff.Ok, $"{capture} differs from {golden}: {diff.Text.Trim()}");
+            var (same, metrics) = PngDiff.Compare(capture, golden);
+            run.Log(metrics);
+            run.Check(same, $"{capture} differs from {golden}: {metrics}");
             return;
         }
         run.Check(File.ReadAllBytes(capture).AsSpan().SequenceEqual(File.ReadAllBytes(golden)), $"{capture} differs from {golden}");

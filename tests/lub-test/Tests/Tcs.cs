@@ -22,20 +22,10 @@ public static class Tcs
 
         yield return new Test("tcs.samples-check", ["tcs", "tcs-scripts"], async run =>
         {
-            var env = await Prepare.TcsEnv(run);
             foreach (var sample in new[] { "hello", "game", "inventory", "entity", "statemachine", "collision" })
-                await run.Script("scripts/tcs.sh", ["check", $"tests/tcs/samples/{sample}.cs"], env);
-            await run.Script("scripts/tcs.sh", ["check", "tests/tcs/samples/host_api_game.cs", "--ref", "tests/tcs/samples/host_api_stub.cs"], env);
+                await run.MustTcs(["check", $"tests/tcs/samples/{sample}.cs"]);
+            await run.MustTcs(["check", "tests/tcs/samples/host_api_game.cs", "--ref", "tests/tcs/samples/host_api_stub.cs"]);
         });
-        // The checks that only C can run (tcs c, then the C compiler)
-        foreach (var check in new[] { "digests", "gc", "game-core", "object-values", "host" })
-        {
-            yield return new Test("tcs.c." + check, ["tcs", "tcs-scripts"], async run =>
-                await run.Script($"tests/tcs-backends/verify-{check}.sh", [], await Prepare.TcsEnv(run), TimeSpan.FromMinutes(30)));
-        }
-        // tcs vm, then tcsvm: the expected output, and the same output from C where C can run the input
-        yield return new Test("tcs.vm", ["tcs", "tcs-scripts"], async run =>
-            await run.Script("tests/tcs-vm/run-tests.sh", [], await Prepare.TcsEnv(run), TimeSpan.FromMinutes(30))) { Alone = true };
         // The analyzer reports each kind of violation in a project written to contain them
         yield return new Test("tcs.analyzer-demo", ["tcs", "tcs-scripts"], async run =>
         {

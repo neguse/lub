@@ -79,11 +79,36 @@ public sealed class Site
         }
     }
 
-    /// <summary>The bash that runs the scripts of the repo. Looked up on PATH by hand: on Windows, starting `bash` by name finds the WSL launcher in System32 before the bash of Git.</summary>
-    public string Bash { get; } = Which("bash") ?? "bash";
-
-    /// <summary>A path as the scripts take it: with forward slashes on Windows too.</summary>
-    public string ForScript(string path) => Windows ? path.Replace('\\', '/') : path;
+    /// <summary>How to start a program that opens a window where there may be no display: fills env, and returns the program and the arguments to start.
+    /// Windows renders with WARP and macOS with the real GPU. On Linux, Mesa lavapipe (CPU Vulkan) is forced instead of any GPU driver, so that captures are the same on every machine;
+    /// the window goes to the display that is there, else to an X server of its own (xvfb-run), else nowhere (SDL_VIDEO_DRIVER=offscreen).
+    /// Without lavapipe the program runs on the machine's Vulkan driver and its captures do not match the goldens.</summary>
+    public (string Program, string[] Arguments) Headless(string exe, string[] args, IDictionary<string, string?> env)
+    {
+        if (Windows)
+        {
+            env.TryAdd("LUB_D3D12_WARP", "1");
+            return (exe, args);
+        }
+        if (Mac) return (exe, args);
+        if (Lavapipe is not { } icd)
+        {
+            env.TryAdd("SDL_VIDEO_DRIVER", "offscreen");
+            return (exe, args);
+        }
+        env["VK_ICD_FILENAMES"] = icd;
+        // The modern Vulkan loader reads this one; older ones need the legacy name above
+        env["VK_DRIVER_FILES"] = icd;
+        string? Current(string name) => env.TryGetValue(name, out var set) ? set : Environment.GetEnvironmentVariable(name);
+        if (Current("DISPLAY") is { Length: > 0 } || Current("WAYLAND_DISPLAY") is { Length: > 0 }) return (exe, args);
+        if (Which("xvfb-run") == null)
+        {
+            env.TryAdd("SDL_VIDEO_DRIVER", "offscreen");
+            return (exe, args);
+        }
+        // xvfb-run -a races when instances start at the same time (two pick the same display), so each run gets a number of its own
+        return ("xvfb-run", ["-n", TakeDisplay().ToString(), exe, .. args]);
+    }
 
     public static string? Which(string name)
     {
